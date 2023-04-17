@@ -10216,6 +10216,10 @@
       runCommand('-erase bbox=' + box.getDataCoords().join(','));
     });
 
+    new SimpleButton(popup.findChild('.rect-btn')).on('click', function() {
+      runCommand('-rectangle + bbox=' + box.getDataCoords().join(','));
+    });
+
     gui.addMode('box_tool', turnOn, turnOff);
 
     gui.on('interaction_mode_change', function(e) {

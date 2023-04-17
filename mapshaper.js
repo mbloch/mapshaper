@@ -1,6 +1,6 @@
 (function () {
 
-  var VERSION = "0.6.25";
+  var VERSION = "0.6.26";
 
 
   var utils = /*#__PURE__*/Object.freeze({
@@ -13728,6 +13728,28 @@
         }});
     }
 
+    if (hasPaths || hasPoints) {
+      addGetters(ctx, {
+        // TODO: count hole/s + containing ring as one part
+        partCount: function() {
+          var shp = lyr.shapes[_id];
+          return shp ? shp.length : 0;
+        },
+        isNull: function() {
+          return ctx.partCount === 0;
+        },
+        bounds: function() {
+          return shapeBounds().toArray();
+        },
+        height: function() {
+          return shapeBounds().height();
+        },
+        width: function() {
+          return shapeBounds().width();
+        }
+      });
+    }
+
     if (hasPaths) {
 
       ctx.bboxContainsPoint = function(x, y) {
@@ -13757,25 +13779,6 @@
       // ctx.intersectsRectangle = function(a, b, c, d) {}; // paths... points too?
       // ctx.containsPoint = function(x, y) {}; // polygon only
       // ctx.containedByRectangle(a, b, c, d); // paths and points... how do multipart points work?
-
-      addGetters(ctx, {
-        // TODO: count hole/s + containing ring as one part
-        partCount: function() {
-          return _ids ? _ids.length : 0;
-        },
-        isNull: function() {
-          return ctx.partCount === 0;
-        },
-        bounds: function() {
-          return shapeBounds().toArray();
-        },
-        height: function() {
-          return shapeBounds().height();
-        },
-        width: function() {
-          return shapeBounds().width();
-        }
-      });
 
       if (lyr.geometry_type == 'polyline') {
         addGetters(ctx, {
@@ -13838,7 +13841,7 @@
       }
 
     } else if (hasPoints) {
-      // TODO: add functions like bounds, isNull, pointCount
+
       Object.defineProperty(ctx, 'coordinates',
         {set: function(obj) {
           if (!obj || utils.isArray(obj)) {
@@ -13877,8 +13880,13 @@
     }
 
     function shapeBounds() {
-      if (!_bounds) {
+      if (_bounds) return _bounds;
+      if (hasPaths) {
         _bounds = arcs.getMultiShapeBounds(_ids);
+      } else if (hasPoints) {
+        _bounds = getPointFeatureBounds(lyr.shapes[_id]);
+      } else {
+        _bounds = new Bounds();
       }
       return _bounds;
     }
@@ -13886,8 +13894,8 @@
     return function(id) {
       _id = id;
       // reset stored values
+      _bounds = null;
       if (hasPaths) {
-        _bounds = null;
         _centroid = null;
         _innerXY = null;
         _ids = lyr.shapes[id];
@@ -14292,9 +14300,9 @@
   }
 
   function compileCalcExpression(lyr, arcs, exp) {
-    var rowNo = 0, colNo = 0, cols = [];
+    var rowNo = 0, colNo = 0, recId = -1, cols = [];
     var ctx1 = { // context for first phase (capturing values for each feature)
-          count: assign,
+          count: assign, // dummy function - first pass does nothing
           sum: captureNum,
           sums: capture,
           average: captureNum,
@@ -14309,6 +14317,7 @@
           max: captureNum,
           mode: capture,
           collect: capture,
+          collectIds: captureId,
           first: assignOnce,
           every: every,
           some: some,
@@ -14332,6 +14341,7 @@
           mean: wrap(utils.mean),
           mode: wrap(getMode),
           collect: wrap(pass),
+          collectIds: wrap(pass),
           first: wrap(pass),
           every: wrap(pass, false),
           some: wrap(pass, false),
@@ -14418,6 +14428,7 @@
 
     function procRecord(i) {
       if (i < 0 || i >= len) error("Invalid record index");
+      recId = i;
       calc1(i);
       rowNo++;
       colNo = 0;
@@ -14426,6 +14437,7 @@
     function noop() {}
 
     function reset() {
+      recId = -1;
       rowNo = 0;
       colNo = 0;
       cols = [];
@@ -14466,6 +14478,10 @@
       return [];
     }
     */
+
+    function captureId() {
+      capture(recId);
+    }
 
     function capture(val) {
       var col;
@@ -32896,6 +32912,8 @@ ${svg}
     var colorArg = opts.colors && opts.colors.length == 1 ? opts.colors[0] : null;
     var colorScheme;
 
+    if (method == 'blacki') return [];
+
     if (colorArg == 'random') {
       if (categorical) {
         return getRandomColors(n);
@@ -32965,7 +32983,7 @@ ${svg}
   }
 
   var sequential = ['quantile', 'nice', 'equal-interval', 'hybrid', 'breaks'];
-  var all = ['non-adjacent', 'indexed', 'categorical'].concat(sequential);
+  var all = ['non-adjacent', 'indexed', 'categorical', 'blacki'].concat(sequential);
 
   function getClassifyMethod(opts, dataType) {
     var method;
@@ -32997,6 +33015,79 @@ ${svg}
       stop('The', method, 'method requires a numerical data field');
     }
     return method;
+  }
+
+  function getBlackiClassifier(lyr, dataField) {
+  	var records = lyr.data.getRecords();
+    // classes are integers, dataIds can be any scalar
+    var dataToClassIndex = {};
+    var classToDataIndex = [];
+    var classCount = 0;
+
+    records.forEach(function(rec, recId) {
+      var dataIds = rec[dataField];
+      var thisClass = -1;
+      var thatClass, dataId;
+
+      if (!Array.isArray(dataIds)) return;
+
+      for (var i=0; i<dataIds.length; i++) {
+        dataId = dataIds[i];
+        thatClass = dataId in dataToClassIndex ? dataToClassIndex[dataId] : -1;
+        if (thatClass == -1) {
+          if (thisClass == -1) {
+            thisClass = classCount++;
+            classToDataIndex[thisClass] = [dataId];
+          }
+          dataToClassIndex[dataId] = thisClass;
+
+        } else {
+
+          if (thisClass == -1) {
+            thisClass = thatClass;
+          } else if (thisClass > thatClass) {
+            mergeClassIntoClass(thisClass, thatClass);
+            thisClass = thatClass;
+          } else if (thisClass < thatClass) {
+            mergeClassIntoClass(thatClass, thisClass);
+          }
+        }
+      }
+    });
+
+    var remapTable = compressClassIds();
+    var classIds = records.map(function(rec) {
+      var ids = rec[dataField];
+      if (!Array.isArray(ids) || ids.length === 0) return -1;
+      // TODO: assert that ids all belong to the same class
+      if (ids[0] in dataToClassIndex === false) {
+        error('Internal error');
+      }
+      return remapTable[dataToClassIndex[ids[0]]];
+    });
+
+    classToDataIndex = null;
+    dataToClassIndex = null;
+
+    return function(recId) {
+      return classIds[recId];
+    };
+
+    function compressClassIds() {
+      var newId = -1;
+      return classToDataIndex.map(function(d, oldId) {
+        if (d !== null) newId++;
+        return newId;
+      });
+    }
+
+    function mergeClassIntoClass(fromId, toId) {
+      classToDataIndex[fromId].forEach(function(dataId) {
+        dataToClassIndex[dataId] = toId;
+      });
+      classToDataIndex[toId] = utils.uniq(classToDataIndex[toId].concat(classToDataIndex[fromId]));
+      classToDataIndex[fromId] = null;
+    }
   }
 
   cmd.classify = function(lyr, dataset, optsArg) {
@@ -33061,6 +33152,8 @@ ${svg}
         stop('Invalid number of classes:', opts.classes, '(expected a value greater than 1)');
       }
       numClasses = opts.classes;
+    } else if (method == 'blacki') {
+      numClasses = 999; // dummy value
     } else if (method == 'indexed' && dataField) {
       numClasses = getIndexedClassCount(records, dataField);
     } else if (opts.breaks) {
@@ -33098,6 +33191,8 @@ ${svg}
     if (fieldType === null) {
       // no valid data -- always return null value
       classifyByRecordId = function() {return nullValue;};
+    } else if (method == 'blacki') {
+      classifyByRecordId = getBlackiClassifier(lyr, dataField);
     } else if (method == 'non-adjacent') {
       classifyByRecordId = getNonAdjacentClassifier(lyr, dataset, values);
     } else if (method == 'indexed') {
