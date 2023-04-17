@@ -1,6 +1,6 @@
 (function () {
 
-  var VERSION = "0.6.26";
+  var VERSION = "0.6.27";
 
 
   var utils = /*#__PURE__*/Object.freeze({
@@ -33037,6 +33037,12 @@ ${svg}
         if (thatClass == -1) {
           if (thisClass == -1) {
             thisClass = classCount++;
+          }
+          if (Array.isArray(classToDataIndex[thisClass])) {
+            if (!classToDataIndex[thisClass].includes(dataId)) {
+              classToDataIndex[thisClass].push(dataId);
+            }
+          } else {
             classToDataIndex[thisClass] = [dataId];
           }
           dataToClassIndex[dataId] = thisClass;
