@@ -9,6 +9,7 @@ import { WGS84 } from '../geom/mapshaper-geom-constants';
 import { Bounds } from '../geom/mapshaper-bounds';
 import geom from '../geom/mapshaper-geom';
 import utils from '../utils/mapshaper-utils';
+import { getPointFeatureBounds } from '../points/mapshaper-point-utils';
 
 
 // Returns a function to return a feature proxy by id
@@ -58,6 +59,28 @@ export function initFeatureProxy(lyr, arcs, optsArg) {
       }});
   }
 
+  if (hasPaths || hasPoints) {
+    addGetters(ctx, {
+      // TODO: count hole/s + containing ring as one part
+      partCount: function() {
+        var shp = lyr.shapes[_id];
+        return shp ? shp.length : 0;
+      },
+      isNull: function() {
+        return ctx.partCount === 0;
+      },
+      bounds: function() {
+        return shapeBounds().toArray();
+      },
+      height: function() {
+        return shapeBounds().height();
+      },
+      width: function() {
+        return shapeBounds().width();
+      }
+    });
+  }
+
   if (hasPaths) {
 
     ctx.bboxContainsPoint = function(x, y) {
@@ -87,25 +110,6 @@ export function initFeatureProxy(lyr, arcs, optsArg) {
     // ctx.intersectsRectangle = function(a, b, c, d) {}; // paths... points too?
     // ctx.containsPoint = function(x, y) {}; // polygon only
     // ctx.containedByRectangle(a, b, c, d); // paths and points... how do multipart points work?
-
-    addGetters(ctx, {
-      // TODO: count hole/s + containing ring as one part
-      partCount: function() {
-        return _ids ? _ids.length : 0;
-      },
-      isNull: function() {
-        return ctx.partCount === 0;
-      },
-      bounds: function() {
-        return shapeBounds().toArray();
-      },
-      height: function() {
-        return shapeBounds().height();
-      },
-      width: function() {
-        return shapeBounds().width();
-      }
-    });
 
     if (lyr.geometry_type == 'polyline') {
       addGetters(ctx, {
@@ -168,7 +172,7 @@ export function initFeatureProxy(lyr, arcs, optsArg) {
     }
 
   } else if (hasPoints) {
-    // TODO: add functions like bounds, isNull, pointCount
+
     Object.defineProperty(ctx, 'coordinates',
       {set: function(obj) {
         if (!obj || utils.isArray(obj)) {
@@ -207,8 +211,13 @@ export function initFeatureProxy(lyr, arcs, optsArg) {
   }
 
   function shapeBounds() {
-    if (!_bounds) {
+    if (_bounds) return _bounds;
+    if (hasPaths) {
       _bounds = arcs.getMultiShapeBounds(_ids);
+    } else if (hasPoints) {
+      _bounds = getPointFeatureBounds(lyr.shapes[_id]);
+    } else {
+      _bounds = new Bounds();
     }
     return _bounds;
   }
@@ -216,8 +225,8 @@ export function initFeatureProxy(lyr, arcs, optsArg) {
   return function(id) {
     _id = id;
     // reset stored values
+    _bounds = null;
     if (hasPaths) {
-      _bounds = null;
       _centroid = null;
       _innerXY = null;
       _ids = lyr.shapes[id];

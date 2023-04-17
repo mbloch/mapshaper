@@ -256,7 +256,7 @@ describe('mapshaper-each.js', function () {
       assert.deepEqual(records, [{'label-text':'FINLAND'}, {'label-text':'SWEDEN'}]);
     })
 
-    it('test $.partCount', function () {
+    it('polygon $.partCount', function () {
       var records = [{}, {}];
       var lyr = {
         geometry_type: 'polygon',
@@ -266,6 +266,25 @@ describe('mapshaper-each.js', function () {
       evaluateEachFeature(lyr, nullArcs, "parts=$.partCount");
       assert.deepEqual(records, [{parts: 2}, {parts: 0}]);
     })
+
+    it('point $.partCount', function () {
+      var lyr = {
+        geometry_type: 'point',
+        shapes: [[[0, 2], [0, -2]], null]
+      };
+      evaluateEachFeature(lyr, nullArcs, "parts=$.partCount");
+      assert.deepEqual(lyr.data.getRecords(), [{parts: 2}, {parts: 0}]);
+    })
+
+    it('point this.bounds this.height this.width', function() {
+      var lyr = {
+        geometry_type: 'point',
+        shapes: [[[0, 2], [0, -2]], null]
+      };
+      evaluateEachFeature(lyr, nullArcs, "bbox = this.bounds, h = this.height, w = this.width");
+      assert.deepStrictEqual(lyr.data.getRecords(), [{bbox: [0,-2,0,2], h: 4, w: 0}, {bbox: [], h: 0, w: 0}]);
+
+    });
 
     it('create records if none existed', function () {
       var lyr = {

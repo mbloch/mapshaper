@@ -37,6 +37,8 @@ export function getClassValues(method, n, opts) {
   var colorArg = opts.colors && opts.colors.length == 1 ? opts.colors[0] : null;
   var colorScheme;
 
+  if (method == 'blacki') return [];
+
   if (colorArg == 'random') {
     if (categorical) {
       return getRandomColors(n);

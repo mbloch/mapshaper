@@ -1,7 +1,7 @@
 import { stop } from '../utils/mapshaper-logging';
 
 var sequential = ['quantile', 'nice', 'equal-interval', 'hybrid', 'breaks'];
-var all = ['non-adjacent', 'indexed', 'categorical'].concat(sequential);
+var all = ['non-adjacent', 'indexed', 'categorical', 'blacki'].concat(sequential);
 
 export function getClassifyMethod(opts, dataType) {
   var method;

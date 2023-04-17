@@ -10047,6 +10047,9 @@ function get_geod_defn(P) {
   if ('datum' in P.params) {
     got_datum = true;
     defn += get_param(P, 'datum');
+  } else if ('R' in P.params) {
+    // moving R above other params, to match sequence in pj_ell_set.js
+    defn += get_param(P, 'R');
   } else if ('ellps' in P.params) {
     defn += get_param(P, 'ellps');
   } else if ('a' in P.params) {
@@ -10067,7 +10070,7 @@ function get_geod_defn(P) {
     defn += get_param(P, 'towgs84');
     defn += get_param(P, 'nadgrids');
   }
-  defn += get_param(P, 'R');
+  // defn += get_param(P, 'R'); // moved to above ellps
   defn += get_param(P, 'R_A');
   defn += get_param(P, 'R_V');
   defn += get_param(P, 'R_a');

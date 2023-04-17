@@ -19,6 +19,7 @@ import { getUniqFieldValues, getColumnType } from '../datatable/mapshaper-data-u
 import { getClassValues, getNullValue } from '../classification/mapshaper-classify-ramps';
 import { getClassifyMethod } from '../classification/mapshaper-classify-methods';
 import { color as d3_color } from 'd3-color';
+import { getBlackiClassifier } from '../classification/mapshaper-blacki';
 
 cmd.classify = function(lyr, dataset, optsArg) {
   if (!lyr.data) {
@@ -82,6 +83,8 @@ cmd.classify = function(lyr, dataset, optsArg) {
       stop('Invalid number of classes:', opts.classes, '(expected a value greater than 1)');
     }
     numClasses = opts.classes;
+  } else if (method == 'blacki') {
+    numClasses = 999; // dummy value
   } else if (method == 'indexed' && dataField) {
     numClasses = getIndexedClassCount(records, dataField);
   } else if (opts.breaks) {
@@ -119,6 +122,8 @@ cmd.classify = function(lyr, dataset, optsArg) {
   if (fieldType === null) {
     // no valid data -- always return null value
     classifyByRecordId = function() {return nullValue;};
+  } else if (method == 'blacki') {
+    classifyByRecordId = getBlackiClassifier(lyr, dataField);
   } else if (method == 'non-adjacent') {
     classifyByRecordId = getNonAdjacentClassifier(lyr, dataset, values);
   } else if (method == 'indexed') {

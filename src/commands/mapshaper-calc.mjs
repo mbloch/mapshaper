@@ -36,9 +36,9 @@ export function evalCalcExpression(lyr, arcs, exp) {
 }
 
 export function compileCalcExpression(lyr, arcs, exp) {
-  var rowNo = 0, colNo = 0, cols = [];
+  var rowNo = 0, colNo = 0, recId = -1, cols = [];
   var ctx1 = { // context for first phase (capturing values for each feature)
-        count: assign,
+        count: assign, // dummy function - first pass does nothing
         sum: captureNum,
         sums: capture,
         average: captureNum,
@@ -53,6 +53,7 @@ export function compileCalcExpression(lyr, arcs, exp) {
         max: captureNum,
         mode: capture,
         collect: capture,
+        collectIds: captureId,
         first: assignOnce,
         every: every,
         some: some,
@@ -76,6 +77,7 @@ export function compileCalcExpression(lyr, arcs, exp) {
         mean: wrap(utils.mean),
         mode: wrap(getMode),
         collect: wrap(pass),
+        collectIds: wrap(pass),
         first: wrap(pass),
         every: wrap(pass, false),
         some: wrap(pass, false),
@@ -162,6 +164,7 @@ export function compileCalcExpression(lyr, arcs, exp) {
 
   function procRecord(i) {
     if (i < 0 || i >= len) error("Invalid record index");
+    recId = i;
     calc1(i);
     rowNo++;
     colNo = 0;
@@ -170,6 +173,7 @@ export function compileCalcExpression(lyr, arcs, exp) {
   function noop() {}
 
   function reset() {
+    recId = -1;
     rowNo = 0;
     colNo = 0;
     cols = [];
@@ -210,6 +214,10 @@ export function compileCalcExpression(lyr, arcs, exp) {
     return [];
   }
   */
+
+  function captureId() {
+    capture(recId);
+  }
 
   function capture(val) {
     var col;

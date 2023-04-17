@@ -1,3 +1,9 @@
+v0.6.26
+* Updated projections library to fix a bug.
+* Added getters partCount, isNull, bounds, width, and height to "this" object for point features in expressions.
+* Added undocumented "blacki" classification method.
+* Added collectIds() function to calc= expressions of the -join command.
+
 v0.6.25
 * Added "Erase" button to box tool in web UI.
 * Bug fixes and optimizations.
