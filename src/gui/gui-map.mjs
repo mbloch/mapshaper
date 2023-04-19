@@ -180,7 +180,7 @@ export function MshpMap(gui) {
     _activeLyr.style = MapStyle.getActiveStyle(_activeLyr.layer, gui.state.dark_basemap);
     _activeLyr.active = true;
 
-    if (e.flags.same_table && !e.flags.proj) {
+    if (popupCanStayOpen(e.flags)) {
       // data may have changed; if popup is open, it needs to be refreshed
       gui.dispatchEvent('popup-needs-refresh');
     } else if (_hit) {
@@ -271,6 +271,15 @@ export function MshpMap(gui) {
       flags.slice || flags.affine || flags.rectangle || flags.buffer ||
       flags.union || flags.mosaic || flags.snap || flags.clean || false;
   }
+
+  // Test if an update allows hover popup to stay open
+  function popupCanStayOpen(flags) {
+    // if (arcsMayHaveChanged(flags)) return false;
+    if (flags.points || flags.proj) return false;
+    if (!flags.same_table) return false;
+    return true;
+  }
+
 
   // Update map frame after user navigates the map in frame edit mode
   function updateFrameExtent() {
