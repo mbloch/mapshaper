@@ -1,6 +1,6 @@
 (function () {
 
-  var VERSION = "0.6.27";
+  var VERSION = "0.6.28";
 
 
   var utils = /*#__PURE__*/Object.freeze({
@@ -27621,7 +27621,9 @@ ${svg}
 
     cli.checkCommandEnv('i');
     if (opts.stdin) {
-      return importFile('/dev/stdin', opts);
+      dataset = importFile('/dev/stdin', opts);
+      catalog.addDataset(dataset);
+      return dataset;
     }
 
     if (files.length > 0 === false) {
