@@ -25,7 +25,9 @@ cmd.importFiles = async function(catalog, opts) {
 
   cli.checkCommandEnv('i');
   if (opts.stdin) {
-    return importFile('/dev/stdin', opts);
+    dataset = importFile('/dev/stdin', opts);
+    catalog.addDataset(dataset);
+    return dataset;
   }
 
   if (files.length > 0 === false) {

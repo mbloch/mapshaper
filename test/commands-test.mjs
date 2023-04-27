@@ -68,8 +68,7 @@ describe('mapshaper-run-commands.js', function () {
   })
 
   describe('stdin/stdout tests', function() {
-    // Travis fails on these tests -- removing for now.
-    return;
+
     it ("pass-through GeoJSON", function(done) {
       var cmd = "- -o - -verbose"; // -verbose to check that messages aren't sent to stdout
       var geojson = {"type":"GeometryCollection","geometries":[{"type":"Point","coordinates":[0,0]}]};
