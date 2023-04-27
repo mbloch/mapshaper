@@ -1,6 +1,6 @@
 # COMMAND REFERENCE
 
-This documentation applies to version 0.6.24 of mapshaper's command line program. Run `mapshaper -v` to check your version. For an introduction to the command line tool, read [this page](https://github.com/mbloch/mapshaper/wiki/Introduction-to-the-Command-Line-Tool) first.
+This documentation applies to version 0.6.26 of mapshaper's command line program. Run `mapshaper -v` to check your version. For an introduction to the command line tool, read [this page](https://github.com/mbloch/mapshaper/wiki/Introduction-to-the-Command-Line-Tool) first.
 
 ## Command line syntax
 
@@ -585,7 +585,7 @@ Polygon layers
 Polyline layers
 - `this.length` Length of each polyline feature. For lat-long datasets, returns length in meters.
 
-Polygon and polyline layers
+Polygon, polyline and point layers
 - `this.partCount` 1 for single-part features, >1 for multi-part features, 0 for null features
 - `this.isNull` True if feature has null geometry
 - `this.bounds` Bounding box as array [xmin, ymin, xmax, ymax]
@@ -1426,6 +1426,7 @@ The `calc` functions are also available in the context of `calc=` expressions, w
 | `iqr (<expr>)` | interquartile range |
 | `quantile (<expr>, <pct>)` | arbitrary percentile (`<pct>` is 0-1) |
 | `collect (<expr>)` | returns array containing all values |
+| `collectIds ()` | returns array of feature indexes (features are indexed 0 to n-1)
 | `first (<expr>)` | returns first value in the collection |
 | `last (<expr>)` | returns last value in the collection |
 | `every (<expr>)` | returns true if expression is true for all elements in the collection |

@@ -57,6 +57,8 @@ describe('mapshaper-import.js', function () {
 
   })
 
+
+
   describe('-i json-path option', function () {
     it('nested path, object input', function(done) {
       var data = {
