@@ -1,6 +1,6 @@
 (function () {
 
-  var VERSION = "0.6.28";
+  var VERSION = "0.6.29";
 
 
   var utils = /*#__PURE__*/Object.freeze({
@@ -38420,9 +38420,11 @@ ${svg}
 
     // @geoType: optional geometry type (polygon, polyline, point, null);
     ctx.layer_exists = function(name, geoType) {
-      var targets = catalog.findCommandTargets(name, geoType);
-      if (targets.length === 0) return false;
-      return true;
+      try {
+        var targets = catalog.findCommandTargets(name, geoType);
+        if (targets.length > 0) return true;
+      } catch(e) {}
+      return false;
     };
 
     ctx.file_exists = function(file) {
@@ -40949,7 +40951,7 @@ ${svg}
     } else {
       moduleName = opts.module;
     }
-    if (moduleFile) {
+    if (moduleFile && !require$1('path').isAbsolute(moduleFile)) {
       moduleFile = require$1('path').join(process.cwd(), moduleFile);
     }
     try {
