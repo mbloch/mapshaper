@@ -23,9 +23,11 @@ export function compileIfCommandExpression(expr, catalog, opts) {
 
   // @geoType: optional geometry type (polygon, polyline, point, null);
   ctx.layer_exists = function(name, geoType) {
-    var targets = catalog.findCommandTargets(name, geoType);
-    if (targets.length === 0) return false;
-    return true;
+    try {
+      var targets = catalog.findCommandTargets(name, geoType);
+      if (targets.length > 0) return true;
+    } catch(e) {}
+    return false;
   };
 
   ctx.file_exists = function(file) {

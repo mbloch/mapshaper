@@ -1,3 +1,6 @@
+v0.6.29
+* Bug fixes
+
 v0.6.28
 * Fix for bug that prevented importing data from stdin
 

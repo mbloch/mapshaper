@@ -18,7 +18,7 @@ cmd.require = function(targets, opts) {
   } else {
     moduleName = opts.module;
   }
-  if (moduleFile) {
+  if (moduleFile && !require('path').isAbsolute(moduleFile)) {
     moduleFile = require('path').join(process.cwd(), moduleFile);
   }
   try {

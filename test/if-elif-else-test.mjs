@@ -135,6 +135,20 @@ describe('mapshaper-if-elif-else-endif.js', function () {
     });
   });
 
+  it ('test layer_exists() == false', function(done) {
+    var data = [{name: 'a'}, {name: 'b'}];
+    var cmd = `-i data.json -if 'layer_exists("foo") == false' -each 'name = "c"' -endif -o`;
+    api.applyCommands(cmd, {'data.json': data}, function(err, out) {
+      var data = JSON.parse(out['data.json']);
+      assert.deepEqual(data, [{
+        name: 'c'
+      }, {
+        name: 'c'
+      }]);
+      done();
+    });
+  });
+
   it ('test layer_exists(name, geotype)', function(done) {
     var data = [{name: 'a'}, {name: 'b'}];
     var cmd = `-i data.json -if 'layer_exists("data", "polygon")' -each 'name = "c"' -endif -o`;
