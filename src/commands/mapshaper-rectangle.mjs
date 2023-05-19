@@ -67,7 +67,7 @@ cmd.rectangle = function(source, opts) {
     crsInfo = getDatasetCrsInfo(source.dataset);
   } else if (opts.bbox) {
     bounds = new Bounds(opts.bbox);
-    crsInfo = getCrsInfo('wgs84');
+    crsInfo = probablyDecimalDegreeBounds(bounds) ? getCrsInfo('wgs84') : {};
   }
   bounds = bounds && applyRectangleOptions(bounds, crsInfo.crs, opts);
   if (!bounds || !bounds.hasBounds()) {

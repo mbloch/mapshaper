@@ -194,13 +194,14 @@ export function requireProjectedDataset(dataset) {
 
 // @info: info property of source dataset (instead of crs object, so wkt string
 //        can be preserved if present)
-export function setDatasetCrsInfo(dataset, info) {
+export function setDatasetCrsInfo(dataset, crsInfo) {
+  crsInfo = crsInfo || {}; // also accepts null/unknown crs info
   dataset.info = dataset.info || {};
   // Assumes that proj4 object is never mutated.
   // TODO: assign a copy of crs (if present)
-  dataset.info.crs = info.crs;
-  dataset.info.prj = info.prj;
-  dataset.info.crs_string = info.crs_string;
+  dataset.info.crs = crsInfo.crs;
+  dataset.info.prj = crsInfo.prj;
+  dataset.info.crs_string = crsInfo.crs_string;
   return dataset;
 }
 

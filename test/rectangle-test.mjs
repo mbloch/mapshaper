@@ -66,6 +66,17 @@ describe('mapshaper-rectangle.js', function () {
     });
   })
 
+  it ('-rectangle with a projected bbox', function(done) {
+    api.applyCommands('-rectangle bbox=100,100,1000,1000 offset=1 -o out.json', {}, function(err, out) {
+      var geom = JSON.parse(out['out.json']).geometries[0];
+      assert.deepEqual(geom, {
+        type: 'Polygon',
+        coordinates: [[ [ 99, 99 ], [ 1001, 99 ], [ 1001, 1001 ], [ 99, 1001 ], [ 99, 99 ] ]]
+      });
+      done();
+    });
+  })
+
   it ('create a rectangle from an existing layer with percentage offsets', function(done) {
     var geom = {
       type: 'LineString',
