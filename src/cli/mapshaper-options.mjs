@@ -878,6 +878,10 @@ export function getOptionParser() {
       type: 'strings',
       describe: 'fields to retain (comma-sep.), e.g. \'fips,name\''
     })
+    .option('invert', {
+      type: 'flag',
+      describe: 'retain only fields that would have been deleted'
+    })
     .option('target', targetOpt);
 
   parser.command('filter-geom')

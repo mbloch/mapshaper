@@ -16,6 +16,13 @@ describe('mapshaper-filter-rename-fields.js', function () {
       })
     })
 
+    it("invert option", async function() {
+      var csv = 'a,b,c,d,e\n1,2,3,4,5';
+      var cmd = '-i csv.csv -filter-fields invert b,c,e -o';
+      var out = await api.applyCommands(cmd, {'csv.csv': csv});
+      assert.equal(out['csv.csv'], 'a,d\n1,4');
+    })
+
     it("affects the sequence of CSV output fields", function(done) {
       var csv = 'a,b,c,d,e\n1,2,3,4,5\n6,7,8,9,10';
       var cmd = '-i csv.csv -filter-fields d,c -o';

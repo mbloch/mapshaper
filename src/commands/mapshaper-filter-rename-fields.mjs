@@ -3,7 +3,7 @@ import { stop } from '../utils/mapshaper-logging';
 import cmd from '../mapshaper-cmd';
 import utils from '../utils/mapshaper-utils';
 
-cmd.filterFields = function(lyr, names) {
+cmd.filterFields = function(lyr, names, opts) {
   var table = lyr.data;
   names = names || [];
   requireDataFields(table, names);
@@ -12,6 +12,9 @@ cmd.filterFields = function(lyr, names) {
   // utils.difference(table.getFields(), names).forEach(table.deleteField, table);
   // the below method sets field order of CSV output, and is generally faster
   var map = mapFieldNames(names);
+  if (opts.invert) {
+    map = invertFieldMap(map, table.getFields());
+  }
   lyr.data.update(getRecordMapper(map));
 };
 
@@ -21,6 +24,15 @@ cmd.renameFields = function(lyr, names) {
   utils.defaults(map, mapFieldNames(lyr.data.getFields()));
   lyr.data.update(getRecordMapper(map));
 };
+
+function invertFieldMap(map, fields) {
+  return fields.reduce(function(memo, name) {
+    if (!(name in map)) {
+      memo[name] = name;
+    }
+    return memo;
+  }, {});
+}
 
 function mapFieldNames(names) {
   return (names || []).reduce(function(memo, str) {

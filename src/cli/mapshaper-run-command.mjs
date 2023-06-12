@@ -253,7 +253,7 @@ export async function runCommand(command, job) {
       outputLayers = applyCommandToEachLayer(cmd.filterFeatures, targetLayers, arcs, opts);
 
     } else if (name == 'filter-fields') {
-      applyCommandToEachLayer(cmd.filterFields, targetLayers, opts.fields);
+      applyCommandToEachLayer(cmd.filterFields, targetLayers, opts.fields, opts);
 
     } else if (name == 'filter-geom') {
       applyCommandToEachLayer(cmd.filterGeom, targetLayers, arcs, opts);
