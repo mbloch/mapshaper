@@ -1,3 +1,6 @@
+v0.6.30
+* Added -filter-fields invert option.
+
 v0.6.29
 * Bug fixes
 
