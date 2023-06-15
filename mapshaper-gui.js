@@ -2026,23 +2026,23 @@
         }
         if (group[internal.PACKAGE_EXT]) {
           await importSessionData(group[internal.PACKAGE_EXT].content, gui);
-        } else {
-          importDataset(group, importOpts);
+        } else if (importDataset(group, importOpts)) {
+          importCount++;
+          gui.session.fileImported(group.filename, optStr);
         }
-        importCount++;
-        gui.session.fileImported(group.filename, optStr);
       }
     }
 
     function importDataset(group, importOpts) {
       var dataset = internal.importContent(group, importOpts);
-      if (datasetIsEmpty(dataset)) return;
+      if (datasetIsEmpty(dataset)) return false;
       if (group.layername) {
         dataset.layers.forEach(lyr => lyr.name = group.layername);
       }
       // save import options for use by repair control, etc.
       dataset.info.import_options = importOpts;
       model.addDataset(dataset);
+      return true;
     }
 
     function addEmptyLayer() {
@@ -2183,8 +2183,8 @@
             name: filename,
             content: index[filename]
           });
-          return memo;
         }
+        return memo;
       }, []);
     }
 

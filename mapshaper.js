@@ -1,6 +1,6 @@
 (function () {
 
-  var VERSION = "0.6.29";
+  var VERSION = "0.6.30";
 
 
   var utils = /*#__PURE__*/Object.freeze({
@@ -4846,13 +4846,14 @@
 
   // @info: info property of source dataset (instead of crs object, so wkt string
   //        can be preserved if present)
-  function setDatasetCrsInfo(dataset, info) {
+  function setDatasetCrsInfo(dataset, crsInfo) {
+    crsInfo = crsInfo || {}; // also accepts null/unknown crs info
     dataset.info = dataset.info || {};
     // Assumes that proj4 object is never mutated.
     // TODO: assign a copy of crs (if present)
-    dataset.info.crs = info.crs;
-    dataset.info.prj = info.prj;
-    dataset.info.crs_string = info.crs_string;
+    dataset.info.crs = crsInfo.crs;
+    dataset.info.prj = crsInfo.prj;
+    dataset.info.crs_string = crsInfo.crs_string;
     return dataset;
   }
 
@@ -23814,6 +23815,10 @@ ${svg}
         type: 'strings',
         describe: 'fields to retain (comma-sep.), e.g. \'fips,name\''
       })
+      .option('invert', {
+        type: 'flag',
+        describe: 'retain only fields that would have been deleted'
+      })
       .option('target', targetOpt);
 
     parser.command('filter-geom')
@@ -36481,7 +36486,7 @@ ${svg}
     return removed;
   }
 
-  cmd.filterFields = function(lyr, names) {
+  cmd.filterFields = function(lyr, names, opts) {
     var table = lyr.data;
     names = names || [];
     requireDataFields(table, names);
@@ -36490,6 +36495,9 @@ ${svg}
     // utils.difference(table.getFields(), names).forEach(table.deleteField, table);
     // the below method sets field order of CSV output, and is generally faster
     var map = mapFieldNames(names);
+    if (opts.invert) {
+      map = invertFieldMap(map, table.getFields());
+    }
     lyr.data.update(getRecordMapper(map));
   };
 
@@ -36499,6 +36507,15 @@ ${svg}
     utils.defaults(map, mapFieldNames(lyr.data.getFields()));
     lyr.data.update(getRecordMapper(map));
   };
+
+  function invertFieldMap(map, fields) {
+    return fields.reduce(function(memo, name) {
+      if (!(name in map)) {
+        memo[name] = name;
+      }
+      return memo;
+    }, {});
+  }
 
   function mapFieldNames(names) {
     return (names || []).reduce(function(memo, str) {
@@ -37123,7 +37140,7 @@ ${svg}
       crsInfo = getDatasetCrsInfo(source.dataset);
     } else if (opts.bbox) {
       bounds = new Bounds(opts.bbox);
-      crsInfo = getCrsInfo('wgs84');
+      crsInfo = probablyDecimalDegreeBounds(bounds) ? getCrsInfo('wgs84') : {};
     }
     bounds = bounds && applyRectangleOptions(bounds, crsInfo.crs, opts);
     if (!bounds || !bounds.hasBounds()) {
@@ -43237,7 +43254,7 @@ ${svg}
         outputLayers = applyCommandToEachLayer(cmd.filterFeatures, targetLayers, arcs, opts);
 
       } else if (name == 'filter-fields') {
-        applyCommandToEachLayer(cmd.filterFields, targetLayers, opts.fields);
+        applyCommandToEachLayer(cmd.filterFields, targetLayers, opts.fields, opts);
 
       } else if (name == 'filter-geom') {
         applyCommandToEachLayer(cmd.filterGeom, targetLayers, arcs, opts);
