@@ -12530,7 +12530,10 @@ function wkt_unpack(str) {
   str = convert_wkt_quotes(str);
 
   // Convert WKT entities to JSON arrays
-  str = str.replace(/([A-Z0-9]+)\[/g, '["$1",');
+  // str = str.replace(/([A-Z0-9]+)\[/g, '["$1",');
+  // Changed to ignore some names that look like entities, like "GCS_TWD97[2020]"
+  // allow only [ or , character before the next quote (i.e. block close quotes)
+  str = str.replace(/([A-Z0-9]+)\[(?![^"]*[^\[,"]")/g, '["$1",');
 
   // Enclose axis keywords in quotes to create valid JSON strings
   str = str.replace(/, *([a-zA-Z]+) *(?=[,\]])/g, ',"$1"');

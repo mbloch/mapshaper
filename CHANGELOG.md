@@ -1,3 +1,7 @@
+v0.6.31
+* Updates to gui file import dialog
+* Updated projection library
+
 v0.6.30
 * Added -filter-fields invert option.
 

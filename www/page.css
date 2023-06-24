@@ -531,6 +531,10 @@ body.dragover #import-options-drop-area .drop-area {
 	font-weight: normal;
 }
 
+.info-box h3.list-header {
+	margin-bottom: 0.1em;
+}
+
 .info-box h4 {
 	font-size: 1.085em;
 	font-weight: normal;
