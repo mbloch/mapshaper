@@ -1959,7 +1959,21 @@
     function showQueuedFiles() {
       var list = gui.container.findChild('.dropped-file-list').empty();
       queuedFiles.forEach(function(f) {
-        El('<p>').text(f.name).appendTo(list);
+        var html = '<span>' + f.name + '</span><img class="close-btn" draggable="false" src="images/close.png">';
+        var entry = El('<div>').html(html);
+        entry.appendTo(list);
+        // init delete button
+        GUI.onClick(entry.findChild('img.close-btn'), function(e) {
+          e.stopPropagation();
+          queuedFiles = queuedFiles.filter(function(item) {
+            return item != f;
+          });
+          if (queuedFiles.length > 0) {
+            showQueuedFiles();
+          } else {
+            gui.clearMode();
+          }
+        });
       });
     }
 
@@ -2083,7 +2097,7 @@
         var freeform = El('#import-options .advanced-options').node().value;
         importOpts = GUI.parseFreeformOptions(freeform, 'i');
         importOpts.no_repair = !El("#repair-intersections-opt").node().checked;
-        importOpts.snap = !!El("#snap-points-opt").node().checked;
+        // importOpts.snap = !!El("#snap-points-opt").node().checked;
       }
       return importOpts;
     }

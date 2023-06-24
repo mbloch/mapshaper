@@ -100,7 +100,8 @@
 				<img class="pin-btn pinned" src="images/eye2.png">
 	</div>
 			<div class="layer-list"></div>
-			<h4>Sources</h4>
+			<!-- <h4>Sources</h4> -->
+			<h4>Source files</h4>
 			<div class="file-list"></div>
 			<div>
 				<div id="add-file-btn" class="dialog-btn btn">Add a file</div>
@@ -192,8 +193,8 @@ the largest ring of multi-ring features.
 </div></div></div></div>
 			<div class="planar-opt-wrapper"><label for="planar-opt"><input type="checkbox" class="checkbox planar-opt"/>use planar geometry</label>
 							<div class="tip-button">?<div class="tip-anchor">
-			<div class="tip">Interpret x, y values as Cartesian coordinates
-on a plane, rather than longitude, latitude
+			<div class="tip">Treat x, y values as Cartesian coordinates
+on a plane, rather than as longitude, latitude
 coordinates on a sphere.
 </div></div></div></div>
 		</div>
@@ -256,7 +257,7 @@ a smoother appearance.</div></div></div></div>
 
 <div id="import-options" class="main-area popup-dialog">
 	<div class="info-box">
-		<!-- <h4>Queued files</h4> -->
+		<h3 class="list-header">Files</h3>
 
 		<div class="dropped-file-list"></div>
 		
@@ -272,20 +273,20 @@ a smoother appearance.</div></div></div></div>
 self-intersections, to help identify
 topological errors in a dataset.</div></div></div></div>
 
-				<div><label for="snap-points-opt"><input type="checkbox" class="checkbox" id="snap-points-opt" />snap vertices</label>
+				<!-- <div><label for="snap-points-opt"><input type="checkbox" class="checkbox" id="snap-points-opt" />snap vertices</label>
 				<div class="tip-button">?<div class="tip-anchor">
 <div class="tip">Fix topology errors by snapping
 together points with nearly identical
 coordinates. This option does not
-apply to TopoJSON files.</div></div></div></div>
+apply to TopoJSON files.</div></div></div></div> -->
 <div style="height:5px"></div>
 
 		</div>
 
 		<div><input type="text" class="advanced-options" placeholder="import options" /><div class="tip-button">?<div class="tip-anchor">
 <div class="tip">Enter options from the command line
-interface. Examples: "no-topology"
-"encoding=big5"</div></div></div></div>
+interface. Examples: <span id="import-option-examples">no-topology
+encoding=big5</span></div></div></div></div>
 
 		</div>
 
