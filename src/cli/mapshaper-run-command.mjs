@@ -219,7 +219,7 @@ export async function runCommand(command, job) {
       applyCommandToEachLayer(cmd.dashlines, targetLayers, targetDataset, opts);
 
     } else if (name == 'define') {
-      cmd.define(opts);
+      cmd.define(job.catalog, opts);
 
     } else if (name == 'dissolve') {
       outputLayers = applyCommandToEachLayer(cmd.dissolve, targetLayers, arcs, opts);

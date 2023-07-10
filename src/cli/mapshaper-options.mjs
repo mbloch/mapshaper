@@ -1903,13 +1903,12 @@ export function getOptionParser() {
 
   parser.command('run')
     .describe('create commands on-the-fly and run them')
-    .option('include', {
-      // TODO: remove this option
-    })
-    .option('commands', {
+    .option('expression', {
       DEFAULT: true,
-      describe: 'command string or JS expresson to generate command(s)'
+      describe: 'JS expression to generate command(s)'
     })
+    // deprecated
+    .option('commands', {alias_to: 'expression'})
     .option('target', targetOpt);
 
   parser.command('scalebar')

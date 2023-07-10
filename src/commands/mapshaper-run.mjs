@@ -10,13 +10,10 @@ import cmd from '../mapshaper-cmd';
 
 cmd.run = function(job, targets, opts, cb) {
   var commandStr, commands;
-  if (opts.include) {
-    cmd.include({file: opts.include});
+  if (!opts.expression) {
+    stop("Missing expression parameter");
   }
-  if (!opts.commands) {
-    stop("Missing commands parameter");
-  }
-  commandStr = runGlobalExpression(opts.commands, targets);
+  commandStr = runGlobalExpression(opts.expression, targets);
   if (commandStr) {
     commands = parseCommands(commandStr);
     runParsedCommands(commands, job, cb);
@@ -33,6 +30,8 @@ export function runGlobalExpression(expression, targets) {
     targetData = getRunCommandData(targets[0]);
     Object.defineProperty(ctx, 'target', {value: targetData});
   }
+  // Add defined functions and data to the expression context
+  // (Such as functions imported via the -require command)
   utils.extend(ctx, getStashedVar('defs'));
   try {
     output = Function('ctx', 'with(ctx) {return (' + expression + ');}').call({}, ctx);

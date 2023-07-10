@@ -1,6 +1,6 @@
 # COMMAND REFERENCE
 
-This documentation applies to version 0.6.26 of mapshaper's command line program. Run `mapshaper -v` to check your version. For an introduction to the command line tool, read [this page](https://github.com/mbloch/mapshaper/wiki/Introduction-to-the-Command-Line-Tool) first.
+This documentation applies to version 0.6.32 of mapshaper's command line program. Run `mapshaper -v` to check your version. For an introduction to the command line tool, read [this page](https://github.com/mbloch/mapshaper/wiki/Introduction-to-the-Command-Line-Tool) first.
 
 ## Command line syntax
 
@@ -9,19 +9,19 @@ Mapshaper takes a list of commands and runs them in sequence, from left to right
 #### Example
 
 ```bash
-# Read a Shapefile, simplify using Douglas-Peucker, output as GeoJSON
-mapshaper provinces.shp -simplify dp 20% -o format=geojson out.json
+# Read a Shapefile, simplify using Douglas-Peucker, output as GeoJSON.
+mapshaper provinces.shp -simplify dp 20% -o precision=0.00001 output.geojson
 ```
 
-#### Command options can take three forms:
+### Command options can take three forms:
 
-  - Values, like `provinces.shp` and `20%` in the above example
+  - Values, like `provinces.shp` and `output.geojson` in the above example
 
   - Flags, like `dp`
 
-  - Name/value pairs, like `format=geojson`
+  - Name/value pairs, like `precision=0.00001`
 
-## Common options
+### Common options
 
 The following options are documented here, because they are used by many commands.
 
@@ -669,6 +669,8 @@ Delete fields in an attribute table, by listing the fields to retain. If no file
 
 `<fields>` or `fields=`   Comma-separated list of data fields to retain.
 
+`invert`  Invert the filter -- delete the listed fields instead of retaining them.
+
 Common options: `target=`
 
 ```bash
@@ -1022,7 +1024,7 @@ $ mapshaper data.json \
 
 Create mapshaper commands on-the-fly and run them.
 
-`<commands>` or `commands=`  A JS expression for generating one or more mapshaper commands. The expression has access to a "target" object with information about the currently targeted layer, as well as modules loaded with the `-require` command.
+`<expression>` or `expression=`  A JS expression for generating one or more mapshaper commands. The expression has access to a "target" object with information about the currently targeted layer, as well as modules loaded with the `-require` command.
 
 Common options: `target=`
 

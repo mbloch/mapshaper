@@ -114,7 +114,6 @@ function toOutputFormat(arr) {
 
 // Unified function for processing calls to runCommands() and applyCommands()
 function _runCommands(argv, opts, callback) {
-
   var outputArr = opts.output || null,
       inputObj = opts.input,
       commands;

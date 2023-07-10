@@ -2,8 +2,18 @@ import cmd from '../mapshaper-cmd';
 import { getStashedVar } from '../mapshaper-stash';
 import { message, error, stop } from '../utils/mapshaper-logging';
 import { compileFeatureExpression } from '../expressions/mapshaper-expressions';
+import { compileLayerExpression } from '../expressions/mapshaper-layer-expressions';
 
-cmd.define = function(opts) {
+/*
+cmd.define_v2 = function(catalog, opts) {
+  if (!opts.expression) {
+    stop('Missing an assignment expression');
+  }
+  compileLayerExpression(opts.expression, catalog, opts)();
+};
+*/
+
+cmd.define = function(catalog, opts) {
   if (!opts.expression) {
     stop('Missing an assignment expression');
   }
