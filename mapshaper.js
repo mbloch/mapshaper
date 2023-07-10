@@ -1,6 +1,6 @@
 (function () {
 
-  var VERSION = "0.6.31";
+  var VERSION = "0.6.32";
 
 
   var utils = /*#__PURE__*/Object.freeze({
@@ -24840,13 +24840,12 @@ ${svg}
 
     parser.command('run')
       .describe('create commands on-the-fly and run them')
-      .option('include', {
-        // TODO: remove this option
-      })
-      .option('commands', {
+      .option('expression', {
         DEFAULT: true,
-        describe: 'command string or JS expresson to generate command(s)'
+        describe: 'JS expression to generate command(s)'
       })
+      // deprecated
+      .option('commands', {alias_to: 'expression'})
       .option('target', targetOpt);
 
     parser.command('scalebar')
@@ -34730,7 +34729,64 @@ ${svg}
     };
   }
 
-  cmd.define = function(opts) {
+  function compileIfCommandExpression(expr, catalog, opts) {
+    return compileLayerExpression(expr, catalog, opts);
+  }
+
+
+  function compileLayerExpression(expr, catalog, opts) {
+    var targetId = opts.layer || opts.target || null;
+    var targets = catalog.findCommandTargets(targetId);
+    var isSingle = targets.length == 1 && targets[0].layers.length == 1;
+    if (targets.length === 0 && targetId) {
+      stop('Layer not found:', targetId);
+    }
+    // var vars = getAssignedVars(exp);
+    var defs = getStashedVar('defs') || {};
+
+    var ctx;
+    if (isSingle) {
+      ctx = getLayerProxy(targets[0].layers[0], targets[0].dataset.arcs);
+    } else {
+      ctx = getNullLayerProxy(targets);
+    }
+    ctx.global = defs; // TODO: remove duplication with mapshaper.expressions.mjs
+    var exprOpts = Object.assign({returns: true}, opts);
+    var func = compileExpressionToFunction(expr, exprOpts);
+
+    // @geoType: optional geometry type (polygon, polyline, point, null);
+    ctx.layer_exists = function(name, geoType) {
+      try {
+        var targets = catalog.findCommandTargets(name, geoType);
+        if (targets.length > 0) return true;
+      } catch(e) {}
+      return false;
+    };
+
+    ctx.file_exists = function(file) {
+      return cli.isFile(file);
+    };
+
+    return function() {
+      try {
+        return func.call(ctx, defs, ctx);
+      } catch(e) {
+        // if (opts.quiet) throw e;
+        stop(e.name, "in expression [" + expr + "]:", e.message);
+      }
+    };
+  }
+
+  /*
+  cmd.define_v2 = function(catalog, opts) {
+    if (!opts.expression) {
+      stop('Missing an assignment expression');
+    }
+    compileLayerExpression(opts.expression, catalog, opts)();
+  };
+  */
+
+  cmd.define = function(catalog, opts) {
     if (!opts.expression) {
       stop('Missing an assignment expression');
     }
@@ -38418,46 +38474,6 @@ ${svg}
     return job.control || (job.control = {});
   }
 
-  function compileIfCommandExpression(expr, catalog, opts) {
-    var targetId = opts.layer || opts.target || null;
-    var targets = catalog.findCommandTargets(targetId);
-    var isSingle = targets.length == 1 && targets[0].layers.length == 1;
-    if (targets.length === 0 && targetId) {
-      stop('Layer not found:', targetId);
-    }
-    var ctx;
-    if (isSingle) {
-      ctx = getLayerProxy(targets[0].layers[0], targets[0].dataset.arcs);
-    } else {
-      ctx = getNullLayerProxy(targets);
-    }
-    ctx.global = getStashedVar('defs') || {}; // TODO: remove duplication with mapshaper.expressions.mjs
-    var exprOpts = Object.assign({returns: true}, opts);
-    var func = compileExpressionToFunction(expr, exprOpts);
-
-    // @geoType: optional geometry type (polygon, polyline, point, null);
-    ctx.layer_exists = function(name, geoType) {
-      try {
-        var targets = catalog.findCommandTargets(name, geoType);
-        if (targets.length > 0) return true;
-      } catch(e) {}
-      return false;
-    };
-
-    ctx.file_exists = function(file) {
-      return cli.isFile(file);
-    };
-
-    return function() {
-      try {
-        return func.call(ctx, {}, ctx);
-      } catch(e) {
-        // if (opts.quiet) throw e;
-        stop(e.name, "in expression [" + expr + "]:", e.message);
-      }
-    };
-  }
-
   function skipCommand(cmdName, job) {
     // allow all control commands to run
     if (jobIsStopped(job)) return true;
@@ -40914,13 +40930,10 @@ ${svg}
 
   cmd.run = function(job, targets, opts, cb) {
     var commandStr, commands;
-    if (opts.include) {
-      cmd.include({file: opts.include});
+    if (!opts.expression) {
+      stop("Missing expression parameter");
     }
-    if (!opts.commands) {
-      stop("Missing commands parameter");
-    }
-    commandStr = runGlobalExpression(opts.commands, targets);
+    commandStr = runGlobalExpression(opts.expression, targets);
     if (commandStr) {
       commands = parseCommands(commandStr);
       runParsedCommands(commands, job, cb);
@@ -40937,6 +40950,8 @@ ${svg}
       targetData = getRunCommandData(targets[0]);
       Object.defineProperty(ctx, 'target', {value: targetData});
     }
+    // Add defined functions and data to the expression context
+    // (Such as functions imported via the -require command)
     utils.extend(ctx, getStashedVar('defs'));
     try {
       output = Function('ctx', 'with(ctx) {return (' + expression + ');}').call({}, ctx);
@@ -43220,7 +43235,7 @@ ${svg}
         applyCommandToEachLayer(cmd.dashlines, targetLayers, targetDataset, opts);
 
       } else if (name == 'define') {
-        cmd.define(opts);
+        cmd.define(job.catalog, opts);
 
       } else if (name == 'dissolve') {
         outputLayers = applyCommandToEachLayer(cmd.dissolve, targetLayers, arcs, opts);
@@ -43648,7 +43663,6 @@ ${svg}
 
   // Unified function for processing calls to runCommands() and applyCommands()
   function _runCommands(argv, opts, callback) {
-
     var outputArr = opts.output || null,
         inputObj = opts.input,
         commands;
