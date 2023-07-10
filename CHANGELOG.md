@@ -1,3 +1,6 @@
+v0.6.32
+* Web UI improvements
+
 v0.6.31
 * Updates to gui file import dialog
 * Updated projections library to fix a bug.
