@@ -108,6 +108,7 @@ export function ImportControl(gui, opts) {
   var importCount = 0;
   var importTotal = 0;
   var overQuickView = false;
+  var useQuickView = false;
   var queuedFiles = [];
   var manifestFiles = opts.files || [];
   var catalog;
@@ -137,21 +138,17 @@ export function ImportControl(gui, opts) {
     }
   });
 
-  function useQuickView() {
-    return initialImport && (opts.quick_view || overQuickView);
-  }
-
   function initDropArea(el, isQuick) {
     var area = El(el)
       .on('dragleave', onout)
-      .on('dragover', onover)
+      .on('dragover', function() {overQuickView = !!isQuick; onover();})
       .on('mouseover', onover)
       .on('mouseout', onout);
 
     function onover() {
-      overQuickView = !!isQuick;
       area.addClass('dragover');
     }
+
     function onout() {
       overQuickView = false;
       area.removeClass('dragover');
@@ -255,6 +252,7 @@ export function ImportControl(gui, opts) {
     var names = getFileNames(files);
     var expanded = [];
     if (files.length === 0) return;
+    useQuickView = importCount === 0 && (opts.quick_view || overQuickView);
     try {
       expanded = await expandFiles(files);
     } catch(e) {
@@ -269,7 +267,7 @@ export function ImportControl(gui, opts) {
       return;
     }
     gui.enterMode('import');
-    if (useQuickView()) {
+    if (useQuickView) {
       await importQueuedFiles();
     } else {
       gui.container.addClass('queued-files');
@@ -365,7 +363,7 @@ export function ImportControl(gui, opts) {
 
   function readImportOpts() {
     var importOpts;
-    if (useQuickView()) {
+    if (useQuickView) {
       importOpts = {}; // default opts using quickview
     } else {
       var freeform = El('#import-options .advanced-options').node().value;
