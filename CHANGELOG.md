@@ -1,3 +1,6 @@
+v0.6.33
+* Bug fixes
+
 v0.6.32
 * Web UI improvements
 
