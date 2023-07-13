@@ -70,12 +70,12 @@ export function LayerStack(gui, container, ext, mouse) {
     return action == 'hover' && _overlayCanv.visible();
   }
 
-  function drawCanvasLayer(target, canv) {
-    if (!target) return;
-    if (target.style.type == 'outline') {
-      drawOutlineLayerToCanvas(target, canv, ext);
+  function drawCanvasLayer(lyr, canv) {
+    if (!lyr) return;
+    if (lyr.style.type == 'outline') {
+      drawOutlineLayerToCanvas(lyr, canv, ext);
     } else {
-      drawStyledLayerToCanvas(target, canv, ext);
+      drawStyledLayerToCanvas(lyr, canv, ext);
     }
   }
 

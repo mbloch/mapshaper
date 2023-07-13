@@ -113,8 +113,11 @@ export function LayerControl(gui) {
   }
 
   function updateMenuBtn() {
-    var name = model.getActiveLayer().layer.name || "[unnamed layer]";
-    btn.classed('active', 'true').findChild('.layer-name').html(name + " &nbsp;&#9660;");
+    var lyrName = model.getActiveLayer().layer.name || '';
+    var menuTitle = lyrName || '[unnamed layer]';
+    var pageTitle = lyrName || 'mapshaper';
+    btn.classed('active', 'true').findChild('.layer-name').html(menuTitle + " &nbsp;&#9660;");
+    window.document.title = pageTitle;
   }
 
   function render() {

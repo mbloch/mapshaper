@@ -254,7 +254,9 @@ export function MshpMap(gui) {
     } else {
       _overlayLyr = null;
     }
-    drawLayers('hover');
+    // 'hover' bypasses style creation in drawLayers2()... sometimes we need that
+    // drawLayers('hover');
+    drawLayers();
   }
 
   function getDisplayOptions() {
@@ -269,12 +271,14 @@ export function MshpMap(gui) {
     return flags.simplify_method || flags.simplify || flags.proj ||
       flags.arc_count || flags.repair || flags.clip || flags.erase ||
       flags.slice || flags.affine || flags.rectangle || flags.buffer ||
-      flags.union || flags.mosaic || flags.snap || flags.clean || false;
+      flags.union || flags.mosaic || flags.snap || flags.clean || flags.drop || false;
   }
 
   // Test if an update allows hover popup to stay open
   function popupCanStayOpen(flags) {
-    // if (arcsMayHaveChanged(flags)) return false;
+    // keeping popup open after -drop geometry causes problems...
+    // // if (arcsMayHaveChanged(flags)) return false;
+    if (arcsMayHaveChanged(flags)) return false;
     if (flags.points || flags.proj) return false;
     if (!flags.same_table) return false;
     return true;
