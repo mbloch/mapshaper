@@ -1,6 +1,6 @@
 (function () {
 
-  var VERSION = "0.6.32";
+  var VERSION = "0.6.33";
 
 
   var utils = /*#__PURE__*/Object.freeze({
@@ -11665,8 +11665,16 @@
       }
       cands.forEach(function(cand) {
         var p = getTestPoint(cand.ids);
-        var isEnclosed = b.containsPoint(p[0], p[1]) && (index ?
-          index.pointInPolygon(p[0], p[1]) : geom.testPointInRing(p[0], p[1], pathIds, arcs));
+        var isEnclosed = b.containsPoint(p[0], p[1]) &&
+          // added a bounds-in-bounds test to handle a case where the test point
+          // fell along the shared boundary of two rings, but the rings did no overlap
+          // (this gave a false positive for the enclosure test)
+          // (for speed, the midpoint of an arc is used as the test point; this
+          // works well in the typical case where rings to not share an edge.
+          // Finding an internal test point would be better, we just need a fast
+          // function to find internal points)
+          b.contains(cand.bounds) &&
+          (index ? index.pointInPolygon(p[0], p[1]) : geom.testPointInRing(p[0], p[1], pathIds, arcs));
         if (isEnclosed) {
           paths.push(cand.ids);
         }
@@ -11674,6 +11682,7 @@
       return paths.length > 0 ? paths : null;
     };
 
+    // return array of indexed paths within a given shape
     this.findPathsInsideShape = function(shape) {
       var paths = []; // list of enclosed paths
       shape.forEach(function(ids) {
@@ -12075,7 +12084,6 @@
         yy = coords.yy,
         ids = nodes.getConnectedArcs(fromArcId),
         toArcId = fromArcId; // initialize to fromArcId -- an error condition
-
     if (filter) {
       ids = ids.filter(filter);
     }
@@ -12104,20 +12112,19 @@
         continue;
       }
       icand = arcs.indexOfVertex(candId, -2);
-
       if (toArcId == fromArcId) {
         // first valid candidate
         ito = icand;
         toArcId = candId;
         continue;
       }
-
       code = chooseRighthandPath(fromX, fromY, nodeX, nodeY, xx[ito], yy[ito], xx[icand], yy[icand]);
       if (code == 2) {
         ito = icand;
         toArcId = candId;
       }
     }
+
 
     if (toArcId == fromArcId) {
       // This shouldn't occur, assuming that other arcs are present
@@ -12183,6 +12190,9 @@
     chooseRighthandVector: chooseRighthandVector
   });
 
+  var FWD_USED = 0x8;
+  var REV_USED = 0x80;
+
   function setBits(bits, arcBits, mask) {
     return (bits & ~mask) | (arcBits & mask);
   }
@@ -12208,6 +12218,16 @@
         bits = routesArr[idx];
     if (idx != arcId) bits = bits >> 4;
     return bits & 7;
+  }
+
+  function markPathsAsUsed(paths, routesArr) {
+    forEachArcId(paths, function(arcId) {
+      if (arcId < 0) {
+        routesArr[~arcId] |= REV_USED;
+      } else {
+        routesArr[arcId] |= FWD_USED;
+      }
+    });
   }
 
   // Open arc pathways in a single shape or array of shapes
@@ -12400,6 +12420,7 @@
     andBits: andBits,
     setRouteBits: setRouteBits,
     getRouteBits: getRouteBits,
+    markPathsAsUsed: markPathsAsUsed,
     openArcRoutes: openArcRoutes,
     closeArcRoutes: closeArcRoutes,
     getPathFinder: getPathFinder,
@@ -33401,7 +33422,7 @@ ${svg}
     var clipArcTouches = 0;
     var clipArcUses = 0;
     var usedClipArcs = [];
-    var dividePath = getPathFinder(nodes, useRoute, routeIsActive);
+    var findPath = getPathFinder(nodes, useRoute, routeIsActive);
     var dissolvePolygon = getPolygonDissolver(nodes);
 
     // The following cleanup step is a performance bottleneck (it often takes longer than
@@ -33434,12 +33455,16 @@ ${svg}
       return null;
     });
 
+    markPathsAsUsed(clippedShapes, routeFlags); // to help us find unused paths later
+
+
     // add clip/erase polygons that are fully contained in a target polygon
     // need to index only non-intersecting clip shapes
     // (Intersecting shapes have one or more arcs that have been scanned)
 
     // first, find shapes that do not intersect the target layer
     // (these could be inside or outside the target polygons)
+
     var undividedClipShapes = findUndividedClipShapes(clipShapes);
 
     closeArcRoutes(clipShapes, arcs, routeFlags, true, true); // not needed?
@@ -33468,7 +33493,7 @@ ${svg}
         for (var i=0, n=ids.length; i<n; i++) {
           clipArcTouches = 0;
           clipArcUses = 0;
-          path = dividePath(ids[i]);
+          path = findPath(ids[i]);
           if (path) {
             // if ring doesn't touch/intersect a clip/erase polygon, check if it is contained
             // if (clipArcTouches === 0) {
@@ -33486,6 +33511,7 @@ ${svg}
           }
         }
       });
+
 
       // Clear pathways of current target shape to hidden/closed
       closeArcRoutes(shape, arcs, routeFlags, true, true, true);
@@ -33557,8 +33583,9 @@ ${svg}
       return usable;
     }
 
-    // Filter a collection of shapes to exclude paths that contain clip/erase arcs
-    // and paths that are hidden (e.g. internal boundaries)
+
+    // Filter a collection of shapes to exclude paths that incorporate parts of
+    // clip/erase polygons and paths that are hidden (e.g. internal boundaries)
     function findUndividedClipShapes(clipShapes) {
       return clipShapes.map(function(shape) {
         var usableParts = [];
@@ -33582,12 +33609,12 @@ ${svg}
       });
     }
 
-    // Test if arc is unused in both directions
-    // (not testing open/closed or visible/hidden)
+
     function arcIsUnused(id, flags) {
       var abs = absArcId(id),
           flag = flags[abs];
-          return (flag & 0x44) === 0;
+          return (flag & 0x88) === 0;
+          // return id < 0 ? (flag & 0x80) === 0 : (flag & 0x8) === 0;
     }
 
     function arcIsVisible(id, flags) {
@@ -33610,7 +33637,7 @@ ${svg}
         enclosedPaths.forEach(function(ids) {
           var path;
           for (var j=0; j<ids.length; j++) {
-            path = dividePath(ids[j]);
+            path = findPath(ids[j]);
             if (path) {
               dissolvedPaths.push(path);
             }

@@ -4038,8 +4038,11 @@
     }
 
     function updateMenuBtn() {
-      var name = model.getActiveLayer().layer.name || "[unnamed layer]";
-      btn.classed('active', 'true').findChild('.layer-name').html(name + " &nbsp;&#9660;");
+      var lyrName = model.getActiveLayer().layer.name || '';
+      var menuTitle = lyrName || '[unnamed layer]';
+      var pageTitle = lyrName || 'mapshaper';
+      btn.classed('active', 'true').findChild('.layer-name').html(menuTitle + " &nbsp;&#9660;");
+      window.document.title = pageTitle;
     }
 
     function render() {
@@ -10172,12 +10175,12 @@
       return action == 'hover' && _overlayCanv.visible();
     }
 
-    function drawCanvasLayer(target, canv) {
-      if (!target) return;
-      if (target.style.type == 'outline') {
-        drawOutlineLayerToCanvas(target, canv, ext);
+    function drawCanvasLayer(lyr, canv) {
+      if (!lyr) return;
+      if (lyr.style.type == 'outline') {
+        drawOutlineLayerToCanvas(lyr, canv, ext);
       } else {
-        drawStyledLayerToCanvas(target, canv, ext);
+        drawStyledLayerToCanvas(lyr, canv, ext);
       }
     }
 
@@ -11039,7 +11042,9 @@
       } else {
         _overlayLyr = null;
       }
-      drawLayers('hover');
+      // 'hover' bypasses style creation in drawLayers2()... sometimes we need that
+      // drawLayers('hover');
+      drawLayers();
     }
 
     function getDisplayOptions() {
@@ -11054,12 +11059,14 @@
       return flags.simplify_method || flags.simplify || flags.proj ||
         flags.arc_count || flags.repair || flags.clip || flags.erase ||
         flags.slice || flags.affine || flags.rectangle || flags.buffer ||
-        flags.union || flags.mosaic || flags.snap || flags.clean || false;
+        flags.union || flags.mosaic || flags.snap || flags.clean || flags.drop || false;
     }
 
     // Test if an update allows hover popup to stay open
     function popupCanStayOpen(flags) {
-      // if (arcsMayHaveChanged(flags)) return false;
+      // keeping popup open after -drop geometry causes problems...
+      // // if (arcsMayHaveChanged(flags)) return false;
+      if (arcsMayHaveChanged(flags)) return false;
       if (flags.points || flags.proj) return false;
       if (!flags.same_table) return false;
       return true;
