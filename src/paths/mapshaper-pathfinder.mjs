@@ -8,15 +8,17 @@ import { debug } from '../utils/mapshaper-logging';
 // Functions for redrawing polygons for clipping / erasing / flattening / division
 // These functions use 8 bit codes to control forward and reverse traversal of each arc.
 //
-// Function of path bits 0-7:
-// 0: is fwd path hidden or visible? (0=hidden, 1=visible)
-// 1: is fwd path open or closed for traversal? (0=closed, 1=open)
-// 2: unused
-// 3: unused
-// 4: is rev path hidden or visible?
-// 5: is rev path open or closed for traversal?
-// 6: unused
-// 7: unused
+// Function of arc bits 0-7:
+// 0-3 FWD direction
+// 0: is fwd arc hidden or visible? (0=hidden, 1=visible)
+// 1: is fwd arc open or closed for traversal? (0=closed, 1=open)
+// 2: was fwd arc visited in the traversal?
+// 3: was fwd arc used in output shape?
+// 4-7 REV direction
+// 4: is rev arc hidden or visible?
+// 5: is rev arc open or closed for traversal?
+// 6: was rev arc visited in the traversal?
+// 7: was rev arc used in output shape?
 //
 // Example codes:
 // 0x3 (3): forward path is visible and open, reverse path is hidden and closed
@@ -24,9 +26,13 @@ import { debug } from '../utils/mapshaper-logging';
 //
 
 var FWD_VISIBLE = 0x1;
-var FWD_OPEN = 0x2;
 var REV_VISIBLE = 0x10;
+var FWD_OPEN = 0x2;
 var REV_OPEN = 0x20;
+var FWD_VISITED = 0x4;
+var REV_VISITED = 0x40;
+var FWD_USED = 0x8;
+var REV_USED = 0x80;
 
 export function setBits(bits, arcBits, mask) {
   return (bits & ~mask) | (arcBits & mask);
@@ -53,6 +59,16 @@ export function getRouteBits(arcId, routesArr) {
       bits = routesArr[idx];
   if (idx != arcId) bits = bits >> 4;
   return bits & 7;
+}
+
+export function markPathsAsUsed(paths, routesArr) {
+  forEachArcId(paths, function(arcId) {
+    if (arcId < 0) {
+      routesArr[~arcId] |= REV_USED;
+    } else {
+      routesArr[arcId] |= FWD_USED;
+    }
+  });
 }
 
 // Open arc pathways in a single shape or array of shapes

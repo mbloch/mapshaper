@@ -18,7 +18,6 @@ export function getRightmostArc(fromArcId, nodes, filter) {
       yy = coords.yy,
       ids = nodes.getConnectedArcs(fromArcId),
       toArcId = fromArcId; // initialize to fromArcId -- an error condition
-
   if (filter) {
     ids = ids.filter(filter);
   }
@@ -47,20 +46,19 @@ export function getRightmostArc(fromArcId, nodes, filter) {
       continue;
     }
     icand = arcs.indexOfVertex(candId, -2);
-
     if (toArcId == fromArcId) {
       // first valid candidate
       ito = icand;
       toArcId = candId;
       continue;
     }
-
     code = chooseRighthandPath(fromX, fromY, nodeX, nodeY, xx[ito], yy[ito], xx[icand], yy[icand]);
     if (code == 2) {
       ito = icand;
       toArcId = candId;
     }
   }
+
 
   if (toArcId == fromArcId) {
     // This shouldn't occur, assuming that other arcs are present

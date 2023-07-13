@@ -6,6 +6,17 @@ describe('mapshaper-clip-erase.js', function () {
 
   describe('Misc. clipping issues', function () {
 
+    describe('Bug fix: clipping polygon is enclosed within target polygon and touches at one vertex', function() {
+      it('test', async function() {
+        var clipFile = 'test/data/issues/clip_error/clip_shape.json';
+        var targetFile = 'test/data/issues/clip_error/original_shape.json';
+        var cmd = `-i ${targetFile} -clip ${clipFile} -o clipped.json`;
+        var out = await api.applyCommands(cmd);
+        var clipped = JSON.parse(out['clipped.json']);
+        assert.equal(clipped.features.length, 1);
+      });
+    });
+
     describe('Bug fix: using -clip command with no-replace and name= options', function() {
       it('should not duplicate input layer', function(done) {
         // Tests a fix for a bug affecting the -clip command when using '+ name=' arguments

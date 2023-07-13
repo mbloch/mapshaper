@@ -1,6 +1,11 @@
 import { reversePath } from '../paths/mapshaper-path-utils';
 import { forEachShapePart } from '../paths/mapshaper-shape-utils';
-import { closeArcRoutes, openArcRoutes, getPathFinder, setBits } from '../paths/mapshaper-pathfinder';
+import {
+  closeArcRoutes,
+  openArcRoutes,
+  getPathFinder,
+  setBits,
+  markPathsAsUsed } from '../paths/mapshaper-pathfinder';
 import { getPolygonDissolver } from '../dissolve/mapshaper-polygon-dissolver';
 import { PathIndex } from '../paths/mapshaper-path-index';
 import { absArcId } from '../paths/mapshaper-arc-utils';
@@ -16,7 +21,7 @@ export function clipPolygons(targetShapes, clipShapes, nodes, type, optsArg) {
   var clipArcTouches = 0;
   var clipArcUses = 0;
   var usedClipArcs = [];
-  var dividePath = getPathFinder(nodes, useRoute, routeIsActive);
+  var findPath = getPathFinder(nodes, useRoute, routeIsActive);
   var dissolvePolygon = getPolygonDissolver(nodes);
 
   // The following cleanup step is a performance bottleneck (it often takes longer than
@@ -49,12 +54,16 @@ export function clipPolygons(targetShapes, clipShapes, nodes, type, optsArg) {
     return null;
   });
 
+  markPathsAsUsed(clippedShapes, routeFlags); // to help us find unused paths later
+
+
   // add clip/erase polygons that are fully contained in a target polygon
   // need to index only non-intersecting clip shapes
   // (Intersecting shapes have one or more arcs that have been scanned)
 
   // first, find shapes that do not intersect the target layer
   // (these could be inside or outside the target polygons)
+
   var undividedClipShapes = findUndividedClipShapes(clipShapes);
 
   closeArcRoutes(clipShapes, arcs, routeFlags, true, true); // not needed?
@@ -83,7 +92,7 @@ export function clipPolygons(targetShapes, clipShapes, nodes, type, optsArg) {
       for (var i=0, n=ids.length; i<n; i++) {
         clipArcTouches = 0;
         clipArcUses = 0;
-        path = dividePath(ids[i]);
+        path = findPath(ids[i]);
         if (path) {
           // if ring doesn't touch/intersect a clip/erase polygon, check if it is contained
           // if (clipArcTouches === 0) {
@@ -101,6 +110,7 @@ export function clipPolygons(targetShapes, clipShapes, nodes, type, optsArg) {
         }
       }
     });
+
 
     // Clear pathways of current target shape to hidden/closed
     closeArcRoutes(shape, arcs, routeFlags, true, true, true);
@@ -176,8 +186,9 @@ export function clipPolygons(targetShapes, clipShapes, nodes, type, optsArg) {
     return usable;
   }
 
-  // Filter a collection of shapes to exclude paths that contain clip/erase arcs
-  // and paths that are hidden (e.g. internal boundaries)
+
+  // Filter a collection of shapes to exclude paths that incorporate parts of
+  // clip/erase polygons and paths that are hidden (e.g. internal boundaries)
   function findUndividedClipShapes(clipShapes) {
     return clipShapes.map(function(shape) {
       var usableParts = [];
@@ -201,12 +212,12 @@ export function clipPolygons(targetShapes, clipShapes, nodes, type, optsArg) {
     });
   }
 
-  // Test if arc is unused in both directions
-  // (not testing open/closed or visible/hidden)
+
   function arcIsUnused(id, flags) {
     var abs = absArcId(id),
         flag = flags[abs];
-        return (flag & 0x44) === 0;
+        return (flag & 0x88) === 0;
+        // return id < 0 ? (flag & 0x80) === 0 : (flag & 0x8) === 0;
   }
 
   function arcIsVisible(id, flags) {
@@ -229,7 +240,7 @@ export function clipPolygons(targetShapes, clipShapes, nodes, type, optsArg) {
       enclosedPaths.forEach(function(ids) {
         var path;
         for (var j=0; j<ids.length; j++) {
-          path = dividePath(ids[j]);
+          path = findPath(ids[j]);
           if (path) {
             dissolvedPaths.push(path);
           }

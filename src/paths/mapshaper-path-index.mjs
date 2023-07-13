@@ -121,8 +121,16 @@ export function PathIndex(shapes, arcs) {
     }
     cands.forEach(function(cand) {
       var p = getTestPoint(cand.ids);
-      var isEnclosed = b.containsPoint(p[0], p[1]) && (index ?
-        index.pointInPolygon(p[0], p[1]) : geom.testPointInRing(p[0], p[1], pathIds, arcs));
+      var isEnclosed = b.containsPoint(p[0], p[1]) &&
+        // added a bounds-in-bounds test to handle a case where the test point
+        // fell along the shared boundary of two rings, but the rings did no overlap
+        // (this gave a false positive for the enclosure test)
+        // (for speed, the midpoint of an arc is used as the test point; this
+        // works well in the typical case where rings to not share an edge.
+        // Finding an internal test point would be better, we just need a fast
+        // function to find internal points)
+        b.contains(cand.bounds) &&
+        (index ? index.pointInPolygon(p[0], p[1]) : geom.testPointInRing(p[0], p[1], pathIds, arcs));
       if (isEnclosed) {
         paths.push(cand.ids);
       }
@@ -130,6 +138,7 @@ export function PathIndex(shapes, arcs) {
     return paths.length > 0 ? paths : null;
   };
 
+  // return array of indexed paths within a given shape
   this.findPathsInsideShape = function(shape) {
     var paths = []; // list of enclosed paths
     shape.forEach(function(ids) {
