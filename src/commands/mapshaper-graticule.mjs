@@ -16,7 +16,7 @@ import { cleanLayers } from '../commands/mapshaper-clean';
 import { dissolveArcs } from '../paths/mapshaper-arc-dissolve';
 
 cmd.graticule = function(dataset, opts) {
-  var name = opts.polygon ? 'polygon' : 'graticule';
+  var name = opts.name || opts.polygon && 'polygon' || 'graticule';
   var graticule, destInfo;
   if (dataset && !isLatLngDataset(dataset)) {
     // project graticule to match dataset
@@ -82,7 +82,7 @@ function addOutlineToGraticule(graticule, outline) {
 //
 function createGraticule(P, outlined, opts) {
   var interval = opts.interval || 10;
-  if (![5,10,15,30,45].includes(interval)) stop('Invalid interval:', interval);
+  if (![5,10,15,20,30,45].includes(interval)) stop('Invalid interval:', interval);
   var lon0 = P.lam0 * 180 / Math.PI;
   var precision = interval > 10 ? 1 : 0.5; // degrees between each vertex
   var xstep = interval;

@@ -959,7 +959,9 @@ export function getOptionParser() {
     .option('polygon', {
       describe: 'create a polygon to match the outline of the graticule',
       type: 'flag'
-    });
+    })
+    .option('name', nameOpt);
+
 
   parser.command('grid')
     .describe('create a grid of square or hexagonal polygons')

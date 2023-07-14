@@ -3,7 +3,7 @@ import { getLayerInfo } from '../commands/mapshaper-info';
 import { getBaseContext } from '../expressions/mapshaper-expressions';
 import { runParsedCommands } from '../cli/mapshaper-run-commands';
 import { parseCommands } from '../cli/mapshaper-parse-commands';
-import { stop } from '../utils/mapshaper-logging';
+import { stop, message } from '../utils/mapshaper-logging';
 import utils from '../utils/mapshaper-utils';
 import { getStashedVar } from '../mapshaper-stash';
 import cmd from '../mapshaper-cmd';
@@ -15,6 +15,7 @@ cmd.run = function(job, targets, opts, cb) {
   }
   commandStr = runGlobalExpression(opts.expression, targets);
   if (commandStr) {
+    message(`command: [${commandStr}]`);
     commands = parseCommands(commandStr);
     runParsedCommands(commands, job, cb);
   } else {
