@@ -1,6 +1,6 @@
 (function () {
 
-  var VERSION = "0.6.33";
+  var VERSION = "0.6.34";
 
 
   var utils = /*#__PURE__*/Object.freeze({
@@ -18213,6 +18213,7 @@
     dy: 'measure',
     fill: 'color',
     'fill-pattern': 'pattern',
+    'fill-effect': null, // todo: validate effect names
     'font-family': null,
     'font-size': null,
     'font-style': null,
@@ -18261,7 +18262,7 @@
   var commonProperties = 'css,class,opacity,stroke,stroke-width,stroke-dasharray,stroke-opacity,fill-opacity,vector-effect'.split(',');
 
   var propertiesBySymbolType = {
-    polygon: utils.arrayToIndex(commonProperties.concat('fill', 'fill-pattern')),
+    polygon: utils.arrayToIndex(commonProperties.concat('fill', 'fill-pattern', 'fill-effect')),
     polyline: utils.arrayToIndex(commonProperties.concat('stroke-linecap', 'stroke-linejoin', 'stroke-miterlimit')),
     point: utils.arrayToIndex(commonProperties.concat('fill', 'r')),
     label: utils.arrayToIndex(commonProperties.concat(
@@ -19146,6 +19147,9 @@
       if (obj.tag == 'path' && obj.properties['fill-pattern']) {
         convertFillPattern(obj.properties, defs);
       }
+      if (obj.tag == 'path' && obj.properties['fill-effect'] == 'sphere') {
+        convertSphereEffect(obj.properties, defs);
+      }
       if (obj.tag == 'image') {
         if (/\.svg/.test(obj.properties.href || '')) {
           convertSvgImage(obj, defs);
@@ -19153,6 +19157,25 @@
       } else if (obj.children) {
         obj.children.forEach(procNode);
       }
+    }
+  }
+
+  function convertSphereEffect(obj, defs) {
+    var id = 'mapshaper_sphere_effect';
+    var href = `url(#${ id })`;
+    var svg =
+`<radialGradient id="${id}" cx="0.5" cy="0.5" r=".56" fx="0.4" fy="0.35">
+  <stop offset=".35" stop-opacity="0"/>
+  <stop offset=".65" stop-opacity="0.1" />
+  <stop offset=".85" stop-opacity="0.45" />
+  <stop offset=".95"  stop-opacity="1" />
+</radialGradient>`  ;
+    if (!utils.find(defs, function(o) { return o.id == id; })) {
+      defs.push({svg, id, href});
+    }
+    obj.fill = href;
+    if ('opacity' in obj === false && 'fill-opacity' in obj === false) {
+      obj['fill-opacity'] = 0.35;
     }
   }
 
@@ -23917,7 +23940,9 @@ ${svg}
       .option('polygon', {
         describe: 'create a polygon to match the outline of the graticule',
         type: 'flag'
-      });
+      })
+      .option('name', nameOpt);
+
 
     parser.command('grid')
       .describe('create a grid of square or hexagonal polygons')
@@ -24446,6 +24471,9 @@ ${svg}
       })
       .option('fill-pattern', {
         describe: 'pattern fill, ex: "hatches 2px grey 2px blue"'
+      })
+      .option('fill-effect', {
+        describe: 'use "sphere" on a circle for a 3d globe effect'
       })
       .option('fill-opacity', {
         describe: 'fill opacity'
@@ -37929,7 +37957,8 @@ ${svg}
     return {
       gnom: 60,
       laea: 179,
-      ortho: 89.9, // TODO: investigate projection errors closer to 90
+      //ortho: 89.9, // projection errors betwen lat +/-35 to 55
+      ortho: 89.85, // TODO: investigate
       stere: 142,
       sterea: 142,
       ups: 10.5 // TODO: should be 6.5 deg at north pole
@@ -38308,7 +38337,7 @@ ${svg}
   });
 
   cmd.graticule = function(dataset, opts) {
-    var name = opts.polygon ? 'polygon' : 'graticule';
+    var name = opts.name || opts.polygon && 'polygon' || 'graticule';
     var graticule, destInfo;
     if (dataset && !isLatLngDataset(dataset)) {
       // project graticule to match dataset
@@ -38374,7 +38403,7 @@ ${svg}
   //
   function createGraticule(P, outlined, opts) {
     var interval = opts.interval || 10;
-    if (![5,10,15,30,45].includes(interval)) stop('Invalid interval:', interval);
+    if (![5,10,15,20,30,45].includes(interval)) stop('Invalid interval:', interval);
     P.lam0 * 180 / Math.PI;
     var precision = interval > 10 ? 1 : 0.5; // degrees between each vertex
     var xstep = interval;
@@ -40962,6 +40991,7 @@ ${svg}
     }
     commandStr = runGlobalExpression(opts.expression, targets);
     if (commandStr) {
+      message(`command: [${commandStr}]`);
       commands = parseCommands(commandStr);
       runParsedCommands(commands, job, cb);
     } else {
