@@ -13,6 +13,9 @@ export function convertPropertiesToDefinitions(obj, defs) {
     if (obj.tag == 'path' && obj.properties['fill-pattern']) {
       convertFillPattern(obj.properties, defs);
     }
+    if (obj.tag == 'path' && obj.properties['fill-effect'] == 'sphere') {
+      convertSphereEffect(obj.properties, defs);
+    }
     if (obj.tag == 'image') {
       if (/\.svg/.test(obj.properties.href || '')) {
         convertSvgImage(obj, defs);
@@ -20,6 +23,25 @@ export function convertPropertiesToDefinitions(obj, defs) {
     } else if (obj.children) {
       obj.children.forEach(procNode);
     }
+  }
+}
+
+function convertSphereEffect(obj, defs) {
+  var id = 'mapshaper_sphere_effect';
+  var href = `url(#${ id })`;
+  var svg =
+`<radialGradient id="${id}" cx="0.5" cy="0.5" r=".56" fx="0.4" fy="0.35">
+  <stop offset=".35" stop-opacity="0"/>
+  <stop offset=".65" stop-opacity="0.1" />
+  <stop offset=".85" stop-opacity="0.45" />
+  <stop offset=".95"  stop-opacity="1" />
+</radialGradient>`;
+  if (!utils.find(defs, function(o) { return o.id == id; })) {
+    defs.push({svg, id, href});
+  }
+  obj.fill = href;
+  if ('opacity' in obj === false && 'fill-opacity' in obj === false) {
+    obj['fill-opacity'] = 0.35;
   }
 }
 

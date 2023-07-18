@@ -142,7 +142,8 @@ export function getDefaultClipAngle(P) {
   return {
     gnom: 60,
     laea: 179,
-    ortho: 89.9, // TODO: investigate projection errors closer to 90
+    //ortho: 89.9, // projection errors betwen lat +/-35 to 55
+    ortho: 89.85, // TODO: investigate
     stere: 142,
     sterea: 142,
     ups: 10.5 // TODO: should be 6.5 deg at north pole

@@ -1491,6 +1491,9 @@ export function getOptionParser() {
     .option('fill-pattern', {
       describe: 'pattern fill, ex: "hatches 2px grey 2px blue"'
     })
+    .option('fill-effect', {
+      describe: 'use "sphere" on a circle for a 3d globe effect'
+    })
     .option('fill-opacity', {
       describe: 'fill opacity'
     })

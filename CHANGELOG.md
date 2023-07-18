@@ -1,3 +1,6 @@
+v0.6.34
+* Added -style fill-effect=sphere to apply a gradient effect to the outline of a globe.
+
 v0.6.33
 * Bug fixes
 

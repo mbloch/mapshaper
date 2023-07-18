@@ -13,6 +13,7 @@ var stylePropertyTypes = {
   dy: 'measure',
   fill: 'color',
   'fill-pattern': 'pattern',
+  'fill-effect': null, // todo: validate effect names
   'font-family': null,
   'font-size': null,
   'font-style': null,
@@ -61,7 +62,7 @@ var symbolPropertyTypes = utils.extend({
 var commonProperties = 'css,class,opacity,stroke,stroke-width,stroke-dasharray,stroke-opacity,fill-opacity,vector-effect'.split(',');
 
 var propertiesBySymbolType = {
-  polygon: utils.arrayToIndex(commonProperties.concat('fill', 'fill-pattern')),
+  polygon: utils.arrayToIndex(commonProperties.concat('fill', 'fill-pattern', 'fill-effect')),
   polyline: utils.arrayToIndex(commonProperties.concat('stroke-linecap', 'stroke-linejoin', 'stroke-miterlimit')),
   point: utils.arrayToIndex(commonProperties.concat('fill', 'r')),
   label: utils.arrayToIndex(commonProperties.concat(
