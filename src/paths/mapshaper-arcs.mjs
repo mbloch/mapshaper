@@ -623,11 +623,11 @@ export function ArcCollection() {
   };
 
   // TODO: move this and similar methods out of ArcCollection
-  this.getMultiShapeBounds = function(shapeIds, bounds) {
+  this.getMultiShapeBounds = function(shp, bounds) {
     bounds = bounds || new Bounds();
-    if (shapeIds) { // handle null shapes
-      for (var i=0, n=shapeIds.length; i<n; i++) {
-        this.getSimpleShapeBounds(shapeIds[i], bounds);
+    if (shp) { // handle null shapes
+      for (var i=0, n=shp.length; i<n; i++) {
+        this.getSimpleShapeBounds(shp[i], bounds);
       }
     }
     return bounds;

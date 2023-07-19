@@ -269,6 +269,7 @@ function getCanvasDisplayStyle(lyr) {
         r: 'radius',
         'fill': 'fillColor',
         'fill-pattern': 'fillPattern',
+        'fill-effect': 'fillEffect',
         'fill-opacity': 'fillOpacity',
         'stroke': 'strokeColor',
         'stroke-width': 'strokeWidth',

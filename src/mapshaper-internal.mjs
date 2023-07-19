@@ -179,6 +179,7 @@ import * as TopojsonImport from './topojson/topojson-import';
 import * as Topology from './topology/mapshaper-topology';
 import * as Units from './geom/mapshaper-units';
 import * as SvgHatch from './svg/svg-hatch';
+import * as SvgEffect from './svg/svg-effect';
 import * as VertexUtils from './paths/mapshaper-vertex-utils';
 import * as Zip from './io/mapshaper-zip';
 
@@ -295,6 +296,7 @@ Object.assign(internal,
   Topology,
   Units,
   SvgHatch,
+  SvgEffect,
   VertexUtils,
   Zip
 );

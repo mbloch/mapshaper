@@ -1,7 +1,7 @@
 import { internal, utils, Bounds } from './gui-core';
 import { El } from './gui-el';
 import { GUI } from './gui-lib';
-
+import { getCanvasFillPattern, getCanvasFillEffect } from './gui-canvas-patterns';
 
 // TODO: consider moving this upstream
 function getArcsForRendering(obj, ext) {
@@ -193,7 +193,7 @@ export function DisplayCanvas() {
       shp = shapes[i];
       if (!shp || filter && !filter(shp)) continue;
       if (styler) styler(style, i);
-      if (style.overlay || style.opacity < 1 || style.fillOpacity < 1 || style.strokeOpacity < 1) {
+      if (style.overlay || style.opacity < 1 || style.fillOpacity < 1 || style.strokeOpacity < 1 || style.fillEffect) {
         // don't batch shapes with opacity, in case they overlap
         drawPaths([shp], startPath, draw, style);
         continue;
@@ -218,10 +218,10 @@ export function DisplayCanvas() {
     });
   };
 
-  function drawPaths(shapes, begin, draw, style) {
-    begin(_ctx, style);
+  function drawPaths(shapes, beginPath, drawShape, style) {
+    beginPath(_ctx, style);
     for (var i=0, n=shapes.length; i<n; i++) {
-      draw(shapes[i], _ctx);
+      drawShape(shapes[i], _ctx, style);
     }
     endPath(_ctx, style);
   }
@@ -507,7 +507,10 @@ function roundToHalfPix(x) {
 function getShapePencil(arcs, ext) {
   var t = getScaledTransform(ext);
   var iter = new internal.ShapeIter(arcs);
-  return function(shp, ctx) {
+  return function(shp, ctx, style) {
+    if (style.fillEffect) {
+      ctx.fillStyle = getCanvasFillEffect(ctx, shp, arcs, ext, style);
+    }
     for (var i=0, n=shp ? shp.length : 0; i<n; i++) {
       iter.init(shp[i]);
       // 0.2 trades visible seams for performance
@@ -574,8 +577,12 @@ function endPath(ctx, style) {
   var fo = style.opacity >= 0 ? style.opacity : 1,
       so = fo;
   if (style.strokeOpacity >= 0) so *= style.strokeOpacity;
-  if (style.fillOpacity >= 0) fo *= style.fillOpacity;
-  if (style.fillColor || style.fillPattern) {
+  if (style.fillColor || style.fillPattern || style.fillEffect) {
+    if (style.fillOpacity >= 0) {
+      fo *= style.fillOpacity;
+    } else if (style.fillEffect && style.opacity >= 0 === false) {
+      fo = 0.35; // kludge: default opacity of sphere effect
+    }
     ctx.globalAlpha = fo;
     ctx.fill();
   }
@@ -589,80 +596,4 @@ function endPath(ctx, style) {
   }
   ctx.globalAlpha = 1;
   ctx.closePath();
-}
-
-var hatches = {};
-
-function getCanvasFillPattern(style) {
-  var fill = hatches[style.fillPattern];
-  if (fill === undefined) {
-    fill = makePatternFill(style);
-    hatches[style.fillPattern] = fill;
-  }
-  return fill || style.fill || '#000'; // use fill if hatches are invalid
-}
-
-function makePatternFill(style) {
-  var o = internal.parsePattern(style.fillPattern);
-  if (!o) return null;
-  var canv = document.createElement('canvas');
-  var ctx = canv.getContext('2d');
-  var res = GUI.getPixelRatio();
-  var w = o.tileSize[0] * res;
-  var h = o.tileSize[1] * res;
-  canv.setAttribute('width', w);
-  canv.setAttribute('height', h);
-  if (o.background) {
-    ctx.fillStyle = o.background;
-    ctx.fillRect(0, 0, w, h);
-  }
-  if (o.type == 'dots' || o.type == 'squares') makeDotFill(o, ctx, res);
-  if (o.type == 'dashes') makeDashFill(o, ctx, res);
-  if (o.type == 'hatches') makeHatchFill(o, ctx, res);
-  var pattern = ctx.createPattern(canv, 'repeat');
-  if (o.rotation) {
-    pattern.setTransform(new DOMMatrix('rotate(' + o.rotation + 'deg)'));
-  }
-  return pattern;
-}
-
-function makeDashFill(o, ctx, res) {
-  var x = 0;
-  for (var i=0; i<o.colors.length; i++) {
-    ctx.fillStyle = o.colors[i];
-    ctx.fillRect(x, 0, o.width * res, o.dashes[0] * res);
-    x += res * (o.spacing + o.width);
-  }
-}
-
-function makeDotFill(o, ctx, res) {
-  var dotSize = o.size * res;
-  var r = dotSize / 2;
-  var n = o.colors.length;
-  var dist = dotSize + o.spacing * res;
-  var dots = n * n;
-  var x = 0, y = 0;
-  for (var i=0; i<dots; i++) {
-    if (o.type == 'dots') ctx.beginPath();
-    ctx.fillStyle = o.colors[(i + Math.floor(i / n)) % n];
-    if (o.type == 'dots') {
-      ctx.arc(x + r, y + r, r, 0, Math.PI * 2);
-    } else {
-      ctx.fillRect(x, y, dotSize, dotSize);
-    }
-    if (o.type == 'dots') ctx.fill();
-    x = ((i + 1) % n) * dist;
-    if (x == 0) y += dist;
-  }
-}
-
-function makeHatchFill(o, ctx, res) {
-  var h = o.tileSize[1] * res;
-  var w;
-  for (var i=0, x=0; i<o.widths.length; i++) {
-    w = o.widths[i] * res;
-    ctx.fillStyle = o.colors[i];
-    ctx.fillRect(x, 0, x + w, h);
-    x += w;
-  }
 }

@@ -1,3 +1,7 @@
+v0.6.36
+* Improved `fill-effect=sphere` gradient.
+* Sphere effect can be previewed in the web UI.
+
 v0.6.35
 * Bug fixes
 
