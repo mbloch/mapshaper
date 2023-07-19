@@ -1,6 +1,6 @@
 (function () {
 
-  var VERSION = "0.6.37";
+  var VERSION = "0.6.38";
 
 
   var utils = /*#__PURE__*/Object.freeze({
@@ -24574,6 +24574,10 @@ ${svg}
       .option('stroke-width', {
         describe: 'symbol line width (linear symbols only)'
       })
+      .option('opacity', {
+        describe: 'symbol opacity',
+        type: 'number'
+      })
       .option('geographic', {
         old_alias: 'polygons',
          describe: 'make geographic shapes instead of SVG objects',
@@ -42281,6 +42285,18 @@ ${svg}
     return d.stroke || d.fill || 'magenta';
   }
 
+  function applySymbolStyles(sym, d) {
+    if (sym.type == 'polyline') {
+      sym.stroke = getSymbolStrokeColor(d);
+    } else {
+      sym.fill = getSymbolFillColor(d);
+    }
+    if (d.opacity) {
+      sym.opacity = d.opacity;
+    }
+    return sym;
+  }
+
   function getSymbolRadius(d) {
     if (d.radius === 0 || d.length === 0 || d.r === 0) return 0;
     return d.radius || d.length || d.r || 5; // use a default value
@@ -42518,11 +42534,8 @@ ${svg}
     var radius = getSymbolRadius(d);
     // TODO: remove duplication with svg-symbols.js
     if (+opts.scale) radius *= +opts.scale;
-    return {
-      type: 'circle',
-      fill: getSymbolFillColor(d),
-      r: radius
-    };
+    var sym = { type: 'circle', r: radius };
+    return applySymbolStyles(sym, d);
   }
 
   function getPolygonCoords(d) {
@@ -42614,11 +42627,13 @@ ${svg}
     var radii = parseRings(d.radii || '2').map(function(r) { return r * scale; });
     var solidCenter = utils.isOdd(radii.length);
     var color = getSymbolFillColor(d);
+    var opacity = opts.opacity || undefined;
     var parts = [];
     if (solidCenter) {
       parts.push({
         type: 'circle',
         fill: color,
+        opacity: opacity,
         r: radii.shift()
       });
     }
@@ -42627,6 +42642,7 @@ ${svg}
         type: 'circle',
         fill: 'none', // TODO remove default black fill so this is not needed
         stroke: color,
+        opacity: opacity,
         'stroke-width':  roundToTenths(radii[i+1] - radii[i]),
         r: roundToTenths(radii[i+1] * 0.5 + radii[i] * 0.5)
       });
@@ -42674,19 +42690,18 @@ ${svg}
     if (geojsonType == 'MultiPolygon' || geojsonType == 'Polygon') {
       sym = {
         type: 'polygon',
-        fill: getSymbolFillColor(properties),
         coordinates: geojsonType == 'Polygon' ? coords : flattenMultiPolygonCoords(coords)
       };
     } else if (geojsonType == 'LineString' || geojsonType == 'MultiLineString') {
       sym = {
         type: 'polyline',
-        stroke: getSymbolStrokeColor(properties),
         'stroke-width': properties['stroke-width'] || 2,
         coordinates: geojsonType == 'LineString' ? [coords] : coords
       };
     } else {
       error('Unsupported type:', geojsonType);
     }
+    applySymbolStyles(sym, properties);
     roundCoordsForSVG(sym.coordinates);
     return sym;
   }
@@ -42746,6 +42761,7 @@ ${svg}
         scaleAndShiftCoords(coords, metersPerPx, shp[0]);
         if (d.fill) rec.fill = d.fill;
         if (d.stroke) rec.stroke = d.stroke;
+        if (d.opacity) rec.opacity = d.opacity;
         return createGeometry(coords, geojsonType);
       } else {
         rec['svg-symbol'] = makePathSymbol(coords, d, geojsonType);
