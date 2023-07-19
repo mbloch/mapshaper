@@ -1,6 +1,6 @@
 # COMMAND REFERENCE
 
-This documentation applies to version 0.6.32 of mapshaper's command line program. Run `mapshaper -v` to check your version. For an introduction to the command line tool, read [this page](https://github.com/mbloch/mapshaper/wiki/Introduction-to-the-Command-Line-Tool) first.
+This documentation applies to version 0.6.34 of mapshaper's command line program. Run `mapshaper -v` to check your version. For an introduction to the command line tool, read [this page](https://github.com/mbloch/mapshaper/wiki/Introduction-to-the-Command-Line-Tool) first.
 
 ## Command line syntax
 
@@ -1205,6 +1205,8 @@ Add common SVG attributes for SVG export and display in the web UI. Attribute va
 - dashes [rotation] dash-length space-length line-width color line-spacing background-color
 
 Example: `hatches 45deg 2px red 2px grey`
+
+`fill-effect=sphere`  Add a gradient effect to the bounding circle of a globe projection (e.g. `ortho` `npers`) to create a 3d effect.
 
 `stroke=`          Stroke color
 
