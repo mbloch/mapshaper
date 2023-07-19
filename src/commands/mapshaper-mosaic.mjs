@@ -1,6 +1,6 @@
 import { recombineDataRecords } from '../dissolve/mapshaper-data-aggregation';
 import { addIntersectionCuts } from '../paths/mapshaper-intersection-cuts';
-import { requirePolygonLayer } from '../dataset/mapshaper-layer-utils';
+import { requirePolygonLayer, initDataTable } from '../dataset/mapshaper-layer-utils';
 import cmd from '../mapshaper-cmd';
 import { stop } from '../utils/mapshaper-logging';
 import { DataTable } from '../datatable/mapshaper-data-table';
@@ -24,6 +24,7 @@ cmd.mosaic = function(layers, dataset, opts) {
   };
 
   if (opts.calc) {
+    if (!lyr.data) initDataTable(lyr);
     records2 = recombineDataRecords(lyr.data.getRecords(), mosaicIndex.getSourceIdsByTileId, mosaicShapes.length, opts);
     lyr2.data = new DataTable(records2);
   }

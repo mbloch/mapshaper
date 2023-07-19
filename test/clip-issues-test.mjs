@@ -5,6 +5,15 @@ var ArcCollection = api.internal.ArcCollection;
 describe('mapshaper-clip-erase.js', function () {
 
   describe('Misc. clipping issues', function () {
+    it('Issue #595: small valid holes in clipping shape getting removed', async function() {
+      var clipped = 'test/data/issues/595_clip_error/clipped.json';
+      var clipper = 'test/data/issues/595_clip_error/clipper.json';
+      var cmd = `-i ${clipped} -clip ${clipper} -explode -o`;
+      var out = await api.applyCommands(cmd);
+      var json = JSON.parse(out['clipped.json']);
+      // line is bisected by a small hole in a clipping polygon
+      assert.equal(json.features.length, 2);
+    });
 
     describe('Bug fix: clipping polygon is enclosed within target polygon and touches target polygon', function() {
       it('touches at one vertex', async function() {

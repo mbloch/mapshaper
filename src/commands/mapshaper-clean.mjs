@@ -49,6 +49,7 @@ export function cleanLayers(layers, dataset, optsArg) {
 
 function cleanPolygonLayerGeometry(lyr, dataset, opts) {
   // clean polygons by apply the 'dissolve2' function to each feature
+  opts = Object.assign({gap_fill_area: 'auto'}, opts);
   var groups = lyr.shapes.map(function(shp, i) {
     return [i];
   });

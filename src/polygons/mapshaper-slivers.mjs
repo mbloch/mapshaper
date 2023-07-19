@@ -20,7 +20,7 @@ export function getSliverFilter(lyr, dataset, opts) {
   }
   var sliverControl = opts.sliver_control >= 0 ? opts.sliver_control : 0; // 0 is default
   var crs = getDatasetCRS(dataset);
-  var threshold = areaArg ?
+  var threshold = areaArg && areaArg != 'auto' ?
       convertAreaParam(areaArg, crs) :
       getDefaultSliverThreshold(lyr, dataset.arcs);
   var filter = sliverControl > 0 ?

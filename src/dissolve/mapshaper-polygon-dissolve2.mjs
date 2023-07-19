@@ -74,7 +74,8 @@ export function dissolvePolygonGroups2(groups, lyr, dataset, opts) {
     overlap_rule: opts.overlap_rule
   };
   var mosaicIndex = new MosaicIndex(lyr, nodes, mosaicOpts);
-  var fillGaps = !opts.allow_overlaps; // gap fill doesn't work yet with overlapping shapes
+  // gap fill doesn't work yet with overlapping shapes
+  var fillGaps = !opts.allow_overlaps && (opts.sliver_control || opts.gap_fill_area);
   var cleanupData, filterData;
   if (fillGaps) {
     var sliverOpts = utils.extend({sliver_control: 1}, opts);

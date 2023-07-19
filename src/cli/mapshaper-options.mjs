@@ -717,7 +717,10 @@ export function getOptionParser() {
     .option('calc', calcOpt)
     .option('sum-fields', sumFieldsOpt)
     .option('copy-fields', copyFieldsOpt)
-    .option('gap-fill-area', minGapAreaOpt)
+    .option('gap-fill-area', {
+      describe: 'threshold for filling gaps, e.g. 1.5km2',
+      type: 'area'
+    })
     .option('sliver-control', sliverControlOpt)
     .option('allow-overlaps', {
       describe: 'allow dissolved polygons to overlap (disables gap fill)',

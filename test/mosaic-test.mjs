@@ -58,4 +58,14 @@ describe('mapshaper-mosaic.js', function () {
     });
   });
 
+  it('-mosaic calc="n = count()" works on layer with hole and no attributes', async function() {
+    var file = 'test/data/features/mosaic/test3.json';
+    var cmd = `-i ${file} -mosaic calc='n = count()' -o`;
+    var out = await api.applyCommands(cmd);
+    var json = JSON.parse(out['test3.json']);
+    assert.equal(json.features.length, 2);
+    assert.deepEqual(json.features[0].properties, {n: 1});
+    // hole
+    assert.deepEqual(json.features[1].properties, {n: 0});
+  });
 })
