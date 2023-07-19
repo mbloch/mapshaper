@@ -1,3 +1,6 @@
+v0.6.37
+* Support for simple line symbols using `type-arrow head-length=0`.
+
 v0.6.36
 * Improved `fill-effect=sphere` gradient.
 * Sphere effect can be previewed in the web UI.
