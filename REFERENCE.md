@@ -1,6 +1,6 @@
 # COMMAND REFERENCE
 
-This documentation applies to version 0.6.34 of mapshaper's command line program. Run `mapshaper -v` to check your version. For an introduction to the command line tool, read [this page](https://github.com/mbloch/mapshaper/wiki/Introduction-to-the-Command-Line-Tool) first.
+This documentation applies to version 0.6.38 of mapshaper's command line program. Run `mapshaper -v` to check your version. For an introduction to the command line tool, read [this page](https://github.com/mbloch/mapshaper/wiki/Introduction-to-the-Command-Line-Tool) first.
 
 ## Command line syntax
 
@@ -1257,7 +1257,13 @@ Symbolize points as regular polygons, circles, stars, arrows and other shapes.
 
 `fill=`            Symbol fill color
 
-`polygons`         Senerate symbols as polygons instead of SVG objects
+`stroke=`          Symbol line color (linear symbols only)
+
+`stroke-width=`    Symbol line width (linear symbols only)
+
+`opacity=`         Symbol opacity
+
+`geographic`       Make geographic shapes (polygons or polylines) instead of SVG objects
 
 `pixel-scale=`     Set symbol scale in meters-per-pixel (for polygons option)
 
@@ -1285,7 +1291,7 @@ Symbolize points as regular polygons, circles, stars, arrows and other shapes.
 
 `head-width=`      (arrow) width of arrow head from side to side
 
-`head-length=`     (arrow) length of head (alternative to head-angle)
+`head-length=`     (arrow) length of head (alternative to head-angle). Use `head-length=0` to make headless arrows (i.e. simple lines)
 
 `stem-width=`      (arrow) width of stem at its widest point
 
@@ -1299,6 +1305,8 @@ Symbolize points as regular polygons, circles, stars, arrows and other shapes.
 
 `anchor=`          (arrow) takes one of: start, middle, end (default is start)
 
+Common options: `name=` `+` `target=`
+
 ### -union
 
 Create a composite layer (a polygon mosaic without overlaps) from two or more target polygon layers.
@@ -1308,7 +1316,7 @@ be added in the future. The `-join` command currently supports areal interpolati
 
 `fields=`  Fields to retain (default is all fields).
 
-Other options: `name=` `+` `target=`
+Common options: `name=` `+` `target=`
 
 ### -uniq
 
