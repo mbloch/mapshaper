@@ -1,6 +1,6 @@
 (function () {
 
-  var VERSION = "0.6.33";
+  var VERSION = "0.6.35";
 
 
   var utils = /*#__PURE__*/Object.freeze({
@@ -12719,7 +12719,7 @@
     }
     var sliverControl = opts.sliver_control >= 0 ? opts.sliver_control : 0; // 0 is default
     var crs = getDatasetCRS(dataset);
-    var threshold = areaArg ?
+    var threshold = areaArg && areaArg != 'auto' ?
         convertAreaParam(areaArg, crs) :
         getDefaultSliverThreshold(lyr, dataset.arcs);
     var filter = sliverControl > 0 ?
@@ -16653,7 +16653,8 @@
       overlap_rule: opts.overlap_rule
     };
     var mosaicIndex = new MosaicIndex(lyr, nodes, mosaicOpts);
-    var fillGaps = !opts.allow_overlaps; // gap fill doesn't work yet with overlapping shapes
+    // gap fill doesn't work yet with overlapping shapes
+    var fillGaps = !opts.allow_overlaps && (opts.sliver_control || opts.gap_fill_area);
     var cleanupData, filterData;
     if (fillGaps) {
       var sliverOpts = utils.extend({sliver_control: 1}, opts);
@@ -16935,6 +16936,7 @@
 
   function cleanPolygonLayerGeometry(lyr, dataset, opts) {
     // clean polygons by apply the 'dissolve2' function to each feature
+    opts = Object.assign({gap_fill_area: 'auto'}, opts);
     var groups = lyr.shapes.map(function(shp, i) {
       return [i];
     });
@@ -23698,7 +23700,10 @@ ${svg}
       .option('calc', calcOpt)
       .option('sum-fields', sumFieldsOpt)
       .option('copy-fields', copyFieldsOpt)
-      .option('gap-fill-area', minGapAreaOpt)
+      .option('gap-fill-area', {
+        describe: 'threshold for filling gaps, e.g. 1.5km2',
+        type: 'area'
+      })
       .option('sliver-control', sliverControlOpt)
       .option('allow-overlaps', {
         describe: 'allow dissolved polygons to overlap (disables gap fill)',
@@ -40133,6 +40138,7 @@ ${svg}
     };
 
     if (opts.calc) {
+      if (!lyr.data) initDataTable(lyr);
       records2 = recombineDataRecords(lyr.data.getRecords(), mosaicIndex.getSourceIdsByTileId, mosaicShapes.length, opts);
       lyr2.data = new DataTable(records2);
     }
