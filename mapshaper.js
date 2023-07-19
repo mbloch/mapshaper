@@ -1,6 +1,6 @@
 (function () {
 
-  var VERSION = "0.6.36";
+  var VERSION = "0.6.37";
 
 
   var utils = /*#__PURE__*/Object.freeze({
@@ -42346,7 +42346,7 @@ ${svg}
         headDx = size.headWidth / 2,
         stemDx = size.stemWidth / 2,
         baseDx = stemDx * (1 - stemTaper),
-        head, stem, coords, dx, dy;
+        coords, dx, dy;
 
     if (curvature) {
       // make curved stem
@@ -42359,11 +42359,11 @@ ${svg}
       dy = stemLen * Math.cos(theta / 2);
 
       if (stickArrow) {
-        stem = getCurvedStemCoords(-ax, -ay, dx, dy);
+        coords = getCurvedStemCoords(-ax, -ay, dx, dy);
       } else {
         var leftStem = getCurvedStemCoords(-ax, -ay, -stemDx + dx, dy);
         var rightStem = getCurvedStemCoords(ax, ay, stemDx + dx, dy);
-        stem = leftStem.concat(rightStem.reverse());
+        coords = leftStem.concat(rightStem.reverse());
       }
 
     } else {
@@ -42371,23 +42371,26 @@ ${svg}
       dx = 0;
       dy = stemLen;
       if (stickArrow) {
-        stem = [[0, 0], [0, stemLen]];
+        coords = [[0, 0], [0, stemLen]];
       } else {
-        stem = [[-baseDx, 0], [baseDx, 0]];
+        coords = [[-baseDx, 0], [baseDx, 0]];
       }
     }
 
     if (stickArrow) {
       // make stick arrow
-      head = [[-headDx + dx, stemLen - headLen], [dx, stemLen], [headDx + dx, stemLen - headLen]];
-      coords = [stem, head]; // MultiLineString coords
+      coords = [coords]; // MultiLineString coords
+      if (headLen > 0) {
+        coords.push([[-headDx + dx, stemLen - headLen], [dx, stemLen], [headDx + dx, stemLen - headLen]]);
+      }
     } else {
       // make filled arrow
       // coordinates go counter clockwise, starting from the leftmost head coordinate
-      head = [[stemDx + dx, dy], [headDx + dx, dy],
-          [dx, headLen + dy], [-headDx + dx, dy], [-stemDx + dx, dy]];
-      coords = stem.concat(head);
-      coords.push(stem[0].concat()); // closed path
+      coords.push([stemDx + dx, dy]);
+      if (headLen > 0) {
+        coords.push([headDx + dx, dy], [dx, headLen + dy], [-headDx + dx, dy]);
+      }
+      coords.push([-stemDx + dx, dy], coords[0].concat()); // close path
       coords = [coords]; // Polygon coords
     }
 
@@ -42416,7 +42419,6 @@ ${svg}
     var totalLen = Math.max(d.radius || d.length || d.r || 0, 0),
         scale = 1,
         o = initArrowSize(d); // calc several parameters
-
     if (totalLen >= 0) {
       scale = calcScale(totalLen, o.headLen, d);
       o.stemWidth *= scale;
@@ -42425,7 +42427,7 @@ ${svg}
       o.stemLen = stickArrow ? totalLen : totalLen - o.headLen;
     }
 
-    if (o.headWidth < o.stemWidth) {
+    if (o.headWidth < o.stemWidth && o.headWidth > 0) {
       stop('Arrow head must be at least as wide as the stem.');
     }
     return o;
@@ -42454,14 +42456,18 @@ ${svg}
       headWidth: d['head-width'],
       headLen: d['head-length']
     };
-    if (!o.headWidth) {
-      if (o.headLen) {
+    if (o.headWidth === 0) {
+      o.headLen = 0;
+    } else if (o.headWidth > 0 === false) {
+      if (o.headLen > 0) {
         o.headWidth = o.headLen / sizeRatio;
+      } else if (o.headLen === 0) {
+        o.headWidth = 0;
       } else {
         o.headWidth = o.stemWidth * 3; // assumes stemWidth has been set
       }
     }
-    if (!o.headLen) {
+    if (o.headLen >= 0 === false) {
       o.headLen = o.headWidth * sizeRatio;
     }
     return o;
