@@ -71,6 +71,7 @@ cmd.symbols = function(inputLyr, dataset, opts) {
       scaleAndShiftCoords(coords, metersPerPx, shp[0]);
       if (d.fill) rec.fill = d.fill;
       if (d.stroke) rec.stroke = d.stroke;
+      if (d.opacity) rec.opacity = d.opacity;
       return createGeometry(coords, geojsonType);
     } else {
       rec['svg-symbol'] = makePathSymbol(coords, d, geojsonType);

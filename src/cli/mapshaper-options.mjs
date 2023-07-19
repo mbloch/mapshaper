@@ -1569,6 +1569,10 @@ export function getOptionParser() {
     .option('stroke-width', {
       describe: 'symbol line width (linear symbols only)'
     })
+    .option('opacity', {
+      describe: 'symbol opacity',
+      type: 'number'
+    })
     .option('geographic', {
       old_alias: 'polygons',
        describe: 'make geographic shapes instead of SVG objects',

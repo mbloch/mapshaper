@@ -12,6 +12,18 @@ export function getSymbolStrokeColor(d) {
   return d.stroke || d.fill || 'magenta';
 }
 
+export function applySymbolStyles(sym, d) {
+  if (sym.type == 'polyline') {
+    sym.stroke = getSymbolStrokeColor(d);
+  } else {
+    sym.fill = getSymbolFillColor(d);
+  }
+  if (d.opacity) {
+    sym.opacity = d.opacity;
+  }
+  return sym;
+}
+
 export function getSymbolRadius(d) {
   if (d.radius === 0 || d.length === 0 || d.r === 0) return 0;
   return d.radius || d.length || d.r || 5; // use a default value

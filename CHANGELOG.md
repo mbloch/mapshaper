@@ -1,3 +1,6 @@
+v0.6.38
+* Added `-symbols opacity=` option.
+
 v0.6.37
 * Support for simple line symbols using `type-arrow head-length=0`.
 

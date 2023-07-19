@@ -10,11 +10,13 @@ export function makeRingSymbol(d, opts) {
   var radii = parseRings(d.radii || '2').map(function(r) { return r * scale; });
   var solidCenter = utils.isOdd(radii.length);
   var color = getSymbolFillColor(d);
+  var opacity = opts.opacity || undefined;
   var parts = [];
   if (solidCenter) {
     parts.push({
       type: 'circle',
       fill: color,
+      opacity: opacity,
       r: radii.shift()
     });
   }
@@ -23,6 +25,7 @@ export function makeRingSymbol(d, opts) {
       type: 'circle',
       fill: 'none', // TODO remove default black fill so this is not needed
       stroke: color,
+      opacity: opacity,
       'stroke-width':  roundToTenths(radii[i+1] - radii[i]),
       r: roundToTenths(radii[i+1] * 0.5 + radii[i] * 0.5)
     });
