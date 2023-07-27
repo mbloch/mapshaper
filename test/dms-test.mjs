@@ -3,8 +3,32 @@ import api from '../';
 import assert from 'assert';
 
 var parseDMS = api.internal.parseDMS;
+var formatDMS = api.internal.formatDMS;
 
 describe('mapshaper-dms.js', function () {
+
+  describe('formatDMS()', function() {
+    // verified by
+    var fmt1 = 'DDMMSS[WE]';
+    it(fmt1, function() {
+      assert.equal(formatDMS(0, fmt1), '000000E')
+      assert.equal(formatDMS(180, fmt1), '1800000E')
+      assert.equal(formatDMS(-180, fmt1), '1800000W')
+      assert.equal(formatDMS(-180.00001, fmt1), '1800000W')
+      assert.equal(formatDMS(-179.99999, fmt1), '1800000W')
+    });
+
+    var fmt2 = 'DDMMSS.SSS';
+    it(fmt2, function() {
+      assert.equal(formatDMS(32.0451, fmt2), '320242.360')
+    })
+
+    var fmt3 = '[+-]DdMmSs';
+    it(fmt3, function() {
+      assert.equal(formatDMS(32.0451, fmt3), '+32d2m42s')
+      assert.equal(formatDMS(-32.0451, fmt3), '-32d2m42s')
+    })
+  })
 
   describe('parseDMS()', function () {
     // references for format variations
