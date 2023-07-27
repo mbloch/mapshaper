@@ -367,7 +367,10 @@ export function Console(gui) {
         setDisplayProjection(gui, cmd);
       } else {
         line.hide(); // hide cursor while command is being run
-        runMapshaperCommands(cmd, function(err) {
+        runMapshaperCommands(cmd, function(err, flags) {
+          if (flags) {
+            gui.clearMode();
+          }
           if (err) {
             onError(err);
           }
@@ -400,14 +403,9 @@ export function Console(gui) {
         }
       }
       if (flags) {
-        // if the command may have changed data, and a tool with an edit mode is being used,
-        // close the tool. (we may need a better way to allow the console and other tools
-        // to be used at the same time).
-        gui.clearMode();
-
         model.updated(flags); // info commands do not return flags
       }
-      done(err);
+      done(err, flags);
     });
   }
 

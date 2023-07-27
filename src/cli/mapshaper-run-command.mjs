@@ -47,6 +47,7 @@ import '../commands/mapshaper-filter-points';
 import '../commands/mapshaper-filter-slivers';
 import '../commands/mapshaper-fuzzy-join';
 import '../commands/mapshaper-graticule';
+import '../commands/mapshaper-help';
 import { skipCommand } from '../commands/mapshaper-if-elif-else-endif';
 import '../commands/mapshaper-ignore';
 import '../commands/mapshaper-include';
@@ -280,8 +281,8 @@ export async function runCommand(command, job) {
       job.catalog.addDataset(cmd.graticule(targetDataset, opts));
 
     } else if (name == 'help') {
-      // placing this here to handle errors from invalid command names
-      getOptionParser().printHelp(command.options.command);
+      // placing help command here to handle errors from invalid command names
+      cmd.printHelp(command.options);
 
     } else if (name == 'i') {
       if (opts.replace) job.catalog = new Catalog(); // is this what we want?
@@ -363,7 +364,7 @@ export async function runCommand(command, job) {
       cmd.print(command._.join(' '));
 
     } else if (name == 'proj') {
-      await utils.promisify(initProjLibrary)(opts);
+      await initProjLibrary(opts);
       job.resumeCommand();
       targets.forEach(function(targ) {
         cmd.proj(targ.dataset, job.catalog, opts);

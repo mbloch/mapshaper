@@ -91,41 +91,17 @@ export function ImportFileProxy(gui) {
   });
 }
 
+internal.setProjectionLoader(loadProjLibs);
+
 // load Proj.4 CRS definition files dynamically
 //
-internal.setProjectionLoader(function(opts, done) {
+async function loadProjLibs(opts) {
   var mproj = require('mproj');
   var libs = internal.findProjLibs([opts.init || '', opts.match || '', opts.crs || ''].join(' '));
-  // skip loaded libs
-  libs = libs.filter(function(name) {return !mproj.internal.mproj_search_libcache(name);});
-  loadProjLibs(libs, done);
-});
-
-function loadProjLibs(libs, done) {
-  var mproj = require('mproj');
-  var i = 0;
-  next();
-
-  function next() {
-    var libName = libs[i];
-    var content, req;
-    if (!libName) return done();
-    req = new XMLHttpRequest();
-    req.addEventListener('load', function(e) {
-      if (req.status == 200) {
-        content = req.response;
-      }
-    });
-    req.addEventListener('loadend', function() {
-      if (content) {
-        mproj.internal.mproj_insert_libcache(libName, content);
-      }
-      // TODO: consider stopping with an error message if no content was loaded
-      // (currently, a less specific error will occur when mapshaper tries to use the library)
-      next();
-    });
-    req.open('GET', 'assets/' + libName);
-    req.send();
-    i++;
+  libs = libs.filter(function(name) {return !mproj.internal.mproj_search_libcache(name);}); // skip loaded libs
+  for (var libName of libs) {
+    var content = await fetch('assets/' + libName).then(resp => resp.ok ? resp.text() : null);
+    if (!content) stop(`Unable to load projection resource [${libName}]`);
+    mproj.internal.mproj_insert_libcache(libName, content);
   }
 }

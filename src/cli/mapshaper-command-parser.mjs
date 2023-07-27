@@ -230,7 +230,6 @@ export function CommandParser() {
 
   this.getHelpMessage = function(cmdName) {
     var helpCommands, singleCommand, lines;
-
     if (cmdName) {
       singleCommand = findCommandDefn(cmdName, getCommands());
       if (!singleCommand) {
@@ -349,10 +348,6 @@ export function CommandParser() {
       });
       return w;
     }
-  };
-
-  this.printHelp = function(command) {
-    print(this.getHelpMessage(command));
   };
 
   function getCommands() {

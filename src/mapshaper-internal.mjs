@@ -29,7 +29,7 @@ import { editArcs } from './paths/mapshaper-arc-editor';
 import { GeoJSONReader } from './geojson/geojson-reader';
 import { Heap } from './simplify/mapshaper-heap';
 import { NodeCollection } from './topology/mapshaper-nodes';
-import { parseDMS } from './geom/mapshaper-dms';
+import { parseDMS, formatDMS } from './geom/mapshaper-dms';
 import { PathIndex } from './paths/mapshaper-path-index';
 import { PolygonIndex } from './polygons/mapshaper-polygon-index';
 import { ShpReader } from './shapefile/shp-reader';
@@ -60,6 +60,7 @@ Object.assign(internal, {
   Heap,
   NodeCollection,
   parseDMS,
+  formatDMS,
   PathIndex,
   PolygonIndex,
   ShpReader,

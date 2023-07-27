@@ -187,7 +187,7 @@ mapshaper countries_wgs84.shp encoding=latin1 -info
 
 ### -o (output)
 
-Save edited content to a file or files. By default, Mapshaper appends a suffix to output files if it detects a naming conflict, to avoid overwriting existing files.
+Save content of the target layer(s) to a file or files.
 
 **Options**
 

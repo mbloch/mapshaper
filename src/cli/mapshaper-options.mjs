@@ -628,7 +628,7 @@ export function getOptionParser() {
       type: 'flag'
     })
     .option('other', {
-      describe: 'default color for categorical scheme (defaults to no-data color)'
+      describe: 'default color for categorical scheme (default is nodata color)'
     })
     .option('nodata', {
       describe: 'color to use for invalid or missing data (default is white)'
@@ -1556,7 +1556,7 @@ export function getOptionParser() {
   parser.command('symbols')
     .describe('symbolize points as arrows, circles, stars, polygons, etc.')
     .option('type', {
-      describe: 'symbol type (e.g. arrow, circle, square, star, polygon, ring)'
+      describe: 'types: arrow, circle, square, star, polygon, ring'
     })
     .option('stroke', {})
     .option('stroke-width', {})
@@ -1570,8 +1570,7 @@ export function getOptionParser() {
       describe: 'symbol line width (linear symbols only)'
     })
     .option('opacity', {
-      describe: 'symbol opacity',
-      type: 'number'
+      describe: 'symbol opacity'
     })
     .option('geographic', {
       old_alias: 'polygons',
@@ -1673,7 +1672,6 @@ export function getOptionParser() {
     .option('no-replace', noReplaceOpt);
     // .option('name', nameOpt);
 
-
   parser.command('target')
     .describe('set active layer (or layers)')
     .option('target', {
@@ -1683,6 +1681,14 @@ export function getOptionParser() {
     .option('type', {
       describe: 'type of layer to target (polygon|polyline|point)'
     })
+    // .option('combine', {
+    //   type: 'flag',
+    //   describe: 'place all targeted layers in one dataset together with any  associated layers'
+    // })
+    // .option('isolate', {
+    //   type: 'flag',
+    //   describe: 'place all targeted layers in one dataset exclusive of associated layers'
+    // })
     .option('name', {
       describe: 'rename the target layer'
     });

@@ -79,6 +79,7 @@ export function BoxTool(gui, ext, nav) {
     if (gui.console) {
       gui.console.runMapshaperCommands(cmd, function(err) {
         reset();
+        gui.clearMode();
       });
     }
     // reset(); // TODO: exit interactive mode

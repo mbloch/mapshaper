@@ -97,10 +97,11 @@ export function SelectionTool(gui, ext, hit) {
     hit.clearSelection();
   });
 
-  function runCommand(cmd) {
+  function runCommand(cmd, turnOff) {
     popup.hide();
     if (gui.console) gui.console.runMapshaperCommands(cmd, function(err) {
       reset();
+      if (turnOff) gui.clearMode();
     });
   }
 }

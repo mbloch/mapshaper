@@ -18,12 +18,11 @@ var projectionAliases = {
   albersusa: AlbersUSA
 };
 
-// This stub is replaced when loaded in GUI, which may need to load some files
-export function initProjLibrary(opts, done) {
-  if (!asyncLoader) return done();
-  asyncLoader(opts, done);
+export async function initProjLibrary(opts) {
+  if (asyncLoader) await asyncLoader(opts);
 }
 
+// used by web UI to support loading projection assets asyncronously
 export function setProjectionLoader(loader) {
   asyncLoader = loader;
 }

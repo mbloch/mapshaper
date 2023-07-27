@@ -1,6 +1,5 @@
 import cmd from '../mapshaper-cmd';
 import { getLayerDataTable } from '../dataset/mapshaper-layer-utils';
-import { compileValueExpression } from '../expressions/mapshaper-expressions';
 import { getSymbolDataAccessor } from '../svg/svg-properties';
 import { requirePointLayer, requireSinglePointLayer, getLayerBounds, copyLayer } from '../dataset/mapshaper-layer-utils';
 import { stop, error } from '../utils/mapshaper-logging';
