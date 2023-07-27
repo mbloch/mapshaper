@@ -91,7 +91,7 @@ import '../commands/mapshaper-subdivide';
 function commandAcceptsMultipleTargetDatasets(name) {
   return name == 'rotate' || name == 'info' || name == 'proj' ||
     name == 'drop' || name == 'target' || name == 'if' || name == 'elif' ||
-    name == 'else' || name == 'endif' || name == 'run';
+    name == 'else' || name == 'endif' || name == 'run' || name == 'i';
 }
 
 function commandAcceptsEmptyTarget(name) {

@@ -43,6 +43,15 @@ describe('mapshaper-run-commands.js', function () {
       })
     });
 
+  it('Fix: -i command throws error when there are multiple target datasets',async function() {
+    var a = 'foo\na';
+    var b = 'bar\nb';
+    var c = 'baz\nc';
+    var cmd = '-i a.csv -i b.csv -target * -i c.csv -o';
+    var out = await api.applyCommands(cmd, {'a.csv': a, 'b.csv': b, 'c.csv': c});
+    assert.equal(out['c.csv'], c);
+  })
+
   describe('Issue #264 applyCommands()', function() {
     it ('should throw error if input is a file path, not file content', function(done) {
       mapshaper.applyCommands('-i input.shp -o out.json', {'input.shp': 'test/data/two_states.shp'}, function(
