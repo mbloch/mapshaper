@@ -1,7 +1,7 @@
 import utils from '../utils/mapshaper-utils';
 import { blend } from '../color/blending';
 import { roundToDigits2 } from '../geom/mapshaper-rounding';
-
+import { formatDMS, parseDMS } from '../geom/mapshaper-dms';
 
 export function cleanExpression(exp) {
   // workaround for problem in GNU Make v4: end-of-line backslashes inside
@@ -14,7 +14,9 @@ export function addFeatureExpressionUtils(env) {
     round: roundToDigits2,
     int_median: interpolated_median,
     sprintf: utils.format,
-    blend: blend
+    blend: blend,
+    format_dms: formatDMS,
+    parse_dms: parseDMS
   });
 }
 

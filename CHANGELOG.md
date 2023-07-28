@@ -1,3 +1,6 @@
+v0.6.39
+* Added `format_dms()` and `parse_dms()` functions to `-each` expressions, for working with DMS-formatted coordinates.
+
 v0.6.38
 * Added `-symbols opacity=` option.
 

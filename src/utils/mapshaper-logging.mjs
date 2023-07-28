@@ -51,7 +51,8 @@ export function error() {
 
 // Handle an error caused by invalid input or misuse of API
 export function stop() {
-  _stop.apply(null, utils.toArray(arguments));
+  // _stop.apply(null, utils.toArray(arguments));
+  _stop.apply(null, messageArgs(arguments));
 }
 
 export function interrupt() {

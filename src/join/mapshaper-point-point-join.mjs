@@ -18,3 +18,13 @@ function getPointToPointFunction(targetLyr, srcLyr, crs, opts) {
     return matches.length > 0 ? matches : null;
   };
 }
+
+function getNearestPointFunction(targetLyr, srcLyr, crs, opts) {
+
+}
+
+function getInverseNearestPointFunction(targetLyr, srcLyr, crs, opts) {
+
+
+}
+

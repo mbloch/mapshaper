@@ -558,7 +558,19 @@ Apply a JavaScript expression to each feature in a layer. Data properties are av
 
 `target=`  Layer to target.
 
+
+**Utility functions**
+Several utility functions are available within expressions.
+
+- `format_dms(coord [, fmt])` Format a latitude or longitude coordinate as DMS. The optional second argument is for custom formats. Examples: `[-]DDDMM.MMMMM` `DdMmSs [EW]` `DD° MM′ SS.SSSSS″ [NS]`
+- `parse_dms(string [, fmt])` Parse a DMS string to a numerical coordinate. The optional second argument gives the format to use for parsing.
+- `round(number [, decimals])` Optional second argument gives the number of decimals to use.
+
+
 **Properties of `this`**
+
+The `this` object, available within expressions, has properties relating to the geometry and attribute data of a feature.
+
 *Properties are read-only unless otherwise indicated.*
 
 All layer types
@@ -594,7 +606,7 @@ Polygon, polyline and point layers
 
 **Note:** Centroids are calculated for the largest ring of multi-part polygons, and do not account for holes.
 
-**Note:** Most geometric properties are calculated using planar geometry. Exceptions are the areas of unprojected polygons and the lengths of unprojected polylines. These calculations use spherical geometry.
+**Note:** Most geometric properties are calculated using planar geometry. Exceptions are the areas of unprojected polygons and the lengths of unprojected polylines. These calculations use spherical, not ellipsoidal geometry, so are not as accurate as the equivalent calculations in a GIS application.
 
 **Examples**
 
