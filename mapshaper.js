@@ -1,6 +1,6 @@
 (function () {
 
-  var VERSION = "0.6.38";
+  var VERSION = "0.6.39";
 
 
   var utils = /*#__PURE__*/Object.freeze({
@@ -65,7 +65,7 @@
     get rtrim () { return rtrim; },
     get addThousandsSep () { return addThousandsSep; },
     get numToStr () { return numToStr; },
-    get formatNumber () { return formatNumber; },
+    get formatNumber () { return formatNumber$1; },
     get formatIntlNumber () { return formatIntlNumber; },
     get formatNumberForDisplay () { return formatNumberForDisplay; },
     get shuffle () { return shuffle; },
@@ -649,12 +649,12 @@
     return decimals >= 0 ? num.toFixed(decimals) : String(num);
   }
 
-  function formatNumber(val) {
+  function formatNumber$1(val) {
     return val + '';
   }
 
   function formatIntlNumber(val) {
-    var str = formatNumber(val);
+    var str = formatNumber$1(val);
     return '"' + str.replace('.', ',') + '"'; // need to quote if comma-delimited
   }
 
@@ -1247,7 +1247,8 @@
 
   // Handle an error caused by invalid input or misuse of API
   function stop() {
-    _stop.apply(null, utils.toArray(arguments));
+    // _stop.apply(null, utils.toArray(arguments));
+    _stop.apply(null, messageArgs(arguments));
   }
 
   function interrupt() {
@@ -4670,12 +4671,11 @@
     albersusa: AlbersUSA
   };
 
-  // This stub is replaced when loaded in GUI, which may need to load some files
-  function initProjLibrary(opts, done) {
-    if (!asyncLoader) return done();
-    asyncLoader(opts, done);
+  async function initProjLibrary(opts) {
+    if (asyncLoader) await asyncLoader(opts);
   }
 
+  // used by web UI to support loading projection assets asyncronously
   function setProjectionLoader(loader) {
     asyncLoader = loader;
   }
@@ -13115,6 +13115,105 @@
     });
   }
 
+  // Parse a formatted value in DMS DM or D to a numeric value. Returns NaN if unparsable.
+  // Delimiters: degrees: D|d|°; minutes: '; seconds: "
+  function parseDMS(str, fmt) {
+    var defaultRxp = /^(?<prefix>[nsew+-]?)(?<d>[0-9.]+)[d°]? ?(?<m>[0-9.]*)['′]? ?(?<s>[0-9.]*)["″]? ?(?<suffix>[nsew]?)$/i;
+    var rxp = fmt ? getParseRxp(fmt) : defaultRxp;
+    var match = rxp.exec(str.trim());
+    var d = NaN;
+    var deg, min, sec;
+    if (match) {
+      deg = match.groups.d || '0';
+      min = match.groups.m || '0';
+      sec = match.groups.s || '0';
+      d = (+deg) + (+min) / 60 + (+sec) / 3600;
+      if (/[sw-]/i.test(match.groups.prefix || '') || /[sw]/i.test(match.groups.suffix || '')) {
+        d = -d;
+      }
+    }
+    return d;
+  }
+
+  var cache$1 = {};
+
+  function getParseRxp(fmt) {
+    if (fmt in cache$1) return cache$1[fmt];
+    var rxp = fmt;
+    rxp = rxp.replace('[-]', '(?<prefix>-)?'); // optional -
+    rxp = rxp.replace(/\[[NSEW, +-]{2,}\]/, '(?<prefix>$&)');
+    rxp = rxp.replace(/(MM?)(\.M+)?/, (m, g1, g2) => {
+      var s = g1.length == 1 ? '[0-9]+' : '[0-9][0-9]';
+      if (g2) s += `\\.[0-9]+`;
+      return `(?<m>${s})`;
+    });
+    rxp = rxp.replace(/(SS?)(\.S+)?/, (m, g1, g2) => {
+      var s = g1.length == 1 ? '[0-9]+' : '[0-9][0-9]';
+      if (g2) s += `\\.[0-9]+`;
+      return `(?<s>${s})`;
+    });
+    rxp = rxp.replace(/D+/, '(?<d>[0-9]+)');
+    rxp = '^' + rxp + '$';
+    try {
+      // TODO: make sure all DMS codes have been matched
+      cache$1[fmt] = new RegExp(rxp);
+    } catch(e) {
+      stop('Invalid DMS format string:', fmt);
+    }
+    return cache$1[fmt];
+  }
+
+  function formatNumber(val, integers, decimals) {
+    var str = val.toFixed(decimals);
+    var parts = str.split('.');
+    if (parts.length > 0) {
+      parts[0] = parts[0].padStart(integers, '0');
+      str = parts.join('.');
+    }
+    return str;
+  }
+
+  function getDecimals(fmt) {
+    var match = /S\.(S+)/.exec(fmt) || /M\.(M+)/.exec(fmt) || null;
+    return match ? match[1].length : 0;
+  }
+
+  // TODO: support DD.DDDDD
+  function formatDMS(coord, fmt) {
+    if (!fmt) fmt = '[-]D°M\'S.SSS';
+    var str = fmt;
+    var dstr, mstr, sstr;
+    var match = /(D+)[^M]*(M+)[^S[\]]*(S+)?/.exec(fmt);
+    if (!match) {
+      stop('Invalid DMS format string:', fmt);
+    }
+    var gotSeconds = !!match[3];
+    var decimals = getDecimals(fmt);
+    var integers = gotSeconds ? match[3].length : match[2].length;
+    var RES = Math.pow(10, decimals);
+    var CONV = gotSeconds ? 3600 * RES : 60 * RES;
+    var r = Math.floor(Math.abs(coord) * CONV + 0.5);
+    var lastPart = formatNumber((r / RES) % 60, integers, decimals);
+    if (gotSeconds) {
+      r = Math.floor(r / (RES * 60));
+      sstr = lastPart;
+      mstr = String(r % 60).padStart(match[2].length, '0');
+    } else {
+      r = Math.floor(r / RES);
+      mstr = lastPart;
+      sstr = '';
+    }
+    dstr = String(Math.floor(r / 60)).padStart(match[1].length, '0');
+    str = str.replace(/\[-\]/, s => coord < 0 ? '-' : '');
+    str = str.replace(/\[[+-]+\]/, s => coord < 0 ? '-' : '+');
+    str = str.replace(/\[[NS, ]+\]/, s => coord < 0 ? 'S' : 'N');
+    str = str.replace(/\[[EW, ]+\]/, s => coord < 0 ? 'W' : 'E');
+    str = str.replace(/D+/, dstr);
+    str = str.replace(/M+(\.M+)?/, mstr);
+    if (gotSeconds) str = str.replace(/S+(\.S+)?/, sstr);
+    return str;
+  }
+
   function cleanExpression(exp) {
     // workaround for problem in GNU Make v4: end-of-line backslashes inside
     // quoted strings are left in the string (other shell environments remove them)
@@ -13126,7 +13225,9 @@
       round: roundToDigits2,
       int_median: interpolated_median,
       sprintf: utils.format,
-      blend: blend
+      blend: blend,
+      format_dms: formatDMS,
+      parse_dms: parseDMS
     });
   }
 
@@ -22791,7 +22892,6 @@ ${svg}
 
     this.getHelpMessage = function(cmdName) {
       var helpCommands, singleCommand, lines;
-
       if (cmdName) {
         singleCommand = findCommandDefn(cmdName, getCommands());
         if (!singleCommand) {
@@ -22908,10 +23008,6 @@ ${svg}
         });
         return w;
       }
-    };
-
-    this.printHelp = function(command) {
-      print(this.getHelpMessage(command));
     };
 
     function getCommands() {
@@ -23633,7 +23729,7 @@ ${svg}
         type: 'flag'
       })
       .option('other', {
-        describe: 'default color for categorical scheme (defaults to no-data color)'
+        describe: 'default color for categorical scheme (default is nodata color)'
       })
       .option('nodata', {
         describe: 'color to use for invalid or missing data (default is white)'
@@ -24561,7 +24657,7 @@ ${svg}
     parser.command('symbols')
       .describe('symbolize points as arrows, circles, stars, polygons, etc.')
       .option('type', {
-        describe: 'symbol type (e.g. arrow, circle, square, star, polygon, ring)'
+        describe: 'types: arrow, circle, square, star, polygon, ring'
       })
       .option('stroke', {})
       .option('stroke-width', {})
@@ -24575,8 +24671,7 @@ ${svg}
         describe: 'symbol line width (linear symbols only)'
       })
       .option('opacity', {
-        describe: 'symbol opacity',
-        type: 'number'
+        describe: 'symbol opacity'
       })
       .option('geographic', {
         old_alias: 'polygons',
@@ -24678,7 +24773,6 @@ ${svg}
       .option('no-replace', noReplaceOpt);
       // .option('name', nameOpt);
 
-
     parser.command('target')
       .describe('set active layer (or layers)')
       .option('target', {
@@ -24688,6 +24782,14 @@ ${svg}
       .option('type', {
         describe: 'type of layer to target (polygon|polyline|point)'
       })
+      // .option('combine', {
+      //   type: 'flag',
+      //   describe: 'place all targeted layers in one dataset together with any  associated layers'
+      // })
+      // .option('isolate', {
+      //   type: 'flag',
+      //   describe: 'place all targeted layers in one dataset exclusive of associated layers'
+      // })
       .option('name', {
         describe: 'rename the target layer'
       });
@@ -38520,6 +38622,11 @@ ${svg}
     };
   }
 
+  cmd.printHelp = function(opts) {
+    var str = getOptionParser().getHelpMessage(opts.command);
+    print(str);
+  };
+
   function resetControlFlow(job) {
     job.control = null;
   }
@@ -39157,25 +39264,6 @@ ${svg}
       }
       return sourceIds;
     };
-  }
-
-  // Parse a formatted value in DMS DM or D to a numeric value. Returns NaN if unparsable.
-  // Delimiters: degrees: D|d|°; minutes: '; seconds: "
-  function parseDMS(str) {
-    var rxp = /^([nsew+-]?)([0-9.]+)[d°]? ?([0-9.]*)['′]? ?([0-9.]*)["″]? ?([nsew]?)$/i;
-    var match = rxp.exec(str.trim());
-    var d = NaN;
-    var deg, min, sec;
-    if (match) {
-      deg = match[2] || '0';
-      min = match[3] || '0';
-      sec = match[4] || '0';
-      d = (+deg) + (+min) / 60 + (+sec) / 3600;
-      if (/[sw-]/i.test(match[1]) || /[sw]/i.test(match[5])) {
-        d = -d;
-      }
-    }
-    return d;
   }
 
   function findNearestVertices(p, shp, arcs) {
@@ -42827,8 +42915,40 @@ ${svg}
       // TODO: improve this
       targets[0].layers[0].name = opts.name;
     }
+    if (opts.combine) {
+      targets = combineTargets(targets, catalog);
+    } else if (opts.isolate) {
+      targets = isolateTargets(targets, catalog);
+    }
     catalog.setDefaultTargets(targets);
   };
+
+  function combineTargets(targets, catalog) {
+    var datasets = [];
+    var layers = [];
+    targets.forEach(function(o) {
+      datasets.push(o.dataset);
+      catalog.removeDataset(o.dataset);
+      layers = layers.concat(o.layers);
+    });
+    var combined = mergeDatasets(datasets);
+    catalog.addDataset(combined);
+    return [{
+      dataset: combined,
+      layers: layers
+    }];
+  }
+
+  function isolateTargets(targets, catalog) {
+    var datasets = [];
+    targets.forEach(function(o) {
+      datasets.push(o.dataset);
+      o.layers.forEach(function(lyr) {
+        catalog.removeLayer(lyr, o.dataset);
+
+      });
+    });
+  }
 
   cmd.union = function(targetLayers, targetDataset, opts) {
     if (targetLayers.length < 2) {
@@ -43214,7 +43334,7 @@ ${svg}
   function commandAcceptsMultipleTargetDatasets(name) {
     return name == 'rotate' || name == 'info' || name == 'proj' ||
       name == 'drop' || name == 'target' || name == 'if' || name == 'elif' ||
-      name == 'else' || name == 'endif' || name == 'run';
+      name == 'else' || name == 'endif' || name == 'run' || name == 'i';
   }
 
   function commandAcceptsEmptyTarget(name) {
@@ -43403,8 +43523,8 @@ ${svg}
         job.catalog.addDataset(cmd.graticule(targetDataset, opts));
 
       } else if (name == 'help') {
-        // placing this here to handle errors from invalid command names
-        getOptionParser().printHelp(command.options.command);
+        // placing help command here to handle errors from invalid command names
+        cmd.printHelp(command.options);
 
       } else if (name == 'i') {
         if (opts.replace) job.catalog = new Catalog(); // is this what we want?
@@ -43486,7 +43606,7 @@ ${svg}
         cmd.print(command._.join(' '));
 
       } else if (name == 'proj') {
-        await utils.promisify(initProjLibrary)(opts);
+        await initProjLibrary(opts);
         job.resumeCommand();
         targets.forEach(function(targ) {
           cmd.proj(targ.dataset, job.catalog, opts);
@@ -44321,6 +44441,7 @@ ${svg}
     Heap,
     NodeCollection,
     parseDMS,
+    formatDMS,
     PathIndex,
     PolygonIndex,
     ShpReader,

@@ -2479,42 +2479,18 @@
     });
   }
 
+  internal.setProjectionLoader(loadProjLibs);
+
   // load Proj.4 CRS definition files dynamically
   //
-  internal.setProjectionLoader(function(opts, done) {
+  async function loadProjLibs(opts) {
     var mproj = require('mproj');
     var libs = internal.findProjLibs([opts.init || '', opts.match || '', opts.crs || ''].join(' '));
-    // skip loaded libs
-    libs = libs.filter(function(name) {return !mproj.internal.mproj_search_libcache(name);});
-    loadProjLibs(libs, done);
-  });
-
-  function loadProjLibs(libs, done) {
-    var mproj = require('mproj');
-    var i = 0;
-    next();
-
-    function next() {
-      var libName = libs[i];
-      var content, req;
-      if (!libName) return done();
-      req = new XMLHttpRequest();
-      req.addEventListener('load', function(e) {
-        if (req.status == 200) {
-          content = req.response;
-        }
-      });
-      req.addEventListener('loadend', function() {
-        if (content) {
-          mproj.internal.mproj_insert_libcache(libName, content);
-        }
-        // TODO: consider stopping with an error message if no content was loaded
-        // (currently, a less specific error will occur when mapshaper tries to use the library)
-        next();
-      });
-      req.open('GET', 'assets/' + libName);
-      req.send();
-      i++;
+    libs = libs.filter(function(name) {return !mproj.internal.mproj_search_libcache(name);}); // skip loaded libs
+    for (var libName of libs) {
+      var content = await fetch('assets/' + libName).then(resp => resp.ok ? resp.text() : null);
+      if (!content) stop$1(`Unable to load projection resource [${libName}]`);
+      mproj.internal.mproj_insert_libcache(libName, content);
     }
   }
 
@@ -3371,7 +3347,10 @@
           setDisplayProjection(gui, cmd);
         } else {
           line.hide(); // hide cursor while command is being run
-          runMapshaperCommands(cmd, function(err) {
+          runMapshaperCommands(cmd, function(err, flags) {
+            if (flags) {
+              gui.clearMode();
+            }
             if (err) {
               onError(err);
             }
@@ -3404,14 +3383,9 @@
           }
         }
         if (flags) {
-          // if the command may have changed data, and a tool with an edit mode is being used,
-          // close the tool. (we may need a better way to allow the console and other tools
-          // to be used at the same time).
-          gui.clearMode();
-
           model.updated(flags); // info commands do not return flags
         }
-        done(err);
+        done(err, flags);
       });
     }
 
@@ -5068,7 +5042,8 @@
 
   // Handle an error caused by invalid input or misuse of API
   function stop() {
-    _stop.apply(null, utils.toArray(arguments));
+    // _stop.apply(null, utils.toArray(arguments));
+    _stop.apply(null, messageArgs(arguments));
   }
 
   function interrupt() {
@@ -7976,10 +7951,11 @@
       hit.clearSelection();
     });
 
-    function runCommand(cmd) {
+    function runCommand(cmd, turnOff) {
       popup.hide();
       if (gui.console) gui.console.runMapshaperCommands(cmd, function(err) {
         reset();
+        if (turnOff) gui.clearMode();
       });
     }
   }
@@ -10311,6 +10287,7 @@
       if (gui.console) {
         gui.console.runMapshaperCommands(cmd, function(err) {
           reset();
+          gui.clearMode();
         });
       }
       // reset(); // TODO: exit interactive mode
