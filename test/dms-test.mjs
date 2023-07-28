@@ -8,12 +8,17 @@ var formatDMS = api.internal.formatDMS;
 describe('mapshaper-dms.js', function () {
 
   describe('roundtrip tests', function() {
+    tests('[-]DDD.DDDDD°');
+    tests('[-]DDMMSS');
+    tests('DD° MM′ SS.SSSSS″ [N S]');
+    tests('[+-]DDMM.MMMMM', true);
+    tests('[EW] DDD° MM\' SS.S"', true);
+
     function tests(fmt, isLon) {
       function test(coord) {
         var dms = formatDMS(coord, fmt);
         var coord2 = parseDMS(dms, fmt);
         var dms2 = formatDMS(coord2, fmt);
-        // console.log(dms, dms2)
         assert.equal(dms, dms2);
       }
 
@@ -37,24 +42,18 @@ describe('mapshaper-dms.js', function () {
           test(-179.999);
           test(-100.45140975209458);
         }
-        var n = 0; // 100000;
+        var n = 1000; // 100000;
         while (n--) {
-          test((Math.random() - 0.5) * 180);
+          test((Math.random() - 0.5) * (isLon ? 360 : 180));
         }
       })
     }
-
-    tests('[-]DDMMSS');
-    tests('DD° MM′ SS.SSSSS″ [N S]');
-    tests('[+-]DDMM.MMMMM');
-    tests('DDD° MM\' SS.S"');
   });
 
 
   describe('format_dms() expression function', function() {
     it ('test1', async function() {
       var data = 'lat,lon\n'
-
 
     })
   })
@@ -143,7 +142,13 @@ describe('mapshaper-dms.js', function () {
 
     var fmt1 = '[-]DDDMMSS.SSS';
     it(fmt1, function() {
-      assert.equal(parseDMS('0d0m0sE', 'DdMmSs[EW]'), 0);
+      assert.equal(parseDMS('00000.0', fmt1), 0);
+    })
+
+    var fmt2 = '[-]DDD.DDD°';
+    it(fmt2, function() {
+      assert.equal(parseDMS('45.9334°', fmt2), 45.9334);
+      assert.equal(parseDMS('-50.0°', fmt2), -50);
     })
 
     it('invalid DMS values', function () {
