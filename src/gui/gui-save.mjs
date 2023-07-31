@@ -71,8 +71,7 @@ function showSaveDialog(filename, blob, done) {
     .onCancel(done);
 }
 
-
-async function saveBlobToSelectedFile(filename, blob, done) {
+export async function saveBlobToSelectedFile(filename, blob, done) {
   // see: https://developer.chrome.com/articles/file-system-access/
   // note: saving multiple files to a directory using showDirectoryPicker()
   //   does not work well (in Chrome). User is prompted for permission each time,

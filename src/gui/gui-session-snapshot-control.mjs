@@ -1,6 +1,6 @@
 import { El } from './gui-el';
 import { internal, stop } from './gui-core';
-import { saveBlobToLocalFile } from './gui-save';
+import { saveBlobToLocalFile, saveBlobToSelectedFile } from './gui-save';
 
 var idb = require('idb-keyval');
 // https://github.com/jakearchibald/idb
@@ -76,7 +76,6 @@ export function SessionSnapshots(gui) {
     // }
 
     snapshots.forEach(function(item, i) {
-      var id = i + 1;
       var line = El('div').appendTo(menu).addClass('save-menu-item');
       El('span').appendTo(line).html(`<span class="save-item-label">#${item.number}</span> `);
       // show snapshot size
@@ -89,7 +88,10 @@ export function SessionSnapshots(gui) {
         var obj = await idb.get(item.id);
         await internal.applyCompression(obj, {consume: true});
         var buf = internal.pack(obj);
-        saveBlobToLocalFile('mapshaper_snapshot.msx', new Blob([buf]));
+        // choose output filename and directory every time
+        // saveBlobToLocalFile('mapshaper_snapshot.msx', new Blob([buf]));
+        var fileName = `snapshot-${String(item.number).padStart(2, '0')}.msx`;
+        saveBlobToSelectedFile(fileName, new Blob([buf]), function() {});
       }).text('export');
       El('span').addClass('save-menu-btn').appendTo(line).on('click', async function(e) {
         await removeSnapshotById(item.id);

@@ -13,6 +13,7 @@ export var ExportControl = function(gui) {
   var layersArr = [];
   var toggleBtn = null; // checkbox <input> for toggling layer selection
   var exportBtn = gui.container.findChild('.export-btn');
+  var ofileName = gui.container.findChild('#ofile-name');
   new SimpleButton(menu.findChild('.close2-btn')).on('click', gui.clearMode);
 
   if (!GUI.exportIsSupported()) {
@@ -98,7 +99,7 @@ export var ExportControl = function(gui) {
   // done: function(string|Error|null)
   async function exportMenuSelection(layers) {
     var opts = getExportOpts();
-      // note: command line "target" option gets ignored
+    // note: command line "target" option gets ignored
     var files = await internal.exportTargetLayers(layers, opts);
     gui.session.layersExported(getTargetLayerIds(), getExportOptsAsString());
     await utils.promisify(internal.writeFiles)(files, opts);
