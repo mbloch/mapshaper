@@ -252,7 +252,7 @@ export function ImportControl(gui, opts) {
     var names = getFileNames(files);
     var expanded = [];
     if (files.length === 0) return;
-    useQuickView = importCount === 0 && (opts.quick_view || overQuickView);
+    useQuickView = importTotal === 0 && (opts.quick_view || overQuickView);
     try {
       expanded = await expandFiles(files);
     } catch(e) {

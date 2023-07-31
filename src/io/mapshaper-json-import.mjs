@@ -141,6 +141,7 @@ function selectFromObject(o, path) {
   var separator = path.indexOf('/') > 0 ? '/' : '.';
   var parts = path.split(separator);
   var subpath, array, match;
+
   while (parts.length > 0) {
     subpath = parts.shift();
     match = arrayRxp.exec(subpath);

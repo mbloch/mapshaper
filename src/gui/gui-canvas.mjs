@@ -60,6 +60,7 @@ export function drawStyledLayerToCanvas(obj, canv, ext) {
       canv.drawVertices(layer.shapes, arcs, style, filter);
     }
   }
+  canv.clearStyles();
 }
 
 
@@ -119,6 +120,11 @@ export function DisplayCanvas() {
       _ctx = _canvas.getContext('2d'),
       _pixelColor = getPixelColorFunction(),
       _ext;
+
+  _self.clearStyles = function() {
+    _ctx.fillStyle = null;
+    _ctx.strokeStyle = null;
+  };
 
   _self.prep = function(extent) {
     var w = extent.width(),

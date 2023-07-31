@@ -294,6 +294,7 @@ function getGridData(bbox, interval, opts) {
       xmin + (c + 1) * interval, ymin + (r + 1) * interval
     ];
   }
+
   return {
     size, cells, pointToCol, pointToRow, colRowToIdx, pointToIdx,
     idxToCol, idxToRow, idxToBBox, idxToPoint
