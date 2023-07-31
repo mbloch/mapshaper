@@ -121,6 +121,21 @@ describe('mapshaper-svg.js', function () {
     });
   })
 
+  it ('-o svg-bbox option', async function() {
+    var geo = {
+      type: 'Feature',
+      properties: null,
+      geometry: {
+        type: 'LineString',
+        coordinates: [[0, 0], [1, 2]]
+      }
+    };
+    var cmd = '-i geo.json -o svg-bbox=-1,-1,3,3 map.svg';
+    var out = await api.applyCommands(cmd, {'geo.json': geo});
+    var svg = out['map.svg'];
+    assert(svg.includes('width="800" height="800" viewBox="0 0 800 800"'));
+  })
+
   it ('default scaling w/ 1px margin, polyline', function(done) {
     var geo = {
       type: 'Feature',

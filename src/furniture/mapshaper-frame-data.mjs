@@ -25,12 +25,18 @@ export function getFrameData(dataset, exportOpts) {
 }
 
 function calcFrameData(dataset, opts) {
-  var bounds = getDatasetBounds(dataset);
-  var bounds2 = calcOutputSizeInPixels(bounds, opts);
+  var bounds;
+  if (opts.svg_bbox) {
+    bounds = new Bounds(opts.svg_bbox);
+    opts = Object.assign({margin: 0}, opts); // prevent default pixel margin around content
+  } else {
+    bounds = getDatasetBounds(dataset);
+  }
+  var pixBounds = calcOutputSizeInPixels(bounds, opts);
   return {
     bbox: bounds.toArray(),
-    width: Math.round(bounds2.width()),
-    height: Math.round(bounds2.height()) || 1,
+    width: Math.round(pixBounds.width()),
+    height: Math.round(pixBounds.height()) || 1,
     type: 'frame'
   };
 }

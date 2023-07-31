@@ -338,6 +338,10 @@ export function getOptionParser() {
       describe: '[SVG] source units per pixel (alternative to width= option)',
       type: 'number'
     })
+    .option('svg-bbox', {
+      describe: '[SVG] bounding box of SVG map in projected map units',
+      type: 'bbox'
+    })
     .option('point-symbol', {
       describe: '[SVG] circle or square (default is circle)'
     })
