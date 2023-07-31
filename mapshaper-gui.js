@@ -1265,7 +1265,6 @@
       .onCancel(done);
   }
 
-
   async function saveBlobToSelectedFile(filename, blob, done) {
     // see: https://developer.chrome.com/articles/file-system-access/
     // note: saving multiple files to a directory using showDirectoryPicker()
@@ -1427,7 +1426,6 @@
       // }
 
       snapshots.forEach(function(item, i) {
-        var id = i + 1;
         var line = El('div').appendTo(menu).addClass('save-menu-item');
         El('span').appendTo(line).html(`<span class="save-item-label">#${item.number}</span> `);
         // show snapshot size
@@ -1440,7 +1438,10 @@
           var obj = await idb.get(item.id);
           await internal.applyCompression(obj, {consume: true});
           var buf = internal.pack(obj);
-          saveBlobToLocalFile('mapshaper_snapshot.msx', new Blob([buf]));
+          // choose output filename and directory every time
+          // saveBlobToLocalFile('mapshaper_snapshot.msx', new Blob([buf]));
+          var fileName = `snapshot-${String(item.number).padStart(2, '0')}.msx`;
+          saveBlobToSelectedFile(fileName, new Blob([buf]), function() {});
         }).text('export');
         El('span').addClass('save-menu-btn').appendTo(line).on('click', async function(e) {
           await removeSnapshotById(item.id);
@@ -3644,6 +3645,7 @@
     var layersArr = [];
     var toggleBtn = null; // checkbox <input> for toggling layer selection
     var exportBtn = gui.container.findChild('.export-btn');
+    var ofileName = gui.container.findChild('#ofile-name');
     new SimpleButton(menu.findChild('.close2-btn')).on('click', gui.clearMode);
 
     if (!GUI.exportIsSupported()) {
@@ -3729,7 +3731,7 @@
     // done: function(string|Error|null)
     async function exportMenuSelection(layers) {
       var opts = getExportOpts();
-        // note: command line "target" option gets ignored
+      // note: command line "target" option gets ignored
       var files = await internal.exportTargetLayers(layers, opts);
       gui.session.layersExported(getTargetLayerIds(), getExportOptsAsString());
       await utils$1.promisify(internal.writeFiles)(files, opts);

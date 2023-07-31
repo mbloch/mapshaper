@@ -1,6 +1,6 @@
 (function () {
 
-  var VERSION = "0.6.39";
+  var VERSION = "0.6.40";
 
 
   var utils = /*#__PURE__*/Object.freeze({
@@ -13142,17 +13142,23 @@
     var rxp = fmt;
     rxp = rxp.replace('[-]', '(?<prefix>-)?'); // optional -
     rxp = rxp.replace(/\[[NSEW, +-]{2,}\]/, '(?<prefix>$&)');
+    // TODO: validate that if there are degree decimals, there are no M or S codes
+    rxp = rxp.replace(/D+(\.D+)?/, (m, g1) => {
+      var s = '[0-9]+';
+      if (g1) s += `\\.[0-9]+`;
+      return `(?<d>${s})`;
+    });
+    // TODO: validate that if there are minutes decimals, there are no S codes
     rxp = rxp.replace(/(MM?)(\.M+)?/, (m, g1, g2) => {
       var s = g1.length == 1 ? '[0-9]+' : '[0-9][0-9]';
-      if (g2) s += `\\.[0-9]+`;
+      if (g2) s += '\\.[0-9]+';
       return `(?<m>${s})`;
     });
     rxp = rxp.replace(/(SS?)(\.S+)?/, (m, g1, g2) => {
       var s = g1.length == 1 ? '[0-9]+' : '[0-9][0-9]';
-      if (g2) s += `\\.[0-9]+`;
+      if (g2) s += '\\.[0-9]+';
       return `(?<s>${s})`;
     });
-    rxp = rxp.replace(/D+/, '(?<d>[0-9]+)');
     rxp = '^' + rxp + '$';
     try {
       // TODO: make sure all DMS codes have been matched
@@ -13173,43 +13179,42 @@
     return str;
   }
 
-  function getDecimals(fmt) {
-    var match = /S\.(S+)/.exec(fmt) || /M\.(M+)/.exec(fmt) || null;
-    return match ? match[1].length : 0;
-  }
-
-  // TODO: support DD.DDDDD
   function formatDMS(coord, fmt) {
     if (!fmt) fmt = '[-]D°M\'S.SSS';
     var str = fmt;
     var dstr, mstr, sstr;
-    var match = /(D+)[^M]*(M+)[^S[\]]*(S+)?/.exec(fmt);
-    if (!match) {
+    var match = /(D+)[^M]*(M+)?[^S[\]]*(S+)?/.exec(fmt);
+    var gotSeconds = match && !!match[3];
+    var gotMinutes = match && !!match[2];
+    if (!match || gotSeconds && !gotMinutes) {
       stop('Invalid DMS format string:', fmt);
     }
-    var gotSeconds = !!match[3];
-    var decimals = getDecimals(fmt);
-    var integers = gotSeconds ? match[3].length : match[2].length;
-    var RES = Math.pow(10, decimals);
-    var CONV = gotSeconds ? 3600 * RES : 60 * RES;
-    var r = Math.floor(Math.abs(coord) * CONV + 0.5);
-    var lastPart = formatNumber((r / RES) % 60, integers, decimals);
-    if (gotSeconds) {
-      r = Math.floor(r / (RES * 60));
-      sstr = lastPart;
-      mstr = String(r % 60).padStart(match[2].length, '0');
+    var integers = gotSeconds && match[3].length || gotMinutes && match[2].length || match[1].length;
+    var decimalRxp = gotSeconds && /S\.(S+)/ || gotMinutes && /M\.(M+)/ || /D\.(D+)/;
+    var decimals = decimalRxp.test(fmt) ? decimalRxp.exec(fmt)[1].length : 0;
+    if (gotMinutes) {
+      var RES = Math.pow(10, decimals);
+      var CONV = gotSeconds ? 3600 * RES : 60 * RES;
+      var r = Math.floor(Math.abs(coord) * CONV + 0.5);
+      var lastPart = formatNumber((r / RES) % 60, integers, decimals);
+      if (gotSeconds) {
+        r = Math.floor(r / (RES * 60));
+        sstr = lastPart;
+        mstr = String(r % 60).padStart(match[2].length, '0');
+      } else {
+        r = Math.floor(r / RES);
+        mstr = lastPart;
+      }
+      dstr = String(Math.floor(r / 60)).padStart(match[1].length, '0');
     } else {
-      r = Math.floor(r / RES);
-      mstr = lastPart;
-      sstr = '';
+      dstr = Math.abs(coord).toFixed(decimals);
     }
-    dstr = String(Math.floor(r / 60)).padStart(match[1].length, '0');
     str = str.replace(/\[-\]/, s => coord < 0 ? '-' : '');
     str = str.replace(/\[[+-]+\]/, s => coord < 0 ? '-' : '+');
     str = str.replace(/\[[NS, ]+\]/, s => coord < 0 ? 'S' : 'N');
     str = str.replace(/\[[EW, ]+\]/, s => coord < 0 ? 'W' : 'E');
-    str = str.replace(/D+/, dstr);
-    str = str.replace(/M+(\.M+)?/, mstr);
+    str = str.replace(/D+(\.D+)?/, dstr);
+    if (gotMinutes) str = str.replace(/M+(\.M+)?/, mstr);
     if (gotSeconds) str = str.replace(/S+(\.S+)?/, sstr);
     return str;
   }
@@ -17699,12 +17704,18 @@
   }
 
   function calcFrameData(dataset, opts) {
-    var bounds = getDatasetBounds(dataset);
-    var bounds2 = calcOutputSizeInPixels(bounds, opts);
+    var bounds;
+    if (opts.svg_bbox) {
+      bounds = new Bounds(opts.svg_bbox);
+      opts = Object.assign({margin: 0}, opts); // prevent default pixel margin around content
+    } else {
+      bounds = getDatasetBounds(dataset);
+    }
+    var pixBounds = calcOutputSizeInPixels(bounds, opts);
     return {
       bbox: bounds.toArray(),
-      width: Math.round(bounds2.width()),
-      height: Math.round(bounds2.height()) || 1,
+      width: Math.round(pixBounds.width()),
+      height: Math.round(pixBounds.height()) || 1,
       type: 'frame'
     };
   }
@@ -23438,6 +23449,10 @@ ${svg}
       .option('svg-scale', {
         describe: '[SVG] source units per pixel (alternative to width= option)',
         type: 'number'
+      })
+      .option('svg-bbox', {
+        describe: '[SVG] bounding box of SVG map in projected map units',
+        type: 'bbox'
       })
       .option('point-symbol', {
         describe: '[SVG] circle or square (default is circle)'
