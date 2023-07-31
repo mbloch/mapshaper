@@ -1,3 +1,8 @@
+v0.6.40
+* Added support for decimal degree formats in DMS functions, e.g. `"[-]DDD.DDDDD°"`.
+* Added `-o svg-bbox=` option, for specifying the extent of SVG maps in projected map units.
+* Started adding version numbers to snapshots exported from the ribbon menu (e.g. "snapshot-01.msx").
+
 v0.6.39
 * Added `format_dms()` and `parse_dms()` functions to `-each` expressions, for working with DMS-formatted coordinates.
 

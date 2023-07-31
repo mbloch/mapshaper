@@ -1,6 +1,6 @@
 # COMMAND REFERENCE
 
-This documentation applies to version 0.6.38 of mapshaper's command line program. Run `mapshaper -v` to check your version. For an introduction to the command line tool, read [this page](https://github.com/mbloch/mapshaper/wiki/Introduction-to-the-Command-Line-Tool) first.
+This documentation applies to version 0.6.39 of mapshaper's command line program. Run `mapshaper -v` to check your version. For an introduction to the command line tool, read [this page](https://github.com/mbloch/mapshaper/wiki/Introduction-to-the-Command-Line-Tool) first.
 
 ## Command line syntax
 
@@ -256,6 +256,8 @@ Save content of the target layer(s) to a file or files.
 `svg-data=` (SVG) Export a comma-seperated list of data fields as SVG data-* attributes. Attribute names should match the following regex pattern: `/^[a-z_][a-z0-9_-]*$/`. Non-conforming fields are skipped.
 
 `svg-scale=`   (SVG) Scale SVG output using geographical units per pixel (an alternative to the `width=` option).
+
+`svg-bbox=<xmin,ymin,xmax,ymax>` (SVG)  Bounding box of SVG map in projected map units. By default, the extent of SVG output fits the content; this option lets you provide a custom extent. This could be useful when aligning the SVG output with other content layers, such as images or videos.
 
 `point-symbol=square`  (SVG) Use squares instead of circles to symbolize point data.
 

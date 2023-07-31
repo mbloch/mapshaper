@@ -242,10 +242,6 @@ body {
 	white-space: nowrap;
 }
 
-.export-options .option-menu .advanced-options {
-	width: 195px;
-}
-
 /* --- Main area ------------- */
 
 .main-area {
@@ -450,14 +446,14 @@ body.dragover #import-options-drop-area .drop-area {
 
 /* --- Import screen -------------- */
 
-
-.option-menu .advanced-options {
-	width: 250px;
+.option-menu .text-input {
+	width: 230px;
 	background: rgba(255, 255, 255, 0.4);
 	border: 1px solid #999;
 	padding: 0 3px;
 	height: 18px;
 	font-size: 13px;
+	margin: 0 0 5px 0;
 }
 
 #mshp-not-supported {
@@ -546,10 +542,6 @@ body.dragover #import-options-drop-area .drop-area {
 	margin: 0 0 7px 0;
 	line-height: 1.2;
 	font-size: 90%;
-}
-
-.option-menu {
-	padding: 0 0 9px 0;
 }
 
 /*.option-menu input[type="radio"],
