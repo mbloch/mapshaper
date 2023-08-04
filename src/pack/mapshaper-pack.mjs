@@ -110,7 +110,7 @@ async function exportLayer(lyr) {
   };
 }
 
-function exportInfo(info) {
+export function exportInfo(info) {
   info = Object.assign({}, info);
   if (info.crs && !info.crs_string && !info.prj) {
     info.crs_string = crsToProj4(info.crs);

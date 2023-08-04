@@ -33,7 +33,6 @@ export function MshpMap(gui) {
       _ext = new MapExtent(position),
       _nav = new MapNav(gui, _ext, _mouse),
       _visibleLayers = [], // cached visible map layers
-      _fullBounds = null,
       _hit,
       _basemap,
       _intersectionLyr, _activeLyr, _overlayLyr,
@@ -141,8 +140,8 @@ export function MshpMap(gui) {
     updateLayerStyles(getDrawableContentLayers()); // kludge to make sure all layers have styles
 
     // Update map extent (also triggers redraw)
-    projectMapExtent(_ext, oldCRS, this.getDisplayCRS(), getFullBounds());
-    _fullBounds = getFullBounds(); // update this so map extent doesn't get reset after next update
+    projectMapExtent(_ext, oldCRS, this.getDisplayCRS(), calcFullBounds());
+    updateFullBounds();
   };
 
   // Refresh map display in response to data changes, layer selection, etc.
@@ -185,28 +184,27 @@ export function MshpMap(gui) {
       gui.dispatchEvent('popup-needs-refresh');
     } else if (_hit) {
       _hit.clearSelection();
-      _hit.setLayer(_activeLyr);
     }
+    _hit.setLayer(_activeLyr); // need this every time, to support dynamic reprojection
 
     updateVisibleMapLayers();
-    fullBounds = getFullBounds();
+    fullBounds = calcFullBounds();
 
-    if (!prevLyr || !_fullBounds || prevLyr.tabular || _activeLyr.tabular || isFrameView()) {
+    if (!prevLyr || prevLyr.tabular || _activeLyr.tabular || isFrameView()) {
       needReset = true;
     } else {
-      needReset = mapNeedsReset(fullBounds, _fullBounds, _ext.getBounds(), e.flags);
+      needReset = mapNeedsReset(fullBounds, _ext.getFullBounds(), _ext.getBounds(), e.flags);
     }
 
     if (isFrameView()) {
       _nav.setZoomFactor(0.05); // slow zooming way down to allow fine-tuning frame placement // 0.03
-      _ext.setFrame(getFullBounds()); // TODO: remove redundancy with drawLayers()
+      _ext.setFrame(calcFullBounds()); // TODO: remove redundancy with drawLayers()
       needReset = true; // snap to frame extent
     } else {
       _nav.setZoomFactor(1);
     }
     _ext.setFullBounds(fullBounds, getStrictBounds()); // update 'home' button extent
 
-    _fullBounds = fullBounds;
     if (needReset) {
       _ext.reset();
     }
@@ -307,12 +305,17 @@ export function MshpMap(gui) {
     return null;
   }
 
-  function getFullBounds() {
+  function updateFullBounds() {
+    _ext.setFullBounds(calcFullBounds(), getStrictBounds());
+  }
+
+  function calcFullBounds() {
     if (isPreviewView()) {
       return internal.getFrameLayerBounds(internal.findFrameLayer(model));
     }
     var b = new Bounds();
-    getDrawableContentLayers().forEach(function(lyr) {
+    var layers = getDrawableContentLayers();
+    layers.forEach(function(lyr) {
       b.mergeBounds(lyr.bounds);
     });
 
@@ -457,6 +460,7 @@ export function MshpMap(gui) {
   //   (default)  anything could have changed
   function drawLayers2(action) {
     var layersMayHaveChanged = !action;
+    var fullBounds;
     var contentLayers = getDrawableContentLayers();
     var furnitureLayers = getDrawableFurnitureLayers();
     if (!(_ext.width() > 0 && _ext.height() > 0)) {
@@ -467,7 +471,7 @@ export function MshpMap(gui) {
     if (layersMayHaveChanged) {
       // kludge to handle layer visibility toggling
       _ext.setFrame(isPreviewView() ? getFrameData() : null);
-      _ext.setFullBounds(getFullBounds(), getStrictBounds());
+      updateFullBounds();
       updateLayerStyles(contentLayers);
       updateLayerStackOrder(model.getLayers());// update menu_order property of all layers
     }

@@ -95,6 +95,10 @@ export function MapExtent(_position) {
     return calcBounds(_cx, _cy, _scale / (k || 1));
   };
 
+  this.getFullBounds = function() {
+    return _fullBounds;
+  };
+
   // Update the extent of 'full' zoom without navigating the current view
   //
   this.setFullBounds = function(fullBounds, strictBounds) {

@@ -50,6 +50,7 @@ cmd.pointToGrid = function(targetLayers, targetDataset, opts) {
   return outputLayers;
 };
 
+
 function getPolygonDataset(pointLyr, gridBBox, opts) {
   var points = getPointsInLayer(pointLyr);
   var cellSize = opts.interval;
@@ -80,12 +81,12 @@ function getPolygonDataset(pointLyr, gridBBox, opts) {
   return importGeoJSON(geojson, {});
 }
 
-function getPointCircleRadius(opts) {
+export function getPointCircleRadius(opts) {
   var cellRadius = opts.interval * Math.sqrt(1 / Math.PI);
   return opts.radius > 0 ? opts.radius : cellRadius;
 }
 
-function calcCellProperties(pointIds, weights, calc) {
+export function calcCellProperties(pointIds, weights, calc) {
   var hitIds = [];
   var weight = 0;
   var partial;
@@ -103,7 +104,7 @@ function calcCellProperties(pointIds, weights, calc) {
   return d;
 }
 
-function calcWeights(cellCenter, cellSize, points, pointIds, pointRadius) {
+export function calcWeights(cellCenter, cellSize, points, pointIds, pointRadius) {
   var weights = [];
   var cellRadius = cellSize * Math.sqrt(1 / Math.PI); // radius of circle with same area as cell
   var cellArea = cellSize * cellSize;
@@ -130,7 +131,7 @@ export function twoCircleIntersection(c1, r1, c2, r2) {
     r2sq * Math.acos(d2/r2) - d2 * Math.sqrt(r2sq - d2 * d2);
 }
 
-function makeCellPolygon(idx, grid, opts) {
+export function makeCellPolygon(idx, grid, opts) {
   var coords = opts.circles ?
     makeCircleCoords(grid.idxToPoint(idx), opts) :
     makeCellCoords(grid.idxToBBox(idx), opts);
@@ -155,7 +156,9 @@ function makeCircleCoords(center, opts) {
   return getPointBufferCoordinates(center, radius, 20, getPlanarSegmentEndpoint);
 }
 
-function getPointIndex(points, grid, radius) {
+// Returns a function that receives a cell index and returns indices of points
+//   within a given distance of the cell.
+export function getPointIndex(points, grid, radius) {
   var Flatbush = require('flatbush');
   var gridIndex = new IdTestIndex(grid.cells());
   var bboxIndex = new Flatbush(points.length);
@@ -234,7 +237,7 @@ export function getCenteredGridBounds(bbox, interval) {
 }
 
 // TODO: Use this function for other grid-based commands
-function getGridData(bbox, interval, opts) {
+export function getGridData(bbox, interval, opts) {
   var extent = opts && opts.aligned ?
     getAlignedGridBounds(bbox, interval) :
     getCenteredGridBounds(bbox, interval);

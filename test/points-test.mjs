@@ -1,7 +1,6 @@
 import assert from 'assert';
 import api from '../';
 
-
 describe('mapshaper-points.js', function () {
 
   it ('interpolated points', function(done) {

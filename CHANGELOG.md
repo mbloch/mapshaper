@@ -1,3 +1,6 @@
+v0.6.41
+* Bug fixes
+
 v0.6.40
 * Added support for decimal degree formats in DMS functions, e.g. `"[-]DDD.DDDDD°"`.
 * Added `-o svg-bbox=` option, for specifying the extent of SVG maps in projected map units.

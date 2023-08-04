@@ -8,31 +8,6 @@ import require from '../mapshaper-require';
 
 var externalCommands = {};
 
-cmd.external = function(opts) {
-  // TODO: remove duplication with -require command
-  var _module, moduleFile, moduleName;
-  if (!opts.module) {
-    stop('Missing required "module" parameter');
-  }
-  if (cli.isFile(opts.module)) {
-    moduleFile = opts.module;
-  } else if (cli.isFile(opts.module + '.js')) {
-    moduleFile = opts.module + '.js';
-  } else {
-    moduleName = opts.module;
-  }
-  if (moduleFile) {
-    moduleFile = require('path').join(process.cwd(), moduleFile);
-  }
-  try {
-    _module = require(moduleFile || moduleName);
-    _module(api);
-  } catch(e) {
-    // stop(e);
-    stop('Unable to load external module:', e.message);
-  }
-};
-
 cmd.registerCommand = function(name, params) {
   var defn = {name: name, options: params.options || []};
   // Add definitions of options common to all commands (TODO: remove duplication)
@@ -42,6 +17,14 @@ cmd.registerCommand = function(name, params) {
   externalCommands[name] = defn;
 };
 
+export function isValidExternalCommand(defn) {
+  try {
+    validateExternalCommand(defn);
+    return true;
+  } catch(e) {}
+  return false;
+}
+
 function validateExternalCommand(defn) {
   var targetTypes = ['layer', 'layers'];
   if (typeof defn.command != 'function') {
@@ -49,6 +32,9 @@ function validateExternalCommand(defn) {
   }
   if (!defn.target) {
     stop('Missing required "target" parameter');
+  }
+  if (!targetTypes.includes(defn.target)) {
+    stop('Unrecognized command target type:', defn.target);
   }
 }
 

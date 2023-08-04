@@ -126,6 +126,7 @@ import * as OptionParsingUtils from './cli/mapshaper-option-parsing-utils';
 import * as OutputFormat from './io/mapshaper-output-format';
 import * as OverlayUtils from './clipping/mapshaper-overlay-utils';
 import * as Pack from './pack/mapshaper-pack';
+import * as PointToGrid from './commands/mapshaper-point-to-grid';
 import * as Unpack from './pack/mapshaper-unpack';
 import * as ParseCommands from './cli/mapshaper-parse-commands';
 import * as PathBuffer from './buffer/mapshaper-path-buffer';
@@ -255,6 +256,7 @@ Object.assign(internal,
   PixelTransform,
   PointPolygonJoin,
   Points,
+  PointToGrid,
   PointUtils,
   PolygonDissolve,
   PolygonDissolve2,

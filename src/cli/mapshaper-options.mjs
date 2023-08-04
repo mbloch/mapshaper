@@ -274,6 +274,10 @@ export function getOptionParser() {
       describe: '[TopoJSON] export coordinates without quantization',
       type: 'flag'
     })
+    .option('metadata', {
+      // describe: '[TopoJSON] Add a metadata object containing CRS information',
+      type: 'flag'
+    })
     .option('no-point-quantization', {
       // describe: '[TopoJSON] export point coordinates without quantization',
       type: 'flag'

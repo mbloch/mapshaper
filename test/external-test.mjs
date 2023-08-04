@@ -22,7 +22,6 @@ describe('mapshaper-external.js registerCommand()', function () {
       assert.deepEqual(json.geometries[0], data);
       done();
     });
-
   });
 
   it('register -bar command with a string option and a flag option', function(done) {

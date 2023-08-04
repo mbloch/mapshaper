@@ -125,25 +125,11 @@ export function getDisplayLayer(layer, dataset, opts) {
 
 
 function getDisplayBounds(lyr, arcs) {
-  var arcBounds = arcs ? arcs.getBounds() : new Bounds(),
-      bounds = arcBounds, // default display extent: all arcs in the dataset
-      lyrBounds;
-
-  if (lyr.geometry_type == 'point') {
-    lyrBounds = internal.getLayerBounds(lyr);
-    if (lyrBounds && lyrBounds.hasBounds()) {
-      if (lyrBounds.area() > 0 || !arcBounds.hasBounds()) {
-        bounds = lyrBounds;
-      } else {
-        // if a point layer has no extent (e.g. contains only a single point),
-        // then merge with arc bounds, to place the point in context.
-        bounds = arcBounds.mergeBounds(lyrBounds);
-      }
-    }
-  }
-
-  if (!bounds || !bounds.hasBounds()) { // empty layer
-    bounds = new Bounds();
+  var bounds = internal.getLayerBounds(lyr, arcs) || new Bounds();
+  if (lyr.geometry_type == 'point' && arcs && bounds.hasBounds() && bounds.area() > 0 === false) {
+    // if a point layer has no extent (e.g. contains only a single point),
+    // then merge with arc bounds, to place the point in context.
+    bounds = bounds.mergeBounds(arcs.getBounds());
   }
   return bounds;
 }

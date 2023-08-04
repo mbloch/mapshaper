@@ -1,3 +1,7 @@
+// references for format variations
+// https://www.sunearthtools.com/dp/tools/conversion.php
+// https://www.maptools.com/tutorials/lat_lon/formats
+// http://www.geomidpoint.com/latlon.html
 
 import api from '../';
 import assert from 'assert';
@@ -95,9 +99,7 @@ describe('mapshaper-dms.js', function () {
 
 
   describe('parseDMS()', function () {
-    // references for format variations
-    // https://www.maptools.com/tutorials/lat_lon/formats
-    // http://www.geomidpoint.com/latlon.html
+
     it('valid DMS values', function () {
       // D
       assert.equal(parseDMS('0°'), 0);

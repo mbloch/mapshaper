@@ -89,7 +89,7 @@ import '../commands/mapshaper-split-on-grid';
 import '../commands/mapshaper-subdivide';
 
 function commandAcceptsMultipleTargetDatasets(name) {
-  return name == 'rotate' || name == 'info' || name == 'proj' ||
+  return name == 'rotate' || name == 'info' || name == 'proj' || name == 'require' ||
     name == 'drop' || name == 'target' || name == 'if' || name == 'elif' ||
     name == 'else' || name == 'endif' || name == 'run' || name == 'i';
 }
@@ -248,7 +248,8 @@ export async function runCommand(command, job) {
       outputLayers = applyCommandToEachLayer(cmd.explodeFeatures, targetLayers, arcs, opts);
 
     } else if (name == 'external') {
-      cmd.external(opts);
+      // -require now incorporates -external
+      cmd.require(targets, opts);
 
     } else if (name == 'filter') {
       outputLayers = applyCommandToEachLayer(cmd.filterFeatures, targetLayers, arcs, opts);

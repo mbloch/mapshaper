@@ -564,8 +564,12 @@ Apply a JavaScript expression to each feature in a layer. Data properties are av
 **Utility functions**
 Several utility functions are available within expressions.
 
-- `format_dms(coord [, fmt])` Format a latitude or longitude coordinate as DMS. The optional second argument is for custom formats. Examples: `[-]DDDMM.MMMMM` `DdMmSs [EW]` `DD° MM′ SS.SSSSS″ [NS]`
-- `parse_dms(string [, fmt])` Parse a DMS string to a numerical coordinate. The optional second argument gives the format to use for parsing.
+- `format_dms(coord [, fmt])` Format a latitude or longitude coordinate as a DMS string (degrees, minutes, seconds). The optional second argument lets you specify a custom format. Example format strings:
+  - `[+-]DDDMM.MMMMM`
+  - `DdMmSs [EW]`
+  - `DD° MM′ SS.SSSSS″ [NS]`
+  - `[-]DD.DDDDD°`
+- `parse_dms(string [, fmt])` Parse a DMS string to a numerical coordinate. The optional second argument gives the format to use for parsing. Example (given DMS-formatted fields `latDMS` and `lonDMS`): `-each 'lat = parse_dms(latDMS, "DDDMMSS.SSS[NS]"), lon = parse_dms(lonDMS, "DDDMMSS.SSS[EW]")'`.
 - `round(number [, decimals])` Optional second argument gives the number of decimals to use.
 
 

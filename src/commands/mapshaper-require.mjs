@@ -4,6 +4,8 @@ import { stop } from '../utils/mapshaper-logging';
 import { getStashedVar } from '../mapshaper-stash';
 import cli from '../cli/mapshaper-cli-utils';
 import require from '../mapshaper-require';
+import api from '../mapshaper-api';
+import { isValidExternalCommand } from '../commands/mapshaper-external';
 
 cmd.require = function(targets, opts) {
   var defs = getStashedVar('defs');
@@ -23,8 +25,16 @@ cmd.require = function(targets, opts) {
   }
   try {
     mod = require(moduleFile || moduleName);
+    if (typeof mod == 'function') {
+      // -require now includes the functionality of the old -external command
+      var retn = mod(api);
+      if (retn && isValidExternalCommand(retn)) {
+        cmd.registerCommand(retn.name, retn);
+      }
+    }
   } catch(e) {
-    stop(e);
+    // stop(e);
+    stop('Unable to load external module:', e.message);
   }
   if (moduleName || opts.alias) {
     defs[opts.alias || moduleName] = mod;
