@@ -1,6 +1,6 @@
 (function () {
 
-  var VERSION = "0.6.40";
+  var VERSION = "0.6.41";
 
 
   var utils = /*#__PURE__*/Object.freeze({
@@ -10877,7 +10877,8 @@
     pack: pack,
     exportDatasetsToPack: exportDatasetsToPack,
     applyCompression: applyCompression,
-    exportDataset: exportDataset
+    exportDataset: exportDataset,
+    exportInfo: exportInfo
   });
 
   // Guess the type of a data file from file extension, or return null if not sure
@@ -23386,6 +23387,10 @@ ${svg}
         describe: '[TopoJSON] export coordinates without quantization',
         type: 'flag'
       })
+      .option('metadata', {
+        // describe: '[TopoJSON] Add a metadata object containing CRS information',
+        type: 'flag'
+      })
       .option('no-point-quantization', {
         // describe: '[TopoJSON] export point coordinates without quantization',
         type: 'flag'
@@ -27562,6 +27567,7 @@ ${svg}
     var separator = path.indexOf('/') > 0 ? '/' : '.';
     var parts = path.split(separator);
     var subpath, array, match;
+
     while (parts.length > 0) {
       subpath = parts.shift();
       match = arrayRxp.exec(subpath);
@@ -36244,31 +36250,6 @@ ${svg}
 
   var externalCommands = {};
 
-  cmd.external = function(opts) {
-    // TODO: remove duplication with -require command
-    var _module, moduleFile, moduleName;
-    if (!opts.module) {
-      stop('Missing required "module" parameter');
-    }
-    if (cli.isFile(opts.module)) {
-      moduleFile = opts.module;
-    } else if (cli.isFile(opts.module + '.js')) {
-      moduleFile = opts.module + '.js';
-    } else {
-      moduleName = opts.module;
-    }
-    if (moduleFile) {
-      moduleFile = require$1('path').join(process.cwd(), moduleFile);
-    }
-    try {
-      _module = require$1(moduleFile || moduleName);
-      _module(coreAPI);
-    } catch(e) {
-      // stop(e);
-      stop('Unable to load external module:', e.message);
-    }
-  };
-
   cmd.registerCommand = function(name, params) {
     var defn = {name: name, options: params.options || []};
     // Add definitions of options common to all commands (TODO: remove duplication)
@@ -36278,12 +36259,24 @@ ${svg}
     externalCommands[name] = defn;
   };
 
+  function isValidExternalCommand(defn) {
+    try {
+      validateExternalCommand(defn);
+      return true;
+    } catch(e) {}
+    return false;
+  }
+
   function validateExternalCommand(defn) {
+    var targetTypes = ['layer', 'layers'];
     if (typeof defn.command != 'function') {
       stop('Expected "command" parameter function');
     }
     if (!defn.target) {
       stop('Missing required "target" parameter');
+    }
+    if (!targetTypes.includes(defn.target)) {
+      stop('Unrecognized command target type:', defn.target);
     }
   }
 
@@ -40624,6 +40617,7 @@ ${svg}
     return outputLayers;
   };
 
+
   function getPolygonDataset(pointLyr, gridBBox, opts) {
     var points = getPointsInLayer(pointLyr);
     var cellSize = opts.interval;
@@ -40729,6 +40723,8 @@ ${svg}
     return getPointBufferCoordinates(center, radius, 20, getPlanarSegmentEndpoint);
   }
 
+  // Returns a function that receives a cell index and returns indices of points
+  //   within a given distance of the cell.
   function getPointIndex(points, grid, radius) {
     var Flatbush = require$1('flatbush');
     var gridIndex = new IdTestIndex(grid.cells());
@@ -40860,11 +40856,25 @@ ${svg}
         xmin + (c + 1) * interval, ymin + (r + 1) * interval
       ];
     }
+
     return {
       size, cells, pointToCol, pointToRow, colRowToIdx, pointToIdx,
       idxToCol, idxToRow, idxToBBox, idxToPoint
     };
   }
+
+  var PointToGrid = /*#__PURE__*/Object.freeze({
+    __proto__: null,
+    getPointCircleRadius: getPointCircleRadius,
+    calcCellProperties: calcCellProperties,
+    calcWeights: calcWeights,
+    twoCircleIntersection: twoCircleIntersection,
+    makeCellPolygon: makeCellPolygon,
+    getPointIndex: getPointIndex,
+    getAlignedGridBounds: getAlignedGridBounds,
+    getCenteredGridBounds: getCenteredGridBounds,
+    getGridData: getGridData
+  });
 
   function closeUndershoots(lyr, dataset, opts) {
     var maxGapLen = opts.gap_tolerance ? convertIntervalParam(opts.gap_tolerance, getDatasetCRS(dataset)) : 0;
@@ -41180,8 +41190,16 @@ ${svg}
     }
     try {
       mod = require$1(moduleFile || moduleName);
+      if (typeof mod == 'function') {
+        // -require now includes the functionality of the old -external command
+        var retn = mod(api);
+        if (retn && isValidExternalCommand(retn)) {
+          cmd.registerCommand(retn.name, retn);
+        }
+      }
     } catch(e) {
-      stop(e);
+      // stop(e);
+      stop('Unable to load external module:', e.message);
     }
     if (moduleName || opts.alias) {
       defs[opts.alias || moduleName] = mod;
@@ -43347,7 +43365,7 @@ ${svg}
   }
 
   function commandAcceptsMultipleTargetDatasets(name) {
-    return name == 'rotate' || name == 'info' || name == 'proj' ||
+    return name == 'rotate' || name == 'info' || name == 'proj' || name == 'require' ||
       name == 'drop' || name == 'target' || name == 'if' || name == 'elif' ||
       name == 'else' || name == 'endif' || name == 'run' || name == 'i';
   }
@@ -43505,7 +43523,8 @@ ${svg}
         outputLayers = applyCommandToEachLayer(cmd.explodeFeatures, targetLayers, arcs, opts);
 
       } else if (name == 'external') {
-        cmd.external(opts);
+        // -require now incorporates -external
+        cmd.require(targets, opts);
 
       } else if (name == 'filter') {
         outputLayers = applyCommandToEachLayer(cmd.filterFeatures, targetLayers, arcs, opts);
@@ -44130,14 +44149,6 @@ ${svg}
     runAndRemoveInfoCommands: runAndRemoveInfoCommands
   });
 
-  // the mapshaper public api only has 4 functions
-  var coreAPI = {
-    runCommands,
-    applyCommands,
-    runCommandsXL,
-    enableLogging
-  };
-
   // Return an array containing points from a path iterator, clipped to a bounding box
   // Currently using this function for clipping styled polygons in the GUI to speed up layer rendering.
   // Artifacts along the edges make this unsuitable for clipping datasets
@@ -44534,6 +44545,7 @@ ${svg}
     PixelTransform,
     PointPolygonJoin,
     Points,
+    PointToGrid,
     PointUtils,
     PolygonDissolve,
     PolygonDissolve2,
@@ -44581,16 +44593,26 @@ ${svg}
     Zip
   );
 
+  // the mapshaper public api only has 4 functions
+  var api = {
+    runCommands,
+    applyCommands,
+    runCommandsXL,
+    enableLogging
+  };
+
+  // Add some namespaces, for easier testability and
+  // to expose internal functions to the web UI
+  Object.assign(api, {
+    cli, cmd, geom, utils, internal,
+  });
+
   // The entry point for the core mapshaper module
 
-  var moduleAPI = Object.assign({
-    cli, cmd, geom, utils, internal,
-  }, coreAPI);
-
   if (typeof module === "object" && module.exports) {
-    module.exports = moduleAPI;
+    module.exports = api;
   } else if (typeof window === "object" && window) {
-    window.mapshaper = moduleAPI;
+    window.mapshaper = api;
   }
 
 })();

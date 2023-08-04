@@ -1979,7 +1979,7 @@
       var names = getFileNames(files);
       var expanded = [];
       if (files.length === 0) return;
-      useQuickView = importCount === 0 && (opts.quick_view || overQuickView);
+      useQuickView = importTotal === 0 && (opts.quick_view || overQuickView);
       try {
         expanded = await expandFiles(files);
       } catch(e) {
@@ -9171,6 +9171,10 @@
       return calcBounds(_cx, _cy, _scale / (k || 1));
     };
 
+    this.getFullBounds = function() {
+      return _fullBounds;
+    };
+
     // Update the extent of 'full' zoom without navigating the current view
     //
     this.setFullBounds = function(fullBounds, strictBounds) {
@@ -9506,6 +9510,7 @@
         canv.drawVertices(layer.shapes, arcs, style, filter);
       }
     }
+    canv.clearStyles();
   }
 
 
@@ -9565,6 +9570,11 @@
         _ctx = _canvas.getContext('2d'),
         _pixelColor = getPixelColorFunction(),
         _ext;
+
+    _self.clearStyles = function() {
+      _ctx.fillStyle = null;
+      _ctx.strokeStyle = null;
+    };
 
     _self.prep = function(extent) {
       var w = extent.width(),
@@ -10551,25 +10561,11 @@
 
 
   function getDisplayBounds(lyr, arcs) {
-    var arcBounds = arcs ? arcs.getBounds() : new Bounds(),
-        bounds = arcBounds, // default display extent: all arcs in the dataset
-        lyrBounds;
-
-    if (lyr.geometry_type == 'point') {
-      lyrBounds = internal.getLayerBounds(lyr);
-      if (lyrBounds && lyrBounds.hasBounds()) {
-        if (lyrBounds.area() > 0 || !arcBounds.hasBounds()) {
-          bounds = lyrBounds;
-        } else {
-          // if a point layer has no extent (e.g. contains only a single point),
-          // then merge with arc bounds, to place the point in context.
-          bounds = arcBounds.mergeBounds(lyrBounds);
-        }
-      }
-    }
-
-    if (!bounds || !bounds.hasBounds()) { // empty layer
-      bounds = new Bounds();
+    var bounds = internal.getLayerBounds(lyr, arcs) || new Bounds();
+    if (lyr.geometry_type == 'point' && arcs && bounds.hasBounds() && bounds.area() > 0 === false) {
+      // if a point layer has no extent (e.g. contains only a single point),
+      // then merge with arc bounds, to place the point in context.
+      bounds = bounds.mergeBounds(arcs.getBounds());
     }
     return bounds;
   }
@@ -10843,7 +10839,6 @@
         _ext = new MapExtent(position),
         _nav = new MapNav(gui, _ext, _mouse),
         _visibleLayers = [], // cached visible map layers
-        _fullBounds = null,
         _hit,
         _basemap,
         _intersectionLyr, _activeLyr, _overlayLyr,
@@ -10951,8 +10946,8 @@
       updateLayerStyles(getDrawableContentLayers()); // kludge to make sure all layers have styles
 
       // Update map extent (also triggers redraw)
-      projectMapExtent(_ext, oldCRS, this.getDisplayCRS(), getFullBounds());
-      _fullBounds = getFullBounds(); // update this so map extent doesn't get reset after next update
+      projectMapExtent(_ext, oldCRS, this.getDisplayCRS(), calcFullBounds());
+      updateFullBounds();
     };
 
     // Refresh map display in response to data changes, layer selection, etc.
@@ -10995,28 +10990,27 @@
         gui.dispatchEvent('popup-needs-refresh');
       } else if (_hit) {
         _hit.clearSelection();
-        _hit.setLayer(_activeLyr);
       }
+      _hit.setLayer(_activeLyr); // need this every time, to support dynamic reprojection
 
       updateVisibleMapLayers();
-      fullBounds = getFullBounds();
+      fullBounds = calcFullBounds();
 
-      if (!prevLyr || !_fullBounds || prevLyr.tabular || _activeLyr.tabular || isFrameView()) {
+      if (!prevLyr || prevLyr.tabular || _activeLyr.tabular || isFrameView()) {
         needReset = true;
       } else {
-        needReset = mapNeedsReset(fullBounds, _fullBounds, _ext.getBounds(), e.flags);
+        needReset = mapNeedsReset(fullBounds, _ext.getFullBounds(), _ext.getBounds(), e.flags);
       }
 
       if (isFrameView()) {
         _nav.setZoomFactor(0.05); // slow zooming way down to allow fine-tuning frame placement // 0.03
-        _ext.setFrame(getFullBounds()); // TODO: remove redundancy with drawLayers()
+        _ext.setFrame(calcFullBounds()); // TODO: remove redundancy with drawLayers()
         needReset = true; // snap to frame extent
       } else {
         _nav.setZoomFactor(1);
       }
       _ext.setFullBounds(fullBounds, getStrictBounds()); // update 'home' button extent
 
-      _fullBounds = fullBounds;
       if (needReset) {
         _ext.reset();
       }
@@ -11117,12 +11111,17 @@
       return null;
     }
 
-    function getFullBounds() {
+    function updateFullBounds() {
+      _ext.setFullBounds(calcFullBounds(), getStrictBounds());
+    }
+
+    function calcFullBounds() {
       if (isPreviewView()) {
         return internal.getFrameLayerBounds(internal.findFrameLayer(model));
       }
       var b = new Bounds();
-      getDrawableContentLayers().forEach(function(lyr) {
+      var layers = getDrawableContentLayers();
+      layers.forEach(function(lyr) {
         b.mergeBounds(lyr.bounds);
       });
 
@@ -11267,6 +11266,7 @@
     //   (default)  anything could have changed
     function drawLayers2(action) {
       var layersMayHaveChanged = !action;
+      var fullBounds;
       var contentLayers = getDrawableContentLayers();
       var furnitureLayers = getDrawableFurnitureLayers();
       if (!(_ext.width() > 0 && _ext.height() > 0)) {
@@ -11277,7 +11277,7 @@
       if (layersMayHaveChanged) {
         // kludge to handle layer visibility toggling
         _ext.setFrame(isPreviewView() ? getFrameData() : null);
-        _ext.setFullBounds(getFullBounds(), getStrictBounds());
+        updateFullBounds();
         updateLayerStyles(contentLayers);
         updateLayerStackOrder(model.getLayers());// update menu_order property of all layers
       }
