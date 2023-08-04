@@ -14,6 +14,27 @@ describe('mapshaper-cli-lib.js', function () {
         ['test/data/features/centroids/a.shp', 'test/data/features/centroids/b.shp']);
     })
 
+    it('expands wild cards 2', function() {
+      assert.deepEqual(cli.expandInputFiles(['README*']),
+        ['README.md']);
+    })
+
+    it('expands wild card directories', function() {
+      assert.deepEqual(cli.expandInputFiles(['test/data/features/centroids*/*.shp']),
+        ['test/data/features/centroids/a.shp', 'test/data/features/centroids/b.shp']);
+    })
+
+    it('expands wild card directories, ignores matching directories with no matching files', function() {
+      assert.deepEqual(cli.expandInputFiles(['*/affine-test.mjs']),
+        ['test/affine-test.mjs']);
+    })
+
+
+    it('expands wild card directories 2', function() {
+      assert.deepEqual(cli.expandInputFiles(['test/*/six_counties.shp']),
+        ['test/data/six_counties.shp']);
+    })
+
     it('API error if wild card expansion fails', function() {
       assert.throws(function() {
         cli.expandInputFiles(['missing/dir/*.shp']);

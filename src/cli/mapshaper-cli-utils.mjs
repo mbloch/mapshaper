@@ -88,20 +88,43 @@ cli.convertArrayBuffer = function(buf) {
   return dest;
 };
 
+// Receives a directory path, in which the final subdirectory may include the
+//   "*" wildcard, e.g. '.' 'data' '*' 'data/*' '2023-*'
+// Returns an array of expanded directory names
+// TODO: add support for wildcards in other subdirectories
+cli.expandDirectoryName = function(name) {
+  var info = parseLocalPath(name);
+  // final directory name is parsed as info.filename
+  if (!info.filename.includes('*')) {
+    return [name];
+  }
+  var rxp = utils.wildcardToRegExp(info.filename);
+  var dirs = [];
+  require('fs').readdirSync(info.directory || '.').forEach(function(item) {
+    var path = info.directory ? require('path').join(info.directory, item) : item;
+    if (rxp.test(item) && cli.isDirectory(path)) {
+      dirs.push(path);
+    }
+  });
+  return dirs;
+};
+
 // Expand any "*" wild cards in file name
 // (For the Windows command line; unix shells do this automatically)
 cli.expandFileName = function(name) {
   var info = parseLocalPath(name),
       rxp = utils.wildcardToRegExp(info.filename),
-      dir = info.directory || '.',
+      dirs = cli.expandDirectoryName(info.directory || '.'),
       files = [];
 
   try {
-    require('fs').readdirSync(dir).forEach(function(item) {
-      var path = require('path').join(dir, item);
-      if (rxp.test(item) && cli.isFile(path)) {
-        files.push(path);
-      }
+    dirs.forEach(function(dir) {
+      require('fs').readdirSync(dir).forEach(function(item) {
+        var path = require('path').join(dir, item);
+        if (rxp.test(item) && cli.isFile(path)) {
+          files.push(path);
+        }
+      });
     });
   } catch(e) {}
 
