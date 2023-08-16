@@ -28,6 +28,7 @@ import { DataTable } from './datatable/mapshaper-data-table';
 import { editArcs } from './paths/mapshaper-arc-editor';
 import { GeoJSONReader } from './geojson/geojson-reader';
 import { Heap } from './simplify/mapshaper-heap';
+import { IdLookupIndex } from './indexing/mapshaper-id-lookup-index';
 import { NodeCollection } from './topology/mapshaper-nodes';
 import { parseDMS, formatDMS } from './geom/mapshaper-dms';
 import { PathIndex } from './paths/mapshaper-path-index';
@@ -58,6 +59,7 @@ Object.assign(internal, {
   editArcs,
   GeoJSONReader,
   Heap,
+  IdLookupIndex,
   NodeCollection,
   parseDMS,
   formatDMS,

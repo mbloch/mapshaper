@@ -126,20 +126,23 @@ export function Catalog() {
   };
 
   this.setDefaultTarget = function(layers, dataset) {
-    if (datasets.indexOf(dataset) == -1) {
-      datasets.push(dataset);
-    }
-    defaultTargets = [{
+    this.setDefaultTargets([{
       // Copy layers array, in case layers is a reference to dataset.layers.
       // This prevents layers that are added to the dataset inside a command from
       //  being added to the next command's target, e.g. debugging layers added
       //  by '-join unmatched unjoined'.
       layers: layers.concat(),
       dataset: dataset
-    }];
+    }]);
   };
 
+  // arr: array of target objects {layers:[], dataset:{}}
   this.setDefaultTargets = function(arr) {
+    arr.forEach(function(target) {
+      if (datasets.indexOf(target.dataset) == -1) {
+        datasets.push(target.dataset);
+      }
+    });
     defaultTargets = arr;
   };
 

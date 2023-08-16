@@ -122,10 +122,10 @@ export function LayerControl(gui) {
 
   function render() {
     renderLayerList();
-    renderFileList();
+    renderSourceFileList();
   }
 
-  function renderFileList() {
+  function renderSourceFileList() {
     var list = el.findChild('.file-list');
     var files = [];
     list.empty();

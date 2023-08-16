@@ -62,9 +62,10 @@ export function mergeCommandTargets(targets, catalog) {
 export function mergeDatasets(arr) {
   var arcSources = [],
       arcCount = 0,
-      mergedLayers = [],
-      mergedInfo = {},
-      mergedArcs;
+      merged = {
+        info: {},
+        layers: []
+      };
 
   // Error if incompatible CRS
   requireDatasetsHaveCompatibleCRS(arr);
@@ -75,38 +76,35 @@ export function mergeDatasets(arr) {
       arcSources.push(dataset.arcs);
     }
 
-    mergeDatasetInfo(mergedInfo, dataset);
+    mergeDatasetInfo(merged, dataset);
     dataset.layers.forEach(function(lyr) {
       if (lyr.geometry_type == 'polygon' || lyr.geometry_type == 'polyline') {
         forEachArcId(lyr.shapes, function(id) {
           return id < 0 ? id - arcCount : id + arcCount;
         });
       }
-      mergedLayers.push(lyr);
+      merged.layers.push(lyr);
     });
     arcCount += n;
   });
 
   if (arcSources.length > 0) {
-    mergedArcs = mergeArcs(arcSources);
-    if (mergedArcs.size() != arcCount) {
+    merged.arcs = mergeArcs(arcSources);
+    if (merged.arcs.size() != arcCount) {
       error("[mergeDatasets()] Arc indexing error");
     }
   }
 
-  return {
-    info: mergedInfo,
-    arcs: mergedArcs,
-    layers: mergedLayers
-  };
+  return merged;
 }
 
-function mergeDatasetInfo(merged, dataset) {
-  var info = dataset.info || {};
-  merged.input_files = utils.uniq((merged.input_files || []).concat(info.input_files || []));
-  merged.input_formats = utils.uniq((merged.input_formats || []).concat(info.input_formats || []));
+export function mergeDatasetInfo(merged, dataset) {
+  var src = dataset.info || {};
+  var dest = merged.info || (merged.info = {});
+  dest.input_files = utils.uniq((dest.input_files || []).concat(src.input_files || []));
+  dest.input_formats = utils.uniq((dest.input_formats || []).concat(src.input_formats || []));
   // merge other info properties (e.g. input_geojson_crs, input_delimiter, prj, crs)
-  utils.defaults(merged, info);
+  utils.defaults(dest, src);
 }
 
 export function mergeArcs(arr) {

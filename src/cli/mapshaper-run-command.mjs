@@ -13,6 +13,7 @@ import { stop, error, UserError, verbose } from '../utils/mapshaper-logging';
 import utils from '../utils/mapshaper-utils';
 import cmd from '../mapshaper-cmd';
 import { stashVar, clearStash } from '../mapshaper-stash';
+import { applyCommandToEachLayer } from '../cli/mapshaper-command-utils';
 
 import '../commands/mapshaper-add-shape';
 import '../commands/mapshaper-affine';
@@ -112,7 +113,6 @@ export async function runCommand(command, job) {
       targets,
       targetDataset,
       targetLayers,
-      target,
       arcs;
 
   if (skipCommand(name, job)) {
@@ -173,6 +173,10 @@ export async function runCommand(command, job) {
     if (opts.source) {
       source = findCommandSource(convertSourceName(opts.source, targets), job.catalog, opts);
     }
+
+    // identify command target/input (for postprocessing)
+    // TODO: support commands with multiple target datasets
+    // target = name == 'i' ? null : targets[0];
 
     if (name == 'add-shape') {
       if (!targetDataset) {
@@ -281,6 +285,9 @@ export async function runCommand(command, job) {
     } else if (name == 'graticule') {
       job.catalog.addDataset(cmd.graticule(targetDataset, opts));
 
+    } else if (name == 'grid') {
+      outputDataset = cmd.polygonGrid(targetLayers, targetDataset, opts);
+
     } else if (name == 'help') {
       // placing help command here to handle errors from invalid command names
       cmd.printHelp(command.options);
@@ -351,9 +358,6 @@ export async function runCommand(command, job) {
 
     } else if (name == 'point-to-grid') {
       outputLayers = cmd.pointToGrid(targetLayers, targetDataset, opts);
-
-    } else if (name == 'grid') {
-      outputDataset = cmd.polygonGrid(targetLayers, targetDataset, opts);
 
     } else if (name == 'points') {
       outputLayers = applyCommandToEachLayer(cmd.createPointLayer, targetLayers, targetDataset, opts);
@@ -509,9 +513,12 @@ export async function runCommand(command, job) {
 
     // delete arcs if no longer needed (e.g. after -points command)
     // (after output layers have been integrated)
+    // TODO: be more selective (e.g. -i command doesn't need cleanup)
+    //   or: detect if arcs have been changed
     if (targetDataset) {
       cleanupArcs(targetDataset);
     }
+
   } catch(e) {
     return done(e);
   }
@@ -532,18 +539,3 @@ function outputLayersAreDifferent(output, input) {
     return output.indexOf(lyr) > -1;
   });
 }
-
-// Apply a command to an array of target layers
-function applyCommandToEachLayer(func, targetLayers) {
-  var args = utils.toArray(arguments).slice(2);
-  return targetLayers.reduce(function(memo, lyr) {
-    var result = func.apply(null, [lyr].concat(args));
-    if (utils.isArray(result)) { // some commands return an array of layers
-      memo = memo.concat(result);
-    } else if (result) { // assuming result is a layer
-      memo.push(result);
-    }
-    return memo;
-  }, []);
-}
-

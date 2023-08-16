@@ -4,6 +4,35 @@ import assert from 'assert';
 
 describe('mapshaper-require.js', function () {
   describe('-require command', function () {
+
+    it('define a new command and run it', async function() {
+      var json = [{foo: 'bar'}];
+      var script = 'test/data/features/require/command1.js';
+      var cmd = `-i data.json -require ${script} -set-foo baz -o`;
+      var out = await api.applyCommands(cmd, {'data.json': json});
+      var json = JSON.parse(out['data.json']);
+      assert.deepEqual(json, [{foo: 'baz'}])
+    });
+
+    it('define a new command and run it 2', async function() {
+      var json = [{lng: 0, lat: 1}];
+      var script = 'test/data/features/require/command2.js';
+      var cmd = `-i data.json -require ${script} -make-points x=lng y=lat -o`;
+      var out = await api.applyCommands(cmd, {'data.json': json});
+      var expect = {
+        type: 'FeatureCollection',
+        features: [{
+          type: 'Feature',
+          properties: {lng: 0, lat: 1},
+          geometry: {
+            type: 'Point',
+            coordinates: [0, 1]
+          }
+        }]
+      };
+      assert.deepEqual(JSON.parse(out['data.json']), expect)
+    })
+
     it('require a named module and use it', function (done) {
       var json = [{foo: 'bar'}];
       var cmd = '-i in.json -require underscore alias=_ -each "str = _.isString(foo)" -o out.json';

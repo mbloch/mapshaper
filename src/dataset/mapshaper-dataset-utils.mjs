@@ -24,6 +24,18 @@ export function splitDataset(dataset) {
   });
 }
 
+// dest: destination dataset
+// src: source dataset
+export function mergeDatasetInfo(dest, src) {
+  var srcInfo = src.info || {};
+  var destInfo = dest.info || (dest.info = {});
+  destInfo.input_files = utils.uniq((destInfo.input_files || []).concat(srcInfo.input_files || []));
+  destInfo.input_formats = utils.uniq((destInfo.input_formats || []).concat(srcInfo.input_formats || []));
+  // merge other info properties (e.g. input_geojson_crs, input_delimiter, prj, crs)
+  utils.defaults(destInfo, srcInfo);
+}
+
+
 export function splitApartLayers(dataset, layers) {
   var datasets = [];
   dataset.layers = dataset.layers.filter(function(lyr) {

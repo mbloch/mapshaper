@@ -150,10 +150,11 @@ function makeCellCoords(bbox, opts) {
   return [[a, b],[a, d],[c, d],[c, b],[a, b]];
 }
 
-function makeCircleCoords(center, opts) {
+export function makeCircleCoords(center, opts) {
   var margin = opts.cell_margin > 0 ? opts.cell_margin : 1e-6;
   var radius = opts.interval / 2 * (1 - margin);
-  return getPointBufferCoordinates(center, radius, 20, getPlanarSegmentEndpoint);
+  var vertices = opts.vertices || 20;
+  return getPointBufferCoordinates(center, radius, vertices, getPlanarSegmentEndpoint);
 }
 
 // Returns a function that receives a cell index and returns indices of points
@@ -164,12 +165,15 @@ export function getPointIndex(points, grid, radius) {
   var bboxIndex = new Flatbush(points.length);
   var empty = [];
   points.forEach(function(p) {
+    var bbox = getPointBounds(p, radius);
     addPointToGridIndex(p, gridIndex, grid);
-    bboxIndex.add.apply(bboxIndex, getPointBounds(p, radius));
+    bboxIndex.add.apply(bboxIndex, bbox);
   });
   bboxIndex.finish();
   return function(i) {
-    if (!gridIndex.hasId(i)) return empty;
+    if (!gridIndex.hasId(i)) {
+      return empty;
+    }
     var bbox = grid.idxToBBox(i);
     var indices = bboxIndex.search.apply(bboxIndex, bbox);
     return indices;

@@ -48,6 +48,7 @@ cmd.runExternalCommand = function(cmdOpts, catalog) {
   var opts = parseExternalCommand(name, cmdDefn, cmdOpts._);
   var targets = catalog.findCommandTargets(opts.target || '*');
   var target = targets[0];
+  var output;
   if (!target) {
     stop('Missing a target');
   }
@@ -58,11 +59,33 @@ cmd.runExternalCommand = function(cmdOpts, catalog) {
     stop("Targetting layers from multiple datasets is not supported");
   }
   if (targetType == 'layer') {
-    cmdDefn.command(target.layers[0], target.dataset, opts.options);
+    output = cmdDefn.command(target.layers[0], target.dataset, opts.options);
   } else if (targetType == 'layers') {
-    cmdDefn.command(target.layers, target.dataset, opts.options);
+    output = cmdDefn.command(target.layers, target.dataset, opts.options);
+  }
+  if (output) {
+    integrateOutput(output, target, catalog, opts);
   }
 };
+
+// TODO: remove restrictions on output data
+function integrateOutput(output, input, catalog, opts) {
+  if (!output.dataset || !output.layers || output.layers.length > 0 === false) {
+    stop('Invalid command output');
+  }
+  if (output.dataset == input.dataset) {
+    stop('External commands are not currently allowed to modify input datasets');
+  }
+  if (output.dataset.layers.length != output.layers.length) {
+    stop('Currently not supported: targetting a subset of output layers');
+  }
+  if (!opts.no_replace) {
+    input.layers.forEach(function(lyr) {
+      catalog.deleteLayer(lyr, input.dataset);
+    });
+  }
+  catalog.addDataset(output.dataset);
+}
 
 function parseExternalCommand(name, cmdDefn, tokens) {
   var parser = new CommandParser();

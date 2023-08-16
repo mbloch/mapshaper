@@ -71,6 +71,26 @@ export function setLoggingFunctions(message, error, stop) {
   _stop = stop;
 }
 
+// get detailed error information from error stack (if available)
+// Example stack string (Node.js):
+/*
+/Users/someuser/somescript.js:226
+    opacity: Math.round(weight * 5 / 5 // 0.2 0.4 0.6 etc
+                                     ^
+
+SyntaxError: missing ) after argument list
+    at internalCompileFunction (node:internal/vm:73:18)
+    at wrapSafe (node:internal/modules/cjs/loader:1149:20)
+    at Module._compile (node:internal/modules/cjs/loader:1190:27)
+    ...
+*/
+export function getErrorDetail(e) {
+  var parts = (typeof e.stack == 'string') ? e.stack.split(/\n\s*\n/) : [];
+  if (parts.length > 1 || true) {
+    return '\nError details:\n' + parts[0];
+  }
+  return '';
+}
 
 // print a message to stdout
 export function print() {

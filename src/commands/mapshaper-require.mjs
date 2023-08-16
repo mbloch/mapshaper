@@ -1,6 +1,6 @@
 import { runGlobalExpression } from '../commands/mapshaper-run';
 import cmd from '../mapshaper-cmd';
-import { stop } from '../utils/mapshaper-logging';
+import { stop, getErrorDetail } from '../utils/mapshaper-logging';
 import { getStashedVar } from '../mapshaper-stash';
 import cli from '../cli/mapshaper-cli-utils';
 import require from '../mapshaper-require';
@@ -33,8 +33,7 @@ cmd.require = function(targets, opts) {
       }
     }
   } catch(e) {
-    // stop(e);
-    stop('Unable to load external module:', e.message);
+    stop('Unable to load external module:', e.message, getErrorDetail(e));
   }
   if (moduleName || opts.alias) {
     defs[opts.alias || moduleName] = mod;
