@@ -39,9 +39,10 @@ function outputLayersAreDifferent(output, input) {
   });
 }
 
+// TODO: use this to postprocess all command output
 export function procCommandOutput(output, input, catalog, opts) {
   var inputTarget = isTarget(input) && input ||
-    isDataset(input) && {dataset: input, layers: dataset.layers} ||
+    isDataset(input) && {dataset: input, layers: input.layers} ||
     null;
 
   // standardize output into target format
@@ -83,10 +84,11 @@ export function procCommandOutput(output, input, catalog, opts) {
     // integrate output layers into the target dataset
     if (opts.no_replace) {
       // make sure commands do not return input layers with 'no_replace' option
-      if (!outputLayersAreDifferent(outputLayers, targetLayers || [])) {
+      if (!outputLayersAreDifferent(outputTarget.layers, inputTarget.layers || [])) {
         error('Command returned invalid output');
       }
-      targetDataset.layers = targetDataset.layers.concat(outputLayers);
+      // add output layers to target dataset
+      outputTarget.dataset.layers =  outputTarget.dataset.layers.concat(outputTarget.layers);
     } else {
       // TODO: consider replacing old layers as they are generated, for gc
       replaceLayers(inputTarget.dataset, inputTarget.layers, outputTarget.layers);
