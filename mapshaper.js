@@ -1,6 +1,6 @@
 (function () {
 
-  var VERSION = "0.6.41";
+  var VERSION = "0.6.42";
 
 
   var utils = /*#__PURE__*/Object.freeze({
@@ -1267,6 +1267,26 @@
     _stop = stop;
   }
 
+  // get detailed error information from error stack (if available)
+  // Example stack string (Node.js):
+  /*
+  /Users/someuser/somescript.js:226
+      opacity: Math.round(weight * 5 / 5 // 0.2 0.4 0.6 etc
+                                       ^
+
+  SyntaxError: missing ) after argument list
+      at internalCompileFunction (node:internal/vm:73:18)
+      at wrapSafe (node:internal/modules/cjs/loader:1149:20)
+      at Module._compile (node:internal/modules/cjs/loader:1190:27)
+      ...
+  */
+  function getErrorDetail(e) {
+    var parts = (typeof e.stack == 'string') ? e.stack.split(/\n\s*\n/) : [];
+    if (parts.length > 1 || true) {
+      return '\nError details:\n' + parts[0];
+    }
+    return '';
+  }
 
   // print a message to stdout
   function print() {
@@ -1389,6 +1409,7 @@
     interrupt: interrupt,
     message: message,
     setLoggingFunctions: setLoggingFunctions,
+    getErrorDetail: getErrorDetail,
     print: print,
     verbose: verbose,
     debug: debug,
@@ -6359,9 +6380,10 @@
   function mergeDatasets(arr) {
     var arcSources = [],
         arcCount = 0,
-        mergedLayers = [],
-        mergedInfo = {},
-        mergedArcs;
+        merged = {
+          info: {},
+          layers: []
+        };
 
     // Error if incompatible CRS
     requireDatasetsHaveCompatibleCRS(arr);
@@ -6372,38 +6394,35 @@
         arcSources.push(dataset.arcs);
       }
 
-      mergeDatasetInfo(mergedInfo, dataset);
+      mergeDatasetInfo$1(merged, dataset);
       dataset.layers.forEach(function(lyr) {
         if (lyr.geometry_type == 'polygon' || lyr.geometry_type == 'polyline') {
           forEachArcId(lyr.shapes, function(id) {
             return id < 0 ? id - arcCount : id + arcCount;
           });
         }
-        mergedLayers.push(lyr);
+        merged.layers.push(lyr);
       });
       arcCount += n;
     });
 
     if (arcSources.length > 0) {
-      mergedArcs = mergeArcs(arcSources);
-      if (mergedArcs.size() != arcCount) {
+      merged.arcs = mergeArcs(arcSources);
+      if (merged.arcs.size() != arcCount) {
         error("[mergeDatasets()] Arc indexing error");
       }
     }
 
-    return {
-      info: mergedInfo,
-      arcs: mergedArcs,
-      layers: mergedLayers
-    };
+    return merged;
   }
 
-  function mergeDatasetInfo(merged, dataset) {
-    var info = dataset.info || {};
-    merged.input_files = utils.uniq((merged.input_files || []).concat(info.input_files || []));
-    merged.input_formats = utils.uniq((merged.input_formats || []).concat(info.input_formats || []));
+  function mergeDatasetInfo$1(merged, dataset) {
+    var src = dataset.info || {};
+    var dest = merged.info || (merged.info = {});
+    dest.input_files = utils.uniq((dest.input_files || []).concat(src.input_files || []));
+    dest.input_formats = utils.uniq((dest.input_formats || []).concat(src.input_formats || []));
     // merge other info properties (e.g. input_geojson_crs, input_delimiter, prj, crs)
-    utils.defaults(merged, info);
+    utils.defaults(dest, src);
   }
 
   function mergeArcs(arr) {
@@ -6450,6 +6469,7 @@
     mergeDatasetsForExport: mergeDatasetsForExport,
     mergeCommandTargets: mergeCommandTargets,
     mergeDatasets: mergeDatasets,
+    mergeDatasetInfo: mergeDatasetInfo$1,
     mergeArcs: mergeArcs
   });
 
@@ -6900,6 +6920,18 @@
     });
   }
 
+  // dest: destination dataset
+  // src: source dataset
+  function mergeDatasetInfo(dest, src) {
+    var srcInfo = src.info || {};
+    var destInfo = dest.info || (dest.info = {});
+    destInfo.input_files = utils.uniq((destInfo.input_files || []).concat(srcInfo.input_files || []));
+    destInfo.input_formats = utils.uniq((destInfo.input_formats || []).concat(srcInfo.input_formats || []));
+    // merge other info properties (e.g. input_geojson_crs, input_delimiter, prj, crs)
+    utils.defaults(destInfo, srcInfo);
+  }
+
+
   function splitApartLayers(dataset, layers) {
     var datasets = [];
     dataset.layers = dataset.layers.filter(function(lyr) {
@@ -7064,6 +7096,7 @@
   var DatasetUtils = /*#__PURE__*/Object.freeze({
     __proto__: null,
     splitDataset: splitDataset,
+    mergeDatasetInfo: mergeDatasetInfo,
     splitApartLayers: splitApartLayers,
     copyDataset: copyDataset,
     copyDatasetForExport: copyDatasetForExport,
@@ -11205,20 +11238,43 @@
     return dest;
   };
 
+  // Receives a directory path, in which the final subdirectory may include the
+  //   "*" wildcard, e.g. '.' 'data' '*' 'data/*' '2023-*'
+  // Returns an array of expanded directory names
+  // TODO: add support for wildcards in other subdirectories
+  cli.expandDirectoryName = function(name) {
+    var info = parseLocalPath(name);
+    // final directory name is parsed as info.filename
+    if (!info.filename.includes('*')) {
+      return [name];
+    }
+    var rxp = utils.wildcardToRegExp(info.filename);
+    var dirs = [];
+    require$1('fs').readdirSync(info.directory || '.').forEach(function(item) {
+      var path = info.directory ? require$1('path').join(info.directory, item) : item;
+      if (rxp.test(item) && cli.isDirectory(path)) {
+        dirs.push(path);
+      }
+    });
+    return dirs;
+  };
+
   // Expand any "*" wild cards in file name
   // (For the Windows command line; unix shells do this automatically)
   cli.expandFileName = function(name) {
     var info = parseLocalPath(name),
         rxp = utils.wildcardToRegExp(info.filename),
-        dir = info.directory || '.',
+        dirs = cli.expandDirectoryName(info.directory || '.'),
         files = [];
 
     try {
-      require$1('fs').readdirSync(dir).forEach(function(item) {
-        var path = require$1('path').join(dir, item);
-        if (rxp.test(item) && cli.isFile(path)) {
-          files.push(path);
-        }
+      dirs.forEach(function(dir) {
+        require$1('fs').readdirSync(dir).forEach(function(item) {
+          var path = require$1('path').join(dir, item);
+          if (rxp.test(item) && cli.isFile(path)) {
+            files.push(path);
+          }
+        });
       });
     } catch(e) {}
 
@@ -28239,20 +28295,23 @@ ${svg}
     };
 
     this.setDefaultTarget = function(layers, dataset) {
-      if (datasets.indexOf(dataset) == -1) {
-        datasets.push(dataset);
-      }
-      defaultTargets = [{
+      this.setDefaultTargets([{
         // Copy layers array, in case layers is a reference to dataset.layers.
         // This prevents layers that are added to the dataset inside a command from
         //  being added to the next command's target, e.g. debugging layers added
         //  by '-join unmatched unjoined'.
         layers: layers.concat(),
         dataset: dataset
-      }];
+      }]);
     };
 
+    // arr: array of target objects {layers:[], dataset:{}}
     this.setDefaultTargets = function(arr) {
+      arr.forEach(function(target) {
+        if (datasets.indexOf(target.dataset) == -1) {
+          datasets.push(target.dataset);
+        }
+      });
       defaultTargets = arr;
     };
 
@@ -28343,6 +28402,30 @@ ${svg}
     stashVar('QUIET', job.settings.QUIET || cmd.quiet);
     stashVar('defs', job.defs);
     stashVar('input_files', job.input_files);
+  }
+
+  // Apply a command to an array of target layers
+  function applyCommandToEachLayer(func, targetLayers) {
+    var args = utils.toArray(arguments).slice(2);
+    return targetLayers.reduce(function(memo, lyr) {
+      var result = func.apply(null, [lyr].concat(args));
+      if (utils.isArray(result)) { // some commands return an array of layers
+        memo = memo.concat(result);
+      } else if (result) { // assuming result is a layer
+        memo.push(result);
+      }
+      return memo;
+    }, []);
+  }
+
+  function applyCommandToEachTarget(func, targets) {
+    var args = utils.toArray(arguments).slice(2);
+    targets.forEach(function(target) {
+      var result = func.apply(null, [target].concat(args));
+      if (result) {
+        error('Unexpected output from command');
+      }
+    });
   }
 
   cmd.addShape = addShape;
@@ -36290,6 +36373,7 @@ ${svg}
     var opts = parseExternalCommand(name, cmdDefn, cmdOpts._);
     var targets = catalog.findCommandTargets(opts.target || '*');
     var target = targets[0];
+    var output;
     if (!target) {
       stop('Missing a target');
     }
@@ -36300,11 +36384,33 @@ ${svg}
       stop("Targetting layers from multiple datasets is not supported");
     }
     if (targetType == 'layer') {
-      cmdDefn.command(target.layers[0], target.dataset, opts.options);
+      output = cmdDefn.command(target.layers[0], target.dataset, opts.options);
     } else if (targetType == 'layers') {
-      cmdDefn.command(target.layers, target.dataset, opts.options);
+      output = cmdDefn.command(target.layers, target.dataset, opts.options);
+    }
+    if (output) {
+      integrateOutput(output, target, catalog, opts);
     }
   };
+
+  // TODO: remove restrictions on output data
+  function integrateOutput(output, input, catalog, opts) {
+    if (!output.dataset || !output.layers || output.layers.length > 0 === false) {
+      stop('Invalid command output');
+    }
+    if (output.dataset == input.dataset) {
+      stop('External commands are not currently allowed to modify input datasets');
+    }
+    if (output.dataset.layers.length != output.layers.length) {
+      stop('Currently not supported: targetting a subset of output layers');
+    }
+    if (!opts.no_replace) {
+      input.layers.forEach(function(lyr) {
+        catalog.deleteLayer(lyr, input.dataset);
+      });
+    }
+    catalog.addDataset(output.dataset);
+  }
 
   function parseExternalCommand(name, cmdDefn, tokens) {
     var parser = new CommandParser();
@@ -40720,7 +40826,8 @@ ${svg}
   function makeCircleCoords(center, opts) {
     var margin = opts.cell_margin > 0 ? opts.cell_margin : 1e-6;
     var radius = opts.interval / 2 * (1 - margin);
-    return getPointBufferCoordinates(center, radius, 20, getPlanarSegmentEndpoint);
+    var vertices = opts.vertices || 20;
+    return getPointBufferCoordinates(center, radius, vertices, getPlanarSegmentEndpoint);
   }
 
   // Returns a function that receives a cell index and returns indices of points
@@ -40731,12 +40838,15 @@ ${svg}
     var bboxIndex = new Flatbush(points.length);
     var empty = [];
     points.forEach(function(p) {
+      var bbox = getPointBounds(p, radius);
       addPointToGridIndex(p, gridIndex, grid);
-      bboxIndex.add.apply(bboxIndex, getPointBounds(p, radius));
+      bboxIndex.add.apply(bboxIndex, bbox);
     });
     bboxIndex.finish();
     return function(i) {
-      if (!gridIndex.hasId(i)) return empty;
+      if (!gridIndex.hasId(i)) {
+        return empty;
+      }
       var bbox = grid.idxToBBox(i);
       var indices = bboxIndex.search.apply(bboxIndex, bbox);
       return indices;
@@ -40870,6 +40980,7 @@ ${svg}
     calcWeights: calcWeights,
     twoCircleIntersection: twoCircleIntersection,
     makeCellPolygon: makeCellPolygon,
+    makeCircleCoords: makeCircleCoords,
     getPointIndex: getPointIndex,
     getAlignedGridBounds: getAlignedGridBounds,
     getCenteredGridBounds: getCenteredGridBounds,
@@ -41198,8 +41309,7 @@ ${svg}
         }
       }
     } catch(e) {
-      // stop(e);
-      stop('Unable to load external module:', e.message);
+      stop('Unable to load external module:', e.message, getErrorDetail(e));
     }
     if (moduleName || opts.alias) {
       defs[opts.alias || moduleName] = mod;
@@ -42230,9 +42340,10 @@ ${svg}
     }
   };
 
-  cmd.snap = function(dataset, opts) {
+  cmd.snap = function(target, opts) {
     var interval = 0;
     var snapCount = 0;
+    var dataset = target.dataset;
     var arcs = dataset.arcs;
     var arcBounds = arcs && arcs.getBounds();
     if (!arcBounds || !arcBounds.hasBounds()) {
@@ -43367,7 +43478,7 @@ ${svg}
   function commandAcceptsMultipleTargetDatasets(name) {
     return name == 'rotate' || name == 'info' || name == 'proj' || name == 'require' ||
       name == 'drop' || name == 'target' || name == 'if' || name == 'elif' ||
-      name == 'else' || name == 'endif' || name == 'run' || name == 'i';
+      name == 'else' || name == 'endif' || name == 'run' || name == 'i' || name == 'snap';
   }
 
   function commandAcceptsEmptyTarget(name) {
@@ -43448,6 +43559,10 @@ ${svg}
       if (opts.source) {
         source = findCommandSource(convertSourceName(opts.source, targets), job.catalog, opts);
       }
+
+      // identify command target/input (for postprocessing)
+      // TODO: support commands with multiple target datasets
+      // target = name == 'i' ? null : targets[0];
 
       if (name == 'add-shape') {
         if (!targetDataset) {
@@ -43556,6 +43671,9 @@ ${svg}
       } else if (name == 'graticule') {
         job.catalog.addDataset(cmd.graticule(targetDataset, opts));
 
+      } else if (name == 'grid') {
+        outputDataset = cmd.polygonGrid(targetLayers, targetDataset, opts);
+
       } else if (name == 'help') {
         // placing help command here to handle errors from invalid command names
         cmd.printHelp(command.options);
@@ -43627,9 +43745,6 @@ ${svg}
       } else if (name == 'point-to-grid') {
         outputLayers = cmd.pointToGrid(targetLayers, targetDataset, opts);
 
-      } else if (name == 'grid') {
-        outputDataset = cmd.polygonGrid(targetLayers, targetDataset, opts);
-
       } else if (name == 'points') {
         outputLayers = applyCommandToEachLayer(cmd.createPointLayer, targetLayers, targetDataset, opts);
 
@@ -43693,7 +43808,8 @@ ${svg}
         outputLayers = cmd.sliceLayers(targetLayers, source, targetDataset, opts);
 
       } else if (name == 'snap') {
-        cmd.snap(targetDataset, opts);
+        // cmd.snap(targetDataset, opts);
+        applyCommandToEachTarget(targets, opts);
 
       } else if (name == 'sort') {
         applyCommandToEachLayer(cmd.sortFeatures, targetLayers, arcs, opts);
@@ -43784,9 +43900,12 @@ ${svg}
 
       // delete arcs if no longer needed (e.g. after -points command)
       // (after output layers have been integrated)
+      // TODO: be more selective (e.g. -i command doesn't need cleanup)
+      //   or: detect if arcs have been changed
       if (targetDataset) {
         cleanupArcs(targetDataset);
       }
+
     } catch(e) {
       return done(e);
     }
@@ -43806,20 +43925,6 @@ ${svg}
     return !utils.some(input, function(lyr) {
       return output.indexOf(lyr) > -1;
     });
-  }
-
-  // Apply a command to an array of target layers
-  function applyCommandToEachLayer(func, targetLayers) {
-    var args = utils.toArray(arguments).slice(2);
-    return targetLayers.reduce(function(memo, lyr) {
-      var result = func.apply(null, [lyr].concat(args));
-      if (utils.isArray(result)) { // some commands return an array of layers
-        memo = memo.concat(result);
-      } else if (result) { // assuming result is a layer
-        memo.push(result);
-      }
-      return memo;
-    }, []);
   }
 
   // Parse command line args into commands and run them
@@ -44465,6 +44570,7 @@ ${svg}
     editArcs,
     GeoJSONReader,
     Heap,
+    IdLookupIndex,
     NodeCollection,
     parseDMS,
     formatDMS,

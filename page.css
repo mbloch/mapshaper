@@ -256,7 +256,7 @@ body {
 
 /* --- Error message ---------- */
 
-.error-wrapper {
+.alert-wrapper {
 	z-index: 120;
 	text-align: center;
 	position: absolute;
@@ -266,27 +266,31 @@ body {
 	left: 0;
 }
 
-.error-wrapper p.error-message {
+.alert-wrapper p.error-message {
 	margin: 1px 0 0 0;
 }
 
-.error-wrapper .dialog-btn {
-	margin-top: 8px;
-}
-
-.error-title {
+.alert-title {
 	line-height: 1.1;
 	font-weight: bold;
 	margin-bottom: 5px;
 }
 
-div.error-box {
+div.alert-title, div.error-message {
+	font-size: 16px;
+}
+
+.alert-wrapper .alert-btn {
+	margin-top: 8px;
+}
+
+div.alert-box {
 	margin-top: 42px; /* 55px; */
 	overflow: auto;
 	max-height: 70%;
 	max-width: 400px;
-	font-size: 16px;
 }
+
 
 
 /* --- Splash screen -------------- */
@@ -513,7 +517,7 @@ body.dragover #import-options-drop-area .drop-area {
 	text-align: left;
 	margin-top: 12px;
 	margin-right: 20px;
-	padding: 12px 16px 12px 18px;
+	padding: 11px 16px 12px 18px;
 	vertical-align: top;
 	display: inline-block;
 	/* border: 1px solid #aaa; */
@@ -553,6 +557,7 @@ body.dragover #import-options-drop-area .drop-area {
 	top: 1px;
 	width: 12px;
 	height: 12px;
+	cursor: pointer;
 }
 
 .info-box .tip-button {
@@ -800,7 +805,7 @@ img.close-btn {
 	float: right;
 	height:  18px;
 	width:  18px;
-	margin-top: 1px;
+	/* margin-top: 1px; */
 	margin-right: -3px;
 	cursor: pointer;
 	border-radius: 4px;
@@ -1227,11 +1232,14 @@ div.basemap-style-btn.active img {
 	top: 23px;
 }
 
-#save-preference {
-	display: none;
+.inline-checkbox {
 	position: relative;
 	top: 1px;
 	left: 5px;
+}
+
+#save-preference {
+	/* display: none; */
 }
 
 .nav-sub-menu {
@@ -1316,13 +1324,23 @@ div.basemap-style-btn.active img {
 	background: white;
 }
 
-.save-menu-btn {
+/*.save-menu-btn {
 	display: inline-block;
 	border-radius: 4px;
 	border: 1px solid #aaa;
 	font-size: 12px;
 	margin-left: 2px;
 	padding: 1px 2px 3px 2px;
+}*/
+
+.save-menu-btn {
+	display: inline-block;
+	font-size: 12px;
+	margin-top: 2px;
+}
+
+.save-menu-btn:hover {
+	color: black;
 }
 
 .save-menu-link,
@@ -1330,10 +1348,7 @@ div.basemap-style-btn.active img {
 	cursor: pointer;
 }
 
-.save-menu-btn:hover {
-	background: #e6f7ff;
-	color: black;
-}
+
 
 .save-menu-link:hover {
 	/* background: #e6f7ff; */

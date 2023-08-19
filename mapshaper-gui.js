@@ -1125,21 +1125,26 @@
     var self = {}, html = '';
     var _cancel, _close;
     var warningRxp = /^Warning: /;
-    var el = El('div').appendTo('body').addClass('error-wrapper');
-    var infoBox = El('div').appendTo(el).addClass('error-box info-box selectable');
+    var el = El('div').appendTo('body').addClass('alert-wrapper');
+    var infoBox = El('div').appendTo(el).addClass('alert-box info-box selectable');
+    El('div').appendTo(infoBox).addClass('close2-btn').on('click', function() {
+      if (_cancel) _cancel();
+      self.close();
+    });
+    var container = El('div').appendTo(infoBox);
     if (!title && warningRxp.test(msg)) {
       title = 'Warning';
       msg = msg.replace(warningRxp, '');
     }
     if (title) {
-      html += `<div class="error-title">${title}</div>`;
+      El('div').addClass('alert-title').text(title).appendTo(container);
     }
-    html += `<p class="error-message">${msg}</p>`;
-    El('div').appendTo(infoBox).addClass('close2-btn').on('click', function() {
-      if (_cancel) _cancel();
-      self.close();
-    });
-    El('div').appendTo(infoBox).addClass('error-content').html(html);
+    var content = El('div').appendTo(infoBox);
+    if (msg) {
+      content.html(`<p class="error-message">${msg}</p>`);
+    }
+
+    self.container = function() { return content; };
 
     self.onCancel = function(cb) {
       _cancel = cb;
@@ -4023,10 +4028,10 @@
 
     function render() {
       renderLayerList();
-      renderFileList();
+      renderSourceFileList();
     }
 
-    function renderFileList() {
+    function renderSourceFileList() {
       var list = el.findChild('.file-list');
       var files = [];
       list.empty();
@@ -5064,6 +5069,26 @@
     _stop = stop;
   }
 
+  // get detailed error information from error stack (if available)
+  // Example stack string (Node.js):
+  /*
+  /Users/someuser/somescript.js:226
+      opacity: Math.round(weight * 5 / 5 // 0.2 0.4 0.6 etc
+                                       ^
+
+  SyntaxError: missing ) after argument list
+      at internalCompileFunction (node:internal/vm:73:18)
+      at wrapSafe (node:internal/modules/cjs/loader:1149:20)
+      at Module._compile (node:internal/modules/cjs/loader:1190:27)
+      ...
+  */
+  function getErrorDetail(e) {
+    var parts = (typeof e.stack == 'string') ? e.stack.split(/\n\s*\n/) : [];
+    if (parts.length > 1 || true) {
+      return '\nError details:\n' + parts[0];
+    }
+    return '';
+  }
 
   // print a message to stdout
   function print() {
@@ -7993,8 +8018,7 @@
       // stash a function for refreshing the current popup when data changes
       // while the popup is being displayed (e.g. while dragging a label)
       refresh = function() {
-        var rec = table && (editable ? table.getRecordAt(id) : table.getReadOnlyRecordAt(id)) || {};
-        render(content, rec, table, editable);
+        render(content, id, table, editable);
       };
       refresh();
       if (ids && ids.length > 1) {
@@ -8033,7 +8057,8 @@
       tab.show();
     }
 
-    function render(el, rec, table, editable) {
+    function render(el, recId, table, editable) {
+      var rec = table && (editable ? table.getRecordAt(recId) : table.getReadOnlyRecordAt(recId)) || {};
       var tableEl = El('table').addClass('selectable'),
           rows = 0;
       // self.hide(); // clean up if panel is already open
@@ -8047,11 +8072,6 @@
           rows++;
         }
       });
-
-      // add new field form
-      if (editable) {
-        renderNewRow(tableEl, rec, table);
-      }
 
       tableEl.appendTo(el);
       if (rows > 0) {
@@ -8077,15 +8097,58 @@
       }
 
       if (editable) {
+        // render "add field" button
         var line = El('div').appendTo(el);
         El('span').addClass('save-menu-btn').appendTo(line).on('click', async function(e) {
-
-        }).text('add field');
+          // show "add field" dialog
+          renderAddFieldPopup(recId, table);
+        }).text('+ add field');
       }
     }
 
-    function renderNewRow(el, rec, table) {
+    function renderAddFieldPopup(recId, table) {
+      var popup = showPopupAlert('', 'Add field');
+      var el = popup.container();
+      el.addClass('option-menu');
+      var html = `<input type="text" class="field-name text-input" placeholder="field name"><br>
+    <input type="text" class="field-value text-input" placeholder="value"><br>
+    <div class="btn dialog-btn">Apply</div> <span class="inline-checkbox"><input type="checkbox" class="all" />assign value to all records</span>`;
+      el.html(html);
 
+      var name = el.findChild('.field-name');
+      name.node().focus();
+      var val = el.findChild('.field-value');
+      var box = el.findChild('.all');
+      var btn = el.findChild('.btn').on('click', function() {
+        var all = box.node().checked;
+        var nameStr = name.node().value.trim();
+        if (!nameStr) return;
+        if (table.fieldExists(nameStr)) {
+          name.node().value = '';
+          return;
+        }
+        var valStr = val.node().value.trim();
+        var value = parseUnknownType(valStr);
+        // table.addField(nameStr, function(d) {
+        //   // parse each time to avoid multiple references to objects
+        //   return (all || d == rec) ? parseUnknownType(valStr) : null;
+        // });
+
+        var cmdStr = `-each "d['${nameStr}'] = `;
+        if (!all) {
+          cmdStr += `this.id != ${recId} ? null : `;
+        }
+        valStr = JSON.stringify(JSON.stringify(value));
+        cmdStr = valStr.replace('"', cmdStr);
+
+        gui.console.runMapshaperCommands(cmdStr, function(err) {
+          if (!err) {
+            popup.close();
+          } else {
+            console.error(err);
+          }
+        });
+      });
     }
 
     function renderRow(table, rec, key, type, editable) {
@@ -8121,12 +8184,10 @@
       input.on('change', function(e) {
         var val2 = parser(input.value()),
             strval2 = formatInspectorValue(val2, type);
-        if (strval == strval2) {
-          // contents unchanged
-        } else if (val2 === null && type != 'object') { // allow null objects
+        if (val2 === null && type != 'object') { // allow null objects
           // invalid value; revert to previous value
           input.value(strval);
-        } else {
+        } else if (strval != strval2) {
           // field content has changed
           strval = strval2;
           gui.dispatchEvent('data_preupdate', {FID: currId}); // for undo/redo
@@ -8190,6 +8251,14 @@
       return isNaN(val) ? raw : val;
     }
   };
+
+  function parseUnknownType(str) {
+    var val = inputParsers.number(str);
+    if (val !== null) return val;
+    val = inputParsers.object(str);
+    if (val !== null) return val;
+    return str;
+  }
 
   function getInputParser(type) {
     return inputParsers[type || 'multiple'];
