@@ -13,7 +13,7 @@ import { stop, error, UserError, verbose } from '../utils/mapshaper-logging';
 import utils from '../utils/mapshaper-utils';
 import cmd from '../mapshaper-cmd';
 import { stashVar, clearStash } from '../mapshaper-stash';
-import { applyCommandToEachLayer } from '../cli/mapshaper-command-utils';
+import { applyCommandToEachLayer, applyCommandToEachTarget } from '../cli/mapshaper-command-utils';
 
 import '../commands/mapshaper-add-shape';
 import '../commands/mapshaper-affine';
@@ -92,7 +92,7 @@ import '../commands/mapshaper-subdivide';
 function commandAcceptsMultipleTargetDatasets(name) {
   return name == 'rotate' || name == 'info' || name == 'proj' || name == 'require' ||
     name == 'drop' || name == 'target' || name == 'if' || name == 'elif' ||
-    name == 'else' || name == 'endif' || name == 'run' || name == 'i';
+    name == 'else' || name == 'endif' || name == 'run' || name == 'i' || name == 'snap';
 }
 
 function commandAcceptsEmptyTarget(name) {
@@ -422,7 +422,8 @@ export async function runCommand(command, job) {
       outputLayers = cmd.sliceLayers(targetLayers, source, targetDataset, opts);
 
     } else if (name == 'snap') {
-      cmd.snap(targetDataset, opts);
+      // cmd.snap(targetDataset, opts);
+      applyCommandToEachTarget(targets, opts);
 
     } else if (name == 'sort') {
       applyCommandToEachLayer(cmd.sortFeatures, targetLayers, arcs, opts);

@@ -3,6 +3,7 @@ import { utils, internal } from './gui-core';
 import { El } from './gui-el';
 import { GUI } from './gui-lib';
 import { ClickText2 } from './gui-elements';
+import { showPopupAlert } from './gui-alert';
 
 // toNext, toPrev: trigger functions for switching between multiple records
 export function Popup(gui, toNext, toPrev) {
@@ -35,8 +36,7 @@ export function Popup(gui, toNext, toPrev) {
     // stash a function for refreshing the current popup when data changes
     // while the popup is being displayed (e.g. while dragging a label)
     refresh = function() {
-      var rec = table && (editable ? table.getRecordAt(id) : table.getReadOnlyRecordAt(id)) || {};
-      render(content, rec, table, editable);
+      render(content, id, table, editable);
     };
     refresh();
     if (ids && ids.length > 1) {
@@ -75,7 +75,8 @@ export function Popup(gui, toNext, toPrev) {
     tab.show();
   }
 
-  function render(el, rec, table, editable) {
+  function render(el, recId, table, editable) {
+    var rec = table && (editable ? table.getRecordAt(recId) : table.getReadOnlyRecordAt(recId)) || {};
     var tableEl = El('table').addClass('selectable'),
         rows = 0;
     // self.hide(); // clean up if panel is already open
@@ -89,11 +90,6 @@ export function Popup(gui, toNext, toPrev) {
         rows++;
       }
     });
-
-    // add new field form
-    if (editable) {
-      renderNewRow(tableEl, rec, table);
-    }
 
     tableEl.appendTo(el);
     if (rows > 0) {
@@ -119,15 +115,58 @@ export function Popup(gui, toNext, toPrev) {
     }
 
     if (editable) {
+      // render "add field" button
       var line = El('div').appendTo(el);
       El('span').addClass('save-menu-btn').appendTo(line).on('click', async function(e) {
-
-      }).text('add field');
+        // show "add field" dialog
+        renderAddFieldPopup(recId, table);
+      }).text('+ add field');
     }
   }
 
-  function renderNewRow(el, rec, table) {
+  function renderAddFieldPopup(recId, table) {
+    var popup = showPopupAlert('', 'Add field');
+    var el = popup.container();
+    el.addClass('option-menu');
+    var html = `<input type="text" class="field-name text-input" placeholder="field name"><br>
+    <input type="text" class="field-value text-input" placeholder="value"><br>
+    <div class="btn dialog-btn">Apply</div> <span class="inline-checkbox"><input type="checkbox" class="all" />assign value to all records</span>`;
+    el.html(html);
 
+    var name = el.findChild('.field-name');
+    name.node().focus();
+    var val = el.findChild('.field-value');
+    var box = el.findChild('.all');
+    var btn = el.findChild('.btn').on('click', function() {
+      var all = box.node().checked;
+      var nameStr = name.node().value.trim();
+      if (!nameStr) return;
+      if (table.fieldExists(nameStr)) {
+        name.node().value = '';
+        return;
+      }
+      var valStr = val.node().value.trim();
+      var value = parseUnknownType(valStr);
+      // table.addField(nameStr, function(d) {
+      //   // parse each time to avoid multiple references to objects
+      //   return (all || d == rec) ? parseUnknownType(valStr) : null;
+      // });
+
+      var cmdStr = `-each "d['${nameStr}'] = `;
+      if (!all) {
+        cmdStr += `this.id != ${recId} ? null : `;
+      }
+      valStr = JSON.stringify(JSON.stringify(value));
+      cmdStr = valStr.replace('"', cmdStr);
+
+      gui.console.runMapshaperCommands(cmdStr, function(err) {
+        if (!err) {
+          popup.close();
+        } else {
+          console.error(err);
+        }
+      });
+    });
   }
 
   function renderRow(table, rec, key, type, editable) {
@@ -163,12 +202,10 @@ export function Popup(gui, toNext, toPrev) {
     input.on('change', function(e) {
       var val2 = parser(input.value()),
           strval2 = formatInspectorValue(val2, type);
-      if (strval == strval2) {
-        // contents unchanged
-      } else if (val2 === null && type != 'object') { // allow null objects
+      if (val2 === null && type != 'object') { // allow null objects
         // invalid value; revert to previous value
         input.value(strval);
-      } else {
+      } else if (strval != strval2) {
         // field content has changed
         strval = strval2;
         gui.dispatchEvent('data_preupdate', {FID: currId}); // for undo/redo
@@ -232,6 +269,14 @@ var inputParsers = {
     return isNaN(val) ? raw : val;
   }
 };
+
+function parseUnknownType(str) {
+  var val = inputParsers.number(str);
+  if (val !== null) return val;
+  val = inputParsers.object(str);
+  if (val !== null) return val;
+  return str;
+}
 
 function getInputParser(type) {
   return inputParsers[type || 'multiple'];

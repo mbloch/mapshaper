@@ -7,9 +7,10 @@ import { stop, message } from '../utils/mapshaper-logging';
 import cmd from '../mapshaper-cmd';
 import utils from '../utils/mapshaper-utils';
 
-cmd.snap = function(dataset, opts) {
+cmd.snap = function(target, opts) {
   var interval = 0;
   var snapCount = 0;
+  var dataset = target.dataset;
   var arcs = dataset.arcs;
   var arcBounds = arcs && arcs.getBounds();
   if (!arcBounds || !arcBounds.hasBounds()) {

@@ -4,21 +4,26 @@ export function showPopupAlert(msg, title) {
   var self = {}, html = '';
   var _cancel, _close;
   var warningRxp = /^Warning: /;
-  var el = El('div').appendTo('body').addClass('error-wrapper');
-  var infoBox = El('div').appendTo(el).addClass('error-box info-box selectable');
+  var el = El('div').appendTo('body').addClass('alert-wrapper');
+  var infoBox = El('div').appendTo(el).addClass('alert-box info-box selectable');
+  El('div').appendTo(infoBox).addClass('close2-btn').on('click', function() {
+    if (_cancel) _cancel();
+    self.close();
+  });
+  var container = El('div').appendTo(infoBox);
   if (!title && warningRxp.test(msg)) {
     title = 'Warning';
     msg = msg.replace(warningRxp, '');
   }
   if (title) {
-    html += `<div class="error-title">${title}</div>`;
+    El('div').addClass('alert-title').text(title).appendTo(container);
   }
-  html += `<p class="error-message">${msg}</p>`;
-  El('div').appendTo(infoBox).addClass('close2-btn').on('click', function() {
-    if (_cancel) _cancel();
-    self.close();
-  });
-  El('div').appendTo(infoBox).addClass('error-content').html(html);
+  var content = El('div').appendTo(infoBox);
+  if (msg) {
+    content.html(`<p class="error-message">${msg}</p>`);
+  }
+
+  self.container = function() { return content; };
 
   self.onCancel = function(cb) {
     _cancel = cb;

@@ -17,6 +17,16 @@ export function applyCommandToEachLayer(func, targetLayers) {
   }, []);
 }
 
+export function applyCommandToEachTarget(func, targets) {
+  var args = utils.toArray(arguments).slice(2);
+  targets.forEach(function(target) {
+    var result = func.apply(null, [target].concat(args));
+    if (result) {
+      error('Unexpected output from command');
+    }
+  });
+}
+
 function isLayer(arg) {
   return arg && (Array.isArray(arg.shapes) || !!arg.data || !!arg.geometry_type);
 }
