@@ -1,7 +1,6 @@
 v0.6.42
 * Added "+ add field" button to web ui inspector in attribute editing mode.
 
-
 v0.6.41
 * Bug fixes
 

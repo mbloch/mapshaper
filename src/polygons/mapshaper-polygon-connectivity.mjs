@@ -1,5 +1,5 @@
 
-import { IdLookupIndex } from '../indexes/mapshaper-id-lookup-index';
+import { ArcLookupIndex, IdLookupIndex } from '../indexes/mapshaper-id-lookup-index';
 import { traversePaths, getArcPresenceTest } from '../paths/mapshaper-path-utils';
 
 // Return function for returning connected groups of rings...
@@ -12,7 +12,7 @@ export function getConnectivityLookupFunction(lyr, arcs) {
 function indexRings(lyr, arcs) {
   var ringShapes = [];
   var ringToShapeIndex = [];
-  var arcToRingIndex = new IdLookupIndex(arcs.size());
+  var arcToRingIndex = new ArcLookupIndex(arcs.size());
   var islands = [];
   var ringToIslandIndex;
   var ringId;

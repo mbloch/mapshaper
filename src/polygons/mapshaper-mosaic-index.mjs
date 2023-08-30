@@ -3,7 +3,7 @@ import { TileShapeIndex } from '../polygons/mapshaper-tile-shape-index';
 import { getHoleDivider } from '../polygons/mapshaper-polygon-holes';
 import { buildPolygonMosaic } from '../polygons/mapshaper-polygon-mosaic';
 import { IdTestIndex } from '../indexing/mapshaper-id-test-index';
-import { IdLookupIndex } from '../indexing/mapshaper-id-lookup-index';
+import { ArcLookupIndex } from '../indexing/mapshaper-id-lookup-index';
 import { PolygonTiler } from '../polygons/mapshaper-polygon-tiler';
 import { error, stop } from '../utils/mapshaper-logging';
 import geom from '../geom/mapshaper-geom';
@@ -154,7 +154,7 @@ export function MosaicIndex(lyr, nodes, optsArg) {
 // Supports looking up a shape id using an arc id.
 export function ShapeArcIndex(shapes, arcs) {
   var n = arcs.size();
-  var index = new IdLookupIndex(n);
+  var index = new ArcLookupIndex(n);
   var shapeId;
   shapes.forEach(onShape);
 

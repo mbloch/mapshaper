@@ -1,7 +1,7 @@
 import { NodeCollection } from '../topology/mapshaper-nodes';
 import { getArcPresenceTest } from '../paths/mapshaper-path-utils';
 import { forEachShapePart } from '../paths/mapshaper-shape-utils';
-import { IdLookupIndex } from '../indexing/mapshaper-id-lookup-index';
+import { ClearableArcLookupIndex } from '../indexing/mapshaper-id-lookup-index';
 import { reversePath } from '../paths/mapshaper-path-utils';
 import { error } from '../utils/mapshaper-logging';
 
@@ -11,7 +11,7 @@ export function cleanPolylineLayerGeometry(lyr, dataset, opts) {
   var arcs = dataset.arcs;
   var filter = getArcPresenceTest(lyr.shapes, arcs);
   var nodes = new NodeCollection(arcs, filter);
-  var arcIndex = new IdLookupIndex(arcs.size(), true);
+  var arcIndex = new ClearableArcLookupIndex(arcs.size());
   lyr.shapes = lyr.shapes.map(function(shp, i) {
     if (!shp) return null;
     // split parts at nodes (where multiple arcs intersect)
