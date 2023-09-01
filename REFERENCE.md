@@ -1153,9 +1153,9 @@ Sort features in a data layer using a JavaScript expression.
 
 ### -split
 
-Distributes features in the target layer to multiple output layers. If the `fields=` option is present, features with the same attribute value are grouped together. If no data field is supplied, the input layer is split into single-feature layers.
+Distributes features in the target layer to multiple output layers. If the `expression=` option is present, features with the same return value are grouped together. If no expression or field is supplied, the input layer is split into single-feature layers.
 
-`<field>` or `field=`  Name of the attribute field to split on.
+`<expression>` or `expression=` expression or field for grouping features and naming split layers
 
 Common options: `+` `target=`
 
