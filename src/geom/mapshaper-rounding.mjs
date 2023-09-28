@@ -3,10 +3,10 @@ import { error } from '../utils/mapshaper-logging';
 import { forEachPoint } from '../points/mapshaper-point-utils';
 import utils from '../utils/mapshaper-utils';
 
+
 export function roundToSignificantDigits(n, d) {
   return +n.toPrecision(d);
 }
-
 
 export function roundToDigits(n, d) {
   return +n.toFixed(d); // string conversion makes this slow
@@ -70,6 +70,37 @@ export function roundPoints(lyr, round) {
     p[1] = round(p[1]);
   });
 }
+
+export const fround2 = (function() {
+  var arr = new Float32Array(1);
+  return function(x) {
+    arr[0] = x;
+    return arr[0];
+  };
+})();
+
+// This function rounds towards 0 (i.e. floor). TODO: round properly
+// @bits: number of bits to round
+// performance: about 3x slower than Math.fround()
+export function getBinaryRoundingFunction(bits) {
+  // double: sign (1) exponent (11) fraction (52)
+  // single: sign (1) exponent (8) fraction (23)
+  if ((bits >= 1 && bits <= 32) === false) {
+    error('Invalid bits argument:', bits);
+  }
+  var isLE = require('os').endianness() == 'LE';
+  var fp = new Float64Array(1);
+  var leastBits = new Uint32Array(fp.buffer, isLE ? 0 : 4, 1);
+  var mask = 2 ** 32 - 2 ** bits;  // e.g. bits = 4 -> 0b11110000
+  return function(x) {
+    fp[0] = x;
+    leastBits[0] = leastBits[0] & mask;
+    return fp[0];
+  };
+}
+
+// "round to even" on the 23rd bit of the mantissa
+export const fround = Math.fround || fround2;
 
 export function setCoordinatePrecision(dataset, precision) {
   var round = getRoundingFunction(precision);
