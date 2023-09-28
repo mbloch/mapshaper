@@ -1,0 +1,4 @@
+{
+  "name": "mapshaper-gui-require",
+  "main": "./index.js"
+}

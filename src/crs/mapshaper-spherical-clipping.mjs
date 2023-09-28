@@ -2,7 +2,7 @@ import { isLatLngCRS, getDatasetCRS } from '../crs/mapshaper-projections';
 import { clipLayersInPlace } from '../commands/mapshaper-clip-erase';
 import { getClippingDataset, getClampBBox } from '../crs/mapshaper-proj-extents';
 import { isRotatedNormalProjection } from '../crs/mapshaper-proj-info';
-import { layerHasPaths } from '../dataset/mapshaper-layer-utils';
+import { layerHasPaths, getLayerBounds, layerHasGeometry } from '../dataset/mapshaper-layer-utils';
 import { getAntimeridian } from '../geom/mapshaper-latlon';
 import { importGeoJSON } from '../geojson/geojson-import';
 import { convertBboxToGeoJSON } from '../commands/mapshaper-rectangle';
@@ -10,7 +10,6 @@ import { dissolveArcs } from '../paths/mapshaper-arc-dissolve';
 import { transformPoints } from '../dataset/mapshaper-dataset-utils';
 import utils from '../utils/mapshaper-utils';
 import { testBoundsInPolygon } from '../geom/mapshaper-polygon-geom';
-import { getLayerBounds } from '../dataset/mapshaper-layer-utils';
 
 export function preProjectionClip(dataset, src, dest, opts) {
   if (!isLatLngCRS(src) || opts.no_clip) return false;
@@ -42,7 +41,7 @@ function clipLayersIfNeeded(dataset, clipData) {
   // polygon layer, @clipData). This avoids performing unnecessary intersection
   // tests on each line segment.
   var layers = dataset.layers.filter(function(lyr) {
-    return !layerIsFullyEnclosed(lyr, dataset, clipData);
+    return layerHasGeometry(lyr) && !layerIsFullyEnclosed(lyr, dataset, clipData);
   });
   if (layers.length > 0) {
     clipLayersInPlace(layers, clipData, dataset, 'clip');
