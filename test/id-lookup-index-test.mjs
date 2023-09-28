@@ -30,6 +30,13 @@ describe('mapshaper-id-lookup-index.js', function () {
     assert.strictEqual(idx.getId(0), 0);
     idx.setId(1, 5);
     idx.setId(2, 6);
+
+    // accept out-of-range keys
+    assert.equal(idx.hasId(-23), false);
+    assert.equal(idx.hasId(3000), false);
+    assert.equal(idx.getId(-23), -1);
+    assert.equal(idx.getId(3000), -1);
+
     assert.throws(function() {
       idx.clear();
     });
@@ -63,6 +70,12 @@ describe('mapshaper-id-lookup-index.js', function () {
     });
 
     assert.equal(idx.hasId(2), false);
+
+    // accept out-of-range keys
+    assert.equal(idx.hasId(-23), false);
+    assert.equal(idx.hasId(3000), false);
+    assert.equal(idx.getId(-23), -1);
+    assert.equal(idx.getId(3000), -1);
   })
 
 })
