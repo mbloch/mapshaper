@@ -1,6 +1,6 @@
 (function () {
 
-  var VERSION = "0.6.42";
+  var VERSION = "0.6.43";
 
 
   var utils = /*#__PURE__*/Object.freeze({
@@ -16438,19 +16438,40 @@
     buildPolygonMosaic: buildPolygonMosaic
   });
 
+  // Map non-negative integers to non-negative integer ids
+  function IdLookupIndex(n) {
+    var index = new Uint32Array(n);
+
+    this.setId = function(id, val) {
+      if (id >= 0 && val >= 0 && val < n - 1) {
+        index[id] = val + 1;
+      } else {
+        error('Invalid value');
+      }
+    };
+
+    this.hasId = function(id) {
+      return this.getId(id) > -1;
+    };
+
+    this.getId = function(id) {
+      if (id >= 0 && id < n) {
+        return index[id] - 1;
+      } else {
+        error('Invalid index');
+      }
+    };
+  }
+
+
   // Map positive or negative integer ids to non-negative integer ids
-  function IdLookupIndex(n, clearable) {
+  function ArcLookupIndex(n) {
     var fwdIndex = new Int32Array(n);
     var revIndex = new Int32Array(n);
-    var index = this;
-    var setList = [];
     utils.initializeArray(fwdIndex, -1);
     utils.initializeArray(revIndex, -1);
 
     this.setId = function(id, val) {
-      if (clearable && !index.hasId(id)) {
-        setList.push(id);
-      }
       if (id < 0) {
         revIndex[~id] = val;
       } else {
@@ -16458,25 +16479,8 @@
       }
     };
 
-    this.clear = function() {
-      if (!clearable) {
-        error('Index is not clearable');
-      }
-      setList.forEach(function(id) {
-        index.setId(id, -1);
-      });
-      setList = [];
-    };
-
-    this.clearId = function(id) {
-      if (!index.hasId(id)) {
-        error('Tried to clear an unset id');
-      }
-      index.setId(id, -1);
-    };
-
     this.hasId = function(id) {
-      var val = index.getId(id);
+      var val = this.getId(id);
       return val > -1;
     };
 
@@ -16487,6 +16491,36 @@
       }
       return id < 0 ? revIndex[idx] : fwdIndex[idx];
     };
+  }
+
+  // Support clearing the index (for efficient reuse)
+  function ClearableArcLookupIndex(n) {
+    var setList = [];
+    var idx = new ArcLookupIndex(n);
+    var _setId = idx.setId;
+
+    idx.setId = function(id, val) {
+      if (!idx.hasId(id)) {
+        setList.push(id);
+      }
+      _setId(id, val);
+    };
+
+    idx.clear = function() {
+      setList.forEach(function(id) {
+        _setId(id, -1);
+      });
+      setList = [];
+    };
+
+    this.clearId = function(id) {
+      if (!idx.hasId(id)) {
+        error('Tried to clear an unset id');
+      }
+      _setId(id, -1);
+    };
+
+    return idx;
   }
 
   // Associate mosaic tiles with shapes (i.e. identify the groups of tiles that
@@ -16740,7 +16774,7 @@
   // Supports looking up a shape id using an arc id.
   function ShapeArcIndex(shapes, arcs) {
     var n = arcs.size();
-    var index = new IdLookupIndex(n);
+    var index = new ArcLookupIndex(n);
     var shapeId;
     shapes.forEach(onShape);
 
@@ -16892,7 +16926,7 @@
     var arcs = dataset.arcs;
     var filter = getArcPresenceTest(lyr.shapes, arcs);
     var nodes = new NodeCollection(arcs, filter);
-    var arcIndex = new IdLookupIndex(arcs.size(), true);
+    var arcIndex = new ClearableArcLookupIndex(arcs.size());
     lyr.shapes = lyr.shapes.map(function(shp, i) {
       if (!shp) return null;
       // split parts at nodes (where multiple arcs intersect)
@@ -38262,7 +38296,7 @@ ${svg}
     // polygon layer, @clipData). This avoids performing unnecessary intersection
     // tests on each line segment.
     var layers = dataset.layers.filter(function(lyr) {
-      return !layerIsFullyEnclosed(lyr, dataset, clipData);
+      return layerHasGeometry(lyr) && !layerIsFullyEnclosed(lyr, dataset, clipData);
     });
     if (layers.length > 0) {
       clipLayersInPlace(layers, clipData, dataset, 'clip');

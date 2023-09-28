@@ -8112,7 +8112,7 @@
       el.addClass('option-menu');
       var html = `<input type="text" class="field-name text-input" placeholder="field name"><br>
     <input type="text" class="field-value text-input" placeholder="value"><br>
-    <div class="btn dialog-btn">Apply</div> <span class="inline-checkbox"><input type="checkbox" class="all" />assign value to all records</span>`;
+    <div tabindex="0" class="btn dialog-btn">Apply</div> <span class="inline-checkbox"><input type="checkbox" class="all" />assign value to all records</span>`;
       el.html(html);
 
       var name = el.findChild('.field-name');
