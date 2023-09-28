@@ -1,6 +1,5 @@
 import { compileValueExpression } from '../expressions/mapshaper-expressions';
-import { getFeatureCount } from '../dataset/mapshaper-layer-utils';
-import { copyLayer } from '../dataset/mapshaper-layer-utils';
+import { getFeatureCount, copyLayer } from '../dataset/mapshaper-layer-utils';
 import cmd from '../mapshaper-cmd';
 import utils from '../utils/mapshaper-utils';
 import { DataTable } from '../datatable/mapshaper-data-table';
@@ -13,6 +12,7 @@ cmd.splitLayer = function(src, expression, optsArg) {
       shapes = lyr0.shapes,
       index = {},
       splitLayers = [],
+      n = getFeatureCount(lyr0),
       namer;
 
   if (opts.ids) {
@@ -21,11 +21,18 @@ cmd.splitLayer = function(src, expression, optsArg) {
     namer = getSplitNameFunction(lyr0, expression);
   }
 
+  // // halt if split field is missing
   // if (splitField) {
   //   internal.requireDataField(lyr0, splitField);
   // }
 
-  utils.repeat(getFeatureCount(lyr0), function(i) {
+  // if input layer is empty, return original layer
+  // TODO: consider halting
+  if (n === 0) {
+    return [lyr0];
+  }
+
+  utils.repeat(n, function(i) {
     var name = namer(i),
         lyr;
 
@@ -48,6 +55,7 @@ cmd.splitLayer = function(src, expression, optsArg) {
       lyr.data.getRecords().push(properties[i]);
     }
   });
+
   return splitLayers;
 };
 
