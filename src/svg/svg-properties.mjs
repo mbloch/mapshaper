@@ -7,7 +7,8 @@ import { parsePattern } from '../svg/svg-hatch';
 // null values indicate the lack of a function for parsing/identifying this property
 // (in which case a heuristic is used for distinguishing a string literal from an expression)
 var stylePropertyTypes = {
-  css: null,
+  // css: null,
+  css: 'inlinecss',
   class: 'classname',
   dx: 'measure',
   dy: 'measure',
@@ -194,6 +195,8 @@ function parseSvgLiteralValue(strVal, type) {
     val = isPattern(strVal) ? strVal : null;
   } else if (type == 'boolean') {
     val = parseBoolean(strVal);
+  } else if (type == 'inlinecss') {
+    val = strVal; // TODO: validate
   }
   //  else {
   //   // unknown type -- assume literal value

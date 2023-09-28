@@ -26,6 +26,14 @@ describe('mapshaper-svg-style.js', function () {
         done();
       });
     })
+
+    it('-style css= creates inline style', async function() {
+      var cmd = '-rectangle bbox=0,0,1,1 -style fill=white css="filter: drop-shadow(1px 1px 5px rgba(0, 0, 0, .7));" -o out.svg';
+      var output = await api.applyCommands(cmd);
+      var svg = output['out.svg'];
+      assert(svg.includes('fill="white"'));
+      assert(svg.includes('style="filter: drop-shadow(1px 1px 5px rgba(0, 0, 0, .7));"'));
+    });
   })
 
 

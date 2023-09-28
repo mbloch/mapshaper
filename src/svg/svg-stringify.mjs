@@ -1,6 +1,5 @@
 import utils from '../utils/mapshaper-utils';
 
-
 export function stringify(obj) {
   var svg, joinStr;
   if (!obj || !obj.tag) return '';
