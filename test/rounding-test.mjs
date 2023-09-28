@@ -1,8 +1,10 @@
 import api from '../';
 import assert from 'assert';
+var getBinaryRoundingFunction = api.internal.getBinaryRoundingFunction;
 
 var utils = api.utils,
   internal = api.internal;
+
 
 
 function testPoints(src, precision, target) {
@@ -17,6 +19,37 @@ function testPoints(src, precision, target) {
 
 describe('mapshaper-rounding.js', function () {
 
+  describe('getBinaryRoundingFunction()', function() {
+    var round1 = getBinaryRoundingFunction(1);
+    var round2 = getBinaryRoundingFunction(2);
+    var round16 = getBinaryRoundingFunction(16);
+
+    // TODO: finish
+    return;
+
+    it('timing', function() {
+      var loops = 1e8, i, val = 1/3;
+      console.time('1');
+      for (i=0; i<loops; i++) {
+        var x = round16(val);
+      }
+      console.timeEnd('1');
+
+      console.time('2');
+      for (i=0; i<loops; i++) {
+        var x = Math.fround(val);
+      }
+      console.timeEnd('2');
+
+    })
+
+    it('test1', function() {
+      console.log(1/3);
+      console.log(round1(1/3));
+      console.log(round2(1/3));
+      console.log(round16(1/3));
+    });
+  })
 
   describe('getRoundingFunction', function () {
 
