@@ -21,7 +21,8 @@ export function IdLookupIndex(n) {
     if (id >= 0 && id < n) {
       return index[id] - 1;
     } else {
-      error('Invalid index');
+      return -1;
+      // error('Invalid index');
     }
   };
 }
