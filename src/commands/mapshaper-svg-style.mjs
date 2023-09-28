@@ -1,4 +1,4 @@
-import { getLayerDataTable } from '../dataset/mapshaper-layer-utils';
+import { getLayerDataTable, getFeatureCount } from '../dataset/mapshaper-layer-utils';
 import { getSymbolPropertyAccessor } from '../svg/svg-properties';
 import { compileValueExpression } from '../expressions/mapshaper-expressions';
 import { initDataTable } from '../dataset/mapshaper-layer-utils';
@@ -7,6 +7,9 @@ import cmd from '../mapshaper-cmd';
 
 cmd.svgStyle = function(lyr, dataset, opts) {
   var filter;
+  if (getFeatureCount(lyr) === 0) {
+    return;
+  }
   if (!lyr.data) {
     initDataTable(lyr);
   }
