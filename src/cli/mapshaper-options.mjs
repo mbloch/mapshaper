@@ -1493,9 +1493,9 @@ export function getOptionParser() {
     .option('class', {
       describe: 'name of CSS class or classes (space-separated)'
     })
-    // .option('css', {
-    //   describe: 'inline css style'
-    // })
+    .option('css', {
+      describe: 'inline css style'
+    })
     .option('fill', {
       describe: 'fill color; examples: #eee pink rgba(0, 0, 0, 0.2)'
     })

@@ -425,11 +425,18 @@ export function ImportControl(gui, opts) {
   }
 
   function downloadNextFile(memo, item, next) {
-    var blob, err;
-    fetch(item.url).then(resp => resp.blob()).then(b => {
-      blob = b;
-      blob.name = item.basename;
-      memo.push(blob);
+    var err;
+    fetch(item.url).then(resp => {
+      if (resp.status != 200) {
+        // e.g. 404 because a URL listed in the GUI query string does not exist
+        throw Error();
+      }
+      return resp.blob();
+    }).then(blob => {
+      if (blob) {
+        blob.name = item.basename;
+        memo.push(blob);
+      }
     }).catch(e => {
       err = "Error&nbsp;loading&nbsp;" + item.name + ". Possible causes include: wrong URL, no network connection, server not configured for cross-domain sharing (CORS).";
     }).finally(() => {
