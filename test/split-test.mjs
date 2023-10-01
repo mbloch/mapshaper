@@ -14,6 +14,21 @@ describe('mapshaper-split.js', function () {
         done();
       })
     })
+
+    it('argument is a field name but not a valid expression', async function() {
+      var data = [{
+        'ISO3166-1': 'alpha'
+      }, {
+        'ISO3166-1': 'beta'
+      }];
+      var cmd = '-i data.json -split ISO3166-1 -o';
+      var output = await api.applyCommands(cmd, {'data.json': data});
+      assert.deepEqual(output, {
+        'alpha.json': '[{"ISO3166-1":"alpha"}]',
+        'beta.json': '[{"ISO3166-1":"beta"}]'
+      });
+
+    });
   })
 
   describe('splitLayer()', function () {
