@@ -66,26 +66,34 @@ function getIdSplitFunction(ids) {
   };
 }
 
-function getDefaultSplitFunction(lyr) {
-  // if not splitting on an expression and layer is unnamed, name split-apart layers
-  // like: split-1, split-2, ...
-  return function(i) {
-    return (lyr && lyr.name || 'split') + '-' + (i + 1);
-  };
-}
-
-export function getSplitNameFunction(lyr, exp) {
+export function getSplitNameFunction(lyr, arg) {
   var compiled;
-  if (!exp) return getDefaultSplitFunction(lyr);
+  if (!arg) {
+    // if not splitting on an expression and layer is unnamed, name split-apart layers
+    // like: split-1, split-2, ...
+    return function(i) {
+      return (lyr && lyr.name || 'split') + '-' + (i + 1);
+    };
+  }
+  if (lyr.data && lyr.data.fieldExists(arg)) {
+    // Argument is a field name
+    return function(i) {
+      var rec = lyr.data.getRecords()[i];
+      return rec ? valueToLayerName(rec[arg]) : '';
+    };
+  }
+  // Assume: argument is an expression
   lyr = {name: lyr.name, data: lyr.data}; // remove shape info
-  compiled = compileValueExpression(exp, lyr, null);
+  compiled = compileValueExpression(arg, lyr, null);
   return function(i) {
     var val = compiled(i);
-    return String(val);
-    // return val || val === 0 ? String(val) : '';
+    return valueToLayerName(val);
   };
 }
 
+function valueToLayerName(val) {
+  return String(val);
+}
 
 // internal.getSplitKey = function(i, field, properties) {
 //   var rec = field && properties ? properties[i] : null;

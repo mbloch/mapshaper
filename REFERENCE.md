@@ -1153,9 +1153,9 @@ Sort features in a data layer using a JavaScript expression.
 
 ### -split
 
-Distributes features in the target layer to multiple output layers. If the `fields=` option is present, features with the same attribute value are grouped together. If no data field is supplied, the input layer is split into single-feature layers.
+Distributes features in the target layer to multiple output layers. If the `expression=` option is present, features with the same value are grouped together. The value of the expression is used to name the split-apart fields. If no argument is supplied, split-apart layers are numbered.
 
-`<field>` or `field=`  Name of the attribute field to split on.
+`<expression>` or `expression=`  JS expression or name of the attribute field to split on.
 
 Common options: `+` `target=`
 
@@ -1173,7 +1173,7 @@ mapshaper states.shp name='' -split STATE -o format=geojson
 
 # Split source features into individual GeoJSON files (no data field supplied).
 # Output names use source layer name + ascending number,
-# e.g. states-1.json, states-2.json, etc.
+# e.g. states-1, states-2, etc.
 mapshaper states.shp -split -o format=geojson
 ```
 
