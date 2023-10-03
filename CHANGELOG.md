@@ -1,3 +1,7 @@
+v0.6.44
+* Added -style css= option for adding inline CSS to SVG symbols.
+* Bug fixes
+
 v0.6.43
 * Bug fixes
 
