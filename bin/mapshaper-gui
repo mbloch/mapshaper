@@ -61,7 +61,10 @@ function startServer(port) {
   http.createServer(function(request, response) {
     var uri = url.parse(request.url).pathname;
     clearTimeout(timeout);
-    if (uri == '/close') {
+    if (uri.includes('..')) {
+      // block attempts to load files outside webroot
+      serve404(response);
+    } else if (uri == '/close') {
       // end process when page closes, unless page is immediately refreshed
       timeout = setTimeout(function() {
         process.exit(0);
@@ -116,10 +119,14 @@ function serveError(text, code, response) {
   response.end();
 }
 
+function serve404(response) {
+  serveError("404 Not Found\n", 404, response);
+}
+
 function serveFile(filename, response) {
   fs.readFile(filename, function(err, content) {
     if (err) {
-      serveError("404 Not Found\n", 404, response);
+      serve404(response);
     } else {
       serveContent(content, response, getMimeType(filename));
     }

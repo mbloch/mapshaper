@@ -1,6 +1,6 @@
 # COMMAND REFERENCE
 
-This documentation applies to version 0.6.39 of mapshaper's command line program. Run `mapshaper -v` to check your version. For an introduction to the command line tool, read [this page](https://github.com/mbloch/mapshaper/wiki/Introduction-to-the-Command-Line-Tool) first.
+This documentation applies to version 0.6.43 of mapshaper's command line program. Run `mapshaper -v` to check your version. For an introduction to the command line tool, read [this page](https://github.com/mbloch/mapshaper/wiki/Introduction-to-the-Command-Line-Tool) first.
 
 ## Command line syntax
 
@@ -1212,6 +1212,8 @@ Add common SVG attributes for SVG export and display in the web UI. Attribute va
 `where=`           Boolean JS expression for targetting a subset of features.
 
 `class=`           One or more CSS classes, separated by spaces (e.g. `class="light semi-transparent"`)
+
+`css=`             Inline CSS to use as the `style=` attribute of each SVG symbol.
 
 `fill=`            Fill color (e.g. `#eee` `pink` `rgba(0, 0, 0, 0.2)`)
 
