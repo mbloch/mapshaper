@@ -8,21 +8,24 @@ import utils from '../utils/mapshaper-utils';
 import { getStashedVar } from '../mapshaper-stash';
 import cmd from '../mapshaper-cmd';
 
-cmd.run = function(job, targets, opts, cb) {
+cmd.run = async function(job, targets, opts) {
   var commandStr, commands;
   if (!opts.expression) {
     stop("Missing expression parameter");
   }
   commandStr = runGlobalExpression(opts.expression, targets);
+  // Support async functions as expressions
+  if (utils.isPromise(commandStr)) {
+    commandStr = await commandStr;
+  }
   if (commandStr) {
     message(`command: [${commandStr}]`);
     commands = parseCommands(commandStr);
-    runParsedCommands(commands, job, cb);
-  } else {
-    cb(null);
+    await utils.promisify(runParsedCommands)(commands, job);
   }
 };
 
+// This could return a Promise or a value or nothing
 export function runGlobalExpression(expression, targets) {
   var ctx = getBaseContext();
   var output, targetData;

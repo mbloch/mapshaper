@@ -28,5 +28,33 @@ describe('mapshaper-run.js', function () {
         done();
       })
     })
+
+    it('supports running an async function', async function() {
+      var include = `{
+        getCommand: async function() {
+          return "-rectangle bbox=0,0,1,1";
+        }}`;
+      var input = {
+        'include.js': include
+      };
+      var cmd = '-include include.js -run "getCommand()" -o out.json';
+      var output = await api.applyCommands(cmd, input);
+      var data = JSON.parse(output['out.json']);
+      assert.equal(data.type, 'GeometryCollection');
+    })
+
+    it('fix: -o command does not remove data', async function() {
+      console.log('TODO: fully support -o in -run commands');
+      var include = `{
+        run: function() {
+          return "-rectangle bbox=0,0,1,1";
+        }}`;
+      var input = {
+        'include.js': include
+      };
+      var cmd = '-include include.js -run "run()" -o out2.json';
+      var output = await api.applyCommands(cmd, input);
+      assert (!!output['out2.json'])
+    })
   })
 })
