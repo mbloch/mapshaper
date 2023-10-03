@@ -1,6 +1,6 @@
 (function () {
 
-  var VERSION = "0.6.43";
+  var VERSION = "0.6.44";
 
 
   var utils = /*#__PURE__*/Object.freeze({
@@ -8,6 +8,7 @@
     get default () { return utils; },
     get getUniqueName () { return getUniqueName; },
     get isFunction () { return isFunction; },
+    get isPromise () { return isPromise; },
     get isObject () { return isObject; },
     get clamp () { return clamp; },
     get isArray () { return isArray; },
@@ -145,6 +146,10 @@
 
   function isFunction(obj) {
     return typeof obj == 'function';
+  }
+
+  function isPromise(arg) {
+    return arg ? isFunction(arg.then) : false;
   }
 
   function isObject(obj) {
@@ -12488,7 +12493,6 @@
     return +n.toPrecision(d);
   }
 
-
   function roundToDigits(n, d) {
     return +n.toFixed(d); // string conversion makes this slow
   }
@@ -12552,6 +12556,37 @@
     });
   }
 
+  const fround2 = (function() {
+    var arr = new Float32Array(1);
+    return function(x) {
+      arr[0] = x;
+      return arr[0];
+    };
+  })();
+
+  // This function rounds towards 0 (i.e. floor). TODO: round properly
+  // @bits: number of bits to round
+  // performance: about 3x slower than Math.fround()
+  function getBinaryRoundingFunction(bits) {
+    // double: sign (1) exponent (11) fraction (52)
+    // single: sign (1) exponent (8) fraction (23)
+    if ((bits >= 1 && bits <= 32) === false) {
+      error('Invalid bits argument:', bits);
+    }
+    var isLE = require('os').endianness() == 'LE';
+    var fp = new Float64Array(1);
+    var leastBits = new Uint32Array(fp.buffer, isLE ? 0 : 4, 1);
+    var mask = 2 ** 32 - 2 ** bits;  // e.g. bits = 4 -> 0b11110000
+    return function(x) {
+      fp[0] = x;
+      leastBits[0] = leastBits[0] & mask;
+      return fp[0];
+    };
+  }
+
+  // "round to even" on the 23rd bit of the mantissa
+  const fround = Math.fround || fround2;
+
   function setCoordinatePrecision(dataset, precision) {
     var round = getRoundingFunction(precision);
     // var dissolvePolygon, nodes;
@@ -12586,6 +12621,9 @@
     getRoundedCoordString: getRoundedCoordString,
     getRoundedCoords: getRoundedCoords,
     roundPoints: roundPoints,
+    fround2: fround2,
+    getBinaryRoundingFunction: getBinaryRoundingFunction,
+    fround: fround,
     setCoordinatePrecision: setCoordinatePrecision
   });
 
@@ -16458,7 +16496,8 @@
       if (id >= 0 && id < n) {
         return index[id] - 1;
       } else {
-        error('Invalid index');
+        return -1;
+        // error('Invalid index');
       }
     };
   }
@@ -18412,7 +18451,8 @@
   // null values indicate the lack of a function for parsing/identifying this property
   // (in which case a heuristic is used for distinguishing a string literal from an expression)
   var stylePropertyTypes = {
-    css: null,
+    // css: null,
+    css: 'inlinecss',
     class: 'classname',
     dx: 'measure',
     dy: 'measure',
@@ -18599,6 +18639,8 @@
       val = isPattern(strVal) ? strVal : null;
     } else if (type == 'boolean') {
       val = parseBoolean(strVal);
+    } else if (type == 'inlinecss') {
+      val = strVal; // TODO: validate
     }
     //  else {
     //   // unknown type -- assume literal value
@@ -24696,9 +24738,9 @@ ${svg}
       .option('class', {
         describe: 'name of CSS class or classes (space-separated)'
       })
-      // .option('css', {
-      //   describe: 'inline css style'
-      // })
+      .option('css', {
+        describe: 'inline css style'
+      })
       .option('fill', {
         describe: 'fill color; examples: #eee pink rgba(0, 0, 0, 0.2)'
       })
@@ -41274,21 +41316,24 @@ ${svg}
     parseConsoleCommands: parseConsoleCommands
   });
 
-  cmd.run = function(job, targets, opts, cb) {
+  cmd.run = async function(job, targets, opts) {
     var commandStr, commands;
     if (!opts.expression) {
       stop("Missing expression parameter");
     }
     commandStr = runGlobalExpression(opts.expression, targets);
+    // Support async functions as expressions
+    if (utils.isPromise(commandStr)) {
+      commandStr = await commandStr;
+    }
     if (commandStr) {
       message(`command: [${commandStr}]`);
       commands = parseCommands(commandStr);
-      runParsedCommands(commands, job, cb);
-    } else {
-      cb(null);
+      await utils.promisify(runParsedCommands)(commands, job);
     }
   };
 
+  // This could return a Promise or a value or nothing
   function runGlobalExpression(expression, targets) {
     var ctx = getBaseContext();
     var output, targetData;
@@ -42415,6 +42460,7 @@ ${svg}
         shapes = lyr0.shapes,
         index = {},
         splitLayers = [],
+        n = getFeatureCount(lyr0),
         namer;
 
     if (opts.ids) {
@@ -42423,11 +42469,18 @@ ${svg}
       namer = getSplitNameFunction(lyr0, expression);
     }
 
+    // // halt if split field is missing
     // if (splitField) {
     //   internal.requireDataField(lyr0, splitField);
     // }
 
-    utils.repeat(getFeatureCount(lyr0), function(i) {
+    // if input layer is empty, return original layer
+    // TODO: consider halting
+    if (n === 0) {
+      return [lyr0];
+    }
+
+    utils.repeat(n, function(i) {
       var name = namer(i),
           lyr;
 
@@ -42450,6 +42503,7 @@ ${svg}
         lyr.data.getRecords().push(properties[i]);
       }
     });
+
     return splitLayers;
   };
 
@@ -42460,26 +42514,34 @@ ${svg}
     };
   }
 
-  function getDefaultSplitFunction(lyr) {
-    // if not splitting on an expression and layer is unnamed, name split-apart layers
-    // like: split-1, split-2, ...
-    return function(i) {
-      return (lyr && lyr.name || 'split') + '-' + (i + 1);
-    };
-  }
-
-  function getSplitNameFunction(lyr, exp) {
+  function getSplitNameFunction(lyr, arg) {
     var compiled;
-    if (!exp) return getDefaultSplitFunction(lyr);
+    if (!arg) {
+      // if not splitting on an expression and layer is unnamed, name split-apart layers
+      // like: split-1, split-2, ...
+      return function(i) {
+        return (lyr && lyr.name || 'split') + '-' + (i + 1);
+      };
+    }
+    if (lyr.data && lyr.data.fieldExists(arg)) {
+      // Argument is a field name
+      return function(i) {
+        var rec = lyr.data.getRecords()[i];
+        return rec ? valueToLayerName(rec[arg]) : '';
+      };
+    }
+    // Assume: argument is an expression
     lyr = {name: lyr.name, data: lyr.data}; // remove shape info
-    compiled = compileValueExpression(exp, lyr, null);
+    compiled = compileValueExpression(arg, lyr, null);
     return function(i) {
       var val = compiled(i);
-      return String(val);
-      // return val || val === 0 ? String(val) : '';
+      return valueToLayerName(val);
     };
   }
 
+  function valueToLayerName(val) {
+    return String(val);
+  }
 
   // internal.getSplitKey = function(i, field, properties) {
   //   var rec = field && properties ? properties[i] : null;
@@ -42515,6 +42577,9 @@ ${svg}
 
   cmd.svgStyle = function(lyr, dataset, opts) {
     var filter;
+    if (getFeatureCount(lyr) === 0) {
+      return;
+    }
     if (!lyr.data) {
       initDataTable(lyr);
     }
@@ -43820,7 +43885,7 @@ ${svg}
         });
 
       } else if (name == 'run') {
-        await utils.promisify(cmd.run)(job, targets, opts);
+        await cmd.run(job, targets, opts);
 
       } else if (name == 'scalebar') {
         cmd.scalebar(job.catalog, opts);
@@ -43843,7 +43908,7 @@ ${svg}
 
       } else if (name == 'snap') {
         // cmd.snap(targetDataset, opts);
-        applyCommandToEachTarget(targets, opts);
+        applyCommandToEachTarget(cmd.snap, targets, opts);
 
       } else if (name == 'sort') {
         applyCommandToEachLayer(cmd.sortFeatures, targetLayers, arcs, opts);
@@ -44097,6 +44162,13 @@ ${svg}
       }
     });
 
+    var lastCmd = commands[commands.length - 1];
+    if (!runningInBrowser() && lastCmd.name == 'o') {
+      // in CLI, set 'final' flag on final -o command, so the export function knows
+      // that it can modify the output dataset in-place instead of making a copy.
+      lastCmd.options.final = true;
+    }
+
     var batches = divideImportCommand(commands);
     utils.reduceAsync(batches, null, nextGroup, done);
 
@@ -44165,11 +44237,6 @@ ${svg}
   // @done: function([error], [job])
   //
   function runParsedCommands(commands, job, done) {
-    if (!runningInBrowser() && commands[commands.length-1].name == 'o') {
-      // in CLI, set 'final' flag on final -o command, so the export function knows
-      // that it can modify the output dataset in-place instead of making a copy.
-      commands[commands.length-1].options.final = true;
-    }
     if (!job) job = new Job();
     commands = readAndRemoveSettings(job, commands);
     if (!runningInBrowser()) {
