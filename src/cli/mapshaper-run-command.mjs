@@ -423,7 +423,7 @@ export async function runCommand(command, job) {
 
     } else if (name == 'snap') {
       // cmd.snap(targetDataset, opts);
-      applyCommandToEachTarget(targets, opts);
+      applyCommandToEachTarget(cmd.snap, targets, opts);
 
     } else if (name == 'sort') {
       applyCommandToEachLayer(cmd.sortFeatures, targetLayers, arcs, opts);
