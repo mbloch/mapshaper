@@ -70,9 +70,21 @@ describe('mapshaper-snapping.js', function () {
 
   })
 
-  describe('-snap endpoints', function() {
-    // TODO
-
+  describe('-snap command', function() {
+    it('interval=0.2', async function() {
+      var input = {
+        type: 'LineString',
+        coordinates: [[0, 0], [0.05, 0.05], [0.1, 0.1], [1, 1], [1.1, 1.1]]
+      };
+      var cmd = '-i line.json -snap interval=0.2 -o';
+      var output = await api.applyCommands(cmd, {'line.json': input});
+      var line = JSON.parse(output['line.json']);
+      var target = {
+        type: 'LineString',
+        coordinates: [[0, 0], [1, 1]]
+      };
+      assert.deepEqual(line.geometries[0], target);
+    });
   });
 
   describe('sortCoordinateIds()', function () {
