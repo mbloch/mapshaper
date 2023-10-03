@@ -400,7 +400,7 @@ export async function runCommand(command, job) {
       });
 
     } else if (name == 'run') {
-      await utils.promisify(cmd.run)(job, targets, opts);
+      await cmd.run(job, targets, opts);
 
     } else if (name == 'scalebar') {
       cmd.scalebar(job.catalog, opts);

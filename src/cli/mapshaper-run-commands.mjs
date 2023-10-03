@@ -148,6 +148,13 @@ function _runCommands(argv, opts, callback) {
     }
   });
 
+  var lastCmd = commands[commands.length - 1];
+  if (!runningInBrowser() && lastCmd.name == 'o') {
+    // in CLI, set 'final' flag on final -o command, so the export function knows
+    // that it can modify the output dataset in-place instead of making a copy.
+    lastCmd.options.final = true;
+  }
+
   var batches = divideImportCommand(commands);
   utils.reduceAsync(batches, null, nextGroup, done);
 
@@ -216,11 +223,6 @@ export function testCommands(argv, done) {
 // @done: function([error], [job])
 //
 export function runParsedCommands(commands, job, done) {
-  if (!runningInBrowser() && commands[commands.length-1].name == 'o') {
-    // in CLI, set 'final' flag on final -o command, so the export function knows
-    // that it can modify the output dataset in-place instead of making a copy.
-    commands[commands.length-1].options.final = true;
-  }
   if (!job) job = new Job();
   commands = readAndRemoveSettings(job, commands);
   if (!runningInBrowser()) {

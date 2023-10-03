@@ -15,6 +15,10 @@ export function isFunction(obj) {
   return typeof obj == 'function';
 }
 
+export function isPromise(arg) {
+  return arg ? isFunction(arg.then) : false;
+}
+
 export function isObject(obj) {
   return obj === Object(obj); // via underscore
 }
