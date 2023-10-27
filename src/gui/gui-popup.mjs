@@ -29,14 +29,13 @@ export function Popup(gui, toNext, toPrev) {
   });
 
   self.show = function(id, ids, lyr, pinned) {
-    var table = lyr.data; // table can be null (e.g. if layer has no attribute data)
     var editable = pinned && gui.interaction.getMode() == 'data';
     var maxHeight = parent.node().clientHeight - 36;
     currId = id;
     // stash a function for refreshing the current popup when data changes
     // while the popup is being displayed (e.g. while dragging a label)
     refresh = function() {
-      render(content, id, table, editable);
+      render(content, id, lyr, editable);
     };
     refresh();
     if (ids && ids.length > 1) {
@@ -75,7 +74,8 @@ export function Popup(gui, toNext, toPrev) {
     tab.show();
   }
 
-  function render(el, recId, table, editable) {
+  function render(el, recId, lyr, editable) {
+    var table = lyr.data; // table can be null (e.g. if layer has no attribute data)
     var rec = table && (editable ? table.getRecordAt(recId) : table.getReadOnlyRecordAt(recId)) || {};
     var tableEl = El('table').addClass('selectable'),
         rows = 0;
@@ -119,12 +119,12 @@ export function Popup(gui, toNext, toPrev) {
       var line = El('div').appendTo(el);
       El('span').addClass('save-menu-btn').appendTo(line).on('click', async function(e) {
         // show "add field" dialog
-        renderAddFieldPopup(recId, table);
+        renderAddFieldPopup(recId, lyr);
       }).text('+ add field');
     }
   }
 
-  function renderAddFieldPopup(recId, table) {
+  function renderAddFieldPopup(recId, lyr) {
     var popup = showPopupAlert('', 'Add field');
     var el = popup.container();
     el.addClass('option-menu');
@@ -138,6 +138,7 @@ export function Popup(gui, toNext, toPrev) {
     var val = el.findChild('.field-value');
     var box = el.findChild('.all');
     var btn = el.findChild('.btn').on('click', function() {
+      var table = internal.getLayerDataTable(lyr); // creates new table if missing
       var all = box.node().checked;
       var nameStr = name.node().value.trim();
       if (!nameStr) return;

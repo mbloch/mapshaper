@@ -68,6 +68,14 @@ async function exportDatasets(datasets, opts) {
     }
     return memo.concat(exportFileContent(dataset, opts));
   }, []);
+
+  if (opts.bbox_index) {
+    // If rounding or quantization are applied during export, bounds may
+    // change somewhat... consider adding a bounds property to each layer during
+    // export when appropriate.
+    files.push(createIndexFile(datasets));
+  }
+
   // need unique names for multiple output files
   assignUniqueFileNames(files);
 
@@ -125,15 +133,7 @@ export function exportFileContent(dataset, opts) {
   }
 
   validateLayerData(dataset.layers);
-
   files = exporter(dataset, opts).concat(files);
-  // If rounding or quantization are applied during export, bounds may
-  // change somewhat... consider adding a bounds property to each layer during
-  // export when appropriate.
-  if (opts.bbox_index) {
-    files.push(createIndexFile(dataset));
-  }
-
   validateFileNames(files);
   return files;
 }
@@ -154,13 +154,16 @@ var exporters = {
 // Generate json file with bounding boxes and names of each export layer
 // TODO: consider making this a command, or at least make format settable
 //
-function createIndexFile(dataset) {
-  var index = dataset.layers.map(function(lyr) {
-    var bounds = getLayerBounds(lyr, dataset.arcs);
-    return {
-      bbox: bounds.toArray(),
-      name: lyr.name
-    };
+function createIndexFile(datasets) {
+  var index = [];
+  datasets.forEach(function(dataset) {
+    dataset.layers.forEach(function(lyr) {
+      var bounds = getLayerBounds(lyr, dataset.arcs);
+      index.push({
+        bbox: bounds.toArray(),
+        name: lyr.name
+      });
+    });
   });
 
   return {

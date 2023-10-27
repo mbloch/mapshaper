@@ -146,7 +146,7 @@ export function getOptionParser() {
     .option('string-fields', stringFieldsOpt)
     .option('field-types', fieldTypesOpt)
     .option('name', {
-      describe: 'Rename the imported layer(s)'
+      describe: 'rename the imported layer(s)'
     })
     .option('geometry-type', {
       // undocumented; GeoJSON import rejects all but one kind of geometry
