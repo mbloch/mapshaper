@@ -315,6 +315,9 @@ export function getOptionParser() {
       describe: '[GeoJSON/JSON] output newline-delimited features or records',
       type: 'flag'
     })
+    .option('hoist', {
+      describe: '[GeoJSON] move properties to the root level',
+    })
     .option('width', {
       describe: '[SVG/TopoJSON] pixel width of output (SVG default is 800)',
       type: 'number'
