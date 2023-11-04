@@ -58,6 +58,7 @@ body {
 .colored-text,
 .save-menu-link,
 .save-menu-btn,
+.add-field-btn,
 .nav-menu-item {
 	color: #10699b;
 }
@@ -1314,6 +1315,7 @@ div.basemap-style-btn.active img {
 
 .save-menu {
 	text-align: right;
+	padding-bottom: 5px;
 }
 
 .save-menu-entry {
@@ -1324,27 +1326,29 @@ div.basemap-style-btn.active img {
 	background: white;
 }
 
-/*.save-menu-btn {
+.save-menu-btn {
 	display: inline-block;
 	border-radius: 4px;
 	border: 1px solid #aaa;
 	font-size: 12px;
 	margin-left: 2px;
 	padding: 1px 2px 3px 2px;
-}*/
+}
 
-.save-menu-btn {
+.add-field-btn {
 	display: inline-block;
 	font-size: 12px;
 	margin-top: 2px;
 }
 
-.save-menu-btn:hover {
+.save-menu-btn:hover,
+.add-field-btn:hover {
 	color: black;
 }
 
 .save-menu-link,
-.save-menu-btn {
+.save-menu-btn,
+.add-field-btn {
 	cursor: pointer;
 }
 

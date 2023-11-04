@@ -86,7 +86,7 @@ export function SessionSnapshots(gui) {
       }).text('restore');
       El('span').addClass('save-menu-btn').appendTo(line).on('click', async function(e) {
         var obj = await idb.get(item.id);
-        await internal.applyCompression(obj, {consume: true});
+        await internal.compressSnapshotForExport(obj);
         var buf = internal.pack(obj);
         // choose output filename and directory every time
         // saveBlobToLocalFile('mapshaper_snapshot.msx', new Blob([buf]));

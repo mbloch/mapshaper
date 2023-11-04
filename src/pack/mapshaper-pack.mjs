@@ -1,4 +1,5 @@
 import { ArcCollection } from '../paths/mapshaper-arcs';
+import { filterVertexData } from '../paths/mapshaper-arc-utils';
 import { DataTable } from '../datatable/mapshaper-data-table';
 // import { encode } from "@msgpack/msgpack";
 import { pack as encode } from 'msgpackr';
@@ -39,28 +40,59 @@ export function pack(obj) {
 }
 
 // gui: (optional) gui instance
-//
+// opts examples:
+//    exporting from command line: { compact: true, file: 'tmp.msx', final: true }
+//    exporting from gui export menu: {compact: true, format: 'msx'}
+//    saving gui temp snapshot: {compact: false}
 export async function exportDatasetsToPack(datasets, opts) {
   var obj = {
     version: 1,
     created: (new Date).toISOString(),
-    datasets: await Promise.all(datasets.map(exportDataset))
+    datasets: await Promise.all(datasets.map(dataset => exportDataset(dataset, opts)))
   };
-  if (opts.compact) {
-    await applyCompression(obj);
-  }
   return obj;
 }
 
-export async function applyCompression(obj, opts) {
-  var promises = [];
-  obj.datasets.forEach(d => {
-    if (d.arcs) promises.push(compressArcs(d.arcs, opts));
-  });
-  await Promise.all(promises);
+export async function exportDataset(dataset, opts) {
+  var arcs = dataset.arcs;
+  var arcData = null;
+  if (arcs) {
+    arcData = arcs.getVertexData();
+    arcData.zlimit = arcs.getRetainedInterval(); // TODO: add this to getVertexData()
+    arcData = await exportArcData(arcData, opts);
+  }
+  return {
+    arcs: arcData,
+    info: dataset.info ? exportInfo(dataset.info) : null,
+    layers: await Promise.all((dataset.layers || []).map(exportLayer))
+  };
 }
 
-async function compressArcs(obj, opts) {
+// compress unpacked + uncompressed snapshot data in-place
+export async function compressSnapshotForExport(obj) {
+  var promises = obj.datasets.map(d => {
+    compressDatasetForExport(d);
+  });
+  await Promise.all(promises);
+  return;
+}
+
+async function compressDatasetForExport(obj) {
+  if (!obj.arcs) return;
+  var arcData = importArcData(obj.arcs); // convert buffers to typed arrays
+  obj.arcs = await exportArcData(arcData, {compact: true}); // re-export to compressed buffers
+}
+
+function flattenArcs(arcData) {
+  if (arcData.zz && arcData.zlimit) {
+    // replace unfiltered arc data with flattened arc data
+    arcData = filterVertexData(arcData, arcData.zlimit);
+    delete arcData.zz;
+  }
+  return arcData;
+}
+
+async function gzipArcData(obj, opts) {
   var gzipOpts = Object.assign({level: 1, consume: false}, opts);
   var promises = [gzipAsync(obj.nn, gzipOpts), gzipAsync(obj.xx, gzipOpts), gzipAsync(obj.yy, gzipOpts)];
   if (obj.zz) promises.push(gzipAsync(obj.zz, gzipOpts));
@@ -71,27 +103,36 @@ async function compressArcs(obj, opts) {
   if (obj.zz) obj.zz = results.shift();
 }
 
-export async function exportDataset(dataset, opts) {
+function importArcData(obj) {
   return {
-    arcs: dataset.arcs ? exportArcs(dataset.arcs) : null,
-    info: dataset.info ? exportInfo(dataset.info) : null,
-    layers: await Promise.all((dataset.layers || []).map(exportLayer))
+    nn: new Uint32Array(obj.nn.buffer, 0, obj.nn.length / 4),
+    xx: new Float64Array(obj.xx.buffer, 0, obj.xx.length / 8),
+    yy: new Float64Array(obj.yy.buffer, 0, obj.yy.length / 8),
+    zz: obj.zz ? new Float64Array(obj.zz.buffer, 0, obj.zz.length / 8) : null,
+    zlimit: obj.zlimit || 0
   };
 }
 
-function typedArrayToBuffer(arr) {
-  return new Uint8Array(arr.buffer, arr.byteOffset, arr.byteLength);
-}
-
-function exportArcs(arcs) {
-  var data = arcs.getVertexData();
-  return {
+async function exportArcData(data, opts) {
+  // TODO: consider removing arcs that are not referenced by any layer
+  if (opts.compact && data.zz) {
+    data = flattenArcs(data); // bake in any simplification
+  }
+  var output = {
     nn: typedArrayToBuffer(data.nn),
     xx: typedArrayToBuffer(data.xx),
     yy: typedArrayToBuffer(data.yy),
     zz: data.zz ? typedArrayToBuffer(data.zz) : null,
-    zlimit: arcs.getRetainedInterval()
+    zlimit: data.zlimit || 0
   };
+  if (opts.compact && data.zz) {
+    await gzipArcData(output);
+  }
+  return output;
+}
+
+function typedArrayToBuffer(arr) {
+  return new Uint8Array(arr.buffer, arr.byteOffset, arr.byteLength);
 }
 
 async function exportLayer(lyr) {

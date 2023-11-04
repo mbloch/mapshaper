@@ -117,7 +117,7 @@ export function Popup(gui, toNext, toPrev) {
     if (editable) {
       // render "add field" button
       var line = El('div').appendTo(el);
-      El('span').addClass('save-menu-btn').appendTo(line).on('click', async function(e) {
+      El('span').addClass('add-field-btn').appendTo(line).on('click', async function(e) {
         // show "add field" dialog
         renderAddFieldPopup(recId, lyr);
       }).text('+ add field');

@@ -1,4 +1,5 @@
 import utils from '../utils/mapshaper-utils';
+import { error } from '../utils/mapshaper-logging';
 
 export function absArcId(arcId) {
   return arcId >= 0 ? arcId : ~arcId;
@@ -91,3 +92,59 @@ export function insertVertex(arcs, i, p) {
   }
   arcs.updateVertexData(nn, xx2, yy2, zz2);
 }
+
+export function countFilteredVertices(zz, zlimit) {
+  var count = 0;
+  for (var i=0, n = zz.length; i<n; i++) {
+    if (zz[i] >= zlimit) count++;
+  }
+  return count;
+}
+
+export function filterVertexData(o, zlimit) {
+  if (!o.zz) error('Expected simplification data');
+  var xx = o.xx,
+      yy = o.yy,
+      zz = o.zz,
+      len2 = countFilteredVertices(zz, zlimit),
+      arcCount = o.nn.length,
+      xx2 = new Float64Array(len2),
+      yy2 = new Float64Array(len2),
+      zz2 = new Float64Array(len2),
+      nn2 = new Int32Array(arcCount),
+      i = 0, i2 = 0,
+      n, n2;
+
+  for (var arcId=0; arcId < arcCount; arcId++) {
+    n2 = 0;
+    n = o.nn[arcId];
+    for (var end = i+n; i < end; i++) {
+      if (zz[i] >= zlimit) {
+        xx2[i2] = xx[i];
+        yy2[i2] = yy[i];
+        zz2[i2] = zz[i];
+        i2++;
+        n2++;
+      }
+    }
+    if (n2 == 1) {
+      error("Collapsed arc");
+      // This should not happen (endpoints should be z == Infinity)
+      // Could handle like this, instead of throwing an error:
+      // n2 = 0;
+      // xx2.pop();
+      // yy2.pop();
+      // zz2.pop();
+    } else if (n2 === 0) {
+      // collapsed arc... ignoring
+    }
+    nn2[arcId] = n2;
+  }
+  return {
+    xx: xx2,
+    yy: yy2,
+    zz: zz2,
+    nn: nn2
+  };
+}
+

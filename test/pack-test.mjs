@@ -24,7 +24,7 @@ describe('mapshaper-pack.mjs', function () {
     assert.equal(polygons.features.length, 6);
   })
 
-    it('read from a .msx snapshot file with compressed arcs', async function() {
+  it('read from a .msx snapshot file with compressed arcs', async function() {
     var cmd = '-i test/data/msx/mapshaper_snapshot.msx -o format=geojson';
     var out = await api.applyCommands(cmd);
     var cmd2 = '-i test/data/msx/mapshaper_snapshot_2.msx -o format=geojson';
@@ -34,4 +34,11 @@ describe('mapshaper-pack.mjs', function () {
     assert.deepEqual(JSON.parse(out['polygons.json']), JSON.parse(out2['polygons.json']))
 
   })
+
+  it('simplification data is removed on export', async function() {
+    var cmd = '-i test/data/two_states.json -o a.msx -simplify 50% -o b.msx';
+    var out = await api.applyCommands(cmd);
+    assert(out['a.msx'].length > out['b.msx'].length);
+
+  });
 })
