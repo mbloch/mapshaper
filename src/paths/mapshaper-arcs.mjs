@@ -1,5 +1,5 @@
 
-import { calcArcBounds, absArcId } from '../paths/mapshaper-arc-utils';
+import { calcArcBounds, absArcId, countFilteredVertices, filterVertexData } from '../paths/mapshaper-arc-utils';
 import { ArcIter, FilteredArcIter, ShapeIter } from '../paths/mapshaper-shape-iter';
 import { clampIntervalByPct } from '../paths/mapshaper-path-utils';
 import { getThresholdByPct } from '../simplify/mapshaper-simplify-pct';
@@ -123,17 +123,6 @@ export function ArcCollection() {
     initZData(zz || null);
   };
 
-  // Give access to raw data arrays...
-  this.getVertexData = function() {
-    return {
-      xx: _xx,
-      yy: _yy,
-      zz: _zz,
-      bb: _bb,
-      nn: _nn,
-      ii: _ii
-    };
-  };
 
   this.getCopy = function() {
     var copy = new ArcCollection(new Int32Array(_nn), new Float64Array(_xx),
@@ -145,57 +134,28 @@ export function ArcCollection() {
     return copy;
   };
 
+
+  // Give access to raw data arrays...
+  this.getVertexData = getVertexData;
+
+  function getVertexData() {
+    return {
+      xx: _xx,
+      yy: _yy,
+      zz: _zz,
+      bb: _bb,
+      nn: _nn,
+      ii: _ii
+    };
+  }
+
   function getFilteredPointCount() {
-    var zz = _zz, z = _zlimit;
-    if (!zz || !z) return this.getPointCount();
-    var count = 0;
-    for (var i=0, n = zz.length; i<n; i++) {
-      if (zz[i] >= z) count++;
-    }
-    return count;
+    if (!_zz || !_zlimit) return this.getPointCount();
+    return countFilteredVertices(_zz, _zlimit);
   }
 
   function getFilteredVertexData() {
-    var len2 = getFilteredPointCount();
-    var arcCount = _nn.length;
-    var xx2 = new Float64Array(len2),
-        yy2 = new Float64Array(len2),
-        zz2 = new Float64Array(len2),
-        nn2 = new Int32Array(arcCount),
-        i=0, i2 = 0,
-        n, n2;
-
-    for (var arcId=0; arcId < arcCount; arcId++) {
-      n2 = 0;
-      n = _nn[arcId];
-      for (var end = i+n; i < end; i++) {
-        if (_zz[i] >= _zlimit) {
-          xx2[i2] = _xx[i];
-          yy2[i2] = _yy[i];
-          zz2[i2] = _zz[i];
-          i2++;
-          n2++;
-        }
-      }
-      if (n2 == 1) {
-        error("Collapsed arc");
-        // This should not happen (endpoints should be z == Infinity)
-        // Could handle like this, instead of throwing an error:
-        // n2 = 0;
-        // xx2.pop();
-        // yy2.pop();
-        // zz2.pop();
-      } else if (n2 === 0) {
-        // collapsed arc... ignoring
-      }
-      nn2[arcId] = n2;
-    }
-    return {
-      xx: xx2,
-      yy: yy2,
-      zz: zz2,
-      nn: nn2
-    };
+    return filterVertexData(getVertexData(), _zlimit);
   }
 
   this.getFilteredCopy = function() {

@@ -67,7 +67,6 @@ cmd.classify = function(lyr, dataset, optsArg) {
     stop('Missing a data field to classify');
   }
 
-
   // get the number of classes and the number of values
   //
   // expand categories if value is '*'
