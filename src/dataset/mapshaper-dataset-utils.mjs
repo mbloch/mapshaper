@@ -35,6 +35,15 @@ export function mergeDatasetInfo(dest, src) {
   utils.defaults(destInfo, srcInfo);
 }
 
+export function copyDatasetInfo(info) {
+  // not a deep copy... objects like info.crs are read-only, so copy-by-reference
+  // should be ok
+  var info2 = Object.assign({}, info);
+  if (Array.isArray(info.input_files)) {
+    info2.input_files = info.input_files.concat();
+  }
+  return info2;
+}
 
 export function splitApartLayers(dataset, layers) {
   var datasets = [];
