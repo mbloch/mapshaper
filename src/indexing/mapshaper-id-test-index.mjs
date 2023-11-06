@@ -1,6 +1,17 @@
 // Keep track of whether positive or negative integer ids are 'used' or not.
 import { error } from '../utils/mapshaper-logging';
 
+
+export function SimpleIdTestIndex(n) {
+  var index = new Uint8Array(n);
+  this.setId = function(id) {
+    index[id] = 1;
+  };
+  this.hasId = function(id) {
+    return index[id] === 1;
+  };
+}
+
 export function IdTestIndex(n) {
   var index = new Uint8Array(n);
   var setList = [];
