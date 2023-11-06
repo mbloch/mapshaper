@@ -8,8 +8,40 @@ var fixPath = helpers.fixPath;
 
 describe('mapshaper-geojson.js', function () {
 
+  describe('-o hoist option', function() {
+
+    it('hoist= moves output properties to root of feature', async function() {
+      var data = [{
+        id: 'a', tippecanoe: { "maxzoom" : 9, "minzoom" : 4 }, foo: 'bar'
+      }];
+      var cmd = '-i data.json -o a.geojson hoist=id,tippecanoe -o b.geojson';
+      var out = await api.applyCommands(cmd, {'data.json': data});
+      var a = JSON.parse(out['a.geojson']);
+      var b = JSON.parse(out['b.geojson']);
+      assert.deepEqual(a, {
+        type: 'FeatureCollection',
+        features: [{
+          type: 'Feature',
+          tippecanoe: {maxzoom: 9, minzoom: 4},
+          id: 'a',
+          properties: {foo: 'bar'},
+          geometry: null
+        }]
+      })
+      // hoisting doesn't affect subsequent exports
+      assert.deepEqual(b, {
+        type: 'FeatureCollection',
+        features: [{
+          type: 'Feature',
+          properties: {foo: 'bar', tippecanoe: {maxzoom: 9, minzoom: 4}, id: 'a'},
+          geometry: null
+        }]
+      })
+    });
+  });
+
   describe('ndjson input', function () {
-    // TODO: support reading ndjson
+    console.log('TODO: support reading ndjson')
     false && it('reads features from an ndjson string', function (done) {
       var a = {
         type: 'Feature',
