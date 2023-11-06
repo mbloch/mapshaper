@@ -145,7 +145,7 @@ export function forEachArcId(arr, cb) {
   var item;
   for (var i=0; i<arr.length; i++) {
     item = arr[i];
-    if (item instanceof Array) {
+    if (Array.isArray(item)) {
       forEachArcId(item, cb);
     } else if (utils.isInteger(item)) {
       var val = cb(item);

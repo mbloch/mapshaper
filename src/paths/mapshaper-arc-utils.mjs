@@ -24,6 +24,23 @@ export function calcArcBounds(xx, yy, start, len) {
   return [xmin, ymin, xmax, ymax];
 }
 
+
+export function findArcIdFromVertexId(i, ii) {
+  // binary search
+  // possible optimization: use interpolation to find a better partition value.
+  var lower = 0, upper = ii.length - 1;
+  var middle;
+  while (lower < upper) {
+    middle = Math.ceil((lower + upper) / 2);
+    if (i < ii[middle]) {
+      upper = middle - 1;
+    } else {
+      lower = middle;
+    }
+  }
+  return lower; // assumes dataset is not empty
+}
+
 export function deleteVertex(arcs, i) {
   var data = arcs.getVertexData();
   var nn = data.nn;

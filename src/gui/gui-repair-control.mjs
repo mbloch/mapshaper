@@ -10,6 +10,7 @@ export function RepairControl(gui) {
       // keeping a reference to current arcs and intersections, so intersections
       // don't need to be recalculated when 'repair' button is pressed.
       _currArcs,
+      _currLayer,
       _currXX;
 
   gui.on('simplify_drag_start', hide);
@@ -30,8 +31,8 @@ export function RepairControl(gui) {
   });
 
   repairBtn.on('click', function() {
-    var fixed = internal.repairIntersections(_currArcs, _currXX);
-    showIntersections(fixed, _currArcs);
+    _currXX = internal.repairIntersections(_currArcs, _currXX);
+    showIntersections();
     repairBtn.addClass('disabled');
     model.updated({repair: true});
     gui.session.simplificationRepair();
@@ -79,13 +80,17 @@ export function RepairControl(gui) {
       showBtn = false;
     }
     el.show();
-    showIntersections(XX, arcs);
+    _currLayer = e.layer;
+    _currArcs = arcs;
+    _currXX = XX;
+    showIntersections();
     repairBtn.classed('disabled', !showBtn);
   }
 
   function reset() {
     _currArcs = null;
     _currXX = null;
+    _currLayer = null;
     hide();
   }
 
@@ -96,13 +101,11 @@ export function RepairControl(gui) {
     reset();
   }
 
-  function showIntersections(XX, arcs) {
-    var n = XX.length, pointLyr;
-    _currXX = XX;
-    _currArcs = arcs;
+  function showIntersections() {
+    var n = _currXX.length, pointLyr;
     if (n > 0) {
       // console.log("first intersection:", internal.getIntersectionDebugData(XX[0], arcs));
-      pointLyr = {geometry_type: 'point', shapes: [internal.getIntersectionPoints(XX)]};
+      pointLyr = internal.getIntersectionLayer(_currXX, _currLayer, _currArcs);
       map.setIntersectionLayer(pointLyr, {layers:[pointLyr]});
       readout.html(utils.format('<span class="icon"></span>%s line intersection%s <img class="close-btn" src="images/close.png">', n, utils.pluralSuffix(n)));
       readout.findChild('.close-btn').on('click', dismiss);

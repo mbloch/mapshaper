@@ -2,9 +2,11 @@
 import { sortSegmentIds } from '../paths/mapshaper-segment-sorting';
 import geom from '../geom/mapshaper-geom';
 import utils from '../utils/mapshaper-utils';
-import { getAvgSegment2 } from '../paths/mapshaper-path-utils';
+import { getAvgSegment2, forEachArcId } from '../paths/mapshaper-path-utils';
 import { getWorldBounds } from '../geom/mapshaper-latlon';
 import { getHighPrecisionSnapInterval } from '../paths/mapshaper-snapping';
+import { SimpleIdTestIndex } from '../indexing/mapshaper-id-test-index';
+import { absArcId, findArcIdFromVertexId } from '../paths/mapshaper-arc-utils';
 
 // Convert an array of intersections into an ArcCollection (for display)
 //
@@ -13,6 +15,24 @@ export function getIntersectionPoints(intersections) {
   return intersections.map(function(obj) {
         return [obj.x, obj.y];
       });
+}
+
+export function getIntersectionLayer(intersections, lyr, arcs) {
+  // return {geometry_type: 'point', shapes: [getIntersectionPoints(XX)]};
+  var ii = arcs.getVertexData().ii;
+  var index = new SimpleIdTestIndex(arcs.size());
+  forEachArcId(lyr.shapes, arcId => {
+    index.setId(absArcId(arcId));
+  });
+  var points = [];
+  intersections.forEach(obj => {
+    var arc1 = findArcIdFromVertexId(obj.a[0], ii);
+    var arc2 = findArcIdFromVertexId(obj.b[0], ii);
+    if (index.hasId(arc1) && index.hasId(arc2)) {
+      points.push([obj.x, obj.y]);
+    }
+  });
+  return {geometry_type: 'point', shapes: [points]};
 }
 
 // Identify intersecting segments in an ArcCollection
