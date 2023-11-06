@@ -316,7 +316,8 @@ export function getOptionParser() {
       type: 'flag'
     })
     .option('hoist', {
-      describe: '[GeoJSON] move properties to the root level',
+      describe: '[GeoJSON] move properties to the root level of each Feature',
+      type: 'strings'
     })
     .option('width', {
       describe: '[SVG/TopoJSON] pixel width of output (SVG default is 800)',

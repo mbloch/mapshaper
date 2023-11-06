@@ -73,7 +73,7 @@ export function exportLayerAsGeoJSON(lyr, dataset, opts, asFeatures, ofmt) {
   var properties = exportProperties(lyr.data, opts),
       shapes = lyr.shapes,
       ids = exportIds(lyr.data, opts),
-      items, stringify, hoist;
+      items, stringify;
 
   if (opts.ndjson) {
     stringify = stringifyAsNDJSON;
@@ -81,10 +81,6 @@ export function exportLayerAsGeoJSON(lyr, dataset, opts, asFeatures, ofmt) {
     stringify = getFormattedStringify(['bbox', 'coordinates']);
   } else {
     stringify = JSON.stringify;
-  }
-
-  if(opts.hoist) {
-    hoist = opts.hoist.split(',')
   }
 
   if (properties && shapes && properties.length !== shapes.length) {
@@ -96,9 +92,9 @@ export function exportLayerAsGeoJSON(lyr, dataset, opts, asFeatures, ofmt) {
         exporter = GeoJSON.exporters[lyr.geometry_type],
         geom = shape ? exporter(shape, dataset.arcs, opts) : null,
         obj = null;
+
     if (asFeatures) {
-      
-      obj = GeoJSON.toFeature(geom, properties ? properties[i] : null);
+      obj = composeFeature(geom, properties ? properties[i] : null, opts);
       if (ids) {
         obj.id = ids[i];
       }
@@ -108,14 +104,6 @@ export function exportLayerAsGeoJSON(lyr, dataset, opts, asFeatures, ofmt) {
       obj = geom;
     }
     if (ofmt) {
-      if(hoist){
-        hoist.forEach((key)=>{
-          if (obj.properties && obj.properties.hasOwnProperty(key)) {
-            obj[key] = obj.properties[key];
-            delete obj.properties[key]
-          }
-        })
-      }
       // stringify features as soon as they are generated, to reduce the
       // number of JS objects in memory (so larger files can be exported)
       obj = stringify(obj);
@@ -130,6 +118,20 @@ export function exportLayerAsGeoJSON(lyr, dataset, opts, asFeatures, ofmt) {
   }, []);
 }
 
+function composeFeature(geom, properties, opts) {
+  var feat = GeoJSON.toFeature(geom, properties);
+  if (Array.isArray(opts.hoist) && properties) {
+    // don't modify properties of source feature
+    feat.properties = Object.assign({}, properties);
+    opts.hoist.forEach(field => {
+      if (properties.hasOwnProperty(field)) {
+        feat[field] = properties[field];
+        delete feat.properties[field];
+      }
+    });
+  }
+  return feat;
+}
 
 export function getRFC7946Warnings(dataset) {
   var P = getDatasetCRS(dataset);
