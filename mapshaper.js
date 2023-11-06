@@ -1,6 +1,6 @@
 (function () {
 
-  var VERSION = "0.6.45";
+  var VERSION = "0.6.44";
 
 
   var utils = /*#__PURE__*/Object.freeze({
@@ -1813,6 +1813,23 @@
     return [xmin, ymin, xmax, ymax];
   }
 
+
+  function findArcIdFromVertexId(i, ii) {
+    // binary search
+    // possible optimization: use interpolation to find a better partition value.
+    var lower = 0, upper = ii.length - 1;
+    var middle;
+    while (lower < upper) {
+      middle = Math.ceil((lower + upper) / 2);
+      if (i < ii[middle]) {
+        upper = middle - 1;
+      } else {
+        lower = middle;
+      }
+    }
+    return lower; // assumes dataset is not empty
+  }
+
   function deleteVertex(arcs, i) {
     var data = arcs.getVertexData();
     var nn = data.nn;
@@ -1939,6 +1956,7 @@
     __proto__: null,
     absArcId: absArcId,
     calcArcBounds: calcArcBounds,
+    findArcIdFromVertexId: findArcIdFromVertexId,
     deleteVertex: deleteVertex,
     insertVertex: insertVertex,
     countFilteredVertices: countFilteredVertices,
@@ -3405,7 +3423,7 @@
     var item;
     for (var i=0; i<arr.length; i++) {
       item = arr[i];
-      if (item instanceof Array) {
+      if (Array.isArray(item)) {
         forEachArcId(item, cb);
       } else if (utils.isInteger(item)) {
         var val = cb(item);
@@ -6953,6 +6971,15 @@
     utils.defaults(destInfo, srcInfo);
   }
 
+  function copyDatasetInfo(info) {
+    // not a deep copy... objects like info.crs are read-only, so copy-by-reference
+    // should be ok
+    var info2 = Object.assign({}, info);
+    if (Array.isArray(info.input_files)) {
+      info2.input_files = info.input_files.concat();
+    }
+    return info2;
+  }
 
   function splitApartLayers(dataset, layers) {
     var datasets = [];
@@ -7119,6 +7146,7 @@
     __proto__: null,
     splitDataset: splitDataset,
     mergeDatasetInfo: mergeDatasetInfo,
+    copyDatasetInfo: copyDatasetInfo,
     splitApartLayers: splitApartLayers,
     copyDataset: copyDataset,
     copyDatasetForExport: copyDatasetForExport,
@@ -15481,6 +15509,17 @@
 
   // Keep track of whether positive or negative integer ids are 'used' or not.
 
+
+  function SimpleIdTestIndex(n) {
+    var index = new Uint8Array(n);
+    this.setId = function(id) {
+      index[id] = 1;
+    };
+    this.hasId = function(id) {
+      return index[id] === 1;
+    };
+  }
+
   function IdTestIndex(n) {
     var index = new Uint8Array(n);
     var setList = [];
@@ -15743,13 +15782,28 @@
     getHoleDivider: getHoleDivider
   });
 
-  // Convert an array of intersections into an ArcCollection (for display)
-  //
-
   function getIntersectionPoints(intersections) {
     return intersections.map(function(obj) {
           return [obj.x, obj.y];
         });
+  }
+
+  function getIntersectionLayer(intersections, lyr, arcs) {
+    // return {geometry_type: 'point', shapes: [getIntersectionPoints(XX)]};
+    var ii = arcs.getVertexData().ii;
+    var index = new SimpleIdTestIndex(arcs.size());
+    forEachArcId(lyr.shapes, arcId => {
+      index.setId(absArcId(arcId));
+    });
+    var points = [];
+    intersections.forEach(obj => {
+      var arc1 = findArcIdFromVertexId(obj.a[0], ii);
+      var arc2 = findArcIdFromVertexId(obj.b[0], ii);
+      if (index.hasId(arc1) && index.hasId(arc2)) {
+        points.push([obj.x, obj.y]);
+      }
+    });
+    return {geometry_type: 'point', shapes: [points]};
   }
 
   // Identify intersecting segments in an ArcCollection
@@ -15999,6 +16053,7 @@
   var SegmentIntersection = /*#__PURE__*/Object.freeze({
     __proto__: null,
     getIntersectionPoints: getIntersectionPoints,
+    getIntersectionLayer: getIntersectionLayer,
     findSegmentIntersections: findSegmentIntersections,
     sortIntersections: sortIntersections,
     dedupIntersections: dedupIntersections,
@@ -40530,9 +40585,8 @@ ${svg}
   cmd.polygonGrid = function(targetLayers, targetDataset, opts) {
     requireProjectedDataset(targetDataset);
     var params = getGridParams(targetLayers, targetDataset, opts);
-    var gridDataset = makeGridDataset(params);
-
-    gridDataset.info = targetDataset.info; // copy CRS to grid dataset // TODO: improve
+    var gridDataset = makeGridDataset(params); // grid is a new dataset
+    gridDataset.info = copyDatasetInfo(targetDataset.info);
     setOutputLayerName(gridDataset.layers[0], null, 'grid', opts);
     if (opts.debug) gridDataset.layers.push(cmd.pointGrid2(targetLayers, targetDataset, opts));
     return gridDataset;
