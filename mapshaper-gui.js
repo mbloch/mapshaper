@@ -1442,7 +1442,7 @@
         }).text('restore');
         El('span').addClass('save-menu-btn').appendTo(line).on('click', async function(e) {
           var obj = await idb.get(item.id);
-          await internal.applyCompression(obj, {consume: true});
+          await internal.compressSnapshotForExport(obj);
           var buf = internal.pack(obj);
           // choose output filename and directory every time
           // saveBlobToLocalFile('mapshaper_snapshot.msx', new Blob([buf]));
@@ -6372,6 +6372,61 @@
     arcs.updateVertexData(nn, xx2, yy2, zz2);
   }
 
+  function countFilteredVertices(zz, zlimit) {
+    var count = 0;
+    for (var i=0, n = zz.length; i<n; i++) {
+      if (zz[i] >= zlimit) count++;
+    }
+    return count;
+  }
+
+  function filterVertexData(o, zlimit) {
+    if (!o.zz) error('Expected simplification data');
+    var xx = o.xx,
+        yy = o.yy,
+        zz = o.zz,
+        len2 = countFilteredVertices(zz, zlimit),
+        arcCount = o.nn.length,
+        xx2 = new Float64Array(len2),
+        yy2 = new Float64Array(len2),
+        zz2 = new Float64Array(len2),
+        nn2 = new Int32Array(arcCount),
+        i = 0, i2 = 0,
+        n, n2;
+
+    for (var arcId=0; arcId < arcCount; arcId++) {
+      n2 = 0;
+      n = o.nn[arcId];
+      for (var end = i+n; i < end; i++) {
+        if (zz[i] >= zlimit) {
+          xx2[i2] = xx[i];
+          yy2[i2] = yy[i];
+          zz2[i2] = zz[i];
+          i2++;
+          n2++;
+        }
+      }
+      if (n2 == 1) {
+        error("Collapsed arc");
+        // This should not happen (endpoints should be z == Infinity)
+        // Could handle like this, instead of throwing an error:
+        // n2 = 0;
+        // xx2.pop();
+        // yy2.pop();
+        // zz2.pop();
+      } else if (n2 === 0) {
+        // collapsed arc... ignoring
+      }
+      nn2[arcId] = n2;
+    }
+    return {
+      xx: xx2,
+      yy: yy2,
+      zz: zz2,
+      nn: nn2
+    };
+  }
+
   function getShapeHitTest(displayLayer, ext, interactionMode) {
     var geoType = displayLayer.layer.geometry_type;
     var test;
@@ -8023,14 +8078,13 @@
     });
 
     self.show = function(id, ids, lyr, pinned) {
-      var table = lyr.data; // table can be null (e.g. if layer has no attribute data)
       var editable = pinned && gui.interaction.getMode() == 'data';
       var maxHeight = parent.node().clientHeight - 36;
       currId = id;
       // stash a function for refreshing the current popup when data changes
       // while the popup is being displayed (e.g. while dragging a label)
       refresh = function() {
-        render(content, id, table, editable);
+        render(content, id, lyr, editable);
       };
       refresh();
       if (ids && ids.length > 1) {
@@ -8069,7 +8123,8 @@
       tab.show();
     }
 
-    function render(el, recId, table, editable) {
+    function render(el, recId, lyr, editable) {
+      var table = lyr.data; // table can be null (e.g. if layer has no attribute data)
       var rec = table && (editable ? table.getRecordAt(recId) : table.getReadOnlyRecordAt(recId)) || {};
       var tableEl = El('table').addClass('selectable'),
           rows = 0;
@@ -8111,14 +8166,14 @@
       if (editable) {
         // render "add field" button
         var line = El('div').appendTo(el);
-        El('span').addClass('save-menu-btn').appendTo(line).on('click', async function(e) {
+        El('span').addClass('add-field-btn').appendTo(line).on('click', async function(e) {
           // show "add field" dialog
-          renderAddFieldPopup(recId, table);
+          renderAddFieldPopup(recId, lyr);
         }).text('+ add field');
       }
     }
 
-    function renderAddFieldPopup(recId, table) {
+    function renderAddFieldPopup(recId, lyr) {
       var popup = showPopupAlert('', 'Add field');
       var el = popup.container();
       el.addClass('option-menu');
@@ -8132,6 +8187,7 @@
       var val = el.findChild('.field-value');
       var box = el.findChild('.all');
       var btn = el.findChild('.btn').on('click', function() {
+        var table = internal.getLayerDataTable(lyr); // creates new table if missing
         var all = box.node().checked;
         var nameStr = name.node().value.trim();
         if (!nameStr) return;

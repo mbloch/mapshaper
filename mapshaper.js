@@ -1,6 +1,6 @@
 (function () {
 
-  var VERSION = "0.6.44";
+  var VERSION = "0.6.45";
 
 
   var utils = /*#__PURE__*/Object.freeze({
@@ -1882,12 +1882,67 @@
     arcs.updateVertexData(nn, xx2, yy2, zz2);
   }
 
+  function countFilteredVertices(zz, zlimit) {
+    var count = 0;
+    for (var i=0, n = zz.length; i<n; i++) {
+      if (zz[i] >= zlimit) count++;
+    }
+    return count;
+  }
+
+  function filterVertexData(o, zlimit) {
+    if (!o.zz) error('Expected simplification data');
+    var xx = o.xx,
+        yy = o.yy,
+        zz = o.zz,
+        len2 = countFilteredVertices(zz, zlimit),
+        arcCount = o.nn.length,
+        xx2 = new Float64Array(len2),
+        yy2 = new Float64Array(len2),
+        zz2 = new Float64Array(len2),
+        nn2 = new Int32Array(arcCount),
+        i = 0, i2 = 0,
+        n, n2;
+
+    for (var arcId=0; arcId < arcCount; arcId++) {
+      n2 = 0;
+      n = o.nn[arcId];
+      for (var end = i+n; i < end; i++) {
+        if (zz[i] >= zlimit) {
+          xx2[i2] = xx[i];
+          yy2[i2] = yy[i];
+          zz2[i2] = zz[i];
+          i2++;
+          n2++;
+        }
+      }
+      if (n2 == 1) {
+        error("Collapsed arc");
+        // This should not happen (endpoints should be z == Infinity)
+        // Could handle like this, instead of throwing an error:
+        // n2 = 0;
+        // xx2.pop();
+        // yy2.pop();
+        // zz2.pop();
+      }
+      nn2[arcId] = n2;
+    }
+    return {
+      xx: xx2,
+      yy: yy2,
+      zz: zz2,
+      nn: nn2
+    };
+  }
+
   var ArcUtils = /*#__PURE__*/Object.freeze({
     __proto__: null,
     absArcId: absArcId,
     calcArcBounds: calcArcBounds,
     deleteVertex: deleteVertex,
-    insertVertex: insertVertex
+    insertVertex: insertVertex,
+    countFilteredVertices: countFilteredVertices,
+    filterVertexData: filterVertexData
   });
 
   var WGS84 = {
@@ -5359,17 +5414,6 @@
       initZData(zz || null);
     };
 
-    // Give access to raw data arrays...
-    this.getVertexData = function() {
-      return {
-        xx: _xx,
-        yy: _yy,
-        zz: _zz,
-        bb: _bb,
-        nn: _nn,
-        ii: _ii
-      };
-    };
 
     this.getCopy = function() {
       var copy = new ArcCollection(new Int32Array(_nn), new Float64Array(_xx),
@@ -5381,55 +5425,28 @@
       return copy;
     };
 
+
+    // Give access to raw data arrays...
+    this.getVertexData = getVertexData;
+
+    function getVertexData() {
+      return {
+        xx: _xx,
+        yy: _yy,
+        zz: _zz,
+        bb: _bb,
+        nn: _nn,
+        ii: _ii
+      };
+    }
+
     function getFilteredPointCount() {
-      var zz = _zz, z = _zlimit;
-      if (!zz || !z) return this.getPointCount();
-      var count = 0;
-      for (var i=0, n = zz.length; i<n; i++) {
-        if (zz[i] >= z) count++;
-      }
-      return count;
+      if (!_zz || !_zlimit) return this.getPointCount();
+      return countFilteredVertices(_zz, _zlimit);
     }
 
     function getFilteredVertexData() {
-      var len2 = getFilteredPointCount();
-      var arcCount = _nn.length;
-      var xx2 = new Float64Array(len2),
-          yy2 = new Float64Array(len2),
-          zz2 = new Float64Array(len2),
-          nn2 = new Int32Array(arcCount),
-          i=0, i2 = 0,
-          n, n2;
-
-      for (var arcId=0; arcId < arcCount; arcId++) {
-        n2 = 0;
-        n = _nn[arcId];
-        for (var end = i+n; i < end; i++) {
-          if (_zz[i] >= _zlimit) {
-            xx2[i2] = _xx[i];
-            yy2[i2] = _yy[i];
-            zz2[i2] = _zz[i];
-            i2++;
-            n2++;
-          }
-        }
-        if (n2 == 1) {
-          error("Collapsed arc");
-          // This should not happen (endpoints should be z == Infinity)
-          // Could handle like this, instead of throwing an error:
-          // n2 = 0;
-          // xx2.pop();
-          // yy2.pop();
-          // zz2.pop();
-        }
-        nn2[arcId] = n2;
-      }
-      return {
-        xx: xx2,
-        yy: yy2,
-        zz: zz2,
-        nn: nn2
-      };
+      return filterVertexData(getVertexData(), _zlimit);
     }
 
     this.getFilteredCopy = function() {
@@ -10828,28 +10845,59 @@
   }
 
   // gui: (optional) gui instance
-  //
+  // opts examples:
+  //    exporting from command line: { compact: true, file: 'tmp.msx', final: true }
+  //    exporting from gui export menu: {compact: true, format: 'msx'}
+  //    saving gui temp snapshot: {compact: false}
   async function exportDatasetsToPack(datasets, opts) {
     var obj = {
       version: 1,
       created: (new Date).toISOString(),
-      datasets: await Promise.all(datasets.map(exportDataset))
+      datasets: await Promise.all(datasets.map(dataset => exportDataset(dataset, opts)))
     };
-    if (opts.compact) {
-      await applyCompression(obj);
-    }
     return obj;
   }
 
-  async function applyCompression(obj, opts) {
-    var promises = [];
-    obj.datasets.forEach(d => {
-      if (d.arcs) promises.push(compressArcs(d.arcs, opts));
-    });
-    await Promise.all(promises);
+  async function exportDataset(dataset, opts) {
+    var arcs = dataset.arcs;
+    var arcData = null;
+    if (arcs) {
+      arcData = arcs.getVertexData();
+      arcData.zlimit = arcs.getRetainedInterval(); // TODO: add this to getVertexData()
+      arcData = await exportArcData(arcData, opts);
+    }
+    return {
+      arcs: arcData,
+      info: dataset.info ? exportInfo(dataset.info) : null,
+      layers: await Promise.all((dataset.layers || []).map(exportLayer))
+    };
   }
 
-  async function compressArcs(obj, opts) {
+  // compress unpacked + uncompressed snapshot data in-place
+  async function compressSnapshotForExport(obj) {
+    var promises = obj.datasets.map(d => {
+      compressDatasetForExport(d);
+    });
+    await Promise.all(promises);
+    return;
+  }
+
+  async function compressDatasetForExport(obj) {
+    if (!obj.arcs) return;
+    var arcData = importArcData(obj.arcs); // convert buffers to typed arrays
+    obj.arcs = await exportArcData(arcData, {compact: true}); // re-export to compressed buffers
+  }
+
+  function flattenArcs(arcData) {
+    if (arcData.zz && arcData.zlimit) {
+      // replace unfiltered arc data with flattened arc data
+      arcData = filterVertexData(arcData, arcData.zlimit);
+      delete arcData.zz;
+    }
+    return arcData;
+  }
+
+  async function gzipArcData(obj, opts) {
     var gzipOpts = Object.assign({level: 1, consume: false}, opts);
     var promises = [gzipAsync(obj.nn, gzipOpts), gzipAsync(obj.xx, gzipOpts), gzipAsync(obj.yy, gzipOpts)];
     if (obj.zz) promises.push(gzipAsync(obj.zz, gzipOpts));
@@ -10860,27 +10908,36 @@
     if (obj.zz) obj.zz = results.shift();
   }
 
-  async function exportDataset(dataset, opts) {
+  function importArcData(obj) {
     return {
-      arcs: dataset.arcs ? exportArcs(dataset.arcs) : null,
-      info: dataset.info ? exportInfo(dataset.info) : null,
-      layers: await Promise.all((dataset.layers || []).map(exportLayer))
+      nn: new Uint32Array(obj.nn.buffer, 0, obj.nn.length / 4),
+      xx: new Float64Array(obj.xx.buffer, 0, obj.xx.length / 8),
+      yy: new Float64Array(obj.yy.buffer, 0, obj.yy.length / 8),
+      zz: obj.zz ? new Float64Array(obj.zz.buffer, 0, obj.zz.length / 8) : null,
+      zlimit: obj.zlimit || 0
     };
   }
 
-  function typedArrayToBuffer(arr) {
-    return new Uint8Array(arr.buffer, arr.byteOffset, arr.byteLength);
-  }
-
-  function exportArcs(arcs) {
-    var data = arcs.getVertexData();
-    return {
+  async function exportArcData(data, opts) {
+    // TODO: consider removing arcs that are not referenced by any layer
+    if (opts.compact && data.zz) {
+      data = flattenArcs(data); // bake in any simplification
+    }
+    var output = {
       nn: typedArrayToBuffer(data.nn),
       xx: typedArrayToBuffer(data.xx),
       yy: typedArrayToBuffer(data.yy),
       zz: data.zz ? typedArrayToBuffer(data.zz) : null,
-      zlimit: arcs.getRetainedInterval()
+      zlimit: data.zlimit || 0
     };
+    if (opts.compact && data.zz) {
+      await gzipArcData(output);
+    }
+    return output;
+  }
+
+  function typedArrayToBuffer(arr) {
+    return new Uint8Array(arr.buffer, arr.byteOffset, arr.byteLength);
   }
 
   async function exportLayer(lyr) {
@@ -10914,8 +10971,8 @@
     exportPackedDatasets: exportPackedDatasets,
     pack: pack,
     exportDatasetsToPack: exportDatasetsToPack,
-    applyCompression: applyCompression,
     exportDataset: exportDataset,
+    compressSnapshotForExport: compressSnapshotForExport,
     exportInfo: exportInfo
   });
 
@@ -15952,6 +16009,67 @@
     formatIntersectingSegment: formatIntersectingSegment
   });
 
+  // Remap any references to duplicate arcs in paths to use the same arcs
+  // Remove any unused arcs from the dataset's ArcCollection.
+  // Return a NodeCollection
+  function cleanArcReferences(dataset) {
+    var nodes = new NodeCollection(dataset.arcs);
+    var map = findDuplicateArcs(nodes);
+    var dropCount;
+    if (map) {
+      replaceIndexedArcIds(dataset, map);
+    }
+    dropCount = deleteUnusedArcs(dataset);
+    if (dropCount > 0) {
+      // rebuild nodes if arcs have changed
+      nodes = new NodeCollection(dataset.arcs);
+    }
+    return nodes;
+  }
+
+  function deleteUnusedArcs(dataset) {
+    var test = getArcPresenceTest2(dataset.layers, dataset.arcs);
+    var count1 = dataset.arcs.size();
+    var map = dataset.arcs.deleteArcs(test); // condenses arcs
+    var count2 = dataset.arcs.size();
+    var deleteCount = count1 - count2;
+    if (deleteCount > 0) {
+      replaceIndexedArcIds(dataset, map);
+    }
+    return deleteCount;
+  }
+
+  // @map an Object mapping old to new ids
+  function replaceIndexedArcIds(dataset, map) {
+    var remapPath = function(ids) {
+      var arcId, absId, id2;
+      for (var i=0; i<ids.length; i++) {
+        arcId = ids[i];
+        absId = absArcId(arcId);
+        id2 = map[absId];
+        ids[i] = arcId == absId ? id2 : ~id2;
+      }
+      return ids;
+    };
+    dataset.layers.forEach(function(lyr) {
+      if (layerHasPaths(lyr)) {
+        editShapes(lyr.shapes, remapPath);
+      }
+    });
+  }
+
+  function findDuplicateArcs(nodes) {
+    var map = new Int32Array(nodes.arcs.size()),
+        count = 0,
+        i2;
+    for (var i=0, n=nodes.arcs.size(); i<n; i++) {
+      i2 = nodes.findDuplicateArc(i);
+      map[i] = i2;
+      if (i != i2) count++;
+    }
+    return count > 0 ? map : null;
+  }
+
   // Functions for dividing polygons and polygons at points where arc-segments intersect
 
   // TODO:
@@ -16040,68 +16158,6 @@
     return coordsHaveChanged;
   }
 
-
-  // Remap any references to duplicate arcs in paths to use the same arcs
-  // Remove any unused arcs from the dataset's ArcCollection.
-  // Return a NodeCollection
-  function cleanArcReferences(dataset) {
-    var nodes = new NodeCollection(dataset.arcs);
-    var map = findDuplicateArcs(nodes);
-    var dropCount;
-    if (map) {
-      replaceIndexedArcIds(dataset, map);
-    }
-    dropCount = deleteUnusedArcs(dataset);
-    if (dropCount > 0) {
-      // rebuild nodes if arcs have changed
-      nodes = new NodeCollection(dataset.arcs);
-    }
-    return nodes;
-  }
-
-
-  // @map an Object mapping old to new ids
-  function replaceIndexedArcIds(dataset, map) {
-    var remapPath = function(ids) {
-      var arcId, absId, id2;
-      for (var i=0; i<ids.length; i++) {
-        arcId = ids[i];
-        absId = absArcId(arcId);
-        id2 = map[absId];
-        ids[i] = arcId == absId ? id2 : ~id2;
-      }
-      return ids;
-    };
-    dataset.layers.forEach(function(lyr) {
-      if (layerHasPaths(lyr)) {
-        editShapes(lyr.shapes, remapPath);
-      }
-    });
-  }
-
-  function findDuplicateArcs(nodes) {
-    var map = new Int32Array(nodes.arcs.size()),
-        count = 0,
-        i2;
-    for (var i=0, n=nodes.arcs.size(); i<n; i++) {
-      i2 = nodes.findDuplicateArc(i);
-      map[i] = i2;
-      if (i != i2) count++;
-    }
-    return count > 0 ? map : null;
-  }
-
-  function deleteUnusedArcs(dataset) {
-    var test = getArcPresenceTest2(dataset.layers, dataset.arcs);
-    var count1 = dataset.arcs.size();
-    var map = dataset.arcs.deleteArcs(test); // condenses arcs
-    var count2 = dataset.arcs.size();
-    var deleteCount = count1 - count2;
-    if (deleteCount > 0) {
-      replaceIndexedArcIds(dataset, map);
-    }
-    return deleteCount;
-  }
 
   // Return a function for updating a path (array of arc ids)
   // @map array generated by insertCutPoints()
@@ -17458,8 +17514,9 @@
           exporter = GeoJSON.exporters[lyr.geometry_type],
           geom = shape ? exporter(shape, dataset.arcs, opts) : null,
           obj = null;
+
       if (asFeatures) {
-        obj = GeoJSON.toFeature(geom, properties ? properties[i] : null);
+        obj = composeFeature(geom, properties ? properties[i] : null, opts);
         if (ids) {
           obj.id = ids[i];
         }
@@ -17483,6 +17540,20 @@
     }, []);
   }
 
+  function composeFeature(geom, properties, opts) {
+    var feat = GeoJSON.toFeature(geom, properties);
+    if (Array.isArray(opts.hoist) && properties) {
+      // don't modify properties of source feature
+      feat.properties = Object.assign({}, properties);
+      opts.hoist.forEach(field => {
+        if (properties.hasOwnProperty(field)) {
+          feat[field] = properties[field];
+          delete feat.properties[field];
+        }
+      });
+    }
+    return feat;
+  }
 
   function getRFC7946Warnings(dataset) {
     var P = getDatasetCRS(dataset);
@@ -21576,6 +21647,14 @@ ${svg}
       }
       return memo.concat(exportFileContent(dataset, opts));
     }, []);
+
+    if (opts.bbox_index) {
+      // If rounding or quantization are applied during export, bounds may
+      // change somewhat... consider adding a bounds property to each layer during
+      // export when appropriate.
+      files.push(createIndexFile(datasets));
+    }
+
     // need unique names for multiple output files
     assignUniqueFileNames(files);
 
@@ -21633,15 +21712,7 @@ ${svg}
     }
 
     validateLayerData(dataset.layers);
-
     files = exporter(dataset, opts).concat(files);
-    // If rounding or quantization are applied during export, bounds may
-    // change somewhat... consider adding a bounds property to each layer during
-    // export when appropriate.
-    if (opts.bbox_index) {
-      files.push(createIndexFile(dataset));
-    }
-
     validateFileNames(files);
     return files;
   }
@@ -21662,13 +21733,16 @@ ${svg}
   // Generate json file with bounding boxes and names of each export layer
   // TODO: consider making this a command, or at least make format settable
   //
-  function createIndexFile(dataset) {
-    var index = dataset.layers.map(function(lyr) {
-      var bounds = getLayerBounds(lyr, dataset.arcs);
-      return {
-        bbox: bounds.toArray(),
-        name: lyr.name
-      };
+  function createIndexFile(datasets) {
+    var index = [];
+    datasets.forEach(function(dataset) {
+      dataset.layers.forEach(function(lyr) {
+        var bounds = getLayerBounds(lyr, dataset.arcs);
+        index.push({
+          bbox: bounds.toArray(),
+          name: lyr.name
+        });
+      });
     });
 
     return {
@@ -23391,7 +23465,7 @@ ${svg}
       .option('string-fields', stringFieldsOpt)
       .option('field-types', fieldTypesOpt)
       .option('name', {
-        describe: 'Rename the imported layer(s)'
+        describe: 'rename the imported layer(s)'
       })
       .option('geometry-type', {
         // undocumented; GeoJSON import rejects all but one kind of geometry
@@ -23559,6 +23633,10 @@ ${svg}
       .option('ndjson', {
         describe: '[GeoJSON/JSON] output newline-delimited features or records',
         type: 'flag'
+      })
+      .option('hoist', {
+        describe: '[GeoJSON] move properties to the root level of each Feature',
+        type: 'strings'
       })
       .option('width', {
         describe: '[SVG/TopoJSON] pixel width of output (SVG default is 800)',
@@ -33509,7 +33587,6 @@ ${svg}
     } else if (!dataField) {
       stop('Missing a data field to classify');
     }
-
 
     // get the number of classes and the number of values
     //
