@@ -1,4 +1,4 @@
-import { getDatasetBounds } from '../dataset/mapshaper-dataset-utils';
+import { getDatasetBounds, copyDatasetInfo } from '../dataset/mapshaper-dataset-utils';
 import { setOutputLayerName } from '../dataset/mapshaper-layer-utils';
 import { convertIntervalParam } from '../geom/mapshaper-units';
 import { getDatasetCRS, requireProjectedDataset } from '../crs/mapshaper-projections';
@@ -7,12 +7,12 @@ import cmd from '../mapshaper-cmd';
 import { stop } from '../utils/mapshaper-logging';
 import utils from '../utils/mapshaper-utils';
 import { buildTopology } from '../topology/mapshaper-topology';
+
 cmd.polygonGrid = function(targetLayers, targetDataset, opts) {
   requireProjectedDataset(targetDataset);
   var params = getGridParams(targetLayers, targetDataset, opts);
-  var gridDataset = makeGridDataset(params, opts);
-
-  gridDataset.info = targetDataset.info; // copy CRS to grid dataset // TODO: improve
+  var gridDataset = makeGridDataset(params, opts); // grid is a new dataset
+  gridDataset.info = copyDatasetInfo(targetDataset.info);
   setOutputLayerName(gridDataset.layers[0], null, 'grid', opts);
   if (opts.debug) gridDataset.layers.push(cmd.pointGrid2(targetLayers, targetDataset, opts));
   return gridDataset;
