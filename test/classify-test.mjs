@@ -25,6 +25,22 @@ describe('mapshaper-classify.js', function () {
       });
     })
 
+    it('accept numbers as categorical values', async function() {
+      var data = 'name\ncar\ntruck\ntrain\nbike';
+      var cmd = '-i data.csv -classify save-as=opacity name categories=car,truck,train values=0.3,0.5,0.7 null-value=0 -o format=json';
+      var out = await api.applyCommands(cmd, {'data.csv': data});
+      var data = JSON.parse(out['data.json']);
+      assert.deepEqual(data, [{name: 'car', opacity: 0.3}, {name: 'truck', opacity: 0.5}, {name: 'train', opacity: 0.7}, {name: 'bike', opacity: 0}]);
+    });
+
+    it('accept numbers as categories', async function() {
+      var data = 'code\n0\n1\n2\n3';
+      var cmd = '-i data.csv -classify save-as=opacity code categories=0,1,2 values=0.3,0.5,0.7 null-value=0 -o format=json';
+      var out = await api.applyCommands(cmd, {'data.csv': data});
+      var data = JSON.parse(out['data.json']);
+      assert.deepEqual(data, [{code: 0, opacity: 0.3}, {code: 1, opacity: 0.5}, {code: 2, opacity: 0.7}, {code: 3, opacity: 0}]);
+    });
+
   })
 
   describe('empty field tests', function() {

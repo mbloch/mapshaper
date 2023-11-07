@@ -1,4 +1,3 @@
-
 import { sortSegmentIds } from '../paths/mapshaper-segment-sorting';
 import geom from '../geom/mapshaper-geom';
 import utils from '../utils/mapshaper-utils';
@@ -7,9 +6,6 @@ import { getWorldBounds } from '../geom/mapshaper-latlon';
 import { getHighPrecisionSnapInterval } from '../paths/mapshaper-snapping';
 import { SimpleIdTestIndex } from '../indexing/mapshaper-id-test-index';
 import { absArcId, findArcIdFromVertexId } from '../paths/mapshaper-arc-utils';
-
-// Convert an array of intersections into an ArcCollection (for display)
-//
 
 export function getIntersectionPoints(intersections) {
   return intersections.map(function(obj) {
