@@ -75,7 +75,7 @@ function getCategoricalValues(values, n) {
   if (n != values.length) {
     stop('Mismatch in number of categories and number of values');
   }
-  return values;
+  return parseValues(values); // convert numerical strings to numbers
 }
 
 function getIndexes(n) {

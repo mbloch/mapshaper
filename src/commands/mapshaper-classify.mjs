@@ -43,7 +43,7 @@ cmd.classify = function(lyr, dataset, optsArg) {
   if (opts.index_field) {
     dataField = opts.index_field;
     fieldType = getColumnType(opts.field, records);
- } else if (opts.field) {
+  } else if (opts.field) {
     dataField = opts.field;
     fieldType = getColumnType(opts.field, records);
   }
@@ -74,6 +74,9 @@ cmd.classify = function(lyr, dataset, optsArg) {
   if (method == 'categorical') {
     if ((!opts.categories || opts.categories.includes('*')) && dataField) {
       opts.categories = getUniqFieldValues(records, dataField);
+    }
+    if (opts.categories && fieldType == 'number') {
+      opts.categories = opts.categories.map(str => +str);
     }
   }
 
