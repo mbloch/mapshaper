@@ -10,34 +10,48 @@ export function expressionUsesGeoJSON(exp) {
 }
 
 export function getFeatureEditor(lyr, dataset) {
-  var changed = false;
   var api = {};
   // need to copy attribute to avoid circular references if geojson is assigned
   // to a data property.
   var copy = copyLayer(lyr);
   var features = exportLayerAsGeoJSON(copy, dataset, {}, true);
+  var features2 = [];
 
   api.get = function(i) {
+    if (i > 0) features[i-1] = null; // garbage-collect old features
     return features[i];
   };
 
   api.set = function(feat, i) {
-    changed = true;
+    var arr;
+
     if (utils.isString(feat)) {
       feat = JSON.parse(feat);
     }
-    features[i] = GeoJSON.toFeature(feat); // TODO: validate
+
+    if (!feat) return;
+
+    if (feat.type == 'GeometryCollection') {
+      arr = feat.geometries.map(geom => GeoJSON.toFeature(geom));
+    } else if (feat.type == 'FeatureCollection') {
+      arr = feat.features;
+    } else {
+      feat = GeoJSON.toFeature(feat);
+    }
+
+    if (arr) {
+      features2 = features2.concat(arr);
+    } else {
+      features2.push(feat);
+    }
   };
 
   api.done = function() {
-    if (!changed) return; // read-only expression
-    // TODO: validate number of features, etc.
+    if (features2.length === 0) return; // read-only expression
     var geojson = {
       type: 'FeatureCollection',
-      features: features
+      features: features2
     };
-
-    // console.log(JSON.stringify(geojson, null, 2))
     return importGeoJSON(geojson);
   };
   return api;

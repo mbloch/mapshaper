@@ -1,3 +1,6 @@
+v0.6.46
+* Added save to clipboard option to web UI export menu.
+
 v0.6.45
 * Added -o hoist=<fields> option for moving GeoJSON Feature properties to the root of each Feature.
 * Simplification data is removed from snapshot files (except for temporary snapshots in the web UI).
