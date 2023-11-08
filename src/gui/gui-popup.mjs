@@ -128,8 +128,8 @@ export function Popup(gui, toNext, toPrev) {
     var popup = showPopupAlert('', 'Add field');
     var el = popup.container();
     el.addClass('option-menu');
-    var html = `<input type="text" class="field-name text-input" placeholder="field name"><br>
-    <input type="text" class="field-value text-input" placeholder="value"><br>
+    var html = `<div><input type="text" class="field-name text-input" placeholder="field name"></div>
+    <div><input type="text" class="field-value text-input" placeholder="value"><div>
     <div tabindex="0" class="btn dialog-btn">Apply</div> <span class="inline-checkbox"><input type="checkbox" class="all" />assign value to all records</span>`;
     el.html(html);
 

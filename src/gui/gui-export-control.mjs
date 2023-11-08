@@ -27,7 +27,7 @@ export var ExportControl = function(gui) {
     return;
   }
 
-  new SimpleButton(menu.findChild('.save-btn').addClass('default-btn')).on('click', onExportClick);
+  new SimpleButton(menu.findChild('#export-btn').addClass('default-btn')).on('click', onExportClick);
   gui.addMode('export', turnOn, turnOff, exportBtn);
   gui.keyboard.onMenuSubmit(menu, onExportClick);
   var savePreferenceCheckbox;

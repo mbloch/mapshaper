@@ -586,7 +586,8 @@ All layer types
 - `this.layer_name` Name of the layer, or `""` if layer is unnamed.
 - `this.properties`  Data properties (also available as local variables) (read/write)
 - `this.layer`   Object with "name" and "data" properties
-- `this.geojson` (read/write) Converts each feature to a GeoJSON Feature object.
+- `this.geojson` (getter) Returns each feature as a GeoJSON Feature object.
+- `this.geojson=` (setter) Update target layer with GeoJSON.
 
 Point layers
 - `this.coordinates` An array of [x, y] coordinates with one or more members, or null (read/write)
