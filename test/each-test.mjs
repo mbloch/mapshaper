@@ -129,11 +129,38 @@ describe('mapshaper-each.js', function () {
       };
       var cmd = '-i data.json -each "this.geojson = geostr" -o';
       api.applyCommands(cmd, {'data.json': JSON.stringify(data)}, function(err, out) {
+
         var output = JSON.parse(out['data.json'])
         var expect = JSON.parse(data.properties.geostr);
         assert.deepEqual(output.geometries[0], expect);
         done();
       });
+    })
+
+    it('this.geojson setter accepts null and FeatureCollection', async function() {
+      var featureColl = {
+        type: 'FeatureCollection',
+        features: [{
+          type: 'Feature',
+          geometry: {
+            type: "LineString",
+            coordinates: [[0,0], [1,1]]
+          },
+          properties: {foo: 'bar'}
+        }, {
+          type: 'Feature',
+          geometry: {
+            type: "LineString",
+            coordinates: [[1,0], [2,1]]
+          },
+          properties: {}
+        }]
+      };
+
+      var data = [{ geo: featureColl }, { geo: null }];
+      var cmd = '-i data.json -each "this.geojson = geo" -o';
+      var out = await api.applyCommands(cmd, {'data.json': JSON.stringify(data)});
+      assert.deepEqual(JSON.parse(out['data.json']), featureColl);
     })
 
     it('this.geojson getter + setter', function(done) {
