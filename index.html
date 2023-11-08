@@ -163,7 +163,7 @@
 		<div class="export-formats option-menu">
 		</div>
 
-		<div style="height:10px"></div>
+		<div style="height:11px"></div>
 
 		<div class="option-menu"><input type="text" class="text-input advanced-options" placeholder="command line options" />
 		<a href="https://github.com/mbloch/mapshaper/wiki/Command-Reference#-o-output" target="_mapshaper_output_docs">
@@ -171,15 +171,15 @@
 		<div class="tip">Enter options from the command line interface for
 the -o command. Examples: bbox no-quantization
 precision=0.001. Click to see all options.</div></div></div></a>
-</div>
+
 
 	<!-- 	<div class="option-menu">
 	<input id="ofile-name" class="text-input" type="text" placeholder="output file name" />
 	</div> -->
-
-		<div class="save-btn btn dialog-btn">Export</div>
-		<!-- <span id="save-to-clipboard" class="inline-checkbox" style="display: inline-block;"><input type="checkbox"/>save to clipboard</span>		 -->
-		<span id="save-preference" class="inline-checkbox" style="display: none;"><input type="checkbox"/>choose directory</span>
+		<div><span id="save-preference" style="display: none;"><input type="checkbox"/>choose output directory</span></div>
+		<div><span id="save-to-clipboard" style="display: inline-block;"><input type="checkbox"/>save to clipboard</span></div>
+		</div>
+		<div id="export-btn" class="btn dialog-btn" style="margin-top: 4px;">Export</div>
 
 	</div>
 </div>

@@ -3675,11 +3675,12 @@
       return;
     }
 
-    new SimpleButton(menu.findChild('.save-btn').addClass('default-btn')).on('click', onExportClick);
+    new SimpleButton(menu.findChild('#export-btn').addClass('default-btn')).on('click', onExportClick);
     gui.addMode('export', turnOn, turnOff, exportBtn);
     gui.keyboard.onMenuSubmit(menu, onExportClick);
+    var savePreferenceCheckbox;
     if (window.showSaveFilePicker) {
-      menu.findChild('#save-preference')
+      savePreferenceCheckbox = menu.findChild('#save-preference')
         .css('display', 'inline-block')
         .findChild('input')
         .on('change', function() {
@@ -3687,11 +3688,44 @@
         })
         .attr('checked', GUI.getSavedValue('choose-save-dir') || null);
     }
+    var clipboardCheckbox = menu.findChild('#save-to-clipboard')
+      .findChild('input')
+      .on('change', function() {
+        updateExportCheckboxes();
+      });
+
+    function setDisabled(inputEl, flag) {
+      if (!inputEl) return;
+      inputEl.node().disabled = !!flag;
+      inputEl.parent().css({color: flag ? '#bbb' : 'black'});
+    }
+
+    function checkboxOn(inputEl) {
+      if (!inputEl) return false;
+      return inputEl.node().checked && !inputEl.node().disabled;
+    }
+
+    function updateExportCheckboxes() {
+      // disable cliboard if not usable
+      var canUseClipboard = clipboardIsAvailable();
+      setDisabled(clipboardCheckbox, !canUseClipboard);
+
+      // disable save to directory checkbox if clipboard is selected
+      setDisabled(savePreferenceCheckbox, checkboxOn(clipboardCheckbox));
+    }
+
+    function clipboardIsAvailable() {
+      var layers = getSelectedLayerEntries();
+      var fmt = getSelectedFormat();
+      return layers.length == 1 && ['json', 'geojson', 'dsv', 'topojson'].includes(fmt);
+    }
+
 
     function turnOn() {
       layersArr = initLayerMenu();
       // initZipOption();
       initFormatMenu();
+      updateExportCheckboxes();
       menu.show();
     }
 
@@ -3700,22 +3734,25 @@
       menu.hide();
     }
 
-    function getSelectedLayers() {
-      var targets = layersArr.reduce(function(memo, o) {
+    function getSelectedLayerEntries() {
+      return layersArr.reduce(function(memo, o) {
         return o.checkbox.checked ? memo.concat(o.target) : memo;
       }, []);
-      return internal.groupLayersByDataset(targets);
+    }
+
+    function getExportTargets() {
+      return internal.groupLayersByDataset(getSelectedLayerEntries());
     }
 
     function onExportClick() {
-      var layers = getSelectedLayers();
-      if (layers.length === 0) {
+      var targets = getExportTargets();
+      if (targets.length === 0) {
         return gui.alert('No layers were selected');
       }
       gui.clearMode();
       gui.showProgressMessage('Exporting');
       setTimeout(function() {
-        exportMenuSelection(layers).catch(function(err) {
+        exportMenuSelection(targets).catch(function(err) {
           if (utils$1.isString(err)) {
             gui.alert(err);
           } else {
@@ -3745,12 +3782,22 @@
     }
 
     // done: function(string|Error|null)
-    async function exportMenuSelection(layers) {
+    async function exportMenuSelection(targets) {
       var opts = getExportOpts();
       // note: command line "target" option gets ignored
-      var files = await internal.exportTargetLayers(layers, opts);
+      var files = await internal.exportTargetLayers(targets, opts);
       gui.session.layersExported(getTargetLayerIds(), getExportOptsAsString());
-      await utils$1.promisify(internal.writeFiles)(files, opts);
+      if (files.length == 1 && checkboxOn(clipboardCheckbox)) {
+        await saveFileContentToClipboard(files[0].content);
+      } else {
+        await utils$1.promisify(internal.writeFiles)(files, opts);
+      }
+
+    }
+
+    async function saveFileContentToClipboard(content) {
+      var str = utils$1.isString(content) ? content : content.toString();
+      await navigator.clipboard.writeText(str);
     }
 
     function initLayerItem(o, i) {
@@ -3836,6 +3883,7 @@
     }
 
     function updateToggleBtn() {
+      updateExportCheckboxes(); // checkbox visibility is affected by number of export layers
       if (!toggleBtn) return;
       var state = getSelectionState();
       // style of intermediate checkbox state doesn't look right in Chrome --
@@ -3856,29 +3904,48 @@
       return 'some';
     }
 
-    function getInputFormats() {
-      return model.getDatasets().reduce(function(memo, d) {
-        var fmts = d.info && d.info.input_formats || [];
-        return memo.concat(fmts);
-      }, []);
-    }
-
     function getDefaultExportFormat() {
       var dataset = model.getActiveLayer().dataset;
-      return dataset.info && dataset.info.input_formats &&
-          dataset.info.input_formats[0] || 'geojson';
+      var inputFmt = dataset.info && dataset.info.input_formats &&
+          dataset.info.input_formats[0];
+      return getExportFormats().includes(inputFmt) ? inputFmt : 'geojson';
+    }
+
+    function getExportFormats() {
+      // return ['shapefile', 'geojson', 'topojson', 'json', 'dsv', 'kml', 'svg', internal.PACKAGE_EXT];
+      return ['shapefile', 'json', 'geojson', 'dsv', 'topojson', 'kml', internal.PACKAGE_EXT, 'svg'];
     }
 
     function initFormatMenu() {
-      var defaults = ['shapefile', 'geojson', 'topojson', 'json', 'dsv', 'kml', 'svg', internal.PACKAGE_EXT];
-      var formats = utils$1.uniq(defaults.concat(getInputFormats()));
+      var formats = getExportFormats();
+      // var formats = utils.uniq(getExportFormats().concat(getInputFormats()));
       var items = formats.map(function(fmt) {
-        return utils$1.format('<div><label><input type="radio" name="format" value="%s"' +
-          ' class="radio">%s</label></div>', fmt, internal.getFormatName(fmt));
+        return utils$1.format('<td><label><input type="radio" name="format" value="%s"' +
+          ' class="radio">%s</label></td>', fmt, internal.getFormatName(fmt));
       });
-      menu.findChild('.export-formats').html(items.join('\n'));
+      var table = '<table>';
+      for (var i=0; i<items.length; i+=2) {
+        table += '<tr>' + items[i] + items[i+1] + '<tr>';
+      }
+      table += '</table>';
+
+      // menu.findChild('.export-formats').html(items.join('\n'));
+      menu.findChild('.export-formats').html(table);
       menu.findChild('.export-formats input[value="' + getDefaultExportFormat() + '"]').node().checked = true;
+      // update save-as settings when value changes
+      menu.findChildren('input[type="radio"]').forEach(el => {
+        el.on('change', updateExportCheckboxes);
+      });
     }
+
+
+    // function getInputFormats() {
+    //   return model.getDatasets().reduce(function(memo, d) {
+    //     var fmts = d.info && d.info.input_formats || [];
+    //     return memo.concat(fmts);
+    //   }, []);
+    // }
+
 
     function initZipOption() {
       var html = `<label><input type="checkbox">Save to .zip file</label>`;
@@ -8197,8 +8264,8 @@
       var popup = showPopupAlert('', 'Add field');
       var el = popup.container();
       el.addClass('option-menu');
-      var html = `<input type="text" class="field-name text-input" placeholder="field name"><br>
-    <input type="text" class="field-value text-input" placeholder="value"><br>
+      var html = `<div><input type="text" class="field-name text-input" placeholder="field name"></div>
+    <div><input type="text" class="field-value text-input" placeholder="value"><div>
     <div tabindex="0" class="btn dialog-btn">Apply</div> <span class="inline-checkbox"><input type="checkbox" class="all" />assign value to all records</span>`;
       el.html(html);
 
@@ -11515,6 +11582,9 @@
       new SessionSnapshots(gui);
     }
 
+    var msgCount = 0;
+    var clearMsg;
+
     initModeRules(gui);
 
     gui.showProgressMessage = function(msg) {
@@ -11523,10 +11593,25 @@
           .appendTo('body');
       }
       El('<div>').text(msg).appendTo(gui.progressMessage.empty().show());
+      clearMsg = getClearFunction(msgCount);
     };
 
+    function getClearFunction(count) {
+      var time = Date.now();
+      // wait at least [min] milliseconds before closing
+      var min = 400;
+      msgCount = ++count;
+      return function() {
+        setTimeout(function() {
+          if (count != msgCount) return;
+          if (gui.progressMessage) gui.progressMessage.hide();
+        }, Math.max(min - (Date.now() - time), 0));
+      };
+    }
+
     gui.clearProgressMessage = function() {
-      if (gui.progressMessage) gui.progressMessage.hide();
+      clearMsg();
+      // if (gui.progressMessage) gui.progressMessage.hide();
     };
 
     gui.consoleIsOpen = function() {
