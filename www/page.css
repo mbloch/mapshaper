@@ -235,6 +235,7 @@ body {
 .export-options table {
 	margin: 0;
 	border-collapse: collapse;
+	border-spacing: 0;
 	width: 100%;
 }
 
@@ -280,7 +281,7 @@ body {
 .alert-title {
 	line-height: 1.1;
 	font-weight: bold;
-	margin-bottom: 5px;
+	margin-bottom: 7px;
 }
 
 div.alert-title, div.error-message {
@@ -466,6 +467,7 @@ body.dragover #import-options-drop-area .drop-area {
 	font-size: 13px;
 	margin: 0 0 5px 0;
 }
+
 
 #mshp-not-supported {
 	display: none;
@@ -1134,7 +1136,7 @@ img.close-btn:hover,
 
 .basemap-styles > div {
 	display: inline-block;
-	margin-bottom:  8px;
+	margin-bottom:  6px;
 }
 
 .basemap-styles > div:nth-child(even) {

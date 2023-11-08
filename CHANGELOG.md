@@ -1,5 +1,6 @@
 v0.6.46
 * Added save to clipboard option to web UI export menu.
+* In -each expressions, `this.geojson` setter now accepts nulls and FeatureCollectsions in addition to single Features.
 
 v0.6.45
 * Added -o hoist=<fields> option for moving GeoJSON Feature properties to the root of each Feature.
