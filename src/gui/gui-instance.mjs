@@ -42,6 +42,9 @@ export function GuiInstance(container, opts) {
     new SessionSnapshots(gui);
   }
 
+  var msgCount = 0;
+  var clearMsg;
+
   initModeRules(gui);
 
   gui.showProgressMessage = function(msg) {
@@ -50,10 +53,25 @@ export function GuiInstance(container, opts) {
         .appendTo('body');
     }
     El('<div>').text(msg).appendTo(gui.progressMessage.empty().show());
+    clearMsg = getClearFunction(msgCount);
   };
 
+  function getClearFunction(count) {
+    var time = Date.now();
+    // wait at least [min] milliseconds before closing
+    var min = 400;
+    msgCount = ++count;
+    return function() {
+      setTimeout(function() {
+        if (count != msgCount) return;
+        if (gui.progressMessage) gui.progressMessage.hide();
+      }, Math.max(min - (Date.now() - time), 0));
+    };
+  }
+
   gui.clearProgressMessage = function() {
-    if (gui.progressMessage) gui.progressMessage.hide();
+    clearMsg();
+    // if (gui.progressMessage) gui.progressMessage.hide();
   };
 
   gui.consoleIsOpen = function() {

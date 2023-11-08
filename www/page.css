@@ -90,7 +90,7 @@ body {
 .dialog-btn {
 	display: inline-block;
 	margin-bottom: 1px;
-	margin-top: 1px;
+	margin-top: 3px;
 	font-size: 13px;
 	color: white;
 	min-width: 28px;
@@ -230,6 +230,12 @@ body {
 .export-options .dialog-btn {
 	min-width: 20px;
 	padding: 4px 6px 5px 6px;
+}
+
+.export-options table {
+	margin: 0;
+	border-collapse: collapse;
+	width: 100%;
 }
 
 .export-layer-list {
@@ -549,10 +555,12 @@ body.dragover #import-options-drop-area .drop-area {
 	font-size: 90%;
 }
 
+
+
 /*.option-menu input[type="radio"],
 .option-menu input[type="checkbox"]  */
-.info-box input[type="radio"],
-.info-box input[type="checkbox"] 
+input[type="radio"],
+input[type="checkbox"] 
 {
 	position: relative;
 	top: 1px;
@@ -1234,9 +1242,7 @@ div.basemap-style-btn.active img {
 }
 
 .inline-checkbox {
-	position: relative;
-	top: 1px;
-	left: 5px;
+	margin-left: 5px;
 }
 
 #save-preference {
