@@ -5,6 +5,7 @@ import {
   guessInputFileType,
   isZipFile,
   isKmzFile,
+  stringLooksLikeJSON,
   isPackageFile } from '../io/mapshaper-file-types';
 import cmd from '../mapshaper-cmd';
 import cli from '../cli/mapshaper-cli-utils';
@@ -18,6 +19,7 @@ import { unpackSessionData } from '../pack/mapshaper-unpack';
 import { buildTopology } from '../topology/mapshaper-topology';
 import { cleanPathsAfterImport } from '../paths/mapshaper-path-import';
 import { mergeDatasets } from '../dataset/mapshaper-merging';
+import { formatVersionedFileName } from '../io/mapshaper-export';
 
 cmd.importFiles = async function(catalog, opts) {
   var files = opts.files || [];
@@ -39,6 +41,8 @@ cmd.importFiles = async function(catalog, opts) {
   // copy opts, so parameters can be modified within this command
   opts = Object.assign({}, opts);
   opts.input = Object.assign({}, opts.input); // make sure we have a cache
+
+  convertDataObjects(files, opts.input);
 
   files = expandFiles(files, opts.input);
 
@@ -69,6 +73,22 @@ cmd.importFiles = async function(catalog, opts) {
   catalog.addDataset(dataset);
   return dataset;
 };
+
+// replace any JSON data objects with filenames and cache the data
+function convertDataObjects(files, cache) {
+  var names = files.map(str => stringLooksLikeJSON(str) ? 'layer.json' : null).filter(Boolean);
+  if (names.length === 0) return;
+  if (names.length > 1) {
+    // make unique names if importing multiple objects
+    names = utils.uniqifyNames(names, formatVersionedFileName);
+  }
+  files.forEach((str, i) => {
+    if (!stringLooksLikeJSON(str)) return;
+    var name = names.shift();
+    cache[name] = str;
+    files[i] = name;
+  });
+}
 
 async function importMshpFile(file, catalog, opts) {
   var buf = cli.readFile(file, null, opts.input);

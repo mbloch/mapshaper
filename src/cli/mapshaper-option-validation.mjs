@@ -1,6 +1,6 @@
 import { isSupportedDelimiter } from '../text/mapshaper-delim-import';
 import { isSupportedOutputFormat } from '../io/mapshaper-file-types';
-import { filenameIsUnsupportedOutputType } from '../io/mapshaper-file-types';
+import { filenameIsUnsupportedOutputType, stringLooksLikeJSON } from '../io/mapshaper-file-types';
 import { validateEncoding } from '../text/mapshaper-encodings';
 import { error, stop } from '../utils/mapshaper-logging';
 import cli from '../cli/mapshaper-cli-utils';
@@ -11,9 +11,6 @@ export function validateInputOpts(cmd) {
   var o = cmd.options,
       _ = cmd._;
 
-  if (_.length > 0 && !o.files) {
-    o.files = _;
-  }
   if (o.files) {
     o.files = cli.expandInputFiles(o.files);
     if (o.files[0] == '-' || o.files[0] == '/dev/stdin') {
@@ -22,8 +19,8 @@ export function validateInputOpts(cmd) {
     }
   }
 
-  if ("precision" in o && o.precision > 0 === false) {
-    error("precision= option should be a positive number");
+  if ('precision' in o && o.precision > 0 === false) {
+    error('precision= option should be a positive number');
   }
 
   if (o.encoding) {
@@ -32,36 +29,15 @@ export function validateInputOpts(cmd) {
 }
 
 export function validateSimplifyOpts(cmd) {
-  var o = cmd.options,
-      arg = cmd._[0];
-
-  if (arg) {
-    if (/^[0-9.]+%?$/.test(arg)) {
-      o.percentage = utils.parsePercent(arg);
-    } else {
-      error("Unparsable option:", arg);
-    }
-  }
-
+  var o = cmd.options;
   if (!o.interval && !o.percentage && !o.resolution) {
-    error("Command requires an interval, percentage or resolution parameter");
+    error('Command requires an interval, percentage or resolution parameter');
   }
 }
 
 export function validateProjOpts(cmd) {
-  var _ = cmd._;
-
-  if (_.length > 0 && !cmd.options.crs) {
-    cmd.options.crs = _.join(' ');
-    _ = [];
-  }
-
-  if (_.length > 0) {
-    error("Received one or more unexpected parameters: " + _.join(', '));
-  }
-
   if (!(cmd.options.crs || cmd.options.match || cmd.options.init)) {
-    stop("Missing projection data");
+    stop('Missing projection data');
   }
 }
 
@@ -76,25 +52,24 @@ export function validateGridOpts(cmd) {
 
 export function validateExpressionOpt(cmd) {
   if (!cmd.options.expression) {
-    error("Command requires a JavaScript expression");
+    error('Command requires a JavaScript expression');
   }
 }
 
 export function validateOutputOpts(cmd) {
-  var _ = cmd._,
-      o = cmd.options,
-      arg = _[0] || "",
+  var o = cmd.options,
+      arg = o._ || '',
       pathInfo = parseLocalPath(arg);
 
-  if (_.length > 1) {
-    error("Command takes one file or directory argument");
-  }
+  // if (!arg) {
+  //   error('Command requires an output file or directory.');
+  // }
 
   if (arg == '-' || arg == '/dev/stdout') {
     o.stdout = true;
   } else if (arg && !pathInfo.extension) {
     if (!cli.isDirectory(arg)) {
-      error("Unknown output option:", arg);
+      error('Unknown output option:', arg);
     }
     o.directory = arg;
   } else if (arg) {
@@ -122,7 +97,7 @@ export function validateOutputOpts(cmd) {
     }
 
     if (filenameIsUnsupportedOutputType(o.file)) {
-      error("Output file looks like an unsupported file type:", o.file);
+      error('Output file looks like an unsupported file type:', o.file);
     }
   }
 
@@ -136,15 +111,15 @@ export function validateOutputOpts(cmd) {
       o.delimiter = o.delimiter || '\t';
     }
     if (!isSupportedOutputFormat(o.format)) {
-      error("Unsupported output format:", o.format);
+      error('Unsupported output format:', o.format);
     }
   }
 
   if (o.delimiter) {
-    // convert "\t" '\t' \t to tab
+    // convert '\t' '\t' \t to tab
     o.delimiter = o.delimiter.replace(/^["']?\\t["']?$/, '\t');
     if (!isSupportedDelimiter(o.delimiter)) {
-      error("Unsupported delimiter:", o.delimiter);
+      error('Unsupported delimiter:', o.delimiter);
     }
   }
 
@@ -157,11 +132,11 @@ export function validateOutputOpts(cmd) {
   }
 
   // topojson-specific
-  if ("quantization" in o && o.quantization > 0 === false) {
-    error("quantization= option should be a nonnegative integer");
+  if ('quantization' in o && o.quantization > 0 === false) {
+    error('quantization= option should be a nonnegative integer');
   }
 
-  if ("topojson_precision" in o && o.topojson_precision > 0 === false) {
-    error("topojson-precision= option should be a positive number");
+  if ('topojson_precision' in o && o.topojson_precision > 0 === false) {
+    error('topojson-precision= option should be a positive number');
   }
 }

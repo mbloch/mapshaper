@@ -119,6 +119,7 @@ function _runCommands(argv, opts, callback) {
       commands;
   try {
     commands = parseCommands(argv);
+
   } catch(e) {
     printError(e);
     return callback(e);

@@ -4,6 +4,20 @@ import { Catalog } from '../src/dataset/mapshaper-catalog';
 
 describe('mapshaper-import.js', function () {
 
+  it('supports importing JSON data on the command line', async function() {
+    var cmd = `-i '[{"foo": "bar"}]' '[{"foo": "baz"}]' combine-files -merge-layers name=data -o`;
+    var out = await api.applyCommands(cmd);
+    var data = JSON.parse(out['data.json']);
+    assert.deepEqual(data, [{foo: 'bar'}, {foo: 'baz'}]);
+  })
+
+  it('supports importing JSON data on the command line (double quotes)', async function() {
+    var cmd = `-i "[{\\"foo\\": \\"bar\\"}]" -o`;
+    var out = await api.applyCommands(cmd);
+    var data = JSON.parse(out['layer.json']);
+    assert.deepEqual(data, [{foo: 'bar'}]);
+  })
+
   it('import a point GeoJSON and a csv file', async function() {
     var a = 'test/data/three_points.geojson',
         b = 'test/data/text/two_states.csv';
@@ -56,8 +70,6 @@ describe('mapshaper-import.js', function () {
     assert.deepEqual(combined.layers[1], targetB);
 
   })
-
-
 
   describe('-i json-path option', function () {
     it('nested path, object input', function(done) {

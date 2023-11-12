@@ -88,7 +88,7 @@ async function exportDatasets(datasets, opts) {
   return files;
 }
 
-// Return an array of objects with "filename" and "content" members.
+// Return an array of objects with 'filename' and 'content' members.
 //
 export function exportFileContent(dataset, opts) {
   var outFmt = opts.format = getOutputFormat(dataset, opts),
@@ -96,9 +96,9 @@ export function exportFileContent(dataset, opts) {
       files = [];
 
   if (!outFmt) {
-    error("Missing output format");
+    error('Missing output format');
   } else if (!exporter) {
-    error("Unknown output format:", outFmt);
+    error('Unknown output format:', outFmt);
   }
 
   // shallow-copy dataset and layers, so layers can be renamed for export
@@ -168,7 +168,7 @@ function createIndexFile(datasets) {
 
   return {
     content: JSON.stringify(index),
-    filename: "bbox-index.json"
+    filename: 'bbox-index.json'
   };
 }
 
@@ -180,14 +180,14 @@ function validateLayerData(layers) {
       if (lyr.shapes && utils.some(lyr.shapes, function(o) {
         return !!o;
       })) {
-        error("A layer contains shape records and a null geometry type");
+        error('A layer contains shape records and a null geometry type');
       }
     } else {
       if (!utils.contains(['polygon', 'polyline', 'point'], lyr.geometry_type)) {
-        error ("A layer has an invalid geometry type:", lyr.geometry_type);
+        error ('A layer has an invalid geometry type:', lyr.geometry_type);
       }
       if (!lyr.shapes) {
-        error ("A layer is missing shape data");
+        error ('A layer is missing shape data');
       }
     }
   });
@@ -197,15 +197,15 @@ function validateFileNames(files) {
   var index = {};
   files.forEach(function(file, i) {
     var filename = file.filename;
-    if (!filename) error("Missing a filename for file" + i);
-    if (filename in index) error("Duplicate filename", filename);
+    if (!filename) error('Missing a filename for file' + i);
+    if (filename in index) error('Duplicate filename', filename);
     index[filename] = true;
   });
 }
 
 export function assignUniqueLayerNames(layers) {
   var names = layers.map(function(lyr) {
-    return lyr.name || "layer";
+    return lyr.name || 'layer';
   });
   var uniqueNames = utils.uniqifyNames(names);
   layers.forEach(function(lyr, i) {
