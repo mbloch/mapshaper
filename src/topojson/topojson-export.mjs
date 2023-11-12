@@ -88,7 +88,7 @@ TopoJSON.exportTopology = function(dataset, opts) {
 
   // export layers as TopoJSON named objects
   topology.objects = dataset.layers.reduce(function(objects, lyr, i) {
-    var name = lyr.name || "layer" + (i + 1);
+    var name = lyr.name || 'layer' + (i + 1);
     objects[name] = TopoJSON.exportLayer(lyr, dataset.arcs, opts);
     return objects;
   }, {});

@@ -75,14 +75,18 @@ export function CommandParser() {
       if (!cmdName) {
         stop("Invalid command:", argv[0]);
       }
-      cmdDef = findCommandDefn(cmdName, commandDefs);
+      cmdDef = findCommandDefn(cmdName, commandDefs) || null;
       if (!cmdDef) {
-        // In order to support adding commands at runtime, unknown commands
-        // are parsed without options (tokens get stored for later parsing)
-        // stop("Unknown command:", cmdName);
-        cmdDef = {name: cmdName, options: [], multi_arg: true};
+        cmd = parseUnknownCommandOptions(argv, cmdName);
+      } else {
+        cmd = parseCommandOptions(argv, cmdDef);
       }
-      cmd = {
+      commands.push(cmd);
+    }
+    return commands;
+
+    function parseCommandOptions(argv, cmdDef) {
+      var cmd = {
         name: cmdDef.name,
         options: {},
         _: []
@@ -93,25 +97,32 @@ export function CommandParser() {
       }
 
       try {
-        if (cmd._.length > 0 && cmdDef.no_arg) {
-          error("Received one or more unexpected parameters:", cmd._.join(' '));
-        }
-        if (cmd._.length > 1 && !cmdDef.multi_arg) {
-          error("Command expects a single value. Received:", cmd._.join(' '));
-        }
-        if (cmdDef.default && cmd._.length == 1) {
-          // TODO: support multiple-token values, like -i filenames
+        if (cmd._.length > 0) {
           readDefaultOptionValue(cmd, cmdDef);
         }
         if (cmdDef.validate) {
           cmdDef.validate(cmd);
         }
+        delete cmd.options._; // kludge to remove -o placeholder option
       } catch(e) {
         stop("[" + cmdName + "] " + e.message);
       }
-      commands.push(cmd);
+      return cmd;
     }
-    return commands;
+
+    function parseUnknownCommandOptions(argv, cmdName) {
+      // In order to support adding commands at runtime, unknown commands
+      // are parsed without options (tokens get stored for later parsing)
+      var cmd = {
+        name: cmdName,
+        options: {},
+        _: []
+      };
+      while (argv.length > 0 && !tokenLooksLikeCommand(argv[0])) {
+        cmd._.push(argv.shift());
+      }
+      return cmd;
+    }
 
     function tokenLooksLikeCommand(s) {
       if (invalidCommandRxp.test(s)) {
@@ -145,11 +156,7 @@ export function CommandParser() {
       }
 
       if (!optDef) {
-        // REMOVING quote trimming -- it prevents the use of quoted commands in -run (for example)
-        // token is not a defined option; add it to _ array for later processing
-        // Stripping surrounding quotes here, although this may not be necessary since
-        // (some, most, all?) shells seem to remove quotes.
-        // cmd._.push(utils.trimQuotes(token));
+        // token is not a known option -- add to array of unnamed options
         cmd._.push(token);
         return;
       }
@@ -178,9 +185,36 @@ export function CommandParser() {
       return parseOptionValue(argv.shift(), optDef); // remove token from argv
     }
 
+    // convert strings in cmd._ array to command parameers in cmd.options object
+    //
     function readDefaultOptionValue(cmd, cmdDef) {
-      var optDef = findOptionDefn(cmdDef.default, cmdDef);
-      cmd.options[cmdDef.default] = readOptionValue(cmd._, optDef);
+      var optDef = findDefaultOptionDefn(cmdDef);
+      var argv = cmd._;
+      var value;
+      if (cmdDef)
+      if (!optDef) {
+        // no option has been specified as the default option
+        error('Received one or more unexpected parameters:', argv.join(' '));
+      }
+      // DEFAULT may be true (simple case of one argument) or an object
+      var argDef = optDef.DEFAULT === true ? {} : optDef.DEFAULT;
+      argDef.type = argDef.type || optDef.type || 'string';
+      argDef.name = optDef.name; // used in parse error message
+
+      if (argv.length > 1 && !argDef.multi_arg) {
+        error((argDef.multi_error_msg || 'Command expects a single value.'),
+          'Received:', argv.join(' '));
+      }
+
+      argv = argv.map(arg => parseOptionValue(arg, argDef));
+      if (!argDef.multi_arg) {
+        value = argv[0];
+      } else if (utils.isString(argDef.join)) {
+        value = argv.join(argDef.join);
+      } else {
+        value = argv;
+      }
+      cmd.options[optDef.name] = value;
     }
 
     function parseOptionValue(token, optDef) {
@@ -258,15 +292,15 @@ export function CommandParser() {
 
     function getSingleCommandLines(cmd) {
       var lines = [];
-      // command name
-      lines.push('COMMAND', getCommandLine(cmd));
+      var options = [];
+      cmd.options.forEach(function(opt) {
+        options = options.concat(getOptionLines(opt, cmd));
+      });
 
-      // options
-      if (cmd.options.length > 0) {
+      lines.push('COMMAND', getCommandLine(cmd));
+      if (options.length > 0) {
         lines.push('', 'OPTIONS');
-        cmd.options.forEach(function(opt) {
-          lines = lines.concat(getOptionLines(opt, cmd));
-        });
+        lines = lines.concat(options);
       }
 
       // examples
@@ -290,7 +324,7 @@ export function CommandParser() {
         // empty
       } else if (opt.label) {
         lines.push([opt.label, description]);
-      } else if (opt.name == cmd.default) {
+      } else if (opt.DEFAULT) {
         label = opt.name + '=';
         lines.push(['<' + opt.name + '>', 'shortcut for ' + label]);
         lines.push([label, description]);
@@ -372,6 +406,12 @@ export function CommandParser() {
       return o.name === name || o.alias === name || o.old_alias === name;
     });
   }
+
+  function findDefaultOptionDefn(cmdDef) {
+    return utils.find(cmdDef.options, function(o) {
+      return !!o.DEFAULT;
+    });
+  }
 }
 
 function CommandOptions(name) {
@@ -415,17 +455,10 @@ function CommandOptions(name) {
     return this;
   };
 
-  this.flag = function(name) {
-    _command[name] = true;
-    return this;
-  };
-
   this.option = function(name, opts) {
     opts = utils.extend({}, opts); // accept just a name -- some options don't need properties
     if (!utils.isString(name) || !name) error("Missing option name");
     if (!utils.isObject(opts)) error("Invalid option definition:", opts);
-    // default option -- assign unnamed argument to this option
-    if (opts.DEFAULT) _command.default = name;
     opts.name = name;
     _command.options.push(opts);
     return this;

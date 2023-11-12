@@ -106,9 +106,11 @@ export function getOptionParser() {
   parser.command('i')
     .describe('input one or more files')
     .validate(V.validateInputOpts)
-    .flag('multi_arg')
     .option('files', {
-      DEFAULT: true,
+      DEFAULT: {
+        multi_arg: true,
+        type: 'string'
+      },
       type: 'strings',
       describe: 'one or more files to import, or - to use stdin'
     })
@@ -199,7 +201,10 @@ export function getOptionParser() {
     .validate(V.validateOutputOpts)
     .option('_', {
       label: '<file|directory>',
-      describe: '(optional) name of output file or directory, - for stdout'
+      describe: '(optional) name of output file or directory, - for stdout',
+      DEFAULT: {
+        multi_error_msg: 'Command takes one file or directory argument.'
+      }
     })
     .option('format', {
       describe: 'options: shapefile,geojson,topojson,json,dbf,csv,tsv,svg'
@@ -383,7 +388,6 @@ export function getOptionParser() {
 
   parser.command('affine')
     .describe('transform coordinates by shifting, scaling and rotating')
-    .flag('no_args')
     .option('shift', {
       type: 'strings',
       describe: 'x,y offsets in source units (e.g. 5000,-5000)'
@@ -622,7 +626,6 @@ export function getOptionParser() {
 
   parser.command('colorizer')
     .describe('define a function to convert data values to color classes')
-    .flag('no_arg')
     .option('colors', {
       describe: 'comma-separated list of CSS colors',
       type: 'colors'
@@ -811,7 +814,6 @@ export function getOptionParser() {
 
   parser.command('drop')
     .describe('delete layer(s) or elements within the target layer(s)')
-    .flag('no_arg') // prevent trying to pass a list of layer names as default option
     .option('geometry', {
       describe: 'delete all geometry from the target layer(s)',
       type: 'flag'
@@ -1018,7 +1020,6 @@ export function getOptionParser() {
 
   parser.command('innerlines')
     .describe('convert polygons to polylines along shared edges')
-    .flag('no_arg')
     .option('where', whereOpt2)
     // .option('each', eachOpt2)
     .option('name', nameOpt)
@@ -1134,7 +1135,6 @@ export function getOptionParser() {
 
   parser.command('merge-layers')
     .describe('merge multiple layers into as few layers as possible')
-    .flag('no_arg')
     .option('force', {
       type: 'flag',
       describe: 'merge layers with inconsistent data fields'
@@ -1156,9 +1156,10 @@ export function getOptionParser() {
   parser.command('point-grid')
     .describe('create a rectangular grid of points')
     .validate(V.validateGridOpts)
-    .option('-', {
+    .option('_', {
       label: '<cols,rows>',
-      describe: 'size of the grid, e.g. -point-grid 100,100'
+      describe: 'size of the grid, e.g. -point-grid 100,100',
+      DEFAULT: true
     })
     .option('interval', {
       describe: 'distance between adjacent points, in source units',
@@ -1180,7 +1181,6 @@ export function getOptionParser() {
 
   parser.command('points')
     .describe('create a point layer from a different layer type')
-    .flag('no_arg')
     .option('x', {
       describe: 'field containing x coordinate'
     })
@@ -1242,9 +1242,11 @@ export function getOptionParser() {
 
   parser.command('proj')
     .describe('project your data (using Proj.4)')
-    .flag('multi_arg')
     .option('crs', {
-      DEFAULT: true,
+      DEFAULT: {
+        multi_arg: true,
+        join: ' '
+      },
       describe: 'set destination CRS using a Proj.4 definition or alias'
     })
     .option('projection', {
@@ -1319,7 +1321,6 @@ export function getOptionParser() {
       describe: 'list of replacements (comma-sep.)'
     })
     .option('target', targetOpt);
-
 
   parser.command('simplify')
     .validate(V.validateSimplifyOpts)
@@ -1474,7 +1475,8 @@ export function getOptionParser() {
   parser.command('split-on-grid')
     .describe('split features into separate layers using a grid')
     .validate(V.validateGridOpts)
-    .option('-', {
+    .option('_', {
+      DEFAULT: true,
       label: '<cols,rows>',
       describe: 'size of the grid, e.g. -split-on-grid 12,10'
     })
@@ -2071,7 +2073,12 @@ export function getOptionParser() {
 
   parser.command('comment')
     .describe('add a comment to the sequence of commands')
-    .flag('multi_arg');
+    .option('message', {
+      DEFAULT: {
+        multi_arg: true,
+        join: ' '
+      }
+    });
 
   parser.command('encodings')
     .describe('print list of supported text encodings (for .dbf import)');
@@ -2102,7 +2109,12 @@ export function getOptionParser() {
 
   parser.command('print')
     .describe('print a message to stdout')
-    .flag('multi_arg');
+    .option('message', {
+      DEFAULT: {
+        multi_arg: true,
+        join: ' '
+      }
+    });
 
   parser.command('projections')
     .describe('print list of supported projections');

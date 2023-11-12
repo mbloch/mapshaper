@@ -25,7 +25,7 @@ describe('mapshaper-parse-commands.js', function () {
 
     it('-each command with escaped quotes', function() {
       var commands = internal.parseConsoleCommands('-each "id = [this.id].join(\\",\\")"');
-      var target = [{name: 'each', _:[], options: {expression: 'id = [this.id].join(",")'}}];
+      var target = [{name: 'each', _:['id = [this.id].join(",")'], options: {expression: 'id = [this.id].join(",")'}}];
       assert.deepEqual(commands, target);
     })
 
