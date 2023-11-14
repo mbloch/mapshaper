@@ -244,14 +244,15 @@ function getExpressionContext(lyr, mixins, opts) {
   }, ctx);
 }
 
-export function getBaseContext() {
+export function getBaseContext(ctx) {
+  ctx = ctx || {};
   // Mask global properties (is this effective/worth doing?)
-  var obj = {globalThis: void 0}; // some globals are not iterable
+  ctx.globalThis = void 0; // some globals are not iterable
   (function() {
     for (var key in this) {
-      obj[key] = void 0;
+      ctx[key] = void 0;
     }
   }());
-  obj.console = console;
-  return obj;
+  ctx.console = console;
+  return ctx;
 }

@@ -10,7 +10,7 @@ import { runningInBrowser } from '../mapshaper-env';
 import utils from '../utils/mapshaper-utils';
 import { resetControlFlow } from '../mapshaper-control-flow';
 import require from '../mapshaper-require';
-
+import { commandTakesFileInput } from '../cli/mapshaper-command-info';
 
 // Parse command line args into commands and run them
 // Function takes an optional Node-style callback. A Promise is returned if no callback is given.
@@ -173,9 +173,6 @@ function _runCommands(argv, opts, callback) {
   }
 }
 
-function commandTakesFileInput(name) {
-  return (name == 'i' || name == 'join' || name == 'erase' || name == 'clip' || name == 'include');
-}
 
 function toLegacyOutputFormat(arr) {
   if (arr.length > 1) {
