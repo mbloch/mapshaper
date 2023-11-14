@@ -1,6 +1,6 @@
 # COMMAND REFERENCE
 
-This documentation applies to version 0.6.45 of mapshaper's command line program. Run `mapshaper -v` to check your version. For an introduction to the command line tool, read [this page](https://github.com/mbloch/mapshaper/wiki/Introduction-to-the-Command-Line-Tool) first.
+This documentation applies to version 0.6.47 of mapshaper's command line program. Run `mapshaper -v` to check your version. For an introduction to the command line tool, read [this page](https://github.com/mbloch/mapshaper/wiki/Introduction-to-the-Command-Line-Tool) first.
 
 ## Command line syntax
 
@@ -138,7 +138,7 @@ By default, multiple input files are processed separately, as if running mapshap
 
 **Options**
 
-`<files>` or `files=`  File(s) to input (space-separated list). Use `-` to import TopoJSON or GeoJSON from `/dev/stdin`.
+`<files>` or `files=`  File(s) to input (space-separated list). Use `-` to import TopoJSON or GeoJSON from `/dev/stdin`. Literal JSON data can also be used instead of a file name.
 
 `combine-files` Import multiple files to separate layers with shared topology. Useful for generating a single TopoJSON file containing multiple geometry objects.
 
@@ -1045,11 +1045,11 @@ $ mapshaper data.json \
 
 Create mapshaper commands on-the-fly and run them.
 
-`<expression>` or `expression=`  A JS expression for generating one or more mapshaper commands. The expression has access to a "target" object with information about the currently targeted layer, as well as modules loaded with the `-require` command.
+`<expression>` or `expression=`  A JS expression for generating one or more mapshaper commands. The expression has access to a "target" object with information about the currently targeted layer, as well as modules loaded with the `-require` command. In v0.6.47, an "io" object was added, with an `io.addInputFile(<filename>, <data>)` method, to support importing dynamically generated datasets (see Example 2 below).
 
 Common options: `target=`
 
-**Example:** Apply a custom projection based on the layer extent
+**Example 1:** Apply a custom projection based on the layer extent
 
 ```bash
 $ mapshaper -i country.shp -require projection.js -run 'getProjCommand(target)' -o
@@ -1067,6 +1067,21 @@ module.exports = {
 
 ```
 
+**Example 2:** Import a dynamically generated dataset
+
+```bash
+$ mapshaper -require script.js -run 'importData(io)' -o
+```
+
+```javascript
+// contents of script.js file
+module.exports = {
+  importData: function(io) {
+    var data = [{"foo": "bar"}];
+    io.addInputFile('data.json', data);
+    return `-i data.json`;
+  }
+};
 
 
 ### -shape

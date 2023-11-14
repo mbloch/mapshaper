@@ -1,3 +1,7 @@
+v0.6.47
+* Added support for using JSON data as an argument to the -i command.
+* Added an `io` object with an `io.addInputFile()` method to the `-run` command's expression context, to support loading dynamically generated datasets.
+
 v0.6.46
 * Added save to clipboard option to web UI export menu.
 * In -each expressions, `this.geojson` setter now accepts nulls and FeatureCollectsions in addition to single Features.
