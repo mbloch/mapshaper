@@ -1,5 +1,5 @@
 v0.6.48
-* 
+* Added `target.geojson` getter that returns the contenst of the target layer as a GeoJSON `FeatureCollection`. Useful in the `-run` command for passing layer data to an external script.
 
 v0.6.47
 * Added support for using JSON data as an argument to the -i command.
