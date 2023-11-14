@@ -11610,7 +11610,7 @@
     }
 
     gui.clearProgressMessage = function() {
-      clearMsg();
+      if (clearMsg) clearMsg();
       // if (gui.progressMessage) gui.progressMessage.hide();
     };
 

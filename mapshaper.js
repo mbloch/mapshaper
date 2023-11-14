@@ -1,6 +1,6 @@
 (function () {
 
-  var VERSION = "0.6.46";
+  var VERSION = "0.6.47";
 
 
   var utils = /*#__PURE__*/Object.freeze({
@@ -14452,16 +14452,17 @@
     }, ctx);
   }
 
-  function getBaseContext() {
+  function getBaseContext(ctx) {
+    ctx = ctx || {};
     // Mask global properties (is this effective/worth doing?)
-    var obj = {globalThis: void 0}; // some globals are not iterable
+    ctx.globalThis = void 0; // some globals are not iterable
     (function() {
       for (var key in this) {
-        obj[key] = void 0;
+        ctx[key] = void 0;
       }
     }());
-    obj.console = console;
-    return obj;
+    ctx.console = console;
+    return ctx;
   }
 
   var Expressions = /*#__PURE__*/Object.freeze({
@@ -21359,7 +21360,7 @@ ${svg}
 
     // export layers as TopoJSON named objects
     topology.objects = dataset.layers.reduce(function(objects, lyr, i) {
-      var name = lyr.name || "layer" + (i + 1);
+      var name = lyr.name || 'layer' + (i + 1);
       objects[name] = TopoJSON.exportLayer(lyr, dataset.arcs, opts);
       return objects;
     }, {});
@@ -21722,7 +21723,7 @@ ${svg}
     return files;
   }
 
-  // Return an array of objects with "filename" and "content" members.
+  // Return an array of objects with 'filename' and 'content' members.
   //
   function exportFileContent(dataset, opts) {
     var outFmt = opts.format = getOutputFormat(dataset, opts),
@@ -21730,9 +21731,9 @@ ${svg}
         files = [];
 
     if (!outFmt) {
-      error("Missing output format");
+      error('Missing output format');
     } else if (!exporter) {
-      error("Unknown output format:", outFmt);
+      error('Unknown output format:', outFmt);
     }
 
     // shallow-copy dataset and layers, so layers can be renamed for export
@@ -21802,7 +21803,7 @@ ${svg}
 
     return {
       content: JSON.stringify(index),
-      filename: "bbox-index.json"
+      filename: 'bbox-index.json'
     };
   }
 
@@ -21814,14 +21815,14 @@ ${svg}
         if (lyr.shapes && utils.some(lyr.shapes, function(o) {
           return !!o;
         })) {
-          error("A layer contains shape records and a null geometry type");
+          error('A layer contains shape records and a null geometry type');
         }
       } else {
         if (!utils.contains(['polygon', 'polyline', 'point'], lyr.geometry_type)) {
-          error ("A layer has an invalid geometry type:", lyr.geometry_type);
+          error ('A layer has an invalid geometry type:', lyr.geometry_type);
         }
         if (!lyr.shapes) {
-          error ("A layer is missing shape data");
+          error ('A layer is missing shape data');
         }
       }
     });
@@ -21831,15 +21832,15 @@ ${svg}
     var index = {};
     files.forEach(function(file, i) {
       var filename = file.filename;
-      if (!filename) error("Missing a filename for file" + i);
-      if (filename in index) error("Duplicate filename", filename);
+      if (!filename) error('Missing a filename for file' + i);
+      if (filename in index) error('Duplicate filename', filename);
       index[filename] = true;
     });
   }
 
   function assignUniqueLayerNames(layers) {
     var names = layers.map(function(lyr) {
-      return lyr.name || "layer";
+      return lyr.name || 'layer';
     });
     var uniqueNames = utils.uniqifyNames(names);
     layers.forEach(function(lyr, i) {
@@ -22674,12 +22675,9 @@ ${svg}
   });
 
   function validateInputOpts(cmd) {
-    var o = cmd.options,
-        _ = cmd._;
+    var o = cmd.options;
+        cmd._;
 
-    if (_.length > 0 && !o.files) {
-      o.files = _;
-    }
     if (o.files) {
       o.files = cli.expandInputFiles(o.files);
       if (o.files[0] == '-' || o.files[0] == '/dev/stdin') {
@@ -22688,8 +22686,8 @@ ${svg}
       }
     }
 
-    if ("precision" in o && o.precision > 0 === false) {
-      error("precision= option should be a positive number");
+    if ('precision' in o && o.precision > 0 === false) {
+      error('precision= option should be a positive number');
     }
 
     if (o.encoding) {
@@ -22698,36 +22696,15 @@ ${svg}
   }
 
   function validateSimplifyOpts(cmd) {
-    var o = cmd.options,
-        arg = cmd._[0];
-
-    if (arg) {
-      if (/^[0-9.]+%?$/.test(arg)) {
-        o.percentage = utils.parsePercent(arg);
-      } else {
-        error("Unparsable option:", arg);
-      }
-    }
-
+    var o = cmd.options;
     if (!o.interval && !o.percentage && !o.resolution) {
-      error("Command requires an interval, percentage or resolution parameter");
+      error('Command requires an interval, percentage or resolution parameter');
     }
   }
 
   function validateProjOpts(cmd) {
-    var _ = cmd._;
-
-    if (_.length > 0 && !cmd.options.crs) {
-      cmd.options.crs = _.join(' ');
-      _ = [];
-    }
-
-    if (_.length > 0) {
-      error("Received one or more unexpected parameters: " + _.join(', '));
-    }
-
     if (!(cmd.options.crs || cmd.options.match || cmd.options.init)) {
-      stop("Missing projection data");
+      stop('Missing projection data');
     }
   }
 
@@ -22742,25 +22719,24 @@ ${svg}
 
   function validateExpressionOpt(cmd) {
     if (!cmd.options.expression) {
-      error("Command requires a JavaScript expression");
+      error('Command requires a JavaScript expression');
     }
   }
 
   function validateOutputOpts(cmd) {
-    var _ = cmd._,
-        o = cmd.options,
-        arg = _[0] || "",
+    var o = cmd.options,
+        arg = o._ || '',
         pathInfo = parseLocalPath(arg);
 
-    if (_.length > 1) {
-      error("Command takes one file or directory argument");
-    }
+    // if (!arg) {
+    //   error('Command requires an output file or directory.');
+    // }
 
     if (arg == '-' || arg == '/dev/stdout') {
       o.stdout = true;
     } else if (arg && !pathInfo.extension) {
       if (!cli.isDirectory(arg)) {
-        error("Unknown output option:", arg);
+        error('Unknown output option:', arg);
       }
       o.directory = arg;
     } else if (arg) {
@@ -22788,7 +22764,7 @@ ${svg}
       }
 
       if (filenameIsUnsupportedOutputType(o.file)) {
-        error("Output file looks like an unsupported file type:", o.file);
+        error('Output file looks like an unsupported file type:', o.file);
       }
     }
 
@@ -22802,15 +22778,15 @@ ${svg}
         o.delimiter = o.delimiter || '\t';
       }
       if (!isSupportedOutputFormat(o.format)) {
-        error("Unsupported output format:", o.format);
+        error('Unsupported output format:', o.format);
       }
     }
 
     if (o.delimiter) {
-      // convert "\t" '\t' \t to tab
+      // convert '\t' '\t' \t to tab
       o.delimiter = o.delimiter.replace(/^["']?\\t["']?$/, '\t');
       if (!isSupportedDelimiter(o.delimiter)) {
-        error("Unsupported delimiter:", o.delimiter);
+        error('Unsupported delimiter:', o.delimiter);
       }
     }
 
@@ -22823,12 +22799,12 @@ ${svg}
     }
 
     // topojson-specific
-    if ("quantization" in o && o.quantization > 0 === false) {
-      error("quantization= option should be a nonnegative integer");
+    if ('quantization' in o && o.quantization > 0 === false) {
+      error('quantization= option should be a nonnegative integer');
     }
 
-    if ("topojson_precision" in o && o.topojson_precision > 0 === false) {
-      error("topojson-precision= option should be a positive number");
+    if ('topojson_precision' in o && o.topojson_precision > 0 === false) {
+      error('topojson-precision= option should be a positive number');
     }
   }
 
@@ -23014,14 +22990,18 @@ ${svg}
         if (!cmdName) {
           stop("Invalid command:", argv[0]);
         }
-        cmdDef = findCommandDefn(cmdName, commandDefs);
+        cmdDef = findCommandDefn(cmdName, commandDefs) || null;
         if (!cmdDef) {
-          // In order to support adding commands at runtime, unknown commands
-          // are parsed without options (tokens get stored for later parsing)
-          // stop("Unknown command:", cmdName);
-          cmdDef = {name: cmdName, options: [], multi_arg: true};
+          cmd = parseUnknownCommandOptions(argv, cmdName);
+        } else {
+          cmd = parseCommandOptions(argv, cmdDef);
         }
-        cmd = {
+        commands.push(cmd);
+      }
+      return commands;
+
+      function parseCommandOptions(argv, cmdDef) {
+        var cmd = {
           name: cmdDef.name,
           options: {},
           _: []
@@ -23032,25 +23012,32 @@ ${svg}
         }
 
         try {
-          if (cmd._.length > 0 && cmdDef.no_arg) {
-            error("Received one or more unexpected parameters:", cmd._.join(' '));
-          }
-          if (cmd._.length > 1 && !cmdDef.multi_arg) {
-            error("Command expects a single value. Received:", cmd._.join(' '));
-          }
-          if (cmdDef.default && cmd._.length == 1) {
-            // TODO: support multiple-token values, like -i filenames
+          if (cmd._.length > 0) {
             readDefaultOptionValue(cmd, cmdDef);
           }
           if (cmdDef.validate) {
             cmdDef.validate(cmd);
           }
+          delete cmd.options._; // kludge to remove -o placeholder option
         } catch(e) {
           stop("[" + cmdName + "] " + e.message);
         }
-        commands.push(cmd);
+        return cmd;
       }
-      return commands;
+
+      function parseUnknownCommandOptions(argv, cmdName) {
+        // In order to support adding commands at runtime, unknown commands
+        // are parsed without options (tokens get stored for later parsing)
+        var cmd = {
+          name: cmdName,
+          options: {},
+          _: []
+        };
+        while (argv.length > 0 && !tokenLooksLikeCommand(argv[0])) {
+          cmd._.push(argv.shift());
+        }
+        return cmd;
+      }
 
       function tokenLooksLikeCommand(s) {
         if (invalidCommandRxp.test(s)) {
@@ -23080,11 +23067,7 @@ ${svg}
         }
 
         if (!optDef) {
-          // REMOVING quote trimming -- it prevents the use of quoted commands in -run (for example)
-          // token is not a defined option; add it to _ array for later processing
-          // Stripping surrounding quotes here, although this may not be necessary since
-          // (some, most, all?) shells seem to remove quotes.
-          // cmd._.push(utils.trimQuotes(token));
+          // token is not a known option -- add to array of unnamed options
           cmd._.push(token);
           return;
         }
@@ -23113,9 +23096,36 @@ ${svg}
         return parseOptionValue(argv.shift(), optDef); // remove token from argv
       }
 
+      // convert strings in cmd._ array to command parameers in cmd.options object
+      //
       function readDefaultOptionValue(cmd, cmdDef) {
-        var optDef = findOptionDefn(cmdDef.default, cmdDef);
-        cmd.options[cmdDef.default] = readOptionValue(cmd._, optDef);
+        var optDef = findDefaultOptionDefn(cmdDef);
+        var argv = cmd._;
+        var value;
+        if (cmdDef)
+        if (!optDef) {
+          // no option has been specified as the default option
+          error('Received one or more unexpected parameters:', argv.join(' '));
+        }
+        // DEFAULT may be true (simple case of one argument) or an object
+        var argDef = optDef.DEFAULT === true ? {} : optDef.DEFAULT;
+        argDef.type = argDef.type || optDef.type || 'string';
+        argDef.name = optDef.name; // used in parse error message
+
+        if (argv.length > 1 && !argDef.multi_arg) {
+          error((argDef.multi_error_msg || 'Command expects a single value.'),
+            'Received:', argv.join(' '));
+        }
+
+        argv = argv.map(arg => parseOptionValue(arg, argDef));
+        if (!argDef.multi_arg) {
+          value = argv[0];
+        } else if (utils.isString(argDef.join)) {
+          value = argv.join(argDef.join);
+        } else {
+          value = argv;
+        }
+        cmd.options[optDef.name] = value;
       }
 
       function parseOptionValue(token, optDef) {
@@ -23193,15 +23203,15 @@ ${svg}
 
       function getSingleCommandLines(cmd) {
         var lines = [];
-        // command name
-        lines.push('COMMAND', getCommandLine(cmd));
+        var options = [];
+        cmd.options.forEach(function(opt) {
+          options = options.concat(getOptionLines(opt));
+        });
 
-        // options
-        if (cmd.options.length > 0) {
+        lines.push('COMMAND', getCommandLine(cmd));
+        if (options.length > 0) {
           lines.push('', 'OPTIONS');
-          cmd.options.forEach(function(opt) {
-            lines = lines.concat(getOptionLines(opt, cmd));
-          });
+          lines = lines.concat(options);
         }
 
         // examples
@@ -23223,7 +23233,7 @@ ${svg}
         var label;
         if (!description) ; else if (opt.label) {
           lines.push([opt.label, description]);
-        } else if (opt.name == cmd.default) {
+        } else if (opt.DEFAULT) {
           label = opt.name + '=';
           lines.push(['<' + opt.name + '>', 'shortcut for ' + label]);
           lines.push([label, description]);
@@ -23305,6 +23315,12 @@ ${svg}
         return o.name === name || o.alias === name || o.old_alias === name;
       });
     }
+
+    function findDefaultOptionDefn(cmdDef) {
+      return utils.find(cmdDef.options, function(o) {
+        return !!o.DEFAULT;
+      });
+    }
   }
 
   function CommandOptions(name) {
@@ -23348,17 +23364,10 @@ ${svg}
       return this;
     };
 
-    this.flag = function(name) {
-      _command[name] = true;
-      return this;
-    };
-
     this.option = function(name, opts) {
       opts = utils.extend({}, opts); // accept just a name -- some options don't need properties
       if (!utils.isString(name) || !name) error("Missing option name");
       if (!utils.isObject(opts)) error("Invalid option definition:", opts);
-      // default option -- assign unnamed argument to this option
-      if (opts.DEFAULT) _command.default = name;
       opts.name = name;
       _command.options.push(opts);
       return this;
@@ -23480,9 +23489,11 @@ ${svg}
     parser.command('i')
       .describe('input one or more files')
       .validate(validateInputOpts)
-      .flag('multi_arg')
       .option('files', {
-        DEFAULT: true,
+        DEFAULT: {
+          multi_arg: true,
+          type: 'string'
+        },
         type: 'strings',
         describe: 'one or more files to import, or - to use stdin'
       })
@@ -23573,7 +23584,10 @@ ${svg}
       .validate(validateOutputOpts)
       .option('_', {
         label: '<file|directory>',
-        describe: '(optional) name of output file or directory, - for stdout'
+        describe: '(optional) name of output file or directory, - for stdout',
+        DEFAULT: {
+          multi_error_msg: 'Command takes one file or directory argument.'
+        }
       })
       .option('format', {
         describe: 'options: shapefile,geojson,topojson,json,dbf,csv,tsv,svg'
@@ -23757,7 +23771,6 @@ ${svg}
 
     parser.command('affine')
       .describe('transform coordinates by shifting, scaling and rotating')
-      .flag('no_args')
       .option('shift', {
         type: 'strings',
         describe: 'x,y offsets in source units (e.g. 5000,-5000)'
@@ -23996,7 +24009,6 @@ ${svg}
 
     parser.command('colorizer')
       .describe('define a function to convert data values to color classes')
-      .flag('no_arg')
       .option('colors', {
         describe: 'comma-separated list of CSS colors',
         type: 'colors'
@@ -24185,7 +24197,6 @@ ${svg}
 
     parser.command('drop')
       .describe('delete layer(s) or elements within the target layer(s)')
-      .flag('no_arg') // prevent trying to pass a list of layer names as default option
       .option('geometry', {
         describe: 'delete all geometry from the target layer(s)',
         type: 'flag'
@@ -24392,7 +24403,6 @@ ${svg}
 
     parser.command('innerlines')
       .describe('convert polygons to polylines along shared edges')
-      .flag('no_arg')
       .option('where', whereOpt2)
       // .option('each', eachOpt2)
       .option('name', nameOpt)
@@ -24508,7 +24518,6 @@ ${svg}
 
     parser.command('merge-layers')
       .describe('merge multiple layers into as few layers as possible')
-      .flag('no_arg')
       .option('force', {
         type: 'flag',
         describe: 'merge layers with inconsistent data fields'
@@ -24530,9 +24539,10 @@ ${svg}
     parser.command('point-grid')
       .describe('create a rectangular grid of points')
       .validate(validateGridOpts)
-      .option('-', {
+      .option('_', {
         label: '<cols,rows>',
-        describe: 'size of the grid, e.g. -point-grid 100,100'
+        describe: 'size of the grid, e.g. -point-grid 100,100',
+        DEFAULT: true
       })
       .option('interval', {
         describe: 'distance between adjacent points, in source units',
@@ -24554,7 +24564,6 @@ ${svg}
 
     parser.command('points')
       .describe('create a point layer from a different layer type')
-      .flag('no_arg')
       .option('x', {
         describe: 'field containing x coordinate'
       })
@@ -24616,9 +24625,11 @@ ${svg}
 
     parser.command('proj')
       .describe('project your data (using Proj.4)')
-      .flag('multi_arg')
       .option('crs', {
-        DEFAULT: true,
+        DEFAULT: {
+          multi_arg: true,
+          join: ' '
+        },
         describe: 'set destination CRS using a Proj.4 definition or alias'
       })
       .option('projection', {
@@ -24693,7 +24704,6 @@ ${svg}
         describe: 'list of replacements (comma-sep.)'
       })
       .option('target', targetOpt);
-
 
     parser.command('simplify')
       .validate(validateSimplifyOpts)
@@ -24848,7 +24858,8 @@ ${svg}
     parser.command('split-on-grid')
       .describe('split features into separate layers using a grid')
       .validate(validateGridOpts)
-      .option('-', {
+      .option('_', {
+        DEFAULT: true,
         label: '<cols,rows>',
         describe: 'size of the grid, e.g. -split-on-grid 12,10'
       })
@@ -25445,7 +25456,12 @@ ${svg}
 
     parser.command('comment')
       .describe('add a comment to the sequence of commands')
-      .flag('multi_arg');
+      .option('message', {
+        DEFAULT: {
+          multi_arg: true,
+          join: ' '
+        }
+      });
 
     parser.command('encodings')
       .describe('print list of supported text encodings (for .dbf import)');
@@ -25476,7 +25492,12 @@ ${svg}
 
     parser.command('print')
       .describe('print a message to stdout')
-      .flag('multi_arg');
+      .option('message', {
+        DEFAULT: {
+          multi_arg: true,
+          join: ' '
+        }
+      });
 
     parser.command('projections')
       .describe('print list of supported projections');
@@ -28108,6 +28129,8 @@ ${svg}
     opts = Object.assign({}, opts);
     opts.input = Object.assign({}, opts.input); // make sure we have a cache
 
+    convertDataObjects(files, opts.input);
+
     files = expandFiles(files, opts.input);
 
     if (files.length === 0) {
@@ -28137,6 +28160,22 @@ ${svg}
     catalog.addDataset(dataset);
     return dataset;
   };
+
+  // replace any JSON data objects with filenames and cache the data
+  function convertDataObjects(files, cache) {
+    var names = files.map(str => stringLooksLikeJSON(str) ? 'layer.json' : null).filter(Boolean);
+    if (names.length === 0) return;
+    if (names.length > 1) {
+      // make unique names if importing multiple objects
+      names = utils.uniqifyNames(names, formatVersionedFileName);
+    }
+    files.forEach((str, i) => {
+      if (!stringLooksLikeJSON(str)) return;
+      var name = names.shift();
+      cache[name] = str;
+      files[i] = name;
+    });
+  }
 
   async function importMshpFile(file, catalog, opts) {
     var buf = cli.readFile(file, null, opts.input);
@@ -41464,31 +41503,91 @@ ${svg}
     parseConsoleCommands: parseConsoleCommands
   });
 
+  function getTargetProxy(target) {
+    var lyr = target.layers[0];
+    var data = getLayerInfo(lyr, target.dataset);
+    data.layer = lyr;
+    data.dataset = target.dataset;
+    return data;
+  }
+
+  function getIOProxy(job) {
+    var obj = {
+      _cache: {}
+    };
+    obj.addInputFile = function(filename, content) {
+      obj._cache[filename] = content;
+    };
+    return obj;
+  }
+
+  function commandTakesFileInput(name) {
+    return (name == 'i' || name == 'join' || name == 'erase' || name == 'clip' || name == 'include');
+  }
+
+  // TODO: implement these and other functions
+  // TODO: move this info into individual command definitions (to make
+  //   commands more modular and support a future plugin system)
+
+  // export function commandMayRemoveArcs(cmd) {
+
+  // }
+
+  // export function commandMayChangeArcs(cmd) {
+  //   // return arcsMayHaveChanged({[cmd]: true});
+  // }
+
+  // export function arcsMayNeedCleanup(flags) {
+  //   return flags.clip || flags.erase || flags.slice || flags.rectangle || flags.buffer ||
+  //   flags.union || flags.clean || flags.drop || false;
+  // }
+
+  // export function arcsMayBeChanged(flags) {
+  //   return arcsMayNeedCleanup(flags) || flags.proj || flags.simplify ||
+  //     flags.simplify_method || flags.arc_count || flags.repair || flags.affine ||
+  //     flags.mosaic || flags.snap;
+  // }
+
   cmd.run = async function(job, targets, opts) {
-    var commandStr, commands;
+    var tmp, commands;
     if (!opts.expression) {
       stop("Missing expression parameter");
     }
-    commandStr = runGlobalExpression(opts.expression, targets);
+
+    // io proxy adds ability to add datasets dynamically in a required function
+    var ctx = getBaseContext();
+    ctx.io = getIOProxy();
+    tmp = runGlobalExpression(opts.expression, targets, ctx);
+
     // Support async functions as expressions
-    if (utils.isPromise(commandStr)) {
-      commandStr = await commandStr;
+    if (utils.isPromise(tmp)) {
+      tmp = await tmp;
     }
-    if (commandStr) {
-      message(`command: [${commandStr}]`);
-      commands = parseCommands(commandStr);
+    if (tmp && !utils.isString(tmp)) {
+      stop('Expected a string containing mapshaper commands; received:', tmp);
+    }
+    if (tmp) {
+      message(`command: [${tmp}]`);
+      commands = parseCommands(tmp);
+
+      // TODO: remove duplication with mapshaper-run-commands.mjs
+      commands.forEach(function(cmd) {
+        if (commandTakesFileInput(cmd.name)) {
+          cmd.options.input = ctx.io._cache;
+        }
+      });
+
       await utils.promisify(runParsedCommands)(commands, job);
     }
   };
 
   // This could return a Promise or a value or nothing
-  function runGlobalExpression(expression, targets) {
-    var ctx = getBaseContext();
-    var output, targetData;
+  function runGlobalExpression(expression, targets, ctx) {
+    ctx = ctx || getBaseContext();
+    var output;
     // TODO: throw an informative error if target is used when there are multiple targets
     if (targets && targets.length == 1) {
-      targetData = getRunCommandData(targets[0]);
-      Object.defineProperty(ctx, 'target', {value: targetData});
+      Object.defineProperty(ctx, 'target', {value: getTargetProxy(targets[0])});
     }
     // Add defined functions and data to the expression context
     // (Such as functions imported via the -require command)
@@ -41499,15 +41598,6 @@ ${svg}
       stop(e.name, 'in JS source:', e.message);
     }
     return output;
-  }
-
-
-  function getRunCommandData(target) {
-    var lyr = target.layers[0];
-    var data = getLayerInfo(lyr, target.dataset);
-    data.layer = lyr;
-    data.dataset = target.dataset;
-    return data;
   }
 
   cmd.require = function(targets, opts) {
@@ -44281,6 +44371,7 @@ ${svg}
         commands;
     try {
       commands = parseCommands(argv);
+
     } catch(e) {
       printError(e);
       return callback(e);
@@ -44334,9 +44425,6 @@ ${svg}
     }
   }
 
-  function commandTakesFileInput(name) {
-    return (name == 'i' || name == 'join' || name == 'erase' || name == 'clip' || name == 'include');
-  }
 
   function toLegacyOutputFormat(arr) {
     if (arr.length > 1) {
