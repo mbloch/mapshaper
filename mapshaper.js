@@ -1,6 +1,6 @@
 (function () {
 
-  var VERSION = "0.6.47";
+  var VERSION = "0.6.48";
 
 
   var utils = /*#__PURE__*/Object.freeze({
@@ -41503,11 +41503,26 @@ ${svg}
     parseConsoleCommands: parseConsoleCommands
   });
 
+  // import { importGeoJSON } from '../geojson/geojson-import';
+
   function getTargetProxy(target) {
     var lyr = target.layers[0];
-    var data = getLayerInfo(lyr, target.dataset);
+    var data = getLayerInfo(lyr, target.dataset); // layer_name, feature_count etc
     data.layer = lyr;
     data.dataset = target.dataset;
+    addGetters(data, {
+      // export as an object, not a string or buffer
+      geojson: getGeoJSON
+    });
+
+    function getGeoJSON() {
+      var features = exportLayerAsGeoJSON(lyr, target.dataset, {}, true);
+      return {
+        type: 'FeatureCollection',
+        features: features
+      };
+    }
+
     return data;
   }
 
