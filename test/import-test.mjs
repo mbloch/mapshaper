@@ -18,6 +18,13 @@ describe('mapshaper-import.js', function () {
     assert.deepEqual(data, [{foo: 'bar'}]);
   })
 
+  it('supports importing JSON data on the command line, no quotes no spaces', async function() {
+    var cmd = `-i [{"foo":"bar"}] -o`;
+    var out = await api.applyCommands(cmd);
+    var data = JSON.parse(out['layer.json']);
+    assert.deepEqual(data, [{foo: 'bar'}]);
+  })
+
   it('import a point GeoJSON and a csv file', async function() {
     var a = 'test/data/three_points.geojson',
         b = 'test/data/text/two_states.csv';
