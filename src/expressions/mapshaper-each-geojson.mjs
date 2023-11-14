@@ -1,5 +1,5 @@
 
-import { exportGeoJSON, exportLayerAsGeoJSON } from '../geojson/geojson-export';
+import { exportLayerAsGeoJSON } from '../geojson/geojson-export';
 import { importGeoJSON } from '../geojson/geojson-import';
 import { copyLayer } from '../dataset/mapshaper-layer-utils';
 import utils from '../utils/mapshaper-utils';

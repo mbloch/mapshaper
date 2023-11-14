@@ -5,6 +5,30 @@ import assert from 'assert';
 describe('mapshaper-run.js', function () {
   describe('-run command', function () {
 
+    it('supports target.geojson getter', async function() {
+      var data = [{foo: 'bar'}, {foo: 'baz'}, {foo: 'bam'}];
+      var include = '{ \
+        getCommand: function(target) { \
+          var input = [target.geojson.features[1].properties]; \
+          return "-i " + JSON.stringify(input); \
+        }}';
+      var cmd = '-i data.json -include include.js -run getCommand(target) -o';
+      var out = await api.applyCommands(cmd, {'include.js': include, 'data.json': data});
+      assert.deepEqual(JSON.parse(out['layer.json']), [{foo: 'baz'}])
+    })
+
+   it('supports target.geojson getter and io.addInputFile()', async function() {
+      var data = [{foo: 'bar'}, {foo: 'baz'}, {foo: 'bam'}];
+      var include = '{ \
+        getCommand: function(target, io) { \
+          io.addInputFile("selection.json", [target.geojson.features[2].properties]); \
+          return "-i selection.json"; \
+        }}';
+      var cmd = '-i selection.json -include include.js -run getCommand(target,io) -o';
+      var out = await api.applyCommands(cmd, {'include.js': include, 'selection.json': data});
+      assert.deepEqual(JSON.parse(out['selection.json']), [{foo: 'bam'}])
+    })
+
     it('supports creating a command on-the-fly and running it', function (done) {
       var data = [{foo: 'bar'}];
       var include = '{ \

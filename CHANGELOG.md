@@ -1,3 +1,6 @@
+v0.6.48
+* 
+
 v0.6.47
 * Added support for using JSON data as an argument to the -i command.
 * Added an `io` object with an `io.addInputFile()` method to the `-run` command's expression context, to support loading dynamically generated datasets.
