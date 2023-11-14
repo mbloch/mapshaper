@@ -5,7 +5,7 @@ import { Catalog } from '../src/dataset/mapshaper-catalog';
 describe('mapshaper-import.js', function () {
 
   it('supports importing JSON data on the command line', async function() {
-    var cmd = `-i '[{"foo": "bar"}]' '[{"foo": "baz"}]' combine-files -merge-layers name=data -o`;
+    var cmd = `-i '[\n{"foo": "bar"}\n]' '[{"foo": "baz"}]' combine-files -merge-layers name=data -o`;
     var out = await api.applyCommands(cmd);
     var data = JSON.parse(out['data.json']);
     assert.deepEqual(data, [{foo: 'bar'}, {foo: 'baz'}]);
