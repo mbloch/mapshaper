@@ -1,5 +1,6 @@
 
-import { twoCircleIntersection, getAlignedGridBounds, getCenteredGridBounds } from '../src/commands/mapshaper-point-to-grid';
+import { twoCircleIntersection } from '../src/grids/mapshaper-grid-utils';
+import { getAlignedGridBounds, getCenteredGridBounds } from '../src/grids/mapshaper-square-grid';
 import assert from 'assert';
 import api from '../';
 

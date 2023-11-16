@@ -790,7 +790,7 @@ Join attribute data from a source layer or file to a target layer. If the `keys=
 
 `prefix=` Add a prefix to the names of fields joined from the external attribute table.
 
-`interpolate=`  (polygon-to-polygon joins only) A list of fields to interpolate/reaggregate based on area of overlap. Intended for fields containing count data, such as population counts or vote counts. Treats data as being uniformally distributed within polygon areas.
+`interpolate=`  (polygon-to-polygon joins only) A list of fields to interpolate/reaggregate based on area of overlap. Intended for fields containing count data, such as population counts or vote counts. Treats data as being uniformly distributed within polygon areas.
 
 `point-method` (polygon-to-polygon joins only) Use an alternate method for joining two polygon layers. The default polygon-polygon join method detects areas of overlap between two polygon layers by compositing the two layers internally. This method is simpler -- it generates a temporary point layer from the source layer with the greater number of features (using the same inner-point method as the `-points inner` command), and then performs a point-to-polygon or polygon-to-point join. This method does not support the `interpolate=` option.
 
