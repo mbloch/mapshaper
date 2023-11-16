@@ -8,6 +8,7 @@ import utils from '../utils/mapshaper-utils';
 import geom from '../geom/mapshaper-geom';
 
 export function joinPolygonsViaMosaic(targetLyr, targetDataset, source, opts) {
+  // merge source and target layers
   var mergedDataset = mergeLayersForOverlay([targetLyr], targetDataset, source, opts);
   var nodes = addIntersectionCuts(mergedDataset, opts);
   var sourceLyr = mergedDataset.layers.pop();
@@ -17,6 +18,7 @@ export function joinPolygonsViaMosaic(targetLyr, targetDataset, source, opts) {
     geometry_type: 'polygon',
     shapes: targetLyr.shapes.concat(sourceLyr.shapes)
   };
+  // make a mosaic from merged shapes of both layers
   var mosaicIndex = new MosaicIndex(mergedLyr, nodes, {flat: false});
 
   var joinOpts = utils.extend({}, opts);
@@ -60,8 +62,8 @@ function getOverlapDataByTile(destLyr, sourceLyr, mosaicIndex, opts) {
   var mosaicRecords = mosaicShapes.map(function(tile, i) {
     var rec = {
       area: getShapeArea(tile, arcs),
-      weight: 0,
-      sourceId: -1
+      weights: null,
+      sourceIds: null
     };
     return rec;
   });
@@ -71,31 +73,48 @@ function getOverlapDataByTile(destLyr, sourceLyr, mosaicIndex, opts) {
   sourceLyr.shapes.forEach(function(sourceShp, sourceId) {
     var tileIds = mosaicIndex.getTileIdsByShapeId(sourceId + destLen);
     var shapeArea = getShapeArea(sourceShp, arcs);
-    var tileRec;
+    var tileRec, weight;
     for (var i=0; i<tileIds.length; i++) {
       tileRec = mosaicRecords[tileIds[i]];
-      if (tileRec.sourceId > -1) {
-        // overlap in source layer
-        continue;
+      weight = tileRec.area / shapeArea;
+      if (!tileRec.weights) {
+        tileRec.weights = [];
+        tileRec.sourceIds = [];
       }
-      tileRec.weight = tileRec.area / shapeArea;
-      tileRec.sourceId = sourceId;
+      tileRec.weights.push(weight);
+      tileRec.sourceIds.push(sourceId);
     }
   });
   return mosaicRecords;
 }
 
 
+// function getInterpolatedValue(field, tileRecords, sourceRecords) {
+//   var value = 0, tileRec, sourceRec;
+//   for (var i=0; i<tileRecords.length; i++) {
+//     tileRec = tileRecords[i];
+//     if (tileRec.sourceId == -1) continue;
+
+//     sourceRec = sourceRecords[tileRec.sourceId];
+//     value += tileRec.weight * sourceRec[field];
+//   }
+//   return value;
+// }
+
 function getInterpolatedValue(field, tileRecords, sourceRecords) {
-  var value = 0, tileRec, sourceRec;
+  var value = 0, tileRec, sourceRec, sourceId;
   for (var i=0; i<tileRecords.length; i++) {
     tileRec = tileRecords[i];
-    if (tileRec.sourceId == -1) continue;
-    sourceRec = sourceRecords[tileRec.sourceId];
-    value += tileRec.weight * sourceRec[field];
+    if (!tileRec.sourceIds) continue;
+    for (var j=0; j<tileRec.sourceIds.length; j++) {
+      sourceId = tileRec.sourceIds[j];
+      sourceRec = sourceRecords[sourceId];
+      value += tileRec.weights[j] * sourceRec[field];
+    }
   }
   return value;
 }
+
 
 function getIdConversionFunction(offset, length) {
   return function (mergedIds) {

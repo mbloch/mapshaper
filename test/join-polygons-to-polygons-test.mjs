@@ -60,6 +60,16 @@ describe('Polygons to polygons spatial joins', function () {
     });
   })
 
+  it('Join overlapping polygons to polygon with interpolation', async function() {
+    var cmd = '-i test/data/features/polygon_join/ex4_target.json ' +
+      '-join test/data/features/polygon_join/ex4_source.json fields="" interpolate=money planar ' +
+      '-o out.json';
+    var out = await api.applyCommands(cmd);
+    var features = JSON.parse(out['out.json']).features;
+    assert.equal(features.length, 1);
+    assert.deepEqual(features[0].properties, {money: 13})
+  });
+
   it('Join outer polygon to inner polygon, 1:2 area ratio', function(done) {
     var cmd = '-i test/data/features/polygon_join/ex2_C.json ' +
       '-join test/data/features/polygon_join/ex2_A.json interpolate=value planar ' +
