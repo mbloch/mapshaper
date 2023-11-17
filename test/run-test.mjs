@@ -17,6 +17,36 @@ describe('mapshaper-run.js', function () {
       assert.deepEqual(JSON.parse(out['layer.json']), [{foo: 'baz'}])
     })
 
+    it('target.geojson getter return rfc 7946 compliant polygons', async function() {
+      var data = {
+        type: 'Feature',
+        properties: {name: 'Fred'},
+        geometry: {
+          type: 'Polygon',
+          coordinates: [[[0, 0], [0, 1], [1, 1], [1, 0], [0, 0]]]
+        }
+      };
+      var include = '{ \
+        getCommand: function(target) { \
+          var input = target.geojson.features[0]; \
+          return "-i " + JSON.stringify(input); \
+        }}';
+      var cmd = '-i data.json -include include.js -run getCommand(target) -o';
+      var out = await api.applyCommands(cmd, {'include.js': include, 'data.json': data});
+      var target = {type: 'FeatureCollection', features: [{
+        type: 'Feature',
+        properties: {name: 'Fred'},
+        geometry: {
+          type: 'Polygon',
+          coordinates: [[[0, 0], [1, 0], [1, 1], [0, 1], [0, 0]]]
+        }
+      }]};
+      var json = JSON.parse(out['layer.json']);
+      assert.deepEqual(json, target);
+    })
+
+
+
    it('supports target.geojson getter and io.addInputFile()', async function() {
       var data = [{foo: 'bar'}, {foo: 'baz'}, {foo: 'bam'}];
       var include = '{ \

@@ -93,6 +93,26 @@ describe('mapshaper-each.js', function () {
       });
     })
 
+    it('this.geojson getter returns rfc 7946 compliant rings (CCW winding)', function(done) {
+      var data = {
+        type: 'Feature',
+        properties: {name: 'Fred'},
+        geometry: {
+          type: 'Polygon',
+          coordinates: [[[0, 0], [0, 1], [1, 1], [1, 0], [0, 0]]]
+        }
+      };
+      var cmd = '-i data.json -each "geojson = this.geojson" -o';
+      api.applyCommands(cmd, {'data.json': JSON.stringify(data)}, function(err, out) {
+        var output = JSON.parse(out['data.json'])
+        var geojson = output.features[0].properties.geojson;
+        var target = [[[0, 0], [1, 0], [1, 1], [0, 1], [0, 0]]]
+        assert.deepEqual(geojson.geometry.coordinates, target);
+        done();
+      });
+    })
+
+
     it('this.geojson setter', function(done) {
       var data = {
         type: 'Feature',

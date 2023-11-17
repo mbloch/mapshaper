@@ -295,13 +295,6 @@ export function getOptionParser() {
       // describe: 'pct of avg segment length for rounding (0.02 is default)',
       type: 'number'
     })
-    .option('rfc7946', {
-      // obsolete -- rfc 7946 compatible outptu is now the default.
-      // This option also rounds coordinates to 7 decimals. I'm retaining the
-      // option for backwards compatibility.
-      // describe: '[GeoJSON] follow RFC 7946 (CCW outer ring order, etc.)',
-      type: 'flag'
-    })
     // .option('winding', {
     //   describe: '[GeoJSON] set polygon winding order (use CW with d3-geo)'
     // })

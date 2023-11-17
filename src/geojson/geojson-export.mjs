@@ -17,30 +17,19 @@ import { Buffer } from '../utils/mapshaper-node-buffer';
 import { getFileExtension } from '../utils/mapshaper-filename-utils';
 export default GeoJSON;
 
-// switch to RFC 7946-compatible output (while retaining the original export function,
-// so numerous tests will continue to work)
-export function exportGeoJSON2(dataset, opts) {
-  opts = utils.extend({}, opts);
-  opts.v2 = !opts.gj2008; // use RFC 7946 as the default
-  return exportGeoJSON(dataset, opts);
-}
-
 export function exportGeoJSON(dataset, opts) {
-  opts = opts || {};
+  opts = utils.extend({}, opts);
+  opts.rfc7946 = !opts.gj2008; // use RFC 7946 as the default
   var extension = opts.extension || "json";
   var layerGroups, warn;
 
   // Apply coordinate precision
-  // rfc7946 flag is deprecated (default output is now RFC 7946 compatible)
-  // the flag is used here to preserve backwards compatibility
-  // (the rfc7946 flag applies a default precision threshold, even though rounding
-  // coordinates is only a recommendation, not a requirement of RFC 7946)
-  if (opts.precision || opts.rfc7946) {
+  if (opts.precision) {
     dataset = copyDatasetForExport(dataset);
     setCoordinatePrecision(dataset, opts.precision || 0.000001);
   }
 
-  if (opts.v2 || opts.rfc7946) {
+  if (opts.rfc7946) {
     warn = getRFC7946Warnings(dataset);
     if (warn) message(warn);
   }
@@ -194,7 +183,7 @@ export function exportDatasetAsGeoJSON(dataset, opts, ofmt) {
   }
 
   if (opts.bbox) {
-    bbox = getDatasetBbox(dataset, opts.rfc7946 || opts.v2);
+    bbox = getDatasetBbox(dataset, opts.rfc7946);
     if (bbox) {
       geojson.bbox = bbox;
     }
@@ -294,7 +283,7 @@ GeoJSON.exportPolygonGeom = function(ids, arcs, opts) {
   var groups = groupPolygonRings(obj.pathData, arcs, opts.invert_y);
   // invert_y is used internally for SVG generation
   // mapshaper's internal winding order is the opposite of RFC 7946
-  var reverse = (opts.rfc7946 || opts.v2) && !opts.invert_y;
+  var reverse = opts.rfc7946 && !opts.invert_y;
   var coords = groups.map(function(paths) {
     return paths.map(function(path) {
       if (reverse) path.points.reverse();

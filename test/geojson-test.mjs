@@ -415,16 +415,15 @@ describe('mapshaper-geojson.js', function () {
 
     });
 
-    describe('-o rfc7946 option', function () {
+    describe('-o precision= option', function () {
 
-      // rfc7946 flag still truncates coordinates
-      // (now deprecated, because output is rfc 7946 compatible by default)
-      it('Default coordinate precision is 6 decimals', function() {
+
+      it('set coordinate precision to 6 decimals', function() {
         var input = {
           type: 'MultiPoint',
           coordinates: [[4.000000000000001, 3.999999999999], [0.123456789,-9.87654321]]
         };
-        var output = api.internal.exportGeoJSON(api.internal.importGeoJSON(input, {}), {rfc7946: true})[0].content.toString();
+        var output = api.internal.exportGeoJSON(api.internal.importGeoJSON(input, {}), {precision: 0.000001})[0].content.toString();
         var coords = output.match(/"coordinates.*\]\]/)[0];
         assert.equal(coords, '"coordinates":[[4,4],[0.123457,-9.876543]]');
       });
@@ -452,7 +451,7 @@ describe('mapshaper-geojson.js', function () {
               [[101.0, 1.0],  [101.0, 9.0], [109.0, 9.0], [109.0, 1.0], [101.0, 1.0]]
             ];
 
-        api.applyCommands('-i input.json -o output.json rfc7946', {'input.json': input}, function(err, output) {
+        api.applyCommands('-i input.json -o output.json', {'input.json': input}, function(err, output) {
           var json = JSON.parse(output['output.json']);
           assert.deepEqual(json.geometries[0].coordinates, target);
           done();

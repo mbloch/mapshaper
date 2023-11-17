@@ -14,7 +14,7 @@ export function getFeatureEditor(lyr, dataset) {
   // need to copy attribute to avoid circular references if geojson is assigned
   // to a data property.
   var copy = copyLayer(lyr);
-  var features = exportLayerAsGeoJSON(copy, dataset, {}, true);
+  var features = exportLayerAsGeoJSON(copy, dataset, {rfc7946: true}, true);
   var features2 = [];
 
   api.get = function(i) {
