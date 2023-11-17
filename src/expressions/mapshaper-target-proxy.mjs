@@ -14,7 +14,7 @@ export function getTargetProxy(target) {
   });
 
   function getGeoJSON() {
-    var features = exportLayerAsGeoJSON(lyr, target.dataset, {}, true);
+    var features = exportLayerAsGeoJSON(lyr, target.dataset, {rfc7946: true}, true);
     return {
       type: 'FeatureCollection',
       features: features
