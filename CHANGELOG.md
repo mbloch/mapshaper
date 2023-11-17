@@ -1,3 +1,7 @@
+v0.6.49
+* Fix for issue #610 (geojson getters in -run and -each should return polygons with RFC 7946 winding order).
+* -join interpolate now works correctly when the source layer contains overlapping polygons.
+
 v0.6.48
 * Added `target.geojson` getter that returns the contenst of the target layer as a GeoJSON `FeatureCollection`. Useful in the `-run` command for passing layer data to an external script.
 
