@@ -1,6 +1,6 @@
 (function () {
 
-  var VERSION = "0.6.48";
+  var VERSION = "0.6.49";
 
 
   var utils = /*#__PURE__*/Object.freeze({
@@ -17495,30 +17495,19 @@
     return feat;
   };
 
-  // switch to RFC 7946-compatible output (while retaining the original export function,
-  // so numerous tests will continue to work)
-  function exportGeoJSON2(dataset, opts) {
-    opts = utils.extend({}, opts);
-    opts.v2 = !opts.gj2008; // use RFC 7946 as the default
-    return exportGeoJSON(dataset, opts);
-  }
-
   function exportGeoJSON(dataset, opts) {
-    opts = opts || {};
+    opts = utils.extend({}, opts);
+    opts.rfc7946 = !opts.gj2008; // use RFC 7946 as the default
     var extension = opts.extension || "json";
     var layerGroups, warn;
 
     // Apply coordinate precision
-    // rfc7946 flag is deprecated (default output is now RFC 7946 compatible)
-    // the flag is used here to preserve backwards compatibility
-    // (the rfc7946 flag applies a default precision threshold, even though rounding
-    // coordinates is only a recommendation, not a requirement of RFC 7946)
-    if (opts.precision || opts.rfc7946) {
+    if (opts.precision) {
       dataset = copyDatasetForExport(dataset);
       setCoordinatePrecision(dataset, opts.precision || 0.000001);
     }
 
-    if (opts.v2 || opts.rfc7946) {
+    if (opts.rfc7946) {
       warn = getRFC7946Warnings(dataset);
       if (warn) message(warn);
     }
@@ -17672,7 +17661,7 @@
     }
 
     if (opts.bbox) {
-      bbox = getDatasetBbox(dataset, opts.rfc7946 || opts.v2);
+      bbox = getDatasetBbox(dataset, opts.rfc7946);
       if (bbox) {
         geojson.bbox = bbox;
       }
@@ -17772,7 +17761,7 @@
     var groups = groupPolygonRings(obj.pathData, arcs, opts.invert_y);
     // invert_y is used internally for SVG generation
     // mapshaper's internal winding order is the opposite of RFC 7946
-    var reverse = (opts.rfc7946 || opts.v2) && !opts.invert_y;
+    var reverse = opts.rfc7946 && !opts.invert_y;
     var coords = groups.map(function(paths) {
       return paths.map(function(path) {
         if (reverse) path.points.reverse();
@@ -17886,7 +17875,6 @@
   var GeojsonExport = /*#__PURE__*/Object.freeze({
     __proto__: null,
     'default': GeoJSON,
-    exportGeoJSON2: exportGeoJSON2,
     exportGeoJSON: exportGeoJSON,
     exportLayerAsGeoJSON: exportLayerAsGeoJSON,
     getRFC7946Warnings: getRFC7946Warnings,
@@ -21775,7 +21763,7 @@ ${svg}
 
   var exporters = {
     // [PACKAGE_EXT]: exportPackedDatasets, // handled as a special case
-    geojson: exportGeoJSON2,
+    geojson: exportGeoJSON,
     topojson: exportTopoJSON,
     shapefile: exportShapefile,
     dsv: exportDelim,
@@ -23677,13 +23665,6 @@ ${svg}
       .option('topojson-precision', {
         // describe: 'pct of avg segment length for rounding (0.02 is default)',
         type: 'number'
-      })
-      .option('rfc7946', {
-        // obsolete -- rfc 7946 compatible outptu is now the default.
-        // This option also rounds coordinates to 7 decimals. I'm retaining the
-        // option for backwards compatibility.
-        // describe: '[GeoJSON] follow RFC 7946 (CCW outer ring order, etc.)',
-        type: 'flag'
       })
       // .option('winding', {
       //   describe: '[GeoJSON] set polygon winding order (use CW with d3-geo)'
@@ -34841,7 +34822,7 @@ ${svg}
     // need to copy attribute to avoid circular references if geojson is assigned
     // to a data property.
     var copy = copyLayer(lyr);
-    var features = exportLayerAsGeoJSON(copy, dataset, {}, true);
+    var features = exportLayerAsGeoJSON(copy, dataset, {rfc7946: true}, true);
     var features2 = [];
 
     api.get = function(i) {
@@ -39486,6 +39467,7 @@ ${svg}
   }
 
   function joinPolygonsViaMosaic(targetLyr, targetDataset, source, opts) {
+    // merge source and target layers
     var mergedDataset = mergeLayersForOverlay([targetLyr], targetDataset, source, opts);
     var nodes = addIntersectionCuts(mergedDataset, opts);
     var sourceLyr = mergedDataset.layers.pop();
@@ -39495,6 +39477,7 @@ ${svg}
       geometry_type: 'polygon',
       shapes: targetLyr.shapes.concat(sourceLyr.shapes)
     };
+    // make a mosaic from merged shapes of both layers
     var mosaicIndex = new MosaicIndex(mergedLyr, nodes, {flat: false});
 
     var joinOpts = utils.extend({}, opts);
@@ -39538,8 +39521,8 @@ ${svg}
     var mosaicRecords = mosaicShapes.map(function(tile, i) {
       var rec = {
         area: getShapeArea(tile, arcs),
-        weight: 0,
-        sourceId: -1
+        weights: null,
+        sourceIds: null
       };
       return rec;
     });
@@ -39549,31 +39532,48 @@ ${svg}
     sourceLyr.shapes.forEach(function(sourceShp, sourceId) {
       var tileIds = mosaicIndex.getTileIdsByShapeId(sourceId + destLen);
       var shapeArea = getShapeArea(sourceShp, arcs);
-      var tileRec;
+      var tileRec, weight;
       for (var i=0; i<tileIds.length; i++) {
         tileRec = mosaicRecords[tileIds[i]];
-        if (tileRec.sourceId > -1) {
-          // overlap in source layer
-          continue;
+        weight = tileRec.area / shapeArea;
+        if (!tileRec.weights) {
+          tileRec.weights = [];
+          tileRec.sourceIds = [];
         }
-        tileRec.weight = tileRec.area / shapeArea;
-        tileRec.sourceId = sourceId;
+        tileRec.weights.push(weight);
+        tileRec.sourceIds.push(sourceId);
       }
     });
     return mosaicRecords;
   }
 
 
+  // function getInterpolatedValue(field, tileRecords, sourceRecords) {
+  //   var value = 0, tileRec, sourceRec;
+  //   for (var i=0; i<tileRecords.length; i++) {
+  //     tileRec = tileRecords[i];
+  //     if (tileRec.sourceId == -1) continue;
+
+  //     sourceRec = sourceRecords[tileRec.sourceId];
+  //     value += tileRec.weight * sourceRec[field];
+  //   }
+  //   return value;
+  // }
+
   function getInterpolatedValue(field, tileRecords, sourceRecords) {
-    var value = 0, tileRec, sourceRec;
+    var value = 0, tileRec, sourceRec, sourceId;
     for (var i=0; i<tileRecords.length; i++) {
       tileRec = tileRecords[i];
-      if (tileRec.sourceId == -1) continue;
-      sourceRec = sourceRecords[tileRec.sourceId];
-      value += tileRec.weight * sourceRec[field];
+      if (!tileRec.sourceIds) continue;
+      for (var j=0; j<tileRec.sourceIds.length; j++) {
+        sourceId = tileRec.sourceIds[j];
+        sourceRec = sourceRecords[sourceId];
+        value += tileRec.weights[j] * sourceRec[field];
+      }
     }
     return value;
   }
+
 
   function getIdConversionFunction(offset, length) {
     return function (mergedIds) {
@@ -40955,103 +40955,6 @@ ${svg}
     return rowsArr;
   }
 
-  cmd.pointToGrid = function(targetLayers, targetDataset, opts) {
-    targetLayers.forEach(requirePointLayer);
-    if (opts.interval > 0 === false) {
-      stop('Expected a non-negative interval parameter');
-    }
-    if (opts.radius > 0 === false) ;
-    // var bbox = getLayerBounds(pointLyr).toArray();
-    // Use target dataset, so grids are aligned between layers
-    // TODO: align grids between datasets
-    var bbox = getDatasetBounds(targetDataset).toArray();
-
-    var datasets = [targetDataset];
-    var outputLayers = targetLayers.map(function(pointLyr) {
-      if (countMultiPartFeatures(pointLyr) > 0) {
-        stop('This command requires single points');
-      }
-      var dataset = getPolygonDataset(pointLyr, bbox, opts);
-      var gridLyr = dataset.layers[0];
-      datasets.push(dataset);
-      setOutputLayerName(gridLyr, pointLyr, 'grid', opts);
-      return gridLyr;
-    });
-
-    var merged = mergeDatasets(datasets);
-    // build topology for the entire dataset, in case the command is used on
-    // multiple target layers.
-    buildTopology(merged);
-    targetDataset.arcs = merged.arcs;
-    return outputLayers;
-  };
-
-
-  function getPolygonDataset(pointLyr, gridBBox, opts) {
-    var points = getPointsInLayer(pointLyr);
-    var cellSize = opts.interval;
-    var grid = getGridData(gridBBox, cellSize, opts);
-    var pointCircleRadius = getPointCircleRadius(opts);
-    var findPointIdsByCellId = getPointIndex(points, grid, pointCircleRadius);
-    var geojson = {
-      type: 'FeatureCollection',
-      features: []
-    };
-    var calc = opts.calc ? getJoinCalc(pointLyr.data, opts.calc) : null;
-    var candidateIds, weights, center, d;
-
-    for (var i=0, n=grid.cells(); i<n; i++) {
-      candidateIds = findPointIdsByCellId(i);
-      if (!candidateIds.length) continue;
-      center = grid.idxToPoint(i);
-      weights = calcWeights(center, cellSize, points, candidateIds, pointCircleRadius);
-      d = calcCellProperties(candidateIds, weights, calc);
-      if (d.weight > 0.05 === false) continue;
-      d.id = i;
-      geojson.features.push({
-        type: 'Feature',
-        properties: d,
-        geometry: makeCellPolygon(i, grid, opts)
-      });
-    }
-    return importGeoJSON(geojson, {});
-  }
-
-  function getPointCircleRadius(opts) {
-    var cellRadius = opts.interval * Math.sqrt(1 / Math.PI);
-    return opts.radius > 0 ? opts.radius : cellRadius;
-  }
-
-  function calcCellProperties(pointIds, weights, calc) {
-    var hitIds = [];
-    var weight = 0;
-    var partial;
-    var d;
-    for (var i=0; i<pointIds.length; i++) {
-      partial = weights[i];
-      if (partial > 0 === false) continue;
-      weight += partial;
-      hitIds.push(pointIds[i]);
-    }
-    d = {weight: weight};
-    if (calc) {
-      calc(hitIds, d);
-    }
-    return d;
-  }
-
-  function calcWeights(cellCenter, cellSize, points, pointIds, pointRadius) {
-    var weights = [];
-    var cellRadius = cellSize * Math.sqrt(1 / Math.PI); // radius of circle with same area as cell
-    var cellArea = cellSize * cellSize;
-    var w;
-    for (var i=0; i<pointIds.length; i++) {
-      w = twoCircleIntersection(cellCenter, cellRadius, points[pointIds[i]], pointRadius) / cellArea;
-      weights.push(w);
-    }
-    return weights;
-  }
-
   // Source: https://diego.assencio.com/?index=8d6ca3d82151bad815f78addf9b5c1c6
   function twoCircleIntersection(c1, r1, c2, r2) {
     var d = distance2D(c1[0], c1[1], c2[0], c2[1]);
@@ -41067,78 +40970,16 @@ ${svg}
       r2sq * Math.acos(d2/r2) - d2 * Math.sqrt(r2sq - d2 * d2);
   }
 
-  function makeCellPolygon(idx, grid, opts) {
-    var coords = opts.circles ?
-      makeCircleCoords(grid.idxToPoint(idx), opts) :
-      makeCellCoords(grid.idxToBBox(idx), opts);
-    return {
-      type: 'Polygon',
-      coordinates: [coords]
-    };
+  function getAlignedGridBounds(bbox, interval) {
+    var xx = getAlignedRange(bbox[0], bbox[2], interval);
+    var yy = getAlignedRange(bbox[1], bbox[3], interval);
+    return [xx[0], yy[0], xx[1], yy[1]];
   }
 
-  function makeCellCoords(bbox, opts) {
-    var margin = opts.interval * (opts.cell_margin || 0);
-    var a = bbox[0] + margin,
-        b = bbox[1] + margin,
-        c = bbox[2] - margin,
-        d = bbox[3] - margin;
-    return [[a, b],[a, d],[c, d],[c, b],[a, b]];
-  }
-
-  function makeCircleCoords(center, opts) {
-    var margin = opts.cell_margin > 0 ? opts.cell_margin : 1e-6;
-    var radius = opts.interval / 2 * (1 - margin);
-    var vertices = opts.vertices || 20;
-    return getPointBufferCoordinates(center, radius, vertices, getPlanarSegmentEndpoint);
-  }
-
-  // Returns a function that receives a cell index and returns indices of points
-  //   within a given distance of the cell.
-  function getPointIndex(points, grid, radius) {
-    var Flatbush = require$1('flatbush');
-    var gridIndex = new IdTestIndex(grid.cells());
-    var bboxIndex = new Flatbush(points.length);
-    var empty = [];
-    points.forEach(function(p) {
-      var bbox = getPointBounds(p, radius);
-      addPointToGridIndex(p, gridIndex, grid);
-      bboxIndex.add.apply(bboxIndex, bbox);
-    });
-    bboxIndex.finish();
-    return function(i) {
-      if (!gridIndex.hasId(i)) {
-        return empty;
-      }
-      var bbox = grid.idxToBBox(i);
-      var indices = bboxIndex.search.apply(bboxIndex, bbox);
-      return indices;
-    };
-  }
-
-  function addPointToGridIndex(p, index, grid) {
-    var i = grid.pointToIdx(p);
-    var c = grid.idxToCol(i);
-    var r = grid.idxToRow(i);
-    addCellToGridIndex(c+1, r+1, grid, index);
-    addCellToGridIndex(c+1, r, grid, index);
-    addCellToGridIndex(c+1, r-1, grid, index);
-    addCellToGridIndex(c, r+1, grid, index);
-    addCellToGridIndex(c, r, grid, index);
-    addCellToGridIndex(c, r-1, grid, index);
-    addCellToGridIndex(c-1, r+1, grid, index);
-    addCellToGridIndex(c-1, r, grid, index);
-    addCellToGridIndex(c-1, r-1, grid, index);
-  }
-
-  function addCellToGridIndex(c, r, grid, index) {
-    var i = grid.colRowToIdx(c, r);
-    if (i > -1) index.setId(i);
-  }
-
-  // TODO: support spherical coords
-  function getPointBounds(p, radius) {
-    return [p[0] - radius, p[1] - radius, p[0] + radius, p[1] + radius];
+  function getCenteredGridBounds(bbox, interval) {
+    var xx = getCenteredRange(bbox[0], bbox[2], interval);
+    var yy = getCenteredRange(bbox[1], bbox[3], interval);
+    return [xx[0], yy[0], xx[1], yy[1]];
   }
 
   // grid boundaries includes the origin
@@ -41156,20 +40997,8 @@ ${svg}
     return [minCoord - pad, maxCoord + pad];
   }
 
-  function getAlignedGridBounds(bbox, interval) {
-    var xx = getAlignedRange(bbox[0], bbox[2], interval);
-    var yy = getAlignedRange(bbox[1], bbox[3], interval);
-    return [xx[0], yy[0], xx[1], yy[1]];
-  }
-
-  function getCenteredGridBounds(bbox, interval) {
-    var xx = getCenteredRange(bbox[0], bbox[2], interval);
-    var yy = getCenteredRange(bbox[1], bbox[3], interval);
-    return [xx[0], yy[0], xx[1], yy[1]];
-  }
-
   // TODO: Use this function for other grid-based commands
-  function getGridData(bbox, interval, opts) {
+  function getSquareGridMaker(bbox, interval, opts) {
     var extent = opts && opts.aligned ?
       getAlignedGridBounds(bbox, interval) :
       getCenteredGridBounds(bbox, interval);
@@ -41179,17 +41008,6 @@ ${svg}
     var h = extent[3] - ymin;
     var cols = Math.round(w / interval);
     var rows = Math.round(h / interval);
-    // var xmin = bbox[0] - interval;
-    // var ymin = bbox[1] - interval;
-    // var xmax = bbox[2] + interval;
-    // var ymax = bbox[3] + interval;
-    // var w = xmax - xmin;
-    // var h = ymax - ymin;
-    // var cols = Math.ceil(w / interval);
-    // var rows = Math.ceil(h / interval);
-    function size() {
-      return [cols, rows];
-    }
     function cells() {
       return cols * rows;
     }
@@ -41230,24 +41048,212 @@ ${svg}
       ];
     }
 
+    function makeCellPolygon(idx, opts) {
+      var coords = opts.circles ?
+        makeCircleCoords(idx, opts) :
+        makeCellCoords(idx, opts);
+      return {
+        type: 'Polygon',
+        coordinates: [coords]
+      };
+    }
+
+    function makeCellCoords(idx, opts) {
+      var bbox = idxToBBox(idx);
+      var margin = opts.interval * (opts.cell_margin || 0);
+      var a = bbox[0] + margin,
+          b = bbox[1] + margin,
+          c = bbox[2] - margin,
+          d = bbox[3] - margin;
+      return [[a, b],[a, d],[c, d],[c, b],[a, b]];
+    }
+
+    function makeCircleCoords(idx, opts) {
+      var center = idxToPoint(idx);
+      var margin = opts.cell_margin > 0 ? opts.cell_margin : 1e-6;
+      var radius = opts.interval / 2 * (1 - margin);
+      var vertices = opts.vertices || 20;
+      return getPointBufferCoordinates(center, radius, vertices, getPlanarSegmentEndpoint);
+    }
+
     return {
-      size, cells, pointToCol, pointToRow, colRowToIdx, pointToIdx,
-      idxToCol, idxToRow, idxToBBox, idxToPoint
+      // size,
+      // pointToCol,
+      // pointToRow,
+      // makeCellCoords,
+      // makeCircleCoords,
+      cells,
+      colRowToIdx,
+      pointToIdx,
+      idxToCol,
+      idxToRow,
+      idxToBBox,
+      idxToPoint,
+      makeCellPolygon
     };
   }
+
+  // Returns a function that receives a cell index and returns indices of points
+  //   within a given distance of the cell.
+  function getGridToPointIndex(points, grid, radius) {
+    var Flatbush = require('flatbush');
+    var gridIndex = new IdTestIndex(grid.cells());
+    var bboxIndex = new Flatbush(points.length);
+    var empty = [];
+    points.forEach(function(p) {
+      var bbox = getPointBounds(p, radius);
+      var addNeighbors = true; // TODO: only if radius is > 0?
+      addPointToGridIndex(p, gridIndex, grid, addNeighbors);
+      bboxIndex.add.apply(bboxIndex, bbox);
+    });
+    bboxIndex.finish();
+    return function(i) {
+      if (!gridIndex.hasId(i)) {
+        return empty;
+      }
+      var bbox = grid.idxToBBox(i);
+      var indices = bboxIndex.search.apply(bboxIndex, bbox);
+      return indices;
+    };
+  }
+
+
+  // TODO: support spherical coords
+  function getPointBounds(p, radius) {
+    return [p[0] - radius, p[1] - radius, p[0] + radius, p[1] + radius];
+  }
+
+  function addPointToGridIndex(p, index, grid, addNeighbors) {
+    var i = grid.pointToIdx(p);
+    var c = grid.idxToCol(i);
+    var r = grid.idxToRow(i);
+    addCellToGridIndex(c, r, grid, index);
+    if (addNeighbors) {
+      addCellToGridIndex(c+1, r+1, grid, index);
+      addCellToGridIndex(c+1, r, grid, index);
+      addCellToGridIndex(c+1, r-1, grid, index);
+      addCellToGridIndex(c, r+1, grid, index);
+      addCellToGridIndex(c, r-1, grid, index);
+      addCellToGridIndex(c-1, r+1, grid, index);
+      addCellToGridIndex(c-1, r, grid, index);
+      addCellToGridIndex(c-1, r-1, grid, index);
+    }
+  }
+
+  function addCellToGridIndex(c, r, grid, index) {
+    var i = grid.colRowToIdx(c, r);
+    if (i > -1) index.setId(i);
+  }
+
+  cmd.pointToGrid = function(targetLayers, targetDataset, opts) {
+    targetLayers.forEach(requirePointLayer);
+    if (opts.interval > 0 === false) {
+      stop('Expected a non-negative interval parameter');
+    }
+    if (opts.radius > 0 === false) ;
+    // var bbox = getLayerBounds(pointLyr).toArray();
+    // Use target dataset, so grids are aligned between layers
+    // TODO: align grids between datasets
+    var bbox = getDatasetBounds(targetDataset).toArray();
+
+    var datasets = [targetDataset];
+    var outputLayers = targetLayers.map(function(pointLyr) {
+      if (countMultiPartFeatures(pointLyr) > 0) {
+        stop('This command requires single points');
+      }
+      var dataset = getPolygonDataset(pointLyr, bbox, opts);
+      var gridLyr = dataset.layers[0];
+      datasets.push(dataset);
+      setOutputLayerName(gridLyr, pointLyr, 'grid', opts);
+      return gridLyr;
+    });
+
+    var merged = mergeDatasets(datasets);
+    // build topology for the entire dataset, in case the command is used on
+    // multiple target layers.
+    buildTopology(merged);
+    targetDataset.arcs = merged.arcs;
+    return outputLayers;
+  };
+
+  function getPolygonDataset(pointLyr, gridBBox, opts) {
+    var points = getPointsInLayer(pointLyr);
+    var cellSize = opts.interval;
+    var grid = getSquareGridMaker(gridBBox, cellSize, opts);
+    var pointCircleRadius = getPointCircleRadius(opts);
+    var findPointIdsByCellId = getGridToPointIndex(points, grid, pointCircleRadius);
+    var geojson = {
+      type: 'FeatureCollection',
+      features: []
+    };
+    var calc = opts.calc ? getJoinCalc(pointLyr.data, opts.calc) : null;
+    var candidateIds, weights, center, d;
+
+    for (var i=0, n=grid.cells(); i<n; i++) {
+      candidateIds = findPointIdsByCellId(i);
+      if (!candidateIds.length) continue;
+      center = grid.idxToPoint(i);
+      weights = calcWeights(center, cellSize, points, candidateIds, pointCircleRadius);
+      d = calcCellProperties(candidateIds, weights, calc);
+      if (d.weight > 0.05 === false) continue;
+      d.id = i;
+      geojson.features.push({
+        type: 'Feature',
+        properties: d,
+        geometry: grid.makeCellPolygon(i, opts)
+      });
+    }
+    return importGeoJSON(geojson, {});
+  }
+
+  function getPointCircleRadius(opts) {
+    var cellRadius = opts.interval * Math.sqrt(1 / Math.PI);
+    return opts.radius > 0 ? opts.radius : cellRadius;
+  }
+
+  function calcCellProperties(pointIds, weights, calc) {
+    var hitIds = [];
+    var weight = 0;
+    var partial;
+    var d;
+    for (var i=0; i<pointIds.length; i++) {
+      partial = weights[i];
+      if (partial > 0 === false) continue;
+      weight += partial;
+      hitIds.push(pointIds[i]);
+    }
+    d = {weight: weight};
+    if (calc) {
+      calc(hitIds, d);
+    }
+    return d;
+  }
+
+  function calcWeights(cellCenter, cellSize, points, pointIds, pointRadius) {
+    var weights = [];
+    var cellRadius = cellSize * Math.sqrt(1 / Math.PI); // radius of circle with same area as cell
+    var cellArea = cellSize * cellSize;
+    var w;
+    for (var i=0; i<pointIds.length; i++) {
+      w = twoCircleIntersection(cellCenter, cellRadius, points[pointIds[i]], pointRadius) / cellArea;
+      weights.push(w);
+    }
+    return weights;
+  }
+
+  // function getPointsByIndex(points, indices) {
+  //   var arr = [];
+  //   for (var i=0; i<indices.length; i++) {
+  //     arr.push(points[indices[i]]);
+  //   }
+  //   return arr;
+  // }
 
   var PointToGrid = /*#__PURE__*/Object.freeze({
     __proto__: null,
     getPointCircleRadius: getPointCircleRadius,
     calcCellProperties: calcCellProperties,
-    calcWeights: calcWeights,
-    twoCircleIntersection: twoCircleIntersection,
-    makeCellPolygon: makeCellPolygon,
-    makeCircleCoords: makeCircleCoords,
-    getPointIndex: getPointIndex,
-    getAlignedGridBounds: getAlignedGridBounds,
-    getCenteredGridBounds: getCenteredGridBounds,
-    getGridData: getGridData
+    calcWeights: calcWeights
   });
 
   function closeUndershoots(lyr, dataset, opts) {
@@ -41516,7 +41522,7 @@ ${svg}
     });
 
     function getGeoJSON() {
-      var features = exportLayerAsGeoJSON(lyr, target.dataset, {}, true);
+      var features = exportLayerAsGeoJSON(lyr, target.dataset, {rfc7946: true}, true);
       return {
         type: 'FeatureCollection',
         features: features
