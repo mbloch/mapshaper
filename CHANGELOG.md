@@ -1,3 +1,6 @@
+v0.6.50
+* Fix for label dragging bug.
+
 v0.6.49
 * Fix for issue #610 (geojson getters in -run and -each should return polygons with RFC 7946 winding order).
 * -join interpolate now works correctly when the source layer contains overlapping polygons.
