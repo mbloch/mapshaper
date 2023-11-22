@@ -6829,16 +6829,18 @@
   }
 
   function getPointerHitTest(mapLayer, ext, interactionMode) {
-    var shapeTest, svgTest, targetLayer;
+    var shapeTest, targetLayer;
     if (!mapLayer || !internal.layerHasGeometry(mapLayer.layer)) {
       return function() {return {ids: []};};
     }
     shapeTest = getShapeHitTest(mapLayer, ext, interactionMode);
-    svgTest = getSvgHitTest(mapLayer);
 
     // e: pointer event
     return function(e) {
       var p = ext.translatePixelCoords(e.x, e.y);
+      // update SVG hit test on each test, in case SVG layer has been redrawn
+      // and the symbol container has changed
+      var svgTest = getSvgHitTest(mapLayer);
       var data = shapeTest(p[0], p[1]) || {ids:[]};
       var svgData = svgTest(e); // null or a data object
       if (svgData) { // mouse is over an SVG symbol
@@ -10375,9 +10377,10 @@
     _furniture.css('pointer-events', 'none');
 
     this.drawMainLayers = function(layers, action) {
+      var needSvgRedraw = action != 'nav' && action != 'hover';
       if (skipMainLayerRedraw(action)) return;
       _mainCanv.prep(_ext);
-      if (action != 'nav') {
+      if (needSvgRedraw) {
         _svg.clear();
       }
       layers.forEach(function(lyr) {
@@ -10386,7 +10389,7 @@
         if (!isSvgLayer) { // svg labels may have canvas dots
           drawCanvasLayer(lyr, _mainCanv);
         }
-        if (isSvgLayer && action == 'nav') {
+        if (isSvgLayer && !needSvgRedraw) {
           _svg.reposition(lyr, 'symbol');
         } else if (isSvgLayer) {
           _svg.drawLayer(lyr, 'symbol');
@@ -11282,9 +11285,10 @@
       } else {
         _overlayLyr = null;
       }
-      // 'hover' bypasses style creation in drawLayers2()... sometimes we need that
-      // drawLayers('hover');
-      drawLayers();
+
+      // 'hover' avoids redrawing all svg symbols when only highlight needs to refresh
+      drawLayers('hover');
+      // drawLayers();
     }
 
     function getDisplayOptions() {
@@ -11486,10 +11490,11 @@
 
     // action:
     //   'nav'      map was panned/zoomed -- only map extent has changed
-    //   'hover'    highlight has changed -- only draw overlay
+    //   'hover'    highlight has changed -- only refresh overlay
     //   (default)  anything could have changed
     function drawLayers2(action) {
-      var layersMayHaveChanged = !action;
+      // sometimes styles need to be regenerated with 'hover' action (when)
+      var layersMayHaveChanged = action != 'nav'; // !action;
       var fullBounds;
       var contentLayers = getDrawableContentLayers();
       var furnitureLayers = getDrawableFurnitureLayers();

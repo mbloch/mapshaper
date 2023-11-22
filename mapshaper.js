@@ -1,6 +1,6 @@
 (function () {
 
-  var VERSION = "0.6.49";
+  var VERSION = "0.6.50";
 
 
   var utils = /*#__PURE__*/Object.freeze({
@@ -18,7 +18,7 @@
     get isNonNegNumber () { return isNonNegNumber; },
     get isInteger () { return isInteger; },
     get isEven () { return isEven; },
-    get isOdd () { return isOdd; },
+    get isOdd () { return isOdd$1; },
     get isString () { return isString; },
     get isDate () { return isDate; },
     get isBoolean () { return isBoolean; },
@@ -195,7 +195,7 @@
     return (obj % 2) === 0;
   }
 
-  function isOdd(obj) {
+  function isOdd$1(obj) {
     return (obj % 2) === 1;
   }
 
@@ -24344,6 +24344,19 @@ ${svg}
       .option('name', nameOpt);
 
 
+    // for testing grid update
+    parser.command('grid2')
+      .option('type', {
+        describe: 'square, hex or hex2 (default is square)'
+      })
+      .option('interval', {
+        describe: 'side length (e.g. 500m, 12km)',
+        type: 'distance'
+      })
+      .option('name', nameOpt)
+      .option('target', targetOpt)
+      .option('no-replace', noReplaceOpt);
+
     parser.command('grid')
       .describe('create a grid of square or hexagonal polygons')
       .option('type', {
@@ -40638,6 +40651,408 @@ ${svg}
     return [lyr2];
   };
 
+  // Columns are vertical and rows are horizontal in the "flat-top" orientation;
+  //   columns are horizontal in the "pointy-top" orientation
+  // Array indexes are column-first in both orientations
+  // The 0,0 cell is in the bottom left corner
+  // Currently the origin cell is always an "outie" (protruding); in the future
+  //   "innie" origin cells may be supported
+
+  // interval: side length in projected coordinates
+  // bbox: bounding box of area to be enclosed by grid
+  //
+  function getHexGridMaker(bbox, interval, opts) {
+    var flatTop = opts.type != 'hex2'; // hex2 is "pointy-top" orientation
+    // origin cell (bottom left) may be "outie" or "innie" ... could be settable
+    var outieOrigin = true;
+    var minorInterval = interval * Math.sqrt(3) / 2;
+    var _colCounts = _getColCounts(bbox, interval);
+    var _rowCounts = _getRowCounts(bbox, interval);
+    // coordinates of the center of the bottom left cell
+    var _uOrigin = _getUOrigin();
+    var _vOrigin = _getVOrigin();
+
+    function cells() {
+      return _rowCounts[0] * _colCounts[0] + _rowCounts[1] * _colCounts[1];
+    }
+
+    // a is col in flatTop orientation
+    function colRowToIdx(col, row) {
+      // fatCol: a pair of adjacent (offset) columns
+      var fatColSize = _rowCounts[0] + _rowCounts[1];
+      var fatColId = Math.floor(col / 2);
+      var idx = fatColId * fatColSize;
+      // oddCol: cell is in an odd-numbered column (or row)
+      var oddCols = col % 2 == 1;
+      if (oddCols) {
+        idx += _rowCounts[1];
+      }
+      idx += row;
+
+      // check index bounds
+      if (col < 0 || row < 0) error('negative grid index');
+      if (oddCols && row >= _rowCounts[1] || !oddCols && row >= _rowCounts[0]) {
+        error('out-of-bounds minor axis index');
+      }
+      if (oddCols && col >= _colCounts[1] || !oddCols && col >= _colCounts[0]) {
+        error('out-of-bounds major axis index');
+      }
+      return idx;
+    }
+
+    function pointToIdx(xy) {
+      return flatTop ?
+        _uvToIdx(xy[0], xy[1]) :
+        _uvToIdx(xy[1], xy[0]);
+    }
+
+    // Col,row numbering and array indexing are aligned (same for both flat-top and pointed-top orientations)
+    function idxToColRow(id) {
+      var fatColSize = _rowCounts[0] + _rowCounts[1];
+      var fatColId = Math.floor(id / fatColSize);
+      var col = fatColId * 2;
+      var extra = id - fatColId * fatColSize;
+      if (extra >= _rowCounts[0]) {
+        col++;
+        extra -= _rowCounts[0];
+      }
+      return [col, extra];
+    }
+
+    function idxToBBox(id) {
+      var bbox = _idxToBBox(id);
+      return flatTop ? bbox: [bbox[1], bbox[0], bbox[3], bbox[2]];
+    }
+
+    function makeCellPolygon(idx, opts) {
+      var geom = {
+        type: 'Polygon',
+        coordinates: [_makeCellCoords(idx)]
+      };
+      if (!flatTop) {
+        flipPolygonCoords(geom);
+      }
+      return geom;
+    }
+
+    function forEachNeighbor(c, r, cb) {
+      var rowShift;
+      {
+        rowShift = isOdd(c) ? 0 : -1;
+      }
+      cb(c, r+1);
+      cb(c+1, r + rowShift + 1);
+      cb(c+1, r + rowShift);
+      cb(c, r-1);
+      cb(c-1, r + rowShift + 1);
+    }
+
+    // horizontal origin (x coord) in flat-top orientation
+    function _getUOrigin() {
+      var range = _getUAxisRange(bbox);
+      var extent = range[1] - range[0];
+      var cols = _colCounts[0] + _colCounts[1];
+      var outerExtent = 1.5 * cols * interval + 0.5 * interval;
+      var margin = (outerExtent - extent) / 2; // center data bbox within grid
+      // origin is one side length to the right of the left boundary
+      var origin = range[0] - margin + interval;
+      return origin;
+    }
+
+    // vertical origin (y coord) in flat-top orientation
+    function _getVOrigin() {
+      var range = _getVAxisRange(bbox);
+      var extent = range[1] - range[0];
+      var rows = _rowCounts[0] + _rowCounts[1];
+      var outerExtent = (rows + 1) * minorInterval;
+      var margin = (outerExtent - extent) / 2;
+      var origin = range[0] - margin + minorInterval;
+      return origin;
+    }
+
+    function _getUAxisRange(bbox) {
+      return flatTop ? [bbox[0], bbox[2]] : [bbox[1], bbox[3]];
+    }
+
+    function _getVAxisRange(bbox) {
+      return flatTop ? [bbox[1], bbox[3]] : [bbox[0], bbox[2]];
+    }
+
+    function _uvToIdx(u, v) {
+      var [c, r] = _uvToColRow(u, v);
+      return colRowToIdx(c, r);
+    }
+
+    // x, y are reversed in pointy-top orientation
+    function _uvToColRow(u, v) {
+      var left = _uOrigin - 1.5 * interval;
+      var vOffs = 0 ;
+      var bottom = _vOrigin - minorInterval + vOffs;
+      var ui = Math.floor((u - left) / (1.5 * interval));
+      var vi = Math.floor((v - bottom) / minorInterval);
+      var cwBar = isOdd(ui) != isOdd(vi);
+      var u1 = left + ui * 1.5 * interval + interval * 0.5;
+      var u2 = u1 + interval * 0.5;
+      var v1 = bottom + vi * minorInterval;
+      var v2 = v1 + minorInterval;
+      var orientation = cwBar ?
+        orient2D(u1, v1, u2, v2, u, v) :
+        orient2D(u2, v1, u1, v2, u, v);
+      var colId = orientation > 0 ? ui - 1 : ui;
+      var rowId = Math.floor(vi / 2);
+      return [colId, rowId];
+    }
+
+    function _idxToBBox(id) {
+      var uv = _idxToPoint(id);
+      return [
+        uv[0] - interval,
+        uv[1] - minorInterval,
+        uv[0] + interval,
+        uv[1] + minorInterval
+      ];
+    }
+
+    // center point of cell
+    function idxToPoint(id) {
+      var p = _idxToPoint(id);
+      return flatTop ? p : flipPoint(p);
+    }
+
+    function _isUpperCell(col) {
+      return isOdd(col) || !outieOrigin ;
+    }
+
+    function _idxToPoint(id) {
+      var [c, r] = idxToColRow(id);
+      return _colRowToPoint(c, r);
+    }
+
+    function _colRowToPoint(c, r) {
+      var vShift = isOdd(c) ? (minorInterval ) : 0;
+      var u = _uOrigin + c * 1.5 * interval;
+      var v = _vOrigin + vShift + r * minorInterval * 2;
+      return [u, v];
+    }
+
+    function _colRowToVertex(c, r, half) {
+      var [u, v] = _colRowToPoint(c, r);
+      return [u - (half ? interval : interval / 2), v - (half ? 0 : minorInterval)];
+    }
+
+    function _makeCellCoords(idx) {
+      var [c, r] = idxToColRow(idx);
+      var rowOffs = _isUpperCell(c) ? 0 : -1;
+      var v0 = _colRowToVertex(c, r, false);
+      return [
+        v0,
+        _colRowToVertex(c, r, false),
+        _colRowToVertex(c, r, true),
+        _colRowToVertex(c, r + 1, false),
+        _colRowToVertex(c + 1, r + 1 + rowOffs, true),
+        _colRowToVertex(c + 1, r + 1 + rowOffs, false),
+        _colRowToVertex(c + 1, r + rowOffs, true),
+        v0
+      ];
+    }
+
+    function _getColCounts(bbox, interval) {
+      var extent = flatTop ? bbox[2] - bbox[0] : bbox[3] - bbox[1];
+      var n = Math.ceil((2 * extent + interval) / (3 * interval));
+      var a = Math.ceil(n / 2);
+      var b = Math.floor(n / 2);
+      return [a, b] ;
+    }
+
+    function _getRowCounts(bbox, interval) {
+      var extent = flatTop ? bbox[3] - bbox[1] : bbox[2] - bbox[0];
+      var n = Math.ceil(1 + 2 * extent / (interval * Math.sqrt(3)));
+      var a = Math.ceil(n / 2);
+      var b = Math.floor(n / 2);
+      return [a, b] ;
+    }
+
+    return {
+      cells,
+      colRowToIdx,
+      idxToColRow,
+      pointToIdx,
+      idxToPoint,
+      idxToBBox,
+      makeCellPolygon,
+      forEachNeighbor
+    };
+  }
+
+  function isOdd(int) {
+    return int % 2 !== 0;
+  }
+
+  function flipPolygonCoords(geom) {
+    for (var i=0, n=geom ? geom.coordinates.length : 0; i<n; i++) {
+      geom.coordinates[i].forEach(flipPoint);
+    }
+  }
+
+  function flipPoint(p) {
+    p[1];
+    p[1] = p[0];
+    p[0] = p[1];
+    return p;
+  }
+
+  function getAlignedGridBounds(bbox, interval) {
+    var xx = getAlignedRange(bbox[0], bbox[2], interval);
+    var yy = getAlignedRange(bbox[1], bbox[3], interval);
+    return [xx[0], yy[0], xx[1], yy[1]];
+  }
+
+  function getCenteredGridBounds(bbox, interval) {
+    var xx = getCenteredRange(bbox[0], bbox[2], interval);
+    var yy = getCenteredRange(bbox[1], bbox[3], interval);
+    return [xx[0], yy[0], xx[1], yy[1]];
+  }
+
+  // grid boundaries includes the origin
+  // (this way, grids calculated from different sets of points will all align)
+  function getAlignedRange(minCoord, maxCoord, interval) {
+    var idx = Math.floor(minCoord / interval) - 1;
+    var idx2 = Math.ceil(maxCoord / interval) + 1;
+    return [idx * interval, idx2 * interval];
+  }
+
+  function getCenteredRange(minCoord, maxCoord, interval) {
+    var w = maxCoord - minCoord;
+    var w2 = Math.ceil(w / interval) * interval;
+    var pad = (w2 - w) / 2 + interval;
+    return [minCoord - pad, maxCoord + pad];
+  }
+
+  // TODO: Use this function for other grid-based commands
+  function getSquareGridMaker(bbox, interval, opts) {
+    var extent = opts && opts.aligned ?
+      getAlignedGridBounds(bbox, interval) :
+      getCenteredGridBounds(bbox, interval);
+    var xmin = extent[0];
+    var ymin = extent[1];
+    var w = extent[2] - xmin;
+    var h = extent[3] - ymin;
+    var cols = Math.round(w / interval);
+    var rows = Math.round(h / interval);
+    // var xmin = bbox[0] - interval;
+    // var ymin = bbox[1] - interval;
+    // var xmax = bbox[2] + interval;
+    // var ymax = bbox[3] + interval;
+    // var w = xmax - xmin;
+    // var h = ymax - ymin;
+    // var cols = Math.ceil(w / interval);
+    // var rows = Math.ceil(h / interval);
+
+    // function size() {
+    //   return [cols, rows];
+    // }
+
+    function cells() {
+      return cols * rows;
+    }
+
+    function pointToCol(xy) {
+      var dx = xy[0] - xmin;
+      return Math.floor(dx / w * cols);
+    }
+
+    function pointToRow(xy) {
+      var dy = xy[1] - ymin;
+      return Math.floor(dy / h * rows);
+    }
+
+    function colRowToIdx(c, r) {
+      if (c < 0 || r < 0 || c >= cols || r >= rows) return -1;
+      return r * cols + c;
+    }
+
+    function pointToIdx(xy) {
+      var c = pointToCol(xy);
+      var r = pointToRow(xy);
+      return colRowToIdx(c, r);
+    }
+
+    function idxToColRow(i) {
+      return [i % cols, Math.floor(i / cols)];
+    }
+
+    function idxToPoint(idx) {
+      var [c, r] = idxToColRow(idx);
+      var x = xmin + (c + 0.5) * interval;
+      var y = ymin + (r + 0.5) * interval;
+      return [x, y];
+    }
+
+    function idxToBBox(idx) {
+      var cr = idxToColRow(idx);
+      return [
+        xmin + cr[0] * interval, ymin + cr[1] * interval,
+        xmin + (cr[0] + 1) * interval, ymin + (cr[1] + 1) * interval
+      ];
+    }
+
+    function makeCellPolygon(idx, opts) {
+      var coords = opts.circles ?
+        makeCircleCoords(idx, opts) :
+        makeCellCoords(idx, opts);
+      return {
+        type: 'Polygon',
+        coordinates: [coords]
+      };
+    }
+
+    function makeCellCoords(idx, opts) {
+      var bbox = idxToBBox(idx);
+      var margin = opts.interval * (opts.cell_margin || 0);
+      var a = bbox[0] + margin,
+          b = bbox[1] + margin,
+          c = bbox[2] - margin,
+          d = bbox[3] - margin;
+      return [[a, b],[a, d],[c, d],[c, b],[a, b]];
+    }
+
+    function makeCircleCoords(idx, opts) {
+      var center = idxToPoint(idx);
+      var margin = opts.cell_margin > 0 ? opts.cell_margin : 1e-6;
+      var radius = opts.interval / 2 * (1 - margin);
+      var vertices = opts.vertices || 20;
+      return getPointBufferCoordinates(center, radius, vertices, getPlanarSegmentEndpoint);
+    }
+
+    function forEachNeighbor(c, r, cb) {
+      cb(c+1, r+1);
+      cb(c+1, r);
+      cb(c+1, r-1);
+      cb(c, r+1);
+      cb(c, r-1);
+      cb(c-1, r+1);
+      cb(c-1, r);
+      cb(c-1, r-1);
+    }
+
+    return {
+      // size,
+      // pointToCol,
+      // pointToRow,
+      // makeCellCoords,
+      // makeCircleCoords,
+      cells,
+      colRowToIdx,
+      pointToIdx,
+      idxToColRow,
+      // idxToRow,
+      idxToBBox,
+      idxToPoint,
+      makeCellPolygon,
+      forEachNeighbor
+    };
+  }
+
   cmd.polygonGrid = function(targetLayers, targetDataset, opts) {
     requireProjectedDataset(targetDataset);
     var params = getGridParams(targetLayers, targetDataset, opts);
@@ -40647,6 +41062,44 @@ ${svg}
     if (opts.debug) gridDataset.layers.push(cmd.pointGrid2(targetLayers, targetDataset, opts));
     return gridDataset;
   };
+
+
+  // TODO: Update -point-grid command to use this function
+  cmd.polygonGrid2 = function(targetLayers, targetDataset, opts) {
+    requireProjectedDataset(targetDataset);
+    var params = getGridParams(targetLayers, targetDataset, opts);
+    // alignGridToBounds(geojson, params.bbox);
+    var gridDataset = makeGridDataset2(params, opts);
+    gridDataset.info = copyDatasetInfo(targetDataset.info);
+    setOutputLayerName(gridDataset.layers[0], null, 'grid', opts);
+    return gridDataset;
+  };
+
+  function makeGridDataset2(params, opts) {
+    var geojson, dataset, grid;
+    if (params.type == 'square') {
+      grid = getSquareGridMaker(params.bbox, params.interval, opts);
+    } else if (params.type == 'hex') {
+      grid = getHexGridMaker(params.bbox, params.interval, opts);
+    } else {
+      stop('Unsupported grid type');
+    }
+    var features = [];
+    for (var i=0, n=grid.cells(); i<n; i++) {
+      features.push({
+        type: 'Feature',
+        properties: null,
+        geometry: grid.makeCellPolygon(i, opts)
+      });
+    }
+    geojson = {
+      type: 'FeatureCollection',
+      features: features
+    };
+    dataset = importGeoJSON(geojson, {});
+    buildTopology(dataset);
+    return dataset;
+  }
 
   // TODO: Update -point-grid command to use this function
   cmd.pointGrid2 = function(targetLayers, targetDataset, opts) {
@@ -40970,129 +41423,6 @@ ${svg}
       r2sq * Math.acos(d2/r2) - d2 * Math.sqrt(r2sq - d2 * d2);
   }
 
-  function getAlignedGridBounds(bbox, interval) {
-    var xx = getAlignedRange(bbox[0], bbox[2], interval);
-    var yy = getAlignedRange(bbox[1], bbox[3], interval);
-    return [xx[0], yy[0], xx[1], yy[1]];
-  }
-
-  function getCenteredGridBounds(bbox, interval) {
-    var xx = getCenteredRange(bbox[0], bbox[2], interval);
-    var yy = getCenteredRange(bbox[1], bbox[3], interval);
-    return [xx[0], yy[0], xx[1], yy[1]];
-  }
-
-  // grid boundaries includes the origin
-  // (this way, grids calculated from different sets of points will all align)
-  function getAlignedRange(minCoord, maxCoord, interval) {
-    var idx = Math.floor(minCoord / interval) - 1;
-    var idx2 = Math.ceil(maxCoord / interval) + 1;
-    return [idx * interval, idx2 * interval];
-  }
-
-  function getCenteredRange(minCoord, maxCoord, interval) {
-    var w = maxCoord - minCoord;
-    var w2 = Math.ceil(w / interval) * interval;
-    var pad = (w2 - w) / 2 + interval;
-    return [minCoord - pad, maxCoord + pad];
-  }
-
-  // TODO: Use this function for other grid-based commands
-  function getSquareGridMaker(bbox, interval, opts) {
-    var extent = opts && opts.aligned ?
-      getAlignedGridBounds(bbox, interval) :
-      getCenteredGridBounds(bbox, interval);
-    var xmin = extent[0];
-    var ymin = extent[1];
-    var w = extent[2] - xmin;
-    var h = extent[3] - ymin;
-    var cols = Math.round(w / interval);
-    var rows = Math.round(h / interval);
-    function cells() {
-      return cols * rows;
-    }
-    function pointToCol(xy) {
-      var dx = xy[0] - xmin;
-      return Math.floor(dx / w * cols);
-    }
-    function pointToRow(xy) {
-      var dy = xy[1] - ymin;
-      return Math.floor(dy / h * rows);
-    }
-    function colRowToIdx(c, r) {
-      if (c < 0 || r < 0 || c >= cols || r >= rows) return -1;
-      return r * cols + c;
-    }
-    function pointToIdx(xy) {
-      var c = pointToCol(xy);
-      var r = pointToRow(xy);
-      return colRowToIdx(c, r);
-    }
-    function idxToCol(i) {
-      return i % cols;
-    }
-    function idxToRow(i) {
-      return Math.floor(i / cols);
-    }
-    function idxToPoint(idx) {
-      var x = xmin + (idxToCol(idx) + 0.5) * interval;
-      var y = ymin + (idxToRow(idx) + 0.5) * interval;
-      return [x, y];
-    }
-    function idxToBBox(idx) {
-      var c = idxToCol(idx);
-      var r = idxToRow(idx);
-      return [
-        xmin + c * interval, ymin + r * interval,
-        xmin + (c + 1) * interval, ymin + (r + 1) * interval
-      ];
-    }
-
-    function makeCellPolygon(idx, opts) {
-      var coords = opts.circles ?
-        makeCircleCoords(idx, opts) :
-        makeCellCoords(idx, opts);
-      return {
-        type: 'Polygon',
-        coordinates: [coords]
-      };
-    }
-
-    function makeCellCoords(idx, opts) {
-      var bbox = idxToBBox(idx);
-      var margin = opts.interval * (opts.cell_margin || 0);
-      var a = bbox[0] + margin,
-          b = bbox[1] + margin,
-          c = bbox[2] - margin,
-          d = bbox[3] - margin;
-      return [[a, b],[a, d],[c, d],[c, b],[a, b]];
-    }
-
-    function makeCircleCoords(idx, opts) {
-      var center = idxToPoint(idx);
-      var margin = opts.cell_margin > 0 ? opts.cell_margin : 1e-6;
-      var radius = opts.interval / 2 * (1 - margin);
-      var vertices = opts.vertices || 20;
-      return getPointBufferCoordinates(center, radius, vertices, getPlanarSegmentEndpoint);
-    }
-
-    return {
-      // size,
-      // pointToCol,
-      // pointToRow,
-      // makeCellCoords,
-      // makeCircleCoords,
-      cells,
-      colRowToIdx,
-      pointToIdx,
-      idxToCol,
-      idxToRow,
-      idxToBBox,
-      idxToPoint,
-      makeCellPolygon
-    };
-  }
-
   // Returns a function that receives a cell index and returns indices of points
   //   within a given distance of the cell.
   function getGridToPointIndex(points, grid, radius) {
@@ -41107,6 +41437,7 @@ ${svg}
       bboxIndex.add.apply(bboxIndex, bbox);
     });
     bboxIndex.finish();
+
     return function(i) {
       if (!gridIndex.hasId(i)) {
         return empty;
@@ -41117,7 +41448,6 @@ ${svg}
     };
   }
 
-
   // TODO: support spherical coords
   function getPointBounds(p, radius) {
     return [p[0] - radius, p[1] - radius, p[0] + radius, p[1] + radius];
@@ -41125,18 +41455,12 @@ ${svg}
 
   function addPointToGridIndex(p, index, grid, addNeighbors) {
     var i = grid.pointToIdx(p);
-    var c = grid.idxToCol(i);
-    var r = grid.idxToRow(i);
+    var [c, r] = grid.idxToColRow(i);
     addCellToGridIndex(c, r, grid, index);
     if (addNeighbors) {
-      addCellToGridIndex(c+1, r+1, grid, index);
-      addCellToGridIndex(c+1, r, grid, index);
-      addCellToGridIndex(c+1, r-1, grid, index);
-      addCellToGridIndex(c, r+1, grid, index);
-      addCellToGridIndex(c, r-1, grid, index);
-      addCellToGridIndex(c-1, r+1, grid, index);
-      addCellToGridIndex(c-1, r, grid, index);
-      addCellToGridIndex(c-1, r-1, grid, index);
+      grid.forEachNeighbor(c, r, function(c, r) {
+        addCellToGridIndex(c, r, grid, index);
+      });
     }
   }
 
@@ -44031,6 +44355,9 @@ ${svg}
 
       } else if (name == 'grid') {
         outputDataset = cmd.polygonGrid(targetLayers, targetDataset, opts);
+
+      } else if (name == 'grid2') {
+        outputDataset = cmd.polygonGrid2(targetLayers, targetDataset, opts);
 
       } else if (name == 'help') {
         // placing help command here to handle errors from invalid command names
