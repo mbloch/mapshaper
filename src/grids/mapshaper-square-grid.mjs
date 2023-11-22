@@ -47,46 +47,52 @@ export function getSquareGridMaker(bbox, interval, opts) {
   // var h = ymax - ymin;
   // var cols = Math.ceil(w / interval);
   // var rows = Math.ceil(h / interval);
-  function size() {
-    return [cols, rows];
-  }
+
+  // function size() {
+  //   return [cols, rows];
+  // }
+
   function cells() {
     return cols * rows;
   }
+
   function pointToCol(xy) {
     var dx = xy[0] - xmin;
     return Math.floor(dx / w * cols);
   }
+
   function pointToRow(xy) {
     var dy = xy[1] - ymin;
     return Math.floor(dy / h * rows);
   }
+
   function colRowToIdx(c, r) {
     if (c < 0 || r < 0 || c >= cols || r >= rows) return -1;
     return r * cols + c;
   }
+
   function pointToIdx(xy) {
     var c = pointToCol(xy);
     var r = pointToRow(xy);
     return colRowToIdx(c, r);
   }
-  function idxToCol(i) {
-    return i % cols;
+
+  function idxToColRow(i) {
+    return [i % cols, Math.floor(i / cols)];
   }
-  function idxToRow(i) {
-    return Math.floor(i / cols);
-  }
+
   function idxToPoint(idx) {
-    var x = xmin + (idxToCol(idx) + 0.5) * interval;
-    var y = ymin + (idxToRow(idx) + 0.5) * interval;
+    var [c, r] = idxToColRow(idx);
+    var x = xmin + (c + 0.5) * interval;
+    var y = ymin + (r + 0.5) * interval;
     return [x, y];
   }
+
   function idxToBBox(idx) {
-    var c = idxToCol(idx);
-    var r = idxToRow(idx);
+    var cr = idxToColRow(idx);
     return [
-      xmin + c * interval, ymin + r * interval,
-      xmin + (c + 1) * interval, ymin + (r + 1) * interval
+      xmin + cr[0] * interval, ymin + cr[1] * interval,
+      xmin + (cr[0] + 1) * interval, ymin + (cr[1] + 1) * interval
     ];
   }
 
@@ -118,6 +124,17 @@ export function getSquareGridMaker(bbox, interval, opts) {
     return getPointBufferCoordinates(center, radius, vertices, getPlanarSegmentEndpoint);
   }
 
+  function forEachNeighbor(c, r, cb) {
+    cb(c+1, r+1);
+    cb(c+1, r);
+    cb(c+1, r-1);
+    cb(c, r+1);
+    cb(c, r-1);
+    cb(c-1, r+1);
+    cb(c-1, r);
+    cb(c-1, r-1);
+  }
+
   return {
     // size,
     // pointToCol,
@@ -127,10 +144,11 @@ export function getSquareGridMaker(bbox, interval, opts) {
     cells,
     colRowToIdx,
     pointToIdx,
-    idxToCol,
-    idxToRow,
+    idxToColRow,
+    // idxToRow,
     idxToBBox,
     idxToPoint,
-    makeCellPolygon
+    makeCellPolygon,
+    forEachNeighbor
   };
 }

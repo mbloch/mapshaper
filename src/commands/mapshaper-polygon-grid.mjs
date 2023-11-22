@@ -7,6 +7,8 @@ import cmd from '../mapshaper-cmd';
 import { stop } from '../utils/mapshaper-logging';
 import utils from '../utils/mapshaper-utils';
 import { buildTopology } from '../topology/mapshaper-topology';
+import { getHexGridMaker } from '../grids/mapshaper-hex-grid';
+import { getSquareGridMaker } from '../grids/mapshaper-square-grid';
 
 cmd.polygonGrid = function(targetLayers, targetDataset, opts) {
   requireProjectedDataset(targetDataset);
@@ -17,6 +19,44 @@ cmd.polygonGrid = function(targetLayers, targetDataset, opts) {
   if (opts.debug) gridDataset.layers.push(cmd.pointGrid2(targetLayers, targetDataset, opts));
   return gridDataset;
 };
+
+
+// TODO: Update -point-grid command to use this function
+cmd.polygonGrid2 = function(targetLayers, targetDataset, opts) {
+  requireProjectedDataset(targetDataset);
+  var params = getGridParams(targetLayers, targetDataset, opts);
+  // alignGridToBounds(geojson, params.bbox);
+  var gridDataset = makeGridDataset2(params, opts);
+  gridDataset.info = copyDatasetInfo(targetDataset.info);
+  setOutputLayerName(gridDataset.layers[0], null, 'grid', opts);
+  return gridDataset;
+};
+
+function makeGridDataset2(params, opts) {
+  var geojson, dataset, grid;
+  if (params.type == 'square') {
+    grid = getSquareGridMaker(params.bbox, params.interval, opts);
+  } else if (params.type == 'hex') {
+    grid = getHexGridMaker(params.bbox, params.interval, opts);
+  } else {
+    stop('Unsupported grid type');
+  }
+  var features = [];
+  for (var i=0, n=grid.cells(); i<n; i++) {
+    features.push({
+      type: 'Feature',
+      properties: null,
+      geometry: grid.makeCellPolygon(i, opts)
+    });
+  }
+  geojson = {
+    type: 'FeatureCollection',
+    features: features
+  };
+  dataset = importGeoJSON(geojson, {});
+  buildTopology(dataset);
+  return dataset;
+}
 
 // TODO: Update -point-grid command to use this function
 cmd.pointGrid2 = function(targetLayers, targetDataset, opts) {

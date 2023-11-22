@@ -16,6 +16,7 @@ export function getGridToPointIndex(points, grid, radius) {
     bboxIndex.add.apply(bboxIndex, bbox);
   });
   bboxIndex.finish();
+
   return function(i) {
     if (!gridIndex.hasId(i)) {
       return empty;
@@ -26,7 +27,6 @@ export function getGridToPointIndex(points, grid, radius) {
   };
 }
 
-
 // TODO: support spherical coords
 function getPointBounds(p, radius) {
   return [p[0] - radius, p[1] - radius, p[0] + radius, p[1] + radius];
@@ -34,18 +34,12 @@ function getPointBounds(p, radius) {
 
 function addPointToGridIndex(p, index, grid, addNeighbors) {
   var i = grid.pointToIdx(p);
-  var c = grid.idxToCol(i);
-  var r = grid.idxToRow(i);
+  var [c, r] = grid.idxToColRow(i);
   addCellToGridIndex(c, r, grid, index);
   if (addNeighbors) {
-    addCellToGridIndex(c+1, r+1, grid, index);
-    addCellToGridIndex(c+1, r, grid, index);
-    addCellToGridIndex(c+1, r-1, grid, index);
-    addCellToGridIndex(c, r+1, grid, index);
-    addCellToGridIndex(c, r-1, grid, index);
-    addCellToGridIndex(c-1, r+1, grid, index);
-    addCellToGridIndex(c-1, r, grid, index);
-    addCellToGridIndex(c-1, r-1, grid, index);
+    grid.forEachNeighbor(c, r, function(c, r) {
+      addCellToGridIndex(c, r, grid, index);
+    });
   }
 }
 

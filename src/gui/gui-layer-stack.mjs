@@ -15,9 +15,10 @@ export function LayerStack(gui, container, ext, mouse) {
   _furniture.css('pointer-events', 'none');
 
   this.drawMainLayers = function(layers, action) {
+    var needSvgRedraw = action != 'nav' && action != 'hover';
     if (skipMainLayerRedraw(action)) return;
     _mainCanv.prep(_ext);
-    if (action != 'nav') {
+    if (needSvgRedraw) {
       _svg.clear();
     }
     layers.forEach(function(lyr) {
@@ -26,7 +27,7 @@ export function LayerStack(gui, container, ext, mouse) {
       if (!isSvgLayer) { // svg labels may have canvas dots
         drawCanvasLayer(lyr, _mainCanv);
       }
-      if (isSvgLayer && action == 'nav') {
+      if (isSvgLayer && !needSvgRedraw) {
         _svg.reposition(lyr, 'symbol');
       } else if (isSvgLayer) {
         _svg.drawLayer(lyr, 'symbol');
