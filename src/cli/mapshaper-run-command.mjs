@@ -288,6 +288,9 @@ export async function runCommand(command, job) {
     } else if (name == 'grid') {
       outputDataset = cmd.polygonGrid(targetLayers, targetDataset, opts);
 
+    } else if (name == 'grid2') {
+      outputDataset = cmd.polygonGrid2(targetLayers, targetDataset, opts);
+
     } else if (name == 'help') {
       // placing help command here to handle errors from invalid command names
       cmd.printHelp(command.options);

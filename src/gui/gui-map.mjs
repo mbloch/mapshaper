@@ -252,9 +252,10 @@ export function MshpMap(gui) {
     } else {
       _overlayLyr = null;
     }
-    // 'hover' bypasses style creation in drawLayers2()... sometimes we need that
-    // drawLayers('hover');
-    drawLayers();
+
+    // 'hover' avoids redrawing all svg symbols when only highlight needs to refresh
+    drawLayers('hover');
+    // drawLayers();
   }
 
   function getDisplayOptions() {
@@ -456,10 +457,11 @@ export function MshpMap(gui) {
 
   // action:
   //   'nav'      map was panned/zoomed -- only map extent has changed
-  //   'hover'    highlight has changed -- only draw overlay
+  //   'hover'    highlight has changed -- only refresh overlay
   //   (default)  anything could have changed
   function drawLayers2(action) {
-    var layersMayHaveChanged = !action;
+    // sometimes styles need to be regenerated with 'hover' action (when)
+    var layersMayHaveChanged = action != 'nav'; // !action;
     var fullBounds;
     var contentLayers = getDrawableContentLayers();
     var furnitureLayers = getDrawableFurnitureLayers();

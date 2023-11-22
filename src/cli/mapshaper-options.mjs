@@ -973,6 +973,19 @@ export function getOptionParser() {
     .option('name', nameOpt);
 
 
+  // for testing grid update
+  parser.command('grid2')
+    .option('type', {
+      describe: 'square, hex or hex2 (default is square)'
+    })
+    .option('interval', {
+      describe: 'side length (e.g. 500m, 12km)',
+      type: 'distance'
+    })
+    .option('name', nameOpt)
+    .option('target', targetOpt)
+    .option('no-replace', noReplaceOpt);
+
   parser.command('grid')
     .describe('create a grid of square or hexagonal polygons')
     .option('type', {
