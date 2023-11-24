@@ -25,7 +25,6 @@ cmd.importFiles = async function(catalog, opts) {
   var files = opts.files || [];
   var dataset;
 
-  cli.checkCommandEnv('i');
   if (opts.stdin) {
     dataset = importFile('/dev/stdin', opts);
     catalog.addDataset(dataset);

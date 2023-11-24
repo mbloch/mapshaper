@@ -42,7 +42,9 @@ export function parseConsoleCommands(raw) {
   var str = standardizeConsoleCommands(raw);
   var parsed = parseCommands(str);
   parsed.forEach(function(cmd) {
-    cli.checkCommandEnv(cmd.name);
+    if (['i', 'include', 'require', 'external'].includes(cmd.name)) {
+      stop('The ' + cmd.name + ' command cannot be run in the web console.');
+    }
   });
   return parsed;
 }
