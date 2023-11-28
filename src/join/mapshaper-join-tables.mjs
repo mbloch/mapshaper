@@ -17,8 +17,15 @@ export function joinTables(dest, src, join, opts) {
 //    Returns array of matching records in src table, or null if no matches
 //
 export function joinTableToLayer(destLyr, src, join, opts) {
-  var dest = destLyr.data,
-      useDuplication = !!opts.duplication,
+  var dest = destLyr.data;
+
+  if (src == dest) {
+    // self-join... duplicate source records to prevent assignment problems
+    // (in calc= expressions and possibly elsewhere)
+    src = src.clone();
+  }
+
+  var useDuplication = !!opts.duplication,
       srcRecords = src.getRecords(),
       destRecords = dest.getRecords(),
       prefix = opts.prefix || '',
@@ -34,7 +41,7 @@ export function joinTableToLayer(destLyr, src, join, opts) {
       retn = {},
       srcRec, srcId, destRec, joins, count, filter, calc, i, j, n, m;
 
-  // support for duplication of destination records
+  // support for duplication of destination records for many-to-one joins
   var duplicateRecords, destShapes;
   if (useDuplication) {
     if (opts.calc) stop('duplication and calc options cannot be used together');

@@ -13,6 +13,13 @@ describe('mapshaper-join.js', function () {
 
   describe('-join command', function () {
 
+    it('self join works with calc= expressions', async function() {
+      var data = 'type\na\nb\na\nb\nb';
+      var cmd = 'data.csv -join data keys=type,type calc="n = count()" -o';
+      var out = await api.applyCommands(cmd, {'data.csv': data});
+      assert.equal(out['data.csv'], 'type,n\na,2\nb,3\na,2\nb,3\nb,3');
+    })
+
     it('join two tables with duplication flag', function(done) {
       var a = 'id,name\n1,foo';
       var b = 'key,score\n1,100\n1,200\n1,300';
