@@ -1,6 +1,6 @@
 (function () {
 
-  var VERSION = "0.6.50";
+  var VERSION = "0.6.51";
 
 
   var utils = /*#__PURE__*/Object.freeze({
@@ -11259,12 +11259,6 @@
     return ss && ss.isFile() || false;
   };
 
-  cli.checkCommandEnv = function(cname) {
-    var blocked = ['i', 'include', 'require', 'external'];
-    if (runningInBrowser() && blocked.includes(cname)) {
-      stop('The -' + cname + ' command cannot be run in the browser');
-    }
-  };
 
   // cli.fileSize = function(path) {
   //   var ss = cli.statSync(path);
@@ -24366,12 +24360,12 @@ ${svg}
         describe: 'side length (e.g. 500m, 12km)',
         type: 'distance'
       })
-      // .option('cols', {
-      //   type: 'integer'
-      // })
-      // .option('rows', {
-      //   type: 'integer'
-      // })
+      .option('cols', {
+        type: 'integer'
+      })
+      .option('rows', {
+        type: 'integer'
+      })
       // .option('bbox', {
       //   type: 'bbox',
       //   describe: 'xmin,ymin,xmax,ymax (default is bbox of data)'
@@ -28106,7 +28100,6 @@ ${svg}
     var files = opts.files || [];
     var dataset;
 
-    cli.checkCommandEnv('i');
     if (opts.stdin) {
       dataset = importFile('/dev/stdin', opts);
       catalog.addDataset(dataset);
@@ -35478,8 +35471,15 @@ ${svg}
   //    Returns array of matching records in src table, or null if no matches
   //
   function joinTableToLayer(destLyr, src, join, opts) {
-    var dest = destLyr.data,
-        useDuplication = !!opts.duplication,
+    var dest = destLyr.data;
+
+    if (src == dest) {
+      // self-join... duplicate source records to prevent assignment problems
+      // (in calc= expressions and possibly elsewhere)
+      src = src.clone();
+    }
+
+    var useDuplication = !!opts.duplication,
         srcRecords = src.getRecords(),
         destRecords = dest.getRecords(),
         prefix = opts.prefix || '',
@@ -35495,7 +35495,7 @@ ${svg}
         retn = {},
         srcRec, srcId, destRec, joins, count, filter, calc, i, j, n, m;
 
-    // support for duplication of destination records
+    // support for duplication of destination records for many-to-one joins
     var duplicateRecords, destShapes;
     if (useDuplication) {
       if (opts.calc) stop('duplication and calc options cannot be used together');
@@ -40658,6 +40658,19 @@ ${svg}
   // Currently the origin cell is always an "outie" (protruding); in the future
   //   "innie" origin cells may be supported
 
+  function getHexGridParams(bbox, interval, opts) {
+    opts.type != 'hex2'; // hex2 is "pointy-top" orientation
+
+    // get origin and counts for centered grid
+    // params.u0 = _getUOrigin();
+    // params.v0 = _getVOrigin();
+    // params.colCounts = _getColCounts(bbox, interval);
+    // params.rowCounts = _getRowCounts(bbox, interval);
+
+    if (opts.aligned) ;
+  }
+
+
   // interval: side length in projected coordinates
   // bbox: bounding box of area to be enclosed by grid
   //
@@ -40671,6 +40684,8 @@ ${svg}
     // coordinates of the center of the bottom left cell
     var _uOrigin = _getUOrigin();
     var _vOrigin = _getVOrigin();
+
+    getHexGridParams(bbox, interval, opts);
 
     function cells() {
       return _rowCounts[0] * _colCounts[0] + _rowCounts[1] * _colCounts[1];
@@ -41821,7 +41836,9 @@ ${svg}
     var str = standardizeConsoleCommands(raw);
     var parsed = parseCommands(str);
     parsed.forEach(function(cmd) {
-      cli.checkCommandEnv(cmd.name);
+      if (['i', 'include', 'require', 'external'].includes(cmd.name)) {
+        stop('The ' + cmd.name + ' command cannot be run in the web console.');
+      }
     });
     return parsed;
   }
