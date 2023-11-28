@@ -995,12 +995,12 @@ export function getOptionParser() {
       describe: 'side length (e.g. 500m, 12km)',
       type: 'distance'
     })
-    // .option('cols', {
-    //   type: 'integer'
-    // })
-    // .option('rows', {
-    //   type: 'integer'
-    // })
+    .option('cols', {
+      type: 'integer'
+    })
+    .option('rows', {
+      type: 'integer'
+    })
     // .option('bbox', {
     //   type: 'bbox',
     //   describe: 'xmin,ymin,xmax,ymax (default is bbox of data)'

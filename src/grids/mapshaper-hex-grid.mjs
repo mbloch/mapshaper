@@ -8,6 +8,24 @@ import { orient2D } from '../geom/mapshaper-segment-geom';
 // Currently the origin cell is always an "outie" (protruding); in the future
 //   "innie" origin cells may be supported
 
+export function getHexGridParams(bbox, interval, opts) {
+  var params = {};
+  params.flatTop = opts.type != 'hex2'; // hex2 is "pointy-top" orientation
+  // origin cell (bottom left) may be "outie" or "innie" ... could be settable
+  params.outieOrigin = true;
+
+  // get origin and counts for centered grid
+  // params.u0 = _getUOrigin();
+  // params.v0 = _getVOrigin();
+  // params.colCounts = _getColCounts(bbox, interval);
+  // params.rowCounts = _getRowCounts(bbox, interval);
+
+  if (opts.aligned) {
+
+  }
+}
+
+
 // interval: side length in projected coordinates
 // bbox: bounding box of area to be enclosed by grid
 //
@@ -22,6 +40,8 @@ export function getHexGridMaker(bbox, interval, opts) {
   // coordinates of the center of the bottom left cell
   var _uOrigin = _getUOrigin();
   var _vOrigin = _getVOrigin();
+
+  var params = getHexGridParams(bbox, interval, opts);
 
   function cells() {
     return _rowCounts[0] * _colCounts[0] + _rowCounts[1] * _colCounts[1];
