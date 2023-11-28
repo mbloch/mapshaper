@@ -1,3 +1,6 @@
+v0.6.51
+* Improved support for running applyCommands() api function in a web browser.
+
 v0.6.50
 * Fix for label dragging bug.
 
