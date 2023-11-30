@@ -1,6 +1,6 @@
 
 import { IdLookupIndex, ArcLookupIndex, ClearableArcLookupIndex } from '../src/indexing/mapshaper-id-lookup-index';
-import api from '../';
+import api from '../mapshaper.js';
 import assert from 'assert';
 
 

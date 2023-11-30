@@ -1,5 +1,5 @@
 
-import api from '../';
+import api from '../mapshaper.js';
 import assert from 'assert';
 import { getBlackiClassifier } from '../src/classification/mapshaper-blacki';
 import { DataTable } from '../src/datatable/mapshaper-data-table';

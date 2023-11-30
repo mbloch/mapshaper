@@ -1,5 +1,5 @@
 import assert from 'assert';
-import mapshaper from '../';
+import mapshaper from '../mapshaper.js';
 var geom = mapshaper.geom;
 
 describe("mapshaper-arc-editor.js", function() {

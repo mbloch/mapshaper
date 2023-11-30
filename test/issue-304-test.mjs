@@ -1,5 +1,5 @@
 import fs from 'fs';
-import api from '../';
+import api from '../mapshaper.js';
 import assert from 'assert';
 
 

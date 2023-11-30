@@ -1,5 +1,5 @@
 import assert from 'assert';
-import api from '../';
+import api from '../mapshaper.js';
 
 function test(expected, input, bbox, isRing) {
   var bounds = new api.internal.Bounds(bbox);

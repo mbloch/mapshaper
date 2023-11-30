@@ -1,6 +1,6 @@
 
 import {extendPolylinePart} from '../src/polylines/mapshaper-polyline-clean';
-import api from '../';
+import api from '../mapshaper.js';
 import assert from 'assert';
 var internal = api.internal;
 

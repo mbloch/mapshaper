@@ -1,6 +1,6 @@
 
 import assert from 'assert';
-import api from '../';
+import api from '../mapshaper.js';
 import util from './helpers';
 import mproj from 'mproj';
 

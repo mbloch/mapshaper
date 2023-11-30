@@ -1,7 +1,7 @@
 import {
   getDataRecord
 } from '../src/commands/mapshaper-dots';
-import api from '../';
+import api from '../mapshaper.js';
 import assert from 'assert';
 
 

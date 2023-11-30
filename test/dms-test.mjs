@@ -3,7 +3,7 @@
 // https://www.maptools.com/tutorials/lat_lon/formats
 // http://www.geomidpoint.com/latlon.html
 
-import api from '../';
+import api from '../mapshaper.js';
 import assert from 'assert';
 
 var parseDMS = api.internal.parseDMS;

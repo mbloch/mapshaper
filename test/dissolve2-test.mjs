@@ -1,5 +1,5 @@
 import assert from 'assert';
-import api from '../';
+import api from '../mapshaper.js';
 
 var ArcCollection = api.internal.ArcCollection,
     NodeCollection = api.internal.NodeCollection,
