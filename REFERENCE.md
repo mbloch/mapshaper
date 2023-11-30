@@ -1,6 +1,6 @@
 # COMMAND REFERENCE
 
-This documentation applies to version 0.6.47 of mapshaper's command line program. Run `mapshaper -v` to check your version. For an introduction to the command line tool, read [this page](https://github.com/mbloch/mapshaper/wiki/Introduction-to-the-Command-Line-Tool) first.
+This documentation applies to version 0.6.52 of mapshaper's command line program. Run `mapshaper -v` to check your version. For an introduction to the command line tool, read [this page](https://github.com/mbloch/mapshaper/wiki/Introduction-to-the-Command-Line-Tool) first.
 
 ## Command line syntax
 
@@ -602,6 +602,7 @@ Polygon layers
 - `this.centroidY` Y-coord of centroid
 - `this.innerX` X-coord of an interior point (for anchoring symbols or labels)
 - `this.innerY` Y-coord of an interior point
+- `this.perimeter` Perimeter of each feature. For lat-long datasets, returns length in meters.
 
 Polyline layers
 - `this.length` Length of each polyline feature. For lat-long datasets, returns length in meters.
@@ -1518,8 +1519,9 @@ mapshaper data.csv \
 `<expression>` or `expression=` JS expression containing calls to one or more `-calc` functions.
 
 `where=`  Perform calculations on a subset of records, using a boolean JS expression as a filter (similar to [`-filter`](#-filter) command).
-
-Common options: `target=`
+`+` Save output to a layer.
+`name=` Name the output layer (default name is "calc").
+`target=`
 
 **Examples**
 
@@ -1559,6 +1561,8 @@ mapshaper mystery_file.json -info
 ```
 
 `save-to=` Save information to a .json file.
+`+` Save output to a layer.
+`name=` Name the output layer (default name is "info").
 
 ### -inspect
 
