@@ -1,6 +1,6 @@
 (function () {
 
-  var VERSION = "0.6.51";
+  var VERSION = "0.6.52";
 
 
   var utils = /*#__PURE__*/Object.freeze({
@@ -14574,6 +14574,18 @@
     return merged[0];
   }
 
+  cmd.calc = function(layers, arcs, opts) {
+    var arr = layers.map(lyr => applyCalcExpression(lyr, arcs, opts));
+    if (!opts.to_layer) return null;
+    return {
+      info: {},
+      layers: [{
+        name: opts.name || 'info',
+        data: new DataTable(arr)
+      }]
+    };
+  };
+
   // Calculate an expression across a group of features, print and return the result
   // Supported functions include sum(), average(), max(), min(), median(), count()
   // Functions receive an expression to be applied to each feature (like the -each command)
@@ -14581,9 +14593,9 @@
   // opts.expression  Expression to evaluate
   // opts.where  Optional filter expression (see -filter command)
   //
-  cmd.calc = function(lyr, arcs, opts) {
+  function applyCalcExpression(lyr, arcs, opts) {
     var msg = opts.expression,
-        result, compiled, defs;
+        result, compiled, defs, d;
     if (opts.where) {
       // TODO: implement no_replace option for filter() instead of this
       lyr = getLayerSelection(lyr, arcs, opts);
@@ -14594,9 +14606,17 @@
     defs = getStashedVar('defs');
     compiled = compileCalcExpression(lyr, arcs, opts.expression);
     result = compiled(null, defs);
-    message(msg + ":  " + result);
-    return result;
-  };
+    if (!opts.to_layer) {
+      message(msg + ":  " + result);
+    }
+    d = {
+      expression: opts.expression,
+      value: result
+    };
+    if (opts.where) d.where = opts.where;
+    if (lyr.name) d.layer_name = lyr.name;
+    return d;
+  }
 
   function evalCalcExpression(lyr, arcs, exp) {
     return compileCalcExpression(lyr, arcs, exp)();
@@ -14806,6 +14826,7 @@
 
   var Calc = /*#__PURE__*/Object.freeze({
     __proto__: null,
+    applyCalcExpression: applyCalcExpression,
     evalCalcExpression: evalCalcExpression,
     compileCalcExpression: compileCalcExpression
   });
@@ -23379,8 +23400,16 @@ ${svg}
           alias: '+',
           type: 'flag',
           label: '+, no-replace', // show alias as primary option
-          // describe: 'retain the original layer(s) instead of replacing'
           describe: 'retain both input and output layer(s)'
+        },
+        nameOpt2 = { // for -calc and -info
+          describe: 'name the output layer'
+        },
+        noReplaceOpt2 = { // for -calc and -info
+          alias: '+',
+          type: 'flag',
+          label: '+',
+          describe: 'save output to a new layer'
         },
         noSnapOpt = {
           // describe: 'don't snap points before applying command'
@@ -25276,8 +25305,8 @@ ${svg}
         type: 'flag'
       })
       .option('calc', calcOpt)
-      .option('name', nameOpt)
       .option('target', targetOpt)
+      .option('name', nameOpt)
       .option('no-replace', noReplaceOpt);
 
     parser.command('require')
@@ -25437,7 +25466,9 @@ ${svg}
         describe: 'functions: sum() average() median() max() min() count()'
       })
       .option('where', whereOpt)
-      .option('target', targetOpt);
+      .option('target', targetOpt)
+      .option('to-layer', noReplaceOpt2)
+      .option('name', nameOpt2);
 
     parser.command('colors')
       .describe('print list of color scheme names');
@@ -25467,7 +25498,9 @@ ${svg}
       .option('save-to', {
         describe: 'name of file to save info in JSON format'
       })
-      .option('target', targetOpt);
+      .option('target', targetOpt)
+      .option('to-layer', noReplaceOpt2)
+      .option('name', nameOpt2);
 
     parser.command('inspect')
       .describe('print information about a feature')
@@ -28642,7 +28675,7 @@ ${svg}
   // Apply a command to an array of target layers
   function applyCommandToEachLayer(func, targetLayers) {
     var args = utils.toArray(arguments).slice(2);
-    return targetLayers.reduce(function(memo, lyr) {
+    var output = targetLayers.reduce(function(memo, lyr) {
       var result = func.apply(null, [lyr].concat(args));
       if (utils.isArray(result)) { // some commands return an array of layers
         memo = memo.concat(result);
@@ -28651,6 +28684,7 @@ ${svg}
       }
       return memo;
     }, []);
+    return output.length > 0 ? output : null;
   }
 
   function applyCommandToEachTarget(func, targets) {
@@ -39150,7 +39184,7 @@ ${svg}
     var arr = layers.map(function(o) {
       return getLayerInfo(o.layer, o.dataset);
     });
-    message(formatInfo(arr));
+
     if (opts.save_to) {
       var output = [{
         filename: opts.save_to + (opts.save_to.endsWith('.json') ? '' : '.json'),
@@ -39158,6 +39192,16 @@ ${svg}
       }];
       writeFiles(output, opts);
     }
+    if (opts.to_layer) {
+      return {
+        info: {},
+        layers: [{
+          name: opts.name || 'info',
+          data: new DataTable(arr)
+        }]
+      };
+    }
+    message(formatInfo(arr));
   };
 
   cmd.printInfo = cmd.info; // old name
@@ -44288,7 +44332,7 @@ ${svg}
         applyCommandToEachLayer(cmd.cluster, targetLayers, arcs, opts);
 
       } else if (name == 'calc') {
-        applyCommandToEachLayer(cmd.calc, targetLayers, arcs, opts);
+        outputDataset = cmd.calc(targetLayers, arcs, opts);
 
       } else if (name == 'classify') {
         applyCommandToEachLayer(cmd.classify, targetLayers, targetDataset, opts);
@@ -44402,7 +44446,7 @@ ${svg}
         cmd.include(opts);
 
       } else if (name == 'info') {
-        cmd.info(targets, opts);
+        outputDataset = cmd.info(targets, opts);
 
       } else if (name == 'inlay') {
         outputLayers = cmd.inlay(targetLayers, source, targetDataset, opts);
