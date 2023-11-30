@@ -9,6 +9,7 @@ import geom from '../geom/mapshaper-geom';
 import { message } from '../utils/mapshaper-logging';
 import { NodeCollection } from '../topology/mapshaper-nodes';
 import cmd from '../mapshaper-cmd';
+import { DataTable } from '../datatable/mapshaper-data-table';
 
 var MAX_RULE_LEN = 50;
 
@@ -17,7 +18,7 @@ cmd.info = function(targets, opts) {
   var arr = layers.map(function(o) {
     return getLayerInfo(o.layer, o.dataset);
   });
-  message(formatInfo(arr));
+
   if (opts.save_to) {
     var output = [{
       filename: opts.save_to + (opts.save_to.endsWith('.json') ? '' : '.json'),
@@ -25,6 +26,16 @@ cmd.info = function(targets, opts) {
     }];
     writeFiles(output, opts);
   }
+  if (opts.to_layer) {
+    return {
+      info: {},
+      layers: [{
+        name: opts.name || 'info',
+        data: new DataTable(arr)
+      }]
+    };
+  }
+  message(formatInfo(arr));
 };
 
 cmd.printInfo = cmd.info; // old name

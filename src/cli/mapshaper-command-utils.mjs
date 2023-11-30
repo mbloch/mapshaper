@@ -6,7 +6,7 @@ import { dissolveArcs } from '../paths/mapshaper-arc-dissolve';
 // Apply a command to an array of target layers
 export function applyCommandToEachLayer(func, targetLayers) {
   var args = utils.toArray(arguments).slice(2);
-  return targetLayers.reduce(function(memo, lyr) {
+  var output = targetLayers.reduce(function(memo, lyr) {
     var result = func.apply(null, [lyr].concat(args));
     if (utils.isArray(result)) { // some commands return an array of layers
       memo = memo.concat(result);
@@ -15,6 +15,7 @@ export function applyCommandToEachLayer(func, targetLayers) {
     }
     return memo;
   }, []);
+  return output.length > 0 ? output : null;
 }
 
 export function applyCommandToEachTarget(func, targets) {
