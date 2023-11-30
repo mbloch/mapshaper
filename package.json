@@ -1,6 +1,6 @@
 {
   "name": "mapshaper",
-  "version": "0.6.51",
+  "version": "0.6.52",
   "description": "A tool for editing vector datasets for mapping and GIS.",
   "keywords": [
     "shapefile",
@@ -76,7 +76,7 @@
   "mocha": {
     "reporter": "dot",
     "node-option": [
-      "experimental-specifier-resolution=node"
+      "experimental-loader=./test/_loader.js"
     ],
     "check-leaks": true,
     "parallel": true,

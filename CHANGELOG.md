@@ -1,3 +1,7 @@
+v0.6.52
+* Added -calc + option, which saves calc output to a new layer.
+* Added -info + option, which saves info output to a new layer.
+
 v0.6.51
 * Improved support for running applyCommands() api function in a web browser.
 
@@ -17,7 +21,7 @@ v0.6.47
 
 v0.6.46
 * Added save to clipboard option to web UI export menu.
-* In -each expressions, `this.geojson` setter now accepts nulls and FeatureCollectsions in addition to single Features.
+* In -each expressions, `this.geojson` setter now accepts nulls and FeatureCollections in addition to single Features.
 
 v0.6.45
 * Added -o hoist=<fields> option for moving GeoJSON Feature properties to the root of each Feature.
