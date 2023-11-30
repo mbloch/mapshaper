@@ -1,6 +1,6 @@
 
 import {parseFixedWidthInfo} from '../src/text/mapshaper-fixed-width';
-import api from '../';
+import api from '../mapshaper.js';
 import assert from 'assert';
 
 

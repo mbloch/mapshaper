@@ -1,5 +1,5 @@
 import assert from 'assert';
-import api from '../';
+import api from '../mapshaper.js';
 
 var evalCalcExpression = api.internal.evalCalcExpression,
     DataTable = api.internal.DataTable;
@@ -179,8 +179,12 @@ describe('mapshaper-calc.js', function () {
           };
 
       var result = api.cmd.calc(lyr2, null,
-          {expression: 'average(foo)', where: '!!bar'});
-      assert.equal(result, 1);
+          {no_replace: true, expression: 'average(foo)', where: '!!bar'});
+      assert.deepEqual(result.data.getRecords(), [{
+        value: 1,
+        where: '!!bar',
+        expression: 'average(foo)'
+      }]);
     })
   })
 

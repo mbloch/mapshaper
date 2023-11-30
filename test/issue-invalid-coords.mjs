@@ -1,5 +1,5 @@
 import assert from 'assert';
-import api from '../';
+import api from '../mapshaper.js';
 
 describe('Features with invalid point coordinates are imported without geometry', function () {
   var target = {

@@ -1,4 +1,4 @@
-import api from '../';
+import api from '../mapshaper.js';
 import assert from 'assert';
 
 function testInnerPoints(file, cmd, done) {

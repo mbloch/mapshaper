@@ -2,7 +2,7 @@
 import { twoCircleIntersection } from '../src/grids/mapshaper-grid-utils';
 import { getAlignedGridBounds, getCenteredGridBounds } from '../src/grids/mapshaper-square-grid';
 import assert from 'assert';
-import api from '../';
+import api from '../mapshaper.js';
 
 describe('mapshaper-point-to-grid.js', function () {
   describe('-point-to-grid', function() {

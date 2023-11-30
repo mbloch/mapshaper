@@ -1,5 +1,5 @@
 import assert from 'assert';
-import api from '../';
+import api from '../mapshaper.js';
 
 describe('mapshaper-projection-params.js', function () {
 

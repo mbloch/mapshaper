@@ -1,4 +1,4 @@
-import api from '../';
+import api from '../mapshaper.js';
 import assert from 'assert';
 import helpers from './helpers';
 var internal = api.internal;

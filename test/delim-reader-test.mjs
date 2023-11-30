@@ -1,5 +1,5 @@
 import assert from 'assert';
-import api from '../';
+import api from '../mapshaper.js';
 import helpers from './helpers';
 import csv_spectrum from 'csv-spectrum';
 var internal = api.internal,

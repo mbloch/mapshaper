@@ -1,5 +1,5 @@
 import assert from 'assert';
-import api from '../';
+import api from '../mapshaper.js';
 var geom = api.geom;
 
 describe('mapshaper-shape-geom.js', function () {

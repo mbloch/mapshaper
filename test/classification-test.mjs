@@ -15,7 +15,7 @@ import {
   getInterpolatedValueGetter
 } from '../src/classification/mapshaper-interpolation';
 import assert from 'assert';
-import api from '../';
+import api from '../mapshaper.js';
 
 
 describe('mapshaper-classification.js', function () {

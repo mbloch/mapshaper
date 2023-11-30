@@ -1,5 +1,5 @@
 import assert from 'assert';
-import api from '../';
+import api from '../mapshaper.js';
 
 
 describe('mapshaper-filter-islands.js', function () {

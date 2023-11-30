@@ -3,7 +3,7 @@ import {
   getStoppedValues,
   getInterpolatedValueGetter
 } from '../src/classification/mapshaper-interpolation';
-import api from '../';
+import api from '../mapshaper.js';
 import assert from 'assert';
 
 

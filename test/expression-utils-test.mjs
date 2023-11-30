@@ -1,6 +1,6 @@
 import {interpolated_median} from '../src/expressions/mapshaper-expression-utils';
 import assert from 'assert';
-import api from '../';
+import api from '../mapshaper.js';
 
 describe('mapshaper-expression-utils.js', function() {
 

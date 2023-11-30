@@ -1,5 +1,5 @@
 import assert from 'assert';
-import api from '../';
+import api from '../mapshaper.js';
 var topojson = api.internal.topojson;
 
 describe('topojson-presimplify.js', function () {

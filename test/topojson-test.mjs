@@ -1,5 +1,5 @@
 
-import api from '../';
+import api from '../mapshaper.js';
 import assert from 'assert';
 import { fixPath } from './helpers';
 var TopoJSON = api.internal.topojson,
