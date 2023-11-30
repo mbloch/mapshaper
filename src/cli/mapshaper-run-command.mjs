@@ -203,7 +203,7 @@ export async function runCommand(command, job) {
       applyCommandToEachLayer(cmd.cluster, targetLayers, arcs, opts);
 
     } else if (name == 'calc') {
-      applyCommandToEachLayer(cmd.calc, targetLayers, arcs, opts);
+      outputDataset = cmd.calc(targetLayers, arcs, opts);
 
     } else if (name == 'classify') {
       applyCommandToEachLayer(cmd.classify, targetLayers, targetDataset, opts);
@@ -317,7 +317,7 @@ export async function runCommand(command, job) {
       cmd.include(opts);
 
     } else if (name == 'info') {
-      cmd.info(targets, opts);
+      outputDataset = cmd.info(targets, opts);
 
     } else if (name == 'inlay') {
       outputLayers = cmd.inlay(targetLayers, source, targetDataset, opts);

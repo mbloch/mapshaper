@@ -16,8 +16,14 @@ describe('mapshaper-calc.js', function () {
         done();
       });
     })
-  });
 
+    it('+ option creates a new layer', async function() {
+      var data = [{a: 1}, {a: 3}];
+      var cmd = 'data.json -calc + "sum(a)" -o out.csv';
+      var out = await api.applyCommands(cmd, {'data.json': data});
+      assert.equal(out['out.csv'], 'expression,value,layer_name\nsum(a),4,data')
+    })
+  });
 
   describe('evalCalcExpression()', function () {
     var data1 = [{foo: -1}, {foo: 3}, {foo: 4}],
@@ -178,9 +184,9 @@ describe('mapshaper-calc.js', function () {
             data: new api.internal.DataTable(data2)
           };
 
-      var result = api.cmd.calc(lyr2, null,
-          {no_replace: true, expression: 'average(foo)', where: '!!bar'});
-      assert.deepEqual(result.data.getRecords(), [{
+      var result = api.cmd.calc([lyr2], null,
+          {to_layer: true, expression: 'average(foo)', where: '!!bar'});
+      assert.deepEqual(result.layers[0].data.getRecords(), [{
         value: 1,
         where: '!!bar',
         expression: 'average(foo)'

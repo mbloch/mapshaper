@@ -3,6 +3,17 @@ import api from '../mapshaper.js';
 
 
 describe('mapshaper-info.js', function () {
+  describe('+ option', function() {
+    it('simple table', async function() {
+      var data = [{foo: 'bar'}, {foo: 'baz'}];
+      var cmd = 'data.json -info + -o format=json';
+      var out = await api.applyCommands(cmd, {'data.json': data});
+      var d = JSON.parse(out['info.json'])[0];
+      assert.equal(d.layer_name, 'data');
+      assert.equal(d.feature_count, 2);
+    });
+
+  })
 
   describe('save-to option', function() {
 

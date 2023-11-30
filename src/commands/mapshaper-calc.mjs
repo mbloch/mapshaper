@@ -6,6 +6,20 @@ import cmd from '../mapshaper-cmd';
 import utils from '../utils/mapshaper-utils';
 import { getStashedVar } from '../mapshaper-stash';
 import { message, error, stop } from '../utils/mapshaper-logging';
+import { DataTable } from '../datatable/mapshaper-data-table';
+
+
+cmd.calc = function(layers, arcs, opts) {
+  var arr = layers.map(lyr => applyCalcExpression(lyr, arcs, opts));
+  if (!opts.to_layer) return null;
+  return {
+    info: {},
+    layers: [{
+      name: opts.name || 'info',
+      data: new DataTable(arr)
+    }]
+  };
+};
 
 // Calculate an expression across a group of features, print and return the result
 // Supported functions include sum(), average(), max(), min(), median(), count()
@@ -14,9 +28,9 @@ import { message, error, stop } from '../utils/mapshaper-logging';
 // opts.expression  Expression to evaluate
 // opts.where  Optional filter expression (see -filter command)
 //
-cmd.calc = function(lyr, arcs, opts) {
+export function applyCalcExpression(lyr, arcs, opts) {
   var msg = opts.expression,
-      result, compiled, defs;
+      result, compiled, defs, d;
   if (opts.where) {
     // TODO: implement no_replace option for filter() instead of this
     lyr = getLayerSelection(lyr, arcs, opts);
@@ -27,9 +41,17 @@ cmd.calc = function(lyr, arcs, opts) {
   defs = getStashedVar('defs');
   compiled = compileCalcExpression(lyr, arcs, opts.expression);
   result = compiled(null, defs);
-  message(msg + ":  " + result);
-  return result;
-};
+  if (!opts.to_layer) {
+    message(msg + ":  " + result);
+  }
+  d = {
+    expression: opts.expression,
+    value: result
+  };
+  if (opts.where) d.where = opts.where;
+  if (lyr.name) d.layer_name = lyr.name;
+  return d;
+}
 
 export function evalCalcExpression(lyr, arcs, exp) {
   return compileCalcExpression(lyr, arcs, exp)();

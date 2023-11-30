@@ -14,8 +14,16 @@ export function getOptionParser() {
         alias: '+',
         type: 'flag',
         label: '+, no-replace', // show alias as primary option
-        // describe: 'retain the original layer(s) instead of replacing'
         describe: 'retain both input and output layer(s)'
+      },
+      nameOpt2 = { // for -calc and -info
+        describe: 'name the output layer'
+      },
+      noReplaceOpt2 = { // for -calc and -info
+        alias: '+',
+        type: 'flag',
+        label: '+',
+        describe: 'save output to a new layer'
       },
       noSnapOpt = {
         // describe: 'don't snap points before applying command'
@@ -1911,8 +1919,8 @@ export function getOptionParser() {
       type: 'flag'
     })
     .option('calc', calcOpt)
-    .option('name', nameOpt)
     .option('target', targetOpt)
+    .option('name', nameOpt)
     .option('no-replace', noReplaceOpt);
 
   parser.command('require')
@@ -2072,7 +2080,9 @@ export function getOptionParser() {
       describe: 'functions: sum() average() median() max() min() count()'
     })
     .option('where', whereOpt)
-    .option('target', targetOpt);
+    .option('target', targetOpt)
+    .option('to-layer', noReplaceOpt2)
+    .option('name', nameOpt2);
 
   parser.command('colors')
     .describe('print list of color scheme names');
@@ -2102,7 +2112,9 @@ export function getOptionParser() {
     .option('save-to', {
       describe: 'name of file to save info in JSON format'
     })
-    .option('target', targetOpt);
+    .option('target', targetOpt)
+    .option('to-layer', noReplaceOpt2)
+    .option('name', nameOpt2);
 
   parser.command('inspect')
     .describe('print information about a feature')
