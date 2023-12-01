@@ -1,3 +1,6 @@
+v0.6.53
+* Added -classify outer-breaks=<min,max> option, for limiting the effective data range when calculating equal-interval breaks and continuous color ramps.
+
 v0.6.52
 * Added -calc + option, which saves calc output to a new layer.
 * Added -info + option, which saves info output to a new layer.
