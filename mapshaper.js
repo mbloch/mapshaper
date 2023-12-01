@@ -1,6 +1,6 @@
 (function () {
 
-  var VERSION = "0.6.52";
+  var VERSION = "0.6.53";
 
 
   var utils = /*#__PURE__*/Object.freeze({
@@ -23703,13 +23703,13 @@ ${svg}
       .option('geojson-type', {
         describe: '[GeoJSON] FeatureCollection, GeometryCollection or Feature'
       })
-      .option('ndjson', {
-        describe: '[GeoJSON/JSON] output newline-delimited features or records',
-        type: 'flag'
-      })
       .option('hoist', {
         describe: '[GeoJSON] move properties to the root level of each Feature',
         type: 'strings'
+      })
+      .option('ndjson', {
+        describe: '[GeoJSON/JSON] output newline-delimited features or records',
+        type: 'flag'
       })
       .option('width', {
         describe: '[SVG/TopoJSON] pixel width of output (SVG default is 800)',
@@ -23865,10 +23865,6 @@ ${svg}
         describe: 'a pair of values (0-100) for limiting a color ramp',
         type: 'numbers'
       })
-      .option('range', {
-        // describe: 'a pair of numbers defining the effective data range',
-        type: 'numbers'
-      })
       .option('null-value', {
         describe: 'value (or color) to use for invalid or missing data'
       })
@@ -23895,6 +23891,11 @@ ${svg}
         describe: 'user-defined sequential class breaks',
         type: 'numbers'
       })
+      .option('outer-breaks', {
+        describe: 'min,max breakpoints, to limit the effect of outliers',
+        old_alias: 'range',
+        type: 'numbers'
+      })
       .option('classes', {
         describe: 'number of classes (can be inferred from other options)',
         type: 'integer'
@@ -23904,7 +23905,7 @@ ${svg}
         type: 'flag'
       })
       .option('continuous', {
-        describe: 'output continuous interpolated values (experimental)',
+        describe: 'output interpolated values, for unclassed colors',
         type: 'flag'
       })
       .option('index-field', {
@@ -32134,23 +32135,22 @@ ${svg}
     }
 
     var ascending = getAscendingNumbers(dataValues);
-    if (opts.range) {
-      ascending = applyDataRange(ascending, opts.range);
+    if (opts.outer_breaks) {
+      ascending = applyDataRange(ascending, opts.outer_breaks);
     }
     var nullCount = dataValues.length - ascending.length;
     var minVal = ascending[0];
     var maxVal = ascending[ascending.length - 1];
 
-    // kludge
-    var clamp = opts.range ? function(val) {
-      if (val < opts.range[0]) val = opts.range[0];
-      if (val > opts.range[1]) val = opts.range[1];
+    var clamp = opts.outer_breaks ? function(val) {
+      if (val < opts.outer_breaks[0]) val = opts.outer_breaks[0];
+      if (val > opts.outer_breaks[1]) val = opts.outer_breaks[1];
       return val;
     } : null;
 
-    if (opts.range) {
-      minVal = opts.range[0];
-      maxVal = opts.range[1];
+    if (opts.outer_breaks) {
+      minVal = opts.outer_breaks[0];
+      maxVal = opts.outer_breaks[1];
     }
 
     if (numBreaks === 0) {
