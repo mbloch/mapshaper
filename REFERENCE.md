@@ -309,13 +309,14 @@ Assign colors or data values to each feature using one of several classification
 
 `stops=` A pair of comma-separated numbers (0-100) for limiting the output range of a color ramp.
 
-`range=`  A pair of comma-separated numbers giving min and max data values to use when computing class breaks. (By default, the min and max values of the data field being classified are used.)
 
 `null-value=`   Value (or color) to use for invalid or missing data.
 
 `classes=`      Number of data classes. This number can also be inferred from the `breaks=` or `values=` options.
 
 `breaks=`       Specify user-defined sequential class breaks (an alternative to automatic classification using `quantile`, `equal-interval`, etc.).
+
+`outer-breaks=`  A pair of comma-separated numbers setting min and max breakpoints to use when computing class breaks. This setting overrides the default behavior, which is to use the min and max values of the data field being classified. This setting can be used to prevent extreme data values (outliers) from affecting equal-interval classification. Also useful for setting outside breakpoints for continuous color ramps (when using the `continuous` option).
 
 `method=`       Classification method. One of: `quantile`, `equal-interval`, `nice`, `hybrid` (sequential data), `categorical`, `non-adjacent` and `indexed`. This parameter is not required if the classification method can be inferred from other options. For example, the `index-field=` parameter implies indexed classification, the `categories=` parameter implies categorical classification.
 

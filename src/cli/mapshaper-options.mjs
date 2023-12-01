@@ -317,13 +317,13 @@ export function getOptionParser() {
     .option('geojson-type', {
       describe: '[GeoJSON] FeatureCollection, GeometryCollection or Feature'
     })
-    .option('ndjson', {
-      describe: '[GeoJSON/JSON] output newline-delimited features or records',
-      type: 'flag'
-    })
     .option('hoist', {
       describe: '[GeoJSON] move properties to the root level of each Feature',
       type: 'strings'
+    })
+    .option('ndjson', {
+      describe: '[GeoJSON/JSON] output newline-delimited features or records',
+      type: 'flag'
     })
     .option('width', {
       describe: '[SVG/TopoJSON] pixel width of output (SVG default is 800)',
@@ -479,10 +479,6 @@ export function getOptionParser() {
       describe: 'a pair of values (0-100) for limiting a color ramp',
       type: 'numbers'
     })
-    .option('range', {
-      // describe: 'a pair of numbers defining the effective data range',
-      type: 'numbers'
-    })
     .option('null-value', {
       describe: 'value (or color) to use for invalid or missing data'
     })
@@ -509,6 +505,11 @@ export function getOptionParser() {
       describe: 'user-defined sequential class breaks',
       type: 'numbers'
     })
+    .option('outer-breaks', {
+      describe: 'min,max breakpoints, to limit the effect of outliers',
+      old_alias: 'range',
+      type: 'numbers'
+    })
     .option('classes', {
       describe: 'number of classes (can be inferred from other options)',
       type: 'integer'
@@ -518,7 +519,7 @@ export function getOptionParser() {
       type: 'flag'
     })
     .option('continuous', {
-      describe: 'output continuous interpolated values (experimental)',
+      describe: 'output interpolated values, for unclassed colors',
       type: 'flag'
     })
     .option('index-field', {
