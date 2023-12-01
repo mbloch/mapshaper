@@ -1,8 +1,25 @@
 import api from '../mapshaper.js';
 import assert from 'assert';
 
-
 describe('mapshaper-classify.js', function () {
+
+  describe('classify command', function() {
+    it('outer-breaks option + equal-interval classification', async function() {
+      var data = 'value\n0\n3\n5\n7\n10\n100'
+      // three classes, two inner breaks: 4,6
+      var cmd = 'data.csv -classify value outer-breaks=2,8 save-as=type values=a,b,c equal-interval -o format=json';
+      var out = await api.applyCommands(cmd, {'data.csv': data});
+      var target = [
+        {value:0, type: 'a'},
+        {value: 3, type: 'a'},
+        {value: 5, type: 'b'},
+        {value: 7, type: 'c'},
+        {value: 10, type: 'c'},
+        {value: 100, type: 'c'}];
+      assert.deepEqual(JSON.parse(out['data.json']), target)
+    });
+
+  })
 
   describe('categorical colors', function () {
     it('options use lists of quoted strings', function (done) {

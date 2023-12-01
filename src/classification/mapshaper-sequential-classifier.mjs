@@ -20,23 +20,22 @@ export function getSequentialClassifier(classValues, nullValue, dataValues, meth
   }
 
   var ascending = getAscendingNumbers(dataValues);
-  if (opts.range) {
-    ascending = applyDataRange(ascending, opts.range);
+  if (opts.outer_breaks) {
+    ascending = applyDataRange(ascending, opts.outer_breaks);
   }
   var nullCount = dataValues.length - ascending.length;
   var minVal = ascending[0];
   var maxVal = ascending[ascending.length - 1];
 
-  // kludge
-  var clamp = opts.range ? function(val) {
-    if (val < opts.range[0]) val = opts.range[0];
-    if (val > opts.range[1]) val = opts.range[1];
+  var clamp = opts.outer_breaks ? function(val) {
+    if (val < opts.outer_breaks[0]) val = opts.outer_breaks[0];
+    if (val > opts.outer_breaks[1]) val = opts.outer_breaks[1];
     return val;
   } : null;
 
-  if (opts.range) {
-    minVal = opts.range[0];
-    maxVal = opts.range[1];
+  if (opts.outer_breaks) {
+    minVal = opts.outer_breaks[0];
+    maxVal = opts.outer_breaks[1];
   }
 
   if (numBreaks === 0) {
