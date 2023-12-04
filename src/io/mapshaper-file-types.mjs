@@ -74,7 +74,7 @@ export function isKmzFile(file) {
 }
 
 export function isGzipFile(file) {
-  return /\.gz/i.test(file);
+  return /\.gz$/i.test(file);
 }
 
 export function isSupportedOutputFormat(fmt) {
