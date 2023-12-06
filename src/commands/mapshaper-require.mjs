@@ -1,5 +1,5 @@
-import { runGlobalExpression } from '../commands/mapshaper-run';
 import cmd from '../mapshaper-cmd';
+import { evalTemplateExpression } from '../expressions/mapshaper-template-expressions';
 import { stop, getErrorDetail } from '../utils/mapshaper-logging';
 import { getStashedVar } from '../mapshaper-stash';
 import cli from '../cli/mapshaper-cli-utils';
@@ -7,7 +7,7 @@ import require from '../mapshaper-require';
 import api from '../mapshaper-api';
 import { isValidExternalCommand } from '../commands/mapshaper-external';
 
-cmd.require = function(targets, opts) {
+cmd.require = async function(targets, opts) {
   var defs = getStashedVar('defs');
   var moduleFile, moduleName, mod;
   if (!opts.module) {
@@ -41,6 +41,6 @@ cmd.require = function(targets, opts) {
     Object.assign(defs, mod);
   }
   if (opts.init) {
-    runGlobalExpression(opts.init, targets);
+    await evalTemplateExpression(opts.init, targets);
   }
 };
