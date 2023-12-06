@@ -1,3 +1,7 @@
+v0.6.54
+* Only check for line self-intersections in web UI if user clicks the "Check line intersections" label.
+* Added support for curly-bracket delimited expressions to -run command strings.
+
 v0.6.53
 * Added -classify outer-breaks=<min,max> option, for limiting the effective data range when calculating equal-interval breaks and continuous color ramps.
 
