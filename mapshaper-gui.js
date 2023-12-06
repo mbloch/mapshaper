@@ -2101,8 +2101,6 @@
       } else {
         var freeform = El('#import-options .advanced-options').node().value;
         importOpts = GUI.parseFreeformOptions(freeform, 'i');
-        importOpts.no_repair = !El("#repair-intersections-opt").node().checked;
-        // importOpts.snap = !!El("#snap-points-opt").node().checked;
       }
       return importOpts;
     }
@@ -3495,117 +3493,208 @@
 
   }
 
+  // Test if map should be re-framed to show updated layer
+  function mapNeedsReset(newBounds, prevBounds, viewportBounds, flags) {
+    var viewportPct = getIntersectionPct(newBounds, viewportBounds);
+    var contentPct = getIntersectionPct(viewportBounds, newBounds);
+    var boundsChanged = !prevBounds.equals(newBounds);
+    var inView = newBounds.intersects(viewportBounds);
+    var areaChg = newBounds.area() / prevBounds.area();
+    var chgThreshold = flags.proj ? 1e3 : 1e8;
+    // don't reset if layer extent hasn't changed
+    if (!boundsChanged) return false;
+    // reset if layer is out-of-view
+    if (!inView) return true;
+    // reset if content is mostly offscreen
+    if (viewportPct < 0.3 && contentPct < 0.9) return true;
+    // reset if content bounds have changed a lot (e.g. after projection)
+    if (areaChg > chgThreshold || areaChg < 1/chgThreshold) return true;
+    return false;
+  }
+
+  // Test if an update may have affected the visible shape of arcs
+  // @flags Flags from update event
+  function arcsMayHaveChanged(flags) {
+    return flags.simplify_method || flags.simplify || flags.proj ||
+      flags.arc_count || flags.repair || flags.clip || flags.erase ||
+      flags.slice || flags.affine || flags.rectangle || flags.buffer ||
+      flags.union || flags.mosaic || flags.snap || flags.clean || flags.drop || false;
+  }
+
+  // check for operations that may change the number of self intersections in the
+  // target layer.
+  function intersectionsMayHaveChanged(flags) {
+    return arcsMayHaveChanged(flags) || flags.select || flags['merge-layers'] ||
+    flags.filter || flags.dissolve || flags.dissolve2;
+  }
+
+  // Test if an update allows hover popup to stay open
+  function popupCanStayOpen(flags) {
+    // keeping popup open after -drop geometry causes problems...
+    // // if (arcsMayHaveChanged(flags)) return false;
+    if (arcsMayHaveChanged(flags)) return false;
+    if (flags.points || flags.proj) return false;
+    if (!flags.same_table) return false;
+    return true;
+  }
+
+  // Returns proportion of bb2 occupied by bb1
+  function getIntersectionPct(bb1, bb2) {
+    return getBoundsIntersection(bb1, bb2).area() / bb2.area() || 0;
+  }
+
+  function getBoundsIntersection(a, b) {
+    var c = new Bounds();
+    if (a.intersects(b)) {
+      c.setBounds(Math.max(a.xmin, b.xmin), Math.max(a.ymin, b.ymin),
+      Math.min(a.xmax, b.xmax), Math.min(a.ymax, b.ymax));
+    }
+    return c;
+  }
+
   function RepairControl(gui) {
     var map = gui.map,
         model = gui.model,
         el = gui.container.findChild(".intersection-display"),
         readout = el.findChild(".intersection-count"),
+        checkBtn = el.findChild(".intersection-check"),
         repairBtn = el.findChild(".repair-btn"),
-        // keeping a reference to current arcs and intersections, so intersections
-        // don't need to be recalculated when 'repair' button is pressed.
-        _currArcs,
-        _currLayer,
-        _currXX;
+        _simplifiedXX, // saved simplified intersections, for repair
+        _unsimplifiedXX, // saved unsimplified intersection data, for performance
+        _disabled = false;
 
-    gui.on('simplify_drag_start', hide);
-    gui.on('simplify_drag_end', updateAsync);
-
-    model.on('update', function(e) {
-      var flags = e.flags;
-      var intersectionsMayHaveChanged = flags.simplify || flags.proj ||
-          flags.arc_count || flags.snap || flags.affine || flags.points || flags['merge-layers'];
-      if (intersectionsMayHaveChanged) {
-        // delete any cached intersection data, to trigger re-calculation
-        e.dataset._intersections = null;
-        updateAsync();
-      } else if (flags.select) {
-        // new active layer, but no editing commands were run -- use cached intersections (if available)
-        updateAsync();
+    gui.on('simplify_drag_start', function() {
+      if (intersectionsAreOn()) {
+        hide();
       }
     });
 
+    gui.on('simplify_drag_end', function() {
+      updateAsync();
+    });
+
+    checkBtn.on('click', function() {
+      checkBtn.hide();
+      refreshSync();
+    });
+
     repairBtn.on('click', function() {
-      _currXX = internal.repairIntersections(_currArcs, _currXX);
-      showIntersections();
-      repairBtn.addClass('disabled');
+      var e = model.getActiveLayer();
+      if (!_simplifiedXX || !e.dataset.arcs) return;
+      var xx = _simplifiedXX = internal.repairIntersections(e.dataset.arcs, _simplifiedXX);
+      showIntersections(xx, e.layer, e.dataset.arcs);
+      repairBtn.hide();
       model.updated({repair: true});
       gui.session.simplificationRepair();
     });
 
-    function hide() {
-      el.hide();
-      map.setIntersectionLayer(null);
-    }
-
-    function enabledForDataset(dataset) {
-      var info = dataset.info || {};
-      var opts = info.import_options || {};
-      return !opts.no_repair && !info.no_intersections;
-    }
-
-    // Delay intersection calculation, so map can redraw after previous
-    // operation (e.g. layer load, simplification change)
-    function updateAsync() {
-      reset();
-      setTimeout(updateSync, 10);
-    }
-
-    function updateSync() {
-      var e = model.getActiveLayer();
-      var dataset = e.dataset;
-      var arcs = dataset && dataset.arcs;
-      var XX, showBtn;
-      var opts = {
-        unique: true,
-        tolerance: 0
-      };
-      if (!arcs || !internal.layerHasPaths(e.layer) || !enabledForDataset(dataset)) return;
-      if (arcs.getRetainedInterval() > 0) {
-        // TODO: cache these intersections
-        XX = internal.findSegmentIntersections(arcs, opts);
-        showBtn = XX.length > 0;
-      } else { // no simplification
-        XX = dataset._intersections;
-        if (!XX) {
-          // cache intersections at 0 simplification, to avoid recalculating
-          // every time the simplification slider is set to 100% or the layer is selected at 100%
-          XX = dataset._intersections = internal.findSegmentIntersections(arcs, opts);
-        }
-        showBtn = false;
+    model.on('update', function(e) {
+      if (!intersectionsAreOn()) {
+        reset(); // need this?
+        return;
       }
-      el.show();
-      _currLayer = e.layer;
-      _currArcs = arcs;
-      _currXX = XX;
-      showIntersections();
-      repairBtn.classed('disabled', !showBtn);
+      var needRefresh = e.flags.simplify_method || e.flags.simplify || e.flags.repair;
+      if (needRefresh) {
+        updateAsync();
+      } else if (e.flags.simplify_amount) {
+        // slider is being dragged - hide readout and dots, retain data
+        hide();
+      } else if (intersectionsMayHaveChanged(e.flags)) {
+        // intersections may have changed -- reset the display
+        reset();
+      } else {
+        // keep displaying the current intersections
+      }
+    });
+
+    function intersectionsAreOn() {
+      return !!(_simplifiedXX || _unsimplifiedXX);
+    }
+
+    function clearSavedData() {
+      _simplifiedXX = null;
+      _unsimplifiedXX = null;
     }
 
     function reset() {
-      _currArcs = null;
-      _currXX = null;
-      _currLayer = null;
+      clearSavedData();
+      hide();
+      if (_disabled) {
+        return;
+      }
+      var e = model.getActiveLayer();
+      if (internal.layerHasPaths(e.layer)) {
+        el.show();
+        checkBtn.show();
+        readout.hide();
+        repairBtn.hide();
+      }
+    }
+
+    function dismissForever() {
+      _disabled = true;
+      clearSavedData();
       hide();
     }
 
-    function dismiss() {
-      var dataset = model.getActiveLayer().dataset;
-      dataset._intersections = null;
-      dataset.info.no_intersections = true;
-      reset();
+    function hide() {
+      map.setIntersectionLayer(null);
+      el.hide();
     }
 
-    function showIntersections() {
-      var n = _currXX.length, pointLyr;
-      if (n > 0) {
-        // console.log("first intersection:", internal.getIntersectionDebugData(XX[0], arcs));
-        pointLyr = internal.getIntersectionLayer(_currXX, _currLayer, _currArcs);
-        map.setIntersectionLayer(pointLyr, {layers:[pointLyr]});
-        readout.html(utils$1.format('<span class="icon"></span>%s line intersection%s <img class="close-btn" src="images/close.png">', n, utils$1.pluralSuffix(n)));
-        readout.findChild('.close-btn').on('click', dismiss);
+    // Update intersection display, after a short delay so map can redraw after previous
+    // operation (e.g. simplification change)
+    function updateAsync() {
+      if (intersectionsAreOn()) {
+        setTimeout(refreshSync, 10);
+      }
+    }
+
+    function refreshSync() {
+      var e = model.getActiveLayer();
+      var arcs = e.dataset && e.dataset.arcs;
+      var intersectionOpts = {
+        unique: true,
+        tolerance: 0
+      };
+      if (!arcs || !internal.layerHasPaths(e.layer)) {
+        return;
+      }
+      if (arcs.getRetainedInterval() > 0) {
+        _simplifiedXX = internal.findSegmentIntersections(arcs, intersectionOpts);
       } else {
+        // no simplification
+        _simplifiedXX = null; // clear old simplified XX
+        if (!_unsimplifiedXX) {
+          // save intersections at 0 simplification, to avoid recalculating
+          // every time the simplification slider is set to 100% or the layer is selected at 100%
+          _unsimplifiedXX = internal.findSegmentIntersections(arcs, intersectionOpts);
+        }
+      }
+      showIntersections(_simplifiedXX || _unsimplifiedXX, e.layer, arcs);
+    }
+
+    function showIntersections(xx, lyr, arcs) {
+      var pointLyr, count = 0;
+      el.show();
+      readout.show();
+      checkBtn.hide();
+      if (xx.length > 0) {
+        pointLyr = internal.getIntersectionLayer(xx, lyr, arcs);
+        count = internal.countPointsInLayer(pointLyr);
+      }
+      if (count == 0) {
         map.setIntersectionLayer(null);
-        readout.html('');
+        readout.html('<span class="icon black"></span>No self-intersections');
+      } else {
+        map.setIntersectionLayer(pointLyr, {layers:[pointLyr]});
+        readout.html(utils$1.format('<span class="icon"></span>%s line intersection%s <img class="close-btn" src="images/close.png">', count, utils$1.pluralSuffix(count)));
+        readout.findChild('.close-btn').on('click', dismissForever);
+      }
+      if (_simplifiedXX && count > 0) {
+        repairBtn.show();
+      } else {
+        repairBtn.hide();
       }
     }
   }
@@ -8472,39 +8561,6 @@
     return _self;
   }
 
-  // Test if map should be re-framed to show updated layer
-  function mapNeedsReset(newBounds, prevBounds, viewportBounds, flags) {
-    var viewportPct = getIntersectionPct(newBounds, viewportBounds);
-    var contentPct = getIntersectionPct(viewportBounds, newBounds);
-    var boundsChanged = !prevBounds.equals(newBounds);
-    var inView = newBounds.intersects(viewportBounds);
-    var areaChg = newBounds.area() / prevBounds.area();
-    var chgThreshold = flags.proj ? 1e3 : 1e8;
-    // don't reset if layer extent hasn't changed
-    if (!boundsChanged) return false;
-    // reset if layer is out-of-view
-    if (!inView) return true;
-    // reset if content is mostly offscreen
-    if (viewportPct < 0.3 && contentPct < 0.9) return true;
-    // reset if content bounds have changed a lot (e.g. after projection)
-    if (areaChg > chgThreshold || areaChg < 1/chgThreshold) return true;
-    return false;
-  }
-
-  // Returns proportion of bb2 occupied by bb1
-  function getIntersectionPct(bb1, bb2) {
-    return getBoundsIntersection(bb1, bb2).area() / bb2.area() || 0;
-  }
-
-  function getBoundsIntersection(a, b) {
-    var c = new Bounds();
-    if (a.intersects(b)) {
-      c.setBounds(Math.max(a.xmin, b.xmin), Math.max(a.ymin, b.ymin),
-      Math.min(a.xmax, b.xmax), Math.min(a.ymax, b.ymax));
-    }
-    return c;
-  }
-
   function isMultilineLabel(textNode) {
     return textNode.childNodes.length > 1;
   }
@@ -11295,25 +11351,6 @@
       return {
         crs: _dynamicCRS
       };
-    }
-
-    // Test if an update may have affected the visible shape of arcs
-    // @flags Flags from update event
-    function arcsMayHaveChanged(flags) {
-      return flags.simplify_method || flags.simplify || flags.proj ||
-        flags.arc_count || flags.repair || flags.clip || flags.erase ||
-        flags.slice || flags.affine || flags.rectangle || flags.buffer ||
-        flags.union || flags.mosaic || flags.snap || flags.clean || flags.drop || false;
-    }
-
-    // Test if an update allows hover popup to stay open
-    function popupCanStayOpen(flags) {
-      // keeping popup open after -drop geometry causes problems...
-      // // if (arcsMayHaveChanged(flags)) return false;
-      if (arcsMayHaveChanged(flags)) return false;
-      if (flags.points || flags.proj) return false;
-      if (!flags.same_table) return false;
-      return true;
     }
 
 

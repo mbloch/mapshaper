@@ -1,6 +1,6 @@
 (function () {
 
-  var VERSION = "0.6.53";
+  var VERSION = "0.6.54";
 
 
   var utils = /*#__PURE__*/Object.freeze({
@@ -11075,7 +11075,7 @@
   }
 
   function isGzipFile(file) {
-    return /\.gz/i.test(file);
+    return /\.gz$/i.test(file);
   }
 
   function isSupportedOutputFormat(fmt) {
@@ -25338,7 +25338,7 @@ ${svg}
       .describe('create commands on-the-fly and run them')
       .option('expression', {
         DEFAULT: true,
-        describe: 'JS expression to generate command(s)'
+        describe: 'JS expression or template to generate command(s)'
       })
       // deprecated
       .option('commands', {alias_to: 'expression'})
@@ -41842,6 +41842,185 @@ ${svg}
     }, {});
   }
 
+  // import { importGeoJSON } from '../geojson/geojson-import';
+
+  function getTargetProxy(target) {
+    var lyr = target.layers[0];
+    var data = getLayerInfo(lyr, target.dataset); // layer_name, feature_count etc
+    data.layer = lyr;
+    data.dataset = target.dataset;
+    addGetters(data, {
+      // export as an object, not a string or buffer
+      geojson: getGeoJSON
+    });
+
+    function getGeoJSON() {
+      var features = exportLayerAsGeoJSON(lyr, target.dataset, {rfc7946: true}, true);
+      return {
+        type: 'FeatureCollection',
+        features: features
+      };
+    }
+
+    return data;
+  }
+
+  // Support for evaluating expressions embedded in curly-brace templates
+
+  // Returns: a string (e.g. a command string used by the -run command)
+  async function evalTemplateExpression(expression, targets, ctx) {
+    ctx = ctx || getBaseContext();
+    // TODO: throw an error if target is used when there are multiple targets
+    if (targets && targets.length == 1) {
+      Object.defineProperty(ctx, 'target', {value: getTargetProxy(targets[0])});
+    }
+    // Add global functions and data to the expression context
+    // (e.g. functions imported via the -require command)
+    var globals = getStashedVar('defs') || {};
+    ctx.global = globals;
+    utils.extend(ctx, ctx.global);
+
+    var output = await compileTemplate(expression, ctx);
+    if (hasFunctionCall(output, ctx)) {
+      // also evaluate function calls that are not enclosed in curly braces
+      // (convenience syntax)
+      output = await evalExpression(output, ctx);
+    }
+    return output;
+  }
+
+  async function compileTemplate(template, ctx) {
+    var subExpressions = parseTemplate(template);
+    var promises = subExpressions.map(expr => evalExpression(expr, ctx));
+    var replacements = await Promise.all(promises);
+    return applyReplacements(template, replacements);
+  }
+
+  async function evalExpression(expression, ctx) {
+    var output;
+    try {
+      output = Function('ctx', 'with(ctx) {return (' + expression + ');}').call({}, ctx);
+    } catch(e) {
+      stop(e.name, 'in JS source:', e.message);
+    }
+    return output;
+  }
+
+  // Returns array of 0 or more embedded curly-brace expressions
+  function parseTemplate(str) {
+    var arr = [];
+    parseTemplateParts(str).forEach(function(s, i) {
+      if (i % 2 == 1) {
+        arr.push(s.substring(1, s.length-1)); // remove braces
+      }
+    });
+    return arr;
+  }
+
+  // template: template string
+  // replacements: array of strings or values that can be coerced to strings
+  function applyReplacements(template, replacements) {
+    var parts = parseTemplateParts(template);
+    return parts.reduce(function(memo, s, i) {
+      return i % 2 == 1 ? memo + (replacements.shift() || '') : memo + s;
+    }, '');
+  }
+
+  // Divides a string into substrings; even-index strings contain literal strings,
+  // Odd-indexed strings contain curly-brace-delimited template expressions.
+  // JSON objects are treated as literal strings; other top-level curly braces are
+  //    assumed to be embedded expressions.
+  // For example:  parseTemplateParts('{"hello"}, world!') => ['', '{"hello"}', ', world!']
+  //
+  function parseTemplateParts(str) {
+    // TODO: consider adding \ escapes
+    var depth=0;
+    var parts = [];
+    var part = '';
+    var c;
+
+    for (var i=0, n=str.length; i<n; i++) {
+      c = str.charAt(i);
+      if (c == '{') {
+        if (depth == 0) {
+          parts.push(part);
+          part = '';
+        }
+        depth++;
+      }
+      part += c;
+      if (c == '}') {
+        depth--;
+        if (depth < 0) {
+          // unexpected... throw an error?
+          depth++;
+        } else if (depth == 0 && isValidJSON(part)) {
+          // embedded JSON objects are not template parts -- undo
+          part = parts.pop() + part;
+        } else if (depth == 0) {
+          parts.push(part);
+          part = '';
+        }
+      }
+    }
+    parts.push(part);
+    return parts;
+  }
+
+  // Tests if an expression string contains a call to an indexed function
+  // defs: Object containing functions indexed by function name
+  function hasFunctionCall(str, defs) {
+    var rxp = /([$_a-z][$_a-z0-9]*)\(/ig;
+    return Array.from(str.matchAll(rxp)).some(match => match[1] in defs);
+  }
+
+  function isValidJSON(str) {
+    try {
+      JSON.parse(str);
+    } catch(e) {
+      return false;
+    }
+    return true;
+  }
+
+  cmd.require = async function(targets, opts) {
+    var defs = getStashedVar('defs');
+    var moduleFile, moduleName, mod;
+    if (!opts.module) {
+      stop("Missing module name or path to module");
+    }
+    if (cli.isFile(opts.module)) {
+      moduleFile = opts.module;
+    } else if (cli.isFile(opts.module + '.js')) {
+      moduleFile = opts.module + '.js';
+    } else {
+      moduleName = opts.module;
+    }
+    if (moduleFile && !require$1('path').isAbsolute(moduleFile)) {
+      moduleFile = require$1('path').join(process.cwd(), moduleFile);
+    }
+    try {
+      mod = require$1(moduleFile || moduleName);
+      if (typeof mod == 'function') {
+        // -require now includes the functionality of the old -external command
+        var retn = mod(api);
+        if (retn && isValidExternalCommand(retn)) {
+          cmd.registerCommand(retn.name, retn);
+        }
+      }
+    } catch(e) {
+      stop('Unable to load external module:', e.message, getErrorDetail(e));
+    }
+    if (moduleName || opts.alias) {
+      defs[opts.alias || moduleName] = mod;
+    } else {
+      Object.assign(defs, mod);
+    }
+    if (opts.init) {
+      await evalTemplateExpression(opts.init, targets);
+    }
+  };
+
   // Parse an array or a string of command line tokens into an array of
   // command objects.
   function parseCommands(tokens) {
@@ -41894,29 +42073,6 @@ ${svg}
     parseConsoleCommands: parseConsoleCommands
   });
 
-  // import { importGeoJSON } from '../geojson/geojson-import';
-
-  function getTargetProxy(target) {
-    var lyr = target.layers[0];
-    var data = getLayerInfo(lyr, target.dataset); // layer_name, feature_count etc
-    data.layer = lyr;
-    data.dataset = target.dataset;
-    addGetters(data, {
-      // export as an object, not a string or buffer
-      geojson: getGeoJSON
-    });
-
-    function getGeoJSON() {
-      var features = exportLayerAsGeoJSON(lyr, target.dataset, {rfc7946: true}, true);
-      return {
-        type: 'FeatureCollection',
-        features: features
-      };
-    }
-
-    return data;
-  }
-
   function getIOProxy(job) {
     var obj = {
       _cache: {}
@@ -41955,20 +42111,14 @@ ${svg}
   // }
 
   cmd.run = async function(job, targets, opts) {
-    var tmp, commands;
+    var tmp, commands, ctx;
     if (!opts.expression) {
       stop("Missing expression parameter");
     }
-
+    ctx = getBaseContext();
     // io proxy adds ability to add datasets dynamically in a required function
-    var ctx = getBaseContext();
     ctx.io = getIOProxy();
-    tmp = runGlobalExpression(opts.expression, targets, ctx);
-
-    // Support async functions as expressions
-    if (utils.isPromise(tmp)) {
-      tmp = await tmp;
-    }
+    tmp = await evalTemplateExpression(opts.expression, targets, ctx);
     if (tmp && !utils.isString(tmp)) {
       stop('Expected a string containing mapshaper commands; received:', tmp);
     }
@@ -41984,63 +42134,6 @@ ${svg}
       });
 
       await utils.promisify(runParsedCommands)(commands, job);
-    }
-  };
-
-  // This could return a Promise or a value or nothing
-  function runGlobalExpression(expression, targets, ctx) {
-    ctx = ctx || getBaseContext();
-    var output;
-    // TODO: throw an informative error if target is used when there are multiple targets
-    if (targets && targets.length == 1) {
-      Object.defineProperty(ctx, 'target', {value: getTargetProxy(targets[0])});
-    }
-    // Add defined functions and data to the expression context
-    // (Such as functions imported via the -require command)
-    utils.extend(ctx, getStashedVar('defs'));
-    try {
-      output = Function('ctx', 'with(ctx) {return (' + expression + ');}').call({}, ctx);
-    } catch(e) {
-      stop(e.name, 'in JS source:', e.message);
-    }
-    return output;
-  }
-
-  cmd.require = function(targets, opts) {
-    var defs = getStashedVar('defs');
-    var moduleFile, moduleName, mod;
-    if (!opts.module) {
-      stop("Missing module name or path to module");
-    }
-    if (cli.isFile(opts.module)) {
-      moduleFile = opts.module;
-    } else if (cli.isFile(opts.module + '.js')) {
-      moduleFile = opts.module + '.js';
-    } else {
-      moduleName = opts.module;
-    }
-    if (moduleFile && !require$1('path').isAbsolute(moduleFile)) {
-      moduleFile = require$1('path').join(process.cwd(), moduleFile);
-    }
-    try {
-      mod = require$1(moduleFile || moduleName);
-      if (typeof mod == 'function') {
-        // -require now includes the functionality of the old -external command
-        var retn = mod(api);
-        if (retn && isValidExternalCommand(retn)) {
-          cmd.registerCommand(retn.name, retn);
-        }
-      }
-    } catch(e) {
-      stop('Unable to load external module:', e.message, getErrorDetail(e));
-    }
-    if (moduleName || opts.alias) {
-      defs[opts.alias || moduleName] = mod;
-    } else {
-      Object.assign(defs, mod);
-    }
-    if (opts.init) {
-      runGlobalExpression(opts.init, targets);
     }
   };
 
