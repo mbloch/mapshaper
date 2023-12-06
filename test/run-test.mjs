@@ -1,7 +1,6 @@
 import api from '../mapshaper.js';
 import assert from 'assert';
 
-
 describe('mapshaper-run.js', function () {
   describe('-run command', function () {
 
@@ -46,7 +45,6 @@ describe('mapshaper-run.js', function () {
     })
 
 
-
    it('supports target.geojson getter and io.addInputFile()', async function() {
       var data = [{foo: 'bar'}, {foo: 'baz'}, {foo: 'bam'}];
       var include = '{ \
@@ -78,7 +76,7 @@ describe('mapshaper-run.js', function () {
 
     it('does not require a target', async function() {
       var data = [{foo: 'bar'}];
-      var cmd = `-run "'-define n=42'" -i data.json -each 'value = n' -o format=csv`;
+      var cmd = `-run "-define n=42" -i data.json -each 'value = n' -o format=csv`;
       var output = await api.applyCommands(cmd, {'data.json': data});
       assert.equal(output['data.csv'], 'foo,value\nbar,42');
     })

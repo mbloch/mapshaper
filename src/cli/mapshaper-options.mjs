@@ -1952,7 +1952,7 @@ export function getOptionParser() {
     .describe('create commands on-the-fly and run them')
     .option('expression', {
       DEFAULT: true,
-      describe: 'JS expression to generate command(s)'
+      describe: 'JS expression or template to generate command(s)'
     })
     // deprecated
     .option('commands', {alias_to: 'expression'})
