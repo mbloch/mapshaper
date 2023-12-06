@@ -194,8 +194,9 @@ utils.extend(El.prototype, {
   },
 
   show: function(css) {
+    var tag = this.el && this.el.tagName;
     if (!this.visible()) {
-      this.css('display:block;');
+      this.css('display', tag == 'SPAN' ? 'inline-block' : 'block');
       this._hidden = false;
     }
     return this;

@@ -1,6 +1,6 @@
 # COMMAND REFERENCE
 
-This documentation applies to version 0.6.53 of mapshaper's command line program. Run `mapshaper -v` to check your version. For an introduction to the command line tool, read [this page](https://github.com/mbloch/mapshaper/wiki/Introduction-to-the-Command-Line-Tool) first.
+This documentation applies to version 0.6.54 of mapshaper's command line program. Run `mapshaper -v` to check your version. For an introduction to the command line tool, read [this page](https://github.com/mbloch/mapshaper/wiki/Introduction-to-the-Command-Line-Tool) first.
 
 ## Command line syntax
 

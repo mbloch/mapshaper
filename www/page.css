@@ -959,10 +959,6 @@ img.close-btn:hover,
 	left: 13px;
 }
 
-.intersection-count {
-	vertical-align: middle;
-}
-
 .intersection-check {
 	display: none;
 }
@@ -979,13 +975,13 @@ img.close-btn:hover,
 	background-color: black;
 }
 
-.intersection-count .close-btn {
+.intersection-display .close-btn {
 	width: 16px;
 	height: 16px;
 	cursor: pointer;
 	position: relative;
 	top: 4px;
-	margin-left: 2px;
+	margin-left: 1px;
 }
 
 /*.intersection-display .text-btn.disabled {

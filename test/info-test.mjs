@@ -12,7 +12,6 @@ describe('mapshaper-info.js', function () {
       assert.equal(d.layer_name, 'data');
       assert.equal(d.feature_count, 2);
     });
-
   })
 
   describe('save-to option', function() {
