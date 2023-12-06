@@ -468,6 +468,11 @@ body.dragover #import-options-drop-area .drop-area {
 	margin: 0 0 5px 0;
 }
 
+::placeholder {
+	color: #aaa;
+	opacity: 1;
+}
+
 
 #mshp-not-supported {
 	display: none;
@@ -958,12 +963,20 @@ img.close-btn:hover,
 	vertical-align: middle;
 }
 
+.intersection-check {
+	display: none;
+}
+
 .intersection-count .icon {
 	background-color: #F24400;
 	display: inline-block;
 	width: 5px;
 	height: 5px;
 	margin: 0 5px 2px 0;
+}
+
+.intersection-count .icon.black {
+	background-color: black;
 }
 
 .intersection-count .close-btn {
@@ -975,9 +988,9 @@ img.close-btn:hover,
 	margin-left: 2px;
 }
 
-.intersection-display .text-btn.disabled {
+/*.intersection-display .text-btn.disabled {
 	visibility: hidden;
-}
+}*/
 
 /* --- Popup -------------------- */
 
