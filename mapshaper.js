@@ -1,6 +1,6 @@
 (function () {
 
-  var VERSION = "0.6.54";
+  var VERSION = "0.6.55";
 
 
   var utils = /*#__PURE__*/Object.freeze({
