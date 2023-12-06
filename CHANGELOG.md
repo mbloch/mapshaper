@@ -1,3 +1,6 @@
+v0.6.55
+* Improvements to the web UI intersections tool.
+
 v0.6.54
 * Only check for line self-intersections in web UI if user clicks the "Check line intersections" label.
 * Added support for curly-bracket delimited expressions to -run command strings.
