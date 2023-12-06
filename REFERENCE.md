@@ -1058,8 +1058,8 @@ Create mapshaper commands on-the-fly and run them.
 
 Common options: `target=`
 
-* Embedded expressions are enclosed in curly braces (see example 2 below).
-* Expressions can access `target` and `io` objects (see below).
+* Embedded expressions are enclosed in curly braces (see below).
+* Expressions can access `target` and `io` objects.
 * Expressions can also access functions and data loaded with the `-require` command.
 * Functions can be async.
 
@@ -1083,44 +1083,43 @@ Expression context:
 **Example 1:** Apply a custom projection based on the layer extent
 
 ```bash
-$ mapshaper -i country.shp -require projection.js -run 'getProjCommand(target.bbox)' -o
+$ mapshaper -i country.shp -require projection.js -run '-proj {tmerc(target.bbox)}' -o
 ```
 
 ```javascript
 // contents of projection.js file
-module.exports = {
-	getProjCommand: function(bbox) {
-		var lon0 = (bbox[0] + bbox[2]) / 2,
-	      lat0 = (bbox[1] + bbox[3]) / 2;
-		return `-proj +proj=tmerc lat_0=${lat0} lon_0=${lon0}`;
-	}
+module.exports.tmerc = function(bbox) {
+	var lon0 = (bbox[0] + bbox[2]) / 2,
+      lat0 = (bbox[1] + bbox[3]) / 2;
+	return `+proj=tmerc lat_0=${lat0} lon_0=${lon0}`;
 };
 ```
 
-**Example 2:** Use embedded expressions to create a bounding-box and assign it a CRS.
-(This is a contrived example -- the `-rectangle` command does these things by default.)
+**Example 2:** Convert points to a Voronoi diagram
 
 ```bash
-$ mapshaper IL.geojson \
-  -proj tmerc \
-  -run '-rectangle bbox={target.bbox.join(",")} + -proj init="{target.proj4}"' \
-  -o bbox.shp
-```
-
-**Example 3:** Import a dynamically generated dataset
-
-```bash
-$ mapshaper -require script.js -run 'importData(io)' -o
+$ mapshaper -i points.geojson -require script.js -run '-i {voronoi(target, io)}' -o
 ```
 
 ```javascript
 // contents of script.js file
-module.exports = {
-  importData: function(io) {
-    var data = [{"foo": "bar"}];
-    io.addInputFile('data.json', data);
-    return `-i data.json`;
-  }
+module.exports.voronoi = async function(target, io) {
+  const d3 = await import('d3-delaunay'); // installed locally
+  const points = target.geojson; // assume 'Point' geometry
+  const coords = input.features.map(feat => feat.geometry.coordinates);
+  const voronoi = d3.Delaunay.from(coords).voronoi(target.bbox); // constrain to data bounds
+  const features = Array.from(voronoi.cellPolygons()).map(function(ring, i) {
+    return {
+      type: 'Feature',
+      properties: points.features[i].properties,
+      geometry: {
+        type: 'Polygon',
+        coordinates: [ring]
+      }
+    };
+  });
+  io.addInputFile('polygons.json', {type: 'FeatureCollection', features: features})
+  return 'polygons.json';
 };
 ```
 
