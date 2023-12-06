@@ -11,7 +11,10 @@ export function RepairControl(gui) {
       repairBtn = el.findChild(".repair-btn"),
       _simplifiedXX, // saved simplified intersections, for repair
       _unsimplifiedXX, // saved unsimplified intersection data, for performance
-      _disabled = false;
+      _disabled = false,
+      _on = false;
+
+  el.findChild('.close-btn').on('click', dismissForever);
 
   gui.on('simplify_drag_start', function() {
     if (intersectionsAreOn()) {
@@ -20,19 +23,20 @@ export function RepairControl(gui) {
   });
 
   gui.on('simplify_drag_end', function() {
-    updateAsync();
+    updateSync('simplify_drag_end');
   });
 
   checkBtn.on('click', function() {
     checkBtn.hide();
-    refreshSync();
+    _on = true;
+    updateSync();
   });
 
   repairBtn.on('click', function() {
     var e = model.getActiveLayer();
     if (!_simplifiedXX || !e.dataset.arcs) return;
-    var xx = _simplifiedXX = internal.repairIntersections(e.dataset.arcs, _simplifiedXX);
-    showIntersections(xx, e.layer, e.dataset.arcs);
+    _simplifiedXX = internal.repairIntersections(e.dataset.arcs, _simplifiedXX);
+    showIntersections(_simplifiedXX, e.layer, e.dataset.arcs);
     repairBtn.hide();
     model.updated({repair: true});
     gui.session.simplificationRepair();
@@ -43,7 +47,8 @@ export function RepairControl(gui) {
       reset(); // need this?
       return;
     }
-    var needRefresh = e.flags.simplify_method || e.flags.simplify || e.flags.repair;
+    var needRefresh = e.flags.simplify_method || e.flags.simplify ||
+      e.flags.repair || e.flags.clean;
     if (needRefresh) {
       updateAsync();
     } else if (e.flags.simplify_amount) {
@@ -58,17 +63,18 @@ export function RepairControl(gui) {
   });
 
   function intersectionsAreOn() {
-    return !!(_simplifiedXX || _unsimplifiedXX);
+    return _on && !_disabled;
   }
 
-  function clearSavedData() {
+  function turnOff() {
+    hide();
+    _on = false;
     _simplifiedXX = null;
     _unsimplifiedXX = null;
   }
 
   function reset() {
-    clearSavedData();
-    hide();
+    turnOff();
     if (_disabled) {
       return;
     }
@@ -83,8 +89,7 @@ export function RepairControl(gui) {
 
   function dismissForever() {
     _disabled = true;
-    clearSavedData();
-    hide();
+    turnOff();
   }
 
   function hide() {
@@ -95,12 +100,11 @@ export function RepairControl(gui) {
   // Update intersection display, after a short delay so map can redraw after previous
   // operation (e.g. simplification change)
   function updateAsync() {
-    if (intersectionsAreOn()) {
-      setTimeout(refreshSync, 10);
-    }
+    setTimeout(updateSync, 10);
   }
 
-  function refreshSync() {
+  function updateSync(action) {
+    if (!intersectionsAreOn()) return;
     var e = model.getActiveLayer();
     var arcs = e.dataset && e.dataset.arcs;
     var intersectionOpts = {
@@ -111,13 +115,14 @@ export function RepairControl(gui) {
       return;
     }
     if (arcs.getRetainedInterval() > 0) {
+      // simplification
       _simplifiedXX = internal.findSegmentIntersections(arcs, intersectionOpts);
     } else {
       // no simplification
-      _simplifiedXX = null; // clear old simplified XX
-      if (!_unsimplifiedXX) {
-        // save intersections at 0 simplification, to avoid recalculating
-        // every time the simplification slider is set to 100% or the layer is selected at 100%
+      _simplifiedXX = null; // clear any old simplified XX
+      if (_unsimplifiedXX && action == 'simplify_drag_end') {
+        // re-use previously generated intersection data (optimization)
+      } else {
         _unsimplifiedXX = internal.findSegmentIntersections(arcs, intersectionOpts);
       }
     }
@@ -125,7 +130,7 @@ export function RepairControl(gui) {
   }
 
   function showIntersections(xx, lyr, arcs) {
-    var pointLyr, count = 0;
+    var pointLyr, count = 0, html;
     el.show();
     readout.show();
     checkBtn.hide();
@@ -135,12 +140,13 @@ export function RepairControl(gui) {
     }
     if (count == 0) {
       map.setIntersectionLayer(null);
-      readout.html('<span class="icon black"></span>No self-intersections');
+      html = '<span class="icon black"></span>No self-intersections';
     } else {
       map.setIntersectionLayer(pointLyr, {layers:[pointLyr]});
-      readout.html(utils.format('<span class="icon"></span>%s line intersection%s <img class="close-btn" src="images/close.png">', count, utils.pluralSuffix(count)));
-      readout.findChild('.close-btn').on('click', dismissForever);
+      html = utils.format('<span class="icon"></span>%s line intersection%s', count, utils.pluralSuffix(count));
     }
+    readout.html(html);
+
     if (_simplifiedXX && count > 0) {
       repairBtn.show();
     } else {
