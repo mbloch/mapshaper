@@ -276,27 +276,11 @@ a smoother appearance.</div></div></div></div>
 		
 		<div class="option-menu">
 
-			<div id="path-import-options">
-				<h4>Options</h4>
-
-				<div><label for="repair-intersections-opt"><input type="checkbox" checked class="checkbox" id="repair-intersections-opt"/>detect line intersections</label>
-				<div class="tip-button">?<div class="tip-anchor">
-
-<div class="tip">Detect line intersections, including
-self-intersections, to help identify
-topological errors in a dataset.</div></div></div></div>
-
-				<!-- <div><label for="snap-points-opt"><input type="checkbox" class="checkbox" id="snap-points-opt" />snap vertices</label>
-				<div class="tip-button">?<div class="tip-anchor">
-<div class="tip">Fix topology errors by snapping
-together points with nearly identical
-coordinates. This option does not
-apply to TopoJSON files.</div></div></div></div> -->
-<div style="height:5px"></div>
-
+		<div id="path-import-options">
+			<h4>Options</h4>
 		</div>
 
-		<div><input type="text" class="text-input advanced-options" placeholder="import options" />
+		<div><input type="text" class="text-input advanced-options" placeholder="command line import options" />
 			<a href="https://github.com/mbloch/mapshaper/wiki/Command-Reference#-i-input" target="_mapshaper_import_docs">
 			<div class="tip-button">?<div class="tip-anchor">
 <div class="tip">Enter options from the command line
@@ -324,6 +308,7 @@ encoding=big5</span>. Click to see all options.</div></div></div></div>
 	<div class="mshp-main-map main-area map-area">
 		<div class="coordinate-info colored-text selectable"></div>
 		<div class="intersection-display">
+			<div class="intersection-check text-btn colored-text">Check line intersections</div>
 			<div class="intersection-count">0 line intersections</div>
 			<div class="repair-btn text-btn colored-text">Repair</div>
 		</div>

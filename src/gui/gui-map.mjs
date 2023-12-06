@@ -4,7 +4,7 @@ import { MapNav } from './gui-map-nav';
 import { SelectionTool } from './gui-selection-tool';
 import { InspectionControl2 } from './gui-inspection-control2';
 import { updateLayerStackOrder, filterLayerByIds } from './gui-layer-utils';
-import { mapNeedsReset } from './gui-map-utils';
+import { mapNeedsReset, arcsMayHaveChanged, popupCanStayOpen } from './gui-map-utils';
 import { initInteractiveEditing } from './gui-edit-modes';
 import { initDrawing } from './gui-drawing';
 import * as MapStyle from './gui-map-style';
@@ -262,25 +262,6 @@ export function MshpMap(gui) {
     return {
       crs: _dynamicCRS
     };
-  }
-
-  // Test if an update may have affected the visible shape of arcs
-  // @flags Flags from update event
-  function arcsMayHaveChanged(flags) {
-    return flags.simplify_method || flags.simplify || flags.proj ||
-      flags.arc_count || flags.repair || flags.clip || flags.erase ||
-      flags.slice || flags.affine || flags.rectangle || flags.buffer ||
-      flags.union || flags.mosaic || flags.snap || flags.clean || flags.drop || false;
-  }
-
-  // Test if an update allows hover popup to stay open
-  function popupCanStayOpen(flags) {
-    // keeping popup open after -drop geometry causes problems...
-    // // if (arcsMayHaveChanged(flags)) return false;
-    if (arcsMayHaveChanged(flags)) return false;
-    if (flags.points || flags.proj) return false;
-    if (!flags.same_table) return false;
-    return true;
   }
 
 
