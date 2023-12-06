@@ -849,6 +849,13 @@ Common options: `name=` `+` `target=`
 mapshaper counties.shp -lines STATE_FIPS -o boundaries.shp
 ```
 
+```bash
+# Example: add the names of neighboring countries to each section of border
+mapshaper countries.geojson \
+  -lines each='COUNTRIES = A.NAME + (B ? "," + B.NAME : "")' \
+  -o borders.geojson
+```
+
 
 ### -merge-layers
 
@@ -1111,6 +1118,7 @@ module.exports = {
     return `-i data.json`;
   }
 };
+```
 
 
 ### -shape
