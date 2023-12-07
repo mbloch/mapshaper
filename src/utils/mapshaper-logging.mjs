@@ -202,3 +202,10 @@ export function logArgs(args) {
   else console.error(msg);
 }
 
+export function truncateString(str, maxLen) {
+  maxLen = maxLen || 80;
+  if (str.length > maxLen) {
+    str = str.substring(0, maxLen - 3).trimEnd() + '...';
+  }
+  return str;
+}

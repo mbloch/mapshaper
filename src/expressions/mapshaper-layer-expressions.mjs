@@ -17,7 +17,6 @@ export function compileLayerExpression(expr, catalog, opts) {
   if (targets.length === 0 && targetId) {
     stop('Layer not found:', targetId);
   }
-  // var vars = getAssignedVars(exp);
   var defs = getStashedVar('defs') || {};
 
   var ctx;

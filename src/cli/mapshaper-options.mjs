@@ -1835,11 +1835,12 @@ export function getOptionParser() {
       describe: 'use field values to calculate data island weights'
     });
 
-  parser.command('external')
-    .option('module', {
-      DEFAULT: true,
-      describe: 'name of Node module containing the command'
-    });
+  // replaced by -require
+  // parser.command('external')
+  //   .option('module', {
+  //     DEFAULT: true,
+  //     describe: 'name of Node module containing the command'
+  //   });
 
   parser.command('filter-points')
     // .describe('remove points that are not part of a group')
@@ -1925,17 +1926,17 @@ export function getOptionParser() {
     .option('no-replace', noReplaceOpt);
 
   parser.command('require')
-    .describe('require a Node module for use in -each expressions')
+    .describe('require a Node module or ES module to use in JS expressions')
     .option('module', {
       DEFAULT: true,
-      describe: 'name of Node module or path to module file'
+      describe: 'name of installed module or path to module file'
     })
     .option('alias', {
       describe: 'Set the module name to an alias'
-    })
-    .option('init', {
-      describe: 'JS expression to run after the module loads'
     });
+    // .option('init', {
+    //   describe: 'JS expression to run after the module loads'
+    // });
 
   parser.command('rotate')
     // .describe('apply d3-style 3-axis rotation to a lat-long dataset')

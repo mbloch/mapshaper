@@ -3,7 +3,7 @@ import { forEachArcId } from '../paths/mapshaper-path-utils';
 import { getDatasetBounds } from '../dataset/mapshaper-dataset-utils';
 import { forEachPoint } from '../points/mapshaper-point-utils';
 import { countArcsInShapes } from '../paths/mapshaper-path-utils';
-import { compileValueExpression } from '../expressions/mapshaper-expressions';
+import { compileValueExpression } from '../expressions/mapshaper-feature-expressions';
 import { layerHasGeometry } from '../dataset/mapshaper-layer-utils';
 import { getDatasetCRS } from '../crs/mapshaper-projections';
 import { convertIntervalPair } from '../geom/mapshaper-units';

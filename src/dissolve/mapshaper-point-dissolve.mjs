@@ -1,5 +1,5 @@
 import { countMultiPartFeatures } from '../dataset/mapshaper-layer-utils';
-import { compileValueExpression } from '../expressions/mapshaper-expressions';
+import { compileValueExpression } from '../expressions/mapshaper-feature-expressions';
 import { getLayerBounds } from '../dataset/mapshaper-layer-utils';
 import { probablyDecimalDegreeBounds } from '../geom/mapshaper-latlon';
 import geom from '../geom/mapshaper-geom';

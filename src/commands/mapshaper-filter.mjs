@@ -1,5 +1,5 @@
 import { getBBoxIntersectionTest } from '../commands/mapshaper-filter-geom';
-import { compileValueExpression } from '../expressions/mapshaper-expressions';
+import { compileValueExpression } from '../expressions/mapshaper-feature-expressions';
 import { getOutputLayer, getFeatureCount, copyLayer } from '../dataset/mapshaper-layer-utils';
 import utils from '../utils/mapshaper-utils';
 import cmd from '../mapshaper-cmd';

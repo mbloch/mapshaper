@@ -251,9 +251,9 @@ export async function runCommand(command, job) {
     } else if (name == 'explode') {
       outputLayers = applyCommandToEachLayer(cmd.explodeFeatures, targetLayers, arcs, opts);
 
-    } else if (name == 'external') {
-      // -require now incorporates -external
-      cmd.require(targets, opts);
+    // -require now incorporates functionality of -external
+    // } else if (name == 'external') {
+    //   cmd.require(targets, opts);
 
     } else if (name == 'filter') {
       outputLayers = applyCommandToEachLayer(cmd.filterFeatures, targetLayers, arcs, opts);
@@ -395,7 +395,7 @@ export async function runCommand(command, job) {
       cmd.renameLayers(targetLayers, opts.names, job.catalog);
 
     } else if (name == 'require') {
-      cmd.require(targets, opts);
+      await cmd.require(opts);
 
     } else if (name == 'rotate') {
       targets.forEach(function(targ) {
