@@ -11,6 +11,7 @@ import utils from '../utils/mapshaper-utils';
 import { resetControlFlow } from '../mapshaper-control-flow';
 import require from '../mapshaper-require';
 import { commandTakesFileInput } from '../cli/mapshaper-command-info';
+import { version } from '../../package.json';
 
 // Parse command line args into commands and run them
 // Function takes an optional Node-style callback. A Promise is returned if no callback is given.
@@ -315,7 +316,7 @@ function readAndRemoveSettings(job, commands) {
 export function runAndRemoveInfoCommands(commands) {
   return commands.filter(function(cmd) {
     if (cmd.name == 'version') {
-      print(typeof VERSION == 'undefined' ? '' : VERSION);
+      print(version);
     } else if (cmd.name == 'encodings') {
       printEncodings();
     } else if (cmd.name == 'colors') {

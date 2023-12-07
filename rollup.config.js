@@ -1,4 +1,5 @@
 import { nodeResolve } from '@rollup/plugin-node-resolve';
+import json from '@rollup/plugin-json';
 
 const onBundle = {
   name: 'onbundle',
@@ -27,8 +28,7 @@ export default [{
   output: [{
     strict: false,
     format: 'iife',
-    file: 'mapshaper.js',
-    intro: 'var VERSION = "' + require('./package.json').version + '";\n'
+    file: 'mapshaper.js'
   }],
-  plugins: [onBundle, nodeResolve()]
+  plugins: [onBundle, nodeResolve(), json()]
 }];
