@@ -7,9 +7,9 @@ import require from '../mapshaper-require';
 import api from '../mapshaper-api';
 import { isValidExternalCommand } from '../commands/mapshaper-external';
 
-cmd.require = async function(targets, opts) {
-  var defs = getStashedVar('defs');
-  var moduleFile, moduleName, mod;
+cmd.require = async function(opts) {
+  var globals = getStashedVar('defs');
+  var moduleFile, moduleName, mod, err;
   if (!opts.module) {
     stop("Missing module name or path to module");
   }
@@ -24,23 +24,31 @@ cmd.require = async function(targets, opts) {
     moduleFile = require('path').join(process.cwd(), moduleFile);
   }
   try {
-    mod = require(moduleFile || moduleName);
+    // import CJS and ES modules
+    mod = await import(moduleFile || moduleName);
+    if (mod.default) {
+      mod = mod.default;
+    }
     if (typeof mod == 'function') {
-      // -require now includes the functionality of the old -external command
+      // assuming that functions are mapshpaper command generators...
+      // this MUST be changed asap.
       var retn = mod(api);
       if (retn && isValidExternalCommand(retn)) {
         cmd.registerCommand(retn.name, retn);
       }
     }
   } catch(e) {
-    stop('Unable to load external module:', e.message, getErrorDetail(e));
+    if (!mod) {
+      stop('Unable to load external module:', e.message, getErrorDetail(e));
+    }
   }
   if (moduleName || opts.alias) {
-    defs[opts.alias || moduleName] = mod;
+    globals[opts.alias || moduleName] = mod;
   } else {
-    Object.assign(defs, mod);
+    Object.assign(globals, mod);
   }
-  if (opts.init) {
-    await evalTemplateExpression(opts.init, targets);
-  }
+  // instead of an init expression, you could use -run <expression>
+  // if (opts.init) {
+  //   await evalTemplateExpression(opts.init, targets);
+  // }
 };

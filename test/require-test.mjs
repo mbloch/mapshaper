@@ -5,6 +5,15 @@ import assert from 'assert';
 describe('mapshaper-require.js', function () {
   describe('-require command', function () {
 
+    it('import a .mjs file (ES module file)', async function() {
+      var json = [{foo: 'A quick brown fox jumps over the lazy dog'}];
+      var file = 'test/data/features/require/test_module2.mjs';
+      var cmd = `data.json -require ${file} -each "count = wc(foo)" -o`;
+      var out = await api.applyCommands(cmd, {'data.json': json});
+      var result = JSON.parse(out['data.json']);
+      assert.deepEqual(result, [{foo: 'A quick brown fox jumps over the lazy dog', count: 9}])
+    })
+
     it('define a new command and run it', async function() {
       var json = [{foo: 'bar'}];
       var script = 'test/data/features/require/command1.js';
@@ -58,14 +67,15 @@ describe('mapshaper-require.js', function () {
       assert.deepEqual(JSON.parse(out['out.json']), [{foo: 'a', str: true}, {foo: 'b', str: true}]);
     })
 
-    it('-require a module file and initialize it', function(done) {
-      var json = [{foo: 'bar'}];
-      var cmd = '-i in.json name=info -require test/data/features/require/test_module.js \
-        init="setName(target.layer.name)" -each "layer_name = getName()" -o out.json';
-      api.applyCommands(cmd, {'in.json': json}, function(err, result) {
-        assert.deepEqual(JSON.parse(result['out.json']), [{foo: 'bar', layer_name: 'info'}]);
-        done();
-      });
-    });
+    // init was removed; use -run instead
+    // it('-require a module file and initialize it', function(done) {
+    //   var json = [{foo: 'bar'}];
+    //   var cmd = '-i in.json name=info -require test/data/features/require/test_module.js \
+    //     init="setName(target.layer.name)" -each "layer_name = getName()" -o out.json';
+    //   api.applyCommands(cmd, {'in.json': json}, function(err, result) {
+    //     assert.deepEqual(JSON.parse(result['out.json']), [{foo: 'bar', layer_name: 'info'}]);
+    //     done();
+    //   });
+    // });
   })
 })
