@@ -1,3 +1,7 @@
+v0.6.56
+* Added support for importing ES modules using the -require command.
+* Removed the -require init= function.
+
 v0.6.55
 * Improvements to the web UI intersections tool.
 
