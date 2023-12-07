@@ -1034,20 +1034,26 @@ mapshaper ne_50m_rivers_lake_centerlines.shp ne_50m_land.shp combine-files \
 
 ### -require
 
-Require a Node module for use in commands like `-each` and `-run`. Required modules are added to the expression context. Named expressions are accessed via thair names or aliases. Unnamed modules have their exported properties added to the expression context.
+Require a Node module or ES module for use in commands like `-each` and `-run`. Modules are added to the expression context. When the `alias=` option is given, modules are accessed via their aliases. Modules that are imported by name (e.g. `-require d3`) are accessed via their name, or by their alias if the `alias=` option is used. Module files without an alias name have their exported functions and data added directly to the expression context.
 
-`<module>` or `module=`  Name of a Node module or path to a module file.
+`<module>` or `module=`  Name of an installed module or path to a module file.
 
-`alias=`  Use an alias for a named module or module file.
-
-`init=`  JS expression to run after the module loads.
+`alias=` Import the module as a custom-named variable.
 
 ```bash
-# Example: use the underscore module
+# Example: use the underscore module (which has been installed locally)
 $ mapshaper data.json \
 	-require underscore alias=_ \
 	-each 'id = _.uniqueId()' \
-	-o data.json force
+	-o data2.json
+```
+
+```bash
+# Example: import a module file containing a user-defined function 
+$ mapshaper data.json \
+  -require scripts/includes.mjs \
+  -each 'displayname = getDisplayName(d)' \
+  -o data2.json
 ```
 
 ### -run
@@ -1089,9 +1095,9 @@ $ mapshaper -i country.shp -require projection.js -run '-proj {tmerc(target.bbox
 ```javascript
 // contents of projection.js file
 module.exports.tmerc = function(bbox) {
-	var lon0 = (bbox[0] + bbox[2]) / 2,
+  var lon0 = (bbox[0] + bbox[2]) / 2,
       lat0 = (bbox[1] + bbox[3]) / 2;
-	return `+proj=tmerc lat_0=${lat0} lon_0=${lon0}`;
+  return `+proj=tmerc lat_0=${lat0} lon_0=${lon0}`;
 };
 ```
 
