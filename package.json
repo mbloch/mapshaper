@@ -64,6 +64,7 @@
     "tinyqueue": "^2.0.3"
   },
   "devDependencies": {
+    "@rollup/plugin-json": "^6.0.1",
     "@rollup/plugin-node-resolve": "^13.3.0",
     "browserify": "^17.0.0",
     "csv-spectrum": "^1.0.0",
