@@ -1,6 +1,6 @@
 (function () {
 
-  var VERSION = "0.6.55";
+  var VERSION = "0.6.56";
 
 
   var utils = /*#__PURE__*/Object.freeze({
@@ -1403,6 +1403,14 @@
     else console.error(msg);
   }
 
+  function truncateString(str, maxLen) {
+    maxLen = maxLen || 80;
+    if (str.length > maxLen) {
+      str = str.substring(0, maxLen - 3).trimEnd() + '...';
+    }
+    return str;
+  }
+
   var Logging = /*#__PURE__*/Object.freeze({
     __proto__: null,
     getLoggingSetter: getLoggingSetter,
@@ -1424,7 +1432,8 @@
     formatColumns: formatColumns,
     formatStringsAsGrid: formatStringsAsGrid,
     formatLogArgs: formatLogArgs,
-    logArgs: logArgs
+    logArgs: logArgs,
+    truncateString: truncateString
   });
 
   function Transform() {
@@ -14209,13 +14218,93 @@
     };
   }
 
+  // Return array of variables on the left side of assignment operations
+  // @hasDot (bool) Return property assignments via dot notation
+  function getAssignedVars(exp, hasDot) {
+    var rxp = /[a-z_$][.a-z0-9_$]*(?= *=[^>=])/ig; // ignore arrow functions and comparisons
+    var matches = exp.match(rxp) || [];
+    var f = function(s) {
+      var i = s.indexOf('.');
+      return hasDot ? i > -1 : i == -1;
+    };
+    var vars = utils.uniq(matches.filter(f));
+    return vars;
+  }
+
+  // Return array of objects with properties assigned via dot notation
+  // e.g.  'd.value = 45' ->  ['d']
+  // export function getAssignmentObjects(exp) {
+  //   var matches = getAssignedVars(exp, true),
+  //       names = [];
+  //   matches.forEach(function(s) {
+  //     var match = /^([^.]+)\.[^.]+$/.exec(s);
+  //     var name = match ? match[1] : null;
+  //     if (name && name != 'this') {
+  //       names.push(name);
+  //     }
+  //   });
+  //   return utils.uniq(names);
+  // }
+
+  function getExpressionFunction(exp, opts) {
+    var func = compileExpressionToFunction(exp, opts);
+    return function(rec, ctx) {
+      var val;
+      try {
+        val = func.call(ctx.$, rec, ctx);
+      } catch(e) {
+        stop(e.name, "in expression [" + exp + "]:", e.message);
+      }
+      return val;
+    };
+  }
+
+  function compileExpressionToFunction(exp, opts) {
+    // $$ added to avoid duplication with data field variables (an error condition)
+    var functionBody, func;
+    if (opts.returns) {
+      // functionBody = 'return ' + functionBody;
+      functionBody = 'var $$retn = ' + exp + '; return $$retn;';
+    } else {
+      functionBody = exp;
+    }
+    functionBody = 'with($$env){with($$record){ ' + functionBody + '}}';
+    try {
+      func = new Function('$$record,$$env',  functionBody);
+    } catch(e) {
+      // if (opts.quiet) throw e;
+      stop(e.name, 'in expression [' + exp + ']');
+    }
+    return func;
+  }
+
+  function getBaseContext(ctx) {
+    ctx = ctx || {};
+    // Mask global properties (is this effective/worth doing?)
+    ctx.globalThis = void 0; // some globals are not iterable
+    (function() {
+      for (var key in this) {
+        ctx[key] = void 0;
+      }
+    }());
+    ctx.console = console;
+    return ctx;
+  }
+
+  var Expressions = /*#__PURE__*/Object.freeze({
+    __proto__: null,
+    getAssignedVars: getAssignedVars,
+    getExpressionFunction: getExpressionFunction,
+    compileExpressionToFunction: compileExpressionToFunction,
+    getBaseContext: getBaseContext
+  });
+
   // Compiled expression returns a value
   function compileValueExpression(exp, lyr, arcs, opts) {
     opts = opts || {};
     opts.returns = true;
     return compileFeatureExpression(exp, lyr, arcs, opts);
   }
-
 
   function compileFeaturePairFilterExpression(exp, lyr, arcs) {
     var func = compileFeaturePairExpression(exp, lyr, arcs);
@@ -14232,12 +14321,15 @@
     var exp = cleanExpression(rawExp);
     // don't add layer data to the context
     // (fields are not added to the pair expression context)
-    var ctx = getExpressionContext({});
+    var ctx = getFeatureExpressionContext({});
     var getA = getProxyFactory(lyr, arcs);
     var getB = getProxyFactory(lyr, arcs);
     var vars = getAssignedVars(exp);
     var functionBody = "with($$env){with($$record){return " + exp + "}}";
     var func;
+
+    // protect global object from assigned values
+    nullifyUnsetProperties(vars, ctx);
 
     try {
       func = new Function("$$record,$$env", functionBody);
@@ -14245,9 +14337,6 @@
       console.error(e);
       stop(e.name, "in expression [" + exp + "]");
     }
-
-    // protect global object from assigned values
-    nullifyUnsetProperties(vars, ctx);
 
     function getProxyFactory(lyr, arcs) {
       var records = lyr.data ? lyr.data.getRecords() : [];
@@ -14284,12 +14373,12 @@
     };
   }
 
-  function compileFeatureExpression(rawExp, lyr, arcs, opts_) {
-    var opts = utils.extend({}, opts_),
+  function compileFeatureExpression(rawExp, lyr, arcs, optsArg) {
+    var opts = optsArg || {},
+        ctx = opts.context || {},
         exp = cleanExpression(rawExp || ''),
         mutable = !opts.no_assign, // block assignment expressions
-        vars = getAssignedVars(exp),
-        func, records;
+        vars = getAssignedVars(exp);
 
     if (mutable && vars.length > 0 && !lyr.data) {
       initDataTable(lyr);
@@ -14297,110 +14386,45 @@
 
     if (!mutable) {
       // protect global object from assigned values
-      opts.context = opts.context || {};
-      nullifyUnsetProperties(vars, opts.context);
+      nullifyUnsetProperties(vars, ctx);
     }
 
-    records = lyr.data ? lyr.data.getRecords() : [];
-    func = getExpressionFunction(exp, lyr, arcs, opts);
-
-    // @destRec (optional) substitute for records[recId] (used by -calc)
-    return function(recId, destRec) {
-      var record;
-      if (destRec) {
-        record = destRec;
-      } else {
-        record = records[recId] || (records[recId] = {});
-      }
-
-      // initialize new fields to null so assignments work
-      if (mutable) {
-        nullifyUnsetProperties(vars, record);
-      }
-      return func(record, recId);
-    };
-  }
-
-  // Return array of variables on the left side of assignment operations
-  // @hasDot (bool) Return property assignments via dot notation
-  function getAssignedVars(exp, hasDot) {
-    var rxp = /[a-z_$][.a-z0-9_$]*(?= *=[^>=])/ig; // ignore arrow functions and comparisons
-    var matches = exp.match(rxp) || [];
-    var f = function(s) {
-      var i = s.indexOf('.');
-      return hasDot ? i > -1 : i == -1;
-    };
-    var vars = utils.uniq(matches.filter(f));
-    return vars;
-  }
-
-  // Return array of objects with properties assigned via dot notation
-  // e.g.  'd.value = 45' ->  ['d']
-  function getAssignmentObjects(exp) {
-    var matches = getAssignedVars(exp, true),
-        names = [];
-    matches.forEach(function(s) {
-      var match = /^([^.]+)\.[^.]+$/.exec(s);
-      var name = match ? match[1] : null;
-      if (name && name != 'this') {
-        names.push(name);
-      }
-    });
-    return utils.uniq(names);
-  }
-
-  function compileExpressionToFunction(exp, opts) {
-    // $$ added to avoid duplication with data field variables (an error condition)
-    var functionBody, func;
-    if (opts.returns) {
-      // functionBody = 'return ' + functionBody;
-      functionBody = 'var $$retn = ' + exp + '; return $$retn;';
-    } else {
-      functionBody = exp;
-    }
-    functionBody = 'with($$env){with($$record){ ' + functionBody + '}}';
-    try {
-      func = new Function('$$record,$$env',  functionBody);
-    } catch(e) {
-      // if (opts.quiet) throw e;
-      stop(e.name, 'in expression [' + exp + ']');
-    }
-    return func;
-  }
-
-  function getExpressionFunction(exp, lyr, arcs, opts) {
+    var records = lyr.data ? lyr.data.getRecords() : [];
     var getFeatureById = initFeatureProxy(lyr, arcs, opts);
     var layerOnlyProxy = addLayerGetters({}, lyr, arcs);
-    var ctx = getExpressionContext(lyr, opts.context, opts);
-    var func = compileExpressionToFunction(exp, opts);
-    return function(rec, i) {
-      var val;
-      // Assigning feature/layer proxy to '$' -- maybe this should be removed,
-      // since it is also exposed as "this".
-      // (kludge) i is undefined in calc expressions ... we still
-      //   may need layer data (but not single-feature data)
-      ctx.$ = i >= 0 ? getFeatureById(i) : layerOnlyProxy;
-      ctx._ = ctx; // provide access to functions when masked by variable names
-      ctx.d = rec || null; // expose data properties a la d3 (also exposed as this.properties)
-      try {
-        val = func.call(ctx.$, rec, ctx);
-      } catch(e) {
-        // if (opts.quiet) throw e;
-        stop(e.name, "in expression [" + exp + "]:", e.message);
+    var func = getExpressionFunction(exp, opts);
+    ctx = getFeatureExpressionContext(lyr, ctx, opts);
+
+    // recId: index of a data record in the records array.
+    // destRec: (optional argument, used by -calc) an object used to capture assignments
+    //   By default, assignments are captured by records[recId]
+    //
+    return function(recId, destRec) {
+      var rec;
+      if (destRec) {
+        rec = destRec;
+      } else {
+        rec = records[recId] || (records[recId] = {});
       }
-      return val;
+      // Assigning feature/layer proxy to '$' ... ctx.$ is also exposed as 'this'
+      // in the expression context.
+      ctx.$ = recId >= 0 ? getFeatureById(recId) : layerOnlyProxy;
+      // "_" is used as an alias for the expression context, so functions can still
+      // be used when masked by variables of the same name.
+      ctx._ = ctx;
+      // Expose data properties using "d", like d3 does. (data propertries are
+      // also available as "this.properties")
+      ctx.d = rec || null;
+
+      if (mutable) {
+        // initialize assigned variables to rec.null so rec can capture them
+        nullifyUnsetProperties(vars, rec);
+      }
+      return func(rec, ctx);
     };
   }
 
-  function nullifyUnsetProperties(vars, obj) {
-    for (var i=0; i<vars.length; i++) {
-      if (vars[i] in obj === false) {
-        obj[vars[i]] = null;
-      }
-    }
-  }
-
-  function getExpressionContext(lyr, mixins, opts) {
+  function getFeatureExpressionContext(lyr, mixins, opts) {
     var defs = getStashedVar('defs');
     var env = getBaseContext();
     var ctx = {};
@@ -14446,29 +14470,20 @@
     }, ctx);
   }
 
-  function getBaseContext(ctx) {
-    ctx = ctx || {};
-    // Mask global properties (is this effective/worth doing?)
-    ctx.globalThis = void 0; // some globals are not iterable
-    (function() {
-      for (var key in this) {
-        ctx[key] = void 0;
+  function nullifyUnsetProperties(vars, obj) {
+    for (var i=0; i<vars.length; i++) {
+      if (vars[i] in obj === false) {
+        obj[vars[i]] = null;
       }
-    }());
-    ctx.console = console;
-    return ctx;
+    }
   }
 
-  var Expressions = /*#__PURE__*/Object.freeze({
+  var FeatureExpressions = /*#__PURE__*/Object.freeze({
     __proto__: null,
     compileValueExpression: compileValueExpression,
     compileFeaturePairFilterExpression: compileFeaturePairFilterExpression,
     compileFeaturePairExpression: compileFeaturePairExpression,
-    compileFeatureExpression: compileFeatureExpression,
-    getAssignedVars: getAssignedVars,
-    getAssignmentObjects: getAssignmentObjects,
-    compileExpressionToFunction: compileExpressionToFunction,
-    getBaseContext: getBaseContext
+    compileFeatureExpression: compileFeatureExpression
   });
 
   function getMode(values) {
@@ -25221,11 +25236,12 @@ ${svg}
         describe: 'use field values to calculate data island weights'
       });
 
-    parser.command('external')
-      .option('module', {
-        DEFAULT: true,
-        describe: 'name of Node module containing the command'
-      });
+    // replaced by -require
+    // parser.command('external')
+    //   .option('module', {
+    //     DEFAULT: true,
+    //     describe: 'name of Node module containing the command'
+    //   });
 
     parser.command('filter-points')
       // .describe('remove points that are not part of a group')
@@ -25311,17 +25327,17 @@ ${svg}
       .option('no-replace', noReplaceOpt);
 
     parser.command('require')
-      .describe('require a Node module for use in -each expressions')
+      .describe('require a Node module or ES module to use in JS expressions')
       .option('module', {
         DEFAULT: true,
-        describe: 'name of Node module or path to module file'
+        describe: 'name of installed module or path to module file'
       })
       .option('alias', {
         describe: 'Set the module name to an alias'
-      })
-      .option('init', {
-        describe: 'JS expression to run after the module loads'
       });
+      // .option('init', {
+      //   describe: 'JS expression to run after the module loads'
+      // });
 
     parser.command('rotate')
       // .describe('apply d3-style 3-axis rotation to a lat-long dataset')
@@ -35318,7 +35334,6 @@ ${svg}
     if (targets.length === 0 && targetId) {
       stop('Layer not found:', targetId);
     }
-    // var vars = getAssignedVars(exp);
     var defs = getStashedVar('defs') || {};
 
     var ctx;
@@ -41983,8 +41998,8 @@ ${svg}
     return true;
   }
 
-  cmd.require = async function(targets, opts) {
-    var defs = getStashedVar('defs');
+  cmd.require = async function(opts) {
+    var globals = getStashedVar('defs');
     var moduleFile, moduleName, mod;
     if (!opts.module) {
       stop("Missing module name or path to module");
@@ -42000,25 +42015,33 @@ ${svg}
       moduleFile = require$1('path').join(process.cwd(), moduleFile);
     }
     try {
-      mod = require$1(moduleFile || moduleName);
+      // import CJS and ES modules
+      mod = await import(moduleFile || moduleName);
+      if (mod.default) {
+        mod = mod.default;
+      }
       if (typeof mod == 'function') {
-        // -require now includes the functionality of the old -external command
+        // assuming that functions are mapshpaper command generators...
+        // this MUST be changed asap.
         var retn = mod(api);
         if (retn && isValidExternalCommand(retn)) {
           cmd.registerCommand(retn.name, retn);
         }
       }
     } catch(e) {
-      stop('Unable to load external module:', e.message, getErrorDetail(e));
+      if (!mod) {
+        stop('Unable to load external module:', e.message, getErrorDetail(e));
+      }
     }
     if (moduleName || opts.alias) {
-      defs[opts.alias || moduleName] = mod;
+      globals[opts.alias || moduleName] = mod;
     } else {
-      Object.assign(defs, mod);
+      Object.assign(globals, mod);
     }
-    if (opts.init) {
-      await evalTemplateExpression(opts.init, targets);
-    }
+    // instead of an init expression, you could use -run <expression>
+    // if (opts.init) {
+    //   await evalTemplateExpression(opts.init, targets);
+    // }
   };
 
   // Parse an array or a string of command line tokens into an array of
@@ -42123,7 +42146,8 @@ ${svg}
       stop('Expected a string containing mapshaper commands; received:', tmp);
     }
     if (tmp) {
-      message(`command: [${tmp}]`);
+      // truncate message (command might include a large GeoJSON string in an -i command)
+      message(`command: [${truncateString(tmp, 150)}]`);
       commands = parseCommands(tmp);
 
       // TODO: remove duplication with mapshaper-run-commands.mjs
@@ -44473,9 +44497,9 @@ ${svg}
       } else if (name == 'explode') {
         outputLayers = applyCommandToEachLayer(cmd.explodeFeatures, targetLayers, arcs, opts);
 
-      } else if (name == 'external') {
-        // -require now incorporates -external
-        cmd.require(targets, opts);
+      // -require now incorporates functionality of -external
+      // } else if (name == 'external') {
+      //   cmd.require(targets, opts);
 
       } else if (name == 'filter') {
         outputLayers = applyCommandToEachLayer(cmd.filterFeatures, targetLayers, arcs, opts);
@@ -44617,7 +44641,7 @@ ${svg}
         cmd.renameLayers(targetLayers, opts.names, job.catalog);
 
       } else if (name == 'require') {
-        cmd.require(targets, opts);
+        await cmd.require(opts);
 
       } else if (name == 'rotate') {
         targets.forEach(function(targ) {
@@ -45445,6 +45469,7 @@ ${svg}
     Explode,
     Export,
     Expressions,
+    FeatureExpressions,
     FileExport,
     FileImport,
     FilenameUtils,

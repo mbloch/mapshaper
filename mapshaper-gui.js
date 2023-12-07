@@ -5374,6 +5374,14 @@
     else console.error(msg);
   }
 
+  function truncateString(str, maxLen) {
+    maxLen = maxLen || 80;
+    if (str.length > maxLen) {
+      str = str.substring(0, maxLen - 3).trimEnd() + '...';
+    }
+    return str;
+  }
+
   var uniqCount = 0;
   function getUniqueName(prefix) {
     return (prefix || "__id_") + (++uniqCount);
