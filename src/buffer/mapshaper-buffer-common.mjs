@@ -1,4 +1,4 @@
-import { compileValueExpression } from '../expressions/mapshaper-expressions';
+import { compileValueExpression } from '../expressions/mapshaper-feature-expressions';
 import { getDatasetCRS } from '../crs/mapshaper-projections';
 import { convertDistanceParam } from '../geom/mapshaper-units';
 import { parseMeasure2 } from '../geom/mapshaper-units';

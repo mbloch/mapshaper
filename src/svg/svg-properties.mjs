@@ -1,4 +1,4 @@
-import { compileValueExpression } from '../expressions/mapshaper-expressions';
+import { compileValueExpression } from '../expressions/mapshaper-feature-expressions';
 import utils from '../utils/mapshaper-utils';
 import { stop } from '../utils/mapshaper-logging';
 import { parsePattern } from '../svg/svg-hatch';

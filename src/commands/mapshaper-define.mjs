@@ -1,7 +1,7 @@
 import cmd from '../mapshaper-cmd';
 import { getStashedVar } from '../mapshaper-stash';
 import { message, error, stop } from '../utils/mapshaper-logging';
-import { compileFeatureExpression } from '../expressions/mapshaper-expressions';
+import { compileFeatureExpression } from '../expressions/mapshaper-feature-expressions';
 import { compileLayerExpression } from '../expressions/mapshaper-layer-expressions';
 
 /*

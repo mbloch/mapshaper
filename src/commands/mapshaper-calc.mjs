@@ -1,4 +1,4 @@
-import { compileFeatureExpression } from '../expressions/mapshaper-expressions';
+import { compileFeatureExpression } from '../expressions/mapshaper-feature-expressions';
 import { getLayerBounds, getFeatureCount } from '../dataset/mapshaper-layer-utils';
 import { getMode } from '../utils/mapshaper-calc-utils';
 import { getLayerSelection } from '../dataset/mapshaper-command-utils';

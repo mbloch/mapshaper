@@ -91,19 +91,19 @@ describe('mapshaper-expressions.js', function () {
 
   })
 
-  describe('getAssignmentObjects()', function() {
-    it('capture names of objects', function () {
-      assert.deepEqual(
-        api.internal.getAssignmentObjects('d.a = "a", d.b = "b", a.c = "c"'),
-        ['d', 'a']);
-    })
+  // REMOVED
+  // describe('getAssignmentObjects()', function() {
+  //   it('capture names of objects', function () {
+  //     assert.deepEqual(
+  //       api.internal.getAssignmentObjects('d.a = "a", d.b = "b", a.c = "c"'),
+  //       ['d', 'a']);
+  //   })
 
-    it('ignore this.<property> assignments', function () {
-      assert.deepEqual(
-        api.internal.getAssignmentObjects('d.a = "a", this.coordinates = [[0, 0]], this.properties.a = "b"'),
-        ['d']);
-    })
-
-  })
+  //   it('ignore this.<property> assignments', function () {
+  //     assert.deepEqual(
+  //       api.internal.getAssignmentObjects('d.a = "a", this.coordinates = [[0, 0]], this.properties.a = "b"'),
+  //       ['d']);
+  //   })
+  // })
 
 })

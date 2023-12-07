@@ -1,5 +1,5 @@
 import { getModeData } from '../utils/mapshaper-calc-utils';
-import { compileFeatureExpression } from '../expressions/mapshaper-expressions';
+import { compileFeatureExpression } from '../expressions/mapshaper-feature-expressions';
 import { stop } from '../utils/mapshaper-logging';
 import utils from '../utils/mapshaper-utils';
 

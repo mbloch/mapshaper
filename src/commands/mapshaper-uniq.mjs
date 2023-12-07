@@ -1,4 +1,4 @@
-import { compileValueExpression } from '../expressions/mapshaper-expressions';
+import { compileValueExpression } from '../expressions/mapshaper-feature-expressions';
 import { getFeatureCount } from '../dataset/mapshaper-layer-utils';
 import { message } from '../utils/mapshaper-logging';
 import utils from '../utils/mapshaper-utils';

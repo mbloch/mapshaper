@@ -95,6 +95,7 @@ import * as Env from './mapshaper-env';
 import * as Explode from './commands/mapshaper-explode';
 import * as Export from './io/mapshaper-export';
 import * as Expressions from './expressions/mapshaper-expressions';
+import * as FeatureExpressions from './expressions/mapshaper-feature-expressions';
 import * as FileExport from './io/mapshaper-file-export';
 import * as FileImport from './io/mapshaper-file-import';
 import * as FilenameUtils from './utils/mapshaper-filename-utils';
@@ -213,6 +214,7 @@ Object.assign(internal,
   Explode,
   Export,
   Expressions,
+  FeatureExpressions,
   FileExport,
   FileImport,
   FilenameUtils,

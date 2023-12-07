@@ -1,4 +1,4 @@
-import { compileValueExpression } from '../expressions/mapshaper-expressions';
+import { compileValueExpression } from '../expressions/mapshaper-feature-expressions';
 import { getFeatureCount } from '../dataset/mapshaper-layer-utils';
 import { getAttributeTableInfo, formatAttributeTableInfo } from '../commands/mapshaper-info';
 import geom from '../geom/mapshaper-geom';

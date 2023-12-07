@@ -1,7 +1,7 @@
 import { getBaseContext } from '../expressions/mapshaper-expressions';
 import { runParsedCommands } from '../cli/mapshaper-run-commands';
 import { parseCommands } from '../cli/mapshaper-parse-commands';
-import { stop, message } from '../utils/mapshaper-logging';
+import { stop, message, truncateString } from '../utils/mapshaper-logging';
 import utils from '../utils/mapshaper-utils';
 import cmd from '../mapshaper-cmd';
 import { getIOProxy } from '../expressions/mapshaper-job-proxy';
@@ -21,7 +21,8 @@ cmd.run = async function(job, targets, opts) {
     stop('Expected a string containing mapshaper commands; received:', tmp);
   }
   if (tmp) {
-    message(`command: [${tmp}]`);
+    // truncate message (command might include a large GeoJSON string in an -i command)
+    message(`command: [${truncateString(tmp, 150)}]`);
     commands = parseCommands(tmp);
 
     // TODO: remove duplication with mapshaper-run-commands.mjs

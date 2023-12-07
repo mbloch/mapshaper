@@ -1,5 +1,5 @@
 import { forEachArcId } from '../paths/mapshaper-path-utils';
-import { compileValueExpression } from '../expressions/mapshaper-expressions';
+import { compileValueExpression } from '../expressions/mapshaper-feature-expressions';
 import { getThresholdFunction } from '../simplify/mapshaper-simplify-pct';
 import { finalizeSimplification, convertSimplifyInterval, convertSimplifyResolution,
   simplifyPaths, getStandardSimplifyOpts } from '../commands/mapshaper-simplify';

@@ -1,4 +1,4 @@
-import { compileFeatureExpression, compileValueExpression } from '../expressions/mapshaper-expressions';
+import { compileFeatureExpression, compileValueExpression } from '../expressions/mapshaper-feature-expressions';
 import { getFeatureCount } from '../dataset/mapshaper-layer-utils';
 import { DataTable } from '../datatable/mapshaper-data-table';
 import { expressionUsesGeoJSON, getFeatureEditor } from '../expressions/mapshaper-each-geojson';

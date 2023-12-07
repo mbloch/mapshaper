@@ -1,5 +1,5 @@
 import { traversePaths, getArcPresenceTest } from '../paths/mapshaper-path-utils';
-import { compileFeaturePairExpression, compileFeaturePairFilterExpression } from '../expressions/mapshaper-expressions';
+import { compileFeaturePairExpression, compileFeaturePairFilterExpression } from '../expressions/mapshaper-feature-expressions';
 import { requireDataField, requirePolygonLayer, requirePointLayer, getLayerBounds, setOutputLayerName } from '../dataset/mapshaper-layer-utils';
 import { getArcClassifier } from '../topology/mapshaper-arc-classifier';
 import { forEachPoint } from '../points/mapshaper-point-utils';

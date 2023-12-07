@@ -1,7 +1,7 @@
 import { createLineLayer } from '../commands/mapshaper-lines';
 import { extractInnerLines } from '../commands/mapshaper-lines';
 import { getArcClassifier } from '../topology/mapshaper-arc-classifier';
-import { compileFeaturePairFilterExpression } from '../expressions/mapshaper-expressions';
+import { compileFeaturePairFilterExpression } from '../expressions/mapshaper-feature-expressions';
 import { requirePolygonLayer, setOutputLayerName } from '../dataset/mapshaper-layer-utils';
 import cmd from '../mapshaper-cmd';
 import { message } from '../utils/mapshaper-logging';
