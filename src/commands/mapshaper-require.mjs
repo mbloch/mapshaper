@@ -25,7 +25,7 @@ cmd.require = async function(opts) {
   }
   try {
     // import CJS and ES modules
-    mod = await import(moduleFile || moduleName);
+    mod = await import(moduleFile ? require('url').pathToFileURL(moduleFile) : moduleName);
     if (mod.default) {
       mod = mod.default;
     }
