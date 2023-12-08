@@ -42008,9 +42008,6 @@ ${svg}
     } else {
       moduleName = opts.module;
     }
-    if (moduleFile && !require$1('path').isAbsolute(moduleFile)) {
-      moduleFile = require$1('path').join(process.cwd(), moduleFile);
-    }
     try {
       // import CJS and ES modules
       mod = await import(moduleFile ? require$1('url').pathToFileURL(moduleFile) : moduleName);
@@ -42018,7 +42015,7 @@ ${svg}
         mod = mod.default;
       }
       if (typeof mod == 'function') {
-        // assuming that functions are mapshpaper command generators...
+        // assuming that functions are mapshaper command generators...
         // this MUST be changed asap.
         var retn = mod(api);
         if (retn && isValidExternalCommand(retn)) {
@@ -44793,7 +44790,7 @@ ${svg}
     });
   }
 
-  var version = "0.6.58";
+  var version = "0.6.59";
 
   // Parse command line args into commands and run them
   // Function takes an optional Node-style callback. A Promise is returned if no callback is given.
