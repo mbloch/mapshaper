@@ -1,8 +1,5 @@
 (function () {
 
-  var VERSION = "0.6.56";
-
-
   var utils = /*#__PURE__*/Object.freeze({
     __proto__: null,
     get default () { return utils; },
@@ -42097,13 +42094,19 @@ ${svg}
   });
 
   function getIOProxy(job) {
-    var obj = {
-      _cache: {}
+    async function addInputFile(filename, content) {
+      if (utils.isPromise(content)) {
+        content = await content;
+      }
+      io._cache[filename] = content;
+      return filename; // return filename to support -run '-i {io.ifile()}'
+    }
+    var io = {
+      _cache: {},
+      addInputFile,
+      ifile: addInputFile // ifile() is an alias for addInputFile
     };
-    obj.addInputFile = function(filename, content) {
-      obj._cache[filename] = content;
-    };
-    return obj;
+    return io;
   }
 
   function commandTakesFileInput(name) {
@@ -44790,6 +44793,8 @@ ${svg}
     });
   }
 
+  var version = "0.6.57";
+
   // Parse command line args into commands and run them
   // Function takes an optional Node-style callback. A Promise is returned if no callback is given.
   //   function(argv[, input], callback)
@@ -45093,7 +45098,7 @@ ${svg}
   function runAndRemoveInfoCommands(commands) {
     return commands.filter(function(cmd) {
       if (cmd.name == 'version') {
-        print(typeof VERSION == 'undefined' ? '' : VERSION);
+        print(version);
       } else if (cmd.name == 'encodings') {
         printEncodings();
       } else if (cmd.name == 'colors') {
