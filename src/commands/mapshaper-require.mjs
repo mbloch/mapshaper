@@ -9,7 +9,7 @@ import { isValidExternalCommand } from '../commands/mapshaper-external';
 
 cmd.require = async function(opts) {
   var globals = getStashedVar('defs');
-  var moduleFile, moduleName, mod, err;
+  var moduleFile, moduleName, mod;
   if (!opts.module) {
     stop("Missing module name or path to module");
   }
@@ -20,9 +20,6 @@ cmd.require = async function(opts) {
   } else {
     moduleName = opts.module;
   }
-  if (moduleFile && !require('path').isAbsolute(moduleFile)) {
-    moduleFile = require('path').join(process.cwd(), moduleFile);
-  }
   try {
     // import CJS and ES modules
     mod = await import(moduleFile ? require('url').pathToFileURL(moduleFile) : moduleName);
@@ -30,7 +27,7 @@ cmd.require = async function(opts) {
       mod = mod.default;
     }
     if (typeof mod == 'function') {
-      // assuming that functions are mapshpaper command generators...
+      // assuming that functions are mapshaper command generators...
       // this MUST be changed asap.
       var retn = mod(api);
       if (retn && isValidExternalCommand(retn)) {
