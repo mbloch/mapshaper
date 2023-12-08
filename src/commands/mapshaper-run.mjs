@@ -4,7 +4,7 @@ import { parseCommands } from '../cli/mapshaper-parse-commands';
 import { stop, message, truncateString } from '../utils/mapshaper-logging';
 import utils from '../utils/mapshaper-utils';
 import cmd from '../mapshaper-cmd';
-import { getIOProxy } from '../expressions/mapshaper-job-proxy';
+import { getIOProxy } from '../expressions/mapshaper-io-proxy';
 import { evalTemplateExpression } from '../expressions/mapshaper-template-expressions';
 import { commandTakesFileInput } from '../cli/mapshaper-command-info';
 
