@@ -1,3 +1,6 @@
+v0.6.57
+* Added io.ifile() method for creating dynamic input files in the run command
+
 v0.6.56
 * Added support for importing ES modules using the -require command.
 * Removed the -require init= function.

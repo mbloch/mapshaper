@@ -57,6 +57,18 @@ describe('mapshaper-run.js', function () {
       assert.deepEqual(JSON.parse(out['selection.json']), [{foo: 'bam'}])
     })
 
+   it('supports io.ifile() alias', async function() {
+      var data = [{foo: 'bar'}, {foo: 'baz'}, {foo: 'bam'}];
+      var include = '{ \
+        subset: async function(fc) { \
+          return [fc.features[2].properties]; \
+        }}';
+      var cmd = `-i data.json -include include.js
+        -run '{io.ifile("selection.json", subset(target.geojson))}' -o`;
+      var out = await api.applyCommands(cmd, {'include.js': include, 'data.json': data});
+      assert.deepEqual(JSON.parse(out['selection.json']), [{foo: 'bam'}])
+    })
+
     it('supports creating a command on-the-fly and running it', function (done) {
       var data = [{foo: 'bar'}];
       var include = '{ \
