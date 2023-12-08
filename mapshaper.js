@@ -42013,7 +42013,7 @@ ${svg}
     }
     try {
       // import CJS and ES modules
-      mod = await import(moduleFile || moduleName);
+      mod = await import(moduleFile ? require$1('url').pathToFileURL(moduleFile) : moduleName);
       if (mod.default) {
         mod = mod.default;
       }
@@ -44793,7 +44793,7 @@ ${svg}
     });
   }
 
-  var version = "0.6.57";
+  var version = "0.6.58";
 
   // Parse command line args into commands and run them
   // Function takes an optional Node-style callback. A Promise is returned if no callback is given.
