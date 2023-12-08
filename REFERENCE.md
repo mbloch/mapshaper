@@ -1062,13 +1062,10 @@ Create mapshaper commands on-the-fly and run them.
 
 `<expression>` or `expression=`  A JS expression or template containing embedded expressions, for generating one or more mapshaper commands.
 
-Common options: `target=`
-
 * Embedded expressions are enclosed in curly braces (see below).
 * Expressions can access `target` and `io` objects.
 * Expressions can also access functions and data loaded with the `-require` command.
 * Functions can be async.
-
 
 Expression context:
 
