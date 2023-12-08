@@ -1,3 +1,6 @@
+v0.6.59
+* Second attempted fix for -require error on Windows.
+
 v0.6.58
 * Fix for -require error on Windows.
 
