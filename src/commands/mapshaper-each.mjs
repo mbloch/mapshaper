@@ -1,4 +1,4 @@
-import { compileFeatureExpression, compileValueExpression } from '../expressions/mapshaper-feature-expressions';
+import { compileFeatureExpression } from '../expressions/mapshaper-feature-expressions';
 import { getFeatureCount } from '../dataset/mapshaper-layer-utils';
 import { DataTable } from '../datatable/mapshaper-data-table';
 import { expressionUsesGeoJSON, getFeatureEditor } from '../expressions/mapshaper-each-geojson';
@@ -13,6 +13,7 @@ cmd.evaluateEachFeature = function(lyr, dataset, exp, opts) {
       compiled, filter;
 
   var exprOpts = {
+    no_return: true,
     geojson_editor: expressionUsesGeoJSON(exp) ? getFeatureEditor(lyr, dataset) : null
   };
 
@@ -21,7 +22,7 @@ cmd.evaluateEachFeature = function(lyr, dataset, exp, opts) {
     lyr.data = new DataTable(n);
   }
   if (opts && opts.where) {
-    filter = compileValueExpression(opts.where, lyr, arcs);
+    filter = compileFeatureExpression(opts.where, lyr, arcs);
   }
   compiled = compileFeatureExpression(exp, lyr, arcs, exprOpts);
   // call compiled expression with id of each record

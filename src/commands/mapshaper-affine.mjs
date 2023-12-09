@@ -3,7 +3,7 @@ import { forEachArcId } from '../paths/mapshaper-path-utils';
 import { getDatasetBounds } from '../dataset/mapshaper-dataset-utils';
 import { forEachPoint } from '../points/mapshaper-point-utils';
 import { countArcsInShapes } from '../paths/mapshaper-path-utils';
-import { compileValueExpression } from '../expressions/mapshaper-feature-expressions';
+import { compileFeatureExpression } from '../expressions/mapshaper-feature-expressions';
 import { layerHasGeometry } from '../dataset/mapshaper-layer-utils';
 import { getDatasetCRS } from '../crs/mapshaper-projections';
 import { convertIntervalPair } from '../geom/mapshaper-units';
@@ -37,7 +37,7 @@ cmd.affine = function(targetLayers, dataset, opts) {
     if (targetLayers.indexOf(lyr) == -1) {
       misses = lyr.shapes;
     } else if (opts.where) {
-      test = compileValueExpression(opts.where, lyr, dataset.arcs);
+      test = compileFeatureExpression(opts.where, lyr, dataset.arcs);
       lyr.shapes.forEach(function(shp, i) {
         (test(i) ? hits : misses).push(shp);
       });

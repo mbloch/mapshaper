@@ -2,12 +2,7 @@ import utils from '../utils/mapshaper-utils';
 import { blend } from '../color/blending';
 import { roundToDigits2 } from '../geom/mapshaper-rounding';
 import { formatDMS, parseDMS } from '../geom/mapshaper-dms';
-
-export function cleanExpression(exp) {
-  // workaround for problem in GNU Make v4: end-of-line backslashes inside
-  // quoted strings are left in the string (other shell environments remove them)
-  return exp.replace(/\\\n/g, ' ');
-}
+import { stop } from '../utils/mapshaper-logging';
 
 export function addFeatureExpressionUtils(env) {
   Object.assign(env, {
@@ -18,6 +13,12 @@ export function addFeatureExpressionUtils(env) {
     format_dms: formatDMS,
     parse_dms: parseDMS
   });
+}
+
+export function requireBooleanResult(val, msg) {
+  if (val !== true && val !== false) {
+    stop(msg || 'Filter expression must return true or false');
+  }
 }
 
 // piecewise linear interpolation (for a special project)

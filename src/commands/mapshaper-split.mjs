@@ -1,4 +1,4 @@
-import { compileValueExpression } from '../expressions/mapshaper-feature-expressions';
+import { compileFeatureExpression } from '../expressions/mapshaper-feature-expressions';
 import { getFeatureCount, copyLayer } from '../dataset/mapshaper-layer-utils';
 import cmd from '../mapshaper-cmd';
 import utils from '../utils/mapshaper-utils';
@@ -84,7 +84,7 @@ export function getSplitNameFunction(lyr, arg) {
   }
   // Assume: argument is an expression
   lyr = {name: lyr.name, data: lyr.data}; // remove shape info
-  compiled = compileValueExpression(arg, lyr, null);
+  compiled = compileFeatureExpression(arg, lyr, null);
   return function(i) {
     var val = compiled(i);
     return valueToLayerName(val);

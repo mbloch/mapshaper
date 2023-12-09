@@ -1,4 +1,5 @@
-import { compileValueExpression } from '../expressions/mapshaper-feature-expressions';
+import { compileFeatureExpression } from '../expressions/mapshaper-feature-expressions';
+import { requireBooleanResult } from '../expressions/mapshaper-expression-utils';
 import { getFeatureCount } from '../dataset/mapshaper-layer-utils';
 import { getAttributeTableInfo, formatAttributeTableInfo } from '../commands/mapshaper-info';
 import geom from '../geom/mapshaper-geom';
@@ -72,13 +73,12 @@ function selectFeatures(lyr, arcs, opts) {
   if (!opts.expression) {
     stop("Missing a JS expression for selecting a feature");
   }
-  filter = compileValueExpression(opts.expression, lyr, arcs);
+  filter = compileFeatureExpression(opts.expression, lyr, arcs);
   utils.repeat(n, function(id) {
     var result = filter(id);
+    requireBooleanResult(result, 'Expression must return true or false');
     if (result === true) {
       ids.push(id);
-    } else if (result !== false) {
-      stop("Expression must return true or false");
     }
   });
   return ids;

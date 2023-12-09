@@ -1,5 +1,5 @@
 import { countMultiPartFeatures } from '../dataset/mapshaper-layer-utils';
-import { compileValueExpression } from '../expressions/mapshaper-feature-expressions';
+import { compileFeatureExpression } from '../expressions/mapshaper-feature-expressions';
 import { getLayerBounds } from '../dataset/mapshaper-layer-utils';
 import { probablyDecimalDegreeBounds } from '../geom/mapshaper-latlon';
 import geom from '../geom/mapshaper-geom';
@@ -7,7 +7,7 @@ import { stop } from '../utils/mapshaper-logging';
 
 export function dissolvePointGeometry(lyr, getGroupId, opts) {
   var useSph = !opts.planar && probablyDecimalDegreeBounds(getLayerBounds(lyr));
-  var getWeight = opts.weight ? compileValueExpression(opts.weight, lyr) : null;
+  var getWeight = opts.weight ? compileFeatureExpression(opts.weight, lyr, null) : null;
   var groups = [];
 
   // TODO: support multipoints

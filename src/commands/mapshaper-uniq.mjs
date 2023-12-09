@@ -1,4 +1,4 @@
-import { compileValueExpression } from '../expressions/mapshaper-feature-expressions';
+import { compileFeatureExpression } from '../expressions/mapshaper-feature-expressions';
 import { getFeatureCount } from '../dataset/mapshaper-layer-utils';
 import { message } from '../utils/mapshaper-logging';
 import utils from '../utils/mapshaper-utils';
@@ -7,7 +7,7 @@ import { DataTable } from '../datatable/mapshaper-data-table';
 
 cmd.uniq = function(lyr, arcs, opts) {
   var n = getFeatureCount(lyr),
-      compiled = compileValueExpression(opts.expression, lyr, arcs),
+      compiled = compileFeatureExpression(opts.expression, lyr, arcs),
       maxCount = opts.max_count || 1,
       counts = {},
       keepFlags = [],

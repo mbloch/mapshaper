@@ -1,4 +1,4 @@
-import { compileValueExpression } from '../expressions/mapshaper-feature-expressions';
+import { compileFeatureExpression } from '../expressions/mapshaper-feature-expressions';
 import { getDatasetCRS } from '../crs/mapshaper-projections';
 import { convertDistanceParam } from '../geom/mapshaper-units';
 import { parseMeasure2 } from '../geom/mapshaper-units';
@@ -110,7 +110,7 @@ export function getBufferDistanceFunction(lyr, dataset, opts) {
   var crs = getDatasetCRS(dataset);
   var constDist = parseConstantBufferDistance(opts.radius + unitStr, crs);
   if (constDist) return function() {return constDist;};
-  var expr = compileValueExpression(opts.radius, lyr, null, {}); // no arcs
+  var expr = compileFeatureExpression(opts.radius, lyr, null); // no arcs
   return function(shpId) {
     var val = expr(shpId);
     if (!val) return 0;

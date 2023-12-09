@@ -2,6 +2,7 @@ import { getModeData } from '../utils/mapshaper-calc-utils';
 import { compileFeatureExpression } from '../expressions/mapshaper-feature-expressions';
 import { stop } from '../utils/mapshaper-logging';
 import utils from '../utils/mapshaper-utils';
+import { requireBooleanResult } from '../expressions/mapshaper-feature-utils';
 
 // Returns a function for filtering multiple source-table records
 // (used by -join command)
@@ -18,10 +19,9 @@ export function getJoinFilter(data, exp) {
         retn, i;
     for (i=0; i<srcIds.length; i++) {
       retn = test(srcIds[i], destRec, d);
+      requireBooleanResult(retn, '"where" expression must return true or false');
       if (retn === true) {
         filtered.push(srcIds[i]);
-      } else if (retn !== false) {
-        stop('"where" expression must return true or false');
       }
     }
     return filtered;
@@ -53,7 +53,7 @@ function getJoinFilterCalcFunction(exp, data) {
     }
   };
 
-  calc = compileFeatureExpression(exp, {data: data}, null, {context: context});
+  calc = compileFeatureExpression(exp, {data: data}, null, {context: context, no_return: true});
 
   function reset() {
     max = -Infinity;
@@ -100,7 +100,7 @@ function getJoinFilterTestFunction(exp, data) {
     enumerable: true // so it can be mixed-in to the actual expression context
   });
 
-  test = compileFeatureExpression(exp, {data: data}, null, {context: context, returns: true});
+  test = compileFeatureExpression(exp, {data: data}, null, {context: context});
 
   // calcR: results from calculation phase, or null
   return function(srcId, destR, calcR) {

@@ -1,51 +1,29 @@
-import { addFeatureExpressionUtils, cleanExpression } from '../expressions/mapshaper-expression-utils';
+import { addFeatureExpressionUtils, requireBooleanResult } from '../expressions/mapshaper-expression-utils';
 import { initFeatureProxy } from '../expressions/mapshaper-feature-proxy';
 import { addLayerGetters } from '../expressions/mapshaper-layer-proxy';
 import { initDataTable } from '../dataset/mapshaper-layer-utils';
 import utils from '../utils/mapshaper-utils';
 import { message, stop } from '../utils/mapshaper-logging';
 import { getStashedVar } from '../mapshaper-stash';
-import { getAssignedVars, getExpressionFunction, getBaseContext}
+import { getAssignedVars, getExpressionFunction, getBaseContext, nullifyUnsetProperties}
   from './mapshaper-expressions';
-
-// Compiled expression returns a value
-export function compileValueExpression(exp, lyr, arcs, opts) {
-  opts = opts || {};
-  opts.returns = true;
-  return compileFeatureExpression(exp, lyr, arcs, opts);
-}
 
 export function compileFeaturePairFilterExpression(exp, lyr, arcs) {
   var func = compileFeaturePairExpression(exp, lyr, arcs);
   return function(idA, idB) {
     var val = func(idA, idB);
-    if (val !== true && val !== false) {
-      stop("where expression must return true or false");
-    }
+    requireBooleanResult(val, '"where" expression must return true or false');
     return val;
   };
 }
 
-export function compileFeaturePairExpression(rawExp, lyr, arcs) {
-  var exp = cleanExpression(rawExp);
+export function compileFeaturePairExpression(exp, lyr, arcs) {
   // don't add layer data to the context
   // (fields are not added to the pair expression context)
   var ctx = getFeatureExpressionContext({});
   var getA = getProxyFactory(lyr, arcs);
   var getB = getProxyFactory(lyr, arcs);
-  var vars = getAssignedVars(exp);
-  var functionBody = "with($$env){with($$record){return " + exp + "}}";
-  var func;
-
-  // protect global object from assigned values
-  nullifyUnsetProperties(vars, ctx);
-
-  try {
-    func = new Function("$$record,$$env", functionBody);
-  } catch(e) {
-    console.error(e);
-    stop(e.name, "in expression [" + exp + "]");
-  }
+  var func = getExpressionFunction(exp, ctx, {});
 
   function getProxyFactory(lyr, arcs) {
     var records = lyr.data ? lyr.data.getRecords() : [];
@@ -66,70 +44,40 @@ export function compileFeaturePairExpression(rawExp, lyr, arcs) {
   // idB - id of a record, or -1
   // rec - optional data record
   return function(idA, idB, rec) {
-    var val;
     ctx.A = getA(idA);
     ctx.B = getB(idB);
-    if (rec) {
-      // initialize new fields to null so assignments work
-      nullifyUnsetProperties(vars, rec);
-    }
-    try {
-      val = func.call(ctx, rec || {}, ctx);
-    } catch(e) {
-      stop(e.name, "in expression [" + exp + "]:", e.message);
-    }
-    return val;
+    return func(rec || {});
   };
 }
 
-export function compileFeatureExpression(rawExp, lyr, arcs, optsArg) {
+export function compileFeatureExpression(exp, lyr, arcs, optsArg) {
   var opts = optsArg || {},
-      ctx = opts.context || {},
-      exp = cleanExpression(rawExp || ''),
-      mutable = !opts.no_assign, // block assignment expressions
       vars = getAssignedVars(exp);
 
-  if (mutable && vars.length > 0 && !lyr.data) {
+  if (vars.length > 0 && !lyr.data) {
     initDataTable(lyr);
-  }
-
-  if (!mutable) {
-    // protect global object from assigned values
-    nullifyUnsetProperties(vars, ctx);
   }
 
   var records = lyr.data ? lyr.data.getRecords() : [];
   var getFeatureById = initFeatureProxy(lyr, arcs, opts);
   var layerOnlyProxy = addLayerGetters({}, lyr, arcs);
-  var func = getExpressionFunction(exp, opts);
-  ctx = getFeatureExpressionContext(lyr, ctx, opts);
+  var ctx = getFeatureExpressionContext(lyr, opts.context || {}, opts);
+  var func = getExpressionFunction(exp, ctx, opts);
 
   // recId: index of a data record in the records array.
   // destRec: (optional argument, used by -calc) an object used to capture assignments
   //   By default, assignments are captured by records[recId]
   //
   return function(recId, destRec) {
-    var rec;
-    if (destRec) {
-      rec = destRec;
-    } else {
-      rec = records[recId] || (records[recId] = {});
-    }
+    var rec = destRec || records[recId] || (records[recId] = {});
     // Assigning feature/layer proxy to '$' ... ctx.$ is also exposed as 'this'
     // in the expression context.
     ctx.$ = recId >= 0 ? getFeatureById(recId) : layerOnlyProxy;
-    // "_" is used as an alias for the expression context, so functions can still
-    // be used when masked by variables of the same name.
-    ctx._ = ctx;
     // Expose data properties using "d", like d3 does. (data propertries are
     // also available as "this.properties")
-    ctx.d = rec || null;
+    ctx.d = rec;
 
-    if (mutable) {
-      // initialize assigned variables to rec.null so rec can capture them
-      nullifyUnsetProperties(vars, rec);
-    }
-    return func(rec, ctx);
+    return func(rec);
   };
 }
 
@@ -179,10 +127,3 @@ function getFeatureExpressionContext(lyr, mixins, opts) {
   }, ctx);
 }
 
-function nullifyUnsetProperties(vars, obj) {
-  for (var i=0; i<vars.length; i++) {
-    if (vars[i] in obj === false) {
-      obj[vars[i]] = null;
-    }
-  }
-}

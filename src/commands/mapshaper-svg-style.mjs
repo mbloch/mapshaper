@@ -1,6 +1,6 @@
 import { getLayerDataTable, getFeatureCount } from '../dataset/mapshaper-layer-utils';
 import { getSymbolPropertyAccessor } from '../svg/svg-properties';
-import { compileValueExpression } from '../expressions/mapshaper-feature-expressions';
+import { compileFeatureExpression } from '../expressions/mapshaper-feature-expressions';
 import { initDataTable } from '../dataset/mapshaper-layer-utils';
 import { isSupportedSvgStyleProperty } from '../svg/svg-properties';
 import cmd from '../mapshaper-cmd';
@@ -14,7 +14,7 @@ cmd.svgStyle = function(lyr, dataset, opts) {
     initDataTable(lyr);
   }
   if (opts.where) {
-    filter = compileValueExpression(opts.where, lyr, dataset.arcs);
+    filter = compileFeatureExpression(opts.where, lyr, dataset.arcs);
   }
   Object.keys(opts).forEach(function(optName) {
     var svgName = optName.replace('_', '-'); // undo cli parser name conversion
