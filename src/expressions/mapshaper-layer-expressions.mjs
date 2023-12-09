@@ -26,8 +26,7 @@ export function compileLayerExpression(expr, catalog, opts) {
     ctx = getNullLayerProxy(targets);
   }
   ctx.global = defs; // TODO: remove duplication with mapshaper.expressions.mjs
-  var exprOpts = Object.assign({returns: true}, opts);
-  var func = compileExpressionToFunction(expr, exprOpts);
+  var func = compileExpressionToFunction(expr, opts);
 
   // @geoType: optional geometry type (polygon, polyline, point, null);
   ctx.layer_exists = function(name, geoType) {

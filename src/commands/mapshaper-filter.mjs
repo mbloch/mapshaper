@@ -1,6 +1,7 @@
 import { getBBoxIntersectionTest } from '../commands/mapshaper-filter-geom';
-import { compileValueExpression } from '../expressions/mapshaper-feature-expressions';
+import { compileFeatureExpression } from '../expressions/mapshaper-feature-expressions';
 import { getOutputLayer, getFeatureCount, copyLayer } from '../dataset/mapshaper-layer-utils';
+import { requireBooleanResult } from '../expressions/mapshaper-expression-utils';
 import utils from '../utils/mapshaper-utils';
 import cmd from '../mapshaper-cmd';
 import { stop, message } from '../utils/mapshaper-logging';
@@ -18,7 +19,7 @@ cmd.filterFeatures = function(lyr, arcs, opts) {
       filter;
 
   if (opts.expression) {
-    filter = compileValueExpression(opts.expression, lyr, arcs);
+    filter = compileFeatureExpression(opts.expression, lyr, arcs);
   }
 
   if (opts.ids) {
@@ -39,12 +40,11 @@ cmd.filterFeatures = function(lyr, arcs, opts) {
 
   utils.repeat(n, function(shapeId) {
     var result = filter(shapeId);
+    requireBooleanResult(result);
     if (invert) result = !result;
     if (result === true) {
       if (shapes) filteredShapes.push(shapes[shapeId] || null);
       if (records) filteredRecords.push(records[shapeId] || null);
-    } else if (result !== false) {
-      stop("Expression must return true or false");
     }
   });
 
@@ -71,12 +71,11 @@ export function filterLayerInPlace(lyr, filter, invert) {
       filteredRecords = records ? [] : null;
   utils.repeat(n, function(shapeId) {
     var result = filter(shapeId);
+    requireBooleanResult(result);
     if (invert) result = !result;
     if (result === true) {
       if (shapes) filteredShapes.push(shapes[shapeId] || null);
       if (records) filteredRecords.push(records[shapeId] || null);
-    } else if (result !== false) {
-      stop("Expression must return true or false");
     }
   });
   lyr.shapes = filteredShapes;

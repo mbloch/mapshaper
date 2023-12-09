@@ -5,7 +5,6 @@ import { convertDistanceParam } from '../geom/mapshaper-units';
 import { isLatLngCRS , getDatasetCRS } from '../crs/mapshaper-projections';
 import { requirePolylineLayer, getFeatureCount } from '../dataset/mapshaper-layer-utils';
 import { getFeatureEditor } from '../expressions/mapshaper-each-geojson';
-import { compileValueExpression } from '../expressions/mapshaper-feature-expressions';
 import { replaceLayerContents } from '../dataset/mapshaper-dataset-utils';
 import { greatCircleDistance, distance2D } from '../geom/mapshaper-basic-geom';
 import { getInterpolationFunction } from '../geom/mapshaper-geodesic';

@@ -23,22 +23,22 @@ describe('mapshaper-expressions.js', function () {
     })
   })
 
-  describe('compileValueExpression()', function () {
+  describe('compileFeatureExpression()', function () {
     it('returns residual value', function () {
       var lyr = {};
-      var f = api.internal.compileValueExpression('1', lyr, null);
+      var f = api.internal.compileFeatureExpression('1', lyr, null);
       assert.equal(f(0), 1);
     })
 
     it('returns residual value 2', function () {
       var lyr = {};
-      var f = api.internal.compileValueExpression('"a"', lyr, null);
+      var f = api.internal.compileFeatureExpression('"a"', lyr, null);
       assert.equal(f(0), "a");
     })
 
     it('throws error on undefined variable', function () {
       var lyr = {};
-      var f = api.internal.compileValueExpression('foo', lyr, null);
+      var f = api.internal.compileFeatureExpression('foo', lyr, null);
       assert.throws(function() {
         f(0);
       });
@@ -46,7 +46,7 @@ describe('mapshaper-expressions.js', function () {
 
     it('throws error on undefined variable 2', function () {
       var lyr = {};
-      var f = api.internal.compileValueExpression('foo == true', lyr, null);
+      var f = api.internal.compileFeatureExpression('foo == true', lyr, null);
       assert.throws(function() {
         f(0);
       });

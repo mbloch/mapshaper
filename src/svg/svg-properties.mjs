@@ -1,4 +1,4 @@
-import { compileValueExpression } from '../expressions/mapshaper-feature-expressions';
+import { compileFeatureExpression } from '../expressions/mapshaper-feature-expressions';
 import utils from '../utils/mapshaper-utils';
 import { stop } from '../utils/mapshaper-logging';
 import { parsePattern } from '../svg/svg-hatch';
@@ -169,7 +169,7 @@ export function getSymbolPropertyAccessor(val, svgName, lyr) {
 function parseStyleExpression(strVal, lyr) {
   var func;
   try {
-    func = compileValueExpression(strVal, lyr, null, {no_warn: true});
+    func = compileFeatureExpression(strVal, lyr, null, {no_warn: true});
     func(0); // check for runtime errors (e.g. undefined variables)
   } catch(e) {
     func = null;

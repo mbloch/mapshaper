@@ -5,6 +5,7 @@ import { stop } from '../utils/mapshaper-logging';
 import cmd from '../mapshaper-cmd';
 import utils from '../utils/mapshaper-utils';
 import { DataTable } from '../datatable/mapshaper-data-table';
+import { requireBooleanResult } from '../expressions/mapshaper-expression-utils';
 
 // Recursively divide a layer into two layers until a (compiled) expression
 // no longer returns true. The original layer is split along the long side of
@@ -19,10 +20,7 @@ function subdivide(lyr, arcs, exp) {
   var divide = evalCalcExpression(lyr, arcs, exp),
       subdividedLayers = [],
       tmp, bounds, lyr1, lyr2, layerName;
-
-  if (!utils.isBoolean(divide)) {
-    stop("Expression must evaluate to true or false");
-  }
+  requireBooleanResult(divide, 'Expression must evaluate to true or false');
   if (divide) {
     bounds = getLayerBounds(lyr, arcs);
     tmp = divideLayer(lyr, arcs, bounds);

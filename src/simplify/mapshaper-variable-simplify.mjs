@@ -1,5 +1,5 @@
 import { forEachArcId } from '../paths/mapshaper-path-utils';
-import { compileValueExpression } from '../expressions/mapshaper-feature-expressions';
+import { compileFeatureExpression } from '../expressions/mapshaper-feature-expressions';
 import { getThresholdFunction } from '../simplify/mapshaper-simplify-pct';
 import { finalizeSimplification, convertSimplifyInterval, convertSimplifyResolution,
   simplifyPaths, getStandardSimplifyOpts } from '../commands/mapshaper-simplify';
@@ -41,7 +41,7 @@ cmd.variableSimplify = function(layers, dataset, opts) {
 };
 
 function getVariableIntervalFunction(exp, lyr, dataset, opts) {
-  var compiled = compileSimplifyExpression(exp, lyr, dataset.arcs);
+  var compiled = compileFeatureExpression(exp, lyr, dataset.arcs);
   return function(shpId) {
     var val = compiled(shpId);
     return convertSimplifyInterval(val, dataset, opts);
@@ -68,7 +68,7 @@ function getVariablePercentageFunction(exp, lyr, dataset, opts) {
 
 // TODO: memoize?
 function compileSimplifyExpression(exp, lyr, arcs) {
-  return compileValueExpression(exp, lyr, arcs);
+  return compileFeatureExpression(exp, lyr, arcs);
 }
 
 // Filter arcs based on an array of thresholds

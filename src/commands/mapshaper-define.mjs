@@ -18,6 +18,7 @@ cmd.define = function(catalog, opts) {
     stop('Missing an assignment expression');
   }
   var defs = getStashedVar('defs');
-  var compiled = compileFeatureExpression(opts.expression, {}, null, {no_warn: true});
+  var compiled = compileFeatureExpression(opts.expression, {}, null,
+    {no_warn: true, no_return: true});
   var result = compiled(null, defs);
 };

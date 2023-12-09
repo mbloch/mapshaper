@@ -1,5 +1,6 @@
 import { trimBOM, decodeString } from '../text/mapshaper-encodings';
-import { getBaseContext, compileExpressionToFunction } from '../expressions/mapshaper-expressions';
+import { getExpressionFunction } from '../expressions/mapshaper-expressions';
+import { requireBooleanResult } from '../expressions/mapshaper-expression-utils';
 import utils from '../utils/mapshaper-utils';
 import { stop } from '../utils/mapshaper-logging';
 import { Reader2 } from '../io/mapshaper-file-reader';
@@ -112,18 +113,10 @@ export function parseDelimHeaderSection(str, delim, opts) {
 // Returns a function for filtering records
 // TODO: look into using more code from standard expressions.
 function getDelimRecordFilterFunction(expression) {
-  var rowFilter = compileExpressionToFunction(expression, {returns: true});
-  var ctx = getBaseContext();
+  var rowFilter = getExpressionFunction(expression);
   return function(rec) {
-    var val;
-    try {
-      val = rowFilter.call(null, rec, ctx);
-    } catch(e) {
-      stop(e.name, "in expression [" + expression + "]:", e.message);
-    }
-    if (val !== true && val !== false) {
-      stop("Filter expression must return true or false");
-    }
+    var val = rowFilter(rec);
+    requireBooleanResult(val);
     return val;
   };
 }
