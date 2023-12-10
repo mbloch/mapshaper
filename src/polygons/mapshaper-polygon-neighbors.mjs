@@ -14,7 +14,7 @@ import { forEachArcId } from '../paths/mapshaper-path-utils';
 //    an empty array if a shape has no neighbors.
 //
 export function getNeighborLookupFunction(lyr, arcs) {
-  var classifier = getArcClassifier(lyr.shapes, arcs, {reusable: true});
+  var classifier = getArcClassifier(lyr, arcs, {reusable: true});
   var classify = classifier(onShapes);
   var currShapeId;
   var neighbors;
@@ -53,11 +53,11 @@ export function getNeighborLookupFunction(lyr, arcs) {
 // Returns an array containing all pairs of adjacent shapes
 // in a collection of polygon shapes. A pair of shapes is represented as
 // an array of two shape indexes [a, b].
-export function findPairsOfNeighbors(shapes, arcs) {
+export function findPairsOfNeighbors(lyr, arcs) {
   var getKey = function(a, b) {
     return b > -1 && a > -1 ? [a, b] : null;
   };
-  var classify = getArcClassifier(shapes, arcs)(getKey);
+  var classify = getArcClassifier(lyr, arcs)(getKey);
   var arr = [];
   var index = {};
   var onArc = function(arcId) {
@@ -71,6 +71,6 @@ export function findPairsOfNeighbors(shapes, arcs) {
       }
     }
   };
-  forEachArcId(shapes, onArc);
+  forEachArcId(lyr.shapes, onArc);
   return arr;
 }

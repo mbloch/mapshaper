@@ -8,6 +8,37 @@ import { getStashedVar } from '../mapshaper-stash';
 import { getAssignedVars, getExpressionFunction, getBaseContext, nullifyUnsetProperties}
   from './mapshaper-expressions';
 
+export function compileFeatureExpression(exp, lyr, arcs, optsArg) {
+  var opts = optsArg || {},
+      vars = getAssignedVars(exp);
+
+  if (vars.length > 0 && !lyr.data) {
+    initDataTable(lyr);
+  }
+
+  var records = lyr.data ? lyr.data.getRecords() : [];
+  var getFeatureById = initFeatureProxy(lyr, arcs, opts);
+  var layerOnlyProxy = addLayerGetters({}, lyr, arcs);
+  var ctx = getFeatureExpressionContext(lyr, opts.context || {}, opts);
+  var func = getExpressionFunction(exp, ctx, opts);
+
+  // recId: index of a data record in the records array.
+  // destRec: (optional argument, used by -calc) an object used to capture assignments
+  //   By default, assignments are captured by records[recId]
+  //
+  return function(recId, destRec) {
+    var rec = destRec || records[recId] || (records[recId] = {});
+    // Assigning feature/layer proxy to '$' ... ctx.$ is also exposed as 'this'
+    // in the expression context.
+    ctx.$ = recId >= 0 ? getFeatureById(recId) : layerOnlyProxy;
+    // Expose data properties using "d", like d3 does. (data propertries are
+    // also available as "this.properties")
+    ctx.d = rec;
+
+    return func(rec);
+  };
+}
+
 export function compileFeaturePairFilterExpression(exp, lyr, arcs) {
   var func = compileFeaturePairExpression(exp, lyr, arcs);
   return function(idA, idB) {
@@ -50,36 +81,7 @@ export function compileFeaturePairExpression(exp, lyr, arcs) {
   };
 }
 
-export function compileFeatureExpression(exp, lyr, arcs, optsArg) {
-  var opts = optsArg || {},
-      vars = getAssignedVars(exp);
 
-  if (vars.length > 0 && !lyr.data) {
-    initDataTable(lyr);
-  }
-
-  var records = lyr.data ? lyr.data.getRecords() : [];
-  var getFeatureById = initFeatureProxy(lyr, arcs, opts);
-  var layerOnlyProxy = addLayerGetters({}, lyr, arcs);
-  var ctx = getFeatureExpressionContext(lyr, opts.context || {}, opts);
-  var func = getExpressionFunction(exp, ctx, opts);
-
-  // recId: index of a data record in the records array.
-  // destRec: (optional argument, used by -calc) an object used to capture assignments
-  //   By default, assignments are captured by records[recId]
-  //
-  return function(recId, destRec) {
-    var rec = destRec || records[recId] || (records[recId] = {});
-    // Assigning feature/layer proxy to '$' ... ctx.$ is also exposed as 'this'
-    // in the expression context.
-    ctx.$ = recId >= 0 ? getFeatureById(recId) : layerOnlyProxy;
-    // Expose data properties using "d", like d3 does. (data propertries are
-    // also available as "this.properties")
-    ctx.d = rec;
-
-    return func(rec);
-  };
-}
 
 function getFeatureExpressionContext(lyr, mixins, opts) {
   var defs = getStashedVar('defs');
