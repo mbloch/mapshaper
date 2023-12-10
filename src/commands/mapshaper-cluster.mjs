@@ -47,7 +47,7 @@ function calcPolygonClusters(lyr, arcs, opts) {
   if (groupField && !lyr.data) stop("Missing attribute data table");
 
   // Populate mergeItems array
-  findPairsOfNeighbors(lyr.shapes, arcs).forEach(function(ab, i) {
+  findPairsOfNeighbors(lyr, arcs).forEach(function(ab, i) {
     // ab: [a, b] indexes of two polygons
     var a = shapeItems[ab[0]],
         b = shapeItems[ab[1]],

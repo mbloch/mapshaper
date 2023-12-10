@@ -1,5 +1,5 @@
 import { traversePaths, getArcPresenceTest } from '../paths/mapshaper-path-utils';
-import { compileFeaturePairExpression, compileFeaturePairFilterExpression } from '../expressions/mapshaper-feature-expressions';
+import { compileFeaturePairExpression } from '../expressions/mapshaper-feature-expressions';
 import { requireDataField, requirePolygonLayer, requirePointLayer, getLayerBounds, setOutputLayerName } from '../dataset/mapshaper-layer-utils';
 import { getArcClassifier } from '../topology/mapshaper-arc-classifier';
 import { forEachPoint } from '../points/mapshaper-point-utils';
@@ -150,9 +150,8 @@ function pointShapesToLineGeometry(shapes) {
 
 export function polygonsToLines(lyr, arcs, opts) {
   opts = opts || {};
-  var filter = opts.where ? compileFeaturePairFilterExpression(opts.where, lyr, arcs) : null,
-      decorateRecord = opts.each ? getLineRecordDecorator(opts.each, lyr, arcs) : null,
-      classifier = getArcClassifier(lyr.shapes, arcs, {filter: filter}),
+  var decorateRecord = opts.each ? getLineRecordDecorator(opts.each, lyr, arcs) : null,
+      classifier = getArcClassifier(lyr, arcs, {where: opts.where}),
       fields = utils.isArray(opts.fields) ? opts.fields : [],
       rankId = 0,
       shapes = [],
@@ -201,7 +200,7 @@ export function polygonsToLines(lyr, arcs, opts) {
 // kludgy way to implement each= option of -lines command
 function getLineRecordDecorator(exp, lyr, arcs) {
   // repurpose arc classifier function to convert arc ids to shape ids of original polygons
-  var procArcId = getArcClassifier(lyr.shapes, arcs)(procShapeIds);
+  var procArcId = getArcClassifier(lyr, arcs)(procShapeIds);
   var compiled = compileFeaturePairExpression(exp, lyr, arcs);
   var tmp;
 
