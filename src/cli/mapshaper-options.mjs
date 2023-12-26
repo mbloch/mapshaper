@@ -310,6 +310,10 @@ export function getOptionParser() {
       describe: '[GeoJSON] use original GeoJSON spec (not RFC 7946)',
       type: 'flag'
     })
+    .option('rfc7946', {
+      // dummy option so old commands do not break
+      type: 'flag'
+    })
     .option('combine-layers', {
       describe: '[GeoJSON] output layers as a single file',
       type: 'flag'
@@ -1960,15 +1964,18 @@ export function getOptionParser() {
     .option('target', targetOpt);
 
   parser.command('scalebar')
-    // .describe()
+    .describe('add a simple scale bar to SVG output')
+    .option('label', {
+      DEFAULT: true,
+      describe: 'distance label, e.g. "35 miles"'
+    })
     .option('top', {})
     .option('right', {})
     .option('bottom', {})
     .option('left', {})
     .option('font-size', {})
     // .option('font-family', {})
-    .option('label-position', {}) // top or bottom
-    .option('label-text', {});
+    .option('label-position', {}); // top or bottom
 
   parser.command('shape')
     .describe('create a polyline or polygon from coordinates')

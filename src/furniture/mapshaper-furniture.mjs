@@ -2,6 +2,14 @@
 import { stop } from '../utils/mapshaper-logging';
 export var furnitureRenderers = {};
 
+export function addFurnitureLayer(lyr, catalog) {
+  var o = {
+    info: {},
+    layers: [lyr]
+  };
+  catalog.getDatasets().push(o);
+}
+
 // @lyr a layer in a dataset
 export function layerHasFurniture(lyr) {
   var type = getFurnitureLayerType(lyr);

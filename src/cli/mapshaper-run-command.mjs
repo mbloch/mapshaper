@@ -100,7 +100,8 @@ function commandAcceptsEmptyTarget(name) {
     name == 'point-grid' || name == 'shape' || name == 'rectangle' ||
     name == 'require' || name == 'run' || name == 'define' ||
     name == 'include' || name == 'print' || name == 'comment' || name == 'if' || name == 'elif' ||
-    name == 'else' || name == 'endif' || name == 'stop' || name == 'add-shape';
+    name == 'else' || name == 'endif' || name == 'stop' || name == 'add-shape' ||
+    name == 'scalebar';
 }
 
 export async function runCommand(command, job) {
