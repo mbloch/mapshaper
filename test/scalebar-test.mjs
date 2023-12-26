@@ -12,6 +12,7 @@ describe('mapshaper-scalebar.js', function () {
     assert.equal(parse('1/2 MILE'), 1 / 2 * toKm);
     assert.equal(parse('0.5 MILE'), 0.5 * toKm);
     assert.equal(parse('1km'), 1);
+    assert.equal(parse('5 k.m.'), 5);
     assert.equal(parse('1 kilometer'), 1);
     assert.equal(parse('5 kilometres'), 5);
     assert.equal(parse('1,000 KILOMETERS'), 1000);
@@ -23,5 +24,29 @@ describe('mapshaper-scalebar.js', function () {
     assert.equal(format('1'), '1 MILE')
     assert.equal(format('1.5'), '1.5 MILES')
     assert.equal(format('1/8'), '1/8 MILE')
+  })
+
+  describe('-scalebar command', function() {
+    it ('works without initial data', async function() {
+      var file = 'test/data/two_states.json';
+      var cmd = `-scalebar -i ${file} -proj lcc -target * -o map.svg`;
+      var out = await api.applyCommands(cmd);
+      assert(!!out['map.svg']);
+    })
+
+    it ('supports custom labels', async function() {
+      var file = 'test/data/two_states.json';
+      var cmd = `-scalebar "100 k.m." -i ${file} -proj lcc -target * -o map.svg`;
+      var out = await api.applyCommands(cmd);
+      assert(out['map.svg'].includes("100 k.m."));
+    })
+
+    // TODO: decide if we want to skip scalebar in GeoJSON output
+    // it ('GeoJSON output', async function() {
+    //   var file = 'test/data/two_states.json';
+    //   var cmd = `-scalebar -i ${file} -proj lcc -target * -o map.geojson`;
+    //   var out = await api.applyCommands(cmd);
+    // });
+
   })
 })

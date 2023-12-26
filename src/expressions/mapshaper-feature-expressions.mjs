@@ -82,7 +82,6 @@ export function compileFeaturePairExpression(exp, lyr, arcs) {
 }
 
 
-
 function getFeatureExpressionContext(lyr, mixins, opts) {
   var defs = getStashedVar('defs');
   var env = getBaseContext();

@@ -1,5 +1,5 @@
 import { getMapFrameMetersPerPixel, findFrameDataset } from '../furniture/mapshaper-frame-data';
-import { furnitureRenderers } from '../furniture/mapshaper-furniture';
+import { furnitureRenderers, addFurnitureLayer } from '../furniture/mapshaper-furniture';
 import cmd from '../mapshaper-cmd';
 import utils from '../utils/mapshaper-utils';
 import { DataTable } from '../datatable/mapshaper-data-table';
@@ -7,13 +7,13 @@ import { stop, message } from '../utils/mapshaper-logging';
 import { symbolRenderers } from '../svg/svg-symbols';
 
 cmd.scalebar = function(catalog, opts) {
-  var frame = findFrameDataset(catalog);
-  var obj, lyr;
-  if (!frame) {
-    stop('Missing a map frame');
-  }
-  lyr = getScalebarLayer(opts);
-  frame.layers.push(lyr);
+  var lyr = getScalebarLayer(opts);
+  addFurnitureLayer(lyr, catalog);
+  // var frame = findFrameDataset(catalog);
+  // if (!frame) {
+  //   stop('Missing a map frame');
+  // }
+  // frame.layers.push(lyr);
 };
 
 export function getScalebarLayer(opts) {
@@ -54,7 +54,8 @@ furnitureRenderers.scalebar = renderScalebar;
 export function renderScalebar(d, frame) {
   var pos = getScalebarPosition(d);
   var metersPerPx = getMapFrameMetersPerPixel(frame);
-  var label = d.label_text || getAutoScalebarLabel(frame.width, metersPerPx);
+  var frameWidthPx = frame.width;
+  var label = d.label || getAutoScalebarLabel(frameWidthPx, metersPerPx);
   var scalebarKm = parseScalebarLabelToKm(label);
   var barHeight = 3;
   var labelOffs = 4;
@@ -64,11 +65,20 @@ export function renderScalebar(d, frame) {
   var labelPos = d.label_position == 'top' ? 'top' : 'bottom';
   var anchorX = pos.halign == 'left' ? 0 : width;
   var anchorY = barHeight + labelOffs;
-  var dx = pos.halign == 'right' ? frame.width - width - pos.hoffs : pos.hoffs;
+  var dx = pos.halign == 'right' ? frameWidthPx - width - pos.hoffs : pos.hoffs;
   var dy = pos.valign == 'bottom' ? frame.height - height - pos.voffs : pos.voffs;
 
+  if (scalebarKm > 0 === false) {
+    message('Unusable scalebar label:', label);
+    return [];
+  }
+
+  if (frameWidthPx > 0 === false) {
+    return [];
+  }
+
   if (!frame.crs) {
-    message('Unable to render a scalebar: unknown CRS.');
+    message('Unable to render scalebar: unknown CRS.');
     return [];
   }
 
@@ -142,7 +152,7 @@ export function parseScalebarLabelToKm(str) {
 
 function parseScalebarUnits(str) {
   var isMiles = /miles?$/.test(str.toLowerCase());
-  var isKm = /(km|kilometers?|kilometres?)$/.test(str.toLowerCase());
+  var isKm = /(k\.m\.|km|kilometers?|kilometres?)$/.test(str.toLowerCase());
   return isMiles && 'mile' || isKm && 'km' || '';
 }
 

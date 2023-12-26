@@ -493,6 +493,8 @@ describe('mapshaper-geojson.js', function () {
       })
     })
 
+
+
     describe('-o combine-layers option', function () {
       it('combines datasets derived from same input file', function(done) {
         var a = {
@@ -586,6 +588,13 @@ describe('mapshaper-geojson.js', function () {
         done();
       })
 
+    })
+
+    it('-o rfc7946 output is the default', async function() {
+      var out = await api.applyCommands('test/data/two_states.json -o out1.geojson -o rfc7946 out2.geojson');
+      var a = out['out1.geojson'].toString();
+      var b = out['out2.geojson'].toString();
+      assert.equal(a, b);
     })
 
     it('-o extension= overrides default file extension', function(done) {

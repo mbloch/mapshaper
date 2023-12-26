@@ -2,7 +2,7 @@ import { getModeData } from '../utils/mapshaper-calc-utils';
 import { compileFeatureExpression } from '../expressions/mapshaper-feature-expressions';
 import { stop } from '../utils/mapshaper-logging';
 import utils from '../utils/mapshaper-utils';
-import { requireBooleanResult } from '../expressions/mapshaper-feature-utils';
+import { requireBooleanResult } from '../expressions/mapshaper-expression-utils';
 
 // Returns a function for filtering multiple source-table records
 // (used by -join command)

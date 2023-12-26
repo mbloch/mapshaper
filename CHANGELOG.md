@@ -1,3 +1,6 @@
+v0.6.60
+* Officially added the previously undocumented -scalebar command.
+
 v0.6.59
 * Second attempted fix for -require error on Windows.
 

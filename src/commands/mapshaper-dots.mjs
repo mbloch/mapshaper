@@ -55,7 +55,7 @@ cmd.dots = function(lyr, arcs, opts) {
 function makeDotsForShape(shp, arcs, rec, opts) {
   var retn = {
     shapes: [],
-    attributes:[]
+    attributes: []
   };
   if (!shp) return retn;
   var counts = opts.fields.map(function(f) {

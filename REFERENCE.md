@@ -1,6 +1,6 @@
 # COMMAND REFERENCE
 
-This documentation applies to version 0.6.57 of mapshaper's command line program. Run `mapshaper -v` to check your version. For an introduction to the command line tool, read [this page](https://github.com/mbloch/mapshaper/wiki/Introduction-to-the-Command-Line-Tool) first.
+This documentation applies to version 0.6.60 of mapshaper's command line program. Run `mapshaper -v` to check your version. For an introduction to the command line tool, read [this page](https://github.com/mbloch/mapshaper/wiki/Introduction-to-the-Command-Line-Tool) first.
 
 ## Command line syntax
 
@@ -83,6 +83,7 @@ mapshaper states.geojson -filter 'ST == "AK"' + name=alaska -o output/ target=*
 [-rename-layers](#-rename-layers)
 [-require](#-require)
 [-run](#-run)
+[-scalebar](#-scalebar)
 [-shape](#-shape)
 [-simplify](#-simplify)
 [-snap](#-snap)
@@ -1126,6 +1127,12 @@ module.exports.voronoi = async function(points, bbox) {
   return {type: 'FeatureCollection', features: features};
 };
 ```
+
+### -scalebar
+
+Add a scale bar to an SVG map. The command creates a data-only layer containing the scale bar's data properties. A scale bar is rendered if the layer is included in SVG output. If no `label` property is given, the text, length and units will be assigned automatically.
+
+`<label>` or `label=` Label giving the size and units of the scalebar, e.g. `"25 k.m."`.
 
 
 ### -shape
