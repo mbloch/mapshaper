@@ -264,7 +264,6 @@ export function MshpMap(gui) {
     };
   }
 
-
   // Update map frame after user navigates the map in frame edit mode
   function updateFrameExtent() {
     var frameLyr = internal.findFrameLayer(model);
@@ -330,10 +329,6 @@ export function MshpMap(gui) {
     return isActiveLayer(lyr) || lyr.pinned;
   }
 
-  function isVisibleDataLayer(lyr) {
-    return isVisibleLayer(lyr) && !internal.isFurnitureLayer(lyr);
-  }
-
   function isFrameLayer(lyr) {
     return !!(lyr && lyr == internal.findFrameLayer(model));
   }
@@ -342,20 +337,25 @@ export function MshpMap(gui) {
     return !isPreviewView() && !!_activeLyr.tabular;
   }
 
+  // Preview view: a special view centering the map 'frame'
+  // (disabling this pending interface rethink)
   function isPreviewView() {
-    var frameLyr = internal.findFrameLayer(model);
-    return !!frameLyr; //  && isVisibleLayer(frameLyr)
+    return false;
+    // var frameLyr = internal.findFrameLayer(model);
+    // return !!frameLyr; //  && isVisibleLayer(frameLyr)
   }
 
   // Frame view means frame layer is visible and active (selected)
+  // (disabling pending rethink)
   function isFrameView() {
-    var frameLyr = internal.findFrameLayer(model);
-    return isActiveLayer(frameLyr) && isVisibleLayer(frameLyr);
+    return false;
+    // var frameLyr = internal.findFrameLayer(model);
+    // return isActiveLayer(frameLyr) && isVisibleLayer(frameLyr);
   }
 
   function getFrameData() {
     var frameLyr = internal.findFrameLayer(model);
-    return frameLyr && internal.getFrameLayerData(frameLyr) || null;
+    return frameLyr && internal.getFurnitureLayerData(frameLyr) || null;
   }
 
   function clearAllDisplayArcs() {

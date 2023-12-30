@@ -21,6 +21,6 @@ export function renderFurniture(lyr, ext) {
   }
   obj.properties.transform = getSvgFurnitureTransform(ext);
   obj.properties.class = 'mapshaper-svg-furniture';
-  obj.children = internal.importFurniture(internal.getFrameLayerData(lyr), frame);
+  obj.children = internal.renderFurnitureLayer(lyr, frame);
   return internal.svg.stringify(obj);
 }

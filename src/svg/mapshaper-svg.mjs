@@ -1,5 +1,5 @@
 import { exportDatasetAsGeoJSON } from '../geojson/geojson-export';
-import { getFurnitureLayerData, layerHasFurniture, importFurniture } from '../furniture/mapshaper-furniture';
+import { getFurnitureLayerData, layerHasFurniture, renderFurnitureLayer } from '../furniture/mapshaper-furniture';
 import { getFrameData } from '../furniture/mapshaper-frame-data';
 import { setCoordinatePrecision } from '../geom/mapshaper-rounding';
 import { getScalebarLayer } from '../commands/mapshaper-scalebar';
@@ -50,7 +50,7 @@ export function exportSVG(dataset, opts) {
   svg = layers.map(function(lyr) {
     var obj;
     if (layerHasFurniture(lyr)) {
-      obj = exportFurnitureForSVG(lyr, frame, opts);
+      obj = exportFurnitureLayerForSVG(lyr, frame, opts);
     } else {
       obj = exportLayerForSVG(lyr, dataset, opts);
     }
@@ -85,9 +85,9 @@ ${svg}
   }];
 }
 
-export function exportFurnitureForSVG(lyr, frame, opts) {
+export function exportFurnitureLayerForSVG(lyr, frame, opts) {
   var layerObj = getEmptyLayerForSVG(lyr, opts);
-  layerObj.children = importFurniture(getFurnitureLayerData(lyr), frame);
+  layerObj.children = renderFurnitureLayer(lyr, frame);
   return layerObj;
 }
 

@@ -83,12 +83,14 @@ export function getDisplayLayer(layer, dataset, opts) {
   }
 
   if (internal.layerHasFurniture(layer)) {
-    obj.furniture = true;
-    obj.furniture_type = internal.getFurnitureLayerType(layer);
     obj.layer = layer;
+    obj.tabular = true;
+    // TODO: consider how to render furniture in GUI
+    // obj.furniture = true;
+    // obj.furniture_type = internal.getFurnitureLayerType(layer);
     // treating furniture layers (other than frame) as tabular for now,
     // so there is something to show if they are selected
-    obj.tabular = obj.furniture_type != 'frame';
+    // obj.tabular = obj.furniture_type != 'frame';
   } else if (obj.empty) {
     obj.layer = {shapes: []}; // ideally we should avoid empty layers
   } else if (!layer.geometry_type) {
