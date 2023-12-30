@@ -1,7 +1,7 @@
 import { Bounds } from '../geom/mapshaper-bounds';
 import { getDatasetCRS, getScaleFactorAtXY} from '../crs/mapshaper-projections';
 import { getDatasetBounds } from '../dataset/mapshaper-dataset-utils';
-import { getFurnitureLayerType } from '../furniture/mapshaper-furniture';
+import { getFurnitureLayerType, getFurnitureLayerData } from '../furniture/mapshaper-furniture';
 import utils from '../utils/mapshaper-utils';
 import { error } from '../utils/mapshaper-logging';
 /*
@@ -16,7 +16,7 @@ export function getFrameData(dataset, exportOpts) {
   var frameLyr = findFrameLayerInDataset(dataset);
   var frameData;
   if (frameLyr) {
-    frameData = Object.assign({}, getFrameLayerData(frameLyr));
+    frameData = Object.assign({}, getFurnitureLayerData(frameLyr));
   } else {
     frameData = calcFrameData(dataset, exportOpts);
   }
@@ -85,7 +85,7 @@ export function findFrameLayer(catalog) {
 }
 
 export function getFrameLayerBounds(lyr) {
-  return new Bounds(getFrameLayerData(lyr).bbox);
+  return new Bounds(getFurnitureLayerData(lyr).bbox);
 }
 
 // @data frame data, including crs property if available

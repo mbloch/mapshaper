@@ -1,6 +1,3 @@
-/* require mapshaper-rectangle, mapshaper-furniture */
-
-import { furnitureRenderers } from '../furniture/mapshaper-furniture';
 import { getFrameSize } from '../furniture/mapshaper-frame-data';
 import { DataTable } from '../datatable/mapshaper-data-table';
 import { message, stop } from '../utils/mapshaper-logging';
@@ -51,6 +48,7 @@ cmd.frame = function(catalog, source, opts) {
   catalog.addDataset(dataset);
 };
 
+
 // Convert width and height args to aspect ratio arg for the rectangle() function
 export function getAspectRatioArg(widthArg, heightArg) {
   // heightArg is a string containing either a number or a
@@ -63,7 +61,7 @@ export function getAspectRatioArg(widthArg, heightArg) {
   }).reverse().join(',');
 }
 
-furnitureRenderers.frame = function(d) {
+export function renderFrame(d) {
   var lineWidth = 1,
       // inset stroke by half of line width
       off = lineWidth / 2,
@@ -76,4 +74,4 @@ furnitureRenderers.frame = function(d) {
       'stroke-width': d['stroke-width'] || lineWidth
   });
   return [obj];
-};
+}

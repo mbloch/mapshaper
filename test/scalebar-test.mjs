@@ -41,6 +41,14 @@ describe('mapshaper-scalebar.js', function () {
       assert(out['map.svg'].includes("100 k.m."));
     })
 
+    it('error thrown when map is unprojected', async function() {
+      var file = 'test/data/two_states.json';
+      var cmd = `-scalebar "100 k.m." -i ${file} -target * -o map.svg`;
+      assert.rejects(async function() {
+        var out = await api.applyCommands(cmd);
+      })
+    })
+
     // TODO: decide if we want to skip scalebar in GeoJSON output
     // it ('GeoJSON output', async function() {
     //   var file = 'test/data/two_states.json';

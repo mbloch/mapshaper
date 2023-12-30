@@ -1,5 +1,5 @@
 import { getMapFrameMetersPerPixel, findFrameDataset } from '../furniture/mapshaper-frame-data';
-import { furnitureRenderers, addFurnitureLayer } from '../furniture/mapshaper-furniture';
+import { addFurnitureLayer } from '../furniture/mapshaper-furniture-cmd';
 import cmd from '../mapshaper-cmd';
 import utils from '../utils/mapshaper-utils';
 import { DataTable } from '../datatable/mapshaper-data-table';
@@ -9,11 +9,6 @@ import { symbolRenderers } from '../svg/svg-symbols';
 cmd.scalebar = function(catalog, opts) {
   var lyr = getScalebarLayer(opts);
   addFurnitureLayer(lyr, catalog);
-  // var frame = findFrameDataset(catalog);
-  // if (!frame) {
-  //   stop('Missing a map frame');
-  // }
-  // frame.layers.push(lyr);
 };
 
 export function getScalebarLayer(opts) {
@@ -48,8 +43,6 @@ function getScalebarPosition(d) {
   }
   return opts;
 }
-
-furnitureRenderers.scalebar = renderScalebar;
 
 export function renderScalebar(d, frame) {
   var pos = getScalebarPosition(d);

@@ -1,14 +1,12 @@
-
 import { stop } from '../utils/mapshaper-logging';
-export var furnitureRenderers = {};
+import { renderScalebar } from '../commands/mapshaper-scalebar';
+import { renderFrame } from '../commands/mapshaper-frame';
+import { isProjectedCRS } from '../crs/mapshaper-projections';
 
-export function addFurnitureLayer(lyr, catalog) {
-  var o = {
-    info: {},
-    layers: [lyr]
-  };
-  catalog.getDatasets().push(o);
-}
+var furnitureRenderers = {
+  scalebar: renderScalebar,
+  frame: renderFrame
+};
 
 // @lyr a layer in a dataset
 export function layerHasFurniture(lyr) {
@@ -16,9 +14,9 @@ export function layerHasFurniture(lyr) {
   return !!type && (type in furnitureRenderers);
 }
 
-// @mapLayer a map layer object
-export function isFurnitureLayer(mapLayer) {
-  return !!mapLayer.furniture;
+export function isFurnitureLayer(lyr) {
+  // return !!mapLayer.furniture;
+  return layerHasFurniture(lyr);
 }
 
 // @lyr dataset layer
@@ -31,10 +29,17 @@ export function getFurnitureLayerData(lyr) {
   return lyr.data && lyr.data.getReadOnlyRecordAt(0);
 }
 
-export function importFurniture(d, frame) {
+export function renderFurnitureLayer(lyr, frame) {
+  var d = getFurnitureLayerData(lyr);
   var renderer = furnitureRenderers[d.type];
   if (!renderer) {
     stop('Missing renderer for', d.type, 'element');
+  }
+  if (!frame.crs) {
+    stop(`Unable to render ${d.type} (unknown map projection)`);
+  }
+  if (!isProjectedCRS(frame.crs)) {
+    stop(`Unable to render ${d.type} (map is unprojected)`);
   }
   return renderer(d, frame) || [];
 }
