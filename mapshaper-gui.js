@@ -4285,8 +4285,8 @@
       html += rowHTML('contents', describeLyr(lyr));
       html += '<img class="close-btn" draggable="false" src="images/close.png">';
       if (opts.pinnable) {
-        html += '<img class="pin-btn unpinned" draggable="false" src="images/eye.png">';
-        html += '<img class="pin-btn pinned" draggable="false" src="images/eye2.png">';
+        html += '<img class="eye-btn black-eye" draggable="false" src="images/eye.png">';
+        html += '<img class="eye-btn green-eye" draggable="false" src="images/eye2.png">';
       }
       html += '</div>';
       return html;
@@ -4354,7 +4354,7 @@
 
       if (pinnable) {
         // init pin button
-        GUI.onClick(entry.findChild('img.unpinned'), function(e) {
+        GUI.onClick(entry.findChild('img.black-eye'), function(e) {
           var target = findLayerById(id);
           var pinned = target.layer.pinned;
           e.stopPropagation();
@@ -4364,8 +4364,8 @@
           map.redraw();
         });
 
-        // catch click event on pin button
-        GUI.onClick(entry.findChild('img.unpinned'), function(e) {
+        // catch click event on black (top) pin button button
+        GUI.onClick(entry.findChild('img.black-eye'), function(e) {
           e.stopPropagation();
         });
       }
@@ -10371,7 +10371,7 @@
     }
     obj.properties.transform = getSvgFurnitureTransform(ext);
     obj.properties.class = 'mapshaper-svg-furniture';
-    obj.children = internal.importFurniture(internal.getFrameLayerData(lyr), frame);
+    obj.children = internal.renderFurnitureLayer(lyr, frame);
     return internal.svg.stringify(obj);
   }
 
@@ -10817,12 +10817,14 @@
     }
 
     if (internal.layerHasFurniture(layer)) {
-      obj.furniture = true;
-      obj.furniture_type = internal.getFurnitureLayerType(layer);
       obj.layer = layer;
+      obj.tabular = true;
+      // TODO: consider how to render furniture in GUI
+      // obj.furniture = true;
+      // obj.furniture_type = internal.getFurnitureLayerType(layer);
       // treating furniture layers (other than frame) as tabular for now,
       // so there is something to show if they are selected
-      obj.tabular = obj.furniture_type != 'frame';
+      // obj.tabular = obj.furniture_type != 'frame';
     } else if (obj.empty) {
       obj.layer = {shapes: []}; // ideally we should avoid empty layers
     } else if (!layer.geometry_type) {
@@ -11368,7 +11370,6 @@
       };
     }
 
-
     // Update map frame after user navigates the map in frame edit mode
     function updateFrameExtent() {
       var frameLyr = internal.findFrameLayer(model);
@@ -11434,10 +11435,6 @@
       return isActiveLayer(lyr) || lyr.pinned;
     }
 
-    function isVisibleDataLayer(lyr) {
-      return isVisibleLayer(lyr) && !internal.isFurnitureLayer(lyr);
-    }
-
     function isFrameLayer(lyr) {
       return !!(lyr && lyr == internal.findFrameLayer(model));
     }
@@ -11446,20 +11443,25 @@
       return !isPreviewView() && !!_activeLyr.tabular;
     }
 
+    // Preview view: a special view centering the map 'frame'
+    // (disabling this pending interface rethink)
     function isPreviewView() {
-      var frameLyr = internal.findFrameLayer(model);
-      return !!frameLyr; //  && isVisibleLayer(frameLyr)
+      return false;
+      // var frameLyr = internal.findFrameLayer(model);
+      // return !!frameLyr; //  && isVisibleLayer(frameLyr)
     }
 
     // Frame view means frame layer is visible and active (selected)
+    // (disabling pending rethink)
     function isFrameView() {
-      var frameLyr = internal.findFrameLayer(model);
-      return isActiveLayer(frameLyr) && isVisibleLayer(frameLyr);
+      return false;
+      // var frameLyr = internal.findFrameLayer(model);
+      // return isActiveLayer(frameLyr) && isVisibleLayer(frameLyr);
     }
 
     function getFrameData() {
       var frameLyr = internal.findFrameLayer(model);
-      return frameLyr && internal.getFrameLayerData(frameLyr) || null;
+      return frameLyr && internal.getFurnitureLayerData(frameLyr) || null;
     }
 
     function clearAllDisplayArcs() {

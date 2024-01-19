@@ -836,7 +836,7 @@ img.close-btn {
 	cursor: pointer;
 }
 
-.layer-item img.pin-btn {
+.layer-item img.eye-btn {
 	top: 4px;
 }
 
@@ -851,29 +851,30 @@ img.close-btn {
 	display: none;
 }
 
-img.pin-btn {
+img.eye-btn {
 	opacity: 0;
 }
 
-.pinnable:not(.pinned):not(.active) img.unpinned {
+.pinnable:not(.pinned):not(.active) img.black-eye {
 	opacity: 0.2;
 }
 
-.pinnable:not(.pinned) img.unpinned:hover {
+.pinnable:not(.pinned) img.black-eye:hover {
 	opacity: 0.3;
 }
 
-.pinnable.pinned.active img.unpinned {
+/*.pinnable.pinned.active img.black-eye {
 	opacity: 0;
-}
+}*/
 
 img.close-btn:hover,
-.pinnable.active:not(.pinned) img.unpinned,
-.pinnable.pinned img.pinned {
+.pinnable.active:not(.pinned) img.black-eye,
+.pinnable.pinned:not(.active) img.green-eye,
+.pinnable.pinned.active img.black-eye {
 	opacity: 1
 }
 
-.pinnable img.unpinned {
+.pinnable img.black-eye {
 	z-index: 1;
 }
 
