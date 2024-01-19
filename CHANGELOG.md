@@ -1,3 +1,6 @@
+v0.6.61
+* Introduced the `fix-geometry` option to the `-snap` and `-o` commands, for removing segment intersections caused by coordinate rounding and TopoJSON quantization.
+
 v0.6.60
 * Officially added the previously undocumented -scalebar command.
 

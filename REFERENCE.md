@@ -210,6 +210,8 @@ Save content of the target layer(s) to a file or files.
 
 `precision=`  Round all coordinates to a specified precision, e.g. `precision=0.001`. Useful for reducing the size of GeoJSON files.
 
+`fix-geometry` Remove segment intersections caused by rounding (via the `precision=` option) or TopoJSON quantization, by reverting intersecting areas to the original coordinates. This option is only applied if the original paths are free of intersections. In the case of quantized TopoJSON output, this option produces delta-encoded arcs that contain some decimal numbers. Be sure to test your software for compatibility.
+
 `bbox-index`  Export a JSON file containing bounding boxes of each output layer.
 
 `encoding=` (Shapefile/CSV) Encoding of input text (by default, Shapefile encoding is auto-detected and CSV files are assumed to be UTF-8).
@@ -263,7 +265,6 @@ Save content of the target layer(s) to a file or files.
 `svg-bbox=<xmin,ymin,xmax,ymax>` (SVG)  Bounding box of SVG map in projected map units. By default, the extent of SVG output fits the content; this option lets you provide a custom extent. This could be useful when aligning the SVG output with other content layers, such as images or videos.
 
 `point-symbol=square`  (SVG) Use squares instead of circles to symbolize point data.
-
 
 `delimiter=`  (CSV) Set the field delimiter for CSV/delimited text output; e.g. `delimiter=|`.
 
@@ -1130,9 +1131,11 @@ module.exports.voronoi = async function(points, bbox) {
 
 ### -scalebar
 
-Add a scale bar to an SVG map. The command creates a data-only layer containing the scale bar's data properties. A scale bar is rendered if the layer is included in SVG output. If no `label` property is given, the text, length and units will be assigned automatically.
+Add a scale bar to an SVG map. The command creates a data-only layer containing the scale bar's data properties. A scale bar is rendered if this layer is included as a target layer in SVG output.
 
-`<label>` or `label=` Label giving the size and units of the scalebar, e.g. `"25 k.m."`.
+The length of the scale bar reflects the scale in the center of the map's rectangular frame.
+
+`<label>` or `label=` Optional label giving the size and units of the scalebar, e.g. `"25 k.m."`. If only units are given, a length will be assigned. If the `label` property is missing, scale bar properties will be auto-generated.
 
 
 ### -shape
@@ -1203,7 +1206,9 @@ Snap together nearby vertices
 
 `endpoints` Only snap endpoints of polyline features.
 
-`precision=`  Tound all coordinates to a given decimal precision (e.g. 0.000001).
+`precision=`  Round all coordinates to a given decimal precision (e.g. 0.000001).
+
+`fix-geometry` Remove segment intersections caused by rounding or snapping by reverting intersecting areas to original coordinates. This option is only applied if the original paths are free of intersections.
 
 [`target=`](#common-options)
 
