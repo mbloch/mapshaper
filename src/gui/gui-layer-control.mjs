@@ -205,8 +205,8 @@ export function LayerControl(gui) {
     html += rowHTML('contents', describeLyr(lyr));
     html += '<img class="close-btn" draggable="false" src="images/close.png">';
     if (opts.pinnable) {
-      html += '<img class="pin-btn unpinned" draggable="false" src="images/eye.png">';
-      html += '<img class="pin-btn pinned" draggable="false" src="images/eye2.png">';
+      html += '<img class="eye-btn black-eye" draggable="false" src="images/eye.png">';
+      html += '<img class="eye-btn green-eye" draggable="false" src="images/eye2.png">';
     }
     html += '</div>';
     return html;
@@ -274,7 +274,7 @@ export function LayerControl(gui) {
 
     if (pinnable) {
       // init pin button
-      GUI.onClick(entry.findChild('img.unpinned'), function(e) {
+      GUI.onClick(entry.findChild('img.black-eye'), function(e) {
         var target = findLayerById(id);
         var pinned = target.layer.pinned;
         e.stopPropagation();
@@ -284,8 +284,8 @@ export function LayerControl(gui) {
         map.redraw();
       });
 
-      // catch click event on pin button
-      GUI.onClick(entry.findChild('img.unpinned'), function(e) {
+      // catch click event on black (top) pin button button
+      GUI.onClick(entry.findChild('img.black-eye'), function(e) {
         e.stopPropagation();
       });
     }
