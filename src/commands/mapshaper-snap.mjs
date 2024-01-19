@@ -1,4 +1,5 @@
 import { getHighPrecisionSnapInterval, snapCoordsByInterval, snapEndpointsByInterval } from '../paths/mapshaper-snapping';
+import { getRepairFunction } from '../paths/mapshaper-segment-intersection-repair';
 import { getDatasetCRS } from '../crs/mapshaper-projections';
 import { convertIntervalParam } from '../geom/mapshaper-units';
 import { setCoordinatePrecision } from '../geom/mapshaper-rounding';
@@ -12,9 +13,15 @@ cmd.snap = function(target, opts) {
   var snapCount = 0;
   var dataset = target.dataset;
   var arcs = dataset.arcs;
+  var repairArcs;
   var arcBounds = arcs && arcs.getBounds();
   if (!arcBounds || !arcBounds.hasBounds()) {
     stop('Dataset is missing path data');
+  }
+
+  arcs.flatten(); // bake in any simplification
+  if (opts.fix_geometry) {
+    repairArcs = arcs && getRepairFunction(arcs);
   }
   if (opts.precision) {
     setCoordinatePrecision(dataset, opts.precision);
@@ -23,7 +30,6 @@ cmd.snap = function(target, opts) {
   } else {
     interval = getHighPrecisionSnapInterval(arcBounds.toArray());
   }
-  arcs.flatten(); // bake in any simplification
   if (interval > 0 && opts.endpoints) {
     // snaps line endpoints together
     // TODO: also snap endpoints to line segments to remove undershoots and overshoots
@@ -34,6 +40,9 @@ cmd.snap = function(target, opts) {
     message(utils.format("Snapped %s point%s", snapCount, utils.pluralSuffix(snapCount)));
   }
   if (snapCount > 0 || opts.precision) {
+    if (repairArcs) {
+      repairArcs(arcs);
+    }
     arcs.dedupCoords();
     buildTopology(dataset);
   }

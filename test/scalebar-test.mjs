@@ -18,12 +18,13 @@ describe('mapshaper-scalebar.js', function () {
     assert.equal(parse('1,000 KILOMETERS'), 1000);
   })
 
-  it('formatDistanceLabelAsMiles()', function() {
-    var format = api.internal.formatDistanceLabelAsMiles;
-    assert.equal(format('1,000'), '1,000 MILES')
-    assert.equal(format('1'), '1 MILE')
-    assert.equal(format('1.5'), '1.5 MILES')
-    assert.equal(format('1/8'), '1/8 MILE')
+  it('formatDistanceLabel()', function() {
+    var format = api.internal.formatDistanceLabel;
+    assert.equal(format('1,000', 'mile'), '1,000 MILES')
+    assert.equal(format('1', 'mile'), '1 MILE')
+    assert.equal(format('1.5', 'mile'), '1.5 MILES')
+    assert.equal(format('1/8', 'mile'), '1/8 MILE')
+    assert.equal(format('1/8', 'km'), '1/8 KM')
   })
 
   describe('-scalebar command', function() {

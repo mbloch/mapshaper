@@ -20,6 +20,7 @@ import '../commands/mapshaper-affine';
 import '../commands/mapshaper-alpha-shapes';
 import '../commands/mapshaper-buffer';
 import '../commands/mapshaper-calc';
+import '../commands/mapshaper-check-geometry';
 import '../commands/mapshaper-classify';
 import '../commands/mapshaper-clean';
 import '../commands/mapshaper-clip-erase';
@@ -205,6 +206,9 @@ export async function runCommand(command, job) {
 
     } else if (name == 'calc') {
       outputDataset = cmd.calc(targetLayers, arcs, opts);
+
+    } else if (name == 'check-geometry') {
+      applyCommandToEachLayer(cmd.checkGeometry, targetLayers, targetDataset, opts);
 
     } else if (name == 'classify') {
       applyCommandToEachLayer(cmd.classify, targetLayers, targetDataset, opts);

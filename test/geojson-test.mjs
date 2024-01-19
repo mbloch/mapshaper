@@ -417,48 +417,49 @@ describe('mapshaper-geojson.js', function () {
 
     describe('-o precision= option', function () {
 
-
-      it('set coordinate precision to 6 decimals', function() {
+      it('set coordinate precision to 6 decimals', async function() {
         var input = {
           type: 'MultiPoint',
           coordinates: [[4.000000000000001, 3.999999999999], [0.123456789,-9.87654321]]
         };
-        var output = api.internal.exportGeoJSON(api.internal.importGeoJSON(input, {}), {precision: 0.000001})[0].content.toString();
-        var coords = output.match(/"coordinates.*\]\]/)[0];
-        assert.equal(coords, '"coordinates":[[4,4],[0.123457,-9.876543]]');
+        var cmd = '-i point.json -o precision=0.000001';
+        var output = await api.applyCommands(cmd, {'point.json': input});
+        var json = JSON.parse(output['point.json'])
+        var coords = json.geometries[0].coordinates;
+        assert.deepEqual(coords, [[4,4],[0.123457,-9.876543]]);
       });
+    });
 
-      it('A warning is generated for non-lat-long datasets', function() {
-        var input = {
-          type: 'Point',
-          coordinates: [100, 100]
-        },
-        dataset = api.internal.importGeoJSON(input, {});
-        assert(/RFC 7946 warning/.test(api.internal.getRFC7946Warnings(dataset)));
-      })
-
-      it('Use CCW winding order for rings and CW for holes', function (done) {
-        var input = {
-          type:"GeometryCollection",
-          geometries:[{
-            type: "Polygon",
-            coordinates: [[[100.0, 0.0], [100.0, 10.0], [110.0, 10.0], [110.0, 0.0], [100.0, 0.0]],
-              [[101.0, 1.0], [109.0, 1.0], [109.0, 9.0], [101.0, 9.0], [101.0, 1.0]]
-            ]
-        }]};
-
-        var target = [[[100.0, 0.0], [110.0, 0.0], [110.0, 10.0], [100.0, 10.0], [100.0, 0.0]],
-              [[101.0, 1.0],  [101.0, 9.0], [109.0, 9.0], [109.0, 1.0], [101.0, 1.0]]
-            ];
-
-        api.applyCommands('-i input.json -o output.json', {'input.json': input}, function(err, output) {
-          var json = JSON.parse(output['output.json']);
-          assert.deepEqual(json.geometries[0].coordinates, target);
-          done();
-        });
-
-      })
+    it('A warning is generated for non-lat-long datasets', function() {
+      var input = {
+        type: 'Point',
+        coordinates: [100, 100]
+      },
+      dataset = api.internal.importGeoJSON(input, {});
+      assert(/RFC 7946 warning/.test(api.internal.getRFC7946Warnings(dataset)));
     })
+
+    it('Use CCW winding order for rings and CW for holes', function (done) {
+      var input = {
+        type:"GeometryCollection",
+        geometries:[{
+          type: "Polygon",
+          coordinates: [[[100.0, 0.0], [100.0, 10.0], [110.0, 10.0], [110.0, 0.0], [100.0, 0.0]],
+            [[101.0, 1.0], [109.0, 1.0], [109.0, 9.0], [101.0, 9.0], [101.0, 1.0]]
+          ]
+      }]};
+
+      var target = [[[100.0, 0.0], [110.0, 0.0], [110.0, 10.0], [100.0, 10.0], [100.0, 0.0]],
+            [[101.0, 1.0],  [101.0, 9.0], [109.0, 9.0], [109.0, 1.0], [101.0, 1.0]]
+          ];
+
+      api.applyCommands('-i input.json -o output.json', {'input.json': input}, function(err, output) {
+        var json = JSON.parse(output['output.json']);
+        assert.deepEqual(json.geometries[0].coordinates, target);
+        done();
+      });
+    });
+
 
     describe('-i geometry-type option', function () {
       it('filters geometry types inside nested GeometryCollection', function (done) {

@@ -6,7 +6,6 @@ import { layerHasPoints, layerHasPaths } from '../dataset/mapshaper-layer-utils'
 import { isLatLngCRS, getDatasetCRS } from '../crs/mapshaper-projections';
 import { getFormattedStringify, stringifyAsNDJSON } from '../geojson/mapshaper-stringify';
 import { mergeLayerNames } from '../commands/mapshaper-merge-layers';
-import { setCoordinatePrecision } from '../geom/mapshaper-rounding';
 import { copyDatasetForExport } from '../dataset/mapshaper-dataset-utils';
 import { encodeString } from '../text/mapshaper-encodings';
 import GeoJSON from '../geojson/geojson-common';
@@ -22,12 +21,6 @@ export function exportGeoJSON(dataset, opts) {
   opts.rfc7946 = !opts.gj2008; // use RFC 7946 as the default
   var extension = opts.extension || "json";
   var layerGroups, warn;
-
-  // Apply coordinate precision
-  if (opts.precision) {
-    dataset = copyDatasetForExport(dataset);
-    setCoordinatePrecision(dataset, opts.precision || 0.000001);
-  }
 
   if (opts.rfc7946) {
     warn = getRFC7946Warnings(dataset);

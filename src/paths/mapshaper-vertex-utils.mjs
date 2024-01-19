@@ -68,12 +68,38 @@ export function vertexIsArcEnd(idx, arcs) {
   return false;
 }
 
+export function vertexIsArcEndpoint(idx, arcs) {
+  return vertexIsArcStart(idx, arcs) || vertexIsArcEnd(idx, arcs);
+}
+
 export function vertexIsArcStart(idx, arcs) {
   var ii = arcs.getVertexData().ii;
   for (var j=0, n=ii.length; j<n; j++) {
     if (idx === ii[j]) return true;
   }
   return false;
+}
+
+export function getArcStartCoords(arcId, arcs) {
+  var coords = getArcEndpointCoords(arcId, arcs);
+  return coords[0];
+}
+
+export function getArcEndCoords(arcId, arcs) {
+  var coords = getArcEndpointCoords(arcId, arcs);
+  return coords[1];
+}
+
+export function getArcEndpointCoords(arcId, arcs) {
+  if (arcId < 0) {
+    return getArcEndpointCoords(~arcId, arcs).reverse();
+  }
+  var data = arcs.getVertexData();
+  var i = data.ii[arcId];
+  var n = data.nn[arcId];
+  var a = [data.xx[i], data.yy[i]];
+  var b = [data.xx[i + n - 1], data.yy[i + n - 1]];
+  return [a, b];
 }
 
 export function setVertexCoords(x, y, i, arcs) {

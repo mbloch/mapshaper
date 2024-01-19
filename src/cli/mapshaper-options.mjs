@@ -242,6 +242,10 @@ export function getOptionParser() {
       describe: 'coordinate precision in source units, e.g. 0.001',
       type: 'number'
     })
+    .option('fix-geometry', {
+      describe: 'remove intersections introduced by rounding or quantization',
+      type: 'flag'
+    })
     .option('bbox-index', {
       describe: 'export a .json file with bbox of each layer',
       type: 'flag'
@@ -1451,6 +1455,10 @@ export function getOptionParser() {
       describe: 'round all coordinates to a given decimal precision (e.g. 0.000001)',
       type: 'number'
     })
+    .option('fix-geometry', {
+      describe: 'remove intersections introduced by rounding and snapping',
+      type: 'flag'
+    })
     .option('target', targetOpt);
 
   parser.command('sort')
@@ -1794,6 +1802,13 @@ export function getOptionParser() {
     .option('name', nameOpt)
     .option('target', targetOpt)
     .option('no-replace', noReplaceOpt);
+
+  parser.command('check-geometry')
+    // .describe()
+    .option('strict', {
+      describe: 'stops the program if any errors are found',
+      type: 'flag'
+    });
 
   parser.command('cluster')
     .describe('group polygons into compact clusters')

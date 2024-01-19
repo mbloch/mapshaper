@@ -5,6 +5,48 @@ var internal = api.internal;
 
 describe('mapshaper-export.js', function () {
 
+  describe('-o fix-geometry tests', function() {
+    var file = 'test/data/six_counties.shp';
+
+    it('topojson with quantization', async function() {
+      var cmd = `-i ${file} -o tmp.topojson quantization=1000 fix-geometry`;
+      var out = await api.applyCommands(cmd);
+      var cmd2 = `-i data.json -check-geometry strict`;
+      await api.applyCommands(cmd2, {'data.json': out['tmp.topojson']});
+    });
+
+    it('control: topojson with quantization without fix-geometry throws', async function() {
+      var cmd = `-i ${file} -o tmp.topojson quantization=1000`;
+      var out = await api.applyCommands(cmd);
+      var cmd2 = `-i data.json -check-geometry strict`;
+      assert.rejects(async function() {
+        await api.applyCommands(cmd2, {'data.json': out['tmp.topojson']});
+      })
+    });
+
+    it('topojson with precision', async function() {
+      var cmd = `-i ${file} -o tmp.topojson no-quantization precision=0.0001 fix-geometry`;
+      var out = await api.applyCommands(cmd);
+      var cmd2 = `-i data.json -check-geometry strict`;
+      await api.applyCommands(cmd2, {'data.json': out['tmp.topojson']});
+    });
+
+    it('geojson with precision', async function() {
+      var cmd = `-i ${file} -o tmp.geojson precision=0.0001 fix-geometry`;
+      var out = await api.applyCommands(cmd);
+      var cmd2 = `-i data.json -check-geometry strict`;
+      await api.applyCommands(cmd2, {'data.json': out['tmp.geojson']});
+    });
+
+    it('Shapefile with precision', async function() {
+      var cmd = `-i ${file} -o tmp.shp precision=0.0001 fix-geometry`;
+      var out = await api.applyCommands(cmd);
+      var cmd2 = `-i data.shp -check-geometry strict`;
+      await api.applyCommands(cmd2, {'data.shp': out['tmp.shp']});
+    });
+
+  });
+
   describe('Issue: merging datasets for output should not modify the original datasets', function() {
     it('svg output from two datasets', function(done) {
       var box = {

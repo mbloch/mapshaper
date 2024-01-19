@@ -2,6 +2,7 @@
 import api from '../mapshaper.js';
 import assert from 'assert';
 import { fixPath } from './helpers';
+import { calcExportBounds } from '../src/topojson/topojson-export';
 var TopoJSON = api.internal.topojson,
   ArcCollection = api.internal.ArcCollection,
   Utils = api.utils;
@@ -16,28 +17,28 @@ describe('topojson-export.js and topojson-import.js', function () {
     it('default uses 0.02 of avg. segment', function () {
       var arcs = new api.internal.ArcCollection([[[0, 0], [2, 1]], [[0, 1], [2, 0]]]);
       var bounds = new api.internal.Bounds(0, 0, 2, 1);
-      var bounds2 = TopoJSON.calcExportBounds(bounds, arcs, {});
+      var bounds2 = calcExportBounds(bounds, arcs, {});
       assert.deepEqual(bounds2.toArray(), [0, 0, 50, 50]);
     })
 
     it('user-defined precision', function () {
       var arcs = new api.internal.ArcCollection([[[0, 0], [2, 1]]]);
       var bounds = new api.internal.Bounds(0, 0, 2, 1);
-      var bounds2 = TopoJSON.calcExportBounds(bounds, arcs, {topojson_precision: 0.1});
+      var bounds2 = calcExportBounds(bounds, arcs, {topojson_precision: 0.1});
       assert.deepEqual(bounds2.toArray(), [0, 0, 10, 10]);
     })
 
     it('quantization option', function () {
       var arcs = new api.internal.ArcCollection([[[0, 0], [2, 1]]]);
       var bounds = new api.internal.Bounds(0, 0, 2, 1);
-      var bounds2 = TopoJSON.calcExportBounds(bounds, arcs, {quantization: 1000});
+      var bounds2 = calcExportBounds(bounds, arcs, {quantization: 1000});
       assert.deepEqual(bounds2.toArray(), [0, 0, 999, 999]);
     })
 
     it('precision option', function () {
       var arcs = new api.internal.ArcCollection([[[0, 0], [2, 1]]]);
       var bounds = new api.internal.Bounds(0, 0, 2, 1);
-      var bounds2 = TopoJSON.calcExportBounds(bounds, arcs, {precision: 0.1});
+      var bounds2 = calcExportBounds(bounds, arcs, {precision: 0.1});
       assert.deepEqual(bounds2.toArray(), [0, 0, 20, 10]);
     })
   })

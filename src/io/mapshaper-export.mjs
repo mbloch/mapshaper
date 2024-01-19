@@ -117,11 +117,10 @@ export function exportFileContent(dataset, opts) {
 
   // apply coordinate precision, except:
   //   svg precision is applied by the SVG exporter, after rescaling
-  //   GeoJSON precision is applied by the exporter, to handle default precision
   //   TopoJSON precision is applied to avoid redundant copying
-  if (opts.precision && outFmt != 'svg' && outFmt != 'geojson' && outFmt != 'topojson') {
+  if (opts.precision && outFmt != 'svg' && outFmt != 'topojson') {
     dataset = copyDatasetForExport(dataset);
-    setCoordinatePrecision(dataset, opts.precision);
+    setCoordinatePrecision(dataset, opts.precision, !!opts.fix_geometry);
   }
 
   if (opts.cut_table) {
