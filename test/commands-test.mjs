@@ -410,7 +410,7 @@ describe('mapshaper-run-commands.js', function () {
           }
         }
       };
-      api.applyCommands('-i data.json name=point -o format=topojson precision=1', {'data.json': geojson}, function(err, output) {
+      api.applyCommands('-i data.json name=point -o format=topojson no-quantization precision=1', {'data.json': geojson}, function(err, output) {
         assert.deepEqual(JSON.parse(output['data.json']), topojson);
         done();
       });

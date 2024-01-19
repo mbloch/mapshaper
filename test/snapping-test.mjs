@@ -85,6 +85,13 @@ describe('mapshaper-snapping.js', function () {
       };
       assert.deepEqual(line.geometries[0], target);
     });
+
+    it('fix-geometry option', async function() {
+      var file = 'test/data/six_counties.shp';
+      var cmd = `-i ${file} -snap precision=0.0001 fix-geometry -check-geometry strict`;
+      await api.applyCommands(cmd); // throws if geometry error
+    });
+
   });
 
   describe('sortCoordinateIds()', function () {

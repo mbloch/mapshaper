@@ -8,6 +8,9 @@ import { symbolRenderers } from '../svg/svg-symbols';
 
 cmd.scalebar = function(catalog, opts) {
   var lyr = getScalebarLayer(opts);
+  if (opts.label && !parseScalebarUnits(opts.label)) {
+    stop(`Expected units of km or miles in scalebar label (received ${opts.label})`);
+  }
   addFurnitureLayer(lyr, catalog);
 };
 
@@ -48,7 +51,9 @@ export function renderScalebar(d, frame) {
   var pos = getScalebarPosition(d);
   var metersPerPx = getMapFrameMetersPerPixel(frame);
   var frameWidthPx = frame.width;
-  var label = d.label || getAutoScalebarLabel(frameWidthPx, metersPerPx);
+  var unit = d.label ? parseScalebarUnits(d.label) : 'mile';
+  var number = d.label ? parseScalebarNumber(d.label) : null;
+  var label = number && unit ? d.label : getAutoScalebarLabel(frameWidthPx, metersPerPx, unit);
   var scalebarKm = parseScalebarLabelToKm(label);
   var barHeight = 3;
   var labelOffs = 4;
@@ -114,7 +119,8 @@ export function renderScalebar(d, frame) {
   return [g];
 }
 
-function getAutoScalebarLabel(mapWidth, metersPerPx) {
+// unit: 'km' || 'mile'
+function getAutoScalebarLabel(mapWidth, metersPerPx, unit) {
   var minWidth = 70; // 100; // TODO: vary min size based on map width
   var minKm = metersPerPx * minWidth / 1000;
   // note: removed 1.5 12 and 1,200
@@ -123,16 +129,17 @@ function getAutoScalebarLabel(mapWidth, metersPerPx) {
     '2,500 3,000 4,000 5,000').split(' ');
   return options.reduce(function(memo, str) {
     if (memo) return memo;
-    var label = formatDistanceLabelAsMiles(str);
+    var label = formatDistanceLabel(str, unit);
     if (parseScalebarLabelToKm(label) > minKm) {
        return label;
     }
   }, null) || '';
 }
 
-export function formatDistanceLabelAsMiles(str) {
-  var num = parseScalebarNumber(str);
-  return str + (num > 1 ? ' MILES' : ' MILE');
+export function formatDistanceLabel(numStr, unit) {
+  var num = parseScalebarNumber(numStr);
+  var unitStr = unit == 'km' && 'KM' || num > 1 && 'MILES' || 'MILE';
+  return numStr + ' ' + unitStr;
 }
 
 // See test/mapshaper-scalebar.js for examples of supported formats
@@ -146,7 +153,8 @@ export function parseScalebarLabelToKm(str) {
 function parseScalebarUnits(str) {
   var isMiles = /miles?$/.test(str.toLowerCase());
   var isKm = /(k\.m\.|km|kilometers?|kilometres?)$/.test(str.toLowerCase());
-  return isMiles && 'mile' || isKm && 'km' || '';
+  var units = isMiles && 'mile' || isKm && 'km' || '';
+  return units;
 }
 
 function parseScalebarNumber(str) {

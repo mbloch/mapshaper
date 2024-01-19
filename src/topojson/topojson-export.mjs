@@ -17,6 +17,8 @@ import { transformDatasetToPixels } from '../furniture/mapshaper-pixel-transform
 import { getFormattedStringify } from '../geojson/mapshaper-stringify';
 import { copyDatasetForExport, datasetHasPaths, splitDataset, getDatasetBounds } from '../dataset/mapshaper-dataset-utils';
 import { getOutputFileBase } from '../utils/mapshaper-filename-utils';
+import { message } from '../utils/mapshaper-logging';
+import { getRepairFunction } from '../paths/mapshaper-segment-intersection-repair';
 
 TopoJSON.getPresimplifyFunction = getPresimplifyFunction;
 
@@ -40,8 +42,10 @@ export function exportTopoJSON(dataset, opts) {
     transformDatasetToPixels(dataset, {fit_bbox: opts.fit_bbox});
   }
 
-  if (opts.precision) {
-    setCoordinatePrecision(dataset, opts.precision);
+  if (opts.precision && opts.no_quantization) {
+    setCoordinatePrecision(dataset, opts.precision, !!opts.fix_geometry);
+  } else if (opts.precision) {
+    message(`Ignoring precision=${opts.precision} -- this option only works with no-quantization.`);
   }
 
   if (opts.singles) {
@@ -76,13 +80,13 @@ TopoJSON.exportTopology = function(dataset, opts) {
   }
   // auto-detect quantization if arcs are present
   if (!opts.no_quantization && (opts.quantization || hasPaths)) {
-    topology.transform = TopoJSON.transformDataset(dataset, bounds, opts);
+    topology.transform = transformDataset(dataset, bounds, opts);
   }
   if (hasPaths) {
     dissolveArcs(dataset); // dissolve/prune arcs for more compact output
-    topology.arcs = TopoJSON.exportArcs(dataset.arcs, bounds, opts);
+    topology.arcs = exportArcs(dataset.arcs, bounds, opts);
     if (topology.transform) {
-      TopoJSON.deltaEncodeArcs(topology.arcs);
+      deltaEncodeArcs(topology.arcs);
     }
   }
 
@@ -99,23 +103,38 @@ TopoJSON.exportTopology = function(dataset, opts) {
   return topology;
 };
 
-TopoJSON.transformDataset = function(dataset, bounds, opts) {
-  var bounds2 = TopoJSON.calcExportBounds(bounds, dataset.arcs, opts),
+function transformDataset(dataset, bounds, opts) {
+  var bounds2 = calcExportBounds(bounds, dataset.arcs, opts),
       fw = bounds.getTransform(bounds2),
-      inv = fw.invert();
+      inv = fw.invert(),
+      repairArcs;
 
-  function transform(x, y) {
+  function transformWithRounding(x, y) {
     var p = fw.transform(x, y);
     return [Math.round(p[0]), Math.round(p[1])];
   }
 
-  if (dataset.arcs) {
-    dataset.arcs.transformPoints(transform);
+  function transformWithoutRounding(x, y) {
+    return fw.transform(x, y);
   }
+
+  if (dataset.arcs && opts.fix_geometry) {
+    // try to repair intersections caused by quantization
+    dataset.arcs.transformPoints(transformWithoutRounding);
+    repairArcs = getRepairFunction(dataset.arcs);
+    dataset.arcs.transformPoints(function(x, y) {
+      return [Math.round(x), Math.round(y)];
+    });
+    repairArcs(dataset.arcs);
+
+  } else if (dataset.arcs) {
+    dataset.arcs.transformPoints(transformWithRounding);
+  }
+
   // support non-standard format with quantized arcs and non-quantized points
   if (!opts.no_point_quantization) {
     dataset.layers.filter(layerHasPoints).forEach(function(lyr) {
-      transformPointsInLayer(lyr, transform);
+      transformPointsInLayer(lyr, transformWithRounding);
     });
   }
 
@@ -125,10 +144,10 @@ TopoJSON.transformDataset = function(dataset, bounds, opts) {
     scale: [inv.mx, inv.my],
     translate: [inv.bx, inv.by]
   };
-};
+}
 
 // Export arcs as arrays of [x, y] and possibly [z] coordinates
-TopoJSON.exportArcs = function(arcs, bounds, opts) {
+function exportArcs(arcs, bounds, opts) {
   var fromZ = null,
       output = [];
   if (opts.presimplify) {
@@ -146,10 +165,10 @@ TopoJSON.exportArcs = function(arcs, bounds, opts) {
     output.push(arc.length > 1 ? arc : null);
   });
   return output;
-};
+}
 
 // Apply delta encoding in-place to an array of topojson arcs
-TopoJSON.deltaEncodeArcs = function(arcs) {
+function deltaEncodeArcs(arcs) {
   arcs.forEach(function(arr) {
     var ax, ay, bx, by, p;
     for (var i=0, n=arr.length; i<n; i++) {
@@ -164,34 +183,34 @@ TopoJSON.deltaEncodeArcs = function(arcs) {
       ay = by;
     }
   });
-};
+}
 
 // Calculate the x, y extents that map to an integer unit in topojson output
 // as a fraction of the x- and y- extents of the average segment.
-TopoJSON.calcExportResolution = function(arcs, k) {
+function calcExportResolution(arcs, k) {
   // TODO: think about the effect of long lines, e.g. from polar cuts.
   var xy = getAvgSegment2(arcs);
   return [xy[0] * k, xy[1] * k];
-};
+}
 
 // Calculate the bounding box of quantized topojson coordinates using one
 // of several methods.
-TopoJSON.calcExportBounds = function(bounds, arcs, opts) {
+export function calcExportBounds(bounds, arcs, opts) {
   var unitXY, xmax, ymax;
   if (opts.topojson_precision > 0) {
-    unitXY = TopoJSON.calcExportResolution(arcs, opts.topojson_precision);
+    unitXY = calcExportResolution(arcs, opts.topojson_precision);
   } else if (opts.quantization > 0) {
     unitXY = [bounds.width() / (opts.quantization-1), bounds.height() / (opts.quantization-1)];
   } else if (opts.precision > 0) {
     unitXY = [opts.precision, opts.precision];
   } else {
     // default -- auto quantization at 0.02 of avg. segment len
-    unitXY = TopoJSON.calcExportResolution(arcs, 0.02);
+    unitXY = calcExportResolution(arcs, 0.02);
   }
   xmax = Math.ceil(bounds.width() / unitXY[0]) || 0;
   ymax = Math.ceil(bounds.height() / unitXY[1]) || 0;
   return new Bounds(0, 0, xmax, ymax);
-};
+}
 
 TopoJSON.exportProperties = function(geometries, table, opts) {
   var properties = exportProperties(table, opts),

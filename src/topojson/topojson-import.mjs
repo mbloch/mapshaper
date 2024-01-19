@@ -27,11 +27,11 @@ export function importTopoJSON(topology, opts) {
   if (topology.arcs && topology.arcs.length > 0) {
     // TODO: apply transform to ArcCollection, not input arcs
     if (topology.transform) {
-      TopoJSON.decodeArcs(topology.arcs, topology.transform);
+      decodeArcs(topology.arcs, topology.transform);
     }
 
     if (opts && opts.precision) {
-      TopoJSON.roundCoords(topology.arcs, opts.precision);
+      roundCoords(topology.arcs, opts.precision);
     }
 
     arcs = new ArcCollection(topology.arcs);
@@ -55,7 +55,7 @@ export function importTopoJSON(topology, opts) {
       cleanShapes(lyr.shapes, arcs, lyr.geometry_type);
     }
     if (lyr.geometry_type == 'point' && topology.transform) {
-      TopoJSON.decodePoints(lyr.shapes, topology.transform);
+      decodePoints(lyr.shapes, topology.transform);
     }
     if (lyr.data) {
       fixInconsistentFields(lyr.data.getRecords());
@@ -74,14 +74,14 @@ export function importTopoJSON(topology, opts) {
   return dataset;
 }
 
-TopoJSON.decodePoints = function(shapes, transform) {
+function decodePoints(shapes, transform) {
   forEachPoint(shapes, function(p) {
     p[0] = p[0] * transform.scale[0] + transform.translate[0];
     p[1] = p[1] * transform.scale[1] + transform.translate[1];
   });
-};
+}
 
-TopoJSON.decodeArcs = function(arcs, transform) {
+function decodeArcs(arcs, transform) {
   var mx = transform.scale[0],
       my = transform.scale[1],
       bx = transform.translate[0],
@@ -101,10 +101,11 @@ TopoJSON.decodeArcs = function(arcs, transform) {
       prevY = y;
     }
   });
-};
+}
+
 
 // TODO: consider removing dupes...
-TopoJSON.roundCoords = function(arcs, precision) {
+function roundCoords(arcs, precision) {
   var round = getRoundingFunction(precision),
       p;
   arcs.forEach(function(arc) {
@@ -114,7 +115,7 @@ TopoJSON.roundCoords = function(arcs, precision) {
       p[1] = round(p[1]);
     }
   });
-};
+}
 
 TopoJSON.importObject = function(obj, arcs, opts) {
   var importer = new TopoJSON.GeometryImporter(arcs, opts);
