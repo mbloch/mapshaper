@@ -1,6 +1,6 @@
 # COMMAND REFERENCE
 
-This documentation applies to version 0.6.60 of mapshaper's command line program. Run `mapshaper -v` to check your version. For an introduction to the command line tool, read [this page](https://github.com/mbloch/mapshaper/wiki/Introduction-to-the-Command-Line-Tool) first.
+This documentation applies to version 0.6.61 of mapshaper's command line program. Run `mapshaper -v` to check your version. For an introduction to the command line tool, read [this page](https://github.com/mbloch/mapshaper/wiki/Introduction-to-the-Command-Line-Tool) first.
 
 ## Command line syntax
 
@@ -210,7 +210,7 @@ Save content of the target layer(s) to a file or files.
 
 `precision=`  Round all coordinates to a specified precision, e.g. `precision=0.001`. Useful for reducing the size of GeoJSON files.
 
-`fix-geometry` Remove segment intersections caused by rounding (via the `precision=` option) or TopoJSON quantization, by reverting intersecting areas to the original coordinates. This option is only applied if the original paths are free of intersections. In the case of quantized TopoJSON output, this option produces delta-encoded arcs that contain some decimal numbers. Be sure to test your software for compatibility.
+`fix-geometry` Remove segment intersections caused by rounding (via the `precision=` option) or TopoJSON quantization, by reverting intersecting areas to the original coordinates. In the case of quantized TopoJSON output, this option produces delta-encoded arcs that contain some decimal numbers. Be sure to test your software for compatibility. Note that this option is only applied if the original paths are free of intersections. Also, some kinds of invalid geometry, like spikes, do not get fixed.
 
 `bbox-index`  Export a JSON file containing bounding boxes of each output layer.
 
