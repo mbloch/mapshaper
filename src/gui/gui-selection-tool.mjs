@@ -93,6 +93,11 @@ export function SelectionTool(gui, ext, hit) {
     runCommand(cmd);
   });
 
+  new SimpleButton(popup.findChild('.duplicate-btn')).on('click', function() {
+    var cmd = '-filter + name=selection ids=' + getIdsOpt();
+    runCommand(cmd);
+  });
+
   new SimpleButton(popup.findChild('.cancel-btn')).on('click', function() {
     hit.clearSelection();
   });
