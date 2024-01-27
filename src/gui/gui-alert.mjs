@@ -58,6 +58,7 @@ export function showPopupAlert(msg, title) {
 export function AlertControl(gui) {
   var openAlert; // error popup
   var openPopup; // any popup
+  var quiet = false;
 
   gui.addMode('alert', function() {}, closePopup);
 
@@ -69,7 +70,12 @@ export function AlertControl(gui) {
     gui.enterMode('alert');
   };
 
+  gui.quiet = function(flag) {
+    quiet = !!flag;
+  };
+
   gui.message = function(str, title) {
+    if (quiet) return;
     if (openPopup) return; // don't stomp on another popup
     openPopup = showPopupAlert(str, title);
     openPopup.onClose(function() {openPopup = null;});

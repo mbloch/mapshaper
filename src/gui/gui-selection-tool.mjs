@@ -1,10 +1,14 @@
 import { HighlightBox } from './gui-highlight-box';
-import { internal, utils } from './gui-core';
+import { mapshaper, internal, utils } from './gui-core';
 import { SimpleButton } from './gui-elements';
+import { getBBoxCoords } from './gui-display-utils';
+import { El } from './gui-el';
+import { GUI } from './gui-lib';
 
 export function SelectionTool(gui, ext, hit) {
   var popup = gui.container.findChild('.selection-tool-options');
   var box = new HighlightBox(gui);
+  var coords = popup.findChild('.box-coords').hide();
   var _on = false;
 
   gui.addMode('selection_tool', turnOn, turnOff);
@@ -73,8 +77,10 @@ export function SelectionTool(gui, ext, hit) {
       // (this closes any other active mode, e.g. box_tool)
       gui.enterMode('selection_tool');
       popup.show();
+      updateCoords();
     } else {
       popup.hide();
+      hideCoords();
     }
   });
 
@@ -98,13 +104,54 @@ export function SelectionTool(gui, ext, hit) {
     runCommand(cmd);
   });
 
+  var coordsBtn = new SimpleButton(popup.findChild('.coords-btn')).on('click', function() {
+    if (coords.visible()) hideCoords(); else showCoords();
+  });
+
   new SimpleButton(popup.findChild('.cancel-btn')).on('click', function() {
     hit.clearSelection();
   });
 
+  function getSelectionBounds() {
+    var ids = hit.getSelectionIds();
+    if (ids.length === 0) return null;
+    var {layer, dataset} = gui.model.getActiveLayer();
+    var filtered = {
+      geometry_type: layer.geometry_type,
+      shapes: ids.map(id => layer.shapes[id])
+    };
+    var bbox = internal.getLayerBounds(filtered, dataset.arcs).toArray();
+    return internal.getRoundedCoords(bbox, internal.getBoundsPrecisionForDisplay(bbox));
+  }
+
+  function updateCoords() {
+    if (coords.visible()) {
+      showCoords();
+    }
+  }
+
+  function showCoords() {
+    var bbox = getSelectionBounds();
+    if (!bbox) {
+      hideCoords();
+      return;
+    }
+    El(coordsBtn.node()).addClass('selected-btn');
+    coords.text(bbox.join(','));
+    coords.show();
+    GUI.selectElement(coords.node());
+  }
+
+  function hideCoords() {
+    El(coordsBtn.node()).removeClass('selected-btn');
+    coords.hide();
+  }
+
   function runCommand(cmd, turnOff) {
     popup.hide();
+    gui.quiet(true);
     if (gui.console) gui.console.runMapshaperCommands(cmd, function(err) {
+      gui.quiet(false);
       reset();
       if (turnOff) gui.clearMode();
     });
