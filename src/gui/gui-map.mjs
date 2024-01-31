@@ -1,4 +1,4 @@
-import { InteractiveSelection } from './gui-interactive-selection';
+import { HitControl } from './gui-hit-control';
 import { CoordinatesDisplay } from './gui-coordinates-display';
 import { MapNav } from './gui-map-nav';
 import { SelectionTool } from './gui-selection-tool';
@@ -219,7 +219,7 @@ export function MshpMap(gui) {
     gui.buttons.show();
 
     if (opts.inspectorControl) {
-      _hit = new InteractiveSelection(gui, _ext, _mouse),
+      _hit = new HitControl(gui, _ext, _mouse),
       new InspectionControl2(gui, _hit);
       new SelectionTool(gui, _ext, _hit),
       new BoxTool(gui, _ext, _nav),

@@ -60,8 +60,8 @@ export function SessionHistory(gui) {
     }
   };
 
-  this.dataValueUpdated = function(id, field, value) {
-    var cmd = `-each 'd[${JSON.stringify(field)}] = ${JSON.stringify(value)}' where='this.id == ${id}'`;
+  this.dataValueUpdated = function(ids, field, value) {
+    var cmd = `-each 'd[${JSON.stringify(field)}] = ${JSON.stringify(value)}' ids=${ids.join(",")}`;
     commands.push(cmd);
   };
 

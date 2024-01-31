@@ -18,7 +18,7 @@ export function Popup(gui, toNext, toPrev) {
   var navInfo = El('span').addClass('popup-nav-info').appendTo(nav);
   var nextLink = El('span').addClass('popup-nav-arrow colored-text').appendTo(nav).text('▶');
   var refresh = null;
-  var currId = -1;
+  var currIds = [];
 
   el.addClass('rollover'); // used as a sentinel for the hover function
 
@@ -31,7 +31,7 @@ export function Popup(gui, toNext, toPrev) {
   self.show = function(id, ids, lyr, pinned) {
     var editable = pinned && gui.interaction.getMode() == 'data';
     var maxHeight = parent.node().clientHeight - 36;
-    currId = id;
+    currIds = [id];
     // stash a function for refreshing the current popup when data changes
     // while the popup is being displayed (e.g. while dragging a label)
     refresh = function() {
@@ -52,7 +52,7 @@ export function Popup(gui, toNext, toPrev) {
   self.hide = function() {
     if (!isOpen()) return;
     refresh = null;
-    currId = -1;
+    currIds = [];
     // make sure any pending edits are made before re-rendering popup
     GUI.blurActiveElement(); // this should be more selective -- could cause a glitch if typing in console
     content.empty();
@@ -75,6 +75,7 @@ export function Popup(gui, toNext, toPrev) {
   }
 
   function render(el, recId, lyr, editable) {
+    var recIds = [recId]; // TODO: support multiple ids
     var table = lyr.data; // table can be null (e.g. if layer has no attribute data)
     var rec = table && (editable ? table.getRecordAt(recId) : table.getReadOnlyRecordAt(recId)) || {};
     var tableEl = El('table').addClass('selectable'),
@@ -119,12 +120,12 @@ export function Popup(gui, toNext, toPrev) {
       var line = El('div').appendTo(el);
       El('span').addClass('add-field-btn').appendTo(line).on('click', async function(e) {
         // show "add field" dialog
-        renderAddFieldPopup(recId, lyr);
+        renderAddFieldPopup(recIds, lyr);
       }).text('+ add field');
     }
   }
 
-  function renderAddFieldPopup(recId, lyr) {
+  function renderAddFieldPopup(ids, lyr) {
     var popup = showPopupAlert('', 'Add field');
     var el = popup.container();
     el.addClass('option-menu');
@@ -155,9 +156,12 @@ export function Popup(gui, toNext, toPrev) {
 
       var cmdStr = `-each "d['${nameStr}'] = `;
       if (!all) {
-        cmdStr += `this.id != ${recId} ? null : `;
+        cmdStr += ids.length == 1 ?
+          `this.id != ${ids[0]}` :
+          `!${JSON.stringify(ids)}.includes(this.id)`;
+        cmdStr += ' ? null : ';
       }
-      valStr = JSON.stringify(JSON.stringify(value));
+      valStr = JSON.stringify(JSON.stringify(value)); // add escapes to strings
       cmdStr = valStr.replace('"', cmdStr);
 
       gui.console.runMapshaperCommands(cmdStr, function(err) {
@@ -209,12 +213,12 @@ export function Popup(gui, toNext, toPrev) {
       } else if (strval != strval2) {
         // field content has changed
         strval = strval2;
-        gui.dispatchEvent('data_preupdate', {FID: currId}); // for undo/redo
+        gui.dispatchEvent('data_preupdate', {ids: currIds}); // for undo/redo
         rec[key] = val2;
-        gui.dispatchEvent('data_postupdate', {FID: currId});
+        gui.dispatchEvent('data_postupdate', {ids: currIds});
         input.value(strval);
         setFieldClass(el, val2, type);
-        self.dispatchEvent('update', {field: key, value: val2, id: currId});
+        self.dispatchEvent('data_updated', {field: key, value: val2, ids: currIds});
       }
     });
   }
