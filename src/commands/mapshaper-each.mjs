@@ -4,6 +4,7 @@ import { DataTable } from '../datatable/mapshaper-data-table';
 import { expressionUsesGeoJSON, getFeatureEditor } from '../expressions/mapshaper-each-geojson';
 import { dissolveArcs } from '../paths/mapshaper-arc-dissolve';
 import { replaceLayerContents } from '../dataset/mapshaper-dataset-utils';
+import { getIdFilter, combineFilters } from './mapshaper-filter';
 
 import cmd from '../mapshaper-cmd';
 
@@ -23,6 +24,9 @@ cmd.evaluateEachFeature = function(lyr, dataset, exp, opts) {
   }
   if (opts && opts.where) {
     filter = compileFeatureExpression(opts.where, lyr, arcs);
+  }
+  if (opts && opts.ids) {
+    filter = combineFilters(filter, getIdFilter(opts.ids));
   }
   compiled = compileFeatureExpression(exp, lyr, arcs, exprOpts);
   // call compiled expression with id of each record

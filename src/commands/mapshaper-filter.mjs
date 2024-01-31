@@ -82,7 +82,7 @@ export function filterLayerInPlace(lyr, filter, invert) {
   lyr.data = filteredRecords ? new DataTable(filteredRecords) : null;
 }
 
-function getIdFilter(ids) {
+export function getIdFilter(ids) {
   var set = new Set(ids);
   return function(i) {
     return set.has(i);
@@ -104,7 +104,7 @@ function getEmptyPolygonFilter(shapes, arcs) {
   };
 }
 
-function combineFilters(a, b) {
+export function combineFilters(a, b) {
   return (a && b && function(id) {
       return a(id) && b(id);
     }) || a || b;

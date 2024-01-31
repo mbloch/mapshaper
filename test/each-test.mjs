@@ -17,6 +17,25 @@ describe('mapshaper-each.js', function () {
 
   describe('-each command', function () {
 
+    describe('ids= option', function() {
+      it('filters by ids', async function() {
+        var data = [{foo: 'a'}, {foo: 'b'}, {foo: 'c'}];
+        var cmd = '-i data.json -each ids=1,2 foo="z" -o';
+        var out = await api.applyCommands(cmd, {'data.json':data});
+        var data2 = JSON.parse(out['data.json']);
+        assert.deepEqual(data2, [{foo: 'a'}, {foo: 'z'}, {foo: 'z'}]);
+      });
+
+      it('filters by ids and where=', async function() {
+        var data = [{foo: 'a'}, {foo: 'b'}, {foo: 'c'}];
+        var cmd = '-i data.json -each ids=1,2 foo="z" where="this.id != 1" -o';
+        var out = await api.applyCommands(cmd, {'data.json':data});
+        var data2 = JSON.parse(out['data.json']);
+        assert.deepEqual(data2, [{foo: 'a'}, {foo: 'b'}, {foo: 'z'}]);
+      });
+
+    })
+
     describe('bbox functions', function() {
 
       var line = {

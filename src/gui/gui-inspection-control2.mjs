@@ -12,10 +12,10 @@ export function InspectionControl2(gui, hit) {
     }
   });
 
-  _popup.on('update', function(e) {
+  _popup.on('data_updated', function(e) {
     // data_change event no longer needed (update is handled below)
     // _self.dispatchEvent('data_change', e.data); // let map know which field has changed
-    gui.session.dataValueUpdated(e.id, e.field, e.value);
+    gui.session.dataValueUpdated(e.ids, e.field, e.value);
     // Refresh the display if a style variable has been changed interactively
     if (internal.isSupportedSvgStyleProperty(e.field)) {
       // drawLayers();

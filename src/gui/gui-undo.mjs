@@ -26,6 +26,28 @@ export function Undo(gui) {
     return (e.ctrlKey || e.metaKey) && (e.shiftKey && e.key == 'z' || !e.shiftKey && e.key == 'y');
   }
 
+  function makeMultiDataSetter(ids) {
+    if (ids.length == 1) return makeDataSetter(ids[0]);
+    var target = gui.model.getActiveLayer();
+    var recs = ids.map(id => copyRecord(target.layer.data.getRecordAt(id)));
+    return function() {
+      var data = target.layer.data.getRecords();
+      for (var i=0; i<ids.length; i++) {
+        data[ids[i]] = recs[i];
+      }
+      gui.dispatchEvent('popup-needs-refresh');
+    };
+  }
+
+  function makeDataSetter(id) {
+    var target = gui.model.getActiveLayer();
+    var rec = copyRecord(target.layer.data.getRecordAt(id));
+    return function() {
+      target.layer.data.getRecords()[id] = rec;
+      gui.dispatchEvent('popup-needs-refresh');
+    };
+  }
+
   gui.keyboard.on('keydown', function(evt) {
     var e = evt.originalEvent,
         kc = e.keyCode;
@@ -49,31 +71,31 @@ export function Undo(gui) {
     var redo = function() {
       setPointCoords(target, e.FID, e.endCoords);
     };
-    this.addHistoryState(undo, redo);
-  }, this);
+    addHistoryState(undo, redo);
+  });
 
   // undo/redo label dragging
   //
   gui.on('label_dragstart', function(e) {
-    stashedUndo = this.makeDataSetter(e.FID);
-  }, this);
+    stashedUndo = makeDataSetter(e.FID);
+  });
 
   gui.on('label_dragend', function(e) {
-    var redo = this.makeDataSetter(e.FID);
-    this.addHistoryState(stashedUndo, redo);
-  }, this);
+    var redo = makeDataSetter(e.FID);
+    addHistoryState(stashedUndo, redo);
+  });
 
   // undo/redo data editing
   // TODO: consider setting selected feature to the undo/redo target feature
   //
   gui.on('data_preupdate', function(e) {
-    stashedUndo = this.makeDataSetter(e.FID);
-  }, this);
+    stashedUndo = makeMultiDataSetter(e.ids);
+  });
 
   gui.on('data_postupdate', function(e) {
-    var redo = this.makeDataSetter(e.FID);
-    this.addHistoryState(stashedUndo, redo);
-  }, this);
+    var redo = makeMultiDataSetter(e.ids);
+    addHistoryState(stashedUndo, redo);
+  });
 
   gui.on('vertex_dragend', function(e) {
     var target = e.data.target;
@@ -92,8 +114,8 @@ export function Undo(gui) {
       }
       setVertexCoords(target, e.ids, endPoint);
     };
-    this.addHistoryState(undo, redo);
-  }, this);
+    addHistoryState(undo, redo);
+  });
 
   gui.on('vertex_delete', function(e) {
     // get vertex coords in data coordinates (not display coordinates);
@@ -104,29 +126,20 @@ export function Undo(gui) {
     var undo = function() {
       insertVertex(e.data.target, e.vertex_id, p);
     };
-    this.addHistoryState(undo, redo);
-  }, this);
+    addHistoryState(undo, redo);
+  });
 
   this.clear = function() {
     reset();
   };
 
-  this.makeDataSetter = function(id) {
-    var target = gui.model.getActiveLayer();
-    var rec = copyRecord(target.layer.data.getRecordAt(id));
-    return function() {
-      target.layer.data.getRecords()[id] = rec;
-      gui.dispatchEvent('popup-needs-refresh');
-    };
-  };
-
-  this.addHistoryState = function(undo, redo) {
+  function addHistoryState(undo, redo) {
     if (offset > 0) {
       history.splice(-offset);
       offset = 0;
     }
     history.push({undo, redo});
-  };
+  }
 
   this.undo = function() {
     var item = getHistoryItem();

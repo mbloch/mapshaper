@@ -846,6 +846,9 @@ export function getOptionParser() {
       DEFAULT: true,
       describe: 'JS expression to apply to each target feature'
     })
+    .option('ids', { // undocumented, used by GUI
+      type: 'numbers'
+    })
     .option('where', whereOpt)
     .option('target', targetOpt);
 
