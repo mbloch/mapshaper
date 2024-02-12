@@ -3,6 +3,7 @@ import { getStashedVar } from '../mapshaper-stash';
 import { getTargetProxy } from '../expressions/mapshaper-target-proxy';
 import { stop, error } from '../utils/mapshaper-logging';
 import utils from '../utils/mapshaper-utils';
+import { expandCommandTargets } from '../dataset/mapshaper-target-utils';
 
 // Support for evaluating expressions embedded in curly-brace templates
 
@@ -10,8 +11,20 @@ import utils from '../utils/mapshaper-utils';
 export async function evalTemplateExpression(expression, targets, ctx) {
   ctx = ctx || getBaseContext();
   // TODO: throw an error if target is used when there are multiple targets
-  if (targets && targets.length == 1) {
-    Object.defineProperty(ctx, 'target', {value: getTargetProxy(targets[0])});
+  if (targets) {
+    var proxies = expandCommandTargets(targets).reduce(function(memo, target) {
+      var proxy = getTargetProxy(target);
+      memo.push(proxy);
+      // index targets by layer name too
+      if (target.layer.name) {
+        memo[target.layer.name] = proxy;
+      }
+      return memo;
+    }, []);
+    Object.defineProperty(ctx, 'targets', {value: proxies});
+    if (proxies.length == 1) {
+      Object.defineProperty(ctx, 'target', {value: proxies[0]});
+    }
   }
   // Add global functions and data to the expression context
   // (e.g. functions imported via the -require command)
