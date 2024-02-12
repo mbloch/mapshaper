@@ -1,6 +1,6 @@
 # COMMAND REFERENCE
 
-This documentation applies to version 0.6.61 of mapshaper's command line program. Run `mapshaper -v` to check your version. For an introduction to the command line tool, read [this page](https://github.com/mbloch/mapshaper/wiki/Introduction-to-the-Command-Line-Tool) first.
+This documentation applies to version 0.6.62 of mapshaper's command line program. Run `mapshaper -v` to check your version. For an introduction to the command line tool, read [this page](https://github.com/mbloch/mapshaper/wiki/Introduction-to-the-Command-Line-Tool) first.
 
 ## Command line syntax
 
@@ -735,7 +735,7 @@ Create a graticule layer appropriate for a world map centered on longitude 0.
 
 `polygon` Create an polygon enclosing the entire area of the graticule. Useful for creating background or outline shapes for clipped projections, like Robinson or Stereographic.
 
-`interval=` Specify the spacing of graticule lines (in degrees). Options include:  5, 10, 15, 30, 45. Default is 10.
+`interval=` Specify the spacing of graticule lines (in degrees). Common options are: 5, 10, 15, 30, 45. Default is 10.
 
 ### -grid
 

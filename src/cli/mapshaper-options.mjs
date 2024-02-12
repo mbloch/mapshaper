@@ -983,7 +983,7 @@ export function getOptionParser() {
   parser.command('graticule')
     .describe('create a graticule layer')
     .option('interval', {
-      describe: 'size of grid cells in degrees (options: 5 10 15 30 45, default is 10)',
+      describe: 'size of grid cells in degrees (default is 10)',
       type: 'number'
     })
     .option('polygon', {
