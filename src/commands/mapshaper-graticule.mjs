@@ -82,7 +82,9 @@ function addOutlineToGraticule(graticule, outline) {
 //
 function createGraticule(P, outlined, opts) {
   var interval = opts.interval || 10;
-  if (![5,10,15,20,30,45].includes(interval)) stop('Invalid interval:', interval);
+  if (Math.round(interval) != interval || interval > 0 === false) {
+    stop('Invalid interval:', interval);
+  }
   var lon0 = P.lam0 * 180 / Math.PI;
   var precision = interval > 10 ? 1 : 0.5; // degrees between each vertex
   var xstep = interval;
@@ -123,6 +125,7 @@ function createGraticule(P, outlined, opts) {
     return Math.abs(a - b) < interval / 5;
   }
 
+  // extended: meridian extends to pole
   function createMeridian(x, extended) {
     var y0 = ystep <= 15 ? ystep : 0;
     createMeridianPart(x, -90 + y0, 90 - y0);
