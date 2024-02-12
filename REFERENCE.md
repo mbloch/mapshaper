@@ -1071,6 +1071,7 @@ Create mapshaper commands on-the-fly and run them.
 
 Expression context:
 
+If command has a single target layer:
 `target` object provides data and information about the command's target layer
 - `target.layer_name`  Name of layer
 - `target.geojson`  (getter) Returns a GeoJSON FeatureCollection for the layer
@@ -1080,6 +1081,10 @@ Expression context:
 - `target.null_data_count` Number of features with no attribute data
 - `target.bbox` GeoJSON-style bounding box
 - `target.proj4` PROJ-formatted string giving the CRS (coordinate reference system) of the layer
+
+`targets` object gives access to all layers targetted by the run command.
+- by numerical index, like an array (`targets[0]` refers to the first target layer)
+- by layer name (`targets.states` refers to a layer named "states")
 
 `io` object has a method for passing data to the `-i` command.
 - `io.ifile(<filename>, <data>)` Create a temp file to use as input in a `-run` command (see example 2 below)

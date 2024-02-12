@@ -1,3 +1,7 @@
+v0.6.62
+* Removed restrictions on the allowable size of the graticule interval (in degrees).
+* Added `targets` object to the `-run` command expression context, giving access to multiple target layers.
+
 v0.6.61
 * Introduced the `fix-geometry` option to the `-snap` and `-o` commands, for removing segment intersections caused by coordinate rounding and TopoJSON quantization.
 
