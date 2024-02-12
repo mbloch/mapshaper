@@ -220,7 +220,7 @@ body {
 	text-align: center;
 }
 
-.box-tool-options .box-coords {
+.box-coords {
 	margin-top: 7px;
 	pointer-events: initial;
 }

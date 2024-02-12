@@ -1070,35 +1070,6 @@
 
   utils$1.inherit(Checkbox, EventDispatcher);
 
-  function xSimpleButton(ref) {
-    var _el = El(ref),
-        _self = this,
-        _active = !_el.hasClass('disabled');
-
-    _el.on('click', function(e) {
-      if (_active) _self.dispatchEvent('click');
-      return false;
-    });
-
-    this.active = function(a) {
-      if (a === void 0) return _active;
-      if (a !== _active) {
-        _active = a;
-        _el.toggleClass('disabled');
-      }
-      return this;
-    };
-
-    this.node = function() {return _el.node();};
-
-    function isVisible() {
-      var el = _el.node();
-      return el.offsetParent !== null;
-    }
-  }
-
-  //utils.inherit(SimpleButton, EventDispatcher);
-
   function SimpleButton(ref) {
     var _el = El(ref),
         _active = !_el.hasClass('disabled');
@@ -1120,8 +1091,6 @@
     }
     return _el;
   }
-
-  // utils.inherit(SimpleButton, EventDispatcher);
 
   function showPopupAlert(msg, title) {
     var self = {}, html = '';
@@ -1181,6 +1150,7 @@
   function AlertControl(gui) {
     var openAlert; // error popup
     var openPopup; // any popup
+    var quiet = false;
 
     gui.addMode('alert', function() {}, closePopup);
 
@@ -1192,7 +1162,12 @@
       gui.enterMode('alert');
     };
 
+    gui.quiet = function(flag) {
+      quiet = !!flag;
+    };
+
     gui.message = function(str, title) {
+      if (quiet) return;
       if (openPopup) return; // don't stomp on another popup
       openPopup = showPopupAlert(str, title);
       openPopup.onClose(function() {openPopup = null;});
@@ -4507,8 +4482,8 @@
       }
     };
 
-    this.dataValueUpdated = function(id, field, value) {
-      var cmd = `-each 'd[${JSON.stringify(field)}] = ${JSON.stringify(value)}' where='this.id == ${id}'`;
+    this.dataValueUpdated = function(ids, field, value) {
+      var cmd = `-each 'd[${JSON.stringify(field)}] = ${JSON.stringify(value)}' ids=${ids.join(",")}`;
       commands.push(cmd);
     };
 
@@ -4591,6 +4566,28 @@
       return (e.ctrlKey || e.metaKey) && (e.shiftKey && e.key == 'z' || !e.shiftKey && e.key == 'y');
     }
 
+    function makeMultiDataSetter(ids) {
+      if (ids.length == 1) return makeDataSetter(ids[0]);
+      var target = gui.model.getActiveLayer();
+      var recs = ids.map(id => copyRecord(target.layer.data.getRecordAt(id)));
+      return function() {
+        var data = target.layer.data.getRecords();
+        for (var i=0; i<ids.length; i++) {
+          data[ids[i]] = recs[i];
+        }
+        gui.dispatchEvent('popup-needs-refresh');
+      };
+    }
+
+    function makeDataSetter(id) {
+      var target = gui.model.getActiveLayer();
+      var rec = copyRecord(target.layer.data.getRecordAt(id));
+      return function() {
+        target.layer.data.getRecords()[id] = rec;
+        gui.dispatchEvent('popup-needs-refresh');
+      };
+    }
+
     gui.keyboard.on('keydown', function(evt) {
       var e = evt.originalEvent,
           kc = e.keyCode;
@@ -4614,31 +4611,31 @@
       var redo = function() {
         setPointCoords(target, e.FID, e.endCoords);
       };
-      this.addHistoryState(undo, redo);
-    }, this);
+      addHistoryState(undo, redo);
+    });
 
     // undo/redo label dragging
     //
     gui.on('label_dragstart', function(e) {
-      stashedUndo = this.makeDataSetter(e.FID);
-    }, this);
+      stashedUndo = makeDataSetter(e.FID);
+    });
 
     gui.on('label_dragend', function(e) {
-      var redo = this.makeDataSetter(e.FID);
-      this.addHistoryState(stashedUndo, redo);
-    }, this);
+      var redo = makeDataSetter(e.FID);
+      addHistoryState(stashedUndo, redo);
+    });
 
     // undo/redo data editing
     // TODO: consider setting selected feature to the undo/redo target feature
     //
     gui.on('data_preupdate', function(e) {
-      stashedUndo = this.makeDataSetter(e.FID);
-    }, this);
+      stashedUndo = makeMultiDataSetter(e.ids);
+    });
 
     gui.on('data_postupdate', function(e) {
-      var redo = this.makeDataSetter(e.FID);
-      this.addHistoryState(stashedUndo, redo);
-    }, this);
+      var redo = makeMultiDataSetter(e.ids);
+      addHistoryState(stashedUndo, redo);
+    });
 
     gui.on('vertex_dragend', function(e) {
       var target = e.data.target;
@@ -4657,8 +4654,8 @@
         }
         setVertexCoords(target, e.ids, endPoint);
       };
-      this.addHistoryState(undo, redo);
-    }, this);
+      addHistoryState(undo, redo);
+    });
 
     gui.on('vertex_delete', function(e) {
       // get vertex coords in data coordinates (not display coordinates);
@@ -4669,29 +4666,20 @@
       var undo = function() {
         insertVertex$1(e.data.target, e.vertex_id, p);
       };
-      this.addHistoryState(undo, redo);
-    }, this);
+      addHistoryState(undo, redo);
+    });
 
     this.clear = function() {
       reset();
     };
 
-    this.makeDataSetter = function(id) {
-      var target = gui.model.getActiveLayer();
-      var rec = copyRecord(target.layer.data.getRecordAt(id));
-      return function() {
-        target.layer.data.getRecords()[id] = rec;
-        gui.dispatchEvent('popup-needs-refresh');
-      };
-    };
-
-    this.addHistoryState = function(undo, redo) {
+    function addHistoryState(undo, redo) {
       if (offset > 0) {
         history.splice(-offset);
         offset = 0;
       }
       history.push({undo, redo});
-    };
+    }
 
     this.undo = function() {
       var item = getHistoryItem();
@@ -6957,7 +6945,7 @@
     };
   }
 
-  function InteractiveSelection(gui, ext, mouse) {
+  function HitControl(gui, ext, mouse) {
     var self = new EventDispatcher();
     var storedData = noHitData(); // may include additional data from SVG symbol hit (e.g. hit node)
     var selectionIds = [];
@@ -7032,7 +7020,7 @@
     }
 
     function pinnable() {
-      return clickable() && interactionMode != 'selection';
+      return clickable() && !selectable();
     }
 
     function draggable() {
@@ -7152,7 +7140,7 @@
 
       // TODO: move pinning to inspection control?
       if (clickable()) {
-        updateSelectionState(mergeClickData(hitTest(e)));
+        updateSelectionState(convertClickDataToSelectionData(hitTest(e)));
       }
       triggerHitEvent('click', e.data);
     }, null, priority);
@@ -7184,7 +7172,9 @@
 
     function noHitData() {return {ids: [], id: -1, pinned: false};}
 
-    function mergeClickData(hitData) {
+    // Translates feature hit data from a mouse click into feature selection data
+    // hitData: hit data from a mouse click
+    function convertClickDataToSelectionData(hitData) {
       // mergeCurrentState(hitData);
       // TOGGLE pinned state under some conditions
       var id = hitData.ids.length > 0 ? hitData.ids[0] : -1;
@@ -8146,6 +8136,7 @@
   function SelectionTool(gui, ext, hit) {
     var popup = gui.container.findChild('.selection-tool-options');
     var box = new HighlightBox(gui);
+    var coords = popup.findChild('.box-coords').hide();
     var _on = false;
 
     gui.addMode('selection_tool', turnOn, turnOff);
@@ -8214,8 +8205,10 @@
         // (this closes any other active mode, e.g. box_tool)
         gui.enterMode('selection_tool');
         popup.show();
+        updateCoords();
       } else {
         popup.hide();
+        hideCoords();
       }
     });
 
@@ -8234,13 +8227,59 @@
       runCommand(cmd);
     });
 
+    new SimpleButton(popup.findChild('.duplicate-btn')).on('click', function() {
+      var cmd = '-filter + name=selection ids=' + getIdsOpt();
+      runCommand(cmd);
+    });
+
+    var coordsBtn = new SimpleButton(popup.findChild('.coords-btn')).on('click', function() {
+      if (coords.visible()) hideCoords(); else showCoords();
+    });
+
     new SimpleButton(popup.findChild('.cancel-btn')).on('click', function() {
       hit.clearSelection();
     });
 
+    function getSelectionBounds() {
+      var ids = hit.getSelectionIds();
+      if (ids.length === 0) return null;
+      var {layer, dataset} = gui.model.getActiveLayer();
+      var filtered = {
+        geometry_type: layer.geometry_type,
+        shapes: ids.map(id => layer.shapes[id])
+      };
+      var bbox = internal.getLayerBounds(filtered, dataset.arcs).toArray();
+      return internal.getRoundedCoords(bbox, internal.getBoundsPrecisionForDisplay(bbox));
+    }
+
+    function updateCoords() {
+      if (coords.visible()) {
+        showCoords();
+      }
+    }
+
+    function showCoords() {
+      var bbox = getSelectionBounds();
+      if (!bbox) {
+        hideCoords();
+        return;
+      }
+      El(coordsBtn.node()).addClass('selected-btn');
+      coords.text(bbox.join(','));
+      coords.show();
+      GUI.selectElement(coords.node());
+    }
+
+    function hideCoords() {
+      El(coordsBtn.node()).removeClass('selected-btn');
+      coords.hide();
+    }
+
     function runCommand(cmd, turnOff) {
       popup.hide();
+      gui.quiet(true);
       if (gui.console) gui.console.runMapshaperCommands(cmd, function(err) {
+        gui.quiet(false);
         reset();
         if (turnOff) gui.clearMode();
       });
@@ -8260,7 +8299,7 @@
     var navInfo = El('span').addClass('popup-nav-info').appendTo(nav);
     var nextLink = El('span').addClass('popup-nav-arrow colored-text').appendTo(nav).text('▶');
     var refresh = null;
-    var currId = -1;
+    var currIds = [];
 
     el.addClass('rollover'); // used as a sentinel for the hover function
 
@@ -8273,7 +8312,7 @@
     self.show = function(id, ids, lyr, pinned) {
       var editable = pinned && gui.interaction.getMode() == 'data';
       var maxHeight = parent.node().clientHeight - 36;
-      currId = id;
+      currIds = [id];
       // stash a function for refreshing the current popup when data changes
       // while the popup is being displayed (e.g. while dragging a label)
       refresh = function() {
@@ -8294,7 +8333,7 @@
     self.hide = function() {
       if (!isOpen()) return;
       refresh = null;
-      currId = -1;
+      currIds = [];
       // make sure any pending edits are made before re-rendering popup
       GUI.blurActiveElement(); // this should be more selective -- could cause a glitch if typing in console
       content.empty();
@@ -8317,6 +8356,7 @@
     }
 
     function render(el, recId, lyr, editable) {
+      var recIds = [recId]; // TODO: support multiple ids
       var table = lyr.data; // table can be null (e.g. if layer has no attribute data)
       var rec = table && (editable ? table.getRecordAt(recId) : table.getReadOnlyRecordAt(recId)) || {};
       var tableEl = El('table').addClass('selectable'),
@@ -8361,12 +8401,12 @@
         var line = El('div').appendTo(el);
         El('span').addClass('add-field-btn').appendTo(line).on('click', async function(e) {
           // show "add field" dialog
-          renderAddFieldPopup(recId, lyr);
+          renderAddFieldPopup(recIds, lyr);
         }).text('+ add field');
       }
     }
 
-    function renderAddFieldPopup(recId, lyr) {
+    function renderAddFieldPopup(ids, lyr) {
       var popup = showPopupAlert('', 'Add field');
       var el = popup.container();
       el.addClass('option-menu');
@@ -8397,9 +8437,12 @@
 
         var cmdStr = `-each "d['${nameStr}'] = `;
         if (!all) {
-          cmdStr += `this.id != ${recId} ? null : `;
+          cmdStr += ids.length == 1 ?
+            `this.id != ${ids[0]}` :
+            `!${JSON.stringify(ids)}.includes(this.id)`;
+          cmdStr += ' ? null : ';
         }
-        valStr = JSON.stringify(JSON.stringify(value));
+        valStr = JSON.stringify(JSON.stringify(value)); // add escapes to strings
         cmdStr = valStr.replace('"', cmdStr);
 
         gui.console.runMapshaperCommands(cmdStr, function(err) {
@@ -8451,12 +8494,12 @@
         } else if (strval != strval2) {
           // field content has changed
           strval = strval2;
-          gui.dispatchEvent('data_preupdate', {FID: currId}); // for undo/redo
+          gui.dispatchEvent('data_preupdate', {ids: currIds}); // for undo/redo
           rec[key] = val2;
-          gui.dispatchEvent('data_postupdate', {FID: currId});
+          gui.dispatchEvent('data_postupdate', {ids: currIds});
           input.value(strval);
           setFieldClass(el, val2, type);
-          self.dispatchEvent('update', {field: key, value: val2, id: currId});
+          self.dispatchEvent('data_updated', {field: key, value: val2, ids: currIds});
         }
       });
     }
@@ -8540,10 +8583,10 @@
       }
     });
 
-    _popup.on('update', function(e) {
+    _popup.on('data_updated', function(e) {
       // data_change event no longer needed (update is handled below)
       // _self.dispatchEvent('data_change', e.data); // let map know which field has changed
-      gui.session.dataValueUpdated(e.id, e.field, e.value);
+      gui.session.dataValueUpdated(e.ids, e.field, e.value);
       // Refresh the display if a style variable has been changed interactively
       if (internal.isSupportedSvgStyleProperty(e.field)) {
         // drawLayers();
@@ -11325,7 +11368,7 @@
       gui.buttons.show();
 
       if (opts.inspectorControl) {
-        _hit = new InteractiveSelection(gui, _ext, _mouse),
+        _hit = new HitControl(gui, _ext, _mouse),
         new InspectionControl2(gui, _hit);
         new SelectionTool(gui, _ext, _hit),
         new BoxTool(gui, _ext, _nav),

@@ -24550,6 +24550,9 @@ ${svg}
         DEFAULT: true,
         describe: 'JS expression to apply to each target feature'
       })
+      .option('ids', { // undocumented, used by GUI
+        type: 'numbers'
+      })
       .option('where', whereOpt)
       .option('target', targetOpt);
 
@@ -24684,7 +24687,7 @@ ${svg}
     parser.command('graticule')
       .describe('create a graticule layer')
       .option('interval', {
-        describe: 'size of grid cells in degrees (options: 5 10 15 30 45, default is 10)',
+        describe: 'size of grid cells in degrees (default is 10)',
         type: 'number'
       })
       .option('polygon', {
@@ -36955,128 +36958,6 @@ ${svg}
     }
   };
 
-  cmd.evaluateEachFeature = function(lyr, dataset, exp, opts) {
-    var n = getFeatureCount(lyr),
-        arcs = dataset.arcs,
-        compiled, filter;
-
-    var exprOpts = {
-      no_return: true,
-      geojson_editor: expressionUsesGeoJSON(exp) ? getFeatureEditor(lyr, dataset) : null
-    };
-
-    // TODO: consider not creating a data table -- not needed if expression only references geometry
-    if (n > 0 && !lyr.data) {
-      lyr.data = new DataTable(n);
-    }
-    if (opts && opts.where) {
-      filter = compileFeatureExpression(opts.where, lyr, arcs);
-    }
-    compiled = compileFeatureExpression(exp, lyr, arcs, exprOpts);
-    // call compiled expression with id of each record
-    for (var i=0; i<n; i++) {
-      if (!filter || filter(i)) {
-        compiled(i);
-      }
-    }
-
-    var replacement = exprOpts.geojson_editor ? exprOpts.geojson_editor.done() : null;
-    if (replacement) {
-      replaceLayerContents(lyr, dataset, replacement);
-    }
-  };
-
-  var externalCommands = {};
-
-  cmd.registerCommand = function(name, params) {
-    var defn = {name: name, options: params.options || []};
-    // Add definitions of options common to all commands (TODO: remove duplication)
-    defn.options.push({name: 'target'});
-    utils.defaults(defn, params);
-    validateExternalCommand(defn);
-    externalCommands[name] = defn;
-  };
-
-  function isValidExternalCommand(defn) {
-    try {
-      validateExternalCommand(defn);
-      return true;
-    } catch(e) {}
-    return false;
-  }
-
-  function validateExternalCommand(defn) {
-    var targetTypes = ['layer', 'layers'];
-    if (typeof defn.command != 'function') {
-      stop('Expected "command" parameter function');
-    }
-    if (!defn.target) {
-      stop('Missing required "target" parameter');
-    }
-    if (!targetTypes.includes(defn.target)) {
-      stop('Unrecognized command target type:', defn.target);
-    }
-  }
-
-  cmd.runExternalCommand = function(cmdOpts, catalog) {
-    var name = cmdOpts.name;
-    var cmdDefn = externalCommands[name];
-    if (!cmdDefn) {
-      stop('Unsupported command:', name);
-    }
-    var targetType = cmdDefn.target;
-    var opts = parseExternalCommand(name, cmdDefn, cmdOpts._);
-    var targets = catalog.findCommandTargets(opts.target || '*');
-    var target = targets[0];
-    var output;
-    if (!target) {
-      stop('Missing a target');
-    }
-    if (targetType == 'layer' && (target.layers.length != 1 || targets.length > 1)) {
-      stop('This command only supports targeting a single layer');
-    }
-    if (targets.length > 1) {
-      stop("Targetting layers from multiple datasets is not supported");
-    }
-    if (targetType == 'layer') {
-      output = cmdDefn.command(target.layers[0], target.dataset, opts.options);
-    } else if (targetType == 'layers') {
-      output = cmdDefn.command(target.layers, target.dataset, opts.options);
-    }
-    if (output) {
-      integrateOutput(output, target, catalog, opts);
-    }
-  };
-
-  // TODO: remove restrictions on output data
-  function integrateOutput(output, input, catalog, opts) {
-    if (!output.dataset || !output.layers || output.layers.length > 0 === false) {
-      stop('Invalid command output');
-    }
-    if (output.dataset == input.dataset) {
-      stop('External commands are not currently allowed to modify input datasets');
-    }
-    if (output.dataset.layers.length != output.layers.length) {
-      stop('Currently not supported: targetting a subset of output layers');
-    }
-    if (!opts.no_replace) {
-      input.layers.forEach(function(lyr) {
-        catalog.deleteLayer(lyr, input.dataset);
-      });
-    }
-    catalog.addDataset(output.dataset);
-  }
-
-  function parseExternalCommand(name, cmdDefn, tokens) {
-    var parser = new CommandParser();
-    var cmd = parser.command(name);
-    (cmdDefn.options || []).forEach(function(o) {
-      cmd.option(o.name, o);
-    });
-    var parsed = parser.parseArgv(['-' + name].concat(tokens));
-    return parsed[0];
-  }
-
   cmd.filterGeom = function(lyr, arcs, opts) {
     if (!layerHasGeometry(lyr)) {
       stop("Layer is missing geometry");
@@ -37291,6 +37172,131 @@ ${svg}
     return (a && b && function(id) {
         return a(id) && b(id);
       }) || a || b;
+  }
+
+  cmd.evaluateEachFeature = function(lyr, dataset, exp, opts) {
+    var n = getFeatureCount(lyr),
+        arcs = dataset.arcs,
+        compiled, filter;
+
+    var exprOpts = {
+      no_return: true,
+      geojson_editor: expressionUsesGeoJSON(exp) ? getFeatureEditor(lyr, dataset) : null
+    };
+
+    // TODO: consider not creating a data table -- not needed if expression only references geometry
+    if (n > 0 && !lyr.data) {
+      lyr.data = new DataTable(n);
+    }
+    if (opts && opts.where) {
+      filter = compileFeatureExpression(opts.where, lyr, arcs);
+    }
+    if (opts && opts.ids) {
+      filter = combineFilters(filter, getIdFilter(opts.ids));
+    }
+    compiled = compileFeatureExpression(exp, lyr, arcs, exprOpts);
+    // call compiled expression with id of each record
+    for (var i=0; i<n; i++) {
+      if (!filter || filter(i)) {
+        compiled(i);
+      }
+    }
+
+    var replacement = exprOpts.geojson_editor ? exprOpts.geojson_editor.done() : null;
+    if (replacement) {
+      replaceLayerContents(lyr, dataset, replacement);
+    }
+  };
+
+  var externalCommands = {};
+
+  cmd.registerCommand = function(name, params) {
+    var defn = {name: name, options: params.options || []};
+    // Add definitions of options common to all commands (TODO: remove duplication)
+    defn.options.push({name: 'target'});
+    utils.defaults(defn, params);
+    validateExternalCommand(defn);
+    externalCommands[name] = defn;
+  };
+
+  function isValidExternalCommand(defn) {
+    try {
+      validateExternalCommand(defn);
+      return true;
+    } catch(e) {}
+    return false;
+  }
+
+  function validateExternalCommand(defn) {
+    var targetTypes = ['layer', 'layers'];
+    if (typeof defn.command != 'function') {
+      stop('Expected "command" parameter function');
+    }
+    if (!defn.target) {
+      stop('Missing required "target" parameter');
+    }
+    if (!targetTypes.includes(defn.target)) {
+      stop('Unrecognized command target type:', defn.target);
+    }
+  }
+
+  cmd.runExternalCommand = function(cmdOpts, catalog) {
+    var name = cmdOpts.name;
+    var cmdDefn = externalCommands[name];
+    if (!cmdDefn) {
+      stop('Unsupported command:', name);
+    }
+    var targetType = cmdDefn.target;
+    var opts = parseExternalCommand(name, cmdDefn, cmdOpts._);
+    var targets = catalog.findCommandTargets(opts.target || '*');
+    var target = targets[0];
+    var output;
+    if (!target) {
+      stop('Missing a target');
+    }
+    if (targetType == 'layer' && (target.layers.length != 1 || targets.length > 1)) {
+      stop('This command only supports targeting a single layer');
+    }
+    if (targets.length > 1) {
+      stop("Targetting layers from multiple datasets is not supported");
+    }
+    if (targetType == 'layer') {
+      output = cmdDefn.command(target.layers[0], target.dataset, opts.options);
+    } else if (targetType == 'layers') {
+      output = cmdDefn.command(target.layers, target.dataset, opts.options);
+    }
+    if (output) {
+      integrateOutput(output, target, catalog, opts);
+    }
+  };
+
+  // TODO: remove restrictions on output data
+  function integrateOutput(output, input, catalog, opts) {
+    if (!output.dataset || !output.layers || output.layers.length > 0 === false) {
+      stop('Invalid command output');
+    }
+    if (output.dataset == input.dataset) {
+      stop('External commands are not currently allowed to modify input datasets');
+    }
+    if (output.dataset.layers.length != output.layers.length) {
+      stop('Currently not supported: targetting a subset of output layers');
+    }
+    if (!opts.no_replace) {
+      input.layers.forEach(function(lyr) {
+        catalog.deleteLayer(lyr, input.dataset);
+      });
+    }
+    catalog.addDataset(output.dataset);
+  }
+
+  function parseExternalCommand(name, cmdDefn, tokens) {
+    var parser = new CommandParser();
+    var cmd = parser.command(name);
+    (cmdDefn.options || []).forEach(function(o) {
+      cmd.option(o.name, o);
+    });
+    var parsed = parser.parseArgv(['-' + name].concat(tokens));
+    return parsed[0];
   }
 
   cmd.filterIslands = function(lyr, dataset, optsArg) {
@@ -39228,7 +39234,9 @@ ${svg}
   //
   function createGraticule(P, outlined, opts) {
     var interval = opts.interval || 10;
-    if (![5,10,15,20,30,45].includes(interval)) stop('Invalid interval:', interval);
+    if (Math.round(interval) != interval || interval > 0 === false) {
+      stop('Invalid interval:', interval);
+    }
     P.lam0 * 180 / Math.PI;
     var precision = interval > 10 ? 1 : 0.5; // degrees between each vertex
     var xstep = interval;
@@ -39269,6 +39277,7 @@ ${svg}
       return Math.abs(a - b) < interval / 5;
     }
 
+    // extended: meridian extends to pole
     function createMeridian(x, extended) {
       var y0 = ystep <= 15 ? ystep : 0;
       createMeridianPart(x, -90 + y0, 90 - y0);
@@ -42016,24 +42025,23 @@ ${svg}
   // import { importGeoJSON } from '../geojson/geojson-import';
 
   function getTargetProxy(target) {
-    var lyr = target.layers[0];
-    var data = getLayerInfo(lyr, target.dataset); // layer_name, feature_count etc
-    data.layer = lyr;
-    data.dataset = target.dataset;
-    addGetters(data, {
+    var proxy = getLayerInfo(target.layer, target.dataset); // layer_name, feature_count etc
+    proxy.layer = target.layer;
+    proxy.dataset = target.dataset;
+    addGetters(proxy, {
       // export as an object, not a string or buffer
       geojson: getGeoJSON
     });
 
     function getGeoJSON() {
-      var features = exportLayerAsGeoJSON(lyr, target.dataset, {rfc7946: true}, true);
+      var features = exportLayerAsGeoJSON(target.layer, target.dataset, {rfc7946: true}, true);
       return {
         type: 'FeatureCollection',
         features: features
       };
     }
 
-    return data;
+    return proxy;
   }
 
   // Support for evaluating expressions embedded in curly-brace templates
@@ -42042,8 +42050,20 @@ ${svg}
   async function evalTemplateExpression(expression, targets, ctx) {
     ctx = ctx || getBaseContext();
     // TODO: throw an error if target is used when there are multiple targets
-    if (targets && targets.length == 1) {
-      Object.defineProperty(ctx, 'target', {value: getTargetProxy(targets[0])});
+    if (targets) {
+      var proxies = expandCommandTargets(targets).reduce(function(memo, target) {
+        var proxy = getTargetProxy(target);
+        memo.push(proxy);
+        // index targets by layer name too
+        if (target.layer.name) {
+          memo[target.layer.name] = proxy;
+        }
+        return memo;
+      }, []);
+      Object.defineProperty(ctx, 'targets', {value: proxies});
+      if (proxies.length == 1) {
+        Object.defineProperty(ctx, 'target', {value: proxies[0]});
+      }
     }
     // Add global functions and data to the expression context
     // (e.g. functions imported via the -require command)
@@ -44958,7 +44978,7 @@ ${svg}
     });
   }
 
-  var version = "0.6.61";
+  var version = "0.6.62";
 
   // Parse command line args into commands and run them
   // Function takes an optional Node-style callback. A Promise is returned if no callback is given.
