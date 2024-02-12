@@ -57,6 +57,23 @@ describe('mapshaper-run.js', function () {
       assert.deepEqual(JSON.parse(out['selection.json']), [{foo: 'bam'}])
     })
 
+   it('supports targets getter for multiple targets', async function() {
+      var a = {
+        type: 'LineString',
+        coordinates: [[0, 0], [1, 1]]
+      };
+      var b = {
+        type: 'LineString',
+        coordinates: [[0, 0], [2, 2]]
+      };
+      // test that targets can be referenced by name in a run expression
+      var cmd = `-i a.json b.json combine-files
+      -run '-merge-layers name={targets.a.layer_name + targets.b.layer_name}'
+      -o`;
+      var out = await api.applyCommands(cmd, {'a.json': a, 'b.json': b});
+      assert(!!out['ab.json']);
+   });
+
    it('supports io.ifile() alias', async function() {
       var data = [{foo: 'bar'}, {foo: 'baz'}, {foo: 'bam'}];
       var include = '{ \
