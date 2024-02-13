@@ -139,7 +139,7 @@ export function convertIntervalPair(opt, crs) {
 
 // Accepts a single value or a list of four values. List order is l,b,t,r
 export function convertFourSides(opt, crs, bounds) {
-  var arr = opt.split(',');
+  var arr = opt.includes(',') ? opt.split(',') : opt.split(' ');
   if (arr.length == 1) {
     arr = [arr[0], arr[0], arr[0], arr[0]];
   } else if (arr.length != 4) {
