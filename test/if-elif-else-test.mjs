@@ -18,6 +18,7 @@ describe('mapshaper-if-elif-else-endif.js', function () {
     });
   });
 
+
   it ('test expression', function(done) {
     var data = {
       type: 'GeometryCollection',
@@ -188,4 +189,36 @@ describe('mapshaper-if-elif-else-endif.js', function () {
       done();
     });
   });
+
+  it ('nested if statement 1', async function() {
+    var data = 'name\na';
+    var cmd = `-i data.csv
+      -if true -each 'name="b"'
+        -if false -each 'name="c"'
+        -elif true -each 'name="d"'
+        -else -each 'name="e"'
+        -endif
+      -else -each name="f"'
+      -endif
+      -o`;
+    var out = await api.applyCommands(cmd, {'data.csv': data});
+    assert.equal(out['data.csv'], 'name\nd');
+  })
+
+  it ('nested if statement 2', async function() {
+    var data = 'name\na';
+    var cmd = `-i data.csv
+      -if false -each 'name="b"'
+        -if true -each 'name="c"'
+        -elif true -each 'name="d"'
+        -else -each 'name="e"'
+        -endif
+      -else -each name="f"'
+      -endif
+      -o`;
+    var out = await api.applyCommands(cmd, {'data.csv': data});
+    assert.equal(out['data.csv'], 'name\nf');
+  })
+
+
 })

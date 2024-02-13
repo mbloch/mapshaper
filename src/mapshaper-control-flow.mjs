@@ -1,41 +1,59 @@
 
-export function resetControlFlow(job) {
-  job.control = null;
-}
-
 export function stopJob(job) {
-  getState(job).stopped = true;
+  job.stopped = true;
 }
 
 export function jobIsStopped(job) {
-  return getState(job).stopped === true;
+  return job.stopped === true;
 }
 
 export function inControlBlock(job) {
-  return !!getState(job).inControlBlock;
+  return getStack(job).length > 0;
+}
+
+export function enterBlock(job) {
+  var stack = getStack(job);
+  // skip over a block if it is inside an inactive branch
+  stack.push({
+    active: false,
+    complete: !inActiveBranch(job)
+  });
+}
+
+export function leaveBlock(job) {
+  var stack = getStack(job);
+  stack.pop();
 }
 
 export function enterActiveBranch(job) {
-  var state = getState(job);
-  state.inControlBlock = true;
-  state.active = true;
-  state.complete = true;
+  var block = getCurrentBlock(job);
+  block.active = true;
+  block.complete = true;
 }
 
 export function enterInactiveBranch(job) {
-  var state = getState(job);
-  state.inControlBlock = true;
-  state.active = false;
+  var block = getCurrentBlock(job);
+  block.active = false;
 }
 
-export function blockWasActive(job) {
-  return !!getState(job).complete;
+export function blockIsComplete(job) {
+  var block = getCurrentBlock(job);
+  return block.complete;
 }
 
+function getCurrentBlock(job) {
+  var stack = getStack(job);
+  return stack[stack.length-1];
+}
+
+// A branch is considered to be active if it and all its parents are active
+// (Main branch is considered to be active)
 export function inActiveBranch(job) {
-  return !!getState(job).active;
+  var stack = getStack(job);
+  return stack.length === 0 || stack.every(block => block.active);
 }
 
-function getState(job) {
-  return job.control || (job.control = {});
+function getStack(job) {
+  job.control = job.control || {stack: []};
+  return job.control.stack;
 }
