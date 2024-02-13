@@ -13419,7 +13419,7 @@
 
   // Accepts a single value or a list of four values. List order is l,b,t,r
   function convertFourSides(opt, crs, bounds) {
-    var arr = opt.split(',');
+    var arr = opt.includes(',') ? opt.split(',') : opt.split(' ');
     if (arr.length == 1) {
       arr = [arr[0], arr[0], arr[0], arr[0]];
     } else if (arr.length != 4) {
@@ -39328,58 +39328,74 @@ ${svg}
     print(str);
   };
 
-  function resetControlFlow(job) {
-    job.control = null;
-  }
-
   function stopJob(job) {
-    getState(job).stopped = true;
+    job.stopped = true;
   }
 
   function jobIsStopped(job) {
-    return getState(job).stopped === true;
+    return job.stopped === true;
   }
 
   function inControlBlock(job) {
-    return !!getState(job).inControlBlock;
+    return getStack(job).length > 0;
+  }
+
+  function enterBlock(job) {
+    var stack = getStack(job);
+    // skip over a block if it is inside an inactive branch
+    stack.push({
+      active: false,
+      complete: !inActiveBranch(job)
+    });
+  }
+
+  function leaveBlock(job) {
+    var stack = getStack(job);
+    stack.pop();
   }
 
   function enterActiveBranch(job) {
-    var state = getState(job);
-    state.inControlBlock = true;
-    state.active = true;
-    state.complete = true;
+    var block = getCurrentBlock(job);
+    block.active = true;
+    block.complete = true;
   }
 
   function enterInactiveBranch(job) {
-    var state = getState(job);
-    state.inControlBlock = true;
-    state.active = false;
+    var block = getCurrentBlock(job);
+    block.active = false;
   }
 
-  function blockWasActive(job) {
-    return !!getState(job).complete;
+  function blockIsComplete(job) {
+    var block = getCurrentBlock(job);
+    return block.complete;
   }
 
+  function getCurrentBlock(job) {
+    var stack = getStack(job);
+    return stack[stack.length-1];
+  }
+
+  // A branch is considered to be active if it and all its parents are active
+  // (Main branch is considered to be active)
   function inActiveBranch(job) {
-    return !!getState(job).active;
+    var stack = getStack(job);
+    return stack.length === 0 || stack.every(block => block.active);
   }
 
-  function getState(job) {
-    return job.control || (job.control = {});
+  function getStack(job) {
+    job.control = job.control || {stack: []};
+    return job.control.stack;
   }
 
   function skipCommand(cmdName, job) {
     // allow all control commands to run
     if (jobIsStopped(job)) return true;
     if (isControlFlowCommand(cmdName)) return false;
-    return inControlBlock(job) && !inActiveBranch(job);
+    return !inActiveBranch(job);
   }
 
   cmd.if = function(job, opts) {
-    if (inControlBlock(job)) {
-      stop('Nested -if commands are not supported.');
-    }
+    enterBlock(job);
     evaluateIf(job, opts);
   };
 
@@ -39394,7 +39410,7 @@ ${svg}
     if (!inControlBlock(job)) {
       stop('-else command must be preceded by an -if command.');
     }
-    if (blockWasActive(job)) {
+    if (blockIsComplete(job)) {
       enterInactiveBranch(job);
     } else {
       enterActiveBranch(job);
@@ -39405,7 +39421,7 @@ ${svg}
     if (!inControlBlock(job)) {
       stop('-endif command must be preceded by an -if command.');
     }
-    resetControlFlow(job);
+    leaveBlock(job);
   };
 
   function isControlFlowCommand(cmd) {
@@ -39413,21 +39429,14 @@ ${svg}
   }
 
   function test(catalog, opts) {
-    // var targ = getTargetLayer(catalog, opts);
     if (opts.expression) {
       return compileIfCommandExpression(opts.expression, catalog, opts)();
     }
-    // if (opts.empty) {
-    //   return layerIsEmpty(targ.layer);
-    // }
-    // if (opts.not_empty) {
-    //   return !layerIsEmpty(targ.layer);
-    // }
     return true;
   }
 
   function evaluateIf(job, opts) {
-    if (!blockWasActive(job) && test(job.catalog, opts)) {
+    if (!blockIsComplete(job) && test(job.catalog, opts)) {
       enterActiveBranch(job);
     } else {
       enterInactiveBranch(job);
@@ -42113,7 +42122,12 @@ ${svg}
   function applyReplacements(template, replacements) {
     var parts = parseTemplateParts(template);
     return parts.reduce(function(memo, s, i) {
-      return i % 2 == 1 ? memo + (replacements.shift() || '') : memo + s;
+      if (i % 2 == 1) {
+        memo += replacements.length ? replacements.shift() : '';
+      } else {
+        memo += s;
+      }
+      return memo;
     }, '');
   }
 
@@ -44978,7 +44992,7 @@ ${svg}
     });
   }
 
-  var version = "0.6.62";
+  var version = "0.6.63";
 
   // Parse command line args into commands and run them
   // Function takes an optional Node-style callback. A Promise is returned if no callback is given.
