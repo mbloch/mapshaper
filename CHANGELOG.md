@@ -1,3 +1,6 @@
+v0.6.63
+* Add support for nested -if/-elif/-else/-endif commands.
+
 v0.6.62
 * Removed restrictions on the allowable size of the graticule interval (in degrees).
 * Added `targets` object to the `-run` command expression context, giving access to multiple target layers.
