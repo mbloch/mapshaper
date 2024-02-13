@@ -8,7 +8,6 @@ import { error, UserError, message, print, loggingEnabled, printError } from '..
 import { Job } from '../mapshaper-job';
 import { runningInBrowser } from '../mapshaper-env';
 import utils from '../utils/mapshaper-utils';
-import { resetControlFlow } from '../mapshaper-control-flow';
 import require from '../mapshaper-require';
 import { commandTakesFileInput } from '../cli/mapshaper-command-info';
 import { version } from '../../package.json';
