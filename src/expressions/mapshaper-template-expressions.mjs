@@ -74,7 +74,12 @@ export function parseTemplate(str) {
 export function applyReplacements(template, replacements) {
   var parts = parseTemplateParts(template);
   return parts.reduce(function(memo, s, i) {
-    return i % 2 == 1 ? memo + (replacements.shift() || '') : memo + s;
+    if (i % 2 == 1) {
+      memo += replacements.length ? replacements.shift() : '';
+    } else {
+      memo += s;
+    }
+    return memo;
   }, '');
 }
 
