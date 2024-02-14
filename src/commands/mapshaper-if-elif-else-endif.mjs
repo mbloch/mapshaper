@@ -1,6 +1,5 @@
 
 import cmd from '../mapshaper-cmd';
-import { layerIsEmpty } from '../dataset/mapshaper-layer-utils';
 import { stop } from '../utils/mapshaper-logging';
 import {
   inControlBlock,
@@ -15,7 +14,6 @@ import {
 import { compileIfCommandExpression } from '../expressions/mapshaper-layer-expressions';
 
 export function skipCommand(cmdName, job) {
-  // allow all control commands to run
   if (jobIsStopped(job)) return true;
   if (isControlFlowCommand(cmdName)) return false;
   return !inActiveBranch(job);

@@ -3,12 +3,11 @@ import { compileExpressionToFunction } from './mapshaper-expressions';
 import { stop } from '../utils/mapshaper-logging';
 import cli from '../cli/mapshaper-cli-utils';
 import { getStashedVar } from '../mapshaper-stash';
-
+import { addTargetProxies } from './mapshaper-target-proxy';
 
 export function compileIfCommandExpression(expr, catalog, opts) {
   return compileLayerExpression(expr, catalog, opts);
 }
-
 
 export function compileLayerExpression(expr, catalog, opts) {
   var targetId = opts.layer || opts.target || null;
@@ -25,6 +24,10 @@ export function compileLayerExpression(expr, catalog, opts) {
   } else {
     ctx = getNullLayerProxy(targets);
   }
+
+  // add target/targets proxies, for consistency with the -run command
+  addTargetProxies(targets, ctx);
+
   ctx.global = defs; // TODO: remove duplication with mapshaper.expressions.mjs
   var func = compileExpressionToFunction(expr, opts);
 
