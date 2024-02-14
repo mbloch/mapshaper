@@ -18,6 +18,20 @@ describe('mapshaper-if-elif-else-endif.js', function () {
     });
   });
 
+  it ('test target proxy', async function() {
+    var data = [{foo: 'a', bar: 'b'}, {}];
+    var cmd = `-i stuff.json
+      -if 'target.layer_name == "stuff"'
+        -each 'bar = "c"'
+      -else
+        -each 'foo = "c"'
+      -endif
+      -o`;
+    var out = await api.applyCommands(cmd, {'stuff.json': data});
+    var data2 = JSON.parse(out['stuff.json']);
+    assert.deepEqual(data2, [{foo: 'a', bar: 'c'}, {bar: 'c'}])
+  })
+
 
   it ('test expression', function(done) {
     var data = {
