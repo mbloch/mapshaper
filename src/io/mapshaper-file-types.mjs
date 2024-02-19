@@ -51,7 +51,7 @@ export function couldBeDsvFile(name) {
 // File looks like an importable file type
 // name: filename or path
 export function looksLikeImportableFile(name) {
-  return !!guessInputFileType(name);
+  return !!guessInputFileType(name) || isImportableAsBinary(name);
 }
 
 // File looks like a directly readable data file type
