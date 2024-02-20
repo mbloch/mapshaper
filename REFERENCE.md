@@ -1,6 +1,6 @@
 # COMMAND REFERENCE
 
-This documentation applies to version 0.6.62 of mapshaper's command line program. Run `mapshaper -v` to check your version. For an introduction to the command line tool, read [this page](https://github.com/mbloch/mapshaper/wiki/Introduction-to-the-Command-Line-Tool) first.
+This documentation applies to version 0.6.64 of mapshaper's command line program. Run `mapshaper -v` to check your version. For an introduction to the command line tool, read [this page](https://github.com/mbloch/mapshaper/wiki/Introduction-to-the-Command-Line-Tool) first.
 
 ## Command line syntax
 
@@ -1136,11 +1136,23 @@ module.exports.voronoi = async function(points, bbox) {
 
 ### -scalebar
 
-Add a scale bar to an SVG map. The command creates a data-only layer containing the scale bar's data properties. A scale bar is rendered if this layer is included as a target layer in SVG output.
+Add a scale bar to an SVG map. The command creates a data-only layer containing the scale bar's data properties. A scale bar is included in the SVG output file if the scale bar layer is included as an output layer.
 
 The length of the scale bar reflects the scale in the center of the map's rectangular frame.
 
 `<label>` or `label=` Optional label giving the size and units of the scalebar, e.g. `"25 k.m."`. If only units are given, a length will be assigned. If the `label` property is missing, scale bar properties will be auto-generated.
+
+`style=` Scalebar style, `a` or `b`. Style `b` has tic marks.
+
+`bar-width=` Line width of bar.
+
+`tic-length=` (style b) length of tic marks.
+
+`label-position=` Position of labels relative to the bar (`top` or `bottom`).
+
+`position=` Position of the scalebar in on the map (default is `top-left`).
+
+`margin=` Offset in pixels from edge of map.
 
 
 ### -shape
