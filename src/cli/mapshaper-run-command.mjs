@@ -121,6 +121,10 @@ export async function runCommand(command, job) {
     return done(null);
   }
 
+  if (name == 'comment') {
+    return done(null);
+  }
+
   if (!job) job = new Job();
   job.startCommand(command);
 
