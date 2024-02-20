@@ -244,10 +244,10 @@ export function requireDatasetsHaveCompatibleCRS(arr) {
 // x, y: a point location in projected coordinates
 // Returns k, the ratio of coordinate distance to distance on the ground
 export function getScaleFactorAtXY(x, y, crs) {
-  var dist = 1;
+  var dist = 1 / crs.to_meter;
   var lp = mproj.pj_inv_deg({x: x, y: y}, crs);
   var lp2 = mproj.pj_inv_deg({x: x + dist, y: y}, crs);
-  var k = dist / geom.greatCircleDistance(lp.lam, lp.phi, lp2.lam, lp2.phi);
+  var k = 1 / geom.greatCircleDistance(lp.lam, lp.phi, lp2.lam, lp2.phi);
   return k;
 }
 

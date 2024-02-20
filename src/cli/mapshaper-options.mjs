@@ -1987,13 +1987,33 @@ export function getOptionParser() {
       DEFAULT: true,
       describe: 'distance label, e.g. "35 miles"'
     })
-    .option('top', {})
-    .option('right', {})
-    .option('bottom', {})
-    .option('left', {})
-    .option('font-size', {})
-    // .option('font-family', {})
-    .option('label-position', {}); // top or bottom
+    .option('style', {
+      describe: 'two options: a or b'
+    })
+    .option('font-size', {
+      type: 'number'
+    })
+    .option('tic-length', {
+      describe: 'length of tic marks (style b)',
+      type: 'number'
+    })
+    .option('bar-width', {
+      describe: 'line width of bar',
+      type: 'number'
+    })
+    .option('label-offset', {
+      type: 'number'
+    })
+    .option('position', {
+      describe: 'e.g. bottom-right (default is top-left)'
+    })
+    .option('label-position', {
+      describe: 'top or bottom'
+    })
+    .option('margin', {
+      describe: 'offset in pixels from edge of map',
+      type: 'number'
+    });
 
   parser.command('shape')
     .describe('create a polyline or polygon from coordinates')
