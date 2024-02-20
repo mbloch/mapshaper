@@ -5,6 +5,7 @@ import utils from '../utils/mapshaper-utils';
 import { DataTable } from '../datatable/mapshaper-data-table';
 import { stop, message } from '../utils/mapshaper-logging';
 import { symbolRenderers } from '../svg/svg-symbols';
+import { importLineString } from '../svg/geojson-to-svg';
 
 cmd.scalebar = function(catalog, opts) {
   var lyr = getScalebarLayer(opts);
@@ -23,99 +24,136 @@ export function getScalebarLayer(opts) {
 }
 
 // TODO: generalize to other kinds of furniture as they are developed
-function getScalebarPosition(d) {
-  var opts = { // defaults
-    valign: 'top',
-    halign: 'left',
-    voffs: 10,
-    hoffs: 10
+function getScalebarPosition(opts) {
+  var pos = opts.position || 'top-left';
+  return {
+    valign: pos.includes('top') ? 'top' : 'bottom',
+    halign: pos.includes('left') ? 'left' : 'right'
   };
-  if (+d.left > 0) {
-    opts.hoffs = +d.left;
-  }
-  if (+d.top > 0) {
-    opts.voffs = +d.top;
-  }
-  if (+d.right > 0) {
-    opts.hoffs = +d.right;
-    opts.halign = 'right';
-  }
-  if (+d.bottom > 0) {
-    opts.voffs = +d.bottom;
-    opts.valign = 'bottom';
-  }
-  return opts;
 }
 
-export function renderScalebar(d, frame) {
-  var pos = getScalebarPosition(d);
-  var metersPerPx = getMapFrameMetersPerPixel(frame);
-  var frameWidthPx = frame.width;
-  var unit = d.label ? parseScalebarUnits(d.label) : 'mile';
-  var number = d.label ? parseScalebarNumber(d.label) : null;
-  var label = number && unit ? d.label : getAutoScalebarLabel(frameWidthPx, metersPerPx, unit);
-  var scalebarKm = parseScalebarLabelToKm(label);
-  var barHeight = 3;
-  var labelOffs = 4;
-  var fontSize = +d.font_size || 12;
-  var width = Math.round(scalebarKm / metersPerPx * 1000);
-  var height = Math.round(barHeight + labelOffs + fontSize * 0.8);
-  var labelPos = d.label_position == 'top' ? 'top' : 'bottom';
-  var anchorX = pos.halign == 'left' ? 0 : width;
-  var anchorY = barHeight + labelOffs;
-  var dx = pos.halign == 'right' ? frameWidthPx - width - pos.hoffs : pos.hoffs;
-  var dy = pos.valign == 'bottom' ? frame.height - height - pos.voffs : pos.voffs;
-
-  if (scalebarKm > 0 === false) {
-    message('Unusable scalebar label:', label);
-    return [];
+var styleOpts = {
+  a: {
+    bar_width: 3,
+    tic_length: 0
+  },
+  b: {
+    bar_width: 1,
+    tic_length: 5
   }
+};
 
-  if (frameWidthPx > 0 === false) {
-    return [];
-  }
+var defaultOpts = {
+  position: 'top-left',
+  label_position: 'top',
+  label_offset: 4,
+  font_size: 12,
+  margin: 12
+};
 
-  if (!frame.crs) {
-    message('Unable to render scalebar: unknown CRS.');
-    return [];
-  }
+function getScalebarOpts(d) {
+  var style = d.style == 'b' || d.style == 'B' ? 'b' : 'a';
+  return Object.assign({}, defaultOpts, styleOpts[style], d, {style: style});
+}
 
-  if (labelPos == 'top') {
-    anchorY = -labelOffs;
-    dy += Math.round(labelOffs + fontSize * 0.8);
-  }
+// approximate pixel height of the scalebar
+function getScalebarHeight(opts) {
+  return Math.round(opts.bar_width + opts.label_offset +
+      opts.tic_length + opts.font_size * 0.8);
+}
 
-  if (width > 0 === false) {
-    stop("Null scalebar length");
+function renderAsSvg(length, text, opts) {
+  // label part
+  var xOff = opts.style == 'b' ? Math.round(opts.font_size / 4) : 0;
+  var alignLeft = opts.style == 'a' && opts.position.includes('left');
+  var anchorX = alignLeft ? -xOff : length + xOff;
+  var anchorY = opts.bar_width + + opts.tic_length + opts.label_offset;
+  if (opts.label_position == 'top') {
+    anchorY = -opts.label_offset - opts.tic_length;
   }
-  var barObj = {
-    tag: 'rect',
-    properties: {
-      fill: 'black',
-      x: 0,
-      y: 0,
-      width: width,
-      height: barHeight
-    }
-  };
   var labelOpts = {
-      'label-text': label,
-      'font-size': fontSize,
-      'text-anchor': pos.halign == 'left' ? 'start': 'end',
-      'dominant-baseline': labelPos == 'top' ? 'auto' : 'hanging'
+      'label-text': text,
+      'font-size': opts.font_size,
+      'text-anchor': alignLeft ? 'start': 'end',
+      'dominant-baseline': opts.label_position == 'top' ? 'auto' : 'hanging'
       //// 'dominant-baseline': labelPos == 'top' ? 'text-after-edge' : 'text-before-edge'
       // 'text-after-edge' is buggy in Safari and unsupported by Illustrator,
       // so I'm using 'hanging' and 'auto', which seem to be well supported.
       // downside: requires a kludgy multiplier to calculate scalebar height (see above)
     };
-  var labelObj = symbolRenderers.label(labelOpts, anchorX, anchorY);
-  var g = {
+  var labelPart = symbolRenderers.label(labelOpts, anchorX, anchorY);
+  var zeroOpts = Object.assign({}, labelOpts, {'label-text': '0', 'text-anchor': 'start'});
+  var zeroLabel = symbolRenderers.label(zeroOpts, -xOff, anchorY);
+
+  // bar part
+  var y = 0;
+  var y2 = opts.tic_length + opts.bar_width / 2;
+  var coords;
+  if (opts.label_position == "top") {
+    y2 = -y2;
+  }
+  if (opts.tic_length > 0) {
+    coords = [[0, y2], [0, y], [length, y], [length, y2]];
+  } else {
+    coords = [[0, y], [length, y]];
+  }
+  var barPart = importLineString(coords);
+  Object.assign(barPart.properties, {
+    stroke: 'black',
+    fill: 'none',
+    'stroke-width': opts.bar_width,
+    'stroke-linecap': 'butt',
+    'stroke-linejoin': 'miter'
+  });
+  var parts = opts.style == 'b' ? [zeroLabel, labelPart, barPart] : [labelPart, barPart];
+  return {
     tag: 'g',
-    children: [barObj, labelObj],
-    properties: {
-      transform: 'translate(' + dx + ' ' + dy + ')'
-    }
+    children: parts
   };
+}
+
+export function renderScalebar(d, frame) {
+  if (!frame.crs) {
+    message('Unable to render scalebar: unknown CRS.');
+    return [];
+  }
+  if (frame.width > 0 === false) {
+    return [];
+  }
+
+  var opts = getScalebarOpts(d);
+  var metersPerPx = getMapFrameMetersPerPixel(frame);
+  var frameWidthPx = frame.width;
+  var unit = d.label ? parseScalebarUnits(d.label) : 'mile';
+  var number = d.label ? parseScalebarNumber(d.label) : null;
+  var label = number && unit ? d.label : getAutoScalebarLabel(frameWidthPx, metersPerPx, unit);
+
+  var scalebarKm = parseScalebarLabelToKm(label);
+  if (scalebarKm > 0 === false) {
+    message('Unusable scalebar label:', label);
+    return [];
+  }
+
+  var width = Math.round(scalebarKm / metersPerPx * 1000);
+  if (width > 0 === false) {
+    stop("Null scalebar length");
+  }
+
+  var pos = getScalebarPosition(opts);
+  var height = getScalebarHeight(opts);
+  var dx = pos.halign == 'right' ? frameWidthPx - width - opts.margin : opts.margin;
+  var dy = pos.valign == 'bottom' ? frame.height - height - opts.margin : opts.margin;
+  if (opts.label_position == 'top') {
+    dy += Math.round(opts.label_offset + opts.tic_length + opts.font_size * 0.8 + opts.bar_width / 2);
+  } else {
+    dy += Math.round(opts.bar_width / 2);
+  }
+
+  var g = renderAsSvg(width, label, opts);
+  g.properties = {
+    transform: 'translate(' + dx + ' ' + dy + ')'
+  };
+
   return [g];
 }
 
