@@ -1,3 +1,6 @@
+v0.6.64
+* Added more options for the -scalebar command, including two styles, a and b.
+
 v0.6.63
 * Add support for nested -if/-elif/-else/-endif commands.
 
