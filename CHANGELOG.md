@@ -1,3 +1,6 @@
+v0.6.65
+* Added "drag-to-resize" editing mode for resizing rectangles interactively.
+
 v0.6.64
 * Added more options for the -scalebar command, including two styles, a and b.
 

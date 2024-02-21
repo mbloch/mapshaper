@@ -97,6 +97,25 @@ export function updateVertexCoords(lyr, ids) {
   internal.snapVerticesToPoint(ids, lyr.invertPoint(p[0], p[1]), lyr.source.dataset.arcs, true);
 }
 
+export function setRectangleCoords(lyr, ids, coords) {
+  ids.forEach(function(id, i) {
+    var p = coords[i];
+    internal.snapVerticesToPoint([id], p, lyr.source.dataset.arcs, true);
+    if (isProjectedLayer(lyr)) {
+      internal.snapVerticesToPoint([id], lyr.projectPoint(p[0], p[1]), lyr.arcs, true);
+    }
+  });
+}
+
+// lyr: display layer
+// export function updateRectangleCoords(lyr, ids, coords) {
+//   if (!isProjectedLayer(lyr)) return;
+//   ids.forEach(function(id, i) {
+//     var p = coords[i];
+//     internal.snapVerticesToPoint([id], lyr.invertPoint(p[0], p[1]), lyr.source.dataset.arcs, true);
+//   });
+// }
+
 function isProjectedLayer(lyr) {
   // TODO: could do some validation on the layer's contents
   return !!(lyr.source && lyr.invertPoint);

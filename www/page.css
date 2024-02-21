@@ -1186,6 +1186,10 @@ div.basemap-style-btn.active img {
 	cursor: pointer;
 }
 
+.map-layers.symbol-hit.dragging {
+	cursor: default;
+}
+
 .map-layers canvas {
 	pointer-events: none;
 	position: absolute;
@@ -1409,6 +1413,11 @@ div.basemap-style-btn.active img {
 	border: 1px solid #cc6acc;
 	z-index: 15;
 	pointer-events: none;
+}
+
+.zoom-box.rectangles {
+	border: none;
+	cursor: default;
 }
 
 .zoom-box .handle {

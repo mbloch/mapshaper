@@ -8,6 +8,7 @@ import { DataTable } from '../datatable/mapshaper-data-table';
 import { getFirstNonEmptyRecord } from '../datatable/mapshaper-data-utils';
 import utils from '../utils/mapshaper-utils';
 import { absArcId } from '../paths/mapshaper-arc-utils';
+import { pathIsRectangle } from '../geom/mapshaper-rectangle-geom';
 
 // Insert a column of values into a (new or existing) data field
 export function insertFieldValues(lyr, fieldName, values) {
@@ -47,6 +48,15 @@ export function layerHasPaths(lyr) {
 
 export function layerHasPoints(lyr) {
   return lyr.geometry_type == 'point' && layerHasNonNullShapes(lyr);
+}
+
+export function layerOnlyHasRectangles(lyr, arcs) {
+  if (!layerHasPaths(lyr)) return false;
+  if (countMultiPartFeatures(lyr) > 0) return false;
+  return lyr.shapes.every(function(shp) {
+    if (!shp) return true;
+    return pathIsRectangle(shp[0], arcs);
+  });
 }
 
 export function layerHasNonNullShapes(lyr) {

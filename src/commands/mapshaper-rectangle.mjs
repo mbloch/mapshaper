@@ -10,6 +10,7 @@ import { stop } from '../utils/mapshaper-logging';
 import { probablyDecimalDegreeBounds, clampToWorldBounds } from '../geom/mapshaper-latlon';
 import { Bounds } from '../geom/mapshaper-bounds';
 import { densifyPathByInterval } from '../crs/mapshaper-densify';
+import { bboxToCoords } from '../geom/mapshaper-rectangle-geom';
 
 // Create rectangles around each feature in a layer
 cmd.rectangles = function(targetLyr, targetDataset, opts) {
@@ -126,8 +127,7 @@ function applyBoundsOffset(offsetOpt, bounds, crs) {
 
 export function convertBboxToGeoJSON(bbox, optsArg) {
   var opts = optsArg || {};
-  var coords = [[bbox[0], bbox[1]], [bbox[0], bbox[3]], [bbox[2], bbox[3]],
-      [bbox[2], bbox[1]], [bbox[0], bbox[1]]];
+  var coords = bboxToCoords(bbox);
   if (opts.interval > 0) {
     coords = densifyPathByInterval(coords, opts.interval);
   }

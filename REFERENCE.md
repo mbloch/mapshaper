@@ -1150,7 +1150,7 @@ The length of the scale bar reflects the scale in the center of the map's rectan
 
 `label-position=` Position of labels relative to the bar (`top` or `bottom`).
 
-`position=` Position of the scalebar in on the map (default is `top-left`).
+`position=` Position of the scalebar on the map (default is `top-left`).
 
 `margin=` Offset in pixels from edge of map.
 

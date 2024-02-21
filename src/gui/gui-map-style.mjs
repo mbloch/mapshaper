@@ -228,7 +228,10 @@ function getSelectedFeatureStyle(lyr, o) {
   var inSelection = o.ids.indexOf(o.id) > -1;
   var geomType = lyr.geometry_type;
   var style;
-  if (isPinned) {
+  if (isPinned && o.mode == 'rectangles') {
+    // kludge for rectangle editing mode
+    style = selectionStyles[geomType];
+  } else if (isPinned) {
     // a feature is pinned
     style = pinnedStyles[geomType];
   } else if (inSelection) {

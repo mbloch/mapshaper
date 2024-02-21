@@ -157,6 +157,7 @@ import * as Proj from './commands/mapshaper-proj';
 import * as Projections from './crs/mapshaper-projections';
 import * as ProjectionParams from './crs/mapshaper-projection-params';
 import * as Rectangle from './commands/mapshaper-rectangle';
+import * as RectangleGeom from './geom/mapshaper-rectangle-geom';
 import * as Rounding from './geom/mapshaper-rounding';
 import * as RunCommands from './cli/mapshaper-run-commands';
 import * as Scalebar from './commands/mapshaper-scalebar';
@@ -275,6 +276,7 @@ Object.assign(internal,
   Projections,
   ProjectionParams,
   Rectangle,
+  RectangleGeom,
   Rounding,
   RunCommands,
   Scalebar,
