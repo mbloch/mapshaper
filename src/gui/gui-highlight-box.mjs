@@ -14,6 +14,10 @@ export function HighlightBox(gui, optsArg) {
       _on = false,
       handles;
 
+  if (opts.classname) {
+    el.addClass(opts.classname);
+  }
+
   el.hide();
 
   gui.on('map_rendered', function() {
@@ -84,6 +88,11 @@ export function HighlightBox(gui, optsArg) {
     });
   }
 
+  box.setDataCoords = function(bbox) {
+    boxCoords = bbox;
+    redraw();
+  };
+
   box.getDataCoords = function() {
     if (!boxCoords) return null;
     var dataBox = getBBoxCoords(gui.map.getActiveLayer(), boxCoords);
@@ -110,8 +119,8 @@ export function HighlightBox(gui, optsArg) {
         props = {
           top: Math.min(y1, y2),
           left: Math.min(x1, x2),
-          width: Math.max(w - stroke * 2, 1),
-          height: Math.max(h - stroke * 2, 1)
+          width: Math.max(w - stroke / 2, 1),
+          height: Math.max(h - stroke / 2, 1)
         };
     el.css(props);
     el.show();

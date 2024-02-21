@@ -11,6 +11,7 @@ import * as MapStyle from './gui-map-style';
 import { MapExtent } from './gui-map-extent';
 import { LayerStack } from './gui-layer-stack';
 import { BoxTool } from './gui-box-tool';
+import { RectangleControl } from './gui-rectangle-control';
 import { projectMapExtent, getMapboxBounds } from './gui-dynamic-crs';
 import { getDisplayLayer, projectDisplayLayer } from './gui-display-layer';
 import { utils, internal, Bounds } from './gui-core';
@@ -223,6 +224,7 @@ export function MshpMap(gui) {
       new InspectionControl2(gui, _hit);
       new SelectionTool(gui, _ext, _hit),
       new BoxTool(gui, _ext, _nav),
+      new RectangleControl(gui, _hit),
       initInteractiveEditing(gui, _ext, _hit);
       // initDrawing(gui, _ext, _mouse, _hit);
       _hit.on('change', updateOverlayLayer);

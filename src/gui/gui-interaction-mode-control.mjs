@@ -21,6 +21,7 @@ export function InteractionMode(gui) {
   var menus = {
     standard: ['info', 'selection', 'data', 'box'],
     polygons: ['info', 'selection', 'data', 'box', 'vertices'],
+    rectangles: ['info', 'selection', 'data', 'box', 'rectangles', 'vertices'],
     lines: ['info', 'selection', 'data', 'box', 'vertices'],
     table: ['info', 'selection', 'data'],
     labels: ['info', 'selection', 'data', 'box', 'labels', 'location'],
@@ -44,6 +45,7 @@ export function InteractionMode(gui) {
     vertices: 'edit vertices',
     selection: 'select features',
     'add-points': 'add points',
+    rectangles: 'drag-to-resize',
     off: 'turn off'
   };
   var btn, menu;
@@ -98,11 +100,11 @@ export function InteractionMode(gui) {
   };
 
   this.modeUsesSelection = function(mode) {
-    return ['info', 'selection', 'data', 'labels', 'location', 'vertices'].includes(mode);
+    return ['info', 'selection', 'data', 'labels', 'location', 'vertices', 'rectangles'].includes(mode);
   };
 
   this.modeUsesPopup = function(mode) {
-    return ['info', 'selection', 'data', 'box', 'labels', 'location'].includes(mode);
+    return ['info', 'selection', 'data', 'box', 'labels', 'location', 'rectangles'].includes(mode);
   };
 
   this.getMode = getInteractionMode;
@@ -144,7 +146,8 @@ export function InteractionMode(gui) {
       return menus.lines;
     }
     if (internal.layerHasPaths(o.layer) && o.layer.geometry_type == 'polygon') {
-      return menus.polygons;
+      return internal.layerOnlyHasRectangles(o.layer, o.dataset.arcs) ?
+        menus.rectangles : menus.polygons;
     }
     return menus.standard;
   }

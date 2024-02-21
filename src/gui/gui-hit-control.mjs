@@ -88,7 +88,8 @@ export function HitControl(gui, ext, mouse) {
 
   function clickable() {
     // click used to pin popup and select features
-    return interactionMode == 'data' || interactionMode == 'info' || interactionMode == 'selection';
+    return interactionMode == 'data' || interactionMode == 'info' ||
+    interactionMode == 'selection' || interactionMode == 'rectangles';
   }
 
   self.getHitId = function() {return storedData.id;};
