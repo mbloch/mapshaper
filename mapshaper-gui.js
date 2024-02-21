@@ -2578,6 +2578,25 @@
     internal.snapVerticesToPoint(ids, lyr.invertPoint(p[0], p[1]), lyr.source.dataset.arcs, true);
   }
 
+  function setRectangleCoords(lyr, ids, coords) {
+    ids.forEach(function(id, i) {
+      var p = coords[i];
+      internal.snapVerticesToPoint([id], p, lyr.source.dataset.arcs, true);
+      if (isProjectedLayer(lyr)) {
+        internal.snapVerticesToPoint([id], lyr.projectPoint(p[0], p[1]), lyr.arcs, true);
+      }
+    });
+  }
+
+  // lyr: display layer
+  // export function updateRectangleCoords(lyr, ids, coords) {
+  //   if (!isProjectedLayer(lyr)) return;
+  //   ids.forEach(function(id, i) {
+  //     var p = coords[i];
+  //     internal.snapVerticesToPoint([id], lyr.invertPoint(p[0], p[1]), lyr.source.dataset.arcs, true);
+  //   });
+  // }
+
   function isProjectedLayer(lyr) {
     // TODO: could do some validation on the layer's contents
     return !!(lyr.source && lyr.invertPoint);
@@ -4852,6 +4871,7 @@
     var menus = {
       standard: ['info', 'selection', 'data', 'box'],
       polygons: ['info', 'selection', 'data', 'box', 'vertices'],
+      rectangles: ['info', 'selection', 'data', 'box', 'rectangles', 'vertices'],
       lines: ['info', 'selection', 'data', 'box', 'vertices'],
       table: ['info', 'selection', 'data'],
       labels: ['info', 'selection', 'data', 'box', 'labels', 'location'],
@@ -4875,6 +4895,7 @@
       vertices: 'edit vertices',
       selection: 'select features',
       'add-points': 'add points',
+      rectangles: 'drag-to-resize',
       off: 'turn off'
     };
     var btn, menu;
@@ -4929,11 +4950,11 @@
     };
 
     this.modeUsesSelection = function(mode) {
-      return ['info', 'selection', 'data', 'labels', 'location', 'vertices'].includes(mode);
+      return ['info', 'selection', 'data', 'labels', 'location', 'vertices', 'rectangles'].includes(mode);
     };
 
     this.modeUsesPopup = function(mode) {
-      return ['info', 'selection', 'data', 'box', 'labels', 'location'].includes(mode);
+      return ['info', 'selection', 'data', 'box', 'labels', 'location', 'rectangles'].includes(mode);
     };
 
     this.getMode = getInteractionMode;
@@ -4975,7 +4996,8 @@
         return menus.lines;
       }
       if (internal.layerHasPaths(o.layer) && o.layer.geometry_type == 'polygon') {
-        return menus.polygons;
+        return internal.layerOnlyHasRectangles(o.layer, o.dataset.arcs) ?
+          menus.rectangles : menus.polygons;
       }
       return menus.standard;
     }
@@ -7029,7 +7051,8 @@
 
     function clickable() {
       // click used to pin popup and select features
-      return interactionMode == 'data' || interactionMode == 'info' || interactionMode == 'selection';
+      return interactionMode == 'data' || interactionMode == 'info' ||
+      interactionMode == 'selection' || interactionMode == 'rectangles';
     }
 
     self.getHitId = function() {return storedData.id;};
@@ -7787,6 +7810,10 @@
         _on = false,
         handles;
 
+    if (opts.classname) {
+      el.addClass(opts.classname);
+    }
+
     el.hide();
 
     gui.on('map_rendered', function() {
@@ -7857,6 +7884,11 @@
       });
     }
 
+    box.setDataCoords = function(bbox) {
+      boxCoords = bbox;
+      redraw();
+    };
+
     box.getDataCoords = function() {
       if (!boxCoords) return null;
       var dataBox = getBBoxCoords(gui.map.getActiveLayer(), boxCoords);
@@ -7883,8 +7915,8 @@
           props = {
             top: Math.min(y1, y2),
             left: Math.min(x1, x2),
-            width: Math.max(w - stroke * 2, 1),
-            height: Math.max(h - stroke * 2, 1)
+            width: Math.max(w - stroke / 2, 1),
+            height: Math.max(h - stroke / 2, 1)
           };
       el.css(props);
       el.show();
@@ -9322,7 +9354,10 @@
     var inSelection = o.ids.indexOf(o.id) > -1;
     var geomType = lyr.geometry_type;
     var style;
-    if (isPinned) {
+    if (isPinned && o.mode == 'rectangles') {
+      // kludge for rectangle editing mode
+      style = selectionStyles[geomType];
+    } else if (isPinned) {
       // a feature is pinned
       style = pinnedStyles[geomType];
     } else if (inSelection) {
@@ -10682,6 +10717,82 @@
     return self;
   }
 
+  function RectangleControl(gui, hit) {
+    var box = new HighlightBox(gui, {persistent: true, handles: true, classname: 'rectangles'});
+    var _on = false;
+    var dragInfo;
+
+    gui.addMode('rectangle_tool', turnOn, turnOff);
+
+    gui.on('interaction_mode_change', function(e) {
+      if (e.mode === 'rectangles') {
+        gui.enterMode('rectangle_tool');
+      } else if (gui.getMode() == 'rectangle_tool') {
+        gui.clearMode();
+      }
+    });
+
+    hit.on('change', function(e) {
+      if (!_on) return;
+      // TODO: handle multiple hits (see gui-inspection-control2)
+      var id = e.id;
+      if (e.id > -1 && e.pinned) {
+        var target = hit.getHitTarget();
+        var path = target.layer.shapes[e.id][0];
+        var bbox = target.arcs.getSimpleShapeBounds(path).toArray();
+        box.setDataCoords(bbox);
+        dragInfo = {
+          id: e.id,
+          target: target,
+          ids: [],
+          points: []
+        };
+        var iter = target.arcs.getShapeIter(path);
+        while (iter.hasNext()) {
+          dragInfo.points.push([iter.x, iter.y]);
+          dragInfo.ids.push(iter._arc.i);
+        }
+        gui.container.findChild('.map-layers').classed('dragging', true);
+
+      } else if (dragInfo) {
+        // TODO: handle this event: add undo/redo states
+        gui.dispatchEvent('rectangle_dragend', dragInfo);
+        gui.container.findChild('.map-layers').classed('dragging', false);
+        reset();
+      } else {
+        box.hide();
+      }
+
+    });
+
+    box.on('handle_drag', function(e) {
+      if (!_on || !dragInfo) return;
+      var coords = internal.bboxToCoords(box.getDataCoords());
+      setRectangleCoords(dragInfo.target, dragInfo.ids, coords);
+      gui.dispatchEvent('map-needs-refresh');
+    });
+
+    function turnOn() {
+      box.turnOn();
+      _on = true;
+    }
+
+    function turnOff() {
+      box.turnOff();
+      if (gui.interaction.getMode() == 'rectangles') {
+        // mode change was not initiated by interactive menu -- turn off interactivity
+        gui.interaction.turnOff();
+      }
+      _on = false;
+      reset();
+    }
+
+    function reset() {
+      box.hide();
+      dragInfo = null;
+    }
+  }
+
   // Create low-detail versions of large arc collections for faster rendering
   // at zoomed-out scales.
   function enhanceArcCollectionForDisplay(unfilteredArcs) {
@@ -11372,6 +11483,7 @@
         new InspectionControl2(gui, _hit);
         new SelectionTool(gui, _ext, _hit),
         new BoxTool(gui, _ext, _nav),
+        new RectangleControl(gui, _hit),
         initInteractiveEditing(gui, _ext, _hit);
         // initDrawing(gui, _ext, _mouse, _hit);
         _hit.on('change', updateOverlayLayer);

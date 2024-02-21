@@ -4122,6 +4122,30 @@
     }
   };
 
+  // TODO: make this stricter (could give false positive on some degenerate paths)
+  function pathIsRectangle(ids, arcs) {
+    var bbox = arcs.getSimpleShapeBounds(ids).toArray();
+    var iter = arcs.getShapeIter(ids);
+    while (iter.hasNext()) {
+      if (iter.x != bbox[0] && iter.x != bbox[2] ||
+          iter.y != bbox[1] && iter.y != bbox[3]) {
+        return false;
+      }
+    }
+    return true;
+  }
+
+  function bboxToCoords(bbox) {
+    return [[bbox[0], bbox[1]], [bbox[0], bbox[3]], [bbox[2], bbox[3]],
+        [bbox[2], bbox[1]], [bbox[0], bbox[1]]];
+  }
+
+  var RectangleGeom = /*#__PURE__*/Object.freeze({
+    __proto__: null,
+    pathIsRectangle: pathIsRectangle,
+    bboxToCoords: bboxToCoords
+  });
+
   // Insert a column of values into a (new or existing) data field
   function insertFieldValues(lyr, fieldName, values) {
     var size = getFeatureCount(lyr) || values.length,
@@ -4160,6 +4184,15 @@
 
   function layerHasPoints(lyr) {
     return lyr.geometry_type == 'point' && layerHasNonNullShapes(lyr);
+  }
+
+  function layerOnlyHasRectangles(lyr, arcs) {
+    if (!layerHasPaths(lyr)) return false;
+    if (countMultiPartFeatures(lyr) > 0) return false;
+    return lyr.shapes.every(function(shp) {
+      if (!shp) return true;
+      return pathIsRectangle(shp[0], arcs);
+    });
   }
 
   function layerHasNonNullShapes(lyr) {
@@ -4405,6 +4438,7 @@
     layerHasGeometry: layerHasGeometry,
     layerHasPaths: layerHasPaths,
     layerHasPoints: layerHasPoints,
+    layerOnlyHasRectangles: layerOnlyHasRectangles,
     layerHasNonNullShapes: layerHasNonNullShapes,
     deleteFeatureById: deleteFeatureById,
     transformPointsInLayer: transformPointsInLayer,
@@ -5002,10 +5036,10 @@
   // x, y: a point location in projected coordinates
   // Returns k, the ratio of coordinate distance to distance on the ground
   function getScaleFactorAtXY(x, y, crs) {
-    var dist = 1;
+    var dist = 1 / crs.to_meter;
     var lp = mproj.pj_inv_deg({x: x, y: y}, crs);
     var lp2 = mproj.pj_inv_deg({x: x + dist, y: y}, crs);
-    var k = dist / geom.greatCircleDistance(lp.lam, lp.phi, lp2.lam, lp2.phi);
+    var k = 1 / geom.greatCircleDistance(lp.lam, lp.phi, lp2.lam, lp2.phi);
     return k;
   }
 
@@ -11058,7 +11092,7 @@
   // File looks like an importable file type
   // name: filename or path
   function looksLikeImportableFile(name) {
-    return !!guessInputFileType(name);
+    return !!guessInputFileType(name) || isImportableAsBinary(name);
   }
 
   // File looks like a directly readable data file type
@@ -19407,99 +19441,136 @@
   }
 
   // TODO: generalize to other kinds of furniture as they are developed
-  function getScalebarPosition(d) {
-    var opts = { // defaults
-      valign: 'top',
-      halign: 'left',
-      voffs: 10,
-      hoffs: 10
+  function getScalebarPosition(opts) {
+    var pos = opts.position || 'top-left';
+    return {
+      valign: pos.includes('top') ? 'top' : 'bottom',
+      halign: pos.includes('left') ? 'left' : 'right'
     };
-    if (+d.left > 0) {
-      opts.hoffs = +d.left;
-    }
-    if (+d.top > 0) {
-      opts.voffs = +d.top;
-    }
-    if (+d.right > 0) {
-      opts.hoffs = +d.right;
-      opts.halign = 'right';
-    }
-    if (+d.bottom > 0) {
-      opts.voffs = +d.bottom;
-      opts.valign = 'bottom';
-    }
-    return opts;
   }
 
-  function renderScalebar(d, frame) {
-    var pos = getScalebarPosition(d);
-    var metersPerPx = getMapFrameMetersPerPixel(frame);
-    var frameWidthPx = frame.width;
-    var unit = d.label ? parseScalebarUnits(d.label) : 'mile';
-    var number = d.label ? parseScalebarNumber(d.label) : null;
-    var label = number && unit ? d.label : getAutoScalebarLabel(frameWidthPx, metersPerPx, unit);
-    var scalebarKm = parseScalebarLabelToKm(label);
-    var barHeight = 3;
-    var labelOffs = 4;
-    var fontSize = +d.font_size || 12;
-    var width = Math.round(scalebarKm / metersPerPx * 1000);
-    var height = Math.round(barHeight + labelOffs + fontSize * 0.8);
-    var labelPos = d.label_position == 'top' ? 'top' : 'bottom';
-    var anchorX = pos.halign == 'left' ? 0 : width;
-    var anchorY = barHeight + labelOffs;
-    var dx = pos.halign == 'right' ? frameWidthPx - width - pos.hoffs : pos.hoffs;
-    var dy = pos.valign == 'bottom' ? frame.height - height - pos.voffs : pos.voffs;
-
-    if (scalebarKm > 0 === false) {
-      message('Unusable scalebar label:', label);
-      return [];
+  var styleOpts = {
+    a: {
+      bar_width: 3,
+      tic_length: 0
+    },
+    b: {
+      bar_width: 1,
+      tic_length: 5
     }
+  };
 
-    if (frameWidthPx > 0 === false) {
-      return [];
-    }
+  var defaultOpts = {
+    position: 'top-left',
+    label_position: 'top',
+    label_offset: 4,
+    font_size: 12,
+    margin: 12
+  };
 
-    if (!frame.crs) {
-      message('Unable to render scalebar: unknown CRS.');
-      return [];
-    }
+  function getScalebarOpts(d) {
+    var style = d.style == 'b' || d.style == 'B' ? 'b' : 'a';
+    return Object.assign({}, defaultOpts, styleOpts[style], d, {style: style});
+  }
 
-    if (labelPos == 'top') {
-      anchorY = -labelOffs;
-      dy += Math.round(labelOffs + fontSize * 0.8);
-    }
+  // approximate pixel height of the scalebar
+  function getScalebarHeight(opts) {
+    return Math.round(opts.bar_width + opts.label_offset +
+        opts.tic_length + opts.font_size * 0.8);
+  }
 
-    if (width > 0 === false) {
-      stop("Null scalebar length");
+  function renderAsSvg(length, text, opts) {
+    // label part
+    var xOff = opts.style == 'b' ? Math.round(opts.font_size / 4) : 0;
+    var alignLeft = opts.style == 'a' && opts.position.includes('left');
+    var anchorX = alignLeft ? -xOff : length + xOff;
+    var anchorY = opts.bar_width + + opts.tic_length + opts.label_offset;
+    if (opts.label_position == 'top') {
+      anchorY = -opts.label_offset - opts.tic_length;
     }
-    var barObj = {
-      tag: 'rect',
-      properties: {
-        fill: 'black',
-        x: 0,
-        y: 0,
-        width: width,
-        height: barHeight
-      }
-    };
     var labelOpts = {
-        'label-text': label,
-        'font-size': fontSize,
-        'text-anchor': pos.halign == 'left' ? 'start': 'end',
-        'dominant-baseline': labelPos == 'top' ? 'auto' : 'hanging'
+        'label-text': text,
+        'font-size': opts.font_size,
+        'text-anchor': alignLeft ? 'start': 'end',
+        'dominant-baseline': opts.label_position == 'top' ? 'auto' : 'hanging'
         //// 'dominant-baseline': labelPos == 'top' ? 'text-after-edge' : 'text-before-edge'
         // 'text-after-edge' is buggy in Safari and unsupported by Illustrator,
         // so I'm using 'hanging' and 'auto', which seem to be well supported.
         // downside: requires a kludgy multiplier to calculate scalebar height (see above)
       };
-    var labelObj = symbolRenderers.label(labelOpts, anchorX, anchorY);
-    var g = {
+    var labelPart = symbolRenderers.label(labelOpts, anchorX, anchorY);
+    var zeroOpts = Object.assign({}, labelOpts, {'label-text': '0', 'text-anchor': 'start'});
+    var zeroLabel = symbolRenderers.label(zeroOpts, -xOff, anchorY);
+
+    // bar part
+    var y = 0;
+    var y2 = opts.tic_length + opts.bar_width / 2;
+    var coords;
+    if (opts.label_position == "top") {
+      y2 = -y2;
+    }
+    if (opts.tic_length > 0) {
+      coords = [[0, y2], [0, y], [length, y], [length, y2]];
+    } else {
+      coords = [[0, y], [length, y]];
+    }
+    var barPart = importLineString(coords);
+    Object.assign(barPart.properties, {
+      stroke: 'black',
+      fill: 'none',
+      'stroke-width': opts.bar_width,
+      'stroke-linecap': 'butt',
+      'stroke-linejoin': 'miter'
+    });
+    var parts = opts.style == 'b' ? [zeroLabel, labelPart, barPart] : [labelPart, barPart];
+    return {
       tag: 'g',
-      children: [barObj, labelObj],
-      properties: {
-        transform: 'translate(' + dx + ' ' + dy + ')'
-      }
+      children: parts
     };
+  }
+
+  function renderScalebar(d, frame) {
+    if (!frame.crs) {
+      message('Unable to render scalebar: unknown CRS.');
+      return [];
+    }
+    if (frame.width > 0 === false) {
+      return [];
+    }
+
+    var opts = getScalebarOpts(d);
+    var metersPerPx = getMapFrameMetersPerPixel(frame);
+    var frameWidthPx = frame.width;
+    var unit = d.label ? parseScalebarUnits(d.label) : 'mile';
+    var number = d.label ? parseScalebarNumber(d.label) : null;
+    var label = number && unit ? d.label : getAutoScalebarLabel(frameWidthPx, metersPerPx, unit);
+
+    var scalebarKm = parseScalebarLabelToKm(label);
+    if (scalebarKm > 0 === false) {
+      message('Unusable scalebar label:', label);
+      return [];
+    }
+
+    var width = Math.round(scalebarKm / metersPerPx * 1000);
+    if (width > 0 === false) {
+      stop("Null scalebar length");
+    }
+
+    var pos = getScalebarPosition(opts);
+    var height = getScalebarHeight(opts);
+    var dx = pos.halign == 'right' ? frameWidthPx - width - opts.margin : opts.margin;
+    var dy = pos.valign == 'bottom' ? frame.height - height - opts.margin : opts.margin;
+    if (opts.label_position == 'top') {
+      dy += Math.round(opts.label_offset + opts.tic_length + opts.font_size * 0.8 + opts.bar_width / 2);
+    } else {
+      dy += Math.round(opts.bar_width / 2);
+    }
+
+    var g = renderAsSvg(width, label, opts);
+    g.properties = {
+      transform: 'translate(' + dx + ' ' + dy + ')'
+    };
+
     return [g];
   }
 
@@ -25691,13 +25762,33 @@ ${svg}
         DEFAULT: true,
         describe: 'distance label, e.g. "35 miles"'
       })
-      .option('top', {})
-      .option('right', {})
-      .option('bottom', {})
-      .option('left', {})
-      .option('font-size', {})
-      // .option('font-family', {})
-      .option('label-position', {}); // top or bottom
+      .option('style', {
+        describe: 'two options: a or b'
+      })
+      .option('font-size', {
+        type: 'number'
+      })
+      .option('tic-length', {
+        describe: 'length of tic marks (style b)',
+        type: 'number'
+      })
+      .option('bar-width', {
+        describe: 'line width of bar',
+        type: 'number'
+      })
+      .option('label-offset', {
+        type: 'number'
+      })
+      .option('position', {
+        describe: 'e.g. bottom-right (default is top-left)'
+      })
+      .option('label-position', {
+        describe: 'top or bottom'
+      })
+      .option('margin', {
+        describe: 'offset in pixels from edge of map',
+        type: 'number'
+      });
 
     parser.command('shape')
       .describe('create a polyline or polygon from coordinates')
@@ -35673,10 +35764,284 @@ ${svg}
     };
   }
 
+  var MAX_RULE_LEN = 50;
+
+  cmd.info = function(targets, opts) {
+    var layers = expandCommandTargets(targets);
+    var arr = layers.map(function(o) {
+      return getLayerInfo(o.layer, o.dataset);
+    });
+
+    if (opts.save_to) {
+      var output = [{
+        filename: opts.save_to + (opts.save_to.endsWith('.json') ? '' : '.json'),
+        content: JSON.stringify(arr, null, 2)
+      }];
+      writeFiles(output, opts);
+    }
+    if (opts.to_layer) {
+      return {
+        info: {},
+        layers: [{
+          name: opts.name || 'info',
+          data: new DataTable(arr)
+        }]
+      };
+    }
+    message(formatInfo(arr));
+  };
+
+  cmd.printInfo = cmd.info; // old name
+
+  function getLayerInfo(lyr, dataset) {
+    var n = getFeatureCount(lyr);
+    var o = {
+      layer_name: lyr.name,
+      geometry_type: lyr.geometry_type,
+      feature_count: n,
+      null_shape_count: 0,
+      null_data_count: lyr.data ? countNullRecords(lyr.data.getRecords()) : n
+    };
+    if (lyr.shapes && lyr.shapes.length > 0) {
+      o.null_shape_count = countNullShapes(lyr.shapes);
+      o.bbox = getLayerBounds(lyr, dataset.arcs).toArray();
+      o.proj4 = getProjInfo(dataset);
+    }
+    o.source_file = getLayerSourceFile(lyr, dataset) || null;
+    o.attribute_data = getAttributeTableInfo(lyr);
+    return o;
+  }
+
+  // i: (optional) record index
+  function getAttributeTableInfo(lyr, i) {
+    if (!lyr.data || lyr.data.size() === 0 || lyr.data.getFields().length === 0) {
+      return null;
+    }
+    var fields = applyFieldOrder(lyr.data.getFields(), 'ascending');
+    var valueName = i === undefined ? 'first_value' : 'value';
+    return fields.map(function(fname) {
+      return {
+        field: fname,
+        [valueName]: lyr.data.getReadOnlyRecordAt(i || 0)[fname]
+      };
+    });
+  }
+
+  function formatInfo(arr) {
+    var str = '';
+    arr.forEach(function(info, i) {
+      var title =  'Layer:    ' + (info.layer_name || '[unnamed layer]');
+      var tableStr = formatAttributeTableInfo(info.attribute_data);
+      var tableWidth = measureLongestLine(tableStr);
+      var ruleLen = Math.min(Math.max(title.length, tableWidth), MAX_RULE_LEN);
+      str += '\n';
+      str += utils.lpad('', ruleLen, '=') + '\n';
+      str += title + '\n';
+      str += utils.lpad('', ruleLen, '-') + '\n';
+      str += formatLayerInfo(info);
+      str += tableStr;
+    });
+    return str;
+  }
+
+  function formatLayerInfo(data) {
+    var str = '';
+    str += "Type:     " + (data.geometry_type || "tabular data") + "\n";
+    str += utils.format("Records:  %,d\n",data.feature_count);
+    if (data.null_shape_count > 0) {
+      str += utils.format("Nulls:     %'d", data.null_shape_count) + "\n";
+    }
+    if (data.geometry_type && data.feature_count > data.null_shape_count) {
+      str += "Bounds:   " + data.bbox.join(',') + "\n";
+      str += "CRS:      " + data.proj4 + "\n";
+    }
+    str += "Source:   " + (data.source_file || 'n/a') + "\n";
+    return str;
+  }
+
+  function formatAttributeTableInfo(arr) {
+    if (!arr) return "Attribute data: [none]\n";
+    var header = "\nAttribute data\n";
+    var valKey = 'first_value' in arr[0] ? 'first_value' : 'value';
+    var vals = [];
+    var fields = [];
+    arr.forEach(function(o) {
+      fields.push(o.field);
+      vals.push(o[valKey]);
+    });
+    var maxIntegralChars = vals.reduce(function(max, val) {
+      if (utils.isNumber(val)) {
+        max = Math.max(max, countIntegralChars(val));
+      }
+      return max;
+    }, 0);
+    var col1Arr = ['Field'].concat(fields);
+    var col2Arr = vals.reduce(function(memo, val) {
+      memo.push(formatTableValue(val, maxIntegralChars));
+      return memo;
+    }, [valKey == 'first_value' ? 'First value' : 'Value']);
+    var col1Chars = maxChars(col1Arr);
+    var col2Chars = maxChars(col2Arr);
+    var sepStr = (utils.rpad('', col1Chars + 2, '-') + '+' +
+        utils.rpad('', col2Chars + 2, '-')).substr(0, MAX_RULE_LEN);
+    var sepLine = sepStr + '\n';
+    var table = '';
+    col1Arr.forEach(function(col1, i) {
+      var w = stringDisplayWidth(col1);
+      table += ' ' + col1 + utils.rpad('', col1Chars - w, ' ') + ' | ' +
+        col2Arr[i] + '\n';
+      if (i === 0) table += sepLine; // separator after first line
+    });
+    return header + sepLine + table + sepLine;
+  }
+
+  function measureLongestLine(str) {
+    return Math.max.apply(null, str.split('\n').map(function(line) {return stringDisplayWidth(line);}));
+  }
+
+  function stringDisplayWidth(str) {
+    var w = 0;
+    for (var i = 0, n=str.length; i < n; i++) {
+      w += charDisplayWidth(str.charCodeAt(i));
+    }
+    return w;
+  }
+
+  // see https://www.cl.cam.ac.uk/~mgk25/ucs/wcwidth.c
+  // this is a simplified version, focusing on double-width CJK chars and ignoring nonprinting etc chars
+  function charDisplayWidth(c) {
+    if (c >= 0x1100 &&
+      (c <= 0x115f || c == 0x2329 || c == 0x232a ||
+      (c >= 0x2e80 && c <= 0xa4cf && c != 0x303f) || /* CJK ... Yi */
+      (c >= 0xac00 && c <= 0xd7a3) || /* Hangul Syllables */
+      (c >= 0xf900 && c <= 0xfaff) || /* CJK Compatibility Ideographs */
+      (c >= 0xfe10 && c <= 0xfe19) || /* Vertical forms */
+      (c >= 0xfe30 && c <= 0xfe6f) || /* CJK Compatibility Forms */
+      (c >= 0xff00 && c <= 0xff60) || /* Fullwidth Forms */
+      (c >= 0xffe0 && c <= 0xffe6) ||
+      (c >= 0x20000 && c <= 0x2fffd) ||
+      (c >= 0x30000 && c <= 0x3fffd))) return 2;
+    return 1;
+  }
+
+  // TODO: consider polygons with zero area or other invalid geometries
+  function countNullShapes(shapes) {
+    var count = 0;
+    for (var i=0; i<shapes.length; i++) {
+      if (!shapes[i] || shapes[i].length === 0) count++;
+    }
+    return count;
+  }
+
+  function countNullRecords(records) {
+    var count = 0;
+    for (var i=0; i<records.length; i++) {
+      if (!records[i]) count++;
+    }
+    return count;
+  }
+
+  function maxChars(arr) {
+    return arr.reduce(function(memo, str) {
+      var w = stringDisplayWidth(str);
+      return w > memo ? w : memo;
+    }, 0);
+  }
+
+  function formatString(str) {
+    var replacements = {
+      '\n': '\\n',
+      '\r': '\\r',
+      '\t': '\\t'
+    };
+    var cleanChar = function(c) {
+      // convert newlines and carriage returns
+      // TODO: better handling of non-printing chars
+      return c in replacements ? replacements[c] : '';
+    };
+    str = str.replace(/[\r\t\n]/g, cleanChar);
+    return "'" + str + "'";
+  }
+
+  function countIntegralChars(val) {
+    return utils.isNumber(val) ? (utils.formatNumber(val) + '.').indexOf('.') : 0;
+  }
+
+  function formatTableValue(val, integralChars) {
+    var str;
+    if (utils.isNumber(val)) {
+      str = utils.lpad("", integralChars - countIntegralChars(val), ' ') +
+        utils.formatNumber(val);
+    } else if (utils.isString(val)) {
+      str = formatString(val);
+    } else if (utils.isDate(val)) {
+      str = utils.formatDateISO(val) + ' (Date)';
+    } else if (utils.isObject(val)) { // if {} or [], display JSON
+      str = JSON.stringify(val);
+    } else {
+      str = String(val);
+    }
+
+    if (typeof str != 'string') {
+      // e.g. JSON.stringify converts functions to undefined
+      str = '[' + (typeof val) + ']';
+    }
+
+    return str;
+  }
+
+  var Info = /*#__PURE__*/Object.freeze({
+    __proto__: null,
+    getLayerInfo: getLayerInfo,
+    getAttributeTableInfo: getAttributeTableInfo,
+    formatAttributeTableInfo: formatAttributeTableInfo,
+    formatTableValue: formatTableValue
+  });
+
+  // import { importGeoJSON } from '../geojson/geojson-import';
+
+
+  function addTargetProxies(targets, ctx) {
+    if (targets && targets.length > 0) {
+      var proxies = expandCommandTargets(targets).reduce(function(memo, target) {
+        var proxy = getTargetProxy(target);
+        memo.push(proxy);
+        // index targets by layer name too
+        if (target.layer.name) {
+          memo[target.layer.name] = proxy;
+        }
+        return memo;
+      }, []);
+      Object.defineProperty(ctx, 'targets', {value: proxies});
+      if (proxies.length == 1) {
+        Object.defineProperty(ctx, 'target', {value: proxies[0]});
+      }
+    }
+  }
+
+  function getTargetProxy(target) {
+    var proxy = getLayerInfo(target.layer, target.dataset); // layer_name, feature_count etc
+    proxy.layer = target.layer;
+    proxy.dataset = target.dataset;
+    addGetters(proxy, {
+      // export as an object, not a string or buffer
+      geojson: getGeoJSON
+    });
+
+    function getGeoJSON() {
+      var features = exportLayerAsGeoJSON(target.layer, target.dataset, {rfc7946: true}, true);
+      return {
+        type: 'FeatureCollection',
+        features: features
+      };
+    }
+
+    return proxy;
+  }
+
   function compileIfCommandExpression(expr, catalog, opts) {
     return compileLayerExpression(expr, catalog, opts);
   }
-
 
   function compileLayerExpression(expr, catalog, opts) {
     var targetId = opts.layer || opts.target || null;
@@ -35693,6 +36058,10 @@ ${svg}
     } else {
       ctx = getNullLayerProxy(targets);
     }
+
+    // add target/targets proxies, for consistency with the -run command
+    addTargetProxies(targets, ctx);
+
     ctx.global = defs; // TODO: remove duplication with mapshaper.expressions.mjs
     var func = compileExpressionToFunction(expr, opts);
 
@@ -38142,8 +38511,7 @@ ${svg}
 
   function convertBboxToGeoJSON(bbox, optsArg) {
     var opts = optsArg || {};
-    var coords = [[bbox[0], bbox[1]], [bbox[0], bbox[3]], [bbox[2], bbox[3]],
-        [bbox[2], bbox[1]], [bbox[0], bbox[1]]];
+    var coords = bboxToCoords(bbox);
     if (opts.interval > 0) {
       coords = densifyPathByInterval(coords, opts.interval);
     }
@@ -39388,7 +39756,6 @@ ${svg}
   }
 
   function skipCommand(cmdName, job) {
-    // allow all control commands to run
     if (jobIsStopped(job)) return true;
     if (isControlFlowCommand(cmdName)) return false;
     return !inActiveBranch(job);
@@ -39480,240 +39847,6 @@ ${svg}
 
     utils.extend(getStashedVar('defs'), obj);
   };
-
-  var MAX_RULE_LEN = 50;
-
-  cmd.info = function(targets, opts) {
-    var layers = expandCommandTargets(targets);
-    var arr = layers.map(function(o) {
-      return getLayerInfo(o.layer, o.dataset);
-    });
-
-    if (opts.save_to) {
-      var output = [{
-        filename: opts.save_to + (opts.save_to.endsWith('.json') ? '' : '.json'),
-        content: JSON.stringify(arr, null, 2)
-      }];
-      writeFiles(output, opts);
-    }
-    if (opts.to_layer) {
-      return {
-        info: {},
-        layers: [{
-          name: opts.name || 'info',
-          data: new DataTable(arr)
-        }]
-      };
-    }
-    message(formatInfo(arr));
-  };
-
-  cmd.printInfo = cmd.info; // old name
-
-  function getLayerInfo(lyr, dataset) {
-    var n = getFeatureCount(lyr);
-    var o = {
-      layer_name: lyr.name,
-      geometry_type: lyr.geometry_type,
-      feature_count: n,
-      null_shape_count: 0,
-      null_data_count: lyr.data ? countNullRecords(lyr.data.getRecords()) : n
-    };
-    if (lyr.shapes && lyr.shapes.length > 0) {
-      o.null_shape_count = countNullShapes(lyr.shapes);
-      o.bbox = getLayerBounds(lyr, dataset.arcs).toArray();
-      o.proj4 = getProjInfo(dataset);
-    }
-    o.source_file = getLayerSourceFile(lyr, dataset) || null;
-    o.attribute_data = getAttributeTableInfo(lyr);
-    return o;
-  }
-
-  // i: (optional) record index
-  function getAttributeTableInfo(lyr, i) {
-    if (!lyr.data || lyr.data.size() === 0 || lyr.data.getFields().length === 0) {
-      return null;
-    }
-    var fields = applyFieldOrder(lyr.data.getFields(), 'ascending');
-    var valueName = i === undefined ? 'first_value' : 'value';
-    return fields.map(function(fname) {
-      return {
-        field: fname,
-        [valueName]: lyr.data.getReadOnlyRecordAt(i || 0)[fname]
-      };
-    });
-  }
-
-  function formatInfo(arr) {
-    var str = '';
-    arr.forEach(function(info, i) {
-      var title =  'Layer:    ' + (info.layer_name || '[unnamed layer]');
-      var tableStr = formatAttributeTableInfo(info.attribute_data);
-      var tableWidth = measureLongestLine(tableStr);
-      var ruleLen = Math.min(Math.max(title.length, tableWidth), MAX_RULE_LEN);
-      str += '\n';
-      str += utils.lpad('', ruleLen, '=') + '\n';
-      str += title + '\n';
-      str += utils.lpad('', ruleLen, '-') + '\n';
-      str += formatLayerInfo(info);
-      str += tableStr;
-    });
-    return str;
-  }
-
-  function formatLayerInfo(data) {
-    var str = '';
-    str += "Type:     " + (data.geometry_type || "tabular data") + "\n";
-    str += utils.format("Records:  %,d\n",data.feature_count);
-    if (data.null_shape_count > 0) {
-      str += utils.format("Nulls:     %'d", data.null_shape_count) + "\n";
-    }
-    if (data.geometry_type && data.feature_count > data.null_shape_count) {
-      str += "Bounds:   " + data.bbox.join(',') + "\n";
-      str += "CRS:      " + data.proj4 + "\n";
-    }
-    str += "Source:   " + (data.source_file || 'n/a') + "\n";
-    return str;
-  }
-
-  function formatAttributeTableInfo(arr) {
-    if (!arr) return "Attribute data: [none]\n";
-    var header = "\nAttribute data\n";
-    var valKey = 'first_value' in arr[0] ? 'first_value' : 'value';
-    var vals = [];
-    var fields = [];
-    arr.forEach(function(o) {
-      fields.push(o.field);
-      vals.push(o[valKey]);
-    });
-    var maxIntegralChars = vals.reduce(function(max, val) {
-      if (utils.isNumber(val)) {
-        max = Math.max(max, countIntegralChars(val));
-      }
-      return max;
-    }, 0);
-    var col1Arr = ['Field'].concat(fields);
-    var col2Arr = vals.reduce(function(memo, val) {
-      memo.push(formatTableValue(val, maxIntegralChars));
-      return memo;
-    }, [valKey == 'first_value' ? 'First value' : 'Value']);
-    var col1Chars = maxChars(col1Arr);
-    var col2Chars = maxChars(col2Arr);
-    var sepStr = (utils.rpad('', col1Chars + 2, '-') + '+' +
-        utils.rpad('', col2Chars + 2, '-')).substr(0, MAX_RULE_LEN);
-    var sepLine = sepStr + '\n';
-    var table = '';
-    col1Arr.forEach(function(col1, i) {
-      var w = stringDisplayWidth(col1);
-      table += ' ' + col1 + utils.rpad('', col1Chars - w, ' ') + ' | ' +
-        col2Arr[i] + '\n';
-      if (i === 0) table += sepLine; // separator after first line
-    });
-    return header + sepLine + table + sepLine;
-  }
-
-  function measureLongestLine(str) {
-    return Math.max.apply(null, str.split('\n').map(function(line) {return stringDisplayWidth(line);}));
-  }
-
-  function stringDisplayWidth(str) {
-    var w = 0;
-    for (var i = 0, n=str.length; i < n; i++) {
-      w += charDisplayWidth(str.charCodeAt(i));
-    }
-    return w;
-  }
-
-  // see https://www.cl.cam.ac.uk/~mgk25/ucs/wcwidth.c
-  // this is a simplified version, focusing on double-width CJK chars and ignoring nonprinting etc chars
-  function charDisplayWidth(c) {
-    if (c >= 0x1100 &&
-      (c <= 0x115f || c == 0x2329 || c == 0x232a ||
-      (c >= 0x2e80 && c <= 0xa4cf && c != 0x303f) || /* CJK ... Yi */
-      (c >= 0xac00 && c <= 0xd7a3) || /* Hangul Syllables */
-      (c >= 0xf900 && c <= 0xfaff) || /* CJK Compatibility Ideographs */
-      (c >= 0xfe10 && c <= 0xfe19) || /* Vertical forms */
-      (c >= 0xfe30 && c <= 0xfe6f) || /* CJK Compatibility Forms */
-      (c >= 0xff00 && c <= 0xff60) || /* Fullwidth Forms */
-      (c >= 0xffe0 && c <= 0xffe6) ||
-      (c >= 0x20000 && c <= 0x2fffd) ||
-      (c >= 0x30000 && c <= 0x3fffd))) return 2;
-    return 1;
-  }
-
-  // TODO: consider polygons with zero area or other invalid geometries
-  function countNullShapes(shapes) {
-    var count = 0;
-    for (var i=0; i<shapes.length; i++) {
-      if (!shapes[i] || shapes[i].length === 0) count++;
-    }
-    return count;
-  }
-
-  function countNullRecords(records) {
-    var count = 0;
-    for (var i=0; i<records.length; i++) {
-      if (!records[i]) count++;
-    }
-    return count;
-  }
-
-  function maxChars(arr) {
-    return arr.reduce(function(memo, str) {
-      var w = stringDisplayWidth(str);
-      return w > memo ? w : memo;
-    }, 0);
-  }
-
-  function formatString(str) {
-    var replacements = {
-      '\n': '\\n',
-      '\r': '\\r',
-      '\t': '\\t'
-    };
-    var cleanChar = function(c) {
-      // convert newlines and carriage returns
-      // TODO: better handling of non-printing chars
-      return c in replacements ? replacements[c] : '';
-    };
-    str = str.replace(/[\r\t\n]/g, cleanChar);
-    return "'" + str + "'";
-  }
-
-  function countIntegralChars(val) {
-    return utils.isNumber(val) ? (utils.formatNumber(val) + '.').indexOf('.') : 0;
-  }
-
-  function formatTableValue(val, integralChars) {
-    var str;
-    if (utils.isNumber(val)) {
-      str = utils.lpad("", integralChars - countIntegralChars(val), ' ') +
-        utils.formatNumber(val);
-    } else if (utils.isString(val)) {
-      str = formatString(val);
-    } else if (utils.isDate(val)) {
-      str = utils.formatDateISO(val) + ' (Date)';
-    } else if (utils.isObject(val)) { // if {} or [], display JSON
-      str = JSON.stringify(val);
-    } else {
-      str = String(val);
-    }
-
-    if (typeof str != 'string') {
-      // e.g. JSON.stringify converts functions to undefined
-      str = '[' + (typeof val) + ']';
-    }
-
-    return str;
-  }
-
-  var Info = /*#__PURE__*/Object.freeze({
-    __proto__: null,
-    getLayerInfo: getLayerInfo,
-    getAttributeTableInfo: getAttributeTableInfo,
-    formatAttributeTableInfo: formatAttributeTableInfo,
-    formatTableValue: formatTableValue
-  });
 
   // TODO: make sure that the inlay shapes and data are not shared
   cmd.inlay = function(targetLayers, src, targetDataset, opts) {
@@ -42031,49 +42164,13 @@ ${svg}
     }, {});
   }
 
-  // import { importGeoJSON } from '../geojson/geojson-import';
-
-  function getTargetProxy(target) {
-    var proxy = getLayerInfo(target.layer, target.dataset); // layer_name, feature_count etc
-    proxy.layer = target.layer;
-    proxy.dataset = target.dataset;
-    addGetters(proxy, {
-      // export as an object, not a string or buffer
-      geojson: getGeoJSON
-    });
-
-    function getGeoJSON() {
-      var features = exportLayerAsGeoJSON(target.layer, target.dataset, {rfc7946: true}, true);
-      return {
-        type: 'FeatureCollection',
-        features: features
-      };
-    }
-
-    return proxy;
-  }
-
   // Support for evaluating expressions embedded in curly-brace templates
 
   // Returns: a string (e.g. a command string used by the -run command)
   async function evalTemplateExpression(expression, targets, ctx) {
     ctx = ctx || getBaseContext();
     // TODO: throw an error if target is used when there are multiple targets
-    if (targets) {
-      var proxies = expandCommandTargets(targets).reduce(function(memo, target) {
-        var proxy = getTargetProxy(target);
-        memo.push(proxy);
-        // index targets by layer name too
-        if (target.layer.name) {
-          memo[target.layer.name] = proxy;
-        }
-        return memo;
-      }, []);
-      Object.defineProperty(ctx, 'targets', {value: proxies});
-      if (proxies.length == 1) {
-        Object.defineProperty(ctx, 'target', {value: proxies[0]});
-      }
-    }
+    addTargetProxies(targets, ctx);
     // Add global functions and data to the expression context
     // (e.g. functions imported via the -require command)
     var globals = getStashedVar('defs') || {};
@@ -44564,6 +44661,10 @@ ${svg}
       return done(null);
     }
 
+    if (name == 'comment') {
+      return done(null);
+    }
+
     if (!job) job = new Job();
     job.startCommand(command);
 
@@ -44992,7 +45093,7 @@ ${svg}
     });
   }
 
-  var version = "0.6.63";
+  var version = "0.6.65";
 
   // Parse command line args into commands and run them
   // Function takes an optional Node-style callback. A Promise is returned if no callback is given.
@@ -45734,6 +45835,7 @@ ${svg}
     Projections,
     ProjectionParams,
     Rectangle,
+    RectangleGeom,
     Rounding,
     RunCommands,
     Scalebar,
