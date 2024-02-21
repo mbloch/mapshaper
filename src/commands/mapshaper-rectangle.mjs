@@ -10,7 +10,7 @@ import { stop } from '../utils/mapshaper-logging';
 import { probablyDecimalDegreeBounds, clampToWorldBounds } from '../geom/mapshaper-latlon';
 import { Bounds } from '../geom/mapshaper-bounds';
 import { densifyPathByInterval } from '../crs/mapshaper-densify';
-import { bboxToCoords } from '../geom/mapshaper-rectangle-geom';
+import { bboxToCoords } from '../paths/mapshaper-rectangle-utils';
 
 // Create rectangles around each feature in a layer
 cmd.rectangles = function(targetLyr, targetDataset, opts) {

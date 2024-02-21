@@ -1,5 +1,12 @@
 import { internal } from './gui-core';
-import { setPointCoords, setVertexCoords, getVertexCoords, insertVertex, deleteVertex } from './gui-display-utils';
+import {
+  setPointCoords,
+  setVertexCoords,
+  getVertexCoords,
+  insertVertex,
+  deleteVertex,
+  setRectangleCoords
+} from './gui-display-utils';
 
 var copyRecord = internal.copyRecord;
 
@@ -97,6 +104,19 @@ export function Undo(gui) {
     addHistoryState(stashedUndo, redo);
   });
 
+  gui.on('rectangle_dragend', function(e) {
+    var target = e.data.target;
+    var points1 = e.points;
+    var points2 = e.ids.map(id => getVertexCoords(target, id));
+    var undo = function() {
+      setRectangleCoords(target, e.ids, points1);
+    };
+    var redo = function() {
+      setRectangleCoords(target, e.ids, points2);
+    };
+    addHistoryState(undo, redo);
+  });
+
   gui.on('vertex_dragend', function(e) {
     var target = e.data.target;
     var startPoint = e.points[0]; // in data coords
@@ -142,6 +162,9 @@ export function Undo(gui) {
   }
 
   this.undo = function() {
+    // firing even if history is empty
+    // (because this event may trigger a new history state)
+    gui.dispatchEvent('undo_redo_pre');
     var item = getHistoryItem();
     if (item) {
       offset++;
@@ -151,6 +174,7 @@ export function Undo(gui) {
   };
 
   this.redo = function() {
+    gui.dispatchEvent('undo_redo_pre');
     if (offset <= 0) return;
     offset--;
     var item = getHistoryItem();

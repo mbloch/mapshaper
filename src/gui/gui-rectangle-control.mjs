@@ -40,8 +40,7 @@ export function RectangleControl(gui, hit) {
       gui.container.findChild('.map-layers').classed('dragging', true);
 
     } else if (dragInfo) {
-      // TODO: handle this event: add undo/redo states
-      gui.dispatchEvent('rectangle_dragend', dragInfo);
+      gui.dispatchEvent('rectangle_dragend', dragInfo); // save undo state
       gui.container.findChild('.map-layers').classed('dragging', false);
       reset();
     } else {

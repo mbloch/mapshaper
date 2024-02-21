@@ -176,13 +176,17 @@ export function HitControl(gui, ext, mouse) {
   // make sure popup is unpinned and turned off when switching editing modes
   // (some modes do not support pinning)
   gui.on('interaction_mode_change', function(e) {
-    updateSelectionState(null);
+    self.clearSelection();
     // if (e.mode == 'off' || e.mode == 'box') {
     if (gui.interaction.modeUsesSelection(e.mode)) {
       turnOn(e.mode);
     } else {
       turnOff();
     }
+  });
+
+  gui.on('undo_redo_pre', function() {
+    self.clearSelection();
   });
 
   gui.on('box_drag_start', function() {

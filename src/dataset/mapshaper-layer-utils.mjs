@@ -8,7 +8,7 @@ import { DataTable } from '../datatable/mapshaper-data-table';
 import { getFirstNonEmptyRecord } from '../datatable/mapshaper-data-utils';
 import utils from '../utils/mapshaper-utils';
 import { absArcId } from '../paths/mapshaper-arc-utils';
-import { pathIsRectangle } from '../geom/mapshaper-rectangle-geom';
+import { pathIsRectangle } from '../paths/mapshaper-rectangle-utils';
 
 // Insert a column of values into a (new or existing) data field
 export function insertFieldValues(lyr, fieldName, values) {
