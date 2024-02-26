@@ -187,3 +187,56 @@ export function findFieldNames(records, order) {
   var names = first ? Object.keys(first) : [];
   return applyFieldOrder(names, order);
 }
+
+
+export function parseUnknownType(str) {
+  var val = getInputParser('number')(str);
+  if (val !== null) return val;
+  val = getInputParser('object')(str);
+  if (val !== null) return val;
+  return str;
+}
+
+// used by GUI data editing
+export function getInputParser(type) {
+  return inputParsers[type || 'multiple'];
+}
+
+var inputParsers = {
+  date: function(raw) {
+    var d = new Date(raw);
+    return isNaN(+d) ? null : d;
+  },
+  string: function(raw) {
+    return raw;
+  },
+  number: function(raw) {
+    var val = Number(raw);
+    if (raw == 'NaN') {
+      val = NaN;
+    } else if (isNaN(val)) {
+      val = null;
+    }
+    return val;
+  },
+  object: function(raw) {
+    var val = null;
+    try {
+      val = JSON.parse(raw);
+    } catch(e) {}
+    return val;
+  },
+  boolean: function(raw) {
+    var val = null;
+    if (raw == 'true') {
+      val = true;
+    } else if (raw == 'false') {
+      val = false;
+    }
+    return val;
+  },
+  multiple: function(raw) {
+    var val = Number(raw);
+    return isNaN(val) ? raw : val;
+  }
+};

@@ -3,7 +3,7 @@ import { utils, internal } from './gui-core';
 import { El } from './gui-el';
 import { GUI } from './gui-lib';
 import { ClickText2 } from './gui-elements';
-import { showPopupAlert } from './gui-alert';
+import { openAddFieldPopup } from './gui-add-field-popup';
 
 // toNext, toPrev: trigger functions for switching between multiple records
 export function Popup(gui, toNext, toPrev) {
@@ -120,59 +120,11 @@ export function Popup(gui, toNext, toPrev) {
       var line = El('div').appendTo(el);
       El('span').addClass('add-field-btn').appendTo(line).on('click', async function(e) {
         // show "add field" dialog
-        renderAddFieldPopup(recIds, lyr);
+        openAddFieldPopup(gui, recIds, lyr);
       }).text('+ add field');
     }
   }
 
-  function renderAddFieldPopup(ids, lyr) {
-    var popup = showPopupAlert('', 'Add field');
-    var el = popup.container();
-    el.addClass('option-menu');
-    var html = `<div><input type="text" class="field-name text-input" placeholder="field name"></div>
-    <div><input type="text" class="field-value text-input" placeholder="value"><div>
-    <div tabindex="0" class="btn dialog-btn">Apply</div> <span class="inline-checkbox"><input type="checkbox" class="all" />assign value to all records</span>`;
-    el.html(html);
-
-    var name = el.findChild('.field-name');
-    name.node().focus();
-    var val = el.findChild('.field-value');
-    var box = el.findChild('.all');
-    var btn = el.findChild('.btn').on('click', function() {
-      var table = internal.getLayerDataTable(lyr); // creates new table if missing
-      var all = box.node().checked;
-      var nameStr = name.node().value.trim();
-      if (!nameStr) return;
-      if (table.fieldExists(nameStr)) {
-        name.node().value = '';
-        return;
-      }
-      var valStr = val.node().value.trim();
-      var value = parseUnknownType(valStr);
-      // table.addField(nameStr, function(d) {
-      //   // parse each time to avoid multiple references to objects
-      //   return (all || d == rec) ? parseUnknownType(valStr) : null;
-      // });
-
-      var cmdStr = `-each "d['${nameStr}'] = `;
-      if (!all) {
-        cmdStr += ids.length == 1 ?
-          `this.id != ${ids[0]}` :
-          `!${JSON.stringify(ids)}.includes(this.id)`;
-        cmdStr += ' ? null : ';
-      }
-      valStr = JSON.stringify(JSON.stringify(value)); // add escapes to strings
-      cmdStr = valStr.replace('"', cmdStr);
-
-      gui.console.runMapshaperCommands(cmdStr, function(err) {
-        if (!err) {
-          popup.close();
-        } else {
-          console.error(err);
-        }
-      });
-    });
-  }
 
   function renderRow(table, rec, key, type, editable) {
     var val = rec[key];
@@ -201,7 +153,7 @@ export function Popup(gui, toNext, toPrev) {
   function editItem(el, rec, key, type) {
     var input = new ClickText2(el),
         strval = formatInspectorValue(rec[key], type),
-        parser = getInputParser(type);
+        parser = internal.getInputParser(type);
     el.parent().addClass('editable-cell');
     el.addClass('colored-text dot-underline');
     input.on('change', function(e) {
@@ -236,56 +188,6 @@ function formatInspectorValue(val, type) {
   return str;
 }
 
-var inputParsers = {
-  date: function(raw) {
-    var d = new Date(raw);
-    return isNaN(+d) ? null : d;
-  },
-  string: function(raw) {
-    return raw;
-  },
-  number: function(raw) {
-    var val = Number(raw);
-    if (raw == 'NaN') {
-      val = NaN;
-    } else if (isNaN(val)) {
-      val = null;
-    }
-    return val;
-  },
-  object: function(raw) {
-    var val = null;
-    try {
-      val = JSON.parse(raw);
-    } catch(e) {}
-    return val;
-  },
-  boolean: function(raw) {
-    var val = null;
-    if (raw == 'true') {
-      val = true;
-    } else if (raw == 'false') {
-      val = false;
-    }
-    return val;
-  },
-  multiple: function(raw) {
-    var val = Number(raw);
-    return isNaN(val) ? raw : val;
-  }
-};
-
-function parseUnknownType(str) {
-  var val = inputParsers.number(str);
-  if (val !== null) return val;
-  val = inputParsers.object(str);
-  if (val !== null) return val;
-  return str;
-}
-
-function getInputParser(type) {
-  return inputParsers[type || 'multiple'];
-}
 
 function getFieldType(val, key, table) {
   // if a field has a null value, look at entire column to identify type
