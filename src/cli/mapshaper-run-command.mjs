@@ -354,7 +354,8 @@ export async function runCommand(command, job) {
       outputLayers = cmd.mosaic(targetLayers, targetDataset, opts);
 
     } else if (name == 'o') {
-      outputFiles = await exportTargetLayers(targets, opts);
+      // kludge
+      outputFiles = await exportTargetLayers(job.catalog, targets, opts);
       if (opts.final) {
         // don't propagate data if output is final
         //// catalog = null;

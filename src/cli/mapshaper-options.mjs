@@ -364,6 +364,9 @@ export function getOptionParser() {
       describe: '[SVG] bounding box of SVG map in projected map units',
       type: 'bbox'
     })
+    .option('fit-extent', {
+      describe: '[SVG] layer to use for the viewport extent'
+    })
     .option('point-symbol', {
       describe: '[SVG] circle or square (default is circle)'
     })
