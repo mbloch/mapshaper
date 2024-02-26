@@ -137,7 +137,7 @@ export var ExportControl = function(gui) {
   async function exportMenuSelection(targets) {
     var opts = getExportOpts();
     // note: command line "target" option gets ignored
-    var files = await internal.exportTargetLayers(targets, opts);
+    var files = await internal.exportTargetLayers(model, targets, opts);
     gui.session.layersExported(getTargetLayerIds(), getExportOptsAsString());
     if (files.length == 1 && checkboxOn(clipboardCheckbox)) {
       await saveFileContentToClipboard(files[0].content);
