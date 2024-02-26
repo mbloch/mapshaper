@@ -3,7 +3,8 @@ import { utils, internal, stop } from './gui-core';
 import { El } from './gui-el';
 import { SimpleButton } from './gui-elements';
 import { GUI } from './gui-lib';
-import { importSessionData } from './gui-session-snapshot-control.mjs';
+import { importSessionData } from './gui-session-snapshot-control';
+import { openAddLayerPopup } from './gui-add-layer-popup';
 
 // @cb function(<FileList>)
 function DropControl(gui, el, cb) {
@@ -123,7 +124,10 @@ export function ImportControl(gui, opts) {
   new FileChooser('#file-selection-btn', receiveFiles);
   new FileChooser('#import-buttons .add-btn', receiveFiles);
   new FileChooser('#add-file-btn', receiveFiles);
-  // new SimpleButton('#add-empty-btn').on('click', addEmptyLayer);
+  new SimpleButton('#add-empty-btn').on('click', function() {
+    gui.clearMode(); // close import dialog
+    openAddLayerPopup(gui);
+  });
   initDropArea('#import-quick-drop', true);
   initDropArea('#import-drop');
   gui.keyboard.onMenuSubmit(El('#import-options'), importQueuedFiles);
@@ -331,18 +335,7 @@ export function ImportControl(gui, opts) {
     return true;
   }
 
-  function addEmptyLayer() {
-    var dataset = {
-      layers: [{
-        name: 'New layer',
-        geometry_type: 'point',
-        shapes: []
-      }],
-      info: {}
-    };
-    model.addDataset(dataset);
-    gui.clearMode();
-  }
+
 
   function filesMayContainPaths(files) {
     return utils.some(files, function(f) {
