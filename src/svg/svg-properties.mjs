@@ -77,6 +77,10 @@ export function applyStyleAttributes(svgObj, symType, rec, filter) {
     if (filter && !filter(fields[i])) continue;
     setAttribute(svgObj, fields[i], rec[fields[i]]);
   }
+  // kludge to prevent default black fill on polygons with stroke styles
+  if ((symType == 'polygon' || symType == 'circle') && rec.stroke && !rec.fill) {
+    setAttribute(svgObj, 'fill', 'none');
+  }
 }
 
 function setAttribute(obj, k, v) {
