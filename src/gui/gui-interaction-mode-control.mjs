@@ -22,11 +22,10 @@ export function InteractionMode(gui) {
     standard: ['info', 'selection', 'data', 'box'],
     polygons: ['info', 'selection', 'data', 'box', 'vertices'],
     rectangles: ['info', 'selection', 'data', 'box', 'rectangles', 'vertices'],
-    lines: ['info', 'selection', 'data', 'box', 'vertices'],
+    lines: ['info', 'selection', 'data', 'box', 'vertices' /*, 'draw-lines'*/],
     table: ['info', 'selection', 'data'],
-    labels: ['info', 'selection', 'data', 'box', 'labels', 'location'],
-    // points: ['info', 'selection', 'data', 'box', 'location', 'add-points']
-    points: ['info', 'selection', 'data', 'box', 'location']
+    labels: ['info', 'selection', 'data', 'box', 'labels', 'location', 'add-points'],
+    points: ['info', 'selection', 'data', 'box', 'location', 'add-points']
   };
 
   var prompts = {
@@ -45,6 +44,7 @@ export function InteractionMode(gui) {
     vertices: 'edit vertices',
     selection: 'select features',
     'add-points': 'add points',
+    'draw-lines': 'draw lines',
     rectangles: 'drag-to-resize',
     off: 'turn off'
   };

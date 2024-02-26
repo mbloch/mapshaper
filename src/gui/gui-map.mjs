@@ -226,7 +226,7 @@ export function MshpMap(gui) {
       new BoxTool(gui, _ext, _nav),
       new RectangleControl(gui, _hit),
       initInteractiveEditing(gui, _ext, _hit);
-      // initDrawing(gui, _ext, _mouse, _hit);
+      initDrawing(gui, _ext, _mouse, _hit);
       _hit.on('change', updateOverlayLayer);
     }
 
@@ -257,7 +257,6 @@ export function MshpMap(gui) {
 
     // 'hover' avoids redrawing all svg symbols when only highlight needs to refresh
     drawLayers('hover');
-    // drawLayers();
   }
 
   function getDisplayOptions() {
@@ -292,10 +291,7 @@ export function MshpMap(gui) {
     _ext.setFullBounds(calcFullBounds(), getStrictBounds());
   }
 
-  function calcFullBounds() {
-    if (isPreviewView()) {
-      return internal.getFrameLayerBounds(internal.findFrameLayer(model));
-    }
+  function getVisibleContentBounds() {
     var b = new Bounds();
     var layers = getDrawableContentLayers();
     layers.forEach(function(lyr) {
@@ -306,6 +302,14 @@ export function MshpMap(gui) {
       // assign bounds to empty layers, to prevent rendering errors downstream
       b.setBounds(0,0,0,0);
     }
+    return b;
+  }
+
+  function calcFullBounds() {
+    if (isPreviewView()) {
+      return internal.getFrameLayerBounds(internal.findFrameLayer(model));
+    }
+    var b = getVisibleContentBounds();
 
     // add margin
     // use larger margin for small sizes
