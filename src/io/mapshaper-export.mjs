@@ -21,7 +21,13 @@ import { gzipSync } from '../io/mapshaper-gzip';
 
 // @targets - non-empty output from Catalog#findCommandTargets()
 //
-export async function exportTargetLayers(targets, opts) {
+export async function exportTargetLayers(catalog, targets, opts) {
+  // kludge: get extent of 'fit-extent' layer (if given)
+  if (opts.fit_extent) {
+    var target = catalog.findSingleLayer(opts.fit_extent);
+    var bounds = getLayerBounds(target.layer, target.dataset.arcs);
+    opts = Object.assign({svg_bbox: bounds.toArray()}, opts);
+  }
   // convert target fmt to dataset fmt
   var datasets = targets.map(function(target) {
     return utils.defaults({layers: target.layers}, target.dataset);
