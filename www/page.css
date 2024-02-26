@@ -1190,6 +1190,11 @@ div.basemap-style-btn.active img {
 	cursor: default;
 }
 
+.map-layers.add-points,
+.map-layers.draw-lines {
+	cursor: crosshair;
+}
+
 .map-layers canvas {
 	pointer-events: none;
 	position: absolute;
