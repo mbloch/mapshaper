@@ -1,5 +1,6 @@
 import { error, internal } from './gui-core';
 import { updatePointCoords } from './gui-display-utils';
+import { layerHasCanvasDisplayStyle } from './gui-map-style';
 
 export function initPointDrawing(gui, ext, mouse, hit) {
 
@@ -28,8 +29,11 @@ export function initPointDrawing(gui, ext, mouse, hit) {
       // this seems to work even for projected layers -- the data tables
       // of projected and original data seem to be shared.
       lyr.data.getRecords()[fid] = d;
-      if ('label-text' in d) {
+      // TODO: handle SVG symbol layer
+      if (internal.layerHasLabels(lyr)) {
         d['label-text'] = 'TBD'; // without text, new labels will be invisible
+      } else if (layerHasCanvasDisplayStyle(lyr)) {
+        d.r = 3; // show a black circle if layer is styled
       }
     }
     lyr.shapes[fid] = [p];
