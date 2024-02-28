@@ -132,13 +132,12 @@ export function MshpMap(gui) {
     clearAllDisplayArcs();
 
     // Reproject all visible map layers
-    if (_activeLyr) projectDisplayLayer(_activeLyr, newCRS);
-    if (_intersectionLyr) projectDisplayLayer(_intersectionLyr, newCRS);
-    if (_overlayLyr) {
-      projectDisplayLayer(_overlayLyr, newCRS);
-    }
-    updateVisibleMapLayers(); // any other display layers will be projected as they are regenerated
-    updateLayerStyles(getDrawableContentLayers()); // kludge to make sure all layers have styles
+    getDrawableContentLayers().forEach(function(lyr) {
+      projectDisplayLayer(lyr, newCRS);
+    });
+
+    // kludge to make sure all layers have styles
+    updateLayerStyles(getDrawableContentLayers());
 
     // Update map extent (also triggers redraw)
     projectMapExtent(_ext, oldCRS, this.getDisplayCRS(), calcFullBounds());
