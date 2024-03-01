@@ -60,14 +60,17 @@ export function HighlightBox(gui, optsArg) {
       var scale = gui.map.getExtent().getPixelSize();
       var dx = (xy.x - prevXY.x) * scale;
       var dy = -(xy.y - prevXY.y) * scale;
-      if (activeHandle.col == 'left') {
+      var center = activeHandle.col == 'center' && activeHandle.row == 'center';
+      if (activeHandle.col == 'left' || center) {
         boxCoords[0] += dx;
-      } else if (activeHandle.col == 'right') {
+      }
+      if (activeHandle.col == 'right' || center) {
         boxCoords[2] += dx;
       }
-      if (activeHandle.row == 'top') {
+      if (activeHandle.row == 'top' || center) {
         boxCoords[3] += dy;
-      } else if (activeHandle.row == 'bottom') {
+      }
+      if (activeHandle.row == 'bottom' || center) {
         boxCoords[1] += dy;
       }
       prevXY = xy;
@@ -178,7 +181,7 @@ function fixBounds(bbox) {
 function initHandles(el) {
   var handles = [];
   for (var i=0; i<9; i++) {
-    if (i == 4) continue;
+    // if (i == 4) continue; // skip middle handle
     var c = Math.floor(i / 3);
     var r = i % 3;
     handles.push({
