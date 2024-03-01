@@ -27,9 +27,9 @@ export function InspectionControl2(gui, hit) {
     if (!inspecting()) return;
     var ids;
     if (e.mode == 'selection') {
-      ids = e.pinned ? e.ids : null;
+      ids = e.pinned && e.ids || [];
     } else {
-      ids = e.ids && e.ids.length > 0 ? e.ids : null;
+      ids = e.ids || [];
     }
     inspect(e.id, ids, e.pinned);
   });
@@ -37,7 +37,7 @@ export function InspectionControl2(gui, hit) {
   // id: Id of a feature in the active layer, or -1
   function inspect(id, ids, pin) {
     var target = hit.getHitTarget();
-    if ((id > -1 || ids) && inspecting() && target && target.layer) {
+    if ((id > -1 || ids && ids.length > 0) && inspecting() && target && target.layer) {
       _popup.show(id, ids, target.layer, pin);
     } else {
       _popup.hide();
