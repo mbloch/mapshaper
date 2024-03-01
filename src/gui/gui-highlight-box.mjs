@@ -60,19 +60,25 @@ export function HighlightBox(gui, optsArg) {
       var scale = gui.map.getExtent().getPixelSize();
       var dx = (xy.x - prevXY.x) * scale;
       var dy = -(xy.y - prevXY.y) * scale;
-      var center = activeHandle.col == 'center' && activeHandle.row == 'center';
-      if (activeHandle.col == 'left' || center) {
+      var shifting = activeHandle.col == 'center' && activeHandle.row == 'center';
+      var centered = gui.keyboard.shiftIsPressed() && !shifting;
+      if (activeHandle.col == 'left' || shifting) {
         boxCoords[0] += dx;
+        if (centered) boxCoords[2] -= dx;
       }
-      if (activeHandle.col == 'right' || center) {
+      if (activeHandle.col == 'right' || shifting) {
         boxCoords[2] += dx;
+        if (centered) boxCoords[0] -= dx;
       }
-      if (activeHandle.row == 'top' || center) {
+      if (activeHandle.row == 'top' || shifting) {
         boxCoords[3] += dy;
+        if (centered) boxCoords[1] -= dy;
       }
-      if (activeHandle.row == 'bottom' || center) {
+      if (activeHandle.row == 'bottom' || shifting) {
         boxCoords[1] += dy;
+        if (centered) boxCoords[3] -= dy;
       }
+
       prevXY = xy;
       redraw();
       box.dispatchEvent('handle_drag');
