@@ -24,7 +24,7 @@ cmd.rectangles = function(targetLyr, targetDataset, opts) {
       getPointFeatureBounds(shp) : targetDataset.arcs.getMultiShapeBounds(shp);
     bounds = applyRectangleOptions(bounds, crsInfo.crs, opts);
     if (!bounds) return null;
-    return convertBboxToGeoJSON(bounds.toArray(), opts);
+    return bboxToPolygon(bounds.toArray(), opts);
   });
   var geojson = {
     type: 'FeatureCollection',
@@ -62,7 +62,7 @@ cmd.rectangle2 = function(target, opts) {
 };
 
 cmd.rectangle = function(source, opts) {
-  var offsets, bounds, coords, crsInfo;
+  var offsets, bounds, crsInfo;
   if (source) {
     bounds = getLayerBounds(source.layer, source.dataset.arcs);
     crsInfo = getDatasetCrsInfo(source.dataset);
@@ -74,8 +74,16 @@ cmd.rectangle = function(source, opts) {
   if (!bounds || !bounds.hasBounds()) {
     stop('Missing rectangle extent');
   }
-  var geojson = convertBboxToGeoJSON(bounds.toArray(), opts);
-  var dataset = importGeoJSON(geojson, {});
+  var feature = {
+    type: 'Feature',
+    properties: {},
+    geometry: bboxToPolygon(bounds.toArray(), opts)
+  };
+  if (opts.width > 0) {
+    feature.properties.width = opts.width;
+    feature.properties.type = 'frame';
+  }
+  var dataset = importGeoJSON(feature, {});
   dataset.layers[0].name = opts.name || 'rectangle';
   setDatasetCrsInfo(dataset, crsInfo);
   return dataset;
@@ -125,16 +133,13 @@ function applyBoundsOffset(offsetOpt, bounds, crs) {
   return bounds;
 }
 
-export function convertBboxToGeoJSON(bbox, optsArg) {
+export function bboxToPolygon(bbox, optsArg) {
   var opts = optsArg || {};
   var coords = bboxToCoords(bbox);
   if (opts.interval > 0) {
     coords = densifyPathByInterval(coords, opts.interval);
   }
-  return opts.geometry_type == 'polyline' ? {
-    type: 'LineString',
-    coordinates: coords
-  } : {
+  return {
     type: 'Polygon',
     coordinates: [coords]
   };

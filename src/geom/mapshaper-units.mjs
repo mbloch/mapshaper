@@ -21,6 +21,18 @@ var TO_METERS = {
   miles: 1609.344 // International Statute Mile
 };
 
+// str: display size in px, pt or in
+// using: 72pt per inch, 1pt per pixel.
+export function parseSizeParam(str) {
+  var num = parseFloat(str),
+      units = /px$/.test(str) && 'px' || /pt$/.test(str) && 'pt' ||
+        /in$/.test(str) && 'in' || !isNaN(+str) && 'px' || null;
+  if (isNaN(num) || !units) {
+    stop('Invalid size:', str);
+  }
+  return units == 'in' && num * 72 || num;
+}
+
 // Return coeff. for converting a distance measure to dataset coordinates
 // @paramUnits: units code of distance param, or null if units are not specified
 // @crs: Proj.4 CRS object, or null (unknown latlong CRS);

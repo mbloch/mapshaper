@@ -5,7 +5,7 @@ import { isRotatedNormalProjection } from '../crs/mapshaper-proj-info';
 import { layerHasPaths, getLayerBounds, layerHasGeometry } from '../dataset/mapshaper-layer-utils';
 import { getAntimeridian } from '../geom/mapshaper-latlon';
 import { importGeoJSON } from '../geojson/geojson-import';
-import { convertBboxToGeoJSON } from '../commands/mapshaper-rectangle';
+import { bboxToPolygon } from '../commands/mapshaper-rectangle';
 import { dissolveArcs } from '../paths/mapshaper-arc-dissolve';
 import { transformPoints } from '../dataset/mapshaper-dataset-utils';
 import utils from '../utils/mapshaper-utils';
@@ -98,7 +98,7 @@ function insertVerticalCut(dataset, lon) {
   var e = 1e-8;
   var bbox = [lon-e, -91, lon+e, 91];
   // densify (so cut line can curve, e.g. Cupola projection)
-  var geojson = convertBboxToGeoJSON(bbox, {interval: 0.5});
+  var geojson = bboxToPolygon(bbox, {interval: 0.5});
   var clip = importGeoJSON(geojson);
   clipLayersInPlace(pathLayers, clip, dataset, 'erase');
 }

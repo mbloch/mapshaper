@@ -50,6 +50,10 @@ export function layerHasPoints(lyr) {
   return lyr.geometry_type == 'point' && layerHasNonNullShapes(lyr);
 }
 
+export function layerIsRectangle(lyr, arcs) {
+  return layerOnlyHasRectangles(lyr, arcs) && lyr.shapes.length == 1;
+}
+
 export function layerOnlyHasRectangles(lyr, arcs) {
   if (!layerHasPaths(lyr)) return false;
   if (countMultiPartFeatures(lyr) > 0) return false;

@@ -285,8 +285,9 @@ export async function runCommand(command, job) {
     } else if (name == 'filter-slivers') {
       applyCommandToEachLayer(cmd.filterSlivers, targetLayers, targetDataset, opts);
 
-    } else if (name == 'frame') {
-      cmd.frame(job.catalog, source, opts);
+    // // 'frame' and 'rectangle' have merged
+    // } else if (name == 'frame') {
+    // cmd.frame(job.catalog, source, opts);
 
     } else if (name == 'fuzzy-join') {
       applyCommandToEachLayer(cmd.fuzzyJoin, targetLayers, arcs, source, opts);
@@ -388,7 +389,10 @@ export async function runCommand(command, job) {
         cmd.proj(targ.dataset, job.catalog, opts);
       });
 
-    } else if (name == 'rectangle') {
+    } else if (name == 'rectangle' || name == 'frame') {
+      if (name == 'frame' && !opts.width) {
+        stop('Command requires a width= argument');
+      }
       if (source || opts.bbox || targets.length === 0) {
         job.catalog.addDataset(cmd.rectangle(source, opts));
       } else {

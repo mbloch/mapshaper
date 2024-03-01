@@ -11,7 +11,6 @@ import cmd from '../mapshaper-cmd';
 import { mergeDatasets } from '../dataset/mapshaper-merging';
 import { buildTopology } from '../topology/mapshaper-topology';
 import { getDatasetBounds } from '../dataset/mapshaper-dataset-utils';
-import { convertBboxToGeoJSON } from '../commands/mapshaper-rectangle';
 import { cleanLayers } from '../commands/mapshaper-clean';
 import { dissolveArcs } from '../paths/mapshaper-arc-dissolve';
 
@@ -54,7 +53,6 @@ function createUnprojectedGraticule(opts) {
 
 function createProjectedGraticule(dest, opts) {
   var src = parseCrsString('wgs84');
-  // var outline = getOutlineDataset(src, dest, {inset: 0, geometry_type: 'polyline'});
   var outline = getOutlineDataset(src, dest, {});
   var graticule = importGeoJSON(createGraticule(dest, !!outline, opts));
   projectDataset(graticule, src, dest, {no_clip: false}); // TODO: densify?

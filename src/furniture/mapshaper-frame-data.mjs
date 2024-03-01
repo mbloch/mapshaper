@@ -4,6 +4,7 @@ import { getDatasetBounds } from '../dataset/mapshaper-dataset-utils';
 import { getFurnitureLayerType, getFurnitureLayerData } from '../furniture/mapshaper-furniture';
 import utils from '../utils/mapshaper-utils';
 import { error } from '../utils/mapshaper-logging';
+import { layerIsRectangle, getLayerBounds } from '../dataset/mapshaper-layer-utils';
 /*
 {
   width: size[0],
@@ -16,13 +17,32 @@ export function getFrameData(dataset, exportOpts) {
   var frameLyr = findFrameLayerInDataset(dataset);
   var frameData;
   if (frameLyr) {
-    frameData = Object.assign({}, getFurnitureLayerData(frameLyr));
+    frameData = getFrameLayerData(frameLyr, dataset);
   } else {
     frameData = calcFrameData(dataset, exportOpts);
   }
   frameData.crs = getDatasetCRS(dataset);
   return frameData;
 }
+
+
+function getFrameLayerData(lyr, dataset) {
+  var bounds = getLayerBounds(lyr, dataset.arcs);
+  var d = lyr.data.getReadOnlyRecordAt(0);
+  var w = d.width || 800;
+  var h = w * bounds.height() / bounds.width();
+  return {
+    type: 'frame',
+    width: w,
+    height: h,
+    bbox: bounds.toArray()
+  };
+}
+
+// export function getFrameLayerData(lyr) {
+//   return lyr.data && lyr.data.getReadOnlyRecordAt(0);
+// }
+
 
 function calcFrameData(dataset, opts) {
   var bounds;
@@ -41,10 +61,6 @@ function calcFrameData(dataset, opts) {
   };
 }
 
-export function getFrameLayerData(lyr) {
-  return lyr.data && lyr.data.getReadOnlyRecordAt(0);
-}
-
 // Used by mapshaper-frame and mapshaper-pixel-transform. TODO: refactor
 export function getFrameSize(bounds, opts) {
   var aspectRatio = bounds.width() / bounds.height();
@@ -60,26 +76,27 @@ export function getFrameSize(bounds, opts) {
 
 
 // @lyr dataset layer
-function isFrameLayer(lyr) {
-  return getFurnitureLayerType(lyr) == 'frame';
+function isFrameLayer(lyr, dataset) {
+  return getFurnitureLayerType(lyr) == 'frame' &&
+    layerIsRectangle(lyr, dataset.arcs);
 }
 
 export function findFrameLayerInDataset(dataset) {
   return utils.find(dataset.layers, function(lyr) {
-    return isFrameLayer(lyr);
+    return isFrameLayer(lyr, dataset);
   });
 }
 
 export function findFrameDataset(catalog) {
   var target = utils.find(catalog.getLayers(), function(o) {
-    return isFrameLayer(o.layer);
+    return isFrameLayer(o.layer, o.dataset);
   });
   return target ? target.dataset : null;
 }
 
 export function findFrameLayer(catalog) {
   var target = utils.find(catalog.getLayers(), function(o) {
-    return isFrameLayer(o.layer);
+    return isFrameLayer(o.layer, o.dataset);
   });
   return target && target.layer || null;
 }

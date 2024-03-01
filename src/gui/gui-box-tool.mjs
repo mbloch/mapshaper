@@ -43,7 +43,8 @@ export function BoxTool(gui, ext, nav) {
   });
 
   new SimpleButton(popup.findChild('.rect-btn')).on('click', function() {
-    runCommand('-rectangle + bbox=' + box.getDataCoords().join(','));
+    var cmd = '-rectangle + bbox=' + box.getDataCoords().join(',');
+    runCommand(cmd);
   });
 
   gui.addMode('box_tool', turnOn, turnOff);
