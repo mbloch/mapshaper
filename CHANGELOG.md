@@ -1,3 +1,11 @@
+v0.6.66
+* [web] Added ability to edit attribute data of multiple selected features ("select features" tool).
+* [web] Added interactive tool for adding points to point-type layer by clicking on the map.
+* [web] Added "Add empty layer" button to the layers menu.
+* [web] Added "drag-to-resize" tool for resizing rectangular polygons interactively.
+* [web] Added center handle for dragging the interactive box tool.
+* Added -o fit-extent= option, to use a layer extent (typically a layer containing a single rectangle) for setting the extent of SVG output.
+
 v0.6.65
 * Added "drag-to-resize" editing mode for resizing rectangles interactively.
 

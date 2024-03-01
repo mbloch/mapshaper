@@ -365,7 +365,7 @@ export function getOptionParser() {
       type: 'bbox'
     })
     .option('fit-extent', {
-      describe: '[SVG] layer to use for the viewport extent'
+      describe: '[SVG] layer to use for the map extent'
     })
     .option('point-symbol', {
       describe: '[SVG] circle or square (default is circle)'
