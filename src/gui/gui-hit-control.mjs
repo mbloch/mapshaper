@@ -13,6 +13,8 @@ export function HitControl(gui, ext, mouse) {
   var interactionMode;
   var targetLayer;
   var hitTest;
+  var pinnedOn; // used in multi-edit mode (selection) for toggling pinning behavior
+
   // event priority is higher than navigation, so stopping propagation disables
   // pan navigation
   var priority = 2;
@@ -71,6 +73,7 @@ export function HitControl(gui, ext, mouse) {
       updateSelectionState(null); // no hit data, no event
       active = false;
       hitTest = null;
+      pinnedOn = false;
     }
   }
 
@@ -105,6 +108,13 @@ export function HitControl(gui, ext, mouse) {
     selectionIds = utils.uniq(selectionIds.concat(ids));
     ids = utils.uniq(storedData.ids.concat(ids));
     updateSelectionState({ids: ids});
+  };
+
+  self.setPinning = function(val) {
+    if (pinnedOn != val) {
+      pinnedOn = val;
+      triggerHitEvent('change');
+    }
   };
 
   self.setTransientIds = function(ids) {
@@ -340,6 +350,9 @@ export function HitControl(gui, ext, mouse) {
     var eventData = utils.extend({mode: interactionMode}, d || {}, storedData);
     if (transientIds.length) {
       eventData.ids = utils.uniq(transientIds.concat(eventData.ids || []));
+    }
+    if (pinnedOn) {
+      eventData.pinned = true;
     }
     self.dispatchEvent(type, eventData);
   }

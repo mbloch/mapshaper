@@ -24,16 +24,20 @@ export function InspectionControl2(gui, hit) {
   });
 
   hit.on('change', function(e) {
-    var ids;
     if (!inspecting()) return;
-    ids = e.mode == 'selection' ? null : e.ids;
-    inspect(e.id, e.pinned, ids);
+    var ids;
+    if (e.mode == 'selection') {
+      ids = e.pinned ? e.ids : null;
+    } else {
+      ids = e.ids && e.ids.length > 0 ? e.ids : null;
+    }
+    inspect(e.id, ids, e.pinned);
   });
 
   // id: Id of a feature in the active layer, or -1
-  function inspect(id, pin, ids) {
+  function inspect(id, ids, pin) {
     var target = hit.getHitTarget();
-    if (id > -1 && inspecting() && target && target.layer) {
+    if ((id > -1 || ids) && inspecting() && target && target.layer) {
       _popup.show(id, ids, target.layer, pin);
     } else {
       _popup.hide();

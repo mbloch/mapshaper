@@ -19,7 +19,7 @@ export function RectangleControl(gui, hit) {
 
   hit.on('change', function(e) {
     if (!_on) return;
-    // TODO: handle multiple hits (see gui-inspection-control2)
+    // TODO: handle multiple hits (see gui-inspection-control)
     var id = e.id;
     if (e.id > -1 && e.pinned) {
       var target = hit.getHitTarget();
