@@ -32,10 +32,7 @@ export function Popup(gui, toNext, toPrev) {
     var multiEdit = pinned && gui.interaction.getMode() == 'selection';
     var maxHeight = parent.node().clientHeight - 36;
     var recIds = multiEdit ? ids : [id];
-    if (recIds.length === 0) {
-      self.hide();
-      return;
-    }
+
     // stash a function for refreshing the current popup when data changes
     // while the popup is being displayed (e.g. while dragging a label)
     refresh = function() {
