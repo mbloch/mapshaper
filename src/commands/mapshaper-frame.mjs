@@ -7,6 +7,7 @@ import { getDatasetBounds } from '../dataset/mapshaper-dataset-utils';
 import { importPolygon } from '../svg/geojson-to-svg';
 import cmd from '../mapshaper-cmd';
 import utils from '../utils/mapshaper-utils';
+import { parseSizeParam } from '../geom/mapshaper-units';
 
 cmd.frame = function(catalog, source, opts) {
   var size, bounds, tmp, dataset;
@@ -60,6 +61,7 @@ export function getAspectRatioArg(widthArg, heightArg) {
     return width / height;
   }).reverse().join(',');
 }
+
 
 export function renderFrame(d) {
   var lineWidth = 1,

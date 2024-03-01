@@ -1317,6 +1317,10 @@ export function getOptionParser() {
       type: 'bbox'
     })
     .option('offset', offsetOpt)
+    .option('width', {
+      // describe: 'set viewport width in pixels',
+      type: 'number'
+    })
     .option('aspect-ratio', aspectRatioOpt)
     .option('source', {
       describe: 'name of layer to enclose'

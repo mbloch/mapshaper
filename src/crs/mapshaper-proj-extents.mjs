@@ -1,4 +1,4 @@
-import { convertBboxToGeoJSON } from '../commands/mapshaper-rectangle';
+import { bboxToPolygon } from '../commands/mapshaper-rectangle';
 import { getGeodeticSegmentFunction } from '../geom/mapshaper-geodesic';
 import { inList, getCrsSlug, isAxisAligned, isMeridianBounded } from '../crs/mapshaper-proj-info';
 import {
@@ -67,8 +67,7 @@ function getBoundingRectangle(dest, opts) {
   var rotation = getRotationParams(dest);
   if (!bbox) error('Missing expected clip bbox.');
   opts = Object.assign({interval: 0.5}, opts); // make sure edges can curve
-  var geojson = convertBboxToGeoJSON(bbox, opts);
-  var dataset = importGeoJSON(geojson);
+  var dataset = importGeoJSON(bboxToPolygon(bbox, opts));
   if (rotation) {
     rotateDataset(dataset, {rotation: rotation, invert: true});
   }
