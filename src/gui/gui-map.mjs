@@ -2,14 +2,14 @@ import { HitControl } from './gui-hit-control';
 import { CoordinatesDisplay } from './gui-coordinates-display';
 import { MapNav } from './gui-map-nav';
 import { SelectionTool } from './gui-selection-tool';
-import { InspectionControl2 } from './gui-inspection-control2';
+import { InspectionControl2 } from './gui-inspection-control';
 import { updateLayerStackOrder, filterLayerByIds } from './gui-layer-utils';
 import { mapNeedsReset, arcsMayHaveChanged, popupCanStayOpen } from './gui-map-utils';
 import { initInteractiveEditing } from './gui-edit-modes';
 import { initDrawing } from './gui-drawing';
 import * as MapStyle from './gui-map-style';
 import { MapExtent } from './gui-map-extent';
-import { LayerStack } from './gui-layer-stack';
+import { LayerRenderer } from './gui-layer-renderer';
 import { BoxTool } from './gui-box-tool';
 import { RectangleControl } from './gui-rectangle-control';
 import { projectMapExtent, getMapboxBounds } from './gui-dynamic-crs';
@@ -37,7 +37,7 @@ export function MshpMap(gui) {
       _hit,
       _basemap,
       _intersectionLyr, _activeLyr, _overlayLyr,
-      _stack, _dynamicCRS;
+      _renderer, _dynamicCRS;
 
   _basemap = new Basemap(gui, _ext);
 
@@ -215,7 +215,7 @@ export function MshpMap(gui) {
   // Initialization just before displaying the map for the first time
   function initMap() {
     _ext.resize();
-    _stack = new LayerStack(gui, el, _ext, _mouse);
+    _renderer = new LayerRenderer(gui, el, _ext, _mouse);
     gui.buttons.show();
 
     if (opts.inspectorControl) {
@@ -332,10 +332,6 @@ export function MshpMap(gui) {
 
   function isVisibleLayer(lyr) {
     return isActiveLayer(lyr) || lyr.pinned;
-  }
-
-  function isFrameLayer(lyr) {
-    return !!(lyr && lyr == internal.findFrameLayer(model));
   }
 
   function isTableView() {
@@ -469,11 +465,11 @@ export function MshpMap(gui) {
     }
     // RENDERING
     // draw main content layers
-    _stack.drawMainLayers(contentLayers, action);
+    _renderer.drawMainLayers(contentLayers, action);
     // draw hover & selection overlay
-    _stack.drawOverlayLayer(_overlayLyr, action);
+    _renderer.drawOverlayLayer(_overlayLyr, action);
     // draw furniture
-    _stack.drawFurnitureLayers(furnitureLayers, action);
+    // _renderer.drawFurnitureLayers(furnitureLayers, action);
     gui.dispatchEvent('map_rendered');
   }
 }

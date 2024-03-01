@@ -26,6 +26,9 @@ export function initVertexDragging(gui, ext, hit) {
     hit.clearVertexOverlay();
   }
 
+  // return data on the nearest vertex (or identical vertices) to the pointer
+  // (if within a distance threshold)
+  //
   function findDraggableVertices(e) {
     var target = hit.getHitTarget();
     var shp = target.layer.shapes[e.id];
