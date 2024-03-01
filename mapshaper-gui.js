@@ -1714,6 +1714,47 @@
     }
   }
 
+  function openAddLayerPopup(gui) {
+    var popup = showPopupAlert('', 'Add empty layer');
+    var el = popup.container();
+    el.addClass('option-menu');
+    var html = `<div><input type="text" class="layer-name text-input" placeholder="layer name"></div>
+  <div style="margin: 2px 0 4px;">
+    Type: &nbsp;
+    <label><input type="radio" name="geomtype" checked value="point" class="radio">point</label> &nbsp;
+    <label><input type="radio" name="geomtype" value="polygon" class="radio">polygon</label> &nbsp;
+    <label><input type="radio" name="geomtype" value="polyline" class="radio">line</label>
+  </div>
+  <div tabindex="0" class="btn dialog-btn">Create</div></span>`;
+    el.html(html);
+    var name = el.findChild('.layer-name');
+    name.node().focus();
+    var btn = el.findChild('.btn').on('click', function() {
+      var nameStr = name.node().value.trim();
+      var type = el.findChild('input:checked').node().value;
+      addLayer(gui, nameStr, type);
+      popup.close();
+    });
+  }
+
+  function addLayer(gui, name, type) {
+    var targ = gui.model.getActiveLayer();
+    var crsInfo = targ && internal.getDatasetCrsInfo(targ.dataset);
+    var dataset = {
+      layers: [{
+        name: name || undefined,
+        geometry_type: type,
+        shapes: []
+      }],
+      info: {}
+    };
+    if (crsInfo) {
+      internal.setDatasetCrsInfo(dataset, crsInfo);
+    }
+    gui.model.addDataset(dataset);
+    gui.model.updated({select: true});
+  }
+
   // @cb function(<FileList>)
   function DropControl(gui, el, cb) {
     var area = El(el);
@@ -1832,7 +1873,10 @@
     new FileChooser('#file-selection-btn', receiveFiles);
     new FileChooser('#import-buttons .add-btn', receiveFiles);
     new FileChooser('#add-file-btn', receiveFiles);
-    // new SimpleButton('#add-empty-btn').on('click', addEmptyLayer);
+    new SimpleButton('#add-empty-btn').on('click', function() {
+      gui.clearMode(); // close import dialog
+      openAddLayerPopup(gui);
+    });
     initDropArea('#import-quick-drop', true);
     initDropArea('#import-drop');
     gui.keyboard.onMenuSubmit(El('#import-options'), importQueuedFiles);
@@ -2040,18 +2084,7 @@
       return true;
     }
 
-    function addEmptyLayer() {
-      var dataset = {
-        layers: [{
-          name: 'New layer',
-          geometry_type: 'point',
-          shapes: []
-        }],
-        info: {}
-      };
-      model.addDataset(dataset);
-      gui.clearMode();
-    }
+
 
     function filesMayContainPaths(files) {
       return utils$1.some(files, function(f) {
@@ -2565,6 +2598,7 @@
     }
   }
 
+  // coords: [x, y] point in data CRS (not display CRS)
   function setPointCoords(lyr, fid, coords) {
     lyr.source.layer.shapes[fid] = coords;
     if (isProjectedLayer(lyr)) {
@@ -2602,7 +2636,7 @@
     return !!(lyr.source && lyr.invertPoint);
   }
 
-  // Update data coordinates by projecting display coordinates
+  // Update source data coordinates by projecting display coordinates
   function updatePointCoords(lyr, fid) {
     if (!isProjectedLayer(lyr)) return;
     var displayShp = lyr.layer.shapes[fid];
@@ -3875,7 +3909,7 @@
     async function exportMenuSelection(targets) {
       var opts = getExportOpts();
       // note: command line "target" option gets ignored
-      var files = await internal.exportTargetLayers(targets, opts);
+      var files = await internal.exportTargetLayers(model, targets, opts);
       gui.session.layersExported(getTargetLayerIds(), getExportOptsAsString());
       if (files.length == 1 && checkboxOn(clipboardCheckbox)) {
         await saveFileContentToClipboard(files[0].content);
@@ -4656,6 +4690,19 @@
       addHistoryState(stashedUndo, redo);
     });
 
+    gui.on('rectangle_dragend', function(e) {
+      var target = e.data.target;
+      var points1 = e.points;
+      var points2 = e.ids.map(id => getVertexCoords(target, id));
+      var undo = function() {
+        setRectangleCoords(target, e.ids, points1);
+      };
+      var redo = function() {
+        setRectangleCoords(target, e.ids, points2);
+      };
+      addHistoryState(undo, redo);
+    });
+
     gui.on('vertex_dragend', function(e) {
       var target = e.data.target;
       var startPoint = e.points[0]; // in data coords
@@ -4701,6 +4748,9 @@
     }
 
     this.undo = function() {
+      // firing even if history is empty
+      // (because this event may trigger a new history state)
+      gui.dispatchEvent('undo_redo_pre');
       var item = getHistoryItem();
       if (item) {
         offset++;
@@ -4710,6 +4760,7 @@
     };
 
     this.redo = function() {
+      gui.dispatchEvent('undo_redo_pre');
       if (offset <= 0) return;
       offset--;
       var item = getHistoryItem();
@@ -4781,6 +4832,30 @@
     btn.on('click', function() {
       modes.enterMode(active ? null : name);
     });
+  }
+
+  function ToggleButton(el) {
+    var btn = El(el),
+        self = new EventDispatcher(),
+        on = false;
+
+    btn.on('click', function(e) {
+      on = !on;
+      btn.classed('active', on);
+      self.dispatchEvent('click', {on: on, active: on});
+    });
+
+    self.turnOff = function() {
+      on = false;
+      btn.removeClass('active');
+    };
+
+    self.turnOn = function() {
+      on = true;
+      btn.addClass('active');
+    };
+
+    return self;
   }
 
   function ModeSwitcher() {
@@ -4872,11 +4947,10 @@
       standard: ['info', 'selection', 'data', 'box'],
       polygons: ['info', 'selection', 'data', 'box', 'vertices'],
       rectangles: ['info', 'selection', 'data', 'box', 'rectangles', 'vertices'],
-      lines: ['info', 'selection', 'data', 'box', 'vertices'],
+      lines: ['info', 'selection', 'data', 'box', 'vertices' /*, 'draw-lines'*/],
       table: ['info', 'selection', 'data'],
-      labels: ['info', 'selection', 'data', 'box', 'labels', 'location'],
-      // points: ['info', 'selection', 'data', 'box', 'location', 'add-points']
-      points: ['info', 'selection', 'data', 'box', 'location']
+      labels: ['info', 'selection', 'data', 'box', 'labels', 'location', 'add-points'],
+      points: ['info', 'selection', 'data', 'box', 'location', 'add-points']
     };
 
     var prompts = {
@@ -4895,6 +4969,7 @@
       vertices: 'edit vertices',
       selection: 'select features',
       'add-points': 'add points',
+      'draw-lines': 'draw lines',
       rectangles: 'drag-to-resize',
       off: 'turn off'
     };
@@ -5138,7 +5213,9 @@
     };
 
     self.selectLayer = function(lyr, dataset) {
-      if (self.getActiveLayer().layer == lyr) return;
+      if (self.getActiveLayer().layer == lyr) {
+        return;
+      }
       self.setDefaultTarget([lyr], dataset);
       self.updated({select: true});
       gui.session.setTargetLayer(lyr);
@@ -6844,7 +6921,6 @@
     return internal.svg.getTransform(p, scale);
   }
 
-
   function repositionSymbols(elements, layer, ext) {
     var el, idx, shp, p, displayOn, inView, displayBounds;
     for (var i=0, n=elements.length; i<n; i++) {
@@ -6868,7 +6944,7 @@
     }
   }
 
-  function renderSymbols(lyr, ext, type) {
+  function renderSymbols(lyr, ext) {
     var records = lyr.data.getRecords();
     var symbols = lyr.shapes.map(function(shp, i) {
       var d = records[i];
@@ -6976,6 +7052,8 @@
     var interactionMode;
     var targetLayer;
     var hitTest;
+    var pinnedOn; // used in multi-edit mode (selection) for toggling pinning behavior
+
     // event priority is higher than navigation, so stopping propagation disables
     // pan navigation
     var priority = 2;
@@ -7034,6 +7112,7 @@
         updateSelectionState(null); // no hit data, no event
         active = false;
         hitTest = null;
+        pinnedOn = false;
       }
     }
 
@@ -7068,6 +7147,13 @@
       selectionIds = utils$1.uniq(selectionIds.concat(ids));
       ids = utils$1.uniq(storedData.ids.concat(ids));
       updateSelectionState({ids: ids});
+    };
+
+    self.setPinning = function(val) {
+      if (pinnedOn != val) {
+        pinnedOn = val;
+        triggerHitEvent('change');
+      }
     };
 
     self.setTransientIds = function(ids) {
@@ -7139,13 +7225,17 @@
     // make sure popup is unpinned and turned off when switching editing modes
     // (some modes do not support pinning)
     gui.on('interaction_mode_change', function(e) {
-      updateSelectionState(null);
+      self.clearSelection();
       // if (e.mode == 'off' || e.mode == 'box') {
       if (gui.interaction.modeUsesSelection(e.mode)) {
         turnOn(e.mode);
       } else {
         turnOff();
       }
+    });
+
+    gui.on('undo_redo_pre', function() {
+      self.clearSelection();
     });
 
     gui.on('box_drag_start', function() {
@@ -7299,6 +7389,9 @@
       var eventData = utils$1.extend({mode: interactionMode}, d || {}, storedData);
       if (transientIds.length) {
         eventData.ids = utils$1.uniq(transientIds.concat(eventData.ids || []));
+      }
+      if (pinnedOn) {
+        eventData.pinned = true;
       }
       self.dispatchEvent(type, eventData);
     }
@@ -7856,14 +7949,17 @@
         var scale = gui.map.getExtent().getPixelSize();
         var dx = (xy.x - prevXY.x) * scale;
         var dy = -(xy.y - prevXY.y) * scale;
-        if (activeHandle.col == 'left') {
+        var center = activeHandle.col == 'center' && activeHandle.row == 'center';
+        if (activeHandle.col == 'left' || center) {
           boxCoords[0] += dx;
-        } else if (activeHandle.col == 'right') {
+        }
+        if (activeHandle.col == 'right' || center) {
           boxCoords[2] += dx;
         }
-        if (activeHandle.row == 'top') {
+        if (activeHandle.row == 'top' || center) {
           boxCoords[3] += dy;
-        } else if (activeHandle.row == 'bottom') {
+        }
+        if (activeHandle.row == 'bottom' || center) {
           boxCoords[1] += dy;
         }
         prevXY = xy;
@@ -7974,7 +8070,7 @@
   function initHandles(el) {
     var handles = [];
     for (var i=0; i<9; i++) {
-      if (i == 4) continue;
+      // if (i == 4) continue; // skip middle handle
       var c = Math.floor(i / 3);
       var r = i % 3;
       handles.push({
@@ -8211,6 +8307,7 @@
     }
 
     function turnOff() {
+      dataBtn.turnOff();
       box.turnOff();
       reset();
       _on = false;
@@ -8221,8 +8318,15 @@
     }
 
     function reset() {
-      popup.hide();
+      hidePopup();
+      setPinning(false);
       hit.clearSelection();
+    }
+
+    function setPinning(on) {
+      hit.setPinning(on);
+      if (on) dataBtn.turnOn();
+      else dataBtn.turnOff();
     }
 
     function getIdsOpt() {
@@ -8239,10 +8343,14 @@
         popup.show();
         updateCoords();
       } else {
-        popup.hide();
-        hideCoords();
+        hidePopup();
       }
     });
+
+    function hidePopup() {
+      popup.hide();
+      hideCoords();
+    }
 
     new SimpleButton(popup.findChild('.delete-btn')).on('click', function() {
       var cmd = '-filter invert ids=' + getIdsOpt();
@@ -8257,6 +8365,10 @@
     new SimpleButton(popup.findChild('.split-btn')).on('click', function() {
       var cmd = '-split ids=' + getIdsOpt();
       runCommand(cmd);
+    });
+
+    var dataBtn = new ToggleButton(popup.findChild('.data-btn')).on('click', function(e) {
+      setPinning(e.on);
     });
 
     new SimpleButton(popup.findChild('.duplicate-btn')).on('click', function() {
@@ -8296,19 +8408,19 @@
         hideCoords();
         return;
       }
-      El(coordsBtn.node()).addClass('selected-btn');
+      El(coordsBtn.node()).addClass('active');
       coords.text(bbox.join(','));
       coords.show();
       GUI.selectElement(coords.node());
     }
 
     function hideCoords() {
-      El(coordsBtn.node()).removeClass('selected-btn');
+      El(coordsBtn.node()).removeClass('active');
       coords.hide();
     }
 
     function runCommand(cmd, turnOff) {
-      popup.hide();
+      hidePopup();
       gui.quiet(true);
       if (gui.console) gui.console.runMapshaperCommands(cmd, function(err) {
         gui.quiet(false);
@@ -8316,6 +8428,55 @@
         if (turnOff) gui.clearMode();
       });
     }
+  }
+
+  function openAddFieldPopup(gui, ids, lyr) {
+    var popup = showPopupAlert('', 'Add field');
+    var el = popup.container();
+    el.addClass('option-menu');
+    var html = `<div><input type="text" class="field-name text-input" placeholder="field name"></div>
+  <div><input type="text" class="field-value text-input" placeholder="value"><div>
+  <div tabindex="0" class="btn dialog-btn">Apply</div> <span class="inline-checkbox"><input type="checkbox" class="all" />assign value to all records</span>`;
+    el.html(html);
+
+    var name = el.findChild('.field-name');
+    name.node().focus();
+    var val = el.findChild('.field-value');
+    var box = el.findChild('.all');
+    var btn = el.findChild('.btn').on('click', function() {
+      var table = internal.getLayerDataTable(lyr); // creates new table if missing
+      var all = box.node().checked;
+      var nameStr = name.node().value.trim();
+      if (!nameStr) return;
+      if (table.fieldExists(nameStr)) {
+        name.node().value = '';
+        return;
+      }
+      var valStr = val.node().value.trim();
+      var value = internal.parseUnknownType(valStr);
+      // table.addField(nameStr, function(d) {
+      //   // parse each time to avoid multiple references to objects
+      //   return (all || d == rec) ? parseUnknownType(valStr) : null;
+      // });
+
+      var cmdStr = `-each "d['${nameStr}'] = `;
+      if (!all) {
+        cmdStr += ids.length == 1 ?
+          `this.id != ${ids[0]}` :
+          `!${JSON.stringify(ids)}.includes(this.id)`;
+        cmdStr += ' ? null : ';
+      }
+      valStr = JSON.stringify(JSON.stringify(value)); // add escapes to strings
+      cmdStr = valStr.replace('"', cmdStr);
+
+      gui.console.runMapshaperCommands(cmdStr, function(err) {
+        if (!err) {
+          popup.close();
+        } else {
+          console.error(err);
+        }
+      });
+    });
   }
 
   // toNext, toPrev: trigger functions for switching between multiple records
@@ -8331,7 +8492,6 @@
     var navInfo = El('span').addClass('popup-nav-info').appendTo(nav);
     var nextLink = El('span').addClass('popup-nav-arrow colored-text').appendTo(nav).text('▶');
     var refresh = null;
-    var currIds = [];
 
     el.addClass('rollover'); // used as a sentinel for the hover function
 
@@ -8342,16 +8502,20 @@
     });
 
     self.show = function(id, ids, lyr, pinned) {
-      var editable = pinned && gui.interaction.getMode() == 'data';
+      var singleEdit = pinned && gui.interaction.getMode() == 'data';
+      var multiEdit = pinned && gui.interaction.getMode() == 'selection';
       var maxHeight = parent.node().clientHeight - 36;
-      currIds = [id];
+      var recIds = multiEdit ? ids : [id];
+
       // stash a function for refreshing the current popup when data changes
       // while the popup is being displayed (e.g. while dragging a label)
       refresh = function() {
-        render(content, id, lyr, editable);
+        render(content, recIds, lyr, singleEdit || multiEdit);
       };
       refresh();
-      if (ids && ids.length > 1) {
+      if (multiEdit) {
+        showRecords(ids.length);
+      } else if (ids && ids.length > 1 && !multiEdit) {
         showNav(id, ids, pinned);
       } else {
         tab.hide();
@@ -8365,7 +8529,6 @@
     self.hide = function() {
       if (!isOpen()) return;
       refresh = null;
-      currIds = [];
       // make sure any pending edits are made before re-rendering popup
       GUI.blurActiveElement(); // this should be more selective -- could cause a glitch if typing in console
       content.empty();
@@ -8379,6 +8542,13 @@
       return el.visible();
     }
 
+    function showRecords(n) {
+      navInfo.text(n);
+      nextLink.css('display','none');
+      prevLink.css('display','none');
+      tab.show();
+    }
+
     function showNav(id, ids, pinned) {
       var num = ids.indexOf(id) + 1;
       navInfo.text(' ' + num + ' / ' + ids.length + ' ');
@@ -8387,28 +8557,12 @@
       tab.show();
     }
 
-    function render(el, recId, lyr, editable) {
-      var recIds = [recId]; // TODO: support multiple ids
+    function render(el, recIds, lyr, editable) {
       var table = lyr.data; // table can be null (e.g. if layer has no attribute data)
-      var rec = table && (editable ? table.getRecordAt(recId) : table.getReadOnlyRecordAt(recId)) || {};
-      var tableEl = El('table').addClass('selectable'),
-          rows = 0;
-      // self.hide(); // clean up if panel is already open
+      var tableEl = table ? renderTable(recIds, table, editable) : null;
       el.empty(); // clean up if panel is already open
-      utils$1.forEachProperty(rec, function(v, k) {
-        var type;
-        // missing GeoJSON fields are set to undefined on import; skip these
-        if (v !== undefined) {
-          type = getFieldType(v, k, table);
-          renderRow(tableEl, rec, k, type, editable);
-          rows++;
-        }
-      });
-
-      tableEl.appendTo(el);
-      if (rows > 0) {
-        // tableEl.appendTo(el);
-
+      if (tableEl) {
+        tableEl.appendTo(el);
         tableEl.on('copy', function(e) {
           // remove leading or trailing tabs that sometimes get copied when
           // selecting from a table
@@ -8419,7 +8573,6 @@
             e.preventDefault(); // don't copy original string with tabs
           }
         });
-
       } else {
         // Some individual features can have undefined values for some or all of
         // their data properties (properties are set to undefined when an input JSON file
@@ -8433,72 +8586,65 @@
         var line = El('div').appendTo(el);
         El('span').addClass('add-field-btn').appendTo(line).on('click', async function(e) {
           // show "add field" dialog
-          renderAddFieldPopup(recIds, lyr);
+          openAddFieldPopup(gui, recIds, lyr);
         }).text('+ add field');
       }
     }
 
-    function renderAddFieldPopup(ids, lyr) {
-      var popup = showPopupAlert('', 'Add field');
-      var el = popup.container();
-      el.addClass('option-menu');
-      var html = `<div><input type="text" class="field-name text-input" placeholder="field name"></div>
-    <div><input type="text" class="field-value text-input" placeholder="value"><div>
-    <div tabindex="0" class="btn dialog-btn">Apply</div> <span class="inline-checkbox"><input type="checkbox" class="all" />assign value to all records</span>`;
-      el.html(html);
-
-      var name = el.findChild('.field-name');
-      name.node().focus();
-      var val = el.findChild('.field-value');
-      var box = el.findChild('.all');
-      var btn = el.findChild('.btn').on('click', function() {
-        var table = internal.getLayerDataTable(lyr); // creates new table if missing
-        var all = box.node().checked;
-        var nameStr = name.node().value.trim();
-        if (!nameStr) return;
-        if (table.fieldExists(nameStr)) {
-          name.node().value = '';
-          return;
+    function renderTable(recIds, table, editable) {
+      var tableEl = El('table').addClass('selectable');
+      var rows = 0;
+      var rec;
+      if (recIds.length == 1) {
+        rec = editable ?
+          table.getReadOnlyRecordAt(recIds[0]) :
+          table.getRecordAt(recIds[0]);
+      } else {
+        rec = getMultiRecord(recIds, table);
+      }
+      utils$1.forEachProperty(rec, function(v, k) {
+        // missing GeoJSON fields are set to undefined on import; skip these
+        if (v === undefined) return;
+        var rowEl = renderRow(k, v, recIds, table, editable);
+        if (rowEl) {
+          rowEl.appendTo(tableEl);
+          rows++;
         }
-        var valStr = val.node().value.trim();
-        var value = parseUnknownType(valStr);
-        // table.addField(nameStr, function(d) {
-        //   // parse each time to avoid multiple references to objects
-        //   return (all || d == rec) ? parseUnknownType(valStr) : null;
-        // });
-
-        var cmdStr = `-each "d['${nameStr}'] = `;
-        if (!all) {
-          cmdStr += ids.length == 1 ?
-            `this.id != ${ids[0]}` :
-            `!${JSON.stringify(ids)}.includes(this.id)`;
-          cmdStr += ' ? null : ';
-        }
-        valStr = JSON.stringify(JSON.stringify(value)); // add escapes to strings
-        cmdStr = valStr.replace('"', cmdStr);
-
-        gui.console.runMapshaperCommands(cmdStr, function(err) {
-          if (!err) {
-            popup.close();
-          } else {
-            console.error(err);
-          }
-        });
       });
+      return rows > 0 ? tableEl : null;
     }
 
-    function renderRow(table, rec, key, type, editable) {
-      var val = rec[key];
+    function getMultiRecord(recIds, table) {
+      var fields = table.getFields();
+      var rec = {};
+      recIds.forEach(function(id) {
+        var d = table.getRecordAt(id) || {};
+        var k, v;
+        for (var i=0; i<fields.length; i++) {
+          k = fields[i];
+          v = d[k];
+          if (k in rec === false) {
+            rec[k] = v;
+          } else if (rec[k] !== v) {
+            rec[k] = null;
+          }
+        }
+      });
+      return rec;
+    }
+
+
+    function renderRow(key, val, recIds, table, editable) {
+      var type = getFieldType(val, key, table);
       var str = formatInspectorValue(val, type);
       var rowHtml = `<td class="field-name">${key}</td><td><span class="value">${utils$1.htmlEscape(str)}</span> </td>`;
-      var cell = El('tr')
-          .appendTo(table)
-          .html(rowHtml)
-          .findChild('.value');
-      setFieldClass(cell, val, type);
+      var rowEl = El('tr').html(rowHtml);
+      var cellEl = rowEl.findChild('.value');
+      setFieldClass(cellEl, val, type);
       if (editable) {
-        editItem(cell, rec, key, type);
+        editItem(cellEl, key, val, recIds, table, type);
       }
+      return rowEl;
     }
 
     function setFieldClass(el, val, type) {
@@ -8511,10 +8657,10 @@
       el.classed('empty', isEmpty);
     }
 
-    function editItem(el, rec, key, type) {
+    function editItem(el, key, val, recIds, table, type) {
       var input = new ClickText2(el),
-          strval = formatInspectorValue(rec[key], type),
-          parser = getInputParser(type);
+          strval = formatInspectorValue(val, type),
+          parser = internal.getInputParser(type);
       el.parent().addClass('editable-cell');
       el.addClass('colored-text dot-underline');
       input.on('change', function(e) {
@@ -8526,15 +8672,25 @@
         } else if (strval != strval2) {
           // field content has changed
           strval = strval2;
-          gui.dispatchEvent('data_preupdate', {ids: currIds}); // for undo/redo
-          rec[key] = val2;
-          gui.dispatchEvent('data_postupdate', {ids: currIds});
+          gui.dispatchEvent('data_preupdate', {ids: recIds}); // for undo/redo
+          // rec[key] = val2;
+          updateRecords(recIds, key, val2, table);
+          gui.dispatchEvent('data_postupdate', {ids: recIds});
           input.value(strval);
           setFieldClass(el, val2, type);
-          self.dispatchEvent('data_updated', {field: key, value: val2, ids: currIds});
+          self.dispatchEvent('data_updated', {field: key, value: val2, ids: recIds});
         }
       });
     }
+  }
+
+  function updateRecords(ids, f, v, table) {
+    var records = table.getRecords();
+    ids.forEach(function(id) {
+      var d = records[id] || {};
+      d[f] = v;
+      records[id] = d;
+    });
   }
 
   function formatInspectorValue(val, type) {
@@ -8549,60 +8705,10 @@
     return str;
   }
 
-  var inputParsers = {
-    date: function(raw) {
-      var d = new Date(raw);
-      return isNaN(+d) ? null : d;
-    },
-    string: function(raw) {
-      return raw;
-    },
-    number: function(raw) {
-      var val = Number(raw);
-      if (raw == 'NaN') {
-        val = NaN;
-      } else if (isNaN(val)) {
-        val = null;
-      }
-      return val;
-    },
-    object: function(raw) {
-      var val = null;
-      try {
-        val = JSON.parse(raw);
-      } catch(e) {}
-      return val;
-    },
-    boolean: function(raw) {
-      var val = null;
-      if (raw == 'true') {
-        val = true;
-      } else if (raw == 'false') {
-        val = false;
-      }
-      return val;
-    },
-    multiple: function(raw) {
-      var val = Number(raw);
-      return isNaN(val) ? raw : val;
-    }
-  };
-
-  function parseUnknownType(str) {
-    var val = inputParsers.number(str);
-    if (val !== null) return val;
-    val = inputParsers.object(str);
-    if (val !== null) return val;
-    return str;
-  }
-
-  function getInputParser(type) {
-    return inputParsers[type || 'multiple'];
-  }
 
   function getFieldType(val, key, table) {
     // if a field has a null value, look at entire column to identify type
-    return internal.getValueType(val) || internal.getColumnType(key, table.getRecords());
+    return internal.getValueType(val) || internal.getColumnType(key, table.getRecords()) ;
   }
 
   function InspectionControl2(gui, hit) {
@@ -8627,16 +8733,20 @@
     });
 
     hit.on('change', function(e) {
-      var ids;
       if (!inspecting()) return;
-      ids = e.mode == 'selection' ? null : e.ids;
-      inspect(e.id, e.pinned, ids);
+      var ids;
+      if (e.mode == 'selection') {
+        ids = e.pinned && e.ids || [];
+      } else {
+        ids = e.ids || [];
+      }
+      inspect(e.id, ids, e.pinned);
     });
 
     // id: Id of a feature in the active layer, or -1
-    function inspect(id, pin, ids) {
+    function inspect(id, ids, pin) {
       var target = hit.getHitTarget();
-      if (id > -1 && inspecting() && target && target.layer) {
+      if ((id > -1 || ids && ids.length > 0) && inspecting() && target && target.layer) {
         _popup.show(id, ids, target.layer, pin);
       } else {
         _popup.hide();
@@ -8935,6 +9045,9 @@
       hit.clearVertexOverlay();
     }
 
+    // return data on the nearest vertex (or identical vertices) to the pointer
+    // (if within a distance threshold)
+    //
     function findDraggableVertices(e) {
       var target = hit.getHitTarget();
       var shp = target.layer.shapes[e.id];
@@ -9095,35 +9208,6 @@
     //   var dist = Math.sqrt(dx * dx + dy * dy);
     //   return dist <= 4 && elapsed < 300;
     // }
-  }
-
-  function initPointDrawing(gui, ext, hit) {
-    function active(e) {
-      return e.id > -1 && gui.interaction.getMode() == 'add-points';
-    }
-  }
-
-  function Pencil(gui, mouse, hit) {
-    var self = this;
-    var _on = false;
-
-    self.turnOn = function() {
-      _on = true;
-    };
-
-    self.turnOff = function() {
-      _on = false;
-    };
-
-
-
-
-
-
-  }
-
-  function initDrawing(gui, ext, mouse, hit) {
-    initPointDrawing(gui, new Pencil(gui, mouse, hit));
   }
 
   var darkStroke = "#334",
@@ -9450,6 +9534,59 @@
   function getCanvasStyleFields(lyr) {
     var fields = lyr.data ? lyr.data.getFields() : [];
     return internal.findPropertiesBySymbolGeom(fields, lyr.geometry_type);
+  }
+
+  function initPointDrawing(gui, ext, mouse, hit) {
+
+    gui.on('interaction_mode_change', function(e) {
+      gui.container.findChild('.map-layers').classed('add-points', e.mode === 'add-points');
+    });
+
+    function active() {
+      return gui.interaction.getMode() == 'add-points';
+    }
+
+    mouse.on('click', function(e) {
+      if (!active()) return;
+      addPoint(e.x, e.y);
+      gui.dispatchEvent('map-needs-refresh');
+    });
+
+    // x, y: pixel coordinates
+    function addPoint(x, y) {
+      var p = ext.translatePixelCoords(x, y);
+      var target = hit.getHitTarget();
+      var lyr = target.layer;
+      var fid = lyr.shapes.length;
+      var d = lyr.data ? getEmptyDataRecord(lyr.data) : null;
+      if (d) {
+        // this seems to work even for projected layers -- the data tables
+        // of projected and original data seem to be shared.
+        lyr.data.getRecords()[fid] = d;
+        // TODO: handle SVG symbol layer
+        if (internal.layerHasLabels(lyr)) {
+          d['label-text'] = 'TBD'; // without text, new labels will be invisible
+        } else if (layerHasCanvasDisplayStyle(lyr)) {
+          d.r = 3; // show a black circle if layer is styled
+        }
+      }
+      lyr.shapes[fid] = [p];
+      updatePointCoords(target, fid);
+    }
+
+    function getEmptyDataRecord(table) {
+      return table.getFields().reduce(function(memo, name) {
+        memo[name] = null;
+        return memo;
+      }, {});
+    }
+  }
+
+  // import { initLineDrawing } from './gui-draw-lines';
+
+  function initDrawing(gui, ext, mouse, hit) {
+    initPointDrawing(gui, ext, mouse, hit);
+    // initLineDrawing(gui, ext, mouse, hit);
   }
 
   function MapExtent(_position) {
@@ -10479,7 +10616,7 @@
       target.svg_id = id;
       resize(ext);
       if (type == 'label' || type == 'symbol') {
-        html = renderSymbols(target.layer, ext, type);
+        html = renderSymbols(target.layer, ext);
       } else if (type == 'furniture') {
         html = renderFurniture(target.layer, ext);
       }
@@ -10493,13 +10630,17 @@
     };
 
     function reposition(target, type, ext) {
-      var container = el.findChild('.' + target.svg_id).node();
+      var container = el.findChild('.' + target.svg_id);
+      if (!container || !container.node()) {
+        console.error('[reposition] missing SVG container');
+        return;
+      }
       var elements;
       if (type == 'symbol') {
-        elements = El.findAll('.mapshaper-svg-symbol', container);
+        elements = El.findAll('.mapshaper-svg-symbol', container.node());
         repositionSymbols(elements, target.layer, ext);
       } else if (type == 'furniture') {
-        repositionFurniture(container, target.layer, ext);
+        repositionFurniture(container.node(), target.layer, ext);
       } else {
         // container.getElementsByTagName('text')
         error('Unsupported symbol type:', type);
@@ -10514,7 +10655,7 @@
     return el;
   }
 
-  function LayerStack(gui, container, ext, mouse) {
+  function LayerRenderer(gui, container, ext, mouse) {
     var el = El(container),
         _mainCanv = new DisplayCanvas().appendTo(el),
         _overlayCanv = new DisplayCanvas().appendTo(el),
@@ -10534,14 +10675,12 @@
       }
       layers.forEach(function(lyr) {
         var isSvgLayer = internal.layerHasSvgSymbols(lyr.layer) || internal.layerHasLabels(lyr.layer);
-        //if (!svgType || svgType == 'label') { // svg labels may have canvas dots
-        if (!isSvgLayer) { // svg labels may have canvas dots
-          drawCanvasLayer(lyr, _mainCanv);
-        }
         if (isSvgLayer && !needSvgRedraw) {
           _svg.reposition(lyr, 'symbol');
         } else if (isSvgLayer) {
           _svg.drawLayer(lyr, 'symbol');
+        } else {
+           drawCanvasLayer(lyr, _mainCanv);
         }
       });
     };
@@ -10639,7 +10778,8 @@
     });
 
     new SimpleButton(popup.findChild('.rect-btn')).on('click', function() {
-      runCommand('-rectangle + bbox=' + box.getDataCoords().join(','));
+      var cmd = '-rectangle + bbox=' + box.getDataCoords().join(',');
+      runCommand(cmd);
     });
 
     gui.addMode('box_tool', turnOn, turnOff);
@@ -10734,7 +10874,7 @@
 
     hit.on('change', function(e) {
       if (!_on) return;
-      // TODO: handle multiple hits (see gui-inspection-control2)
+      // TODO: handle multiple hits (see gui-inspection-control)
       var id = e.id;
       if (e.id > -1 && e.pinned) {
         var target = hit.getHitTarget();
@@ -10755,8 +10895,7 @@
         gui.container.findChild('.map-layers').classed('dragging', true);
 
       } else if (dragInfo) {
-        // TODO: handle this event: add undo/redo states
-        gui.dispatchEvent('rectangle_dragend', dragInfo);
+        gui.dispatchEvent('rectangle_dragend', dragInfo); // save undo state
         gui.container.findChild('.map-layers').classed('dragging', false);
         reset();
       } else {
@@ -11296,7 +11435,7 @@
         _hit,
         _basemap,
         _intersectionLyr, _activeLyr, _overlayLyr,
-        _stack, _dynamicCRS;
+        _renderer, _dynamicCRS;
 
     _basemap = new Basemap(gui, _ext);
 
@@ -11391,13 +11530,12 @@
       clearAllDisplayArcs();
 
       // Reproject all visible map layers
-      if (_activeLyr) projectDisplayLayer(_activeLyr, newCRS);
-      if (_intersectionLyr) projectDisplayLayer(_intersectionLyr, newCRS);
-      if (_overlayLyr) {
-        projectDisplayLayer(_overlayLyr, newCRS);
-      }
-      updateVisibleMapLayers(); // any other display layers will be projected as they are regenerated
-      updateLayerStyles(getDrawableContentLayers()); // kludge to make sure all layers have styles
+      getDrawableContentLayers().forEach(function(lyr) {
+        projectDisplayLayer(lyr, newCRS);
+      });
+
+      // kludge to make sure all layers have styles
+      updateLayerStyles(getDrawableContentLayers());
 
       // Update map extent (also triggers redraw)
       projectMapExtent(_ext, oldCRS, this.getDisplayCRS(), calcFullBounds());
@@ -11475,7 +11613,7 @@
     // Initialization just before displaying the map for the first time
     function initMap() {
       _ext.resize();
-      _stack = new LayerStack(gui, el, _ext, _mouse);
+      _renderer = new LayerRenderer(gui, el, _ext, _mouse);
       gui.buttons.show();
 
       if (opts.inspectorControl) {
@@ -11485,7 +11623,7 @@
         new BoxTool(gui, _ext, _nav),
         new RectangleControl(gui, _hit),
         initInteractiveEditing(gui, _ext, _hit);
-        // initDrawing(gui, _ext, _mouse, _hit);
+        initDrawing(gui, _ext, _mouse, _hit);
         _hit.on('change', updateOverlayLayer);
       }
 
@@ -11516,7 +11654,6 @@
 
       // 'hover' avoids redrawing all svg symbols when only highlight needs to refresh
       drawLayers('hover');
-      // drawLayers();
     }
 
     function getDisplayOptions() {
@@ -11551,10 +11688,7 @@
       _ext.setFullBounds(calcFullBounds(), getStrictBounds());
     }
 
-    function calcFullBounds() {
-      if (isPreviewView()) {
-        return internal.getFrameLayerBounds(internal.findFrameLayer(model));
-      }
+    function getVisibleContentBounds() {
       var b = new Bounds();
       var layers = getDrawableContentLayers();
       layers.forEach(function(lyr) {
@@ -11565,6 +11699,14 @@
         // assign bounds to empty layers, to prevent rendering errors downstream
         b.setBounds(0,0,0,0);
       }
+      return b;
+    }
+
+    function calcFullBounds() {
+      if (isPreviewView()) {
+        return internal.getFrameLayerBounds(internal.findFrameLayer(model));
+      }
+      var b = getVisibleContentBounds();
 
       // add margin
       // use larger margin for small sizes
@@ -11588,10 +11730,6 @@
 
     function isVisibleLayer(lyr) {
       return isActiveLayer(lyr) || lyr.pinned;
-    }
-
-    function isFrameLayer(lyr) {
-      return !!(lyr && lyr == internal.findFrameLayer(model));
     }
 
     function isTableView() {
@@ -11725,11 +11863,11 @@
       }
       // RENDERING
       // draw main content layers
-      _stack.drawMainLayers(contentLayers, action);
+      _renderer.drawMainLayers(contentLayers, action);
       // draw hover & selection overlay
-      _stack.drawOverlayLayer(_overlayLyr, action);
+      _renderer.drawOverlayLayer(_overlayLyr, action);
       // draw furniture
-      _stack.drawFurnitureLayers(furnitureLayers, action);
+      // _renderer.drawFurnitureLayers(furnitureLayers, action);
       gui.dispatchEvent('map_rendered');
     }
   }

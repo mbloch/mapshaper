@@ -186,7 +186,8 @@ body {
 	background-color: transparent;
 }
 
-.page-header .btn.header-btn.active {
+.page-header .btn.header-btn.active,
+.btn.toggle-btn.active {
 	background-color: black;
 }
 .separator {
@@ -1188,6 +1189,11 @@ div.basemap-style-btn.active img {
 
 .map-layers.symbol-hit.dragging {
 	cursor: default;
+}
+
+.map-layers.add-points,
+.map-layers.draw-lines {
+	cursor: crosshair;
 }
 
 .map-layers canvas {

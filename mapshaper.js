@@ -4010,6 +4010,59 @@
     return applyFieldOrder(names, order);
   }
 
+
+  function parseUnknownType(str) {
+    var val = getInputParser('number')(str);
+    if (val !== null) return val;
+    val = getInputParser('object')(str);
+    if (val !== null) return val;
+    return str;
+  }
+
+  // used by GUI data editing
+  function getInputParser(type) {
+    return inputParsers[type || 'multiple'];
+  }
+
+  var inputParsers = {
+    date: function(raw) {
+      var d = new Date(raw);
+      return isNaN(+d) ? null : d;
+    },
+    string: function(raw) {
+      return raw;
+    },
+    number: function(raw) {
+      var val = Number(raw);
+      if (raw == 'NaN') {
+        val = NaN;
+      } else if (isNaN(val)) {
+        val = null;
+      }
+      return val;
+    },
+    object: function(raw) {
+      var val = null;
+      try {
+        val = JSON.parse(raw);
+      } catch(e) {}
+      return val;
+    },
+    boolean: function(raw) {
+      var val = null;
+      if (raw == 'true') {
+        val = true;
+      } else if (raw == 'false') {
+        val = false;
+      }
+      return val;
+    },
+    multiple: function(raw) {
+      var val = Number(raw);
+      return isNaN(val) ? raw : val;
+    }
+  };
+
   var DataUtils = /*#__PURE__*/Object.freeze({
     __proto__: null,
     copyRecord: copyRecord,
@@ -4024,7 +4077,9 @@
     getUniqFieldValues: getUniqFieldValues,
     applyFieldOrder: applyFieldOrder,
     getFirstNonEmptyRecord: getFirstNonEmptyRecord,
-    findFieldNames: findFieldNames
+    findFieldNames: findFieldNames,
+    parseUnknownType: parseUnknownType,
+    getInputParser: getInputParser
   });
 
   function DataTable(obj) {
@@ -4140,7 +4195,7 @@
         [bbox[2], bbox[1]], [bbox[0], bbox[1]]];
   }
 
-  var RectangleGeom = /*#__PURE__*/Object.freeze({
+  var RectangleUtils = /*#__PURE__*/Object.freeze({
     __proto__: null,
     pathIsRectangle: pathIsRectangle,
     bboxToCoords: bboxToCoords
@@ -4184,6 +4239,10 @@
 
   function layerHasPoints(lyr) {
     return lyr.geometry_type == 'point' && layerHasNonNullShapes(lyr);
+  }
+
+  function layerIsRectangle(lyr, arcs) {
+    return layerOnlyHasRectangles(lyr, arcs) && lyr.shapes.length == 1;
   }
 
   function layerOnlyHasRectangles(lyr, arcs) {
@@ -4438,6 +4497,7 @@
     layerHasGeometry: layerHasGeometry,
     layerHasPaths: layerHasPaths,
     layerHasPoints: layerHasPoints,
+    layerIsRectangle: layerIsRectangle,
     layerOnlyHasRectangles: layerOnlyHasRectangles,
     layerHasNonNullShapes: layerHasNonNullShapes,
     deleteFeatureById: deleteFeatureById,
@@ -13335,6 +13395,18 @@
     miles: 1609.344 // International Statute Mile
   };
 
+  // str: display size in px, pt or in
+  // using: 72pt per inch, 1pt per pixel.
+  function parseSizeParam(str) {
+    var num = parseFloat(str),
+        units = /px$/.test(str) && 'px' || /pt$/.test(str) && 'pt' ||
+          /in$/.test(str) && 'in' || !isNaN(+str) && 'px' || null;
+    if (isNaN(num) || !units) {
+      stop('Invalid size:', str);
+    }
+    return units == 'in' && num * 72 || num;
+  }
+
   // Return coeff. for converting a distance measure to dataset coordinates
   // @paramUnits: units code of distance param, or null if units are not specified
   // @crs: Proj.4 CRS object, or null (unknown latlong CRS);
@@ -13478,6 +13550,7 @@
 
   var Units = /*#__PURE__*/Object.freeze({
     __proto__: null,
+    parseSizeParam: parseSizeParam,
     getIntervalConversionFactor: getIntervalConversionFactor,
     parseMeasure: parseMeasure,
     parseMeasure2: parseMeasure2,
@@ -18155,13 +18228,32 @@
     var frameLyr = findFrameLayerInDataset(dataset);
     var frameData;
     if (frameLyr) {
-      frameData = Object.assign({}, getFurnitureLayerData(frameLyr));
+      frameData = getFrameLayerData(frameLyr, dataset);
     } else {
       frameData = calcFrameData(dataset, exportOpts);
     }
     frameData.crs = getDatasetCRS(dataset);
     return frameData;
   }
+
+
+  function getFrameLayerData(lyr, dataset) {
+    var bounds = getLayerBounds(lyr, dataset.arcs);
+    var d = lyr.data.getReadOnlyRecordAt(0);
+    var w = d.width || 800;
+    var h = w * bounds.height() / bounds.width();
+    return {
+      type: 'frame',
+      width: w,
+      height: h,
+      bbox: bounds.toArray()
+    };
+  }
+
+  // export function getFrameLayerData(lyr) {
+  //   return lyr.data && lyr.data.getReadOnlyRecordAt(0);
+  // }
+
 
   function calcFrameData(dataset, opts) {
     var bounds;
@@ -18180,10 +18272,6 @@
     };
   }
 
-  function getFrameLayerData(lyr) {
-    return lyr.data && lyr.data.getReadOnlyRecordAt(0);
-  }
-
   // Used by mapshaper-frame and mapshaper-pixel-transform. TODO: refactor
   function getFrameSize(bounds, opts) {
     var aspectRatio = bounds.width() / bounds.height();
@@ -18199,26 +18287,27 @@
 
 
   // @lyr dataset layer
-  function isFrameLayer(lyr) {
-    return getFurnitureLayerType(lyr) == 'frame';
+  function isFrameLayer(lyr, dataset) {
+    return getFurnitureLayerType(lyr) == 'frame' &&
+      layerIsRectangle(lyr, dataset.arcs);
   }
 
   function findFrameLayerInDataset(dataset) {
     return utils.find(dataset.layers, function(lyr) {
-      return isFrameLayer(lyr);
+      return isFrameLayer(lyr, dataset);
     });
   }
 
   function findFrameDataset(catalog) {
     var target = utils.find(catalog.getLayers(), function(o) {
-      return isFrameLayer(o.layer);
+      return isFrameLayer(o.layer, o.dataset);
     });
     return target ? target.dataset : null;
   }
 
   function findFrameLayer(catalog) {
     var target = utils.find(catalog.getLayers(), function(o) {
-      return isFrameLayer(o.layer);
+      return isFrameLayer(o.layer, o.dataset);
     });
     return target && target.layer || null;
   }
@@ -18356,7 +18445,6 @@
   var FrameData = /*#__PURE__*/Object.freeze({
     __proto__: null,
     getFrameData: getFrameData,
-    getFrameLayerData: getFrameLayerData,
     getFrameSize: getFrameSize,
     findFrameLayerInDataset: findFrameLayerInDataset,
     findFrameDataset: findFrameDataset,
@@ -18858,6 +18946,10 @@
     for (var i=0, n=fields.length; i<n; i++) {
       if (filter && !filter(fields[i])) continue;
       setAttribute(svgObj, fields[i], rec[fields[i]]);
+    }
+    // kludge to prevent default black fill on polygons with stroke styles
+    if ((symType == 'polygon' || symType == 'circle') && rec.stroke && !rec.fill) {
+      setAttribute(svgObj, 'fill', 'none');
     }
   }
 
@@ -19685,6 +19777,7 @@
       return width / height;
     }).reverse().join(',');
   }
+
 
   function renderFrame(d) {
     var lineWidth = 1,
@@ -22057,7 +22150,13 @@ ${svg}
 
   // @targets - non-empty output from Catalog#findCommandTargets()
   //
-  async function exportTargetLayers(targets, opts) {
+  async function exportTargetLayers(catalog, targets, opts) {
+    // kludge: get extent of 'fit-extent' layer (if given)
+    if (opts.fit_extent) {
+      var target = catalog.findSingleLayer(opts.fit_extent);
+      var bounds = getLayerBounds(target.layer, target.dataset.arcs);
+      opts = Object.assign({svg_bbox: bounds.toArray()}, opts);
+    }
     // convert target fmt to dataset fmt
     var datasets = targets.map(function(target) {
       return utils.defaults({layers: target.layers}, target.dataset);
@@ -24139,6 +24238,9 @@ ${svg}
         describe: '[SVG] bounding box of SVG map in projected map units',
         type: 'bbox'
       })
+      .option('fit-extent', {
+        describe: '[SVG] layer to use for the map extent'
+      })
       .option('point-symbol', {
         describe: '[SVG] circle or square (default is circle)'
       })
@@ -25089,6 +25191,10 @@ ${svg}
         type: 'bbox'
       })
       .option('offset', offsetOpt)
+      .option('width', {
+        // describe: 'set viewport width in pixels',
+        type: 'number'
+      })
       .option('aspect-ratio', aspectRatioOpt)
       .option('source', {
         describe: 'name of layer to enclose'
@@ -38408,7 +38514,7 @@ ${svg}
         getPointFeatureBounds(shp) : targetDataset.arcs.getMultiShapeBounds(shp);
       bounds = applyRectangleOptions(bounds, crsInfo.crs, opts);
       if (!bounds) return null;
-      return convertBboxToGeoJSON(bounds.toArray(), opts);
+      return bboxToPolygon(bounds.toArray(), opts);
     });
     var geojson = {
       type: 'FeatureCollection',
@@ -38458,8 +38564,16 @@ ${svg}
     if (!bounds || !bounds.hasBounds()) {
       stop('Missing rectangle extent');
     }
-    var geojson = convertBboxToGeoJSON(bounds.toArray(), opts);
-    var dataset = importGeoJSON(geojson, {});
+    var feature = {
+      type: 'Feature',
+      properties: {},
+      geometry: bboxToPolygon(bounds.toArray(), opts)
+    };
+    if (opts.width > 0) {
+      feature.properties.width = opts.width;
+      feature.properties.type = 'frame';
+    }
+    var dataset = importGeoJSON(feature, {});
     dataset.layers[0].name = opts.name || 'rectangle';
     setDatasetCrsInfo(dataset, crsInfo);
     return dataset;
@@ -38509,16 +38623,13 @@ ${svg}
     return bounds;
   }
 
-  function convertBboxToGeoJSON(bbox, optsArg) {
+  function bboxToPolygon(bbox, optsArg) {
     var opts = optsArg || {};
     var coords = bboxToCoords(bbox);
     if (opts.interval > 0) {
       coords = densifyPathByInterval(coords, opts.interval);
     }
-    return opts.geometry_type == 'polyline' ? {
-      type: 'LineString',
-      coordinates: coords
-    } : {
+    return {
       type: 'Polygon',
       coordinates: [coords]
     };
@@ -38527,7 +38638,7 @@ ${svg}
   var Rectangle = /*#__PURE__*/Object.freeze({
     __proto__: null,
     applyAspectRatio: applyAspectRatio,
-    convertBboxToGeoJSON: convertBboxToGeoJSON
+    bboxToPolygon: bboxToPolygon
   });
 
   function getSemiMinorAxis(P) {
@@ -39081,8 +39192,7 @@ ${svg}
     var rotation = getRotationParams(dest);
     if (!bbox) error('Missing expected clip bbox.');
     opts = Object.assign({interval: 0.5}, opts); // make sure edges can curve
-    var geojson = convertBboxToGeoJSON(bbox, opts);
-    var dataset = importGeoJSON(geojson);
+    var dataset = importGeoJSON(bboxToPolygon(bbox, opts));
     if (rotation) {
       rotateDataset(dataset, {rotation: rotation, invert: true});
     }
@@ -39271,7 +39381,7 @@ ${svg}
     var e = 1e-8;
     var bbox = [lon-e, -91, lon+e, 91];
     // densify (so cut line can curve, e.g. Cupola projection)
-    var geojson = convertBboxToGeoJSON(bbox, {interval: 0.5});
+    var geojson = bboxToPolygon(bbox, {interval: 0.5});
     var clip = importGeoJSON(geojson);
     clipLayersInPlace(pathLayers, clip, dataset, 'erase');
   }
@@ -39574,7 +39684,6 @@ ${svg}
 
   function createProjectedGraticule(dest, opts) {
     var src = parseCrsString('wgs84');
-    // var outline = getOutlineDataset(src, dest, {inset: 0, geometry_type: 'polyline'});
     var outline = getOutlineDataset(src, dest, {});
     var graticule = importGeoJSON(createGraticule(dest, !!outline, opts));
     projectDataset(graticule, src, dest, {no_clip: false}); // TODO: densify?
@@ -44825,8 +44934,9 @@ ${svg}
       } else if (name == 'filter-slivers') {
         applyCommandToEachLayer(cmd.filterSlivers, targetLayers, targetDataset, opts);
 
-      } else if (name == 'frame') {
-        cmd.frame(job.catalog, source, opts);
+      // // 'frame' and 'rectangle' have merged
+      // } else if (name == 'frame') {
+      // cmd.frame(job.catalog, source, opts);
 
       } else if (name == 'fuzzy-join') {
         applyCommandToEachLayer(cmd.fuzzyJoin, targetLayers, arcs, source, opts);
@@ -44894,7 +45004,8 @@ ${svg}
         outputLayers = cmd.mosaic(targetLayers, targetDataset, opts);
 
       } else if (name == 'o') {
-        outputFiles = await exportTargetLayers(targets, opts);
+        // kludge
+        outputFiles = await exportTargetLayers(job.catalog, targets, opts);
         if (opts.final) {
           // don't propagate data if output is final
           //// catalog = null;
@@ -44927,7 +45038,10 @@ ${svg}
           cmd.proj(targ.dataset, job.catalog, opts);
         });
 
-      } else if (name == 'rectangle') {
+      } else if (name == 'rectangle' || name == 'frame') {
+        if (name == 'frame' && !opts.width) {
+          stop('Command requires a width= argument');
+        }
         if (source || opts.bbox || targets.length === 0) {
           job.catalog.addDataset(cmd.rectangle(source, opts));
         } else {
@@ -45093,7 +45207,7 @@ ${svg}
     });
   }
 
-  var version = "0.6.65";
+  var version = "0.6.66";
 
   // Parse command line args into commands and run them
   // Function takes an optional Node-style callback. A Promise is returned if no callback is given.
@@ -45835,7 +45949,7 @@ ${svg}
     Projections,
     ProjectionParams,
     Rectangle,
-    RectangleGeom,
+    RectangleUtils,
     Rounding,
     RunCommands,
     Scalebar,
