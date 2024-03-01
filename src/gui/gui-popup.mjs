@@ -18,7 +18,6 @@ export function Popup(gui, toNext, toPrev) {
   var navInfo = El('span').addClass('popup-nav-info').appendTo(nav);
   var nextLink = El('span').addClass('popup-nav-arrow colored-text').appendTo(nav).text('▶');
   var refresh = null;
-  var currIds = [];
 
   el.addClass('rollover'); // used as a sentinel for the hover function
 
@@ -29,16 +28,23 @@ export function Popup(gui, toNext, toPrev) {
   });
 
   self.show = function(id, ids, lyr, pinned) {
-    var editable = pinned && gui.interaction.getMode() == 'data';
+    var singleEdit = pinned && gui.interaction.getMode() == 'data';
+    var multiEdit = pinned && gui.interaction.getMode() == 'selection';
     var maxHeight = parent.node().clientHeight - 36;
-    currIds = [id];
+    var recIds = multiEdit ? ids : [id];
+    if (recIds.length === 0) {
+      self.hide();
+      return;
+    }
     // stash a function for refreshing the current popup when data changes
     // while the popup is being displayed (e.g. while dragging a label)
     refresh = function() {
-      render(content, id, lyr, editable);
+      render(content, recIds, lyr, singleEdit || multiEdit);
     };
     refresh();
-    if (ids && ids.length > 1) {
+    if (multiEdit) {
+      showRecords(ids.length);
+    } else if (ids && ids.length > 1 && !multiEdit) {
       showNav(id, ids, pinned);
     } else {
       tab.hide();
@@ -52,7 +58,6 @@ export function Popup(gui, toNext, toPrev) {
   self.hide = function() {
     if (!isOpen()) return;
     refresh = null;
-    currIds = [];
     // make sure any pending edits are made before re-rendering popup
     GUI.blurActiveElement(); // this should be more selective -- could cause a glitch if typing in console
     content.empty();
@@ -66,6 +71,13 @@ export function Popup(gui, toNext, toPrev) {
     return el.visible();
   }
 
+  function showRecords(n) {
+    navInfo.text(n);
+    nextLink.css('display','none');
+    prevLink.css('display','none');
+    tab.show();
+  }
+
   function showNav(id, ids, pinned) {
     var num = ids.indexOf(id) + 1;
     navInfo.text(' ' + num + ' / ' + ids.length + ' ');
@@ -74,28 +86,12 @@ export function Popup(gui, toNext, toPrev) {
     tab.show();
   }
 
-  function render(el, recId, lyr, editable) {
-    var recIds = [recId]; // TODO: support multiple ids
+  function render(el, recIds, lyr, editable) {
     var table = lyr.data; // table can be null (e.g. if layer has no attribute data)
-    var rec = table && (editable ? table.getRecordAt(recId) : table.getReadOnlyRecordAt(recId)) || {};
-    var tableEl = El('table').addClass('selectable'),
-        rows = 0;
-    // self.hide(); // clean up if panel is already open
+    var tableEl = table ? renderTable(recIds, table, editable) : null;
     el.empty(); // clean up if panel is already open
-    utils.forEachProperty(rec, function(v, k) {
-      var type;
-      // missing GeoJSON fields are set to undefined on import; skip these
-      if (v !== undefined) {
-        type = getFieldType(v, k, table);
-        renderRow(tableEl, rec, k, type, editable);
-        rows++;
-      }
-    });
-
-    tableEl.appendTo(el);
-    if (rows > 0) {
-      // tableEl.appendTo(el);
-
+    if (tableEl) {
+      tableEl.appendTo(el);
       tableEl.on('copy', function(e) {
         // remove leading or trailing tabs that sometimes get copied when
         // selecting from a table
@@ -106,7 +102,6 @@ export function Popup(gui, toNext, toPrev) {
           e.preventDefault(); // don't copy original string with tabs
         }
       });
-
     } else {
       // Some individual features can have undefined values for some or all of
       // their data properties (properties are set to undefined when an input JSON file
@@ -125,19 +120,60 @@ export function Popup(gui, toNext, toPrev) {
     }
   }
 
+  function renderTable(recIds, table, editable) {
+    var tableEl = El('table').addClass('selectable');
+    var rows = 0;
+    var rec;
+    if (recIds.length == 1) {
+      rec = editable ?
+        table.getReadOnlyRecordAt(recIds[0]) :
+        table.getRecordAt(recIds[0]);
+    } else {
+      rec = getMultiRecord(recIds, table);
+    }
+    utils.forEachProperty(rec, function(v, k) {
+      // missing GeoJSON fields are set to undefined on import; skip these
+      if (v === undefined) return;
+      var rowEl = renderRow(k, v, recIds, table, editable);
+      if (rowEl) {
+        rowEl.appendTo(tableEl);
+        rows++;
+      }
+    });
+    return rows > 0 ? tableEl : null;
+  }
 
-  function renderRow(table, rec, key, type, editable) {
-    var val = rec[key];
+  function getMultiRecord(recIds, table) {
+    var fields = table.getFields();
+    var rec = {};
+    recIds.forEach(function(id) {
+      var d = table.getRecordAt(id) || {};
+      var k, v;
+      for (var i=0; i<fields.length; i++) {
+        k = fields[i];
+        v = d[k];
+        if (k in rec === false) {
+          rec[k] = v;
+        } else if (rec[k] !== v) {
+          rec[k] = null;
+        }
+      }
+    });
+    return rec;
+  }
+
+
+  function renderRow(key, val, recIds, table, editable) {
+    var type = getFieldType(val, key, table);
     var str = formatInspectorValue(val, type);
     var rowHtml = `<td class="field-name">${key}</td><td><span class="value">${utils.htmlEscape(str)}</span> </td>`;
-    var cell = El('tr')
-        .appendTo(table)
-        .html(rowHtml)
-        .findChild('.value');
-    setFieldClass(cell, val, type);
+    var rowEl = El('tr').html(rowHtml);
+    var cellEl = rowEl.findChild('.value');
+    setFieldClass(cellEl, val, type);
     if (editable) {
-      editItem(cell, rec, key, type);
+      editItem(cellEl, key, val, recIds, table, type);
     }
+    return rowEl;
   }
 
   function setFieldClass(el, val, type) {
@@ -150,9 +186,9 @@ export function Popup(gui, toNext, toPrev) {
     el.classed('empty', isEmpty);
   }
 
-  function editItem(el, rec, key, type) {
+  function editItem(el, key, val, recIds, table, type) {
     var input = new ClickText2(el),
-        strval = formatInspectorValue(rec[key], type),
+        strval = formatInspectorValue(val, type),
         parser = internal.getInputParser(type);
     el.parent().addClass('editable-cell');
     el.addClass('colored-text dot-underline');
@@ -165,15 +201,25 @@ export function Popup(gui, toNext, toPrev) {
       } else if (strval != strval2) {
         // field content has changed
         strval = strval2;
-        gui.dispatchEvent('data_preupdate', {ids: currIds}); // for undo/redo
-        rec[key] = val2;
-        gui.dispatchEvent('data_postupdate', {ids: currIds});
+        gui.dispatchEvent('data_preupdate', {ids: recIds}); // for undo/redo
+        // rec[key] = val2;
+        updateRecords(recIds, key, val2, table);
+        gui.dispatchEvent('data_postupdate', {ids: recIds});
         input.value(strval);
         setFieldClass(el, val2, type);
-        self.dispatchEvent('data_updated', {field: key, value: val2, ids: currIds});
+        self.dispatchEvent('data_updated', {field: key, value: val2, ids: recIds});
       }
     });
   }
+}
+
+function updateRecords(ids, f, v, table) {
+  var records = table.getRecords();
+  ids.forEach(function(id) {
+    var d = records[id] || {};
+    d[f] = v;
+    records[id] = d;
+  });
 }
 
 function formatInspectorValue(val, type) {
@@ -191,5 +237,5 @@ function formatInspectorValue(val, type) {
 
 function getFieldType(val, key, table) {
   // if a field has a null value, look at entire column to identify type
-  return internal.getValueType(val) || internal.getColumnType(key, table.getRecords());
+  return internal.getValueType(val) || internal.getColumnType(key, table.getRecords()) ;
 }

@@ -186,7 +186,8 @@ body {
 	background-color: transparent;
 }
 
-.page-header .btn.header-btn.active {
+.page-header .btn.header-btn.active,
+.btn.toggle-btn.active {
 	background-color: black;
 }
 .separator {

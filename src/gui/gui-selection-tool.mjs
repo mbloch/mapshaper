@@ -1,6 +1,7 @@
 import { HighlightBox } from './gui-highlight-box';
 import { mapshaper, internal, utils } from './gui-core';
 import { SimpleButton } from './gui-elements';
+import { ToggleButton } from './gui-mode-button';
 import { getBBoxCoords } from './gui-display-utils';
 import { El } from './gui-el';
 import { GUI } from './gui-lib';
@@ -51,6 +52,7 @@ export function SelectionTool(gui, ext, hit) {
   }
 
   function turnOff() {
+    dataBtn.turnOff();
     box.turnOff();
     reset();
     _on = false;
@@ -61,8 +63,15 @@ export function SelectionTool(gui, ext, hit) {
   }
 
   function reset() {
-    popup.hide();
+    hidePopup();
+    setPinning(false);
     hit.clearSelection();
+  }
+
+  function setPinning(on) {
+    hit.setPinning(on);
+    if (on) dataBtn.turnOn();
+    else dataBtn.turnOff();
   }
 
   function getIdsOpt() {
@@ -79,10 +88,14 @@ export function SelectionTool(gui, ext, hit) {
       popup.show();
       updateCoords();
     } else {
-      popup.hide();
-      hideCoords();
+      hidePopup();
     }
   });
+
+  function hidePopup() {
+    popup.hide();
+    hideCoords();
+  }
 
   new SimpleButton(popup.findChild('.delete-btn')).on('click', function() {
     var cmd = '-filter invert ids=' + getIdsOpt();
@@ -97,6 +110,10 @@ export function SelectionTool(gui, ext, hit) {
   new SimpleButton(popup.findChild('.split-btn')).on('click', function() {
     var cmd = '-split ids=' + getIdsOpt();
     runCommand(cmd);
+  });
+
+  var dataBtn = new ToggleButton(popup.findChild('.data-btn')).on('click', function(e) {
+    setPinning(e.on);
   });
 
   new SimpleButton(popup.findChild('.duplicate-btn')).on('click', function() {
@@ -136,19 +153,19 @@ export function SelectionTool(gui, ext, hit) {
       hideCoords();
       return;
     }
-    El(coordsBtn.node()).addClass('selected-btn');
+    El(coordsBtn.node()).addClass('active');
     coords.text(bbox.join(','));
     coords.show();
     GUI.selectElement(coords.node());
   }
 
   function hideCoords() {
-    El(coordsBtn.node()).removeClass('selected-btn');
+    El(coordsBtn.node()).removeClass('active');
     coords.hide();
   }
 
   function runCommand(cmd, turnOff) {
-    popup.hide();
+    hidePopup();
     gui.quiet(true);
     if (gui.console) gui.console.runMapshaperCommands(cmd, function(err) {
       gui.quiet(false);
