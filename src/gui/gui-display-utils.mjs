@@ -84,6 +84,7 @@ export function setVertexCoords(lyr, ids, dataPoint) {
   }
 }
 
+// coords: [x, y] point in data CRS (not display CRS)
 export function setPointCoords(lyr, fid, coords) {
   lyr.source.layer.shapes[fid] = coords;
   if (isProjectedLayer(lyr)) {
@@ -121,7 +122,7 @@ function isProjectedLayer(lyr) {
   return !!(lyr.source && lyr.invertPoint);
 }
 
-// Update data coordinates by projecting display coordinates
+// Update source data coordinates by projecting display coordinates
 export function updatePointCoords(lyr, fid) {
   if (!isProjectedLayer(lyr)) return;
   var displayShp = lyr.layer.shapes[fid];

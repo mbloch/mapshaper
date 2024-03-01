@@ -30,7 +30,7 @@ export function SvgDisplayLayer(gui, ext, mouse) {
     target.svg_id = id;
     resize(ext);
     if (type == 'label' || type == 'symbol') {
-      html = renderSymbols(target.layer, ext, type);
+      html = renderSymbols(target.layer, ext);
     } else if (type == 'furniture') {
       html = renderFurniture(target.layer, ext);
     }
@@ -44,13 +44,17 @@ export function SvgDisplayLayer(gui, ext, mouse) {
   };
 
   function reposition(target, type, ext) {
-    var container = el.findChild('.' + target.svg_id).node();
+    var container = el.findChild('.' + target.svg_id);
+    if (!container || !container.node()) {
+      console.error('[reposition] missing SVG container');
+      return;
+    }
     var elements;
     if (type == 'symbol') {
-      elements = El.findAll('.mapshaper-svg-symbol', container);
+      elements = El.findAll('.mapshaper-svg-symbol', container.node());
       repositionSymbols(elements, target.layer, ext);
     } else if (type == 'furniture') {
-      repositionFurniture(container, target.layer, ext);
+      repositionFurniture(container.node(), target.layer, ext);
     } else {
       // container.getElementsByTagName('text')
       error('Unsupported symbol type:', type);

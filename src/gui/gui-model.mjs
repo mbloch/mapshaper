@@ -42,7 +42,9 @@ export function Model(gui) {
   };
 
   self.selectLayer = function(lyr, dataset) {
-    if (self.getActiveLayer().layer == lyr) return;
+    if (self.getActiveLayer().layer == lyr) {
+      return;
+    }
     self.setDefaultTarget([lyr], dataset);
     self.updated({select: true});
     gui.session.setTargetLayer(lyr);

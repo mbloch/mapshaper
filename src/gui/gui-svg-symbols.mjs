@@ -10,7 +10,6 @@ export function getSvgSymbolTransform(xy, ext) {
   return internal.svg.getTransform(p, scale);
 }
 
-
 export function repositionSymbols(elements, layer, ext) {
   var el, idx, shp, p, displayOn, inView, displayBounds;
   for (var i=0, n=elements.length; i<n; i++) {
@@ -34,7 +33,7 @@ export function repositionSymbols(elements, layer, ext) {
   }
 }
 
-export function renderSymbols(lyr, ext, type) {
+export function renderSymbols(lyr, ext) {
   var records = lyr.data.getRecords();
   var symbols = lyr.shapes.map(function(shp, i) {
     var d = records[i];

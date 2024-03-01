@@ -3,7 +3,7 @@ import { SvgDisplayLayer } from './gui-svg-display';
 import { internal } from './gui-core';
 import { El } from './gui-el';
 
-export function LayerStack(gui, container, ext, mouse) {
+export function LayerRenderer(gui, container, ext, mouse) {
   var el = El(container),
       _mainCanv = new DisplayCanvas().appendTo(el),
       _overlayCanv = new DisplayCanvas().appendTo(el),
@@ -23,14 +23,12 @@ export function LayerStack(gui, container, ext, mouse) {
     }
     layers.forEach(function(lyr) {
       var isSvgLayer = internal.layerHasSvgSymbols(lyr.layer) || internal.layerHasLabels(lyr.layer);
-      //if (!svgType || svgType == 'label') { // svg labels may have canvas dots
-      if (!isSvgLayer) { // svg labels may have canvas dots
-        drawCanvasLayer(lyr, _mainCanv);
-      }
       if (isSvgLayer && !needSvgRedraw) {
         _svg.reposition(lyr, 'symbol');
       } else if (isSvgLayer) {
         _svg.drawLayer(lyr, 'symbol');
+      } else {
+         drawCanvasLayer(lyr, _mainCanv);
       }
     });
   };

@@ -312,7 +312,7 @@ function getCanvasDisplayStyle(lyr) {
 }
 
 // check if layer should be displayed with styles
-function layerHasCanvasDisplayStyle(lyr) {
+export function layerHasCanvasDisplayStyle(lyr) {
   var fields = getCanvasStyleFields(lyr);
   if (lyr.geometry_type == 'point') {
     return fields.indexOf('r') > -1; // require 'r' field for point symbols

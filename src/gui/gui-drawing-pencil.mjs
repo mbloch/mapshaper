@@ -12,9 +12,4 @@ export function Pencil(gui, mouse, hit) {
     _on = false;
   };
 
-
-
-
-
-
 }
