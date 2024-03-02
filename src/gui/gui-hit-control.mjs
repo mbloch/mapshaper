@@ -199,7 +199,7 @@ export function HitControl(gui, ext, mouse) {
     self.clearSelection();
   });
 
-  gui.on('box_drag_start', function() {
+  gui.on('shift_drag_start', function() {
     self.clearHover();
   });
 

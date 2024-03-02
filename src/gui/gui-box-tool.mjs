@@ -10,7 +10,7 @@ import { getBBoxCoords } from './gui-display-utils';
 //
 export function BoxTool(gui, ext, nav) {
   var self = new EventDispatcher();
-  var box = new HighlightBox(gui, {persistent: true, handles: true});
+  var box = new HighlightBox(gui, {name: 'box-tool', persistent: true, handles: true, draggable: true});
   var popup = gui.container.findChild('.box-tool-options');
   var coords = popup.findChild('.box-coords');
   var _on = false;
@@ -57,7 +57,7 @@ export function BoxTool(gui, ext, nav) {
     }
   });
 
-  gui.on('box_drag_start', function() {
+  gui.on('shift_drag_start', function() {
     // box.classed('zooming', inZoomMode());
     hideCoords();
   });
