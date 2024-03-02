@@ -3,7 +3,7 @@ import { internal } from './gui-core';
 import { setRectangleCoords } from './gui-display-utils';
 
 export function RectangleControl(gui, hit) {
-  var box = new HighlightBox(gui, {persistent: true, handles: true, classname: 'rectangles'});
+  var box = new HighlightBox(gui, {name: 'rectangle-tool', persistent: true, handles: true, classname: 'rectangles', draggable: false});
   var _on = false;
   var dragInfo;
 

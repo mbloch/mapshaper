@@ -5,13 +5,19 @@ import { internal } from './gui-core';
 
 export function HighlightBox(gui, optsArg) {
   var el = El('div').addClass('zoom-box').appendTo('body'),
-      opts = Object.assign({handles: false, persistent: false}, optsArg),
+      opts = Object.assign({
+        name: 'box',
+        handles: false,
+        persistent: false,
+        draggable: false  // does dragging the map draw a box
+      }, optsArg),
       box = new EventDispatcher(),
       stroke = 2,
       activeHandle = null,
       prevXY = null,
       boxCoords = null,
       _on = false,
+      _visible = false,
       handles;
 
   if (opts.classname) {
@@ -21,19 +27,20 @@ export function HighlightBox(gui, optsArg) {
   el.hide();
 
   gui.on('map_rendered', function() {
-    if (!_on) return;
+    if (!_on || !_visible) return;
     redraw();
   });
 
-  gui.on('box_drag', function(e) {
+  gui.on('shift_drag', function(e) {
     if (!_on) return;
+    if (!opts.draggable) return;
     boxCoords = getBoxCoords(e.data);
     redraw();
     box.dispatchEvent('drag');
   });
 
-  gui.on('box_drag_end', function(e) {
-    if (!_on) return;
+  gui.on('shift_drag_end', function(e) {
+    if (!_on || !_visible || !opts.draggable) return;
     boxCoords = getBoxCoords(e.data);
     var pix = coordsToPix(boxCoords, gui.map.getExtent());
     box.dispatchEvent('dragend', {map_bbox: pix});
@@ -55,7 +62,7 @@ export function HighlightBox(gui, optsArg) {
     });
 
     document.addEventListener('mousemove', function(e) {
-      if (!_on || !activeHandle || !prevXY || !boxCoords) return;
+      if (!_on || !activeHandle || !prevXY || !boxCoords || !_visible) return;
       var xy = {x: e.pageX, y: e.pageY};
       var scale = gui.map.getExtent().getPixelSize();
       var dx = (xy.x - prevXY.x) * scale;
@@ -120,9 +127,11 @@ export function HighlightBox(gui, optsArg) {
   box.hide = function() {
     el.hide();
     boxCoords = null;
+    _visible = false;
   };
 
   box.show = function(x1, y1, x2, y2) {
+    _visible = true;
     var w = Math.abs(x1 - x2),
         h = Math.abs(y1 - y2),
         props = {

@@ -8,7 +8,7 @@ import { GUI } from './gui-lib';
 
 export function SelectionTool(gui, ext, hit) {
   var popup = gui.container.findChild('.selection-tool-options');
-  var box = new HighlightBox(gui);
+  var box = new HighlightBox(gui, {draggable: true});
   var coords = popup.findChild('.box-coords').hide();
   var _on = false;
 

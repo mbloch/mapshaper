@@ -7,8 +7,8 @@ import { HighlightBox } from './gui-highlight-box';
 export function MapNav(gui, ext, mouse) {
   var wheel = new MouseWheel(mouse),
       zoomTween = new Tween(Tween.sineInOut),
-      zoomBox = new HighlightBox(gui), // .addClass('zooming'),
-      boxDrag = false,
+      zoomBox = new HighlightBox(gui, {draggable: true, name: 'zoom-box'}), // .addClass('zooming'),
+      shiftDrag = false,
       zoomScaleMultiplier = 1,
       inBtn, outBtn,
       dragStartEvt,
@@ -59,18 +59,18 @@ export function MapNav(gui, ext, mouse) {
     if (disabled()) return;
     if (!internal.layerHasGeometry(gui.model.getActiveLayer().layer)) return;
     // zoomDrag = !!e.metaKey || !!e.ctrlKey; // meta is command on mac, windows key on windows
-    boxDrag = !!e.shiftKey;
-    if (boxDrag) {
+    shiftDrag = !!e.shiftKey;
+    if (shiftDrag) {
       if (useBoxZoom()) zoomBox.turnOn();
       dragStartEvt = e;
-      gui.dispatchEvent('box_drag_start');
+      gui.dispatchEvent('shift_drag_start');
     }
   });
 
   mouse.on('drag', function(e) {
     if (disabled()) return;
-    if (boxDrag) {
-      gui.dispatchEvent('box_drag', getBoxData(e));
+    if (shiftDrag) {
+      gui.dispatchEvent('shift_drag', getBoxData(e));
     } else {
       ext.pan(e.dx, e.dy);
     }
@@ -79,9 +79,9 @@ export function MapNav(gui, ext, mouse) {
   mouse.on('dragend', function(e) {
     var bbox;
     if (disabled()) return;
-    if (boxDrag) {
-      boxDrag = false;
-      gui.dispatchEvent('box_drag_end', getBoxData(e));
+    if (shiftDrag) {
+      shiftDrag = false;
+      gui.dispatchEvent('shift_drag_end', getBoxData(e));
       zoomBox.turnOff();
     }
   });
@@ -99,7 +99,9 @@ export function MapNav(gui, ext, mouse) {
   });
 
   function useBoxZoom() {
-    return gui.getMode() != 'selection_tool' && gui.getMode() != 'box_tool';
+    var mode = gui.getMode();
+    var disabled = ['selection_tool', 'box_tool', 'rectangle_tool'].includes(mode);
+    return !disabled;
   }
 
   function getBoxData(e) {
