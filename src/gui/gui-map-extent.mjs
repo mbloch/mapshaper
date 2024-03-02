@@ -7,7 +7,7 @@ export function MapExtent(_position) {
       _fullBounds, // full (zoomed-out) content bounds, including any padding
       _strictBounds, // full extent must fit inside, if set
       _self = this,
-      _frame;
+      _frame; // optional frame data (bbox, width, height)
 
   _position.on('resize', function(e) {
     if (ready()) {
@@ -125,16 +125,16 @@ export function MapExtent(_position) {
     return this.getTransform().transform(x, y);
   };
 
-  this.setFrame = function(frame) {
+  this.setFrameData = function(frame) {
     _frame = frame || null;
   };
 
-  this.getFrame = function() {
+  this.getFrameData = function() {
     return _frame || null;
   };
 
   this.getSymbolScale = function() {
-    if (!_frame) return 0;
+    if (!_frame) return 1;
     var bounds = new Bounds(_frame.bbox);
     var bounds2 = bounds.clone().transform(this.getTransform());
     return bounds2.width() / _frame.width;

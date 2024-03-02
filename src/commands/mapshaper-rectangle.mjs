@@ -1,7 +1,13 @@
 import cmd from '../mapshaper-cmd';
 import { convertFourSides } from '../geom/mapshaper-units';
 import { setDatasetCrsInfo, getDatasetCrsInfo, getCrsInfo } from '../crs/mapshaper-projections';
-import { getLayerBounds, layerHasGeometry, setOutputLayerName } from '../dataset/mapshaper-layer-utils';
+import {
+  getLayerBounds,
+  layerHasGeometry,
+  setOutputLayerName,
+  initDataTable,
+  layerIsRectangle
+} from '../dataset/mapshaper-layer-utils';
 import { mergeDatasetsIntoDataset } from '../dataset/mapshaper-merging';
 import { importGeoJSON } from '../geojson/geojson-import';
 import { getPointFeatureBounds } from '../points/mapshaper-point-utils';
@@ -50,6 +56,13 @@ cmd.rectangles = function(targetLyr, targetDataset, opts) {
 // Create rectangles around one or more target layers
 //
 cmd.rectangle2 = function(target, opts) {
+  // if target layer is a rectangle and we're applying frame properties,
+  // turn the target into a frame instead of creating a new rectangle
+  if (target.layers.length == 1 && opts.width > 0 &&
+    layerIsRectangle(target.layers[0], target.dataset.arcs)) {
+    applyFrameProperties(target.layers[0], opts);
+    return;
+  }
   var datasets = target.layers.map(function(lyr) {
     var dataset = cmd.rectangle({layer: lyr, dataset: target.dataset}, opts);
     setOutputLayerName(dataset.layers[0], lyr, null, opts);
@@ -79,15 +92,20 @@ cmd.rectangle = function(source, opts) {
     properties: {},
     geometry: bboxToPolygon(bounds.toArray(), opts)
   };
-  if (opts.width > 0) {
-    feature.properties.width = opts.width;
-    feature.properties.type = 'frame';
-  }
   var dataset = importGeoJSON(feature, {});
+  applyFrameProperties(dataset.layers[0], opts);
   dataset.layers[0].name = opts.name || 'rectangle';
   setDatasetCrsInfo(dataset, crsInfo);
   return dataset;
 };
+
+function applyFrameProperties(lyr, opts) {
+  if (opts.width > 0 === false) return;
+  if (!lyr.data) initDataTable(lyr);
+  var d = lyr.data.getRecords()[0] || {};
+  d.width = opts.width;
+  d.type = 'frame';
+}
 
 function applyRectangleOptions(bounds, crs, opts) {
   var isGeoBox = probablyDecimalDegreeBounds(bounds);

@@ -3,7 +3,7 @@ import { El } from './gui-el';
 
 function getSvgFurnitureTransform(ext) {
   var scale = ext.getSymbolScale();
-  var frame = ext.getFrame();
+  var frame = ext.getFrameData();
   var p = ext.translateCoords(frame.bbox[0], frame.bbox[3]);
   return internal.svg.getTransform(p, scale);
 }
@@ -14,7 +14,7 @@ export function repositionFurniture(container, layer, ext) {
 }
 
 export function renderFurniture(lyr, ext) {
-  var frame = ext.getFrame(); // frame should be set if we're rendering a furniture layer
+  var frame = ext.getFrameData(); // frame should be set if we're rendering a furniture layer
   var obj = internal.getEmptyLayerForSVG(lyr, {});
   if (!frame) {
     stop('Missing map frame data');
