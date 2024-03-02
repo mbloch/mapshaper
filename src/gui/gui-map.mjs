@@ -132,12 +132,12 @@ export function MshpMap(gui) {
     clearAllDisplayArcs();
 
     // Reproject all visible map layers
-    getDrawableContentLayers().forEach(function(lyr) {
+    getContentLayers().forEach(function(lyr) {
       projectDisplayLayer(lyr, newCRS);
     });
 
     // kludge to make sure all layers have styles
-    updateLayerStyles(getDrawableContentLayers());
+    updateLayerStyles(getContentLayers());
 
     // Update map extent (also triggers redraw)
     projectMapExtent(_ext, oldCRS, this.getDisplayCRS(), calcFullBounds());
@@ -265,9 +265,9 @@ export function MshpMap(gui) {
     _ext.setFullBounds(calcFullBounds(), getStrictBounds());
   }
 
-  function getVisibleContentBounds() {
+  function getContentLayerBounds() {
     var b = new Bounds();
-    var layers = getDrawableContentLayers();
+    var layers = getContentLayers();
     layers.forEach(function(lyr) {
       b.mergeBounds(lyr.bounds);
     });
@@ -280,7 +280,7 @@ export function MshpMap(gui) {
   }
 
   function calcFullBounds() {
-    var b = getVisibleContentBounds();
+    var b = getContentLayerBounds();
 
     // add margin
     // use larger margin for small sizes
@@ -356,11 +356,18 @@ export function MshpMap(gui) {
     });
   }
 
-  function getDrawableContentLayers() {
+  function getContentLayers() {
     var layers = getVisibleMapLayers();
     if (isTableView()) return findActiveLayer(layers);
     return layers.filter(function(o) {
       return !!o.geographic;
+    });
+  }
+
+  function getDrawableContentLayers() {
+    return getContentLayers().filter(function(lyr) {
+      if (isActiveLayer(lyr.layer) && lyr.layer.hidden) return false;
+      return true;
     });
   }
 

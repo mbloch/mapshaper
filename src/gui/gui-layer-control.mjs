@@ -198,6 +198,7 @@ export function LayerControl(gui) {
 
     if (opts.pinnable) classes += ' pinnable';
     if (map.isActiveLayer(lyr)) classes += ' active';
+    if (lyr.hidden) classes += ' invisible';
     if (lyr.pinned) classes += ' pinned';
 
     html = '<!-- ' + lyr.menu_id + '--><div class="' + classes + '">';
@@ -276,10 +277,24 @@ export function LayerControl(gui) {
       // init pin button
       GUI.onClick(entry.findChild('img.black-eye'), function(e) {
         var target = findLayerById(id);
-        var pinned = target.layer.pinned;
+        var lyr = target.layer;
+        var active = map.isActiveLayer(lyr);
+        var hidden = false; // active && lyr.hidden || false;
+        var pinned = false;
+        var unpinned = false;
         e.stopPropagation();
-        map.setLayerPinning(target, !pinned);
-        entry.classed('pinned', !pinned);
+        if (active) {
+          hidden = !lyr.hidden;
+          pinned = !hidden && lyr.unpinned;
+          unpinned = lyr.pinned && hidden;
+        } else {
+          pinned = !lyr.pinned;
+        }
+        lyr.hidden = hidden;
+        lyr.unpinned = unpinned;
+        map.setLayerPinning(target, pinned);
+        entry.classed('pinned', pinned);
+        entry.classed('invisible', hidden);
         updatePinAllButton();
         map.redraw();
       });
@@ -305,12 +320,16 @@ export function LayerControl(gui) {
     GUI.onClick(entry, function() {
       var target = findLayerById(id);
       // don't select if user is typing or dragging
-      if (!GUI.textIsSelected() && !dragging) {
-        gui.clearMode();
-        if (!map.isActiveLayer(target.layer)) {
-          model.selectLayer(target.layer, target.dataset);
-        }
+      if (GUI.textIsSelected() || dragging) return;
+      // undo any temporary hiding when layer is selected
+      target.layer.hidden = false;
+      if (!map.isActiveLayer(target.layer)) {
+        model.selectLayer(target.layer, target.dataset);
       }
+      // close menu after a delay
+      setTimeout(function() {
+        gui.clearMode();
+      }, 230);
     });
   }
 
