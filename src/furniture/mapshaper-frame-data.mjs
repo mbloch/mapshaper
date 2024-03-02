@@ -17,7 +17,7 @@ export function getFrameData(dataset, exportOpts) {
   var frameLyr = findFrameLayerInDataset(dataset);
   var frameData;
   if (frameLyr) {
-    frameData = getFrameLayerData(frameLyr, dataset);
+    frameData = getFrameLayerData(frameLyr, dataset.arcs);
   } else {
     frameData = calcFrameData(dataset, exportOpts);
   }
@@ -26,8 +26,8 @@ export function getFrameData(dataset, exportOpts) {
 }
 
 
-function getFrameLayerData(lyr, dataset) {
-  var bounds = getLayerBounds(lyr, dataset.arcs);
+export function getFrameLayerData(lyr, arcs) {
+  var bounds = getLayerBounds(lyr, arcs);
   var d = lyr.data.getReadOnlyRecordAt(0);
   var w = d.width || 800;
   var h = w * bounds.height() / bounds.width();
@@ -38,10 +38,6 @@ function getFrameLayerData(lyr, dataset) {
     bbox: bounds.toArray()
   };
 }
-
-// export function getFrameLayerData(lyr) {
-//   return lyr.data && lyr.data.getReadOnlyRecordAt(0);
-// }
 
 
 function calcFrameData(dataset, opts) {
@@ -76,29 +72,32 @@ export function getFrameSize(bounds, opts) {
 
 
 // @lyr dataset layer
-function isFrameLayer(lyr, dataset) {
+export function isFrameLayer(lyr, arcs) {
   return getFurnitureLayerType(lyr) == 'frame' &&
-    layerIsRectangle(lyr, dataset.arcs);
+    layerIsRectangle(lyr, arcs);
 }
 
 export function findFrameLayerInDataset(dataset) {
   return utils.find(dataset.layers, function(lyr) {
-    return isFrameLayer(lyr, dataset);
+    return isFrameLayer(lyr, dataset.arcs);
   });
 }
 
+// TODO: handle multiple frames in catalog
 export function findFrameDataset(catalog) {
-  var target = utils.find(catalog.getLayers(), function(o) {
-    return isFrameLayer(o.layer, o.dataset);
-  });
-  return target ? target.dataset : null;
+  var target = findFrame(catalog);
+  return target && target.dataset || null;
 }
 
 export function findFrameLayer(catalog) {
-  var target = utils.find(catalog.getLayers(), function(o) {
-    return isFrameLayer(o.layer, o.dataset);
-  });
+  var target = findFrame(catalog);
   return target && target.layer || null;
+}
+
+export function findFrame(catalog) {
+  return utils.find(catalog.getLayers(), function(o) {
+    return isFrameLayer(o.layer, o.dataset.arcs);
+  });
 }
 
 export function getFrameLayerBounds(lyr) {

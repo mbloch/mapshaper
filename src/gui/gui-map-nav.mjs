@@ -14,6 +14,7 @@ export function MapNav(gui, ext, mouse) {
       dragStartEvt,
       _fx, _fy; // zoom foci, [0,1]
 
+  // Was used in old frame view... remove?
   this.setZoomFactor = function(k) {
     zoomScaleMultiplier = k || 1;
   };

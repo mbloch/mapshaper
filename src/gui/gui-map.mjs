@@ -190,19 +190,12 @@ export function MshpMap(gui) {
     updateVisibleMapLayers();
     fullBounds = calcFullBounds();
 
-    if (!prevLyr || prevLyr.tabular || _activeLyr.tabular || isFrameView()) {
+    if (!prevLyr || prevLyr.tabular || _activeLyr.tabular) {
       needReset = true;
     } else {
       needReset = mapNeedsReset(fullBounds, _ext.getFullBounds(), _ext.getBounds(), e.flags);
     }
 
-    if (isFrameView()) {
-      _nav.setZoomFactor(0.05); // slow zooming way down to allow fine-tuning frame placement // 0.03
-      _ext.setFrame(calcFullBounds()); // TODO: remove redundancy with drawLayers()
-      needReset = true; // snap to frame extent
-    } else {
-      _nav.setZoomFactor(1);
-    }
     _ext.setFullBounds(fullBounds, getStrictBounds()); // update 'home' button extent
 
     if (needReset) {
@@ -232,9 +225,6 @@ export function MshpMap(gui) {
     _ext.on('change', function(e) {
       if (_basemap) _basemap.refresh(); // keep basemap synced up (if enabled)
       if (e.reset) return; // don't need to redraw map here if extent has been reset
-      if (isFrameView()) {
-        updateFrameExtent();
-      }
       drawLayers('nav');
     });
 
@@ -264,21 +254,6 @@ export function MshpMap(gui) {
     };
   }
 
-  // Update map frame after user navigates the map in frame edit mode
-  function updateFrameExtent() {
-    var frameLyr = internal.findFrameLayer(model);
-    var rec = frameLyr.data.getRecordAt(0);
-    var viewBounds = _ext.getBounds();
-    var w = viewBounds.width() * rec.width / _ext.width();
-    var h = w * rec.height / rec.width;
-    var cx = viewBounds.centerX();
-    var cy = viewBounds.centerY();
-    rec.bbox = [cx - w/2, cy - h/2, cx + w/2, cy + h/2];
-    _ext.setFrame(getFrameData());
-    _ext.setFullBounds(new Bounds(rec.bbox));
-    _ext.reset();
-  }
-
   function getStrictBounds() {
     if (internal.isWebMercator(map.getDisplayCRS())) {
       return getMapboxBounds();
@@ -305,9 +280,6 @@ export function MshpMap(gui) {
   }
 
   function calcFullBounds() {
-    if (isPreviewView()) {
-      return internal.getFrameLayerBounds(internal.findFrameLayer(model));
-    }
     var b = getVisibleContentBounds();
 
     // add margin
@@ -338,25 +310,21 @@ export function MshpMap(gui) {
     return !isPreviewView() && !!_activeLyr.tabular;
   }
 
-  // Preview view: a special view centering the map 'frame'
-  // (disabling this pending interface rethink)
-  function isPreviewView() {
-    return false;
-    // var frameLyr = internal.findFrameLayer(model);
-    // return !!frameLyr; //  && isVisibleLayer(frameLyr)
+  function findFrameLayer() {
+    return getVisibleMapLayers().find(function(lyr) {
+      return internal.isFrameLayer(lyr.layer, lyr.arcs);
+    });
   }
 
-  // Frame view means frame layer is visible and active (selected)
-  // (disabling pending rethink)
-  function isFrameView() {
-    return false;
-    // var frameLyr = internal.findFrameLayer(model);
-    // return isActiveLayer(frameLyr) && isVisibleLayer(frameLyr);
+  // Preview view: symbols are scaled based on display size of frame layer
+  function isPreviewView() {
+    var data = getFrameData();
+    return !!data;
   }
 
   function getFrameData() {
-    var frameLyr = internal.findFrameLayer(model);
-    return frameLyr && internal.getFurnitureLayerData(frameLyr) || null;
+    var lyr = findFrameLayer();
+    return lyr && internal.getFrameLayerData(lyr.layer, lyr.arcs) || null;
   }
 
   function clearAllDisplayArcs() {
@@ -446,7 +414,7 @@ export function MshpMap(gui) {
     var layersMayHaveChanged = action != 'nav'; // !action;
     var fullBounds;
     var contentLayers = getDrawableContentLayers();
-    var furnitureLayers = getDrawableFurnitureLayers();
+    // var furnitureLayers = getDrawableFurnitureLayers();
     if (!(_ext.width() > 0 && _ext.height() > 0)) {
       // TODO: track down source of these errors
       console.error("Collapsed map container, unable to draw.");
@@ -454,7 +422,7 @@ export function MshpMap(gui) {
     }
     if (layersMayHaveChanged) {
       // kludge to handle layer visibility toggling
-      _ext.setFrame(isPreviewView() ? getFrameData() : null);
+      _ext.setFrameData(isPreviewView() ? getFrameData() : null);
       updateFullBounds();
       updateLayerStyles(contentLayers);
       updateLayerStackOrder(model.getLayers());// update menu_order property of all layers

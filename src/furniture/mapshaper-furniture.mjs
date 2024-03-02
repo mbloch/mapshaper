@@ -1,11 +1,11 @@
 import { stop } from '../utils/mapshaper-logging';
 import { renderScalebar } from '../commands/mapshaper-scalebar';
-import { renderFrame } from '../commands/mapshaper-frame';
+// import { renderFrame } from '../commands/mapshaper-frame';
 import { isProjectedCRS } from '../crs/mapshaper-projections';
 
 var furnitureRenderers = {
-  scalebar: renderScalebar,
-  frame: renderFrame
+  scalebar: renderScalebar
+  // frame: renderFrame
 };
 
 // @lyr a layer in a dataset

@@ -1311,14 +1311,14 @@ export function getOptionParser() {
     .validate(V.validateProjOpts);
 
   parser.command('rectangle')
-    .describe('create a rectangle from a bbox or target layer extent')
+    .describe('create a rectangle from a bbox or target layer')
     .option('bbox', {
       describe: 'rectangle coordinates (xmin,ymin,xmax,ymax)',
       type: 'bbox'
     })
     .option('offset', offsetOpt)
     .option('width', {
-      // describe: 'set viewport width in pixels',
+      describe: 'set width of map in pixels, use rectangle as frame',
       type: 'number'
     })
     .option('aspect-ratio', aspectRatioOpt)

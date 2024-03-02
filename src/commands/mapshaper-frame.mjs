@@ -62,18 +62,17 @@ export function getAspectRatioArg(widthArg, heightArg) {
   }).reverse().join(',');
 }
 
-
-export function renderFrame(d) {
-  var lineWidth = 1,
-      // inset stroke by half of line width
-      off = lineWidth / 2,
-      obj = importPolygon([[[off, off], [off, d.height - off],
-        [d.width - off, d.height - off],
-        [d.width - off, off], [off, off]]]);
-  utils.extend(obj.properties, {
-      fill: 'none',
-      stroke: d.stroke || 'black',
-      'stroke-width': d['stroke-width'] || lineWidth
-  });
-  return [obj];
-}
+// export function renderFrame(d) {
+//   var lineWidth = 1,
+//       // inset stroke by half of line width
+//       off = lineWidth / 2,
+//       obj = importPolygon([[[off, off], [off, d.height - off],
+//         [d.width - off, d.height - off],
+//         [d.width - off, off], [off, off]]]);
+//   utils.extend(obj.properties, {
+//       fill: 'none',
+//       stroke: d.stroke || 'black',
+//       'stroke-width': d['stroke-width'] || lineWidth
+//   });
+//   return [obj];
+// }
