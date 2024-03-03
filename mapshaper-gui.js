@@ -4306,6 +4306,7 @@
 
       if (opts.pinnable) classes += ' pinnable';
       if (map.isActiveLayer(lyr)) classes += ' active';
+      if (lyr.hidden) classes += ' invisible';
       if (lyr.pinned) classes += ' pinned';
 
       html = '<!-- ' + lyr.menu_id + '--><div class="' + classes + '">';
@@ -4384,10 +4385,24 @@
         // init pin button
         GUI.onClick(entry.findChild('img.black-eye'), function(e) {
           var target = findLayerById(id);
-          var pinned = target.layer.pinned;
+          var lyr = target.layer;
+          var active = map.isActiveLayer(lyr);
+          var hidden = false; // active && lyr.hidden || false;
+          var pinned = false;
+          var unpinned = false;
           e.stopPropagation();
-          map.setLayerPinning(target, !pinned);
-          entry.classed('pinned', !pinned);
+          if (active) {
+            hidden = !lyr.hidden;
+            pinned = !hidden && lyr.unpinned;
+            unpinned = lyr.pinned && hidden;
+          } else {
+            pinned = !lyr.pinned;
+          }
+          lyr.hidden = hidden;
+          lyr.unpinned = unpinned;
+          map.setLayerPinning(target, pinned);
+          entry.classed('pinned', pinned);
+          entry.classed('invisible', hidden);
           updatePinAllButton();
           map.redraw();
         });
@@ -4413,12 +4428,16 @@
       GUI.onClick(entry, function() {
         var target = findLayerById(id);
         // don't select if user is typing or dragging
-        if (!GUI.textIsSelected() && !dragging) {
-          gui.clearMode();
-          if (!map.isActiveLayer(target.layer)) {
-            model.selectLayer(target.layer, target.dataset);
-          }
+        if (GUI.textIsSelected() || dragging) return;
+        // undo any temporary hiding when layer is selected
+        target.layer.hidden = false;
+        if (!map.isActiveLayer(target.layer)) {
+          model.selectLayer(target.layer, target.dataset);
         }
+        // close menu after a delay
+        setTimeout(function() {
+          gui.clearMode();
+        }, 230);
       });
     }
 
@@ -7238,7 +7257,7 @@
       self.clearSelection();
     });
 
-    gui.on('box_drag_start', function() {
+    gui.on('shift_drag_start', function() {
       self.clearHover();
     });
 
@@ -7894,13 +7913,19 @@
 
   function HighlightBox(gui, optsArg) {
     var el = El('div').addClass('zoom-box').appendTo('body'),
-        opts = Object.assign({handles: false, persistent: false}, optsArg),
+        opts = Object.assign({
+          name: 'box',
+          handles: false,
+          persistent: false,
+          draggable: false  // does dragging the map draw a box
+        }, optsArg),
         box = new EventDispatcher(),
         stroke = 2,
         activeHandle = null,
         prevXY = null,
         boxCoords = null,
         _on = false,
+        _visible = false,
         handles;
 
     if (opts.classname) {
@@ -7910,19 +7935,20 @@
     el.hide();
 
     gui.on('map_rendered', function() {
-      if (!_on) return;
+      if (!_on || !_visible) return;
       redraw();
     });
 
-    gui.on('box_drag', function(e) {
+    gui.on('shift_drag', function(e) {
       if (!_on) return;
+      if (!opts.draggable) return;
       boxCoords = getBoxCoords(e.data);
       redraw();
       box.dispatchEvent('drag');
     });
 
-    gui.on('box_drag_end', function(e) {
-      if (!_on) return;
+    gui.on('shift_drag_end', function(e) {
+      if (!_on || !_visible || !opts.draggable) return;
       boxCoords = getBoxCoords(e.data);
       var pix = coordsToPix(boxCoords, gui.map.getExtent());
       box.dispatchEvent('dragend', {map_bbox: pix});
@@ -7944,24 +7970,30 @@
       });
 
       document.addEventListener('mousemove', function(e) {
-        if (!_on || !activeHandle || !prevXY || !boxCoords) return;
+        if (!_on || !activeHandle || !prevXY || !boxCoords || !_visible) return;
         var xy = {x: e.pageX, y: e.pageY};
         var scale = gui.map.getExtent().getPixelSize();
         var dx = (xy.x - prevXY.x) * scale;
         var dy = -(xy.y - prevXY.y) * scale;
-        var center = activeHandle.col == 'center' && activeHandle.row == 'center';
-        if (activeHandle.col == 'left' || center) {
+        var shifting = activeHandle.col == 'center' && activeHandle.row == 'center';
+        var centered = gui.keyboard.shiftIsPressed() && !shifting;
+        if (activeHandle.col == 'left' || shifting) {
           boxCoords[0] += dx;
+          if (centered) boxCoords[2] -= dx;
         }
-        if (activeHandle.col == 'right' || center) {
+        if (activeHandle.col == 'right' || shifting) {
           boxCoords[2] += dx;
+          if (centered) boxCoords[0] -= dx;
         }
-        if (activeHandle.row == 'top' || center) {
+        if (activeHandle.row == 'top' || shifting) {
           boxCoords[3] += dy;
+          if (centered) boxCoords[1] -= dy;
         }
-        if (activeHandle.row == 'bottom' || center) {
+        if (activeHandle.row == 'bottom' || shifting) {
           boxCoords[1] += dy;
+          if (centered) boxCoords[3] -= dy;
         }
+
         prevXY = xy;
         redraw();
         box.dispatchEvent('handle_drag');
@@ -8003,9 +8035,11 @@
     box.hide = function() {
       el.hide();
       boxCoords = null;
+      _visible = false;
     };
 
     box.show = function(x1, y1, x2, y2) {
+      _visible = true;
       var w = Math.abs(x1 - x2),
           h = Math.abs(y1 - y2),
           props = {
@@ -8116,13 +8150,14 @@
   function MapNav(gui, ext, mouse) {
     var wheel = new MouseWheel(mouse),
         zoomTween = new Tween(Tween.sineInOut),
-        zoomBox = new HighlightBox(gui), // .addClass('zooming'),
-        boxDrag = false,
+        zoomBox = new HighlightBox(gui, {draggable: true, name: 'zoom-box'}), // .addClass('zooming'),
+        shiftDrag = false,
         zoomScaleMultiplier = 1,
         inBtn, outBtn,
         dragStartEvt,
         _fx, _fy; // zoom foci, [0,1]
 
+    // Was used in old frame view... remove?
     this.setZoomFactor = function(k) {
       zoomScaleMultiplier = k || 1;
     };
@@ -8167,18 +8202,18 @@
       if (disabled()) return;
       if (!internal.layerHasGeometry(gui.model.getActiveLayer().layer)) return;
       // zoomDrag = !!e.metaKey || !!e.ctrlKey; // meta is command on mac, windows key on windows
-      boxDrag = !!e.shiftKey;
-      if (boxDrag) {
+      shiftDrag = !!e.shiftKey;
+      if (shiftDrag) {
         if (useBoxZoom()) zoomBox.turnOn();
         dragStartEvt = e;
-        gui.dispatchEvent('box_drag_start');
+        gui.dispatchEvent('shift_drag_start');
       }
     });
 
     mouse.on('drag', function(e) {
       if (disabled()) return;
-      if (boxDrag) {
-        gui.dispatchEvent('box_drag', getBoxData(e));
+      if (shiftDrag) {
+        gui.dispatchEvent('shift_drag', getBoxData(e));
       } else {
         ext.pan(e.dx, e.dy);
       }
@@ -8187,9 +8222,9 @@
     mouse.on('dragend', function(e) {
       var bbox;
       if (disabled()) return;
-      if (boxDrag) {
-        boxDrag = false;
-        gui.dispatchEvent('box_drag_end', getBoxData(e));
+      if (shiftDrag) {
+        shiftDrag = false;
+        gui.dispatchEvent('shift_drag_end', getBoxData(e));
         zoomBox.turnOff();
       }
     });
@@ -8207,7 +8242,9 @@
     });
 
     function useBoxZoom() {
-      return gui.getMode() != 'selection_tool' && gui.getMode() != 'box_tool';
+      var mode = gui.getMode();
+      var disabled = ['selection_tool', 'box_tool', 'rectangle_tool'].includes(mode);
+      return !disabled;
     }
 
     function getBoxData(e) {
@@ -8263,7 +8300,7 @@
 
   function SelectionTool(gui, ext, hit) {
     var popup = gui.container.findChild('.selection-tool-options');
-    var box = new HighlightBox(gui);
+    var box = new HighlightBox(gui, {draggable: true});
     var coords = popup.findChild('.box-coords').hide();
     var _on = false;
 
@@ -9582,11 +9619,90 @@
     }
   }
 
-  // import { initLineDrawing } from './gui-draw-lines';
+  function initLineDrawing(gui, ext, mouse, hit) {
+    var _on = false;
+    var _coords;
+    var _lastClick;
+
+    gui.on('interaction_mode_change', function(e) {
+      _on = e.mode === 'draw-lines';
+      gui.container.findChild('.map-layers').classed('draw-lines', _on);
+    });
+
+    function active() {
+      return _on;
+    }
+
+    function extending() {
+      return active() && !!_coords;
+    }
+
+    function startPath(e) {
+
+    }
+
+    function extendPath(e) {
+
+    }
+
+    function finishPath() {
+      _coords = null;
+    }
+
+    gui.keyboard.on('keydown', function(evt) {
+      if (!active()) return;
+      if (evt.keyCode == 27) { // esc
+        finishPath();
+      }
+    });
+
+    mouse.on('click', function(e) {
+      if (!active()) return;
+      // console.log('[click]', e)
+      // addPoint(e.x, e.y);
+      // gui.dispatchEvent('map-needs-refresh');
+      _lastClick = e;
+    });
+
+    // note: second click event is fired before this
+    mouse.on('dblclick', function(e) {
+      if (!active()) return;
+      // block navigation
+      e.stopPropagation();
+      finishPath();
+
+    }, null, 3); // hit detection is priority 2
+
+    mouse.on('hover', function(e) {
+      if (!active()) return;
+    });
+
+    // x, y: pixel coordinates
+    function addPoint(x, y) {
+      var p = ext.translatePixelCoords(x, y);
+      var target = hit.getHitTarget();
+      var lyr = target.layer;
+      var fid = lyr.shapes.length;
+      if (lyr.data) {
+        // this seems to work even for projected layers -- the data tables
+        // of projected and original data seem to be shared.
+        lyr.data.getRecords()[fid] = getEmptyDataRecord(lyr.data);
+      }
+      lyr.shapes[fid] = [p];
+      updatePointCoords(target, fid);
+    }
+
+    function getEmptyDataRecord(table) {
+      return table.getFields().reduce(function(memo, name) {
+        memo[name] = null;
+        return memo;
+      }, {});
+    }
+  }
 
   function initDrawing(gui, ext, mouse, hit) {
     initPointDrawing(gui, ext, mouse, hit);
-    // initLineDrawing(gui, ext, mouse, hit);
+    initLineDrawing(gui, ext, mouse, hit);
   }
 
   function MapExtent(_position) {
@@ -9595,7 +9711,7 @@
         _fullBounds, // full (zoomed-out) content bounds, including any padding
         _strictBounds, // full extent must fit inside, if set
         _self = this,
-        _frame;
+        _frame; // optional frame data (bbox, width, height)
 
     _position.on('resize', function(e) {
       if (ready()) {
@@ -9713,16 +9829,16 @@
       return this.getTransform().transform(x, y);
     };
 
-    this.setFrame = function(frame) {
+    this.setFrameData = function(frame) {
       _frame = frame || null;
     };
 
-    this.getFrame = function() {
+    this.getFrameData = function() {
       return _frame || null;
     };
 
     this.getSymbolScale = function() {
-      if (!_frame) return 0;
+      if (!_frame) return 1;
       var bounds = new Bounds(_frame.bbox);
       var bounds2 = bounds.clone().transform(this.getTransform());
       return bounds2.width() / _frame.width;
@@ -10335,12 +10451,12 @@
         // (style.opacity < 1 ? '~' + style.opacity : '') +
         (style.fillPattern ? '~' + style.fillPattern : '');
     }
-
     return _self;
   }
 
   function getScaledLineScale(ext) {
-    return ext.getSymbolScale() || getLineScale(ext);
+    var previewScale = ext.getSymbolScale();
+    return previewScale == 1 ? getLineScale(ext) : previewScale;
   }
 
   // Vary line width according to zoom ratio.
@@ -10518,7 +10634,8 @@
         if (pixRatio > 1) {
           // bump up thin lines on retina, but not to more than 1px
           // (tests on Chrome showed much faster rendering of 1px lines)
-          strokeWidth = strokeWidth < 1 ? 1 : strokeWidth * pixRatio;
+          // strokeWidth = strokeWidth < 1 ? 1 : strokeWidth * pixRatio;
+          strokeWidth = strokeWidth * pixRatio;
         }
         ctx.lineCap = style.lineCap || 'round';
         ctx.lineJoin = style.lineJoin || 'round';
@@ -10568,7 +10685,7 @@
 
   function getSvgFurnitureTransform(ext) {
     var scale = ext.getSymbolScale();
-    var frame = ext.getFrame();
+    var frame = ext.getFrameData();
     var p = ext.translateCoords(frame.bbox[0], frame.bbox[3]);
     return internal.svg.getTransform(p, scale);
   }
@@ -10579,7 +10696,7 @@
   }
 
   function renderFurniture(lyr, ext) {
-    var frame = ext.getFrame(); // frame should be set if we're rendering a furniture layer
+    var frame = ext.getFrameData(); // frame should be set if we're rendering a furniture layer
     var obj = internal.getEmptyLayerForSVG(lyr, {});
     if (!frame) {
       stop$1('Missing map frame data');
@@ -10745,7 +10862,7 @@
   //
   function BoxTool(gui, ext, nav) {
     var self = new EventDispatcher();
-    var box = new HighlightBox(gui, {persistent: true, handles: true});
+    var box = new HighlightBox(gui, {name: 'box-tool', persistent: true, handles: true, draggable: true});
     var popup = gui.container.findChild('.box-tool-options');
     var coords = popup.findChild('.box-coords');
     var _on = false;
@@ -10792,7 +10909,7 @@
       }
     });
 
-    gui.on('box_drag_start', function() {
+    gui.on('shift_drag_start', function() {
       // box.classed('zooming', inZoomMode());
       hideCoords();
     });
@@ -10858,7 +10975,7 @@
   }
 
   function RectangleControl(gui, hit) {
-    var box = new HighlightBox(gui, {persistent: true, handles: true, classname: 'rectangles'});
+    var box = new HighlightBox(gui, {name: 'rectangle-tool', persistent: true, handles: true, classname: 'rectangles', draggable: false});
     var _on = false;
     var dragInfo;
 
@@ -11530,12 +11647,12 @@
       clearAllDisplayArcs();
 
       // Reproject all visible map layers
-      getDrawableContentLayers().forEach(function(lyr) {
+      getContentLayers().forEach(function(lyr) {
         projectDisplayLayer(lyr, newCRS);
       });
 
       // kludge to make sure all layers have styles
-      updateLayerStyles(getDrawableContentLayers());
+      updateLayerStyles(getContentLayers());
 
       // Update map extent (also triggers redraw)
       projectMapExtent(_ext, oldCRS, this.getDisplayCRS(), calcFullBounds());
@@ -11588,19 +11705,12 @@
       updateVisibleMapLayers();
       fullBounds = calcFullBounds();
 
-      if (!prevLyr || prevLyr.tabular || _activeLyr.tabular || isFrameView()) {
+      if (!prevLyr || prevLyr.tabular || _activeLyr.tabular) {
         needReset = true;
       } else {
         needReset = mapNeedsReset(fullBounds, _ext.getFullBounds(), _ext.getBounds(), e.flags);
       }
 
-      if (isFrameView()) {
-        _nav.setZoomFactor(0.05); // slow zooming way down to allow fine-tuning frame placement // 0.03
-        _ext.setFrame(calcFullBounds()); // TODO: remove redundancy with drawLayers()
-        needReset = true; // snap to frame extent
-      } else {
-        _nav.setZoomFactor(1);
-      }
       _ext.setFullBounds(fullBounds, getStrictBounds()); // update 'home' button extent
 
       if (needReset) {
@@ -11630,9 +11740,6 @@
       _ext.on('change', function(e) {
         if (_basemap) _basemap.refresh(); // keep basemap synced up (if enabled)
         if (e.reset) return; // don't need to redraw map here if extent has been reset
-        if (isFrameView()) {
-          updateFrameExtent();
-        }
         drawLayers('nav');
       });
 
@@ -11662,21 +11769,6 @@
       };
     }
 
-    // Update map frame after user navigates the map in frame edit mode
-    function updateFrameExtent() {
-      var frameLyr = internal.findFrameLayer(model);
-      var rec = frameLyr.data.getRecordAt(0);
-      var viewBounds = _ext.getBounds();
-      var w = viewBounds.width() * rec.width / _ext.width();
-      var h = w * rec.height / rec.width;
-      var cx = viewBounds.centerX();
-      var cy = viewBounds.centerY();
-      rec.bbox = [cx - w/2, cy - h/2, cx + w/2, cy + h/2];
-      _ext.setFrame(getFrameData());
-      _ext.setFullBounds(new Bounds(rec.bbox));
-      _ext.reset();
-    }
-
     function getStrictBounds() {
       if (internal.isWebMercator(map.getDisplayCRS())) {
         return getMapboxBounds();
@@ -11688,9 +11780,9 @@
       _ext.setFullBounds(calcFullBounds(), getStrictBounds());
     }
 
-    function getVisibleContentBounds() {
+    function getContentLayerBounds() {
       var b = new Bounds();
-      var layers = getDrawableContentLayers();
+      var layers = getContentLayers();
       layers.forEach(function(lyr) {
         b.mergeBounds(lyr.bounds);
       });
@@ -11703,10 +11795,7 @@
     }
 
     function calcFullBounds() {
-      if (isPreviewView()) {
-        return internal.getFrameLayerBounds(internal.findFrameLayer(model));
-      }
-      var b = getVisibleContentBounds();
+      var b = getContentLayerBounds();
 
       // add margin
       // use larger margin for small sizes
@@ -11736,25 +11825,21 @@
       return !isPreviewView() && !!_activeLyr.tabular;
     }
 
-    // Preview view: a special view centering the map 'frame'
-    // (disabling this pending interface rethink)
-    function isPreviewView() {
-      return false;
-      // var frameLyr = internal.findFrameLayer(model);
-      // return !!frameLyr; //  && isVisibleLayer(frameLyr)
+    function findFrameLayer() {
+      return getVisibleMapLayers().find(function(lyr) {
+        return internal.isFrameLayer(lyr.layer, lyr.arcs);
+      });
     }
 
-    // Frame view means frame layer is visible and active (selected)
-    // (disabling pending rethink)
-    function isFrameView() {
-      return false;
-      // var frameLyr = internal.findFrameLayer(model);
-      // return isActiveLayer(frameLyr) && isVisibleLayer(frameLyr);
+    // Preview view: symbols are scaled based on display size of frame layer
+    function isPreviewView() {
+      var data = getFrameData();
+      return !!data;
     }
 
     function getFrameData() {
-      var frameLyr = internal.findFrameLayer(model);
-      return frameLyr && internal.getFurnitureLayerData(frameLyr) || null;
+      var lyr = findFrameLayer();
+      return lyr && internal.getFrameLayerData(lyr.layer, lyr.arcs) || null;
     }
 
     function clearAllDisplayArcs() {
@@ -11786,11 +11871,18 @@
       });
     }
 
-    function getDrawableContentLayers() {
+    function getContentLayers() {
       var layers = getVisibleMapLayers();
       if (isTableView()) return findActiveLayer(layers);
       return layers.filter(function(o) {
         return !!o.geographic;
+      });
+    }
+
+    function getDrawableContentLayers() {
+      return getContentLayers().filter(function(lyr) {
+        if (isActiveLayer(lyr.layer) && lyr.layer.hidden) return false;
+        return true;
       });
     }
 
@@ -11844,7 +11936,7 @@
       var layersMayHaveChanged = action != 'nav'; // !action;
       var fullBounds;
       var contentLayers = getDrawableContentLayers();
-      var furnitureLayers = getDrawableFurnitureLayers();
+      // var furnitureLayers = getDrawableFurnitureLayers();
       if (!(_ext.width() > 0 && _ext.height() > 0)) {
         // TODO: track down source of these errors
         console.error("Collapsed map container, unable to draw.");
@@ -11852,7 +11944,7 @@
       }
       if (layersMayHaveChanged) {
         // kludge to handle layer visibility toggling
-        _ext.setFrame(isPreviewView() ? getFrameData() : null);
+        _ext.setFrameData(isPreviewView() ? getFrameData() : null);
         updateFullBounds();
         updateLayerStyles(contentLayers);
         updateLayerStackOrder(model.getLayers());// update menu_order property of all layers

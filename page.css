@@ -856,7 +856,8 @@ img.eye-btn {
 	opacity: 0;
 }
 
-.pinnable:not(.pinned):not(.active) img.black-eye {
+.pinnable:not(.pinned):not(.active) img.black-eye,
+.pinnable.active.invisible img.black-eye {
 	opacity: 0.2;
 }
 
@@ -869,9 +870,9 @@ img.eye-btn {
 }*/
 
 img.close-btn:hover,
-.pinnable.active:not(.pinned) img.black-eye,
+.pinnable.active:not(.pinned):not(.invisible) img.black-eye,
 .pinnable.pinned:not(.active) img.green-eye,
-.pinnable.pinned.active img.black-eye {
+.pinnable.active.pinned:not(.invisible) img.black-eye {
 	opacity: 1
 }
 

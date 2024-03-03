@@ -13397,10 +13397,11 @@
 
   // str: display size in px, pt or in
   // using: 72pt per inch, 1pt per pixel.
-  function parseSizeParam(str) {
-    var num = parseFloat(str),
-        units = /px$/.test(str) && 'px' || /pt$/.test(str) && 'pt' ||
-          /in$/.test(str) && 'in' || !isNaN(+str) && 'px' || null;
+  function parseSizeParam(p) {
+    var str = String(p),
+        num = parseFloat(str),
+        units = /px|pix/.test(str) && 'px' || /pt|point/.test(str) && 'pt' ||
+          /in/.test(str) && 'in' || !isNaN(+str) && 'px' || null;
     if (isNaN(num) || !units) {
       stop('Invalid size:', str);
     }
@@ -18228,7 +18229,7 @@
     var frameLyr = findFrameLayerInDataset(dataset);
     var frameData;
     if (frameLyr) {
-      frameData = getFrameLayerData(frameLyr, dataset);
+      frameData = getFrameLayerData(frameLyr, dataset.arcs);
     } else {
       frameData = calcFrameData(dataset, exportOpts);
     }
@@ -18237,8 +18238,8 @@
   }
 
 
-  function getFrameLayerData(lyr, dataset) {
-    var bounds = getLayerBounds(lyr, dataset.arcs);
+  function getFrameLayerData(lyr, arcs) {
+    var bounds = getLayerBounds(lyr, arcs);
     var d = lyr.data.getReadOnlyRecordAt(0);
     var w = d.width || 800;
     var h = w * bounds.height() / bounds.width();
@@ -18249,10 +18250,6 @@
       bbox: bounds.toArray()
     };
   }
-
-  // export function getFrameLayerData(lyr) {
-  //   return lyr.data && lyr.data.getReadOnlyRecordAt(0);
-  // }
 
 
   function calcFrameData(dataset, opts) {
@@ -18287,29 +18284,32 @@
 
 
   // @lyr dataset layer
-  function isFrameLayer(lyr, dataset) {
+  function isFrameLayer(lyr, arcs) {
     return getFurnitureLayerType(lyr) == 'frame' &&
-      layerIsRectangle(lyr, dataset.arcs);
+      layerIsRectangle(lyr, arcs);
   }
 
   function findFrameLayerInDataset(dataset) {
     return utils.find(dataset.layers, function(lyr) {
-      return isFrameLayer(lyr, dataset);
+      return isFrameLayer(lyr, dataset.arcs);
     });
   }
 
+  // TODO: handle multiple frames in catalog
   function findFrameDataset(catalog) {
-    var target = utils.find(catalog.getLayers(), function(o) {
-      return isFrameLayer(o.layer, o.dataset);
-    });
-    return target ? target.dataset : null;
+    var target = findFrame(catalog);
+    return target && target.dataset || null;
   }
 
   function findFrameLayer(catalog) {
-    var target = utils.find(catalog.getLayers(), function(o) {
-      return isFrameLayer(o.layer, o.dataset);
-    });
+    var target = findFrame(catalog);
     return target && target.layer || null;
+  }
+
+  function findFrame(catalog) {
+    return utils.find(catalog.getLayers(), function(o) {
+      return isFrameLayer(o.layer, o.dataset.arcs);
+    });
   }
 
   function getFrameLayerBounds(lyr) {
@@ -18445,10 +18445,13 @@
   var FrameData = /*#__PURE__*/Object.freeze({
     __proto__: null,
     getFrameData: getFrameData,
+    getFrameLayerData: getFrameLayerData,
     getFrameSize: getFrameSize,
+    isFrameLayer: isFrameLayer,
     findFrameLayerInDataset: findFrameLayerInDataset,
     findFrameDataset: findFrameDataset,
     findFrameLayer: findFrameLayer,
+    findFrame: findFrame,
     getFrameLayerBounds: getFrameLayerBounds,
     getMapFrameMetersPerPixel: getMapFrameMetersPerPixel,
     calcOutputSizeInPixels: calcOutputSizeInPixels,
@@ -18888,6 +18891,7 @@
     'font-family': null,
     'font-size': null,
     'font-style': null,
+    'font-stretch': null,
     'font-weight': null,
     'label-text': null,  // leaving this null
     'letter-spacing': 'measure',
@@ -18937,7 +18941,7 @@
     polyline: utils.arrayToIndex(commonProperties.concat('stroke-linecap', 'stroke-linejoin', 'stroke-miterlimit')),
     point: utils.arrayToIndex(commonProperties.concat('fill', 'r')),
     label: utils.arrayToIndex(commonProperties.concat(
-      'fill,font-family,font-size,text-anchor,font-weight,font-style,letter-spacing,dominant-baseline'.split(',')))
+      'fill,font-family,font-size,text-anchor,font-weight,font-style,font-stretch,letter-spacing,dominant-baseline'.split(',')))
   };
 
   // symType: point, polygon, polyline, label
@@ -19725,84 +19729,9 @@
     parseScalebarLabelToKm: parseScalebarLabelToKm
   });
 
-  cmd.frame = function(catalog, source, opts) {
-    var size, bounds, tmp, dataset;
-    if (+opts.width > 0 === false && +opts.pixels > 0 === false) {
-      stop("Missing a width or area");
-    }
-    if (opts.width && opts.height) {
-      opts = utils.extend({}, opts);
-      // Height is a string containing either a number or a
-      //   comma-sep. pair of numbers (range); here we convert height to
-      //   an aspect-ratio parameter for the rectangle() function
-      opts.aspect_ratio = getAspectRatioArg(opts.width, opts.height);
-      // TODO: currently returns max,min aspect ratio, should return in min,max order
-      // (rectangle() function should handle max,min argument correctly now anyway)
-    }
-    tmp = cmd.rectangle(source, opts);
-    bounds = getDatasetBounds(tmp);
-    if (probablyDecimalDegreeBounds(bounds)) {
-      stop('Frames require projected, not geographical coordinates');
-    } else if (!getDatasetCRS(tmp)) {
-      message('Warning: missing projection data. Assuming coordinates are meters and k (scale factor) is 1');
-    }
-    size = getFrameSize(bounds, opts);
-    if (size[0] > 0 === false) {
-      stop('Missing a valid frame width');
-    }
-    if (size[1] > 0 === false) {
-      stop('Missing a valid frame height');
-    }
-    dataset = {info: {}, layers:[{
-      name: opts.name || 'frame',
-      data: new DataTable([{
-        width: size[0],
-        height: size[1],
-        bbox: bounds.toArray(),
-        type: 'frame'
-      }])
-    }]};
-    catalog.addDataset(dataset);
-  };
-
-
-  // Convert width and height args to aspect ratio arg for the rectangle() function
-  function getAspectRatioArg(widthArg, heightArg) {
-    // heightArg is a string containing either a number or a
-    // comma-sep. pair of numbers (range);
-    return heightArg.split(',').map(function(opt) {
-      var height = Number(opt),
-          width = Number(widthArg);
-      if (!opt) return '';
-      return width / height;
-    }).reverse().join(',');
-  }
-
-
-  function renderFrame(d) {
-    var lineWidth = 1,
-        // inset stroke by half of line width
-        off = lineWidth / 2,
-        obj = importPolygon([[[off, off], [off, d.height - off],
-          [d.width - off, d.height - off],
-          [d.width - off, off], [off, off]]]);
-    utils.extend(obj.properties, {
-        fill: 'none',
-        stroke: d.stroke || 'black',
-        'stroke-width': d['stroke-width'] || lineWidth
-    });
-    return [obj];
-  }
-
-  var Frame = /*#__PURE__*/Object.freeze({
-    __proto__: null,
-    getAspectRatioArg: getAspectRatioArg,
-    renderFrame: renderFrame
-  });
-
   var furnitureRenderers = {
-    scalebar: renderScalebar,
-    frame: renderFrame
+    scalebar: renderScalebar
+    // frame: renderFrame
   };
 
   // @lyr a layer in a dataset
@@ -25185,15 +25114,15 @@ ${svg}
       .validate(validateProjOpts);
 
     parser.command('rectangle')
-      .describe('create a rectangle from a bbox or target layer extent')
+      .describe('create a rectangle from a bbox or target layer')
       .option('bbox', {
         describe: 'rectangle coordinates (xmin,ymin,xmax,ymax)',
         type: 'bbox'
       })
       .option('offset', offsetOpt)
       .option('width', {
-        // describe: 'set viewport width in pixels',
-        type: 'number'
+        describe: 'set width of map in pixels, use rectangle as frame'
+        // type: 'number' // use string, to allow units (e.g. in, px, pt)
       })
       .option('aspect-ratio', aspectRatioOpt)
       .option('source', {
@@ -25470,7 +25399,10 @@ ${svg}
       .option('font-style', {
         describe: 'CSS font style property of labels (e.g. italic)'
       })
-       .option('letter-spacing', {
+      .option('font-stretch', {
+        describe: 'CSS font stretch property of labels (e.g. condensed)'
+      })
+      .option('letter-spacing', {
         describe: 'CSS letter-spacing property of labels'
       })
        .option('line-height', {
@@ -25762,20 +25694,20 @@ ${svg}
         describe: 'frame coordinates (xmin,ymin,xmax,ymax)',
         type: 'bbox'
       })
-      .option('offset', offsetOpt)
+      // .option('offset', offsetOpt)
       .option('width', {
-        describe: 'pixel width of output (default is 800)'
+        describe: 'width of output (default is 800px)'
       })
-      .option('height', {
-        describe: 'pixel height of output (may be a range)'
-      })
-      .option('pixels', {
-        describe: 'area of output in pixels (alternative to width and height)',
-        type: 'number'
-      })
-      .option('source', {
-        describe: 'name of layer to enclose'
-      })
+      // .option('height', {
+      //   describe: 'pixel height of output (may be a range)'
+      // })
+      // .option('pixels', {
+      //   describe: 'area of output in pixels (alternative to width and height)',
+      //   type: 'number'
+      // })
+      // .option('source', {
+      //   describe: 'name of layer to enclose'
+      // })
       .option('name', nameOpt);
 
     parser.command('fuzzy-join')
@@ -37774,6 +37706,79 @@ ${svg}
     return parsed[0];
   }
 
+  cmd.frame = function(catalog, source, opts) {
+    var size, bounds, tmp, dataset;
+    if (+opts.width > 0 === false && +opts.pixels > 0 === false) {
+      stop("Missing a width or area");
+    }
+    if (opts.width && opts.height) {
+      opts = utils.extend({}, opts);
+      // Height is a string containing either a number or a
+      //   comma-sep. pair of numbers (range); here we convert height to
+      //   an aspect-ratio parameter for the rectangle() function
+      opts.aspect_ratio = getAspectRatioArg(opts.width, opts.height);
+      // TODO: currently returns max,min aspect ratio, should return in min,max order
+      // (rectangle() function should handle max,min argument correctly now anyway)
+    }
+    tmp = cmd.rectangle(source, opts);
+    bounds = getDatasetBounds(tmp);
+    if (probablyDecimalDegreeBounds(bounds)) {
+      stop('Frames require projected, not geographical coordinates');
+    } else if (!getDatasetCRS(tmp)) {
+      message('Warning: missing projection data. Assuming coordinates are meters and k (scale factor) is 1');
+    }
+    size = getFrameSize(bounds, opts);
+    if (size[0] > 0 === false) {
+      stop('Missing a valid frame width');
+    }
+    if (size[1] > 0 === false) {
+      stop('Missing a valid frame height');
+    }
+    dataset = {info: {}, layers:[{
+      name: opts.name || 'frame',
+      data: new DataTable([{
+        width: size[0],
+        height: size[1],
+        bbox: bounds.toArray(),
+        type: 'frame'
+      }])
+    }]};
+    catalog.addDataset(dataset);
+  };
+
+
+  // Convert width and height args to aspect ratio arg for the rectangle() function
+  function getAspectRatioArg(widthArg, heightArg) {
+    // heightArg is a string containing either a number or a
+    // comma-sep. pair of numbers (range);
+    return heightArg.split(',').map(function(opt) {
+      var height = Number(opt),
+          width = Number(widthArg);
+      if (!opt) return '';
+      return width / height;
+    }).reverse().join(',');
+  }
+
+  // export function renderFrame(d) {
+  //   var lineWidth = 1,
+  //       // inset stroke by half of line width
+  //       off = lineWidth / 2,
+  //       obj = importPolygon([[[off, off], [off, d.height - off],
+  //         [d.width - off, d.height - off],
+  //         [d.width - off, off], [off, off]]]);
+  //   utils.extend(obj.properties, {
+  //       fill: 'none',
+  //       stroke: d.stroke || 'black',
+  //       'stroke-width': d['stroke-width'] || lineWidth
+  //   });
+  //   return [obj];
+  // }
+
+  var Frame = /*#__PURE__*/Object.freeze({
+    __proto__: null,
+    getAspectRatioArg: getAspectRatioArg
+  });
+
   cmd.filterIslands = function(lyr, dataset, optsArg) {
     var opts = utils.extend({sliver_control: 0}, optsArg); // no sliver control
     var arcs = dataset.arcs;
@@ -38540,6 +38545,13 @@ ${svg}
   // Create rectangles around one or more target layers
   //
   cmd.rectangle2 = function(target, opts) {
+    // if target layer is a rectangle and we're applying frame properties,
+    // turn the target into a frame instead of creating a new rectangle
+    if (target.layers.length == 1 && opts.width &&
+      layerIsRectangle(target.layers[0], target.dataset.arcs)) {
+      applyFrameProperties(target.layers[0], opts);
+      return;
+    }
     var datasets = target.layers.map(function(lyr) {
       var dataset = cmd.rectangle({layer: lyr, dataset: target.dataset}, opts);
       setOutputLayerName(dataset.layers[0], lyr, null, opts);
@@ -38569,15 +38581,20 @@ ${svg}
       properties: {},
       geometry: bboxToPolygon(bounds.toArray(), opts)
     };
-    if (opts.width > 0) {
-      feature.properties.width = opts.width;
-      feature.properties.type = 'frame';
-    }
     var dataset = importGeoJSON(feature, {});
+    applyFrameProperties(dataset.layers[0], opts);
     dataset.layers[0].name = opts.name || 'rectangle';
     setDatasetCrsInfo(dataset, crsInfo);
     return dataset;
   };
+
+  function applyFrameProperties(lyr, opts) {
+    if (!opts.width) return;
+    if (!lyr.data) initDataTable(lyr);
+    var d = lyr.data.getRecords()[0] || {};
+    d.width = parseSizeParam(opts.width);
+    d.type = 'frame';
+  }
 
   function applyRectangleOptions(bounds, crs, opts) {
     var isGeoBox = probablyDecimalDegreeBounds(bounds);
@@ -45207,7 +45224,7 @@ ${svg}
     });
   }
 
-  var version = "0.6.66";
+  var version = "0.6.67";
 
   // Parse command line args into commands and run them
   // Function takes an optional Node-style callback. A Promise is returned if no callback is given.
