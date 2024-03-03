@@ -1,6 +1,6 @@
 # COMMAND REFERENCE
 
-This documentation applies to version 0.6.66 of mapshaper's command line program. Run `mapshaper -v` to check your version. For an introduction to the command line tool, read [this page](https://github.com/mbloch/mapshaper/wiki/Introduction-to-the-Command-Line-Tool) first.
+This documentation applies to version 0.6.67 of mapshaper's command line program. Run `mapshaper -v` to check your version. For an introduction to the command line tool, read [this page](https://github.com/mbloch/mapshaper/wiki/Introduction-to-the-Command-Line-Tool) first.
 
 ## Command line syntax
 
@@ -1341,15 +1341,17 @@ Example: `hatches 45deg 2px red 2px grey`
   
 `font-size=`       Size of label text (default is 12)
   
-`font-family=`     CSS font family of labels (default is sans-serif)
+`font-family=`     CSS font-family of labels (default is sans-serif)
 
-`font-weight=`     CSS font weight property of labels (e.g. bold, 700)
+`font-weight=`     CSS font-weight property of labels (e.g. bold, 700)
 
-`font-style=`      CSS font style property of labels (e.g. italic)
+`font-style=`      CSS font-style property of labels (e.g. italic)
+
+`font-stretch=`      CSS font-stretch property of labels (e.g. condensed)
 
 `letter-spacing=`  CSS letter-spacing property of labels
  
-`line-height=`     Line spacing of multi-line labels (default is 1.1em). Lines are separated by newline characters in the label text.
+`line-height=`     Line spacing of multi-line labels (default is 1.1em). Lines are separated by newline characters or `<br>` tags in the label text.
 
 Common options: `target=`
 

@@ -1318,8 +1318,8 @@ export function getOptionParser() {
     })
     .option('offset', offsetOpt)
     .option('width', {
-      describe: 'set width of map in pixels, use rectangle as frame',
-      type: 'number'
+      describe: 'set width of map in pixels, use rectangle as frame'
+      // type: 'number' // use string, to allow units (e.g. in, px, pt)
     })
     .option('aspect-ratio', aspectRatioOpt)
     .option('source', {
@@ -1596,7 +1596,10 @@ export function getOptionParser() {
     .option('font-style', {
       describe: 'CSS font style property of labels (e.g. italic)'
     })
-     .option('letter-spacing', {
+    .option('font-stretch', {
+      describe: 'CSS font stretch property of labels (e.g. condensed)'
+    })
+    .option('letter-spacing', {
       describe: 'CSS letter-spacing property of labels'
     })
      .option('line-height', {
@@ -1888,20 +1891,20 @@ export function getOptionParser() {
       describe: 'frame coordinates (xmin,ymin,xmax,ymax)',
       type: 'bbox'
     })
-    .option('offset', offsetOpt)
+    // .option('offset', offsetOpt)
     .option('width', {
-      describe: 'pixel width of output (default is 800)'
+      describe: 'width of output (default is 800px)'
     })
-    .option('height', {
-      describe: 'pixel height of output (may be a range)'
-    })
-    .option('pixels', {
-      describe: 'area of output in pixels (alternative to width and height)',
-      type: 'number'
-    })
-    .option('source', {
-      describe: 'name of layer to enclose'
-    })
+    // .option('height', {
+    //   describe: 'pixel height of output (may be a range)'
+    // })
+    // .option('pixels', {
+    //   describe: 'area of output in pixels (alternative to width and height)',
+    //   type: 'number'
+    // })
+    // .option('source', {
+    //   describe: 'name of layer to enclose'
+    // })
     .option('name', nameOpt);
 
   parser.command('fuzzy-join')

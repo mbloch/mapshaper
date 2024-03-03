@@ -23,10 +23,11 @@ var TO_METERS = {
 
 // str: display size in px, pt or in
 // using: 72pt per inch, 1pt per pixel.
-export function parseSizeParam(str) {
-  var num = parseFloat(str),
-      units = /px$/.test(str) && 'px' || /pt$/.test(str) && 'pt' ||
-        /in$/.test(str) && 'in' || !isNaN(+str) && 'px' || null;
+export function parseSizeParam(p) {
+  var str = String(p),
+      num = parseFloat(str),
+      units = /px|pix/.test(str) && 'px' || /pt|point/.test(str) && 'pt' ||
+        /in/.test(str) && 'in' || !isNaN(+str) && 'px' || null;
   if (isNaN(num) || !units) {
     stop('Invalid size:', str);
   }
