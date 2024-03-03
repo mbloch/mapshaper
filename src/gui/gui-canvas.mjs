@@ -373,12 +373,12 @@ export function DisplayCanvas() {
       // (style.opacity < 1 ? '~' + style.opacity : '') +
       (style.fillPattern ? '~' + style.fillPattern : '');
   }
-
   return _self;
 }
 
 function getScaledLineScale(ext) {
-  return ext.getSymbolScale() || getLineScale(ext);
+  var previewScale = ext.getSymbolScale();
+  return previewScale == 1 ? getLineScale(ext) : previewScale;
 }
 
 // Vary line width according to zoom ratio.
@@ -556,7 +556,8 @@ function getPathStart(ext, lineScale) {
       if (pixRatio > 1) {
         // bump up thin lines on retina, but not to more than 1px
         // (tests on Chrome showed much faster rendering of 1px lines)
-        strokeWidth = strokeWidth < 1 ? 1 : strokeWidth * pixRatio;
+        // strokeWidth = strokeWidth < 1 ? 1 : strokeWidth * pixRatio;
+        strokeWidth = strokeWidth * pixRatio;
       }
       ctx.lineCap = style.lineCap || 'round';
       ctx.lineJoin = style.lineJoin || 'round';

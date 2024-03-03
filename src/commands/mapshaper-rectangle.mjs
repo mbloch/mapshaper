@@ -1,5 +1,5 @@
 import cmd from '../mapshaper-cmd';
-import { convertFourSides } from '../geom/mapshaper-units';
+import { convertFourSides, parseSizeParam } from '../geom/mapshaper-units';
 import { setDatasetCrsInfo, getDatasetCrsInfo, getCrsInfo } from '../crs/mapshaper-projections';
 import {
   getLayerBounds,
@@ -58,7 +58,7 @@ cmd.rectangles = function(targetLyr, targetDataset, opts) {
 cmd.rectangle2 = function(target, opts) {
   // if target layer is a rectangle and we're applying frame properties,
   // turn the target into a frame instead of creating a new rectangle
-  if (target.layers.length == 1 && opts.width > 0 &&
+  if (target.layers.length == 1 && opts.width &&
     layerIsRectangle(target.layers[0], target.dataset.arcs)) {
     applyFrameProperties(target.layers[0], opts);
     return;
@@ -100,10 +100,10 @@ cmd.rectangle = function(source, opts) {
 };
 
 function applyFrameProperties(lyr, opts) {
-  if (opts.width > 0 === false) return;
+  if (!opts.width) return;
   if (!lyr.data) initDataTable(lyr);
   var d = lyr.data.getRecords()[0] || {};
-  d.width = opts.width;
+  d.width = parseSizeParam(opts.width);
   d.type = 'frame';
 }
 

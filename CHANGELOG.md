@@ -1,3 +1,9 @@
+v0.6.67
+* -rectangle command with width=<size> option creates a "frame" layer to use as the extent of an SVG map by setting the size of the SVG viewport (an alternative to using -o fit-extent=<size> option).
+* [web] Map symbols scale as the map zooms when a frame layer is visible.
+* [web] Draggable box tool resizes symmetrically with the shift key pressed.
+* [web] Allow selected layer to be temporarily hidden (via layers menu).
+
 v0.6.66
 * [web] Added ability to edit attribute data of multiple selected features ("select features" tool).
 * [web] Added interactive tool for adding points to point-type layer by clicking on the map.

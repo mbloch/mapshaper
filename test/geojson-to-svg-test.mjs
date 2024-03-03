@@ -206,6 +206,7 @@ describe('geojson-to-svg.js', function () {
           'foo': 'bar', // should not be in output
           'label-text': 'TBD',
           'font-style': 'italic',
+          'font-stretch': 'condensed',
           'font-weight': 'bold',
           'font-family': 'Gill Sans, sans-serif', // TODO: handle quotes
           dx: '10px',
@@ -223,8 +224,12 @@ describe('geojson-to-svg.js', function () {
           value: 'TBD',
           // properties: {x: 0, y: 1, dx: '10px', dy: '-1em'}
           properties: {
-            transform: 'translate(0 1)', x: '10px', y: '-1em',
-            'font-family': 'Gill Sans, sans-serif', 'font-style': 'italic', 'font-weight': 'bold'
+            transform: 'translate(0 1)',
+            x: '10px', y: '-1em',
+            'font-family': 'Gill Sans, sans-serif',
+            'font-style': 'italic',
+            'font-weight': 'bold',
+            'font-stretch': 'condensed'
           }
         }]
       }];

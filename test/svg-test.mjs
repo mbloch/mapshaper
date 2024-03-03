@@ -121,6 +121,41 @@ describe('mapshaper-svg.js', function () {
     });
   })
 
+  it ('-frame width=<size> command sets viewport, accepts 4in as width', async function() {
+    var box = {
+      type: 'Polygon',
+      coordinates: [[[0, 0], [0, 1], [1, 1], [1, 0], [0, 0]]]
+    };
+    var line = {
+      type: 'Feature',
+      properties: null,
+      geometry: {
+        type: 'LineString',
+        coordinates: [[-10, -5], [5, 10]]
+      }
+    };
+    var cmd = '-i line.json -i box.json -frame width=4in -target box,line -o map.svg';
+    var out = await api.applyCommands(cmd, {'line.json': line, 'box.json': box});
+    var svg = out['map.svg'];
+    assert(svg.includes('<g id="box">\n<path d="M 0 288 0 0 288 0 288 288 0 288 Z"/>\n</g>'))
+    assert(svg.includes('width="288" height="288" viewBox="0 0 288 288"'));
+  })
+
+  it ('-rectangle with width=<size> property creates viewport, accepts 2inches as width', async function() {
+    var line = {
+      type: 'Feature',
+      properties: null,
+      geometry: {
+        type: 'LineString',
+        coordinates: [[-10, -5], [5, 10]]
+      }
+    };
+    var cmd = '-i line.json -rectangle bbox=0,0,1,2 width=2inches -target rectangle,line -o map.svg';
+    var out = await api.applyCommands(cmd, {'line.json': line});
+    var svg = out['map.svg'];
+    assert(svg.includes('width="144" height="288" viewBox="0 0 144 288"'));
+  })
+
   it ('-o svg-bbox option', async function() {
     var geo = {
       type: 'Feature',

@@ -18,6 +18,7 @@ var stylePropertyTypes = {
   'font-family': null,
   'font-size': null,
   'font-style': null,
+  'font-stretch': null,
   'font-weight': null,
   'label-text': null,  // leaving this null
   'letter-spacing': 'measure',
@@ -67,7 +68,7 @@ var propertiesBySymbolType = {
   polyline: utils.arrayToIndex(commonProperties.concat('stroke-linecap', 'stroke-linejoin', 'stroke-miterlimit')),
   point: utils.arrayToIndex(commonProperties.concat('fill', 'r')),
   label: utils.arrayToIndex(commonProperties.concat(
-    'fill,font-family,font-size,text-anchor,font-weight,font-style,letter-spacing,dominant-baseline'.split(',')))
+    'fill,font-family,font-size,text-anchor,font-weight,font-style,font-stretch,letter-spacing,dominant-baseline'.split(',')))
 };
 
 // symType: point, polygon, polyline, label
