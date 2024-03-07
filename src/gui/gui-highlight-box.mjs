@@ -1,7 +1,7 @@
 import { El } from './gui-el';
 import { EventDispatcher } from './gui-events';
 import { getBBoxCoords } from './gui-display-utils';
-import { internal } from './gui-core';
+import { internal, geom } from './gui-core';
 
 export function HighlightBox(gui, optsArg) {
   var el = El('div').addClass('zoom-box').appendTo('body'),
@@ -61,37 +61,21 @@ export function HighlightBox(gui, optsArg) {
       });
     });
 
-    document.addEventListener('mousemove', function(e) {
+    gui.map.getMouse().on('mousemove', function(e) {
       if (!_on || !activeHandle || !prevXY || !boxCoords || !_visible) return;
       var xy = {x: e.pageX, y: e.pageY};
-      var scale = gui.map.getExtent().getPixelSize();
-      var dx = (xy.x - prevXY.x) * scale;
-      var dy = -(xy.y - prevXY.y) * scale;
-      var shifting = activeHandle.col == 'center' && activeHandle.row == 'center';
-      var centered = gui.keyboard.shiftIsPressed() && !shifting;
-      if (activeHandle.col == 'left' || shifting) {
-        boxCoords[0] += dx;
-        if (centered) boxCoords[2] -= dx;
+      var scaling = gui.keyboard.shiftIsPressed() && activeHandle.type == 'corner';
+      if (scaling) {
+        rescaleBox(e.x, e.y);
+      } else {
+        resizeBox(xy.x - prevXY.x, xy.y - prevXY.y, activeHandle);
       }
-      if (activeHandle.col == 'right' || shifting) {
-        boxCoords[2] += dx;
-        if (centered) boxCoords[0] -= dx;
-      }
-      if (activeHandle.row == 'top' || shifting) {
-        boxCoords[3] += dy;
-        if (centered) boxCoords[1] -= dy;
-      }
-      if (activeHandle.row == 'bottom' || shifting) {
-        boxCoords[1] += dy;
-        if (centered) boxCoords[3] -= dy;
-      }
-
       prevXY = xy;
       redraw();
       box.dispatchEvent('handle_drag');
     });
 
-    document.addEventListener('mouseup', function() {
+    gui.map.getMouse().on('mouseup', function(e) {
       if (activeHandle && _on) {
         activeHandle.el.css('background', null);
         activeHandle = null;
@@ -102,6 +86,43 @@ export function HighlightBox(gui, optsArg) {
         redraw();
       }
     });
+  }
+
+  function resizeBox(dx, dy, activeHandle) {
+    var shifting = activeHandle.type == 'center';
+    var centered = gui.keyboard.shiftIsPressed() && activeHandle.type == 'edge';
+    var scale = gui.map.getExtent().getPixelSize();
+    dx *= scale;
+    dy *= -scale;
+
+    if (activeHandle.col == 'left' || shifting) {
+      boxCoords[0] += dx;
+      if (centered) boxCoords[2] -= dx;
+    }
+    if (activeHandle.col == 'right' || shifting) {
+      boxCoords[2] += dx;
+      if (centered) boxCoords[0] -= dx;
+    }
+    if (activeHandle.row == 'top' || shifting) {
+      boxCoords[3] += dy;
+      if (centered) boxCoords[1] -= dy;
+    }
+    if (activeHandle.row == 'bottom' || shifting) {
+      boxCoords[1] += dy;
+      if (centered) boxCoords[3] -= dy;
+    }
+  }
+
+  function rescaleBox(x, y) {
+    var p = gui.map.getExtent().translatePixelCoords(x, y);
+    var cx = (boxCoords[0] + boxCoords[2])/2;
+    var cy = (boxCoords[1] + boxCoords[3])/2;
+    var dist2 = geom.distance2D(cx, cy, p[0], p[1]);
+    var dist = geom.distance2D(cx, cy, boxCoords[0], boxCoords[1]);
+    var k = dist2 / dist;
+    var dx = (boxCoords[2] - cx) * k;
+    var dy = (boxCoords[3] - cy) * k;
+    boxCoords = [cx - dx, cy - dy, cx + dx, cy + dy];
   }
 
   box.setDataCoords = function(bbox) {
@@ -199,8 +220,10 @@ function initHandles(el) {
     // if (i == 4) continue; // skip middle handle
     var c = Math.floor(i / 3);
     var r = i % 3;
+    var type = i == 4 && 'center' || c != 1 && r != 1 && 'corner' || 'edge';
     handles.push({
       el: El('div').addClass('handle').appendTo(el),
+      type: type,
       col: c == 0 && 'left' || c == 1 && 'center' || 'right',
       row: r == 0 && 'top' || r == 1 && 'center' || 'bottom'
     });

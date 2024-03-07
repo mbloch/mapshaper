@@ -181,6 +181,7 @@ export function MouseArea(element, pos) {
   function onMouseUp(e) {
     var evt = procMouseEvent(e),
         elapsed, dx, dy;
+    _self.dispatchEvent('mouseup', evt);
     if (_dragging) {
       stopDragging(evt);
     }
@@ -208,6 +209,7 @@ export function MouseArea(element, pos) {
 
   function onMouseMove(e) {
     var evt = procMouseEvent(e);
+    _self.dispatchEvent('mousemove', evt);
     if (!_dragging && _downEvt && _downEvt.hover) {
       _dragging = true;
       _self.dispatchEvent('dragstart', evt);
