@@ -2018,7 +2018,11 @@ export function getOptionParser() {
       describe: 'e.g. bottom-right (default is top-left)'
     })
     .option('label-position', {
-      describe: 'top or bottom'
+      describe: 'top, bottom, top-center (style a), etc'
+    })
+    .option('dual-units', {
+      // describe: 'display both metric and imperial units',
+      type: 'flag'
     })
     .option('margin', {
       describe: 'offset in pixels from edge of map',

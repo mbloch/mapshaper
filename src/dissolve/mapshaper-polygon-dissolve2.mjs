@@ -60,9 +60,10 @@ function groupPolygons2(lyr, getGroupId) {
 
 function getGapRemovalMessage(removed, retained, areaLabel) {
   var msg;
+  var tot = removed + retained;
   if (removed > 0 === false) return '';
-  return utils.format('Removed %,d / %,d sliver%s using %s',
-      removed, removed + retained, utils.pluralSuffix(removed), areaLabel);
+  return utils.format('Removed %,d of %,d sliver%s using %s',
+      removed, tot, utils.pluralSuffix(tot), areaLabel);
 }
 
 export function dissolvePolygonGroups2(groups, lyr, dataset, opts) {
