@@ -72,7 +72,7 @@ export function MshpMap(gui) {
     if (lyr == _intersectionLyr) return; // no change
     if (lyr) {
       _intersectionLyr = getDisplayLayer(lyr, dataset, getDisplayOptions());
-      _intersectionLyr.style = MapStyle.getIntersectionStyle(_intersectionLyr.layer);
+      _intersectionLyr.style = MapStyle.getIntersectionStyle(_intersectionLyr.layer, getGlobalStyleOptions());
     } else {
       _intersectionLyr = null;
     }
@@ -108,6 +108,7 @@ export function MshpMap(gui) {
   };
 
   this.getExtent = function() {return _ext;};
+  this.getMouse = function() {return _mouse;};
   this.isActiveLayer = isActiveLayer;
   this.isVisibleLayer = isVisibleLayer;
   this.getActiveLayer = function() { return _activeLyr; };
@@ -144,6 +145,15 @@ export function MshpMap(gui) {
     updateFullBounds();
   };
 
+  function getGlobalStyleOptions() {
+    var mode = gui.state.interaction_mode;
+    return {
+      darkMode: !!gui.state.dark_basemap,
+      outlineMode: mode == 'vertices',
+      interactionMode: mode
+    };
+  }
+
   // Refresh map display in response to data changes, layer selection, etc.
   function onUpdate(e) {
     var prevLyr = _activeLyr || null;
@@ -176,7 +186,6 @@ export function MshpMap(gui) {
     }
 
     _activeLyr = getDisplayLayer(e.layer, e.dataset, getDisplayOptions());
-    _activeLyr.style = MapStyle.getActiveStyle(_activeLyr.layer, gui.state.dark_basemap);
     _activeLyr.active = true;
 
     if (popupCanStayOpen(e.flags)) {
@@ -234,7 +243,7 @@ export function MshpMap(gui) {
   }
 
   function updateOverlayLayer(e) {
-    var style = MapStyle.getOverlayStyle(_activeLyr.layer, e);
+    var style = MapStyle.getOverlayStyle(_activeLyr.layer, e, getGlobalStyleOptions());
     if (style) {
       _overlayLyr = utils.defaults({
         layer: filterLayerByIds(_activeLyr.layer, style.ids),
@@ -381,9 +390,10 @@ export function MshpMap(gui) {
   function updateLayerStyles(layers) {
     layers.forEach(function(mapLayer, i) {
       if (mapLayer.active) {
-        // assume: style is already assigned
+        // regenerating active style everytime, to support style change when
+        // switching between outline and preview modes.
+        mapLayer.style = MapStyle.getActiveLayerStyle(mapLayer.layer, getGlobalStyleOptions());
         if (mapLayer.style.type != 'styled' && layers.length > 1 && mapLayer.style.strokeColors) {
-        // if (false) { // always show ghosted arcs
           // kludge to hide ghosted layers when reference layers are present
           // TODO: consider never showing ghosted layers (which appear after
           // commands like dissolve and filter).
@@ -395,7 +405,7 @@ export function MshpMap(gui) {
         if (mapLayer.layer == _activeLyr.layer) {
           console.error("Error: shared map layer");
         }
-        mapLayer.style = MapStyle.getReferenceStyle(mapLayer.layer);
+        mapLayer.style = MapStyle.getReferenceLayerStyle(mapLayer.layer, getGlobalStyleOptions());
       }
     });
   }
