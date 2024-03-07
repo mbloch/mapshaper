@@ -199,19 +199,13 @@ export function MapExtent(_position) {
   }
 
   function calcBounds(cx, cy, scale) {
-    var full, bounds, w, h;
-    if (_frame) {
-      full = fillOutFrameBounds(_frame);
-    } else {
-      full = fillOut(_fullBounds);
-    }
+    var full = fillOut(_fullBounds);
     if (_strictBounds) {
       full = fitIn(full, _strictBounds);
     }
-    w = full.width() / scale;
-    h = full.height() / scale;
-    bounds = new Bounds(cx - w/2, cy - h/2, cx + w/2, cy + h/2);
-    return bounds;
+    var w = full.width() / scale;
+    var h = full.height() / scale;
+    return new Bounds(cx - w/2, cy - h/2, cx + w/2, cy + h/2);
   }
 
   // Calculate viewport bounds from frame data

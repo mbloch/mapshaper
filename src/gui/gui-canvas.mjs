@@ -157,7 +157,7 @@ export function DisplayCanvas() {
     var iter = new internal.ShapeIter(arcs);
     var t = getScaledTransform(_ext);
     var bounds = _ext.getBounds();
-    var radius = (style.strokeWidth > 2 ? style.strokeWidth * 0.9 : 2) * GUI.getPixelRatio() * getScaledLineScale(_ext);
+    var radius = (style.strokeWidth > 2 ? style.strokeWidth * 0.9 : 2) * GUI.getPixelRatio() * getScaledLineScale(_ext, style);
     var color = style.strokeColor || 'black';
 
     var i, j, p;
@@ -191,7 +191,7 @@ export function DisplayCanvas() {
   _self.drawStyledPaths = function(shapes, arcs, style, filter) {
     var styleIndex = {};
     var batchSize = 1500;
-    var startPath = getPathStart(_ext, getScaledLineScale(_ext));
+    var startPath = getPathStart(_ext, getScaledLineScale(_ext, style));
     var draw = getShapePencil(arcs, _ext);
     var key, item, shp;
     var styler = style.styler || null;
@@ -367,7 +367,7 @@ export function DisplayCanvas() {
     return (style.strokeWidth > 0 ? style.strokeColor + '~' + style.strokeWidth +
       '~' + (style.lineDash ? style.lineDash + '~' : '') : '') +
       (style.fillColor || '') +
-      // styles with <1 opacity are no longer batch-rendered
+      // styles with <1 opacity are no longer batch-rendered, not relevent to key
       // (style.strokeOpacity >= 0 ? style.strokeOpacity + '~' : '') : '') +
       // (style.fillOpacity ? '~' + style.fillOpacity : '') +
       // (style.opacity < 1 ? '~' + style.opacity : '') +
@@ -376,9 +376,17 @@ export function DisplayCanvas() {
   return _self;
 }
 
-function getScaledLineScale(ext) {
+function getScaledLineScale(ext, style) {
   var previewScale = ext.getSymbolScale();
-  return previewScale == 1 ? getLineScale(ext) : previewScale;
+  var k = 1;
+  if (previewScale == 1 || style.type != 'styled' || style.baseStyle && style.baseStyle.type != 'styled') {
+    return getLineScale(ext);
+  }
+  if (style.baseStyle?.type == 'styled') {
+    // bump up overlay line width in preview mode
+    k = previewScale < 2 && 2 || previewScale < 5 && 1.5 || previewScale < 10 && 1.25 || 1.1;
+  }
+  return previewScale * k;
 }
 
 // Vary line width according to zoom ratio.
@@ -548,9 +556,6 @@ function getPathStart(ext, lineScale) {
   return function(ctx, style) {
     var strokeWidth;
     ctx.beginPath();
-    // if (style.opacity >= 0) {
-    //   ctx.globalAlpha = style.opacity;
-    // }
     if (style.strokeWidth > 0) {
       strokeWidth = style.strokeWidth;
       if (pixRatio > 1) {

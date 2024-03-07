@@ -100,17 +100,100 @@ var darkStroke = "#334",
         dotColor: violet,
         dotSize: 3
       }, polyline:  {
-        strokeColor: black, // violet,
+        strokeColor: violet, // black, // violet,
         strokeWidth: 3
       }
     };
 
-export function getIntersectionStyle(lyr) {
+export function getIntersectionStyle(lyr, opts) {
   return getDefaultStyle(lyr, intersectionStyle);
 }
 
+// Style for unselected layers with visibility turned on
+// (styled layers have)
+export function getReferenceLayerStyle(lyr, opts) {
+  var style;
+  if (layerHasCanvasDisplayStyle(lyr) && !opts.outlineMode) {
+    style = getCanvasDisplayStyle(lyr);
+  } else if (internal.layerHasLabels(lyr) && !opts.outlineMode) {
+    style = {dotSize: 0}; // no reference dots if labels are visible
+  } else {
+    style = getDefaultStyle(lyr, referenceStyle);
+  }
+  return style;
+}
+
+export function getActiveLayerStyle(lyr, opts) {
+  var style;
+  if (layerHasCanvasDisplayStyle(lyr) && !opts.outlineMode) {
+    style = getCanvasDisplayStyle(lyr);
+  } else if (internal.layerHasLabels(lyr) && !opts.outlineMode) {
+    style = getDefaultStyle(lyr, activeStyleForLabels);
+  } else if (opts.darkMode) {
+    style = getDefaultStyle(lyr, activeStyleDarkMode);
+  } else {
+    style = getDefaultStyle(lyr, activeStyle);
+  }
+  return style;
+}
+
+// Returns a display style for the overlay layer.
+// The overlay layer renders several kinds of feature, each of which is displayed
+// with a different style.
+//
+// * hover shapes
+// * selected shapes
+// * pinned shapes
+//
+export function getOverlayStyle(baseLyr, o, opts) {
+  if (opts.interactionMode == 'vertices') {
+    return getVertexStyle(baseLyr, o);
+  }
+  var geomType = baseLyr.geometry_type;
+  var topId = o.id; // pinned id (if pinned) or hover id
+  var topIdx = -1;
+  var styler = function(style, i) {
+    var defaultStyle = i === topIdx ? topStyle : outlineStyle;
+    if (baseStyle.styler) {
+      Object.assign(style, baseStyle);
+      baseStyle.styler(style, i);
+      style.strokeColor = defaultStyle.strokeColor;
+      style.fillColor = defaultStyle.fillColor;
+    } else {
+      Object.assign(style, defaultStyle);
+    }
+  };
+  // var baseStyle = getDefaultStyle(baseLyr, selectionStyles[geomType]);
+  var baseStyle = getActiveLayerStyle(baseLyr, opts);
+  var outlineStyle = getDefaultStyle(baseLyr, selectionStyles[geomType]);
+  var topStyle;
+  var ids = o.ids.filter(function(i) {
+    return i != o.id; // move selected id to the end
+  });
+  if (o.id > -1) { // pinned or hover style
+    topStyle = getSelectedFeatureStyle(baseLyr, o, opts);
+    topIdx = ids.length;
+    ids.push(o.id); // put the pinned/hover feature last in the render order
+  }
+  var style = {
+    baseStyle: baseStyle,
+    styler,
+    ids,
+    overlay: true
+  };
+
+  if (layerHasCanvasDisplayStyle(baseLyr) && !opts.outlineMode) {
+    if (geomType == 'point') {
+      style.styler = getOverlayPointStyler(getCanvasDisplayStyle(baseLyr).styler, styler);
+    }
+    style.type = 'styled';
+  }
+  return ids.length > 0 ? style : null;
+}
+
+
 function getDefaultStyle(lyr, baseStyle) {
-  var style = utils.extend({}, baseStyle);
+  var style = Object.assign({}, baseStyle);
   // reduce the dot size of large point layers
   if (lyr.geometry_type == 'point' && style.dotSize > 0) {
     style.dotSize *= getDotScale(lyr);
@@ -119,10 +202,9 @@ function getDefaultStyle(lyr, baseStyle) {
 }
 
 function getDotScale(lyr) {
-  var topTier = 50000;
-  var n = countPoints(lyr.shapes, topTier + 2); // short-circuit point counting above top threshold
-  var k = n < 200 && 4 || n < 2500 && 3 || n < 10000 && 2 || 1;
-  // var k = n >= topTier && 0.25 || n > 10000 && 0.45 || n > 2500 && 0.65 || n > 200 && 0.85 || 1;
+  var topTier = 10000;
+  var n = countPoints(lyr.shapes, topTier); // short-circuit point counting above top threshold
+  var k = n < 200 && 4 || n < 2500 && 3 || n < topTier && 2 || 1;
   return k;
 }
 
@@ -130,40 +212,13 @@ function countPoints(shapes, max) {
   var count = 0;
   var i, n, shp;
   max = max || Infinity;
-  for (i=0, n=shapes.length; i<n && count<=max; i++) {
+  for (i=0, n=shapes.length; i<n && count<max; i++) {
     shp = shapes[i];
     count += shp ? shp.length : 0;
   }
   return count;
 }
 
-// Style for unselected layers with visibility turned on
-// (styled layers have)
-export function getReferenceStyle(lyr) {
-  var style;
-  if (layerHasCanvasDisplayStyle(lyr)) {
-    style = getCanvasDisplayStyle(lyr);
-  } else if (internal.layerHasLabels(lyr)) {
-    style = {dotSize: 0}; // no reference dots if labels are visible
-  } else {
-    style = getDefaultStyle(lyr, referenceStyle);
-  }
-  return style;
-}
-
-export function getActiveStyle(lyr, darkMode) {
-  var style;
-  if (layerHasCanvasDisplayStyle(lyr)) {
-    style = getCanvasDisplayStyle(lyr);
-  } else if (internal.layerHasLabels(lyr)) {
-    style = getDefaultStyle(lyr, activeStyleForLabels);
-  } else if (darkMode) {
-    style = getDefaultStyle(lyr, activeStyleDarkMode);
-  } else {
-    style = getDefaultStyle(lyr, activeStyle);
-  }
-  return style;
-}
 
 // style for vertex edit mode
 function getVertexStyle(lyr, o) {
@@ -180,55 +235,13 @@ function getVertexStyle(lyr, o) {
   };
 }
 
-// Returns a display style for the overlay layer.
-// The overlay layer renders several kinds of feature, each of which is displayed
-// with a different style.
-//
-// * hover shapes
-// * selected shapes
-// * pinned shapes
-//
-export function getOverlayStyle(lyr, o) {
-  if (o.mode == 'vertices') {
-    return getVertexStyle(lyr, o);
-  }
-  var geomType = lyr.geometry_type;
-  var topId = o.id; // pinned id (if pinned) or hover id
-  var topIdx = -1;
-  var styler = function(style, i) {
-    utils.extend(style, i === topIdx ? topStyle: baseStyle);
-  };
-  var baseStyle = getDefaultStyle(lyr, selectionStyles[geomType]);
-  var topStyle;
-  var ids = o.ids.filter(function(i) {
-    return i != o.id; // move selected id to the end
-  });
-  if (o.id > -1) { // pinned or hover style
-    topStyle = getSelectedFeatureStyle(lyr, o);
-    topIdx = ids.length;
-    ids.push(o.id); // put the pinned/hover feature last in the render order
-  }
-  var style = {
-    styler: styler,
-    ids: ids,
-    overlay: true
-  };
 
-  if (layerHasCanvasDisplayStyle(lyr)) {
-    if (geomType == 'point') {
-      style.styler = getOverlayPointStyler(getCanvasDisplayStyle(lyr).styler, styler);
-    }
-    style.type = 'styled';
-  }
-  return ids.length > 0 ? style : null;
-}
-
-function getSelectedFeatureStyle(lyr, o) {
+function getSelectedFeatureStyle(lyr, o, opts) {
   var isPinned = o.pinned;
   var inSelection = o.ids.indexOf(o.id) > -1;
   var geomType = lyr.geometry_type;
   var style;
-  if (isPinned && o.mode == 'rectangles') {
+  if (isPinned && opts.interactionMode == 'rectangles') {
     // kludge for rectangle editing mode
     style = selectionStyles[geomType];
   } else if (isPinned) {
