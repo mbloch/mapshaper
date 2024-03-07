@@ -72,6 +72,9 @@ export function initFeatureProxy(lyr, arcs, optsArg) {
       bounds: function() {
         return shapeBounds().toArray();
       },
+      bbox: function() {
+        return shapeBounds().toArray();
+      },
       height: function() {
         return shapeBounds().height();
       },
