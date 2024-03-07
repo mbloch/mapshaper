@@ -1,3 +1,7 @@
+v0.6.68
+* [scalebar] giving a pair of distances creates a dual-unit scale bar (style b only).
+* [web] minor bug fixes and improvements.
+
 v0.6.67
 * -rectangle command with width=<size> option creates a "frame" layer to use as the extent of an SVG map by setting the size of the SVG viewport (an alternative to using -o fit-extent=<size> option).
 * [web] Map symbols scale as the map zooms when a frame layer is visible.

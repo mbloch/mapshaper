@@ -342,12 +342,12 @@ describe('mapshaper-each.js', function () {
       assert.deepEqual(lyr.data.getRecords(), [{parts: 2}, {parts: 0}]);
     })
 
-    it('point this.bounds this.height this.width', function() {
+    it('point this.bbox this.height this.width', function() {
       var lyr = {
         geometry_type: 'point',
         shapes: [[[0, 2], [0, -2]], null]
       };
-      evaluateEachFeature(lyr, nullArcs, "bbox = this.bounds, h = this.height, w = this.width");
+      evaluateEachFeature(lyr, nullArcs, "bbox = this.bbox, h = this.height, w = this.width");
       assert.deepStrictEqual(lyr.data.getRecords(), [{bbox: [0,-2,0,2], h: 4, w: 0}, {bbox: [], h: 0, w: 0}]);
 
     });

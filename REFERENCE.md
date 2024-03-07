@@ -615,7 +615,7 @@ Polyline layers
 Polygon, polyline and point layers
 - `this.partCount` 1 for single-part features, >1 for multi-part features, 0 for null features
 - `this.isNull` True if feature has null geometry
-- `this.bounds` Bounding box as array [xmin, ymin, xmax, ymax]
+- `this.bbox` Bounding box as array [xmin, ymin, xmax, ymax]
 - `this.width` Width of bounding box
 - `this.height` Height of bounding box
 
@@ -1142,7 +1142,7 @@ Add a scale bar to an SVG map. The command creates a data-only layer containing 
 
 The length of the scale bar reflects the scale in the center of the map's rectangular frame.
 
-`<label>` or `label=` Optional label giving the size and units of the scalebar, e.g. `"25 k.m."`. If only units are given, a length will be assigned. If the `label` property is missing, scale bar properties will be auto-generated.
+`<label>` or `label=` Optional label giving the size and units of the scalebar, e.g. `"25 k.m."`. If only units are given, a length will be assigned. If the `label` property is missing, scale bar properties will be auto-generated. If two lengths are given (e.g. `1000 km,500 miles`), a dual-unit bar will be generated, if the scale bar style supports it.
 
 `style=` Scalebar style, `a` or `b`. Style `b` has tic marks.
 
