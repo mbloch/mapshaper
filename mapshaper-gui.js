@@ -7820,6 +7820,7 @@
     function onMouseUp(e) {
       var evt = procMouseEvent(e),
           elapsed, dx, dy;
+      _self.dispatchEvent('mouseup', evt);
       if (_dragging) {
         stopDragging(evt);
       }
@@ -7847,6 +7848,7 @@
 
     function onMouseMove(e) {
       var evt = procMouseEvent(e);
+      _self.dispatchEvent('mousemove', evt);
       if (!_dragging && _downEvt && _downEvt.hover) {
         _dragging = true;
         _self.dispatchEvent('dragstart', evt);
@@ -7969,37 +7971,21 @@
         });
       });
 
-      document.addEventListener('mousemove', function(e) {
+      gui.map.getMouse().on('mousemove', function(e) {
         if (!_on || !activeHandle || !prevXY || !boxCoords || !_visible) return;
         var xy = {x: e.pageX, y: e.pageY};
-        var scale = gui.map.getExtent().getPixelSize();
-        var dx = (xy.x - prevXY.x) * scale;
-        var dy = -(xy.y - prevXY.y) * scale;
-        var shifting = activeHandle.col == 'center' && activeHandle.row == 'center';
-        var centered = gui.keyboard.shiftIsPressed() && !shifting;
-        if (activeHandle.col == 'left' || shifting) {
-          boxCoords[0] += dx;
-          if (centered) boxCoords[2] -= dx;
+        var scaling = gui.keyboard.shiftIsPressed() && activeHandle.type == 'corner';
+        if (scaling) {
+          rescaleBox(e.x, e.y);
+        } else {
+          resizeBox(xy.x - prevXY.x, xy.y - prevXY.y, activeHandle);
         }
-        if (activeHandle.col == 'right' || shifting) {
-          boxCoords[2] += dx;
-          if (centered) boxCoords[0] -= dx;
-        }
-        if (activeHandle.row == 'top' || shifting) {
-          boxCoords[3] += dy;
-          if (centered) boxCoords[1] -= dy;
-        }
-        if (activeHandle.row == 'bottom' || shifting) {
-          boxCoords[1] += dy;
-          if (centered) boxCoords[3] -= dy;
-        }
-
         prevXY = xy;
         redraw();
         box.dispatchEvent('handle_drag');
       });
 
-      document.addEventListener('mouseup', function() {
+      gui.map.getMouse().on('mouseup', function(e) {
         if (activeHandle && _on) {
           activeHandle.el.css('background', null);
           activeHandle = null;
@@ -8010,6 +7996,43 @@
           redraw();
         }
       });
+    }
+
+    function resizeBox(dx, dy, activeHandle) {
+      var shifting = activeHandle.type == 'center';
+      var centered = gui.keyboard.shiftIsPressed() && activeHandle.type == 'edge';
+      var scale = gui.map.getExtent().getPixelSize();
+      dx *= scale;
+      dy *= -scale;
+
+      if (activeHandle.col == 'left' || shifting) {
+        boxCoords[0] += dx;
+        if (centered) boxCoords[2] -= dx;
+      }
+      if (activeHandle.col == 'right' || shifting) {
+        boxCoords[2] += dx;
+        if (centered) boxCoords[0] -= dx;
+      }
+      if (activeHandle.row == 'top' || shifting) {
+        boxCoords[3] += dy;
+        if (centered) boxCoords[1] -= dy;
+      }
+      if (activeHandle.row == 'bottom' || shifting) {
+        boxCoords[1] += dy;
+        if (centered) boxCoords[3] -= dy;
+      }
+    }
+
+    function rescaleBox(x, y) {
+      var p = gui.map.getExtent().translatePixelCoords(x, y);
+      var cx = (boxCoords[0] + boxCoords[2])/2;
+      var cy = (boxCoords[1] + boxCoords[3])/2;
+      var dist2 = geom.distance2D(cx, cy, p[0], p[1]);
+      var dist = geom.distance2D(cx, cy, boxCoords[0], boxCoords[1]);
+      var k = dist2 / dist;
+      var dx = (boxCoords[2] - cx) * k;
+      var dy = (boxCoords[3] - cy) * k;
+      boxCoords = [cx - dx, cy - dy, cx + dx, cy + dy];
     }
 
     box.setDataCoords = function(bbox) {
@@ -8107,8 +8130,10 @@
       // if (i == 4) continue; // skip middle handle
       var c = Math.floor(i / 3);
       var r = i % 3;
+      var type = i == 4 && 'center' || c != 1 && r != 1 && 'corner' || 'edge';
       handles.push({
         el: El('div').addClass('handle').appendTo(el),
+        type: type,
         col: c == 0 && 'left' || c == 1 && 'center' || 'right',
         row: r == 0 && 'top' || r == 1 && 'center' || 'bottom'
       });
@@ -9347,17 +9372,100 @@
           dotColor: violet,
           dotSize: 3
         }, polyline:  {
-          strokeColor: black, // violet,
+          strokeColor: violet, // black, // violet,
           strokeWidth: 3
         }
       };
 
-  function getIntersectionStyle(lyr) {
+  function getIntersectionStyle(lyr, opts) {
     return getDefaultStyle(lyr, intersectionStyle);
   }
 
+  // Style for unselected layers with visibility turned on
+  // (styled layers have)
+  function getReferenceLayerStyle(lyr, opts) {
+    var style;
+    if (layerHasCanvasDisplayStyle(lyr) && !opts.outlineMode) {
+      style = getCanvasDisplayStyle(lyr);
+    } else if (internal.layerHasLabels(lyr) && !opts.outlineMode) {
+      style = {dotSize: 0}; // no reference dots if labels are visible
+    } else {
+      style = getDefaultStyle(lyr, referenceStyle);
+    }
+    return style;
+  }
+
+  function getActiveLayerStyle(lyr, opts) {
+    var style;
+    if (layerHasCanvasDisplayStyle(lyr) && !opts.outlineMode) {
+      style = getCanvasDisplayStyle(lyr);
+    } else if (internal.layerHasLabels(lyr) && !opts.outlineMode) {
+      style = getDefaultStyle(lyr, activeStyleForLabels);
+    } else if (opts.darkMode) {
+      style = getDefaultStyle(lyr, activeStyleDarkMode);
+    } else {
+      style = getDefaultStyle(lyr, activeStyle);
+    }
+    return style;
+  }
+
+  // Returns a display style for the overlay layer.
+  // The overlay layer renders several kinds of feature, each of which is displayed
+  // with a different style.
+  //
+  // * hover shapes
+  // * selected shapes
+  // * pinned shapes
+  //
+  function getOverlayStyle(baseLyr, o, opts) {
+    if (opts.interactionMode == 'vertices') {
+      return getVertexStyle(baseLyr, o);
+    }
+    var geomType = baseLyr.geometry_type;
+    var topId = o.id; // pinned id (if pinned) or hover id
+    var topIdx = -1;
+    var styler = function(style, i) {
+      var defaultStyle = i === topIdx ? topStyle : outlineStyle;
+      if (baseStyle.styler) {
+        Object.assign(style, baseStyle);
+        baseStyle.styler(style, i);
+        style.strokeColor = defaultStyle.strokeColor;
+        style.fillColor = defaultStyle.fillColor;
+      } else {
+        Object.assign(style, defaultStyle);
+      }
+    };
+    // var baseStyle = getDefaultStyle(baseLyr, selectionStyles[geomType]);
+    var baseStyle = getActiveLayerStyle(baseLyr, opts);
+    var outlineStyle = getDefaultStyle(baseLyr, selectionStyles[geomType]);
+    var topStyle;
+    var ids = o.ids.filter(function(i) {
+      return i != o.id; // move selected id to the end
+    });
+    if (o.id > -1) { // pinned or hover style
+      topStyle = getSelectedFeatureStyle(baseLyr, o, opts);
+      topIdx = ids.length;
+      ids.push(o.id); // put the pinned/hover feature last in the render order
+    }
+    var style = {
+      baseStyle: baseStyle,
+      styler,
+      ids,
+      overlay: true
+    };
+
+    if (layerHasCanvasDisplayStyle(baseLyr) && !opts.outlineMode) {
+      if (geomType == 'point') {
+        style.styler = getOverlayPointStyler(getCanvasDisplayStyle(baseLyr).styler, styler);
+      }
+      style.type = 'styled';
+    }
+    return ids.length > 0 ? style : null;
+  }
+
+
   function getDefaultStyle(lyr, baseStyle) {
-    var style = utils$1.extend({}, baseStyle);
+    var style = Object.assign({}, baseStyle);
     // reduce the dot size of large point layers
     if (lyr.geometry_type == 'point' && style.dotSize > 0) {
       style.dotSize *= getDotScale$1(lyr);
@@ -9366,10 +9474,9 @@
   }
 
   function getDotScale$1(lyr) {
-    var topTier = 50000;
-    var n = countPoints(lyr.shapes, topTier + 2); // short-circuit point counting above top threshold
-    var k = n < 200 && 4 || n < 2500 && 3 || n < 10000 && 2 || 1;
-    // var k = n >= topTier && 0.25 || n > 10000 && 0.45 || n > 2500 && 0.65 || n > 200 && 0.85 || 1;
+    var topTier = 10000;
+    var n = countPoints(lyr.shapes, topTier); // short-circuit point counting above top threshold
+    var k = n < 200 && 4 || n < 2500 && 3 || n < topTier && 2 || 1;
     return k;
   }
 
@@ -9377,40 +9484,13 @@
     var count = 0;
     var i, n, shp;
     max = max || Infinity;
-    for (i=0, n=shapes.length; i<n && count<=max; i++) {
+    for (i=0, n=shapes.length; i<n && count<max; i++) {
       shp = shapes[i];
       count += shp ? shp.length : 0;
     }
     return count;
   }
 
-  // Style for unselected layers with visibility turned on
-  // (styled layers have)
-  function getReferenceStyle(lyr) {
-    var style;
-    if (layerHasCanvasDisplayStyle(lyr)) {
-      style = getCanvasDisplayStyle(lyr);
-    } else if (internal.layerHasLabels(lyr)) {
-      style = {dotSize: 0}; // no reference dots if labels are visible
-    } else {
-      style = getDefaultStyle(lyr, referenceStyle);
-    }
-    return style;
-  }
-
-  function getActiveStyle(lyr, darkMode) {
-    var style;
-    if (layerHasCanvasDisplayStyle(lyr)) {
-      style = getCanvasDisplayStyle(lyr);
-    } else if (internal.layerHasLabels(lyr)) {
-      style = getDefaultStyle(lyr, activeStyleForLabels);
-    } else if (darkMode) {
-      style = getDefaultStyle(lyr, activeStyleDarkMode);
-    } else {
-      style = getDefaultStyle(lyr, activeStyle);
-    }
-    return style;
-  }
 
   // style for vertex edit mode
   function getVertexStyle(lyr, o) {
@@ -9427,55 +9507,13 @@
     };
   }
 
-  // Returns a display style for the overlay layer.
-  // The overlay layer renders several kinds of feature, each of which is displayed
-  // with a different style.
-  //
-  // * hover shapes
-  // * selected shapes
-  // * pinned shapes
-  //
-  function getOverlayStyle(lyr, o) {
-    if (o.mode == 'vertices') {
-      return getVertexStyle(lyr, o);
-    }
-    var geomType = lyr.geometry_type;
-    var topId = o.id; // pinned id (if pinned) or hover id
-    var topIdx = -1;
-    var styler = function(style, i) {
-      utils$1.extend(style, i === topIdx ? topStyle: baseStyle);
-    };
-    var baseStyle = getDefaultStyle(lyr, selectionStyles[geomType]);
-    var topStyle;
-    var ids = o.ids.filter(function(i) {
-      return i != o.id; // move selected id to the end
-    });
-    if (o.id > -1) { // pinned or hover style
-      topStyle = getSelectedFeatureStyle(lyr, o);
-      topIdx = ids.length;
-      ids.push(o.id); // put the pinned/hover feature last in the render order
-    }
-    var style = {
-      styler: styler,
-      ids: ids,
-      overlay: true
-    };
 
-    if (layerHasCanvasDisplayStyle(lyr)) {
-      if (geomType == 'point') {
-        style.styler = getOverlayPointStyler(getCanvasDisplayStyle(lyr).styler, styler);
-      }
-      style.type = 'styled';
-    }
-    return ids.length > 0 ? style : null;
-  }
-
-  function getSelectedFeatureStyle(lyr, o) {
+  function getSelectedFeatureStyle(lyr, o, opts) {
     var isPinned = o.pinned;
     var inSelection = o.ids.indexOf(o.id) > -1;
     var geomType = lyr.geometry_type;
     var style;
-    if (isPinned && o.mode == 'rectangles') {
+    if (isPinned && opts.interactionMode == 'rectangles') {
       // kludge for rectangle editing mode
       style = selectionStyles[geomType];
     } else if (isPinned) {
@@ -9903,19 +9941,13 @@
     }
 
     function calcBounds(cx, cy, scale) {
-      var full, bounds, w, h;
-      if (_frame) {
-        full = fillOutFrameBounds(_frame);
-      } else {
-        full = fillOut(_fullBounds);
-      }
+      var full = fillOut(_fullBounds);
       if (_strictBounds) {
         full = fitIn(full, _strictBounds);
       }
-      w = full.width() / scale;
-      h = full.height() / scale;
-      bounds = new Bounds(cx - w/2, cy - h/2, cx + w/2, cy + h/2);
-      return bounds;
+      var w = full.width() / scale;
+      var h = full.height() / scale;
+      return new Bounds(cx - w/2, cy - h/2, cx + w/2, cy + h/2);
     }
 
     // Calculate viewport bounds from frame data
@@ -10235,7 +10267,7 @@
       var iter = new internal.ShapeIter(arcs);
       var t = getScaledTransform(_ext);
       var bounds = _ext.getBounds();
-      var radius = (style.strokeWidth > 2 ? style.strokeWidth * 0.9 : 2) * GUI.getPixelRatio() * getScaledLineScale(_ext);
+      var radius = (style.strokeWidth > 2 ? style.strokeWidth * 0.9 : 2) * GUI.getPixelRatio() * getScaledLineScale(_ext, style);
       var color = style.strokeColor || 'black';
 
       var i, j, p;
@@ -10269,7 +10301,7 @@
     _self.drawStyledPaths = function(shapes, arcs, style, filter) {
       var styleIndex = {};
       var batchSize = 1500;
-      var startPath = getPathStart(_ext, getScaledLineScale(_ext));
+      var startPath = getPathStart(_ext, getScaledLineScale(_ext, style));
       var draw = getShapePencil(arcs, _ext);
       var key, item, shp;
       var styler = style.styler || null;
@@ -10445,7 +10477,7 @@
       return (style.strokeWidth > 0 ? style.strokeColor + '~' + style.strokeWidth +
         '~' + (style.lineDash ? style.lineDash + '~' : '') : '') +
         (style.fillColor || '') +
-        // styles with <1 opacity are no longer batch-rendered
+        // styles with <1 opacity are no longer batch-rendered, not relevent to key
         // (style.strokeOpacity >= 0 ? style.strokeOpacity + '~' : '') : '') +
         // (style.fillOpacity ? '~' + style.fillOpacity : '') +
         // (style.opacity < 1 ? '~' + style.opacity : '') +
@@ -10454,9 +10486,17 @@
     return _self;
   }
 
-  function getScaledLineScale(ext) {
+  function getScaledLineScale(ext, style) {
     var previewScale = ext.getSymbolScale();
-    return previewScale == 1 ? getLineScale(ext) : previewScale;
+    var k = 1;
+    if (previewScale == 1 || style.type != 'styled' || style.baseStyle && style.baseStyle.type != 'styled') {
+      return getLineScale(ext);
+    }
+    if (style.baseStyle?.type == 'styled') {
+      // bump up overlay line width in preview mode
+      k = previewScale < 2 && 2 || previewScale < 5 && 1.5 || previewScale < 10 && 1.25 || 1.1;
+    }
+    return previewScale * k;
   }
 
   // Vary line width according to zoom ratio.
@@ -10626,9 +10666,6 @@
     return function(ctx, style) {
       var strokeWidth;
       ctx.beginPath();
-      // if (style.opacity >= 0) {
-      //   ctx.globalAlpha = style.opacity;
-      // }
       if (style.strokeWidth > 0) {
         strokeWidth = style.strokeWidth;
         if (pixRatio > 1) {
@@ -11587,7 +11624,7 @@
       if (lyr == _intersectionLyr) return; // no change
       if (lyr) {
         _intersectionLyr = getDisplayLayer(lyr, dataset, getDisplayOptions());
-        _intersectionLyr.style = getIntersectionStyle(_intersectionLyr.layer);
+        _intersectionLyr.style = getIntersectionStyle(_intersectionLyr.layer, getGlobalStyleOptions());
       } else {
         _intersectionLyr = null;
       }
@@ -11623,6 +11660,7 @@
     };
 
     this.getExtent = function() {return _ext;};
+    this.getMouse = function() {return _mouse;};
     this.isActiveLayer = isActiveLayer;
     this.isVisibleLayer = isVisibleLayer;
     this.getActiveLayer = function() { return _activeLyr; };
@@ -11659,6 +11697,15 @@
       updateFullBounds();
     };
 
+    function getGlobalStyleOptions() {
+      var mode = gui.state.interaction_mode;
+      return {
+        darkMode: !!gui.state.dark_basemap,
+        outlineMode: mode == 'vertices',
+        interactionMode: mode
+      };
+    }
+
     // Refresh map display in response to data changes, layer selection, etc.
     function onUpdate(e) {
       var prevLyr = _activeLyr || null;
@@ -11691,7 +11738,6 @@
       }
 
       _activeLyr = getDisplayLayer(e.layer, e.dataset, getDisplayOptions());
-      _activeLyr.style = getActiveStyle(_activeLyr.layer, gui.state.dark_basemap);
       _activeLyr.active = true;
 
       if (popupCanStayOpen(e.flags)) {
@@ -11749,7 +11795,7 @@
     }
 
     function updateOverlayLayer(e) {
-      var style = getOverlayStyle(_activeLyr.layer, e);
+      var style = getOverlayStyle(_activeLyr.layer, e, getGlobalStyleOptions());
       if (style) {
         _overlayLyr = utils$1.defaults({
           layer: filterLayerByIds(_activeLyr.layer, style.ids),
@@ -11896,9 +11942,10 @@
     function updateLayerStyles(layers) {
       layers.forEach(function(mapLayer, i) {
         if (mapLayer.active) {
-          // assume: style is already assigned
+          // regenerating active style everytime, to support style change when
+          // switching between outline and preview modes.
+          mapLayer.style = getActiveLayerStyle(mapLayer.layer, getGlobalStyleOptions());
           if (mapLayer.style.type != 'styled' && layers.length > 1 && mapLayer.style.strokeColors) {
-          // if (false) { // always show ghosted arcs
             // kludge to hide ghosted layers when reference layers are present
             // TODO: consider never showing ghosted layers (which appear after
             // commands like dissolve and filter).
@@ -11910,7 +11957,7 @@
           if (mapLayer.layer == _activeLyr.layer) {
             console.error("Error: shared map layer");
           }
-          mapLayer.style = getReferenceStyle(mapLayer.layer);
+          mapLayer.style = getReferenceLayerStyle(mapLayer.layer, getGlobalStyleOptions());
         }
       });
     }
