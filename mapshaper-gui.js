@@ -2417,7 +2417,7 @@
       // Show a popup error message, then throw an error
       var msg = GUI.formatMessageArgs(arguments);
       gui.alert(msg);
-      throw new Error(msg);
+      throw new internal.UserError(msg);
     }
 
     function error() {
@@ -3881,6 +3881,7 @@
             gui.alert(err);
           } else {
             // stack seems to change if Error is logged directly
+            console.log(err);
             console.error(err.stack);
             gui.alert('Export failed for an unknown reason');
           }
@@ -9427,15 +9428,16 @@
     var styler = function(style, i) {
       var defaultStyle = i === topIdx ? topStyle : outlineStyle;
       if (baseStyle.styler) {
-        Object.assign(style, baseStyle);
-        baseStyle.styler(style, i);
+        // TODO: render default stroke widths without scaling
+        // (will need to pass symbol scale to the styler function)
+        style.strokeWidth = defaultStyle.strokeWidth;
+        baseStyle.styler(style, i); // get styled stroke width (if set)
         style.strokeColor = defaultStyle.strokeColor;
         style.fillColor = defaultStyle.fillColor;
       } else {
         Object.assign(style, defaultStyle);
       }
     };
-    // var baseStyle = getDefaultStyle(baseLyr, selectionStyles[geomType]);
     var baseStyle = getActiveLayerStyle(baseLyr, opts);
     var outlineStyle = getDefaultStyle(baseLyr, selectionStyles[geomType]);
     var topStyle;
@@ -10308,7 +10310,9 @@
       for (var i=0; i<shapes.length; i++) {
         shp = shapes[i];
         if (!shp || filter && !filter(shp)) continue;
-        if (styler) styler(style, i);
+        if (styler) {
+          styler(style, i);
+        }
         if (style.overlay || style.opacity < 1 || style.fillOpacity < 1 || style.strokeOpacity < 1 || style.fillEffect) {
           // don't batch shapes with opacity, in case they overlap
           drawPaths([shp], startPath, draw, style);
@@ -11738,6 +11742,7 @@
       }
 
       _activeLyr = getDisplayLayer(e.layer, e.dataset, getDisplayOptions());
+      _activeLyr.style = getActiveLayerStyle(_activeLyr.layer, getGlobalStyleOptions());
       _activeLyr.active = true;
 
       if (popupCanStayOpen(e.flags)) {
