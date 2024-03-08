@@ -290,7 +290,12 @@ export function MshpMap(gui) {
   }
 
   function calcFullBounds() {
-    var b = getContentLayerBounds();
+    var b;
+    if (isPreviewView()) {
+      b = new Bounds(getFrameData().bbox);
+    } else {
+      b = getContentLayerBounds();
+    }
 
     // add margin
     // use larger margin for small sizes
@@ -317,7 +322,6 @@ export function MshpMap(gui) {
   }
 
   function isTableView() {
-    // return !isPreviewView() && !!_activeLyr.tabular;
     return !!_activeLyr.tabular;
   }
 
@@ -329,8 +333,7 @@ export function MshpMap(gui) {
 
   // Preview view: symbols are scaled based on display size of frame layer
   function isPreviewView() {
-    var data = getFrameData();
-    return !!data;
+    return !isTableView() && !!getFrameData();
   }
 
   function getFrameData() {
