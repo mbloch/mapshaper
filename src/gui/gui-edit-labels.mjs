@@ -1,5 +1,10 @@
 import { error, internal } from './gui-core';
-import { isMultilineLabel, toggleTextAlign, setMultilineAttribute, autoUpdateTextAnchor, applyDelta } from './gui-svg-labels';
+import {
+  // isMultilineLabel,
+  setMultilineAttribute,
+  autoUpdateTextAnchor,
+  applyDelta,
+  updateNumber } from './gui-svg-labels';
 import { getSvgSymbolTransform } from './gui-svg-symbols';
 
 export function initLabelDragging(gui, ext, hit) {
@@ -13,9 +18,9 @@ export function initLabelDragging(gui, ext, hit) {
 
   hit.on('dragstart', function(e) {
     if (!active(e)) return;
-    var textNode = getTextTarget3(e);
+    var symNode = getSymbolTarget(e);
     var table = hit.getTargetDataTable();
-    if (!textNode || !table) {
+    if (!symNode || !table) {
       activeId = -1;
       return false;
     }
@@ -31,18 +36,22 @@ export function initLabelDragging(gui, ext, hit) {
       error("Mismatched hit ids:", e.id, activeId);
     }
     var scale = ext.getSymbolScale() || 1;
-    var textNode;
+    var symNode, textNode;
     applyDelta(activeRecord, 'dx', e.dx / scale);
     applyDelta(activeRecord, 'dy', e.dy / scale);
-    textNode = getTextTarget3(e);
-    if (!isMultilineLabel(textNode)) {
-      // update anchor position of single-line labels based on label position
-      // relative to anchor point, for better placement when eventual display font is
-      // different from mapshaper's font.
-      autoUpdateTextAnchor(textNode, activeRecord, getDisplayCoordsById(activeId, hit.getHitTarget().layer, ext));
-    }
-    // updateSymbol(targetTextNode, activeRecord);
-    updateSymbol2(textNode, activeRecord, activeId);
+    symNode = getSymbolTarget(e);
+    textNode = getTextNode(symNode);
+    // update anchor position of labels based on label position relative
+    // to anchor point, for better placement when eventual display font is
+    // different from mapshaper's font.
+    // if (!isMultilineLabel(textNode)) {
+    autoUpdateTextAnchor(textNode, activeRecord, getDisplayCoordsById(activeId, hit.getHitTarget().layer, ext));
+    // }
+    updateNumber(activeRecord, 'dx', internal.roundToDigits(+activeRecord.dx, 3));
+    updateNumber(activeRecord, 'dy', internal.roundToDigits(+activeRecord.dy, 3));
+    updateTextNode(textNode, activeRecord);
+    // updateSymbolNode(symNode, activeRecord, activeId);
+    gui.dispatchEvent('popup-needs-refresh');
   });
 
   hit.on('dragend', function(e) {
@@ -66,9 +75,14 @@ export function initLabelDragging(gui, ext, hit) {
     return coords[0];
   }
 
-  function getTextTarget3(e) {
+  function getSymbolTarget(e) {
     if (e.id > -1 === false || !e.container) return null;
     return getSymbolNodeById(e.id, e.container);
+  }
+
+  function getTextNode(symNode) {
+    if (symNode.tagName == 'text') return symNode;
+    return symNode.querySelector('text');
   }
 
   function getSymbolNodeById(id, parent) {
@@ -77,21 +91,21 @@ export function initLabelDragging(gui, ext, hit) {
     return parent.querySelector(sel);
   }
 
-  function getTextTarget2(e) {
-    var el = e && e.targetSymbol || null;
-    if (el && el.tagName == 'tspan') {
-      el = el.parentNode;
-    }
-    return el && el.tagName == 'text' ? el : null;
-  }
+  // function getTextTarget2(e) {
+  //   var el = e && e.targetSymbol || null;
+  //   if (el && el.tagName == 'tspan') {
+  //     el = el.parentNode;
+  //   }
+  //   return el && el.tagName == 'text' ? el : null;
+  // }
 
-  function getTextTarget(e) {
-    var el = e.target;
-    if (el.tagName == 'tspan') {
-      el = el.parentNode;
-    }
-    return el.tagName == 'text' ? el : null;
-  }
+  // function getTextTarget(e) {
+  //   var el = e.target;
+  //   if (el.tagName == 'tspan') {
+  //     el = el.parentNode;
+  //   }
+  //   return el.tagName == 'text' ? el : null;
+  // }
 
   function getLabelRecordById(id) {
     var table = hit.getTargetDataTable();
@@ -110,7 +124,7 @@ export function initLabelDragging(gui, ext, hit) {
   }
 
   // update symbol by setting attributes
-  function updateSymbol(node, d) {
+  function updateTextNode(node, d) {
     var a = d['text-anchor'];
     if (a) node.setAttribute('text-anchor', a);
     setMultilineAttribute(node, 'dx', d.dx || 0);
@@ -118,7 +132,8 @@ export function initLabelDragging(gui, ext, hit) {
   }
 
   // update symbol by re-rendering it
-  function updateSymbol2(node, d, id) {
+  // fails when symbol includes a dot (<g><circle/><text/></g> structure)
+  function updateSymbolNode(node, d, id) {
     var o = internal.svg.renderStyledLabel(d); // TODO: symbol support
     var activeLayer = hit.getHitTarget().layer;
     var xy = activeLayer.shapes[id][0];
@@ -131,7 +146,5 @@ export function initLabelDragging(gui, ext, hit) {
     g.innerHTML = internal.svg.stringify(o);
     node2 = g.firstChild;
     node.parentNode.replaceChild(node2, node);
-    gui.dispatchEvent('popup-needs-refresh');
-    return node2;
   }
 }
