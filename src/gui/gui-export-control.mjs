@@ -110,7 +110,11 @@ export var ExportControl = function(gui) {
         } else {
           // stack seems to change if Error is logged directly
           console.error(err.stack);
-          gui.alert('Export failed for an unknown reason');
+          var msg = 'Export failed for an unknown reason';
+          if (err.name == 'UserError') {
+            msg = err.message;
+          }
+          gui.alert(msg, 'Export failed');
         }
       }).finally(function() {
         gui.clearProgressMessage();

@@ -8,7 +8,7 @@ export function setLoggingForGUI(gui) {
     // Show a popup error message, then throw an error
     var msg = GUI.formatMessageArgs(arguments);
     gui.alert(msg);
-    throw new Error(msg);
+    throw new internal.UserError(msg);
   }
 
   function error() {
