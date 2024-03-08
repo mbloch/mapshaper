@@ -186,6 +186,7 @@ export function MshpMap(gui) {
     }
 
     _activeLyr = getDisplayLayer(e.layer, e.dataset, getDisplayOptions());
+    _activeLyr.style = MapStyle.getActiveLayerStyle(_activeLyr.layer, getGlobalStyleOptions());
     _activeLyr.active = true;
 
     if (popupCanStayOpen(e.flags)) {
