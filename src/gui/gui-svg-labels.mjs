@@ -1,13 +1,14 @@
 import { utils } from './gui-core';
+import { internal } from './gui-core';
 export function isMultilineLabel(textNode) {
   return textNode.childNodes.length > 1;
 }
 
-export function toggleTextAlign(textNode, rec) {
-  var curr = rec['text-anchor'] || 'middle';
-  var value = curr == 'middle' && 'start' || curr == 'start' && 'end' || 'middle';
-  updateTextAnchor(value, textNode, rec);
-}
+// export function toggleTextAlign(textNode, rec) {
+//   var curr = rec['text-anchor'] || 'middle';
+//   var value = curr == 'middle' && 'start' || curr == 'start' && 'end' || 'middle';
+//   updateTextAnchor(value, textNode, rec);
+// }
 
 // Set an attribute on a <text> node and any child <tspan> elements
 // (mapshaper's svg labels require tspans to have the same x and dx values
@@ -39,6 +40,7 @@ export function autoUpdateTextAnchor(textNode, rec, p) {
   var rect = textNode.getBoundingClientRect();
   var labelCenterX = rect.left - svg.getBoundingClientRect().left + rect.width / 2;
   var xpct = (labelCenterX - p[0]) / rect.width; // offset of label center from anchor center
+
   var value = xpct < -0.25 && 'end' || xpct > 0.25 && 'start' || 'middle';
   updateTextAnchor(value, textNode, rec);
 }
@@ -50,7 +52,6 @@ function updateTextAnchor(value, textNode, rec) {
   var curr = rec['text-anchor'] || 'middle';
   var xshift = 0;
 
-  // console.log("anchor() curr:", curr, "xpct:", xpct, "left:", rect.left, "anchorX:", anchorX, "targ:", targ, "dx:", xshift)
   if (curr == 'middle' && value == 'end' || curr == 'start' && value == 'middle') {
     xshift = width / 2;
   } else if (curr == 'middle' && value == 'start' || curr == 'end' && value == 'middle') {
@@ -62,14 +63,27 @@ function updateTextAnchor(value, textNode, rec) {
   }
   if (xshift) {
     rec['text-anchor'] = value;
-    applyDelta(rec, 'dx', Math.round(xshift));
+    applyDelta(rec, 'dx', xshift / getScaleAttribute(textNode));
   }
 }
 
-// handle either numeric strings or numbers in fields
+function getScaleAttribute(node) {
+  // this is fragile, consider passing in the value of <MapExtent>.getSymbolScale()
+  var transform = node.getAttribute('transform') ||
+    node.parentNode.getAttribute('transform'); // compound label puts it here
+  var match = /scale\(([^)]+)\)/.exec(transform || '');
+  return match ? parseFloat(match[1]) : 1;
+}
+
+// handle either numeric strings or numbers in record
 export function applyDelta(rec, key, delta) {
   var currVal = rec[key];
-  var isString = utils.isString(currVal);
   var newVal = (+currVal + delta) || 0;
-  rec[key] = isString ? String(newVal) : newVal;
+  updateNumber(rec, key, newVal);
+}
+
+// handle either numeric strings or numbers in record
+export function updateNumber(rec, key, num) {
+  var isString = utils.isString(rec[key]);
+  rec[key] = isString ? String(num) : num;
 }
