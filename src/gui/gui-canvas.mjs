@@ -198,7 +198,9 @@ export function DisplayCanvas() {
     for (var i=0; i<shapes.length; i++) {
       shp = shapes[i];
       if (!shp || filter && !filter(shp)) continue;
-      if (styler) styler(style, i);
+      if (styler) {
+        styler(style, i);
+      }
       if (style.overlay || style.opacity < 1 || style.fillOpacity < 1 || style.strokeOpacity < 1 || style.fillEffect) {
         // don't batch shapes with opacity, in case they overlap
         drawPaths([shp], startPath, draw, style);

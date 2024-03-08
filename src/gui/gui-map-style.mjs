@@ -155,15 +155,16 @@ export function getOverlayStyle(baseLyr, o, opts) {
   var styler = function(style, i) {
     var defaultStyle = i === topIdx ? topStyle : outlineStyle;
     if (baseStyle.styler) {
-      Object.assign(style, baseStyle);
-      baseStyle.styler(style, i);
+      // TODO: render default stroke widths without scaling
+      // (will need to pass symbol scale to the styler function)
+      style.strokeWidth = defaultStyle.strokeWidth;
+      baseStyle.styler(style, i); // get styled stroke width (if set)
       style.strokeColor = defaultStyle.strokeColor;
       style.fillColor = defaultStyle.fillColor;
     } else {
       Object.assign(style, defaultStyle);
     }
   };
-  // var baseStyle = getDefaultStyle(baseLyr, selectionStyles[geomType]);
   var baseStyle = getActiveLayerStyle(baseLyr, opts);
   var outlineStyle = getDefaultStyle(baseLyr, selectionStyles[geomType]);
   var topStyle;
