@@ -317,7 +317,8 @@ export function MshpMap(gui) {
   }
 
   function isTableView() {
-    return !isPreviewView() && !!_activeLyr.tabular;
+    // return !isPreviewView() && !!_activeLyr.tabular;
+    return !!_activeLyr.tabular;
   }
 
   function findFrameLayer() {
@@ -368,7 +369,9 @@ export function MshpMap(gui) {
 
   function getContentLayers() {
     var layers = getVisibleMapLayers();
-    if (isTableView()) return findActiveLayer(layers);
+    if (isTableView()) {
+      return findActiveLayer(layers);
+    }
     return layers.filter(function(o) {
       return !!o.geographic;
     });
