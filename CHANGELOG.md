@@ -1,3 +1,6 @@
+v0.6.69
+* Web UI bug fixes
+
 v0.6.68
 * [scalebar] giving a pair of distances creates a dual-unit scale bar (style b only).
 * [web] minor bug fixes and improvements.
