@@ -7415,6 +7415,8 @@
   				return this ? this.unpack(source, options) : Unpackr.prototype.unpack.call(defaultOptions, source, options)
   			})
   		}
+  		if (!source.buffer && source.constructor === ArrayBuffer)
+  			source = typeof Buffer !== 'undefined' ? Buffer.from(source) : new Uint8Array(source);
   		if (typeof options === 'object') {
   			srcEnd = options.end || source.length;
   			position$1 = options.start || 0;
@@ -7460,10 +7462,10 @@
   			let size = source.length;
   			let value = this ? this.unpack(source, size) : defaultUnpackr.unpack(source, size);
   			if (forEach) {
-  				if (forEach(value) === false) return;
+  				if (forEach(value, lastPosition, position$1) === false) return;
   				while(position$1 < size) {
   					lastPosition = position$1;
-  					if (forEach(checkedRead()) === false) {
+  					if (forEach(checkedRead(), lastPosition, position$1) === false) {
   						return
   					}
   				}
@@ -7511,8 +7513,8 @@
   		}
   		return this.structures = loadedStructures
   	}
-  	decode(source, end) {
-  		return this.unpack(source, end)
+  	decode(source, options) {
+  		return this.unpack(source, options)
   	}
   }
   function checkedRead(options) {
@@ -7535,6 +7537,10 @@
   			position$1 = bundledStrings$1.postBundlePosition;
   			bundledStrings$1 = null;
   		}
+  		if (sequentialMode)
+  			// we only need to restore the structures if there was an error, but if we completed a read,
+  			// we can clear this out and keep the structures we read
+  			currentStructures.restoreStructures = null;
 
   		if (position$1 == srcEnd) {
   			// finished reading this source, cleanup references
@@ -7548,7 +7554,13 @@
   			// over read
   			throw new Error('Unexpected end of MessagePack data')
   		} else if (!sequentialMode) {
-  			throw new Error('Data read, but end of buffer not reached ' + JSON.stringify(result).slice(0, 100))
+  			let jsonView;
+  			try {
+  				jsonView = JSON.stringify(result, (_, value) => typeof value === "bigint" ? `${value}n` : value).slice(0, 100);
+  			} catch(error) {
+  				jsonView = '(JSON view not available ' + error + ')';
+  			}
+  			throw new Error('Data read, but end of buffer not reached ' + jsonView)
   		}
   		// else more to read, but we are reading sequentially, so don't clear source yet
   		return result
@@ -7704,6 +7716,9 @@
   					value += dataView.getUint32(position$1 + 4);
   				} else if (currentUnpackr.int64AsType === 'string') {
   					value = dataView.getBigUint64(position$1).toString();
+  				} else if (currentUnpackr.int64AsType === 'auto') {
+  					value = dataView.getBigUint64(position$1);
+  					if (value<=BigInt(2)<<BigInt(52)) value=Number(value);
   				} else
   					value = dataView.getBigUint64(position$1);
   				position$1 += 8;
@@ -7726,6 +7741,9 @@
   					value += dataView.getUint32(position$1 + 4);
   				} else if (currentUnpackr.int64AsType === 'string') {
   					value = dataView.getBigInt64(position$1).toString();
+  				} else if (currentUnpackr.int64AsType === 'auto') {
+  					value = dataView.getBigInt64(position$1);
+  					if (value>=BigInt(-2)<<BigInt(52)&&value<=BigInt(2)<<BigInt(52)) value=Number(value);
   				} else
   					value = dataView.getBigInt64(position$1);
   				position$1 += 8;
@@ -8183,7 +8201,7 @@
   			return readFixedString(length)
   	} else { // not cacheable, go back and do a standard read
   		position$1--;
-  		return read().toString()
+  		return asSafeString(read())
   	}
   	let key = ((length << 5) ^ (length > 1 ? dataView.getUint16(position$1) : length > 0 ? src[position$1] : 0)) & 0xfff;
   	let entry = keyCache[key];
@@ -8235,16 +8253,25 @@
   	return entry.string = readFixedString(length)
   }
 
+  function asSafeString(property) {
+  	if (typeof property === 'string') return property;
+  	if (typeof property === 'number') return property.toString();
+  	throw new Error('Invalid property type for record', typeof property);
+  }
   // the registration of the record definition extension (as "r")
   const recordDefinition = (id, highByte) => {
-  	let structure = read().map(property => property.toString()); // ensure that all keys are strings and that the array is mutable
+  	let structure = read().map(asSafeString); // ensure that all keys are strings and
+  	// that the array is mutable
   	let firstByte = id;
   	if (highByte !== undefined) {
   		id = id < 32 ? -((highByte << 5) + id) : ((highByte << 5) + id);
   		structure.highByte = highByte;
   	}
   	let existingStructure = currentStructures[id];
-  	if (existingStructure && existingStructure.isShared) {
+  	// If it is a shared structure, we need to restore any changes after reading.
+  	// Also in sequential mode, we may get incomplete reads and thus errors, and we need to restore
+  	// to the state prior to an incomplete read in order to properly resume.
+  	if (existingStructure && (existingStructure.isShared || sequentialMode)) {
   		(currentStructures.restoreStructures || (currentStructures.restoreStructures = []))[id] = existingStructure;
   	}
   	currentStructures[id] = structure;
@@ -8254,13 +8281,26 @@
   currentExtensions[0] = () => {}; // notepack defines extension 0 to mean undefined, so use that as the default here
   currentExtensions[0].noBuffer = true;
 
+  currentExtensions[0x42] = (data) => {
+  	// decode bigint
+  	let length = data.length;
+  	let value = BigInt(data[0] & 0x80 ? data[0] - 0x100 : data[0]);
+  	for (let i = 1; i < length; i++) {
+  		value <<= 8n;
+  		value += BigInt(data[i]);
+  	}
+  	return value;
+  };
+
+  let errors = { Error, TypeError, ReferenceError };
   currentExtensions[0x65] = () => {
   	let data = read();
-  	return (globalThis[data[0]] || Error)(data[1])
+  	return (errors[data[0]] || Error)(data[1])
   };
 
   currentExtensions[0x69] = (data) => {
   	// id extension (for structured clones)
+  	if (currentUnpackr.structuredClone === false) throw new Error('Structured clone extension is disabled')
   	let id = dataView.getUint32(position$1 - 4);
   	if (!referenceMap)
   		referenceMap = new Map();
@@ -8284,6 +8324,7 @@
 
   currentExtensions[0x70] = (data) => {
   	// pointer extension (for structured clones)
+  	if (currentUnpackr.structuredClone === false) throw new Error('Structured clone extension is disabled')
   	let id = dataView.getUint32(position$1 - 4);
   	let refEntry = referenceMap.get(id);
   	refEntry.used = true;
@@ -8294,13 +8335,14 @@
 
   const typedArrays = ['Int8','Uint8','Uint8Clamped','Int16','Uint16','Int32','Uint32','Float32','Float64','BigInt64','BigUint64'].map(type => type + 'Array');
 
+  let glbl = typeof globalThis === 'object' ? globalThis : window;
   currentExtensions[0x74] = (data) => {
   	let typeCode = data[0];
   	let typedArrayName = typedArrays[typeCode];
   	if (!typedArrayName)
   		throw new Error('Could not find typed array for code ' + typeCode)
   	// we have to always slice/copy here to get a new ArrayBuffer that is word/byte aligned
-  	return new globalThis[typedArrayName](Uint8Array.prototype.slice.call(data, 1).buffer)
+  	return new glbl[typedArrayName](Uint8Array.prototype.slice.call(data, 1).buffer)
   };
   currentExtensions[0x78] = () => {
   	let data = read();
@@ -8465,6 +8507,7 @@
   			} else
   				position = (position + 7) & 0x7ffffff8; // Word align to make any future copying of this buffer faster
   			start = position;
+  			if (encodeOptions & RESERVE_START_SPACE) position += (encodeOptions & 0xff);
   			referenceMap = packr.structuredClone ? new Map() : null;
   			if (packr.bundleStrings && typeof value !== 'string') {
   				bundledStrings = [];
@@ -8506,8 +8549,9 @@
   			}
   			if (hasSharedUpdate)
   				hasSharedUpdate = false;
+  			let encodingError;
   			try {
-  				if (packr.randomAccessStructure && value.constructor && value.constructor === Object)
+  				if (packr.randomAccessStructure && value && value.constructor && value.constructor === Object)
   					writeStruct(value);
   				else
   					pack(value);
@@ -8556,40 +8600,49 @@
   					return target
   				}
   				return target.subarray(start, position) // position can change if we call pack again in saveStructures, so we get the buffer now
+  			} catch(error) {
+  				encodingError = error;
+  				throw error;
   			} finally {
   				if (structures) {
-  					if (serializationsSinceTransitionRebuild < 10)
-  						serializationsSinceTransitionRebuild++;
-  					let sharedLength = structures.sharedLength || 0;
-  					if (structures.length > sharedLength)
-  						structures.length = sharedLength;
-  					if (transitionsCount > 10000) {
-  						// force a rebuild occasionally after a lot of transitions so it can get cleaned up
-  						structures.transitions = null;
-  						serializationsSinceTransitionRebuild = 0;
-  						transitionsCount = 0;
-  						if (recordIdsToRemove.length > 0)
-  							recordIdsToRemove = [];
-  					} else if (recordIdsToRemove.length > 0 && !isSequential) {
-  						for (let i = 0, l = recordIdsToRemove.length; i < l; i++) {
-  							recordIdsToRemove[i][RECORD_SYMBOL] = 0;
-  						}
-  						recordIdsToRemove = [];
-  					}
+  					resetStructures();
   					if (hasSharedUpdate && packr.saveStructures) {
+  						let sharedLength = structures.sharedLength || 0;
   						// we can't rely on start/end with REUSE_BUFFER_MODE since they will (probably) change when we save
   						let returnBuffer = target.subarray(start, position);
   						let newSharedData = prepareStructures(structures, packr);
-  						if (packr.saveStructures(newSharedData, newSharedData.isCompatible) === false) {
-  							// get updated structures and try again if the update failed
-  							return packr.pack(value)
+  						if (!encodingError) { // TODO: If there is an encoding error, should make the structures as uninitialized so they get rebuilt next time
+  							if (packr.saveStructures(newSharedData, newSharedData.isCompatible) === false) {
+  								// get updated structures and try again if the update failed
+  								return packr.pack(value, encodeOptions)
+  							}
+  							packr.lastNamedStructuresLength = sharedLength;
+  							return returnBuffer
   						}
-  						packr.lastNamedStructuresLength = sharedLength;
-  						return returnBuffer
   					}
   				}
   				if (encodeOptions & RESET_BUFFER_MODE)
   					position = start;
+  			}
+  		};
+  		const resetStructures = () => {
+  			if (serializationsSinceTransitionRebuild < 10)
+  				serializationsSinceTransitionRebuild++;
+  			let sharedLength = structures.sharedLength || 0;
+  			if (structures.length > sharedLength && !isSequential)
+  				structures.length = sharedLength;
+  			if (transitionsCount > 10000) {
+  				// force a rebuild occasionally after a lot of transitions so it can get cleaned up
+  				structures.transitions = null;
+  				serializationsSinceTransitionRebuild = 0;
+  				transitionsCount = 0;
+  				if (recordIdsToRemove.length > 0)
+  					recordIdsToRemove = [];
+  			} else if (recordIdsToRemove.length > 0 && !isSequential) {
+  				for (let i = 0, l = recordIdsToRemove.length; i < l; i++) {
+  					recordIdsToRemove[i][RECORD_SYMBOL] = 0;
+  				}
+  				recordIdsToRemove = [];
   			}
   		};
   		const packArray = (value) => {
@@ -8769,7 +8822,7 @@
   					targetView.setFloat64(position, value);
   					position += 8;
   				}
-  			} else if (type === 'object') {
+  			} else if (type === 'object' || type === 'function') {
   				if (!value)
   					target[position++] = 0xc0;
   				else {
@@ -8794,21 +8847,24 @@
   					} else if (constructor === Array) {
   						packArray(value);
   					} else if (constructor === Map) {
-  						length = value.size;
-  						if (length < 0x10) {
-  							target[position++] = 0x80 | length;
-  						} else if (length < 0x10000) {
-  							target[position++] = 0xde;
-  							target[position++] = length >> 8;
-  							target[position++] = length & 0xff;
-  						} else {
-  							target[position++] = 0xdf;
-  							targetView.setUint32(position, length);
-  							position += 4;
-  						}
-  						for (let [ key, entryValue ] of value) {
-  							pack(key);
-  							pack(entryValue);
+  						if (this.mapAsEmptyObject) target[position++] = 0x80;
+  						else {
+  							length = value.size;
+  							if (length < 0x10) {
+  								target[position++] = 0x80 | length;
+  							} else if (length < 0x10000) {
+  								target[position++] = 0xde;
+  								target[position++] = length >> 8;
+  								target[position++] = length & 0xff;
+  							} else {
+  								target[position++] = 0xdf;
+  								targetView.setUint32(position, length);
+  								position += 4;
+  							}
+  							for (let [key, entryValue] of value) {
+  								pack(key);
+  								pack(entryValue);
+  							}
   						}
   					} else {	
   						for (let i = 0, l = extensions.length; i < l; i++) {
@@ -8871,6 +8927,18 @@
   						if (Array.isArray(value)) {
   							packArray(value);
   						} else {
+  							// use this as an alternate mechanism for expressing how to serialize
+  							if (value.toJSON) {
+  								const json = value.toJSON();
+  								// if for some reason value.toJSON returns itself it'll loop forever
+  								if (json !== value)
+  									return pack(json)
+  							}
+  							
+  							// if there is a writeFunction, use it, otherwise just encode as undefined
+  							if (type === 'function')
+  								return pack(this.writeFunction && this.writeFunction(value));
+  							
   							// no extension found, write as object
   							writeObject(value, !value.hasOwnProperty); // if it doesn't have hasOwnProperty, don't do hasOwnProperty checks
   						}
@@ -8892,8 +8960,26 @@
   					if (this.largeBigIntToFloat) {
   						target[position++] = 0xcb;
   						targetView.setFloat64(position, Number(value));
+  					} else if (this.useBigIntExtension && value < 2n**(1023n) && value > -(2n**(1023n))) {
+  						target[position++] = 0xc7;
+  						position++;
+  						target[position++] = 0x42; // "B" for BigInt
+  						let bytes = [];
+  						let alignedSign;
+  						do {
+  							let byte = value & 0xffn;
+  							alignedSign = (byte & 0x80n) === (value < 0n ? 0x80n : 0n);
+  							bytes.push(byte);
+  							value >>= 8n;
+  						} while (!((value === 0n || value === -1n) && alignedSign));
+  						target[position-2] = bytes.length;
+  						for (let i = bytes.length; i > 0;) {
+  							target[position++] = Number(bytes[--i]);
+  						}
+  						return
   					} else {
-  						throw new RangeError(value + ' was too large to fit in MessagePack 64-bit integer format, set largeBigIntToFloat to convert to float-64')
+  						throw new RangeError(value + ' was too large to fit in MessagePack 64-bit integer format, use' +
+  							' useBigIntExtension or set largeBigIntToFloat to convert to float-64')
   					}
   				}
   				position += 8;
@@ -8905,14 +8991,12 @@
   					target[position++] = 0;
   					target[position++] = 0;
   				}
-  			} else if (type === 'function') {
-  				pack(this.writeFunction && this.writeFunction()); // if there is a writeFunction, use it, otherwise just encode as undefined
   			} else {
   				throw new Error('Unknown type: ' + type)
   			}
   		};
 
-  		const writeObject = this.useRecords === false ? this.variableMapSize ? (object) => {
+  		const writePlainObject = (this.variableMapSize || this.coercibleKeyAsNumber) ? (object) => {
   			// this method is slightly slower, but generates "preferred serialization" (optimally small for smaller objects)
   			let keys = Object.keys(object);
   			let length = keys.length;
@@ -8928,9 +9012,19 @@
   				position += 4;
   			}
   			let key;
-  			for (let i = 0; i < length; i++) {
-  				pack(key = keys[i]);
-  				pack(object[key]);
+  			if (this.coercibleKeyAsNumber) {
+  				for (let i = 0; i < length; i++) {
+  					key = keys[i];
+  					let num = Number(key);
+  					pack(isNaN(num) ? key : num);
+  					pack(object[key]);
+  				}
+
+  			} else {
+  				for (let i = 0; i < length; i++) {
+  					pack(key = keys[i]);
+  					pack(object[key]);
+  				}
   			}
   		} :
   		(object, safePrototype) => {
@@ -8947,7 +9041,9 @@
   			}
   			target[objectOffset++ + start] = size >> 8;
   			target[objectOffset + start] = size & 0xff;
-  		} :
+  		};
+
+  		const writeRecord = this.useRecords === false ? writePlainObject :
   		(options.progressiveRecords && !useTwoByteRecords) ?  // this is about 2% faster for highly stable structures, since it only requires one for-in loop (but much more expensive when new structure needs to be written)
   		(object, safePrototype) => {
   			let nextTransition, transition = structures.transitions || (structures.transitions = Object.create(null));
@@ -9016,9 +9112,18 @@
   			}
   			// now write the values
   			for (let key in object)
-  				if (safePrototype || object.hasOwnProperty(key))
+  				if (safePrototype || object.hasOwnProperty(key)) {
   					pack(object[key]);
+  				}
   		};
+
+  		// craete reference to useRecords if useRecords is a function
+  		const checkUseRecords = typeof this.useRecords == 'function' && this.useRecords;
+  		
+  		const writeObject = checkUseRecords ? (object, safePrototype) => {
+  			checkUseRecords(object) ? writeRecord(object,safePrototype) : writePlainObject(object,safePrototype);
+  		} : writeRecord;
+
   		const makeRoom = (end) => {
   			let newSize;
   			if (end > 0x1000000) {
@@ -9122,12 +9227,13 @@
   			}
   		};
   		const writeStruct = (object, safePrototype) => {
-  			let newPosition = writeStructSlots(object, target, position, structures, makeRoom, (value, newPosition, notifySharedUpdate) => {
+  			let newPosition = writeStructSlots(object, target, start, position, structures, makeRoom, (value, newPosition, notifySharedUpdate) => {
   				if (notifySharedUpdate)
   					return hasSharedUpdate = true;
   				position = newPosition;
   				let startTarget = target;
   				pack(value);
+  				resetStructures();
   				if (startTarget !== target) {
   					return { position, targetView, target }; // indicate the buffer was re-allocated
   				}
@@ -9191,6 +9297,10 @@
   	}
   }, {
   	pack(set, allocateForWrite, pack) {
+  		if (this.setAsEmptyObject) {
+  			allocateForWrite(0);
+  			return pack({})
+  		}
   		let array = Array.from(set);
   		let { target, position} = allocateForWrite(this.moreTypes ? 3 : 0);
   		if (this.moreTypes) {
@@ -9371,6 +9481,7 @@
   defaultPackr.pack;
   const REUSE_BUFFER_MODE = 512;
   const RESET_BUFFER_MODE = 1024;
+  const RESERVE_START_SPACE = 2048;
 
   // DEFLATE is a complex format; to read this code, you should probably check the RFC first:
   // https://tools.ietf.org/html/rfc1951
@@ -45304,7 +45415,7 @@ ${svg}
     });
   }
 
-  var version = "0.6.68";
+  var version = "0.6.69";
 
   // Parse command line args into commands and run them
   // Function takes an optional Node-style callback. A Promise is returned if no callback is given.

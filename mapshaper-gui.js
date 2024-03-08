@@ -3881,9 +3881,12 @@
             gui.alert(err);
           } else {
             // stack seems to change if Error is logged directly
-            console.log(err);
             console.error(err.stack);
-            gui.alert('Export failed for an unknown reason');
+            var msg = 'Export failed for an unknown reason';
+            if (err.name == 'UserError') {
+              msg = err.message;
+            }
+            gui.alert(msg, 'Export failed');
           }
         }).finally(function() {
           gui.clearProgressMessage();
@@ -8828,11 +8831,11 @@
     return textNode.childNodes.length > 1;
   }
 
-  function toggleTextAlign(textNode, rec) {
-    var curr = rec['text-anchor'] || 'middle';
-    var value = curr == 'middle' && 'start' || curr == 'start' && 'end' || 'middle';
-    updateTextAnchor(value, textNode, rec);
-  }
+  // export function toggleTextAlign(textNode, rec) {
+  //   var curr = rec['text-anchor'] || 'middle';
+  //   var value = curr == 'middle' && 'start' || curr == 'start' && 'end' || 'middle';
+  //   updateTextAnchor(value, textNode, rec);
+  // }
 
   // Set an attribute on a <text> node and any child <tspan> elements
   // (mapshaper's svg labels require tspans to have the same x and dx values
@@ -8864,6 +8867,7 @@
     var rect = textNode.getBoundingClientRect();
     var labelCenterX = rect.left - svg.getBoundingClientRect().left + rect.width / 2;
     var xpct = (labelCenterX - p[0]) / rect.width; // offset of label center from anchor center
+
     var value = xpct < -0.25 && 'end' || xpct > 0.25 && 'start' || 'middle';
     updateTextAnchor(value, textNode, rec);
   }
@@ -8875,7 +8879,6 @@
     var curr = rec['text-anchor'] || 'middle';
     var xshift = 0;
 
-    // console.log("anchor() curr:", curr, "xpct:", xpct, "left:", rect.left, "anchorX:", anchorX, "targ:", targ, "dx:", xshift)
     if (curr == 'middle' && value == 'end' || curr == 'start' && value == 'middle') {
       xshift = width / 2;
     } else if (curr == 'middle' && value == 'start' || curr == 'end' && value == 'middle') {
@@ -8887,16 +8890,29 @@
     }
     if (xshift) {
       rec['text-anchor'] = value;
-      applyDelta(rec, 'dx', Math.round(xshift));
+      applyDelta(rec, 'dx', xshift / getScaleAttribute(textNode));
     }
   }
 
-  // handle either numeric strings or numbers in fields
+  function getScaleAttribute(node) {
+    // this is fragile, consider passing in the value of <MapExtent>.getSymbolScale()
+    var transform = node.getAttribute('transform') ||
+      node.parentNode.getAttribute('transform'); // compound label puts it here
+    var match = /scale\(([^)]+)\)/.exec(transform || '');
+    return match ? parseFloat(match[1]) : 1;
+  }
+
+  // handle either numeric strings or numbers in record
   function applyDelta(rec, key, delta) {
     var currVal = rec[key];
-    var isString = utils$1.isString(currVal);
     var newVal = (+currVal + delta) || 0;
-    rec[key] = isString ? String(newVal) : newVal;
+    updateNumber(rec, key, newVal);
+  }
+
+  // handle either numeric strings or numbers in record
+  function updateNumber(rec, key, num) {
+    var isString = utils$1.isString(rec[key]);
+    rec[key] = isString ? String(num) : num;
   }
 
   function initLabelDragging(gui, ext, hit) {
@@ -8910,9 +8926,9 @@
 
     hit.on('dragstart', function(e) {
       if (!active(e)) return;
-      var textNode = getTextTarget3(e);
+      var symNode = getSymbolTarget(e);
       var table = hit.getTargetDataTable();
-      if (!textNode || !table) {
+      if (!symNode || !table) {
         activeId = -1;
         return false;
       }
@@ -8928,18 +8944,22 @@
         error$1("Mismatched hit ids:", e.id, activeId);
       }
       var scale = ext.getSymbolScale() || 1;
-      var textNode;
+      var symNode, textNode;
       applyDelta(activeRecord, 'dx', e.dx / scale);
       applyDelta(activeRecord, 'dy', e.dy / scale);
-      textNode = getTextTarget3(e);
-      if (!isMultilineLabel(textNode)) {
-        // update anchor position of single-line labels based on label position
-        // relative to anchor point, for better placement when eventual display font is
-        // different from mapshaper's font.
-        autoUpdateTextAnchor(textNode, activeRecord, getDisplayCoordsById(activeId, hit.getHitTarget().layer, ext));
-      }
-      // updateSymbol(targetTextNode, activeRecord);
-      updateSymbol2(textNode, activeRecord, activeId);
+      symNode = getSymbolTarget(e);
+      textNode = getTextNode(symNode);
+      // update anchor position of labels based on label position relative
+      // to anchor point, for better placement when eventual display font is
+      // different from mapshaper's font.
+      // if (!isMultilineLabel(textNode)) {
+      autoUpdateTextAnchor(textNode, activeRecord, getDisplayCoordsById(activeId, hit.getHitTarget().layer, ext));
+      // }
+      updateNumber(activeRecord, 'dx', internal.roundToDigits(+activeRecord.dx, 3));
+      updateNumber(activeRecord, 'dy', internal.roundToDigits(+activeRecord.dy, 3));
+      updateTextNode(textNode, activeRecord);
+      // updateSymbolNode(symNode, activeRecord, activeId);
+      gui.dispatchEvent('popup-needs-refresh');
     });
 
     hit.on('dragend', function(e) {
@@ -8963,9 +8983,14 @@
       return coords[0];
     }
 
-    function getTextTarget3(e) {
+    function getSymbolTarget(e) {
       if (e.id > -1 === false || !e.container) return null;
       return getSymbolNodeById(e.id, e.container);
+    }
+
+    function getTextNode(symNode) {
+      if (symNode.tagName == 'text') return symNode;
+      return symNode.querySelector('text');
     }
 
     function getSymbolNodeById(id, parent) {
@@ -8974,21 +8999,21 @@
       return parent.querySelector(sel);
     }
 
-    function getTextTarget2(e) {
-      var el = e && e.targetSymbol || null;
-      if (el && el.tagName == 'tspan') {
-        el = el.parentNode;
-      }
-      return el && el.tagName == 'text' ? el : null;
-    }
+    // function getTextTarget2(e) {
+    //   var el = e && e.targetSymbol || null;
+    //   if (el && el.tagName == 'tspan') {
+    //     el = el.parentNode;
+    //   }
+    //   return el && el.tagName == 'text' ? el : null;
+    // }
 
-    function getTextTarget(e) {
-      var el = e.target;
-      if (el.tagName == 'tspan') {
-        el = el.parentNode;
-      }
-      return el.tagName == 'text' ? el : null;
-    }
+    // function getTextTarget(e) {
+    //   var el = e.target;
+    //   if (el.tagName == 'tspan') {
+    //     el = el.parentNode;
+    //   }
+    //   return el.tagName == 'text' ? el : null;
+    // }
 
     function getLabelRecordById(id) {
       var table = hit.getTargetDataTable();
@@ -9007,7 +9032,7 @@
     }
 
     // update symbol by setting attributes
-    function updateSymbol(node, d) {
+    function updateTextNode(node, d) {
       var a = d['text-anchor'];
       if (a) node.setAttribute('text-anchor', a);
       setMultilineAttribute(node, 'dx', d.dx || 0);
@@ -9015,7 +9040,8 @@
     }
 
     // update symbol by re-rendering it
-    function updateSymbol2(node, d, id) {
+    // fails when symbol includes a dot (<g><circle/><text/></g> structure)
+    function updateSymbolNode(node, d, id) {
       var o = internal.svg.renderStyledLabel(d); // TODO: symbol support
       var activeLayer = hit.getHitTarget().layer;
       var xy = activeLayer.shapes[id][0];
@@ -9028,8 +9054,6 @@
       g.innerHTML = internal.svg.stringify(o);
       node2 = g.firstChild;
       node.parentNode.replaceChild(node2, node);
-      gui.dispatchEvent('popup-needs-refresh');
-      return node2;
     }
   }
 
@@ -11846,7 +11870,12 @@
     }
 
     function calcFullBounds() {
-      var b = getContentLayerBounds();
+      var b;
+      if (isPreviewView()) {
+        b = new Bounds(getFrameData().bbox);
+      } else {
+        b = getContentLayerBounds();
+      }
 
       // add margin
       // use larger margin for small sizes
@@ -11873,7 +11902,7 @@
     }
 
     function isTableView() {
-      return !isPreviewView() && !!_activeLyr.tabular;
+      return !!_activeLyr.tabular;
     }
 
     function findFrameLayer() {
@@ -11884,8 +11913,7 @@
 
     // Preview view: symbols are scaled based on display size of frame layer
     function isPreviewView() {
-      var data = getFrameData();
-      return !!data;
+      return !isTableView() && !!getFrameData();
     }
 
     function getFrameData() {
@@ -11924,7 +11952,9 @@
 
     function getContentLayers() {
       var layers = getVisibleMapLayers();
-      if (isTableView()) return findActiveLayer(layers);
+      if (isTableView()) {
+        return findActiveLayer(layers);
+      }
       return layers.filter(function(o) {
         return !!o.geographic;
       });
