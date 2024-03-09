@@ -5,6 +5,7 @@ import cmd from '../mapshaper-cmd';
 import { stop } from '../utils/mapshaper-logging';
 import { DataTable } from '../datatable/mapshaper-data-table';
 import { MosaicIndex } from '../polygons/mapshaper-mosaic-index';
+import { getArcPresenceTest } from '../paths/mapshaper-path-utils';
 
 cmd.mosaic = function(layers, dataset, opts) {
   var lyr = layers[0];
@@ -13,6 +14,8 @@ cmd.mosaic = function(layers, dataset, opts) {
   }
   requirePolygonLayer(lyr);
   var nodes = addIntersectionCuts(dataset, opts);
+  // ignore arcs that don't belong to this layer
+  nodes.setArcFilter(getArcPresenceTest(lyr.shapes, nodes.arcs));
   var mosaicIndex = new MosaicIndex(lyr, nodes, {flat: false});
   var mosaicShapes = mosaicIndex.mosaic;
   var records2;

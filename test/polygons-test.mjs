@@ -23,6 +23,15 @@ describe('mapshaper-polygons.js', function () {
           });
     })
 
+    it('BUGFIX ignores paths from other layers in the same dataset', async function() {
+      var file = 'test/data/features/polygons/ia_county_lines.json';
+      var cmd = `-i ${file} -filter + 'TYPE == "outer"' name=outline -polygons -o`;
+      var out = await api.applyCommands(cmd);
+      var json = JSON.parse(out['outline.json']);
+      // Before the fix, the command would make polygons from filtered-out paths
+      assert.equal(json.geometries.length, 1);
+    });
+
     it('creates a donut from two CCW lines', function(done) {
      // two CCW rings
       var input = {

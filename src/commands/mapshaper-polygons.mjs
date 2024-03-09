@@ -7,6 +7,7 @@ import { requirePolylineLayer } from '../dataset/mapshaper-layer-utils';
 import cmd from '../mapshaper-cmd';
 import { message, stop } from '../utils/mapshaper-logging';
 import geom from '../geom/mapshaper-geom';
+import { getArcPresenceTest } from '../paths/mapshaper-path-utils';
 
 cmd.polygons = function(layers, dataset, opts) {
   layers.forEach(requirePolylineLayer);
@@ -46,6 +47,8 @@ function createPolygonLayerFromRings(lyr, dataset) {
 
 function createPolygonLayer(lyr, dataset, opts) {
   var nodes = closeUndershoots(lyr, dataset, opts);
+  // ignore arcs that don't belong to this layer
+  nodes.setArcFilter(getArcPresenceTest(lyr.shapes, nodes.arcs));
   var data = buildPolygonMosaic(nodes);
   return {
     geometry_type: 'polygon',
