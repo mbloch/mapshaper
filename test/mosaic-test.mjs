@@ -40,6 +40,14 @@ describe('mapshaper-mosaic.js', function () {
     });
   });
 
+  it ('BUGFIX -mosaic only uses paths from the target layer', async function() {
+    var cmd = '-i test/data/features/mosaic/two_polygons.json -dissolve2 + name=output -mosaic -o';
+    var out = await api.applyCommands(cmd);
+    var json = JSON.parse(out['output.json']);
+    // Before the fix, 3 polygons were made
+    assert.equal(json.geometries.length, 1);
+  });
+
   it ('-mosaic name= option works without +', function(done) {
     var cmd = '-i input.json -mosaic name=cells -o';
     api.applyCommands(cmd, {'input.json': figure1}, function(err, out) {
