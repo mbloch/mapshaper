@@ -6661,10 +6661,15 @@
         nn = arcData.nn,
         xx = arcData.xx,
         yy = arcData.yy,
-        nodeData;
+        nodeData,
+        globalFilter;
 
     // Accessor function for arcs
     Object.defineProperty(this, 'arcs', {value: arcs});
+
+    this.setArcFilter = function(f) {
+      globalFilter = f;
+    };
 
     this.toArray = function() {
       var chains = getNodeChains(),
@@ -6744,15 +6749,19 @@
     //    Returned ids lead into the node (as opposed to outwards from it)
     // An optional filter function receives the directed id (positive or negative)
     //    of each connected arc and excludes arcs for which the filter returns false.
-    //    The filter is also applied to the initial arc; if false, no arcs are returned.
+    //    // removed: The filter is also applied to the initial arc; if false, no arcs are returned.
     //
-    this.getConnectedArcs = function(arcId, filter) {
+    this.getConnectedArcs = function(arcId, localFilter) {
       var ids = [];
-      var filtered = !!filter;
       var nextId = nextConnectedArc(arcId);
-      if (filtered && !filter(arcId)) ;
+      // kludge: return empty result if arc fails global test
+      // ... applying the local filter causes tests to fail
+      if (globalFilter && !globalFilter(arcId)) {
+        return [];
+      }
       while (nextId != arcId) {
-        if (!filtered || filter(nextId)) {
+        // if (!filtered || filter && filter(nextId) ) {
+        if ((!localFilter || localFilter(nextId)) && (!globalFilter || globalFilter(nextId))) {
           ids.push(nextId);
         }
         nextId = nextConnectedArc(nextId);
@@ -41315,6 +41324,8 @@ ${svg}
     }
     requirePolygonLayer(lyr);
     var nodes = addIntersectionCuts(dataset, opts);
+    // ignore arcs that don't belong to this layer
+    nodes.setArcFilter(getArcPresenceTest(lyr.shapes, nodes.arcs));
     var mosaicIndex = new MosaicIndex(lyr, nodes, {flat: false});
     var mosaicShapes = mosaicIndex.mosaic;
     var records2;
@@ -42425,6 +42436,8 @@ ${svg}
 
   function createPolygonLayer(lyr, dataset, opts) {
     var nodes = closeUndershoots(lyr, dataset, opts);
+    // ignore arcs that don't belong to this layer
+    nodes.setArcFilter(getArcPresenceTest(lyr.shapes, nodes.arcs));
     var data = buildPolygonMosaic(nodes);
     return {
       geometry_type: 'polygon',
@@ -45415,7 +45428,7 @@ ${svg}
     });
   }
 
-  var version = "0.6.69";
+  var version = "0.6.70";
 
   // Parse command line args into commands and run them
   // Function takes an optional Node-style callback. A Promise is returned if no callback is given.
