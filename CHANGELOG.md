@@ -1,3 +1,6 @@
+v0.6.70
+* Fix for bug affecting -mosaic and -polygon commands (they incorrectly incorporated paths from other layers).
+
 v0.6.69
 * Web UI bug fixes
 
