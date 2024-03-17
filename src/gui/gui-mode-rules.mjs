@@ -1,4 +1,4 @@
-import { flattenArcs } from './gui-display-utils';
+import { flattenArcs } from './gui-drawing-utils';
 
 // This is a new way to handle compatibility problems between
 // interactive editing modes and other interface modes

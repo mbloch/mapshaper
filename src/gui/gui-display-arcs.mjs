@@ -29,6 +29,7 @@ export function enhanceArcCollectionForDisplay(unfilteredArcs) {
     return filteredArcs;
   }
 
+  // TODO: better job of detecting arc change... e.g. revision number
   unfilteredArcs.getScaledArcs = function(ext) {
     if (filteredArcs) {
       // match simplification of unfiltered arcs

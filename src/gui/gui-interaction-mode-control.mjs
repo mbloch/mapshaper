@@ -3,29 +3,14 @@ import { internal } from './gui-core';
 
 export function InteractionMode(gui) {
 
-  // TODO: finish this list
-  // var modes = [{
-  //   name: 'info',
-  //   label: 'inspect features',
-  //   selection: true,
-  //   popup: true,
-  //   types: ['standard', 'polygons', 'lines', 'labels', 'points']
-  // }, {
-  //   name: 'selection',
-  //   label: 'select features',
-  //   selection: true,
-  //   popup: true,
-  //   types: ['standard', 'polygons', 'lines', 'table', 'labels']
-  // }]
-
   var menus = {
-    standard: ['info', 'selection', 'data', 'box'],
-    polygons: ['info', 'selection', 'data', 'box', 'vertices'],
-    rectangles: ['info', 'selection', 'data', 'box', 'rectangles', 'vertices'],
-    lines: ['info', 'selection', 'data', 'box', 'vertices' /*, 'draw-lines'*/],
-    table: ['info', 'selection', 'data'],
-    labels: ['info', 'selection', 'data', 'box', 'labels', 'location', 'add-points'],
-    points: ['info', 'selection', 'data', 'box', 'location', 'add-points']
+    standard: ['info', 'selection', 'box'],
+    polygons: ['info', 'selection', 'box', 'vertices'],
+    rectangles: ['info', 'selection', 'box', 'rectangles', 'vertices'],
+    lines: ['info', 'selection', 'box' , 'edit-lines'],
+    table: ['info', 'selection'],
+    labels: ['info', 'selection', 'box', 'labels', 'location', 'add-points'],
+    points: ['info', 'selection', 'box', 'location', 'add-points']
   };
 
   var prompts = {
@@ -45,6 +30,7 @@ export function InteractionMode(gui) {
     selection: 'select features',
     'add-points': 'add points',
     'draw-lines': 'draw lines',
+    'edit-lines': 'draw/modify lines',
     rectangles: 'drag-to-resize',
     off: 'turn off'
   };
@@ -99,8 +85,8 @@ export function InteractionMode(gui) {
     setMode('off');
   };
 
-  this.modeUsesSelection = function(mode) {
-    return ['info', 'selection', 'data', 'labels', 'location', 'vertices', 'rectangles'].includes(mode);
+  this.modeUsesHitDetection = function(mode) {
+    return ['info', 'selection', 'data', 'labels', 'location', 'vertices', 'rectangles', 'edit-lines'].includes(mode);
   };
 
   this.modeUsesPopup = function(mode) {

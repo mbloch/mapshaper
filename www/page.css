@@ -59,7 +59,8 @@ body {
 .save-menu-link,
 .save-menu-btn,
 .add-field-btn,
-.nav-menu-item {
+.nav-menu-item,
+.edit-data-btn {
 	color: #10699b;
 }
 
@@ -560,7 +561,7 @@ body.dragover #import-options-drop-area .drop-area {
 	white-space: pre-line;
 	margin: 0 0 7px 0;
 	line-height: 1.2;
-	font-size: 90%;
+	/* font-size: 90%; */
 }
 
 
@@ -816,7 +817,7 @@ img.close-btn {
 
 .close2-btn {
 	display: inline-block;
-	background-color: #f1f1f1;
+	background-color: #eee;
 	background-image: url("images/close2.png");
 	background-size: cover;
 	float: right;
@@ -829,7 +830,7 @@ img.close-btn {
 }
 
 .close2-btn:hover {
-	background-color: #ddd;
+	background-color: #d5d5d5;
 }
 
 .pin-all img {
@@ -1193,7 +1194,7 @@ div.basemap-style-btn.active img {
 }
 
 .map-layers.add-points,
-.map-layers.draw-lines {
+.map-layers.edit-lines {
 	cursor: crosshair;
 }
 
@@ -1364,20 +1365,23 @@ div.basemap-style-btn.active img {
 	padding: 1px 2px 3px 2px;
 }
 
-.add-field-btn {
+.add-field-btn,
+.edit-data-btn {
 	display: inline-block;
 	font-size: 12px;
-	margin-top: 2px;
+	margin-top: 3px;
 }
 
 .save-menu-btn:hover,
-.add-field-btn:hover {
+.add-field-btn:hover,
+.edit-data-btn:hover {
 	color: black;
 }
 
 .save-menu-link,
 .save-menu-btn,
-.add-field-btn {
+.add-field-btn,
+.edit-data-btn {
 	cursor: pointer;
 }
 

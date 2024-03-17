@@ -1,5 +1,5 @@
 import { error, internal } from './gui-core';
-import { updatePointCoords } from './gui-display-utils';
+import { updatePointCoords } from './gui-drawing-utils';
 
 export function initLineDrawing(gui, ext, mouse, hit) {
   var _on = false;

@@ -1,6 +1,6 @@
 import { HighlightBox } from './gui-highlight-box';
 import { internal } from './gui-core';
-import { setRectangleCoords } from './gui-display-utils';
+import { setRectangleCoords } from './gui-drawing-utils';
 
 export function RectangleControl(gui, hit) {
   var box = new HighlightBox(gui, {name: 'rectangle-tool', persistent: true, handles: true, classname: 'rectangles', draggable: false});

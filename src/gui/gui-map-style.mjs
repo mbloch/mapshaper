@@ -149,6 +149,9 @@ export function getOverlayStyle(baseLyr, o, opts) {
   if (opts.interactionMode == 'vertices') {
     return getVertexStyle(baseLyr, o);
   }
+  if (opts.interactionMode == 'edit-lines') {
+    return getLineEditingStyle(baseLyr, o);
+  }
   var geomType = baseLyr.geometry_type;
   var topId = o.id; // pinned id (if pinned) or hover id
   var topIdx = -1;
@@ -228,6 +231,21 @@ function getVertexStyle(lyr, o) {
     overlay: true,
     strokeColor: black,
     strokeWidth: 1.5,
+    vertices: true,
+    vertex_overlay_color: violet,
+    vertex_overlay: o.hit_coordinates || null,
+    selected_points: o.selected_points || null,
+    fillColor: null
+  };
+}
+
+// style for vertex edit mode
+function getLineEditingStyle(lyr, o) {
+  return {
+    ids: o.ids,
+    overlay: true,
+    strokeColor: 'black',
+    strokeWidth: 1.2,
     vertices: true,
     vertex_overlay_color: violet,
     vertex_overlay: o.hit_coordinates || null,

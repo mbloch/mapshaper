@@ -181,7 +181,7 @@ export function DisplayCanvas() {
       _ctx.beginPath();
       _ctx.fillStyle = style.vertex_overlay_color || 'black';
       p = style.vertex_overlay;
-      drawCircle(p[0] * t.mx + t.bx, p[1] * t.my + t.by, radius * 1.6, _ctx);
+      drawCircle(p[0] * t.mx + t.bx, p[1] * t.my + t.by, radius * 2, _ctx);
       _ctx.fill();
       _ctx.closePath();
     }
