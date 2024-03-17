@@ -6,9 +6,17 @@ import {
   insertVertex,
   deleteVertex,
   setRectangleCoords
-} from './gui-display-utils';
+} from './gui-drawing-utils';
 
 var copyRecord = internal.copyRecord;
+
+function isUndoEvt(e) {
+  return (e.ctrlKey || e.metaKey) && !e.shiftKey && e.key == 'z';
+}
+
+function isRedoEvt(e) {
+  return (e.ctrlKey || e.metaKey) && (e.shiftKey && e.key == 'z' || !e.shiftKey && e.key == 'y');
+}
 
 export function Undo(gui) {
   var history, offset, stashedUndo;
@@ -23,14 +31,6 @@ export function Undo(gui) {
     history = [];
     stashedUndo = null;
     offset = 0;
-  }
-
-  function isUndoEvt(e) {
-    return (e.ctrlKey || e.metaKey) && !e.shiftKey && e.key == 'z';
-  }
-
-  function isRedoEvt(e) {
-    return (e.ctrlKey || e.metaKey) && (e.shiftKey && e.key == 'z' || !e.shiftKey && e.key == 'y');
   }
 
   function makeMultiDataSetter(ids) {
@@ -119,7 +119,7 @@ export function Undo(gui) {
 
   gui.on('vertex_dragend', function(e) {
     var target = e.data.target;
-    var startPoint = e.points[0]; // in data coords
+    var startPoint = e.point; // in data coords
     var endPoint = getVertexCoords(target, e.ids[0]);
     var undo = function() {
       if (e.insertion) {
@@ -149,6 +149,26 @@ export function Undo(gui) {
     addHistoryState(undo, redo);
   });
 
+  gui.on('path_add', function(e) {
+    var redo = function() {
+      gui.dispatchEvent('redo_path_add', {p1: e.p1, p2: e.p2});
+    };
+    var undo = function() {
+      gui.dispatchEvent('undo_path_add');
+    };
+    addHistoryState(undo, redo);
+  });
+
+  gui.on('path_extend', function(e) {
+    var redo = function() {
+      gui.dispatchEvent('redo_path_extend', {p: e.p});
+    };
+    var undo = function() {
+      gui.dispatchEvent('undo_path_extend');
+    };
+    addHistoryState(undo, redo);
+  });
+
   this.clear = function() {
     reset();
   };
@@ -164,21 +184,23 @@ export function Undo(gui) {
   this.undo = function() {
     // firing even if history is empty
     // (because this event may trigger a new history state)
-    gui.dispatchEvent('undo_redo_pre');
+    gui.dispatchEvent('undo_redo_pre', {type: 'undo'});
     var item = getHistoryItem();
     if (item) {
       offset++;
       item.undo();
+      gui.dispatchEvent('undo_redo_post', {type: 'undo'});
       gui.dispatchEvent('map-needs-refresh');
     }
   };
 
   this.redo = function() {
-    gui.dispatchEvent('undo_redo_pre');
+    gui.dispatchEvent('undo_redo_pre', {type: 'redo'});
     if (offset <= 0) return;
     offset--;
     var item = getHistoryItem();
     item.redo();
+    gui.dispatchEvent('undo_redo_post', {type: 'redo'});
     gui.dispatchEvent('map-needs-refresh');
   };
 

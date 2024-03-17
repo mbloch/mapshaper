@@ -6,7 +6,6 @@ import { InspectionControl2 } from './gui-inspection-control';
 import { updateLayerStackOrder, filterLayerByIds } from './gui-layer-utils';
 import { mapNeedsReset, arcsMayHaveChanged, popupCanStayOpen } from './gui-map-utils';
 import { initInteractiveEditing } from './gui-edit-modes';
-import { initDrawing } from './gui-drawing';
 import * as MapStyle from './gui-map-style';
 import { MapExtent } from './gui-map-extent';
 import { LayerRenderer } from './gui-layer-renderer';
@@ -66,7 +65,6 @@ export function MshpMap(gui) {
   model.on('update', onUpdate);
 
 
-
   // Update display of segment intersections
   this.setIntersectionLayer = function(lyr, dataset) {
     if (lyr == _intersectionLyr) return; // no change
@@ -112,6 +110,14 @@ export function MshpMap(gui) {
   this.isActiveLayer = isActiveLayer;
   this.isVisibleLayer = isVisibleLayer;
   this.getActiveLayer = function() { return _activeLyr; };
+  // this.getViewData = function() {
+  //   return {
+  //     isPreview: isPreviewView(),
+  //     isTable: isTableView(),
+  //     isEmpty: !_activeLyr,
+  //     dynamicCRS: _dynamicCRS || null
+  //   };
+  // };
 
   // called by layer menu after layer visibility is updated
   this.redraw = function() {
@@ -228,7 +234,6 @@ export function MshpMap(gui) {
       new BoxTool(gui, _ext, _nav),
       new RectangleControl(gui, _hit),
       initInteractiveEditing(gui, _ext, _hit);
-      initDrawing(gui, _ext, _mouse, _hit);
       _hit.on('change', updateOverlayLayer);
     }
 
@@ -434,7 +439,7 @@ export function MshpMap(gui) {
   //   'hover'    highlight has changed -- only refresh overlay
   //   (default)  anything could have changed
   function drawLayers2(action) {
-    // sometimes styles need to be regenerated with 'hover' action (when)
+    // sometimes styles need to be regenerated with 'hover' action (when?)
     var layersMayHaveChanged = action != 'nav'; // !action;
     var fullBounds;
     var contentLayers = getDrawableContentLayers();

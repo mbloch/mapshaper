@@ -1,5 +1,5 @@
 import { error, internal } from './gui-core';
-import { updatePointCoords, getPointCoords } from './gui-display-utils';
+import { updatePointCoords, getPointCoords } from './gui-drawing-utils';
 
 export function initPointDragging(gui, ext, hit) {
   var symbolInfo;

@@ -2,12 +2,12 @@ import { getShapeHitTest } from './gui-shape-hit';
 import { getSvgHitTest } from './gui-svg-hit';
 import { internal, utils } from './gui-core';
 
-export function getPointerHitTest(mapLayer, ext, interactionMode) {
+export function getPointerHitTest(mapLayer, ext, interactionMode, featureFilter) {
   var shapeTest, targetLayer;
   if (!mapLayer || !internal.layerHasGeometry(mapLayer.layer)) {
     return function() {return {ids: []};};
   }
-  shapeTest = getShapeHitTest(mapLayer, ext, interactionMode);
+  shapeTest = getShapeHitTest(mapLayer, ext, interactionMode, featureFilter);
 
   // e: pointer event
   return function(e) {

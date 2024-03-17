@@ -24,6 +24,21 @@ export function calcArcBounds(xx, yy, start, len) {
   return [xmin, ymin, xmax, ymax];
 }
 
+export function getUnfilteredArcLength(arcId, arcs) {
+  var data = arcs.getVertexData();
+  return data.nn[arcId];
+}
+
+export function getUnfilteredArcCoords(arcId, arcs) {
+  var data = arcs.getVertexData();
+  var coords = [];
+  var start = data.ii[arcId];
+  var n = data.nn[arcId];
+  for (var i=0; i<n; i++) {
+    coords.push([data.xx[start + i], data.yy[start + i]]);
+  }
+  return coords;
+}
 
 export function findArcIdFromVertexId(i, ii) {
   // binary search
@@ -39,6 +54,22 @@ export function findArcIdFromVertexId(i, ii) {
     }
   }
   return lower; // assumes dataset is not empty
+}
+
+export function deleteLastArc(arcs) {
+  var data = arcs.getVertexData();
+  var arcId = arcs.size() - 1;
+  var arcLen = data.nn[arcId];
+  var n = data.xx.length;
+  var z = arcs.getRetainedInterval();
+  var xx2 = new Float64Array(data.xx.buffer, 0, n-arcLen);
+  var yy2 = new Float64Array(data.yy.buffer, 0, n-arcLen);
+  var nn2 = new Int32Array(data.nn.buffer, 0, arcs.size() - 1);
+  var zz2 = arcs.isFlat() ?
+    null :
+    new Float64Array(data.zz.buffer, 0, n-arcLen);
+  arcs.updateVertexData(nn2, xx2, yy2, zz2);
+  arcs.setRetainedInterval(z);
 }
 
 export function deleteVertex(arcs, i) {
@@ -71,12 +102,25 @@ export function deleteVertex(arcs, i) {
   arcs.setRetainedInterval(z);
 }
 
+export function appendEmptyArc(arcs) {
+  var data = arcs.getVertexData();
+  var nn = utils.extendBuffer(data.nn, data.nn.length + 1, data.nn.length);
+  arcs.updateVertexData(nn, data.xx, data.yy, data.zz);
+}
+
+// adds vertex to last arc
+// (used when adding lines in the GUI)
+// p: [x, y] point in display coordinates
+export function appendVertex(arcs, p) {
+  var i = arcs.getPointCount(); // one past the last idx
+  insertVertex(arcs, i, p);
+}
+
 export function insertVertex(arcs, i, p) {
   var data = arcs.getVertexData();
   var nn = data.nn;
   var n = data.xx.length;
   var count = 0;
-  var found = false;
   var xx2, yy2, zz2;
   // avoid re-allocating memory on each insertion
   if (data.xx.buffer.byteLength >= data.xx.length * 8 + 8) {
@@ -89,13 +133,21 @@ export function insertVertex(arcs, i, p) {
   if (!arcs.isFlat()) {
     zz2 = new Float64Array(new ArrayBuffer((n + 1) * 8), 0, n+1);
   }
-  for (var j=0; j<nn.length; j++) {
-    count += nn[j];
-    if (count >= i && !found) { // TODO: confirm this
-      nn[j] = nn[j] + 1;
-      found = true;
+  if (i < 0 || i > n) {
+    error('Out-of-range vertex insertion index:', i);
+  } else if (i == n) {
+    // appending vertex to last arc
+    nn[nn.length - 1]++;
+  } else {
+    for (var j=0; j<nn.length; j++) {
+      count += nn[j];
+      if (count >= i) { // TODO: confirm this
+        nn[j] = nn[j] + 1;
+        break;
+      }
     }
   }
+
   utils.copyElements(data.xx, 0, xx2, 0, i);
   utils.copyElements(data.yy, 0, yy2, 0, i);
   utils.copyElements(data.xx, i, xx2, i+1, n-i);

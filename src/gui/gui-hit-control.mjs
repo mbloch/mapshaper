@@ -9,6 +9,7 @@ export function HitControl(gui, ext, mouse) {
   var storedData = noHitData(); // may include additional data from SVG symbol hit (e.g. hit node)
   var selectionIds = [];
   var transientIds = []; // e.g. hit ids while dragging a box
+  var drawingId = -1; // kludge to allow hit detection and drawing (different feature ids)
   var active = false;
   var interactionMode;
   var targetLayer;
@@ -58,8 +59,9 @@ export function HitControl(gui, ext, mouse) {
     updateHitTest();
   };
 
-  function updateHitTest() {
-    hitTest = getPointerHitTest(targetLayer, ext, interactionMode);
+  function updateHitTest(featureFilter) {
+    if (!hoverable()) return;
+    hitTest = getPointerHitTest(targetLayer, ext, interactionMode, featureFilter);
   }
 
   function turnOn(mode) {
@@ -74,7 +76,12 @@ export function HitControl(gui, ext, mouse) {
       active = false;
       hitTest = null;
       pinnedOn = false;
+      drawingId = -1;
     }
+  }
+
+  function hoverable() {
+    return true;
   }
 
   function selectable() {
@@ -86,16 +93,20 @@ export function HitControl(gui, ext, mouse) {
   }
 
   function draggable() {
-    return interactionMode == 'vertices' || interactionMode == 'location' || interactionMode == 'labels';
+    return interactionMode == 'vertices' || interactionMode == 'location' ||
+      interactionMode == 'labels' || interactionMode == 'edit-lines';
   }
 
   function clickable() {
     // click used to pin popup and select features
     return interactionMode == 'data' || interactionMode == 'info' ||
+    // interactionMode == 'edit-lines';
     interactionMode == 'selection' || interactionMode == 'rectangles';
   }
 
-  self.getHitId = function() {return storedData.id;};
+  self.getHitId = function() {
+    return hitTest ? storedData.id : -1;
+  };
 
   // Get a reference to the active layer, so listeners to hit events can interact
   // with data and shapes
@@ -125,6 +136,25 @@ export function HitControl(gui, ext, mouse) {
     }
   };
 
+  // manually set the selected feature id(s)
+  // used when hit detection is turned off, e.g. 'edit-lines' mode
+  self.setDrawingId = function(id) {
+    if (id == drawingId) return;
+    drawingId = id >= 0 ? id : -1;
+    updateHitTest(function(shpId) {
+      return shpId != id;
+    });
+    self.triggerChangeEvent();
+  };
+
+  self.triggerChangeEvent = function() {
+    triggerHitEvent('change');
+  };
+
+  self.clearDrawingId = function() {
+    self.setDrawingId(-1);
+  };
+
   self.setHoverVertex = function(p, type) {
     var p2 = storedData.hit_coordinates;
     if (!active || !p) return;
@@ -133,7 +163,7 @@ export function HitControl(gui, ext, mouse) {
     triggerHitEvent('change');
   };
 
-  self.clearVertexOverlay = function() {
+  self.clearHoverVertex = function() {
     if (!storedData.hit_coordinates) return;
     delete storedData.hit_coordinates;
     triggerHitEvent('change');
@@ -188,7 +218,7 @@ export function HitControl(gui, ext, mouse) {
   gui.on('interaction_mode_change', function(e) {
     self.clearSelection();
     // if (e.mode == 'off' || e.mode == 'box') {
-    if (gui.interaction.modeUsesSelection(e.mode)) {
+    if (gui.interaction.modeUsesHitDetection(e.mode)) {
       turnOn(e.mode);
     } else {
       turnOff();
@@ -207,6 +237,7 @@ export function HitControl(gui, ext, mouse) {
   mouse.on('dragstart', handlePointerEvent, null, priority);
   mouse.on('drag', handlePointerEvent, null, priority);
   mouse.on('dragend', handlePointerEvent, null, priority);
+
 
   mouse.on('click', function(e) {
     if (!hitTest || !active) return;
@@ -321,6 +352,16 @@ export function HitControl(gui, ext, mouse) {
 
   // check if an event is used in the current interaction mode
   function eventIsEnabled(type) {
+    if (!active) return false;
+    if (interactionMode == 'edit-lines' && (type == 'hover' || type == 'dblclick')) {
+      return true; // special case -- using hover for line drawing animation
+    }
+
+    // ignore pointer events when no features are being hit
+    // (don't block pan and other navigation when events aren't being used for editing)
+    var hitId = self.getHitId();
+    if (hitId == -1) return false;
+
     if (type == 'click' && !clickable()) {
       return false;
     }
@@ -335,21 +376,30 @@ export function HitControl(gui, ext, mouse) {
   }
 
   function handlePointerEvent(e) {
-    if (!hitTest || !active) return;
-    if (self.getHitId() == -1) return; // ignore pointer events when no features are being hit
-    // don't block pan and other navigation in modes when they are not being used
     if (eventIsEnabled(e.type)) {
       e.stopPropagation(); // block navigation
       triggerHitEvent(e.type, e.data);
     }
   }
 
-  // d: event data (may be a pointer event object, an ordinary object or null)
-  function triggerHitEvent(type, d) {
+  // evt: event data (may be a pointer event object, an ordinary object or null)
+  function triggerHitEvent(type, evt) {
+    var eventData = {
+      mode: interactionMode,
+      overMap: evt ? isOverMap(evt) : null
+    };
     // Merge stored hit data into the event data
-    var eventData = utils.extend({mode: interactionMode}, d || {}, storedData);
+    utils.extend(eventData, evt || {}, storedData);
     if (transientIds.length) {
+      // add transient ids to any other hit ids
       eventData.ids = utils.uniq(transientIds.concat(eventData.ids || []));
+    }
+    // when drawing, we want the overlay layer to show the path being currently
+    // drawn.
+    if (drawingId >= 0) {
+      // eventData.ids = [drawingId];
+      // eventData.id = drawingId;
+      eventData.ids = utils.uniq(eventData.ids.concat([drawingId]));
     }
     if (pinnedOn) {
       eventData.pinned = true;

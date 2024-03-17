@@ -1,5 +1,6 @@
 import { error, internal, geom, utils } from './gui-core';
-import { updateVertexCoords, insertVertex, getVertexCoords, translateDisplayPoint, deleteVertex } from './gui-display-utils';
+import { updateVertexCoords, insertVertex, getVertexCoords, deleteVertex } from './gui-drawing-utils';
+import { translateDisplayPoint } from './gui-display-utils';
 
 // pointer thresholds for hovering near a vertex or segment midpoint
 var HOVER_THRESHOLD = 8;
@@ -23,7 +24,7 @@ export function initVertexDragging(gui, ext, hit) {
   }
 
   function clearHoverVertex() {
-    hit.clearVertexOverlay();
+    hit.clearHoverVertex();
   }
 
   // return data on the nearest vertex (or identical vertices) to the pointer

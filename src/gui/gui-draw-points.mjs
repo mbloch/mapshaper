@@ -1,8 +1,8 @@
 import { error, internal } from './gui-core';
-import { updatePointCoords } from './gui-display-utils';
-import { layerHasCanvasDisplayStyle } from './gui-map-style';
+import { updatePointCoords, appendNewDataRecord } from './gui-drawing-utils';
 
-export function initPointDrawing(gui, ext, mouse, hit) {
+export function initPointDrawing(gui, ext, hit) {
+  var mouse = gui.map.getMouse();
 
   gui.on('interaction_mode_change', function(e) {
     gui.container.findChild('.map-layers').classed('add-points', e.mode === 'add-points');
@@ -24,26 +24,15 @@ export function initPointDrawing(gui, ext, mouse, hit) {
     var target = hit.getHitTarget();
     var lyr = target.layer;
     var fid = lyr.shapes.length;
-    var d = lyr.data ? getEmptyDataRecord(lyr.data) : null;
+    var d = appendNewDataRecord(lyr);
     if (d) {
       // this seems to work even for projected layers -- the data tables
       // of projected and original data seem to be shared.
       lyr.data.getRecords()[fid] = d;
-      // TODO: handle SVG symbol layer
-      if (internal.layerHasLabels(lyr)) {
-        d['label-text'] = 'TBD'; // without text, new labels will be invisible
-      } else if (layerHasCanvasDisplayStyle(lyr)) {
-        d.r = 3; // show a black circle if layer is styled
-      }
     }
     lyr.shapes[fid] = [p];
     updatePointCoords(target, fid);
   }
 
-  function getEmptyDataRecord(table) {
-    return table.getFields().reduce(function(memo, name) {
-      memo[name] = null;
-      return memo;
-    }, {});
-  }
+
 }

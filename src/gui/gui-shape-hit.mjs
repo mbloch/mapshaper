@@ -1,14 +1,16 @@
 import { utils, geom, internal, error } from './gui-core';
 import { absArcId } from '../paths/mapshaper-arc-utils';
 
-export function getShapeHitTest(displayLayer, ext, interactionMode) {
+// featureFilter: optional test function, accepts feature id
+//
+export function getShapeHitTest(displayLayer, ext, interactionMode, featureFilter) {
   var geoType = displayLayer.layer.geometry_type;
   var test;
   if (geoType == 'point' && displayLayer.style.type == 'styled') {
     test = getGraduatedCircleTest(getRadiusFunction(displayLayer.style));
   } else if (geoType == 'point') {
     test = pointTest;
-  } else if (interactionMode == 'vertices') {
+  } else if (interactionMode == 'vertices' || interactionMode == 'edit-lines') {
     test = vertexTest;
   } else if (geoType == 'polyline') {
     test = polylineTest;
@@ -73,7 +75,8 @@ export function getShapeHitTest(displayLayer, ext, interactionMode) {
   }
 
   function vertexTest(x, y) {
-    var maxDist = getZoomAdjustedHitBuffer(25, 2),
+    var bufferPix = 15; // 25;
+    var maxDist = getZoomAdjustedHitBuffer(bufferPix, 2),
         cands = findHitCandidates(x, y, maxDist);
     sortByDistance(x, y, cands, displayLayer.arcs);
     cands = pickNearestCandidates(cands, 0, maxDist);
@@ -189,6 +192,9 @@ export function getShapeHitTest(displayLayer, ext, interactionMode) {
         bbox = [];
     displayLayer.layer.shapes.forEach(function(shp, shpId) {
       var cand;
+      if (featureFilter && !featureFilter(shpId)) {
+        return;
+      }
       for (var i = 0, n = shp && shp.length; i < n; i++) {
         arcs.getSimpleShapeBounds2(shp[i], bbox);
         if (x + dist < bbox[0] || x - dist > bbox[2] ||
