@@ -17,7 +17,7 @@ export function Popup(gui, toNext, toPrev) {
   var prevLink = El('span').addClass('popup-nav-arrow colored-text').appendTo(nav).text('◀');
   var navInfo = El('span').addClass('popup-nav-info').appendTo(nav);
   var nextLink = El('span').addClass('popup-nav-arrow colored-text').appendTo(nav).text('▶');
-  var refresh = null;
+  var refresh;
 
   el.addClass('rollover'); // used as a sentinel for the hover function
 
@@ -27,16 +27,15 @@ export function Popup(gui, toNext, toPrev) {
     if (refresh) refresh();
   });
 
-  self.show = function(id, ids, lyr, pinned) {
-    var singleEdit = pinned && gui.interaction.getMode() == 'data';
+  self.show = function(id, ids, lyr, pinned, edit) {
+    var singleEdit = edit || pinned && gui.interaction.getMode() == 'data';
     var multiEdit = pinned && gui.interaction.getMode() == 'selection';
     var maxHeight = parent.node().clientHeight - 36;
-    var recIds = multiEdit ? ids : [id];
 
     // stash a function for refreshing the current popup when data changes
     // while the popup is being displayed (e.g. while dragging a label)
     refresh = function() {
-      render(content, recIds, lyr, singleEdit || multiEdit);
+      render(id, ids, lyr, pinned, singleEdit || multiEdit);
     };
     refresh();
     if (multiEdit) {
@@ -83,7 +82,9 @@ export function Popup(gui, toNext, toPrev) {
     tab.show();
   }
 
-  function render(el, recIds, lyr, editable) {
+  function render(id, ids, lyr, pinned, editable) {
+    var recIds = id >= 0 ? [id] : ids;
+    var el = content;
     var table = lyr.data; // table can be null (e.g. if layer has no attribute data)
     var tableEl = table ? renderTable(recIds, table, editable) : null;
     el.empty(); // clean up if panel is already open
@@ -107,13 +108,18 @@ export function Popup(gui, toNext, toPrev) {
           table && table.getFields().length > 0 ? 'feature': 'layer'));
     }
 
+    var footer = El('div').appendTo(el);
     if (editable) {
       // render "add field" button
-      var line = El('div').appendTo(el);
-      El('span').addClass('add-field-btn').appendTo(line).on('click', async function(e) {
+      El('span').addClass('add-field-btn').appendTo(footer).on('click', async function(e) {
         // show "add field" dialog
         openAddFieldPopup(gui, recIds, lyr);
       }).text('+ add field');
+    } else if (pinned) {
+      // render "Click to edit" button
+      El('span').addClass('edit-data-btn').appendTo(footer).on('click', async function(e) {
+        self.show(id, ids, lyr, true, true);
+      }).text('▸ click to edit');
     }
   }
 
