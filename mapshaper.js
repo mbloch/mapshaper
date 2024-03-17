@@ -45492,7 +45492,7 @@ ${svg}
     });
   }
 
-  var version = "0.6.71";
+  var version = "0.6.72";
 
   // Parse command line args into commands and run them
   // Function takes an optional Node-style callback. A Promise is returned if no callback is given.

@@ -10024,7 +10024,7 @@
       if (pixelDist > HOVER_THRESHOLD$1 || pathLen < 4) {
         return null;
       }
-      var point = translateDisplayPoint([x, y]);
+      var point = translateDisplayPoint(target, [x, y]);
       return {
         target, ids: [id], extendable: false, point
       };
