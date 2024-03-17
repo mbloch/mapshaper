@@ -2532,6 +2532,387 @@
     };
   }
 
+  // Convert a point from display CRS coordinates to data coordinates.
+  // These are only different when using dynamic reprojection (basemap view).
+  function translateDisplayPoint(lyr, p) {
+    return isProjectedLayer(lyr) ? lyr.invertPoint(p[0], p[1]) : p;
+  }
+
+  // bbox: display coords
+  // intended to work with rectangular projections like Mercator
+  function getBBoxCoords(lyr, bbox) {
+    if (!isProjectedLayer(lyr)) return bbox.concat();
+    var a = translateDisplayPoint(lyr, [bbox[0], bbox[1]]);
+    var b = translateDisplayPoint(lyr, [bbox[2], bbox[3]]);
+    var bounds = new internal.Bounds();
+    bounds.mergePoint(a[0], a[1]);
+    bounds.mergePoint(b[0], b[1]);
+    return bounds.toArray();
+  }
+
+  function isProjectedLayer(lyr) {
+    // TODO: could do some validation on the layer's contents
+    return !!(lyr.source && lyr.invertPoint);
+  }
+
+  var darkStroke = "#334",
+      lightStroke = "#b7d9ea",
+      violet = "#cc6acc",
+      violetFill = "rgba(249, 120, 249, 0.20)",
+      gold = "#efc100",
+      black = "black",
+      grey = "#888",
+      selectionFill = "rgba(237, 214, 0, 0.12)",
+      hoverFill = "rgba(255, 120, 255, 0.12)",
+      activeStyle = { // outline style for the active layer
+        type: 'outline',
+        strokeColors: [lightStroke, darkStroke],
+        strokeWidth: 0.8,
+        dotColor: "#223",
+        dotSize: 1
+      },
+      activeStyleDarkMode = {
+        type: 'outline',
+        strokeColors: [lightStroke, 'white'],
+        strokeWidth: 0.9,
+        dotColor: 'white',
+        dotSize: 1
+      },
+      activeStyleForLabels = {
+        dotColor: "rgba(250, 0, 250, 0.45)", // violet dot with transparency
+        dotSize: 1
+      },
+      referenceStyle = { // outline style for reference layers
+        type: 'outline',
+        strokeColors: [null, '#78c110'], // upped saturation from #86c927
+        strokeWidth: 0.85,
+        dotColor: "#73ba20",
+        dotSize: 1
+      },
+      intersectionStyle = {
+        dotColor: "#F24400",
+        dotSize: 1
+      },
+      hoverStyles = {
+        polygon: {
+          fillColor: hoverFill,
+          strokeColor: black,
+          strokeWidth: 1.2
+        }, point:  {
+          dotColor: violet, // black,
+          dotSize: 2.5
+        }, polyline: {
+          strokeColor: black,
+          strokeWidth: 2.5,
+        }
+      },
+      unselectedHoverStyles = {
+        polygon: {
+          fillColor: 'rgba(0,0,0,0)',
+          strokeColor: black,
+          strokeWidth: 1.2
+        }, point:  {
+          dotColor: black, // grey,
+          dotSize: 2
+        }, polyline:  {
+          strokeColor: black, // grey,
+          strokeWidth: 2.5
+        }
+      },
+      selectionStyles = {
+        polygon: {
+          fillColor: hoverFill,
+          strokeColor: black,
+          strokeWidth: 1.2
+        }, point:  {
+          dotColor: violet, // black,
+          dotSize: 1.5
+        }, polyline:  {
+          strokeColor: violet, //  black,
+          strokeWidth: 2.5
+        }
+      },
+      // not used
+      selectionHoverStyles = {
+        polygon: {
+          fillColor: selectionFill,
+          strokeColor: black,
+          strokeWidth: 1.2
+        }, point:  {
+          dotColor: black,
+          dotSize: 1.5
+        }, polyline:  {
+          strokeColor: black,
+          strokeWidth: 2
+        }
+      },
+      pinnedStyles = {
+        polygon: {
+          fillColor: violetFill,
+          strokeColor: violet,
+          strokeWidth: 1.8
+        }, point:  {
+          dotColor: violet,
+          dotSize: 3
+        }, polyline:  {
+          strokeColor: violet, // black, // violet,
+          strokeWidth: 3
+        }
+      };
+
+  function getIntersectionStyle(lyr, opts) {
+    return getDefaultStyle(lyr, intersectionStyle);
+  }
+
+  // Style for unselected layers with visibility turned on
+  // (styled layers have)
+  function getReferenceLayerStyle(lyr, opts) {
+    var style;
+    if (layerHasCanvasDisplayStyle(lyr) && !opts.outlineMode) {
+      style = getCanvasDisplayStyle(lyr);
+    } else if (internal.layerHasLabels(lyr) && !opts.outlineMode) {
+      style = {dotSize: 0}; // no reference dots if labels are visible
+    } else {
+      style = getDefaultStyle(lyr, referenceStyle);
+    }
+    return style;
+  }
+
+  function getActiveLayerStyle(lyr, opts) {
+    var style;
+    if (layerHasCanvasDisplayStyle(lyr) && !opts.outlineMode) {
+      style = getCanvasDisplayStyle(lyr);
+    } else if (internal.layerHasLabels(lyr) && !opts.outlineMode) {
+      style = getDefaultStyle(lyr, activeStyleForLabels);
+    } else if (opts.darkMode) {
+      style = getDefaultStyle(lyr, activeStyleDarkMode);
+    } else {
+      style = getDefaultStyle(lyr, activeStyle);
+    }
+    return style;
+  }
+
+  // Returns a display style for the overlay layer.
+  // The overlay layer renders several kinds of feature, each of which is displayed
+  // with a different style.
+  //
+  // * hover shapes
+  // * selected shapes
+  // * pinned shapes
+  //
+  function getOverlayStyle(baseLyr, o, opts) {
+    if (opts.interactionMode == 'vertices') {
+      return getVertexStyle(baseLyr, o);
+    }
+    if (opts.interactionMode == 'edit-lines') {
+      return getLineEditingStyle(baseLyr, o);
+    }
+    var geomType = baseLyr.geometry_type;
+    var topId = o.id; // pinned id (if pinned) or hover id
+    var topIdx = -1;
+    var styler = function(style, i) {
+      var defaultStyle = i === topIdx ? topStyle : outlineStyle;
+      if (baseStyle.styler) {
+        // TODO: render default stroke widths without scaling
+        // (will need to pass symbol scale to the styler function)
+        style.strokeWidth = defaultStyle.strokeWidth;
+        baseStyle.styler(style, i); // get styled stroke width (if set)
+        style.strokeColor = defaultStyle.strokeColor;
+        style.fillColor = defaultStyle.fillColor;
+      } else {
+        Object.assign(style, defaultStyle);
+      }
+    };
+    var baseStyle = getActiveLayerStyle(baseLyr, opts);
+    var outlineStyle = getDefaultStyle(baseLyr, selectionStyles[geomType]);
+    var topStyle;
+    var ids = o.ids.filter(function(i) {
+      return i != o.id; // move selected id to the end
+    });
+    if (o.id > -1) { // pinned or hover style
+      topStyle = getSelectedFeatureStyle(baseLyr, o, opts);
+      topIdx = ids.length;
+      ids.push(o.id); // put the pinned/hover feature last in the render order
+    }
+    var style = {
+      baseStyle: baseStyle,
+      styler,
+      ids,
+      overlay: true
+    };
+
+    if (layerHasCanvasDisplayStyle(baseLyr) && !opts.outlineMode) {
+      if (geomType == 'point') {
+        style.styler = getOverlayPointStyler(getCanvasDisplayStyle(baseLyr).styler, styler);
+      }
+      style.type = 'styled';
+    }
+    return ids.length > 0 ? style : null;
+  }
+
+
+  function getDefaultStyle(lyr, baseStyle) {
+    var style = Object.assign({}, baseStyle);
+    // reduce the dot size of large point layers
+    if (lyr.geometry_type == 'point' && style.dotSize > 0) {
+      style.dotSize *= getDotScale$1(lyr);
+    }
+    return style;
+  }
+
+  function getDotScale$1(lyr) {
+    var topTier = 10000;
+    var n = countPoints(lyr.shapes, topTier); // short-circuit point counting above top threshold
+    var k = n < 200 && 4 || n < 2500 && 3 || n < topTier && 2 || 1;
+    return k;
+  }
+
+  function countPoints(shapes, max) {
+    var count = 0;
+    var i, n, shp;
+    max = max || Infinity;
+    for (i=0, n=shapes.length; i<n && count<max; i++) {
+      shp = shapes[i];
+      count += shp ? shp.length : 0;
+    }
+    return count;
+  }
+
+
+  // style for vertex edit mode
+  function getVertexStyle(lyr, o) {
+    return {
+      ids: o.ids,
+      overlay: true,
+      strokeColor: black,
+      strokeWidth: 1.5,
+      vertices: true,
+      vertex_overlay_color: violet,
+      vertex_overlay: o.hit_coordinates || null,
+      selected_points: o.selected_points || null,
+      fillColor: null
+    };
+  }
+
+  // style for vertex edit mode
+  function getLineEditingStyle(lyr, o) {
+    return {
+      ids: o.ids,
+      overlay: true,
+      strokeColor: 'black',
+      strokeWidth: 1.2,
+      vertices: true,
+      vertex_overlay_color: violet,
+      vertex_overlay: o.hit_coordinates || null,
+      selected_points: o.selected_points || null,
+      fillColor: null
+    };
+  }
+
+
+  function getSelectedFeatureStyle(lyr, o, opts) {
+    var isPinned = o.pinned;
+    var inSelection = o.ids.indexOf(o.id) > -1;
+    var geomType = lyr.geometry_type;
+    var style;
+    if (isPinned && opts.interactionMode == 'rectangles') {
+      // kludge for rectangle editing mode
+      style = selectionStyles[geomType];
+    } else if (isPinned) {
+      // a feature is pinned
+      style = pinnedStyles[geomType];
+    } else if (inSelection) {
+      // normal hover, or hover id is in the selection set
+      style = hoverStyles[geomType];
+    } else {
+      // features are selected, but hover id is not in the selection set
+      style = unselectedHoverStyles[geomType];
+    }
+    return getDefaultStyle(lyr, style);
+  }
+
+  // Modify style to use scaled circle instead of dot symbol
+  function getOverlayPointStyler(baseStyler, overlayStyler) {
+    return function(obj, i) {
+      var dotColor;
+      var id = obj.ids ? obj.ids[i] : -1;
+      obj.strokeWidth = 0; // kludge to support setting minimum stroke width
+      baseStyler(obj, id);
+      if (overlayStyler) {
+        overlayStyler(obj, i);
+      }
+      dotColor = obj.dotColor;
+      if (obj.radius && dotColor) {
+        obj.radius += 0.4;
+        // delete obj.fillColor; // only show outline
+        obj.fillColor = dotColor; // comment out to only highlight stroke
+        obj.strokeColor = dotColor;
+        obj.strokeWidth = Math.max(obj.strokeWidth + 0.8, 1.5);
+        obj.opacity = 1;
+      }
+    };
+  }
+
+  function getCanvasDisplayStyle(lyr) {
+    var styleIndex = {
+          opacity: 'opacity',
+          r: 'radius',
+          'fill': 'fillColor',
+          'fill-pattern': 'fillPattern',
+          'fill-effect': 'fillEffect',
+          'fill-opacity': 'fillOpacity',
+          'stroke': 'strokeColor',
+          'stroke-width': 'strokeWidth',
+          'stroke-dasharray': 'lineDash',
+          'stroke-opacity': 'strokeOpacity',
+          'stroke-linecap': 'lineCap',
+          'stroke-linejoin': 'lineJoin',
+          'stroke-miterlimit': 'miterLimit'
+        },
+        // array of field names of relevant svg display properties
+        fields = getCanvasStyleFields(lyr).filter(function(f) {return f in styleIndex;}),
+        records = lyr.data.getRecords();
+    var styler = function(style, i) {
+      var rec = records[i];
+      var fname, val;
+      for (var j=0; j<fields.length; j++) {
+        fname = fields[j];
+        val = rec && rec[fname];
+        if (val == 'none') {
+          val = 'transparent'; // canvas equivalent of CSS 'none'
+        }
+        // convert svg property name to mapshaper style equivalent
+        style[styleIndex[fname]] = val;
+      }
+
+      if (style.strokeWidth && !style.strokeColor) {
+        style.strokeColor = 'black';
+      }
+      if (!('strokeWidth' in style) && style.strokeColor) {
+        style.strokeWidth = 1;
+      }
+      if (style.radius > 0 && !style.strokeWidth && !style.fillColor && lyr.geometry_type == 'point') {
+        style.fillColor = 'black';
+      }
+    };
+    return {styler: styler, type: 'styled'};
+  }
+
+  // check if layer should be displayed with styles
+  function layerHasCanvasDisplayStyle(lyr) {
+    var fields = getCanvasStyleFields(lyr);
+    if (lyr.geometry_type == 'point') {
+      return fields.indexOf('r') > -1; // require 'r' field for point symbols
+    }
+    return utils$1.difference(fields, ['opacity', 'class']).length > 0;
+  }
+
+
+  function getCanvasStyleFields(lyr) {
+    var fields = lyr.data ? lyr.data.getFields() : [];
+    return internal.findPropertiesBySymbolGeom(fields, lyr.geometry_type);
+  }
+
   function flattenArcs(lyr) {
     lyr.source.dataset.arcs.flatten();
     if (isProjectedLayer(lyr)) {
@@ -2552,11 +2933,74 @@
     }
   }
 
-  function insertVertex$1(lyr, id, dataPoint) {
-    internal.insertVertex(lyr.source.dataset.arcs, id, dataPoint);
-    if (isProjectedLayer(lyr)) {
-      internal.insertVertex(lyr.arcs, id, lyr.projectPoint(dataPoint[0], dataPoint[1]));
+  function appendNewDataRecord(layer) {
+    if (!layer.data) return null;
+    var fields = layer.data.getFields();
+    var d = getEmptyDataRecord(layer.data);
+    // TODO: handle SVG symbol layer
+    if (internal.layerHasLabels(layer)) {
+      d['label-text'] = 'TBD'; // without text, new labels will be invisible
+    } else if (layer.geometry_type == 'point' && fields.includes('r')) {
+      d.r = 3; // show a black circle if layer is styled
+    } else if (true || layer.geometry_type == 'polyline' && fields.includes('stroke')) {
+      d.stroke = 'black';
+    } else if (layer.geometry_type == 'polygon' && fields.includes('stroke')) {
+      d.stroke = 'black';
     }
+    // TODO: better styling
+    layer.data.getRecords().push(d);
+    return d;
+  }
+
+  function getEmptyDataRecord(table) {
+    return table.getFields().reduce(function(memo, name) {
+      memo[name] = null;
+      return memo;
+    }, {});
+  }
+
+  function deleteLastPath(lyr) {
+    var arcId = lyr.arcs.size() - 1;
+    if (lyr.layer.data) {
+      lyr.layer.data.getRecords().pop();
+    }
+    var shp = lyr.layer.shapes.pop();
+    internal.deleteLastArc(lyr.arcs);
+    if (isProjectedLayer(lyr)) {
+      internal.deleteLastArc(lyr.source.dataset.arcs);
+    }
+  }
+
+  // p1, p2: two points in source data CRS coords.
+  function appendNewPath(lyr, p1, p2) {
+    var arcId = lyr.arcs.size();
+    internal.appendEmptyArc(lyr.arcs);
+    lyr.layer.shapes.push([[arcId]]);
+    if (isProjectedLayer(lyr)) {
+      // lyr.source.layer.shapes.push([[arcId]]);
+      internal.appendEmptyArc(lyr.source.dataset.arcs);
+    }
+    appendVertex$1(lyr, p1);
+    appendVertex$1(lyr, p2);
+    appendNewDataRecord(lyr.layer);
+  }
+
+  // p: point in source data CRS coords.
+  function insertVertex$1(lyr, id, p) {
+    internal.insertVertex(lyr.source.dataset.arcs, id, p);
+    if (isProjectedLayer(lyr)) {
+      internal.insertVertex(lyr.arcs, id, lyr.projectPoint(p[0], p[1]));
+    }
+  }
+
+  function appendVertex$1(lyr, p) {
+    var n = lyr.source.dataset.arcs.getPointCount();
+    insertVertex$1(lyr, n, p);
+  }
+
+  // TODO: make sure we're not also removing an entire arc
+  function deleteLastVertex(lyr) {
+    deleteVertex$1(lyr, lyr.arcs.getPointCount() - 1);
   }
 
   function deleteVertex$1(lyr, id) {
@@ -2566,30 +3010,25 @@
     }
   }
 
-  function translateDisplayPoint(lyr, p) {
-    return isProjectedLayer(lyr) ? lyr.invertPoint(p[0], p[1]) : p;
+  function getLastArcCoords(target) {
+    var arcId = target.source.dataset.arcs.size() - 1;
+    return internal.getUnfilteredArcCoords(arcId, target.source.dataset.arcs);
+  }
+
+  function getLastArcLength(target) {
+    var arcId = target.source.dataset.arcs.size() - 1;
+    return internal.getUnfilteredArcLength(arcId, target.source.dataset.arcs);
   }
 
   function getPointCoords(lyr, fid) {
     return internal.cloneShape(lyr.source.layer.shapes[fid]);
   }
 
-  // bbox: display coords
-  // intended to work with rectangular projections like Mercator
-  function getBBoxCoords(lyr, bbox) {
-    if (!isProjectedLayer(lyr)) return bbox.concat();
-    var a = translateDisplayPoint(lyr, [bbox[0], bbox[1]]);
-    var b = translateDisplayPoint(lyr, [bbox[2], bbox[3]]);
-    var bounds = new internal.Bounds();
-    bounds.mergePoint(a[0], a[1]);
-    bounds.mergePoint(b[0], b[1]);
-    return bounds.toArray();
-  }
-
   function getVertexCoords(lyr, id) {
     return lyr.source.dataset.arcs.getVertex2(id);
   }
 
+  // set data coords (not display coords) of one or more vertices.
   function setVertexCoords(lyr, ids, dataPoint) {
     internal.snapVerticesToPoint(ids, dataPoint, lyr.source.dataset.arcs, true);
     if (isProjectedLayer(lyr)) {
@@ -2620,20 +3059,6 @@
         internal.snapVerticesToPoint([id], lyr.projectPoint(p[0], p[1]), lyr.arcs, true);
       }
     });
-  }
-
-  // lyr: display layer
-  // export function updateRectangleCoords(lyr, ids, coords) {
-  //   if (!isProjectedLayer(lyr)) return;
-  //   ids.forEach(function(id, i) {
-  //     var p = coords[i];
-  //     internal.snapVerticesToPoint([id], lyr.invertPoint(p[0], p[1]), lyr.source.dataset.arcs, true);
-  //   });
-  // }
-
-  function isProjectedLayer(lyr) {
-    // TODO: could do some validation on the layer's contents
-    return !!(lyr.source && lyr.invertPoint);
   }
 
   // Update source data coordinates by projecting display coordinates
@@ -4619,6 +5044,14 @@
 
   var copyRecord = internal.copyRecord;
 
+  function isUndoEvt(e) {
+    return (e.ctrlKey || e.metaKey) && !e.shiftKey && e.key == 'z';
+  }
+
+  function isRedoEvt(e) {
+    return (e.ctrlKey || e.metaKey) && (e.shiftKey && e.key == 'z' || !e.shiftKey && e.key == 'y');
+  }
+
   function Undo(gui) {
     var history, offset, stashedUndo;
     reset();
@@ -4632,14 +5065,6 @@
       history = [];
       stashedUndo = null;
       offset = 0;
-    }
-
-    function isUndoEvt(e) {
-      return (e.ctrlKey || e.metaKey) && !e.shiftKey && e.key == 'z';
-    }
-
-    function isRedoEvt(e) {
-      return (e.ctrlKey || e.metaKey) && (e.shiftKey && e.key == 'z' || !e.shiftKey && e.key == 'y');
     }
 
     function makeMultiDataSetter(ids) {
@@ -4728,7 +5153,7 @@
 
     gui.on('vertex_dragend', function(e) {
       var target = e.data.target;
-      var startPoint = e.points[0]; // in data coords
+      var startPoint = e.point; // in data coords
       var endPoint = getVertexCoords(target, e.ids[0]);
       var undo = function() {
         if (e.insertion) {
@@ -4758,6 +5183,26 @@
       addHistoryState(undo, redo);
     });
 
+    gui.on('path_add', function(e) {
+      var redo = function() {
+        gui.dispatchEvent('redo_path_add', {p1: e.p1, p2: e.p2});
+      };
+      var undo = function() {
+        gui.dispatchEvent('undo_path_add');
+      };
+      addHistoryState(undo, redo);
+    });
+
+    gui.on('path_extend', function(e) {
+      var redo = function() {
+        gui.dispatchEvent('redo_path_extend', {p: e.p});
+      };
+      var undo = function() {
+        gui.dispatchEvent('undo_path_extend');
+      };
+      addHistoryState(undo, redo);
+    });
+
     this.clear = function() {
       reset();
     };
@@ -4773,21 +5218,23 @@
     this.undo = function() {
       // firing even if history is empty
       // (because this event may trigger a new history state)
-      gui.dispatchEvent('undo_redo_pre');
+      gui.dispatchEvent('undo_redo_pre', {type: 'undo'});
       var item = getHistoryItem();
       if (item) {
         offset++;
         item.undo();
+        gui.dispatchEvent('undo_redo_post', {type: 'undo'});
         gui.dispatchEvent('map-needs-refresh');
       }
     };
 
     this.redo = function() {
-      gui.dispatchEvent('undo_redo_pre');
+      gui.dispatchEvent('undo_redo_pre', {type: 'redo'});
       if (offset <= 0) return;
       offset--;
       var item = getHistoryItem();
       item.redo();
+      gui.dispatchEvent('undo_redo_post', {type: 'redo'});
       gui.dispatchEvent('map-needs-refresh');
     };
 
@@ -4927,12 +5374,13 @@
     document.addEventListener('keyup', function(e) {
       if (!GUI.isActiveInstance(gui)) return;
       if (e.keyCode == 16) shiftDown = false;
+      self.dispatchEvent('keyup', getEventData(e));
     });
 
     document.addEventListener('keydown', function(e) {
       if (!GUI.isActiveInstance(gui)) return;
       if (e.keyCode == 16) shiftDown = true;
-      self.dispatchEvent('keydown', {originalEvent: e});
+      self.dispatchEvent('keydown', getEventData(e));
     });
 
     this.shiftIsPressed = function() { return shiftDown; };
@@ -4947,33 +5395,37 @@
     };
   }
 
+  var names = {
+    8: 'delete',
+    9: 'tab',
+    13: 'enter',
+    16: 'shift',
+    27: 'esc',
+    32: 'space',
+    37: 'left',
+    38: 'up',
+    39: 'right',
+    40: 'down'
+  };
+
+  function getEventData(originalEvent) {
+    var keyCode = originalEvent.keyCode;
+    var keyName = names[keyCode] || '';
+    return {originalEvent, keyCode, keyName};
+  }
+
   utils$1.inherit(KeyboardEvents, EventDispatcher);
 
   function InteractionMode(gui) {
 
-    // TODO: finish this list
-    // var modes = [{
-    //   name: 'info',
-    //   label: 'inspect features',
-    //   selection: true,
-    //   popup: true,
-    //   types: ['standard', 'polygons', 'lines', 'labels', 'points']
-    // }, {
-    //   name: 'selection',
-    //   label: 'select features',
-    //   selection: true,
-    //   popup: true,
-    //   types: ['standard', 'polygons', 'lines', 'table', 'labels']
-    // }]
-
     var menus = {
-      standard: ['info', 'selection', 'data', 'box'],
-      polygons: ['info', 'selection', 'data', 'box', 'vertices'],
-      rectangles: ['info', 'selection', 'data', 'box', 'rectangles', 'vertices'],
-      lines: ['info', 'selection', 'data', 'box', 'vertices' /*, 'draw-lines'*/],
-      table: ['info', 'selection', 'data'],
-      labels: ['info', 'selection', 'data', 'box', 'labels', 'location', 'add-points'],
-      points: ['info', 'selection', 'data', 'box', 'location', 'add-points']
+      standard: ['info', 'selection', 'box'],
+      polygons: ['info', 'selection', 'box', 'vertices'],
+      rectangles: ['info', 'selection', 'box', 'rectangles', 'vertices'],
+      lines: ['info', 'selection', 'box' , 'edit-lines'],
+      table: ['info', 'selection'],
+      labels: ['info', 'selection', 'box', 'labels', 'location', 'add-points'],
+      points: ['info', 'selection', 'box', 'location', 'add-points']
     };
 
     var prompts = {
@@ -4993,6 +5445,7 @@
       selection: 'select features',
       'add-points': 'add points',
       'draw-lines': 'draw lines',
+      'edit-lines': 'draw/modify lines',
       rectangles: 'drag-to-resize',
       off: 'turn off'
     };
@@ -5047,8 +5500,8 @@
       setMode('off');
     };
 
-    this.modeUsesSelection = function(mode) {
-      return ['info', 'selection', 'data', 'labels', 'location', 'vertices', 'rectangles'].includes(mode);
+    this.modeUsesHitDetection = function(mode) {
+      return ['info', 'selection', 'data', 'labels', 'location', 'vertices', 'rectangles', 'edit-lines'].includes(mode);
     };
 
     this.modeUsesPopup = function(mode) {
@@ -6587,6 +7040,21 @@
     return [xmin, ymin, xmax, ymax];
   }
 
+  function getUnfilteredArcLength(arcId, arcs) {
+    var data = arcs.getVertexData();
+    return data.nn[arcId];
+  }
+
+  function getUnfilteredArcCoords(arcId, arcs) {
+    var data = arcs.getVertexData();
+    var coords = [];
+    var start = data.ii[arcId];
+    var n = data.nn[arcId];
+    for (var i=0; i<n; i++) {
+      coords.push([data.xx[start + i], data.yy[start + i]]);
+    }
+    return coords;
+  }
 
   function findArcIdFromVertexId(i, ii) {
     // binary search
@@ -6602,6 +7070,22 @@
       }
     }
     return lower; // assumes dataset is not empty
+  }
+
+  function deleteLastArc(arcs) {
+    var data = arcs.getVertexData();
+    var arcId = arcs.size() - 1;
+    var arcLen = data.nn[arcId];
+    var n = data.xx.length;
+    var z = arcs.getRetainedInterval();
+    var xx2 = new Float64Array(data.xx.buffer, 0, n-arcLen);
+    var yy2 = new Float64Array(data.yy.buffer, 0, n-arcLen);
+    var nn2 = new Int32Array(data.nn.buffer, 0, arcs.size() - 1);
+    var zz2 = arcs.isFlat() ?
+      null :
+      new Float64Array(data.zz.buffer, 0, n-arcLen);
+    arcs.updateVertexData(nn2, xx2, yy2, zz2);
+    arcs.setRetainedInterval(z);
   }
 
   function deleteVertex(arcs, i) {
@@ -6634,12 +7118,25 @@
     arcs.setRetainedInterval(z);
   }
 
+  function appendEmptyArc(arcs) {
+    var data = arcs.getVertexData();
+    var nn = utils.extendBuffer(data.nn, data.nn.length + 1, data.nn.length);
+    arcs.updateVertexData(nn, data.xx, data.yy, data.zz);
+  }
+
+  // adds vertex to last arc
+  // (used when adding lines in the GUI)
+  // p: [x, y] point in display coordinates
+  function appendVertex(arcs, p) {
+    var i = arcs.getPointCount(); // one past the last idx
+    insertVertex(arcs, i, p);
+  }
+
   function insertVertex(arcs, i, p) {
     var data = arcs.getVertexData();
     var nn = data.nn;
     var n = data.xx.length;
     var count = 0;
-    var found = false;
     var xx2, yy2, zz2;
     // avoid re-allocating memory on each insertion
     if (data.xx.buffer.byteLength >= data.xx.length * 8 + 8) {
@@ -6652,13 +7149,21 @@
     if (!arcs.isFlat()) {
       zz2 = new Float64Array(new ArrayBuffer((n + 1) * 8), 0, n+1);
     }
-    for (var j=0; j<nn.length; j++) {
-      count += nn[j];
-      if (count >= i && !found) { // TODO: confirm this
-        nn[j] = nn[j] + 1;
-        found = true;
+    if (i < 0 || i > n) {
+      error('Out-of-range vertex insertion index:', i);
+    } else if (i == n) {
+      // appending vertex to last arc
+      nn[nn.length - 1]++;
+    } else {
+      for (var j=0; j<nn.length; j++) {
+        count += nn[j];
+        if (count >= i) { // TODO: confirm this
+          nn[j] = nn[j] + 1;
+          break;
+        }
       }
     }
+
     utils.copyElements(data.xx, 0, xx2, 0, i);
     utils.copyElements(data.yy, 0, yy2, 0, i);
     utils.copyElements(data.xx, i, xx2, i+1, n-i);
@@ -6728,14 +7233,16 @@
     };
   }
 
-  function getShapeHitTest(displayLayer, ext, interactionMode) {
+  // featureFilter: optional test function, accepts feature id
+  //
+  function getShapeHitTest(displayLayer, ext, interactionMode, featureFilter) {
     var geoType = displayLayer.layer.geometry_type;
     var test;
     if (geoType == 'point' && displayLayer.style.type == 'styled') {
       test = getGraduatedCircleTest(getRadiusFunction(displayLayer.style));
     } else if (geoType == 'point') {
       test = pointTest;
-    } else if (interactionMode == 'vertices') {
+    } else if (interactionMode == 'vertices' || interactionMode == 'edit-lines') {
       test = vertexTest;
     } else if (geoType == 'polyline') {
       test = polylineTest;
@@ -6800,7 +7307,8 @@
     }
 
     function vertexTest(x, y) {
-      var maxDist = getZoomAdjustedHitBuffer(25, 2),
+      var bufferPix = 15; // 25;
+      var maxDist = getZoomAdjustedHitBuffer(bufferPix, 2),
           cands = findHitCandidates(x, y, maxDist);
       sortByDistance(x, y, cands, displayLayer.arcs);
       cands = pickNearestCandidates(cands, 0, maxDist);
@@ -6916,6 +7424,9 @@
           bbox = [];
       displayLayer.layer.shapes.forEach(function(shp, shpId) {
         var cand;
+        if (featureFilter && !featureFilter(shpId)) {
+          return;
+        }
         for (var i = 0, n = shp && shp.length; i < n; i++) {
           arcs.getSimpleShapeBounds2(shp[i], bbox);
           if (x + dist < bbox[0] || x - dist > bbox[2] ||
@@ -7041,12 +7552,12 @@
 
   }
 
-  function getPointerHitTest(mapLayer, ext, interactionMode) {
+  function getPointerHitTest(mapLayer, ext, interactionMode, featureFilter) {
     var shapeTest, targetLayer;
     if (!mapLayer || !internal.layerHasGeometry(mapLayer.layer)) {
       return function() {return {ids: []};};
     }
-    shapeTest = getShapeHitTest(mapLayer, ext, interactionMode);
+    shapeTest = getShapeHitTest(mapLayer, ext, interactionMode, featureFilter);
 
     // e: pointer event
     return function(e) {
@@ -7071,6 +7582,7 @@
     var storedData = noHitData(); // may include additional data from SVG symbol hit (e.g. hit node)
     var selectionIds = [];
     var transientIds = []; // e.g. hit ids while dragging a box
+    var drawingId = -1; // kludge to allow hit detection and drawing (different feature ids)
     var active = false;
     var interactionMode;
     var targetLayer;
@@ -7120,8 +7632,9 @@
       updateHitTest();
     };
 
-    function updateHitTest() {
-      hitTest = getPointerHitTest(targetLayer, ext, interactionMode);
+    function updateHitTest(featureFilter) {
+      if (!hoverable()) return;
+      hitTest = getPointerHitTest(targetLayer, ext, interactionMode, featureFilter);
     }
 
     function turnOn(mode) {
@@ -7136,7 +7649,12 @@
         active = false;
         hitTest = null;
         pinnedOn = false;
+        drawingId = -1;
       }
+    }
+
+    function hoverable() {
+      return true;
     }
 
     function selectable() {
@@ -7148,16 +7666,20 @@
     }
 
     function draggable() {
-      return interactionMode == 'vertices' || interactionMode == 'location' || interactionMode == 'labels';
+      return interactionMode == 'vertices' || interactionMode == 'location' ||
+        interactionMode == 'labels' || interactionMode == 'edit-lines';
     }
 
     function clickable() {
       // click used to pin popup and select features
       return interactionMode == 'data' || interactionMode == 'info' ||
+      // interactionMode == 'edit-lines';
       interactionMode == 'selection' || interactionMode == 'rectangles';
     }
 
-    self.getHitId = function() {return storedData.id;};
+    self.getHitId = function() {
+      return hitTest ? storedData.id : -1;
+    };
 
     // Get a reference to the active layer, so listeners to hit events can interact
     // with data and shapes
@@ -7187,6 +7709,25 @@
       }
     };
 
+    // manually set the selected feature id(s)
+    // used when hit detection is turned off, e.g. 'edit-lines' mode
+    self.setDrawingId = function(id) {
+      if (id == drawingId) return;
+      drawingId = id >= 0 ? id : -1;
+      updateHitTest(function(shpId) {
+        return shpId != id;
+      });
+      self.triggerChangeEvent();
+    };
+
+    self.triggerChangeEvent = function() {
+      triggerHitEvent('change');
+    };
+
+    self.clearDrawingId = function() {
+      self.setDrawingId(-1);
+    };
+
     self.setHoverVertex = function(p, type) {
       var p2 = storedData.hit_coordinates;
       if (!active || !p) return;
@@ -7195,7 +7736,7 @@
       triggerHitEvent('change');
     };
 
-    self.clearVertexOverlay = function() {
+    self.clearHoverVertex = function() {
       if (!storedData.hit_coordinates) return;
       delete storedData.hit_coordinates;
       triggerHitEvent('change');
@@ -7250,7 +7791,7 @@
     gui.on('interaction_mode_change', function(e) {
       self.clearSelection();
       // if (e.mode == 'off' || e.mode == 'box') {
-      if (gui.interaction.modeUsesSelection(e.mode)) {
+      if (gui.interaction.modeUsesHitDetection(e.mode)) {
         turnOn(e.mode);
       } else {
         turnOff();
@@ -7269,6 +7810,7 @@
     mouse.on('dragstart', handlePointerEvent, null, priority);
     mouse.on('drag', handlePointerEvent, null, priority);
     mouse.on('dragend', handlePointerEvent, null, priority);
+
 
     mouse.on('click', function(e) {
       if (!hitTest || !active) return;
@@ -7383,6 +7925,16 @@
 
     // check if an event is used in the current interaction mode
     function eventIsEnabled(type) {
+      if (!active) return false;
+      if (interactionMode == 'edit-lines' && (type == 'hover' || type == 'dblclick')) {
+        return true; // special case -- using hover for line drawing animation
+      }
+
+      // ignore pointer events when no features are being hit
+      // (don't block pan and other navigation when events aren't being used for editing)
+      var hitId = self.getHitId();
+      if (hitId == -1) return false;
+
       if (type == 'click' && !clickable()) {
         return false;
       }
@@ -7397,21 +7949,30 @@
     }
 
     function handlePointerEvent(e) {
-      if (!hitTest || !active) return;
-      if (self.getHitId() == -1) return; // ignore pointer events when no features are being hit
-      // don't block pan and other navigation in modes when they are not being used
       if (eventIsEnabled(e.type)) {
         e.stopPropagation(); // block navigation
         triggerHitEvent(e.type, e.data);
       }
     }
 
-    // d: event data (may be a pointer event object, an ordinary object or null)
-    function triggerHitEvent(type, d) {
+    // evt: event data (may be a pointer event object, an ordinary object or null)
+    function triggerHitEvent(type, evt) {
+      var eventData = {
+        mode: interactionMode,
+        overMap: evt ? isOverMap(evt) : null
+      };
       // Merge stored hit data into the event data
-      var eventData = utils$1.extend({mode: interactionMode}, d || {}, storedData);
+      utils$1.extend(eventData, evt || {}, storedData);
       if (transientIds.length) {
+        // add transient ids to any other hit ids
         eventData.ids = utils$1.uniq(transientIds.concat(eventData.ids || []));
+      }
+      // when drawing, we want the overlay layer to show the path being currently
+      // drawn.
+      if (drawingId >= 0) {
+        // eventData.ids = [drawingId];
+        // eventData.id = drawingId;
+        eventData.ids = utils$1.uniq(eventData.ids.concat([drawingId]));
       }
       if (pinnedOn) {
         eventData.pinned = true;
@@ -8557,7 +9118,7 @@
     var prevLink = El('span').addClass('popup-nav-arrow colored-text').appendTo(nav).text('◀');
     var navInfo = El('span').addClass('popup-nav-info').appendTo(nav);
     var nextLink = El('span').addClass('popup-nav-arrow colored-text').appendTo(nav).text('▶');
-    var refresh = null;
+    var refresh;
 
     el.addClass('rollover'); // used as a sentinel for the hover function
 
@@ -8567,16 +9128,15 @@
       if (refresh) refresh();
     });
 
-    self.show = function(id, ids, lyr, pinned) {
-      var singleEdit = pinned && gui.interaction.getMode() == 'data';
+    self.show = function(id, ids, lyr, pinned, edit) {
+      var singleEdit = edit || pinned && gui.interaction.getMode() == 'data';
       var multiEdit = pinned && gui.interaction.getMode() == 'selection';
       var maxHeight = parent.node().clientHeight - 36;
-      var recIds = multiEdit ? ids : [id];
 
       // stash a function for refreshing the current popup when data changes
       // while the popup is being displayed (e.g. while dragging a label)
       refresh = function() {
-        render(content, recIds, lyr, singleEdit || multiEdit);
+        render(id, ids, lyr, pinned, singleEdit || multiEdit);
       };
       refresh();
       if (multiEdit) {
@@ -8623,7 +9183,9 @@
       tab.show();
     }
 
-    function render(el, recIds, lyr, editable) {
+    function render(id, ids, lyr, pinned, editable) {
+      var recIds = id >= 0 ? [id] : ids;
+      var el = content;
       var table = lyr.data; // table can be null (e.g. if layer has no attribute data)
       var tableEl = table ? renderTable(recIds, table, editable) : null;
       el.empty(); // clean up if panel is already open
@@ -8647,13 +9209,18 @@
             table && table.getFields().length > 0 ? 'feature': 'layer'));
       }
 
+      var footer = El('div').appendTo(el);
       if (editable) {
         // render "add field" button
-        var line = El('div').appendTo(el);
-        El('span').addClass('add-field-btn').appendTo(line).on('click', async function(e) {
+        El('span').addClass('add-field-btn').appendTo(footer).on('click', async function(e) {
           // show "add field" dialog
           openAddFieldPopup(gui, recIds, lyr);
         }).text('+ add field');
+      } else if (pinned) {
+        // render "Click to edit" button
+        El('span').addClass('edit-data-btn').appendTo(footer).on('click', async function(e) {
+          self.show(id, ids, lyr, true, true);
+        }).text('▸ click to edit');
       }
     }
 
@@ -9108,6 +9675,463 @@
   }
 
   // pointer thresholds for hovering near a vertex or segment midpoint
+  var HOVER_THRESHOLD$1 = 8;
+  var MIDPOINT_THRESHOLD$1 = 11;
+
+  function initLineEditing(gui, ext, hit) {
+    var insertionPoint; // not used in this mode
+    var dragVertexInfo;
+    var hoverVertexInfo;
+    var prevClickEvent;
+    var prevHoverEvent;
+    var drawingId = -1; // feature id of path being drawn
+
+    function active() {
+      return gui.interaction.getMode() == 'edit-lines';
+    }
+
+    function dragging() {
+      return active() && !!dragVertexInfo;
+    }
+
+    function drawing() {
+      return drawingId > -1;
+    }
+
+    function setHoverVertex(id) {
+      var target = hit.getHitTarget();
+      hit.setHoverVertex(target.arcs.getVertex2(id));
+    }
+
+    function clearHoverVertex() {
+      hit.clearHoverVertex();
+      hoverVertexInfo = null;
+    }
+
+    gui.on('interaction_mode_change', function(e) {
+      gui.container.findChild('.map-layers').classed('edit-lines', e.mode == 'edit-lines');
+      if (e.mode == 'edit-lines') {
+        turnOn();
+      } else {
+        turnOff();
+      }
+    }, null, 10); // higher priority than hit control, so turnOff() has correct hit target
+
+    gui.on('redo_path_add', function(e) {
+      var target = hit.getHitTarget();
+      clearDrawingInfo();
+      appendNewPath(target, e.p1, e.p2);
+      deleteLastVertex(target); // second vertex is a placeholder
+      gui.undo.redo(); // add next vertex in the path
+      gui.model.updated({arc_count: true});
+    });
+
+    gui.on('undo_path_add', function(e) {
+      deleteLastPath(hit.getHitTarget());
+      clearDrawingInfo();
+    });
+
+    gui.on('redo_path_extend', function(e) {
+      var target = hit.getHitTarget();
+      if (drawing() && prevHoverEvent) {
+        updatePathEndpoint(e.p);
+        appendVertex$1(target, pixToDataCoords(prevHoverEvent.x, prevHoverEvent.y));
+      } else {
+        appendVertex$1(target, e.p);
+      }
+    });
+
+    gui.on('undo_path_extend', function(e) {
+      var target = hit.getHitTarget();
+      if (drawing() && prevHoverEvent) {
+        deleteLastVertex(target);
+        updatePathEndpoint(pixToDataCoords(prevHoverEvent.x, prevHoverEvent.y));
+      } else {
+        deleteLastVertex(target);
+      }
+      if (getLastArcLength(target) < 2) {
+        gui.undo.undo(); // remove the path
+      }
+    });
+
+    function turnOn() {}
+
+    function turnOff() {
+      finishPath();
+      clearDrawingInfo();
+      insertionPoint = null;
+    }
+
+    function clearDrawingInfo() {
+      hit.clearDrawingId();
+      drawingId = -1;
+      dragVertexInfo = hoverVertexInfo = null;
+      prevClickEvent = prevHoverEvent = null;
+    }
+
+    hit.on('dragstart', function(e) {
+      if (!active()) return;
+      if (insertionPoint) {
+        var target = hit.getHitTarget();
+        insertVertex$1(target, insertionPoint.i, insertionPoint.point);
+        dragVertexInfo = {
+          target: target,
+          insertion: true,
+          point: insertionPoint.point,
+          ids: [insertionPoint.i]
+        };
+        insertionPoint = null;
+      } else if (!drawing()) {
+        dragVertexInfo = findDraggableVertices(e);
+      }
+      if (dragVertexInfo) {
+        setHoverVertex(dragVertexInfo.ids[0]);
+      }
+    });
+
+    hit.on('drag', function(e) {
+      if (!dragging() || drawing()) return;
+      var target = hit.getHitTarget();
+      var p = ext.translatePixelCoords(e.x, e.y);
+      if (gui.keyboard.shiftIsPressed()) {
+        internal.snapPointToArcEndpoint(p, dragVertexInfo.ids, target.arcs);
+      }
+      internal.snapVerticesToPoint(dragVertexInfo.ids, p, target.arcs);
+      setHoverVertex(dragVertexInfo.ids[0]);
+      // redrawing the whole map updates the data layer as well as the overlay layer
+      // gui.dispatchEvent('map-needs-refresh');
+    });
+
+    hit.on('dragend', function(e) {
+      if (!dragging()) return;
+      // kludge to get dataset to recalculate internal bounding boxes
+      hit.getHitTarget().arcs.transformPoints(function() {});
+      clearHoverVertex();
+      updateVertexCoords(dragVertexInfo.target, dragVertexInfo.ids);
+      gui.dispatchEvent('vertex_dragend', dragVertexInfo);
+      gui.dispatchEvent('map-needs-refresh');
+      dragVertexInfo = null;
+    });
+
+    // shift + double-click deletes a vertex (when not drawing)
+    // double-click finishes a path (when drawing)
+    hit.on('dblclick', function(e) {
+      if (!active()) return;
+      if (drawing()) {
+        // double click finishes a path
+        // before: dblclick is preceded by two clicks, need another vertex delete
+        // now: second click is suppressed
+        // deleteLastVertex(hit.getHitTarget());
+        finishPath();
+        e.stopPropagation(); // prevent dblclick zoom
+        return;
+      }
+    });
+
+    // hover event highlights the nearest point in close proximity to the pointer
+    // ... or the closest segment midpoint (for adding a new vertex)
+    hit.on('hover', function(e) {
+      if (!active() || dragging()) return;
+      if (drawing() && !e.overMap) {
+        finishPath();
+        return;
+      }
+      if (drawing()) {
+        if (gui.keyboard.shiftIsPressed()) {
+          alignPointerPosition(e, prevClickEvent);
+        }
+        updatePathEndpoint(pixToDataCoords(e.x, e.y));
+
+        // highlight nearby snappable vertex (the closest vertex on a nearby line,
+        //   or the first vertex of the current drawing path if not near a line)
+        hoverVertexInfo = e.id >= 0 && findDraggableVertices(e) || findPathStartInfo(e);
+        if (hoverVertexInfo) {
+          // hovering near a vertex: highlight the vertex
+          setHoverVertex(hoverVertexInfo.ids[0]);
+        } else {
+          clearHoverVertex();
+        }
+        prevHoverEvent = e;
+        return;
+      }
+      if (e.id >= 0 === false) {
+        // pointer is not near a path
+        return;
+      }
+      hoverVertexInfo = findDraggableVertices(e);
+      insertionPoint = hoverVertexInfo ? null : findMidpointInsertionPoint(e);
+      if (hoverVertexInfo) {
+        // hovering near a vertex: highlight the vertex
+        setHoverVertex(hoverVertexInfo.ids[0]);
+      } else if (insertionPoint) {
+        // hovering near a segment midpoint: highlight the midpoint
+        hit.setHoverVertex(insertionPoint.displayPoint);
+      } else {
+        // pointer is not over a vertex: clear any hover effect
+        clearHoverVertex();
+      }
+    }, null, 100);
+
+    // click starts or extends a new path
+    hit.on('click', function(e) {
+      if (!active()) return;
+      if (detectDoubleClick(e)) return; // ignore second click of a dblclick
+      var p = pixToDataCoords(e.x, e.y);
+      if (drawing() && hoverVertexInfo) {
+        // finish the path if a vertex is highlighted
+        p = hoverVertexInfo.point;
+        extendPath(p);
+        finishPath();
+      } else if (drawing()) {
+        extendPath(p);
+      } else if (gui.keyboard.shiftIsPressed()) {
+        deleteActiveVertex(e);
+      } else {
+        startPath(p);
+      }
+      prevClickEvent = e;
+    });
+
+    // esc key finishes a path
+    gui.keyboard.on('keydown', function(e) {
+      if (active() && e.keyName == 'esc') {
+        finishPath();
+      }
+    });
+
+    function detectDoubleClick(evt) {
+      if (!prevClickEvent) return false;
+      var elapsed = evt.time - prevClickEvent.time;
+      var dx = Math.abs(evt.x - prevClickEvent.x);
+      var dy = Math.abs(evt.y - prevClickEvent.y);
+      var dbl = elapsed < 500 && dx <= 2 && dy <= 2;
+      return dbl;
+    }
+
+    function deleteActiveVertex(e) {
+      var info = findDraggableVertices(e);
+      if (!info) return;
+      var vId = info.ids[0];
+      var target = hit.getHitTarget();
+      if (internal.vertexIsArcStart(vId, target.arcs) ||
+          internal.vertexIsArcEnd(vId, target.arcs)) {
+        // TODO: support removing arc endpoints
+        return;
+      }
+      gui.dispatchEvent('vertex_delete', {
+        target: target,
+        vertex_id: vId
+      });
+      deleteVertex$1(target, vId);
+      clearHoverVertex();
+      gui.dispatchEvent('map-needs-refresh');
+    }
+
+    function pixToDataCoords(x, y) {
+      var target = hit.getHitTarget();
+      return translateDisplayPoint(target, ext.translatePixelCoords(x, y));
+    }
+
+    // Change the x, y pixel location of thisEvt so that the segment extending
+    // from prevEvt is aligned to one of 8 angles.
+    function alignPointerPosition(thisEvt, prevEvt) {
+      if (!prevEvt) return;
+      var x0 = prevEvt.x;
+      var y0 = prevEvt.y;
+      var dist = geom.distance2D(thisEvt.x, thisEvt.y, x0, y0);
+      var dist2 = dist / Math.sqrt(2);
+      if (dist < 1) return;
+      var minDist = Infinity;
+      var cands = [
+        {x: x0, y: y0 + dist},
+        {x: x0, y: y0 - dist},
+        {x: x0 + dist, y: y0},
+        {x: x0 - dist, y: y0},
+        {x: x0 + dist2, y: y0 + dist2},
+        {x: x0 + dist2, y: y0 - dist2},
+        {x: x0 - dist2, y: y0 + dist2},
+        {x: x0 - dist2, y: y0 - dist2}
+      ];
+      var snapped = cands.reduce(function(memo, cand) {
+        var dist = geom.distance2D(thisEvt.x, thisEvt.y, cand.x, cand.y);
+        if (dist < minDist) {
+          minDist = dist;
+          return cand;
+        }
+        return memo;
+      }, null);
+      thisEvt.x = snapped.x;
+      thisEvt.y = snapped.y;
+    }
+
+    function finishPath() {
+      if (!drawing()) return;
+      var target = hit.getHitTarget();
+      if (getLastArcLength(target) <= 2) { // includes hover point
+        deleteLastPath(target);
+      } else {
+        deleteLastVertex(target);
+      }
+      clearDrawingInfo();
+      gui.model.updated({arc_count: true});
+    }
+
+    function startPath(p) {
+      var target = hit.getHitTarget();
+      var p1 = hoverVertexInfo ? getVertexCoords(target, hoverVertexInfo.ids[0]) : p;
+      var p2 = p;
+      appendNewPath(target, p1, p2);
+      gui.dispatchEvent('path_add', {target, p1, p2});
+      drawingId = target.layer.shapes.length - 1;
+      hit.setDrawingId(drawingId);
+    }
+
+    function extendPath(p) {
+      var target = hit.getHitTarget();
+      var len = getLastArcLength(target);
+      if (false && len == 2) {
+        var pathCoords = getLastArcCoords(target);
+        gui.dispatchEvent('path_add', {target, p1: pathCoords[0], p2: pathCoords[1]});
+      } else if (len >= 2) {
+        gui.dispatchEvent('path_extend', {target, p});
+      }
+      appendVertex$1(target, p);
+      hit.triggerChangeEvent();
+    }
+
+    // p: [x, y] source data coordinates
+    function updatePathEndpoint(p) {
+      var target = hit.getHitTarget();
+      var i = target.arcs.getPointCount() - 1;
+      if (hoverVertexInfo) {
+        p = getVertexCoords(target, hoverVertexInfo.ids[0]); // snap to selected point
+      }
+      setVertexCoords(target, [i], p);
+      hit.triggerChangeEvent();
+    }
+
+    function findPathStartInfo(e) {
+      var target = hit.getHitTarget();
+      var arcId = target.arcs.size() - 1;
+      var data = target.arcs.getVertexData();
+      var id = data.ii[arcId];
+      var x = data.xx[id];
+      var y = data.yy[id];
+      var p = ext.translatePixelCoords(e.x, e.y);
+      var dist = geom.distance2D(p[0], p[1], x, y);
+      var pathLen = data.nn[arcId];
+      var pixelDist = dist / ext.getPixelSize();
+      if (pixelDist > HOVER_THRESHOLD$1 || pathLen < 4) {
+        return null;
+      }
+      var point = translateDisplayPoint([x, y]);
+      return {
+        target, ids: [id], extendable: false, point
+      };
+    }
+
+    // return data on the nearest vertex (or identical vertices) to the pointer
+    // (if within a distance threshold)
+    //
+    function findDraggableVertices(e) {
+      var target = hit.getHitTarget();
+      var shp = target.layer.shapes[e.id];
+      var p = ext.translatePixelCoords(e.x, e.y);
+      var ids = internal.findNearestVertices(p, shp, target.arcs);
+      var p2 = target.arcs.getVertex2(ids[0]);
+      var dist = geom.distance2D(p[0], p[1], p2[0], p2[1]);
+      var pixelDist = dist / ext.getPixelSize();
+      if (pixelDist > HOVER_THRESHOLD$1) {
+        return null;
+      }
+      var point = getVertexCoords(target, ids[0]); // data coordinates
+      // find out if the vertex is the endpoint of a single path
+      // (which could be extended by a newly drawn path)
+      var extendable = ids.length == 1 &&
+        internal.vertexIsArcEndpoint(ids[0], target.arcs);
+      return {target, ids, extendable, point};
+    }
+
+    function findMidpointInsertionPoint(e) {
+      var target = hit.getHitTarget();
+      //// vertex insertion not supported with simplification
+      // if (!target.arcs.isFlat()) return null;
+      var p = ext.translatePixelCoords(e.x, e.y);
+      var midpoint = findNearestMidpoint$1(p, e.id, target);
+      if (!midpoint ||
+          midpoint.distance / ext.getPixelSize() > MIDPOINT_THRESHOLD$1) return null;
+      return midpoint;
+    }
+  }
+
+
+  // Given a location @p (e.g. corresponding to the mouse pointer location),
+  // find the midpoint of two vertices on @shp suitable for inserting a new vertex
+  function findNearestMidpoint$1(p, fid, target) {
+    var arcs = target.arcs;
+    var shp = target.layer.shapes[fid];
+    var minDist = Infinity, v;
+    internal.forEachSegmentInShape(shp, arcs, function(i, j, xx, yy) {
+      var x1 = xx[i],
+          y1 = yy[i],
+          x2 = xx[j],
+          y2 = yy[j],
+          cx = (x1 + x2) / 2,
+          cy = (y1 + y2) / 2,
+          midpoint = [cx, cy],
+          dist = geom.distance2D(cx, cy, p[0], p[1]);
+      if (dist < minDist) {
+        minDist = dist;
+        v = {
+          i: (i < j ? i : j) + 1, // insertion point
+          segment: [i, j],
+          segmentLen: geom.distance2D(x1, y1, x2, y2),
+          displayPoint: midpoint,
+          point: translateDisplayPoint(target, midpoint),
+          distance: dist
+        };
+      }
+    });
+    return v || null;
+  }
+
+  function initPointDrawing(gui, ext, hit) {
+    var mouse = gui.map.getMouse();
+
+    gui.on('interaction_mode_change', function(e) {
+      gui.container.findChild('.map-layers').classed('add-points', e.mode === 'add-points');
+    });
+
+    function active() {
+      return gui.interaction.getMode() == 'add-points';
+    }
+
+    mouse.on('click', function(e) {
+      if (!active()) return;
+      addPoint(e.x, e.y);
+      gui.dispatchEvent('map-needs-refresh');
+    });
+
+    // x, y: pixel coordinates
+    function addPoint(x, y) {
+      var p = ext.translatePixelCoords(x, y);
+      var target = hit.getHitTarget();
+      var lyr = target.layer;
+      var fid = lyr.shapes.length;
+      var d = appendNewDataRecord(lyr);
+      if (d) {
+        // this seems to work even for projected layers -- the data tables
+        // of projected and original data seem to be shared.
+        lyr.data.getRecords()[fid] = d;
+      }
+      lyr.shapes[fid] = [p];
+      updatePointCoords(target, fid);
+    }
+
+
+  }
+
+  // pointer thresholds for hovering near a vertex or segment midpoint
   var HOVER_THRESHOLD = 8;
   var MIDPOINT_THRESHOLD = 11;
 
@@ -9129,7 +10153,7 @@
     }
 
     function clearHoverVertex() {
-      hit.clearVertexOverlay();
+      hit.clearHoverVertex();
     }
 
     // return data on the nearest vertex (or identical vertices) to the pointer
@@ -9286,487 +10310,9 @@
   function initInteractiveEditing(gui, ext, hit) {
     initLabelDragging(gui, ext, hit);
     initPointDragging(gui, ext, hit);
+    initPointDrawing(gui, ext, hit);
+    initLineEditing(gui, ext, hit);
     initVertexDragging(gui, ext, hit);
-
-    // function isClickEvent(up, down) {
-    //   var elapsed = Math.abs(down.timeStamp - up.timeStamp);
-    //   var dx = up.screenX - down.screenX;
-    //   var dy = up.screenY - down.screenY;
-    //   var dist = Math.sqrt(dx * dx + dy * dy);
-    //   return dist <= 4 && elapsed < 300;
-    // }
-  }
-
-  var darkStroke = "#334",
-      lightStroke = "#b7d9ea",
-      violet = "#cc6acc",
-      violetFill = "rgba(249, 120, 249, 0.20)",
-      gold = "#efc100",
-      black = "black",
-      grey = "#888",
-      selectionFill = "rgba(237, 214, 0, 0.12)",
-      hoverFill = "rgba(255, 120, 255, 0.12)",
-      activeStyle = { // outline style for the active layer
-        type: 'outline',
-        strokeColors: [lightStroke, darkStroke],
-        strokeWidth: 0.8,
-        dotColor: "#223",
-        dotSize: 1
-      },
-      activeStyleDarkMode = {
-        type: 'outline',
-        strokeColors: [lightStroke, 'white'],
-        strokeWidth: 0.9,
-        dotColor: 'white',
-        dotSize: 1
-      },
-      activeStyleForLabels = {
-        dotColor: "rgba(250, 0, 250, 0.45)", // violet dot with transparency
-        dotSize: 1
-      },
-      referenceStyle = { // outline style for reference layers
-        type: 'outline',
-        strokeColors: [null, '#78c110'], // upped saturation from #86c927
-        strokeWidth: 0.85,
-        dotColor: "#73ba20",
-        dotSize: 1
-      },
-      intersectionStyle = {
-        dotColor: "#F24400",
-        dotSize: 1
-      },
-      hoverStyles = {
-        polygon: {
-          fillColor: hoverFill,
-          strokeColor: black,
-          strokeWidth: 1.2
-        }, point:  {
-          dotColor: violet, // black,
-          dotSize: 2.5
-        }, polyline: {
-          strokeColor: black,
-          strokeWidth: 2.5,
-        }
-      },
-      unselectedHoverStyles = {
-        polygon: {
-          fillColor: 'rgba(0,0,0,0)',
-          strokeColor: black,
-          strokeWidth: 1.2
-        }, point:  {
-          dotColor: black, // grey,
-          dotSize: 2
-        }, polyline:  {
-          strokeColor: black, // grey,
-          strokeWidth: 2.5
-        }
-      },
-      selectionStyles = {
-        polygon: {
-          fillColor: hoverFill,
-          strokeColor: black,
-          strokeWidth: 1.2
-        }, point:  {
-          dotColor: violet, // black,
-          dotSize: 1.5
-        }, polyline:  {
-          strokeColor: violet, //  black,
-          strokeWidth: 2.5
-        }
-      },
-      // not used
-      selectionHoverStyles = {
-        polygon: {
-          fillColor: selectionFill,
-          strokeColor: black,
-          strokeWidth: 1.2
-        }, point:  {
-          dotColor: black,
-          dotSize: 1.5
-        }, polyline:  {
-          strokeColor: black,
-          strokeWidth: 2
-        }
-      },
-      pinnedStyles = {
-        polygon: {
-          fillColor: violetFill,
-          strokeColor: violet,
-          strokeWidth: 1.8
-        }, point:  {
-          dotColor: violet,
-          dotSize: 3
-        }, polyline:  {
-          strokeColor: violet, // black, // violet,
-          strokeWidth: 3
-        }
-      };
-
-  function getIntersectionStyle(lyr, opts) {
-    return getDefaultStyle(lyr, intersectionStyle);
-  }
-
-  // Style for unselected layers with visibility turned on
-  // (styled layers have)
-  function getReferenceLayerStyle(lyr, opts) {
-    var style;
-    if (layerHasCanvasDisplayStyle(lyr) && !opts.outlineMode) {
-      style = getCanvasDisplayStyle(lyr);
-    } else if (internal.layerHasLabels(lyr) && !opts.outlineMode) {
-      style = {dotSize: 0}; // no reference dots if labels are visible
-    } else {
-      style = getDefaultStyle(lyr, referenceStyle);
-    }
-    return style;
-  }
-
-  function getActiveLayerStyle(lyr, opts) {
-    var style;
-    if (layerHasCanvasDisplayStyle(lyr) && !opts.outlineMode) {
-      style = getCanvasDisplayStyle(lyr);
-    } else if (internal.layerHasLabels(lyr) && !opts.outlineMode) {
-      style = getDefaultStyle(lyr, activeStyleForLabels);
-    } else if (opts.darkMode) {
-      style = getDefaultStyle(lyr, activeStyleDarkMode);
-    } else {
-      style = getDefaultStyle(lyr, activeStyle);
-    }
-    return style;
-  }
-
-  // Returns a display style for the overlay layer.
-  // The overlay layer renders several kinds of feature, each of which is displayed
-  // with a different style.
-  //
-  // * hover shapes
-  // * selected shapes
-  // * pinned shapes
-  //
-  function getOverlayStyle(baseLyr, o, opts) {
-    if (opts.interactionMode == 'vertices') {
-      return getVertexStyle(baseLyr, o);
-    }
-    var geomType = baseLyr.geometry_type;
-    var topId = o.id; // pinned id (if pinned) or hover id
-    var topIdx = -1;
-    var styler = function(style, i) {
-      var defaultStyle = i === topIdx ? topStyle : outlineStyle;
-      if (baseStyle.styler) {
-        // TODO: render default stroke widths without scaling
-        // (will need to pass symbol scale to the styler function)
-        style.strokeWidth = defaultStyle.strokeWidth;
-        baseStyle.styler(style, i); // get styled stroke width (if set)
-        style.strokeColor = defaultStyle.strokeColor;
-        style.fillColor = defaultStyle.fillColor;
-      } else {
-        Object.assign(style, defaultStyle);
-      }
-    };
-    var baseStyle = getActiveLayerStyle(baseLyr, opts);
-    var outlineStyle = getDefaultStyle(baseLyr, selectionStyles[geomType]);
-    var topStyle;
-    var ids = o.ids.filter(function(i) {
-      return i != o.id; // move selected id to the end
-    });
-    if (o.id > -1) { // pinned or hover style
-      topStyle = getSelectedFeatureStyle(baseLyr, o, opts);
-      topIdx = ids.length;
-      ids.push(o.id); // put the pinned/hover feature last in the render order
-    }
-    var style = {
-      baseStyle: baseStyle,
-      styler,
-      ids,
-      overlay: true
-    };
-
-    if (layerHasCanvasDisplayStyle(baseLyr) && !opts.outlineMode) {
-      if (geomType == 'point') {
-        style.styler = getOverlayPointStyler(getCanvasDisplayStyle(baseLyr).styler, styler);
-      }
-      style.type = 'styled';
-    }
-    return ids.length > 0 ? style : null;
-  }
-
-
-  function getDefaultStyle(lyr, baseStyle) {
-    var style = Object.assign({}, baseStyle);
-    // reduce the dot size of large point layers
-    if (lyr.geometry_type == 'point' && style.dotSize > 0) {
-      style.dotSize *= getDotScale$1(lyr);
-    }
-    return style;
-  }
-
-  function getDotScale$1(lyr) {
-    var topTier = 10000;
-    var n = countPoints(lyr.shapes, topTier); // short-circuit point counting above top threshold
-    var k = n < 200 && 4 || n < 2500 && 3 || n < topTier && 2 || 1;
-    return k;
-  }
-
-  function countPoints(shapes, max) {
-    var count = 0;
-    var i, n, shp;
-    max = max || Infinity;
-    for (i=0, n=shapes.length; i<n && count<max; i++) {
-      shp = shapes[i];
-      count += shp ? shp.length : 0;
-    }
-    return count;
-  }
-
-
-  // style for vertex edit mode
-  function getVertexStyle(lyr, o) {
-    return {
-      ids: o.ids,
-      overlay: true,
-      strokeColor: black,
-      strokeWidth: 1.5,
-      vertices: true,
-      vertex_overlay_color: violet,
-      vertex_overlay: o.hit_coordinates || null,
-      selected_points: o.selected_points || null,
-      fillColor: null
-    };
-  }
-
-
-  function getSelectedFeatureStyle(lyr, o, opts) {
-    var isPinned = o.pinned;
-    var inSelection = o.ids.indexOf(o.id) > -1;
-    var geomType = lyr.geometry_type;
-    var style;
-    if (isPinned && opts.interactionMode == 'rectangles') {
-      // kludge for rectangle editing mode
-      style = selectionStyles[geomType];
-    } else if (isPinned) {
-      // a feature is pinned
-      style = pinnedStyles[geomType];
-    } else if (inSelection) {
-      // normal hover, or hover id is in the selection set
-      style = hoverStyles[geomType];
-    } else {
-      // features are selected, but hover id is not in the selection set
-      style = unselectedHoverStyles[geomType];
-    }
-    return getDefaultStyle(lyr, style);
-  }
-
-  // Modify style to use scaled circle instead of dot symbol
-  function getOverlayPointStyler(baseStyler, overlayStyler) {
-    return function(obj, i) {
-      var dotColor;
-      var id = obj.ids ? obj.ids[i] : -1;
-      obj.strokeWidth = 0; // kludge to support setting minimum stroke width
-      baseStyler(obj, id);
-      if (overlayStyler) {
-        overlayStyler(obj, i);
-      }
-      dotColor = obj.dotColor;
-      if (obj.radius && dotColor) {
-        obj.radius += 0.4;
-        // delete obj.fillColor; // only show outline
-        obj.fillColor = dotColor; // comment out to only highlight stroke
-        obj.strokeColor = dotColor;
-        obj.strokeWidth = Math.max(obj.strokeWidth + 0.8, 1.5);
-        obj.opacity = 1;
-      }
-    };
-  }
-
-  function getCanvasDisplayStyle(lyr) {
-    var styleIndex = {
-          opacity: 'opacity',
-          r: 'radius',
-          'fill': 'fillColor',
-          'fill-pattern': 'fillPattern',
-          'fill-effect': 'fillEffect',
-          'fill-opacity': 'fillOpacity',
-          'stroke': 'strokeColor',
-          'stroke-width': 'strokeWidth',
-          'stroke-dasharray': 'lineDash',
-          'stroke-opacity': 'strokeOpacity',
-          'stroke-linecap': 'lineCap',
-          'stroke-linejoin': 'lineJoin',
-          'stroke-miterlimit': 'miterLimit'
-        },
-        // array of field names of relevant svg display properties
-        fields = getCanvasStyleFields(lyr).filter(function(f) {return f in styleIndex;}),
-        records = lyr.data.getRecords();
-    var styler = function(style, i) {
-      var rec = records[i];
-      var fname, val;
-      for (var j=0; j<fields.length; j++) {
-        fname = fields[j];
-        val = rec && rec[fname];
-        if (val == 'none') {
-          val = 'transparent'; // canvas equivalent of CSS 'none'
-        }
-        // convert svg property name to mapshaper style equivalent
-        style[styleIndex[fname]] = val;
-      }
-
-      if (style.strokeWidth && !style.strokeColor) {
-        style.strokeColor = 'black';
-      }
-      if (!('strokeWidth' in style) && style.strokeColor) {
-        style.strokeWidth = 1;
-      }
-      if (style.radius > 0 && !style.strokeWidth && !style.fillColor && lyr.geometry_type == 'point') {
-        style.fillColor = 'black';
-      }
-    };
-    return {styler: styler, type: 'styled'};
-  }
-
-  // check if layer should be displayed with styles
-  function layerHasCanvasDisplayStyle(lyr) {
-    var fields = getCanvasStyleFields(lyr);
-    if (lyr.geometry_type == 'point') {
-      return fields.indexOf('r') > -1; // require 'r' field for point symbols
-    }
-    return utils$1.difference(fields, ['opacity', 'class']).length > 0;
-  }
-
-
-  function getCanvasStyleFields(lyr) {
-    var fields = lyr.data ? lyr.data.getFields() : [];
-    return internal.findPropertiesBySymbolGeom(fields, lyr.geometry_type);
-  }
-
-  function initPointDrawing(gui, ext, mouse, hit) {
-
-    gui.on('interaction_mode_change', function(e) {
-      gui.container.findChild('.map-layers').classed('add-points', e.mode === 'add-points');
-    });
-
-    function active() {
-      return gui.interaction.getMode() == 'add-points';
-    }
-
-    mouse.on('click', function(e) {
-      if (!active()) return;
-      addPoint(e.x, e.y);
-      gui.dispatchEvent('map-needs-refresh');
-    });
-
-    // x, y: pixel coordinates
-    function addPoint(x, y) {
-      var p = ext.translatePixelCoords(x, y);
-      var target = hit.getHitTarget();
-      var lyr = target.layer;
-      var fid = lyr.shapes.length;
-      var d = lyr.data ? getEmptyDataRecord(lyr.data) : null;
-      if (d) {
-        // this seems to work even for projected layers -- the data tables
-        // of projected and original data seem to be shared.
-        lyr.data.getRecords()[fid] = d;
-        // TODO: handle SVG symbol layer
-        if (internal.layerHasLabels(lyr)) {
-          d['label-text'] = 'TBD'; // without text, new labels will be invisible
-        } else if (layerHasCanvasDisplayStyle(lyr)) {
-          d.r = 3; // show a black circle if layer is styled
-        }
-      }
-      lyr.shapes[fid] = [p];
-      updatePointCoords(target, fid);
-    }
-
-    function getEmptyDataRecord(table) {
-      return table.getFields().reduce(function(memo, name) {
-        memo[name] = null;
-        return memo;
-      }, {});
-    }
-  }
-
-  function initLineDrawing(gui, ext, mouse, hit) {
-    var _on = false;
-    var _coords;
-    var _lastClick;
-
-    gui.on('interaction_mode_change', function(e) {
-      _on = e.mode === 'draw-lines';
-      gui.container.findChild('.map-layers').classed('draw-lines', _on);
-    });
-
-    function active() {
-      return _on;
-    }
-
-    function extending() {
-      return active() && !!_coords;
-    }
-
-    function startPath(e) {
-
-    }
-
-    function extendPath(e) {
-
-    }
-
-    function finishPath() {
-      _coords = null;
-    }
-
-    gui.keyboard.on('keydown', function(evt) {
-      if (!active()) return;
-      if (evt.keyCode == 27) { // esc
-        finishPath();
-      }
-    });
-
-    mouse.on('click', function(e) {
-      if (!active()) return;
-      // console.log('[click]', e)
-      // addPoint(e.x, e.y);
-      // gui.dispatchEvent('map-needs-refresh');
-      _lastClick = e;
-    });
-
-    // note: second click event is fired before this
-    mouse.on('dblclick', function(e) {
-      if (!active()) return;
-      // block navigation
-      e.stopPropagation();
-      finishPath();
-
-    }, null, 3); // hit detection is priority 2
-
-    mouse.on('hover', function(e) {
-      if (!active()) return;
-    });
-
-    // x, y: pixel coordinates
-    function addPoint(x, y) {
-      var p = ext.translatePixelCoords(x, y);
-      var target = hit.getHitTarget();
-      var lyr = target.layer;
-      var fid = lyr.shapes.length;
-      if (lyr.data) {
-        // this seems to work even for projected layers -- the data tables
-        // of projected and original data seem to be shared.
-        lyr.data.getRecords()[fid] = getEmptyDataRecord(lyr.data);
-      }
-      lyr.shapes[fid] = [p];
-      updatePointCoords(target, fid);
-    }
-
-    function getEmptyDataRecord(table) {
-      return table.getFields().reduce(function(memo, name) {
-        memo[name] = null;
-        return memo;
-      }, {});
-    }
-  }
-
-  function initDrawing(gui, ext, mouse, hit) {
-    initPointDrawing(gui, ext, mouse, hit);
-    initLineDrawing(gui, ext, mouse, hit);
   }
 
   function MapExtent(_position) {
@@ -10317,7 +10863,7 @@
         _ctx.beginPath();
         _ctx.fillStyle = style.vertex_overlay_color || 'black';
         p = style.vertex_overlay;
-        drawCircle(p[0] * t.mx + t.bx, p[1] * t.my + t.by, radius * 1.6, _ctx);
+        drawCircle(p[0] * t.mx + t.bx, p[1] * t.my + t.by, radius * 2, _ctx);
         _ctx.fill();
         _ctx.closePath();
       }
@@ -10964,6 +11510,10 @@
       runCommand(cmd);
     });
 
+    new SimpleButton(popup.findChild('.frame-btn')).on('click', function() {
+      openAddFramePopup(gui, box.getDataCoords());
+    });
+
     gui.addMode('box_tool', turnOn, turnOff);
 
     gui.on('interaction_mode_change', function(e) {
@@ -11034,6 +11584,30 @@
       box.hide();
       popup.hide();
       hideCoords();
+    }
+
+    function openAddFramePopup(gui, bbox) {
+      var popup = showPopupAlert('', 'Add a map frame');
+      var el = popup.container();
+      el.addClass('option-menu');
+      var html = `<p>Enter a width in px, cm or inches to create a frame layer
+for setting the size of the map for symbol scaling in the
+GUI and setting the size and crop of SVG output.</p><div><input type="text" class="frame-width text-input" placeholder="examples: 600px 5in"></div>
+    <div tabindex="0" class="btn dialog-btn">Create</div></span>`;
+      el.html(html);
+      var input = el.findChild('.frame-width');
+      input.node().focus();
+      var btn = el.findChild('.btn').on('click', function() {
+        var widthStr = input.node().value.trim();
+        if (parseFloat(widthStr) > 0 === false) {
+          // invalid input
+          input.node().value = '';
+          return;
+        }
+        var cmd = `-rectangle + name=frame bbox='${bbox.join(',')}' width='${widthStr}'`;
+        runCommand(cmd);
+        popup.close();
+      });
     }
 
     return self;
@@ -11143,6 +11717,7 @@
       return filteredArcs;
     }
 
+    // TODO: better job of detecting arc change... e.g. revision number
     unfilteredArcs.getScaledArcs = function(ext) {
       if (filteredArcs) {
         // match simplification of unfiltered arcs
@@ -11646,7 +12221,6 @@
     model.on('update', onUpdate);
 
 
-
     // Update display of segment intersections
     this.setIntersectionLayer = function(lyr, dataset) {
       if (lyr == _intersectionLyr) return; // no change
@@ -11692,6 +12266,14 @@
     this.isActiveLayer = isActiveLayer;
     this.isVisibleLayer = isVisibleLayer;
     this.getActiveLayer = function() { return _activeLyr; };
+    // this.getViewData = function() {
+    //   return {
+    //     isPreview: isPreviewView(),
+    //     isTable: isTableView(),
+    //     isEmpty: !_activeLyr,
+    //     dynamicCRS: _dynamicCRS || null
+    //   };
+    // };
 
     // called by layer menu after layer visibility is updated
     this.redraw = function() {
@@ -11808,7 +12390,6 @@
         new BoxTool(gui, _ext, _nav),
         new RectangleControl(gui, _hit),
         initInteractiveEditing(gui, _ext, _hit);
-        initDrawing(gui, _ext, _mouse, _hit);
         _hit.on('change', updateOverlayLayer);
       }
 
@@ -12014,7 +12595,7 @@
     //   'hover'    highlight has changed -- only refresh overlay
     //   (default)  anything could have changed
     function drawLayers2(action) {
-      // sometimes styles need to be regenerated with 'hover' action (when)
+      // sometimes styles need to be regenerated with 'hover' action (when?)
       var layersMayHaveChanged = action != 'nav'; // !action;
       var fullBounds;
       var contentLayers = getDrawableContentLayers();
