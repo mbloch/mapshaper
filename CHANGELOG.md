@@ -1,3 +1,6 @@
+v0.6.72
+* Bug fix
+
 v0.6.71
 * [web] Added a new edit mode for polyline layers: line drawing combined with line reshaping (by adding and dragging vertices), removed the old "edit vertices" menu item.
 * [web] Added attribute editing to the inspection control, removed the "edit attributes" menu item.
