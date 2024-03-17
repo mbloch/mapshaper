@@ -26,12 +26,19 @@ var TO_METERS = {
 export function parseSizeParam(p) {
   var str = String(p),
       num = parseFloat(str),
-      units = /px|pix/.test(str) && 'px' || /pt|point/.test(str) && 'pt' ||
-        /in/.test(str) && 'in' || !isNaN(+str) && 'px' || null;
-  if (isNaN(num) || !units) {
+      units = /px|pix/.test(str) && 'px' ||
+      /pt|point/.test(str) && 'pt' ||
+      /in/.test(str) && 'in' ||
+      /cm/.test(str) && 'cm' ||
+      !isNaN(+str) && 'px' || // px is the default
+      null;
+  var px = units == 'in' && num * 72 ||
+      units == 'cm' && Math.round(num * 28.3465) ||
+      num;
+  if (px > 0 === false || !units) {
     stop('Invalid size:', str);
   }
-  return units == 'in' && num * 72 || num;
+  return px;
 }
 
 // Return coeff. for converting a distance measure to dataset coordinates
