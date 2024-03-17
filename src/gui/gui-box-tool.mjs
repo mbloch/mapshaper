@@ -5,6 +5,7 @@ import { internal } from './gui-core';
 import { El } from './gui-el';
 import { GUI } from './gui-lib';
 import { getBBoxCoords } from './gui-display-utils';
+import { showPopupAlert } from './gui-alert';
 
 // Controls the shift-drag box editing tool
 //
@@ -45,6 +46,10 @@ export function BoxTool(gui, ext, nav) {
   new SimpleButton(popup.findChild('.rect-btn')).on('click', function() {
     var cmd = '-rectangle + bbox=' + box.getDataCoords().join(',');
     runCommand(cmd);
+  });
+
+  new SimpleButton(popup.findChild('.frame-btn')).on('click', function() {
+    openAddFramePopup(gui, box.getDataCoords());
   });
 
   gui.addMode('box_tool', turnOn, turnOff);
@@ -117,6 +122,30 @@ export function BoxTool(gui, ext, nav) {
     box.hide();
     popup.hide();
     hideCoords();
+  }
+
+  function openAddFramePopup(gui, bbox) {
+    var popup = showPopupAlert('', 'Add a map frame');
+    var el = popup.container();
+    el.addClass('option-menu');
+    var html = `<p>Enter a width in px, cm or inches to create a frame layer
+for setting the size of the map for symbol scaling in the
+GUI and setting the size and crop of SVG output.</p><div><input type="text" class="frame-width text-input" placeholder="examples: 600px 5in"></div>
+    <div tabindex="0" class="btn dialog-btn">Create</div></span>`;
+    el.html(html);
+    var input = el.findChild('.frame-width');
+    input.node().focus();
+    var btn = el.findChild('.btn').on('click', function() {
+      var widthStr = input.node().value.trim();
+      if (parseFloat(widthStr) > 0 === false) {
+        // invalid input
+        input.node().value = '';
+        return;
+      }
+      var cmd = `-rectangle + name=frame bbox='${bbox.join(',')}' width='${widthStr}'`;
+      runCommand(cmd);
+      popup.close();
+    });
   }
 
   return self;
