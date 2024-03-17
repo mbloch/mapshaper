@@ -1,3 +1,8 @@
+v0.6.71
+* [web] Added a new edit mode for polyline layers: line drawing combined with line reshaping (by adding and dragging vertices), removed the old "edit vertices" menu item.
+* [web] Added attribute editing to the inspection control, removed the "edit attributes" menu item.
+* [web] Added a new button ("Frame") to the box tool buttons, which creates a rectangular map frame.
+
 v0.6.70
 * Fix for bug affecting -mosaic and -polygon commands (they incorrectly incorporated paths from other layers).
 
