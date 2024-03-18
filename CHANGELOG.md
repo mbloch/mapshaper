@@ -1,3 +1,7 @@
+v0.6.73
+* Added drawing/reshaping to polygon layer editing menu.
+* Added info box with drawing instructions.
+
 v0.6.72
 * Bug fix
 
