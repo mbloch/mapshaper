@@ -55,7 +55,7 @@ export function initLineEditing(gui, ext, hit) {
     var prevMode = gui.getMode();
     if (e.mode == 'drawing') {
       gui.enterMode('drawing_tool');
-    } else if (prevMode == 'drawing') {
+    } else if (active()) {
       gui.clearMode();
     }
   }, null, 10); // higher priority than hit control, so turnOff() has correct hit target
@@ -109,7 +109,9 @@ export function initLineEditing(gui, ext, hit) {
 
   function turnOff() {
     finishPath();
-    finish();
+    if (polygonMode()) {
+      finishPolygons();
+    }
     clearDrawingInfo();
     alert.close();
     alert = null;
@@ -121,15 +123,15 @@ export function initLineEditing(gui, ext, hit) {
   }
 
   function finish() {
-    var target = hit.getHitTarget();
-    if (target.arcs.size() <= initialArcCount) return; // nothing was added
     if (polygonMode()) {
-      finishPolygons(target);
+      finishPolygons();
     }
   }
 
-  function finishPolygons(target) {
+  function finishPolygons() {
     // step1: make a polyline layer containing just newly drawn paths
+    var target = hit.getHitTarget();
+    if (target.arcs.size() <= initialArcCount) return; // no paths added
     var polygonLyr = target.source.layer;
     var polygonRecords = polygonLyr.data ? polygonLyr.data.getRecords() : null;
     var templateRecord;
