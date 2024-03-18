@@ -122,7 +122,7 @@ export function Undo(gui) {
     var startPoint = e.point; // in data coords
     var endPoint = getVertexCoords(target, e.ids[0]);
     var undo = function() {
-      if (e.insertion) {
+      if (e.data.type == 'interpolated') {
         deleteVertex(target, e.ids[0]);
       } else {
         setVertexCoords(target, e.ids, startPoint);

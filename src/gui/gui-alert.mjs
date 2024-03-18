@@ -1,15 +1,20 @@
 import { El } from './gui-el';
 
-export function showPopupAlert(msg, title) {
+export function showPopupAlert(msg, title, optsArg) {
+  var opts = optsArg || {};
   var self = {}, html = '';
   var _cancel, _close;
   var warningRxp = /^Warning: /;
-  var el = El('div').appendTo('body').addClass('alert-wrapper');
+  var el = El('div').appendTo('body').addClass('alert-wrapper')
+    .classed('non-blocking', opts.non_blocking);
   var infoBox = El('div').appendTo(el).addClass('alert-box info-box selectable');
   El('div').appendTo(infoBox).addClass('close2-btn').on('click', function() {
     if (_cancel) _cancel();
     self.close();
   });
+  if (opts.max_width) {
+    infoBox.node().style.maxWidth = opts.max_width;
+  }
   var container = El('div').appendTo(infoBox);
   if (!title && warningRxp.test(msg)) {
     title = 'Warning';
@@ -20,7 +25,7 @@ export function showPopupAlert(msg, title) {
   }
   var content = El('div').appendTo(infoBox);
   if (msg) {
-    content.html(`<p class="error-message">${msg}</p>`);
+    content.html(`<p class="alert-message">${msg}</p>`);
   }
 
   self.container = function() { return content; };

@@ -162,6 +162,7 @@ import * as Rounding from './geom/mapshaper-rounding';
 import * as RunCommands from './cli/mapshaper-run-commands';
 import * as Scalebar from './commands/mapshaper-scalebar';
 import * as SegmentIntersection from './paths/mapshaper-segment-intersection';
+import * as SegmentGeom from './geom/mapshaper-segment-geom';
 import * as ShapeIter from './paths/mapshaper-shape-iter';
 import * as ShapeUtils from './paths/mapshaper-shape-utils';
 import * as ShpCommon from './shapefile/shp-common';
@@ -280,6 +281,7 @@ Object.assign(internal,
   Rounding,
   RunCommands,
   Scalebar,
+  SegmentGeom,
   SegmentIntersection,
   ShapeIter,
   ShapeUtils,

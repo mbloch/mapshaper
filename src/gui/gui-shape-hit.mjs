@@ -10,7 +10,11 @@ export function getShapeHitTest(displayLayer, ext, interactionMode, featureFilte
     test = getGraduatedCircleTest(getRadiusFunction(displayLayer.style));
   } else if (geoType == 'point') {
     test = pointTest;
-  } else if (interactionMode == 'vertices' || interactionMode == 'edit-lines') {
+  } else if (interactionMode == 'drawing' && geoType == 'polygon') {
+    test = polygonVertexTest;
+  } else if (
+      interactionMode == 'vertices' ||
+      interactionMode == 'drawing') {
     test = vertexTest;
   } else if (geoType == 'polyline') {
     test = polylineTest;
@@ -57,6 +61,30 @@ export function getShapeHitTest(displayLayer, ext, interactionMode, featureFilte
     };
   }
 
+  function polygonVertexTest(x, y) {
+    var a = polygonTest(x, y);
+    var b = polylineTest(x, y, 5);
+    return {
+      ids: utils.uniq(b.ids.concat(a.ids))
+    };
+  }
+
+  function vertexTest(x, y) {
+    return polylineTest(x, y, 0);
+  }
+
+  function polylineTest(x, y, bufArg) {
+    var maxDist = getZoomAdjustedHitBuffer(15, 2),
+        bufPix = bufArg >= 0 ? bufArg : 0.05, // tiny threshold for hitting almost-identical lines
+        bufDist = getZoomAdjustedHitBuffer(bufPix),
+        cands = findHitCandidates(x, y, maxDist);
+    sortByDistance(x, y, cands, displayLayer.arcs);
+    cands = pickNearestCandidates(cands, bufDist, maxDist);
+    return {
+      ids: utils.pluck(cands, 'id')
+    };
+  }
+
   function pickNearestCandidates(sorted, bufDist, maxDist) {
     var hits = [],
         cand, minDist;
@@ -72,28 +100,6 @@ export function getShapeHitTest(displayLayer, ext, interactionMode, featureFilte
       hits.push(cand);
     }
     return hits;
-  }
-
-  function vertexTest(x, y) {
-    var bufferPix = 15; // 25;
-    var maxDist = getZoomAdjustedHitBuffer(bufferPix, 2),
-        cands = findHitCandidates(x, y, maxDist);
-    sortByDistance(x, y, cands, displayLayer.arcs);
-    cands = pickNearestCandidates(cands, 0, maxDist);
-    return {
-      ids: utils.pluck(cands, 'id')
-    };
-  }
-
-  function polylineTest(x, y) {
-    var maxDist = getZoomAdjustedHitBuffer(15, 2),
-        bufDist = getZoomAdjustedHitBuffer(0.05), // tiny threshold for hitting almost-identical lines
-        cands = findHitCandidates(x, y, maxDist);
-    sortByDistance(x, y, cands, displayLayer.arcs);
-    cands = pickNearestCandidates(cands, bufDist, maxDist);
-    return {
-      ids: utils.pluck(cands, 'id')
-    };
   }
 
   function sortByDistance(x, y, cands, arcs) {
@@ -185,6 +191,7 @@ export function getShapeHitTest(displayLayer, ext, interactionMode, featureFilte
     };
   }
 
+  // Returns array of shape ids for shapes that pass a buffered bounding-box test
   function findHitCandidates(x, y, dist) {
     var arcs = displayLayer.arcs,
         index = {},

@@ -121,13 +121,13 @@ function collectPointSegTouch(arr, epsSq, px, py, ax, ay, bx, by) {
 // Used by mapshaper-undershoots.js
 // TODO: make more robust, make sure result is compatible with segmentIntersection()
 // (rounding errors currently must be handled downstream)
-export function findClosestPointOnSeg(px, py, ax, ay, bx, by) {
+export function findClosestPointOnSeg(px, py, ax, ay, bx, by, snapArg) {
   var dx = bx - ax,
       dy = by - ay,
       dotp = (px - ax) * dx + (py - ay) * dy,
       abSq = dx * dx + dy * dy,
       k = abSq === 0 ? -1 : dotp / abSq,
-      eps = 0.1, // 1e-6, // snap to endpoint
+      eps = snapArg >= 0 ? snapArg : 0.1, // 1e-6, // snap to endpoint
       p;
   if (k <= eps) {
     p = [ax, ay];
