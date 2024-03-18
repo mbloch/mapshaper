@@ -276,7 +276,15 @@ body {
 	left: 0;
 }
 
-.alert-wrapper p.error-message {
+.alert-wrapper.non-blocking {
+	pointer-events: none;
+}
+
+.non-blocking > div {
+	pointer-events: auto;
+}
+
+.alert-wrapper p.alert-message {
 	margin: 1px 0 0 0;
 }
 
@@ -286,7 +294,7 @@ body {
 	margin-bottom: 7px;
 }
 
-div.alert-title, div.error-message {
+div.alert-title, div.alert-message {
 	font-size: 16px;
 }
 
@@ -1194,7 +1202,7 @@ div.basemap-style-btn.active img {
 }
 
 .map-layers.add-points,
-.map-layers.edit-lines {
+.map-layers.drawing {
 	cursor: crosshair;
 }
 

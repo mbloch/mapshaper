@@ -94,13 +94,12 @@ export function HitControl(gui, ext, mouse) {
 
   function draggable() {
     return interactionMode == 'vertices' || interactionMode == 'location' ||
-      interactionMode == 'labels' || interactionMode == 'edit-lines';
+      interactionMode == 'labels' || interactionMode == 'drawing';
   }
 
   function clickable() {
     // click used to pin popup and select features
     return interactionMode == 'data' || interactionMode == 'info' ||
-    // interactionMode == 'edit-lines';
     interactionMode == 'selection' || interactionMode == 'rectangles';
   }
 
@@ -137,7 +136,7 @@ export function HitControl(gui, ext, mouse) {
   };
 
   // manually set the selected feature id(s)
-  // used when hit detection is turned off, e.g. 'edit-lines' mode
+  // used when hit detection is turned off, e.g. 'drawing' mode
   self.setDrawingId = function(id) {
     if (id == drawingId) return;
     drawingId = id >= 0 ? id : -1;
@@ -160,12 +159,14 @@ export function HitControl(gui, ext, mouse) {
     if (!active || !p) return;
     if (p2 && p2[0] == p[0] && p2[1] == p[1]) return;
     storedData.hit_coordinates = p;
+    storedData.hit_type = type || '';
     triggerHitEvent('change');
   };
 
   self.clearHoverVertex = function() {
     if (!storedData.hit_coordinates) return;
     delete storedData.hit_coordinates;
+    delete storedData.hit_type;
     triggerHitEvent('change');
   };
 
@@ -247,7 +248,7 @@ export function HitControl(gui, ext, mouse) {
     if (clickable()) {
       updateSelectionState(convertClickDataToSelectionData(hitTest(e)));
     }
-    triggerHitEvent('click', e.data);
+    triggerHitEvent('click', e);
   }, null, priority);
 
   // Hits are re-detected on 'hover' (if hit detection is active)
@@ -353,7 +354,7 @@ export function HitControl(gui, ext, mouse) {
   // check if an event is used in the current interaction mode
   function eventIsEnabled(type) {
     if (!active) return false;
-    if (interactionMode == 'edit-lines' && (type == 'hover' || type == 'dblclick')) {
+    if (interactionMode == 'drawing' && (type == 'hover' || type == 'dblclick')) {
       return true; // special case -- using hover for line drawing animation
     }
 
@@ -375,10 +376,18 @@ export function HitControl(gui, ext, mouse) {
     return e.x >= 0 && e.y >= 0 && e.x < ext.width() && e.y < ext.height();
   }
 
+  function possiblyStopPropagation(e) {
+    if (interactionMode == 'drawing') {
+      // handled conditionally in the control
+      return;
+    }
+    e.stopPropagation();
+  }
+
   function handlePointerEvent(e) {
     if (eventIsEnabled(e.type)) {
-      e.stopPropagation(); // block navigation
-      triggerHitEvent(e.type, e.data);
+      possiblyStopPropagation(e);
+      triggerHitEvent(e.type, e);
     }
   }
 
@@ -386,10 +395,12 @@ export function HitControl(gui, ext, mouse) {
   function triggerHitEvent(type, evt) {
     var eventData = {
       mode: interactionMode,
-      overMap: evt ? isOverMap(evt) : null
+      overMap: evt ? isOverMap(evt) : null,
+      originalEvent: evt ? evt : null
     };
     // Merge stored hit data into the event data
-    utils.extend(eventData, evt || {}, storedData);
+    utils.defaults(eventData, evt && evt.data || {}, storedData);
+    // utils.extend(eventData, storedData);
     if (transientIds.length) {
       // add transient ids to any other hit ids
       eventData.ids = utils.uniq(transientIds.concat(eventData.ids || []));

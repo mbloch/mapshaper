@@ -31,10 +31,15 @@ export function appendNewDataRecord(layer) {
     d['label-text'] = 'TBD'; // without text, new labels will be invisible
   } else if (layer.geometry_type == 'point' && fields.includes('r')) {
     d.r = 3; // show a black circle if layer is styled
-  } else if (true || layer.geometry_type == 'polyline' && fields.includes('stroke')) {
-    d.stroke = 'black';
-  } else if (layer.geometry_type == 'polygon' && fields.includes('stroke')) {
-    d.stroke = 'black';
+  }
+  if (layer.geometry_type == 'polyline' || layer.geometry_type == 'polygon') {
+    if (fields.includes('stroke')) d.stroke = 'black';
+    if (fields.includes('stroke-width')) d['stroke-width'] = 1;
+  }
+  if (layer.geometry_type == 'polygon') {
+    if (fields.includes('fill')) {
+      d.fill = 'rgba(0,0,0,0.10)'; // 'rgba(249,120,249,0.20)';
+    }
   }
   // TODO: better styling
   layer.data.getRecords().push(d);

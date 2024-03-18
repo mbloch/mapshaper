@@ -157,7 +157,7 @@ export function DisplayCanvas() {
     var iter = new internal.ShapeIter(arcs);
     var t = getScaledTransform(_ext);
     var bounds = _ext.getBounds();
-    var radius = (style.strokeWidth > 2 ? style.strokeWidth * 0.9 : 2) * GUI.getPixelRatio() * getScaledLineScale(_ext, style);
+    var radius = (style.strokeWidth > 2 ? style.strokeWidth * 0.9 : 1.8) * GUI.getPixelRatio() * getScaledLineScale(_ext, style);
     var color = style.strokeColor || 'black';
 
     var i, j, p;
@@ -181,7 +181,8 @@ export function DisplayCanvas() {
       _ctx.beginPath();
       _ctx.fillStyle = style.vertex_overlay_color || 'black';
       p = style.vertex_overlay;
-      drawCircle(p[0] * t.mx + t.bx, p[1] * t.my + t.by, radius * 2, _ctx);
+      drawCircle(p[0] * t.mx + t.bx, p[1] * t.my + t.by, radius *
+          (style.vertex_overlay_scale || 2), _ctx);
       _ctx.fill();
       _ctx.closePath();
     }

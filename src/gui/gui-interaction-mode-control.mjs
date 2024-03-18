@@ -5,9 +5,9 @@ export function InteractionMode(gui) {
 
   var menus = {
     standard: ['info', 'selection', 'box'],
-    polygons: ['info', 'selection', 'box', 'vertices'],
-    rectangles: ['info', 'selection', 'box', 'rectangles', 'vertices'],
-    lines: ['info', 'selection', 'box' , 'edit-lines'],
+    polygons: ['info', 'selection', 'box', 'drawing'],
+    rectangles: ['info', 'selection', 'box', 'rectangles'], // 'vertices'
+    lines: ['info', 'selection', 'box' , 'drawing'],
     table: ['info', 'selection'],
     labels: ['info', 'selection', 'box', 'labels', 'location', 'add-points'],
     points: ['info', 'selection', 'box', 'location', 'add-points']
@@ -29,8 +29,7 @@ export function InteractionMode(gui) {
     vertices: 'edit vertices',
     selection: 'select features',
     'add-points': 'add points',
-    'draw-lines': 'draw lines',
-    'edit-lines': 'draw/modify lines',
+    drawing: 'draw/reshape tool',
     rectangles: 'drag-to-resize',
     off: 'turn off'
   };
@@ -86,7 +85,7 @@ export function InteractionMode(gui) {
   };
 
   this.modeUsesHitDetection = function(mode) {
-    return ['info', 'selection', 'data', 'labels', 'location', 'vertices', 'rectangles', 'edit-lines'].includes(mode);
+    return ['info', 'selection', 'data', 'labels', 'location', 'vertices', 'rectangles', 'drawing'].includes(mode);
   };
 
   this.modeUsesPopup = function(mode) {

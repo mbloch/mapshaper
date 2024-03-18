@@ -1,4 +1,4 @@
-import { internal, utils } from './gui-core';
+import { internal, utils, cmd } from './gui-core';
 
 var darkStroke = "#334",
     lightStroke = "#b7d9ea",
@@ -149,8 +149,8 @@ export function getOverlayStyle(baseLyr, o, opts) {
   if (opts.interactionMode == 'vertices') {
     return getVertexStyle(baseLyr, o);
   }
-  if (opts.interactionMode == 'edit-lines') {
-    return getLineEditingStyle(baseLyr, o);
+  if (opts.interactionMode == 'drawing') {
+    return getLineEditingStyle(o);
   }
   var geomType = baseLyr.geometry_type;
   var topId = o.id; // pinned id (if pinned) or hover id
@@ -232,7 +232,6 @@ function getVertexStyle(lyr, o) {
     strokeColor: black,
     strokeWidth: 1.5,
     vertices: true,
-    vertex_overlay_color: violet,
     vertex_overlay: o.hit_coordinates || null,
     selected_points: o.selected_points || null,
     fillColor: null
@@ -240,14 +239,15 @@ function getVertexStyle(lyr, o) {
 }
 
 // style for vertex edit mode
-function getLineEditingStyle(lyr, o) {
+function getLineEditingStyle(o) {
   return {
     ids: o.ids,
     overlay: true,
     strokeColor: 'black',
     strokeWidth: 1.2,
     vertices: true,
-    vertex_overlay_color: violet,
+    vertex_overlay_color: o.hit_type == 'vertex' ? violet : black,
+    vertex_overlay_scale: o.hit_type == 'vertex' ? 2.4 : 1.7,
     vertex_overlay: o.hit_coordinates || null,
     selected_points: o.selected_points || null,
     fillColor: null

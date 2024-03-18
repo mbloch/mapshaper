@@ -1,4 +1,4 @@
-import { error, internal, geom, utils } from './gui-core';
+import { error, internal, geom, utils, mapshaper } from './gui-core';
 import {
   updateVertexCoords,
   insertVertex,
@@ -13,34 +13,34 @@ import {
   getLastArcCoords
   } from './gui-drawing-utils';
 import { translateDisplayPoint } from './gui-display-utils';
+import { showPopupAlert } from './gui-alert';
 
 // pointer thresholds for hovering near a vertex or segment midpoint
-var HOVER_THRESHOLD = 8;
-var MIDPOINT_THRESHOLD = 11;
+var HOVER_THRESHOLD = 10;
 
 export function initLineEditing(gui, ext, hit) {
-  var insertionPoint; // not used in this mode
-  var dragVertexInfo;
   var hoverVertexInfo;
   var prevClickEvent;
   var prevHoverEvent;
+  var initialArcCount = -1;
   var drawingId = -1; // feature id of path being drawn
+  var alert;
+  var _dragging = false;
 
   function active() {
-    return gui.interaction.getMode() == 'edit-lines';
+    return !!alert;
   }
 
   function dragging() {
-    return active() && !!dragVertexInfo;
+    return _dragging;
   }
 
   function drawing() {
     return drawingId > -1;
   }
 
-  function setHoverVertex(id) {
-    var target = hit.getHitTarget();
-    hit.setHoverVertex(target.arcs.getVertex2(id));
+  function polygonMode() {
+    return active() && hit.getHitTarget().layer.geometry_type == 'polygon';
   }
 
   function clearHoverVertex() {
@@ -48,12 +48,15 @@ export function initLineEditing(gui, ext, hit) {
     hoverVertexInfo = null;
   }
 
+  gui.addMode('drawing_tool', turnOn, turnOff);
+
   gui.on('interaction_mode_change', function(e) {
-    gui.container.findChild('.map-layers').classed('edit-lines', e.mode == 'edit-lines');
-    if (e.mode == 'edit-lines') {
-      turnOn();
-    } else {
-      turnOff();
+    gui.container.findChild('.map-layers').classed('drawing', e.mode == 'drawing');
+    var prevMode = gui.getMode();
+    if (e.mode == 'drawing') {
+      gui.enterMode('drawing_tool');
+    } else if (prevMode == 'drawing') {
+      gui.clearMode();
     }
   }, null, 10); // higher priority than hit control, so turnOff() has correct hit target
 
@@ -94,63 +97,114 @@ export function initLineEditing(gui, ext, hit) {
     }
   });
 
-  function turnOn() {}
+  function turnOn() {
+    var target = hit.getHitTarget();
+    var pathStr = polygonMode() ? 'closed paths' : 'paths';
+    var isMac = navigator.userAgent.includes('Mac');
+    var symbol = isMac ? '⌘' : '^';
+    var msg = `Instructions: Click on the map to draw ${pathStr}. Drag vertices to reshape a path. Type ${symbol}Z/${symbol}Y to undo/redo.`;
+    initialArcCount = hit.getHitTarget().arcs.size();
+    alert = showPopupAlert(msg, null, {non_blocking: true, max_width: '360px'});
+  }
 
   function turnOff() {
     finishPath();
+    finish();
     clearDrawingInfo();
-    insertionPoint = null;
+    alert.close();
+    alert = null;
+    initialArcCount = -1;
+    if (gui.interaction.getMode() == 'drawing') {
+      // mode change was not initiated by interactive menu -- turn off interactivity
+      gui.interaction.turnOff();
+    }
+  }
+
+  function finish() {
+    var target = hit.getHitTarget();
+    if (target.arcs.size() <= initialArcCount) return; // nothing was added
+    if (polygonMode()) {
+      finishPolygons(target);
+    }
+  }
+
+  function finishPolygons(target) {
+    // step1: make a polyline layer containing just newly drawn paths
+    var polygonLyr = target.source.layer;
+    var polygonRecords = polygonLyr.data ? polygonLyr.data.getRecords() : null;
+    var templateRecord;
+    if (polygonRecords) {
+      // use one of the newly created records as a template (they should all be the same)
+      templateRecord = polygonRecords.pop();
+      polygonRecords.splice(initialArcCount); // remove new records
+    }
+    var polylineLyr = {
+      geometry_type: 'polyline',
+      shapes: polygonLyr.shapes.splice(initialArcCount) // move new shapes to polyline layer
+    };
+
+    // step2: convert polylines to polygons
+    //
+    // create a temp dataset containing both layers (so original arcs are preserved)
+    var tmp = Object.assign({}, target.source.dataset);
+    tmp.layers = tmp.layers.concat(polylineLyr);
+    var outputLayers = mapshaper.cmd.polygons([polylineLyr], tmp, {});
+
+    // step3: add new polygons to the original polygons
+    outputLayers[0].shapes.forEach(function(shp) {
+      polygonLyr.shapes.push(shp);
+      if (polygonRecords) {
+        polygonRecords.push(internal.copyRecord(templateRecord));
+      }
+    });
+
+    // step4: update map
+    gui.model.updated({arc_count: true});
   }
 
   function clearDrawingInfo() {
     hit.clearDrawingId();
     drawingId = -1;
-    dragVertexInfo = hoverVertexInfo = null;
+    hoverVertexInfo = null;
     prevClickEvent = prevHoverEvent = null;
   }
 
   hit.on('dragstart', function(e) {
-    if (!active()) return;
-    if (insertionPoint) {
-      var target = hit.getHitTarget();
-      insertVertex(target, insertionPoint.i, insertionPoint.point);
-      dragVertexInfo = {
-        target: target,
-        insertion: true,
-        point: insertionPoint.point,
-        ids: [insertionPoint.i]
-      };
-      insertionPoint = null;
-    } else if (!drawing()) {
-      dragVertexInfo = findDraggableVertices(e);
+    if (!active() || drawing() || !hoverVertexInfo) return;
+    e.originalEvent.stopPropagation();
+    _dragging = true;
+    if (hoverVertexInfo.type == 'interpolated') {
+      insertVertex(hit.getHitTarget(), hoverVertexInfo.i, hoverVertexInfo.point);
+      hoverVertexInfo.ids = [hoverVertexInfo.i];
     }
-    if (dragVertexInfo) {
-      setHoverVertex(dragVertexInfo.ids[0]);
-    }
+    hit.setHoverVertex(hoverVertexInfo.displayPoint, hoverVertexInfo.type);
   });
 
   hit.on('drag', function(e) {
     if (!dragging() || drawing()) return;
+    e.originalEvent.stopPropagation();
     var target = hit.getHitTarget();
     var p = ext.translatePixelCoords(e.x, e.y);
     if (gui.keyboard.shiftIsPressed()) {
-      internal.snapPointToArcEndpoint(p, dragVertexInfo.ids, target.arcs);
+      internal.snapPointToArcEndpoint(p, hoverVertexInfo.ids, target.arcs);
     }
-    internal.snapVerticesToPoint(dragVertexInfo.ids, p, target.arcs);
-    setHoverVertex(dragVertexInfo.ids[0]);
+    internal.snapVerticesToPoint(hoverVertexInfo.ids, p, target.arcs);
+    hit.setHoverVertex(p, '');
+
     // redrawing the whole map updates the data layer as well as the overlay layer
     // gui.dispatchEvent('map-needs-refresh');
   });
 
   hit.on('dragend', function(e) {
     if (!dragging()) return;
+    _dragging = false;
     // kludge to get dataset to recalculate internal bounding boxes
-    hit.getHitTarget().arcs.transformPoints(function() {});
+    var target = hit.getHitTarget();
+    target.arcs.transformPoints(function() {});
+    updateVertexCoords(target, hoverVertexInfo.ids);
+    gui.dispatchEvent('vertex_dragend', hoverVertexInfo);
+    gui.dispatchEvent('map-needs-refresh'); // redraw basemap
     clearHoverVertex();
-    updateVertexCoords(dragVertexInfo.target, dragVertexInfo.ids);
-    gui.dispatchEvent('vertex_dragend', dragVertexInfo);
-    gui.dispatchEvent('map-needs-refresh');
-    dragVertexInfo = null;
   });
 
   // shift + double-click deletes a vertex (when not drawing)
@@ -163,53 +217,38 @@ export function initLineEditing(gui, ext, hit) {
       // now: second click is suppressed
       // deleteLastVertex(hit.getHitTarget());
       finishPath();
-      e.stopPropagation(); // prevent dblclick zoom
+      e.originalEvent.stopPropagation(); // prevent dblclick zoom
       return;
     }
   });
 
   // hover event highlights the nearest point in close proximity to the pointer
-  // ... or the closest segment midpoint (for adding a new vertex)
+  // ... or the closest point along the segment (for adding a new vertex)
   hit.on('hover', function(e) {
     if (!active() || dragging()) return;
-    if (drawing() && !e.overMap) {
-      finishPath();
-      return;
-    }
     if (drawing()) {
+      if (!e.overMap) {
+        finishPath();
+        return;
+      }
       if (gui.keyboard.shiftIsPressed()) {
         alignPointerPosition(e, prevClickEvent);
       }
       updatePathEndpoint(pixToDataCoords(e.x, e.y));
+    }
 
-      // highlight nearby snappable vertex (the closest vertex on a nearby line,
-      //   or the first vertex of the current drawing path if not near a line)
-      hoverVertexInfo = e.id >= 0 && findDraggableVertices(e) || findPathStartInfo(e);
-      if (hoverVertexInfo) {
-        // hovering near a vertex: highlight the vertex
-        setHoverVertex(hoverVertexInfo.ids[0]);
-      } else {
-        clearHoverVertex();
-      }
-      prevHoverEvent = e;
-      return;
-    }
-    if (e.id >= 0 === false) {
-      // pointer is not near a path
-      return;
-    }
-    hoverVertexInfo = findDraggableVertices(e);
-    insertionPoint = hoverVertexInfo ? null : findMidpointInsertionPoint(e);
+    // highlight nearby snappable vertex (the closest vertex on a nearby line,
+    //   or the first vertex of the current drawing path if not near a line)
+    hoverVertexInfo = e.id >= 0 && findDraggableVertices(e) ||
+        drawing() && findPathStartInfo(e) ||
+        e.id >= 0 && findInterpolatedPoint(e);
     if (hoverVertexInfo) {
       // hovering near a vertex: highlight the vertex
-      setHoverVertex(hoverVertexInfo.ids[0]);
-    } else if (insertionPoint) {
-      // hovering near a segment midpoint: highlight the midpoint
-      hit.setHoverVertex(insertionPoint.displayPoint);
+      hit.setHoverVertex(hoverVertexInfo.displayPoint, hoverVertexInfo.type);
     } else {
-      // pointer is not over a vertex: clear any hover effect
       clearHoverVertex();
     }
+    prevHoverEvent = e;
   }, null, 100);
 
   // click starts or extends a new path
@@ -239,6 +278,7 @@ export function initLineEditing(gui, ext, hit) {
     }
   });
 
+  // detect second 'click' event of a double-click action
   function detectDoubleClick(evt) {
     if (!prevClickEvent) return false;
     var elapsed = evt.time - prevClickEvent.time;
@@ -279,8 +319,8 @@ export function initLineEditing(gui, ext, hit) {
     var x0 = prevEvt.x;
     var y0 = prevEvt.y;
     var dist = geom.distance2D(thisEvt.x, thisEvt.y, x0, y0);
-    var dist2 = dist / Math.sqrt(2);
     if (dist < 1) return;
+    var dist2 = dist / Math.sqrt(2);
     var minDist = Infinity;
     var cands = [
       {x: x0, y: y0 + dist},
@@ -316,23 +356,20 @@ export function initLineEditing(gui, ext, hit) {
     gui.model.updated({arc_count: true});
   }
 
-  function startPath(p) {
+  // p: [x, y] source data coordinates
+  function startPath(p2) {
     var target = hit.getHitTarget();
-    var p1 = hoverVertexInfo ? getVertexCoords(target, hoverVertexInfo.ids[0]) : p;
-    var p2 = p;
+    var p1 = hoverVertexInfo ? hoverVertexInfo.point : p2;
     appendNewPath(target, p1, p2);
     gui.dispatchEvent('path_add', {target, p1, p2});
     drawingId = target.layer.shapes.length - 1;
     hit.setDrawingId(drawingId);
   }
 
+  // p: [x, y] source data coordinates
   function extendPath(p) {
     var target = hit.getHitTarget();
-    var len = getLastArcLength(target);
-    if (false && len == 2) {
-      var pathCoords = getLastArcCoords(target);
-      gui.dispatchEvent('path_add', {target, p1: pathCoords[0], p2: pathCoords[1]});
-    } else if (len >= 2) {
+    if (getLastArcLength(target) >= 2) {
       gui.dispatchEvent('path_extend', {target, p});
     }
     appendVertex(target, p);
@@ -344,7 +381,7 @@ export function initLineEditing(gui, ext, hit) {
     var target = hit.getHitTarget();
     var i = target.arcs.getPointCount() - 1;
     if (hoverVertexInfo) {
-      p = getVertexCoords(target, hoverVertexInfo.ids[0]); // snap to selected point
+      p = hoverVertexInfo.point; // snap to selected point
     }
     setVertexCoords(target, [i], p);
     hit.triggerChangeEvent();
@@ -354,9 +391,9 @@ export function initLineEditing(gui, ext, hit) {
     var target = hit.getHitTarget();
     var arcId = target.arcs.size() - 1;
     var data = target.arcs.getVertexData();
-    var id = data.ii[arcId];
-    var x = data.xx[id];
-    var y = data.yy[id];
+    var i = data.ii[arcId];
+    var x = data.xx[i];
+    var y = data.yy[i];
     var p = ext.translatePixelCoords(e.x, e.y);
     var dist = geom.distance2D(p[0], p[1], x, y);
     var pathLen = data.nn[arcId];
@@ -366,7 +403,7 @@ export function initLineEditing(gui, ext, hit) {
     }
     var point = translateDisplayPoint(target, [x, y]);
     return {
-      target, ids: [id], extendable: false, point
+      target, ids: [i], extendable: false, point, displayPoint: [x, y], type: 'vertex'
     };
   }
 
@@ -389,48 +426,49 @@ export function initLineEditing(gui, ext, hit) {
     // (which could be extended by a newly drawn path)
     var extendable = ids.length == 1 &&
       internal.vertexIsArcEndpoint(ids[0], target.arcs);
-    return {target, ids, extendable, point};
+    var displayPoint = target.arcs.getVertex2(ids[0]);
+    return {target, ids, extendable, point, displayPoint, type: 'vertex'};
   }
 
-  function findMidpointInsertionPoint(e) {
+  function findInterpolatedPoint(e) {
     var target = hit.getHitTarget();
     //// vertex insertion not supported with simplification
     // if (!target.arcs.isFlat()) return null;
     var p = ext.translatePixelCoords(e.x, e.y);
-    var midpoint = findNearestMidpoint(p, e.id, target);
-    if (!midpoint ||
-        midpoint.distance / ext.getPixelSize() > MIDPOINT_THRESHOLD) return null;
-    return midpoint;
-  }
-}
+    var minDist = Infinity;
+    var shp = target.layer.shapes[e.id];
+    var closest;
+    internal.forEachSegmentInShape(shp, target.arcs, function(i, j, xx, yy) {
+      var x1 = xx[i],
+          y1 = yy[i],
+          x2 = xx[j],
+          y2 = yy[j],
+          // switching from midpoint to nearest point to the mouse
+          // cx = (x1 + x2) / 2,
+          // cy = (y1 + y2) / 2,
+          // p2 = [cx, cy],
+          p2 = internal.findClosestPointOnSeg(p[0], p[1], x1, y1, x2, y2, 0),
+          dist = geom.distance2D(p2[0], p2[1], p[0], p[1]);
+      if (dist < minDist) {
+        minDist = dist;
+        closest = {
+          i: (i < j ? i : j) + 1, // insertion vertex id
+          displayPoint: p2,
+          distance: dist
+        };
+      }
+    });
 
-
-// Given a location @p (e.g. corresponding to the mouse pointer location),
-// find the midpoint of two vertices on @shp suitable for inserting a new vertex
-function findNearestMidpoint(p, fid, target) {
-  var arcs = target.arcs;
-  var shp = target.layer.shapes[fid];
-  var minDist = Infinity, v;
-  internal.forEachSegmentInShape(shp, arcs, function(i, j, xx, yy) {
-    var x1 = xx[i],
-        y1 = yy[i],
-        x2 = xx[j],
-        y2 = yy[j],
-        cx = (x1 + x2) / 2,
-        cy = (y1 + y2) / 2,
-        midpoint = [cx, cy],
-        dist = geom.distance2D(cx, cy, p[0], p[1]);
-    if (dist < minDist) {
-      minDist = dist;
-      v = {
-        i: (i < j ? i : j) + 1, // insertion point
-        segment: [i, j],
-        segmentLen: geom.distance2D(x1, y1, x2, y2),
-        displayPoint: midpoint,
-        point: translateDisplayPoint(target, midpoint),
-        distance: dist
-      };
+    if (closest.distance / ext.getPixelSize() > HOVER_THRESHOLD) {
+      return null;
     }
-  });
-  return v || null;
+    closest.point = translateDisplayPoint(target, closest.displayPoint);
+    closest.type = 'interpolated';
+    closest.target = target;
+    return closest;
+  }
+
 }
+
+
+
