@@ -1,4 +1,5 @@
 import geom from '../geom/mapshaper-geom';
+import { findArcIdFromVertexId } from '../paths/mapshaper-arc-utils';
 
 export function findNearestVertices(p, shp, arcs) {
   var p2 = findNearestVertex(p[0], p[1], shp, arcs);
@@ -7,13 +8,14 @@ export function findNearestVertices(p, shp, arcs) {
 
 
 export function snapVerticesToPoint(ids, p, arcs, final) {
+  var data = arcs.getVertexData();
   ids.forEach(function(idx) {
+    if (final) {
+      // recalculate bounding box for arc
+      arcs.updateArcBounds(findArcIdFromVertexId(idx, data.ii));
+    }
     setVertexCoords(p[0], p[1], idx, arcs);
   });
-  if (final) {
-    // kludge to get dataset to recalculate internal bounding boxes
-    arcs.transformPoints(function() {});
-  }
 }
 
 

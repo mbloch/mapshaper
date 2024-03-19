@@ -134,6 +134,7 @@ export function Popup(gui, toNext, toPrev) {
     } else {
       rec = getMultiRecord(recIds, table);
     }
+    rec = rec || {};
     utils.forEachProperty(rec, function(v, k) {
       // missing GeoJSON fields are set to undefined on import; skip these
       if (v === undefined) return;

@@ -87,42 +87,34 @@ export function ArcCollection() {
   }
 
   function initBounds() {
-    var data = calcArcBounds2(_xx, _yy, _nn);
-    _bb = data.bb;
-    _allBounds = data.bounds;
+    var numArcs = _nn.length;
+    _bb = new Float64Array(numArcs * 4);
+    _allBounds = new Bounds();
+    for (var i=0; i<numArcs; i++) {
+      initArcBounds(i);
+    }
   }
 
-  function calcArcBounds2(xx, yy, nn) {
-    var numArcs = nn.length,
-        bb = new Float64Array(numArcs * 4),
-        bounds = new Bounds(),
-        arcOffs = 0,
-        arcLen,
-        j, b;
-    for (var i=0; i<numArcs; i++) {
-      arcLen = nn[i];
-      if (arcLen > 0) {
-        j = i * 4;
-        b = calcArcBounds(xx, yy, arcOffs, arcLen);
-        bb[j++] = b[0];
-        bb[j++] = b[1];
-        bb[j++] = b[2];
-        bb[j] = b[3];
-        arcOffs += arcLen;
-        bounds.mergeBounds(b);
-      }
-    }
-    return {
-      bb: bb,
-      bounds: bounds
-    };
+  function initArcBounds(i) {
+    var arcLen = _nn[i];
+    var arcOffs = _ii[i];
+    var j = i * 4;
+    var b = calcArcBounds(_xx, _yy, arcOffs, arcLen);
+    _bb[j++] = b[0];
+    _bb[j++] = b[1];
+    _bb[j++] = b[2];
+    _bb[j] = b[3];
+    _allBounds.mergeBounds(b);
   }
+
+  this.updateArcBounds = function(arcId) {
+    initArcBounds(arcId);
+  };
 
   this.updateVertexData = function(nn, xx, yy, zz) {
     initXYData(nn, xx, yy);
     initZData(zz || null);
   };
-
 
   this.getCopy = function() {
     var copy = new ArcCollection(new Int32Array(_nn), new Float64Array(_xx),

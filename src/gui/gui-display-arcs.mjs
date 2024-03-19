@@ -8,6 +8,10 @@ export function enhanceArcCollectionForDisplay(unfilteredArcs) {
 
   // Only generate low-detail arcs for larger datasets
   if (size > 5e5) {
+    update();
+  }
+
+  function update() {
     if (unfilteredArcs.getVertexData().zz) {
       // Use precalculated simplification data for vertex filtering, if available
       filteredArcs = initFilteredArcs(unfilteredArcs);
@@ -31,6 +35,14 @@ export function enhanceArcCollectionForDisplay(unfilteredArcs) {
 
   // TODO: better job of detecting arc change... e.g. revision number
   unfilteredArcs.getScaledArcs = function(ext) {
+    // check for changes in the number of arcs (probably due to editing)
+    if (filteredArcs && filteredArcs.size() != unfilteredArcs.size()) {
+      // arc count has changed... probably due to editing
+      update();
+      if (filteredArcs.size() != unfilteredArcs.size()) {
+        throw Error('Internal error');
+      }
+    }
     if (filteredArcs) {
       // match simplification of unfiltered arcs
       filteredArcs.setRetainedInterval(unfilteredArcs.getRetainedInterval());
