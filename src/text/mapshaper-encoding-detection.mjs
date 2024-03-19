@@ -20,10 +20,13 @@ export function detectEncoding(samples) {
   var encoding = null;
   var utf8 = looksLikeUtf8(samples);
   var win1252 = looksLikeWin1252(samples);
-  if (utf8 == 2 || utf8 > win1252) {
+  var gb18030 = looksLikeGB18030(samples); // 新增GB18030的检测
+  if (utf8 == 2 || (utf8 > win1252 && utf8 > gb18030)) {
     encoding = 'utf8';
-  } else if (win1252 > 0) {
+  } else if (win1252 > 0 && win1252 > gb18030) {
     encoding = 'win1252';
+  } else if (gb18030 > 0) {
+    encoding = 'gb18030';
   } else {
     encoding = 'latin1'; // the original Shapefile encoding, using as an (imperfect) fallback
   }
@@ -74,6 +77,14 @@ function looksLikeUtf8(samples) {
   return score == 1 && 2 || score > 0.97 && 1 || 0;
 }
 
+// GB18030 is a simplified Chinese character set, used in mainland China.
+function looksLikeGB18030(samples) {
+  var str = decodeSamples('gb18030', samples);
+  var chineseChars = str.match(/[\u4e00-\u9fa5]/g) || [];
+  var score = chineseChars.length / str.length;
+  return score > 0.1 && 2 || score > 0.5 && 1 || 0; // 这里的阈值可以根据实际情况调整
+}
+
 // function replaceUtf8ReplacementChar(buf) {
 //   var isCopy = false;
 //   for (var i=0, n=buf.length; i<n; i++) {
@@ -102,4 +113,4 @@ function getCharScore(str, chars) {
     count += index[str[i]] || 0;
   }
   return count / str.length;
-}
+}}
