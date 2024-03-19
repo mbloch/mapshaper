@@ -131,18 +131,20 @@ export function initLineEditing(gui, ext, hit) {
   function finishPolygons() {
     // step1: make a polyline layer containing just newly drawn paths
     var target = hit.getHitTarget();
-    if (target.arcs.size() <= initialArcCount) return; // no paths added
+    var newShapeCount = target.arcs.size() - initialArcCount;
+    if (newShapeCount <= 0) return; // no paths added
     var polygonLyr = target.source.layer;
     var polygonRecords = polygonLyr.data ? polygonLyr.data.getRecords() : null;
+    var initialShapeCount = polygonLyr.shapes.length - newShapeCount;
     var templateRecord;
     if (polygonRecords) {
       // use one of the newly created records as a template (they should all be the same)
       templateRecord = polygonRecords.pop();
-      polygonRecords.splice(initialArcCount); // remove new records
+      polygonRecords.splice(initialShapeCount); // remove new records
     }
     var polylineLyr = {
       geometry_type: 'polyline',
-      shapes: polygonLyr.shapes.splice(initialArcCount) // move new shapes to polyline layer
+      shapes: polygonLyr.shapes.splice(initialShapeCount) // move new shapes to polyline layer
     };
 
     // step2: convert polylines to polygons
@@ -154,9 +156,10 @@ export function initLineEditing(gui, ext, hit) {
 
     // step3: add new polygons to the original polygons
     outputLayers[0].shapes.forEach(function(shp) {
+      var rec = polygonRecords ? internal.copyRecord(templateRecord) : null;
       polygonLyr.shapes.push(shp);
       if (polygonRecords) {
-        polygonRecords.push(internal.copyRecord(templateRecord));
+        polygonRecords.push(rec);
       }
     });
 

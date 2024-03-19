@@ -270,7 +270,8 @@ export function MshpMap(gui) {
   }
 
   function getStrictBounds() {
-    if (internal.isWebMercator(map.getDisplayCRS())) {
+    // if (internal.isWebMercator(map.getDisplayCRS())) {
+    if (_dynamicCRS && internal.isWebMercator(map.getDisplayCRS())) {
       return getMapboxBounds();
     }
     return null;
