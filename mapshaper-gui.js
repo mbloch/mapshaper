@@ -9262,6 +9262,7 @@
       } else {
         rec = getMultiRecord(recIds, table);
       }
+      rec = rec || {};
       utils$1.forEachProperty(rec, function(v, k) {
         // missing GeoJSON fields are set to undefined on import; skip these
         if (v === undefined) return;
@@ -9817,18 +9818,20 @@
     function finishPolygons() {
       // step1: make a polyline layer containing just newly drawn paths
       var target = hit.getHitTarget();
-      if (target.arcs.size() <= initialArcCount) return; // no paths added
+      var newShapeCount = target.arcs.size() - initialArcCount;
+      if (newShapeCount <= 0) return; // no paths added
       var polygonLyr = target.source.layer;
       var polygonRecords = polygonLyr.data ? polygonLyr.data.getRecords() : null;
+      var initialShapeCount = polygonLyr.shapes.length - newShapeCount;
       var templateRecord;
       if (polygonRecords) {
         // use one of the newly created records as a template (they should all be the same)
         templateRecord = polygonRecords.pop();
-        polygonRecords.splice(initialArcCount); // remove new records
+        polygonRecords.splice(initialShapeCount); // remove new records
       }
       var polylineLyr = {
         geometry_type: 'polyline',
-        shapes: polygonLyr.shapes.splice(initialArcCount) // move new shapes to polyline layer
+        shapes: polygonLyr.shapes.splice(initialShapeCount) // move new shapes to polyline layer
       };
 
       // step2: convert polylines to polygons
@@ -9840,9 +9843,10 @@
 
       // step3: add new polygons to the original polygons
       outputLayers[0].shapes.forEach(function(shp) {
+        var rec = polygonRecords ? internal.copyRecord(templateRecord) : null;
         polygonLyr.shapes.push(shp);
         if (polygonRecords) {
-          polygonRecords.push(internal.copyRecord(templateRecord));
+          polygonRecords.push(rec);
         }
       });
 
@@ -11760,6 +11764,10 @@ GUI and setting the size and crop of SVG output.</p><div><input type="text" clas
 
     // Only generate low-detail arcs for larger datasets
     if (size > 5e5) {
+      update();
+    }
+
+    function update() {
       if (unfilteredArcs.getVertexData().zz) {
         // Use precalculated simplification data for vertex filtering, if available
         filteredArcs = initFilteredArcs(unfilteredArcs);
@@ -11783,6 +11791,14 @@ GUI and setting the size and crop of SVG output.</p><div><input type="text" clas
 
     // TODO: better job of detecting arc change... e.g. revision number
     unfilteredArcs.getScaledArcs = function(ext) {
+      // check for changes in the number of arcs (probably due to editing)
+      if (filteredArcs && filteredArcs.size() != unfilteredArcs.size()) {
+        // arc count has changed... probably due to editing
+        update();
+        if (filteredArcs.size() != unfilteredArcs.size()) {
+          throw Error('Internal error');
+        }
+      }
       if (filteredArcs) {
         // match simplification of unfiltered arcs
         filteredArcs.setRetainedInterval(unfilteredArcs.getRetainedInterval());
@@ -12490,7 +12506,8 @@ GUI and setting the size and crop of SVG output.</p><div><input type="text" clas
     }
 
     function getStrictBounds() {
-      if (internal.isWebMercator(map.getDisplayCRS())) {
+      // if (internal.isWebMercator(map.getDisplayCRS())) {
+      if (_dynamicCRS && internal.isWebMercator(map.getDisplayCRS())) {
         return getMapboxBounds();
       }
       return null;
