@@ -1,4 +1,4 @@
-import { internal, utils, cmd } from './gui-core';
+import { internal, utils } from './gui-core';
 
 var darkStroke = "#334",
     lightStroke = "#b7d9ea",
