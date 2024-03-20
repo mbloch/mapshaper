@@ -90,6 +90,7 @@ import * as DbfImport from './shapefile/dbf-import';
 import * as DelimExport from './text/mapshaper-delim-export';
 import * as DelimImport from './text/mapshaper-delim-import';
 import * as DelimReader from './text/mapshaper-delim-reader';
+import * as EncodingDetection from './text/mapshaper-encoding-detection';
 import * as Encodings from './text/mapshaper-encodings';
 import * as Env from './mapshaper-env';
 import * as Explode from './commands/mapshaper-explode';
@@ -212,6 +213,7 @@ Object.assign(internal,
   DelimExport,
   DelimImport,
   DelimReader,
+  EncodingDetection,
   Encodings,
   Explode,
   Export,
