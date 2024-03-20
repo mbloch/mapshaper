@@ -172,7 +172,7 @@ export function MshpMap(gui) {
 
     if (arcsMayHaveChanged(e.flags)) {
       // regenerate filtered arcs the next time they are needed for rendering
-      // delete e.dataset.displayArcs;
+      // delete e.dataset.gui.displayArcs
       clearAllDisplayArcs();
 
       // reset simplification after projection (thresholds have changed)
@@ -349,7 +349,7 @@ export function MshpMap(gui) {
 
   function clearAllDisplayArcs() {
     model.getDatasets().forEach(function(o) {
-      delete o.displayArcs;
+      delete o.gui;
     });
   }
 

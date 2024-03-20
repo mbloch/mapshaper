@@ -13,10 +13,10 @@ export function projectDisplayLayer(lyr, displayCRS) {
   //if (!lyr.geographic || !sourceCRS) {
   // let getDisplayLayer() handle case of unprojectable source
   if (!lyr.geographic) {
-    return lyr;
+    return;
   }
   if (lyr.dynamic_crs && internal.crsAreEqual(sourceCRS, lyr.dynamic_crs)) {
-    return lyr;
+    return;
   }
   lyr2 = getDisplayLayer(lyr.source.layer, lyr.source.dataset, {crs: displayCRS});
   // kludge: copy projection-related properties to original layer
@@ -52,7 +52,7 @@ export function getDisplayLayer(layer, dataset, opts) {
 
   var displayCRS = opts.crs || null;
   // display arcs may have been generated when another layer in the dataset was converted for display... re-use if available
-  var displayArcs = dataset.displayArcs || null;
+  var displayArcs = dataset.gui?.displayArcs || null;
   var sourceCRS;
   var emptyArcs;
 
@@ -80,7 +80,7 @@ export function getDisplayLayer(layer, dataset, opts) {
     }
 
     enhanceArcCollectionForDisplay(displayArcs);
-    dataset.displayArcs = displayArcs; // stash these in the dataset for other layers to use
+    dataset.gui = {displayArcs}; // stash these in the dataset for other layers to use
   }
 
   if (internal.layerHasFurniture(layer)) {

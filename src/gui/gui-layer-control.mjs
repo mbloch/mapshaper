@@ -373,11 +373,9 @@ export function LayerControl(gui) {
     return internal.getLayerSourceFile(lyr, dataset);
   }
 
-
   function isPinnable(lyr) {
     return internal.layerIsGeometric(lyr) || internal.layerHasFurniture(lyr);
   }
-
 
   function rowHTML(c1, c2, cname) {
     return utils.format('<div class="row%s"><div class="col1">%s</div>' +

@@ -7,8 +7,8 @@ import { getCanvasFillPattern, getCanvasFillEffect } from './gui-canvas-patterns
 function getArcsForRendering(obj, ext) {
   var dataset = obj.source.dataset;
   var sourceArcs = dataset.arcs;
-  if (obj.geographic && dataset.displayArcs) {
-    return dataset.displayArcs.getScaledArcs(ext);
+  if (obj.geographic && dataset.gui?.displayArcs) {
+    return dataset.gui.displayArcs.getScaledArcs(ext);
   }
   return obj.arcs;
 }
