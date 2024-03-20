@@ -4,7 +4,6 @@ import { print, stop } from '../utils/mapshaper-logging';
 import utils from '../utils/mapshaper-utils';
 
 import require from '../mapshaper-require';
-// import { createRequire } from "module";
 
 var iconv = require('iconv-lite');
 

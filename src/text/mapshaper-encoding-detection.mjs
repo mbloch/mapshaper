@@ -1,5 +1,6 @@
 
 import { decodeString } from '../text/mapshaper-encodings';
+import utils from '../utils/mapshaper-utils';
 
 export function detectEncodingFromBOM(bytes) {
   // utf8 EF BB BF
@@ -17,28 +18,30 @@ export function detectEncodingFromBOM(bytes) {
 // @samples Array of buffers containing sample text fields
 // TODO: Improve reliability and number of detectable encodings.
 export function detectEncoding(samples) {
-  var encoding = null;
-  var utf8 = looksLikeUtf8(samples);
-  var win1252 = looksLikeWin1252(samples);
-  if (utf8 == 2 || utf8 > win1252) {
-    encoding = 'utf8';
-  } else if (win1252 > 0) {
-    encoding = 'win1252';
-  } else {
-    encoding = 'latin1'; // the original Shapefile encoding, using as an (imperfect) fallback
-  }
-
-  return {
-    encoding: encoding,
-    confidence: Math.max(utf8, win1252)
-  };
+  // score each encoding as 2 (high confidence) 1 (low confidence) or 0 (fail)
+  var candidates = [{
+    // latin1 is the original Shapefile encoding, using as an imperfect fallback
+    // (sorts to the top only if all other encodings score 0)
+    encoding: 'latin1',
+    confidence: 0
+  },{
+    encoding: 'win1252',
+    confidence: looksLikeWin1252(samples)
+  }, {
+    encoding: 'utf8',
+    confidence: looksLikeUtf8(samples)
+  }, {
+    encoding: 'gb18030',
+    confidence: looksLikeGB18030(samples)
+  }];
+  utils.sortOn(candidates, 'confidence', 'descending');
+  return candidates[0];
 }
 
-// Convert an array of text samples to a single string using a given encoding
 export function decodeSamples(enc, samples) {
   return samples.map(function(buf) {
     return decodeString(buf, enc).trim();
-  }).join('\n');
+  });
 }
 
 // Win1252 is the same as Latin1, except it replaces a block of control
@@ -53,14 +56,14 @@ export function decodeSamples(enc, samples) {
 //
 function looksLikeWin1252(samples) {
       //common l.c. ascii chars
-  var ascii = 'abcdefghijklmnopqrstuvwxyz0123456789.()\'"?+-\n,:;/|_$% ',
-      // common extended + NBS (found in the wild)
-      extended = 'ßàáâãäåæçèéêëìíîïðñòóôõöøùúûüýÿ°–±’‘' + '\xA0',
-      str = decodeSamples('win1252', samples),
-      asciiScore = getCharScore(str, ascii),
-      totalScore = getCharScore(str, extended + ascii);
-  return totalScore > 0.98 && asciiScore >= 0.8 && 2 ||
-    totalScore > 0.97 && asciiScore >= 0.6 && 1 || 0;
+  var commonAscii = 'abcdefghijklmnopqrstuvwxyz0123456789.()\'"?+-\n,:;/|_$% ',
+      // more common extended chars + NBS (found in the wild)
+      moreChars = 'ßàáâãäåæçèéêëìíîïðñòóôõöøùúûüýÿ°–±’‘' + '\xA0',
+      str = decodeSamples('win1252', samples).join(''),
+      commonAsciiPct = calcCharPct(str, commonAscii),
+      expandedPct = calcCharPct(str, moreChars) + commonAsciiPct;
+  return expandedPct > 0.98 && commonAsciiPct >= 0.8 && 2 ||
+    expandedPct > 0.97 && commonAsciiPct >= 0.6 && 1 || 0;
 }
 
 // Reject string if it contains the "replacement character" after decoding to UTF-8
@@ -68,10 +71,27 @@ function looksLikeUtf8(samples) {
   // Remove the byte sequence for the utf-8-encoded replacement char before decoding,
   // in case the file is in utf-8, but contains some previously corrupted text.
   // samples = samples.map(internal.replaceUtf8ReplacementChar);
-  var str = decodeSamples('utf8', samples);
-  var count = (str.match(/\ufffd/g) || []).length;
-  var score = 1 - count / str.length;
-  return score == 1 && 2 || score > 0.97 && 1 || 0;
+  var str = decodeSamples('utf8', samples).join('');
+  var invalidCount = (str.match(/\ufffd/g) || []).length;
+  var invalidPct = invalidCount / str.length;
+  return invalidPct == 0 && 2 || invalidPct < 0.03 && 1 || 0;
+}
+
+
+
+function extractCommonAsciiChars(str) {
+  return str.replace(/[^a-zA-Z0-9.()'"?+\n,:;/|_$% -]/g, '');
+}
+
+function looksLikeGB18030(samples) {
+  var str = decodeSamples('gb18030', samples).join('');
+  var chineseStr = str.replace(/[^\u4e00-\u9fa5]/g, '');
+  var commonAsciiStr = extractCommonAsciiChars(str);
+  var chinesePct = chineseStr.length / str.length;
+  var commonAsciiPct = commonAsciiStr.length / str.length;
+  var otherPct = 1 - chinesePct - commonAsciiPct;
+  return otherPct < 0.05 && chinesePct > 0.5 && 2 ||
+    otherPct < 0.1 && chinesePct > 0.3 && 1 || 0;
 }
 
 // function replaceUtf8ReplacementChar(buf) {
@@ -91,7 +111,7 @@ function looksLikeUtf8(samples) {
 
 // Calc percentage of chars in a string that are present in a second string
 // @chars String of chars to look for in @str
-function getCharScore(str, chars) {
+function calcCharPct(str, chars) {
   var index = {},
       count = 0;
   str = str.toLowerCase();

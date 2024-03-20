@@ -164,13 +164,13 @@ export function formatColumns(arr, alignments) {
 }
 
 // Format an array of (preferably short) strings in columns for console logging.
-export function formatStringsAsGrid(arr) {
+export function formatStringsAsGrid(arr, width) {
   // TODO: variable column width
   var longest = arr.reduce(function(len, str) {
         return Math.max(len, str.length);
       }, 0),
       colWidth = longest + 2,
-      perLine = Math.floor(80 / colWidth) || 1;
+      perLine = Math.floor((width || 80) / colWidth) || 1;
   return arr.reduce(function(memo, name, i) {
     var col = i % perLine;
     if (i > 0 && col === 0) memo += '\n';

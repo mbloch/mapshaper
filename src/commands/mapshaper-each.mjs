@@ -8,9 +8,10 @@ import { getIdFilter, combineFilters } from './mapshaper-filter';
 
 import cmd from '../mapshaper-cmd';
 
-cmd.evaluateEachFeature = function(lyr, dataset, exp, opts) {
+cmd.evaluateEachFeature = function(lyr, dataset, expArg, opts) {
   var n = getFeatureCount(lyr),
       arcs = dataset.arcs,
+      exp = expArg || '',
       compiled, filter;
 
   var exprOpts = {
