@@ -27,6 +27,8 @@ export function ArcCollection() {
     initLegacyArcs(arguments[0]);  // want to phase this out
   } else if (arguments.length == 3) {
     initXYData.apply(this, arguments);
+  } else if (arguments.length === 0) {
+    initLegacyArcs([]); // empty collection
   } else {
     error("ArcCollection() Invalid arguments");
   }
