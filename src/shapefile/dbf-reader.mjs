@@ -4,6 +4,7 @@ import { bufferToString, standardizeEncodingName, decodeString } from '../text/m
 import { formatStringsAsGrid, stop, message, error, verbose } from '../utils/mapshaper-logging';
 import { getUniqFieldNames } from '../datatable/mapshaper-data-utils';
 import { FileReader, BufferReader } from '../io/mapshaper-file-reader';
+import { runningInBrowser } from '../mapshaper-env';
 
 // DBF format references:
 // http://www.dbf2002.com/dbf-file-format.html
@@ -380,25 +381,19 @@ export default function DbfReader(src, encodingArg) {
       var info = detectEncoding(samples);
       encoding = info.encoding;
       if (info.confidence < 2) {
-        msg = 'Warning: Unable to auto-detect the text encoding of a DBF file with high confidence.';
+        msg = 'Warning: Unable to auto-detect the DBF file text encoding with high confidence.';
         msg += '\n\nDefaulting to: ' + encoding + (encoding in encodingNames ? ' (' + encodingNames[encoding] + ')' : '');
-        msg += '\n\nSample of how non-ascii text was imported:';
-        msg += '\n' + formatStringsAsGrid(decodeSamples(encoding, samples).split('\n'));
-        msg += decodeSamples(encoding, samples);
+        msg += '\n\nSample of how non-ascii text was imported:\n';
+        if (runningInBrowser()) {
+          msg += '<pre>' + formatStringsAsGrid(decodeSamples(encoding, samples), 50) + '</pre>';
+        } else {
+          msg += formatStringsAsGrid(decodeSamples(encoding, samples));
+        }
         msg += '\n\n' + ENCODING_PROMPT + '\n';
         message(msg);
       }
     }
 
-    // Show a sample of decoded text if non-ascii-range text has been found
-    // if (encoding && samples.length > 0) {
-    //   msg = "Detected DBF text encoding: " + encoding + (encoding in encodingNames ? " (" + encodingNames[encoding] + ")" : "");
-    //   message(msg);
-    //   msg = decodeSamples(encoding, samples);
-    //   msg = formatStringsAsGrid(msg.split('\n'));
-    //   msg = "\nSample text containing non-ascii characters:" + (msg.length > 60 ? '\n' : '') + msg;
-    //   verbose(msg);
-    // }
     return encoding;
   }
 
