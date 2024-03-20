@@ -627,7 +627,7 @@ export function getKeyComparator(key, asc) {
 }
 
 export function getGenericComparator(asc) {
-  asc = asc !== false;
+  asc = asc !== false && asc != 'descending'; // ascending is the default
   return function(a, b) {
     var retn = 0;
     if (b == null) {
