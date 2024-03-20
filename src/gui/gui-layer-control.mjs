@@ -375,9 +375,8 @@ export function LayerControl(gui) {
 
 
   function isPinnable(lyr) {
-    return internal.layerHasGeometry(lyr) || internal.layerHasFurniture(lyr);
+    return internal.layerIsGeometric(lyr) || internal.layerHasFurniture(lyr);
   }
-
 
 
   function rowHTML(c1, c2, cname) {

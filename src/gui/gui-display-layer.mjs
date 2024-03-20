@@ -69,7 +69,8 @@ export function getDisplayLayer(layer, dataset, opts) {
 
   // Assume that dataset.displayArcs is in the display CRS
   // (it must be deleted upstream if reprojection is needed)
-  if (!obj.empty && dataset.arcs && !displayArcs) {
+  // if (!obj.empty && dataset.arcs && !displayArcs) {
+  if (dataset.arcs && !displayArcs) {
     // project arcs, if needed
     if (needReprojectionForDisplay(sourceCRS, displayCRS)) {
       displayArcs = projectArcsForDisplay(dataset.arcs, sourceCRS, displayCRS);
@@ -91,14 +92,14 @@ export function getDisplayLayer(layer, dataset, opts) {
     // treating furniture layers (other than frame) as tabular for now,
     // so there is something to show if they are selected
     // obj.tabular = obj.furniture_type != 'frame';
-  } else if (obj.empty) {
-    obj.layer = {shapes: []}; // ideally we should avoid empty layers
-  } else if (!layer.geometry_type) {
-    obj.tabular = true;
-  } else {
+  } else if (layer.geometry_type) {
     obj.geographic = true;
     obj.layer = layer;
     obj.arcs = displayArcs;
+  } else if (!obj.empty) {
+    obj.tabular = true;
+  } else {
+    obj.layer = {shapes: []}; // ideally we should avoid empty layers
   }
 
   if (obj.tabular) {

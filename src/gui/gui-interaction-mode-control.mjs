@@ -118,22 +118,23 @@ export function InteractionMode(gui) {
     if (!o || !o.layer) {
       return menus.standard; // TODO: more sensible handling of missing layer
     }
-    if (!internal.layerHasGeometry(o.layer)) {
+    if (!o.layer.geometry_type) {
       return menus.table;
     }
     if (internal.layerHasLabels(o.layer)) {
       return menus.labels;
     }
-    if (internal.layerHasPoints(o.layer)) {
+    if (o.layer.geometry_type == 'point') {
       return menus.points;
     }
-    if (internal.layerHasPaths(o.layer) && o.layer.geometry_type == 'polyline') {
+    if (o.layer.geometry_type == 'polyline') {
       return menus.lines;
     }
-    if (internal.layerHasPaths(o.layer) && o.layer.geometry_type == 'polygon') {
+    if (o.layer.geometry_type == 'polygon') {
       return internal.layerOnlyHasRectangles(o.layer, o.dataset.arcs) ?
         menus.rectangles : menus.polygons;
     }
+
     return menus.standard;
   }
 

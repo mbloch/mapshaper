@@ -35,6 +35,9 @@ function addLayer(gui, name, type) {
     }],
     info: {}
   };
+  if (type == 'polygon' || type == 'point') {
+    dataset.arcs = new internal.ArcCollection();
+  }
   if (crsInfo) {
     internal.setDatasetCrsInfo(dataset, crsInfo);
   }
