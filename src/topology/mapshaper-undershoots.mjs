@@ -39,6 +39,9 @@ function findUndershootTarget(endpoint, candidates, arcs, maxGapLen) {
   candidates.forEach(function(candId) {
     var hit;
     if (candId == absId) return; // ignore self-intersections
+    if (absArcId(candId) >= arcs.size()) {
+      return;
+    }
     hit = geom.getPointToPathInfo(endpoint.point[0], endpoint.point[1], [candId], arcs);
     if (hit && hit.distance <= maxGapLen && (!target || hit.distance < target.distance)) {
       target = hit;

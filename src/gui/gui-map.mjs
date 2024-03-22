@@ -151,13 +151,13 @@ export function MshpMap(gui) {
     updateFullBounds();
   };
 
-  function getGlobalStyleOptions() {
+  function getGlobalStyleOptions(opts) {
     var mode = gui.state.interaction_mode;
-    return {
+    return Object.assign({
       darkMode: !!gui.state.dark_basemap,
       outlineMode: mode == 'vertices',
       interactionMode: mode
-    };
+    }, opts);
   }
 
   // Refresh map display in response to data changes, layer selection, etc.

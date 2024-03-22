@@ -55,7 +55,7 @@ cmd.filterFeatures = function(lyr, arcs, opts) {
     filteredLyr = copyLayer(filteredLyr);
   }
 
-  if (opts.verbose !== false) {
+  if (opts.verbose !== false && !opts.quiet) {
     message(utils.format('Retained %,d of %,d features', getFeatureCount(filteredLyr), n));
   }
 
@@ -105,7 +105,7 @@ function getEmptyPolygonFilter(shapes, arcs) {
 }
 
 export function combineFilters(a, b) {
-  return (a && b && function(id) {
+  return a && b ? function(id) {
       return a(id) && b(id);
-    }) || a || b;
+    } : (a || b);
 }
