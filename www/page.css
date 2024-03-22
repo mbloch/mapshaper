@@ -1220,6 +1220,10 @@ div.basemap-style-btn.active img {
 	cursor: crosshair;
 }
 
+.map-layers.drawing.dragging {
+	cursor: default;
+}
+
 .map-layers canvas {
 	pointer-events: none;
 	position: absolute;
