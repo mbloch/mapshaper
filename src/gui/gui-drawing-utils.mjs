@@ -109,6 +109,11 @@ export function getLastArcCoords(target) {
   return internal.getUnfilteredArcCoords(arcId, target.source.dataset.arcs);
 }
 
+export function getLastVertexCoords(target) {
+  var arcs = target.source.dataset.arcs;
+  return internal.getVertexCoords(arcs.getPointCount() - 1, arcs);
+}
+
 export function getLastArcLength(target) {
   var arcId = target.source.dataset.arcs.size() - 1;
   return internal.getUnfilteredArcLength(arcId, target.source.dataset.arcs);

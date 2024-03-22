@@ -247,7 +247,7 @@ function getLineEditingStyle(o) {
     strokeWidth: 1.2,
     vertices: true,
     vertex_overlay_color: o.hit_type == 'vertex' ? violet : black,
-    vertex_overlay_scale: o.hit_type == 'vertex' ? 2.4 : 1.7,
+    vertex_overlay_scale: o.hit_type == 'vertex' ? 2.5 : 2,
     vertex_overlay: o.hit_coordinates || null,
     selected_points: o.selected_points || null,
     fillColor: null

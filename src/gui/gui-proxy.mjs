@@ -12,7 +12,10 @@ export function setLoggingForGUI(gui) {
   }
 
   function error() {
-    stop.apply(null, utils.toArray(arguments));
+    var msg = GUI.formatMessageArgs(arguments);
+    console.error(msg);
+    gui.alert('An unkown error occured');
+    throw new Error(msg);
   }
 
   function message() {

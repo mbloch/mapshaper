@@ -52,10 +52,18 @@ export function showPopupAlert(msg, title, optsArg) {
     return self;
   };
 
-  self.close = function() {
-    if (el) el.remove();
+  self.close = function(action) {
+    var ms = 0;
+    var _el = el;
+    if (action == 'fade' && _el) {
+      ms = 1000;
+      _el.addClass('fade-out');
+    }
     if (_close) _close();
     el = _cancel = _close = null;
+    setTimeout(function() {
+      if (_el) _el.remove();
+    }, ms);
   };
   return self;
 }

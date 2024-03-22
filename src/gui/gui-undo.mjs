@@ -161,10 +161,10 @@ export function Undo(gui) {
 
   gui.on('path_extend', function(e) {
     var redo = function() {
-      gui.dispatchEvent('redo_path_extend', {p: e.p});
+      gui.dispatchEvent('redo_path_extend', {p: e.p, shapes: e.shapes2});
     };
     var undo = function() {
-      gui.dispatchEvent('undo_path_extend');
+      gui.dispatchEvent('undo_path_extend', {shapes: e.shapes1});
     };
     addHistoryState(undo, redo);
   });

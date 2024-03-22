@@ -6,7 +6,6 @@ export function findNearestVertices(p, shp, arcs) {
   return findVertexIds(p2.x, p2.y, arcs);
 }
 
-
 export function snapVerticesToPoint(ids, p, arcs, final) {
   var data = arcs.getVertexData();
   ids.forEach(function(idx) {

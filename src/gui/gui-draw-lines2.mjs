@@ -10,7 +10,9 @@ import {
   deleteLastVertex,
   deleteLastPath,
   getLastArcLength,
-  getLastArcCoords
+  getLastArcCoords,
+  getLastVertexCoords,
+  appendNewDataRecord
   } from './gui-drawing-utils';
 import { translateDisplayPoint } from './gui-display-utils';
 import { showPopupAlert } from './gui-alert';
@@ -23,12 +25,14 @@ export function initLineEditing(gui, ext, hit) {
   var prevClickEvent;
   var prevHoverEvent;
   var initialArcCount = -1;
+  var initialShapeCount = -1;
   var drawingId = -1; // feature id of path being drawn
+  var sessionCount = 0;
   var alert;
   var _dragging = false;
 
   function active() {
-    return !!alert;
+    return initialArcCount >= 0;
   }
 
   function dragging() {
@@ -66,7 +70,7 @@ export function initLineEditing(gui, ext, hit) {
     appendNewPath(target, e.p1, e.p2);
     deleteLastVertex(target); // second vertex is a placeholder
     gui.undo.redo(); // add next vertex in the path
-    gui.model.updated({arc_count: true});
+    fullRedraw();
   });
 
   gui.on('undo_path_add', function(e) {
@@ -82,7 +86,27 @@ export function initLineEditing(gui, ext, hit) {
     } else {
       appendVertex(target, e.p);
     }
+    if (e.shapes) {
+      replaceShapes(e.shapes);
+    }
   });
+
+  function replaceShapes(shapes) {
+    var target = hit.getHitTarget();
+    var records = target.layer.data?.getRecords();
+    var prevLen = target.layer.shapes.length;
+    var newLen = initialShapeCount + shapes.length;
+    var recordCount = records?.length || 0;
+    target.layer.shapes = target.layer.shapes.slice(0, initialShapeCount).concat(shapes);
+    while (records && records.length > newLen) {
+      records.pop();
+    }
+    while (records && records.length < newLen) {
+      appendNewDataRecord(target.layer);
+    }
+  }
+
+
 
   gui.on('undo_path_extend', function(e) {
     var target = hit.getHitTarget();
@@ -95,75 +119,70 @@ export function initLineEditing(gui, ext, hit) {
     if (getLastArcLength(target) < 2) {
       gui.undo.undo(); // remove the path
     }
+    if (e.shapes) {
+      replaceShapes(e.shapes);
+    }
   });
 
   function turnOn() {
     var target = hit.getHitTarget();
-    var pathStr = polygonMode() ? 'closed paths' : 'paths';
+    initialArcCount = target.arcs.size();
+    initialShapeCount = target.layer.shapes.length;
+    if (sessionCount === 0) {
+      showInstructions();
+    }
+    sessionCount++;
+  }
+
+  function showInstructions() {
     var isMac = navigator.userAgent.includes('Mac');
     var symbol = isMac ? '⌘' : '^';
+    var pathStr = polygonMode() ? 'closed paths' : 'paths';
     var msg = `Instructions: Click on the map to draw ${pathStr}. Drag vertices to reshape a path. Type ${symbol}Z/${symbol}Y to undo/redo.`;
-    initialArcCount = hit.getHitTarget().arcs.size();
-    alert = showPopupAlert(msg, null, {non_blocking: true, max_width: '360px'});
+      alert = showPopupAlert(msg, null, {
+        non_blocking: true, max_width: '360px'});
   }
 
   function turnOff() {
-    finishPath();
+    var removed = 0;
+    finishCurrentPath();
     if (polygonMode()) {
-      finishPolygons();
+      removed = removeOpenPolygons();
     }
     clearDrawingInfo();
-    alert.close();
-    alert = null;
+    if (alert) {
+      alert.close();
+      alert = null;
+    }
     initialArcCount = -1;
+    initialShapeCount = -1;
     if (gui.interaction.getMode() == 'drawing') {
       // mode change was not initiated by interactive menu -- turn off interactivity
       gui.interaction.turnOff();
     }
-  }
-
-  function finish() {
-    if (polygonMode()) {
-      finishPolygons();
+    if (removed > 0) {
+      fullRedraw();
     }
   }
 
-  function finishPolygons() {
-    // step1: make a polyline layer containing just newly drawn paths
+  // returns number of removed shapes
+  function removeOpenPolygons() {
     var target = hit.getHitTarget();
-    var newShapeCount = target.arcs.size() - initialArcCount;
-    if (newShapeCount <= 0) return; // no paths added
-    var polygonLyr = target.source.layer;
-    var polygonRecords = polygonLyr.data ? polygonLyr.data.getRecords() : null;
-    var initialShapeCount = polygonLyr.shapes.length - newShapeCount;
-    var templateRecord;
-    if (polygonRecords) {
-      // use one of the newly created records as a template (they should all be the same)
-      templateRecord = polygonRecords.pop();
-      polygonRecords.splice(initialShapeCount); // remove new records
-    }
-    var polylineLyr = {
-      geometry_type: 'polyline',
-      shapes: polygonLyr.shapes.splice(initialShapeCount) // move new shapes to polyline layer
-    };
-
-    // step2: convert polylines to polygons
-    //
-    // create a temp dataset containing both layers (so original arcs are preserved)
-    var tmp = Object.assign({}, target.source.dataset);
-    tmp.layers = tmp.layers.concat(polylineLyr);
-    var outputLayers = mapshaper.cmd.polygons([polylineLyr], tmp, {});
-
-    // step3: add new polygons to the original polygons
-    outputLayers[0].shapes.forEach(function(shp) {
-      var rec = polygonRecords ? internal.copyRecord(templateRecord) : null;
-      polygonLyr.shapes.push(shp);
-      if (polygonRecords) {
-        polygonRecords.push(rec);
+    var arcs = target.source.dataset.arcs;
+    var n = target.layer.shapes.length;
+    // delete open paths (should only occur on single-arc shapes)
+    for (var i=initialShapeCount; i<n; i++) {
+      var shp = target.layer.shapes[i];
+      if (!geom.pathIsClosed(shp[0], arcs)) {
+        target.layer.shapes[i] = null;
       }
-    });
+    }
+    // removes polygons with wrong winding order and null geometry
+    mapshaper.cmd.filterFeatures(target.layer, arcs, {remove_empty: true, quiet: true});
+    return n - target.layer.shapes.length;
+  }
 
-    // step4: update map
+  function fullRedraw() {
     gui.model.updated({arc_count: true});
   }
 
@@ -176,6 +195,9 @@ export function initLineEditing(gui, ext, hit) {
 
   hit.on('dragstart', function(e) {
     if (!active() || drawing() || !hoverVertexInfo) return;
+    if (alert) {
+      alert.close('fade');
+    }
     e.originalEvent.stopPropagation();
     _dragging = true;
     if (hoverVertexInfo.type == 'interpolated') {
@@ -216,12 +238,10 @@ export function initLineEditing(gui, ext, hit) {
   // double-click finishes a path (when drawing)
   hit.on('dblclick', function(e) {
     if (!active()) return;
+    // double click finishes a path
+    // note: if the preceding 'click' finished the path, this does not fire
     if (drawing()) {
-      // double click finishes a path
-      // before: dblclick is preceded by two clicks, need another vertex delete
-      // now: second click is suppressed
-      // deleteLastVertex(hit.getHitTarget());
-      finishPath();
+      finishCurrentPath();
       e.originalEvent.stopPropagation(); // prevent dblclick zoom
       return;
     }
@@ -233,7 +253,7 @@ export function initLineEditing(gui, ext, hit) {
     if (!active() || dragging()) return;
     if (drawing()) {
       if (!e.overMap) {
-        finishPath();
+        finishCurrentPath();
         return;
       }
       if (gui.keyboard.shiftIsPressed()) {
@@ -261,27 +281,27 @@ export function initLineEditing(gui, ext, hit) {
     if (!active()) return;
     if (detectDoubleClick(e)) return; // ignore second click of a dblclick
     var p = pixToDataCoords(e.x, e.y);
-    if (drawing() && hoverVertexInfo) {
-      // finish the path if a vertex is highlighted
-      p = hoverVertexInfo.point;
-      extendPath(p);
-      finishPath();
-    } else if (drawing()) {
-      extendPath(p);
+    if (drawing()) {
+      extendCurrentPath(hoverVertexInfo?.point || p);
+      // extendCurrentPath(p); // just extend to current mouse position (not hover vertex)
     } else if (gui.keyboard.shiftIsPressed()) {
       deleteActiveVertex(e);
     } else {
-      startPath(p);
+      startNewPath(p);
+      if (alert) {
+        alert.close('fade');
+      }
     }
     prevClickEvent = e;
   });
 
   // esc key finishes a path
   gui.keyboard.on('keydown', function(e) {
-    if (active() && e.keyName == 'esc') {
-      finishPath();
+    if (active() && (e.keyName == 'esc' || e.keyName == 'enter')) {
+      e.stopPropagation();
+      finishCurrentPath();
     }
-  });
+  }, null, 10);
 
   // detect second 'click' event of a double-click action
   function detectDoubleClick(evt) {
@@ -349,7 +369,7 @@ export function initLineEditing(gui, ext, hit) {
     thisEvt.y = snapped.y;
   }
 
-  function finishPath() {
+  function finishCurrentPath() {
     if (!drawing()) return;
     var target = hit.getHitTarget();
     if (getLastArcLength(target) <= 2) { // includes hover point
@@ -358,27 +378,44 @@ export function initLineEditing(gui, ext, hit) {
       deleteLastVertex(target);
     }
     clearDrawingInfo();
-    gui.model.updated({arc_count: true});
+    fullRedraw();
   }
 
   // p: [x, y] source data coordinates
-  function startPath(p2) {
+  function startNewPath(p2) {
     var target = hit.getHitTarget();
-    var p1 = hoverVertexInfo ? hoverVertexInfo.point : p2;
+    var p1 = hoverVertexInfo?.point || p2;
     appendNewPath(target, p1, p2);
     gui.dispatchEvent('path_add', {target, p1, p2});
     drawingId = target.layer.shapes.length - 1;
     hit.setDrawingId(drawingId);
   }
 
-  // p: [x, y] source data coordinates
-  function extendPath(p) {
+  // p: [x, y] source data coordinates of new point on path
+  function extendCurrentPath(p) {
     var target = hit.getHitTarget();
-    if (getLastArcLength(target) >= 2) {
-      gui.dispatchEvent('path_extend', {target, p});
+    var shapes1, shapes2;
+    // finish the path if a vertex is selected (but not an interpolated point)
+    var finish = hoverVertexInfo?.type == 'vertex';
+    if (getLastArcLength(target) < 2) {
+      error('Defective path');
     }
-    appendVertex(target, p);
-    hit.triggerChangeEvent();
+    if (finish && polygonMode()) {
+      shapes1 = target.layer.shapes.slice(initialShapeCount);
+      shapes2 = tryToClosePath(shapes1);
+    }
+    if (shapes2) {
+      replaceShapes(shapes2);
+      gui.dispatchEvent('path_extend', {target, p, shapes1, shapes2});
+      clearDrawingInfo();
+      fullRedraw();
+
+    } else {
+      appendVertex(target, p);
+      gui.dispatchEvent('path_extend', {target, p});
+      hit.triggerChangeEvent(); // trigger overlay redraw
+    }
+
   }
 
   // p: [x, y] source data coordinates
@@ -473,7 +510,55 @@ export function initLineEditing(gui, ext, hit) {
     return closest;
   }
 
-}
+  // shapes: shapes that have been drawn in the current session
+  //
+  function tryToClosePath(shapes) {
+    var target = hit.getHitTarget();
+    var tmpLyr = {
+      geometry_type: 'polyline',
+      shapes: shapes.concat()
+    };
+    // create a temp dataset containing tmp layer and original layers
+    // (so original arcs are retained)
+    var tmpDataset = Object.assign({}, target.source.dataset);
+    tmpDataset.layers = tmpDataset.layers.concat(tmpLyr);
+    // NOTE: added "no_cuts" option to prevent polygons function from modifying
+    // arcs, which would break undo/redo and cause other problems
+    var outputLyr = mapshaper.cmd.polygons([tmpLyr], tmpDataset, {no_cuts: true})[0];
+    var isOpenPath = getOpenPathTest(outputLyr.shapes);
+    var shapes2 = [];
+    shapes.forEach(function(shp) {
+      if (isOpenPath(shp)) {
+        shapes2.push(shp);
+      }
+    });
+    return shapes2.concat(outputLyr.shapes);
+  }
 
+  // Returns a function for testing if a shape is an unclosed path, and doesn't
+  // overlap with an array of polygon shapes
+  // polygons: array of polygon shapes
+  function getOpenPathTest(polygons) {
+    var arcs = [];
+    internal.forEachArcId(polygons, function(arcId) {
+      if (arcId < 0) arcId = ~arcId;
+      arcs.push(arcId);
+    });
+    return function(shp) {
+      // assume that compound shapes are already polygons
+      var isOpen = false;
+      if (shapeHasOneFwdArc(shp)) {
+        var arcId = shp[0][0];
+        if (arcId < 0) arcId = ~arcId;
+        isOpen = !arcs.includes(arcId);
+      }
+      return isOpen;
+    };
+  }
+
+  function shapeHasOneFwdArc(shp) {
+    return shp.length == 1 && shp[0].length == 1 && shp[0][0] >= 0;
+  }
+}
 
 

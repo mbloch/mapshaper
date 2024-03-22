@@ -40,6 +40,20 @@ body {
 	cursor: default;
 }
 
+.fade-out {
+  animation: fadeOut ease forwards 0.6s;
+}
+
+@keyframes fadeOut {
+  0% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+  }
+}
+
+
 .selectable,.selectable * {
 	user-select: default;
 	-webkit-user-select: text;

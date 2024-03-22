@@ -8,6 +8,7 @@ import cmd from '../mapshaper-cmd';
 import { message, stop } from '../utils/mapshaper-logging';
 import geom from '../geom/mapshaper-geom';
 import { getArcPresenceTest } from '../paths/mapshaper-path-utils';
+import { NodeCollection } from '../topology/mapshaper-nodes';
 
 cmd.polygons = function(layers, dataset, opts) {
   layers.forEach(requirePolylineLayer);
@@ -16,7 +17,9 @@ cmd.polygons = function(layers, dataset, opts) {
   // if (opts.gap_tolerance) {
     //opts = utils.defaults({snap_interval: opts.gap_tolerance * 0.1}, opts);
   // }
-  addIntersectionCuts(dataset, opts);
+  if (!opts.no_cuts) {
+    addIntersectionCuts(dataset, opts);
+  }
   return layers.map(function(lyr) {
     if (lyr.geometry_type != 'polyline') stop("Expected a polyline layer");
     if (opts.from_rings) {
@@ -46,7 +49,12 @@ function createPolygonLayerFromRings(lyr, dataset) {
 }
 
 function createPolygonLayer(lyr, dataset, opts) {
-  var nodes = closeUndershoots(lyr, dataset, opts);
+  var nodes;
+  if (opts.no_cuts) {
+    nodes = new NodeCollection(dataset.arcs);
+  } else {
+    nodes = closeUndershoots(lyr, dataset, opts);
+  }
   // ignore arcs that don't belong to this layer
   nodes.setArcFilter(getArcPresenceTest(lyr.shapes, nodes.arcs));
   var data = buildPolygonMosaic(nodes);
