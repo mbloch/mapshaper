@@ -27,7 +27,7 @@ export function InteractionMode(gui) {
     labels: 'position labels',
     location: 'drag points',
     vertices: 'edit vertices',
-    selection: 'select features',
+    selection: 'selection tool',
     'add-points': 'add points',
     drawing: 'draw/reshape tool',
     rectangles: 'drag-to-resize',

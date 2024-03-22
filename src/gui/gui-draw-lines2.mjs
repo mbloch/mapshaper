@@ -17,7 +17,7 @@ import {
 import { translateDisplayPoint } from './gui-display-utils';
 import { showPopupAlert } from './gui-alert';
 
-// pointer thresholds for hovering near a vertex or segment midpoint
+// pixel distance threshold for hovering near a vertex or segment midpoint
 var HOVER_THRESHOLD = 10;
 
 export function initLineEditing(gui, ext, hit) {
@@ -87,26 +87,9 @@ export function initLineEditing(gui, ext, hit) {
       appendVertex(target, e.p);
     }
     if (e.shapes) {
-      replaceShapes(e.shapes);
+      replaceDrawnShapes(e.shapes);
     }
   });
-
-  function replaceShapes(shapes) {
-    var target = hit.getHitTarget();
-    var records = target.layer.data?.getRecords();
-    var prevLen = target.layer.shapes.length;
-    var newLen = initialShapeCount + shapes.length;
-    var recordCount = records?.length || 0;
-    target.layer.shapes = target.layer.shapes.slice(0, initialShapeCount).concat(shapes);
-    while (records && records.length > newLen) {
-      records.pop();
-    }
-    while (records && records.length < newLen) {
-      appendNewDataRecord(target.layer);
-    }
-  }
-
-
 
   gui.on('undo_path_extend', function(e) {
     var target = hit.getHitTarget();
@@ -120,7 +103,7 @@ export function initLineEditing(gui, ext, hit) {
       gui.undo.undo(); // remove the path
     }
     if (e.shapes) {
-      replaceShapes(e.shapes);
+      replaceDrawnShapes(e.shapes);
     }
   });
 
@@ -143,6 +126,12 @@ export function initLineEditing(gui, ext, hit) {
         non_blocking: true, max_width: '360px'});
   }
 
+  function hideInstructions() {
+    if (!alert) return;
+    alert.close('fade');
+    alert = null;
+  }
+
   function turnOff() {
     var removed = 0;
     finishCurrentPath();
@@ -150,10 +139,7 @@ export function initLineEditing(gui, ext, hit) {
       removed = removeOpenPolygons();
     }
     clearDrawingInfo();
-    if (alert) {
-      alert.close();
-      alert = null;
-    }
+    hideInstructions();
     initialArcCount = -1;
     initialShapeCount = -1;
     if (gui.interaction.getMode() == 'drawing') {
@@ -170,18 +156,19 @@ export function initLineEditing(gui, ext, hit) {
     var target = hit.getHitTarget();
     var arcs = target.source.dataset.arcs;
     var n = target.layer.shapes.length;
-    // delete open paths (should only occur on single-arc shapes)
+    // delete open paths
     for (var i=initialShapeCount; i<n; i++) {
       var shp = target.layer.shapes[i];
-      if (!geom.pathIsClosed(shp[0], arcs)) {
+      if (!geom.pathIsClosed(shp[0], arcs)) { // assume open paths have one arc
         target.layer.shapes[i] = null;
       }
     }
-    // removes polygons with wrong winding order and null geometry
+    // removes features with wrong winding order or null geometry
     mapshaper.cmd.filterFeatures(target.layer, arcs, {remove_empty: true, quiet: true});
     return n - target.layer.shapes.length;
   }
 
+  // updates display arcs and redraws all layers
   function fullRedraw() {
     gui.model.updated({arc_count: true});
   }
@@ -195,11 +182,10 @@ export function initLineEditing(gui, ext, hit) {
 
   hit.on('dragstart', function(e) {
     if (!active() || drawing() || !hoverVertexInfo) return;
-    if (alert) {
-      alert.close('fade');
-    }
+    hideInstructions();
     e.originalEvent.stopPropagation();
     _dragging = true;
+    updateCursor();
     if (hoverVertexInfo.type == 'interpolated') {
       insertVertex(hit.getHitTarget(), hoverVertexInfo.i, hoverVertexInfo.point);
       hoverVertexInfo.ids = [hoverVertexInfo.i];
@@ -217,7 +203,6 @@ export function initLineEditing(gui, ext, hit) {
     }
     internal.snapVerticesToPoint(hoverVertexInfo.ids, p, target.arcs);
     hit.setHoverVertex(p, '');
-
     // redrawing the whole map updates the data layer as well as the overlay layer
     // gui.dispatchEvent('map-needs-refresh');
   });
@@ -273,6 +258,7 @@ export function initLineEditing(gui, ext, hit) {
     } else {
       clearHoverVertex();
     }
+    updateCursor();
     prevHoverEvent = e;
   }, null, 100);
 
@@ -283,19 +269,17 @@ export function initLineEditing(gui, ext, hit) {
     var p = pixToDataCoords(e.x, e.y);
     if (drawing()) {
       extendCurrentPath(hoverVertexInfo?.point || p);
-      // extendCurrentPath(p); // just extend to current mouse position (not hover vertex)
     } else if (gui.keyboard.shiftIsPressed()) {
       deleteActiveVertex(e);
     } else {
       startNewPath(p);
-      if (alert) {
-        alert.close('fade');
-      }
+      hideInstructions();
+      updateCursor();
     }
     prevClickEvent = e;
   });
 
-  // esc key finishes a path
+  // esc or enter key finishes a path
   gui.keyboard.on('keydown', function(e) {
     if (active() && (e.keyName == 'esc' || e.keyName == 'enter')) {
       e.stopPropagation();
@@ -311,6 +295,11 @@ export function initLineEditing(gui, ext, hit) {
     var dy = Math.abs(evt.y - prevClickEvent.y);
     var dbl = elapsed < 500 && dx <= 2 && dy <= 2;
     return dbl;
+  }
+
+  function updateCursor() {
+    var useArrow = hoverVertexInfo && !hoverVertexInfo.extendable && !drawing();
+    gui.container.findChild('.map-layers').classed('dragging', useArrow);
   }
 
   function deleteActiveVertex(e) {
@@ -402,10 +391,10 @@ export function initLineEditing(gui, ext, hit) {
     }
     if (finish && polygonMode()) {
       shapes1 = target.layer.shapes.slice(initialShapeCount);
-      shapes2 = tryToClosePath(shapes1);
+      shapes2 = convertClosedPaths(shapes1);
     }
     if (shapes2) {
-      replaceShapes(shapes2);
+      replaceDrawnShapes(shapes2);
       gui.dispatchEvent('path_extend', {target, p, shapes1, shapes2});
       clearDrawingInfo();
       fullRedraw();
@@ -415,7 +404,21 @@ export function initLineEditing(gui, ext, hit) {
       gui.dispatchEvent('path_extend', {target, p});
       hit.triggerChangeEvent(); // trigger overlay redraw
     }
+  }
 
+  function replaceDrawnShapes(shapes) {
+    var target = hit.getHitTarget();
+    var records = target.layer.data?.getRecords();
+    var prevLen = target.layer.shapes.length;
+    var newLen = initialShapeCount + shapes.length;
+    var recordCount = records?.length || 0;
+    target.layer.shapes = target.layer.shapes.slice(0, initialShapeCount).concat(shapes);
+    while (records && records.length > newLen) {
+      records.pop();
+    }
+    while (records && records.length < newLen) {
+      appendNewDataRecord(target.layer);
+    }
   }
 
   // p: [x, y] source data coordinates
@@ -485,10 +488,6 @@ export function initLineEditing(gui, ext, hit) {
           y1 = yy[i],
           x2 = xx[j],
           y2 = yy[j],
-          // switching from midpoint to nearest point to the mouse
-          // cx = (x1 + x2) / 2,
-          // cy = (y1 + y2) / 2,
-          // p2 = [cx, cy],
           p2 = internal.findClosestPointOnSeg(p[0], p[1], x1, y1, x2, y2, 0),
           dist = geom.distance2D(p2[0], p2[1], p[0], p[1]);
       if (dist < minDist) {
@@ -510,49 +509,39 @@ export function initLineEditing(gui, ext, hit) {
     return closest;
   }
 
-  // shapes: shapes that have been drawn in the current session
-  //
-  function tryToClosePath(shapes) {
+  // Try to form polygon shapes from an array of path shapes
+  // shapes: array of all shapes that have been drawn in the current session
+  function convertClosedPaths(shapes) {
     var target = hit.getHitTarget();
+    // try to convert paths to polygons
+    // NOTE: added "no_cuts" option to prevent polygons function from modifying
+    // arcs, which would break undo/redo and cause other problems
     var tmpLyr = {
       geometry_type: 'polyline',
       shapes: shapes.concat()
     };
-    // create a temp dataset containing tmp layer and original layers
-    // (so original arcs are retained)
-    var tmpDataset = Object.assign({}, target.source.dataset);
-    tmpDataset.layers = tmpDataset.layers.concat(tmpLyr);
-    // NOTE: added "no_cuts" option to prevent polygons function from modifying
-    // arcs, which would break undo/redo and cause other problems
-    var outputLyr = mapshaper.cmd.polygons([tmpLyr], tmpDataset, {no_cuts: true})[0];
-    var isOpenPath = getOpenPathTest(outputLyr.shapes);
-    var shapes2 = [];
-    shapes.forEach(function(shp) {
-      if (isOpenPath(shp)) {
-        shapes2.push(shp);
-      }
-    });
-    return shapes2.concat(outputLyr.shapes);
+    var output = mapshaper.cmd.polygons([tmpLyr], target.source.dataset, {no_cuts: true});
+    var closedShapes = output[0].shapes;
+
+    // find paths that were not convertible to polygons
+    var isOpenPath = getOpenPathTest(closedShapes);
+    var openShapes = shapes.filter(function(shp) { return isOpenPath(shp); });
+
+    // retain both converted polygons and unconverted polylines
+    return openShapes.concat(closedShapes);
   }
 
   // Returns a function for testing if a shape is an unclosed path, and doesn't
   // overlap with an array of polygon shapes
-  // polygons: array of polygon shapes
-  function getOpenPathTest(polygons) {
-    var arcs = [];
-    internal.forEachArcId(polygons, function(arcId) {
-      if (arcId < 0) arcId = ~arcId;
-      arcs.push(arcId);
+  function getOpenPathTest(polygonShapes) {
+    var polygonArcs = [];
+    internal.forEachArcId(polygonShapes, function(arcId) {
+      polygonArcs.push(internal.absArcId(arcId));
     });
+
     return function(shp) {
-      // assume that compound shapes are already polygons
-      var isOpen = false;
-      if (shapeHasOneFwdArc(shp)) {
-        var arcId = shp[0][0];
-        if (arcId < 0) arcId = ~arcId;
-        isOpen = !arcs.includes(arcId);
-      }
-      return isOpen;
+      // assume that any compound shape is a polygon
+      return shapeHasOneFwdArc(shp) && !polygonArcs.includes(shp[0][0]);
     };
   }
 
@@ -560,5 +549,3 @@ export function initLineEditing(gui, ext, hit) {
     return shp.length == 1 && shp[0].length == 1 && shp[0][0] >= 0;
   }
 }
-
-
