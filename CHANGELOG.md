@@ -1,3 +1,7 @@
+v0.6.75
+* Added auto-detection of GB18030 text encoding (used in some Chinese language Shapefiles).
+* Improvements to polygon drawing.
+
 v0.6.74
 * Bug fixes
 
