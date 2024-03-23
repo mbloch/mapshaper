@@ -32,15 +32,14 @@ export function GuiInstance(container, opts) {
   gui.model = new Model(gui);
   gui.keyboard = new KeyboardEvents(gui);
   gui.buttons = new SidebarButtons(gui);
-  gui.map = new MshpMap(gui);
-  gui.interaction = new InteractionMode(gui);
   gui.session = new SessionHistory(gui);
   gui.undo = new Undo(gui);
-  gui.state = {};
-
+  gui.map = new MshpMap(gui);
   if (opts.saveControl) {
     new SessionSnapshots(gui);
   }
+  gui.interaction = new InteractionMode(gui);
+  gui.state = {};
 
   var msgCount = 0;
   var clearMsg;
