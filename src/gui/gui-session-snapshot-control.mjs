@@ -24,10 +24,12 @@ export function SessionSnapshots(gui) {
   init();
 
   async function init() {
-    var enabled = await isStorageEnabled();
-    if (!enabled) return;
-
     btn = gui.buttons.addButton('#ribbon-icon').addClass('menu-btn save-btn');
+    var enabled = await isStorageEnabled();
+    if (!enabled) {
+      btn.remove();
+      return;
+    }
     menu = El('div').addClass('nav-sub-menu save-menu').appendTo(btn.node());
     await initialCleanup();
 
@@ -99,14 +101,6 @@ export function SessionSnapshots(gui) {
         renderMenu();
       }).text('remove');
     });
-
-    // if (snapshots.length >= 1) {
-    //   addMenuLink({
-    //     slug: 'clear',
-    //     label: 'remove all',
-    //     action: clearData
-    //   });
-    // }
   }
 
   function addMenuLink(item) {
