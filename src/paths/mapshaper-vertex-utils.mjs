@@ -6,14 +6,11 @@ export function findNearestVertices(p, shp, arcs) {
   return findVertexIds(p2.x, p2.y, arcs);
 }
 
-export function snapVerticesToPoint(ids, p, arcs, final) {
+export function snapVerticesToPoint(ids, p, arcs) {
   var data = arcs.getVertexData();
   ids.forEach(function(idx) {
-    if (final) {
-      // recalculate bounding box for arc
-      arcs.updateArcBounds(findArcIdFromVertexId(idx, data.ii));
-    }
     setVertexCoords(p[0], p[1], idx, arcs);
+    arcs.updateArcBounds(findArcIdFromVertexId(idx, data.ii));
   });
 }
 

@@ -1,7 +1,8 @@
 import { internal } from './gui-core';
 
-export function getDisplayLayerForTable(table) {
-  var n = table.size(),
+export function getDisplayLayerForTable(tableArg) {
+  var table = tableArg || new internal.DataTable(0),
+      n = table.size(),
       cellWidth = 12,
       cellHeight = 5,
       gutter = 6,

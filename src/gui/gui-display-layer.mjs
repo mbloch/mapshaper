@@ -7,20 +7,16 @@ import { getDatasetCrsInfo } from './gui-display-utils';
 
 // lyr: a map layer with gui property
 // displayCRS: CRS to use for display, or null (which clears any current display CRS)
-export function projectDisplayLayer(lyr, displayCRS) {
+export function projectLayerForDisplay(lyr, displayCRS) {
   var crsInfo = getDatasetCrsInfo(lyr.gui.source.dataset);
-  var sourceCRS = crsInfo.crs;
-  var lyr2;
-  //if (!lyr.geographic || !sourceCRS) {
-  // let getDisplayLayer() handle case of unprojectable source
-  if (!lyr.geographic) {
+  var sourceCRS = crsInfo.crs || null; // let enhanceLayerForDisplay() handle null case
+  if (!lyr.gui.geographic) {
     return;
   }
   if (lyr.gui.dynamic_crs && internal.crsAreEqual(sourceCRS, lyr.gui.dynamic_crs)) {
     return;
   }
-
-  getDisplayLayer(lyr, lyr.gui.source.dataset, {crs: displayCRS});
+  enhanceLayerForDisplay(lyr, lyr.gui.source.dataset, {crs: displayCRS});
   if (lyr.gui.style?.ids) {
     // re-apply layer filter
     lyr.gui.displayLayer = filterLayerByIds(lyr.gui.displayLayer, lyr.gui.style.ids);
@@ -29,13 +25,10 @@ export function projectDisplayLayer(lyr, displayCRS) {
 
 
 // Supplement a layer with information needed for rendering
-export function getDisplayLayer(layer, dataset, opts) {
-  var obj = {
-    // arcs: null,
-    empty: internal.getFeatureCount(layer) === 0
-  };
-
+export function enhanceLayerForDisplay(layer, dataset, opts) {
   var gui = {
+    empty: internal.getFeatureCount(layer) === 0,
+    geographic: false,
     displayArcs: null,
     displayLayer: null,
     source: {dataset},
@@ -47,8 +40,10 @@ export function getDisplayLayer(layer, dataset, opts) {
   };
 
   var displayCRS = opts.crs || null;
-  // display arcs may have been generated when another layer in the dataset was converted for display... re-use if available
+  // display arcs may have been generated when another layer in the dataset
+  // was converted for display... re-use if available
   var displayArcs = dataset.gui?.displayArcs;
+  var unprojectable = false;
   var sourceCRS;
   var emptyArcs;
 
@@ -56,8 +51,7 @@ export function getDisplayLayer(layer, dataset, opts) {
     var crsInfo = getDatasetCrsInfo(dataset);
     if (crsInfo.error) {
       // unprojectable dataset -- return empty layer
-      obj.empty = true;
-      obj.geographic = true;
+      gui.unprojectable = true;
     } else {
       sourceCRS = crsInfo.crs;
     }
@@ -66,7 +60,7 @@ export function getDisplayLayer(layer, dataset, opts) {
   // Assume that dataset.displayArcs is in the display CRS
   // (it must be deleted upstream if reprojection is needed)
   // if (!obj.empty && dataset.arcs && !displayArcs) {
-  if (dataset.arcs && !displayArcs) {
+  if (dataset.arcs && !displayArcs && !gui.unprojectable) {
     // project arcs, if needed
     if (needReprojectionForDisplay(sourceCRS, displayCRS)) {
       displayArcs = projectArcsForDisplay(dataset.arcs, sourceCRS, displayCRS);
@@ -80,30 +74,26 @@ export function getDisplayLayer(layer, dataset, opts) {
   }
 
   if (internal.layerHasFurniture(layer)) {
-    gui.displayLayer = layer;
-    obj.tabular = true;
     // TODO: consider how to render furniture in GUI
-    // obj.furniture = true;
-    // obj.furniture_type = internal.getFurnitureLayerType(layer);
     // treating furniture layers (other than frame) as tabular for now,
     // so there is something to show if they are selected
-    // obj.tabular = obj.furniture_type != 'frame';
+  }
+
+  if (gui.unprojectable) {
+    gui.displayLayer = {shapes: []}; // TODO: improve
   } else if (layer.geometry_type) {
-    obj.geographic = true;
+    gui.geographic = true;
     gui.displayLayer = layer;
-    obj.arcs = displayArcs;
-  } else if (!obj.empty) {
-    obj.tabular = true;
-    // TODO: improve
-    var table = getDisplayLayerForTable(layer.data);
-    gui.displayLayer = table.layer;
-    obj.arcs = table.arcs;
+    gui.displayArcs = displayArcs;
   } else {
-    gui.displayLayer = {shapes: []}; // ideally we should avoid empty layers
+    var table = getDisplayLayerForTable(layer.data);
+    gui.tabular = true;
+    gui.displayLayer = table.layer;
+    gui.displayArcs = table.arcs;
   }
 
   // dynamic reprojection (arcs were already reprojected above)
-  if (obj.geographic && needReprojectionForDisplay(sourceCRS, displayCRS)) {
+  if (gui.geographic && needReprojectionForDisplay(sourceCRS, displayCRS)) {
     gui.dynamic_crs = displayCRS;
     gui.invertPoint = internal.getProjTransform2(displayCRS, sourceCRS);
     gui.projectPoint = internal.getProjTransform2(sourceCRS, displayCRS);
@@ -118,8 +108,8 @@ export function getDisplayLayer(layer, dataset, opts) {
     }
   }
 
-  gui.bounds = getDisplayBounds(gui.displayLayer, obj.arcs);
-  return Object.assign(layer, obj, {gui});
+  gui.bounds = getDisplayBounds(gui.displayLayer, gui.displayArcs);
+  layer.gui = gui;
 }
 
 

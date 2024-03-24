@@ -109,7 +109,7 @@ export function initLineEditing(gui, ext, hit) {
 
   function turnOn() {
     var target = hit.getHitTarget();
-    initialArcCount = target.arcs.size();
+    initialArcCount = target.gui.displayArcs.size();
     initialShapeCount = target.shapes.length;
     if (sessionCount === 0) {
       showInstructions();
@@ -199,9 +199,9 @@ export function initLineEditing(gui, ext, hit) {
     var target = hit.getHitTarget();
     var p = ext.translatePixelCoords(e.x, e.y);
     if (gui.keyboard.shiftIsPressed()) {
-      internal.snapPointToArcEndpoint(p, hoverVertexInfo.ids, target.arcs);
+      internal.snapPointToArcEndpoint(p, hoverVertexInfo.ids, target.gui.displayArcs);
     }
-    internal.snapVerticesToPoint(hoverVertexInfo.ids, p, target.arcs);
+    internal.snapVerticesToPoint(hoverVertexInfo.ids, p, target.gui.displayArcs);
     hit.setHoverVertex(p, '');
     // redrawing the whole map updates the data layer as well as the overlay layer
     // gui.dispatchEvent('map-needs-refresh');
@@ -210,9 +210,9 @@ export function initLineEditing(gui, ext, hit) {
   hit.on('dragend', function(e) {
     if (!dragging()) return;
     _dragging = false;
-    // kludge to get dataset to recalculate internal bounding boxes
     var target = hit.getHitTarget();
-    target.arcs.transformPoints(function() {});
+    // kludge to get dataset to recalculate internal bounding boxes
+    target.gui.displayArcs.transformPoints(function() {});
     updateVertexCoords(target, hoverVertexInfo.ids);
     gui.dispatchEvent('vertex_dragend', hoverVertexInfo);
     gui.dispatchEvent('map-needs-refresh'); // redraw basemap
@@ -308,8 +308,8 @@ export function initLineEditing(gui, ext, hit) {
     if (!info) return;
     var vId = info.ids[0];
     var target = hit.getHitTarget();
-    if (internal.vertexIsArcStart(vId, target.arcs) ||
-        internal.vertexIsArcEnd(vId, target.arcs)) {
+    if (internal.vertexIsArcStart(vId, target.gui.displayArcs) ||
+        internal.vertexIsArcEnd(vId, target.gui.displayArcs)) {
       // TODO: support removing arc endpoints
       return;
     }
@@ -425,7 +425,7 @@ export function initLineEditing(gui, ext, hit) {
   // p: [x, y] source data coordinates
   function updatePathEndpoint(p) {
     var target = hit.getHitTarget();
-    var i = target.arcs.getPointCount() - 1;
+    var i = target.gui.displayArcs.getPointCount() - 1;
     if (hoverVertexInfo) {
       p = hoverVertexInfo.point; // snap to selected point
     }
@@ -435,8 +435,8 @@ export function initLineEditing(gui, ext, hit) {
 
   function findPathStartInfo(e) {
     var target = hit.getHitTarget();
-    var arcId = target.arcs.size() - 1;
-    var data = target.arcs.getVertexData();
+    var arcId = target.gui.displayArcs.size() - 1;
+    var data = target.gui.displayArcs.getVertexData();
     var i = data.ii[arcId];
     var x = data.xx[i];
     var y = data.yy[i];
@@ -460,8 +460,8 @@ export function initLineEditing(gui, ext, hit) {
     var target = hit.getHitTarget();
     var shp = target.shapes[e.id];
     var p = ext.translatePixelCoords(e.x, e.y);
-    var ids = internal.findNearestVertices(p, shp, target.arcs);
-    var p2 = target.arcs.getVertex2(ids[0]);
+    var ids = internal.findNearestVertices(p, shp, target.gui.displayArcs);
+    var p2 = target.gui.displayArcs.getVertex2(ids[0]);
     var dist = geom.distance2D(p[0], p[1], p2[0], p2[1]);
     var pixelDist = dist / ext.getPixelSize();
     if (pixelDist > HOVER_THRESHOLD) {
@@ -471,8 +471,8 @@ export function initLineEditing(gui, ext, hit) {
     // find out if the vertex is the endpoint of a single path
     // (which could be extended by a newly drawn path)
     var extendable = ids.length == 1 &&
-      internal.vertexIsArcEndpoint(ids[0], target.arcs);
-    var displayPoint = target.arcs.getVertex2(ids[0]);
+      internal.vertexIsArcEndpoint(ids[0], target.gui.displayArcs);
+    var displayPoint = target.gui.displayArcs.getVertex2(ids[0]);
     return {target, ids, extendable, point, displayPoint, type: 'vertex'};
   }
 
@@ -484,7 +484,7 @@ export function initLineEditing(gui, ext, hit) {
     var minDist = Infinity;
     var shp = target.shapes[e.id];
     var closest;
-    internal.forEachSegmentInShape(shp, target.arcs, function(i, j, xx, yy) {
+    internal.forEachSegmentInShape(shp, target.gui.displayArcs, function(i, j, xx, yy) {
       var x1 = xx[i],
           y1 = yy[i],
           x2 = xx[j],
