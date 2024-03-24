@@ -5,20 +5,20 @@ import { layerHasCanvasDisplayStyle } from './gui-map-style';
 export function flattenArcs(lyr) {
   lyr.gui.source.dataset.arcs.flatten();
   if (isProjectedLayer(lyr)) {
-    lyr.arcs.flatten();
+    lyr.gui.displayArcs.flatten();
   }
 }
 
 export function setZ(lyr, z) {
   lyr.gui.source.dataset.arcs.setRetainedInterval(z);
   if (isProjectedLayer(lyr)) {
-    lyr.arcs.setRetainedInterval(z);
+    lyr.gui.displayArcs.setRetainedInterval(z);
   }
 }
 
 export function updateZ(lyr) {
   if (isProjectedLayer(lyr) && !lyr.gui.source.dataset.arcs.isFlat()) {
-    lyr.arcs.setThresholds(lyr.gui.source.dataset.arcs.getVertexData().zz);
+    lyr.gui.displayArcs.setThresholds(lyr.gui.source.dataset.arcs.getVertexData().zz);
   }
 }
 
@@ -54,12 +54,12 @@ function getEmptyDataRecord(table) {
 }
 
 export function deleteLastPath(lyr) {
-  var arcId = lyr.arcs.size() - 1;
+  var arcId = lyr.gui.displayArcs.size() - 1;
   if (lyr.data) {
     lyr.data.getRecords().pop();
   }
   var shp = lyr.shapes.pop();
-  internal.deleteLastArc(lyr.arcs);
+  internal.deleteLastArc(lyr.gui.displayArcs);
   if (isProjectedLayer(lyr)) {
     internal.deleteLastArc(lyr.gui.source.dataset.arcs);
   }
@@ -67,8 +67,8 @@ export function deleteLastPath(lyr) {
 
 // p1, p2: two points in source data CRS coords.
 export function appendNewPath(lyr, p1, p2) {
-  var arcId = lyr.arcs.size();
-  internal.appendEmptyArc(lyr.arcs);
+  var arcId = lyr.gui.displayArcs.size();
+  internal.appendEmptyArc(lyr.gui.displayArcs);
   lyr.shapes.push([[arcId]]);
   if (isProjectedLayer(lyr)) {
     internal.appendEmptyArc(lyr.gui.source.dataset.arcs);
@@ -82,7 +82,7 @@ export function appendNewPath(lyr, p1, p2) {
 export function insertVertex(lyr, id, p) {
   internal.insertVertex(lyr.gui.source.dataset.arcs, id, p);
   if (isProjectedLayer(lyr)) {
-    internal.insertVertex(lyr.arcs, id, lyr.gui.projectPoint(p[0], p[1]));
+    internal.insertVertex(lyr.gui.displayArcs, id, lyr.gui.projectPoint(p[0], p[1]));
   }
 }
 
@@ -93,11 +93,11 @@ export function appendVertex(lyr, p) {
 
 // TODO: make sure we're not also removing an entire arc
 export function deleteLastVertex(lyr) {
-  deleteVertex(lyr, lyr.arcs.getPointCount() - 1);
+  deleteVertex(lyr, lyr.gui.displayArcs.getPointCount() - 1);
 }
 
 export function deleteVertex(lyr, id) {
-  internal.deleteVertex(lyr.arcs, id);
+  internal.deleteVertex(lyr.gui.displayArcs, id);
   if (isProjectedLayer(lyr)) {
     internal.deleteVertex(lyr.gui.source.dataset.arcs, id);
   }
@@ -128,10 +128,10 @@ export function getVertexCoords(lyr, id) {
 
 // set data coords (not display coords) of one or more vertices.
 export function setVertexCoords(lyr, ids, dataPoint) {
-  internal.snapVerticesToPoint(ids, dataPoint, lyr.gui.source.dataset.arcs, true);
+  internal.snapVerticesToPoint(ids, dataPoint, lyr.gui.source.dataset.arcs);
   if (isProjectedLayer(lyr)) {
     var p = lyr.gui.projectPoint(dataPoint[0], dataPoint[1]);
-    internal.snapVerticesToPoint(ids, p, lyr.arcs, true);
+    internal.snapVerticesToPoint(ids, p, lyr.gui.displayArcs);
   }
 }
 
@@ -145,16 +145,16 @@ export function setPointCoords(lyr, fid, coords) {
 
 export function updateVertexCoords(lyr, ids) {
   if (!isProjectedLayer(lyr)) return;
-  var p = lyr.arcs.getVertex2(ids[0]);
-  internal.snapVerticesToPoint(ids, lyr.gui.invertPoint(p[0], p[1]), lyr.gui.source.dataset.arcs, true);
+  var p = lyr.gui.displayArcs.getVertex2(ids[0]);
+  internal.snapVerticesToPoint(ids, lyr.gui.invertPoint(p[0], p[1]), lyr.gui.source.dataset.arcs);
 }
 
 export function setRectangleCoords(lyr, ids, coords) {
   ids.forEach(function(id, i) {
     var p = coords[i];
-    internal.snapVerticesToPoint([id], p, lyr.gui.source.dataset.arcs, true);
+    internal.snapVerticesToPoint([id], p, lyr.gui.source.dataset.arcs);
     if (isProjectedLayer(lyr)) {
-      internal.snapVerticesToPoint([id], lyr.gui.projectPoint(p[0], p[1]), lyr.arcs, true);
+      internal.snapVerticesToPoint([id], lyr.gui.projectPoint(p[0], p[1]), lyr.gui.displayArcs);
     }
   });
 }

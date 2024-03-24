@@ -6,7 +6,7 @@ export function InteractionMode(gui) {
   var menus = {
     standard: ['info', 'selection', 'box'],
     polygons: ['info', 'selection', 'box', 'drawing'],
-    rectangles: ['info', 'selection', 'box', 'rectangles'], // 'vertices'
+    rectangles: ['info', 'selection', 'box', 'rectangles'],
     lines: ['info', 'selection', 'box' , 'drawing'],
     table: ['info', 'selection'],
     labels: ['info', 'selection', 'box', 'labels', 'location', 'add-points'],

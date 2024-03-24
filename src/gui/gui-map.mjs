@@ -12,7 +12,7 @@ import { LayerRenderer } from './gui-layer-renderer';
 import { BoxTool } from './gui-box-tool';
 import { RectangleControl } from './gui-rectangle-control';
 import { projectMapExtent, getMapboxBounds } from './gui-dynamic-crs';
-import { getDisplayLayer, projectDisplayLayer } from './gui-display-layer';
+import { enhanceLayerForDisplay, projectLayerForDisplay } from './gui-display-layer';
 import { utils, internal, Bounds } from './gui-core';
 import { EventDispatcher } from './gui-events';
 import { ElementPosition } from './gui-element-position';
@@ -74,7 +74,8 @@ export function MshpMap(gui) {
   this.setIntersectionLayer = function(lyr, dataset) {
     if (lyr == _intersectionLyr) return; // no change
     if (lyr) {
-      _intersectionLyr = getDisplayLayer(lyr, dataset, getDisplayOptions());
+      enhanceLayerForDisplay(lyr, dataset, getDisplayOptions());
+      _intersectionLyr = lyr;
       _intersectionLyr.gui.style = MapStyle.getIntersectionStyle(_intersectionLyr.gui.displayLayer, getGlobalStyleOptions());
     } else {
       _intersectionLyr = null;
@@ -104,7 +105,7 @@ export function MshpMap(gui) {
   };
 
   this.getDisplayCRS = function() {
-    if (!_activeLyr || !_activeLyr.geographic) return null;
+    if (!_activeLyr || !_activeLyr.gui.geographic) return null;
     if (_activeLyr.gui.dynamic_crs) return _activeLyr.gui.dynamic_crs;
     var info = getDatasetCrsInfo(_activeLyr.gui.source.dataset);
     return info.crs || null;
@@ -145,7 +146,7 @@ export function MshpMap(gui) {
 
     // Reproject all visible map layers
     getContentLayers().forEach(function(lyr) {
-      projectDisplayLayer(lyr, newCRS);
+      projectLayerForDisplay(lyr, newCRS);
     });
 
     // kludge to make sure all layers have styles
@@ -195,7 +196,8 @@ export function MshpMap(gui) {
       return;
     }
 
-    _activeLyr = getDisplayLayer(e.layer, e.dataset, getDisplayOptions());
+    enhanceLayerForDisplay(e.layer, e.dataset, getDisplayOptions());
+    _activeLyr = e.layer;
     _activeLyr.gui.style = MapStyle.getActiveLayerStyle(_activeLyr.gui.displayLayer, getGlobalStyleOptions());
     _activeLyr.active = true;
 
@@ -210,7 +212,7 @@ export function MshpMap(gui) {
     updateVisibleMapLayers();
     fullBounds = calcFullBounds();
 
-    if (!prevLyr || prevLyr.tabular || _activeLyr.tabular) {
+    if (!prevLyr || prevLyr.gui.tabular || _activeLyr.gui.tabular) {
       needReset = true;
     } else {
       needReset = mapNeedsReset(fullBounds, _ext.getFullBounds(), _ext.getBounds(), e.flags);
@@ -331,12 +333,12 @@ export function MshpMap(gui) {
   }
 
   function isTableView() {
-    return !!_activeLyr.tabular;
+    return !!_activeLyr.gui.tabular;
   }
 
   function findFrameLayer() {
     return getVisibleMapLayers().find(function(lyr) {
-      return internal.isFrameLayer(lyr, lyr.arcs);
+      return internal.isFrameLayer(lyr.gui.displayLayer, lyr.gui.displayArcs);
     });
   }
 
@@ -347,7 +349,7 @@ export function MshpMap(gui) {
 
   function getFrameData() {
     var lyr = findFrameLayer();
-    return lyr && internal.getFrameLayerData(lyr, lyr.arcs) || null;
+    return lyr && internal.getFrameLayerData(lyr, lyr.gui.displayArcs) || null;
   }
 
   function clearAllDisplayArcs() {
@@ -366,7 +368,8 @@ export function MshpMap(gui) {
       if (isActiveLayer(o.layer)) {
         layers.push(_activeLyr);
       } else if (!isTableView()) {
-        layers.push(getDisplayLayer(o.layer, o.dataset, getDisplayOptions()));
+        enhanceLayerForDisplay(o.layer, o.dataset, getDisplayOptions());
+        layers.push(o.layer);
       }
     });
     _visibleLayers = layers;
@@ -388,7 +391,7 @@ export function MshpMap(gui) {
       return findActiveLayer(layers);
     }
     return layers.filter(function(o) {
-      return !!o.geographic;
+      return !!o.gui.geographic;
     });
   }
 

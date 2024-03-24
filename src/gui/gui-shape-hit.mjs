@@ -47,13 +47,13 @@ export function getShapeHitTest(layer, ext, interactionMode, featureFilter) {
         cand, hitId;
     for (var i=0; i<cands.length; i++) {
       cand = cands[i];
-      if (geom.testPointInPolygon(x, y, cand.shape, layer.arcs)) {
+      if (geom.testPointInPolygon(x, y, cand.shape, layer.gui.displayArcs)) {
         hits.push(cand);
       }
     }
     if (cands.length > 0 && hits.length === 0) {
       // secondary detection: proximity, if not inside a polygon
-      sortByDistance(x, y, cands, layer.arcs);
+      sortByDistance(x, y, cands, layer.gui.displayArcs);
       hits = pickNearestCandidates(cands, 0, maxDist);
     }
     return {
@@ -78,7 +78,7 @@ export function getShapeHitTest(layer, ext, interactionMode, featureFilter) {
         bufPix = bufArg >= 0 ? bufArg : 0.05, // tiny threshold for hitting almost-identical lines
         bufDist = getZoomAdjustedHitBuffer(bufPix),
         cands = findHitCandidates(x, y, maxDist);
-    sortByDistance(x, y, cands, layer.arcs);
+    sortByDistance(x, y, cands, layer.gui.displayArcs);
     cands = pickNearestCandidates(cands, bufDist, maxDist);
     return {
       ids: utils.pluck(cands, 'id')
@@ -193,7 +193,7 @@ export function getShapeHitTest(layer, ext, interactionMode, featureFilter) {
 
   // Returns array of shape ids for shapes that pass a buffered bounding-box test
   function findHitCandidates(x, y, dist) {
-    var arcs = layer.arcs,
+    var arcs = layer.gui.displayArcs,
         index = {},
         cands = [],
         bbox = [];

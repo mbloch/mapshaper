@@ -24,7 +24,7 @@ export function RectangleControl(gui, hit) {
     if (e.id > -1 && e.pinned) {
       var target = hit.getHitTarget();
       var path = target.shapes[e.id][0];
-      var bbox = target.arcs.getSimpleShapeBounds(path).toArray();
+      var bbox = target.gui.displayArcs.getSimpleShapeBounds(path).toArray();
       box.setDataCoords(bbox);
       dragInfo = {
         id: e.id,
@@ -32,7 +32,7 @@ export function RectangleControl(gui, hit) {
         ids: [],
         points: []
       };
-      var iter = target.arcs.getShapeIter(path);
+      var iter = target.gui.displayArcs.getShapeIter(path);
       while (iter.hasNext()) {
         dragInfo.points.push([iter.x, iter.y]);
         dragInfo.ids.push(iter._arc.i);

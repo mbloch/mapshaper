@@ -7,10 +7,10 @@ import { getCanvasFillPattern, getCanvasFillEffect } from './gui-canvas-patterns
 function getArcsForRendering(lyr, ext) {
   var dataset = lyr.gui.source.dataset;
   var sourceArcs = dataset.arcs;
-  if (lyr.geographic && dataset.gui?.displayArcs) {
+  if (lyr.gui.geographic && dataset.gui?.displayArcs) {
     return dataset.gui.displayArcs.getScaledArcs(ext);
   }
-  return lyr.arcs;
+  return lyr.gui.displayArcs;
 }
 
 export function drawOutlineLayerToCanvas(lyr, canv, ext) {
@@ -22,7 +22,7 @@ export function drawOutlineLayerToCanvas(lyr, canv, ext) {
   var filter;
   if (internal.layerHasPaths(lyr.gui.displayLayer)) {
     if (!arcCounts) {
-      arcCounts = lyr.gui.arcCounts = new Uint8Array(lyr.arcs.size());
+      arcCounts = lyr.gui.arcCounts = new Uint8Array(lyr.gui.displayArcs.size());
       internal.countArcsInShapes(lyr.gui.displayLayer.shapes, arcCounts);
     }
     arcs = getArcsForRendering(lyr, ext);
