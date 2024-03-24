@@ -55,10 +55,10 @@ function getEmptyDataRecord(table) {
 
 export function deleteLastPath(lyr) {
   var arcId = lyr.arcs.size() - 1;
-  if (lyr.layer.data) {
-    lyr.layer.data.getRecords().pop();
+  if (lyr.data) {
+    lyr.data.getRecords().pop();
   }
-  var shp = lyr.layer.shapes.pop();
+  var shp = lyr.shapes.pop();
   internal.deleteLastArc(lyr.arcs);
   if (isProjectedLayer(lyr)) {
     internal.deleteLastArc(lyr.gui.source.dataset.arcs);
@@ -69,13 +69,13 @@ export function deleteLastPath(lyr) {
 export function appendNewPath(lyr, p1, p2) {
   var arcId = lyr.arcs.size();
   internal.appendEmptyArc(lyr.arcs);
-  lyr.layer.shapes.push([[arcId]]);
+  lyr.shapes.push([[arcId]]);
   if (isProjectedLayer(lyr)) {
     internal.appendEmptyArc(lyr.gui.source.dataset.arcs);
   }
   appendVertex(lyr, p1);
   appendVertex(lyr, p2);
-  appendNewDataRecord(lyr.layer);
+  appendNewDataRecord(lyr);
 }
 
 // p: point in source data CRS coords.
@@ -139,7 +139,7 @@ export function setVertexCoords(lyr, ids, dataPoint) {
 export function setPointCoords(lyr, fid, coords) {
   lyr.shapes[fid] = coords;
   if (isProjectedLayer(lyr)) {
-    lyr.layer.shapes[fid] = projectPointCoords(coords, lyr.gui.projectPoint);
+    lyr.shapes[fid] = projectPointCoords(coords, lyr.gui.projectPoint);
   }
 }
 
@@ -162,7 +162,7 @@ export function setRectangleCoords(lyr, ids, coords) {
 // Update source data coordinates by projecting display coordinates
 export function updatePointCoords(lyr, fid) {
   if (!isProjectedLayer(lyr)) return;
-  var displayShp = lyr.layer.shapes[fid];
+  var displayShp = lyr.shapes[fid];
   lyr.shapes[fid] = projectPointCoords(displayShp, lyr.gui.invertPoint);
 }
 

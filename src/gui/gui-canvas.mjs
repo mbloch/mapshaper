@@ -16,35 +16,34 @@ function getArcsForRendering(lyr, ext) {
 export function drawOutlineLayerToCanvas(lyr, canv, ext) {
   var arcs;
   var style = lyr.gui.style;
+  var arcCounts = lyr.gui.arcCounts;
   var darkStyle = {strokeWidth: style.strokeWidth, strokeColor: style.strokeColors[1]},
       lightStyle = {strokeWidth: style.strokeWidth, strokeColor: style.strokeColors[0]};
   var filter;
-  if (internal.layerHasPaths(lyr.layer)) {
-    if (!lyr.arcCounts) {
-      lyr.arcCounts = new Uint8Array(lyr.arcs.size());
-      internal.countArcsInShapes(lyr.layer.shapes, lyr.arcCounts);
+  if (internal.layerHasPaths(lyr.gui.displayLayer)) {
+    if (!arcCounts) {
+      arcCounts = lyr.gui.arcCounts = new Uint8Array(lyr.arcs.size());
+      internal.countArcsInShapes(lyr.gui.displayLayer.shapes, arcCounts);
     }
-    if (lyr.arcCounts) {
-      arcs = getArcsForRendering(lyr, ext);
-      if (lightStyle.strokeColor) {
-        filter = getArcFilter(arcs, ext, false, lyr.arcCounts);
-        canv.drawArcs(arcs, lightStyle, filter);
-      }
-      if (darkStyle.strokeColor && lyr.layer.geometry_type != 'point') {
-        filter = getArcFilter(arcs, ext, true, lyr.arcCounts);
-        canv.drawArcs(arcs, darkStyle, filter);
-      }
+    arcs = getArcsForRendering(lyr, ext);
+    if (lightStyle.strokeColor) {
+      filter = getArcFilter(arcs, ext, false, arcCounts);
+      canv.drawArcs(arcs, lightStyle, filter);
+    }
+    if (darkStyle.strokeColor && lyr.gui.displayLayer.geometry_type != 'point') {
+      filter = getArcFilter(arcs, ext, true, arcCounts);
+      canv.drawArcs(arcs, darkStyle, filter);
     }
   }
-  if (lyr.layer.geometry_type == 'point') {
-    canv.drawSquareDots(lyr.layer.shapes, style);
+  if (lyr.gui.displayLayer.geometry_type == 'point') {
+    canv.drawSquareDots(lyr.gui.displayLayer.shapes, style);
   }
 }
 
 export function drawStyledLayerToCanvas(lyr, canv, ext) {
   // TODO: add filter for out-of-view shapes
   var style = lyr.gui.style;
-  var layer = lyr.layer;
+  var layer = lyr.gui.displayLayer;
   var arcs, filter;
   if (layer.geometry_type == 'point') {
     if (style.type == 'styled') {

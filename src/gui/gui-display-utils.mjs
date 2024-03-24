@@ -38,5 +38,5 @@ export function getBBoxCoords(lyr, bbox) {
 
 export function isProjectedLayer(lyr) {
   // TODO: could do some validation on the layer's contents
-  return !!(lyr.source && lyr.gui.invertPoint);
+  return !!lyr.gui.invertPoint;
 }

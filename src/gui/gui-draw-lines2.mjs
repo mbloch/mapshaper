@@ -44,7 +44,7 @@ export function initLineEditing(gui, ext, hit) {
   }
 
   function polygonMode() {
-    return active() && hit.getHitTarget().layer.geometry_type == 'polygon';
+    return active() && hit.getHitTarget().geometry_type == 'polygon';
   }
 
   function clearHoverVertex() {
@@ -110,7 +110,7 @@ export function initLineEditing(gui, ext, hit) {
   function turnOn() {
     var target = hit.getHitTarget();
     initialArcCount = target.arcs.size();
-    initialShapeCount = target.layer.shapes.length;
+    initialShapeCount = target.shapes.length;
     if (sessionCount === 0) {
       showInstructions();
     }
@@ -155,17 +155,17 @@ export function initLineEditing(gui, ext, hit) {
   function removeOpenPolygons() {
     var target = hit.getHitTarget();
     var arcs = target.gui.source.dataset.arcs;
-    var n = target.layer.shapes.length;
+    var n = target.shapes.length;
     // delete open paths
     for (var i=initialShapeCount; i<n; i++) {
-      var shp = target.layer.shapes[i];
+      var shp = target.shapes[i];
       if (!geom.pathIsClosed(shp[0], arcs)) { // assume open paths have one arc
-        target.layer.shapes[i] = null;
+        target.shapes[i] = null;
       }
     }
     // removes features with wrong winding order or null geometry
-    mapshaper.cmd.filterFeatures(target.layer, arcs, {remove_empty: true, quiet: true});
-    return n - target.layer.shapes.length;
+    mapshaper.cmd.filterFeatures(target, arcs, {remove_empty: true, quiet: true});
+    return n - target.shapes.length;
   }
 
   // updates display arcs and redraws all layers
@@ -377,7 +377,7 @@ export function initLineEditing(gui, ext, hit) {
     var p1 = hoverVertexInfo?.point || p2;
     appendNewPath(target, p1, p2);
     gui.dispatchEvent('path_add', {target, p1, p2});
-    drawingId = target.layer.shapes.length - 1;
+    drawingId = target.shapes.length - 1;
     hit.setDrawingId(drawingId);
   }
 
@@ -391,7 +391,7 @@ export function initLineEditing(gui, ext, hit) {
       error('Defective path');
     }
     if (finish && polygonMode()) {
-      shapes1 = target.layer.shapes.slice(initialShapeCount);
+      shapes1 = target.shapes.slice(initialShapeCount);
       shapes2 = convertClosedPaths(shapes1);
     }
     if (shapes2) {
@@ -409,16 +409,16 @@ export function initLineEditing(gui, ext, hit) {
 
   function replaceDrawnShapes(shapes) {
     var target = hit.getHitTarget();
-    var records = target.layer.data?.getRecords();
-    var prevLen = target.layer.shapes.length;
+    var records = target.data?.getRecords();
+    var prevLen = target.shapes.length;
     var newLen = initialShapeCount + shapes.length;
     var recordCount = records?.length || 0;
-    target.layer.shapes = target.layer.shapes.slice(0, initialShapeCount).concat(shapes);
+    target.shapes = target.shapes.slice(0, initialShapeCount).concat(shapes);
     while (records && records.length > newLen) {
       records.pop();
     }
     while (records && records.length < newLen) {
-      appendNewDataRecord(target.layer);
+      appendNewDataRecord(target);
     }
   }
 
@@ -458,7 +458,7 @@ export function initLineEditing(gui, ext, hit) {
   //
   function findDraggableVertices(e) {
     var target = hit.getHitTarget();
-    var shp = target.layer.shapes[e.id];
+    var shp = target.shapes[e.id];
     var p = ext.translatePixelCoords(e.x, e.y);
     var ids = internal.findNearestVertices(p, shp, target.arcs);
     var p2 = target.arcs.getVertex2(ids[0]);
@@ -482,7 +482,7 @@ export function initLineEditing(gui, ext, hit) {
     // if (!target.arcs.isFlat()) return null;
     var p = ext.translatePixelCoords(e.x, e.y);
     var minDist = Infinity;
-    var shp = target.layer.shapes[e.id];
+    var shp = target.shapes[e.id];
     var closest;
     internal.forEachSegmentInShape(shp, target.arcs, function(i, j, xx, yy) {
       var x1 = xx[i],

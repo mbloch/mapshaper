@@ -64,13 +64,18 @@ export function MshpMap(gui) {
 
   model.on('update', onUpdate);
 
+  document.addEventListener('visibilitychange', function(e) {
+    // refresh map when browser tab is re-activated (Chrome on mac has been
+    // blanking the canvas after several other tabs are visited)
+    if (document.visibilityState == 'visible') drawLayers();
+  });
 
   // Update display of segment intersections
   this.setIntersectionLayer = function(lyr, dataset) {
     if (lyr == _intersectionLyr) return; // no change
     if (lyr) {
       _intersectionLyr = getDisplayLayer(lyr, dataset, getDisplayOptions());
-      _intersectionLyr.gui.style = MapStyle.getIntersectionStyle(_intersectionLyr.layer, getGlobalStyleOptions());
+      _intersectionLyr.gui.style = MapStyle.getIntersectionStyle(_intersectionLyr.gui.displayLayer, getGlobalStyleOptions());
     } else {
       _intersectionLyr = null;
     }
@@ -191,7 +196,7 @@ export function MshpMap(gui) {
     }
 
     _activeLyr = getDisplayLayer(e.layer, e.dataset, getDisplayOptions());
-    _activeLyr.gui.style = MapStyle.getActiveLayerStyle(_activeLyr.layer, getGlobalStyleOptions());
+    _activeLyr.gui.style = MapStyle.getActiveLayerStyle(_activeLyr.gui.displayLayer, getGlobalStyleOptions());
     _activeLyr.active = true;
 
     if (popupCanStayOpen(e.flags)) {
@@ -248,13 +253,11 @@ export function MshpMap(gui) {
   }
 
   function updateOverlayLayer(e) {
-    var style = MapStyle.getOverlayStyle(_activeLyr.layer, e, getGlobalStyleOptions());
+    var style = MapStyle.getOverlayStyle(_activeLyr.gui.displayLayer, e, getGlobalStyleOptions());
     if (style) {
-      var gui = Object.assign({}, _activeLyr.gui, {style});
-      _overlayLyr = utils.defaults({
-        layer: filterLayerByIds(_activeLyr.layer, style.ids),
-        gui: gui
-      }, _activeLyr);
+      var displayLayer = filterLayerByIds(_activeLyr.gui.displayLayer, style.ids);
+      var gui = Object.assign({}, _activeLyr.gui, {style, displayLayer});
+      _overlayLyr = utils.defaults({gui}, _activeLyr);
     } else {
       _overlayLyr = null;
     }
@@ -308,7 +311,7 @@ export function MshpMap(gui) {
     var widthPx = _ext.width();
     var marginPct = widthPx < 700 && 3.5 || widthPx < 800 && 3 || 2.5;
     if (isTableView()) {
-      var n = internal.getFeatureCount(_activeLyr.layer);
+      var n = internal.getFeatureCount(_activeLyr);
       marginPct = n < 5 && 20 || n < 100 && 10 || 4;
     }
     b.scale(1 + marginPct / 100 * 2);
@@ -333,7 +336,7 @@ export function MshpMap(gui) {
 
   function findFrameLayer() {
     return getVisibleMapLayers().find(function(lyr) {
-      return internal.isFrameLayer(lyr.layer, lyr.arcs);
+      return internal.isFrameLayer(lyr, lyr.arcs);
     });
   }
 
@@ -344,12 +347,12 @@ export function MshpMap(gui) {
 
   function getFrameData() {
     var lyr = findFrameLayer();
-    return lyr && internal.getFrameLayerData(lyr.layer, lyr.arcs) || null;
+    return lyr && internal.getFrameLayerData(lyr, lyr.arcs) || null;
   }
 
   function clearAllDisplayArcs() {
-    model.forEachLayer(function(o) {
-      delete o.arcCounts;
+    model.forEachLayer(function(lyr) {
+      if (lyr.gui) delete lyr.gui.arcCounts;
     });
     model.getDatasets().forEach(function(o) {
       delete o.gui;
@@ -391,7 +394,7 @@ export function MshpMap(gui) {
 
   function getDrawableContentLayers() {
     return getContentLayers().filter(function(lyr) {
-      if (isActiveLayer(lyr.layer) && lyr.layer.hidden) return false;
+      if (isActiveLayer(lyr) && lyr.hidden) return false;
       return true;
     });
   }
@@ -409,7 +412,7 @@ export function MshpMap(gui) {
       if (mapLayer.active) {
         // regenerating active style everytime, to support style change when
         // switching between outline and preview modes.
-        style = MapStyle.getActiveLayerStyle(mapLayer.layer, getGlobalStyleOptions());
+        style = MapStyle.getActiveLayerStyle(mapLayer.gui.displayLayer, getGlobalStyleOptions());
         if (style.type != 'styled' && layers.length > 1 && style.strokeColors) {
           // kludge to hide ghosted layers when reference layers are present
           // TODO: consider never showing ghosted layers (which appear after
@@ -419,10 +422,10 @@ export function MshpMap(gui) {
           }, style);
         }
       } else {
-        if (mapLayer.layer == _activeLyr.layer) {
+        if (mapLayer == _activeLyr) {
           console.error("Error: shared map layer");
         }
-        style = MapStyle.getReferenceLayerStyle(mapLayer.layer, getGlobalStyleOptions());
+        style = MapStyle.getReferenceLayerStyle(mapLayer.gui.displayLayer, getGlobalStyleOptions());
       }
       mapLayer.gui.style = style;
     });

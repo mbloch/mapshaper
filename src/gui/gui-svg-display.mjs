@@ -30,9 +30,9 @@ export function SvgDisplayLayer(gui, ext, mouse) {
     target.svg_id = id;
     resize(ext);
     if (type == 'label' || type == 'symbol') {
-      html = renderSymbols(target.layer, ext);
+      html = renderSymbols(target.gui.displayLayer, ext);
     } else if (type == 'furniture') {
-      html = renderFurniture(target.layer, ext);
+      html = renderFurniture(target.gui.displayLayer, ext);
     }
     g.innerHTML = html;
     svg.append(g);
@@ -52,9 +52,9 @@ export function SvgDisplayLayer(gui, ext, mouse) {
     var elements;
     if (type == 'symbol') {
       elements = El.findAll('.mapshaper-svg-symbol', container.node());
-      repositionSymbols(elements, target.layer, ext);
+      repositionSymbols(elements, target.gui.displayLayer, ext);
     } else if (type == 'furniture') {
-      repositionFurniture(container.node(), target.layer, ext);
+      repositionFurniture(container.node(), target.gui.displayLayer, ext);
     } else {
       // container.getElementsByTagName('text')
       error('Unsupported symbol type:', type);

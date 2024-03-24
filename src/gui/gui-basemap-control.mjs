@@ -126,7 +126,7 @@ export function Basemap(gui, ext) {
 
     if (!dataCRS || !displayCRS || !crsIsUsable(displayCRS) || !crsIsUsable(dataCRS)) {
       warning = 'This data is incompatible with the basemaps.';
-      if (!internal.layerHasGeometry(activeLyr.layer)) {
+      if (!internal.layerHasGeometry(activeLyr.gui.displayLayer)) {
         warning += ' Reason: layer is missing geographic data';
       } else if (!dataCRS) {
         warning += ' Reason: unknown projection.';

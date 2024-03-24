@@ -47,7 +47,7 @@ export function HitControl(gui, ext, mouse) {
       // to help protect against inadvertent deletion, don't delete
       // when console is open or a popup menu is open
       if (!gui.getMode() && !gui.consoleIsOpen()) {
-        internal.deleteFeatureById(targetLayer.layer, pinnedId());
+        internal.deleteFeatureById(targetLayer, pinnedId());
         self.clearSelection();
         gui.model.updated({flags: 'filter'}); // signal map to update
       }
@@ -90,6 +90,7 @@ export function HitControl(gui, ext, mouse) {
 
   function pinnable() {
     return clickable() && !selectable();
+    // return clickable();
   }
 
   function draggable() {
@@ -184,7 +185,7 @@ export function HitControl(gui, ext, mouse) {
 
   self.getTargetDataTable = function() {
     var targ = self.getHitTarget();
-    return targ && targ.layer.data || null;
+    return targ?.data || null;
   };
 
   // get function for selecting next or prev feature within the current set of
@@ -197,7 +198,7 @@ export function HitControl(gui, ext, mouse) {
 
   // diff: 1 or -1
   function advanceSelectedFeature(diff) {
-    var n = internal.getFeatureCount(targetLayer.layer);
+    var n = internal.getFeatureCount(targetLayer);
     if (n < 2 || pinnedId() == -1) return;
     storedData.id = (pinnedId() + n + diff) % n;
     storedData.ids = [storedData.id];
@@ -254,7 +255,15 @@ export function HitControl(gui, ext, mouse) {
   // Hits are re-detected on 'hover' (if hit detection is active)
   mouse.on('hover', function(e) {
     handlePointerEvent(e);
-    if (storedData.pinned || !hitTest || !active) return;
+    if (!hitTest || !active) return;
+    if (storedData.pinned && !selectable()) return;
+    if (selectable()) {
+      // special rules for selection mode
+      if (e.hover && isOverMap(e)) {
+        updateSelectionState(mergeSelectionModeHoverData(hitTest(e)));
+        return;
+      }
+    }
     if (e.hover && isOverMap(e)) {
       // mouse is hovering directly over map area -- update hit detection
       updateSelectionState(mergeHoverData(hitTest(e)));
@@ -298,10 +307,25 @@ export function HitControl(gui, ext, mouse) {
     if (selectable()) {
       if (id > -1) {
         selectionIds = toggleId(id, selectionIds);
+      } else {
       }
       hitData.ids = selectionIds;
+      hitData.pinned = hitData.ids?.length > 0;
     }
     return hitData;
+  }
+
+  function mergeSelectionModeHoverData(hitData) {
+      if (hitData.ids.length === 0 || selectionIds.includes(hitData.ids[0])) {
+        hitData.ids = selectionIds;
+        hitData.pinned = storedData.pinned;
+      } else {
+        //
+      }
+
+      // kludge to inhibit hover effect while dragging a box
+      if (gui.keydown) hitData.id = -1;
+      return hitData;
   }
 
   function mergeHoverData(hitData) {

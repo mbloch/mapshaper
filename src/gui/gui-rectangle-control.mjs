@@ -23,7 +23,7 @@ export function RectangleControl(gui, hit) {
     var id = e.id;
     if (e.id > -1 && e.pinned) {
       var target = hit.getHitTarget();
-      var path = target.layer.shapes[e.id][0];
+      var path = target.shapes[e.id][0];
       var bbox = target.arcs.getSimpleShapeBounds(path).toArray();
       box.setDataCoords(bbox);
       dragInfo = {

@@ -22,7 +22,7 @@ export function LayerRenderer(gui, container, ext, mouse) {
       _svg.clear();
     }
     layers.forEach(function(lyr) {
-      var isSvgLayer = internal.layerHasSvgSymbols(lyr.layer) || internal.layerHasLabels(lyr.layer);
+      var isSvgLayer = internal.layerHasSvgSymbols(lyr) || internal.layerHasLabels(lyr);
       if (isSvgLayer && !needSvgRedraw) {
         _svg.reposition(lyr, 'symbol');
       } else if (isSvgLayer) {

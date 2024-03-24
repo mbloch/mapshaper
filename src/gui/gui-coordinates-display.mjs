@@ -6,7 +6,7 @@ export function CoordinatesDisplay(gui, ext, mouse) {
 
   function enabled() {
     var lyr = gui.map.getActiveLayer();
-    return !!(lyr && lyr.layer.geometry_type);
+    return !!(lyr && lyr.gui.displayLayer.geometry_type);
   }
 
   gui.model.on('update', function(e) {

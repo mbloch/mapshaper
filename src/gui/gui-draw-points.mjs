@@ -21,8 +21,7 @@ export function initPointDrawing(gui, ext, hit) {
   // x, y: pixel coordinates
   function addPoint(x, y) {
     var p = ext.translatePixelCoords(x, y);
-    var target = hit.getHitTarget();
-    var lyr = target.layer;
+    var lyr = hit.getHitTarget();
     var fid = lyr.shapes.length;
     var d = appendNewDataRecord(lyr);
     if (d) {
@@ -31,7 +30,7 @@ export function initPointDrawing(gui, ext, hit) {
       lyr.data.getRecords()[fid] = d;
     }
     lyr.shapes[fid] = [p];
-    updatePointCoords(target, fid);
+    updatePointCoords(lyr, fid);
   }
 
 

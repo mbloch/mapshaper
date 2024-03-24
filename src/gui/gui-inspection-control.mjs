@@ -37,8 +37,8 @@ export function InspectionControl2(gui, hit) {
   // id: Id of a feature in the active layer, or -1
   function inspect(id, ids, pin) {
     var target = hit.getHitTarget();
-    if ((id > -1 || ids && ids.length > 0) && inspecting() && target && target.layer) {
-      _popup.show(id, ids, target.layer, pin);
+    if ((id > -1 || ids && ids.length > 0) && inspecting() && target && target) {
+      _popup.show(id, ids, target, pin);
     } else {
       _popup.hide();
     }

@@ -3,11 +3,11 @@ import { absArcId } from '../paths/mapshaper-arc-utils';
 
 // featureFilter: optional test function, accepts feature id
 //
-export function getShapeHitTest(displayLayer, ext, interactionMode, featureFilter) {
-  var geoType = displayLayer.layer.geometry_type;
+export function getShapeHitTest(layer, ext, interactionMode, featureFilter) {
+  var geoType = layer.gui.displayLayer.geometry_type;
   var test;
-  if (geoType == 'point' && displayLayer.gui.style.type == 'styled') {
-    test = getGraduatedCircleTest(getRadiusFunction(displayLayer.gui.style));
+  if (geoType == 'point' && layer.gui.style.type == 'styled') {
+    test = getGraduatedCircleTest(getRadiusFunction(layer.gui.style));
   } else if (geoType == 'point') {
     test = pointTest;
   } else if (interactionMode == 'drawing' && geoType == 'polygon') {
@@ -47,13 +47,13 @@ export function getShapeHitTest(displayLayer, ext, interactionMode, featureFilte
         cand, hitId;
     for (var i=0; i<cands.length; i++) {
       cand = cands[i];
-      if (geom.testPointInPolygon(x, y, cand.shape, displayLayer.arcs)) {
+      if (geom.testPointInPolygon(x, y, cand.shape, layer.arcs)) {
         hits.push(cand);
       }
     }
     if (cands.length > 0 && hits.length === 0) {
       // secondary detection: proximity, if not inside a polygon
-      sortByDistance(x, y, cands, displayLayer.arcs);
+      sortByDistance(x, y, cands, layer.arcs);
       hits = pickNearestCandidates(cands, 0, maxDist);
     }
     return {
@@ -78,7 +78,7 @@ export function getShapeHitTest(displayLayer, ext, interactionMode, featureFilte
         bufPix = bufArg >= 0 ? bufArg : 0.05, // tiny threshold for hitting almost-identical lines
         bufDist = getZoomAdjustedHitBuffer(bufPix),
         cands = findHitCandidates(x, y, maxDist);
-    sortByDistance(x, y, cands, displayLayer.arcs);
+    sortByDistance(x, y, cands, layer.arcs);
     cands = pickNearestCandidates(cands, bufDist, maxDist);
     return {
       ids: utils.pluck(cands, 'id')
@@ -119,7 +119,7 @@ export function getShapeHitTest(displayLayer, ext, interactionMode, featureFilte
         hits = [];
 
     // inlining forEachPoint() does not not appreciably speed this up
-    internal.forEachPoint(displayLayer.layer.shapes, function(p, id) {
+    internal.forEachPoint(layer.gui.displayLayer.shapes, function(p, id) {
       var dist = geom.distance2D(x, y, p[0], p[1]) * toPx;
       if (dist > hitThreshold) return;
       if (dist < hitThreshold && hitThreshold > bullseyeDist) {
@@ -153,7 +153,7 @@ export function getShapeHitTest(displayLayer, ext, interactionMode, featureFilte
           directHit = false,
           hitRadius = 0,
           hitDist;
-      internal.forEachPoint(displayLayer.layer.shapes, function(p, id) {
+      internal.forEachPoint(layer.gui.displayLayer.shapes, function(p, id) {
         var distSq = geom.distanceSq(x, y, p[0], p[1]);
         var isHit = false;
         var isOver, isNear, r, d, rpix;
@@ -193,11 +193,11 @@ export function getShapeHitTest(displayLayer, ext, interactionMode, featureFilte
 
   // Returns array of shape ids for shapes that pass a buffered bounding-box test
   function findHitCandidates(x, y, dist) {
-    var arcs = displayLayer.arcs,
+    var arcs = layer.arcs,
         index = {},
         cands = [],
         bbox = [];
-    displayLayer.layer.shapes.forEach(function(shp, shpId) {
+    layer.gui.displayLayer.shapes.forEach(function(shp, shpId) {
       var cand;
       if (featureFilter && !featureFilter(shpId)) {
         return;
