@@ -45,7 +45,7 @@ export function initLabelDragging(gui, ext, hit) {
     // to anchor point, for better placement when eventual display font is
     // different from mapshaper's font.
     // if (!isMultilineLabel(textNode)) {
-    autoUpdateTextAnchor(textNode, activeRecord, getDisplayCoordsById(activeId, hit.getHitTarget().layer, ext));
+    autoUpdateTextAnchor(textNode, activeRecord, getDisplayCoordsById(activeId, hit.getHitTarget(), ext));
     // }
     updateNumber(activeRecord, 'dx', internal.roundToDigits(+activeRecord.dx, 3));
     updateNumber(activeRecord, 'dy', internal.roundToDigits(+activeRecord.dy, 3));
@@ -135,7 +135,7 @@ export function initLabelDragging(gui, ext, hit) {
   // fails when symbol includes a dot (<g><circle/><text/></g> structure)
   function updateSymbolNode(node, d, id) {
     var o = internal.svg.renderStyledLabel(d); // TODO: symbol support
-    var activeLayer = hit.getHitTarget().layer;
+    var activeLayer = hit.getHitTarget();
     var xy = activeLayer.shapes[id][0];
     var g = document.createElementNS('http://www.w3.org/2000/svg', 'g');
     var node2;

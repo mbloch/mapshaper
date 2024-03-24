@@ -20,7 +20,7 @@ export function initPointDragging(gui, ext, hit) {
   hit.on('drag', function(e) {
     if (!active(e)) return;
     // TODO: support multi points... get id of closest part to the pointer
-    var p = getPointCoordsById(e.id, symbolInfo.target.layer);
+    var p = getPointCoordsById(e.id, symbolInfo.target);
     if (!p) return;
     var diff = translateDeltaDisplayCoords(e.dx, e.dy, ext);
     p[0] += diff[0];

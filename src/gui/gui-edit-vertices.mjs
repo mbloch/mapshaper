@@ -32,7 +32,7 @@ export function initVertexDragging(gui, ext, hit) {
   //
   function findDraggableVertices(e) {
     var target = hit.getHitTarget();
-    var shp = target.layer.shapes[e.id];
+    var shp = target.shapes[e.id];
     var p = ext.translatePixelCoords(e.x, e.y);
     var nearestIds = internal.findNearestVertices(p, shp, target.arcs);
     var p2 = target.arcs.getVertex2(nearestIds[0]);
@@ -152,7 +152,7 @@ export function initVertexDragging(gui, ext, hit) {
 // find the midpoint of two vertices on @shp suitable for inserting a new vertex
 function findNearestMidpoint(p, fid, target) {
   var arcs = target.arcs;
-  var shp = target.layer.shapes[fid];
+  var shp = target.shapes[fid];
   var minDist = Infinity, v;
   internal.forEachSegmentInShape(shp, arcs, function(i, j, xx, yy) {
     var x1 = xx[i],

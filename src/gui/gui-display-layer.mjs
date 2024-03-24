@@ -23,20 +23,21 @@ export function projectDisplayLayer(lyr, displayCRS) {
   getDisplayLayer(lyr, lyr.gui.source.dataset, {crs: displayCRS});
   if (lyr.gui.style?.ids) {
     // re-apply layer filter
-    lyr.layer = filterLayerByIds(lyr.layer, lyr.gui.style.ids);
+    lyr.gui.displayLayer = filterLayerByIds(lyr.gui.displayLayer, lyr.gui.style.ids);
   }
 }
 
 
-// Wrap a layer in an object along with information needed for rendering
+// Supplement a layer with information needed for rendering
 export function getDisplayLayer(layer, dataset, opts) {
   var obj = {
-    layer: null,
-    arcs: null,
+    // arcs: null,
     empty: internal.getFeatureCount(layer) === 0
   };
 
   var gui = {
+    displayArcs: null,
+    displayLayer: null,
     source: {dataset},
     bounds: null,
     style: null,
@@ -47,7 +48,7 @@ export function getDisplayLayer(layer, dataset, opts) {
 
   var displayCRS = opts.crs || null;
   // display arcs may have been generated when another layer in the dataset was converted for display... re-use if available
-  var displayArcs = dataset.gui?.displayArcs || null;
+  var displayArcs = dataset.gui?.displayArcs;
   var sourceCRS;
   var emptyArcs;
 
@@ -79,7 +80,7 @@ export function getDisplayLayer(layer, dataset, opts) {
   }
 
   if (internal.layerHasFurniture(layer)) {
-    obj.layer = layer;
+    gui.displayLayer = layer;
     obj.tabular = true;
     // TODO: consider how to render furniture in GUI
     // obj.furniture = true;
@@ -89,16 +90,16 @@ export function getDisplayLayer(layer, dataset, opts) {
     // obj.tabular = obj.furniture_type != 'frame';
   } else if (layer.geometry_type) {
     obj.geographic = true;
-    obj.layer = layer;
+    gui.displayLayer = layer;
     obj.arcs = displayArcs;
   } else if (!obj.empty) {
     obj.tabular = true;
+    // TODO: improve
+    var table = getDisplayLayerForTable(layer.data);
+    gui.displayLayer = table.layer;
+    obj.arcs = table.arcs;
   } else {
-    obj.layer = {shapes: []}; // ideally we should avoid empty layers
-  }
-
-  if (obj.tabular) {
-    utils.extend(obj, getDisplayLayerForTable(layer.data));
+    gui.displayLayer = {shapes: []}; // ideally we should avoid empty layers
   }
 
   // dynamic reprojection (arcs were already reprojected above)
@@ -107,17 +108,17 @@ export function getDisplayLayer(layer, dataset, opts) {
     gui.invertPoint = internal.getProjTransform2(displayCRS, sourceCRS);
     gui.projectPoint = internal.getProjTransform2(sourceCRS, displayCRS);
     if (internal.layerHasPoints(layer)) {
-      obj.layer = projectPointsForDisplay(layer, sourceCRS, displayCRS);
+      gui.displayLayer = projectPointsForDisplay(layer, sourceCRS, displayCRS);
     } else if (internal.layerHasPaths(layer)) {
       emptyArcs = findEmptyArcs(displayArcs);
       if (emptyArcs.length > 0) {
         // Don't try to draw paths containing coordinates that failed to project
-        obj.layer = internal.filterPathLayerByArcIds(obj.layer, emptyArcs);
+        gui.displayLayer = internal.filterPathLayerByArcIds(gui.displayLayer, emptyArcs);
       }
     }
   }
 
-  gui.bounds = getDisplayBounds(obj.layer, obj.arcs);
+  gui.bounds = getDisplayBounds(gui.displayLayer, obj.arcs);
   return Object.assign(layer, obj, {gui});
 }
 
