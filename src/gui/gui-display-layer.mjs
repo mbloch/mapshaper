@@ -5,9 +5,10 @@ import { filterLayerByIds } from './gui-layer-utils';
 import { internal, Bounds, utils } from './gui-core';
 import { getDatasetCrsInfo } from './gui-display-utils';
 
+// lyr: a map layer with gui property
 // displayCRS: CRS to use for display, or null (which clears any current display CRS)
 export function projectDisplayLayer(lyr, displayCRS) {
-  var crsInfo = getDatasetCrsInfo(lyr.source.dataset);
+  var crsInfo = getDatasetCrsInfo(lyr.gui.source.dataset);
   var sourceCRS = crsInfo.crs;
   var lyr2;
   //if (!lyr.geographic || !sourceCRS) {
@@ -15,22 +16,15 @@ export function projectDisplayLayer(lyr, displayCRS) {
   if (!lyr.geographic) {
     return;
   }
-  if (lyr.dynamic_crs && internal.crsAreEqual(sourceCRS, lyr.dynamic_crs)) {
+  if (lyr.gui.dynamic_crs && internal.crsAreEqual(sourceCRS, lyr.gui.dynamic_crs)) {
     return;
   }
-  lyr2 = getDisplayLayer(lyr.source.layer, lyr.source.dataset, {crs: displayCRS});
-  // kludge: copy projection-related properties to original layer
-  lyr.dynamic_crs = lyr2.dynamic_crs;
-  lyr.layer = lyr2.layer;
 
-  if (lyr.style && lyr.style.ids) {
+  getDisplayLayer(lyr, lyr.gui.source.dataset, {crs: displayCRS});
+  if (lyr.gui.style?.ids) {
     // re-apply layer filter
-    lyr.layer = filterLayerByIds(lyr.layer, lyr.style.ids);
+    lyr.layer = filterLayerByIds(lyr.layer, lyr.gui.style.ids);
   }
-  lyr.invertPoint = lyr2.invertPoint;
-  lyr.projectPoint = lyr2.projectPoint;
-  lyr.bounds = lyr2.bounds;
-  lyr.arcs = lyr2.arcs;
 }
 
 
@@ -39,15 +33,16 @@ export function getDisplayLayer(layer, dataset, opts) {
   var obj = {
     layer: null,
     arcs: null,
-    // display_arcs: null,
-    style: null,
-    invertPoint: null,
-    projectPoint: null,
-    source: {
-      layer: layer,
-      dataset: dataset
-    },
     empty: internal.getFeatureCount(layer) === 0
+  };
+
+  var gui = {
+    source: {dataset},
+    bounds: null,
+    style: null,
+    dynamic_crs: null,
+    invertPoint: null,
+    projectPoint: null
   };
 
   var displayCRS = opts.crs || null;
@@ -108,9 +103,9 @@ export function getDisplayLayer(layer, dataset, opts) {
 
   // dynamic reprojection (arcs were already reprojected above)
   if (obj.geographic && needReprojectionForDisplay(sourceCRS, displayCRS)) {
-    obj.dynamic_crs = displayCRS;
-    obj.invertPoint = internal.getProjTransform2(displayCRS, sourceCRS);
-    obj.projectPoint = internal.getProjTransform2(sourceCRS, displayCRS);
+    gui.dynamic_crs = displayCRS;
+    gui.invertPoint = internal.getProjTransform2(displayCRS, sourceCRS);
+    gui.projectPoint = internal.getProjTransform2(sourceCRS, displayCRS);
     if (internal.layerHasPoints(layer)) {
       obj.layer = projectPointsForDisplay(layer, sourceCRS, displayCRS);
     } else if (internal.layerHasPaths(layer)) {
@@ -122,8 +117,8 @@ export function getDisplayLayer(layer, dataset, opts) {
     }
   }
 
-  obj.bounds = getDisplayBounds(obj.layer, obj.arcs);
-  return obj;
+  gui.bounds = getDisplayBounds(obj.layer, obj.arcs);
+  return Object.assign(layer, obj, {gui});
 }
 
 

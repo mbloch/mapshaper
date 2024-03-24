@@ -21,7 +21,7 @@ export function getDatasetCrsInfo(dataset) {
 // Convert a point from display CRS coordinates to data coordinates.
 // These are only different when using dynamic reprojection (basemap view).
 export function translateDisplayPoint(lyr, p) {
-  return isProjectedLayer(lyr) ? lyr.invertPoint(p[0], p[1]) : p;
+  return isProjectedLayer(lyr) ? lyr.gui.invertPoint(p[0], p[1]) : p;
 }
 
 // bbox: display coords
@@ -38,5 +38,5 @@ export function getBBoxCoords(lyr, bbox) {
 
 export function isProjectedLayer(lyr) {
   // TODO: could do some validation on the layer's contents
-  return !!(lyr.source && lyr.invertPoint);
+  return !!(lyr.source && lyr.gui.invertPoint);
 }
