@@ -71,7 +71,7 @@ export function LayerRenderer(gui, container, ext, mouse) {
 
   function drawCanvasLayer(lyr, canv) {
     if (!lyr) return;
-    if (lyr.style.type == 'outline') {
+    if (lyr.gui.style.type == 'outline') {
       drawOutlineLayerToCanvas(lyr, canv, ext);
     } else {
       drawStyledLayerToCanvas(lyr, canv, ext);

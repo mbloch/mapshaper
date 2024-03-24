@@ -70,7 +70,7 @@ export function MshpMap(gui) {
     if (lyr == _intersectionLyr) return; // no change
     if (lyr) {
       _intersectionLyr = getDisplayLayer(lyr, dataset, getDisplayOptions());
-      _intersectionLyr.style = MapStyle.getIntersectionStyle(_intersectionLyr.layer, getGlobalStyleOptions());
+      _intersectionLyr.gui.style = MapStyle.getIntersectionStyle(_intersectionLyr.layer, getGlobalStyleOptions());
     } else {
       _intersectionLyr = null;
     }
@@ -100,8 +100,8 @@ export function MshpMap(gui) {
 
   this.getDisplayCRS = function() {
     if (!_activeLyr || !_activeLyr.geographic) return null;
-    if (_activeLyr.dynamic_crs) return _activeLyr.dynamic_crs;
-    var info = getDatasetCrsInfo(_activeLyr.source.dataset);
+    if (_activeLyr.gui.dynamic_crs) return _activeLyr.gui.dynamic_crs;
+    var info = getDatasetCrsInfo(_activeLyr.gui.source.dataset);
     return info.crs || null;
   };
 
@@ -165,7 +165,6 @@ export function MshpMap(gui) {
     var prevLyr = _activeLyr || null;
     var fullBounds;
     var needReset;
-
     if (!prevLyr) {
       initMap(); // first call
     }
@@ -192,7 +191,7 @@ export function MshpMap(gui) {
     }
 
     _activeLyr = getDisplayLayer(e.layer, e.dataset, getDisplayOptions());
-    _activeLyr.style = MapStyle.getActiveLayerStyle(_activeLyr.layer, getGlobalStyleOptions());
+    _activeLyr.gui.style = MapStyle.getActiveLayerStyle(_activeLyr.layer, getGlobalStyleOptions());
     _activeLyr.active = true;
 
     if (popupCanStayOpen(e.flags)) {
@@ -251,9 +250,10 @@ export function MshpMap(gui) {
   function updateOverlayLayer(e) {
     var style = MapStyle.getOverlayStyle(_activeLyr.layer, e, getGlobalStyleOptions());
     if (style) {
+      var gui = Object.assign({}, _activeLyr.gui, {style});
       _overlayLyr = utils.defaults({
         layer: filterLayerByIds(_activeLyr.layer, style.ids),
-        style: style
+        gui: gui
       }, _activeLyr);
     } else {
       _overlayLyr = null;
@@ -285,7 +285,7 @@ export function MshpMap(gui) {
     var b = new Bounds();
     var layers = getContentLayers();
     layers.forEach(function(lyr) {
-      b.mergeBounds(lyr.bounds);
+      b.mergeBounds(lyr.gui.bounds);
     });
 
     if (!b.hasBounds()) {
@@ -320,7 +320,7 @@ export function MshpMap(gui) {
   }
 
   function isActiveLayer(lyr) {
-    return _activeLyr && lyr == _activeLyr.source.layer || false;
+    return _activeLyr && lyr == _activeLyr || false;
   }
 
   function isVisibleLayer(lyr) {
@@ -348,6 +348,9 @@ export function MshpMap(gui) {
   }
 
   function clearAllDisplayArcs() {
+    model.forEachLayer(function(o) {
+      delete o.arcCounts;
+    });
     model.getDatasets().forEach(function(o) {
       delete o.gui;
     });
@@ -402,31 +405,33 @@ export function MshpMap(gui) {
 
   function updateLayerStyles(layers) {
     layers.forEach(function(mapLayer, i) {
+      var style;
       if (mapLayer.active) {
         // regenerating active style everytime, to support style change when
         // switching between outline and preview modes.
-        mapLayer.style = MapStyle.getActiveLayerStyle(mapLayer.layer, getGlobalStyleOptions());
-        if (mapLayer.style.type != 'styled' && layers.length > 1 && mapLayer.style.strokeColors) {
+        style = MapStyle.getActiveLayerStyle(mapLayer.layer, getGlobalStyleOptions());
+        if (style.type != 'styled' && layers.length > 1 && style.strokeColors) {
           // kludge to hide ghosted layers when reference layers are present
           // TODO: consider never showing ghosted layers (which appear after
           // commands like dissolve and filter).
-          mapLayer.style = utils.defaults({
-            strokeColors: [null, mapLayer.style.strokeColors[1]]
-          }, mapLayer.style);
+          style = utils.defaults({
+            strokeColors: [null, style.strokeColors[1]]
+          }, style);
         }
       } else {
         if (mapLayer.layer == _activeLyr.layer) {
           console.error("Error: shared map layer");
         }
-        mapLayer.style = MapStyle.getReferenceLayerStyle(mapLayer.layer, getGlobalStyleOptions());
+        style = MapStyle.getReferenceLayerStyle(mapLayer.layer, getGlobalStyleOptions());
       }
+      mapLayer.gui.style = style;
     });
   }
 
   function sortMapLayers(layers) {
     layers.sort(function(a, b) {
       // assume that each layer has a menu_order (assigned by updateLayerStackOrder())
-      return a.source.layer.menu_order - b.source.layer.menu_order;
+      return a.menu_order - b.menu_order;
     });
   }
 

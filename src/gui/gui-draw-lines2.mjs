@@ -154,7 +154,7 @@ export function initLineEditing(gui, ext, hit) {
   // returns number of removed shapes
   function removeOpenPolygons() {
     var target = hit.getHitTarget();
-    var arcs = target.source.dataset.arcs;
+    var arcs = target.gui.source.dataset.arcs;
     var n = target.layer.shapes.length;
     // delete open paths
     for (var i=initialShapeCount; i<n; i++) {
@@ -284,6 +284,7 @@ export function initLineEditing(gui, ext, hit) {
     if (active() && (e.keyName == 'esc' || e.keyName == 'enter')) {
       e.stopPropagation();
       finishCurrentPath();
+      e.originalEvent.preventDefault(); // block console "enter"
     }
   }, null, 10);
 
@@ -520,7 +521,7 @@ export function initLineEditing(gui, ext, hit) {
       geometry_type: 'polyline',
       shapes: shapes.concat()
     };
-    var output = mapshaper.cmd.polygons([tmpLyr], target.source.dataset, {no_cuts: true});
+    var output = mapshaper.cmd.polygons([tmpLyr], target.gui.source.dataset, {no_cuts: true});
     var closedShapes = output[0].shapes;
 
     // find paths that were not convertible to polygons

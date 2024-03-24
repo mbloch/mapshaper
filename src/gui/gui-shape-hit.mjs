@@ -6,8 +6,8 @@ import { absArcId } from '../paths/mapshaper-arc-utils';
 export function getShapeHitTest(displayLayer, ext, interactionMode, featureFilter) {
   var geoType = displayLayer.layer.geometry_type;
   var test;
-  if (geoType == 'point' && displayLayer.style.type == 'styled') {
-    test = getGraduatedCircleTest(getRadiusFunction(displayLayer.style));
+  if (geoType == 'point' && displayLayer.gui.style.type == 'styled') {
+    test = getGraduatedCircleTest(getRadiusFunction(displayLayer.gui.style));
   } else if (geoType == 'point') {
     test = pointTest;
   } else if (interactionMode == 'drawing' && geoType == 'polygon') {

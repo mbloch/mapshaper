@@ -4,47 +4,47 @@ import { GUI } from './gui-lib';
 import { getCanvasFillPattern, getCanvasFillEffect } from './gui-canvas-patterns';
 
 // TODO: consider moving this upstream
-function getArcsForRendering(obj, ext) {
-  var dataset = obj.source.dataset;
+function getArcsForRendering(lyr, ext) {
+  var dataset = lyr.gui.source.dataset;
   var sourceArcs = dataset.arcs;
-  if (obj.geographic && dataset.gui?.displayArcs) {
+  if (lyr.geographic && dataset.gui?.displayArcs) {
     return dataset.gui.displayArcs.getScaledArcs(ext);
   }
-  return obj.arcs;
+  return lyr.arcs;
 }
 
-export function drawOutlineLayerToCanvas(obj, canv, ext) {
+export function drawOutlineLayerToCanvas(lyr, canv, ext) {
   var arcs;
-  var style = obj.style;
+  var style = lyr.gui.style;
   var darkStyle = {strokeWidth: style.strokeWidth, strokeColor: style.strokeColors[1]},
       lightStyle = {strokeWidth: style.strokeWidth, strokeColor: style.strokeColors[0]};
   var filter;
-  if (internal.layerHasPaths(obj.layer)) {
-    if (!obj.arcCounts) {
-      obj.arcCounts = new Uint8Array(obj.arcs.size());
-      internal.countArcsInShapes(obj.layer.shapes, obj.arcCounts);
+  if (internal.layerHasPaths(lyr.layer)) {
+    if (!lyr.arcCounts) {
+      lyr.arcCounts = new Uint8Array(lyr.arcs.size());
+      internal.countArcsInShapes(lyr.layer.shapes, lyr.arcCounts);
     }
-    if (obj.arcCounts) {
-      arcs = getArcsForRendering(obj, ext);
+    if (lyr.arcCounts) {
+      arcs = getArcsForRendering(lyr, ext);
       if (lightStyle.strokeColor) {
-        filter = getArcFilter(arcs, ext, false, obj.arcCounts);
+        filter = getArcFilter(arcs, ext, false, lyr.arcCounts);
         canv.drawArcs(arcs, lightStyle, filter);
       }
-      if (darkStyle.strokeColor && obj.layer.geometry_type != 'point') {
-        filter = getArcFilter(arcs, ext, true, obj.arcCounts);
+      if (darkStyle.strokeColor && lyr.layer.geometry_type != 'point') {
+        filter = getArcFilter(arcs, ext, true, lyr.arcCounts);
         canv.drawArcs(arcs, darkStyle, filter);
       }
     }
   }
-  if (obj.layer.geometry_type == 'point') {
-    canv.drawSquareDots(obj.layer.shapes, style);
+  if (lyr.layer.geometry_type == 'point') {
+    canv.drawSquareDots(lyr.layer.shapes, style);
   }
 }
 
-export function drawStyledLayerToCanvas(obj, canv, ext) {
+export function drawStyledLayerToCanvas(lyr, canv, ext) {
   // TODO: add filter for out-of-view shapes
-  var style = obj.style;
-  var layer = obj.layer;
+  var style = lyr.gui.style;
+  var layer = lyr.layer;
   var arcs, filter;
   if (layer.geometry_type == 'point') {
     if (style.type == 'styled') {
@@ -53,7 +53,7 @@ export function drawStyledLayerToCanvas(obj, canv, ext) {
       canv.drawSquareDots(layer.shapes, style);
     }
   } else {
-    arcs = getArcsForRendering(obj, ext);
+    arcs = getArcsForRendering(lyr, ext);
     filter = getShapeFilter(arcs, ext);
     canv.drawStyledPaths(layer.shapes, arcs, style, filter);
     if (style.vertices) {

@@ -568,21 +568,20 @@ body.dragover #import-options-drop-area .drop-area {
 	display: none;
 	position: absolute;
 	background-color: white;
-	padding: 3px;
-	top: 198px;
+	padding: 1px 3px;
+	top: 207px;
 	right: 0;
 	z-index: 19;
 }
 
 .btn.sidebar-btn {
 	display: block;
-	margin-bottom: 1px;
-	margin-top: 3px;
+	margin-bottom: 2px;
+	margin-top: 2px;
 	font-size: 13px;
 	color: white;
 	min-width: 28px;
 }
-
 
 .info-box h3 {
 	font-size: 19px;
