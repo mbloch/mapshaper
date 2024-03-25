@@ -7854,15 +7854,7 @@
     // Hits are re-detected on 'hover' (if hit detection is active)
     mouse.on('hover', function(e) {
       handlePointerEvent(e);
-      if (!hitTest || !active) return;
-      if (storedData.pinned && !selectable()) return;
-      if (selectable()) {
-        // special rules for selection mode
-        if (e.hover && isOverMap(e)) {
-          updateSelectionState(mergeSelectionModeHoverData(hitTest(e)));
-          return;
-        }
-      }
+      if (storedData.pinned || !hitTest || !active) return;
       if (e.hover && isOverMap(e)) {
         // mouse is hovering directly over map area -- update hit detection
         updateSelectionState(mergeHoverData(hitTest(e)));
@@ -7873,6 +7865,7 @@
         updateSelectionState(mergeHoverData({ids:[]}));
       }
     }, null, priority);
+
 
     function targetIsRollover(target) {
       while (target.parentNode && target != target.parentNode) {
@@ -7906,13 +7899,12 @@
       if (selectable()) {
         if (id > -1) {
           selectionIds = toggleId(id, selectionIds);
-        } else {
         }
         hitData.ids = selectionIds;
-        hitData.pinned = hitData.ids?.length > 0;
       }
       return hitData;
     }
+
 
     function mergeSelectionModeHoverData(hitData) {
         if (hitData.ids.length === 0 || selectionIds.includes(hitData.ids[0])) {
@@ -9546,15 +9538,20 @@
 
   function initLabelDragging(gui, ext, hit) {
     var downEvt;
-    var activeId;
+    var activeId = -1;
+    var prevHitEvt;
     var activeRecord;
 
-    function active(e) {
-      return e.id > -1 && gui.interaction.getMode() == 'labels';
+    function active() {
+      return gui.interaction.getMode() == 'labels';
+    }
+
+    function labelSelected(e) {
+      return e.id > -1 && active();
     }
 
     hit.on('dragstart', function(e) {
-      if (!active(e)) return;
+      if (!labelSelected(e)) return;
       var symNode = getSymbolTarget(e);
       var table = hit.getTargetDataTable();
       if (!symNode || !table) {
@@ -9567,8 +9564,25 @@
       gui.dispatchEvent('label_dragstart', {FID: activeId});
     });
 
+    hit.on('change', function(e) {
+      if (!active()) return;
+      if (prevHitEvt) clearLabelHighlight(prevHitEvt);
+      showLabelHighlight(e);
+      prevHitEvt = e;
+    });
+
+    function clearLabelHighlight(e) {
+      var txt = getTextNode(getSymbolTarget(e));
+      if (txt) txt.classList.remove('active-label');
+    }
+
+    function showLabelHighlight(e) {
+      var txt = getTextNode(getSymbolTarget(e));
+      if (txt) txt.classList.add('active-label');
+    }
+
     hit.on('drag', function(e) {
-      if (!active(e) || activeId == -1) return;
+      if (!labelSelected(e) || activeId == -1) return;
       if (e.id != activeId) {
         error$1("Mismatched hit ids:", e.id, activeId);
       }
@@ -9592,7 +9606,7 @@
     });
 
     hit.on('dragend', function(e) {
-      if (!active(e) || activeId == -1) return;
+      if (!labelSelected(e) || activeId == -1) return;
       gui.dispatchEvent('label_dragend', {FID: e.id});
       activeId = -1;
       activeRecord = null;
@@ -9613,19 +9627,25 @@
     }
 
     function getSymbolTarget(e) {
-      if (e.id > -1 === false || !e.container) return null;
-      return getSymbolNodeById(e.id, e.container);
+      return e.id > -1 ? getSymbolNodeById(e.id) : null;
     }
 
     function getTextNode(symNode) {
+      if (!symNode) return null;
       if (symNode.tagName == 'text') return symNode;
       return symNode.querySelector('text');
     }
 
-    function getSymbolNodeById(id, parent) {
+    // function getSymbolNodeById_OLD(id, parent) {
+    //   var sel = '[data-id="' + id + '"]';
+    //   return parent.querySelector(sel);
+    // }
+
+    function getSymbolNodeById(id) {
       // TODO: optimize selector
       var sel = '[data-id="' + id + '"]';
-      return parent.querySelector(sel);
+      var activeLayer = hit.getHitTarget();
+      return activeLayer.gui.svg_container.querySelector(sel);
     }
 
     // function getTextTarget2(e) {
@@ -11325,12 +11345,12 @@
       }
     };
 
-    el.reposition = function(target, type) {
+    el.reposition = function(lyr, type) {
       resize(ext);
-      reposition(target, type, ext);
+      reposition(lyr, type, ext);
     };
 
-    el.drawLayer = function(target, type) {
+    el.drawLayer = function(lyr, type) {
       var g = document.createElementNS('http://www.w3.org/2000/svg', 'g');
       var html = '';
       // generate a unique id so layer can be identified when symbols are repositioned
@@ -11338,24 +11358,25 @@
       var id = utils$1.getUniqueName();
       var classNames = [id, 'mapshaper-svg-layer', 'mapshaper-' + type + '-layer'];
       g.setAttribute('class', classNames.join(' '));
-      target.svg_id = id;
+      lyr.gui.svg_id = id;
+      lyr.gui.svg_container = g;
       resize(ext);
       if (type == 'label' || type == 'symbol') {
-        html = renderSymbols(target.gui.displayLayer, ext);
+        html = renderSymbols(lyr.gui.displayLayer, ext);
       } else if (type == 'furniture') {
-        html = renderFurniture(target.gui.displayLayer, ext);
+        html = renderFurniture(lyr.gui.displayLayer, ext);
       }
       g.innerHTML = html;
       svg.append(g);
 
       // prevent svg hit detection on inactive layers
-      if (!target.active) {
+      if (!lyr.active) {
         g.style.pointerEvents = 'none';
       }
     };
 
-    function reposition(target, type, ext) {
-      var container = el.findChild('.' + target.svg_id);
+    function reposition(lyr, type, ext) {
+      var container = el.findChild('.' + lyr.gui.svg_id);
       if (!container || !container.node()) {
         console.error('[reposition] missing SVG container');
         return;
@@ -11363,9 +11384,9 @@
       var elements;
       if (type == 'symbol') {
         elements = El.findAll('.mapshaper-svg-symbol', container.node());
-        repositionSymbols(elements, target.gui.displayLayer, ext);
+        repositionSymbols(elements, lyr.gui.displayLayer, ext);
       } else if (type == 'furniture') {
-        repositionFurniture(container.node(), target.gui.displayLayer, ext);
+        repositionFurniture(container.node(), lyr.gui.displayLayer, ext);
       } else {
         // container.getElementsByTagName('text')
         error('Unsupported symbol type:', type);
