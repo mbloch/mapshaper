@@ -291,8 +291,8 @@ function parseScalebarLabel(label) {
 }
 
 function parseScalebarUnits(str) {
-  var isMiles = /miles?$/.test(str.toLowerCase());
-  var isKm = /(k\.m\.|km|kilometers?|kilometres?)$/.test(str.toLowerCase());
+  var isMiles = /(miles?|mi[.]?|英里)$/.test(str.toLowerCase());
+  var isKm = /(k\.m\.|km|kilometers?|kilom.tres?|公里)$/.test(str.toLowerCase());
   var units = isMiles && 'mile' || isKm && 'km' || '';
   return units;
 }

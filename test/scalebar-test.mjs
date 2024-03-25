@@ -8,6 +8,7 @@ describe('mapshaper-scalebar.js', function () {
     var parse = api.internal.parseScalebarLabelToKm;
     assert.equal(parse('1 mile'), toKm);
     assert.equal(parse('1 MILE'), toKm);
+    assert.equal(parse('50 mi'), 50 * toKm);
     assert.equal(parse('1 / 2 MILE'), 1 / 2 * toKm);
     assert.equal(parse('1/2 MILE'), 1 / 2 * toKm);
     assert.equal(parse('0.5 MILE'), 0.5 * toKm);
@@ -15,6 +16,9 @@ describe('mapshaper-scalebar.js', function () {
     assert.equal(parse('5 k.m.'), 5);
     assert.equal(parse('1 kilometer'), 1);
     assert.equal(parse('5 kilometres'), 5);
+    assert.equal(parse('5 kilomètres'), 5);
+    assert.equal(parse('250 公里'), 250);
+    assert.equal(parse('2英里'), 2 * toKm);
     assert.equal(parse('1,000 KILOMETERS'), 1000);
   })
 
