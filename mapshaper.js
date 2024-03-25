@@ -13189,14 +13189,11 @@
     return findVertexIds(p2.x, p2.y, arcs);
   }
 
-  function snapVerticesToPoint(ids, p, arcs, final) {
+  function snapVerticesToPoint(ids, p, arcs) {
     var data = arcs.getVertexData();
     ids.forEach(function(idx) {
-      if (final) {
-        // recalculate bounding box for arc
-        arcs.updateArcBounds(findArcIdFromVertexId(idx, data.ii));
-      }
       setVertexCoords(p[0], p[1], idx, arcs);
+      arcs.updateArcBounds(findArcIdFromVertexId(idx, data.ii));
     });
   }
 
@@ -19959,8 +19956,8 @@
   }
 
   function parseScalebarUnits(str) {
-    var isMiles = /miles?$/.test(str.toLowerCase());
-    var isKm = /(k\.m\.|km|kilometers?|kilometres?)$/.test(str.toLowerCase());
+    var isMiles = /(miles?|mi[.]?|英里)$/.test(str.toLowerCase());
+    var isKm = /(k\.m\.|km|kilometers?|kilom.tres?|公里)$/.test(str.toLowerCase());
     var units = isMiles && 'mile' || isKm && 'km' || '';
     return units;
   }
@@ -45525,7 +45522,7 @@ ${svg}
     });
   }
 
-  var version = "0.6.75";
+  var version = "0.6.76";
 
   // Parse command line args into commands and run them
   // Function takes an optional Node-style callback. A Promise is returned if no callback is given.

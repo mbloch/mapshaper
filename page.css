@@ -65,7 +65,8 @@ body {
 /* --- Themed elements -------------- */
 
 .page-header,
-.dialog-btn {
+.dialog-btn,
+.sidebar-btn {
 	background-color: #1385B7;
 }
 
@@ -112,6 +113,7 @@ body {
 }
 
 .dialog-btn:hover:not(.disabled),
+.sidebar-btn:hover,
 .btn.header-btn:hover,
 .dialog-btn.default-btn,
 .dialog-btn.selected-btn {
@@ -228,17 +230,18 @@ body {
 	pointer-events: none;
 }
 
-.box-tool-options .btn {
+.box-tool-options .btn,
+.selection-tool-options .btn {
 	pointer-events: initial;
-}
-
-.box-tool-options .info-box {
-	text-align: center;
 }
 
 .box-coords {
-	margin-top: 7px;
+	margin-top: -23px;
 	pointer-events: initial;
+	position: absolute;
+	z-index: -1;
+	padding: 1px 25px;
+	right: 55px;
 }
 
 /* --- Export dialog --------- */
@@ -559,6 +562,25 @@ body.dragover #import-options-drop-area .drop-area {
 	vertical-align: top;
 	display: inline-block;
 	/* border: 1px solid #aaa; */
+}
+
+.sidebar-buttons {
+	display: none;
+	position: absolute;
+	background-color: white;
+	padding: 1px 3px;
+	top: 207px;
+	right: 0;
+	z-index: 19;
+}
+
+.btn.sidebar-btn {
+	display: block;
+	margin-bottom: 2px;
+	margin-top: 2px;
+	font-size: 13px;
+	color: white;
+	min-width: 28px;
 }
 
 .info-box h3 {
@@ -1255,9 +1277,9 @@ div.basemap-style-btn.active img {
 
 /* ---  MAP BUTTONS --- */
 
-.pointer-btn {
+/*.pointer-btn {
 	z-index: 2;
-}
+}*/
 
 .nav-buttons {
 	z-index: 20;
@@ -1287,9 +1309,6 @@ div.basemap-style-btn.active img {
 	fill: black !important;
 }
 
-.save-btn .save-menu {
-	top: 23px;
-}
 
 .inline-checkbox {
 	margin-left: 5px;
@@ -1301,13 +1320,21 @@ div.basemap-style-btn.active img {
 
 .nav-sub-menu {
 	position: absolute;
-	z-index: -1; 
+	z-index: -1;
 	display: none;
 	pointer-events: none;
-	padding-top: 4px;
-	top: 27px;
-	right: -3px;
+	padding: 4px 0px;
+	background-color: white;
+	top: 0px;
+	right: 24px;
+	text-align: right;
 	white-space: nowrap;
+	border-radius: 6px;
+	box-shadow: 0 2px 5px rgba(0,0,0,0.35);
+}
+
+.pointer-btn .nav-sub-menu {
+	top: -3px;
 }
 
 .nav-btn.open .nav-sub-menu {
@@ -1315,33 +1342,6 @@ div.basemap-style-btn.active img {
 	pointer-events: inherit;
 }
 
-.nav-menu-item {
-	background-color: #fff;
-	float: right;
-	clear: right;
-	white-space: nowrap;
-	display: inline-block;
-	padding: 5px 7px 5px 7px;
-	line-height: 11px;
-	cursor: pointer;
-}
-
-
-.nav-menu-item:hover,
-.nav-btn:hover .nav-sub-menu:not(.active):not(:hover) .nav-menu-item[data-name=info] {
-	font-weight: bold;
-	background: #e6f7ff;
-}
-
-.nav-menu-item.selected {
-	color: black;
-	font-weight: bold;
-}
-
-/* bullets https://www.w3schools.com/charsets/ref_utf_geometric.asp */
-.nav-sub-menu.active .nav-menu-item.selected:before {
-	content: "\25B8  "
-}
 
 .nav-btn {
 	position: relative;
@@ -1357,7 +1357,6 @@ div.basemap-style-btn.active img {
 
 .nav-btn.selected {
 	background-color: black;
-	/* border-radius: 3px; */
 }
 
 .nav-btn:hover:not(.disabled) svg *,
@@ -1369,16 +1368,41 @@ div.basemap-style-btn.active img {
 	fill: white;
 }
 
+.nav-menu-item {
+	background-color: #fff;
+	white-space: nowrap;
+	padding: 5px 10px 6px 11px;
+	line-height: 11px;
+	cursor: pointer;
+}
+
+.nav-menu-item:hover,
+.nav-btn:hover .nav-sub-menu:not(.active):not(:hover) .nav-menu-item[data-name=info] {
+	color: black;
+	background: #e6f7ff;
+}
+
+.nav-menu-item.selected {
+	color: black;
+}
+
+/* bullets https://www.w3schools.com/charsets/ref_utf_geometric.asp */
+.nav-sub-menu.active .nav-menu-item.selected:before {
+	content: "\25B8";
+	position: relative;
+	margin-left: -7px;
+	left: -2px;
+	top: 1px;
+}
+
 .save-menu {
 	text-align: right;
 	padding-bottom: 5px;
 }
 
 .save-menu-entry {
-	/* padding: 4px 7px 5px 7px; */
 	line-height: 11px;
 	padding: 4px 7px 5px 7px;
-	display: inline-block;
 	background: white;
 }
 
@@ -1414,8 +1438,7 @@ div.basemap-style-btn.active img {
 
 
 .save-menu-link:hover {
-	/* background: #e6f7ff; */
-	font-weight: bold;	
+	color: black;
 }
 
 .save-item-label {
