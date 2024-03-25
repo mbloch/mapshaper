@@ -14,12 +14,12 @@ export function SvgDisplayLayer(gui, ext, mouse) {
     }
   };
 
-  el.reposition = function(target, type) {
+  el.reposition = function(lyr, type) {
     resize(ext);
-    reposition(target, type, ext);
+    reposition(lyr, type, ext);
   };
 
-  el.drawLayer = function(target, type) {
+  el.drawLayer = function(lyr, type) {
     var g = document.createElementNS('http://www.w3.org/2000/svg', 'g');
     var html = '';
     // generate a unique id so layer can be identified when symbols are repositioned
@@ -27,24 +27,25 @@ export function SvgDisplayLayer(gui, ext, mouse) {
     var id = utils.getUniqueName();
     var classNames = [id, 'mapshaper-svg-layer', 'mapshaper-' + type + '-layer'];
     g.setAttribute('class', classNames.join(' '));
-    target.svg_id = id;
+    lyr.gui.svg_id = id;
+    lyr.gui.svg_container = g;
     resize(ext);
     if (type == 'label' || type == 'symbol') {
-      html = renderSymbols(target.gui.displayLayer, ext);
+      html = renderSymbols(lyr.gui.displayLayer, ext);
     } else if (type == 'furniture') {
-      html = renderFurniture(target.gui.displayLayer, ext);
+      html = renderFurniture(lyr.gui.displayLayer, ext);
     }
     g.innerHTML = html;
     svg.append(g);
 
     // prevent svg hit detection on inactive layers
-    if (!target.active) {
+    if (!lyr.active) {
       g.style.pointerEvents = 'none';
     }
   };
 
-  function reposition(target, type, ext) {
-    var container = el.findChild('.' + target.svg_id);
+  function reposition(lyr, type, ext) {
+    var container = el.findChild('.' + lyr.gui.svg_id);
     if (!container || !container.node()) {
       console.error('[reposition] missing SVG container');
       return;
@@ -52,9 +53,9 @@ export function SvgDisplayLayer(gui, ext, mouse) {
     var elements;
     if (type == 'symbol') {
       elements = El.findAll('.mapshaper-svg-symbol', container.node());
-      repositionSymbols(elements, target.gui.displayLayer, ext);
+      repositionSymbols(elements, lyr.gui.displayLayer, ext);
     } else if (type == 'furniture') {
-      repositionFurniture(container.node(), target.gui.displayLayer, ext);
+      repositionFurniture(container.node(), lyr.gui.displayLayer, ext);
     } else {
       // container.getElementsByTagName('text')
       error('Unsupported symbol type:', type);

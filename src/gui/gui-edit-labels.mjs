@@ -9,15 +9,20 @@ import { getSvgSymbolTransform } from './gui-svg-symbols';
 
 export function initLabelDragging(gui, ext, hit) {
   var downEvt;
-  var activeId;
+  var activeId = -1;
+  var prevHitEvt;
   var activeRecord;
 
-  function active(e) {
-    return e.id > -1 && gui.interaction.getMode() == 'labels';
+  function active() {
+    return gui.interaction.getMode() == 'labels';
+  }
+
+  function labelSelected(e) {
+    return e.id > -1 && active();
   }
 
   hit.on('dragstart', function(e) {
-    if (!active(e)) return;
+    if (!labelSelected(e)) return;
     var symNode = getSymbolTarget(e);
     var table = hit.getTargetDataTable();
     if (!symNode || !table) {
@@ -30,8 +35,25 @@ export function initLabelDragging(gui, ext, hit) {
     gui.dispatchEvent('label_dragstart', {FID: activeId});
   });
 
+  hit.on('change', function(e) {
+    if (!active()) return;
+    if (prevHitEvt) clearLabelHighlight(prevHitEvt);
+    showLabelHighlight(e);
+    prevHitEvt = e;
+  });
+
+  function clearLabelHighlight(e) {
+    var txt = getTextNode(getSymbolTarget(e));
+    if (txt) txt.classList.remove('active-label');
+  }
+
+  function showLabelHighlight(e) {
+    var txt = getTextNode(getSymbolTarget(e));
+    if (txt) txt.classList.add('active-label');
+  }
+
   hit.on('drag', function(e) {
-    if (!active(e) || activeId == -1) return;
+    if (!labelSelected(e) || activeId == -1) return;
     if (e.id != activeId) {
       error("Mismatched hit ids:", e.id, activeId);
     }
@@ -55,7 +77,7 @@ export function initLabelDragging(gui, ext, hit) {
   });
 
   hit.on('dragend', function(e) {
-    if (!active(e) || activeId == -1) return;
+    if (!labelSelected(e) || activeId == -1) return;
     gui.dispatchEvent('label_dragend', {FID: e.id});
     activeId = -1;
     activeRecord = null;
@@ -76,19 +98,25 @@ export function initLabelDragging(gui, ext, hit) {
   }
 
   function getSymbolTarget(e) {
-    if (e.id > -1 === false || !e.container) return null;
-    return getSymbolNodeById(e.id, e.container);
+    return e.id > -1 ? getSymbolNodeById(e.id) : null;
   }
 
   function getTextNode(symNode) {
+    if (!symNode) return null;
     if (symNode.tagName == 'text') return symNode;
     return symNode.querySelector('text');
   }
 
-  function getSymbolNodeById(id, parent) {
+  // function getSymbolNodeById_OLD(id, parent) {
+  //   var sel = '[data-id="' + id + '"]';
+  //   return parent.querySelector(sel);
+  // }
+
+  function getSymbolNodeById(id) {
     // TODO: optimize selector
     var sel = '[data-id="' + id + '"]';
-    return parent.querySelector(sel);
+    var activeLayer = hit.getHitTarget();
+    return activeLayer.gui.svg_container.querySelector(sel);
   }
 
   // function getTextTarget2(e) {
