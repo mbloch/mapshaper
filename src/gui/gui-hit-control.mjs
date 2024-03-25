@@ -255,15 +255,7 @@ export function HitControl(gui, ext, mouse) {
   // Hits are re-detected on 'hover' (if hit detection is active)
   mouse.on('hover', function(e) {
     handlePointerEvent(e);
-    if (!hitTest || !active) return;
-    if (storedData.pinned && !selectable()) return;
-    if (selectable()) {
-      // special rules for selection mode
-      if (e.hover && isOverMap(e)) {
-        updateSelectionState(mergeSelectionModeHoverData(hitTest(e)));
-        return;
-      }
-    }
+    if (storedData.pinned || !hitTest || !active) return;
     if (e.hover && isOverMap(e)) {
       // mouse is hovering directly over map area -- update hit detection
       updateSelectionState(mergeHoverData(hitTest(e)));
@@ -274,6 +266,7 @@ export function HitControl(gui, ext, mouse) {
       updateSelectionState(mergeHoverData({ids:[]}));
     }
   }, null, priority);
+
 
   function targetIsRollover(target) {
     while (target.parentNode && target != target.parentNode) {
@@ -307,13 +300,12 @@ export function HitControl(gui, ext, mouse) {
     if (selectable()) {
       if (id > -1) {
         selectionIds = toggleId(id, selectionIds);
-      } else {
       }
       hitData.ids = selectionIds;
-      hitData.pinned = hitData.ids?.length > 0;
     }
     return hitData;
   }
+
 
   function mergeSelectionModeHoverData(hitData) {
       if (hitData.ids.length === 0 || selectionIds.includes(hitData.ids[0])) {
