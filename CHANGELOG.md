@@ -1,3 +1,6 @@
+v0.6.76
+* [web] Added right-click/ctrl-click context menu.
+
 v0.6.75
 * Added auto-detection of GB18030 text encoding (used in some Chinese language Shapefiles).
 * Improvements to polygon drawing.
