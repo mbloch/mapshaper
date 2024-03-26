@@ -16,7 +16,6 @@ import {
   } from './gui-drawing-utils';
 import { translateDisplayPoint } from './gui-display-utils';
 import { showPopupAlert } from './gui-alert';
-import { showContextMenu } from './gui-context-menu';
 
 // pixel distance threshold for hovering near a vertex or segment midpoint
 var HOVER_THRESHOLD = 10;
@@ -61,7 +60,7 @@ export function initLineEditing(gui, ext, hit) {
     if (e.mode == 'drawing') {
       gui.enterMode('drawing_tool');
     } else if (active()) {
-      gui.clearMode();
+      turnOff();
     }
   }, null, 10); // higher priority than hit control, so turnOff() has correct hit target
 
@@ -191,7 +190,7 @@ export function initLineEditing(gui, ext, hit) {
       };
     }
     // don't allow copying of open paths as geojson in polygon mode
-    showContextMenu(e, target);
+    gui.contextMenu.open(e, target);
   });
 
   hit.on('dragstart', function(e) {
