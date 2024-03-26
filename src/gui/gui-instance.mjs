@@ -13,6 +13,7 @@ import { El } from './gui-el';
 import { GUI } from './gui-lib';
 import { setLoggingForGUI } from './gui-proxy';
 import { initModeRules } from './gui-mode-rules';
+import { ContextMenu } from './gui-context-menu';
 
 export function GuiInstance(container, opts) {
   var gui = new ModeSwitcher();
@@ -33,6 +34,7 @@ export function GuiInstance(container, opts) {
   gui.keyboard = new KeyboardEvents(gui);
   gui.buttons = new SidebarButtons(gui);
   gui.session = new SessionHistory(gui);
+  gui.contextMenu = new ContextMenu();
   gui.undo = new Undo(gui);
   gui.map = new MshpMap(gui);
   if (opts.saveControl) {

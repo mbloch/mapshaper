@@ -57,8 +57,8 @@ export function BoxTool(gui, ext, nav) {
   gui.on('interaction_mode_change', function(e) {
     if (e.mode === 'box') {
       gui.enterMode('box_tool');
-    } else if (gui.getMode() == 'box_tool') {
-      gui.clearMode();
+    } else if (_on) {
+      turnOff();
     }
   });
 

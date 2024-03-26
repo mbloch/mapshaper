@@ -12,8 +12,8 @@ export function RectangleControl(gui, hit) {
   gui.on('interaction_mode_change', function(e) {
     if (e.mode === 'rectangles') {
       gui.enterMode('rectangle_tool');
-    } else if (gui.getMode() == 'rectangle_tool') {
-      gui.clearMode();
+    } else if (_on) {
+      turnOff();
     }
   });
 

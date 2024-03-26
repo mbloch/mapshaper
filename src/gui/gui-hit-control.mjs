@@ -251,12 +251,15 @@ export function HitControl(gui, ext, mouse) {
 
   mouse.on('click', function(e) {
     if (!hitTest || !active) return;
+    if (!eventIsEnabled('click')) return;
+
     e.stopPropagation();
 
     // TODO: move pinning to inspection control?
     if (clickable()) {
       updateSelectionState(convertClickDataToSelectionData(hitTest(e)));
     }
+
     triggerHitEvent('click', e);
   }, null, priority);
 
@@ -381,17 +384,21 @@ export function HitControl(gui, ext, mouse) {
       return true; // special case -- using hover for line drawing animation
     }
 
+    if (type == 'click' && gui.keyboard.ctrlIsPressed()) {
+      return false; // don't fire if context menu might open
+    }
+    if (type == 'click' && gui.contextMenu.isOpen()) {
+      return false;
+    }
+    if (type == 'click' && interactionMode == 'drawing') {
+      return true; // click events are triggered even if no shape is hit
+    }
+
     // ignore pointer events when no features are being hit
     // (don't block pan and other navigation when events aren't being used for editing)
     var hitId = self.getHitId();
     if (hitId == -1) return false;
 
-    if (type == 'click' && gui.keyboard.ctrlIsPressed()) {
-      return false; // don't fire if context menu might open
-    }
-    if (type == 'click' && !clickable()) {
-      return false;
-    }
     if ((type == 'drag' || type == 'dragstart' || type == 'dragend') && !draggable()) {
       return false;
     }

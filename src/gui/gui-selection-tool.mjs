@@ -17,8 +17,8 @@ export function SelectionTool(gui, ext, hit) {
   gui.on('interaction_mode_change', function(e) {
     if (e.mode === 'selection') {
       gui.enterMode('selection_tool');
-    } else if (gui.getMode() == 'selection_tool') {
-      gui.clearMode();
+    } else if (_on) {
+      turnOff();
     }
   });
 
