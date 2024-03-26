@@ -51,7 +51,7 @@ export function CoordinatesDisplay(gui, ext, mouse) {
     var p2 = gui.map.translatePixelCoords(ext.width(), 0);
     var bbox = p1.concat(p2);
     var decimals = internal.getBoundsPrecisionForDisplay(bbox);
-     var str = internal.getRoundedCoordString(p, decimals);
+    var str = internal.getRoundedCoordString(p, decimals);
     readout.text(str).show();
   }
 

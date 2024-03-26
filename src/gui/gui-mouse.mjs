@@ -128,6 +128,9 @@ export function MouseArea(element, pos) {
   element.addEventListener('mouseout', onAreaOut);
   element.addEventListener('mousedown', onAreaDown);
   element.addEventListener('dblclick', onAreaDblClick);
+  document.addEventListener('contextmenu', function(e) {
+    _self.dispatchEvent('contextmenu', procMouseEvent(e));
+  });
 
   this.enable = function() {
     if (!_disabled) return;

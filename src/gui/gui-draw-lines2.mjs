@@ -16,6 +16,7 @@ import {
   } from './gui-drawing-utils';
 import { translateDisplayPoint } from './gui-display-utils';
 import { showPopupAlert } from './gui-alert';
+import { showContextMenu } from './gui-context-menu';
 
 // pixel distance threshold for hovering near a vertex or segment midpoint
 var HOVER_THRESHOLD = 10;
@@ -180,6 +181,19 @@ export function initLineEditing(gui, ext, hit) {
     prevClickEvent = prevHoverEvent = null;
   }
 
+  hit.on('contextmenu', function(e) {
+    if (!active() || drawing() || dragging()) return;
+    var target = hit.getHitTarget();
+    var vInfo = hoverVertexInfo;
+    if (hoverVertexInfo?.type == 'vertex' && !vertexIsEndpoint(vInfo, target)) {
+      e.deleteVertex = function() {
+        deleteActiveVertex(e, vInfo);
+      };
+    }
+    // don't allow copying of open paths as geojson in polygon mode
+    showContextMenu(e, target);
+  });
+
   hit.on('dragstart', function(e) {
     if (!active() || drawing() || !hoverVertexInfo) return;
     hideInstructions();
@@ -236,6 +250,7 @@ export function initLineEditing(gui, ext, hit) {
   // ... or the closest point along the segment (for adding a new vertex)
   hit.on('hover', function(e) {
     if (!active() || dragging()) return;
+
     if (drawing()) {
       if (!e.overMap) {
         finishCurrentPath();
@@ -303,16 +318,19 @@ export function initLineEditing(gui, ext, hit) {
     gui.container.findChild('.map-layers').classed('dragging', useArrow);
   }
 
-  function deleteActiveVertex(e) {
-    var info = findDraggableVertices(e);
-    if (!info) return;
+  function vertexIsEndpoint(info, target) {
+    var vId = info.ids[0];
+    return internal.vertexIsArcStart(vId, target.gui.displayArcs) ||
+      internal.vertexIsArcEnd(vId, target.gui.displayArcs);
+  }
+
+  // info: optional vertex info object
+  function deleteActiveVertex(e, infoArg) {
+    var info = infoArg || findDraggableVertices(e);
+    if (!info || info.type != 'vertex') return;
     var vId = info.ids[0];
     var target = hit.getHitTarget();
-    if (internal.vertexIsArcStart(vId, target.gui.displayArcs) ||
-        internal.vertexIsArcEnd(vId, target.gui.displayArcs)) {
-      // TODO: support removing arc endpoints
-      return;
-    }
+    if (vertexIsEndpoint(info, target)) return;
     gui.dispatchEvent('vertex_delete', {
       target: target,
       vertex_id: vId
@@ -338,25 +356,27 @@ export function initLineEditing(gui, ext, hit) {
     var dist2 = dist / Math.sqrt(2);
     var minDist = Infinity;
     var cands = [
-      {x: x0, y: y0 + dist},
-      {x: x0, y: y0 - dist},
-      {x: x0 + dist, y: y0},
-      {x: x0 - dist, y: y0},
-      {x: x0 + dist2, y: y0 + dist2},
-      {x: x0 + dist2, y: y0 - dist2},
-      {x: x0 - dist2, y: y0 + dist2},
-      {x: x0 - dist2, y: y0 - dist2}
+      {dx: 0, dy: dist},
+      {dx: 0, dy: -dist},
+      {dx: dist, dy: 0},
+      {dx: -dist, dy: 0},
+      {dx: dist2, dy: dist2},
+      {dx: dist2, dy: -dist2},
+      {dx: -dist2, dy: dist2},
+      {dx: -dist2, dy: -dist2}
     ];
     var snapped = cands.reduce(function(memo, cand) {
-      var dist = geom.distance2D(thisEvt.x, thisEvt.y, cand.x, cand.y);
+      var dist = geom.distance2D(thisEvt.x, thisEvt.y, x0 + cand.dx, y0 + cand.dy);
       if (dist < minDist) {
         minDist = dist;
         return cand;
       }
       return memo;
     }, null);
-    thisEvt.x = snapped.x;
-    thisEvt.y = snapped.y;
+    thisEvt.x = x0 + snapped.dx;
+    thisEvt.y = y0 + snapped.dy;
+
+    return null;
   }
 
   function finishCurrentPath() {
@@ -475,6 +495,7 @@ export function initLineEditing(gui, ext, hit) {
     var displayPoint = target.gui.displayArcs.getVertex2(ids[0]);
     return {target, ids, extendable, point, displayPoint, type: 'vertex'};
   }
+
 
   function findInterpolatedPoint(e) {
     var target = hit.getHitTarget();

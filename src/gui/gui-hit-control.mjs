@@ -3,6 +3,7 @@ import { utils } from './gui-core';
 import { EventDispatcher } from './gui-events';
 import { GUI } from './gui-lib';
 import { internal } from './gui-core';
+import { translateDisplayPoint } from './gui-display-utils';
 
 export function HitControl(gui, ext, mouse) {
   var self = new EventDispatcher();
@@ -19,6 +20,13 @@ export function HitControl(gui, ext, mouse) {
   // event priority is higher than navigation, so stopping propagation disables
   // pan navigation
   var priority = 2;
+
+  mouse.on('contextmenu', function(e) {
+    if (isOverMap(e)) {
+      e.originalEvent.preventDefault();
+    }
+    triggerHitEvent('contextmenu', e);
+  }, false);
 
   // init keyboard controls for pinned features
   gui.keyboard.on('keydown', function(evt) {
@@ -306,7 +314,6 @@ export function HitControl(gui, ext, mouse) {
     return hitData;
   }
 
-
   function mergeSelectionModeHoverData(hitData) {
       if (hitData.ids.length === 0 || selectionIds.includes(hitData.ids[0])) {
         hitData.ids = selectionIds;
@@ -379,6 +386,9 @@ export function HitControl(gui, ext, mouse) {
     var hitId = self.getHitId();
     if (hitId == -1) return false;
 
+    if (type == 'click' && gui.keyboard.ctrlIsPressed()) {
+      return false; // don't fire if context menu might open
+    }
     if (type == 'click' && !clickable()) {
       return false;
     }
@@ -410,10 +420,13 @@ export function HitControl(gui, ext, mouse) {
   // evt: event data (may be a pointer event object, an ordinary object or null)
   function triggerHitEvent(type, evt) {
     var eventData = {
-      mode: interactionMode,
-      overMap: evt ? isOverMap(evt) : null,
-      originalEvent: evt ? evt : null
+      mode: interactionMode
     };
+    if (evt) {
+      eventData.coordinates = translateDisplayPoint(targetLayer, ext.translatePixelCoords(evt.x, evt.y));
+      eventData.originalEvent = evt;
+      eventData.overMap = isOverMap(evt);
+    }
     // Merge stored hit data into the event data
     utils.defaults(eventData, evt && evt.data || {}, storedData);
     // utils.extend(eventData, storedData);

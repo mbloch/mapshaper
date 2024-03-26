@@ -1,6 +1,7 @@
 import { Popup } from './gui-popup';
 import { EventDispatcher } from './gui-events';
 import { internal } from './gui-core';
+import { showContextMenu } from './gui-context-menu';
 
 export function InspectionControl2(gui, hit) {
   var _popup = new Popup(gui, hit.getSwitchTrigger(1), hit.getSwitchTrigger(-1));
@@ -23,8 +24,17 @@ export function InspectionControl2(gui, hit) {
     }
   });
 
+  hit.on('contextmenu', function(e) {
+    var target = hit.getHitTarget();
+    if (!e.overMap || !target) return;
+
+    if (e.mode == 'drawing') return; // TODO: make special menu for this mode
+    showContextMenu(e, hit.getHitTarget());
+  });
+
   hit.on('change', function(e) {
     if (!inspecting()) return;
+    if (gui.keyboard.ctrlIsPressed()) return;
     var ids;
     if (e.mode == 'selection') {
       ids = e.pinned && e.ids || [];

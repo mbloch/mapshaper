@@ -5,6 +5,11 @@ import { El } from './gui-el';
 import { GUI } from './gui-lib';
 import { ClickText2 } from './gui-elements';
 
+export async function saveFileContentToClipboard(content) {
+  var str = utils.isString(content) ? content : content.toString();
+  await navigator.clipboard.writeText(str);
+}
+
 // Export buttons and their behavior
 export var ExportControl = function(gui) {
   var model = gui.model;
@@ -148,12 +153,6 @@ export var ExportControl = function(gui) {
     } else {
       await utils.promisify(internal.writeFiles)(files, opts);
     }
-
-  }
-
-  async function saveFileContentToClipboard(content) {
-    var str = utils.isString(content) ? content : content.toString();
-    await navigator.clipboard.writeText(str);
   }
 
   function initLayerItem(o, i) {
