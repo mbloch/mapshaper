@@ -760,10 +760,7 @@
   //
   //El.prototype.__domevents = utils.arrayToIndex("click,mousedown,mousemove,mouseup".split(','));
   El.prototype.__on = El.prototype.on;
-  El.prototype.on = function(type, func, ctx) {
-    if (ctx) {
-      error$1("[El#on()] Third argument no longer supported.");
-    }
+  El.prototype.on = function(type, func) {
     if (this.constructor == El) {
       this.el.addEventListener(type, func);
     } else {
@@ -4224,6 +4221,11 @@
     return layers.reverse();
   }
 
+  async function saveFileContentToClipboard(content) {
+    var str = utils$1.isString(content) ? content : content.toString();
+    await navigator.clipboard.writeText(str);
+  }
+
   // Export buttons and their behavior
   var ExportControl = function(gui) {
     var model = gui.model;
@@ -4367,12 +4369,6 @@
       } else {
         await utils$1.promisify(internal.writeFiles)(files, opts);
       }
-
-    }
-
-    async function saveFileContentToClipboard(content) {
-      var str = utils$1.isString(content) ? content : content.toString();
-      await navigator.clipboard.writeText(str);
     }
 
     function initLayerItem(o, i) {
@@ -5390,19 +5386,23 @@
   function KeyboardEvents(gui) {
     var self = this;
     var shiftDown = false;
+    var ctrlDown = false;
     document.addEventListener('keyup', function(e) {
       if (!GUI.isActiveInstance(gui)) return;
       if (e.keyCode == 16) shiftDown = false;
+      if (e.keyCode == 17) ctrlDown = false;
       self.dispatchEvent('keyup', getEventData(e));
     });
 
     document.addEventListener('keydown', function(e) {
       if (!GUI.isActiveInstance(gui)) return;
       if (e.keyCode == 16) shiftDown = true;
+      if (e.keyCode == 17) ctrlDown = true;
       self.dispatchEvent('keydown', getEventData(e));
     });
 
     this.shiftIsPressed = function() { return shiftDown; };
+    this.ctrlIsPressed = function() { return ctrlDown; };
 
     this.onMenuSubmit = function(menuEl, cb) {
       gui.on('enter_key', function(e) {
@@ -5419,6 +5419,7 @@
     9: 'tab',
     13: 'enter',
     16: 'shift',
+    17: 'ctrl',
     27: 'esc',
     32: 'space',
     37: 'left',
@@ -7619,6 +7620,13 @@
     // pan navigation
     var priority = 2;
 
+    mouse.on('contextmenu', function(e) {
+      if (isOverMap(e)) {
+        e.originalEvent.preventDefault();
+      }
+      triggerHitEvent('contextmenu', e);
+    }, false);
+
     // init keyboard controls for pinned features
     gui.keyboard.on('keydown', function(evt) {
       var e = evt.originalEvent;
@@ -7842,12 +7850,15 @@
 
     mouse.on('click', function(e) {
       if (!hitTest || !active) return;
+      if (!eventIsEnabled('click')) return;
+
       e.stopPropagation();
 
       // TODO: move pinning to inspection control?
       if (clickable()) {
         updateSelectionState(convertClickDataToSelectionData(hitTest(e)));
       }
+
       triggerHitEvent('click', e);
     }, null, priority);
 
@@ -7904,7 +7915,6 @@
       }
       return hitData;
     }
-
 
     function mergeSelectionModeHoverData(hitData) {
         if (hitData.ids.length === 0 || selectionIds.includes(hitData.ids[0])) {
@@ -7973,14 +7983,21 @@
         return true; // special case -- using hover for line drawing animation
       }
 
+      if (type == 'click' && gui.keyboard.ctrlIsPressed()) {
+        return false; // don't fire if context menu might open
+      }
+      if (type == 'click' && gui.contextMenu.isOpen()) {
+        return false;
+      }
+      if (type == 'click' && interactionMode == 'drawing') {
+        return true; // click events are triggered even if no shape is hit
+      }
+
       // ignore pointer events when no features are being hit
       // (don't block pan and other navigation when events aren't being used for editing)
       var hitId = self.getHitId();
       if (hitId == -1) return false;
 
-      if (type == 'click' && !clickable()) {
-        return false;
-      }
       if ((type == 'drag' || type == 'dragstart' || type == 'dragend') && !draggable()) {
         return false;
       }
@@ -8009,10 +8026,13 @@
     // evt: event data (may be a pointer event object, an ordinary object or null)
     function triggerHitEvent(type, evt) {
       var eventData = {
-        mode: interactionMode,
-        overMap: evt ? isOverMap(evt) : null,
-        originalEvent: evt ? evt : null
+        mode: interactionMode
       };
+      if (evt) {
+        eventData.coordinates = translateDisplayPoint(targetLayer, ext.translatePixelCoords(evt.x, evt.y));
+        eventData.originalEvent = evt;
+        eventData.overMap = isOverMap(evt);
+      }
       // Merge stored hit data into the event data
       utils$1.defaults(eventData, evt && evt.data || {}, storedData);
       // utils.extend(eventData, storedData);
@@ -8104,7 +8124,7 @@
       var p2 = gui.map.translatePixelCoords(ext.width(), 0);
       var bbox = p1.concat(p2);
       var decimals = internal.getBoundsPrecisionForDisplay(bbox);
-       var str = internal.getRoundedCoordString(p, decimals);
+      var str = internal.getRoundedCoordString(p, decimals);
       readout.text(str).show();
     }
 
@@ -8385,6 +8405,9 @@
     element.addEventListener('mouseout', onAreaOut);
     element.addEventListener('mousedown', onAreaDown);
     element.addEventListener('dblclick', onAreaDblClick);
+    document.addEventListener('contextmenu', function(e) {
+      _self.dispatchEvent('contextmenu', procMouseEvent(e));
+    });
 
     this.enable = function() {
       if (!_disabled) return;
@@ -8952,8 +8975,8 @@
     gui.on('interaction_mode_change', function(e) {
       if (e.mode === 'selection') {
         gui.enterMode('selection_tool');
-      } else if (gui.getMode() == 'selection_tool') {
-        gui.clearMode();
+      } else if (_on) {
+        turnOff();
       }
     });
 
@@ -9419,8 +9442,17 @@
       }
     });
 
+    hit.on('contextmenu', function(e) {
+      var target = hit.getHitTarget();
+      if (!e.overMap || !target) return;
+
+      if (e.mode == 'drawing') return; // TODO: make special menu for this mode
+      gui.contextMenu.open(e, hit.getHitTarget());
+    });
+
     hit.on('change', function(e) {
       if (!inspecting()) return;
+      if (gui.keyboard.ctrlIsPressed()) return;
       var ids;
       if (e.mode == 'selection') {
         ids = e.pinned && e.ids || [];
@@ -9799,7 +9831,7 @@
       if (e.mode == 'drawing') {
         gui.enterMode('drawing_tool');
       } else if (active()) {
-        gui.clearMode();
+        turnOff();
       }
     }, null, 10); // higher priority than hit control, so turnOff() has correct hit target
 
@@ -9919,6 +9951,19 @@
       prevClickEvent = prevHoverEvent = null;
     }
 
+    hit.on('contextmenu', function(e) {
+      if (!active() || drawing() || dragging()) return;
+      var target = hit.getHitTarget();
+      var vInfo = hoverVertexInfo;
+      if (hoverVertexInfo?.type == 'vertex' && !vertexIsEndpoint(vInfo, target)) {
+        e.deleteVertex = function() {
+          deleteActiveVertex(e, vInfo);
+        };
+      }
+      // don't allow copying of open paths as geojson in polygon mode
+      gui.contextMenu.open(e, target);
+    });
+
     hit.on('dragstart', function(e) {
       if (!active() || drawing() || !hoverVertexInfo) return;
       hideInstructions();
@@ -9975,6 +10020,7 @@
     // ... or the closest point along the segment (for adding a new vertex)
     hit.on('hover', function(e) {
       if (!active() || dragging()) return;
+
       if (drawing()) {
         if (!e.overMap) {
           finishCurrentPath();
@@ -10042,16 +10088,19 @@
       gui.container.findChild('.map-layers').classed('dragging', useArrow);
     }
 
-    function deleteActiveVertex(e) {
-      var info = findDraggableVertices(e);
-      if (!info) return;
+    function vertexIsEndpoint(info, target) {
+      var vId = info.ids[0];
+      return internal.vertexIsArcStart(vId, target.gui.displayArcs) ||
+        internal.vertexIsArcEnd(vId, target.gui.displayArcs);
+    }
+
+    // info: optional vertex info object
+    function deleteActiveVertex(e, infoArg) {
+      var info = infoArg || findDraggableVertices(e);
+      if (!info || info.type != 'vertex') return;
       var vId = info.ids[0];
       var target = hit.getHitTarget();
-      if (internal.vertexIsArcStart(vId, target.gui.displayArcs) ||
-          internal.vertexIsArcEnd(vId, target.gui.displayArcs)) {
-        // TODO: support removing arc endpoints
-        return;
-      }
+      if (vertexIsEndpoint(info, target)) return;
       gui.dispatchEvent('vertex_delete', {
         target: target,
         vertex_id: vId
@@ -10077,25 +10126,27 @@
       var dist2 = dist / Math.sqrt(2);
       var minDist = Infinity;
       var cands = [
-        {x: x0, y: y0 + dist},
-        {x: x0, y: y0 - dist},
-        {x: x0 + dist, y: y0},
-        {x: x0 - dist, y: y0},
-        {x: x0 + dist2, y: y0 + dist2},
-        {x: x0 + dist2, y: y0 - dist2},
-        {x: x0 - dist2, y: y0 + dist2},
-        {x: x0 - dist2, y: y0 - dist2}
+        {dx: 0, dy: dist},
+        {dx: 0, dy: -dist},
+        {dx: dist, dy: 0},
+        {dx: -dist, dy: 0},
+        {dx: dist2, dy: dist2},
+        {dx: dist2, dy: -dist2},
+        {dx: -dist2, dy: dist2},
+        {dx: -dist2, dy: -dist2}
       ];
       var snapped = cands.reduce(function(memo, cand) {
-        var dist = geom.distance2D(thisEvt.x, thisEvt.y, cand.x, cand.y);
+        var dist = geom.distance2D(thisEvt.x, thisEvt.y, x0 + cand.dx, y0 + cand.dy);
         if (dist < minDist) {
           minDist = dist;
           return cand;
         }
         return memo;
       }, null);
-      thisEvt.x = snapped.x;
-      thisEvt.y = snapped.y;
+      thisEvt.x = x0 + snapped.dx;
+      thisEvt.y = y0 + snapped.dy;
+
+      return null;
     }
 
     function finishCurrentPath() {
@@ -10214,6 +10265,7 @@
       var displayPoint = target.gui.displayArcs.getVertex2(ids[0]);
       return {target, ids, extendable, point, displayPoint, type: 'vertex'};
     }
+
 
     function findInterpolatedPoint(e) {
       var target = hit.getHitTarget();
@@ -11537,8 +11589,8 @@
     gui.on('interaction_mode_change', function(e) {
       if (e.mode === 'box') {
         gui.enterMode('box_tool');
-      } else if (gui.getMode() == 'box_tool') {
-        gui.clearMode();
+      } else if (_on) {
+        turnOff();
       }
     });
 
@@ -11641,8 +11693,8 @@ GUI and setting the size and crop of SVG output.</p><div><input type="text" clas
     gui.on('interaction_mode_change', function(e) {
       if (e.mode === 'rectangles') {
         gui.enterMode('rectangle_tool');
-      } else if (gui.getMode() == 'rectangle_tool') {
-        gui.clearMode();
+      } else if (_on) {
+        turnOff();
       }
     });
 
@@ -12691,6 +12743,99 @@ GUI and setting the size and crop of SVG output.</p><div><input type="text" clas
     });
   }
 
+  function ContextMenu() {
+    var body = document.querySelector('body');
+    var menu = El('div').addClass('contextmenu rollover').appendTo(body);
+    var _open = false;
+    var _openCount = 0;
+    document.addEventListener('mousedown', close);
+
+    this.isOpen = function() {
+      return _open;
+    };
+
+    function close() {
+      var count = _openCount;
+      if (!_open) return;
+      setTimeout(function() {
+        if (count == _openCount) {
+          menu.hide();
+          _open = false;
+        }
+      }, 300);
+    }
+
+    function addMenuItem(label, func) {
+      El('div')
+        .appendTo(menu)
+        .addClass('contextmenu-item')
+        .text(label)
+        .on('click', func)
+        .show();
+    }
+
+    this.open = function(e, lyr) {
+      _open = true;
+      _openCount++;
+      var rspace = body.clientWidth - e.pageX;
+      var xoffs = 10;
+      menu.empty().show();
+      if (rspace > 150) {
+        menu.css('left', e.pageX + xoffs + 'px');
+      } else {
+        menu.css('right', (body.clientWidth - e.pageX + xoffs) + 'px');
+      }
+      menu.css('top', (e.pageY - 15) + 'px');
+
+      // menu contents
+      if (e.deleteVertex) {
+        addMenuItem('Delete vertex', e.deleteVertex);
+      }
+      if (e.coordinates) {
+        addCopyCoords();
+      }
+      if (e.ids?.length) {
+        addMenuItem('Copy as GeoJSON', copyGeoJSON);
+      }
+
+      function addCopyCoords() {
+        var bbox = internal.getLayerBounds(lyr, lyr.gui.source.dataset.arcs).toArray();
+        var p = internal.getRoundedCoords(e.coordinates, internal.getBoundsPrecisionForDisplay(bbox));
+        var coordStr = p.join(',');
+        addMenuItem(coordStr, function() {
+          saveFileContentToClipboard(coordStr);
+        });
+      }
+
+      function copyGeoJSON() {
+        var opts = {
+          no_replace: true,
+          ids: e.ids,
+          quiet: true
+        };
+        var dataset = lyr.gui.source.dataset;
+        var layer = mapshaper.cmd.filterFeatures(lyr, dataset.arcs, opts);
+        // the drawing tool can send open paths with 'polygon' geometry type,
+        // should be changed to 'polyline'
+        if (layerHasOpenPaths(layer, dataset.arcs)) {
+          layer.geometry_type = 'polyline';
+        }
+        var features = internal.exportLayerAsGeoJSON(layer, dataset, {rfc7946: true, prettify: true}, true, 'string');
+        var str = internal.geojson.formatCollection({"type": "FeatureCollection"}, features);
+        saveFileContentToClipboard(str);
+      }
+    };
+  }
+
+
+  function layerHasOpenPaths(layer, arcs) {
+    var retn = false;
+    internal.editShapes(layer.shapes, function(part) {
+      if (!geom.pathIsClosed(part, arcs)) retn = true;
+    });
+    return retn;
+  }
+
   function GuiInstance(container, opts) {
     var gui = new ModeSwitcher();
     opts = utils$1.extend({
@@ -12710,6 +12855,7 @@ GUI and setting the size and crop of SVG output.</p><div><input type="text" clas
     gui.keyboard = new KeyboardEvents(gui);
     gui.buttons = new SidebarButtons(gui);
     gui.session = new SessionHistory(gui);
+    gui.contextMenu = new ContextMenu();
     gui.undo = new Undo(gui);
     gui.map = new MshpMap(gui);
     if (opts.saveControl) {
