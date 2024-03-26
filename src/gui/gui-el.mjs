@@ -300,10 +300,7 @@ utils.extend(El.prototype, {
 //
 //El.prototype.__domevents = utils.arrayToIndex("click,mousedown,mousemove,mouseup".split(','));
 El.prototype.__on = El.prototype.on;
-El.prototype.on = function(type, func, ctx) {
-  if (ctx) {
-    error("[El#on()] Third argument no longer supported.");
-  }
+El.prototype.on = function(type, func) {
   if (this.constructor == El) {
     this.el.addEventListener(type, func);
   } else {
