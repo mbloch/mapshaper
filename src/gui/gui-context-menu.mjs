@@ -28,7 +28,7 @@ export function ContextMenu() {
     El('div')
       .appendTo(menu)
       .addClass('contextmenu-item')
-      .text(label)
+      .html(label)
       .on('click', func)
       .show();
   }
@@ -47,11 +47,11 @@ export function ContextMenu() {
     menu.css('top', (e.pageY - 15) + 'px');
 
     // menu contents
-    if (e.deleteVertex) {
-      addMenuItem('Delete vertex', e.deleteVertex);
-    }
     if (e.coordinates) {
       addCopyCoords();
+    }
+    if (e.deleteVertex) {
+      addMenuItem('Delete vertex', e.deleteVertex);
     }
     if (e.ids?.length) {
       addMenuItem('Copy as GeoJSON', copyGeoJSON);
@@ -61,7 +61,8 @@ export function ContextMenu() {
       var bbox = internal.getLayerBounds(lyr, lyr.gui.source.dataset.arcs).toArray();
       var p = internal.getRoundedCoords(e.coordinates, internal.getBoundsPrecisionForDisplay(bbox));
       var coordStr = p.join(',');
-      addMenuItem(coordStr, function() {
+      var displayStr = '• &nbsp;' + coordStr.replace(/-/g, '–').replace(',', ', ');
+      addMenuItem(displayStr, function() {
         saveFileContentToClipboard(coordStr);
       });
     }

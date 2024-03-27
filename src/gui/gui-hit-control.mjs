@@ -25,7 +25,9 @@ export function HitControl(gui, ext, mouse) {
     if (isOverMap(e)) {
       e.originalEvent.preventDefault();
     }
-    triggerHitEvent('contextmenu', e);
+    if (!gui.contextMenu.isOpen()) {
+      triggerHitEvent('contextmenu', e);
+    }
   }, false);
 
   // init keyboard controls for pinned features
@@ -265,6 +267,7 @@ export function HitControl(gui, ext, mouse) {
 
   // Hits are re-detected on 'hover' (if hit detection is active)
   mouse.on('hover', function(e) {
+    if (gui.contextMenu.isOpen()) return;
     handlePointerEvent(e);
     if (storedData.pinned || !hitTest || !active) return;
     if (e.hover && isOverMap(e)) {
@@ -380,10 +383,6 @@ export function HitControl(gui, ext, mouse) {
   // check if an event is used in the current interaction mode
   function eventIsEnabled(type) {
     if (!active) return false;
-    if (interactionMode == 'drawing' && (type == 'hover' || type == 'dblclick')) {
-      return true; // special case -- using hover for line drawing animation
-    }
-
     if (type == 'click' && gui.keyboard.ctrlIsPressed()) {
       return false; // don't fire if context menu might open
     }
@@ -392,6 +391,10 @@ export function HitControl(gui, ext, mouse) {
     }
     if (type == 'click' && interactionMode == 'drawing') {
       return true; // click events are triggered even if no shape is hit
+    }
+
+    if (interactionMode == 'drawing' && (type == 'hover' || type == 'dblclick')) {
+      return true; // special case -- using hover for line drawing animation
     }
 
     // ignore pointer events when no features are being hit
