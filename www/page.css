@@ -509,7 +509,7 @@ body.dragover #import-options-drop-area .drop-area {
 }
 
 .dropped-file-list {
-	margin-bottom: 8px;
+	margin-bottom: 4px;
 	max-height: 300px;
 	overflow-y: auto;
 }
@@ -605,7 +605,7 @@ body.dragover #import-options-drop-area .drop-area {
 .info-box h4 {
 	font-size: 1.085em;
 	font-weight: normal;
-	margin: 0 0 2px 0;
+	margin: 4px 0 2px 0;
 }
 
 .info-box p {
