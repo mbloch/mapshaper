@@ -1,3 +1,7 @@
+v0.6.78
+* [web] Combined "drag points" and "add points" tools into a single "add/edit points" tool.
+* [web] Enable point and path drawing when no layers have been added.
+
 v0.6.77
 * [web] Updated import interface.
 * [web] Users can turn on the basemap, use the console and more without first importing a file.
