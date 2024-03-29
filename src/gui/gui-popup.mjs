@@ -28,7 +28,7 @@ export function Popup(gui, toNext, toPrev) {
   });
 
   self.show = function(id, ids, lyr, pinned, edit) {
-    var singleEdit = edit || pinned && gui.interaction.getMode() == 'data';
+    var singleEdit = edit || pinned && !internal.layerHasAttributeData(lyr);
     var multiEdit = pinned && gui.interaction.getMode() == 'selection';
     var maxHeight = parent.node().clientHeight - 36;
 
