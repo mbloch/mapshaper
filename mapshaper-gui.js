@@ -5591,6 +5591,7 @@
     gui.on('active', updateVisibility);
     gui.on('inactive', updateVisibility);
     gui.model.on('update', updateVisibility);
+    gui.on('mode', updateVisibility);
 
     // @iconRef: selector for an (svg) button icon
     this.addButton = function(iconRef) {
