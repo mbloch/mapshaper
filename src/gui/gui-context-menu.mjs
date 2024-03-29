@@ -34,6 +34,7 @@ export function ContextMenu() {
   }
 
   this.open = function(e, lyr) {
+    if (!lyr || !lyr.gui.geographic) return;
     _open = true;
     _openCount++;
     var rspace = body.clientWidth - e.pageX;
@@ -41,8 +42,10 @@ export function ContextMenu() {
     menu.empty().show();
     if (rspace > 150) {
       menu.css('left', e.pageX + xoffs + 'px');
+      menu.css('right', null);
     } else {
       menu.css('right', (body.clientWidth - e.pageX + xoffs) + 'px');
+      menu.css('left', null);
     }
     menu.css('top', (e.pageY - 15) + 'px');
 
@@ -59,8 +62,7 @@ export function ContextMenu() {
 
     function addCopyCoords() {
       var bbox = internal.getLayerBounds(lyr, lyr.gui.source.dataset.arcs).toArray();
-      var p = internal.getRoundedCoords(e.coordinates, internal.getBoundsPrecisionForDisplay(bbox));
-      var coordStr = p.join(',');
+      var coordStr = internal.getRoundedCoordString(e.coordinates, internal.getBoundsPrecisionForDisplay(bbox));
       var displayStr = '• &nbsp;' + coordStr.replace(/-/g, '–').replace(',', ', ');
       addMenuItem(displayStr, function() {
         saveFileContentToClipboard(coordStr);
