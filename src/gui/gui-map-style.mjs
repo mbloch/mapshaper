@@ -149,7 +149,8 @@ export function getOverlayStyle(baseLyr, o, opts) {
   if (opts.interactionMode == 'vertices') {
     return getVertexStyle(baseLyr, o);
   }
-  if (opts.interactionMode == 'drawing') {
+  if (opts.interactionMode == 'edit_lines' ||
+      opts.interactionMode == 'edit_polygons') {
     return getLineEditingStyle(o);
   }
   var geomType = baseLyr.geometry_type;

@@ -18,16 +18,16 @@ export function InspectionControl2(gui, hit) {
     gui.session.dataValueUpdated(e.ids, e.field, e.value);
     // Refresh the display if a style variable has been changed interactively
     if (internal.isSupportedSvgStyleProperty(e.field)) {
-      // drawLayers();
       gui.dispatchEvent('map-needs-refresh');
     }
   });
 
   hit.on('contextmenu', function(e) {
     var target = hit.getHitTarget();
-    if (!e.overMap || !target) return;
-
-    if (e.mode == 'drawing') return; // TODO: make special menu for this mode
+    if (!e.overMap || !target || e.mode == 'edit_lines' ||
+        e.mode == 'edit_polygons') {
+      return;
+    }
     gui.contextMenu.open(e, hit.getHitTarget());
   });
 

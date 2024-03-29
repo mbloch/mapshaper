@@ -5,12 +5,13 @@ export function InteractionMode(gui) {
 
   var menus = {
     standard: ['info', 'selection', 'box'],
-    polygons: ['info', 'selection', 'box', 'drawing'],
+    empty: ['edit_points', 'edit_lines', 'edit_polygons'],
+    polygons: ['info', 'selection', 'box', 'edit_polygons'],
     rectangles: ['info', 'selection', 'box', 'rectangles'],
-    lines: ['info', 'selection', 'box' , 'drawing'],
+    lines: ['info', 'selection', 'box' , 'edit_lines'],
     table: ['info', 'selection'],
-    labels: ['info', 'selection', 'box', 'labels', 'location'],
-    points: ['info', 'selection', 'box', 'location'] // , 'add-points'
+    labels: ['info', 'selection', 'box', 'labels', 'edit_points'],
+    points: ['info', 'selection', 'box', 'edit_points'] // , 'add-points'
   };
 
   var prompts = {
@@ -25,11 +26,12 @@ export function InteractionMode(gui) {
     box: 'shift-drag box tool',
     data: 'edit attributes',
     labels: 'position labels',
-    location: 'add/drag points',
+    edit_points: 'add/drag points',
+    edit_lines: 'draw/edit lines',
+    edit_polygons: 'draw/edit polygons',
     vertices: 'edit vertices',
     selection: 'selection tool',
     'add-points': 'add points',
-    drawing: 'draw/reshape tool',
     rectangles: 'drag-to-resize',
     off: 'turn off'
   };
@@ -86,11 +88,11 @@ export function InteractionMode(gui) {
   };
 
   this.modeUsesHitDetection = function(mode) {
-    return ['info', 'selection', 'data', 'labels', 'location', 'vertices', 'rectangles', 'drawing'].includes(mode);
+    return ['info', 'selection', 'data', 'labels', 'edit_points', 'vertices', 'rectangles', 'edit_lines', 'edit_polygons'].includes(mode);
   };
 
   this.modeUsesPopup = function(mode) {
-    return ['info', 'selection', 'data', 'box', 'labels', 'location', 'rectangles'].includes(mode);
+    return ['info', 'selection', 'data', 'box', 'labels', 'edit_points', 'rectangles'].includes(mode);
   };
 
   this.getMode = getInteractionMode;
@@ -117,7 +119,7 @@ export function InteractionMode(gui) {
   function getAvailableModes() {
     var o = gui.model.getActiveLayer();
     if (!o || !o.layer) {
-      return menus.standard; // TODO: more sensible handling of missing layer
+      return menus.empty; // TODO: more sensible handling of missing layer
     }
     if (!o.layer.geometry_type) {
       return menus.table;
