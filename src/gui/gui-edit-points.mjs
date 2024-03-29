@@ -51,17 +51,19 @@ export function initPointEditing(gui, ext, hit) {
   hit.on('drag', function(e) {
     if (!overPoint(e)) return;
     // TODO: support multi points... get id of closest part to the pointer
-    var p = getPointCoordsById(e.id, symbolInfo.target);
-    if (!p) return;
+    // var p = getPointCoordsById(e.id, symbolInfo.target);
+    var id = symbolInfo.FID;
+    var shp = symbolInfo.target.gui.displayLayer.shapes[id];
+    if (!shp) return;
     var diff = translateDeltaDisplayCoords(e.dx, e.dy, ext);
-    p[0] += diff[0];
-    p[1] += diff[1];
+    shp[0][0] += diff[0];
+    shp[0][1] += diff[1];
     gui.dispatchEvent('map-needs-refresh');
   });
 
   hit.on('dragend', function(e) {
     if (!overPoint(e) || !symbolInfo ) return;
-    updatePointCoords(symbolInfo.target, e.id);
+    updatePointCoords(symbolInfo.target, symbolInfo.FID);
     symbolInfo.endCoords = getPointCoords(symbolInfo.target, e.id);
     gui.dispatchEvent('symbol_dragend', symbolInfo);
     symbolInfo = null;
@@ -76,13 +78,5 @@ export function initPointEditing(gui, ext, hit) {
     var a = ext.translatePixelCoords(0, 0);
     var b = ext.translatePixelCoords(dx, dy);
     return [b[0] - a[0], b[1] - a[1]];
-  }
-
-  function getPointCoordsById(id, layer) {
-    var coords = layer && layer.geometry_type == 'point' && layer.shapes[id];
-    if (!coords || coords.length != 1) {
-      return null;
-    }
-    return coords[0];
   }
 }

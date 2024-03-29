@@ -141,10 +141,6 @@ export function getLastArcLength(target) {
   return internal.getUnfilteredArcLength(arcId, target.gui.source.dataset.arcs);
 }
 
-export function getPointCoords(lyr, fid) {
-  return internal.cloneShape(lyr.shapes[fid]);
-}
-
 export function getVertexCoords(lyr, id) {
   return lyr.gui.source.dataset.arcs.getVertex2(id);
 }
@@ -155,14 +151,6 @@ export function setVertexCoords(lyr, ids, dataPoint) {
   if (isProjectedLayer(lyr)) {
     var p = lyr.gui.projectPoint(dataPoint[0], dataPoint[1]);
     internal.snapVerticesToPoint(ids, p, lyr.gui.displayArcs);
-  }
-}
-
-// coords: [x, y] point in data CRS (not display CRS)
-export function setPointCoords(lyr, fid, coords) {
-  lyr.shapes[fid] = coords;
-  if (isProjectedLayer(lyr)) {
-    lyr.shapes[fid] = projectPointCoords(coords, lyr.gui.projectPoint);
   }
 }
 
@@ -185,9 +173,30 @@ export function setRectangleCoords(lyr, ids, coords) {
 // Update source data coordinates by projecting display coordinates
 export function updatePointCoords(lyr, fid) {
   if (!isProjectedLayer(lyr)) return;
-  var displayShp = lyr.shapes[fid];
+  var displayShp = lyr.gui.displayLayer.shapes[fid];
   lyr.shapes[fid] = projectPointCoords(displayShp, lyr.gui.invertPoint);
 }
+
+// coords: [[x, y]] point in data CRS (not display CRS)
+export function setPointCoords(lyr, fid, coords) {
+  lyr.shapes[fid] = coords;
+  if (isProjectedLayer(lyr)) {
+    lyr.gui.displayLayer.shapes[fid] = projectPointCoords(coords, lyr.gui.projectPoint);
+  }
+}
+
+// return an [[x, y]] point in data CRS
+export function getPointCoords(lyr, fid) {
+  var coords = lyr.geometry_type == 'point' && lyr.shapes[fid];
+  if (!coords || coords.length != 1) {
+    return null;
+  }
+  return internal.cloneShape(coords);
+}
+
+// export function getPointCoords(lyr, fid) {
+//   return internal.cloneShape(lyr.shapes[fid]);
+// }
 
 function projectPointCoords(src, proj) {
   var dest = [], p;

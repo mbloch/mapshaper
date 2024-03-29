@@ -26,7 +26,7 @@ export function InteractionMode(gui) {
     box: 'shift-drag box tool',
     data: 'edit attributes',
     labels: 'position labels',
-    edit_points: 'add/drag points',
+    edit_points: 'draw/edit points',
     edit_lines: 'draw/edit lines',
     edit_polygons: 'draw/edit polygons',
     vertices: 'edit vertices',
