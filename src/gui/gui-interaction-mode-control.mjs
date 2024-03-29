@@ -38,6 +38,7 @@ export function InteractionMode(gui) {
 
   // state variables
   var _editMode = 'off';
+  var _prevMode;
   var _menuOpen = false;
 
   // Only render edit mode button/menu if this option is present
@@ -199,6 +200,7 @@ export function InteractionMode(gui) {
     var changed = mode != _editMode;
     if (changed) {
       menu.classed('active', mode != 'off');
+      _prevMode = _editMode;
       _editMode = mode;
       onModeChange();
       updateArrowButton();
@@ -209,7 +211,7 @@ export function InteractionMode(gui) {
   function onModeChange() {
     var mode = getInteractionMode();
     gui.state.interaction_mode = mode;
-    gui.dispatchEvent('interaction_mode_change', {mode: mode});
+    gui.dispatchEvent('interaction_mode_change', {mode: mode, prev_mode: _prevMode});
   }
 
   // Update button highlight and selected menu item highlight (if any)

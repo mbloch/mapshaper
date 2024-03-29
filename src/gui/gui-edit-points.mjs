@@ -12,6 +12,12 @@ export function initPointDragging(gui, ext, hit) {
     return active(e) && e.id > -1;
   }
 
+  gui.on('interaction_mode_change', function(e) {
+    if (e.prev_mode == 'location') {
+      gui.container.findChild('.map-layers').classed('add-points', false);
+    }
+  });
+
   hit.on('click', function(e) {
     if (overPoint(e) || !active(e)) return;
     // add point
@@ -23,7 +29,8 @@ export function initPointDragging(gui, ext, hit) {
   });
 
   hit.on('change', function(e) {
-    gui.container.findChild('.map-layers').classed('drawing', !overPoint(e));
+    if (!active(e)) return;
+    gui.container.findChild('.map-layers').classed('add-points', !overPoint(e));
   });
 
   hit.on('dragstart', function(e) {
