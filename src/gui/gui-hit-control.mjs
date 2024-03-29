@@ -389,10 +389,10 @@ export function HitControl(gui, ext, mouse) {
     if (type == 'click' && gui.contextMenu.isOpen()) {
       return false;
     }
-    if (type == 'click' && interactionMode == 'drawing') {
+    if (type == 'click' &&
+      (interactionMode == 'drawing' || interactionMode == 'location')) {
       return true; // click events are triggered even if no shape is hit
     }
-
     if (interactionMode == 'drawing' && (type == 'hover' || type == 'dblclick')) {
       return true; // special case -- using hover for line drawing animation
     }

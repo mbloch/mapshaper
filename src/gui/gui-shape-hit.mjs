@@ -114,7 +114,8 @@ export function getShapeHitTest(layer, ext, interactionMode, featureFilter) {
 
   function pointTest(x, y) {
     var bullseyeDist = 2, // hit all points w/in 2 px
-        hitThreshold = 25,
+        // use small threshold when adding points
+        hitThreshold = interactionMode == 'location' ? 12 : 25,
         toPx = ext.getTransform().mx,
         hits = [];
 

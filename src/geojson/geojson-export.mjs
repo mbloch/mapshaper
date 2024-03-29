@@ -6,7 +6,7 @@ import { layerHasPoints, layerHasPaths } from '../dataset/mapshaper-layer-utils'
 import { isLatLngCRS, getDatasetCRS } from '../crs/mapshaper-projections';
 import { getFormattedStringify, stringifyAsNDJSON } from '../geojson/mapshaper-stringify';
 import { mergeLayerNames } from '../commands/mapshaper-merge-layers';
-import { copyDatasetForExport } from '../dataset/mapshaper-dataset-utils';
+import { copyDatasetForExport, datasetIsEmpty } from '../dataset/mapshaper-dataset-utils';
 import { encodeString } from '../text/mapshaper-encodings';
 import GeoJSON from '../geojson/geojson-common';
 import { message, error, stop } from '../utils/mapshaper-logging';
@@ -20,11 +20,10 @@ export function exportGeoJSON(dataset, opts) {
   opts = utils.extend({}, opts);
   opts.rfc7946 = !opts.gj2008; // use RFC 7946 as the default
   var extension = opts.extension || "json";
-  var layerGroups, warn;
+  var layerGroups;
 
   if (opts.rfc7946) {
-    warn = getRFC7946Warnings(dataset);
-    if (warn) message(warn);
+    warnIfNotWgs84(dataset);
   }
 
   if (opts.file) {
@@ -115,14 +114,12 @@ function composeFeature(geom, properties, opts) {
   return feat;
 }
 
-export function getRFC7946Warnings(dataset) {
+export function warnIfNotWgs84(dataset) {
   var P = getDatasetCRS(dataset);
-  var str;
-  if (!P || !isLatLngCRS(P)) {
-    str = 'RFC 7946 warning: non-WGS84 GeoJSON output.';
-    if (P) str += ' Tip: use "-proj wgs84" to convert.';
-  }
-  return str;
+  if (P && isLatLngCRS(P) || datasetIsEmpty(dataset)) return;
+  var str = 'RFC 7946 warning: non-WGS84 GeoJSON output.';
+  if (P) str += ' Tip: use "-proj wgs84" to convert.';
+  message(str);
 }
 
 export function getDatasetBbox(dataset, rfc7946) {

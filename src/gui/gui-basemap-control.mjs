@@ -59,6 +59,7 @@ export function Basemap(gui, ext) {
       if (activeStyle) {
         turnOffBasemap();
         updateButtons();
+        closeMenu();
       }
     });
     fadeBtn.on('click', function() {
@@ -87,9 +88,17 @@ export function Basemap(gui, ext) {
           showBasemap(style);
         }
         updateButtons();
+        closeMenu();
       });
       btn.appendTo(list);
     });
+  }
+
+  // close and turn off mode
+  function closeMenu() {
+    setTimeout(function() {
+      gui.clearMode();
+    }, 200);
   }
 
   function turnOffBasemap() {
