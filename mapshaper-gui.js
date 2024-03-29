@@ -1738,12 +1738,12 @@
     var btn = el.findChild('.btn').on('click', function() {
       var nameStr = name.node().value.trim();
       var type = el.findChild('input:checked').node().value;
-      addLayer(gui, nameStr, type);
+      addEmptyLayer(gui, nameStr, type);
       popup.close();
     });
   }
 
-  function addLayer(gui, name, type) {
+  function addEmptyLayer(gui, name, type) {
     var targ = gui.model.getActiveLayer();
     var crsInfo = targ && internal.getDatasetCrsInfo(targ.dataset);
     var dataset = {
@@ -2716,7 +2716,8 @@
     if (opts.interactionMode == 'vertices') {
       return getVertexStyle(baseLyr, o);
     }
-    if (opts.interactionMode == 'drawing') {
+    if (opts.interactionMode == 'edit_lines' ||
+        opts.interactionMode == 'edit_polygons') {
       return getLineEditingStyle(o);
     }
     var geomType = baseLyr.geometry_type;
@@ -3501,10 +3502,6 @@
     return internal.getUnfilteredArcLength(arcId, target.gui.source.dataset.arcs);
   }
 
-  function getPointCoords(lyr, fid) {
-    return internal.cloneShape(lyr.shapes[fid]);
-  }
-
   function getVertexCoords(lyr, id) {
     return lyr.gui.source.dataset.arcs.getVertex2(id);
   }
@@ -3515,14 +3512,6 @@
     if (isProjectedLayer(lyr)) {
       var p = lyr.gui.projectPoint(dataPoint[0], dataPoint[1]);
       internal.snapVerticesToPoint(ids, p, lyr.gui.displayArcs);
-    }
-  }
-
-  // coords: [x, y] point in data CRS (not display CRS)
-  function setPointCoords(lyr, fid, coords) {
-    lyr.shapes[fid] = coords;
-    if (isProjectedLayer(lyr)) {
-      lyr.shapes[fid] = projectPointCoords(coords, lyr.gui.projectPoint);
     }
   }
 
@@ -3545,9 +3534,30 @@
   // Update source data coordinates by projecting display coordinates
   function updatePointCoords(lyr, fid) {
     if (!isProjectedLayer(lyr)) return;
-    var displayShp = lyr.shapes[fid];
+    var displayShp = lyr.gui.displayLayer.shapes[fid];
     lyr.shapes[fid] = projectPointCoords(displayShp, lyr.gui.invertPoint);
   }
+
+  // coords: [[x, y]] point in data CRS (not display CRS)
+  function setPointCoords(lyr, fid, coords) {
+    lyr.shapes[fid] = coords;
+    if (isProjectedLayer(lyr)) {
+      lyr.gui.displayLayer.shapes[fid] = projectPointCoords(coords, lyr.gui.projectPoint);
+    }
+  }
+
+  // return an [[x, y]] point in data CRS
+  function getPointCoords(lyr, fid) {
+    var coords = lyr.geometry_type == 'point' && lyr.shapes[fid];
+    if (!coords || coords.length != 1) {
+      return null;
+    }
+    return internal.cloneShape(coords);
+  }
+
+  // export function getPointCoords(lyr, fid) {
+  //   return internal.cloneShape(lyr.shapes[fid]);
+  // }
 
   function projectPointCoords(src, proj) {
     var dest = [], p;
@@ -5609,7 +5619,10 @@
     };
 
     function updateVisibility() {
-      if (GUI.isActiveInstance(gui) && !_hidden && !!gui.model.getActiveLayer()) {
+      var noData = !gui.model.getActiveLayer();
+      if (GUI.isActiveInstance(gui) && !_hidden && !noData) {
+        buttons.show();
+      } else if (noData && gui.getMode() != 'import') {
         buttons.show();
       } else {
         buttons.hide();
@@ -5758,12 +5771,13 @@
 
     var menus = {
       standard: ['info', 'selection', 'box'],
-      polygons: ['info', 'selection', 'box', 'drawing'],
+      empty: ['edit_points', 'edit_lines', 'edit_polygons'],
+      polygons: ['info', 'selection', 'box', 'edit_polygons'],
       rectangles: ['info', 'selection', 'box', 'rectangles'],
-      lines: ['info', 'selection', 'box' , 'drawing'],
+      lines: ['info', 'selection', 'box' , 'edit_lines'],
       table: ['info', 'selection'],
-      labels: ['info', 'selection', 'box', 'labels', 'location', 'add-points'],
-      points: ['info', 'selection', 'box', 'location', 'add-points']
+      labels: ['info', 'selection', 'box', 'labels', 'edit_points'],
+      points: ['info', 'selection', 'box', 'edit_points'] // , 'add-points'
     };
 
     var prompts = {
@@ -5778,11 +5792,12 @@
       box: 'shift-drag box tool',
       data: 'edit attributes',
       labels: 'position labels',
-      location: 'drag points',
+      edit_points: 'draw/edit points',
+      edit_lines: 'draw/edit lines',
+      edit_polygons: 'draw/edit polygons',
       vertices: 'edit vertices',
       selection: 'selection tool',
       'add-points': 'add points',
-      drawing: 'draw/reshape tool',
       rectangles: 'drag-to-resize',
       off: 'turn off'
     };
@@ -5791,6 +5806,7 @@
 
     // state variables
     var _editMode = 'off';
+    var _prevMode;
     var _menuOpen = false;
 
     // Only render edit mode button/menu if this option is present
@@ -5838,11 +5854,11 @@
     };
 
     this.modeUsesHitDetection = function(mode) {
-      return ['info', 'selection', 'data', 'labels', 'location', 'vertices', 'rectangles', 'drawing'].includes(mode);
+      return ['info', 'selection', 'data', 'labels', 'edit_points', 'vertices', 'rectangles', 'edit_lines', 'edit_polygons'].includes(mode);
     };
 
     this.modeUsesPopup = function(mode) {
-      return ['info', 'selection', 'data', 'box', 'labels', 'location', 'rectangles'].includes(mode);
+      return ['info', 'selection', 'data', 'box', 'labels', 'edit_points', 'rectangles'].includes(mode);
     };
 
     this.getMode = getInteractionMode;
@@ -5869,7 +5885,7 @@
     function getAvailableModes() {
       var o = gui.model.getActiveLayer();
       if (!o || !o.layer) {
-        return menus.standard; // TODO: more sensible handling of missing layer
+        return menus.empty; // TODO: more sensible handling of missing layer
       }
       if (!o.layer.geometry_type) {
         return menus.table;
@@ -5952,6 +5968,7 @@
       var changed = mode != _editMode;
       if (changed) {
         menu.classed('active', mode != 'off');
+        _prevMode = _editMode;
         _editMode = mode;
         onModeChange();
         updateArrowButton();
@@ -5962,7 +5979,7 @@
     function onModeChange() {
       var mode = getInteractionMode();
       gui.state.interaction_mode = mode;
-      gui.dispatchEvent('interaction_mode_change', {mode: mode});
+      gui.dispatchEvent('interaction_mode_change', {mode: mode, prev_mode: _prevMode});
     }
 
     // Update button highlight and selected menu item highlight (if any)
@@ -7580,11 +7597,11 @@
       test = getGraduatedCircleTest(getRadiusFunction(layer.gui.style));
     } else if (geoType == 'point') {
       test = pointTest;
-    } else if (interactionMode == 'drawing' && geoType == 'polygon') {
+    } else if (interactionMode == 'edit_polygons') {
       test = polygonVertexTest;
     } else if (
         interactionMode == 'vertices' ||
-        interactionMode == 'drawing') {
+        interactionMode == 'edit_lines') {
       test = vertexTest;
     } else if (geoType == 'polyline') {
       test = polylineTest;
@@ -7684,7 +7701,8 @@
 
     function pointTest(x, y) {
       var bullseyeDist = 2, // hit all points w/in 2 px
-          hitThreshold = 25,
+          // use small threshold when adding points
+          hitThreshold = interactionMode == 'edit_points' ? 12 : 25,
           toPx = ext.getTransform().mx,
           hits = [];
 
@@ -7899,7 +7917,9 @@
 
   function getPointerHitTest(mapLayer, ext, interactionMode, featureFilter) {
     var shapeTest, targetLayer;
-    if (!mapLayer || !internal.layerHasGeometry(mapLayer.gui?.displayLayer)) {
+    // need hit test on empty layers, in case we are drawing shapes
+    // if (!mapLayer || !internal.layerHasGeometry(mapLayer.gui?.displayLayer)) {
+    if (!mapLayer || !mapLayer.gui?.displayLayer.geometry_type) {
       return function() {return {ids: []};};
     }
     shapeTest = getShapeHitTest(mapLayer, ext, interactionMode, featureFilter);
@@ -8021,18 +8041,27 @@
     }
 
     function draggable() {
-      return interactionMode == 'vertices' || interactionMode == 'location' ||
-        interactionMode == 'labels' || interactionMode == 'drawing';
+      return interactionMode == 'vertices' || interactionMode == 'edit_points' ||
+        interactionMode == 'labels' || interactionMode == 'edit_lines' ||
+        interactionMode == 'edit_polygons';
     }
 
     function clickable() {
       // click used to pin popup and select features
       return interactionMode == 'data' || interactionMode == 'info' ||
-      interactionMode == 'selection' || interactionMode == 'rectangles';
+      interactionMode == 'selection' || interactionMode == 'rectangles' ||
+      interactionMode == 'edit_points';
     }
 
     self.getHitId = function() {
       return hitTest ? storedData.id : -1;
+    };
+
+    self.setHitId = function(id) {
+      if (storedData.id == id) return;
+      storedData.id = id;
+      storedData.ids = [id];
+      triggerHitEvent('change');
     };
 
     // Get a reference to the active layer, so listeners to hit events can interact
@@ -8169,9 +8198,9 @@
 
 
     mouse.on('click', function(e) {
+      var pinned = storedData.pinned;
       if (!hitTest || !active) return;
       if (!eventIsEnabled('click')) return;
-
       e.stopPropagation();
 
       // TODO: move pinning to inspection control?
@@ -8179,6 +8208,11 @@
         updateSelectionState(convertClickDataToSelectionData(hitTest(e)));
       }
 
+      if (pinned && interactionMode == 'edit_points') {
+        // kludge: intercept the click event if popup is turning off, so
+        // a new point doesn't get made
+        return;
+      }
       triggerHitEvent('click', e);
     }, null, priority);
 
@@ -8306,11 +8340,15 @@
       if (type == 'click' && gui.contextMenu.isOpen()) {
         return false;
       }
-      if (type == 'click' && interactionMode == 'drawing') {
+      if (type == 'click' &&
+        (interactionMode == 'edit_lines' || interactionMode == 'edit_polygons')) {
         return true; // click events are triggered even if no shape is hit
       }
-
-      if (interactionMode == 'drawing' && (type == 'hover' || type == 'dblclick')) {
+      if (type == 'click' && interactionMode == 'edit_points') {
+        return true;
+      }
+      if ((interactionMode == 'edit_lines' || interactionMode == 'edit_polygons') &&
+          (type == 'hover' || type == 'dblclick')) {
         return true; // special case -- using hover for line drawing animation
       }
 
@@ -8330,7 +8368,7 @@
     }
 
     function possiblyStopPropagation(e) {
-      if (interactionMode == 'drawing') {
+      if (interactionMode == 'edit_lines' || interactionMode == 'edit_polygons') {
         // handled conditionally in the control
         return;
       }
@@ -9527,7 +9565,7 @@
     });
 
     self.show = function(id, ids, lyr, pinned, edit) {
-      var singleEdit = edit || pinned && gui.interaction.getMode() == 'data';
+      var singleEdit = edit || pinned && !internal.layerHasAttributeData(lyr);
       var multiEdit = pinned && gui.interaction.getMode() == 'selection';
       var maxHeight = parent.node().clientHeight - 36;
 
@@ -9759,16 +9797,16 @@
       gui.session.dataValueUpdated(e.ids, e.field, e.value);
       // Refresh the display if a style variable has been changed interactively
       if (internal.isSupportedSvgStyleProperty(e.field)) {
-        // drawLayers();
         gui.dispatchEvent('map-needs-refresh');
       }
     });
 
     hit.on('contextmenu', function(e) {
       var target = hit.getHitTarget();
-      if (!e.overMap || !target) return;
-
-      if (e.mode == 'drawing') return; // TODO: make special menu for this mode
+      if (!e.overMap || !target || e.mode == 'edit_lines' ||
+          e.mode == 'edit_polygons') {
+        return;
+      }
       gui.contextMenu.open(e, hit.getHitTarget());
     });
 
@@ -10060,14 +10098,43 @@
     }
   }
 
-  function initPointDragging(gui, ext, hit) {
+  function initPointEditing(gui, ext, hit) {
     var symbolInfo;
     function active(e) {
-      return e.id > -1 && gui.interaction.getMode() == 'location';
+      return gui.interaction.getMode() == 'edit_points';
     }
 
-    hit.on('dragstart', function(e) {
+    function overPoint(e) {
+      return active(e) && e.id > -1;
+    }
+
+    gui.on('interaction_mode_change', function(e) {
+      if (e.mode == 'edit_points' && !gui.model.getActiveLayer()) {
+        addEmptyLayer(gui, undefined, 'point');
+      } else if (e.prev_mode == 'edit_points') {
+        gui.container.findChild('.map-layers').classed('add-points', false);
+      }
+
+    });
+
+    hit.on('click', function(e) {
+      if (overPoint(e) || !active(e)) return;
+      // add point
+      var p = pixToDataCoords(e.x, e.y);
+      var target = hit.getHitTarget();
+      appendNewPoint(target, p);
+      gui.dispatchEvent('point_add', {p, target});
+      gui.dispatchEvent('map-needs-refresh');
+      hit.setHitId(target.shapes.length - 1); // highlight new point
+    });
+
+    hit.on('change', function(e) {
       if (!active(e)) return;
+      gui.container.findChild('.map-layers').classed('add-points', !overPoint(e));
+    });
+
+    hit.on('dragstart', function(e) {
+      if (!overPoint(e)) return;
       var target = hit.getHitTarget();
       symbolInfo = {
         FID: e.id,
@@ -10077,36 +10144,35 @@
     });
 
     hit.on('drag', function(e) {
-      if (!active(e)) return;
+      if (!overPoint(e)) return;
       // TODO: support multi points... get id of closest part to the pointer
-      var p = getPointCoordsById(e.id, symbolInfo.target);
-      if (!p) return;
+      // var p = getPointCoordsById(e.id, symbolInfo.target);
+      var id = symbolInfo.FID;
+      var shp = symbolInfo.target.gui.displayLayer.shapes[id];
+      if (!shp) return;
       var diff = translateDeltaDisplayCoords(e.dx, e.dy, ext);
-      p[0] += diff[0];
-      p[1] += diff[1];
+      shp[0][0] += diff[0];
+      shp[0][1] += diff[1];
       gui.dispatchEvent('map-needs-refresh');
     });
 
     hit.on('dragend', function(e) {
-      if (!active(e) || !symbolInfo ) return;
-      updatePointCoords(symbolInfo.target, e.id);
+      if (!overPoint(e) || !symbolInfo ) return;
+      updatePointCoords(symbolInfo.target, symbolInfo.FID);
       symbolInfo.endCoords = getPointCoords(symbolInfo.target, e.id);
       gui.dispatchEvent('symbol_dragend', symbolInfo);
       symbolInfo = null;
     });
 
+    function pixToDataCoords(x, y) {
+      var target = hit.getHitTarget();
+      return translateDisplayPoint(target, ext.translatePixelCoords(x, y));
+    }
+
     function translateDeltaDisplayCoords(dx, dy, ext) {
       var a = ext.translatePixelCoords(0, 0);
       var b = ext.translatePixelCoords(dx, dy);
       return [b[0] - a[0], b[1] - a[1]];
-    }
-
-    function getPointCoordsById(id, layer) {
-      var coords = layer && layer.geometry_type == 'point' && layer.shapes[id];
-      if (!coords || coords.length != 1) {
-        return null;
-      }
-      return coords[0];
     }
   }
 
@@ -10148,13 +10214,17 @@
     gui.addMode('drawing_tool', turnOn, turnOff);
 
     gui.on('interaction_mode_change', function(e) {
-      gui.container.findChild('.map-layers').classed('drawing', e.mode == 'drawing');
-      var prevMode = gui.getMode();
-      if (e.mode == 'drawing') {
+      if (e.mode == 'edit_lines' || e.mode == 'edit_polygons') {
+        if (!gui.model.getActiveLayer()) {
+          addEmptyLayer(gui, undefined, e.mode == 'edit_lines' ? 'polyline' : 'polygon');
+        }
         gui.enterMode('drawing_tool');
+      } else if (gui.getMode() == 'drawing_tool') {
+        gui.clearMode();
       } else if (active()) {
         turnOff();
       }
+      updateCursor();
     }, null, 10); // higher priority than hit control, so turnOff() has correct hit target
 
     gui.on('redo_path_add', function(e) {
@@ -10201,6 +10271,7 @@
     });
 
     function turnOn() {
+      if (active()) return;
       var target = hit.getHitTarget();
       initialArcCount = target.gui.displayArcs.size();
       initialShapeCount = target.shapes.length;
@@ -10227,6 +10298,7 @@
 
     function turnOff() {
       var removed = 0;
+      var mode = gui.interaction.getMode();
       finishCurrentPath();
       if (polygonMode()) {
         removed = removeOpenPolygons();
@@ -10235,10 +10307,11 @@
       hideInstructions();
       initialArcCount = -1;
       initialShapeCount = -1;
-      if (gui.interaction.getMode() == 'drawing') {
+      if (mode == 'edit_lines' || mode == 'edit_polygons') {
         // mode change was not initiated by interactive menu -- turn off interactivity
         gui.interaction.turnOff();
       }
+      updateCursor();
       if (removed > 0) {
         fullRedraw();
       }
@@ -10406,6 +10479,7 @@
     }
 
     function updateCursor() {
+      gui.container.findChild('.map-layers').classed('drawing', active());
       var useArrow = hoverVertexInfo && !hoverVertexInfo.extendable && !drawing();
       gui.container.findChild('.map-layers').classed('dragging', useArrow);
     }
@@ -10664,38 +10738,9 @@
     }
   }
 
-  function initPointDrawing(gui, ext, hit) {
-    var mouse = gui.map.getMouse();
-
-    gui.on('interaction_mode_change', function(e) {
-      gui.container.findChild('.map-layers').classed('add-points', e.mode === 'add-points');
-    });
-
-    function active() {
-      return gui.interaction.getMode() == 'add-points';
-    }
-
-    mouse.on('click', function(e) {
-      if (!active()) return;
-      var p = pixToDataCoords(e.x, e.y);
-      var target = hit.getHitTarget();
-      appendNewPoint(target, p);
-      gui.dispatchEvent('point_add', {p, target});
-      gui.dispatchEvent('map-needs-refresh');
-    });
-
-
-    function pixToDataCoords(x, y) {
-      var target = hit.getHitTarget();
-      return translateDisplayPoint(target, ext.translatePixelCoords(x, y));
-    }
-
-  }
-
   function initInteractiveEditing(gui, ext, hit) {
     initLabelDragging(gui, ext, hit);
-    initPointDragging(gui, ext, hit);
-    initPointDrawing(gui, ext, hit);
+    initPointEditing(gui, ext, hit);
     initLineEditing(gui, ext, hit);
   }
 
@@ -12133,8 +12178,10 @@ GUI and setting the size and crop of SVG output.</p><div><input type="text" clas
         if (activeStyle) {
           turnOffBasemap();
           updateButtons();
+          closeMenu();
         }
       });
+
       fadeBtn.on('click', function() {
         if (faded) {
           mapEl.css('opacity', 1);
@@ -12161,9 +12208,17 @@ GUI and setting the size and crop of SVG output.</p><div><input type="text" clas
             showBasemap(style);
           }
           updateButtons();
+          closeMenu();
         });
         btn.appendTo(list);
       });
+    }
+
+    // close and turn off mode
+    function closeMenu() {
+      setTimeout(function() {
+        gui.clearMode();
+      }, 200);
     }
 
     function turnOffBasemap() {

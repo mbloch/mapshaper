@@ -4278,6 +4278,10 @@
     return data;
   }
 
+  function layerHasAttributeData(lyr) {
+    return lyr.data && lyr.data.getFields().length > 0;
+  }
+
   function layerHasNonNullData(lyr) {
     return lyr.data && getFirstNonEmptyRecord(lyr.data.getRecords()) ? true : false;
   }
@@ -4551,6 +4555,7 @@
     __proto__: null,
     insertFieldValues: insertFieldValues,
     getLayerDataTable: getLayerDataTable,
+    layerHasAttributeData: layerHasAttributeData,
     layerHasNonNullData: layerHasNonNullData,
     layerHasGeometry: layerHasGeometry,
     layerIsGeometric: layerIsGeometric,
@@ -18025,11 +18030,10 @@
     opts = utils.extend({}, opts);
     opts.rfc7946 = !opts.gj2008; // use RFC 7946 as the default
     var extension = opts.extension || "json";
-    var layerGroups, warn;
+    var layerGroups;
 
     if (opts.rfc7946) {
-      warn = getRFC7946Warnings(dataset);
-      if (warn) message(warn);
+      warnIfNotWgs84(dataset);
     }
 
     if (opts.file) {
@@ -18120,14 +18124,12 @@
     return feat;
   }
 
-  function getRFC7946Warnings(dataset) {
+  function warnIfNotWgs84(dataset) {
     var P = getDatasetCRS(dataset);
-    var str;
-    if (!P || !isLatLngCRS(P)) {
-      str = 'RFC 7946 warning: non-WGS84 GeoJSON output.';
-      if (P) str += ' Tip: use "-proj wgs84" to convert.';
-    }
-    return str;
+    if (P && isLatLngCRS(P) || datasetIsEmpty(dataset)) return;
+    var str = 'RFC 7946 warning: non-WGS84 GeoJSON output.';
+    if (P) str += ' Tip: use "-proj wgs84" to convert.';
+    message(str);
   }
 
   function getDatasetBbox(dataset, rfc7946) {
@@ -18397,7 +18399,7 @@
     'default': GeoJSON,
     exportGeoJSON: exportGeoJSON,
     exportLayerAsGeoJSON: exportLayerAsGeoJSON,
-    getRFC7946Warnings: getRFC7946Warnings,
+    warnIfNotWgs84: warnIfNotWgs84,
     getDatasetBbox: getDatasetBbox,
     exportDatasetAsGeoJSON: exportDatasetAsGeoJSON,
     preserveOriginalCRS: preserveOriginalCRS,
@@ -45530,7 +45532,7 @@ ${svg}
     });
   }
 
-  var version = "0.6.77";
+  var version = "0.6.78";
 
   // Parse command line args into commands and run them
   // Function takes an optional Node-style callback. A Promise is returned if no callback is given.

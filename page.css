@@ -60,8 +60,6 @@ body.map-view {
 
 .selectable,.selectable * {
 	user-select: default;
-	-webkit-user-select: text;
-	-moz-user-select: text;
 	cursor: text;
 }
 
@@ -524,6 +522,10 @@ div.alert-box {
 	vertical-align: top;
 	display: inline-block;
 	/* border: 1px solid #aaa; */
+}
+
+.info-box label {
+	cursor: pointer;
 }
 
 .sidebar-buttons {
