@@ -1475,6 +1475,7 @@
 
     async function saveSnapshot(gui) {
       var obj = await captureSnapshot(gui);
+      if (!obj) return;
       // storing an unpacked object is usually a bit faster (~20%)
       // note: we don't know the size of unpacked snapshot objects
       // obj = internal.pack(obj);
@@ -1554,12 +1555,13 @@
   }
 
   async function captureSnapshot(gui) {
-    var datasets = gui.model.getDatasets();
-    var lyr = gui.model.getActiveLayer().layer;
+    var lyr = gui.model.getActiveLayer()?.layer;
+    if (!lyr) return null; // no data -- no snapshot
+    lyr.active = true;
     // compact: true applies compression to vector coordinates, for ~30% reduction
     //   in file size in a typical polygon or polyline file, but longer processing time
     var opts = {compact: false};
-    lyr.active = true;
+    var datasets = gui.model.getDatasets();
     // console.time('msx');
     var obj = await internal.exportDatasetsToPack(datasets, opts);
     // console.timeEnd('msx')
@@ -1752,7 +1754,7 @@
       }],
       info: {}
     };
-    if (type == 'polygon' || type == 'point') {
+    if (type == 'polygon' || type == 'polyline') {
       dataset.arcs = new internal.ArcCollection();
     }
     if (crsInfo) {
@@ -1864,7 +1866,6 @@
     var initialImport = true;
     var importCount = 0;
     var importTotal = 0;
-    var overQuickView = false;
     var useQuickView = false;
     var queuedFiles = [];
     var manifestFiles = opts.files || [];
@@ -1874,50 +1875,48 @@
       catalog = new CatalogControl(gui, opts.catalog, downloadFiles);
     }
 
-    new SimpleButton('#import-buttons .submit-btn').on('click', importQueuedFiles);
-    new SimpleButton('#import-buttons .cancel-btn').on('click', gui.clearMode);
-    new DropControl(gui, 'body', receiveFiles);
-    new FileChooser('#file-selection-btn', receiveFiles);
-    new FileChooser('#import-buttons .add-btn', receiveFiles);
+    var submitBtn = new SimpleButton('#import-options .submit-btn').on('click', importQueuedFiles);
+    new SimpleButton('#import-options .cancel-btn').on('click', gui.clearMode);
+    new DropControl(gui, 'body', receiveFilesWithOption);
+    new FileChooser('#import-options .add-btn', receiveFilesWithOption);
     new FileChooser('#add-file-btn', receiveFiles);
     new SimpleButton('#add-empty-btn').on('click', function() {
       gui.clearMode(); // close import dialog
       openAddLayerPopup(gui);
     });
-    initDropArea('#import-quick-drop', true);
-    initDropArea('#import-drop');
+    // initDropArea('#import-quick-drop', true);
+    // initDropArea('#import-drop');
     gui.keyboard.onMenuSubmit(El('#import-options'), importQueuedFiles);
 
     gui.addMode('import', turnOn, turnOff);
     gui.enterMode('import');
 
-    gui.on('mode', function(e) {
-      // re-open import opts if leaving alert or console modes and nothing has been imported yet
-      if (!e.name && model.isEmpty()) {
-        gui.enterMode('import');
-      }
-    });
-
-    function initDropArea(el, isQuick) {
-      var area = El(el)
-        .on('dragleave', onout)
-        .on('dragover', function() {overQuickView = !!isQuick; onover();})
-        .on('mouseover', onover)
-        .on('mouseout', onout);
-
-      function onover() {
-        area.addClass('dragover');
-      }
-
-      function onout() {
-        overQuickView = false;
-        area.removeClass('dragover');
+    function turnOn() {
+      if (manifestFiles.length > 0) {
+        downloadFiles(manifestFiles, true);
+        manifestFiles = [];
+      } else if (model.isEmpty()) {
+        showImportMenu();
       }
     }
 
+    function turnOff() {
+      var target;
+      if (catalog) catalog.reset(); // re-enable clickable catalog
+      if (importCount > 0) {
+        onImportComplete();
+        importTotal += importCount;
+        importCount = 0;
+      }
+      gui.clearProgressMessage();
+      initialImport = false; // unset 'quick view' mode, if on
+      clearQueuedFiles();
+      hideImportMenu();
+    }
+
     async function importQueuedFiles() {
-      gui.container.removeClass('queued-files');
-      gui.container.removeClass('splash-screen');
+      // gui.container.removeClass('queued-files');
+      hideImportMenu();
       var files = queuedFiles;
       try {
         if (files.length > 0) {
@@ -1934,27 +1933,7 @@
       }
     }
 
-    function turnOn() {
-      if (manifestFiles.length > 0) {
-        downloadFiles(manifestFiles, true);
-        manifestFiles = [];
-      } else if (model.isEmpty()) {
-        gui.container.addClass('splash-screen');
-      }
-    }
 
-    function turnOff() {
-      var target;
-      if (catalog) catalog.reset(); // re-enable clickable catalog
-      if (importCount > 0) {
-        onImportComplete();
-        importTotal += importCount;
-        importCount = 0;
-      }
-      gui.clearProgressMessage();
-      initialImport = false; // unset 'quick view' mode, if on
-      clearQueuedFiles();
-    }
 
     function onImportComplete() {
       // display last layer of last imported dataset
@@ -1987,6 +1966,7 @@
       }, []);
     }
 
+
     function showQueuedFiles() {
       var list = gui.container.findChild('.dropped-file-list').empty();
       queuedFiles.forEach(function(f) {
@@ -2006,13 +1986,20 @@
           }
         });
       });
+      submitBtn.classed('disabled', queuedFiles.length === 0);
     }
 
-    async function receiveFiles(files) {
+    function receiveFilesWithOption(files) {
+      var quickView = !El('.advanced-import-options').node().checked;
+      receiveFiles(files, quickView);
+    }
+
+    async function receiveFiles(files, quickView) {
       var names = getFileNames(files);
       var expanded = [];
       if (files.length === 0) return;
-      useQuickView = importTotal === 0 && (opts.quick_view || overQuickView);
+      useQuickView = importTotal === 0 && (opts.quick_view ||
+          quickView);
       try {
         expanded = await expandFiles(files);
       } catch(e) {
@@ -2030,10 +2017,21 @@
       if (useQuickView) {
         await importQueuedFiles();
       } else {
-        gui.container.addClass('queued-files');
-        El('#path-import-options').classed('hidden', !filesMayContainPaths(queuedFiles));
-        showQueuedFiles();
+        showImportMenu();
       }
+    }
+
+    function showImportMenu() {
+      // gui.container.addClass('queued-files');
+      El('#import-options').show();
+      gui.container.classed('queued-files', queuedFiles.length > 0);
+      El('#path-import-options').classed('hidden', !filesMayContainPaths(queuedFiles));
+      showQueuedFiles();
+    }
+
+    function hideImportMenu() {
+      // gui.container.removeClass('queued-files');
+      El('#import-options').hide();
     }
 
     function getFileNames(files) {
@@ -2531,7 +2529,11 @@
     // prevent GUI message popup on error
     internal.setLoggingForCLI();
     try {
-      crs = internal.getDatasetCRS(dataset);
+      if (!dataset || internal.datasetIsEmpty(dataset)) {
+        crs = internal.parseCrsString('wgs84');
+      } else {
+        crs = internal.getDatasetCRS(dataset);
+      }
     } catch(e) {
       err = e.message;
     }
@@ -2923,6 +2925,443 @@
     return internal.findPropertiesBySymbolGeom(fields, lyr.geometry_type);
   }
 
+  // Create low-detail versions of large arc collections for faster rendering
+  // at zoomed-out scales.
+  function enhanceArcCollectionForDisplay(unfilteredArcs) {
+    var size = unfilteredArcs.getPointCount(),
+        filteredArcs, filteredSegLen;
+
+    // Only generate low-detail arcs for larger datasets
+    if (size > 5e5) {
+      update();
+    }
+
+    function update() {
+      if (unfilteredArcs.getVertexData().zz) {
+        // Use precalculated simplification data for vertex filtering, if available
+        filteredArcs = initFilteredArcs(unfilteredArcs);
+        filteredSegLen = internal.getAvgSegment(filteredArcs);
+      } else {
+        // Use fast simplification as a fallback
+        filteredSegLen = internal.getAvgSegment(unfilteredArcs) * 4;
+        filteredArcs = internal.simplifyArcsFast(unfilteredArcs, filteredSegLen);
+      }
+    }
+
+    function initFilteredArcs(arcs) {
+      var filterPct = 0.08;
+      var nth = Math.ceil(arcs.getPointCount() / 5e5);
+      var currInterval = arcs.getRetainedInterval();
+      var filterZ = arcs.getThresholdByPct(filterPct, nth);
+      var filteredArcs = arcs.setRetainedInterval(filterZ).getFilteredCopy();
+      arcs.setRetainedInterval(currInterval); // reset current simplification
+      return filteredArcs;
+    }
+
+    // TODO: better job of detecting arc change... e.g. revision number
+    unfilteredArcs.getScaledArcs = function(ext) {
+      // check for changes in the number of arcs (probably due to editing)
+      if (filteredArcs && filteredArcs.size() != unfilteredArcs.size()) {
+        // arc count has changed... probably due to editing
+        update();
+        if (filteredArcs.size() != unfilteredArcs.size()) {
+          throw Error('Internal error');
+        }
+      }
+      if (filteredArcs) {
+        // match simplification of unfiltered arcs
+        filteredArcs.setRetainedInterval(unfilteredArcs.getRetainedInterval());
+      }
+      // switch to filtered version of arcs at small scales
+      var unitsPerPixel = 1/ext.getTransform().mx,
+          useFiltering = filteredArcs && unitsPerPixel > filteredSegLen * 1.5;
+      return useFiltering ? filteredArcs : unfilteredArcs;
+    };
+  }
+
+  function getDisplayLayerForTable(tableArg) {
+    var table = tableArg || new internal.DataTable(0),
+        n = table.size(),
+        cellWidth = 12,
+        cellHeight = 5,
+        gutter = 6,
+        arcs = [],
+        shapes = [],
+        aspectRatio = 1.1,
+        x, y, col, row, blockSize;
+
+    if (n > 10000) {
+      arcs = null;
+      gutter = 0;
+      cellWidth = 4;
+      cellHeight = 4;
+      aspectRatio = 1.45;
+    } else if (n > 5000) {
+      cellWidth = 5;
+      gutter = 3;
+      aspectRatio = 1.45;
+    } else if (n > 1000) {
+      gutter = 3;
+      cellWidth = 8;
+      aspectRatio = 1.3;
+    }
+
+    if (n < 25) {
+      blockSize = n;
+    } else {
+      blockSize = Math.sqrt(n * (cellWidth + gutter) / cellHeight / aspectRatio) | 0;
+    }
+
+    for (var i=0; i<n; i++) {
+      row = i % blockSize;
+      col = Math.floor(i / blockSize);
+      x = col * (cellWidth + gutter);
+      y = cellHeight * (blockSize - row);
+      if (arcs) {
+        arcs.push(getArc(x, y, cellWidth, cellHeight));
+        shapes.push([[i]]);
+      } else {
+        shapes.push([[x, y]]);
+      }
+    }
+
+    function getArc(x, y, w, h) {
+      return [[x, y], [x + w, y], [x + w, y - h], [x, y - h], [x, y]];
+    }
+
+    return {
+      layer: {
+        geometry_type: arcs ? 'polygon' : 'point',
+        shapes: shapes,
+        data: table
+      },
+      arcs: arcs ? new internal.ArcCollection(arcs) : null
+    };
+  }
+
+  var R = 6378137;
+  var D2R = Math.PI / 180;
+  var R2D = 180 / Math.PI;
+
+  // Assumes projections are available
+
+  function needReprojectionForDisplay(sourceCRS, displayCRS) {
+    if (!sourceCRS || !displayCRS) {
+      return false;
+    }
+    if (internal.crsAreEqual(sourceCRS, displayCRS)) {
+      return false;
+    }
+    return true;
+  }
+
+  // bbox in wgs84 coords
+  // dest: CRS, which may also be wgs84
+  function projectLatLonBBox(bbox, dest) {
+    if (!dest || internal.isWGS84(dest)) {
+      return bbox.concat();
+    }
+    var proj = internal.getProjTransform2(internal.parseCrsString('wgs84'), dest);
+    var bbox2 = proj(bbox[0], bbox[1]).concat(proj(bbox[2], bbox[3]));
+    return bbox2;
+  }
+
+  function projectArcsForDisplay(arcs, src, dest) {
+    var copy = arcs.getCopy(); // need to flatten first?
+    var destIsWebMerc = internal.isWebMercator(dest);
+    if (destIsWebMerc && internal.isWebMercator(src)) {
+      return copy;
+    }
+
+    var wgs84 = internal.parseCrsString('wgs84');
+    var toWGS84 = internal.getProjTransform2(src, wgs84);
+    var fromWGS84 = internal.getProjTransform2(wgs84, dest);
+
+    try {
+      // first try projectArcs() -- it's fast and preserves arc ids
+      // (so vertex editing doesn't break)
+      if (!internal.isWGS84(src)) {
+        // use wgs84 as a pivot CRS, so we can handle polar coordinates
+        // that can't be projected to Mercator
+        internal.projectArcs(copy, toWGS84);
+      }
+      if (destIsWebMerc) {
+        // handle polar points by clamping them to they will project
+        // (downside: may cause unexpected behavior when editing vertices interactively)
+        clampY(copy);
+      }
+      internal.projectArcs(copy, fromWGS84);
+    } catch(e) {
+      console.error(e);
+      // use the more robust projectArcs2 if projectArcs throws an error
+      // downside: projectArcs2 discards Z values and changes arc indexing,
+      // which will break vertex editing.
+      var reproject = internal.getProjTransform2(src, dest);
+      copy = arcs.getCopy();
+      internal.projectArcs2(copy, reproject);
+    }
+    return copy;
+  }
+
+  function clampY(arcs) {
+    var max = 89.9,
+        min = -89.9,
+        bbox = arcs.getBounds().toArray();
+    if (bbox[1] >= min && bbox[3] <= max) return;
+    arcs.transformPoints(function(x, y) {
+      if (y > max) return [x, max];
+      if (y < min) return [x, min];
+    });
+  }
+
+  function projectPointsForDisplay(lyr, src, dest) {
+    var copy = utils$1.extend({}, lyr);
+    var proj = internal.getProjTransform2(src, dest);
+    copy.shapes = internal.cloneShapes(lyr.shapes);
+    internal.projectPointLayer(copy, proj);
+    return copy;
+  }
+
+
+  function toWebMercator(lng, lat) {
+    var k = Math.cos(lat * D2R);
+    var x = R * lng * D2R;
+    var y = R * Math.log(Math.tan(Math.PI * 0.25 + lat * D2R * 0.5));
+    return [x, y];
+  }
+
+  function fromWebMercator(x, y) {
+    var lon = x / R * R2D;
+    var lat = R2D * (Math.PI * 0.5 - 2 * Math.atan(Math.exp(-y / R)));
+    return [lon, lat];
+  }
+
+  function scaleToZoom(metersPerPix) {
+    return Math.log(40075017 / 512 / metersPerPix) / Math.log(2);
+  }
+
+  function getMapboxBounds() {
+    var ymax = toWebMercator(0, 84)[1];
+    var ymin = toWebMercator(0, -84)[1];
+    return [-Infinity, ymin, Infinity, ymax];
+  }
+
+
+  // Update map extent and trigger redraw, after a new display CRS has been applied
+  function projectMapExtent(ext, src, dest, newBounds) {
+    var oldBounds = ext.getBounds();
+    var oldScale = ext.scale();
+    var newCP, proj, strictBounds;
+
+    if (dest && internal.isWebMercator(dest)) {
+      // clampToMapboxBounds(newBounds);
+      strictBounds = getMapboxBounds();
+    }
+
+    // if source or destination CRS is unknown, show full extent
+    // if map is at full extent, show full extent
+    // TODO: handle case that scale is 1 and map is panned away from center
+    if (ext.scale() == 1 || !dest) {
+      ext.setFullBounds(newBounds, strictBounds);
+      ext.reset();
+    } else {
+      // if map is zoomed, stay centered on the same geographic location, at the same relative scale
+      proj = internal.getProjTransform2(src, dest);
+      newCP = proj(oldBounds.centerX(), oldBounds.centerY());
+      ext.setFullBounds(newBounds, strictBounds);
+      if (!newCP) {
+        // projection of center point failed; use center of bounds
+        // (also consider just resetting the view using ext.home())
+        newCP = [newBounds.centerX(), newBounds.centerY()];
+      }
+      ext.recenter(newCP[0], newCP[1], oldScale);
+    }
+    // trigger full redraw, in case some SVG symbols are unprojectable
+    ext.dispatchEvent('change', {redraw: true});
+  }
+
+  // Called from console; for testing dynamic crs
+  function setDisplayProjection(gui, cmd) {
+    var arg = cmd.replace(/^projd[ ]*/, '');
+    if (arg) {
+      gui.map.setDisplayCRS(internal.parseCrsString(arg));
+    } else {
+      gui.map.setDisplayCRS(null);
+    }
+  }
+
+  function filterLayerByIds(lyr, ids) {
+    var shapes;
+    if (lyr.shapes) {
+      shapes = ids.map(function(id) {
+        return lyr.shapes[id];
+      });
+      return utils$1.defaults({shapes: shapes, data: null}, lyr);
+    }
+    return lyr;
+  }
+
+  function formatLayerNameForDisplay(name) {
+    return name || '[unnamed]';
+  }
+
+  function cleanLayerName(raw) {
+    return raw.replace(/[\n\t/\\]/g, '')
+      .replace(/^[.\s]+/, '').replace(/[.\s]+$/, '');
+  }
+
+  function updateLayerStackOrder(layers) {
+    // 1. assign ascending ids to unassigned layers above the range of other layers
+    layers.forEach(function(o, i) {
+      if (!o.layer.menu_order) o.layer.menu_order = 1e6 + i;
+    });
+    // 2. sort in ascending order
+    layers.sort(function(a, b) {
+      return a.layer.menu_order - b.layer.menu_order;
+    });
+    // 3. assign consecutve ids
+    layers.forEach(function(o, i) {
+      o.layer.menu_order = i + 1;
+    });
+    return layers;
+  }
+
+  function sortLayersForMenuDisplay(layers) {
+    layers = updateLayerStackOrder(layers);
+    return layers.reverse();
+  }
+
+  // lyr: a map layer with gui property
+  // displayCRS: CRS to use for display, or null (which clears any current display CRS)
+  function projectLayerForDisplay(lyr, displayCRS) {
+    var crsInfo = getDatasetCrsInfo(lyr.gui.source.dataset);
+    var sourceCRS = crsInfo.crs || null; // let enhanceLayerForDisplay() handle null case
+    if (!lyr.gui.geographic) {
+      return;
+    }
+    if (lyr.gui.dynamic_crs && internal.crsAreEqual(sourceCRS, lyr.gui.dynamic_crs)) {
+      return;
+    }
+    var gui = lyr.gui;
+    enhanceLayerForDisplay(lyr, lyr.gui.source.dataset, {crs: displayCRS});
+    utils$1.defaults(lyr.gui, gui); // re-apply any properties that were lost (e.g. svg_id)
+    if (lyr.gui.style?.ids) {
+      // re-apply layer filter
+      lyr.gui.displayLayer = filterLayerByIds(lyr.gui.displayLayer, lyr.gui.style.ids);
+    }
+  }
+
+
+  // Supplement a layer with information needed for rendering
+  function enhanceLayerForDisplay(layer, dataset, opts) {
+    var gui = {
+      empty: internal.getFeatureCount(layer) === 0,
+      geographic: false,
+      displayArcs: null,
+      displayLayer: null,
+      source: {dataset},
+      bounds: null,
+      style: null,
+      dynamic_crs: null,
+      invertPoint: null,
+      projectPoint: null
+    };
+
+    var displayCRS = opts.crs || null;
+    // display arcs may have been generated when another layer in the dataset
+    // was converted for display... re-use if available
+    var displayArcs = dataset.gui?.displayArcs;
+    var unprojectable = false;
+    var sourceCRS;
+    var emptyArcs;
+
+    if (displayCRS && layer.geometry_type) {
+      var crsInfo = getDatasetCrsInfo(dataset);
+      if (crsInfo.error) {
+        // unprojectable dataset -- return empty layer
+        gui.unprojectable = true;
+      } else {
+        sourceCRS = crsInfo.crs;
+      }
+    }
+
+    // Assume that dataset.displayArcs is in the display CRS
+    // (it must be deleted upstream if reprojection is needed)
+    // if (!obj.empty && dataset.arcs && !displayArcs) {
+    if (dataset.arcs && !displayArcs && !gui.unprojectable) {
+      // project arcs, if needed
+      if (needReprojectionForDisplay(sourceCRS, displayCRS)) {
+        displayArcs = projectArcsForDisplay(dataset.arcs, sourceCRS, displayCRS);
+      } else {
+        // Use original arcs for display if there is no dynamic reprojection
+        displayArcs = dataset.arcs;
+      }
+
+      enhanceArcCollectionForDisplay(displayArcs);
+      dataset.gui = {displayArcs}; // stash these in the dataset for other layers to use
+    }
+
+    if (internal.layerHasFurniture(layer)) {
+      // TODO: consider how to render furniture in GUI
+      // treating furniture layers (other than frame) as tabular for now,
+      // so there is something to show if they are selected
+    }
+
+    if (gui.unprojectable) {
+      gui.displayLayer = {shapes: []}; // TODO: improve
+    } else if (layer.geometry_type) {
+      gui.geographic = true;
+      gui.displayLayer = layer;
+      gui.displayArcs = displayArcs;
+    } else {
+      var table = getDisplayLayerForTable(layer.data);
+      gui.tabular = true;
+      gui.displayLayer = table.layer;
+      gui.displayArcs = table.arcs;
+    }
+
+    // dynamic reprojection (arcs were already reprojected above)
+    if (gui.geographic && needReprojectionForDisplay(sourceCRS, displayCRS)) {
+      gui.dynamic_crs = displayCRS;
+      gui.invertPoint = internal.getProjTransform2(displayCRS, sourceCRS);
+      gui.projectPoint = internal.getProjTransform2(sourceCRS, displayCRS);
+      if (internal.layerHasPoints(layer)) {
+        gui.displayLayer = projectPointsForDisplay(layer, sourceCRS, displayCRS);
+      } else if (internal.layerHasPaths(layer)) {
+        emptyArcs = findEmptyArcs(displayArcs);
+        if (emptyArcs.length > 0) {
+          // Don't try to draw paths containing coordinates that failed to project
+          gui.displayLayer = internal.filterPathLayerByArcIds(gui.displayLayer, emptyArcs);
+        }
+      }
+    }
+
+    gui.bounds = getDisplayBounds(gui.displayLayer, gui.displayArcs);
+    layer.gui = gui;
+  }
+
+  function getDisplayBounds(lyr, arcs) {
+    var bounds = internal.getLayerBounds(lyr, arcs) || new Bounds();
+    if (lyr.geometry_type == 'point' && arcs && bounds.hasBounds() && bounds.area() > 0 === false) {
+      // if a point layer has no extent (e.g. contains only a single point),
+      // then merge with arc bounds, to place the point in context.
+      bounds = bounds.mergeBounds(arcs.getBounds());
+    }
+    return bounds;
+  }
+
+  // Returns an array of ids of empty arcs (arcs can be set to empty if errors occur while projecting them)
+  function findEmptyArcs(arcs) {
+    var nn = arcs.getVertexData().nn;
+    var ids = [];
+    for (var i=0, n=nn.length; i<n; i++) {
+      if (nn[i] === 0) {
+        ids.push(i);
+      }
+    }
+    return ids;
+  }
+
   function flattenArcs(lyr) {
     lyr.gui.source.dataset.arcs.flatten();
     if (isProjectedLayer(lyr)) {
@@ -2974,6 +3413,19 @@
     }, {});
   }
 
+  // p1, p2: two points in source data CRS coords.
+  function appendNewPath(lyr, p1, p2) {
+    var arcId = lyr.gui.displayArcs.size();
+    internal.appendEmptyArc(lyr.gui.displayArcs);
+    lyr.shapes.push([[arcId]]);
+    if (isProjectedLayer(lyr)) {
+      internal.appendEmptyArc(lyr.gui.source.dataset.arcs);
+    }
+    appendVertex$1(lyr, p1);
+    appendVertex$1(lyr, p2);
+    appendNewDataRecord(lyr);
+  }
+
   function deleteLastPath(lyr) {
     var arcId = lyr.gui.displayArcs.size() - 1;
     if (lyr.data) {
@@ -2986,17 +3438,26 @@
     }
   }
 
-  // p1, p2: two points in source data CRS coords.
-  function appendNewPath(lyr, p1, p2) {
-    var arcId = lyr.gui.displayArcs.size();
-    internal.appendEmptyArc(lyr.gui.displayArcs);
-    lyr.shapes.push([[arcId]]);
-    if (isProjectedLayer(lyr)) {
-      internal.appendEmptyArc(lyr.gui.source.dataset.arcs);
+  // p: one point in source data coords
+  function appendNewPoint(lyr, p) {
+    lyr.shapes.push([p]);
+    if (lyr.data) {
+      appendNewDataRecord(lyr);
     }
-    appendVertex$1(lyr, p1);
-    appendVertex$1(lyr, p2);
-    appendNewDataRecord(lyr);
+    // this reprojects all the points... TODO: improve
+    if (isProjectedLayer(lyr)) {
+      projectLayerForDisplay(lyr, lyr.gui.dynamic_crs);
+    }
+  }
+
+  function deleteLastPoint(lyr) {
+    if (lyr.data) {
+      lyr.data.getRecords().pop();
+    }
+    lyr.shapes.pop();
+    if (isProjectedLayer(lyr)) {
+      lyr.gui.displayLayer.shapes.pop();
+    }
   }
 
   // p: point in source data CRS coords.
@@ -3016,6 +3477,7 @@
   function deleteLastVertex(lyr) {
     deleteVertex$1(lyr, lyr.gui.displayArcs.getPointCount() - 1);
   }
+
 
   function deleteVertex$1(lyr, id) {
     internal.deleteVertex(lyr.gui.displayArcs, id);
@@ -3126,6 +3588,7 @@
     var el = gui.container.findChild('.simplify-control-wrapper');
     var menu = gui.container.findChild('.simplify-options');
     var slider, text, fromPct;
+    var menuBtn = gui.container.findChild('.simplify-btn').addClass('disabled');
 
     // init settings menu
     new SimpleButton(menu.findChild('.submit-btn').addClass('default-btn')).on('click', onSubmit);
@@ -3147,10 +3610,13 @@
     gui.keyboard.onMenuSubmit(menu, onSubmit);
 
     // init simplify button and mode
-    gui.addMode('simplify', turnOn, turnOff, gui.container.findChild('.simplify-btn'));
-    model.on('select', function() {
+    gui.addMode('simplify', turnOn, turnOff, menuBtn);
+
+    model.on('update', function() {
+      menuBtn.classed('disabled', !model.getActiveLayer());
       if (gui.getMode() == 'simplify') gui.clearMode();
     });
+
 
     // exit simplify mode when user clicks off the visible part of the menu
     menu.on('click', GUI.handleDirectEvent(gui.clearMode));
@@ -3331,144 +3797,6 @@
     }
   };
 
-  var R = 6378137;
-  var D2R = Math.PI / 180;
-  var R2D = 180 / Math.PI;
-
-  // Assumes projections are available
-
-  function needReprojectionForDisplay(sourceCRS, displayCRS) {
-    if (!sourceCRS || !displayCRS) {
-      return false;
-    }
-    if (internal.crsAreEqual(sourceCRS, displayCRS)) {
-      return false;
-    }
-    return true;
-  }
-
-  function projectArcsForDisplay(arcs, src, dest) {
-    var copy = arcs.getCopy(); // need to flatten first?
-    var destIsWebMerc = internal.isWebMercator(dest);
-    if (destIsWebMerc && internal.isWebMercator(src)) {
-      return copy;
-    }
-
-    var wgs84 = internal.parseCrsString('wgs84');
-    var toWGS84 = internal.getProjTransform2(src, wgs84);
-    var fromWGS84 = internal.getProjTransform2(wgs84, dest);
-
-    try {
-      // first try projectArcs() -- it's fast and preserves arc ids
-      // (so vertex editing doesn't break)
-      if (!internal.isWGS84(src)) {
-        // use wgs84 as a pivot CRS, so we can handle polar coordinates
-        // that can't be projected to Mercator
-        internal.projectArcs(copy, toWGS84);
-      }
-      if (destIsWebMerc) {
-        // handle polar points by clamping them to they will project
-        // (downside: may cause unexpected behavior when editing vertices interactively)
-        clampY(copy);
-      }
-      internal.projectArcs(copy, fromWGS84);
-    } catch(e) {
-      console.error(e);
-      // use the more robust projectArcs2 if projectArcs throws an error
-      // downside: projectArcs2 discards Z values and changes arc indexing,
-      // which will break vertex editing.
-      var reproject = internal.getProjTransform2(src, dest);
-      copy = arcs.getCopy();
-      internal.projectArcs2(copy, reproject);
-    }
-    return copy;
-  }
-
-  function clampY(arcs) {
-    var max = 89.9,
-        min = -89.9,
-        bbox = arcs.getBounds().toArray();
-    if (bbox[1] >= min && bbox[3] <= max) return;
-    arcs.transformPoints(function(x, y) {
-      if (y > max) return [x, max];
-      if (y < min) return [x, min];
-    });
-  }
-
-  function projectPointsForDisplay(lyr, src, dest) {
-    var copy = utils$1.extend({}, lyr);
-    var proj = internal.getProjTransform2(src, dest);
-    copy.shapes = internal.cloneShapes(lyr.shapes);
-    internal.projectPointLayer(copy, proj);
-    return copy;
-  }
-
-
-  function toWebMercator(lng, lat) {
-    var k = Math.cos(lat * D2R);
-    var x = R * lng * D2R;
-    var y = R * Math.log(Math.tan(Math.PI * 0.25 + lat * D2R * 0.5));
-    return [x, y];
-  }
-
-  function fromWebMercator(x, y) {
-    var lon = x / R * R2D;
-    var lat = R2D * (Math.PI * 0.5 - 2 * Math.atan(Math.exp(-y / R)));
-    return [lon, lat];
-  }
-
-  function scaleToZoom(metersPerPix) {
-    return Math.log(40075017 / 512 / metersPerPix) / Math.log(2);
-  }
-
-  function getMapboxBounds() {
-    var ymax = toWebMercator(0, 84)[1];
-    var ymin = toWebMercator(0, -84)[1];
-    return [-Infinity, ymin, Infinity, ymax];
-  }
-
-
-  // Update map extent and trigger redraw, after a new display CRS has been applied
-  function projectMapExtent(ext, src, dest, newBounds) {
-    var oldBounds = ext.getBounds();
-    var oldScale = ext.scale();
-    var newCP, proj, strictBounds;
-
-    if (dest && internal.isWebMercator(dest)) {
-      // clampToMapboxBounds(newBounds);
-      strictBounds = getMapboxBounds();
-    }
-
-    // if source or destination CRS is unknown, show full extent
-    // if map is at full extent, show full extent
-    // TODO: handle case that scale is 1 and map is panned away from center
-    if (ext.scale() == 1 || !dest) {
-      ext.setFullBounds(newBounds, strictBounds);
-      ext.home(); // sets full extent and triggers redraw
-    } else {
-      // if map is zoomed, stay centered on the same geographic location, at the same relative scale
-      proj = internal.getProjTransform2(src, dest);
-      newCP = proj(oldBounds.centerX(), oldBounds.centerY());
-      ext.setFullBounds(newBounds, strictBounds);
-      if (!newCP) {
-        // projection of center point failed; use center of bounds
-        // (also consider just resetting the view using ext.home())
-        newCP = [newBounds.centerX(), newBounds.centerY()];
-      }
-      ext.recenter(newCP[0], newCP[1], oldScale);
-    }
-  }
-
-  // Called from console; for testing dynamic crs
-  function setDisplayProjection(gui, cmd) {
-    var arg = cmd.replace(/^projd[ ]*/, '');
-    if (arg) {
-      gui.map.setDisplayCRS(internal.parseCrsString(arg));
-    } else {
-      gui.map.setDisplayCRS(null);
-    }
-  }
-
   function Console(gui) {
     var model = gui.model;
     var CURSOR = '$ ';
@@ -3537,7 +3865,8 @@
     }
 
     function turnOn() {
-      if (!_isOpen && !model.isEmpty()) {
+      // if (!_isOpen && !model.isEmpty()) {
+      if (!_isOpen) {
         btn.addClass('active');
         _isOpen = true;
         // use console for messages while open
@@ -3876,8 +4205,8 @@
 
     function applyParsedCommands(commands, done) {
       var active = model.getActiveLayer(),
-          prevArcs = active.dataset.arcs,
-          prevTable = active.layer.data,
+          prevArcs = active?.dataset.arcs,
+          prevTable = active?.layer.data,
           prevTableSize = prevTable ? prevTable.size() : 0,
           prevArcCount = prevArcs ? prevArcs.size() : 0,
           job = new internal.Job(model);
@@ -3886,9 +4215,9 @@
       internal.runParsedCommands(commands, job, function(err) {
         var flags = getCommandFlags(commands),
             active2 = model.getActiveLayer(),
-            postArcs = active2.dataset.arcs,
+            postArcs = active2?.dataset.arcs,
             postArcCount = postArcs ? postArcs.size() : 0,
-            postTable = active2.layer.data,
+            postTable = active2?.layer.data,
             postTableSize = postTable ? postTable.size() : 0,
             sameTable = prevTable == postTable && prevTableSize == postTableSize,
             sameArcs = prevArcs == postArcs && postArcCount == prevArcCount;
@@ -3901,7 +4230,7 @@
         if (sameTable) {
           flags.same_table = true;
         }
-        if (active.layer != active2.layer) {
+        if (active && active?.layer == active2?.layer) {
           // this can get set after some commands that don't set a new target
           // (e.g. -dissolve)
           flags.select = true;
@@ -3916,10 +4245,10 @@
     function onError(err) {
       if (utils$1.isString(err)) {
         consoleStop(err);
-      } else if (err.name == 'UserError') {
+      } else if (err.name == 'UserError' ) {
         // stop() has already been called, don't need to log
+        console.error(err.stack);
       } else if (err.name) {
-        // log stack trace to browser console
         console.error(err.stack);
         // log to console window
         consoleWarning(err.message);
@@ -4102,6 +4431,7 @@
         return;
       }
       var e = model.getActiveLayer();
+      if (!e) return;
       if (internal.layerHasPaths(e.layer)) {
         el.show();
         checkBtn.show();
@@ -4180,47 +4510,6 @@
 
   utils$1.inherit(RepairControl, EventDispatcher);
 
-  function filterLayerByIds(lyr, ids) {
-    var shapes;
-    if (lyr.shapes) {
-      shapes = ids.map(function(id) {
-        return lyr.shapes[id];
-      });
-      return utils$1.defaults({shapes: shapes, data: null}, lyr);
-    }
-    return lyr;
-  }
-
-  function formatLayerNameForDisplay(name) {
-    return name || '[unnamed]';
-  }
-
-  function cleanLayerName(raw) {
-    return raw.replace(/[\n\t/\\]/g, '')
-      .replace(/^[.\s]+/, '').replace(/[.\s]+$/, '');
-  }
-
-  function updateLayerStackOrder(layers) {
-    // 1. assign ascending ids to unassigned layers above the range of other layers
-    layers.forEach(function(o, i) {
-      if (!o.layer.menu_order) o.layer.menu_order = 1e6 + i;
-    });
-    // 2. sort in ascending order
-    layers.sort(function(a, b) {
-      return a.layer.menu_order - b.layer.menu_order;
-    });
-    // 3. assign consecutve ids
-    layers.forEach(function(o, i) {
-      o.layer.menu_order = i + 1;
-    });
-    return layers;
-  }
-
-  function sortLayersForMenuDisplay(layers) {
-    layers = updateLayerStackOrder(layers);
-    return layers.reverse();
-  }
-
   async function saveFileContentToClipboard(content) {
     var str = utils$1.isString(content) ? content : content.toString();
     await navigator.clipboard.writeText(str);
@@ -4233,7 +4522,7 @@
     var menu = gui.container.findChild('.export-options').on('click', GUI.handleDirectEvent(gui.clearMode));
     var layersArr = [];
     var toggleBtn = null; // checkbox <input> for toggling layer selection
-    var exportBtn = gui.container.findChild('.export-btn');
+    var exportBtn = gui.container.findChild('.export-btn').addClass('disabled');
     var ofileName = gui.container.findChild('#ofile-name');
     new SimpleButton(menu.findChild('.close2-btn')).on('click', gui.clearMode);
 
@@ -4247,6 +4536,10 @@
       };
       return;
     }
+
+    model.on('update', function() {
+      exportBtn.classed('disabled', !model.getActiveLayer());
+    });
 
     new SimpleButton(menu.findChild('#export-btn').addClass('default-btn')).on('click', onExportClick);
     gui.addMode('export', turnOn, turnOff, exportBtn);
@@ -4578,6 +4871,14 @@
     var layerOrderSlug;
 
     gui.addMode('layer_menu', turnOn, turnOff, btn.findChild('.header-btn'));
+
+    // kludge to show menu button after initial import dialog is dismissed
+    gui.on('mode', function(e) {
+      if (!e.name) {
+        updateMenuBtn();
+      }
+    });
+
     model.on('update', function(e) {
       updateMenuBtn();
       if (isOpen) render();
@@ -4668,8 +4969,9 @@
     }
 
     function updateMenuBtn() {
-      var lyrName = model.getActiveLayer().layer.name || '';
-      var menuTitle = lyrName || '[unnamed layer]';
+      var lyr = model.getActiveLayer()?.layer;
+      var lyrName = lyr?.name || '';
+      var menuTitle = lyrName || lyr && '[unnamed layer]' || '[no data]';
       var pageTitle = lyrName || 'mapshaper';
       btn.classed('active', 'true').findChild('.layer-name').html(menuTitle + " &nbsp;&#9660;");
       window.document.title = pageTitle;
@@ -4681,6 +4983,8 @@
     }
 
     function renderSourceFileList() {
+      el.findChild('.no-layer-note').classed('hidden', model.getActiveLayer());
+      el.findChild('.source-file-section').classed('hidden', !model.getActiveLayer());
       var list = el.findChild('.file-list');
       var files = [];
       list.empty();
@@ -5198,6 +5502,16 @@
       addHistoryState(undo, redo);
     });
 
+    gui.on('point_add', function(e) {
+      var redo = function() {
+        appendNewPoint(e.data.target, e.p);
+      };
+      var undo = function() {
+        deleteLastPoint(e.data.target);
+      };
+      addHistoryState(undo, redo);
+    });
+
     gui.on('path_add', function(e) {
       var redo = function() {
         gui.dispatchEvent('redo_path_add', {p1: e.p1, p2: e.p2});
@@ -5266,6 +5580,7 @@
     var _hidden = true;
     gui.on('active', updateVisibility);
     gui.on('inactive', updateVisibility);
+    gui.model.on('update', updateVisibility);
 
     // @iconRef: selector for an (svg) button icon
     this.addButton = function(iconRef) {
@@ -5294,7 +5609,7 @@
     };
 
     function updateVisibility() {
-      if (GUI.isActiveInstance(gui) && !_hidden) {
+      if (GUI.isActiveInstance(gui) && !_hidden && !!gui.model.getActiveLayer()) {
         buttons.show();
       } else {
         buttons.hide();
@@ -5315,6 +5630,7 @@
     });
 
     btn.on('click', function() {
+      if (btn.hasClass('disabled')) return;
       modes.enterMode(active ? null : name);
     });
   }
@@ -5389,14 +5705,16 @@
     var ctrlDown = false;
     document.addEventListener('keyup', function(e) {
       if (!GUI.isActiveInstance(gui)) return;
-      if (e.keyCode == 16) shiftDown = false;
+      // this can fail to fire if keyup occurs over a context menu
+      // if (e.keyCode == 16) shiftDown = false;
+      shiftDown = e.shiftKey;
       if (e.keyCode == 17) ctrlDown = false;
       self.dispatchEvent('keyup', getEventData(e));
     });
 
     document.addEventListener('keydown', function(e) {
       if (!GUI.isActiveInstance(gui)) return;
-      if (e.keyCode == 16) shiftDown = true;
+      shiftDown = e.shiftKey;
       if (e.keyCode == 17) ctrlDown = true;
       self.dispatchEvent('keydown', getEventData(e));
     });
@@ -7621,9 +7939,12 @@
     var priority = 2;
 
     mouse.on('contextmenu', function(e) {
-      if (isOverMap(e)) {
-        e.originalEvent.preventDefault();
+      // shift key enables default menu (for development)
+      if (gui.keyboard.shiftIsPressed()) {
+        return;
       }
+      e.originalEvent.preventDefault();
+      if (!targetLayer) return; // TODO: enable menu on empty map
       triggerHitEvent('contextmenu', e);
     }, false);
 
@@ -7667,7 +7988,6 @@
     };
 
     function updateHitTest(featureFilter) {
-      if (!hoverable()) return;
       hitTest = getPointerHitTest(targetLayer, ext, interactionMode, featureFilter);
     }
 
@@ -7688,7 +8008,7 @@
     }
 
     function hoverable() {
-      return true;
+      return !!interactionMode;
     }
 
     function selectable() {
@@ -7864,6 +8184,7 @@
 
     // Hits are re-detected on 'hover' (if hit detection is active)
     mouse.on('hover', function(e) {
+      if (gui.contextMenu.isOpen()) return;
       handlePointerEvent(e);
       if (storedData.pinned || !hitTest || !active) return;
       if (e.hover && isOverMap(e)) {
@@ -7979,10 +8300,6 @@
     // check if an event is used in the current interaction mode
     function eventIsEnabled(type) {
       if (!active) return false;
-      if (interactionMode == 'drawing' && (type == 'hover' || type == 'dblclick')) {
-        return true; // special case -- using hover for line drawing animation
-      }
-
       if (type == 'click' && gui.keyboard.ctrlIsPressed()) {
         return false; // don't fire if context menu might open
       }
@@ -7991,6 +8308,10 @@
       }
       if (type == 'click' && interactionMode == 'drawing') {
         return true; // click events are triggered even if no shape is hit
+      }
+
+      if (interactionMode == 'drawing' && (type == 'hover' || type == 'dblclick')) {
+        return true; // special case -- using hover for line drawing animation
       }
 
       // ignore pointer events when no features are being hit
@@ -8848,7 +9169,7 @@
     }
 
     gui.on('map_reset', function() {
-      ext.home();
+      ext.reset(true);
     });
 
     zoomTween.on('change', function(e) {
@@ -8866,8 +9187,9 @@
 
     mouse.on('dragstart', function(e) {
       if (disabled()) return;
-      if (!internal.layerHasGeometry(gui.model.getActiveLayer().layer)) return;
-      // zoomDrag = !!e.metaKey || !!e.ctrlKey; // meta is command on mac, windows key on windows
+      // allow drawing rectangles if active layer is empty
+      // var lyr = gui.model.getActiveLayer()?.layer;
+      // if (lyr && !internal.layerHasGeometry(lyr)) return;
       shiftDrag = !!e.shiftKey;
       if (shiftDrag) {
         if (useBoxZoom()) zoomBox.turnOn();
@@ -10355,25 +10677,18 @@
 
     mouse.on('click', function(e) {
       if (!active()) return;
-      addPoint(e.x, e.y);
+      var p = pixToDataCoords(e.x, e.y);
+      var target = hit.getHitTarget();
+      appendNewPoint(target, p);
+      gui.dispatchEvent('point_add', {p, target});
       gui.dispatchEvent('map-needs-refresh');
     });
 
-    // x, y: pixel coordinates
-    function addPoint(x, y) {
-      var p = ext.translatePixelCoords(x, y);
-      var lyr = hit.getHitTarget();
-      var fid = lyr.shapes.length;
-      var d = appendNewDataRecord(lyr);
-      if (d) {
-        // this seems to work even for projected layers -- the data tables
-        // of projected and original data seem to be shared.
-        lyr.data.getRecords()[fid] = d;
-      }
-      lyr.shapes[fid] = [p];
-      updatePointCoords(lyr, fid);
-    }
 
+    function pixToDataCoords(x, y) {
+      var target = hit.getHitTarget();
+      return translateDisplayPoint(target, ext.translatePixelCoords(x, y));
+    }
 
   }
 
@@ -10394,26 +10709,32 @@
 
     _position.on('resize', function(e) {
       if (ready()) {
-        triggerChangeEvent({resize: true});
+        // triggerChangeEvent({resize: true});
+        triggerChangeEvent();
       }
     });
 
     function ready() { return !!_fullBounds; }
 
-    this.reset = function() {
+    this.reset = function(fire) {
       if (!ready()) return;
-      recenter(_fullBounds.centerX(), _fullBounds.centerY(), 1, {reset: true});
+      recenter(_fullBounds.centerX(), _fullBounds.centerY(), 1);
+      if (fire) {
+        triggerChangeEvent();
+      }
     };
 
     this.home = function() {
       if (!ready()) return;
       recenter(_fullBounds.centerX(), _fullBounds.centerY(), 1);
+      triggerChangeEvent();
     };
 
     this.pan = function(xpix, ypix) {
       if (!ready()) return;
       var t = this.getTransform();
       recenter(_cx - xpix / t.mx, _cy - ypix / t.my);
+      triggerChangeEvent();
     };
 
     // Zoom to @w (width of the map viewport in coordinates)
@@ -10436,6 +10757,7 @@
           cx = fx + dx2,
           cy = fy + dy2;
       recenter(cx, cy, scale);
+      triggerChangeEvent();
     };
 
     this.zoomByPct = function(pct, xpct, ypct) {
@@ -10527,11 +10849,10 @@
       return this.getTransform().invert().transform(x, y);
     };
 
-    function recenter(cx, cy, scale, data) {
+    function recenter(cx, cy, scale) {
       scale = scale ? limitScale(scale) : _scale;
       if (cx == _cx && cy == _cy && scale == _scale) return;
       navigate(cx, cy, scale);
-      triggerChangeEvent(data);
     }
 
     function navigate(cx, cy, scale) {
@@ -10558,9 +10879,8 @@
       _scale = scale;
     }
 
-    function triggerChangeEvent(data) {
-      data = data || {};
-      _self.dispatchEvent('change', data);
+    function triggerChangeEvent() {
+      _self.dispatchEvent('change');
     }
 
     // stop zooming before rounding errors become too obvious
@@ -11453,8 +11773,10 @@
     return el;
   }
 
-  function LayerRenderer(gui, container, ext, mouse) {
+  function LayerRenderer(gui, container) {
     var el = El(container),
+        ext = gui.map.getExtent(),
+        mouse = gui.map.getMouse(),
         _mainCanv = new DisplayCanvas().appendTo(el),
         _overlayCanv = new DisplayCanvas().appendTo(el),
         _svg = new SvgDisplayLayer(gui, ext, mouse).appendTo(el),
@@ -11595,7 +11917,6 @@
     });
 
     gui.on('shift_drag_start', function() {
-      // box.classed('zooming', inZoomMode());
       hideCoords();
     });
 
@@ -11758,250 +12079,6 @@ GUI and setting the size and crop of SVG output.</p><div><input type="text" clas
     }
   }
 
-  // Create low-detail versions of large arc collections for faster rendering
-  // at zoomed-out scales.
-  function enhanceArcCollectionForDisplay(unfilteredArcs) {
-    var size = unfilteredArcs.getPointCount(),
-        filteredArcs, filteredSegLen;
-
-    // Only generate low-detail arcs for larger datasets
-    if (size > 5e5) {
-      update();
-    }
-
-    function update() {
-      if (unfilteredArcs.getVertexData().zz) {
-        // Use precalculated simplification data for vertex filtering, if available
-        filteredArcs = initFilteredArcs(unfilteredArcs);
-        filteredSegLen = internal.getAvgSegment(filteredArcs);
-      } else {
-        // Use fast simplification as a fallback
-        filteredSegLen = internal.getAvgSegment(unfilteredArcs) * 4;
-        filteredArcs = internal.simplifyArcsFast(unfilteredArcs, filteredSegLen);
-      }
-    }
-
-    function initFilteredArcs(arcs) {
-      var filterPct = 0.08;
-      var nth = Math.ceil(arcs.getPointCount() / 5e5);
-      var currInterval = arcs.getRetainedInterval();
-      var filterZ = arcs.getThresholdByPct(filterPct, nth);
-      var filteredArcs = arcs.setRetainedInterval(filterZ).getFilteredCopy();
-      arcs.setRetainedInterval(currInterval); // reset current simplification
-      return filteredArcs;
-    }
-
-    // TODO: better job of detecting arc change... e.g. revision number
-    unfilteredArcs.getScaledArcs = function(ext) {
-      // check for changes in the number of arcs (probably due to editing)
-      if (filteredArcs && filteredArcs.size() != unfilteredArcs.size()) {
-        // arc count has changed... probably due to editing
-        update();
-        if (filteredArcs.size() != unfilteredArcs.size()) {
-          throw Error('Internal error');
-        }
-      }
-      if (filteredArcs) {
-        // match simplification of unfiltered arcs
-        filteredArcs.setRetainedInterval(unfilteredArcs.getRetainedInterval());
-      }
-      // switch to filtered version of arcs at small scales
-      var unitsPerPixel = 1/ext.getTransform().mx,
-          useFiltering = filteredArcs && unitsPerPixel > filteredSegLen * 1.5;
-      return useFiltering ? filteredArcs : unfilteredArcs;
-    };
-  }
-
-  function getDisplayLayerForTable(tableArg) {
-    var table = tableArg || new internal.DataTable(0),
-        n = table.size(),
-        cellWidth = 12,
-        cellHeight = 5,
-        gutter = 6,
-        arcs = [],
-        shapes = [],
-        aspectRatio = 1.1,
-        x, y, col, row, blockSize;
-
-    if (n > 10000) {
-      arcs = null;
-      gutter = 0;
-      cellWidth = 4;
-      cellHeight = 4;
-      aspectRatio = 1.45;
-    } else if (n > 5000) {
-      cellWidth = 5;
-      gutter = 3;
-      aspectRatio = 1.45;
-    } else if (n > 1000) {
-      gutter = 3;
-      cellWidth = 8;
-      aspectRatio = 1.3;
-    }
-
-    if (n < 25) {
-      blockSize = n;
-    } else {
-      blockSize = Math.sqrt(n * (cellWidth + gutter) / cellHeight / aspectRatio) | 0;
-    }
-
-    for (var i=0; i<n; i++) {
-      row = i % blockSize;
-      col = Math.floor(i / blockSize);
-      x = col * (cellWidth + gutter);
-      y = cellHeight * (blockSize - row);
-      if (arcs) {
-        arcs.push(getArc(x, y, cellWidth, cellHeight));
-        shapes.push([[i]]);
-      } else {
-        shapes.push([[x, y]]);
-      }
-    }
-
-    function getArc(x, y, w, h) {
-      return [[x, y], [x + w, y], [x + w, y - h], [x, y - h], [x, y]];
-    }
-
-    return {
-      layer: {
-        geometry_type: arcs ? 'polygon' : 'point',
-        shapes: shapes,
-        data: table
-      },
-      arcs: arcs ? new internal.ArcCollection(arcs) : null
-    };
-  }
-
-  // lyr: a map layer with gui property
-  // displayCRS: CRS to use for display, or null (which clears any current display CRS)
-  function projectLayerForDisplay(lyr, displayCRS) {
-    var crsInfo = getDatasetCrsInfo(lyr.gui.source.dataset);
-    var sourceCRS = crsInfo.crs || null; // let enhanceLayerForDisplay() handle null case
-    if (!lyr.gui.geographic) {
-      return;
-    }
-    if (lyr.gui.dynamic_crs && internal.crsAreEqual(sourceCRS, lyr.gui.dynamic_crs)) {
-      return;
-    }
-    enhanceLayerForDisplay(lyr, lyr.gui.source.dataset, {crs: displayCRS});
-    if (lyr.gui.style?.ids) {
-      // re-apply layer filter
-      lyr.gui.displayLayer = filterLayerByIds(lyr.gui.displayLayer, lyr.gui.style.ids);
-    }
-  }
-
-
-  // Supplement a layer with information needed for rendering
-  function enhanceLayerForDisplay(layer, dataset, opts) {
-    var gui = {
-      empty: internal.getFeatureCount(layer) === 0,
-      geographic: false,
-      displayArcs: null,
-      displayLayer: null,
-      source: {dataset},
-      bounds: null,
-      style: null,
-      dynamic_crs: null,
-      invertPoint: null,
-      projectPoint: null
-    };
-
-    var displayCRS = opts.crs || null;
-    // display arcs may have been generated when another layer in the dataset
-    // was converted for display... re-use if available
-    var displayArcs = dataset.gui?.displayArcs;
-    var unprojectable = false;
-    var sourceCRS;
-    var emptyArcs;
-
-    if (displayCRS && layer.geometry_type) {
-      var crsInfo = getDatasetCrsInfo(dataset);
-      if (crsInfo.error) {
-        // unprojectable dataset -- return empty layer
-        gui.unprojectable = true;
-      } else {
-        sourceCRS = crsInfo.crs;
-      }
-    }
-
-    // Assume that dataset.displayArcs is in the display CRS
-    // (it must be deleted upstream if reprojection is needed)
-    // if (!obj.empty && dataset.arcs && !displayArcs) {
-    if (dataset.arcs && !displayArcs && !gui.unprojectable) {
-      // project arcs, if needed
-      if (needReprojectionForDisplay(sourceCRS, displayCRS)) {
-        displayArcs = projectArcsForDisplay(dataset.arcs, sourceCRS, displayCRS);
-      } else {
-        // Use original arcs for display if there is no dynamic reprojection
-        displayArcs = dataset.arcs;
-      }
-
-      enhanceArcCollectionForDisplay(displayArcs);
-      dataset.gui = {displayArcs}; // stash these in the dataset for other layers to use
-    }
-
-    if (internal.layerHasFurniture(layer)) {
-      // TODO: consider how to render furniture in GUI
-      // treating furniture layers (other than frame) as tabular for now,
-      // so there is something to show if they are selected
-    }
-
-    if (gui.unprojectable) {
-      gui.displayLayer = {shapes: []}; // TODO: improve
-    } else if (layer.geometry_type) {
-      gui.geographic = true;
-      gui.displayLayer = layer;
-      gui.displayArcs = displayArcs;
-    } else {
-      var table = getDisplayLayerForTable(layer.data);
-      gui.tabular = true;
-      gui.displayLayer = table.layer;
-      gui.displayArcs = table.arcs;
-    }
-
-    // dynamic reprojection (arcs were already reprojected above)
-    if (gui.geographic && needReprojectionForDisplay(sourceCRS, displayCRS)) {
-      gui.dynamic_crs = displayCRS;
-      gui.invertPoint = internal.getProjTransform2(displayCRS, sourceCRS);
-      gui.projectPoint = internal.getProjTransform2(sourceCRS, displayCRS);
-      if (internal.layerHasPoints(layer)) {
-        gui.displayLayer = projectPointsForDisplay(layer, sourceCRS, displayCRS);
-      } else if (internal.layerHasPaths(layer)) {
-        emptyArcs = findEmptyArcs(displayArcs);
-        if (emptyArcs.length > 0) {
-          // Don't try to draw paths containing coordinates that failed to project
-          gui.displayLayer = internal.filterPathLayerByArcIds(gui.displayLayer, emptyArcs);
-        }
-      }
-    }
-
-    gui.bounds = getDisplayBounds(gui.displayLayer, gui.displayArcs);
-    layer.gui = gui;
-  }
-
-
-  function getDisplayBounds(lyr, arcs) {
-    var bounds = internal.getLayerBounds(lyr, arcs) || new Bounds();
-    if (lyr.geometry_type == 'point' && arcs && bounds.hasBounds() && bounds.area() > 0 === false) {
-      // if a point layer has no extent (e.g. contains only a single point),
-      // then merge with arc bounds, to place the point in context.
-      bounds = bounds.mergeBounds(arcs.getBounds());
-    }
-    return bounds;
-  }
-
-  // Returns an array of ids of empty arcs (arcs can be set to empty if errors occur while projecting them)
-  function findEmptyArcs(arcs) {
-    var nn = arcs.getVertexData().nn;
-    var ids = [];
-    for (var i=0, n=nn.length; i<n; i++) {
-      if (nn[i] === 0) {
-        ids.push(i);
-      }
-    }
-    return ids;
-  }
-
   function loadScript(url, cb) {
     var script = document.createElement('script');
     script.onload = cb;
@@ -12052,15 +12129,9 @@ GUI and setting the size and crop of SVG output.</p><div><input type="text" clas
         turnOff();
       });
 
-      // hideBtn.on('mousedown', function() {
-      //   if (activeStyle) {
-      //     mapEl.css('visibility', 'hidden');
-      //     hidden = true;
-      //   }
-      // })
       clearBtn.on('click', function() {
         if (activeStyle) {
-          updateStyle(null);
+          turnOffBasemap();
           updateButtons();
         }
       });
@@ -12084,28 +12155,34 @@ GUI and setting the size and crop of SVG output.</p><div><input type="text" clas
       params.styles.forEach(function(style) {
         var btn = El('div').html(`<div class="basemap-style-btn"><img src="${style.icon}"></img></div><div class="basemap-style-label">${style.name}</div>`);
         btn.findChild('.basemap-style-btn').on('click', function() {
-          updateStyle(style == activeStyle ? null : style);
+          if (style == activeStyle) {
+            turnOffBasemap();
+          } else {
+            showBasemap(style);
+          }
           updateButtons();
         });
         btn.appendTo(list);
       });
     }
 
-    function updateStyle(style) {
-      activeStyle = style || null;
-      // TODO: consider enabling this
+    function turnOffBasemap() {
+      activeStyle = null;
+      gui.map.setDisplayCRS(null);
+      refresh();
+    }
+
+    function showBasemap(style) {
+      activeStyle = style;
+      // TODO: consider enabling dark basemap mode
       // Make sure that the selected layer style gets updated in gui-map.js
       // gui.state.dark_basemap = style && style.dark || false;
-      if (!style) {
-        gui.map.setDisplayCRS(null);
-        refresh();
-      } else if (map) {
+      if (map) {
         map.setStyle(style.url);
         refresh();
-      } else {
+      } else if (prepareMapView()) {
         initMap();
       }
-
     }
 
     function updateButtons() {
@@ -12115,8 +12192,9 @@ GUI and setting the size and crop of SVG output.</p><div><input type="text" clas
     }
 
     function turnOn() {
-      var activeLyr = gui.model.getActiveLayer();
-      var info = getDatasetCrsInfo(activeLyr.dataset);
+      // TODO: show basemap even if there is no data
+      var activeLyr = gui.model.getActiveLayer(); // may be null
+      var info = getDatasetCrsInfo(activeLyr?.dataset); // defaults to wgs84
       var dataCRS = info.crs || null;
       var displayCRS = gui.map.getDisplayCRS();
       var warning;
@@ -12159,9 +12237,9 @@ GUI and setting the size and crop of SVG output.</p><div><input type="text" clas
 
     function getLonLatBounds() {
       var bbox = ext.getBounds().toArray();
-      var tr = fromWebMercator(bbox[2], bbox[3]);
-      var bl = fromWebMercator(bbox[0], bbox[1]);
-      return bl.concat(tr);
+      var bbox2 = fromWebMercator(bbox[0], bbox[1])
+          .concat(fromWebMercator(bbox[2], bbox[3]));
+      return bbox2;
     }
 
     function initMap() {
@@ -12219,6 +12297,15 @@ GUI and setting the size and crop of SVG output.</p><div><input type="text" clas
       return true;
     }
 
+    function prepareMapView() {
+      var crs = gui.map.getDisplayCRS();
+      if (!crs) return false;
+      if (!internal.isWebMercator(crs)) {
+        gui.map.setDisplayCRS(internal.parseCrsString('webmercator'));
+      }
+      return true;
+    }
+
     function refresh() {
       var crs = gui.map.getDisplayCRS();
       var off = !crs || !enabled() || !map || loading || !activeStyle;
@@ -12230,9 +12317,7 @@ GUI and setting the size and crop of SVG output.</p><div><input type="text" clas
         return;
       }
 
-      if (!internal.isWebMercator(crs)) {
-        gui.map.setDisplayCRS(internal.parseCrsString('webmercator'));
-      }
+      prepareMapView();
       var bbox = getLonLatBounds();
       if (!checkBounds(bbox)) {
         // map does not display outside these bounds
@@ -12331,8 +12416,15 @@ GUI and setting the size and crop of SVG output.</p><div><input type="text" clas
     };
 
     this.getDisplayCRS = function() {
-      if (!_activeLyr || !_activeLyr.gui.geographic) return null;
-      if (_activeLyr.gui.dynamic_crs) return _activeLyr.gui.dynamic_crs;
+      if (!_activeLyr) {
+        return _dynamicCRS || internal.parseCrsString('wgs84');
+      }
+      if (!_activeLyr.gui.geographic) {
+        return null;
+      }
+      if (_activeLyr.gui.dynamic_crs) {
+        return _activeLyr.gui.dynamic_crs;
+      }
       var info = getDatasetCrsInfo(_activeLyr.gui.source.dataset);
       return info.crs || null;
     };
@@ -12365,7 +12457,7 @@ GUI and setting the size and crop of SVG output.</p><div><input type="text" clas
       var newCRS = utils$1.isString(crs) ? internal.parseCrsString(crs) : crs;
       // TODO: handle case that old and new CRS are the same
       _dynamicCRS = newCRS;
-      if (!_activeLyr) return; // stop here if no layers have been selected
+      // if (!_activeLyr) return; // stop here if no layers have been selected
 
       // clear any stored FilteredArcs objects (so they will be recreated with the desired projection)
       clearAllDisplayArcs();
@@ -12383,6 +12475,34 @@ GUI and setting the size and crop of SVG output.</p><div><input type="text" clas
       updateFullBounds();
     };
 
+    // Initialization just before displaying the map for the first time
+    this.init = function() {
+      if (_renderer) return;
+      _ext.setFullBounds(calcFullBounds());
+      _ext.resize();
+      _renderer = new LayerRenderer(gui, el);
+      gui.buttons.show();
+
+      if (opts.inspectorControl) {
+        _hit = new HitControl(gui, _ext, _mouse),
+        new InspectionControl2(gui, _hit);
+        new SelectionTool(gui, _ext, _hit),
+        new BoxTool(gui, _ext, _nav),
+        new RectangleControl(gui, _hit),
+        initInteractiveEditing(gui, _ext, _hit);
+        _hit.on('change', updateOverlayLayer);
+      }
+
+      _ext.on('change', function(e) {
+        if (_basemap) _basemap.refresh(); // keep basemap synced up (if enabled)
+        drawLayers(e.redraw ? '' : 'nav');
+      });
+
+      gui.on('resize', function() {
+        position.update(); // kludge to detect new map size after console toggle
+      });
+    };
+
     function getGlobalStyleOptions(opts) {
       var mode = gui.state.interaction_mode;
       return Object.assign({
@@ -12398,7 +12518,7 @@ GUI and setting the size and crop of SVG output.</p><div><input type="text" clas
       var fullBounds;
       var needReset;
       if (!prevLyr) {
-        initMap(); // first call
+        // initMap(); // first call
       }
 
       if (arcsMayHaveChanged(e.flags)) {
@@ -12422,10 +12542,14 @@ GUI and setting the size and crop of SVG output.</p><div><input type="text" clas
         return;
       }
 
-      enhanceLayerForDisplay(e.layer, e.dataset, getDisplayOptions());
-      _activeLyr = e.layer;
-      _activeLyr.gui.style = getActiveLayerStyle(_activeLyr.gui.displayLayer, getGlobalStyleOptions());
-      _activeLyr.active = true;
+      if (e.layer) {
+        enhanceLayerForDisplay(e.layer, e.dataset, getDisplayOptions());
+        _activeLyr = e.layer;
+        _activeLyr.gui.style = getActiveLayerStyle(_activeLyr.gui.displayLayer, getGlobalStyleOptions());
+        _activeLyr.active = true;
+      } else {
+        _activeLyr = null;
+      }
 
       if (popupCanStayOpen(e.flags)) {
         // data may have changed; if popup is open, it needs to be refreshed
@@ -12438,7 +12562,11 @@ GUI and setting the size and crop of SVG output.</p><div><input type="text" clas
       updateVisibleMapLayers();
       fullBounds = calcFullBounds();
 
-      if (!prevLyr || prevLyr.gui.tabular || _activeLyr.gui.tabular) {
+      if (prevLyr?.gui.tabular || _activeLyr?.gui.tabular) {
+        needReset = true;
+      } else if (_activeLyr && internal.layerIsEmpty(_activeLyr)) {
+        needReset = false;
+      } else if (!prevLyr) {
         needReset = true;
       } else {
         needReset = mapNeedsReset(fullBounds, _ext.getFullBounds(), _ext.getBounds(), e.flags);
@@ -12448,37 +12576,12 @@ GUI and setting the size and crop of SVG output.</p><div><input type="text" clas
 
       if (needReset) {
         _ext.reset();
+        if (_basemap) _basemap.refresh();
       }
       drawLayers();
       map.dispatchEvent('updated');
     }
 
-    // Initialization just before displaying the map for the first time
-    function initMap() {
-      _ext.resize();
-      _renderer = new LayerRenderer(gui, el, _ext, _mouse);
-      gui.buttons.show();
-
-      if (opts.inspectorControl) {
-        _hit = new HitControl(gui, _ext, _mouse),
-        new InspectionControl2(gui, _hit);
-        new SelectionTool(gui, _ext, _hit),
-        new BoxTool(gui, _ext, _nav),
-        new RectangleControl(gui, _hit),
-        initInteractiveEditing(gui, _ext, _hit);
-        _hit.on('change', updateOverlayLayer);
-      }
-
-      _ext.on('change', function(e) {
-        if (_basemap) _basemap.refresh(); // keep basemap synced up (if enabled)
-        if (e.reset) return; // don't need to redraw map here if extent has been reset
-        drawLayers('nav');
-      });
-
-      gui.on('resize', function() {
-        position.update(); // kludge to detect new map size after console toggle
-      });
-    }
 
     function updateOverlayLayer(e) {
       var style = getOverlayStyle(_activeLyr.gui.displayLayer, e, getGlobalStyleOptions());
@@ -12521,7 +12624,8 @@ GUI and setting the size and crop of SVG output.</p><div><input type="text" clas
 
       if (!b.hasBounds()) {
         // assign bounds to empty layers, to prevent rendering errors downstream
-        b.setBounds(0,0,0,0);
+        // b.setBounds(0,0,0,0);
+        b.setBounds(projectLatLonBBox([11.28,33.43,32.26,46.04], _dynamicCRS));
       }
       return b;
     }
@@ -12546,7 +12650,6 @@ GUI and setting the size and crop of SVG output.</p><div><input type="text" clas
 
       // Inflate display bounding box by a tiny amount (gives extent to single-point layers and collapsed shapes)
       b.padBounds(1e-4, 1e-4, 1e-4, 1e-4);
-
       return b;
     }
 
@@ -12559,7 +12662,7 @@ GUI and setting the size and crop of SVG output.</p><div><input type="text" clas
     }
 
     function isTableView() {
-      return !!_activeLyr.gui.tabular;
+      return !!_activeLyr?.gui.tabular;
     }
 
     function findFrameLayer() {
@@ -12769,12 +12872,13 @@ GUI and setting the size and crop of SVG output.</p><div><input type="text" clas
       El('div')
         .appendTo(menu)
         .addClass('contextmenu-item')
-        .text(label)
+        .html(label)
         .on('click', func)
         .show();
     }
 
     this.open = function(e, lyr) {
+      if (!lyr || !lyr.gui.geographic) return;
       _open = true;
       _openCount++;
       var rspace = body.clientWidth - e.pageX;
@@ -12782,17 +12886,19 @@ GUI and setting the size and crop of SVG output.</p><div><input type="text" clas
       menu.empty().show();
       if (rspace > 150) {
         menu.css('left', e.pageX + xoffs + 'px');
+        menu.css('right', null);
       } else {
         menu.css('right', (body.clientWidth - e.pageX + xoffs) + 'px');
+        menu.css('left', null);
       }
       menu.css('top', (e.pageY - 15) + 'px');
 
       // menu contents
-      if (e.deleteVertex) {
-        addMenuItem('Delete vertex', e.deleteVertex);
-      }
       if (e.coordinates) {
         addCopyCoords();
+      }
+      if (e.deleteVertex) {
+        addMenuItem('Delete vertex', e.deleteVertex);
       }
       if (e.ids?.length) {
         addMenuItem('Copy as GeoJSON', copyGeoJSON);
@@ -12800,9 +12906,9 @@ GUI and setting the size and crop of SVG output.</p><div><input type="text" clas
 
       function addCopyCoords() {
         var bbox = internal.getLayerBounds(lyr, lyr.gui.source.dataset.arcs).toArray();
-        var p = internal.getRoundedCoords(e.coordinates, internal.getBoundsPrecisionForDisplay(bbox));
-        var coordStr = p.join(',');
-        addMenuItem(coordStr, function() {
+        var coordStr = internal.getRoundedCoordString(e.coordinates, internal.getBoundsPrecisionForDisplay(bbox));
+        var displayStr = '• &nbsp;' + coordStr.replace(/-/g, '–').replace(',', ', ');
+        addMenuItem(displayStr, function() {
           saveFileContentToClipboard(coordStr);
         });
       }
@@ -12868,6 +12974,7 @@ GUI and setting the size and crop of SVG output.</p><div><input type="text" clas
     var clearMsg;
 
     initModeRules(gui);
+    gui.map.init();
 
     gui.showProgressMessage = function(msg) {
       if (!gui.progressMessage) {
@@ -12980,9 +13087,10 @@ GUI and setting the size and crop of SVG output.</p><div><input type="text" clas
         importOpts = getImportOpts(manifest),
         gui = new GuiInstance('body');
 
-    if (manifest.blurb) {
-      El('#splash-screen-blurb').text(manifest.blurb);
-    }
+    // TODO: re-enable the "blurb"
+    // if (manifest.blurb) {
+    //   El('#splash-screen-blurb').text(manifest.blurb);
+    // }
 
     new AlertControl(gui);
     new RepairControl(gui);
@@ -13013,17 +13121,19 @@ GUI and setting the size and crop of SVG output.</p><div><input type="text" clas
     });
 
     // Initial display configuration
-    gui.model.on('select', function() {
+    gui.on('mode', function(e) {
       if (dataLoaded) return;
       dataLoaded = true;
+      gui.buttons.show();
       El('#mode-buttons').show();
+      El('#splash-buttons').hide();
+      El('body').addClass('map-view');
       if (importOpts.display_all) {
         gui.model.getLayers().forEach(function(o) {
           gui.map.setLayerPinning(o, true);
         });
       }
       gui.console.runInitialCommands(getInitialConsoleCommands());
-
     });
   };
 

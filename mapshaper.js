@@ -1537,7 +1537,6 @@
     this.xmax = c;
     this.ymax = d;
     if (a > c || b > d) this.update();
-    // error("Bounds#setBounds() min/max reversed:", a, b, c, d);
     return this;
   };
 
@@ -5123,10 +5122,12 @@
     if (!P && info.prj) {
       P = parseCrsString(translatePrj(info.prj));
     }
-    if (!P && probablyDecimalDegreeBounds(getDatasetBounds(dataset))) {
-      // use wgs84 for probable latlong datasets with unknown datums
-      str = 'wgs84';
-      P = parseCrsString(str);
+    if (!P) {
+      if (probablyDecimalDegreeBounds(getDatasetBounds(dataset))) {
+        // use wgs84 for probable latlong datasets with unknown datums
+        str = 'wgs84';
+        P = parseCrsString(str);
+      }
     }
     return {
       crs: P || null,
@@ -7202,6 +7203,12 @@
     return bounds;
   }
 
+  function datasetIsEmpty(dataset) {
+    return dataset.layers.every(function(lyr) {
+      return layerIsEmpty(lyr);
+    });
+  }
+
   function datasetHasGeometry(dataset) {
     return utils.some(dataset.layers, function(lyr) {
       return layerHasGeometry(lyr);
@@ -7315,6 +7322,7 @@
     copyDatasetForExport: copyDatasetForExport,
     copyDatasetForRenaming: copyDatasetForRenaming,
     getDatasetBounds: getDatasetBounds,
+    datasetIsEmpty: datasetIsEmpty,
     datasetHasGeometry: datasetHasGeometry,
     datasetHasPaths: datasetHasPaths,
     cleanupArcs: cleanupArcs,
@@ -13449,7 +13457,7 @@
         // range = Math.min(w, h) + 1e-8,
         range = Math.max(w, h) + 1e-8,
         digits = 0;
-    while (range < 2000) {
+    while (range < 2000 && digits < 1) {
       range *= 10;
       digits++;
     }
@@ -29352,7 +29360,7 @@ ${svg}
       // * In TopoJSON input, it makes sense to think of the last object/layer
       //   as the topmost one -- it corresponds to the painter's algorithm and
       //   the way that objects are ordered in SVG.
-      var lyr = targ.layers[targ.layers.length - 1];
+      var lyr = targ?.layers[targ.layers.length - 1];
       return targ ? {layer: lyr, dataset: targ.dataset} : null;
     };
 
@@ -45136,7 +45144,7 @@ ${svg}
               opts.target, getFormattedLayerList(job.catalog)));
         }
         if (!commandAcceptsEmptyTarget(name)) {
-          throw new UserError("No data is available");
+          stop("No data is available");
         }
       }
 
@@ -45522,7 +45530,7 @@ ${svg}
     });
   }
 
-  var version = "0.6.76";
+  var version = "0.6.77";
 
   // Parse command line args into commands and run them
   // Function takes an optional Node-style callback. A Promise is returned if no callback is given.
