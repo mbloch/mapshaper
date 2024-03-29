@@ -12923,7 +12923,7 @@ GUI and setting the size and crop of SVG output.</p><div><input type="text" clas
         var layer = mapshaper.cmd.filterFeatures(lyr, dataset.arcs, opts);
         // the drawing tool can send open paths with 'polygon' geometry type,
         // should be changed to 'polyline'
-        if (layerHasOpenPaths(layer, dataset.arcs)) {
+        if (layer.geometry_type == 'polygon' && layerHasOpenPaths(layer, dataset.arcs)) {
           layer.geometry_type = 'polyline';
         }
         var features = internal.exportLayerAsGeoJSON(layer, dataset, {rfc7946: true, prettify: true}, true, 'string');
