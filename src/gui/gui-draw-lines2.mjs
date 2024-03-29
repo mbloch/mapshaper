@@ -16,6 +16,7 @@ import {
   } from './gui-drawing-utils';
 import { translateDisplayPoint } from './gui-display-utils';
 import { showPopupAlert } from './gui-alert';
+import { addEmptyLayer } from './gui-add-layer-popup';
 
 // pixel distance threshold for hovering near a vertex or segment midpoint
 var HOVER_THRESHOLD = 10;
@@ -55,13 +56,17 @@ export function initLineEditing(gui, ext, hit) {
   gui.addMode('drawing_tool', turnOn, turnOff);
 
   gui.on('interaction_mode_change', function(e) {
-    gui.container.findChild('.map-layers').classed('drawing', e.mode == 'drawing');
-    var prevMode = gui.getMode();
-    if (e.mode == 'drawing') {
+    if (e.mode == 'edit_lines' || e.mode == 'edit_polygons') {
+      if (!gui.model.getActiveLayer()) {
+        addEmptyLayer(gui, undefined, e.mode == 'edit_lines' ? 'polyline' : 'polygon');
+      }
       gui.enterMode('drawing_tool');
+    } else if (gui.getMode() == 'drawing_tool') {
+      gui.clearMode();
     } else if (active()) {
       turnOff();
     }
+    updateCursor();
   }, null, 10); // higher priority than hit control, so turnOff() has correct hit target
 
   gui.on('redo_path_add', function(e) {
@@ -108,6 +113,7 @@ export function initLineEditing(gui, ext, hit) {
   });
 
   function turnOn() {
+    if (active()) return;
     var target = hit.getHitTarget();
     initialArcCount = target.gui.displayArcs.size();
     initialShapeCount = target.shapes.length;
@@ -134,6 +140,7 @@ export function initLineEditing(gui, ext, hit) {
 
   function turnOff() {
     var removed = 0;
+    var mode = gui.interaction.getMode();
     finishCurrentPath();
     if (polygonMode()) {
       removed = removeOpenPolygons();
@@ -142,10 +149,11 @@ export function initLineEditing(gui, ext, hit) {
     hideInstructions();
     initialArcCount = -1;
     initialShapeCount = -1;
-    if (gui.interaction.getMode() == 'drawing') {
+    if (mode == 'edit_lines' || mode == 'edit_polygons') {
       // mode change was not initiated by interactive menu -- turn off interactivity
       gui.interaction.turnOff();
     }
+    updateCursor();
     if (removed > 0) {
       fullRedraw();
     }
@@ -313,6 +321,7 @@ export function initLineEditing(gui, ext, hit) {
   }
 
   function updateCursor() {
+    gui.container.findChild('.map-layers').classed('drawing', active());
     var useArrow = hoverVertexInfo && !hoverVertexInfo.extendable && !drawing();
     gui.container.findChild('.map-layers').classed('dragging', useArrow);
   }

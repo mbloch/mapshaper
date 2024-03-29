@@ -4,7 +4,9 @@ import { internal, utils } from './gui-core';
 
 export function getPointerHitTest(mapLayer, ext, interactionMode, featureFilter) {
   var shapeTest, targetLayer;
-  if (!mapLayer || !internal.layerHasGeometry(mapLayer.gui?.displayLayer)) {
+  // need hit test on empty layers, in case we are drawing shapes
+  // if (!mapLayer || !internal.layerHasGeometry(mapLayer.gui?.displayLayer)) {
+  if (!mapLayer || !mapLayer.gui?.displayLayer.geometry_type) {
     return function() {return {ids: []};};
   }
   shapeTest = getShapeHitTest(mapLayer, ext, interactionMode, featureFilter);

@@ -104,18 +104,27 @@ export function HitControl(gui, ext, mouse) {
   }
 
   function draggable() {
-    return interactionMode == 'vertices' || interactionMode == 'location' ||
-      interactionMode == 'labels' || interactionMode == 'drawing';
+    return interactionMode == 'vertices' || interactionMode == 'edit_points' ||
+      interactionMode == 'labels' || interactionMode == 'edit_lines' ||
+      interactionMode == 'edit_polygons';
   }
 
   function clickable() {
     // click used to pin popup and select features
     return interactionMode == 'data' || interactionMode == 'info' ||
-    interactionMode == 'selection' || interactionMode == 'rectangles';
+    interactionMode == 'selection' || interactionMode == 'rectangles' ||
+    interactionMode == 'edit_points';
   }
 
   self.getHitId = function() {
     return hitTest ? storedData.id : -1;
+  };
+
+  self.setHitId = function(id) {
+    if (storedData.id == id) return;
+    storedData.id = id;
+    storedData.ids = [id];
+    triggerHitEvent('change');
   };
 
   // Get a reference to the active layer, so listeners to hit events can interact
@@ -252,9 +261,9 @@ export function HitControl(gui, ext, mouse) {
 
 
   mouse.on('click', function(e) {
+    var pinned = storedData.pinned;
     if (!hitTest || !active) return;
     if (!eventIsEnabled('click')) return;
-
     e.stopPropagation();
 
     // TODO: move pinning to inspection control?
@@ -262,6 +271,11 @@ export function HitControl(gui, ext, mouse) {
       updateSelectionState(convertClickDataToSelectionData(hitTest(e)));
     }
 
+    if (pinned && interactionMode == 'edit_points') {
+      // kludge: intercept the click event if popup is turning off, so
+      // a new point doesn't get made
+      return;
+    }
     triggerHitEvent('click', e);
   }, null, priority);
 
@@ -390,10 +404,14 @@ export function HitControl(gui, ext, mouse) {
       return false;
     }
     if (type == 'click' &&
-      (interactionMode == 'drawing' || interactionMode == 'location')) {
+      (interactionMode == 'edit_lines' || interactionMode == 'edit_polygons')) {
       return true; // click events are triggered even if no shape is hit
     }
-    if (interactionMode == 'drawing' && (type == 'hover' || type == 'dblclick')) {
+    if (type == 'click' && interactionMode == 'edit_points') {
+      return true;
+    }
+    if ((interactionMode == 'edit_lines' || interactionMode == 'edit_polygons') &&
+        (type == 'hover' || type == 'dblclick')) {
       return true; // special case -- using hover for line drawing animation
     }
 
@@ -413,7 +431,7 @@ export function HitControl(gui, ext, mouse) {
   }
 
   function possiblyStopPropagation(e) {
-    if (interactionMode == 'drawing') {
+    if (interactionMode == 'edit_lines' || interactionMode == 'edit_polygons') {
       // handled conditionally in the control
       return;
     }

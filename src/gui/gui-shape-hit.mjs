@@ -10,11 +10,11 @@ export function getShapeHitTest(layer, ext, interactionMode, featureFilter) {
     test = getGraduatedCircleTest(getRadiusFunction(layer.gui.style));
   } else if (geoType == 'point') {
     test = pointTest;
-  } else if (interactionMode == 'drawing' && geoType == 'polygon') {
+  } else if (interactionMode == 'edit_polygons') {
     test = polygonVertexTest;
   } else if (
       interactionMode == 'vertices' ||
-      interactionMode == 'drawing') {
+      interactionMode == 'edit_lines') {
     test = vertexTest;
   } else if (geoType == 'polyline') {
     test = polylineTest;
@@ -115,7 +115,7 @@ export function getShapeHitTest(layer, ext, interactionMode, featureFilter) {
   function pointTest(x, y) {
     var bullseyeDist = 2, // hit all points w/in 2 px
         // use small threshold when adding points
-        hitThreshold = interactionMode == 'location' ? 12 : 25,
+        hitThreshold = interactionMode == 'edit_points' ? 12 : 25,
         toPx = ext.getTransform().mx,
         hits = [];
 

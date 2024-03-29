@@ -19,12 +19,12 @@ export function openAddLayerPopup(gui) {
   var btn = el.findChild('.btn').on('click', function() {
     var nameStr = name.node().value.trim();
     var type = el.findChild('input:checked').node().value;
-    addLayer(gui, nameStr, type);
+    addEmptyLayer(gui, nameStr, type);
     popup.close();
   });
 }
 
-function addLayer(gui, name, type) {
+export function addEmptyLayer(gui, name, type) {
   var targ = gui.model.getActiveLayer();
   var crsInfo = targ && internal.getDatasetCrsInfo(targ.dataset);
   var dataset = {

@@ -36,7 +36,10 @@ export function SidebarButtons(gui) {
   };
 
   function updateVisibility() {
-    if (GUI.isActiveInstance(gui) && !_hidden && !!gui.model.getActiveLayer()) {
+    var noData = !gui.model.getActiveLayer();
+    if (GUI.isActiveInstance(gui) && !_hidden && !noData) {
+      buttons.show();
+    } else if (noData && gui.getMode() != 'import') {
       buttons.show();
     } else {
       buttons.hide();

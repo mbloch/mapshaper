@@ -1,11 +1,12 @@
 import { error, internal } from './gui-core';
 import { updatePointCoords, getPointCoords, appendNewPoint } from './gui-drawing-utils';
 import { translateDisplayPoint } from './gui-display-utils';
+import { addEmptyLayer } from './gui-add-layer-popup';
 
-export function initPointDragging(gui, ext, hit) {
+export function initPointEditing(gui, ext, hit) {
   var symbolInfo;
   function active(e) {
-    return gui.interaction.getMode() == 'location';
+    return gui.interaction.getMode() == 'edit_points';
   }
 
   function overPoint(e) {
@@ -13,9 +14,12 @@ export function initPointDragging(gui, ext, hit) {
   }
 
   gui.on('interaction_mode_change', function(e) {
-    if (e.prev_mode == 'location') {
+    if (e.mode == 'edit_points' && !gui.model.getActiveLayer()) {
+      addEmptyLayer(gui, undefined, 'point');
+    } else if (e.prev_mode == 'edit_points') {
       gui.container.findChild('.map-layers').classed('add-points', false);
     }
+
   });
 
   hit.on('click', function(e) {
@@ -26,6 +30,7 @@ export function initPointDragging(gui, ext, hit) {
     appendNewPoint(target, p);
     gui.dispatchEvent('point_add', {p, target});
     gui.dispatchEvent('map-needs-refresh');
+    hit.setHitId(target.shapes.length - 1); // highlight new point
   });
 
   hit.on('change', function(e) {
