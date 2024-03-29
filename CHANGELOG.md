@@ -1,3 +1,8 @@
+v0.6.77
+* [web] Updated import interface.
+* [web] Users can turn on the basemap, use the console and more without first importing a file.
+* [web] Added undo to "add points" tool.
+
 v0.6.76
 * [web] Added right-click/ctrl-click context menu.
 
