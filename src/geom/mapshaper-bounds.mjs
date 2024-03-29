@@ -74,7 +74,6 @@ Bounds.prototype.setBounds = function(a, b, c, d) {
   this.xmax = c;
   this.ymax = d;
   if (a > c || b > d) this.update();
-  // error("Bounds#setBounds() min/max reversed:", a, b, c, d);
   return this;
 };
 

@@ -16,6 +16,17 @@ export function needReprojectionForDisplay(sourceCRS, displayCRS) {
   return true;
 }
 
+// bbox in wgs84 coords
+// dest: CRS, which may also be wgs84
+export function projectLatLonBBox(bbox, dest) {
+  if (!dest || internal.isWGS84(dest)) {
+    return bbox.concat();
+  }
+  var proj = internal.getProjTransform2(internal.parseCrsString('wgs84'), dest);
+  var bbox2 = proj(bbox[0], bbox[1]).concat(proj(bbox[2], bbox[3]));
+  return bbox2;
+}
+
 export function projectArcsForDisplay(arcs, src, dest) {
   var copy = arcs.getCopy(); // need to flatten first?
   var destIsWebMerc = internal.isWebMercator(dest);
@@ -113,7 +124,7 @@ export function projectMapExtent(ext, src, dest, newBounds) {
   // TODO: handle case that scale is 1 and map is panned away from center
   if (ext.scale() == 1 || !dest) {
     ext.setFullBounds(newBounds, strictBounds);
-    ext.home(); // sets full extent and triggers redraw
+    ext.reset();
   } else {
     // if map is zoomed, stay centered on the same geographic location, at the same relative scale
     proj = internal.getProjTransform2(src, dest);
@@ -126,6 +137,8 @@ export function projectMapExtent(ext, src, dest, newBounds) {
     }
     ext.recenter(newCP[0], newCP[1], oldScale);
   }
+  // trigger full redraw, in case some SVG symbols are unprojectable
+  ext.dispatchEvent('change', {redraw: true});
 }
 
 // Called from console; for testing dynamic crs

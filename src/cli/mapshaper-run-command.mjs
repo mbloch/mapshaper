@@ -172,7 +172,7 @@ export async function runCommand(command, job) {
             opts.target, getFormattedLayerList(job.catalog)));
       }
       if (!commandAcceptsEmptyTarget(name)) {
-        throw new UserError("No data is available");
+        stop("No data is available");
       }
     }
 

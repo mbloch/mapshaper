@@ -1,8 +1,16 @@
 
 import utils from '../utils/mapshaper-utils';
-import { getLayerBounds, layerHasGeometry, layerHasPaths,
-  transformPointsInLayer, copyLayerShapes, copyLayer, layerHasPoints,
-  setOutputLayerName, getFeatureCount } from '../dataset/mapshaper-layer-utils';
+import {
+  getLayerBounds,
+  layerHasGeometry,
+  layerHasPaths,
+  transformPointsInLayer,
+  copyLayerShapes,
+  copyLayer,
+  layerHasPoints,
+  layerIsEmpty,
+  setOutputLayerName,
+  getFeatureCount } from '../dataset/mapshaper-layer-utils';
 import { Bounds } from '../geom/mapshaper-bounds';
 import { mergeDatasetsIntoDataset } from '../dataset/mapshaper-merging';
 import { buildTopology } from '../topology/mapshaper-topology';
@@ -101,6 +109,12 @@ export function getDatasetBounds(dataset) {
     if (lyrbb) bounds.mergeBounds(lyrbb);
   });
   return bounds;
+}
+
+export function datasetIsEmpty(dataset) {
+  return dataset.layers.every(function(lyr) {
+    return layerIsEmpty(lyr);
+  });
 }
 
 export function datasetHasGeometry(dataset) {

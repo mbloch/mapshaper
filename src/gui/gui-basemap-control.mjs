@@ -55,15 +55,9 @@ export function Basemap(gui, ext) {
       turnOff();
     });
 
-    // hideBtn.on('mousedown', function() {
-    //   if (activeStyle) {
-    //     mapEl.css('visibility', 'hidden');
-    //     hidden = true;
-    //   }
-    // })
     clearBtn.on('click', function() {
       if (activeStyle) {
-        updateStyle(null);
+        turnOffBasemap();
         updateButtons();
       }
     });
@@ -87,28 +81,34 @@ export function Basemap(gui, ext) {
     params.styles.forEach(function(style) {
       var btn = El('div').html(`<div class="basemap-style-btn"><img src="${style.icon}"></img></div><div class="basemap-style-label">${style.name}</div>`);
       btn.findChild('.basemap-style-btn').on('click', function() {
-        updateStyle(style == activeStyle ? null : style);
+        if (style == activeStyle) {
+          turnOffBasemap();
+        } else {
+          showBasemap(style);
+        }
         updateButtons();
       });
       btn.appendTo(list);
     });
   }
 
-  function updateStyle(style) {
-    activeStyle = style || null;
-    // TODO: consider enabling this
+  function turnOffBasemap() {
+    activeStyle = null;
+    gui.map.setDisplayCRS(null);
+    refresh();
+  }
+
+  function showBasemap(style) {
+    activeStyle = style;
+    // TODO: consider enabling dark basemap mode
     // Make sure that the selected layer style gets updated in gui-map.js
     // gui.state.dark_basemap = style && style.dark || false;
-    if (!style) {
-      gui.map.setDisplayCRS(null);
-      refresh();
-    } else if (map) {
+    if (map) {
       map.setStyle(style.url);
       refresh();
-    } else {
+    } else if (prepareMapView()) {
       initMap();
     }
-
   }
 
   function updateButtons() {
@@ -118,8 +118,9 @@ export function Basemap(gui, ext) {
   }
 
   function turnOn() {
-    var activeLyr = gui.model.getActiveLayer();
-    var info = getDatasetCrsInfo(activeLyr.dataset);
+    // TODO: show basemap even if there is no data
+    var activeLyr = gui.model.getActiveLayer(); // may be null
+    var info = getDatasetCrsInfo(activeLyr?.dataset); // defaults to wgs84
     var dataCRS = info.crs || null;
     var displayCRS = gui.map.getDisplayCRS();
     var warning;
@@ -162,9 +163,9 @@ export function Basemap(gui, ext) {
 
   function getLonLatBounds() {
     var bbox = ext.getBounds().toArray();
-    var tr = fromWebMercator(bbox[2], bbox[3]);
-    var bl = fromWebMercator(bbox[0], bbox[1]);
-    return bl.concat(tr);
+    var bbox2 = fromWebMercator(bbox[0], bbox[1])
+        .concat(fromWebMercator(bbox[2], bbox[3]));
+    return bbox2;
   }
 
   function initMap() {
@@ -222,6 +223,15 @@ export function Basemap(gui, ext) {
     return true;
   }
 
+  function prepareMapView() {
+    var crs = gui.map.getDisplayCRS();
+    if (!crs) return false;
+    if (!internal.isWebMercator(crs)) {
+      gui.map.setDisplayCRS(internal.parseCrsString('webmercator'));
+    }
+    return true;
+  }
+
   function refresh() {
     var crs = gui.map.getDisplayCRS();
     var off = !crs || !enabled() || !map || loading || !activeStyle;
@@ -233,9 +243,7 @@ export function Basemap(gui, ext) {
       return;
     }
 
-    if (!internal.isWebMercator(crs)) {
-      gui.map.setDisplayCRS(internal.parseCrsString('webmercator'));
-    }
+    prepareMapView();
     var bbox = getLonLatBounds();
     if (!checkBounds(bbox)) {
       // map does not display outside these bounds

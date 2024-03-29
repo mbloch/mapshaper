@@ -50,7 +50,7 @@ export function getBoundsPrecisionForDisplay(bbox) {
       // range = Math.min(w, h) + 1e-8,
       range = Math.max(w, h) + 1e-8,
       digits = 0;
-  while (range < 2000) {
+  while (range < 2000 && digits < 1) {
     range *= 10;
     digits++;
   }

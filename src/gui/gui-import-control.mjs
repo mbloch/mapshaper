@@ -108,7 +108,6 @@ export function ImportControl(gui, opts) {
   var initialImport = true;
   var importCount = 0;
   var importTotal = 0;
-  var overQuickView = false;
   var useQuickView = false;
   var queuedFiles = [];
   var manifestFiles = opts.files || [];
@@ -118,50 +117,48 @@ export function ImportControl(gui, opts) {
     catalog = new CatalogControl(gui, opts.catalog, downloadFiles);
   }
 
-  new SimpleButton('#import-buttons .submit-btn').on('click', importQueuedFiles);
-  new SimpleButton('#import-buttons .cancel-btn').on('click', gui.clearMode);
-  new DropControl(gui, 'body', receiveFiles);
-  new FileChooser('#file-selection-btn', receiveFiles);
-  new FileChooser('#import-buttons .add-btn', receiveFiles);
+  var submitBtn = new SimpleButton('#import-options .submit-btn').on('click', importQueuedFiles);
+  new SimpleButton('#import-options .cancel-btn').on('click', gui.clearMode);
+  new DropControl(gui, 'body', receiveFilesWithOption);
+  new FileChooser('#import-options .add-btn', receiveFilesWithOption);
   new FileChooser('#add-file-btn', receiveFiles);
   new SimpleButton('#add-empty-btn').on('click', function() {
     gui.clearMode(); // close import dialog
     openAddLayerPopup(gui);
   });
-  initDropArea('#import-quick-drop', true);
-  initDropArea('#import-drop');
+  // initDropArea('#import-quick-drop', true);
+  // initDropArea('#import-drop');
   gui.keyboard.onMenuSubmit(El('#import-options'), importQueuedFiles);
 
   gui.addMode('import', turnOn, turnOff);
   gui.enterMode('import');
 
-  gui.on('mode', function(e) {
-    // re-open import opts if leaving alert or console modes and nothing has been imported yet
-    if (!e.name && model.isEmpty()) {
-      gui.enterMode('import');
-    }
-  });
-
-  function initDropArea(el, isQuick) {
-    var area = El(el)
-      .on('dragleave', onout)
-      .on('dragover', function() {overQuickView = !!isQuick; onover();})
-      .on('mouseover', onover)
-      .on('mouseout', onout);
-
-    function onover() {
-      area.addClass('dragover');
-    }
-
-    function onout() {
-      overQuickView = false;
-      area.removeClass('dragover');
+  function turnOn() {
+    if (manifestFiles.length > 0) {
+      downloadFiles(manifestFiles, true);
+      manifestFiles = [];
+    } else if (model.isEmpty()) {
+      showImportMenu();
     }
   }
 
+  function turnOff() {
+    var target;
+    if (catalog) catalog.reset(); // re-enable clickable catalog
+    if (importCount > 0) {
+      onImportComplete();
+      importTotal += importCount;
+      importCount = 0;
+    }
+    gui.clearProgressMessage();
+    initialImport = false; // unset 'quick view' mode, if on
+    clearQueuedFiles();
+    hideImportMenu();
+  }
+
   async function importQueuedFiles() {
-    gui.container.removeClass('queued-files');
-    gui.container.removeClass('splash-screen');
+    // gui.container.removeClass('queued-files');
+    hideImportMenu();
     var files = queuedFiles;
     try {
       if (files.length > 0) {
@@ -178,27 +175,7 @@ export function ImportControl(gui, opts) {
     }
   }
 
-  function turnOn() {
-    if (manifestFiles.length > 0) {
-      downloadFiles(manifestFiles, true);
-      manifestFiles = [];
-    } else if (model.isEmpty()) {
-      gui.container.addClass('splash-screen');
-    }
-  }
 
-  function turnOff() {
-    var target;
-    if (catalog) catalog.reset(); // re-enable clickable catalog
-    if (importCount > 0) {
-      onImportComplete();
-      importTotal += importCount;
-      importCount = 0;
-    }
-    gui.clearProgressMessage();
-    initialImport = false; // unset 'quick view' mode, if on
-    clearQueuedFiles();
-  }
 
   function onImportComplete() {
     // display last layer of last imported dataset
@@ -231,6 +208,7 @@ export function ImportControl(gui, opts) {
     }, []);
   }
 
+
   function showQueuedFiles() {
     var list = gui.container.findChild('.dropped-file-list').empty();
     queuedFiles.forEach(function(f) {
@@ -250,13 +228,20 @@ export function ImportControl(gui, opts) {
         }
       });
     });
+    submitBtn.classed('disabled', queuedFiles.length === 0);
   }
 
-  async function receiveFiles(files) {
+  function receiveFilesWithOption(files) {
+    var quickView = !El('.advanced-import-options').node().checked;
+    receiveFiles(files, quickView);
+  }
+
+  async function receiveFiles(files, quickView) {
     var names = getFileNames(files);
     var expanded = [];
     if (files.length === 0) return;
-    useQuickView = importTotal === 0 && (opts.quick_view || overQuickView);
+    useQuickView = importTotal === 0 && (opts.quick_view ||
+        quickView);
     try {
       expanded = await expandFiles(files);
     } catch(e) {
@@ -274,10 +259,21 @@ export function ImportControl(gui, opts) {
     if (useQuickView) {
       await importQueuedFiles();
     } else {
-      gui.container.addClass('queued-files');
-      El('#path-import-options').classed('hidden', !filesMayContainPaths(queuedFiles));
-      showQueuedFiles();
+      showImportMenu();
     }
+  }
+
+  function showImportMenu() {
+    // gui.container.addClass('queued-files');
+    El('#import-options').show();
+    gui.container.classed('queued-files', queuedFiles.length > 0);
+    El('#path-import-options').classed('hidden', !filesMayContainPaths(queuedFiles));
+    showQueuedFiles();
+  }
+
+  function hideImportMenu() {
+    // gui.container.removeClass('queued-files');
+    El('#import-options').hide();
   }
 
   function getFileNames(files) {

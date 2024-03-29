@@ -8,14 +8,16 @@ export function KeyboardEvents(gui) {
   var ctrlDown = false;
   document.addEventListener('keyup', function(e) {
     if (!GUI.isActiveInstance(gui)) return;
-    if (e.keyCode == 16) shiftDown = false;
+    // this can fail to fire if keyup occurs over a context menu
+    // if (e.keyCode == 16) shiftDown = false;
+    shiftDown = e.shiftKey;
     if (e.keyCode == 17) ctrlDown = false;
     self.dispatchEvent('keyup', getEventData(e));
   });
 
   document.addEventListener('keydown', function(e) {
     if (!GUI.isActiveInstance(gui)) return;
-    if (e.keyCode == 16) shiftDown = true;
+    shiftDown = e.shiftKey;
     if (e.keyCode == 17) ctrlDown = true;
     self.dispatchEvent('keydown', getEventData(e));
   });

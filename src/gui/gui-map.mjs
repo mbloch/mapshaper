@@ -11,7 +11,7 @@ import { MapExtent } from './gui-map-extent';
 import { LayerRenderer } from './gui-layer-renderer';
 import { BoxTool } from './gui-box-tool';
 import { RectangleControl } from './gui-rectangle-control';
-import { projectMapExtent, getMapboxBounds } from './gui-dynamic-crs';
+import { projectMapExtent, getMapboxBounds, projectLatLonBBox } from './gui-dynamic-crs';
 import { enhanceLayerForDisplay, projectLayerForDisplay } from './gui-display-layer';
 import { utils, internal, Bounds } from './gui-core';
 import { EventDispatcher } from './gui-events';
@@ -105,8 +105,15 @@ export function MshpMap(gui) {
   };
 
   this.getDisplayCRS = function() {
-    if (!_activeLyr || !_activeLyr.gui.geographic) return null;
-    if (_activeLyr.gui.dynamic_crs) return _activeLyr.gui.dynamic_crs;
+    if (!_activeLyr) {
+      return _dynamicCRS || internal.parseCrsString('wgs84');
+    }
+    if (!_activeLyr.gui.geographic) {
+      return null;
+    }
+    if (_activeLyr.gui.dynamic_crs) {
+      return _activeLyr.gui.dynamic_crs;
+    }
     var info = getDatasetCrsInfo(_activeLyr.gui.source.dataset);
     return info.crs || null;
   };
@@ -139,7 +146,7 @@ export function MshpMap(gui) {
     var newCRS = utils.isString(crs) ? internal.parseCrsString(crs) : crs;
     // TODO: handle case that old and new CRS are the same
     _dynamicCRS = newCRS;
-    if (!_activeLyr) return; // stop here if no layers have been selected
+    // if (!_activeLyr) return; // stop here if no layers have been selected
 
     // clear any stored FilteredArcs objects (so they will be recreated with the desired projection)
     clearAllDisplayArcs();
@@ -157,6 +164,34 @@ export function MshpMap(gui) {
     updateFullBounds();
   };
 
+  // Initialization just before displaying the map for the first time
+  this.init = function() {
+    if (_renderer) return;
+    _ext.setFullBounds(calcFullBounds());
+    _ext.resize();
+    _renderer = new LayerRenderer(gui, el);
+    gui.buttons.show();
+
+    if (opts.inspectorControl) {
+      _hit = new HitControl(gui, _ext, _mouse),
+      new InspectionControl2(gui, _hit);
+      new SelectionTool(gui, _ext, _hit),
+      new BoxTool(gui, _ext, _nav),
+      new RectangleControl(gui, _hit),
+      initInteractiveEditing(gui, _ext, _hit);
+      _hit.on('change', updateOverlayLayer);
+    }
+
+    _ext.on('change', function(e) {
+      if (_basemap) _basemap.refresh(); // keep basemap synced up (if enabled)
+      drawLayers(e.redraw ? '' : 'nav');
+    });
+
+    gui.on('resize', function() {
+      position.update(); // kludge to detect new map size after console toggle
+    });
+  };
+
   function getGlobalStyleOptions(opts) {
     var mode = gui.state.interaction_mode;
     return Object.assign({
@@ -172,7 +207,7 @@ export function MshpMap(gui) {
     var fullBounds;
     var needReset;
     if (!prevLyr) {
-      initMap(); // first call
+      // initMap(); // first call
     }
 
     if (arcsMayHaveChanged(e.flags)) {
@@ -196,10 +231,14 @@ export function MshpMap(gui) {
       return;
     }
 
-    enhanceLayerForDisplay(e.layer, e.dataset, getDisplayOptions());
-    _activeLyr = e.layer;
-    _activeLyr.gui.style = MapStyle.getActiveLayerStyle(_activeLyr.gui.displayLayer, getGlobalStyleOptions());
-    _activeLyr.active = true;
+    if (e.layer) {
+      enhanceLayerForDisplay(e.layer, e.dataset, getDisplayOptions());
+      _activeLyr = e.layer;
+      _activeLyr.gui.style = MapStyle.getActiveLayerStyle(_activeLyr.gui.displayLayer, getGlobalStyleOptions());
+      _activeLyr.active = true;
+    } else {
+      _activeLyr = null;
+    }
 
     if (popupCanStayOpen(e.flags)) {
       // data may have changed; if popup is open, it needs to be refreshed
@@ -212,7 +251,11 @@ export function MshpMap(gui) {
     updateVisibleMapLayers();
     fullBounds = calcFullBounds();
 
-    if (!prevLyr || prevLyr.gui.tabular || _activeLyr.gui.tabular) {
+    if (prevLyr?.gui.tabular || _activeLyr?.gui.tabular) {
+      needReset = true;
+    } else if (_activeLyr && internal.layerIsEmpty(_activeLyr)) {
+      needReset = false;
+    } else if (!prevLyr) {
       needReset = true;
     } else {
       needReset = mapNeedsReset(fullBounds, _ext.getFullBounds(), _ext.getBounds(), e.flags);
@@ -222,37 +265,12 @@ export function MshpMap(gui) {
 
     if (needReset) {
       _ext.reset();
+      if (_basemap) _basemap.refresh();
     }
     drawLayers();
     map.dispatchEvent('updated');
   }
 
-  // Initialization just before displaying the map for the first time
-  function initMap() {
-    _ext.resize();
-    _renderer = new LayerRenderer(gui, el, _ext, _mouse);
-    gui.buttons.show();
-
-    if (opts.inspectorControl) {
-      _hit = new HitControl(gui, _ext, _mouse),
-      new InspectionControl2(gui, _hit);
-      new SelectionTool(gui, _ext, _hit),
-      new BoxTool(gui, _ext, _nav),
-      new RectangleControl(gui, _hit),
-      initInteractiveEditing(gui, _ext, _hit);
-      _hit.on('change', updateOverlayLayer);
-    }
-
-    _ext.on('change', function(e) {
-      if (_basemap) _basemap.refresh(); // keep basemap synced up (if enabled)
-      if (e.reset) return; // don't need to redraw map here if extent has been reset
-      drawLayers('nav');
-    });
-
-    gui.on('resize', function() {
-      position.update(); // kludge to detect new map size after console toggle
-    });
-  }
 
   function updateOverlayLayer(e) {
     var style = MapStyle.getOverlayStyle(_activeLyr.gui.displayLayer, e, getGlobalStyleOptions());
@@ -295,7 +313,8 @@ export function MshpMap(gui) {
 
     if (!b.hasBounds()) {
       // assign bounds to empty layers, to prevent rendering errors downstream
-      b.setBounds(0,0,0,0);
+      // b.setBounds(0,0,0,0);
+      b.setBounds(projectLatLonBBox([11.28,33.43,32.26,46.04], _dynamicCRS));
     }
     return b;
   }
@@ -320,7 +339,6 @@ export function MshpMap(gui) {
 
     // Inflate display bounding box by a tiny amount (gives extent to single-point layers and collapsed shapes)
     b.padBounds(1e-4, 1e-4, 1e-4, 1e-4);
-
     return b;
   }
 
@@ -333,7 +351,7 @@ export function MshpMap(gui) {
   }
 
   function isTableView() {
-    return !!_activeLyr.gui.tabular;
+    return !!_activeLyr?.gui.tabular;
   }
 
   function findFrameLayer() {

@@ -39,7 +39,7 @@ export function MapNav(gui, ext, mouse) {
   }
 
   gui.on('map_reset', function() {
-    ext.home();
+    ext.reset(true);
   });
 
   zoomTween.on('change', function(e) {
@@ -57,8 +57,9 @@ export function MapNav(gui, ext, mouse) {
 
   mouse.on('dragstart', function(e) {
     if (disabled()) return;
-    if (!internal.layerHasGeometry(gui.model.getActiveLayer().layer)) return;
-    // zoomDrag = !!e.metaKey || !!e.ctrlKey; // meta is command on mac, windows key on windows
+    // allow drawing rectangles if active layer is empty
+    // var lyr = gui.model.getActiveLayer()?.layer;
+    // if (lyr && !internal.layerHasGeometry(lyr)) return;
     shiftDrag = !!e.shiftKey;
     if (shiftDrag) {
       if (useBoxZoom()) zoomBox.turnOn();

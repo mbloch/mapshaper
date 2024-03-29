@@ -16,7 +16,9 @@ export function projectLayerForDisplay(lyr, displayCRS) {
   if (lyr.gui.dynamic_crs && internal.crsAreEqual(sourceCRS, lyr.gui.dynamic_crs)) {
     return;
   }
+  var gui = lyr.gui;
   enhanceLayerForDisplay(lyr, lyr.gui.source.dataset, {crs: displayCRS});
+  utils.defaults(lyr.gui, gui); // re-apply any properties that were lost (e.g. svg_id)
   if (lyr.gui.style?.ids) {
     // re-apply layer filter
     lyr.gui.displayLayer = filterLayerByIds(lyr.gui.displayLayer, lyr.gui.style.ids);
@@ -111,7 +113,6 @@ export function enhanceLayerForDisplay(layer, dataset, opts) {
   gui.bounds = getDisplayBounds(gui.displayLayer, gui.displayArcs);
   layer.gui = gui;
 }
-
 
 function getDisplayBounds(lyr, arcs) {
   var bounds = internal.getLayerBounds(lyr, arcs) || new Bounds();

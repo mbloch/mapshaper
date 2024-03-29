@@ -34,6 +34,7 @@ export var SimplifyControl = function(gui) {
   var el = gui.container.findChild('.simplify-control-wrapper');
   var menu = gui.container.findChild('.simplify-options');
   var slider, text, fromPct;
+  var menuBtn = gui.container.findChild('.simplify-btn').addClass('disabled');
 
   // init settings menu
   new SimpleButton(menu.findChild('.submit-btn').addClass('default-btn')).on('click', onSubmit);
@@ -55,10 +56,13 @@ export var SimplifyControl = function(gui) {
   gui.keyboard.onMenuSubmit(menu, onSubmit);
 
   // init simplify button and mode
-  gui.addMode('simplify', turnOn, turnOff, gui.container.findChild('.simplify-btn'));
-  model.on('select', function() {
+  gui.addMode('simplify', turnOn, turnOff, menuBtn);
+
+  model.on('update', function() {
+    menuBtn.classed('disabled', !model.getActiveLayer());
     if (gui.getMode() == 'simplify') gui.clearMode();
   });
+
 
   // exit simplify mode when user clicks off the visible part of the menu
   menu.on('click', GUI.handleDirectEvent(gui.clearMode));

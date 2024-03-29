@@ -47,6 +47,7 @@ export function GuiInstance(container, opts) {
   var clearMsg;
 
   initModeRules(gui);
+  gui.map.init();
 
   gui.showProgressMessage = function(msg) {
     if (!gui.progressMessage) {

@@ -133,6 +133,7 @@ export function SessionSnapshots(gui) {
 
   async function saveSnapshot(gui) {
     var obj = await captureSnapshot(gui);
+    if (!obj) return;
     // storing an unpacked object is usually a bit faster (~20%)
     // note: we don't know the size of unpacked snapshot objects
     // obj = internal.pack(obj);
@@ -212,12 +213,13 @@ function importDatasets(datasets, gui) {
 }
 
 async function captureSnapshot(gui) {
-  var datasets = gui.model.getDatasets();
-  var lyr = gui.model.getActiveLayer().layer;
+  var lyr = gui.model.getActiveLayer()?.layer;
+  if (!lyr) return null; // no data -- no snapshot
+  lyr.active = true;
   // compact: true applies compression to vector coordinates, for ~30% reduction
   //   in file size in a typical polygon or polyline file, but longer processing time
   var opts = {compact: false};
-  lyr.active = true;
+  var datasets = gui.model.getDatasets();
   // console.time('msx');
   var obj = await internal.exportDatasetsToPack(datasets, opts);
   // console.timeEnd('msx')
