@@ -5,7 +5,9 @@ import {
   getVertexCoords,
   insertVertex,
   deleteVertex,
-  setRectangleCoords
+  setRectangleCoords,
+  appendNewPoint,
+  deleteLastPoint
 } from './gui-drawing-utils';
 
 var copyRecord = internal.copyRecord;
@@ -145,6 +147,16 @@ export function Undo(gui) {
     };
     var undo = function() {
       insertVertex(e.data.target, e.vertex_id, p);
+    };
+    addHistoryState(undo, redo);
+  });
+
+  gui.on('point_add', function(e) {
+    var redo = function() {
+      appendNewPoint(e.data.target, e.p);
+    };
+    var undo = function() {
+      deleteLastPoint(e.data.target);
     };
     addHistoryState(undo, redo);
   });
