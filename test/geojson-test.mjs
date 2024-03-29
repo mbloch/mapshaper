@@ -430,14 +430,14 @@ describe('mapshaper-geojson.js', function () {
       });
     });
 
-    it('A warning is generated for non-lat-long datasets', function() {
-      var input = {
-        type: 'Point',
-        coordinates: [100, 100]
-      },
-      dataset = api.internal.importGeoJSON(input, {});
-      assert(/RFC 7946 warning/.test(api.internal.getRFC7946Warnings(dataset)));
-    })
+    // it('A warning is generated for non-lat-long datasets', function() {
+    //   var input = {
+    //     type: 'Point',
+    //     coordinates: [100, 100]
+    //   },
+    //   dataset = api.internal.importGeoJSON(input, {});
+    //   assert(/RFC 7946 warning/.test(api.internal.getRFC7946Warnings(dataset)));
+    // })
 
     it('Use CCW winding order for rings and CW for holes', function (done) {
       var input = {

@@ -1,14 +1,33 @@
 import { error, internal } from './gui-core';
-import { updatePointCoords, getPointCoords } from './gui-drawing-utils';
+import { updatePointCoords, getPointCoords, appendNewPoint } from './gui-drawing-utils';
+import { translateDisplayPoint } from './gui-display-utils';
 
 export function initPointDragging(gui, ext, hit) {
   var symbolInfo;
   function active(e) {
-    return e.id > -1 && gui.interaction.getMode() == 'location';
+    return gui.interaction.getMode() == 'location';
   }
 
+  function overPoint(e) {
+    return active(e) && e.id > -1;
+  }
+
+  hit.on('click', function(e) {
+    if (overPoint(e) || !active(e)) return;
+    // add point
+    var p = pixToDataCoords(e.x, e.y);
+    var target = hit.getHitTarget();
+    appendNewPoint(target, p);
+    gui.dispatchEvent('point_add', {p, target});
+    gui.dispatchEvent('map-needs-refresh');
+  });
+
+  hit.on('change', function(e) {
+    gui.container.findChild('.map-layers').classed('drawing', !overPoint(e));
+  });
+
   hit.on('dragstart', function(e) {
-    if (!active(e)) return;
+    if (!overPoint(e)) return;
     var target = hit.getHitTarget();
     symbolInfo = {
       FID: e.id,
@@ -18,7 +37,7 @@ export function initPointDragging(gui, ext, hit) {
   });
 
   hit.on('drag', function(e) {
-    if (!active(e)) return;
+    if (!overPoint(e)) return;
     // TODO: support multi points... get id of closest part to the pointer
     var p = getPointCoordsById(e.id, symbolInfo.target);
     if (!p) return;
@@ -29,12 +48,17 @@ export function initPointDragging(gui, ext, hit) {
   });
 
   hit.on('dragend', function(e) {
-    if (!active(e) || !symbolInfo ) return;
+    if (!overPoint(e) || !symbolInfo ) return;
     updatePointCoords(symbolInfo.target, e.id);
     symbolInfo.endCoords = getPointCoords(symbolInfo.target, e.id);
     gui.dispatchEvent('symbol_dragend', symbolInfo);
     symbolInfo = null;
   });
+
+  function pixToDataCoords(x, y) {
+    var target = hit.getHitTarget();
+    return translateDisplayPoint(target, ext.translatePixelCoords(x, y));
+  }
 
   function translateDeltaDisplayCoords(dx, dy, ext) {
     var a = ext.translatePixelCoords(0, 0);

@@ -9,8 +9,8 @@ export function InteractionMode(gui) {
     rectangles: ['info', 'selection', 'box', 'rectangles'],
     lines: ['info', 'selection', 'box' , 'drawing'],
     table: ['info', 'selection'],
-    labels: ['info', 'selection', 'box', 'labels', 'location', 'add-points'],
-    points: ['info', 'selection', 'box', 'location', 'add-points']
+    labels: ['info', 'selection', 'box', 'labels', 'location'],
+    points: ['info', 'selection', 'box', 'location'] // , 'add-points'
   };
 
   var prompts = {
@@ -25,7 +25,7 @@ export function InteractionMode(gui) {
     box: 'shift-drag box tool',
     data: 'edit attributes',
     labels: 'position labels',
-    location: 'drag points',
+    location: 'add/drag points',
     vertices: 'edit vertices',
     selection: 'selection tool',
     'add-points': 'add points',

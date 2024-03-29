@@ -33,6 +33,10 @@ export function getLayerDataTable(lyr) {
   return data;
 }
 
+export function layerHasAttributeData(lyr) {
+  return lyr.data && lyr.data.getFields().length > 0;
+}
+
 export function layerHasNonNullData(lyr) {
   return lyr.data && getFirstNonEmptyRecord(lyr.data.getRecords()) ? true : false;
 }

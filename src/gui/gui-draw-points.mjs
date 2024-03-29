@@ -26,7 +26,6 @@ export function initPointDrawing(gui, ext, hit) {
     gui.dispatchEvent('map-needs-refresh');
   });
 
-
   function pixToDataCoords(x, y) {
     var target = hit.getHitTarget();
     return translateDisplayPoint(target, ext.translatePixelCoords(x, y));
