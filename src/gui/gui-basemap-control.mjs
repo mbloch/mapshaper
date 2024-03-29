@@ -62,6 +62,7 @@ export function Basemap(gui, ext) {
         closeMenu();
       }
     });
+
     fadeBtn.on('click', function() {
       if (faded) {
         mapEl.css('opacity', 1);
