@@ -1,7 +1,7 @@
 import { internal, Bounds, utils } from './gui-core';
 import { isProjectedLayer } from './gui-display-utils';
 import { layerHasCanvasDisplayStyle } from './gui-map-style';
-
+import { projectLayerForDisplay } from './gui-display-layer';
 export function flattenArcs(lyr) {
   lyr.gui.source.dataset.arcs.flatten();
   if (isProjectedLayer(lyr)) {
@@ -53,6 +53,19 @@ function getEmptyDataRecord(table) {
   }, {});
 }
 
+// p1, p2: two points in source data CRS coords.
+export function appendNewPath(lyr, p1, p2) {
+  var arcId = lyr.gui.displayArcs.size();
+  internal.appendEmptyArc(lyr.gui.displayArcs);
+  lyr.shapes.push([[arcId]]);
+  if (isProjectedLayer(lyr)) {
+    internal.appendEmptyArc(lyr.gui.source.dataset.arcs);
+  }
+  appendVertex(lyr, p1);
+  appendVertex(lyr, p2);
+  appendNewDataRecord(lyr);
+}
+
 export function deleteLastPath(lyr) {
   var arcId = lyr.gui.displayArcs.size() - 1;
   if (lyr.data) {
@@ -65,17 +78,26 @@ export function deleteLastPath(lyr) {
   }
 }
 
-// p1, p2: two points in source data CRS coords.
-export function appendNewPath(lyr, p1, p2) {
-  var arcId = lyr.gui.displayArcs.size();
-  internal.appendEmptyArc(lyr.gui.displayArcs);
-  lyr.shapes.push([[arcId]]);
-  if (isProjectedLayer(lyr)) {
-    internal.appendEmptyArc(lyr.gui.source.dataset.arcs);
+// p: one point in source data coords
+export function appendNewPoint(lyr, p) {
+  lyr.shapes.push([p]);
+  if (lyr.data) {
+    appendNewDataRecord(lyr);
   }
-  appendVertex(lyr, p1);
-  appendVertex(lyr, p2);
-  appendNewDataRecord(lyr);
+  // this reprojects all the points... TODO: improve
+  if (isProjectedLayer(lyr)) {
+    projectLayerForDisplay(lyr, lyr.gui.dynamic_crs);
+  }
+}
+
+export function deleteLastPoint(lyr) {
+  if (lyr.data) {
+    lyr.data.getRecords().pop();
+  }
+  lyr.shapes.pop();
+  if (isProjectedLayer(lyr)) {
+    lyr.gui.displayLayer.shapes.pop();
+  }
 }
 
 // p: point in source data CRS coords.
@@ -95,6 +117,7 @@ export function appendVertex(lyr, p) {
 export function deleteLastVertex(lyr) {
   deleteVertex(lyr, lyr.gui.displayArcs.getPointCount() - 1);
 }
+
 
 export function deleteVertex(lyr, id) {
   internal.deleteVertex(lyr.gui.displayArcs, id);
