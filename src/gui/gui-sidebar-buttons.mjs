@@ -7,6 +7,7 @@ export function SidebarButtons(gui) {
   var _hidden = true;
   gui.on('active', updateVisibility);
   gui.on('inactive', updateVisibility);
+  gui.model.on('update', updateVisibility);
 
   // @iconRef: selector for an (svg) button icon
   this.addButton = function(iconRef) {
@@ -35,7 +36,7 @@ export function SidebarButtons(gui) {
   };
 
   function updateVisibility() {
-    if (GUI.isActiveInstance(gui) && !_hidden) {
+    if (GUI.isActiveInstance(gui) && !_hidden && !!gui.model.getActiveLayer()) {
       buttons.show();
     } else {
       buttons.hide();

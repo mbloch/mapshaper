@@ -63,7 +63,6 @@ export function BoxTool(gui, ext, nav) {
   });
 
   gui.on('shift_drag_start', function() {
-    // box.classed('zooming', inZoomMode());
     hideCoords();
   });
 

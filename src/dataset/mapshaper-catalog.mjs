@@ -157,7 +157,7 @@ export function Catalog() {
     // * In TopoJSON input, it makes sense to think of the last object/layer
     //   as the topmost one -- it corresponds to the painter's algorithm and
     //   the way that objects are ordered in SVG.
-    var lyr = targ.layers[targ.layers.length - 1];
+    var lyr = targ?.layers[targ.layers.length - 1];
     return targ ? {layer: lyr, dataset: targ.dataset} : null;
   };
 

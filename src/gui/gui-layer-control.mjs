@@ -23,6 +23,14 @@ export function LayerControl(gui) {
   var layerOrderSlug;
 
   gui.addMode('layer_menu', turnOn, turnOff, btn.findChild('.header-btn'));
+
+  // kludge to show menu button after initial import dialog is dismissed
+  gui.on('mode', function(e) {
+    if (!e.name) {
+      updateMenuBtn();
+    }
+  });
+
   model.on('update', function(e) {
     updateMenuBtn();
     if (isOpen) render();
@@ -113,8 +121,9 @@ export function LayerControl(gui) {
   }
 
   function updateMenuBtn() {
-    var lyrName = model.getActiveLayer().layer.name || '';
-    var menuTitle = lyrName || '[unnamed layer]';
+    var lyr = model.getActiveLayer()?.layer;
+    var lyrName = lyr?.name || '';
+    var menuTitle = lyrName || lyr && '[unnamed layer]' || '[no data]';
     var pageTitle = lyrName || 'mapshaper';
     btn.classed('active', 'true').findChild('.layer-name').html(menuTitle + " &nbsp;&#9660;");
     window.document.title = pageTitle;
@@ -126,6 +135,8 @@ export function LayerControl(gui) {
   }
 
   function renderSourceFileList() {
+    el.findChild('.no-layer-note').classed('hidden', model.getActiveLayer());
+    el.findChild('.source-file-section').classed('hidden', !model.getActiveLayer());
     var list = el.findChild('.file-list');
     var files = [];
     list.empty();

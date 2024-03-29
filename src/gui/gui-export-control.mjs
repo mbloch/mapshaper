@@ -17,7 +17,7 @@ export var ExportControl = function(gui) {
   var menu = gui.container.findChild('.export-options').on('click', GUI.handleDirectEvent(gui.clearMode));
   var layersArr = [];
   var toggleBtn = null; // checkbox <input> for toggling layer selection
-  var exportBtn = gui.container.findChild('.export-btn');
+  var exportBtn = gui.container.findChild('.export-btn').addClass('disabled');
   var ofileName = gui.container.findChild('#ofile-name');
   new SimpleButton(menu.findChild('.close2-btn')).on('click', gui.clearMode);
 
@@ -31,6 +31,10 @@ export var ExportControl = function(gui) {
     };
     return;
   }
+
+  model.on('update', function() {
+    exportBtn.classed('disabled', !model.getActiveLayer());
+  });
 
   new SimpleButton(menu.findChild('#export-btn').addClass('default-btn')).on('click', onExportClick);
   gui.addMode('export', turnOn, turnOff, exportBtn);

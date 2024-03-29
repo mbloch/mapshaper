@@ -14,6 +14,7 @@ export function ModeButton(modes, el, name) {
   });
 
   btn.on('click', function() {
+    if (btn.hasClass('disabled')) return;
     modes.enterMode(active ? null : name);
   });
 }

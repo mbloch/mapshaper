@@ -55,9 +55,10 @@ var startEditing = function() {
       importOpts = getImportOpts(manifest),
       gui = new GuiInstance('body');
 
-  if (manifest.blurb) {
-    El('#splash-screen-blurb').text(manifest.blurb);
-  }
+  // TODO: re-enable the "blurb"
+  // if (manifest.blurb) {
+  //   El('#splash-screen-blurb').text(manifest.blurb);
+  // }
 
   new AlertControl(gui);
   new RepairControl(gui);
@@ -88,16 +89,18 @@ var startEditing = function() {
   });
 
   // Initial display configuration
-  gui.model.on('select', function() {
+  gui.on('mode', function(e) {
     if (dataLoaded) return;
     dataLoaded = true;
+    gui.buttons.show();
     El('#mode-buttons').show();
+    El('#splash-buttons').hide();
+    El('body').addClass('map-view');
     if (importOpts.display_all) {
       gui.model.getLayers().forEach(function(o) {
         gui.map.setLayerPinning(o, true);
       });
     }
     gui.console.runInitialCommands(getInitialConsoleCommands());
-
   });
 };

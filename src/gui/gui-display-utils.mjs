@@ -7,7 +7,11 @@ export function getDatasetCrsInfo(dataset) {
   // prevent GUI message popup on error
   internal.setLoggingForCLI();
   try {
-    crs = internal.getDatasetCRS(dataset);
+    if (!dataset || internal.datasetIsEmpty(dataset)) {
+      crs = internal.parseCrsString('wgs84');
+    } else {
+      crs = internal.getDatasetCRS(dataset);
+    }
   } catch(e) {
     err = e.message;
   }

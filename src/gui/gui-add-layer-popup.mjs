@@ -35,7 +35,7 @@ function addLayer(gui, name, type) {
     }],
     info: {}
   };
-  if (type == 'polygon' || type == 'point') {
+  if (type == 'polygon' || type == 'polyline') {
     dataset.arcs = new internal.ArcCollection();
   }
   if (crsInfo) {

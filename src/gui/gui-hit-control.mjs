@@ -22,12 +22,13 @@ export function HitControl(gui, ext, mouse) {
   var priority = 2;
 
   mouse.on('contextmenu', function(e) {
-    if (isOverMap(e)) {
-      e.originalEvent.preventDefault();
+    // shift key enables default menu (for development)
+    if (gui.keyboard.shiftIsPressed()) {
+      return;
     }
-    if (!gui.contextMenu.isOpen()) {
-      triggerHitEvent('contextmenu', e);
-    }
+    e.originalEvent.preventDefault();
+    if (!targetLayer) return; // TODO: enable menu on empty map
+    triggerHitEvent('contextmenu', e);
   }, false);
 
   // init keyboard controls for pinned features
@@ -70,7 +71,6 @@ export function HitControl(gui, ext, mouse) {
   };
 
   function updateHitTest(featureFilter) {
-    if (!hoverable()) return;
     hitTest = getPointerHitTest(targetLayer, ext, interactionMode, featureFilter);
   }
 
@@ -91,7 +91,7 @@ export function HitControl(gui, ext, mouse) {
   }
 
   function hoverable() {
-    return true;
+    return !!interactionMode;
   }
 
   function selectable() {

@@ -79,6 +79,7 @@ export function RepairControl(gui) {
       return;
     }
     var e = model.getActiveLayer();
+    if (!e) return;
     if (internal.layerHasPaths(e.layer)) {
       el.show();
       checkBtn.show();

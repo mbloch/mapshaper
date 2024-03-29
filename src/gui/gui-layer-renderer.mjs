@@ -3,8 +3,10 @@ import { SvgDisplayLayer } from './gui-svg-display';
 import { internal } from './gui-core';
 import { El } from './gui-el';
 
-export function LayerRenderer(gui, container, ext, mouse) {
+export function LayerRenderer(gui, container) {
   var el = El(container),
+      ext = gui.map.getExtent(),
+      mouse = gui.map.getMouse(),
       _mainCanv = new DisplayCanvas().appendTo(el),
       _overlayCanv = new DisplayCanvas().appendTo(el),
       _svg = new SvgDisplayLayer(gui, ext, mouse).appendTo(el),

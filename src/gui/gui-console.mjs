@@ -72,7 +72,8 @@ export function Console(gui) {
   }
 
   function turnOn() {
-    if (!_isOpen && !model.isEmpty()) {
+    // if (!_isOpen && !model.isEmpty()) {
+    if (!_isOpen) {
       btn.addClass('active');
       _isOpen = true;
       // use console for messages while open
@@ -411,8 +412,8 @@ export function Console(gui) {
 
   function applyParsedCommands(commands, done) {
     var active = model.getActiveLayer(),
-        prevArcs = active.dataset.arcs,
-        prevTable = active.layer.data,
+        prevArcs = active?.dataset.arcs,
+        prevTable = active?.layer.data,
         prevTableSize = prevTable ? prevTable.size() : 0,
         prevArcCount = prevArcs ? prevArcs.size() : 0,
         job = new internal.Job(model);
@@ -421,9 +422,9 @@ export function Console(gui) {
     internal.runParsedCommands(commands, job, function(err) {
       var flags = getCommandFlags(commands),
           active2 = model.getActiveLayer(),
-          postArcs = active2.dataset.arcs,
+          postArcs = active2?.dataset.arcs,
           postArcCount = postArcs ? postArcs.size() : 0,
-          postTable = active2.layer.data,
+          postTable = active2?.layer.data,
           postTableSize = postTable ? postTable.size() : 0,
           sameTable = prevTable == postTable && prevTableSize == postTableSize,
           sameArcs = prevArcs == postArcs && postArcCount == prevArcCount;
@@ -436,7 +437,7 @@ export function Console(gui) {
       if (sameTable) {
         flags.same_table = true;
       }
-      if (active.layer != active2.layer) {
+      if (active && active?.layer == active2?.layer) {
         // this can get set after some commands that don't set a new target
         // (e.g. -dissolve)
         flags.select = true;
@@ -451,10 +452,10 @@ export function Console(gui) {
   function onError(err) {
     if (utils.isString(err)) {
       consoleStop(err);
-    } else if (err.name == 'UserError') {
+    } else if (err.name == 'UserError' ) {
       // stop() has already been called, don't need to log
+      console.error(err.stack);
     } else if (err.name) {
-      // log stack trace to browser console
       console.error(err.stack);
       // log to console window
       consoleWarning(err.message);

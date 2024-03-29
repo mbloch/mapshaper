@@ -11,26 +11,32 @@ export function MapExtent(_position) {
 
   _position.on('resize', function(e) {
     if (ready()) {
-      triggerChangeEvent({resize: true});
+      // triggerChangeEvent({resize: true});
+      triggerChangeEvent();
     }
   });
 
   function ready() { return !!_fullBounds; }
 
-  this.reset = function() {
+  this.reset = function(fire) {
     if (!ready()) return;
-    recenter(_fullBounds.centerX(), _fullBounds.centerY(), 1, {reset: true});
+    recenter(_fullBounds.centerX(), _fullBounds.centerY(), 1);
+    if (fire) {
+      triggerChangeEvent();
+    }
   };
 
   this.home = function() {
     if (!ready()) return;
     recenter(_fullBounds.centerX(), _fullBounds.centerY(), 1);
+    triggerChangeEvent();
   };
 
   this.pan = function(xpix, ypix) {
     if (!ready()) return;
     var t = this.getTransform();
     recenter(_cx - xpix / t.mx, _cy - ypix / t.my);
+    triggerChangeEvent();
   };
 
   // Zoom to @w (width of the map viewport in coordinates)
@@ -53,6 +59,7 @@ export function MapExtent(_position) {
         cx = fx + dx2,
         cy = fy + dy2;
     recenter(cx, cy, scale);
+    triggerChangeEvent();
   };
 
   this.zoomByPct = function(pct, xpct, ypct) {
@@ -144,11 +151,10 @@ export function MapExtent(_position) {
     return this.getTransform().invert().transform(x, y);
   };
 
-  function recenter(cx, cy, scale, data) {
+  function recenter(cx, cy, scale) {
     scale = scale ? limitScale(scale) : _scale;
     if (cx == _cx && cy == _cy && scale == _scale) return;
     navigate(cx, cy, scale);
-    triggerChangeEvent(data);
   }
 
   function navigate(cx, cy, scale) {
@@ -175,9 +181,8 @@ export function MapExtent(_position) {
     _scale = scale;
   }
 
-  function triggerChangeEvent(data) {
-    data = data || {};
-    _self.dispatchEvent('change', data);
+  function triggerChangeEvent() {
+    _self.dispatchEvent('change');
   }
 
   // stop zooming before rounding errors become too obvious

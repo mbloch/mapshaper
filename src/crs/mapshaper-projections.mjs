@@ -1,7 +1,7 @@
 import { AlbersUSA, parseCustomProjection } from '../crs/mapshaper-custom-projections';
 import { stop, print } from '../utils/mapshaper-logging';
 import { probablyDecimalDegreeBounds } from '../geom/mapshaper-latlon';
-import { getDatasetBounds } from '../dataset/mapshaper-dataset-utils';
+import { getDatasetBounds, datasetIsEmpty } from '../dataset/mapshaper-dataset-utils';
 import utils from '../utils/mapshaper-utils';
 import geom from '../geom/mapshaper-geom';
 import { getStashedVar } from '../mapshaper-stash';
@@ -211,10 +211,12 @@ export function getDatasetCrsInfo(dataset) {
   if (!P && info.prj) {
     P = parseCrsString(translatePrj(info.prj));
   }
-  if (!P && probablyDecimalDegreeBounds(getDatasetBounds(dataset))) {
-    // use wgs84 for probable latlong datasets with unknown datums
-    str = 'wgs84';
-    P = parseCrsString(str);
+  if (!P) {
+    if (probablyDecimalDegreeBounds(getDatasetBounds(dataset))) {
+      // use wgs84 for probable latlong datasets with unknown datums
+      str = 'wgs84';
+      P = parseCrsString(str);
+    }
   }
   return {
     crs: P || null,

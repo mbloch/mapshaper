@@ -76,7 +76,7 @@
 		<input type="text" value="label" class="clicktext" />
 	</div></div>
 	<div id="mode-buttons" class="page-header-buttons">
-		<span class="basemap-btn header-btn btn">Basemap</span><span class="separator"></span><span class="simplify-btn header-btn btn">Simplify</span><span class="separator"></span><span class="console-btn header-btn btn">Console</span><span class="separator"></span><span class="export-btn header-btn btn">Export</span>
+		<span class="console-btn header-btn btn">Console</span><span class="basemap-btn header-btn btn">Basemap</span><span class="separator"></span><span class="separator"></span><span class="simplify-btn header-btn btn">Simplify</span><span class="separator"></span><span class="export-btn header-btn btn">Export</span>
 	</div>
 	<div id="splash-buttons" class="page-header-buttons">
 		<a href="https://github.com/mbloch/mapshaper/wiki"><span id="wiki-btn" class="header-btn btn">Wiki</span></a><span class="separator"></span><a href="https://github.com/mbloch/mapshaper"><span id="github-btn" class="header-btn btn">GitHub</span></a>
@@ -98,11 +98,14 @@
 			<div class="pin-all pinnable">
 				<img class="eye-btn black-eye" src="images/eye.png">
 				<img class="eye-btn green-eye" src="images/eye2.png">
-	</div>
+			</div>
 			<div class="layer-list"></div>
 			<!-- <h4>Sources</h4> -->
-			<h4>Source files</h4>
-			<div class="file-list"></div>
+			<div class="no-layer-note">No data has been added</div>
+			<div class="source-file-section">
+				<h4>Source files</h4>
+				<div class="file-list"></div>
+			</div>
 			<div>
 				<div id="add-file-btn" class="dialog-btn btn">Add files</div>
 				<div id="add-empty-btn" class="dialog-btn btn">Add empty layer</div>
@@ -164,7 +167,6 @@
 		<div class="tip">Enter options from the command line interface for
 the -o command. Examples: bbox no-quantization
 precision=0.001. Click to see all options.</div></div></div></a>
-
 
 	<!-- 	<div class="option-menu">
 	<input id="ofile-name" class="text-input" type="text" placeholder="output file name" />
@@ -245,55 +247,41 @@ a smoother appearance.</div></div></div></div>
 	</div> <!-- .info-box -->
 </div> <!-- simplify-options -->
 
-<div id="splash-screen" class="main-area">
-	<div>
-		<h3 id="splash-screen-blurb">Mapshaper is an editor for map data</h3>
-	</div>
-	<div id="drop-areas" class="drop-area-wrapper main-area">
-
-		<div class="file-catalog catalog-area">
-		</div>
-		<div class="file-catalog-spacer spacer"></div>
-
-		<div id="import-drop" class="drop-area">
-			<h4>Drop or paste files here or <span class="inline-btn btn" id="file-selection-btn"><span class="label-text">select</span></span> from a folder</h4>
-			<div class="subtitle">Shapefile, GeoJSON, TopoJSON, KML and CSV files are supported</div>
-			<div class="subtitle">Files can be gzipped or in a zip archive</div>
-		</div>
-		<div class="spacer"></div>
-		<div id="import-quick-drop" class="drop-area">
-			<h4>Quick import</h4>
-			<div class="subtitle">Drop or paste files here to import with default settings</div>
-		</div>
-	</div>
-</div>
-
 <div id="import-options" class="main-area popup-dialog">
 	<div class="info-box">
-		<h3 class="list-header">Files</h3>
-
-		<div class="dropped-file-list"></div>
-		
-		<div class="option-menu">
-
-		<div id="path-import-options">
-			<h4>Options</h4>
+		<div class="cancel-btn close2-btn"></div>
+		<h3 class="list-header">Import files</h3>
+		<div class="import-instructions">
+			<span><input type="checkbox" class="advanced-import-options" />with advanced options</span>
+			<div class="mini-drop-area">
+				<div class="subtitle">Drop, paste or <span class="add-btn inline-btn btn"><span class="label-text">select</span></span> files to import.</div>
+				<div class="subtitle">Shapefile, GeoJSON, TopoJSON, KML and CSV formats are supported. Files can be zipped or gzipped.</div>
+			</div>
 		</div>
+		<div class="queued-file-section">
+			<!-- <h4>Files</h4> -->
+			<div class="dropped-file-list"></div>
+			
+			<div class="option-menu">
 
-		<div><input type="text" class="text-input advanced-options" placeholder="command line import options" />
-			<a href="https://github.com/mbloch/mapshaper/wiki/Command-Reference#-i-input" target="_mapshaper_import_docs">
-			<div class="tip-button">?<div class="tip-anchor">
-<div class="tip">Enter options from the command line
+			<div id="path-import-options">
+				<!-- <h4>Options</h4> -->
+			</div>
+
+			<div style="margin-top: 10px"><input type="text" class="text-input advanced-options" placeholder="import options" />
+				<a href="https://github.com/mbloch/mapshaper/wiki/Command-Reference#-i-input" target="_mapshaper_import_docs">
+				<div class="tip-button">?<div class="tip-anchor">
+	<div class="tip">Enter options from the command line
 interface. Examples: <span id="import-option-examples">snap no-topology
 encoding=big5</span>. Click to see all options.</div></div></div></div>
-		</a>
+			</a>
 
-		</div>
+			</div>
 
-		<div id="import-buttons">
-			<div class="cancel-btn btn dialog-btn">Cancel</div>
-			<div class="add-btn btn dialog-btn">Select</div>
-			<div class="submit-btn btn dialog-btn default-btn">Import</div>
+	<!-- 			<div class="cancel-btn btn dialog-btn">Cancel</div>
+				<div class="add-btn btn dialog-btn">Select</div> -->
+				<div class="submit-btn btn dialog-btn default-btn disabled">Submit</div>
+
 		</div>
 
 	</div> <!-- .info-box -->
