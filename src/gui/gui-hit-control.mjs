@@ -123,7 +123,7 @@ export function HitControl(gui, ext, mouse) {
   self.setHitId = function(id) {
     if (storedData.id == id) return;
     storedData.id = id;
-    storedData.ids = [id];
+    storedData.ids = id == -1 ? [] : [id];
     triggerHitEvent('change');
   };
 

@@ -56,6 +56,9 @@ export function ContextMenu() {
     if (e.deleteVertex) {
       addMenuItem('Delete vertex', e.deleteVertex);
     }
+    if (e.deletePoint) {
+      addMenuItem('Delete point', e.deletePoint);
+    }
     if (e.ids?.length) {
       addMenuItem('Copy as GeoJSON', copyGeoJSON);
     }

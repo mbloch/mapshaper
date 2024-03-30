@@ -90,6 +90,25 @@ export function appendNewPoint(lyr, p) {
   }
 }
 
+export function deletePoint(lyr, fid) {
+  var records = lyr.data?.getRecords();
+  lyr.shapes.splice(fid, 1);
+  if (records) records.splice(fid, 1);
+  if (isProjectedLayer(lyr)) {
+    lyr.gui.displayLayer.shapes.splice(fid, 1);
+  }
+}
+
+export function insertPoint(lyr, fid, shp, d) {
+  var records = lyr.data?.getRecords();
+  if (records) records.splice(fid, 0, d);
+  lyr.shapes.splice(fid, 0, shp);
+  if (isProjectedLayer(lyr)) {
+    var shp2 = projectPointCoords(shp, lyr.gui.projectPoint);
+    lyr.gui.displayLayer.shapes.splice(fid, 0, shp2);
+  }
+}
+
 export function deleteLastPoint(lyr) {
   if (lyr.data) {
     lyr.data.getRecords().pop();

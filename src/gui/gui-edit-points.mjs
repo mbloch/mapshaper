@@ -1,5 +1,9 @@
 import { error, internal } from './gui-core';
-import { updatePointCoords, getPointCoords, appendNewPoint } from './gui-drawing-utils';
+import {
+  updatePointCoords,
+  getPointCoords,
+  appendNewPoint,
+  deletePoint } from './gui-drawing-utils';
 import { translateDisplayPoint } from './gui-display-utils';
 import { addEmptyLayer } from './gui-add-layer-popup';
 
@@ -19,8 +23,28 @@ export function initPointEditing(gui, ext, hit) {
     } else if (e.prev_mode == 'edit_points') {
       gui.container.findChild('.map-layers').classed('add-points', false);
     }
-
   });
+
+  hit.on('contextmenu', function(e) {
+    if (!active(e)) return;
+    var target = hit.getHitTarget();
+    var id = e.id;
+    if (id > -1) {
+      e.deletePoint = function() {
+        removePoint(target, id);
+      };
+    }
+    gui.contextMenu.open(e, target);
+  });
+
+  function removePoint(target, id) {
+    var d = target.data ? target.data.getRecords()[id] : null;
+    var coords = target.shapes[id];
+    deletePoint(target, id);
+    gui.dispatchEvent('point_delete', {coords, d, target, fid: id});
+    gui.dispatchEvent('map-needs-refresh');
+    hit.setHitId(-1);
+  }
 
   hit.on('click', function(e) {
     if (overPoint(e) || !active(e)) return;

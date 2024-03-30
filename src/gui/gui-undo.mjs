@@ -7,7 +7,9 @@ import {
   deleteVertex,
   setRectangleCoords,
   appendNewPoint,
-  deleteLastPoint
+  deleteLastPoint,
+  deletePoint,
+  insertPoint
 } from './gui-drawing-utils';
 
 var copyRecord = internal.copyRecord;
@@ -157,6 +159,16 @@ export function Undo(gui) {
     };
     var undo = function() {
       deleteLastPoint(e.data.target);
+    };
+    addHistoryState(undo, redo);
+  });
+
+  gui.on('point_delete', function(e) {
+    var redo = function() {
+      deletePoint(e.data.target, e.fid);
+    };
+    var undo = function() {
+      insertPoint(e.data.target, e.fid, e.coords, e.d);
     };
     addHistoryState(undo, redo);
   });
