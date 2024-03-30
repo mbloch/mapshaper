@@ -1,3 +1,6 @@
+v0.6.79
+* [web] Added "delete point" to the point editing context menu.
+
 v0.6.78
 * [web] Combined "drag points" and "add points" tools into a single "add/edit points" tool.
 * [web] Enable point and path drawing when no layers have been added.
