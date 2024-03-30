@@ -3451,6 +3451,25 @@
     }
   }
 
+  function deletePoint(lyr, fid) {
+    var records = lyr.data?.getRecords();
+    lyr.shapes.splice(fid, 1);
+    if (records) records.splice(fid, 1);
+    if (isProjectedLayer(lyr)) {
+      lyr.gui.displayLayer.shapes.splice(fid, 1);
+    }
+  }
+
+  function insertPoint(lyr, fid, shp, d) {
+    var records = lyr.data?.getRecords();
+    if (records) records.splice(fid, 0, d);
+    lyr.shapes.splice(fid, 0, shp);
+    if (isProjectedLayer(lyr)) {
+      var shp2 = projectPointCoords(shp, lyr.gui.projectPoint);
+      lyr.gui.displayLayer.shapes.splice(fid, 0, shp2);
+    }
+  }
+
   function deleteLastPoint(lyr) {
     if (lyr.data) {
       lyr.data.getRecords().pop();
@@ -5522,6 +5541,16 @@
       addHistoryState(undo, redo);
     });
 
+    gui.on('point_delete', function(e) {
+      var redo = function() {
+        deletePoint(e.data.target, e.fid);
+      };
+      var undo = function() {
+        insertPoint(e.data.target, e.fid, e.coords, e.d);
+      };
+      addHistoryState(undo, redo);
+    });
+
     gui.on('path_add', function(e) {
       var redo = function() {
         gui.dispatchEvent('redo_path_add', {p1: e.p1, p2: e.p2});
@@ -5720,17 +5749,22 @@
     document.addEventListener('keyup', function(e) {
       if (!GUI.isActiveInstance(gui)) return;
       // this can fail to fire if keyup occurs over a context menu
-      // if (e.keyCode == 16) shiftDown = false;
       shiftDown = e.shiftKey;
-      if (e.keyCode == 17) ctrlDown = false;
+      ctrlDown = e.ctrlKey;
       self.dispatchEvent('keyup', getEventData(e));
     });
 
     document.addEventListener('keydown', function(e) {
       if (!GUI.isActiveInstance(gui)) return;
       shiftDown = e.shiftKey;
-      if (e.keyCode == 17) ctrlDown = true;
+      ctrlDown = e.ctrlKey;
       self.dispatchEvent('keydown', getEventData(e));
+    });
+
+    document.addEventListener('mousemove', function(e) {
+      // refreshing these here to prevent problems when context menu opens
+      shiftDown = e.shiftKey;
+      ctrlDown = e.ctrlKey;
     });
 
     this.shiftIsPressed = function() { return shiftDown; };
@@ -8061,7 +8095,7 @@
     self.setHitId = function(id) {
       if (storedData.id == id) return;
       storedData.id = id;
-      storedData.ids = [id];
+      storedData.ids = id == -1 ? [] : [id];
       triggerHitEvent('change');
     };
 
@@ -9805,7 +9839,7 @@
     hit.on('contextmenu', function(e) {
       var target = hit.getHitTarget();
       if (!e.overMap || !target || e.mode == 'edit_lines' ||
-          e.mode == 'edit_polygons') {
+          e.mode == 'edit_polygons' || e.mode == 'edit_points') {
         return;
       }
       gui.contextMenu.open(e, hit.getHitTarget());
@@ -10100,7 +10134,8 @@
   }
 
   function initPointEditing(gui, ext, hit) {
-    var symbolInfo;
+    var instructionsShown = false;
+    var symbolInfo, alert;
     function active(e) {
       return gui.interaction.getMode() == 'edit_points';
     }
@@ -10109,17 +10144,57 @@
       return active(e) && e.id > -1;
     }
 
+    function hideInstructions() {
+      if (!alert) return;
+      alert.close('fade');
+      alert = null;
+    }
+
+    function showInstructions() {
+      var isMac = navigator.userAgent.includes('Mac');
+      var symbol = isMac ? '⌘' : '^';
+      var msg = `Instructions: Click on the map to add points. Move points by dragging. Type ${symbol}Z/${symbol}Y to undo/redo.`;
+      alert = showPopupAlert(msg, null, { non_blocking: true, max_width: '360px'});
+    }
+
     gui.on('interaction_mode_change', function(e) {
       if (e.mode == 'edit_points' && !gui.model.getActiveLayer()) {
         addEmptyLayer(gui, undefined, 'point');
       } else if (e.prev_mode == 'edit_points') {
+        hideInstructions();
         gui.container.findChild('.map-layers').classed('add-points', false);
       }
-
+      if (e.mode == 'edit_points' && !instructionsShown) {
+        instructionsShown = true;
+        showInstructions();
+      }
     });
+
+    hit.on('contextmenu', function(e) {
+      if (!active(e)) return;
+      var target = hit.getHitTarget();
+      var id = e.id;
+      if (id > -1) {
+        e.deletePoint = function() {
+          removePoint(target, id);
+        };
+      }
+      gui.contextMenu.open(e, target);
+    });
+
+    function removePoint(target, id) {
+      var d = target.data ? target.data.getRecords()[id] : null;
+      var coords = target.shapes[id];
+      deletePoint(target, id);
+      gui.dispatchEvent('point_delete', {coords, d, target, fid: id});
+      gui.dispatchEvent('map-needs-refresh');
+      hit.setHitId(-1);
+    }
 
     hit.on('click', function(e) {
       if (overPoint(e) || !active(e)) return;
+      hideInstructions();
+
       // add point
       var p = pixToDataCoords(e.x, e.y);
       var target = hit.getHitTarget();
@@ -10136,6 +10211,7 @@
 
     hit.on('dragstart', function(e) {
       if (!overPoint(e)) return;
+      hideInstructions();
       var target = hit.getHitTarget();
       symbolInfo = {
         FID: e.id,
@@ -12955,6 +13031,9 @@ GUI and setting the size and crop of SVG output.</p><div><input type="text" clas
       }
       if (e.deleteVertex) {
         addMenuItem('Delete vertex', e.deleteVertex);
+      }
+      if (e.deletePoint) {
+        addMenuItem('Delete point', e.deletePoint);
       }
       if (e.ids?.length) {
         addMenuItem('Copy as GeoJSON', copyGeoJSON);

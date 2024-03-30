@@ -59,7 +59,7 @@ body.map-view {
 
 
 .selectable,.selectable * {
-	user-select: default;
+	user-select: text;
 	cursor: text;
 }
 
@@ -343,17 +343,17 @@ div.alert-box {
 }
 
 .mini-drop-area {
-	border: 1.5px dashed #bbb;
-	max-width: 240px;
+	border: 1.5px dashed #999;
+	max-width: 245px;
 	border-radius: 9px;
-	font-size: 15px;
+	font-size: 14px;
 	line-height: 1.5;
-	color: #888;
-/*	background-color: #FFFEF8;*/
-	padding: 6px 4px 7px 7px;
-	padding: 11px 14px;
+/*	color: #555;*/
+	padding: 9px 11px 6px 11px;
 	margin: 9px -1px 3px -1px;
 	min-height: 120px;
+	background: #f8fdff;
+;
 }
 
 .catalog-mode .file-catalog {
