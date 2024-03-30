@@ -25,7 +25,7 @@ export function InspectionControl2(gui, hit) {
   hit.on('contextmenu', function(e) {
     var target = hit.getHitTarget();
     if (!e.overMap || !target || e.mode == 'edit_lines' ||
-        e.mode == 'edit_polygons') {
+        e.mode == 'edit_polygons' || e.mode == 'edit_points') {
       return;
     }
     gui.contextMenu.open(e, hit.getHitTarget());

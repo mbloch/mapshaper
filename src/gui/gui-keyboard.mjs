@@ -9,17 +9,22 @@ export function KeyboardEvents(gui) {
   document.addEventListener('keyup', function(e) {
     if (!GUI.isActiveInstance(gui)) return;
     // this can fail to fire if keyup occurs over a context menu
-    // if (e.keyCode == 16) shiftDown = false;
     shiftDown = e.shiftKey;
-    if (e.keyCode == 17) ctrlDown = false;
+    ctrlDown = e.ctrlKey;
     self.dispatchEvent('keyup', getEventData(e));
   });
 
   document.addEventListener('keydown', function(e) {
     if (!GUI.isActiveInstance(gui)) return;
     shiftDown = e.shiftKey;
-    if (e.keyCode == 17) ctrlDown = true;
+    ctrlDown = e.ctrlKey;
     self.dispatchEvent('keydown', getEventData(e));
+  });
+
+  document.addEventListener('mousemove', function(e) {
+    // refreshing these here to prevent problems when context menu opens
+    shiftDown = e.shiftKey;
+    ctrlDown = e.ctrlKey;
   });
 
   this.shiftIsPressed = function() { return shiftDown; };
