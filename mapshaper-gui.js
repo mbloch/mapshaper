@@ -2544,6 +2544,20 @@
     };
   }
 
+  // p1: [x, y] coords
+  // p2: [x, y] coords offset by 1x1 pixel
+  function formatCoordsForDisplay(p1, p2) {
+    var dx = Math.abs(p1[0] - p2[0]);
+    var dy = Math.abs(p1[1] - p2[1]);
+    var offs = (dx + dy) / 2;
+    var decimals = 0;
+    while (offs < 1 && decimals < 6) {
+      offs *= 10;
+      decimals++;
+    }
+    return [p1[0].toFixed(decimals), p1[1].toFixed(decimals)];
+  }
+
   // Convert a point from display CRS coordinates to data coordinates.
   // These are only different when using dynamic reprojection (basemap view).
   function translateDisplayPoint(lyr, p) {
@@ -2563,8 +2577,7 @@
   }
 
   function isProjectedLayer(lyr) {
-    // TODO: could do some validation on the layer's contents
-    return !!lyr.gui.invertPoint;
+    return !!lyr?.gui.invertPoint;
   }
 
   var darkStroke = "#334",
@@ -5620,7 +5633,6 @@
     gui.on('active', updateVisibility);
     gui.on('inactive', updateVisibility);
     gui.model.on('update', updateVisibility);
-    gui.on('mode', updateVisibility);
 
     // @iconRef: selector for an (svg) button icon
     this.addButton = function(iconRef) {
@@ -5649,10 +5661,7 @@
     };
 
     function updateVisibility() {
-      var noData = !gui.model.getActiveLayer();
-      if (GUI.isActiveInstance(gui) && !_hidden && !noData) {
-        buttons.show();
-      } else if (noData && gui.getMode() != 'import') {
+      if (GUI.isActiveInstance(gui) && !_hidden) {
         buttons.show();
       } else {
         buttons.hide();
@@ -7999,7 +8008,9 @@
         return;
       }
       e.originalEvent.preventDefault();
-      if (!targetLayer) return; // TODO: enable menu on empty map
+      if (!El('body').hasClass('map-view')) {
+        return;
+      }
       triggerHitEvent('contextmenu', e);
     }, false);
 
@@ -8423,7 +8434,9 @@
         mode: interactionMode
       };
       if (evt) {
+        // data coordinates
         eventData.coordinates = translateDisplayPoint(targetLayer, ext.translatePixelCoords(evt.x, evt.y));
+        eventData.display_coordinates = gui.map.pixelCoordsToDisplayCoords(evt.x, evt.y);
         eventData.originalEvent = evt;
         eventData.overMap = isOverMap(evt);
       }
@@ -9838,7 +9851,7 @@
 
     hit.on('contextmenu', function(e) {
       var target = hit.getHitTarget();
-      if (!e.overMap || !target || e.mode == 'edit_lines' ||
+      if (!e.overMap || e.mode == 'edit_lines' ||
           e.mode == 'edit_polygons' || e.mode == 'edit_points') {
         return;
       }
@@ -10948,6 +10961,7 @@
       }
     };
 
+    // translate display CRS coords to pixel coords
     this.translateCoords = function(x, y) {
       return this.getTransform().transform(x, y);
     };
@@ -10967,6 +10981,7 @@
       return bounds2.width() / _frame.width;
     };
 
+    // convert pixel coords (0,0 is top left corner of map) to display CRS coords
     this.translatePixelCoords = function(x, y) {
       return this.getTransform().invert().transform(x, y);
     };
@@ -12537,15 +12552,26 @@ GUI and setting the size and crop of SVG output.</p><div><input type="text" clas
       return internal.toLngLat(p, _dynamicCRS);
     };
 
-    this.getCenterLngLat = function() {
-      var bounds = _ext.getBounds();
+    this.pixelCoordsToDisplayCoords = function(x, y) {
+      var p1 = _ext.translatePixelCoords(x, y);
+      var p2 = _ext.translatePixelCoords(x+1, y+1);
       var crs = this.getDisplayCRS();
-      // TODO: handle case where active layer is a frame layer
-      if (!bounds.hasBounds() || !crs) {
-        return null;
+      if (crs) {
+        p1 = internal.toLngLat(p1, crs) || p1;
+        p2 = internal.toLngLat(p2, crs) || p2;
       }
-      return internal.toLngLat([bounds.centerX(), bounds.centerY()], crs);
+      return formatCoordsForDisplay(p1, p2);
     };
+
+    // this.getCenterLngLat = function() {
+    //   var bounds = _ext.getBounds();
+    //   var crs = this.getDisplayCRS();
+    //   // TODO: handle case where active layer is a frame layer
+    //   if (!bounds.hasBounds() || !crs) {
+    //     return null;
+    //   }
+    //   return internal.toLngLat([bounds.centerX(), bounds.centerY()], crs);
+    // };
 
     this.getDisplayCRS = function() {
       if (!_activeLyr) {
@@ -12613,7 +12639,6 @@ GUI and setting the size and crop of SVG output.</p><div><input type="text" clas
       _ext.setFullBounds(calcFullBounds());
       _ext.resize();
       _renderer = new LayerRenderer(gui, el);
-      gui.buttons.show();
 
       if (opts.inspectorControl) {
         _hit = new HitControl(gui, _ext, _mouse),
@@ -12997,7 +13022,7 @@ GUI and setting the size and crop of SVG output.</p><div><input type="text" clas
           menu.hide();
           _open = false;
         }
-      }, 300);
+      }, 200);
     }
 
     function addMenuItem(label, func) {
@@ -13010,7 +13035,7 @@ GUI and setting the size and crop of SVG output.</p><div><input type="text" clas
     }
 
     this.open = function(e, lyr) {
-      if (!lyr || !lyr.gui.geographic) return;
+      if (lyr && !lyr.gui.geographic) return; // no popup for tabular data
       _open = true;
       _openCount++;
       var rspace = body.clientWidth - e.pageX;
@@ -13026,8 +13051,9 @@ GUI and setting the size and crop of SVG output.</p><div><input type="text" clas
       menu.css('top', (e.pageY - 15) + 'px');
 
       // menu contents
-      if (e.coordinates) {
-        addCopyCoords();
+      //
+      if (e.display_coordinates) {
+        addCoords(e.display_coordinates);
       }
       if (e.deleteVertex) {
         addMenuItem('Delete vertex', e.deleteVertex);
@@ -13039,9 +13065,8 @@ GUI and setting the size and crop of SVG output.</p><div><input type="text" clas
         addMenuItem('Copy as GeoJSON', copyGeoJSON);
       }
 
-      function addCopyCoords() {
-        var bbox = internal.getLayerBounds(lyr, lyr.gui.source.dataset.arcs).toArray();
-        var coordStr = internal.getRoundedCoordString(e.coordinates, internal.getBoundsPrecisionForDisplay(bbox));
+      function addCoords(p) {
+        var coordStr = p[0] + ',' + p[1];
         var displayStr = '• &nbsp;' + coordStr.replace(/-/g, '–').replace(',', ', ');
         addMenuItem(displayStr, function() {
           saveFileContentToClipboard(coordStr);

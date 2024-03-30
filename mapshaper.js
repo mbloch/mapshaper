@@ -5003,7 +5003,7 @@
     if (isLatLngCRS(P)) {
       return xy.concat();
     }
-    proj = getProjTransform(P, parseCrsString('wgs84'));
+    proj = getProjTransform2(P, parseCrsString('wgs84'));
     return proj(xy[0], xy[1]);
   }
 
@@ -26664,7 +26664,7 @@ ${svg}
           codepage = lookupCodePage(ldid),
           samples = getNonAsciiSamples(),
           only7bit = samples.length === 0,
-          encoding, msg;
+          encoding;
 
       // First, check the ldid (language driver id) (an obsolete way to specify which
       // codepage to use for text encoding.)
@@ -26684,10 +26684,12 @@ ${svg}
       // As a last resort, try to guess the encoding:
       if (!encoding) {
         var info = detectEncoding(samples);
+        var msg;
         encoding = info.encoding;
         if (info.confidence < 2) {
-          msg = 'Warning: Unable to auto-detect the DBF file text encoding with high confidence.';
-          msg += '\n\nDefaulting to: ' + encoding + (encoding in encodingNames ? ' (' + encodingNames[encoding] + ')' : '');
+          msg = 'Warning: Unable to auto-detect the DBF file text encoding' +
+            (info.confidence == 1 ? ' with high confidence' : '') + '.';
+          msg += ' Defaulting to ' + encoding + (encoding in encodingNames ? ' (' + encodingNames[encoding] + ').' : '.');
           msg += '\n\nSample of how non-ascii text was imported:\n';
           if (runningInBrowser()) {
             msg += '<pre>' + formatStringsAsGrid(decodeSamples(encoding, samples), 50) + '</pre>';
