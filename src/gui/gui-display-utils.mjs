@@ -22,6 +22,20 @@ export function getDatasetCrsInfo(dataset) {
   };
 }
 
+// p1: [x, y] coords
+// p2: [x, y] coords offset by 1x1 pixel
+export function formatCoordsForDisplay(p1, p2) {
+  var dx = Math.abs(p1[0] - p2[0]);
+  var dy = Math.abs(p1[1] - p2[1]);
+  var offs = (dx + dy) / 2;
+  var decimals = 0;
+  while (offs < 1 && decimals < 6) {
+    offs *= 10;
+    decimals++;
+  }
+  return [p1[0].toFixed(decimals), p1[1].toFixed(decimals)];
+}
+
 // Convert a point from display CRS coordinates to data coordinates.
 // These are only different when using dynamic reprojection (basemap view).
 export function translateDisplayPoint(lyr, p) {
@@ -41,6 +55,5 @@ export function getBBoxCoords(lyr, bbox) {
 }
 
 export function isProjectedLayer(lyr) {
-  // TODO: could do some validation on the layer's contents
-  return !!lyr.gui.invertPoint;
+  return !!lyr?.gui.invertPoint;
 }

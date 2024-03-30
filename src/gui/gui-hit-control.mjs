@@ -2,6 +2,7 @@ import { getPointerHitTest } from './gui-hit-test';
 import { utils } from './gui-core';
 import { EventDispatcher } from './gui-events';
 import { GUI } from './gui-lib';
+import { El } from './gui-el';
 import { internal } from './gui-core';
 import { translateDisplayPoint } from './gui-display-utils';
 
@@ -27,7 +28,9 @@ export function HitControl(gui, ext, mouse) {
       return;
     }
     e.originalEvent.preventDefault();
-    if (!targetLayer) return; // TODO: enable menu on empty map
+    if (!El('body').hasClass('map-view')) {
+      return;
+    }
     triggerHitEvent('contextmenu', e);
   }, false);
 
@@ -451,7 +454,9 @@ export function HitControl(gui, ext, mouse) {
       mode: interactionMode
     };
     if (evt) {
+      // data coordinates
       eventData.coordinates = translateDisplayPoint(targetLayer, ext.translatePixelCoords(evt.x, evt.y));
+      eventData.display_coordinates = gui.map.pixelCoordsToDisplayCoords(evt.x, evt.y);
       eventData.originalEvent = evt;
       eventData.overMap = isOverMap(evt);
     }

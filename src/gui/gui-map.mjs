@@ -19,7 +19,7 @@ import { ElementPosition } from './gui-element-position';
 import { MouseArea } from './gui-mouse';
 import { Basemap } from './gui-basemap-control';
 import { GUI } from './gui-lib';
-import { getDatasetCrsInfo } from './gui-display-utils';
+import { getDatasetCrsInfo, formatCoordsForDisplay } from './gui-display-utils';
 
 utils.inherit(MshpMap, EventDispatcher);
 
@@ -94,15 +94,26 @@ export function MshpMap(gui) {
     return internal.toLngLat(p, _dynamicCRS);
   };
 
-  this.getCenterLngLat = function() {
-    var bounds = _ext.getBounds();
+  this.pixelCoordsToDisplayCoords = function(x, y) {
+    var p1 = _ext.translatePixelCoords(x, y);
+    var p2 = _ext.translatePixelCoords(x+1, y+1);
     var crs = this.getDisplayCRS();
-    // TODO: handle case where active layer is a frame layer
-    if (!bounds.hasBounds() || !crs) {
-      return null;
+    if (crs) {
+      p1 = internal.toLngLat(p1, crs) || p1;
+      p2 = internal.toLngLat(p2, crs) || p2;
     }
-    return internal.toLngLat([bounds.centerX(), bounds.centerY()], crs);
+    return formatCoordsForDisplay(p1, p2);
   };
+
+  // this.getCenterLngLat = function() {
+  //   var bounds = _ext.getBounds();
+  //   var crs = this.getDisplayCRS();
+  //   // TODO: handle case where active layer is a frame layer
+  //   if (!bounds.hasBounds() || !crs) {
+  //     return null;
+  //   }
+  //   return internal.toLngLat([bounds.centerX(), bounds.centerY()], crs);
+  // };
 
   this.getDisplayCRS = function() {
     if (!_activeLyr) {
@@ -170,7 +181,6 @@ export function MshpMap(gui) {
     _ext.setFullBounds(calcFullBounds());
     _ext.resize();
     _renderer = new LayerRenderer(gui, el);
-    gui.buttons.show();
 
     if (opts.inspectorControl) {
       _hit = new HitControl(gui, _ext, _mouse),

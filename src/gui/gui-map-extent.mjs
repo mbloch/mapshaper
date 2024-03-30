@@ -128,6 +128,7 @@ export function MapExtent(_position) {
     }
   };
 
+  // translate display CRS coords to pixel coords
   this.translateCoords = function(x, y) {
     return this.getTransform().transform(x, y);
   };
@@ -147,6 +148,7 @@ export function MapExtent(_position) {
     return bounds2.width() / _frame.width;
   };
 
+  // convert pixel coords (0,0 is top left corner of map) to display CRS coords
   this.translatePixelCoords = function(x, y) {
     return this.getTransform().invert().transform(x, y);
   };

@@ -8,7 +8,6 @@ export function SidebarButtons(gui) {
   gui.on('active', updateVisibility);
   gui.on('inactive', updateVisibility);
   gui.model.on('update', updateVisibility);
-  gui.on('mode', updateVisibility);
 
   // @iconRef: selector for an (svg) button icon
   this.addButton = function(iconRef) {
@@ -37,10 +36,7 @@ export function SidebarButtons(gui) {
   };
 
   function updateVisibility() {
-    var noData = !gui.model.getActiveLayer();
-    if (GUI.isActiveInstance(gui) && !_hidden && !noData) {
-      buttons.show();
-    } else if (noData && gui.getMode() != 'import') {
+    if (GUI.isActiveInstance(gui) && !_hidden) {
       buttons.show();
     } else {
       buttons.hide();

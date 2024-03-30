@@ -87,7 +87,7 @@ export function toLngLat(xy, P) {
   if (isLatLngCRS(P)) {
     return xy.concat();
   }
-  proj = getProjTransform(P, parseCrsString('wgs84'));
+  proj = getProjTransform2(P, parseCrsString('wgs84'));
   return proj(xy[0], xy[1]);
 }
 

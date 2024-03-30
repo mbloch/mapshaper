@@ -21,7 +21,7 @@ export function ContextMenu() {
         menu.hide();
         _open = false;
       }
-    }, 300);
+    }, 200);
   }
 
   function addMenuItem(label, func) {
@@ -34,7 +34,7 @@ export function ContextMenu() {
   }
 
   this.open = function(e, lyr) {
-    if (!lyr || !lyr.gui.geographic) return;
+    if (lyr && !lyr.gui.geographic) return; // no popup for tabular data
     _open = true;
     _openCount++;
     var rspace = body.clientWidth - e.pageX;
@@ -50,8 +50,9 @@ export function ContextMenu() {
     menu.css('top', (e.pageY - 15) + 'px');
 
     // menu contents
-    if (e.coordinates) {
-      addCopyCoords();
+    //
+    if (e.display_coordinates) {
+      addCoords(e.display_coordinates);
     }
     if (e.deleteVertex) {
       addMenuItem('Delete vertex', e.deleteVertex);
@@ -63,9 +64,8 @@ export function ContextMenu() {
       addMenuItem('Copy as GeoJSON', copyGeoJSON);
     }
 
-    function addCopyCoords() {
-      var bbox = internal.getLayerBounds(lyr, lyr.gui.source.dataset.arcs).toArray();
-      var coordStr = internal.getRoundedCoordString(e.coordinates, internal.getBoundsPrecisionForDisplay(bbox));
+    function addCoords(p) {
+      var coordStr = p[0] + ',' + p[1];
       var displayStr = '• &nbsp;' + coordStr.replace(/-/g, '–').replace(',', ', ');
       addMenuItem(displayStr, function() {
         saveFileContentToClipboard(coordStr);
