@@ -6,9 +6,11 @@ import {
   deletePoint } from './gui-drawing-utils';
 import { translateDisplayPoint } from './gui-display-utils';
 import { addEmptyLayer } from './gui-add-layer-popup';
+import { showPopupAlert } from './gui-alert';
 
 export function initPointEditing(gui, ext, hit) {
-  var symbolInfo;
+  var instructionsShown = false;
+  var symbolInfo, alert;
   function active(e) {
     return gui.interaction.getMode() == 'edit_points';
   }
@@ -17,11 +19,29 @@ export function initPointEditing(gui, ext, hit) {
     return active(e) && e.id > -1;
   }
 
+  function hideInstructions() {
+    if (!alert) return;
+    alert.close('fade');
+    alert = null;
+  }
+
+  function showInstructions() {
+    var isMac = navigator.userAgent.includes('Mac');
+    var symbol = isMac ? '⌘' : '^';
+    var msg = `Instructions: Click on the map to add points. Move points by dragging. Type ${symbol}Z/${symbol}Y to undo/redo.`;
+    alert = showPopupAlert(msg, null, { non_blocking: true, max_width: '360px'});
+  }
+
   gui.on('interaction_mode_change', function(e) {
     if (e.mode == 'edit_points' && !gui.model.getActiveLayer()) {
       addEmptyLayer(gui, undefined, 'point');
     } else if (e.prev_mode == 'edit_points') {
+      hideInstructions();
       gui.container.findChild('.map-layers').classed('add-points', false);
+    }
+    if (e.mode == 'edit_points' && !instructionsShown) {
+      instructionsShown = true;
+      showInstructions();
     }
   });
 
@@ -48,6 +68,8 @@ export function initPointEditing(gui, ext, hit) {
 
   hit.on('click', function(e) {
     if (overPoint(e) || !active(e)) return;
+    hideInstructions();
+
     // add point
     var p = pixToDataCoords(e.x, e.y);
     var target = hit.getHitTarget();
@@ -64,6 +86,7 @@ export function initPointEditing(gui, ext, hit) {
 
   hit.on('dragstart', function(e) {
     if (!overPoint(e)) return;
+    hideInstructions();
     var target = hit.getHitTarget();
     symbolInfo = {
       FID: e.id,
