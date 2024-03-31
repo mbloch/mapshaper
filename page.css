@@ -348,12 +348,10 @@ div.alert-box {
 	border-radius: 9px;
 	font-size: 14px;
 	line-height: 1.5;
-/*	color: #555;*/
 	padding: 9px 11px 6px 11px;
 	margin: 9px -1px 3px -1px;
 	min-height: 120px;
 	background: #f8fdff;
-;
 }
 
 .catalog-mode .file-catalog {
