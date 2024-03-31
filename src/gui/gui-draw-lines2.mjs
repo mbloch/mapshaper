@@ -427,7 +427,6 @@ export function initLineEditing(gui, ext, hit) {
       gui.dispatchEvent('path_extend', {target, p, shapes1, shapes2});
       clearDrawingInfo();
       fullRedraw();
-
     } else {
       appendVertex(target, p);
       gui.dispatchEvent('path_extend', {target, p});
@@ -464,20 +463,19 @@ export function initLineEditing(gui, ext, hit) {
   function findPathStartInfo(e) {
     var target = hit.getHitTarget();
     var arcId = target.gui.displayArcs.size() - 1;
-    var data = target.gui.displayArcs.getVertexData();
+    var p1 = ext.translatePixelCoords(e.x, e.y); // mouse coords
+    var p2 = internal.getArcStartCoords(arcId, target.gui.displayArcs); // vertex coords
+    var p3 = internal.getArcStartCoords(arcId, target.gui.source.dataset.arcs);
+    var dist = geom.distance2D(p1[0], p1[1], p2[0], p2[1]);
+    var data = target.gui.source.dataset.arcs.getVertexData();
     var i = data.ii[arcId];
-    var x = data.xx[i];
-    var y = data.yy[i];
-    var p = ext.translatePixelCoords(e.x, e.y);
-    var dist = geom.distance2D(p[0], p[1], x, y);
     var pathLen = data.nn[arcId];
     var pixelDist = dist / ext.getPixelSize();
     if (pixelDist > HOVER_THRESHOLD || pathLen < 4) {
       return null;
     }
-    var point = translateDisplayPoint(target, [x, y]);
     return {
-      target, ids: [i], extendable: false, point, displayPoint: [x, y], type: 'vertex'
+      target, ids: [i], extendable: false, displayPoint: p2, point: p3, type: 'vertex'
     };
   }
 
