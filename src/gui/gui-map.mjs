@@ -242,10 +242,7 @@ export function MshpMap(gui) {
     }
 
     if (e.layer) {
-      enhanceLayerForDisplay(e.layer, e.dataset, getDisplayOptions());
-      _activeLyr = e.layer;
-      _activeLyr.gui.style = MapStyle.getActiveLayerStyle(_activeLyr.gui.displayLayer, getGlobalStyleOptions());
-      _activeLyr.active = true;
+      _activeLyr = initActiveLayer(e.layer, e.dataset);
     } else {
       _activeLyr = null;
     }
@@ -428,6 +425,17 @@ export function MshpMap(gui) {
       if (isActiveLayer(lyr) && lyr.hidden) return false;
       return true;
     });
+  }
+
+  function initActiveLayer(lyr, dataset) {
+    enhanceLayerForDisplay(lyr, dataset, getDisplayOptions());
+    lyr.gui.style = MapStyle.getActiveLayerStyle(lyr.gui.displayLayer, getGlobalStyleOptions());
+    lyr.active = true;
+    getVisibleMapLayers().forEach(function(lyr) {
+      delete lyr.active;
+    });
+    lyr.active = true;
+    return lyr;
   }
 
   function getDrawableFurnitureLayers(layers) {
