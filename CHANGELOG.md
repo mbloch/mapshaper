@@ -1,3 +1,7 @@
+v0.6.80
+* [web] Added pencil-style path drawing using Alt-drag or Cmd-drag.
+* 
+
 v0.6.79
 * [web] Added "delete point" to the point editing context menu.
 
