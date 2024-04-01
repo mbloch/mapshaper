@@ -2778,30 +2778,7 @@
 
 
   function getDefaultStyle(lyr, baseStyle) {
-    var style = Object.assign({}, baseStyle);
-    // reduce the dot size of large point layers
-    if (lyr.geometry_type == 'point' && style.dotSize > 0) {
-      style.dotSize *= getDotScale$1(lyr);
-    }
-    return style;
-  }
-
-  function getDotScale$1(lyr) {
-    var topTier = 10000;
-    var n = countPoints(lyr.shapes, topTier); // short-circuit point counting above top threshold
-    var k = n < 200 && 4 || n < 2500 && 3 || n < topTier && 2 || 1;
-    return k;
-  }
-
-  function countPoints(shapes, max) {
-    var count = 0;
-    var i, n, shp;
-    max = max || Infinity;
-    for (i=0, n=shapes.length; i<n && count<max; i++) {
-      shp = shapes[i];
-      count += shp ? shp.length : 0;
-    }
-    return count;
+    return Object.assign({}, baseStyle);
   }
 
 
@@ -3245,6 +3222,58 @@
     return layers.reverse();
   }
 
+
+  function adjustPointSymbolSizes(layers, overlayLyr, ext) {
+    var bbox = ext.getBounds().scale(1.5).toArray();
+    var testInBounds = function(p) {
+      return p[0] > bbox[0] && p[0] < bbox[2] && p[1] > bbox[1] && p[1] < bbox[3];
+    };
+    var topTier = 50000;
+    var count = 0;
+    layers = layers.filter(function(lyr) {
+      return lyr.geometry_type == 'point' && lyr.gui.style.dotSize > 0;
+    });
+    layers.forEach(function(lyr) {
+      // short-circuit point counting above top threshold
+      count += countPoints(lyr.gui.displayLayer.shapes, topTier, testInBounds);
+    });
+    count = Math.min(topTier, count) || 1;
+    var k = Math.pow(6 - utils$1.clamp(Math.log10(count), 1, 5), 1.3);
+
+    // zoom adjustments
+    var mapScale = ext.scale();
+    if (mapScale < 0.5) {
+      k *= Math.pow(mapScale + 0.5, 0.35);
+    } else if (mapScale > 1) {
+      // scale faster at first
+      k *= Math.pow(Math.min(mapScale, 4), 0.15);
+      k *= Math.pow(mapScale, 0.05);
+    }
+
+    // scale down when map is small
+    var smallSide = Math.min(ext.width(), ext.height());
+    k *= utils$1.clamp(smallSide / 500, 0.5, 1);
+
+    layers.forEach(function(lyr) {
+      lyr.gui.style.dotScale = k;
+    });
+    if (overlayLyr && overlayLyr.geometry_type == 'point' && overlayLyr.gui.style.dotSize > 0) {
+      overlayLyr.gui.style.dotScale = k;
+    }
+  }
+
+  function countPoints(shapes, max, filter) {
+    var count = 0;
+    var i, j, n, m, shp;
+    for (i=0, n=shapes.length; i<n && count<max; i++) {
+      shp = shapes[i];
+      for (j=0, m=(shp ? shp.length : 0); j<m; j++) {
+        count += filter(shp[j]) ? 1 : 0;
+      }
+    }
+    return count;
+  }
+
   // lyr: a map layer with gui property
   // displayCRS: CRS to use for display, or null (which clears any current display CRS)
   function projectLayerForDisplay(lyr, displayCRS) {
@@ -3297,6 +3326,13 @@
       } else {
         sourceCRS = crsInfo.crs;
       }
+    }
+
+    // make sure that every path layer has an associated arc collection
+    // (if the layer is empty, its dataset may not have an arc collection).
+    // this enables adding shapes using the drawing tools.
+    if (!dataset.arcs && (layer.geometry_type == 'polygon' || layer.geometry_type == 'polyline')) {
+      dataset.arcs = new internal.ArcCollection();
     }
 
     // Assume that dataset.displayArcs is in the display CRS
@@ -3381,6 +3417,17 @@
     if (isProjectedLayer(lyr)) {
       lyr.gui.displayArcs.flatten();
     }
+  }
+
+  function pencilPointIsSkippable(p2, points) {
+    var p1 = points[0];
+    var dist;
+    if (points.length < 2) return true;
+    for (var i=1; i<points.length; i++) {
+      dist = Math.sqrt(geom.pointSegDistSq(points[i][0], points[i][1], p1[0], p1[1], p2[0], p2[1]));
+      if (dist > 1.5) return false;
+    }
+    return true;
   }
 
   function setZ(lyr, z) {
@@ -5755,29 +5802,37 @@
     var self = this;
     var shiftDown = false;
     var ctrlDown = false;
+    var metaDown = false;
+    var altDown = false;
+
+    function updateControlKeys(e) {
+      shiftDown = e.shiftKey;
+      ctrlDown = e.ctrlKey;
+      metaDown = e.metaKey;
+      altDown = e.altKey;
+    }
     document.addEventListener('keyup', function(e) {
       if (!GUI.isActiveInstance(gui)) return;
       // this can fail to fire if keyup occurs over a context menu
-      shiftDown = e.shiftKey;
-      ctrlDown = e.ctrlKey;
+      updateControlKeys(e);
       self.dispatchEvent('keyup', getEventData(e));
     });
 
     document.addEventListener('keydown', function(e) {
       if (!GUI.isActiveInstance(gui)) return;
-      shiftDown = e.shiftKey;
-      ctrlDown = e.ctrlKey;
+      updateControlKeys(e);
       self.dispatchEvent('keydown', getEventData(e));
     });
 
     document.addEventListener('mousemove', function(e) {
       // refreshing these here to prevent problems when context menu opens
-      shiftDown = e.shiftKey;
-      ctrlDown = e.ctrlKey;
+      updateControlKeys(e);
     });
 
     this.shiftIsPressed = function() { return shiftDown; };
     this.ctrlIsPressed = function() { return ctrlDown; };
+    this.altIsPressed = function() { return altDown; };
+    this.metaIsPressed = function() { return metaDown; };
 
     this.onMenuSubmit = function(menuEl, cb) {
       gui.on('enter_key', function(e) {
@@ -9317,8 +9372,7 @@
 
     function useBoxZoom() {
       var mode = gui.getMode();
-      var disabled = ['selection_tool', 'box_tool', 'rectangle_tool'].includes(mode);
-      return !disabled;
+      return !'selection_tool,box_tool,rectangle_tool,drawing_tool'.includes(mode);
     }
 
     function getBoxData(e) {
@@ -10278,6 +10332,7 @@
     var drawingId = -1; // feature id of path being drawn
     var sessionCount = 0;
     var alert;
+    var pencilPoints;
     var _dragging = false;
 
     function active() {
@@ -10290,6 +10345,10 @@
 
     function drawing() {
       return drawingId > -1;
+    }
+
+    function usingPencil() {
+      return (gui.keyboard.altIsPressed() || gui.keyboard.metaIsPressed()) && active() && !dragging();
     }
 
     function polygonMode() {
@@ -10373,11 +10432,12 @@
 
     function showInstructions() {
       var isMac = navigator.userAgent.includes('Mac');
-      var symbol = isMac ? '⌘' : '^';
+      var undoKey = isMac ? '⌘' : '^';
+      var drawKey = isMac ? '⌘' : 'Alt';
       var pathStr = polygonMode() ? 'closed paths' : 'paths';
-      var msg = `Instructions: Click on the map to draw ${pathStr}. Drag vertices to reshape a path. Type ${symbol}Z/${symbol}Y to undo/redo.`;
+      var msg = `Instructions: Click to start a path or add a point. ${drawKey}-drag draws a path. Drag points to reshape. Type ${undoKey}Z/${undoKey}Y to undo/redo.`;
         alert = showPopupAlert(msg, null, {
-          non_blocking: true, max_width: '360px'});
+          non_blocking: true, max_width: '388px'});
     }
 
     function hideInstructions() {
@@ -10462,9 +10522,28 @@
       hit.setHoverVertex(hoverVertexInfo.displayPoint, hoverVertexInfo.type);
     });
 
+    gui.map.getMouse().on('drag', function(e) {
+      if (!usingPencil()) return;
+      e.stopPropagation();
+      var xy = [e.x, e.y];
+      var p = pixToDataCoords(e.x, e.y);
+      if (!drawing()) {
+        pencilPoints = [xy];
+        startNewPath(p);
+      } else if (!pencilPoints || !pencilPointIsSkippable(xy, pencilPoints)) {
+        pencilPoints = [xy];
+        extendCurrentPath(p);
+      } else {
+        // skip this point, update the hover line
+        pencilPoints.push(xy);
+        updatePathEndpoint(p);
+      }
+    }, null, 3); // higher priority than hit control
+
     hit.on('drag', function(e) {
       if (!dragging() || drawing()) return;
       e.originalEvent.stopPropagation();
+      // dragging a vertex
       var target = hit.getHitTarget();
       var p = ext.translatePixelCoords(e.x, e.y);
       if (gui.keyboard.shiftIsPressed()) {
@@ -10543,8 +10622,6 @@
         deleteActiveVertex(e);
       } else {
         startNewPath(p);
-        hideInstructions();
-        updateCursor();
       }
       prevClickEvent = e;
     });
@@ -10655,6 +10732,14 @@
       gui.dispatchEvent('path_add', {target, p1, p2});
       drawingId = target.shapes.length - 1;
       hit.setDrawingId(drawingId);
+      hideInstructions();
+      updateCursor();
+    }
+
+    function pencilDraw(e) {
+      var p = pixToDataCoords(e.x, e.y);
+      extendCurrentPath(p);
+
     }
 
     // p: [x, y] source data coordinates of new point on path
@@ -11442,8 +11527,7 @@
 
     _self.drawSquareDots = function(shapes, style) {
       var t = getScaledTransform(_ext),
-          scaleRatio = getDotScale(_ext),
-          size = Math.round((style.dotSize || 1) * scaleRatio),
+          size = getDotSize(style),
           styler = style.styler || null,
           xmax = _canvas.width + size,
           ymax = _canvas.height + size,
@@ -11463,7 +11547,7 @@
       for (i=0, n=shapes.length; i<n; i++) {
         if (styler !== null) { // e.g. selected points
           styler(style, i);
-          size = style.dotSize * scaleRatio;
+          size = getDotSize(style);
           if (style.dotColor != color) {
             color = style.dotColor;
             _ctx.fillStyle = color;
@@ -11610,25 +11694,16 @@
     return s;
   }
 
-  function getDotScale(ext) {
-    var smallSide = Math.min(ext.width(), ext.height());
-    var mapScale = ext.scale();
-    // reduce size on smaller screens
-    var j = smallSide < 200 && 0.5 || smallSide < 400 && 0.75 || 1;
-    // grow dots as map zooms in
-    var k = 1;
-    if (mapScale < 0.5) {
-      k = Math.pow(mapScale + 0.5, 0.35);
-    } else if (mapScale > 1) {
-      // scale faster at first, so small dots in large datasets
-      // become easily visible and clickable after zooming in a bit
-      k *= Math.pow(Math.min(mapScale, 10), 0.3);
-      k *= Math.pow(mapScale, 0.1);
-    }
-    // grow pixels more slowly on retina displays (to reduce number of pixels to
-    // draw for large point datasets when slightly zoomed in)
-    var l = Math.pow(GUI.getPixelRatio(), 0.8);
-    return j * k * l;
+  function getDotSize(style) {
+    var size = style.dotSize || 1;
+    // TODO: improve
+    var scale = style.dotScale || 1;
+    size += (scale - 1) / 2;
+    size *= Math.pow(scale, 0.3);
+
+    // shrink dots slightly on retina displays, to adjust for greater clarity
+    // and reduce number of pixels to draw on large datasets.
+    return Math.round(Math.pow(GUI.getPixelRatio(), 0.8) * size);
   }
 
   function getScaledTransform(ext) {
@@ -12698,10 +12773,7 @@ GUI and setting the size and crop of SVG output.</p><div><input type="text" clas
       }
 
       if (e.layer) {
-        enhanceLayerForDisplay(e.layer, e.dataset, getDisplayOptions());
-        _activeLyr = e.layer;
-        _activeLyr.gui.style = getActiveLayerStyle(_activeLyr.gui.displayLayer, getGlobalStyleOptions());
-        _activeLyr.active = true;
+        _activeLyr = initActiveLayer(e.layer, e.dataset);
       } else {
         _activeLyr = null;
       }
@@ -12739,10 +12811,12 @@ GUI and setting the size and crop of SVG output.</p><div><input type="text" clas
 
 
     function updateOverlayLayer(e) {
-      var style = getOverlayStyle(_activeLyr.gui.displayLayer, e, getGlobalStyleOptions());
+      var style = !_activeLyr?.gui?.style ? null :
+        getOverlayStyle(_activeLyr.gui.displayLayer, e, getGlobalStyleOptions());
       if (style) {
         var displayLayer = filterLayerByIds(_activeLyr.gui.displayLayer, style.ids);
         var gui = Object.assign({}, _activeLyr.gui, {style, displayLayer});
+        style.dotScale = _activeLyr.gui.style.dotScale;
         _overlayLyr = utils$1.defaults({gui}, _activeLyr);
       } else {
         _overlayLyr = null;
@@ -12886,6 +12960,17 @@ GUI and setting the size and crop of SVG output.</p><div><input type="text" clas
       });
     }
 
+    function initActiveLayer(lyr, dataset) {
+      enhanceLayerForDisplay(lyr, dataset, getDisplayOptions());
+      lyr.gui.style = getActiveLayerStyle(lyr.gui.displayLayer, getGlobalStyleOptions());
+      lyr.active = true;
+      getVisibleMapLayers().forEach(function(lyr) {
+        delete lyr.active;
+      });
+      lyr.active = true;
+      return lyr;
+    }
+
     function getDrawableFurnitureLayers(layers) {
       if (!isPreviewView()) return [];
       return getVisibleMapLayers().filter(function(o) {
@@ -12952,6 +13037,7 @@ GUI and setting the size and crop of SVG output.</p><div><input type="text" clas
         updateLayerStyles(contentLayers);
         updateLayerStackOrder(model.getLayers());// update menu_order property of all layers
       }
+      adjustPointSymbolSizes(contentLayers, _overlayLyr, _ext);
       sortMapLayers(contentLayers);
       if (_intersectionLyr) {
         contentLayers = contentLayers.concat(_intersectionLyr);

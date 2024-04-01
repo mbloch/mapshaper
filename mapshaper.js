@@ -1612,6 +1612,7 @@
     this.ymin -= halfHeight * ky;
     this.xmax += halfWidth * kx;
     this.ymax += halfHeight * ky;
+    return this;
   };
 
   // Return a bounding box with the same extent as this one.
@@ -45534,7 +45535,7 @@ ${svg}
     });
   }
 
-  var version = "0.6.79";
+  var version = "0.6.80";
 
   // Parse command line args into commands and run them
   // Function takes an optional Node-style callback. A Promise is returned if no callback is given.
