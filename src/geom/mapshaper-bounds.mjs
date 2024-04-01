@@ -149,6 +149,7 @@ Bounds.prototype.scale = function(pct, pctY) { /*, focusX, focusY*/
   this.ymin -= halfHeight * ky;
   this.xmax += halfWidth * kx;
   this.ymax += halfHeight * ky;
+  return this;
 };
 
 // Return a bounding box with the same extent as this one.

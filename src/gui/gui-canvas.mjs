@@ -236,8 +236,7 @@ export function DisplayCanvas() {
 
   _self.drawSquareDots = function(shapes, style) {
     var t = getScaledTransform(_ext),
-        scaleRatio = getDotScale(_ext),
-        size = Math.round((style.dotSize || 1) * scaleRatio),
+        size = getDotSize(style),
         styler = style.styler || null,
         xmax = _canvas.width + size,
         ymax = _canvas.height + size,
@@ -257,7 +256,7 @@ export function DisplayCanvas() {
     for (i=0, n=shapes.length; i<n; i++) {
       if (styler !== null) { // e.g. selected points
         styler(style, i);
-        size = style.dotSize * scaleRatio;
+        size = getDotSize(style);
         if (style.dotColor != color) {
           color = style.dotColor;
           _ctx.fillStyle = color;
@@ -404,25 +403,16 @@ function getLineScale(ext) {
   return s;
 }
 
-function getDotScale(ext) {
-  var smallSide = Math.min(ext.width(), ext.height());
-  var mapScale = ext.scale();
-  // reduce size on smaller screens
-  var j = smallSide < 200 && 0.5 || smallSide < 400 && 0.75 || 1;
-  // grow dots as map zooms in
-  var k = 1;
-  if (mapScale < 0.5) {
-    k = Math.pow(mapScale + 0.5, 0.35);
-  } else if (mapScale > 1) {
-    // scale faster at first, so small dots in large datasets
-    // become easily visible and clickable after zooming in a bit
-    k *= Math.pow(Math.min(mapScale, 10), 0.3);
-    k *= Math.pow(mapScale, 0.1);
-  }
-  // grow pixels more slowly on retina displays (to reduce number of pixels to
-  // draw for large point datasets when slightly zoomed in)
-  var l = Math.pow(GUI.getPixelRatio(), 0.8);
-  return j * k * l;
+function getDotSize(style) {
+  var size = style.dotSize || 1;
+  // TODO: improve
+  var scale = style.dotScale || 1;
+  size += (scale - 1) / 2;
+  size *= Math.pow(scale, 0.3);
+
+  // shrink dots slightly on retina displays, to adjust for greater clarity
+  // and reduce number of pixels to draw on large datasets.
+  return Math.round(Math.pow(GUI.getPixelRatio(), 0.8) * size);
 }
 
 function getScaledTransform(ext) {
