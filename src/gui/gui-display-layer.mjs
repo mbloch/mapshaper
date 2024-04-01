@@ -59,6 +59,13 @@ export function enhanceLayerForDisplay(layer, dataset, opts) {
     }
   }
 
+  // make sure that every path layer has an associated arc collection
+  // (if the layer is empty, its dataset may not have an arc collection).
+  // this enables adding shapes using the drawing tools.
+  if (!dataset.arcs && (layer.geometry_type == 'polygon' || layer.geometry_type == 'polyline')) {
+    dataset.arcs = new internal.ArcCollection();
+  }
+
   // Assume that dataset.displayArcs is in the display CRS
   // (it must be deleted upstream if reprojection is needed)
   // if (!obj.empty && dataset.arcs && !displayArcs) {

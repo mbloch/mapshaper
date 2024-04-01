@@ -3,23 +3,35 @@ import { CoordinatesDisplay } from './gui-coordinates-display';
 import { MapNav } from './gui-map-nav';
 import { SelectionTool } from './gui-selection-tool';
 import { InspectionControl2 } from './gui-inspection-control';
-import { updateLayerStackOrder, filterLayerByIds } from './gui-layer-utils';
-import { mapNeedsReset, arcsMayHaveChanged, popupCanStayOpen } from './gui-map-utils';
+import {
+  updateLayerStackOrder,
+  filterLayerByIds,
+  adjustPointSymbolSizes} from './gui-layer-utils';
+import { mapNeedsReset,
+  arcsMayHaveChanged,
+  popupCanStayOpen } from './gui-map-utils';
 import { initInteractiveEditing } from './gui-edit-modes';
 import * as MapStyle from './gui-map-style';
 import { MapExtent } from './gui-map-extent';
 import { LayerRenderer } from './gui-layer-renderer';
 import { BoxTool } from './gui-box-tool';
 import { RectangleControl } from './gui-rectangle-control';
-import { projectMapExtent, getMapboxBounds, projectLatLonBBox } from './gui-dynamic-crs';
-import { enhanceLayerForDisplay, projectLayerForDisplay } from './gui-display-layer';
+import {
+  projectMapExtent,
+  getMapboxBounds,
+  projectLatLonBBox } from './gui-dynamic-crs';
+import {
+  enhanceLayerForDisplay,
+  projectLayerForDisplay } from './gui-display-layer';
 import { utils, internal, Bounds } from './gui-core';
 import { EventDispatcher } from './gui-events';
 import { ElementPosition } from './gui-element-position';
 import { MouseArea } from './gui-mouse';
 import { Basemap } from './gui-basemap-control';
 import { GUI } from './gui-lib';
-import { getDatasetCrsInfo, formatCoordsForDisplay } from './gui-display-utils';
+import {
+  getDatasetCrsInfo,
+  formatCoordsForDisplay } from './gui-display-utils';
 
 utils.inherit(MshpMap, EventDispatcher);
 
@@ -280,10 +292,12 @@ export function MshpMap(gui) {
 
 
   function updateOverlayLayer(e) {
-    var style = MapStyle.getOverlayStyle(_activeLyr.gui.displayLayer, e, getGlobalStyleOptions());
+    var style = !_activeLyr?.gui?.style ? null :
+      MapStyle.getOverlayStyle(_activeLyr.gui.displayLayer, e, getGlobalStyleOptions());
     if (style) {
       var displayLayer = filterLayerByIds(_activeLyr.gui.displayLayer, style.ids);
       var gui = Object.assign({}, _activeLyr.gui, {style, displayLayer});
+      style.dotScale = _activeLyr.gui.style.dotScale;
       _overlayLyr = utils.defaults({gui}, _activeLyr);
     } else {
       _overlayLyr = null;
@@ -504,6 +518,7 @@ export function MshpMap(gui) {
       updateLayerStyles(contentLayers);
       updateLayerStackOrder(model.getLayers());// update menu_order property of all layers
     }
+    adjustPointSymbolSizes(contentLayers, _overlayLyr, _ext);
     sortMapLayers(contentLayers);
     if (_intersectionLyr) {
       contentLayers = contentLayers.concat(_intersectionLyr);

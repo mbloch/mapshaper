@@ -198,30 +198,7 @@ export function getOverlayStyle(baseLyr, o, opts) {
 
 
 function getDefaultStyle(lyr, baseStyle) {
-  var style = Object.assign({}, baseStyle);
-  // reduce the dot size of large point layers
-  if (lyr.geometry_type == 'point' && style.dotSize > 0) {
-    style.dotSize *= getDotScale(lyr);
-  }
-  return style;
-}
-
-function getDotScale(lyr) {
-  var topTier = 10000;
-  var n = countPoints(lyr.shapes, topTier); // short-circuit point counting above top threshold
-  var k = n < 200 && 4 || n < 2500 && 3 || n < topTier && 2 || 1;
-  return k;
-}
-
-function countPoints(shapes, max) {
-  var count = 0;
-  var i, n, shp;
-  max = max || Infinity;
-  for (i=0, n=shapes.length; i<n && count<max; i++) {
-    shp = shapes[i];
-    count += shp ? shp.length : 0;
-  }
-  return count;
+  return Object.assign({}, baseStyle);
 }
 
 
