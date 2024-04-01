@@ -1,4 +1,4 @@
-import { internal, Bounds, utils } from './gui-core';
+import { internal, Bounds, utils, geom } from './gui-core';
 import { isProjectedLayer } from './gui-display-utils';
 import { layerHasCanvasDisplayStyle } from './gui-map-style';
 import { projectLayerForDisplay } from './gui-display-layer';
@@ -7,6 +7,17 @@ export function flattenArcs(lyr) {
   if (isProjectedLayer(lyr)) {
     lyr.gui.displayArcs.flatten();
   }
+}
+
+export function pencilPointIsSkippable(p2, points) {
+  var p1 = points[0];
+  var dist;
+  if (points.length < 2) return true;
+  for (var i=1; i<points.length; i++) {
+    dist = Math.sqrt(geom.pointSegDistSq(points[i][0], points[i][1], p1[0], p1[1], p2[0], p2[1]));
+    if (dist > 1.5) return false;
+  }
+  return true;
 }
 
 export function setZ(lyr, z) {
