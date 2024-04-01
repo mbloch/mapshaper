@@ -6,29 +6,37 @@ export function KeyboardEvents(gui) {
   var self = this;
   var shiftDown = false;
   var ctrlDown = false;
+  var metaDown = false;
+  var altDown = false;
+
+  function updateControlKeys(e) {
+    shiftDown = e.shiftKey;
+    ctrlDown = e.ctrlKey;
+    metaDown = e.metaKey;
+    altDown = e.altKey;
+  }
   document.addEventListener('keyup', function(e) {
     if (!GUI.isActiveInstance(gui)) return;
     // this can fail to fire if keyup occurs over a context menu
-    shiftDown = e.shiftKey;
-    ctrlDown = e.ctrlKey;
+    updateControlKeys(e);
     self.dispatchEvent('keyup', getEventData(e));
   });
 
   document.addEventListener('keydown', function(e) {
     if (!GUI.isActiveInstance(gui)) return;
-    shiftDown = e.shiftKey;
-    ctrlDown = e.ctrlKey;
+    updateControlKeys(e);
     self.dispatchEvent('keydown', getEventData(e));
   });
 
   document.addEventListener('mousemove', function(e) {
     // refreshing these here to prevent problems when context menu opens
-    shiftDown = e.shiftKey;
-    ctrlDown = e.ctrlKey;
+    updateControlKeys(e);
   });
 
   this.shiftIsPressed = function() { return shiftDown; };
   this.ctrlIsPressed = function() { return ctrlDown; };
+  this.altIsPressed = function() { return altDown; };
+  this.metaIsPressed = function() { return metaDown; };
 
   this.onMenuSubmit = function(menuEl, cb) {
     gui.on('enter_key', function(e) {

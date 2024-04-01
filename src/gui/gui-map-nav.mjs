@@ -101,8 +101,7 @@ export function MapNav(gui, ext, mouse) {
 
   function useBoxZoom() {
     var mode = gui.getMode();
-    var disabled = ['selection_tool', 'box_tool', 'rectangle_tool'].includes(mode);
-    return !disabled;
+    return !'selection_tool,box_tool,rectangle_tool,drawing_tool'.includes(mode);
   }
 
   function getBoxData(e) {

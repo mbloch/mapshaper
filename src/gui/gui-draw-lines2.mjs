@@ -12,7 +12,8 @@ import {
   getLastArcLength,
   getLastArcCoords,
   getLastVertexCoords,
-  appendNewDataRecord
+  appendNewDataRecord,
+  pencilPointIsSkippable
   } from './gui-drawing-utils';
 import { translateDisplayPoint } from './gui-display-utils';
 import { showPopupAlert } from './gui-alert';
@@ -30,6 +31,7 @@ export function initLineEditing(gui, ext, hit) {
   var drawingId = -1; // feature id of path being drawn
   var sessionCount = 0;
   var alert;
+  var pencilPoints;
   var _dragging = false;
 
   function active() {
@@ -42,6 +44,10 @@ export function initLineEditing(gui, ext, hit) {
 
   function drawing() {
     return drawingId > -1;
+  }
+
+  function usingPencil() {
+    return (gui.keyboard.altIsPressed() || gui.keyboard.metaIsPressed()) && active() && !dragging();
   }
 
   function polygonMode() {
@@ -125,11 +131,12 @@ export function initLineEditing(gui, ext, hit) {
 
   function showInstructions() {
     var isMac = navigator.userAgent.includes('Mac');
-    var symbol = isMac ? '⌘' : '^';
+    var undoKey = isMac ? '⌘' : '^';
+    var drawKey = isMac ? '⌘' : 'Alt';
     var pathStr = polygonMode() ? 'closed paths' : 'paths';
-    var msg = `Instructions: Click on the map to draw ${pathStr}. Drag vertices to reshape a path. Type ${symbol}Z/${symbol}Y to undo/redo.`;
+    var msg = `Instructions: Click to start a path or add a point. ${drawKey}-drag draws a path. Drag points to reshape. Type ${undoKey}Z/${undoKey}Y to undo/redo.`;
       alert = showPopupAlert(msg, null, {
-        non_blocking: true, max_width: '360px'});
+        non_blocking: true, max_width: '388px'});
   }
 
   function hideInstructions() {
@@ -214,9 +221,28 @@ export function initLineEditing(gui, ext, hit) {
     hit.setHoverVertex(hoverVertexInfo.displayPoint, hoverVertexInfo.type);
   });
 
+  gui.map.getMouse().on('drag', function(e) {
+    if (!usingPencil()) return;
+    e.stopPropagation();
+    var xy = [e.x, e.y];
+    var p = pixToDataCoords(e.x, e.y);
+    if (!drawing()) {
+      pencilPoints = [xy];
+      startNewPath(p);
+    } else if (!pencilPoints || !pencilPointIsSkippable(xy, pencilPoints)) {
+      pencilPoints = [xy];
+      extendCurrentPath(p);
+    } else {
+      // skip this point, update the hover line
+      pencilPoints.push(xy);
+      updatePathEndpoint(p);
+    }
+  }, null, 3); // higher priority than hit control
+
   hit.on('drag', function(e) {
     if (!dragging() || drawing()) return;
     e.originalEvent.stopPropagation();
+    // dragging a vertex
     var target = hit.getHitTarget();
     var p = ext.translatePixelCoords(e.x, e.y);
     if (gui.keyboard.shiftIsPressed()) {
@@ -295,8 +321,6 @@ export function initLineEditing(gui, ext, hit) {
       deleteActiveVertex(e);
     } else {
       startNewPath(p);
-      hideInstructions();
-      updateCursor();
     }
     prevClickEvent = e;
   });
@@ -407,6 +431,14 @@ export function initLineEditing(gui, ext, hit) {
     gui.dispatchEvent('path_add', {target, p1, p2});
     drawingId = target.shapes.length - 1;
     hit.setDrawingId(drawingId);
+    hideInstructions();
+    updateCursor();
+  }
+
+  function pencilDraw(e) {
+    var p = pixToDataCoords(e.x, e.y);
+    extendCurrentPath(p);
+
   }
 
   // p: [x, y] source data coordinates of new point on path
