@@ -13,7 +13,7 @@ import {
   getLastArcCoords,
   getLastVertexCoords,
   appendNewDataRecord,
-  pencilPointIsSkippable
+  pointExceedsTolerance
   } from './gui-drawing-utils';
 import { translateDisplayPoint } from './gui-display-utils';
 import { showPopupAlert } from './gui-alert';
@@ -46,7 +46,7 @@ export function initLineEditing(gui, ext, hit) {
     return drawingId > -1;
   }
 
-  function usingPencil() {
+  function pencilIsActive() {
     return (gui.keyboard.altIsPressed() || gui.keyboard.metaIsPressed()) && active() && !dragging();
   }
 
@@ -133,7 +133,6 @@ export function initLineEditing(gui, ext, hit) {
     var isMac = navigator.userAgent.includes('Mac');
     var undoKey = isMac ? '⌘' : '^';
     var drawKey = isMac ? '⌘' : 'Alt';
-    var pathStr = polygonMode() ? 'closed paths' : 'paths';
     var msg = `Instructions: Click to start a path or add a point. ${drawKey}-drag draws a path. Drag points to reshape. Type ${undoKey}Z/${undoKey}Y to undo/redo.`;
       alert = showPopupAlert(msg, null, {
         non_blocking: true, max_width: '388px'});
@@ -221,15 +220,24 @@ export function initLineEditing(gui, ext, hit) {
     hit.setHoverVertex(hoverVertexInfo.displayPoint, hoverVertexInfo.type);
   });
 
+  gui.map.getMouse().on('dragend', function(e) {
+    pencilPoints = null;
+  });
+
   gui.map.getMouse().on('drag', function(e) {
-    if (!usingPencil()) return;
+    if (!pencilIsActive()) return;
     e.stopPropagation();
     var xy = [e.x, e.y];
     var p = pixToDataCoords(e.x, e.y);
     if (!drawing()) {
       pencilPoints = [xy];
       startNewPath(p);
-    } else if (!pencilPoints || !pencilPointIsSkippable(xy, pencilPoints)) {
+    } else if (!pencilPoints) {
+      pencilPoints = [xy];
+      extendCurrentPath(p);
+    } else if (pointExceedsTolerance(xy, pencilPoints, 1.5)) {
+      xy = pencilPoints.pop();
+      p = pixToDataCoords(xy[0], xy[1]);
       pencilPoints = [xy];
       extendCurrentPath(p);
     } else {
@@ -433,12 +441,6 @@ export function initLineEditing(gui, ext, hit) {
     hit.setDrawingId(drawingId);
     hideInstructions();
     updateCursor();
-  }
-
-  function pencilDraw(e) {
-    var p = pixToDataCoords(e.x, e.y);
-    extendCurrentPath(p);
-
   }
 
   // p: [x, y] source data coordinates of new point on path
