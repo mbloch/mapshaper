@@ -2,6 +2,7 @@ import { internal, Bounds, utils, geom } from './gui-core';
 import { isProjectedLayer } from './gui-display-utils';
 import { layerHasCanvasDisplayStyle } from './gui-map-style';
 import { projectLayerForDisplay } from './gui-display-layer';
+
 export function flattenArcs(lyr) {
   lyr.gui.source.dataset.arcs.flatten();
   if (isProjectedLayer(lyr)) {
@@ -93,6 +94,15 @@ export function deleteLastPath(lyr) {
   }
 }
 
+export function deleteFeature(lyr, fid) {
+  var records = lyr.data?.getRecords();
+  if (records) records.splice(fid, 1);
+  lyr.shapes.splice(fid, 1);
+  if (isProjectedLayer(lyr) && lyr.shapes != lyr.gui.displayLayer.shapes) {
+    lyr.gui.displayLayer.shapes.splice(fid, 1);
+  }
+}
+
 // p: one point in source data coords
 export function appendNewPoint(lyr, p) {
   lyr.shapes.push([p]);
@@ -106,12 +116,7 @@ export function appendNewPoint(lyr, p) {
 }
 
 export function deletePoint(lyr, fid) {
-  var records = lyr.data?.getRecords();
-  lyr.shapes.splice(fid, 1);
-  if (records) records.splice(fid, 1);
-  if (isProjectedLayer(lyr)) {
-    lyr.gui.displayLayer.shapes.splice(fid, 1);
-  }
+  deleteFeature(lyr, fid);
 }
 
 export function insertPoint(lyr, fid, shp, d) {
