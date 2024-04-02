@@ -24,7 +24,6 @@ export function GuiInstance(container, opts) {
     inspectorControl: true,
     saveControl: true,
     disableNavigation: false,
-    showMouseCoordinates: true,
     focus: true
   }, opts);
 

@@ -151,21 +151,6 @@ body.map-view {
 	height: 29px;
 }
 
-.basemap-on .coordinate-info {
-	left: 100px;
-}
-
-.coordinate-info {
-	z-index: 1;
-	position: absolute;
-	bottom: 7px;
-	left: 7px;
-	padding: 2px 5px 2px 5px;
-	font-size: 11px;
-	pointer-events: none;
-	background: rgba(255,255,255,0.4);
-}
-
 .mapshaper-logo {
 	font-weight: bold;
 	font-size: 17px;
