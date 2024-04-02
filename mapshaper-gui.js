@@ -3419,15 +3419,19 @@
     }
   }
 
-  function pencilPointIsSkippable(p2, points) {
-    var p1 = points[0];
-    var dist;
-    if (points.length < 2) return true;
+  // Test if adding point p to a sequence of points (in pixel coords)
+  // would result in a polyline that deviates from a straight line by
+  // more than a given number of pixels
+  //
+  function pointExceedsTolerance(p, points, tolerance) {
+    if (points.length < 2) return false;
+    var p1 = points[0], p2, dist;
     for (var i=1; i<points.length; i++) {
-      dist = Math.sqrt(geom.pointSegDistSq(points[i][0], points[i][1], p1[0], p1[1], p2[0], p2[1]));
-      if (dist > 1.5) return false;
+      p2 = points[i];
+      dist = Math.sqrt(geom.pointSegDistSq(p2[0], p2[1], p1[0], p1[1], p[0], p[1]));
+      if (dist > tolerance) return true;
     }
-    return true;
+    return false;
   }
 
   function setZ(lyr, z) {
@@ -3499,6 +3503,15 @@
     }
   }
 
+  function deleteFeature(lyr, fid) {
+    var records = lyr.data?.getRecords();
+    if (records) records.splice(fid, 1);
+    lyr.shapes.splice(fid, 1);
+    if (isProjectedLayer(lyr) && lyr.shapes != lyr.gui.displayLayer.shapes) {
+      lyr.gui.displayLayer.shapes.splice(fid, 1);
+    }
+  }
+
   // p: one point in source data coords
   function appendNewPoint(lyr, p) {
     lyr.shapes.push([p]);
@@ -3512,12 +3525,7 @@
   }
 
   function deletePoint(lyr, fid) {
-    var records = lyr.data?.getRecords();
-    lyr.shapes.splice(fid, 1);
-    if (records) records.splice(fid, 1);
-    if (isProjectedLayer(lyr)) {
-      lyr.gui.displayLayer.shapes.splice(fid, 1);
-    }
+    deleteFeature(lyr, fid);
   }
 
   function insertPoint(lyr, fid, shp, d) {
@@ -8536,69 +8544,6 @@
     return self;
   }
 
-  function CoordinatesDisplay(gui, ext, mouse) {
-    var readout = gui.container.findChild('.coordinate-info').hide();
-
-    function enabled() {
-      var lyr = gui.map.getActiveLayer();
-      return !!(lyr && lyr.gui.displayLayer.geometry_type);
-    }
-
-    gui.model.on('update', function(e) {
-      readout.hide();
-    });
-
-    readout.on('copy', function(e) {
-      // remove selection on copy (using timeout or else copy is cancelled)
-      setTimeout(function() {
-        window.getSelection().removeAllRanges();
-      }, 50);
-    });
-
-    // clear coords when map pans
-    ext.on('change', function() {
-      clearCoords();
-      // shapes may change along with map scale
-      // target = lyr ? lyr.getDisplayLayer() : null;
-    });
-
-    mouse.on('leave', clearCoords);
-
-    mouse.on('click', function(e) {
-      if (!enabled()) return;
-      GUI.selectElement(readout.node());
-    });
-
-    mouse.on('hover', onMouseChange);
-    mouse.on('drag', onMouseChange, null, 10); // high priority so editor doesn't block propagation
-
-    function onMouseChange(e) {
-      if (!enabled()) return;
-      if (isOverMap(e)) {
-        displayCoords(gui.map.translatePixelCoords(e.x, e.y));
-      } else {
-        clearCoords();
-      }
-    }
-
-    function displayCoords(p) {
-      var p1 = gui.map.translatePixelCoords(0, ext.height());
-      var p2 = gui.map.translatePixelCoords(ext.width(), 0);
-      var bbox = p1.concat(p2);
-      var decimals = internal.getBoundsPrecisionForDisplay(bbox);
-      var str = internal.getRoundedCoordString(p, decimals);
-      readout.text(str).show();
-    }
-
-    function clearCoords() {
-      readout.hide();
-    }
-
-    function isOverMap(e) {
-      return e.x >= 0 && e.y >= 0 && e.x < ext.width() && e.y < ext.height();
-    }
-  }
-
   function getTimerFunction() {
     return typeof requestAnimationFrame == 'function' ?
       requestAnimationFrame : function(cb) {setTimeout(cb, 25);};
@@ -9147,7 +9092,8 @@
       if (!boxCoords) return null;
       var dataBox = getBBoxCoords(gui.map.getActiveLayer(), boxCoords);
       fixBounds(dataBox);
-      return internal.getRoundedCoords(dataBox, internal.getBoundsPrecisionForDisplay(dataBox));
+      // return internal.getRoundedCoords(dataBox, internal.getBoundsPrecisionForDisplay(dataBox));
+      return dataBox;
     };
 
     box.turnOn = function() {
@@ -9904,12 +9850,18 @@
     });
 
     hit.on('contextmenu', function(e) {
-      var target = hit.getHitTarget();
-      if (!e.overMap || e.mode == 'edit_lines' ||
-          e.mode == 'edit_polygons' || e.mode == 'edit_points') {
+      if (!e.overMap || e.mode == 'edit_lines' || e.mode == 'edit_polygons' ||
+        e.mode == 'edit_points') {
         return;
       }
-      gui.contextMenu.open(e, hit.getHitTarget());
+      var target = hit.getHitTarget();
+      if (e.ids.length == 1) {
+        e.deleteFeature = function() {
+          deleteFeature(target, e.ids[0]);
+          gui.model.updated({filter:true});
+        };
+      }
+      gui.contextMenu.open(e, target);
     });
 
     hit.on('change', function(e) {
@@ -10332,23 +10284,27 @@
     var drawingId = -1; // feature id of path being drawn
     var sessionCount = 0;
     var alert;
-    var pencilPoints;
+    var pencilPoints = [];
     var _dragging = false;
 
     function active() {
       return initialArcCount >= 0;
     }
 
-    function dragging() {
+    function vertexDragging() {
       return _dragging;
     }
 
-    function drawing() {
+    function pathDrawing() {
       return drawingId > -1;
     }
 
-    function usingPencil() {
-      return (gui.keyboard.altIsPressed() || gui.keyboard.metaIsPressed()) && active() && !dragging();
+    function cmdKeyDown() {
+      return gui.keyboard.altIsPressed() || gui.keyboard.metaIsPressed();
+    }
+
+    function pencilIsActive() {
+      return cmdKeyDown() && active() && !vertexDragging() && !!pencilPoints;
     }
 
     function polygonMode() {
@@ -10392,7 +10348,7 @@
 
     gui.on('redo_path_extend', function(e) {
       var target = hit.getHitTarget();
-      if (drawing() && prevHoverEvent) {
+      if (pathDrawing() && prevHoverEvent) {
         updatePathEndpoint(e.p);
         appendVertex$1(target, pixToDataCoords(prevHoverEvent.x, prevHoverEvent.y));
       } else {
@@ -10405,7 +10361,7 @@
 
     gui.on('undo_path_extend', function(e) {
       var target = hit.getHitTarget();
-      if (drawing() && prevHoverEvent) {
+      if (pathDrawing() && prevHoverEvent) {
         deleteLastVertex(target);
         updatePathEndpoint(pixToDataCoords(prevHoverEvent.x, prevHoverEvent.y));
       } else {
@@ -10434,7 +10390,6 @@
       var isMac = navigator.userAgent.includes('Mac');
       var undoKey = isMac ? '⌘' : '^';
       var drawKey = isMac ? '⌘' : 'Alt';
-      var pathStr = polygonMode() ? 'closed paths' : 'paths';
       var msg = `Instructions: Click to start a path or add a point. ${drawKey}-drag draws a path. Drag points to reshape. Type ${undoKey}Z/${undoKey}Y to undo/redo.`;
         alert = showPopupAlert(msg, null, {
           non_blocking: true, max_width: '388px'});
@@ -10497,7 +10452,7 @@
     }
 
     hit.on('contextmenu', function(e) {
-      if (!active() || drawing() || dragging()) return;
+      if (!active() || pathDrawing() || vertexDragging()) return;
       var target = hit.getHitTarget();
       var vInfo = hoverVertexInfo;
       if (hoverVertexInfo?.type == 'vertex' && !vertexIsEndpoint(vInfo, target)) {
@@ -10510,7 +10465,7 @@
     });
 
     hit.on('dragstart', function(e) {
-      if (!active() || drawing() || !hoverVertexInfo) return;
+      if (!active() || pathDrawing() || !hoverVertexInfo) return;
       hideInstructions();
       e.originalEvent.stopPropagation();
       _dragging = true;
@@ -10522,15 +10477,33 @@
       hit.setHoverVertex(hoverVertexInfo.displayPoint, hoverVertexInfo.type);
     });
 
+    gui.map.getMouse().on('dragend', function(e) {
+      pencilPoints = []; // re-enable pencil after closing a path
+    });
+
     gui.map.getMouse().on('drag', function(e) {
-      if (!usingPencil()) return;
-      e.stopPropagation();
+      if (!active() || !cmdKeyDown() || vertexDragging()) return;
+      e.stopPropagation(); // prevent panning
+      if (!pencilIsActive()) return;
+      hoverVertexInfo = findPathStartInfo(e);
       var xy = [e.x, e.y];
       var p = pixToDataCoords(e.x, e.y);
-      if (!drawing()) {
+      if (!pathDrawing()) {
         pencilPoints = [xy];
         startNewPath(p);
-      } else if (!pencilPoints || !pencilPointIsSkippable(xy, pencilPoints)) {
+      } else if (pencilPoints.length == 0) {
+        // start pencil-drawing when a path is started
+        pencilPoints = [xy];
+        extendCurrentPath(p);
+      } else if (hoverVertexInfo && pencilPoints.length > 2) {
+        // close path
+        p = hoverVertexInfo.point;
+        appendVertex$1(hit.getHitTarget(), p);
+        extendCurrentPath(p);
+        pencilPoints = null; // stop drawing
+      } else if (pointExceedsTolerance(xy, pencilPoints, 1.5)) {
+        xy = pencilPoints.pop();
+        p = pixToDataCoords(xy[0], xy[1]);
         pencilPoints = [xy];
         extendCurrentPath(p);
       } else {
@@ -10541,7 +10514,9 @@
     }, null, 3); // higher priority than hit control
 
     hit.on('drag', function(e) {
-      if (!dragging() || drawing()) return;
+      if (!vertexDragging() || pathDrawing()) {
+        return;
+      }
       e.originalEvent.stopPropagation();
       // dragging a vertex
       var target = hit.getHitTarget();
@@ -10556,7 +10531,7 @@
     });
 
     hit.on('dragend', function(e) {
-      if (!dragging()) return;
+      if (!vertexDragging()) return;
       _dragging = false;
       var target = hit.getHitTarget();
       // kludge to get dataset to recalculate internal bounding boxes
@@ -10573,7 +10548,7 @@
       if (!active()) return;
       // double click finishes a path
       // note: if the preceding 'click' finished the path, this does not fire
-      if (drawing()) {
+      if (pathDrawing()) {
         finishCurrentPath();
         e.originalEvent.stopPropagation(); // prevent dblclick zoom
         return;
@@ -10583,9 +10558,9 @@
     // hover event highlights the nearest point in close proximity to the pointer
     // ... or the closest point along the segment (for adding a new vertex)
     hit.on('hover', function(e) {
-      if (!active() || dragging()) return;
+      if (!active() || vertexDragging()) return;
 
-      if (drawing()) {
+      if (pathDrawing()) {
         if (!e.overMap) {
           finishCurrentPath();
           return;
@@ -10599,7 +10574,7 @@
       // highlight nearby snappable vertex (the closest vertex on a nearby line,
       //   or the first vertex of the current drawing path if not near a line)
       hoverVertexInfo = e.id >= 0 && findDraggableVertices(e) ||
-          drawing() && findPathStartInfo(e) ||
+          pathDrawing() && findPathStartInfo(e) ||
           e.id >= 0 && findInterpolatedPoint(e);
       if (hoverVertexInfo) {
         // hovering near a vertex: highlight the vertex
@@ -10616,10 +10591,13 @@
       if (!active()) return;
       if (detectDoubleClick(e)) return; // ignore second click of a dblclick
       var p = pixToDataCoords(e.x, e.y);
-      if (drawing()) {
+      if (pathDrawing()) {
         extendCurrentPath(hoverVertexInfo?.point || p);
       } else if (gui.keyboard.shiftIsPressed()) {
         deleteActiveVertex(e);
+      } else if (hoverVertexInfo?.type == 'interpolated') {
+        // don't start new path if hovering along a segment -- this is
+        // likely to be an attempt to add a new vertex, not start a new path
       } else {
         startNewPath(p);
       }
@@ -10647,7 +10625,7 @@
 
     function updateCursor() {
       gui.container.findChild('.map-layers').classed('drawing', active());
-      var useArrow = hoverVertexInfo && !hoverVertexInfo.extendable && !drawing();
+      var useArrow = hoverVertexInfo && !hoverVertexInfo.extendable && !pathDrawing();
       gui.container.findChild('.map-layers').classed('dragging', useArrow);
     }
 
@@ -10713,7 +10691,7 @@
     }
 
     function finishCurrentPath() {
-      if (!drawing()) return;
+      if (!pathDrawing()) return;
       var target = hit.getHitTarget();
       if (getLastArcLength(target) <= 2) { // includes hover point
         deleteLastPath(target);
@@ -10734,12 +10712,6 @@
       hit.setDrawingId(drawingId);
       hideInstructions();
       updateCursor();
-    }
-
-    function pencilDraw(e) {
-      var p = pixToDataCoords(e.x, e.y);
-      extendCurrentPath(p);
-
     }
 
     // p: [x, y] source data coordinates of new point on path
@@ -10794,6 +10766,7 @@
     }
 
     function findPathStartInfo(e) {
+      if (!pathDrawing()) return false;
       var target = hit.getHitTarget();
       var arcId = target.gui.displayArcs.size() - 1;
       var p1 = ext.translatePixelCoords(e.x, e.y); // mouse coords
@@ -12571,9 +12544,6 @@ GUI and setting the size and crop of SVG output.</p><div><input type="text" clas
 
     _basemap = new Basemap(gui, _ext);
 
-    if (gui.options.showMouseCoordinates) {
-      new CoordinatesDisplay(gui, _ext, _mouse);
-    }
     _mouse.disable(); // wait for gui.focus() to activate mouse events
 
     model.on('select', function(e) {
@@ -13148,6 +13118,13 @@ GUI and setting the size and crop of SVG output.</p><div><input type="text" clas
       if (e.ids?.length) {
         addMenuItem('Copy as GeoJSON', copyGeoJSON);
       }
+      if (e.deleteFeature) {
+        addMenuItem(getDeleteLabel(), e.deleteFeature);
+      }
+
+      function getDeleteLabel() {
+        return 'Delete ' + (lyr.geometry_type == 'point' ? 'point' : 'shape');
+      }
 
       function addCoords(p) {
         var coordStr = p[0] + ',' + p[1];
@@ -13195,7 +13172,6 @@ GUI and setting the size and crop of SVG output.</p><div><input type="text" clas
       inspectorControl: true,
       saveControl: true,
       disableNavigation: false,
-      showMouseCoordinates: true,
       focus: true
     }, opts);
 
