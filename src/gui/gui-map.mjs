@@ -1,5 +1,4 @@
 import { HitControl } from './gui-hit-control';
-import { CoordinatesDisplay } from './gui-coordinates-display';
 import { MapNav } from './gui-map-nav';
 import { SelectionTool } from './gui-selection-tool';
 import { InspectionControl2 } from './gui-inspection-control';
@@ -52,9 +51,6 @@ export function MshpMap(gui) {
 
   _basemap = new Basemap(gui, _ext);
 
-  if (gui.options.showMouseCoordinates) {
-    new CoordinatesDisplay(gui, _ext, _mouse);
-  }
   _mouse.disable(); // wait for gui.focus() to activate mouse events
 
   model.on('select', function(e) {
