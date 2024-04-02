@@ -1,6 +1,9 @@
+v0.6.81
+* [web] Add feature deletion to the context menu.
+* [web] Automatically close polygons when using Alt/Cmd-drag to draw paths.
+
 v0.6.80
 * [web] Added pencil-style path drawing using Alt-drag or Cmd-drag.
-* 
 
 v0.6.79
 * [web] Added "delete point" to the point editing context menu.
