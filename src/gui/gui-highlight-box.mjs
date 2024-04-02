@@ -134,7 +134,8 @@ export function HighlightBox(gui, optsArg) {
     if (!boxCoords) return null;
     var dataBox = getBBoxCoords(gui.map.getActiveLayer(), boxCoords);
     fixBounds(dataBox);
-    return internal.getRoundedCoords(dataBox, internal.getBoundsPrecisionForDisplay(dataBox));
+    // return internal.getRoundedCoords(dataBox, internal.getBoundsPrecisionForDisplay(dataBox));
+    return dataBox;
   };
 
   box.turnOn = function() {
