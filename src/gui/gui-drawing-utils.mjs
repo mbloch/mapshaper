@@ -9,15 +9,19 @@ export function flattenArcs(lyr) {
   }
 }
 
-export function pencilPointIsSkippable(p2, points) {
-  var p1 = points[0];
-  var dist;
-  if (points.length < 2) return true;
+// Test if adding point p to a sequence of points (in pixel coords)
+// would result in a polyline that deviates from a straight line by
+// more than a given number of pixels
+//
+export function pointExceedsTolerance(p, points, tolerance) {
+  if (points.length < 2) return false;
+  var p1 = points[0], p2, dist;
   for (var i=1; i<points.length; i++) {
-    dist = Math.sqrt(geom.pointSegDistSq(points[i][0], points[i][1], p1[0], p1[1], p2[0], p2[1]));
-    if (dist > 1.5) return false;
+    p2 = points[i];
+    dist = Math.sqrt(geom.pointSegDistSq(p2[0], p2[1], p1[0], p1[1], p[0], p[1]));
+    if (dist > tolerance) return true;
   }
-  return true;
+  return false;
 }
 
 export function setZ(lyr, z) {
