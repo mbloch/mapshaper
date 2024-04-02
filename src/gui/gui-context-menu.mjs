@@ -1,6 +1,7 @@
 import { internal, mapshaper, geom } from './gui-core';
 import { El } from './gui-el';
 import { saveFileContentToClipboard } from './gui-export-control';
+import { deleteFeature } from './gui-drawing-utils';
 
 export function ContextMenu() {
   var body = document.querySelector('body');
@@ -62,6 +63,13 @@ export function ContextMenu() {
     }
     if (e.ids?.length) {
       addMenuItem('Copy as GeoJSON', copyGeoJSON);
+    }
+    if (e.deleteFeature) {
+      addMenuItem(getDeleteLabel(), e.deleteFeature);
+    }
+
+    function getDeleteLabel() {
+      return 'Delete ' + (lyr.geometry_type == 'point' ? 'point' : 'shape');
     }
 
     function addCoords(p) {

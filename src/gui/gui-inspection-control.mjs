@@ -1,6 +1,7 @@
 import { Popup } from './gui-popup';
 import { EventDispatcher } from './gui-events';
 import { internal } from './gui-core';
+import { deleteFeature } from './gui-drawing-utils';
 
 export function InspectionControl2(gui, hit) {
   var _popup = new Popup(gui, hit.getSwitchTrigger(1), hit.getSwitchTrigger(-1));
@@ -23,12 +24,18 @@ export function InspectionControl2(gui, hit) {
   });
 
   hit.on('contextmenu', function(e) {
-    var target = hit.getHitTarget();
-    if (!e.overMap || e.mode == 'edit_lines' ||
-        e.mode == 'edit_polygons' || e.mode == 'edit_points') {
+    if (!e.overMap || e.mode == 'edit_lines' || e.mode == 'edit_polygons' ||
+      e.mode == 'edit_points') {
       return;
     }
-    gui.contextMenu.open(e, hit.getHitTarget());
+    var target = hit.getHitTarget();
+    if (e.ids.length == 1) {
+      e.deleteFeature = function() {
+        deleteFeature(target, e.ids[0]);
+        gui.model.updated({filter:true});
+      };
+    }
+    gui.contextMenu.open(e, target);
   });
 
   hit.on('change', function(e) {
