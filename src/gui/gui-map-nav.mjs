@@ -3,6 +3,7 @@ import { Tween } from './gui-tween';
 import { Bounds, internal, utils } from './gui-core';
 import { initVariableClick } from './gui-mouse-utils';
 import { HighlightBox } from './gui-highlight-box';
+import { El } from './gui-el';
 
 export function MapNav(gui, ext, mouse) {
   var wheel = new MouseWheel(mouse),
@@ -65,6 +66,14 @@ export function MapNav(gui, ext, mouse) {
       if (useBoxZoom()) zoomBox.turnOn();
       dragStartEvt = e;
       gui.dispatchEvent('shift_drag_start');
+    } else {
+      El('body').addClass('pan');
+      setTimeout(function() {
+        var body = El('body');
+        if (body.hasClass('pan')) {
+          body.addClass('panning');
+        }
+      }, 100);
     }
   });
 
@@ -84,6 +93,8 @@ export function MapNav(gui, ext, mouse) {
       shiftDrag = false;
       gui.dispatchEvent('shift_drag_end', getBoxData(e));
       zoomBox.turnOff();
+    } else {
+      El('body').removeClass('panning').removeClass('pan');
     }
   });
 
