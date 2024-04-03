@@ -1,3 +1,6 @@
+v0.6.82
+* Added geos (Geostationary Satellite View) projection.
+
 v0.6.81
 * [web] Add feature deletion to the context menu.
 * [web] Automatically close polygons when using Alt/Cmd-drag to draw paths.
