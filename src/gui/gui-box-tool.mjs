@@ -26,7 +26,7 @@ export function BoxTool(gui, ext, nav) {
 
   new SimpleButton(popup.findChild('.select-btn')).on('click', function() {
     var coords = box.getDataCoords();
-    if (!coords) return;
+    if (!coords || noData()) return;
     gui.enterMode('selection_tool');
     gui.interaction.setMode('selection');
     // kludge to pass bbox to the selection tool
@@ -34,6 +34,10 @@ export function BoxTool(gui, ext, nav) {
       map_data_bbox: coords
     });
   });
+
+  function noData() {
+    return !gui.model.getActiveLayer();
+  }
 
   new SimpleButton(popup.findChild('.clip-btn')).on('click', function() {
     runCommand('-clip bbox=' + box.getDataCoords().join(','));
@@ -92,7 +96,9 @@ export function BoxTool(gui, ext, nav) {
 
   function showCoords() {
     El(infoBtn.node()).addClass('selected-btn');
-    coords.text(box.getDataCoords().join(','));
+    var bbox = box.getDataCoords();
+    var rounded = internal.getRoundedCoords(bbox, internal.getBoundsPrecisionForDisplay(bbox));
+    coords.text(rounded.join(','));
     coords.show();
     GUI.selectElement(coords.node());
   }
