@@ -5812,6 +5812,7 @@
     var ctrlDown = false;
     var metaDown = false;
     var altDown = false;
+    var spaceDown = false;
 
     function updateControlKeys(e) {
       shiftDown = e.shiftKey;
@@ -5819,15 +5820,22 @@
       metaDown = e.metaKey;
       altDown = e.altKey;
     }
+
+    function mouseIsPressed() {
+      return gui.map.getMouse().isDown();
+    }
+
     document.addEventListener('keyup', function(e) {
-      if (!GUI.isActiveInstance(gui)) return;
+      if (!GUI.isActiveInstance(gui) || e.repeat) return;
       // this can fail to fire if keyup occurs over a context menu
+      if (e.keyCode == 32) spaceDown = false;
       updateControlKeys(e);
       self.dispatchEvent('keyup', getEventData(e));
     });
 
     document.addEventListener('keydown', function(e) {
-      if (!GUI.isActiveInstance(gui)) return;
+      if (!GUI.isActiveInstance(gui) || e.repeat) return;
+      if (e.keyCode == 32) spaceDown = true;
       updateControlKeys(e);
       self.dispatchEvent('keydown', getEventData(e));
     });
@@ -5837,10 +5845,11 @@
       updateControlKeys(e);
     });
 
-    this.shiftIsPressed = function() { return shiftDown; };
-    this.ctrlIsPressed = function() { return ctrlDown; };
-    this.altIsPressed = function() { return altDown; };
-    this.metaIsPressed = function() { return metaDown; };
+    this.shiftIsPressed = () => shiftDown;
+    this.ctrlIsPressed = () => ctrlDown;
+    this.altIsPressed = () => altDown;
+    this.metaIsPressed = () => metaDown;
+    this.spaceIsPressed = () => spaceDown;
 
     this.onMenuSubmit = function(menuEl, cb) {
       gui.on('enter_key', function(e) {
@@ -5878,7 +5887,7 @@
 
     var menus = {
       standard: ['info', 'selection', 'box'],
-      empty: ['edit_points', 'edit_lines', 'edit_polygons'],
+      empty: ['edit_points', 'edit_lines', 'edit_polygons', 'box'],
       polygons: ['info', 'selection', 'box', 'edit_polygons'],
       rectangles: ['info', 'selection', 'box', 'rectangles'],
       lines: ['info', 'selection', 'box' , 'edit_lines'],
@@ -9282,6 +9291,14 @@
         if (useBoxZoom()) zoomBox.turnOn();
         dragStartEvt = e;
         gui.dispatchEvent('shift_drag_start');
+      } else {
+        El('body').addClass('pan');
+        setTimeout(function() {
+          var body = El('body');
+          if (body.hasClass('pan')) {
+            body.addClass('panning');
+          }
+        }, 100);
       }
     });
 
@@ -9301,6 +9318,8 @@
         shiftDrag = false;
         gui.dispatchEvent('shift_drag_end', getBoxData(e));
         zoomBox.turnOff();
+      } else {
+        El('body').removeClass('panning').removeClass('pan');
       }
     });
 
@@ -10304,7 +10323,7 @@
     }
 
     function pencilIsActive() {
-      return cmdKeyDown() && active() && !vertexDragging() && !!pencilPoints;
+      return active() && (cmdKeyDown() || pathDrawing()) && !vertexDragging();
     }
 
     function polygonMode() {
@@ -10389,8 +10408,7 @@
     function showInstructions() {
       var isMac = navigator.userAgent.includes('Mac');
       var undoKey = isMac ? '⌘' : '^';
-      var drawKey = isMac ? '⌘' : 'Alt';
-      var msg = `Instructions: Click to start a path or add a point. ${drawKey}-drag draws a path. Drag points to reshape. Type ${undoKey}Z/${undoKey}Y to undo/redo.`;
+      var msg = `Instructions: click to start a path, click or drag to keep drawing. Drag vertices to reshape a path. Type ${undoKey}Z/${undoKey}Y to undo/redo.`;
         alert = showPopupAlert(msg, null, {
           non_blocking: true, max_width: '388px'});
     }
@@ -10449,7 +10467,14 @@
       drawingId = -1;
       hoverVertexInfo = null;
       prevClickEvent = prevHoverEvent = null;
+      updateCursor();
     }
+
+    gui.keyboard.on('keydown', function(e) {
+      if (active() && e.keyName == 'space') {
+        e.stopPropagation(); // prevent console from opening if shift-panning
+      }
+    }, null, 1);
 
     hit.on('contextmenu', function(e) {
       if (!active() || pathDrawing() || vertexDragging()) return;
@@ -10482,9 +10507,19 @@
     });
 
     gui.map.getMouse().on('drag', function(e) {
-      if (!active() || !cmdKeyDown() || vertexDragging()) return;
+      if (!pencilIsActive()) {
+        if (!pencilPoints) {
+          // null points signals that a path was just completed -- block panning
+          e.stopPropagation();
+        }
+        return;
+      }
+      if (gui.keyboard.spaceIsPressed()) {
+        // pan if dragging with spacebar down
+        pencilPoints = []; // don't continue previous line after panning
+        return;
+      }
       e.stopPropagation(); // prevent panning
-      if (!pencilIsActive()) return;
       hoverVertexInfo = findPathStartInfo(e);
       var xy = [e.x, e.y];
       var p = pixToDataCoords(e.x, e.y);
@@ -10624,9 +10659,11 @@
     }
 
     function updateCursor() {
-      gui.container.findChild('.map-layers').classed('drawing', active());
+      var el = gui.container.findChild('.map-layers');
+      el.classed('draw-tool', active());
       var useArrow = hoverVertexInfo && !hoverVertexInfo.extendable && !pathDrawing();
-      gui.container.findChild('.map-layers').classed('dragging', useArrow);
+      el.classed('dragging', useArrow);
+      el.classed('drawing', pathDrawing());
     }
 
     function vertexIsEndpoint(info, target) {
@@ -12063,7 +12100,7 @@
 
     new SimpleButton(popup.findChild('.select-btn')).on('click', function() {
       var coords = box.getDataCoords();
-      if (!coords) return;
+      if (!coords || noData()) return;
       gui.enterMode('selection_tool');
       gui.interaction.setMode('selection');
       // kludge to pass bbox to the selection tool
@@ -12071,6 +12108,10 @@
         map_data_bbox: coords
       });
     });
+
+    function noData() {
+      return !gui.model.getActiveLayer();
+    }
 
     new SimpleButton(popup.findChild('.clip-btn')).on('click', function() {
       runCommand('-clip bbox=' + box.getDataCoords().join(','));
@@ -12129,7 +12170,9 @@
 
     function showCoords() {
       El(infoBtn.node()).addClass('selected-btn');
-      coords.text(box.getDataCoords().join(','));
+      var bbox = box.getDataCoords();
+      var rounded = internal.getRoundedCoords(bbox, internal.getBoundsPrecisionForDisplay(bbox));
+      coords.text(rounded.join(','));
       coords.show();
       GUI.selectElement(coords.node());
     }

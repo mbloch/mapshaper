@@ -39557,7 +39557,7 @@ ${svg}
   }
 
   function isCircleClippedProjection(P) {
-    return inList(P, 'stere,sterea,ups,ortho,gnom,laea,nsper,tpers');
+    return inList(P, 'stere,sterea,ups,ortho,gnom,laea,nsper,tpers,geos');
   }
 
   function getPerspectiveClipAngle(P) {
@@ -39572,7 +39572,7 @@ ${svg}
 
   function getDefaultClipAngle(P) {
     var slug = getCrsSlug(P);
-    if (slug == 'nsper') return getPerspectiveClipAngle(P);
+    if (slug == 'nsper' || slug == 'geos') return getPerspectiveClipAngle(P);
     if (slug == 'tpers') {
       message('Automatic clipping is not supported for the Tilted Perspective projection');
       return 0;
@@ -45535,7 +45535,7 @@ ${svg}
     });
   }
 
-  var version = "0.6.81";
+  var version = "0.6.82";
 
   // Parse command line args into commands and run them
   // Function takes an optional Node-style callback. A Promise is returned if no callback is given.
