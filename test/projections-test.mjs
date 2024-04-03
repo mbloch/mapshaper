@@ -97,6 +97,8 @@ describe('mapshaper-projections.js', function() {
     roundtrip('etmerc', [10, -80]);
     roundtrip('+proj=tmerc +units=ft', [2, 3]);
     roundtrip('+proj=utm +zone=34 +south', [18.423889, -33.925278]);
+    roundtrip('+proj=geos +h=35785831.0 +lon_0=60 +sweep=y +datum=WGS84', [38.42, 13.92]);
+    roundtrip('+proj=geos +h=35785831.0 +lon_0=60 +sweep=x +R=6378137', [38.42, 13.92]);
   })
 
   describe('test aliases', function () {

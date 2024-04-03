@@ -58,7 +58,6 @@ describe('mapshaper-proj.js', function() {
         done();
       });
     })
-
   })
 
   describe('-proj <alias>', function() {

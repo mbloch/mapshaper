@@ -118,7 +118,7 @@ export function getClampBBox(P) {
 }
 
 export function isCircleClippedProjection(P) {
-  return inList(P, 'stere,sterea,ups,ortho,gnom,laea,nsper,tpers');
+  return inList(P, 'stere,sterea,ups,ortho,gnom,laea,nsper,tpers,geos');
 }
 
 function getPerspectiveClipAngle(P) {
@@ -133,7 +133,7 @@ function getPerspectiveClipAngle(P) {
 
 export function getDefaultClipAngle(P) {
   var slug = getCrsSlug(P);
-  if (slug == 'nsper') return getPerspectiveClipAngle(P);
+  if (slug == 'nsper' || slug == 'geos') return getPerspectiveClipAngle(P);
   if (slug == 'tpers') {
     message('Automatic clipping is not supported for the Tilted Perspective projection');
     return 0;
