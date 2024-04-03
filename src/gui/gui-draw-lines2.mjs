@@ -195,7 +195,14 @@ export function initLineEditing(gui, ext, hit) {
     drawingId = -1;
     hoverVertexInfo = null;
     prevClickEvent = prevHoverEvent = null;
+    updateCursor();
   }
+
+  gui.keyboard.on('keydown', function(e) {
+    if (active() && e.keyName == 'space') {
+      e.stopPropagation(); // prevent console from opening if shift-panning
+    }
+  }, null, 1);
 
   hit.on('contextmenu', function(e) {
     if (!active() || pathDrawing() || vertexDragging()) return;
@@ -233,6 +240,11 @@ export function initLineEditing(gui, ext, hit) {
         // null points signals that a path was just completed -- block panning
         e.stopPropagation();
       }
+      return;
+    }
+    if (gui.keyboard.spaceIsPressed()) {
+      // pan if dragging with spacebar down
+      pencilPoints = []; // don't continue previous line after panning
       return;
     }
     e.stopPropagation(); // prevent panning
@@ -375,9 +387,11 @@ export function initLineEditing(gui, ext, hit) {
   }
 
   function updateCursor() {
-    gui.container.findChild('.map-layers').classed('drawing', active());
+    var el = gui.container.findChild('.map-layers');
+    el.classed('draw-tool', active());
     var useArrow = hoverVertexInfo && !hoverVertexInfo.extendable && !pathDrawing();
-    gui.container.findChild('.map-layers').classed('dragging', useArrow);
+    el.classed('dragging', useArrow);
+    el.classed('drawing', pathDrawing());
   }
 
   function vertexIsEndpoint(info, target) {

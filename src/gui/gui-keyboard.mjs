@@ -8,6 +8,7 @@ export function KeyboardEvents(gui) {
   var ctrlDown = false;
   var metaDown = false;
   var altDown = false;
+  var spaceDown = false;
 
   function updateControlKeys(e) {
     shiftDown = e.shiftKey;
@@ -15,15 +16,22 @@ export function KeyboardEvents(gui) {
     metaDown = e.metaKey;
     altDown = e.altKey;
   }
+
+  function mouseIsPressed() {
+    return gui.map.getMouse().isDown();
+  }
+
   document.addEventListener('keyup', function(e) {
-    if (!GUI.isActiveInstance(gui)) return;
+    if (!GUI.isActiveInstance(gui) || e.repeat) return;
     // this can fail to fire if keyup occurs over a context menu
+    if (e.keyCode == 32) spaceDown = false;
     updateControlKeys(e);
     self.dispatchEvent('keyup', getEventData(e));
   });
 
   document.addEventListener('keydown', function(e) {
-    if (!GUI.isActiveInstance(gui)) return;
+    if (!GUI.isActiveInstance(gui) || e.repeat) return;
+    if (e.keyCode == 32) spaceDown = true;
     updateControlKeys(e);
     self.dispatchEvent('keydown', getEventData(e));
   });
@@ -33,10 +41,11 @@ export function KeyboardEvents(gui) {
     updateControlKeys(e);
   });
 
-  this.shiftIsPressed = function() { return shiftDown; };
-  this.ctrlIsPressed = function() { return ctrlDown; };
-  this.altIsPressed = function() { return altDown; };
-  this.metaIsPressed = function() { return metaDown; };
+  this.shiftIsPressed = () => shiftDown;
+  this.ctrlIsPressed = () => ctrlDown;
+  this.altIsPressed = () => altDown;
+  this.metaIsPressed = () => metaDown;
+  this.spaceIsPressed = () => spaceDown;
 
   this.onMenuSubmit = function(menuEl, cb) {
     gui.on('enter_key', function(e) {
