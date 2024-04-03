@@ -5,7 +5,7 @@ export function InteractionMode(gui) {
 
   var menus = {
     standard: ['info', 'selection', 'box'],
-    empty: ['edit_points', 'edit_lines', 'edit_polygons'],
+    empty: ['edit_points', 'edit_lines', 'edit_polygons', 'box'],
     polygons: ['info', 'selection', 'box', 'edit_polygons'],
     rectangles: ['info', 'selection', 'box', 'rectangles'],
     lines: ['info', 'selection', 'box' , 'edit_lines'],
