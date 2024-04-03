@@ -51,7 +51,7 @@ export function initLineEditing(gui, ext, hit) {
   }
 
   function pencilIsActive() {
-    return cmdKeyDown() && active() && !vertexDragging() && !!pencilPoints;
+    return active() && (cmdKeyDown() || pathDrawing()) && !vertexDragging();
   }
 
   function polygonMode() {
@@ -136,8 +136,7 @@ export function initLineEditing(gui, ext, hit) {
   function showInstructions() {
     var isMac = navigator.userAgent.includes('Mac');
     var undoKey = isMac ? '⌘' : '^';
-    var drawKey = isMac ? '⌘' : 'Alt';
-    var msg = `Instructions: Click to start a path or add a point. ${drawKey}-drag draws a path. Drag points to reshape. Type ${undoKey}Z/${undoKey}Y to undo/redo.`;
+    var msg = `Instructions: click to start a path, click or drag to keep drawing. Drag vertices to reshape a path. Type ${undoKey}Z/${undoKey}Y to undo/redo.`;
       alert = showPopupAlert(msg, null, {
         non_blocking: true, max_width: '388px'});
   }
@@ -229,9 +228,14 @@ export function initLineEditing(gui, ext, hit) {
   });
 
   gui.map.getMouse().on('drag', function(e) {
-    if (!active() || !cmdKeyDown() || vertexDragging()) return;
+    if (!pencilIsActive()) {
+      if (!pencilPoints) {
+        // null points signals that a path was just completed -- block panning
+        e.stopPropagation();
+      }
+      return;
+    }
     e.stopPropagation(); // prevent panning
-    if (!pencilIsActive()) return;
     hoverVertexInfo = findPathStartInfo(e);
     var xy = [e.x, e.y];
     var p = pixToDataCoords(e.x, e.y);
