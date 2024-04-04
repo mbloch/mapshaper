@@ -1124,8 +1124,6 @@ img.close-btn:hover,
 	height: 100%;
 }
 
-
-
 .basemap-styles {
 	margin: 0 -2px;
 	white-space: nowrap;
@@ -1155,24 +1153,61 @@ img.close-btn:hover,
 	margin-left: 10px;
 }
 
+.basemap-style-btn {
+	position:  relative;
+	border-width: 2px;
+	border-color: #98cde2;
+	border-color: #bbddea;
+	border-style: solid;
+	border-radius: 6px;
+}
+
 .basemap-style-btn img {
 	display: block;
-	position:  relative;
-	border: 2px solid transparent;
 	width:  108px;
 }
 
-div.basemap-style-btn.active img {
-	border: 2px solid #e8ba52;
+div.basemap-style-btn.active {
+	border-color: #e8ba52;
 }
 
-.basemap-style-btn:hover img {
+.basemap-buttons:not(.disabled) .basemap-style-btn:hover {
 	cursor: pointer;
-	border: 2px solid #ead683;
+	border-color: #f7e286;
 }
 
 .basemap-style-label {
 	margin-left: 2px;
+}
+
+.basemap-overlay-buttons {
+	z-index: 20;
+	position: absolute;
+	top: 6px;
+	right: 36px;
+	padding: 4px;
+	background: white;
+	border-radius: 7px;
+	line-height: 0px;
+	display: none;
+}
+
+.basemap-style-btn.basemap-overlay-btn {
+	width: 35px;
+	height: 35px;
+	margin: 3px;
+	overflow: hidden;
+	display: inline-block;
+	/*border-width: 1px;*/
+}
+
+.basemap-overlay-buttons.disabled > div {
+	opacity: 0.5;
+}
+
+.basemap-overlay-btn img {
+	margin-left: -21px;
+	width: 70px;
 }
 
 .mapbox-improve-map {
@@ -1254,10 +1289,11 @@ body.pan.panning .map-layers:not(.drawing) {
 	z-index: 20;
 	position: absolute;
 	text-align: center;
-	top: 12px;
+	top: 6px;
 	right: 0;
 	padding: 3px; 
 	background-color: rgba(255, 255, 255, 1);
+	border-radius: 7px;
 }
 
 .nav-btn-wrapper {
@@ -1327,6 +1363,7 @@ body.pan.panning .map-layers:not(.drawing) {
 
 .nav-btn.selected {
 	background-color: black;
+	border-radius: 5px;
 }
 
 .nav-btn:hover:not(.disabled) svg *,

@@ -21,13 +21,13 @@ function loadStylesheet(url) {
   document.head.appendChild(el);
 }
 
-export function Basemap(gui, ext) {
+export function Basemap(gui) {
   var menu = gui.container.findChild('.basemap-options');
-  // var hideBtn = new SimpleButton(menu.findChild('.hide-btn'));
   var fadeBtn = new SimpleButton(menu.findChild('.fade-btn'));
   var closeBtn = new SimpleButton(menu.findChild('.close2-btn'));
   var clearBtn = new SimpleButton(menu.findChild('.clear-btn'));
-  var list = menu.findChild('.basemap-styles');
+  var menuButtons = menu.findChild('.basemap-styles');
+  var overlayButtons = gui.container.findChild('.basemap-overlay-buttons');
   var container = gui.container.findChild('.basemap-container');
   var basemapBtn = gui.container.findChild('.basemap-btn');
   var basemapNote = gui.container.findChild('.basemap-note');
@@ -75,14 +75,25 @@ export function Basemap(gui, ext) {
       }
     });
 
+    gui.model.on('update', onUpdate);
+
     gui.on('map_click', function() {
       // close menu if user click on the map
       if (gui.getMode() == 'basemap') gui.clearMode();
     });
 
     params.styles.forEach(function(style) {
-      var btn = El('div').html(`<div class="basemap-style-btn"><img src="${style.icon}"></img></div><div class="basemap-style-label">${style.name}</div>`);
-      btn.findChild('.basemap-style-btn').on('click', function() {
+      El('div')
+      .html(`<div class="basemap-style-btn"><img src="${style.icon}"></img></div><div class="basemap-style-label">${style.name}</div>`)
+      .appendTo(menuButtons)
+      .findChild('.basemap-style-btn').on('click', onClick);
+
+      El('div').addClass('basemap-overlay-btn basemap-style-btn')
+        .html(`<img src="${style.icon}"></img>`).on('click', onClick)
+        .appendTo(overlayButtons);
+
+      function onClick() {
+        if (overlayButtons.hasClass('disabled')) return;
         if (style == activeStyle) {
           turnOffBasemap();
         } else {
@@ -90,8 +101,7 @@ export function Basemap(gui, ext) {
         }
         updateButtons();
         closeMenu();
-      });
-      btn.appendTo(list);
+      }
     });
   }
 
@@ -122,18 +132,26 @@ export function Basemap(gui, ext) {
   }
 
   function updateButtons() {
-    list.findChildren('.basemap-style-btn').forEach(function(el, i) {
+    menuButtons.findChildren('.basemap-style-btn').forEach(function(el, i) {
+      el.classed('active', params.styles[i] == activeStyle);
+    });
+    overlayButtons.findChildren('.basemap-style-btn').forEach(function(el, i) {
       el.classed('active', params.styles[i] == activeStyle);
     });
   }
 
   function turnOn() {
-    // TODO: show basemap even if there is no data
+    onUpdate();
+    menu.show();
+  }
+
+  function onUpdate() {
     var activeLyr = gui.model.getActiveLayer(); // may be null
     var info = getDatasetCrsInfo(activeLyr?.dataset); // defaults to wgs84
     var dataCRS = info.crs || null;
     var displayCRS = gui.map.getDisplayCRS();
-    var warning;
+    var warning, note;
+
 
     if (!dataCRS || !displayCRS || !crsIsUsable(displayCRS) || !crsIsUsable(dataCRS)) {
       warning = 'This data is incompatible with the basemaps.';
@@ -142,13 +160,17 @@ export function Basemap(gui, ext) {
       } else if (!dataCRS) {
         warning += ' Reason: unknown projection.';
       }
-
       basemapWarning.html(warning).show();
       basemapNote.hide();
+      overlayButtons.addClass('disabled');
+      activeStyle = null;
+      updateButtons();
     } else {
-      basemapNote.show();
+      note = `Your data ${activeStyle ? 'is' : 'will be'} displayed using the Mercator projection.`;
+      basemapNote.text(note).show();
+      overlayButtons.show();
+      overlayButtons.removeClass('disabled');
     }
-    menu.show();
   }
 
   function turnOff() {
@@ -172,6 +194,7 @@ export function Basemap(gui, ext) {
   }
 
   function getLonLatBounds() {
+    var ext = gui.map.getExtent();
     var bbox = ext.getBounds().toArray();
     var bbox2 = fromWebMercator(bbox[0], bbox[1])
         .concat(fromWebMercator(bbox[2], bbox[3]));
@@ -207,6 +230,7 @@ export function Basemap(gui, ext) {
 
   // @bbox: latlon bounding box of current map extent
   function checkBounds(bbox) {
+    var ext = gui.map.getExtent();
     var mpp = ext.getBounds().width() / ext.width();
     var z = scaleToZoom(mpp);
     var msg;
@@ -265,5 +289,5 @@ export function Basemap(gui, ext) {
     }
   }
 
-  return {refresh: refresh}; // called by map when extent changes
+  return {refresh, show: onUpdate};
 }

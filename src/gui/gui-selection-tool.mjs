@@ -2,7 +2,6 @@ import { HighlightBox } from './gui-highlight-box';
 import { mapshaper, internal, utils } from './gui-core';
 import { SimpleButton } from './gui-elements';
 import { ToggleButton } from './gui-mode-button';
-import { getBBoxCoords } from './gui-display-utils';
 import { El } from './gui-el';
 import { GUI } from './gui-lib';
 
