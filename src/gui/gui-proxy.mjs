@@ -14,7 +14,7 @@ export function setLoggingForGUI(gui) {
   function error() {
     var msg = GUI.formatMessageArgs(arguments);
     console.error(msg);
-    gui.alert('An unkown error occured');
+    gui.alert('An unknown error occured');
     throw new Error(msg);
   }
 
