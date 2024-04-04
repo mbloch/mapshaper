@@ -1330,8 +1330,11 @@ export function getOptionParser() {
     .option('no-replace', noReplaceOpt);
 
   parser.command('rectangles')
-    .describe('create a rectangle around each feature in a layer')
+    .describe('create a rectangle for each feature in a layer')
     .option('offset', offsetOpt)
+    .option('bbox', {
+      describe: 'Use an expression to generate a rectangle for each feature'
+    })
     .option('aspect-ratio', aspectRatioOpt)
     .option('name', nameOpt)
     .option('target', targetOpt)

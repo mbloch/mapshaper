@@ -5,6 +5,15 @@ var Bounds = api.internal.Bounds;
 
 describe('mapshaper-rectangle.js', function () {
 
+  describe('-rectangles command with bbox= option', async function() {
+    var csv = 'bbox\n"[0,0,1,1]"\n"[2,0,3,1]"';
+    var cmd = '-i data.csv -rectangles bbox="JSON.parse(bbox)" -o data.json';
+    var result = await api.applyCommands(cmd, {'data.csv': csv});
+    var json = JSON.parse(result['data.json']);
+    var coords = json.features[1].geometry.coordinates;
+    assert.deepEqual(coords, [[[2, 0], [3, 0], [3, 1], [2, 1], [2, 0]]]);
+  });
+
   describe('applyAspectRatio()', function () {
     var applyAspectRatio = api.internal.applyAspectRatio;
     it('Handle max ratio', function () {

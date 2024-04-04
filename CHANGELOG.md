@@ -1,3 +1,6 @@
+v0.6.85
+* Added -rectangles bbox=<expression> option, which uses an expression to generate rectangle coords for each feature.
+
 v0.6.84
 * Catch a polygon drawing error.
 
