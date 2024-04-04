@@ -13,7 +13,6 @@ export function HitControl(gui, ext, mouse) {
   var transientIds = []; // e.g. hit ids while dragging a box
   var drawingId = -1; // kludge to allow hit detection and drawing (different feature ids)
   var active = false;
-  var interactionMode;
   var targetLayer;
   var hitTest;
   var pinnedOn; // used in multi-edit mode (selection) for toggling pinning behavior
@@ -23,16 +22,11 @@ export function HitControl(gui, ext, mouse) {
   var priority = 2;
 
   mouse.on('contextmenu', function(e) {
-    // shift key enables default menu (for development)
-    if (gui.keyboard.shiftIsPressed()) {
-      return;
-    }
     e.originalEvent.preventDefault();
-    if (!El('body').hasClass('map-view')) {
-      return;
+    if (El('body').hasClass('map-view')) {
+      triggerHitEvent('contextmenu', e);
     }
-    triggerHitEvent('contextmenu', e);
-  }, false);
+  });
 
   // init keyboard controls for pinned features
   gui.keyboard.on('keydown', function(evt) {
@@ -74,11 +68,14 @@ export function HitControl(gui, ext, mouse) {
   };
 
   function updateHitTest(featureFilter) {
-    hitTest = getPointerHitTest(targetLayer, ext, interactionMode, featureFilter);
+    hitTest = getPointerHitTest(targetLayer, ext, interactionMode(), featureFilter);
+  }
+
+  function interactionMode() {
+    return gui.interaction.getMode();
   }
 
   function turnOn(mode) {
-    interactionMode = mode;
     active = true;
     updateHitTest();
   }
@@ -93,12 +90,8 @@ export function HitControl(gui, ext, mouse) {
     }
   }
 
-  function hoverable() {
-    return !!interactionMode;
-  }
-
   function selectable() {
-    return interactionMode == 'selection';
+    return interactionMode() == 'selection';
   }
 
   function pinnable() {
@@ -107,16 +100,16 @@ export function HitControl(gui, ext, mouse) {
   }
 
   function draggable() {
-    return interactionMode == 'vertices' || interactionMode == 'edit_points' ||
-      interactionMode == 'labels' || interactionMode == 'edit_lines' ||
-      interactionMode == 'edit_polygons';
+    var mode = interactionMode();
+    return mode == 'vertices' || mode == 'edit_points' ||
+      mode == 'labels' || mode == 'edit_lines' || mode == 'edit_polygons';
   }
 
   function clickable() {
+    var mode = interactionMode();
     // click used to pin popup and select features
-    return interactionMode == 'data' || interactionMode == 'info' ||
-    interactionMode == 'selection' || interactionMode == 'rectangles' ||
-    interactionMode == 'edit_points';
+    return mode == 'data' || mode == 'info' || mode == 'selection' ||
+    mode == 'rectangles' || mode == 'edit_points';
   }
 
   self.getHitId = function() {
@@ -241,7 +234,6 @@ export function HitControl(gui, ext, mouse) {
   // (some modes do not support pinning)
   gui.on('interaction_mode_change', function(e) {
     self.clearSelection();
-    // if (e.mode == 'off' || e.mode == 'box') {
     if (gui.interaction.modeUsesHitDetection(e.mode)) {
       turnOn(e.mode);
     } else {
@@ -274,7 +266,7 @@ export function HitControl(gui, ext, mouse) {
       updateSelectionState(convertClickDataToSelectionData(hitTest(e)));
     }
 
-    if (pinned && interactionMode == 'edit_points') {
+    if (pinned && interactionMode() == 'edit_points') {
       // kludge: intercept the click event if popup is turning off, so
       // a new point doesn't get made
       return;
@@ -399,6 +391,7 @@ export function HitControl(gui, ext, mouse) {
 
   // check if an event is used in the current interaction mode
   function eventIsEnabled(type) {
+    var mode = interactionMode();
     if (!active) return false;
     if (type == 'click' && gui.keyboard.ctrlIsPressed()) {
       return false; // don't fire if context menu might open
@@ -407,13 +400,13 @@ export function HitControl(gui, ext, mouse) {
       return false;
     }
     if (type == 'click' &&
-      (interactionMode == 'edit_lines' || interactionMode == 'edit_polygons')) {
+      (mode == 'edit_lines' || mode == 'edit_polygons')) {
       return true; // click events are triggered even if no shape is hit
     }
-    if (type == 'click' && interactionMode == 'edit_points') {
+    if (type == 'click' && mode == 'edit_points') {
       return true;
     }
-    if ((interactionMode == 'edit_lines' || interactionMode == 'edit_polygons') &&
+    if ((mode == 'edit_lines' || mode == 'edit_polygons') &&
         (type == 'hover' || type == 'dblclick')) {
       return true; // special case -- using hover for line drawing animation
     }
@@ -434,7 +427,7 @@ export function HitControl(gui, ext, mouse) {
   }
 
   function possiblyStopPropagation(e) {
-    if (interactionMode == 'edit_lines' || interactionMode == 'edit_polygons') {
+    if (interactionMode() == 'edit_lines' || interactionMode() == 'edit_polygons') {
       // handled conditionally in the control
       return;
     }
@@ -451,7 +444,7 @@ export function HitControl(gui, ext, mouse) {
   // evt: event data (may be a pointer event object, an ordinary object or null)
   function triggerHitEvent(type, evt) {
     var eventData = {
-      mode: interactionMode
+      mode: interactionMode()
     };
     if (evt) {
       // data coordinates

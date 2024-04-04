@@ -129,6 +129,11 @@ export function MouseArea(element, pos) {
   element.addEventListener('mousedown', onAreaDown);
   element.addEventListener('dblclick', onAreaDblClick);
   document.addEventListener('contextmenu', function(e) {
+    if (!e.ctrlKey) {
+      e.preventDefault();
+    }
+  });
+  element.addEventListener('contextmenu', function(e) {
     _self.dispatchEvent('contextmenu', procMouseEvent(e));
   });
 
