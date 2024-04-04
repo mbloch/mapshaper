@@ -1,3 +1,6 @@
+v0.6.84
+* Catch a polygon drawing error.
+
 v0.6.83
 * Added basemap buttons to the map.
 

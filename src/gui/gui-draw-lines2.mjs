@@ -1,4 +1,4 @@
-import { error, internal, geom, utils, mapshaper } from './gui-core';
+import { stop, error, internal, geom, utils, mapshaper } from './gui-core';
 import {
   updateVertexCoords,
   insertVertex,
@@ -490,11 +490,16 @@ export function initLineEditing(gui, ext, hit) {
     // finish the path if a vertex is selected (but not an interpolated point)
     var finish = hoverVertexInfo?.type == 'vertex';
     if (getLastArcLength(target) < 2) {
-      error('Defective path');
+      stop('Defective path');
     }
     if (finish && polygonMode()) {
       shapes1 = target.shapes.slice(initialShapeCount);
-      shapes2 = convertClosedPaths(shapes1);
+      try {
+        shapes2 = convertClosedPaths(shapes1);
+      } catch(e) {
+        console.error(e);
+        stop('Invalid path');
+      }
     }
     if (shapes2) {
       replaceDrawnShapes(shapes2);
