@@ -4,7 +4,6 @@ import { SimpleButton } from './gui-elements';
 import { internal } from './gui-core';
 import { El } from './gui-el';
 import { GUI } from './gui-lib';
-import { getBBoxCoords } from './gui-display-utils';
 import { showPopupAlert } from './gui-alert';
 
 // Controls the shift-drag box editing tool

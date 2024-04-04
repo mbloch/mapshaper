@@ -42,18 +42,6 @@ export function translateDisplayPoint(lyr, p) {
   return isProjectedLayer(lyr) ? lyr.gui.invertPoint(p[0], p[1]) : p;
 }
 
-// bbox: display coords
-// intended to work with rectangular projections like Mercator
-export function getBBoxCoords(lyr, bbox) {
-  if (!isProjectedLayer(lyr)) return bbox.concat();
-  var a = translateDisplayPoint(lyr, [bbox[0], bbox[1]]);
-  var b = translateDisplayPoint(lyr, [bbox[2], bbox[3]]);
-  var bounds = new internal.Bounds();
-  bounds.mergePoint(a[0], a[1]);
-  bounds.mergePoint(b[0], b[1]);
-  return bounds.toArray();
-}
-
 export function isProjectedLayer(lyr) {
   return !!lyr?.gui.invertPoint;
 }

@@ -74,14 +74,15 @@ cmd.rectangle2 = function(target, opts) {
   return mergeDatasetsIntoDataset(target.dataset, datasets);
 };
 
-cmd.rectangle = function(source, opts) {
+cmd.rectangle = function(target, opts) {
   var offsets, bounds, crsInfo;
-  if (source) {
-    bounds = getLayerBounds(source.layer, source.dataset.arcs);
-    crsInfo = getDatasetCrsInfo(source.dataset);
-  } else if (opts.bbox) {
+  if (opts.bbox) {
     bounds = new Bounds(opts.bbox);
-    crsInfo = probablyDecimalDegreeBounds(bounds) ? getCrsInfo('wgs84') : {};
+    crsInfo = target && getDatasetCrsInfo(target.dataset) ||
+      probablyDecimalDegreeBounds(bounds) && getCrsInfo('wgs84') || {};
+  } else if (target) {
+    bounds = getLayerBounds(target.layer, target.dataset.arcs);
+    crsInfo = getDatasetCrsInfo(target.dataset);
   }
   bounds = bounds && applyRectangleOptions(bounds, crsInfo.crs, opts);
   if (!bounds || !bounds.hasBounds()) {

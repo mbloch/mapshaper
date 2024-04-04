@@ -1,7 +1,7 @@
 import { El } from './gui-el';
 import { EventDispatcher } from './gui-events';
-import { getBBoxCoords } from './gui-display-utils';
 import { internal, geom } from './gui-core';
+import { translateDisplayPoint, isProjectedLayer } from './gui-display-utils';
 
 export function HighlightBox(gui, optsArg) {
   var el = El('div').addClass('zoom-box').appendTo('body'),
@@ -132,9 +132,9 @@ export function HighlightBox(gui, optsArg) {
 
   box.getDataCoords = function() {
     if (!boxCoords) return null;
-    var dataBox = getBBoxCoords(gui.map.getActiveLayer(), boxCoords);
+    var lyr = gui.map.getActiveLayer();
+    var dataBox = lyr ? translateCoordsToLayerCRS(boxCoords, lyr) : translateCoordsToLatLon(boxCoords);
     fixBounds(dataBox);
-    // return internal.getRoundedCoords(dataBox, internal.getBoundsPrecisionForDisplay(dataBox));
     return dataBox;
   };
 
@@ -169,6 +169,26 @@ export function HighlightBox(gui, optsArg) {
     }
   };
 
+  function translateCoordsToLatLon(bbox) {
+    var crs = gui.map.getDisplayCRS();
+    var a = internal.toLngLat([bbox[0], bbox[1]], crs);
+    var b = internal.toLngLat([bbox[2], bbox[3]], crs);
+    return a.concat(b);
+  }
+
+  // bbox: display coords
+  // intended to work with rectangular projections like Mercator
+  function translateCoordsToLayerCRS(bbox, lyr) {
+    if (!isProjectedLayer(lyr)) return bbox.concat();
+    var a = translateDisplayPoint(lyr, [bbox[0], bbox[1]]);
+    var b = translateDisplayPoint(lyr, [bbox[2], bbox[3]]);
+    var bounds = new internal.Bounds();
+    bounds.mergePoint(a[0], a[1]);
+    bounds.mergePoint(b[0], b[1]);
+    return bounds.toArray();
+  }
+
+  // get bbox coords in the display CRS
   function getBoxCoords(e) {
     var bbox = pixToCoords(e.a.concat(e.b), gui.map.getExtent());
     fixBounds(bbox);

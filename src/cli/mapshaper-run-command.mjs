@@ -394,7 +394,7 @@ export async function runCommand(command, job) {
         stop('Command requires a width= argument');
       }
       if (source || opts.bbox || targets.length === 0) {
-        job.catalog.addDataset(cmd.rectangle(source, opts));
+        job.catalog.addDataset(cmd.rectangle(source || targets?.[0], opts));
       } else {
         outputLayers = cmd.rectangle2(targets[0], opts);
       }
