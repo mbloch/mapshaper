@@ -6,7 +6,8 @@ import {
   layerHasGeometry,
   setOutputLayerName,
   initDataTable,
-  layerIsRectangle
+  layerIsRectangle,
+  getFeatureCount
 } from '../dataset/mapshaper-layer-utils';
 import { mergeDatasetsIntoDataset } from '../dataset/mapshaper-merging';
 import { importGeoJSON } from '../geojson/geojson-import';
@@ -17,21 +18,24 @@ import { probablyDecimalDegreeBounds, clampToWorldBounds } from '../geom/mapshap
 import { Bounds } from '../geom/mapshaper-bounds';
 import { densifyPathByInterval } from '../crs/mapshaper-densify';
 import { bboxToCoords } from '../paths/mapshaper-rectangle-utils';
+import { compileFeatureExpression } from '../expressions/mapshaper-feature-expressions';
 
 // Create rectangles around each feature in a layer
 cmd.rectangles = function(targetLyr, targetDataset, opts) {
-  if (!layerHasGeometry(targetLyr)) {
-    stop("Layer is missing geometric shapes");
-  }
   var crsInfo = getDatasetCrsInfo(targetDataset);
   var records = targetLyr.data ? targetLyr.data.getRecords() : null;
-  var geometries = targetLyr.shapes.map(function(shp) {
-    var bounds = targetLyr.geometry_type == 'point' ?
-      getPointFeatureBounds(shp) : targetDataset.arcs.getMultiShapeBounds(shp);
-    bounds = applyRectangleOptions(bounds, crsInfo.crs, opts);
-    if (!bounds) return null;
-    return bboxToPolygon(bounds.toArray(), opts);
-  });
+  var geometries;
+
+  if (opts.bbox) {
+    geometries = bboxExpressionToGeometries(opts.bbox, targetLyr, targetDataset, opts);
+
+  } else {
+    if (!layerHasGeometry(targetLyr)) {
+      stop("Layer is missing geometric shapes");
+    }
+    geometries = shapesToBoxGeometries(targetLyr, targetDataset, opts);
+  }
+
   var geojson = {
     type: 'FeatureCollection',
     features: geometries.map(function(geom, i) {
@@ -52,6 +56,39 @@ cmd.rectangles = function(targetLyr, targetDataset, opts) {
   setOutputLayerName(outputLayers[0], targetLyr, null, opts);
   return outputLayers;
 };
+
+function shapesToBoxGeometries(lyr, dataset, opts) {
+  var crsInfo = getDatasetCrsInfo(dataset);
+  return lyr.shapes.map(function(shp) {
+    var bounds = lyr.geometry_type == 'point' ?
+      getPointFeatureBounds(shp) : dataset.arcs.getMultiShapeBounds(shp);
+    bounds = applyRectangleOptions(bounds, crsInfo.crs, opts);
+    if (!bounds) return null;
+    return bboxToPolygon(bounds.toArray(), opts);
+  });
+}
+
+function bboxExpressionToGeometries(exp, lyr, dataset, opts) {
+  var compiled = compileFeatureExpression(exp, lyr, dataset.arcs, {});
+  var n = getFeatureCount(lyr);
+  var result;
+  var geometries = [];
+  for (var i=0; i<n; i++) {
+    result = compiled(i);
+    if (!looksLikeBbox(result)) {
+      stop('Invalid bbox value (expected a GeoJSON-type bbox):', result);
+    }
+    geometries.push(bboxToPolygon(result));
+  }
+  return geometries;
+}
+
+function looksLikeBbox(o) {
+  if (!o || o.length != 4) return false;
+  if (o.some(isNaN)) return false;
+  if (o[0] <= o[2] == false || o[1] <= o[3] == false) return false;
+  return true;
+}
 
 // Create rectangles around one or more target layers
 //
