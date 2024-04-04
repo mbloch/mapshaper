@@ -38860,14 +38860,15 @@ ${svg}
     return mergeDatasetsIntoDataset(target.dataset, datasets);
   };
 
-  cmd.rectangle = function(source, opts) {
+  cmd.rectangle = function(target, opts) {
     var bounds, crsInfo;
-    if (source) {
-      bounds = getLayerBounds(source.layer, source.dataset.arcs);
-      crsInfo = getDatasetCrsInfo(source.dataset);
-    } else if (opts.bbox) {
+    if (opts.bbox) {
       bounds = new Bounds(opts.bbox);
-      crsInfo = probablyDecimalDegreeBounds(bounds) ? getCrsInfo('wgs84') : {};
+      crsInfo = target && getDatasetCrsInfo(target.dataset) ||
+        probablyDecimalDegreeBounds(bounds) && getCrsInfo('wgs84') || {};
+    } else if (target) {
+      bounds = getLayerBounds(target.layer, target.dataset.arcs);
+      crsInfo = getDatasetCrsInfo(target.dataset);
     }
     bounds = bounds && applyRectangleOptions(bounds, crsInfo.crs, opts);
     if (!bounds || !bounds.hasBounds()) {
@@ -45371,7 +45372,7 @@ ${svg}
           stop('Command requires a width= argument');
         }
         if (source || opts.bbox || targets.length === 0) {
-          job.catalog.addDataset(cmd.rectangle(source, opts));
+          job.catalog.addDataset(cmd.rectangle(source || targets?.[0], opts));
         } else {
           outputLayers = cmd.rectangle2(targets[0], opts);
         }
@@ -45535,7 +45536,7 @@ ${svg}
     });
   }
 
-  var version = "0.6.82";
+  var version = "0.6.83";
 
   // Parse command line args into commands and run them
   // Function takes an optional Node-style callback. A Promise is returned if no callback is given.

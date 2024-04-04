@@ -2564,18 +2564,6 @@
     return isProjectedLayer(lyr) ? lyr.gui.invertPoint(p[0], p[1]) : p;
   }
 
-  // bbox: display coords
-  // intended to work with rectangular projections like Mercator
-  function getBBoxCoords(lyr, bbox) {
-    if (!isProjectedLayer(lyr)) return bbox.concat();
-    var a = translateDisplayPoint(lyr, [bbox[0], bbox[1]]);
-    var b = translateDisplayPoint(lyr, [bbox[2], bbox[3]]);
-    var bounds = new internal.Bounds();
-    bounds.mergePoint(a[0], a[1]);
-    bounds.mergePoint(b[0], b[1]);
-    return bounds.toArray();
-  }
-
   function isProjectedLayer(lyr) {
     return !!lyr?.gui.invertPoint;
   }
@@ -3425,13 +3413,22 @@
   //
   function pointExceedsTolerance(p, points, tolerance) {
     if (points.length < 2) return false;
-    var p1 = points[0], p2, dist;
+    var p1 = points[0], p2, dist, angle;
     for (var i=1; i<points.length; i++) {
       p2 = points[i];
       dist = Math.sqrt(geom.pointSegDistSq(p2[0], p2[1], p1[0], p1[1], p[0], p[1]));
       if (dist > tolerance) return true;
     }
     return false;
+  }
+
+  function getAvgPoint(points) {
+    var x=0, y=0;
+    for (var i=0; i<points.length; i++) {
+      x += points[i][0];
+      y += points[i][1];
+    }
+    return [x/points.length, y/points.length];
   }
 
   function setZ(lyr, z) {
@@ -8065,7 +8062,6 @@
     var transientIds = []; // e.g. hit ids while dragging a box
     var drawingId = -1; // kludge to allow hit detection and drawing (different feature ids)
     var active = false;
-    var interactionMode;
     var targetLayer;
     var hitTest;
     var pinnedOn; // used in multi-edit mode (selection) for toggling pinning behavior
@@ -8075,16 +8071,11 @@
     var priority = 2;
 
     mouse.on('contextmenu', function(e) {
-      // shift key enables default menu (for development)
-      if (gui.keyboard.shiftIsPressed()) {
-        return;
-      }
       e.originalEvent.preventDefault();
-      if (!El('body').hasClass('map-view')) {
-        return;
+      if (El('body').hasClass('map-view')) {
+        triggerHitEvent('contextmenu', e);
       }
-      triggerHitEvent('contextmenu', e);
-    }, false);
+    });
 
     // init keyboard controls for pinned features
     gui.keyboard.on('keydown', function(evt) {
@@ -8126,11 +8117,14 @@
     };
 
     function updateHitTest(featureFilter) {
-      hitTest = getPointerHitTest(targetLayer, ext, interactionMode, featureFilter);
+      hitTest = getPointerHitTest(targetLayer, ext, interactionMode(), featureFilter);
+    }
+
+    function interactionMode() {
+      return gui.interaction.getMode();
     }
 
     function turnOn(mode) {
-      interactionMode = mode;
       active = true;
       updateHitTest();
     }
@@ -8145,12 +8139,8 @@
       }
     }
 
-    function hoverable() {
-      return !!interactionMode;
-    }
-
     function selectable() {
-      return interactionMode == 'selection';
+      return interactionMode() == 'selection';
     }
 
     function pinnable() {
@@ -8159,16 +8149,16 @@
     }
 
     function draggable() {
-      return interactionMode == 'vertices' || interactionMode == 'edit_points' ||
-        interactionMode == 'labels' || interactionMode == 'edit_lines' ||
-        interactionMode == 'edit_polygons';
+      var mode = interactionMode();
+      return mode == 'vertices' || mode == 'edit_points' ||
+        mode == 'labels' || mode == 'edit_lines' || mode == 'edit_polygons';
     }
 
     function clickable() {
+      var mode = interactionMode();
       // click used to pin popup and select features
-      return interactionMode == 'data' || interactionMode == 'info' ||
-      interactionMode == 'selection' || interactionMode == 'rectangles' ||
-      interactionMode == 'edit_points';
+      return mode == 'data' || mode == 'info' || mode == 'selection' ||
+      mode == 'rectangles' || mode == 'edit_points';
     }
 
     self.getHitId = function() {
@@ -8293,7 +8283,6 @@
     // (some modes do not support pinning)
     gui.on('interaction_mode_change', function(e) {
       self.clearSelection();
-      // if (e.mode == 'off' || e.mode == 'box') {
       if (gui.interaction.modeUsesHitDetection(e.mode)) {
         turnOn(e.mode);
       } else {
@@ -8326,7 +8315,7 @@
         updateSelectionState(convertClickDataToSelectionData(hitTest(e)));
       }
 
-      if (pinned && interactionMode == 'edit_points') {
+      if (pinned && interactionMode() == 'edit_points') {
         // kludge: intercept the click event if popup is turning off, so
         // a new point doesn't get made
         return;
@@ -8451,6 +8440,7 @@
 
     // check if an event is used in the current interaction mode
     function eventIsEnabled(type) {
+      var mode = interactionMode();
       if (!active) return false;
       if (type == 'click' && gui.keyboard.ctrlIsPressed()) {
         return false; // don't fire if context menu might open
@@ -8459,13 +8449,13 @@
         return false;
       }
       if (type == 'click' &&
-        (interactionMode == 'edit_lines' || interactionMode == 'edit_polygons')) {
+        (mode == 'edit_lines' || mode == 'edit_polygons')) {
         return true; // click events are triggered even if no shape is hit
       }
-      if (type == 'click' && interactionMode == 'edit_points') {
+      if (type == 'click' && mode == 'edit_points') {
         return true;
       }
-      if ((interactionMode == 'edit_lines' || interactionMode == 'edit_polygons') &&
+      if ((mode == 'edit_lines' || mode == 'edit_polygons') &&
           (type == 'hover' || type == 'dblclick')) {
         return true; // special case -- using hover for line drawing animation
       }
@@ -8486,7 +8476,7 @@
     }
 
     function possiblyStopPropagation(e) {
-      if (interactionMode == 'edit_lines' || interactionMode == 'edit_polygons') {
+      if (interactionMode() == 'edit_lines' || interactionMode() == 'edit_polygons') {
         // handled conditionally in the control
         return;
       }
@@ -8503,7 +8493,7 @@
     // evt: event data (may be a pointer event object, an ordinary object or null)
     function triggerHitEvent(type, evt) {
       var eventData = {
-        mode: interactionMode
+        mode: interactionMode()
       };
       if (evt) {
         // data coordinates
@@ -8822,6 +8812,11 @@
     element.addEventListener('mousedown', onAreaDown);
     element.addEventListener('dblclick', onAreaDblClick);
     document.addEventListener('contextmenu', function(e) {
+      if (!e.ctrlKey) {
+        e.preventDefault();
+      }
+    });
+    element.addEventListener('contextmenu', function(e) {
       _self.dispatchEvent('contextmenu', procMouseEvent(e));
     });
 
@@ -9099,9 +9094,9 @@
 
     box.getDataCoords = function() {
       if (!boxCoords) return null;
-      var dataBox = getBBoxCoords(gui.map.getActiveLayer(), boxCoords);
+      var lyr = gui.map.getActiveLayer();
+      var dataBox = lyr ? translateCoordsToLayerCRS(boxCoords, lyr) : translateCoordsToLatLon(boxCoords);
       fixBounds(dataBox);
-      // return internal.getRoundedCoords(dataBox, internal.getBoundsPrecisionForDisplay(dataBox));
       return dataBox;
     };
 
@@ -9136,6 +9131,26 @@
       }
     };
 
+    function translateCoordsToLatLon(bbox) {
+      var crs = gui.map.getDisplayCRS();
+      var a = internal.toLngLat([bbox[0], bbox[1]], crs);
+      var b = internal.toLngLat([bbox[2], bbox[3]], crs);
+      return a.concat(b);
+    }
+
+    // bbox: display coords
+    // intended to work with rectangular projections like Mercator
+    function translateCoordsToLayerCRS(bbox, lyr) {
+      if (!isProjectedLayer(lyr)) return bbox.concat();
+      var a = translateDisplayPoint(lyr, [bbox[0], bbox[1]]);
+      var b = translateDisplayPoint(lyr, [bbox[2], bbox[3]]);
+      var bounds = new internal.Bounds();
+      bounds.mergePoint(a[0], a[1]);
+      bounds.mergePoint(b[0], b[1]);
+      return bounds.toArray();
+    }
+
+    // get bbox coords in the display CRS
     function getBoxCoords(e) {
       var bbox = pixToCoords(e.a.concat(e.b), gui.map.getExtent());
       fixBounds(bbox);
@@ -9236,6 +9251,7 @@
         zoomBox = new HighlightBox(gui, {draggable: true, name: 'zoom-box'}), // .addClass('zooming'),
         shiftDrag = false,
         zoomScaleMultiplier = 1,
+        panCount = 0,
         inBtn, outBtn,
         dragStartEvt,
         _fx, _fy; // zoom foci, [0,1]
@@ -9287,11 +9303,21 @@
       // var lyr = gui.model.getActiveLayer()?.layer;
       // if (lyr && !internal.layerHasGeometry(lyr)) return;
       shiftDrag = !!e.shiftKey;
+      panCount = 0;
       if (shiftDrag) {
         if (useBoxZoom()) zoomBox.turnOn();
         dragStartEvt = e;
         gui.dispatchEvent('shift_drag_start');
-      } else {
+      }
+    });
+
+    mouse.on('drag', function(e) {
+      if (disabled()) return;
+      if (shiftDrag) {
+        gui.dispatchEvent('shift_drag', getBoxData(e));
+        return;
+      }
+      if (++panCount == 1) {
         El('body').addClass('pan');
         setTimeout(function() {
           var body = El('body');
@@ -9300,15 +9326,7 @@
           }
         }, 100);
       }
-    });
-
-    mouse.on('drag', function(e) {
-      if (disabled()) return;
-      if (shiftDrag) {
-        gui.dispatchEvent('shift_drag', getBoxData(e));
-      } else {
-        ext.pan(e.dx, e.dy);
-      }
+      ext.pan(e.dx, e.dy);
     });
 
     mouse.on('dragend', function(e) {
@@ -10323,7 +10341,7 @@
     }
 
     function pencilIsActive() {
-      return active() && (cmdKeyDown() || pathDrawing()) && !vertexDragging();
+      return active() && (cmdKeyDown() || pathDrawing()) && !vertexDragging() && !!pencilPoints;
     }
 
     function polygonMode() {
@@ -10521,7 +10539,7 @@
       }
       e.stopPropagation(); // prevent panning
       hoverVertexInfo = findPathStartInfo(e);
-      var xy = [e.x, e.y];
+      var xy = [e.x, e.y], xy2;
       var p = pixToDataCoords(e.x, e.y);
       if (!pathDrawing()) {
         pencilPoints = [xy];
@@ -10530,17 +10548,20 @@
         // start pencil-drawing when a path is started
         pencilPoints = [xy];
         extendCurrentPath(p);
-      } else if (hoverVertexInfo && pencilPoints.length > 2) {
+      } else if (polygonMode() && hoverVertexInfo && pencilPoints.length > 2) {
         // close path
         p = hoverVertexInfo.point;
         appendVertex$1(hit.getHitTarget(), p);
         extendCurrentPath(p);
         pencilPoints = null; // stop drawing
-      } else if (pointExceedsTolerance(xy, pencilPoints, 1.5)) {
-        xy = pencilPoints.pop();
-        p = pixToDataCoords(xy[0], xy[1]);
-        pencilPoints = [xy];
+      } else if (pencilPoints.length >= 2 && pointExceedsTolerance(xy, pencilPoints, 1.4)) {
+        xy2 = pencilPoints.pop();
+        p = pixToDataCoords(xy2[0], xy2[1]);
         extendCurrentPath(p);
+        // kludgy way to get a smoother line (could be better)
+        // not this pencilPoints = [getAvgPoint(pencilPoints), xy2, xy];
+        // not this pencilPoints = pencilPoints.slice(-2).concat([xy2, xy]);
+        pencilPoints = [getAvgPoint(pencilPoints.slice(-3).concat([xy2])), xy2, xy];
       } else {
         // skip this point, update the hover line
         pencilPoints.push(xy);
@@ -12305,269 +12326,6 @@ GUI and setting the size and crop of SVG output.</p><div><input type="text" clas
     }
   }
 
-  function loadScript(url, cb) {
-    var script = document.createElement('script');
-    script.onload = cb;
-    script.src = url;
-    document.head.appendChild(script);
-  }
-
-  function loadStylesheet(url) {
-    var el = document.createElement('link');
-    el.rel = 'stylesheet';
-    el.type = 'text/css';
-    el.media = 'screen';
-    el.href = url;
-    document.head.appendChild(el);
-  }
-
-  function Basemap(gui, ext) {
-    var menu = gui.container.findChild('.basemap-options');
-    // var hideBtn = new SimpleButton(menu.findChild('.hide-btn'));
-    var fadeBtn = new SimpleButton(menu.findChild('.fade-btn'));
-    var closeBtn = new SimpleButton(menu.findChild('.close2-btn'));
-    var clearBtn = new SimpleButton(menu.findChild('.clear-btn'));
-    var list = menu.findChild('.basemap-styles');
-    var container = gui.container.findChild('.basemap-container');
-    var basemapBtn = gui.container.findChild('.basemap-btn');
-    var basemapNote = gui.container.findChild('.basemap-note');
-    var basemapWarning = gui.container.findChild('.basemap-warning');
-    var mapEl = gui.container.findChild('.basemap');
-    var extentNote = El('div').addClass('basemap-prompt').appendTo(container).hide();
-    var params = window.mapboxParams;
-    var map;
-    var activeStyle;
-    var loading = false;
-    var faded = false;
-
-    if (params) {
-      //  TODO: check page URL for compatibility with mapbox key
-      init();
-    } else {
-      basemapBtn.hide();
-    }
-
-    function init() {
-      gui.addMode('basemap', turnOn, turnOff, basemapBtn);
-
-      closeBtn.on('click', function() {
-        gui.clearMode();
-        turnOff();
-      });
-
-      clearBtn.on('click', function() {
-        if (activeStyle) {
-          turnOffBasemap();
-          updateButtons();
-          closeMenu();
-        }
-      });
-
-      fadeBtn.on('click', function() {
-        if (faded) {
-          mapEl.css('opacity', 1);
-          faded = false;
-          fadeBtn.text('Fade');
-        } else if (activeStyle) {
-          mapEl.css('opacity', 0.35);
-          faded = true;
-          fadeBtn.text('Unfade');
-        }
-      });
-
-      gui.on('map_click', function() {
-        // close menu if user click on the map
-        if (gui.getMode() == 'basemap') gui.clearMode();
-      });
-
-      params.styles.forEach(function(style) {
-        var btn = El('div').html(`<div class="basemap-style-btn"><img src="${style.icon}"></img></div><div class="basemap-style-label">${style.name}</div>`);
-        btn.findChild('.basemap-style-btn').on('click', function() {
-          if (style == activeStyle) {
-            turnOffBasemap();
-          } else {
-            showBasemap(style);
-          }
-          updateButtons();
-          closeMenu();
-        });
-        btn.appendTo(list);
-      });
-    }
-
-    // close and turn off mode
-    function closeMenu() {
-      setTimeout(function() {
-        gui.clearMode();
-      }, 200);
-    }
-
-    function turnOffBasemap() {
-      activeStyle = null;
-      gui.map.setDisplayCRS(null);
-      refresh();
-    }
-
-    function showBasemap(style) {
-      activeStyle = style;
-      // TODO: consider enabling dark basemap mode
-      // Make sure that the selected layer style gets updated in gui-map.js
-      // gui.state.dark_basemap = style && style.dark || false;
-      if (map) {
-        map.setStyle(style.url);
-        refresh();
-      } else if (prepareMapView()) {
-        initMap();
-      }
-    }
-
-    function updateButtons() {
-      list.findChildren('.basemap-style-btn').forEach(function(el, i) {
-        el.classed('active', params.styles[i] == activeStyle);
-      });
-    }
-
-    function turnOn() {
-      // TODO: show basemap even if there is no data
-      var activeLyr = gui.model.getActiveLayer(); // may be null
-      var info = getDatasetCrsInfo(activeLyr?.dataset); // defaults to wgs84
-      var dataCRS = info.crs || null;
-      var displayCRS = gui.map.getDisplayCRS();
-      var warning;
-
-      if (!dataCRS || !displayCRS || !crsIsUsable(displayCRS) || !crsIsUsable(dataCRS)) {
-        warning = 'This data is incompatible with the basemaps.';
-        if (!internal.layerHasGeometry(activeLyr.layer)) {
-          warning += ' Reason: layer is missing geographic data';
-        } else if (!dataCRS) {
-          warning += ' Reason: unknown projection.';
-        }
-
-        basemapWarning.html(warning).show();
-        basemapNote.hide();
-      } else {
-        basemapNote.show();
-      }
-      menu.show();
-    }
-
-    function turnOff() {
-      basemapWarning.hide();
-      basemapNote.hide();
-      menu.hide();
-    }
-
-    function enabled() {
-      return !!(mapEl && params);
-    }
-
-    function show() {
-      gui.container.addClass('basemap-on');
-      mapEl.node().style.display = 'block';
-    }
-
-    function hide() {
-      gui.container.removeClass('basemap-on');
-      mapEl.node().style.display = 'none';
-    }
-
-    function getLonLatBounds() {
-      var bbox = ext.getBounds().toArray();
-      var bbox2 = fromWebMercator(bbox[0], bbox[1])
-          .concat(fromWebMercator(bbox[2], bbox[3]));
-      return bbox2;
-    }
-
-    function initMap() {
-      if (!enabled() || map || loading) return;
-      loading = true;
-      loadStylesheet(params.css);
-      loadScript(params.js, function() {
-        map = new window.mapboxgl.Map({
-          accessToken: params.key,
-          logoPosition: 'bottom-left',
-          container: mapEl.node(),
-          style: activeStyle.url,
-          bounds: getLonLatBounds(),
-          doubleClickZoom: false,
-          dragPan: false,
-          dragRotate: false,
-          scrollZoom: false,
-          interactive: false,
-          keyboard: false,
-          maxPitch: 0,
-          renderWorldCopies: true // false // false prevents panning off the map
-        });
-        map.on('load', function() {
-          loading = false;
-          refresh();
-        });
-      });
-    }
-
-    // @bbox: latlon bounding box of current map extent
-    function checkBounds(bbox) {
-      var mpp = ext.getBounds().width() / ext.width();
-      var z = scaleToZoom(mpp);
-      var msg;
-      if (bbox[1] >= -85 && bbox[3] <= 85 && z <= 20) {
-        extentNote.hide();
-        return true;
-      }
-      if (z > 20) {
-        msg = 'zoom out';
-      } else if (bbox[1] > 0) {
-        msg = 'pan south';
-      } else if (bbox[3] < 0) {
-        msg = 'pan north';
-      } else {
-        msg = msg = 'zoom in';
-      }
-      extentNote.html(msg + ' to see the basemap').show();
-      return false;
-    }
-
-    function crsIsUsable(crs) {
-      if (!crs) return false;
-      if (!internal.isInvertibleCRS(crs)) return false;
-      return true;
-    }
-
-    function prepareMapView() {
-      var crs = gui.map.getDisplayCRS();
-      if (!crs) return false;
-      if (!internal.isWebMercator(crs)) {
-        gui.map.setDisplayCRS(internal.parseCrsString('webmercator'));
-      }
-      return true;
-    }
-
-    function refresh() {
-      var crs = gui.map.getDisplayCRS();
-      var off = !crs || !enabled() || !map || loading || !activeStyle;
-      fadeBtn.active(!off);
-      clearBtn.active(!off);
-      if (off) {
-        hide();
-        extentNote.hide();
-        return;
-      }
-
-      prepareMapView();
-      var bbox = getLonLatBounds();
-      if (!checkBounds(bbox)) {
-        // map does not display outside these bounds
-        hide();
-      } else {
-        show();
-        map.resize();
-        map.fitBounds(bbox, {animate: false});
-      }
-    }
-
-    return {refresh: refresh}; // called by map when extent changes
-  }
-
   utils$1.inherit(MshpMap, EventDispatcher);
 
   function MshpMap(gui) {
@@ -12581,11 +12339,8 @@ GUI and setting the size and crop of SVG output.</p><div><input type="text" clas
         _nav = new MapNav(gui, _ext, _mouse),
         _visibleLayers = [], // cached visible map layers
         _hit,
-        _basemap,
         _intersectionLyr, _activeLyr, _overlayLyr,
         _renderer, _dynamicCRS;
-
-    _basemap = new Basemap(gui, _ext);
 
     _mouse.disable(); // wait for gui.focus() to activate mouse events
 
@@ -12737,7 +12492,7 @@ GUI and setting the size and crop of SVG output.</p><div><input type="text" clas
       }
 
       _ext.on('change', function(e) {
-        if (_basemap) _basemap.refresh(); // keep basemap synced up (if enabled)
+        gui?.basemap.refresh(); // keep basemap synced up (if enabled)
         drawLayers(e.redraw ? '' : 'nav');
       });
 
@@ -12816,7 +12571,7 @@ GUI and setting the size and crop of SVG output.</p><div><input type="text" clas
 
       if (needReset) {
         _ext.reset();
-        if (_basemap) _basemap.refresh();
+        gui?.basemap.refresh();
       }
       drawLayers();
       map.dispatchEvent('updated');
@@ -13206,6 +12961,293 @@ GUI and setting the size and crop of SVG output.</p><div><input type="text" clas
     return retn;
   }
 
+  function loadScript(url, cb) {
+    var script = document.createElement('script');
+    script.onload = cb;
+    script.src = url;
+    document.head.appendChild(script);
+  }
+
+  function loadStylesheet(url) {
+    var el = document.createElement('link');
+    el.rel = 'stylesheet';
+    el.type = 'text/css';
+    el.media = 'screen';
+    el.href = url;
+    document.head.appendChild(el);
+  }
+
+  function Basemap(gui) {
+    var menu = gui.container.findChild('.basemap-options');
+    var fadeBtn = new SimpleButton(menu.findChild('.fade-btn'));
+    var closeBtn = new SimpleButton(menu.findChild('.close2-btn'));
+    var clearBtn = new SimpleButton(menu.findChild('.clear-btn'));
+    var menuButtons = menu.findChild('.basemap-styles');
+    var overlayButtons = gui.container.findChild('.basemap-overlay-buttons');
+    var container = gui.container.findChild('.basemap-container');
+    var basemapBtn = gui.container.findChild('.basemap-btn');
+    var basemapNote = gui.container.findChild('.basemap-note');
+    var basemapWarning = gui.container.findChild('.basemap-warning');
+    var mapEl = gui.container.findChild('.basemap');
+    var extentNote = El('div').addClass('basemap-prompt').appendTo(container).hide();
+    var params = window.mapboxParams;
+    var map;
+    var activeStyle;
+    var loading = false;
+    var faded = false;
+
+    if (params) {
+      //  TODO: check page URL for compatibility with mapbox key
+      init();
+    } else {
+      basemapBtn.hide();
+    }
+
+    function init() {
+      gui.addMode('basemap', turnOn, turnOff, basemapBtn);
+
+      closeBtn.on('click', function() {
+        gui.clearMode();
+        turnOff();
+      });
+
+      clearBtn.on('click', function() {
+        if (activeStyle) {
+          turnOffBasemap();
+          updateButtons();
+          closeMenu();
+        }
+      });
+
+      fadeBtn.on('click', function() {
+        if (faded) {
+          mapEl.css('opacity', 1);
+          faded = false;
+          fadeBtn.text('Fade');
+        } else if (activeStyle) {
+          mapEl.css('opacity', 0.35);
+          faded = true;
+          fadeBtn.text('Unfade');
+        }
+      });
+
+      gui.model.on('update', onUpdate);
+
+      gui.on('map_click', function() {
+        // close menu if user click on the map
+        if (gui.getMode() == 'basemap') gui.clearMode();
+      });
+
+      params.styles.forEach(function(style) {
+        El('div')
+        .html(`<div class="basemap-style-btn"><img src="${style.icon}"></img></div><div class="basemap-style-label">${style.name}</div>`)
+        .appendTo(menuButtons)
+        .findChild('.basemap-style-btn').on('click', onClick);
+
+        El('div').addClass('basemap-overlay-btn basemap-style-btn')
+          .html(`<img src="${style.icon}"></img>`).on('click', onClick)
+          .appendTo(overlayButtons);
+
+        function onClick() {
+          if (overlayButtons.hasClass('disabled')) return;
+          if (style == activeStyle) {
+            turnOffBasemap();
+          } else {
+            showBasemap(style);
+          }
+          updateButtons();
+          closeMenu();
+        }
+      });
+    }
+
+    // close and turn off mode
+    function closeMenu() {
+      setTimeout(function() {
+        gui.clearMode();
+      }, 200);
+    }
+
+    function turnOffBasemap() {
+      activeStyle = null;
+      gui.map.setDisplayCRS(null);
+      refresh();
+    }
+
+    function showBasemap(style) {
+      activeStyle = style;
+      // TODO: consider enabling dark basemap mode
+      // Make sure that the selected layer style gets updated in gui-map.js
+      // gui.state.dark_basemap = style && style.dark || false;
+      if (map) {
+        map.setStyle(style.url);
+        refresh();
+      } else if (prepareMapView()) {
+        initMap();
+      }
+    }
+
+    function updateButtons() {
+      menuButtons.findChildren('.basemap-style-btn').forEach(function(el, i) {
+        el.classed('active', params.styles[i] == activeStyle);
+      });
+      overlayButtons.findChildren('.basemap-style-btn').forEach(function(el, i) {
+        el.classed('active', params.styles[i] == activeStyle);
+      });
+    }
+
+    function turnOn() {
+      onUpdate();
+      menu.show();
+    }
+
+    function onUpdate() {
+      var activeLyr = gui.model.getActiveLayer(); // may be null
+      var info = getDatasetCrsInfo(activeLyr?.dataset); // defaults to wgs84
+      var dataCRS = info.crs || null;
+      var displayCRS = gui.map.getDisplayCRS();
+      var warning, note;
+
+
+      if (!dataCRS || !displayCRS || !crsIsUsable(displayCRS) || !crsIsUsable(dataCRS)) {
+        warning = 'This data is incompatible with the basemaps.';
+        if (!internal.layerHasGeometry(activeLyr.layer)) {
+          warning += ' Reason: layer is missing geographic data';
+        } else if (!dataCRS) {
+          warning += ' Reason: unknown projection.';
+        }
+        basemapWarning.html(warning).show();
+        basemapNote.hide();
+        overlayButtons.addClass('disabled');
+        activeStyle = null;
+        updateButtons();
+      } else {
+        note = `Your data ${activeStyle ? 'is' : 'will be'} displayed using the Mercator projection.`;
+        basemapNote.text(note).show();
+        overlayButtons.show();
+        overlayButtons.removeClass('disabled');
+      }
+    }
+
+    function turnOff() {
+      basemapWarning.hide();
+      basemapNote.hide();
+      menu.hide();
+    }
+
+    function enabled() {
+      return !!(mapEl && params);
+    }
+
+    function show() {
+      gui.container.addClass('basemap-on');
+      mapEl.node().style.display = 'block';
+    }
+
+    function hide() {
+      gui.container.removeClass('basemap-on');
+      mapEl.node().style.display = 'none';
+    }
+
+    function getLonLatBounds() {
+      var ext = gui.map.getExtent();
+      var bbox = ext.getBounds().toArray();
+      var bbox2 = fromWebMercator(bbox[0], bbox[1])
+          .concat(fromWebMercator(bbox[2], bbox[3]));
+      return bbox2;
+    }
+
+    function initMap() {
+      if (!enabled() || map || loading) return;
+      loading = true;
+      loadStylesheet(params.css);
+      loadScript(params.js, function() {
+        map = new window.mapboxgl.Map({
+          accessToken: params.key,
+          logoPosition: 'bottom-left',
+          container: mapEl.node(),
+          style: activeStyle.url,
+          bounds: getLonLatBounds(),
+          doubleClickZoom: false,
+          dragPan: false,
+          dragRotate: false,
+          scrollZoom: false,
+          interactive: false,
+          keyboard: false,
+          maxPitch: 0,
+          renderWorldCopies: true // false // false prevents panning off the map
+        });
+        map.on('load', function() {
+          loading = false;
+          refresh();
+        });
+      });
+    }
+
+    // @bbox: latlon bounding box of current map extent
+    function checkBounds(bbox) {
+      var ext = gui.map.getExtent();
+      var mpp = ext.getBounds().width() / ext.width();
+      var z = scaleToZoom(mpp);
+      var msg;
+      if (bbox[1] >= -85 && bbox[3] <= 85 && z <= 20) {
+        extentNote.hide();
+        return true;
+      }
+      if (z > 20) {
+        msg = 'zoom out';
+      } else if (bbox[1] > 0) {
+        msg = 'pan south';
+      } else if (bbox[3] < 0) {
+        msg = 'pan north';
+      } else {
+        msg = msg = 'zoom in';
+      }
+      extentNote.html(msg + ' to see the basemap').show();
+      return false;
+    }
+
+    function crsIsUsable(crs) {
+      if (!crs) return false;
+      if (!internal.isInvertibleCRS(crs)) return false;
+      return true;
+    }
+
+    function prepareMapView() {
+      var crs = gui.map.getDisplayCRS();
+      if (!crs) return false;
+      if (!internal.isWebMercator(crs)) {
+        gui.map.setDisplayCRS(internal.parseCrsString('webmercator'));
+      }
+      return true;
+    }
+
+    function refresh() {
+      var crs = gui.map.getDisplayCRS();
+      var off = !crs || !enabled() || !map || loading || !activeStyle;
+      fadeBtn.active(!off);
+      clearBtn.active(!off);
+      if (off) {
+        hide();
+        extentNote.hide();
+        return;
+      }
+
+      prepareMapView();
+      var bbox = getLonLatBounds();
+      if (!checkBounds(bbox)) {
+        // map does not display outside these bounds
+        hide();
+      } else {
+        show();
+        map.resize();
+        map.fitBounds(bbox, {animate: false});
+      }
+    }
+
+    return {refresh, show: onUpdate};
+  }
+
   function GuiInstance(container, opts) {
     var gui = new ModeSwitcher();
     opts = utils$1.extend({
@@ -13223,6 +13265,7 @@ GUI and setting the size and crop of SVG output.</p><div><input type="text" clas
     gui.model = new Model(gui);
     gui.keyboard = new KeyboardEvents(gui);
     gui.buttons = new SidebarButtons(gui);
+    gui.basemap = new Basemap(gui);
     gui.session = new SessionHistory(gui);
     gui.contextMenu = new ContextMenu();
     gui.undo = new Undo(gui);
@@ -13388,6 +13431,7 @@ GUI and setting the size and crop of SVG output.</p><div><input type="text" clas
       if (dataLoaded) return;
       dataLoaded = true;
       gui.buttons.show();
+      gui.basemap.show();
       El('#mode-buttons').show();
       El('#splash-buttons').hide();
       El('body').addClass('map-view');
