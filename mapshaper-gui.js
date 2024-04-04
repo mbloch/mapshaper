@@ -10779,11 +10779,16 @@
       // finish the path if a vertex is selected (but not an interpolated point)
       var finish = hoverVertexInfo?.type == 'vertex';
       if (getLastArcLength(target) < 2) {
-        error$1('Defective path');
+        stop$1('Defective path');
       }
       if (finish && polygonMode()) {
         shapes1 = target.shapes.slice(initialShapeCount);
-        shapes2 = convertClosedPaths(shapes1);
+        try {
+          shapes2 = convertClosedPaths(shapes1);
+        } catch(e) {
+          console.error(e);
+          stop$1('Invalid path');
+        }
       }
       if (shapes2) {
         replaceDrawnShapes(shapes2);
