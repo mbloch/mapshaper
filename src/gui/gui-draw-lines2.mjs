@@ -13,7 +13,8 @@ import {
   getLastArcCoords,
   getLastVertexCoords,
   appendNewDataRecord,
-  pointExceedsTolerance
+  pointExceedsTolerance,
+  getAvgPoint
   } from './gui-drawing-utils';
 import { translateDisplayPoint } from './gui-display-utils';
 import { showPopupAlert } from './gui-alert';
@@ -51,7 +52,7 @@ export function initLineEditing(gui, ext, hit) {
   }
 
   function pencilIsActive() {
-    return active() && (cmdKeyDown() || pathDrawing()) && !vertexDragging();
+    return active() && (cmdKeyDown() || pathDrawing()) && !vertexDragging() && !!pencilPoints;
   }
 
   function polygonMode() {
@@ -249,7 +250,7 @@ export function initLineEditing(gui, ext, hit) {
     }
     e.stopPropagation(); // prevent panning
     hoverVertexInfo = findPathStartInfo(e);
-    var xy = [e.x, e.y];
+    var xy = [e.x, e.y], xy2;
     var p = pixToDataCoords(e.x, e.y);
     if (!pathDrawing()) {
       pencilPoints = [xy];
@@ -258,17 +259,20 @@ export function initLineEditing(gui, ext, hit) {
       // start pencil-drawing when a path is started
       pencilPoints = [xy];
       extendCurrentPath(p);
-    } else if (hoverVertexInfo && pencilPoints.length > 2) {
+    } else if (polygonMode() && hoverVertexInfo && pencilPoints.length > 2) {
       // close path
       p = hoverVertexInfo.point;
       appendVertex(hit.getHitTarget(), p);
       extendCurrentPath(p);
       pencilPoints = null; // stop drawing
-    } else if (pointExceedsTolerance(xy, pencilPoints, 1.5)) {
-      xy = pencilPoints.pop();
-      p = pixToDataCoords(xy[0], xy[1]);
-      pencilPoints = [xy];
+    } else if (pencilPoints.length >= 2 && pointExceedsTolerance(xy, pencilPoints, 1.4)) {
+      xy2 = pencilPoints.pop();
+      p = pixToDataCoords(xy2[0], xy2[1]);
       extendCurrentPath(p);
+      // kludgy way to get a smoother line (could be better)
+      // not this pencilPoints = [getAvgPoint(pencilPoints), xy2, xy];
+      // not this pencilPoints = pencilPoints.slice(-2).concat([xy2, xy]);
+      pencilPoints = [getAvgPoint(pencilPoints.slice(-3).concat([xy2])), xy2, xy];
     } else {
       // skip this point, update the hover line
       pencilPoints.push(xy);

@@ -11,6 +11,7 @@ export function MapNav(gui, ext, mouse) {
       zoomBox = new HighlightBox(gui, {draggable: true, name: 'zoom-box'}), // .addClass('zooming'),
       shiftDrag = false,
       zoomScaleMultiplier = 1,
+      panCount = 0,
       inBtn, outBtn,
       dragStartEvt,
       _fx, _fy; // zoom foci, [0,1]
@@ -62,11 +63,21 @@ export function MapNav(gui, ext, mouse) {
     // var lyr = gui.model.getActiveLayer()?.layer;
     // if (lyr && !internal.layerHasGeometry(lyr)) return;
     shiftDrag = !!e.shiftKey;
+    panCount = 0;
     if (shiftDrag) {
       if (useBoxZoom()) zoomBox.turnOn();
       dragStartEvt = e;
       gui.dispatchEvent('shift_drag_start');
-    } else {
+    }
+  });
+
+  mouse.on('drag', function(e) {
+    if (disabled()) return;
+    if (shiftDrag) {
+      gui.dispatchEvent('shift_drag', getBoxData(e));
+      return;
+    }
+    if (++panCount == 1) {
       El('body').addClass('pan');
       setTimeout(function() {
         var body = El('body');
@@ -75,15 +86,7 @@ export function MapNav(gui, ext, mouse) {
         }
       }, 100);
     }
-  });
-
-  mouse.on('drag', function(e) {
-    if (disabled()) return;
-    if (shiftDrag) {
-      gui.dispatchEvent('shift_drag', getBoxData(e));
-    } else {
-      ext.pan(e.dx, e.dy);
-    }
+    ext.pan(e.dx, e.dy);
   });
 
   mouse.on('dragend', function(e) {

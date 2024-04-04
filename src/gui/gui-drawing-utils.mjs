@@ -16,13 +16,22 @@ export function flattenArcs(lyr) {
 //
 export function pointExceedsTolerance(p, points, tolerance) {
   if (points.length < 2) return false;
-  var p1 = points[0], p2, dist;
+  var p1 = points[0], p2, dist, angle;
   for (var i=1; i<points.length; i++) {
     p2 = points[i];
     dist = Math.sqrt(geom.pointSegDistSq(p2[0], p2[1], p1[0], p1[1], p[0], p[1]));
     if (dist > tolerance) return true;
   }
   return false;
+}
+
+export function getAvgPoint(points) {
+  var x=0, y=0;
+  for (var i=0; i<points.length; i++) {
+    x += points[i][0];
+    y += points[i][1];
+  }
+  return [x/points.length, y/points.length];
 }
 
 export function setZ(lyr, z) {
