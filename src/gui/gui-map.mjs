@@ -26,7 +26,6 @@ import { utils, internal, Bounds } from './gui-core';
 import { EventDispatcher } from './gui-events';
 import { ElementPosition } from './gui-element-position';
 import { MouseArea } from './gui-mouse';
-import { Basemap } from './gui-basemap-control';
 import { GUI } from './gui-lib';
 import {
   getDatasetCrsInfo,
@@ -45,11 +44,8 @@ export function MshpMap(gui) {
       _nav = new MapNav(gui, _ext, _mouse),
       _visibleLayers = [], // cached visible map layers
       _hit,
-      _basemap,
       _intersectionLyr, _activeLyr, _overlayLyr,
       _renderer, _dynamicCRS;
-
-  _basemap = new Basemap(gui, _ext);
 
   _mouse.disable(); // wait for gui.focus() to activate mouse events
 
@@ -201,7 +197,7 @@ export function MshpMap(gui) {
     }
 
     _ext.on('change', function(e) {
-      if (_basemap) _basemap.refresh(); // keep basemap synced up (if enabled)
+      gui?.basemap.refresh(); // keep basemap synced up (if enabled)
       drawLayers(e.redraw ? '' : 'nav');
     });
 
@@ -280,7 +276,7 @@ export function MshpMap(gui) {
 
     if (needReset) {
       _ext.reset();
-      if (_basemap) _basemap.refresh();
+      gui?.basemap.refresh();
     }
     drawLayers();
     map.dispatchEvent('updated');

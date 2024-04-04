@@ -93,6 +93,7 @@ var startEditing = function() {
     if (dataLoaded) return;
     dataLoaded = true;
     gui.buttons.show();
+    gui.basemap.show();
     El('#mode-buttons').show();
     El('#splash-buttons').hide();
     El('body').addClass('map-view');
