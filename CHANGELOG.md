@@ -1,3 +1,6 @@
+v0.6.83
+* Added basemap buttons to the map.
+
 v0.6.82
 * Added geos (Geostationary Satellite View) projection.
 
