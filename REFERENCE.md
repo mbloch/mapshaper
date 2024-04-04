@@ -1004,6 +1004,8 @@ Create a new layer containing a rectangular polygon for each feature in the laye
 
 `aspect-ratio=`  Aspect ratio as a number or range (e.g. 2 0.8,1.6 ,2).
 
+`bbox=` Use an expression to generate rectangle bounds for each feature. The expression should evaluate to a GeoJSON-style bbox array.
+
 `offset=` Padding as a distance or percentage of width/height (single value or list).
 
 `name=` Assign a name to the newly created layer.
