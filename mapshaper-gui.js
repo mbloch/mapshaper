@@ -8817,7 +8817,9 @@
       }
     });
     element.addEventListener('contextmenu', function(e) {
-      _self.dispatchEvent('contextmenu', procMouseEvent(e));
+      if (!e.ctrlKey) {
+        _self.dispatchEvent('contextmenu', procMouseEvent(e));
+      }
     });
 
     this.enable = function() {
@@ -10404,11 +10406,11 @@
       } else {
         deleteLastVertex(target);
       }
-      if (getLastArcLength(target) < 2) {
-        gui.undo.undo(); // remove the path
-      }
       if (e.shapes) {
         replaceDrawnShapes(e.shapes);
+      }
+      if (getLastArcLength(target) < 2) {
+        gui.undo.undo(); // remove the path
       }
     });
 
