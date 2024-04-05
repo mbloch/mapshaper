@@ -96,6 +96,7 @@ export function initLineEditing(gui, ext, hit) {
 
   gui.on('redo_path_extend', function(e) {
     var target = hit.getHitTarget();
+
     if (pathDrawing() && prevHoverEvent) {
       updatePathEndpoint(e.p);
       appendVertex(target, pixToDataCoords(prevHoverEvent.x, prevHoverEvent.y));
@@ -360,8 +361,6 @@ export function initLineEditing(gui, ext, hit) {
     var p = pixToDataCoords(e.x, e.y);
     if (pathDrawing()) {
       extendCurrentPath(hoverVertexInfo?.point || p);
-    } else if (gui.keyboard.shiftIsPressed()) {
-      deleteActiveVertex(e);
     } else if (hoverVertexInfo?.type == 'interpolated') {
       // don't start new path if hovering along a segment -- this is
       // likely to be an attempt to add a new vertex, not start a new path
@@ -463,7 +462,8 @@ export function initLineEditing(gui, ext, hit) {
     if (!pathDrawing()) return;
     var target = hit.getHitTarget();
     if (getLastArcLength(target) <= 2) { // includes hover point
-      deleteLastPath(target);
+      // deleteLastPath(target);
+      gui.undo.undo(); // assume previous undo event was path_add
     } else {
       deleteLastVertex(target);
     }
