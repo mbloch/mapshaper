@@ -134,7 +134,9 @@ export function MouseArea(element, pos) {
     }
   });
   element.addEventListener('contextmenu', function(e) {
-    _self.dispatchEvent('contextmenu', procMouseEvent(e));
+    if (!e.ctrlKey) {
+      _self.dispatchEvent('contextmenu', procMouseEvent(e));
+    }
   });
 
   this.enable = function() {
