@@ -10,11 +10,14 @@ export function KeyboardEvents(gui) {
   var altDown = false;
   var spaceDown = false;
 
-  function updateControlKeys(e) {
+  function updateControlKeys(e, evtName) {
     shiftDown = e.shiftKey;
     ctrlDown = e.ctrlKey;
     metaDown = e.metaKey;
     altDown = e.altKey;
+    if (e.keyCode == 32) {
+      spaceDown = evtName == 'keydown';
+    }
   }
 
   function mouseIsPressed() {
@@ -22,17 +25,14 @@ export function KeyboardEvents(gui) {
   }
 
   document.addEventListener('keyup', function(e) {
-    if (!GUI.isActiveInstance(gui) || e.repeat) return;
-    // this can fail to fire if keyup occurs over a context menu
-    if (e.keyCode == 32) spaceDown = false;
-    updateControlKeys(e);
+    if (!GUI.isActiveInstance(gui) || e.repeat && e.keyCode == 32) return;
+    updateControlKeys(e, 'keyup');
     self.dispatchEvent('keyup', getEventData(e));
   });
 
   document.addEventListener('keydown', function(e) {
-    if (!GUI.isActiveInstance(gui) || e.repeat) return;
-    if (e.keyCode == 32) spaceDown = true;
-    updateControlKeys(e);
+    if (!GUI.isActiveInstance(gui) || e.repeat && e.keyCode == 32) return;
+    updateControlKeys(e, 'keyup');
     self.dispatchEvent('keydown', getEventData(e));
   });
 

@@ -7,7 +7,7 @@ export function InteractionMode(gui) {
     standard: ['info', 'selection', 'box'],
     empty: ['edit_points', 'edit_lines', 'edit_polygons', 'box'],
     polygons: ['info', 'selection', 'box', 'edit_polygons'],
-    rectangles: ['info', 'selection', 'box', 'rectangles'],
+    rectangles: ['info', 'selection', 'box', 'rectangles', 'edit_polygons'],
     lines: ['info', 'selection', 'box' , 'edit_lines'],
     table: ['info', 'selection'],
     labels: ['info', 'selection', 'box', 'labels', 'edit_points'],
