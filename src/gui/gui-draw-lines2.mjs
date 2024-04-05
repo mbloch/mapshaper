@@ -115,11 +115,11 @@ export function initLineEditing(gui, ext, hit) {
     } else {
       deleteLastVertex(target);
     }
-    if (getLastArcLength(target) < 2) {
-      gui.undo.undo(); // remove the path
-    }
     if (e.shapes) {
       replaceDrawnShapes(e.shapes);
+    }
+    if (getLastArcLength(target) < 2) {
+      gui.undo.undo(); // remove the path
     }
   });
 
