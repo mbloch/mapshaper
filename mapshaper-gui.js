@@ -5811,11 +5811,14 @@
     var altDown = false;
     var spaceDown = false;
 
-    function updateControlKeys(e) {
+    function updateControlKeys(e, evtName) {
       shiftDown = e.shiftKey;
       ctrlDown = e.ctrlKey;
       metaDown = e.metaKey;
       altDown = e.altKey;
+      if (e.keyCode == 32) {
+        spaceDown = evtName == 'keydown';
+      }
     }
 
     function mouseIsPressed() {
@@ -5823,17 +5826,14 @@
     }
 
     document.addEventListener('keyup', function(e) {
-      if (!GUI.isActiveInstance(gui) || e.repeat) return;
-      // this can fail to fire if keyup occurs over a context menu
-      if (e.keyCode == 32) spaceDown = false;
-      updateControlKeys(e);
+      if (!GUI.isActiveInstance(gui) || e.repeat && e.keyCode == 32) return;
+      updateControlKeys(e, 'keyup');
       self.dispatchEvent('keyup', getEventData(e));
     });
 
     document.addEventListener('keydown', function(e) {
-      if (!GUI.isActiveInstance(gui) || e.repeat) return;
-      if (e.keyCode == 32) spaceDown = true;
-      updateControlKeys(e);
+      if (!GUI.isActiveInstance(gui) || e.repeat && e.keyCode == 32) return;
+      updateControlKeys(e, 'keyup');
       self.dispatchEvent('keydown', getEventData(e));
     });
 
@@ -5886,7 +5886,7 @@
       standard: ['info', 'selection', 'box'],
       empty: ['edit_points', 'edit_lines', 'edit_polygons', 'box'],
       polygons: ['info', 'selection', 'box', 'edit_polygons'],
-      rectangles: ['info', 'selection', 'box', 'rectangles'],
+      rectangles: ['info', 'selection', 'box', 'rectangles', 'edit_polygons'],
       lines: ['info', 'selection', 'box' , 'edit_lines'],
       table: ['info', 'selection'],
       labels: ['info', 'selection', 'box', 'labels', 'edit_points'],
@@ -10387,6 +10387,7 @@
 
     gui.on('redo_path_extend', function(e) {
       var target = hit.getHitTarget();
+
       if (pathDrawing() && prevHoverEvent) {
         updatePathEndpoint(e.p);
         appendVertex$1(target, pixToDataCoords(prevHoverEvent.x, prevHoverEvent.y));
@@ -10651,8 +10652,6 @@
       var p = pixToDataCoords(e.x, e.y);
       if (pathDrawing()) {
         extendCurrentPath(hoverVertexInfo?.point || p);
-      } else if (gui.keyboard.shiftIsPressed()) {
-        deleteActiveVertex(e);
       } else if (hoverVertexInfo?.type == 'interpolated') {
         // don't start new path if hovering along a segment -- this is
         // likely to be an attempt to add a new vertex, not start a new path
@@ -10754,7 +10753,8 @@
       if (!pathDrawing()) return;
       var target = hit.getHitTarget();
       if (getLastArcLength(target) <= 2) { // includes hover point
-        deleteLastPath(target);
+        // deleteLastPath(target);
+        gui.undo.undo(); // assume previous undo event was path_add
       } else {
         deleteLastVertex(target);
       }
