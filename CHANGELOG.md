@@ -1,3 +1,6 @@
+v0.6.86
+* Bug fixes
+
 v0.6.85
 * Added -rectangles bbox=<expression> option, which uses an expression to generate rectangle coords for each feature.
 
