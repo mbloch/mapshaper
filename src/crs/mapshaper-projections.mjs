@@ -83,11 +83,12 @@ export function getProjTransform2(src, dest) {
 }
 
 export function toLngLat(xy, P) {
-  var proj;
-  if (isLatLngCRS(P)) {
-    return xy.concat();
-  }
-  proj = getProjTransform2(P, parseCrsString('wgs84'));
+  return projectPoint(xy, P, parseCrsString('wgs84'));
+}
+
+export function projectPoint(xy, crsFrom, crsTo) {
+  if (crsAreEqual(crsFrom, crsTo)) return xy.concat();
+  var proj = getProjTransform2(crsFrom, crsTo);
   return proj(xy[0], xy[1]);
 }
 
