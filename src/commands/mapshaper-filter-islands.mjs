@@ -73,7 +73,7 @@ function ringIntersectsBBox(ring, bbox, arcs) {
 
 // Assumes that ring boundaries to not cross
 export function ringHasHoles(ring, rings, arcs) {
-  var bbox = arcs.getSimpleShapeBounds2(ring);
+  var bbox = arcs.getSimpleShapeBbox(ring);
   var sibling, p;
   for (var i=0, n=rings.length; i<n; i++) {
     sibling = rings[i];

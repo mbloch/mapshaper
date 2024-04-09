@@ -204,7 +204,7 @@ export function getShapeHitTest(layer, ext, interactionMode, featureFilter) {
         return;
       }
       for (var i = 0, n = shp && shp.length; i < n; i++) {
-        arcs.getSimpleShapeBounds2(shp[i], bbox);
+        arcs.getSimpleShapeBbox(shp[i], bbox);
         if (x + dist < bbox[0] || x - dist > bbox[2] ||
           y + dist < bbox[1] || y - dist > bbox[3]) {
           continue; // bbox non-intersection

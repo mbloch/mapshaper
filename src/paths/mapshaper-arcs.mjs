@@ -102,6 +102,7 @@ export function ArcCollection() {
     var arcOffs = _ii[i];
     var j = i * 4;
     var b = calcArcBounds(_xx, _yy, arcOffs, arcLen);
+    // NOTE: if arcLen is 0, bounds coords are undefined, coerced to NaN in _bb.
     _bb[j++] = b[0];
     _bb[j++] = b[1];
     _bb[j++] = b[2];
@@ -516,12 +517,14 @@ export function ArcCollection() {
   this.arcIntersectsBBox = function(i, b1) {
     var b2 = _bb,
         j = i * 4;
+    // returns false if _bb bounds are NaN
     return b2[j] <= b1[2] && b2[j+2] >= b1[0] && b2[j+3] >= b1[1] && b2[j+1] <= b1[3];
   };
 
   this.arcIsContained = function(i, b1) {
     var b2 = _bb,
         j = i * 4;
+    // returns false if _bb bounds are NaN
     return b2[j] >= b1[0] && b2[j+2] <= b1[2] && b2[j+1] >= b1[1] && b2[j+3] <= b1[3];
   };
 
@@ -558,22 +561,21 @@ export function ArcCollection() {
     return bounds;
   };
 
-  this.getSimpleShapeBounds2 = function(arcIds, arr) {
+  this.getSimpleShapeBbox = function(arcIds, arr) {
     var bbox = arr || [],
         bb = _bb,
-        id = absArcId(arcIds[0]) * 4;
-    bbox[0] = bb[id];
-    bbox[1] = bb[++id];
-    bbox[2] = bb[++id];
-    bbox[3] = bb[++id];
-    for (var i=1, n=arcIds.length; i<n; i++) {
-      id = absArcId(arcIds[i]) * 4;
-      if (bb[id] < bbox[0]) bbox[0] = bb[id];
-      if (bb[++id] < bbox[1]) bbox[1] = bb[id];
-      if (bb[++id] > bbox[2]) bbox[2] = bb[id];
-      if (bb[++id] > bbox[3]) bbox[3] = bb[id];
+        arcId, offs;
+    bbox[0] = bbox[1] = Infinity;
+    bbox[2] = bbox[3] = -Infinity;
+    for (var i=0, n=arcIds.length; i<n; i++) {
+      arcId = absArcId(arcIds[i]);
+      offs = arcId * 4;
+      if (bb[offs] < bbox[0]) bbox[0] = bb[offs];
+      if (bb[++offs] < bbox[1]) bbox[1] = bb[offs];
+      if (bb[++offs] > bbox[2]) bbox[2] = bb[offs];
+      if (bb[++offs] > bbox[3]) bbox[3] = bb[offs];
     }
-    return bbox;
+    return bbox[0] == Infinity ? [] : bbox;
   };
 
   // TODO: move this and similar methods out of ArcCollection
@@ -590,7 +592,9 @@ export function ArcCollection() {
   this.mergeArcBounds = function(arcId, bounds) {
     if (arcId < 0) arcId = ~arcId;
     var offs = arcId * 4;
-    bounds.mergeBounds(_bb[offs], _bb[offs+1], _bb[offs+2], _bb[offs+3]);
+    if (_nn[arcId] > 0) {
+      bounds.mergeBounds(_bb[offs], _bb[offs+1], _bb[offs+2], _bb[offs+3]);
+    }
   };
 }
 

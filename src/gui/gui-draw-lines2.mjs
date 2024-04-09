@@ -266,7 +266,7 @@ export function initLineEditing(gui, ext, hit) {
       appendVertex(hit.getHitTarget(), p);
       extendCurrentPath(p);
       pencilPoints = null; // stop drawing
-    } else if (pencilPoints.length >= 2 && pointExceedsTolerance(xy, pencilPoints, 1.4)) {
+    } else if (pencilPoints.length >= 2 && pointExceedsTolerance(xy, pencilPoints, 1.2)) {
       xy2 = pencilPoints.pop();
       p = pixToDataCoords(xy2[0], xy2[1]);
       extendCurrentPath(p);
