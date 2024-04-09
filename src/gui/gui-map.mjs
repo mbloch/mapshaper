@@ -29,7 +29,8 @@ import { MouseArea } from './gui-mouse';
 import { GUI } from './gui-lib';
 import {
   getDatasetCrsInfo,
-  formatCoordsForDisplay } from './gui-display-utils';
+  formatCoordsForDisplay,
+  translateDisplayPoint } from './gui-display-utils';
 
 utils.inherit(MshpMap, EventDispatcher);
 
@@ -92,21 +93,23 @@ export function MshpMap(gui) {
     target.layer.pinned = !!pinned;
   };
 
-  this.translatePixelCoords = function(x, y) {
-    var p = _ext.translatePixelCoords(x, y);
-    if (!_dynamicCRS) return p;
-    return internal.toLngLat(p, _dynamicCRS);
+  this.pixelCoordsToLngLatCoords = function(x, y) {
+    var crsFrom = this.getDisplayCRS();
+    var p1 = internal.toLngLat(_ext.translatePixelCoords(x, y), crsFrom);
+    var p2 = internal.toLngLat(_ext.translatePixelCoords(x+1, y+1), crsFrom);
+    return p1 && p2 && p1[1] <= 90 && p1[1] >= -90 ?
+      formatCoordsForDisplay(p1, p2) : null;
   };
 
-  this.pixelCoordsToDisplayCoords = function(x, y) {
-    var p1 = _ext.translatePixelCoords(x, y);
-    var p2 = _ext.translatePixelCoords(x+1, y+1);
-    var crs = this.getDisplayCRS();
-    if (crs) {
-      p1 = internal.toLngLat(p1, crs) || p1;
-      p2 = internal.toLngLat(p2, crs) || p2;
+  this.pixelCoordsToProjectedCoords = function(x, y) {
+    if (!_activeLyr) return null;
+    var info = getDatasetCrsInfo(_activeLyr.gui.source.dataset);
+    if (info && internal.isLatLngCRS(info.crs)) {
+      return null; // latlon dataset
     }
-    return formatCoordsForDisplay(p1, p2);
+    var p1 = translateDisplayPoint(_activeLyr, _ext.translatePixelCoords(x, y));
+    var p2 = translateDisplayPoint(_activeLyr, _ext.translatePixelCoords(x+1, y+1));
+    return p1 && p2 ? formatCoordsForDisplay(p1, p2) : null;
   };
 
   // this.getCenterLngLat = function() {

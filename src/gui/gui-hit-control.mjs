@@ -448,8 +448,8 @@ export function HitControl(gui, ext, mouse) {
     };
     if (evt) {
       // data coordinates
-      eventData.coordinates = translateDisplayPoint(targetLayer, ext.translatePixelCoords(evt.x, evt.y));
-      eventData.display_coordinates = gui.map.pixelCoordsToDisplayCoords(evt.x, evt.y);
+      eventData.projected_coordinates = gui.map.pixelCoordsToProjectedCoords(evt.x, evt.y);
+      eventData.lonlat_coordinates = gui.map.pixelCoordsToLngLatCoords(evt.x, evt.y);
       eventData.originalEvent = evt;
       eventData.overMap = isOverMap(evt);
     }

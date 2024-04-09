@@ -34,27 +34,19 @@ export function ContextMenu() {
       .show();
   }
 
+  function addMenuLabel(label) {
+    El('div')
+      .appendTo(menu)
+      .addClass('contextmenu-label')
+      .html(label);
+  }
+
   this.open = function(e, lyr) {
     if (lyr && !lyr.gui.geographic) return; // no popup for tabular data
-    _open = true;
-    _openCount++;
-    var rspace = body.clientWidth - e.pageX;
-    var xoffs = 10;
-    menu.empty().show();
-    if (rspace > 150) {
-      menu.css('left', e.pageX + xoffs + 'px');
-      menu.css('right', null);
-    } else {
-      menu.css('right', (body.clientWidth - e.pageX + xoffs) + 'px');
-      menu.css('left', null);
-    }
-    menu.css('top', (e.pageY - 15) + 'px');
+    menu.empty();
 
     // menu contents
     //
-    if (e.display_coordinates) {
-      addCoords(e.display_coordinates);
-    }
     if (e.deleteVertex) {
       addMenuItem('Delete vertex', e.deleteVertex);
     }
@@ -67,14 +59,42 @@ export function ContextMenu() {
     if (e.deleteFeature) {
       addMenuItem(getDeleteLabel(), e.deleteFeature);
     }
+    if (e.lonlat_coordinates) {
+      addCoords(e.lonlat_coordinates, 'longitude, latitude');
+    }
+    if (e.projected_coordinates) {
+      addCoords(e.projected_coordinates, 'easting, northing');
+    }
+
+    if (menu.node().childNodes.length === 0) {
+      return;
+    }
+
+    _open = true;
+    _openCount++;
+    var rspace = body.clientWidth - e.pageX;
+    var xoffs = 10;
+    if (rspace > 150) {
+      menu.css('left', e.pageX + xoffs + 'px');
+      menu.css('right', null);
+    } else {
+      menu.css('right', (body.clientWidth - e.pageX + xoffs) + 'px');
+      menu.css('left', null);
+    }
+    menu.css('top', (e.pageY - 15) + 'px');
+    menu.show();
 
     function getDeleteLabel() {
       return 'Delete ' + (lyr.geometry_type == 'point' ? 'point' : 'shape');
     }
 
-    function addCoords(p) {
+    function addCoords(p, label) {
       var coordStr = p[0] + ',' + p[1];
-      var displayStr = '• &nbsp;' + coordStr.replace(/-/g, '–').replace(',', ', ');
+      // var displayStr = '• &nbsp;' + coordStr.replace(/-/g, '–').replace(',', ', ');
+      var displayStr = coordStr.replace(/-/g, '–').replace(',', ', ');
+      if (label) {
+        addMenuLabel(label);
+      }
       addMenuItem(displayStr, function() {
         saveFileContentToClipboard(coordStr);
       });
