@@ -50,7 +50,7 @@ export function PolygonTiler(mosaic, arcTileIndex, nodes, opts) {
   }
 
   function procShapeRing(path) {
-    currRingBbox = arcs.getSimpleShapeBounds2(path);
+    currRingBbox = arcs.getSimpleShapeBbox(path);
     ringIndex.setIds(path);
     procArcIds(path);
     ringIndex.clear();
