@@ -25,7 +25,7 @@ var HOVER_THRESHOLD = 10;
 
 export function initLineEditing(gui, ext, hit) {
   var hoverVertexInfo;
-  var prevClickEvent;
+  var prevVertexAddedEvent;
   var prevHoverEvent;
   var initialArcCount = -1;
   var initialShapeCount = -1;
@@ -196,7 +196,7 @@ export function initLineEditing(gui, ext, hit) {
     hit.clearDrawingId();
     drawingId = -1;
     hoverVertexInfo = null;
-    prevClickEvent = prevHoverEvent = null;
+    prevVertexAddedEvent = prevHoverEvent = null;
     updateCursor();
   }
 
@@ -253,6 +253,7 @@ export function initLineEditing(gui, ext, hit) {
     hoverVertexInfo = findPathStartInfo(e);
     var xy = [e.x, e.y], xy2;
     var p = pixToDataCoords(e.x, e.y);
+    var addedToPath = true;
     if (!pathDrawing()) {
       pencilPoints = [xy];
       startNewPath(p);
@@ -278,6 +279,11 @@ export function initLineEditing(gui, ext, hit) {
       // skip this point, update the hover line
       pencilPoints.push(xy);
       updatePathEndpoint(p);
+      addedToPath = false;
+    }
+    if (addedToPath) {
+      //
+      prevVertexAddedEvent = e;
     }
   }, null, 3); // higher priority than hit control
 
@@ -334,7 +340,7 @@ export function initLineEditing(gui, ext, hit) {
         return;
       }
       if (gui.keyboard.shiftIsPressed()) {
-        alignPointerPosition(e, prevClickEvent);
+        alignPointerPosition(e, prevVertexAddedEvent);
       }
       updatePathEndpoint(pixToDataCoords(e.x, e.y));
     }
@@ -367,7 +373,7 @@ export function initLineEditing(gui, ext, hit) {
     } else {
       startNewPath(p);
     }
-    prevClickEvent = e;
+    prevVertexAddedEvent = e;
   });
 
   // esc or enter key finishes a path
@@ -381,10 +387,10 @@ export function initLineEditing(gui, ext, hit) {
 
   // detect second 'click' event of a double-click action
   function detectDoubleClick(evt) {
-    if (!prevClickEvent) return false;
-    var elapsed = evt.time - prevClickEvent.time;
-    var dx = Math.abs(evt.x - prevClickEvent.x);
-    var dy = Math.abs(evt.y - prevClickEvent.y);
+    if (!prevVertexAddedEvent) return false;
+    var elapsed = evt.time - prevVertexAddedEvent.time;
+    var dx = Math.abs(evt.x - prevVertexAddedEvent.x);
+    var dy = Math.abs(evt.y - prevVertexAddedEvent.y);
     var dbl = elapsed < 500 && dx <= 2 && dy <= 2;
     return dbl;
   }
