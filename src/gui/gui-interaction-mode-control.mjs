@@ -87,6 +87,10 @@ export function InteractionMode(gui) {
     setMode('off');
   };
 
+  this.modeWorksWithConsole = function(mode) {
+    return ['off', 'info'];
+  };
+
   this.modeUsesHitDetection = function(mode) {
     return ['info', 'selection', 'data', 'labels', 'edit_points', 'vertices', 'rectangles', 'edit_lines', 'edit_polygons'].includes(mode);
   };

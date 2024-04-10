@@ -201,7 +201,7 @@ export function initLineEditing(gui, ext, hit) {
   }
 
   gui.keyboard.on('keydown', function(e) {
-    if (active() && e.keyName == 'space') {
+    if (pathDrawing() && e.keyName == 'space') {
       e.stopPropagation(); // prevent console from opening if shift-panning
     }
   }, null, 1);
@@ -378,7 +378,7 @@ export function initLineEditing(gui, ext, hit) {
 
   // esc or enter key finishes a path
   gui.keyboard.on('keydown', function(e) {
-    if (active() && (e.keyName == 'esc' || e.keyName == 'enter')) {
+    if (pathDrawing() && (e.keyName == 'esc' || e.keyName == 'enter')) {
       e.stopPropagation();
       finishCurrentPath();
       e.originalEvent.preventDefault(); // block console "enter"

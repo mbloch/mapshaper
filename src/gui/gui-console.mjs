@@ -368,6 +368,10 @@ export function Console(gui) {
         setDisplayProjection(gui, cmd);
       } else {
         line.hide(); // hide cursor while command is being run
+        // quit certain edit modes
+        if (!gui.interaction.modeWorksWithConsole(gui.interaction.getMode())) {
+          gui.interaction.turnOff();
+        }
         runMapshaperCommands(cmd, function(err, flags) {
           if (flags) {
             gui.clearMode();
