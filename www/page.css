@@ -1380,17 +1380,18 @@ body.pan.panning .map-layers:not(.drawing) {
 .contextmenu-item {
 	background-color: #fff;
 	white-space: nowrap;
-	padding: 5px 10px 6px 10px;
-	line-height: 11px;
+	padding: 3px 10px 4px 10px;
 	cursor: pointer;
+	font-size: 13px;
+	line-height: 13px;
 }
 
 .contextmenu-label {
 	color: #999;
-	font-size: 82%;
 	white-space: nowrap;
-	padding: 6px 10px 1px 10px;
-	line-height: 9px;
+	padding: 4px 10px 1px 10px;
+	font-size: 12px;
+	line-height: 12px;
 	margin-top: -2px;
 }
 

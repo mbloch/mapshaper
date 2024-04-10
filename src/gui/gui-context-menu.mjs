@@ -26,10 +26,12 @@ export function ContextMenu() {
   }
 
   function addMenuItem(label, func) {
+    var prefix = '• &nbsp;';
+
     El('div')
       .appendTo(menu)
       .addClass('contextmenu-item')
-      .html(label)
+      .html(prefix + label)
       .on('click', func)
       .show();
   }
@@ -42,28 +44,36 @@ export function ContextMenu() {
   }
 
   this.open = function(e, lyr) {
+    var copyable = e.ids?.length;
     if (lyr && !lyr.gui.geographic) return; // no popup for tabular data
     menu.empty();
 
     // menu contents
     //
-    if (e.deleteVertex) {
-      addMenuItem('Delete vertex', e.deleteVertex);
+    if (e.deleteVertex || e.deletePoint || copyable || e.deleteFeature) {
+
+      addMenuLabel('selection');
+      if (e.deleteVertex) {
+        addMenuItem('delete vertex', e.deleteVertex);
+      }
+      if (e.deletePoint) {
+        addMenuItem('delete point', e.deletePoint);
+      }
+      if (e.ids?.length) {
+        addMenuItem('copy as GeoJSON', copyGeoJSON);
+      }
+      if (e.deleteFeature) {
+        addMenuItem(getDeleteLabel(), e.deleteFeature);
+      }
     }
-    if (e.deletePoint) {
-      addMenuItem('Delete point', e.deletePoint);
-    }
-    if (e.ids?.length) {
-      addMenuItem('Copy as GeoJSON', copyGeoJSON);
-    }
-    if (e.deleteFeature) {
-      addMenuItem(getDeleteLabel(), e.deleteFeature);
-    }
+
     if (e.lonlat_coordinates) {
-      addCoords(e.lonlat_coordinates, 'longitude, latitude');
+      addMenuLabel('longitude, latitude');
+      addCoords(e.lonlat_coordinates);
     }
     if (e.projected_coordinates) {
-      addCoords(e.projected_coordinates, 'easting, northing');
+      addMenuLabel('easting, northing');
+      addCoords(e.projected_coordinates);
     }
 
     if (menu.node().childNodes.length === 0) {
@@ -85,16 +95,13 @@ export function ContextMenu() {
     menu.show();
 
     function getDeleteLabel() {
-      return 'Delete ' + (lyr.geometry_type == 'point' ? 'point' : 'shape');
+      return 'delete ' + (lyr.geometry_type == 'point' ? 'point' : 'shape');
     }
 
-    function addCoords(p, label) {
+    function addCoords(p) {
       var coordStr = p[0] + ',' + p[1];
       // var displayStr = '• &nbsp;' + coordStr.replace(/-/g, '–').replace(',', ', ');
       var displayStr = coordStr.replace(/-/g, '–').replace(',', ', ');
-      if (label) {
-        addMenuLabel(label);
-      }
       addMenuItem(displayStr, function() {
         saveFileContentToClipboard(coordStr);
       });
