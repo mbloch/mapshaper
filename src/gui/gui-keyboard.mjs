@@ -32,7 +32,7 @@ export function KeyboardEvents(gui) {
 
   document.addEventListener('keydown', function(e) {
     if (!GUI.isActiveInstance(gui) || e.repeat && e.keyCode == 32) return;
-    updateControlKeys(e, 'keyup');
+    updateControlKeys(e, 'keydown');
     self.dispatchEvent('keydown', getEventData(e));
   });
 
