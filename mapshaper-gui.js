@@ -5833,7 +5833,7 @@
 
     document.addEventListener('keydown', function(e) {
       if (!GUI.isActiveInstance(gui) || e.repeat && e.keyCode == 32) return;
-      updateControlKeys(e, 'keyup');
+      updateControlKeys(e, 'keydown');
       self.dispatchEvent('keydown', getEventData(e));
     });
 
@@ -7904,7 +7904,7 @@
           return;
         }
         for (var i = 0, n = shp && shp.length; i < n; i++) {
-          arcs.getSimpleShapeBounds2(shp[i], bbox);
+          arcs.getSimpleShapeBbox(shp[i], bbox);
           if (x + dist < bbox[0] || x - dist > bbox[2] ||
             y + dist < bbox[1] || y - dist > bbox[3]) {
             continue; // bbox non-intersection
@@ -8497,8 +8497,8 @@
       };
       if (evt) {
         // data coordinates
-        eventData.coordinates = translateDisplayPoint(targetLayer, ext.translatePixelCoords(evt.x, evt.y));
-        eventData.display_coordinates = gui.map.pixelCoordsToDisplayCoords(evt.x, evt.y);
+        eventData.projected_coordinates = gui.map.pixelCoordsToProjectedCoords(evt.x, evt.y);
+        eventData.lonlat_coordinates = gui.map.pixelCoordsToLngLatCoords(evt.x, evt.y);
         eventData.originalEvent = evt;
         eventData.overMap = isOverMap(evt);
       }
@@ -10316,7 +10316,7 @@
 
   function initLineEditing(gui, ext, hit) {
     var hoverVertexInfo;
-    var prevClickEvent;
+    var prevVertexAddedEvent;
     var prevHoverEvent;
     var initialArcCount = -1;
     var initialShapeCount = -1;
@@ -10487,7 +10487,7 @@
       hit.clearDrawingId();
       drawingId = -1;
       hoverVertexInfo = null;
-      prevClickEvent = prevHoverEvent = null;
+      prevVertexAddedEvent = prevHoverEvent = null;
       updateCursor();
     }
 
@@ -10544,6 +10544,7 @@
       hoverVertexInfo = findPathStartInfo(e);
       var xy = [e.x, e.y], xy2;
       var p = pixToDataCoords(e.x, e.y);
+      var addedToPath = true;
       if (!pathDrawing()) {
         pencilPoints = [xy];
         startNewPath(p);
@@ -10557,7 +10558,7 @@
         appendVertex$1(hit.getHitTarget(), p);
         extendCurrentPath(p);
         pencilPoints = null; // stop drawing
-      } else if (pencilPoints.length >= 2 && pointExceedsTolerance(xy, pencilPoints, 1.4)) {
+      } else if (pencilPoints.length >= 2 && pointExceedsTolerance(xy, pencilPoints, 1.2)) {
         xy2 = pencilPoints.pop();
         p = pixToDataCoords(xy2[0], xy2[1]);
         extendCurrentPath(p);
@@ -10569,6 +10570,11 @@
         // skip this point, update the hover line
         pencilPoints.push(xy);
         updatePathEndpoint(p);
+        addedToPath = false;
+      }
+      if (addedToPath) {
+        //
+        prevVertexAddedEvent = e;
       }
     }, null, 3); // higher priority than hit control
 
@@ -10625,7 +10631,7 @@
           return;
         }
         if (gui.keyboard.shiftIsPressed()) {
-          alignPointerPosition(e, prevClickEvent);
+          alignPointerPosition(e, prevVertexAddedEvent);
         }
         updatePathEndpoint(pixToDataCoords(e.x, e.y));
       }
@@ -10658,7 +10664,7 @@
       } else {
         startNewPath(p);
       }
-      prevClickEvent = e;
+      prevVertexAddedEvent = e;
     });
 
     // esc or enter key finishes a path
@@ -10672,10 +10678,10 @@
 
     // detect second 'click' event of a double-click action
     function detectDoubleClick(evt) {
-      if (!prevClickEvent) return false;
-      var elapsed = evt.time - prevClickEvent.time;
-      var dx = Math.abs(evt.x - prevClickEvent.x);
-      var dy = Math.abs(evt.y - prevClickEvent.y);
+      if (!prevVertexAddedEvent) return false;
+      var elapsed = evt.time - prevVertexAddedEvent.time;
+      var dx = Math.abs(evt.x - prevVertexAddedEvent.x);
+      var dy = Math.abs(evt.y - prevVertexAddedEvent.y);
       var dbl = elapsed < 500 && dx <= 2 && dy <= 2;
       return dbl;
     }
@@ -12394,21 +12400,23 @@ GUI and setting the size and crop of SVG output.</p><div><input type="text" clas
       target.layer.pinned = !!pinned;
     };
 
-    this.translatePixelCoords = function(x, y) {
-      var p = _ext.translatePixelCoords(x, y);
-      if (!_dynamicCRS) return p;
-      return internal.toLngLat(p, _dynamicCRS);
+    this.pixelCoordsToLngLatCoords = function(x, y) {
+      var crsFrom = this.getDisplayCRS();
+      var p1 = internal.toLngLat(_ext.translatePixelCoords(x, y), crsFrom);
+      var p2 = internal.toLngLat(_ext.translatePixelCoords(x+1, y+1), crsFrom);
+      return p1 && p2 && p1[1] <= 90 && p1[1] >= -90 ?
+        formatCoordsForDisplay(p1, p2) : null;
     };
 
-    this.pixelCoordsToDisplayCoords = function(x, y) {
-      var p1 = _ext.translatePixelCoords(x, y);
-      var p2 = _ext.translatePixelCoords(x+1, y+1);
-      var crs = this.getDisplayCRS();
-      if (crs) {
-        p1 = internal.toLngLat(p1, crs) || p1;
-        p2 = internal.toLngLat(p2, crs) || p2;
+    this.pixelCoordsToProjectedCoords = function(x, y) {
+      if (!_activeLyr) return null;
+      var info = getDatasetCrsInfo(_activeLyr.gui.source.dataset);
+      if (info && internal.isLatLngCRS(info.crs)) {
+        return null; // latlon dataset
       }
-      return formatCoordsForDisplay(p1, p2);
+      var p1 = translateDisplayPoint(_activeLyr, _ext.translatePixelCoords(x, y));
+      var p2 = translateDisplayPoint(_activeLyr, _ext.translatePixelCoords(x+1, y+1));
+      return p1 && p2 ? formatCoordsForDisplay(p1, p2) : null;
     };
 
     // this.getCenterLngLat = function() {
@@ -12893,27 +12901,19 @@ GUI and setting the size and crop of SVG output.</p><div><input type="text" clas
         .show();
     }
 
+    function addMenuLabel(label) {
+      El('div')
+        .appendTo(menu)
+        .addClass('contextmenu-label')
+        .html(label);
+    }
+
     this.open = function(e, lyr) {
       if (lyr && !lyr.gui.geographic) return; // no popup for tabular data
-      _open = true;
-      _openCount++;
-      var rspace = body.clientWidth - e.pageX;
-      var xoffs = 10;
-      menu.empty().show();
-      if (rspace > 150) {
-        menu.css('left', e.pageX + xoffs + 'px');
-        menu.css('right', null);
-      } else {
-        menu.css('right', (body.clientWidth - e.pageX + xoffs) + 'px');
-        menu.css('left', null);
-      }
-      menu.css('top', (e.pageY - 15) + 'px');
+      menu.empty();
 
       // menu contents
       //
-      if (e.display_coordinates) {
-        addCoords(e.display_coordinates);
-      }
       if (e.deleteVertex) {
         addMenuItem('Delete vertex', e.deleteVertex);
       }
@@ -12926,14 +12926,42 @@ GUI and setting the size and crop of SVG output.</p><div><input type="text" clas
       if (e.deleteFeature) {
         addMenuItem(getDeleteLabel(), e.deleteFeature);
       }
+      if (e.lonlat_coordinates) {
+        addCoords(e.lonlat_coordinates, 'longitude, latitude');
+      }
+      if (e.projected_coordinates) {
+        addCoords(e.projected_coordinates, 'easting, northing');
+      }
+
+      if (menu.node().childNodes.length === 0) {
+        return;
+      }
+
+      _open = true;
+      _openCount++;
+      var rspace = body.clientWidth - e.pageX;
+      var xoffs = 10;
+      if (rspace > 150) {
+        menu.css('left', e.pageX + xoffs + 'px');
+        menu.css('right', null);
+      } else {
+        menu.css('right', (body.clientWidth - e.pageX + xoffs) + 'px');
+        menu.css('left', null);
+      }
+      menu.css('top', (e.pageY - 15) + 'px');
+      menu.show();
 
       function getDeleteLabel() {
         return 'Delete ' + (lyr.geometry_type == 'point' ? 'point' : 'shape');
       }
 
-      function addCoords(p) {
+      function addCoords(p, label) {
         var coordStr = p[0] + ',' + p[1];
-        var displayStr = '• &nbsp;' + coordStr.replace(/-/g, '–').replace(',', ', ');
+        // var displayStr = '• &nbsp;' + coordStr.replace(/-/g, '–').replace(',', ', ');
+        var displayStr = coordStr.replace(/-/g, '–').replace(',', ', ');
+        if (label) {
+          addMenuLabel(label);
+        }
         addMenuItem(displayStr, function() {
           saveFileContentToClipboard(coordStr);
         });
