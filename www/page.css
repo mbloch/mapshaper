@@ -1206,8 +1206,9 @@ div.basemap-style-btn.active {
 }
 
 .basemap-overlay-btn img {
-	margin-left: -21px;
-	width: 70px;
+	margin-left: -31px;
+	margin-top: -5px;
+	width: 90px;
 }
 
 .mapbox-improve-map {
@@ -1379,9 +1380,18 @@ body.pan.panning .map-layers:not(.drawing) {
 .contextmenu-item {
 	background-color: #fff;
 	white-space: nowrap;
-	padding: 6px 10px 7px 10px;
+	padding: 5px 10px 6px 10px;
 	line-height: 11px;
 	cursor: pointer;
+}
+
+.contextmenu-label {
+	color: #999;
+	font-size: 82%;
+	white-space: nowrap;
+	padding: 6px 10px 1px 10px;
+	line-height: 9px;
+	margin-top: -2px;
 }
 
 .nav-menu-item:hover,
