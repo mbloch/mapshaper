@@ -95,6 +95,7 @@ export function MshpMap(gui) {
 
   this.pixelCoordsToLngLatCoords = function(x, y) {
     var crsFrom = this.getDisplayCRS();
+    if (!crsFrom) return null; // e.g. table view
     var p1 = internal.toLngLat(_ext.translatePixelCoords(x, y), crsFrom);
     var p2 = internal.toLngLat(_ext.translatePixelCoords(x+1, y+1), crsFrom);
     return p1 && p2 && p1[1] <= 90 && p1[1] >= -90 ?
