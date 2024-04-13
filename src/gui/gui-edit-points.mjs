@@ -3,7 +3,7 @@ import {
   updatePointCoords,
   getPointCoords,
   appendNewPoint,
-  deletePoint } from './gui-drawing-utils';
+  deleteFeature } from './gui-drawing-utils';
 import { translateDisplayPoint } from './gui-display-utils';
 import { addEmptyLayer } from './gui-add-layer-popup';
 import { showPopupAlert } from './gui-alert';
@@ -60,8 +60,8 @@ export function initPointEditing(gui, ext, hit) {
   function removePoint(target, id) {
     var d = target.data ? target.data.getRecords()[id] : null;
     var coords = target.shapes[id];
-    deletePoint(target, id);
-    gui.dispatchEvent('point_delete', {coords, d, target, fid: id});
+    deleteFeature(target, id);
+    gui.dispatchEvent('feature_delete', {coords, d, target, fid: id});
     gui.dispatchEvent('map-needs-refresh');
     hit.setHitId(-1);
   }

@@ -215,6 +215,7 @@ export function initLineEditing(gui, ext, hit) {
         deleteActiveVertex(e, vInfo);
       };
     }
+
     // don't allow copying of open paths as geojson in polygon mode
     gui.contextMenu.open(e, target);
   });
