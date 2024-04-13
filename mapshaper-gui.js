@@ -3500,15 +3500,6 @@
     }
   }
 
-  function deleteFeature(lyr, fid) {
-    var records = lyr.data?.getRecords();
-    if (records) records.splice(fid, 1);
-    lyr.shapes.splice(fid, 1);
-    if (isProjectedLayer(lyr) && lyr.shapes != lyr.gui.displayLayer.shapes) {
-      lyr.gui.displayLayer.shapes.splice(fid, 1);
-    }
-  }
-
   // p: one point in source data coords
   function appendNewPoint(lyr, p) {
     lyr.shapes.push([p]);
@@ -3521,15 +3512,20 @@
     }
   }
 
-  function deletePoint(lyr, fid) {
-    deleteFeature(lyr, fid);
+  function deleteFeature(lyr, fid) {
+    var records = lyr.data?.getRecords();
+    if (records) records.splice(fid, 1);
+    lyr.shapes.splice(fid, 1);
+    if (isProjectedLayer(lyr) && lyr.geometry_type == 'point') {
+      lyr.gui.displayLayer.shapes.splice(fid, 1); // point layer
+    }
   }
 
-  function insertPoint(lyr, fid, shp, d) {
+  function insertFeature(lyr, fid, shp, d) {
     var records = lyr.data?.getRecords();
     if (records) records.splice(fid, 0, d);
     lyr.shapes.splice(fid, 0, shp);
-    if (isProjectedLayer(lyr)) {
+    if (isProjectedLayer(lyr) && lyr.geometry_type == 'point') {
       var shp2 = projectPointCoords(shp, lyr.gui.projectPoint);
       lyr.gui.displayLayer.shapes.splice(fid, 0, shp2);
     }
@@ -4255,6 +4251,10 @@
           setDisplayProjection(gui, cmd);
         } else {
           line.hide(); // hide cursor while command is being run
+          // quit certain edit modes
+          if (!gui.interaction.modeWorksWithConsole(gui.interaction.getMode())) {
+            gui.interaction.turnOff();
+          }
           runMapshaperCommands(cmd, function(err, flags) {
             if (flags) {
               gui.clearMode();
@@ -5606,12 +5606,12 @@
       addHistoryState(undo, redo);
     });
 
-    gui.on('point_delete', function(e) {
+    gui.on('feature_delete', function(e) {
       var redo = function() {
-        deletePoint(e.data.target, e.fid);
+        deleteFeature(e.data.target, e.fid);
       };
       var undo = function() {
-        insertPoint(e.data.target, e.fid, e.coords, e.d);
+        insertFeature(e.data.target, e.fid, e.coords, e.d);
       };
       addHistoryState(undo, redo);
     });
@@ -5964,6 +5964,10 @@
 
     this.turnOff = function() {
       setMode('off');
+    };
+
+    this.modeWorksWithConsole = function(mode) {
+      return ['off', 'info'];
     };
 
     this.modeUsesHitDetection = function(mode) {
@@ -10243,8 +10247,8 @@
     function removePoint(target, id) {
       var d = target.data ? target.data.getRecords()[id] : null;
       var coords = target.shapes[id];
-      deletePoint(target, id);
-      gui.dispatchEvent('point_delete', {coords, d, target, fid: id});
+      deleteFeature(target, id);
+      gui.dispatchEvent('feature_delete', {coords, d, target, fid: id});
       gui.dispatchEvent('map-needs-refresh');
       hit.setHitId(-1);
     }
@@ -10492,7 +10496,7 @@
     }
 
     gui.keyboard.on('keydown', function(e) {
-      if (active() && e.keyName == 'space') {
+      if (pathDrawing() && e.keyName == 'space') {
         e.stopPropagation(); // prevent console from opening if shift-panning
       }
     }, null, 1);
@@ -10506,6 +10510,7 @@
           deleteActiveVertex(e, vInfo);
         };
       }
+
       // don't allow copying of open paths as geojson in polygon mode
       gui.contextMenu.open(e, target);
     });
@@ -10669,7 +10674,7 @@
 
     // esc or enter key finishes a path
     gui.keyboard.on('keydown', function(e) {
-      if (active() && (e.keyName == 'esc' || e.keyName == 'enter')) {
+      if (pathDrawing() && (e.keyName == 'esc' || e.keyName == 'enter')) {
         e.stopPropagation();
         finishCurrentPath();
         e.originalEvent.preventDefault(); // block console "enter"
@@ -12402,6 +12407,7 @@ GUI and setting the size and crop of SVG output.</p><div><input type="text" clas
 
     this.pixelCoordsToLngLatCoords = function(x, y) {
       var crsFrom = this.getDisplayCRS();
+      if (!crsFrom) return null; // e.g. table view
       var p1 = internal.toLngLat(_ext.translatePixelCoords(x, y), crsFrom);
       var p2 = internal.toLngLat(_ext.translatePixelCoords(x+1, y+1), crsFrom);
       return p1 && p2 && p1[1] <= 90 && p1[1] >= -90 ?
@@ -12893,10 +12899,12 @@ GUI and setting the size and crop of SVG output.</p><div><input type="text" clas
     }
 
     function addMenuItem(label, func) {
+      var prefix = '• &nbsp;';
+
       El('div')
         .appendTo(menu)
         .addClass('contextmenu-item')
-        .html(label)
+        .html(prefix + label)
         .on('click', func)
         .show();
     }
@@ -12909,28 +12917,36 @@ GUI and setting the size and crop of SVG output.</p><div><input type="text" clas
     }
 
     this.open = function(e, lyr) {
+      var copyable = e.ids?.length;
       if (lyr && !lyr.gui.geographic) return; // no popup for tabular data
       menu.empty();
 
       // menu contents
       //
-      if (e.deleteVertex) {
-        addMenuItem('Delete vertex', e.deleteVertex);
+      if (e.deleteVertex || e.deletePoint || copyable || e.deleteFeature) {
+
+        addMenuLabel('selection');
+        if (e.deleteVertex) {
+          addMenuItem('delete vertex', e.deleteVertex);
+        }
+        if (e.deletePoint) {
+          addMenuItem('delete point', e.deletePoint);
+        }
+        if (e.ids?.length) {
+          addMenuItem('copy as GeoJSON', copyGeoJSON);
+        }
+        if (e.deleteFeature) {
+          addMenuItem(getDeleteLabel(), e.deleteFeature);
+        }
       }
-      if (e.deletePoint) {
-        addMenuItem('Delete point', e.deletePoint);
-      }
-      if (e.ids?.length) {
-        addMenuItem('Copy as GeoJSON', copyGeoJSON);
-      }
-      if (e.deleteFeature) {
-        addMenuItem(getDeleteLabel(), e.deleteFeature);
-      }
+
       if (e.lonlat_coordinates) {
-        addCoords(e.lonlat_coordinates, 'longitude, latitude');
+        addMenuLabel('longitude, latitude');
+        addCoords(e.lonlat_coordinates);
       }
       if (e.projected_coordinates) {
-        addCoords(e.projected_coordinates, 'easting, northing');
+        addMenuLabel('easting, northing');
+        addCoords(e.projected_coordinates);
       }
 
       if (menu.node().childNodes.length === 0) {
@@ -12952,16 +12968,13 @@ GUI and setting the size and crop of SVG output.</p><div><input type="text" clas
       menu.show();
 
       function getDeleteLabel() {
-        return 'Delete ' + (lyr.geometry_type == 'point' ? 'point' : 'shape');
+        return 'delete ' + (lyr.geometry_type == 'point' ? 'point' : 'shape');
       }
 
-      function addCoords(p, label) {
+      function addCoords(p) {
         var coordStr = p[0] + ',' + p[1];
         // var displayStr = '• &nbsp;' + coordStr.replace(/-/g, '–').replace(',', ', ');
         var displayStr = coordStr.replace(/-/g, '–').replace(',', ', ');
-        if (label) {
-          addMenuLabel(label);
-        }
         addMenuItem(displayStr, function() {
           saveFileContentToClipboard(coordStr);
         });
