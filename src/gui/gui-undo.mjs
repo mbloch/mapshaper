@@ -8,8 +8,8 @@ import {
   setRectangleCoords,
   appendNewPoint,
   deleteLastPoint,
-  deletePoint,
-  insertPoint
+  deleteFeature,
+  insertFeature
 } from './gui-drawing-utils';
 
 var copyRecord = internal.copyRecord;
@@ -163,12 +163,12 @@ export function Undo(gui) {
     addHistoryState(undo, redo);
   });
 
-  gui.on('point_delete', function(e) {
+  gui.on('feature_delete', function(e) {
     var redo = function() {
-      deletePoint(e.data.target, e.fid);
+      deleteFeature(e.data.target, e.fid);
     };
     var undo = function() {
-      insertPoint(e.data.target, e.fid, e.coords, e.d);
+      insertFeature(e.data.target, e.fid, e.coords, e.d);
     };
     addHistoryState(undo, redo);
   });

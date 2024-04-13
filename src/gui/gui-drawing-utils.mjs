@@ -1,4 +1,4 @@
-import { internal, Bounds, utils, geom } from './gui-core';
+import { internal, Bounds, utils, geom, error } from './gui-core';
 import { isProjectedLayer } from './gui-display-utils';
 import { layerHasCanvasDisplayStyle } from './gui-map-style';
 import { projectLayerForDisplay } from './gui-display-layer';
@@ -103,15 +103,6 @@ export function deleteLastPath(lyr) {
   }
 }
 
-export function deleteFeature(lyr, fid) {
-  var records = lyr.data?.getRecords();
-  if (records) records.splice(fid, 1);
-  lyr.shapes.splice(fid, 1);
-  if (isProjectedLayer(lyr) && lyr.shapes != lyr.gui.displayLayer.shapes) {
-    lyr.gui.displayLayer.shapes.splice(fid, 1);
-  }
-}
-
 // p: one point in source data coords
 export function appendNewPoint(lyr, p) {
   lyr.shapes.push([p]);
@@ -124,15 +115,20 @@ export function appendNewPoint(lyr, p) {
   }
 }
 
-export function deletePoint(lyr, fid) {
-  deleteFeature(lyr, fid);
+export function deleteFeature(lyr, fid) {
+  var records = lyr.data?.getRecords();
+  if (records) records.splice(fid, 1);
+  lyr.shapes.splice(fid, 1);
+  if (isProjectedLayer(lyr) && lyr.geometry_type == 'point') {
+    lyr.gui.displayLayer.shapes.splice(fid, 1); // point layer
+  }
 }
 
-export function insertPoint(lyr, fid, shp, d) {
+export function insertFeature(lyr, fid, shp, d) {
   var records = lyr.data?.getRecords();
   if (records) records.splice(fid, 0, d);
   lyr.shapes.splice(fid, 0, shp);
-  if (isProjectedLayer(lyr)) {
+  if (isProjectedLayer(lyr) && lyr.geometry_type == 'point') {
     var shp2 = projectPointCoords(shp, lyr.gui.projectPoint);
     lyr.gui.displayLayer.shapes.splice(fid, 0, shp2);
   }
