@@ -155,7 +155,7 @@ export var ExportControl = function(gui) {
     if (files.length == 1 && checkboxOn(clipboardCheckbox)) {
       await saveFileContentToClipboard(files[0].content);
     } else {
-      await utils.promisify(internal.writeFiles)(files, opts);
+      await internal.writeFiles(files, opts);
     }
   }
 
