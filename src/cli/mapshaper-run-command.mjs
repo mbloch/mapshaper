@@ -362,7 +362,7 @@ export async function runCommand(command, job) {
         //// catalog = null;
         job.catalog = new Catalog();
       }
-      await utils.promisify(writeFiles)(outputFiles, opts);
+      await writeFiles(outputFiles, opts);
 
     } else if (name == 'point-grid') {
       outputLayers = [cmd.pointGrid(targetDataset, opts)];

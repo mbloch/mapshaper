@@ -19,7 +19,6 @@ cli.isFile = function(path, cache) {
   return ss && ss.isFile() || false;
 };
 
-
 // cli.fileSize = function(path) {
 //   var ss = cli.statSync(path);
 //   return ss && ss.size || 0;
@@ -62,14 +61,30 @@ cli.createDirIfNeeded = function(fname) {
 };
 
 // content: Buffer or string
-cli.writeFile = function(fname, content, cb) {
-  var fs = require('rw');
+cli.writeFileSync = function(fname, content) {
   cli.createDirIfNeeded(fname);
-  if (cb) {
-    fs.writeFile(fname, content, cb);
+  if (utils.isString(content)) {
+    require('fs').writeFileSync(fname, content);
   } else {
-    fs.writeFileSync(fname, content);
+    // as of Node.js v20, on a typical machine, max buffer size is 4gb but the max
+    // write buffer size is 2gb. An error is thrown when writing >2gb and <4gb.
+    // To support writing files up to 4gb, files are written in chunks.
+    cli.writeFileInChunks(fname, content, 1e7);
   }
+};
+
+cli.writeFileInChunks = function(fname, buffer, chunkSize) {
+  var fs = require('fs');
+  var fd = fs.openSync(fname, 'w');
+  var offset = 0;
+  var bufLen = buffer.length;
+  var bytesWritten, bytesToWrite;
+  do {
+    bytesToWrite = Math.min(chunkSize, bufLen - offset);
+    bytesWritten = fs.writeSync(fd, buffer, offset, bytesToWrite);
+    offset += bytesWritten;
+  } while (bytesWritten > 0 && offset < bufLen);
+  fs.closeSync(fd);
 };
 
 // Returns Node Buffer

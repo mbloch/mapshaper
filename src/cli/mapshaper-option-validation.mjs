@@ -76,8 +76,7 @@ export function validateOutputOpts(cmd) {
     if (pathInfo.directory) {
       o.directory = pathInfo.directory;
       // no longer checking for missing directory
-      // (cli.writeFile() now creates directories that don't exist)
-      // cli.validateOutputDir(o.directory);
+      // (cli.writeFileSync() now creates directories that don't exist)
     }
     if (/gz/i.test(pathInfo.extension)) {
       // handle arguments like -o out.json.gz (the preferred format)

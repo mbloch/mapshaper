@@ -5,9 +5,8 @@ import { parseLocalPath } from '../utils/mapshaper-filename-utils';
 import cli from '../cli/mapshaper-cli-utils';
 import utils from '../utils/mapshaper-utils';
 import require from '../mapshaper-require';
-export function writeFiles(exports, opts, cb) {
-  cb = cb || function() {};
-  return _writeFiles(exports, opts, cb);
+export async function writeFiles(exports, opts) {
+  return _writeFiles(exports, opts);
 }
 
 // Used by GUI to replace the CLI version of writeFiles()
@@ -16,15 +15,15 @@ export function replaceWriteFiles(func) {
   _writeFiles = func;
 }
 
-var _writeFiles = function(exports, opts, cb) {
+var _writeFiles = function(exports, opts) {
   if (exports.length > 0 === false) {
     message("No files to save");
   } else if (opts.dry_run) {
     // no output
   } else if (opts.stdout) {
-    // Pass callback for asynchronous output (synchronous output to stdout can
-    // trigger EAGAIN error, e.g. when piped to less)
-    return cli.writeFile('/dev/stdout', exports[0].content, cb);
+    // Using async writeFile() function -- synchronous output to stdout can
+    // trigger EAGAIN error, e.g. when piped to less.
+    require('rw').writeFile('/dev/stdout', exports[0].content, function() {});
   } else {
     if (opts.zip) {
       exports = [{
@@ -48,11 +47,10 @@ var _writeFiles = function(exports, opts, cb) {
       if (!opts.force && inputFiles.indexOf(path) > -1) {
         stop('Need to use the "-o force" option to overwrite input files.');
       }
-      cli.writeFile(path, obj.content);
+      cli.writeFileSync(path, obj.content);
       message("Wrote " + path);
     });
   }
-  if (cb) cb(null);
 };
 
 export function getOutputPaths(files, opts) {
