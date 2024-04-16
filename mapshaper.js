@@ -11557,7 +11557,6 @@
     return ss && ss.isFile() || false;
   };
 
-
   // cli.fileSize = function(path) {
   //   var ss = cli.statSync(path);
   //   return ss && ss.size || 0;
@@ -11600,14 +11599,30 @@
   };
 
   // content: Buffer or string
-  cli.writeFile = function(fname, content, cb) {
-    var fs = require$1('rw');
+  cli.writeFileSync = function(fname, content) {
     cli.createDirIfNeeded(fname);
-    if (cb) {
-      fs.writeFile(fname, content, cb);
+    if (utils.isString(content)) {
+      require$1('fs').writeFileSync(fname, content);
     } else {
-      fs.writeFileSync(fname, content);
+      // as of Node.js v20, on a typical machine, max buffer size is 4gb but the max
+      // write buffer size is 2gb. An error is thrown when writing >2gb and <4gb.
+      // To support writing files up to 4gb, files are written in chunks.
+      cli.writeFileInChunks(fname, content, 1e7);
     }
+  };
+
+  cli.writeFileInChunks = function(fname, buffer, chunkSize) {
+    var fs = require$1('fs');
+    var fd = fs.openSync(fname, 'w');
+    var offset = 0;
+    var bufLen = buffer.length;
+    var bytesWritten, bytesToWrite;
+    do {
+      bytesToWrite = Math.min(chunkSize, bufLen - offset);
+      bytesWritten = fs.writeSync(fd, buffer, offset, bytesToWrite);
+      offset += bytesWritten;
+    } while (bytesWritten > 0 && offset < bufLen);
+    fs.closeSync(fd);
   };
 
   // Returns Node Buffer
@@ -11700,9 +11715,8 @@
     return obj;
   };
 
-  function writeFiles(exports, opts, cb) {
-    cb = cb || function() {};
-    return _writeFiles(exports, opts, cb);
+  async function writeFiles(exports, opts) {
+    return _writeFiles(exports, opts);
   }
 
   // Used by GUI to replace the CLI version of writeFiles()
@@ -11711,13 +11725,13 @@
     _writeFiles = func;
   }
 
-  var _writeFiles = function(exports, opts, cb) {
+  var _writeFiles = function(exports, opts) {
     if (exports.length > 0 === false) {
       message("No files to save");
     } else if (opts.dry_run) ; else if (opts.stdout) {
-      // Pass callback for asynchronous output (synchronous output to stdout can
-      // trigger EAGAIN error, e.g. when piped to less)
-      return cli.writeFile('/dev/stdout', exports[0].content, cb);
+      // Using async writeFile() function -- synchronous output to stdout can
+      // trigger EAGAIN error, e.g. when piped to less.
+      require$1('rw').writeFile('/dev/stdout', exports[0].content, function() {});
     } else {
       if (opts.zip) {
         exports = [{
@@ -11741,11 +11755,10 @@
         if (!opts.force && inputFiles.indexOf(path) > -1) {
           stop('Need to use the "-o force" option to overwrite input files.');
         }
-        cli.writeFile(path, obj.content);
+        cli.writeFileSync(path, obj.content);
         message("Wrote " + path);
       });
     }
-    if (cb) cb(null);
   };
 
   function getOutputPaths(files, opts) {
@@ -23469,8 +23482,7 @@ ${svg}
       if (pathInfo.directory) {
         o.directory = pathInfo.directory;
         // no longer checking for missing directory
-        // (cli.writeFile() now creates directories that don't exist)
-        // cli.validateOutputDir(o.directory);
+        // (cli.writeFileSync() now creates directories that don't exist)
       }
       if (/gz/i.test(pathInfo.extension)) {
         // handle arguments like -o out.json.gz (the preferred format)
@@ -45388,7 +45400,7 @@ ${svg}
           //// catalog = null;
           job.catalog = new Catalog();
         }
-        await utils.promisify(writeFiles)(outputFiles, opts);
+        await writeFiles(outputFiles, opts);
 
       } else if (name == 'point-grid') {
         outputLayers = [cmd.pointGrid(targetDataset, opts)];
@@ -45584,7 +45596,7 @@ ${svg}
     });
   }
 
-  var version = "0.6.89";
+  var version = "0.6.90";
 
   // Parse command line args into commands and run them
   // Function takes an optional Node-style callback. A Promise is returned if no callback is given.

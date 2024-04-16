@@ -2443,33 +2443,31 @@
 
   function WriteFilesProxy(gui) {
     // replace CLI version of writeFiles()
-    internal.replaceWriteFiles(function(files, opts, done) {
+    internal.replaceWriteFiles(async function(files, opts) {
       var filename;
       if (!utils$1.isArray(files) || files.length === 0) {
-        done("Nothing to export");
+        throw Error("Nothing to export");
       } else if (GUI.canSaveToServer() && !opts.save_to_download_folder) {
         var paths = internal.getOutputPaths(utils$1.pluck(files, 'filename'), opts);
         var data = utils$1.pluck(files, 'content');
-        saveFilesToServer(paths, data, function(err) {
-          var msg;
-          if (err) {
-            msg = "<b>Direct save failed</b><br>Reason: " + err + ".";
-            msg += "<br>Saving to download folder instead.";
-            gui.alert(msg);
-            // fall back to standard method if saving to server fails
-            internal.writeFiles(files, {save_to_download_folder: true}, done);
-          } else {
-            if (files.length >= 1) {
-              gui.alert('<b>Saved</b><br>' + paths.join('<br>'));
-            }
-            done();
+        var msg;
+        try {
+          await utils$1.promisify(saveFilesToServer)(paths, data);
+          if (files.length >= 1) {
+            gui.alert('<b>Saved</b><br>' + paths.join('<br>'));
           }
-        });
+        } catch(err) {
+          msg = "<b>Direct save failed</b><br>Reason: " + err.message + ".";
+          msg += "<br>Saving to download folder instead.";
+          gui.alert(msg);
+          // fall back to standard method if saving to server fails
+          await internal.writeFiles(files, {save_to_download_folder: true});
+        }
       } else if (files.length == 1) {
-        saveBlobToLocalFile(files[0].filename, new Blob([files[0].content]), done);
+        await gui.promisify(saveBlobToLocalFile)(files[0].filename, new Blob([files[0].content]));
       } else {
         filename = internal.getCommonFileBase(utils$1.pluck(files, 'filename')) || "output";
-        saveZipFile(filename + ".zip", files, done);
+        await utils$1.promisify(saveZipFile)(filename + ".zip", files);
       }
     });
   }
@@ -4754,7 +4752,7 @@
       if (files.length == 1 && checkboxOn(clipboardCheckbox)) {
         await saveFileContentToClipboard(files[0].content);
       } else {
-        await utils$1.promisify(internal.writeFiles)(files, opts);
+        await internal.writeFiles(files, opts);
       }
     }
 
