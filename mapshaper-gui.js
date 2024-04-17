@@ -2464,7 +2464,7 @@
           await internal.writeFiles(files, {save_to_download_folder: true});
         }
       } else if (files.length == 1) {
-        await gui.promisify(saveBlobToLocalFile)(files[0].filename, new Blob([files[0].content]));
+        await utils$1.promisify(saveBlobToLocalFile)(files[0].filename, new Blob([files[0].content]));
       } else {
         filename = internal.getCommonFileBase(utils$1.pluck(files, 'filename')) || "output";
         await utils$1.promisify(saveZipFile)(filename + ".zip", files);
