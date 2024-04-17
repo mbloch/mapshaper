@@ -50,7 +50,7 @@ export function WriteFilesProxy(gui) {
         await internal.writeFiles(files, {save_to_download_folder: true});
       }
     } else if (files.length == 1) {
-      await gui.promisify(saveBlobToLocalFile)(files[0].filename, new Blob([files[0].content]));
+      await utils.promisify(saveBlobToLocalFile)(files[0].filename, new Blob([files[0].content]));
     } else {
       filename = internal.getCommonFileBase(utils.pluck(files, 'filename')) || "output";
       await utils.promisify(saveZipFile)(filename + ".zip", files);
