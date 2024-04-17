@@ -1,3 +1,6 @@
+v0.6.91
+* Bug fix
+
 v0.6.90
 * [cli] Support for writing files up to 4gb on most computers (2gb was the previous limit).
 
