@@ -113,6 +113,8 @@ describe('mapshaper-dms.js', function () {
 
       // D M.M
       assert.equal(parseDMS('-1°30.000'), -1.5);
+      assert.equal(parseDMS('-1°30.000m'), -1.5);
+      assert.equal(parseDMS('-1d30.000m'), -1.5);
       assert.equal(parseDMS('-1°30.02'), -1 - 30.02 / 60);
 
       // D M S
@@ -120,6 +122,8 @@ describe('mapshaper-dms.js', function () {
       assert.equal(parseDMS('11 6 36 S'), -11.11);
       assert.equal(parseDMS('-11 6 36'), -11.11);
       assert.equal(parseDMS('11 6 36 e'), 11.11);
+      assert.equal(parseDMS('11d6m36 e'), 11.11);
+      assert.equal(parseDMS('11D6M36 e'), 11.11);
       assert.equal(parseDMS('11 6 36 N'), 11.11);
       assert.equal(parseDMS('-11°6\'36"'), -11.11);
       assert.equal(parseDMS('11°6\'36"S'), -11.11);
