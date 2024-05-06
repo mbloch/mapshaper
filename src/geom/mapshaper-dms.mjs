@@ -3,7 +3,7 @@ import { stop } from '../utils/mapshaper-logging';
 // Parse a formatted value in DMS DM or D to a numeric value. Returns NaN if unparsable.
 // Delimiters: degrees: D|d|°; minutes: '; seconds: "
 export function parseDMS(str, fmt) {
-  var defaultRxp = /^(?<prefix>[nsew+-]?)(?<d>[0-9.]+)[d°]? ?(?<m>[0-9.]*)['′]? ?(?<s>[0-9.]*)["″]? ?(?<suffix>[nsew]?)$/i;
+  var defaultRxp = /^(?<prefix>[nsew+-]?)(?<d>[0-9.]+)[d°]? ?(?<m>[0-9.]*)[m'′]? ?(?<s>[0-9.]*)["″]? ?(?<suffix>[nsew]?)$/i;
   var rxp = fmt ? getParseRxp(fmt) : defaultRxp;
   var match = rxp.exec(str.trim());
   var d = NaN;
