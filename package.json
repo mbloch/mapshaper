@@ -1,6 +1,6 @@
 {
   "name": "mapshaper",
-  "version": "0.6.91",
+  "version": "0.6.92",
   "description": "A tool for editing vector datasets for mapping and GIS.",
   "keywords": [
     "shapefile",
