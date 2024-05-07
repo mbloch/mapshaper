@@ -24,7 +24,14 @@ export function setLoggingForGUI(gui) {
     internal.logArgs(arguments);
   }
 
-  internal.setLoggingFunctions(message, error, stop);
+  // GUI warning uses the alert popup, which replaces previous popup
+  // (unlike message) -- this allows for catching and handling errors
+  // by replacing the error popup with a warning.
+  function warn() {
+    gui.alert(GUI.formatMessageArgs(arguments));
+  }
+
+  internal.setLoggingFunctions(message, error, stop, warn);
 }
 
 export function WriteFilesProxy(gui) {

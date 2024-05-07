@@ -78,7 +78,6 @@ export function AlertControl(gui) {
   gui.alert = function(str, title) {
     closePopup();
     openAlert = openPopup = showPopupAlert(str, title);
-    // alert.button('close', gui.clearMode);
     openAlert.onClose(gui.clearMode);
     gui.enterMode('alert');
   };

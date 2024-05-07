@@ -208,6 +208,7 @@ export async function importSessionData(buf, gui) {
 function importDatasets(datasets, gui) {
   gui.model.addDatasets(datasets);
   var target = findTargetLayer(datasets);
+  delete target.layers[0].active; // kludge, active flag only used in snapshots now
   gui.model.setDefaultTarget(target.layers, target.dataset);
   gui.model.updated({select: true, arc_count: true}); // arc_count to refresh display shapes
 }
@@ -215,15 +216,13 @@ function importDatasets(datasets, gui) {
 async function captureSnapshot(gui) {
   var lyr = gui.model.getActiveLayer()?.layer;
   if (!lyr) return null; // no data -- no snapshot
-  lyr.active = true;
   // compact: true applies compression to vector coordinates, for ~30% reduction
   //   in file size in a typical polygon or polyline file, but longer processing time
-  var opts = {compact: false};
+  var opts = {compact: false, active_layer: lyr};
   var datasets = gui.model.getDatasets();
   // console.time('msx');
   var obj = await internal.exportDatasetsToPack(datasets, opts);
   // console.timeEnd('msx')
-  delete lyr.active;
   obj.gui = getGuiState(gui);
   return obj;
 }
@@ -317,7 +316,9 @@ function findTargetLayer(datasets) {
   var target;
   datasets.forEach(function(dataset) {
     var lyr = dataset.layers.find(function(lyr) { return !!lyr.active; });
-    if (lyr) target = {dataset: dataset, layers: [lyr]};
+    if (lyr) {
+      target = {dataset: dataset, layers: [lyr]};
+    }
   });
   if (!target) {
     target = {dataset: datasets[0], layers: [datasets[0].layers[0]]};

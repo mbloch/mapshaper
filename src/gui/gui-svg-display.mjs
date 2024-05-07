@@ -39,7 +39,7 @@ export function SvgDisplayLayer(gui, ext, mouse) {
     svg.append(g);
 
     // prevent svg hit detection on inactive layers
-    if (!lyr.active) {
+    if (!gui.map.isActiveLayer(lyr)) {
       g.style.pointerEvents = 'none';
     }
   };

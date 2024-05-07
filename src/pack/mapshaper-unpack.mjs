@@ -1,6 +1,6 @@
 import { ArcCollection } from '../paths/mapshaper-arcs';
 import { DataTable } from '../datatable/mapshaper-data-table';
-import { stop } from '../utils/mapshaper-logging';
+import { stop, warn } from '../utils/mapshaper-logging';
 import { BinArray } from '../utils/mapshaper-binarray';
 // import { decode } from "@msgpack/msgpack";
 import { unpack as decode } from 'msgpackr';
@@ -20,6 +20,7 @@ export async function restoreSessionData(obj) {
     stop('Invalid mapshaper session data object');
   }
   var datasets = await Promise.all(obj.datasets.map(importDataset));
+  datasets = datasets.filter(Boolean); // skip corrupted datasets
   return Object.assign(obj, {datasets: datasets});
 }
 
@@ -32,10 +33,19 @@ function isValidSession(obj) {
 
 async function importDataset(obj) {
   var arcs = null;
-  if (obj.arcs) arcs = await importArcs(obj.arcs);
+  var layers = (obj.layers || []).map(importLayer);
+  try {
+    if (obj.arcs) {
+      arcs = await importArcs(obj.arcs);
+    }
+  } catch(e) {
+    warn(`Some coordinates are corrupted, skipping ${layers.length == 1 ? 'a layer' : layers.length + ' layers'}.`);
+    return null;
+  }
+
   return {
     info: importInfo(obj.info || {}),
-    layers: (obj.layers || []).map(importLayer),
+    layers: layers,
     arcs: arcs
   };
 }
