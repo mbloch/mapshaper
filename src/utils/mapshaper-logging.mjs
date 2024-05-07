@@ -4,7 +4,7 @@ import utils from '../utils/mapshaper-utils';
 
 var LOGGING = false;
 var STDOUT = false; // use stdout for status messages
-var _error, _stop, _message;
+var _error, _stop, _message, _warn;
 
 var _interrupt = function() {
   throw new NonFatalError(formatLogArgs(arguments));
@@ -13,9 +13,9 @@ var _interrupt = function() {
 setLoggingForCLI();
 
 export function getLoggingSetter() {
-  var e = _error, s = _stop, m = _message;
+  var e = _error, s = _stop, m = _message, w = _warn;
   return function() {
-    setLoggingFunctions(m, e, s);
+    setLoggingFunctions(m, e, s, w);
   };
 }
 
@@ -33,7 +33,10 @@ export function setLoggingForCLI() {
     logArgs(arguments);
   }
 
-  setLoggingFunctions(message, error, stop);
+  // CLI warning is just a message (GUI behaves differently)
+  var warn = message;
+
+  setLoggingFunctions(message, error, stop, warn);
 }
 
 export function enableLogging() {
@@ -64,11 +67,16 @@ export function message() {
   _message.apply(null, messageArgs(arguments));
 }
 
+export function warn() {
+  _warn.apply(null, messageArgs(arguments));
+}
+
 // A way for the GUI to replace the CLI logging functions
-export function setLoggingFunctions(message, error, stop) {
+export function setLoggingFunctions(message, error, stop, warn) {
   _message = message;
   _error = error;
   _stop = stop;
+  _warn = warn;
 }
 
 // get detailed error information from error stack (if available)

@@ -61,10 +61,11 @@ export async function exportDataset(dataset, opts) {
     arcData.zlimit = arcs.getRetainedInterval(); // TODO: add this to getVertexData()
     arcData = await exportArcData(arcData, opts);
   }
+  var layers = dataset.layers.map(lyr => exportLayer(lyr, opts));
   return {
     arcs: arcData,
     info: dataset.info ? exportInfo(dataset.info) : null,
-    layers: await Promise.all((dataset.layers || []).map(exportLayer))
+    layers: await Promise.all(layers)
   };
 }
 
@@ -135,7 +136,7 @@ function typedArrayToBuffer(arr) {
   return new Uint8Array(arr.buffer, arr.byteOffset, arr.byteLength);
 }
 
-async function exportLayer(lyr) {
+async function exportLayer(lyr, opts) {
   var data = null;
   if (lyr.data) {
     data = await exportTable2(lyr.data);
@@ -147,7 +148,7 @@ async function exportLayer(lyr) {
     data: data,
     menu_order: lyr.menu_order || null,
     pinned: lyr.pinned || false,
-    active: lyr.active || false
+    active: !!(lyr.active || lyr == opts.active_layer) // lyr.active: deprecated
   };
 }
 

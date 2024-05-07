@@ -250,7 +250,8 @@ export function MshpMap(gui) {
     }
 
     if (e.layer) {
-      _activeLyr = initActiveLayer(e.layer, e.dataset);
+      _activeLyr = e.layer;
+      initActiveLayer(e.layer, e.dataset);
     } else {
       _activeLyr = null;
     }
@@ -440,12 +441,6 @@ export function MshpMap(gui) {
   function initActiveLayer(lyr, dataset) {
     enhanceLayerForDisplay(lyr, dataset, getDisplayOptions());
     lyr.gui.style = MapStyle.getActiveLayerStyle(lyr.gui.displayLayer, getGlobalStyleOptions());
-    lyr.active = true;
-    getVisibleMapLayers().forEach(function(lyr) {
-      delete lyr.active;
-    });
-    lyr.active = true;
-    return lyr;
   }
 
   function getDrawableFurnitureLayers(layers) {
@@ -458,7 +453,7 @@ export function MshpMap(gui) {
   function updateLayerStyles(layers) {
     layers.forEach(function(mapLayer, i) {
       var style;
-      if (mapLayer.active) {
+      if (isActiveLayer(mapLayer)) {
         // regenerating active style everytime, to support style change when
         // switching between outline and preview modes.
         style = MapStyle.getActiveLayerStyle(mapLayer.gui.displayLayer, getGlobalStyleOptions());
