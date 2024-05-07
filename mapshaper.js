@@ -1202,7 +1202,7 @@
 
   var LOGGING = false;
   var STDOUT = false; // use stdout for status messages
-  var _error, _stop, _message;
+  var _error, _stop, _message, _warn;
 
   var _interrupt = function() {
     throw new NonFatalError(formatLogArgs(arguments));
@@ -1211,9 +1211,9 @@
   setLoggingForCLI();
 
   function getLoggingSetter() {
-    var e = _error, s = _stop, m = _message;
+    var e = _error, s = _stop, m = _message, w = _warn;
     return function() {
-      setLoggingFunctions(m, e, s);
+      setLoggingFunctions(m, e, s, w);
     };
   }
 
@@ -1231,7 +1231,10 @@
       logArgs(arguments);
     }
 
-    setLoggingFunctions(message, error, stop);
+    // CLI warning is just a message (GUI behaves differently)
+    var warn = message;
+
+    setLoggingFunctions(message, error, stop, warn);
   }
 
   function enableLogging() {
@@ -1262,11 +1265,16 @@
     _message.apply(null, messageArgs(arguments));
   }
 
+  function warn() {
+    _warn.apply(null, messageArgs(arguments));
+  }
+
   // A way for the GUI to replace the CLI logging functions
-  function setLoggingFunctions(message, error, stop) {
+  function setLoggingFunctions(message, error, stop, warn) {
     _message = message;
     _error = error;
     _stop = stop;
+    _warn = warn;
   }
 
   // get detailed error information from error stack (if available)
@@ -1418,6 +1426,7 @@
     stop: stop,
     interrupt: interrupt,
     message: message,
+    warn: warn,
     setLoggingFunctions: setLoggingFunctions,
     getErrorDetail: getErrorDetail,
     print: print,
@@ -11192,10 +11201,11 @@
       arcData.zlimit = arcs.getRetainedInterval(); // TODO: add this to getVertexData()
       arcData = await exportArcData(arcData, opts);
     }
+    var layers = dataset.layers.map(lyr => exportLayer(lyr, opts));
     return {
       arcs: arcData,
       info: dataset.info ? exportInfo(dataset.info) : null,
-      layers: await Promise.all((dataset.layers || []).map(exportLayer))
+      layers: await Promise.all(layers)
     };
   }
 
@@ -11266,7 +11276,7 @@
     return new Uint8Array(arr.buffer, arr.byteOffset, arr.byteLength);
   }
 
-  async function exportLayer(lyr) {
+  async function exportLayer(lyr, opts) {
     var data = null;
     if (lyr.data) {
       data = await exportTable2(lyr.data);
@@ -11278,7 +11288,7 @@
       data: data,
       menu_order: lyr.menu_order || null,
       pinned: lyr.pinned || false,
-      active: lyr.active || false
+      active: !!(lyr.active || lyr == opts.active_layer) // lyr.active: deprecated
     };
   }
 
@@ -14190,7 +14200,7 @@
   // Parse a formatted value in DMS DM or D to a numeric value. Returns NaN if unparsable.
   // Delimiters: degrees: D|d|°; minutes: '; seconds: "
   function parseDMS(str, fmt) {
-    var defaultRxp = /^(?<prefix>[nsew+-]?)(?<d>[0-9.]+)[d°]? ?(?<m>[0-9.]*)['′]? ?(?<s>[0-9.]*)["″]? ?(?<suffix>[nsew]?)$/i;
+    var defaultRxp = /^(?<prefix>[nsew+-]?)(?<d>[0-9.]+)[d°]? ?(?<m>[0-9.]*)[m'′]? ?(?<s>[0-9.]*)["″]? ?(?<suffix>[nsew]?)$/i;
     var rxp = fmt ? getParseRxp(fmt) : defaultRxp;
     var match = rxp.exec(str.trim());
     var d = NaN;
@@ -28846,6 +28856,7 @@ ${svg}
       stop('Invalid mapshaper session data object');
     }
     var datasets = await Promise.all(obj.datasets.map(importDataset));
+    datasets = datasets.filter(Boolean); // skip corrupted datasets
     return Object.assign(obj, {datasets: datasets});
   }
 
@@ -28858,10 +28869,19 @@ ${svg}
 
   async function importDataset(obj) {
     var arcs = null;
-    if (obj.arcs) arcs = await importArcs(obj.arcs);
+    var layers = (obj.layers || []).map(importLayer);
+    try {
+      if (obj.arcs) {
+        arcs = await importArcs(obj.arcs);
+      }
+    } catch(e) {
+      warn(`Some coordinates are corrupted, skipping ${layers.length == 1 ? 'a layer' : layers.length + ' layers'}.`);
+      return null;
+    }
+
     return {
       info: importInfo(obj.info || {}),
-      layers: (obj.layers || []).map(importLayer),
+      layers: layers,
       arcs: arcs
     };
   }
@@ -45596,7 +45616,7 @@ ${svg}
     });
   }
 
-  var version = "0.6.91";
+  var version = "0.6.92";
 
   // Parse command line args into commands and run them
   // Function takes an optional Node-style callback. A Promise is returned if no callback is given.

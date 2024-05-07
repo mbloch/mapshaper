@@ -1167,7 +1167,6 @@
     gui.alert = function(str, title) {
       closePopup();
       openAlert = openPopup = showPopupAlert(str, title);
-      // alert.button('close', gui.clearMode);
       openAlert.onClose(gui.clearMode);
       gui.enterMode('alert');
     };
@@ -1550,6 +1549,7 @@
   function importDatasets(datasets, gui) {
     gui.model.addDatasets(datasets);
     var target = findTargetLayer(datasets);
+    delete target.layers[0].active; // kludge, active flag only used in snapshots now
     gui.model.setDefaultTarget(target.layers, target.dataset);
     gui.model.updated({select: true, arc_count: true}); // arc_count to refresh display shapes
   }
@@ -1557,15 +1557,13 @@
   async function captureSnapshot(gui) {
     var lyr = gui.model.getActiveLayer()?.layer;
     if (!lyr) return null; // no data -- no snapshot
-    lyr.active = true;
     // compact: true applies compression to vector coordinates, for ~30% reduction
     //   in file size in a typical polygon or polyline file, but longer processing time
-    var opts = {compact: false};
+    var opts = {compact: false, active_layer: lyr};
     var datasets = gui.model.getDatasets();
     // console.time('msx');
     var obj = await internal.exportDatasetsToPack(datasets, opts);
     // console.timeEnd('msx')
-    delete lyr.active;
     obj.gui = getGuiState(gui);
     return obj;
   }
@@ -1659,7 +1657,9 @@
     var target;
     datasets.forEach(function(dataset) {
       var lyr = dataset.layers.find(function(lyr) { return !!lyr.active; });
-      if (lyr) target = {dataset: dataset, layers: [lyr]};
+      if (lyr) {
+        target = {dataset: dataset, layers: [lyr]};
+      }
     });
     if (!target) {
       target = {dataset: datasets[0], layers: [datasets[0].layers[0]]};
@@ -2438,7 +2438,14 @@
       internal.logArgs(arguments);
     }
 
-    internal.setLoggingFunctions(message, error, stop);
+    // GUI warning uses the alert popup, which replaces previous popup
+    // (unlike message) -- this allows for catching and handling errors
+    // by replacing the error popup with a warning.
+    function warn() {
+      gui.alert(GUI.formatMessageArgs(arguments));
+    }
+
+    internal.setLoggingFunctions(message, error, stop, warn);
   }
 
   function WriteFilesProxy(gui) {
@@ -4745,8 +4752,9 @@
 
     // done: function(string|Error|null)
     async function exportMenuSelection(targets) {
-      var opts = getExportOpts();
       // note: command line "target" option gets ignored
+      var opts = getExportOpts();
+      opts.active_layer = gui.model.getActiveLayer().layer; // kludge to support restoring active layer in gui
       var files = await internal.exportTargetLayers(model, targets, opts);
       gui.session.layersExported(getTargetLayerIds(), getExportOptsAsString());
       if (files.length == 1 && checkboxOn(clipboardCheckbox)) {
@@ -6209,7 +6217,7 @@
 
   var LOGGING = false;
   var STDOUT = false; // use stdout for status messages
-  var _error, _stop, _message;
+  var _error, _stop, _message, _warn;
 
   var _interrupt = function() {
     throw new NonFatalError(formatLogArgs(arguments));
@@ -6218,9 +6226,9 @@
   setLoggingForCLI();
 
   function getLoggingSetter() {
-    var e = _error, s = _stop, m = _message;
+    var e = _error, s = _stop, m = _message, w = _warn;
     return function() {
-      setLoggingFunctions(m, e, s);
+      setLoggingFunctions(m, e, s, w);
     };
   }
 
@@ -6238,7 +6246,10 @@
       logArgs(arguments);
     }
 
-    setLoggingFunctions(message, error, stop);
+    // CLI warning is just a message (GUI behaves differently)
+    var warn = message;
+
+    setLoggingFunctions(message, error, stop, warn);
   }
 
   function enableLogging() {
@@ -6269,11 +6280,16 @@
     _message.apply(null, messageArgs(arguments));
   }
 
+  function warn() {
+    _warn.apply(null, messageArgs(arguments));
+  }
+
   // A way for the GUI to replace the CLI logging functions
-  function setLoggingFunctions(message, error, stop) {
+  function setLoggingFunctions(message, error, stop, warn) {
     _message = message;
     _error = error;
     _stop = stop;
+    _warn = warn;
   }
 
   // get detailed error information from error stack (if available)
@@ -11999,7 +12015,7 @@
       svg.append(g);
 
       // prevent svg hit detection on inactive layers
-      if (!lyr.active) {
+      if (!gui.map.isActiveLayer(lyr)) {
         g.style.pointerEvents = 'none';
       }
     };
@@ -12560,7 +12576,8 @@ GUI and setting the size and crop of SVG output.</p><div><input type="text" clas
       }
 
       if (e.layer) {
-        _activeLyr = initActiveLayer(e.layer, e.dataset);
+        _activeLyr = e.layer;
+        initActiveLayer(e.layer, e.dataset);
       } else {
         _activeLyr = null;
       }
@@ -12750,12 +12767,6 @@ GUI and setting the size and crop of SVG output.</p><div><input type="text" clas
     function initActiveLayer(lyr, dataset) {
       enhanceLayerForDisplay(lyr, dataset, getDisplayOptions());
       lyr.gui.style = getActiveLayerStyle(lyr.gui.displayLayer, getGlobalStyleOptions());
-      lyr.active = true;
-      getVisibleMapLayers().forEach(function(lyr) {
-        delete lyr.active;
-      });
-      lyr.active = true;
-      return lyr;
     }
 
     function getDrawableFurnitureLayers(layers) {
@@ -12768,7 +12779,7 @@ GUI and setting the size and crop of SVG output.</p><div><input type="text" clas
     function updateLayerStyles(layers) {
       layers.forEach(function(mapLayer, i) {
         var style;
-        if (mapLayer.active) {
+        if (isActiveLayer(mapLayer)) {
           // regenerating active style everytime, to support style change when
           // switching between outline and preview modes.
           style = getActiveLayerStyle(mapLayer.gui.displayLayer, getGlobalStyleOptions());
