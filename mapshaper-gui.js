@@ -2534,7 +2534,7 @@
     // prevent GUI message popup on error
     internal.setLoggingForCLI();
     try {
-      if (!dataset || internal.datasetIsEmpty(dataset)) {
+      if (!dataset || internal.datasetIsEmpty(dataset) && !dataset.info?.crs) {
         crs = internal.parseCrsString('wgs84');
       } else {
         crs = internal.getDatasetCRS(dataset);
