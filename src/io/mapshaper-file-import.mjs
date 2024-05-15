@@ -3,6 +3,7 @@ import {
   isSupportedBinaryInputType,
   guessInputContentType,
   guessInputFileType,
+  isAuxiliaryInputFileType,
   isZipFile,
   isKmzFile,
   stringLooksLikeJSON,
@@ -144,7 +145,7 @@ function findPrimaryFiles(cache) {
       // don't import .dbf separately if .shp is present
       if (replaceFileExtension(filename, 'shp') in cache) return false;
     }
-    return type == 'text' || type == 'json' || type == 'shp' || type == 'dbf' || type == 'kml';
+    return type && !isAuxiliaryInputFileType(type);
   });
 }
 

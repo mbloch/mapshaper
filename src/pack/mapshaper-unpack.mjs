@@ -5,7 +5,7 @@ import { BinArray } from '../utils/mapshaper-binarray';
 // import { decode } from "@msgpack/msgpack";
 import { unpack as decode } from 'msgpackr';
 import { importTable } from '../pack/mapshaper-packed-table';
-import { parsePrj, parseCrsString } from '../crs/mapshaper-projections';
+import { parsePrj, parseCrsString, initProjLibrary } from '../crs/mapshaper-projections';
 import { gunzipSync, gunzipAsync, isGzipped } from '../io/mapshaper-gzip';
 
 // Import datasets contained in a BSON blob
@@ -44,7 +44,7 @@ async function importDataset(obj) {
   }
 
   return {
-    info: importInfo(obj.info || {}),
+    info: await importInfo(obj.info || {}),
     layers: layers,
     arcs: arcs
   };
@@ -84,8 +84,10 @@ async function importArcs(obj) {
   return arcs;
 }
 
-function importInfo(o) {
+async function importInfo(o) {
   if (o.crs_string) {
+    // load external files (e.g. epsg definitions) if needed in GUI
+    await initProjLibrary({crs: o.crs_string});
     o.crs = parseCrsString(o.crs_string);
   } else if (o.prj) {
     o.crs = parsePrj(o.prj);

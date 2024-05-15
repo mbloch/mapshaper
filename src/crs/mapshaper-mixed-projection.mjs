@@ -4,11 +4,14 @@ import utils from '../utils/mapshaper-utils';
 import require from '../mapshaper-require';
 var mproj = require('mproj');
 
-// A compound projection, consisting of a default projection and one or more rectangular frames
-// that are projected separately and affine transformed.
+// Constructor function for a compound projection consisting of a default
+//   projection and one or more rectangular frames that are projected separately
+//   and affine transformed.
 // @mainParams: parameters for main projection, including:
 //    proj: Proj string
 //    bbox: lat-lon bounding box
+// Returns a mproj CRS object for the main CRS with the CRS objects of the
+//    embedded projections attached.
 export function MixedProjection(mainParams, options) {
   var mainFrame = initFrame(mainParams);
   var mainP = mainFrame.crs;
