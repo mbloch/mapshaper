@@ -7,9 +7,11 @@ import { PACKAGE_EXT } from '../pack/mapshaper-pack';
 export function guessInputFileType(file) {
   var ext = getFileExtension(file || '').toLowerCase(),
       type = null;
-  if (ext == 'dbf' || ext == 'shp' || ext == 'prj' || ext == 'shx' || ext == 'kml' || ext == 'cpg') {
+  if (ext == 'dbf' || ext == 'shp' || ext == 'kml') {
     type = ext;
-  } else if (/json$/.test(ext)) {
+  } else if (isAuxiliaryInputFileType(ext)) {
+    type = ext;
+  } else if (/json$/.test(ext)) { // matches topojson, geojson, json
     type = 'json';
   } else if (ext == 'csv' || ext == 'tsv' || ext == 'txt' || ext == 'tab') {
     type = 'text';
@@ -17,6 +19,11 @@ export function guessInputFileType(file) {
     type = PACKAGE_EXT;
   }
   return type;
+}
+
+// File types that can be imported but are not convertible to datasets
+export function isAuxiliaryInputFileType(type) {
+  return type == 'prj' || type == 'shx' || type == 'cpg';
 }
 
 export function guessInputContentType(content) {

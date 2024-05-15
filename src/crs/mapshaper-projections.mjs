@@ -126,6 +126,9 @@ export function isProjAlias(str) {
   return str in projectionAliases;
 }
 
+// str: projection string in a variety of forms accepted by the -proj command
+//   (e.g. alias, EPSG:XXXX, Proj.4 string, bare Proj.4 projection name)
+// Returns a properly formatted Proj.4 string or an instantiated mproj object
 export function getProjDefn(str) {
   var defn;
   // prepend '+proj=' to bare proj names

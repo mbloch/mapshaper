@@ -32,7 +32,13 @@ describe('mapshaper-pack.mjs', function () {
     assert.deepEqual(JSON.parse(out['rectangle.json']), JSON.parse(out2['rectangle.json']))
     assert.deepEqual(JSON.parse(out['points.json']), JSON.parse(out2['points.json']))
     assert.deepEqual(JSON.parse(out['polygons.json']), JSON.parse(out2['polygons.json']))
+  })
 
+  it('read from a zipped .msx snapshot file', async function() {
+    var cmd = '-i test/data/msx/mapshaper_snapshot.msx.zip -o format=geojson';
+    var out = await api.applyCommands(cmd);
+    var json = JSON.parse(out['rectangle.json']);
+    assert.equal(json.geometries.length, 1);
   })
 
   it('simplification data is removed on export', async function() {
