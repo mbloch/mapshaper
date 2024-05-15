@@ -28,7 +28,7 @@ var
 
 var EOF; // undefined is used as an EOF marker
 
-var RESERVE = 0X1000; // RESERVE is the number of bytes to keep in read buffer
+var RESERVE = 4096; // RESERVE is the number of bytes to keep in read buffer
 var BUFLEN = 1e7; // buffer chunk size
 var MAX_STRLEN = 5e6; // max byte len of a value string (object keys are shorter)
 
@@ -45,14 +45,41 @@ export function parse(buf) {
   return val;
 }
 
-// Read and parse JSON objects from a FileReader
-export function parseObjects(reader, offset, cb) {
-  var src = ByteReader(reader, offset);
-  seekObjectStart(src);
-  while (src.peek() == LBRACE) {
-    cb(readObject(src));
-    readToken(src, COMMA);
+// parse data from:
+// * FeatureCollection
+// * GeometryCollection
+// * Single Feature or Geometry
+// * WS-delimited sequence of Features or geometries
+//
+export function parseGeoJSON(reader, cb) {
+  var src = ByteReader(reader, 0);
+  var isObject = seekObjectStart(src);
+  if (!isObject) {
+    stop('File is not GeoJSON');
   }
+  var obj = readObject(src, cb);
+  if (obj.type == 'FeatureCollection' || obj.type == 'GeometryCollection') {
+    return obj;
+  }
+  if (!obj.type) { // TODO: validate type
+    stop('Invalid GeoJSON');
+  }
+  cb(obj);
+  // try to read newline-delimited GeoJSON
+  skipWS(src);
+  while (src.peek() == LBRACE) {
+    cb(readObject(src, cb));
+    skipWS(src);
+  }
+  return null;
+}
+
+
+// Read and parse JSON data from a FileReader
+export function parseJSON(reader) {
+  var src = ByteReader(reader, 0);
+  skipWS(src);
+  return readValue(src);
 }
 
 function parseError(msg, i) {
@@ -109,13 +136,24 @@ function skipWS(src) {
 function readArray(src) {
   var arr = [], c;
   eatChar(src, LBRACK);
-  c = readToken(src, RBRACK);
+  c = scanForSyntaxChar(src, RBRACK);
   while (c != RBRACK) {
     src.refresh();
     arr.push(readArrayElement(src));
-    c = readAorB(src, COMMA, RBRACK);
+    c = scanForAorB(src, COMMA, RBRACK);
   }
   return arr;
+}
+
+function readCollectionArray(src, cb) {
+  var c;
+  eatChar(src, LBRACK);
+  c = scanForSyntaxChar(src, RBRACK);
+  while (c != RBRACK) {
+    src.refresh();
+    cb(readArrayElement(src));
+    c = scanForAorB(src, COMMA, RBRACK);
+  }
 }
 
 // Using this function instead of readValue() to read array elements
@@ -148,7 +186,7 @@ function extendArray(src, arr) {
   do {
     src.refresh(); // make make sure long arrays of numbers don't overflow
     arr.push(readValue(src));
-  } while(readAorB(src, COMMA, RBRACK) == COMMA);
+  } while(scanForAorB(src, COMMA, RBRACK) == COMMA);
   return arr;
 }
 
@@ -169,7 +207,7 @@ function eatChar(src, char) {
 // Reads and returns tok if tok is the next non-whitespace byte,
 // else returns null.
 // Scans past WS chars, both before and after tok
-function readToken(src, tok) {
+function scanForSyntaxChar(src, tok) {
   skipWS(src);
   var c = src.peek();
   if (c === tok) {
@@ -180,7 +218,7 @@ function readToken(src, tok) {
   return null;
 }
 
-// assumes no leading WS
+// Assumes next char is the first char of a data object (not WS "," ":" "}" "]" etc)
 function readValue(src) {
   var c = src.peek();
   var val;
@@ -188,14 +226,29 @@ function readValue(src) {
   else if (c == LBRACK) val = readArray(src);
   else if (c == DQUOTE) val = readString(src);
   else if (c == LBRACE) val = readObject(src);
-  else if (c == 110) val = eatChars(src, "null") && null;
-  else if (c == 116) val = eatChars(src, "true") && true;
-  else if (c == 102) val = eatChars(src, "false") && false;
+  else if (c == 110) val = readNull(src); // "n" -> null
+  else if (c == 116) val = readTrue(src); // "t" -> true
+  else if (c == 102) val = readFalse(src); // "f" -> false
   else unexpectedCharAt(c, src.index());
   return val;
 }
 
-function readAorB(src, a, b) {
+function readTrue(src) {
+  eatChars(src, 'true');
+  return true;
+}
+
+function readFalse(src) {
+  eatChars(src, 'false');
+  return false;
+}
+
+function readNull(src) {
+  eatChars(src, 'null');
+  return null;
+}
+
+function scanForAorB(src, a, b) {
   skipWS(src);
   var c = src.getChar();
   if (c != a && c != b) unexpectedCharAt(c, src.index() - 1);
@@ -203,21 +256,30 @@ function readAorB(src, a, b) {
   return c;
 }
 
-function readObject(src) {
+
+// cb: optional callback for returning GeoJSON features or geometries
+//
+function readObject(src, cb) {
   var o = {};
   var key, c;
   eatChar(src, LBRACE);
-  c = readToken(src, RBRACE);
+  c = scanForSyntaxChar(src, RBRACE);
   while (c != RBRACE) {
     src.refresh();
-    key = readKey(src); // use caching for faster key parsing
+    key = readKeywordString(src); // optimization: use caching with object keys
     skipWS(src);
-    eatChar(src, 58);
+    eatChar(src, 58); // ":"
     skipWS(src);
-    // use caching with GeoJSON "type" params
-    o[key] = key == 'type' && src.peek() == DQUOTE ?
-      readKey(src) : readValue(src);
-    c = readAorB(src, COMMA, RBRACE);
+    if ((key == 'features' || key == 'geometries') &&
+        src.peek() == LBRACK && cb) {
+      readCollectionArray(src, cb);
+      o[key] = null;
+    } else if (key == 'type' && src.peek() == DQUOTE) {
+      o[key] = readKeywordString(src); // use caching with GeoJSON "type" params
+    } else {
+      o[key] = readValue(src);
+    }
+    c = scanForAorB(src, COMMA, RBRACE);
   }
   return o;
 }
@@ -230,7 +292,7 @@ function growReserve() {
 // Uses caching to speed up parsing of repeated strings.
 // The caching scheme used here can give a 20% overall speed improvement
 // when parsing files consisting mostly of attribute data (e.g. typical Point features)
-function readKey(src) {
+function readKeywordString(src) {
   var MAXLEN = 2000; // must be less than RESERVE
   var i = src.index();
   var cache = src.cache;
