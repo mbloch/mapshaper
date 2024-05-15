@@ -7,7 +7,6 @@ var Utils = api.utils;
 var fixPath = helpers.fixPath;
 
 describe('mapshaper-geojson.js', function () {
-
   describe('-o hoist option', function() {
 
     it('hoist= moves output properties to root of feature', async function() {

@@ -1,5 +1,5 @@
 import assert from 'assert';
-import { parse, parseObjects } from '../src/geojson/json-parser';
+import { parse, parseJSON, parseGeoJSON } from '../src/geojson/json-parser';
 import fs from 'fs';
 import helpers from './helpers';
 var StringReader = helpers.Reader;
@@ -80,6 +80,78 @@ function testValidJSON(str) {
 
 describe('json-parse.js', function () {
 
+
+  describe('parseGeoJSON', function() {
+    function test(label, target) {
+      it(label, function() {
+        var str = JSON.stringify(target, null, 2);
+        var objects = [];
+        var retn = parseGeoJSON(new StringReader(str), obj => {
+          objects.push(obj);
+        });
+        if (retn === null && objects.length == 1) {
+          assert.deepEqual(objects[0], target);
+        } else if (retn && retn.geometries === null) {
+          retn.geometries = objects;
+          assert.deepEqual(retn, target);
+        } else if (retn && retn.features === null) {
+          retn.features = objects;
+          assert.deepEqual(retn, target);
+        } else {
+          throw Error('failed to parse as GeoJSON');
+        }
+      });
+    }
+
+    var ex1 = {
+      type: 'Point',
+      coordinates: [0, 0]
+    };
+
+    var ex2 = {
+      type: 'Feature',
+      properties: {
+        foo: 'bar'
+      },
+      geometry: {
+        type: 'Polygon',
+        coordinates: [[[0, 0], [0, 1], [1, 1], [1, 0], [0, 0]]]
+      }
+    };
+
+    var ex3 = {
+      type: 'GeometryCollection',
+      geometries: [{
+        type: 'LineString',
+        coordinates: [[0, 0], [1, 1]]
+      }, {
+        type: 'MultiPoint',
+        coordinates: [[0, 0], [1, 1]]
+      }]
+    };
+
+    var ex4 = {
+      type: 'FeatureCollection',
+      metadata: { foo: 'bar'},
+      features: [{
+        geometry: null,
+        properties: { name: 'a'}
+      }, {
+        geometry: [{
+          type: 'MultiLineString',
+          coordinates: [[[0, 0], [2, 2]], [[-3, -4], [-4, -3]]]
+        }]
+      }]
+    };
+
+    test('Point', ex1)
+    test('Feature', ex2)
+    test('GeometryCollection', ex3)
+    test('FeatureCollection with nonstandard property', ex4)
+
+  })
+
+
   // testValidJSON('[{"foo": "b"}, {"foo": "c"}]');
   // return console.log('TEST')
 
@@ -136,28 +208,21 @@ describe('json-parse.js', function () {
   })
 
 
-  describe('parseObjects()', function () {
-
-    function test(label, json, offs) {
-      var target = JSON.parse(json);
-      if (!Array.isArray(target)) {
-        target = [target];
-      }
+  describe('parseJSON()', function () {
+    function test(label, json) {
       it(label, function() {
-        var reader = new StringReader(json);
-        var arr = [];
-        parseObjects(reader, offs || 0, obj => {
-          arr.push(obj);
-        });
-        assert.deepEqual(arr, target);
+        var target = JSON.parse(json);
+        var result = parseJSON(new StringReader(json));
+        assert.deepEqual(result, target);
       });
     }
 
-    describe('readObject()', function () {
-      test('test1', '{}');
-      test('test2', '{"foo": {"type": "Point"}}');
-      test('test3', '[{"a": 0},\n{"b": 1}]');
-    })
+    test('test1', '{}');
+    test('test2', '{"foo": {"type": "Point"}}');
+    test('test3', '[{"a": 0},\n{"b": 1}]');
   })
+
+
+
 
 })

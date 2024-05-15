@@ -48,8 +48,8 @@ function Reader(str, chunkLen) {
 
   this.size = function() {return buf.length;};
 
-  this.readSync = function(offs) {
-    return buf.slice(offs, Math.min(chunkLen, buf.length));
+  this.readSync = function(offs, maxBytes) {
+    return buf.slice(offs, Math.min(maxBytes || chunkLen, buf.length));
   };
 
   this.expandBuffer = function() {

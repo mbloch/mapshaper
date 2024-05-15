@@ -44,7 +44,8 @@ export function identifyJSONObject(o) {
 
 export function importGeoJSONFile(fileReader, opts) {
   var importer = new GeoJSONParser(opts);
-  new GeoJSONReader(fileReader).readObjects(importer.parseObject);
+  var obj = new GeoJSONReader(fileReader).readObjects(importer.parseObject);
+  // TODO: examine top-level objects, like crs
   return importer.done();
 }
 
