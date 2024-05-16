@@ -52,6 +52,10 @@ function Reader(str, chunkLen) {
     return buf.slice(offs, Math.min(maxBytes || chunkLen, buf.length));
   };
 
+  this.toString = function() {
+    return str;
+  };
+
   this.expandBuffer = function() {
     chunkLen *= 2;
     return this;

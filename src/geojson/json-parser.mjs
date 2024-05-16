@@ -1,5 +1,7 @@
-import { BufferReader } from "../io/mapshaper-file-reader";
-import { stop } from "../utils/mapshaper-logging";
+import { BufferReader } from '../io/mapshaper-file-reader';
+import { isArrayLike } from '../utils/mapshaper-utils';
+import { stop } from '../utils/mapshaper-logging';
+import { T } from '../utils/mapshaper-timing';
 
 // This is a JSON parser optimized for GeoJSON files.
 //
@@ -32,9 +34,9 @@ var RESERVE = 4096; // RESERVE is the number of bytes to keep in read buffer
 var BUFLEN = 1e7; // buffer chunk size
 var MAX_STRLEN = 5e6; // max byte len of a value string (object keys are shorter)
 
-// Parse from a Buffer -- similar to JSON.parse(), used for testing
-export function parse(buf) {
-  var reader = new BufferReader(buf);
+// Parse from a Buffer or FileReader
+export function parseJSON(arg) {
+  var reader = isArrayLike(arg) ? new BufferReader(arg) : arg;
   var src = ByteReader(reader, 0);
   skipWS(src);
   var val = readValue(src);
@@ -45,11 +47,18 @@ export function parse(buf) {
   return val;
 }
 
-// parse data from:
-// * FeatureCollection
-// * GeometryCollection
-// * Single Feature or Geometry
-// * WS-delimited sequence of Features or geometries
+// Parse data from:
+//  * FeatureCollection
+//  * GeometryCollection
+//  * Single Feature or Geometry
+//  * WS-delimited sequence of Features or geometries
+//
+// reader: FileReader or compatible reader
+// cb: callback function, called once for each parsed Feature or bare geometry
+//
+// Returns:
+//  * collections - top-level object with features/geometries array set to null
+//  * others - null
 //
 export function parseGeoJSON(reader, cb) {
   var src = ByteReader(reader, 0);
@@ -74,13 +83,25 @@ export function parseGeoJSON(reader, cb) {
   return null;
 }
 
-
-// Read and parse JSON data from a FileReader
-export function parseJSON(reader) {
-  var src = ByteReader(reader, 0);
-  skipWS(src);
-  return readValue(src);
+// Parse the entire file with JSON.parse() (for a performance comparison)
+// TODO: support newline-delimited GeoJSON
+export function parseGeoJSON_native(reader, cb) {
+  var obj = JSON.parse(reader.toString());
+  if (obj.type == 'FeatureCollection') {
+    obj.features.forEach(o => cb(o));
+    obj.features = null;
+  } else if (obj.type == 'GeometryCollection') {
+    obj.geometries.forEach(o => cb(o));
+    obj.geometries = null;
+  } else if (obj.type) {
+    cb(obj);
+    obj = null;
+  } else {
+    stop('Invalid GeoJSON');
+  }
+  return obj;
 }
+
 
 function parseError(msg, i) {
   if (i >= 0) {

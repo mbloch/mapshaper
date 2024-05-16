@@ -4,7 +4,7 @@ import { BufferReader, FileReader, readFirstChars } from '../io/mapshaper-file-r
 import utils from '../utils/mapshaper-utils';
 import { importTopoJSON } from '../topojson/topojson-import';
 import { stop } from '../utils/mapshaper-logging';
-import { GeoJSONReader } from '../geojson/geojson-reader';
+import { parseGeoJSON } from '../geojson/json-parser';
 import { bufferToString } from '../text/mapshaper-encodings';
 import { importJSONTable } from '../datatable/mapshaper-json-table';
 import { Buffer } from '../utils/mapshaper-node-buffer';
@@ -44,7 +44,7 @@ export function identifyJSONObject(o) {
 
 export function importGeoJSONFile(fileReader, opts) {
   var importer = new GeoJSONParser(opts);
-  var obj = new GeoJSONReader(fileReader).readObjects(importer.parseObject);
+  var obj = parseGeoJSON(fileReader, importer.parseObject);
   // TODO: examine top-level objects, like crs
   return importer.done();
 }

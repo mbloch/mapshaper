@@ -26,7 +26,6 @@ import { clipIterByBounds } from './clipping/mapshaper-bbox-clipping';
 import { CommandParser } from './cli/mapshaper-command-parser';
 import { DataTable } from './datatable/mapshaper-data-table';
 import { editArcs } from './paths/mapshaper-arc-editor';
-import { GeoJSONReader } from './geojson/geojson-reader';
 import { Heap } from './simplify/mapshaper-heap';
 import { IdLookupIndex } from './indexing/mapshaper-id-lookup-index';
 import { NodeCollection } from './topology/mapshaper-nodes';
@@ -35,7 +34,7 @@ import { PathIndex } from './paths/mapshaper-path-index';
 import { PolygonIndex } from './polygons/mapshaper-polygon-index';
 import { ShpReader } from './shapefile/shp-reader';
 import { Transform } from './geom/mapshaper-transform';
-import { parse } from './geojson/json-parser';
+import { parseJSON, parseGeoJSON } from './geojson/json-parser';
 import { Job } from './mapshaper-job';
 
 // Assign functions and objects exported from modules to the 'internal' namespace
@@ -46,8 +45,8 @@ Object.assign(internal, {
   Dbf,
   DbfReader,
   DouglasPeucker,
-  geojson: GeoJSON,
-  json: { parse: parse },
+  parseGeoJSON,
+  json: { parse: parseJSON },
   ShpType,
   topojson: TopoJSON,
   Visvalingam,
@@ -57,7 +56,6 @@ Object.assign(internal, {
   CommandParser,
   DataTable,
   editArcs,
-  GeoJSONReader,
   Heap,
   IdLookupIndex,
   NodeCollection,
