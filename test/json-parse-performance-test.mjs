@@ -1,12 +1,12 @@
 import assert from 'assert';
-import { parse } from '../src/geojson/json-parser';
+import { parseJSON } from '../src/geojson/json-parser';
 
 var runMe = false;
 if (runMe) describe('json-parse.js performance', function () {
   var SIZE = 2000000
   var str = JSON.stringify(getTestCoordinates(SIZE));
   var buf = Buffer.from(str);
-  var aa = timedParse(parse, buf, 'parse()');
+  var aa = timedParse(parseJSON, buf, 'parse()');
   var bb = timedParse(referenceParse, buf, 'JSON.parse()');
   it('test', function() {
     aa.forEach((a, i) => {

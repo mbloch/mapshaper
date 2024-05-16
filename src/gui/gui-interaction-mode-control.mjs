@@ -5,7 +5,7 @@ export function InteractionMode(gui) {
 
   var menus = {
     standard: ['info', 'selection', 'box'],
-    empty: ['edit_points', 'edit_lines', 'edit_polygons', 'box'],
+    empty: ['edit_polygons', 'edit_lines', 'edit_points', 'box'],
     polygons: ['info', 'selection', 'box', 'edit_polygons'],
     rectangles: ['info', 'selection', 'box', 'rectangles', 'edit_polygons'],
     lines: ['info', 'selection', 'box' , 'edit_lines'],
@@ -23,11 +23,11 @@ export function InteractionMode(gui) {
   // mode name -> menu text lookup
   var labels = {
     info: 'inspect features',
-    box: 'shift-drag box tool',
+    box: 'rectangle tool',
     data: 'edit attributes',
     labels: 'position labels',
-    edit_points: 'draw/edit points',
-    edit_lines: 'draw/edit lines',
+    edit_points: 'add/edit points',
+    edit_lines: 'draw/edit polylines',
     edit_polygons: 'draw/edit polygons',
     vertices: 'edit vertices',
     selection: 'selection tool',

@@ -106,8 +106,7 @@ export function isArrayLike(obj) {
   if (!obj) return false;
   if (isArray(obj)) return true;
   if (isString(obj)) return false;
-  if (obj.length === 0) return true;
-  if (obj.length > 0) return true;
+  if (obj.length === 0 || obj.length > 0) return true;
   return false;
 }
 

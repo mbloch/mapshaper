@@ -1,8 +1,10 @@
 import assert from 'assert';
-import { parse, parseJSON, parseGeoJSON } from '../src/geojson/json-parser';
+import { parseJSON, parseGeoJSON } from '../src/geojson/json-parser';
 import fs from 'fs';
+import api from '../mapshaper.js';
 import helpers from './helpers';
 var StringReader = helpers.Reader;
+var FileReader = api.internal.FileReader;
 
 var numbers = [
   '-43',
@@ -73,15 +75,24 @@ function testValidJSON(str) {
   var reserveBytes = 256;
   it(str, function() {
     var buf = Buffer.from(str);
-    var output = parse(buf, reserveBytes);
+    var output = parseJSON(buf, reserveBytes);
     assert.deepEqual(output, JSON.parse(str));
   })
 }
 
 describe('json-parse.js', function () {
 
-
   describe('parseGeoJSON', function() {
+
+    function testReadingFromFile(file, readerOpts) {
+      var reader = new FileReader(file, readerOpts);
+      var features = [];
+      var contents = fs.readFileSync(file, 'utf8');
+      var target = JSON.parse(contents).features;
+      parseGeoJSON(reader, function(feat) {features.push(feat)});
+      assert.deepEqual(features, target);
+    }
+
     function test(label, target) {
       it(label, function() {
         var str = JSON.stringify(target, null, 2);
@@ -149,6 +160,13 @@ describe('json-parse.js', function () {
     test('GeometryCollection', ex3)
     test('FeatureCollection with nonstandard property', ex4)
 
+    it('file reading test', function() {
+      testReadingFromFile('test/data/three_points.geojson', null);
+    });
+
+    it('file reading with buffer expansion', function() {
+      testReadingFromFile('test/data/two_states.json', {cacheSize: 2, bufferSize: 2});
+    })
   })
 
 
@@ -179,7 +197,7 @@ describe('json-parse.js', function () {
         var buf = fs.readFileSync(dir + file);
         var str = buf.toString('utf8');
         assert.throws(() => {
-          parse(buf);
+          parseJSON(buf);
         })
 
       });
@@ -193,7 +211,7 @@ describe('json-parse.js', function () {
         var buf = Buffer.from(str);
         var msg;
         try {
-          var output = parse(buf);
+          var output = parseJSON(buf);
         } catch (e) {
           msg = e.message
         }
