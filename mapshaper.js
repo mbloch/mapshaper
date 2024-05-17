@@ -236,8 +236,7 @@
     if (!obj) return false;
     if (isArray(obj)) return true;
     if (isString(obj)) return false;
-    if (obj.length === 0) return true;
-    if (obj.length > 0) return true;
+    if (obj.length === 0 || obj.length > 0) return true;
     return false;
   }
 
@@ -28103,9 +28102,9 @@ ${svg}
   var BUFLEN = 1e7; // buffer chunk size
   var MAX_STRLEN = 5e6; // max byte len of a value string (object keys are shorter)
 
-  // Parse from a Buffer -- similar to JSON.parse(), used for testing
-  function parse(buf) {
-    var reader = new BufferReader(buf);
+  // Parse from a Buffer or FileReader
+  function parseJSON(arg) {
+    var reader = isArrayLike(arg) ? new BufferReader(arg) : arg;
     var src = ByteReader(reader, 0);
     skipWS(src);
     var val = readValue(src);
@@ -28116,11 +28115,18 @@ ${svg}
     return val;
   }
 
-  // parse data from:
-  // * FeatureCollection
-  // * GeometryCollection
-  // * Single Feature or Geometry
-  // * WS-delimited sequence of Features or geometries
+  // Parse data from:
+  //  * FeatureCollection
+  //  * GeometryCollection
+  //  * Single Feature or Geometry
+  //  * WS-delimited sequence of Features or geometries
+  //
+  // reader: FileReader or compatible reader
+  // cb: callback function, called once for each parsed Feature or bare geometry
+  //
+  // Returns:
+  //  * collections - top-level object with features/geometries array set to null
+  //  * others - null
   //
   function parseGeoJSON(reader, cb) {
     var src = ByteReader(reader, 0);
@@ -28144,6 +28150,7 @@ ${svg}
     }
     return null;
   }
+
 
   function parseError(msg, i) {
     if (i >= 0) {
@@ -28596,19 +28603,6 @@ ${svg}
     }
   }
 
-  // Read GeoJSON Features or geometry objects from a file
-  // @reader: a FileReader
-  function GeoJSONReader(reader) {
-
-    this.readObjects = function(onObject) {
-      T$1.start();
-      var val = parseGeoJSON(reader, onObject);
-      // var val = parseGeoJSON_native(reader, onObject);
-      debug('Parse GeoJSON', T$1.stop());
-      return val;
-    };
-  }
-
   // Identify JSON type from the initial subset of a JSON string
   function identifyJSONString(str, opts) {
     var maxChars = 1000;
@@ -28642,7 +28636,7 @@ ${svg}
 
   function importGeoJSONFile(fileReader, opts) {
     var importer = new GeoJSONParser(opts);
-    new GeoJSONReader(fileReader).readObjects(importer.parseObject);
+    parseGeoJSON(fileReader, importer.parseObject);
     // TODO: examine top-level objects, like crs
     return importer.done();
   }
@@ -45678,7 +45672,7 @@ ${svg}
     });
   }
 
-  var version = "0.6.94";
+  var version = "0.6.95";
 
   // Parse command line args into commands and run them
   // Function takes an optional Node-style callback. A Promise is returned if no callback is given.
@@ -46310,8 +46304,8 @@ ${svg}
     Dbf,
     DbfReader,
     DouglasPeucker,
-    geojson: GeoJSON,
-    json: { parse: parse },
+    parseGeoJSON,
+    json: { parse: parseJSON },
     ShpType,
     topojson: TopoJSON,
     Visvalingam,
@@ -46321,7 +46315,6 @@ ${svg}
     CommandParser,
     DataTable,
     editArcs,
-    GeoJSONReader,
     Heap,
     IdLookupIndex,
     NodeCollection,

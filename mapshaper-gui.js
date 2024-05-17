@@ -3707,7 +3707,13 @@
     // init simplify button and mode
     gui.addMode('simplify', turnOn, turnOff, menuBtn);
 
-    model.on('update', function() {
+    model.on('update', function(e) {
+      // exit simplify mode if data has been changed from outside the simplify
+      // tool
+      // (TODO: try to only respond to changes that might affect simplification)
+      if (e.flags.simplify_method || e.flags.simplify_amount) {
+        return;
+      }
       menuBtn.classed('disabled', !model.getActiveLayer());
       if (gui.getMode() == 'simplify') gui.clearMode();
     });
@@ -5890,7 +5896,7 @@
 
     var menus = {
       standard: ['info', 'selection', 'box'],
-      empty: ['edit_points', 'edit_lines', 'edit_polygons', 'box'],
+      empty: ['edit_polygons', 'edit_lines', 'edit_points', 'box'],
       polygons: ['info', 'selection', 'box', 'edit_polygons'],
       rectangles: ['info', 'selection', 'box', 'rectangles', 'edit_polygons'],
       lines: ['info', 'selection', 'box' , 'edit_lines'],
@@ -5908,11 +5914,11 @@
     // mode name -> menu text lookup
     var labels = {
       info: 'inspect features',
-      box: 'shift-drag box tool',
+      box: 'rectangle tool',
       data: 'edit attributes',
       labels: 'position labels',
-      edit_points: 'draw/edit points',
-      edit_lines: 'draw/edit lines',
+      edit_points: 'add/edit points',
+      edit_lines: 'draw/edit polylines',
       edit_polygons: 'draw/edit polygons',
       vertices: 'edit vertices',
       selection: 'selection tool',
@@ -6531,8 +6537,7 @@
     if (!obj) return false;
     if (isArray(obj)) return true;
     if (isString(obj)) return false;
-    if (obj.length === 0) return true;
-    if (obj.length > 0) return true;
+    if (obj.length === 0 || obj.length > 0) return true;
     return false;
   }
 
@@ -8830,12 +8835,12 @@
     element.addEventListener('mousedown', onAreaDown);
     element.addEventListener('dblclick', onAreaDblClick);
     document.addEventListener('contextmenu', function(e) {
-      if (!e.ctrlKey) {
+      if (!(e.ctrlKey && e.altKey)) {
         e.preventDefault();
       }
     });
     element.addEventListener('contextmenu', function(e) {
-      if (!e.ctrlKey) {
+      if (!(e.ctrlKey && e.altKey)) {
         _self.dispatchEvent('contextmenu', procMouseEvent(e));
       }
     });
@@ -12142,6 +12147,8 @@
     var popup = gui.container.findChild('.box-tool-options');
     var coords = popup.findChild('.box-coords');
     var _on = false;
+    var instructionsShown = false;
+    var alert;
 
     var infoBtn = new SimpleButton(popup.findChild('.info-btn')).on('click', function() {
       if (coords.visible()) hideCoords(); else showCoords();
@@ -12188,6 +12195,10 @@
     gui.on('interaction_mode_change', function(e) {
       if (e.mode === 'box') {
         gui.enterMode('box_tool');
+        if (!instructionsShown) {
+          instructionsShown = true;
+          showInstructions();
+        }
       } else if (_on) {
         turnOff();
       }
@@ -12198,7 +12209,10 @@
     });
 
     box.on('dragend', function(e) {
-      if (_on) popup.show();
+      if (_on) {
+        hideInstructions();
+        popup.show();
+      }
     });
 
     box.on('handle_drag', function() {
@@ -12206,6 +12220,19 @@
         showCoords();
       }
     });
+
+    function showInstructions() {
+      var isMac = navigator.userAgent.includes('Mac');
+      var symbol = isMac ? '⌘' : '^';
+      var msg = `Instructions: Shift-drag to draw a rectangle. Drag handles to resize. Shift-drag handles to resize symmetrically.`;
+      alert = showPopupAlert(msg, null, { non_blocking: true, max_width: '360px'});
+    }
+
+    function hideInstructions() {
+      if (!alert) return;
+      alert.close('fade');
+      alert = null;
+    }
 
     function inZoomMode() {
       return !_on && gui.getMode() != 'selection_tool';
@@ -12242,6 +12269,7 @@
 
     function turnOff() {
       box.turnOff();
+      hideInstructions();
       if (gui.interaction.getMode() == 'box') {
         // mode change was not initiated by interactive menu -- turn off interactivity
         gui.interaction.turnOff();
