@@ -58,7 +58,13 @@ export var SimplifyControl = function(gui) {
   // init simplify button and mode
   gui.addMode('simplify', turnOn, turnOff, menuBtn);
 
-  model.on('update', function() {
+  model.on('update', function(e) {
+    // exit simplify mode if data has been changed from outside the simplify
+    // tool
+    // (TODO: try to only respond to changes that might affect simplification)
+    if (e.flags.simplify_method || e.flags.simplify_amount) {
+      return;
+    }
     menuBtn.classed('disabled', !model.getActiveLayer());
     if (gui.getMode() == 'simplify') gui.clearMode();
   });
