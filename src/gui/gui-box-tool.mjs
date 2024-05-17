@@ -14,6 +14,8 @@ export function BoxTool(gui, ext, nav) {
   var popup = gui.container.findChild('.box-tool-options');
   var coords = popup.findChild('.box-coords');
   var _on = false;
+  var instructionsShown = false;
+  var alert;
 
   var infoBtn = new SimpleButton(popup.findChild('.info-btn')).on('click', function() {
     if (coords.visible()) hideCoords(); else showCoords();
@@ -60,6 +62,10 @@ export function BoxTool(gui, ext, nav) {
   gui.on('interaction_mode_change', function(e) {
     if (e.mode === 'box') {
       gui.enterMode('box_tool');
+      if (!instructionsShown) {
+        instructionsShown = true;
+        showInstructions();
+      }
     } else if (_on) {
       turnOff();
     }
@@ -70,7 +76,10 @@ export function BoxTool(gui, ext, nav) {
   });
 
   box.on('dragend', function(e) {
-    if (_on) popup.show();
+    if (_on) {
+      hideInstructions();
+      popup.show();
+    }
   });
 
   box.on('handle_drag', function() {
@@ -78,6 +87,19 @@ export function BoxTool(gui, ext, nav) {
       showCoords();
     }
   });
+
+  function showInstructions() {
+    var isMac = navigator.userAgent.includes('Mac');
+    var symbol = isMac ? '⌘' : '^';
+    var msg = `Instructions: Shift-drag to draw a rectangle. Drag handles to resize. Shift-drag handles to resize symmetrically.`;
+    alert = showPopupAlert(msg, null, { non_blocking: true, max_width: '360px'});
+  }
+
+  function hideInstructions() {
+    if (!alert) return;
+    alert.close('fade');
+    alert = null;
+  }
 
   function inZoomMode() {
     return !_on && gui.getMode() != 'selection_tool';
@@ -114,6 +136,7 @@ export function BoxTool(gui, ext, nav) {
 
   function turnOff() {
     box.turnOff();
+    hideInstructions();
     if (gui.interaction.getMode() == 'box') {
       // mode change was not initiated by interactive menu -- turn off interactivity
       gui.interaction.turnOff();
