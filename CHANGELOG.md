@@ -1,3 +1,7 @@
+v0.6.95
+* Rename "shift/drag box tool" to "rectangle tool" and show instructions when first turned on.
+* Bug fixes
+
 v0.6.94
 * Bug fixes
 
