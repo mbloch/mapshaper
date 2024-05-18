@@ -46,6 +46,7 @@ Object.assign(internal, {
   DbfReader,
   DouglasPeucker,
   parseGeoJSON,
+  geojson: GeoJSON,
   json: { parse: parseJSON },
   ShpType,
   topojson: TopoJSON,
