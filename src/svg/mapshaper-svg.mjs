@@ -11,6 +11,7 @@ import { stringify } from '../svg/svg-stringify';
 import { convertPropertiesToDefinitions } from '../svg/svg-definitions';
 import { getOutputFileBase } from '../utils/mapshaper-filename-utils';
 import { importGeoJSONFeatures } from '../svg/geojson-to-svg';
+import { layerIsRectangle, getLayerDataTable, copyLayer } from '../dataset/mapshaper-layer-utils';
 
 //
 export function exportSVG(dataset, opts) {
@@ -91,8 +92,23 @@ export function exportFurnitureLayerForSVG(lyr, frame, opts) {
   return layerObj;
 }
 
+// Prevent unstyled rectangle layers from displaying with the SVG default
+// solid black fill.
+// lyr: a layer, assumed to contain a single rectangular polygon
+function adjustRectangleStyle(lyr) {
+  var data = getLayerDataTable(lyr);
+  var d = data.getRecords()[0];
+  if (!d.fill && !d.stroke) {
+    d.fill = "none";
+  }
+}
+
 export function exportLayerForSVG(lyr, dataset, opts) {
   var layerObj = getEmptyLayerForSVG(lyr, opts);
+  if (layerIsRectangle(lyr, dataset.arcs)) {
+    lyr = copyLayer(lyr);
+    adjustRectangleStyle(lyr);
+  }
   layerObj.children = exportSymbolsForSVG(lyr, dataset, opts);
   return layerObj;
 }

@@ -114,7 +114,7 @@ describe('mapshaper-svg.js', function () {
           [[[3, 2], [4, 2], [4, 1], [3, 1], [3, 2]]]]
       }
     };
-    var target = '<?xml version="1.0"?>\n<svg xmlns="http://www.w3.org/2000/svg" version="1.2" baseProfile="tiny" width="900" height="300" viewBox="0 0 900 300" stroke-linecap="round" stroke-linejoin="round">\n<g id="path">\n<path d="M 0 300 0 0 300 0 300 300 0 300 Z M 600 0 900 0 900 300 600 300 600 0 Z" fill-rule="evenodd"/>\n</g>\n</svg>';
+    var target = '<?xml version="1.0"?>\n<svg xmlns="http://www.w3.org/2000/svg" version="1.2" baseProfile="tiny" width="900" height="300" viewBox="0 0 900 300" stroke-linecap="round" stroke-linejoin="round">\n<g id="path">\n<path d="M 0 300 0 0 300 0 300 300 0 300 Z M 600 0 900 0 900 300 600 300 600 0 Z" fill-rule="evenodd" fill="none"/>\n</g>\n</svg>';
     api.applyCommands('-i path.json -o path.svg margin=0 width=900', {'path.json': geo}, function(err, output) {
       assert.equal(output['path.svg'], target);
       done();
@@ -137,7 +137,7 @@ describe('mapshaper-svg.js', function () {
     var cmd = '-i line.json -i box.json -frame width=4in -target box,line -o map.svg';
     var out = await api.applyCommands(cmd, {'line.json': line, 'box.json': box});
     var svg = out['map.svg'];
-    assert(svg.includes('<g id="box">\n<path d="M 0 288 0 0 288 0 288 288 0 288 Z"/>\n</g>'))
+    assert(svg.includes('<g id="box">\n<path d="M 0 288 0 0 288 0 288 288 0 288 Z" fill="none"/>\n</g>'))
     assert(svg.includes('width="288" height="288" viewBox="0 0 288 288"'));
   })
 
