@@ -1,5 +1,6 @@
 import { utils } from './gui-core';
 import { internal } from './gui-core';
+
 export function isMultilineLabel(textNode) {
   return textNode.childNodes.length > 1;
 }

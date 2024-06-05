@@ -155,7 +155,9 @@ export function initLabelDragging(gui, ext, hit) {
   function updateTextNode(node, d) {
     var a = d['text-anchor'];
     if (a) node.setAttribute('text-anchor', a);
-    setMultilineAttribute(node, 'dx', d.dx || 0);
+    // dx data property is applied to svg x property
+    // setMultilineAttribute(node, 'dx', d.dx || 0);
+    setMultilineAttribute(node, 'x', d.dx || 0);
     node.setAttribute('y', d.dy || 0);
   }
 
