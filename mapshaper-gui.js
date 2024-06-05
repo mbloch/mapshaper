@@ -1089,6 +1089,21 @@
     return _el;
   }
 
+  async function showPrompt(msg, title) {
+    var popup = showPopupAlert(msg, title);
+    return new Promise(function(resolve) {
+      popup.onCancel(function() {
+        resolve(false);
+      });
+      popup.button('Yes', function() {
+        resolve(true);
+      });
+      popup.button('No', function() {
+        resolve(false);
+      });
+    });
+  }
+
   function showPopupAlert(msg, title, optsArg) {
     var opts = optsArg || {};
     var self = {}, html = '';
@@ -1764,6 +1779,17 @@
     gui.model.updated({select: true});
   }
 
+  async function considerReprojecting(gui, dataset, opts) {
+    var mapCRS = gui.map.getActiveLayerCRS();
+    var dataCRS = internal.getDatasetCRS(dataset);
+    if (!dataCRS || !mapCRS || internal.crsAreEqual(mapCRS, dataCRS)) return;
+    var msg = `The input file ${dataset?.info?.input_files[0] || ''} has a different projection from the current selected layer. Would you like to reproject it to match?`;
+    var reproject = await showPrompt(msg, 'Reproject file?');
+    if (reproject) {
+      internal.projectDataset(dataset, dataCRS, mapCRS, {densify: true});
+    }
+  }
+
   // @cb function(<FileList>)
   function DropControl(gui, el, cb) {
     var area = El(el);
@@ -1921,7 +1947,7 @@
       try {
         if (files.length > 0) {
           queuedFiles = [];
-          await importFiles(files);
+          await importFiles(files, readImportOpts());
         }
       } catch(e) {
         console.log(e);
@@ -2058,8 +2084,7 @@
       return expanded;
     }
 
-    async function importFiles(fileData) {
-      var importOpts = readImportOpts();
+    async function importFiles(fileData, importOpts) {
       var groups = groupFilesForImport(fileData, importOpts);
       var optStr = GUI.formatCommandOptions(importOpts);
       fileData = null;
@@ -2070,21 +2095,28 @@
         }
         if (group[internal.PACKAGE_EXT]) {
           await importSessionData(group[internal.PACKAGE_EXT].content, gui);
-        } else if (importDataset(group, importOpts)) {
+        } else if (await importDataset(group, importOpts)) {
           importCount++;
           gui.session.fileImported(group.filename, optStr);
         }
       }
     }
 
-    function importDataset(group, importOpts) {
+    async function importDataset(group, importOpts) {
       var dataset = internal.importContent(group, importOpts);
       if (datasetIsEmpty(dataset)) return false;
       if (group.layername) {
         dataset.layers.forEach(lyr => lyr.name = group.layername);
       }
+      // TODO: add popup here
       // save import options for use by repair control, etc.
       dataset.info.import_options = importOpts;
+      try {
+        await considerReprojecting(gui, dataset, importOpts);
+      } catch(e) {
+        gui.alert(e.message, 'Projection error');
+        return false;
+      }
       model.addDataset(dataset);
       return true;
     }
@@ -10192,7 +10224,9 @@
     function updateTextNode(node, d) {
       var a = d['text-anchor'];
       if (a) node.setAttribute('text-anchor', a);
-      setMultilineAttribute(node, 'dx', d.dx || 0);
+      // dx data property is applied to svg x property
+      // setMultilineAttribute(node, 'dx', d.dx || 0);
+      setMultilineAttribute(node, 'x', d.dx || 0);
       node.setAttribute('y', d.dy || 0);
     }
 
@@ -12487,6 +12521,13 @@ GUI and setting the size and crop of SVG output.</p><div><input type="text" clas
       if (_activeLyr.gui.dynamic_crs) {
         return _activeLyr.gui.dynamic_crs;
       }
+      return this.getActiveLayerCRS();
+    };
+
+    this.getActiveLayerCRS = function() {
+      if (!_activeLyr || !_activeLyr.gui.geographic) {
+        return null;
+      }
       var info = getDatasetCrsInfo(_activeLyr.gui.source.dataset);
       return info.crs || null;
     };
@@ -12982,7 +13023,7 @@ GUI and setting the size and crop of SVG output.</p><div><input type="text" clas
         addCoords(e.lonlat_coordinates);
       }
       if (e.projected_coordinates) {
-        addMenuLabel('easting, northing');
+        addMenuLabel('x, y');
         addCoords(e.projected_coordinates);
       }
 

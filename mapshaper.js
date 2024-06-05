@@ -20455,8 +20455,23 @@ ${svg}
     return layerObj;
   }
 
+  // Prevent unstyled rectangle layers from displaying with the SVG default
+  // solid black fill.
+  // lyr: a layer, assumed to contain a single rectangular polygon
+  function adjustRectangleStyle(lyr) {
+    var data = getLayerDataTable(lyr);
+    var d = data.getRecords()[0];
+    if (!d.fill && !d.stroke) {
+      d.fill = "none";
+    }
+  }
+
   function exportLayerForSVG(lyr, dataset, opts) {
     var layerObj = getEmptyLayerForSVG(lyr, opts);
+    if (layerIsRectangle(lyr, dataset.arcs)) {
+      lyr = copyLayer(lyr);
+      adjustRectangleStyle(lyr);
+    }
     layerObj.children = exportSymbolsForSVG(lyr, dataset, opts);
     return layerObj;
   }
@@ -45672,7 +45687,7 @@ ${svg}
     });
   }
 
-  var version = "0.6.96";
+  var version = "0.6.97";
 
   // Parse command line args into commands and run them
   // Function takes an optional Node-style callback. A Promise is returned if no callback is given.
