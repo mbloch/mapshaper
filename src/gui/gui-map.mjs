@@ -133,6 +133,13 @@ export function MshpMap(gui) {
     if (_activeLyr.gui.dynamic_crs) {
       return _activeLyr.gui.dynamic_crs;
     }
+    return this.getActiveLayerCRS();
+  };
+
+  this.getActiveLayerCRS = function() {
+    if (!_activeLyr || !_activeLyr.gui.geographic) {
+      return null;
+    }
     var info = getDatasetCrsInfo(_activeLyr.gui.source.dataset);
     return info.crs || null;
   };
