@@ -1,5 +1,21 @@
 import { El } from './gui-el';
 
+
+export async function showPrompt(msg, title) {
+  var popup = showPopupAlert(msg, title);
+  return new Promise(function(resolve) {
+    popup.onCancel(function() {
+      resolve(false);
+    });
+    popup.button('Yes', function() {
+      resolve(true);
+    });
+    popup.button('No', function() {
+      resolve(false);
+    });
+  });
+}
+
 export function showPopupAlert(msg, title, optsArg) {
   var opts = optsArg || {};
   var self = {}, html = '';

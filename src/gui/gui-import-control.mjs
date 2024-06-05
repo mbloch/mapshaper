@@ -5,6 +5,7 @@ import { SimpleButton } from './gui-elements';
 import { GUI } from './gui-lib';
 import { importSessionData } from './gui-session-snapshot-control';
 import { openAddLayerPopup } from './gui-add-layer-popup';
+import { considerReprojecting } from './gui-import-utils';
 
 // @cb function(<FileList>)
 function DropControl(gui, el, cb) {
@@ -163,7 +164,7 @@ export function ImportControl(gui, opts) {
     try {
       if (files.length > 0) {
         queuedFiles = [];
-        await importFiles(files);
+        await importFiles(files, readImportOpts());
       }
     } catch(e) {
       console.log(e);
@@ -300,8 +301,7 @@ export function ImportControl(gui, opts) {
     return expanded;
   }
 
-  async function importFiles(fileData) {
-    var importOpts = readImportOpts();
+  async function importFiles(fileData, importOpts) {
     var groups = groupFilesForImport(fileData, importOpts);
     var optStr = GUI.formatCommandOptions(importOpts);
     fileData = null;
@@ -312,21 +312,28 @@ export function ImportControl(gui, opts) {
       }
       if (group[internal.PACKAGE_EXT]) {
         await importSessionData(group[internal.PACKAGE_EXT].content, gui);
-      } else if (importDataset(group, importOpts)) {
+      } else if (await importDataset(group, importOpts)) {
         importCount++;
         gui.session.fileImported(group.filename, optStr);
       }
     }
   }
 
-  function importDataset(group, importOpts) {
+  async function importDataset(group, importOpts) {
     var dataset = internal.importContent(group, importOpts);
     if (datasetIsEmpty(dataset)) return false;
     if (group.layername) {
       dataset.layers.forEach(lyr => lyr.name = group.layername);
     }
+    // TODO: add popup here
     // save import options for use by repair control, etc.
     dataset.info.import_options = importOpts;
+    try {
+      await considerReprojecting(gui, dataset, importOpts);
+    } catch(e) {
+      gui.alert(e.message, 'Projection error');
+      return false;
+    }
     model.addDataset(dataset);
     return true;
   }
