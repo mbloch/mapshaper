@@ -72,7 +72,7 @@ export function ContextMenu() {
       addCoords(e.lonlat_coordinates);
     }
     if (e.projected_coordinates) {
-      addMenuLabel('easting, northing');
+      addMenuLabel('x, y');
       addCoords(e.projected_coordinates);
     }
 
