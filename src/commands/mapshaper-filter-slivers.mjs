@@ -34,6 +34,11 @@ function filterSlivers(lyr, dataset, optsArg) {
 
   editShapes(lyr.shapes, pathFilter);
   message(utils.format("Removed %'d sliver%s using %s", removed, utils.pluralSuffix(removed), filterData.label));
+
+  // Remove null shapes (likely removed by clipping/erasing, although possibly already present)
+  if (opts.remove_empty) {
+    cmd.filterFeatures(lyr, dataset.arcs, {remove_empty: true, verbose: false});
+  }
   return removed;
 }
 

@@ -4,6 +4,15 @@ import api from '../mapshaper.js';
 
 describe('mapshaper-filter-slivers.js', function () {
 
+  it('remove-empty flag', async function() {
+    var cmd = `-i test/data/two_states_mercator.shp -explode -filter-slivers
+    min-area=100km2 remove-empty -o output.json`;
+    var out = await api.applyCommands(cmd);
+    var features = JSON.parse(out['output.json']).features;
+    assert.equal(features.length, 4);
+  });
+
+
   describe('calcMaxSliverArea()', function () {
     it('ignores relatively long segments', function () {
       var coords2 = [[[3, 1], [2, 1], [2, 2]], [[2, 3], [3, 3]], [[1, 3], [4, 3], [4, 0]]],

@@ -1,3 +1,6 @@
+v0.6.98
+* Added remove-empty flag for -filter-slivers command.
+
 v0.6.97
 * [web] Prompt user to project imported files to match selected layer, when relevant.
 * [svg] Add fill="none" to unstyled rectangle layers, to prevent map frame rectangles from displaying with SVG default black polygon fill.
