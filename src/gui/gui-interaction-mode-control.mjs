@@ -26,7 +26,7 @@ export function InteractionMode(gui) {
     box: 'rectangle tool',
     data: 'edit attributes',
     labels: 'position labels',
-    edit_points: 'add/edit points',
+    edit_points: 'add/drag points',
     edit_lines: 'draw/edit polylines',
     edit_polygons: 'draw/edit polygons',
     vertices: 'edit vertices',

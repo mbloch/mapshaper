@@ -975,12 +975,10 @@ export function getOptionParser() {
       // describe: 'multiply min-area by Polsby-Popper compactness (0-1)'
       type: 'flag',
     })
-    /*
     .option('remove-empty', {
       type: 'flag',
       describe: 'delete features with null geometry'
     })
-    */
     .option('target', targetOpt);
 
   parser.command('graticule')
