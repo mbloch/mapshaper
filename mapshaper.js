@@ -25134,12 +25134,10 @@ ${svg}
         // describe: 'multiply min-area by Polsby-Popper compactness (0-1)'
         type: 'flag',
       })
-      /*
       .option('remove-empty', {
         type: 'flag',
         describe: 'delete features with null geometry'
       })
-      */
       .option('target', targetOpt);
 
     parser.command('graticule')
@@ -34748,6 +34746,11 @@ ${svg}
 
     editShapes(lyr.shapes, pathFilter);
     message(utils.format("Removed %'d sliver%s using %s", removed, utils.pluralSuffix(removed), filterData.label));
+
+    // Remove null shapes (likely removed by clipping/erasing, although possibly already present)
+    if (opts.remove_empty) {
+      cmd.filterFeatures(lyr, dataset.arcs, {remove_empty: true, verbose: false});
+    }
     return removed;
   }
 
@@ -45687,7 +45690,7 @@ ${svg}
     });
   }
 
-  var version = "0.6.97";
+  var version = "0.6.98";
 
   // Parse command line args into commands and run them
   // Function takes an optional Node-style callback. A Promise is returned if no callback is given.
