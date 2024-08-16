@@ -6,7 +6,7 @@ import utils from '../utils/mapshaper-utils';
 import GeoJSON from '../geojson/geojson-common';
 
 export function expressionUsesGeoJSON(exp) {
-  return exp.includes('this.geojson');
+  return exp.includes('this.geojson') || exp.includes('this.geometry') || exp.includes('this.feature');
 }
 
 export function getFeatureEditor(lyr, dataset) {
@@ -20,6 +20,24 @@ export function getFeatureEditor(lyr, dataset) {
   api.get = function(i) {
     if (i > 0) features[i-1] = null; // garbage-collect old features
     return features[i];
+  };
+
+  api.getGeometry = function(i) {
+    if (i > 0) features[i-1] = null; // garbage-collect old features
+    return features[i] ? features[i].geometry : null;
+  };
+
+  api.setGeometry = function(geom, i) {
+    if (utils.isString(geom)) {
+      geom = JSON.parse(geom);
+    }
+    // TODO: validate? validate geometry in feature setter?
+    var feat = {
+      type: 'Feature',
+      properties: features[i] ? features[i].properties : null,
+      geometry: geom || null
+    };
+    api.set(feat, i);
   };
 
   api.set = function(feat, i) {
