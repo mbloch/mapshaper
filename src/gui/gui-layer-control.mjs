@@ -2,6 +2,7 @@ import { DomCache } from './gui-dom-cache';
 import {
   sortLayersForMenuDisplay,
   formatLayerNameForDisplay,
+  setLayerPinning,
   cleanLayerName } from './gui-layer-utils';
 import { utils, internal } from './gui-core';
 import { El } from './gui-el';
@@ -43,7 +44,7 @@ export function LayerControl(gui) {
   pinAll.on('click', function() {
     var allOn = testAllLayersPinned();
     model.getLayers().forEach(function(target) {
-      map.setLayerPinning(target, !allOn);
+      setLayerPinning(target.layer, !allOn);
     });
     El.findAll('.pinnable', el.node()).forEach(function(item) {
       El(item).classed('pinned', !allOn);
@@ -214,7 +215,7 @@ export function LayerControl(gui) {
 
     html = '<!-- ' + lyr.menu_id + '--><div class="' + classes + '">';
     html += rowHTML('name', '<span class="layer-name colored-text dot-underline">' + formatLayerNameForDisplay(lyr.name) + '</span>', 'row1');
-    html += rowHTML('contents', describeLyr(lyr));
+    html += rowHTML('contents', describeLyr(lyr, dataset));
     html += '<img class="close-btn" draggable="false" src="images/close.png">';
     if (opts.pinnable) {
       html += '<img class="eye-btn black-eye" draggable="false" src="images/eye.png">';
@@ -279,7 +280,7 @@ export function LayerControl(gui) {
       e.stopPropagation();
       if (map.isVisibleLayer(target.layer)) {
         // TODO: check for double map refresh after model.deleteLayer() below
-        map.setLayerPinning(target, false);
+        setLayerPinning(target.layer, false);
       }
       model.deleteLayer(target.layer, target.dataset);
     });
@@ -303,7 +304,7 @@ export function LayerControl(gui) {
         }
         lyr.hidden = hidden;
         lyr.unpinned = unpinned;
-        map.setLayerPinning(target, pinned);
+        setLayerPinning(lyr, pinned);
         entry.classed('pinned', pinned);
         entry.classed('invisible', hidden);
         updatePinAllButton();
@@ -344,15 +345,18 @@ export function LayerControl(gui) {
     });
   }
 
-  function describeLyr(lyr) {
+  function describeLyr(lyr, dataset) {
     var n = internal.getFeatureCount(lyr),
+        isFrame = internal.isFrameLayer(lyr, dataset.arcs),
         str, type;
     if (lyr.data && !lyr.shapes) {
       type = 'data record';
     } else if (lyr.geometry_type) {
       type = lyr.geometry_type + ' feature';
     }
-    if (type) {
+    if (isFrame) {
+      str = 'map frame';
+    } else if (type) {
       str = utils.format('%,d %s%s', n, type, utils.pluralSuffix(n));
     } else {
       str = "[empty]";
