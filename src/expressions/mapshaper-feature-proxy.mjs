@@ -39,6 +39,24 @@ export function initFeatureProxy(lyr, arcs, optsArg) {
         return opts.geojson_editor.get(_id);
       }
     });
+
+    Object.defineProperty(ctx, 'feature', {
+      set: function(o) {
+        opts.geojson_editor.set(o, _id);
+      },
+      get: function() {
+        return opts.geojson_editor.get(_id);
+      }
+    });
+
+    Object.defineProperty(ctx, 'geometry', {
+      set: function(o) {
+        opts.geojson_editor.setGeometry(o, _id);
+      },
+      get: function() {
+        return opts.geojson_editor.getGeometry(_id);
+      }
+    });
   }
 
   if (_records) {
