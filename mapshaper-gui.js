@@ -1089,6 +1089,103 @@
     return _el;
   }
 
+  function filterLayerByIds(lyr, ids) {
+    var shapes;
+    if (lyr.shapes) {
+      shapes = ids.map(function(id) {
+        return lyr.shapes[id];
+      });
+      return utils$1.defaults({shapes: shapes, data: null}, lyr);
+    }
+    return lyr;
+  }
+
+  function formatLayerNameForDisplay(name) {
+    return name || '[unnamed]';
+  }
+
+  function cleanLayerName(raw) {
+    return raw.replace(/[\n\t/\\]/g, '')
+      .replace(/^[.\s]+/, '').replace(/[.\s]+$/, '');
+  }
+
+  function updateLayerStackOrder(layers) {
+    // 1. assign ascending ids to unassigned layers above the range of other layers
+    layers.forEach(function(o, i) {
+      if (!o.layer.menu_order) o.layer.menu_order = 1e6 + i;
+    });
+    // 2. sort in ascending order
+    layers.sort(function(a, b) {
+      return a.layer.menu_order - b.layer.menu_order;
+    });
+    // 3. assign consecutve ids
+    layers.forEach(function(o, i) {
+      o.layer.menu_order = i + 1;
+    });
+    return layers;
+  }
+
+  function sortLayersForMenuDisplay(layers) {
+    layers = updateLayerStackOrder(layers);
+    return layers.reverse();
+  }
+
+  function setLayerPinning(lyr, pinned) {
+    lyr.pinned = !!pinned;
+  }
+
+
+  function adjustPointSymbolSizes(layers, overlayLyr, ext) {
+    var bbox = ext.getBounds().scale(1.5).toArray();
+    var testInBounds = function(p) {
+      return p[0] > bbox[0] && p[0] < bbox[2] && p[1] > bbox[1] && p[1] < bbox[3];
+    };
+    var topTier = 50000;
+    var count = 0;
+    layers = layers.filter(function(lyr) {
+      return lyr.geometry_type == 'point' && lyr.gui.style.dotSize > 0;
+    });
+    layers.forEach(function(lyr) {
+      // short-circuit point counting above top threshold
+      count += countPoints(lyr.gui.displayLayer.shapes, topTier, testInBounds);
+    });
+    count = Math.min(topTier, count) || 1;
+    var k = Math.pow(6 - utils$1.clamp(Math.log10(count), 1, 5), 1.3);
+
+    // zoom adjustments
+    var mapScale = ext.scale();
+    if (mapScale < 0.5) {
+      k *= Math.pow(mapScale + 0.5, 0.35);
+    } else if (mapScale > 1) {
+      // scale faster at first
+      k *= Math.pow(Math.min(mapScale, 4), 0.15);
+      k *= Math.pow(mapScale, 0.05);
+    }
+
+    // scale down when map is small
+    var smallSide = Math.min(ext.width(), ext.height());
+    k *= utils$1.clamp(smallSide / 500, 0.5, 1);
+
+    layers.forEach(function(lyr) {
+      lyr.gui.style.dotScale = k;
+    });
+    if (overlayLyr && overlayLyr.geometry_type == 'point' && overlayLyr.gui.style.dotSize > 0) {
+      overlayLyr.gui.style.dotScale = k;
+    }
+  }
+
+  function countPoints(shapes, max, filter) {
+    var count = 0;
+    var i, j, n, m, shp;
+    for (i=0, n=shapes.length; i<n && count<max; i++) {
+      shp = shapes[i];
+      for (j=0, m=(shp ? shp.length : 0); j<m; j++) {
+        count += filter(shp[j]) ? 1 : 0;
+      }
+    }
+    return count;
+  }
+
   async function showPrompt(msg, title) {
     var popup = showPopupAlert(msg, title);
     return new Promise(function(resolve) {
@@ -1971,7 +2068,12 @@
           model.setDefaultTarget([target.layers[0]], target.dataset);
         }
       }
-      model.updated({select: true});
+      if (opts.display_all && importTotal === 0) {
+        model.getLayers().forEach(function(o) {
+          setLayerPinning(o.layer, true);
+        });
+      }
+      model.updated({select: true}); // trigger redraw
     }
 
     function clearQueuedFiles() {
@@ -3204,99 +3306,6 @@
     } else {
       gui.map.setDisplayCRS(null);
     }
-  }
-
-  function filterLayerByIds(lyr, ids) {
-    var shapes;
-    if (lyr.shapes) {
-      shapes = ids.map(function(id) {
-        return lyr.shapes[id];
-      });
-      return utils$1.defaults({shapes: shapes, data: null}, lyr);
-    }
-    return lyr;
-  }
-
-  function formatLayerNameForDisplay(name) {
-    return name || '[unnamed]';
-  }
-
-  function cleanLayerName(raw) {
-    return raw.replace(/[\n\t/\\]/g, '')
-      .replace(/^[.\s]+/, '').replace(/[.\s]+$/, '');
-  }
-
-  function updateLayerStackOrder(layers) {
-    // 1. assign ascending ids to unassigned layers above the range of other layers
-    layers.forEach(function(o, i) {
-      if (!o.layer.menu_order) o.layer.menu_order = 1e6 + i;
-    });
-    // 2. sort in ascending order
-    layers.sort(function(a, b) {
-      return a.layer.menu_order - b.layer.menu_order;
-    });
-    // 3. assign consecutve ids
-    layers.forEach(function(o, i) {
-      o.layer.menu_order = i + 1;
-    });
-    return layers;
-  }
-
-  function sortLayersForMenuDisplay(layers) {
-    layers = updateLayerStackOrder(layers);
-    return layers.reverse();
-  }
-
-
-  function adjustPointSymbolSizes(layers, overlayLyr, ext) {
-    var bbox = ext.getBounds().scale(1.5).toArray();
-    var testInBounds = function(p) {
-      return p[0] > bbox[0] && p[0] < bbox[2] && p[1] > bbox[1] && p[1] < bbox[3];
-    };
-    var topTier = 50000;
-    var count = 0;
-    layers = layers.filter(function(lyr) {
-      return lyr.geometry_type == 'point' && lyr.gui.style.dotSize > 0;
-    });
-    layers.forEach(function(lyr) {
-      // short-circuit point counting above top threshold
-      count += countPoints(lyr.gui.displayLayer.shapes, topTier, testInBounds);
-    });
-    count = Math.min(topTier, count) || 1;
-    var k = Math.pow(6 - utils$1.clamp(Math.log10(count), 1, 5), 1.3);
-
-    // zoom adjustments
-    var mapScale = ext.scale();
-    if (mapScale < 0.5) {
-      k *= Math.pow(mapScale + 0.5, 0.35);
-    } else if (mapScale > 1) {
-      // scale faster at first
-      k *= Math.pow(Math.min(mapScale, 4), 0.15);
-      k *= Math.pow(mapScale, 0.05);
-    }
-
-    // scale down when map is small
-    var smallSide = Math.min(ext.width(), ext.height());
-    k *= utils$1.clamp(smallSide / 500, 0.5, 1);
-
-    layers.forEach(function(lyr) {
-      lyr.gui.style.dotScale = k;
-    });
-    if (overlayLyr && overlayLyr.geometry_type == 'point' && overlayLyr.gui.style.dotSize > 0) {
-      overlayLyr.gui.style.dotScale = k;
-    }
-  }
-
-  function countPoints(shapes, max, filter) {
-    var count = 0;
-    var i, j, n, m, shp;
-    for (i=0, n=shapes.length; i<n && count<max; i++) {
-      shp = shapes[i];
-      for (j=0, m=(shp ? shp.length : 0); j<m; j++) {
-        count += filter(shp[j]) ? 1 : 0;
-      }
-    }
-    return count;
   }
 
   // lyr: a map layer with gui property
@@ -5029,7 +5038,7 @@
     pinAll.on('click', function() {
       var allOn = testAllLayersPinned();
       model.getLayers().forEach(function(target) {
-        map.setLayerPinning(target, !allOn);
+        setLayerPinning(target.layer, !allOn);
       });
       El.findAll('.pinnable', el.node()).forEach(function(item) {
         El(item).classed('pinned', !allOn);
@@ -5200,7 +5209,7 @@
 
       html = '<!-- ' + lyr.menu_id + '--><div class="' + classes + '">';
       html += rowHTML('name', '<span class="layer-name colored-text dot-underline">' + formatLayerNameForDisplay(lyr.name) + '</span>', 'row1');
-      html += rowHTML('contents', describeLyr(lyr));
+      html += rowHTML('contents', describeLyr(lyr, dataset));
       html += '<img class="close-btn" draggable="false" src="images/close.png">';
       if (opts.pinnable) {
         html += '<img class="eye-btn black-eye" draggable="false" src="images/eye.png">';
@@ -5265,7 +5274,7 @@
         e.stopPropagation();
         if (map.isVisibleLayer(target.layer)) {
           // TODO: check for double map refresh after model.deleteLayer() below
-          map.setLayerPinning(target, false);
+          setLayerPinning(target.layer, false);
         }
         model.deleteLayer(target.layer, target.dataset);
       });
@@ -5289,7 +5298,7 @@
           }
           lyr.hidden = hidden;
           lyr.unpinned = unpinned;
-          map.setLayerPinning(target, pinned);
+          setLayerPinning(lyr, pinned);
           entry.classed('pinned', pinned);
           entry.classed('invisible', hidden);
           updatePinAllButton();
@@ -5330,15 +5339,18 @@
       });
     }
 
-    function describeLyr(lyr) {
+    function describeLyr(lyr, dataset) {
       var n = internal.getFeatureCount(lyr),
+          isFrame = internal.isFrameLayer(lyr, dataset.arcs),
           str, type;
       if (lyr.data && !lyr.shapes) {
         type = 'data record';
       } else if (lyr.geometry_type) {
         type = lyr.geometry_type + ' feature';
       }
-      if (type) {
+      if (isFrame) {
+        str = 'map frame';
+      } else if (type) {
         str = utils$1.format('%,d %s%s', n, type, utils$1.pluralSuffix(n));
       } else {
         str = "[empty]";
@@ -12477,10 +12489,6 @@ GUI and setting the size and crop of SVG output.</p><div><input type="text" clas
       drawLayers();
     };
 
-    this.setLayerPinning = function(target, pinned) {
-      target.layer.pinned = !!pinned;
-    };
-
     this.pixelCoordsToLngLatCoords = function(x, y) {
       var crsFrom = this.getDisplayCRS();
       if (!crsFrom) return null; // e.g. table view
@@ -12904,11 +12912,13 @@ GUI and setting the size and crop of SVG output.</p><div><input type="text" clas
         updateLayerStyles(contentLayers);
         updateLayerStackOrder(model.getLayers());// update menu_order property of all layers
       }
-      adjustPointSymbolSizes(contentLayers, _overlayLyr, _ext);
       sortMapLayers(contentLayers);
       if (_intersectionLyr) {
         contentLayers = contentLayers.concat(_intersectionLyr);
       }
+      // moved this below intersection layer addition, so intersection dots get scaled
+      adjustPointSymbolSizes(contentLayers, _overlayLyr, _ext);
+
       // RENDERING
       // draw main content layers
       _renderer.drawMainLayers(contentLayers, action);
@@ -13558,14 +13568,9 @@ GUI and setting the size and crop of SVG output.</p><div><input type="text" clas
       dataLoaded = true;
       gui.buttons.show();
       gui.basemap.show();
-      El('#mode-buttons').show();
-      El('#splash-buttons').hide();
+      El('#mode-buttons').show(); // show Simplify, Console, Export, etc.
+      El('#splash-buttons').hide(); // hide Wiki, Github buttons
       El('body').addClass('map-view');
-      if (importOpts.display_all) {
-        gui.model.getLayers().forEach(function(o) {
-          gui.map.setLayerPinning(o, true);
-        });
-      }
       gui.console.runInitialCommands(getInitialConsoleCommands());
     });
   };

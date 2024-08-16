@@ -14931,6 +14931,24 @@
           return opts.geojson_editor.get(_id);
         }
       });
+
+      Object.defineProperty(ctx, 'feature', {
+        set: function(o) {
+          opts.geojson_editor.set(o, _id);
+        },
+        get: function() {
+          return opts.geojson_editor.get(_id);
+        }
+      });
+
+      Object.defineProperty(ctx, 'geometry', {
+        set: function(o) {
+          opts.geojson_editor.setGeometry(o, _id);
+        },
+        get: function() {
+          return opts.geojson_editor.getGeometry(_id);
+        }
+      });
     }
 
     if (_records) {
@@ -35764,58 +35782,6 @@ ${svg}
 
   cmd.comment = function() {}; // no-op, so -comment doesn't trigger a parsing error
 
-  function expressionUsesGeoJSON(exp) {
-    return exp.includes('this.geojson');
-  }
-
-  function getFeatureEditor(lyr, dataset) {
-    var api = {};
-    // need to copy attribute to avoid circular references if geojson is assigned
-    // to a data property.
-    var copy = copyLayer(lyr);
-    var features = exportLayerAsGeoJSON(copy, dataset, {rfc7946: true}, true);
-    var features2 = [];
-
-    api.get = function(i) {
-      if (i > 0) features[i-1] = null; // garbage-collect old features
-      return features[i];
-    };
-
-    api.set = function(feat, i) {
-      var arr;
-
-      if (utils.isString(feat)) {
-        feat = JSON.parse(feat);
-      }
-
-      if (!feat) return;
-
-      if (feat.type == 'GeometryCollection') {
-        arr = feat.geometries.map(geom => GeoJSON.toFeature(geom));
-      } else if (feat.type == 'FeatureCollection') {
-        arr = feat.features;
-      } else {
-        feat = GeoJSON.toFeature(feat);
-      }
-
-      if (arr) {
-        features2 = features2.concat(arr);
-      } else {
-        features2.push(feat);
-      }
-    };
-
-    api.done = function() {
-      if (features2.length === 0) return; // read-only expression
-      var geojson = {
-        type: 'FeatureCollection',
-        features: features2
-      };
-      return importGeoJSON(geojson);
-    };
-    return api;
-  }
-
   cmd.dashlines = function(lyr, dataset, opts) {
     var crs = getDatasetCRS(dataset);
     var defs = getStashedVar('defs');
@@ -37779,6 +37745,76 @@ ${svg}
       pruneArcs(dataset);
     }
   };
+
+  function expressionUsesGeoJSON(exp) {
+    return exp.includes('this.geojson') || exp.includes('this.geometry') || exp.includes('this.feature');
+  }
+
+  function getFeatureEditor(lyr, dataset) {
+    var api = {};
+    // need to copy attribute to avoid circular references if geojson is assigned
+    // to a data property.
+    var copy = copyLayer(lyr);
+    var features = exportLayerAsGeoJSON(copy, dataset, {rfc7946: true}, true);
+    var features2 = [];
+
+    api.get = function(i) {
+      if (i > 0) features[i-1] = null; // garbage-collect old features
+      return features[i];
+    };
+
+    api.getGeometry = function(i) {
+      if (i > 0) features[i-1] = null; // garbage-collect old features
+      return features[i] ? features[i].geometry : null;
+    };
+
+    api.setGeometry = function(geom, i) {
+      if (utils.isString(geom)) {
+        geom = JSON.parse(geom);
+      }
+      // TODO: validate? validate geometry in feature setter?
+      var feat = {
+        type: 'Feature',
+        properties: features[i] ? features[i].properties : null,
+        geometry: geom || null
+      };
+      api.set(feat, i);
+    };
+
+    api.set = function(feat, i) {
+      var arr;
+
+      if (utils.isString(feat)) {
+        feat = JSON.parse(feat);
+      }
+
+      if (!feat) return;
+
+      if (feat.type == 'GeometryCollection') {
+        arr = feat.geometries.map(geom => GeoJSON.toFeature(geom));
+      } else if (feat.type == 'FeatureCollection') {
+        arr = feat.features;
+      } else {
+        feat = GeoJSON.toFeature(feat);
+      }
+
+      if (arr) {
+        features2 = features2.concat(arr);
+      } else {
+        features2.push(feat);
+      }
+    };
+
+    api.done = function() {
+      if (features2.length === 0) return; // read-only expression
+      var geojson = {
+        type: 'FeatureCollection',
+        features: features2
+      };
+      return importGeoJSON(geojson);
+    };
+    return api;
+  }
 
   cmd.filterGeom = function(lyr, arcs, opts) {
     if (!layerHasGeometry(lyr)) {
@@ -45690,7 +45726,7 @@ ${svg}
     });
   }
 
-  var version = "0.6.98";
+  var version = "0.6.99";
 
   // Parse command line args into commands and run them
   // Function takes an optional Node-style callback. A Promise is returned if no callback is given.
