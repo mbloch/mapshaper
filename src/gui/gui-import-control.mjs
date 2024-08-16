@@ -3,6 +3,7 @@ import { utils, internal, stop } from './gui-core';
 import { El } from './gui-el';
 import { SimpleButton } from './gui-elements';
 import { GUI } from './gui-lib';
+import { setLayerPinning } from './gui-layer-utils';
 import { importSessionData } from './gui-session-snapshot-control';
 import { openAddLayerPopup } from './gui-add-layer-popup';
 import { considerReprojecting } from './gui-import-utils';
@@ -188,7 +189,12 @@ export function ImportControl(gui, opts) {
         model.setDefaultTarget([target.layers[0]], target.dataset);
       }
     }
-    model.updated({select: true});
+    if (opts.display_all && importTotal === 0) {
+      model.getLayers().forEach(function(o) {
+        setLayerPinning(o.layer, true);
+      });
+    }
+    model.updated({select: true}); // trigger redraw
   }
 
   function clearQueuedFiles() {

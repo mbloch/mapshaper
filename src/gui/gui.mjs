@@ -94,14 +94,9 @@ var startEditing = function() {
     dataLoaded = true;
     gui.buttons.show();
     gui.basemap.show();
-    El('#mode-buttons').show();
-    El('#splash-buttons').hide();
+    El('#mode-buttons').show(); // show Simplify, Console, Export, etc.
+    El('#splash-buttons').hide(); // hide Wiki, Github buttons
     El('body').addClass('map-view');
-    if (importOpts.display_all) {
-      gui.model.getLayers().forEach(function(o) {
-        gui.map.setLayerPinning(o, true);
-      });
-    }
     gui.console.runInitialCommands(getInitialConsoleCommands());
   });
 };
