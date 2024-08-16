@@ -1,7 +1,6 @@
 import cmd from '../mapshaper-cmd';
-import { getLayerDataTable } from '../dataset/mapshaper-layer-utils';
 import { getSymbolDataAccessor } from '../svg/svg-properties';
-import { requirePointLayer, requireSinglePointLayer, getLayerBounds, copyLayer } from '../dataset/mapshaper-layer-utils';
+import { requirePointLayer, requireSinglePointLayer, getLayerBounds, copyLayer, getLayerDataTable } from '../dataset/mapshaper-layer-utils';
 import { stop, error } from '../utils/mapshaper-logging';
 // import '../svg/mapshaper-svg-arrows';
 import { rotateCoords, scaleAndShiftCoords, flipY } from '../symbols/mapshaper-symbol-utils';
