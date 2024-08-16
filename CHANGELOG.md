@@ -1,3 +1,6 @@
+v0.6.99
+* Bug fixes
+
 v0.6.98
 * Added remove-empty flag for -filter-slivers command.
 
