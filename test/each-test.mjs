@@ -94,6 +94,13 @@ describe('mapshaper-each.js', function () {
 
     })
 
+    // it('this.geometry getter & setter', async function() {
+    //   var points = [{x: 5, y: 6}, {x: 8, y: 9}];
+    //   var cmd = `-i data.json -each "this.geometry = {type: 'Point', coordinates: [this.y, this.x]}" -o`;
+    //   var out = await api.applyCommands(cmd, {'data.json': points});
+    //   var json = JSON.parse(out['data.json']);
+    // });
+
     it('this.geojson getter', function(done) {
       var data = {
         type: 'Feature',
