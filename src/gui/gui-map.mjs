@@ -89,10 +89,6 @@ export function MshpMap(gui) {
     drawLayers();
   };
 
-  this.setLayerPinning = function(target, pinned) {
-    target.layer.pinned = !!pinned;
-  };
-
   this.pixelCoordsToLngLatCoords = function(x, y) {
     var crsFrom = this.getDisplayCRS();
     if (!crsFrom) return null; // e.g. table view
@@ -516,11 +512,13 @@ export function MshpMap(gui) {
       updateLayerStyles(contentLayers);
       updateLayerStackOrder(model.getLayers());// update menu_order property of all layers
     }
-    adjustPointSymbolSizes(contentLayers, _overlayLyr, _ext);
     sortMapLayers(contentLayers);
     if (_intersectionLyr) {
       contentLayers = contentLayers.concat(_intersectionLyr);
     }
+    // moved this below intersection layer addition, so intersection dots get scaled
+    adjustPointSymbolSizes(contentLayers, _overlayLyr, _ext);
+
     // RENDERING
     // draw main content layers
     _renderer.drawMainLayers(contentLayers, action);

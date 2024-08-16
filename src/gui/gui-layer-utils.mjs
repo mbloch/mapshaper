@@ -41,6 +41,10 @@ export function sortLayersForMenuDisplay(layers) {
   return layers.reverse();
 }
 
+export function setLayerPinning(lyr, pinned) {
+  lyr.pinned = !!pinned;
+}
+
 
 export function adjustPointSymbolSizes(layers, overlayLyr, ext) {
   var bbox = ext.getBounds().scale(1.5).toArray();
