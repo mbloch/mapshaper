@@ -10,7 +10,7 @@ export function transformDatasetToPixels(dataset, opts) {
 
 export function fitDatasetToFrame(dataset, frame, opts) {
   var bounds = new Bounds(frame.bbox);
-  var bounds2 = new Bounds(0, 0, frame.width, frame.height);
+  var bounds2 = frame.bbox2 ? new Bounds(frame.bbox2) : new Bounds(0, 0, frame.width, frame.height);
   var fwd = bounds.getTransform(bounds2, opts.invert_y);
   transformPoints(dataset, function(x, y) {
     return fwd.transform(x, y);

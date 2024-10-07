@@ -30,7 +30,8 @@ export function getFrameLayerData(lyr, arcs) {
   var bounds = getLayerBounds(lyr, arcs);
   var d = lyr.data.getReadOnlyRecordAt(0);
   var w = d.width || 800;
-  var h = w * bounds.height() / bounds.width();
+  // prevent rounding errors (like 1000.0000000002)
+  var h = Math.round(w * bounds.height() / bounds.width());
   return {
     type: 'frame',
     width: w,
@@ -51,6 +52,7 @@ function calcFrameData(dataset, opts) {
   var pixBounds = calcOutputSizeInPixels(bounds, opts);
   return {
     bbox: bounds.toArray(),
+    bbox2: pixBounds.toArray(),
     width: Math.round(pixBounds.width()),
     height: Math.round(pixBounds.height()) || 1,
     type: 'frame'
