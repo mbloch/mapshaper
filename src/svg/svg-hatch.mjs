@@ -44,7 +44,7 @@ export function parseDashes(parts) {
   var type = parts.shift();
   var colors = [];
   var background = parts.pop();
-  var spacing = parseInt(parts.pop());
+  var spacing = parseNum(parts.pop());
   var tmp;
   while (parts.length > 0) {
     tmp = parts.pop();
@@ -55,11 +55,11 @@ export function parseDashes(parts) {
       colors.push(tmp);
     }
   }
-  var width = parseInt(parts.pop());
-  var dashes = [parseInt(parts.pop()), parseInt(parts.pop())].reverse();
+  var width = parseNum(parts.pop());
+  var dashes = [parseNum(parts.pop()), parseNum(parts.pop())].reverse();
   var rotation = 45;
   if (parts.length > 0) {
-    rotation = parseInt(parts.pop());
+    rotation = parseNum(parts.pop());
   }
   if (parts.length > 0) {
     return null;
@@ -84,10 +84,10 @@ export function parseHatches(parts) {
   // 1px red 1px white 1px black
   // -45deg 3 #eee 3 rgb(0,0,0)
   var type = parts.shift();
-  var rot = parts.length % 2 == 1 ? parseInt(parts.shift()) : 45, // default is 45
+  var rot = parts.length % 2 == 1 ? parseNum(parts.shift()) : 45, // default is 45
       colors = [], widths = [], a, b;
   for (var i=0; i<parts.length; i+=2) {
-    widths.push(parseInt(parts[i]));
+    widths.push(parseNum(parts[i]));
     colors.push(parts[i+1]);
   }
   if (Math.min.apply(null, widths) > 0 === false) return null;
@@ -101,7 +101,7 @@ export function parseHatches(parts) {
 }
 
 function isSize(str) {
-  return parseInt(str) > 0;
+  return parseNum(str) > 0;
 }
 
 export function parseDots(parts) {
@@ -114,11 +114,11 @@ export function parseDots(parts) {
   var type = parts.shift();
   var rot = 0;
   if (isSize(parts[1])) { // if rotation is present, there are two numbers
-    rot = parseInt(parts.shift());
+    rot = parseNum(parts.shift());
   }
-  var size = parseInt(parts.shift());
+  var size = parseNum(parts.shift());
   var bg = parts.pop();
-  var spacing = parseInt(parts.pop());
+  var spacing = parseNum(parts.pop());
   while (parts.length > 0) {
     colors.push(parts.shift());
   }
@@ -134,6 +134,12 @@ export function parseDots(parts) {
     background: bg,
     rotation: rot
   };
+}
+
+function parseNum(str) {
+  // return parseNum(str);
+  // support sub-pixel sizes
+  return parseFloat(str) || 0;
 }
 
 function splitPattern(str) {
