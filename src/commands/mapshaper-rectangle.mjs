@@ -57,6 +57,9 @@ cmd.rectangles = function(targetLyr, targetDataset, opts) {
   return outputLayers;
 };
 
+
+
+
 function shapesToBoxGeometries(lyr, dataset, opts) {
   var crsInfo = getDatasetCrsInfo(dataset);
   return lyr.shapes.map(function(shp) {

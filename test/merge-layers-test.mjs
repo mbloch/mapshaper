@@ -77,7 +77,6 @@ describe('mapshaper-merge-layers.js', function () {
         done();
       });
 
-
     });
 
     it('handles empty layers', function(done) {
