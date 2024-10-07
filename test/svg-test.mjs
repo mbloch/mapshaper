@@ -134,7 +134,7 @@ describe('mapshaper-svg.js', function () {
         coordinates: [[-10, -5], [5, 10]]
       }
     };
-    var cmd = '-i line.json -i box.json -frame width=4in -target box,line -o map.svg';
+    var cmd = '-i line.json -i box.json -frame width=4in -target box,line,frame -o map.svg';
     var out = await api.applyCommands(cmd, {'line.json': line, 'box.json': box});
     var svg = out['map.svg'];
     assert(svg.includes('<g id="box">\n<path d="M 0 288 0 0 288 0 288 288 0 288 Z" fill="none"/>\n</g>'))

@@ -64,6 +64,7 @@ mapshaper states.geojson -filter 'ST == "AK"' + name=alaska -o output/ target=*
 [-filter-fields](#-filter-fields)
 [-filter-islands](#-filter-islands)
 [-filter-slivers](#-filter-slivers)
+[-frame](#-frame)
 [-graticule](#-graticule)
 [-grid](#-grid)
 [-include](#-include)
@@ -730,6 +731,23 @@ Remove small polygon rings.
 
 [`target=`](#common-options)
 
+### -frame
+
+Create a rectangular frame layer at a given display width. Frame size is used for scaling symbols and for setting the display size of SVG output. The geographical extent of the frame is based on the `bbox=` option or the bounding box of the target layer or layers, if `bbox=` is omitted.
+
+`width=`  Width of frame (e.g. 5in, 10cm, 600px; default is 800px)
+
+`height=`  Height of frame (in addition to or instead of width= option)
+
+`aspect-ratio=`  Aspect ratio of frame (optional)
+
+`bbox=` Bounding coordinates of frame contents in projected map coordinates (xmin,ymin,xmax,ymax). If omitted, the bounding box of the target layer(s) is used.
+
+`offset=` Padding around the frame's `bbox` in display units or pct of width/height, e.g. 5cm 20px 5%
+
+`offsets=`  Comma-sep. list of offsets for each side of the map frame, in l,b,r,t order
+
+Other options: `name=` `target=`
 
 ### -graticule
 

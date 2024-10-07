@@ -91,14 +91,16 @@ import '../commands/mapshaper-split-on-grid';
 import '../commands/mapshaper-subdivide';
 
 function commandAcceptsMultipleTargetDatasets(name) {
-  return name == 'rotate' || name == 'info' || name == 'proj' || name == 'require' ||
-    name == 'drop' || name == 'target' || name == 'if' || name == 'elif' ||
-    name == 'else' || name == 'endif' || name == 'run' || name == 'i' || name == 'snap';
+  return name == 'rotate' || name == 'info' || name == 'proj' ||
+    name == 'require' || name == 'drop' || name == 'target' ||
+    name == 'if' || name == 'elif' || name == 'else' || name == 'endif' ||
+    name == 'run' || name == 'i' || name == 'snap' || name == 'frame' ||
+    name == 'comment';
 }
 
 function commandAcceptsEmptyTarget(name) {
   return name == 'graticule' || name == 'i' || name == 'help' ||
-    name == 'point-grid' || name == 'shape' || name == 'rectangle' ||
+    name == 'point-grid' || name == 'shape' || name == 'rectangle' || name == 'frame' ||
     name == 'require' || name == 'run' || name == 'define' ||
     name == 'include' || name == 'print' || name == 'comment' || name == 'if' || name == 'elif' ||
     name == 'else' || name == 'endif' || name == 'stop' || name == 'add-shape' ||
@@ -122,11 +124,13 @@ export async function runCommand(command, job) {
   }
 
   if (name == 'comment') {
+    cmd.comment(opts);
     return done(null);
   }
 
   if (!job) job = new Job();
   job.startCommand(command);
+
 
   try { // catch errors from synchronous functions
     T.start();
@@ -226,8 +230,8 @@ export async function runCommand(command, job) {
     } else if (name == 'colorizer') {
       outputLayers = cmd.colorizer(opts);
 
-    } else if (name == 'comment') {
-      // no-op
+    // } else if (name == 'comment') {
+    //   // no-op
 
     } else if (name == 'dashlines') {
       applyCommandToEachLayer(cmd.dashlines, targetLayers, targetDataset, opts);
@@ -285,9 +289,8 @@ export async function runCommand(command, job) {
     } else if (name == 'filter-slivers') {
       applyCommandToEachLayer(cmd.filterSlivers, targetLayers, targetDataset, opts);
 
-    // // 'frame' and 'rectangle' have merged
-    // } else if (name == 'frame') {
-    // cmd.frame(job.catalog, source, opts);
+    } else if (name == 'frame') {
+      cmd.frame(job.catalog, targets, opts);
 
     } else if (name == 'fuzzy-join') {
       applyCommandToEachLayer(cmd.fuzzyJoin, targetLayers, arcs, source, opts);
@@ -389,10 +392,7 @@ export async function runCommand(command, job) {
         cmd.proj(targ.dataset, job.catalog, opts);
       });
 
-    } else if (name == 'rectangle' || name == 'frame') {
-      if (name == 'frame' && !opts.width) {
-        stop('Command requires a width= argument');
-      }
+    } else if (name == 'rectangle') {
       if (source || opts.bbox || targets.length === 0) {
         job.catalog.addDataset(cmd.rectangle(source || targets?.[0], opts));
       } else {

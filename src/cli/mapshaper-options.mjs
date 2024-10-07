@@ -325,6 +325,10 @@ export function getOptionParser() {
     .option('geojson-type', {
       describe: '[GeoJSON] FeatureCollection, GeometryCollection or Feature'
     })
+    .option('no-null-props', {
+      describe: '[GeoJSON] use "properties":{} when a Feature has no data',
+      type: 'flag'
+    })
     .option('hoist', {
       describe: '[GeoJSON] move properties to the root level of each Feature',
       type: 'strings'
@@ -1887,15 +1891,32 @@ export function getOptionParser() {
     });
 
   parser.command('frame')
-    // .describe('create a map frame at a given size')
+    .describe('create a rectangular map frame layer at a given display width')
+    .option('width', {
+      describe: 'width of frame (e.g. 5in, 10cm, 600px; default is 800px)'
+    })
+    .option('height', {
+      describe: '(optional) height of frame; similar to width= option'
+    })
+    .option('aspect-ratio', {
+      describe: '(optional) aspect ratio of frame, if height= or width= is omitted',
+      type: 'number'
+    })
     .option('bbox', {
       describe: 'frame coordinates (xmin,ymin,xmax,ymax)',
       type: 'bbox'
     })
-    // .option('offset', offsetOpt)
-    .option('width', {
-      describe: 'width of output (default is 800px)'
+    .option('offset', {
+      describe: 'padding in display units or pct of width, e.g. 5cm 20px 5%',
+      type: 'strings'
     })
+    .option('offsets', {
+      describe: 'separate offsets for each side, in l,b,r,t order',
+      type: 'strings'
+    })
+    .option('name', nameOpt)
+    .option('target', targetOpt);
+
     // .option('height', {
     //   describe: 'pixel height of output (may be a range)'
     // })
@@ -1906,7 +1927,6 @@ export function getOptionParser() {
     // .option('source', {
     //   describe: 'name of layer to enclose'
     // })
-    .option('name', nameOpt);
 
   parser.command('fuzzy-join')
     .describe('join points to polygons, with data fill and fuzzy match')
