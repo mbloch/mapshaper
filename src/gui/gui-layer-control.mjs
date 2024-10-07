@@ -8,6 +8,7 @@ import { utils, internal } from './gui-core';
 import { El } from './gui-el';
 import { ClickText2 } from './gui-elements';
 import { GUI } from './gui-lib';
+import { openContextMenu } from './gui-context-menu';
 
 export function LayerControl(gui) {
   var model = gui.model;
@@ -216,7 +217,7 @@ export function LayerControl(gui) {
     html = '<!-- ' + lyr.menu_id + '--><div class="' + classes + '">';
     html += rowHTML('name', '<span class="layer-name colored-text dot-underline">' + formatLayerNameForDisplay(lyr.name) + '</span>', 'row1');
     html += rowHTML('contents', describeLyr(lyr, dataset));
-    html += '<img class="close-btn" draggable="false" src="images/close.png">';
+    // html += '<img class="close-btn" draggable="false" src="images/close.png">';
     if (opts.pinnable) {
       html += '<img class="eye-btn black-eye" draggable="false" src="images/eye.png">';
       html += '<img class="eye-btn green-eye" draggable="false" src="images/eye2.png">';
@@ -274,16 +275,35 @@ export function LayerControl(gui) {
   function initMouseEvents2(entry, id, pinnable) {
     initLayerDragging(entry, id);
 
-    // init delete button
-    GUI.onClick(entry.findChild('img.close-btn'), function(e) {
+    function deleteLayer() {
       var target = findLayerById(id);
-      e.stopPropagation();
       if (map.isVisibleLayer(target.layer)) {
         // TODO: check for double map refresh after model.deleteLayer() below
         setLayerPinning(target.layer, false);
       }
       model.deleteLayer(target.layer, target.dataset);
-    });
+    }
+
+    function selectLayer(closeMenu) {
+      var target = findLayerById(id);
+      // don't select if user is typing or dragging
+      if (GUI.textIsSelected() || dragging) return;
+      // undo any temporary hiding when layer is selected
+      target.layer.hidden = false;
+      if (!map.isActiveLayer(target.layer)) {
+        model.selectLayer(target.layer, target.dataset);
+      }
+      // close menu after a delay
+      if (closeMenu === true) setTimeout(function() {
+        gui.clearMode();
+      }, 230);
+    }
+
+    // init delete button
+    // GUI.onClick(entry.findChild('img.close-btn'), function(e) {
+    //   e.stopPropagation();
+    //   deleteLayer();
+    // });
 
     if (pinnable) {
       // init pin button
@@ -330,18 +350,15 @@ export function LayerControl(gui) {
 
     // init click-to-select
     GUI.onClick(entry, function() {
-      var target = findLayerById(id);
-      // don't select if user is typing or dragging
-      if (GUI.textIsSelected() || dragging) return;
-      // undo any temporary hiding when layer is selected
-      target.layer.hidden = false;
-      if (!map.isActiveLayer(target.layer)) {
-        model.selectLayer(target.layer, target.dataset);
-      }
-      // close menu after a delay
-      setTimeout(function() {
-        gui.clearMode();
-      }, 230);
+      selectLayer(true);
+    });
+
+    GUI.onContextClick(entry, function(e) {
+      e.deleteLayer = deleteLayer;
+      e.selectLayer = selectLayer;
+      // contextMenu.open(e);
+      // openContextMenu(e, null, entry.node())
+      openContextMenu(e, null, null);
     });
   }
 

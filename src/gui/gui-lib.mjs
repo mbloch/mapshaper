@@ -97,15 +97,35 @@ GUI.blurActiveElement = function() {
 };
 
 // Filter out delayed click events, e.g. so users can highlight and copy text
+// Filter out context menu clicks
 GUI.onClick = function(el, cb) {
   var time;
   el.on('mousedown', function() {
     time = +new Date();
   });
   el.on('mouseup', function(e) {
-    if (+new Date() - time < 300) cb(e);
+    if (looksLikeContextClick(e)) {
+      return;
+    }
+    if (+new Date() - time < 300) {
+      cb(e);
+    }
   });
 };
+
+GUI.onContextClick = function(el, cb) {
+  el.on('mouseup', function(e) {
+    if (looksLikeContextClick(e)) {
+      e.stopPropagation();
+      e.preventDefault();
+      cb(e);
+    }
+  });
+};
+
+function looksLikeContextClick(e) {
+  return e.button > 1 || e.ctrlKey;
+}
 
 // tests if filename is a type that can be used
 // GUI.isReadableFileType = function(filename) {
