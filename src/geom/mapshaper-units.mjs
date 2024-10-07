@@ -35,7 +35,7 @@ export function parseSizeParam(p) {
   var px = units == 'in' && num * 72 ||
       units == 'cm' && Math.round(num * 28.3465) ||
       num;
-  if (px > 0 === false || !units) {
+  if (px >= 0 === false || !units) {
     stop('Invalid size:', str);
   }
   return px;

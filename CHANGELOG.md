@@ -1,3 +1,9 @@
+v0.6.100
+* Added -frame command, for creating a rectangular map frame layer with a defined display size. Used to set SVG output size and on-screen symbol scale.
+* Added -o no-null-props option, which uses "properties":{} instead of "properties":null when outputting GeoJSON features with no attribute data.
+* Added support for sub-pixel sizes of pattern fills like hatches and dots (see the -style fill-effect= option).
+* Bug fixes
+
 v0.6.99
 * Bug fixes
 

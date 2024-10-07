@@ -233,12 +233,12 @@ export function getDatasetCRS(dataset) {
   return getDatasetCrsInfo(dataset).crs;
 }
 
-export function requireDatasetsHaveCompatibleCRS(arr) {
+export function requireDatasetsHaveCompatibleCRS(arr, msg) {
   arr.reduce(function(memo, dataset) {
     var P = getDatasetCRS(dataset);
     if (memo && P) {
       if (isLatLngCRS(memo) != isLatLngCRS(P)) {
-        stop("Unable to combine projected and unprojected datasets");
+        stop(msg || "Unable to combine projected and unprojected datasets");
       }
     }
     return P || memo;
