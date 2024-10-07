@@ -10,6 +10,7 @@ import { runningInBrowser } from '../mapshaper-env';
 import utils from '../utils/mapshaper-utils';
 import require from '../mapshaper-require';
 import { commandTakesFileInput } from '../cli/mapshaper-command-info';
+import { inControlBlock } from '../mapshaper-control-flow';
 import { version } from '../../package.json';
 
 // Parse command line args into commands and run them
@@ -161,13 +162,16 @@ function _runCommands(argv, opts, callback) {
 
   function nextGroup(prevJob, commands, next) {
     runParsedCommands(commands, new Job(), function(err, job) {
-      err = filterError(err);
+      err = handleNonFatalError(err);
       next(err, job);
     });
   }
 
   function done(err, job) {
-    err = filterError(err);
+    if (job && inControlBlock(job)) {
+      message('Warning: -if command is missing a matching -endif');
+    }
+    err = handleNonFatalError(err);
     if (err) printError(err);
     callback(err, job);
   }
@@ -244,7 +248,7 @@ export function runParsedCommands(commands, job, done) {
   }
 }
 
-function filterError(err) {
+function handleNonFatalError(err) {
   if (err && err.name == 'NonFatalError') {
     printError(err);
     return null;
