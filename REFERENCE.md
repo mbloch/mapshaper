@@ -245,6 +245,8 @@ Save content of the target layer(s) to a file or files.
 
 `geojson-type=`   (GeoJSON) Overrides the default output type. Possible values: "FeatureCollection", "GeometryCollection", "Feature" (for a single feature).
 
+`no-null-props`   (GeoJSON) use `"properties": {}` instead of `"properties": null` when outputting a Feature with no attribute data.
+
 `hoist=`  (GeoJSON) Move one or more properties to the root level of each Feature. Hoisting a field named "id" creates an id for each Feature. This option can also be used to create non-standard Feature attributes (as used by the tippecanoe program).
 
 `width=`    (SVG/TopoJSON) Set the width of the output dataset in pixels. When used with TopoJSON output, this option switches the output coordinates from geographic units to pixels and flips the Y axis. SVG output is always in pixels (default SVG width is 800).
