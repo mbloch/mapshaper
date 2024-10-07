@@ -79,6 +79,9 @@ export function exportLayerAsGeoJSON(lyr, dataset, opts, asFeatures, ofmt) {
       if (ids) {
         obj.id = ids[i];
       }
+      if (opts.no_null_props && !obj.properties) {
+        obj.properties = {};
+      }
     } else if (!geom) {
       return memo; // don't add null objects to GeometryCollection
     } else {
