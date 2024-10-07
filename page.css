@@ -487,7 +487,8 @@ div.alert-box {
 	box-shadow: 0 1px 7px rgba(0,0,0,0.18);
 	background-color: #fff;
 	font-size: 13px;
-	z-index: 40;
+	/* z-index: 40; */
+	z-index: 200;
 	padding: 4px 0;
 }
 
@@ -535,7 +536,7 @@ div.alert-box {
 	font-size: 19px;
 	line-height: 1.1;
 	padding: 0;
-	margin: 0 0 0.3em 0;
+	margin: 0 0 0.4em 0;
 	font-weight: normal;
 }
 
@@ -757,7 +758,7 @@ body.simplify .layer-control-btn {
 	max-height: 500px;
 	overflow: hidden;
 	overflow-y: auto;
-	padding: 8px 14px 9px 14px;
+	padding: 9px 14px 10px 14px;
 	pointer-events: auto;
 	border-radius: 9px;
 }

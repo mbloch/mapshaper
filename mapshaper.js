@@ -5165,12 +5165,12 @@
     return getDatasetCrsInfo(dataset).crs;
   }
 
-  function requireDatasetsHaveCompatibleCRS(arr) {
+  function requireDatasetsHaveCompatibleCRS(arr, msg) {
     arr.reduce(function(memo, dataset) {
       var P = getDatasetCRS(dataset);
       if (memo && P) {
         if (isLatLngCRS(memo) != isLatLngCRS(P)) {
-          stop("Unable to combine projected and unprojected datasets");
+          stop(msg || "Unable to combine projected and unprojected datasets");
         }
       }
       return P || memo;
@@ -13640,7 +13640,7 @@
     var px = units == 'in' && num * 72 ||
         units == 'cm' && Math.round(num * 28.3465) ||
         num;
-    if (px > 0 === false || !units) {
+    if (px >= 0 === false || !units) {
       stop('Invalid size:', str);
     }
     return px;
@@ -14713,6 +14713,7 @@
       return memo;
     }, []);
   }
+
 
 
   function findCommandTargets(layers, pattern, type) {
@@ -18154,6 +18155,9 @@
         if (ids) {
           obj.id = ids[i];
         }
+        if (opts.no_null_props && !obj.properties) {
+          obj.properties = {};
+        }
       } else if (!geom) {
         return memo; // don't add null objects to GeometryCollection
       } else {
@@ -18499,7 +18503,8 @@
     var bounds = getLayerBounds(lyr, arcs);
     var d = lyr.data.getReadOnlyRecordAt(0);
     var w = d.width || 800;
-    var h = w * bounds.height() / bounds.width();
+    // prevent rounding errors (like 1000.0000000002)
+    var h = Math.round(w * bounds.height() / bounds.width());
     return {
       type: 'frame',
       width: w,
@@ -18520,6 +18525,7 @@
     var pixBounds = calcOutputSizeInPixels(bounds, opts);
     return {
       bbox: bounds.toArray(),
+      bbox2: pixBounds.toArray(),
       width: Math.round(pixBounds.width()),
       height: Math.round(pixBounds.height()) || 1,
       type: 'frame'
@@ -18934,7 +18940,7 @@
     parts.shift();
     var colors = [];
     var background = parts.pop();
-    var spacing = parseInt(parts.pop());
+    var spacing = parseNum(parts.pop());
     var tmp;
     while (parts.length > 0) {
       tmp = parts.pop();
@@ -18945,11 +18951,11 @@
         colors.push(tmp);
       }
     }
-    var width = parseInt(parts.pop());
-    var dashes = [parseInt(parts.pop()), parseInt(parts.pop())].reverse();
+    var width = parseNum(parts.pop());
+    var dashes = [parseNum(parts.pop()), parseNum(parts.pop())].reverse();
     var rotation = 45;
     if (parts.length > 0) {
-      rotation = parseInt(parts.pop());
+      rotation = parseNum(parts.pop());
     }
     if (parts.length > 0) {
       return null;
@@ -18974,10 +18980,10 @@
     // 1px red 1px white 1px black
     // -45deg 3 #eee 3 rgb(0,0,0)
     parts.shift();
-    var rot = parts.length % 2 == 1 ? parseInt(parts.shift()) : 45, // default is 45
+    var rot = parts.length % 2 == 1 ? parseNum(parts.shift()) : 45, // default is 45
         colors = [], widths = [];
     for (var i=0; i<parts.length; i+=2) {
-      widths.push(parseInt(parts[i]));
+      widths.push(parseNum(parts[i]));
       colors.push(parts[i+1]);
     }
     if (Math.min.apply(null, widths) > 0 === false) return null;
@@ -18991,7 +18997,7 @@
   }
 
   function isSize(str) {
-    return parseInt(str) > 0;
+    return parseNum(str) > 0;
   }
 
   function parseDots(parts) {
@@ -19004,11 +19010,11 @@
     var type = parts.shift();
     var rot = 0;
     if (isSize(parts[1])) { // if rotation is present, there are two numbers
-      rot = parseInt(parts.shift());
+      rot = parseNum(parts.shift());
     }
-    var size = parseInt(parts.shift());
+    var size = parseNum(parts.shift());
     var bg = parts.pop();
-    var spacing = parseInt(parts.pop());
+    var spacing = parseNum(parts.pop());
     while (parts.length > 0) {
       colors.push(parts.shift());
     }
@@ -19024,6 +19030,12 @@
       background: bg,
       rotation: rot
     };
+  }
+
+  function parseNum(str) {
+    // return parseNum(str);
+    // support sub-pixel sizes
+    return parseFloat(str) || 0;
   }
 
   function splitPattern(str) {
@@ -20116,7 +20128,7 @@
 
   function fitDatasetToFrame(dataset, frame, opts) {
     var bounds = new Bounds(frame.bbox);
-    var bounds2 = new Bounds(0, 0, frame.width, frame.height);
+    var bounds2 = frame.bbox2 ? new Bounds(frame.bbox2) : new Bounds(0, 0, frame.width, frame.height);
     var fwd = bounds.getTransform(bounds2, opts.invert_y);
     transformPoints(dataset, function(x, y) {
       return fwd.transform(x, y);
@@ -24502,6 +24514,10 @@ ${svg}
       .option('geojson-type', {
         describe: '[GeoJSON] FeatureCollection, GeometryCollection or Feature'
       })
+      .option('no-null-props', {
+        describe: '[GeoJSON] use "properties":{} when a Feature has no data',
+        type: 'flag'
+      })
       .option('hoist', {
         describe: '[GeoJSON] move properties to the root level of each Feature',
         type: 'strings'
@@ -26064,15 +26080,32 @@ ${svg}
       });
 
     parser.command('frame')
-      // .describe('create a map frame at a given size')
+      .describe('create a rectangular map frame layer at a given display width')
+      .option('width', {
+        describe: 'width of frame (e.g. 5in, 10cm, 600px; default is 800px)'
+      })
+      .option('height', {
+        describe: '(optional) height of frame; similar to width= option'
+      })
+      .option('aspect-ratio', {
+        describe: '(optional) aspect ratio of frame, if height= or width= is omitted',
+        type: 'number'
+      })
       .option('bbox', {
         describe: 'frame coordinates (xmin,ymin,xmax,ymax)',
         type: 'bbox'
       })
-      // .option('offset', offsetOpt)
-      .option('width', {
-        describe: 'width of output (default is 800px)'
+      .option('offset', {
+        describe: 'padding in display units or pct of width, e.g. 5cm 20px 5%',
+        type: 'strings'
       })
+      .option('offsets', {
+        describe: 'separate offsets for each side, in l,b,r,t order',
+        type: 'strings'
+      })
+      .option('name', nameOpt)
+      .option('target', targetOpt);
+
       // .option('height', {
       //   describe: 'pixel height of output (may be a range)'
       // })
@@ -26083,7 +26116,6 @@ ${svg}
       // .option('source', {
       //   describe: 'name of layer to enclose'
       // })
-      .option('name', nameOpt);
 
     parser.command('fuzzy-join')
       .describe('join points to polygons, with data fill and fuzzy match')
@@ -35780,7 +35812,10 @@ ${svg}
     getColorizerFunction: getColorizerFunction
   });
 
-  cmd.comment = function() {}; // no-op, so -comment doesn't trigger a parsing error
+  cmd.comment = function(opts) {
+    // TODO: print the comment in verbose mode
+    // message('[comment]', opts.message);
+  }; // no-op, so -comment doesn't trigger a parsing error
 
   cmd.dashlines = function(lyr, dataset, opts) {
     var crs = getDatasetCRS(dataset);
@@ -38158,46 +38193,637 @@ ${svg}
     return parsed[0];
   }
 
-  cmd.frame = function(catalog, source, opts) {
-    var size, bounds, tmp, dataset;
-    if (+opts.width > 0 === false && +opts.pixels > 0 === false) {
-      stop("Missing a width or area");
+  // Returns number of arcs that were removed
+  function editArcs(arcs, onPoint) {
+    var nn2 = [],
+        xx2 = [],
+        yy2 = [],
+        errors = 0,
+        n;
+
+    arcs.forEach(function(arc, i) {
+      editArc(arc, onPoint);
+    });
+    arcs.updateVertexData(nn2, xx2, yy2);
+    return errors;
+
+    function append(p) {
+      if (p) {
+        xx2.push(p[0]);
+        yy2.push(p[1]);
+        n++;
+      }
     }
-    if (opts.width && opts.height) {
-      opts = utils.extend({}, opts);
-      // Height is a string containing either a number or a
-      //   comma-sep. pair of numbers (range); here we convert height to
-      //   an aspect-ratio parameter for the rectangle() function
-      opts.aspect_ratio = getAspectRatioArg(opts.width, opts.height);
-      // TODO: currently returns max,min aspect ratio, should return in min,max order
-      // (rectangle() function should handle max,min argument correctly now anyway)
+
+    function editArc(arc, cb) {
+      var x, y, xp, yp, retn;
+      var valid = true;
+      var i = 0;
+      n = 0;
+      while (arc.hasNext()) {
+        x = arc.x;
+        y = arc.y;
+        retn = cb(append, x, y, xp, yp, i++);
+        if (retn === false) {
+          valid = false;
+          // assumes that it's ok for the arc iterator to be interrupted.
+          break;
+        }
+        xp = x;
+        yp = y;
+      }
+      if (valid && n == 1) {
+        // only one valid point was added to this arc (invalid)
+        // e.g. this could happen during reprojection.
+        // making this arc empty
+        // error("An invalid arc was created");
+        message("An invalid arc was created");
+        valid = false;
+      }
+      if (valid) {
+        nn2.push(n);
+      } else {
+        // remove any points that were added for an invalid arc
+        while (n-- > 0) {
+          xx2.pop();
+          yy2.pop();
+        }
+        nn2.push(0); // add empty arc (to preserve mapping from paths to arcs)
+        errors++;
+      }
     }
-    tmp = cmd.rectangle(source, opts);
-    bounds = getDatasetBounds(tmp);
-    if (probablyDecimalDegreeBounds(bounds)) {
-      stop('Frames require projected, not geographical coordinates');
-    } else if (!getDatasetCRS(tmp)) {
-      message('Warning: missing projection data. Assuming coordinates are meters and k (scale factor) is 1');
+  }
+
+  function DatasetEditor(dataset) {
+    var layers = [];
+    var arcs = [];
+
+    this.done = function() {
+      dataset.layers = layers;
+      if (arcs.length) {
+        dataset.arcs = new ArcCollection(arcs);
+        buildTopology(dataset);
+      }
+    };
+
+    this.editLayer = function(lyr, cb) {
+      var type = lyr.geometry_type;
+      if (dataset.layers.indexOf(lyr) != layers.length) {
+        error('Layer was edited out-of-order');
+      }
+      if (!type) {
+        layers.push(lyr);
+        return;
+      }
+      var shapes = lyr.shapes.map(function(shape, shpId) {
+        var shape2 = [], retn, input;
+        for (var i=0, n=shape ? shape.length : 0; i<n; i++) {
+          input = type == 'point' ? shape[i] : idsToCoords(shape[i]);
+          retn = cb(input, i, shape);
+          if (!Array.isArray(retn)) continue;
+          if (type == 'point') {
+            shape2.push(retn);
+          } else if (type == 'polygon' || type == 'polyline') {
+            extendPathShape(shape2, retn || []);
+          }
+        }
+        return shape2.length > 0 ? shape2 : null;
+      });
+      layers.push(Object.assign(lyr, {shapes: shapes}));
+    };
+
+    function extendPathShape(shape, parts) {
+      for (var i=0; i<parts.length; i++) {
+        shape.push([arcs.length]);
+        arcs.push(parts[i]);
+      }
     }
-    size = getFrameSize(bounds, opts);
-    if (size[0] > 0 === false) {
-      stop('Missing a valid frame width');
+
+    function idsToCoords(ids) {
+      var coords = [];
+      var iter = dataset.arcs.getShapeIter(ids);
+      while (iter.hasNext()) {
+        coords.push([iter.x, iter.y]);
+      }
+      return coords;
     }
-    if (size[1] > 0 === false) {
-      stop('Missing a valid frame height');
+  }
+
+  // Planar densification by an interval
+  function densifyPathByInterval(coords, interval, interpolate) {
+    if (findMaxPathInterval(coords) < interval) return coords;
+    if (!interpolate) {
+      interpolate = getIntervalInterpolator(interval);
     }
-    dataset = {info: {}, layers:[{
-      name: opts.name || 'frame',
-      data: new DataTable([{
-        width: size[0],
-        height: size[1],
-        bbox: bounds.toArray(),
-        type: 'frame'
-      }])
-    }]};
-    catalog.addDataset(dataset);
+    var coords2 = [coords[0]], a, b;
+    for (var i=1, n=coords.length; i<n; i++) {
+      a = coords[i-1];
+      b = coords[i];
+      if (geom.distance2D(a[0], a[1], b[0], b[1]) > interval + 1e-4) {
+        appendArr(coords2, interpolate(a, b));
+      }
+      coords2.push(b);
+    }
+    return coords2;
+  }
+
+  function getIntervalInterpolator(interval) {
+    return function(a, b) {
+      var points = [];
+      // var rev = a[0] == b[0] ? a[1] > b[1] : a[0] > b[0];
+      var dist = geom.distance2D(a[0], a[1], b[0], b[1]);
+      var n = Math.round(dist / interval) - 1;
+      var dx = (b[0] - a[0]) / (n + 1),
+          dy = (b[1] - a[1]) / (n + 1);
+      for (var i=1; i<=n; i++) {
+        points.push([a[0] + dx * i, a[1] + dy * i]);
+      }
+      return points;
+    };
+  }
+
+
+  // Interpolate the same points regardless of segment direction
+  function densifyAntimeridianSegment(a, b, interval) {
+    var y1, y2;
+    var coords = [];
+    var ascending = a[1] < b[1];
+    if (a[0] != b[0]) error('Expected an edge segment');
+    if (interval > 0 === false) error('Expected a positive interval');
+    if (ascending) {
+      y1 = a[1];
+      y2 = b[1];
+    } else {
+      y1 = b[1];
+      y2 = a[1];
+    }
+    var y = Math.floor(y1 / interval) * interval + interval;
+    while (y < y2) {
+      coords.push([a[0], y]);
+      y += interval;
+    }
+    if (!ascending) coords.reverse();
+    return coords;
+  }
+
+  function appendArr(dest, src) {
+    for (var i=0; i<src.length; i++) dest.push(src[i]);
+  }
+
+  function findMaxPathInterval(coords) {
+    var maxSq = 0, intSq, a, b;
+    for (var i=1, n=coords.length; i<n; i++) {
+      a = coords[i-1];
+      b = coords[i];
+      intSq = geom.distanceSq(a[0], a[1], b[0], b[1]);
+      if (intSq > maxSq) maxSq = intSq;
+    }
+    return Math.sqrt(maxSq);
+  }
+
+  function projectAndDensifyArcs(arcs, proj) {
+    var interval = getDefaultDensifyInterval(arcs, proj);
+    var minIntervalSq = interval * interval * 25;
+    var p;
+    return editArcs(arcs, onPoint);
+
+    function onPoint(append, lng, lat, prevLng, prevLat, i) {
+      var pp = p;
+      p = proj(lng, lat);
+      if (!p) return false; // signal that current arc contains an error
+
+      // Don't try to densify shorter segments (optimization)
+      if (i > 0 && geom.distanceSq(p[0], p[1], pp[0], pp[1]) > minIntervalSq) {
+        densifySegment(prevLng, prevLat,  pp[0],  pp[1], lng, lat, p[0], p[1], proj, interval)
+          .forEach(append);
+      }
+      append(p);
+    }
+  }
+
+  // Use the median of intervals computed by projecting segments.
+  // We're probing a number of points, because @proj might only be valid in
+  // a sub-region of the dataset bbox (e.g. +proj=tpers)
+  function findDensifyInterval(bounds, xy, proj) {
+    var steps = [0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9];
+    var points = [];
+    for (var i=0; i<steps.length; i++) {
+      for (var j=0; j<steps.length; j++) {
+        points.push([steps[i], steps[j]]);
+      }
+    }
+    var intervals = points.map(function(pos) {
+      var x = bounds.xmin + bounds.width() * pos[0];
+      var y = bounds.ymin + bounds.height() * pos[1];
+      var a = proj(x, y);
+      var b = proj(x + xy[0], y + xy[1]);
+      return a && b ? geom.distance2D(a[0], a[1], b[0], b[1]) : Infinity;
+    }).filter(function(int) {return int < Infinity;});
+    return intervals.length > 0 ? utils.findMedian(intervals) : Infinity;
+  }
+
+  // Kludgy way to get a useful interval for densifying a bounding box.
+  // Uses a fraction of average bbox side length)
+  // TODO: improve
+  function findDensifyInterval2(bb, proj) {
+    var a = proj(bb.centerX(), bb.centerY()),
+        c = proj(bb.centerX(), bb.ymin), // right center
+        d = proj(bb.xmax, bb.centerY()); // bottom center
+    var interval = a && c && d ? (geom.distance2D(a[0], a[1], c[0], c[1]) +
+          geom.distance2D(a[0], a[1], d[0], d[1])) / 5000 : Infinity;
+    return interval;
+  }
+
+  // Returns an interval in projected units
+  function getDefaultDensifyInterval(arcs, proj) {
+    var xy = getAvgSegment2(arcs),
+        bb = arcs.getBounds(),
+        intervalA = findDensifyInterval(bb, xy, proj),
+        intervalB = findDensifyInterval2(bb, proj),
+        interval = Math.min(intervalA, intervalB);
+    if (interval == Infinity) {
+      error('Densification error');
+    }
+    return interval;
+  }
+
+  // Interpolate points into a projected line segment if needed to prevent large
+  //   deviations from path of original unprojected segment.
+  // @points (optional) array of accumulated points
+  function densifySegment(lng0, lat0, x0, y0, lng2, lat2, x2, y2, proj, interval, points) {
+    // Find midpoint between two endpoints and project it (assumes longitude does
+    // not wrap). TODO Consider bisecting along great circle path -- although this
+    // would not be good for boundaries that follow line of constant latitude.
+    var lng1 = (lng0 + lng2) / 2,
+        lat1 = (lat0 + lat2) / 2,
+        p = proj(lng1, lat1),
+        distSq;
+    if (!p) return; // TODO: consider if this is adequate for handling proj. errors
+    distSq = geom.pointSegDistSq2(p[0], p[1], x0, y0, x2, y2); // sq displacement
+    points = points || [];
+    // Bisect current segment if the projected midpoint deviates from original
+    //   segment by more than the @interval parameter.
+    //   ... but don't bisect very small segments to prevent infinite recursion
+    //   (e.g. if projection function is discontinuous)
+    if (distSq > interval * interval * 0.25 && geom.distance2D(lng0, lat0, lng2, lat2) > 0.01) {
+      densifySegment(lng0, lat0, x0, y0, lng1, lat1, p[0], p[1], proj, interval, points);
+      points.push(p);
+      densifySegment(lng1, lat1, p[0], p[1], lng2, lat2, x2, y2, proj, interval, points);
+    }
+    return points;
+  }
+
+  // Create rectangles around each feature in a layer
+  cmd.rectangles = function(targetLyr, targetDataset, opts) {
+    var crsInfo = getDatasetCrsInfo(targetDataset);
+    var records = targetLyr.data ? targetLyr.data.getRecords() : null;
+    var geometries;
+
+    if (opts.bbox) {
+      geometries = bboxExpressionToGeometries(opts.bbox, targetLyr, targetDataset);
+
+    } else {
+      if (!layerHasGeometry(targetLyr)) {
+        stop("Layer is missing geometric shapes");
+      }
+      geometries = shapesToBoxGeometries(targetLyr, targetDataset, opts);
+    }
+
+    var geojson = {
+      type: 'FeatureCollection',
+      features: geometries.map(function(geom, i) {
+        var rec = records && records[i] || null;
+        if (rec && opts.no_replace) {
+          rec = utils.extend({}, rec); // make a copy
+        }
+        return {
+          type: 'Feature',
+          properties: rec,
+          geometry: geom
+        };
+      })
+    };
+    var dataset = importGeoJSON(geojson, {});
+    setDatasetCrsInfo(dataset, crsInfo);
+    var outputLayers = mergeDatasetsIntoDataset(targetDataset, [dataset]);
+    setOutputLayerName(outputLayers[0], targetLyr, null, opts);
+    return outputLayers;
   };
 
+
+
+
+  function shapesToBoxGeometries(lyr, dataset, opts) {
+    var crsInfo = getDatasetCrsInfo(dataset);
+    return lyr.shapes.map(function(shp) {
+      var bounds = lyr.geometry_type == 'point' ?
+        getPointFeatureBounds(shp) : dataset.arcs.getMultiShapeBounds(shp);
+      bounds = applyRectangleOptions(bounds, crsInfo.crs, opts);
+      if (!bounds) return null;
+      return bboxToPolygon(bounds.toArray(), opts);
+    });
+  }
+
+  function bboxExpressionToGeometries(exp, lyr, dataset, opts) {
+    var compiled = compileFeatureExpression(exp, lyr, dataset.arcs, {});
+    var n = getFeatureCount(lyr);
+    var result;
+    var geometries = [];
+    for (var i=0; i<n; i++) {
+      result = compiled(i);
+      if (!looksLikeBbox(result)) {
+        stop('Invalid bbox value (expected a GeoJSON-type bbox):', result);
+      }
+      geometries.push(bboxToPolygon(result));
+    }
+    return geometries;
+  }
+
+  function looksLikeBbox(o) {
+    if (!o || o.length != 4) return false;
+    if (o.some(isNaN)) return false;
+    if (o[0] <= o[2] == false || o[1] <= o[3] == false) return false;
+    return true;
+  }
+
+  // Create rectangles around one or more target layers
+  //
+  cmd.rectangle2 = function(target, opts) {
+    // if target layer is a rectangle and we're applying frame properties,
+    // turn the target into a frame instead of creating a new rectangle
+    if (target.layers.length == 1 && opts.width &&
+      layerIsRectangle(target.layers[0], target.dataset.arcs)) {
+      applyFrameProperties(target.layers[0], opts);
+      return;
+    }
+    var datasets = target.layers.map(function(lyr) {
+      var dataset = cmd.rectangle({layer: lyr, dataset: target.dataset}, opts);
+      setOutputLayerName(dataset.layers[0], lyr, null, opts);
+      if (!opts.no_replace) {
+        dataset.layers[0].name = lyr.name || dataset.layers[0].name;
+      }
+      return dataset;
+    });
+    return mergeDatasetsIntoDataset(target.dataset, datasets);
+  };
+
+  cmd.rectangle = function(target, opts) {
+    var bounds, crsInfo;
+    if (opts.bbox) {
+      bounds = new Bounds(opts.bbox);
+      crsInfo = target && getDatasetCrsInfo(target.dataset) ||
+        probablyDecimalDegreeBounds(bounds) && getCrsInfo('wgs84') || {};
+    } else if (target) {
+      bounds = getLayerBounds(target.layer, target.dataset.arcs);
+      crsInfo = getDatasetCrsInfo(target.dataset);
+    }
+    bounds = bounds && applyRectangleOptions(bounds, crsInfo.crs, opts);
+    if (!bounds || !bounds.hasBounds()) {
+      stop('Missing rectangle extent');
+    }
+    var feature = {
+      type: 'Feature',
+      properties: {},
+      geometry: bboxToPolygon(bounds.toArray(), opts)
+    };
+    var dataset = importGeoJSON(feature, {});
+    applyFrameProperties(dataset.layers[0], opts);
+    dataset.layers[0].name = opts.name || 'rectangle';
+    setDatasetCrsInfo(dataset, crsInfo);
+    return dataset;
+  };
+
+  function applyFrameProperties(lyr, opts) {
+    if (!opts.width) return;
+    if (!lyr.data) initDataTable(lyr);
+    var d = lyr.data.getRecords()[0] || {};
+    d.width = parseSizeParam(opts.width);
+    d.type = 'frame';
+  }
+
+  function applyRectangleOptions(bounds, crs, opts) {
+    var isGeoBox = probablyDecimalDegreeBounds(bounds);
+    if (opts.offset) {
+      bounds = applyBoundsOffset(opts.offset, bounds, crs);
+    }
+    if (bounds.area() > 0 === false) return null;
+    if (opts.aspect_ratio) {
+      bounds = applyAspectRatio(opts.aspect_ratio, bounds);
+    }
+    if (isGeoBox) {
+      bounds = clampToWorldBounds(bounds);
+    }
+    return bounds;
+  }
+
+  // opt: aspect ratio as a single number or a range (e.g. "1,2");
+  function applyAspectRatio(opt, bounds) {
+    var range = String(opt).split(',').map(parseFloat),
+      aspectRatio = bounds.width() / bounds.height(),
+      min, max; // min is height limit, max is width limit
+    if (range.length == 1) {
+      range.push(range[0]);
+    } else if (range[0] > range[1]) {
+      range.reverse();
+    }
+    min = range[0];
+    max = range[1];
+    if (!min && !max) return bounds;
+    if (!min) min = -Infinity;
+    if (!max) max = Infinity;
+    if (aspectRatio < min) {
+      bounds.fillOut(min);
+    } else if (aspectRatio > max) {
+      bounds.fillOut(max);
+    }
+    return bounds;
+  }
+
+  function applyBoundsOffset(offsetOpt, bounds, crs) {
+    var offsets = convertFourSides(offsetOpt, crs, bounds);
+    bounds.padBounds(offsets[0], offsets[1], offsets[2], offsets[3]);
+    return bounds;
+  }
+
+  function bboxToPolygon(bbox, optsArg) {
+    var opts = optsArg || {};
+    var coords = bboxToCoords(bbox);
+    if (opts.interval > 0) {
+      coords = densifyPathByInterval(coords, opts.interval);
+    }
+    return {
+      type: 'Polygon',
+      coordinates: [coords]
+    };
+  }
+
+  var Rectangle = /*#__PURE__*/Object.freeze({
+    __proto__: null,
+    applyAspectRatio: applyAspectRatio,
+    bboxToPolygon: bboxToPolygon
+  });
+
+  cmd.frame = function(catalog, targets, opts) {
+    var widthPx, heightPx, aspectRatio, bbox;
+    if (opts.width) {
+      widthPx = parseSizeParam(opts.width);
+      if (widthPx > 0 === false) {
+        stop('Invalid width parameter:', opts.width);
+      }
+    }
+    if (opts.height) {
+      heightPx = parseSizeParam(opts.height);
+      if (heightPx > 0 === false) {
+        stop('Invalid height parameter:', opts.height);
+      }
+    }
+    if (!widthPx && !heightPx) {
+      widthPx = 800;
+      message('Using default 800px frame width');
+    }
+
+    if (opts.aspect_ratio) {
+      if (opts.aspect_ratio > 0 === false) {
+        stop('Invalid aspect-ratio parameter:', opts.aspect_ratio);
+      }
+      if (!heightPx) {
+        heightPx = roundToDigits(widthPx / opts.aspect_ratio, 1);
+      } else if (!widthPx) {
+        widthPx = roundToDigits(heightPx * opts.aspect_ratio, 1);
+      }
+    }
+
+    if (opts.bbox) {
+      bbox = opts.bbox;
+      // TODO: validate
+    } else {
+      var datasets = utils.pluck(targets, 'dataset');
+      requireDatasetsHaveCompatibleCRS(datasets, 'Targets include both projected and unprojected coordinates');
+      bbox = getTargetBbox(targets);
+      if (!bbox) {
+        stop('Command target is missing geographical bounds');
+      }
+    }
+
+    applyPercentageOffsets(bbox, opts.offset || opts.offsets);
+    applyPixelOffsets(bbox, widthPx, heightPx, opts.offset || opts.offsets);
+
+    if (bbox[3] - bbox[1] > 0 === false || bbox[2] - bbox[0] > 0 === false) {
+      stop('Frame has a collapsed bbox');
+    }
+
+    aspectRatio = (bbox[2] - bbox[0]) / (bbox[3] - bbox[1]);
+    if (!widthPx) {
+      widthPx = roundToDigits(heightPx * aspectRatio, 1);
+    } else if (!heightPx) {
+      heightPx = roundToDigits(widthPx / aspectRatio, 1);
+    }
+
+    var feature = {
+      type: 'Feature',
+      properties: {type: 'frame', width: widthPx, height: heightPx},
+      geometry: bboxToPolygon(bbox)
+    };
+    var frameDataset = importGeoJSON(feature);
+    // set CRS from target dataset
+    // TODO: handle case: targets have different projections
+    // TODO: handle case: first target is missing CRS
+    if (targets.length > 0) {
+      var crsInfo = getDatasetCrsInfo(targets[0].dataset);
+      setDatasetCrsInfo(frameDataset, crsInfo);
+    }
+    frameDataset.layers[0].name = opts.name || 'frame';
+    catalog.addDataset(frameDataset);
+  };
+
+  function fillOutBbox(bbox, widthPx, heightPx) {
+    var hpad = 0, vpad = 0;
+    var w = bbox[2] - bbox[0];
+    var h = bbox[3] - bbox[1];
+    if (widthPx / heightPx > w / h) { // need to add horizontal padding
+      hpad = h * widthPx / heightPx - w;
+    } else {
+      vpad = w * heightPx / widthPx - h;
+    }
+    bbox[0] -= hpad / 2;
+    bbox[1] -= vpad / 2;
+    bbox[2] += hpad / 2;
+    bbox[3] += vpad / 2;
+  }
+
+  function applyPercentageOffsets(bbox, arg) {
+    var sides = getPctOffsets(arg);
+    var l = sides[0],
+      b = sides[1],
+      r = sides[2],
+      t = sides[3],
+      w2 = (bbox[2] - bbox[0]) / (1 - l - r),
+      h2 = (bbox[3] - bbox[1]) / (1 - t - b);
+    bbox[0] -= l * w2;
+    bbox[1] -= b * h2;
+    bbox[2] += r * w2;
+    bbox[3] += t * h2;
+  }
+
+  function applyPixelOffsets(bbox, widthPx, heightPx, arg) {
+    var sides = getPixelOffsets(arg);
+    var l = sides[0],
+      b = sides[1],
+      r = sides[2],
+      t = sides[3],
+      scale, w;
+
+    if (widthPx && heightPx) {
+      // add padding to bbox to match pixel dimensions, if needed
+      fillOutBbox(bbox, widthPx, heightPx);
+    }
+
+    w = bbox[2] - bbox[0];
+    bbox[3] - bbox[1];
+
+    if (widthPx) {
+      scale = w / (widthPx - l - r);
+    } else {
+      scale = w / (heightPx - t - b);
+    }
+
+    bbox[0] -= scale * l;
+    bbox[1] -= scale * b;
+    bbox[2] += scale * r;
+    bbox[3] += scale * t;
+    return scale;
+  }
+
+  function getPctOffsets(arg) {
+    return adjustOffsetsArg(arg).map(str => {
+      return str.includes('%') ? utils.parsePercent(str) : 0;
+    });
+  }
+
+  function getPixelOffsets(arg) {
+    return adjustOffsetsArg(arg).map(str => {
+      return str.includes('%') ? 0 : parseSizeParam(str);
+    });
+  }
+
+  function adjustOffsetsArg(arg) {
+    if (!arg) arg = ['0'];
+    if (arg.length == 1) {
+      return [arg[0], arg[0], arg[0], arg[0]];
+    }
+    if (arg.length != 4) {
+      stop('List of offsets should have 4 values');
+    }
+    return arg;
+  }
+
+  function getTargetBbox(targets) {
+    var expanded = expandCommandTargets(targets);
+    var bounds = expanded.reduce(function(memo, o) {
+      return memo.mergeBounds(getLayerBounds(o.layer, o.dataset.arcs));
+    }, new Bounds());
+    return bounds.hasBounds() ? bounds.toArray() : null;
+  }
 
   // Convert width and height args to aspect ratio arg for the rectangle() function
   function getAspectRatioArg(widthArg, heightArg) {
@@ -38210,21 +38836,6 @@ ${svg}
       return width / height;
     }).reverse().join(',');
   }
-
-  // export function renderFrame(d) {
-  //   var lineWidth = 1,
-  //       // inset stroke by half of line width
-  //       off = lineWidth / 2,
-  //       obj = importPolygon([[[off, off], [off, d.height - off],
-  //         [d.width - off, d.height - off],
-  //         [d.width - off, off], [off, off]]]);
-  //   utils.extend(obj.properties, {
-  //       fill: 'none',
-  //       stroke: d.stroke || 'black',
-  //       'stroke-width': d['stroke-width'] || lineWidth
-  //   });
-  //   return [obj];
-  // }
 
   var Frame = /*#__PURE__*/Object.freeze({
     __proto__: null,
@@ -38678,473 +39289,6 @@ ${svg}
     var maxValue = modeValues[weights.indexOf(maxWeight)];
     return maxValue;
   }
-
-  // Returns number of arcs that were removed
-  function editArcs(arcs, onPoint) {
-    var nn2 = [],
-        xx2 = [],
-        yy2 = [],
-        errors = 0,
-        n;
-
-    arcs.forEach(function(arc, i) {
-      editArc(arc, onPoint);
-    });
-    arcs.updateVertexData(nn2, xx2, yy2);
-    return errors;
-
-    function append(p) {
-      if (p) {
-        xx2.push(p[0]);
-        yy2.push(p[1]);
-        n++;
-      }
-    }
-
-    function editArc(arc, cb) {
-      var x, y, xp, yp, retn;
-      var valid = true;
-      var i = 0;
-      n = 0;
-      while (arc.hasNext()) {
-        x = arc.x;
-        y = arc.y;
-        retn = cb(append, x, y, xp, yp, i++);
-        if (retn === false) {
-          valid = false;
-          // assumes that it's ok for the arc iterator to be interrupted.
-          break;
-        }
-        xp = x;
-        yp = y;
-      }
-      if (valid && n == 1) {
-        // only one valid point was added to this arc (invalid)
-        // e.g. this could happen during reprojection.
-        // making this arc empty
-        // error("An invalid arc was created");
-        message("An invalid arc was created");
-        valid = false;
-      }
-      if (valid) {
-        nn2.push(n);
-      } else {
-        // remove any points that were added for an invalid arc
-        while (n-- > 0) {
-          xx2.pop();
-          yy2.pop();
-        }
-        nn2.push(0); // add empty arc (to preserve mapping from paths to arcs)
-        errors++;
-      }
-    }
-  }
-
-  function DatasetEditor(dataset) {
-    var layers = [];
-    var arcs = [];
-
-    this.done = function() {
-      dataset.layers = layers;
-      if (arcs.length) {
-        dataset.arcs = new ArcCollection(arcs);
-        buildTopology(dataset);
-      }
-    };
-
-    this.editLayer = function(lyr, cb) {
-      var type = lyr.geometry_type;
-      if (dataset.layers.indexOf(lyr) != layers.length) {
-        error('Layer was edited out-of-order');
-      }
-      if (!type) {
-        layers.push(lyr);
-        return;
-      }
-      var shapes = lyr.shapes.map(function(shape, shpId) {
-        var shape2 = [], retn, input;
-        for (var i=0, n=shape ? shape.length : 0; i<n; i++) {
-          input = type == 'point' ? shape[i] : idsToCoords(shape[i]);
-          retn = cb(input, i, shape);
-          if (!Array.isArray(retn)) continue;
-          if (type == 'point') {
-            shape2.push(retn);
-          } else if (type == 'polygon' || type == 'polyline') {
-            extendPathShape(shape2, retn || []);
-          }
-        }
-        return shape2.length > 0 ? shape2 : null;
-      });
-      layers.push(Object.assign(lyr, {shapes: shapes}));
-    };
-
-    function extendPathShape(shape, parts) {
-      for (var i=0; i<parts.length; i++) {
-        shape.push([arcs.length]);
-        arcs.push(parts[i]);
-      }
-    }
-
-    function idsToCoords(ids) {
-      var coords = [];
-      var iter = dataset.arcs.getShapeIter(ids);
-      while (iter.hasNext()) {
-        coords.push([iter.x, iter.y]);
-      }
-      return coords;
-    }
-  }
-
-  // Planar densification by an interval
-  function densifyPathByInterval(coords, interval, interpolate) {
-    if (findMaxPathInterval(coords) < interval) return coords;
-    if (!interpolate) {
-      interpolate = getIntervalInterpolator(interval);
-    }
-    var coords2 = [coords[0]], a, b;
-    for (var i=1, n=coords.length; i<n; i++) {
-      a = coords[i-1];
-      b = coords[i];
-      if (geom.distance2D(a[0], a[1], b[0], b[1]) > interval + 1e-4) {
-        appendArr(coords2, interpolate(a, b));
-      }
-      coords2.push(b);
-    }
-    return coords2;
-  }
-
-  function getIntervalInterpolator(interval) {
-    return function(a, b) {
-      var points = [];
-      // var rev = a[0] == b[0] ? a[1] > b[1] : a[0] > b[0];
-      var dist = geom.distance2D(a[0], a[1], b[0], b[1]);
-      var n = Math.round(dist / interval) - 1;
-      var dx = (b[0] - a[0]) / (n + 1),
-          dy = (b[1] - a[1]) / (n + 1);
-      for (var i=1; i<=n; i++) {
-        points.push([a[0] + dx * i, a[1] + dy * i]);
-      }
-      return points;
-    };
-  }
-
-
-  // Interpolate the same points regardless of segment direction
-  function densifyAntimeridianSegment(a, b, interval) {
-    var y1, y2;
-    var coords = [];
-    var ascending = a[1] < b[1];
-    if (a[0] != b[0]) error('Expected an edge segment');
-    if (interval > 0 === false) error('Expected a positive interval');
-    if (ascending) {
-      y1 = a[1];
-      y2 = b[1];
-    } else {
-      y1 = b[1];
-      y2 = a[1];
-    }
-    var y = Math.floor(y1 / interval) * interval + interval;
-    while (y < y2) {
-      coords.push([a[0], y]);
-      y += interval;
-    }
-    if (!ascending) coords.reverse();
-    return coords;
-  }
-
-  function appendArr(dest, src) {
-    for (var i=0; i<src.length; i++) dest.push(src[i]);
-  }
-
-  function findMaxPathInterval(coords) {
-    var maxSq = 0, intSq, a, b;
-    for (var i=1, n=coords.length; i<n; i++) {
-      a = coords[i-1];
-      b = coords[i];
-      intSq = geom.distanceSq(a[0], a[1], b[0], b[1]);
-      if (intSq > maxSq) maxSq = intSq;
-    }
-    return Math.sqrt(maxSq);
-  }
-
-  function projectAndDensifyArcs(arcs, proj) {
-    var interval = getDefaultDensifyInterval(arcs, proj);
-    var minIntervalSq = interval * interval * 25;
-    var p;
-    return editArcs(arcs, onPoint);
-
-    function onPoint(append, lng, lat, prevLng, prevLat, i) {
-      var pp = p;
-      p = proj(lng, lat);
-      if (!p) return false; // signal that current arc contains an error
-
-      // Don't try to densify shorter segments (optimization)
-      if (i > 0 && geom.distanceSq(p[0], p[1], pp[0], pp[1]) > minIntervalSq) {
-        densifySegment(prevLng, prevLat,  pp[0],  pp[1], lng, lat, p[0], p[1], proj, interval)
-          .forEach(append);
-      }
-      append(p);
-    }
-  }
-
-  // Use the median of intervals computed by projecting segments.
-  // We're probing a number of points, because @proj might only be valid in
-  // a sub-region of the dataset bbox (e.g. +proj=tpers)
-  function findDensifyInterval(bounds, xy, proj) {
-    var steps = [0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9];
-    var points = [];
-    for (var i=0; i<steps.length; i++) {
-      for (var j=0; j<steps.length; j++) {
-        points.push([steps[i], steps[j]]);
-      }
-    }
-    var intervals = points.map(function(pos) {
-      var x = bounds.xmin + bounds.width() * pos[0];
-      var y = bounds.ymin + bounds.height() * pos[1];
-      var a = proj(x, y);
-      var b = proj(x + xy[0], y + xy[1]);
-      return a && b ? geom.distance2D(a[0], a[1], b[0], b[1]) : Infinity;
-    }).filter(function(int) {return int < Infinity;});
-    return intervals.length > 0 ? utils.findMedian(intervals) : Infinity;
-  }
-
-  // Kludgy way to get a useful interval for densifying a bounding box.
-  // Uses a fraction of average bbox side length)
-  // TODO: improve
-  function findDensifyInterval2(bb, proj) {
-    var a = proj(bb.centerX(), bb.centerY()),
-        c = proj(bb.centerX(), bb.ymin), // right center
-        d = proj(bb.xmax, bb.centerY()); // bottom center
-    var interval = a && c && d ? (geom.distance2D(a[0], a[1], c[0], c[1]) +
-          geom.distance2D(a[0], a[1], d[0], d[1])) / 5000 : Infinity;
-    return interval;
-  }
-
-  // Returns an interval in projected units
-  function getDefaultDensifyInterval(arcs, proj) {
-    var xy = getAvgSegment2(arcs),
-        bb = arcs.getBounds(),
-        intervalA = findDensifyInterval(bb, xy, proj),
-        intervalB = findDensifyInterval2(bb, proj),
-        interval = Math.min(intervalA, intervalB);
-    if (interval == Infinity) {
-      error('Densification error');
-    }
-    return interval;
-  }
-
-  // Interpolate points into a projected line segment if needed to prevent large
-  //   deviations from path of original unprojected segment.
-  // @points (optional) array of accumulated points
-  function densifySegment(lng0, lat0, x0, y0, lng2, lat2, x2, y2, proj, interval, points) {
-    // Find midpoint between two endpoints and project it (assumes longitude does
-    // not wrap). TODO Consider bisecting along great circle path -- although this
-    // would not be good for boundaries that follow line of constant latitude.
-    var lng1 = (lng0 + lng2) / 2,
-        lat1 = (lat0 + lat2) / 2,
-        p = proj(lng1, lat1),
-        distSq;
-    if (!p) return; // TODO: consider if this is adequate for handling proj. errors
-    distSq = geom.pointSegDistSq2(p[0], p[1], x0, y0, x2, y2); // sq displacement
-    points = points || [];
-    // Bisect current segment if the projected midpoint deviates from original
-    //   segment by more than the @interval parameter.
-    //   ... but don't bisect very small segments to prevent infinite recursion
-    //   (e.g. if projection function is discontinuous)
-    if (distSq > interval * interval * 0.25 && geom.distance2D(lng0, lat0, lng2, lat2) > 0.01) {
-      densifySegment(lng0, lat0, x0, y0, lng1, lat1, p[0], p[1], proj, interval, points);
-      points.push(p);
-      densifySegment(lng1, lat1, p[0], p[1], lng2, lat2, x2, y2, proj, interval, points);
-    }
-    return points;
-  }
-
-  // Create rectangles around each feature in a layer
-  cmd.rectangles = function(targetLyr, targetDataset, opts) {
-    var crsInfo = getDatasetCrsInfo(targetDataset);
-    var records = targetLyr.data ? targetLyr.data.getRecords() : null;
-    var geometries;
-
-    if (opts.bbox) {
-      geometries = bboxExpressionToGeometries(opts.bbox, targetLyr, targetDataset);
-
-    } else {
-      if (!layerHasGeometry(targetLyr)) {
-        stop("Layer is missing geometric shapes");
-      }
-      geometries = shapesToBoxGeometries(targetLyr, targetDataset, opts);
-    }
-
-    var geojson = {
-      type: 'FeatureCollection',
-      features: geometries.map(function(geom, i) {
-        var rec = records && records[i] || null;
-        if (rec && opts.no_replace) {
-          rec = utils.extend({}, rec); // make a copy
-        }
-        return {
-          type: 'Feature',
-          properties: rec,
-          geometry: geom
-        };
-      })
-    };
-    var dataset = importGeoJSON(geojson, {});
-    setDatasetCrsInfo(dataset, crsInfo);
-    var outputLayers = mergeDatasetsIntoDataset(targetDataset, [dataset]);
-    setOutputLayerName(outputLayers[0], targetLyr, null, opts);
-    return outputLayers;
-  };
-
-  function shapesToBoxGeometries(lyr, dataset, opts) {
-    var crsInfo = getDatasetCrsInfo(dataset);
-    return lyr.shapes.map(function(shp) {
-      var bounds = lyr.geometry_type == 'point' ?
-        getPointFeatureBounds(shp) : dataset.arcs.getMultiShapeBounds(shp);
-      bounds = applyRectangleOptions(bounds, crsInfo.crs, opts);
-      if (!bounds) return null;
-      return bboxToPolygon(bounds.toArray(), opts);
-    });
-  }
-
-  function bboxExpressionToGeometries(exp, lyr, dataset, opts) {
-    var compiled = compileFeatureExpression(exp, lyr, dataset.arcs, {});
-    var n = getFeatureCount(lyr);
-    var result;
-    var geometries = [];
-    for (var i=0; i<n; i++) {
-      result = compiled(i);
-      if (!looksLikeBbox(result)) {
-        stop('Invalid bbox value (expected a GeoJSON-type bbox):', result);
-      }
-      geometries.push(bboxToPolygon(result));
-    }
-    return geometries;
-  }
-
-  function looksLikeBbox(o) {
-    if (!o || o.length != 4) return false;
-    if (o.some(isNaN)) return false;
-    if (o[0] <= o[2] == false || o[1] <= o[3] == false) return false;
-    return true;
-  }
-
-  // Create rectangles around one or more target layers
-  //
-  cmd.rectangle2 = function(target, opts) {
-    // if target layer is a rectangle and we're applying frame properties,
-    // turn the target into a frame instead of creating a new rectangle
-    if (target.layers.length == 1 && opts.width &&
-      layerIsRectangle(target.layers[0], target.dataset.arcs)) {
-      applyFrameProperties(target.layers[0], opts);
-      return;
-    }
-    var datasets = target.layers.map(function(lyr) {
-      var dataset = cmd.rectangle({layer: lyr, dataset: target.dataset}, opts);
-      setOutputLayerName(dataset.layers[0], lyr, null, opts);
-      if (!opts.no_replace) {
-        dataset.layers[0].name = lyr.name || dataset.layers[0].name;
-      }
-      return dataset;
-    });
-    return mergeDatasetsIntoDataset(target.dataset, datasets);
-  };
-
-  cmd.rectangle = function(target, opts) {
-    var bounds, crsInfo;
-    if (opts.bbox) {
-      bounds = new Bounds(opts.bbox);
-      crsInfo = target && getDatasetCrsInfo(target.dataset) ||
-        probablyDecimalDegreeBounds(bounds) && getCrsInfo('wgs84') || {};
-    } else if (target) {
-      bounds = getLayerBounds(target.layer, target.dataset.arcs);
-      crsInfo = getDatasetCrsInfo(target.dataset);
-    }
-    bounds = bounds && applyRectangleOptions(bounds, crsInfo.crs, opts);
-    if (!bounds || !bounds.hasBounds()) {
-      stop('Missing rectangle extent');
-    }
-    var feature = {
-      type: 'Feature',
-      properties: {},
-      geometry: bboxToPolygon(bounds.toArray(), opts)
-    };
-    var dataset = importGeoJSON(feature, {});
-    applyFrameProperties(dataset.layers[0], opts);
-    dataset.layers[0].name = opts.name || 'rectangle';
-    setDatasetCrsInfo(dataset, crsInfo);
-    return dataset;
-  };
-
-  function applyFrameProperties(lyr, opts) {
-    if (!opts.width) return;
-    if (!lyr.data) initDataTable(lyr);
-    var d = lyr.data.getRecords()[0] || {};
-    d.width = parseSizeParam(opts.width);
-    d.type = 'frame';
-  }
-
-  function applyRectangleOptions(bounds, crs, opts) {
-    var isGeoBox = probablyDecimalDegreeBounds(bounds);
-    if (opts.offset) {
-      bounds = applyBoundsOffset(opts.offset, bounds, crs);
-    }
-    if (bounds.area() > 0 === false) return null;
-    if (opts.aspect_ratio) {
-      bounds = applyAspectRatio(opts.aspect_ratio, bounds);
-    }
-    if (isGeoBox) {
-      bounds = clampToWorldBounds(bounds);
-    }
-    return bounds;
-  }
-
-  // opt: aspect ratio as a single number or a range (e.g. "1,2");
-  function applyAspectRatio(opt, bounds) {
-    var range = String(opt).split(',').map(parseFloat),
-      aspectRatio = bounds.width() / bounds.height(),
-      min, max; // min is height limit, max is width limit
-    if (range.length == 1) {
-      range.push(range[0]);
-    } else if (range[0] > range[1]) {
-      range.reverse();
-    }
-    min = range[0];
-    max = range[1];
-    if (!min && !max) return bounds;
-    if (!min) min = -Infinity;
-    if (!max) max = Infinity;
-    if (aspectRatio < min) {
-      bounds.fillOut(min);
-    } else if (aspectRatio > max) {
-      bounds.fillOut(max);
-    }
-    return bounds;
-  }
-
-  function applyBoundsOffset(offsetOpt, bounds, crs) {
-    var offsets = convertFourSides(offsetOpt, crs, bounds);
-    bounds.padBounds(offsets[0], offsets[1], offsets[2], offsets[3]);
-    return bounds;
-  }
-
-  function bboxToPolygon(bbox, optsArg) {
-    var opts = optsArg || {};
-    var coords = bboxToCoords(bbox);
-    if (opts.interval > 0) {
-      coords = densifyPathByInterval(coords, opts.interval);
-    }
-    return {
-      type: 'Polygon',
-      coordinates: [coords]
-    };
-  }
-
-  var Rectangle = /*#__PURE__*/Object.freeze({
-    __proto__: null,
-    applyAspectRatio: applyAspectRatio,
-    bboxToPolygon: bboxToPolygon
-  });
 
   function getSemiMinorAxis(P) {
     return P.a * Math.sqrt(1 - (P.es || 0));
@@ -45259,14 +45403,16 @@ ${svg}
   }
 
   function commandAcceptsMultipleTargetDatasets(name) {
-    return name == 'rotate' || name == 'info' || name == 'proj' || name == 'require' ||
-      name == 'drop' || name == 'target' || name == 'if' || name == 'elif' ||
-      name == 'else' || name == 'endif' || name == 'run' || name == 'i' || name == 'snap';
+    return name == 'rotate' || name == 'info' || name == 'proj' ||
+      name == 'require' || name == 'drop' || name == 'target' ||
+      name == 'if' || name == 'elif' || name == 'else' || name == 'endif' ||
+      name == 'run' || name == 'i' || name == 'snap' || name == 'frame' ||
+      name == 'comment';
   }
 
   function commandAcceptsEmptyTarget(name) {
     return name == 'graticule' || name == 'i' || name == 'help' ||
-      name == 'point-grid' || name == 'shape' || name == 'rectangle' ||
+      name == 'point-grid' || name == 'shape' || name == 'rectangle' || name == 'frame' ||
       name == 'require' || name == 'run' || name == 'define' ||
       name == 'include' || name == 'print' || name == 'comment' || name == 'if' || name == 'elif' ||
       name == 'else' || name == 'endif' || name == 'stop' || name == 'add-shape' ||
@@ -45290,11 +45436,13 @@ ${svg}
     }
 
     if (name == 'comment') {
+      cmd.comment(opts);
       return done(null);
     }
 
     if (!job) job = new Job();
     job.startCommand(command);
+
 
     try { // catch errors from synchronous functions
       T$1.start();
@@ -45394,8 +45542,8 @@ ${svg}
       } else if (name == 'colorizer') {
         outputLayers = cmd.colorizer(opts);
 
-      } else if (name == 'comment') {
-        // no-op
+      // } else if (name == 'comment') {
+      //   // no-op
 
       } else if (name == 'dashlines') {
         applyCommandToEachLayer(cmd.dashlines, targetLayers, targetDataset, opts);
@@ -45453,9 +45601,8 @@ ${svg}
       } else if (name == 'filter-slivers') {
         applyCommandToEachLayer(cmd.filterSlivers, targetLayers, targetDataset, opts);
 
-      // // 'frame' and 'rectangle' have merged
-      // } else if (name == 'frame') {
-      // cmd.frame(job.catalog, source, opts);
+      } else if (name == 'frame') {
+        cmd.frame(job.catalog, targets, opts);
 
       } else if (name == 'fuzzy-join') {
         applyCommandToEachLayer(cmd.fuzzyJoin, targetLayers, arcs, source, opts);
@@ -45557,10 +45704,7 @@ ${svg}
           cmd.proj(targ.dataset, job.catalog, opts);
         });
 
-      } else if (name == 'rectangle' || name == 'frame') {
-        if (name == 'frame' && !opts.width) {
-          stop('Command requires a width= argument');
-        }
+      } else if (name == 'rectangle') {
         if (source || opts.bbox || targets.length === 0) {
           job.catalog.addDataset(cmd.rectangle(source || targets?.[0], opts));
         } else {
@@ -45726,7 +45870,7 @@ ${svg}
     });
   }
 
-  var version = "0.6.99";
+  var version = "0.6.100";
 
   // Parse command line args into commands and run them
   // Function takes an optional Node-style callback. A Promise is returned if no callback is given.
@@ -45877,13 +46021,16 @@ ${svg}
 
     function nextGroup(prevJob, commands, next) {
       runParsedCommands(commands, new Job(), function(err, job) {
-        err = filterError(err);
+        err = handleNonFatalError(err);
         next(err, job);
       });
     }
 
     function done(err, job) {
-      err = filterError(err);
+      if (job && inControlBlock(job)) {
+        message('Warning: -if command is missing a matching -endif');
+      }
+      err = handleNonFatalError(err);
       if (err) printError(err);
       callback(err, job);
     }
@@ -45960,7 +46107,7 @@ ${svg}
     }
   }
 
-  function filterError(err) {
+  function handleNonFatalError(err) {
     if (err && err.name == 'NonFatalError') {
       printError(err);
       return null;
