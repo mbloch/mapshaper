@@ -20,6 +20,7 @@ export function getArrowCoords(d, style) {
   if (!size) return null;
   var stemLen = size.stemLen,
       headLen = size.headLen,
+      totalLen = stickArrow ? Math.max(stemLen, headLen) : stemLen + headLen,
       headDx = size.headWidth / 2,
       stemDx = size.stemWidth / 2,
       baseDx = stemDx * (1 - stemTaper),
@@ -72,11 +73,10 @@ export function getArrowCoords(d, style) {
   }
 
   if (d.anchor == 'end') {
-    scaleAndShiftCoords(coords, 1, [-dx, -dy - headLen]);
+    scaleAndShiftCoords(coords, 1, [-dx, -totalLen]);
   } else if (d.anchor == 'middle') {
     // shift midpoint away from the head a bit for a more balanced placement
-    // scaleAndShiftCoords(coords, 1, [-dx/2, (-dy - headLen)/2]);
-    scaleAndShiftCoords(coords, 1, [-dx * 0.5, -dy * 0.5 - headLen * 0.25]);
+    scaleAndShiftCoords(coords, 1, [-dx * 0.5, -dy * 0.5 - totalLen * 0.25]);
   }
 
   rotateCoords(coords, direction);
@@ -93,15 +93,16 @@ export function getArrowCoords(d, style) {
 
 function calcArrowSize(d, stickArrow) {
   // don't display arrows with negative length
-  var totalLen = Math.max(d.radius || d.length || d.r || 0, 0),
-      scale = 1,
-      o = initArrowSize(d); // calc several parameters
+  var o = initArrowSize(d), // calc several parameters
+      dataLen = Math.max(d.radius || d.length || d.r || 0),
+      totalLen = Math.max(dataLen, o.headLen, 0),
+      scale = 1;
   if (totalLen >= 0) {
     scale = calcScale(totalLen, o.headLen, d);
     o.stemWidth *= scale;
     o.headWidth *= scale;
     o.headLen *= scale;
-    o.stemLen = stickArrow ? totalLen : totalLen - o.headLen;
+    o.stemLen = stickArrow ? dataLen : totalLen - o.headLen;
   }
 
   if (o.headWidth < o.stemWidth && o.headWidth > 0) {
@@ -150,12 +151,10 @@ export function initArrowSize(d) {
   return o;
 }
 
-
 // Returns ratio of head length to head width
 function getHeadSizeRatio(headAngle) {
   return 1 / Math.tan(Math.PI * headAngle / 180 / 2) / 2;
 }
-
 
 // ax, ay: point on the base
 // bx, by: point on the stem
