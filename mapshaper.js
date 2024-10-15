@@ -18516,18 +18516,19 @@
 
   function calcFrameData(dataset, opts) {
     var bounds;
-    if (opts.svg_bbox) {
-      bounds = new Bounds(opts.svg_bbox);
+    var outputBbox = opts.svg_bbox || opts.output_bbox || null;
+    if (outputBbox) {
+      bounds = new Bounds(outputBbox);
       opts = Object.assign({margin: 0}, opts); // prevent default pixel margin around content
     } else {
       bounds = getDatasetBounds(dataset);
     }
-    var pixBounds = calcOutputSizeInPixels(bounds, opts);
+    var outputBounds = calcOutputSizeInPixels(bounds, opts);
     return {
       bbox: bounds.toArray(),
-      bbox2: pixBounds.toArray(),
-      width: Math.round(pixBounds.width()),
-      height: Math.round(pixBounds.height()) || 1,
+      bbox2: outputBounds.toArray(),
+      width: Math.round(outputBounds.width()),
+      height: Math.round(outputBounds.height()) || 1,
       type: 'frame'
     };
   }
@@ -18709,6 +18710,7 @@
     __proto__: null,
     getFrameData: getFrameData,
     getFrameLayerData: getFrameLayerData,
+    calcFrameData: calcFrameData,
     getFrameSize: getFrameSize,
     isFrameLayer: isFrameLayer,
     findFrameLayerInDataset: findFrameLayerInDataset,
@@ -18772,6 +18774,9 @@
       geometry_type: 'point', shapes: targetPoints}, {geometry_type: 'polyline',
       shapes: targetShapes}]}, opts);
     transform = getAffineTransform(rotateArg, scaleArg, shiftArg, anchorArg);
+    if (opts.fit_bbox) {
+      transform = getFitBoxTransform(opts.fit_bbox, targetPoints, targetShapes, arcs);
+    }
     if (targetShapes.length > 0) {
       targetFlags = new Uint8Array(arcs.size());
       otherFlags = new Uint8Array(arcs.size());
@@ -18818,6 +18823,33 @@
       var x2 = a * (x - anchor[0]) - b * (y - anchor[1]) + shift[0] + anchor[0];
       var y2 = b * (x - anchor[0]) + a * (y - anchor[1]) + shift[1] + anchor[1];
       return [x2, y2];
+    };
+  }
+
+  function getFitBoxTransform(bbox, points, shapes, arcs) {
+    var dataset = {
+      arcs: arcs,
+      info: {},
+      layers: []
+    };
+    if (points && points.length) {
+      dataset.layers.push({
+        geometry_type: 'point',
+        shapes: points
+      });
+    }
+    if (shapes && shapes.length) {
+      dataset.layers.push({
+        geometry_type: 'polyline',
+        shapes: shapes
+      });
+    }
+    var frame = calcFrameData(dataset, {fit_bbox: bbox});
+    var fromBounds = new Bounds(frame.bbox);
+    var toBounds = new Bounds(frame.bbox2);
+    var fwd = fromBounds.getTransform(toBounds, false);
+    return function(x, y) {
+      return fwd.transform(x, y);
     };
   }
 
@@ -24608,6 +24640,10 @@ ${svg}
       .option('anchor', {
         type: 'numbers',
         describe: 'center of rotation/scaling (default is center of selected shapes)'
+      })
+      .option('fit-bbox', {
+        type: 'bbox',
+        describe: 'scale and shift coordinates to fit a bbox'
       })
       .option('where', whereOpt)
       .option('target', targetOpt);
@@ -44521,6 +44557,7 @@ ${svg}
     if (!size) return null;
     var stemLen = size.stemLen,
         headLen = size.headLen,
+        totalLen = stickArrow ? Math.max(stemLen, headLen) : stemLen + headLen,
         headDx = size.headWidth / 2,
         stemDx = size.stemWidth / 2,
         baseDx = stemDx * (1 - stemTaper),
@@ -44573,11 +44610,10 @@ ${svg}
     }
 
     if (d.anchor == 'end') {
-      scaleAndShiftCoords(coords, 1, [-dx, -dy - headLen]);
+      scaleAndShiftCoords(coords, 1, [-dx, -totalLen]);
     } else if (d.anchor == 'middle') {
       // shift midpoint away from the head a bit for a more balanced placement
-      // scaleAndShiftCoords(coords, 1, [-dx/2, (-dy - headLen)/2]);
-      scaleAndShiftCoords(coords, 1, [-dx * 0.5, -dy * 0.5 - headLen * 0.25]);
+      scaleAndShiftCoords(coords, 1, [-dx * 0.5, -dy * 0.5 - totalLen * 0.25]);
     }
 
     rotateCoords(coords, direction);
@@ -44594,15 +44630,16 @@ ${svg}
 
   function calcArrowSize(d, stickArrow) {
     // don't display arrows with negative length
-    var totalLen = Math.max(d.radius || d.length || d.r || 0, 0),
-        scale = 1,
-        o = initArrowSize(d); // calc several parameters
+    var o = initArrowSize(d), // calc several parameters
+        dataLen = Math.max(d.radius || d.length || d.r || 0),
+        totalLen = Math.max(dataLen, o.headLen, 0),
+        scale = 1;
     if (totalLen >= 0) {
       scale = calcScale(totalLen, o.headLen, d);
       o.stemWidth *= scale;
       o.headWidth *= scale;
       o.headLen *= scale;
-      o.stemLen = stickArrow ? totalLen : totalLen - o.headLen;
+      o.stemLen = stickArrow ? dataLen : totalLen - o.headLen;
     }
 
     if (o.headWidth < o.stemWidth && o.headWidth > 0) {
@@ -44651,12 +44688,10 @@ ${svg}
     return o;
   }
 
-
   // Returns ratio of head length to head width
   function getHeadSizeRatio(headAngle) {
     return 1 / Math.tan(Math.PI * headAngle / 180 / 2) / 2;
   }
-
 
   // ax, ay: point on the base
   // bx, by: point on the stem
@@ -45870,7 +45905,7 @@ ${svg}
     });
   }
 
-  var version = "0.6.100";
+  var version = "0.6.101";
 
   // Parse command line args into commands and run them
   // Function takes an optional Node-style callback. A Promise is returned if no callback is given.
