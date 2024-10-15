@@ -1,3 +1,7 @@
+v0.6.101
+* Added -affine fit-bbox= option, for transforming data to fit within a bounding box.
+* Improved arrow symbols.
+
 v0.6.100
 * Added -frame command, for creating a rectangular map frame layer with a defined display size. Used to set SVG output size and on-screen symbol scale.
 * Added -o no-null-props option, which uses "properties":{} instead of "properties":null when outputting GeoJSON features with no attribute data.
