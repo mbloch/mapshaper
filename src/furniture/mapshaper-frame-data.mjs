@@ -41,20 +41,21 @@ export function getFrameLayerData(lyr, arcs) {
 }
 
 
-function calcFrameData(dataset, opts) {
+export function calcFrameData(dataset, opts) {
   var bounds;
-  if (opts.svg_bbox) {
-    bounds = new Bounds(opts.svg_bbox);
+  var outputBbox = opts.svg_bbox || opts.output_bbox || null;
+  if (outputBbox) {
+    bounds = new Bounds(outputBbox);
     opts = Object.assign({margin: 0}, opts); // prevent default pixel margin around content
   } else {
     bounds = getDatasetBounds(dataset);
   }
-  var pixBounds = calcOutputSizeInPixels(bounds, opts);
+  var outputBounds = calcOutputSizeInPixels(bounds, opts);
   return {
     bbox: bounds.toArray(),
-    bbox2: pixBounds.toArray(),
-    width: Math.round(pixBounds.width()),
-    height: Math.round(pixBounds.height()) || 1,
+    bbox2: outputBounds.toArray(),
+    width: Math.round(outputBounds.width()),
+    height: Math.round(outputBounds.height()) || 1,
     type: 'frame'
   };
 }

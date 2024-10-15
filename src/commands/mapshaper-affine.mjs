@@ -4,13 +4,15 @@ import { getDatasetBounds } from '../dataset/mapshaper-dataset-utils';
 import { forEachPoint } from '../points/mapshaper-point-utils';
 import { countArcsInShapes } from '../paths/mapshaper-path-utils';
 import { compileFeatureExpression } from '../expressions/mapshaper-feature-expressions';
-import { layerHasGeometry } from '../dataset/mapshaper-layer-utils';
+import { layerHasGeometry, getLayerBounds } from '../dataset/mapshaper-layer-utils';
 import { getDatasetCRS } from '../crs/mapshaper-projections';
 import { convertIntervalPair } from '../geom/mapshaper-units';
 import { ArcCollection } from '../paths/mapshaper-arcs';
 import utils from '../utils/mapshaper-utils';
 import cmd from '../mapshaper-cmd';
 import { absArcId } from '../paths/mapshaper-arc-utils';
+import { Bounds } from '../geom/mapshaper-bounds';
+import { calcFrameData } from '../furniture/mapshaper-frame-data';
 
 // Apply rotation, scale and/or shift to some or all of the features in a dataset
 //
@@ -55,6 +57,9 @@ cmd.affine = function(targetLayers, dataset, opts) {
     geometry_type: 'point', shapes: targetPoints}, {geometry_type: 'polyline',
     shapes: targetShapes}]}, opts);
   transform = getAffineTransform(rotateArg, scaleArg, shiftArg, anchorArg);
+  if (opts.fit_bbox) {
+    transform = getFitBoxTransform(opts.fit_bbox, targetPoints, targetShapes, arcs);
+  }
   if (targetShapes.length > 0) {
     targetFlags = new Uint8Array(arcs.size());
     otherFlags = new Uint8Array(arcs.size());
@@ -101,6 +106,33 @@ export function getAffineTransform(rotation, scale, shift, anchor) {
     var x2 = a * (x - anchor[0]) - b * (y - anchor[1]) + shift[0] + anchor[0];
     var y2 = b * (x - anchor[0]) + a * (y - anchor[1]) + shift[1] + anchor[1];
     return [x2, y2];
+  };
+}
+
+export function getFitBoxTransform(bbox, points, shapes, arcs) {
+  var dataset = {
+    arcs: arcs,
+    info: {},
+    layers: []
+  };
+  if (points && points.length) {
+    dataset.layers.push({
+      geometry_type: 'point',
+      shapes: points
+    });
+  }
+  if (shapes && shapes.length) {
+    dataset.layers.push({
+      geometry_type: 'polyline',
+      shapes: shapes
+    });
+  }
+  var frame = calcFrameData(dataset, {fit_bbox: bbox});
+  var fromBounds = new Bounds(frame.bbox);
+  var toBounds = new Bounds(frame.bbox2);
+  var fwd = fromBounds.getTransform(toBounds, false);
+  return function(x, y) {
+    return fwd.transform(x, y);
   };
 }
 

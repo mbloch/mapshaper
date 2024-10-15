@@ -420,6 +420,10 @@ export function getOptionParser() {
       type: 'numbers',
       describe: 'center of rotation/scaling (default is center of selected shapes)'
     })
+    .option('fit-bbox', {
+      type: 'bbox',
+      describe: 'scale and shift coordinates to fit a bbox'
+    })
     .option('where', whereOpt)
     .option('target', targetOpt);
 
