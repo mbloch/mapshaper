@@ -6843,6 +6843,7 @@
     });
   }
 
+
   function defaults(dest) {
     for (var i=1, n=arguments.length; i<n; i++) {
       var src = arguments[i] || {};
@@ -12974,7 +12975,7 @@ GUI and setting the size and crop of SVG output.</p><div><input type="text" clas
     function calcFullBounds() {
       var b;
       if (isPreviewView()) {
-        b = new Bounds(getFrameData().bbox);
+        b = new Bounds(getFrameLayerData().bbox);
       } else {
         b = getContentLayerBounds();
       }
@@ -13014,10 +13015,10 @@ GUI and setting the size and crop of SVG output.</p><div><input type="text" clas
 
     // Preview view: symbols are scaled based on display size of frame layer
     function isPreviewView() {
-      return !isTableView() && !!getFrameData();
+      return !isTableView() && !!getFrameLayerData();
     }
 
-    function getFrameData() {
+    function getFrameLayerData() {
       var lyr = findFrameLayer();
       return lyr && internal.getFrameLayerData(lyr, lyr.gui.displayArcs) || null;
     }
@@ -13138,7 +13139,7 @@ GUI and setting the size and crop of SVG output.</p><div><input type="text" clas
       }
       if (layersMayHaveChanged) {
         // kludge to handle layer visibility toggling
-        _ext.setFrameData(isPreviewView() ? getFrameData() : null);
+        _ext.setFrameData(isPreviewView() ? getFrameLayerData() : null);
         updateFullBounds();
         updateLayerStyles(contentLayers);
         updateLayerStackOrder(model.getLayers());// update menu_order property of all layers
