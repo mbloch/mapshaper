@@ -118,7 +118,7 @@ export function getClampBBox(P) {
 }
 
 export function isCircleClippedProjection(P) {
-  return inList(P, 'stere,sterea,ups,ortho,gnom,laea,nsper,tpers,geos');
+  return inList(P, 'stere,sterea,ups,ortho,gnom,laea,nsper,tpers,geos,nicol');
 }
 
 function getPerspectiveClipAngle(P) {
@@ -143,6 +143,7 @@ export function getDefaultClipAngle(P) {
     laea: 179,
     //ortho: 89.9, // projection errors betwen lat +/-35 to 55
     ortho: 89.85, // TODO: investigate
+    nicol: 89.85,
     stere: 142,
     sterea: 142,
     ups: 10.5 // TODO: should be 6.5 deg at north pole

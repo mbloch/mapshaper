@@ -17,7 +17,7 @@ export function isAxisAligned(P) {
   // TODO: consider projections that may or may not be aligned,
   // depending on parameters
   if (inList(P, 'cassini,gnom,bertin1953,chamb,ob_tran,tpeqd,healpix,rhealpix,' +
-    'ocea,omerc,tmerc,etmerc')) {
+    'ocea,omerc,tmerc,etmerc,nicol')) {
     return false;
   }
   if (isAzimuthal(P)) {

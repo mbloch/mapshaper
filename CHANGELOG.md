@@ -1,3 +1,6 @@
+v0.6.102
+* Added Nicolosi Globular (nicol) projection.
+
 v0.6.101
 * Added -affine fit-bbox= option, for transforming data to fit within a bounding box.
 * Improved arrow symbols.
