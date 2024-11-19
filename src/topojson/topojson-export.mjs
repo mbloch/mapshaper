@@ -13,7 +13,7 @@ import { exportIds } from '../geojson/geojson-export';
 import { exportProperties } from '../geojson/geojson-export';
 import { dissolveArcs } from '../paths/mapshaper-arc-dissolve';
 import { setCoordinatePrecision } from '../geom/mapshaper-rounding';
-import { transformDatasetToPixels } from '../furniture/mapshaper-pixel-transform';
+import { getFrameData, fitDatasetToFrame } from '../furniture/mapshaper-frame-utils';
 import { getFormattedStringify } from '../geojson/mapshaper-stringify';
 import { copyDatasetForExport, datasetHasPaths, splitDataset, getDatasetBounds } from '../dataset/mapshaper-dataset-utils';
 import { getOutputFileBase } from '../utils/mapshaper-filename-utils';
@@ -36,10 +36,14 @@ export function exportTopoJSON(dataset, opts) {
   }
 
   if (opts.width > 0 || opts.height > 0) {
+    // these options create a TopoJSON with pixel coordinates, including
+    // origin (0,0) in the top left corner of the viewport, generally for
+    // direct conversion to SVG (many online examples using d3 are like this)
+    //
     opts = utils.defaults({invert_y: true}, opts);
-    transformDatasetToPixels(dataset, opts);
+    fitDatasetToFrame(dataset, getFrameData(dataset, opts));
   } else if (opts.fit_bbox) {
-    transformDatasetToPixels(dataset, {fit_bbox: opts.fit_bbox});
+    fitDatasetToFrame(dataset, getFrameData(dataset, {fit_bbox: opts.fit_bbox}));
   }
 
   if (opts.precision && opts.no_quantization) {

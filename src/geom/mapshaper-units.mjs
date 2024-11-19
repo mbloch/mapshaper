@@ -157,7 +157,7 @@ export function convertIntervalPair(opt, crs) {
           convertIntervalParam(opt[1], crs)];
 }
 
-// Accepts a single value or a list of four values. List order is l,b,t,r
+// Accepts a single value or a list of four values. List order is l,b,r,t
 export function convertFourSides(opt, crs, bounds) {
   var arr = opt.includes(',') ? opt.split(',') : opt.split(' ');
   if (arr.length == 1) {
@@ -171,7 +171,7 @@ export function convertFourSides(opt, crs, bounds) {
       tmp = parseFloat(param) / 100 || 0;
       return tmp * (i == 1 || i == 3 ? bounds.height() : bounds.width());
     }
-    return convertIntervalParam(opt, crs);
+    return convertIntervalParam(param, crs);
   });
 }
 

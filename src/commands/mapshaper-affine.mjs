@@ -12,7 +12,7 @@ import utils from '../utils/mapshaper-utils';
 import cmd from '../mapshaper-cmd';
 import { absArcId } from '../paths/mapshaper-arc-utils';
 import { Bounds } from '../geom/mapshaper-bounds';
-import { calcFrameData } from '../furniture/mapshaper-frame-data';
+import { calcFrameData } from '../furniture/mapshaper-frame-utils';
 
 // Apply rotation, scale and/or shift to some or all of the features in a dataset
 //

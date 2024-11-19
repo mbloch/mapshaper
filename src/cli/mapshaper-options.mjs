@@ -90,7 +90,7 @@ export function getOptionParser() {
         describe: 'aspect ratio as a number or range (e.g. 2 0.8,1.6 ,2)'
       },
       offsetOpt = {
-        describe: 'padding as distance or pct of h/w (single value or list)',
+        describe: 'offset distance or pct of h/w (single value or l,b,r,t list)',
         type: 'distance'
       };
 

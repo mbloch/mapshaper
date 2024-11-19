@@ -343,7 +343,7 @@ export function MshpMap(gui) {
   function calcFullBounds() {
     var b;
     if (isPreviewView()) {
-      b = new Bounds(getFrameData().bbox);
+      b = new Bounds(getFrameLayerData().bbox);
     } else {
       b = getContentLayerBounds();
     }
@@ -383,10 +383,10 @@ export function MshpMap(gui) {
 
   // Preview view: symbols are scaled based on display size of frame layer
   function isPreviewView() {
-    return !isTableView() && !!getFrameData();
+    return !isTableView() && !!getFrameLayerData();
   }
 
-  function getFrameData() {
+  function getFrameLayerData() {
     var lyr = findFrameLayer();
     return lyr && internal.getFrameLayerData(lyr, lyr.gui.displayArcs) || null;
   }
@@ -507,7 +507,7 @@ export function MshpMap(gui) {
     }
     if (layersMayHaveChanged) {
       // kludge to handle layer visibility toggling
-      _ext.setFrameData(isPreviewView() ? getFrameData() : null);
+      _ext.setFrameData(isPreviewView() ? getFrameLayerData() : null);
       updateFullBounds();
       updateLayerStyles(contentLayers);
       updateLayerStackOrder(model.getLayers());// update menu_order property of all layers
