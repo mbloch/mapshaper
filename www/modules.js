@@ -20279,6 +20279,7 @@ function pj_phi2(ts, e) {
 
 
 pj_add(pj_merc, 'merc', 'Mercator', 'Cyl, Sph&Ell\nlat_ts=');
+pj_add(pj_webmerc, 'webmerc', 'Web Mercator / Pseudo Mercator', 'Cyl, Ell');
 
 function pj_merc(P) {
   var EPS10 = 1e-10;
@@ -20332,6 +20333,26 @@ function pj_merc(P) {
     lp.lam = xy.x / P.k0;
   }
 }
+
+function pj_webmerc(P) {
+  P.k0 = 1;
+  P.inv = s_inv;
+  P.fwd = s_fwd;
+
+  function s_fwd(lp, xy) {
+    if (fabs(fabs(lp.phi) - M_HALFPI) <= EPS10) {
+      f_error();
+    }
+    xy.x = P.k0 * lp.lam;
+    xy.y = P.k0 * log(tan(M_FORTPI + 0.5 * lp.phi));
+  }
+
+  function s_inv(xy, lp) {
+    lp.phi = M_HALFPI - 2 * atan(exp(-xy.y / P.k0));
+    lp.lam = xy.x / P.k0;
+  }
+}
+
 
 
 pj_add(pj_mill, 'mill', 'Miller Cylindrical', 'Cyl, Sph');
@@ -20786,6 +20807,45 @@ var NITER = 9,
       lp.lam = 2 * xy.x;
     } else
       lp.lam = 2 * xy.x / (1 + cos(lp.phi));
+  }
+}
+
+
+pj_add(pj_nicol, 'nicol', 'Nicolosi Globular', 'Misc Sph, no inv');
+
+function pj_nicol(P) {
+  P.es = 0;
+  P.fwd = s_fwd;
+
+  function s_fwd(lp, xy) {
+    var EPS = 1e-10;
+    if (fabs(lp.lam) < EPS) {
+      xy.x = 0;
+      xy.y = lp.phi;
+    } else if (fabs(lp.phi) < EPS) {
+      xy.x = lp.lam;
+      xy.y = 0;
+    } else if (fabs(fabs(lp.lam) - M_HALFPI) < EPS) {
+      xy.x = lp.lam * cos(lp.phi);
+      xy.y = M_HALFPI * sin(lp.phi);
+    } else if (fabs(fabs(lp.phi) - M_HALFPI) < EPS) {
+      xy.x = 0;
+      xy.y = lp.phi;
+    } else {
+      var tb = M_HALFPI / lp.lam - lp.lam / M_HALFPI;
+      var c = lp.phi / M_HALFPI;
+      var sp = sin(lp.phi);
+      var d = (1 - c * c) / (sp - c);
+      var r2 = tb / d;
+      r2 *= r2;
+      var m = (tb * sp / d - 0.5 * tb) / (1 + r2);
+      var n = (sp / r2 + 0.5 * d) / (1 + 1 / r2);
+      xy.x = cos(lp.phi);
+      xy.x = sqrt(m * m + xy.x * xy.x / (1 + r2));
+      xy.x = M_HALFPI * (m + (lp.lam < 0. ? -xy.x : xy.x));
+      xy.y = sqrt(n * n - (sp * sp / r2 + d * sp - 1) / (1 + 1 / r2));
+      xy.y = M_HALFPI * (n + (lp.phi < 0. ? xy.y : -xy.y));
+    }
   }
 }
 
