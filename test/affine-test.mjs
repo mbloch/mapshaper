@@ -3,6 +3,18 @@ import api from '../mapshaper.js';
 
 describe('mapshaper-affine.js', function () {
   describe('-affine command', function () {
+
+    it('fit-bbox= option retains aspect ratio, centers content', async function() {
+      var geojson = {
+        type: 'LineString',
+        coordinates: [[1, 2], [2, 4]]
+      };
+      var cmd = '-i line.json -affine fit-bbox=-1,-1,1,1 -o';
+      var out = await api.applyCommands(cmd, {'line.json': geojson});
+      var geojson = JSON.parse(out['line.json'])
+      assert.deepEqual(geojson.geometries[0], { type: 'LineString', coordinates: [ [ -0.5, -1 ], [ 0.5, 1 ] ] });
+    })
+
     it('separates two connected polygons', function(done) {
       //   b -- c
       //   | \  |

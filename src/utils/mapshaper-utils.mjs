@@ -137,6 +137,7 @@ export function htmlEscape(s) {
   });
 }
 
+
 export function defaults(dest) {
   for (var i=1, n=arguments.length; i<n; i++) {
     var src = arguments[i] || {};

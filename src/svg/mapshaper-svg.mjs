@@ -1,9 +1,8 @@
 import { exportDatasetAsGeoJSON } from '../geojson/geojson-export';
 import { getFurnitureLayerData, layerHasFurniture, renderFurnitureLayer } from '../furniture/mapshaper-furniture';
-import { getFrameData } from '../furniture/mapshaper-frame-data';
+import { getFrameData, fitDatasetToFrame } from '../furniture/mapshaper-frame-utils';
 import { setCoordinatePrecision } from '../geom/mapshaper-rounding';
 import { getScalebarLayer } from '../commands/mapshaper-scalebar';
-import { fitDatasetToFrame } from '../furniture/mapshaper-pixel-transform';
 import { copyDataset } from '../dataset/mapshaper-dataset-utils';
 import utils from '../utils/mapshaper-utils';
 import { message, error, stop } from '../utils/mapshaper-logging';
@@ -35,10 +34,11 @@ export function exportSVG(dataset, opts) {
     dataset = copyDataset(dataset); // Modify a copy of the dataset
   }
 
-  // invert_y setting for screen coordinates and geojson polygon generation
-  utils.extend(opts, {invert_y: true});
+  // use invert_y: 0 setting for screen coordinates and geojson polygon generation
+  // use 1px default margin so typical strokes don't get cut off on the sides
+  opts = Object.assign({invert_y: true, margin: "1"}, opts);
   frame = getFrameData(dataset, opts);
-  fitDatasetToFrame(dataset, frame, opts);
+  fitDatasetToFrame(dataset, frame);
   setCoordinatePrecision(dataset, opts.precision || 0.0001);
 
   // error if one or more svg_data fields are not present in any layers

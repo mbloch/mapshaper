@@ -1,4 +1,4 @@
-import { getFrameSize } from '../furniture/mapshaper-frame-data';
+import { getFrameSize } from '../furniture/mapshaper-frame-utils';
 import { DataTable } from '../datatable/mapshaper-data-table';
 import { message, stop } from '../utils/mapshaper-logging';
 import { probablyDecimalDegreeBounds } from '../geom/mapshaper-latlon';

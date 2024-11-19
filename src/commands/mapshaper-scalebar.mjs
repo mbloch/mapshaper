@@ -1,4 +1,4 @@
-import { getMapFrameMetersPerPixel, findFrameDataset } from '../furniture/mapshaper-frame-data';
+import { getMapFrameMetersPerPixel, findFrameDataset } from '../furniture/mapshaper-frame-utils';
 import { addFurnitureLayer } from '../furniture/mapshaper-furniture-cmd';
 import cmd from '../mapshaper-cmd';
 import utils from '../utils/mapshaper-utils';
