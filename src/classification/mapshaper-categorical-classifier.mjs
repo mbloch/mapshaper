@@ -3,17 +3,21 @@ import { getDiscreteValueGetter } from '../classification/mapshaper-classificati
 export function getCategoricalClassifier(classValues, nullVal, opts) {
   // categories: strings to match in the data
   var categories = opts.categories;
+  // index categories for better performance on datasets with many categories
+  var index = categories.reduce((memo, key, i) => {
+    memo[key] = i;
+    return memo;
+  }, {});
   var classToValue = getDiscreteValueGetter(classValues, nullVal, opts.other);
   return function(val) {
-    var i = categories.indexOf(val);
-    var idx = -1;
-    if (i >= 0) {
-      idx = i;
-    } else if (val) {
-      idx = -2; // field contains an 'other' value
+    var i;
+    if (val in index) {
+      i = index[val];
+    } else if (val || val === 0) {
+      i = -2; // -2 indicates an 'other' value
     } else {
-      idx = -1; // field is empty (null value)
+      i = -1; // field is empty (null value)
     }
-    return classToValue(idx);
+    return classToValue(i);
   };
 }

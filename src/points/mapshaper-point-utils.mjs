@@ -10,12 +10,29 @@ export function countPointsInLayer(lyr) {
   return count;
 }
 
+// export function getPointBounds(shapes) {
+//   var bounds = new Bounds();
+//   forEachPoint(shapes, function(p) {
+//     bounds.mergePoint(p[0], p[1]);
+//   });
+//   return bounds;
+// }
+
 export function getPointBounds(shapes) {
   var bounds = new Bounds();
-  forEachPoint(shapes, function(p) {
-    bounds.mergePoint(p[0], p[1]);
-  });
-  return bounds;
+  var shp, x, y, xmin = Infinity, ymin = Infinity, xmax = -Infinity, ymax = -Infinity;
+  for (var i=0, n=shapes.length; i<n; i++) {
+    shp = shapes[i];
+    for (var j=0, m=shp ? shp.length : 0; j<m; j++) {
+      x = shp[j][0];
+      y = shp[j][1];
+      if (x > xmax) xmax = x;
+      if (x < xmin) xmin = x;
+      if (y > ymax) ymax = y;
+      if (y < ymin) ymin = y;
+    }
+  }
+  return shp ? new Bounds(xmin, ymin, xmax, ymax) : new Bounds();
 }
 
 export function getPointFeatureBounds(shape, bounds) {
