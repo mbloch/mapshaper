@@ -6,7 +6,7 @@ import { absArcId } from '../paths/mapshaper-arc-utils';
 export function getShapeHitTest(layer, ext, interactionMode, featureFilter) {
   var geoType = layer.gui.displayLayer.geometry_type;
   var test;
-  if (geoType == 'point' && layer.gui.style.type == 'styled') {
+  if (geoType == 'point' && layer.gui.style.type == 'styled' && !layer.gui.style.dotSize) {
     test = getGraduatedCircleTest(getRadiusFunction(layer.gui.style));
   } else if (geoType == 'point') {
     test = pointTest;

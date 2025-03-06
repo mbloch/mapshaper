@@ -485,7 +485,9 @@ export function MshpMap(gui) {
     });
   }
 
+  var skipCount = 0;
   function drawLayers(action) {
+    skipCount++;
     // This seems to smooth out navigation and keep overlay and basemap in sync.
     requestAnimationFrame(function() {drawLayers2(action);});
   }
@@ -495,6 +497,10 @@ export function MshpMap(gui) {
   //   'hover'    highlight has changed -- only refresh overlay
   //   (default)  anything could have changed
   function drawLayers2(action) {
+    if (--skipCount > 0) {
+      // skip redraw if more draws are queued up
+      return;
+    }
     // sometimes styles need to be regenerated with 'hover' action (when?)
     var layersMayHaveChanged = action != 'nav'; // !action;
     var fullBounds;

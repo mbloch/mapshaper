@@ -267,8 +267,8 @@ export function Basemap(gui) {
   }
 
   function refresh() {
-    var crs = gui.map.getDisplayCRS();
-    var off = !crs || !enabled() || !map || loading || !activeStyle;
+    var off = !enabled() || !map || loading || !activeStyle ||
+      !gui.map.getDisplayCRS(); // may be slow if getting bounds of many shapes
     fadeBtn.active(!off);
     clearBtn.active(!off);
     if (off) {

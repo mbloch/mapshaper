@@ -46,7 +46,7 @@ export function drawStyledLayerToCanvas(lyr, canv, ext) {
   var layer = lyr.gui.displayLayer;
   var arcs, filter;
   if (layer.geometry_type == 'point') {
-    if (style.type == 'styled') {
+    if (style.type == 'styled' && !style.dotSize) {
       canv.drawPoints(layer.shapes, style);
     } else {
       canv.drawSquareDots(layer.shapes, style);
@@ -102,11 +102,15 @@ function getPixelColorFunction() {
   var canv = El('canvas').node();
   canv.width = canv.height = 1;
   var ctx = canv.getContext('2d', {willReadFrequently: true});
+  var memos = {};
   return function(col) {
     var pixels;
+    if (!col) col = 'black';
+    if (col in memos) return memos[col];
     ctx.fillStyle = col;
     ctx.fillRect(0, 0, 1, 1);
     pixels = new Uint32Array(ctx.getImageData(0, 0, 1, 1).data.buffer);
+    memos[col] = pixels[0];
     return pixels[0];
   };
 }
@@ -240,43 +244,48 @@ export function DisplayCanvas() {
         styler = style.styler || null,
         xmax = _canvas.width + size,
         ymax = _canvas.height + size,
-        color = style.dotColor || "black",
+        xmin = -size,
+        ymin = -size,
+        color = style.dotColor || 'black',
         shp, x, y, i, j, n, m,
         mx = t.mx,
         my = t.my,
         bx = t.bx,
         by = t.by;
     if (size === 0) return;
-    if (size <= 6 && !styler) {
+    if (size <= 6) {
       // optimized drawing of many small same-colored dots
-      _self.drawSquareDotsFaster(shapes, color, size, t);
+      drawSquareDotsFaster(shapes, style, size, t);
       return;
     }
+
     _ctx.fillStyle = color;
     for (i=0, n=shapes.length; i<n; i++) {
-      if (styler !== null) { // e.g. selected points
-        styler(style, i);
-        size = getDotSize(style);
-        if (style.dotColor != color) {
-          color = style.dotColor;
-          _ctx.fillStyle = color;
-        }
-      }
       shp = shapes[i];
       for (j=0, m=shp ? shp.length : 0; j<m; j++) {
         x = shp[j][0] * mx + bx;
         y = shp[j][1] * my + by;
-        if (x > -size && y > -size && x < xmax && y < ymax) {
+        if (x > xmin && y > ymin && x < xmax && y < ymax) {
+          if (styler !== null) { // e.g. selected points
+            styler(style, i);
+            // avoid updating dot size for every shape (assuming dotSize is not dynamic)
+            // size = getDotSize(style);
+            if (style.dotColor != color) {
+              color = style.dotColor || style.fillColor;
+              _ctx.fillStyle = color;
+            }
+          }
           drawSquare(x, y, size, _ctx);
         }
       }
     }
   };
 
-  _self.drawSquareDotsFaster = function(shapes, color, size, t) {
+  function drawSquareDotsFaster(shapes, style, size, t) {
     var w = _canvas.width,
         h = _canvas.height,
-        rgba = _pixelColor(color),
+        rgba = _pixelColor(style.dotColor || style.fillColor),
+        styler = style.styler,
         imageData = _ctx.getImageData(0, 0, w, h),
         pixels = new Uint32Array(imageData.data.buffer),
         shp, x, y, i, j, n, m,
@@ -284,18 +293,33 @@ export function DisplayCanvas() {
         my = t.my,
         bx = t.bx,
         by = t.by;
-    for (i=0, n=shapes.length; i<n; i++) {
-      shp = shapes[i];
-      for (j=0, m=shp ? shp.length : 0; j<m; j++) {
-        x = shp[j][0] * mx + bx;
-        y = shp[j][1] * my + by;
-        if (x >= 0 && y >= 0 && x <= w && y <= h) {
-          drawSquareFaster(x, y, rgba, size, pixels, w, h);
+    if (styler) {
+      for (i=0, n=shapes.length; i<n; i++) {
+        shp = shapes[i];
+        for (j=0, m=shp ? shp.length : 0; j<m; j++) {
+          x = shp[j][0] * mx + bx;
+          y = shp[j][1] * my + by;
+          if (x >= 0 && y >= 0 && x <= w && y <= h) {
+            styler(style, i);
+            rgba = _pixelColor(style.dotColor || style.fillColor);
+            drawSquareFaster(x, y, rgba, size, pixels, w, h);
+          }
+        }
+      }
+    } else {
+      for (i=0, n=shapes.length; i<n; i++) {
+        shp = shapes[i];
+        for (j=0, m=shp ? shp.length : 0; j<m; j++) {
+          x = shp[j][0] * mx + bx;
+          y = shp[j][1] * my + by;
+          if (x >= 0 && y >= 0 && x <= w && y <= h) {
+            drawSquareFaster(x, y, rgba, size, pixels, w, h);
+          }
         }
       }
     }
     _ctx.putImageData(imageData, 0, 0);
-  };
+  }
 
   // color: 32-bit integer value containing rgba channel values
   // size: pixels on a side (assume integer)
