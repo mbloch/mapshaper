@@ -47,21 +47,18 @@ export function setLayerPinning(lyr, pinned) {
 
 
 export function adjustPointSymbolSizes(layers, overlayLyr, ext) {
-  var bbox = ext.getBounds().scale(1.5).toArray();
-  var testInBounds = function(p) {
-    return p[0] > bbox[0] && p[0] < bbox[2] && p[1] > bbox[1] && p[1] < bbox[3];
-  };
-  var topTier = 50000;
+  var bbox = ext.getBounds().scale(1.3).toArray(); // add buffer
+  // var topTier = 50000; // can be a bottleneck
+  var topTier = 10000; // short-circuit counting here
   var count = 0;
   layers = layers.filter(function(lyr) {
     return lyr.geometry_type == 'point' && lyr.gui.style.dotSize > 0;
   });
   layers.forEach(function(lyr) {
-    // short-circuit point counting above top threshold
-    count += countPoints(lyr.gui.displayLayer.shapes, topTier, testInBounds);
+    count += countPoints(lyr.gui.displayLayer.shapes, topTier, bbox);
   });
   count = Math.min(topTier, count) || 1;
-  var k = Math.pow(6 - utils.clamp(Math.log10(count), 1, 5), 1.3);
+  var k = Math.pow(5 - utils.clamp(Math.log10(count), 1, 4), 1.25);
 
   // zoom adjustments
   var mapScale = ext.scale();
@@ -69,9 +66,10 @@ export function adjustPointSymbolSizes(layers, overlayLyr, ext) {
     k *= Math.pow(mapScale + 0.5, 0.35);
   } else if (mapScale > 1) {
     // scale faster at first
-    k *= Math.pow(Math.min(mapScale, 4), 0.15);
-    k *= Math.pow(mapScale, 0.05);
+    k *= Math.pow(Math.min(mapScale, 4), 0.25);
+    k *= Math.pow(mapScale, 0.02);
   }
+
 
   // scale down when map is small
   var smallSide = Math.min(ext.width(), ext.height());
@@ -85,13 +83,17 @@ export function adjustPointSymbolSizes(layers, overlayLyr, ext) {
   }
 }
 
-function countPoints(shapes, max, filter) {
+function countPoints(shapes, max, bbox) {
   var count = 0;
-  var i, j, n, m, shp;
-  for (i=0, n=shapes.length; i<n && count<max; i++) {
+  var shp, p;
+  // short-circuit point counting above top threshold
+  for (var i=0, n=shapes.length; i<n && count<max; i++) {
     shp = shapes[i];
-    for (j=0, m=(shp ? shp.length : 0); j<m; j++) {
-      count += filter(shp[j]) ? 1 : 0;
+    for (var j=0, m=(shp ? shp.length : 0); j<m; j++) {
+      p = shp[j];
+      if (p[0] > bbox[0] && p[0] < bbox[2] && p[1] > bbox[1] && p[1] < bbox[3]) {
+        count ++;
+      }
     }
   }
   return count;

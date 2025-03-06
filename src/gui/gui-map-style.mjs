@@ -109,8 +109,8 @@ export function getIntersectionStyle(lyr, opts) {
   return getDefaultStyle(lyr, intersectionStyle);
 }
 
-// Style for unselected layers with visibility turned on
-// (styled layers have)
+// Display style for unselected layers with visibility turned on
+// (may be fully styled or outlined)
 export function getReferenceLayerStyle(lyr, opts) {
   var style;
   if (layerHasCanvasDisplayStyle(lyr) && !opts.outlineMode) {
@@ -295,6 +295,7 @@ function getCanvasDisplayStyle(lyr) {
       // array of field names of relevant svg display properties
       fields = getCanvasStyleFields(lyr).filter(function(f) {return f in styleIndex;}),
       records = lyr.data.getRecords();
+
   var styler = function(style, i) {
     var rec = records[i];
     var fname, val;
@@ -318,14 +319,20 @@ function getCanvasDisplayStyle(lyr) {
       style.fillColor = 'black';
     }
   };
-  return {styler: styler, type: 'styled'};
+  var style = {styler: styler, type: 'styled'};
+  // use squares if radius is missing... (TODO: check behavior with labels, etc)
+  if (lyr.geometry_type == 'point' && fields.includes('r') === false) {
+    style.dotSize = 1;
+  }
+  return style;
 }
 
-// check if layer should be displayed with styles
+// check if layer should be displayed with a full style
 export function layerHasCanvasDisplayStyle(lyr) {
   var fields = getCanvasStyleFields(lyr);
   if (lyr.geometry_type == 'point') {
-    return fields.indexOf('r') > -1; // require 'r' field for point symbols
+    // return fields.indexOf('r') > -1; // require 'r' field for point symbols
+    return fields.includes('fill') || fields.includes('r'); // support colored squares
   }
   return utils.difference(fields, ['opacity', 'class']).length > 0;
 }
