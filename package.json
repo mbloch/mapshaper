@@ -50,7 +50,7 @@
     "d3-interpolate": "^3.0.1",
     "d3-scale-chromatic": "3.0.0",
     "delaunator": "^5.0.0",
-    "fflate": "^0.7.4",
+    "fflate": "0.8.2",
     "flatbush": "^3.2.1",
     "geokdbush": "^1.1.0",
     "iconv-lite": "^0.6.3",
