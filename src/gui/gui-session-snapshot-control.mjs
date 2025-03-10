@@ -1,6 +1,6 @@
 import { El } from './gui-el';
 import { internal, stop } from './gui-core';
-import { saveBlobToLocalFile, saveBlobToSelectedFile } from './gui-save';
+import { saveBlobToLocalFile2 } from './gui-save';
 
 var idb = require('idb-keyval');
 // https://github.com/jakearchibald/idb
@@ -90,10 +90,9 @@ export function SessionSnapshots(gui) {
         var obj = await idb.get(item.id);
         await internal.compressSnapshotForExport(obj);
         var buf = internal.pack(obj);
-        // choose output filename and directory every time
-        // saveBlobToLocalFile('mapshaper_snapshot.msx', new Blob([buf]));
         var fileName = `snapshot-${String(item.number).padStart(2, '0')}.msx`;
-        saveBlobToSelectedFile(fileName, new Blob([buf]), function() {});
+        // choose output filename and directory every time, if supported
+        saveBlobToLocalFile2(fileName, new Blob([buf]));
       }).text('export');
       El('span').addClass('save-menu-btn').appendTo(line).on('click', async function(e) {
         await removeSnapshotById(item.id);
@@ -133,6 +132,7 @@ export function SessionSnapshots(gui) {
 
   async function saveSnapshot(gui) {
     var obj = await captureSnapshot(gui);
+
     if (!obj) return;
     // storing an unpacked object is usually a bit faster (~20%)
     // note: we don't know the size of unpacked snapshot objects
@@ -220,9 +220,7 @@ async function captureSnapshot(gui) {
   //   in file size in a typical polygon or polyline file, but longer processing time
   var opts = {compact: false, active_layer: lyr};
   var datasets = gui.model.getDatasets();
-  // console.time('msx');
   var obj = await internal.exportDatasetsToPack(datasets, opts);
-  // console.timeEnd('msx')
   obj.gui = getGuiState(gui);
   return obj;
 }

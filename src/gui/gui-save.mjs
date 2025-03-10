@@ -50,6 +50,15 @@ function saveBlobToServer(path, blob, done) {
   });
 }
 
+// save file to selected folder if supported, else to downloads
+export function saveBlobToLocalFile2(filename, blob) {
+  if (window.showSaveFilePicker) {
+    saveBlobToSelectedFile(filename, blob);
+  } else {
+    saveBlobToDownloadsFolder(filename, blob);
+  }
+}
+
 export async function saveBlobToLocalFile(filename, blob, done) {
   var chooseDir = GUI.getSavedValue('choose-save-dir');
   done = done || function() {};
@@ -137,6 +146,7 @@ function getSaveFileOptions(filename) {
 
 function saveBlobToDownloadsFolder(filename, blob, done) {
   var anchor, blobUrl;
+  done = done || function() {};
   try {
     blobUrl = URL.createObjectURL(blob);
   } catch(e) {
