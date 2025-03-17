@@ -27,6 +27,19 @@ describe('mapshaper-svg-style.js', function () {
       });
     })
 
+    it('-style clear clears all styles', async function() {
+      var records = [{foo: 'a', stroke: 'white', fill: 'pink', opacity: 0.3}, {foo: 'b', stroke: 'black', fill: 'yellow', opacity: 1}]
+      var lyr = {
+        data: new api.internal.DataTable(records)
+      };
+      var opts = {
+        clear: true
+      };
+      var target = [{foo: 'a'}, {foo: 'b'}];
+      api.cmd.svgStyle(lyr, {}, opts);
+      assert.deepEqual(lyr.data.getRecords(), target);
+    })
+
     it('-style css= creates inline style', async function() {
       var cmd = '-rectangle bbox=0,0,1,1 -style fill=white css="filter: drop-shadow(1px 1px 5px rgba(0, 0, 0, .7));" -o out.svg';
       var output = await api.applyCommands(cmd);

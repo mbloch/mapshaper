@@ -6,7 +6,7 @@ import { isSupportedSvgStyleProperty } from '../svg/svg-properties';
 import cmd from '../mapshaper-cmd';
 
 cmd.svgStyle = function(lyr, dataset, opts) {
-  var filter;
+  var filterFn;
   if (getFeatureCount(lyr) === 0) {
     return;
   }
@@ -14,7 +14,10 @@ cmd.svgStyle = function(lyr, dataset, opts) {
     initDataTable(lyr);
   }
   if (opts.where) {
-    filter = compileFeatureExpression(opts.where, lyr, dataset.arcs);
+    filterFn = compileFeatureExpression(opts.where, lyr, dataset.arcs);
+  }
+  if (opts.clear) {
+    lyr.data.getFields().filter(isSupportedSvgStyleProperty).forEach(lyr.data.deleteField, lyr.data);
   }
   Object.keys(opts).forEach(function(optName) {
     var svgName = optName.replace('_', '-'); // undo cli parser name conversion
@@ -24,7 +27,7 @@ cmd.svgStyle = function(lyr, dataset, opts) {
     var strVal = opts[optName].trim();
     var accessor = getSymbolPropertyAccessor(strVal, svgName, lyr);
     getLayerDataTable(lyr).getRecords().forEach(function(rec, i) {
-      if (filter && !filter(i)) {
+      if (filterFn && !filterFn(i)) {
         // make sure field exists if record is excluded by filter
         if (svgName in rec === false) {
           rec[svgName] = undefined;
@@ -35,3 +38,4 @@ cmd.svgStyle = function(lyr, dataset, opts) {
     });
   });
 };
+
