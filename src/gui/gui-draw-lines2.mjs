@@ -313,8 +313,8 @@ export function initLineEditing(gui, ext, hit) {
     target.gui.displayArcs.transformPoints(function() {});
     updateVertexCoords(target, hoverVertexInfo.ids);
     gui.dispatchEvent('vertex_dragend', hoverVertexInfo);
-    gui.dispatchEvent('map-needs-refresh'); // redraw basemap
     clearHoverVertex();
+    gui.dispatchEvent('map-needs-refresh'); // redraw basemap
   });
 
   // shift + double-click deletes a vertex (when not drawing)
