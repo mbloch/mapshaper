@@ -192,6 +192,7 @@ export function getOverlayStyle(baseLyr, o, opts) {
       style.styler = getOverlayPointStyler(getCanvasDisplayStyle(baseLyr).styler, styler);
     }
     style.type = 'styled';
+
   }
   return ids.length > 0 ? style : null;
 }

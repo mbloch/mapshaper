@@ -62,8 +62,8 @@ export function initPointEditing(gui, ext, hit) {
     var coords = target.shapes[id];
     deleteFeature(target, id);
     gui.dispatchEvent('feature_delete', {coords, d, target, fid: id});
-    gui.dispatchEvent('map-needs-refresh');
     hit.setHitId(-1);
+    gui.dispatchEvent('map-needs-refresh');
   }
 
   hit.on('click', function(e) {
