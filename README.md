@@ -16,6 +16,7 @@ To suggest improvements, add an [issue](https://github.com/mbloch/mapshaper/issu
 Mapshaper includes several command line programs, which can be run under Mac OS X, Linux and Windows.
 
 * `mapshaper` Runs mapshaper commands.
+* `mapshaper-bun` Runs mapshaper commands with [bun](https://bun.sh/) instead of node.
 * `mapshaper-xl` Works the same as `mapshaper`, but runs with more RAM to support larger files.
 * `mapshaper-gui` Runs the mapshaper Web interface locally.
 
@@ -26,7 +27,7 @@ For a detailed reference, see the [Command Reference](https://github.com/mbloch/
 
 ## Interactive web interface
 
-Visit the public website at [www.mapshaper.org](http://www.mapshaper.org) or use the web UI locally via the `mapshaper-gui` script. 
+Visit the public website at [www.mapshaper.org](http://www.mapshaper.org) or use the web UI locally via the `mapshaper-gui` script.
 
 All processing is done in the browser, so your data stays private, even when using the public website.
 

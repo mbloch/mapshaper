@@ -85,6 +85,7 @@
   },
   "bin": {
     "mapshaper": "bin/mapshaper",
+    "mapshaper-bun": "bin/mapshaper-bun",
     "mapshaper-gui": "bin/mapshaper-gui",
     "mapshaper-xl": "bin/mapshaper-xl"
   },

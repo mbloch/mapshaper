@@ -1,0 +1,8 @@
+#!/usr/bin/env bun
+
+var mapshaper = require('../mapshaper.js');
+mapshaper.enableLogging();
+mapshaper.runCommands(process.argv.slice(2), done);
+function done(err) {
+  process.exit(err ? 1 : 0);
+}
