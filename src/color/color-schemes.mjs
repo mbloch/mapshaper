@@ -30,7 +30,6 @@ function initSchemes() {
   addCategoricalScheme('Tableau20',
     '4c78a89ecae9f58518ffbf7954a24b88d27ab79a20f2cf5b43989483bcb6e45756ff9d9879706ebab0acd67195fcbfd2b279a2d6a5c99e765fd8b5a5');
   index.all = [].concat(index.sequential, index.rainbow, index.diverging, index.categorical);
-
 }
 
 function standardName(name) {
@@ -44,8 +43,15 @@ function standardName(name) {
   return null;
 }
 
-function addSchemesFromD3(type, names) {
-  index[type] = index[type].concat(names.split(','));
+function addSchemesFromD3(type, namesStr) {
+  var names = namesStr.split(',');
+  index[type] = index[type].concat(names);
+  if (type == 'categorical') {
+    // copy categorical colors for simplicity
+    names.forEach(name => {
+      ramps[name] = d3Scales['scheme' + name];
+    });
+  }
 }
 
 function addCategoricalScheme(name, str) {
@@ -99,16 +105,14 @@ export function pickRandomColorScheme(type) {
   initSchemes();
   var names = index[type];
   if (!names) error('Unknown color scheme type:', type);
-  var i = Math.floor(Math.random() * names.length);
-  return names[i];
+  return utils.pickOne(names);
 }
 
-export function getRandomColors(n) {
+export function pickRandomCategoricalScheme(n) {
   initSchemes();
-  var colors = getCategoricalColorScheme('Tableau20', 20);
-  utils.shuffle(colors);
-  colors = wrapColors(colors, n);
-  return colors.slice(0, n);
+  var minSize = Math.min(n, 20); // use largest available if n is too large
+  var schemes = index.categorical.filter(name => ramps[name].length >= minSize);
+  return utils.pickOne(schemes) || 'Tableau20';
 }
 
 export function getCategoricalColorScheme(name, n) {
