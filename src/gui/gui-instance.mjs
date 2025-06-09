@@ -38,10 +38,7 @@ export function GuiInstance(container, opts) {
   gui.contextMenu = new ContextMenu();
   gui.undo = new Undo(gui);
   gui.map = new MshpMap(gui);
-  if (opts.saveControl) {
-    new SessionSnapshots(gui);
-  }
-  gui.interaction = new InteractionMode(gui);
+
   gui.state = {};
 
   var msgCount = 0;
@@ -49,6 +46,11 @@ export function GuiInstance(container, opts) {
 
   initModeRules(gui);
   gui.map.init();
+
+  if (opts.saveControl) {
+    new SessionSnapshots(gui);
+  }
+  gui.interaction = new InteractionMode(gui);
 
   gui.showProgressMessage = function(msg) {
     if (!gui.progressMessage) {

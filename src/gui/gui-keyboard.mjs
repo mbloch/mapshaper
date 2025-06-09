@@ -2,6 +2,9 @@ import { utils } from './gui-core';
 import { EventDispatcher } from './gui-events';
 import { GUI } from './gui-lib';
 
+// export var ESC = 27;
+export var SPACE = 32;
+
 export function KeyboardEvents(gui) {
   var self = this;
   var shiftDown = false;
@@ -15,7 +18,7 @@ export function KeyboardEvents(gui) {
     ctrlDown = e.ctrlKey;
     metaDown = e.metaKey;
     altDown = e.altKey;
-    if (e.keyCode == 32) {
+    if (e.keyCode == SPACE) {
       spaceDown = evtName == 'keydown';
     }
   }
@@ -25,13 +28,13 @@ export function KeyboardEvents(gui) {
   }
 
   document.addEventListener('keyup', function(e) {
-    if (!GUI.isActiveInstance(gui) || e.repeat && e.keyCode == 32) return;
+    if (!GUI.isActiveInstance(gui) || e.repeat && e.keyCode == SPACE) return;
     updateControlKeys(e, 'keyup');
     self.dispatchEvent('keyup', getEventData(e));
   });
 
   document.addEventListener('keydown', function(e) {
-    if (!GUI.isActiveInstance(gui) || e.repeat && e.keyCode == 32) return;
+    if (!GUI.isActiveInstance(gui) || e.repeat && e.keyCode == SPACE) return;
     updateControlKeys(e, 'keydown');
     self.dispatchEvent('keydown', getEventData(e));
   });

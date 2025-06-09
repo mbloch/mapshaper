@@ -42,9 +42,8 @@ export function MshpMap(gui) {
       map = this,
       _mouse = new MouseArea(el, position),
       _ext = new MapExtent(position),
-      _nav = new MapNav(gui, _ext, _mouse),
       _visibleLayers = [], // cached visible map layers
-      _hit,
+      _hit, _nav,
       _intersectionLyr, _activeLyr, _overlayLyr,
       _renderer, _dynamicCRS;
 
@@ -92,8 +91,8 @@ export function MshpMap(gui) {
   this.pixelCoordsToLngLatCoords = function(x, y) {
     var crsFrom = this.getDisplayCRS();
     if (!crsFrom) return null; // e.g. table view
-    var p1 = internal.toLngLat(_ext.translatePixelCoords(x, y), crsFrom);
-    var p2 = internal.toLngLat(_ext.translatePixelCoords(x+1, y+1), crsFrom);
+    var p1 = internal.toLngLat(_ext.pixCoordsToMapCoords(x, y), crsFrom);
+    var p2 = internal.toLngLat(_ext.pixCoordsToMapCoords(x+1, y+1), crsFrom);
     return p1 && p2 && p1[1] <= 90 && p1[1] >= -90 ?
       formatCoordsForDisplay(p1, p2) : null;
   };
@@ -104,8 +103,8 @@ export function MshpMap(gui) {
     if (info && internal.isLatLngCRS(info.crs)) {
       return null; // latlon dataset
     }
-    var p1 = translateDisplayPoint(_activeLyr, _ext.translatePixelCoords(x, y));
-    var p2 = translateDisplayPoint(_activeLyr, _ext.translatePixelCoords(x+1, y+1));
+    var p1 = translateDisplayPoint(_activeLyr, _ext.pixCoordsToMapCoords(x, y));
+    var p2 = translateDisplayPoint(_activeLyr, _ext.pixCoordsToMapCoords(x+1, y+1));
     return p1 && p2 ? formatCoordsForDisplay(p1, p2) : null;
   };
 
@@ -192,6 +191,7 @@ export function MshpMap(gui) {
     _ext.setFullBounds(calcFullBounds());
     _ext.resize();
     _renderer = new LayerRenderer(gui, el);
+    _nav = new MapNav(gui, _ext, _mouse);
 
     if (opts.inspectorControl) {
       _hit = new HitControl(gui, _ext, _mouse),

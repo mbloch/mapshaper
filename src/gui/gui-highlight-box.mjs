@@ -11,6 +11,7 @@ export function HighlightBox(gui, optsArg) {
         persistent: false,
         draggable: false  // does dragging the map draw a box
       }, optsArg),
+      clickToStart = opts.name == 'box-tool', // other versions use shift-drag
       box = new EventDispatcher(),
       stroke = 2,
       activeHandle = null,
@@ -18,38 +19,75 @@ export function HighlightBox(gui, optsArg) {
       boxCoords = null,
       _on = false,
       _visible = false,
+      clickStartPoint,
       handles;
-
   if (opts.classname) {
     el.addClass(opts.classname);
+  }
+
+  function drawing() {
+    return visible() && !activeHandle;
+  }
+
+  function resizing() {
+    return !!activeHandle && visible();
+  }
+
+  function visible() {
+    return _on && !!boxCoords && _visible;
   }
 
   el.hide();
 
   gui.on('map_rendered', function() {
-    if (!_on || !_visible) return;
+    if (!visible()) return;
     redraw();
   });
 
-  gui.on('shift_drag', function(e) {
-    if (!_on) return;
-    if (!opts.draggable) return;
-    boxCoords = getBoxCoords(e.data);
-    redraw();
-    box.dispatchEvent('drag');
-  });
+  if (clickToStart) {
+    gui.on('map_click', function(e) {
+      if (!_on) {
+        // clickStartPoint = null;
+        return;
+      }
 
-  gui.on('shift_drag_end', function(e) {
-    if (!_on || !_visible || !opts.draggable) return;
-    boxCoords = getBoxCoords(e.data);
-    var pix = coordsToPix(boxCoords, gui.map.getExtent());
-    box.dispatchEvent('dragend', {map_bbox: pix});
-    if (!opts.persistent) {
-      box.hide();
-    } else {
-      redraw();
-    }
-  });
+      var p = [e.x, e.y];
+      if (drawing()) {
+        finishDrawingBox(e);
+      } else if (!resizing()) {
+        clickStartPoint = p;
+      }
+    });
+
+    gui.map.getMouse().on('hover', function(e) {
+      if (!_on) return;
+      var p = [e.x, e.y];
+      if (clickStartPoint) {
+        updateDrawnBox(clickStartPoint, p);
+      }
+      // box.dispatchEvent('drag');
+    });
+  }
+
+  if (!clickToStart) {
+    gui.on('shift_drag', function(e) {
+      if (!_on) return;
+      if (!opts.draggable) return;
+      if (clickToStart) return;
+      updateDrawnBox(e.data.b, e.data.a);
+      box.dispatchEvent('drag');
+    });
+
+    gui.on('shift_drag_end', function(e) {
+      if (!_on || !_visible || !opts.draggable) return;
+      if (clickToStart) return;
+      updateDrawnBox(e.data.b, e.data.a, true);
+      if (!opts.persistent) {
+        box.hide();
+      }
+    });
+  }
+
 
   if (opts.handles) {
     handles = initHandles(el);
@@ -62,7 +100,7 @@ export function HighlightBox(gui, optsArg) {
     });
 
     gui.map.getMouse().on('mousemove', function(e) {
-      if (!_on || !activeHandle || !prevXY || !boxCoords || !_visible) return;
+      if (!resizing() || !prevXY) return;
       var xy = {x: e.pageX, y: e.pageY};
       var scaling = gui.keyboard.shiftIsPressed() && activeHandle.type == 'corner';
       if (scaling) {
@@ -86,6 +124,27 @@ export function HighlightBox(gui, optsArg) {
         redraw();
       }
     });
+  }
+
+  // p1: origin
+  // p2: pointer location
+  function updateDrawnBox(p1, p2, final) {
+    if (!boxCoords) {
+      el.classed('hittable', false);
+    }
+    boxCoords = getBoxCoords(p1, p2);
+    redraw();
+    if (final) {
+      el.classed('hittable', true);
+      var pix = coordsToPix(boxCoords, gui.map.getExtent());
+      box.dispatchEvent('dragend', {map_bbox: pix});
+    }
+  }
+
+  function finishDrawingBox(e) {
+    if (!clickStartPoint) return;
+    updateDrawnBox(clickStartPoint, [e.x, e.y], true);
+    clickStartPoint = null;
   }
 
   function resizeBox(dx, dy, activeHandle) {
@@ -114,7 +173,7 @@ export function HighlightBox(gui, optsArg) {
   }
 
   function rescaleBox(x, y) {
-    var p = gui.map.getExtent().translatePixelCoords(x, y);
+    var p = gui.map.getExtent().pixCoordsToMapCoords(x, y);
     var cx = (boxCoords[0] + boxCoords[2])/2;
     var cy = (boxCoords[1] + boxCoords[3])/2;
     var dist2 = geom.distance2D(cx, cy, p[0], p[1]);
@@ -144,12 +203,16 @@ export function HighlightBox(gui, optsArg) {
 
   box.turnOff = function() {
     _on = false;
+    box.hide();
   };
 
+  // remove the current box (if any)
   box.hide = function() {
     el.hide();
     boxCoords = null;
     _visible = false;
+    clickStartPoint = null;
+    activeHandle = null;
   };
 
   box.show = function(x1, y1, x2, y2) {
@@ -189,10 +252,33 @@ export function HighlightBox(gui, optsArg) {
   }
 
   // get bbox coords in the display CRS
-  function getBoxCoords(e) {
-    var bbox = pixToCoords(e.a.concat(e.b), gui.map.getExtent());
+  function getBoxCoords(p1, p2) {
+    if (gui.keyboard.shiftIsPressed()) {
+      p2 = getSquareCorner(p1[0], p1[1], p2[0], p2[1]);
+    }
+    var bbox = pixToCoords(p1.concat(p2), gui.map.getExtent());
     fixBounds(bbox);
     return bbox;
+  }
+
+  function getSquareCorner(x1, y1, x2, y2) {
+    var dx = x2 - x1;
+    var dy = y2 - y1;
+    if (dy === 0 && dx === 0) {
+      return [x2, y2];
+    }
+    if (dy === 0) {
+      dy = 1;
+    }
+    if (dx === 0) {
+      dx = 1;
+    }
+    if (Math.abs(dx) > Math.abs(dy)) {
+      dy = dy * Math.abs(dx / dy);
+    } else {
+      dx = dx * Math.abs(dy / dx);
+    }
+    return [x1 + dx, y1 + dy];
   }
 
   function redraw() {
@@ -215,12 +301,12 @@ function coordsToPix(bbox, ext) {
 }
 
 function pixToCoords(bbox, ext) {
-  var a = ext.translatePixelCoords(bbox[0], bbox[1]);
-  var b = ext.translatePixelCoords(bbox[2], bbox[3]);
+  var a = ext.pixCoordsToMapCoords(bbox[0], bbox[1]);
+  var b = ext.pixCoordsToMapCoords(bbox[2], bbox[3]);
   return [a[0], b[1], b[0], a[1]];
 }
 
-
+// enforce [minx, miny, maxx, maxy] order
 function fixBounds(bbox) {
   var tmp;
   if (bbox[0] > bbox[2]) {

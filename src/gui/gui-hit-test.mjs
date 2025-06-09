@@ -13,7 +13,7 @@ export function getPointerHitTest(mapLayer, ext, interactionMode, featureFilter)
 
   // e: pointer event
   return function(e) {
-    var p = ext.translatePixelCoords(e.x, e.y);
+    var p = ext.pixCoordsToMapCoords(e.x, e.y);
     // update SVG hit test on each test, in case SVG layer has been redrawn
     // and the symbol container has changed
     var svgTest = getSvgHitTest(mapLayer);
