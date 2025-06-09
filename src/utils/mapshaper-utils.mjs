@@ -562,6 +562,10 @@ export function shuffle(arr) {
   }
 }
 
+export function pickOne(arr) {
+  return arr[Math.floor(Math.random() * arr.length)];
+}
+
 // Sort an array of objects based on one or more properties.
 // Usage: sortOn(array, key1, asc?[, key2, asc? ...])
 //
