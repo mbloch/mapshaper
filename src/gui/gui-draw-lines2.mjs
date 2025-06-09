@@ -295,7 +295,7 @@ export function initLineEditing(gui, ext, hit) {
     e.originalEvent.stopPropagation();
     // dragging a vertex
     var target = hit.getHitTarget();
-    var p = ext.translatePixelCoords(e.x, e.y);
+    var p = ext.pixCoordsToMapCoords(e.x, e.y);
     if (gui.keyboard.shiftIsPressed()) {
       internal.snapPointToArcEndpoint(p, hoverVertexInfo.ids, target.gui.displayArcs);
     }
@@ -428,7 +428,7 @@ export function initLineEditing(gui, ext, hit) {
 
   function pixToDataCoords(x, y) {
     var target = hit.getHitTarget();
-    return translateDisplayPoint(target, ext.translatePixelCoords(x, y));
+    return translateDisplayPoint(target, ext.pixCoordsToMapCoords(x, y));
   }
 
   // Change the x, y pixel location of thisEvt so that the segment extending
@@ -550,7 +550,7 @@ export function initLineEditing(gui, ext, hit) {
     if (!pathDrawing()) return false;
     var target = hit.getHitTarget();
     var arcId = target.gui.displayArcs.size() - 1;
-    var p1 = ext.translatePixelCoords(e.x, e.y); // mouse coords
+    var p1 = ext.pixCoordsToMapCoords(e.x, e.y); // mouse coords
     var p2 = internal.getArcStartCoords(arcId, target.gui.displayArcs); // vertex coords
     var p3 = internal.getArcStartCoords(arcId, target.gui.source.dataset.arcs);
     var dist = geom.distance2D(p1[0], p1[1], p2[0], p2[1]);
@@ -572,7 +572,7 @@ export function initLineEditing(gui, ext, hit) {
   function findDraggableVertices(e) {
     var target = hit.getHitTarget();
     var shp = target.shapes[e.id];
-    var p = ext.translatePixelCoords(e.x, e.y);
+    var p = ext.pixCoordsToMapCoords(e.x, e.y);
     var ids = internal.findNearestVertices(p, shp, target.gui.displayArcs);
     var p2 = target.gui.displayArcs.getVertex2(ids[0]);
     var dist = geom.distance2D(p[0], p[1], p2[0], p2[1]);
@@ -594,7 +594,7 @@ export function initLineEditing(gui, ext, hit) {
     var target = hit.getHitTarget();
     //// vertex insertion not supported with simplification
     // if (!target.arcs.isFlat()) return null;
-    var p = ext.translatePixelCoords(e.x, e.y);
+    var p = ext.pixCoordsToMapCoords(e.x, e.y);
     var minDist = Infinity;
     var shp = target.shapes[e.id];
     var closest;

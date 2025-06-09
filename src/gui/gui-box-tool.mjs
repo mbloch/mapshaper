@@ -57,6 +57,14 @@ export function BoxTool(gui, ext, nav) {
     openAddFramePopup(gui, box.getDataCoords());
   });
 
+  gui.keyboard.on('keydown', function(e) {
+    if (e.keyName == 'esc') {
+      reset();
+      e.stopPropagation();
+    }
+
+  }, 10);
+
   gui.addMode('box_tool', turnOn, turnOff);
 
   gui.on('interaction_mode_change', function(e) {
@@ -67,6 +75,7 @@ export function BoxTool(gui, ext, nav) {
         showInstructions();
       }
     } else if (_on) {
+      gui.clearMode();
       turnOff();
     }
   });
@@ -91,7 +100,7 @@ export function BoxTool(gui, ext, nav) {
   function showInstructions() {
     var isMac = navigator.userAgent.includes('Mac');
     var symbol = isMac ? '⌘' : '^';
-    var msg = `Instructions: Shift-drag to draw a rectangle. Drag handles to resize. Shift-drag handles to resize symmetrically.`;
+    var msg = `Instructions: Click to start a rectangle. Drag handles to resize. Press shift key to resize symmetrically.`;
     alert = showPopupAlert(msg, null, { non_blocking: true, max_width: '360px'});
   }
 

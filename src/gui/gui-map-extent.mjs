@@ -149,7 +149,7 @@ export function MapExtent(_position) {
   };
 
   // convert pixel coords (0,0 is top left corner of map) to display CRS coords
-  this.translatePixelCoords = function(x, y) {
+  this.pixCoordsToMapCoords = function(x, y) {
     return this.getTransform().invert().transform(x, y);
   };
 

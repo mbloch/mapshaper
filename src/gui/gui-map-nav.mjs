@@ -74,7 +74,7 @@ export function MapNav(gui, ext, mouse) {
   mouse.on('drag', function(e) {
     if (disabled()) return;
     if (shiftDrag) {
-      gui.dispatchEvent('shift_drag', getBoxData(e));
+      gui.dispatchEvent('shift_drag', getBoxData(e, dragStartEvt));
       return;
     }
     if (++panCount == 1) {
@@ -94,7 +94,7 @@ export function MapNav(gui, ext, mouse) {
     if (disabled()) return;
     if (shiftDrag) {
       shiftDrag = false;
-      gui.dispatchEvent('shift_drag_end', getBoxData(e));
+      gui.dispatchEvent('shift_drag_end', getBoxData(e, dragStartEvt));
       zoomBox.turnOff();
     } else {
       El('body').removeClass('panning').removeClass('pan');
@@ -118,10 +118,10 @@ export function MapNav(gui, ext, mouse) {
     return !'selection_tool,box_tool,rectangle_tool,drawing_tool'.includes(mode);
   }
 
-  function getBoxData(e) {
+  function getBoxData(e1, e2) {
     return {
-      a: [e.x, e.y],
-      b: [dragStartEvt.x, dragStartEvt.y]
+      a: [e1.x, e1.y],
+      b: [e2.x, e2.y]
     };
   }
 
