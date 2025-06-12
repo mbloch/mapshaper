@@ -13,7 +13,7 @@ export function joinTables(dest, src, join, opts) {
 
 // Join data from @src table to records in @destLyr layer.
 // @join function
-//    Receives index of record in the dest table
+//    Receives index of one record in the dest table
 //    Returns array of matching records in src table, or null if no matches
 //
 export function joinTableToLayer(destLyr, src, join, opts) {

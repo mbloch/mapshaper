@@ -1103,6 +1103,14 @@ export function getOptionParser() {
       describe: '(polygon-polygon join) use max overlap to join one polygon',
       type: 'flag'
     })
+    .option('min-overlap-pct', {
+      describe: '(polygon-polygon join) min overlap as pct of target polygon',
+      type: 'percent'
+    })
+    .option('min-overlap-area', {
+      describe: '(polygon-polygon join) minimum area of overlap',
+      type: 'area'
+    })
     // .option('nearest-point', {
     //   describe: '(point-point join)',
     //   type: 'flag'

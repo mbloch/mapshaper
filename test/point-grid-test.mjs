@@ -1,11 +1,8 @@
 import api from '../mapshaper.js';
 import assert from 'assert';
 
-
 describe('mapshaper-point-grid.js', function () {
-
   describe('-point-grid command', function () {
-
     it('create a grid without importing a file using <rows,cols>', function (done) {
       var cmd = '-point-grid bbox=10,10,20,20 2,2 -o out.json';
       api.applyCommands(cmd, {}, function(err, out) {

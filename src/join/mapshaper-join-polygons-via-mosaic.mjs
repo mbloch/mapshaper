@@ -6,6 +6,8 @@ import { MosaicIndex } from '../polygons/mapshaper-mosaic-index';
 import { error, stop } from '../utils/mapshaper-logging';
 import utils from '../utils/mapshaper-utils';
 import geom from '../geom/mapshaper-geom';
+import { getDatasetCRS } from '../crs/mapshaper-projections';
+import { convertAreaParam } from '../geom/mapshaper-units';
 
 export function joinPolygonsViaMosaic(targetLyr, targetDataset, source, opts) {
   // merge source and target layers
@@ -20,11 +22,14 @@ export function joinPolygonsViaMosaic(targetLyr, targetDataset, source, opts) {
   };
   // make a mosaic from merged shapes of both layers
   var mosaicIndex = new MosaicIndex(mergedLyr, nodes, {flat: false});
-
   var joinOpts = utils.extend({}, opts);
-  var joinFunction = getPolygonToPolygonFunction(targetLyr, sourceLyr, mosaicIndex, opts);
-  var retn = joinTableToLayer(targetLyr, sourceLyr.data, joinFunction, joinOpts);
+  if (joinOpts.min_overlap_area) {
+    // convert area arg to square meters (typically)
+    joinOpts.min_overlap_area = convertAreaParam(joinOpts.min_overlap_area, getDatasetCRS(targetDataset));
+  }
 
+  var joinFunction = getPolygonToPolygonFunction(targetLyr, sourceLyr, mosaicIndex, joinOpts);
+  var retn = joinTableToLayer(targetLyr, sourceLyr.data, joinFunction, joinOpts);
   if (opts.interpolate) {
     if (opts.duplication) stop('duplication and interpolate options cannot be used together');
     interpolateFieldsByArea(targetLyr, sourceLyr, mosaicIndex, opts);
@@ -127,17 +132,50 @@ function getIdConversionFunction(offset, length) {
   };
 }
 
-function getMaxOverlapFunction(destLyr, srcLyr, mosaicIndex) {
+function getMinPctFunction(minPct, destLyr, mosaicIndex) {
   var arcs = mosaicIndex.nodes.arcs;
   var destLen = destLyr.shapes.length;
 
-  function getTotalArea(tileIds) {
-    var area = 0;
-    for (var i=0; i<tileIds.length; i++) {
-      area += geom.getShapeArea(mosaicIndex.mosaic[tileIds[i]], arcs);
-    }
-    return area;
+  return function(destId, srcIds) {
+    var destTileIds = mosaicIndex.getTileIdsByShapeId(destId);
+    var destArea = getAreaOfTiles(destTileIds, mosaicIndex);
+    return srcIds.filter(function(srcId, i) {
+      var srcTileIds = mosaicIndex.getTileIdsByShapeId(srcId + destLen);
+      var sharedIds = utils.intersection(destTileIds, srcTileIds);
+      var overlapArea = getAreaOfTiles(sharedIds, mosaicIndex);
+      var overlapPct = overlapArea / destArea || 0;
+      return overlapPct >= minPct;
+    });
+  };
+}
+
+function getMinAreaFunction(minArea, destLyr, mosaicIndex) {
+  var arcs = mosaicIndex.nodes.arcs;
+  var destLen = destLyr.shapes.length;
+
+  return function(destId, srcIds) {
+    var destTileIds = mosaicIndex.getTileIdsByShapeId(destId);
+
+    return srcIds.filter(function(srcId, i) {
+      var srcTileIds = mosaicIndex.getTileIdsByShapeId(srcId + destLen);
+      var sharedIds = utils.intersection(destTileIds, srcTileIds);
+      var overlapArea = getAreaOfTiles(sharedIds, mosaicIndex);
+      return overlapArea >= minArea;
+    });
+  };
+}
+
+function getAreaOfTiles(tileIds, mosaicIndex) {
+  var arcs = mosaicIndex.nodes.arcs;
+  var area = 0;
+  for (var i=0; i<tileIds.length; i++) {
+    area += geom.getShapeArea(mosaicIndex.mosaic[tileIds[i]], arcs);
   }
+  return area;
+}
+
+function getMaxOverlapFunction(destLyr, mosaicIndex) {
+  var destLen = destLyr.shapes.length;
 
   return function(destId, srcIds) {
     var destTileIds = mosaicIndex.getTileIdsByShapeId(destId);
@@ -146,7 +184,7 @@ function getMaxOverlapFunction(destLyr, srcLyr, mosaicIndex) {
     srcIds.forEach(function(srcId, i) {
       var srcTileIds = mosaicIndex.getTileIdsByShapeId(srcId + destLen);
       var sharedIds = utils.intersection(destTileIds, srcTileIds);
-      var area = getTotalArea(sharedIds);
+      var area = getAreaOfTiles(sharedIds, mosaicIndex);
       if (area >= maxArea) {
         maxId = srcId;
         maxArea = area;
@@ -159,14 +197,21 @@ function getMaxOverlapFunction(destLyr, srcLyr, mosaicIndex) {
 
 
 // Returned function converts a target layer feature id to multiple source feature ids
-// TODO: option to join the source polygon with the greatest overlapping area
 // TODO: option to ignore source polygon with small overlaps
 //       (as a percentage of the area of one or the other polygon?)
 function getPolygonToPolygonFunction(targetLyr, srcLyr, mosaicIndex, opts) {
   var mergedToSourceIds = getIdConversionFunction(targetLyr.shapes.length, srcLyr.shapes.length);
   var selectMaxOverlap;
+  var minAreaFilter;
+  var minPctFilter;
   if (opts.largest_overlap) {
-    selectMaxOverlap = getMaxOverlapFunction(targetLyr, srcLyr, mosaicIndex);
+    selectMaxOverlap = getMaxOverlapFunction(targetLyr, mosaicIndex);
+  }
+  if (opts.min_overlap_pct) {
+    minPctFilter = getMinPctFunction(opts.min_overlap_pct, targetLyr, mosaicIndex);
+  }
+  if (opts.min_overlap_area) {
+    minAreaFilter = getMinAreaFunction(opts.min_overlap_area, targetLyr, mosaicIndex);
   }
 
   return function(targId) {
@@ -180,6 +225,12 @@ function getPolygonToPolygonFunction(targetLyr, srcLyr, mosaicIndex, opts) {
     sourceIds = utils.uniq(sourceIds);
     if (sourceIds.length > 1 && opts.largest_overlap) {
       sourceIds = selectMaxOverlap(targId, sourceIds);
+    }
+    if (minAreaFilter) {
+      sourceIds = minAreaFilter(targId, sourceIds);
+    }
+    if (minPctFilter) {
+      sourceIds = minPctFilter(targId, sourceIds);
     }
     return sourceIds;
   };
