@@ -1,7 +1,6 @@
 import api from '../mapshaper.js';
 import assert from 'assert';
 
-
 describe('Polygons to polygons spatial joins', function () {
 
   it('-join calc= expressions work correctly', function(done) {
@@ -20,6 +19,7 @@ describe('Polygons to polygons spatial joins', function () {
       done();
     });
   })
+
 
   it('Bug fix: mosaic error', function (done) {
     // Sum of interpolated values of inner subdivisions should be less than value of enclosing source polygon
@@ -80,6 +80,66 @@ describe('Polygons to polygons spatial joins', function () {
       done();
     });
   })
+
+  describe('min overlap options', function() {
+
+    var two = {
+      type: 'FeatureCollection',
+      features: [{
+        type: 'Feature',
+        properties: {name: 'B'},
+        geometry: {
+          type: 'Polygon',
+          coordinates: [[[0, 0], [0, 100], [1, 100], [1, 0], [0, 0]]]
+        }
+      }, {
+        type: 'Feature',
+        properties: {name: 'C'},
+        geometry: {
+          type: 'Polygon',
+          coordinates: [[[1, 0], [1, 100], [3, 100], [3, 0], [1, 0]]]
+        }
+      }]
+    };
+
+    it('min-overlap-pct', async function() {
+      var one = {
+        type: 'Feature',
+        properties: {name: 'A'},
+        geometry: {
+          type: 'Polygon',
+          coordinates: [[[0, 0], [0, 100], [5, 100], [5, 0], [0, 0]]]
+        }
+      };
+
+      var cmd = '-i one.json -join two.json min-overlap-pct=0.25 calc="names=collect(name)" -o joined.json';
+      var out = await api.applyCommands(cmd, {'one.json': one, "two.json": two});
+      var json = JSON.parse(out['joined.json']);
+      // B is 20% C is 40% - only C joins
+      assert.deepEqual(json.features[0].properties, {name: 'A', names: ['C']})
+    });
+
+    it('min-overlap-area', async function() {
+      var one = {
+        type: 'Feature',
+        properties: {name: 'A'},
+        geometry: {
+          type: 'Polygon',
+          coordinates: [[[0, 0], [0, 100], [5, 100], [5, 0], [0, 0]]]
+        }
+      };
+
+      var cmd = '-i one.json -join two.json min-overlap-area=150 calc="names=collect(name)" -o joined.json';
+      var out = await api.applyCommands(cmd, {'one.json': one, "two.json": two});
+      var json = JSON.parse(out['joined.json']);
+      // B is 100 C is 200 - only C joins
+      assert.deepEqual(json.features[0].properties, {name: 'A', names: ['C']})
+
+    });
+
+  });
+
+
 
   describe('inner-point join method', function () {
 
