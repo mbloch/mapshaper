@@ -81,7 +81,7 @@ describe('Polygons to polygons spatial joins', function () {
     });
   })
 
-  describe('min overlap options', function() {
+  describe('polygon to polygon options', function() {
 
     var two = {
       type: 'FeatureCollection',
@@ -137,12 +137,25 @@ describe('Polygons to polygons spatial joins', function () {
 
     });
 
+    it('interpolate= categorical data', async function() {
+      var one = {
+        type: 'Feature',
+        properties: {name: 'A'},
+        geometry: {
+          type: 'Polygon',
+          coordinates: [[[0, 0], [0, 100], [5, 100], [5, 0], [0, 0]]]
+        }
+      };
+
+      var cmd = '-i one.json -join two.json interpolate=name -o joined.json';
+      var out = await api.applyCommands(cmd, {'one.json': one, "two.json": two});
+      var json = JSON.parse(out['joined.json']);
+      // C has the larger area
+      assert.deepEqual(json.features[0].properties, {name: 'C'})
+    });
   });
 
-
-
   describe('inner-point join method', function () {
-
     var one = {
       type: 'Feature',
       properties: {name: 'A'},
