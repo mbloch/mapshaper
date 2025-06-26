@@ -67,6 +67,7 @@
     get formatIntlNumber () { return formatIntlNumber; },
     get formatNumberForDisplay () { return formatNumberForDisplay; },
     get shuffle () { return shuffle; },
+    get pickOne () { return pickOne; },
     get sortOn () { return sortOn; },
     get genericSort () { return genericSort; },
     get getSortedIds () { return getSortedIds; },
@@ -133,8 +134,24 @@
     clearStash: clearStash
   });
 
+  // Several dependencies are loaded via require()
+  var f;
+  if (typeof require == 'function') {
+    // Node.js context: native require() function
+    f = require;
+  } else if (typeof window == 'object' && window.modules) {
+    // running in web GUI
+    f = function(name) {
+      return window.modules[name];
+    };
+  } else {
+    // stub to avoid runtime error in a handful of tests
+    f = function() {};
+  }
+  var require$1 = f;
+
   // Fall back to browserify's Buffer polyfill
-  var B$3 = typeof Buffer != 'undefined' ? Buffer : require('buffer').Buffer;
+  var B$3 = typeof Buffer != 'undefined' ? Buffer : require$1('buffer').Buffer;
 
   var uniqCount = 0;
   function getUniqueName(prefix) {
@@ -682,6 +699,10 @@
       arr[i] = arr[j];
       arr[j] = tmp;
     }
+  }
+
+  function pickOne(arr) {
+    return arr[Math.floor(Math.random() * arr.length)];
   }
 
   // Sort an array of objects based on one or more properties.
@@ -1756,12 +1777,29 @@
     return count;
   }
 
+  // export function getPointBounds(shapes) {
+  //   var bounds = new Bounds();
+  //   forEachPoint(shapes, function(p) {
+  //     bounds.mergePoint(p[0], p[1]);
+  //   });
+  //   return bounds;
+  // }
+
   function getPointBounds$1(shapes) {
-    var bounds = new Bounds();
-    forEachPoint(shapes, function(p) {
-      bounds.mergePoint(p[0], p[1]);
-    });
-    return bounds;
+    new Bounds();
+    var shp, x, y, xmin = Infinity, ymin = Infinity, xmax = -Infinity, ymax = -Infinity;
+    for (var i=0, n=shapes.length; i<n; i++) {
+      shp = shapes[i];
+      for (var j=0, m=shp ? shp.length : 0; j<m; j++) {
+        x = shp[j][0];
+        y = shp[j][1];
+        if (x > xmax) xmax = x;
+        if (x < xmin) xmin = x;
+        if (y > ymax) ymax = y;
+        if (y < ymin) ymin = y;
+      }
+    }
+    return shp ? new Bounds(xmin, ymin, xmax, ymax) : new Bounds();
   }
 
   function getPointFeatureBounds(shape, bounds) {
@@ -3714,20 +3752,6 @@
     editShapeParts: editShapeParts,
     findMaxPartCount: findMaxPartCount
   });
-
-  // Several dependencies are loaded via require() ... this module returns a
-  // stub function when require() does not exist as a global function,
-  // to avoid runtime errors (this should only happen in some tests when single
-  // modules are imported)
-  var f;
-  if (typeof require == 'function') {
-    f = require;
-  } else {
-    f = function() {
-      // console.error('Unable to load module', name);
-    };
-  }
-  var require$1 = f;
 
   var iconv = require$1('iconv-lite');
 
@@ -9615,11 +9639,10 @@
   });
 
   // aliases for shorter compressed code (most minifers don't do this)
-  var u8 = Uint8Array, u16 = Uint16Array, u32 = Uint32Array;
+  var u8 = Uint8Array, u16 = Uint16Array, i32 = Int32Array;
   // fixed length extra bits
   var fleb = new u8([0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 2, 2, 2, 2, 3, 3, 3, 3, 4, 4, 4, 4, 5, 5, 5, 5, 0, /* unused */ 0, 0, /* impossible */ 0]);
   // fixed distance extra bits
-  // see fleb note
   var fdeb = new u8([0, 0, 0, 0, 1, 1, 2, 2, 3, 3, 4, 4, 5, 5, 6, 6, 7, 7, 8, 8, 9, 9, 10, 10, 11, 11, 12, 12, 13, 13, /* unused */ 0, 0]);
   // code length index map
   var clim = new u8([16, 17, 18, 0, 8, 7, 9, 6, 10, 5, 11, 4, 12, 3, 13, 2, 14, 1, 15]);
@@ -9630,26 +9653,26 @@
           b[i] = start += 1 << eb[i - 1];
       }
       // numbers here are at max 18 bits
-      var r = new u32(b[30]);
+      var r = new i32(b[30]);
       for (var i = 1; i < 30; ++i) {
           for (var j = b[i]; j < b[i + 1]; ++j) {
               r[j] = ((j - b[i]) << 5) | i;
           }
       }
-      return [b, r];
+      return { b: b, r: r };
   };
-  var _a = freb(fleb, 2), fl = _a[0], revfl = _a[1];
+  var _a = freb(fleb, 2), fl = _a.b, revfl = _a.r;
   // we can ignore the fact that the other numbers are wrong; they never happen anyway
   fl[28] = 258, revfl[258] = 28;
-  var _b = freb(fdeb, 0), fd = _b[0], revfd = _b[1];
+  var _b = freb(fdeb, 0), fd = _b.b, revfd = _b.r;
   // map of value to reverse (assuming 16 bits)
   var rev = new u16(32768);
   for (var i = 0; i < 32768; ++i) {
       // reverse table algorithm from SO
-      var x = ((i & 0xAAAA) >>> 1) | ((i & 0x5555) << 1);
-      x = ((x & 0xCCCC) >>> 2) | ((x & 0x3333) << 2);
-      x = ((x & 0xF0F0) >>> 4) | ((x & 0x0F0F) << 4);
-      rev[i] = (((x & 0xFF00) >>> 8) | ((x & 0x00FF) << 8)) >>> 1;
+      var x = ((i & 0xAAAA) >> 1) | ((i & 0x5555) << 1);
+      x = ((x & 0xCCCC) >> 2) | ((x & 0x3333) << 2);
+      x = ((x & 0xF0F0) >> 4) | ((x & 0x0F0F) << 4);
+      rev[i] = (((x & 0xFF00) >> 8) | ((x & 0x00FF) << 8)) >> 1;
   }
   // create huffman tree from u8 "map": index -> code length for code index
   // mb (max bits) must be at most 15
@@ -9667,7 +9690,7 @@
       }
       // u16 "map": index -> minimum code for bit length = index
       var le = new u16(mb);
-      for (i = 0; i < mb; ++i) {
+      for (i = 1; i < mb; ++i) {
           le[i] = (le[i - 1] + l[i - 1]) << 1;
       }
       var co;
@@ -9688,7 +9711,7 @@
                   // m is end value
                   for (var m = v | ((1 << r_1) - 1); v <= m; ++v) {
                       // every 16 bit value starting with the code yields the same result
-                      co[rev[v] >>> rvb] = sv;
+                      co[rev[v] >> rvb] = sv;
                   }
               }
           }
@@ -9697,7 +9720,7 @@
           co = new u16(s);
           for (i = 0; i < s; ++i) {
               if (cd[i]) {
-                  co[i] = rev[le[cd[i] - 1]++] >>> (15 - cd[i]);
+                  co[i] = rev[le[cd[i] - 1]++] >> (15 - cd[i]);
               }
           }
       }
@@ -9750,9 +9773,7 @@
       if (e == null || e > v.length)
           e = v.length;
       // can't use .constructor in case user-supplied
-      var n = new (v.BYTES_PER_ELEMENT == 2 ? u16 : v.BYTES_PER_ELEMENT == 4 ? u32 : u8)(e - s);
-      n.set(v.subarray(s, e));
-      return n;
+      return new u8(v.subarray(s, e));
   };
   // error codes
   var ec = [
@@ -9782,19 +9803,18 @@
       return e;
   };
   // expands raw DEFLATE data
-  var inflt = function (dat, buf, st) {
-      // source length
-      var sl = dat.length;
-      if (!sl || (st && st.f && !st.l))
+  var inflt = function (dat, st, buf, dict) {
+      // source length       dict length
+      var sl = dat.length, dl = dict ? dict.length : 0;
+      if (!sl || st.f && !st.l)
           return buf || new u8(0);
+      var noBuf = !buf;
       // have to estimate size
-      var noBuf = !buf || st;
+      var resize = noBuf || st.i != 2;
       // no state
-      var noSt = !st || st.i;
-      if (!st)
-          st = {};
+      var noSt = st.i;
       // Assumes roughly 33% compression ratio average
-      if (!buf)
+      if (noBuf)
           buf = new u8(sl * 3);
       // ensure buffer can fit at least l elements
       var cbuf = function (l) {
@@ -9827,7 +9847,7 @@
                       break;
                   }
                   // ensure size
-                  if (noBuf)
+                  if (resize)
                       cbuf(bt + l);
                   // Copy over uncompressed data
                   buf.set(dat.subarray(s, t), bt);
@@ -9860,7 +9880,7 @@
                       // bits read
                       pos += r & 15;
                       // symbol
-                      var s = r >>> 4;
+                      var s = r >> 4;
                       // code length to copy
                       if (s < 16) {
                           ldt[i++] = s;
@@ -9896,14 +9916,14 @@
               }
           }
           // Make sure the buffer can hold this + the largest possible addition
-          // Maximum chunk size (practically, theoretically infinite) is 2^17;
-          if (noBuf)
+          // Maximum chunk size (practically, theoretically infinite) is 2^17
+          if (resize)
               cbuf(bt + 131072);
           var lms = (1 << lbt) - 1, dms = (1 << dbt) - 1;
           var lpos = pos;
           for (;; lpos = pos) {
               // bits read, code
-              var c = lm[bits16(dat, pos) & lms], sym = c >>> 4;
+              var c = lm[bits16(dat, pos) & lms], sym = c >> 4;
               pos += c & 15;
               if (pos > tbts) {
                   if (noSt)
@@ -9928,52 +9948,55 @@
                       pos += b;
                   }
                   // dist
-                  var d = dm[bits16(dat, pos) & dms], dsym = d >>> 4;
+                  var d = dm[bits16(dat, pos) & dms], dsym = d >> 4;
                   if (!d)
                       err(3);
                   pos += d & 15;
                   var dt = fd[dsym];
                   if (dsym > 3) {
                       var b = fdeb[dsym];
-                      dt += bits16(dat, pos) & ((1 << b) - 1), pos += b;
+                      dt += bits16(dat, pos) & (1 << b) - 1, pos += b;
                   }
                   if (pos > tbts) {
                       if (noSt)
                           err(0);
                       break;
                   }
-                  if (noBuf)
+                  if (resize)
                       cbuf(bt + 131072);
                   var end = bt + add;
-                  for (; bt < end; bt += 4) {
-                      buf[bt] = buf[bt - dt];
-                      buf[bt + 1] = buf[bt + 1 - dt];
-                      buf[bt + 2] = buf[bt + 2 - dt];
-                      buf[bt + 3] = buf[bt + 3 - dt];
+                  if (bt < dt) {
+                      var shift = dl - dt, dend = Math.min(dt, end);
+                      if (shift + bt < 0)
+                          err(3);
+                      for (; bt < dend; ++bt)
+                          buf[bt] = dict[shift + bt];
                   }
-                  bt = end;
+                  for (; bt < end; ++bt)
+                      buf[bt] = buf[bt - dt];
               }
           }
           st.l = lm, st.p = lpos, st.b = bt, st.f = final;
           if (lm)
               final = 1, st.m = lbt, st.d = dm, st.n = dbt;
       } while (!final);
-      return bt == buf.length ? buf : slc(buf, 0, bt);
+      // don't reallocate for streams or user buffers
+      return bt != buf.length && noBuf ? slc(buf, 0, bt) : buf.subarray(0, bt);
   };
   // starting at p, write the minimum number of bits that can hold v to d
   var wbits = function (d, p, v) {
       v <<= p & 7;
       var o = (p / 8) | 0;
       d[o] |= v;
-      d[o + 1] |= v >>> 8;
+      d[o + 1] |= v >> 8;
   };
   // starting at p, write the minimum number of bits (>8) that can hold v to d
   var wbits16 = function (d, p, v) {
       v <<= p & 7;
       var o = (p / 8) | 0;
       d[o] |= v;
-      d[o + 1] |= v >>> 8;
-      d[o + 2] |= v >>> 16;
+      d[o + 1] |= v >> 8;
+      d[o + 2] |= v >> 16;
   };
   // creates code lengths from a frequency table
   var hTree = function (d, mb) {
@@ -9986,11 +10009,11 @@
       var s = t.length;
       var t2 = t.slice();
       if (!s)
-          return [et, 0];
+          return { t: et, l: 0 };
       if (s == 1) {
           var v = new u8(t[0].s + 1);
           v[t[0].s] = 1;
-          return [v, 1];
+          return { t: v, l: 1 };
       }
       t.sort(function (a, b) { return a.f - b.f; });
       // after i2 reaches last ind, will be stopped
@@ -10034,7 +10057,7 @@
               else
                   break;
           }
-          dt >>>= lft;
+          dt >>= lft;
           while (dt > 0) {
               var i2_2 = t2[i].s;
               if (tr[i2_2] < mb)
@@ -10051,7 +10074,7 @@
           }
           mbt = mb;
       }
-      return [new u8(tr), mbt];
+      return { t: new u8(tr), l: mbt };
   };
   // get the max length and assign length codes
   var ln = function (n, l, d) {
@@ -10094,7 +10117,7 @@
               cln = c[i];
           }
       }
-      return [cl.subarray(0, cli), s];
+      return { c: cl.subarray(0, cli), n: s };
   };
   // calculate the length of output from tree, code lengths
   var clen = function (cf, cl) {
@@ -10110,7 +10133,7 @@
       var s = dat.length;
       var o = shft(pos + 2);
       out[o] = s & 255;
-      out[o + 1] = s >>> 8;
+      out[o + 1] = s >> 8;
       out[o + 2] = out[o] ^ 255;
       out[o + 3] = out[o + 1] ^ 255;
       for (var i = 0; i < s; ++i)
@@ -10121,23 +10144,23 @@
   var wblk = function (dat, out, final, syms, lf, df, eb, li, bs, bl, p) {
       wbits(out, p++, final);
       ++lf[256];
-      var _a = hTree(lf, 15), dlt = _a[0], mlb = _a[1];
-      var _b = hTree(df, 15), ddt = _b[0], mdb = _b[1];
-      var _c = lc(dlt), lclt = _c[0], nlc = _c[1];
-      var _d = lc(ddt), lcdt = _d[0], ndc = _d[1];
+      var _a = hTree(lf, 15), dlt = _a.t, mlb = _a.l;
+      var _b = hTree(df, 15), ddt = _b.t, mdb = _b.l;
+      var _c = lc(dlt), lclt = _c.c, nlc = _c.n;
+      var _d = lc(ddt), lcdt = _d.c, ndc = _d.n;
       var lcfreq = new u16(19);
       for (var i = 0; i < lclt.length; ++i)
-          lcfreq[lclt[i] & 31]++;
+          ++lcfreq[lclt[i] & 31];
       for (var i = 0; i < lcdt.length; ++i)
-          lcfreq[lcdt[i] & 31]++;
-      var _e = hTree(lcfreq, 7), lct = _e[0], mlcb = _e[1];
+          ++lcfreq[lcdt[i] & 31];
+      var _e = hTree(lcfreq, 7), lct = _e.t, mlcb = _e.l;
       var nlcc = 19;
       for (; nlcc > 4 && !lct[clim[nlcc - 1]]; --nlcc)
           ;
       var flen = (bl + 5) << 3;
       var ftlen = clen(lf, flt) + clen(df, fdt) + eb;
-      var dtlen = clen(lf, dlt) + clen(df, ddt) + eb + 14 + 3 * nlcc + clen(lcfreq, lct) + (2 * lcfreq[16] + 3 * lcfreq[17] + 7 * lcfreq[18]);
-      if (flen <= ftlen && flen <= dtlen)
+      var dtlen = clen(lf, dlt) + clen(df, ddt) + eb + 14 + 3 * nlcc + clen(lcfreq, lct) + 2 * lcfreq[16] + 3 * lcfreq[17] + 7 * lcfreq[18];
+      if (bs >= 0 && flen <= ftlen && flen <= dtlen)
           return wfblk(out, p, dat.subarray(bs, bs + bl));
       var lm, ll, dm, dl;
       wbits(out, p, 1 + (dtlen < ftlen)), p += 2;
@@ -10158,7 +10181,7 @@
                   var len = clct[i] & 31;
                   wbits(out, p, llm[len]), p += lct[len];
                   if (len > 15)
-                      wbits(out, p, (clct[i] >>> 5) & 127), p += clct[i] >>> 12;
+                      wbits(out, p, (clct[i] >> 5) & 127), p += clct[i] >> 12;
               }
           }
       }
@@ -10166,63 +10189,55 @@
           lm = flm, ll = flt, dm = fdm, dl = fdt;
       }
       for (var i = 0; i < li; ++i) {
-          if (syms[i] > 255) {
-              var len = (syms[i] >>> 18) & 31;
+          var sym = syms[i];
+          if (sym > 255) {
+              var len = (sym >> 18) & 31;
               wbits16(out, p, lm[len + 257]), p += ll[len + 257];
               if (len > 7)
-                  wbits(out, p, (syms[i] >>> 23) & 31), p += fleb[len];
-              var dst = syms[i] & 31;
+                  wbits(out, p, (sym >> 23) & 31), p += fleb[len];
+              var dst = sym & 31;
               wbits16(out, p, dm[dst]), p += dl[dst];
               if (dst > 3)
-                  wbits16(out, p, (syms[i] >>> 5) & 8191), p += fdeb[dst];
+                  wbits16(out, p, (sym >> 5) & 8191), p += fdeb[dst];
           }
           else {
-              wbits16(out, p, lm[syms[i]]), p += ll[syms[i]];
+              wbits16(out, p, lm[sym]), p += ll[sym];
           }
       }
       wbits16(out, p, lm[256]);
       return p + ll[256];
   };
   // deflate options (nice << 13) | chain
-  var deo = /*#__PURE__*/ new u32([65540, 131080, 131088, 131104, 262176, 1048704, 1048832, 2114560, 2117632]);
+  var deo = /*#__PURE__*/ new i32([65540, 131080, 131088, 131104, 262176, 1048704, 1048832, 2114560, 2117632]);
   // empty
   var et = /*#__PURE__*/ new u8(0);
   // compresses data into a raw DEFLATE buffer
-  var dflt = function (dat, lvl, plvl, pre, post, lst) {
-      var s = dat.length;
+  var dflt = function (dat, lvl, plvl, pre, post, st) {
+      var s = st.z || dat.length;
       var o = new u8(pre + s + 5 * (1 + Math.ceil(s / 7000)) + post);
       // writing to this writes to the output buffer
       var w = o.subarray(pre, o.length - post);
-      var pos = 0;
-      if (!lvl || s < 8) {
-          for (var i = 0; i <= s; i += 65535) {
-              // end
-              var e = i + 65535;
-              if (e >= s) {
-                  // write final block
-                  w[pos >> 3] = lst;
-              }
-              pos = wfblk(w, pos + 1, dat.subarray(i, e));
-          }
-      }
-      else {
+      var lst = st.l;
+      var pos = (st.r || 0) & 7;
+      if (lvl) {
+          if (pos)
+              w[0] = st.r >> 3;
           var opt = deo[lvl - 1];
-          var n = opt >>> 13, c = opt & 8191;
+          var n = opt >> 13, c = opt & 8191;
           var msk_1 = (1 << plvl) - 1;
           //    prev 2-byte val map    curr 2-byte val map
-          var prev = new u16(32768), head = new u16(msk_1 + 1);
+          var prev = st.p || new u16(32768), head = st.h || new u16(msk_1 + 1);
           var bs1_1 = Math.ceil(plvl / 3), bs2_1 = 2 * bs1_1;
           var hsh = function (i) { return (dat[i] ^ (dat[i + 1] << bs1_1) ^ (dat[i + 2] << bs2_1)) & msk_1; };
           // 24576 is an arbitrary number of maximum symbols per block
           // 424 buffer for last block
-          var syms = new u32(25000);
+          var syms = new i32(25000);
           // length/literal freq   distance freq
           var lf = new u16(288), df = new u16(32);
-          //  l/lcnt  exbits  index  l/lind  waitdx  bitpos
-          var lc_1 = 0, eb = 0, i = 0, li = 0, wi = 0, bs = 0;
-          for (; i < s; ++i) {
+          //  l/lcnt  exbits  index          l/lind  waitdx          blkpos
+          var lc_1 = 0, eb = 0, i = st.i || 0, li = 0, wi = st.w || 0, bs = 0;
+          for (; i + 2 < s; ++i) {
               // hash value
-              // deopt when i > s - 3 - at end, deopt acceptable
               var hv = hsh(i);
               // index mod 32768    previous index mod
               var imod = i & 32767, pimod = head[hv];
@@ -10233,7 +10248,7 @@
               if (wi <= i) {
                   // bytes remaining
                   var rem = s - i;
-                  if ((lc_1 > 7000 || li > 24576) && rem > 423) {
+                  if ((lc_1 > 7000 || li > 24576) && (rem > 423 || !lst)) {
                       pos = wblk(dat, w, 0, syms, lf, df, eb, li, bs, i - bs, pos);
                       li = lc_1 = eb = 0, bs = i;
                       for (var j = 0; j < 286; ++j)
@@ -10242,7 +10257,7 @@
                           df[j] = 0;
                   }
                   //  len    dist   chain
-                  var l = 2, d = 0, ch_1 = c, dif = (imod - pimod) & 32767;
+                  var l = 2, d = 0, ch_1 = c, dif = imod - pimod & 32767;
                   if (rem > 2 && hv == hsh(i - dif)) {
                       var maxn = Math.min(n, rem) - 1;
                       var maxd = Math.min(32767, i);
@@ -10265,9 +10280,9 @@
                                   var mmd = Math.min(dif, nl - 2);
                                   var md = 0;
                                   for (var j = 0; j < mmd; ++j) {
-                                      var ti = (i - dif + j + 32768) & 32767;
+                                      var ti = i - dif + j & 32767;
                                       var pti = prev[ti];
-                                      var cd = (ti - pti + 32768) & 32767;
+                                      var cd = ti - pti & 32767;
                                       if (cd > md)
                                           md = cd, pimod = ti;
                                   }
@@ -10275,12 +10290,12 @@
                           }
                           // check the previous match
                           imod = pimod, pimod = prev[imod];
-                          dif += (imod - pimod + 32768) & 32767;
+                          dif += imod - pimod & 32767;
                       }
                   }
                   // d will be nonzero only when a match was found
                   if (d) {
-                      // store both dist and len data in one Uint32
+                      // store both dist and len data in one int32
                       // Make sure this is recognized as a len/dist with 28th bit (2^28)
                       syms[li++] = 268435456 | (revfl[l] << 18) | revfd[d];
                       var lin = revfl[l] & 31, din = revfd[d] & 31;
@@ -10296,10 +10311,30 @@
                   }
               }
           }
+          for (i = Math.max(i, wi); i < s; ++i) {
+              syms[li++] = dat[i];
+              ++lf[dat[i]];
+          }
           pos = wblk(dat, w, lst, syms, lf, df, eb, li, bs, i - bs, pos);
-          // this is the easiest way to avoid needing to maintain state
-          if (!lst && pos & 7)
-              pos = wfblk(w, pos + 1, et);
+          if (!lst) {
+              st.r = (pos & 7) | w[(pos / 8) | 0] << 3;
+              // shft(pos) now 1 less if pos & 7 != 0
+              pos -= 7;
+              st.h = head, st.p = prev, st.i = i, st.w = wi;
+          }
+      }
+      else {
+          for (var i = st.w || 0; i < s + lst; i += 65535) {
+              // end
+              var e = i + 65535;
+              if (e >= s) {
+                  // write final block
+                  w[(pos / 8) | 0] = lst;
+                  e = s;
+              }
+              pos = wfblk(w, pos + 1, dat.subarray(i, e));
+          }
+          st.i = s;
       }
       return slc(o, 0, pre + shft(pos) + post);
   };
@@ -10330,7 +10365,18 @@
   };
   // deflate with opts
   var dopt = function (dat, opt, pre, post, st) {
-      return dflt(dat, opt.level == null ? 6 : opt.level, opt.mem == null ? Math.ceil(Math.max(8, Math.min(13, Math.log(dat.length))) * 1.5) : (12 + opt.mem), pre, post, !st);
+      if (!st) {
+          st = { l: 1 };
+          if (opt.dictionary) {
+              var dict = opt.dictionary.subarray(-32768);
+              var newDat = new u8(dict.length + dat.length);
+              newDat.set(dict);
+              newDat.set(dat, dict.length);
+              dat = newDat;
+              st.w = dict.length;
+          }
+      }
+      return dflt(dat, opt.level == null ? 6 : opt.level, opt.mem == null ? (st.l ? Math.ceil(Math.max(8, Math.min(13, Math.log(dat.length))) * 1.5) : 20) : (12 + opt.mem), pre, post, st);
   };
   // Walmart object spread
   var mrg = function (a, b) {
@@ -10375,7 +10421,7 @@
           else
               td[k] = v;
       }
-      return [fnStr, td];
+      return fnStr;
   };
   var ch = [];
   // clone bufs
@@ -10390,27 +10436,29 @@
   };
   // use a worker to execute code
   var wrkr = function (fns, init, id, cb) {
-      var _a;
       if (!ch[id]) {
           var fnStr = '', td_1 = {}, m = fns.length - 1;
           for (var i = 0; i < m; ++i)
-              _a = wcln(fns[i], fnStr, td_1), fnStr = _a[0], td_1 = _a[1];
-          ch[id] = wcln(fns[m], fnStr, td_1);
+              fnStr = wcln(fns[i], fnStr, td_1);
+          ch[id] = { c: wcln(fns[m], fnStr, td_1), e: td_1 };
       }
-      var td = mrg({}, ch[id][1]);
-      return wk(ch[id][0] + ';onmessage=function(e){for(var k in e.data)self[k]=e.data[k];onmessage=' + init.toString() + '}', id, td, cbfs(td), cb);
+      var td = mrg({}, ch[id].e);
+      return wk(ch[id].c + ';onmessage=function(e){for(var k in e.data)self[k]=e.data[k];onmessage=' + init.toString() + '}', id, td, cbfs(td), cb);
   };
   // base async inflate fn
-  var bInflt = function () { return [u8, u16, u32, fleb, fdeb, clim, fl, fd, flrm, fdrm, rev, ec, hMap, max, bits, bits16, shft, slc, err, inflt, inflateSync, pbf, gu8]; };
-  var bDflt = function () { return [u8, u16, u32, fleb, fdeb, clim, revfl, revfd, flm, flt, fdm, fdt, rev, deo, et, hMap, wbits, wbits16, hTree, ln, lc, clen, wfblk, wblk, shft, slc, dflt, dopt, deflateSync, pbf]; };
+  var bInflt = function () { return [u8, u16, i32, fleb, fdeb, clim, fl, fd, flrm, fdrm, rev, ec, hMap, max, bits, bits16, shft, slc, err, inflt, inflateSync, pbf, gopt]; };
+  var bDflt = function () { return [u8, u16, i32, fleb, fdeb, clim, revfl, revfd, flm, flt, fdm, fdt, rev, deo, et, hMap, wbits, wbits16, hTree, ln, lc, clen, wfblk, wblk, shft, slc, dflt, dopt, deflateSync, pbf]; };
   // gzip extra
   var gze = function () { return [gzh, gzhl, wbytes, crc, crct]; };
   // gunzip extra
   var guze = function () { return [gzs, gzl]; };
   // post buf
   var pbf = function (msg) { return postMessage(msg, [msg.buffer]); };
-  // get u8
-  var gu8 = function (o) { return o && o.size && new u8(o.size); };
+  // get opts
+  var gopt = function (o) { return o && {
+      out: o.size && new u8(o.size),
+      dictionary: o.dictionary
+  }; };
   // async helper
   var cbify = function (dat, opts, fns, init, id, cb) {
       var w = wrkr(fns, init, id, function (err, dat) {
@@ -10450,7 +10498,7 @@
       var flg = d[3];
       var st = 10;
       if (flg & 4)
-          st += d[10] | (d[11] << 8) + 2;
+          st += (d[10] | d[11] << 8) + 2;
       for (var zs = (flg >> 3 & 1) + (flg >> 4 & 1); zs > 0; zs -= !d[st++])
           ;
       return st + (flg & 2);
@@ -10458,10 +10506,10 @@
   // gzip length
   var gzl = function (d) {
       var l = d.length;
-      return ((d[l - 4] | d[l - 3] << 8 | d[l - 2] << 16) | (d[l - 1] << 24)) >>> 0;
+      return (d[l - 4] | d[l - 3] << 8 | d[l - 2] << 16 | d[l - 1] << 24) >>> 0;
   };
   // gzip header length
-  var gzhl = function (o) { return 10 + ((o.filename && (o.filename.length + 1)) || 0); };
+  var gzhl = function (o) { return 10 + (o.filename ? o.filename.length + 1 : 0); };
   function deflate(data, opts, cb) {
       if (!cb)
           cb = opts, opts = {};
@@ -10487,16 +10535,16 @@
           err(7);
       return cbify(data, opts, [
           bInflt
-      ], function (ev) { return pbf(inflateSync(ev.data[0], gu8(ev.data[1]))); }, 1, cb);
+      ], function (ev) { return pbf(inflateSync(ev.data[0], gopt(ev.data[1]))); }, 1, cb);
   }
   /**
    * Expands DEFLATE data with no wrapper
    * @param data The data to decompress
-   * @param out Where to write the data. Saves memory if you know the decompressed size and provide an output buffer of that length.
+   * @param opts The decompression options
    * @returns The decompressed version of the data
    */
-  function inflateSync(data, out) {
-      return inflt(data, out);
+  function inflateSync(data, opts) {
+      return inflt(data, { i: 2 }, opts && opts.out, opts && opts.dictionary);
   }
   function gzip(data, opts, cb) {
       if (!cb)
@@ -10532,16 +10580,19 @@
           bInflt,
           guze,
           function () { return [gunzipSync$1]; }
-      ], function (ev) { return pbf(gunzipSync$1(ev.data[0])); }, 3, cb);
+      ], function (ev) { return pbf(gunzipSync$1(ev.data[0], ev.data[1])); }, 3, cb);
   }
   /**
    * Expands GZIP data
    * @param data The data to decompress
-   * @param out Where to write the data. GZIP already encodes the output size, so providing this doesn't save memory.
+   * @param opts The decompression options
    * @returns The decompressed version of the data
    */
-  function gunzipSync$1(data, out) {
-      return inflt(data.subarray(gzs(data), -8), out || new u8(gzl(data)));
+  function gunzipSync$1(data, opts) {
+      var st = gzs(data);
+      if (st + 8 > data.length)
+          err(6, 'invalid gzip data');
+      return inflt(data.subarray(st, -8), { i: 2 }, opts && opts.out || new u8(gzl(data)), opts && opts.dictionary);
   }
   // flatten a directory structure
   var fltn = function (d, p, t, o) {
@@ -10574,7 +10625,7 @@
           var c = d[i++];
           var eb = (c > 127) + (c > 223) + (c > 239);
           if (i + eb > d.length)
-              return [r, slc(d, i - 1)];
+              return { s: r, r: slc(d, i - 1) };
           if (!eb)
               r += String.fromCharCode(c);
           else if (eb == 3) {
@@ -10640,13 +10691,14 @@
               r += String.fromCharCode.apply(null, dat.subarray(i, i + 16384));
           return r;
       }
-      else if (td)
+      else if (td) {
           return td.decode(dat);
+      }
       else {
-          var _a = dutf8(dat), out = _a[0], ext = _a[1];
-          if (ext.length)
+          var _a = dutf8(dat), s = _a.s, r = _a.r;
+          if (r.length)
               err(8);
-          return out;
+          return s;
       }
   }
   // skip local zip header
@@ -10689,7 +10741,7 @@
       var dt = new Date(f.mtime == null ? Date.now() : f.mtime), y = dt.getFullYear() - 1980;
       if (y < 0 || y > 119)
           err(10);
-      wbytes(d, b, (y << 25) | ((dt.getMonth() + 1) << 21) | (dt.getDate() << 16) | (dt.getHours() << 11) | (dt.getMinutes() << 5) | (dt.getSeconds() >>> 1)), b += 4;
+      wbytes(d, b, (y << 25) | ((dt.getMonth() + 1) << 21) | (dt.getDate() << 16) | (dt.getHours() << 11) | (dt.getMinutes() << 5) | (dt.getSeconds() >> 1)), b += 4;
       if (c != -1) {
           wbytes(d, b, f.crc);
           wbytes(d, b + 4, c < 0 ? -c - 2 : c);
@@ -10929,9 +10981,10 @@
                       cbl(null, slc(data, b, b + sc));
                   else if (c_1 == 8) {
                       var infl = data.subarray(b, b + sc);
-                      if (sc < 320000) {
+                      // Synchronously decompress under 512KB, or barely-compressed data
+                      if (su < 524288 || sc > 0.8 * su) {
                           try {
-                              cbl(null, inflateSync(infl, new u8(su)));
+                              cbl(null, inflateSync(infl, { out: new u8(su) }));
                           }
                           catch (e) {
                               cbl(e, null);
@@ -10994,7 +11047,7 @@
               if (!c_2)
                   files[fn] = slc(data, b, b + sc);
               else if (c_2 == 8)
-                  files[fn] = inflateSync(data.subarray(b, b + sc), new u8(su));
+                  files[fn] = inflateSync(data.subarray(b, b + sc), { out: new u8(su) });
               else
                   err(14, 'unknown compression type ' + c_2);
           }
@@ -20693,7 +20746,7 @@ ${svg}
   // import { isKmzFile } from '../io/mapshaper-file-types';
 
   function exportKML(dataset, opts) {
-    var toKML = require("@placemarkio/tokml").toKML;
+    var toKML = require$1("@placemarkio/tokml").toKML;
     var geojsonOpts = Object.assign({combine_layers: true, geojson_type: 'FeatureCollection'}, opts);
     var geojson = exportDatasetAsGeoJSON(dataset, geojsonOpts);
     var kml = toKML(geojson);
@@ -25316,6 +25369,14 @@ ${svg}
         describe: '(polygon-polygon join) use max overlap to join one polygon',
         type: 'flag'
       })
+      .option('min-overlap-pct', {
+        describe: '(polygon-polygon join) min overlap as pct of target polygon',
+        type: 'percent'
+      })
+      .option('min-overlap-area', {
+        describe: '(polygon-polygon join) minimum area of overlap',
+        type: 'area'
+      })
       // .option('nearest-point', {
       //   describe: '(point-point join)',
       //   type: 'flag'
@@ -25754,6 +25815,10 @@ ${svg}
     parser.command('style')
       .oldAlias('svg-style')
       .describe('set SVG style properties using JS or literal values')
+      .option('clear', {
+        describe: 'remove all style properties from a layer',
+        type: 'flag'
+      })
       .option('where', whereOpt)
       .option('class', {
         describe: 'name of CSS class or classes (space-separated)'
@@ -33394,18 +33459,22 @@ ${svg}
   function getCategoricalClassifier(classValues, nullVal, opts) {
     // categories: strings to match in the data
     var categories = opts.categories;
+    // index categories for better performance on datasets with many categories
+    var index = categories.reduce((memo, key, i) => {
+      memo[key] = i;
+      return memo;
+    }, {});
     var classToValue = getDiscreteValueGetter(classValues, nullVal, opts.other);
     return function(val) {
-      var i = categories.indexOf(val);
-      var idx = -1;
-      if (i >= 0) {
-        idx = i;
-      } else if (val) {
-        idx = -2; // field contains an 'other' value
+      var i;
+      if (val in index) {
+        i = index[val];
+      } else if (val || val === 0) {
+        i = -2; // -2 indicates an 'other' value
       } else {
-        idx = -1; // field is empty (null value)
+        i = -1; // field is empty (null value)
       }
-      return classToValue(idx);
+      return classToValue(i);
     };
   }
 
@@ -34274,7 +34343,6 @@ ${svg}
     addCategoricalScheme('Tableau20',
       '4c78a89ecae9f58518ffbf7954a24b88d27ab79a20f2cf5b43989483bcb6e45756ff9d9879706ebab0acd67195fcbfd2b279a2d6a5c99e765fd8b5a5');
     index.all = [].concat(index.sequential, index.rainbow, index.diverging, index.categorical);
-
   }
 
   function standardName(name) {
@@ -34288,8 +34356,15 @@ ${svg}
     return null;
   }
 
-  function addSchemesFromD3(type, names) {
-    index[type] = index[type].concat(names.split(','));
+  function addSchemesFromD3(type, namesStr) {
+    var names = namesStr.split(',');
+    index[type] = index[type].concat(names);
+    if (type == 'categorical') {
+      // copy categorical colors for simplicity
+      names.forEach(name => {
+        ramps[name] = d3Scales['scheme' + name];
+      });
+    }
   }
 
   function addCategoricalScheme(name, str) {
@@ -34343,16 +34418,14 @@ ${svg}
     initSchemes();
     var names = index[type];
     if (!names) error('Unknown color scheme type:', type);
-    var i = Math.floor(Math.random() * names.length);
-    return names[i];
+    return utils.pickOne(names);
   }
 
-  function getRandomColors(n) {
+  function pickRandomCategoricalScheme(n) {
     initSchemes();
-    var colors = getCategoricalColorScheme('Tableau20', 20);
-    utils.shuffle(colors);
-    colors = wrapColors(colors, n);
-    return colors.slice(0, n);
+    var minSize = Math.min(n, 20); // use largest available if n is too large
+    var schemes = index.categorical.filter(name => ramps[name].length >= minSize);
+    return utils.pickOne(schemes) || 'Tableau20';
   }
 
   function getCategoricalColorScheme(name, n) {
@@ -34461,10 +34534,11 @@ ${svg}
 
     if (colorArg == 'random') {
       if (categorical) {
-        return getRandomColors(n);
+        colorScheme = pickRandomCategoricalScheme(n);
+      } else {
+        colorScheme = pickRandomColorScheme('sequential');
       }
-      colorScheme = pickRandomColorScheme('sequential');
-      message('Randomly selected color ramp:', colorScheme);
+      message('Randomly selected color scheme:', colorScheme);
     } else if (isColorSchemeName(colorArg)) {
       colorScheme = colorArg;
     } else if (colorArg && !parseColor(colorArg)) {
@@ -36717,7 +36791,7 @@ ${svg}
 
   // Join data from @src table to records in @destLyr layer.
   // @join function
-  //    Receives index of record in the dest table
+  //    Receives index of one record in the dest table
   //    Returns array of matching records in src table, or null if no matches
   //
   function joinTableToLayer(destLyr, src, join, opts) {
@@ -36743,7 +36817,7 @@ ${svg}
         collisionFields = [],
         skipCount = 0,
         retn = {},
-        srcRec, srcId, destRec, joins, count, filter, calc, i, j, n, m;
+        srcRec, srcId, destRec, joinIds, count, filter, calc, i, j, n, m;
 
     // support for duplication of destination records for many-to-one joins
     var duplicateRecords, destShapes;
@@ -36765,14 +36839,14 @@ ${svg}
     n = destRecords.length;
     for (i=0; i<n; i++) {
       destRec = destRecords[i];
-      joins = join(i);
-      if (joins && filter) {
-        skipCount += joins.length;
-        joins = filter(joins, destRec);
-        skipCount -= joins.length;
+      joinIds = join(i);
+      if (joinIds && filter) {
+        skipCount += joinIds.length;
+        joinIds = filter(joinIds, destRec);
+        skipCount -= joinIds.length;
       }
-      for (j=0, count=0, m=joins ? joins.length : 0; j<m; j++) {
-        srcId = joins[j];
+      for (j=0, count=0, m=joinIds ? joinIds.length : 0; j<m; j++) {
+        srcId = joinIds[j];
         srcRec = srcRecords[srcId];
         // duplication mode: many-to-one joins add new features to the target layer.
         if (count > 0 && useDuplication) {
@@ -36798,7 +36872,7 @@ ${svg}
         count++;
       }
       if (calc) {
-        calc(joins, destRec);
+        calc(joinIds, destRec);
       }
       if (count > 0) {
         matchCount++;
@@ -40758,11 +40832,14 @@ ${svg}
     };
     // make a mosaic from merged shapes of both layers
     var mosaicIndex = new MosaicIndex(mergedLyr, nodes, {flat: false});
-
     var joinOpts = utils.extend({}, opts);
-    var joinFunction = getPolygonToPolygonFunction(targetLyr, sourceLyr, mosaicIndex, opts);
-    var retn = joinTableToLayer(targetLyr, sourceLyr.data, joinFunction, joinOpts);
+    if (joinOpts.min_overlap_area) {
+      // convert area arg to square meters (typically)
+      joinOpts.min_overlap_area = convertAreaParam(joinOpts.min_overlap_area, getDatasetCRS(targetDataset));
+    }
 
+    var joinFunction = getPolygonToPolygonFunction(targetLyr, sourceLyr, mosaicIndex, joinOpts);
+    var retn = joinTableToLayer(targetLyr, sourceLyr.data, joinFunction, joinOpts);
     if (opts.interpolate) {
       if (opts.duplication) stop('duplication and interpolate options cannot be used together');
       interpolateFieldsByArea(targetLyr, sourceLyr, mosaicIndex, opts);
@@ -40776,6 +40853,22 @@ ${svg}
     var sourceFields = opts.interpolate;
     var sourceRecords = sourceLyr.data.getRecords();
 
+    // Use different interpolation methods for qualitative and quantitative data
+    // Assumes string and boolean fields are qualitative and numeric fields are
+    //   quantitative (TODO: somehow recognize numeric index data as qualitative)
+    var quantitativeFields = [];
+    var qualitativeFields = [];
+    sourceFields.forEach(function(field) {
+      var type = getColumnType(field, sourceRecords);
+      if (type == 'number') {
+        quantitativeFields.push(field);
+      } else if (type == 'string' || type == 'boolean') {
+        qualitativeFields.push(field);
+      } else {
+        message(`"${field}" field appears to contain ${type}-type data. No interpolation method is available.`);
+      }
+    });
+
     // for each destination polygon, calculate interpolated values,
     // using the data calculated in previous steps
     destLyr.data.getRecords().forEach(function(destRec, destId) {
@@ -40784,9 +40877,13 @@ ${svg}
       for (i=0; i<tileIds.length; i++) {
         tileRecords.push(mosaicRecords[tileIds[i]]);
       }
-      for (i=0; i<sourceFields.length; i++) {
+      for (i=0; i<quantitativeFields.length; i++) {
         field = sourceFields[i];
-        destRec[field] = getInterpolatedValue(field, tileRecords, sourceRecords);
+        destRec[field] = getInterpolatedNumber(field, tileRecords, sourceRecords);
+      }
+      for (i=0; i<qualitativeFields.length; i++) {
+        field = sourceFields[i];
+        destRec[field] = getInterpolatedCategory(field, tileRecords, sourceRecords);
       }
     });
   }
@@ -40839,7 +40936,7 @@ ${svg}
   //   return value;
   // }
 
-  function getInterpolatedValue(field, tileRecords, sourceRecords) {
+  function getInterpolatedNumber(field, tileRecords, sourceRecords) {
     var value = 0, tileRec, sourceRec, sourceId;
     for (var i=0; i<tileRecords.length; i++) {
       tileRec = tileRecords[i];
@@ -40851,6 +40948,31 @@ ${svg}
       }
     }
     return value;
+  }
+
+  function getInterpolatedCategory(field, tileRecords, sourceRecords) {
+    var value, tileRec, sourceRec, sourceId, idx;
+    var areas = [];
+    var values = [];
+    for (var i=0; i<tileRecords.length; i++) {
+      tileRec = tileRecords[i];
+      if (!tileRec.sourceIds) continue;
+      for (var j=0; j<tileRec.sourceIds.length; j++) {
+        sourceId = tileRec.sourceIds[j];
+        sourceRec = sourceRecords[sourceId];
+        value = sourceRec[field];
+        idx = values.indexOf(value);
+        if (idx == -1) {
+          values.push(value);
+          areas.push(tileRec.area);
+        } else {
+          areas[idx] += tileRec.area;
+        }
+      }
+    }
+    var maxArea = Math.max.apply(null, areas);
+    var maxIdx = areas.indexOf(maxArea);
+    return maxIdx == -1 ? null : values[maxIdx];
   }
 
 
@@ -40865,17 +40987,50 @@ ${svg}
     };
   }
 
-  function getMaxOverlapFunction(destLyr, srcLyr, mosaicIndex) {
-    var arcs = mosaicIndex.nodes.arcs;
+  function getMinPctFunction(minPct, destLyr, mosaicIndex) {
+    mosaicIndex.nodes.arcs;
     var destLen = destLyr.shapes.length;
 
-    function getTotalArea(tileIds) {
-      var area = 0;
-      for (var i=0; i<tileIds.length; i++) {
-        area += geom.getShapeArea(mosaicIndex.mosaic[tileIds[i]], arcs);
-      }
-      return area;
+    return function(destId, srcIds) {
+      var destTileIds = mosaicIndex.getTileIdsByShapeId(destId);
+      var destArea = getAreaOfTiles(destTileIds, mosaicIndex);
+      return srcIds.filter(function(srcId, i) {
+        var srcTileIds = mosaicIndex.getTileIdsByShapeId(srcId + destLen);
+        var sharedIds = utils.intersection(destTileIds, srcTileIds);
+        var overlapArea = getAreaOfTiles(sharedIds, mosaicIndex);
+        var overlapPct = overlapArea / destArea || 0;
+        return overlapPct >= minPct;
+      });
+    };
+  }
+
+  function getMinAreaFunction(minArea, destLyr, mosaicIndex) {
+    mosaicIndex.nodes.arcs;
+    var destLen = destLyr.shapes.length;
+
+    return function(destId, srcIds) {
+      var destTileIds = mosaicIndex.getTileIdsByShapeId(destId);
+
+      return srcIds.filter(function(srcId, i) {
+        var srcTileIds = mosaicIndex.getTileIdsByShapeId(srcId + destLen);
+        var sharedIds = utils.intersection(destTileIds, srcTileIds);
+        var overlapArea = getAreaOfTiles(sharedIds, mosaicIndex);
+        return overlapArea >= minArea;
+      });
+    };
+  }
+
+  function getAreaOfTiles(tileIds, mosaicIndex) {
+    var arcs = mosaicIndex.nodes.arcs;
+    var area = 0;
+    for (var i=0; i<tileIds.length; i++) {
+      area += geom.getShapeArea(mosaicIndex.mosaic[tileIds[i]], arcs);
     }
+    return area;
+  }
+
+  function getMaxOverlapFunction(destLyr, mosaicIndex) {
+    var destLen = destLyr.shapes.length;
 
     return function(destId, srcIds) {
       var destTileIds = mosaicIndex.getTileIdsByShapeId(destId);
@@ -40884,7 +41039,7 @@ ${svg}
       srcIds.forEach(function(srcId, i) {
         var srcTileIds = mosaicIndex.getTileIdsByShapeId(srcId + destLen);
         var sharedIds = utils.intersection(destTileIds, srcTileIds);
-        var area = getTotalArea(sharedIds);
+        var area = getAreaOfTiles(sharedIds, mosaicIndex);
         if (area >= maxArea) {
           maxId = srcId;
           maxArea = area;
@@ -40897,14 +41052,21 @@ ${svg}
 
 
   // Returned function converts a target layer feature id to multiple source feature ids
-  // TODO: option to join the source polygon with the greatest overlapping area
   // TODO: option to ignore source polygon with small overlaps
   //       (as a percentage of the area of one or the other polygon?)
   function getPolygonToPolygonFunction(targetLyr, srcLyr, mosaicIndex, opts) {
     var mergedToSourceIds = getIdConversionFunction(targetLyr.shapes.length, srcLyr.shapes.length);
     var selectMaxOverlap;
+    var minAreaFilter;
+    var minPctFilter;
     if (opts.largest_overlap) {
-      selectMaxOverlap = getMaxOverlapFunction(targetLyr, srcLyr, mosaicIndex);
+      selectMaxOverlap = getMaxOverlapFunction(targetLyr, mosaicIndex);
+    }
+    if (opts.min_overlap_pct) {
+      minPctFilter = getMinPctFunction(opts.min_overlap_pct, targetLyr, mosaicIndex);
+    }
+    if (opts.min_overlap_area) {
+      minAreaFilter = getMinAreaFunction(opts.min_overlap_area, targetLyr, mosaicIndex);
     }
 
     return function(targId) {
@@ -40918,6 +41080,12 @@ ${svg}
       sourceIds = utils.uniq(sourceIds);
       if (sourceIds.length > 1 && opts.largest_overlap) {
         sourceIds = selectMaxOverlap(targId, sourceIds);
+      }
+      if (minAreaFilter) {
+        sourceIds = minAreaFilter(targId, sourceIds);
+      }
+      if (minPctFilter) {
+        sourceIds = minPctFilter(targId, sourceIds);
       }
       return sourceIds;
     };
@@ -44436,7 +44604,7 @@ ${svg}
   };
 
   cmd.svgStyle = function(lyr, dataset, opts) {
-    var filter;
+    var filterFn;
     if (getFeatureCount(lyr) === 0) {
       return;
     }
@@ -44444,7 +44612,10 @@ ${svg}
       initDataTable(lyr);
     }
     if (opts.where) {
-      filter = compileFeatureExpression(opts.where, lyr, dataset.arcs);
+      filterFn = compileFeatureExpression(opts.where, lyr, dataset.arcs);
+    }
+    if (opts.clear) {
+      lyr.data.getFields().filter(isSupportedSvgStyleProperty).forEach(lyr.data.deleteField, lyr.data);
     }
     Object.keys(opts).forEach(function(optName) {
       var svgName = optName.replace('_', '-'); // undo cli parser name conversion
@@ -44454,7 +44625,7 @@ ${svg}
       var strVal = opts[optName].trim();
       var accessor = getSymbolPropertyAccessor(strVal, svgName, lyr);
       getLayerDataTable(lyr).getRecords().forEach(function(rec, i) {
-        if (filter && !filter(i)) {
+        if (filterFn && !filterFn(i)) {
           // make sure field exists if record is excluded by filter
           if (svgName in rec === false) {
             rec[svgName] = undefined;
@@ -45898,7 +46069,7 @@ ${svg}
     });
   }
 
-  var version = "0.6.102";
+  var version = "0.6.103";
 
   // Parse command line args into commands and run them
   // Function takes an optional Node-style callback. A Promise is returned if no callback is given.

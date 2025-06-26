@@ -67,6 +67,7 @@
     get formatIntlNumber () { return formatIntlNumber; },
     get formatNumberForDisplay () { return formatNumberForDisplay; },
     get shuffle () { return shuffle; },
+    get pickOne () { return pickOne; },
     get sortOn () { return sortOn; },
     get genericSort () { return genericSort; },
     get getSortedIds () { return getSortedIds; },
@@ -1156,21 +1157,18 @@
 
 
   function adjustPointSymbolSizes(layers, overlayLyr, ext) {
-    var bbox = ext.getBounds().scale(1.5).toArray();
-    var testInBounds = function(p) {
-      return p[0] > bbox[0] && p[0] < bbox[2] && p[1] > bbox[1] && p[1] < bbox[3];
-    };
-    var topTier = 50000;
+    var bbox = ext.getBounds().scale(1.3).toArray(); // add buffer
+    // var topTier = 50000; // can be a bottleneck
+    var topTier = 10000; // short-circuit counting here
     var count = 0;
     layers = layers.filter(function(lyr) {
       return lyr.geometry_type == 'point' && lyr.gui.style.dotSize > 0;
     });
     layers.forEach(function(lyr) {
-      // short-circuit point counting above top threshold
-      count += countPoints(lyr.gui.displayLayer.shapes, topTier, testInBounds);
+      count += countPoints(lyr.gui.displayLayer.shapes, topTier, bbox);
     });
     count = Math.min(topTier, count) || 1;
-    var k = Math.pow(6 - utils$1.clamp(Math.log10(count), 1, 5), 1.3);
+    var k = Math.pow(5 - utils$1.clamp(Math.log10(count), 1, 4), 1.25);
 
     // zoom adjustments
     var mapScale = ext.scale();
@@ -1178,9 +1176,10 @@
       k *= Math.pow(mapScale + 0.5, 0.35);
     } else if (mapScale > 1) {
       // scale faster at first
-      k *= Math.pow(Math.min(mapScale, 4), 0.15);
-      k *= Math.pow(mapScale, 0.05);
+      k *= Math.pow(Math.min(mapScale, 4), 0.25);
+      k *= Math.pow(mapScale, 0.02);
     }
+
 
     // scale down when map is small
     var smallSide = Math.min(ext.width(), ext.height());
@@ -1194,13 +1193,17 @@
     }
   }
 
-  function countPoints(shapes, max, filter) {
+  function countPoints(shapes, max, bbox) {
     var count = 0;
-    var i, j, n, m, shp;
-    for (i=0, n=shapes.length; i<n && count<max; i++) {
+    var shp, p;
+    // short-circuit point counting above top threshold
+    for (var i=0, n=shapes.length; i<n && count<max; i++) {
       shp = shapes[i];
-      for (j=0, m=(shp ? shp.length : 0); j<m; j++) {
-        count += filter(shp[j]) ? 1 : 0;
+      for (var j=0, m=(shp ? shp.length : 0); j<m; j++) {
+        p = shp[j];
+        if (p[0] > bbox[0] && p[0] < bbox[2] && p[1] > bbox[1] && p[1] < bbox[3]) {
+          count ++;
+        }
       }
     }
     return count;
@@ -1367,6 +1370,15 @@
     });
   }
 
+  // save file to selected folder if supported, else to downloads
+  function saveBlobToLocalFile2(filename, blob) {
+    if (window.showSaveFilePicker) {
+      saveBlobToSelectedFile(filename, blob);
+    } else {
+      saveBlobToDownloadsFolder(filename, blob);
+    }
+  }
+
   async function saveBlobToLocalFile(filename, blob, done) {
     var chooseDir = GUI.getSavedValue('choose-save-dir');
     done = done || function() {};
@@ -1454,6 +1466,7 @@
 
   function saveBlobToDownloadsFolder(filename, blob, done) {
     var anchor, blobUrl;
+    done = done || function() {};
     try {
       blobUrl = URL.createObjectURL(blob);
     } catch(e) {
@@ -1475,7 +1488,23 @@
     }, 400);
   }
 
-  var idb = require('idb-keyval');
+  // Several dependencies are loaded via require()
+  var f;
+  if (typeof require == 'function') {
+    // Node.js context: native require() function
+    f = require;
+  } else if (typeof window == 'object' && window.modules) {
+    // running in web GUI
+    f = function(name) {
+      return window.modules[name];
+    };
+  } else {
+    // stub to avoid runtime error in a handful of tests
+    f = function() {};
+  }
+  var require$1 = f;
+
+  var idb = require$1('idb-keyval');
   // https://github.com/jakearchibald/idb
   // https://github.com/jakearchibald/idb-keyval
   var sessionId = getUniqId('session');
@@ -1563,10 +1592,9 @@
           var obj = await idb.get(item.id);
           await internal.compressSnapshotForExport(obj);
           var buf = internal.pack(obj);
-          // choose output filename and directory every time
-          // saveBlobToLocalFile('mapshaper_snapshot.msx', new Blob([buf]));
           var fileName = `snapshot-${String(item.number).padStart(2, '0')}.msx`;
-          saveBlobToSelectedFile(fileName, new Blob([buf]), function() {});
+          // choose output filename and directory every time, if supported
+          saveBlobToLocalFile2(fileName, new Blob([buf]));
         }).text('export');
         El('span').addClass('save-menu-btn').appendTo(line).on('click', async function(e) {
           await removeSnapshotById(item.id);
@@ -1606,6 +1634,7 @@
 
     async function saveSnapshot(gui) {
       var obj = await captureSnapshot(gui);
+
       if (!obj) return;
       // storing an unpacked object is usually a bit faster (~20%)
       // note: we don't know the size of unpacked snapshot objects
@@ -1693,9 +1722,7 @@
     //   in file size in a typical polygon or polyline file, but longer processing time
     var opts = {compact: false, active_layer: lyr};
     var datasets = gui.model.getDatasets();
-    // console.time('msx');
     var obj = await internal.exportDatasetsToPack(datasets, opts);
-    // console.timeEnd('msx')
     obj.gui = getGuiState(gui);
     return obj;
   }
@@ -2672,7 +2699,7 @@
   // load Proj.4 CRS definition files dynamically
   //
   async function loadProjLibs(opts) {
-    var mproj = require('mproj');
+    var mproj = require$1('mproj');
     var libs = internal.findProjLibs([opts.init || '', opts.match || '', opts.crs || ''].join(' '));
     libs = libs.filter(function(name) {return !mproj.internal.mproj_search_libcache(name);}); // skip loaded libs
     for (var libName of libs) {
@@ -2836,8 +2863,8 @@
     return getDefaultStyle(lyr, intersectionStyle);
   }
 
-  // Style for unselected layers with visibility turned on
-  // (styled layers have)
+  // Display style for unselected layers with visibility turned on
+  // (may be fully styled or outlined)
   function getReferenceLayerStyle(lyr, opts) {
     var style;
     if (layerHasCanvasDisplayStyle(lyr) && !opts.outlineMode) {
@@ -2919,6 +2946,7 @@
         style.styler = getOverlayPointStyler(getCanvasDisplayStyle(baseLyr).styler, styler);
       }
       style.type = 'styled';
+
     }
     return ids.length > 0 ? style : null;
   }
@@ -3022,6 +3050,7 @@
         // array of field names of relevant svg display properties
         fields = getCanvasStyleFields(lyr).filter(function(f) {return f in styleIndex;}),
         records = lyr.data.getRecords();
+
     var styler = function(style, i) {
       var rec = records[i];
       var fname, val;
@@ -3045,14 +3074,20 @@
         style.fillColor = 'black';
       }
     };
-    return {styler: styler, type: 'styled'};
+    var style = {styler: styler, type: 'styled'};
+    // use squares if radius is missing... (TODO: check behavior with labels, etc)
+    if (lyr.geometry_type == 'point' && fields.includes('r') === false) {
+      style.dotSize = 1;
+    }
+    return style;
   }
 
-  // check if layer should be displayed with styles
+  // check if layer should be displayed with a full style
   function layerHasCanvasDisplayStyle(lyr) {
     var fields = getCanvasStyleFields(lyr);
     if (lyr.geometry_type == 'point') {
-      return fields.indexOf('r') > -1; // require 'r' field for point symbols
+      // return fields.indexOf('r') > -1; // require 'r' field for point symbols
+      return fields.includes('fill') || fields.includes('r'); // support colored squares
     }
     return utils$1.difference(fields, ['opacity', 'class']).length > 0;
   }
@@ -6090,6 +6125,9 @@
 
   utils$1.inherit(ModeSwitcher, EventDispatcher);
 
+  // export var ESC = 27;
+  var SPACE = 32;
+
   function KeyboardEvents(gui) {
     var self = this;
     var shiftDown = false;
@@ -6103,7 +6141,7 @@
       ctrlDown = e.ctrlKey;
       metaDown = e.metaKey;
       altDown = e.altKey;
-      if (e.keyCode == 32) {
+      if (e.keyCode == SPACE) {
         spaceDown = evtName == 'keydown';
       }
     }
@@ -6113,13 +6151,13 @@
     }
 
     document.addEventListener('keyup', function(e) {
-      if (!GUI.isActiveInstance(gui) || e.repeat && e.keyCode == 32) return;
+      if (!GUI.isActiveInstance(gui) || e.repeat && e.keyCode == SPACE) return;
       updateControlKeys(e, 'keyup');
       self.dispatchEvent('keyup', getEventData(e));
     });
 
     document.addEventListener('keydown', function(e) {
-      if (!GUI.isActiveInstance(gui) || e.repeat && e.keyCode == 32) return;
+      if (!GUI.isActiveInstance(gui) || e.repeat && e.keyCode == SPACE) return;
       updateControlKeys(e, 'keydown');
       self.dispatchEvent('keydown', getEventData(e));
     });
@@ -6444,7 +6482,7 @@
       if (flags.select) {
         self.dispatchEvent('select', active);
       }
-      self.dispatchEvent('update', utils$1.extend({flags: flags}, active));
+      self.dispatchEvent('update', {flags: flags});
     };
 
     self.selectLayer = function(lyr, dataset) {
@@ -6470,7 +6508,7 @@
   }
 
   // Fall back to browserify's Buffer polyfill
-  var B = typeof Buffer != 'undefined' ? Buffer : require('buffer').Buffer;
+  var B = typeof Buffer != 'undefined' ? Buffer : require$1('buffer').Buffer;
 
   // This module provides a way for multiple jobs to run together asynchronously
   // while keeping job-level context variables (like "defs") separate.
@@ -7268,6 +7306,10 @@
     }
   }
 
+  function pickOne(arr) {
+    return arr[Math.floor(Math.random() * arr.length)];
+  }
+
   // Sort an array of objects based on one or more properties.
   // Usage: sortOn(array, key1, asc?[, key2, asc? ...])
   //
@@ -8005,7 +8047,7 @@
   function getShapeHitTest(layer, ext, interactionMode, featureFilter) {
     var geoType = layer.gui.displayLayer.geometry_type;
     var test;
-    if (geoType == 'point' && layer.gui.style.type == 'styled') {
+    if (geoType == 'point' && layer.gui.style.type == 'styled' && !layer.gui.style.dotSize) {
       test = getGraduatedCircleTest(getRadiusFunction(layer.gui.style));
     } else if (geoType == 'point') {
       test = pointTest;
@@ -8338,7 +8380,7 @@
 
     // e: pointer event
     return function(e) {
-      var p = ext.translatePixelCoords(e.x, e.y);
+      var p = ext.pixCoordsToMapCoords(e.x, e.y);
       // update SVG hit test on each test, in case SVG layer has been redrawn
       // and the symbol container has changed
       var svgTest = getSvgHitTest(mapLayer);
@@ -9274,6 +9316,7 @@
           persistent: false,
           draggable: false  // does dragging the map draw a box
         }, optsArg),
+        clickToStart = opts.name == 'box-tool', // other versions use shift-drag
         box = new EventDispatcher(),
         stroke = 2,
         activeHandle = null,
@@ -9281,38 +9324,75 @@
         boxCoords = null,
         _on = false,
         _visible = false,
+        clickStartPoint,
         handles;
-
     if (opts.classname) {
       el.addClass(opts.classname);
+    }
+
+    function drawing() {
+      return visible() && !activeHandle;
+    }
+
+    function resizing() {
+      return !!activeHandle && visible();
+    }
+
+    function visible() {
+      return _on && !!boxCoords && _visible;
     }
 
     el.hide();
 
     gui.on('map_rendered', function() {
-      if (!_on || !_visible) return;
+      if (!visible()) return;
       redraw();
     });
 
-    gui.on('shift_drag', function(e) {
-      if (!_on) return;
-      if (!opts.draggable) return;
-      boxCoords = getBoxCoords(e.data);
-      redraw();
-      box.dispatchEvent('drag');
-    });
+    if (clickToStart) {
+      gui.on('map_click', function(e) {
+        if (!_on) {
+          // clickStartPoint = null;
+          return;
+        }
 
-    gui.on('shift_drag_end', function(e) {
-      if (!_on || !_visible || !opts.draggable) return;
-      boxCoords = getBoxCoords(e.data);
-      var pix = coordsToPix(boxCoords, gui.map.getExtent());
-      box.dispatchEvent('dragend', {map_bbox: pix});
-      if (!opts.persistent) {
-        box.hide();
-      } else {
-        redraw();
-      }
-    });
+        var p = [e.x, e.y];
+        if (drawing()) {
+          finishDrawingBox(e);
+        } else if (!resizing()) {
+          clickStartPoint = p;
+        }
+      });
+
+      gui.map.getMouse().on('hover', function(e) {
+        if (!_on) return;
+        var p = [e.x, e.y];
+        if (clickStartPoint) {
+          updateDrawnBox(clickStartPoint, p);
+        }
+        // box.dispatchEvent('drag');
+      });
+    }
+
+    if (!clickToStart) {
+      gui.on('shift_drag', function(e) {
+        if (!_on) return;
+        if (!opts.draggable) return;
+        if (clickToStart) return;
+        updateDrawnBox(e.data.b, e.data.a);
+        box.dispatchEvent('drag');
+      });
+
+      gui.on('shift_drag_end', function(e) {
+        if (!_on || !_visible || !opts.draggable) return;
+        if (clickToStart) return;
+        updateDrawnBox(e.data.b, e.data.a, true);
+        if (!opts.persistent) {
+          box.hide();
+        }
+      });
+    }
+
 
     if (opts.handles) {
       handles = initHandles(el);
@@ -9325,7 +9405,7 @@
       });
 
       gui.map.getMouse().on('mousemove', function(e) {
-        if (!_on || !activeHandle || !prevXY || !boxCoords || !_visible) return;
+        if (!resizing() || !prevXY) return;
         var xy = {x: e.pageX, y: e.pageY};
         var scaling = gui.keyboard.shiftIsPressed() && activeHandle.type == 'corner';
         if (scaling) {
@@ -9349,6 +9429,27 @@
           redraw();
         }
       });
+    }
+
+    // p1: origin
+    // p2: pointer location
+    function updateDrawnBox(p1, p2, final) {
+      if (!boxCoords) {
+        el.classed('hittable', false);
+      }
+      boxCoords = getBoxCoords(p1, p2);
+      redraw();
+      if (final) {
+        el.classed('hittable', true);
+        var pix = coordsToPix(boxCoords, gui.map.getExtent());
+        box.dispatchEvent('dragend', {map_bbox: pix});
+      }
+    }
+
+    function finishDrawingBox(e) {
+      if (!clickStartPoint) return;
+      updateDrawnBox(clickStartPoint, [e.x, e.y], true);
+      clickStartPoint = null;
     }
 
     function resizeBox(dx, dy, activeHandle) {
@@ -9377,7 +9478,7 @@
     }
 
     function rescaleBox(x, y) {
-      var p = gui.map.getExtent().translatePixelCoords(x, y);
+      var p = gui.map.getExtent().pixCoordsToMapCoords(x, y);
       var cx = (boxCoords[0] + boxCoords[2])/2;
       var cy = (boxCoords[1] + boxCoords[3])/2;
       var dist2 = geom.distance2D(cx, cy, p[0], p[1]);
@@ -9407,12 +9508,16 @@
 
     box.turnOff = function() {
       _on = false;
+      box.hide();
     };
 
+    // remove the current box (if any)
     box.hide = function() {
       el.hide();
       boxCoords = null;
       _visible = false;
+      clickStartPoint = null;
+      activeHandle = null;
     };
 
     box.show = function(x1, y1, x2, y2) {
@@ -9452,10 +9557,33 @@
     }
 
     // get bbox coords in the display CRS
-    function getBoxCoords(e) {
-      var bbox = pixToCoords(e.a.concat(e.b), gui.map.getExtent());
+    function getBoxCoords(p1, p2) {
+      if (gui.keyboard.shiftIsPressed()) {
+        p2 = getSquareCorner(p1[0], p1[1], p2[0], p2[1]);
+      }
+      var bbox = pixToCoords(p1.concat(p2), gui.map.getExtent());
       fixBounds(bbox);
       return bbox;
+    }
+
+    function getSquareCorner(x1, y1, x2, y2) {
+      var dx = x2 - x1;
+      var dy = y2 - y1;
+      if (dy === 0 && dx === 0) {
+        return [x2, y2];
+      }
+      if (dy === 0) {
+        dy = 1;
+      }
+      if (dx === 0) {
+        dx = 1;
+      }
+      if (Math.abs(dx) > Math.abs(dy)) {
+        dy = dy * Math.abs(dx / dy);
+      } else {
+        dx = dx * Math.abs(dy / dx);
+      }
+      return [x1 + dx, y1 + dy];
     }
 
     function redraw() {
@@ -9478,12 +9606,12 @@
   }
 
   function pixToCoords(bbox, ext) {
-    var a = ext.translatePixelCoords(bbox[0], bbox[1]);
-    var b = ext.translatePixelCoords(bbox[2], bbox[3]);
+    var a = ext.pixCoordsToMapCoords(bbox[0], bbox[1]);
+    var b = ext.pixCoordsToMapCoords(bbox[2], bbox[3]);
     return [a[0], b[1], b[0], a[1]];
   }
 
-
+  // enforce [minx, miny, maxx, maxy] order
   function fixBounds(bbox) {
     var tmp;
     if (bbox[0] > bbox[2]) {
@@ -9615,7 +9743,7 @@
     mouse.on('drag', function(e) {
       if (disabled()) return;
       if (shiftDrag) {
-        gui.dispatchEvent('shift_drag', getBoxData(e));
+        gui.dispatchEvent('shift_drag', getBoxData(e, dragStartEvt));
         return;
       }
       if (++panCount == 1) {
@@ -9635,7 +9763,7 @@
       if (disabled()) return;
       if (shiftDrag) {
         shiftDrag = false;
-        gui.dispatchEvent('shift_drag_end', getBoxData(e));
+        gui.dispatchEvent('shift_drag_end', getBoxData(e, dragStartEvt));
         zoomBox.turnOff();
       } else {
         El('body').removeClass('panning').removeClass('pan');
@@ -9659,10 +9787,10 @@
       return !'selection_tool,box_tool,rectangle_tool,drawing_tool'.includes(mode);
     }
 
-    function getBoxData(e) {
+    function getBoxData(e1, e2) {
       return {
-        a: [e.x, e.y],
-        b: [dragStartEvt.x, dragStartEvt.y]
+        a: [e1.x, e1.y],
+        b: [e2.x, e2.y]
       };
     }
 
@@ -10546,8 +10674,8 @@
       var coords = target.shapes[id];
       deleteFeature(target, id);
       gui.dispatchEvent('feature_delete', {coords, d, target, fid: id});
-      gui.dispatchEvent('map-needs-refresh');
       hit.setHitId(-1);
+      gui.dispatchEvent('map-needs-refresh');
     }
 
     hit.on('click', function(e) {
@@ -10602,12 +10730,12 @@
 
     function pixToDataCoords(x, y) {
       var target = hit.getHitTarget();
-      return translateDisplayPoint(target, ext.translatePixelCoords(x, y));
+      return translateDisplayPoint(target, ext.pixCoordsToMapCoords(x, y));
     }
 
     function translateDeltaDisplayCoords(dx, dy, ext) {
-      var a = ext.translatePixelCoords(0, 0);
-      var b = ext.translatePixelCoords(dx, dy);
+      var a = ext.pixCoordsToMapCoords(0, 0);
+      var b = ext.pixCoordsToMapCoords(dx, dy);
       return [b[0] - a[0], b[1] - a[1]];
     }
   }
@@ -10887,7 +11015,7 @@
       e.originalEvent.stopPropagation();
       // dragging a vertex
       var target = hit.getHitTarget();
-      var p = ext.translatePixelCoords(e.x, e.y);
+      var p = ext.pixCoordsToMapCoords(e.x, e.y);
       if (gui.keyboard.shiftIsPressed()) {
         internal.snapPointToArcEndpoint(p, hoverVertexInfo.ids, target.gui.displayArcs);
       }
@@ -10905,8 +11033,8 @@
       target.gui.displayArcs.transformPoints(function() {});
       updateVertexCoords(target, hoverVertexInfo.ids);
       gui.dispatchEvent('vertex_dragend', hoverVertexInfo);
-      gui.dispatchEvent('map-needs-refresh'); // redraw basemap
       clearHoverVertex();
+      gui.dispatchEvent('map-needs-refresh'); // redraw basemap
     });
 
     // shift + double-click deletes a vertex (when not drawing)
@@ -11020,7 +11148,7 @@
 
     function pixToDataCoords(x, y) {
       var target = hit.getHitTarget();
-      return translateDisplayPoint(target, ext.translatePixelCoords(x, y));
+      return translateDisplayPoint(target, ext.pixCoordsToMapCoords(x, y));
     }
 
     // Change the x, y pixel location of thisEvt so that the segment extending
@@ -11142,7 +11270,7 @@
       if (!pathDrawing()) return false;
       var target = hit.getHitTarget();
       var arcId = target.gui.displayArcs.size() - 1;
-      var p1 = ext.translatePixelCoords(e.x, e.y); // mouse coords
+      var p1 = ext.pixCoordsToMapCoords(e.x, e.y); // mouse coords
       var p2 = internal.getArcStartCoords(arcId, target.gui.displayArcs); // vertex coords
       var p3 = internal.getArcStartCoords(arcId, target.gui.source.dataset.arcs);
       var dist = geom.distance2D(p1[0], p1[1], p2[0], p2[1]);
@@ -11164,7 +11292,7 @@
     function findDraggableVertices(e) {
       var target = hit.getHitTarget();
       var shp = target.shapes[e.id];
-      var p = ext.translatePixelCoords(e.x, e.y);
+      var p = ext.pixCoordsToMapCoords(e.x, e.y);
       var ids = internal.findNearestVertices(p, shp, target.gui.displayArcs);
       var p2 = target.gui.displayArcs.getVertex2(ids[0]);
       var dist = geom.distance2D(p[0], p[1], p2[0], p2[1]);
@@ -11186,7 +11314,7 @@
       var target = hit.getHitTarget();
       //// vertex insertion not supported with simplification
       // if (!target.arcs.isFlat()) return null;
-      var p = ext.translatePixelCoords(e.x, e.y);
+      var p = ext.pixCoordsToMapCoords(e.x, e.y);
       var minDist = Infinity;
       var shp = target.shapes[e.id];
       var closest;
@@ -11411,7 +11539,7 @@
     };
 
     // convert pixel coords (0,0 is top left corner of map) to display CRS coords
-    this.translatePixelCoords = function(x, y) {
+    this.pixCoordsToMapCoords = function(x, y) {
       return this.getTransform().invert().transform(x, y);
     };
 
@@ -11683,7 +11811,7 @@
     var layer = lyr.gui.displayLayer;
     var arcs, filter;
     if (layer.geometry_type == 'point') {
-      if (style.type == 'styled') {
+      if (style.type == 'styled' && !style.dotSize) {
         canv.drawPoints(layer.shapes, style);
       } else {
         canv.drawSquareDots(layer.shapes, style);
@@ -11739,11 +11867,15 @@
     var canv = El('canvas').node();
     canv.width = canv.height = 1;
     var ctx = canv.getContext('2d', {willReadFrequently: true});
+    var memos = {};
     return function(col) {
       var pixels;
+      if (!col) col = 'black';
+      if (col in memos) return memos[col];
       ctx.fillStyle = col;
       ctx.fillRect(0, 0, 1, 1);
       pixels = new Uint32Array(ctx.getImageData(0, 0, 1, 1).data.buffer);
+      memos[col] = pixels[0];
       return pixels[0];
     };
   }
@@ -11877,43 +12009,48 @@
           styler = style.styler || null,
           xmax = _canvas.width + size,
           ymax = _canvas.height + size,
-          color = style.dotColor || "black",
+          xmin = -size,
+          ymin = -size,
+          color = style.dotColor || 'black',
           shp, x, y, i, j, n, m,
           mx = t.mx,
           my = t.my,
           bx = t.bx,
           by = t.by;
       if (size === 0) return;
-      if (size <= 6 && !styler) {
+      if (size <= 6) {
         // optimized drawing of many small same-colored dots
-        _self.drawSquareDotsFaster(shapes, color, size, t);
+        drawSquareDotsFaster(shapes, style, size, t);
         return;
       }
+
       _ctx.fillStyle = color;
       for (i=0, n=shapes.length; i<n; i++) {
-        if (styler !== null) { // e.g. selected points
-          styler(style, i);
-          size = getDotSize(style);
-          if (style.dotColor != color) {
-            color = style.dotColor;
-            _ctx.fillStyle = color;
-          }
-        }
         shp = shapes[i];
         for (j=0, m=shp ? shp.length : 0; j<m; j++) {
           x = shp[j][0] * mx + bx;
           y = shp[j][1] * my + by;
-          if (x > -size && y > -size && x < xmax && y < ymax) {
+          if (x > xmin && y > ymin && x < xmax && y < ymax) {
+            if (styler !== null) { // e.g. selected points
+              styler(style, i);
+              // avoid updating dot size for every shape (assuming dotSize is not dynamic)
+              // size = getDotSize(style);
+              if (style.dotColor != color) {
+                color = style.dotColor || style.fillColor;
+                _ctx.fillStyle = color;
+              }
+            }
             drawSquare(x, y, size, _ctx);
           }
         }
       }
     };
 
-    _self.drawSquareDotsFaster = function(shapes, color, size, t) {
+    function drawSquareDotsFaster(shapes, style, size, t) {
       var w = _canvas.width,
           h = _canvas.height,
-          rgba = _pixelColor(color),
+          rgba = _pixelColor(style.dotColor || style.fillColor),
+          styler = style.styler,
           imageData = _ctx.getImageData(0, 0, w, h),
           pixels = new Uint32Array(imageData.data.buffer),
           shp, x, y, i, j, n, m,
@@ -11921,18 +12058,33 @@
           my = t.my,
           bx = t.bx,
           by = t.by;
-      for (i=0, n=shapes.length; i<n; i++) {
-        shp = shapes[i];
-        for (j=0, m=shp ? shp.length : 0; j<m; j++) {
-          x = shp[j][0] * mx + bx;
-          y = shp[j][1] * my + by;
-          if (x >= 0 && y >= 0 && x <= w && y <= h) {
-            drawSquareFaster(x, y, rgba, size, pixels, w, h);
+      if (styler) {
+        for (i=0, n=shapes.length; i<n; i++) {
+          shp = shapes[i];
+          for (j=0, m=shp ? shp.length : 0; j<m; j++) {
+            x = shp[j][0] * mx + bx;
+            y = shp[j][1] * my + by;
+            if (x >= 0 && y >= 0 && x <= w && y <= h) {
+              styler(style, i);
+              rgba = _pixelColor(style.dotColor || style.fillColor);
+              drawSquareFaster(x, y, rgba, size, pixels, w, h);
+            }
+          }
+        }
+      } else {
+        for (i=0, n=shapes.length; i<n; i++) {
+          shp = shapes[i];
+          for (j=0, m=shp ? shp.length : 0; j<m; j++) {
+            x = shp[j][0] * mx + bx;
+            y = shp[j][1] * my + by;
+            if (x >= 0 && y >= 0 && x <= w && y <= h) {
+              drawSquareFaster(x, y, rgba, size, pixels, w, h);
+            }
           }
         }
       }
       _ctx.putImageData(imageData, 0, 0);
-    };
+    }
 
     // color: 32-bit integer value containing rgba channel values
     // size: pixels on a side (assume integer)
@@ -12468,6 +12620,14 @@
       openAddFramePopup(gui, box.getDataCoords());
     });
 
+    gui.keyboard.on('keydown', function(e) {
+      if (e.keyName == 'esc') {
+        reset();
+        e.stopPropagation();
+      }
+
+    }, 10);
+
     gui.addMode('box_tool', turnOn, turnOff);
 
     gui.on('interaction_mode_change', function(e) {
@@ -12478,6 +12638,7 @@
           showInstructions();
         }
       } else if (_on) {
+        gui.clearMode();
         turnOff();
       }
     });
@@ -12502,7 +12663,7 @@
     function showInstructions() {
       var isMac = navigator.userAgent.includes('Mac');
       var symbol = isMac ? '⌘' : '^';
-      var msg = `Instructions: Shift-drag to draw a rectangle. Drag handles to resize. Shift-drag handles to resize symmetrically.`;
+      var msg = `Instructions: Click to start a rectangle. Drag handles to resize. Press shift key to resize symmetrically.`;
       alert = showPopupAlert(msg, null, { non_blocking: true, max_width: '360px'});
     }
 
@@ -12674,9 +12835,8 @@ GUI and setting the size and crop of SVG output.</p><div><input type="text" clas
         map = this,
         _mouse = new MouseArea(el, position),
         _ext = new MapExtent(position),
-        _nav = new MapNav(gui, _ext, _mouse),
         _visibleLayers = [], // cached visible map layers
-        _hit,
+        _hit, _nav,
         _intersectionLyr, _activeLyr, _overlayLyr,
         _renderer, _dynamicCRS;
 
@@ -12724,8 +12884,8 @@ GUI and setting the size and crop of SVG output.</p><div><input type="text" clas
     this.pixelCoordsToLngLatCoords = function(x, y) {
       var crsFrom = this.getDisplayCRS();
       if (!crsFrom) return null; // e.g. table view
-      var p1 = internal.toLngLat(_ext.translatePixelCoords(x, y), crsFrom);
-      var p2 = internal.toLngLat(_ext.translatePixelCoords(x+1, y+1), crsFrom);
+      var p1 = internal.toLngLat(_ext.pixCoordsToMapCoords(x, y), crsFrom);
+      var p2 = internal.toLngLat(_ext.pixCoordsToMapCoords(x+1, y+1), crsFrom);
       return p1 && p2 && p1[1] <= 90 && p1[1] >= -90 ?
         formatCoordsForDisplay(p1, p2) : null;
     };
@@ -12736,8 +12896,8 @@ GUI and setting the size and crop of SVG output.</p><div><input type="text" clas
       if (info && internal.isLatLngCRS(info.crs)) {
         return null; // latlon dataset
       }
-      var p1 = translateDisplayPoint(_activeLyr, _ext.translatePixelCoords(x, y));
-      var p2 = translateDisplayPoint(_activeLyr, _ext.translatePixelCoords(x+1, y+1));
+      var p1 = translateDisplayPoint(_activeLyr, _ext.pixCoordsToMapCoords(x, y));
+      var p2 = translateDisplayPoint(_activeLyr, _ext.pixCoordsToMapCoords(x+1, y+1));
       return p1 && p2 ? formatCoordsForDisplay(p1, p2) : null;
     };
 
@@ -12824,6 +12984,7 @@ GUI and setting the size and crop of SVG output.</p><div><input type="text" clas
       _ext.setFullBounds(calcFullBounds());
       _ext.resize();
       _renderer = new LayerRenderer(gui, el);
+      _nav = new MapNav(gui, _ext, _mouse);
 
       if (opts.inspectorControl) {
         _hit = new HitControl(gui, _ext, _mouse),
@@ -12856,6 +13017,7 @@ GUI and setting the size and crop of SVG output.</p><div><input type="text" clas
 
     // Refresh map display in response to data changes, layer selection, etc.
     function onUpdate(e) {
+      var updated = model.getActiveLayer();
       var prevLyr = _activeLyr || null;
       var fullBounds;
       var needReset;
@@ -12870,8 +13032,8 @@ GUI and setting the size and crop of SVG output.</p><div><input type="text" clas
 
         // reset simplification after projection (thresholds have changed)
         // TODO: preserve simplification pct (need to record pct before change)
-        if (e.flags.proj && e.dataset.arcs) {
-          e.dataset.arcs.setRetainedPct(1);
+        if (e.flags.proj && updated.dataset.arcs) {
+          updated.dataset.arcs.setRetainedPct(1);
         }
       }
 
@@ -12884,9 +13046,9 @@ GUI and setting the size and crop of SVG output.</p><div><input type="text" clas
         return;
       }
 
-      if (e.layer) {
-        _activeLyr = e.layer;
-        initActiveLayer(e.layer, e.dataset);
+      if (updated.layer) {
+        _activeLyr = updated.layer;
+        initActiveLayer();
       } else {
         _activeLyr = null;
       }
@@ -13073,9 +13235,10 @@ GUI and setting the size and crop of SVG output.</p><div><input type="text" clas
       });
     }
 
-    function initActiveLayer(lyr, dataset) {
-      enhanceLayerForDisplay(lyr, dataset, getDisplayOptions());
-      lyr.gui.style = getActiveLayerStyle(lyr.gui.displayLayer, getGlobalStyleOptions());
+    function initActiveLayer() {
+      var active = model.getActiveLayer();
+      enhanceLayerForDisplay(active.layer, active.dataset, getDisplayOptions());
+      active.layer.gui.style = getActiveLayerStyle(active.layer.gui.displayLayer, getGlobalStyleOptions());
     }
 
     function getDrawableFurnitureLayers(layers) {
@@ -13117,7 +13280,14 @@ GUI and setting the size and crop of SVG output.</p><div><input type="text" clas
       });
     }
 
-    function drawLayers(action) {
+    var skipCounts = {
+      nav: 0,
+      hover: 0,
+      redraw: 0
+    };
+    function drawLayers(actionArg) {
+      var action = actionArg || 'redraw';
+      skipCounts[action]++;
       // This seems to smooth out navigation and keep overlay and basemap in sync.
       requestAnimationFrame(function() {drawLayers2(action);});
     }
@@ -13125,8 +13295,12 @@ GUI and setting the size and crop of SVG output.</p><div><input type="text" clas
     // action:
     //   'nav'      map was panned/zoomed -- only map extent has changed
     //   'hover'    highlight has changed -- only refresh overlay
-    //   (default)  anything could have changed
+    //   'redraw'  anything could have changed
     function drawLayers2(action) {
+      if (--skipCounts[action] > 0) {
+        // skip redraw if more draws are queued up
+        return;
+      }
       // sometimes styles need to be regenerated with 'hover' action (when?)
       var layersMayHaveChanged = action != 'nav'; // !action;
       var fullBounds;
@@ -13458,8 +13632,8 @@ GUI and setting the size and crop of SVG output.</p><div><input type="text" clas
     }
 
     function refresh() {
-      var crs = gui.map.getDisplayCRS();
-      var off = !crs || !enabled() || !map || loading || !activeStyle;
+      var off = !enabled() || !map || loading || !activeStyle ||
+        !gui.map.getDisplayCRS(); // may be slow if getting bounds of many shapes
       fadeBtn.active(!off);
       clearBtn.active(!off);
       if (off) {
@@ -13505,10 +13679,7 @@ GUI and setting the size and crop of SVG output.</p><div><input type="text" clas
     gui.contextMenu = new ContextMenu();
     gui.undo = new Undo(gui);
     gui.map = new MshpMap(gui);
-    if (opts.saveControl) {
-      new SessionSnapshots(gui);
-    }
-    gui.interaction = new InteractionMode(gui);
+
     gui.state = {};
 
     var msgCount = 0;
@@ -13516,6 +13687,11 @@ GUI and setting the size and crop of SVG output.</p><div><input type="text" clas
 
     initModeRules(gui);
     gui.map.init();
+
+    if (opts.saveControl) {
+      new SessionSnapshots(gui);
+    }
+    gui.interaction = new InteractionMode(gui);
 
     gui.showProgressMessage = function(msg) {
       if (!gui.progressMessage) {

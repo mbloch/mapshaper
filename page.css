@@ -1506,6 +1506,10 @@ body.pan.panning .map-layers:not(.drawing) {
 	z-index: 16;
 	/* cursor: pointer; */
 	background: #cc6acc;
+	/* pointer-events: all; */
+}
+
+.zoom-box.hittable .handle {
 	pointer-events: all;
 }
 
