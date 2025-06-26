@@ -1330,6 +1330,8 @@ Add common SVG attributes for SVG export and display in the web UI. Attribute va
 
 `where=`           Boolean JS expression for targetting a subset of features.
 
+`clear` Remove all style properties from a layer.
+
 `class=`           One or more CSS classes, separated by spaces (e.g. `class="light semi-transparent"`)
 
 `css=`             Inline CSS to use as the `style=` attribute of each SVG symbol.
