@@ -1549,6 +1549,10 @@ export function getOptionParser() {
   parser.command('style')
     .oldAlias('svg-style')
     .describe('set SVG style properties using JS or literal values')
+    .option('clear', {
+      describe: 'remove all style properties from a layer',
+      type: 'flag'
+    })
     .option('where', whereOpt)
     .option('class', {
       describe: 'name of CSS class or classes (space-separated)'
