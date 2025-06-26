@@ -1,6 +1,7 @@
 import { nodeResolve } from '@rollup/plugin-node-resolve';
 import commonjs from '@rollup/plugin-commonjs';
 import json from '@rollup/plugin-json';
+import nodePolyfills from 'rollup-plugin-polyfill-node';
 
 const onBundle = {
   name: 'onbundle',
@@ -36,7 +37,8 @@ export default [{
       preferBuiltins: false
     }),
     commonjs(),
-    json()
+    json(),
+    nodePolyfills()
   ]
 }, {
   treeshake: true,
