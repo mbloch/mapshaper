@@ -2,13 +2,18 @@ import { nodeResolve } from '@rollup/plugin-node-resolve';
 import commonjs from '@rollup/plugin-commonjs';
 import json from '@rollup/plugin-json';
 import nodePolyfills from 'rollup-plugin-polyfill-node';
+import fs from 'fs';
+import path from 'path';
+import { fileURLToPath } from 'url';
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 const onBundle = {
   name: 'onbundle',
   writeBundle() {
     // copy mapshaper.js to www/
-    const fs = require('fs');
-    const path = require('path');
+    // const fs = require('fs');
+    // const path = require('path');
     const src = path.join(__dirname, 'mapshaper.js');
     const dest = path.join(__dirname, 'www/mapshaper.js');
     fs.writeFileSync(dest, fs.readFileSync(src));
@@ -28,7 +33,7 @@ export default [{
   input: 'src/mapshaper-gui-modules.mjs',
   output: {
     file: 'www/modules.js',
-    format: 'umd',
+    format: 'iife',
     name: 'modules' // Global variable name when loaded via script tag
   },
   plugins: [

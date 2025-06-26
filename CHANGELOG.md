@@ -1,3 +1,6 @@
+v0.6.104
+* Updated rollup
+
 v0.6.103
 * Added -join min-overlap-pct= and min-overlap-area= options for polygon-polygon joins.
 * Added support for interpolating categorical data fields using `join interpolate=`.
