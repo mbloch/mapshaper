@@ -1,4 +1,5 @@
 import { nodeResolve } from '@rollup/plugin-node-resolve';
+import commonjs from '@rollup/plugin-commonjs';
 import json from '@rollup/plugin-json';
 
 const onBundle = {
@@ -21,6 +22,22 @@ export default [{
     format: 'iife',
     file: 'www/mapshaper-gui.js'
   }]
+}, {
+  treeshake: false,
+  input: 'src/mapshaper-gui-modules.mjs',
+  output: {
+    file: 'www/modules.js',
+    format: 'umd',
+    name: 'modules' // Global variable name when loaded via script tag
+  },
+  plugins: [
+    nodeResolve({
+      browser: true,        // Use browser versions of packages when available
+      preferBuiltins: false
+    }),
+    commonjs(),
+    json()
+  ]
 }, {
   treeshake: true,
   context: 'null', // prevent a Rollup warning from msgpack

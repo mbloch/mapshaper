@@ -1,5 +1,6 @@
 import { exportDatasetAsGeoJSON } from '../geojson/geojson-export';
 import { getOutputFileBase } from '../utils/mapshaper-filename-utils';
+import require from '../mapshaper-require';
 // import { isKmzFile } from '../io/mapshaper-file-types';
 
 export function exportKML(dataset, opts) {

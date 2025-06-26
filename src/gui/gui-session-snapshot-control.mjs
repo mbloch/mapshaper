@@ -1,6 +1,7 @@
 import { El } from './gui-el';
 import { internal, stop } from './gui-core';
 import { saveBlobToLocalFile2 } from './gui-save';
+import require from '../mapshaper-require';
 
 var idb = require('idb-keyval');
 // https://github.com/jakearchibald/idb

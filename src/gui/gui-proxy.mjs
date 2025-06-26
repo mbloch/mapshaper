@@ -1,6 +1,7 @@
 import { saveZipFile, saveFilesToServer, saveBlobToLocalFile } from './gui-save';
 import { internal, utils, cli, stop } from './gui-core';
 import { GUI } from './gui-lib';
+import require from '../mapshaper-require';
 
 // replace default error, stop and message functions
 export function setLoggingForGUI(gui) {
