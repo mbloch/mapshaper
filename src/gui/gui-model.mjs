@@ -38,7 +38,7 @@ export function Model(gui) {
     if (flags.select) {
       self.dispatchEvent('select', active);
     }
-    self.dispatchEvent('update', utils.extend({flags: flags}, active));
+    self.dispatchEvent('update', {flags: flags});
   };
 
   self.selectLayer = function(lyr, dataset) {
