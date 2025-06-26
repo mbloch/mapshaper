@@ -1,3 +1,8 @@
+v0.6.103
+* Added -join min-overlap-pct= and min-overlap-area= options for polygon-polygon joins.
+* Added support for interpolating categorical data fields using `join interpolate=`.
+* Switched from browserify to rollup for bundling Node.js libraries for the web UI.
+
 v0.6.102
 * Added Nicolosi Globular (nicol) projection.
 
