@@ -1,6 +1,6 @@
 {
   "name": "mapshaper",
-  "version": "0.6.103",
+  "version": "0.6.104",
   "description": "A tool for editing vector datasets for mapping and GIS.",
   "keywords": [
     "shapefile",
@@ -64,12 +64,12 @@
   },
   "devDependencies": {
     "@rollup/plugin-commonjs": "^28.0.6",
-    "@rollup/plugin-json": "^6.0.1",
-    "@rollup/plugin-node-resolve": "^13.3.0",
+    "@rollup/plugin-json": "^6.1.0",
+    "@rollup/plugin-node-resolve": "^16.0.1",
     "csv-spectrum": "^1.0.0",
     "eslint": "^8.16.0",
     "mocha": "^10.2.0",
-    "rollup": "^2.73.0",
+    "rollup": "^4.44.1",
     "rollup-plugin-polyfill-node": "^0.13.0",
     "shell-quote": "^1.7.4",
     "underscore": "^1.13.1"
