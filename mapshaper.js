@@ -2,105 +2,105 @@
 
   var utils = /*#__PURE__*/Object.freeze({
     __proto__: null,
-    get default () { return utils; },
-    get getUniqueName () { return getUniqueName; },
-    get isFunction () { return isFunction; },
-    get isPromise () { return isPromise; },
-    get isObject () { return isObject; },
-    get clamp () { return clamp; },
-    get isArray () { return isArray; },
-    get isNumber () { return isNumber; },
-    get isValidNumber () { return isValidNumber; },
-    get isFiniteNumber () { return isFiniteNumber; },
-    get isNonNegNumber () { return isNonNegNumber; },
-    get isInteger () { return isInteger; },
-    get isEven () { return isEven; },
-    get isOdd () { return isOdd$1; },
-    get isString () { return isString; },
-    get isDate () { return isDate; },
-    get isBoolean () { return isBoolean; },
-    get formatDateISO () { return formatDateISO; },
-    get toArray () { return toArray; },
-    get isArrayLike () { return isArrayLike; },
-    get addslashes () { return addslashes; },
-    get regexEscape () { return regexEscape; },
-    get htmlEscape () { return htmlEscape; },
-    get defaults () { return defaults; },
-    get extend () { return extend$1; },
-    get inherit () { return inherit; },
-    get promisify () { return promisify; },
-    get reduceAsync () { return reduceAsync; },
-    get merge () { return merge; },
-    get difference () { return difference; },
-    get intersection () { return intersection; },
-    get indexOf () { return indexOf; },
-    get contains () { return contains; },
-    get some () { return some; },
-    get every () { return every; },
-    get find () { return find; },
-    get range () { return range; },
-    get repeat () { return repeat; },
-    get sum () { return sum$1; },
-    get getArrayBounds () { return getArrayBounds; },
-    get uniq () { return uniq; },
-    get pluck () { return pluck; },
-    get countValues () { return countValues; },
-    get indexOn () { return indexOn; },
-    get groupBy () { return groupBy; },
-    get arrayToIndex () { return arrayToIndex; },
-    get forEach () { return forEach; },
-    get forEachProperty () { return forEachProperty; },
-    get initializeArray () { return initializeArray; },
-    get replaceArray () { return replaceArray; },
-    get repeatString () { return repeatString; },
-    get splitLines () { return splitLines; },
-    get pluralSuffix () { return pluralSuffix; },
-    get endsWith () { return endsWith; },
-    get lpad () { return lpad; },
-    get rpad () { return rpad; },
-    get trim () { return trim; },
-    get ltrim () { return ltrim; },
-    get rtrim () { return rtrim; },
     get addThousandsSep () { return addThousandsSep; },
-    get numToStr () { return numToStr; },
-    get formatNumber () { return formatNumber$1; },
-    get formatIntlNumber () { return formatIntlNumber; },
-    get formatNumberForDisplay () { return formatNumberForDisplay; },
-    get shuffle () { return shuffle; },
-    get pickOne () { return pickOne; },
-    get sortOn () { return sortOn; },
-    get genericSort () { return genericSort; },
-    get getSortedIds () { return getSortedIds; },
-    get sortArrayIndex () { return sortArrayIndex; },
-    get reorderArray () { return reorderArray; },
-    get getKeyComparator () { return getKeyComparator; },
-    get getGenericComparator () { return getGenericComparator; },
-    get quicksort () { return quicksort$1; },
-    get quicksortPartition () { return quicksortPartition; },
-    get findRankByValue () { return findRankByValue; },
-    get findValueByPct () { return findValueByPct; },
-    get findValueByRank () { return findValueByRank; },
+    get addslashes () { return addslashes; },
+    get arrayToIndex () { return arrayToIndex; },
+    get clamp () { return clamp; },
+    get cleanNumericString () { return cleanNumericString; },
+    get contains () { return contains; },
+    get copyElements () { return copyElements; },
+    get countValues () { return countValues; },
+    get createBuffer () { return createBuffer; },
+    get default () { return utils; },
+    get defaults () { return defaults; },
+    get difference () { return difference; },
+    get endsWith () { return endsWith; },
+    get every () { return every; },
+    get expandoBuffer () { return expandoBuffer; },
+    get extend () { return extend$1; },
+    get extendBuffer () { return extendBuffer; },
+    get find () { return find; },
     get findMedian () { return findMedian; },
     get findQuantile () { return findQuantile; },
-    get mean () { return mean; },
-    get format () { return format; },
-    get formatter () { return formatter; },
-    get wildcardToRegExp () { return wildcardToRegExp; },
-    get createBuffer () { return createBuffer; },
-    get toBuffer () { return toBuffer; },
-    get expandoBuffer () { return expandoBuffer; },
-    get copyElements () { return copyElements; },
-    get extendBuffer () { return extendBuffer; },
-    get mergeNames () { return mergeNames; },
+    get findRankByValue () { return findRankByValue; },
     get findStringPrefix () { return findStringPrefix; },
-    get parsePercent () { return parsePercent; },
+    get findValueByPct () { return findValueByPct; },
+    get findValueByRank () { return findValueByRank; },
+    get forEach () { return forEach; },
+    get forEachProperty () { return forEachProperty; },
+    get format () { return format; },
+    get formatDateISO () { return formatDateISO; },
+    get formatIntlNumber () { return formatIntlNumber; },
+    get formatNumber () { return formatNumber$1; },
+    get formatNumberForDisplay () { return formatNumberForDisplay; },
     get formatVersionedName () { return formatVersionedName; },
-    get uniqifyNames () { return uniqifyNames; },
-    get parseString () { return parseString; },
-    get parseNumber () { return parseNumber; },
+    get formatter () { return formatter; },
+    get genericSort () { return genericSort; },
+    get getArrayBounds () { return getArrayBounds; },
+    get getGenericComparator () { return getGenericComparator; },
+    get getKeyComparator () { return getKeyComparator; },
+    get getSortedIds () { return getSortedIds; },
+    get getUniqueName () { return getUniqueName; },
+    get groupBy () { return groupBy; },
+    get htmlEscape () { return htmlEscape; },
+    get indexOf () { return indexOf; },
+    get indexOn () { return indexOn; },
+    get inherit () { return inherit; },
+    get initializeArray () { return initializeArray; },
+    get intersection () { return intersection; },
+    get isArray () { return isArray; },
+    get isArrayLike () { return isArrayLike; },
+    get isBoolean () { return isBoolean; },
+    get isDate () { return isDate; },
+    get isEven () { return isEven; },
+    get isFiniteNumber () { return isFiniteNumber; },
+    get isFunction () { return isFunction; },
+    get isInteger () { return isInteger; },
+    get isNonNegNumber () { return isNonNegNumber; },
+    get isNumber () { return isNumber; },
+    get isObject () { return isObject; },
+    get isOdd () { return isOdd$1; },
+    get isPromise () { return isPromise; },
+    get isString () { return isString; },
+    get isValidNumber () { return isValidNumber; },
+    get lpad () { return lpad; },
+    get ltrim () { return ltrim; },
+    get mean () { return mean; },
+    get merge () { return merge; },
+    get mergeNames () { return mergeNames; },
+    get numToStr () { return numToStr; },
     get parseIntlNumber () { return parseIntlNumber; },
-    get cleanNumericString () { return cleanNumericString; },
-    get trimQuotes () { return trimQuotes; }
+    get parseNumber () { return parseNumber; },
+    get parsePercent () { return parsePercent; },
+    get parseString () { return parseString; },
+    get pickOne () { return pickOne; },
+    get pluck () { return pluck; },
+    get pluralSuffix () { return pluralSuffix; },
+    get promisify () { return promisify; },
+    get quicksort () { return quicksort$1; },
+    get quicksortPartition () { return quicksortPartition; },
+    get range () { return range; },
+    get reduceAsync () { return reduceAsync; },
+    get regexEscape () { return regexEscape; },
+    get reorderArray () { return reorderArray; },
+    get repeat () { return repeat; },
+    get repeatString () { return repeatString; },
+    get replaceArray () { return replaceArray; },
+    get rpad () { return rpad; },
+    get rtrim () { return rtrim; },
+    get shuffle () { return shuffle; },
+    get some () { return some; },
+    get sortArrayIndex () { return sortArrayIndex; },
+    get sortOn () { return sortOn; },
+    get splitLines () { return splitLines; },
+    get sum () { return sum$1; },
+    get toArray () { return toArray; },
+    get toBuffer () { return toBuffer; },
+    get trim () { return trim; },
+    get trimQuotes () { return trimQuotes; },
+    get uniq () { return uniq; },
+    get uniqifyNames () { return uniqifyNames; },
+    get wildcardToRegExp () { return wildcardToRegExp; }
   });
 
   // This module provides a way for multiple jobs to run together asynchronously
@@ -129,9 +129,9 @@
 
   var Stash = /*#__PURE__*/Object.freeze({
     __proto__: null,
-    stashVar: stashVar,
+    clearStash: clearStash,
     getStashedVar: getStashedVar,
-    clearStash: clearStash
+    stashVar: stashVar
   });
 
   // Several dependencies are loaded via require()
@@ -1316,7 +1316,6 @@
     if (parts.length > 1 || true) {
       return '\nError details:\n' + parts[0];
     }
-    return '';
   }
 
   // print a message to stdout
@@ -1439,28 +1438,28 @@
 
   var Logging = /*#__PURE__*/Object.freeze({
     __proto__: null,
-    getLoggingSetter: getLoggingSetter,
-    setLoggingForCLI: setLoggingForCLI,
-    enableLogging: enableLogging,
-    loggingEnabled: loggingEnabled,
-    error: error,
-    stop: stop,
-    interrupt: interrupt,
-    message: message,
-    warn: warn,
-    setLoggingFunctions: setLoggingFunctions,
-    getErrorDetail: getErrorDetail,
-    print: print,
-    verbose: verbose,
-    debug: debug,
-    printError: printError,
-    UserError: UserError,
     NonFatalError: NonFatalError,
+    UserError: UserError,
+    debug: debug,
+    enableLogging: enableLogging,
+    error: error,
     formatColumns: formatColumns,
-    formatStringsAsGrid: formatStringsAsGrid,
     formatLogArgs: formatLogArgs,
+    formatStringsAsGrid: formatStringsAsGrid,
+    getErrorDetail: getErrorDetail,
+    getLoggingSetter: getLoggingSetter,
+    interrupt: interrupt,
     logArgs: logArgs,
-    truncateString: truncateString
+    loggingEnabled: loggingEnabled,
+    message: message,
+    print: print,
+    printError: printError,
+    setLoggingForCLI: setLoggingForCLI,
+    setLoggingFunctions: setLoggingFunctions,
+    stop: stop,
+    truncateString: truncateString,
+    verbose: verbose,
+    warn: warn
   });
 
   function Transform() {
@@ -1837,10 +1836,10 @@
   var PointUtils = /*#__PURE__*/Object.freeze({
     __proto__: null,
     countPointsInLayer: countPointsInLayer,
+    forEachPoint: forEachPoint,
     getPointBounds: getPointBounds$1,
     getPointFeatureBounds: getPointFeatureBounds,
-    getPointsInLayer: getPointsInLayer,
-    forEachPoint: forEachPoint
+    getPointsInLayer: getPointsInLayer
   });
 
   function absArcId(arcId) {
@@ -2060,26 +2059,22 @@
   var ArcUtils = /*#__PURE__*/Object.freeze({
     __proto__: null,
     absArcId: absArcId,
-    calcArcBounds: calcArcBounds,
-    getUnfilteredArcLength: getUnfilteredArcLength,
-    getUnfilteredArcCoords: getUnfilteredArcCoords,
-    findArcIdFromVertexId: findArcIdFromVertexId,
-    deleteLastArc: deleteLastArc,
-    deleteVertex: deleteVertex,
     appendEmptyArc: appendEmptyArc,
     appendVertex: appendVertex,
-    insertVertex: insertVertex,
+    calcArcBounds: calcArcBounds,
     countFilteredVertices: countFilteredVertices,
-    filterVertexData: filterVertexData
+    deleteLastArc: deleteLastArc,
+    deleteVertex: deleteVertex,
+    filterVertexData: filterVertexData,
+    findArcIdFromVertexId: findArcIdFromVertexId,
+    getUnfilteredArcCoords: getUnfilteredArcCoords,
+    getUnfilteredArcLength: getUnfilteredArcLength,
+    insertVertex: insertVertex
   });
 
   var WGS84 = {
     // https://en.wikipedia.org/wiki/Earth_radius
-    SEMIMAJOR_AXIS: 6378137,
-    SEMIMINOR_AXIS: 6356752.3142,
-    AUTHALIC_RADIUS: 6371007.2,
-    VOLUMETRIC_RADIUS: 6371000.8
-  };
+    SEMIMAJOR_AXIS: 6378137};
 
   // TODO: remove this constant, use actual data from dataset CRS,
   // also consider using ellipsoidal formulas where greater accuracy might be important.
@@ -2428,35 +2423,35 @@
 
   var Geom = /*#__PURE__*/Object.freeze({
     __proto__: null,
-    R: R$1,
     D2R: D2R,
+    R: R$1,
     R2D: R2D,
-    degreesToMeters: degreesToMeters,
-    distance3D: distance3D,
-    distanceSq: distanceSq,
-    distance2D: distance2D,
-    distanceSq3D: distanceSq3D,
-    innerAngle2: innerAngle2,
-    standardAngle: standardAngle,
-    signedAngle: signedAngle,
-    bearing2D: bearing2D,
     bearing: bearing,
-    signedAngleSph: signedAngleSph,
+    bearing2D: bearing2D,
+    containsBounds: containsBounds,
     convLngLatToSph: convLngLatToSph,
-    xyzToLngLat: xyzToLngLat,
-    lngLatToXYZ: lngLatToXYZ,
-    sphericalDistance: sphericalDistance,
-    greatCircleDistance: greatCircleDistance,
-    innerAngle: innerAngle,
-    innerAngle3D: innerAngle3D,
-    triangleArea: triangleArea,
     cosine: cosine,
     cosine3D: cosine3D,
-    triangleArea3D: triangleArea3D,
+    degreesToMeters: degreesToMeters,
+    distance2D: distance2D,
+    distance3D: distance3D,
+    distanceSq: distanceSq,
+    distanceSq3D: distanceSq3D,
+    greatCircleDistance: greatCircleDistance,
+    innerAngle: innerAngle,
+    innerAngle2: innerAngle2,
+    innerAngle3D: innerAngle3D,
+    lngLatToXYZ: lngLatToXYZ,
     pointSegDistSq: pointSegDistSq,
-    pointSegDistSq3D: pointSegDistSq3D,
     pointSegDistSq2: pointSegDistSq2,
-    containsBounds: containsBounds
+    pointSegDistSq3D: pointSegDistSq3D,
+    signedAngle: signedAngle,
+    signedAngleSph: signedAngleSph,
+    sphericalDistance: sphericalDistance,
+    standardAngle: standardAngle,
+    triangleArea: triangleArea,
+    triangleArea3D: triangleArea3D,
+    xyzToLngLat: xyzToLngLat
   });
 
   function pathIsClosed(ids, arcs) {
@@ -2602,16 +2597,16 @@
 
   var PathGeom = /*#__PURE__*/Object.freeze({
     __proto__: null,
-    pathIsClosed: pathIsClosed,
+    get calcPathLen () { return calcPathLen; },
+    countVerticesInPath: countVerticesInPath,
+    getAvgPathXY: getAvgPathXY,
+    getMaxPath: getMaxPath,
+    getPathBounds: getPathBounds$1,
     getPointToPathDistance: getPointToPathDistance,
     getPointToPathInfo: getPointToPathInfo,
     getPointToShapeDistance: getPointToShapeDistance,
     getPointToShapeInfo: getPointToShapeInfo,
-    getAvgPathXY: getAvgPathXY,
-    getMaxPath: getMaxPath,
-    countVerticesInPath: countVerticesInPath,
-    getPathBounds: getPathBounds$1,
-    get calcPathLen () { return calcPathLen; }
+    pathIsClosed: pathIsClosed
   });
 
   // Get the centroid of the largest ring of a polygon
@@ -2655,8 +2650,8 @@
 
   var PolygonCentroid = /*#__PURE__*/Object.freeze({
     __proto__: null,
-    getShapeCentroid: getShapeCentroid,
-    getPathCentroid: getPathCentroid
+    getPathCentroid: getPathCentroid,
+    getShapeCentroid: getShapeCentroid
   });
 
   function testSegmentBoundsIntersection(a, b, bb) {
@@ -2938,25 +2933,25 @@
     __proto__: null,
     calcPolsbyPopperCompactness: calcPolsbyPopperCompactness,
     calcSchwartzbergCompactness: calcSchwartzbergCompactness,
+    getPathArea: getPathArea,
+    getPathPerimeter: getPathPerimeter,
     getPathWinding: getPathWinding,
-    getShapeArea: getShapeArea,
+    getPlanarPathArea: getPlanarPathArea,
+    getPlanarPathArea2: getPlanarPathArea2,
+    getPlanarPathPerimeter: getPlanarPathPerimeter,
     getPlanarShapeArea: getPlanarShapeArea,
+    getRayIntersection: getRayIntersection,
+    getShapeArea: getShapeArea,
+    getShapePerimeter: getShapePerimeter,
+    getSphericalPathArea: getSphericalPathArea,
+    getSphericalPathArea2: getSphericalPathArea2,
+    getSphericalPathPerimeter: getSphericalPathPerimeter,
     getSphericalShapeArea: getSphericalShapeArea,
+    getSphericalShapePerimeter: getSphericalShapePerimeter,
     testBoundsInPolygon: testBoundsInPolygon,
     testPointInPolygon: testPointInPolygon,
     testPointInRing: testPointInRing,
-    testRayIntersection: testRayIntersection,
-    getRayIntersection: getRayIntersection,
-    getPathArea: getPathArea,
-    getSphericalPathArea: getSphericalPathArea,
-    getSphericalPathArea2: getSphericalPathArea2,
-    getPlanarPathArea2: getPlanarPathArea2,
-    getPlanarPathArea: getPlanarPathArea,
-    getPathPerimeter: getPathPerimeter,
-    getShapePerimeter: getShapePerimeter,
-    getSphericalShapePerimeter: getSphericalShapePerimeter,
-    getPlanarPathPerimeter: getPlanarPathPerimeter,
-    getSphericalPathPerimeter: getSphericalPathPerimeter
+    testRayIntersection: testRayIntersection
   });
 
   // Returns an interval for snapping together coordinates that be co-incident bug
@@ -3150,12 +3145,12 @@
 
   var Snapping = /*#__PURE__*/Object.freeze({
     __proto__: null,
+    getCoordinateIds: getCoordinateIds,
+    getEndpointIds: getEndpointIds,
     getHighPrecisionSnapInterval: getHighPrecisionSnapInterval,
     snapCoords: snapCoords,
     snapCoordsByInterval: snapCoordsByInterval,
-    snapEndpointsByInterval: snapEndpointsByInterval,
-    getCoordinateIds: getCoordinateIds,
-    getEndpointIds: getEndpointIds
+    snapEndpointsByInterval: snapEndpointsByInterval
   });
 
   // Find the intersection between two 2D segments
@@ -3384,10 +3379,10 @@
 
   var SegmentGeom = /*#__PURE__*/Object.freeze({
     __proto__: null,
-    segmentIntersection: segmentIntersection,
     findClosestPointOnSeg: findClosestPointOnSeg,
     orient2D: orient2D,
     segmentHit: segmentHit,
+    segmentIntersection: segmentIntersection,
     segmentTurn: segmentTurn
   });
 
@@ -3654,23 +3649,23 @@
 
   var PathUtils = /*#__PURE__*/Object.freeze({
     __proto__: null,
+    clampIntervalByPct: clampIntervalByPct,
+    countArcsInShapes: countArcsInShapes,
+    filterEmptyArcs: filterEmptyArcs,
+    findNextRemovableVertex: findNextRemovableVertex,
+    findShapesByArcId: findShapesByArcId,
+    forEachArcId: forEachArcId,
+    forEachSegmentInPath: forEachSegmentInPath,
+    forEachSegmentInShape: forEachSegmentInShape,
+    getArcPresenceTest: getArcPresenceTest,
     getAvgSegment: getAvgSegment,
     getAvgSegment2: getAvgSegment2,
     getDirectedArcPresenceTest: getDirectedArcPresenceTest,
-    getArcPresenceTest: getArcPresenceTest,
-    countArcsInShapes: countArcsInShapes,
     getPathBounds: getPathBounds,
-    findShapesByArcId: findShapesByArcId,
-    reversePath: reversePath,
-    clampIntervalByPct: clampIntervalByPct,
-    findNextRemovableVertex: findNextRemovableVertex,
-    forEachArcId: forEachArcId,
-    forEachSegmentInShape: forEachSegmentInShape,
-    forEachSegmentInPath: forEachSegmentInPath,
-    traversePaths: traversePaths,
-    filterEmptyArcs: filterEmptyArcs,
     getPathMetadata: getPathMetadata,
-    quantizeArcs: quantizeArcs
+    quantizeArcs: quantizeArcs,
+    reversePath: reversePath,
+    traversePaths: traversePaths
   });
 
   // Utility functions for both paths and points
@@ -3747,10 +3742,10 @@
     __proto__: null,
     cloneShape: cloneShape,
     cloneShapes: cloneShapes,
-    forEachShapePart: forEachShapePart,
-    editShapes: editShapes,
     editShapeParts: editShapeParts,
-    findMaxPartCount: findMaxPartCount
+    editShapes: editShapes,
+    findMaxPartCount: findMaxPartCount,
+    forEachShapePart: forEachShapePart
   });
 
   var iconv = require$1('iconv-lite');
@@ -3897,19 +3892,19 @@
 
   var Encodings = /*#__PURE__*/Object.freeze({
     __proto__: null,
-    getEncodings: getEncodings,
-    validateEncoding: validateEncoding,
-    stringsAreAscii: stringsAreAscii,
-    stringIsAscii: stringIsAscii,
-    encodingIsUtf8: encodingIsUtf8,
-    encodingIsAsciiCompat: encodingIsAsciiCompat,
-    standardizeEncodingName: standardizeEncodingName,
     bufferToString: bufferToString,
-    encodeString: encodeString,
     decodeString: decodeString,
+    encodeString: encodeString,
+    encodingIsAsciiCompat: encodingIsAsciiCompat,
     encodingIsSupported: encodingIsSupported,
+    encodingIsUtf8: encodingIsUtf8,
+    getEncodings: getEncodings,
+    printEncodings: printEncodings,
+    standardizeEncodingName: standardizeEncodingName,
+    stringIsAscii: stringIsAscii,
+    stringsAreAscii: stringsAreAscii,
     trimBOM: trimBOM,
-    printEncodings: printEncodings
+    validateEncoding: validateEncoding
   });
 
   // Not a general-purpose deep copy function
@@ -4153,21 +4148,21 @@
 
   var DataUtils = /*#__PURE__*/Object.freeze({
     __proto__: null,
-    copyRecord: copyRecord,
-    getValueType: getValueType,
-    fixInconsistentFields: fixInconsistentFields,
-    fieldListContainsAll: fieldListContainsAll,
-    getColumnType: getColumnType,
-    deleteFields: deleteFields,
-    isInvalidFieldName: isInvalidFieldName,
-    getUniqFieldNames: getUniqFieldNames,
-    getFieldValues: getFieldValues,
-    getUniqFieldValues: getUniqFieldValues,
     applyFieldOrder: applyFieldOrder,
-    getFirstNonEmptyRecord: getFirstNonEmptyRecord,
+    copyRecord: copyRecord,
+    deleteFields: deleteFields,
+    fieldListContainsAll: fieldListContainsAll,
     findFieldNames: findFieldNames,
-    parseUnknownType: parseUnknownType,
-    getInputParser: getInputParser
+    fixInconsistentFields: fixInconsistentFields,
+    getColumnType: getColumnType,
+    getFieldValues: getFieldValues,
+    getFirstNonEmptyRecord: getFirstNonEmptyRecord,
+    getInputParser: getInputParser,
+    getUniqFieldNames: getUniqFieldNames,
+    getUniqFieldValues: getUniqFieldValues,
+    getValueType: getValueType,
+    isInvalidFieldName: isInvalidFieldName,
+    parseUnknownType: parseUnknownType
   });
 
   function DataTable(obj) {
@@ -4289,8 +4284,8 @@
 
   var RectangleUtils = /*#__PURE__*/Object.freeze({
     __proto__: null,
-    pathIsRectangle: pathIsRectangle,
-    bboxToCoords: bboxToCoords
+    bboxToCoords: bboxToCoords,
+    pathIsRectangle: pathIsRectangle
   });
 
   // Insert a column of values into a (new or existing) data field
@@ -4591,42 +4586,42 @@
 
   var LayerUtils = /*#__PURE__*/Object.freeze({
     __proto__: null,
-    insertFieldValues: insertFieldValues,
+    copyLayer: copyLayer,
+    copyLayerShapes: copyLayerShapes,
+    countArcsInLayers: countArcsInLayers,
+    countMultiPartFeatures: countMultiPartFeatures,
+    deleteFeatureById: deleteFeatureById,
+    divideFeaturesByType: divideFeaturesByType,
+    filterPathLayerByArcIds: filterPathLayerByArcIds,
+    getArcPresenceTest2: getArcPresenceTest2,
+    getFeatureCount: getFeatureCount,
+    getLayerBounds: getLayerBounds,
     getLayerDataTable: getLayerDataTable,
+    getLayerSourceFile: getLayerSourceFile,
+    getOutputLayer: getOutputLayer,
+    initDataTable: initDataTable,
+    insertFieldValues: insertFieldValues,
+    isolateLayer: isolateLayer,
     layerHasAttributeData: layerHasAttributeData,
-    layerHasNonNullData: layerHasNonNullData,
     layerHasGeometry: layerHasGeometry,
-    layerIsGeometric: layerIsGeometric,
+    layerHasNonNullData: layerHasNonNullData,
+    layerHasNonNullShapes: layerHasNonNullShapes,
     layerHasPaths: layerHasPaths,
     layerHasPoints: layerHasPoints,
+    layerIsEmpty: layerIsEmpty,
+    layerIsGeometric: layerIsGeometric,
     layerIsRectangle: layerIsRectangle,
     layerOnlyHasRectangles: layerOnlyHasRectangles,
-    layerHasNonNullShapes: layerHasNonNullShapes,
-    deleteFeatureById: deleteFeatureById,
-    transformPointsInLayer: transformPointsInLayer,
-    getFeatureCount: getFeatureCount,
-    layerIsEmpty: layerIsEmpty,
+    layerTypeMessage: layerTypeMessage,
     requireDataField: requireDataField,
     requireDataFields: requireDataFields,
-    layerTypeMessage: layerTypeMessage,
-    requirePointLayer: requirePointLayer,
-    requireSinglePointLayer: requireSinglePointLayer,
-    requirePolylineLayer: requirePolylineLayer,
-    requirePolygonLayer: requirePolygonLayer,
     requirePathLayer: requirePathLayer,
-    getLayerSourceFile: getLayerSourceFile,
-    divideFeaturesByType: divideFeaturesByType,
-    getOutputLayer: getOutputLayer,
+    requirePointLayer: requirePointLayer,
+    requirePolygonLayer: requirePolygonLayer,
+    requirePolylineLayer: requirePolylineLayer,
+    requireSinglePointLayer: requireSinglePointLayer,
     setOutputLayerName: setOutputLayerName,
-    copyLayer: copyLayer,
-    filterPathLayerByArcIds: filterPathLayerByArcIds,
-    copyLayerShapes: copyLayerShapes,
-    countMultiPartFeatures: countMultiPartFeatures,
-    getArcPresenceTest2: getArcPresenceTest2,
-    countArcsInLayers: countArcsInLayers,
-    getLayerBounds: getLayerBounds,
-    isolateLayer: isolateLayer,
-    initDataTable: initDataTable
+    transformPointsInLayer: transformPointsInLayer
   });
 
   // A matrix class that supports affine transformations (scaling, translation, rotation).
@@ -4843,7 +4838,7 @@
     var AK = {
       name: 'AK',
       proj: '+proj=aea +lat_1=55 +lat_2=70 +lat_0=65 +lon_0=-148 +x_0=0 +y_0=0',
-      bbox: [-172.26,50.89,-127.00,73.21],
+      bbox: [-172.26,50.89,-127,73.21],
       origin: [-152, 63],
       placement: [-1882782,-969242],
       scale: 0.37
@@ -4851,7 +4846,7 @@
     var HI = {
       name: 'HI',
       proj: '+proj=aea +lat_1=19 +lat_2=24 +lat_0=20.9 +lon_0=-156.5 +x_0=0 +y_0=0',
-      bbox: [-160.50,18.72,-154.57,22.58],
+      bbox: [-160.5,18.72,-154.57,22.58],
       origin: [-157, 21],
       placement: [-1050326,-1055362]
     };
@@ -4928,9 +4923,9 @@
 
   var CustomProjections = /*#__PURE__*/Object.freeze({
     __proto__: null,
-    parseCustomProjection: parseCustomProjection,
     AlbersUSA: AlbersUSA,
-    parseCustomParams: parseCustomParams
+    parseCustomParams: parseCustomParams,
+    parseCustomProjection: parseCustomProjection
   });
 
   function getWorldBounds(e) {
@@ -4958,10 +4953,10 @@
 
   var LatLon = /*#__PURE__*/Object.freeze({
     __proto__: null,
-    getWorldBounds: getWorldBounds,
-    probablyDecimalDegreeBounds: probablyDecimalDegreeBounds,
     clampToWorldBounds: clampToWorldBounds,
-    getAntimeridian: getAntimeridian
+    getAntimeridian: getAntimeridian,
+    getWorldBounds: getWorldBounds,
+    probablyDecimalDegreeBounds: probablyDecimalDegreeBounds
   });
 
   var mproj = require$1('mproj');
@@ -5276,37 +5271,37 @@
 
   var Projections = /*#__PURE__*/Object.freeze({
     __proto__: null,
-    initProjLibrary: initProjLibrary,
-    setProjectionLoader: setProjectionLoader,
+    crsAreEqual: crsAreEqual,
+    crsToPrj: crsToPrj,
+    crsToProj4: crsToProj4,
     findProjLibs: findProjLibs,
+    getCrsInfo: getCrsInfo,
+    getDatasetCRS: getDatasetCRS,
+    getDatasetCrsInfo: getDatasetCrsInfo,
+    getProjDefn: getProjDefn,
+    getProjInfo: getProjInfo,
     getProjTransform: getProjTransform,
     getProjTransform2: getProjTransform2,
-    toLngLat: toLngLat,
-    projectPoint: projectPoint,
-    getProjInfo: getProjInfo,
-    crsToProj4: crsToProj4,
-    crsToPrj: crsToPrj,
-    crsAreEqual: crsAreEqual,
-    isProjAlias: isProjAlias,
-    getProjDefn: getProjDefn,
-    looksLikeProj4String: looksLikeProj4String,
-    getCrsInfo: getCrsInfo,
-    parseCrsString: parseCrsString,
-    requireProjectedDataset: requireProjectedDataset,
-    setDatasetCrsInfo: setDatasetCrsInfo,
-    getDatasetCrsInfo: getDatasetCrsInfo,
-    getDatasetCRS: getDatasetCRS,
-    requireDatasetsHaveCompatibleCRS: requireDatasetsHaveCompatibleCRS,
     getScaleFactorAtXY: getScaleFactorAtXY,
-    isProjectedCRS: isProjectedCRS,
+    initProjLibrary: initProjLibrary,
     isInvertibleCRS: isInvertibleCRS,
     isLatLngCRS: isLatLngCRS,
+    isLatLngDataset: isLatLngDataset,
+    isProjAlias: isProjAlias,
+    isProjectedCRS: isProjectedCRS,
     isWGS84: isWGS84,
     isWebMercator: isWebMercator,
-    isLatLngDataset: isLatLngDataset,
+    looksLikeProj4String: looksLikeProj4String,
+    parseCrsString: parseCrsString,
+    parsePrj: parsePrj,
     printProjections: printProjections,
-    translatePrj: translatePrj,
-    parsePrj: parsePrj
+    projectPoint: projectPoint,
+    requireDatasetsHaveCompatibleCRS: requireDatasetsHaveCompatibleCRS,
+    requireProjectedDataset: requireProjectedDataset,
+    setDatasetCrsInfo: setDatasetCrsInfo,
+    setProjectionLoader: setProjectionLoader,
+    toLngLat: toLngLat,
+    translatePrj: translatePrj
   });
 
   // Coordinate iterators
@@ -5420,7 +5415,6 @@
   }
 
   function MultiShapeIter(arcs) {
-    new ShapeIter(arcs);
 
   }
 
@@ -5473,10 +5467,10 @@
 
   var ShapeIter$1 = /*#__PURE__*/Object.freeze({
     __proto__: null,
-    PointIter: PointIter,
     ArcIter: ArcIter,
     FilteredArcIter: FilteredArcIter,
     MultiShapeIter: MultiShapeIter,
+    PointIter: PointIter,
     ShapeIter: ShapeIter
   });
 
@@ -5525,8 +5519,8 @@
 
   var SimplifyPct = /*#__PURE__*/Object.freeze({
     __proto__: null,
-    getThresholdFunction: getThresholdFunction,
-    getThresholdByPct: getThresholdByPct
+    getThresholdByPct: getThresholdByPct,
+    getThresholdFunction: getThresholdFunction
   });
 
   // An interface for managing a collection of paths.
@@ -6570,8 +6564,8 @@
 
   var Topology = /*#__PURE__*/Object.freeze({
     __proto__: null,
-    buildTopology: buildTopology,
-    buildPathTopology: buildPathTopology
+    buildPathTopology: buildPathTopology,
+    buildTopology: buildTopology
   });
 
   // Merge arcs from one or more source datasets into target dataset
@@ -6715,12 +6709,12 @@
 
   var Merging = /*#__PURE__*/Object.freeze({
     __proto__: null,
-    mergeDatasetsIntoDataset: mergeDatasetsIntoDataset,
-    mergeDatasetsForExport: mergeDatasetsForExport,
+    mergeArcs: mergeArcs,
     mergeCommandTargets: mergeCommandTargets,
-    mergeDatasets: mergeDatasets,
     mergeDatasetInfo: mergeDatasetInfo$1,
-    mergeArcs: mergeArcs
+    mergeDatasets: mergeDatasets,
+    mergeDatasetsForExport: mergeDatasetsForExport,
+    mergeDatasetsIntoDataset: mergeDatasetsIntoDataset
   });
 
   // Test if the second endpoint of an arc is the endpoint of any path in any layer
@@ -7369,22 +7363,22 @@
 
   var DatasetUtils = /*#__PURE__*/Object.freeze({
     __proto__: null,
-    splitDataset: splitDataset,
-    mergeDatasetInfo: mergeDatasetInfo,
-    copyDatasetInfo: copyDatasetInfo,
-    splitApartLayers: splitApartLayers,
+    cleanupArcs: cleanupArcs,
     copyDataset: copyDataset,
     copyDatasetForExport: copyDatasetForExport,
     copyDatasetForRenaming: copyDatasetForRenaming,
-    getDatasetBounds: getDatasetBounds,
-    datasetIsEmpty: datasetIsEmpty,
+    copyDatasetInfo: copyDatasetInfo,
     datasetHasGeometry: datasetHasGeometry,
     datasetHasPaths: datasetHasPaths,
-    cleanupArcs: cleanupArcs,
-    pruneArcs: pruneArcs,
-    replaceLayers: replaceLayers,
-    replaceLayerContents: replaceLayerContents,
+    datasetIsEmpty: datasetIsEmpty,
+    getDatasetBounds: getDatasetBounds,
+    mergeDatasetInfo: mergeDatasetInfo,
     mergeOutputLayerIntoDataset: mergeOutputLayerIntoDataset,
+    pruneArcs: pruneArcs,
+    replaceLayerContents: replaceLayerContents,
+    replaceLayers: replaceLayers,
+    splitApartLayers: splitApartLayers,
+    splitDataset: splitDataset,
     transformPoints: transformPoints
   });
 
@@ -7464,14 +7458,14 @@
 
   var FilenameUtils = /*#__PURE__*/Object.freeze({
     __proto__: null,
-    parseLocalPath: parseLocalPath,
+    getCommonFileBase: getCommonFileBase,
     getFileBase: getFileBase,
     getFileExtension: getFileExtension,
+    getOutputFileBase: getOutputFileBase,
     getPathBase: getPathBase,
+    parseLocalPath: parseLocalPath,
     replaceFileExtension: replaceFileExtension,
-    toLowerCaseExtension: toLowerCaseExtension,
-    getCommonFileBase: getCommonFileBase,
-    getOutputFileBase: getOutputFileBase
+    toLowerCaseExtension: toLowerCaseExtension
   });
 
   var decoder;
@@ -7651,13 +7645,7 @@
   				currentStructures.length = sharedLength;
   		}
   		let result;
-  		if (currentUnpackr.randomAccessStructure && src[position$1] < 0x40 && src[position$1] >= 0x20 && readStruct) {
-  			result = readStruct(src, position$1, srcEnd, currentUnpackr);
-  			src = null; // dispose of this so that recursive unpack calls don't save state
-  			if (!(options && options.lazy) && result)
-  				result = result.toJSON();
-  			position$1 = srcEnd;
-  		} else
+  		if (currentUnpackr.randomAccessStructure && src[position$1] < 0x40 && src[position$1] >= 0x20 && readStruct) ; else
   			result = read();
   		if (bundledStrings$1) { // bundled strings to skip past
   			position$1 = bundledStrings$1.postBundlePosition;
@@ -8499,7 +8487,7 @@
   	else if (data.length == 12)// TODO: Implement support for negative
   		return new Date(
   			((data[0] << 24) + (data[1] << 16) + (data[2] << 8) + data[3]) / 1000000 +
-  			(((data[4] & 0x80) ? -0x1000000000000 : 0) + data[6] * 0x10000000000 + data[7] * 0x100000000 + data[8] * 0x1000000 + (data[9] << 16) + (data[10] << 8) + data[11]) * 1000)
+  			(((data[4] & 0x80) ? -281474976710656 : 0) + data[6] * 0x10000000000 + data[7] * 0x100000000 + data[8] * 0x1000000 + (data[9] << 16) + (data[10] << 8) + data[11]) * 1000)
   	else
   		return new Date('invalid')
   }; // notepack defines extension 0 to mean undefined, so use that as the default here
@@ -8916,12 +8904,12 @@
   						position += 4;
   					}
   				} else if (value >> 0 === value) { // negative integer
-  					if (value >= -0x20) {
+  					if (value >= -32) {
   						target[position++] = 0x100 + value;
-  					} else if (value >= -0x80) {
+  					} else if (value >= -128) {
   						target[position++] = 0xd0;
   						target[position++] = value + 0x100;
-  					} else if (value >= -0x8000) {
+  					} else if (value >= -32768) {
   						target[position++] = 0xd1;
   						targetView.setInt16(position, value);
   						position += 2;
@@ -8932,7 +8920,7 @@
   					}
   				} else {
   					let useFloat32;
-  					if ((useFloat32 = this.useFloat32) > 0 && value < 0x100000000 && value >= -0x80000000) {
+  					if ((useFloat32 = this.useFloat32) > 0 && value < 0x100000000 && value >= -2147483648) {
   						target[position++] = 0xca;
   						targetView.setFloat32(position, value);
   						let xShifted;
@@ -10646,12 +10634,7 @@
    * @returns The string encoded in UTF-8/Latin-1 binary
    */
   function strToU8(str, latin1) {
-      if (latin1) {
-          var ar_1 = new u8(str.length);
-          for (var i = 0; i < str.length; ++i)
-              ar_1[i] = str.charCodeAt(i);
-          return ar_1;
-      }
+      var i; 
       if (te)
           return te.encode(str);
       var l = str.length;
@@ -11115,11 +11098,11 @@
 
   var Gzip = /*#__PURE__*/Object.freeze({
     __proto__: null,
-    isGzipped: isGzipped,
-    gzipSync: gzipSync,
-    gzipAsync: gzipAsync,
     gunzipAsync: gunzipAsync,
-    gunzipSync: gunzipSync
+    gunzipSync: gunzipSync,
+    gzipAsync: gzipAsync,
+    gzipSync: gzipSync,
+    isGzipped: isGzipped
   });
 
   // Export in a column-first format
@@ -11363,12 +11346,12 @@
   var Pack = /*#__PURE__*/Object.freeze({
     __proto__: null,
     PACKAGE_EXT: PACKAGE_EXT,
-    exportPackedDatasets: exportPackedDatasets,
-    pack: pack,
-    exportDatasetsToPack: exportDatasetsToPack,
-    exportDataset: exportDataset,
     compressSnapshotForExport: compressSnapshotForExport,
-    exportInfo: exportInfo
+    exportDataset: exportDataset,
+    exportDatasetsToPack: exportDatasetsToPack,
+    exportInfo: exportInfo,
+    exportPackedDatasets: exportPackedDatasets,
+    pack: pack
   });
 
   // Guess the type of a data file from file extension, or return null if not sure
@@ -11493,24 +11476,24 @@
 
   var FileTypes = /*#__PURE__*/Object.freeze({
     __proto__: null,
-    guessInputFileType: guessInputFileType,
-    isAuxiliaryInputFileType: isAuxiliaryInputFileType,
-    guessInputContentType: guessInputContentType,
-    guessInputType: guessInputType,
-    stringLooksLikeJSON: stringLooksLikeJSON,
-    stringLooksLikeKML: stringLooksLikeKML,
     couldBeDsvFile: couldBeDsvFile,
-    looksLikeImportableFile: looksLikeImportableFile,
-    looksLikeContentFile: looksLikeContentFile,
-    isPackageFile: isPackageFile,
-    isZipFile: isZipFile,
-    isKmzFile: isKmzFile,
-    isGzipFile: isGzipFile,
-    isSupportedOutputFormat: isSupportedOutputFormat,
+    filenameIsUnsupportedOutputType: filenameIsUnsupportedOutputType,
     getFormatName: getFormatName,
-    isSupportedBinaryInputType: isSupportedBinaryInputType,
+    guessInputContentType: guessInputContentType,
+    guessInputFileType: guessInputFileType,
+    guessInputType: guessInputType,
+    isAuxiliaryInputFileType: isAuxiliaryInputFileType,
+    isGzipFile: isGzipFile,
     isImportableAsBinary: isImportableAsBinary,
-    filenameIsUnsupportedOutputType: filenameIsUnsupportedOutputType
+    isKmzFile: isKmzFile,
+    isPackageFile: isPackageFile,
+    isSupportedBinaryInputType: isSupportedBinaryInputType,
+    isSupportedOutputFormat: isSupportedOutputFormat,
+    isZipFile: isZipFile,
+    looksLikeContentFile: looksLikeContentFile,
+    looksLikeImportableFile: looksLikeImportableFile,
+    stringLooksLikeJSON: stringLooksLikeJSON,
+    stringLooksLikeKML: stringLooksLikeKML
   });
 
   // input: A file path or a buffer
@@ -11618,11 +11601,11 @@
 
   var Zip = /*#__PURE__*/Object.freeze({
     __proto__: null,
-    unzipSync: unzipSync,
+    isImportableZipPath: isImportableZipPath,
     unzipAsync: unzipAsync,
-    zipSync: zipSync,
+    unzipSync: unzipSync,
     zipAsync: zipAsync,
-    isImportableZipPath: isImportableZipPath
+    zipSync: zipSync
   });
 
   var cli = {};
@@ -11850,9 +11833,9 @@
 
   var FileExport = /*#__PURE__*/Object.freeze({
     __proto__: null,
-    writeFiles: writeFiles,
+    getOutputPaths: getOutputPaths,
     replaceWriteFiles: replaceWriteFiles,
-    getOutputPaths: getOutputPaths
+    writeFiles: writeFiles
   });
 
   // Returns a search function
@@ -12554,8 +12537,8 @@
 
   var PathExport = /*#__PURE__*/Object.freeze({
     __proto__: null,
-    exportPointData: exportPointData,
-    exportPathData: exportPathData
+    exportPathData: exportPathData,
+    exportPointData: exportPointData
   });
 
   function stringifyAsNDJSON(o) {
@@ -12593,8 +12576,8 @@
 
   var Stringify = /*#__PURE__*/Object.freeze({
     __proto__: null,
-    stringifyAsNDJSON: stringifyAsNDJSON,
-    getFormattedStringify: getFormattedStringify
+    getFormattedStringify: getFormattedStringify,
+    stringifyAsNDJSON: stringifyAsNDJSON
   });
 
   function isValidArc(arcId, arcs) {
@@ -12715,8 +12698,8 @@
 
   var PathfinderUtils = /*#__PURE__*/Object.freeze({
     __proto__: null,
-    getRightmostArc: getRightmostArc,
-    chooseRighthandVector: chooseRighthandVector
+    chooseRighthandVector: chooseRighthandVector,
+    getRightmostArc: getRightmostArc
   });
 
   var FWD_USED = 0x8;
@@ -12734,9 +12717,9 @@
     var idx = absArcId(arcId), // get index of path in
         mask;
     if (idx == arcId) { // arcBits controls fwd path
-      mask = ~3; // target fwd bits
+      mask = -4; // target fwd bits
     } else { // arcBits controls rev. path
-      mask = ~0x30; // target rev bits
+      mask = -49; // target rev bits
       arcBits = arcBits << 4; // shift code to target rev path
     }
     routesArr[idx] &= (arcBits | mask);
@@ -12792,7 +12775,7 @@
         // (these arcs represent shared borders and will not be part of the dissolved path)
         //
         if (dissolve && (newBits & 0x22) === 0x22) {
-          newBits &= ~0x11; // make invisible
+          newBits &= -18; // make invisible
         }
       }
 
@@ -12810,11 +12793,11 @@
           closeRev = isInv ? fwd : rev;
 
       if (closeFwd) {
-        if (hide) mask &= ~1;
+        if (hide) mask &= -2;
         mask ^= 0x2;
       }
       if (closeRev) {
-        if (hide) mask &= ~0x10;
+        if (hide) mask &= -17;
         mask ^= 0x20;
       }
       routesArr[idx] = currBits & mask;
@@ -12945,15 +12928,15 @@
 
   var Pathfinder = /*#__PURE__*/Object.freeze({
     __proto__: null,
-    setBits: setBits,
     andBits: andBits,
-    setRouteBits: setRouteBits,
+    closeArcRoutes: closeArcRoutes,
+    getPathFinder: getPathFinder,
+    getRingIntersector: getRingIntersector,
     getRouteBits: getRouteBits,
     markPathsAsUsed: markPathsAsUsed,
     openArcRoutes: openArcRoutes,
-    closeArcRoutes: closeArcRoutes,
-    getPathFinder: getPathFinder,
-    getRingIntersector: getRingIntersector
+    setBits: setBits,
+    setRouteBits: setRouteBits
   });
 
   // Keep track of whether positive or negative integer ids are 'used' or not.
@@ -13286,16 +13269,16 @@
 
   var SegmentIntersection = /*#__PURE__*/Object.freeze({
     __proto__: null,
-    getIntersectionPoints: getIntersectionPoints,
-    getIntersectionLayer: getIntersectionLayer,
-    findSegmentIntersections: findSegmentIntersections,
-    sortIntersections: sortIntersections,
-    dedupIntersections: dedupIntersections,
-    calcSegmentIntersectionStripeCount2: calcSegmentIntersectionStripeCount2,
     calcSegmentIntersectionStripeCount: calcSegmentIntersectionStripeCount,
-    intersectSegments: intersectSegments,
+    calcSegmentIntersectionStripeCount2: calcSegmentIntersectionStripeCount2,
+    dedupIntersections: dedupIntersections,
+    findSegmentIntersections: findSegmentIntersections,
+    formatIntersectingSegment: formatIntersectingSegment,
     formatIntersection: formatIntersection,
-    formatIntersectingSegment: formatIntersectingSegment
+    getIntersectionLayer: getIntersectionLayer,
+    getIntersectionPoints: getIntersectionPoints,
+    intersectSegments: intersectSegments,
+    sortIntersections: sortIntersections
   });
 
   function findNearestVertices(p, shp, arcs) {
@@ -13423,19 +13406,19 @@
 
   var VertexUtils = /*#__PURE__*/Object.freeze({
     __proto__: null,
+    findNearestVertex: findNearestVertex,
     findNearestVertices: findNearestVertices,
-    snapVerticesToPoint: snapVerticesToPoint,
-    snapPointToArcEndpoint: snapPointToArcEndpoint,
     findVertexIds: findVertexIds,
-    getVertexCoords: getVertexCoords,
-    vertexIsArcEnd: vertexIsArcEnd,
-    vertexIsArcEndpoint: vertexIsArcEndpoint,
-    vertexIsArcStart: vertexIsArcStart,
-    getArcStartCoords: getArcStartCoords,
     getArcEndCoords: getArcEndCoords,
     getArcEndpointCoords: getArcEndpointCoords,
+    getArcStartCoords: getArcStartCoords,
+    getVertexCoords: getVertexCoords,
     setVertexCoords: setVertexCoords,
-    findNearestVertex: findNearestVertex
+    snapPointToArcEndpoint: snapPointToArcEndpoint,
+    snapVerticesToPoint: snapVerticesToPoint,
+    vertexIsArcEnd: vertexIsArcEnd,
+    vertexIsArcEndpoint: vertexIsArcEndpoint,
+    vertexIsArcStart: vertexIsArcStart
   });
 
   // arcs: ArcCollection containing original coordinates
@@ -13645,18 +13628,18 @@
 
   var Rounding = /*#__PURE__*/Object.freeze({
     __proto__: null,
-    roundToSignificantDigits: roundToSignificantDigits,
-    roundToDigits: roundToDigits,
-    roundToDigits2: roundToDigits2,
-    roundToTenths: roundToTenths,
-    getRoundingFunction: getRoundingFunction,
+    fround: fround,
+    fround2: fround2,
+    getBinaryRoundingFunction: getBinaryRoundingFunction,
     getBoundsPrecisionForDisplay: getBoundsPrecisionForDisplay,
     getRoundedCoordString: getRoundedCoordString,
     getRoundedCoords: getRoundedCoords,
+    getRoundingFunction: getRoundingFunction,
     roundPoints: roundPoints,
-    fround2: fround2,
-    getBinaryRoundingFunction: getBinaryRoundingFunction,
-    fround: fround,
+    roundToDigits: roundToDigits,
+    roundToDigits2: roundToDigits2,
+    roundToSignificantDigits: roundToSignificantDigits,
+    roundToTenths: roundToTenths,
     setCoordinatePrecision: setCoordinatePrecision
   });
 
@@ -13843,16 +13826,16 @@
 
   var Units = /*#__PURE__*/Object.freeze({
     __proto__: null,
-    parseSizeParam: parseSizeParam,
+    convertAreaParam: convertAreaParam,
+    convertDistanceParam: convertDistanceParam,
+    convertFourSides: convertFourSides,
+    convertIntervalPair: convertIntervalPair,
+    convertIntervalParam: convertIntervalParam,
+    getAreaLabel: getAreaLabel,
     getIntervalConversionFactor: getIntervalConversionFactor,
     parseMeasure: parseMeasure,
     parseMeasure2: parseMeasure2,
-    convertAreaParam: convertAreaParam,
-    convertDistanceParam: convertDistanceParam,
-    convertIntervalParam: convertIntervalParam,
-    convertIntervalPair: convertIntervalPair,
-    convertFourSides: convertFourSides,
-    getAreaLabel: getAreaLabel
+    parseSizeParam: parseSizeParam
   });
 
   // Used by -clean -dissolve2 -filter-slivers -filter-islands to generate area filters
@@ -13968,11 +13951,11 @@
 
   var Slivers = /*#__PURE__*/Object.freeze({
     __proto__: null,
-    getSliverFilter: getSliverFilter,
-    getSliverTest: getSliverTest,
-    getSliverAreaFunction: getSliverAreaFunction,
+    calcMaxSliverArea: calcMaxSliverArea,
     getDefaultSliverThreshold: getDefaultSliverThreshold,
-    calcMaxSliverArea: calcMaxSliverArea
+    getSliverAreaFunction: getSliverAreaFunction,
+    getSliverFilter: getSliverFilter,
+    getSliverTest: getSliverTest
   });
 
   // Returns undefined if not found
@@ -14859,13 +14842,13 @@
 
   var TargetUtils = /*#__PURE__*/Object.freeze({
     __proto__: null,
+    countTargetLayers: countTargetLayers,
     expandCommandTargets: expandCommandTargets,
     findCommandTargets: findCommandTargets,
-    groupLayersByDataset: groupLayersByDataset,
     findMatchingLayers: findMatchingLayers,
     getLayerMatch: getLayerMatch,
-    countTargetLayers: countTargetLayers,
-    getLayerTargetId: getLayerTargetId
+    getLayerTargetId: getLayerTargetId,
+    groupLayersByDataset: groupLayersByDataset
   });
 
   function getNullLayerProxy(targets) {
@@ -15315,10 +15298,10 @@
 
   var Expressions = /*#__PURE__*/Object.freeze({
     __proto__: null,
-    getExpressionFunction: getExpressionFunction,
     compileExpressionToFunction: compileExpressionToFunction,
     getAssignedVars: getAssignedVars,
     getBaseContext: getBaseContext,
+    getExpressionFunction: getExpressionFunction,
     nullifyUnsetProperties: nullifyUnsetProperties
   });
 
@@ -15445,8 +15428,8 @@
   var FeatureExpressions = /*#__PURE__*/Object.freeze({
     __proto__: null,
     compileFeatureExpression: compileFeatureExpression,
-    compileFeaturePairFilterExpression: compileFeaturePairFilterExpression,
-    compileFeaturePairExpression: compileFeaturePairExpression
+    compileFeaturePairExpression: compileFeaturePairExpression,
+    compileFeaturePairFilterExpression: compileFeaturePairFilterExpression
   });
 
   function getMode(values) {
@@ -15804,8 +15787,8 @@
   var Calc = /*#__PURE__*/Object.freeze({
     __proto__: null,
     applyCalcExpression: applyCalcExpression,
-    evalCalcExpression: evalCalcExpression,
-    compileCalcExpression: compileCalcExpression
+    compileCalcExpression: compileCalcExpression,
+    evalCalcExpression: evalCalcExpression
   });
 
   // get function that returns an object containing calculated values
@@ -15933,9 +15916,9 @@
 
   var DataAggregation = /*#__PURE__*/Object.freeze({
     __proto__: null,
+    aggregateDataRecords: aggregateDataRecords,
     getCategoryClassifier: getCategoryClassifier,
     getMultiFieldKeyFunction: getMultiFieldKeyFunction,
-    aggregateDataRecords: aggregateDataRecords,
     recombineDataRecords: recombineDataRecords
   });
 
@@ -16572,7 +16555,7 @@
   // split into two rings that touch each other where the original ring crossed itself.
   //
   function getSelfIntersectionSplitter(nodes) {
-    var pathIndex = new IdTestIndex(nodes.arcs.size(), true);
+    var pathIndex = new IdTestIndex(nodes.arcs.size());
     var filter = function(arcId) {
       return pathIndex.hasId(~arcId);
     };
@@ -16669,8 +16652,8 @@
   var PathRepair = /*#__PURE__*/Object.freeze({
     __proto__: null,
     cleanShapes: cleanShapes,
-    removeSpikesInPath: removeSpikesInPath,
     getSelfIntersectionSplitter: getSelfIntersectionSplitter,
+    removeSpikesInPath: removeSpikesInPath,
     splitPathByIds: splitPathByIds
   });
 
@@ -17066,14 +17049,14 @@
   var IntersectionCuts = /*#__PURE__*/Object.freeze({
     __proto__: null,
     addIntersectionCuts: addIntersectionCuts,
-    divideArcs: divideArcs,
     cutPathsAtIntersections: cutPathsAtIntersections,
-    remapDividedArcs: remapDividedArcs,
-    insertCutPoints: insertCutPoints,
-    getCutPoint: getCutPoint,
-    sortCutPoints: sortCutPoints,
+    divideArcs: divideArcs,
     filterSortedCutPoints: filterSortedCutPoints,
-    findClippingPoints: findClippingPoints
+    findClippingPoints: findClippingPoints,
+    getCutPoint: getCutPoint,
+    insertCutPoints: insertCutPoints,
+    remapDividedArcs: remapDividedArcs,
+    sortCutPoints: sortCutPoints
   });
 
   // Support for timing using T.start() and T.stop()
@@ -17234,8 +17217,8 @@
 
   var PolygonMosaic = /*#__PURE__*/Object.freeze({
     __proto__: null,
-    mosaic: mosaic,
-    buildPolygonMosaic: buildPolygonMosaic
+    buildPolygonMosaic: buildPolygonMosaic,
+    mosaic: mosaic
   });
 
   // Map non-negative integers to non-negative integer ids
@@ -17329,14 +17312,14 @@
   //
   function PolygonTiler(mosaic, arcTileIndex, nodes, opts) {
     var arcs = nodes.arcs;
-    var visitedTileIndex = new IdTestIndex(mosaic.length, true);
+    var visitedTileIndex = new IdTestIndex(mosaic.length);
     var divide = getHoleDivider(nodes);
     // temp vars
     var currHoles; // arc ids of all holes in shape
     var currRingBbox;
     var tilesInShape; // accumulator for tile ids of tiles in current shape
-    var ringIndex = new IdTestIndex(arcs.size(), true);
-    var holeIndex = new IdTestIndex(arcs.size(), true);
+    var ringIndex = new IdTestIndex(arcs.size());
+    var holeIndex = new IdTestIndex(arcs.size());
 
     // return ids of tiles in shape
     this.getTilesInShape = function(shp, shapeId) {
@@ -17437,7 +17420,7 @@
     // map arc ids to tile ids
     var arcTileIndex = new ShapeArcIndex(mosaic, nodes.arcs);
     // keep track of which tiles have been assigned to shapes
-    var fetchedTileIndex = new IdTestIndex(mosaic.length, true);
+    var fetchedTileIndex = new IdTestIndex(mosaic.length);
     // bidirection index of tile ids <=> shape ids
     var tileShapeIndex = new TileShapeIndex(mosaic, opts);
     // assign tiles to shapes
@@ -17717,9 +17700,9 @@
 
   var PolygonDissolve2 = /*#__PURE__*/Object.freeze({
     __proto__: null,
-    dissolvePolygonLayer2: dissolvePolygonLayer2,
     composeMosaicLayer: composeMosaicLayer,
-    dissolvePolygonGroups2: dissolvePolygonGroups2
+    dissolvePolygonGroups2: dissolvePolygonGroups2,
+    dissolvePolygonLayer2: dissolvePolygonLayer2
   });
 
   // Assumes intersection cuts have been added and duplicated points removed
@@ -18519,17 +18502,17 @@
 
   var GeojsonExport = /*#__PURE__*/Object.freeze({
     __proto__: null,
-    'default': GeoJSON,
-    exportGeoJSON: exportGeoJSON,
-    exportLayerAsGeoJSON: exportLayerAsGeoJSON,
-    warnIfNotWgs84: warnIfNotWgs84,
-    getDatasetBbox: getDatasetBbox,
+    default: GeoJSON,
     exportDatasetAsGeoJSON: exportDatasetAsGeoJSON,
+    exportGeoJSON: exportGeoJSON,
+    exportIds: exportIds,
+    exportLayerAsGeoJSON: exportLayerAsGeoJSON,
+    exportProperties: exportProperties,
+    getDatasetBbox: getDatasetBbox,
+    getIdField: getIdField,
     preserveOriginalCRS: preserveOriginalCRS,
     useFeatureCollection: useFeatureCollection,
-    exportProperties: exportProperties,
-    getIdField: getIdField,
-    exportIds: exportIds
+    warnIfNotWgs84: warnIfNotWgs84
   });
 
   /*
@@ -18768,19 +18751,19 @@
 
   var FrameUtils = /*#__PURE__*/Object.freeze({
     __proto__: null,
-    getFrameData: getFrameData,
-    fitDatasetToFrame: fitDatasetToFrame,
-    getFrameLayerData: getFrameLayerData,
     calcFrameData: calcFrameData,
-    getFrameSize: getFrameSize,
-    isFrameLayer: isFrameLayer,
-    findFrameLayerInDataset: findFrameLayerInDataset,
+    calcOutputBounds: calcOutputBounds,
+    findFrame: findFrame,
     findFrameDataset: findFrameDataset,
     findFrameLayer: findFrameLayer,
-    findFrame: findFrame,
+    findFrameLayerInDataset: findFrameLayerInDataset,
+    fitDatasetToFrame: fitDatasetToFrame,
+    getFrameData: getFrameData,
     getFrameLayerBounds: getFrameLayerBounds,
+    getFrameLayerData: getFrameLayerData,
+    getFrameSize: getFrameSize,
     getMapFrameMetersPerPixel: getMapFrameMetersPerPixel,
-    calcOutputBounds: calcOutputBounds,
+    isFrameLayer: isFrameLayer,
     parseMarginOption: parseMarginOption
   });
 
@@ -18890,7 +18873,6 @@
   function getFitBoxTransform(bbox, points, shapes, arcs) {
     var dataset = {
       arcs: arcs,
-      info: {},
       layers: []
     };
     if (points && points.length) {
@@ -18986,8 +18968,8 @@
 
   var SvgPathUtils = /*#__PURE__*/Object.freeze({
     __proto__: null,
-    stringifyPolygonCoords: stringifyPolygonCoords,
-    stringifyLineStringCoords: stringifyLineStringCoords
+    stringifyLineStringCoords: stringifyLineStringCoords,
+    stringifyPolygonCoords: stringifyPolygonCoords
   });
 
   /* example patterns
@@ -19231,11 +19213,11 @@
 
   var SvgHatch = /*#__PURE__*/Object.freeze({
     __proto__: null,
-    parsePattern: parsePattern,
+    convertFillPattern: convertFillPattern,
     parseDashes: parseDashes,
-    parseHatches: parseHatches,
     parseDots: parseDots,
-    convertFillPattern: convertFillPattern
+    parseHatches: parseHatches,
+    parsePattern: parsePattern
   });
 
   // parsing hints for -style command cli options
@@ -19485,17 +19467,17 @@
   var SvgProperties = /*#__PURE__*/Object.freeze({
     __proto__: null,
     applyStyleAttributes: applyStyleAttributes,
-    isSupportedSvgStyleProperty: isSupportedSvgStyleProperty,
     findPropertiesBySymbolGeom: findPropertiesBySymbolGeom,
     getSymbolDataAccessor: getSymbolDataAccessor,
-    mightBeExpression: mightBeExpression,
     getSymbolPropertyAccessor: getSymbolPropertyAccessor,
+    isSupportedSvgStyleProperty: isSupportedSvgStyleProperty,
     isSvgClassName: isSvgClassName,
-    isSvgNumber: isSvgNumber,
-    parseBoolean: parseBoolean,
+    isSvgColor: isSvgColor,
     isSvgMeasure: isSvgMeasure,
-    parseSvgMeasure: parseSvgMeasure,
-    isSvgColor: isSvgColor
+    isSvgNumber: isSvgNumber,
+    mightBeExpression: mightBeExpression,
+    parseBoolean: parseBoolean,
+    parseSvgMeasure: parseSvgMeasure
   });
 
   var geojsonImporters = {
@@ -19619,12 +19601,12 @@
 
   var GeojsonToSvg = /*#__PURE__*/Object.freeze({
     __proto__: null,
+    flattenMultiPolygonCoords: flattenMultiPolygonCoords,
     importGeoJSONFeatures: importGeoJSONFeatures,
-    importPoint: importPoint,
     importLineString: importLineString,
     importMultiLineString: importMultiLineString,
     importMultiPolygon: importMultiPolygon,
-    flattenMultiPolygonCoords: flattenMultiPolygonCoords,
+    importPoint: importPoint,
     importPolygon: importPolygon
   });
 
@@ -19685,11 +19667,12 @@
 
   var SvgLabels = /*#__PURE__*/Object.freeze({
     __proto__: null,
-    renderStyledLabel: renderStyledLabel,
-    renderLabel: renderLabel$1
+    renderLabel: renderLabel$1,
+    renderStyledLabel: renderStyledLabel
   });
 
   // convert data records (properties like svg-symbol, label-text, fill, r) to svg symbols
+  //
 
   function getTransform(xy, scale) {
     var str = 'translate(' + roundToTenths(xy[0]) + ' ' + roundToTenths(xy[1]) + ')';
@@ -19878,8 +19861,8 @@
   var SvgSymbols = /*#__PURE__*/Object.freeze({
     __proto__: null,
     getTransform: getTransform,
-    symbolRenderers: symbolRenderers,
-    renderPoint: renderPoint
+    renderPoint: renderPoint,
+    symbolRenderers: symbolRenderers
   });
 
   cmd.scalebar = function(catalog, opts) {
@@ -20157,10 +20140,10 @@
 
   var Scalebar = /*#__PURE__*/Object.freeze({
     __proto__: null,
-    getScalebarLayer: getScalebarLayer,
-    renderScalebar: renderScalebar,
     formatDistanceLabel: formatDistanceLabel,
-    parseScalebarLabelToKm: parseScalebarLabelToKm
+    getScalebarLayer: getScalebarLayer,
+    parseScalebarLabelToKm: parseScalebarLabelToKm,
+    renderScalebar: renderScalebar
   });
 
   var furnitureRenderers = {
@@ -20206,10 +20189,10 @@
 
   var Furniture = /*#__PURE__*/Object.freeze({
     __proto__: null,
-    layerHasFurniture: layerHasFurniture,
-    isFurnitureLayer: isFurnitureLayer,
-    getFurnitureLayerType: getFurnitureLayerType,
     getFurnitureLayerData: getFurnitureLayerData,
+    getFurnitureLayerType: getFurnitureLayerType,
+    isFurnitureLayer: isFurnitureLayer,
+    layerHasFurniture: layerHasFurniture,
     renderFurnitureLayer: renderFurnitureLayer
   });
 
@@ -20276,8 +20259,8 @@
 
   var SvgStringify = /*#__PURE__*/Object.freeze({
     __proto__: null,
-    stringify: stringify,
     stringEscape: stringEscape,
+    stringify: stringify,
     stringifyProperties: stringifyProperties
   });
 
@@ -20359,8 +20342,8 @@
 
   var SvgEffect = /*#__PURE__*/Object.freeze({
     __proto__: null,
-    getSphereEffectParams: getSphereEffectParams,
-    convertFillEffect: convertFillEffect
+    convertFillEffect: convertFillEffect,
+    getSphereEffectParams: getSphereEffectParams
   });
 
   var cache = {};
@@ -20731,16 +20714,16 @@ ${svg}
 
   var Svg = /*#__PURE__*/Object.freeze({
     __proto__: null,
-    exportSVG: exportSVG,
+    exportDataAttributesForSVG: exportDataAttributesForSVG,
     exportFurnitureLayerForSVG: exportFurnitureLayerForSVG,
     exportLayerForSVG: exportLayerForSVG,
-    validateSvgDataFields: validateSvgDataFields,
-    exportDataAttributesForSVG: exportDataAttributesForSVG,
-    getEmptyLayerForSVG: getEmptyLayerForSVG,
-    featureHasSvgSymbol: featureHasSvgSymbol,
+    exportSVG: exportSVG,
     featureHasLabel: featureHasLabel,
+    featureHasSvgSymbol: featureHasSvgSymbol,
+    getEmptyLayerForSVG: getEmptyLayerForSVG,
+    layerHasLabels: layerHasLabels,
     layerHasSvgSymbols: layerHasSvgSymbols,
-    layerHasLabels: layerHasLabels
+    validateSvgDataFields: validateSvgDataFields
   });
 
   // import { isKmzFile } from '../io/mapshaper-file-types';
@@ -21046,8 +21029,8 @@ ${svg}
 
   var BinArray$1 = /*#__PURE__*/Object.freeze({
     __proto__: null,
-    buffersAreIdentical: buffersAreIdentical,
-    BinArray: BinArray
+    BinArray: BinArray,
+    buffersAreIdentical: buffersAreIdentical
   });
 
   var Dbf = {};
@@ -22399,8 +22382,8 @@ ${svg}
 
   var TopojsonExport = /*#__PURE__*/Object.freeze({
     __proto__: null,
-    exportTopoJSON: exportTopoJSON,
-    calcExportBounds: calcExportBounds
+    calcExportBounds: calcExportBounds,
+    exportTopoJSON: exportTopoJSON
   });
 
   function importJSONTable(arr) {
@@ -22439,9 +22422,9 @@ ${svg}
 
   var JsonTable = /*#__PURE__*/Object.freeze({
     __proto__: null,
-    importJSONTable: importJSONTable,
     exportJSON: exportJSON,
-    exportJSONTable: exportJSONTable
+    exportJSONTable: exportJSONTable,
+    importJSONTable: importJSONTable
   });
 
   function getOutputFormat(dataset, opts) {
@@ -22757,10 +22740,10 @@ ${svg}
 
   var Export = /*#__PURE__*/Object.freeze({
     __proto__: null,
-    exportTargetLayers: exportTargetLayers,
-    exportFileContent: exportFileContent,
-    assignUniqueLayerNames: assignUniqueLayerNames,
     assignUniqueFileNames: assignUniqueFileNames,
+    assignUniqueLayerNames: assignUniqueLayerNames,
+    exportFileContent: exportFileContent,
+    exportTargetLayers: exportTargetLayers,
     formatVersionedFileName: formatVersionedFileName
   });
 
@@ -22945,10 +22928,10 @@ ${svg}
 
   var FileReader$1 = /*#__PURE__*/Object.freeze({
     __proto__: null,
-    readFirstChars: readFirstChars,
-    Reader2: Reader2,
     BufferReader: BufferReader,
-    FileReader: FileReader
+    FileReader: FileReader,
+    Reader2: Reader2,
+    readFirstChars: readFirstChars
   });
 
   // Read and parse a DSV file
@@ -23200,14 +23183,14 @@ ${svg}
 
   var DelimReader = /*#__PURE__*/Object.freeze({
     __proto__: null,
+    getDelimFieldFilter: getDelimFieldFilter,
+    getRowConverter: getRowConverter,
+    indexOfLine: indexOfLine,
+    parseDelimHeaderSection: parseDelimHeaderSection,
+    parseDelimText: parseDelimText,
     readDelimRecords: readDelimRecords,
     readDelimRecordsFromString: readDelimRecordsFromString,
-    indexOfLine: indexOfLine,
-    getRowConverter: getRowConverter,
-    parseDelimHeaderSection: parseDelimHeaderSection,
-    getDelimFieldFilter: getDelimFieldFilter,
-    readLinesAsString: readLinesAsString,
-    parseDelimText: parseDelimText
+    readLinesAsString: readLinesAsString
   });
 
   function detectEncodingFromBOM(bytes) {
@@ -23339,9 +23322,9 @@ ${svg}
 
   var EncodingDetection = /*#__PURE__*/Object.freeze({
     __proto__: null,
-    detectEncodingFromBOM: detectEncodingFromBOM,
+    decodeSamples: decodeSamples,
     detectEncoding: detectEncoding,
-    decodeSamples: decodeSamples
+    detectEncodingFromBOM: detectEncodingFromBOM
   });
 
   // Convert a string containing delimited text data into a dataset object
@@ -23550,12 +23533,12 @@ ${svg}
 
   var DelimImport = /*#__PURE__*/Object.freeze({
     __proto__: null,
+    adjustRecordTypes: adjustRecordTypes,
+    getFieldTypeHints: getFieldTypeHints,
+    guessDelimiter: guessDelimiter,
     importDelim: importDelim,
     importDelim2: importDelim2,
-    isSupportedDelimiter: isSupportedDelimiter,
-    guessDelimiter: guessDelimiter,
-    getFieldTypeHints: getFieldTypeHints,
-    adjustRecordTypes: adjustRecordTypes
+    isSupportedDelimiter: isSupportedDelimiter
   });
 
   function validateInputOpts(cmd) {
@@ -23798,14 +23781,14 @@ ${svg}
 
   var OptionParsingUtils = /*#__PURE__*/Object.freeze({
     __proto__: null,
-    splitShellTokens: splitShellTokens,
-    parseNumberList: parseNumberList,
-    parseStringList: parseStringList,
-    parseColorList: parseColorList,
     cleanArgv: cleanArgv,
     formatOptionValue: formatOptionValue,
     isAssignment: isAssignment,
-    splitAssignment: splitAssignment
+    parseColorList: parseColorList,
+    parseNumberList: parseNumberList,
+    parseStringList: parseStringList,
+    splitAssignment: splitAssignment,
+    splitShellTokens: splitShellTokens
   });
 
   function CommandParser() {
@@ -27033,8 +27016,8 @@ ${svg}
 
   var DbfImport = /*#__PURE__*/Object.freeze({
     __proto__: null,
-    importDbfTable: importDbfTable,
-    ShapefileTable: ShapefileTable
+    ShapefileTable: ShapefileTable,
+    importDbfTable: importDbfTable
   });
 
   function translateShapefileType(shpType) {
@@ -27055,8 +27038,8 @@ ${svg}
 
   var ShpCommon = /*#__PURE__*/Object.freeze({
     __proto__: null,
-    translateShapefileType: translateShapefileType,
-    isSupportedShapefileType: isSupportedShapefileType
+    isSupportedShapefileType: isSupportedShapefileType,
+    translateShapefileType: translateShapefileType
   });
 
   function getNullRecord(id) {
@@ -27769,9 +27752,9 @@ ${svg}
 
   var PathImport = /*#__PURE__*/Object.freeze({
     __proto__: null,
+    PathImporter: PathImporter,
     cleanPathsAfterImport: cleanPathsAfterImport,
-    pointHasValidCoords: pointHasValidCoords,
-    PathImporter: PathImporter
+    pointHasValidCoords: pointHasValidCoords
   });
 
   // Read Shapefile data from a file, ArrayBuffer or Buffer
@@ -27979,9 +27962,9 @@ ${svg}
 
   var GeojsonImport = /*#__PURE__*/Object.freeze({
     __proto__: null,
-    importGeoJSON: importGeoJSON,
     GeoJSONParser: GeoJSONParser,
-    importCRS: importCRS
+    importCRS: importCRS,
+    importGeoJSON: importGeoJSON
   });
 
   // Convert a TopoJSON topology into mapshaper's internal format
@@ -28907,8 +28890,8 @@ ${svg}
 
   var JsonImport = /*#__PURE__*/Object.freeze({
     __proto__: null,
-    identifyJSONString: identifyJSONString,
     identifyJSONObject: identifyJSONObject,
+    identifyJSONString: identifyJSONString,
     importGeoJSONFile: importGeoJSONFile,
     importJSON: importJSON
   });
@@ -29153,8 +29136,8 @@ ${svg}
 
   var Unpack = /*#__PURE__*/Object.freeze({
     __proto__: null,
-    unpackSessionData: unpackSessionData,
-    restoreSessionData: restoreSessionData
+    restoreSessionData: restoreSessionData,
+    unpackSessionData: unpackSessionData
   });
 
   cmd.importFiles = async function(catalog, opts) {
@@ -29410,9 +29393,9 @@ ${svg}
 
   var FileImport = /*#__PURE__*/Object.freeze({
     __proto__: null,
-    replaceImportFile: replaceImportFile,
     importFile: importFile,
-    importFilesTogether: importFilesTogether
+    importFilesTogether: importFilesTogether,
+    replaceImportFile: replaceImportFile
   });
 
   function convertSourceName(name, targets) {
@@ -29462,8 +29445,8 @@ ${svg}
 
   var SourceUtils = /*#__PURE__*/Object.freeze({
     __proto__: null,
-    convertSourceName: convertSourceName,
     convertInterpolatedName: convertInterpolatedName,
+    convertSourceName: convertSourceName,
     findCommandSource: findCommandSource
   });
 
@@ -30802,13 +30785,13 @@ ${svg}
   var BufferCommon = /*#__PURE__*/Object.freeze({
     __proto__: null,
     dissolveBufferDataset: dissolveBufferDataset,
-    getBufferToleranceFromCircleSegments: getBufferToleranceFromCircleSegments,
     getArcDegreesFromTolerancePct: getArcDegreesFromTolerancePct,
-    getBufferToleranceFromCircleSegments2: getBufferToleranceFromCircleSegments2,
     getArcDegreesFromTolerancePct2: getArcDegreesFromTolerancePct2,
-    parseConstantBufferDistance: parseConstantBufferDistance,
+    getBufferDistanceFunction: getBufferDistanceFunction,
+    getBufferToleranceFromCircleSegments: getBufferToleranceFromCircleSegments,
+    getBufferToleranceFromCircleSegments2: getBufferToleranceFromCircleSegments2,
     getBufferToleranceFunction: getBufferToleranceFunction,
-    getBufferDistanceFunction: getBufferDistanceFunction
+    parseConstantBufferDistance: parseConstantBufferDistance
   });
 
   // Returns a function for generating GeoJSON geometries (MultiLineString or MultiPolygon)
@@ -31038,9 +31021,9 @@ ${svg}
 
   var PathBuffer = /*#__PURE__*/Object.freeze({
     __proto__: null,
-    getPolylineBufferMaker: getPolylineBufferMaker,
     addBufferVertex: addBufferVertex,
-    bufferIntersection: bufferIntersection
+    bufferIntersection: bufferIntersection,
+    getPolylineBufferMaker: getPolylineBufferMaker
   });
 
   function getPolylineBufferMaker2(arcs, geod, getBearing, opts) {
@@ -31417,14 +31400,14 @@ ${svg}
 
   var Geodesic = /*#__PURE__*/Object.freeze({
     __proto__: null,
-    interpolatePoint2D: interpolatePoint2D,
-    getInterpolationFunction: getInterpolationFunction,
-    getPlanarSegmentEndpoint: getPlanarSegmentEndpoint,
-    getGeodeticSegmentFunction: getGeodeticSegmentFunction,
-    getFastGeodeticSegmentFunction: getFastGeodeticSegmentFunction,
     bearingDegrees: bearingDegrees,
     bearingDegrees2D: bearingDegrees2D,
-    getBearingFunction: getBearingFunction
+    getBearingFunction: getBearingFunction,
+    getFastGeodeticSegmentFunction: getFastGeodeticSegmentFunction,
+    getGeodeticSegmentFunction: getGeodeticSegmentFunction,
+    getInterpolationFunction: getInterpolationFunction,
+    getPlanarSegmentEndpoint: getPlanarSegmentEndpoint,
+    interpolatePoint2D: interpolatePoint2D
   });
 
   function makePolylineBuffer(lyr, dataset, opts) {
@@ -31794,7 +31777,7 @@ ${svg}
 
   // Make a single geodetic circle
   function getCircleGeoJSON(center, radius, vertices, opts) {
-    var n = vertices || 360;
+    var n = 360;
     var geod = getGeodeticSegmentFunction(parseCrsString('wgs84')); // ?
     if (opts.inset) {
       radius -= opts.inset;
@@ -32464,10 +32447,10 @@ ${svg}
   const degrees = 180 / Math.PI;
 
   var A = -0.14861,
-      B = +1.78277,
+      B = 1.78277,
       C = -0.29227,
       D = -0.90649,
-      E = +1.97294,
+      E = 1.97294,
       ED = E * D,
       EB = E * B,
       BC_DA = B * C - D * A;
@@ -33619,8 +33602,8 @@ ${svg}
 
   var PolygonNeighbors = /*#__PURE__*/Object.freeze({
     __proto__: null,
-    getNeighborLookupFunction: getNeighborLookupFunction,
-    findPairsOfNeighbors: findPairsOfNeighbors
+    findPairsOfNeighbors: findPairsOfNeighbors,
+    getNeighborLookupFunction: getNeighborLookupFunction
   });
 
   function getNonAdjacentClassifier(lyr, dataset, colors) {
@@ -34240,81 +34223,81 @@ ${svg}
 
   var d3Scales = /*#__PURE__*/Object.freeze({
     __proto__: null,
-    schemeCategory10: category10,
+    interpolateBlues: Blues,
+    interpolateBrBG: BrBG,
+    interpolateBuGn: BuGn,
+    interpolateBuPu: BuPu,
+    interpolateCividis: cividis,
+    interpolateCool: cool,
+    interpolateCubehelixDefault: cubehelix,
+    interpolateGnBu: GnBu,
+    interpolateGreens: Greens,
+    interpolateGreys: Greys,
+    interpolateInferno: inferno,
+    interpolateMagma: magma,
+    interpolateOrRd: OrRd,
+    interpolateOranges: Oranges,
+    interpolatePRGn: PRGn,
+    interpolatePiYG: PiYG,
+    interpolatePlasma: plasma,
+    interpolatePuBu: PuBu,
+    interpolatePuBuGn: PuBuGn,
+    interpolatePuOr: PuOr,
+    interpolatePuRd: PuRd,
+    interpolatePurples: Purples,
+    interpolateRainbow: rainbow,
+    interpolateRdBu: RdBu,
+    interpolateRdGy: RdGy,
+    interpolateRdPu: RdPu,
+    interpolateRdYlBu: RdYlBu,
+    interpolateRdYlGn: RdYlGn,
+    interpolateReds: Reds,
+    interpolateSinebow: sinebow,
+    interpolateSpectral: Spectral,
+    interpolateTurbo: turbo,
+    interpolateViridis: viridis,
+    interpolateWarm: warm,
+    interpolateYlGn: YlGn,
+    interpolateYlGnBu: YlGnBu,
+    interpolateYlOrBr: YlOrBr,
+    interpolateYlOrRd: YlOrRd,
     schemeAccent: Accent,
+    schemeBlues: scheme$5,
+    schemeBrBG: scheme$q,
+    schemeBuGn: scheme$h,
+    schemeBuPu: scheme$g,
+    schemeCategory10: category10,
     schemeDark2: Dark2,
+    schemeGnBu: scheme$f,
+    schemeGreens: scheme$4,
+    schemeGreys: scheme$3,
+    schemeOrRd: scheme$e,
+    schemeOranges: scheme,
+    schemePRGn: scheme$p,
     schemePaired: Paired,
     schemePastel1: Pastel1,
     schemePastel2: Pastel2,
+    schemePiYG: scheme$o,
+    schemePuBu: scheme$c,
+    schemePuBuGn: scheme$d,
+    schemePuOr: scheme$n,
+    schemePuRd: scheme$b,
+    schemePurples: scheme$2,
+    schemeRdBu: scheme$m,
+    schemeRdGy: scheme$l,
+    schemeRdPu: scheme$a,
+    schemeRdYlBu: scheme$k,
+    schemeRdYlGn: scheme$j,
+    schemeReds: scheme$1,
     schemeSet1: Set1,
     schemeSet2: Set2,
     schemeSet3: Set3,
-    schemeTableau10: Tableau10,
-    interpolateBrBG: BrBG,
-    schemeBrBG: scheme$q,
-    interpolatePRGn: PRGn,
-    schemePRGn: scheme$p,
-    interpolatePiYG: PiYG,
-    schemePiYG: scheme$o,
-    interpolatePuOr: PuOr,
-    schemePuOr: scheme$n,
-    interpolateRdBu: RdBu,
-    schemeRdBu: scheme$m,
-    interpolateRdGy: RdGy,
-    schemeRdGy: scheme$l,
-    interpolateRdYlBu: RdYlBu,
-    schemeRdYlBu: scheme$k,
-    interpolateRdYlGn: RdYlGn,
-    schemeRdYlGn: scheme$j,
-    interpolateSpectral: Spectral,
     schemeSpectral: scheme$i,
-    interpolateBuGn: BuGn,
-    schemeBuGn: scheme$h,
-    interpolateBuPu: BuPu,
-    schemeBuPu: scheme$g,
-    interpolateGnBu: GnBu,
-    schemeGnBu: scheme$f,
-    interpolateOrRd: OrRd,
-    schemeOrRd: scheme$e,
-    interpolatePuBuGn: PuBuGn,
-    schemePuBuGn: scheme$d,
-    interpolatePuBu: PuBu,
-    schemePuBu: scheme$c,
-    interpolatePuRd: PuRd,
-    schemePuRd: scheme$b,
-    interpolateRdPu: RdPu,
-    schemeRdPu: scheme$a,
-    interpolateYlGnBu: YlGnBu,
-    schemeYlGnBu: scheme$9,
-    interpolateYlGn: YlGn,
+    schemeTableau10: Tableau10,
     schemeYlGn: scheme$8,
-    interpolateYlOrBr: YlOrBr,
+    schemeYlGnBu: scheme$9,
     schemeYlOrBr: scheme$7,
-    interpolateYlOrRd: YlOrRd,
-    schemeYlOrRd: scheme$6,
-    interpolateBlues: Blues,
-    schemeBlues: scheme$5,
-    interpolateGreens: Greens,
-    schemeGreens: scheme$4,
-    interpolateGreys: Greys,
-    schemeGreys: scheme$3,
-    interpolatePurples: Purples,
-    schemePurples: scheme$2,
-    interpolateReds: Reds,
-    schemeReds: scheme$1,
-    interpolateOranges: Oranges,
-    schemeOranges: scheme,
-    interpolateCividis: cividis,
-    interpolateCubehelixDefault: cubehelix,
-    interpolateRainbow: rainbow,
-    interpolateWarm: warm,
-    interpolateCool: cool,
-    interpolateSinebow: sinebow,
-    interpolateTurbo: turbo,
-    interpolateViridis: viridis,
-    interpolateMagma: magma,
-    interpolateInferno: inferno,
-    interpolatePlasma: plasma
+    schemeYlOrRd: scheme$6
   });
 
   var index = {
@@ -35045,7 +35028,7 @@ ${svg}
     // Need to expose clip/erase routes in both directions by setting route
     // in both directions to visible -- this is how cut-out shapes are detected
     // Or-ing with 0x11 makes both directions visible (so reverse paths will block)
-    openArcRoutes(clipShapes, arcs, clipFlags, type == 'clip', type == 'erase', !!"dissolve", 0x11);
+    openArcRoutes(clipShapes, arcs, clipFlags, type == 'clip', type == 'erase', true, 0x11);
     var index = new PathIndex(clipShapes, arcs);
     var clippedShapes = targetShapes.map(function(shape, i) {
       if (shape) {
@@ -35461,8 +35444,8 @@ ${svg}
   var Bbox2Clipping = /*#__PURE__*/Object.freeze({
     __proto__: null,
     divideDatasetByBBox: divideDatasetByBBox,
-    segmentOutsideBBox: segmentOutsideBBox,
-    segmentInsideBBox: segmentInsideBBox
+    segmentInsideBBox: segmentInsideBBox,
+    segmentOutsideBBox: segmentOutsideBBox
   });
 
   cmd.clipLayers = function(target, src, dataset, opts) {
@@ -35628,10 +35611,10 @@ ${svg}
 
   var ClipErase = /*#__PURE__*/Object.freeze({
     __proto__: null,
-    clipLayersInPlace: clipLayersInPlace,
     clipLayers: clipLayers,
     clipLayersByBBox: clipLayersByBBox,
     clipLayersByLayer: clipLayersByLayer,
+    clipLayersInPlace: clipLayersInPlace,
     getClipMessage: getClipMessage
   });
 
@@ -36548,10 +36531,10 @@ ${svg}
 
   var Info = /*#__PURE__*/Object.freeze({
     __proto__: null,
-    getLayerInfo: getLayerInfo,
-    getAttributeTableInfo: getAttributeTableInfo,
     formatAttributeTableInfo: formatAttributeTableInfo,
-    formatTableValue: formatTableValue
+    formatTableValue: formatTableValue,
+    getAttributeTableInfo: getAttributeTableInfo,
+    getLayerInfo: getLayerInfo
   });
 
   // import { importGeoJSON } from '../geojson/geojson-import';
@@ -37038,12 +37021,12 @@ ${svg}
 
   var JoinTables = /*#__PURE__*/Object.freeze({
     __proto__: null,
-    joinTables: joinTables,
-    joinTableToLayer: joinTableToLayer,
-    validateFieldNames: validateFieldNames,
-    updateUnmatchedRecord: updateUnmatchedRecord,
     findCollisionFields: findCollisionFields,
-    getFieldsToJoin: getFieldsToJoin
+    getFieldsToJoin: getFieldsToJoin,
+    joinTableToLayer: joinTableToLayer,
+    joinTables: joinTables,
+    updateUnmatchedRecord: updateUnmatchedRecord,
+    validateFieldNames: validateFieldNames
   });
 
   cmd.divide = function(targetLayers, targetDataset, source, opts) {
@@ -38063,8 +38046,8 @@ ${svg}
 
   var FilterGeom = /*#__PURE__*/Object.freeze({
     __proto__: null,
-    getBBoxIntersectionTest: getBBoxIntersectionTest,
-    findShapesIntersectingBBox: findShapesIntersectingBBox
+    findShapesIntersectingBBox: findShapesIntersectingBBox,
+    getBBoxIntersectionTest: getBBoxIntersectionTest
   });
 
   cmd.filterFeatures = function(lyr, arcs, opts) {
@@ -38131,7 +38114,6 @@ ${svg}
     utils.repeat(n, function(shapeId) {
       var result = filter(shapeId);
       requireBooleanResult(result);
-      if (invert) result = !result;
       if (result === true) {
         if (shapes) filteredShapes.push(shapes[shapeId] || null);
         if (records) filteredRecords.push(records[shapeId] || null);
@@ -38451,7 +38433,6 @@ ${svg}
     var coords = [];
     var ascending = a[1] < b[1];
     if (a[0] != b[0]) error('Expected an edge segment');
-    if (interval > 0 === false) error('Expected a positive interval');
     if (ascending) {
       y1 = a[1];
       y2 = b[1];
@@ -39233,10 +39214,10 @@ ${svg}
 
   var PointPolygonJoin = /*#__PURE__*/Object.freeze({
     __proto__: null,
+    getPolygonToPointsFunction: getPolygonToPointsFunction,
     joinPointsToPolygons: joinPointsToPolygons,
     joinPolygonsToPoints: joinPolygonsToPoints,
-    prepJoinLayers: prepJoinLayers,
-    getPolygonToPointsFunction: getPolygonToPointsFunction
+    prepJoinLayers: prepJoinLayers
   });
 
   // This is a special-purpose function designed to copy a data field from a points
@@ -39884,9 +39865,9 @@ ${svg}
 
   var Lines = /*#__PURE__*/Object.freeze({
     __proto__: null,
-    polygonsToLines: polygonsToLines,
     createLineLayer: createLineLayer,
-    extractInnerLines: extractInnerLines
+    extractInnerLines: extractInnerLines,
+    polygonsToLines: polygonsToLines
   });
 
   function getClippingDataset(src, dest, opts) {
@@ -40190,8 +40171,8 @@ ${svg}
   var ProjectionParams = /*#__PURE__*/Object.freeze({
     __proto__: null,
     expandProjDefn: expandProjDefn,
-    getConicParams: getConicParams,
-    getCenterParams: getCenterParams
+    getCenterParams: getCenterParams,
+    getConicParams: getConicParams
   });
 
   cmd.proj = function(dataset, catalog, opts) {
@@ -40389,12 +40370,12 @@ ${svg}
 
   var Proj = /*#__PURE__*/Object.freeze({
     __proto__: null,
-    fetchCrsInfo: fetchCrsInfo,
-    projectDataset: projectDataset,
     cleanProjectedPathLayers: cleanProjectedPathLayers,
-    projectPointLayer: projectPointLayer,
+    fetchCrsInfo: fetchCrsInfo,
     projectArcs: projectArcs,
-    projectArcs2: projectArcs2
+    projectArcs2: projectArcs2,
+    projectDataset: projectDataset,
+    projectPointLayer: projectPointLayer
   });
 
   cmd.graticule = function(dataset, opts) {
@@ -40827,7 +40808,6 @@ ${svg}
     targetDataset.arcs = mergedDataset.arcs;
     prepJoinLayers(targetLyr, sourceLyr);
     var mergedLyr = {
-      geometry_type: 'polygon',
       shapes: targetLyr.shapes.concat(sourceLyr.shapes)
     };
     // make a mosaic from merged shapes of both layers
@@ -41097,7 +41077,7 @@ ${svg}
   function polylineToMidpoints(shp, arcs, opts) {
     if (!shp) return null;
     var points = shp.map(function(path) {
-      return findPathMidpoint(path, arcs, false);
+      return findPathMidpoint(path, arcs);
     });
     return points;
   }
@@ -41119,9 +41099,6 @@ ${svg}
       var k;
       if (partialLen + segLen >= halfLen) {
         k = (halfLen - partialLen) / segLen;
-        if (useNearestVertex) {
-          k = k < 0.5 ? 0 : 1;
-        }
         // p = [a + k * (c - a), b + k * (d - b)];
         p = [(1 - k) * a + k * c, (1 - k) * b + k * d];
       }
@@ -41430,10 +41407,10 @@ ${svg}
 
   var Points = /*#__PURE__*/Object.freeze({
     __proto__: null,
-    pointsFromPolygons: pointsFromPolygons,
     coordinateFromValue: coordinateFromValue,
     findXField: findXField,
-    findYField: findYField
+    findYField: findYField,
+    pointsFromPolygons: pointsFromPolygons
   });
 
   function joinPolygonsViaPoints(targetLyr, targetDataset, source, opts) {
@@ -41601,6 +41578,7 @@ ${svg}
   THIS SOFTWARE.
   */
 
+
   var earthRadius = 6371;
   var rad = Math.PI / 180;
 
@@ -41618,7 +41596,6 @@ ${svg}
           left: 0, // left index in the kd-tree array
           right: index.ids.length - 1, // right index
           axis: 0, // 0 for longitude axis and 1 for latitude axis
-          dist: 0, // will hold the lower bound of children's distances to the query point
           minLng: -180, // bounding box of the node
           minLat: -90,
           maxLng: 180,
@@ -41637,7 +41614,7 @@ ${svg}
               // add all points of the leaf node to the queue
               for (var i = left; i <= right; i++) {
                   item = index.points[index.ids[i]];
-                  if (!predicate || predicate(item)) {
+                  {
                       q.push({
                           i: index.ids[i],
                           item: item,
@@ -41654,7 +41631,7 @@ ${svg}
 
               // add middle point to the queue
               item = index.points[index.ids[m]];
-              if (!predicate || predicate(item)) {
+              {
                   q.push({
                       i: index.ids[m],
                       item: item,
@@ -41999,8 +41976,6 @@ ${svg}
   //
   function getHexGridMaker(bbox, interval, opts) {
     var flatTop = opts.type != 'hex2'; // hex2 is "pointy-top" orientation
-    // origin cell (bottom left) may be "outie" or "innie" ... could be settable
-    var outieOrigin = true;
     var minorInterval = interval * Math.sqrt(3) / 2;
     var _colCounts = _getColCounts(bbox, interval);
     var _rowCounts = _getRowCounts(bbox, interval);
@@ -42158,7 +42133,7 @@ ${svg}
     }
 
     function _isUpperCell(col) {
-      return isOdd(col) || !outieOrigin ;
+      return isOdd(col) || false;
     }
 
     function _idxToPoint(id) {
@@ -42770,8 +42745,7 @@ ${svg}
     var empty = [];
     points.forEach(function(p) {
       var bbox = getPointBounds(p, radius);
-      var addNeighbors = true; // TODO: only if radius is > 0?
-      addPointToGridIndex(p, gridIndex, grid, addNeighbors);
+      addPointToGridIndex(p, gridIndex, grid);
       bboxIndex.add.apply(bboxIndex, bbox);
     });
     bboxIndex.finish();
@@ -42795,7 +42769,7 @@ ${svg}
     var i = grid.pointToIdx(p);
     var [c, r] = grid.idxToColRow(i);
     addCellToGridIndex(c, r, grid, index);
-    if (addNeighbors) {
+    {
       grid.forEachNeighbor(c, r, function(c, r) {
         addCellToGridIndex(c, r, grid, index);
       });
@@ -42913,9 +42887,9 @@ ${svg}
 
   var PointToGrid = /*#__PURE__*/Object.freeze({
     __proto__: null,
-    getPointCircleRadius: getPointCircleRadius,
     calcCellProperties: calcCellProperties,
-    calcWeights: calcWeights
+    calcWeights: calcWeights,
+    getPointCircleRadius: getPointCircleRadius
   });
 
   function closeUndershoots(lyr, dataset, opts) {
@@ -43345,8 +43319,8 @@ ${svg}
   var ParseCommands = /*#__PURE__*/Object.freeze({
     __proto__: null,
     parseCommands: parseCommands,
-    standardizeConsoleCommands: standardizeConsoleCommands,
-    parseConsoleCommands: parseConsoleCommands
+    parseConsoleCommands: parseConsoleCommands,
+    standardizeConsoleCommands: standardizeConsoleCommands
   });
 
   function getIOProxy(job) {
@@ -43852,7 +43826,7 @@ ${svg}
 
     // create a queue of unwind targets
     queue = getUnwindTargets(intersections, zlim, data.zz);
-    utils.sortOn(queue, 'z', !!"ascending");
+    utils.sortOn(queue, 'z', true);
 
     while (queue.length > 0) {
       target = queue.pop();
@@ -44290,9 +44264,8 @@ ${svg}
   }
 
   function protectContentEdges(arcs) {
-    var e = 1e-14;
     var bb = arcs.getBounds();
-    bb.padBounds(-e, -e, -e, -e);
+    bb.padBounds(-1e-14, -1e-14, -1e-14, -1e-14);
     limitSimplificationExtent(arcs, bb.toArray(), true);
   }
 
@@ -44407,17 +44380,17 @@ ${svg}
 
   var Simplify = /*#__PURE__*/Object.freeze({
     __proto__: null,
-    finalizeSimplification: finalizeSimplification,
-    getStandardSimplifyOpts: getStandardSimplifyOpts,
-    useSphericalSimplify: useSphericalSimplify,
-    simplifyPaths: simplifyPaths,
-    getSimplifyMethod: getSimplifyMethod,
-    protectWorldEdges: protectWorldEdges,
-    parseSimplifyResolution: parseSimplifyResolution,
     calcPlanarInterval: calcPlanarInterval,
     calcSphericalInterval: calcSphericalInterval,
     convertSimplifyInterval: convertSimplifyInterval,
-    convertSimplifyResolution: convertSimplifyResolution
+    convertSimplifyResolution: convertSimplifyResolution,
+    finalizeSimplification: finalizeSimplification,
+    getSimplifyMethod: getSimplifyMethod,
+    getStandardSimplifyOpts: getStandardSimplifyOpts,
+    parseSimplifyResolution: parseSimplifyResolution,
+    protectWorldEdges: protectWorldEdges,
+    simplifyPaths: simplifyPaths,
+    useSphericalSimplify: useSphericalSimplify
   });
 
   cmd.sortFeatures = function(lyr, arcs, opts) {
@@ -45254,7 +45227,6 @@ ${svg}
       return name + '_' + n;
     });
     var mergedLyr = {
-      geometry_type: 'polygon',
       shapes: allShapes
     };
     var mosaicIndex = new MosaicIndex(mergedLyr, nodes, {flat: false});
@@ -46069,7 +46041,7 @@ ${svg}
     });
   }
 
-  var version = "0.6.103";
+  var version = "0.6.104";
 
   // Parse command line args into commands and run them
   // Function takes an optional Node-style callback. A Promise is returned if no callback is given.
@@ -46393,12 +46365,12 @@ ${svg}
 
   var RunCommands = /*#__PURE__*/Object.freeze({
     __proto__: null,
-    runCommands: runCommands,
     applyCommands: applyCommands,
+    runAndRemoveInfoCommands: runAndRemoveInfoCommands,
+    runCommands: runCommands,
     runCommandsXL: runCommandsXL,
-    testCommands: testCommands,
     runParsedCommands: runParsedCommands,
-    runAndRemoveInfoCommands: runAndRemoveInfoCommands
+    testCommands: testCommands
   });
 
   // Return an array containing points from a path iterator, clipped to a bounding box
