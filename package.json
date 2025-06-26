@@ -28,7 +28,6 @@
     "lint": "eslint --ext mjs src/",
     "prepublishOnly": "npm lint; npm test; ./pre-publish",
     "postpublish": "./release_web_ui; ./release_github_version",
-    "browserify": "browserify -r sync-request -r mproj -r buffer -r iconv-lite -r fs -r flatbush -r rw -r path -r kdbush -r @tmcw/togeojson -r @placemarkio/tokml -r 'idb-keyval' -o www/modules.js",
     "dev": "rollup --config --watch"
   },
   "main": "./mapshaper.js",
@@ -64,9 +63,9 @@
     "tinyqueue": "^2.0.3"
   },
   "devDependencies": {
+    "@rollup/plugin-commonjs": "^28.0.6",
     "@rollup/plugin-json": "^6.0.1",
     "@rollup/plugin-node-resolve": "^13.3.0",
-    "browserify": "^17.0.0",
     "csv-spectrum": "^1.0.0",
     "eslint": "^8.16.0",
     "mocha": "^10.2.0",

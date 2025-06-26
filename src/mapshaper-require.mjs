@@ -1,13 +1,15 @@
-// Several dependencies are loaded via require() ... this module returns a
-// stub function when require() does not exist as a global function,
-// to avoid runtime errors (this should only happen in some tests when single
-// modules are imported)
+// Several dependencies are loaded via require()
 var f;
 if (typeof require == 'function') {
+  // Node.js context: native require() function
   f = require;
-} else {
-  f = function() {
-    // console.error('Unable to load module', name);
+} else if (typeof window == 'object' && window.modules) {
+  // running in web GUI
+  f = function(name) {
+    return window.modules[name];
   };
+} else {
+  // stub to avoid runtime error in a handful of tests
+  f = function() {};
 }
 export default f;

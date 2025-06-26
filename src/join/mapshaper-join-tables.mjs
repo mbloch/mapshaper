@@ -39,7 +39,7 @@ export function joinTableToLayer(destLyr, src, join, opts) {
       collisionFields = [],
       skipCount = 0,
       retn = {},
-      srcRec, srcId, destRec, joins, count, filter, calc, i, j, n, m;
+      srcRec, srcId, destRec, joinIds, count, filter, calc, i, j, n, m;
 
   // support for duplication of destination records for many-to-one joins
   var duplicateRecords, destShapes;
@@ -61,14 +61,14 @@ export function joinTableToLayer(destLyr, src, join, opts) {
   n = destRecords.length;
   for (i=0; i<n; i++) {
     destRec = destRecords[i];
-    joins = join(i);
-    if (joins && filter) {
-      skipCount += joins.length;
-      joins = filter(joins, destRec);
-      skipCount -= joins.length;
+    joinIds = join(i);
+    if (joinIds && filter) {
+      skipCount += joinIds.length;
+      joinIds = filter(joinIds, destRec);
+      skipCount -= joinIds.length;
     }
-    for (j=0, count=0, m=joins ? joins.length : 0; j<m; j++) {
-      srcId = joins[j];
+    for (j=0, count=0, m=joinIds ? joinIds.length : 0; j<m; j++) {
+      srcId = joinIds[j];
       srcRec = srcRecords[srcId];
       // duplication mode: many-to-one joins add new features to the target layer.
       if (count > 0 && useDuplication) {
@@ -94,7 +94,7 @@ export function joinTableToLayer(destLyr, src, join, opts) {
       count++;
     }
     if (calc) {
-      calc(joins, destRec);
+      calc(joinIds, destRec);
     }
     if (count > 0) {
       matchCount++;
