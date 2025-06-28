@@ -12,8 +12,6 @@ const onBundle = {
   name: 'onbundle',
   writeBundle() {
     // copy mapshaper.js to www/
-    // const fs = require('fs');
-    // const path = require('path');
     const src = path.join(__dirname, 'mapshaper.js');
     const dest = path.join(__dirname, 'www/mapshaper.js');
     fs.writeFileSync(dest, fs.readFileSync(src));
@@ -38,7 +36,7 @@ export default [{
   },
   plugins: [
     nodeResolve({
-      browser: true,        // Use browser versions of packages when available
+      browser: true, // Use browser versions of packages when available
       preferBuiltins: false
     }),
     commonjs(),
