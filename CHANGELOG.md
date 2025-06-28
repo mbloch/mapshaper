@@ -1,3 +1,6 @@
+v0.6.105
+* Updated basemap api keys
+
 v0.6.104
 * Updated rollup
 

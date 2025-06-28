@@ -187,7 +187,7 @@ export function getShapeHitTest(layer, ext, interactionMode, featureFilter) {
         }
       });
       return {
-        ids: hits
+        ids: utils.uniq(hits)
       };
     };
   }

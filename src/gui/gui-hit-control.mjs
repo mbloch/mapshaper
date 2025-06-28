@@ -24,7 +24,7 @@ export function HitControl(gui, ext, mouse) {
   mouse.on('contextmenu', function(e) {
     e.originalEvent.preventDefault();
     if (El('body').hasClass('map-view')) {
-      triggerHitEvent('contextmenu', e);
+      triggerPointerEvent('contextmenu', e);
     }
   });
 
@@ -120,7 +120,7 @@ export function HitControl(gui, ext, mouse) {
     if (storedData.id == id) return;
     storedData.id = id;
     storedData.ids = id == -1 ? [] : [id];
-    triggerHitEvent('change');
+    triggerChangeEvent();
   };
 
   // Get a reference to the active layer, so listeners to hit events can interact
@@ -139,7 +139,7 @@ export function HitControl(gui, ext, mouse) {
   self.setPinning = function(val) {
     if (pinnedOn != val) {
       pinnedOn = val;
-      triggerHitEvent('change');
+      triggerChangeEvent();
     }
   };
 
@@ -147,7 +147,7 @@ export function HitControl(gui, ext, mouse) {
     // turnOn('selection');
     transientIds = ids || [];
     if (active) {
-      triggerHitEvent('change');
+      triggerChangeEvent();
     }
   };
 
@@ -162,9 +162,9 @@ export function HitControl(gui, ext, mouse) {
     self.triggerChangeEvent();
   };
 
-  self.triggerChangeEvent = function() {
-    triggerHitEvent('change');
-  };
+  self.triggerChangeEvent = triggerChangeEvent;
+
+  self.getHitState = getHitState;
 
   self.clearDrawingId = function() {
     self.setDrawingId(-1);
@@ -176,14 +176,14 @@ export function HitControl(gui, ext, mouse) {
     if (p2 && p2[0] == p[0] && p2[1] == p[1]) return;
     storedData.hit_coordinates = p;
     storedData.hit_type = type || '';
-    triggerHitEvent('change');
+    triggerChangeEvent();
   };
 
   self.clearHoverVertex = function() {
     if (!storedData.hit_coordinates) return;
     delete storedData.hit_coordinates;
     delete storedData.hit_type;
-    triggerHitEvent('change');
+    triggerChangeEvent();
   };
 
   self.clearSelection = function() {
@@ -217,7 +217,7 @@ export function HitControl(gui, ext, mouse) {
     if (n < 2 || pinnedId() == -1) return;
     storedData.id = (pinnedId() + n + diff) % n;
     storedData.ids = [storedData.id];
-    triggerHitEvent('change');
+    triggerChangeEvent();
   }
 
   // diff: 1 or -1
@@ -227,7 +227,7 @@ export function HitControl(gui, ext, mouse) {
     var n = storedData.ids.length;
     if (i < 0 || n < 2) return;
     storedData.id = storedData.ids[(i + diff + n) % n];
-    triggerHitEvent('change');
+    triggerChangeEvent();
   }
 
   // make sure popup is unpinned and turned off when switching editing modes
@@ -254,7 +254,6 @@ export function HitControl(gui, ext, mouse) {
   mouse.on('drag', handlePointerEvent, null, priority);
   mouse.on('dragend', handlePointerEvent, null, priority);
 
-
   mouse.on('click', function(e) {
     var pinned = storedData.pinned;
     if (!hitTest || !active) return;
@@ -271,7 +270,7 @@ export function HitControl(gui, ext, mouse) {
       // a new point doesn't get made
       return;
     }
-    triggerHitEvent('click', e);
+    triggerPointerEvent('click', e);
   }, null, priority);
 
   // Hits are re-detected on 'hover' (if hit detection is active)
@@ -385,7 +384,7 @@ export function HitControl(gui, ext, mouse) {
     storedData = newData;
     gui.container.findChild('.map-layers').classed('symbol-hit', nonEmpty);
     if (active) {
-      triggerHitEvent('change');
+      triggerChangeEvent();
     }
   }
 
@@ -437,40 +436,50 @@ export function HitControl(gui, ext, mouse) {
   function handlePointerEvent(e) {
     if (eventIsEnabled(e.type)) {
       possiblyStopPropagation(e);
-      triggerHitEvent(e.type, e);
+      triggerPointerEvent(e.type, e);
     }
   }
 
+  function triggerChangeEvent() {
+    self.dispatchEvent('change', getHitState());
+  }
+
   // evt: event data (may be a pointer event object, an ordinary object or null)
-  function triggerHitEvent(type, evt) {
-    var eventData = {
-      mode: interactionMode()
-    };
+  function triggerPointerEvent(type, evt) {
+    var eventData = getHitState();
     if (evt) {
       // data coordinates
       eventData.projected_coordinates = gui.map.pixelCoordsToProjectedCoords(evt.x, evt.y);
       eventData.lonlat_coordinates = gui.map.pixelCoordsToLngLatCoords(evt.x, evt.y);
       eventData.originalEvent = evt;
       eventData.overMap = isOverMap(evt);
+      utils.defaults(eventData, evt.data);
     }
+    // utils.defaults(eventData, evt && evt.data || {}, storedData);
+    self.dispatchEvent(type, eventData);
+  }
+
+  function getHitState() {
+    var data = {
+      mode: interactionMode()
+    };
     // Merge stored hit data into the event data
-    utils.defaults(eventData, evt && evt.data || {}, storedData);
-    // utils.extend(eventData, storedData);
+    utils.defaults(data, storedData);
     if (transientIds.length) {
       // add transient ids to any other hit ids
-      eventData.ids = utils.uniq(transientIds.concat(eventData.ids || []));
+      data.ids = utils.uniq(transientIds.concat(data.ids || []));
     }
     // when drawing, we want the overlay layer to show the path being currently
     // drawn.
     if (drawingId >= 0) {
-      // eventData.ids = [drawingId];
-      // eventData.id = drawingId;
-      eventData.ids = utils.uniq(eventData.ids.concat([drawingId]));
+      // data.ids = [drawingId];
+      // data.id = drawingId;
+      data.ids = utils.uniq(data.ids.concat([drawingId]));
     }
     if (pinnedOn) {
-      eventData.pinned = true;
+      data.pinned = true;
     }
-    self.dispatchEvent(type, eventData);
+    return data;
   }
 
   // Test if two hit data objects are equivalent

@@ -202,12 +202,14 @@ export function Basemap(gui) {
   }
 
   function initMap() {
+    var accessToken = (window.location.hostname == 'localhost' ?
+      params.localhost_key : params.production_key) || params.key;
     if (!enabled() || map || loading) return;
     loading = true;
     loadStylesheet(params.css);
     loadScript(params.js, function() {
       map = new window.mapboxgl.Map({
-        accessToken: params.key,
+        accessToken: accessToken,
         logoPosition: 'bottom-left',
         container: mapEl.node(),
         style: activeStyle.url,
