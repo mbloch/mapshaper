@@ -65,7 +65,7 @@ export function runCommandsXL(argv) {
   }
   if (!loggingEnabled()) argv += ' -quiet'; // kludge to pass logging setting to subprocess
   var mb = Math.round(gb * 1000);
-  var command = [process.execPath, '--max-old-space-size=' + mb, mapshaperScript, argv].join(' ');
+  var command = [`"${process.execPath}"`, '--max-old-space-size=' + mb, `"${mapshaperScript}"`, argv].join(' ');
   var child = require('child_process').exec(command, {}, function(err, stdout, stderr) {
     opts.callback(err);
   });
