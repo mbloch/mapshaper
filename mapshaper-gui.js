@@ -1156,7 +1156,7 @@
   }
 
 
-  function adjustPointSymbolSizes(layers, overlayLyr, ext) {
+  function calcDotScale(layers, ext) {
     var bbox = ext.getBounds().scale(1.3).toArray(); // add buffer
     // var topTier = 50000; // can be a bottleneck
     var topTier = 10000; // short-circuit counting here
@@ -1180,17 +1180,10 @@
       k *= Math.pow(mapScale, 0.02);
     }
 
-
     // scale down when map is small
     var smallSide = Math.min(ext.width(), ext.height());
     k *= utils$1.clamp(smallSide / 500, 0.5, 1);
-
-    layers.forEach(function(lyr) {
-      lyr.gui.style.dotScale = k;
-    });
-    if (overlayLyr && overlayLyr.geometry_type == 'point' && overlayLyr.gui.style.dotSize > 0) {
-      overlayLyr.gui.style.dotScale = k;
-    }
+    return k;
   }
 
   function countPoints(shapes, max, bbox) {
@@ -2752,349 +2745,6 @@
 
   function isProjectedLayer(lyr) {
     return !!lyr?.gui.invertPoint;
-  }
-
-  var darkStroke = "#334",
-      lightStroke = "#b7d9ea",
-      violet = "#cc6acc",
-      violetFill = "rgba(249, 120, 249, 0.20)",
-      gold = "#efc100",
-      black = "black",
-      grey = "#888",
-      selectionFill = "rgba(237, 214, 0, 0.12)",
-      hoverFill = "rgba(255, 120, 255, 0.12)",
-      activeStyle = { // outline style for the active layer
-        type: 'outline',
-        strokeColors: [lightStroke, darkStroke],
-        strokeWidth: 0.8,
-        dotColor: "#223",
-        dotSize: 1
-      },
-      activeStyleDarkMode = {
-        type: 'outline',
-        strokeColors: [lightStroke, 'white'],
-        strokeWidth: 0.9,
-        dotColor: 'white',
-        dotSize: 1
-      },
-      activeStyleForLabels = {
-        dotColor: "rgba(250, 0, 250, 0.45)", // violet dot with transparency
-        dotSize: 1
-      },
-      referenceStyle = { // outline style for reference layers
-        type: 'outline',
-        strokeColors: [null, '#78c110'], // upped saturation from #86c927
-        strokeWidth: 0.85,
-        dotColor: "#73ba20",
-        dotSize: 1
-      },
-      intersectionStyle = {
-        dotColor: "#F24400",
-        dotSize: 1
-      },
-      hoverStyles = {
-        polygon: {
-          fillColor: hoverFill,
-          strokeColor: black,
-          strokeWidth: 1.2
-        }, point:  {
-          dotColor: violet, // black,
-          dotSize: 2.5
-        }, polyline: {
-          strokeColor: black,
-          strokeWidth: 2.5,
-        }
-      },
-      unselectedHoverStyles = {
-        polygon: {
-          fillColor: 'rgba(0,0,0,0)',
-          strokeColor: black,
-          strokeWidth: 1.2
-        }, point:  {
-          dotColor: black, // grey,
-          dotSize: 2
-        }, polyline:  {
-          strokeColor: black, // grey,
-          strokeWidth: 2.5
-        }
-      },
-      selectionStyles = {
-        polygon: {
-          fillColor: hoverFill,
-          strokeColor: black,
-          strokeWidth: 1.2
-        }, point:  {
-          dotColor: violet, // black,
-          dotSize: 1.5
-        }, polyline:  {
-          strokeColor: violet, //  black,
-          strokeWidth: 2.5
-        }
-      },
-      // not used
-      selectionHoverStyles = {
-        polygon: {
-          fillColor: selectionFill,
-          strokeColor: black,
-          strokeWidth: 1.2
-        }, point:  {
-          dotColor: black,
-          dotSize: 1.5
-        }, polyline:  {
-          strokeColor: black,
-          strokeWidth: 2
-        }
-      },
-      pinnedStyles = {
-        polygon: {
-          fillColor: violetFill,
-          strokeColor: violet,
-          strokeWidth: 1.8
-        }, point:  {
-          dotColor: violet,
-          dotSize: 3
-        }, polyline:  {
-          strokeColor: violet, // black, // violet,
-          strokeWidth: 3
-        }
-      };
-
-  function getIntersectionStyle(lyr, opts) {
-    return getDefaultStyle(lyr, intersectionStyle);
-  }
-
-  // Display style for unselected layers with visibility turned on
-  // (may be fully styled or outlined)
-  function getReferenceLayerStyle(lyr, opts) {
-    var style;
-    if (layerHasCanvasDisplayStyle(lyr) && !opts.outlineMode) {
-      style = getCanvasDisplayStyle(lyr);
-    } else if (internal.layerHasLabels(lyr) && !opts.outlineMode) {
-      style = {dotSize: 0}; // no reference dots if labels are visible
-    } else {
-      style = getDefaultStyle(lyr, referenceStyle);
-    }
-    return style;
-  }
-
-  function getActiveLayerStyle(lyr, opts) {
-    var style;
-    if (layerHasCanvasDisplayStyle(lyr) && !opts.outlineMode) {
-      style = getCanvasDisplayStyle(lyr);
-    } else if (internal.layerHasLabels(lyr) && !opts.outlineMode) {
-      style = getDefaultStyle(lyr, activeStyleForLabels);
-    } else if (opts.darkMode) {
-      style = getDefaultStyle(lyr, activeStyleDarkMode);
-    } else {
-      style = getDefaultStyle(lyr, activeStyle);
-    }
-    return style;
-  }
-
-  // Returns a display style for the overlay layer.
-  // The overlay layer renders several kinds of feature, each of which is displayed
-  // with a different style.
-  //
-  // * hover shapes
-  // * selected shapes
-  // * pinned shapes
-  //
-  function getOverlayStyle(baseLyr, o, opts) {
-    if (opts.interactionMode == 'vertices') {
-      return getVertexStyle(baseLyr, o);
-    }
-    if (opts.interactionMode == 'edit_lines' ||
-        opts.interactionMode == 'edit_polygons') {
-      return getLineEditingStyle(o);
-    }
-    var geomType = baseLyr.geometry_type;
-    var topId = o.id; // pinned id (if pinned) or hover id
-    var topIdx = -1;
-    var styler = function(style, i) {
-      var defaultStyle = i === topIdx ? topStyle : outlineStyle;
-      if (baseStyle.styler) {
-        // TODO: render default stroke widths without scaling
-        // (will need to pass symbol scale to the styler function)
-        style.strokeWidth = defaultStyle.strokeWidth;
-        baseStyle.styler(style, i); // get styled stroke width (if set)
-        style.strokeColor = defaultStyle.strokeColor;
-        style.fillColor = defaultStyle.fillColor;
-      } else {
-        Object.assign(style, defaultStyle);
-      }
-    };
-    var baseStyle = getActiveLayerStyle(baseLyr, opts);
-    var outlineStyle = getDefaultStyle(baseLyr, selectionStyles[geomType]);
-    var topStyle;
-    var ids = o.ids.filter(function(i) {
-      return i != o.id; // move selected id to the end
-    });
-    if (o.id > -1) { // pinned or hover style
-      topStyle = getSelectedFeatureStyle(baseLyr, o, opts);
-      topIdx = ids.length;
-      ids.push(o.id); // put the pinned/hover feature last in the render order
-    }
-    var style = {
-      baseStyle: baseStyle,
-      styler,
-      ids,
-      overlay: true
-    };
-
-    if (layerHasCanvasDisplayStyle(baseLyr) && !opts.outlineMode) {
-      if (geomType == 'point') {
-        style.styler = getOverlayPointStyler(getCanvasDisplayStyle(baseLyr).styler, styler);
-      }
-      style.type = 'styled';
-    }
-    return ids.length > 0 ? style : null;
-  }
-
-
-  function getDefaultStyle(lyr, baseStyle) {
-    return Object.assign({}, baseStyle);
-  }
-
-
-  // style for vertex edit mode
-  function getVertexStyle(lyr, o) {
-    return {
-      ids: o.ids,
-      overlay: true,
-      strokeColor: black,
-      strokeWidth: 1.5,
-      vertices: true,
-      vertex_overlay: o.hit_coordinates || null,
-      selected_points: o.selected_points || null,
-      fillColor: null
-    };
-  }
-
-  // style for vertex edit mode
-  function getLineEditingStyle(o) {
-    return {
-      ids: o.ids,
-      overlay: true,
-      strokeColor: 'black',
-      strokeWidth: 1.2,
-      vertices: true,
-      vertex_overlay_color: o.hit_type == 'vertex' ? violet : black,
-      vertex_overlay_scale: o.hit_type == 'vertex' ? 2.5 : 2,
-      vertex_overlay: o.hit_coordinates || null,
-      selected_points: o.selected_points || null,
-      fillColor: null
-    };
-  }
-
-
-  function getSelectedFeatureStyle(lyr, o, opts) {
-    var isPinned = o.pinned;
-    var inSelection = o.ids.indexOf(o.id) > -1;
-    var geomType = lyr.geometry_type;
-    var style;
-    if (isPinned && opts.interactionMode == 'rectangles') {
-      // kludge for rectangle editing mode
-      style = selectionStyles[geomType];
-    } else if (isPinned) {
-      // a feature is pinned
-      style = pinnedStyles[geomType];
-    } else if (inSelection) {
-      // normal hover, or hover id is in the selection set
-      style = hoverStyles[geomType];
-    } else {
-      // features are selected, but hover id is not in the selection set
-      style = unselectedHoverStyles[geomType];
-    }
-    return getDefaultStyle(lyr, style);
-  }
-
-  // Modify style to use scaled circle instead of dot symbol
-  function getOverlayPointStyler(baseStyler, overlayStyler) {
-    return function(obj, i) {
-      var dotColor;
-      var id = obj.ids ? obj.ids[i] : -1;
-      obj.strokeWidth = 0; // kludge to support setting minimum stroke width
-      baseStyler(obj, id);
-      if (overlayStyler) {
-        overlayStyler(obj, i);
-      }
-      dotColor = obj.dotColor;
-      if (obj.radius && dotColor) {
-        obj.radius += 0.4;
-        // delete obj.fillColor; // only show outline
-        obj.fillColor = dotColor; // comment out to only highlight stroke
-        obj.strokeColor = dotColor;
-        obj.strokeWidth = Math.max(obj.strokeWidth + 0.8, 1.5);
-        obj.opacity = 1;
-      }
-    };
-  }
-
-  function getCanvasDisplayStyle(lyr) {
-    var styleIndex = {
-          opacity: 'opacity',
-          r: 'radius',
-          'fill': 'fillColor',
-          'fill-pattern': 'fillPattern',
-          'fill-effect': 'fillEffect',
-          'fill-opacity': 'fillOpacity',
-          'stroke': 'strokeColor',
-          'stroke-width': 'strokeWidth',
-          'stroke-dasharray': 'lineDash',
-          'stroke-opacity': 'strokeOpacity',
-          'stroke-linecap': 'lineCap',
-          'stroke-linejoin': 'lineJoin',
-          'stroke-miterlimit': 'miterLimit'
-        },
-        // array of field names of relevant svg display properties
-        fields = getCanvasStyleFields(lyr).filter(function(f) {return f in styleIndex;}),
-        records = lyr.data.getRecords();
-
-    var styler = function(style, i) {
-      var rec = records[i];
-      var fname, val;
-      for (var j=0; j<fields.length; j++) {
-        fname = fields[j];
-        val = rec && rec[fname];
-        if (val == 'none') {
-          val = 'transparent'; // canvas equivalent of CSS 'none'
-        }
-        // convert svg property name to mapshaper style equivalent
-        style[styleIndex[fname]] = val;
-      }
-
-      if (style.strokeWidth && !style.strokeColor) {
-        style.strokeColor = 'black';
-      }
-      if (!('strokeWidth' in style) && style.strokeColor) {
-        style.strokeWidth = 1;
-      }
-      if (style.radius > 0 && !style.strokeWidth && !style.fillColor && lyr.geometry_type == 'point') {
-        style.fillColor = 'black';
-      }
-    };
-    var style = {styler: styler, type: 'styled'};
-    // use squares if radius is missing... (TODO: check behavior with labels, etc)
-    if (lyr.geometry_type == 'point' && fields.includes('r') === false) {
-      style.dotSize = 1;
-    }
-    return style;
-  }
-
-  // check if layer should be displayed with a full style
-  function layerHasCanvasDisplayStyle(lyr) {
-    var fields = getCanvasStyleFields(lyr);
-    if (lyr.geometry_type == 'point') {
-      // return fields.indexOf('r') > -1; // require 'r' field for point symbols
-      return fields.includes('fill') || fields.includes('r'); // support colored squares
-    }
-    return utils$1.difference(fields, ['opacity', 'class']).length > 0;
-  }
-
-
-  function getCanvasStyleFields(lyr) {
-    var fields = lyr.data ? lyr.data.getFields() : [];
-    return internal.findPropertiesBySymbolGeom(fields, lyr.geometry_type);
   }
 
   // Create low-detail versions of large arc collections for faster rendering
@@ -10368,6 +10018,211 @@
     return _self;
   }
 
+  var selectionFill = "rgba(237, 214, 0, 0.12)",
+      // hoverFill = "rgba(255, 120, 255, 0.12)",
+      hoverFill = "rgba(0, 0, 0, 0.08)",
+      grey = "#888",
+      violet = "#cc6acc",
+      black = 'black',
+      violetFill = "rgba(249, 120, 249, 0.25)",
+      hoverStyles = {
+        polygon: {
+          fillColor: hoverFill,
+          strokeColor: black,
+          strokeWidth: 1.2
+        }, point:  {
+          dotColor: black, // violet, // black,
+          dotSize: 2.5
+        }, polyline: {
+          strokeColor: black,
+          strokeWidth: 2,
+        }
+      },
+      unselectedHoverStyles = {
+        polygon: {
+          fillColor: 'rgba(0,0,0,0)',
+          strokeColor: black,
+          strokeWidth: 1.2
+        }, point:  {
+          dotColor: black, // grey,
+          dotSize: 2
+        }, polyline:  {
+          strokeColor: black, // grey,
+          strokeWidth: 2.5
+        }
+      },
+      selectionStyles = {
+        polygon: {
+          fillColor: hoverFill,
+          strokeColor: black,
+          strokeWidth: 1.2
+        }, point:  {
+          dotColor: violet, // black,
+          dotSize: 1.5
+        }, polyline:  {
+          strokeColor: violet, //  black,
+          strokeWidth: 2.5
+        }
+      },
+      // currently not used -- selection hover is not styled
+      selectionHoverStyles = {
+        polygon: {
+          fillColor: selectionFill,
+          strokeColor: black,
+          strokeWidth: 1.2
+        }, point:  {
+          dotColor: black,
+          dotSize: 1.5
+        }, polyline:  {
+          strokeColor: black,
+          strokeWidth: 2
+        }
+      },
+      pinnedStyles = {
+        polygon: {
+          fillColor: violetFill,
+          strokeColor: violet,
+          strokeWidth: 1.8
+        }, point:  {
+          dotColor: violet,
+          dotSize: 3
+        }, polyline:  {
+          strokeColor: violet,
+          strokeWidth: 2.4
+        }
+      };
+
+  function getOverlayLayers(activeLyr, hitData, styleOpts) {
+    if (activeLyr.hidden || !activeLyr?.gui?.style) return [];
+    var displayLyr = activeLyr.gui.displayLayer;
+    var layers, lyr, outlineStyle, ids;
+    if (styleOpts.interactionMode == 'vertices') {
+      // special overlay: vertex editing mode
+      lyr = getOverlayLayer(activeLyr, hitData.ids);
+      lyr.gui.style = getVertexStyle(hitData);
+      return [lyr];
+    }
+    if (styleOpts.interactionMode == 'edit_lines' ||
+      styleOpts.interactionMode == 'edit_polygons') {
+      // special overlay: shape editing mode
+      lyr = getOverlayLayer(activeLyr, hitData.ids);
+      lyr.gui.style = getLineEditingStyle(hitData);
+      return [lyr];
+    }
+    layers = [];
+    // layer containing selected features, not including hover or pinned feature
+    ids = utils$1.difference(hitData.ids || [], [hitData.id]);
+    if (ids.length > 0) {
+      lyr = getOverlayLayer(activeLyr, ids);
+      outlineStyle = selectionStyles[displayLyr.geometry_type];
+      lyr.gui.style = getOverlayStyle(activeLyr, ids, outlineStyle);
+      layers.push(lyr);
+    }
+    // layer containing a single hover or pinned feature
+    if (hitData.id > -1) {
+      ids = [hitData.id];
+      lyr = getOverlayLayer(activeLyr, ids);
+      outlineStyle = getSelectedFeatureStyle(displayLyr, hitData, styleOpts);
+      lyr.gui.style = getOverlayStyle(activeLyr, ids, outlineStyle);
+      layers.push(lyr);
+    }
+    return layers;
+  }
+
+  function getOverlayLayer(activeLyr, ids) {
+    var displayLayer = filterLayerByIds(activeLyr.gui.displayLayer, ids);
+    var gui = Object.assign({}, activeLyr.gui, {style: null, displayLayer});
+    return Object.assign({}, activeLyr, {gui});
+  }
+
+  function getOverlayStyle(baseLyr, ids, outlineStyle) {
+    var geomType = baseLyr.gui.displayLayer.geometry_type;
+    var baseStyle = baseLyr.gui.style;
+    var baseStyler = baseStyle.styler || null;
+    var styler = function(style, i) {
+      if (!baseStyler) {
+        // e.g. polygons in 'outline' mode
+        Object.assign(style, outlineStyle);
+        return;
+      }
+      var idx = ids[i];
+      baseStyler(style, idx);
+      if (geomType == 'point') {
+        if (style.radius > 0) {
+          style.radius += 0.8;
+          if (style.strokeWidth > 0) {
+            style.strokeColor = outlineStyle.dotColor;
+          }
+        }
+        style.fillColor = outlineStyle.dotColor;
+      } else {
+        style.strokeColor = outlineStyle.strokeColor;
+        style.fillColor = outlineStyle.fillColor;
+        style.strokeWidth = Math.max(outlineStyle.strokeWidth, style.strokeWidth || 0);
+      }
+      style.opacity = 1;
+      style.fillOpacity = 1;
+      style.strokeOpacity = 1;
+    };
+    var style = Object.assign({}, baseStyle, {ids, overlay: true, type: 'styled', styler});
+    if (baseStyle.dotSize > 0) {
+      // dot size must be a static property (not applied by styler function)
+      style.dotSize = outlineStyle.dotSize;
+    }
+    return style;
+  }
+
+  // style for vertex edit mode
+  function getVertexStyle(o) {
+    return {
+      ids: o.ids,
+      overlay: true,
+      strokeColor: black,
+      strokeWidth: 1.5,
+      vertices: true,
+      vertex_overlay: o.hit_coordinates || null,
+      selected_points: o.selected_points || null,
+      fillColor: null
+    };
+  }
+
+  // style for vertex edit mode
+  function getLineEditingStyle(o) {
+    return {
+      ids: o.ids,
+      overlay: true,
+      strokeColor: black,
+      strokeWidth: 1.2,
+      vertices: true,
+      vertex_overlay_color: o.hit_type == 'vertex' ? violet : black,
+      vertex_overlay_scale: o.hit_type == 'vertex' ? 2.5 : 2,
+      vertex_overlay: o.hit_coordinates || null,
+      selected_points: o.selected_points || null,
+      fillColor: null
+    };
+  }
+
+  function getSelectedFeatureStyle(lyr, o, opts) {
+    var isPinned = o.pinned;
+    var inSelection = o.ids.indexOf(o.id) > -1;
+    var geomType = lyr.geometry_type;
+    var style;
+    if (isPinned && opts.interactionMode == 'rectangles') {
+      // kludge for rectangle editing mode
+      style = selectionStyles[geomType];
+    } else if (isPinned) {
+      // a feature is pinned
+      style = pinnedStyles[geomType];
+    } else if (inSelection) {
+      // normal hover, or hover id is in the selection set
+      style = hoverStyles[geomType];
+    } else {
+      // features are selected, but hover id is not in the selection set
+      style = unselectedHoverStyles[geomType];
+    }
+    return Object.assign({}, style);
+  }
+
   function isMultilineLabel(textNode) {
     return textNode.childNodes.length > 1;
   }
@@ -11399,6 +11254,141 @@
     initLineEditing(gui, ext, hit);
   }
 
+  var darkStroke = "#334",
+      lightStroke = "#b7d9ea",
+      activeStyle = { // outline style for the active layer
+        type: 'outline',
+        strokeColors: [lightStroke, darkStroke],
+        strokeWidth: 0.8,
+        dotColor: "#223",
+        dotSize: 1
+      },
+      activeStyleDarkMode = {
+        type: 'outline',
+        strokeColors: [lightStroke, 'white'],
+        strokeWidth: 0.9,
+        dotColor: 'white',
+        dotSize: 1
+      },
+      activeStyleForLabels = {
+        dotColor: "rgba(250, 0, 250, 0.45)", // violet dot with transparency
+        dotSize: 1
+      },
+      referenceStyle = { // outline style for reference layers
+        type: 'outline',
+        strokeColors: [null, '#78c110'], // upped saturation from #86c927
+        strokeWidth: 0.85,
+        dotColor: "#73ba20",
+        dotSize: 1
+      },
+      intersectionStyle = {
+        dotColor: "#F24400",
+        dotSize: 1
+      };
+
+  function getIntersectionStyle(lyr, opts) {
+    return copyBaseStyle(intersectionStyle);
+  }
+
+  // Display style for unselected layers with visibility turned on
+  // (may be fully styled or outlined)
+  function getReferenceLayerStyle(lyr, opts) {
+    var style;
+    if (layerHasDrawableStyle(lyr) && !opts.outlineMode) {
+      // TODO: consider just copying lyr style
+      style = getCanvasDisplayStyle(lyr);
+    } else if (internal.layerHasLabels(lyr) && !opts.outlineMode) {
+      style = {dotSize: 0}; // no reference dots if labels are visible
+    } else {
+      style = copyBaseStyle(referenceStyle);
+    }
+    return style;
+  }
+
+  function getActiveLayerStyle(lyr, opts) {
+    var style;
+    if (layerHasDrawableStyle(lyr) && !opts.outlineMode) {
+      style = getCanvasDisplayStyle(lyr);
+    } else if (internal.layerHasLabels(lyr) && !opts.outlineMode) {
+      style = copyBaseStyle(activeStyleForLabels);
+    } else if (opts.darkMode) {
+      style = copyBaseStyle(activeStyleDarkMode);
+    } else {
+      style = copyBaseStyle(activeStyle);
+    }
+    return style;
+  }
+
+  function copyBaseStyle(baseStyle) {
+    return Object.assign({}, baseStyle);
+  }
+
+  function getCanvasDisplayStyle(lyr) {
+    var styleIndex = {
+          opacity: 'opacity',
+          r: 'radius',
+          'fill': 'fillColor',
+          'fill-pattern': 'fillPattern',
+          'fill-effect': 'fillEffect',
+          'fill-opacity': 'fillOpacity',
+          'stroke': 'strokeColor',
+          'stroke-width': 'strokeWidth',
+          'stroke-dasharray': 'lineDash',
+          'stroke-opacity': 'strokeOpacity',
+          'stroke-linecap': 'lineCap',
+          'stroke-linejoin': 'lineJoin',
+          'stroke-miterlimit': 'miterLimit'
+        },
+        // array of field names of relevant svg display properties
+        fields = getStyleFields(lyr).filter(function(f) {return f in styleIndex;}),
+        records = lyr.data.getRecords();
+
+    var styler = function(style, i) {
+      var rec = records[i];
+      var fname, val;
+      for (var j=0; j<fields.length; j++) {
+        fname = fields[j];
+        val = rec && rec[fname];
+        if (val == 'none') {
+          val = 'transparent'; // canvas equivalent of CSS 'none'
+        }
+        // convert svg property name to mapshaper style equivalent
+        style[styleIndex[fname]] = val;
+      }
+
+      if (style.strokeWidth && !style.strokeColor) {
+        style.strokeColor = 'black';
+      }
+      if (!('strokeWidth' in style) && style.strokeColor) {
+        style.strokeWidth = 1;
+      }
+      if (style.radius > 0 && !style.strokeWidth && !style.fillColor && lyr.geometry_type == 'point') {
+        style.fillColor = 'black';
+      }
+    };
+    var style = {styler: styler, type: 'styled'};
+    // use squares if radius is missing... (TODO: check behavior with labels, etc)
+    if (lyr.geometry_type == 'point' && fields.includes('r') === false) {
+      style.dotSize = 1;
+    }
+    return style;
+  }
+
+  // check if layer should be displayed with a full style
+  function layerHasDrawableStyle(lyr) {
+    var fields = getStyleFields(lyr);
+    if (lyr.geometry_type == 'point') {
+      // return fields.indexOf('r') > -1; // require 'r' field for point symbols
+      return fields.includes('fill') || fields.includes('r'); // support colored squares
+    }
+    return utils$1.difference(fields, ['opacity', 'class']).length > 0;
+  }
+
+  function getStyleFields(lyr) {
+    var fields = lyr.data ? lyr.data.getFields() : [];
+    return internal.findStylePropertiesBySymbolGeom(fields, lyr.geometry_type);
+  }
+
   function MapExtent(_position) {
     var _scale = 1,
         _cx, _cy, // center in geographic units
@@ -12206,10 +12196,10 @@
     var scale = style.dotScale || 1;
     size += (scale - 1) / 2;
     size *= Math.pow(scale, 0.3);
-
     // shrink dots slightly on retina displays, to adjust for greater clarity
-    // and reduce number of pixels to draw on large datasets.
-    return Math.round(Math.pow(GUI.getPixelRatio(), 0.8) * size);
+    // and to reduce number of pixels to draw on large datasets.
+    size *= Math.pow(GUI.getPixelRatio(), 0.8);
+    return Math.round(size);
   }
 
   function getScaledTransform(ext) {
@@ -12526,14 +12516,18 @@
     //   is noticeably slower during animations with multiple canvases.
     // Highlights are drawn on a separate canvas while hovering, because this
     //   is generally faster than redrawing all of the shapes.
-    this.drawOverlayLayer = function(lyr, action) {
-      if (action == 'hover' && lyr) {
+    this.drawOverlayLayers = function(layers, action) {
+      var canv;
+      if (action == 'hover') {
+        canv = _overlayCanv;
         _overlayCanv.prep(_ext);
-        drawCanvasLayer(lyr, _overlayCanv);
       } else {
+        canv = _mainCanv;
         _overlayCanv.hide();
-        drawCanvasLayer(lyr, _mainCanv);
       }
+      layers.forEach(function(lyr) {
+        drawCanvasLayer(lyr, canv);
+      });
     };
 
     this.drawFurnitureLayers = function(layers, action) {
@@ -12845,14 +12839,14 @@ GUI and setting the size and crop of SVG output.</p><div><input type="text" clas
         _ext = new MapExtent(position),
         _visibleLayers = [], // cached visible map layers
         _hit, _nav,
-        _intersectionLyr, _activeLyr, _overlayLyr,
+        _intersectionLyr, _activeLyr, _overlayLayers,
         _renderer, _dynamicCRS;
 
     _mouse.disable(); // wait for gui.focus() to activate mouse events
 
     model.on('select', function(e) {
       _intersectionLyr = null;
-      _overlayLyr = null;
+      // _overlayLyr = null;
     });
 
     gui.on('active', function() {
@@ -12880,8 +12874,8 @@ GUI and setting the size and crop of SVG output.</p><div><input type="text" clas
       if (lyr == _intersectionLyr) return; // no change
       if (lyr) {
         enhanceLayerForDisplay(lyr, dataset, getDisplayOptions());
+        lyr.gui.style = getIntersectionStyle(lyr.gui.displayLayer, getGlobalStyleOptions());
         _intersectionLyr = lyr;
-        _intersectionLyr.gui.style = getIntersectionStyle(_intersectionLyr.gui.displayLayer, getGlobalStyleOptions());
       } else {
         _intersectionLyr = null;
       }
@@ -12908,16 +12902,6 @@ GUI and setting the size and crop of SVG output.</p><div><input type="text" clas
       var p2 = translateDisplayPoint(_activeLyr, _ext.pixCoordsToMapCoords(x+1, y+1));
       return p1 && p2 ? formatCoordsForDisplay(p1, p2) : null;
     };
-
-    // this.getCenterLngLat = function() {
-    //   var bounds = _ext.getBounds();
-    //   var crs = this.getDisplayCRS();
-    //   // TODO: handle case where active layer is a frame layer
-    //   if (!bounds.hasBounds() || !crs) {
-    //     return null;
-    //   }
-    //   return internal.toLngLat([bounds.centerX(), bounds.centerY()], crs);
-    // };
 
     this.getDisplayCRS = function() {
       if (!_activeLyr) {
@@ -12978,9 +12962,6 @@ GUI and setting the size and crop of SVG output.</p><div><input type="text" clas
         projectLayerForDisplay(lyr, newCRS);
       });
 
-      // kludge to make sure all layers have styles
-      updateLayerStyles(getContentLayers());
-
       // Update map extent (also triggers redraw)
       projectMapExtent(_ext, oldCRS, this.getDisplayCRS(), calcFullBounds());
       updateFullBounds();
@@ -13001,7 +12982,7 @@ GUI and setting the size and crop of SVG output.</p><div><input type="text" clas
         new BoxTool(gui, _ext, _nav),
         new RectangleControl(gui, _hit),
         initInteractiveEditing(gui, _ext, _hit);
-        _hit.on('change', updateOverlayLayer);
+        _hit.on('change', function() { drawLayers('hover'); });
       }
 
       _ext.on('change', function(e) {
@@ -13029,9 +13010,6 @@ GUI and setting the size and crop of SVG output.</p><div><input type="text" clas
       var prevLyr = _activeLyr || null;
       var fullBounds;
       var needReset;
-      if (!prevLyr) {
-        // initMap(); // first call
-      }
 
       if (arcsMayHaveChanged(e.flags)) {
         // regenerate filtered arcs the next time they are needed for rendering
@@ -13056,7 +13034,9 @@ GUI and setting the size and crop of SVG output.</p><div><input type="text" clas
 
       if (updated.layer) {
         _activeLyr = updated.layer;
-        initActiveLayer();
+        enhanceLayerForDisplay(_activeLyr, updated.dataset, getDisplayOptions());
+        // need to set layer style so hit detection can calculate size of certain symbols
+        _activeLyr.gui.style = getActiveLayerStyle(_activeLyr.gui.displayLayer, getGlobalStyleOptions());
       } else {
         _activeLyr = null;
       }
@@ -13090,23 +13070,6 @@ GUI and setting the size and crop of SVG output.</p><div><input type="text" clas
       }
       drawLayers();
       map.dispatchEvent('updated');
-    }
-
-
-    function updateOverlayLayer(e) {
-      var style = !_activeLyr?.gui?.style ? null :
-        getOverlayStyle(_activeLyr.gui.displayLayer, e, getGlobalStyleOptions());
-      if (style) {
-        var displayLayer = filterLayerByIds(_activeLyr.gui.displayLayer, style.ids);
-        var gui = Object.assign({}, _activeLyr.gui, {style, displayLayer});
-        style.dotScale = _activeLyr.gui.style.dotScale;
-        _overlayLyr = utils$1.defaults({gui}, _activeLyr);
-      } else {
-        _overlayLyr = null;
-      }
-
-      // 'hover' avoids redrawing all svg symbols when only highlight needs to refresh
-      drawLayers('hover');
     }
 
     function getDisplayOptions() {
@@ -13243,12 +13206,6 @@ GUI and setting the size and crop of SVG output.</p><div><input type="text" clas
       });
     }
 
-    function initActiveLayer() {
-      var active = model.getActiveLayer();
-      enhanceLayerForDisplay(active.layer, active.dataset, getDisplayOptions());
-      active.layer.gui.style = getActiveLayerStyle(active.layer.gui.displayLayer, getGlobalStyleOptions());
-    }
-
     function getDrawableFurnitureLayers(layers) {
       if (!isPreviewView()) return [];
       return getVisibleMapLayers().filter(function(o) {
@@ -13331,14 +13288,25 @@ GUI and setting the size and crop of SVG output.</p><div><input type="text" clas
         contentLayers = contentLayers.concat(_intersectionLyr);
       }
       // moved this below intersection layer addition, so intersection dots get scaled
-      adjustPointSymbolSizes(contentLayers, _overlayLyr, _ext);
+
+      // Adjust dot size based on total visible dots TODO: move this
+      var dotScale = calcDotScale(contentLayers, _ext);
+      contentLayers.forEach(function(lyr) {
+        lyr.gui.style.dotScale = dotScale;
+      });
 
       // RENDERING
       // draw main content layers
       _renderer.drawMainLayers(contentLayers, action);
+
       // draw hover & selection overlay
-      _renderer.drawOverlayLayer(_overlayLyr, action);
-      // draw furniture
+      if (!_overlayLayers || action != 'nav') {
+        // cache layers to use when panning/zooming
+        _overlayLayers = getOverlayLayers(_activeLyr, _hit.getHitState(), getGlobalStyleOptions());
+      }
+      _renderer.drawOverlayLayers(_overlayLayers, action);
+
+      // TODO: draw furniture
       // _renderer.drawFurnitureLayers(furnitureLayers, action);
       gui.dispatchEvent('map_rendered');
     }

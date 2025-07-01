@@ -19290,7 +19290,7 @@
 
   // symType: point, polygon, polyline, label
   function applyStyleAttributes(svgObj, symType, rec, filter) {
-    var fields = findPropertiesBySymbolGeom(Object.keys(rec || {}), symType);
+    var fields = findStylePropertiesBySymbolGeom(Object.keys(rec || {}), symType);
     for (var i=0, n=fields.length; i<n; i++) {
       if (filter && !filter(fields[i])) continue;
       setAttribute(svgObj, fields[i], rec[fields[i]]);
@@ -19318,7 +19318,7 @@
     return name in symbolPropertyTypes;
   }
 
-  function findPropertiesBySymbolGeom(fields, type) {
+  function findStylePropertiesBySymbolGeom(fields, type) {
     var index = propertiesBySymbolType[type] || {};
     return fields.filter(function(name) {
       return name in index;
@@ -19467,7 +19467,7 @@
   var SvgProperties = /*#__PURE__*/Object.freeze({
     __proto__: null,
     applyStyleAttributes: applyStyleAttributes,
-    findPropertiesBySymbolGeom: findPropertiesBySymbolGeom,
+    findStylePropertiesBySymbolGeom: findStylePropertiesBySymbolGeom,
     getSymbolDataAccessor: getSymbolDataAccessor,
     getSymbolPropertyAccessor: getSymbolPropertyAccessor,
     isSupportedSvgStyleProperty: isSupportedSvgStyleProperty,
@@ -46041,7 +46041,7 @@ ${svg}
     });
   }
 
-  var version = "0.6.105";
+  var version = "0.6.106";
 
   // Parse command line args into commands and run them
   // Function takes an optional Node-style callback. A Promise is returned if no callback is given.
