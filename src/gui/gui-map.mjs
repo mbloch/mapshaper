@@ -4,13 +4,16 @@ import { SelectionTool } from './gui-selection-tool';
 import { InspectionControl2 } from './gui-inspection-control';
 import {
   updateLayerStackOrder,
-  filterLayerByIds,
-  adjustPointSymbolSizes} from './gui-layer-utils';
+  calcDotScale } from './gui-layer-utils';
+import { getOverlayLayers } from './gui-overlay-styler';
 import { mapNeedsReset,
   arcsMayHaveChanged,
   popupCanStayOpen } from './gui-map-utils';
 import { initInteractiveEditing } from './gui-edit-modes';
-import * as MapStyle from './gui-map-style';
+import {
+  getIntersectionStyle,
+  getReferenceLayerStyle,
+  getActiveLayerStyle } from './gui-layer-styler';
 import { MapExtent } from './gui-map-extent';
 import { LayerRenderer } from './gui-layer-renderer';
 import { BoxTool } from './gui-box-tool';
@@ -44,14 +47,14 @@ export function MshpMap(gui) {
       _ext = new MapExtent(position),
       _visibleLayers = [], // cached visible map layers
       _hit, _nav,
-      _intersectionLyr, _activeLyr, _overlayLyr,
+      _intersectionLyr, _activeLyr, _overlayLayers,
       _renderer, _dynamicCRS;
 
   _mouse.disable(); // wait for gui.focus() to activate mouse events
 
   model.on('select', function(e) {
     _intersectionLyr = null;
-    _overlayLyr = null;
+    // _overlayLyr = null;
   });
 
   gui.on('active', function() {
@@ -79,8 +82,8 @@ export function MshpMap(gui) {
     if (lyr == _intersectionLyr) return; // no change
     if (lyr) {
       enhanceLayerForDisplay(lyr, dataset, getDisplayOptions());
+      lyr.gui.style = getIntersectionStyle(lyr.gui.displayLayer, getGlobalStyleOptions());
       _intersectionLyr = lyr;
-      _intersectionLyr.gui.style = MapStyle.getIntersectionStyle(_intersectionLyr.gui.displayLayer, getGlobalStyleOptions());
     } else {
       _intersectionLyr = null;
     }
@@ -107,16 +110,6 @@ export function MshpMap(gui) {
     var p2 = translateDisplayPoint(_activeLyr, _ext.pixCoordsToMapCoords(x+1, y+1));
     return p1 && p2 ? formatCoordsForDisplay(p1, p2) : null;
   };
-
-  // this.getCenterLngLat = function() {
-  //   var bounds = _ext.getBounds();
-  //   var crs = this.getDisplayCRS();
-  //   // TODO: handle case where active layer is a frame layer
-  //   if (!bounds.hasBounds() || !crs) {
-  //     return null;
-  //   }
-  //   return internal.toLngLat([bounds.centerX(), bounds.centerY()], crs);
-  // };
 
   this.getDisplayCRS = function() {
     if (!_activeLyr) {
@@ -177,9 +170,6 @@ export function MshpMap(gui) {
       projectLayerForDisplay(lyr, newCRS);
     });
 
-    // kludge to make sure all layers have styles
-    updateLayerStyles(getContentLayers());
-
     // Update map extent (also triggers redraw)
     projectMapExtent(_ext, oldCRS, this.getDisplayCRS(), calcFullBounds());
     updateFullBounds();
@@ -200,7 +190,7 @@ export function MshpMap(gui) {
       new BoxTool(gui, _ext, _nav),
       new RectangleControl(gui, _hit),
       initInteractiveEditing(gui, _ext, _hit);
-      _hit.on('change', updateOverlayLayer);
+      _hit.on('change', function() { drawLayers('hover'); });
     }
 
     _ext.on('change', function(e) {
@@ -228,9 +218,6 @@ export function MshpMap(gui) {
     var prevLyr = _activeLyr || null;
     var fullBounds;
     var needReset;
-    if (!prevLyr) {
-      // initMap(); // first call
-    }
 
     if (arcsMayHaveChanged(e.flags)) {
       // regenerate filtered arcs the next time they are needed for rendering
@@ -255,7 +242,9 @@ export function MshpMap(gui) {
 
     if (updated.layer) {
       _activeLyr = updated.layer;
-      initActiveLayer();
+      enhanceLayerForDisplay(_activeLyr, updated.dataset, getDisplayOptions());
+      // need to set layer style so hit detection can calculate size of certain symbols
+      _activeLyr.gui.style = getActiveLayerStyle(_activeLyr.gui.displayLayer, getGlobalStyleOptions());
     } else {
       _activeLyr = null;
     }
@@ -289,23 +278,6 @@ export function MshpMap(gui) {
     }
     drawLayers();
     map.dispatchEvent('updated');
-  }
-
-
-  function updateOverlayLayer(e) {
-    var style = !_activeLyr?.gui?.style ? null :
-      MapStyle.getOverlayStyle(_activeLyr.gui.displayLayer, e, getGlobalStyleOptions());
-    if (style) {
-      var displayLayer = filterLayerByIds(_activeLyr.gui.displayLayer, style.ids);
-      var gui = Object.assign({}, _activeLyr.gui, {style, displayLayer});
-      style.dotScale = _activeLyr.gui.style.dotScale;
-      _overlayLyr = utils.defaults({gui}, _activeLyr);
-    } else {
-      _overlayLyr = null;
-    }
-
-    // 'hover' avoids redrawing all svg symbols when only highlight needs to refresh
-    drawLayers('hover');
   }
 
   function getDisplayOptions() {
@@ -442,12 +414,6 @@ export function MshpMap(gui) {
     });
   }
 
-  function initActiveLayer() {
-    var active = model.getActiveLayer();
-    enhanceLayerForDisplay(active.layer, active.dataset, getDisplayOptions());
-    active.layer.gui.style = MapStyle.getActiveLayerStyle(active.layer.gui.displayLayer, getGlobalStyleOptions());
-  }
-
   function getDrawableFurnitureLayers(layers) {
     if (!isPreviewView()) return [];
     return getVisibleMapLayers().filter(function(o) {
@@ -461,7 +427,7 @@ export function MshpMap(gui) {
       if (isActiveLayer(mapLayer)) {
         // regenerating active style everytime, to support style change when
         // switching between outline and preview modes.
-        style = MapStyle.getActiveLayerStyle(mapLayer.gui.displayLayer, getGlobalStyleOptions());
+        style = getActiveLayerStyle(mapLayer.gui.displayLayer, getGlobalStyleOptions());
         if (style.type != 'styled' && layers.length > 1 && style.strokeColors) {
           // kludge to hide ghosted layers when reference layers are present
           // TODO: consider never showing ghosted layers (which appear after
@@ -474,7 +440,7 @@ export function MshpMap(gui) {
         if (mapLayer == _activeLyr) {
           console.error("Error: shared map layer");
         }
-        style = MapStyle.getReferenceLayerStyle(mapLayer.gui.displayLayer, getGlobalStyleOptions());
+        style = getReferenceLayerStyle(mapLayer.gui.displayLayer, getGlobalStyleOptions());
       }
       mapLayer.gui.style = style;
     });
@@ -530,14 +496,25 @@ export function MshpMap(gui) {
       contentLayers = contentLayers.concat(_intersectionLyr);
     }
     // moved this below intersection layer addition, so intersection dots get scaled
-    adjustPointSymbolSizes(contentLayers, _overlayLyr, _ext);
+
+    // Adjust dot size based on total visible dots TODO: move this
+    var dotScale = calcDotScale(contentLayers, _ext);
+    contentLayers.forEach(function(lyr) {
+      lyr.gui.style.dotScale = dotScale;
+    });
 
     // RENDERING
     // draw main content layers
     _renderer.drawMainLayers(contentLayers, action);
+
     // draw hover & selection overlay
-    _renderer.drawOverlayLayer(_overlayLyr, action);
-    // draw furniture
+    if (!_overlayLayers || action != 'nav') {
+      // cache layers to use when panning/zooming
+      _overlayLayers = getOverlayLayers(_activeLyr, _hit.getHitState(), getGlobalStyleOptions());
+    }
+    _renderer.drawOverlayLayers(_overlayLayers, action);
+
+    // TODO: draw furniture
     // _renderer.drawFurnitureLayers(furnitureLayers, action);
     gui.dispatchEvent('map_rendered');
   }

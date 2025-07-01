@@ -73,7 +73,7 @@ var propertiesBySymbolType = {
 
 // symType: point, polygon, polyline, label
 export function applyStyleAttributes(svgObj, symType, rec, filter) {
-  var fields = findPropertiesBySymbolGeom(Object.keys(rec || {}), symType);
+  var fields = findStylePropertiesBySymbolGeom(Object.keys(rec || {}), symType);
   for (var i=0, n=fields.length; i<n; i++) {
     if (filter && !filter(fields[i])) continue;
     setAttribute(svgObj, fields[i], rec[fields[i]]);
@@ -101,7 +101,7 @@ function isSupportedSvgSymbolProperty(name) {
   return name in symbolPropertyTypes;
 }
 
-export function findPropertiesBySymbolGeom(fields, type) {
+export function findStylePropertiesBySymbolGeom(fields, type) {
   var index = propertiesBySymbolType[type] || {};
   return fields.filter(function(name) {
     return name in index;

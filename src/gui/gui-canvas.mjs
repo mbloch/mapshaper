@@ -433,10 +433,10 @@ function getDotSize(style) {
   var scale = style.dotScale || 1;
   size += (scale - 1) / 2;
   size *= Math.pow(scale, 0.3);
-
   // shrink dots slightly on retina displays, to adjust for greater clarity
-  // and reduce number of pixels to draw on large datasets.
-  return Math.round(Math.pow(GUI.getPixelRatio(), 0.8) * size);
+  // and to reduce number of pixels to draw on large datasets.
+  size *= Math.pow(GUI.getPixelRatio(), 0.8);
+  return Math.round(size);
 }
 
 function getScaledTransform(ext) {
