@@ -94,5 +94,8 @@
   "homepage": "https://github.com/mbloch/mapshaper#readme",
   "directories": {
     "test": "test"
+  },
+  "optionalDependencies": {
+    "@rollup/rollup-linux-x64-gnu": "^4.44.1"
   }
 }
