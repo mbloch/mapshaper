@@ -1,3 +1,6 @@
+v0.6.106
+* Bug fixes
+
 v0.6.105
 * Updated basemap api keys
 
