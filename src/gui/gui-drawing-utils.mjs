@@ -1,6 +1,5 @@
 import { internal, Bounds, utils, geom, error } from './gui-core';
 import { isProjectedLayer } from './gui-display-utils';
-import { layerHasCanvasDisplayStyle } from './gui-map-style';
 import { projectLayerForDisplay } from './gui-display-layer';
 
 export function flattenArcs(lyr) {

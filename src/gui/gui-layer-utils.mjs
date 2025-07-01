@@ -46,7 +46,7 @@ export function setLayerPinning(lyr, pinned) {
 }
 
 
-export function adjustPointSymbolSizes(layers, overlayLyr, ext) {
+export function calcDotScale(layers, ext) {
   var bbox = ext.getBounds().scale(1.3).toArray(); // add buffer
   // var topTier = 50000; // can be a bottleneck
   var topTier = 10000; // short-circuit counting here
@@ -70,17 +70,10 @@ export function adjustPointSymbolSizes(layers, overlayLyr, ext) {
     k *= Math.pow(mapScale, 0.02);
   }
 
-
   // scale down when map is small
   var smallSide = Math.min(ext.width(), ext.height());
   k *= utils.clamp(smallSide / 500, 0.5, 1);
-
-  layers.forEach(function(lyr) {
-    lyr.gui.style.dotScale = k;
-  });
-  if (overlayLyr && overlayLyr.geometry_type == 'point' && overlayLyr.gui.style.dotSize > 0) {
-    overlayLyr.gui.style.dotScale = k;
-  }
+  return k;
 }
 
 function countPoints(shapes, max, bbox) {

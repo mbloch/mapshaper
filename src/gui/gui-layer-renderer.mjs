@@ -40,14 +40,18 @@ export function LayerRenderer(gui, container) {
   //   is noticeably slower during animations with multiple canvases.
   // Highlights are drawn on a separate canvas while hovering, because this
   //   is generally faster than redrawing all of the shapes.
-  this.drawOverlayLayer = function(lyr, action) {
-    if (action == 'hover' && lyr) {
+  this.drawOverlayLayers = function(layers, action) {
+    var canv;
+    if (action == 'hover') {
+      canv = _overlayCanv;
       _overlayCanv.prep(_ext);
-      drawCanvasLayer(lyr, _overlayCanv);
     } else {
+      canv = _mainCanv;
       _overlayCanv.hide();
-      drawCanvasLayer(lyr, _mainCanv);
     }
+    layers.forEach(function(lyr) {
+      drawCanvasLayer(lyr, canv);
+    });
   };
 
   this.drawFurnitureLayers = function(layers, action) {
