@@ -166,7 +166,7 @@ export function MshpMap(gui) {
     clearAllDisplayArcs();
 
     // Reproject all visible map layers
-    getContentLayers().forEach(function(lyr) {
+    getContentLayers().concat(_intersectionLyr || []).forEach(function(lyr) {
       projectLayerForDisplay(lyr, newCRS);
     });
 
@@ -209,7 +209,7 @@ export function MshpMap(gui) {
       darkMode: !!gui.state.dark_basemap,
       outlineMode: mode == 'vertices',
       interactionMode: mode
-    }, opts);
+    }, opts, gui.display.getOptions()); // intersectionsOn, ghostingOn
   }
 
   // Refresh map display in response to data changes, layer selection, etc.
@@ -428,14 +428,13 @@ export function MshpMap(gui) {
         // regenerating active style everytime, to support style change when
         // switching between outline and preview modes.
         style = getActiveLayerStyle(mapLayer.gui.displayLayer, getGlobalStyleOptions());
-        if (style.type != 'styled' && layers.length > 1 && style.strokeColors) {
-          // kludge to hide ghosted layers when reference layers are present
-          // TODO: consider never showing ghosted layers (which appear after
-          // commands like dissolve and filter).
-          style = utils.defaults({
-            strokeColors: [null, style.strokeColors[1]]
-          }, style);
-        }
+        // changed: ghosting is set in gui-layer-styler.mjs
+        // if (style.type != 'styled' && layers.length > 1 && style.strokeColors) {
+        //   // kludge to hide ghosted layers when reference layers are present
+        //   style = utils.defaults({
+        //     strokeColors: [null, style.strokeColors[1]]
+        //   }, style);
+        // }
       } else {
         if (mapLayer == _activeLyr) {
           console.error("Error: shared map layer");

@@ -17,22 +17,23 @@ export function drawOutlineLayerToCanvas(lyr, canv, ext) {
   var arcs;
   var style = lyr.gui.style;
   var arcCounts = lyr.gui.arcCounts;
-  var darkStyle = {strokeWidth: style.strokeWidth, strokeColor: style.strokeColors[1]},
-      lightStyle = {strokeWidth: style.strokeWidth, strokeColor: style.strokeColors[0]};
+  var fgStyle = {strokeWidth: style.strokeWidth, strokeColor: style.strokeColors[1]},
+      bgStyle = {strokeWidth: style.strokeWidth, strokeColor: style.strokeColors[0]};
   var filter;
+
   if (internal.layerHasPaths(lyr.gui.displayLayer)) {
     if (!arcCounts) {
       arcCounts = lyr.gui.arcCounts = new Uint8Array(lyr.gui.displayArcs.size());
       internal.countArcsInShapes(lyr.gui.displayLayer.shapes, arcCounts);
     }
     arcs = getArcsForRendering(lyr, ext);
-    if (lightStyle.strokeColor) {
+    if (bgStyle.strokeColor) {
       filter = getArcFilter(arcs, ext, false, arcCounts);
-      canv.drawArcs(arcs, lightStyle, filter);
+      canv.drawArcs(arcs, bgStyle, filter);
     }
-    if (darkStyle.strokeColor && lyr.gui.displayLayer.geometry_type != 'point') {
+    if (fgStyle.strokeColor && lyr.gui.displayLayer.geometry_type != 'point') {
       filter = getArcFilter(arcs, ext, true, arcCounts);
-      canv.drawArcs(arcs, darkStyle, filter);
+      canv.drawArcs(arcs, fgStyle, filter);
     }
   }
   if (lyr.gui.displayLayer.geometry_type == 'point') {

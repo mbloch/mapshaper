@@ -15,6 +15,8 @@ import { setLoggingForGUI } from './gui-proxy';
 import { initModeRules } from './gui-mode-rules';
 import { ContextMenu } from './gui-context-menu';
 import { Basemap } from './gui-basemap-control';
+import { DisplayOptions } from './gui-display-options-menu';
+
 
 export function GuiInstance(container, opts) {
   var gui = new ModeSwitcher();
@@ -33,11 +35,13 @@ export function GuiInstance(container, opts) {
   gui.model = new Model(gui);
   gui.keyboard = new KeyboardEvents(gui);
   gui.buttons = new SidebarButtons(gui);
+  gui.display = new DisplayOptions(gui);
   gui.basemap = new Basemap(gui);
   gui.session = new SessionHistory(gui);
   gui.contextMenu = new ContextMenu();
   gui.undo = new Undo(gui);
   gui.map = new MshpMap(gui);
+
 
   gui.state = {};
 

@@ -52,7 +52,7 @@ export function calcDotScale(layers, ext) {
   var topTier = 10000; // short-circuit counting here
   var count = 0;
   layers = layers.filter(function(lyr) {
-    return lyr.geometry_type == 'point' && lyr.gui.style.dotSize > 0;
+    return lyr.geometry_type == 'point' && lyr.gui.style?.dotSize > 0;
   });
   layers.forEach(function(lyr) {
     count += countPoints(lyr.gui.displayLayer.shapes, topTier, bbox);
