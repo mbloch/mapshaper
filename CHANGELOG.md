@@ -1,3 +1,6 @@
+v0.6.107
+* [web] Added Display menu to configure basemaps and several other settings.
+
 v0.6.106
 * Bug fixes
 
