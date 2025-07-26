@@ -1162,7 +1162,7 @@
     var topTier = 10000; // short-circuit counting here
     var count = 0;
     layers = layers.filter(function(lyr) {
-      return lyr.geometry_type == 'point' && lyr.gui.style.dotSize > 0;
+      return lyr.geometry_type == 'point' && lyr.gui.style?.dotSize > 0;
     });
     layers.forEach(function(lyr) {
       count += countPoints(lyr.gui.displayLayer.shapes, topTier, bbox);
@@ -3042,7 +3042,7 @@
       displayLayer: null,
       source: {dataset},
       bounds: null,
-      style: null,
+      // style: null, // protect old style in projectLayerForDisplay()
       dynamic_crs: null,
       invertPoint: null,
       projectPoint: null
@@ -4209,29 +4209,25 @@
         model = gui.model,
         el = gui.container.findChild(".intersection-display"),
         readout = el.findChild(".intersection-count"),
-        checkBtn = el.findChild(".intersection-check"),
         repairBtn = el.findChild(".repair-btn"),
+        optBox = gui.container.findChild('.intersections-opt'),
         _simplifiedXX, // saved simplified intersections, for repair
-        _unsimplifiedXX, // saved unsimplified intersection data, for performance
-        _disabled = false,
-        _on = false;
-
-    el.findChild('.close-btn').on('click', dismissForever);
+        _unsimplifiedXX; // saved unsimplified intersection data, for performance
 
     gui.on('simplify_drag_start', function() {
-      if (intersectionsAreOn()) {
-        hide();
+      hide();
+    });
+
+    gui.on('mode', updateRepairBtn);
+
+    gui.on('display_option_change', function(e) {
+      if (e.option == 'intersectionsOn') {
+        updateAsync();
       }
     });
 
     gui.on('simplify_drag_end', function() {
       updateSync('simplify_drag_end');
-    });
-
-    checkBtn.on('click', function() {
-      checkBtn.hide();
-      _on = true;
-      updateSync();
     });
 
     repairBtn.on('click', function() {
@@ -4245,59 +4241,46 @@
     });
 
     model.on('update', function(e) {
-      if (!intersectionsAreOn()) {
-        reset(); // need this?
-        return;
-      }
       var needRefresh = e.flags.simplify_method || e.flags.simplify ||
-        e.flags.repair || e.flags.clean;
-      if (needRefresh) {
+        e.flags.repair || e.flags.clean || e.flags.select || intersectionsMayHaveChanged(e.flags);
+      if (!intersectionsAreOn()) {
+        reset();
+      } else if (needRefresh) {
         updateAsync();
       } else if (e.flags.simplify_amount) {
         // slider is being dragged - hide readout and dots, retain data
         hide();
-      } else if (intersectionsMayHaveChanged(e.flags)) {
-        // intersections may have changed -- reset the display
-        reset();
       } else {
         // keep displaying the current intersections
       }
     });
 
-    function intersectionsAreOn() {
-      return _on && !_disabled;
-    }
-
-    function turnOff() {
-      hide();
-      _on = false;
-      _simplifiedXX = null;
-      _unsimplifiedXX = null;
-    }
-
-    function reset() {
-      turnOff();
-      if (_disabled) {
-        return;
-      }
-      var e = model.getActiveLayer();
-      if (!e) return;
-      if (internal.layerHasPaths(e.layer)) {
-        el.show();
-        checkBtn.show();
-        readout.hide();
+    function updateRepairBtn() {
+      if (intersectionsAreOn() && gui.getMode() == 'simplify' &&
+        _simplifiedXX?.length > 0) {
+        repairBtn.show();
+      } else {
         repairBtn.hide();
       }
     }
 
-    function dismissForever() {
-      _disabled = true;
-      turnOff();
+    function intersectionsAreOn() {
+      var e = model.getActiveLayer();
+      return !!(gui.display.getOptions().intersectionsOn &&
+        e && e.dataset.arcs && internal.layerHasPaths(e.layer));
+    }
+
+    function reset() {
+      hide();
+      _simplifiedXX = null;
+      _unsimplifiedXX = null;
     }
 
     function hide() {
       map.setIntersectionLayer(null);
       el.hide();
+      repairBtn.hide();
+      readout.hide();
     }
 
     // Update intersection display, after a short delay so map can redraw after previous
@@ -4307,16 +4290,16 @@
     }
 
     function updateSync(action) {
-      if (!intersectionsAreOn()) return;
       var e = model.getActiveLayer();
       var arcs = e.dataset && e.dataset.arcs;
+      if (!intersectionsAreOn() || !arcs || !internal.layerHasPaths(e.layer)) {
+        reset();
+        return;
+      }
       var intersectionOpts = {
         unique: true,
         tolerance: 0
       };
-      if (!arcs || !internal.layerHasPaths(e.layer)) {
-        return;
-      }
       if (arcs.getRetainedInterval() > 0) {
         // simplification
         _simplifiedXX = internal.findSegmentIntersections(arcs, intersectionOpts);
@@ -4336,7 +4319,6 @@
       var pointLyr, count = 0, html;
       el.show();
       readout.show();
-      checkBtn.hide();
       if (xx.length > 0) {
         pointLyr = internal.getIntersectionLayer(xx, lyr, arcs);
         count = internal.countPointsInLayer(pointLyr);
@@ -4349,12 +4331,7 @@
         html = utils$1.format('<span class="icon"></span>%s line intersection%s', count, utils$1.pluralSuffix(count));
       }
       readout.html(html);
-
-      if (_simplifiedXX && count > 0) {
-        repairBtn.show();
-      } else {
-        repairBtn.hide();
-      }
+      updateRepairBtn();
     }
   }
 
@@ -10093,7 +10070,7 @@
       };
 
   function getOverlayLayers(activeLyr, hitData, styleOpts) {
-    if (activeLyr.hidden || !activeLyr?.gui?.style) return [];
+    if (activeLyr?.hidden || !activeLyr?.gui?.style) return [];
     var displayLyr = activeLyr.gui.displayLayer;
     var layers, lyr, outlineStyle, ids;
     if (styleOpts.interactionMode == 'vertices') {
@@ -11282,8 +11259,8 @@
         dotSize: 1
       },
       intersectionStyle = {
-        dotColor: "#F24400",
-        dotSize: 1
+        dotColor: "#FF421D",
+        dotSize: 1.3
       };
 
   function getIntersectionStyle(lyr, opts) {
@@ -11316,6 +11293,11 @@
     } else {
       style = copyBaseStyle(activeStyle);
     }
+    // kludge: no ghosted lines if not enabled
+    if (style.strokeColors && !opts.ghostingOn) {
+      style.strokeColors = [null, style.strokeColors[1]];
+    }
+
     return style;
   }
 
@@ -11780,22 +11762,23 @@
     var arcs;
     var style = lyr.gui.style;
     var arcCounts = lyr.gui.arcCounts;
-    var darkStyle = {strokeWidth: style.strokeWidth, strokeColor: style.strokeColors[1]},
-        lightStyle = {strokeWidth: style.strokeWidth, strokeColor: style.strokeColors[0]};
+    var fgStyle = {strokeWidth: style.strokeWidth, strokeColor: style.strokeColors[1]},
+        bgStyle = {strokeWidth: style.strokeWidth, strokeColor: style.strokeColors[0]};
     var filter;
+
     if (internal.layerHasPaths(lyr.gui.displayLayer)) {
       if (!arcCounts) {
         arcCounts = lyr.gui.arcCounts = new Uint8Array(lyr.gui.displayArcs.size());
         internal.countArcsInShapes(lyr.gui.displayLayer.shapes, arcCounts);
       }
       arcs = getArcsForRendering(lyr, ext);
-      if (lightStyle.strokeColor) {
+      if (bgStyle.strokeColor) {
         filter = getArcFilter(arcs, ext, false, arcCounts);
-        canv.drawArcs(arcs, lightStyle, filter);
+        canv.drawArcs(arcs, bgStyle, filter);
       }
-      if (darkStyle.strokeColor && lyr.gui.displayLayer.geometry_type != 'point') {
+      if (fgStyle.strokeColor && lyr.gui.displayLayer.geometry_type != 'point') {
         filter = getArcFilter(arcs, ext, true, arcCounts);
-        canv.drawArcs(arcs, darkStyle, filter);
+        canv.drawArcs(arcs, fgStyle, filter);
       }
     }
     if (lyr.gui.displayLayer.geometry_type == 'point') {
@@ -12958,7 +12941,7 @@ GUI and setting the size and crop of SVG output.</p><div><input type="text" clas
       clearAllDisplayArcs();
 
       // Reproject all visible map layers
-      getContentLayers().forEach(function(lyr) {
+      getContentLayers().concat(_intersectionLyr || []).forEach(function(lyr) {
         projectLayerForDisplay(lyr, newCRS);
       });
 
@@ -13001,7 +12984,7 @@ GUI and setting the size and crop of SVG output.</p><div><input type="text" clas
         darkMode: !!gui.state.dark_basemap,
         outlineMode: mode == 'vertices',
         interactionMode: mode
-      }, opts);
+      }, opts, gui.display.getOptions()); // intersectionsOn, ghostingOn
     }
 
     // Refresh map display in response to data changes, layer selection, etc.
@@ -13220,14 +13203,13 @@ GUI and setting the size and crop of SVG output.</p><div><input type="text" clas
           // regenerating active style everytime, to support style change when
           // switching between outline and preview modes.
           style = getActiveLayerStyle(mapLayer.gui.displayLayer, getGlobalStyleOptions());
-          if (style.type != 'styled' && layers.length > 1 && style.strokeColors) {
-            // kludge to hide ghosted layers when reference layers are present
-            // TODO: consider never showing ghosted layers (which appear after
-            // commands like dissolve and filter).
-            style = utils$1.defaults({
-              strokeColors: [null, style.strokeColors[1]]
-            }, style);
-          }
+          // changed: ghosting is set in gui-layer-styler.mjs
+          // if (style.type != 'styled' && layers.length > 1 && style.strokeColors) {
+          //   // kludge to hide ghosted layers when reference layers are present
+          //   style = utils.defaults({
+          //     strokeColors: [null, style.strokeColors[1]]
+          //   }, style);
+          // }
         } else {
           if (mapLayer == _activeLyr) {
             console.error("Error: shared map layer");
@@ -13363,14 +13345,12 @@ GUI and setting the size and crop of SVG output.</p><div><input type="text" clas
   }
 
   function Basemap(gui) {
-    var menu = gui.container.findChild('.basemap-options');
+    var menu = gui.container.findChild('.display-options');
     var fadeBtn = new SimpleButton(menu.findChild('.fade-btn'));
-    var closeBtn = new SimpleButton(menu.findChild('.close2-btn'));
     var clearBtn = new SimpleButton(menu.findChild('.clear-btn'));
     var menuButtons = menu.findChild('.basemap-styles');
     var overlayButtons = gui.container.findChild('.basemap-overlay-buttons');
     var container = gui.container.findChild('.basemap-container');
-    var basemapBtn = gui.container.findChild('.basemap-btn');
     var basemapNote = gui.container.findChild('.basemap-note');
     var basemapWarning = gui.container.findChild('.basemap-warning');
     var mapEl = gui.container.findChild('.basemap');
@@ -13385,22 +13365,25 @@ GUI and setting the size and crop of SVG output.</p><div><input type="text" clas
       //  TODO: check page URL for compatibility with mapbox key
       init();
     } else {
-      basemapBtn.hide();
+      menu.findChild('.basemap-opts').hide();
     }
 
     function init() {
-      gui.addMode('basemap', turnOn, turnOff, basemapBtn);
-
-      closeBtn.on('click', function() {
-        gui.clearMode();
-        turnOff();
+      gui.on('mode', function(e) {
+        if (e.prev == 'display_options') {
+         basemapWarning.hide();
+         basemapNote.hide();
+        }
+        if (e.name == 'display_options') {
+          onUpdate();
+        }
       });
 
       clearBtn.on('click', function() {
         if (activeStyle) {
           turnOffBasemap();
           updateButtons();
-          closeMenu();
+          // closeMenu();
         }
       });
 
@@ -13441,7 +13424,7 @@ GUI and setting the size and crop of SVG output.</p><div><input type="text" clas
             showBasemap(style);
           }
           updateButtons();
-          closeMenu();
+          // closeMenu();
         }
       });
     }
@@ -13481,11 +13464,6 @@ GUI and setting the size and crop of SVG output.</p><div><input type="text" clas
       });
     }
 
-    function turnOn() {
-      onUpdate();
-      menu.show();
-    }
-
     function onUpdate() {
       var activeLyr = gui.model.getActiveLayer(); // may be null
       var info = getDatasetCrsInfo(activeLyr?.dataset); // defaults to wgs84
@@ -13507,17 +13485,11 @@ GUI and setting the size and crop of SVG output.</p><div><input type="text" clas
         activeStyle = null;
         updateButtons();
       } else {
-        note = `Your data ${activeStyle ? 'is' : 'will be'} displayed using the Mercator projection.`;
+        note = `Note: basemaps use the Mercator projection.`;
         basemapNote.text(note).show();
         overlayButtons.show();
         overlayButtons.removeClass('disabled');
       }
-    }
-
-    function turnOff() {
-      basemapWarning.hide();
-      basemapNote.hide();
-      menu.hide();
     }
 
     function enabled() {
@@ -13635,6 +13607,64 @@ GUI and setting the size and crop of SVG output.</p><div><input type="text" clas
     return {refresh, show: onUpdate};
   }
 
+  function DisplayOptions(gui) {
+    var menuBtn = gui.container.findChild('.display-btn');
+    var menu = gui.container.findChild('.display-options');
+    var closeBtn = new SimpleButton(menu.findChild('.close2-btn'));
+    var xxBox = menu.findChild('.intersections-opt');
+    var ghostBox = menu.findChild('.ghost-opt');
+
+    var savedOpts = GUI.getSavedValue('display_options') || {};
+    xxBox.node().checked = savedOpts.intersectionsOn;
+    ghostBox.node().checked = savedOpts.ghostingOn;
+
+
+    gui.addMode('display_options', turnOn, turnOff, menuBtn);
+
+    closeBtn.on('click', function() {
+      gui.clearMode();
+      turnOff();
+    });
+
+    gui.on('display_option_change', function() {
+      GUI.setSavedValue('display_options', getOptions());
+    });
+
+    xxBox.on('change', function() {
+      gui.dispatchEvent('display_option_change', {
+        option: 'intersectionsOn',
+        value: getOptions().intersectionsOn
+      });
+    });
+
+    ghostBox.on('change', function() {
+      gui.dispatchEvent('display_option_change', {
+        option: 'ghostingOn',
+        value: getOptions().ghostingOn
+      });
+      gui.dispatchEvent('map-needs-refresh');
+    });
+
+    function getOptions() {
+      return {
+        intersectionsOn: xxBox.node().checked,
+        ghostingOn: ghostBox.node().checked
+      };
+    }
+
+    function turnOn() {
+      menu.show();
+    }
+
+    function turnOff() {
+      menu.hide();
+    }
+
+    return {
+      getOptions
+    };
+  }
+
   function GuiInstance(container, opts) {
     var gui = new ModeSwitcher();
     opts = utils$1.extend({
@@ -13652,11 +13682,13 @@ GUI and setting the size and crop of SVG output.</p><div><input type="text" clas
     gui.model = new Model(gui);
     gui.keyboard = new KeyboardEvents(gui);
     gui.buttons = new SidebarButtons(gui);
+    gui.display = new DisplayOptions(gui);
     gui.basemap = new Basemap(gui);
     gui.session = new SessionHistory(gui);
     gui.contextMenu = new ContextMenu();
     gui.undo = new Undo(gui);
     gui.map = new MshpMap(gui);
+
 
     gui.state = {};
 

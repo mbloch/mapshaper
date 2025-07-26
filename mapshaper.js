@@ -3927,7 +3927,10 @@
 
   function getValueType(val) {
     var type = null;
-    if (utils.isString(val)) {
+    if (val === null || val === undefined) {
+      // optimization, when scanning columns containing mostly null values
+      type = null;
+    } else if (utils.isString(val)) {
       type = 'string';
     } else if (utils.isNumber(val)) {
       type = 'number';
@@ -46041,7 +46044,7 @@ ${svg}
     });
   }
 
-  var version = "0.6.106";
+  var version = "0.6.107";
 
   // Parse command line args into commands and run them
   // Function takes an optional Node-style callback. A Promise is returned if no callback is given.
@@ -46095,7 +46098,7 @@ ${svg}
     }
     if (!loggingEnabled()) argv += ' -quiet'; // kludge to pass logging setting to subprocess
     var mb = Math.round(gb * 1000);
-    var command = [process.execPath, '--max-old-space-size=' + mb, mapshaperScript, argv].join(' ');
+    var command = [`"${process.execPath}"`, '--max-old-space-size=' + mb, `"${mapshaperScript}"`, argv].join(' ');
     var child = require$1('child_process').exec(command, {}, function(err, stdout, stderr) {
       opts.callback(err);
     });

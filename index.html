@@ -83,7 +83,7 @@
 		<input type="text" value="label" class="clicktext" />
 	</div></div>
 	<div id="mode-buttons" class="page-header-buttons">
-		<span class="console-btn header-btn btn">Console</span><span class="basemap-btn header-btn btn">Basemap</span><span class="separator"></span><span class="separator"></span><span class="simplify-btn header-btn btn">Simplify</span><span class="separator"></span><span class="export-btn header-btn btn">Export</span>
+		<span class="console-btn header-btn btn">Console</span><span class="display-btn header-btn btn">Display</span><span class="separator"></span><span class="separator"></span><span class="simplify-btn header-btn btn">Simplify</span><span class="separator"></span><span class="export-btn header-btn btn">Export</span>
 	</div>
 	<div id="splash-buttons" class="page-header-buttons">
 		<a href="https://github.com/mbloch/mapshaper/wiki"><span id="wiki-btn" class="header-btn btn">Wiki</span></a><span class="separator"></span><a href="https://github.com/mbloch/mapshaper"><span id="github-btn" class="header-btn btn">GitHub</span></a>
@@ -181,23 +181,30 @@ precision=0.001. Click to see all options.</div></div></div></a>
 		<div><span id="save-preference" style="display: none;"><input type="checkbox"/>choose output directory</span></div>
 		<div><span id="save-to-clipboard" style="display: inline-block;"><input type="checkbox"/>save to clipboard</span></div>
 		</div>
-		<div id="export-btn" class="btn dialog-btn" style="margin-top: 4px;">Export</div>
+		<div id="export-btn" class="btn dialog-btn" style="margin-top: 5px;">Export</div>
 
 	</div>
 </div>
 
-<div class="basemap-options main-area popup-dialog">
+<div class="display-options main-area popup-dialog">
 	<div class="info-box">
 		<div class="close2-btn"></div>
-		<h3>Basemap options</h3>
-		<p class="basemap-note"></p>
-		<p class="basemap-warning"></p>
-		<div class="basemap-styles basemap-buttons"></div>
-		<div>
-			<!-- <div class="close-btn btn dialog-btn">Close</div> -->
-			<div class="clear-btn btn dialog-btn disabled">Clear</div>
-			<div class="fade-btn btn dialog-btn disabled">Fade</div>
-			<!-- <div class="hide-btn btn dialog-btn disabled">Hide</div> -->
+		<h3>Display options</h3>
+
+		<div class=""><label for="intersections-opt"><input type="checkbox" id="intersections-opt" class="checkbox intersections-opt"/>detect line intersections</label></div>
+		<div class=""><label for="ghost-opt"><input type="checkbox" id="ghost-opt" class="checkbox ghost-opt"/>show reference lines</label></div>
+
+		<div class="basemap-opts">
+			<h4>Basemaps</h4>
+			<p class="basemap-warning"></p>
+			<div class="basemap-styles basemap-buttons"></div>
+			<p class="basemap-note"></p>
+			<div>
+				<!-- <div class="close-btn btn dialog-btn">Close</div> -->
+				<div class="clear-btn btn dialog-btn disabled">Clear</div>
+				<div class="fade-btn btn dialog-btn disabled">Fade</div>
+				<!-- <div class="hide-btn btn dialog-btn disabled">Hide</div> -->
+			</div>
 		</div>
 	</div>
 </div>
@@ -302,8 +309,7 @@ encoding=big5</span>. Click to see all options.</div></div></div></div>
 	</div>
 	<div class="mshp-main-map main-area map-area">
 		<div class="intersection-display">
-			<span class="intersection-check text-btn colored-text">Check line intersections</span><span class="intersection-count">0 line intersections</span>
-			<img class="close-btn" draggable="false" src="images/close.png">
+			<span class="intersection-count">0 line intersections</span>
 			<div class="repair-btn text-btn colored-text">Repair</div>
 		</div>
 		<div class="basemap-overlay-buttons basemap-buttons"></div>
