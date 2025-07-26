@@ -325,18 +325,18 @@ div.alert-box {
 /* --- Splash screen -------------- */
 
 .import-instructions {
-	margin: 7px 0 0 0;
+	margin: 8px 0 0 0;
+	font-size: 15px;
 }
 
 .mini-drop-area {
 	border: 1.5px dashed #999;
-	max-width: 245px;
+	max-width: 260px;
 	border-radius: 9px;
-	font-size: 14px;
-	line-height: 1.5;
+	line-height: 1.45;
 	padding: 9px 11px 6px 11px;
 	margin: 9px -1px 3px -1px;
-	min-height: 120px;
+	min-height: 130px;
 	background: #f8fdff;
 }
 
@@ -503,7 +503,7 @@ div.alert-box {
 	text-align: left;
 	margin-top: 12px;
 	margin-right: 20px;
-	padding: 11px 16px 12px 18px;
+	padding: 12px 16px 12px 18px;
 	vertical-align: top;
 	display: inline-block;
 	/* border: 1px solid #aaa; */
@@ -533,7 +533,7 @@ div.alert-box {
 }
 
 .info-box h3 {
-	font-size: 19px;
+	font-size: 20px;
 	line-height: 1.1;
 	padding: 0;
 	margin: 0 0 0.4em 0;
@@ -821,7 +821,7 @@ img.close-btn {
 	float: right;
 	height:  18px;
 	width:  18px;
-	/* margin-top: 1px; */
+	margin-top: 1px;
 	margin-right: -3px;
 	cursor: pointer;
 	border-radius: 4px;
@@ -1101,11 +1101,11 @@ img.close-btn:hover,
 	height: 100%;
 }
 
-.basemap-options {
+.display-options {
 	pointer-events: none;
 }
 
-.basemap-options .info-box {
+.display-options .info-box {
 	width:  min-content;
 	pointer-events: initial;
 }
@@ -1134,6 +1134,10 @@ img.close-btn:hover,
 	color: #cc0000;
 }
 
+.basemap-note {
+	font-size: 90%;
+}
+
 .basemap-prompt {
 	width: 100%;
 	text-align:  center;
@@ -1146,7 +1150,7 @@ img.close-btn:hover,
 
 .basemap-styles > div {
 	display: inline-block;
-	margin-bottom:  6px;
+	margin-bottom: 4px;
 }
 
 .basemap-styles > div:nth-child(even) {

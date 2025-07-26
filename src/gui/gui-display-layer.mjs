@@ -35,7 +35,7 @@ export function enhanceLayerForDisplay(layer, dataset, opts) {
     displayLayer: null,
     source: {dataset},
     bounds: null,
-    style: null,
+    // style: null, // protect old style in projectLayerForDisplay()
     dynamic_crs: null,
     invertPoint: null,
     projectPoint: null

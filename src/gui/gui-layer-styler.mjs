@@ -28,8 +28,8 @@ var darkStroke = "#334",
       dotSize: 1
     },
     intersectionStyle = {
-      dotColor: "#F24400",
-      dotSize: 1
+      dotColor: "#FF421D",
+      dotSize: 1.3
     };
 
 export function getIntersectionStyle(lyr, opts) {
@@ -62,6 +62,11 @@ export function getActiveLayerStyle(lyr, opts) {
   } else {
     style = copyBaseStyle(activeStyle);
   }
+  // kludge: no ghosted lines if not enabled
+  if (style.strokeColors && !opts.ghostingOn) {
+    style.strokeColors = [null, style.strokeColors[1]];
+  }
+
   return style;
 }
 
