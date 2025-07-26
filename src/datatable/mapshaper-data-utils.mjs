@@ -22,7 +22,10 @@ export function copyRecord(o) {
 
 export function getValueType(val) {
   var type = null;
-  if (utils.isString(val)) {
+  if (val === null || val === undefined) {
+    // optimization, when scanning columns containing mostly null values
+    type = null;
+  } else if (utils.isString(val)) {
     type = 'string';
   } else if (utils.isNumber(val)) {
     type = 'number';
