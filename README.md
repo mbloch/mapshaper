@@ -80,6 +80,14 @@ npm run build     # bundle source code files
 npm link          # (optional) add global symlinks so scripts are available systemwide
 ```
 
+## Using mapshaper with Bun
+
+Mapshaper's command line tools can be run with [Bun](https://bun.sh/) as an alternative to Node.js. The simplest option is to use `bunx`, like this:
+
+```
+bunx mapshaper [commands]
+```
+
 ## Building and testing
 
 From the project directory, run `npm run build` to build both the cli and web UI modules.
