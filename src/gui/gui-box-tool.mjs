@@ -12,7 +12,7 @@ export function BoxTool(gui, ext, nav) {
   var self = new EventDispatcher();
   var box = new HighlightBox(gui, {name: 'box-tool', persistent: true, handles: true, draggable: true});
   var popup = gui.container.findChild('.box-tool-options');
-  var coords = popup.findChild('.box-coords');
+  var coords = popup.findChild('.box-coords').hide();
   var _on = false;
   var instructionsShown = false;
   var alert;

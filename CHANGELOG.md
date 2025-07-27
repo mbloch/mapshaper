@@ -1,3 +1,6 @@
+v0.6.108
+* [web] Fix for coordinate precision of drawn rectangles
+
 v0.6.107
 * [web] Added Display menu to configure basemaps and several other settings.
 
