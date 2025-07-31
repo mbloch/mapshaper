@@ -1,6 +1,6 @@
 {
   "name": "mapshaper",
-  "version": "0.6.108",
+  "version": "0.6.109",
   "description": "A tool for editing vector datasets for mapping and GIS.",
   "keywords": [
     "shapefile",
@@ -69,6 +69,7 @@
     "csv-spectrum": "^1.0.0",
     "eslint": "^8.16.0",
     "mocha": "^10.2.0",
+    "robust-predicates": "^3.0.2",
     "rollup": "^4.44.1",
     "rollup-plugin-polyfill-node": "^0.13.0",
     "shell-quote": "^1.7.4",

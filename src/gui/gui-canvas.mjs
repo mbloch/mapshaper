@@ -161,9 +161,8 @@ export function DisplayCanvas() {
     var iter = new internal.ShapeIter(arcs);
     var t = getScaledTransform(_ext);
     var bounds = _ext.getBounds();
-    var radius = (style.strokeWidth > 2 ? style.strokeWidth * 0.9 : 1.8) * GUI.getPixelRatio() * getScaledLineScale(_ext, style);
+    var radius = (style.strokeWidth > 2 ? style.strokeWidth * 1 : 2.2) * GUI.getPixelRatio() * getScaledLineScale(_ext, style);
     var color = style.strokeColor || 'black';
-
     var i, j, p;
     _ctx.beginPath();
     _ctx.fillStyle = color;

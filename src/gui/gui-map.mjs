@@ -219,6 +219,10 @@ export function MshpMap(gui) {
     var fullBounds;
     var needReset;
 
+    if (!updated) {
+      return; // e.g. if command is run in console before data is loaded
+    }
+
     if (arcsMayHaveChanged(e.flags)) {
       // regenerate filtered arcs the next time they are needed for rendering
       // delete e.dataset.gui.displayArcs
@@ -324,15 +328,17 @@ export function MshpMap(gui) {
     // add margin
     // use larger margin for small sizes
     var widthPx = _ext.width();
-    var marginPct = widthPx < 700 && 3.5 || widthPx < 800 && 3 || 2.5;
+    var marginPct = widthPx < 700 && 4.5 || widthPx < 800 && 4 || 3.5;
     if (isTableView()) {
       var n = internal.getFeatureCount(_activeLyr);
       marginPct = n < 5 && 20 || n < 100 && 10 || 4;
     }
     b.scale(1 + marginPct / 100 * 2);
 
-    // Inflate display bounding box by a tiny amount (gives extent to single-point layers and collapsed shapes)
-    b.padBounds(1e-4, 1e-4, 1e-4, 1e-4);
+    // Inflate display bounding box of single-point layers and collapsed shapes a bit
+    if (b.width() === 0 || b.height() === 0) {
+      b.padBounds(1e-4, 1e-4, 1e-4, 1e-4);
+    }
     return b;
   }
 

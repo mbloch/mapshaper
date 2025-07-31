@@ -25,11 +25,12 @@ export function getDatasetCrsInfo(dataset) {
 // p1: [x, y] coords
 // p2: [x, y] coords offset by 1x1 pixel
 export function formatCoordsForDisplay(p1, p2) {
+  var maxD = 13;
   var dx = Math.abs(p1[0] - p2[0]);
   var dy = Math.abs(p1[1] - p2[1]);
   var offs = (dx + dy) / 2;
   var decimals = 0;
-  while (offs < 1 && decimals < 6) {
+  while (offs < 1 && decimals <= maxD) {
     offs *= 10;
     decimals++;
   }
