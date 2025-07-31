@@ -30,14 +30,14 @@ export function segmentIntersection2(ax, ay, bx, by, cx, cy, dx, dy, epsArg) {
   touches = findPointSegTouches(epsSq, ax, ay, bx, by, cx, cy, dx, dy);
   // if (touches) return touches;
   // Ignore endpoint-only intersections
-  console.log('touches:', touches)
-  console.log('endpoint:', testEndpointHit(epsSq, ax, ay, bx, by, cx, cy, dx, dy))
+  console.log('touches:', touches);
+  console.log('endpoint:', testEndpointHit(epsSq, ax, ay, bx, by, cx, cy, dx, dy));
   if (!touches && testEndpointHit(epsSq, ax, ay, bx, by, cx, cy, dx, dy)) {
     return null;
   }
   // Detect cross intersection
   cross = findCrossIntersection(ax, ay, bx, by, cx, cy, dx, dy, eps);
-  console.log('cross:', cross)
+  console.log('cross:', cross);
   // if (cross && touches) {
   //   // Removed this call -- using multiple snap/cut passes seems more
   //   // effective for repairing real-world datasets.
@@ -85,13 +85,13 @@ function testEndpointHit(epsSq, ax, ay, bx, by, cx, cy, dx, dy) {
 // or return null if the segments do not cross.
 // Assumes endpoint intersections have already been detected
 function findCrossIntersection(ax, ay, bx, by, cx, cy, dx, dy, eps) {
-  console.log('[findCrossIntersection()] segment hit?', segmentHit(ax, ay, bx, by, cx, cy, dx, dy), ax, ay)
+  console.log('[findCrossIntersection()] segment hit?', segmentHit(ax, ay, bx, by, cx, cy, dx, dy), ax, ay);
   if (!segmentHit(ax, ay, bx, by, cx, cy, dx, dy)) return null;
   var den = determinant2D(bx - ax, by - ay, dx - cx, dy - cy);
   var o2d = orient2D(cx, cy, dx, dy, ax, ay);
   var m = o2d / den;
   var p = [ax + m * (bx - ax), ay + m * (by - ay)];
-  console.log("den:", den, 'p:', p)
+  console.log("den:", den, 'p:', p);
 
   // the original check is faulty (see geometry ex1)
   // TODO: improve
@@ -161,6 +161,26 @@ function outsideRange(a, b, c) {
     out = a != b;
   }
   return out;
+}
+
+function snapIfCloser(p, minDist, x, y, x2, y2) {
+  var dist = distance2D(x, y, x2, y2);
+  if (dist < minDist) {
+    minDist = dist;
+    p[0] = x2;
+    p[1] = y2;
+  }
+  return minDist;
+}
+
+function snapIntersectionPoint(p, ax, ay, bx, by, cx, cy, dx, dy, eps) {
+  var x = p[0],
+      y = p[1],
+      snapDist = eps;
+  snapDist = snapIfCloser(p, snapDist, x, y, ax, ay);
+  snapDist = snapIfCloser(p, snapDist, x, y, bx, by);
+  snapDist = snapIfCloser(p, snapDist, x, y, cx, cy);
+  snapDist = snapIfCloser(p, snapDist, x, y, dx, dy);
 }
 
 function collectPointSegTouch(arr, epsSq, px, py, ax, ay, bx, by) {
