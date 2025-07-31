@@ -3193,7 +3193,8 @@
     var den = determinant2D(bx - ax, by - ay, dx - cx, dy - cy);
     var m = orient2D(cx, cy, dx, dy, ax, ay) / den;
     var p = [ax + m * (bx - ax), ay + m * (by - ay)];
-    if (Math.abs(den) < 1e-18) {
+    if (Math.abs(den) < 1e-25) {
+      // changed from 1e-18 to 1e-25 (see geom ex1)
       // assume that collinear and near-collinear segment intersections have been
       // accounted for already.
       // TODO: is this a valid assumption?
@@ -16790,6 +16791,7 @@
     arcs.flatten();
 
     var changed = snapAndCut(dataset, snapDist);
+
     // Detect topology again if coordinates have changed
     if (changed || opts.rebuild_topology) {
       buildTopology(dataset);
@@ -16828,6 +16830,7 @@
     if (cutCount > 0 || snapCount > 0 || dupeCount > 0) {
       coordsHaveChanged = true;
     }
+
     // perform a second snap + cut pass if needed
     if (cutCount > 0) {
       cutCount = 0;
@@ -16876,17 +16879,6 @@
     }
   }
 
-  // Divides a collection of arcs at points where arc paths cross each other
-  // Returns array for remapping arc ids
-  function divideArcs(arcs, opts) {
-    var points = findClippingPoints(arcs, opts);
-    // TODO: avoid the following if no points need to be added
-    var map = insertCutPoints(points, arcs);
-    // segment-point intersections currently create duplicate points
-    // TODO: consider dedup in a later cleanup pass?
-    // arcs.dedupCoords();
-    return map;
-  }
 
   function cutPathsAtIntersections(dataset, opts) {
     var n = dataset.arcs.getPointCount();
@@ -16903,6 +16895,25 @@
         editShapes(lyr.shapes, remapPath);
       }
     });
+  }
+
+
+  // Divides a collection of arcs at points where arc paths cross each other
+  // Returns array for remapping arc ids
+  function divideArcs(arcs, opts) {
+    var points = findClippingPoints(arcs, opts);
+    // TODO: avoid the following if no points need to be added
+    var map = insertCutPoints(points, arcs);
+    // segment-point intersections currently create duplicate points
+    // TODO: consider dedup in a later cleanup pass?
+    // arcs.dedupCoords();
+    return map;
+  }
+
+  function findClippingPoints(arcs, opts) {
+    var intersections = findSegmentIntersections(arcs, opts),
+        data = arcs.getVertexData();
+    return convertIntersectionsToCutPoints(intersections, data.xx, data.yy);
   }
 
   // Inserts array of cutting points into an ArcCollection
@@ -17035,12 +17046,6 @@
       }
     });
     return filtered;
-  }
-
-  function findClippingPoints(arcs, opts) {
-    var intersections = findSegmentIntersections(arcs, opts),
-        data = arcs.getVertexData();
-    return convertIntersectionsToCutPoints(intersections, data.xx, data.yy);
   }
 
   var IntersectionCuts = /*#__PURE__*/Object.freeze({
@@ -25440,6 +25445,9 @@ ${svg}
       .option('calc', calcOpt)
       .option('name', nameOpt)
       .option('target', targetOpt)
+      .option('no-snap', { // undocumented, for debugging
+        type: 'flag'
+      })
       .option('no-replace', noReplaceOpt);
 
     parser.command('point-grid')
@@ -30094,8 +30102,6 @@ ${svg}
       const detleft = (ay - cy) * (bx - cx);
       const detright = (ax - cx) * (by - cy);
       const det = detleft - detright;
-
-      if (detleft === 0 || detright === 0 || (detleft > 0) !== (detright > 0)) return det;
 
       const detsum = Math.abs(detleft + detright);
       if (Math.abs(det) >= ccwerrboundA * detsum) return det;
@@ -46038,7 +46044,7 @@ ${svg}
     });
   }
 
-  var version = "0.6.108";
+  var version = "0.6.109";
 
   // Parse command line args into commands and run them
   // Function takes an optional Node-style callback. A Promise is returned if no callback is given.

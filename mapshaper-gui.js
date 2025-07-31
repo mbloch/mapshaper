@@ -2726,11 +2726,12 @@
   // p1: [x, y] coords
   // p2: [x, y] coords offset by 1x1 pixel
   function formatCoordsForDisplay(p1, p2) {
+    var maxD = 13;
     var dx = Math.abs(p1[0] - p2[0]);
     var dy = Math.abs(p1[1] - p2[1]);
     var offs = (dx + dy) / 2;
     var decimals = 0;
-    while (offs < 1 && decimals < 6) {
+    while (offs < 1 && decimals <= maxD) {
       offs *= 10;
       decimals++;
     }
@@ -4756,6 +4757,7 @@
       var copyable = e.ids?.length;
       if (_open) close();
       menu.empty();
+
 
       if (openMenu && openMenu != this) {
         openMenu.close();
@@ -11560,6 +11562,7 @@
     // stop zooming before rounding errors become too obvious
     function maxScale() {
       var minPixelScale = 1e-16;
+      // var minPixelScale = 1e-17; // gets jumpy
       var xmax = maxAbs(_fullBounds.xmin, _fullBounds.xmax, _fullBounds.centerX());
       var ymax = maxAbs(_fullBounds.ymin, _fullBounds.ymax, _fullBounds.centerY());
       var xscale = _fullBounds.width() / _position.width() / xmax / minPixelScale;
@@ -11906,9 +11909,8 @@
       var iter = new internal.ShapeIter(arcs);
       var t = getScaledTransform(_ext);
       var bounds = _ext.getBounds();
-      var radius = (style.strokeWidth > 2 ? style.strokeWidth * 0.9 : 1.8) * GUI.getPixelRatio() * getScaledLineScale(_ext, style);
+      var radius = (style.strokeWidth > 2 ? style.strokeWidth * 1 : 2.2) * GUI.getPixelRatio() * getScaledLineScale(_ext, style);
       var color = style.strokeColor || 'black';
-
       var i, j, p;
       _ctx.beginPath();
       _ctx.fillStyle = color;
@@ -12994,6 +12996,10 @@ GUI and setting the size and crop of SVG output.</p><div><input type="text" clas
       var fullBounds;
       var needReset;
 
+      if (!updated) {
+        return; // e.g. if command is run in console before data is loaded
+      }
+
       if (arcsMayHaveChanged(e.flags)) {
         // regenerate filtered arcs the next time they are needed for rendering
         // delete e.dataset.gui.displayArcs
@@ -13099,15 +13105,17 @@ GUI and setting the size and crop of SVG output.</p><div><input type="text" clas
       // add margin
       // use larger margin for small sizes
       var widthPx = _ext.width();
-      var marginPct = widthPx < 700 && 3.5 || widthPx < 800 && 3 || 2.5;
+      var marginPct = widthPx < 700 && 4.5 || widthPx < 800 && 4 || 3.5;
       if (isTableView()) {
         var n = internal.getFeatureCount(_activeLyr);
         marginPct = n < 5 && 20 || n < 100 && 10 || 4;
       }
       b.scale(1 + marginPct / 100 * 2);
 
-      // Inflate display bounding box by a tiny amount (gives extent to single-point layers and collapsed shapes)
-      b.padBounds(1e-4, 1e-4, 1e-4, 1e-4);
+      // Inflate display bounding box of single-point layers and collapsed shapes a bit
+      if (b.width() === 0 || b.height() === 0) {
+        b.padBounds(1e-4, 1e-4, 1e-4, 1e-4);
+      }
       return b;
     }
 
