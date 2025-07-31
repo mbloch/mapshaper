@@ -46,6 +46,7 @@ export function addIntersectionCuts(dataset, _opts) {
   arcs.flatten();
 
   var changed = snapAndCut(dataset, snapDist);
+
   // Detect topology again if coordinates have changed
   if (changed || opts.rebuild_topology) {
     buildTopology(dataset);
@@ -84,6 +85,7 @@ function snapAndCut(dataset, snapDist) {
   if (cutCount > 0 || snapCount > 0 || dupeCount > 0) {
     coordsHaveChanged = true;
   }
+
   // perform a second snap + cut pass if needed
   if (cutCount > 0) {
     cutCount = 0;
@@ -132,17 +134,6 @@ function getDividedArcUpdater(map, arcCount) {
   }
 }
 
-// Divides a collection of arcs at points where arc paths cross each other
-// Returns array for remapping arc ids
-export function divideArcs(arcs, opts) {
-  var points = findClippingPoints(arcs, opts);
-  // TODO: avoid the following if no points need to be added
-  var map = insertCutPoints(points, arcs);
-  // segment-point intersections currently create duplicate points
-  // TODO: consider dedup in a later cleanup pass?
-  // arcs.dedupCoords();
-  return map;
-}
 
 export function cutPathsAtIntersections(dataset, opts) {
   var n = dataset.arcs.getPointCount();
@@ -159,6 +150,25 @@ export function remapDividedArcs(dataset, map) {
       editShapes(lyr.shapes, remapPath);
     }
   });
+}
+
+
+// Divides a collection of arcs at points where arc paths cross each other
+// Returns array for remapping arc ids
+export function divideArcs(arcs, opts) {
+  var points = findClippingPoints(arcs, opts);
+  // TODO: avoid the following if no points need to be added
+  var map = insertCutPoints(points, arcs);
+  // segment-point intersections currently create duplicate points
+  // TODO: consider dedup in a later cleanup pass?
+  // arcs.dedupCoords();
+  return map;
+}
+
+export function findClippingPoints(arcs, opts) {
+  var intersections = findSegmentIntersections(arcs, opts),
+      data = arcs.getVertexData();
+  return convertIntersectionsToCutPoints(intersections, data.xx, data.yy);
 }
 
 // Inserts array of cutting points into an ArcCollection
@@ -295,10 +305,4 @@ export function filterSortedCutPoints(points, arcs) {
     }
   });
   return filtered;
-}
-
-export function findClippingPoints(arcs, opts) {
-  var intersections = findSegmentIntersections(arcs, opts),
-      data = arcs.getVertexData();
-  return convertIntersectionsToCutPoints(intersections, data.xx, data.yy);
 }

@@ -78,6 +78,7 @@ export function ContextMenu(parentArg) {
     if (_open) close();
     menu.empty();
 
+
     if (openMenu && openMenu != this) {
       openMenu.close();
     }

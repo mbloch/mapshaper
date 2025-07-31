@@ -39,6 +39,8 @@ export function segmentIntersection(ax, ay, bx, by, cx, cy, dx, dy, epsArg) {
   return touches || cross || null;
 }
 
+
+
 function reconcileCrossAndTouches(cross, touches, eps) {
   var hits;
   eps = eps || 0;
@@ -64,7 +66,8 @@ function findCrossIntersection(ax, ay, bx, by, cx, cy, dx, dy, eps) {
   var den = determinant2D(bx - ax, by - ay, dx - cx, dy - cy);
   var m = orient2D(cx, cy, dx, dy, ax, ay) / den;
   var p = [ax + m * (bx - ax), ay + m * (by - ay)];
-  if (Math.abs(den) < 1e-18) {
+  if (Math.abs(den) < 1e-25) {
+    // changed from 1e-18 to 1e-25 (see geom ex1)
     // assume that collinear and near-collinear segment intersections have been
     // accounted for already.
     // TODO: is this a valid assumption?

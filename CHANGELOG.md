@@ -1,3 +1,6 @@
+v0.6.109
+* Fixed a geometry error
+
 v0.6.108
 * [web] Fix for coordinate precision of drawn rectangles
 

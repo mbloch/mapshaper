@@ -1194,6 +1194,9 @@ export function getOptionParser() {
     .option('calc', calcOpt)
     .option('name', nameOpt)
     .option('target', targetOpt)
+    .option('no-snap', { // undocumented, for debugging
+      type: 'flag'
+    })
     .option('no-replace', noReplaceOpt);
 
   parser.command('point-grid')
