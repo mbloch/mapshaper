@@ -74,6 +74,7 @@
 			<div class="track"></div>
 		</div>
 		<input type="text" value="label" class="clicktext" />
+		<!-- <div class="header-btn btn simplify-done-btn">Done</div> -->
 	</div></div>
 	<div id="mode-buttons" class="page-header-buttons">
 		<span class="console-btn header-btn btn">Console</span><span class="display-btn header-btn btn">Display</span><span class="separator"></span><span class="separator"></span><span class="simplify-btn header-btn btn">Simplify</span><span class="separator"></span><span class="export-btn header-btn btn">Export</span>
@@ -207,13 +208,13 @@ precision=0.001. Click to see all options.</div></div></div></a>
 		<div class="close2-btn"></div>
 		<h3>Simplification</h3>
 		<div class="option-menu">
-			<div><label for="import-retain-opt"><input type="checkbox" class="checkbox import-retain-opt"/>prevent shape removal</label>
+			<div><label for="import-retain-opt"><input type="checkbox" class="checkbox import-retain-opt" id="import-retain-opt"/>prevent shape removal</label>
 							<div class="tip-button">?<div class="tip-anchor">
 			<div class="tip">Prevent small polygon features from
 disappearing at high simplification. Keeps
 the largest ring of multi-ring features.
 </div></div></div></div>
-			<div class="planar-opt-wrapper"><label for="planar-opt"><input type="checkbox" class="checkbox planar-opt"/>use planar geometry</label>
+			<div class="planar-opt-wrapper"><label for="planar-opt"><input type="checkbox" class="checkbox planar-opt" id="planar-opt"/>use planar geometry</label>
 							<div class="tip-button">?<div class="tip-anchor">
 			<div class="tip">Treat x, y values as Cartesian coordinates
 on a plane, rather than as longitude, latitude
