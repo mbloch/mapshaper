@@ -281,5 +281,9 @@ export function Basemap(gui) {
     }
   }
 
-  return {refresh, show: onUpdate};
+  function isOn() {
+    return !!activeStyle;
+  }
+
+  return {refresh, show: onUpdate, isOn};
 }

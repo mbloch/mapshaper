@@ -466,6 +466,11 @@ div.alert-box {
 	text-align: center;
 }
 
+.popup-dialog.popup-align-left {
+	text-align: left;
+	padding-left: 12px;
+}
+
 .info-box,.popup {
 	border-radius: 9px;
 	border: 1px solid #d5d5d5;
