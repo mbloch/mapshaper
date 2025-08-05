@@ -1,5 +1,3 @@
-
-import { stringifyLineStringCoords, stringifyPolygonCoords } from '../svg/svg-path-utils';
 import GeoJSON from '../geojson/geojson-common';
 import { renderPoint, getTransform } from './svg-symbols';
 import { applyStyleAttributes } from '../svg/svg-properties';
@@ -125,3 +123,19 @@ export function importPolygon(coords) {
   return o;
 }
 
+function stringifyPolygonCoords(coords) {
+  var parts = [];
+  for (var i=0; i<coords.length; i++) {
+    parts.push(stringifyLineStringCoords(coords[i]) + ' Z');
+  }
+  return parts.length > 0 ? parts.join(' ') : '';
+}
+
+function stringifyLineStringCoords(coords) {
+  if (coords.length === 0) return '';
+  var d = 'M';
+  for (var i=0, n=coords.length; i<n; i++) {
+    d += ' ' + coords[i][0] + ' ' + coords[i][1];
+  }
+  return d;
+}

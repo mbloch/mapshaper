@@ -39,7 +39,7 @@ export function exportSVG(dataset, opts) {
   opts = Object.assign({invert_y: true, margin: "1"}, opts);
   frame = getFrameData(dataset, opts);
   fitDatasetToFrame(dataset, frame);
-  setCoordinatePrecision(dataset, opts.precision || 0.0001);
+  setCoordinatePrecision(dataset, opts.precision || 0.01);
 
   // error if one or more svg_data fields are not present in any layers
   if (opts.svg_data) validateSvgDataFields(dataset.layers, opts.svg_data);

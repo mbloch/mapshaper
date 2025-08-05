@@ -1,15 +1,9 @@
-
-import { getAffineTransform } from '../commands/mapshaper-affine';
 import { getRoundingFunction } from '../geom/mapshaper-rounding';
 
 var roundCoord = getRoundingFunction(0.01);
 
 function stringifyVertex(p) {
   return ' ' + roundCoord(p[0]) + ' ' + roundCoord(p[1]);
-}
-
-function stringifyCP(p) {
-  return ' ' + roundCoord(p[2]) + ' ' + roundCoord(p[3]);
 }
 
 function isCubicCtrl(p) {
@@ -52,3 +46,6 @@ function stringifyBezierArc(coords) {
           stringifyCP(p2) + stringifyVertex(p2);
 }
 
+function stringifyCP(p) {
+  return ' ' + roundCoord(p[2]) + ' ' + roundCoord(p[3]);
+}
