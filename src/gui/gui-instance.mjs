@@ -16,6 +16,7 @@ import { initModeRules } from './gui-mode-rules';
 import { ContextMenu } from './gui-context-menu';
 import { Basemap } from './gui-basemap-control';
 import { DisplayOptions } from './gui-display-options-menu';
+// import { ProjectOptions } from './gui-project-control';
 
 
 export function GuiInstance(container, opts) {
@@ -41,6 +42,7 @@ export function GuiInstance(container, opts) {
   gui.contextMenu = new ContextMenu();
   gui.undo = new Undo(gui);
   gui.map = new MshpMap(gui);
+  // gui.project = new ProjectOptions(gui);
 
 
   gui.state = {};
