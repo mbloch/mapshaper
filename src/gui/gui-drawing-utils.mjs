@@ -78,17 +78,19 @@ function getEmptyDataRecord(table) {
 }
 
 // p1, p2: two points in source data CRS coords.
-export function appendNewPath(lyr, p1, p2) {
+export function appendNewPath(lyr, points) {
   var arcId = lyr.gui.displayArcs.size();
   internal.appendEmptyArc(lyr.gui.displayArcs);
   lyr.shapes.push([[arcId]]);
   if (isProjectedLayer(lyr)) {
     internal.appendEmptyArc(lyr.gui.source.dataset.arcs);
   }
-  appendVertex(lyr, p1);
-  appendVertex(lyr, p2);
+  points.forEach(function(p) {
+    appendVertex(lyr, p);
+  });
   appendNewDataRecord(lyr);
 }
+
 
 export function deleteLastPath(lyr) {
   var arcId = lyr.gui.displayArcs.size() - 1;

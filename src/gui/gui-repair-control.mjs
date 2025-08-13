@@ -107,7 +107,9 @@ export function RepairControl(gui) {
       if (_unsimplifiedXX && action == 'simplify_drag_end') {
         // re-use previously generated intersection data (optimization)
       } else {
+        // console.time('xx');
         _unsimplifiedXX = internal.findSegmentIntersections(arcs, intersectionOpts);
+        // console.timeEnd('xx');
       }
     }
     showIntersections(_simplifiedXX || _unsimplifiedXX, e.layer, arcs);
