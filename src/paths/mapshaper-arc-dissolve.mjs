@@ -30,7 +30,7 @@ export function dissolveArcs(dataset) {
   layers.forEach(function(lyr) {
     // modify copies of the original shapes; original shapes should be unmodified
     // (need to test this)
-    lyr.shapes = lyr.shapes.map(function(shape) {
+    lyr.shapes = lyr.shapes.map(function(shape, i) {
       return editShapeParts(shape && shape.concat(), translatePath);
     });
   });

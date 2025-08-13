@@ -24,7 +24,7 @@ export function forEachShapePart(paths, cb) {
 // editPart: callback function
 export function editShapes(shapes, editPart) {
   for (var i=0, n=shapes.length; i<n; i++) {
-    shapes[i] = editShapeParts(shapes[i], editPart);
+    shapes[i] = editShapeParts(shapes[i], editPart, i);
   }
 }
 
@@ -32,8 +32,9 @@ export function editShapes(shapes, editPart) {
 // @cb: function(part, i, parts)
 //    If @cb returns an array, it replaces the existing value
 //    If @cb returns null, the path is removed from the feature
+// @shpId: (optional) id of shape
 //
-export function editShapeParts(parts, cb) {
+export function editShapeParts(parts, cb, shpId) {
   if (!parts) return null; // null geometry not edited
   if (!utils.isArray(parts)) error("Expected an array, received:", parts);
   var nulls = 0,
@@ -41,7 +42,7 @@ export function editShapeParts(parts, cb) {
       retn;
 
   for (var i=0; i<n; i++) {
-    retn = cb(parts[i], i, parts);
+    retn = cb(parts[i], i, parts, shpId);
     if (retn === null) {
       nulls++;
       parts[i] = null;

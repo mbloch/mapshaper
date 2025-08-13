@@ -26,7 +26,7 @@ function filterSlivers(lyr, dataset, optsArg) {
   var ringTest = filterData.filter;
   var removed = 0;
   var pathFilter = function(path, i, paths) {
-    if (ringTest(path)) {
+    if (ringTest(path, i, paths)) {
       removed++;
       return null;
     }
