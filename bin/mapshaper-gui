@@ -6,7 +6,8 @@ var defaultPort = 5555,
       .name('mapshaper-gui')
       .usage('[options] [file ...]')
       .option('-p, --port <port>', 'http port of server on localhost', defaultPort)
-      .option('-q, --quick-view', 'load files with default options, bypassing import dialog')
+      // .option('-q, --quick-view', 'load files with default options, bypassing import dialog')
+      .option('-i, --import-prompt', 'prompt for import options')
       .option('-s, --direct-save', 'save files outside the browser\'s download folder')
       .option('-f, --force-save', 'allow overwriting input files with output files')
       .option('-a, --display-all', 'turn on initial visibility of all layers')
@@ -219,7 +220,7 @@ function getManifestJS(files, opts) {
     target: opts.target,
     allow_saving: opts.directSave,
     display_all: opts.displayAll,
-    quick_view: opts.quickView,
+    quick_view: !opts.importPrompt, // removed: opts.quickView,
     name: opts.name,
     commands: opts.commands,
     blurb: opts.blurb
