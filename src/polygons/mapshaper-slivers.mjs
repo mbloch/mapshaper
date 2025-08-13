@@ -27,10 +27,30 @@ export function getSliverFilter(lyr, dataset, opts) {
       getSliverTest(dataset.arcs, threshold, sliverControl) :
       getMinAreaTest(threshold, dataset);
   var label = getSliverLabel(getAreaLabel(threshold, crs), sliverControl > 0);
+  if (opts.keep_shapes) {
+    filter = keepShapes(filter);
+  }
   return {
     threshold: threshold,
     filter: filter,
     label: label
+  };
+}
+
+// wrap path filter in a function that ensures at least one part of every shape
+// is retained.
+function keepShapes(filter) {
+  var flags;
+  return function(path, pathId, paths) {
+    // console.log("keepShapes()", path, pathId, paths)
+    if (pathId === 0) {
+      flags = paths.map(path => filter(path));
+    }
+    if (flags.length > 0 && flags.every(Boolean)) {
+      // kludge ... assumes that the first path is a valid ring (e.g. not a)
+      flags[0] = false;
+    }
+    return flags[pathId];
   };
 }
 
