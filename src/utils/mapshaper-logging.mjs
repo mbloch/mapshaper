@@ -110,13 +110,21 @@ export function print() {
 
 export function verbose() {
   // verbose can be set globally with the -verbose command or separately for each command
-  if (getStashedVar('VERBOSE')) {
+  if (useVerbose()) {
     message.apply(null, arguments);
   }
 }
 
+export function useVerbose() {
+  return getStashedVar('VERBOSE');
+}
+
+export function useDebug() {
+  return getStashedVar('DEBUG');
+}
+
 export function debug() {
-  if (getStashedVar('DEBUG')) {
+  if (useDebug()) {
     logArgs(arguments);
   }
 }

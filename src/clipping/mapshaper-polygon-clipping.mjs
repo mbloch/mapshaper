@@ -30,6 +30,7 @@ export function clipPolygons(targetShapes, clipShapes, nodes, type, optsArg) {
   // or overlapping rings. TODO: try to optimize or remove it for all cases
 
   // skipping shape cleanup when using the experimental fast bbox clipping option
+  // if (!opts.bbox2 && !opts.no_cleanup) {
   if (!opts.bbox2) {
     // clean each target polygon by dissolving its rings
     targetShapes = targetShapes.map(dissolvePolygon);

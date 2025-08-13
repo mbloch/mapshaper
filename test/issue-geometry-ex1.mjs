@@ -1,7 +1,7 @@
 import assert from 'assert';
 import api from '../mapshaper.js';
 // testing version
-import { segmentIntersection2 } from '../src/geom/mapshaper-segment-geom2';
+import { segmentIntersection } from '../src/geom/mapshaper-segment-geom';
 
 var a = [-74.01840544613368, 40.678442220061875];
 var b = [-74.01840544611017, 40.67844222056485];

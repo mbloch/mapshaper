@@ -255,7 +255,7 @@ function getSimplificationInfo(arcs) {
 
 function countInteriorVertices(arcs) {
   var count = 0;
-  arcs.forEach2(function(i, n) {
+  arcs.forEach2(function(arcId, i, n) {
     if (n > 2) {
       count += n - 2;
     }

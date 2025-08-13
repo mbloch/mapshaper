@@ -102,10 +102,10 @@ export function buildPathTopology(nn, xx, yy) {
     // Visit each point in the path, up to but not including the last point
     for (var i = start; i < end; i++) {
       if (pointIsArcEndpoint(i)) {
-        if (firstNodeId > -1) {
-          arcIds.push(addEdge(arcStartId, i));
-        } else {
+        if (firstNodeId == -1) {
           firstNodeId = i;
+        } else {
+          arcIds.push(addEdge(arcStartId, i));
         }
         arcStartId = i;
       }

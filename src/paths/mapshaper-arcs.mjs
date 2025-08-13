@@ -237,7 +237,7 @@ export function ArcCollection() {
   //
   this.forEach2 = function(cb) {
     for (var arcId=0, n=this.size(); arcId<n; arcId++) {
-      cb(_ii[arcId], _nn[arcId], _xx, _yy, _zz, arcId);
+      cb(arcId, _ii[arcId], _nn[arcId], _xx, _yy, _zz);
     }
   };
 
@@ -372,6 +372,27 @@ export function ArcCollection() {
   };
 
   this.arcIsDegenerate = function(arcId) {
+    return this.arcHasZeroLength(arcId) || this.arcIsSpike(arcId);
+  };
+
+  this.arcIsSpike = function(arcId) {
+    var iter = this.getArcIter(arcId);
+    var x0, y0;
+    if (iter.hasNext()) {
+      x0 = iter.x;
+      y0 = iter.y;
+    }
+    iter.hasNext(); // ignore second point
+    if (iter.hasNext()) {
+      if (iter.x == x0 && iter.y == y0 && !iter.hasNext()) {
+        // three-vertex arc, first two are the same
+        return true;
+      }
+    }
+    return false;
+  };
+
+  this.arcHasZeroLength = function(arcId) {
     var iter = this.getArcIter(arcId);
     var i = 0,
         x, y;

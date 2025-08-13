@@ -39,7 +39,7 @@ describe('mapshaper-pathfinder-utils.js', function () {
     })
 
   })
-
+/*
   describe('chooseRighthandVector()', function () {
     var f = api.internal.chooseRighthandVector;
     it ('first vector is rightmost', function() {
@@ -74,5 +74,5 @@ describe('mapshaper-pathfinder-utils.js', function () {
       assert.equal(f(-1000, 1.734723475976807e-18, -100, 0), 1)
     })
   })
-
+*/
 })

@@ -86,26 +86,26 @@ describe('mapshaper-segment-geom.js', function () {
 
   })
 
-  describe('segmentHit', function () {
+  describe('segmentHit_fast', function () {
     it('detects collinear horizontal overlapping segments', function () {
-      assert(geom.segmentHit(0, 0, 3, 0, 1, 0, 4, 0));
-      assert(geom.segmentHit(0, 0, 3, 0, 1, 0, 2, 0));
-      assert(geom.segmentHit(0, 0, 3, 0, 0, 0, 2, 0));
+      assert(geom.segmentHit_fast(0, 0, 3, 0, 1, 0, 4, 0));
+      assert(geom.segmentHit_fast(0, 0, 3, 0, 1, 0, 2, 0));
+      assert(geom.segmentHit_fast(0, 0, 3, 0, 0, 0, 2, 0));
     })
     it('detects collinear vertical overlapping segments', function () {
-      assert(geom.segmentHit(0, 0, 0, 3, 0, 1, 0, 4));
-      assert(geom.segmentHit(0, 0, 0, 3, 0, 1, 0, 2));
-      assert(geom.segmentHit(0, 0, 0, 3, 0, 0, 0, 2));
+      assert(geom.segmentHit_fast(0, 0, 0, 3, 0, 1, 0, 4));
+      assert(geom.segmentHit_fast(0, 0, 0, 3, 0, 1, 0, 2));
+      assert(geom.segmentHit_fast(0, 0, 0, 3, 0, 0, 0, 2));
     })
     it('detects collinear sloping overlapping segments', function () {
-      assert(geom.segmentHit(0, 0, 3, 3, 1, 1, 4, 4));
-      assert(geom.segmentHit(0, 0, 3, 3, 1, 1, 2, 2));
-      assert(geom.segmentHit(0, 0, 3, 3, 1, 1, 2, 2));
+      assert(geom.segmentHit_fast(0, 0, 3, 3, 1, 1, 4, 4));
+      assert(geom.segmentHit_fast(0, 0, 3, 3, 1, 1, 2, 2));
+      assert(geom.segmentHit_fast(0, 0, 3, 3, 1, 1, 2, 2));
     })
     it('rejects collinear disjoint segments', function () {
-      assert(geom.segmentHit(0, 0, 1, 1, 3, 3, 4, 4));
-      assert(geom.segmentHit(0, 0, 0, 1, 0, 2, 0, 4));
-      assert(geom.segmentHit(0, 0, 1, 0, 3, 0, 4, 0));
+      assert(geom.segmentHit_fast(0, 0, 1, 1, 3, 3, 4, 4));
+      assert(geom.segmentHit_fast(0, 0, 0, 1, 0, 2, 0, 4));
+      assert(geom.segmentHit_fast(0, 0, 1, 0, 3, 0, 4, 0));
     })
   })
 

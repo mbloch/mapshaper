@@ -147,24 +147,9 @@ describe('mapshaper-clip-erase.js', function () {
       };
       var clippedLyr = api.cmd.clipLayer(lyr1, lyr2, dataset);
 
-      if (false) {
-        // Older version of snap/cut created this output:
-        assert.deepEqual(clippedLyr.shapes, [[[1, 5, 3]]]);
-
-      } else {
-        // After recent update to snap/cut function, output changed:
-        var targetArcs = [
-          [ [ 2, 5 ], [ 4, 5 ], [ 4, 4 ] ],
-          [ [ 4, 4 ], [ 4, 2 ], [ 2, 2 ], [ 2, 4 ] ],
-          [ [ 2, 4 ], [ 2, 5 ] ],
-          [ [ 3, 4 ], [ 3, 3 ], [ 3, 4 ] ], // spike is cut off
-          [ [ 3, 4 ], [ 4, 4 ] ],
-          [ [ 4, 4 ], [ 5, 4 ], [ 5, 1 ], [ 1, 1 ], [ 1, 4 ], [ 2, 4 ] ],
-          [ [ 2, 4 ], [ 3, 4 ] ]
-        ];
-        assert.deepEqual(clippedLyr.shapes, [[[1, 6, 4]]]);
-        assert.deepEqual(dataset.arcs.toArray(), targetArcs);
-      }
+      // Older version of snap/cut created this output:
+      // Updated version reverted to this output:
+      assert.deepEqual(clippedLyr.shapes, [[[1, 5, 3]]]);
     })
   })
 

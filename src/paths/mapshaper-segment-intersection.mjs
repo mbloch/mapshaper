@@ -6,6 +6,7 @@ import { getWorldBounds } from '../geom/mapshaper-latlon';
 import { getHighPrecisionSnapInterval } from '../paths/mapshaper-snapping';
 import { SimpleIdTestIndex } from '../indexing/mapshaper-id-test-index';
 import { absArcId, findArcIdFromVertexId } from '../paths/mapshaper-arc-utils';
+import { segmentIntersection } from '../geom/mapshaper-segment-geom';
 
 export function getIntersectionPoints(intersections) {
   return intersections.map(function(obj) {
@@ -242,7 +243,7 @@ export function intersectSegments(ids, xx, yy, optsArg) {
       }
 
       // test two candidate segments for intersection
-      hit = geom.segmentIntersection(s1p1x, s1p1y, s1p2x, s1p2y,
+      hit = segmentIntersection(s1p1x, s1p1y, s1p2x, s1p2y,
           s2p1x, s2p1y, s2p2x, s2p2y, tolerance);
       if (hit) {
         seg1 = [s1p1, s1p2];

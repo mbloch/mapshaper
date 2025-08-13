@@ -1,12 +1,29 @@
 import { error, debug } from '../utils/mapshaper-logging';
 import geom from '../geom/mapshaper-geom';
+import { orient2D, orient2D_big2 } from '../geom/mapshaper-segment-geom';
+import {
+  getArcEndpointCoords
+} from '../paths/mapshaper-vertex-utils';
 
+function pointsAreEqual(a, b) {
+  return a && b && a[0] === b[0] && a[1] === b[1];
+}
 
 function isValidArc(arcId, arcs) {
   // check for arcs with no vertices
   // TODO: also check for other kinds of degenerate arcs
   // (e.g. collapsed arcs consisting of identical points)
-  return arcs.getArcLength(arcId) > 1;
+  var len = arcs.getArcLength(arcId);
+  if (len >= 2 === false) {
+    return false;
+  }
+  // if (len <=3) {
+  //   var endpoints = getArcEndpointCoords(arcId, arcs);
+  //   if (pointsAreEqual(endpoints[0], endpoints[1])) {
+  //     return false;
+  //   }
+  // }
+  return true;
 }
 
 // Return id of rightmost connected arc in relation to @fromArcId
@@ -43,6 +60,7 @@ export function getRightmostArc(fromArcId, nodes, filter) {
     candId = ids[j];
     if (!isValidArc(candId, arcs)) {
       // skip empty arcs
+      debug('skipping one arc:', candId, 'out of:', ids.length, ids);
       continue;
     }
     icand = arcs.indexOfVertex(candId, -2);
@@ -53,6 +71,10 @@ export function getRightmostArc(fromArcId, nodes, filter) {
       continue;
     }
     code = chooseRighthandPath(fromX, fromY, nodeX, nodeY, xx[ito], yy[ito], xx[icand], yy[icand]);
+
+    if (xx[ito] == xx[icand] && yy[ito] == yy[icand]) {
+      debug("Pathfinder warning: duplicate segments: i:", ito, "j:", icand, "ids:", [fromArcId].concat(ids));
+    }
     if (code == 2) {
       ito = icand;
       toArcId = candId;
@@ -62,30 +84,22 @@ export function getRightmostArc(fromArcId, nodes, filter) {
 
   if (toArcId == fromArcId) {
     // This shouldn't occur, assuming that other arcs are present
-    error("Pathfinder error");
+    error("Pathfinder error", toArcId, fromArcId);
   }
   return toArcId;
 }
 
-function chooseRighthandPath2(fromX, fromY, nodeX, nodeY, ax, ay, bx, by) {
-  return chooseRighthandVector(ax - nodeX, ay - nodeY, bx - nodeX, by - nodeY);
-}
-
-// TODO: consider using simpler internal.chooseRighthandPath2()
 // Returns 1 if node->a, return 2 if node->b, else return 0
 // TODO: better handling of identical angles (better -- avoid creating them)
 function chooseRighthandPath(fromX, fromY, nodeX, nodeY, ax, ay, bx, by) {
   var angleA = geom.signedAngle(fromX, fromY, nodeX, nodeY, ax, ay);
   var angleB = geom.signedAngle(fromX, fromY, nodeX, nodeY, bx, by);
+  // should use arbitrary precision math to evaluate angles smaller than this
+  // (all observed errors caused by fp rounding occured with smaller angles than this)
+  var smallAngle = 0.001;
   var code;
   if (angleA <= 0 || angleB <= 0) {
     debug("[chooseRighthandPath()] 0 angle(s):", angleA, angleB);
-    if (angleA <= 0) {
-      debug('  A orient2D:', geom.orient2D(fromX, fromY, nodeX, nodeY, ax, ay));
-    }
-    if (angleB <= 0) {
-      debug('  B orient2D:', geom.orient2D(fromX, fromY, nodeX, nodeY, bx, by));
-    }
     // TODO: test against "from" segment
     if (angleA > 0) {
       code = 1;
@@ -94,23 +108,24 @@ function chooseRighthandPath(fromX, fromY, nodeX, nodeY, ax, ay, bx, by) {
     } else {
       code = 0;
     }
-  } else if (angleA < angleB) {
+  } else if (angleA < angleB - smallAngle) {
     code = 1;
-  } else if (angleB < angleA) {
+  } else if (angleB < angleA - smallAngle) {
     code = 2;
   } else if (isNaN(angleA) || isNaN(angleB)) {
     // probably a duplicate point, which should not occur
     error('Invalid node geometry');
   } else {
-    // Equal angles: use fallback test that is less sensitive to rounding error
-    code = chooseRighthandVector(ax - nodeX, ay - nodeY, bx - nodeX, by - nodeY);
-    debug('[chooseRighthandPath()] equal angles:', angleA, 'fallback test:', code);
+    // Close-to-equal or equal angles: use more exact test.
+    code = chooseBetweenClosePaths(nodeX, nodeY, ax, ay, bx, by);
+    // debug('[chooseRighthandPath()] close-to-equal angles:', Math.abs(angleA) - Math.abs(angleB), 'hi-res code:', code);
   }
   return code;
 }
 
-export function chooseRighthandVector(ax, ay, bx, by) {
-  var orient = geom.orient2D(ax, ay, 0, 0, bx, by);
+export function chooseBetweenClosePaths(nodeX, nodeY, ax, ay, bx, by) {
+  // var orient = orient2D_big2(ax, ay, 0, 0, bx, by);
+  var orient = orient2D_big2(ax, ay, nodeX, nodeY, bx, by);
   var code;
   if (orient > 0) {
     code = 2;

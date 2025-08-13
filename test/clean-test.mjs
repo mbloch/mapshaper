@@ -54,7 +54,9 @@ describe('mapshaper-clean.js', function () {
     })
 
     it('feature is split at node', function (done) {
-      // current behavior retains a doubled-back spike
+      // UPDATE: now, spikes like this are removed, even from line layers...
+      //
+      // // current behavior retains a doubled-back spike
       // TODO: remove one of the duplicate segments
       var data = {
         type: 'LineString',
@@ -64,9 +66,11 @@ describe('mapshaper-clean.js', function () {
       api.applyCommands(cmd, {'data.json': data}, function(err, out) {
         var json = JSON.parse(out['data.json']);
         var obj = json.geometries[0];
-        assert.equal(obj.type, 'MultiLineString');
-        assert.equal(obj.coordinates.length, 3);
-        assert.deepEqual(obj.coordinates[0], [[0,0], [1,0]]);
+        // assert.equal(obj.type, 'MultiLineString');
+        // assert.equal(obj.coordinates.length, 3);
+        // assert.deepEqual(obj.coordinates[0], [[0,0], [1,0]]);
+        assert.equal(obj.type, 'LineString');
+        assert.deepEqual(obj.coordinates, [[0,0], [1,0], [2,0]]);
         done();
       });
     })

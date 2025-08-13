@@ -189,44 +189,6 @@ export function greatCircleDistance(lng1, lat1, lng2, lat2) {
   return dist * R;
 }
 
-// TODO: make this safe for small angles
-export function innerAngle(ax, ay, bx, by, cx, cy) {
-  var ab = distance2D(ax, ay, bx, by),
-      bc = distance2D(bx, by, cx, cy),
-      theta, dotp;
-  if (ab === 0 || bc === 0) {
-    theta = 0;
-  } else {
-    dotp = ((ax - bx) * (cx - bx) + (ay - by) * (cy - by)) / (ab * bc);
-    if (dotp >= 1 - 1e-14) {
-      theta = 0;
-    } else if (dotp <= -1 + 1e-14) {
-      theta = Math.PI;
-    } else {
-      theta = Math.acos(dotp); // consider using other formula at small dp
-    }
-  }
-  return theta;
-}
-
-export function innerAngle3D(ax, ay, az, bx, by, bz, cx, cy, cz) {
-  var ab = distance3D(ax, ay, az, bx, by, bz),
-      bc = distance3D(bx, by, bz, cx, cy, cz),
-      theta, dotp;
-  if (ab === 0 || bc === 0) {
-    theta = 0;
-  } else {
-    dotp = ((ax - bx) * (cx - bx) + (ay - by) * (cy - by) + (az - bz) * (cz - bz)) / (ab * bc);
-    if (dotp >= 1) {
-      theta = 0;
-    } else if (dotp <= -1) {
-      theta = Math.PI;
-    } else {
-      theta = Math.acos(dotp); // consider using other formula at small dp
-    }
-  }
-  return theta;
-}
 
 export function triangleArea(ax, ay, bx, by, cx, cy) {
   var area = Math.abs(((ay - cy) * (bx - cx) + (by - cy) * (cx - ax)) / 2);
@@ -315,32 +277,6 @@ export function pointSegDistSq2(px, py, ax, ay, bx, by) {
   return distanceSq(px, py, ax + t * (bx - ax), ay + t * (by - ay));
 }
 
-
-// internal.reversePathCoords = function(arr, start, len) {
-//   var i = start,
-//       j = start + len - 1,
-//       tmp;
-//   while (i < j) {
-//     tmp = arr[i];
-//     arr[i] = arr[j];
-//     arr[j] = tmp;
-//     i++;
-//     j--;
-//   }
-// };
-
-// merge B into A
-// function mergeBounds(a, b) {
-//   if (b[0] < a[0]) a[0] = b[0];
-//   if (b[1] < a[1]) a[1] = b[1];
-//   if (b[2] > a[2]) a[2] = b[2];
-//   if (b[3] > a[3]) a[3] = b[3];
-// }
-
 export function containsBounds(a, b) {
   return a[0] <= b[0] && a[2] >= b[2] && a[1] <= b[1] && a[3] >= b[3];
 }
-
-// function boundsArea(b) {
-//   return (b[2] - b[0]) * (b[3] - b[1]);
-// }

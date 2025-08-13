@@ -74,7 +74,7 @@ function compileSimplifyExpression(exp, lyr, arcs) {
 // Filter arcs based on an array of thresholds
 function applyArcThresholds(arcs, thresholds) {
   var zz = arcs.getVertexData().zz;
-  arcs.forEach2(function(start, n, xx, yy, zz, arcId) {
+  arcs.forEach2(function(arcId, start, n, xx, yy, zz) {
     var arcZ = thresholds[arcId];
     var z;
     for (var i=1; i<n-1; i++) {
