@@ -195,7 +195,8 @@ export function MapExtent(_position) {
     var ymax = maxAbs(_fullBounds.ymin, _fullBounds.ymax, _fullBounds.centerY());
     var xscale = _fullBounds.width() / _position.width() / xmax / minPixelScale;
     var yscale = _fullBounds.height() / _position.height() / ymax / minPixelScale;
-    return Math.min(xscale, yscale);
+    // return Math.min(xscale, yscale);
+    return Math.max(xscale, yscale);
   }
 
   function maxAbs() {

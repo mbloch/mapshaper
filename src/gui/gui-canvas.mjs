@@ -421,8 +421,8 @@ function getLineScale(ext) {
       s = 1;
   if (mapScale < 0.5) {
     s *= Math.pow(mapScale + 0.5, 0.35);
-  } else if (mapScale > 100) {
-    s *= Math.pow(mapScale - 99, 0.10);
+  } else if (mapScale > 30) {
+    s *= Math.pow(mapScale - 29, 0.065);
   }
   return s;
 }
