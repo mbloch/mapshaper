@@ -8,7 +8,7 @@ export function InteractionMode(gui) {
     empty: ['edit_polygons', 'edit_lines', 'edit_points', 'box'],
     polygons: ['info', 'selection', 'box', 'edit_polygons'],
     rectangles: ['info', 'selection', 'box', 'rectangles', 'edit_polygons'],
-    lines: ['info', 'selection', 'box' , 'edit_lines'],
+    lines: ['info', 'selection', 'box', 'edit_lines'], // 'snip_lines'
     table: ['info', 'selection'],
     labels: ['info', 'selection', 'box', 'labels', 'edit_points'],
     points: ['info', 'selection', 'box', 'edit_points'] // , 'add-points'
@@ -29,6 +29,7 @@ export function InteractionMode(gui) {
     edit_points: 'add/drag points',
     edit_lines: 'draw/edit polylines',
     edit_polygons: 'draw/edit polygons',
+    snip_lines: 'snip polylines',
     vertices: 'edit vertices',
     selection: 'selection tool',
     'add-points': 'add points',
@@ -92,7 +93,7 @@ export function InteractionMode(gui) {
   };
 
   this.modeUsesHitDetection = function(mode) {
-    return ['info', 'selection', 'data', 'labels', 'edit_points', 'vertices', 'rectangles', 'edit_lines', 'edit_polygons'].includes(mode);
+    return ['info', 'selection', 'data', 'labels', 'edit_points', 'vertices', 'rectangles', 'edit_lines', 'edit_polygons', 'snip_lines'].includes(mode);
   };
 
   this.modeUsesPopup = function(mode) {

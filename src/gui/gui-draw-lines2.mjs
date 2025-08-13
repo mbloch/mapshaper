@@ -83,7 +83,7 @@ export function initLineEditing(gui, ext, hit) {
   gui.on('redo_path_add', function(e) {
     var target = hit.getHitTarget();
     clearDrawingInfo();
-    appendNewPath(target, e.p1, e.p2);
+    appendNewPath(target, [e.p1, e.p2]);
     deleteLastVertex(target); // second vertex is a placeholder
     gui.undo.redo(); // add next vertex in the path
     fullRedraw();
@@ -482,7 +482,7 @@ export function initLineEditing(gui, ext, hit) {
   function startNewPath(p2) {
     var target = hit.getHitTarget();
     var p1 = hoverVertexInfo?.point || p2;
-    appendNewPath(target, p1, p2);
+    appendNewPath(target, [p1, p2]);
     gui.dispatchEvent('path_add', {target, p1, p2});
     drawingId = target.shapes.length - 1;
     hit.setDrawingId(drawingId);

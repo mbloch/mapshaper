@@ -86,7 +86,8 @@ export function getOverlayLayers(activeLyr, hitData, styleOpts) {
     return [lyr];
   }
   if (styleOpts.interactionMode == 'edit_lines' ||
-    styleOpts.interactionMode == 'edit_polygons') {
+    styleOpts.interactionMode == 'edit_polygons' ||
+    styleOpts.interactionMode == 'snip_lines') {
     // special overlay: shape editing mode
     lyr = getOverlayLayer(activeLyr, hitData.ids);
     lyr.gui.style = getLineEditingStyle(hitData);
