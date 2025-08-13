@@ -642,6 +642,10 @@ export function getOptionParser() {
       })
     .option('name', nameOpt)
     .option('no-snap', noSnapOpt)
+    .option('no-cleanup', {
+      // for debugging - no documentation
+      type: 'flag'
+    })
     .option('target', targetOpt)
     .option('no-replace', noReplaceOpt);
 
@@ -877,6 +881,10 @@ export function getOptionParser() {
     .option('bbox', bboxOpt)
     .option('name', nameOpt)
     .option('no-snap', noSnapOpt)
+    .option('no-cleanup', {
+      // for debugging - no documentation
+      type: 'flag'
+    })
     .option('target', targetOpt)
     .option('no-replace', noReplaceOpt);
 
@@ -1194,9 +1202,8 @@ export function getOptionParser() {
     .option('calc', calcOpt)
     .option('name', nameOpt)
     .option('target', targetOpt)
-    .option('no-snap', { // undocumented, for debugging
-      type: 'flag'
-    })
+    .option('snap-interval', snapIntervalOpt)
+    .option('no-snap', noSnapOpt)
     .option('no-replace', noReplaceOpt);
 
   parser.command('point-grid')

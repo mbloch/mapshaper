@@ -2,6 +2,7 @@
 import { getHighPrecisionSnapInterval } from '../paths/mapshaper-snapping';
 import { debug } from '../utils/mapshaper-logging';
 import { distance2D, distanceSq, pointSegDistSq2 } from '../geom/mapshaper-basic-geom';
+import Big from "big.js";
 
 // Find the intersection between two 2D segments
 // Returns 0, 1 or 2 [x, y] locations as null, [x, y], or [x1, y1, x2, y2]
@@ -14,65 +15,45 @@ import { distance2D, distanceSq, pointSegDistSq2 } from '../geom/mapshaper-basic
 export function segmentIntersection(ax, ay, bx, by, cx, cy, dx, dy, epsArg) {
   // Use a small tolerance interval, so collinear segments and T-intersections
   // are detected (floating point rounding often causes exact functions to fail)
-  var eps = epsArg >= 0 ? epsArg :
+  var eps = epsArg > 0 ? epsArg :
       getHighPrecisionSnapInterval([ax, ay, bx, by, cx, cy, dx, dy]);
   var epsSq = eps * eps;
   var touches, cross;
+
   // Detect 0, 1 or 2 'touch' intersections, where a vertex of one segment
   // is very close to the other segment's linear portion.
   // One touch indicates either a T-intersection or two overlapping collinear
   // segments that share an endpoint. Two touches indicates overlapping
   // collinear segments that do not share an endpoint.
   touches = findPointSegTouches(epsSq, ax, ay, bx, by, cx, cy, dx, dy);
-  // if (touches) return touches;
   // Ignore endpoint-only intersections
   if (!touches && testEndpointHit(epsSq, ax, ay, bx, by, cx, cy, dx, dy)) {
     return null;
   }
   // Detect cross intersection
-  cross = findCrossIntersection(ax, ay, bx, by, cx, cy, dx, dy, eps);
-  if (cross && touches) {
-    // Removed this call -- using multiple snap/cut passes seems more
-    // effective for repairing real-world datasets.
-    // return reconcileCrossAndTouches(cross, touches, eps);
+  // (TODO: consider cross intersections that are also endpoint hits)
+  if (!touches) {
+    cross = findCrossIntersection(ax, ay, bx, by, cx, cy, dx, dy, eps);
   }
   return touches || cross || null;
 }
 
 
-
-function reconcileCrossAndTouches(cross, touches, eps) {
-  var hits;
-  eps = eps || 0;
-  if (touches.length > 2) {
-    // two touches and a cross: cross should be between the touches, intersection at touches
-    hits = touches;
-  } else if (distance2D(cross[0], cross[1], touches[0], touches[1]) <= eps) {
-    // cross is very close to touch point (e.g. small overshoot): intersection at touch point
-    hits = touches;
-  } else {
-    // one touch and one cross: use both points
-    hits = touches.concat(cross);
-  }
-  return hits;
-}
-
-
-// Find the intersection point of two segments that cross each other,
-// or return null if the segments do not cross.
-// Assumes endpoint intersections have already been detected
 function findCrossIntersection(ax, ay, bx, by, cx, cy, dx, dy, eps) {
-  if (!segmentHit(ax, ay, bx, by, cx, cy, dx, dy)) return null;
-  var den = determinant2D(bx - ax, by - ay, dx - cx, dy - cy);
-  var m = orient2D(cx, cy, dx, dy, ax, ay) / den;
-  var p = [ax + m * (bx - ax), ay + m * (by - ay)];
-  if (Math.abs(den) < 1e-25) {
-    // changed from 1e-18 to 1e-25 (see geom ex1)
-    // assume that collinear and near-collinear segment intersections have been
-    // accounted for already.
-    // TODO: is this a valid assumption?
-    return null;
+  var p;
+  if (eps > 0 && !segmentHit_fast(ax, ay, bx, by, cx, cy, dx, dy)) return null;
+  else if (eps === 0 && !segmentHit_big(ax, ay, bx, by, cx, cy, dx, dy)) return null;
+
+  // in a typical layer with many intersections, robust is preferred in
+  // most (>90%) segment intersections in order to keep the positional
+  // error within a small interval (e.g. 50% of eps)
+  //
+  if (useRobustCross(ax, ay, bx, by, cx, cy, dx, dy)) {
+    p = findCrossIntersection_robust(ax, ay, bx, by, cx, cy, dx, dy);
+  } else {
+    p = findCrossIntersection_fast(ax, ay, bx, by, cx, cy, dx, dy);
   }
+  if (!p) return null;
 
   // Snap p to a vertex if very close to one
   // This avoids tiny segments caused by T-intersection overshoots and prevents
@@ -88,9 +69,98 @@ function findCrossIntersection(ax, ay, bx, by, cx, cy, dx, dy, eps) {
   return p;
 }
 
+// Find the intersection point of two segments that cross each other,
+// or return null if the segments do not cross.
+// Assumes endpoint intersections have already been detected
+function findCrossIntersection_robust(ax, ay, bx, by, cx, cy, dx, dy) {
+  var ax_big = Big(ax);
+  var ay_big = Big(ay);
+  var bx_big = Big(bx);
+  var by_big = Big(by);
+  var cx_big = Big(cx);
+  var cy_big = Big(cy);
+  var dx_big = Big(dx);
+  var dy_big = Big(dy);
+  var v1x = bx_big.minus(ax_big);
+  var v1y = by_big.minus(ay_big);
+  var den_big = determinant2D_big(v1x, v1y, dx_big.minus(cx), dy_big.minus(cy));
+  if (den_big.eq(0)) {
+    debug("DIV0 error (should have been caught upstream)");
+    // console.log("hit?", segmentHit_big(ax, ay, bx, by, cx, cy, dx, dy))
+    // console.log('Seg 1', getSegFeature(ax, ay, bx, by, true))
+    // console.log('Seg 2', getSegFeature(cx, cy, dx, dy, false))
+    return null;
+  }
+  // perform division using regular math, which does not reduce overall
+  // precision in test data (big.js division is very slow)
+  // tests show identical result to:
+  // orient2D_big(cx_big, cy_big, dx_big, dy_big, ax_big, ay_big).div(den_big)
+  var m = orient2D_big(cx_big, cy_big, dx_big, dy_big, ax_big,
+    ay_big).toNumber() / den_big.toNumber();
+  var m_big = Big(m);
+  var x_big = ax_big.plus(m_big.times(v1x).round(16));
+  var y_big = ay_big.plus(m_big.times(v1y).round(16));
+  var p = [x_big.toNumber(), y_big.toNumber()];
+  return p;
+}
+
+function findCrossIntersection_fast(ax, ay, bx, by, cx, cy, dx, dy) {
+  var den = determinant2D(bx - ax, by - ay, dx - cx, dy - cy);
+  var m = orient2D(cx, cy, dx, dy, ax, ay) / den;
+  var p = [ax + m * (bx - ax), ay + m * (by - ay)];
+  if (Math.abs(den) < 1e-25) {
+    // changed from 1e-18 to 1e-25 (see geom ex1)
+    // assume that collinear and near-collinear segment intersections have been
+    // accounted for already.
+    // TODO: is this really true?
+    return null;
+  }
+  return p;
+}
+
+function useRobustCross(ax, ay, bx, by, cx, cy, dx, dy) {
+  // angle and seg length ratio thresholds were found by comparing
+  // fast and robust outputs on sample data
+  if (innerAngle(ax, ay, bx, by, cx, cy, dx, dy) < 0.1) return true;
+  var len1 = distance2D(ax, ay, bx, by);
+  var len2 = distance2D(cx, cy, dx, dy);
+  var ratio = len1 < len2 ? len1 / len2 : len2 / len1 || 0;
+  if (ratio < 0.001) return true;
+  return false;
+}
+
+// Returns smaller unsigned angle between two segments
+function innerAngle(ax, ay, bx, by, cx, cy, dx, dy) {
+  var v1x = bx - ax;
+  var v1y = by - ay;
+  var v2x = dx - cx;
+  var v2y = dy - cy;
+  var dot = v1x * v2x + v1y * v2y;
+  var mag1Sq = v1x * v1x + v1y * v1y;
+  var mag2Sq = v2x * v2x + v2y * v2y;
+  if (mag1Sq === 0 || mag2Sq === 0) {
+    return 0;
+  }
+  var cosTheta = dot / Math.sqrt(mag1Sq * mag2Sq);
+  var theta;
+  if (cosTheta > 1 - 1e-14) {
+    theta = 0;
+  } else if (cosTheta < -1 + 1e-14) {
+    theta = Math.PI;
+  } else {
+    theta = Math.acos(cosTheta);
+  }
+  if (theta >= Math.PI / 2) {
+    theta = Math.PI - theta;
+  }
+  return theta;
+}
+
 function testEndpointHit(epsSq, ax, ay, bx, by, cx, cy, dx, dy) {
-  return distanceSq(ax, ay, cx, cy) <= epsSq || distanceSq(ax, ay, dx, dy) <= epsSq ||
-    distanceSq(bx, by, cx, cy) <= epsSq || distanceSq(bx, by, dx, dy) <= epsSq;
+  return distanceSq(ax, ay, cx, cy) <= epsSq ||
+    distanceSq(ax, ay, dx, dy) <= epsSq ||
+    distanceSq(bx, by, cx, cy) <= epsSq ||
+    distanceSq(bx, by, dx, dy) <= epsSq;
 }
 
 function findPointSegTouches(epsSq, ax, ay, bx, by, cx, cy, dx, dy) {
@@ -101,6 +171,9 @@ function findPointSegTouches(epsSq, ax, ay, bx, by, cx, cy, dx, dy) {
   collectPointSegTouch(touches, epsSq, dx, dy, ax, ay, bx, by);
   if (touches.length === 0) return null;
   if (touches.length > 4) {
+    // console.log('XX', touches.length)
+    // console.log('Seg 1', getSegFeature(ax, ay, bx, by, true))
+    // console.log('Seg 2', getSegFeature(cx, cy, dx, dy, false))
     // Geometrically, more than two touch intersections can not occur.
     // Is it possible that fp rounding or a bug might result in >2 touches?
     debug('Intersection detection error');
@@ -117,9 +190,9 @@ function collectPointSegTouch(arr, epsSq, px, py, ax, ay, bx, by) {
   var pa = distanceSq(ax, ay, px, py);
   var pb = distanceSq(bx, by, px, py);
   if (pa <= epsSq || pb <= epsSq) return; // ignore endpoint hits
+  // console.log("Dist:", Math.sqrt(pab), "eps:", Math.sqrt(epsSq), "p:", px, py)
   arr.push(px, py); // T intersection at P and AB
 }
-
 
 // Used by mapshaper-undershoots.js
 // TODO: make more robust, make sure result is compatible with segmentIntersection()
@@ -169,15 +242,54 @@ function clampIntersectionPoint(p, ax, ay, bx, by, cx, cy, dx, dy) {
   // when a segment is vertical or horizontal. This has caused problems when
   // repeatedly applying bbox clipping along the same segment
   var x = p[0],
-      y = p[1];
+      y = p[1],
+      s1out = false,
+      s2out = false;
+
   // assumes that segment ranges intersect
-  x = clampToCloseRange(x, ax, bx);
-  x = clampToCloseRange(x, cx, dx);
-  y = clampToCloseRange(y, ay, by);
-  y = clampToCloseRange(y, cy, dy);
+  if (outsideRange(x, ax, bx)) {
+    x = clampToClosestEndpoint(x, ax, bx);
+    s1out = true;
+  }
+  if (outsideRange(x, cx, dx)) {
+    x = clampToClosestEndpoint(x, cx, dx);
+    s2out = true;
+  }
+  if (outsideRange(y, ay, by)) {
+    y = clampToClosestEndpoint(y, ay, by);
+    s1out = true;
+  }
+  if (outsideRange(y, cy, dy)) {
+    y = clampToClosestEndpoint(y, cy, dy);
+    s2out = true;
+  }
+  if ((s1out || s2out)) {
+    debug('Clamping a segment intersection point');
+    // console.log("angle:", innerAngle(ax, ay, bx, by, cx, cy, dx, dy))
+    // console.log('Feature 1', getSegFeature(ax, ay, bx, by, s1out));
+    // console.log('Feature 2', getSegFeature(cx, cy, dx, dy, s2out));
+    // console.log('Point:', JSON.stringify({
+    //   type: 'Feature',
+    //   properties: {fill: 'red'},
+    //   geometry: {type: 'Point', coordinates: [p[0], p[1]]}
+    // }));
+  }
   p[0] = x;
   p[1] = y;
 }
+
+// function getSegFeature(x1, y1, x2, y2, hot) {
+//   return JSON.stringify({
+//     type: "Feature",
+//     properties: {
+//       stroke: hot ? "orange" : "blue"
+//     },
+//     geometry: {
+//       type: "LineString",
+//       coordinates: [[x1, y1], [x2, y2]]
+//     }
+//   });
+// }
 
 // a: coordinate of point
 // b: endpoint coordinate of segment
@@ -194,16 +306,13 @@ function outsideRange(a, b, c) {
   return out;
 }
 
-function clampToCloseRange(a, b, c) {
-  var lim;
-  if (outsideRange(a, b, c)) {
-    lim = Math.abs(a - b) < Math.abs(a - c) ? b : c;
-    if (Math.abs(a - lim) > 1e-15) {
-      debug("[clampToCloseRange()] large clamping interval", a, b, c);
-    }
-    a = lim;
+function clampToClosestEndpoint(a, b, c) {
+  var lim = Math.abs(a - b) < Math.abs(a - c) ? b : c;
+  var interval = Math.abs(a - lim);
+  if (interval > 1e-15) {
+    debug("[clampToClosestEndpoint()] large clamping interval:", interval);
   }
-  return a;
+  return lim;
 }
 
 // Determinant of matrix
@@ -211,6 +320,10 @@ function clampToCloseRange(a, b, c) {
 //  | c  d |
 function determinant2D(a, b, c, d) {
   return a * d - b * c;
+}
+
+function determinant2D_big(a, b, c, d) {
+  return a.times(d).minus(b.times(c));
 }
 
 // returns a positive value if the points a, b, and c are arranged in
@@ -221,15 +334,50 @@ export function orient2D(ax, ay, bx, by, cx, cy) {
   return determinant2D(ax - cx, ay - cy, bx - cx, by - cy);
 }
 
+export function orient2D_big(ax, ay, bx, by, cx, cy) {
+  var a = (ax.minus(cx)).times(by.minus(cy));
+  var b = (ay.minus(cy)).times(bx.minus(cx));
+  return a.minus(b);
+}
+
+export function orient2D_big2(ax, ay, bx, by, cx, cy) {
+  return orient2D_big(Big(ax), Big(ay), Big(bx), Big(by), Big(cx), Big(cy));
+}
+
+
+// export function orient2D_v2(ax, ay, bx, by, cx, cy) {
+//   return -orient2D_robust(ax, ay, bx, by, cx, cy);
+// }
+
+
 // Source: Sedgewick, _Algorithms in C_
 // (Other functions were tried that were more sensitive to floating point errors
 //  than this function)
-export function segmentHit(ax, ay, bx, by, cx, cy, dx, dy) {
+export function segmentHit_fast(ax, ay, bx, by, cx, cy, dx, dy) {
   return orient2D(ax, ay, bx, by, cx, cy) *
       orient2D(ax, ay, bx, by, dx, dy) <= 0 &&
       orient2D(cx, cy, dx, dy, ax, ay) *
       orient2D(cx, cy, dx, dy, bx, by) <= 0;
 }
+
+export function segmentHit_big(ax, ay, bx, by, cx, cy, dx, dy) {
+  return orient2D_big(ax, ay, bx, by, cx, cy).times(
+      orient2D_big(ax, ay, bx, by, dx, dy)).lte(0) &&
+      orient2D_big(cx, cy, dx, dy, ax, ay).times(
+      orient2D_big(cx, cy, dx, dy, bx, by)).lte(0);
+}
+
+export function segmentHit_big2(ax, ay, bx, by, cx, cy, dx, dy) {
+  return segmentHit_big(Big(ax), Big(ay), Big(bx), Big(by),
+    Big(cx), Big(cy), Big(dx), Big(dy));
+}
+
+// export function segmentHit_robust(ax, ay, bx, by, cx, cy, dx, dy) {
+//   return -orient2D_robust(ax, ay, bx, by, cx, cy) *
+//       -orient2D_robust(ax, ay, bx, by, dx, dy) <= 0 &&
+//       -orient2D_robust(cx, cy, dx, dy, ax, ay) *
+//       -orient2D_robust(cx, cy, dx, dy, bx, by) <= 0;
+// }
 
 // Useful for determining if a segment that intersects another segment is
 // entering or leaving an enclosed buffer area

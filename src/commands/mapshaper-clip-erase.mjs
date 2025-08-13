@@ -76,7 +76,7 @@ export function clipLayers(targetLayers, clipSrc, targetDataset, type, opts) {
   } else {
     nodes = new NodeCollection(mergedDataset.arcs);
   }
-  // clipLyr = mergedDataset.layers.pop();
+
   return clipLayersByLayer(targetLayers, clipLyr, nodes, type, opts);
 }
 

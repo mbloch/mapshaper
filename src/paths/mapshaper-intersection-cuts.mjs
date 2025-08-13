@@ -68,9 +68,10 @@ export function addIntersectionCuts(dataset, _opts) {
 
 function snapAndCut(dataset, snapDist) {
   var arcs = dataset.arcs;
-  var cutOpts = snapDist > 0 ? {} : {tolerance: 0};
+  var cutOpts = snapDist > 0 ? {tolerance: snapDist} : {tolerance: 0};
   var coordsHaveChanged = false;
   var snapCount, dupeCount, cutCount;
+  var maxPasses = 4, passCount = 0;
   snapCount = snapCoordsByInterval(arcs, snapDist);
   dupeCount = arcs.dedupCoords();
 
@@ -82,23 +83,28 @@ function snapAndCut(dataset, snapDist) {
 
   // cut arcs at points where segments intersect
   cutCount = cutPathsAtIntersections(dataset, cutOpts);
+  passCount++;
   if (cutCount > 0 || snapCount > 0 || dupeCount > 0) {
     coordsHaveChanged = true;
   }
 
   // perform a second snap + cut pass if needed
-  if (cutCount > 0) {
-    cutCount = 0;
+  while (cutCount > 0 && passCount < maxPasses) {
+    passCount++;
     snapCount = snapCoordsByInterval(arcs, snapDist);
-    arcs.dedupCoords(); // need to do this here?
-    if (snapCount > 0) {
+    dupeCount = arcs.dedupCoords();
+    // cutCount = 0;
+    if (snapCount > 0 || cutCount > 0) {
       cutCount = cutPathsAtIntersections(dataset, cutOpts);
-    }
-    if (cutCount > 0) {
-      arcs.dedupCoords(); // need to do this here?
-      debug('Second-pass vertices added:', cutCount, 'consider third pass?');
+      debug("[snapAndCut] pass:", passCount, "snaps:", snapCount, "dupes:", dupeCount, "cuts:", cutCount);
     }
   }
+
+  // if (cutCount > 0) {
+  //   arcs.dedupCoords(); // need to do this here?
+  //   debug('Second-pass vertices added:', cutCount, 'consider third pass?');
+  // }
+
   return coordsHaveChanged;
 }
 
@@ -283,25 +289,28 @@ export function sortCutPoints(points, xx, yy) {
 export function filterSortedCutPoints(points, arcs) {
   var filtered = [],
       pointId = 0;
-  arcs.forEach2(function(i, n, xx, yy) {
-    var j = i + n - 1,
-        x0 = xx[i],
-        y0 = yy[i],
-        xn = xx[j],
-        yn = yy[j],
+  arcs.forEach2(function(arcId, i, n, xx, yy) {
+    var j = i + n - 1, // idx of second endpoint
+        x1 = xx[i],
+        y1 = yy[i],
+        x2 = xx[j],
+        y2 = yy[j],
         p, pp;
 
     while (pointId < points.length && points[pointId].i <= j) {
       p = points[pointId];
+      pointId++;
       pp = filtered[filtered.length - 1]; // previous point
-      if (p.x == x0 && p.y == y0 || p.x == xn && p.y == yn) {
+      if (p.x == x1 && p.y == y1 && p.i == i || p.x == x2 && p.y == y2 && p.i >= j - 1) {
+        // console.log("endpoint:", p, 'arc start:', i, 'arc end:', j)
+        // console.log('x1:', x1, 'x2:', x2)
         // clip point is an arc endpoint -- discard
       } else if (pp && pp.x == p.x && pp.y == p.y && pp.i == p.i) {
+        // console.log("duplicate:", p)
         // clip point is a duplicate -- discard
       } else {
         filtered.push(p);
       }
-      pointId++;
     }
   });
   return filtered;

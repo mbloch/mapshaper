@@ -10,7 +10,22 @@ import { getAvgSegment } from '../paths/mapshaper-path-utils';
 // @coords: Array of relevant coordinates (e.g. bbox coordinates of vertex coordinates
 //   of two intersecting segments).
 //
+
+// Updated the original function with a smaller interval... which works
+// better on a (limited) set of real-world sample data
+// (less likely to create erroneous output)
 export function getHighPrecisionSnapInterval(coords) {
+  var n = Math.max.apply(null, coords.map(Math.abs));
+  var ceil = n <= 1 ? 1 : 2 ** Math.ceil(Math.log2(n));
+  // console.log(ceil < ceil + ceil / 2 ** 51) // true
+  // console.log(ceil < ceil + ceil / 2 ** 52) // true
+  // console.log(ceil < ceil + ceil / 2 ** 53) // false
+  var interval = ceil / 2 ** 51;
+  // console.log('interval:', interval)
+  return interval;
+}
+
+export function getHighPrecisionSnapInterval_old(coords) {
   var maxCoord = Math.max.apply(null, coords.map(Math.abs));
   return maxCoord * 1e-14;
 }

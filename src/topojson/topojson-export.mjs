@@ -157,7 +157,7 @@ function exportArcs(arcs, bounds, opts) {
   if (opts.presimplify) {
     fromZ = getPresimplifyFunction(bounds.width());
   }
-  arcs.forEach2(function(i, n, xx, yy, zz) {
+  arcs.forEach2(function(arcId, i, n, xx, yy, zz) {
     var arc = [], p;
     for (var j=i + n; i<j; i++) {
       p = [xx[i], yy[i]];

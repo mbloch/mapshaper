@@ -194,6 +194,7 @@ describe("mapshaper-geom.js", function() {
 
   })
 
+/*
   describe("innerAngle()", function() {
 
     it("returns π if points form a line", function() {
@@ -225,7 +226,7 @@ describe("mapshaper-geom.js", function() {
     })
 
   })
-
+*/
 
   describe("triangleArea()", function() {
 

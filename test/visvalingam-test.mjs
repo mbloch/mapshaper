@@ -94,7 +94,7 @@ describe("mapshaper-visvalingam.js", function() {
       function expectLesser(coords) {
         var weighted = v.getWeightedMetric().apply(null, coords);
         var standard = v.standardMetric.apply(null, coords);
-        var angle = api.geom.innerAngle.apply(null, coords);
+        // var angle = api.geom.innerAngle.apply(null, coords);
         // console.log("weighted:", weighted, "standard:", standard, 'angle:', angle)
 
         assert.ok( weighted < standard);

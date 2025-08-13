@@ -238,7 +238,7 @@ function findNodeTopology(arcs, filter) {
       yy2 = new Float64Array(n),
       ids2 = new Int32Array(n);
 
-  arcs.forEach2(function(i, n, xx, yy, zz, arcId) {
+  arcs.forEach2(function(arcId, i, n, xx, yy, zz) {
     var start = i,
         end = i + n - 1,
         start2 = arcId * 2,
