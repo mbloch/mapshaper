@@ -1328,13 +1328,21 @@
 
   function verbose() {
     // verbose can be set globally with the -verbose command or separately for each command
-    if (getStashedVar('VERBOSE')) {
+    if (useVerbose()) {
       message.apply(null, arguments);
     }
   }
 
+  function useVerbose() {
+    return getStashedVar('VERBOSE');
+  }
+
+  function useDebug() {
+    return getStashedVar('DEBUG');
+  }
+
   function debug() {
-    if (getStashedVar('DEBUG')) {
+    if (useDebug()) {
       logArgs(arguments);
     }
   }
@@ -1458,6 +1466,8 @@
     setLoggingFunctions: setLoggingFunctions,
     stop: stop,
     truncateString: truncateString,
+    useDebug: useDebug,
+    useVerbose: useVerbose,
     verbose: verbose,
     warn: warn
   });
@@ -2265,44 +2275,6 @@
     return dist * R$1;
   }
 
-  // TODO: make this safe for small angles
-  function innerAngle(ax, ay, bx, by, cx, cy) {
-    var ab = distance2D(ax, ay, bx, by),
-        bc = distance2D(bx, by, cx, cy),
-        theta, dotp;
-    if (ab === 0 || bc === 0) {
-      theta = 0;
-    } else {
-      dotp = ((ax - bx) * (cx - bx) + (ay - by) * (cy - by)) / (ab * bc);
-      if (dotp >= 1 - 1e-14) {
-        theta = 0;
-      } else if (dotp <= -1 + 1e-14) {
-        theta = Math.PI;
-      } else {
-        theta = Math.acos(dotp); // consider using other formula at small dp
-      }
-    }
-    return theta;
-  }
-
-  function innerAngle3D(ax, ay, az, bx, by, bz, cx, cy, cz) {
-    var ab = distance3D(ax, ay, az, bx, by, bz),
-        bc = distance3D(bx, by, bz, cx, cy, cz),
-        theta, dotp;
-    if (ab === 0 || bc === 0) {
-      theta = 0;
-    } else {
-      dotp = ((ax - bx) * (cx - bx) + (ay - by) * (cy - by) + (az - bz) * (cz - bz)) / (ab * bc);
-      if (dotp >= 1) {
-        theta = 0;
-      } else if (dotp <= -1) {
-        theta = Math.PI;
-      } else {
-        theta = Math.acos(dotp); // consider using other formula at small dp
-      }
-    }
-    return theta;
-  }
 
   function triangleArea(ax, ay, bx, by, cx, cy) {
     var area = Math.abs(((ay - cy) * (bx - cx) + (by - cy) * (cx - ax)) / 2);
@@ -2391,35 +2363,9 @@
     return distanceSq(px, py, ax + t * (bx - ax), ay + t * (by - ay));
   }
 
-
-  // internal.reversePathCoords = function(arr, start, len) {
-  //   var i = start,
-  //       j = start + len - 1,
-  //       tmp;
-  //   while (i < j) {
-  //     tmp = arr[i];
-  //     arr[i] = arr[j];
-  //     arr[j] = tmp;
-  //     i++;
-  //     j--;
-  //   }
-  // };
-
-  // merge B into A
-  // function mergeBounds(a, b) {
-  //   if (b[0] < a[0]) a[0] = b[0];
-  //   if (b[1] < a[1]) a[1] = b[1];
-  //   if (b[2] > a[2]) a[2] = b[2];
-  //   if (b[3] > a[3]) a[3] = b[3];
-  // }
-
   function containsBounds(a, b) {
     return a[0] <= b[0] && a[2] >= b[2] && a[1] <= b[1] && a[3] >= b[3];
   }
-
-  // function boundsArea(b) {
-  //   return (b[2] - b[0]) * (b[3] - b[1]);
-  // }
 
   var Geom = /*#__PURE__*/Object.freeze({
     __proto__: null,
@@ -2438,9 +2384,7 @@
     distanceSq: distanceSq,
     distanceSq3D: distanceSq3D,
     greatCircleDistance: greatCircleDistance,
-    innerAngle: innerAngle,
     innerAngle2: innerAngle2,
-    innerAngle3D: innerAngle3D,
     lngLatToXYZ: lngLatToXYZ,
     pointSegDistSq: pointSegDistSq,
     pointSegDistSq2: pointSegDistSq2,
@@ -2962,7 +2906,22 @@
   // @coords: Array of relevant coordinates (e.g. bbox coordinates of vertex coordinates
   //   of two intersecting segments).
   //
+
+  // Updated the original function with a smaller interval... which works
+  // better on a (limited) set of real-world sample data
+  // (less likely to create erroneous output)
   function getHighPrecisionSnapInterval(coords) {
+    var n = Math.max.apply(null, coords.map(Math.abs));
+    var ceil = n <= 1 ? 1 : 2 ** Math.ceil(Math.log2(n));
+    // console.log(ceil < ceil + ceil / 2 ** 51) // true
+    // console.log(ceil < ceil + ceil / 2 ** 52) // true
+    // console.log(ceil < ceil + ceil / 2 ** 53) // false
+    var interval = ceil / 2 ** 51;
+    // console.log('interval:', interval)
+    return interval;
+  }
+
+  function getHighPrecisionSnapInterval_old(coords) {
     var maxCoord = Math.max.apply(null, coords.map(Math.abs));
     return maxCoord * 1e-14;
   }
@@ -3148,10 +3107,1043 @@
     getCoordinateIds: getCoordinateIds,
     getEndpointIds: getEndpointIds,
     getHighPrecisionSnapInterval: getHighPrecisionSnapInterval,
+    getHighPrecisionSnapInterval_old: getHighPrecisionSnapInterval_old,
     snapCoords: snapCoords,
     snapCoordsByInterval: snapCoordsByInterval,
     snapEndpointsByInterval: snapEndpointsByInterval
   });
+
+  /*
+   *  big.js v7.0.1
+   *  A small, fast, easy-to-use library for arbitrary-precision decimal arithmetic.
+   *  Copyright (c) 2025 Michael Mclaughlin
+   *  https://github.com/MikeMcl/big.js/LICENCE.md
+   */
+
+
+  /************************************** EDITABLE DEFAULTS *****************************************/
+
+
+    // The default values below must be integers within the stated ranges.
+
+    /*
+     * The maximum number of decimal places (DP) of the results of operations involving division:
+     * div and sqrt, and pow with negative exponents.
+     */
+  var DP = 20,          // 0 to MAX_DP
+
+    /*
+     * The rounding mode (RM) used when rounding to the above decimal places.
+     *
+     *  0  Towards zero (i.e. truncate, no rounding).       (ROUND_DOWN)
+     *  1  To nearest neighbour. If equidistant, round up.  (ROUND_HALF_UP)
+     *  2  To nearest neighbour. If equidistant, to even.   (ROUND_HALF_EVEN)
+     *  3  Away from zero.                                  (ROUND_UP)
+     */
+    RM = 1,             // 0, 1, 2 or 3
+
+    // The maximum value of DP and Big.DP.
+    MAX_DP = 1E6,       // 0 to 1000000
+
+    // The maximum magnitude of the exponent argument to the pow method.
+    MAX_POWER = 1E6,    // 1 to 1000000
+
+    /*
+     * The negative exponent (NE) at and beneath which toString returns exponential notation.
+     * (JavaScript numbers: -7)
+     * -1000000 is the minimum recommended exponent value of a Big.
+     */
+    NE = -7,            // 0 to -1000000
+
+    /*
+     * The positive exponent (PE) at and above which toString returns exponential notation.
+     * (JavaScript numbers: 21)
+     * 1000000 is the maximum recommended exponent value of a Big, but this limit is not enforced.
+     */
+    PE = 21,            // 0 to 1000000
+
+    /*
+     * When true, an error will be thrown if a primitive number is passed to the Big constructor,
+     * or if valueOf is called, or if toNumber is called on a Big which cannot be converted to a
+     * primitive number without a loss of precision.
+     */
+    STRICT = false,     // true or false
+
+
+  /**************************************************************************************************/
+
+
+    // Error messages.
+    NAME = '[big.js] ',
+    INVALID = NAME + 'Invalid ',
+    INVALID_DP = INVALID + 'decimal places',
+    INVALID_RM = INVALID + 'rounding mode',
+    DIV_BY_ZERO = NAME + 'Division by zero',
+
+    // The shared prototype object.
+    P = {},
+    UNDEFINED = void 0,
+    NUMERIC = /^-?(\d+(\.\d*)?|\.\d+)(e[+-]?\d+)?$/i;
+
+
+  /*
+   * Create and return a Big constructor.
+   */
+  function _Big_() {
+
+    /*
+     * The Big constructor and exported function.
+     * Create and return a new instance of a Big number object.
+     *
+     * n {number|string|Big} A numeric value.
+     */
+    function Big(n) {
+      var x = this;
+
+      // Enable constructor usage without new.
+      if (!(x instanceof Big)) {
+        return n === UNDEFINED && arguments.length === 0 ? _Big_() : new Big(n);
+      }
+
+
+      // Duplicate.
+      if (n instanceof Big) {
+        x.s = n.s;
+        x.e = n.e;
+        x.c = n.c.slice();
+      } else {
+        if (typeof n !== 'string') {
+          if (Big.strict === true && typeof n !== 'bigint') {
+            throw TypeError(INVALID + 'value');
+          }
+
+          // Minus zero?
+          n = n === 0 && 1 / n < 0 ? '-0' : String(n);
+        }
+
+        parse(x, n);
+      }
+
+      // Retain a reference to this Big constructor.
+      // Shadow Big.prototype.constructor which points to Object.
+      x.constructor = Big;
+    }
+
+    Big.prototype = P;
+    Big.DP = DP;
+    Big.RM = RM;
+    Big.NE = NE;
+    Big.PE = PE;
+    Big.strict = STRICT;
+    Big.roundDown = 0;
+    Big.roundHalfUp = 1;
+    Big.roundHalfEven = 2;
+    Big.roundUp = 3;
+
+    return Big;
+  }
+
+
+  /*
+   * Parse the number or string value passed to a Big constructor.
+   *
+   * x {Big} A Big number instance.
+   * n {number|string} A numeric value.
+   */
+  function parse(x, n) {
+    var e, i, nl;
+
+    if (!NUMERIC.test(n)) {
+      throw Error(INVALID + 'number');
+    }
+
+    // Determine sign.
+    x.s = n.charAt(0) == '-' ? (n = n.slice(1), -1) : 1;
+
+    // Decimal point?
+    if ((e = n.indexOf('.')) > -1) n = n.replace('.', '');
+
+    // Exponential form?
+    if ((i = n.search(/e/i)) > 0) {
+
+      // Determine exponent.
+      if (e < 0) e = i;
+      e += +n.slice(i + 1);
+      n = n.substring(0, i);
+    } else if (e < 0) {
+
+      // Integer.
+      e = n.length;
+    }
+
+    nl = n.length;
+
+    // Determine leading zeros.
+    for (i = 0; i < nl && n.charAt(i) == '0';) ++i;
+
+    if (i == nl) {
+
+      // Zero.
+      x.c = [x.e = 0];
+    } else {
+
+      // Determine trailing zeros.
+      for (; nl > 0 && n.charAt(--nl) == '0';);
+      x.e = e - i - 1;
+      x.c = [];
+
+      // Convert string to array of digits without leading/trailing zeros.
+      for (e = 0; i <= nl;) x.c[e++] = +n.charAt(i++);
+    }
+
+    return x;
+  }
+
+
+  /*
+   * Round Big x to a maximum of sd significant digits using rounding mode rm.
+   *
+   * x {Big} The Big to round.
+   * sd {number} Significant digits: integer, 0 to MAX_DP inclusive.
+   * rm {number} Rounding mode: 0 (down), 1 (half-up), 2 (half-even) or 3 (up).
+   * [more] {boolean} Whether the result of division was truncated.
+   */
+  function round(x, sd, rm, more) {
+    var xc = x.c;
+
+    if (rm === UNDEFINED) rm = x.constructor.RM;
+    if (rm !== 0 && rm !== 1 && rm !== 2 && rm !== 3) {
+      throw Error(INVALID_RM);
+    }
+
+    if (sd < 1) {
+      more =
+        rm === 3 && (more || !!xc[0]) || sd === 0 && (
+        rm === 1 && xc[0] >= 5 ||
+        rm === 2 && (xc[0] > 5 || xc[0] === 5 && (more || xc[1] !== UNDEFINED))
+      );
+
+      xc.length = 1;
+
+      if (more) {
+
+        // 1, 0.1, 0.01, 0.001, 0.0001 etc.
+        x.e = x.e - sd + 1;
+        xc[0] = 1;
+      } else {
+
+        // Zero.
+        xc[0] = x.e = 0;
+      }
+    } else if (sd < xc.length) {
+
+      // xc[sd] is the digit after the digit that may be rounded up.
+      more =
+        rm === 1 && xc[sd] >= 5 ||
+        rm === 2 && (xc[sd] > 5 || xc[sd] === 5 &&
+          (more || xc[sd + 1] !== UNDEFINED || xc[sd - 1] & 1)) ||
+        rm === 3 && (more || !!xc[0]);
+
+      // Remove any digits after the required precision.
+      xc.length = sd;
+
+      // Round up?
+      if (more) {
+
+        // Rounding up may mean the previous digit has to be rounded up.
+        for (; ++xc[--sd] > 9;) {
+          xc[sd] = 0;
+          if (sd === 0) {
+            ++x.e;
+            xc.unshift(1);
+            break;
+          }
+        }
+      }
+
+      // Remove trailing zeros.
+      for (sd = xc.length; !xc[--sd];) xc.pop();
+    }
+
+    return x;
+  }
+
+
+  /*
+   * Return a string representing the value of Big x in normal or exponential notation.
+   * Handles P.toExponential, P.toFixed, P.toJSON, P.toPrecision, P.toString and P.valueOf.
+   */
+  function stringify$1(x, doExponential, isNonzero) {
+    var e = x.e,
+      s = x.c.join(''),
+      n = s.length;
+
+    // Exponential notation?
+    if (doExponential) {
+      s = s.charAt(0) + (n > 1 ? '.' + s.slice(1) : '') + (e < 0 ? 'e' : 'e+') + e;
+
+    // Normal notation.
+    } else if (e < 0) {
+      for (; ++e;) s = '0' + s;
+      s = '0.' + s;
+    } else if (e > 0) {
+      if (++e > n) {
+        for (e -= n; e--;) s += '0';
+      } else if (e < n) {
+        s = s.slice(0, e) + '.' + s.slice(e);
+      }
+    } else if (n > 1) {
+      s = s.charAt(0) + '.' + s.slice(1);
+    }
+
+    return x.s < 0 && isNonzero ? '-' + s : s;
+  }
+
+
+  // Prototype/instance methods
+
+
+  /*
+   * Return a new Big whose value is the absolute value of this Big.
+   */
+  P.abs = function () {
+    var x = new this.constructor(this);
+    x.s = 1;
+    return x;
+  };
+
+
+  /*
+   * Return 1 if the value of this Big is greater than the value of Big y,
+   *       -1 if the value of this Big is less than the value of Big y, or
+   *        0 if they have the same value.
+   */
+  P.cmp = function (y) {
+    var isneg,
+      x = this,
+      xc = x.c,
+      yc = (y = new x.constructor(y)).c,
+      i = x.s,
+      j = y.s,
+      k = x.e,
+      l = y.e;
+
+    // Either zero?
+    if (!xc[0] || !yc[0]) return !xc[0] ? !yc[0] ? 0 : -j : i;
+
+    // Signs differ?
+    if (i != j) return i;
+
+    isneg = i < 0;
+
+    // Compare exponents.
+    if (k != l) return k > l ^ isneg ? 1 : -1;
+
+    j = (k = xc.length) < (l = yc.length) ? k : l;
+
+    // Compare digit by digit.
+    for (i = -1; ++i < j;) {
+      if (xc[i] != yc[i]) return xc[i] > yc[i] ^ isneg ? 1 : -1;
+    }
+
+    // Compare lengths.
+    return k == l ? 0 : k > l ^ isneg ? 1 : -1;
+  };
+
+
+  /*
+   * Return a new Big whose value is the value of this Big divided by the value of Big y, rounded,
+   * if necessary, to a maximum of Big.DP decimal places using rounding mode Big.RM.
+   */
+  P.div = function (y) {
+    var x = this,
+      Big = x.constructor,
+      a = x.c,                  // dividend
+      b = (y = new Big(y)).c,   // divisor
+      k = x.s == y.s ? 1 : -1,
+      dp = Big.DP;
+
+    if (dp !== ~~dp || dp < 0 || dp > MAX_DP) {
+      throw Error(INVALID_DP);
+    }
+
+    // Divisor is zero?
+    if (!b[0]) {
+      throw Error(DIV_BY_ZERO);
+    }
+
+    // Dividend is 0? Return +-0.
+    if (!a[0]) {
+      y.s = k;
+      y.c = [y.e = 0];
+      return y;
+    }
+
+    var bl, bt, n, cmp, ri,
+      bz = b.slice(),
+      ai = bl = b.length,
+      al = a.length,
+      r = a.slice(0, bl),   // remainder
+      rl = r.length,
+      q = y,                // quotient
+      qc = q.c = [],
+      qi = 0,
+      p = dp + (q.e = x.e - y.e) + 1;    // precision of the result
+
+    q.s = k;
+    k = p < 0 ? 0 : p;
+
+    // Create version of divisor with leading zero.
+    bz.unshift(0);
+
+    // Add zeros to make remainder as long as divisor.
+    for (; rl++ < bl;) r.push(0);
+
+    do {
+
+      // n is how many times the divisor goes into current remainder.
+      for (n = 0; n < 10; n++) {
+
+        // Compare divisor and remainder.
+        if (bl != (rl = r.length)) {
+          cmp = bl > rl ? 1 : -1;
+        } else {
+          for (ri = -1, cmp = 0; ++ri < bl;) {
+            if (b[ri] != r[ri]) {
+              cmp = b[ri] > r[ri] ? 1 : -1;
+              break;
+            }
+          }
+        }
+
+        // If divisor < remainder, subtract divisor from remainder.
+        if (cmp < 0) {
+
+          // Remainder can't be more than 1 digit longer than divisor.
+          // Equalise lengths using divisor with extra leading zero?
+          for (bt = rl == bl ? b : bz; rl;) {
+            if (r[--rl] < bt[rl]) {
+              ri = rl;
+              for (; ri && !r[--ri];) r[ri] = 9;
+              --r[ri];
+              r[rl] += 10;
+            }
+            r[rl] -= bt[rl];
+          }
+
+          for (; !r[0];) r.shift();
+        } else {
+          break;
+        }
+      }
+
+      // Add the digit n to the result array.
+      qc[qi++] = cmp ? n : ++n;
+
+      // Update the remainder.
+      if (r[0] && cmp) r[rl] = a[ai] || 0;
+      else r = [a[ai]];
+
+    } while ((ai++ < al || r[0] !== UNDEFINED) && k--);
+
+    // Leading zero? Do not remove if result is simply zero (qi == 1).
+    if (!qc[0] && qi != 1) {
+
+      // There can't be more than one zero.
+      qc.shift();
+      q.e--;
+      p--;
+    }
+
+    // Round?
+    if (qi > p) round(q, p, Big.RM, r[0] !== UNDEFINED);
+
+    return q;
+  };
+
+
+  /*
+   * Return true if the value of this Big is equal to the value of Big y, otherwise return false.
+   */
+  P.eq = function (y) {
+    return this.cmp(y) === 0;
+  };
+
+
+  /*
+   * Return true if the value of this Big is greater than the value of Big y, otherwise return
+   * false.
+   */
+  P.gt = function (y) {
+    return this.cmp(y) > 0;
+  };
+
+
+  /*
+   * Return true if the value of this Big is greater than or equal to the value of Big y, otherwise
+   * return false.
+   */
+  P.gte = function (y) {
+    return this.cmp(y) > -1;
+  };
+
+
+  /*
+   * Return true if the value of this Big is less than the value of Big y, otherwise return false.
+   */
+  P.lt = function (y) {
+    return this.cmp(y) < 0;
+  };
+
+
+  /*
+   * Return true if the value of this Big is less than or equal to the value of Big y, otherwise
+   * return false.
+   */
+  P.lte = function (y) {
+    return this.cmp(y) < 1;
+  };
+
+
+  /*
+   * Return a new Big whose value is the value of this Big minus the value of Big y.
+   */
+  P.minus = P.sub = function (y) {
+    var i, j, t, xlty,
+      x = this,
+      Big = x.constructor,
+      a = x.s,
+      b = (y = new Big(y)).s;
+
+    // Signs differ?
+    if (a != b) {
+      y.s = -b;
+      return x.plus(y);
+    }
+
+    var xc = x.c.slice(),
+      xe = x.e,
+      yc = y.c,
+      ye = y.e;
+
+    // Either zero?
+    if (!xc[0] || !yc[0]) {
+      if (yc[0]) {
+        y.s = -b;
+      } else if (xc[0]) {
+        y = new Big(x);
+      } else {
+        y.s = 1;
+      }
+      return y;
+    }
+
+    // Determine which is the bigger number. Prepend zeros to equalise exponents.
+    if (a = xe - ye) {
+
+      if (xlty = a < 0) {
+        a = -a;
+        t = xc;
+      } else {
+        ye = xe;
+        t = yc;
+      }
+
+      t.reverse();
+      for (b = a; b--;) t.push(0);
+      t.reverse();
+    } else {
+
+      // Exponents equal. Check digit by digit.
+      j = ((xlty = xc.length < yc.length) ? xc : yc).length;
+
+      for (a = b = 0; b < j; b++) {
+        if (xc[b] != yc[b]) {
+          xlty = xc[b] < yc[b];
+          break;
+        }
+      }
+    }
+
+    // x < y? Point xc to the array of the bigger number.
+    if (xlty) {
+      t = xc;
+      xc = yc;
+      yc = t;
+      y.s = -y.s;
+    }
+
+    /*
+     * Append zeros to xc if shorter. No need to add zeros to yc if shorter as subtraction only
+     * needs to start at yc.length.
+     */
+    if ((b = (j = yc.length) - (i = xc.length)) > 0) for (; b--;) xc[i++] = 0;
+
+    // Subtract yc from xc.
+    for (b = i; j > a;) {
+      if (xc[--j] < yc[j]) {
+        for (i = j; i && !xc[--i];) xc[i] = 9;
+        --xc[i];
+        xc[j] += 10;
+      }
+
+      xc[j] -= yc[j];
+    }
+
+    // Remove trailing zeros.
+    for (; xc[--b] === 0;) xc.pop();
+
+    // Remove leading zeros and adjust exponent accordingly.
+    for (; xc[0] === 0;) {
+      xc.shift();
+      --ye;
+    }
+
+    if (!xc[0]) {
+
+      // n - n = +0
+      y.s = 1;
+
+      // Result must be zero.
+      xc = [ye = 0];
+    }
+
+    y.c = xc;
+    y.e = ye;
+
+    return y;
+  };
+
+
+  /*
+   * Return a new Big whose value is the value of this Big modulo the value of Big y.
+   */
+  P.mod = function (y) {
+    var ygtx,
+      x = this,
+      Big = x.constructor,
+      a = x.s,
+      b = (y = new Big(y)).s;
+
+    if (!y.c[0]) {
+      throw Error(DIV_BY_ZERO);
+    }
+
+    x.s = y.s = 1;
+    ygtx = y.cmp(x) == 1;
+    x.s = a;
+    y.s = b;
+
+    if (ygtx) return new Big(x);
+
+    a = Big.DP;
+    b = Big.RM;
+    Big.DP = Big.RM = 0;
+    x = x.div(y);
+    Big.DP = a;
+    Big.RM = b;
+
+    return this.minus(x.times(y));
+  };
+
+
+  /*
+   * Return a new Big whose value is the value of this Big negated.
+   */
+  P.neg = function () {
+    var x = new this.constructor(this);
+    x.s = -x.s;
+    return x;
+  };
+
+
+  /*
+   * Return a new Big whose value is the value of this Big plus the value of Big y.
+   */
+  P.plus = P.add = function (y) {
+    var e, k, t,
+      x = this,
+      Big = x.constructor;
+
+    y = new Big(y);
+
+    // Signs differ?
+    if (x.s != y.s) {
+      y.s = -y.s;
+      return x.minus(y);
+    }
+
+    var xe = x.e,
+      xc = x.c,
+      ye = y.e,
+      yc = y.c;
+
+    // Either zero?
+    if (!xc[0] || !yc[0]) {
+      if (!yc[0]) {
+        if (xc[0]) {
+          y = new Big(x);
+        } else {
+          y.s = x.s;
+        }
+      }
+      return y;
+    }
+
+    xc = xc.slice();
+
+    // Prepend zeros to equalise exponents.
+    // Note: reverse faster than unshifts.
+    if (e = xe - ye) {
+      if (e > 0) {
+        ye = xe;
+        t = yc;
+      } else {
+        e = -e;
+        t = xc;
+      }
+
+      t.reverse();
+      for (; e--;) t.push(0);
+      t.reverse();
+    }
+
+    // Point xc to the longer array.
+    if (xc.length - yc.length < 0) {
+      t = yc;
+      yc = xc;
+      xc = t;
+    }
+
+    e = yc.length;
+
+    // Only start adding at yc.length - 1 as the further digits of xc can be left as they are.
+    for (k = 0; e; xc[e] %= 10) k = (xc[--e] = xc[e] + yc[e] + k) / 10 | 0;
+
+    // No need to check for zero, as +x + +y != 0 && -x + -y != 0
+
+    if (k) {
+      xc.unshift(k);
+      ++ye;
+    }
+
+    // Remove trailing zeros.
+    for (e = xc.length; xc[--e] === 0;) xc.pop();
+
+    y.c = xc;
+    y.e = ye;
+
+    return y;
+  };
+
+
+  /*
+   * Return a Big whose value is the value of this Big raised to the power n.
+   * If n is negative, round to a maximum of Big.DP decimal places using rounding
+   * mode Big.RM.
+   *
+   * n {number} Integer, -MAX_POWER to MAX_POWER inclusive.
+   */
+  P.pow = function (n) {
+    var x = this,
+      one = new x.constructor('1'),
+      y = one,
+      isneg = n < 0;
+
+    if (n !== ~~n || n < -MAX_POWER || n > MAX_POWER) {
+      throw Error(INVALID + 'exponent');
+    }
+
+    if (isneg) n = -n;
+
+    for (;;) {
+      if (n & 1) y = y.times(x);
+      n >>= 1;
+      if (!n) break;
+      x = x.times(x);
+    }
+
+    return isneg ? one.div(y) : y;
+  };
+
+
+  /*
+   * Return a new Big whose value is the value of this Big rounded to a maximum precision of sd
+   * significant digits using rounding mode rm, or Big.RM if rm is not specified.
+   *
+   * sd {number} Significant digits: integer, 1 to MAX_DP inclusive.
+   * rm? {number} Rounding mode: 0 (down), 1 (half-up), 2 (half-even) or 3 (up).
+   */
+  P.prec = function (sd, rm) {
+    if (sd !== ~~sd || sd < 1 || sd > MAX_DP) {
+      throw Error(INVALID + 'precision');
+    }
+    return round(new this.constructor(this), sd, rm);
+  };
+
+
+  /*
+   * Return a new Big whose value is the value of this Big rounded to a maximum of dp decimal places
+   * using rounding mode rm, or Big.RM if rm is not specified.
+   * If dp is negative, round to an integer which is a multiple of 10**-dp.
+   * If dp is not specified, round to 0 decimal places.
+   *
+   * dp? {number} Integer, -MAX_DP to MAX_DP inclusive.
+   * rm? {number} Rounding mode: 0 (down), 1 (half-up), 2 (half-even) or 3 (up).
+   */
+  P.round = function (dp, rm) {
+    if (dp === UNDEFINED) dp = 0;
+    else if (dp !== ~~dp || dp < -MAX_DP || dp > MAX_DP) {
+      throw Error(INVALID_DP);
+    }
+    return round(new this.constructor(this), dp + this.e + 1, rm);
+  };
+
+
+  /*
+   * Return a new Big whose value is the square root of the value of this Big, rounded, if
+   * necessary, to a maximum of Big.DP decimal places using rounding mode Big.RM.
+   */
+  P.sqrt = function () {
+    var r, c, t,
+      x = this,
+      Big = x.constructor,
+      s = x.s,
+      e = x.e,
+      half = new Big('0.5');
+
+    // Zero?
+    if (!x.c[0]) return new Big(x);
+
+    // Negative?
+    if (s < 0) {
+      throw Error(NAME + 'No square root');
+    }
+
+    // Estimate.
+    s = Math.sqrt(+stringify$1(x, true, true));
+
+    // Math.sqrt underflow/overflow?
+    // Re-estimate: pass x coefficient to Math.sqrt as integer, then adjust the result exponent.
+    if (s === 0 || s === 1 / 0) {
+      c = x.c.join('');
+      if (!(c.length + e & 1)) c += '0';
+      s = Math.sqrt(c);
+      e = ((e + 1) / 2 | 0) - (e < 0 || e & 1);
+      r = new Big((s == 1 / 0 ? '5e' : (s = s.toExponential()).slice(0, s.indexOf('e') + 1)) + e);
+    } else {
+      r = new Big(s + '');
+    }
+
+    e = r.e + (Big.DP += 4);
+
+    // Newton-Raphson iteration.
+    do {
+      t = r;
+      r = half.times(t.plus(x.div(t)));
+    } while (t.c.slice(0, e).join('') !== r.c.slice(0, e).join(''));
+
+    return round(r, (Big.DP -= 4) + r.e + 1, Big.RM);
+  };
+
+
+  /*
+   * Return a new Big whose value is the value of this Big times the value of Big y.
+   */
+  P.times = P.mul = function (y) {
+    var c,
+      x = this,
+      Big = x.constructor,
+      xc = x.c,
+      yc = (y = new Big(y)).c,
+      a = xc.length,
+      b = yc.length,
+      i = x.e,
+      j = y.e;
+
+    // Determine sign of result.
+    y.s = x.s == y.s ? 1 : -1;
+
+    // Return signed 0 if either 0.
+    if (!xc[0] || !yc[0]) {
+      y.c = [y.e = 0];
+      return y;
+    }
+
+    // Initialise exponent of result as x.e + y.e.
+    y.e = i + j;
+
+    // If array xc has fewer digits than yc, swap xc and yc, and lengths.
+    if (a < b) {
+      c = xc;
+      xc = yc;
+      yc = c;
+      j = a;
+      a = b;
+      b = j;
+    }
+
+    // Initialise coefficient array of result with zeros.
+    for (c = new Array(j = a + b); j--;) c[j] = 0;
+
+    // Multiply.
+
+    // i is initially xc.length.
+    for (i = b; i--;) {
+      b = 0;
+
+      // a is yc.length.
+      for (j = a + i; j > i;) {
+
+        // Current sum of products at this digit position, plus carry.
+        b = c[j] + yc[i] * xc[j - i - 1] + b;
+        c[j--] = b % 10;
+
+        // carry
+        b = b / 10 | 0;
+      }
+
+      c[j] = b;
+    }
+
+    // Increment result exponent if there is a final carry, otherwise remove leading zero.
+    if (b) ++y.e;
+    else c.shift();
+
+    // Remove trailing zeros.
+    for (i = c.length; !c[--i];) c.pop();
+    y.c = c;
+
+    return y;
+  };
+
+
+  /*
+   * Return a string representing the value of this Big in exponential notation rounded to dp fixed
+   * decimal places using rounding mode rm, or Big.RM if rm is not specified.
+   *
+   * dp? {number} Decimal places: integer, 0 to MAX_DP inclusive.
+   * rm? {number} Rounding mode: 0 (down), 1 (half-up), 2 (half-even) or 3 (up).
+   */
+  P.toExponential = function (dp, rm) {
+    var x = this,
+      n = x.c[0];
+
+    if (dp !== UNDEFINED) {
+      if (dp !== ~~dp || dp < 0 || dp > MAX_DP) {
+        throw Error(INVALID_DP);
+      }
+      x = round(new x.constructor(x), ++dp, rm);
+      for (; x.c.length < dp;) x.c.push(0);
+    }
+
+    return stringify$1(x, true, !!n);
+  };
+
+
+  /*
+   * Return a string representing the value of this Big in normal notation rounded to dp fixed
+   * decimal places using rounding mode rm, or Big.RM if rm is not specified.
+   *
+   * dp? {number} Decimal places: integer, 0 to MAX_DP inclusive.
+   * rm? {number} Rounding mode: 0 (down), 1 (half-up), 2 (half-even) or 3 (up).
+   *
+   * (-0).toFixed(0) is '0', but (-0.1).toFixed(0) is '-0'.
+   * (-0).toFixed(1) is '0.0', but (-0.01).toFixed(1) is '-0.0'.
+   */
+  P.toFixed = function (dp, rm) {
+    var x = this,
+      n = x.c[0];
+
+    if (dp !== UNDEFINED) {
+      if (dp !== ~~dp || dp < 0 || dp > MAX_DP) {
+        throw Error(INVALID_DP);
+      }
+      x = round(new x.constructor(x), dp + x.e + 1, rm);
+
+      // x.e may have changed if the value is rounded up.
+      for (dp = dp + x.e + 1; x.c.length < dp;) x.c.push(0);
+    }
+
+    return stringify$1(x, false, !!n);
+  };
+
+
+  /*
+   * Return a string representing the value of this Big.
+   * Return exponential notation if this Big has a positive exponent equal to or greater than
+   * Big.PE, or a negative exponent equal to or less than Big.NE.
+   * Omit the sign for negative zero.
+   */
+  P.toJSON = P.toString = function () {
+    var x = this,
+      Big = x.constructor;
+    return stringify$1(x, x.e <= Big.NE || x.e >= Big.PE, !!x.c[0]);
+  };
+
+  if (typeof Symbol !== "undefined") {
+    P[Symbol.for('nodejs.util.inspect.custom')] = P.toJSON;
+  }
+
+
+  /*
+   * Return the value of this Big as a primitive number.
+   */
+  P.toNumber = function () {
+    var n = +stringify$1(this, true, true);
+    if (this.constructor.strict === true && !this.eq(n.toString())) {
+      throw Error(NAME + 'Imprecise conversion');
+    }
+    return n;
+  };
+
+
+  /*
+   * Return a string representing the value of this Big rounded to sd significant digits using
+   * rounding mode rm, or Big.RM if rm is not specified.
+   * Use exponential notation if sd is less than the number of digits necessary to represent
+   * the integer part of the value in normal notation.
+   *
+   * sd {number} Significant digits: integer, 1 to MAX_DP inclusive.
+   * rm? {number} Rounding mode: 0 (down), 1 (half-up), 2 (half-even) or 3 (up).
+   */
+  P.toPrecision = function (sd, rm) {
+    var x = this,
+      Big = x.constructor,
+      n = x.c[0];
+
+    if (sd !== UNDEFINED) {
+      if (sd !== ~~sd || sd < 1 || sd > MAX_DP) {
+        throw Error(INVALID + 'precision');
+      }
+      x = round(new Big(x), sd, rm);
+      for (; x.c.length < sd;) x.c.push(0);
+    }
+
+    return stringify$1(x, sd <= x.e || x.e <= Big.NE || x.e >= Big.PE, !!n);
+  };
+
+
+  /*
+   * Return a string representing the value of this Big.
+   * Return exponential notation if this Big has a positive exponent equal to or greater than
+   * Big.PE, or a negative exponent equal to or less than Big.NE.
+   * Include the sign for negative zero.
+   */
+  P.valueOf = function () {
+    var x = this,
+      Big = x.constructor;
+    if (Big.strict === true) {
+      throw Error(NAME + 'valueOf disallowed');
+    }
+    return stringify$1(x, x.e <= Big.NE || x.e >= Big.PE, true);
+  };
+
+
+  // Export
+
+
+  var Big = _Big_();
 
   // Find the intersection between two 2D segments
   // Returns 0, 1 or 2 [x, y] locations as null, [x, y], or [x1, y1, x2, y2]
@@ -3164,42 +4156,45 @@
   function segmentIntersection(ax, ay, bx, by, cx, cy, dx, dy, epsArg) {
     // Use a small tolerance interval, so collinear segments and T-intersections
     // are detected (floating point rounding often causes exact functions to fail)
-    var eps = epsArg >= 0 ? epsArg :
+    var eps = epsArg > 0 ? epsArg :
         getHighPrecisionSnapInterval([ax, ay, bx, by, cx, cy, dx, dy]);
     var epsSq = eps * eps;
     var touches, cross;
+
     // Detect 0, 1 or 2 'touch' intersections, where a vertex of one segment
     // is very close to the other segment's linear portion.
     // One touch indicates either a T-intersection or two overlapping collinear
     // segments that share an endpoint. Two touches indicates overlapping
     // collinear segments that do not share an endpoint.
     touches = findPointSegTouches(epsSq, ax, ay, bx, by, cx, cy, dx, dy);
-    // if (touches) return touches;
     // Ignore endpoint-only intersections
     if (!touches && testEndpointHit(epsSq, ax, ay, bx, by, cx, cy, dx, dy)) {
       return null;
     }
     // Detect cross intersection
-    cross = findCrossIntersection(ax, ay, bx, by, cx, cy, dx, dy, eps);
+    // (TODO: consider cross intersections that are also endpoint hits)
+    if (!touches) {
+      cross = findCrossIntersection(ax, ay, bx, by, cx, cy, dx, dy, eps);
+    }
     return touches || cross || null;
   }
 
 
-  // Find the intersection point of two segments that cross each other,
-  // or return null if the segments do not cross.
-  // Assumes endpoint intersections have already been detected
   function findCrossIntersection(ax, ay, bx, by, cx, cy, dx, dy, eps) {
-    if (!segmentHit(ax, ay, bx, by, cx, cy, dx, dy)) return null;
-    var den = determinant2D(bx - ax, by - ay, dx - cx, dy - cy);
-    var m = orient2D(cx, cy, dx, dy, ax, ay) / den;
-    var p = [ax + m * (bx - ax), ay + m * (by - ay)];
-    if (Math.abs(den) < 1e-25) {
-      // changed from 1e-18 to 1e-25 (see geom ex1)
-      // assume that collinear and near-collinear segment intersections have been
-      // accounted for already.
-      // TODO: is this a valid assumption?
-      return null;
+    var p;
+    if (eps > 0 && !segmentHit_fast(ax, ay, bx, by, cx, cy, dx, dy)) return null;
+    else if (eps === 0 && !segmentHit_big(ax, ay, bx, by, cx, cy, dx, dy)) return null;
+
+    // in a typical layer with many intersections, robust is preferred in
+    // most (>90%) segment intersections in order to keep the positional
+    // error within a small interval (e.g. 50% of eps)
+    //
+    if (useRobustCross(ax, ay, bx, by, cx, cy, dx, dy)) {
+      p = findCrossIntersection_robust(ax, ay, bx, by, cx, cy, dx, dy);
+    } else {
+      p = findCrossIntersection_fast(ax, ay, bx, by, cx, cy, dx, dy);
     }
+    if (!p) return null;
 
     // Snap p to a vertex if very close to one
     // This avoids tiny segments caused by T-intersection overshoots and prevents
@@ -3215,9 +4210,98 @@
     return p;
   }
 
+  // Find the intersection point of two segments that cross each other,
+  // or return null if the segments do not cross.
+  // Assumes endpoint intersections have already been detected
+  function findCrossIntersection_robust(ax, ay, bx, by, cx, cy, dx, dy) {
+    var ax_big = Big(ax);
+    var ay_big = Big(ay);
+    var bx_big = Big(bx);
+    var by_big = Big(by);
+    var cx_big = Big(cx);
+    var cy_big = Big(cy);
+    var dx_big = Big(dx);
+    var dy_big = Big(dy);
+    var v1x = bx_big.minus(ax_big);
+    var v1y = by_big.minus(ay_big);
+    var den_big = determinant2D_big(v1x, v1y, dx_big.minus(cx), dy_big.minus(cy));
+    if (den_big.eq(0)) {
+      debug("DIV0 error (should have been caught upstream)");
+      // console.log("hit?", segmentHit_big(ax, ay, bx, by, cx, cy, dx, dy))
+      // console.log('Seg 1', getSegFeature(ax, ay, bx, by, true))
+      // console.log('Seg 2', getSegFeature(cx, cy, dx, dy, false))
+      return null;
+    }
+    // perform division using regular math, which does not reduce overall
+    // precision in test data (big.js division is very slow)
+    // tests show identical result to:
+    // orient2D_big(cx_big, cy_big, dx_big, dy_big, ax_big, ay_big).div(den_big)
+    var m = orient2D_big(cx_big, cy_big, dx_big, dy_big, ax_big,
+      ay_big).toNumber() / den_big.toNumber();
+    var m_big = Big(m);
+    var x_big = ax_big.plus(m_big.times(v1x).round(16));
+    var y_big = ay_big.plus(m_big.times(v1y).round(16));
+    var p = [x_big.toNumber(), y_big.toNumber()];
+    return p;
+  }
+
+  function findCrossIntersection_fast(ax, ay, bx, by, cx, cy, dx, dy) {
+    var den = determinant2D(bx - ax, by - ay, dx - cx, dy - cy);
+    var m = orient2D(cx, cy, dx, dy, ax, ay) / den;
+    var p = [ax + m * (bx - ax), ay + m * (by - ay)];
+    if (Math.abs(den) < 1e-25) {
+      // changed from 1e-18 to 1e-25 (see geom ex1)
+      // assume that collinear and near-collinear segment intersections have been
+      // accounted for already.
+      // TODO: is this really true?
+      return null;
+    }
+    return p;
+  }
+
+  function useRobustCross(ax, ay, bx, by, cx, cy, dx, dy) {
+    // angle and seg length ratio thresholds were found by comparing
+    // fast and robust outputs on sample data
+    if (innerAngle(ax, ay, bx, by, cx, cy, dx, dy) < 0.1) return true;
+    var len1 = distance2D(ax, ay, bx, by);
+    var len2 = distance2D(cx, cy, dx, dy);
+    var ratio = len1 < len2 ? len1 / len2 : len2 / len1 || 0;
+    if (ratio < 0.001) return true;
+    return false;
+  }
+
+  // Returns smaller unsigned angle between two segments
+  function innerAngle(ax, ay, bx, by, cx, cy, dx, dy) {
+    var v1x = bx - ax;
+    var v1y = by - ay;
+    var v2x = dx - cx;
+    var v2y = dy - cy;
+    var dot = v1x * v2x + v1y * v2y;
+    var mag1Sq = v1x * v1x + v1y * v1y;
+    var mag2Sq = v2x * v2x + v2y * v2y;
+    if (mag1Sq === 0 || mag2Sq === 0) {
+      return 0;
+    }
+    var cosTheta = dot / Math.sqrt(mag1Sq * mag2Sq);
+    var theta;
+    if (cosTheta > 1 - 1e-14) {
+      theta = 0;
+    } else if (cosTheta < -1 + 1e-14) {
+      theta = Math.PI;
+    } else {
+      theta = Math.acos(cosTheta);
+    }
+    if (theta >= Math.PI / 2) {
+      theta = Math.PI - theta;
+    }
+    return theta;
+  }
+
   function testEndpointHit(epsSq, ax, ay, bx, by, cx, cy, dx, dy) {
-    return distanceSq(ax, ay, cx, cy) <= epsSq || distanceSq(ax, ay, dx, dy) <= epsSq ||
-      distanceSq(bx, by, cx, cy) <= epsSq || distanceSq(bx, by, dx, dy) <= epsSq;
+    return distanceSq(ax, ay, cx, cy) <= epsSq ||
+      distanceSq(ax, ay, dx, dy) <= epsSq ||
+      distanceSq(bx, by, cx, cy) <= epsSq ||
+      distanceSq(bx, by, dx, dy) <= epsSq;
   }
 
   function findPointSegTouches(epsSq, ax, ay, bx, by, cx, cy, dx, dy) {
@@ -3228,6 +4312,9 @@
     collectPointSegTouch(touches, epsSq, dx, dy, ax, ay, bx, by);
     if (touches.length === 0) return null;
     if (touches.length > 4) {
+      // console.log('XX', touches.length)
+      // console.log('Seg 1', getSegFeature(ax, ay, bx, by, true))
+      // console.log('Seg 2', getSegFeature(cx, cy, dx, dy, false))
       // Geometrically, more than two touch intersections can not occur.
       // Is it possible that fp rounding or a bug might result in >2 touches?
       debug('Intersection detection error');
@@ -3244,9 +4331,9 @@
     var pa = distanceSq(ax, ay, px, py);
     var pb = distanceSq(bx, by, px, py);
     if (pa <= epsSq || pb <= epsSq) return; // ignore endpoint hits
+    // console.log("Dist:", Math.sqrt(pab), "eps:", Math.sqrt(epsSq), "p:", px, py)
     arr.push(px, py); // T intersection at P and AB
   }
-
 
   // Used by mapshaper-undershoots.js
   // TODO: make more robust, make sure result is compatible with segmentIntersection()
@@ -3296,15 +4383,54 @@
     // when a segment is vertical or horizontal. This has caused problems when
     // repeatedly applying bbox clipping along the same segment
     var x = p[0],
-        y = p[1];
+        y = p[1],
+        s1out = false,
+        s2out = false;
+
     // assumes that segment ranges intersect
-    x = clampToCloseRange(x, ax, bx);
-    x = clampToCloseRange(x, cx, dx);
-    y = clampToCloseRange(y, ay, by);
-    y = clampToCloseRange(y, cy, dy);
+    if (outsideRange(x, ax, bx)) {
+      x = clampToClosestEndpoint(x, ax, bx);
+      s1out = true;
+    }
+    if (outsideRange(x, cx, dx)) {
+      x = clampToClosestEndpoint(x, cx, dx);
+      s2out = true;
+    }
+    if (outsideRange(y, ay, by)) {
+      y = clampToClosestEndpoint(y, ay, by);
+      s1out = true;
+    }
+    if (outsideRange(y, cy, dy)) {
+      y = clampToClosestEndpoint(y, cy, dy);
+      s2out = true;
+    }
+    if ((s1out || s2out)) {
+      debug('Clamping a segment intersection point');
+      // console.log("angle:", innerAngle(ax, ay, bx, by, cx, cy, dx, dy))
+      // console.log('Feature 1', getSegFeature(ax, ay, bx, by, s1out));
+      // console.log('Feature 2', getSegFeature(cx, cy, dx, dy, s2out));
+      // console.log('Point:', JSON.stringify({
+      //   type: 'Feature',
+      //   properties: {fill: 'red'},
+      //   geometry: {type: 'Point', coordinates: [p[0], p[1]]}
+      // }));
+    }
     p[0] = x;
     p[1] = y;
   }
+
+  // function getSegFeature(x1, y1, x2, y2, hot) {
+  //   return JSON.stringify({
+  //     type: "Feature",
+  //     properties: {
+  //       stroke: hot ? "orange" : "blue"
+  //     },
+  //     geometry: {
+  //       type: "LineString",
+  //       coordinates: [[x1, y1], [x2, y2]]
+  //     }
+  //   });
+  // }
 
   // a: coordinate of point
   // b: endpoint coordinate of segment
@@ -3321,16 +4447,13 @@
     return out;
   }
 
-  function clampToCloseRange(a, b, c) {
-    var lim;
-    if (outsideRange(a, b, c)) {
-      lim = Math.abs(a - b) < Math.abs(a - c) ? b : c;
-      if (Math.abs(a - lim) > 1e-15) {
-        debug("[clampToCloseRange()] large clamping interval", a, b, c);
-      }
-      a = lim;
+  function clampToClosestEndpoint(a, b, c) {
+    var lim = Math.abs(a - b) < Math.abs(a - c) ? b : c;
+    var interval = Math.abs(a - lim);
+    if (interval > 1e-15) {
+      debug("[clampToClosestEndpoint()] large clamping interval:", interval);
     }
-    return a;
+    return lim;
   }
 
   // Determinant of matrix
@@ -3338,6 +4461,10 @@
   //  | c  d |
   function determinant2D(a, b, c, d) {
     return a * d - b * c;
+  }
+
+  function determinant2D_big(a, b, c, d) {
+    return a.times(d).minus(b.times(c));
   }
 
   // returns a positive value if the points a, b, and c are arranged in
@@ -3348,15 +4475,50 @@
     return determinant2D(ax - cx, ay - cy, bx - cx, by - cy);
   }
 
+  function orient2D_big(ax, ay, bx, by, cx, cy) {
+    var a = (ax.minus(cx)).times(by.minus(cy));
+    var b = (ay.minus(cy)).times(bx.minus(cx));
+    return a.minus(b);
+  }
+
+  function orient2D_big2(ax, ay, bx, by, cx, cy) {
+    return orient2D_big(Big(ax), Big(ay), Big(bx), Big(by), Big(cx), Big(cy));
+  }
+
+
+  // export function orient2D_v2(ax, ay, bx, by, cx, cy) {
+  //   return -orient2D_robust(ax, ay, bx, by, cx, cy);
+  // }
+
+
   // Source: Sedgewick, _Algorithms in C_
   // (Other functions were tried that were more sensitive to floating point errors
   //  than this function)
-  function segmentHit(ax, ay, bx, by, cx, cy, dx, dy) {
+  function segmentHit_fast(ax, ay, bx, by, cx, cy, dx, dy) {
     return orient2D(ax, ay, bx, by, cx, cy) *
         orient2D(ax, ay, bx, by, dx, dy) <= 0 &&
         orient2D(cx, cy, dx, dy, ax, ay) *
         orient2D(cx, cy, dx, dy, bx, by) <= 0;
   }
+
+  function segmentHit_big(ax, ay, bx, by, cx, cy, dx, dy) {
+    return orient2D_big(ax, ay, bx, by, cx, cy).times(
+        orient2D_big(ax, ay, bx, by, dx, dy)).lte(0) &&
+        orient2D_big(cx, cy, dx, dy, ax, ay).times(
+        orient2D_big(cx, cy, dx, dy, bx, by)).lte(0);
+  }
+
+  function segmentHit_big2(ax, ay, bx, by, cx, cy, dx, dy) {
+    return segmentHit_big(Big(ax), Big(ay), Big(bx), Big(by),
+      Big(cx), Big(cy), Big(dx), Big(dy));
+  }
+
+  // export function segmentHit_robust(ax, ay, bx, by, cx, cy, dx, dy) {
+  //   return -orient2D_robust(ax, ay, bx, by, cx, cy) *
+  //       -orient2D_robust(ax, ay, bx, by, dx, dy) <= 0 &&
+  //       -orient2D_robust(cx, cy, dx, dy, ax, ay) *
+  //       -orient2D_robust(cx, cy, dx, dy, bx, by) <= 0;
+  // }
 
   // Useful for determining if a segment that intersects another segment is
   // entering or leaving an enclosed buffer area
@@ -3382,7 +4544,11 @@
     __proto__: null,
     findClosestPointOnSeg: findClosestPointOnSeg,
     orient2D: orient2D,
-    segmentHit: segmentHit,
+    orient2D_big: orient2D_big,
+    orient2D_big2: orient2D_big2,
+    segmentHit_big: segmentHit_big,
+    segmentHit_big2: segmentHit_big2,
+    segmentHit_fast: segmentHit_fast,
     segmentIntersection: segmentIntersection,
     segmentTurn: segmentTurn
   });
@@ -3692,7 +4858,7 @@
   // editPart: callback function
   function editShapes(shapes, editPart) {
     for (var i=0, n=shapes.length; i<n; i++) {
-      shapes[i] = editShapeParts(shapes[i], editPart);
+      shapes[i] = editShapeParts(shapes[i], editPart, i);
     }
   }
 
@@ -3700,8 +4866,9 @@
   // @cb: function(part, i, parts)
   //    If @cb returns an array, it replaces the existing value
   //    If @cb returns null, the path is removed from the feature
+  // @shpId: (optional) id of shape
   //
-  function editShapeParts(parts, cb) {
+  function editShapeParts(parts, cb, shpId) {
     if (!parts) return null; // null geometry not edited
     if (!utils.isArray(parts)) error("Expected an array, received:", parts);
     var nulls = 0,
@@ -3709,7 +4876,7 @@
         retn;
 
     for (var i=0; i<n; i++) {
-      retn = cb(parts[i], i, parts);
+      retn = cb(parts[i], i, parts, shpId);
       if (retn === null) {
         nulls++;
         parts[i] = null;
@@ -5756,7 +6923,7 @@
     //
     this.forEach2 = function(cb) {
       for (var arcId=0, n=this.size(); arcId<n; arcId++) {
-        cb(_ii[arcId], _nn[arcId], _xx, _yy, _zz, arcId);
+        cb(arcId, _ii[arcId], _nn[arcId], _xx, _yy, _zz);
       }
     };
 
@@ -5891,6 +7058,27 @@
     };
 
     this.arcIsDegenerate = function(arcId) {
+      return this.arcHasZeroLength(arcId) || this.arcIsSpike(arcId);
+    };
+
+    this.arcIsSpike = function(arcId) {
+      var iter = this.getArcIter(arcId);
+      var x0, y0;
+      if (iter.hasNext()) {
+        x0 = iter.x;
+        y0 = iter.y;
+      }
+      iter.hasNext(); // ignore second point
+      if (iter.hasNext()) {
+        if (iter.x == x0 && iter.y == y0 && !iter.hasNext()) {
+          // three-vertex arc, first two are the same
+          return true;
+        }
+      }
+      return false;
+    };
+
+    this.arcHasZeroLength = function(arcId) {
       var iter = this.getArcIter(arcId);
       var i = 0,
           x, y;
@@ -6397,10 +7585,10 @@
       // Visit each point in the path, up to but not including the last point
       for (var i = start; i < end; i++) {
         if (pointIsArcEndpoint(i)) {
-          if (firstNodeId > -1) {
-            arcIds.push(addEdge(arcStartId, i));
-          } else {
+          if (firstNodeId == -1) {
             firstNodeId = i;
+          } else {
+            arcIds.push(addEdge(arcStartId, i));
           }
           arcStartId = i;
         }
@@ -6991,7 +8179,7 @@
         yy2 = new Float64Array(n),
         ids2 = new Int32Array(n);
 
-    arcs.forEach2(function(i, n, xx, yy, zz, arcId) {
+    arcs.forEach2(function(arcId, i, n, xx, yy, zz) {
       var start = i,
           end = i + n - 1,
           start2 = arcId * 2,
@@ -7042,7 +8230,7 @@
     layers.forEach(function(lyr) {
       // modify copies of the original shapes; original shapes should be unmodified
       // (need to test this)
-      lyr.shapes = lyr.shapes.map(function(shape) {
+      lyr.shapes = lyr.shapes.map(function(shape, i) {
         return editShapeParts(shape && shape.concat(), translatePath);
       });
     });
@@ -12584,11 +13772,161 @@
     stringifyAsNDJSON: stringifyAsNDJSON
   });
 
+  function findNearestVertices(p, shp, arcs) {
+    var p2 = findNearestVertex(p[0], p[1], shp, arcs);
+    return findVertexIds(p2.x, p2.y, arcs);
+  }
+
+  function snapVerticesToPoint(ids, p, arcs) {
+    var data = arcs.getVertexData();
+    ids.forEach(function(idx) {
+      setVertexCoords(p[0], p[1], idx, arcs);
+      arcs.updateArcBounds(findArcIdFromVertexId(idx, data.ii));
+    });
+  }
+
+
+  // p: point to snap
+  // ids: ids of nearby vertices, possibly including an arc endpoint
+  function snapPointToArcEndpoint(p, ids, arcs) {
+    var p2, dx, dy;
+    ids.forEach(function(idx) {
+      if (vertexIsArcStart(idx, arcs)) {
+        p2 = getVertexCoords(idx + 1, arcs);
+      } else if (vertexIsArcEnd(idx, arcs)) {
+        p2 = getVertexCoords(idx - 1, arcs);
+      }
+    });
+    if (!p2) return;
+    dx = p2[0] - p[0];
+    dy = p2[1] - p[1];
+    if (Math.abs(dx) > Math.abs(dy)) {
+      p[1] = p2[1]; // snap y coord
+    } else {
+      p[0] = p2[0];
+    }
+  }
+
+  // Find ids of vertices with identical coordinates to x,y in an ArcCollection
+  // Caveat: does not exclude vertices that are not visible at the
+  //   current level of simplification.
+  function findVertexIds(x, y, arcs) {
+    var data = arcs.getVertexData(),
+        xx = data.xx,
+        yy = data.yy,
+        ids = [];
+    for (var i=0, n=xx.length; i<n; i++) {
+      if (xx[i] == x && yy[i] == y) ids.push(i);
+    }
+    return ids;
+  }
+
+  function getVertexCoords(i, arcs) {
+    var data = arcs.getVertexData();
+    return [data.xx[i], data.yy[i]];
+  }
+
+  function vertexIsArcEnd(idx, arcs) {
+    // Test whether the vertex at index @idx is the endpoint of an arc
+    var data = arcs.getVertexData(),
+        ii = data.ii,
+        nn = data.nn;
+    for (var j=0, n=ii.length; j<n; j++) {
+      if (idx === ii[j] + nn[j] - 1) return true;
+    }
+    return false;
+  }
+
+  function vertexIsArcEndpoint(idx, arcs) {
+    return vertexIsArcStart(idx, arcs) || vertexIsArcEnd(idx, arcs);
+  }
+
+  function vertexIsArcStart(idx, arcs) {
+    var ii = arcs.getVertexData().ii;
+    for (var j=0, n=ii.length; j<n; j++) {
+      if (idx === ii[j]) return true;
+    }
+    return false;
+  }
+
+  function getArcStartCoords(arcId, arcs) {
+    var coords = getArcEndpointCoords(arcId, arcs);
+    return coords[0];
+  }
+
+  function getArcEndCoords(arcId, arcs) {
+    var coords = getArcEndpointCoords(arcId, arcs);
+    return coords[1];
+  }
+
+  function getArcEndpointCoords(arcId, arcs) {
+    if (arcId < 0) {
+      return getArcEndpointCoords(~arcId, arcs).reverse();
+    }
+    var data = arcs.getVertexData();
+    var i = data.ii[arcId];
+    var n = data.nn[arcId];
+    var a = [data.xx[i], data.yy[i]];
+    var b = [data.xx[i + n - 1], data.yy[i + n - 1]];
+    return [a, b];
+  }
+
+  function setVertexCoords(x, y, i, arcs) {
+    var data = arcs.getVertexData();
+    data.xx[i] = x;
+    data.yy[i] = y;
+  }
+
+  function findNearestVertex(x, y, shp, arcs, spherical) {
+    var calcLen = spherical ? geom.greatCircleDistance : geom.distance2D,
+        minLen = Infinity,
+        minX, minY, dist, iter;
+    for (var i=0; i<shp.length; i++) {
+      iter = arcs.getShapeIter(shp[i]);
+      while (iter.hasNext()) {
+        dist = calcLen(x, y, iter.x, iter.y);
+        if (dist < minLen) {
+          minLen = dist;
+          minX = iter.x;
+          minY = iter.y;
+        }
+      }
+    }
+    return minLen < Infinity ? {x: minX, y: minY} : null;
+  }
+
+  var VertexUtils = /*#__PURE__*/Object.freeze({
+    __proto__: null,
+    findNearestVertex: findNearestVertex,
+    findNearestVertices: findNearestVertices,
+    findVertexIds: findVertexIds,
+    getArcEndCoords: getArcEndCoords,
+    getArcEndpointCoords: getArcEndpointCoords,
+    getArcStartCoords: getArcStartCoords,
+    getVertexCoords: getVertexCoords,
+    setVertexCoords: setVertexCoords,
+    snapPointToArcEndpoint: snapPointToArcEndpoint,
+    snapVerticesToPoint: snapVerticesToPoint,
+    vertexIsArcEnd: vertexIsArcEnd,
+    vertexIsArcEndpoint: vertexIsArcEndpoint,
+    vertexIsArcStart: vertexIsArcStart
+  });
+
   function isValidArc(arcId, arcs) {
     // check for arcs with no vertices
     // TODO: also check for other kinds of degenerate arcs
     // (e.g. collapsed arcs consisting of identical points)
-    return arcs.getArcLength(arcId) > 1;
+    var len = arcs.getArcLength(arcId);
+    if (len >= 2 === false) {
+      return false;
+    }
+    // if (len <=3) {
+    //   var endpoints = getArcEndpointCoords(arcId, arcs);
+    //   if (pointsAreEqual(endpoints[0], endpoints[1])) {
+    //     return false;
+    //   }
+    // }
+    return true;
   }
 
   // Return id of rightmost connected arc in relation to @fromArcId
@@ -12625,6 +13963,7 @@
       candId = ids[j];
       if (!isValidArc(candId, arcs)) {
         // skip empty arcs
+        debug('skipping one arc:', candId, 'out of:', ids.length, ids);
         continue;
       }
       icand = arcs.indexOfVertex(candId, -2);
@@ -12635,6 +13974,10 @@
         continue;
       }
       code = chooseRighthandPath(fromX, fromY, nodeX, nodeY, xx[ito], yy[ito], xx[icand], yy[icand]);
+
+      if (xx[ito] == xx[icand] && yy[ito] == yy[icand]) {
+        debug("Pathfinder warning: duplicate segments: i:", ito, "j:", icand, "ids:", [fromArcId].concat(ids));
+      }
       if (code == 2) {
         ito = icand;
         toArcId = candId;
@@ -12644,26 +13987,22 @@
 
     if (toArcId == fromArcId) {
       // This shouldn't occur, assuming that other arcs are present
-      error("Pathfinder error");
+      error("Pathfinder error", toArcId, fromArcId);
     }
     return toArcId;
   }
 
-  // TODO: consider using simpler internal.chooseRighthandPath2()
   // Returns 1 if node->a, return 2 if node->b, else return 0
   // TODO: better handling of identical angles (better -- avoid creating them)
   function chooseRighthandPath(fromX, fromY, nodeX, nodeY, ax, ay, bx, by) {
     var angleA = geom.signedAngle(fromX, fromY, nodeX, nodeY, ax, ay);
     var angleB = geom.signedAngle(fromX, fromY, nodeX, nodeY, bx, by);
+    // should use arbitrary precision math to evaluate angles smaller than this
+    // (all observed errors caused by fp rounding occured with smaller angles than this)
+    var smallAngle = 0.001;
     var code;
     if (angleA <= 0 || angleB <= 0) {
       debug("[chooseRighthandPath()] 0 angle(s):", angleA, angleB);
-      if (angleA <= 0) {
-        debug('  A orient2D:', geom.orient2D(fromX, fromY, nodeX, nodeY, ax, ay));
-      }
-      if (angleB <= 0) {
-        debug('  B orient2D:', geom.orient2D(fromX, fromY, nodeX, nodeY, bx, by));
-      }
       // TODO: test against "from" segment
       if (angleA > 0) {
         code = 1;
@@ -12672,23 +14011,24 @@
       } else {
         code = 0;
       }
-    } else if (angleA < angleB) {
+    } else if (angleA < angleB - smallAngle) {
       code = 1;
-    } else if (angleB < angleA) {
+    } else if (angleB < angleA - smallAngle) {
       code = 2;
     } else if (isNaN(angleA) || isNaN(angleB)) {
       // probably a duplicate point, which should not occur
       error('Invalid node geometry');
     } else {
-      // Equal angles: use fallback test that is less sensitive to rounding error
-      code = chooseRighthandVector(ax - nodeX, ay - nodeY, bx - nodeX, by - nodeY);
-      debug('[chooseRighthandPath()] equal angles:', angleA, 'fallback test:', code);
+      // Close-to-equal or equal angles: use more exact test.
+      code = chooseBetweenClosePaths(nodeX, nodeY, ax, ay, bx, by);
+      // debug('[chooseRighthandPath()] close-to-equal angles:', Math.abs(angleA) - Math.abs(angleB), 'hi-res code:', code);
     }
     return code;
   }
 
-  function chooseRighthandVector(ax, ay, bx, by) {
-    var orient = geom.orient2D(ax, ay, 0, 0, bx, by);
+  function chooseBetweenClosePaths(nodeX, nodeY, ax, ay, bx, by) {
+    // var orient = orient2D_big2(ax, ay, 0, 0, bx, by);
+    var orient = orient2D_big2(ax, ay, nodeX, nodeY, bx, by);
     var code;
     if (orient > 0) {
       code = 2;
@@ -12702,7 +14042,7 @@
 
   var PathfinderUtils = /*#__PURE__*/Object.freeze({
     __proto__: null,
-    chooseRighthandVector: chooseRighthandVector,
+    chooseBetweenClosePaths: chooseBetweenClosePaths,
     getRightmostArc: getRightmostArc
   });
 
@@ -13227,7 +14567,7 @@
         }
 
         // test two candidate segments for intersection
-        hit = geom.segmentIntersection(s1p1x, s1p1y, s1p2x, s1p2y,
+        hit = segmentIntersection(s1p1x, s1p1y, s1p2x, s1p2y,
             s2p1x, s2p1y, s2p2x, s2p2y, tolerance);
         if (hit) {
           seg1 = [s1p1, s1p2];
@@ -13283,146 +14623,6 @@
     getIntersectionPoints: getIntersectionPoints,
     intersectSegments: intersectSegments,
     sortIntersections: sortIntersections
-  });
-
-  function findNearestVertices(p, shp, arcs) {
-    var p2 = findNearestVertex(p[0], p[1], shp, arcs);
-    return findVertexIds(p2.x, p2.y, arcs);
-  }
-
-  function snapVerticesToPoint(ids, p, arcs) {
-    var data = arcs.getVertexData();
-    ids.forEach(function(idx) {
-      setVertexCoords(p[0], p[1], idx, arcs);
-      arcs.updateArcBounds(findArcIdFromVertexId(idx, data.ii));
-    });
-  }
-
-
-  // p: point to snap
-  // ids: ids of nearby vertices, possibly including an arc endpoint
-  function snapPointToArcEndpoint(p, ids, arcs) {
-    var p2, dx, dy;
-    ids.forEach(function(idx) {
-      if (vertexIsArcStart(idx, arcs)) {
-        p2 = getVertexCoords(idx + 1, arcs);
-      } else if (vertexIsArcEnd(idx, arcs)) {
-        p2 = getVertexCoords(idx - 1, arcs);
-      }
-    });
-    if (!p2) return;
-    dx = p2[0] - p[0];
-    dy = p2[1] - p[1];
-    if (Math.abs(dx) > Math.abs(dy)) {
-      p[1] = p2[1]; // snap y coord
-    } else {
-      p[0] = p2[0];
-    }
-  }
-
-  // Find ids of vertices with identical coordinates to x,y in an ArcCollection
-  // Caveat: does not exclude vertices that are not visible at the
-  //   current level of simplification.
-  function findVertexIds(x, y, arcs) {
-    var data = arcs.getVertexData(),
-        xx = data.xx,
-        yy = data.yy,
-        ids = [];
-    for (var i=0, n=xx.length; i<n; i++) {
-      if (xx[i] == x && yy[i] == y) ids.push(i);
-    }
-    return ids;
-  }
-
-  function getVertexCoords(i, arcs) {
-    var data = arcs.getVertexData();
-    return [data.xx[i], data.yy[i]];
-  }
-
-  function vertexIsArcEnd(idx, arcs) {
-    // Test whether the vertex at index @idx is the endpoint of an arc
-    var data = arcs.getVertexData(),
-        ii = data.ii,
-        nn = data.nn;
-    for (var j=0, n=ii.length; j<n; j++) {
-      if (idx === ii[j] + nn[j] - 1) return true;
-    }
-    return false;
-  }
-
-  function vertexIsArcEndpoint(idx, arcs) {
-    return vertexIsArcStart(idx, arcs) || vertexIsArcEnd(idx, arcs);
-  }
-
-  function vertexIsArcStart(idx, arcs) {
-    var ii = arcs.getVertexData().ii;
-    for (var j=0, n=ii.length; j<n; j++) {
-      if (idx === ii[j]) return true;
-    }
-    return false;
-  }
-
-  function getArcStartCoords(arcId, arcs) {
-    var coords = getArcEndpointCoords(arcId, arcs);
-    return coords[0];
-  }
-
-  function getArcEndCoords(arcId, arcs) {
-    var coords = getArcEndpointCoords(arcId, arcs);
-    return coords[1];
-  }
-
-  function getArcEndpointCoords(arcId, arcs) {
-    if (arcId < 0) {
-      return getArcEndpointCoords(~arcId, arcs).reverse();
-    }
-    var data = arcs.getVertexData();
-    var i = data.ii[arcId];
-    var n = data.nn[arcId];
-    var a = [data.xx[i], data.yy[i]];
-    var b = [data.xx[i + n - 1], data.yy[i + n - 1]];
-    return [a, b];
-  }
-
-  function setVertexCoords(x, y, i, arcs) {
-    var data = arcs.getVertexData();
-    data.xx[i] = x;
-    data.yy[i] = y;
-  }
-
-  function findNearestVertex(x, y, shp, arcs, spherical) {
-    var calcLen = spherical ? geom.greatCircleDistance : geom.distance2D,
-        minLen = Infinity,
-        minX, minY, dist, iter;
-    for (var i=0; i<shp.length; i++) {
-      iter = arcs.getShapeIter(shp[i]);
-      while (iter.hasNext()) {
-        dist = calcLen(x, y, iter.x, iter.y);
-        if (dist < minLen) {
-          minLen = dist;
-          minX = iter.x;
-          minY = iter.y;
-        }
-      }
-    }
-    return minLen < Infinity ? {x: minX, y: minY} : null;
-  }
-
-  var VertexUtils = /*#__PURE__*/Object.freeze({
-    __proto__: null,
-    findNearestVertex: findNearestVertex,
-    findNearestVertices: findNearestVertices,
-    findVertexIds: findVertexIds,
-    getArcEndCoords: getArcEndCoords,
-    getArcEndpointCoords: getArcEndpointCoords,
-    getArcStartCoords: getArcStartCoords,
-    getVertexCoords: getVertexCoords,
-    setVertexCoords: setVertexCoords,
-    snapPointToArcEndpoint: snapPointToArcEndpoint,
-    snapVerticesToPoint: snapVerticesToPoint,
-    vertexIsArcEnd: vertexIsArcEnd,
-    vertexIsArcEndpoint: vertexIsArcEndpoint,
-    vertexIsArcStart: vertexIsArcStart
   });
 
   // arcs: ArcCollection containing original coordinates
@@ -13856,10 +15056,30 @@
         getSliverTest(dataset.arcs, threshold, sliverControl) :
         getMinAreaTest(threshold, dataset);
     var label = getSliverLabel(getAreaLabel(threshold, crs), sliverControl > 0);
+    if (opts.keep_shapes) {
+      filter = keepShapes(filter);
+    }
     return {
       threshold: threshold,
       filter: filter,
       label: label
+    };
+  }
+
+  // wrap path filter in a function that ensures at least one part of every shape
+  // is retained.
+  function keepShapes(filter) {
+    var flags;
+    return function(path, pathId, paths) {
+      // console.log("keepShapes()", path, pathId, paths)
+      if (pathId === 0) {
+        flags = paths.map(path => filter(path));
+      }
+      if (flags.length > 0 && flags.every(Boolean)) {
+        // kludge ... assumes that the first path is a valid ring (e.g. not a)
+        flags[0] = false;
+      }
+      return flags[pathId];
     };
   }
 
@@ -16813,9 +18033,10 @@
 
   function snapAndCut(dataset, snapDist) {
     var arcs = dataset.arcs;
-    var cutOpts = snapDist > 0 ? {} : {tolerance: 0};
+    var cutOpts = snapDist > 0 ? {tolerance: snapDist} : {tolerance: 0};
     var coordsHaveChanged = false;
     var snapCount, dupeCount, cutCount;
+    var maxPasses = 4, passCount = 0;
     snapCount = snapCoordsByInterval(arcs, snapDist);
     dupeCount = arcs.dedupCoords();
 
@@ -16827,23 +18048,28 @@
 
     // cut arcs at points where segments intersect
     cutCount = cutPathsAtIntersections(dataset, cutOpts);
+    passCount++;
     if (cutCount > 0 || snapCount > 0 || dupeCount > 0) {
       coordsHaveChanged = true;
     }
 
     // perform a second snap + cut pass if needed
-    if (cutCount > 0) {
-      cutCount = 0;
+    while (cutCount > 0 && passCount < maxPasses) {
+      passCount++;
       snapCount = snapCoordsByInterval(arcs, snapDist);
-      arcs.dedupCoords(); // need to do this here?
-      if (snapCount > 0) {
+      dupeCount = arcs.dedupCoords();
+      // cutCount = 0;
+      if (snapCount > 0 || cutCount > 0) {
         cutCount = cutPathsAtIntersections(dataset, cutOpts);
-      }
-      if (cutCount > 0) {
-        arcs.dedupCoords(); // need to do this here?
-        debug('Second-pass vertices added:', cutCount, 'consider third pass?');
+        debug("[snapAndCut] pass:", passCount, "snaps:", snapCount, "dupes:", dupeCount, "cuts:", cutCount);
       }
     }
+
+    // if (cutCount > 0) {
+    //   arcs.dedupCoords(); // need to do this here?
+    //   debug('Second-pass vertices added:', cutCount, 'consider third pass?');
+    // }
+
     return coordsHaveChanged;
   }
 
@@ -17028,21 +18254,21 @@
   function filterSortedCutPoints(points, arcs) {
     var filtered = [],
         pointId = 0;
-    arcs.forEach2(function(i, n, xx, yy) {
-      var j = i + n - 1,
-          x0 = xx[i],
-          y0 = yy[i],
-          xn = xx[j],
-          yn = yy[j],
+    arcs.forEach2(function(arcId, i, n, xx, yy) {
+      var j = i + n - 1, // idx of second endpoint
+          x1 = xx[i],
+          y1 = yy[i],
+          x2 = xx[j],
+          y2 = yy[j],
           p, pp;
 
       while (pointId < points.length && points[pointId].i <= j) {
         p = points[pointId];
+        pointId++;
         pp = filtered[filtered.length - 1]; // previous point
-        if (p.x == x0 && p.y == y0 || p.x == xn && p.y == yn) ; else if (pp && pp.x == p.x && pp.y == p.y && pp.i == p.i) ; else {
+        if (p.x == x1 && p.y == y1 && p.i == i || p.x == x2 && p.y == y2 && p.i >= j - 1) ; else if (pp && pp.x == p.x && pp.y == p.y && pp.i == p.i) ; else {
           filtered.push(p);
         }
-        pointId++;
       }
     });
     return filtered;
@@ -18777,203 +20003,6 @@
     catalog.getDatasets().push(o);
   }
 
-  // Apply rotation, scale and/or shift to some or all of the features in a dataset
-  //
-  cmd.affine = function(targetLayers, dataset, opts) {
-    // Need to separate the targeted shapes from any other shapes that share
-    // the same topology. So we duplicate any arcs that are shared by the targeted
-    // shapes and their topological neighbors and remap arc references in the
-    // neighbors to point to the copies.
-    // TODO: explore alternative: if some arcs are shared between transformed and
-    //   non-transformed shapes, first remove topology, then tranform, then rebuild topology
-    //
-    var rotateArg = opts.rotate || 0;
-    var scaleArg = opts.scale || 1;
-    var shiftArg = opts.shift ? convertIntervalPair(opts.shift, getDatasetCRS(dataset)) : [0, 0];
-    var arcs = dataset.arcs;
-    var targetShapes = [];
-    var otherShapes = [];
-    var targetPoints = [];
-    var targetFlags, otherFlags, transform;
-    dataset.layers.filter(layerHasGeometry).forEach(function(lyr) {
-      var hits = [],
-          misses = [],
-          test;
-      if (targetLayers.indexOf(lyr) == -1) {
-        misses = lyr.shapes;
-      } else if (opts.where) {
-        test = compileFeatureExpression(opts.where, lyr, dataset.arcs);
-        lyr.shapes.forEach(function(shp, i) {
-          (test(i) ? hits : misses).push(shp);
-        });
-      } else {
-        hits = lyr.shapes;
-      }
-      if (lyr.geometry_type == 'point') {
-        targetPoints = targetPoints.concat(hits);
-      } else {
-        targetShapes = targetShapes.concat(hits);
-        otherShapes = otherShapes.concat(misses);
-      }
-    });
-    var anchorArg = getAffineAnchor({arcs: dataset.arcs, layers: [{
-      geometry_type: 'point', shapes: targetPoints}, {geometry_type: 'polyline',
-      shapes: targetShapes}]}, opts);
-    transform = getAffineTransform(rotateArg, scaleArg, shiftArg, anchorArg);
-    if (opts.fit_bbox) {
-      transform = getFitBoxTransform(opts.fit_bbox, targetPoints, targetShapes, arcs);
-    }
-    if (targetShapes.length > 0) {
-      targetFlags = new Uint8Array(arcs.size());
-      otherFlags = new Uint8Array(arcs.size());
-      countArcsInShapes(targetShapes, targetFlags);
-      if (otherShapes.length > 0) {
-        countArcsInShapes(otherShapes, otherFlags);
-        applyArrayMask(otherFlags, targetFlags);
-        dataset.arcs = duplicateSelectedArcs(otherShapes, arcs, otherFlags);
-      }
-      dataset.arcs.transformPoints(function(x, y, arcId) {
-        if (arcId < targetFlags.length && targetFlags[arcId] > 0) {
-          return transform(x, y);
-        }
-      });
-    }
-    forEachPoint(targetPoints, function(p) {
-      var p2 = transform(p[0], p[1]);
-      p[0] = p2[0];
-      p[1] = p2[1];
-    });
-  };
-
-  function getAffineAnchor(dataset, opts) {
-    var anchor, bounds;
-    if (opts.anchor) {
-      anchor = opts.anchor;
-    } else {
-      // get bounds of selected shapes to calculate center of rotation/scale
-      bounds = getDatasetBounds(dataset);
-      anchor = [bounds.centerX(), bounds.centerY()];
-    }
-    return anchor;
-  }
-
-  // TODO: handle problems with unprojected datasets
-  //   option 1: don't allow affine transformation of unprojected data
-  //   option 2: error if transformed data exceeds valid coordinate range
-  // source: http://mathworld.wolfram.com/AffineTransformation.html
-  function getAffineTransform(rotation, scale, shift, anchor) {
-    var angle = rotation * Math.PI / 180;
-    var a = scale * Math.cos(angle);
-    var b = -scale * Math.sin(angle);
-    return function(x, y) {
-      var x2 = a * (x - anchor[0]) - b * (y - anchor[1]) + shift[0] + anchor[0];
-      var y2 = b * (x - anchor[0]) + a * (y - anchor[1]) + shift[1] + anchor[1];
-      return [x2, y2];
-    };
-  }
-
-  function getFitBoxTransform(bbox, points, shapes, arcs) {
-    var dataset = {
-      arcs: arcs,
-      layers: []
-    };
-    if (points && points.length) {
-      dataset.layers.push({
-        geometry_type: 'point',
-        shapes: points
-      });
-    }
-    if (shapes && shapes.length) {
-      dataset.layers.push({
-        geometry_type: 'polyline',
-        shapes: shapes
-      });
-    }
-    var frame = calcFrameData(dataset, {fit_bbox: bbox});
-    var fromBounds = new Bounds(frame.bbox);
-    var toBounds = new Bounds(frame.bbox2);
-    var fwd = fromBounds.getTransform(toBounds, false);
-    return function(x, y) {
-      return fwd.transform(x, y);
-    };
-  }
-
-  function applyArrayMask(destArr, maskArr) {
-    for (var i=0, n=destArr.length; i<n; i++) {
-      if (maskArr[i] === 0) destArr[i] = 0;
-    }
-  }
-
-  function duplicateSelectedArcs(shapes, arcs, flags) {
-    var arcCount = 0;
-    var vertexCount = 0;
-    var data = arcs.getVertexData();
-    var xx = [], yy = [], nn = [], map = [], n;
-    for (var i=0, len=flags.length; i<len; i++) {
-      if (flags[i] > 0) {
-        map[i] = arcs.size() + arcCount;
-        n = data.nn[i];
-        utils.copyElements(data.xx, data.ii[i], xx, vertexCount, n);
-        utils.copyElements(data.yy, data.ii[i], yy, vertexCount, n);
-        nn.push(n);
-        vertexCount += n;
-        arcCount++;
-      }
-    }
-    forEachArcId(shapes, function(id) {
-      var absId = absArcId(id);
-      if (flags[absId] > 0) {
-        return id < 0 ? ~map[absId] : map[absId];
-      }
-    });
-    return mergeArcs([arcs, new ArcCollection(nn, xx, yy)]);
-  }
-
-  var roundCoord$2 = getRoundingFunction(0.01);
-
-  function stringifyVertex(p) {
-    return ' ' + roundCoord$2(p[0]) + ' ' + roundCoord$2(p[1]);
-  }
-
-  function isCubicCtrl(p) {
-    return p.length > 2 && p[2] == 'C';
-  }
-
-  function stringifyPolygonCoords(coords) {
-    var parts = [];
-    for (var i=0; i<coords.length; i++) {
-      parts.push(stringifyLineStringCoords(coords[i]) + ' Z');
-    }
-    return parts.length > 0 ? parts.join(' ') : '';
-  }
-
-  function stringifyLineStringCoords(coords) {
-    if (coords.length === 0) return '';
-    var d = 'M';
-    var fromCurve = false;
-    var p, i, n;
-    for (i=0, n=coords.length; i<n; i++) {
-      p = coords[i];
-      if (isCubicCtrl(p)) {
-        // TODO: add defensive check
-        d += ' C' + stringifyVertex(p) + stringifyVertex(coords[++i]) + stringifyVertex(coords[++i]);
-        fromCurve = true;
-      } else if (fromCurve) {
-        d += ' L' + stringifyVertex(p);
-        fromCurve = false;
-      } else {
-        d += stringifyVertex(p);
-      }
-    }
-    return d;
-  }
-
-  var SvgPathUtils = /*#__PURE__*/Object.freeze({
-    __proto__: null,
-    stringifyLineStringCoords: stringifyLineStringCoords,
-    stringifyPolygonCoords: stringifyPolygonCoords
-  });
-
   /* example patterns
   hatches 1px black 1px red 1px white
   1px black 1px red 1px white // same as above (hatches is default)
@@ -19562,7 +20591,7 @@
   }
 
   function importLineString(coords) {
-    var d = stringifyLineStringCoords(coords);
+    var d = stringifyLineStringCoords$1(coords);
     return {
       tag: 'path',
       properties: {d: d}
@@ -19570,7 +20599,7 @@
   }
 
   function importMultiLineString(coords) {
-    var d = coords.map(stringifyLineStringCoords).join(' ');
+    var d = coords.map(stringifyLineStringCoords$1).join(' ');
     return {
       tag: 'path',
       properties: {d: d}
@@ -19592,13 +20621,30 @@
     var o = {
       tag: 'path',
       properties: {
-        d: stringifyPolygonCoords(coords)
+        d: stringifyPolygonCoords$1(coords)
       }
     };
     if (coords.length > 1) {
       o.properties['fill-rule'] = 'evenodd'; // support polygons with holes
     }
     return o;
+  }
+
+  function stringifyPolygonCoords$1(coords) {
+    var parts = [];
+    for (var i=0; i<coords.length; i++) {
+      parts.push(stringifyLineStringCoords$1(coords[i]) + ' Z');
+    }
+    return parts.length > 0 ? parts.join(' ') : '';
+  }
+
+  function stringifyLineStringCoords$1(coords) {
+    if (coords.length === 0) return '';
+    var d = 'M';
+    for (var i=0, n=coords.length; i<n; i++) {
+      d += ' ' + coords[i][0] + ' ' + coords[i][1];
+    }
+    return d;
   }
 
   var GeojsonToSvg = /*#__PURE__*/Object.freeze({
@@ -20490,7 +21536,7 @@
     opts = Object.assign({invert_y: true, margin: "1"}, opts);
     frame = getFrameData(dataset, opts);
     fitDatasetToFrame(dataset, frame);
-    setCoordinatePrecision(dataset, opts.precision || 0.0001);
+    setCoordinatePrecision(dataset, opts.precision || 0.01);
 
     // error if one or more svg_data fields are not present in any layers
     if (opts.svg_data) validateSvgDataFields(dataset.layers, opts.svg_data);
@@ -22246,7 +23292,7 @@ ${svg}
     if (opts.presimplify) {
       fromZ = getPresimplifyFunction(bounds.width());
     }
-    arcs.forEach2(function(i, n, xx, yy, zz) {
+    arcs.forEach2(function(arcId, i, n, xx, yy, zz) {
       var arc = [], p;
       for (var j=i + n; i<j; i++) {
         p = [xx[i], yy[i]];
@@ -24842,6 +25888,11 @@ ${svg}
       .option('sliver-control', sliverControlOpt)
       .option('snap-interval', snapIntervalOpt)
       .option('no-snap', noSnapOpt)
+      // // not useful in -clean -- clean removes gaps, not slivers
+      // .option('keep-shapes', {
+      //   type: 'flag',
+      //   describe: 'protect sliver polygons from complete removal'
+      // })
       .option('allow-overlaps', {
         describe: 'allow polygons to overlap (disables gap fill)',
         type: 'flag'
@@ -24893,6 +25944,10 @@ ${svg}
         })
       .option('name', nameOpt)
       .option('no-snap', noSnapOpt)
+      .option('no-cleanup', {
+        // for debugging - no documentation
+        type: 'flag'
+      })
       .option('target', targetOpt)
       .option('no-replace', noReplaceOpt);
 
@@ -25128,6 +26183,10 @@ ${svg}
       .option('bbox', bboxOpt)
       .option('name', nameOpt)
       .option('no-snap', noSnapOpt)
+      .option('no-cleanup', {
+        // for debugging - no documentation
+        type: 'flag'
+      })
       .option('target', targetOpt)
       .option('no-replace', noReplaceOpt);
 
@@ -25237,6 +26296,10 @@ ${svg}
       .option('remove-empty', {
         type: 'flag',
         describe: 'delete features with null geometry'
+      })
+      .option('keep-shapes', {
+        type: 'flag',
+        describe: 'protect sliver polygons from complete removal'
       })
       .option('target', targetOpt);
 
@@ -25445,9 +26508,8 @@ ${svg}
       .option('calc', calcOpt)
       .option('name', nameOpt)
       .option('target', targetOpt)
-      .option('no-snap', { // undocumented, for debugging
-        type: 'flag'
-      })
+      .option('snap-interval', snapIntervalOpt)
+      .option('no-snap', noSnapOpt)
       .option('no-replace', noReplaceOpt);
 
     parser.command('point-grid')
@@ -29841,6 +30903,158 @@ ${svg}
     }
 
     stop('Unable to import coordinates');
+  }
+
+  // Apply rotation, scale and/or shift to some or all of the features in a dataset
+  //
+  cmd.affine = function(targetLayers, dataset, opts) {
+    // Need to separate the targeted shapes from any other shapes that share
+    // the same topology. So we duplicate any arcs that are shared by the targeted
+    // shapes and their topological neighbors and remap arc references in the
+    // neighbors to point to the copies.
+    // TODO: explore alternative: if some arcs are shared between transformed and
+    //   non-transformed shapes, first remove topology, then tranform, then rebuild topology
+    //
+    var rotateArg = opts.rotate || 0;
+    var scaleArg = opts.scale || 1;
+    var shiftArg = opts.shift ? convertIntervalPair(opts.shift, getDatasetCRS(dataset)) : [0, 0];
+    var arcs = dataset.arcs;
+    var targetShapes = [];
+    var otherShapes = [];
+    var targetPoints = [];
+    var targetFlags, otherFlags, transform;
+    dataset.layers.filter(layerHasGeometry).forEach(function(lyr) {
+      var hits = [],
+          misses = [],
+          test;
+      if (targetLayers.indexOf(lyr) == -1) {
+        misses = lyr.shapes;
+      } else if (opts.where) {
+        test = compileFeatureExpression(opts.where, lyr, dataset.arcs);
+        lyr.shapes.forEach(function(shp, i) {
+          (test(i) ? hits : misses).push(shp);
+        });
+      } else {
+        hits = lyr.shapes;
+      }
+      if (lyr.geometry_type == 'point') {
+        targetPoints = targetPoints.concat(hits);
+      } else {
+        targetShapes = targetShapes.concat(hits);
+        otherShapes = otherShapes.concat(misses);
+      }
+    });
+    var anchorArg = getAffineAnchor({arcs: dataset.arcs, layers: [{
+      geometry_type: 'point', shapes: targetPoints}, {geometry_type: 'polyline',
+      shapes: targetShapes}]}, opts);
+    transform = getAffineTransform(rotateArg, scaleArg, shiftArg, anchorArg);
+    if (opts.fit_bbox) {
+      transform = getFitBoxTransform(opts.fit_bbox, targetPoints, targetShapes, arcs);
+    }
+    if (targetShapes.length > 0) {
+      targetFlags = new Uint8Array(arcs.size());
+      otherFlags = new Uint8Array(arcs.size());
+      countArcsInShapes(targetShapes, targetFlags);
+      if (otherShapes.length > 0) {
+        countArcsInShapes(otherShapes, otherFlags);
+        applyArrayMask(otherFlags, targetFlags);
+        dataset.arcs = duplicateSelectedArcs(otherShapes, arcs, otherFlags);
+      }
+      dataset.arcs.transformPoints(function(x, y, arcId) {
+        if (arcId < targetFlags.length && targetFlags[arcId] > 0) {
+          return transform(x, y);
+        }
+      });
+    }
+    forEachPoint(targetPoints, function(p) {
+      var p2 = transform(p[0], p[1]);
+      p[0] = p2[0];
+      p[1] = p2[1];
+    });
+  };
+
+  function getAffineAnchor(dataset, opts) {
+    var anchor, bounds;
+    if (opts.anchor) {
+      anchor = opts.anchor;
+    } else {
+      // get bounds of selected shapes to calculate center of rotation/scale
+      bounds = getDatasetBounds(dataset);
+      anchor = [bounds.centerX(), bounds.centerY()];
+    }
+    return anchor;
+  }
+
+  // TODO: handle problems with unprojected datasets
+  //   option 1: don't allow affine transformation of unprojected data
+  //   option 2: error if transformed data exceeds valid coordinate range
+  // source: http://mathworld.wolfram.com/AffineTransformation.html
+  function getAffineTransform(rotation, scale, shift, anchor) {
+    var angle = rotation * Math.PI / 180;
+    var a = scale * Math.cos(angle);
+    var b = -scale * Math.sin(angle);
+    return function(x, y) {
+      var x2 = a * (x - anchor[0]) - b * (y - anchor[1]) + shift[0] + anchor[0];
+      var y2 = b * (x - anchor[0]) + a * (y - anchor[1]) + shift[1] + anchor[1];
+      return [x2, y2];
+    };
+  }
+
+  function getFitBoxTransform(bbox, points, shapes, arcs) {
+    var dataset = {
+      arcs: arcs,
+      layers: []
+    };
+    if (points && points.length) {
+      dataset.layers.push({
+        geometry_type: 'point',
+        shapes: points
+      });
+    }
+    if (shapes && shapes.length) {
+      dataset.layers.push({
+        geometry_type: 'polyline',
+        shapes: shapes
+      });
+    }
+    var frame = calcFrameData(dataset, {fit_bbox: bbox});
+    var fromBounds = new Bounds(frame.bbox);
+    var toBounds = new Bounds(frame.bbox2);
+    var fwd = fromBounds.getTransform(toBounds, false);
+    return function(x, y) {
+      return fwd.transform(x, y);
+    };
+  }
+
+  function applyArrayMask(destArr, maskArr) {
+    for (var i=0, n=destArr.length; i<n; i++) {
+      if (maskArr[i] === 0) destArr[i] = 0;
+    }
+  }
+
+  function duplicateSelectedArcs(shapes, arcs, flags) {
+    var arcCount = 0;
+    var vertexCount = 0;
+    var data = arcs.getVertexData();
+    var xx = [], yy = [], nn = [], map = [], n;
+    for (var i=0, len=flags.length; i<len; i++) {
+      if (flags[i] > 0) {
+        map[i] = arcs.size() + arcCount;
+        n = data.nn[i];
+        utils.copyElements(data.xx, data.ii[i], xx, vertexCount, n);
+        utils.copyElements(data.yy, data.ii[i], yy, vertexCount, n);
+        nn.push(n);
+        vertexCount += n;
+        arcCount++;
+      }
+    }
+    forEachArcId(shapes, function(id) {
+      var absId = absArcId(id);
+      if (flags[absId] > 0) {
+        return id < 0 ? ~map[absId] : map[absId];
+      }
+    });
+    return mergeArcs([arcs, new ArcCollection(nn, xx, yy)]);
   }
 
   const epsilon = 1.1102230246251565e-16;
@@ -34876,7 +36090,7 @@ ${svg}
     var ringTest = filterData.filter;
     var removed = 0;
     var pathFilter = function(path, i, paths) {
-      if (ringTest(path)) {
+      if (ringTest(path, i, paths)) {
         removed++;
         return null;
       }
@@ -35016,6 +36230,7 @@ ${svg}
     // or overlapping rings. TODO: try to optimize or remove it for all cases
 
     // skipping shape cleanup when using the experimental fast bbox clipping option
+    // if (!opts.bbox2 && !opts.no_cleanup) {
     if (!opts.bbox2) {
       // clean each target polygon by dissolving its rings
       targetShapes = targetShapes.map(dissolvePolygon);
@@ -35512,7 +36727,7 @@ ${svg}
     } else {
       nodes = new NodeCollection(mergedDataset.arcs);
     }
-    // clipLyr = mergedDataset.layers.pop();
+
     return clipLayersByLayer(targetLayers, clipLyr, nodes, type, opts);
   }
 
@@ -40504,7 +41719,7 @@ ${svg}
 
     function createMeridianPart(x, ymin, ymax) {
       var coords = densifyPathByInterval([[x, ymin], [x, ymax]], precision);
-      meridians.push(graticuleFeature(coords, {type: 'meridian', value: roundCoord$1(x)}));
+      meridians.push(graticuleFeature(coords, {type: 'meridian', value: roundCoord$2(x)}));
     }
 
     function createParallel(y) {
@@ -40514,7 +41729,7 @@ ${svg}
   }
 
   // remove tiny offsets
-  function roundCoord$1(x) {
+  function roundCoord$2(x) {
     return +x.toFixed(3) || 0;
   }
 
@@ -44613,7 +45828,7 @@ ${svg}
     });
   };
 
-  var roundCoord = getRoundingFunction(0.01);
+  var roundCoord$1 = getRoundingFunction(0.01);
 
   function getSymbolFillColor(d) {
     return d.fill || 'magenta';
@@ -44664,8 +45879,8 @@ ${svg}
 
   function roundCoordsForSVG(coords) {
     forEachSymbolCoord(coords, function(p) {
-      p[0] = roundCoord(p[0]);
-      p[1] = roundCoord(p[1]);
+      p[0] = roundCoord$1(p[0]);
+      p[1] = roundCoord$1(p[1]);
     });
   }
 
@@ -45390,7 +46605,7 @@ ${svg}
   // Filter arcs based on an array of thresholds
   function applyArcThresholds(arcs, thresholds) {
     arcs.getVertexData().zz;
-    arcs.forEach2(function(start, n, xx, yy, zz, arcId) {
+    arcs.forEach2(function(arcId, start, n, xx, yy, zz) {
       var arcZ = thresholds[arcId];
       var z;
       for (var i=1; i<n-1; i++) {
@@ -46044,7 +47259,7 @@ ${svg}
     });
   }
 
-  var version = "0.6.109";
+  var version = "0.6.110";
 
   // Parse command line args into commands and run them
   // Function takes an optional Node-style callback. A Promise is returned if no callback is given.
@@ -46374,6 +47589,51 @@ ${svg}
     runCommandsXL: runCommandsXL,
     runParsedCommands: runParsedCommands,
     testCommands: testCommands
+  });
+
+  var roundCoord = getRoundingFunction(0.01);
+
+  function stringifyVertex(p) {
+    return ' ' + roundCoord(p[0]) + ' ' + roundCoord(p[1]);
+  }
+
+  function isCubicCtrl(p) {
+    return p.length > 2 && p[2] == 'C';
+  }
+
+  function stringifyPolygonCoords(coords) {
+    var parts = [];
+    for (var i=0; i<coords.length; i++) {
+      parts.push(stringifyLineStringCoords(coords[i]) + ' Z');
+    }
+    return parts.length > 0 ? parts.join(' ') : '';
+  }
+
+  function stringifyLineStringCoords(coords) {
+    if (coords.length === 0) return '';
+    var d = 'M';
+    var fromCurve = false;
+    var p, i, n;
+    for (i=0, n=coords.length; i<n; i++) {
+      p = coords[i];
+      if (isCubicCtrl(p)) {
+        // TODO: add defensive check
+        d += ' C' + stringifyVertex(p) + stringifyVertex(coords[++i]) + stringifyVertex(coords[++i]);
+        fromCurve = true;
+      } else if (fromCurve) {
+        d += ' L' + stringifyVertex(p);
+        fromCurve = false;
+      } else {
+        d += stringifyVertex(p);
+      }
+    }
+    return d;
+  }
+
+  var SvgPathUtils = /*#__PURE__*/Object.freeze({
+    __proto__: null,
+    stringifyLineStringCoords: stringifyLineStringCoords,
+    stringifyPolygonCoords: stringifyPolygonCoords
   });
 
   // Return an array containing points from a path iterator, clipped to a bounding box

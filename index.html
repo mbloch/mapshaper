@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head><!-- Google tag (gtag.js) -->
 <script async src="https://www.googletagmanager.com/gtag/js?id=G-QYR8W1YHEF"></script>
 <script>
@@ -49,24 +49,6 @@
 	<svg id="ribbon-icon" data-name="Layer 1" xmlns="http://www.w3.org/2000/svg" width="15" height="25" viewBox="0 1 15 20">
 	  <polygon points="8 14.5 13 19 13 4 3 4 3 19 8 14.5" fill="#30d4ef"/>
 	</svg>
- 
-  <defs>
-    <style>
-      .cls-1 {
-        fill: #0c0a0a;
-      }
-    </style>
-  </defs>
-  <g id="left_arrow">
-    <polygon class="cls-1" points="0.5 6 6.5 11.5 6.5 0.5 0.5 6"/>
-  </g>
-</svg>
-
-<svg id="info-menu-icon" xmlns="http://www.w3.org/2000/svg" width="8" height="12" viewBox="0 0 8 12">
-  <g id="left_arrow">
-    <polygon class="cls-1" points="0.5 6 6.5 11.5 6.5 0.5 0.5 6"/>
-  </g>
-</svg>
 
 </div>
 
@@ -77,13 +59,15 @@
 
 	<div class="simplify-control-wrapper"><div class="simplify-control"><div class="header-btn btn simplify-settings-btn">Settings</div>
 		<div class="slider">
-			<div class="handle"><img src="images/slider_handle_v1.png" alt=""/></div>
+			<div class="handle"><img src="images/slider_handle_v1.png" alt=""></div>
 			<div class="track"></div>
 		</div>
-		<input type="text" value="label" class="clicktext" />
+		<input type="text" value="label" class="clicktext">
+		<!-- <div class="header-btn btn simplify-done-btn">Done</div> -->
 	</div></div>
 	<div id="mode-buttons" class="page-header-buttons">
-		<span class="console-btn header-btn btn">Console</span><span class="display-btn header-btn btn">Display</span><span class="separator"></span><span class="separator"></span><span class="simplify-btn header-btn btn">Simplify</span><span class="separator"></span><span class="export-btn header-btn btn">Export</span>
+		<!-- <span class="project-btn header-btn btn">Project</span><span class="separator"> -->
+		<span class="console-btn header-btn btn">Console</span><span class="display-btn header-btn btn">Display</span><span class="separator"></span><span class="separator"></span></span><span class="simplify-btn header-btn btn">Simplify</span><span class="separator"></span><span class="export-btn header-btn btn">Export</span>
 	</div>
 	<div id="splash-buttons" class="page-header-buttons">
 		<a href="https://github.com/mbloch/mapshaper/wiki"><span id="wiki-btn" class="header-btn btn">Wiki</span></a><span class="separator"></span><a href="https://github.com/mbloch/mapshaper"><span id="github-btn" class="header-btn btn">GitHub</span></a>
@@ -103,8 +87,8 @@
 		<div class="layer-menu">
 			<h3>Layers</h3>
 			<div class="pin-all pinnable">
-				<img class="eye-btn black-eye" src="images/eye.png">
-				<img class="eye-btn green-eye" src="images/eye2.png">
+				<img class="eye-btn black-eye" src="images/eye.png" alt="">
+				<img class="eye-btn green-eye" src="images/eye2.png" alt="">
 			</div>
 			<div class="layer-list"></div>
 			<!-- <h4>Sources</h4> -->
@@ -153,7 +137,7 @@
 	<div class="info-box">
 		<div class="close2-btn"></div>
 		<h3>Export options</h3>
-		<div class=export-layers>
+		<div class="export-layers">
 			<h4 class="menu-title">Layers</h4>
 			<div class="export-layer-list option-menu"></div>
 		</div>
@@ -168,8 +152,8 @@
 
 		<div style="height:11px"></div>
 
-		<div class="option-menu"><input type="text" class="text-input advanced-options" placeholder="command line options" />
-		<a href="https://github.com/mbloch/mapshaper/wiki/Command-Reference#-o-output" target="_mapshaper_output_docs">
+		<div class="option-menu"><input type="text" class="text-input advanced-options" placeholder="command line options">
+		<a href="https://github.com/mbloch/mapshaper/wiki/Command-Reference#-o-output" target="mapshaper_output_docs">
 			<div class="tip-button">?<div class="tip-anchor">
 		<div class="tip">Enter options from the command line interface for
 the -o command. Examples: bbox no-quantization
@@ -178,8 +162,8 @@ precision=0.001. Click to see all options.</div></div></div></a>
 	<!-- 	<div class="option-menu">
 	<input id="ofile-name" class="text-input" type="text" placeholder="output file name" />
 	</div> -->
-		<div><span id="save-preference" style="display: none;"><input type="checkbox"/>choose output directory</span></div>
-		<div><span id="save-to-clipboard" style="display: inline-block;"><input type="checkbox"/>save to clipboard</span></div>
+		<div><span id="save-preference" style="display: none;"><input type="checkbox">choose output directory</span></div>
+		<div><span id="save-to-clipboard" style="display: inline-block;"><input type="checkbox">save to clipboard</span></div>
 		</div>
 		<div id="export-btn" class="btn dialog-btn" style="margin-top: 5px;">Export</div>
 
@@ -191,8 +175,8 @@ precision=0.001. Click to see all options.</div></div></div></a>
 		<div class="close2-btn"></div>
 		<h3>Display options</h3>
 
-		<div class=""><label for="intersections-opt"><input type="checkbox" id="intersections-opt" class="checkbox intersections-opt"/>detect line intersections</label></div>
-		<div class=""><label for="ghost-opt"><input type="checkbox" id="ghost-opt" class="checkbox ghost-opt"/>show reference lines</label></div>
+		<div class=""><label><input type="checkbox" id="intersections-opt" class="checkbox intersections-opt">detect line intersections</label></div>
+		<div class=""><label><input type="checkbox" id="ghost-opt" class="checkbox ghost-opt">show reference lines</label></div>
 
 		<div class="basemap-opts">
 			<h4>Basemaps</h4>
@@ -209,18 +193,33 @@ precision=0.001. Click to see all options.</div></div></div></a>
 	</div>
 </div>
 
+<div class="project-options main-area popup-dialog popup-align-left">
+	<div class="info-box">
+		<div class="close2-btn"></div>
+		<h3>Projections</h3>
+		<div class="option-menu">
+			<div id="proj-list"></div>
+			<div id="proj-option-list"></div>
+		</div>
+		<div>
+			<div class="preview-btn btn dialog-btn">Preview</div>
+			<div class="apply-btn btn dialog-btn">Apply</div>
+		</div>
+	</div>
+</div>
+
 <div class="simplify-options main-area popup-dialog">
 	<div class="info-box">
 		<div class="close2-btn"></div>
 		<h3>Simplification</h3>
 		<div class="option-menu">
-			<div><label for="import-retain-opt"><input type="checkbox" class="checkbox import-retain-opt"/>prevent shape removal</label>
+			<div><label><input type="checkbox" class="checkbox import-retain-opt" id="import-retain-opt">prevent shape removal</label>
 							<div class="tip-button">?<div class="tip-anchor">
 			<div class="tip">Prevent small polygon features from
 disappearing at high simplification. Keeps
 the largest ring of multi-ring features.
 </div></div></div></div>
-			<div class="planar-opt-wrapper"><label for="planar-opt"><input type="checkbox" class="checkbox planar-opt"/>use planar geometry</label>
+			<div class="planar-opt-wrapper"><label><input type="checkbox" class="checkbox planar-opt" id="planar-opt">use planar geometry</label>
 							<div class="tip-button">?<div class="tip-anchor">
 			<div class="tip">Treat x, y values as Cartesian coordinates
 on a plane, rather than as longitude, latitude
@@ -236,7 +235,7 @@ coordinates on a sphere.
 distance of original lines. Good for
 thinning dense points, but spikes
 tend to form at high simplification.</div></div></div>
-			</div>			
+			</div>
 
 			<div><label><input type="radio" name="method" value="visvalingam" class="radio">Visvalingam / effective area</label><div class="tip-button">?<div class="tip-anchor">
 <div class="tip">Lines are simplified by iteratively
@@ -265,7 +264,7 @@ a smoother appearance.</div></div></div></div>
 		<div class="cancel-btn close2-btn"></div>
 		<h3 class="list-header">Import files</h3>
 		<div class="import-instructions">
-			<span><input type="checkbox" class="advanced-import-options" />with advanced options</span>
+			<span><input type="checkbox" class="advanced-import-options">with advanced options</span>
 			<div class="mini-drop-area">
 				<div class="subtitle">Drop, paste or <span class="add-btn inline-btn btn"><span class="label-text">select</span></span> files to import.</div>
 				<div class="subtitle">Shapefile, GeoJSON, TopoJSON, KML and CSV formats are supported. Files can be zipped or gzipped.</div>
@@ -274,29 +273,24 @@ a smoother appearance.</div></div></div></div>
 		<div class="queued-file-section">
 			<!-- <h4>Files</h4> -->
 			<div class="dropped-file-list"></div>
-			
 			<div class="option-menu">
-
-			<div id="path-import-options">
-				<!-- <h4>Options</h4> -->
+				<div id="path-import-options">
 			</div>
-
-			<div style="margin-top: 10px"><input type="text" class="text-input advanced-options" placeholder="import options" />
-				<a href="https://github.com/mbloch/mapshaper/wiki/Command-Reference#-i-input" target="_mapshaper_import_docs">
+			<div style="margin-top: 10px"><input type="text" class="text-input advanced-options" placeholder="import options">
+				<a href="https://github.com/mbloch/mapshaper/wiki/Command-Reference#-i-input" target="mapshaper_import_docs">
 				<div class="tip-button">?<div class="tip-anchor">
 	<div class="tip">Enter options from the command line
 interface. Examples: <span id="import-option-examples">snap no-topology
-encoding=big5</span>. Click to see all options.</div></div></div></div>
+encoding=big5</span>. Click to see all options.</div></div></div>
 			</a>
-
 			</div>
 
 	<!-- 			<div class="cancel-btn btn dialog-btn">Cancel</div>
 				<div class="add-btn btn dialog-btn">Select</div> -->
 				<div class="submit-btn btn dialog-btn default-btn disabled">Submit</div>
 
+			</div>
 		</div>
-
 	</div> <!-- .info-box -->
 </div> <!-- import-options -->
 
@@ -317,14 +311,14 @@ encoding=big5</span>. Click to see all options.</div></div></div></div>
 	</div>
 </div>
 
-<div id="import-options-drop-area" class="main-area drop-area-wrapper hidden"> 
+<div id="import-options-drop-area" class="main-area drop-area-wrapper hidden">
 <div class="drop-area"></div>
 </div>
 
-<script src="basemap.js" type="text/javascript"></script>
-<script src="modules.js" type="text/javascript"></script>
-<script src="mapshaper.js" type="text/javascript"></script>
-<script src="manifest.js" type="text/javascript"></script>
-<script src="mapshaper-gui.js" type="text/javascript"></script>
+<script src="basemap.js"></script>
+<script src="modules.js"></script>
+<script src="mapshaper.js"></script>
+<script src="manifest.js"></script>
+<script src="mapshaper-gui.js"></script>
 </body>
 </html>

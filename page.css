@@ -3,17 +3,9 @@
 */
 
 @font-face {
-  font-family: 'Source Sans Pro';
-  font-style: normal;
-  font-weight: normal;
-  src: local('Source Sans Pro'), local('SourceSansPro-Regular'), url('assets/SourceSansPro-Regular.woff') format('woff');
-}
-
-@font-face {
-  font-family: 'Source Sans Pro';
-  font-style: normal;
-  font-weight: bold;
-  src: local('Source Sans Pro Semibold'), local('SourceSansPro-Semibold'), url('assets/SourceSansPro-Semibold.woff') format('woff');
+  font-family: 'SourceSans3';
+  src: url('assets/SourceSans3-VariableFont_wght.ttf') format('truetype');
+  font-display: swap;
 }
 
 @font-face {
@@ -32,7 +24,8 @@ html, body {
 body {
 	overflow: hidden;
 	background-color: #f8fdff;
-	font: 14px/1.4 'Source Sans Pro', Arial, sans-serif;
+	font: 14px/1.4 'SourceSans3', Arial, sans-serif;
+	font-weight: 400;
 	color: #444;
 	user-select: none;
 	-webkit-user-select: none;
@@ -113,6 +106,7 @@ body.map-view {
 	margin-top: 3px;
 	font-size: 13px;
 	color: white;
+	font-weight: 500;
 	min-width: 28px;
 }
 
@@ -153,9 +147,9 @@ body.map-view {
 }
 
 .mapshaper-logo {
-	font-weight: bold;
+	font-weight: 600;
 	font-size: 17px;
-	margin: 2px 0 0 11px;
+	margin: 3px 0 0 11px;
 }
 
 .mapshaper-logo .logo-highlight {
@@ -187,8 +181,8 @@ body.map-view {
 	box-sizing: border-box;
 	border-radius: 1px;
 	font-size: 14px;
-	font-weight: 700;
-	padding: 7px 8px 0px 8px;
+	font-weight: 600;
+	padding: 8px 8px 0px 8px;
 }
 
 .page-header .header-btn.disabled,
@@ -242,7 +236,6 @@ body.map-view {
 
 .export-options .dialog-btn {
 	min-width: 20px;
-	padding: 4px 6px 5px 6px;
 }
 
 .export-options table {
@@ -301,7 +294,7 @@ body.map-view {
 
 .alert-title {
 	line-height: 1.1;
-	font-weight: bold;
+	font-weight: 600;
 	margin-bottom: 7px;
 }
 
@@ -464,13 +457,18 @@ div.alert-box {
 	line-height: 1;
 	margin-bottom: 5px;
 	font-size: 14px;
-	font-weight: bold;
+	font-weight: 600;
 }
 
 .popup-dialog {
 	display: none;
 	z-index: 80;	
 	text-align: center;
+}
+
+.popup-dialog.popup-align-left {
+	text-align: left;
+	padding-left: 12px;
 }
 
 .info-box,.popup {
@@ -552,7 +550,7 @@ div.alert-box {
 
 .info-box p {
 	white-space: pre-line;
-	margin: 0 0 7px 0;
+	margin: 0 0 6px 0;
 	line-height: 1.2;
 	/* font-size: 90%; */
 }
@@ -771,7 +769,7 @@ body.simplify .layer-control-btn {
 
 .layer-control .no-layer-note {
 	color: #777;
-	margin: 4px 0 6px 0;
+	margin: 4px 0 5px 0;
 }
 
 .layer-menu .layer-list {
@@ -1467,12 +1465,12 @@ body.pan.panning .map-layers:not(.drawing) {
 }
 
 .save-item-label {
-	font-weight: bold;
+	font-weight: 600;
 }
 
 .save-item-size {
 	/*color: #999;*/
-	font-weight: bold;
+	font-weight: 600;
 	font-size: 11px;
 	letter-spacing: 0.5;
 }
