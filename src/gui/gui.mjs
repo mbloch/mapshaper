@@ -4,7 +4,7 @@ import { ImportControl } from './gui-import-control';
 import { SimplifyControl } from './gui-simplify-control';
 import { Console } from './gui-console';
 import { AlertControl } from './gui-alert';
-import { RepairControl } from './gui-repair-control';
+import { IntersectionControl } from './gui-intersection-control';
 import { ExportControl } from './gui-export-control';
 import { LayerControl } from './gui-layer-control';
 import { GuiInstance } from './gui-instance';
@@ -61,7 +61,7 @@ var startEditing = function() {
   // }
 
   new AlertControl(gui);
-  new RepairControl(gui);
+  new IntersectionControl(gui);
   new SimplifyControl(gui);
   new ImportControl(gui, importOpts);
   new ExportControl(gui);

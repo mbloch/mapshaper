@@ -91,6 +91,9 @@ export function getOverlayLayers(activeLyr, hitData, styleOpts) {
     // special overlay: shape editing mode
     lyr = getOverlayLayer(activeLyr, hitData.ids);
     lyr.gui.style = getLineEditingStyle(hitData);
+    if (activeLyr.geometry_type == 'polygon') {
+      lyr.gui.style.fillColor = hoverFill;
+    }
     return [lyr];
   }
   layers = [];
