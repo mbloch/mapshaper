@@ -1,7 +1,10 @@
+v0.6.111
+* Switched to better-performing robust segment geometry functions using BigInt (instead of big.js).
+
 v0.6.110
 * Switched to arbitrary-precision math to improve reliability of -clean, -dissolve2 and several other commands.
-* Added keep-shapes option to -filter-slivers to retain one ring in multipart polygon features that would otherwise by removed completely.
-* Removed the -q/quick-view option from mapshaper-gui. Now, "quick view" (skipping the import prompt) is the default.
+* Added keep-shapes option to -filter-slivers to retain one ring in multipart polygon features that would otherwise be removed completely.
+* Removed the -q/--quick-view option from mapshaper-gui. Now, "quick view" (skipping the import prompt) is the default.
 * Added -i/--import-prompt option to mapshaper-gui, to display the import prompt if desired.
 * Now, SVG coordinate precision is settable using the -o precision= option (previously SVG precision was always two decimals).
 
