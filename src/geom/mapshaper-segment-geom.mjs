@@ -2,7 +2,8 @@
 import { getHighPrecisionSnapInterval } from '../paths/mapshaper-snapping';
 import { debug } from '../utils/mapshaper-logging';
 import { distance2D, distanceSq, pointSegDistSq2 } from '../geom/mapshaper-basic-geom';
-import Big from "big.js";
+import { fromScaledStr, toScaledStr, findBigIntScaleFactor } from '../geom/mapshaper-bigint-utils';
+//import { findCrossIntersection_big } from '../geom/mapshaper-segment-geom-big';
 
 // Find the intersection between two 2D segments
 // Returns 0, 1 or 2 [x, y] locations as null, [x, y], or [x1, y1, x2, y2]
@@ -38,18 +39,31 @@ export function segmentIntersection(ax, ay, bx, by, cx, cy, dx, dy, epsArg) {
   return touches || cross || null;
 }
 
-
 function findCrossIntersection(ax, ay, bx, by, cx, cy, dx, dy, eps) {
   var p;
-  if (eps > 0 && !segmentHit_fast(ax, ay, bx, by, cx, cy, dx, dy)) return null;
-  else if (eps === 0 && !segmentHit_big(ax, ay, bx, by, cx, cy, dx, dy)) return null;
+  // The normal-precision hit function works for all inputs when eps > 0 because
+  // the geometries that cause the ordinary function fails are detected as
+  // 'touches' or endpoint hits (at least this was true in all the real-world
+  // data samples that were tested).
+  //
+  if (eps > 0 && !segmentHit_fast(ax, ay, bx, by, cx, cy, dx, dy)) {
+    return null;
+  } else if (eps === 0 && !segmentHit_robust(ax, ay, bx, by, cx, cy, dx, dy)) {
+    return null;
+  }
 
-  // in a typical layer with many intersections, robust is preferred in
-  // most (>90%) segment intersections in order to keep the positional
-  // error within a small interval (e.g. 50% of eps)
+  // in a typical layer with many intersections along shared polygon boundaries,
+  // robust is preferred in most (>90%) segment intersections in order to keep
+  // the positional error within a small interval (e.g. 50% of eps)
   //
   if (useRobustCross(ax, ay, bx, by, cx, cy, dx, dy)) {
     p = findCrossIntersection_robust(ax, ay, bx, by, cx, cy, dx, dy);
+    // var p2 = findCrossIntersection_big(ax, ay, bx, by, cx, cy, dx, dy);
+    // var dx = p[0] - p2[0];
+    // var dy = p[1] - p2[1];
+    // if (dx != 0 || dy != 0) {
+    //   console.log(dx, dy)
+    // }
   } else {
     p = findCrossIntersection_fast(ax, ay, bx, by, cx, cy, dx, dy);
   }
@@ -69,41 +83,6 @@ function findCrossIntersection(ax, ay, bx, by, cx, cy, dx, dy, eps) {
   return p;
 }
 
-// Find the intersection point of two segments that cross each other,
-// or return null if the segments do not cross.
-// Assumes endpoint intersections have already been detected
-function findCrossIntersection_robust(ax, ay, bx, by, cx, cy, dx, dy) {
-  var ax_big = Big(ax);
-  var ay_big = Big(ay);
-  var bx_big = Big(bx);
-  var by_big = Big(by);
-  var cx_big = Big(cx);
-  var cy_big = Big(cy);
-  var dx_big = Big(dx);
-  var dy_big = Big(dy);
-  var v1x = bx_big.minus(ax_big);
-  var v1y = by_big.minus(ay_big);
-  var den_big = determinant2D_big(v1x, v1y, dx_big.minus(cx), dy_big.minus(cy));
-  if (den_big.eq(0)) {
-    debug("DIV0 error (should have been caught upstream)");
-    // console.log("hit?", segmentHit_big(ax, ay, bx, by, cx, cy, dx, dy))
-    // console.log('Seg 1', getSegFeature(ax, ay, bx, by, true))
-    // console.log('Seg 2', getSegFeature(cx, cy, dx, dy, false))
-    return null;
-  }
-  // perform division using regular math, which does not reduce overall
-  // precision in test data (big.js division is very slow)
-  // tests show identical result to:
-  // orient2D_big(cx_big, cy_big, dx_big, dy_big, ax_big, ay_big).div(den_big)
-  var m = orient2D_big(cx_big, cy_big, dx_big, dy_big, ax_big,
-    ay_big).toNumber() / den_big.toNumber();
-  var m_big = Big(m);
-  var x_big = ax_big.plus(m_big.times(v1x).round(16));
-  var y_big = ay_big.plus(m_big.times(v1y).round(16));
-  var p = [x_big.toNumber(), y_big.toNumber()];
-  return p;
-}
-
 function findCrossIntersection_fast(ax, ay, bx, by, cx, cy, dx, dy) {
   var den = determinant2D(bx - ax, by - ay, dx - cx, dy - cy);
   var m = orient2D(cx, cy, dx, dy, ax, ay) / den;
@@ -118,6 +97,33 @@ function findCrossIntersection_fast(ax, ay, bx, by, cx, cy, dx, dy) {
   return p;
 }
 
+// this function, using BigInt, is 3-4x faster than the version using big.js
+export function findCrossIntersection_robust(ax, ay, bx, by, cx, cy, dx, dy) {
+  var d = findBigIntScaleFactor(ax, ay, bx, by, cx, cy, dx, dy);
+  var d2 = 16; // scale numerator of integer division by this many decimal digits
+  var k_bi = 10000000000000000n; // matches d2
+  var ax_bi = BigInt(toScaledStr(ax, d));
+  var ay_bi = BigInt(toScaledStr(ay, d));
+  var bx_bi = BigInt(toScaledStr(bx, d));
+  var by_bi = BigInt(toScaledStr(by, d));
+  var cx_bi = BigInt(toScaledStr(cx, d));
+  var cy_bi = BigInt(toScaledStr(cy, d));
+  var dx_bi = BigInt(toScaledStr(dx, d));
+  var dy_bi = BigInt(toScaledStr(dy, d));
+  var den = determinant2D(bx_bi - ax_bi, by_bi - ay_bi, dx_bi - cx_bi, dy_bi - cy_bi);
+  if (den === 0n) {
+    debug('DIV0 error - should have been identified as collinear "touch" intersection.');
+    return null;
+  }
+  var num = orient2D(cx_bi, cy_bi, dx_bi, dy_bi, ax_bi, ay_bi) * k_bi;
+  var m_bi = num / den;
+  var x_bi = ax_bi * k_bi + m_bi * (bx_bi - ax_bi);
+  var y_bi = ay_bi * k_bi + m_bi * (by_bi - ay_bi);
+  var x = fromScaledStr(x_bi.toString(), d + d2);
+  var y = fromScaledStr(y_bi.toString(), d + d2);
+  return [x, y];
+}
+
 function useRobustCross(ax, ay, bx, by, cx, cy, dx, dy) {
   // angle and seg length ratio thresholds were found by comparing
   // fast and robust outputs on sample data
@@ -129,7 +135,7 @@ function useRobustCross(ax, ay, bx, by, cx, cy, dx, dy) {
   return false;
 }
 
-// Returns smaller unsigned angle between two segments
+// Returns smaller of two angles between two segments (unsigned)
 function innerAngle(ax, ay, bx, by, cx, cy, dx, dy) {
   var v1x = bx - ax;
   var v1y = by - ay;
@@ -278,18 +284,6 @@ function clampIntersectionPoint(p, ax, ay, bx, by, cx, cy, dx, dy) {
   p[1] = y;
 }
 
-// function getSegFeature(x1, y1, x2, y2, hot) {
-//   return JSON.stringify({
-//     type: "Feature",
-//     properties: {
-//       stroke: hot ? "orange" : "blue"
-//     },
-//     geometry: {
-//       type: "LineString",
-//       coordinates: [[x1, y1], [x2, y2]]
-//     }
-//   });
-// }
 
 // a: coordinate of point
 // b: endpoint coordinate of segment
@@ -322,10 +316,6 @@ function determinant2D(a, b, c, d) {
   return a * d - b * c;
 }
 
-function determinant2D_big(a, b, c, d) {
-  return a.times(d).minus(b.times(c));
-}
-
 // returns a positive value if the points a, b, and c are arranged in
 // counterclockwise order, a negative value if the points are in clockwise
 // order, and zero if the points are collinear.
@@ -334,21 +324,30 @@ export function orient2D(ax, ay, bx, by, cx, cy) {
   return determinant2D(ax - cx, ay - cy, bx - cx, by - cy);
 }
 
-export function orient2D_big(ax, ay, bx, by, cx, cy) {
-  var a = (ax.minus(cx)).times(by.minus(cy));
-  var b = (ay.minus(cy)).times(bx.minus(cx));
-  return a.minus(b);
+export function orient2D_robust(ax, ay, bx, by, cx, cy) {
+  var d = findBigIntScaleFactor(ax, ay, bx, by, cx, cy);
+  var ax_bi = BigInt(toScaledStr(ax, d));
+  var ay_bi = BigInt(toScaledStr(ay, d));
+  var bx_bi = BigInt(toScaledStr(bx, d));
+  var by_bi = BigInt(toScaledStr(by, d));
+  var cx_bi = BigInt(toScaledStr(cx, d));
+  var cy_bi = BigInt(toScaledStr(cy, d));
+  var o2d_bi = orient2D(ax_bi, ay_bi, bx_bi, by_bi, cx_bi, cy_bi);
+  return fromScaledStr(o2d_bi.toString(), d);
 }
 
-export function orient2D_big2(ax, ay, bx, by, cx, cy) {
-  return orient2D_big(Big(ax), Big(ay), Big(bx), Big(by), Big(cx), Big(cy));
+function segmentHit_robust(ax, ay, bx, by, cx, cy, dx, dy) {
+  var d = findBigIntScaleFactor(ax, ay, bx, by, cx, cy, dx, dy);
+  var ax_bi = BigInt(toScaledStr(ax, d));
+  var ay_bi = BigInt(toScaledStr(ay, d));
+  var bx_bi = BigInt(toScaledStr(bx, d));
+  var by_bi = BigInt(toScaledStr(by, d));
+  var cx_bi = BigInt(toScaledStr(cx, d));
+  var cy_bi = BigInt(toScaledStr(cy, d));
+  var dx_bi = BigInt(toScaledStr(dx, d));
+  var dy_bi = BigInt(toScaledStr(dy, d));
+  return segmentHit_fast(ax_bi, ay_bi, bx_bi, by_bi, cx_bi, cy_bi, dx_bi, dy_bi);
 }
-
-
-// export function orient2D_v2(ax, ay, bx, by, cx, cy) {
-//   return -orient2D_robust(ax, ay, bx, by, cx, cy);
-// }
-
 
 // Source: Sedgewick, _Algorithms in C_
 // (Other functions were tried that were more sensitive to floating point errors
@@ -359,25 +358,6 @@ export function segmentHit_fast(ax, ay, bx, by, cx, cy, dx, dy) {
       orient2D(cx, cy, dx, dy, ax, ay) *
       orient2D(cx, cy, dx, dy, bx, by) <= 0;
 }
-
-export function segmentHit_big(ax, ay, bx, by, cx, cy, dx, dy) {
-  return orient2D_big(ax, ay, bx, by, cx, cy).times(
-      orient2D_big(ax, ay, bx, by, dx, dy)).lte(0) &&
-      orient2D_big(cx, cy, dx, dy, ax, ay).times(
-      orient2D_big(cx, cy, dx, dy, bx, by)).lte(0);
-}
-
-export function segmentHit_big2(ax, ay, bx, by, cx, cy, dx, dy) {
-  return segmentHit_big(Big(ax), Big(ay), Big(bx), Big(by),
-    Big(cx), Big(cy), Big(dx), Big(dy));
-}
-
-// export function segmentHit_robust(ax, ay, bx, by, cx, cy, dx, dy) {
-//   return -orient2D_robust(ax, ay, bx, by, cx, cy) *
-//       -orient2D_robust(ax, ay, bx, by, dx, dy) <= 0 &&
-//       -orient2D_robust(cx, cy, dx, dy, ax, ay) *
-//       -orient2D_robust(cx, cy, dx, dy, bx, by) <= 0;
-// }
 
 // Useful for determining if a segment that intersects another segment is
 // entering or leaving an enclosed buffer area

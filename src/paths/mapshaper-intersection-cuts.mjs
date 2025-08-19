@@ -51,17 +51,14 @@ export function addIntersectionCuts(dataset, _opts) {
   if (changed || opts.rebuild_topology) {
     buildTopology(dataset);
   }
-
-  // Clean shapes by removing collapsed arc references, etc.
-  // TODO: consider alternative -- avoid creating degenerate arcs
-  // in insertCutPoints()
+  // Remove degenerate shapes
+  // Without this step, pathfinder function would encounter dead ends.
   dataset.layers.forEach(function(lyr) {
     if (layerHasPaths(lyr)) {
       cleanShapes(lyr.shapes, arcs, lyr.geometry_type);
     }
   });
-
-  // Further clean-up -- remove duplicate and missing arcs
+  // Further clean-up -- remove duplicate and unused arcs, etc.
   nodes = cleanArcReferences(dataset);
   return nodes;
 }
@@ -71,38 +68,26 @@ function snapAndCut(dataset, snapDist) {
   var cutOpts = snapDist > 0 ? {tolerance: snapDist} : {tolerance: 0};
   var coordsHaveChanged = false;
   var snapCount, dupeCount, cutCount;
-  var maxPasses = 4, passCount = 0;
-  snapCount = snapCoordsByInterval(arcs, snapDist);
-  dupeCount = arcs.dedupCoords();
+  var maxLoops = 4, loopCount = 0;
 
-  // why was topology built here previously????
-  // if (snapCount > 0 || dupeCount > 0) {
-  //   // Detect topology again if coordinates have changed
-  //   internal.buildTopology(dataset);
-  // }
-
-  // cut arcs at points where segments intersect
-  cutCount = cutPathsAtIntersections(dataset, cutOpts);
-  passCount++;
-  if (cutCount > 0 || snapCount > 0 || dupeCount > 0) {
-    coordsHaveChanged = true;
-  }
-
-  // perform a second snap + cut pass if needed
-  while (cutCount > 0 && passCount < maxPasses) {
-    passCount++;
+  // snap + cut until no more cuts are needed
+  do {
+    loopCount++;
+    cutCount = 0;
     snapCount = snapCoordsByInterval(arcs, snapDist);
     dupeCount = arcs.dedupCoords();
-    // cutCount = 0;
-    if (snapCount > 0 || cutCount > 0) {
+    if (snapCount > 0 || cutCount > 0 || loopCount == 1) {
+      // cut arcs at points where segments intersect
       cutCount = cutPathsAtIntersections(dataset, cutOpts);
-      debug("[snapAndCut] pass:", passCount, "snaps:", snapCount, "dupes:", dupeCount, "cuts:", cutCount);
     }
-  }
+    coordsHaveChanged |= (snapCount + dupeCount + cutCount) > 0;
+    debug("[snapAndCut] pass:", loopCount, "snaps:", snapCount, "dupes:", dupeCount, "cuts:", cutCount);
+  } while (loopCount < maxLoops && cutCount > 0);
 
-  // if (cutCount > 0) {
+  // should this be added?
+  // if (cutCount > 0 && loopCount == maxLoops) {
+  //   snapCount = snapCoordsByInterval(arcs, snapDist);
   //   arcs.dedupCoords(); // need to do this here?
-  //   debug('Second-pass vertices added:', cutCount, 'consider third pass?');
   // }
 
   return coordsHaveChanged;
@@ -302,11 +287,8 @@ export function filterSortedCutPoints(points, arcs) {
       pointId++;
       pp = filtered[filtered.length - 1]; // previous point
       if (p.x == x1 && p.y == y1 && p.i == i || p.x == x2 && p.y == y2 && p.i >= j - 1) {
-        // console.log("endpoint:", p, 'arc start:', i, 'arc end:', j)
-        // console.log('x1:', x1, 'x2:', x2)
         // clip point is an arc endpoint -- discard
       } else if (pp && pp.x == p.x && pp.y == p.y && pp.i == p.i) {
-        // console.log("duplicate:", p)
         // clip point is a duplicate -- discard
       } else {
         filtered.push(p);
