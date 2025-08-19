@@ -372,10 +372,11 @@ export function ArcCollection() {
   };
 
   this.arcIsDegenerate = function(arcId) {
-    return this.arcHasZeroLength(arcId) || this.arcIsSpike(arcId);
+    return this.arcHasZeroLength(arcId) || this.arcIsSpike(arcId) || this.arcIsSpike_v1(arcId);
   };
 
-  this.arcIsSpike = function(arcId) {
+  // only finds two-segment spikes
+  this.arcIsSpike_v1 = function(arcId) {
     var iter = this.getArcIter(arcId);
     var x0, y0;
     if (iter.hasNext()) {
@@ -391,6 +392,22 @@ export function ArcCollection() {
     }
     return false;
   };
+
+  // identifies n-segment spikes
+  this.arcIsSpike = function(arcId) {
+    arcId = absArcId(arcId);
+    var i = _ii[arcId];
+    var j = i + _nn[arcId] - 1;
+    while (j > i) {
+      if (_xx[i] != _xx[j] || _yy[i] != _yy[j]) {
+        return false;
+      }
+      j--;
+      i++;
+    }
+    return true;
+  };
+
 
   this.arcHasZeroLength = function(arcId) {
     var iter = this.getArcIter(arcId);

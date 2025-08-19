@@ -30,6 +30,7 @@ function cleanShape(shape, arcs, type) {
 
 function cleanPath(path, arcs) {
   var nulls = 0;
+  // console.log("[cleanPath()]", path, path?.[0])
   for (var i=0, n=path.length; i<n; i++) {
     if (arcs.arcIsDegenerate(path[i])) {
       nulls++;

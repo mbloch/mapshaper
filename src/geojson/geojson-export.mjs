@@ -255,6 +255,7 @@ GeoJSON.exportPointGeom = function(points, arcs) {
   return geom;
 };
 
+// ids: shape data (array of array of arc ids)
 GeoJSON.exportLineGeom = function(ids, arcs) {
   var obj = exportPathData(ids, arcs, "polyline");
   if (obj.pointCount === 0) return null;
@@ -270,6 +271,7 @@ GeoJSON.exportLineGeom = function(ids, arcs) {
   };
 };
 
+// ids: shape data (array of array of arc ids)
 GeoJSON.exportPolygonGeom = function(ids, arcs, opts) {
   var obj = exportPathData(ids, arcs, "polygon");
   if (obj.pointCount === 0) return null;

@@ -1,9 +1,14 @@
-import { error, debug } from '../utils/mapshaper-logging';
+import { error, debug, useDebug } from '../utils/mapshaper-logging';
 import geom from '../geom/mapshaper-geom';
-import { orient2D, orient2D_big2 } from '../geom/mapshaper-segment-geom';
+import { orient2D_robust } from '../geom/mapshaper-segment-geom';
+// import { orient2D_big2 as orient2D_robust } from '../geom/mapshaper-segment-geom-big';
 import {
   getArcEndpointCoords
 } from '../paths/mapshaper-vertex-utils';
+import {
+  debugDuplicatePathfinderSegments,
+  debugConnectedArcs
+} from '../utils/mapshaper-debug-utils';
 
 function pointsAreEqual(a, b) {
   return a && b && a[0] === b[0] && a[1] === b[1];
@@ -55,7 +60,6 @@ export function getRightmostArc(fromArcId, nodes, filter) {
     error("Duplicate point error");
   }*/
 
-
   for (j=0; j<ids.length; j++) {
     candId = ids[j];
     if (!isValidArc(candId, arcs)) {
@@ -74,6 +78,10 @@ export function getRightmostArc(fromArcId, nodes, filter) {
 
     if (xx[ito] == xx[icand] && yy[ito] == yy[icand]) {
       debug("Pathfinder warning: duplicate segments: i:", ito, "j:", icand, "ids:", [fromArcId].concat(ids));
+      if (useDebug()) {
+        // debugDuplicatePathfinderSegments(nodeX, nodeY, ito, icand, nodes.arcs);
+        debugConnectedArcs(ids, nodes.arcs);
+      }
     }
     if (code == 2) {
       ito = icand;
@@ -124,8 +132,7 @@ function chooseRighthandPath(fromX, fromY, nodeX, nodeY, ax, ay, bx, by) {
 }
 
 export function chooseBetweenClosePaths(nodeX, nodeY, ax, ay, bx, by) {
-  // var orient = orient2D_big2(ax, ay, 0, 0, bx, by);
-  var orient = orient2D_big2(ax, ay, nodeX, nodeY, bx, by);
+  var orient = orient2D_robust(ax, ay, nodeX, nodeY, bx, by);
   var code;
   if (orient > 0) {
     code = 2;
