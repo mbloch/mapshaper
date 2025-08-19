@@ -3113,1037 +3113,70 @@
     snapEndpointsByInterval: snapEndpointsByInterval
   });
 
-  /*
-   *  big.js v7.0.1
-   *  A small, fast, easy-to-use library for arbitrary-precision decimal arithmetic.
-   *  Copyright (c) 2025 Michael Mclaughlin
-   *  https://github.com/MikeMcl/big.js/LICENCE.md
-   */
-
-
-  /************************************** EDITABLE DEFAULTS *****************************************/
-
-
-    // The default values below must be integers within the stated ranges.
-
-    /*
-     * The maximum number of decimal places (DP) of the results of operations involving division:
-     * div and sqrt, and pow with negative exponents.
-     */
-  var DP = 20,          // 0 to MAX_DP
-
-    /*
-     * The rounding mode (RM) used when rounding to the above decimal places.
-     *
-     *  0  Towards zero (i.e. truncate, no rounding).       (ROUND_DOWN)
-     *  1  To nearest neighbour. If equidistant, round up.  (ROUND_HALF_UP)
-     *  2  To nearest neighbour. If equidistant, to even.   (ROUND_HALF_EVEN)
-     *  3  Away from zero.                                  (ROUND_UP)
-     */
-    RM = 1,             // 0, 1, 2 or 3
-
-    // The maximum value of DP and Big.DP.
-    MAX_DP = 1E6,       // 0 to 1000000
-
-    // The maximum magnitude of the exponent argument to the pow method.
-    MAX_POWER = 1E6,    // 1 to 1000000
-
-    /*
-     * The negative exponent (NE) at and beneath which toString returns exponential notation.
-     * (JavaScript numbers: -7)
-     * -1000000 is the minimum recommended exponent value of a Big.
-     */
-    NE = -7,            // 0 to -1000000
-
-    /*
-     * The positive exponent (PE) at and above which toString returns exponential notation.
-     * (JavaScript numbers: 21)
-     * 1000000 is the maximum recommended exponent value of a Big, but this limit is not enforced.
-     */
-    PE = 21,            // 0 to 1000000
-
-    /*
-     * When true, an error will be thrown if a primitive number is passed to the Big constructor,
-     * or if valueOf is called, or if toNumber is called on a Big which cannot be converted to a
-     * primitive number without a loss of precision.
-     */
-    STRICT = false,     // true or false
-
-
-  /**************************************************************************************************/
-
-
-    // Error messages.
-    NAME = '[big.js] ',
-    INVALID = NAME + 'Invalid ',
-    INVALID_DP = INVALID + 'decimal places',
-    INVALID_RM = INVALID + 'rounding mode',
-    DIV_BY_ZERO = NAME + 'Division by zero',
-
-    // The shared prototype object.
-    P = {},
-    UNDEFINED = void 0,
-    NUMERIC = /^-?(\d+(\.\d*)?|\.\d+)(e[+-]?\d+)?$/i;
-
-
-  /*
-   * Create and return a Big constructor.
-   */
-  function _Big_() {
-
-    /*
-     * The Big constructor and exported function.
-     * Create and return a new instance of a Big number object.
-     *
-     * n {number|string|Big} A numeric value.
-     */
-    function Big(n) {
-      var x = this;
-
-      // Enable constructor usage without new.
-      if (!(x instanceof Big)) {
-        return n === UNDEFINED && arguments.length === 0 ? _Big_() : new Big(n);
-      }
-
-
-      // Duplicate.
-      if (n instanceof Big) {
-        x.s = n.s;
-        x.e = n.e;
-        x.c = n.c.slice();
-      } else {
-        if (typeof n !== 'string') {
-          if (Big.strict === true && typeof n !== 'bigint') {
-            throw TypeError(INVALID + 'value');
-          }
-
-          // Minus zero?
-          n = n === 0 && 1 / n < 0 ? '-0' : String(n);
-        }
-
-        parse(x, n);
-      }
-
-      // Retain a reference to this Big constructor.
-      // Shadow Big.prototype.constructor which points to Object.
-      x.constructor = Big;
+  function toScaledStr(num, k) {
+    var abs = Math.abs(num);
+    var signed = num != abs;
+    // String() matches behavior of big.js
+    // (as opposed to toFixed() or toPrecision())
+    var s = abs < 1e-6 ? abs.toFixed(k) : String(abs);
+    var parts = s.split('.');
+    var integer = parts[0] == '0' ? '' : parts[0];
+    var decimal = parts.length == 2 ? parts[1] : '';
+    if (decimal.length < k) {
+      decimal = decimal.padEnd(k, '0');
+    } else if (decimal.length > k) {
+      decimal = decimal.slice(0, k);
     }
-
-    Big.prototype = P;
-    Big.DP = DP;
-    Big.RM = RM;
-    Big.NE = NE;
-    Big.PE = PE;
-    Big.strict = STRICT;
-    Big.roundDown = 0;
-    Big.roundHalfUp = 1;
-    Big.roundHalfEven = 2;
-    Big.roundUp = 3;
-
-    return Big;
+    var s2 = integer + decimal;
+    // remove any leading 0s
+    while (s2[0] == 0 && s2.length > 1) {
+      s2 = s2.slice(1);
+    }
+    if (signed) {
+      s2 = '-' + s2;
+    }
+    return s2;
   }
 
-
-  /*
-   * Parse the number or string value passed to a Big constructor.
-   *
-   * x {Big} A Big number instance.
-   * n {number|string} A numeric value.
-   */
-  function parse(x, n) {
-    var e, i, nl;
-
-    if (!NUMERIC.test(n)) {
-      throw Error(INVALID + 'number');
-    }
-
-    // Determine sign.
-    x.s = n.charAt(0) == '-' ? (n = n.slice(1), -1) : 1;
-
-    // Decimal point?
-    if ((e = n.indexOf('.')) > -1) n = n.replace('.', '');
-
-    // Exponential form?
-    if ((i = n.search(/e/i)) > 0) {
-
-      // Determine exponent.
-      if (e < 0) e = i;
-      e += +n.slice(i + 1);
-      n = n.substring(0, i);
-    } else if (e < 0) {
-
-      // Integer.
-      e = n.length;
-    }
-
-    nl = n.length;
-
-    // Determine leading zeros.
-    for (i = 0; i < nl && n.charAt(i) == '0';) ++i;
-
-    if (i == nl) {
-
-      // Zero.
-      x.c = [x.e = 0];
+  // returns Number
+  function fromScaledStr(s, decimals) {
+    var signed = s[0] == '-';
+    var uns = signed ? s.slice(1) : s;
+    var s2, len;
+    len = uns.length;
+    if (len > decimals) {
+      s2 = uns.slice(0, len - decimals) + '.' + uns.slice(-decimals);
+    } else if (len == decimals) {
+      s2 = '0.' + uns;
     } else {
-
-      // Determine trailing zeros.
-      for (; nl > 0 && n.charAt(--nl) == '0';);
-      x.e = e - i - 1;
-      x.c = [];
-
-      // Convert string to array of digits without leading/trailing zeros.
-      for (e = 0; i <= nl;) x.c[e++] = +n.charAt(i++);
+      s2 = '0.' + uns.padStart(decimals, '0');
     }
-
-    return x;
+    if (signed) {
+      s2 = '-' + s2;
+    }
+    return Number(s2);
   }
 
-
-  /*
-   * Round Big x to a maximum of sd significant digits using rounding mode rm.
-   *
-   * x {Big} The Big to round.
-   * sd {number} Significant digits: integer, 0 to MAX_DP inclusive.
-   * rm {number} Rounding mode: 0 (down), 1 (half-up), 2 (half-even) or 3 (up).
-   * [more] {boolean} Whether the result of division was truncated.
-   */
-  function round(x, sd, rm, more) {
-    var xc = x.c;
-
-    if (rm === UNDEFINED) rm = x.constructor.RM;
-    if (rm !== 0 && rm !== 1 && rm !== 2 && rm !== 3) {
-      throw Error(INVALID_RM);
+  function findBigIntScaleFactor() {
+    var minVal = Infinity;
+    var intLen = 0, s;
+    for (var i=0, n=arguments.length; i<n; i++) {
+      minVal = Math.min(minVal, Math.abs(arguments[i]));
     }
-
-    if (sd < 1) {
-      more =
-        rm === 3 && (more || !!xc[0]) || sd === 0 && (
-        rm === 1 && xc[0] >= 5 ||
-        rm === 2 && (xc[0] > 5 || xc[0] === 5 && (more || xc[1] !== UNDEFINED))
-      );
-
-      xc.length = 1;
-
-      if (more) {
-
-        // 1, 0.1, 0.01, 0.001, 0.0001 etc.
-        x.e = x.e - sd + 1;
-        xc[0] = 1;
-      } else {
-
-        // Zero.
-        xc[0] = x.e = 0;
+    if (minVal >= 1) {
+      s = minVal.toFixed(1);
+      intLen = s.indexOf('.');
+    } else if (minVal !== 0) {
+      s = minVal.toFixed(10).slice(2); // decimal part, up to _ decimals
+      while (s[0] === '0') {
+        intLen--;
+        s = s.slice(1);
       }
-    } else if (sd < xc.length) {
-
-      // xc[sd] is the digit after the digit that may be rounded up.
-      more =
-        rm === 1 && xc[sd] >= 5 ||
-        rm === 2 && (xc[sd] > 5 || xc[sd] === 5 &&
-          (more || xc[sd + 1] !== UNDEFINED || xc[sd - 1] & 1)) ||
-        rm === 3 && (more || !!xc[0]);
-
-      // Remove any digits after the required precision.
-      xc.length = sd;
-
-      // Round up?
-      if (more) {
-
-        // Rounding up may mean the previous digit has to be rounded up.
-        for (; ++xc[--sd] > 9;) {
-          xc[sd] = 0;
-          if (sd === 0) {
-            ++x.e;
-            xc.unshift(1);
-            break;
-          }
-        }
-      }
-
-      // Remove trailing zeros.
-      for (sd = xc.length; !xc[--sd];) xc.pop();
     }
-
-    return x;
+    return 17 - intLen;
   }
 
-
-  /*
-   * Return a string representing the value of Big x in normal or exponential notation.
-   * Handles P.toExponential, P.toFixed, P.toJSON, P.toPrecision, P.toString and P.valueOf.
-   */
-  function stringify$1(x, doExponential, isNonzero) {
-    var e = x.e,
-      s = x.c.join(''),
-      n = s.length;
-
-    // Exponential notation?
-    if (doExponential) {
-      s = s.charAt(0) + (n > 1 ? '.' + s.slice(1) : '') + (e < 0 ? 'e' : 'e+') + e;
-
-    // Normal notation.
-    } else if (e < 0) {
-      for (; ++e;) s = '0' + s;
-      s = '0.' + s;
-    } else if (e > 0) {
-      if (++e > n) {
-        for (e -= n; e--;) s += '0';
-      } else if (e < n) {
-        s = s.slice(0, e) + '.' + s.slice(e);
-      }
-    } else if (n > 1) {
-      s = s.charAt(0) + '.' + s.slice(1);
-    }
-
-    return x.s < 0 && isNonzero ? '-' + s : s;
-  }
-
-
-  // Prototype/instance methods
-
-
-  /*
-   * Return a new Big whose value is the absolute value of this Big.
-   */
-  P.abs = function () {
-    var x = new this.constructor(this);
-    x.s = 1;
-    return x;
-  };
-
-
-  /*
-   * Return 1 if the value of this Big is greater than the value of Big y,
-   *       -1 if the value of this Big is less than the value of Big y, or
-   *        0 if they have the same value.
-   */
-  P.cmp = function (y) {
-    var isneg,
-      x = this,
-      xc = x.c,
-      yc = (y = new x.constructor(y)).c,
-      i = x.s,
-      j = y.s,
-      k = x.e,
-      l = y.e;
-
-    // Either zero?
-    if (!xc[0] || !yc[0]) return !xc[0] ? !yc[0] ? 0 : -j : i;
-
-    // Signs differ?
-    if (i != j) return i;
-
-    isneg = i < 0;
-
-    // Compare exponents.
-    if (k != l) return k > l ^ isneg ? 1 : -1;
-
-    j = (k = xc.length) < (l = yc.length) ? k : l;
-
-    // Compare digit by digit.
-    for (i = -1; ++i < j;) {
-      if (xc[i] != yc[i]) return xc[i] > yc[i] ^ isneg ? 1 : -1;
-    }
-
-    // Compare lengths.
-    return k == l ? 0 : k > l ^ isneg ? 1 : -1;
-  };
-
-
-  /*
-   * Return a new Big whose value is the value of this Big divided by the value of Big y, rounded,
-   * if necessary, to a maximum of Big.DP decimal places using rounding mode Big.RM.
-   */
-  P.div = function (y) {
-    var x = this,
-      Big = x.constructor,
-      a = x.c,                  // dividend
-      b = (y = new Big(y)).c,   // divisor
-      k = x.s == y.s ? 1 : -1,
-      dp = Big.DP;
-
-    if (dp !== ~~dp || dp < 0 || dp > MAX_DP) {
-      throw Error(INVALID_DP);
-    }
-
-    // Divisor is zero?
-    if (!b[0]) {
-      throw Error(DIV_BY_ZERO);
-    }
-
-    // Dividend is 0? Return +-0.
-    if (!a[0]) {
-      y.s = k;
-      y.c = [y.e = 0];
-      return y;
-    }
-
-    var bl, bt, n, cmp, ri,
-      bz = b.slice(),
-      ai = bl = b.length,
-      al = a.length,
-      r = a.slice(0, bl),   // remainder
-      rl = r.length,
-      q = y,                // quotient
-      qc = q.c = [],
-      qi = 0,
-      p = dp + (q.e = x.e - y.e) + 1;    // precision of the result
-
-    q.s = k;
-    k = p < 0 ? 0 : p;
-
-    // Create version of divisor with leading zero.
-    bz.unshift(0);
-
-    // Add zeros to make remainder as long as divisor.
-    for (; rl++ < bl;) r.push(0);
-
-    do {
-
-      // n is how many times the divisor goes into current remainder.
-      for (n = 0; n < 10; n++) {
-
-        // Compare divisor and remainder.
-        if (bl != (rl = r.length)) {
-          cmp = bl > rl ? 1 : -1;
-        } else {
-          for (ri = -1, cmp = 0; ++ri < bl;) {
-            if (b[ri] != r[ri]) {
-              cmp = b[ri] > r[ri] ? 1 : -1;
-              break;
-            }
-          }
-        }
-
-        // If divisor < remainder, subtract divisor from remainder.
-        if (cmp < 0) {
-
-          // Remainder can't be more than 1 digit longer than divisor.
-          // Equalise lengths using divisor with extra leading zero?
-          for (bt = rl == bl ? b : bz; rl;) {
-            if (r[--rl] < bt[rl]) {
-              ri = rl;
-              for (; ri && !r[--ri];) r[ri] = 9;
-              --r[ri];
-              r[rl] += 10;
-            }
-            r[rl] -= bt[rl];
-          }
-
-          for (; !r[0];) r.shift();
-        } else {
-          break;
-        }
-      }
-
-      // Add the digit n to the result array.
-      qc[qi++] = cmp ? n : ++n;
-
-      // Update the remainder.
-      if (r[0] && cmp) r[rl] = a[ai] || 0;
-      else r = [a[ai]];
-
-    } while ((ai++ < al || r[0] !== UNDEFINED) && k--);
-
-    // Leading zero? Do not remove if result is simply zero (qi == 1).
-    if (!qc[0] && qi != 1) {
-
-      // There can't be more than one zero.
-      qc.shift();
-      q.e--;
-      p--;
-    }
-
-    // Round?
-    if (qi > p) round(q, p, Big.RM, r[0] !== UNDEFINED);
-
-    return q;
-  };
-
-
-  /*
-   * Return true if the value of this Big is equal to the value of Big y, otherwise return false.
-   */
-  P.eq = function (y) {
-    return this.cmp(y) === 0;
-  };
-
-
-  /*
-   * Return true if the value of this Big is greater than the value of Big y, otherwise return
-   * false.
-   */
-  P.gt = function (y) {
-    return this.cmp(y) > 0;
-  };
-
-
-  /*
-   * Return true if the value of this Big is greater than or equal to the value of Big y, otherwise
-   * return false.
-   */
-  P.gte = function (y) {
-    return this.cmp(y) > -1;
-  };
-
-
-  /*
-   * Return true if the value of this Big is less than the value of Big y, otherwise return false.
-   */
-  P.lt = function (y) {
-    return this.cmp(y) < 0;
-  };
-
-
-  /*
-   * Return true if the value of this Big is less than or equal to the value of Big y, otherwise
-   * return false.
-   */
-  P.lte = function (y) {
-    return this.cmp(y) < 1;
-  };
-
-
-  /*
-   * Return a new Big whose value is the value of this Big minus the value of Big y.
-   */
-  P.minus = P.sub = function (y) {
-    var i, j, t, xlty,
-      x = this,
-      Big = x.constructor,
-      a = x.s,
-      b = (y = new Big(y)).s;
-
-    // Signs differ?
-    if (a != b) {
-      y.s = -b;
-      return x.plus(y);
-    }
-
-    var xc = x.c.slice(),
-      xe = x.e,
-      yc = y.c,
-      ye = y.e;
-
-    // Either zero?
-    if (!xc[0] || !yc[0]) {
-      if (yc[0]) {
-        y.s = -b;
-      } else if (xc[0]) {
-        y = new Big(x);
-      } else {
-        y.s = 1;
-      }
-      return y;
-    }
-
-    // Determine which is the bigger number. Prepend zeros to equalise exponents.
-    if (a = xe - ye) {
-
-      if (xlty = a < 0) {
-        a = -a;
-        t = xc;
-      } else {
-        ye = xe;
-        t = yc;
-      }
-
-      t.reverse();
-      for (b = a; b--;) t.push(0);
-      t.reverse();
-    } else {
-
-      // Exponents equal. Check digit by digit.
-      j = ((xlty = xc.length < yc.length) ? xc : yc).length;
-
-      for (a = b = 0; b < j; b++) {
-        if (xc[b] != yc[b]) {
-          xlty = xc[b] < yc[b];
-          break;
-        }
-      }
-    }
-
-    // x < y? Point xc to the array of the bigger number.
-    if (xlty) {
-      t = xc;
-      xc = yc;
-      yc = t;
-      y.s = -y.s;
-    }
-
-    /*
-     * Append zeros to xc if shorter. No need to add zeros to yc if shorter as subtraction only
-     * needs to start at yc.length.
-     */
-    if ((b = (j = yc.length) - (i = xc.length)) > 0) for (; b--;) xc[i++] = 0;
-
-    // Subtract yc from xc.
-    for (b = i; j > a;) {
-      if (xc[--j] < yc[j]) {
-        for (i = j; i && !xc[--i];) xc[i] = 9;
-        --xc[i];
-        xc[j] += 10;
-      }
-
-      xc[j] -= yc[j];
-    }
-
-    // Remove trailing zeros.
-    for (; xc[--b] === 0;) xc.pop();
-
-    // Remove leading zeros and adjust exponent accordingly.
-    for (; xc[0] === 0;) {
-      xc.shift();
-      --ye;
-    }
-
-    if (!xc[0]) {
-
-      // n - n = +0
-      y.s = 1;
-
-      // Result must be zero.
-      xc = [ye = 0];
-    }
-
-    y.c = xc;
-    y.e = ye;
-
-    return y;
-  };
-
-
-  /*
-   * Return a new Big whose value is the value of this Big modulo the value of Big y.
-   */
-  P.mod = function (y) {
-    var ygtx,
-      x = this,
-      Big = x.constructor,
-      a = x.s,
-      b = (y = new Big(y)).s;
-
-    if (!y.c[0]) {
-      throw Error(DIV_BY_ZERO);
-    }
-
-    x.s = y.s = 1;
-    ygtx = y.cmp(x) == 1;
-    x.s = a;
-    y.s = b;
-
-    if (ygtx) return new Big(x);
-
-    a = Big.DP;
-    b = Big.RM;
-    Big.DP = Big.RM = 0;
-    x = x.div(y);
-    Big.DP = a;
-    Big.RM = b;
-
-    return this.minus(x.times(y));
-  };
-
-
-  /*
-   * Return a new Big whose value is the value of this Big negated.
-   */
-  P.neg = function () {
-    var x = new this.constructor(this);
-    x.s = -x.s;
-    return x;
-  };
-
-
-  /*
-   * Return a new Big whose value is the value of this Big plus the value of Big y.
-   */
-  P.plus = P.add = function (y) {
-    var e, k, t,
-      x = this,
-      Big = x.constructor;
-
-    y = new Big(y);
-
-    // Signs differ?
-    if (x.s != y.s) {
-      y.s = -y.s;
-      return x.minus(y);
-    }
-
-    var xe = x.e,
-      xc = x.c,
-      ye = y.e,
-      yc = y.c;
-
-    // Either zero?
-    if (!xc[0] || !yc[0]) {
-      if (!yc[0]) {
-        if (xc[0]) {
-          y = new Big(x);
-        } else {
-          y.s = x.s;
-        }
-      }
-      return y;
-    }
-
-    xc = xc.slice();
-
-    // Prepend zeros to equalise exponents.
-    // Note: reverse faster than unshifts.
-    if (e = xe - ye) {
-      if (e > 0) {
-        ye = xe;
-        t = yc;
-      } else {
-        e = -e;
-        t = xc;
-      }
-
-      t.reverse();
-      for (; e--;) t.push(0);
-      t.reverse();
-    }
-
-    // Point xc to the longer array.
-    if (xc.length - yc.length < 0) {
-      t = yc;
-      yc = xc;
-      xc = t;
-    }
-
-    e = yc.length;
-
-    // Only start adding at yc.length - 1 as the further digits of xc can be left as they are.
-    for (k = 0; e; xc[e] %= 10) k = (xc[--e] = xc[e] + yc[e] + k) / 10 | 0;
-
-    // No need to check for zero, as +x + +y != 0 && -x + -y != 0
-
-    if (k) {
-      xc.unshift(k);
-      ++ye;
-    }
-
-    // Remove trailing zeros.
-    for (e = xc.length; xc[--e] === 0;) xc.pop();
-
-    y.c = xc;
-    y.e = ye;
-
-    return y;
-  };
-
-
-  /*
-   * Return a Big whose value is the value of this Big raised to the power n.
-   * If n is negative, round to a maximum of Big.DP decimal places using rounding
-   * mode Big.RM.
-   *
-   * n {number} Integer, -MAX_POWER to MAX_POWER inclusive.
-   */
-  P.pow = function (n) {
-    var x = this,
-      one = new x.constructor('1'),
-      y = one,
-      isneg = n < 0;
-
-    if (n !== ~~n || n < -MAX_POWER || n > MAX_POWER) {
-      throw Error(INVALID + 'exponent');
-    }
-
-    if (isneg) n = -n;
-
-    for (;;) {
-      if (n & 1) y = y.times(x);
-      n >>= 1;
-      if (!n) break;
-      x = x.times(x);
-    }
-
-    return isneg ? one.div(y) : y;
-  };
-
-
-  /*
-   * Return a new Big whose value is the value of this Big rounded to a maximum precision of sd
-   * significant digits using rounding mode rm, or Big.RM if rm is not specified.
-   *
-   * sd {number} Significant digits: integer, 1 to MAX_DP inclusive.
-   * rm? {number} Rounding mode: 0 (down), 1 (half-up), 2 (half-even) or 3 (up).
-   */
-  P.prec = function (sd, rm) {
-    if (sd !== ~~sd || sd < 1 || sd > MAX_DP) {
-      throw Error(INVALID + 'precision');
-    }
-    return round(new this.constructor(this), sd, rm);
-  };
-
-
-  /*
-   * Return a new Big whose value is the value of this Big rounded to a maximum of dp decimal places
-   * using rounding mode rm, or Big.RM if rm is not specified.
-   * If dp is negative, round to an integer which is a multiple of 10**-dp.
-   * If dp is not specified, round to 0 decimal places.
-   *
-   * dp? {number} Integer, -MAX_DP to MAX_DP inclusive.
-   * rm? {number} Rounding mode: 0 (down), 1 (half-up), 2 (half-even) or 3 (up).
-   */
-  P.round = function (dp, rm) {
-    if (dp === UNDEFINED) dp = 0;
-    else if (dp !== ~~dp || dp < -MAX_DP || dp > MAX_DP) {
-      throw Error(INVALID_DP);
-    }
-    return round(new this.constructor(this), dp + this.e + 1, rm);
-  };
-
-
-  /*
-   * Return a new Big whose value is the square root of the value of this Big, rounded, if
-   * necessary, to a maximum of Big.DP decimal places using rounding mode Big.RM.
-   */
-  P.sqrt = function () {
-    var r, c, t,
-      x = this,
-      Big = x.constructor,
-      s = x.s,
-      e = x.e,
-      half = new Big('0.5');
-
-    // Zero?
-    if (!x.c[0]) return new Big(x);
-
-    // Negative?
-    if (s < 0) {
-      throw Error(NAME + 'No square root');
-    }
-
-    // Estimate.
-    s = Math.sqrt(+stringify$1(x, true, true));
-
-    // Math.sqrt underflow/overflow?
-    // Re-estimate: pass x coefficient to Math.sqrt as integer, then adjust the result exponent.
-    if (s === 0 || s === 1 / 0) {
-      c = x.c.join('');
-      if (!(c.length + e & 1)) c += '0';
-      s = Math.sqrt(c);
-      e = ((e + 1) / 2 | 0) - (e < 0 || e & 1);
-      r = new Big((s == 1 / 0 ? '5e' : (s = s.toExponential()).slice(0, s.indexOf('e') + 1)) + e);
-    } else {
-      r = new Big(s + '');
-    }
-
-    e = r.e + (Big.DP += 4);
-
-    // Newton-Raphson iteration.
-    do {
-      t = r;
-      r = half.times(t.plus(x.div(t)));
-    } while (t.c.slice(0, e).join('') !== r.c.slice(0, e).join(''));
-
-    return round(r, (Big.DP -= 4) + r.e + 1, Big.RM);
-  };
-
-
-  /*
-   * Return a new Big whose value is the value of this Big times the value of Big y.
-   */
-  P.times = P.mul = function (y) {
-    var c,
-      x = this,
-      Big = x.constructor,
-      xc = x.c,
-      yc = (y = new Big(y)).c,
-      a = xc.length,
-      b = yc.length,
-      i = x.e,
-      j = y.e;
-
-    // Determine sign of result.
-    y.s = x.s == y.s ? 1 : -1;
-
-    // Return signed 0 if either 0.
-    if (!xc[0] || !yc[0]) {
-      y.c = [y.e = 0];
-      return y;
-    }
-
-    // Initialise exponent of result as x.e + y.e.
-    y.e = i + j;
-
-    // If array xc has fewer digits than yc, swap xc and yc, and lengths.
-    if (a < b) {
-      c = xc;
-      xc = yc;
-      yc = c;
-      j = a;
-      a = b;
-      b = j;
-    }
-
-    // Initialise coefficient array of result with zeros.
-    for (c = new Array(j = a + b); j--;) c[j] = 0;
-
-    // Multiply.
-
-    // i is initially xc.length.
-    for (i = b; i--;) {
-      b = 0;
-
-      // a is yc.length.
-      for (j = a + i; j > i;) {
-
-        // Current sum of products at this digit position, plus carry.
-        b = c[j] + yc[i] * xc[j - i - 1] + b;
-        c[j--] = b % 10;
-
-        // carry
-        b = b / 10 | 0;
-      }
-
-      c[j] = b;
-    }
-
-    // Increment result exponent if there is a final carry, otherwise remove leading zero.
-    if (b) ++y.e;
-    else c.shift();
-
-    // Remove trailing zeros.
-    for (i = c.length; !c[--i];) c.pop();
-    y.c = c;
-
-    return y;
-  };
-
-
-  /*
-   * Return a string representing the value of this Big in exponential notation rounded to dp fixed
-   * decimal places using rounding mode rm, or Big.RM if rm is not specified.
-   *
-   * dp? {number} Decimal places: integer, 0 to MAX_DP inclusive.
-   * rm? {number} Rounding mode: 0 (down), 1 (half-up), 2 (half-even) or 3 (up).
-   */
-  P.toExponential = function (dp, rm) {
-    var x = this,
-      n = x.c[0];
-
-    if (dp !== UNDEFINED) {
-      if (dp !== ~~dp || dp < 0 || dp > MAX_DP) {
-        throw Error(INVALID_DP);
-      }
-      x = round(new x.constructor(x), ++dp, rm);
-      for (; x.c.length < dp;) x.c.push(0);
-    }
-
-    return stringify$1(x, true, !!n);
-  };
-
-
-  /*
-   * Return a string representing the value of this Big in normal notation rounded to dp fixed
-   * decimal places using rounding mode rm, or Big.RM if rm is not specified.
-   *
-   * dp? {number} Decimal places: integer, 0 to MAX_DP inclusive.
-   * rm? {number} Rounding mode: 0 (down), 1 (half-up), 2 (half-even) or 3 (up).
-   *
-   * (-0).toFixed(0) is '0', but (-0.1).toFixed(0) is '-0'.
-   * (-0).toFixed(1) is '0.0', but (-0.01).toFixed(1) is '-0.0'.
-   */
-  P.toFixed = function (dp, rm) {
-    var x = this,
-      n = x.c[0];
-
-    if (dp !== UNDEFINED) {
-      if (dp !== ~~dp || dp < 0 || dp > MAX_DP) {
-        throw Error(INVALID_DP);
-      }
-      x = round(new x.constructor(x), dp + x.e + 1, rm);
-
-      // x.e may have changed if the value is rounded up.
-      for (dp = dp + x.e + 1; x.c.length < dp;) x.c.push(0);
-    }
-
-    return stringify$1(x, false, !!n);
-  };
-
-
-  /*
-   * Return a string representing the value of this Big.
-   * Return exponential notation if this Big has a positive exponent equal to or greater than
-   * Big.PE, or a negative exponent equal to or less than Big.NE.
-   * Omit the sign for negative zero.
-   */
-  P.toJSON = P.toString = function () {
-    var x = this,
-      Big = x.constructor;
-    return stringify$1(x, x.e <= Big.NE || x.e >= Big.PE, !!x.c[0]);
-  };
-
-  if (typeof Symbol !== "undefined") {
-    P[Symbol.for('nodejs.util.inspect.custom')] = P.toJSON;
-  }
-
-
-  /*
-   * Return the value of this Big as a primitive number.
-   */
-  P.toNumber = function () {
-    var n = +stringify$1(this, true, true);
-    if (this.constructor.strict === true && !this.eq(n.toString())) {
-      throw Error(NAME + 'Imprecise conversion');
-    }
-    return n;
-  };
-
-
-  /*
-   * Return a string representing the value of this Big rounded to sd significant digits using
-   * rounding mode rm, or Big.RM if rm is not specified.
-   * Use exponential notation if sd is less than the number of digits necessary to represent
-   * the integer part of the value in normal notation.
-   *
-   * sd {number} Significant digits: integer, 1 to MAX_DP inclusive.
-   * rm? {number} Rounding mode: 0 (down), 1 (half-up), 2 (half-even) or 3 (up).
-   */
-  P.toPrecision = function (sd, rm) {
-    var x = this,
-      Big = x.constructor,
-      n = x.c[0];
-
-    if (sd !== UNDEFINED) {
-      if (sd !== ~~sd || sd < 1 || sd > MAX_DP) {
-        throw Error(INVALID + 'precision');
-      }
-      x = round(new Big(x), sd, rm);
-      for (; x.c.length < sd;) x.c.push(0);
-    }
-
-    return stringify$1(x, sd <= x.e || x.e <= Big.NE || x.e >= Big.PE, !!n);
-  };
-
-
-  /*
-   * Return a string representing the value of this Big.
-   * Return exponential notation if this Big has a positive exponent equal to or greater than
-   * Big.PE, or a negative exponent equal to or less than Big.NE.
-   * Include the sign for negative zero.
-   */
-  P.valueOf = function () {
-    var x = this,
-      Big = x.constructor;
-    if (Big.strict === true) {
-      throw Error(NAME + 'valueOf disallowed');
-    }
-    return stringify$1(x, x.e <= Big.NE || x.e >= Big.PE, true);
-  };
-
-
-  // Export
-
-
-  var Big = _Big_();
+  //import { findCrossIntersection_big } from '../geom/mapshaper-segment-geom-big';
 
   // Find the intersection between two 2D segments
   // Returns 0, 1 or 2 [x, y] locations as null, [x, y], or [x1, y1, x2, y2]
@@ -4179,18 +3212,31 @@
     return touches || cross || null;
   }
 
-
   function findCrossIntersection(ax, ay, bx, by, cx, cy, dx, dy, eps) {
     var p;
-    if (eps > 0 && !segmentHit_fast(ax, ay, bx, by, cx, cy, dx, dy)) return null;
-    else if (eps === 0 && !segmentHit_big(ax, ay, bx, by, cx, cy, dx, dy)) return null;
+    // The normal-precision hit function works for all inputs when eps > 0 because
+    // the geometries that cause the ordinary function fails are detected as
+    // 'touches' or endpoint hits (at least this was true in all the real-world
+    // data samples that were tested).
+    //
+    if (eps > 0 && !segmentHit_fast(ax, ay, bx, by, cx, cy, dx, dy)) {
+      return null;
+    } else if (eps === 0 && !segmentHit_robust(ax, ay, bx, by, cx, cy, dx, dy)) {
+      return null;
+    }
 
-    // in a typical layer with many intersections, robust is preferred in
-    // most (>90%) segment intersections in order to keep the positional
-    // error within a small interval (e.g. 50% of eps)
+    // in a typical layer with many intersections along shared polygon boundaries,
+    // robust is preferred in most (>90%) segment intersections in order to keep
+    // the positional error within a small interval (e.g. 50% of eps)
     //
     if (useRobustCross(ax, ay, bx, by, cx, cy, dx, dy)) {
       p = findCrossIntersection_robust(ax, ay, bx, by, cx, cy, dx, dy);
+      // var p2 = findCrossIntersection_big(ax, ay, bx, by, cx, cy, dx, dy);
+      // var dx = p[0] - p2[0];
+      // var dy = p[1] - p2[1];
+      // if (dx != 0 || dy != 0) {
+      //   console.log(dx, dy)
+      // }
     } else {
       p = findCrossIntersection_fast(ax, ay, bx, by, cx, cy, dx, dy);
     }
@@ -4210,41 +3256,6 @@
     return p;
   }
 
-  // Find the intersection point of two segments that cross each other,
-  // or return null if the segments do not cross.
-  // Assumes endpoint intersections have already been detected
-  function findCrossIntersection_robust(ax, ay, bx, by, cx, cy, dx, dy) {
-    var ax_big = Big(ax);
-    var ay_big = Big(ay);
-    var bx_big = Big(bx);
-    var by_big = Big(by);
-    var cx_big = Big(cx);
-    var cy_big = Big(cy);
-    var dx_big = Big(dx);
-    var dy_big = Big(dy);
-    var v1x = bx_big.minus(ax_big);
-    var v1y = by_big.minus(ay_big);
-    var den_big = determinant2D_big(v1x, v1y, dx_big.minus(cx), dy_big.minus(cy));
-    if (den_big.eq(0)) {
-      debug("DIV0 error (should have been caught upstream)");
-      // console.log("hit?", segmentHit_big(ax, ay, bx, by, cx, cy, dx, dy))
-      // console.log('Seg 1', getSegFeature(ax, ay, bx, by, true))
-      // console.log('Seg 2', getSegFeature(cx, cy, dx, dy, false))
-      return null;
-    }
-    // perform division using regular math, which does not reduce overall
-    // precision in test data (big.js division is very slow)
-    // tests show identical result to:
-    // orient2D_big(cx_big, cy_big, dx_big, dy_big, ax_big, ay_big).div(den_big)
-    var m = orient2D_big(cx_big, cy_big, dx_big, dy_big, ax_big,
-      ay_big).toNumber() / den_big.toNumber();
-    var m_big = Big(m);
-    var x_big = ax_big.plus(m_big.times(v1x).round(16));
-    var y_big = ay_big.plus(m_big.times(v1y).round(16));
-    var p = [x_big.toNumber(), y_big.toNumber()];
-    return p;
-  }
-
   function findCrossIntersection_fast(ax, ay, bx, by, cx, cy, dx, dy) {
     var den = determinant2D(bx - ax, by - ay, dx - cx, dy - cy);
     var m = orient2D(cx, cy, dx, dy, ax, ay) / den;
@@ -4259,6 +3270,33 @@
     return p;
   }
 
+  // this function, using BigInt, is 3-4x faster than the version using big.js
+  function findCrossIntersection_robust(ax, ay, bx, by, cx, cy, dx, dy) {
+    var d = findBigIntScaleFactor(ax, ay, bx, by, cx, cy, dx, dy);
+    var d2 = 16; // scale numerator of integer division by this many decimal digits
+    var k_bi = 10000000000000000n; // matches d2
+    var ax_bi = BigInt(toScaledStr(ax, d));
+    var ay_bi = BigInt(toScaledStr(ay, d));
+    var bx_bi = BigInt(toScaledStr(bx, d));
+    var by_bi = BigInt(toScaledStr(by, d));
+    var cx_bi = BigInt(toScaledStr(cx, d));
+    var cy_bi = BigInt(toScaledStr(cy, d));
+    var dx_bi = BigInt(toScaledStr(dx, d));
+    var dy_bi = BigInt(toScaledStr(dy, d));
+    var den = determinant2D(bx_bi - ax_bi, by_bi - ay_bi, dx_bi - cx_bi, dy_bi - cy_bi);
+    if (den === 0n) {
+      debug('DIV0 error - should have been identified as collinear "touch" intersection.');
+      return null;
+    }
+    var num = orient2D(cx_bi, cy_bi, dx_bi, dy_bi, ax_bi, ay_bi) * k_bi;
+    var m_bi = num / den;
+    var x_bi = ax_bi * k_bi + m_bi * (bx_bi - ax_bi);
+    var y_bi = ay_bi * k_bi + m_bi * (by_bi - ay_bi);
+    var x = fromScaledStr(x_bi.toString(), d + d2);
+    var y = fromScaledStr(y_bi.toString(), d + d2);
+    return [x, y];
+  }
+
   function useRobustCross(ax, ay, bx, by, cx, cy, dx, dy) {
     // angle and seg length ratio thresholds were found by comparing
     // fast and robust outputs on sample data
@@ -4270,7 +3308,7 @@
     return false;
   }
 
-  // Returns smaller unsigned angle between two segments
+  // Returns smaller of two angles between two segments (unsigned)
   function innerAngle(ax, ay, bx, by, cx, cy, dx, dy) {
     var v1x = bx - ax;
     var v1y = by - ay;
@@ -4419,18 +3457,6 @@
     p[1] = y;
   }
 
-  // function getSegFeature(x1, y1, x2, y2, hot) {
-  //   return JSON.stringify({
-  //     type: "Feature",
-  //     properties: {
-  //       stroke: hot ? "orange" : "blue"
-  //     },
-  //     geometry: {
-  //       type: "LineString",
-  //       coordinates: [[x1, y1], [x2, y2]]
-  //     }
-  //   });
-  // }
 
   // a: coordinate of point
   // b: endpoint coordinate of segment
@@ -4463,10 +3489,6 @@
     return a * d - b * c;
   }
 
-  function determinant2D_big(a, b, c, d) {
-    return a.times(d).minus(b.times(c));
-  }
-
   // returns a positive value if the points a, b, and c are arranged in
   // counterclockwise order, a negative value if the points are in clockwise
   // order, and zero if the points are collinear.
@@ -4475,21 +3497,30 @@
     return determinant2D(ax - cx, ay - cy, bx - cx, by - cy);
   }
 
-  function orient2D_big(ax, ay, bx, by, cx, cy) {
-    var a = (ax.minus(cx)).times(by.minus(cy));
-    var b = (ay.minus(cy)).times(bx.minus(cx));
-    return a.minus(b);
+  function orient2D_robust(ax, ay, bx, by, cx, cy) {
+    var d = findBigIntScaleFactor(ax, ay, bx, by, cx, cy);
+    var ax_bi = BigInt(toScaledStr(ax, d));
+    var ay_bi = BigInt(toScaledStr(ay, d));
+    var bx_bi = BigInt(toScaledStr(bx, d));
+    var by_bi = BigInt(toScaledStr(by, d));
+    var cx_bi = BigInt(toScaledStr(cx, d));
+    var cy_bi = BigInt(toScaledStr(cy, d));
+    var o2d_bi = orient2D(ax_bi, ay_bi, bx_bi, by_bi, cx_bi, cy_bi);
+    return fromScaledStr(o2d_bi.toString(), d);
   }
 
-  function orient2D_big2(ax, ay, bx, by, cx, cy) {
-    return orient2D_big(Big(ax), Big(ay), Big(bx), Big(by), Big(cx), Big(cy));
+  function segmentHit_robust(ax, ay, bx, by, cx, cy, dx, dy) {
+    var d = findBigIntScaleFactor(ax, ay, bx, by, cx, cy, dx, dy);
+    var ax_bi = BigInt(toScaledStr(ax, d));
+    var ay_bi = BigInt(toScaledStr(ay, d));
+    var bx_bi = BigInt(toScaledStr(bx, d));
+    var by_bi = BigInt(toScaledStr(by, d));
+    var cx_bi = BigInt(toScaledStr(cx, d));
+    var cy_bi = BigInt(toScaledStr(cy, d));
+    var dx_bi = BigInt(toScaledStr(dx, d));
+    var dy_bi = BigInt(toScaledStr(dy, d));
+    return segmentHit_fast(ax_bi, ay_bi, bx_bi, by_bi, cx_bi, cy_bi, dx_bi, dy_bi);
   }
-
-
-  // export function orient2D_v2(ax, ay, bx, by, cx, cy) {
-  //   return -orient2D_robust(ax, ay, bx, by, cx, cy);
-  // }
-
 
   // Source: Sedgewick, _Algorithms in C_
   // (Other functions were tried that were more sensitive to floating point errors
@@ -4500,25 +3531,6 @@
         orient2D(cx, cy, dx, dy, ax, ay) *
         orient2D(cx, cy, dx, dy, bx, by) <= 0;
   }
-
-  function segmentHit_big(ax, ay, bx, by, cx, cy, dx, dy) {
-    return orient2D_big(ax, ay, bx, by, cx, cy).times(
-        orient2D_big(ax, ay, bx, by, dx, dy)).lte(0) &&
-        orient2D_big(cx, cy, dx, dy, ax, ay).times(
-        orient2D_big(cx, cy, dx, dy, bx, by)).lte(0);
-  }
-
-  function segmentHit_big2(ax, ay, bx, by, cx, cy, dx, dy) {
-    return segmentHit_big(Big(ax), Big(ay), Big(bx), Big(by),
-      Big(cx), Big(cy), Big(dx), Big(dy));
-  }
-
-  // export function segmentHit_robust(ax, ay, bx, by, cx, cy, dx, dy) {
-  //   return -orient2D_robust(ax, ay, bx, by, cx, cy) *
-  //       -orient2D_robust(ax, ay, bx, by, dx, dy) <= 0 &&
-  //       -orient2D_robust(cx, cy, dx, dy, ax, ay) *
-  //       -orient2D_robust(cx, cy, dx, dy, bx, by) <= 0;
-  // }
 
   // Useful for determining if a segment that intersects another segment is
   // entering or leaving an enclosed buffer area
@@ -4543,11 +3555,9 @@
   var SegmentGeom = /*#__PURE__*/Object.freeze({
     __proto__: null,
     findClosestPointOnSeg: findClosestPointOnSeg,
+    findCrossIntersection_robust: findCrossIntersection_robust,
     orient2D: orient2D,
-    orient2D_big: orient2D_big,
-    orient2D_big2: orient2D_big2,
-    segmentHit_big: segmentHit_big,
-    segmentHit_big2: segmentHit_big2,
+    orient2D_robust: orient2D_robust,
     segmentHit_fast: segmentHit_fast,
     segmentIntersection: segmentIntersection,
     segmentTurn: segmentTurn
@@ -7058,10 +6068,11 @@
     };
 
     this.arcIsDegenerate = function(arcId) {
-      return this.arcHasZeroLength(arcId) || this.arcIsSpike(arcId);
+      return this.arcHasZeroLength(arcId) || this.arcIsSpike(arcId) || this.arcIsSpike_v1(arcId);
     };
 
-    this.arcIsSpike = function(arcId) {
+    // only finds two-segment spikes
+    this.arcIsSpike_v1 = function(arcId) {
       var iter = this.getArcIter(arcId);
       var x0, y0;
       if (iter.hasNext()) {
@@ -7077,6 +6088,22 @@
       }
       return false;
     };
+
+    // identifies n-segment spikes
+    this.arcIsSpike = function(arcId) {
+      arcId = absArcId(arcId);
+      var i = _ii[arcId];
+      var j = i + _nn[arcId] - 1;
+      while (j > i) {
+        if (_xx[i] != _xx[j] || _yy[i] != _yy[j]) {
+          return false;
+        }
+        j--;
+        i++;
+      }
+      return true;
+    };
+
 
     this.arcHasZeroLength = function(arcId) {
       var iter = this.getArcIter(arcId);
@@ -13912,6 +12939,23 @@
     vertexIsArcStart: vertexIsArcStart
   });
 
+  function debugConnectedArcs(ids, arcs) {
+    var colors = ['orange', 'blue', 'green', 'red', 'magenta', 'grey'];
+    var features = ids.map(function(arcId, i) {
+      return getArcFeature(arcId, arcs, {arcId: arcId, stroke: colors[i] || 'black'});
+    });
+    var geojson = '{"type": "FeatureCollection", "features": [' + features.join(',') + ']}';
+    debug(geojson);
+  }
+
+  function getArcFeature(arcId, arcs, properties) {
+    return JSON.stringify({
+      type: "Feature",
+      properties: properties,
+      geometry: GeoJSON.exportLineGeom([[arcId]], arcs)
+    });
+  }
+
   function isValidArc(arcId, arcs) {
     // check for arcs with no vertices
     // TODO: also check for other kinds of degenerate arcs
@@ -13958,7 +13002,6 @@
       error("Duplicate point error");
     }*/
 
-
     for (j=0; j<ids.length; j++) {
       candId = ids[j];
       if (!isValidArc(candId, arcs)) {
@@ -13977,6 +13020,10 @@
 
       if (xx[ito] == xx[icand] && yy[ito] == yy[icand]) {
         debug("Pathfinder warning: duplicate segments: i:", ito, "j:", icand, "ids:", [fromArcId].concat(ids));
+        if (useDebug()) {
+          // debugDuplicatePathfinderSegments(nodeX, nodeY, ito, icand, nodes.arcs);
+          debugConnectedArcs(ids, nodes.arcs);
+        }
       }
       if (code == 2) {
         ito = icand;
@@ -14027,8 +13074,7 @@
   }
 
   function chooseBetweenClosePaths(nodeX, nodeY, ax, ay, bx, by) {
-    // var orient = orient2D_big2(ax, ay, 0, 0, bx, by);
-    var orient = orient2D_big2(ax, ay, nodeX, nodeY, bx, by);
+    var orient = orient2D_robust(ax, ay, nodeX, nodeY, bx, by);
     var code;
     if (orient > 0) {
       code = 2;
@@ -17728,6 +16774,7 @@
 
   function cleanPath(path, arcs) {
     var nulls = 0;
+    // console.log("[cleanPath()]", path, path?.[0])
     for (var i=0, n=path.length; i<n; i++) {
       if (arcs.arcIsDegenerate(path[i])) {
         nulls++;
@@ -18016,17 +17063,14 @@
     if (changed || opts.rebuild_topology) {
       buildTopology(dataset);
     }
-
-    // Clean shapes by removing collapsed arc references, etc.
-    // TODO: consider alternative -- avoid creating degenerate arcs
-    // in insertCutPoints()
+    // Remove degenerate shapes
+    // Without this step, pathfinder function would encounter dead ends.
     dataset.layers.forEach(function(lyr) {
       if (layerHasPaths(lyr)) {
         cleanShapes(lyr.shapes, arcs, lyr.geometry_type);
       }
     });
-
-    // Further clean-up -- remove duplicate and missing arcs
+    // Further clean-up -- remove duplicate and unused arcs, etc.
     nodes = cleanArcReferences(dataset);
     return nodes;
   }
@@ -18036,38 +17080,26 @@
     var cutOpts = snapDist > 0 ? {tolerance: snapDist} : {tolerance: 0};
     var coordsHaveChanged = false;
     var snapCount, dupeCount, cutCount;
-    var maxPasses = 4, passCount = 0;
-    snapCount = snapCoordsByInterval(arcs, snapDist);
-    dupeCount = arcs.dedupCoords();
+    var maxLoops = 4, loopCount = 0;
 
-    // why was topology built here previously????
-    // if (snapCount > 0 || dupeCount > 0) {
-    //   // Detect topology again if coordinates have changed
-    //   internal.buildTopology(dataset);
-    // }
-
-    // cut arcs at points where segments intersect
-    cutCount = cutPathsAtIntersections(dataset, cutOpts);
-    passCount++;
-    if (cutCount > 0 || snapCount > 0 || dupeCount > 0) {
-      coordsHaveChanged = true;
-    }
-
-    // perform a second snap + cut pass if needed
-    while (cutCount > 0 && passCount < maxPasses) {
-      passCount++;
+    // snap + cut until no more cuts are needed
+    do {
+      loopCount++;
+      cutCount = 0;
       snapCount = snapCoordsByInterval(arcs, snapDist);
       dupeCount = arcs.dedupCoords();
-      // cutCount = 0;
-      if (snapCount > 0 || cutCount > 0) {
+      if (snapCount > 0 || cutCount > 0 || loopCount == 1) {
+        // cut arcs at points where segments intersect
         cutCount = cutPathsAtIntersections(dataset, cutOpts);
-        debug("[snapAndCut] pass:", passCount, "snaps:", snapCount, "dupes:", dupeCount, "cuts:", cutCount);
       }
-    }
+      coordsHaveChanged |= (snapCount + dupeCount + cutCount) > 0;
+      debug("[snapAndCut] pass:", loopCount, "snaps:", snapCount, "dupes:", dupeCount, "cuts:", cutCount);
+    } while (loopCount < maxLoops && cutCount > 0);
 
-    // if (cutCount > 0) {
+    // should this be added?
+    // if (cutCount > 0 && loopCount == maxLoops) {
+    //   snapCount = snapCoordsByInterval(arcs, snapDist);
     //   arcs.dedupCoords(); // need to do this here?
-    //   debug('Second-pass vertices added:', cutCount, 'consider third pass?');
     // }
 
     return coordsHaveChanged;
@@ -19596,6 +18628,7 @@
     return geom;
   };
 
+  // ids: shape data (array of array of arc ids)
   GeoJSON.exportLineGeom = function(ids, arcs) {
     var obj = exportPathData(ids, arcs, "polyline");
     if (obj.pointCount === 0) return null;
@@ -19611,6 +18644,7 @@
     };
   };
 
+  // ids: shape data (array of array of arc ids)
   GeoJSON.exportPolygonGeom = function(ids, arcs, opts) {
     var obj = exportPathData(ids, arcs, "polygon");
     if (obj.pointCount === 0) return null;
@@ -47259,7 +46293,7 @@ ${svg}
     });
   }
 
-  var version = "0.6.110";
+  var version = "0.6.111";
 
   // Parse command line args into commands and run them
   // Function takes an optional Node-style callback. A Promise is returned if no callback is given.

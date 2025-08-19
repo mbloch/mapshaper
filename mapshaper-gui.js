@@ -4176,13 +4176,6 @@
       flags.union || flags.mosaic || flags.snap || flags.clean || flags.drop || false;
   }
 
-  // check for operations that may change the number of self intersections in the
-  // target layer.
-  function intersectionsMayHaveChanged(flags) {
-    return arcsMayHaveChanged(flags) || flags.select || flags['merge-layers'] ||
-    flags.filter || flags.dissolve || flags.dissolve2;
-  }
-
   // Test if an update allows hover popup to stay open
   function popupCanStayOpen(flags) {
     // keeping popup open after -drop geometry causes problems...
@@ -4207,7 +4200,7 @@
     return c;
   }
 
-  function RepairControl(gui) {
+  function IntersectionControl(gui) {
     var map = gui.map,
         model = gui.model,
         el = gui.container.findChild(".intersection-display"),
@@ -4243,12 +4236,24 @@
       gui.session.simplificationRepair();
     });
 
+    // check for operations that may change the number of self intersections in the
+    // target layer.
+    function intersectionsMayHaveChanged(flags) {
+      return arcsMayHaveChanged(flags) || flags.select || flags.repair ||
+        flags.clean || flags.filter || flags.dissolve || flags.dissolve2 ||
+        flags['merge-layers'] || flags.simplify_method || flags.simplify ||
+        flags.split;
+    }
+
+
     model.on('update', function(e) {
-      var needRefresh = e.flags.simplify_method || e.flags.simplify ||
-        e.flags.repair || e.flags.clean || e.flags.select || intersectionsMayHaveChanged(e.flags);
+      var needRefresh = intersectionsMayHaveChanged(e.flags);
       if (!intersectionsAreOn()) {
         reset();
       } else if (needRefresh) {
+        // don't continue to show old intersections when map redraws
+        map.setIntersectionLayer(null, null, false);
+        // regenerate intersections and redraw map
         updateAsync();
       } else if (e.flags.simplify_amount) {
         // slider is being dragged - hide readout and dots, retain data
@@ -4256,7 +4261,7 @@
       } else {
         // keep displaying the current intersections
       }
-    });
+    }, 10);
 
     function updateRepairBtn() {
       if (intersectionsAreOn() && gui.getMode() == 'simplify' &&
@@ -4340,7 +4345,7 @@
     }
   }
 
-  utils$1.inherit(RepairControl, EventDispatcher);
+  utils$1.inherit(IntersectionControl, EventDispatcher);
 
   async function saveFileContentToClipboard(content) {
     var str = utils$1.isString(content) ? content : content.toString();
@@ -10100,6 +10105,9 @@
       // special overlay: shape editing mode
       lyr = getOverlayLayer(activeLyr, hitData.ids);
       lyr.gui.style = getLineEditingStyle(hitData);
+      if (activeLyr.geometry_type == 'polygon') {
+        lyr.gui.style.fillColor = hoverFill;
+      }
       return [lyr];
     }
     layers = [];
@@ -13014,7 +13022,7 @@ GUI and setting the size and crop of SVG output.</p><div><input type="text" clas
     });
 
     // Update display of segment intersections
-    this.setIntersectionLayer = function(lyr, dataset) {
+    this.setIntersectionLayer = function(lyr, dataset, redraw) {
       if (lyr == _intersectionLyr) return; // no change
       if (lyr) {
         enhanceLayerForDisplay(lyr, dataset, getDisplayOptions());
@@ -13024,7 +13032,9 @@ GUI and setting the size and crop of SVG output.</p><div><input type="text" clas
         _intersectionLyr = null;
       }
       // TODO: try to avoid redrawing layers twice (in some situations)
-      drawLayers();
+      if (redraw !== false) {
+        drawLayers();
+      }
     };
 
     this.pixelCoordsToLngLatCoords = function(x, y) {
@@ -13996,7 +14006,7 @@ GUI and setting the size and crop of SVG output.</p><div><input type="text" clas
     // }
 
     new AlertControl(gui);
-    new RepairControl(gui);
+    new IntersectionControl(gui);
     new SimplifyControl(gui);
     new ImportControl(gui, importOpts);
     new ExportControl(gui);
