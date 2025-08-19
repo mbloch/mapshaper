@@ -1,8 +1,8 @@
 import { utils, internal } from './gui-core';
 import { EventDispatcher } from './gui-events';
-import { intersectionsMayHaveChanged } from './gui-map-utils';
+import { arcsMayHaveChanged } from './gui-map-utils';
 
-export function RepairControl(gui) {
+export function IntersectionControl(gui) {
   var map = gui.map,
       model = gui.model,
       el = gui.container.findChild(".intersection-display"),
@@ -38,12 +38,24 @@ export function RepairControl(gui) {
     gui.session.simplificationRepair();
   });
 
+  // check for operations that may change the number of self intersections in the
+  // target layer.
+  function intersectionsMayHaveChanged(flags) {
+    return arcsMayHaveChanged(flags) || flags.select || flags.repair ||
+      flags.clean || flags.filter || flags.dissolve || flags.dissolve2 ||
+      flags['merge-layers'] || flags.simplify_method || flags.simplify ||
+      flags.split;
+  }
+
+
   model.on('update', function(e) {
-    var needRefresh = e.flags.simplify_method || e.flags.simplify ||
-      e.flags.repair || e.flags.clean || e.flags.select || intersectionsMayHaveChanged(e.flags);
+    var needRefresh = intersectionsMayHaveChanged(e.flags);
     if (!intersectionsAreOn()) {
       reset();
     } else if (needRefresh) {
+      // don't continue to show old intersections when map redraws
+      map.setIntersectionLayer(null, null, false);
+      // regenerate intersections and redraw map
       updateAsync();
     } else if (e.flags.simplify_amount) {
       // slider is being dragged - hide readout and dots, retain data
@@ -51,7 +63,7 @@ export function RepairControl(gui) {
     } else {
       // keep displaying the current intersections
     }
-  });
+  }, 10);
 
   function updateRepairBtn() {
     if (intersectionsAreOn() && gui.getMode() == 'simplify' &&
@@ -135,4 +147,4 @@ export function RepairControl(gui) {
   }
 }
 
-utils.inherit(RepairControl, EventDispatcher);
+utils.inherit(IntersectionControl, EventDispatcher);

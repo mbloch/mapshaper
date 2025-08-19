@@ -28,13 +28,6 @@ export function arcsMayHaveChanged(flags) {
     flags.union || flags.mosaic || flags.snap || flags.clean || flags.drop || false;
 }
 
-// check for operations that may change the number of self intersections in the
-// target layer.
-export function intersectionsMayHaveChanged(flags) {
-  return arcsMayHaveChanged(flags) || flags.select || flags['merge-layers'] ||
-  flags.filter || flags.dissolve || flags.dissolve2;
-}
-
 // Test if an update allows hover popup to stay open
 export function popupCanStayOpen(flags) {
   // keeping popup open after -drop geometry causes problems...

@@ -78,7 +78,7 @@ export function MshpMap(gui) {
   });
 
   // Update display of segment intersections
-  this.setIntersectionLayer = function(lyr, dataset) {
+  this.setIntersectionLayer = function(lyr, dataset, redraw) {
     if (lyr == _intersectionLyr) return; // no change
     if (lyr) {
       enhanceLayerForDisplay(lyr, dataset, getDisplayOptions());
@@ -88,7 +88,9 @@ export function MshpMap(gui) {
       _intersectionLyr = null;
     }
     // TODO: try to avoid redrawing layers twice (in some situations)
-    drawLayers();
+    if (redraw !== false) {
+      drawLayers();
+    }
   };
 
   this.pixelCoordsToLngLatCoords = function(x, y) {
