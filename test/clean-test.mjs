@@ -140,6 +140,33 @@ describe('mapshaper-clean.js', function () {
       });
     })
 
+    // TODO: explode creates 4 features, one of which is a sliver --
+    // investigate why the sliver is not removed
+    it('clean/ex5_three_precincts.json', async function() {
+      var cmd = '-i test/data/features/clean/ex5_three_precincts.json -clean -o clean.json';
+      var out = await api.applyCommands(cmd);
+      var json = JSON.parse(out['clean.json']);
+      assert.equal(json.features.length, 3);
+    })
+
+    it('clean/ex22_three_ia_precincts.json', async function() {
+      var cmd = '-i test/data/features/clean/ex22_three_ia_precincts.json -clean -o clean.json';
+      var out = await api.applyCommands(cmd);
+      var json = JSON.parse(out['clean.json']);
+      assert.equal(json.features.length, 3);
+    })
+
+    it('clean/ex23_three_ca_precincts.json', async function() {
+      var cmd = '-i test/data/features/clean/ex23_three_ca_precincts.json -clean -each "area = this.area" -o clean.json';
+      var out = await api.applyCommands(cmd);
+      var json = JSON.parse(out['clean.json']);
+      assert.equal(json.features.length, 3);
+      var area1 = json.features[1].properties.area;
+      var area2 = json.features[2].properties.area;
+      assert(area1 > 60000000);
+      assert(area2 > 25000000)
+    })
+
   })
 
   describe('OGC Simple Features tests', function () {
