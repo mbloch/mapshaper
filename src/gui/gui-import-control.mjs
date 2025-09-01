@@ -18,8 +18,20 @@ function DropControl(gui, el, cb) {
       .on('paste', onpaste);
   area.node().addEventListener('paste', onpaste);
   function ondrop(e) {
+    var files = e.dataTransfer.files;
+    var types = e.dataTransfer.types;
     block(e);
-    cb(e.dataTransfer.files);
+    if (files.length) {
+      cb(files);
+    } else if (types.includes('text/uri-list')) {
+      cb(e.dataTransfer.getData('text/uri-list').split(','));
+    } else if (types.includes('text/html')) {
+      // drag-dropping a highlighted link may pull in a chunk of html
+      var urls = e.dataTransfer.getData('text/html').match(/https?:[^"']+/);
+      if (urls.length) {
+        cb(urls);
+      }
+    }
   }
   function onpaste(e) {
     var types = Array.from(e.clipboardData.types || []).join(',');
@@ -36,15 +48,18 @@ function DropControl(gui, el, cb) {
     //     Single files of all types are pasted as a string and an image/png
     //     Multiple files are pasted as a string containing a list of file names
 
-    // import text from the clipboard (could be csv, json, etc)
+    // import text from the clipboard (could be csv, json, a url, etc)
     // formatted text can be available as both text/plain and text/html (e.g.
     //   a JSON data object copied from a GitHub issue).
     //
     if (types.includes('text/plain')) {
-    // if (types == 'text/plain') {
       // text from clipboard (supported by Chrome, FF, Safari)
       // TODO: handle FF case of string containing multiple file names.
-      files = [pastedTextToFile(e.clipboardData.getData('text/plain'))];
+      var str = e.clipboardData.getData('text/plain');
+      if (isUrl(str)) {
+        return cb(str.split(','));
+      }
+      files = [pastedTextToFile(str)];
     } else {
       files = items.map(function(item) {
         return item.kind == 'file' && !item.type.includes('image') ?
@@ -76,6 +91,10 @@ function pastedTextToFile(str) {
   }
   var blob = new Blob([str]);
   return new File([blob], name);
+}
+
+function isUrl(str) {
+  return /^https?:\/\//.test(str);
 }
 
 // @el DOM element for select button
@@ -121,7 +140,7 @@ export function ImportControl(gui, opts) {
 
   var submitBtn = new SimpleButton('#import-options .submit-btn').on('click', importQueuedFiles);
   new SimpleButton('#import-options .cancel-btn').on('click', gui.clearMode);
-  new DropControl(gui, 'body', receiveFilesWithOption);
+  new DropControl(gui, 'body', receiveDroppedItems);
   new FileChooser('#import-options .add-btn', receiveFilesWithOption);
   new FileChooser('#add-file-btn', receiveFiles);
   new SimpleButton('#add-empty-btn').on('click', function() {
@@ -137,7 +156,7 @@ export function ImportControl(gui, opts) {
 
   function turnOn() {
     if (manifestFiles.length > 0) {
-      downloadFiles(manifestFiles, true);
+      downloadFiles(manifestFiles);
       manifestFiles = [];
     } else if (model.isEmpty()) {
       showImportMenu();
@@ -236,6 +255,14 @@ export function ImportControl(gui, opts) {
       });
     });
     submitBtn.classed('disabled', queuedFiles.length === 0);
+  }
+
+  function receiveDroppedItems(arr) {
+    if (utils.isString(arr[0])) { // assume array of URLs
+      downloadFiles(arr);
+    } else { // assume array of Files
+      receiveFilesWithOption(arr);
+    }
   }
 
   function receiveFilesWithOption(files) {
@@ -393,9 +420,8 @@ export function ImportControl(gui, opts) {
 
   function prepFilesForDownload(names) {
     var items = names.map(function(name) {
-      var isUrl = /:\/\//.test(name);
       var item = {name: name};
-      if (isUrl) {
+      if (isUrl(name)) {
         item.url = name;
         item.basename = GUI.getUrlFilename(name);
 

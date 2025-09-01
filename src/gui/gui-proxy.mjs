@@ -80,7 +80,7 @@ export function ImportFileProxy(gui) {
       var lyr;
       if (memo) return memo; // already found a match
       // try to match import filename of this dataset
-      if (d.info.input_files[0] == src) return d;
+      if (d.info?.input_files?.[0] == src) return d;
       // try to match name of a layer in this dataset
       lyr = utils.find(d.layers, function(lyr) {return lyr.name == src;});
       return lyr ? internal.isolateLayer(lyr, d) : null;
