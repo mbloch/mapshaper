@@ -147,7 +147,7 @@ async function exportLayer(lyr, opts) {
     shapes: lyr.shapes || null,
     data: data,
     menu_order: lyr.menu_order || null,
-    pinned: lyr.pinned || false,
+    pinned: lyr.pinned || opts.show_all || false,
     active: !!(lyr.active || lyr == opts.active_layer) // lyr.active: deprecated
   };
 }

@@ -392,6 +392,10 @@ export function getOptionParser() {
       type: 'flag',
       describe: '[CSV] export numbers with decimal commas not points'
     })
+    .option('show-all', {
+      type: 'flag',
+      describe: '[Snapshot] show all layers in Web UI'
+    })
     .option('final', {
       type: 'flag' // for testing
     })
@@ -440,8 +444,20 @@ export function getOptionParser() {
       // describe: 'number of vertices to use when buffering points',
       type: 'integer'
     })
-    .option('backtrack', {
+    .option('arc-quality', {
+      // segments per quarter-circle in joins and caps
       type: 'integer'
+    })
+    .option('slice-length', {
+      // max path segments per buffer section
+      type: 'integer'
+    })
+    .option('backtrack', {
+      // ...
+      type: 'integer'
+    })
+    .option('cap-style', {
+      describe: 'flat or round (default is round)'
     })
     .option('type', {
       // left, right, outer, inner (default is full buffer)
@@ -449,13 +465,25 @@ export function getOptionParser() {
     .option('planar', {
       type: 'flag'
     })
-    .option('v2', { // use v2 method
+    .option('v2', {
       type: 'flag'
     })
-    .option('debug-division', {
+    .option('debug-offset', {
       type: 'flag'
     })
+    .option('debug-winding', {
+      type: 'flag'
+    })
+    // .option('debug-division', {
+    //   type: 'flag'
+    // })
     .option('debug-mosaic', {
+      type: 'flag'
+    })
+    .option('left', {
+      type: 'flag'
+    })
+    .option('right', {
       type: 'flag'
     })
     .option('no-cleanup', {
