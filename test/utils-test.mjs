@@ -18,6 +18,11 @@ describe('mapshaper-utils.js', function () {
       // but only if entire string is quoted
       assert.equal(utils.trimQuotes(`\\"yes\\" or \\"no\\"`), `\\"yes\\" or \\"no\\"`);
     })
+
+    it('preserves certain expressions', function() {
+      // shells seem to strip single quotes from expressions like: where='"hi" == "hi"'
+      assert.equal(utils.trimQuotes(`"hi" == "hi"`), `"hi" == "hi"`);
+    })
   })
 
   describe('findQuantile()', function() {
