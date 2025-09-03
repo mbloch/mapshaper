@@ -1072,8 +1072,13 @@ export function trimQuotes(str) {
   if (len >= 2) {
     first = str.charAt(0);
     last = str.charAt(len-1);
-    if (first == '"' && last == '"' && !str.includes('","') ||
-        first == "'" && last == "'" && !str.includes("','")) {
+    // if (first == '"' && last == '"' && !str.includes('","') ||
+    //     first == "'" && last == "'" && !str.includes("','")) {
+    // don't strip if there are unescaped quotes
+    // e.g. expressions that start and end with quotes
+    // e.g. comma-separated list of quoted values
+    if (first == '"' && last == '"' && !/[^\\]"./.test(str) ||
+        first == "'" && last == "'" && !/[^\\]'./.test(str)) {
       str = str.substr(1, len-2);
       // remove string escapes
       str = str.replace(first == '"' ? /\\(?=")/g : /\\(?=')/g, '');
