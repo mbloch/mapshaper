@@ -1,9 +1,8 @@
 import { getLayerInfo } from '../commands/mapshaper-info';
 import { exportLayerAsGeoJSON } from '../geojson/geojson-export';
-import { addGetters } from '../expressions/mapshaper-expression-utils';
 import { expandCommandTargets } from '../dataset/mapshaper-target-utils';
-// import { importGeoJSON } from '../geojson/geojson-import';
-
+import { importGeoJSON } from '../geojson/geojson-import';
+import { replaceLayerContents } from '../dataset/mapshaper-dataset-utils';
 
 export function addTargetProxies(targets, ctx) {
   if (targets && targets.length > 0) {
@@ -27,10 +26,18 @@ export function getTargetProxy(target) {
   var proxy = getLayerInfo(target.layer, target.dataset); // layer_name, feature_count etc
   proxy.layer = target.layer;
   proxy.dataset = target.dataset;
-  addGetters(proxy, {
-    // export as an object, not a string or buffer
-    geojson: getGeoJSON
+
+  Object.defineProperty(proxy, 'geojson', {
+    set: setGeoJSON,
+    get: getGeoJSON
   });
+
+  function setGeoJSON(o) {
+    var dataset2 = importGeoJSON(o);
+    var lyr2 = dataset2.layers[0];
+    lyr2.name = target.layer.name;
+    replaceLayerContents(target.layer, target.dataset, dataset2);
+  }
 
   function getGeoJSON() {
     var features = exportLayerAsGeoJSON(target.layer, target.dataset, {rfc7946: true}, true);
