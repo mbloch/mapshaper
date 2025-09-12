@@ -188,7 +188,7 @@ export function LayerControl(gui) {
       var lyr = o.layer;
       var opts = {
         show_source: layerCount < 5,
-        pinnable: pinnableCount > 1 && isPinnable(lyr)
+        pinnable: pinnableCount > 0 && isPinnable(lyr)
       };
       var html, element;
       html = renderLayer(lyr, o.dataset, opts);
