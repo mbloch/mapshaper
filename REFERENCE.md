@@ -1,6 +1,6 @@
 # COMMAND REFERENCE
 
-This documentation applies to version 0.6.105 of mapshaper's command line program. Run `mapshaper -v` to check your version. For an introduction to the command line tool, read [this page](https://github.com/mbloch/mapshaper/wiki/Introduction-to-the-Command-Line-Tool) first.
+This documentation applies to version 0.6.112 of mapshaper's command line program. Run `mapshaper -v` to check your version. For an introduction to the command line tool, read [this page](https://github.com/mbloch/mapshaper/wiki/Introduction-to-the-Command-Line-Tool) first.
 
 ## Command line syntax
 
@@ -274,6 +274,8 @@ Save content of the target layer(s) to a file or files.
 `delimiter=`  (CSV) Set the field delimiter for CSV/delimited text output; e.g. `delimiter=|`.
 
 `decimal-comma`  (CSV) Export numbers with decimal commas instead of decimal points (common in Europe and elsewhere).
+
+`show-all`  [Snapshot] All layers of the exported snapshot will be displayed when opened in the web UI.
 
 **Example**
 ```bash
@@ -1102,7 +1104,7 @@ Expression context:
 If command has a single target layer:
 `target` object provides data and information about the command's target layer
 - `target.layer_name`  Name of layer
-- `target.geojson`  (getter) Returns a GeoJSON FeatureCollection for the layer
+- `target.geojson`  (getter/setter) Returns a GeoJSON FeatureCollection for the layer (getter) or replaces the layer with the contents of a GeoJSON object (setter).
 - `target.geometry_type` One of: polygon, polyline, point, `undefined`
 - `target.feature_count` Number of features in the layer
 - `target.null_shape_count` Number of features with null geometry
