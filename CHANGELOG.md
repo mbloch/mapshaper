@@ -1,3 +1,7 @@
+v0.6.112
+* Support for drag-dropping or pasting datafile hyperlinks from a web page onto the web UI.
+* Added -o show-all option for exporting snapshots from the CLI with all layers visible in GUI.
+
 v0.6.111
 * Switched to better-performing robust segment geometry functions using BigInt (instead of big.js).
 
