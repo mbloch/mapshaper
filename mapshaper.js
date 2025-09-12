@@ -1211,8 +1211,13 @@
     if (len >= 2) {
       first = str.charAt(0);
       last = str.charAt(len-1);
-      if (first == '"' && last == '"' && !str.includes('","') ||
-          first == "'" && last == "'" && !str.includes("','")) {
+      // if (first == '"' && last == '"' && !str.includes('","') ||
+      //     first == "'" && last == "'" && !str.includes("','")) {
+      // don't strip if there are unescaped quotes
+      // e.g. expressions that start and end with quotes
+      // e.g. comma-separated list of quoted values
+      if (first == '"' && last == '"' && !/[^\\]"./.test(str) ||
+          first == "'" && last == "'" && !/[^\\]'./.test(str)) {
         str = str.substr(1, len-2);
         // remove string escapes
         str = str.replace(first == '"' ? /\\(?=")/g : /\\(?=')/g, '');
@@ -1347,6 +1352,18 @@
     }
   }
 
+  function time(slug) {
+    if (useDebug()) {
+      console.time(slug);
+    }
+  }
+
+  function timeEnd(slug) {
+    if (useDebug()) {
+      console.timeEnd(slug);
+    }
+  }
+
   function printError(err) {
     var msg;
     if (!LOGGING) return;
@@ -1465,6 +1482,8 @@
     setLoggingForCLI: setLoggingForCLI,
     setLoggingFunctions: setLoggingFunctions,
     stop: stop,
+    time: time,
+    timeEnd: timeEnd,
     truncateString: truncateString,
     useDebug: useDebug,
     useVerbose: useVerbose,
@@ -3888,10 +3907,12 @@
     for (var i=0; i<n; i++) {
       retn = cb(parts[i], i, parts, shpId);
       if (retn === null) {
-        nulls++;
         parts[i] = null;
       } else if (utils.isArray(retn)) {
-        parts[i] = retn;
+        parts[i] = retn.length > 0 ? retn : null;
+      }
+      if (parts[i] === null) {
+        nulls++;
       }
     }
     if (nulls == n) {
@@ -7539,7 +7560,15 @@
   }
 
   function mergeOutputLayerIntoDataset(lyr, dataset, dataset2, opts) {
-    if (!dataset2 || dataset2.layers.length != 1) {
+    var output = mergeOutputLayersIntoDataset(lyr, dataset, dataset2, opts);
+    if (output.length != 1) {
+      error('Expected 1 output layer, received:', output.length);
+    }
+    return output[0];
+  }
+
+  function mergeOutputLayersIntoDataset(lyr, dataset, dataset2, opts) {
+    if (!dataset2 || dataset2.layers.length === 0) {
       error('Invalid source dataset');
     }
     if (dataset.layers.includes(lyr) === false) {
@@ -7548,24 +7577,21 @@
     // this command returns merged layers instead of adding them to target dataset
     var outputLayers = mergeDatasetsIntoDataset(dataset, [dataset2]);
     var lyr2 = outputLayers[0];
-
     // TODO: find a more reliable way of knowing when to copy data
     var copyData = !lyr2.data && lyr.data && getFeatureCount(lyr2) == lyr.data.size();
-
     if (copyData) {
       lyr2.data = opts.no_replace ? lyr.data.clone() : lyr.data;
     }
-    if (opts.no_replace) ; else {
-      lyr2 = Object.assign(lyr, {data: null, shapes: null}, lyr2);
+    lyr2.name = opts.name || lyr.name;
+    if (!opts.no_replace) {
+      outputLayers[0] = Object.assign(lyr, {data: null, shapes: null}, lyr2);
       if (layerHasPaths(lyr)) {
         // Remove unused arcs from replaced layer
         // TODO: consider using clean insead of this
         dissolveArcs(dataset);
       }
     }
-
-    lyr2.name = opts.name || lyr2.name;
-    return lyr2;
+    return outputLayers;
   }
 
   // Transform the points in a dataset in-place; don't clean up corrupted shapes
@@ -7593,6 +7619,7 @@
     getDatasetBounds: getDatasetBounds,
     mergeDatasetInfo: mergeDatasetInfo,
     mergeOutputLayerIntoDataset: mergeOutputLayerIntoDataset,
+    mergeOutputLayersIntoDataset: mergeOutputLayersIntoDataset,
     pruneArcs: pruneArcs,
     replaceLayerContents: replaceLayerContents,
     replaceLayers: replaceLayers,
@@ -11548,7 +11575,7 @@
       shapes: lyr.shapes || null,
       data: data,
       menu_order: lyr.menu_order || null,
-      pinned: lyr.pinned || false,
+      pinned: lyr.pinned || opts.show_all || false,
       active: !!(lyr.active || lyr == opts.active_layer) // lyr.active: deprecated
     };
   }
@@ -16774,7 +16801,6 @@
 
   function cleanPath(path, arcs) {
     var nulls = 0;
-    // console.log("[cleanPath()]", path, path?.[0])
     for (var i=0, n=path.length; i<n; i++) {
       if (arcs.arcIsDegenerate(path[i])) {
         nulls++;
@@ -24723,6 +24749,10 @@ ${svg}
         type: 'flag',
         describe: '[CSV] export numbers with decimal commas not points'
       })
+      .option('show-all', {
+        type: 'flag',
+        describe: '[Snapshot] show all layers in Web UI'
+      })
       .option('final', {
         type: 'flag' // for testing
       })
@@ -24771,8 +24801,20 @@ ${svg}
         // describe: 'number of vertices to use when buffering points',
         type: 'integer'
       })
-      .option('backtrack', {
+      .option('arc-quality', {
+        // segments per quarter-circle in joins and caps
         type: 'integer'
+      })
+      .option('slice-length', {
+        // max path segments per buffer section
+        type: 'integer'
+      })
+      .option('backtrack', {
+        // ...
+        type: 'integer'
+      })
+      .option('cap-style', {
+        describe: 'flat or round (default is round)'
       })
       .option('type', {
         // left, right, outer, inner (default is full buffer)
@@ -24780,13 +24822,31 @@ ${svg}
       .option('planar', {
         type: 'flag'
       })
-      .option('v2', { // use v2 method
+      .option('v2', {
         type: 'flag'
       })
-      .option('debug-division', {
+      .option('v3', {
         type: 'flag'
       })
+      .option('debug-offset', {
+        type: 'flag'
+      })
+      .option('debug-winding', {
+        type: 'flag'
+      })
+      .option('debug-points', {
+        type: 'flag'
+      })
+      // .option('debug-division', {
+      //   type: 'flag'
+      // })
       .option('debug-mosaic', {
+        type: 'flag'
+      })
+      .option('left', {
+        type: 'flag'
+      })
+      .option('right', {
         type: 'flag'
       })
       .option('no-cleanup', {
@@ -30925,14 +30985,112 @@ ${svg}
     return dataset;
   }
 
+  function getPolygonRewinder(nodes) {
+    var splitter = getSelfIntersectionSplitter(nodes);
+    return rewindPolygon;
+
+    function rewindPolygon(shp) {
+      var shp2 = [];
+      forEachShapePart(shp, function(ids) {
+        var rings = splitter(ids);
+        var path;
+        for (var i=0; i<rings.length; i++) {
+          path = rings[i];
+          if (geom.getPlanarPathArea(path, nodes.arcs) < 0) {
+            path = reversePath(path);
+          }
+          shp2.push(path);
+        }
+      });
+      return shp2.length > 0 ? shp2 : null;
+    }
+  }
+
+  function rewindPolygonParts(lyr, nodes) {
+    var rewind = getPolygonRewinder(nodes);
+    lyr.shapes = lyr.shapes.map(function(shp) {
+      return rewind(shp);
+    });
+  }
+
+  // TODO: Need to rethink polygon repair: these function can cause problems
+  // when part of a self-intersecting polygon is removed
+  //
+  function repairPolygonGeometry(layers, dataset, opts) {
+    var nodes = addIntersectionCuts(dataset);
+    layers.forEach(function(lyr) {
+      repairSelfIntersections(lyr, nodes);
+    });
+    return layers;
+  }
+
+  // Remove any small shapes formed by twists in each ring
+  // // OOPS, NO // Retain only the part with largest area
+  // // this causes problems when a cut-off hole has a matching ring in another polygon
+  // TODO: consider cases where cut-off parts should be retained
+  //
+  function repairSelfIntersections(lyr, nodes) {
+    var splitter = getSelfIntersectionSplitter(nodes);
+
+    lyr.shapes = lyr.shapes.map(function(shp, i) {
+      return cleanPolygon(shp);
+    });
+
+    function cleanPolygon(shp) {
+      var cleanedPolygon = [];
+      forEachShapePart(shp, function(ids) {
+        // TODO: consider returning null if path can't be split
+        var splitIds = splitter(ids);
+        if (splitIds.length === 0) {
+          error("[cleanPolygon()] Defective path:", ids);
+        } else if (splitIds.length == 1) {
+          cleanedPolygon.push(splitIds[0]);
+        } else {
+          var shapeArea = geom.getPlanarPathArea(ids, nodes.arcs),
+              sign = shapeArea > 0 ? 1 : -1,
+              mainRing;
+
+          splitIds.reduce(function(max, ringIds, i) {
+            var pathArea = geom.getPlanarPathArea(ringIds, nodes.arcs) * sign;
+            if (pathArea > max) {
+              mainRing = ringIds;
+              max = pathArea;
+            }
+            return max;
+          }, 0);
+
+          if (mainRing) {
+            cleanedPolygon.push(mainRing);
+          }
+        }
+      });
+      return cleanedPolygon.length > 0 ? cleanedPolygon : null;
+    }
+  }
+
+  var PolygonRepair = /*#__PURE__*/Object.freeze({
+    __proto__: null,
+    getPolygonRewinder: getPolygonRewinder,
+    repairPolygonGeometry: repairPolygonGeometry,
+    repairSelfIntersections: repairSelfIntersections,
+    rewindPolygonParts: rewindPolygonParts
+  });
+
   function dissolveBufferDataset(dataset, optsArg) {
     var opts = optsArg || {};
     var lyr = dataset.layers[0];
     var tmp;
-    var nodes = addIntersectionCuts(dataset, {});
-    if (opts.debug_division) {
-      return debugBufferDivision(lyr, nodes);
+    if (opts.debug_offset) {
+      return; // raw offset path
     }
+    var nodes = addIntersectionCuts(dataset, {rebuild_topology: true});
+    if (opts.debug_winding) {
+      rewindPolygonParts(lyr, nodes);
+      // debugRingsAndHoles(lyr, nodes);
+      return;
+    }
+    rewindPolygonParts(lyr, nodes);
+
     var mosaicIndex = new MosaicIndex(lyr, nodes, {flat: false, no_holes: false});
     if (opts.debug_mosaic) {
       tmp = composeMosaicLayer(lyr, mosaicIndex.mosaic);
@@ -30955,64 +31113,11 @@ ${svg}
     }
   }
 
-  function debugBufferDivision(lyr, nodes) {
-    var divide = getHoleDivider(nodes);
-    var shapes2 = [];
-    var records = [];
-    lyr.shapes.forEach(divideShape);
-    lyr.shapes = shapes2;
-    lyr.data = new DataTable(records);
-    return lyr;
-
-    function divideShape(shp) {
-      var cw = [], ccw = [];
-      divide(shp, cw, ccw);
-      cw.forEach(function(ring) {
-        shapes2.push([ring]);
-        records.push({type: 'ring'});
-      });
-      ccw.forEach(function(hole) {
-        shapes2.push([reversePath(hole)]);
-        records.push({type: 'hole'});
-      });
-    }
-  }
-
-  // n = number of segments used to approximate a circle
-  // Returns tolerance as a percent of circle radius
-  function getBufferToleranceFromCircleSegments(n) {
-    return 1 - Math.cos(Math.PI / n);
-  }
-
-  function getArcDegreesFromTolerancePct(pct) {
-    return 360 * Math.acos(1 - pct) / Math.PI;
-  }
-
-  // n = number of segments used to approximate a circle
-  // Returns tolerance as a percent of circle radius
-  function getBufferToleranceFromCircleSegments2(n) {
-    return 1 / Math.cos(Math.PI / n) - 1;
-  }
-
-  function getArcDegreesFromTolerancePct2(pct) {
-    return 360 * Math.acos(1 / (pct + 1)) / Math.PI;
-  }
-
   // return constant distance in meters, or return null if unparsable
   function parseConstantBufferDistance(str, crs) {
     var parsed = parseMeasure2(str);
     if (!parsed.value) return null;
     return convertDistanceParam(str, crs) || null;
-  }
-
-  function getBufferToleranceFunction(dataset, opts) {
-    var crs = getDatasetCRS(dataset);
-    var constTol = opts.tolerance ? parseConstantBufferDistance(opts.tolerance, crs) : 0;
-    var pctOfRadius = 1/100;
-    return function(meterDist) {
-      if (constTol) return constTol;
-      return constTol ? constTol : meterDist * pctOfRadius;
-    };
   }
 
   function getBufferDistanceFunction(lyr, dataset, opts) {
@@ -31033,17 +31138,579 @@ ${svg}
     };
   }
 
-  var BufferCommon = /*#__PURE__*/Object.freeze({
-    __proto__: null,
-    dissolveBufferDataset: dissolveBufferDataset,
-    getArcDegreesFromTolerancePct: getArcDegreesFromTolerancePct,
-    getArcDegreesFromTolerancePct2: getArcDegreesFromTolerancePct2,
-    getBufferDistanceFunction: getBufferDistanceFunction,
-    getBufferToleranceFromCircleSegments: getBufferToleranceFromCircleSegments,
-    getBufferToleranceFromCircleSegments2: getBufferToleranceFromCircleSegments2,
-    getBufferToleranceFunction: getBufferToleranceFunction,
-    parseConstantBufferDistance: parseConstantBufferDistance
-  });
+  function BufferBuilder(opts) {
+    var self = {};
+    var buffer, path, insideFlags;
+    var points = [];
+    var backtrackSteps = opts.backtrack >= 0 ? opts.backtrack : 100;
+    var backtrackStopIdx = 0; // lowest vertex id in backtrack pass
+
+    init();
+
+    function init() {
+      buffer = [];
+      path = [];
+      insideFlags = [];
+      backtrackStopIdx = 0;
+    }
+
+    self.size = function() {
+      return path.length + buffer.length;
+    };
+
+    self.getDebugPoints = function() {
+      var tmp = points;
+      points = [];
+      return tmp;
+    };
+
+    function makeDebugPoints() {
+      points = points.concat(buffer.map((p, i) => {
+        return {
+          type: 'Feature',
+          geometry: {
+            type: 'Point',
+            coordinates: p
+          },
+          properties: {
+            id: i,
+            inside: insideFlags[i],
+            fill: insideFlags[i] ? 'magenta' : 'dodgerblue'
+          }
+        };
+      }));
+    }
+
+    self.addPathVertex = function(p) {
+      path.push(p);
+    };
+
+    self.addBufferVertices = function(arr) {
+      for (var i=0; i<arr.length; i++) {
+        self.addBufferVertex(arr[i]);
+      }
+    };
+
+    self.addBufferVertex = function(p, isLeftTurn) {
+      var bufferLen = insideFlags.length;
+      var prevIdx = bufferLen - 1;
+      if (isLeftTurn) {
+        // first extruded point after left turn
+        // assume that the point is inside the buffer
+        insideFlags.push(true);
+        buffer.push(p);
+        return;
+      }
+      if (prevIdx == -1) {
+        // first point in buffer
+        buffer.push(p);
+        insideFlags.push(false);
+        return;
+      }
+      var prevP = buffer[prevIdx];
+      var prevFlag = insideFlags[prevIdx];
+      if (pointsAreSame(prevP, p)) {
+        // console.log('SAME POINT')
+        return;
+      }
+      // if no segment cross is detected below, inside/outside stays the same
+      var newFlag = prevFlag;
+      var hit, a, b, flagA, flagB;
+      for (var i=0, idx = bufferLen - 3; i < backtrackSteps && idx >= backtrackStopIdx; i++, idx--) {
+        a = buffer[idx];
+        b = buffer[idx + 1];
+        // TODO: consider using a geodetic intersection function for lat-long datasets
+        // TODO: consider case of an endpoint hit
+        // TODO: consider case of collinear hit
+        hit = bufferIntersection$2(a[0], a[1], b[0], b[1], prevP[0], prevP[1], p[0], p[1]);
+        if (!hit) {
+          // continue scanning backward for an intersection
+          continue;
+        }
+        // console.log("hit")
+        flagA = insideFlags[idx];
+        flagB = insideFlags[idx + 1];
+        if (flagA && flagB) {
+          // newest segment collides with an interior segment - do not rewind
+          continue;
+        }
+        if (prevFlag === false) {
+          // if segment intersects an outside segment from outside the buffer,
+          // we are likely closing a loop,
+          // so we stop backtracking and reset the backtrack limit to avoid
+          // removing the loop
+          backtrackStopIdx = i + 1;
+          break;
+        }
+
+        // newest segment collides with an exterior segment
+        // * assume we're going from inside to outside
+        // * and can therefore remove an interior loop
+        // TODO: improve (this assumption does not hold when closing an oxbow type loop)
+        while (buffer.length > idx + 1) {
+          buffer.pop();
+          insideFlags.pop();
+        }
+        buffer.push(hit);
+        insideFlags.push(false);
+        newFlag = false;
+        // console.log("going out")
+        break;
+      }
+
+      buffer.push(p);
+      insideFlags.push(newFlag);
+    };
+
+    self.done = function() {
+      if (opts.debug_points) {
+        makeDebugPoints();
+      }
+      var ring = path.reverse().concat(buffer);
+      if (ring.length < 3) {
+        error('Defective buffer ring:', ring);
+      }
+      ring.push(ring[0]);
+      init();
+      return ring;
+    };
+
+    return self;
+  }
+
+  function pointsAreSame(a, b) {
+    return a[0] === b[0] && a[1] === b[1];
+  }
+
+  // Exclude segments with non-intersecting bounding boxes before
+  // calling intersection function
+  // Possibly slightly faster than direct call... not worth it?
+  function bufferIntersection$2(ax, ay, bx, by, cx, cy, dx, dy) {
+    if (ax < cx && ax < dx && bx < cx && bx < dx ||
+        ax > cx && ax > dx && bx > cx && bx > dx ||
+        ay < cy && ay < dy && by < cy && by < dy ||
+        ay > cy && ay > dy && by > cy && by > dy) return null;
+    return segmentIntersection(ax, ay, bx, by, cx, cy, dx, dy);
+  }
+
+  // Returns a function for generating GeoJSON MultiPolygon geometries
+  function getPolylineBufferMaker$2(arcs, geod, getBearing, opts) {
+    // var sliceLen = opts.slice_length || Infinity;
+    var segsPerQuadrant = opts.arc_quality >= 2 ? opts.arc_quality : 12;
+    var capStyle = opts.cap_style || 'round'; // expect 'round' or 'flat'
+    var pathIter = new ShapeIter(arcs);
+    var builder = new BufferBuilder(opts);
+
+    return function makeBufferGeoJSON(shape, distance) {
+      var rings = [];
+      (shape || []).forEach(function(path, i) {
+        var pathRings = makeSinglePathRings(path, distance);
+        rings = rings.concat(pathRings);
+      });
+      if (rings.length === 0) return null;
+      var feat = {
+        type: 'Feature',
+        properties: null,
+        geometry: {
+        type: 'MultiPolygon',
+          coordinates: rings.map(ring => [ring]) // to Polygon format
+        }
+      };
+      if (opts.debug_points) {
+        return [feat].concat(builder.getDebugPoints());
+      }
+      return feat;
+    };
+
+    // each path may be converted into multiple buffer rings, which later
+    // need to be dissolved
+    function makeSinglePathRings(pathArcs, dist) {
+      var revPathArcs;
+      var rings = [];
+      if (!opts.right || opts.left) {
+        rings = rings.concat(makeLeftBufferRings(pathArcs, dist));
+      }
+      if (!opts.left || opts.right) {
+        revPathArcs = reversePath(pathArcs.concat());
+        rings = rings.concat(makeLeftBufferRings(revPathArcs, dist));
+      }
+      return rings;
+    }
+
+    function makeLeftBufferRings(path, dist) {
+      var rings = [];
+      var x0, y0, x1, y1, x2, y2; // path traversal coords
+      var p1, p2; // extruded points
+      var bearing1, bearing2, prevBearing, joinAngle;
+      var firstBearing;
+      var i = 0;
+      pathIter.init(path);
+
+      if (pathIter.hasNext()) {
+        x0 = x2 = pathIter.x;
+        y0 = y2 = pathIter.y;
+        i++;
+      }
+
+      while (pathIter.hasNext()) {
+        // TODO: use a tolerance
+        if (pathIter.x === x2 && pathIter.y === y2) {
+          debug("skipping a duplicate point");
+          continue;
+        }
+        x1 = x2;
+        y1 = y2;
+        x2 = pathIter.x;
+        y2 = pathIter.y;
+
+        // calculate bearing at both segment points
+        // TODO: no need to calculate twice with planar coordinates
+        prevBearing = bearing2;
+        bearing1 = getBearing(x1, y1, x2, y2);
+        bearing2 = getBearing(x2, y2, x1, y1) - 180;
+        p1 = geod(x1, y1, bearing1 - 90, dist);
+        p2 = geod(x2, y2, bearing2 - 90, dist);
+
+        if (i == 1) {
+          firstBearing = bearing1;
+          builder.addPathVertex([x1, y1]);
+        } else {
+          joinAngle = getJoinAngle(prevBearing, bearing1);
+        }
+
+        builder.addPathVertex([x2, y2]);
+
+        if (i > 1 && joinAngle > 0) {
+          builder.addBufferVertices(makeRoundJoin(x1, y1, prevBearing - 90, joinAngle, dist));
+        }
+
+        builder.addBufferVertex(p1, joinAngle < 0);
+        builder.addBufferVertex(p2);
+
+        // TODO: restore slicing?
+        // if (center.length - 1 >= sliceLen) {
+        //   builder.done(rings);
+        // }
+
+        i++;
+      }
+
+      if (x2 == x0 && y2 == y0) { // closed path
+        // add join to finish closed path
+        // TODO - figure out which bearing to use
+        joinAngle = getJoinAngle(bearing2, firstBearing);
+        if (joinAngle > 0) {
+          builder.addBufferVertices(makeFinalJoin(x2, y2, bearing1 - 90, joinAngle, dist));
+        }
+      } else if (capStyle == 'round') { // open path
+        // add a cap to finish open path
+        builder.addBufferVertices(makeRoundCap(x2, y2, bearing2 - 90, dist));
+      }
+
+      rings.push(builder.done());
+      return rings;
+    }
+
+    // function extendArray(arr, arr2) {
+    //   arr2.reverse();
+    //   while(arr2.length > 0) arr.push(arr2.pop());
+    // }
+
+    function makeFinalJoin(x, y, direction, angle, dist) {
+      var points = makeRoundJoin(x, y, direction, angle, dist);
+      points.push(geod(x, y, direction + angle, dist));
+      return points;
+    }
+
+    function makeRoundCap(x, y, startDir, dist) {
+      var points = makeRoundJoin(x, y, startDir, 180, dist);
+      points.push(geod(x, y, startDir + 180, dist)); // add final vertex
+      return points;
+    }
+
+    // get interior vertices of an interpolated CW arc
+    function makeRoundJoin(cx, cy, startBearing, arcAngle, dist) {
+      var points = [];
+      var increment = 90 / segsPerQuadrant;
+      var angle = increment;
+      while (angle < arcAngle) {
+        points.push(geod(cx, cy, startBearing + angle, dist));
+        angle += increment;
+      }
+      return points;
+    }
+
+    // get angle between two extruded segments in degrees
+    // positive angle means join in convex (range: 0-180 degrees)
+    // negative angle means join is concave (range: -180-0 degrees)
+    function getJoinAngle(direction1, direction2) {
+      var delta = direction2 - direction1;
+      if (delta > 180) {
+        delta -= 360;
+      }
+      if (delta < -180) {
+        delta += 360;
+      }
+      return delta;
+    }
+
+  }
+
+  // Returns a function for generating GeoJSON MultiPolygon geometries
+  function getPolylineBufferMaker$1(arcs, geod, getBearing, opts) {
+    var sliceLen = opts.slice_length || Infinity;
+    var backtrackSteps = opts.backtrack >= 0 ? opts.backtrack : 100;
+    var segsPerQuadrant = opts.arc_quality >= 2 ? opts.arc_quality : 12;
+    var capStyle = opts.cap_style || 'round'; // expect 'round' or 'flat'
+    var pathIter = new ShapeIter(arcs);
+    var left, center, rings;
+
+    return function makeBufferGeoJSON(shape, distance) {
+      var rings = [];
+      (shape || []).forEach(function(path, i) {
+        var pathRings = makeSinglePathRings(path, distance);
+        rings = rings.concat(pathRings);
+      });
+      if (rings.length === 0) return null;
+      return {
+        type: 'MultiPolygon',
+        coordinates: rings.map(ring => [ring]) // to Polygon format
+      };
+    };
+
+    // each path may be converted into multiple buffer rings, which later
+    // need to be dissolved
+    function makeSinglePathRings(pathArcs, dist) {
+      var revPathArcs;
+      var rings = [];
+      if (!opts.right || opts.left) {
+        rings = rings.concat(makeLeftBufferRings(pathArcs, dist));
+      }
+      if (!opts.left || opts.right) {
+        revPathArcs = reversePath(pathArcs.concat());
+        rings = rings.concat(makeLeftBufferRings(revPathArcs, dist));
+      }
+      return rings;
+    }
+
+    function makeLeftBufferRings(path, dist) {
+      left = [];
+      center = [];
+      rings = [];
+      var x0, y0, x1, y1, x2, y2; // path traversal coords
+      var p1, p2; // extruded points
+      var prevP;
+      var bearing1, bearing2, prevBearing, joinAngle;
+      var firstBearing;
+      var i = 0;
+      pathIter.init(path);
+
+      if (pathIter.hasNext()) {
+        x0 = x2 = pathIter.x;
+        y0 = y2 = pathIter.y;
+        i++;
+      }
+
+      while (pathIter.hasNext()) {
+        // TODO: use a tolerance
+        if (pathIter.x === x2 && pathIter.y === y2) {
+          debug("skipping a duplicate point");
+          continue;
+        }
+        x1 = x2;
+        y1 = y2;
+        x2 = pathIter.x;
+        y2 = pathIter.y;
+
+        // calculate bearing at both segment points
+        // TODO: no need to calculate twice with planar coordinates
+        prevBearing = bearing2;
+        bearing1 = getBearing(x1, y1, x2, y2);
+        bearing2 = getBearing(x2, y2, x1, y1) - 180;
+        // extrude current segment to the left
+        prevP = p2;
+        p1 = geod(x1, y1, bearing1 - 90, dist);
+        p2 = geod(x2, y2, bearing2 - 90, dist);
+
+        if (i == 1) {
+          firstBearing = bearing1;
+        } else {
+          joinAngle = getJoinAngle(prevBearing, bearing1);
+        }
+
+        // extend center coords (i.e. original path)
+        if (center.length == 0) {
+          center.push([x1, y1]);
+        }
+        center.push([x2, y2]);
+
+        // if (veryCloseToPrevPoint(left, p1[0], p1[1])) {
+        //   console.log("VERY CLOSE")
+        //   // skip first point
+        //   addBufferVertex(p2);
+        // }
+
+        if (i > 1 && joinAngle > 0) {
+          if (prevP) {
+            // start join from last extruded vertex of previous buffer slice
+            addBufferVertex(prevP);
+          }
+          makeRoundJoin(x1, y1, prevBearing - 90, joinAngle, dist).forEach(addBufferVertex);
+          addBufferVertex(p1);
+          addBufferVertex(p2);
+          // left.push(p1, p2)
+        } else {
+          // left.push(p1, p2)
+          addBufferVertex(p1);
+          addBufferVertex(p2);
+        }
+
+        // TODO: finish
+        if (center.length - 1 >= sliceLen) {
+          finishRing();
+        }
+        i++;
+      }
+
+      if (center.length > 1) {
+        finishRing();
+      }
+
+      if (x2 == x0 && y2 == y0) { // closed path
+        // add join to finish closed path
+        // TODO - figure out which bearing to use
+        joinAngle = getJoinAngle(bearing2, firstBearing);
+        if (joinAngle > 0) {
+          appendJoinToRing(rings[rings.length-1], x2, y2, bearing1 - 90, joinAngle, dist);
+        }
+      } else { // open path
+        // add a cap to finish open path
+        // left.push.apply(left, makeCap(x2, y2, bearing, dist));
+        appendCapToRing(rings[rings.length-1], x2, y2, bearing2, dist);
+      }
+
+      return rings;
+    }
+
+    function finishRing() {
+      if (center.length < 2) {
+        debug('defective path, skipping');
+        return;
+      }
+      var ring = center.reverse().concat(left);
+      ring.push(ring[0]);
+
+      // Start next partial (if there is one)
+      left = [];
+      center = [];
+      rings.push(ring);
+    }
+
+    // function extendArray(arr, arr2) {
+    //   arr2.reverse();
+    //   while(arr2.length > 0) arr.push(arr2.pop());
+    // }
+
+    function appendJoinToRing(ring, x, y, direction, angle, dist) {
+      var p1 = ring.pop();
+      var coords = makeRoundJoin(x, y, direction, angle, dist);
+      ring.push.apply(ring, coords);
+      ring.push(geod(x, y, direction + angle, dist));
+      ring.push(p1);
+    }
+
+    function appendCapToRing(ring, x, y, direction, dist) {
+      if (capStyle == 'flat' || ring.length < 4) {
+        return;
+      }
+      var p1 = ring.pop();
+      var coords = makeRoundCap(x, y, direction - 90, dist);
+      ring.push.apply(ring, coords);
+      ring.push(p1);
+    }
+
+    function makeRoundCap(x, y, startDir, dist) {
+      var points = makeRoundJoin(x, y, startDir, 180, dist);
+      points.push(geod(x, y, startDir + 180, dist)); // add final vertex
+      return points;
+    }
+
+    // get interior vertices of an interpolated CW arc
+    function makeRoundJoin(cx, cy, startBearing, arcAngle, dist) {
+      var points = [];
+      var increment = 90 / segsPerQuadrant;
+      var angle = increment;
+      while (angle < arcAngle) {
+        points.push(geod(cx, cy, startBearing + angle, dist));
+        angle += increment;
+      }
+      return points;
+    }
+
+    // get angle between two extruded segments in degrees
+    // positive angle means join in convex (range: 0-180 degrees)
+    // negative angle means join is concave (range: -180-0 degrees)
+    function getJoinAngle(direction1, direction2) {
+      var delta = direction2 - direction1;
+      if (delta > 180) {
+        delta -= 360;
+      }
+      if (delta < -180) {
+        delta += 360;
+      }
+      return delta;
+    }
+
+
+    function addBufferVertex(d) {
+      var arr = left;
+      var a, b, c, hit;
+      // c is the start point of the segment formed by appending point d to the polyline.
+      c = arr[arr.length - 1];
+      for (var i=0, idx = arr.length - 3; i < backtrackSteps && idx >= 0; i++, idx--) {
+        a = arr[idx];
+        b = arr[idx + 1];
+        // TODO: consider using a geodetic intersection function for lat-long datasets
+        hit = bufferIntersection$1(a[0], a[1], b[0], b[1], c[0], c[1], d[0], d[1]);
+        // TODO: disregard hits caused by oxbows
+        if (hit) {
+          // TODO: handle collinear segments
+          // if (hit.length != 2) console.log('COLLINEAR', hit)
+          // segments intersect -- replace two internal segment endpoints with xx point
+          while (arr.length > idx + 1) arr.pop();
+          appendPoint(arr, hit);
+          c = hit; // update starting point of the newly added segment
+        }
+      }
+      appendPoint(arr, d);
+    }
+
+  }
+
+  // Test if two points are within a snapping tolerance
+  // TODO: calculate the tolerance more sensibly
+  function veryClose(x1, y1, x2, y2, tol) {
+    var dist = geom.distance2D(x1, y1, x2, y2);
+    return dist < tol;
+  }
+
+  function appendPoint(arr, p) {
+    var prev = arr[arr.length - 1];
+    if (!prev || !veryClose(prev[0], prev[1], p[0], p[1], 1e-10)) {
+      arr.push(p);
+    }
+  }
+
+  // Exclude segments with non-intersecting bounding boxes before
+  // calling intersection function
+  // Possibly slightly faster than direct call... not worth it?
+  function bufferIntersection$1(ax, ay, bx, by, cx, cy, dx, dy) {
+    if (ax < cx && ax < dx && bx < cx && bx < dx ||
+        ax > cx && ax > dx && bx > cx && bx > dx ||
+        ay < cy && ay < dy && by < cy && by < dy ||
+        ay > cy && ay > dy && by > cy && by > dy) return null;
+    return geom.segmentIntersection(ax, ay, bx, by, cx, cy, dx, dy);
+  }
 
   // Returns a function for generating GeoJSON geometries (MultiLineString or MultiPolygon)
   function getPolylineBufferMaker(arcs, geod, getBearing, opts) {
@@ -31237,28 +31904,6 @@ ${svg}
     };
   }
 
-  function addBufferVertex(arr, d, maxBacktrack) {
-    var a, b, c, hit;
-    for (var i=0, idx = arr.length - 3; i<maxBacktrack && idx >= 0; i++, idx--) {
-      c = arr[arr.length - 1];
-      a = arr[idx];
-      b = arr[idx + 1];
-      // TODO: consider using a geodetic intersection function for lat-long datasets
-      hit = bufferIntersection(a[0], a[1], b[0], b[1], c[0], c[1], d[0], d[1]);
-      if (hit) {
-        // TODO: handle collinear segments
-        if (hit.length != 2) ;
-        // segments intersect -- replace two internal segment endpoints with xx point
-        while (arr.length > idx + 1) arr.pop();
-        // TODO: check proximity of hit to several points
-        arr.push(hit);
-      }
-    }
-
-    // TODO: check proximity to previous point
-    arr.push(d); // add new point
-  }
-
   // Exclude segments with non-intersecting bounding boxes before
   // calling intersection function
   // Possibly slightly faster than direct call... not worth it?
@@ -31268,302 +31913,6 @@ ${svg}
         ay < cy && ay < dy && by < cy && by < dy ||
         ay > cy && ay > dy && by > cy && by > dy) return null;
     return geom.segmentIntersection(ax, ay, bx, by, cx, cy, dx, dy);
-  }
-
-  var PathBuffer = /*#__PURE__*/Object.freeze({
-    __proto__: null,
-    addBufferVertex: addBufferVertex,
-    bufferIntersection: bufferIntersection,
-    getPolylineBufferMaker: getPolylineBufferMaker
-  });
-
-  function getPolylineBufferMaker2(arcs, geod, getBearing, opts) {
-    var makeLeftBuffer = getPathBufferMaker2(arcs, geod, getBearing, opts);
-    var geomType = opts.geometry_type;
-
-    function polygonCoords(ring) {
-      return [ring];
-    }
-
-    function needLeftBuffer(path, arcs) {
-      if (geomType == 'polyline') {
-        return opts.type != 'right';
-      }
-      // assume polygon type
-      if (opts.type == 'outer') {
-        return geom.getPathWinding(path, arcs) == 1;
-      }
-      if (opts.type == 'inner') {
-        return geom.getPathWinding(path, arcs) == -1;
-      }
-      return true;
-    }
-
-    function needRightBuffer() {
-      return geomType == 'polyline' && opts.type != 'left';
-    }
-
-    function makeBufferParts(pathArcs, dist) {
-      var leftPartials, rightPartials, parts, revPathArcs;
-
-      if (needLeftBuffer(pathArcs, arcs)) {
-        leftPartials = makeLeftBuffer(pathArcs, dist);
-      }
-      if (needRightBuffer()) {
-        revPathArcs = reversePath(pathArcs.concat());
-        rightPartials = makeLeftBuffer(revPathArcs, dist);
-      }
-      parts = (leftPartials || []).concat(rightPartials || []);
-      return parts.map(polygonCoords);
-    }
-
-    // Returns a GeoJSON Geometry (MultiLineString or MultiPolygon) or null
-    return function(shape, dist) {
-      var geom = {
-        type: 'MultiPolygon',
-        coordinates: []
-      };
-      for (var i=0; i<shape.length; i++) {
-        geom.coordinates = geom.coordinates.concat(makeBufferParts(shape[i], dist));
-      }
-      return geom.coordinates.length == 0 ? null : geom;
-    };
-  }
-
-  function getPathBufferMaker2(arcs, geod, getBearing, opts) {
-    var backtrackSteps = opts.backtrack >= 0 ? opts.backtrack : 50;
-    var pathIter = new ShapeIter(arcs);
-    // var capStyle = opts.cap_style || 'round'; // expect 'round' or 'flat'
-    var partials, left, center;
-    var bounds;
-    // TODO: implement other join styles than round
-
-    // function updateTolerance(dist) {
-
-    // }
-
-    function addRoundJoin(x, y, startDir, angle, dist) {
-      var increment = 10;
-      var endDir = startDir + angle;
-      var dir = startDir + increment;
-      while (dir < endDir) {
-        addBufferVertex(geod(x, y, dir, dist));
-        dir += increment;
-      }
-    }
-
-    // function addRoundJoin2(arr, x, y, startDir, angle, dist) {
-    //   var increment = 10;
-    //   var endDir = startDir + angle;
-    //   var dir = startDir + increment;
-    //   while (dir < endDir) {
-    //     addBufferVertex(arr, geod(x, y, dir, dist));
-    //     dir += increment;
-    //   }
-    // }
-
-    // Test if two points are within a snapping tolerance
-    // TODO: calculate the tolerance more sensibly
-    function veryClose(x1, y1, x2, y2, tol) {
-      var dist = geom.distance2D(x1, y1, x2, y2);
-      return dist < tol;
-    }
-
-    function veryCloseToPrevPoint(arr, x, y) {
-      var prev = arr[arr.length - 1];
-      return veryClose(prev[0], prev[1], x, y, 0.000001);
-    }
-
-    function appendPoint(arr, p) {
-      var prev = arr[arr.length - 1];
-      if (!veryClose(prev[0], prev[1], p[0], p[1], 1e-10)) {
-        arr.push(p);
-      }
-    }
-
-    // function makeCap(x, y, direction, dist) {
-    //   if (capStyle == 'flat') {
-    //     return [[x, y]];
-    //   }
-    //   return makeRoundCap(x, y, direction, dist);
-    // }
-
-    // function makeRoundCap(x, y, segmentDir, dist) {
-    //   var points = [];
-    //   var increment = 10;
-    //   var startDir = segmentDir - 90;
-    //   var angle = increment;
-    //   while (angle < 180) {
-    //     points.push(geod(x, y, startDir + angle, dist));
-    //     angle += increment;
-    //   }
-    //   return points;
-    // }
-
-    // get angle between two extruded segments in degrees
-    // positive angle means join in convex (range: 0-180 degrees)
-    // negative angle means join is concave (range: -180-0 degrees)
-    function getJoinAngle(direction1, direction2) {
-      var delta = direction2 - direction1;
-      if (delta > 180) {
-        delta -= 360;
-      }
-      if (delta < -180) {
-        delta += 360;
-      }
-      return delta;
-    }
-
-
-    // TODO: handle polygon holes
-    function addBufferVertex(d) {
-      var arr = left;
-      var a, b, c, c0, hit;
-      // c is the start point of the segment formed by appending point d to the polyline.
-      c0 = c = arr[arr.length - 1];
-      for (var i=0, idx = arr.length - 3; idx >= 0; i++, idx--) {
-        a = arr[idx];
-        b = arr[idx + 1];
-        // TODO: consider using a geodetic intersection function for lat-long datasets
-        hit = bufferIntersection(a[0], a[1], b[0], b[1], c[0], c[1], d[0], d[1]);
-        if (hit) {
-          if (segmentTurn(a, b, c, d) == 1) {
-            // interpretation: segment cd crosses segment ab from outside to inside
-            // the buffer -- we need to start a new partial; otherwise,
-            // the following code would likely remove a loop representing
-            // an oxbow-type hole in the buffer.
-            //
-            finishPartial();
-            break;
-          }
-          // TODO: handle collinear segments (consider creating new partial)
-          // if (hit.length != 2) console.log('COLLINEAR', hit)
-
-          // segments intersect, indicating a spurious loop: remove the loop and
-          // replace the endpoints of the intersecting segments with the intersection point.
-          while (arr.length > idx + 1) arr.pop();
-          appendPoint(arr, hit);
-          c = hit; // update starting point of the newly added segment
-        }
-
-        // Maintain a bounding box around vertices before the backtrack limit.
-        // If the latest segment intersects this bounding box, there could be a self-
-        // intersection -- start a new partial to prevent self-intersection.
-        //
-        if (i >= backtrackSteps) {
-          if (!bounds) {
-            bounds = new Bounds();
-            bounds.mergePoint(a[0], a[1]);
-          }
-          bounds.mergePoint(b[0], b[1]);
-          if (testSegmentBoundsIntersection(c0, d, bounds)) {
-            finishPartial();
-          }
-          break;
-        }
-      }
-
-      appendPoint(arr, d);
-    }
-
-    function finishPartial() {
-      // Get endpoints of the two polylines, for starting the next partial
-      var leftEP = left[left.length - 1];
-      var centerEP = center[center.length - 1];
-
-      // Make a polygon ring
-      var ring = [];
-      extendArray(ring, left);
-      center.reverse();
-      extendArray(ring, center);
-      ring.push(ring[0]); // close ring
-      partials.push(ring);
-
-      // Start next partial
-      left.push(leftEP);
-      center.push(centerEP);
-
-      // clear bbox
-      // bbox = null;
-    }
-
-    function extendArray(arr, arr2) {
-      arr2.reverse();
-      while(arr2.length > 0) arr.push(arr2.pop());
-    }
-
-    return function(path, dist) {
-      // var x0, y0;
-      var x1, y1, x2, y2;
-      var p1, p2;
-      // var firstBearing;
-      var bearing, prevBearing, joinAngle;
-      partials = [];
-      left = [];
-      center = [];
-      pathIter.init(path);
-
-      // if (pathIter.hasNext()) {
-      //   x0 = x2 = pathIter.x;
-      //   y0 = y2 = pathIter.y;
-      // }
-      while (pathIter.hasNext()) {
-        // TODO: use a tolerance
-        if (pathIter.x === x2 && pathIter.y === y2) continue; // skip duplicate points
-        x1 = x2;
-        y1 = y2;
-        x2 = pathIter.x;
-        y2 = pathIter.y;
-
-        prevBearing = bearing;
-        bearing = getBearing(x1, y1, x2, y2);
-        // shift original polyline segment to the left by buffer distance
-        p1 = geod(x1, y1, bearing - 90, dist);
-        p2 = geod(x2, y2, bearing - 90, dist);
-
-        if (center.length === 0) {
-          // first loop, second point in this partial
-          // if (partials.length === 0) {
-          //   firstBearing = bearing;
-          // }
-          left.push(p1, p2);
-          center.push([x1, y1], [x2, y2]);
-        } else {
-          //
-          joinAngle = getJoinAngle(prevBearing, bearing);
-          if (veryCloseToPrevPoint(left, p1[0], p1[1])) {
-            // skip first point
-            addBufferVertex(p2);
-          } else if (joinAngle > 0) {
-            addRoundJoin(x1, y1, prevBearing - 90, joinAngle, dist);
-            addBufferVertex(p1);
-            addBufferVertex(p2);
-          } else {
-            addBufferVertex(p1);
-            addBufferVertex(p2);
-          }
-          center.push([x2, y2]);
-        }
-      }
-
-      if (center.length > 1) {
-        finishPartial();
-      }
-      // TODO: handle defective polylines
-
-      // if (x2 == x0 && y2 == y0) {
-      //   // add join to finish closed path
-      //   joinAngle = getJoinAngle(bearing, firstBearing);
-      //   if (joinAngle > 0) {
-      //     addRoundJoin(leftpart, x2, y2, bearing - 90, joinAngle, dist);
-      //   }
-      // } else {
-      //   // add a cap to finish open path
-      //   leftpart.push.apply(leftpart, makeCap(x2, y2, bearing, dist));
-      // }
-
-      return partials;
-    };
   }
 
   // GeographicLib docs: https://geographiclib.sourceforge.io/html/js/
@@ -31662,30 +32011,43 @@ ${svg}
   });
 
   function makePolylineBuffer(lyr, dataset, opts) {
+    time('buffer');
     var geojson = makeShapeBufferGeoJSON(lyr, dataset, opts);
     var dataset2 = importGeoJSON(geojson, {});
-    dissolveBufferDataset(dataset2, opts);
+    if (!opts.debug_points) {
+      dissolveBufferDataset(dataset2, opts);
+    }
+    timeEnd('buffer');
     return dataset2;
   }
 
   function makeShapeBufferGeoJSON(lyr, dataset, opts) {
     var distanceFn = getBufferDistanceFunction(lyr, dataset, opts);
-    getBufferToleranceFunction(dataset, opts);
+    // var toleranceFn = getBufferToleranceFunction(dataset, opts);
     var geod = getFastGeodeticSegmentFunction(getDatasetCRS(dataset));
     var getBearing = getBearingFunction(dataset);
     var makerOpts = Object.assign({geometry_type: lyr.geometry_type}, opts);
-    var factory = opts.v2 ? getPolylineBufferMaker2 : getPolylineBufferMaker;
-    var makeShapeBuffer = factory(dataset.arcs, geod, getBearing, makerOpts);
-    lyr.data ? lyr.data.getRecords() : null;
-    var geometries = lyr.shapes.map(function(shape, i) {
-      var dist = distanceFn(i);
-      if (!dist || !shape) return null;
-      return makeShapeBuffer(shape, dist, lyr.geometry_type);
-    });
+    var makeShapeBuffer =
+      opts.v2 && getPolylineBufferMaker$1(dataset.arcs, geod, getBearing, makerOpts) ||
+      opts.v3 && getPolylineBufferMaker$2(dataset.arcs, geod, getBearing, makerOpts) ||
+      getPolylineBufferMaker(dataset.arcs, geod, getBearing, makerOpts);
+    // var records = lyr.data ? lyr.data.getRecords() : null;
+    var arr = lyr.shapes.reduce(function(memo, shape, i) {
+      var distance = distanceFn(i);
+      if (!distance || !shape) return memo;
+      // retn might be an array of features or a single feature
+      var retn = makeShapeBuffer(shape, distance);
+      return memo.concat(retn);
+    }, []);
+    var geojsonType = arr?.[0].type;
     // TODO: make sure that importer supports null geometries (not standard GeoJSON);
-    return {
+    // console.log(arr)
+    return geojsonType == 'Feature' ? {
+      type: 'FeatureCollection',
+      features: arr
+    } : {
       type: 'GeometryCollection',
-      geometries: geometries
+      geometries: arr
     };
   }
 
@@ -32137,8 +32499,7 @@ ${svg}
       stop("Unsupported geometry type");
     }
 
-    var lyr2 = mergeOutputLayerIntoDataset(lyr, dataset, dataset2, opts);
-    return [lyr2];
+    return mergeOutputLayersIntoDataset(lyr, dataset, dataset2, opts);
   }
 
   // currently undocumented, used in tests
@@ -36789,9 +37150,6 @@ ${svg}
     getLayerInfo: getLayerInfo
   });
 
-  // import { importGeoJSON } from '../geojson/geojson-import';
-
-
   function addTargetProxies(targets, ctx) {
     if (targets && targets.length > 0) {
       var proxies = expandCommandTargets(targets).reduce(function(memo, target) {
@@ -36814,10 +37172,18 @@ ${svg}
     var proxy = getLayerInfo(target.layer, target.dataset); // layer_name, feature_count etc
     proxy.layer = target.layer;
     proxy.dataset = target.dataset;
-    addGetters(proxy, {
-      // export as an object, not a string or buffer
-      geojson: getGeoJSON
+
+    Object.defineProperty(proxy, 'geojson', {
+      set: setGeoJSON,
+      get: getGeoJSON
     });
+
+    function setGeoJSON(o) {
+      var dataset2 = importGeoJSON(o);
+      var lyr2 = dataset2.layers[0];
+      lyr2.name = target.layer.name;
+      replaceLayerContents(target.layer, target.dataset, dataset2);
+    }
 
     function getGeoJSON() {
       var features = exportLayerAsGeoJSON(target.layer, target.dataset, {rfc7946: true}, true);
@@ -41337,7 +41703,7 @@ ${svg}
   function findPathMidpoint(path, arcs, useNearestVertex) {
     var halfLen = calcPathLen(path, arcs, false) / 2;
     var partialLen = 0;
-    var p;
+    var p = null;
     forEachSegmentInPath(path, arcs, function(i, j, xx, yy) {
       var a = xx[i],
           b = yy[i],
@@ -41357,7 +41723,7 @@ ${svg}
       partialLen += segLen;
     });
     if (!p) {
-      error('Geometry error');
+      debug('[findPathMidpoint()] defective path:', path);
     }
     return p;
   }
@@ -46293,7 +46659,7 @@ ${svg}
     });
   }
 
-  var version = "0.6.111";
+  var version = "0.6.112";
 
   // Parse command line args into commands and run them
   // Function takes an optional Node-style callback. A Promise is returned if no callback is given.
@@ -46896,67 +47262,6 @@ ${svg}
     return false;
   }
 
-  // TODO: Need to rethink polygon repair: these function can cause problems
-  // when part of a self-intersecting polygon is removed
-  //
-  function repairPolygonGeometry(layers, dataset, opts) {
-    var nodes = addIntersectionCuts(dataset);
-    layers.forEach(function(lyr) {
-      repairSelfIntersections(lyr, nodes);
-    });
-    return layers;
-  }
-
-  // Remove any small shapes formed by twists in each ring
-  // // OOPS, NO // Retain only the part with largest area
-  // // this causes problems when a cut-off hole has a matching ring in another polygon
-  // TODO: consider cases where cut-off parts should be retained
-  //
-  function repairSelfIntersections(lyr, nodes) {
-    var splitter = getSelfIntersectionSplitter(nodes);
-
-    lyr.shapes = lyr.shapes.map(function(shp, i) {
-      return cleanPolygon(shp);
-    });
-
-    function cleanPolygon(shp) {
-      var cleanedPolygon = [];
-      forEachShapePart(shp, function(ids) {
-        // TODO: consider returning null if path can't be split
-        var splitIds = splitter(ids);
-        if (splitIds.length === 0) {
-          error("[cleanPolygon()] Defective path:", ids);
-        } else if (splitIds.length == 1) {
-          cleanedPolygon.push(splitIds[0]);
-        } else {
-          var shapeArea = geom.getPlanarPathArea(ids, nodes.arcs),
-              sign = shapeArea > 0 ? 1 : -1,
-              mainRing;
-
-          splitIds.reduce(function(max, ringIds, i) {
-            var pathArea = geom.getPlanarPathArea(ringIds, nodes.arcs) * sign;
-            if (pathArea > max) {
-              mainRing = ringIds;
-              max = pathArea;
-            }
-            return max;
-          }, 0);
-
-          if (mainRing) {
-            cleanedPolygon.push(mainRing);
-          }
-        }
-      });
-      return cleanedPolygon.length > 0 ? cleanedPolygon : null;
-    }
-  }
-
-  var PolygonRepair = /*#__PURE__*/Object.freeze({
-    __proto__: null,
-    repairPolygonGeometry: repairPolygonGeometry,
-    repairSelfIntersections: repairSelfIntersections
-  });
-
   // Attach functions exported by modules to the "internal" object,
   // so they can be run by tests and by the GUI.
   // TODO: rewrite tests to import functions directly from modules,
@@ -47003,7 +47308,7 @@ ${svg}
     ArcUtils,
     Bbox2Clipping,
     BinArray$1,
-    BufferCommon,
+    // BufferCommon,
     Calc,
     CalcUtils,
     Catalog$1,
@@ -47058,7 +47363,7 @@ ${svg}
     OverlayUtils,
     Pack, Unpack,
     ParseCommands,
-    PathBuffer,
+    // PathBuffer,
     PathEndpoints,
     PathExport,
     Pathfinder,

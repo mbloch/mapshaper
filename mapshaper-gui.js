@@ -1937,8 +1937,20 @@
         .on('paste', onpaste);
     area.node().addEventListener('paste', onpaste);
     function ondrop(e) {
+      var files = e.dataTransfer.files;
+      var types = e.dataTransfer.types;
       block(e);
-      cb(e.dataTransfer.files);
+      if (files.length) {
+        cb(files);
+      } else if (types.includes('text/uri-list')) {
+        cb(e.dataTransfer.getData('text/uri-list').split(','));
+      } else if (types.includes('text/html')) {
+        // drag-dropping a highlighted link may pull in a chunk of html
+        var urls = e.dataTransfer.getData('text/html').match(/https?:[^"']+/);
+        if (urls.length) {
+          cb(urls);
+        }
+      }
     }
     function onpaste(e) {
       var types = Array.from(e.clipboardData.types || []).join(',');
@@ -1955,15 +1967,18 @@
       //     Single files of all types are pasted as a string and an image/png
       //     Multiple files are pasted as a string containing a list of file names
 
-      // import text from the clipboard (could be csv, json, etc)
+      // import text from the clipboard (could be csv, json, a url, etc)
       // formatted text can be available as both text/plain and text/html (e.g.
       //   a JSON data object copied from a GitHub issue).
       //
       if (types.includes('text/plain')) {
-      // if (types == 'text/plain') {
         // text from clipboard (supported by Chrome, FF, Safari)
         // TODO: handle FF case of string containing multiple file names.
-        files = [pastedTextToFile(e.clipboardData.getData('text/plain'))];
+        var str = e.clipboardData.getData('text/plain');
+        if (isUrl(str)) {
+          return cb(str.split(','));
+        }
+        files = [pastedTextToFile(str)];
       } else {
         files = items.map(function(item) {
           return item.kind == 'file' && !item.type.includes('image') ?
@@ -1995,6 +2010,10 @@
     }
     var blob = new Blob([str]);
     return new File([blob], name);
+  }
+
+  function isUrl(str) {
+    return /^https?:\/\//.test(str);
   }
 
   // @el DOM element for select button
@@ -2040,7 +2059,7 @@
 
     var submitBtn = new SimpleButton('#import-options .submit-btn').on('click', importQueuedFiles);
     new SimpleButton('#import-options .cancel-btn').on('click', gui.clearMode);
-    new DropControl(gui, 'body', receiveFilesWithOption);
+    new DropControl(gui, 'body', receiveDroppedItems);
     new FileChooser('#import-options .add-btn', receiveFilesWithOption);
     new FileChooser('#add-file-btn', receiveFiles);
     new SimpleButton('#add-empty-btn').on('click', function() {
@@ -2056,7 +2075,7 @@
 
     function turnOn() {
       if (manifestFiles.length > 0) {
-        downloadFiles(manifestFiles, true);
+        downloadFiles(manifestFiles);
         manifestFiles = [];
       } else if (model.isEmpty()) {
         showImportMenu();
@@ -2155,6 +2174,14 @@
         });
       });
       submitBtn.classed('disabled', queuedFiles.length === 0);
+    }
+
+    function receiveDroppedItems(arr) {
+      if (utils$1.isString(arr[0])) { // assume array of URLs
+        downloadFiles(arr);
+      } else { // assume array of Files
+        receiveFilesWithOption(arr);
+      }
     }
 
     function receiveFilesWithOption(files) {
@@ -2312,9 +2339,8 @@
 
     function prepFilesForDownload(names) {
       var items = names.map(function(name) {
-        var isUrl = /:\/\//.test(name);
         var item = {name: name};
-        if (isUrl) {
+        if (isUrl(name)) {
           item.url = name;
           item.basename = GUI.getUrlFilename(name);
 
@@ -2667,7 +2693,7 @@
         var lyr;
         if (memo) return memo; // already found a match
         // try to match import filename of this dataset
-        if (d.info.input_files[0] == src) return d;
+        if (d.info?.input_files?.[0] == src) return d;
         // try to match name of a layer in this dataset
         lyr = utils$1.find(d.layers, function(lyr) {return lyr.name == src;});
         return lyr ? internal.isolateLayer(lyr, d) : null;
@@ -5068,7 +5094,7 @@
         var lyr = o.layer;
         var opts = {
           show_source: layerCount < 5,
-          pinnable: pinnableCount > 1 && isPinnable(lyr)
+          pinnable: pinnableCount > 0 && isPinnable(lyr)
         };
         var html, element;
         html = renderLayer(lyr, o.dataset, opts);
@@ -6299,6 +6325,18 @@
     }
   }
 
+  function time(slug) {
+    if (useDebug()) {
+      console.time(slug);
+    }
+  }
+
+  function timeEnd(slug) {
+    if (useDebug()) {
+      console.timeEnd(slug);
+    }
+  }
+
   function printError(err) {
     var msg;
     if (!LOGGING) return;
@@ -7462,8 +7500,13 @@
     if (len >= 2) {
       first = str.charAt(0);
       last = str.charAt(len-1);
-      if (first == '"' && last == '"' && !str.includes('","') ||
-          first == "'" && last == "'" && !str.includes("','")) {
+      // if (first == '"' && last == '"' && !str.includes('","') ||
+      //     first == "'" && last == "'" && !str.includes("','")) {
+      // don't strip if there are unescaped quotes
+      // e.g. expressions that start and end with quotes
+      // e.g. comma-separated list of quoted values
+      if (first == '"' && last == '"' && !/[^\\]"./.test(str) ||
+          first == "'" && last == "'" && !/[^\\]'./.test(str)) {
         str = str.substr(1, len-2);
         // remove string escapes
         str = str.replace(first == '"' ? /\\(?=")/g : /\\(?=')/g, '');
