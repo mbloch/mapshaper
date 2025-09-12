@@ -11,15 +11,23 @@ import { addIntersectionCuts } from '../paths/mapshaper-intersection-cuts';
 import { stop } from '../utils/mapshaper-logging';
 import { DataTable } from '../datatable/mapshaper-data-table';
 import { MosaicIndex } from '../polygons/mapshaper-mosaic-index';
+import { rewindPolygonParts } from '../polygons/mapshaper-polygon-repair';
 
 export function dissolveBufferDataset(dataset, optsArg) {
   var opts = optsArg || {};
   var lyr = dataset.layers[0];
   var tmp;
-  var nodes = addIntersectionCuts(dataset, {});
-  if (opts.debug_division) {
-    return debugBufferDivision(lyr, nodes);
+  if (opts.debug_offset) {
+    return; // raw offset path
   }
+  var nodes = addIntersectionCuts(dataset, {rebuild_topology: true});
+  if (opts.debug_winding) {
+    rewindPolygonParts(lyr, nodes);
+    // debugRingsAndHoles(lyr, nodes);
+    return;
+  }
+  rewindPolygonParts(lyr, nodes);
+
   var mosaicIndex = new MosaicIndex(lyr, nodes, {flat: false, no_holes: false});
   if (opts.debug_mosaic) {
     tmp = composeMosaicLayer(lyr, mosaicIndex.mosaic);
@@ -42,7 +50,8 @@ export function dissolveBufferDataset(dataset, optsArg) {
   }
 }
 
-function debugBufferDivision(lyr, nodes) {
+
+function debugRingsAndHoles(lyr, nodes) {
   var divide = getHoleDivider(nodes);
   var shapes2 = [];
   var records = [];

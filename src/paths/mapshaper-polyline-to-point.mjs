@@ -2,7 +2,7 @@ import geom from '../geom/mapshaper-geom';
 import { findNearestVertex } from '../paths/mapshaper-vertex-utils';
 import { calcPathLen } from '../geom/mapshaper-path-geom';
 import { distance2D } from '../geom/mapshaper-basic-geom';
-import { error, stop } from '../utils/mapshaper-logging';
+import { error, stop, debug } from '../utils/mapshaper-logging';
 import { forEachSegmentInPath } from '../paths/mapshaper-path-utils';
 
 // Returns x,y coordinates of the point that is at the midpoint of each polyline feature
@@ -20,7 +20,7 @@ function findPathMidpoint(path, arcs, useNearestVertex) {
   var halfLen = calcPathLen(path, arcs, false) / 2;
   var partialLen = 0;
   var done = false;
-  var p;
+  var p = null;
   forEachSegmentInPath(path, arcs, function(i, j, xx, yy) {
     var a = xx[i],
         b = yy[i],
@@ -43,7 +43,7 @@ function findPathMidpoint(path, arcs, useNearestVertex) {
     partialLen += segLen;
   });
   if (!p) {
-    error('Geometry error');
+    debug('[findPathMidpoint()] defective path:', path);
   }
   return p;
 }

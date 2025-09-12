@@ -1,12 +1,17 @@
 import api from '../mapshaper.js';
 import assert from 'assert';
 import helpers from './helpers';
-var internal = api.internal;
+import {
+  parseConstantBufferDistance,
+  getArcDegreesFromTolerancePct,
+  getBufferToleranceFromCircleSegments,
+  getArcDegreesFromTolerancePct2,
+  getBufferToleranceFromCircleSegments2
+} from '../src/buffer/mapshaper-buffer-common';
 
 describe('mapshaper-buffer-common.js', function () {
-
   describe('parseConstantBufferDistance()', function () {
-    var parse = api.internal.parseConstantBufferDistance;
+    var parse = parseConstantBufferDistance;
     var WGS84 = api.internal.parseCrsString('wgs84');
     var webmercator = api.internal.parseCrsString('webmercator');
 
@@ -38,8 +43,8 @@ describe('mapshaper-buffer-common.js', function () {
 
   describe('getBufferToleranceFromCircleSegments()', function () {
     function test(segs) {
-      var pct = internal.getBufferToleranceFromCircleSegments(segs);
-      var deg = internal.getArcDegreesFromTolerancePct(pct);
+      var pct = getBufferToleranceFromCircleSegments(segs);
+      var deg = getArcDegreesFromTolerancePct(pct);
       var segs2 = 360 / deg;
       helpers.almostEqual(segs, segs2);
     }
@@ -53,8 +58,8 @@ describe('mapshaper-buffer-common.js', function () {
   })
   describe('getBufferToleranceFromCircleSegments2()', function () {
     function test2(segs) {
-      var pct = internal.getBufferToleranceFromCircleSegments2(segs);
-      var deg = internal.getArcDegreesFromTolerancePct2(pct);
+      var pct = getBufferToleranceFromCircleSegments2(segs);
+      var deg = getArcDegreesFromTolerancePct2(pct);
       var segs2 = 360 / deg;
       helpers.almostEqual(segs, segs2);
     }

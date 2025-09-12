@@ -4,7 +4,6 @@ import { stop, error } from '../utils/mapshaper-logging';
 import { convertDistanceParam } from '../geom/mapshaper-units';
 import { isLatLngCRS , getDatasetCRS } from '../crs/mapshaper-projections';
 import { requirePolylineLayer } from '../dataset/mapshaper-layer-utils';
-import { replaceLayerContents } from '../dataset/mapshaper-dataset-utils';
 import { greatCircleDistance, distance2D } from '../geom/mapshaper-basic-geom';
 import { getInterpolationFunction } from '../geom/mapshaper-geodesic';
 import { getStashedVar } from '../mapshaper-stash';

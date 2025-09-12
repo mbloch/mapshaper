@@ -74,7 +74,7 @@ import * as ArcDissolve from './paths/mapshaper-arc-dissolve';
 import * as ArcUtils from './paths/mapshaper-arc-utils';
 import * as Bbox2Clipping from './clipping/mapshaper-bbox2-clipping';
 import * as BinArray from './utils/mapshaper-binarray';
-import * as BufferCommon from './buffer/mapshaper-buffer-common';
+// import * as BufferCommon from './buffer/mapshaper-buffer-common';
 import * as Calc from './commands/mapshaper-calc';
 import * as CalcUtils from './utils/mapshaper-calc-utils';
 import * as Catalog from './dataset/mapshaper-catalog';
@@ -132,7 +132,7 @@ import * as Pack from './pack/mapshaper-pack';
 import * as PointToGrid from './commands/mapshaper-point-to-grid';
 import * as Unpack from './pack/mapshaper-unpack';
 import * as ParseCommands from './cli/mapshaper-parse-commands';
-import * as PathBuffer from './buffer/mapshaper-path-buffer';
+// import * as PathBuffer from './buffer/mapshaper-path-buffer';
 import * as PathEndpoints from './paths/mapshaper-path-endpoints';
 import * as PathExport from './paths/mapshaper-path-export';
 import * as Pathfinder from './paths/mapshaper-pathfinder';
@@ -196,7 +196,7 @@ Object.assign(internal,
   ArcUtils,
   Bbox2Clipping,
   BinArray,
-  BufferCommon,
+  // BufferCommon,
   Calc,
   CalcUtils,
   Catalog,
@@ -251,7 +251,7 @@ Object.assign(internal,
   OverlayUtils,
   Pack, Unpack,
   ParseCommands,
-  PathBuffer,
+  // PathBuffer,
   PathEndpoints,
   PathExport,
   Pathfinder,
