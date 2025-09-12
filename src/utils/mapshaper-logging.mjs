@@ -129,6 +129,18 @@ export function debug() {
   }
 }
 
+export function time(slug) {
+  if (useDebug()) {
+    console.time(slug);
+  }
+}
+
+export function timeEnd(slug) {
+  if (useDebug()) {
+    console.timeEnd(slug);
+  }
+}
+
 export function printError(err) {
   var msg;
   if (!LOGGING) return;

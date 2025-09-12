@@ -3,6 +3,35 @@ import geom from '../geom/mapshaper-geom';
 import { forEachShapePart } from '../paths/mapshaper-shape-utils';
 import { removeSpikesInPath, getSelfIntersectionSplitter } from '../paths/mapshaper-path-repair-utils';
 import { addIntersectionCuts } from '../paths/mapshaper-intersection-cuts';
+import { reversePath } from '../paths/mapshaper-path-utils';
+
+export function getPolygonRewinder(nodes) {
+  var splitter = getSelfIntersectionSplitter(nodes);
+  return rewindPolygon;
+
+  function rewindPolygon(shp) {
+    var shp2 = [];
+    forEachShapePart(shp, function(ids) {
+      var rings = splitter(ids);
+      var path;
+      for (var i=0; i<rings.length; i++) {
+        path = rings[i];
+        if (geom.getPlanarPathArea(path, nodes.arcs) < 0) {
+          path = reversePath(path);
+        }
+        shp2.push(path);
+      }
+    });
+    return shp2.length > 0 ? shp2 : null;
+  }
+}
+
+export function rewindPolygonParts(lyr, nodes) {
+  var rewind = getPolygonRewinder(nodes);
+  lyr.shapes = lyr.shapes.map(function(shp) {
+    return rewind(shp);
+  });
+}
 
 // TODO: Need to rethink polygon repair: these function can cause problems
 // when part of a self-intersecting polygon is removed

@@ -179,7 +179,15 @@ export function replaceLayerContents(lyr, dataset, dataset2) {
 }
 
 export function mergeOutputLayerIntoDataset(lyr, dataset, dataset2, opts) {
-  if (!dataset2 || dataset2.layers.length != 1) {
+  var output = mergeOutputLayersIntoDataset(lyr, dataset, dataset2, opts);
+  if (output.length != 1) {
+    error('Expected 1 output layer, received:', output.length);
+  }
+  return output[0];
+}
+
+export function mergeOutputLayersIntoDataset(lyr, dataset, dataset2, opts) {
+  if (!dataset2 || dataset2.layers.length === 0) {
     error('Invalid source dataset');
   }
   if (dataset.layers.includes(lyr) === false) {
@@ -188,27 +196,21 @@ export function mergeOutputLayerIntoDataset(lyr, dataset, dataset2, opts) {
   // this command returns merged layers instead of adding them to target dataset
   var outputLayers = mergeDatasetsIntoDataset(dataset, [dataset2]);
   var lyr2 = outputLayers[0];
-
   // TODO: find a more reliable way of knowing when to copy data
   var copyData = !lyr2.data && lyr.data && getFeatureCount(lyr2) == lyr.data.size();
-
   if (copyData) {
     lyr2.data = opts.no_replace ? lyr.data.clone() : lyr.data;
   }
-  if (opts.no_replace) {
-    // dataset.layers.push(lyr2);
-
-  } else {
-    lyr2 = Object.assign(lyr, {data: null, shapes: null}, lyr2);
+  lyr2.name = opts.name || lyr.name;
+  if (!opts.no_replace) {
+    outputLayers[0] = Object.assign(lyr, {data: null, shapes: null}, lyr2);
     if (layerHasPaths(lyr)) {
       // Remove unused arcs from replaced layer
       // TODO: consider using clean insead of this
       dissolveArcs(dataset);
     }
   }
-
-  lyr2.name = opts.name || lyr2.name;
-  return lyr2;
+  return outputLayers;
 }
 
 // Transform the points in a dataset in-place; don't clean up corrupted shapes

@@ -468,10 +468,16 @@ export function getOptionParser() {
     .option('v2', {
       type: 'flag'
     })
+    .option('v3', {
+      type: 'flag'
+    })
     .option('debug-offset', {
       type: 'flag'
     })
     .option('debug-winding', {
+      type: 'flag'
+    })
+    .option('debug-points', {
       type: 'flag'
     })
     // .option('debug-division', {

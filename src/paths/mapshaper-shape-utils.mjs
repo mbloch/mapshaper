@@ -44,10 +44,12 @@ export function editShapeParts(parts, cb, shpId) {
   for (var i=0; i<n; i++) {
     retn = cb(parts[i], i, parts, shpId);
     if (retn === null) {
-      nulls++;
       parts[i] = null;
     } else if (utils.isArray(retn)) {
-      parts[i] = retn;
+      parts[i] = retn.length > 0 ? retn : null;
+    }
+    if (parts[i] === null) {
+      nulls++;
     }
   }
   if (nulls == n) {

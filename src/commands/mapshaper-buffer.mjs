@@ -3,7 +3,7 @@ import { makePolygonBuffer } from '../buffer/mapshaper-polygon-buffer';
 import { makePolylineBuffer } from '../buffer/mapshaper-polyline-buffer';
 import { makePointBuffer } from '../buffer/mapshaper-point-buffer';
 import { setOutputLayerName } from '../dataset/mapshaper-layer-utils';
-import { mergeOutputLayerIntoDataset } from '../dataset/mapshaper-dataset-utils';
+import { mergeOutputLayersIntoDataset } from '../dataset/mapshaper-dataset-utils';
 import { stop } from '../utils/mapshaper-logging';
 import cmd from '../mapshaper-cmd';
 
@@ -26,7 +26,6 @@ function makeBufferLayer(lyr, dataset, opts) {
     stop("Unsupported geometry type");
   }
 
-  var lyr2 = mergeOutputLayerIntoDataset(lyr, dataset, dataset2, opts);
-  return [lyr2];
+  return mergeOutputLayersIntoDataset(lyr, dataset, dataset2, opts);
 }
 
