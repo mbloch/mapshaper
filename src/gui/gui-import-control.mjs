@@ -17,6 +17,7 @@ function DropControl(gui, el, cb) {
       .on('drop', ondrop)
       .on('paste', onpaste);
   area.node().addEventListener('paste', onpaste);
+  // TODO: use same function for drop and paste
   function ondrop(e) {
     var files = e.dataTransfer.files;
     var types = e.dataTransfer.types;
@@ -27,7 +28,7 @@ function DropControl(gui, el, cb) {
       cb(e.dataTransfer.getData('text/uri-list').split(','));
     } else if (types.includes('text/html')) {
       // drag-dropping a highlighted link may pull in a chunk of html
-      var urls = e.dataTransfer.getData('text/html').match(/https?:[^"']+/);
+      var urls = pastedHtmlToUrls(e.dataTransfer.getData('text/html'));
       if (urls.length) {
         cb(urls);
       }
@@ -36,7 +37,7 @@ function DropControl(gui, el, cb) {
   function onpaste(e) {
     var types = Array.from(e.clipboardData.types || []).join(',');
     var items = Array.from(e.clipboardData.items || []);
-    var files;
+    var files, str, urls;
     if (GUI.textIsSelected()) {
       // user is probably pasting text into an editable text field
       return;
@@ -52,12 +53,22 @@ function DropControl(gui, el, cb) {
     // formatted text can be available as both text/plain and text/html (e.g.
     //   a JSON data object copied from a GitHub issue).
     //
+
+    // if html is present, it could be data (e.g. from Google Sheets) or a pasted link.
+    // first we check for a link
+    if (types.includes('text/html')) {
+      urls = pastedHtmlToUrls(e.clipboardData.getData('text/html'));
+      if (urls.length) {
+        return cb(urls);
+      }
+    }
     if (types.includes('text/plain')) {
       // text from clipboard (supported by Chrome, FF, Safari)
       // TODO: handle FF case of string containing multiple file names.
-      var str = e.clipboardData.getData('text/plain');
-      if (isUrl(str)) {
-        return cb(str.split(','));
+      str = e.clipboardData.getData('text/plain');
+      urls = pastedTextToUrls(str);
+      if (urls.length) {
+        return cb(urls);
       }
       files = [pastedTextToFile(str)];
     } else {
@@ -79,6 +90,21 @@ function DropControl(gui, el, cb) {
   }
 }
 
+function pastedHtmlToUrls(html) {
+  var hrefRegex = /href\s*=\s*["']([^"']+)["']/gi;
+  var matches = html.matchAll(hrefRegex);
+  var urls = Array.from(matches, match => match[1]);
+  return urls;
+}
+
+function pastedTextToUrls(str) {
+  if (!looksLikeUrl(str)) return [];
+  var regex = /https?:\/\/[^\s]+?(?=[\s,]|$)/g;
+  var matches = str.matchAll(regex);
+  var urls = Array.from(matches, match => match[0]);
+  return urls;
+}
+
 function pastedTextToFile(str) {
   var type = internal.guessInputContentType(str);
   var name;
@@ -93,7 +119,7 @@ function pastedTextToFile(str) {
   return new File([blob], name);
 }
 
-function isUrl(str) {
+function looksLikeUrl(str) {
   return /^https?:\/\//.test(str);
 }
 
@@ -421,7 +447,7 @@ export function ImportControl(gui, opts) {
   function prepFilesForDownload(names) {
     var items = names.map(function(name) {
       var item = {name: name};
-      if (isUrl(name)) {
+      if (looksLikeUrl(name)) {
         item.url = name;
         item.basename = GUI.getUrlFilename(name);
 
