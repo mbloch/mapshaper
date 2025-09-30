@@ -655,9 +655,14 @@
     },
 
     show: function(css) {
-      var tag = this.el && this.el.tagName;
+      // var tag = this.el && this.el.tagName;
       if (!this.visible()) {
-        this.css('display', tag == 'SPAN' ? 'inline-block' : 'block');
+        // don't assume 'display:block'
+        this.el?.style.removeProperty('display');
+        if (this.computedStyle().display == 'none') {
+          this.css('display', 'block');
+        }
+        // this.css('display', tag == 'SPAN' ? 'inline-block' : 'block');
         this._hidden = false;
       }
       return this;
@@ -666,13 +671,15 @@
     html: function(html) {
       if (arguments.length == 0) {
         return this.el.innerHTML;
-      } else {
-        this.el.innerHTML = html;
-        return this;
       }
+      this.el.innerHTML = html;
+      return this;
     },
 
     text: function(str) {
+      if (arguments.length == 0) {
+        return this.el.innerText;
+      }
       this.html(utils$1.htmlEscape(str));
       return this;
     },
@@ -1936,6 +1943,7 @@
         .on('drop', ondrop)
         .on('paste', onpaste);
     area.node().addEventListener('paste', onpaste);
+    // TODO: use same function for drop and paste
     function ondrop(e) {
       var files = e.dataTransfer.files;
       var types = e.dataTransfer.types;
@@ -1946,7 +1954,7 @@
         cb(e.dataTransfer.getData('text/uri-list').split(','));
       } else if (types.includes('text/html')) {
         // drag-dropping a highlighted link may pull in a chunk of html
-        var urls = e.dataTransfer.getData('text/html').match(/https?:[^"']+/);
+        var urls = pastedHtmlToUrls(e.dataTransfer.getData('text/html'));
         if (urls.length) {
           cb(urls);
         }
@@ -1955,7 +1963,7 @@
     function onpaste(e) {
       var types = Array.from(e.clipboardData.types || []).join(',');
       var items = Array.from(e.clipboardData.items || []);
-      var files;
+      var files, str, urls;
       if (GUI.textIsSelected()) {
         // user is probably pasting text into an editable text field
         return;
@@ -1971,12 +1979,22 @@
       // formatted text can be available as both text/plain and text/html (e.g.
       //   a JSON data object copied from a GitHub issue).
       //
+
+      // if html is present, it could be data (e.g. from Google Sheets) or a pasted link.
+      // first we check for a link
+      if (types.includes('text/html')) {
+        urls = pastedHtmlToUrls(e.clipboardData.getData('text/html'));
+        if (urls.length) {
+          return cb(urls);
+        }
+      }
       if (types.includes('text/plain')) {
         // text from clipboard (supported by Chrome, FF, Safari)
         // TODO: handle FF case of string containing multiple file names.
-        var str = e.clipboardData.getData('text/plain');
-        if (isUrl(str)) {
-          return cb(str.split(','));
+        str = e.clipboardData.getData('text/plain');
+        urls = pastedTextToUrls(str);
+        if (urls.length) {
+          return cb(urls);
         }
         files = [pastedTextToFile(str)];
       } else {
@@ -1998,6 +2016,21 @@
     }
   }
 
+  function pastedHtmlToUrls(html) {
+    var hrefRegex = /href\s*=\s*["']([^"']+)["']/gi;
+    var matches = html.matchAll(hrefRegex);
+    var urls = Array.from(matches, match => match[1]);
+    return urls;
+  }
+
+  function pastedTextToUrls(str) {
+    if (!looksLikeUrl(str)) return [];
+    var regex = /https?:\/\/[^\s]+?(?=[\s,]|$)/g;
+    var matches = str.matchAll(regex);
+    var urls = Array.from(matches, match => match[0]);
+    return urls;
+  }
+
   function pastedTextToFile(str) {
     var type = internal.guessInputContentType(str);
     var name;
@@ -2012,7 +2045,7 @@
     return new File([blob], name);
   }
 
-  function isUrl(str) {
+  function looksLikeUrl(str) {
     return /^https?:\/\//.test(str);
   }
 
@@ -2340,7 +2373,7 @@
     function prepFilesForDownload(names) {
       var items = names.map(function(name) {
         var item = {name: name};
-        if (isUrl(name)) {
+        if (looksLikeUrl(name)) {
           item.url = name;
           item.basename = GUI.getUrlFilename(name);
 
@@ -13548,6 +13581,12 @@ GUI and setting the size and crop of SVG output.</p><div><input type="text" clas
     });
   }
 
+  var EMPTY_STYLE = {
+      version: 8,
+      sources: {},
+      layers: []
+    };
+
   function loadScript(url, cb) {
     var script = document.createElement('script');
     script.onload = cb;
@@ -13565,59 +13604,106 @@ GUI and setting the size and crop of SVG output.</p><div><input type="text" clas
   }
 
   function Basemap(gui) {
-    var menu = gui.container.findChild('.display-options');
-    var fadeBtn = new SimpleButton(menu.findChild('.fade-btn'));
-    var clearBtn = new SimpleButton(menu.findChild('.clear-btn'));
-    var menuButtons = menu.findChild('.basemap-styles');
+    var menuWrapper = gui.container.findChild('.display-options');
+    var mainMenu = gui.container.findChild('.display-main-options');
+    var addLayerMenu = gui.container.findChild('.add-basemap-menu').hide();
+    var basemapList = gui.container.findChild('.added-basemaps');
     var overlayButtons = gui.container.findChild('.basemap-overlay-buttons');
     var container = gui.container.findChild('.basemap-container');
     var basemapNote = gui.container.findChild('.basemap-note');
-    var basemapWarning = gui.container.findChild('.basemap-warning');
+    var addBasemap = gui.container.findChild('.add-basemap');
+    var basemapWarning = gui.container.findChild('.basemap-warning').hide();
     var mapEl = gui.container.findChild('.basemap');
     var extentNote = El('div').addClass('basemap-prompt').appendTo(container).hide();
     var params = window.mapboxParams;
     var map;
     var activeStyle;
     var loading = false;
-    var faded = false;
+    // var faded = false;
+    // var fadeBtn, clearBtn; // not in use
+    var addBtn, addLayerBtn, cancelBtn;
+    var customStyles = [];
 
     if (params) {
       //  TODO: check page URL for compatibility with mapbox key
       init();
     } else {
-      menu.findChild('.basemap-opts').hide();
+      menuWrapper.findChild('.basemap-opts').hide();
     }
 
     function init() {
       gui.on('mode', function(e) {
         if (e.prev == 'display_options') {
-         basemapWarning.hide();
-         basemapNote.hide();
+          // reset UI when leaving display options mode
+          basemapWarning.hide();
+          basemapNote.hide();
+          // make sure secondary options menu gets closed
+          mainMenu.show();
+          addLayerMenu.hide();
         }
         if (e.name == 'display_options') {
           onUpdate();
         }
       });
 
-      clearBtn.on('click', function() {
-        if (activeStyle) {
-          turnOffBasemap();
-          updateButtons();
-          // closeMenu();
-        }
+      customStyles = GUI.getSavedValue('custom_basemaps') || [];
+      updateBasemapList();
+
+      addBtn = new SimpleButton(menuWrapper.findChild('.add-btn'));
+      addBtn.on('click', function(e) {
+        addLayerMenu.show();
+        mainMenu.hide();
       });
 
-      fadeBtn.on('click', function() {
-        if (faded) {
-          mapEl.css('opacity', 1);
-          faded = false;
-          fadeBtn.text('Fade');
-        } else if (activeStyle) {
-          mapEl.css('opacity', 0.35);
-          faded = true;
-          fadeBtn.text('Unfade');
+      addLayerBtn = new SimpleButton(menuWrapper.findChild('.add-layer-btn'));
+      addLayerBtn.on('click', function(e) {
+        var name = menuWrapper.findChild('.add-layer-name').el.value || 'Custom layer';
+        var mapboxUrl = menuWrapper.findChild('.add-mapbox-url').el.value;
+        var mapboxKey = menuWrapper.findChild('.add-mapbox-key')?.el?.value;
+        var templateUrl = menuWrapper.findChild('.add-template-url').el.value;
+        var style = {name};
+
+        if (mapboxUrl) {
+          style.url = mapboxUrl;
+          style.key = mapboxKey; // may be undefined
+          style.type = 'mapbox';
+        } else if (templateUrl) {
+          style.url = templateUrl;
+          style.type = menuWrapper.findChild('.tms').el.checked ? 'tms' : 'xyz';
         }
+
+        customStyles.push(style);
+        updateBasemapList();
+        showBasemap(style);
+        addLayerMenu.hide();
+        mainMenu.show();
       });
+
+      cancelBtn = new SimpleButton(menuWrapper.findChild('.add-cancel-btn'));
+      cancelBtn.on('click', function() {
+        addLayerMenu.hide();
+        mainMenu.show();
+      });
+
+      // fadeBtn = new SimpleButton(menuWrapper.findChild('.fade-btn'));
+      // clearBtn = new SimpleButton(menuWrapper.findChild('.clear-btn'));
+      // clearBtn.on('click', function() {
+      //   if (activeStyle) {
+      //     turnOffBasemap();
+      //   }
+      // });
+
+      // fadeBtn.on('click', function() {
+      //   if (faded) {
+      //     mapEl.css('opacity', 1);
+      //     faded = false;
+      //     fadeBtn.text('Fade');
+      //   } else if (activeStyle) {
+      //     mapEl.css('opacity', 0.35);
+      //     faded = true;
+      //     fadeBtn.text('Unfade');
+      //   }
+      // });
 
       gui.model.on('update', onUpdate);
 
@@ -13627,10 +13713,10 @@ GUI and setting the size and crop of SVG output.</p><div><input type="text" clas
       });
 
       params.styles.forEach(function(style) {
-        El('div')
-        .html(`<div class="basemap-style-btn"><img src="${style.icon}"></img></div><div class="basemap-style-label">${style.name}</div>`)
-        .appendTo(menuButtons)
-        .findChild('.basemap-style-btn').on('click', onClick);
+        // El('div')
+        // .html(`<div class="basemap-style-btn"><img src="${style.icon}"></img></div><div class="basemap-style-label">${style.name}</div>`)
+        // .appendTo(menuButtons)
+        // .findChild('.basemap-style-btn').on('click', onClick);
 
         El('div').addClass('basemap-overlay-btn basemap-style-btn')
           .html(`<img src="${style.icon}"></img>`).on('click', onClick)
@@ -13644,7 +13730,6 @@ GUI and setting the size and crop of SVG output.</p><div><input type="text" clas
             showBasemap(style);
           }
           updateButtons();
-          // closeMenu();
         }
       });
     }
@@ -13659,7 +13744,6 @@ GUI and setting the size and crop of SVG output.</p><div><input type="text" clas
     function turnOffBasemap() {
       activeStyle = null;
       gui.map.setDisplayCRS(null);
-      refresh();
     }
 
     function showBasemap(style) {
@@ -13668,19 +13752,97 @@ GUI and setting the size and crop of SVG output.</p><div><input type="text" clas
       // Make sure that the selected layer style gets updated in gui-map.js
       // gui.state.dark_basemap = style && style.dark || false;
       if (map) {
-        map.setStyle(style.url);
+        setStyle(activeStyle);
         refresh();
       } else if (prepareMapView()) {
         initMap();
       }
     }
 
-    function updateButtons() {
-      menuButtons.findChildren('.basemap-style-btn').forEach(function(el, i) {
-        el.classed('active', params.styles[i] == activeStyle);
+    function updateBasemapList() {
+      var styles = params.styles.concat(customStyles);
+      basemapList.empty();
+      styles.forEach(function(style) {
+        renderBasemapListItem(basemapList, style);
       });
+      updateButtons();
+      GUI.setSavedValue('custom_basemaps', customStyles);
+    }
+
+    function isActiveStyle(style) {
+      return style.url == activeStyle?.url;
+    }
+
+    function renderBasemapListItem(parent, style) {
+      var isCustomStyle = !!style.type;
+      var el = El('div').html(`<div data-slug="${getStyleId(style)}" class="basemap-list-item"><img class="on-icon" src="images/eye3.png"><img class="off-icon" src="images/eye.png"> ${style.name} ${isCustomStyle ? '<img class="close-btn" draggable="false" src="images/close.png">' : ''}</div>`);
+      el.appendTo(parent);
+      el.findChild('.basemap-list-item').on('click', function() {
+        if (isActiveStyle(style)) {
+          turnOffBasemap();
+        } else {
+          showBasemap(style);
+        }
+      });
+
+      var closeBtn = el.findChild('.close-btn');
+      closeBtn?.on('click', function(e) {
+        e.stopPropagation();
+        customStyles = customStyles.filter(function(o) {
+          return o.url != style.url;
+        });
+        updateBasemapList();
+        if (isActiveStyle(style)) {
+          turnOffBasemap();
+        }
+      });
+      el.appendTo(parent);
+    }
+
+    function getStyleId(style) {
+      return ((style.name || '') + style.url).replace(/[^a-z0-9_]+/ig, '_');
+    }
+
+    function setStyle(style) {
+      // update mapbox access token (user-defined styles may have a different key)
+      window.mapboxgl.accessToken = style.key || (window.location.hostname == 'localhost' ?
+        params.localhost_key : params.production_key) || params.key;
+
+      if (style.type == 'mapbox' || !style.type) {
+        map.setStyle(style.url);
+      } else if (style.type == 'xyz' || style.type == 'tms') {
+        map.setStyle({
+          'version': 8,
+          'sources': {
+            'raster-tiles': {
+              'type': 'raster',
+              'tiles': [style.url],
+              'scheme': style.type, // xyz or tms
+              'tileSize': 256, // style.url.includes('@2x') ? 512 : 256
+            }
+          },
+          'layers': [
+            {
+              'id': getStyleId(style),
+              'type': 'raster',
+              'source': 'raster-tiles',
+              'minzoom': 0
+              // 'maxzoom': 22
+            }
+          ]
+        });
+      } else {
+        error$1('unsupported map style:', style);
+      }
+    }
+
+    function updateButtons() {
       overlayButtons.findChildren('.basemap-style-btn').forEach(function(el, i) {
         el.classed('active', params.styles[i] == activeStyle);
+      });
+
+      menuWrapper.findChildren('.basemap-list-item').forEach(function(el, i) {
+        el.classed('active', el.node().getAttribute('data-slug') == (activeStyle ? getStyleId(activeStyle) : ''));
       });
     }
 
@@ -13689,16 +13851,18 @@ GUI and setting the size and crop of SVG output.</p><div><input type="text" clas
       var info = getDatasetCrsInfo(activeLyr?.dataset); // defaults to wgs84
       var dataCRS = info.crs || null;
       var displayCRS = gui.map.getDisplayCRS();
+      var basemapsNotAvailable = !dataCRS || !displayCRS || !crsIsUsable(displayCRS) || !crsIsUsable(dataCRS);
       var warning, note;
 
-
-      if (!dataCRS || !displayCRS || !crsIsUsable(displayCRS) || !crsIsUsable(dataCRS)) {
+      if (basemapsNotAvailable) {
         warning = 'This data is incompatible with the basemaps.';
-        if (!internal.layerHasGeometry(activeLyr.layer)) {
+        if (activeLyr && !internal.layerHasGeometry(activeLyr.layer)) {
           warning += ' Reason: layer is missing geographic data';
         } else if (!dataCRS) {
           warning += ' Reason: unknown projection.';
         }
+        basemapList.hide();
+        addBasemap.hide();
         basemapWarning.html(warning).show();
         basemapNote.hide();
         overlayButtons.addClass('disabled');
@@ -13708,6 +13872,8 @@ GUI and setting the size and crop of SVG output.</p><div><input type="text" clas
         note = `Note: basemaps use the Mercator projection.`;
         basemapNote.text(note).show();
         overlayButtons.show();
+        basemapList.show();
+        addBasemap.show();
         overlayButtons.removeClass('disabled');
       }
     }
@@ -13735,17 +13901,17 @@ GUI and setting the size and crop of SVG output.</p><div><input type="text" clas
     }
 
     function initMap() {
-      var accessToken = (window.location.hostname == 'localhost' ?
-        params.localhost_key : params.production_key) || params.key;
+      // var accessToken = (window.location.hostname == 'localhost' ?
+      //   params.localhost_key : params.production_key) || params.key;
       if (!enabled() || map || loading) return;
       loading = true;
       loadStylesheet(params.css);
       loadScript(params.js, function() {
         map = new window.mapboxgl.Map({
-          accessToken: accessToken,
           logoPosition: 'bottom-left',
           container: mapEl.node(),
-          style: activeStyle.url,
+          // style: activeStyle.url,
+          style: EMPTY_STYLE, // initializing with empty style to support custom styles
           bounds: getLonLatBounds(),
           doubleClickZoom: false,
           dragPan: false,
@@ -13754,8 +13920,10 @@ GUI and setting the size and crop of SVG output.</p><div><input type="text" clas
           interactive: false,
           keyboard: false,
           maxPitch: 0,
+          projection: 'mercator', // prevent globe view when zoomed out
           renderWorldCopies: true // false // false prevents panning off the map
         });
+        setStyle(activeStyle);
         map.on('load', function() {
           loading = false;
           refresh();
@@ -13804,8 +13972,11 @@ GUI and setting the size and crop of SVG output.</p><div><input type="text" clas
     function refresh() {
       var off = !enabled() || !map || loading || !activeStyle ||
         !gui.map.getDisplayCRS(); // may be slow if getting bounds of many shapes
-      fadeBtn.active(!off);
-      clearBtn.active(!off);
+      // fadeBtn.active(!off);
+      // clearBtn.active(!off);
+
+      updateButtons();
+
       if (off) {
         hide();
         extentNote.hide();

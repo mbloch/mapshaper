@@ -338,9 +338,9 @@ div.alert-box {
 }
 
 
-#file-selection-btn.inline-btn {
+/*#file-selection-btn.inline-btn {
 	padding: 2px 4px 3px 3px;
-}
+}*/
 
 /* --- File catalog --------------- */
 
@@ -531,7 +531,7 @@ div.alert-box {
 }
 
 .info-box h3 {
-	font-size: 20px;
+	font-size: 19px;
 	line-height: 1.1;
 	padding: 0;
 	margin: 0 0 0.4em 0;
@@ -543,9 +543,9 @@ div.alert-box {
 }
 
 .info-box h4 {
-	font-size: 1.085em;
-	font-weight: normal;
-	margin: 4px 0 2px 0;
+	font-size: 15.5px;
+	font-weight: 400;
+	margin: 5px 0 2px 0;
 }
 
 .info-box p {
@@ -1123,17 +1123,15 @@ img.close-btn:hover,
 	height: 100%;
 }
 
-.basemap-styles {
-	margin: 0 -2px;
-	white-space: nowrap;
-}
 
-.basemap-warning {
+p.basemap-warning {
 	color: #cc0000;
+	font-size: 87%;
+	margin-bottom: 0;
 }
 
 .basemap-note {
-	font-size: 90%;
+	font-size: 87%;
 }
 
 .basemap-prompt {
@@ -1146,41 +1144,24 @@ img.close-btn:hover,
 	position: absolute;
 }
 
-.basemap-styles > div {
-	display: inline-block;
-	margin-bottom: 4px;
-}
-
-.basemap-styles > div:nth-child(even) {
-	position: relative;
-	margin-left: 10px;
-}
-
 .basemap-style-btn {
 	position:  relative;
 	border-width: 2px;
-	border-color: #98cde2;
 	border-color: #bbddea;
 	border-style: solid;
 	border-radius: 6px;
 }
 
-.basemap-style-btn img {
-	display: block;
-	width:  108px;
-}
-
 div.basemap-style-btn.active {
-	border-color: #e8ba52;
+	border-color: #f7ba23;
 }
 
-.basemap-buttons:not(.disabled) .basemap-style-btn:hover {
+.basemap-style-btn:not(.disabled) {
 	cursor: pointer;
-	border-color: #f7e286;
 }
 
-.basemap-style-label {
-	margin-left: 2px;
+.basemap-buttons:not(.disabled) .basemap-style-btn:hover:not(.active) {
+	border-color: #f7e286;
 }
 
 .basemap-overlay-buttons {
@@ -1201,7 +1182,6 @@ div.basemap-style-btn.active {
 	margin: 3px;
 	overflow: hidden;
 	display: inline-block;
-	/*border-width: 1px;*/
 }
 
 .basemap-overlay-buttons.disabled > div {
@@ -1213,6 +1193,63 @@ div.basemap-style-btn.active {
 	margin-top: -5px;
 	width: 90px;
 }
+
+.add-basemap-menu input[type=text] {
+	width: 222px;
+	margin-top: 3px;
+	margin-bottom: 4px;
+	padding: 2px;
+	font-size: 12px;
+}
+
+.add-basemap-menu .menu-section {
+	margin-top: 7px;
+	margin-bottom: 6px;
+}
+
+.added-basemaps {
+	margin-bottom: 4px;
+}
+
+.added-basemaps > div {
+	position: relative;
+	cursor: pointer;
+}
+
+.added-basemaps img.close-btn {
+	position: absolute;
+	cursor: pointer;
+	width: 14px;
+	height: 14px;
+	padding: 0;
+	top: 3px;
+	right: 0px;
+}
+
+.basemap-list-item.active img.off-icon {
+	display:none;
+}
+
+.basemap-list-item:not(.active) img.on-icon {
+	display:none;
+}
+
+.basemap-list-item img.off-icon {
+	opacity: 0.3;
+}
+
+.basemap-list-item:hover img.off-icon {
+	opacity: 0.7;
+}
+
+.added-basemaps img {
+	width: 14px;
+	height: 14px;
+	padding-top: 2px;
+	padding-right: 2px;
+	vertical-align: top;
+}
+
 
 .mapbox-improve-map {
 	display: none;

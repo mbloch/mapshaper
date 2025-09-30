@@ -2107,13 +2107,13 @@
 
   // TODO: remove this constant, use actual data from dataset CRS,
   // also consider using ellipsoidal formulas where greater accuracy might be important.
-  var R$1 = WGS84.SEMIMAJOR_AXIS;
+  var R$2 = WGS84.SEMIMAJOR_AXIS;
   var D2R = Math.PI / 180;
   var R2D = 180 / Math.PI;
 
   // Equirectangular projection
   function degreesToMeters(deg) {
-    return deg * D2R * R$1;
+    return deg * D2R * R$2;
   }
 
   function distance3D(ax, ay, az, bx, by, bz) {
@@ -2210,7 +2210,8 @@
     lat1 *= D2R;
     lat2 *= D2R;
     var y = Math.sin(lng2-lng1) * Math.cos(lat2),
-        x = Math.cos(lat1)*Math.sin(lat2) - Math.sin(lat1)*Math.cos(lat2)*Math.cos(lng2-lng1);
+        x = Math.cos(lat1) * Math.sin(lat2) -
+          Math.sin(lat1) * Math.cos(lat2) * Math.cos(lng2-lng1);
     return Math.atan2(y, x);
   }
 
@@ -2270,9 +2271,9 @@
     lng *= D2R;
     lat *= D2R;
     cosLat = Math.cos(lat);
-    p[0] = Math.cos(lng) * cosLat * R$1;
-    p[1] = Math.sin(lng) * cosLat * R$1;
-    p[2] = Math.sin(lat) * R$1;
+    p[0] = Math.cos(lng) * cosLat * R$2;
+    p[1] = Math.sin(lng) * cosLat * R$2;
+    p[2] = Math.sin(lat) * R$2;
   }
 
   // Haversine formula (well conditioned at small distances)
@@ -2291,7 +2292,7 @@
   function greatCircleDistance(lng1, lat1, lng2, lat2) {
     var D2R = Math.PI / 180,
         dist = sphericalDistance(lng1 * D2R, lat1 * D2R, lng2 * D2R, lat2 * D2R);
-    return dist * R$1;
+    return dist * R$2;
   }
 
 
@@ -2389,7 +2390,7 @@
   var Geom = /*#__PURE__*/Object.freeze({
     __proto__: null,
     D2R: D2R,
-    R: R$1,
+    R: R$2,
     R2D: R2D,
     bearing: bearing,
     bearing2D: bearing2D,
@@ -16948,47 +16949,6 @@
     splitPathByIds: splitPathByIds
   });
 
-  // TODO: also delete positive-space rings nested inside holes
-  function deleteHoles(lyr, arcs) {
-    editShapes(lyr.shapes, function(path) {
-      if (geom.getPathArea(path, arcs) <= 0) {
-        return null; // null deletes the path
-      }
-    });
-  }
-
-  // Returns a function that separates rings in a polygon into space-enclosing rings
-  // and holes. Also fixes self-intersections.
-  //
-  function getHoleDivider(nodes, spherical) {
-    var split = getSelfIntersectionSplitter(nodes);
-    // var split = internal.getSelfIntersectionSplitter_v1(nodes); console.log('split')
-
-    return function(rings, cw, ccw) {
-      var pathArea = spherical ? geom.getSphericalPathArea : geom.getPlanarPathArea;
-      forEachShapePart(rings, function(ringIds) {
-        var splitRings = split(ringIds);
-        if (splitRings.length === 0) {
-          debug("[getRingDivider()] Defective path:", ringIds);
-        }
-        splitRings.forEach(function(ringIds, i) {
-          var ringArea = pathArea(ringIds, nodes.arcs);
-          if (ringArea > 0) {
-            cw.push(ringIds);
-          } else if (ringArea < 0) {
-            ccw.push(ringIds);
-          }
-        });
-      });
-    };
-  }
-
-  var PolygonHoles = /*#__PURE__*/Object.freeze({
-    __proto__: null,
-    deleteHoles: deleteHoles,
-    getHoleDivider: getHoleDivider
-  });
-
   // Remap any references to duplicate arcs in paths to use the same arcs
   // Remove any unused arcs from the dataset's ArcCollection.
   // Return a NodeCollection
@@ -17593,6 +17553,47 @@
     return idx;
   }
 
+  // TODO: also delete positive-space rings nested inside holes
+  function deleteHoles(lyr, arcs) {
+    editShapes(lyr.shapes, function(path) {
+      if (geom.getPathArea(path, arcs) <= 0) {
+        return null; // null deletes the path
+      }
+    });
+  }
+
+  // Returns a function that separates rings in a polygon into space-enclosing rings
+  // and holes. Also fixes self-intersections.
+  //
+  function getHoleDivider(nodes, spherical) {
+    var split = getSelfIntersectionSplitter(nodes);
+    // var split = internal.getSelfIntersectionSplitter_v1(nodes); console.log('split')
+
+    return function(rings, cw, ccw) {
+      var pathArea = spherical ? geom.getSphericalPathArea : geom.getPlanarPathArea;
+      forEachShapePart(rings, function(ringIds) {
+        var splitRings = split(ringIds);
+        if (splitRings.length === 0) {
+          debug("[getRingDivider()] Defective path:", ringIds);
+        }
+        splitRings.forEach(function(ringIds, i) {
+          var ringArea = pathArea(ringIds, nodes.arcs);
+          if (ringArea > 0) {
+            cw.push(ringIds);
+          } else if (ringArea < 0) {
+            ccw.push(ringIds);
+          }
+        });
+      });
+    };
+  }
+
+  var PolygonHoles = /*#__PURE__*/Object.freeze({
+    __proto__: null,
+    deleteHoles: deleteHoles,
+    getHoleDivider: getHoleDivider
+  });
+
   // Associate mosaic tiles with shapes (i.e. identify the groups of tiles that
   //   belong to each shape)
   //
@@ -17701,7 +17702,6 @@
   function MosaicIndex(lyr, nodes, optsArg) {
     var opts = optsArg || {};
     var shapes = lyr.shapes;
-    getHoleDivider(nodes);
     var mosaic = buildPolygonMosaic(nodes).mosaic;
     // map arc ids to tile ids
     var arcTileIndex = new ShapeArcIndex(mosaic, nodes.arcs);
@@ -31076,8 +31076,57 @@ ${svg}
     rewindPolygonParts: rewindPolygonParts
   });
 
-  function dissolveBufferDataset(dataset, optsArg) {
+  function dissolveBufferDataset2(dataset, optsArg) {
     var opts = optsArg || {};
+    var lyr = dataset.layers[0];
+    var tmp;
+    if (opts.debug_offset) {
+      return; // raw offset path
+    }
+    var nodes = addIntersectionCuts(dataset, {rebuild_topology: true});
+    var mosaicIndex = new MosaicIndex(lyr, nodes, {flat: false, no_holes: false});
+
+    // rewindPolygonParts(lyr, nodes);
+    lyr.shapes = lyr.shapes.map(function(shp, i) {
+      var tiles = mosaicIndex.getTilesByShapeIds([i]);
+      if (!tiles.length) return null;
+      return tiles.reduce(function(memo, tile) {
+        return memo.concat(tile);
+      }, []);
+    });
+
+    if (opts.debug_winding) {
+      return;
+    }
+
+    if (opts.debug_mosaic) {
+      tmp = composeMosaicLayer(lyr, mosaicIndex.mosaic);
+      lyr.shapes = tmp.shapes;
+      lyr.data = tmp.data;
+      return;
+    }
+    var pathfind = getRingIntersector(mosaicIndex.nodes);
+    var shapes2 = lyr.shapes.map(function(shp, shapeId) {
+      var tiles = mosaicIndex.getTilesByShapeIds([shapeId]);
+      var rings = [];
+      for (var i=0; i<tiles.length; i++) {
+        rings.push(tiles[i][0]);
+      }
+      return pathfind(rings, 'dissolve');
+    });
+    lyr.shapes = shapes2;
+    if (!opts.no_dissolve) {
+      dissolveArcs(dataset);
+    }
+  }
+
+  // TODO: try geodesic option
+  function getIntersectionFunction(crs) {
+    return bufferIntersection$2;
+  }
+
+  function dissolveBufferDataset(dataset, optsArg) {
+    var opts = {};
     var lyr = dataset.layers[0];
     var tmp;
     if (opts.debug_offset) {
@@ -31138,7 +31187,23 @@ ${svg}
     };
   }
 
-  function BufferBuilder(opts) {
+
+  function bufferIntersection$2(a, b, c, d) {
+    return bufferIntersection2(a[0], a[1], b[0], b[1], c[0], c[1], d[0], d[1]);
+  }
+
+  // Exclude segments with non-intersecting bounding boxes before
+  // calling intersection function
+  // Possibly slightly faster than direct call... not worth it?
+  function bufferIntersection2(ax, ay, bx, by, cx, cy, dx, dy) {
+    if (ax < cx && ax < dx && bx < cx && bx < dx ||
+        ax > cx && ax > dx && bx > cx && bx > dx ||
+        ay < cy && ay < dy && by < cy && by < dy ||
+        ay > cy && ay > dy && by > cy && by > dy) return null;
+    return segmentIntersection(ax, ay, bx, by, cx, cy, dx, dy);
+  }
+
+  function BufferBuilder(bufferIntersection, opts) {
     var self = {};
     var buffer, path, insideFlags;
     var points = [];
@@ -31222,25 +31287,17 @@ ${svg}
         // TODO: consider using a geodetic intersection function for lat-long datasets
         // TODO: consider case of an endpoint hit
         // TODO: consider case of collinear hit
-        hit = bufferIntersection$2(a[0], a[1], b[0], b[1], prevP[0], prevP[1], p[0], p[1]);
+        hit = bufferIntersection(a, b, prevP, p);
         if (!hit) {
           // continue scanning backward for an intersection
           continue;
         }
-        // console.log("hit")
+
         flagA = insideFlags[idx];
         flagB = insideFlags[idx + 1];
         if (flagA && flagB) {
           // newest segment collides with an interior segment - do not rewind
           continue;
-        }
-        if (prevFlag === false) {
-          // if segment intersects an outside segment from outside the buffer,
-          // we are likely closing a loop,
-          // so we stop backtracking and reset the backtrack limit to avoid
-          // removing the loop
-          backtrackStopIdx = i + 1;
-          break;
         }
 
         // newest segment collides with an exterior segment
@@ -31282,24 +31339,160 @@ ${svg}
     return a[0] === b[0] && a[1] === b[1];
   }
 
-  // Exclude segments with non-intersecting bounding boxes before
-  // calling intersection function
-  // Possibly slightly faster than direct call... not worth it?
-  function bufferIntersection$2(ax, ay, bx, by, cx, cy, dx, dy) {
-    if (ax < cx && ax < dx && bx < cx && bx < dx ||
-        ax > cx && ax > dx && bx > cx && bx > dx ||
-        ay < cy && ay < dy && by < cy && by < dy ||
-        ay > cy && ay > dy && by > cy && by > dy) return null;
-    return segmentIntersection(ax, ay, bx, by, cx, cy, dx, dy);
+  // function countExtendedHits(p0, p1, buffer) {
+  //   var bbox = getBbox();
+  //   var width = Math.max(bbox[2] - bbox[0], bbox[3] - bbox[1]);
+  //   var p2 = [extend(p1[0], p1[0] - p0[0], size), extend(p1[1], p1[1] - p0[1], size)];
+  //   var hits = 0;
+  //   for (var i=backtrackStopIdx, n = buffer.length-1; i<n; i++) {
+  //     if (bufferIntersection(buffer[i], buffer[i+1], p1, p2)) {
+  //       hits++;
+  //     }
+  //   }
+  //   return hits;
+  // };
+
+  var R$1 = WGS84.SEMIMAJOR_AXIS;
+
+  // GeographicLib docs: https://geographiclib.sourceforge.io/html/js/
+  //   https://geographiclib.sourceforge.io/html/js/module-GeographicLib_Geodesic.Geodesic.html
+  //   https://geographiclib.sourceforge.io/html/js/tutorial-2-interface.html
+  function getGeodesic(P) {
+    if (!isLatLngCRS(P)) error('Expected an unprojected CRS');
+    var f = P.es / (1 + Math.sqrt(P.one_es));
+    // var GeographicLib = require('mproj').internal.GeographicLib;
+    var GeographicLib = require$1('geographiclib-geodesic');
+    // return new GeographicLib.Geodesic.Geodesic(P.a, 0)
+    return new GeographicLib.Geodesic.Geodesic(P.a, f);
   }
 
+  function interpolatePoint2D(ax, ay, bx, by, k) {
+    var j = 1 - k;
+    return [ax * j + bx * k, ay * j + by * k];
+  }
+
+  function getInterpolationFunction(P) {
+    var spherical = P && isLatLngCRS(P);
+    if (!spherical) return interpolatePoint2D;
+    var geod = getGeodesic(P);
+    return function(lng, lat, lng2, lat2, k) {
+      var r = geod.Inverse(lat, lng, lat2, lng2);
+      var dist = r.s12 * k;
+      var r2 = geod.Direct(lat, lng, r.azi1, dist);
+      return [r2.lon2, r2.lat2];
+    };
+  }
+
+  function getPlanarSegmentEndpoint(x, y, bearing, meterDist) {
+    var rad = bearing / 180 * Math.PI;
+    var dx = Math.sin(rad) * meterDist;
+    var dy = Math.cos(rad) * meterDist;
+    return [x + dx, y + dy];
+  }
+
+  // source: https://github.com/mapbox/cheap-ruler/blob/master/index.js
+  function fastGeodeticSegmentFunction(lng, lat, bearing, meterDist) {
+    var D2R = Math.PI / 180;
+    var cos = Math.cos(lat * D2R);
+    var cos2 = 2 * cos * cos - 1;
+    var cos3 = 2 * cos * cos2 - cos;
+    var cos4 = 2 * cos * cos3 - cos2;
+    var cos5 = 2 * cos * cos4 - cos3;
+    var kx = (111.41513 * cos - 0.09455 * cos3 + 0.00012 * cos5) * 1000;
+    var ky = (111.13209 - 0.56605 * cos2 + 0.0012 * cos4) * 1000;
+    var bearingRad = bearing * D2R;
+    var lat2 = lat + Math.cos(bearingRad) * meterDist / ky;
+    var lng2 = lng + Math.sin(bearingRad) * meterDist / kx;
+    return [lng2, lat2];
+  }
+
+  function wrap(deg) {
+    while (deg < -180) deg += 360;
+    while (deg > 180) deg -= 360;
+    return deg;
+  }
+
+  function fastGeodeticBearingFunction(lng1, lat1, lng2, lat2) {
+    var D2R = Math.PI / 180;
+    var f = 1 / 298.257223563;
+    var e2 = f * (2 - f);
+    var m = R$1 * D2R;
+    var coslat = Math.cos(lat1 * D2R);
+    var w2 = 1 / (1 - e2 * (1 - coslat * coslat));
+    var w = Math.sqrt(w2);
+    var kx = m * w * coslat;
+    var ky = m * w * w2 * (1 - e2);
+    var dx = wrap(lng2 - lng1) * kx;
+    var dy = (lat2 - lat1) * ky;
+    return Math.atan2(dx, dy) / D2R;
+  }
+
+  function getGeodeticSegmentFunction(P) {
+    if (!isLatLngCRS(P)) {
+      return getPlanarSegmentEndpoint;
+    }
+    var g = getGeodesic(P);
+    return function(lng, lat, bearing, meterDist) {
+      var o = g.Direct(lat, lng, bearing, meterDist);
+      var p = [o.lon2, o.lat2];
+      return p;
+    };
+  }
+
+  function getFastGeodeticSegmentFunction(P) {
+    // CAREFUL: this function has higher error at very large distances and at the poles
+    // also, it wouldn't work for other planets than Earth
+    return isLatLngCRS(P) ? fastGeodeticSegmentFunction : getPlanarSegmentEndpoint;
+  }
+
+  // return function to calculate bearing of a segment in degrees
+  function getBearingFunction(dataset) {
+    var P = getDatasetCRS(dataset);
+    // var g = getGeodesic(P);
+    // if (isLatLngCRS) {
+    //   return function(lng1, lat1, lng2, lat2) {
+    //     var tmp = g.Inverse(lat1, lng1, lat2, lng2);
+    //     return tmp.azi1;
+    //     // return bearingDegrees(lng1, lat1, lng2, lat2);
+    //   };
+    // }
+    // return isLatLngCRS(P) ? bearingDegrees : bearingDegrees2D;
+    return isLatLngCRS(P) ? fastGeodeticBearingFunction : bearingDegrees2D;
+  }
+
+  // get bearing in degrees from point ab to point cd
+  function bearingDegrees(a, b, c, d) {
+    return geom.bearing(a, b, c, d) * 180 / Math.PI;
+  }
+
+  function bearingDegrees2D(a, b, c, d) {
+    return geom.bearing2D(a, b, c, d) * 180 / Math.PI;
+  }
+
+  var Geodesic = /*#__PURE__*/Object.freeze({
+    __proto__: null,
+    bearingDegrees: bearingDegrees,
+    bearingDegrees2D: bearingDegrees2D,
+    getBearingFunction: getBearingFunction,
+    getFastGeodeticSegmentFunction: getFastGeodeticSegmentFunction,
+    getGeodeticSegmentFunction: getGeodeticSegmentFunction,
+    getInterpolationFunction: getInterpolationFunction,
+    getPlanarSegmentEndpoint: getPlanarSegmentEndpoint,
+    interpolatePoint2D: interpolatePoint2D
+  });
+
   // Returns a function for generating GeoJSON MultiPolygon geometries
-  function getPolylineBufferMaker$2(arcs, geod, getBearing, opts) {
+  function getPolylineBufferMaker$2(dataset, opts) {
     // var sliceLen = opts.slice_length || Infinity;
+    var crs = getDatasetCRS(dataset);
+    var geod = getFastGeodeticSegmentFunction(crs);
+    var bufferIntersection = getIntersectionFunction();
+    var getBearing = getBearingFunction(dataset);
     var segsPerQuadrant = opts.arc_quality >= 2 ? opts.arc_quality : 12;
+    var segAngle = 360 / segsPerQuadrant / 4;
     var capStyle = opts.cap_style || 'round'; // expect 'round' or 'flat'
-    var pathIter = new ShapeIter(arcs);
-    var builder = new BufferBuilder(opts);
+    var pathIter = new ShapeIter(dataset.arcs);
+    var builder = new BufferBuilder(bufferIntersection, opts);
 
     return function makeBufferGeoJSON(shape, distance) {
       var rings = [];
@@ -31341,14 +31534,17 @@ ${svg}
       var rings = [];
       var x0, y0, x1, y1, x2, y2; // path traversal coords
       var p1, p2; // extruded points
-      var bearing1, bearing2, prevBearing, joinAngle;
+      var p1Prev, p2Prev;
+      var bearing1, bearing2, bearing2Prev, joinAngle, hit;
       var firstBearing;
+      var joinPoints;
       var i = 0;
       pathIter.init(path);
 
       if (pathIter.hasNext()) {
         x0 = x2 = pathIter.x;
         y0 = y2 = pathIter.y;
+        builder.addPathVertex([x0, y0]); // start building the path side
         i++;
       }
 
@@ -31358,41 +31554,65 @@ ${svg}
           debug("skipping a duplicate point");
           continue;
         }
+
         x1 = x2;
         y1 = y2;
         x2 = pathIter.x;
         y2 = pathIter.y;
+        builder.addPathVertex([x2, y2]); // extend path
 
-        // calculate bearing at both segment points
+        // bearing (direction) of the segment is slightly different at the first
+        // and second endpoint, using geodesic math
         // TODO: no need to calculate twice with planar coordinates
-        prevBearing = bearing2;
         bearing1 = getBearing(x1, y1, x2, y2);
         bearing2 = getBearing(x2, y2, x1, y1) - 180;
+        // extrude current segment to the left
         p1 = geod(x1, y1, bearing1 - 90, dist);
         p2 = geod(x2, y2, bearing2 - 90, dist);
 
         if (i == 1) {
           firstBearing = bearing1;
-          builder.addPathVertex([x1, y1]);
         } else {
-          joinAngle = getJoinAngle(prevBearing, bearing1);
+          joinAngle = getJoinAngle(bearing2Prev, bearing1);
         }
 
-        builder.addPathVertex([x2, y2]);
-
-        if (i > 1 && joinAngle > 0) {
-          builder.addBufferVertices(makeRoundJoin(x1, y1, prevBearing - 90, joinAngle, dist));
+        // various connections between current extruded segment and prev segment
+        if (i == 1) {
+          // first segment - no join
+          builder.addBufferVertex(p1, false);
+        } else if (joinAngle > segAngle * 1.5) {
+          // round join
+          // builder.addBufferVertex(p2Prev, false) // testing
+          joinPoints = makeOutsideRoundJoin(x1, y1, bearing2Prev - 90, joinAngle, dist);
+          builder.addBufferVertices(joinPoints);
+          // builder.addBufferVertex(p1, false) // testing
+          p1 = joinPoints.pop();
+        } else if (joinAngle > 0 && (hit = elbowJoin(p1Prev, p2Prev, p1, p2)) ||
+          joinAngle < 0 && (hit = bufferIntersection(p1Prev, p2Prev, p1, p2))) {
+          // elbow join (concave or convex)
+          builder.addBufferVertex(hit, false);
+          p1 = hit;
+        } else if (joinAngle == 0) {
+          // collinear segments (can we really skip p2Prev on a sphere?)
+          builder.addBufferVertex(p1, false);
+        } else {
+          // if (joinAngle > 0) {
+          // probably a leftward bend and extruded segments do not intersect
+          //   // console.log("UNEXPECTED SEGMENT JOIN")
+          // }
+          builder.addBufferVertex(p2Prev);
+          builder.addBufferVertex(p1, joinAngle < 0);
         }
 
-        builder.addBufferVertex(p1, joinAngle < 0);
-        builder.addBufferVertex(p2);
-
-        // TODO: restore slicing?
-        // if (center.length - 1 >= sliceLen) {
-        //   builder.done(rings);
-        // }
-
+        bearing2Prev = bearing2;
+        p1Prev = p1;
+        p2Prev = p2;
         i++;
+      }
+
+      // TODO: add this to cap and join code below
+      if (p2Prev) {
+        builder.addBufferVertex(p2Prev);
       }
 
       if (x2 == x0 && y2 == y0) { // closed path
@@ -31428,6 +31648,68 @@ ${svg}
       return points;
     }
 
+    // The vertices of this join are outside of the arc that it approximates and
+    // the segments of the join touch the arc at their midpoints.
+    // The first and last of the returned vertices extend the segments on either
+    // side of the join.
+    function makeOutsideRoundJoin(cx, cy, startBearing, arcAngle, dist) {
+      // point count of 1 would be an elbow joint
+      // (elbow joins should be created elsewhere)
+      var pointCount = Math.max(1, Math.round(arcAngle / segAngle));
+      var stepAngle = arcAngle / pointCount;
+      var points = [];
+      var i = 0;
+      var a, b, c, d, joinP, tanP, bearing;
+      while (i <= pointCount) {
+        bearing = startBearing + stepAngle * i;
+        tanP = geod(cx, cy, bearing, dist);
+        c = geod(tanP[0], tanP[1], bearing - 90, dist * 2);
+        d = geod(tanP[0], tanP[1], bearing + 90, dist * 2);
+        if (i > 0) {
+          joinP = bufferIntersection(a, b, c, d);
+          if (!joinP) {
+            throw Error(`no intersection on ${i} of ${pointCount}`);
+          } else {
+            points.push(joinP);
+          }
+        }
+        a = c;
+        b = d;
+        i++;
+      }
+      return points;
+    }
+
+    function elbowJoin(a, b, c, d) {
+      var k = 2 ** 13;
+      var b2 = [extend(b[0], b[0] - a[0], k), extend(b[1], b[1] - a[1], k)];
+      var c2 = [extend(c[0], c[0] - d[0], k), extend(c[1], c[1] - d[1], k)];
+      return bufferIntersection(a, b2, c2, d);
+    }
+
+
+    // function getBbox() {
+    //   var lastIdx = buffer.length - 1;
+    //   var x, y;
+    //   if (!_bbox) {
+    //     _bbox = [-Infinity, -Infinity, Infinity, Infinity];
+    //   }
+    //   while (_idx < lastIdx) {
+    //     _idx++;
+    //     x = buffer[_idx][0];
+    //     y = buffer[_idx][1];
+    //     _bbox[0] = Math.min(x, _bbox[0]);
+    //     _bbox[1] = Math.min(y, _bbox[1]);
+    //     _bbox[2] = Math.max(x, _bbox[2]);
+    //     _bbox[3] = Math.max(y, _bbox[3]);
+    //   }
+    //   return _bbox;
+    // }
+
+    function extend(n, d, k) {
+      return n + d * k;
+    }
+
     // get interior vertices of an interpolated CW arc
     function makeRoundJoin(cx, cy, startBearing, arcAngle, dist) {
       var points = [];
@@ -31457,12 +31739,14 @@ ${svg}
   }
 
   // Returns a function for generating GeoJSON MultiPolygon geometries
-  function getPolylineBufferMaker$1(arcs, geod, getBearing, opts) {
+  function getPolylineBufferMaker$1(dataset, opts) {
+    var geod = getFastGeodeticSegmentFunction(getDatasetCRS(dataset));
+    var getBearing = getBearingFunction(dataset);
     var sliceLen = opts.slice_length || Infinity;
     var backtrackSteps = opts.backtrack >= 0 ? opts.backtrack : 100;
     var segsPerQuadrant = opts.arc_quality >= 2 ? opts.arc_quality : 12;
     var capStyle = opts.cap_style || 'round'; // expect 'round' or 'flat'
-    var pathIter = new ShapeIter(arcs);
+    var pathIter = new ShapeIter(dataset.arcs);
     var left, center, rings;
 
     return function makeBufferGeoJSON(shape, distance) {
@@ -31713,8 +31997,10 @@ ${svg}
   }
 
   // Returns a function for generating GeoJSON geometries (MultiLineString or MultiPolygon)
-  function getPolylineBufferMaker(arcs, geod, getBearing, opts) {
-    var maker = getPathBufferMaker(arcs, geod, getBearing, opts);
+  function getPolylineBufferMaker(dataset, opts) {
+    var geod = getFastGeodeticSegmentFunction(getDatasetCRS(dataset));
+    var getBearing = getBearingFunction(dataset);
+    var maker = getPathBufferMaker(dataset.arcs, geod, getBearing, opts);
     var geomType = opts.geometry_type;
     // polyline output could be used for debugging
     var outputGeom = opts.output_geometry == 'polyline' ? 'polyline' : 'polygon';
@@ -31915,107 +32201,12 @@ ${svg}
     return geom.segmentIntersection(ax, ay, bx, by, cx, cy, dx, dy);
   }
 
-  // GeographicLib docs: https://geographiclib.sourceforge.io/html/js/
-  //   https://geographiclib.sourceforge.io/html/js/module-GeographicLib_Geodesic.Geodesic.html
-  //   https://geographiclib.sourceforge.io/html/js/tutorial-2-interface.html
-  function getGeodesic(P) {
-    if (!isLatLngCRS(P)) error('Expected an unprojected CRS');
-    var f = P.es / (1 + Math.sqrt(P.one_es));
-    var GeographicLib = require$1('mproj').internal.GeographicLib;
-    return new GeographicLib.Geodesic.Geodesic(P.a, f);
-  }
-
-  function interpolatePoint2D(ax, ay, bx, by, k) {
-    var j = 1 - k;
-    return [ax * j + bx * k, ay * j + by * k];
-  }
-
-  function getInterpolationFunction(P) {
-    var spherical = P && isLatLngCRS(P);
-    if (!spherical) return interpolatePoint2D;
-    var geod = getGeodesic(P);
-    return function(lng, lat, lng2, lat2, k) {
-      var r = geod.Inverse(lat, lng, lat2, lng2);
-      var dist = r.s12 * k;
-      var r2 = geod.Direct(lat, lng, r.azi1, dist);
-      return [r2.lon2, r2.lat2];
-    };
-  }
-
-  function getPlanarSegmentEndpoint(x, y, bearing, meterDist) {
-    var rad = bearing / 180 * Math.PI;
-    var dx = Math.sin(rad) * meterDist;
-    var dy = Math.cos(rad) * meterDist;
-    return [x + dx, y + dy];
-  }
-
-  // source: https://github.com/mapbox/cheap-ruler/blob/master/index.js
-  function fastGeodeticSegmentFunction(lng, lat, bearing, meterDist) {
-    var D2R = Math.PI / 180;
-    var cos = Math.cos(lat * D2R);
-    var cos2 = 2 * cos * cos - 1;
-    var cos3 = 2 * cos * cos2 - cos;
-    var cos4 = 2 * cos * cos3 - cos2;
-    var cos5 = 2 * cos * cos4 - cos3;
-    var kx = (111.41513 * cos - 0.09455 * cos3 + 0.00012 * cos5) * 1000;
-    var ky = (111.13209 - 0.56605 * cos2 + 0.0012 * cos4) * 1000;
-    var bearingRad = bearing * D2R;
-    var lat2 = lat + Math.cos(bearingRad) * meterDist / ky;
-    var lng2 = lng + Math.sin(bearingRad) * meterDist / kx;
-    return [lng2, lat2];
-  }
-
-  function getGeodeticSegmentFunction(P) {
-    if (!isLatLngCRS(P)) {
-      return getPlanarSegmentEndpoint;
-    }
-    var g = getGeodesic(P);
-    return function(lng, lat, bearing, meterDist) {
-      var o = g.Direct(lat, lng, bearing, meterDist);
-      var p = [o.lon2, o.lat2];
-      return p;
-    };
-  }
-
-  function getFastGeodeticSegmentFunction(P) {
-    // CAREFUL: this function has higher error at very large distances and at the poles
-    // also, it wouldn't work for other planets than Earth
-    return isLatLngCRS(P) ? fastGeodeticSegmentFunction : getPlanarSegmentEndpoint;
-  }
-
-
-  function bearingDegrees(a, b, c, d) {
-    return geom.bearing(a, b, c, d) * 180 / Math.PI;
-  }
-
-  function bearingDegrees2D(a, b, c, d) {
-    return geom.bearing2D(a, b, c, d) * 180 / Math.PI;
-  }
-
-  // return function to calculate bearing of a segment in degrees
-  function getBearingFunction(dataset) {
-    var P = getDatasetCRS(dataset);
-    return isLatLngCRS(P) ? bearingDegrees : bearingDegrees2D;
-  }
-
-  var Geodesic = /*#__PURE__*/Object.freeze({
-    __proto__: null,
-    bearingDegrees: bearingDegrees,
-    bearingDegrees2D: bearingDegrees2D,
-    getBearingFunction: getBearingFunction,
-    getFastGeodeticSegmentFunction: getFastGeodeticSegmentFunction,
-    getGeodeticSegmentFunction: getGeodeticSegmentFunction,
-    getInterpolationFunction: getInterpolationFunction,
-    getPlanarSegmentEndpoint: getPlanarSegmentEndpoint,
-    interpolatePoint2D: interpolatePoint2D
-  });
-
   function makePolylineBuffer(lyr, dataset, opts) {
     time('buffer');
     var geojson = makeShapeBufferGeoJSON(lyr, dataset, opts);
     var dataset2 = importGeoJSON(geojson, {});
     if (!opts.debug_points) {
-      dissolveBufferDataset(dataset2, opts);
+      dissolveBufferDataset2(dataset2, opts);
     }
     timeEnd('buffer');
     return dataset2;
@@ -32024,13 +32215,11 @@ ${svg}
   function makeShapeBufferGeoJSON(lyr, dataset, opts) {
     var distanceFn = getBufferDistanceFunction(lyr, dataset, opts);
     // var toleranceFn = getBufferToleranceFunction(dataset, opts);
-    var geod = getFastGeodeticSegmentFunction(getDatasetCRS(dataset));
-    var getBearing = getBearingFunction(dataset);
     var makerOpts = Object.assign({geometry_type: lyr.geometry_type}, opts);
     var makeShapeBuffer =
-      opts.v2 && getPolylineBufferMaker$1(dataset.arcs, geod, getBearing, makerOpts) ||
-      opts.v3 && getPolylineBufferMaker$2(dataset.arcs, geod, getBearing, makerOpts) ||
-      getPolylineBufferMaker(dataset.arcs, geod, getBearing, makerOpts);
+      opts.v2 && getPolylineBufferMaker$1(dataset, makerOpts) ||
+      opts.v3 && getPolylineBufferMaker$2(dataset, makerOpts) ||
+      getPolylineBufferMaker(dataset, makerOpts);
     // var records = lyr.data ? lyr.data.getRecords() : null;
     var arr = lyr.shapes.reduce(function(memo, shape, i) {
       var distance = distanceFn(i);
@@ -46659,7 +46848,7 @@ ${svg}
     });
   }
 
-  var version = "0.6.112";
+  var version = "0.6.113";
 
   // Parse command line args into commands and run them
   // Function takes an optional Node-style callback. A Promise is returned if no callback is given.
