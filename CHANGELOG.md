@@ -1,3 +1,6 @@
+v0.6.113
+* Support for adding Mapbox vector tile and raster tile basemaps.
+
 v0.6.112
 * Support for drag-dropping or pasting datafile hyperlinks from a web page onto the web UI.
 * Added -o show-all option for exporting snapshots from the CLI with all layers visible in GUI.
