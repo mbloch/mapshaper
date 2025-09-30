@@ -164,7 +164,29 @@ precision=0.001. Click to see all options.</div></div></div></a>
 </div>
 
 <div class="display-options main-area popup-dialog">
-	<div class="info-box">
+
+	<div class="info-box add-basemap-menu">
+		<!-- <div class="close2-btn"></div> -->
+		<h3>Add basemap layer</h3>
+		Name (optional)
+		<input type="text" class="add-layer-name" placeholder="">
+		<div class="menu-section">
+			Option 1: Mapbox style URL and key
+			<input type="text" class="add-mapbox-url" placeholder="mapbox://...">
+			<input type="text" class="add-mapbox-key" placeholder="key">
+		</div>
+		<div class="menu-section">
+			Option 2: raster tile URL template
+			<input type="text" class="add-template-url" placeholder="https://...">
+			<div><input type="checkbox" class="tms">TMS (reversed y-index)</div>
+		</div>
+		<div>
+			<div class="add-layer-btn btn dialog-btn">Add</div>
+			<div class="add-cancel-btn btn dialog-btn">Cancel</div>
+		</div>
+	</div>
+
+	<div class="info-box display-main-options">
 		<div class="close2-btn"></div>
 		<h3>Display options</h3>
 
@@ -174,14 +196,11 @@ precision=0.001. Click to see all options.</div></div></div></a>
 		<div class="basemap-opts">
 			<h4>Basemaps</h4>
 			<p class="basemap-warning"></p>
-			<div class="basemap-styles basemap-buttons"></div>
-			<p class="basemap-note"></p>
-			<div>
-				<!-- <div class="close-btn btn dialog-btn">Close</div> -->
-				<div class="clear-btn btn dialog-btn disabled">Clear</div>
-				<div class="fade-btn btn dialog-btn disabled">Fade</div>
-				<!-- <div class="hide-btn btn dialog-btn disabled">Hide</div> -->
+			<!-- <div class="basemap-styles basemap-buttons"></div> -->
+			<div class="added-basemaps">
 			</div>
+			<p class="basemap-note"></p>
+			<div class="add-basemap"><span class="add-btn inline-btn btn">Add</span> a basemap</div>
 		</div>
 	</div>
 </div>

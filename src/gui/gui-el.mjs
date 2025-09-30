@@ -194,9 +194,14 @@ utils.extend(El.prototype, {
   },
 
   show: function(css) {
-    var tag = this.el && this.el.tagName;
+    // var tag = this.el && this.el.tagName;
     if (!this.visible()) {
-      this.css('display', tag == 'SPAN' ? 'inline-block' : 'block');
+      // don't assume 'display:block'
+      this.el?.style.removeProperty('display');
+      if (this.computedStyle().display == 'none') {
+        this.css('display', 'block');
+      }
+      // this.css('display', tag == 'SPAN' ? 'inline-block' : 'block');
       this._hidden = false;
     }
     return this;
@@ -205,13 +210,15 @@ utils.extend(El.prototype, {
   html: function(html) {
     if (arguments.length == 0) {
       return this.el.innerHTML;
-    } else {
-      this.el.innerHTML = html;
-      return this;
     }
+    this.el.innerHTML = html;
+    return this;
   },
 
   text: function(str) {
+    if (arguments.length == 0) {
+      return this.el.innerText;
+    }
     this.html(utils.htmlEscape(str));
     return this;
   },
