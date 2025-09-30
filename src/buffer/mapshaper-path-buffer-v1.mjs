@@ -2,10 +2,16 @@
 import { reversePath } from '../paths/mapshaper-path-utils';
 import geom from '../geom/mapshaper-geom';
 import { ShapeIter } from '../paths/mapshaper-shape-iter';
+import { getBearingFunction,
+  getFastGeodeticSegmentFunction,
+  getGeodeticSegmentFunction } from '../geom/mapshaper-geodesic';
+import { getDatasetCRS } from '../crs/mapshaper-projections';
 
 // Returns a function for generating GeoJSON geometries (MultiLineString or MultiPolygon)
-export function getPolylineBufferMaker(arcs, geod, getBearing, opts) {
-  var maker = getPathBufferMaker(arcs, geod, getBearing, opts);
+export function getPolylineBufferMaker(dataset, opts) {
+  var geod = getFastGeodeticSegmentFunction(getDatasetCRS(dataset));
+  var getBearing = getBearingFunction(dataset);
+  var maker = getPathBufferMaker(dataset.arcs, geod, getBearing, opts);
   var geomType = opts.geometry_type;
   // polyline output could be used for debugging
   var outputGeom = opts.output_geometry == 'polyline' ? 'polyline' : 'polygon';

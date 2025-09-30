@@ -3,14 +3,20 @@ import { reversePath } from '../paths/mapshaper-path-utils';
 import geom from '../geom/mapshaper-geom';
 import { ShapeIter } from '../paths/mapshaper-shape-iter';
 import { segmentTurn } from '../geom/mapshaper-segment-geom';
+import { getBearingFunction,
+  getFastGeodeticSegmentFunction,
+  getGeodeticSegmentFunction } from '../geom/mapshaper-geodesic';
+import { getDatasetCRS } from '../crs/mapshaper-projections';
 
 // Returns a function for generating GeoJSON MultiPolygon geometries
-export function getPolylineBufferMaker(arcs, geod, getBearing, opts) {
+export function getPolylineBufferMaker(dataset, opts) {
+  var geod = getFastGeodeticSegmentFunction(getDatasetCRS(dataset));
+  var getBearing = getBearingFunction(dataset);
   var sliceLen = opts.slice_length || Infinity;
   var backtrackSteps = opts.backtrack >= 0 ? opts.backtrack : 100;
   var segsPerQuadrant = opts.arc_quality >= 2 ? opts.arc_quality : 12;
   var capStyle = opts.cap_style || 'round'; // expect 'round' or 'flat'
-  var pathIter = new ShapeIter(arcs);
+  var pathIter = new ShapeIter(dataset.arcs);
   var left, center, rings;
 
   return function makeBufferGeoJSON(shape, distance) {

@@ -1,6 +1,5 @@
 
 import { TileShapeIndex } from '../polygons/mapshaper-tile-shape-index';
-import { getHoleDivider } from '../polygons/mapshaper-polygon-holes';
 import { buildPolygonMosaic } from '../polygons/mapshaper-polygon-mosaic';
 import { IdTestIndex } from '../indexing/mapshaper-id-test-index';
 import { ArcLookupIndex } from '../indexing/mapshaper-id-lookup-index';
@@ -11,7 +10,6 @@ import geom from '../geom/mapshaper-geom';
 export function MosaicIndex(lyr, nodes, optsArg) {
   var opts = optsArg || {};
   var shapes = lyr.shapes;
-  var divide = getHoleDivider(nodes);
   var mosaic = buildPolygonMosaic(nodes).mosaic;
   // map arc ids to tile ids
   var arcTileIndex = new ShapeArcIndex(mosaic, nodes.arcs);
