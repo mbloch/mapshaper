@@ -12,6 +12,56 @@ import { stop } from '../utils/mapshaper-logging';
 import { DataTable } from '../datatable/mapshaper-data-table';
 import { MosaicIndex } from '../polygons/mapshaper-mosaic-index';
 import { rewindPolygonParts } from '../polygons/mapshaper-polygon-repair';
+import { segmentIntersection } from '../geom/mapshaper-segment-geom';
+
+export function dissolveBufferDataset2(dataset, optsArg) {
+  var opts = optsArg || {};
+  var lyr = dataset.layers[0];
+  var tmp;
+  if (opts.debug_offset) {
+    return; // raw offset path
+  }
+  var nodes = addIntersectionCuts(dataset, {rebuild_topology: true});
+  var mosaicIndex = new MosaicIndex(lyr, nodes, {flat: false, no_holes: false});
+
+  // rewindPolygonParts(lyr, nodes);
+  lyr.shapes = lyr.shapes.map(function(shp, i) {
+    var tiles = mosaicIndex.getTilesByShapeIds([i]);
+    if (!tiles.length) return null;
+    return tiles.reduce(function(memo, tile) {
+      return memo.concat(tile);
+    }, []);
+  });
+
+  if (opts.debug_winding) {
+    return;
+  }
+
+  if (opts.debug_mosaic) {
+    tmp = composeMosaicLayer(lyr, mosaicIndex.mosaic);
+    lyr.shapes = tmp.shapes;
+    lyr.data = tmp.data;
+    return;
+  }
+  var pathfind = getRingIntersector(mosaicIndex.nodes);
+  var shapes2 = lyr.shapes.map(function(shp, shapeId) {
+    var tiles = mosaicIndex.getTilesByShapeIds([shapeId]);
+    var rings = [];
+    for (var i=0; i<tiles.length; i++) {
+      rings.push(tiles[i][0]);
+    }
+    return pathfind(rings, 'dissolve');
+  });
+  lyr.shapes = shapes2;
+  if (!opts.no_dissolve) {
+    dissolveArcs(dataset);
+  }
+}
+
+// TODO: try geodesic option
+export function getIntersectionFunction(crs) {
+  return bufferIntersection;
+}
 
 export function dissolveBufferDataset(dataset, optsArg) {
   var opts = optsArg || {};
@@ -127,4 +177,20 @@ export function getBufferDistanceFunction(lyr, dataset, opts) {
     var dist = parseConstantBufferDistance(val + unitStr, crs);
     return dist || 0;
   };
+}
+
+
+export function bufferIntersection(a, b, c, d) {
+  return bufferIntersection2(a[0], a[1], b[0], b[1], c[0], c[1], d[0], d[1]);
+}
+
+// Exclude segments with non-intersecting bounding boxes before
+// calling intersection function
+// Possibly slightly faster than direct call... not worth it?
+export function bufferIntersection2(ax, ay, bx, by, cx, cy, dx, dy) {
+  if (ax < cx && ax < dx && bx < cx && bx < dx ||
+      ax > cx && ax > dx && bx > cx && bx > dx ||
+      ay < cy && ay < dy && by < cy && by < dy ||
+      ay > cy && ay > dy && by > cy && by > dy) return null;
+  return segmentIntersection(ax, ay, bx, by, cx, cy, dx, dy);
 }

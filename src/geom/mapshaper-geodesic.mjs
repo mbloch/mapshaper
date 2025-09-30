@@ -2,6 +2,9 @@ import { isLatLngCRS, getDatasetCRS } from '../crs/mapshaper-projections';
 import { error } from '../utils/mapshaper-logging';
 import geom from '../geom/mapshaper-geom';
 import require from '../mapshaper-require';
+import { WGS84 } from './mapshaper-geom-constants';
+
+var R = WGS84.SEMIMAJOR_AXIS;
 
 // GeographicLib docs: https://geographiclib.sourceforge.io/html/js/
 //   https://geographiclib.sourceforge.io/html/js/module-GeographicLib_Geodesic.Geodesic.html
@@ -9,7 +12,9 @@ import require from '../mapshaper-require';
 function getGeodesic(P) {
   if (!isLatLngCRS(P)) error('Expected an unprojected CRS');
   var f = P.es / (1 + Math.sqrt(P.one_es));
-  var GeographicLib = require('mproj').internal.GeographicLib;
+  // var GeographicLib = require('mproj').internal.GeographicLib;
+  var GeographicLib = require('geographiclib-geodesic');
+  // return new GeographicLib.Geodesic.Geodesic(P.a, 0)
   return new GeographicLib.Geodesic.Geodesic(P.a, f);
 }
 
@@ -53,6 +58,27 @@ function fastGeodeticSegmentFunction(lng, lat, bearing, meterDist) {
   return [lng2, lat2];
 }
 
+function wrap(deg) {
+  while (deg < -180) deg += 360;
+  while (deg > 180) deg -= 360;
+  return deg;
+}
+
+function fastGeodeticBearingFunction(lng1, lat1, lng2, lat2) {
+  var D2R = Math.PI / 180;
+  var f = 1 / 298.257223563;
+  var e2 = f * (2 - f);
+  var m = R * D2R;
+  var coslat = Math.cos(lat1 * D2R);
+  var w2 = 1 / (1 - e2 * (1 - coslat * coslat));
+  var w = Math.sqrt(w2);
+  var kx = m * w * coslat;
+  var ky = m * w * w2 * (1 - e2);
+  var dx = wrap(lng2 - lng1) * kx;
+  var dy = (lat2 - lat1) * ky;
+  return Math.atan2(dx, dy) / D2R;
+}
+
 export function getGeodeticSegmentFunction(P) {
   if (!isLatLngCRS(P)) {
     return getPlanarSegmentEndpoint;
@@ -71,7 +97,22 @@ export function getFastGeodeticSegmentFunction(P) {
   return isLatLngCRS(P) ? fastGeodeticSegmentFunction : getPlanarSegmentEndpoint;
 }
 
+// return function to calculate bearing of a segment in degrees
+export function getBearingFunction(dataset) {
+  var P = getDatasetCRS(dataset);
+  // var g = getGeodesic(P);
+  // if (isLatLngCRS) {
+  //   return function(lng1, lat1, lng2, lat2) {
+  //     var tmp = g.Inverse(lat1, lng1, lat2, lng2);
+  //     return tmp.azi1;
+  //     // return bearingDegrees(lng1, lat1, lng2, lat2);
+  //   };
+  // }
+  // return isLatLngCRS(P) ? bearingDegrees : bearingDegrees2D;
+  return isLatLngCRS(P) ? fastGeodeticBearingFunction : bearingDegrees2D;
+}
 
+// get bearing in degrees from point ab to point cd
 export function bearingDegrees(a, b, c, d) {
   return geom.bearing(a, b, c, d) * 180 / Math.PI;
 }
@@ -80,8 +121,3 @@ export function bearingDegrees2D(a, b, c, d) {
   return geom.bearing2D(a, b, c, d) * 180 / Math.PI;
 }
 
-// return function to calculate bearing of a segment in degrees
-export function getBearingFunction(dataset) {
-  var P = getDatasetCRS(dataset);
-  return isLatLngCRS(P) ? bearingDegrees : bearingDegrees2D;
-}

@@ -1,19 +1,20 @@
 import { Bounds } from '../geom/mapshaper-bounds';
 import { testSegmentBoundsIntersection } from '../geom/mapshaper-bounds-geom';
-import { segmentTurn, segmentIntersection } from '../geom/mapshaper-segment-geom';
 import { error } from '../utils/mapshaper-logging';
 
-export function BufferBuilder(opts) {
+export function BufferBuilder(bufferIntersection, opts) {
   var self = {};
   var buffer, path, insideFlags;
   var points = [];
   var backtrackSteps = opts.backtrack >= 0 ? opts.backtrack : 100;
   var backtrackStopIdx = 0; // lowest vertex id in backtrack pass
-  var useShortCircuit = true;
+  var useShortCircuit = false; //  true;
   // using backtrack bounds seems slower than without
   var useBacktrackBounds = false;
   var backtrackBounds;
   var backtrackBoundsLag = 20;
+  var _bbox;
+  var _idx;
 
   init();
 
@@ -23,6 +24,8 @@ export function BufferBuilder(opts) {
     insideFlags = [];
     backtrackStopIdx = 0;
     backtrackBounds = null;
+    _bbox = null;
+    _idx = -1;
   }
 
   self.size = function() {
@@ -96,7 +99,9 @@ export function BufferBuilder(opts) {
     // if no segment cross is detected below, inside/outside stays the same
     var newFlag = prevFlag;
     var hit, a, b, flagA, flagB, turn;
+    var hitCount = 0;
     for (var i=0, idx = bufferLen - 3; i < backtrackSteps && idx >= backtrackStopIdx; i++, idx--) {
+
       if (useBacktrackBounds && idx + backtrackBoundsLag == bufferLen) {
         if (!testSegmentBoundsIntersection(p, prevP, backtrackBounds)) {
           break;
@@ -107,12 +112,13 @@ export function BufferBuilder(opts) {
       // TODO: consider using a geodetic intersection function for lat-long datasets
       // TODO: consider case of an endpoint hit
       // TODO: consider case of collinear hit
-      hit = bufferIntersection(a[0], a[1], b[0], b[1], prevP[0], prevP[1], p[0], p[1]);
+      hit = bufferIntersection(a, b, prevP, p);
       if (!hit) {
         // continue scanning backward for an intersection
         continue;
       }
-      // console.log("hit")
+      hitCount++;
+
       flagA = insideFlags[idx];
       flagB = insideFlags[idx + 1];
       if (flagA && flagB) {
@@ -167,13 +173,19 @@ function pointsAreSame(a, b) {
   return a[0] === b[0] && a[1] === b[1];
 }
 
-// Exclude segments with non-intersecting bounding boxes before
-// calling intersection function
-// Possibly slightly faster than direct call... not worth it?
-export function bufferIntersection(ax, ay, bx, by, cx, cy, dx, dy) {
-  if (ax < cx && ax < dx && bx < cx && bx < dx ||
-      ax > cx && ax > dx && bx > cx && bx > dx ||
-      ay < cy && ay < dy && by < cy && by < dy ||
-      ay > cy && ay > dy && by > cy && by > dy) return null;
-  return segmentIntersection(ax, ay, bx, by, cx, cy, dx, dy);
+function extend(n, d, k) {
+  return n + d * k;
 }
+
+// function countExtendedHits(p0, p1, buffer) {
+//   var bbox = getBbox();
+//   var width = Math.max(bbox[2] - bbox[0], bbox[3] - bbox[1]);
+//   var p2 = [extend(p1[0], p1[0] - p0[0], size), extend(p1[1], p1[1] - p0[1], size)];
+//   var hits = 0;
+//   for (var i=backtrackStopIdx, n = buffer.length-1; i<n; i++) {
+//     if (bufferIntersection(buffer[i], buffer[i+1], p1, p2)) {
+//       hits++;
+//     }
+//   }
+//   return hits;
+// };
