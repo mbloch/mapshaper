@@ -32,7 +32,10 @@ export function joinTableToLayer(destLyr, src, join, opts) {
       unmatchedRecords = [],
       joinFields = getFieldsToJoin(dest.getFields(), src.getFields(), opts),
       sumFields = opts.sum_fields || [],
-      copyFields = utils.difference(joinFields, sumFields),
+      calculatedFields = sumFields.concat(opts.interpolate || []),
+      // copy data from fields that are not calculated
+      // (todo: use calc() expressions for interpolation and summing)
+      copyFields = utils.difference(joinFields, calculatedFields),
       joinCounts = new Uint32Array(srcRecords.length),
       matchCount = 0,
       collisionCount = 0,
