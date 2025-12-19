@@ -67,6 +67,16 @@ describe('mapshaper-require.js', function () {
       assert.deepEqual(JSON.parse(out['out.json']), [{foo: 'a', str: true}, {foo: 'b', str: true}]);
     })
 
+    it('require a remote module and use it', function (done) {
+      var json = [{foo: 'bar'}];
+      var script = 'https://cdn.jsdelivr.net/npm/lodash.isstring@4.0.1/+esm';
+      var cmd = `-i in.json -require ${script} alias=isString -each "str = isString(foo)" -o out.json`;
+      api.applyCommands(cmd, {'in.json': json}, function(err, result) {
+        assert.deepEqual(JSON.parse(result['out.json']), [{foo: 'bar', str: true}]);
+        done();
+      });
+    })
+
     // init was removed; use -run instead
     // it('-require a module file and initialize it', function(done) {
     //   var json = [{foo: 'bar'}];
