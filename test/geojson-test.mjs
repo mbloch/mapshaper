@@ -425,7 +425,19 @@ describe('mapshaper-geojson.js', function () {
         var output = await api.applyCommands(cmd, {'point.json': input});
         var json = JSON.parse(output['point.json'])
         var coords = json.geometries[0].coordinates;
-        assert.deepEqual(coords, [[4,4],[0.123457,-9.876543]]);
+        assert.deepEqual(coords, [[4, 4],[0.123457, -9.876543]]);
+      });
+
+      it('set coordinate precision to 6 decimals - with 3d points', async function() {
+        var input = {
+          type: 'MultiPoint',
+          coordinates: [[4.000000000000001, 3.999999999999, 5.0000000000001], [0.123456789,-9.87654321, 0.5678901234]]
+        };
+        var cmd = '-i point.json -o precision=0.000001';
+        var output = await api.applyCommands(cmd, {'point.json': input});
+        var json = JSON.parse(output['point.json'])
+        var coords = json.geometries[0].coordinates;
+        assert.deepStrictEqual(coords, [[4, 4, 5],[0.123457, -9.876543, 0.56789]]);
       });
     });
 
