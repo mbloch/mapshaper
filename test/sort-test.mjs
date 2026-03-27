@@ -1,5 +1,6 @@
 import assert from 'assert';
 import api from '../mapshaper.js';
+import { DataTable } from '../src/datatable/mapshaper-data-table';
 
 
 describe('mapshaper-sort.js', function () {
@@ -13,14 +14,14 @@ describe('mapshaper-sort.js', function () {
   })
 
   it ('sort ascending on data field', function() {
-    var data = new api.internal.DataTable([{foo: -1}, {foo: 5}, {foo: 4}]),
+    var data = new DataTable([{foo: -1}, {foo: 5}, {foo: 4}]),
         lyr = {data: data};
     api.cmd.sortFeatures(lyr, null, {expression: 'foo'});
     assert.deepEqual(data.getRecords(), [{foo: -1}, {foo: 4}, {foo: 5}]);
   })
 
   it ('sort descending on data field', function() {
-    var data = new api.internal.DataTable([{foo: -1}, {foo: 5}, {foo: 4}]),
+    var data = new DataTable([{foo: -1}, {foo: 5}, {foo: 4}]),
         lyr = {
           data: data,
           geometry_type: 'point',
@@ -32,7 +33,7 @@ describe('mapshaper-sort.js', function () {
   })
 
   it ('reverse features', function() {
-    var data = new api.internal.DataTable([{foo: -1}, {foo: 5}, {foo: 4}]),
+    var data = new DataTable([{foo: -1}, {foo: 5}, {foo: 4}]),
         lyr = {
           data: data,
           geometry_type: 'point',

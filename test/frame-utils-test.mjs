@@ -1,12 +1,14 @@
 import assert from 'assert';
 import api from '../mapshaper.js';
 import util from './helpers';
-var Bounds = api.internal.Bounds;
+import { Bounds } from '../src/geom/mapshaper-bounds';
+import {
+  calcOutputBounds,
+  parseMarginOption
+} from '../src/furniture/mapshaper-frame-utils';
 
 describe('mapshaper-frame-utils.js', function () {
   describe('calcOutputBounds()', function () {
-    var calcOutputBounds = api.internal.calcOutputBounds;
-
     it('max-height option limits height of relatively tall maps', function () {
       var bounds = new Bounds(100, 200, 200, 400);
       var opts = {
@@ -55,7 +57,7 @@ describe('mapshaper-frame-utils.js', function () {
   })
 
   describe('parseMarginOption()', function () {
-    var parse = api.internal.parseMarginOption;
+    var parse = parseMarginOption;
     it('tests', function () {
       assert.deepEqual(parse('1'), [1,1,1,1]);
       assert.deepEqual(parse(), [0,0,0,0]);

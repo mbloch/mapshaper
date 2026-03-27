@@ -1,9 +1,10 @@
 import api from '../mapshaper.js';
 import assert from 'assert';
+import { ArcCollection } from '../src/paths/mapshaper-arcs';
+import { ArcIter } from '../src/paths/mapshaper-shape-iter';
+import { Transform } from '../src/geom/mapshaper-transform';
 
-var ArcCollection = api.internal.ArcCollection,
-    ArcIter = api.internal.ArcIter,
-    utils = api.utils;
+var utils = api.utils;
 
 //      b --- d
 //     / \   /
@@ -78,7 +79,7 @@ describe('mapshaper-arcs.js', function () {
     })
 
     it("accepts arcs with length == 0", function() {
-      var arcs = new api.internal.ArcCollection(
+      var arcs = new ArcCollection(
           new Uint32Array([0, 3]),
           new Float64Array([1, 2, 3]),
           new Float64Array([0, 1, 2])
@@ -215,7 +216,7 @@ describe('mapshaper-arcs.js', function () {
 
     it('#transformPoints() works', function() {
       var arcs = new ArcCollection(arcs4);
-      var transform = new api.internal.Transform();
+      var transform = new Transform();
       transform.mx = 2;
       transform.my = 3;
       transform.bx = 1;

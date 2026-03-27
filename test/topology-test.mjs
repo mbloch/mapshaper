@@ -1,10 +1,12 @@
 import assert from 'assert';
 import api from '../mapshaper.js';
+import { ArcCollection } from '../src/paths/mapshaper-arcs';
+import { buildPathTopology as buildPathTopologyRaw } from '../src/topology/mapshaper-topology';
 var utils = api.utils;
 
 function buildPathTopology(nn, xx, yy) {
-  var obj = api.internal.buildPathTopology(nn, xx, yy);
-  obj.arcs =  new api.internal.ArcCollection(obj.nn, obj.xx, obj.yy);
+  var obj = buildPathTopologyRaw(nn, xx, yy);
+  obj.arcs =  new ArcCollection(obj.nn, obj.xx, obj.yy);
   return obj;
 };
 

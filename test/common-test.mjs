@@ -1,6 +1,5 @@
-import api from '../mapshaper.js';
 import assert from 'assert';
-var internal = api.internal;
+import { layerHasPaths, layerHasPoints } from '../src/dataset/mapshaper-layer-utils';
 
 
 describe('mapshaper-common.js', function () {
@@ -11,7 +10,7 @@ describe('mapshaper-common.js', function () {
         geometry_type: 'point',
         shapes: []
       };
-      assert.equal(internal.layerHasPoints(lyr), false);
+      assert.equal(layerHasPoints(lyr), false);
     });
 
     it('false if only null shapes', function() {
@@ -19,7 +18,7 @@ describe('mapshaper-common.js', function () {
         geometry_type: 'point',
         shapes: [null]
       }
-      assert.equal(internal.layerHasPoints(lyr), false);
+      assert.equal(layerHasPoints(lyr), false);
     })
 
     it('false if non-point type', function() {
@@ -27,7 +26,7 @@ describe('mapshaper-common.js', function () {
         geometry_type: 'polygon',
         shapes: [[[0]]]
       }
-      assert.equal(internal.layerHasPoints(lyr), false);
+      assert.equal(layerHasPoints(lyr), false);
     })
 
     it('true if layer contains a point', function() {
@@ -35,7 +34,7 @@ describe('mapshaper-common.js', function () {
         geometry_type: 'point',
         shapes: [[[0, 0]]]
       }
-      assert.equal(internal.layerHasPoints(lyr), true);
+      assert.equal(layerHasPoints(lyr), true);
     })
   })
 
@@ -45,7 +44,7 @@ describe('mapshaper-common.js', function () {
         geometry_type: 'polygon',
         shapes: []
       };
-      assert.equal(internal.layerHasPaths(lyr), false);
+      assert.equal(layerHasPaths(lyr), false);
     });
 
     it('false if only null shapes', function() {
@@ -53,7 +52,7 @@ describe('mapshaper-common.js', function () {
         geometry_type: 'polygon',
         shapes: [null]
       }
-      assert.equal(internal.layerHasPaths(lyr), false);
+      assert.equal(layerHasPaths(lyr), false);
     })
 
     it('true if polygon layer with a shape', function() {
@@ -61,7 +60,7 @@ describe('mapshaper-common.js', function () {
         geometry_type: 'polygon',
         shapes: [[[0]]]
       };
-      assert.equal(internal.layerHasPaths(lyr), true);
+      assert.equal(layerHasPaths(lyr), true);
     })
 
     it('true if polyline layer with a shape', function() {
@@ -69,7 +68,7 @@ describe('mapshaper-common.js', function () {
         geometry_type: 'polyline',
         shapes: [[[0]]]
       };
-      assert.equal(internal.layerHasPaths(lyr), true);
+      assert.equal(layerHasPaths(lyr), true);
     })
 
   })

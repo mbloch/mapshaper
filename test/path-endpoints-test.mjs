@@ -1,6 +1,6 @@
-import api from '../mapshaper.js';
 import assert from 'assert';
-var ArcCollection = api.internal.ArcCollection;
+import { ArcCollection } from '../src/paths/mapshaper-arcs';
+import { getPathEndpointTest } from '../src/paths/mapshaper-path-endpoints';
 
 describe('mapshaper-path-endpoints.js', function () {
 
@@ -18,7 +18,7 @@ describe('mapshaper-path-endpoints.js', function () {
           geometry_type: 'polyline',
           shapes: [[[0, 1]]]
         }];
-        var test = api.internal.getPathEndpointTest(layers, arcs);
+        var test = getPathEndpointTest(layers, arcs);
         assert(!test(0));
         assert(test(~0));
         assert(test(1));
@@ -34,7 +34,7 @@ describe('mapshaper-path-endpoints.js', function () {
           geometry_type: 'polyline',
           shapes: [[[~1, ~0]]]
         }];
-        var test = api.internal.getPathEndpointTest(layers, arcs);
+        var test = getPathEndpointTest(layers, arcs);
         assert(!test(0));
         assert(test(~0));
         assert(test(1));

@@ -2,9 +2,19 @@ import assert from 'assert';
 import api from '../mapshaper.js';
 import helpers from './helpers';
 import csv_spectrum from 'csv-spectrum';
-var internal = api.internal,
-    StringReader = helpers.Reader,
-    Reader2 = api.internal.Reader2;
+import { Reader2 } from '../src/io/mapshaper-file-reader';
+import {
+  readDelimRecords,
+  readDelimRecordsFromString,
+  parseDelimHeaderSection,
+  indexOfLine,
+  readLinesAsString,
+  getRowConverter,
+  getDelimFieldFilter,
+  parseDelimText
+} from '../src/text/mapshaper-delim-reader';
+
+var StringReader = helpers.Reader;
 
 describe('mapshaper-delim-reader.js', function () {
 
@@ -18,14 +28,14 @@ http://parksandrecdiner.com/
 foo
 `;
       var reader = new Reader2(new StringReader(str));
-      var line = api.internal.readLinesAsString(reader, 1);
+      var line = readLinesAsString(reader, 1);
       assert(/0001$/.test(line.trim()));
     })
   })
 
 
   describe('readDelimRecordsFromString()', function () {
-    var read = api.internal.readDelimRecordsFromString;
+    var read = readDelimRecordsFromString;
     it('simple test', function () {
       var output = read('a,b,c\n1,2,3', ',', {});
       assert.deepEqual(output, [{a: '1', b: '2', c: '3'}]);
@@ -39,7 +49,7 @@ foo
 
 
   describe('parseDelimHeaderSection()', function () {
-    var parse = internal.parseDelimHeaderSection;
+    var parse = parseDelimHeaderSection;
     it('simple example', function () {
       var str = 'a,b,c\n1,2,3';
       var retn = parse(str, ',', {});
@@ -81,21 +91,21 @@ foo
 
   describe('indexOfLine()', function () {
     it('tests', function () {
-      assert.equal(internal.indexOfLine('a\nb\n', 2), 2)
-      assert.equal(internal.indexOfLine('a\r\nb\r\n', 2), 3)
-      assert.equal(internal.indexOfLine('a\nb\n', 3), 4)
-      assert.equal(internal.indexOfLine('a\nb\n', 4), -1)
-      assert.equal(internal.indexOfLine('a\nb\n', 1), 0)
-      assert.equal(internal.indexOfLine('a\nb\n', 0), -1)
+      assert.equal(indexOfLine('a\nb\n', 2), 2)
+      assert.equal(indexOfLine('a\r\nb\r\n', 2), 3)
+      assert.equal(indexOfLine('a\nb\n', 3), 4)
+      assert.equal(indexOfLine('a\nb\n', 4), -1)
+      assert.equal(indexOfLine('a\nb\n', 1), 0)
+      assert.equal(indexOfLine('a\nb\n', 0), -1)
     })
   })
 
 
   describe('readDelimRecords()', function () {
-    var readDelimRecords = api.internal.readDelimRecords;
+    var readDelimRecordsFn = readDelimRecords;
     it('read several lines', function () {
       var str = 'foo,bar\r\na,b\r\nc,d\r\n';
-      var records = readDelimRecords(new StringReader(str), ',');
+      var records = readDelimRecordsFn(new StringReader(str), ',');
       assert.deepEqual(records, [{foo:'a', bar:'b'}, {foo: 'c', bar: 'd'}]);
     })
   })
@@ -113,7 +123,7 @@ foo
   });
 
   describe('readDelimRecords()', function () {
-    var read = api.internal.readDelimRecords;
+    var read = readDelimRecords;
 
     it('csv_file_names option', function() {
       var str = 'a,b\n1,2';
@@ -154,36 +164,36 @@ foo
 
   describe('parseDelimText() object output', function () {
     it('simple test', function() {
-      var convert = api.internal.getRowConverter(['a', 'b', 'c']);
+      var convert = getRowConverter(['a', 'b', 'c']);
       var str = '1|2|3\r4|5|6';
-      var records = api.internal.parseDelimText(str, '|', convert);
+      var records = parseDelimText(str, '|', convert);
       assert.deepEqual(records, [{a: '1', b: '2', c: '3'}, {a: '4', b: '5', c: '6'}]);
     })
   });
 
   describe('parseDelimText() object output with column filter', function () {
     it('test1', function() {
-      var colFilter = api.internal.getDelimFieldFilter(['a', 'b', 'c'], ['b']);
-      var convert = api.internal.getRowConverter(['b']);
+      var colFilter = getDelimFieldFilter(['a', 'b', 'c'], ['b']);
+      var convert = getRowConverter(['b']);
       var str = '1\t2\t3\n4\t5\t6';
-      var records = api.internal.parseDelimText(str, '\t', convert, colFilter);
+      var records = parseDelimText(str, '\t', convert, colFilter);
       assert.deepEqual(records, [{b: '2'}, {b: '5'}]);
     })
 
      it('test1', function() {
-      var colFilter = api.internal.getDelimFieldFilter(['a', 'b', 'c'], ['a', 'c']);
-      var convert = api.internal.getRowConverter(['a', 'c']);
+      var colFilter = getDelimFieldFilter(['a', 'b', 'c'], ['a', 'c']);
+      var convert = getRowConverter(['a', 'c']);
       var str = '1\t2\t3\n4\t5\t6';
-      var records = api.internal.parseDelimText(str, '\t', convert, colFilter);
+      var records = parseDelimText(str, '\t', convert, colFilter);
       assert.deepEqual(records, [{a: '1', c: '3'}, {a: '4', c: '6'}]);
     })
   });
 
   describe('parseDelimText() array output', function () {
-    var parse = api.internal.parseDelimText;
+    var parse = parseDelimText;
     function test(str, target, delim) {
       delim = delim || ',';
-      assert.deepEqual(api.internal.parseDelimText(str, delim), target);
+      assert.deepEqual(parseDelimText(str, delim), target);
     }
 
     it('retains spaces', function () {

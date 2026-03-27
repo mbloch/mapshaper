@@ -1,5 +1,7 @@
 import assert from 'assert';
 import api from '../mapshaper.js';
+import { ArcCollection } from '../src/paths/mapshaper-arcs';
+import { calcMaxSliverArea } from '../src/polygons/mapshaper-slivers';
 
 
 describe('mapshaper-filter-slivers.js', function () {
@@ -16,8 +18,8 @@ describe('mapshaper-filter-slivers.js', function () {
   describe('calcMaxSliverArea()', function () {
     it('ignores relatively long segments', function () {
       var coords2 = [[[3, 1], [2, 1], [2, 2]], [[2, 3], [3, 3]], [[1, 3], [4, 3], [4, 0]]],
-          arcs2 = new api.internal.ArcCollection(coords2);
-      assert.equal(api.internal.calcMaxSliverArea(arcs2), 1);
+          arcs2 = new ArcCollection(coords2);
+      assert.equal(calcMaxSliverArea(arcs2), 1);
     })
   })
 

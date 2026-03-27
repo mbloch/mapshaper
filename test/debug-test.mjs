@@ -1,6 +1,5 @@
-import api from '../mapshaper.js';
 import assert from 'assert';
-var internal = api.internal;
+import { parseCommands } from '../src/cli/mapshaper-parse-commands';
 
 
 describe('debug', function () {
@@ -11,7 +10,7 @@ describe('debug', function () {
 
 function good(str, reference) {
   it(str, function() {
-    var parsed = internal.parseCommands(str);
+    var parsed = parseCommands(str);
     var target = parsed[0].options;
     assert.deepEqual(target, reference);
   })

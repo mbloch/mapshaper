@@ -1,10 +1,13 @@
 import assert from 'assert';
 import api from '../mapshaper.js';
+import { clipIterByBounds } from '../src/clipping/mapshaper-bbox-clipping';
+import { Bounds } from '../src/geom/mapshaper-bounds';
+import { PointIter } from '../src/paths/mapshaper-shape-iter';
 
 function test(expected, input, bbox, isRing) {
-  var bounds = new api.internal.Bounds(bbox);
-  var iter = new api.internal.PointIter(input);
-  var output = api.internal.clipIterByBounds(iter, bounds, isRing);
+  var bounds = new Bounds(bbox);
+  var iter = new PointIter(input);
+  var output = clipIterByBounds(iter, bounds, isRing);
   // console.log("output:", output)
   assert.deepEqual(output, expected);
 }

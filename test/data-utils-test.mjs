@@ -1,11 +1,16 @@
 import api from '../mapshaper.js';
 import assert from 'assert';
+import {
+  fixInconsistentFields,
+  getColumnType,
+  getUniqFieldNames,
+  getValueType
+} from '../src/datatable/mapshaper-data-utils';
 
 
 describe('mapshaper-data-utils.js', function () {
 
   describe('getValueType()', function() {
-    var getValueType = api.internal.getValueType;
     it('Date objects are type "date"', function() {
       assert.equal(getValueType(new Date()), 'date');
     });
@@ -25,8 +30,6 @@ describe('mapshaper-data-utils.js', function () {
   })
 
   describe('getColumnType()', function() {
-    var getColumnType = api.internal.getColumnType;
-
     it('missing field is type null', function() {
       assert.strictEqual(getColumnType('foo', [{}]), null)
       assert.strictEqual(getColumnType('foo', []), null)
@@ -58,7 +61,7 @@ describe('mapshaper-data-utils.js', function () {
     it('patches missing fields with undefined', function () {
       if (!assert.deepStrictEqual) return;
       var arr = [{foo: null}, {bar: 0}, null];
-      api.internal.fixInconsistentFields(arr);
+      fixInconsistentFields(arr);
       assert.deepStrictEqual(arr, [{foo: null, bar: undefined}, {foo: undefined, bar: 0}, {foo: undefined, bar: undefined}])
     })
   })
@@ -66,7 +69,7 @@ describe('mapshaper-data-utils.js', function () {
   describe('getUniqFieldNames()', function () {
     it('truncate fields, without replacing pre-exisiting names', function () {
       var fields = ['foobar2', 'foobar', 'foobar1'];
-      var out = api.internal.getUniqFieldNames(fields, 6);
+      var out = getUniqFieldNames(fields, 6);
       assert.deepEqual(out, ['foob_1', 'foobar', 'foob_2']);
     })
   })

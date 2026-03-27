@@ -1,7 +1,8 @@
 import assert from 'assert';
 import api from '../mapshaper.js';
-
-var Bounds = api.internal.Bounds;
+import { getAspectRatioArg } from '../src/commands/mapshaper-frame';
+import { Bounds } from '../src/geom/mapshaper-bounds';
+import { getFrameSize } from '../src/furniture/mapshaper-frame-utils';
 
 describe('mapshaper-frame.js', function () {
 
@@ -56,7 +57,7 @@ describe('mapshaper-frame.js', function () {
 
   describe('getAspectRatioArg()', function() {
     it('works with height range', function() {
-      var out = api.internal.getAspectRatioArg('4', '1,2');
+      var out = getAspectRatioArg('4', '1,2');
       assert.equal(out, '2,4');
     });
   });
@@ -67,7 +68,7 @@ describe('mapshaper-frame.js', function () {
       var opts = {
         pixels: 200
       };
-      var out = api.internal.getFrameSize(bounds, opts);
+      var out = getFrameSize(bounds, opts);
       assert.deepEqual(out, [20, 10]);
     })
   })

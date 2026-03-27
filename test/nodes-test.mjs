@@ -1,9 +1,8 @@
 import api from '../mapshaper.js';
 import assert from 'assert';
+import { ArcCollection } from '../src/paths/mapshaper-arcs';
+import { NodeCollection } from '../src/topology/mapshaper-nodes';
 
-
-var ArcCollection = api.internal.ArcCollection,
-    NodeCollection = api.internal.NodeCollection;
 
 describe('mapshaper-nodes.js', function () {
 

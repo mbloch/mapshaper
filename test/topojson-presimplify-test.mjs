@@ -1,10 +1,9 @@
 import assert from 'assert';
-import api from '../mapshaper.js';
-var topojson = api.internal.topojson;
+import { getPresimplifyFunction } from '../src/topojson/topojson-presimplify';
 
 describe('topojson-presimplify.js', function () {
   describe('getPresimplifyFunction(100000)', function () {
-    var fromZ = topojson.getPresimplifyFunction(100000);
+    var fromZ = getPresimplifyFunction(100000);
     it('Infinity -> 0', function () {
       assert.equal(fromZ(Infinity), 0);
     })

@@ -1,7 +1,6 @@
 import assert from 'assert';
 import api from '../mapshaper.js';
-
-var internal = api.internal;
+import { DataTable } from '../src/datatable/mapshaper-data-table';
 
 describe('mapshaper-merge-layers.js', function () {
 
@@ -187,7 +186,7 @@ describe('mapshaper-merge-layers.js', function () {
       var lyr1 = {
         geometry_type: "point",
         shapes: [[[0, 1]], [[2, 1]]],
-        data: new internal.DataTable([{a: 9}, {a: 8}])
+        data: new DataTable([{a: 9}, {a: 8}])
       };
       var merged = api.cmd.mergeLayers([lyr1]);
       assert.strictEqual(merged[0], lyr1);
@@ -198,12 +197,12 @@ describe('mapshaper-merge-layers.js', function () {
       var lyr1 = {
         geometry_type: "point",
         shapes: [[[0, 1]], [[2, 1]]],
-        data: new internal.DataTable([{a: 9}, {a: 8}])
+        data: new DataTable([{a: 9}, {a: 8}])
       };
       var lyr2 = {
         geometry_type: "point",
         shapes: [[[4, 3]]],
-        data: new internal.DataTable([{a: 7}])
+        data: new DataTable([{a: 7}])
       };
       var merged = api.cmd.mergeLayers([lyr1, lyr2]);
       assert.deepEqual(merged[0].data.getRecords(), [{a: 9}, {a: 8}, {a: 7}]);
@@ -231,10 +230,10 @@ describe('mapshaper-merge-layers.js', function () {
       var lyr1 = {
         geometry_type: "point",
         shapes: [[[0, 1]], [[2, 1]]],
-        data: new internal.DataTable([{a: 9}, {a: 8}])
+        data: new DataTable([{a: 9}, {a: 8}])
       };
       var lyr2 = {
-        data: new internal.DataTable([{a: 7}])
+        data: new DataTable([{a: 7}])
       };
       var merged = api.cmd.mergeLayers([lyr1, lyr2]);
       assert.deepEqual(merged[0].shapes,[[[0, 1]], [[2, 1]], null])
@@ -263,13 +262,13 @@ describe('mapshaper-merge-layers.js', function () {
 
     it('layers with only data are merged', function () {
       var lyr1 = {
-        data: new internal.DataTable([{a: 9, b: ''}, {b: 'b', a: 8}])
+        data: new DataTable([{a: 9, b: ''}, {b: 'b', a: 8}])
       };
       var lyr2 = {
-        data: new internal.DataTable([{a: 7, b: 'w'}])
+        data: new DataTable([{a: 7, b: 'w'}])
       };
       var lyr3 = {
-        data: new internal.DataTable([{b: 'e', a: 7}])
+        data: new DataTable([{b: 'e', a: 7}])
       };
       var merged = api.cmd.mergeLayers([lyr1, lyr2, lyr3]);
       assert.deepEqual(merged[0].data.getRecords(), [{a: 9, b: ''}, {b: 'b', a: 8},
@@ -280,10 +279,10 @@ describe('mapshaper-merge-layers.js', function () {
 
     it('layers with incompatible data types are not merged', function() {
       var lyr1 = {
-        data: new internal.DataTable([{a: 9}, {a: 8}])
+        data: new DataTable([{a: 9}, {a: 8}])
       };
       var lyr2 = {
-        data: new internal.DataTable([{a: '9'}])
+        data: new DataTable([{a: '9'}])
       };
       assert.throws(function() {
         api.cmd.mergeLayers([lyr1, lyr2]);
@@ -294,12 +293,12 @@ describe('mapshaper-merge-layers.js', function () {
       var lyr1 = {
         geometry_type: "point",
         shapes: [[[0, 1]], [[2, 1]]],
-        data: new internal.DataTable([{a: 9}, {a: 8}])
+        data: new DataTable([{a: 9}, {a: 8}])
       };
       var lyr2 = {
         geometry_type: "point",
         shapes: [[[4, 3]]],
-        data: new internal.DataTable([{a: 7, b: 0}])
+        data: new DataTable([{a: 7, b: 0}])
       };
       assert.throws(function() {
         var merged = api.cmd.mergeLayers([lyr1, lyr2]);
@@ -310,12 +309,12 @@ describe('mapshaper-merge-layers.js', function () {
       var lyr1 = {
         geometry_type: "point",
         shapes: [[[0, 1]], [[2, 1]]],
-        data: new internal.DataTable([{a: 9}, {a: 8}])
+        data: new DataTable([{a: 9}, {a: 8}])
       };
       var lyr2 = {
         geometry_type: "point",
         shapes: [[[4, 3]]],
-        data: new internal.DataTable([{a: 7, b: 0}])
+        data: new DataTable([{a: 7, b: 0}])
       };
       var merged = api.cmd.mergeLayers([lyr1, lyr2], {force: true})[0].data.getRecords();
       assert.deepEqual(merged, [{a: 9, b: undefined}, {a: 8, b: undefined}, {a: 7, b: 0}]);
@@ -331,7 +330,7 @@ describe('mapshaper-merge-layers.js', function () {
       var lyr2 = {
         geometry_type: "point",
         shapes: [[[4, 3]]],
-        data: new internal.DataTable([{a: 7, b: 0}])
+        data: new DataTable([{a: 7, b: 0}])
       };
       var merged = api.cmd.mergeLayers([lyr1, lyr2], {force: true})[0].data.getRecords();
       assert.deepEqual(merged, [{a: undefined, b: undefined}, {a: undefined, b: undefined}, {a: 7, b: 0}]);

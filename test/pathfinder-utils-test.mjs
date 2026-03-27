@@ -1,7 +1,7 @@
-import api from '../mapshaper.js';
 import assert from 'assert';
-var ArcCollection = api.internal.ArcCollection,
-    NodeCollection = api.internal.NodeCollection;
+import { ArcCollection } from '../src/paths/mapshaper-arcs';
+import { getRightmostArc } from '../src/paths/mapshaper-pathfinder-utils';
+import { NodeCollection } from '../src/topology/mapshaper-nodes';
 
 describe('mapshaper-pathfinder-utils.js', function () {
 
@@ -9,7 +9,7 @@ describe('mapshaper-pathfinder-utils.js', function () {
     function test(arcId, coords, filter) {
       var arcs = new ArcCollection(coords);
       var nodes = new NodeCollection(arcs);
-      return api.internal.getRightmostArc(arcId, nodes, filter);
+      return getRightmostArc(arcId, nodes, filter);
     }
 
     describe('error conditions', function() {
@@ -20,7 +20,7 @@ describe('mapshaper-pathfinder-utils.js', function () {
         ];
         assert.throws(function() {
           var nodes = new NodeCollection(new ArcCollection(coords));
-          var arcId = api.internal.getRightmostArc(~0, nodes);
+          var arcId = getRightmostArc(~0, nodes);
         });
       })
     })
@@ -41,7 +41,7 @@ describe('mapshaper-pathfinder-utils.js', function () {
   })
 /*
   describe('chooseRighthandVector()', function () {
-    var f = api.internal.chooseRighthandVector;
+    var f = chooseRighthandVector;
     it ('first vector is rightmost', function() {
       assert.equal(f(0.1, 5, -0.1, 2), 1);
       assert.equal(f(-0.1, -2, 0.1, -5), 1);

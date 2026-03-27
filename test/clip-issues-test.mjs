@@ -1,6 +1,5 @@
 import api from '../mapshaper.js';
 import assert from 'assert';
-var ArcCollection = api.internal.ArcCollection;
 
 describe('mapshaper-clip-erase.js', function () {
 

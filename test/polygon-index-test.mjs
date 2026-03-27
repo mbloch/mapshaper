@@ -1,7 +1,6 @@
 import assert from 'assert';
-import api from '../mapshaper.js';
-
-var PolygonIndex = api.internal.PolygonIndex;
+import { ArcCollection } from '../src/paths/mapshaper-arcs';
+import { PolygonIndex } from '../src/polygons/mapshaper-polygon-index';
 
 describe('mapshaper-polygon-index.js', function () {
   describe('Figure 1', function () {
@@ -24,7 +23,7 @@ describe('mapshaper-polygon-index.js', function () {
     var coords = [[[3, 4], [4, 3], [3, 2], [2, 3], [3, 4]],
         [[3, 5], [5, 3], [3, 1], [1, 3], [3, 5]]];
 
-    var arcs = new api.internal.ArcCollection(coords);
+    var arcs = new ArcCollection(coords);
 
     it ("simple polygon", function() {
       var shape = [[1]];  // outer ring
@@ -68,7 +67,7 @@ describe('mapshaper-polygon-index.js', function () {
     // f - e - d
     //
     var coords = [[[0, 1], [0.5, 1], [1, 1], [1, 0], [0.5, 0], [0, 0], [0, 1]]];
-    var arcs = new api.internal.ArcCollection(coords);
+    var arcs = new ArcCollection(coords);
     var shape = [[0]];
 
     // edges and corners

@@ -2,12 +2,20 @@
 import api from '../mapshaper.js';
 import assert from 'assert';
 import fs from 'fs';
+import {
+  parseMeasure,
+  getIntervalConversionFactor,
+  convertAreaParam,
+  convertDistanceParam,
+  convertIntervalParam,
+  convertIntervalPair
+} from '../src/geom/mapshaper-units';
 
 describe('mapshaper-units.js', function () {
   describe('parseMeasure()', function () {
     function good(str, expect) {
       it(str, function() {
-        var o = api.internal.parseMeasure(str);
+        var o = parseMeasure(str);
         assert.deepEqual(o, expect)
       });
     }
@@ -15,7 +23,7 @@ describe('mapshaper-units.js', function () {
     function bad(s) {
       it(s, function() {
         assert.throws(function() {
-          api.internal.parseMeasure(s);
+          parseMeasure(s);
         });
       })
     }
@@ -39,7 +47,7 @@ describe('mapshaper-units.js', function () {
     function good(param, crs, expect) {
       it(param + ', ' + crs, function() {
         var P = crs ? api.internal.parseCrsString(crs) : null;
-        var k = api.internal.getIntervalConversionFactor(param, P);
+        var k = getIntervalConversionFactor(param, P);
         assert.strictEqual(k, expect);
       });
     }
@@ -48,7 +56,7 @@ describe('mapshaper-units.js', function () {
       it('invalid: ' + param + ', ' + crs, function() {
         assert.throws(function() {
           var P = crs ? api.internal.parseCrsString(crs) : null;
-          var k = api.internal.getIntervalConversionFactor(param, P);
+          var k = getIntervalConversionFactor(param, P);
         });
       })
     }
@@ -75,7 +83,7 @@ describe('mapshaper-units.js', function () {
     it('km2/wgs84', function () {
       var json = fs.readFileSync('test/data/three_points.geojson', 'utf8');
       var crs = api.internal.getDatasetCRS(api.internal.importGeoJSON(json, {}));
-      var val = api.internal.convertAreaParam('20km2', crs);
+      var val = convertAreaParam('20km2', crs);
       assert.equal(val, 20e6)
     })
   })
@@ -84,17 +92,17 @@ describe('mapshaper-units.js', function () {
     var wgs84 = api.internal.parseCrsString('wgs84')
     it('areal units trigger error', function () {
       assert.throws(function() {
-        var val = api.internal.convertDistanceParam('20km2', wgs84);
+        var val = convertDistanceParam('20km2', wgs84);
       })
     })
 
     it('miles/wgs84', function () {
-      var val = api.internal.convertDistanceParam('10mi', wgs84);
+      var val = convertDistanceParam('10mi', wgs84);
       assert.equal(val, 10 * 1609.344);
     })
 
     it('no units/wgs84', function () {
-      var val = api.internal.convertDistanceParam('4000', wgs84);
+      var val = convertDistanceParam('4000', wgs84);
       assert.equal(val, 4000);
     })
 
@@ -104,18 +112,18 @@ describe('mapshaper-units.js', function () {
     var wgs84 = api.internal.parseCrsString('wgs84')
     it('km units trigger error for latlong dataset', function () {
       assert.throws(function() {
-        var val = api.internal.convertIntervalParam('20km', wgs84);
+        var val = convertIntervalParam('20km', wgs84);
       })
     })
 
     it('mi units trigger error for latlong dataset', function () {
       assert.throws(function() {
-        var val = api.internal.convertIntervalParam('10mi', wgs84);
+        var val = convertIntervalParam('10mi', wgs84);
       })
     })
 
     it('no units/wgs84', function () {
-      var val = api.internal.convertIntervalParam('4000', wgs84);
+      var val = convertIntervalParam('4000', wgs84);
       assert.equal(val, 4000);
     })
   })
@@ -124,25 +132,25 @@ describe('mapshaper-units.js', function () {
     var crs = api.internal.parseCrsString('wgs84');
     it('less than two args = error', function () {
       assert.throws(function() {
-        var val = api.internal.convertIntervalPair(['20'], crs);
+        var val = convertIntervalPair(['20'], crs);
       })
     })
 
     it('mi units trigger error for latlong dataset', function () {
       assert.throws(function() {
-        var val = api.internal.convertIntervalPair(['10mi', '2mi'], crs);
+        var val = convertIntervalPair(['10mi', '2mi'], crs);
       })
     })
 
     it('no units/wgs84', function () {
-      var val = api.internal.convertIntervalPair(['4000', '2000'], crs);
+      var val = convertIntervalPair(['4000', '2000'], crs);
       assert.deepEqual(val, [4000, 2000]);
     })
 
     it('km/mercator', function(done) {
       var cmd = '-i test/data/three_points.geojson -proj webmercator';
       api.internal.testCommands(cmd, function(err, dataset) {
-        var pair = api.internal.convertIntervalPair(['2km','5km'], api.internal.getDatasetCRS(dataset));
+        var pair = convertIntervalPair(['2km','5km'], api.internal.getDatasetCRS(dataset));
         assert.deepEqual(pair, [2000, 5000])
         done();
       });

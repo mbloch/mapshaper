@@ -1,14 +1,16 @@
 import api from '../mapshaper.js';
 import assert from 'assert';
-var internal = api.internal;
 var utils = api.utils;
 import iconv from 'iconv-lite';
+import { DataTable } from '../src/datatable/mapshaper-data-table';
+import { importDelim } from '../src/text/mapshaper-delim-import';
+import { exportDelim, exportLayerAsDSV, getDelimValueFormatter } from '../src/text/mapshaper-delim-export';
 
 describe('mapshaper-delim-export.js', function() {
 
   describe('getDelimValueFormatter()', function () {
-    var csv = api.internal.getDelimValueFormatter(',');
-    var tsv = api.internal.getDelimValueFormatter('\t');
+    var csv = getDelimValueFormatter(',');
+    var tsv = getDelimValueFormatter('\t');
     it('Applies quotes when needed', function () {
       assert.equal(csv('"'), '""""');
       assert.equal(csv('"yes" or "no"'), '"""yes"" or ""no"""');
@@ -26,7 +28,7 @@ describe('mapshaper-delim-export.js', function() {
       assert.equal(csv(5.6), '5.6');
     })
     it('Decimal comma', function() {
-      var csv = api.internal.getDelimValueFormatter(',', {decimal_comma: true});
+      var csv = getDelimValueFormatter(',', {decimal_comma: true});
       assert.equal(csv(0), '"0"');
       assert.equal(csv(5.6), '"5,6"');
       assert.equal(csv(-0.66), '"-0,66"');
@@ -42,7 +44,7 @@ describe('mapshaper-delim-export.js', function() {
       var buf2 = iconv.encode('foo,bar\nétranger,外国人', 'latin1');
       api.applyCommands('-i input.csv -o output.csv encoding=latin-1', {'input.csv': buf}, function(err, output) {
         var csv = output['output.csv'];
-        var str = internal.decodeString(csv, 'latin-1');
+        var str = api.internal.decodeString(csv, 'latin-1');
         assert.equal(str, 'foo,bar\nétranger,???');
         done();
       });
@@ -51,7 +53,7 @@ describe('mapshaper-delim-export.js', function() {
       var buf = utils.createBuffer('foo,bar\nétranger,外国人');
       api.applyCommands('-i input.csv -o output.csv encoding=ascii', {'input.csv': buf}, function(err, output) {
         var csv = output['output.csv'];
-        var str = internal.decodeString(csv, 'ascii');
+        var str = api.internal.decodeString(csv, 'ascii');
         assert.equal(str, 'foo,bar\n?tranger,???')
         done();
       });
@@ -60,7 +62,7 @@ describe('mapshaper-delim-export.js', function() {
       var buf = utils.createBuffer('foo,bar\nétranger,外国人');
       api.applyCommands('-i input.csv -o output.csv encoding=utf-16be', {'input.csv': buf}, function(err, output) {
         var csv = output['output.csv'];
-        var str = internal.decodeString(csv, 'utf-16be');
+        var str = api.internal.decodeString(csv, 'utf-16be');
         assert.equal(str, 'foo,bar\nétranger,外国人')
         done();
       });
@@ -74,8 +76,8 @@ describe('mapshaper-delim-export.js', function() {
       while(i++ < 10001) {
         rows.push({i: i, foo: 'bar'});
       }
-      var layer = {data: new internal.DataTable(rows)};
-      var buf = internal.exportLayerAsDSV(layer, ',');
+      var layer = {data: new DataTable(rows)};
+      var buf = exportLayerAsDSV(layer, ',');
       var str = buf.toString();
       var lines = str.split('\n');
       assert(Buffer.isBuffer(buf));
@@ -83,26 +85,26 @@ describe('mapshaper-delim-export.js', function() {
       assert.equal(lines[0], 'i,foo');
       assert.equal(lines[lines.length - 1], '10001,bar');
       // and as string if to_string option is passed
-      assert.equal(internal.exportLayerAsDSV(layer, ',', {to_string: true}), str);
+      assert.equal(exportLayerAsDSV(layer, ',', {to_string: true}), str);
     })
 
     it('objects are exported as JSON', function() {
-      var data = new api.internal.DataTable([{foo: {}, bar: {a: 2}}]);
-      var csv = api.internal.exportLayerAsDSV({data: data}, ',');
+      var data = new DataTable([{foo: {}, bar: {a: 2}}]);
+      var csv = exportLayerAsDSV({data: data}, ',');
       var target = 'foo,bar\n{},"{""a"":2}"';
       assert.equal(csv, target);
     });
 
     it('booleans are exported as "true" and "false"', function() {
-      var data = new api.internal.DataTable([{foo: true, bar: false}]);
-      var csv = api.internal.exportLayerAsDSV({data: data}, ',');
+      var data = new DataTable([{foo: true, bar: false}]);
+      var csv = exportLayerAsDSV({data: data}, ',');
       var target = 'foo,bar\ntrue,false';
       assert.equal(csv, target);
     })
 
     it('arrays are exported as JSON', function() {
-      var data = new api.internal.DataTable([{foo: [], bar: ["a", "b"]}]);
-      var csv = api.internal.exportLayerAsDSV({data: data}, ',');
+      var data = new DataTable([{foo: [], bar: ["a", "b"]}]);
+      var csv = exportLayerAsDSV({data: data}, ',');
       var target = 'foo,bar\n[],"[""a"",""b""]"';
       assert.equal(csv, target);
     });
@@ -111,16 +113,16 @@ describe('mapshaper-delim-export.js', function() {
   describe('field_order= option', function () {
     it('field-order=ascending sorts in case-insensitive A-Z order', function () {
       var str = 'Z,A,b,D,c\nfoo,foo,foo,foo,bar';
-      var dataset = api.internal.importDelim(str, {});
-      var output = api.internal.exportLayerAsDSV(dataset.layers[0], ',', {field_order: 'ascending'});
+      var dataset = importDelim(str, {});
+      var output = exportLayerAsDSV(dataset.layers[0], ',', {field_order: 'ascending'});
       assert.equal(output, 'A,b,c,D,Z\nfoo,foo,bar,foo,foo');
     })
   })
 
   describe('import/export roundtrip', function() {
     function roundtrip(str) {
-      var dataset = api.internal.importDelim(str, {});
-      var output = api.internal.exportDelim(dataset, {});
+      var dataset = importDelim(str, {});
+      var output = exportDelim(dataset, {});
       return output[0].content;
     }
     it('strings and numbers are preserved', function() {

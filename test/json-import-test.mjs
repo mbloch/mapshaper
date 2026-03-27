@@ -1,12 +1,11 @@
-import api from '../mapshaper.js';
 import assert from 'assert';
-var internal = api.internal;
+import { identifyJSONString } from '../src/io/mapshaper-json-import';
 
 
 describe('mapshaper-json-import.js', function () {
   describe('identifyJSONString()', function () {
     function identify(str) {
-      return internal.identifyJSONString(str);
+      return identifyJSONString(str);
     }
 
     it('Arrays of JSON records are type "json"', function () {

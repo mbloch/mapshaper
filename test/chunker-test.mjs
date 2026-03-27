@@ -1,6 +1,6 @@
 import assert from 'assert';
-import api from '../mapshaper.js';
-var split = api.internal.splitShellTokens;
+import { splitShellTokens } from '../src/cli/mapshaper-option-parsing-utils';
+var split = splitShellTokens;
 
 function test(src, dest) {
   // assert.deepEqual(await import('shell-quote').parse(src), split(src));
