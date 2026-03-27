@@ -1,5 +1,5 @@
-import api from '../mapshaper.js';
 import assert from 'assert';
+import { findMatchingLayers as findMatchingLayerRefs } from '../src/dataset/mapshaper-target-utils';
 
 
 describe('mapshaper-target-utils.js', function () {
@@ -8,7 +8,7 @@ describe('mapshaper-target-utils.js', function () {
     // shim so old tests will run against the current function signature
     function findMatchingLayers(layers, pattern) {
       layers = layers.map(lyr => ({layer: lyr}));
-      return api.internal.findMatchingLayers(layers, pattern).map(o => o.layer);
+      return findMatchingLayerRefs(layers, pattern).map(o => o.layer);
     }
 
     it("simple match", function () {
@@ -59,10 +59,10 @@ describe('mapshaper-target-utils.js', function () {
     it('unmatched layer throws if flag is passed and no layer is matched', function() {
       var layers = [{layer: {name: 'foo'}}];
       assert.throws(function() {
-        api.internal.findMatchingLayers(layers, 'bar', true)
+        findMatchingLayerRefs(layers, 'bar', true)
       });
       // (but doesn't throw if layer is matched)
-      assert.deepEqual(api.internal.findMatchingLayers(layers, 'foo', true), layers);
+      assert.deepEqual(findMatchingLayerRefs(layers, 'foo', true), layers);
     })
 
   })

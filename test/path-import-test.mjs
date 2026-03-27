@@ -1,6 +1,5 @@
 import api from '../mapshaper.js';
 import assert from 'assert';
-var DataTable = api.internal.DataTable;
 
 
 describe('mapshaper-path-import.js', function () {

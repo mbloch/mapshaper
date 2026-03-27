@@ -1,7 +1,6 @@
-import api from '../mapshaper.js';
 import assert from 'assert';
-
-var DataTable = api.internal.DataTable;
+import { DataTable } from '../src/datatable/mapshaper-data-table';
+import { getJoinCalc } from '../src/join/mapshaper-join-calc';
 
 describe('mapshaper-join-calc.js', function() {
 
@@ -17,14 +16,14 @@ describe('mapshaper-join-calc.js', function() {
     var data = new DataTable(records);
 
     it('null input yields null values, zero count', function() {
-      var f = api.internal.getJoinCalc(data, 'n = count(), min_area = min(area), fips_mode = mode(fips), tot_area = sum(area)');
+      var f = getJoinCalc(data, 'n = count(), min_area = min(area), fips_mode = mode(fips), tot_area = sum(area)');
       var o = {};
       f(null, o);
       assert.deepStrictEqual(o, {n: 0, min_area: null, fips_mode: null, tot_area: 0});
     })
 
     it('empty input yields null values, zero count', function() {
-      var f = api.internal.getJoinCalc(data,
+      var f = getJoinCalc(data,
         'n = count(), max_area = max(area), mean_area=average(area), first_fips = first(fips), last_fips=last(fips)');
       var o = {};
       f([], o);
@@ -32,13 +31,13 @@ describe('mapshaper-join-calc.js', function() {
     })
 
     it('source records are not modified', function() {
-      var f = api.internal.getJoinCalc(data, 'min_area = min(area), fips_mode = mode(fips)');
+      var f = getJoinCalc(data, 'min_area = min(area), fips_mode = mode(fips)');
       f([0, 2, 3, 4], {});
       assert.deepEqual(records, copy);
     })
 
     it('function names are hidden by variable names in destination table', function() {
-      var f = api.internal.getJoinCalc(data, 'count = _.count(), max = _.max(area)');
+      var f = getJoinCalc(data, 'count = _.count(), max = _.max(area)');
       var o = {};
       f([1, 2, 3, 4], o);
       assert.deepEqual(o, {count: 4, max: 500});
@@ -48,7 +47,7 @@ describe('mapshaper-join-calc.js', function() {
     it('function names are hidden by variable names in source table', function() {
       var records = [{count: 3}, {count: 5}];
       var data = new DataTable(records);
-      var f = api.internal.getJoinCalc(data, 'sum = _.sum(count), records=_.count()');
+      var f = getJoinCalc(data, 'sum = _.sum(count), records=_.count()');
       var o = {};
       f([0, 1], o);
       assert.deepEqual(o, {sum: 8, records: 2});
@@ -56,7 +55,7 @@ describe('mapshaper-join-calc.js', function() {
     })
 
     it('collect() function', function() {
-      var f = api.internal.getJoinCalc(data, 'a = collect(fips), b=collect(area)');
+      var f = getJoinCalc(data, 'a = collect(fips), b=collect(area)');
       var a = {}, b = {};
       f([0, 1, 3], a);
       f([], b);
@@ -65,7 +64,7 @@ describe('mapshaper-join-calc.js', function() {
     })
 
     it('supports multiple uses', function() {
-      var f = api.internal.getJoinCalc(data, 'a = first(fips), b=last(fips), min_area = min(area), fips_mode = mode(fips), med=median(area)');
+      var f = getJoinCalc(data, 'a = first(fips), b=last(fips), min_area = min(area), fips_mode = mode(fips), med=median(area)');
       var a = {}, b = {}, c = {}, d = {};
       f([1, 2, 3], b);
       f([0], a);

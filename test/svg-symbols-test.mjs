@@ -1,6 +1,5 @@
-import api from '../mapshaper.js';
 import assert from 'assert';
-var svg = api.internal.svg;
+import { renderPoint } from '../src/svg/svg-symbols';
 
 describe('svg-symbols.js', function () {
   describe('renderPoint()', function () {
@@ -10,7 +9,7 @@ describe('svg-symbols.js', function () {
         fill: 'magenta',
         opacity: 0.5
       };
-      var output = svg.renderPoint({'svg-symbol': defn});
+      var output = renderPoint({'svg-symbol': defn});
       var target = {
         tag: 'circle',
         properties: {cx: 0, cy: 0, fill: 'magenta', opacity: 0.5}
@@ -28,7 +27,7 @@ describe('svg-symbols.js', function () {
           }
         }]
       };
-      var out = svg.renderPoint({'svg-symbol': defn});
+      var out = renderPoint({'svg-symbol': defn});
       assert.deepEqual(out, defn);
     });
 
@@ -46,7 +45,7 @@ describe('svg-symbols.js', function () {
           dy: -1
         }]
       };
-      var output = svg.renderPoint({'svg-symbol': defn});
+      var output = renderPoint({'svg-symbol': defn});
       var target = {
         tag: 'g',
         properties: {},

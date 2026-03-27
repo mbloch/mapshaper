@@ -1,11 +1,15 @@
 import api from '../mapshaper.js';
 import assert from 'assert';
+import {
+  formatDistanceLabel,
+  parseScalebarLabelToKm
+} from '../src/commands/mapshaper-scalebar';
 
 
 describe('mapshaper-scalebar.js', function () {
   it('parseScalebarLabelToKm()', function () {
     var toKm = 1.60934;
-    var parse = api.internal.parseScalebarLabelToKm;
+    var parse = parseScalebarLabelToKm;
     assert.equal(parse('1 mile'), toKm);
     assert.equal(parse('1 MILE'), toKm);
     assert.equal(parse('50 mi'), 50 * toKm);
@@ -23,7 +27,7 @@ describe('mapshaper-scalebar.js', function () {
   })
 
   it('formatDistanceLabel()', function() {
-    var format = api.internal.formatDistanceLabel;
+    var format = formatDistanceLabel;
     assert.equal(format('1,000', 'mile'), '1,000 MILES')
     assert.equal(format('1', 'mile'), '1 MILE')
     assert.equal(format('1.5', 'mile'), '1.5 MILES')

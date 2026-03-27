@@ -1,8 +1,3 @@
-
-import api from '../mapshaper.js';
-import assert from 'assert';
-var TopoJSON = api.internal.topojson;
-
 // removed these functions from mapshaper.js build
 /*
 describe('topojson-split-test.js', function () {

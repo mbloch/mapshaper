@@ -1,7 +1,7 @@
 import assert from 'assert';
 import api from '../mapshaper.js';
-
-var Bounds = api.internal.Bounds;
+import { applyAspectRatio } from '../src/commands/mapshaper-rectangle';
+import { Bounds } from '../src/geom/mapshaper-bounds';
 
 describe('mapshaper-rectangle.js', function () {
 
@@ -15,7 +15,6 @@ describe('mapshaper-rectangle.js', function () {
   });
 
   describe('applyAspectRatio()', function () {
-    var applyAspectRatio = api.internal.applyAspectRatio;
     it('Handle max ratio', function () {
       var bounds = new Bounds(1, 1, 4, 2); // wide box
       applyAspectRatio(',1', bounds)

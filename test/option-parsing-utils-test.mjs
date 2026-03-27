@@ -1,7 +1,9 @@
 import assert from 'assert';
-import api from '../mapshaper.js';
-
-var internal = api.internal;
+import {
+  parseColorList,
+  parseStringList,
+  splitShellTokens
+} from '../src/cli/mapshaper-option-parsing-utils';
 
 describe('mapshaper-option-parsing-utils.js', function () {
 
@@ -10,7 +12,7 @@ describe('mapshaper-option-parsing-utils.js', function () {
         list2 = '"County FIPS","State FIPS"';
 
     function test(str, target) {
-      assert.deepEqual(api.internal.parseStringList(str), target);
+      assert.deepEqual(parseStringList(str), target);
     }
 
     it('quoted strings with commas are accepted', function() {
@@ -60,35 +62,35 @@ describe('mapshaper-option-parsing-utils.js', function () {
         expected5 = ['rgba(0,0,0,0)', 'rgb(22,32,0)', 'aliceblue'];
 
     it(list1, function() {
-      assert.deepEqual(internal.parseColorList(list1), expected);
+      assert.deepEqual(parseColorList(list1), expected);
     })
     it(list2, function() {
-      assert.deepEqual(internal.parseColorList(list2), expected);
+      assert.deepEqual(parseColorList(list2), expected);
     })
     it(list3, function() {
-      assert.deepEqual(internal.parseColorList(list3), expected);
+      assert.deepEqual(parseColorList(list3), expected);
     })
     it(list4, function() {
-      assert.deepEqual(internal.parseColorList(list4), expected);
+      assert.deepEqual(parseColorList(list4), expected);
     })
     it(list5, function() {
-      assert.deepEqual(internal.parseColorList(list5), expected5);
+      assert.deepEqual(parseColorList(list5), expected5);
     })
     it('cmyk() colors are accepted', function() {
       var list = 'cmyk(0,0,0,0),cmyk(100 100 100 100), cmyk(0, 0, 0, 0)';
       var expect = ['cmyk(0,0,0,0)', 'cmyk(100,100,100,100)', 'cmyk(0,0,0,0)']
-      assert.deepEqual(internal.parseColorList(list), expect);
+      assert.deepEqual(parseColorList(list), expect);
     })
     it('color scheme names are accepted', function() {
       var list = 'Category20b';
       var expect = ['Category20b']
-      assert.deepEqual(internal.parseColorList(list), expect);
+      assert.deepEqual(parseColorList(list), expect);
     })
 
   })
 
   describe('splitShellTokens()', function () {
-    var split = api.internal.splitShellTokens;
+    var split = splitShellTokens;
     function test(src, dest) {
      assert.deepEqual(split(src), dest);
     }

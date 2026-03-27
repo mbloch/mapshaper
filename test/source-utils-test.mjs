@@ -1,6 +1,5 @@
-import api from '../mapshaper.js';
 import assert from 'assert';
-var internal = api.internal;
+import { convertInterpolatedName } from '../src/dataset/mapshaper-source-utils';
 
 describe('mapshaper-source-utils.js', function () {
   describe('convertInterpolatedName()', function () {
@@ -8,7 +7,7 @@ describe('mapshaper-source-utils.js', function () {
       var lyr = {
         name: 'diagram'
       };
-      var name = internal.convertInterpolatedName('my-${target}', lyr);
+      var name = convertInterpolatedName('my-${target}', lyr);
       assert.equal(name, 'my-diagram');
     });
 
@@ -16,7 +15,7 @@ describe('mapshaper-source-utils.js', function () {
       var lyr = {
         name: 'diagram-0'
       };
-      var name = internal.convertInterpolatedName('layer-${target.split("-")[1]}', lyr);
+      var name = convertInterpolatedName('layer-${target.split("-")[1]}', lyr);
       assert.equal(name, 'layer-0');
     });
 
@@ -24,7 +23,7 @@ describe('mapshaper-source-utils.js', function () {
       var lyr = {
         name: 'layer1'
       };
-      var name = internal.convertInterpolatedName('${"points"}', lyr);
+      var name = convertInterpolatedName('${"points"}', lyr);
       assert.equal(name, 'points');
     });
   })

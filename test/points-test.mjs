@@ -1,5 +1,10 @@
 import assert from 'assert';
 import api from '../mapshaper.js';
+import {
+  coordinateFromValue,
+  findXField,
+  findYField
+} from '../src/commands/mapshaper-points';
 
 describe('mapshaper-points.js', function () {
 
@@ -144,20 +149,19 @@ describe('mapshaper-points.js', function () {
   describe('findXField() and findYField()', function() {
     it('findXField()', function() {
       'LNG,LON,lon,lng,long,longitude,X,x'.split(',').forEach(function(name) {
-        assert.equal(api.internal.findXField([name]), name);
+        assert.equal(findXField([name]), name);
       });
     });
 
     it('findYField()', function() {
       'LATITUDE,latitude,lat,y,Y'.split(',').forEach(function(name) {
-        assert.equal(api.internal.findYField([name]), name);
+        assert.equal(findYField([name]), name);
       });
     });
 
   });
 
   describe('coordinateFromValue()', function () {
-    var coordinateFromValue = api.internal.coordinateFromValue;
     it('numbers are unchanged', function () {
       assert.strictEqual(coordinateFromValue(0), 0);
       assert.strictEqual(coordinateFromValue(0.1), 0.1);

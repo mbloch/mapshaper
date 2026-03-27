@@ -1,6 +1,5 @@
 import api from '../mapshaper.js';
 import assert from 'assert';
-var internal = api.internal;
 
 describe('mapshaper-dashlines.js', function () {
   it ('-split-lines alias works', function(done) {

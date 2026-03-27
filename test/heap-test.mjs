@@ -1,7 +1,5 @@
 import assert from 'assert';
-import api from '../mapshaper.js';
-
-var Heap = api.internal.Heap;
+import { Heap } from '../src/simplify/mapshaper-heap';
 
 function heapSort(arr) {
   var heap = new Heap();

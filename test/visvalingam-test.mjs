@@ -1,7 +1,8 @@
 import assert from 'assert';
-import api from '../mapshaper.js';
+import { triangleArea, triangleArea3D } from '../src/geom/mapshaper-basic-geom';
+import Visvalingam from '../src/simplify/mapshaper-visvalingam';
 
-var v = api.internal.Visvalingam;
+var v = Visvalingam;
 
 describe("mapshaper-visvalingam.js", function() {
 
@@ -59,7 +60,7 @@ describe("mapshaper-visvalingam.js", function() {
     it ("uses 2D triangle area", function() {
       var coords = [0, 0, 1, 2, 4, 1];
       assert.equal(v.standardMetric.apply(null, coords),
-        api.geom.triangleArea.apply(null, coords));
+        triangleArea.apply(null, coords));
     })
   })
 
@@ -67,7 +68,7 @@ describe("mapshaper-visvalingam.js", function() {
     it ("uses 3D triangle area", function() {
       var coords = [0, 0, 2, 1, 2, 8, 4, 1, -5];
       assert.equal(v.standardMetric3D.apply(null, coords),
-        api.geom.triangleArea3D.apply(null, coords));
+        triangleArea3D.apply(null, coords));
     })
   })
 

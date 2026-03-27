@@ -1,5 +1,6 @@
 import api from '../mapshaper.js';
 import assert from 'assert';
+import { importJSONTable } from '../src/datatable/mapshaper-json-table';
 
 
 
@@ -11,7 +12,7 @@ describe('mapshaper-json-table.js', function () {
       }, {
         id: 1
       }]);
-      var output = api.internal.importJSONTable(JSON.parse(json));
+      var output = importJSONTable(JSON.parse(json));
       assert.deepEqual(output.layers[0].data.getRecords(), JSON.parse(json));
     })
   })

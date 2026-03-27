@@ -2,9 +2,7 @@ import api from '../mapshaper.js';
 import assert from 'assert';
 import path from 'path';
 import helpers from './helpers';
-
-var Utils = api.utils,
-    DataTable = api.internal.DataTable;
+import { DataTable } from '../src/datatable/mapshaper-data-table';
 
 describe('data-table.js', function () {
 

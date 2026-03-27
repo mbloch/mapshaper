@@ -2,8 +2,6 @@
 import api from '../mapshaper.js';
 import assert from 'assert';
 
-var TopoJSON = api.internal.topojson;
-
 
 describe('mapshaper-metadata.js', function () {
 

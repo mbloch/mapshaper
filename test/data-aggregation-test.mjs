@@ -1,11 +1,10 @@
-import api from '../mapshaper.js';
 import assert from 'assert';
-var internal = api.internal;
+import { getMultiFieldKeyFunction } from '../src/dissolve/mapshaper-data-aggregation';
 
 
 describe('mapshaper-data-aggregation.js', function () {
   describe('getMultiFieldKeyFunction()', function () {
-    var f = internal.getMultiFieldKeyFunction;
+    var f = getMultiFieldKeyFunction;
     it('single keys', function () {
       assert.equal(f(['foo'])({foo: 'bar'}), 'bar');
       assert.equal(f(['foo'])({foo: 100.23}), '100.23');

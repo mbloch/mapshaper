@@ -1,5 +1,9 @@
 import assert from 'assert';
 import api from '../mapshaper.js';
+import {
+  getCenterParams,
+  getConicParams
+} from '../src/crs/mapshaper-projection-params';
 
 describe('mapshaper-projection-params.js', function () {
 
@@ -20,13 +24,13 @@ describe('mapshaper-projection-params.js', function () {
 
   it('getConicParams()', function() {
     var bbox=[0, 10, 30, 70];
-    var str = api.internal.getConicParams(bbox, 2);
+    var str = getConicParams(bbox, 2);
     assert.equal(str, '+lon_0=15.00 +lat_1=20.00 +lat_2=60.00');
   })
 
   it('getCenterParams()', function() {
     var bbox=[-60, -40, -30, -10];
-    var str = api.internal.getCenterParams(bbox, 1);
+    var str = getCenterParams(bbox, 1);
     assert.equal(str, '+lon_0=-45.0 +lat_0=-25.0');
   })
 })

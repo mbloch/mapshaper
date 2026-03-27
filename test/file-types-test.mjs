@@ -1,11 +1,16 @@
-import api from '../mapshaper.js';
 import assert from 'assert';
+import {
+  filenameIsUnsupportedOutputType,
+  guessInputType,
+  stringLooksLikeJSON
+} from '../src/io/mapshaper-file-types';
+import { inferOutputFormat } from '../src/io/mapshaper-output-format';
 
 
 describe('mapshaper-file-types.js', function () {
 
   describe('guessInputType()', function() {
-    var guess = api.internal.guessInputType;
+    var guess = guessInputType;
     it('identifies known file types', function() {
       assert.equal(guess(null, {type: 'FeatureCollection'}), 'json');
       assert.equal(guess('input.txt', 'NAME,FOO'), 'text');
@@ -24,53 +29,53 @@ describe('mapshaper-file-types.js', function () {
 
   describe('inferOutputFormat()', function () {
     it('.json -> geojson', function () {
-      assert.equal(api.internal.inferOutputFormat("file.json"), "geojson");
+      assert.equal(inferOutputFormat("file.json"), "geojson");
     })
 
     it('.json + topojson -> topojson', function () {
-      assert.equal(api.internal.inferOutputFormat("file.json", "topojson"), "topojson");
+      assert.equal(inferOutputFormat("file.json", "topojson"), "topojson");
     })
 
     it('.topojson -> topojson', function () {
-      assert.equal(api.internal.inferOutputFormat("file.topojson"), "topojson");
+      assert.equal(inferOutputFormat("file.topojson"), "topojson");
     })
 
     it('.shp -> shapefile', function () {
-      assert.equal(api.internal.inferOutputFormat("file.shp"), "shapefile");
+      assert.equal(inferOutputFormat("file.shp"), "shapefile");
     })
 
     it('.txt -> dsv', function () {
-      assert.equal(api.internal.inferOutputFormat("file.txt"), 'dsv');
+      assert.equal(inferOutputFormat("file.txt"), 'dsv');
     })
 
     it('.dbf -> dbf', function () {
-      assert.equal(api.internal.inferOutputFormat("file.dbf"), 'dbf');
+      assert.equal(inferOutputFormat("file.dbf"), 'dbf');
     })
 
     it('.csv -> dsv', function () {
-      assert.equal(api.internal.inferOutputFormat("file.csv"), 'dsv');
+      assert.equal(inferOutputFormat("file.csv"), 'dsv');
     })
 
     it('.tsv -> dsv', function () {
-      assert.equal(api.internal.inferOutputFormat("file.tsv"), 'dsv');
+      assert.equal(inferOutputFormat("file.tsv"), 'dsv');
     })
 
   })
 
   describe('stringLooksLikeJSON()', function() {
     it('JSON Object', function() {
-      assert(api.internal.stringLooksLikeJSON(' {"type": "FeatureCollection", "features": []}'));
+      assert(stringLooksLikeJSON(' {"type": "FeatureCollection", "features": []}'));
     })
     it('JSON Array', function() {
-      assert(api.internal.stringLooksLikeJSON(' [{"id": 0}]'));
+      assert(stringLooksLikeJSON(' [{"id": 0}]'));
     })
     it('whitespace', function() {
-      assert(!api.internal.stringLooksLikeJSON(' \n'));
+      assert(!stringLooksLikeJSON(' \n'));
     })
   })
 
   describe('filenameIsUnsupportedOutputType()', function () {
-    var test = api.internal.filenameIsUnsupportedOutputType;
+    var test = filenameIsUnsupportedOutputType;
     it('unsupported types -> true', function () {
       assert(test('filename.gdb'))
       assert(test('filename.shx'))
