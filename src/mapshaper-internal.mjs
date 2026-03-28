@@ -100,6 +100,7 @@ import * as FileExport from './io/mapshaper-file-export';
 import * as FileImport from './io/mapshaper-file-import';
 import * as FilenameUtils from './utils/mapshaper-filename-utils';
 import * as FileReader from './io/mapshaper-file-reader';
+import * as FileFormats from './io/mapshaper-dataset-formats';
 import * as FileTypes from './io/mapshaper-file-types';
 import * as FilterGeom from './commands/mapshaper-filter-geom';
 import * as Frame from './commands/mapshaper-frame';
@@ -221,6 +222,7 @@ Object.assign(internal,
   FileImport,
   FilenameUtils,
   FileReader,
+  FileFormats,
   FileTypes,
   FilterGeom,
   Frame,

@@ -32359,7 +32359,6 @@
 	var geographiclibGeodesic_minExports = requireGeographiclibGeodesic_min();
 	var GeographicLib = /*@__PURE__*/getDefaultExportFromCjs(geographiclibGeodesic_minExports);
 
-	// Export modules for use with custom require() function
 	window.modules = {
 	  'iconv-lite': iconvLite,
 	  'idb-keyval': idbKeyval,

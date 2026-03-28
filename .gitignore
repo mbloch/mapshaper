@@ -13,3 +13,4 @@ pre-publish
 pre-release.js
 release*
 nacis
+.cursorignore

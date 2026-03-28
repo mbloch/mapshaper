@@ -11,3 +11,4 @@ export async function considerReprojecting(gui, dataset, opts) {
     internal.projectDataset(dataset, dataCRS, mapCRS, {densify: true});
   }
 }
+

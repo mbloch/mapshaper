@@ -9,7 +9,6 @@ import kdbush from 'kdbush';
 import * as buffer from 'buffer';
 import GeographicLib from 'geographiclib-geodesic';
 
-// Export modules for use with custom require() function
 window.modules = {
   'iconv-lite': iconvLite,
   'idb-keyval': idbKeyval,
