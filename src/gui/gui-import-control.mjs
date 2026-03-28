@@ -566,6 +566,8 @@ export function ImportControl(gui, opts) {
     }
   }
 
+  // Group multiple files belonging to the same dataset together
+  // (applies to Shapefiles)
   function groupFilesForImport(data, importOpts) {
     var names = importOpts.name ? [importOpts.name] : null;
     if (initialImport && opts.name) { // name from mapshaper-gui --name option

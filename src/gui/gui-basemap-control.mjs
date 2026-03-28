@@ -5,6 +5,7 @@ import { fromWebMercator, scaleToZoom } from './gui-dynamic-crs';
 import { setLoggingForGUI } from './gui-proxy';
 import { getDatasetCrsInfo } from './gui-display-utils';
 import { GUI } from './gui-lib';
+import { loadScript } from './dom-utils';
 
 var EMPTY_STYLE = {
     version: 8,
@@ -12,12 +13,12 @@ var EMPTY_STYLE = {
     layers: []
   };
 
-function loadScript(url, cb) {
-  var script = document.createElement('script');
-  script.onload = cb;
-  script.src = url;
-  document.head.appendChild(script);
-}
+// function loadScript(url, cb) {
+//   var script = document.createElement('script');
+//   script.onload = cb;
+//   script.src = url;
+//   document.head.appendChild(script);
+// }
 
 function loadStylesheet(url) {
   var el = document.createElement('link');
@@ -325,34 +326,33 @@ export function Basemap(gui) {
     return bbox2;
   }
 
-  function initMap() {
+  async function initMap() {
     // var accessToken = (window.location.hostname == 'localhost' ?
     //   params.localhost_key : params.production_key) || params.key;
     if (!enabled() || map || loading) return;
     loading = true;
     loadStylesheet(params.css);
-    loadScript(params.js, function() {
-      map = new window.mapboxgl.Map({
-        logoPosition: 'bottom-left',
-        container: mapEl.node(),
-        // style: activeStyle.url,
-        style: EMPTY_STYLE, // initializing with empty style to support custom styles
-        bounds: getLonLatBounds(),
-        doubleClickZoom: false,
-        dragPan: false,
-        dragRotate: false,
-        scrollZoom: false,
-        interactive: false,
-        keyboard: false,
-        maxPitch: 0,
-        projection: 'mercator', // prevent globe view when zoomed out
-        renderWorldCopies: true // false // false prevents panning off the map
-      });
-      setStyle(activeStyle);
-      map.on('load', function() {
-        loading = false;
-        refresh();
-      });
+    await loadScript(params.js);
+    map = new window.mapboxgl.Map({
+      logoPosition: 'bottom-left',
+      container: mapEl.node(),
+      // style: activeStyle.url,
+      style: EMPTY_STYLE, // initializing with empty style to support custom styles
+      bounds: getLonLatBounds(),
+      doubleClickZoom: false,
+      dragPan: false,
+      dragRotate: false,
+      scrollZoom: false,
+      interactive: false,
+      keyboard: false,
+      maxPitch: 0,
+      projection: 'mercator', // prevent globe view when zoomed out
+      renderWorldCopies: true // false // false prevents panning off the map
+    });
+    setStyle(activeStyle);
+    map.on('load', function() {
+      loading = false;
+      refresh();
     });
   }
 

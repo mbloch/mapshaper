@@ -1,5 +1,5 @@
 import { isSupportedDelimiter } from '../text/mapshaper-delim-import';
-import { isSupportedOutputFormat } from '../io/mapshaper-file-types';
+import { isSupportedOutputFormat } from '../io/mapshaper-dataset-formats';
 import { filenameIsUnsupportedOutputType, stringLooksLikeJSON } from '../io/mapshaper-file-types';
 import { validateEncoding } from '../text/mapshaper-encodings';
 import { error, stop } from '../utils/mapshaper-logging';

@@ -4,10 +4,12 @@ import { getFileExtension } from '../utils/mapshaper-filename-utils';
 import { PACKAGE_EXT } from '../pack/mapshaper-pack';
 
 // Guess the type of a data file from file extension, or return null if not sure
+// File type is different than data type
+//
 export function guessInputFileType(file) {
   var ext = getFileExtension(file || '').toLowerCase(),
       type = null;
-  if (ext == 'dbf' || ext == 'shp' || ext == 'kml') {
+  if (ext == 'dbf' || ext == 'shp' || ext == 'kml' || ext == 'fgb') {
     type = ext;
   } else if (isAuxiliaryInputFileType(ext)) {
     type = ext;
@@ -84,30 +86,11 @@ export function isGzipFile(file) {
   return /\.gz$/i.test(file);
 }
 
-export function isSupportedOutputFormat(fmt) {
-  var types = ['geojson', 'topojson', 'json', 'dsv', 'dbf', 'shapefile', 'svg', 'kml', PACKAGE_EXT];
-  return types.indexOf(fmt) > -1;
-}
-
-export function getFormatName(fmt) {
-  return {
-    geojson: 'GeoJSON',
-    topojson: 'TopoJSON',
-    json: 'JSON records',
-    dsv: 'CSV',
-    dbf: 'DBF',
-    kml: 'KML',
-    kmz: 'KMZ',
-    [PACKAGE_EXT]: 'Snapshot file',
-    shapefile: 'Shapefile',
-    svg: 'SVG'
-  }[fmt] || '';
-}
-
 // Assumes file at @path is one of Mapshaper's supported file types
 export function isSupportedBinaryInputType(path) {
   var ext = getFileExtension(path).toLowerCase();
-  return ext == 'shp' || ext == 'shx' || ext == 'dbf' || ext == PACKAGE_EXT; // GUI also supports zip files
+  return ext == 'shp' || ext == 'shx' || ext == 'dbf' ||
+    ext == 'fgb' || ext == PACKAGE_EXT; // GUI also supports zip files
 }
 
 export function isImportableAsBinary(path) {

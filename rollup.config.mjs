@@ -32,7 +32,7 @@ export default [{
   output: {
     file: 'www/modules.js',
     format: 'iife',
-    name: 'modules' // Global variable name when loaded via script tag
+    name: 'modules'
   },
   plugins: [
     nodeResolve({

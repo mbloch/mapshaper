@@ -9,6 +9,7 @@ import { importKML } from '../kml/kml-import';
 import { buildTopology } from '../topology/mapshaper-topology';
 import { message, stop, error } from '../utils/mapshaper-logging';
 import { getFileBase, parseLocalPath } from '../utils/mapshaper-filename-utils';
+import { importFlatgeobuf } from '../flatgeobuf/mapshaper-flatgeobuf';
 
 // Parse content of one or more input files and return a dataset
 // @obj: file data, indexed by file type
@@ -17,40 +18,45 @@ import { getFileBase, parseLocalPath } from '../utils/mapshaper-filename-utils';
 //    filename: String or null
 //
 export function importContent(obj, opts) {
-  var dataset, content, fileFmt, data;
+  var dataset, content, dataFmt, data;
   opts = opts || {};
   if (obj.json) {
     data = importJSON(obj.json, opts);
-    fileFmt = data.format;
+    dataFmt = data.format;
     dataset = data.dataset;
     cleanPathsAfterImport(dataset, opts);
 
   } else if (obj.text) {
-    fileFmt = 'dsv';
+    dataFmt = 'dsv';
     data = obj.text;
     dataset = importDelim2(data, opts);
 
   } else if (obj.shp) {
-    fileFmt = 'shapefile';
+    dataFmt = 'shapefile';
     data = obj.shp;
     dataset = importShapefile(obj, opts);
     cleanPathsAfterImport(dataset, opts);
 
   } else if (obj.dbf) {
-    fileFmt = 'dbf';
+    dataFmt = 'dbf';
     data = obj.dbf;
     dataset = importDbf(obj, opts);
 
   } else if (obj.prj) {
     // added for -proj command source
-    fileFmt = 'prj';
+    dataFmt = 'prj';
     data = obj.prj;
     dataset = {layers: [], info: {prj: data.content}};
 
   } else if (obj.kml) {
-    fileFmt = 'kml';
+    dataFmt = 'kml';
     data = obj.kml;
     dataset = importKML(data.content, opts);
+
+  } else if (obj.fgb) {
+    dataFmt = 'flatgeobuf';
+    data = obj.fgb;
+    dataset = importFlatgeobuf(data.content, opts);
   }
 
   if (!dataset) {
@@ -58,12 +64,12 @@ export function importContent(obj, opts) {
   }
 
   // Convert to topological format, if needed
-  if (dataset.arcs && !opts.no_topology && fileFmt != 'topojson') {
+  if (dataset.arcs && !opts.no_topology && dataFmt != 'topojson') {
     buildTopology(dataset);
   }
 
   // Use file basename for layer name, except TopoJSON, which uses object names
-  if (fileFmt != 'topojson') {
+  if (dataFmt != 'topojson') {
     dataset.layers.forEach(function(lyr) {
       if (!lyr.name) {
         lyr.name = filenameToLayerName(data.filename || '');
@@ -76,7 +82,7 @@ export function importContent(obj, opts) {
   if (data.filename) {
     dataset.info.input_files = [data.filename];
   }
-  dataset.info.input_formats = [fileFmt];
+  dataset.info.input_formats = [dataFmt];
   return dataset;
 }
 
