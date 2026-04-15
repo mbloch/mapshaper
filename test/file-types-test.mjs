@@ -54,6 +54,10 @@ describe('mapshaper-file-types.js', function () {
       assert.equal(inferOutputFormat("file.dbf"), 'dbf');
     })
 
+    it('.fgb -> flatgeobuf', function () {
+      assert.equal(inferOutputFormat("file.fgb"), 'flatgeobuf');
+    })
+
     it('.csv -> dsv', function () {
       assert.equal(inferOutputFormat("file.csv"), 'dsv');
     })

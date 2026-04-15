@@ -273,7 +273,7 @@ export var ExportControl = function(gui) {
 
   function getExportFormats() {
     // return ['shapefile', 'geojson', 'topojson', 'json', 'dsv', 'kml', 'svg', internal.PACKAGE_EXT];
-    return ['shapefile', 'json', 'geojson', 'dsv', 'topojson', 'kml', internal.PACKAGE_EXT, 'svg'];
+    return ['shapefile', 'json', 'geojson', 'dsv', 'topojson', 'flatgeobuf', 'kml', internal.PACKAGE_EXT, 'svg'];
   }
 
   function initFormatMenu() {

@@ -215,7 +215,7 @@ export function getOptionParser() {
       }
     })
     .option('format', {
-      describe: 'options: shapefile,geojson,topojson,json,dbf,csv,tsv,svg'
+      describe: 'options: shapefile,geojson,topojson,flatgeobuf,json,dbf,csv,tsv,svg'
     })
     .option('target', targetOpt)
     .option('force', {

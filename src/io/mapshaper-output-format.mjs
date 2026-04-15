@@ -42,6 +42,8 @@ export function inferOutputFormat(file, inputFormat) {
     format = 'shapefile';
   } else if (ext == 'dbf') {
     format = 'dbf';
+  } else if (ext == 'fgb') {
+    format = 'flatgeobuf';
   } else if (ext == 'svg') {
     format = 'svg';
   } else if (ext == 'kml' || ext == 'kmz') {
