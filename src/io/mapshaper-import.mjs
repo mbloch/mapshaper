@@ -11,6 +11,7 @@ import { message, stop, error } from '../utils/mapshaper-logging';
 import { getFileBase, parseLocalPath } from '../utils/mapshaper-filename-utils';
 import { importFlatgeobuf } from '../flatgeobuf/mapshaper-flatgeobuf';
 import { importGeoPackage } from '../geopackage/mapshaper-geopackage-import';
+import { importSVG } from '../svg/mapshaper-svg-import';
 
 // Parse content of one or more input files and return a dataset
 // @obj: file data, indexed by file type
@@ -53,6 +54,11 @@ export function importContent(obj, opts) {
     dataFmt = 'kml';
     data = obj.kml;
     dataset = importKML(data.content, opts);
+
+  } else if (obj.svg) {
+    dataFmt = 'svg';
+    data = obj.svg;
+    dataset = importSVG(data.content, opts);
 
   } else if (obj.fgb) {
     stop("FlatGeobuf import requires async import path");

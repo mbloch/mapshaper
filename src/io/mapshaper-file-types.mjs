@@ -9,7 +9,7 @@ import { PACKAGE_EXT } from '../pack/mapshaper-pack';
 export function guessInputFileType(file) {
   var ext = getFileExtension(file || '').toLowerCase(),
       type = null;
-  if (ext == 'dbf' || ext == 'shp' || ext == 'kml' || ext == 'fgb' || ext == 'gpkg') {
+  if (ext == 'dbf' || ext == 'shp' || ext == 'kml' || ext == 'svg' || ext == 'fgb' || ext == 'gpkg') {
     type = ext;
   } else if (isAuxiliaryInputFileType(ext)) {
     type = ext;
@@ -32,7 +32,8 @@ export function guessInputContentType(content) {
   var type = null;
   if (utils.isString(content)) {
     type = stringLooksLikeJSON(content) && 'json' ||
-      stringLooksLikeKML(content) && 'kml' || 'text';
+      stringLooksLikeKML(content) && 'kml' ||
+      stringLooksLikeSVG(content) && 'svg' || 'text';
   } else if (utils.isObject(content) && content.type || utils.isArray(content)) {
     type = 'json';
   }
@@ -50,6 +51,11 @@ export function stringLooksLikeJSON(str) {
 export function stringLooksLikeKML(str) {
   str = String(str);
   return str.includes('<kml ') && str.includes('xmlns="http://www.opengis.net/kml/');
+}
+
+export function stringLooksLikeSVG(str) {
+  str = String(str);
+  return str.includes('<svg ') && str.includes('xmlns="http://www.w3.org/2000/svg"');
 }
 
 export function couldBeDsvFile(name) {
