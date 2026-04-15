@@ -1,3 +1,7 @@
+v0.6.114
+* Support for reading and writing FlatGeobuf files.
+* Support for reading and writing GeoPackage files.
+
 v0.6.113
 * Support for adding Mapbox vector tile and raster tile basemaps.
 
