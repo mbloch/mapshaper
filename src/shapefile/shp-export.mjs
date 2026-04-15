@@ -22,7 +22,7 @@ export function exportShapefile(dataset, opts) {
 
 function exportPrjFile(lyr, dataset) {
   var info = dataset.info || {};
-  var prj = info.prj;
+  var prj = info.wkt1;
   if (!prj) {
     try {
       prj = crsToPrj(getDatasetCRS(dataset));

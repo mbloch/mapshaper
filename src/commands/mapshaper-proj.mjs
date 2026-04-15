@@ -83,7 +83,7 @@ function projCmd(dataset, destInfo, opts) {
 
   projectDataset(target, srcInfo.crs, destInfo.crs, opts || {});
 
-  // dataset.info.prj = destInfo.prj; // may be undefined
+  // dataset.info.wkt1 = destInfo.wkt1; // may be undefined
   setDatasetCrsInfo(target, destInfo);
 
   dataset.arcs = target.arcs;
@@ -102,8 +102,8 @@ export function fetchCrsInfo(name, catalog) {
   if (/\.prj$/i.test(name)) {
     dataset = importFile(name, {});
     if (dataset) {
-      info.prj = dataset.info.prj;
-      info.crs = parsePrj(info.prj);
+      info.wkt1 = dataset.info.wkt1;
+      info.crs = parsePrj(info.wkt1);
     }
     return info;
   }

@@ -1,4 +1,4 @@
-import { importContent } from '../io/mapshaper-import';
+import { importContent, importContentAsync } from '../io/mapshaper-import';
 import {
   isSupportedBinaryInputType,
   guessInputContentType,
@@ -27,7 +27,7 @@ cmd.importFiles = async function(catalog, opts) {
   var dataset;
 
   if (opts.stdin) {
-    dataset = importFile('/dev/stdin', opts);
+    dataset = await importFileAsync('/dev/stdin', opts);
     catalog.addDataset(dataset);
     return dataset;
   }
@@ -60,9 +60,9 @@ cmd.importFiles = async function(catalog, opts) {
   }
 
   if (files.length == 1) {
-    dataset = importFile(files[0], opts);
+    dataset = await importFileAsync(files[0], opts);
   } else {
-    dataset = importFilesTogether(files, opts);
+    dataset = await importFilesTogetherAsync(files, opts);
   }
 
   if (opts.merge_files && files.length > 1) {
@@ -158,6 +158,10 @@ export function importFile(path, opts) {
   return _importFile(path, opts);
 }
 
+export async function importFileAsync(path, opts) {
+  return _importFileAsync(path, opts);
+}
+
 var _importFile = function(path, opts) {
   var fileType = guessInputFileType(path),
       input = {},
@@ -214,6 +218,60 @@ var _importFile = function(path, opts) {
   return importContent(input, opts);
 };
 
+async function _importFileAsync(path, opts) {
+  var fileType = guessInputFileType(path),
+      input = {},
+      encoding = opts && opts.encoding || null,
+      cache = opts && opts.input || null,
+      cached = cache && (path in cache),
+      content;
+
+  cli.checkFileExists(path, cache);
+
+  if ((fileType == 'shp' || fileType == 'json' || fileType == 'text' || fileType == 'dbf') && !cached) {
+    // these file types are read incrementally
+    content = null;
+
+  } else if (fileType && isSupportedBinaryInputType(path)) {
+    content = cli.readFile(path, null, cache);
+    if (utils.isString(content)) {
+      stop('Expected binary content, received a string');
+    }
+
+  } else if (fileType) {
+    content = cli.readFile(path, encoding || 'utf-8', cache);
+
+  } else if (getFileExtension(path) == 'gz') {
+    var pathgz = path;
+    path = pathgz.replace(/\.gz$/, '');
+    fileType = guessInputFileType(path);
+    if (!fileType) {
+      stop('Unrecognized file type:', path);
+    }
+    content = gunzipSync(cli.readFile(pathgz, null, cache), path);
+
+  } else {
+    content = cli.readFile(path, encoding || 'utf-8', cache);
+    fileType = guessInputContentType(content);
+    if (fileType == 'text' && content.indexOf('\ufffd') > -1) {
+      fileType = null;
+    }
+  }
+
+  if (!fileType) {
+    stop(getUnsupportedFileMessage(path));
+  }
+  input[fileType] = {filename: path, content: content};
+  content = null;
+  if (fileType == 'shp' || fileType == 'dbf') {
+    readShapefileAuxFiles(path, input, cache);
+  }
+  if (fileType == 'shp' && !input.dbf) {
+    message(utils.format("[%s] .dbf file is missing - shapes imported without attribute data.", path));
+  }
+  return fileType == 'gpkg' || fileType == 'fgb' ? importContentAsync(input, opts) : importContent(input, opts);
+}
+
 // Import multiple files to a single dataset
 export function importFilesTogether(files, opts) {
   var unbuiltTopology = false;
@@ -232,6 +290,26 @@ export function importFilesTogether(files, opts) {
   // Build topology, if needed
   // TODO: consider updating topology of TopoJSON files instead of concatenating arcs
   // (but problem of mismatched coordinates due to quantization in input files.)
+  if (unbuiltTopology && !opts.no_topology) {
+    cleanPathsAfterImport(combined, opts);
+    buildTopology(combined);
+  }
+  return combined;
+}
+
+export async function importFilesTogetherAsync(files, opts) {
+  var unbuiltTopology = false;
+  var datasets = [];
+  for (var fname of files) {
+    // import without topology or snapping
+    var importOpts = utils.defaults({no_topology: true, snap: false, snap_interval: null, files: [fname]}, opts);
+    var dataset = await importFileAsync(fname, importOpts);
+    if (dataset.arcs && dataset.arcs.size() > 0 && dataset.info.input_formats[0] != 'topojson') {
+      unbuiltTopology = true;
+    }
+    datasets.push(dataset);
+  }
+  var combined = mergeDatasets(datasets);
   if (unbuiltTopology && !opts.no_topology) {
     cleanPathsAfterImport(combined, opts);
     buildTopology(combined);

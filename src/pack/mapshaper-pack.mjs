@@ -154,7 +154,7 @@ async function exportLayer(lyr, opts) {
 
 export function exportInfo(info) {
   info = Object.assign({}, info);
-  if (info.crs && !info.crs_string && !info.prj) {
+  if (info.crs && !info.crs_string && !info.wkt1) {
     info.crs_string = crsToProj4(info.crs);
   }
   delete info.crs; // proj object cannot be serialized (need to reconstitute in unpack)

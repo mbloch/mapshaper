@@ -391,7 +391,7 @@ export function LayerControl(gui) {
       if (!lyr.data) {
         missing.push('.dbf');
       }
-      if (!dataset.info.prj && !dataset.info.crs) {
+      if (!dataset.info.wkt1 && !dataset.info.crs) {
         missing.push('.prj');
       }
     }

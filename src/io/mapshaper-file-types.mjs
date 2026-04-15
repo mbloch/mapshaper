@@ -9,7 +9,7 @@ import { PACKAGE_EXT } from '../pack/mapshaper-pack';
 export function guessInputFileType(file) {
   var ext = getFileExtension(file || '').toLowerCase(),
       type = null;
-  if (ext == 'dbf' || ext == 'shp' || ext == 'kml' || ext == 'fgb') {
+  if (ext == 'dbf' || ext == 'shp' || ext == 'kml' || ext == 'fgb' || ext == 'gpkg') {
     type = ext;
   } else if (isAuxiliaryInputFileType(ext)) {
     type = ext;
@@ -90,7 +90,7 @@ export function isGzipFile(file) {
 export function isSupportedBinaryInputType(path) {
   var ext = getFileExtension(path).toLowerCase();
   return ext == 'shp' || ext == 'shx' || ext == 'dbf' ||
-    ext == 'fgb' || ext == PACKAGE_EXT; // GUI also supports zip files
+    ext == 'fgb' || ext == 'gpkg' || ext == PACKAGE_EXT; // GUI also supports zip files
 }
 
 export function isImportableAsBinary(path) {

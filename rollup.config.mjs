@@ -18,6 +18,15 @@ const onBundle = {
   }
 };
 
+const onGeoPackageBundle = {
+  name: 'ongeopackagebundle',
+  writeBundle() {
+    const src = path.join(__dirname, 'node_modules/@ngageoint/geopackage/dist/sql-wasm.wasm');
+    const dest = path.join(__dirname, 'www/sql-wasm.wasm');
+    fs.writeFileSync(dest, fs.readFileSync(src));
+  }
+};
+
 export default [{
   treeshake: false,
   input: 'src/gui/gui.mjs',
@@ -37,6 +46,24 @@ export default [{
   plugins: [
     nodeResolve({
       browser: true, // Use browser versions of packages when available
+      preferBuiltins: false
+    }),
+    commonjs(),
+    json(),
+    nodePolyfills()
+  ]
+}, {
+  treeshake: false,
+  input: 'src/mapshaper-gui-geopackage.mjs',
+  output: {
+    file: 'www/geopackage.js',
+    format: 'iife',
+    name: 'mapshaperGeoPackage'
+  },
+  plugins: [
+    onGeoPackageBundle,
+    nodeResolve({
+      browser: true,
       preferBuiltins: false
     }),
     commonjs(),
