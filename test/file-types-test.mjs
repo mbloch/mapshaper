@@ -58,6 +58,10 @@ describe('mapshaper-file-types.js', function () {
       assert.equal(inferOutputFormat("file.fgb"), 'flatgeobuf');
     })
 
+    it('.gpkg -> geopackage', function () {
+      assert.equal(inferOutputFormat("file.gpkg"), 'geopackage');
+    })
+
     it('.csv -> dsv', function () {
       assert.equal(inferOutputFormat("file.csv"), 'dsv');
     })

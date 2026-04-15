@@ -9,6 +9,7 @@ import { exportTopoJSON } from '../topojson/topojson-export';
 import { exportGeoJSON } from '../geojson/geojson-export';
 import { exportJSON } from '../datatable/mapshaper-json-table';
 import { exportFlatGeobuf } from '../flatgeobuf/mapshaper-flatgeobuf-export';
+import { exportGeoPackage } from '../geopackage/mapshaper-geopackage-export';
 import { setCoordinatePrecision } from '../geom/mapshaper-rounding';
 import { copyDatasetForExport, copyDatasetForRenaming } from '../dataset/mapshaper-dataset-utils';
 import { mergeDatasetsForExport } from '../dataset/mapshaper-merging';
@@ -45,7 +46,8 @@ async function exportDatasets(datasets, opts) {
     opts = utils.defaults({compact: true}, opts);
     return exportPackedDatasets(datasets, opts);
   }
-  if (format == 'kml' || format == 'svg' || format == 'topojson' || format == 'geojson' && opts.combine_layers) {
+  if (format == 'kml' || format == 'svg' || format == 'topojson' || format == 'geopackage' ||
+      format == 'geojson' && opts.combine_layers) {
     // multi-layer formats: combine multiple datasets into one
     if (datasets.length > 1) {
       datasets = [mergeDatasetsForExport(datasets)];
@@ -64,17 +66,18 @@ async function exportDatasets(datasets, opts) {
     datasets = datasets.map(copyDatasetForRenaming);
     assignUniqueLayerNames2(datasets);
   }
-  files = datasets.reduce(function(memo, dataset) {
-    if (runningInBrowser()) {
-      utils.sortOn(dataset.layers, 'menu_order', true);
-    } else {
-      // kludge to export layers in order that target= option or previous
-      // -target command matched them (useful mainly for SVG output)
-      // target_id was assigned to each layer by findCommandTargets()
-      utils.sortOn(dataset.layers, 'target_id', true);
+  if (format == 'geopackage') {
+    if (datasets.length > 1) {
+      datasets = [mergeDatasetsForExport(datasets)];
     }
-    return memo.concat(exportFileContent(dataset, opts));
-  }, []);
+    datasets.forEach(sortExportLayers);
+    files = await exportGeoPackage(datasets[0], opts);
+  } else {
+    files = datasets.reduce(function(memo, dataset) {
+      sortExportLayers(dataset);
+      return memo.concat(exportFileContent(dataset, opts));
+    }, []);
+  }
 
   if (opts.bbox_index) {
     // If rounding or quantization are applied during export, bounds may
@@ -264,4 +267,15 @@ export function formatVersionedFileName(filename, i) {
 function fixFileExtension(ext, fmt) {
   // TODO: use fmt to validate
   return ext.replace(/^\.+/, '');
+}
+
+function sortExportLayers(dataset) {
+  if (runningInBrowser()) {
+    utils.sortOn(dataset.layers, 'menu_order', true);
+  } else {
+    // kludge to export layers in order that target= option or previous
+    // -target command matched them (useful mainly for SVG output)
+    // target_id was assigned to each layer by findCommandTargets()
+    utils.sortOn(dataset.layers, 'target_id', true);
+  }
 }
