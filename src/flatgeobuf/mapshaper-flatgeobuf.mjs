@@ -17,7 +17,7 @@ export async function importFlatgeobuf(content, opts) {
   dataset = importer.done();
   dataset.info = dataset.info || {};
   dataset.info.flatgeobuf_header = headerMeta;
-  var crs = headerMeta.crs || null;
+  var crs = normalizeCRSMeta(headerMeta.crs || null);
   dataset.info.flatgeobuf_crs = crs;
   if (crs && crs.org && crs.code) {
     dataset.info.crs_string = crs.org.toLowerCase() + ':' + crs.code;
@@ -26,4 +26,19 @@ export async function importFlatgeobuf(content, opts) {
     warnOnce('Unable to import WKT2 CRS from FlatGeobuf');
   }
   return dataset;
+}
+
+function normalizeCRSMeta(crs) {
+  if (!crs) return null;
+  var code = +crs.code;
+  if (crs.org || !Number.isFinite(code)) return crs;
+  code = Math.round(code);
+  if (code >= 2000 && code <= 1000000) {
+    // Some encoders write code but omit authority org; default to EPSG.
+    return Object.assign({}, crs, {
+      org: 'EPSG',
+      code_string: crs.code_string || ('EPSG:' + code)
+    });
+  }
+  return crs;
 }

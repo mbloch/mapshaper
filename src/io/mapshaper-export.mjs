@@ -8,6 +8,7 @@ import { exportShapefile } from '../shapefile/shp-export';
 import { exportTopoJSON } from '../topojson/topojson-export';
 import { exportGeoJSON } from '../geojson/geojson-export';
 import { exportJSON } from '../datatable/mapshaper-json-table';
+import { exportFlatGeobuf } from '../flatgeobuf/mapshaper-flatgeobuf-export';
 import { setCoordinatePrecision } from '../geom/mapshaper-rounding';
 import { copyDatasetForExport, copyDatasetForRenaming } from '../dataset/mapshaper-dataset-utils';
 import { mergeDatasetsForExport } from '../dataset/mapshaper-merging';
@@ -151,6 +152,7 @@ var exporters = {
   dsv: exportDelim,
   dbf: exportDbf,
   json: exportJSON,
+  flatgeobuf: exportFlatGeobuf,
   svg: exportSVG,
   kml: exportKML
 };
