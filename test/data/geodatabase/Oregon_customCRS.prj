@@ -1,0 +1,1 @@
+PROJCS["UNK / Lambert_Conformal_Conic_2SP",GEOGCS["UNK",DATUM["Unknown datum",SPHEROID["WGS 84",6378137,298.257223563]],PRIMEM["Greenwich",0],UNIT["degree",0.017453292519943295]],PROJECTION["Lambert_Conformal_Conic_2SP"],PARAMETER["central_meridian",-120.54],PARAMETER["standard_parallel_1",42.71],PARAMETER["standard_parallel_2",45.57],UNIT["Meter",1]]

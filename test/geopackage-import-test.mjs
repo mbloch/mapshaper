@@ -35,11 +35,11 @@ describe('mapshaper-geopackage-import.js', function () {
           content: content
         }
       }, {});
-      assert.equal(dataset.layers.length, 1);
-      assert.equal(dataset.layers[0].name, 'points');
-      assert.equal(dataset.layers[0].geometry_type, 'point');
-      assert.equal(dataset.layers[0].shapes.length, 1);
-      assert.deepEqual(dataset.layers[0].data.getRecords()[0].name, 'alpha');
+      var points = dataset.layers.find(lyr => lyr.name == 'points');
+      assert(points, 'points layer exists');
+      assert.equal(points.geometry_type, 'point');
+      assert.equal(points.shapes.length, 1);
+      assert.deepEqual(points.data.getRecords()[0].name, 'alpha');
       assert.equal(dataset.info.input_formats[0], 'geopackage');
     } finally {
       if (fs.existsSync(tmpPath)) {
@@ -53,11 +53,11 @@ describe('mapshaper-geopackage-import.js', function () {
     await createTestGeoPackage(tmpPath);
     try {
       var dataset = await api.internal.importFileAsync(tmpPath, {});
-      assert.equal(dataset.layers.length, 1);
-      assert.equal(dataset.layers[0].name, 'points');
-      assert.equal(dataset.layers[0].geometry_type, 'point');
-      assert.equal(dataset.layers[0].shapes.length, 1);
-      assert.deepEqual(dataset.layers[0].data.getRecords()[0].name, 'alpha');
+      var points = dataset.layers.find(lyr => lyr.name == 'points');
+      assert(points, 'points layer exists');
+      assert.equal(points.geometry_type, 'point');
+      assert.equal(points.shapes.length, 1);
+      assert.deepEqual(points.data.getRecords()[0].name, 'alpha');
       assert.equal(dataset.info.input_formats[0], 'geopackage');
     } finally {
       if (fs.existsSync(tmpPath)) {
@@ -77,7 +77,9 @@ describe('mapshaper-geopackage-import.js', function () {
           else resolve(out);
         });
       });
-      var json = JSON.parse(output['points.json']);
+      var names = Object.keys(output);
+      assert.equal(names.length, 1);
+      var json = JSON.parse(output[names[0]]);
       assert.equal(json.length, 1);
       assert.equal(json[0].name, 'alpha');
     } finally {

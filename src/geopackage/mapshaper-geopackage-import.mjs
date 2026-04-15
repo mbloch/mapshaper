@@ -4,6 +4,7 @@ import { stop, warnOnce } from '../utils/mapshaper-logging';
 import utils from '../utils/mapshaper-utils';
 import require from '../mapshaper-require';
 import { initProjLibrary } from '../crs/mapshaper-projections';
+import { runningInBrowser } from '../mapshaper-env';
 
 export async function importGeoPackage(content, optsArg) {
   var opts = optsArg || {};
@@ -11,17 +12,26 @@ export async function importGeoPackage(content, optsArg) {
   var gpkg;
   var datasets;
   var source;
+  var tmpPath = null;
 
   if (!geopackage || !geopackage.GeoPackageAPI) {
     stop('GeoPackage library is not loaded');
   }
 
-  source = utils.isString(content) ? content : new Uint8Array(content);
+  if (utils.isString(content)) {
+    source = content;
+  } else if (!runningInBrowser()) {
+    tmpPath = writeGeoPackageTempFile(content);
+    source = tmpPath;
+  } else {
+    source = new Uint8Array(content);
+  }
   gpkg = await geopackage.GeoPackageAPI.open(source);
   try {
     datasets = readFeatureTableDatasets(gpkg, opts);
   } finally {
     gpkg.close();
+    removeTempGeoPackageFile(tmpPath);
   }
 
   if (datasets.length === 0) {
@@ -34,6 +44,24 @@ export async function importGeoPackage(content, optsArg) {
   await initProjLib(datasets);
 
   return mergeDatasets(datasets);
+}
+
+function writeGeoPackageTempFile(content) {
+  var fs = require('fs');
+  var os = require('os');
+  var path = require('path');
+  var unique = Date.now() + '-' + process.pid + '-' + Math.random().toString(36).slice(2);
+  var tmpPath = path.join(os.tmpdir(), 'mapshaper-gpkg-import-' + unique + '.gpkg');
+  fs.writeFileSync(tmpPath, Buffer.from(new Uint8Array(content)));
+  return tmpPath;
+}
+
+function removeTempGeoPackageFile(filepath) {
+  if (!filepath) return;
+  var fs = require('fs');
+  if (fs.existsSync(filepath)) {
+    fs.unlinkSync(filepath);
+  }
 }
 
 // load lookup tables for epsg codes if needed (for browser)
