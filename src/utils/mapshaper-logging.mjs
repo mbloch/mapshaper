@@ -10,6 +10,8 @@ var _interrupt = function() {
   throw new NonFatalError(formatLogArgs(arguments));
 };
 
+var onceMessages = [];
+
 setLoggingForCLI();
 
 export function getLoggingSetter() {
@@ -68,6 +70,13 @@ export function message() {
 }
 
 export function warn() {
+  _warn.apply(null, messageArgs(arguments));
+}
+
+export function warnOnce() {
+  var str = formatLogArgs(arguments);
+  if (onceMessages.includes(str)) return;
+  onceMessages.push(str);
   _warn.apply(null, messageArgs(arguments));
 }
 

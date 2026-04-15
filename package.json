@@ -39,6 +39,7 @@
     "!.DS_Store"
   ],
   "dependencies": {
+    "@ngageoint/geopackage": "^4.2.6",
     "@placemarkio/tokml": "^0.3.3",
     "@tmcw/togeojson": "^5.6.0",
     "@xmldom/xmldom": "^0.8.6",

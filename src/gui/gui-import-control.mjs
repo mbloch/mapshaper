@@ -6,7 +6,7 @@ import { GUI } from './gui-lib';
 import { setLayerPinning } from './gui-layer-utils';
 import { importSessionData } from './gui-session-snapshot-control';
 import { openAddLayerPopup } from './gui-add-layer-popup';
-import { considerReprojecting } from './gui-import-utils';
+import { considerReprojecting, loadGeopackageLib } from './gui-import-utils';
 
 // @cb function(<FileList>)
 function DropControl(gui, el, cb) {
@@ -379,7 +379,15 @@ export function ImportControl(gui, opts) {
   }
 
   async function importDataset(group, importOpts) {
-    var dataset = internal.importContent(group, importOpts);
+    var dataset;
+    if (group.gpkg) {
+      await loadGeopackageLib();
+    }
+    if (group.gpkg || group.fgb) {
+      dataset = await internal.importContentAsync(group, importOpts);
+    } else {
+      dataset = internal.importContent(group, importOpts);
+    }
     if (datasetIsEmpty(dataset)) return false;
     if (group.layername) {
       dataset.layers.forEach(lyr => lyr.name = group.layername);

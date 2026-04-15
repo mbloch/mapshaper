@@ -1,5 +1,6 @@
 import { showPrompt } from './gui-alert';
 import { internal } from './gui-core';
+import { loadScript } from './dom-utils';
 
 export async function considerReprojecting(gui, dataset, opts) {
   var mapCRS = gui.map.getActiveLayerCRS();
@@ -9,6 +10,18 @@ export async function considerReprojecting(gui, dataset, opts) {
   var reproject = await showPrompt(msg, 'Reproject file?');
   if (reproject) {
     internal.projectDataset(dataset, dataCRS, mapCRS, {densify: true});
+  }
+}
+
+var geopackagePromise = null;
+
+export async function loadGeopackageLib() {
+  if (!window.modules || !window.modules['@ngageoint/geopackage']) {
+    if (!geopackagePromise) {
+      geopackagePromise = loadScript('geopackage.js');
+    }
+    await geopackagePromise;
+    geopackagePromise = null;
   }
 }
 
