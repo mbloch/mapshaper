@@ -5248,7 +5248,7 @@
   }
 
   function toLngLat(xy, P) {
-    return projectPoint(xy, P, parseCrsString('wgs84'));
+    return projectPoint(xy, P, parseCrsString$1('wgs84'));
   }
 
   function projectPoint(xy, crsFrom, crsTo) {
@@ -5335,11 +5335,11 @@
   function getCrsInfo(str) {
     return {
       crs_string: str,
-      crs: parseCrsString(str)
+      crs: parseCrsString$1(str)
     };
   }
 
-  function parseCrsString(str) {
+  function parseCrsString$1(str) {
     var defn = getProjDefn(str);  // defn is a string or a Proj object
     var P;
     if (!utils.isString(defn)) {
@@ -5374,15 +5374,15 @@
   function getDatasetCrsInfo(dataset) {
     var info = copyCrsProperties(dataset.info || {});
     if (!info.crs && info.wkt1) {
-      info.crs = parseCrsString(wkt1ToProj(info.wkt1));
+      info.crs = parseCrsString$1(wkt1ToProj(info.wkt1));
     } else if (!info.crs && info.crs_string) {
-      info.crs = parseCrsString(info.crs_string);
+      info.crs = parseCrsString$1(info.crs_string);
     }
     if (!info.crs) {
       if (probablyDecimalDegreeBounds(getDatasetBounds(dataset))) {
         // use wgs84 for probable latlong datasets with unknown datums
         info.crs_string = 'wgs84';
-        info.crs = parseCrsString(info.crs_string);
+        info.crs = parseCrsString$1(info.crs_string);
       }
     }
     return info;
@@ -5473,7 +5473,7 @@
 
   // Convert contents of a .prj file to a projection object
   function parsePrj(str) {
-    return parseCrsString(wkt1ToProj(str));
+    return parseCrsString$1(wkt1ToProj(str));
   }
 
   var Projections = /*#__PURE__*/Object.freeze({
@@ -5499,7 +5499,7 @@
     isWGS84: isWGS84,
     isWebMercator: isWebMercator,
     looksLikeProj4String: looksLikeProj4String,
-    parseCrsString: parseCrsString,
+    parseCrsString: parseCrsString$1,
     parsePrj: parsePrj,
     printProjections: printProjections,
     projectPoint: projectPoint,
@@ -24493,22 +24493,28 @@ ${svg}
   }
 
   async function exportLayerToGeoPackage(lyr, dataset, gpkg, opts) {
-    var features, fields, columns;
+    var features, fields, columns, tableName, targetSrs;
     if (!lyr.geometry_type) return;
     features = exportLayerAsGeoJSON(lyr, dataset, opts, true, null)
       .filter(feat => !!(feat && feat.geometry));
     if (features.length === 0) return;
     fields = inferFieldTypes(features);
-    var tableName = getTableName(lyr.name);
+    tableName = getTableName(lyr.name);
     columns = fields.map(function(field) {
       return {
         name: field.name,
         dataType: field.type
       };
     });
-    await gpkg.createFeatureTableFromProperties(tableName, columns);
+    targetSrs = getExportSrs(dataset);
+    await ensureSrsExists(gpkg, targetSrs);
+    // createFeatureTableFromProperties() hardcodes EPSG:4326
+    await gpkg.createFeatureTable(tableName, null, columns, undefined, targetSrs.srs_id);
     var featureDao = gpkg.getFeatureDao(tableName);
-    var srs = normalizeSrsForInsert(featureDao && featureDao.srs);
+    // addGeoJSONFeatureToGeoPackageWithFeatureDaoAndSrs() assumes source
+    // GeoJSON is EPSG:4326 and reprojects unless given EPSG:4326 metadata.
+    // Mapshaper output coords are already in target CRS, so suppress reprojection.
+    var srs = getSourceSrsWithoutReprojection(featureDao && featureDao.srs, targetSrs);
     for (var i = 0; i < features.length; i++) {
       var feat = features[i];
       var normalized = normalizeFeature(feat, fields);
@@ -24607,6 +24613,143 @@ ${svg}
     return removeUndefinedValues(output);
   }
 
+  function getExportSrs(dataset) {
+    var info = dataset.info || {};
+    var gpkgCrs = normalizeSrsForInsert(info.geopackage_crs);
+    if (gpkgCrs) {
+      if (!gpkgCrs.definition && info.wkt1) {
+        gpkgCrs.definition = info.wkt1;
+      }
+      return gpkgCrs;
+    }
+    var parsed = parseCrsString(info.crs_string);
+    if (parsed) {
+      if (info.wkt1) parsed.definition = info.wkt1;
+      return parsed;
+    }
+    var fromWkt = parseWktAuthority(info.wkt1);
+    if (fromWkt) {
+      fromWkt.definition = info.wkt1;
+      return fromWkt;
+    }
+    if (info.wkt1) {
+      return buildCustomSrsFromWkt(info.wkt1);
+    }
+    return {
+      srs_id: 4326,
+      organization: 'EPSG',
+      organization_coordsys_id: 4326
+    };
+  }
+
+  function parseCrsString(str) {
+    if (!str || typeof str != 'string') return null;
+    var match = str.match(/^([a-z]+):(\d+)$/i);
+    if (!match) return null;
+    var org = match[1].toUpperCase();
+    var code = +match[2];
+    if (!code) return null;
+    return {
+      srs_id: code,
+      organization: org,
+      organization_coordsys_id: code
+    };
+  }
+
+  function parseWktAuthority(wkt) {
+    if (!wkt || typeof wkt != 'string') return null;
+    var rootAuthority = findTopLevelWktAuthority(wkt);
+    if (!rootAuthority) return null;
+    var org = String(rootAuthority[1]).toUpperCase();
+    var code = +rootAuthority[2];
+    if (!code) return null;
+    return {
+      srs_id: code,
+      organization: org,
+      organization_coordsys_id: code
+    };
+  }
+
+  function findTopLevelWktAuthority(wkt) {
+    var depth = 0;
+    var inQuote = false;
+    for (var i = 0; i < wkt.length; i++) {
+      var c = wkt.charAt(i);
+      if (c == '"') {
+        inQuote = !inQuote;
+        continue;
+      }
+      if (inQuote) continue;
+      if (c == '[') {
+        depth++;
+        continue;
+      }
+      if (c == ']') {
+        depth--;
+        continue;
+      }
+      if (depth != 1) continue;
+      if (wkt.slice(i, i + 10).toUpperCase() == 'AUTHORITY[') {
+        return wkt.slice(i).match(/^AUTHORITY\["([^"]+)","(\d+)"\]/i);
+      }
+    }
+    return null;
+  }
+
+  function buildCustomSrsFromWkt(wkt) {
+    var srsId = getCustomSrsId(wkt);
+    return {
+      srs_id: srsId,
+      srs_name: getWktName(wkt) || 'CUSTOM_CRS',
+      organization: 'NONE',
+      organization_coordsys_id: srsId,
+      definition: wkt,
+      description: 'Custom projection'
+    };
+  }
+
+  function getWktName(wkt) {
+    var match = wkt && String(wkt).match(/^(?:PROJCS|GEOGCS)\["([^"]+)"/i);
+    return match ? match[1] : null;
+  }
+
+  function getCustomSrsId(wkt) {
+    var str = String(wkt || '');
+    var hash = 2166136261; // FNV-1a
+    for (var i = 0; i < str.length; i++) {
+      hash ^= str.charCodeAt(i);
+      hash = (hash * 16777619) >>> 0;
+    }
+    return 100000 + (hash % 900000);
+  }
+
+  async function ensureSrsExists(gpkg, srs) {
+    if (!srs || !srs.srs_id) return;
+    var existing = gpkg.getSrs(srs.srs_id);
+    if (existing) return;
+    if (!srs.definition) {
+      stop$1('Unable to export GeoPackage with missing CRS definition for SRS ' + srs.srs_id);
+    }
+    var geopackage = require$1('@ngageoint/geopackage');
+    var spatialReferenceSystem = new geopackage.SpatialReferenceSystem();
+    spatialReferenceSystem.srs_id = srs.srs_id;
+    spatialReferenceSystem.srs_name = srs.srs_name || (srs.organization + ':' + srs.organization_coordsys_id);
+    spatialReferenceSystem.organization = srs.organization;
+    spatialReferenceSystem.organization_coordsys_id = srs.organization_coordsys_id;
+    spatialReferenceSystem.definition = srs.definition;
+    spatialReferenceSystem.description = srs.description || null;
+    gpkg.createSpatialReferenceSystem(spatialReferenceSystem);
+  }
+
+  function getSourceSrsWithoutReprojection(tableSrs, fallbackSrs) {
+    var target = normalizeSrsForInsert(tableSrs) || normalizeSrsForInsert(fallbackSrs);
+    return {
+      srs_id: target.srs_id,
+      organization: 'EPSG',
+      organization_coordsys_id: 4326
+    };
+  }
+
   function normalizeValue(value, type) {
     if (value === null || value === undefined) return null;
     if (type == 'TEXT' && typeof value != 'string') {
@@ -24664,14 +24807,14 @@ ${svg}
   }
 
   function normalizeSrsForInsert(srs) {
-    if (!srs) {
-      return {
-        srs_id: 4326,
-        organization: 'EPSG',
-        organization_coordsys_id: 4326
-      };
-    }
+    if (!srs) return null;
     var normalized = Object.assign({}, srs);
+    if (normalized.srs_id == null && normalized.id != null) {
+      normalized.srs_id = normalized.id;
+    }
+    if (normalized.organization_coordsys_id == null && normalized.code != null) {
+      normalized.organization_coordsys_id = normalized.code;
+    }
     if (normalized.srs_id == null && normalized.srsId != null) {
       normalized.srs_id = normalized.srsId;
     }
@@ -24685,6 +24828,7 @@ ${svg}
     if (!normalized.organization) {
       normalized.organization = 'EPSG';
     }
+    normalized.organization = String(normalized.organization).toUpperCase();
     if (normalized.organization_coordsys_id == null) {
       normalized.organization_coordsys_id = normalized.srs_id || 4326;
     }
@@ -31313,17 +31457,26 @@ ${svg}
     var gpkg;
     var datasets;
     var source;
+    var tmpPath = null;
 
     if (!geopackage || !geopackage.GeoPackageAPI) {
       stop$1('GeoPackage library is not loaded');
     }
 
-    source = utils.isString(content) ? content : new Uint8Array(content);
+    if (utils.isString(content)) {
+      source = content;
+    } else if (!runningInBrowser()) {
+      tmpPath = writeGeoPackageTempFile(content);
+      source = tmpPath;
+    } else {
+      source = new Uint8Array(content);
+    }
     gpkg = await geopackage.GeoPackageAPI.open(source);
     try {
       datasets = readFeatureTableDatasets(gpkg, opts);
     } finally {
       gpkg.close();
+      removeTempGeoPackageFile(tmpPath);
     }
 
     if (datasets.length === 0) {
@@ -31336,6 +31489,24 @@ ${svg}
     await initProjLib(datasets);
 
     return mergeDatasets(datasets);
+  }
+
+  function writeGeoPackageTempFile(content) {
+    var fs = require$1('fs');
+    var os = require$1('os');
+    var path = require$1('path');
+    var unique = Date.now() + '-' + process.pid + '-' + Math.random().toString(36).slice(2);
+    var tmpPath = path.join(os.tmpdir(), 'mapshaper-gpkg-import-' + unique + '.gpkg');
+    fs.writeFileSync(tmpPath, Buffer.from(new Uint8Array(content)));
+    return tmpPath;
+  }
+
+  function removeTempGeoPackageFile(filepath) {
+    if (!filepath) return;
+    var fs = require$1('fs');
+    if (fs.existsSync(filepath)) {
+      fs.unlinkSync(filepath);
+    }
   }
 
   // load lookup tables for epsg codes if needed (for browser)
@@ -31690,7 +31861,7 @@ ${svg}
     if (o.crs_string) {
       // load external files (e.g. epsg definitions) if needed in GUI
       await initProjLibrary({crs: o.crs_string});
-      o.crs = parseCrsString(o.crs_string);
+      o.crs = parseCrsString$1(o.crs_string);
     } else if (o.prj) {
       o.crs = parsePrj(o.prj);
     }
@@ -35072,7 +35243,7 @@ ${svg}
   // Make a single geodetic circle
   function getCircleGeoJSON(center, radius, vertices, opts) {
     var n = 360;
-    var geod = getGeodeticSegmentFunction(parseCrsString('wgs84')); // ?
+    var geod = getGeodeticSegmentFunction(parseCrsString$1('wgs84')); // ?
     if (opts.inset) {
       radius -= opts.inset;
     }
@@ -43702,23 +43873,23 @@ ${svg}
   };
 
   function createUnprojectedPolygon(opts) {
-    var crs = parseCrsString('wgs84');
+    var crs = parseCrsString$1('wgs84');
     return getPolygonDataset$1(crs, crs, opts);
   }
 
   function createProjectedPolygon(dest, opts) {
-    var src = parseCrsString('wgs84');
+    var src = parseCrsString$1('wgs84');
     return getPolygonDataset$1(src, dest, opts);
   }
 
   function createUnprojectedGraticule(opts) {
-    var src = parseCrsString('wgs84');
+    var src = parseCrsString$1('wgs84');
     var graticule = importGeoJSON(createGraticule(src, false, opts));
     return graticule;
   }
 
   function createProjectedGraticule(dest, opts) {
-    var src = parseCrsString('wgs84');
+    var src = parseCrsString$1('wgs84');
     var outline = getOutlineDataset(src, dest, {});
     var graticule = importGeoJSON(createGraticule(dest, !!outline, opts));
     projectDataset(graticule, src, dest, {no_clip: false}); // TODO: densify?
@@ -46752,7 +46923,7 @@ ${svg}
       stop$1('Missing required radius parameter.');
     }
     var cp = opts.center || [0, 0];
-    var radius = opts.radius || getCircleRadiusFromAngle(parseCrsString('wgs84'), opts.radius_angle);
+    var radius = opts.radius || getCircleRadiusFromAngle(parseCrsString$1('wgs84'), opts.radius_angle);
     return getCircleGeoJSON(cp, radius, null, {geometry_type : opts.geometry || 'polygon'});
   }
 
@@ -49343,7 +49514,7 @@ ${svg}
     });
   }
 
-  var version = "0.6.115";
+  var version = "0.6.116";
 
   // Parse command line args into commands and run them
   // Function takes an optional Node-style callback. A Promise is returned if no callback is given.
