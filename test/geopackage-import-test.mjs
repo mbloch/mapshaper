@@ -6,6 +6,11 @@ import path from 'path';
 import { fixPath } from './helpers';
 import { GeoPackageAPI } from '@ngageoint/geopackage';
 
+function getTmpGeoPackagePath(name) {
+  var unique = Date.now() + '-' + process.pid + '-' + Math.random().toString(36).slice(2);
+  return path.join(os.tmpdir(), 'mapshaper-gpkg-' + name + '-' + unique + '.gpkg');
+}
+
 async function createTestGeoPackage(filepath) {
   var gpkg = await GeoPackageAPI.create(filepath);
   await gpkg.createRequiredTables();
@@ -20,7 +25,7 @@ async function createTestGeoPackage(filepath) {
 
 describe('mapshaper-geopackage-import.js', function () {
   it('importContentAsync() imports a GeoPackage buffer', async function () {
-    var tmpPath = path.join(os.tmpdir(), 'mapshaper-gpkg-buffer-' + Date.now() + '.gpkg');
+    var tmpPath = getTmpGeoPackagePath('buffer');
     await createTestGeoPackage(tmpPath);
     try {
       var content = fs.readFileSync(tmpPath);
@@ -37,12 +42,14 @@ describe('mapshaper-geopackage-import.js', function () {
       assert.deepEqual(dataset.layers[0].data.getRecords()[0].name, 'alpha');
       assert.equal(dataset.info.input_formats[0], 'geopackage');
     } finally {
-      fs.unlinkSync(tmpPath);
+      if (fs.existsSync(tmpPath)) {
+        fs.unlinkSync(tmpPath);
+      }
     }
   });
 
   it('importFileAsync() imports a GeoPackage file path', async function () {
-    var tmpPath = path.join(os.tmpdir(), 'mapshaper-gpkg-file-' + Date.now() + '.gpkg');
+    var tmpPath = getTmpGeoPackagePath('file');
     await createTestGeoPackage(tmpPath);
     try {
       var dataset = await api.internal.importFileAsync(tmpPath, {});
@@ -53,12 +60,14 @@ describe('mapshaper-geopackage-import.js', function () {
       assert.deepEqual(dataset.layers[0].data.getRecords()[0].name, 'alpha');
       assert.equal(dataset.info.input_formats[0], 'geopackage');
     } finally {
-      fs.unlinkSync(tmpPath);
+      if (fs.existsSync(tmpPath)) {
+        fs.unlinkSync(tmpPath);
+      }
     }
   });
 
   it('applyCommands() imports GeoPackage from CLI path', async function () {
-    var tmpPath = path.join(os.tmpdir(), 'mapshaper-gpkg-cmd-' + Date.now() + '.gpkg');
+    var tmpPath = getTmpGeoPackagePath('cmd');
     await createTestGeoPackage(tmpPath);
     try {
       var output = await new Promise(function(resolve, reject) {
@@ -72,7 +81,9 @@ describe('mapshaper-geopackage-import.js', function () {
       assert.equal(json.length, 1);
       assert.equal(json[0].name, 'alpha');
     } finally {
-      fs.unlinkSync(tmpPath);
+      if (fs.existsSync(tmpPath)) {
+        fs.unlinkSync(tmpPath);
+      }
     }
   });
 
