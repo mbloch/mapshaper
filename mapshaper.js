@@ -66,7 +66,7 @@
     get lpad () { return lpad; },
     get ltrim () { return ltrim; },
     get mean () { return mean; },
-    get merge () { return merge; },
+    get merge () { return merge$1; },
     get mergeNames () { return mergeNames; },
     get numToStr () { return numToStr; },
     get parseIntlNumber () { return parseIntlNumber; },
@@ -384,7 +384,7 @@
 
 
   // Append elements of @src array to @dest array
-  function merge(dest, src) {
+  function merge$1(dest, src) {
     if (!isArray(dest) || !isArray(src)) {
       error("Usage: merge(destArray, srcArray);");
     }
@@ -1134,7 +1134,7 @@
       pct = Number(str);
     }
     if (!(pct >= 0 && pct <= 1)) {
-      stop(format("Invalid percentage: %s", str));
+      stop$1(format("Invalid percentage: %s", str));
     }
     return pct;
   }
@@ -1234,6 +1234,8 @@
     throw new NonFatalError(formatLogArgs(arguments));
   };
 
+  var onceMessages = [];
+
   setLoggingForCLI();
 
   function getLoggingSetter() {
@@ -1277,7 +1279,7 @@
   }
 
   // Handle an error caused by invalid input or misuse of API
-  function stop() {
+  function stop$1() {
     // _stop.apply(null, utils.toArray(arguments));
     _stop.apply(null, messageArgs(arguments));
   }
@@ -1292,6 +1294,13 @@
   }
 
   function warn() {
+    _warn.apply(null, messageArgs(arguments));
+  }
+
+  function warnOnce() {
+    var str = formatLogArgs(arguments);
+    if (onceMessages.includes(str)) return;
+    onceMessages.push(str);
     _warn.apply(null, messageArgs(arguments));
   }
 
@@ -1481,14 +1490,15 @@
     printError: printError,
     setLoggingForCLI: setLoggingForCLI,
     setLoggingFunctions: setLoggingFunctions,
-    stop: stop,
+    stop: stop$1,
     time: time,
     timeEnd: timeEnd,
     truncateString: truncateString,
     useDebug: useDebug,
     useVerbose: useVerbose,
     verbose: verbose,
-    warn: warn
+    warn: warn,
+    warnOnce: warnOnce
   });
 
   function Transform() {
@@ -3968,7 +3978,7 @@
 
   function validateEncoding(enc) {
     if (!encodingIsSupported(enc)) {
-      stop("Unknown encoding:", enc, "\nRun the -encodings command see a list of supported encodings");
+      stop$1("Unknown encoding:", enc, "\nRun the -encodings command see a list of supported encodings");
     }
     return enc;
   }
@@ -4590,21 +4600,21 @@
 
   function requireDataField(obj, field, msg) {
     var data = obj.fieldExists ? obj : obj.data; // accept layer or DataTable
-    if (!field) stop('Missing a field parameter');
+    if (!field) stop$1('Missing a field parameter');
     if (!data || !data.fieldExists(field)) {
-      stop(msg || 'Missing a field named:', field);
+      stop$1(msg || 'Missing a field named:', field);
     }
   }
 
   function requireDataFields(table, fields) {
     if (!fields || !fields.length) return;
     if (!table) {
-      stop("Missing attribute data");
+      stop$1("Missing attribute data");
     }
     var dataFields = table.getFields(),
         missingFields = utils.difference(fields, dataFields);
     if (missingFields.length > 0) {
-      stop("Table is missing one or more fields:\n",
+      stop$1("Table is missing one or more fields:\n",
           missingFields, "\nExisting fields:", '\n' + formatStringsAsGrid(dataFields));
     }
   }
@@ -4627,29 +4637,29 @@
 
   function requirePointLayer(lyr, msg) {
     if (!lyr || lyr.geometry_type !== 'point')
-      stop(layerTypeMessage(lyr, "Expected a point layer", msg));
+      stop$1(layerTypeMessage(lyr, "Expected a point layer", msg));
   }
 
   function requireSinglePointLayer(lyr, msg) {
     requirePointLayer(lyr);
     if (countMultiPartFeatures(lyr) > 0) {
-      stop(msg || 'This command requires single points; layer contains multi-point features.');
+      stop$1(msg || 'This command requires single points; layer contains multi-point features.');
     }
   }
 
   function requirePolylineLayer(lyr, msg) {
     if (!lyr || lyr.geometry_type !== 'polyline')
-      stop(layerTypeMessage(lyr, "Expected a polyline layer", msg));
+      stop$1(layerTypeMessage(lyr, "Expected a polyline layer", msg));
   }
 
   function requirePolygonLayer(lyr, msg) {
     if (!lyr || lyr.geometry_type !== 'polygon')
-      stop(layerTypeMessage(lyr, "Expected a polygon layer", msg));
+      stop$1(layerTypeMessage(lyr, "Expected a polygon layer", msg));
   }
 
   function requirePathLayer(lyr, msg) {
     if (!lyr || !layerHasPaths(lyr))
-      stop(layerTypeMessage(lyr, "Expected a polygon or polyline layer", msg));
+      stop$1(layerTypeMessage(lyr, "Expected a polygon or polyline layer", msg));
   }
 
   // Used by info command and gui layer menu
@@ -5309,7 +5319,7 @@
       defn = parseCustomProjection(str);
     }
     if (!defn) {
-      stop("Unknown projection definition:", str);
+      stop$1("Unknown projection definition:", str);
     }
     return defn;
   }
@@ -5338,7 +5348,7 @@
       try {
         P = mproj.pj_init(defn);
       } catch(e) {
-        stop('Unable to use projection', defn, '(' + e.message + ')');
+        stop$1('Unable to use projection', defn, '(' + e.message + ')');
       }
     }
     return P || null;
@@ -5346,42 +5356,36 @@
 
   function requireProjectedDataset(dataset) {
     if (isLatLngCRS(getDatasetCRS(dataset))) {
-      stop("Command requires a target with projected coordinates (not lat-long)");
+      stop$1("Command requires a target with projected coordinates (not lat-long)");
     }
   }
 
-  // @info: info property of source dataset (instead of crs object, so wkt string
-  //        can be preserved if present)
+  function copyCrsProperties(obj) {
+    var props = 'crs,crs_string,wkt1,geopackage_crs,flatgeobuf_crs'.split(',');
+    return Object.fromEntries(props.map(k => [k, obj[k]]));
+  }
+
   function setDatasetCrsInfo(dataset, crsInfo) {
     crsInfo = crsInfo || {}; // also accepts null/unknown crs info
-    dataset.info = dataset.info || {};
-    // Assumes that proj4 object is never mutated.
-    // TODO: assign a copy of crs (if present)
-    dataset.info.crs = crsInfo.crs;
-    dataset.info.prj = crsInfo.prj;
-    dataset.info.crs_string = crsInfo.crs_string;
+    dataset.info = Object.assign(dataset.info || {}, copyCrsProperties(crsInfo));
     return dataset;
   }
 
   function getDatasetCrsInfo(dataset) {
-    var info = dataset.info || {},
-        P = info.crs,
-        str = info.crs_string;
-    if (!P && info.prj) {
-      P = parseCrsString(translatePrj(info.prj));
+    var info = copyCrsProperties(dataset.info || {});
+    if (!info.crs && info.wkt1) {
+      info.crs = parseCrsString(wkt1ToProj(info.wkt1));
+    } else if (!info.crs && info.crs_string) {
+      info.crs = parseCrsString(info.crs_string);
     }
-    if (!P) {
+    if (!info.crs) {
       if (probablyDecimalDegreeBounds(getDatasetBounds(dataset))) {
         // use wgs84 for probable latlong datasets with unknown datums
-        str = 'wgs84';
-        P = parseCrsString(str);
+        info.crs_string = 'wgs84';
+        info.crs = parseCrsString(info.crs_string);
       }
     }
-    return {
-      crs: P || null,
-      crs_string: str,
-      prj: info.prj
-    };
+    return info;
   }
 
   function getDatasetCRS(dataset) {
@@ -5393,7 +5397,7 @@
       var P = getDatasetCRS(dataset);
       if (memo && P) {
         if (isLatLngCRS(memo) != isLatLngCRS(P)) {
-          stop(msg || "Unable to combine projected and unprojected datasets");
+          stop$1(msg || "Unable to combine projected and unprojected datasets");
         }
       }
       return P || memo;
@@ -5457,19 +5461,19 @@
     print(msg);
   }
 
-  function translatePrj(str) {
+  function wkt1ToProj(str) {
     var proj4;
     try {
       proj4 = mproj.internal.wkt_to_proj4(str);
     } catch(e) {
-      stop('Unusable .prj file (' + e.message + ')');
+      stop$1('Unusable .prj file (' + e.message + ')');
     }
     return proj4;
   }
 
   // Convert contents of a .prj file to a projection object
   function parsePrj(str) {
-    return parseCrsString(translatePrj(str));
+    return parseCrsString(wkt1ToProj(str));
   }
 
   var Projections = /*#__PURE__*/Object.freeze({
@@ -5504,7 +5508,7 @@
     setDatasetCrsInfo: setDatasetCrsInfo,
     setProjectionLoader: setProjectionLoader,
     toLngLat: toLngLat,
-    translatePrj: translatePrj
+    wkt1ToProj: wkt1ToProj
   });
 
   // Coordinate iterators
@@ -11006,7 +11010,7 @@
       wbytes(o, b + 12, d);
       wbytes(o, b + 16, e);
   };
-  function zip(data, opts, cb) {
+  function zip$1(data, opts, cb) {
       if (!cb)
           cb = opts, opts = {};
       if (typeof cb != 'function')
@@ -11583,7 +11587,7 @@
 
   function exportInfo(info) {
     info = Object.assign({}, info);
-    if (info.crs && !info.crs_string && !info.prj) {
+    if (info.crs && !info.crs_string && !info.wkt1) {
       info.crs_string = crsToProj4(info.crs);
     }
     delete info.crs; // proj object cannot be serialized (need to reconstitute in unpack)
@@ -11602,10 +11606,12 @@
   });
 
   // Guess the type of a data file from file extension, or return null if not sure
+  // File type is different than data type
+  //
   function guessInputFileType(file) {
     var ext = getFileExtension(file || '').toLowerCase(),
         type = null;
-    if (ext == 'dbf' || ext == 'shp' || ext == 'kml') {
+    if (ext == 'dbf' || ext == 'shp' || ext == 'kml' || ext == 'fgb' || ext == 'gpkg') {
       type = ext;
     } else if (isAuxiliaryInputFileType(ext)) {
       type = ext;
@@ -11682,30 +11688,11 @@
     return /\.gz$/i.test(file);
   }
 
-  function isSupportedOutputFormat(fmt) {
-    var types = ['geojson', 'topojson', 'json', 'dsv', 'dbf', 'shapefile', 'svg', 'kml', PACKAGE_EXT];
-    return types.indexOf(fmt) > -1;
-  }
-
-  function getFormatName(fmt) {
-    return {
-      geojson: 'GeoJSON',
-      topojson: 'TopoJSON',
-      json: 'JSON records',
-      dsv: 'CSV',
-      dbf: 'DBF',
-      kml: 'KML',
-      kmz: 'KMZ',
-      [PACKAGE_EXT]: 'Snapshot file',
-      shapefile: 'Shapefile',
-      svg: 'SVG'
-    }[fmt] || '';
-  }
-
   // Assumes file at @path is one of Mapshaper's supported file types
   function isSupportedBinaryInputType(path) {
     var ext = getFileExtension(path).toLowerCase();
-    return ext == 'shp' || ext == 'shx' || ext == 'dbf' || ext == PACKAGE_EXT; // GUI also supports zip files
+    return ext == 'shp' || ext == 'shx' || ext == 'dbf' ||
+      ext == 'fgb' || ext == 'gpkg' || ext == PACKAGE_EXT; // GUI also supports zip files
   }
 
   function isImportableAsBinary(path) {
@@ -11725,7 +11712,6 @@
     __proto__: null,
     couldBeDsvFile: couldBeDsvFile,
     filenameIsUnsupportedOutputType: filenameIsUnsupportedOutputType,
-    getFormatName: getFormatName,
     guessInputContentType: guessInputContentType,
     guessInputFileType: guessInputFileType,
     guessInputType: guessInputType,
@@ -11735,7 +11721,6 @@
     isKmzFile: isKmzFile,
     isPackageFile: isPackageFile,
     isSupportedBinaryInputType: isSupportedBinaryInputType,
-    isSupportedOutputFormat: isSupportedOutputFormat,
     isZipFile: isZipFile,
     looksLikeContentFile: looksLikeContentFile,
     looksLikeImportableFile: looksLikeImportableFile,
@@ -11776,7 +11761,7 @@
   }
 
   function zipAsync(files, cb) {
-    zip(fflatePreprocess(files), {}, cb);
+    zip$1(fflatePreprocess(files), {}, cb);
   }
 
   function fflateFilter(file) {
@@ -11901,7 +11886,7 @@
       require$1('fs').mkdirSync(odir, {recursive: true});
       message('Created output directory:', odir);
     } catch(e) {
-      stop('Unable to create output directory:', odir);
+      stop$1('Unable to create output directory:', odir);
     }
   };
 
@@ -11983,7 +11968,7 @@
     } catch(e) {}
 
     if (files.length === 0) {
-      stop('No files matched (' + name + ')');
+      stop$1('No files matched (' + name + ')');
     }
     return files;
   };
@@ -12010,7 +11995,7 @@
   // Want to test if a path is something readable (e.g. file or stdin)
   cli.checkFileExists = function(path, cache) {
     if (!cli.isFile(path, cache) && path != '/dev/stdin') {
-      stop("File not found (" + path + ")");
+      stop$1("File not found (" + path + ")");
     }
   };
 
@@ -12060,7 +12045,7 @@
           return;
         }
         if (!opts.force && inputFiles.indexOf(path) > -1) {
-          stop('Need to use the "-o force" option to overwrite input files.');
+          stop$1('Need to use the "-o force" option to overwrite input files.');
         }
         cli.writeFileSync(path, obj.content);
         message("Wrote " + path);
@@ -13950,7 +13935,7 @@
         units == 'cm' && Math.round(num * 28.3465) ||
         num;
     if (px >= 0 === false || !units) {
-      stop('Invalid size:', str);
+      stop$1('Invalid size:', str);
     }
     return px;
   }
@@ -13987,7 +13972,7 @@
       k = 1;
     } else if (fromParam && !fromCRS) {
       // known param units, unknown CRS -- error condition, not convertible
-      stop('Unable to convert', paramUnits, 'to unknown coordinates');
+      stop$1('Unable to convert', paramUnits, 'to unknown coordinates');
     } else if (!fromParam && fromCRS) {
       // unknown param units, known CRS -- assume param in meters (bw compatibility)
       k = 1 / fromCRS;
@@ -13999,7 +13984,7 @@
   function parseMeasure(m) {
     var o = parseMeasure2(m);
     if (isNaN(o.value)) {
-      stop('Invalid parameter:', m);
+      stop$1('Invalid parameter:', m);
     }
     return o;
   }
@@ -14019,7 +14004,7 @@
       o.value = Number(s.substring(0, s.length - match[0].length));
       if (!o.units && !isNaN(o.value)) {
         // throw error if string contains a number followed by unrecognized units string
-        stop('Unknown units: ' + match[0]);
+        stop$1('Unknown units: ' + match[0]);
       }
     } else {
       o.value = Number(s);
@@ -14037,7 +14022,7 @@
     var o = parseMeasure(opt);
     var k = getIntervalConversionFactor(o.units, crs);
     if (o.areal) {
-      stop('Expected a distance, received an area:', opt);
+      stop$1('Expected a distance, received an area:', opt);
     }
     return o.value * k;
   }
@@ -14049,10 +14034,10 @@
     var o = parseMeasure(opt);
     var k = getIntervalConversionFactor(o.units, crs);
     if (o.units && crs && crs.is_latlong) {
-      stop('Parameter does not support distance units with latlong datasets');
+      stop$1('Parameter does not support distance units with latlong datasets');
     }
     if (o.areal) {
-      stop('Expected a distance, received an area:', opt);
+      stop$1('Expected a distance, received an area:', opt);
     }
     return o.value * k;
   }
@@ -14060,12 +14045,12 @@
   function convertIntervalPair(opt, crs) {
     var a, b;
     if (!Array.isArray(opt) || opt.length != 2) {
-      stop('Expected two distance parameters, received', opt);
+      stop$1('Expected two distance parameters, received', opt);
     }
     a = parseMeasure(opt[0]);
     b = parseMeasure(opt[1]);
     if (a.units && !b.units || b.units && !a.units) {
-      stop('Both parameters should have units:', opt);
+      stop$1('Both parameters should have units:', opt);
     }
     return [convertIntervalParam(opt[0], crs),
             convertIntervalParam(opt[1], crs)];
@@ -14077,7 +14062,7 @@
     if (arr.length == 1) {
       arr = [arr[0], arr[0], arr[0], arr[0]];
     } else if (arr.length != 4) {
-      stop("Expected a distance parameter or a list of four params");
+      stop$1("Expected a distance parameter or a list of four params");
     }
     return arr.map(function(param, i) {
       var tmp;
@@ -14426,7 +14411,7 @@
 
   function validateColor(arg) {
     if (!parseColor(arg)) {
-      stop("Unsupported color:", arg);
+      stop$1("Unsupported color:", arg);
     }
     return true;
   }
@@ -14588,7 +14573,7 @@
       // TODO: make sure all DMS codes have been matched
       cache$1[fmt] = new RegExp(rxp);
     } catch(e) {
-      stop('Invalid DMS format string:', fmt);
+      stop$1('Invalid DMS format string:', fmt);
     }
     return cache$1[fmt];
   }
@@ -14611,7 +14596,7 @@
     var gotSeconds = match && !!match[3];
     var gotMinutes = match && !!match[2];
     if (!match || gotSeconds && !gotMinutes) {
-      stop('Invalid DMS format string:', fmt);
+      stop$1('Invalid DMS format string:', fmt);
     }
     var integers = gotSeconds && match[3].length || gotMinutes && match[2].length || match[1].length;
     var decimalRxp = gotSeconds && /S\.(S+)/ || gotMinutes && /M\.(M+)/ || /D\.(D+)/;
@@ -14656,7 +14641,7 @@
 
   function requireBooleanResult(val, msg) {
     if (val !== true && val !== false) {
-      stop(msg || 'Filter expression must return true or false');
+      stop$1(msg || 'Filter expression must return true or false');
     }
   }
 
@@ -15099,7 +15084,7 @@
       }
     });
     if (throws && unmatchedIds.length) {
-      stop(utils.format('Missing layer%s: %s', unmatchedIds.length == 1 ? '' : 's', unmatchedIds.join(',')));
+      stop$1(utils.format('Missing layer%s: %s', unmatchedIds.length == 1 ? '' : 's', unmatchedIds.join(',')));
     }
     return matchedLayers;
   }
@@ -15288,7 +15273,7 @@
           if (utils.isObject(obj)) {
             _records[_id] = obj;
           } else {
-            stop("Can't assign non-object to $.properties");
+            stop$1("Can't assign non-object to $.properties");
           }
         }, get: function() {
           var rec = _records[_id];
@@ -15421,7 +15406,7 @@
           if (!obj || utils.isArray(obj)) {
             lyr.shapes[_id] = obj || null;
           } else {
-            stop("Can't assign non-array to $.coordinates");
+            stop$1("Can't assign non-array to $.coordinates");
           }
         }, get: function() {
           return lyr.shapes[_id] || null;
@@ -15522,7 +15507,7 @@
       try {
         val = func.call(thisVal, rec, ctx);
       } catch(e) {
-        stop(e.name, "in expression [" + exp + "]:", e.message);
+        stop$1(e.name, "in expression [" + exp + "]:", e.message);
       }
       return val;
     };
@@ -15544,7 +15529,7 @@
       return new Function('$$record,$$env',  functionBody);
     } catch(e) {
       // if (opts.quiet) throw e;
-      stop(e.name, 'in expression [' + exp + ']');
+      stop$1(e.name, 'in expression [' + exp + ']');
     }
   }
 
@@ -16020,7 +16005,7 @@
 
     function captureNum(val) {
       if (isNaN(val) && val) { // accepting falsy values (be more strict?)
-        stop("Expected a number, received:", val);
+        stop$1("Expected a number, received:", val);
       }
       return capture(val);
     }
@@ -16068,7 +16053,7 @@
         // make sure all functions are called each time
         // (if expression contains a condition, it will throw off the calculation)
         // TODO: allow conditions
-        stop("Evaluation failed");
+        stop$1("Evaluation failed");
       }
       col.push(val);
       colNo++;
@@ -16221,7 +16206,7 @@
 
     // TODO: support multipoints
     if (countMultiPartFeatures(lyr.shapes) !== 0) {
-      stop("Dissolving multi-part points is not supported");
+      stop$1("Dissolving multi-part points is not supported");
     }
 
     lyr.shapes.forEach(function(shp, i) {
@@ -16600,7 +16585,7 @@
 
   function makeMultipartShapes(lyr, getGroupId) {
     if (!lyr.shapes || !lyr.geometry_type) {
-      stop('Layer is missing geometry');
+      stop$1('Layer is missing geometry');
     }
     cloneShapes(lyr.shapes);
     var shapes2 = [];
@@ -17323,7 +17308,7 @@
   function mosaic(dataset, opts) {
     var layers2 = [];
     var nodes, output;
-    if (!dataset.arcs) stop("Dataset is missing path data");
+    if (!dataset.arcs) stop$1("Dataset is missing path data");
     nodes = addIntersectionCuts(dataset, opts);
     output = buildPolygonMosaic(nodes);
     layers2.push({
@@ -17773,7 +17758,7 @@
       } else if (rule == 'min-id') {
         f = function(shapeId) { return -shapeId; };
       } else {
-        stop('Unknown overlap rule:', rule);
+        stop$1('Unknown overlap rule:', rule);
       }
       return f;
     }
@@ -18283,7 +18268,7 @@
     var geoTypes = utils.uniq(utils.pluck(layers, 'geometry_type'))
       .filter(function(type) {return !!type;}); // ignore null-type layers
     if (geoTypes.length > 1) {
-      stop("Incompatible geometry types:", geoTypes.join(', '));
+      stop$1("Incompatible geometry types:", geoTypes.join(', '));
     }
     return geoTypes[0] || null;
   }
@@ -18324,7 +18309,7 @@
       msg = '[' + missingFields.join(', ') + ']';
       msg = (missingFields.length == 1 ? 'Field ' + msg + ' is missing' : 'Fields ' + msg + ' are missing') + ' from one or more layers';
       if (!opts.force) {
-        stop(msg);
+        stop$1(msg);
       } else if (opts.verbose !== false) {
         message('Warning: ' + msg);
       }
@@ -18343,7 +18328,7 @@
     fields.forEach(function(key) {
       var types = findFieldTypes(key, layers);
       if (types.length > 1) {
-        stop("Inconsistent data types in \"" + key + "\" field:", types.join(', '));
+        stop$1("Inconsistent data types in \"" + key + "\" field:", types.join(', '));
       }
     });
   }
@@ -18727,7 +18712,7 @@
     } else if (type == 'GeometryCollection') {
       return false;
     } else if (type) {
-      stop("Unsupported GeoJSON type:", opts.geojson_type);
+      stop$1("Unsupported GeoJSON type:", opts.geojson_type);
     }
     // default is true iff layers contain attributes
     return utils.some(layers, function(lyr) {
@@ -19476,7 +19461,7 @@
     }
     if (accessor) return accessor;
     if (literalVal !== null) return function(id) {return literalVal;};
-    stop('Unexpected value for', svgName + ':', strVal);
+    stop$1('Unexpected value for', svgName + ':', strVal);
   }
 
   function parseStyleExpression(strVal, lyr) {
@@ -19976,7 +19961,7 @@
   cmd.scalebar = function(catalog, opts) {
     var lyr = getScalebarLayer(opts);
     if (opts.label && !parseScalebarUnits(opts.label)) {
-      stop(`Expected units of km or miles in scalebar label (received ${opts.label})`);
+      stop$1(`Expected units of km or miles in scalebar label (received ${opts.label})`);
     }
     addFurnitureLayer(lyr, catalog);
   };
@@ -20014,14 +19999,14 @@
 
     var length1 = Math.round(props1.km / metersPerPx * 1000);
     if (length1 > 0 === false) {
-      stop("Null scalebar length");
+      stop$1("Null scalebar length");
     }
 
     if (label2) {
       props2 = parseScalebarLabel(label2);
       length2 = Math.round(props2.km / metersPerPx * 1000);
       if (length2 > length1) {
-        stop("First part of a dual-unit scalebar must be longer than the second part.");
+        stop$1("First part of a dual-unit scalebar must be longer than the second part.");
       }
     }
 
@@ -20284,13 +20269,13 @@
     var d = getFurnitureLayerData(lyr);
     var renderer = furnitureRenderers[d.type];
     if (!renderer) {
-      stop('Missing renderer for', d.type, 'element');
+      stop$1('Missing renderer for', d.type, 'element');
     }
     if (!frame.crs) {
-      stop(`Unable to render ${d.type} (unknown map projection)`);
+      stop$1(`Unable to render ${d.type} (unknown map projection)`);
     }
     if (!isProjectedCRS(frame.crs)) {
-      stop(`Unable to render ${d.type} (map is unprojected)`);
+      stop$1(`Unable to render ${d.type} (map is unprojected)`);
     }
     return renderer(d, frame) || [];
   }
@@ -20531,7 +20516,7 @@
     } else if (require$1('fs').existsSync(href)) {
       content = require$1('fs').readFileSync(href, 'utf8');
     } else {
-      stop("Invalid SVG location:", href);
+      stop$1("Invalid SVG location:", href);
     }
     return content;
   }
@@ -20691,7 +20676,7 @@ ${svg}
     }, []);
 
     if (missingFields.length && missingFields.indexOf('*') == -1) {
-      stop("Missing data field(s):", missingFields.join(', '));
+      stop$1("Missing data field(s):", missingFields.join(', '));
     }
 
     function fieldExists(layers, field) {
@@ -21889,7 +21874,7 @@ ${svg}
 
   function exportPrjFile(lyr, dataset) {
     var info = dataset.info || {};
-    var prj = info.prj;
+    var prj = info.wkt1;
     if (!prj) {
       try {
         prj = crsToPrj(getDatasetCRS(dataset));
@@ -22535,6 +22520,2178 @@ ${svg}
     importJSONTable: importJSONTable
   });
 
+  const SIZEOF_SHORT = 2;
+  const SIZEOF_INT = 4;
+  const FILE_IDENTIFIER_LENGTH = 4;
+  const SIZE_PREFIX_LENGTH = 4;
+
+  const int32 = new Int32Array(2);
+  const float32 = new Float32Array(int32.buffer);
+  const float64 = new Float64Array(int32.buffer);
+  const isLittleEndian = new Uint16Array(new Uint8Array([1, 0]).buffer)[0] === 1;
+
+  var Encoding;
+  (function (Encoding) {
+      Encoding[Encoding["UTF8_BYTES"] = 1] = "UTF8_BYTES";
+      Encoding[Encoding["UTF16_STRING"] = 2] = "UTF16_STRING";
+  })(Encoding || (Encoding = {}));
+
+  class ByteBuffer {
+      /**
+       * Create a new ByteBuffer with a given array of bytes (`Uint8Array`)
+       */
+      constructor(bytes_) {
+          this.bytes_ = bytes_;
+          this.position_ = 0;
+          this.text_decoder_ = new TextDecoder();
+      }
+      /**
+       * Create and allocate a new ByteBuffer with a given size.
+       */
+      static allocate(byte_size) {
+          return new ByteBuffer(new Uint8Array(byte_size));
+      }
+      clear() {
+          this.position_ = 0;
+      }
+      /**
+       * Get the underlying `Uint8Array`.
+       */
+      bytes() {
+          return this.bytes_;
+      }
+      /**
+       * Get the buffer's position.
+       */
+      position() {
+          return this.position_;
+      }
+      /**
+       * Set the buffer's position.
+       */
+      setPosition(position) {
+          this.position_ = position;
+      }
+      /**
+       * Get the buffer's capacity.
+       */
+      capacity() {
+          return this.bytes_.length;
+      }
+      readInt8(offset) {
+          return (this.readUint8(offset) << 24) >> 24;
+      }
+      readUint8(offset) {
+          return this.bytes_[offset];
+      }
+      readInt16(offset) {
+          return (this.readUint16(offset) << 16) >> 16;
+      }
+      readUint16(offset) {
+          return this.bytes_[offset] | (this.bytes_[offset + 1] << 8);
+      }
+      readInt32(offset) {
+          return (this.bytes_[offset] |
+              (this.bytes_[offset + 1] << 8) |
+              (this.bytes_[offset + 2] << 16) |
+              (this.bytes_[offset + 3] << 24));
+      }
+      readUint32(offset) {
+          return this.readInt32(offset) >>> 0;
+      }
+      readInt64(offset) {
+          return BigInt.asIntN(64, BigInt(this.readUint32(offset)) +
+              (BigInt(this.readUint32(offset + 4)) << BigInt(32)));
+      }
+      readUint64(offset) {
+          return BigInt.asUintN(64, BigInt(this.readUint32(offset)) +
+              (BigInt(this.readUint32(offset + 4)) << BigInt(32)));
+      }
+      readFloat32(offset) {
+          int32[0] = this.readInt32(offset);
+          return float32[0];
+      }
+      readFloat64(offset) {
+          int32[isLittleEndian ? 0 : 1] = this.readInt32(offset);
+          int32[isLittleEndian ? 1 : 0] = this.readInt32(offset + 4);
+          return float64[0];
+      }
+      writeInt8(offset, value) {
+          this.bytes_[offset] = value;
+      }
+      writeUint8(offset, value) {
+          this.bytes_[offset] = value;
+      }
+      writeInt16(offset, value) {
+          this.bytes_[offset] = value;
+          this.bytes_[offset + 1] = value >> 8;
+      }
+      writeUint16(offset, value) {
+          this.bytes_[offset] = value;
+          this.bytes_[offset + 1] = value >> 8;
+      }
+      writeInt32(offset, value) {
+          this.bytes_[offset] = value;
+          this.bytes_[offset + 1] = value >> 8;
+          this.bytes_[offset + 2] = value >> 16;
+          this.bytes_[offset + 3] = value >> 24;
+      }
+      writeUint32(offset, value) {
+          this.bytes_[offset] = value;
+          this.bytes_[offset + 1] = value >> 8;
+          this.bytes_[offset + 2] = value >> 16;
+          this.bytes_[offset + 3] = value >> 24;
+      }
+      writeInt64(offset, value) {
+          this.writeInt32(offset, Number(BigInt.asIntN(32, value)));
+          this.writeInt32(offset + 4, Number(BigInt.asIntN(32, value >> BigInt(32))));
+      }
+      writeUint64(offset, value) {
+          this.writeUint32(offset, Number(BigInt.asUintN(32, value)));
+          this.writeUint32(offset + 4, Number(BigInt.asUintN(32, value >> BigInt(32))));
+      }
+      writeFloat32(offset, value) {
+          float32[0] = value;
+          this.writeInt32(offset, int32[0]);
+      }
+      writeFloat64(offset, value) {
+          float64[0] = value;
+          this.writeInt32(offset, int32[isLittleEndian ? 0 : 1]);
+          this.writeInt32(offset + 4, int32[isLittleEndian ? 1 : 0]);
+      }
+      /**
+       * Return the file identifier.   Behavior is undefined for FlatBuffers whose
+       * schema does not include a file_identifier (likely points at padding or the
+       * start of a the root vtable).
+       */
+      getBufferIdentifier() {
+          if (this.bytes_.length <
+              this.position_ + SIZEOF_INT + FILE_IDENTIFIER_LENGTH) {
+              throw new Error('FlatBuffers: ByteBuffer is too short to contain an identifier.');
+          }
+          let result = '';
+          for (let i = 0; i < FILE_IDENTIFIER_LENGTH; i++) {
+              result += String.fromCharCode(this.readInt8(this.position_ + SIZEOF_INT + i));
+          }
+          return result;
+      }
+      /**
+       * Look up a field in the vtable, return an offset into the object, or 0 if the
+       * field is not present.
+       */
+      __offset(bb_pos, vtable_offset) {
+          const vtable = bb_pos - this.readInt32(bb_pos);
+          return vtable_offset < this.readInt16(vtable)
+              ? this.readInt16(vtable + vtable_offset)
+              : 0;
+      }
+      /**
+       * Initialize any Table-derived type to point to the union at the given offset.
+       */
+      __union(t, offset) {
+          t.bb_pos = offset + this.readInt32(offset);
+          t.bb = this;
+          return t;
+      }
+      /**
+       * Create a JavaScript string from UTF-8 data stored inside the FlatBuffer.
+       * This allocates a new string and converts to wide chars upon each access.
+       *
+       * To avoid the conversion to string, pass Encoding.UTF8_BYTES as the
+       * "optionalEncoding" argument. This is useful for avoiding conversion when
+       * the data will just be packaged back up in another FlatBuffer later on.
+       *
+       * @param offset
+       * @param opt_encoding Defaults to UTF16_STRING
+       */
+      __string(offset, opt_encoding) {
+          offset += this.readInt32(offset);
+          const length = this.readInt32(offset);
+          offset += SIZEOF_INT;
+          const utf8bytes = this.bytes_.subarray(offset, offset + length);
+          if (opt_encoding === Encoding.UTF8_BYTES)
+              return utf8bytes;
+          else
+              return this.text_decoder_.decode(utf8bytes);
+      }
+      /**
+       * Handle unions that can contain string as its member, if a Table-derived type then initialize it,
+       * if a string then return a new one
+       *
+       * WARNING: strings are immutable in JS so we can't change the string that the user gave us, this
+       * makes the behaviour of __union_with_string different compared to __union
+       */
+      __union_with_string(o, offset) {
+          if (typeof o === 'string') {
+              return this.__string(offset);
+          }
+          return this.__union(o, offset);
+      }
+      /**
+       * Retrieve the relative offset stored at "offset"
+       */
+      __indirect(offset) {
+          return offset + this.readInt32(offset);
+      }
+      /**
+       * Get the start of data of a vector whose offset is stored at "offset" in this object.
+       */
+      __vector(offset) {
+          return offset + this.readInt32(offset) + SIZEOF_INT; // data starts after the length
+      }
+      /**
+       * Get the length of a vector whose offset is stored at "offset" in this object.
+       */
+      __vector_len(offset) {
+          return this.readInt32(offset + this.readInt32(offset));
+      }
+      __has_identifier(ident) {
+          if (ident.length != FILE_IDENTIFIER_LENGTH) {
+              throw new Error('FlatBuffers: file identifier must be length ' + FILE_IDENTIFIER_LENGTH);
+          }
+          for (let i = 0; i < FILE_IDENTIFIER_LENGTH; i++) {
+              if (ident.charCodeAt(i) != this.readInt8(this.position() + SIZEOF_INT + i)) {
+                  return false;
+              }
+          }
+          return true;
+      }
+      /**
+       * A helper function for generating list for obj api
+       */
+      createScalarList(listAccessor, listLength) {
+          const ret = [];
+          for (let i = 0; i < listLength; ++i) {
+              const val = listAccessor(i);
+              if (val !== null) {
+                  ret.push(val);
+              }
+          }
+          return ret;
+      }
+      /**
+       * A helper function for generating list for obj api
+       * @param listAccessor function that accepts an index and return data at that index
+       * @param listLength listLength
+       * @param res result list
+       */
+      createObjList(listAccessor, listLength) {
+          const ret = [];
+          for (let i = 0; i < listLength; ++i) {
+              const val = listAccessor(i);
+              if (val !== null) {
+                  ret.push(val.unpack());
+              }
+          }
+          return ret;
+      }
+  }
+
+  class Builder {
+      /**
+       * Create a FlatBufferBuilder.
+       */
+      constructor(opt_initial_size) {
+          /** Minimum alignment encountered so far. */
+          this.minalign = 1;
+          /** The vtable for the current table. */
+          this.vtable = null;
+          /** The amount of fields we're actually using. */
+          this.vtable_in_use = 0;
+          /** Whether we are currently serializing a table. */
+          this.isNested = false;
+          /** Starting offset of the current struct/table. */
+          this.object_start = 0;
+          /** List of offsets of all vtables. */
+          this.vtables = [];
+          /** For the current vector being built. */
+          this.vector_num_elems = 0;
+          /** False omits default values from the serialized data */
+          this.force_defaults = false;
+          this.string_maps = null;
+          this.text_encoder = new TextEncoder();
+          let initial_size;
+          if (!opt_initial_size) {
+              initial_size = 1024;
+          }
+          else {
+              initial_size = opt_initial_size;
+          }
+          /**
+           * @type {ByteBuffer}
+           * @private
+           */
+          this.bb = ByteBuffer.allocate(initial_size);
+          this.space = initial_size;
+      }
+      clear() {
+          this.bb.clear();
+          this.space = this.bb.capacity();
+          this.minalign = 1;
+          this.vtable = null;
+          this.vtable_in_use = 0;
+          this.isNested = false;
+          this.object_start = 0;
+          this.vtables = [];
+          this.vector_num_elems = 0;
+          this.force_defaults = false;
+          this.string_maps = null;
+      }
+      /**
+       * In order to save space, fields that are set to their default value
+       * don't get serialized into the buffer. Forcing defaults provides a
+       * way to manually disable this optimization.
+       *
+       * @param forceDefaults true always serializes default values
+       */
+      forceDefaults(forceDefaults) {
+          this.force_defaults = forceDefaults;
+      }
+      /**
+       * Get the ByteBuffer representing the FlatBuffer. Only call this after you've
+       * called finish(). The actual data starts at the ByteBuffer's current position,
+       * not necessarily at 0.
+       */
+      dataBuffer() {
+          return this.bb;
+      }
+      /**
+       * Get the bytes representing the FlatBuffer. Only call this after you've
+       * called finish().
+       */
+      asUint8Array() {
+          return this.bb
+              .bytes()
+              .subarray(this.bb.position(), this.bb.position() + this.offset());
+      }
+      /**
+       * Prepare to write an element of `size` after `additional_bytes` have been
+       * written, e.g. if you write a string, you need to align such the int length
+       * field is aligned to 4 bytes, and the string data follows it directly. If all
+       * you need to do is alignment, `additional_bytes` will be 0.
+       *
+       * @param size This is the of the new element to write
+       * @param additional_bytes The padding size
+       */
+      prep(size, additional_bytes) {
+          // Track the biggest thing we've ever aligned to.
+          if (size > this.minalign) {
+              this.minalign = size;
+          }
+          // Find the amount of alignment needed such that `size` is properly
+          // aligned after `additional_bytes`
+          const align_size = (~(this.bb.capacity() - this.space + additional_bytes) + 1) & (size - 1);
+          // Reallocate the buffer if needed.
+          while (this.space < align_size + size + additional_bytes) {
+              const old_buf_size = this.bb.capacity();
+              this.bb = Builder.growByteBuffer(this.bb);
+              this.space += this.bb.capacity() - old_buf_size;
+          }
+          this.pad(align_size);
+      }
+      pad(byte_size) {
+          for (let i = 0; i < byte_size; i++) {
+              this.bb.writeInt8(--this.space, 0);
+          }
+      }
+      writeInt8(value) {
+          this.bb.writeInt8((this.space -= 1), value);
+      }
+      writeInt16(value) {
+          this.bb.writeInt16((this.space -= 2), value);
+      }
+      writeInt32(value) {
+          this.bb.writeInt32((this.space -= 4), value);
+      }
+      writeInt64(value) {
+          this.bb.writeInt64((this.space -= 8), value);
+      }
+      writeFloat32(value) {
+          this.bb.writeFloat32((this.space -= 4), value);
+      }
+      writeFloat64(value) {
+          this.bb.writeFloat64((this.space -= 8), value);
+      }
+      /**
+       * Add an `int8` to the buffer, properly aligned, and grows the buffer (if necessary).
+       * @param value The `int8` to add the buffer.
+       */
+      addInt8(value) {
+          this.prep(1, 0);
+          this.writeInt8(value);
+      }
+      /**
+       * Add an `int16` to the buffer, properly aligned, and grows the buffer (if necessary).
+       * @param value The `int16` to add the buffer.
+       */
+      addInt16(value) {
+          this.prep(2, 0);
+          this.writeInt16(value);
+      }
+      /**
+       * Add an `int32` to the buffer, properly aligned, and grows the buffer (if necessary).
+       * @param value The `int32` to add the buffer.
+       */
+      addInt32(value) {
+          this.prep(4, 0);
+          this.writeInt32(value);
+      }
+      /**
+       * Add an `int64` to the buffer, properly aligned, and grows the buffer (if necessary).
+       * @param value The `int64` to add the buffer.
+       */
+      addInt64(value) {
+          this.prep(8, 0);
+          this.writeInt64(value);
+      }
+      /**
+       * Add a `float32` to the buffer, properly aligned, and grows the buffer (if necessary).
+       * @param value The `float32` to add the buffer.
+       */
+      addFloat32(value) {
+          this.prep(4, 0);
+          this.writeFloat32(value);
+      }
+      /**
+       * Add a `float64` to the buffer, properly aligned, and grows the buffer (if necessary).
+       * @param value The `float64` to add the buffer.
+       */
+      addFloat64(value) {
+          this.prep(8, 0);
+          this.writeFloat64(value);
+      }
+      addFieldInt8(voffset, value, defaultValue) {
+          if (this.force_defaults || value != defaultValue) {
+              this.addInt8(value);
+              this.slot(voffset);
+          }
+      }
+      addFieldInt16(voffset, value, defaultValue) {
+          if (this.force_defaults || value != defaultValue) {
+              this.addInt16(value);
+              this.slot(voffset);
+          }
+      }
+      addFieldInt32(voffset, value, defaultValue) {
+          if (this.force_defaults || value != defaultValue) {
+              this.addInt32(value);
+              this.slot(voffset);
+          }
+      }
+      addFieldInt64(voffset, value, defaultValue) {
+          if (this.force_defaults || value !== defaultValue) {
+              this.addInt64(value);
+              this.slot(voffset);
+          }
+      }
+      addFieldFloat32(voffset, value, defaultValue) {
+          if (this.force_defaults || value != defaultValue) {
+              this.addFloat32(value);
+              this.slot(voffset);
+          }
+      }
+      addFieldFloat64(voffset, value, defaultValue) {
+          if (this.force_defaults || value != defaultValue) {
+              this.addFloat64(value);
+              this.slot(voffset);
+          }
+      }
+      addFieldOffset(voffset, value, defaultValue) {
+          if (this.force_defaults || value != defaultValue) {
+              this.addOffset(value);
+              this.slot(voffset);
+          }
+      }
+      /**
+       * Structs are stored inline, so nothing additional is being added. `d` is always 0.
+       */
+      addFieldStruct(voffset, value, defaultValue) {
+          if (value != defaultValue) {
+              this.nested(value);
+              this.slot(voffset);
+          }
+      }
+      /**
+       * Structures are always stored inline, they need to be created right
+       * where they're used.  You'll get this assertion failure if you
+       * created it elsewhere.
+       */
+      nested(obj) {
+          if (obj != this.offset()) {
+              throw new TypeError('FlatBuffers: struct must be serialized inline.');
+          }
+      }
+      /**
+       * Should not be creating any other object, string or vector
+       * while an object is being constructed
+       */
+      notNested() {
+          if (this.isNested) {
+              throw new TypeError('FlatBuffers: object serialization must not be nested.');
+          }
+      }
+      /**
+       * Set the current vtable at `voffset` to the current location in the buffer.
+       */
+      slot(voffset) {
+          if (this.vtable !== null)
+              this.vtable[voffset] = this.offset();
+      }
+      /**
+       * @returns Offset relative to the end of the buffer.
+       */
+      offset() {
+          return this.bb.capacity() - this.space;
+      }
+      /**
+       * Doubles the size of the backing ByteBuffer and copies the old data towards
+       * the end of the new buffer (since we build the buffer backwards).
+       *
+       * @param bb The current buffer with the existing data
+       * @returns A new byte buffer with the old data copied
+       * to it. The data is located at the end of the buffer.
+       *
+       * uint8Array.set() formally takes {Array<number>|ArrayBufferView}, so to pass
+       * it a uint8Array we need to suppress the type check:
+       * @suppress {checkTypes}
+       */
+      static growByteBuffer(bb) {
+          const old_buf_size = bb.capacity();
+          // Ensure we don't grow beyond what fits in an int.
+          if (old_buf_size & 0xc0000000) {
+              throw new Error('FlatBuffers: cannot grow buffer beyond 2 gigabytes.');
+          }
+          const new_buf_size = old_buf_size << 1;
+          const nbb = ByteBuffer.allocate(new_buf_size);
+          nbb.setPosition(new_buf_size - old_buf_size);
+          nbb.bytes().set(bb.bytes(), new_buf_size - old_buf_size);
+          return nbb;
+      }
+      /**
+       * Adds on offset, relative to where it will be written.
+       *
+       * @param offset The offset to add.
+       */
+      addOffset(offset) {
+          this.prep(SIZEOF_INT, 0); // Ensure alignment is already done.
+          this.writeInt32(this.offset() - offset + SIZEOF_INT);
+      }
+      /**
+       * Start encoding a new object in the buffer.  Users will not usually need to
+       * call this directly. The FlatBuffers compiler will generate helper methods
+       * that call this method internally.
+       */
+      startObject(numfields) {
+          this.notNested();
+          if (this.vtable == null) {
+              this.vtable = [];
+          }
+          this.vtable_in_use = numfields;
+          for (let i = 0; i < numfields; i++) {
+              this.vtable[i] = 0; // This will push additional elements as needed
+          }
+          this.isNested = true;
+          this.object_start = this.offset();
+      }
+      /**
+       * Finish off writing the object that is under construction.
+       *
+       * @returns The offset to the object inside `dataBuffer`
+       */
+      endObject() {
+          if (this.vtable == null || !this.isNested) {
+              throw new Error('FlatBuffers: endObject called without startObject');
+          }
+          this.addInt32(0);
+          const vtableloc = this.offset();
+          // Trim trailing zeroes.
+          let i = this.vtable_in_use - 1;
+          // eslint-disable-next-line no-empty
+          for (; i >= 0 && this.vtable[i] == 0; i--) { }
+          const trimmed_size = i + 1;
+          // Write out the current vtable.
+          for (; i >= 0; i--) {
+              // Offset relative to the start of the table.
+              this.addInt16(this.vtable[i] != 0 ? vtableloc - this.vtable[i] : 0);
+          }
+          const standard_fields = 2; // The fields below:
+          this.addInt16(vtableloc - this.object_start);
+          const len = (trimmed_size + standard_fields) * SIZEOF_SHORT;
+          this.addInt16(len);
+          // Search for an existing vtable that matches the current one.
+          let existing_vtable = 0;
+          const vt1 = this.space;
+          outer_loop: for (i = 0; i < this.vtables.length; i++) {
+              const vt2 = this.bb.capacity() - this.vtables[i];
+              if (len == this.bb.readInt16(vt2)) {
+                  for (let j = SIZEOF_SHORT; j < len; j += SIZEOF_SHORT) {
+                      if (this.bb.readInt16(vt1 + j) != this.bb.readInt16(vt2 + j)) {
+                          continue outer_loop;
+                      }
+                  }
+                  existing_vtable = this.vtables[i];
+                  break;
+              }
+          }
+          if (existing_vtable) {
+              // Found a match:
+              // Remove the current vtable.
+              this.space = this.bb.capacity() - vtableloc;
+              // Point table to existing vtable.
+              this.bb.writeInt32(this.space, existing_vtable - vtableloc);
+          }
+          else {
+              // No match:
+              // Add the location of the current vtable to the list of vtables.
+              this.vtables.push(this.offset());
+              // Point table to current vtable.
+              this.bb.writeInt32(this.bb.capacity() - vtableloc, this.offset() - vtableloc);
+          }
+          this.isNested = false;
+          return vtableloc;
+      }
+      /**
+       * Finalize a buffer, poiting to the given `root_table`.
+       */
+      finish(root_table, opt_file_identifier, opt_size_prefix) {
+          const size_prefix = opt_size_prefix ? SIZE_PREFIX_LENGTH : 0;
+          if (opt_file_identifier) {
+              const file_identifier = opt_file_identifier;
+              this.prep(this.minalign, SIZEOF_INT + FILE_IDENTIFIER_LENGTH + size_prefix);
+              if (file_identifier.length != FILE_IDENTIFIER_LENGTH) {
+                  throw new TypeError('FlatBuffers: file identifier must be length ' +
+                      FILE_IDENTIFIER_LENGTH);
+              }
+              for (let i = FILE_IDENTIFIER_LENGTH - 1; i >= 0; i--) {
+                  this.writeInt8(file_identifier.charCodeAt(i));
+              }
+          }
+          this.prep(this.minalign, SIZEOF_INT + size_prefix);
+          this.addOffset(root_table);
+          if (size_prefix) {
+              this.addInt32(this.bb.capacity() - this.space);
+          }
+          this.bb.setPosition(this.space);
+      }
+      /**
+       * Finalize a size prefixed buffer, pointing to the given `root_table`.
+       */
+      finishSizePrefixed(root_table, opt_file_identifier) {
+          this.finish(root_table, opt_file_identifier, true);
+      }
+      /**
+       * This checks a required field has been set in a given table that has
+       * just been constructed.
+       */
+      requiredField(table, field) {
+          const table_start = this.bb.capacity() - table;
+          const vtable_start = table_start - this.bb.readInt32(table_start);
+          const ok = field < this.bb.readInt16(vtable_start) &&
+              this.bb.readInt16(vtable_start + field) != 0;
+          // If this fails, the caller will show what field needs to be set.
+          if (!ok) {
+              throw new TypeError('FlatBuffers: field ' + field + ' must be set');
+          }
+      }
+      /**
+       * Start a new array/vector of objects.  Users usually will not call
+       * this directly. The FlatBuffers compiler will create a start/end
+       * method for vector types in generated code.
+       *
+       * @param elem_size The size of each element in the array
+       * @param num_elems The number of elements in the array
+       * @param alignment The alignment of the array
+       */
+      startVector(elem_size, num_elems, alignment) {
+          this.notNested();
+          this.vector_num_elems = num_elems;
+          this.prep(SIZEOF_INT, elem_size * num_elems);
+          this.prep(alignment, elem_size * num_elems); // Just in case alignment > int.
+      }
+      /**
+       * Finish off the creation of an array and all its elements. The array must be
+       * created with `startVector`.
+       *
+       * @returns The offset at which the newly created array
+       * starts.
+       */
+      endVector() {
+          this.writeInt32(this.vector_num_elems);
+          return this.offset();
+      }
+      /**
+       * Encode the string `s` in the buffer using UTF-8. If the string passed has
+       * already been seen, we return the offset of the already written string
+       *
+       * @param s The string to encode
+       * @return The offset in the buffer where the encoded string starts
+       */
+      createSharedString(s) {
+          if (!s) {
+              return 0;
+          }
+          if (!this.string_maps) {
+              this.string_maps = new Map();
+          }
+          if (this.string_maps.has(s)) {
+              return this.string_maps.get(s);
+          }
+          const offset = this.createString(s);
+          this.string_maps.set(s, offset);
+          return offset;
+      }
+      /**
+       * Encode the string `s` in the buffer using UTF-8. If a Uint8Array is passed
+       * instead of a string, it is assumed to contain valid UTF-8 encoded data.
+       *
+       * @param s The string to encode
+       * @return The offset in the buffer where the encoded string starts
+       */
+      createString(s) {
+          if (s === null || s === undefined) {
+              return 0;
+          }
+          let utf8;
+          if (s instanceof Uint8Array) {
+              utf8 = s;
+          }
+          else {
+              utf8 = this.text_encoder.encode(s);
+          }
+          this.addInt8(0);
+          this.startVector(1, utf8.length, 1);
+          this.bb.setPosition((this.space -= utf8.length));
+          this.bb.bytes().set(utf8, this.space);
+          return this.endVector();
+      }
+      /**
+       * Create a byte vector.
+       *
+       * @param v The bytes to add
+       * @returns The offset in the buffer where the byte vector starts
+       */
+      createByteVector(v) {
+          if (v === null || v === undefined) {
+              return 0;
+          }
+          this.startVector(1, v.length, 1);
+          this.bb.setPosition((this.space -= v.length));
+          this.bb.bytes().set(v, this.space);
+          return this.endVector();
+      }
+      /**
+       * A helper function to pack an object
+       *
+       * @returns offset of obj
+       */
+      createObjectOffset(obj) {
+          if (obj === null) {
+              return 0;
+          }
+          if (typeof obj === 'string') {
+              return this.createString(obj);
+          }
+          else {
+              return obj.pack(this);
+          }
+      }
+      /**
+       * A helper function to pack a list of object
+       *
+       * @returns list of offsets of each non null object
+       */
+      createObjectOffsetList(list) {
+          const ret = [];
+          for (let i = 0; i < list.length; ++i) {
+              const val = list[i];
+              if (val !== null) {
+                  ret.push(this.createObjectOffset(val));
+              }
+              else {
+                  throw new TypeError('FlatBuffers: Argument for createObjectOffsetList cannot contain null.');
+              }
+          }
+          return ret;
+      }
+      createStructOffsetList(list, startFunc) {
+          startFunc(this, list.length);
+          this.createObjectOffsetList(list.slice().reverse());
+          return this.endVector();
+      }
+  }
+
+  var o;var ColumnType=((o={})[o.Byte=0]="Byte",o[o.UByte=1]="UByte",o[o.Bool=2]="Bool",o[o.Short=3]="Short",o[o.UShort=4]="UShort",o[o.Int=5]="Int",o[o.UInt=6]="UInt",o[o.Long=7]="Long",o[o.ULong=8]="ULong",o[o.Float=9]="Float",o[o.Double=10]="Double",o[o.String=11]="String",o[o.Json=12]="Json",o[o.DateTime=13]="DateTime",o[o.Binary=14]="Binary",o);
+
+  class Column{bb=null;bb_pos=0;__init(t,s){return this.bb_pos=t,this.bb=s,this}static getRootAsColumn(t,s){return (s||new Column).__init(t.readInt32(t.position())+t.position(),t)}static getSizePrefixedRootAsColumn(s,i){return s.setPosition(s.position()+SIZE_PREFIX_LENGTH),(i||new Column).__init(s.readInt32(s.position())+s.position(),s)}name(t){let s=this.bb.__offset(this.bb_pos,4);return s?this.bb.__string(this.bb_pos+s,t):null}type(){let t=this.bb.__offset(this.bb_pos,6);return t?this.bb.readUint8(this.bb_pos+t):ColumnType.Byte}title(t){let s=this.bb.__offset(this.bb_pos,8);return s?this.bb.__string(this.bb_pos+s,t):null}description(t){let s=this.bb.__offset(this.bb_pos,10);return s?this.bb.__string(this.bb_pos+s,t):null}width(){let t=this.bb.__offset(this.bb_pos,12);return t?this.bb.readInt32(this.bb_pos+t):-1}precision(){let t=this.bb.__offset(this.bb_pos,14);return t?this.bb.readInt32(this.bb_pos+t):-1}scale(){let t=this.bb.__offset(this.bb_pos,16);return t?this.bb.readInt32(this.bb_pos+t):-1}nullable(){let t=this.bb.__offset(this.bb_pos,18);return !t||!!this.bb.readInt8(this.bb_pos+t)}unique(){let t=this.bb.__offset(this.bb_pos,20);return !!t&&!!this.bb.readInt8(this.bb_pos+t)}primaryKey(){let t=this.bb.__offset(this.bb_pos,22);return !!t&&!!this.bb.readInt8(this.bb_pos+t)}metadata(t){let s=this.bb.__offset(this.bb_pos,24);return s?this.bb.__string(this.bb_pos+s,t):null}static startColumn(t){t.startObject(11);}static addName(t,s){t.addFieldOffset(0,s,0);}static addType(t,i){t.addFieldInt8(1,i,ColumnType.Byte);}static addTitle(t,s){t.addFieldOffset(2,s,0);}static addDescription(t,s){t.addFieldOffset(3,s,0);}static addWidth(t,s){t.addFieldInt32(4,s,-1);}static addPrecision(t,s){t.addFieldInt32(5,s,-1);}static addScale(t,s){t.addFieldInt32(6,s,-1);}static addNullable(t,s){t.addFieldInt8(7,+s,1);}static addUnique(t,s){t.addFieldInt8(8,+s,0);}static addPrimaryKey(t,s){t.addFieldInt8(9,+s,0);}static addMetadata(t,s){t.addFieldOffset(10,s,0);}static endColumn(t){let s=t.endObject();return t.requiredField(s,4),s}static createColumn(t,s,i,e,b,d,n,a,o,l,r,_){return Column.startColumn(t),Column.addName(t,s),Column.addType(t,i),Column.addTitle(t,e),Column.addDescription(t,b),Column.addWidth(t,d),Column.addPrecision(t,n),Column.addScale(t,a),Column.addNullable(t,o),Column.addUnique(t,l),Column.addPrimaryKey(t,r),Column.addMetadata(t,_),Column.endColumn(t)}}
+
+  var r;var GeometryType=((r={})[r.Unknown=0]="Unknown",r[r.Point=1]="Point",r[r.LineString=2]="LineString",r[r.Polygon=3]="Polygon",r[r.MultiPoint=4]="MultiPoint",r[r.MultiLineString=5]="MultiLineString",r[r.MultiPolygon=6]="MultiPolygon",r[r.GeometryCollection=7]="GeometryCollection",r[r.CircularString=8]="CircularString",r[r.CompoundCurve=9]="CompoundCurve",r[r.CurvePolygon=10]="CurvePolygon",r[r.MultiCurve=11]="MultiCurve",r[r.MultiSurface=12]="MultiSurface",r[r.Curve=13]="Curve",r[r.Surface=14]="Surface",r[r.PolyhedralSurface=15]="PolyhedralSurface",r[r.TIN=16]="TIN",r[r.Triangle=17]="Triangle",r);
+
+  class Geometry{bb=null;bb_pos=0;__init(t,e){return this.bb_pos=t,this.bb=e,this}static getRootAsGeometry(t,e){return (e||new Geometry).__init(t.readInt32(t.position())+t.position(),t)}static getSizePrefixedRootAsGeometry(e,s){return e.setPosition(e.position()+SIZE_PREFIX_LENGTH),(s||new Geometry).__init(e.readInt32(e.position())+e.position(),e)}ends(t){let e=this.bb.__offset(this.bb_pos,4);return e?this.bb.readUint32(this.bb.__vector(this.bb_pos+e)+4*t):0}endsLength(){let t=this.bb.__offset(this.bb_pos,4);return t?this.bb.__vector_len(this.bb_pos+t):0}endsArray(){let t=this.bb.__offset(this.bb_pos,4);return t?new Uint32Array(this.bb.bytes().buffer,this.bb.bytes().byteOffset+this.bb.__vector(this.bb_pos+t),this.bb.__vector_len(this.bb_pos+t)):null}xy(t){let e=this.bb.__offset(this.bb_pos,6);return e?this.bb.readFloat64(this.bb.__vector(this.bb_pos+e)+8*t):0}xyLength(){let t=this.bb.__offset(this.bb_pos,6);return t?this.bb.__vector_len(this.bb_pos+t):0}xyArray(){let t=this.bb.__offset(this.bb_pos,6);return t?new Float64Array(this.bb.bytes().buffer,this.bb.bytes().byteOffset+this.bb.__vector(this.bb_pos+t),this.bb.__vector_len(this.bb_pos+t)):null}z(t){let e=this.bb.__offset(this.bb_pos,8);return e?this.bb.readFloat64(this.bb.__vector(this.bb_pos+e)+8*t):0}zLength(){let t=this.bb.__offset(this.bb_pos,8);return t?this.bb.__vector_len(this.bb_pos+t):0}zArray(){let t=this.bb.__offset(this.bb_pos,8);return t?new Float64Array(this.bb.bytes().buffer,this.bb.bytes().byteOffset+this.bb.__vector(this.bb_pos+t),this.bb.__vector_len(this.bb_pos+t)):null}m(t){let e=this.bb.__offset(this.bb_pos,10);return e?this.bb.readFloat64(this.bb.__vector(this.bb_pos+e)+8*t):0}mLength(){let t=this.bb.__offset(this.bb_pos,10);return t?this.bb.__vector_len(this.bb_pos+t):0}mArray(){let t=this.bb.__offset(this.bb_pos,10);return t?new Float64Array(this.bb.bytes().buffer,this.bb.bytes().byteOffset+this.bb.__vector(this.bb_pos+t),this.bb.__vector_len(this.bb_pos+t)):null}t(t){let e=this.bb.__offset(this.bb_pos,12);return e?this.bb.readFloat64(this.bb.__vector(this.bb_pos+e)+8*t):0}tLength(){let t=this.bb.__offset(this.bb_pos,12);return t?this.bb.__vector_len(this.bb_pos+t):0}tArray(){let t=this.bb.__offset(this.bb_pos,12);return t?new Float64Array(this.bb.bytes().buffer,this.bb.bytes().byteOffset+this.bb.__vector(this.bb_pos+t),this.bb.__vector_len(this.bb_pos+t)):null}tm(t){let e=this.bb.__offset(this.bb_pos,14);return e?this.bb.readUint64(this.bb.__vector(this.bb_pos+e)+8*t):BigInt(0)}tmLength(){let t=this.bb.__offset(this.bb_pos,14);return t?this.bb.__vector_len(this.bb_pos+t):0}type(){let t=this.bb.__offset(this.bb_pos,16);return t?this.bb.readUint8(this.bb_pos+t):GeometryType.Unknown}parts(t,e){let s=this.bb.__offset(this.bb_pos,18);return s?(e||new Geometry).__init(this.bb.__indirect(this.bb.__vector(this.bb_pos+s)+4*t),this.bb):null}partsLength(){let t=this.bb.__offset(this.bb_pos,18);return t?this.bb.__vector_len(this.bb_pos+t):0}static startGeometry(t){t.startObject(8);}static addEnds(t,e){t.addFieldOffset(0,e,0);}static createEndsVector(t,e){t.startVector(4,e.length,4);for(let s=e.length-1;s>=0;s--)t.addInt32(e[s]);return t.endVector()}static startEndsVector(t,e){t.startVector(4,e,4);}static addXy(t,e){t.addFieldOffset(1,e,0);}static createXyVector(t,e){t.startVector(8,e.length,8);for(let s=e.length-1;s>=0;s--)t.addFloat64(e[s]);return t.endVector()}static startXyVector(t,e){t.startVector(8,e,8);}static addZ(t,e){t.addFieldOffset(2,e,0);}static createZVector(t,e){t.startVector(8,e.length,8);for(let s=e.length-1;s>=0;s--)t.addFloat64(e[s]);return t.endVector()}static startZVector(t,e){t.startVector(8,e,8);}static addM(t,e){t.addFieldOffset(3,e,0);}static createMVector(t,e){t.startVector(8,e.length,8);for(let s=e.length-1;s>=0;s--)t.addFloat64(e[s]);return t.endVector()}static startMVector(t,e){t.startVector(8,e,8);}static addT(t,e){t.addFieldOffset(4,e,0);}static createTVector(t,e){t.startVector(8,e.length,8);for(let s=e.length-1;s>=0;s--)t.addFloat64(e[s]);return t.endVector()}static startTVector(t,e){t.startVector(8,e,8);}static addTm(t,e){t.addFieldOffset(5,e,0);}static createTmVector(t,e){t.startVector(8,e.length,8);for(let s=e.length-1;s>=0;s--)t.addInt64(e[s]);return t.endVector()}static startTmVector(t,e){t.startVector(8,e,8);}static addType(t,s){t.addFieldInt8(6,s,GeometryType.Unknown);}static addParts(t,e){t.addFieldOffset(7,e,0);}static createPartsVector(t,e){t.startVector(4,e.length,4);for(let s=e.length-1;s>=0;s--)t.addOffset(e[s]);return t.endVector()}static startPartsVector(t,e){t.startVector(4,e,4);}static endGeometry(t){return t.endObject()}static createGeometry(t,e,s,b,r,o,i,_,h){return Geometry.startGeometry(t),Geometry.addEnds(t,e),Geometry.addXy(t,s),Geometry.addZ(t,b),Geometry.addM(t,r),Geometry.addT(t,o),Geometry.addTm(t,i),Geometry.addType(t,_),Geometry.addParts(t,h),Geometry.endGeometry(t)}}
+
+  class Feature{bb=null;bb_pos=0;__init(t,e){return this.bb_pos=t,this.bb=e,this}static getRootAsFeature(t,e){return (e||new Feature).__init(t.readInt32(t.position())+t.position(),t)}static getSizePrefixedRootAsFeature(e,s){return e.setPosition(e.position()+SIZE_PREFIX_LENGTH),(s||new Feature).__init(e.readInt32(e.position())+e.position(),e)}geometry(t){let e=this.bb.__offset(this.bb_pos,4);return e?(t||new Geometry).__init(this.bb.__indirect(this.bb_pos+e),this.bb):null}properties(t){let e=this.bb.__offset(this.bb_pos,6);return e?this.bb.readUint8(this.bb.__vector(this.bb_pos+e)+t):0}propertiesLength(){let t=this.bb.__offset(this.bb_pos,6);return t?this.bb.__vector_len(this.bb_pos+t):0}propertiesArray(){let t=this.bb.__offset(this.bb_pos,6);return t?new Uint8Array(this.bb.bytes().buffer,this.bb.bytes().byteOffset+this.bb.__vector(this.bb_pos+t),this.bb.__vector_len(this.bb_pos+t)):null}columns(t,s){let r=this.bb.__offset(this.bb_pos,8);return r?(s||new Column).__init(this.bb.__indirect(this.bb.__vector(this.bb_pos+r)+4*t),this.bb):null}columnsLength(){let t=this.bb.__offset(this.bb_pos,8);return t?this.bb.__vector_len(this.bb_pos+t):0}static startFeature(t){t.startObject(3);}static addGeometry(t,e){t.addFieldOffset(0,e,0);}static addProperties(t,e){t.addFieldOffset(1,e,0);}static createPropertiesVector(t,e){t.startVector(1,e.length,1);for(let s=e.length-1;s>=0;s--)t.addInt8(e[s]);return t.endVector()}static startPropertiesVector(t,e){t.startVector(1,e,1);}static addColumns(t,e){t.addFieldOffset(2,e,0);}static createColumnsVector(t,e){t.startVector(4,e.length,4);for(let s=e.length-1;s>=0;s--)t.addOffset(e[s]);return t.endVector()}static startColumnsVector(t,e){t.startVector(4,e,4);}static endFeature(t){return t.endObject()}static finishFeatureBuffer(t,e){t.finish(e);}static finishSizePrefixedFeatureBuffer(t,e){t.finish(e,void 0,true);}static createFeature(t,e,s,r){return Feature.startFeature(t),Feature.addGeometry(t,e),Feature.addProperties(t,s),Feature.addColumns(t,r),Feature.endFeature(t)}}
+
+  function buildGeometry(t,r){let o,n,a,{xy:l,z:y,m:d,ends:i,parts:u,type:f}=r;if(u){let r=u.map(e=>buildGeometry(t,e)),o=Geometry.createPartsVector(t,r);return Geometry.startGeometry(t),Geometry.addParts(t,o),Geometry.addType(t,f),Geometry.endGeometry(t)}let g=Geometry.createXyVector(t,l);return y&&(o=Geometry.createZVector(t,y)),d&&(n=Geometry.createMVector(t,d)),i&&(a=Geometry.createEndsVector(t,i)),Geometry.startGeometry(t),a&&Geometry.addEnds(t,a),Geometry.addXy(t,g),o&&Geometry.addZ(t,o),n&&Geometry.addM(t,n),Geometry.addType(t,f),Geometry.endGeometry(t)}function flat(e,t,r){if(0!==e.length)if(Array.isArray(e[0]))for(let o of e)flat(o,t,r);else 2===e.length?t.push(...e):(t.push(e[0],e[1]),r.push(e[2]));}function pairFlatCoordinates(e,t){let r=[];for(let o=0;o<e.length;o+=2){let n=[e[o],e[o+1]];t&&n.push(t[o>>1]),r.push(n);}return r}function toGeometryType(e){return e?GeometryType[e]:GeometryType.Unknown}
+
+  let n=new TextEncoder,s=new TextDecoder;function buildFeature(s,o,i){let l=i.columns,c=new Builder,g=0,b=1024,f=new Uint8Array(1024),u=new DataView(f.buffer),k=e=>{if(g+e<b)return;let t=new Uint8Array(b=Math.max(b+e,2*b));t.set(f),u=new DataView((f=t).buffer);};if(l)for(let e=0;e<l.length;e++){let r=l[e],a=o[r.name];if(null!==a)switch(k(2),u.setUint16(g,e,true),g+=2,r.type){case ColumnType.Bool:k(1),u.setUint8(g,a),g+=1;break;case ColumnType.Short:k(2),u.setInt16(g,a,true),g+=2;break;case ColumnType.UShort:k(2),u.setUint16(g,a,true),g+=2;break;case ColumnType.Int:k(4),u.setInt32(g,a,true),g+=4;break;case ColumnType.UInt:k(4),u.setUint32(g,a,true),g+=4;break;case ColumnType.Long:k(8),u.setBigInt64(g,BigInt(a),true),g+=8;break;case ColumnType.Float:k(4),u.setFloat32(g,a,true),g+=4;break;case ColumnType.Double:k(8),u.setFloat64(g,a,true),g+=8;break;case ColumnType.DateTime:case ColumnType.String:{let e=n.encode(a);k(4),u.setUint32(g,e.length,true),g+=4,k(e.length),f.set(e,g),g+=e.length;break}case ColumnType.Json:{let e=n.encode(JSON.stringify(a));k(4),u.setUint32(g,e.length,true),g+=4,k(e.length),f.set(e,g),g+=e.length;break}case ColumnType.Binary:k(4),u.setUint32(g,a.length,true),g+=4,k(a.length),f.set(a,g),g+=a.length;break;default:throw Error(`Unknown type ${r.type}`)}}let U=0;g>0&&(U=Feature.createPropertiesVector(c,f.slice(0,g)));let p=buildGeometry(c,s);Feature.startFeature(c),Feature.addGeometry(c,p),U&&Feature.addProperties(c,U);let y=Feature.endFeature(c);return c.finishSizePrefixed(y),c.asUint8Array()}function parseProperties$1(e,r){let a={};if(!r||0===r.length)return a;let n=e.propertiesArray();if(!n)return a;let o=new DataView(n.buffer,n.byteOffset),i=e.propertiesLength(),l=0;for(;l<i;){let e=o.getUint16(l,true);l+=2;let i=r[e],c=i.name;switch(i.type){case ColumnType.Bool:a[c]=!!o.getUint8(l),l+=1;break;case ColumnType.Byte:a[c]=o.getInt8(l),l+=1;break;case ColumnType.UByte:a[c]=o.getUint8(l),l+=1;break;case ColumnType.Short:a[c]=o.getInt16(l,true),l+=2;break;case ColumnType.UShort:a[c]=o.getUint16(l,true),l+=2;break;case ColumnType.Int:a[c]=o.getInt32(l,true),l+=4;break;case ColumnType.UInt:a[c]=o.getUint32(l,true),l+=4;break;case ColumnType.Long:a[c]=Number(o.getBigInt64(l,true)),l+=8;break;case ColumnType.ULong:a[c]=Number(o.getBigUint64(l,true)),l+=8;break;case ColumnType.Float:a[c]=o.getFloat32(l,true),l+=4;break;case ColumnType.Double:a[c]=o.getFloat64(l,true),l+=8;break;case ColumnType.DateTime:case ColumnType.String:{let e=o.getUint32(l,true);l+=4,a[c]=s.decode(n.subarray(l,l+e)),l+=e;break}case ColumnType.Json:{let e=o.getUint32(l,true);l+=4;let t=s.decode(n.subarray(l,l+e));a[c]=JSON.parse(t),l+=e;break}case ColumnType.Binary:{let e=o.getUint32(l,true);l+=4,a[c]=n.subarray(l,l+e),l+=e;break}default:throw Error(`Unknown type ${i.type}`)}}return a}
+
+  function parseGeometry(e){let r,n,i=e.coordinates,a=[],l=[],p=toGeometryType(e.type),s=0;switch(e.type){case "Point":case "MultiPoint":case "LineString":flat(i,a,l);break;case "MultiLineString":case "Polygon":flat(i,a,l),i.length>1&&(r=i.map(e=>s+=e.length));break;case "MultiPolygon":n=i.map(e=>({type:"Polygon",coordinates:e})).map(parseGeometry);}return {xy:a,z:l.length>0?l:void 0,ends:r,type:p,parts:n}}function parseGC(e){let t=toGeometryType(e.type),r=[];for(let t=0;t<e.geometries.length;t++){let o=e.geometries[t];"GeometryCollection"===o.type?r.push(parseGC(o)):r.push(parseGeometry(o));}return {type:t,parts:r}}function fromGeometry(t,o){let n=o;if(n===GeometryType.Unknown&&(n=t.type()),n===GeometryType.GeometryCollection){let r=[];for(let e=0;e<t.partsLength();e++){let o=t.parts(e),n=o.type();r.push(fromGeometry(o,n));}return {type:GeometryType[n],geometries:r}}if(n===GeometryType.MultiPolygon){let r=[];for(let o=0;o<t.partsLength();o++)r.push(fromGeometry(t.parts(o),GeometryType.Polygon));return {type:GeometryType[n],coordinates:r.map(e=>e.coordinates)}}let i=function(t,o){let n=t.xyArray(),i=t.zArray();switch(o){case GeometryType.Point:{let e=Array.from(n);return i&&e.push(i[0]),e}case GeometryType.MultiPoint:case GeometryType.LineString:return pairFlatCoordinates(n,i);case GeometryType.MultiLineString:case GeometryType.Polygon:return function(e,t,o){let n;if(!o||0===o.length)return [pairFlatCoordinates(e,t)];let i=0,a=Array.from(o).map(t=>e.slice(i,i=t<<1));return t&&(i=0,n=Array.from(o).map(e=>t.slice(i,i=e))),a.map((e,t)=>pairFlatCoordinates(e,n?n[t]:void 0))}(n,i,t.endsArray())}}(t,n);return {type:GeometryType[n],coordinates:i}}
+
+  function fromFeature(t,o,m){let p=m.columns;return {type:"Feature",id:t,geometry:fromGeometry(o.geometry(),m.geometryType),properties:parseProperties$1(o,p)}}
+
+  const magicbytes=new Uint8Array([102,103,98,3,102,103,98,0]);const SIZE_PREFIX_LEN=4;
+
+  class Crs{bb=null;bb_pos=0;__init(t,s){return this.bb_pos=t,this.bb=s,this}static getRootAsCrs(t,s){return (s||new Crs).__init(t.readInt32(t.position())+t.position(),t)}static getSizePrefixedRootAsCrs(s,i){return s.setPosition(s.position()+SIZE_PREFIX_LENGTH),(i||new Crs).__init(s.readInt32(s.position())+s.position(),s)}org(t){let s=this.bb.__offset(this.bb_pos,4);return s?this.bb.__string(this.bb_pos+s,t):null}code(){let t=this.bb.__offset(this.bb_pos,6);return t?this.bb.readInt32(this.bb_pos+t):0}name(t){let s=this.bb.__offset(this.bb_pos,8);return s?this.bb.__string(this.bb_pos+s,t):null}description(t){let s=this.bb.__offset(this.bb_pos,10);return s?this.bb.__string(this.bb_pos+s,t):null}wkt(t){let s=this.bb.__offset(this.bb_pos,12);return s?this.bb.__string(this.bb_pos+s,t):null}codeString(t){let s=this.bb.__offset(this.bb_pos,14);return s?this.bb.__string(this.bb_pos+s,t):null}static startCrs(t){t.startObject(6);}static addOrg(t,s){t.addFieldOffset(0,s,0);}static addCode(t,s){t.addFieldInt32(1,s,0);}static addName(t,s){t.addFieldOffset(2,s,0);}static addDescription(t,s){t.addFieldOffset(3,s,0);}static addWkt(t,s){t.addFieldOffset(4,s,0);}static addCodeString(t,s){t.addFieldOffset(5,s,0);}static endCrs(t){return t.endObject()}static createCrs(t,s,i,e,r,b,d){return Crs.startCrs(t),Crs.addOrg(t,s),Crs.addCode(t,i),Crs.addName(t,e),Crs.addDescription(t,r),Crs.addWkt(t,b),Crs.addCodeString(t,d),Crs.endCrs(t)}}
+
+  class Header {
+    bb = null;
+    bb_pos = 0;
+    __init(t, s) { return this.bb_pos = t, this.bb = s, this } static getRootAsHeader(t, s) { return (s || new Header).__init(t.readInt32(t.position()) + t.position(), t) } static getSizePrefixedRootAsHeader(s, e) { return s.setPosition(s.position() + SIZE_PREFIX_LENGTH), (e || new Header).__init(s.readInt32(s.position()) + s.position(), s) } name(t) { let s = this.bb.__offset(this.bb_pos, 4); return s ? this.bb.__string(this.bb_pos + s, t) : null } envelope(t) { let s = this.bb.__offset(this.bb_pos, 6); return s ? this.bb.readFloat64(this.bb.__vector(this.bb_pos + s) + 8 * t) : 0 } envelopeLength() { let t = this.bb.__offset(this.bb_pos, 6); return t ? this.bb.__vector_len(this.bb_pos + t) : 0 } envelopeArray() { let t = this.bb.__offset(this.bb_pos, 6); return t ? new Float64Array(this.bb.bytes().buffer, this.bb.bytes().byteOffset + this.bb.__vector(this.bb_pos + t), this.bb.__vector_len(this.bb_pos + t)) : null } geometryType() { let t = this.bb.__offset(this.bb_pos, 8); return t ? this.bb.readUint8(this.bb_pos + t) : GeometryType.Unknown } hasZ() { let t = this.bb.__offset(this.bb_pos, 10); return !!t && !!this.bb.readInt8(this.bb_pos + t) } hasM() { let t = this.bb.__offset(this.bb_pos, 12); return !!t && !!this.bb.readInt8(this.bb_pos + t) } hasT() { let t = this.bb.__offset(this.bb_pos, 14); return !!t && !!this.bb.readInt8(this.bb_pos + t) } hasTm() { let t = this.bb.__offset(this.bb_pos, 16); return !!t && !!this.bb.readInt8(this.bb_pos + t) } columns(t, e) { let i = this.bb.__offset(this.bb_pos, 18); return i ? (e || new Column).__init(this.bb.__indirect(this.bb.__vector(this.bb_pos + i) + 4 * t), this.bb) : null } columnsLength() { let t = this.bb.__offset(this.bb_pos, 18); return t ? this.bb.__vector_len(this.bb_pos + t) : 0 } featuresCount() { let t = this.bb.__offset(this.bb_pos, 20); return t ? this.bb.readUint64(this.bb_pos + t) : BigInt("0") } indexNodeSize() { let t = this.bb.__offset(this.bb_pos, 22); return t ? this.bb.readUint16(this.bb_pos + t) : 16 } crs(t) { let s = this.bb.__offset(this.bb_pos, 24); return s ? (t || new Crs).__init(this.bb.__indirect(this.bb_pos + s), this.bb) : null } title(t) { let s = this.bb.__offset(this.bb_pos, 26); return s ? this.bb.__string(this.bb_pos + s, t) : null } description(t) { let s = this.bb.__offset(this.bb_pos, 28); return s ? this.bb.__string(this.bb_pos + s, t) : null } metadata(t) { let s = this.bb.__offset(this.bb_pos, 30); return s ? this.bb.__string(this.bb_pos + s, t) : null } static startHeader(t) { t.startObject(14); } static addName(t, s) { t.addFieldOffset(0, s, 0); } static addEnvelope(t, s) { t.addFieldOffset(1, s, 0); } static createEnvelopeVector(t, s) { t.startVector(8, s.length, 8); for (let e = s.length - 1; e >= 0; e--) t.addFloat64(s[e]); return t.endVector() } static startEnvelopeVector(t, s) { t.startVector(8, s, 8); } static addGeometryType(t, s) { t.addFieldInt8(2, s, GeometryType.Unknown); } static addHasZ(t, s) { t.addFieldInt8(3, +s, 0); } static addHasM(t, s) { t.addFieldInt8(4, +s, 0); } static addHasT(t, s) { t.addFieldInt8(5, +s, 0); } static addHasTm(t, s) { t.addFieldInt8(6, +s, 0); } static addColumns(t, s) { t.addFieldOffset(7, s, 0); } static createColumnsVector(t, s) { t.startVector(4, s.length, 4); for (let e = s.length - 1; e >= 0; e--) t.addOffset(s[e]); return t.endVector() } static startColumnsVector(t, s) { t.startVector(4, s, 4); } static addFeaturesCount(t, s) { t.addFieldInt64(8, s, BigInt("0")); } static addIndexNodeSize(t, s) { t.addFieldInt16(9, s, 16); } static addCrs(t, s) { t.addFieldOffset(10, s, 0); } static addTitle(t, s) { t.addFieldOffset(11, s, 0); } static addDescription(t, s) { t.addFieldOffset(12, s, 0); } static addMetadata(t, s) { t.addFieldOffset(13, s, 0); } static endHeader(t) { return t.endObject() } static finishHeaderBuffer(t, s) { t.finish(s); } static finishSizePrefixedHeaderBuffer(t, s) { t.finish(s, void 0, true); }
+  }
+
+  function fromByteBuffer(t) { let r = Header.getRootAsHeader(t),
+      i = r.featuresCount(),
+      n = r.indexNodeSize(),
+      o = []; for (let e = 0; e < r.columnsLength(); e++) { let t = r.columns(e); if (!t) throw Error("Column unexpectedly missing"); if (!t.name()) throw Error("Column name unexpectedly missing");
+      o.push({ name: t.name(), type: t.type(), title: t.title(), description: t.description(), width: t.width(), precision: t.precision(), scale: t.scale(), nullable: t.nullable(), unique: t.unique(), primary_key: t.primaryKey() }); } let l = r.crs(),
+      s = l ? { org: l.org(), code: l.code(), name: l.name(), description: l.description(), wkt: l.wkt(), code_string: l.codeString() } : null; return { geometryType: r.geometryType(), columns: o, envelope: null, featuresCount: Number(i), indexNodeSize: n, crs: s, title: r.title(), description: r.description(), metadata: r.metadata() } }
+
+  let e$1 = class e{static global=new e;_extraRequestThreshold=262144;extraRequestThreshold(){return this._extraRequestThreshold}setExtraRequestThreshold(e){if(e<0)throw Error("extraRequestThreshold cannot be negative");this._extraRequestThreshold=e;}};
+
+  function calcTreeSize(e,t){t=Math.min(Math.max(+t,2),65535);let l=e,n=l;do n+=l=Math.ceil(l/t);while(1!==l)return 40*n}
+
+  /// <reference types="./repeater.d.ts" />
+  /*! *****************************************************************************
+  Copyright (c) Microsoft Corporation.
+
+  Permission to use, copy, modify, and/or distribute this software for any
+  purpose with or without fee is hereby granted.
+
+  THE SOFTWARE IS PROVIDED "AS IS" AND THE AUTHOR DISCLAIMS ALL WARRANTIES WITH
+  REGARD TO THIS SOFTWARE INCLUDING ALL IMPLIED WARRANTIES OF MERCHANTABILITY
+  AND FITNESS. IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR ANY SPECIAL, DIRECT,
+  INDIRECT, OR CONSEQUENTIAL DAMAGES OR ANY DAMAGES WHATSOEVER RESULTING FROM
+  LOSS OF USE, DATA OR PROFITS, WHETHER IN AN ACTION OF CONTRACT, NEGLIGENCE OR
+  OTHER TORTIOUS ACTION, ARISING OUT OF OR IN CONNECTION WITH THE USE OR
+  PERFORMANCE OF THIS SOFTWARE.
+  ***************************************************************************** */
+  /* global Reflect, Promise */
+
+  var extendStatics = function(d, b) {
+      extendStatics = Object.setPrototypeOf ||
+          ({ __proto__: [] } instanceof Array && function (d, b) { d.__proto__ = b; }) ||
+          function (d, b) { for (var p in b) if (b.hasOwnProperty(p)) d[p] = b[p]; };
+      return extendStatics(d, b);
+  };
+
+  function __extends(d, b) {
+      extendStatics(d, b);
+      function __() { this.constructor = d; }
+      d.prototype = b === null ? Object.create(b) : (__.prototype = b.prototype, new __());
+  }
+
+  function __awaiter(thisArg, _arguments, P, generator) {
+      function adopt(value) { return value instanceof P ? value : new P(function (resolve) { resolve(value); }); }
+      return new (P || (P = Promise))(function (resolve, reject) {
+          function fulfilled(value) { try { step(generator.next(value)); } catch (e) { reject(e); } }
+          function rejected(value) { try { step(generator["throw"](value)); } catch (e) { reject(e); } }
+          function step(result) { result.done ? resolve(result.value) : adopt(result.value).then(fulfilled, rejected); }
+          step((generator = generator.apply(thisArg, [])).next());
+      });
+  }
+
+  function __generator(thisArg, body) {
+      var _ = { label: 0, sent: function() { if (t[0] & 1) throw t[1]; return t[1]; }, trys: [], ops: [] }, f, y, t, g;
+      return g = { next: verb(0), "throw": verb(1), "return": verb(2) }, typeof Symbol === "function" && (g[Symbol.iterator] = function() { return this; }), g;
+      function verb(n) { return function (v) { return step([n, v]); }; }
+      function step(op) {
+          if (f) throw new TypeError("Generator is already executing.");
+          while (_) try {
+              if (f = 1, y && (t = op[0] & 2 ? y["return"] : op[0] ? y["throw"] || ((t = y["return"]) && t.call(y), 0) : y.next) && !(t = t.call(y, op[1])).done) return t;
+              if (y = 0, t) op = [op[0] & 2, t.value];
+              switch (op[0]) {
+                  case 0: case 1: t = op; break;
+                  case 4: _.label++; return { value: op[1], done: false };
+                  case 5: _.label++; y = op[1]; op = [0]; continue;
+                  case 7: op = _.ops.pop(); _.trys.pop(); continue;
+                  default:
+                      if (!(t = _.trys, t = t.length > 0 && t[t.length - 1]) && (op[0] === 6 || op[0] === 2)) { _ = 0; continue; }
+                      if (op[0] === 3 && (!t || (op[1] > t[0] && op[1] < t[3]))) { _.label = op[1]; break; }
+                      if (op[0] === 6 && _.label < t[1]) { _.label = t[1]; t = op; break; }
+                      if (t && _.label < t[2]) { _.label = t[2]; _.ops.push(op); break; }
+                      if (t[2]) _.ops.pop();
+                      _.trys.pop(); continue;
+              }
+              op = body.call(thisArg, _);
+          } catch (e) { op = [6, e]; y = 0; } finally { f = t = 0; }
+          if (op[0] & 5) throw op[1]; return { value: op[0] ? op[1] : void 0, done: true };
+      }
+  }
+
+  function __values(o) {
+      var s = typeof Symbol === "function" && Symbol.iterator, m = s && o[s], i = 0;
+      if (m) return m.call(o);
+      if (o && typeof o.length === "number") return {
+          next: function () {
+              if (o && i >= o.length) o = void 0;
+              return { value: o && o[i++], done: !o };
+          }
+      };
+      throw new TypeError(s ? "Object is not iterable." : "Symbol.iterator is not defined.");
+  }
+
+  function __await(v) {
+      return this instanceof __await ? (this.v = v, this) : new __await(v);
+  }
+
+  function __asyncGenerator(thisArg, _arguments, generator) {
+      if (!Symbol.asyncIterator) throw new TypeError("Symbol.asyncIterator is not defined.");
+      var g = generator.apply(thisArg, _arguments || []), i, q = [];
+      return i = {}, verb("next"), verb("throw"), verb("return"), i[Symbol.asyncIterator] = function () { return this; }, i;
+      function verb(n) { if (g[n]) i[n] = function (v) { return new Promise(function (a, b) { q.push([n, v, a, b]) > 1 || resume(n, v); }); }; }
+      function resume(n, v) { try { step(g[n](v)); } catch (e) { settle(q[0][3], e); } }
+      function step(r) { r.value instanceof __await ? Promise.resolve(r.value.v).then(fulfill, reject) : settle(q[0][2], r); }
+      function fulfill(value) { resume("next", value); }
+      function reject(value) { resume("throw", value); }
+      function settle(f, v) { if (f(v), q.shift(), q.length) resume(q[0][0], q[0][1]); }
+  }
+
+  /** An error subclass which is thrown when there are too many pending push or next operations on a single repeater. */
+  var RepeaterOverflowError = /** @class */ (function (_super) {
+      __extends(RepeaterOverflowError, _super);
+      function RepeaterOverflowError(message) {
+          var _this = _super.call(this, message) || this;
+          Object.defineProperty(_this, "name", {
+              value: "RepeaterOverflowError",
+              enumerable: false,
+          });
+          if (typeof Object.setPrototypeOf === "function") {
+              Object.setPrototypeOf(_this, _this.constructor.prototype);
+          }
+          else {
+              _this.__proto__ = _this.constructor.prototype;
+          }
+          if (typeof Error.captureStackTrace === "function") {
+              Error.captureStackTrace(_this, _this.constructor);
+          }
+          return _this;
+      }
+      return RepeaterOverflowError;
+  }(Error));
+  /** A buffer which allows you to push a set amount of values to the repeater without pushes waiting or throwing errors. */
+  /** @class */ ((function () {
+      function FixedBuffer(capacity) {
+          if (capacity < 0) {
+              throw new RangeError("Capacity may not be less than 0");
+          }
+          this._c = capacity;
+          this._q = [];
+      }
+      Object.defineProperty(FixedBuffer.prototype, "empty", {
+          get: function () {
+              return this._q.length === 0;
+          },
+          enumerable: false,
+          configurable: true
+      });
+      Object.defineProperty(FixedBuffer.prototype, "full", {
+          get: function () {
+              return this._q.length >= this._c;
+          },
+          enumerable: false,
+          configurable: true
+      });
+      FixedBuffer.prototype.add = function (value) {
+          if (this.full) {
+              throw new Error("Buffer full");
+          }
+          else {
+              this._q.push(value);
+          }
+      };
+      FixedBuffer.prototype.remove = function () {
+          if (this.empty) {
+              throw new Error("Buffer empty");
+          }
+          return this._q.shift();
+      };
+      return FixedBuffer;
+  })());
+  // TODO: Use a circular buffer here.
+  /** Sliding buffers allow you to push a set amount of values to the repeater without pushes waiting or throwing errors. If the number of values exceeds the capacity set in the constructor, the buffer will discard the earliest values added. */
+  /** @class */ ((function () {
+      function SlidingBuffer(capacity) {
+          if (capacity < 1) {
+              throw new RangeError("Capacity may not be less than 1");
+          }
+          this._c = capacity;
+          this._q = [];
+      }
+      Object.defineProperty(SlidingBuffer.prototype, "empty", {
+          get: function () {
+              return this._q.length === 0;
+          },
+          enumerable: false,
+          configurable: true
+      });
+      Object.defineProperty(SlidingBuffer.prototype, "full", {
+          get: function () {
+              return false;
+          },
+          enumerable: false,
+          configurable: true
+      });
+      SlidingBuffer.prototype.add = function (value) {
+          while (this._q.length >= this._c) {
+              this._q.shift();
+          }
+          this._q.push(value);
+      };
+      SlidingBuffer.prototype.remove = function () {
+          if (this.empty) {
+              throw new Error("Buffer empty");
+          }
+          return this._q.shift();
+      };
+      return SlidingBuffer;
+  })());
+  /** Dropping buffers allow you to push a set amount of values to the repeater without the push function waiting or throwing errors. If the number of values exceeds the capacity set in the constructor, the buffer will discard the latest values added. */
+  /** @class */ ((function () {
+      function DroppingBuffer(capacity) {
+          if (capacity < 1) {
+              throw new RangeError("Capacity may not be less than 1");
+          }
+          this._c = capacity;
+          this._q = [];
+      }
+      Object.defineProperty(DroppingBuffer.prototype, "empty", {
+          get: function () {
+              return this._q.length === 0;
+          },
+          enumerable: false,
+          configurable: true
+      });
+      Object.defineProperty(DroppingBuffer.prototype, "full", {
+          get: function () {
+              return false;
+          },
+          enumerable: false,
+          configurable: true
+      });
+      DroppingBuffer.prototype.add = function (value) {
+          if (this._q.length < this._c) {
+              this._q.push(value);
+          }
+      };
+      DroppingBuffer.prototype.remove = function () {
+          if (this.empty) {
+              throw new Error("Buffer empty");
+          }
+          return this._q.shift();
+      };
+      return DroppingBuffer;
+  })());
+  /** Makes sure promise-likes don’t cause unhandled rejections. */
+  function swallow(value) {
+      if (value != null && typeof value.then === "function") {
+          value.then(NOOP, NOOP);
+      }
+  }
+  /*** REPEATER STATES ***/
+  /** The following is an enumeration of all possible repeater states. These states are ordered, and a repeater may only advance to higher states. */
+  /** The initial state of the repeater. */
+  var Initial = 0;
+  /** Repeaters advance to this state the first time the next method is called on the repeater. */
+  var Started = 1;
+  /** Repeaters advance to this state when the stop function is called. */
+  var Stopped = 2;
+  /** Repeaters advance to this state when there are no values left to be pulled from the repeater. */
+  var Done = 3;
+  /** Repeaters advance to this state if an error is thrown into the repeater. */
+  var Rejected = 4;
+  /** The maximum number of push or next operations which may exist on a single repeater. */
+  var MAX_QUEUE_LENGTH = 1024;
+  var NOOP = function () { };
+  /** A helper function used to mimic the behavior of async generators where the final iteration is consumed. */
+  function consumeExecution(r) {
+      var err = r.err;
+      var execution = Promise.resolve(r.execution).then(function (value) {
+          if (err != null) {
+              throw err;
+          }
+          return value;
+      });
+      r.err = undefined;
+      r.execution = execution.then(function () { return undefined; }, function () { return undefined; });
+      return r.pending === undefined ? execution : r.pending.then(function () { return execution; });
+  }
+  /** A helper function for building iterations from values. Promises are unwrapped, so that iterations never have their value property set to a promise. */
+  function createIteration(r, value) {
+      var done = r.state >= Done;
+      return Promise.resolve(value).then(function (value) {
+          if (!done && r.state >= Rejected) {
+              return consumeExecution(r).then(function (value) { return ({
+                  value: value,
+                  done: true,
+              }); });
+          }
+          return { value: value, done: done };
+      });
+  }
+  /**
+   * This function is bound and passed to the executor as the stop argument.
+   *
+   * Advances state to Stopped.
+   */
+  function stop(r, err) {
+      var e_1, _a;
+      if (r.state >= Stopped) {
+          return;
+      }
+      r.state = Stopped;
+      r.onnext();
+      r.onstop();
+      if (r.err == null) {
+          r.err = err;
+      }
+      if (r.pushes.length === 0 &&
+          (typeof r.buffer === "undefined" || r.buffer.empty)) {
+          finish(r);
+      }
+      else {
+          try {
+              for (var _b = __values(r.pushes), _d = _b.next(); !_d.done; _d = _b.next()) {
+                  var push_1 = _d.value;
+                  push_1.resolve();
+              }
+          }
+          catch (e_1_1) { e_1 = { error: e_1_1 }; }
+          finally {
+              try {
+                  if (_d && !_d.done && (_a = _b.return)) _a.call(_b);
+              }
+              finally { if (e_1) throw e_1.error; }
+          }
+      }
+  }
+  /**
+   * The difference between stopping a repeater vs finishing a repeater is that stopping a repeater allows next to continue to drain values from the push queue and buffer, while finishing a repeater will clear all pending values and end iteration immediately. Once, a repeater is finished, all iterations will have the done property set to true.
+   *
+   * Advances state to Done.
+   */
+  function finish(r) {
+      var e_2, _a;
+      if (r.state >= Done) {
+          return;
+      }
+      if (r.state < Stopped) {
+          stop(r);
+      }
+      r.state = Done;
+      r.buffer = undefined;
+      try {
+          for (var _b = __values(r.nexts), _d = _b.next(); !_d.done; _d = _b.next()) {
+              var next = _d.value;
+              var execution = r.pending === undefined
+                  ? consumeExecution(r)
+                  : r.pending.then(function () { return consumeExecution(r); });
+              next.resolve(createIteration(r, execution));
+          }
+      }
+      catch (e_2_1) { e_2 = { error: e_2_1 }; }
+      finally {
+          try {
+              if (_d && !_d.done && (_a = _b.return)) _a.call(_b);
+          }
+          finally { if (e_2) throw e_2.error; }
+      }
+      r.pushes = [];
+      r.nexts = [];
+  }
+  /**
+   * Called when a promise passed to push rejects, or when a push call is unhandled.
+   *
+   * Advances state to Rejected.
+   */
+  function reject(r) {
+      if (r.state >= Rejected) {
+          return;
+      }
+      if (r.state < Done) {
+          finish(r);
+      }
+      r.state = Rejected;
+  }
+  /** This function is bound and passed to the executor as the push argument. */
+  function push(r, value) {
+      swallow(value);
+      if (r.pushes.length >= MAX_QUEUE_LENGTH) {
+          throw new RepeaterOverflowError("No more than " + MAX_QUEUE_LENGTH + " pending calls to push are allowed on a single repeater.");
+      }
+      else if (r.state >= Stopped) {
+          return Promise.resolve(undefined);
+      }
+      var valueP = r.pending === undefined
+          ? Promise.resolve(value)
+          : r.pending.then(function () { return value; });
+      valueP = valueP.catch(function (err) {
+          if (r.state < Stopped) {
+              r.err = err;
+          }
+          reject(r);
+          return undefined; // void :(
+      });
+      var nextP;
+      if (r.nexts.length) {
+          var next_1 = r.nexts.shift();
+          next_1.resolve(createIteration(r, valueP));
+          if (r.nexts.length) {
+              nextP = Promise.resolve(r.nexts[0].value);
+          }
+          else if (typeof r.buffer !== "undefined" && !r.buffer.full) {
+              nextP = Promise.resolve(undefined);
+          }
+          else {
+              nextP = new Promise(function (resolve) { return (r.onnext = resolve); });
+          }
+      }
+      else if (typeof r.buffer !== "undefined" && !r.buffer.full) {
+          r.buffer.add(valueP);
+          nextP = Promise.resolve(undefined);
+      }
+      else {
+          nextP = new Promise(function (resolve) { return r.pushes.push({ resolve: resolve, value: valueP }); });
+      }
+      // If an error is thrown into the repeater via the next or throw methods, we give the repeater a chance to handle this by rejecting the promise returned from push. If the push call is not immediately handled we throw the next iteration of the repeater.
+      // To check that the promise returned from push is floating, we modify the then and catch methods of the returned promise so that they flip the floating flag. The push function actually does not return a promise, because modern engines do not call the then and catch methods on native promises. By making next a plain old javascript object, we ensure that the then and catch methods will be called.
+      var floating = true;
+      var next = {};
+      var unhandled = nextP.catch(function (err) {
+          if (floating) {
+              throw err;
+          }
+          return undefined; // void :(
+      });
+      next.then = function (onfulfilled, onrejected) {
+          floating = false;
+          return Promise.prototype.then.call(nextP, onfulfilled, onrejected);
+      };
+      next.catch = function (onrejected) {
+          floating = false;
+          return Promise.prototype.catch.call(nextP, onrejected);
+      };
+      next.finally = nextP.finally.bind(nextP);
+      r.pending = valueP
+          .then(function () { return unhandled; })
+          .catch(function (err) {
+          r.err = err;
+          reject(r);
+      });
+      return next;
+  }
+  /**
+   * Creates the stop callable promise which is passed to the executor
+   */
+  function createStop(r) {
+      var stop1 = stop.bind(null, r);
+      var stopP = new Promise(function (resolve) { return (r.onstop = resolve); });
+      stop1.then = stopP.then.bind(stopP);
+      stop1.catch = stopP.catch.bind(stopP);
+      stop1.finally = stopP.finally.bind(stopP);
+      return stop1;
+  }
+  /**
+   * Calls the executor passed into the constructor. This function is called the first time the next method is called on the repeater.
+   *
+   * Advances state to Started.
+   */
+  function execute(r) {
+      if (r.state >= Started) {
+          return;
+      }
+      r.state = Started;
+      var push1 = push.bind(null, r);
+      var stop1 = createStop(r);
+      r.execution = new Promise(function (resolve) { return resolve(r.executor(push1, stop1)); });
+      // TODO: We should consider stopping all repeaters when the executor settles.
+      r.execution.catch(function () { return stop(r); });
+  }
+  var records = new WeakMap();
+  // NOTE: While repeaters implement and are assignable to the AsyncGenerator interface, and you can use the types interchangeably, we don’t use typescript’s implements syntax here because this would make supporting earlier versions of typescript trickier. This is because TypeScript version 3.6 changed the iterator types by adding the TReturn and TNext type parameters.
+  var Repeater = /** @class */ (function () {
+      function Repeater(executor, buffer) {
+          records.set(this, {
+              executor: executor,
+              buffer: buffer,
+              err: undefined,
+              state: Initial,
+              pushes: [],
+              nexts: [],
+              pending: undefined,
+              execution: undefined,
+              onnext: NOOP,
+              onstop: NOOP,
+          });
+      }
+      Repeater.prototype.next = function (value) {
+          swallow(value);
+          var r = records.get(this);
+          if (r === undefined) {
+              throw new Error("WeakMap error");
+          }
+          if (r.nexts.length >= MAX_QUEUE_LENGTH) {
+              throw new RepeaterOverflowError("No more than " + MAX_QUEUE_LENGTH + " pending calls to next are allowed on a single repeater.");
+          }
+          if (r.state <= Initial) {
+              execute(r);
+          }
+          r.onnext(value);
+          if (typeof r.buffer !== "undefined" && !r.buffer.empty) {
+              var result = createIteration(r, r.buffer.remove());
+              if (r.pushes.length) {
+                  var push_2 = r.pushes.shift();
+                  r.buffer.add(push_2.value);
+                  r.onnext = push_2.resolve;
+              }
+              return result;
+          }
+          else if (r.pushes.length) {
+              var push_3 = r.pushes.shift();
+              r.onnext = push_3.resolve;
+              return createIteration(r, push_3.value);
+          }
+          else if (r.state >= Stopped) {
+              finish(r);
+              return createIteration(r, consumeExecution(r));
+          }
+          return new Promise(function (resolve) { return r.nexts.push({ resolve: resolve, value: value }); });
+      };
+      Repeater.prototype.return = function (value) {
+          swallow(value);
+          var r = records.get(this);
+          if (r === undefined) {
+              throw new Error("WeakMap error");
+          }
+          finish(r);
+          // We override the execution because return should always return the value passed in.
+          r.execution = Promise.resolve(r.execution).then(function () { return value; });
+          return createIteration(r, consumeExecution(r));
+      };
+      Repeater.prototype.throw = function (err) {
+          var r = records.get(this);
+          if (r === undefined) {
+              throw new Error("WeakMap error");
+          }
+          if (r.state <= Initial ||
+              r.state >= Stopped ||
+              (typeof r.buffer !== "undefined" && !r.buffer.empty)) {
+              finish(r);
+              // If r.err is already set, that mean the repeater has already produced an error, so we throw that error rather than the error passed in, because doing so might be more informative for the caller.
+              if (r.err == null) {
+                  r.err = err;
+              }
+              return createIteration(r, consumeExecution(r));
+          }
+          return this.next(Promise.reject(err));
+      };
+      Repeater.prototype[Symbol.asyncIterator] = function () {
+          return this;
+      };
+      // TODO: Remove these static methods from the class.
+      Repeater.race = race;
+      Repeater.merge = merge;
+      Repeater.zip = zip;
+      Repeater.latest = latest;
+      return Repeater;
+  }());
+  /*** COMBINATOR FUNCTIONS ***/
+  // TODO: move these combinators to their own file.
+  function getIterators(values, options) {
+      var e_3, _a;
+      var iters = [];
+      var _loop_1 = function (value) {
+          if (value != null && typeof value[Symbol.asyncIterator] === "function") {
+              iters.push(value[Symbol.asyncIterator]());
+          }
+          else if (value != null && typeof value[Symbol.iterator] === "function") {
+              iters.push(value[Symbol.iterator]());
+          }
+          else {
+              iters.push((function valueToAsyncIterator() {
+                  return __asyncGenerator(this, arguments, function valueToAsyncIterator_1() {
+                      return __generator(this, function (_a) {
+                          switch (_a.label) {
+                              case 0:
+                                  if (!options.yieldValues) return [3 /*break*/, 3];
+                                  return [4 /*yield*/, __await(value)];
+                              case 1: return [4 /*yield*/, _a.sent()];
+                              case 2:
+                                  _a.sent();
+                                  _a.label = 3;
+                              case 3:
+                                  if (!options.returnValues) return [3 /*break*/, 5];
+                                  return [4 /*yield*/, __await(value)];
+                              case 4: return [2 /*return*/, _a.sent()];
+                              case 5: return [2 /*return*/];
+                          }
+                      });
+                  });
+              })());
+          }
+      };
+      try {
+          for (var values_1 = __values(values), values_1_1 = values_1.next(); !values_1_1.done; values_1_1 = values_1.next()) {
+              var value = values_1_1.value;
+              _loop_1(value);
+          }
+      }
+      catch (e_3_1) { e_3 = { error: e_3_1 }; }
+      finally {
+          try {
+              if (values_1_1 && !values_1_1.done && (_a = values_1.return)) _a.call(values_1);
+          }
+          finally { if (e_3) throw e_3.error; }
+      }
+      return iters;
+  }
+  // NOTE: whenever you see any variables called `advance` or `advances`, know that it is a hack to get around the fact that `Promise.race` leaks memory. These variables are intended to be set to the resolve function of a promise which is constructed and awaited as an alternative to Promise.race. For more information, see this comment in the Node.js issue tracker: https://github.com/nodejs/node/issues/17469#issuecomment-685216777.
+  function race(contenders) {
+      var _this = this;
+      var iters = getIterators(contenders, { returnValues: true });
+      return new Repeater(function (push, stop) { return __awaiter(_this, void 0, void 0, function () {
+          var advance, stopped, finalIteration, iteration, i_1, _loop_2;
+          return __generator(this, function (_a) {
+              switch (_a.label) {
+                  case 0:
+                      if (!iters.length) {
+                          stop();
+                          return [2 /*return*/];
+                      }
+                      stopped = false;
+                      stop.then(function () {
+                          advance();
+                          stopped = true;
+                      });
+                      _a.label = 1;
+                  case 1:
+                      _a.trys.push([1, , 5, 7]);
+                      iteration = void 0;
+                      i_1 = 0;
+                      _loop_2 = function () {
+                          var j, iters_1, iters_1_1, iter;
+                          var e_4, _a;
+                          return __generator(this, function (_b) {
+                              switch (_b.label) {
+                                  case 0:
+                                      j = i_1;
+                                      try {
+                                          for (iters_1 = (e_4 = void 0, __values(iters)), iters_1_1 = iters_1.next(); !iters_1_1.done; iters_1_1 = iters_1.next()) {
+                                              iter = iters_1_1.value;
+                                              Promise.resolve(iter.next()).then(function (iteration) {
+                                                  if (iteration.done) {
+                                                      stop();
+                                                      if (finalIteration === undefined) {
+                                                          finalIteration = iteration;
+                                                      }
+                                                  }
+                                                  else if (i_1 === j) {
+                                                      // This iterator has won, advance i and resolve the promise.
+                                                      i_1++;
+                                                      advance(iteration);
+                                                  }
+                                              }, function (err) { return stop(err); });
+                                          }
+                                      }
+                                      catch (e_4_1) { e_4 = { error: e_4_1 }; }
+                                      finally {
+                                          try {
+                                              if (iters_1_1 && !iters_1_1.done && (_a = iters_1.return)) _a.call(iters_1);
+                                          }
+                                          finally { if (e_4) throw e_4.error; }
+                                      }
+                                      return [4 /*yield*/, new Promise(function (resolve) { return (advance = resolve); })];
+                                  case 1:
+                                      iteration = _b.sent();
+                                      if (!(iteration !== undefined)) return [3 /*break*/, 3];
+                                      return [4 /*yield*/, push(iteration.value)];
+                                  case 2:
+                                      _b.sent();
+                                      _b.label = 3;
+                                  case 3: return [2 /*return*/];
+                              }
+                          });
+                      };
+                      _a.label = 2;
+                  case 2:
+                      if (!!stopped) return [3 /*break*/, 4];
+                      return [5 /*yield**/, _loop_2()];
+                  case 3:
+                      _a.sent();
+                      return [3 /*break*/, 2];
+                  case 4: return [2 /*return*/, finalIteration && finalIteration.value];
+                  case 5:
+                      stop();
+                      return [4 /*yield*/, Promise.race(iters.map(function (iter) { return iter.return && iter.return(); }))];
+                  case 6:
+                      _a.sent();
+                      return [7 /*endfinally*/];
+                  case 7: return [2 /*return*/];
+              }
+          });
+      }); });
+  }
+  function merge(contenders) {
+      var _this = this;
+      var iters = getIterators(contenders, { yieldValues: true });
+      return new Repeater(function (push, stop) { return __awaiter(_this, void 0, void 0, function () {
+          var advances, stopped, finalIteration;
+          var _this = this;
+          return __generator(this, function (_a) {
+              switch (_a.label) {
+                  case 0:
+                      if (!iters.length) {
+                          stop();
+                          return [2 /*return*/];
+                      }
+                      advances = [];
+                      stopped = false;
+                      stop.then(function () {
+                          var e_5, _a;
+                          stopped = true;
+                          try {
+                              for (var advances_1 = __values(advances), advances_1_1 = advances_1.next(); !advances_1_1.done; advances_1_1 = advances_1.next()) {
+                                  var advance = advances_1_1.value;
+                                  advance();
+                              }
+                          }
+                          catch (e_5_1) { e_5 = { error: e_5_1 }; }
+                          finally {
+                              try {
+                                  if (advances_1_1 && !advances_1_1.done && (_a = advances_1.return)) _a.call(advances_1);
+                              }
+                              finally { if (e_5) throw e_5.error; }
+                          }
+                      });
+                      _a.label = 1;
+                  case 1:
+                      _a.trys.push([1, , 3, 4]);
+                      return [4 /*yield*/, Promise.all(iters.map(function (iter, i) { return __awaiter(_this, void 0, void 0, function () {
+                              var iteration, _a;
+                              return __generator(this, function (_b) {
+                                  switch (_b.label) {
+                                      case 0:
+                                          _b.trys.push([0, , 6, 9]);
+                                          _b.label = 1;
+                                      case 1:
+                                          if (!!stopped) return [3 /*break*/, 5];
+                                          Promise.resolve(iter.next()).then(function (iteration) { return advances[i](iteration); }, function (err) { return stop(err); });
+                                          return [4 /*yield*/, new Promise(function (resolve) {
+                                                  advances[i] = resolve;
+                                              })];
+                                      case 2:
+                                          iteration = _b.sent();
+                                          if (!(iteration !== undefined)) return [3 /*break*/, 4];
+                                          if (iteration.done) {
+                                              finalIteration = iteration;
+                                              return [2 /*return*/];
+                                          }
+                                          return [4 /*yield*/, push(iteration.value)];
+                                      case 3:
+                                          _b.sent();
+                                          _b.label = 4;
+                                      case 4: return [3 /*break*/, 1];
+                                      case 5: return [3 /*break*/, 9];
+                                      case 6:
+                                          _a = iter.return;
+                                          if (!_a) return [3 /*break*/, 8];
+                                          return [4 /*yield*/, iter.return()];
+                                      case 7:
+                                          _a = (_b.sent());
+                                          _b.label = 8;
+                                      case 8:
+                                          return [7 /*endfinally*/];
+                                      case 9: return [2 /*return*/];
+                                  }
+                              });
+                          }); }))];
+                  case 2:
+                      _a.sent();
+                      return [2 /*return*/, finalIteration && finalIteration.value];
+                  case 3:
+                      stop();
+                      return [7 /*endfinally*/];
+                  case 4: return [2 /*return*/];
+              }
+          });
+      }); });
+  }
+  function zip(contenders) {
+      var _this = this;
+      var iters = getIterators(contenders, { returnValues: true });
+      return new Repeater(function (push, stop) { return __awaiter(_this, void 0, void 0, function () {
+          var advance, stopped, iterations, values;
+          return __generator(this, function (_a) {
+              switch (_a.label) {
+                  case 0:
+                      if (!iters.length) {
+                          stop();
+                          return [2 /*return*/, []];
+                      }
+                      stopped = false;
+                      stop.then(function () {
+                          advance();
+                          stopped = true;
+                      });
+                      _a.label = 1;
+                  case 1:
+                      _a.trys.push([1, , 6, 8]);
+                      _a.label = 2;
+                  case 2:
+                      if (!!stopped) return [3 /*break*/, 5];
+                      Promise.all(iters.map(function (iter) { return iter.next(); })).then(function (iterations) { return advance(iterations); }, function (err) { return stop(err); });
+                      return [4 /*yield*/, new Promise(function (resolve) { return (advance = resolve); })];
+                  case 3:
+                      iterations = _a.sent();
+                      if (iterations === undefined) {
+                          return [2 /*return*/];
+                      }
+                      values = iterations.map(function (iteration) { return iteration.value; });
+                      if (iterations.some(function (iteration) { return iteration.done; })) {
+                          return [2 /*return*/, values];
+                      }
+                      return [4 /*yield*/, push(values)];
+                  case 4:
+                      _a.sent();
+                      return [3 /*break*/, 2];
+                  case 5: return [3 /*break*/, 8];
+                  case 6:
+                      stop();
+                      return [4 /*yield*/, Promise.all(iters.map(function (iter) { return iter.return && iter.return(); }))];
+                  case 7:
+                      _a.sent();
+                      return [7 /*endfinally*/];
+                  case 8: return [2 /*return*/];
+              }
+          });
+      }); });
+  }
+  function latest(contenders) {
+      var _this = this;
+      var iters = getIterators(contenders, {
+          yieldValues: true,
+          returnValues: true,
+      });
+      return new Repeater(function (push, stop) { return __awaiter(_this, void 0, void 0, function () {
+          var advance, advances, stopped, iterations_1, values_2;
+          var _this = this;
+          return __generator(this, function (_a) {
+              switch (_a.label) {
+                  case 0:
+                      if (!iters.length) {
+                          stop();
+                          return [2 /*return*/, []];
+                      }
+                      advances = [];
+                      stopped = false;
+                      stop.then(function () {
+                          var e_6, _a;
+                          advance();
+                          try {
+                              for (var advances_2 = __values(advances), advances_2_1 = advances_2.next(); !advances_2_1.done; advances_2_1 = advances_2.next()) {
+                                  var advance1 = advances_2_1.value;
+                                  advance1();
+                              }
+                          }
+                          catch (e_6_1) { e_6 = { error: e_6_1 }; }
+                          finally {
+                              try {
+                                  if (advances_2_1 && !advances_2_1.done && (_a = advances_2.return)) _a.call(advances_2);
+                              }
+                              finally { if (e_6) throw e_6.error; }
+                          }
+                          stopped = true;
+                      });
+                      _a.label = 1;
+                  case 1:
+                      _a.trys.push([1, , 5, 7]);
+                      Promise.all(iters.map(function (iter) { return iter.next(); })).then(function (iterations) { return advance(iterations); }, function (err) { return stop(err); });
+                      return [4 /*yield*/, new Promise(function (resolve) { return (advance = resolve); })];
+                  case 2:
+                      iterations_1 = _a.sent();
+                      if (iterations_1 === undefined) {
+                          return [2 /*return*/];
+                      }
+                      values_2 = iterations_1.map(function (iteration) { return iteration.value; });
+                      if (iterations_1.every(function (iteration) { return iteration.done; })) {
+                          return [2 /*return*/, values_2];
+                      }
+                      // We continuously yield and mutate the same values array so we shallow copy it each time it is pushed.
+                      return [4 /*yield*/, push(values_2.slice())];
+                  case 3:
+                      // We continuously yield and mutate the same values array so we shallow copy it each time it is pushed.
+                      _a.sent();
+                      return [4 /*yield*/, Promise.all(iters.map(function (iter, i) { return __awaiter(_this, void 0, void 0, function () {
+                              var iteration;
+                              return __generator(this, function (_a) {
+                                  switch (_a.label) {
+                                      case 0:
+                                          if (iterations_1[i].done) {
+                                              return [2 /*return*/, iterations_1[i].value];
+                                          }
+                                          _a.label = 1;
+                                      case 1:
+                                          if (!!stopped) return [3 /*break*/, 4];
+                                          Promise.resolve(iter.next()).then(function (iteration) { return advances[i](iteration); }, function (err) { return stop(err); });
+                                          return [4 /*yield*/, new Promise(function (resolve) { return (advances[i] = resolve); })];
+                                      case 2:
+                                          iteration = _a.sent();
+                                          if (iteration === undefined) {
+                                              return [2 /*return*/, iterations_1[i].value];
+                                          }
+                                          else if (iteration.done) {
+                                              return [2 /*return*/, iteration.value];
+                                          }
+                                          values_2[i] = iteration.value;
+                                          return [4 /*yield*/, push(values_2.slice())];
+                                      case 3:
+                                          _a.sent();
+                                          return [3 /*break*/, 1];
+                                      case 4: return [2 /*return*/];
+                                  }
+                              });
+                          }); }))];
+                  case 4: return [2 /*return*/, _a.sent()];
+                  case 5:
+                      stop();
+                      return [4 /*yield*/, Promise.all(iters.map(function (iter) { return iter.return && iter.return(); }))];
+                  case 6:
+                      _a.sent();
+                      return [7 /*endfinally*/];
+                  case 7: return [2 /*return*/];
+              }
+          });
+      }); });
+  }
+
+  function inferGeometryType(t){let r;for(let f of t){if(r===GeometryType.Unknown)break;let t=f.getGeometry?toGeometryType(f.getGeometry().getType()):toGeometryType(f.geometry.type);void 0===r?r=t:r!==t&&(r=GeometryType.Unknown);}if(void 0===r)throw Error("Could not infer geometry type for collection of features.");return r}
+
+  function buildHeader(t,r=0){let n,o=new Builder,i=0;t.columns&&(i=Header.createColumnsVector(o,t.columns.map(e=>{let t;return t=o.createString(e.name),Column.startColumn(o),Column.addName(o,t),Column.addType(o,e.type),Column.endColumn(o)})));let f=o.createString("L1");r&&(Crs.startCrs(o),Crs.addCode(o,r),n=Crs.endCrs(o)),Header.startHeader(o),n&&Header.addCrs(o,n),Header.addFeaturesCount(o,BigInt(t.featuresCount)),Header.addGeometryType(o,t.geometryType),Header.addIndexNodeSize(o,0),i&&Header.addColumns(o,i),Header.addName(o,f);let u=Header.endHeader(o);return o.finishSizePrefixed(u),o.asUint8Array()}function mapColumn(e,t){return {name:t,type:function(e){if("boolean"==typeof e)return ColumnType.Bool;if("number"==typeof e)return ColumnType.Double;if("string"==typeof e||null===e)return ColumnType.String;if(e instanceof Uint8Array)return ColumnType.Binary;if("object"==typeof e)return ColumnType.Json;throw Error(`Unknown type (value '${e}')`)}(e[t]),title:null,description:null,width:-1,precision:-1,scale:-1,nullable:true,unique:false,primary_key:false}}
+
+  function serialize(i,l=0){var n;let a,p,f=(a=(n=i).features[0].properties,p=null,a&&(p=Object.keys(a).map(e=>mapColumn(a,e))),{geometryType:inferGeometryType(n.features),columns:p,featuresCount:n.features.length}),c=buildHeader(f,l),g=i.features.map(e=>buildFeature("GeometryCollection"===e.geometry.type?parseGC(e.geometry):parseGeometry(e.geometry),e.properties,f)),d=g.map(e=>e.length).reduce((e,t)=>e+t),y=new Uint8Array(magicbytes.length+c.length+d);y.set(c,magicbytes.length);let h=magicbytes.length+c.length;for(let e of g)y.set(e,h),h+=e.length;return y.set(magicbytes),y}
+
+  // bytes: Uint8Array
+  function getHeaderMeta(bytes) {
+    if (!bytes.subarray(0, 3).every((v, i) => magicbytes[i] === v)) {
+      throw new Error('Not a FlatGeobuf file');
+    }
+    var bb = new ByteBuffer(bytes);
+    bb.setPosition(magicbytes.length + SIZE_PREFIX_LEN);
+    return fromByteBuffer(bb);
+  }
+
+  // bytes: Uint8Array
+  function getFeatureReader(bytes, headerMetaArg) {
+    if (!bytes.subarray(0, 3).every((v, i) => magicbytes[i] === v)) {
+      throw new Error('Not a FlatGeobuf file');
+    }
+    var bb = new ByteBuffer(bytes);
+    var headerLength = bb.readUint32(magicbytes.length);
+    var headerMeta = headerMetaArg || getHeaderMeta(bytes);
+    var offset = magicbytes.length + SIZE_PREFIX_LEN + headerLength;
+    var { indexNodeSize, featuresCount } = headerMeta;
+    // protect against infinite loop in calcTreeSize()
+    if (indexNodeSize > 0 && featuresCount > 0) {
+      offset += calcTreeSize(featuresCount, indexNodeSize);
+    }
+    var id = 0;
+    return function readFeature() {
+      var geojsonFeature;
+      if (offset >= bb.capacity()) {
+        return null;
+      }
+      var featureLength = bb.readUint32(offset);
+      bb.setPosition(offset);
+      var feature = Feature.getSizePrefixedRootAsFeature(bb);
+      geojsonFeature = fromFeature(id++, feature, headerMeta);
+      offset += SIZE_PREFIX_LEN + featureLength;
+      return geojsonFeature;
+    };
+  }
+
+  function buildHeaderWithCRS(headerMeta, crsMeta) {
+    var builder = new Builder();
+    var columnsOffset = createColumnsVector(builder, headerMeta.columns || []);
+    var crsOffset = createCrs(builder, crsMeta);
+    var nameOffset = builder.createString((headerMeta && headerMeta.name) || 'L1');
+    var titleOffset = headerMeta && headerMeta.title ? builder.createString(headerMeta.title) : 0;
+    var descriptionOffset = headerMeta && headerMeta.description ? builder.createString(headerMeta.description) : 0;
+    var metadataOffset = headerMeta && headerMeta.metadata ? builder.createString(headerMeta.metadata) : 0;
+
+    Header.startHeader(builder);
+    Header.addName(builder, nameOffset);
+    if (crsOffset) Header.addCrs(builder, crsOffset);
+    Header.addFeaturesCount(builder, BigInt(headerMeta.featuresCount || 0));
+    Header.addGeometryType(builder, headerMeta.geometryType || 0);
+    Header.addIndexNodeSize(builder, headerMeta.indexNodeSize || 0);
+    if (columnsOffset) Header.addColumns(builder, columnsOffset);
+    if (titleOffset) Header.addTitle(builder, titleOffset);
+    if (descriptionOffset) Header.addDescription(builder, descriptionOffset);
+    if (metadataOffset) Header.addMetadata(builder, metadataOffset);
+    var offset = Header.endHeader(builder);
+    builder.finishSizePrefixed(offset);
+    return builder.asUint8Array();
+  }
+
+  function createColumnsVector(builder, columns) {
+    if (!columns || columns.length === 0) return 0;
+    var offsets = columns.map(function(col) {
+      var nameOffset = builder.createString(col.name);
+      var titleOffset = col.title ? builder.createString(col.title) : 0;
+      var descriptionOffset = col.description ? builder.createString(col.description) : 0;
+      var metadataOffset = col.metadata ? builder.createString(col.metadata) : 0;
+      Column.startColumn(builder);
+      Column.addName(builder, nameOffset);
+      Column.addType(builder, col.type);
+      if (titleOffset) Column.addTitle(builder, titleOffset);
+      if (descriptionOffset) Column.addDescription(builder, descriptionOffset);
+      if (typeof col.width == 'number') Column.addWidth(builder, col.width);
+      if (typeof col.precision == 'number') Column.addPrecision(builder, col.precision);
+      if (typeof col.scale == 'number') Column.addScale(builder, col.scale);
+      if (typeof col.nullable == 'boolean') Column.addNullable(builder, col.nullable);
+      if (typeof col.unique == 'boolean') Column.addUnique(builder, col.unique);
+      if (typeof col.primary_key == 'boolean') Column.addPrimaryKey(builder, col.primary_key);
+      if (metadataOffset) Column.addMetadata(builder, metadataOffset);
+      return Column.endColumn(builder);
+    });
+    return Header.createColumnsVector(builder, offsets);
+  }
+
+  function createCrs(builder, crsMeta) {
+    if (!crsMeta) return 0;
+    var orgOffset = crsMeta.org ? builder.createString(crsMeta.org) : 0;
+    var nameOffset = crsMeta.name ? builder.createString(crsMeta.name) : 0;
+    var descriptionOffset = crsMeta.description ? builder.createString(crsMeta.description) : 0;
+    var wktOffset = crsMeta.wkt ? builder.createString(crsMeta.wkt) : 0;
+    var codeStringOffset = crsMeta.code_string ? builder.createString(crsMeta.code_string) : 0;
+    Crs.startCrs(builder);
+    if (orgOffset) Crs.addOrg(builder, orgOffset);
+    if (typeof crsMeta.code == 'number') Crs.addCode(builder, crsMeta.code);
+    if (nameOffset) Crs.addName(builder, nameOffset);
+    if (descriptionOffset) Crs.addDescription(builder, descriptionOffset);
+    if (wktOffset) Crs.addWkt(builder, wktOffset);
+    if (codeStringOffset) Crs.addCodeString(builder, codeStringOffset);
+    return Crs.endCrs(builder);
+  }
+
+  function exportFlatGeobuf(dataset, opts) {
+    var extension = opts.extension || 'fgb';
+    if (opts.file) {
+      // Keep behavior consistent with other exporters that honor explicit output filename.
+      extension = getFileExtension(opts.file) || extension;
+    }
+    return dataset.layers.map(function(lyr) {
+      var geojson = getFeatureCollection(lyr, dataset, opts);
+      var content = serialize(geojson);
+      content = setOutputCRS(content, dataset.info && dataset.info.flatgeobuf_crs);
+      return {
+        content: content,
+        filename: lyr.name + '.' + extension
+      };
+    });
+  }
+
+  function getFeatureCollection(lyr, dataset, opts) {
+    var features = exportLayerAsGeoJSON(lyr, dataset, opts, true, null);
+    if (features.length === 0) {
+      stop$1('FlatGeobuf export does not support empty layers');
+    }
+    return {
+      type: 'FeatureCollection',
+      features: features
+    };
+  }
+
+  function setOutputCRS(content, crs) {
+    var crsMeta = normalizeCRS(crs);
+    if (!crsMeta) return content;
+    return rewriteHeaderWithCRS(content, crsMeta);
+  }
+
+  function normalizeCRS(crs) {
+    if (!crs || !crs.code) return null;
+    var code = +crs.code;
+    if (!Number.isFinite(code) || code <= 0) return null;
+    code = Math.round(code);
+    var org = crs.org ? String(crs.org).toUpperCase() : null;
+    if (!org && looksLikeEPSGCode(code)) {
+      org = 'EPSG';
+    }
+    if (org != 'EPSG') return null;
+    return {
+      org: 'EPSG',
+      code: code,
+      name: crs.name || null,
+      description: crs.description || null,
+      wkt: crs.wkt || null,
+      code_string: crs.code_string || ('EPSG:' + code)
+    };
+  }
+
+  function looksLikeEPSGCode(code) {
+    return code >= 2000 && code <= 1000000;
+  }
+
+  function rewriteHeaderWithCRS(content, crsMeta) {
+    var bytes = content instanceof Uint8Array ? content : new Uint8Array(content);
+    var view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+    var oldHeaderLength = view.getUint32(magicbytes.length, true);
+    var oldHeaderOffset = magicbytes.length;
+    var oldFeaturesOffset = oldHeaderOffset + SIZE_PREFIX_LEN + oldHeaderLength;
+    var headerMeta = getHeaderMeta(bytes);
+    var newHeader = buildHeaderWithCRS(headerMeta, crsMeta);
+    var oldFeatures = bytes.subarray(oldFeaturesOffset);
+    var output = new Uint8Array(magicbytes.length + newHeader.length + oldFeatures.length);
+    output.set(bytes.subarray(0, magicbytes.length), 0);
+    output.set(newHeader, magicbytes.length);
+    output.set(oldFeatures, magicbytes.length + newHeader.length);
+    return output;
+  }
+
+  async function exportGeoPackage(dataset, opts) {
+    var geopackage = require$1('@ngageoint/geopackage');
+    var gpkg;
+    var filename = getOutputFilename(opts);
+    if (!geopackage || !geopackage.GeoPackageAPI) {
+      stop$1('GeoPackage library is not loaded');
+    }
+    gpkg = await createGeoPackageQuietly(geopackage.GeoPackageAPI);
+    try {
+      await gpkg.createRequiredTables();
+      for (var lyr of dataset.layers) {
+        await exportLayerToGeoPackage(lyr, dataset, gpkg, opts);
+      }
+      return [{
+        filename: filename,
+        content: await exportGeoPackageBytes(gpkg)
+      }];
+    } finally {
+      gpkg.close();
+    }
+  }
+
+  async function createGeoPackageQuietly(geoPackageAPI) {
+    var originalLog = console.log;
+    console.log = function(...args) {
+      // @ngageoint/geopackage emits "create in memory" in Node.
+      if (args.length === 1 && args[0] === 'create in memory') return;
+      return originalLog.apply(console, args);
+    };
+    try {
+      return await geoPackageAPI.create();
+    } finally {
+      console.log = originalLog;
+    }
+  }
+
+  async function exportLayerToGeoPackage(lyr, dataset, gpkg, opts) {
+    var features, fields, columns;
+    if (!lyr.geometry_type) return;
+    features = exportLayerAsGeoJSON(lyr, dataset, opts, true, null)
+      .filter(feat => !!(feat && feat.geometry));
+    if (features.length === 0) return;
+    fields = inferFieldTypes(features);
+    var tableName = getTableName(lyr.name);
+    columns = fields.map(function(field) {
+      return {
+        name: field.name,
+        dataType: field.type
+      };
+    });
+    await gpkg.createFeatureTableFromProperties(tableName, columns);
+    var featureDao = gpkg.getFeatureDao(tableName);
+    var srs = normalizeSrsForInsert(featureDao && featureDao.srs);
+    for (var i = 0; i < features.length; i++) {
+      var feat = features[i];
+      var normalized = normalizeFeature(feat, fields);
+      try {
+        await gpkg.addGeoJSONFeatureToGeoPackageWithFeatureDaoAndSrs(
+          normalized,
+          featureDao,
+          srs
+        );
+      } catch (e) {
+        throw Error('GeoPackage insert failed at layer "' + tableName +
+          '", feature ' + i + ': ' + e.message);
+      }
+    }
+  }
+
+  async function exportGeoPackageBytes(gpkg) {
+    var db = gpkg.connection && gpkg.connection.getDBConnection && gpkg.connection.getDBConnection();
+    // Browser and Node builds use different sqlite backends; prefer the
+    // backend-specific export path for better compatibility. In particular,
+    // browser/sql.js output from db.serialize() may fail on GeoPackage.open(),
+    // while gpkg.export() yields a compatible package.
+    if (runningInBrowser() && typeof gpkg.export == 'function') {
+      var browserBytes = await gpkg.export();
+      if (browserBytes) return browserBytes;
+    }
+    if (!runningInBrowser() && db && typeof db.serialize == 'function') {
+      return db.serialize();
+    }
+    if (typeof gpkg.export == 'function') {
+      var bytes = await gpkg.export();
+      if (bytes) return bytes;
+    }
+    if (db && typeof db.serialize == 'function') {
+      return db.serialize();
+    }
+    stop$1('Unable to export GeoPackage bytes');
+  }
+
+  function inferFieldTypes(features) {
+    var index = {};
+    features.forEach(function(feat) {
+      var props = feat.properties || {};
+      Object.keys(props).forEach(function(name) {
+        if (!isSupportedPropertyName(name)) return;
+        var value = props[name];
+        var next = inferValueType(value);
+        if (!next) return;
+        if (!(name in index)) {
+          index[name] = next;
+        } else {
+          index[name] = mergeFieldTypes(index[name], next);
+        }
+      });
+    });
+    return Object.keys(index).map(function(name) {
+      return {name: name, type: index[name]};
+    });
+  }
+
+  function inferValueType(value) {
+    if (value === null || value === undefined) return null;
+    if (value instanceof Date) return 'DATETIME';
+    if (typeof value == 'boolean') return 'BOOLEAN';
+    if (typeof value == 'number') return Number.isInteger(value) ? 'INTEGER' : 'REAL';
+    if (typeof value == 'string') return 'TEXT';
+    return 'TEXT';
+  }
+
+  function mergeFieldTypes(a, b) {
+    if (a == b) return a;
+    if (a == 'INTEGER' && b == 'REAL' || a == 'REAL' && b == 'INTEGER') {
+      return 'REAL';
+    }
+    return 'TEXT';
+  }
+
+  function normalizeFeature(feature, fields) {
+    fields.reduce(function(memo, field) {
+      memo[field.name] = field.type;
+      return memo;
+    }, {});
+    var props = {};
+    fields.forEach(function(field) {
+      var value = feature.properties && Object.prototype.hasOwnProperty.call(feature.properties, field.name) ?
+        feature.properties[field.name] : null;
+      props[field.name] = normalizeValue(value, field.type);
+    });
+    var output = {
+      type: 'Feature',
+      geometry: feature.geometry,
+      properties: props
+    };
+    // Explicitly set id to avoid binding undefined in browser/sql.js.
+    output.properties.id = feature.id !== undefined && feature.id !== null ? feature.id : null;
+    return removeUndefinedValues(output);
+  }
+
+  function normalizeValue(value, type) {
+    if (value === null || value === undefined) return null;
+    if (type == 'TEXT' && typeof value != 'string') {
+      var str = JSON.stringify(value);
+      return str === undefined ? String(value) : str;
+    }
+    if (type == 'INTEGER' || type == 'REAL') {
+      var num = +value;
+      return Number.isFinite(num) ? num : null;
+    }
+    if (type == 'BOOLEAN') {
+      return value ? 1 : 0;
+    }
+    if (type == 'DATETIME') {
+      var dateStr = value instanceof Date ? value.toISOString() : String(value);
+      return dateStr == 'Invalid Date' ? null : dateStr;
+    }
+    return value;
+  }
+
+  function getOutputFilename(opts) {
+    var file = opts.file || 'output.gpkg';
+    var ext = getFileExtension(file);
+    if (!ext) {
+      file += '.gpkg';
+    }
+    return file;
+  }
+
+  function removeUndefinedValues(value) {
+    if (Array.isArray(value)) {
+      return value.map(removeUndefinedValues);
+    }
+    if (value && typeof value == 'object') {
+      return Object.keys(value).reduce(function(memo, key) {
+        var v = value[key];
+        memo[key] = v === undefined ? null : removeUndefinedValues(v);
+        return memo;
+      }, {});
+    }
+    return value;
+  }
+
+  function getTableName(name) {
+    if (name && String(name).trim()) {
+      return String(name);
+    }
+    return 'layer';
+  }
+
+  function isSupportedPropertyName(name) {
+    if (!name || !String(name).trim()) return false;
+    var lower = String(name).toLowerCase();
+    return lower != 'id' && lower != 'geometry';
+  }
+
+  function normalizeSrsForInsert(srs) {
+    if (!srs) {
+      return {
+        srs_id: 4326,
+        organization: 'EPSG',
+        organization_coordsys_id: 4326
+      };
+    }
+    var normalized = Object.assign({}, srs);
+    if (normalized.srs_id == null && normalized.srsId != null) {
+      normalized.srs_id = normalized.srsId;
+    }
+    if (normalized.organization_coordsys_id == null && normalized.organizationCoordsysId != null) {
+      normalized.organization_coordsys_id = normalized.organizationCoordsysId;
+    }
+    if (normalized.srs_id == null) {
+      normalized.srs_id = normalized.organization_coordsys_id || 4326;
+    }
+    normalized.srs_id = +normalized.srs_id || 4326;
+    if (!normalized.organization) {
+      normalized.organization = 'EPSG';
+    }
+    if (normalized.organization_coordsys_id == null) {
+      normalized.organization_coordsys_id = normalized.srs_id || 4326;
+    }
+    normalized.organization_coordsys_id = +normalized.organization_coordsys_id || 4326;
+    return normalized;
+  }
+
   function getOutputFormat(dataset, opts) {
     var outFile = opts.file || null,
         inFmt = dataset.info && dataset.info.input_formats && dataset.info.input_formats[0],
@@ -22574,6 +24731,10 @@ ${svg}
       format = 'shapefile';
     } else if (ext == 'dbf') {
       format = 'dbf';
+    } else if (ext == 'gpkg') {
+      format = 'geopackage';
+    } else if (ext == 'fgb') {
+      format = 'flatgeobuf';
     } else if (ext == 'svg') {
       format = 'svg';
     } else if (ext == 'kml' || ext == 'kmz') {
@@ -22626,7 +24787,8 @@ ${svg}
       opts = utils.defaults({compact: true}, opts);
       return exportPackedDatasets(datasets, opts);
     }
-    if (format == 'kml' || format == 'svg' || format == 'topojson' || format == 'geojson' && opts.combine_layers) {
+    if (format == 'kml' || format == 'svg' || format == 'topojson' || format == 'geopackage' ||
+        format == 'geojson' && opts.combine_layers) {
       // multi-layer formats: combine multiple datasets into one
       if (datasets.length > 1) {
         datasets = [mergeDatasetsForExport(datasets)];
@@ -22645,17 +24807,18 @@ ${svg}
       datasets = datasets.map(copyDatasetForRenaming);
       assignUniqueLayerNames2(datasets);
     }
-    files = datasets.reduce(function(memo, dataset) {
-      if (runningInBrowser()) {
-        utils.sortOn(dataset.layers, 'menu_order', true);
-      } else {
-        // kludge to export layers in order that target= option or previous
-        // -target command matched them (useful mainly for SVG output)
-        // target_id was assigned to each layer by findCommandTargets()
-        utils.sortOn(dataset.layers, 'target_id', true);
+    if (format == 'geopackage') {
+      if (datasets.length > 1) {
+        datasets = [mergeDatasetsForExport(datasets)];
       }
-      return memo.concat(exportFileContent(dataset, opts));
-    }, []);
+      datasets.forEach(sortExportLayers);
+      files = await exportGeoPackage(datasets[0], opts);
+    } else {
+      files = datasets.reduce(function(memo, dataset) {
+        sortExportLayers(dataset);
+        return memo.concat(exportFileContent(dataset, opts));
+      }, []);
+    }
 
     if (opts.bbox_index) {
       // If rounding or quantization are applied during export, bounds may
@@ -22733,6 +24896,7 @@ ${svg}
     dsv: exportDelim,
     dbf: exportDbf,
     json: exportJSON,
+    flatgeobuf: exportFlatGeobuf,
     svg: exportSVG,
     kml: exportKML
   };
@@ -22844,6 +25008,17 @@ ${svg}
   function fixFileExtension(ext, fmt) {
     // TODO: use fmt to validate
     return ext.replace(/^\.+/, '');
+  }
+
+  function sortExportLayers(dataset) {
+    if (runningInBrowser()) {
+      utils.sortOn(dataset.layers, 'menu_order', true);
+    } else {
+      // kludge to export layers in order that target= option or previous
+      // -target command matched them (useful mainly for SVG output)
+      // target_id was assigned to each layer by findCommandTargets()
+      utils.sortOn(dataset.layers, 'target_id', true);
+    }
   }
 
   var Export = /*#__PURE__*/Object.freeze({
@@ -23168,7 +25343,7 @@ ${svg}
     if (missing.length > 0) {
       var foundStr = [''].concat(header).join('\n  ');
       var missingStr = [''].concat(missing).join('\n  ');
-      stop('csv-fields option has', missing.length == 1 ? 'a name' : missing.length + ' names',  'not found in the file\nFields:', foundStr, '\nMissing:', missingStr);
+      stop$1('csv-fields option has', missing.length == 1 ? 'a name' : missing.length + ' names',  'not found in the file\nFields:', foundStr, '\nMissing:', missingStr);
     }
     return function(colIdx) {
       return map[colIdx];
@@ -23649,6 +25824,34 @@ ${svg}
     isSupportedDelimiter: isSupportedDelimiter
   });
 
+  function isSupportedOutputFormat(fmt) {
+    var types = ['geojson', 'topojson', 'json', 'dsv', 'dbf', 'shapefile', 'svg', 'kml', PACKAGE_EXT, 'flatgeobuf', 'geopackage'];
+    return types.indexOf(fmt) > -1;
+  }
+
+  function getFormatName(fmt) {
+    return {
+      geojson: 'GeoJSON',
+      topojson: 'TopoJSON',
+      json: 'JSON records',
+      dsv: 'CSV',
+      dbf: 'DBF',
+      kml: 'KML',
+      kmz: 'KMZ',
+      [PACKAGE_EXT]: 'Snapshot file',
+      shapefile: 'Shapefile',
+      flatgeobuf: 'Flatgeobuf',
+      geopackage: 'GeoPackage',
+      svg: 'SVG'
+    }[fmt] || '';
+  }
+
+  var FileFormats = /*#__PURE__*/Object.freeze({
+    __proto__: null,
+    getFormatName: getFormatName,
+    isSupportedOutputFormat: isSupportedOutputFormat
+  });
+
   function validateInputOpts(cmd) {
     var o = cmd.options;
         cmd._;
@@ -23679,7 +25882,7 @@ ${svg}
 
   function validateProjOpts(cmd) {
     if (!(cmd.options.crs || cmd.options.match || cmd.options.init)) {
-      stop('Missing projection data');
+      stop$1('Missing projection data');
     }
   }
 
@@ -23962,7 +26165,7 @@ ${svg}
       while (argv.length > 0) {
         cmdName = readCommandName(argv);
         if (!cmdName) {
-          stop("Invalid command:", argv[0]);
+          stop$1("Invalid command:", argv[0]);
         }
         cmdDef = findCommandDefn(cmdName, commandDefs) || null;
         if (!cmdDef) {
@@ -23994,7 +26197,7 @@ ${svg}
           }
           delete cmd.options._; // kludge to remove -o placeholder option
         } catch(e) {
-          stop("[" + cmdName + "] " + e.message);
+          stop$1("[" + cmdName + "] " + e.message);
         }
         return cmd;
       }
@@ -24015,7 +26218,7 @@ ${svg}
 
       function tokenLooksLikeCommand(s) {
         if (invalidCommandRxp.test(s)) {
-          stop('Invalid command syntax:', s);
+          stop$1('Invalid command syntax:', s);
         }
         return commandRxp.test(s);
       }
@@ -24030,7 +26233,7 @@ ${svg}
           parts = splitAssignment(token);
           optDef = findOptionDefn(parts[0], cmdDef);
           if (!optDef) ; else if (optDef.type == 'flag' || optDef.assign_to) {
-            stop("-" + cmdDef.name + " " + parts[0] + " option doesn't take a value");
+            stop$1("-" + cmdDef.name + " " + parts[0] + " option doesn't take a value");
           } else {
             argv.unshift(parts[1]);
           }
@@ -24065,7 +26268,7 @@ ${svg}
       // Read an option value for @optDef from @argv
       function readOptionValue(argv, optDef) {
         if (argv.length === 0 || tokenLooksLikeCommand(argv[0])) {
-          stop("Missing value for " + optDef.name + " option");
+          stop$1("Missing value for " + optDef.name + " option");
         }
         return parseOptionValue(argv.shift(), optDef); // remove token from argv
       }
@@ -24129,7 +26332,7 @@ ${svg}
         }
 
         if (err) {
-          stop(err + " for " + optDef.name + " option");
+          stop$1(err + " for " + optDef.name + " option");
         }
         return val;
       }
@@ -24152,7 +26355,7 @@ ${svg}
       if (cmdName) {
         singleCommand = findCommandDefn(cmdName, getCommands());
         if (!singleCommand) {
-          stop(cmdName, "is not a known command");
+          stop$1(cmdName, "is not a known command");
         }
         lines = getSingleCommandLines(singleCommand);
       } else {
@@ -24572,7 +26775,7 @@ ${svg}
         }
       })
       .option('format', {
-        describe: 'options: shapefile,geojson,topojson,json,dbf,csv,tsv,svg'
+        describe: 'options: shapefile,geojson,topojson,flatgeobuf,geopackage,json,dbf,csv,tsv,svg'
       })
       .option('target', targetOpt)
       .option('force', {
@@ -26975,7 +29178,7 @@ ${svg}
         if (bin.bytesLeft() < header.recordSize ||
             bin.bytesLeft() == header.recordSize && bin.peek(bin.size() - 1) == 0x1A) {
           // check for observed data error: last data byte contains EOF
-          stop('Invalid DBF file: encountered end-of-file while reading data');
+          stop$1('Invalid DBF file: encountered end-of-file while reading data');
         }
         for (var c=0, cols=fields.length; c<cols; c++) {
           field = fields[c];
@@ -27591,7 +29794,7 @@ ${svg}
       shxBin.readUint32() * 2; // TODO: match this to recLen in .shp
       var shape = readShapeAtOffset(shpFile, offset);
       if (!shape) {
-        stop('Index of Shapefile record', expectedId, 'in the .shx file is invalid.');
+        stop$1('Index of Shapefile record', expectedId, 'in the .shx file is invalid.');
       }
       if (shape.id != expectedId) {
         badRecordNumberCount++;
@@ -27634,7 +29837,7 @@ ${svg}
           message("Found a Shapefile record with the same id as a previous record (" + shape.id + ") -- skipping.");
           offset += shape.byteLength;
         } else {
-          stop("Shapefile contains an out-of-sequence record. Possible data corruption -- bailing.");
+          stop$1("Shapefile contains an out-of-sequence record. Possible data corruption -- bailing.");
         }
       }
       if (shape && offset > start) {
@@ -27849,7 +30052,7 @@ ${svg}
           collectionType = 'mixed';
         }
       } else if (currType != t) {
-        stop("Unable to import mixed-geometry features");
+        stop$1("Unable to import mixed-geometry features");
       }
     }
 
@@ -27931,7 +30134,7 @@ ${svg}
         importer = new PathImporter(importOpts);
 
     if (!isSupportedShapefileType(shpType)) {
-      stop("Unsupported Shapefile type:", shpType);
+      stop$1("Unsupported Shapefile type:", shpType);
     }
     if (ShpType.isZType(shpType)) {
       verbose("Warning: Shapefile Z data will be lost.");
@@ -28275,12 +30478,12 @@ ${svg}
         shape = TopoJSON.shapeImporters[geom.type](geom, arcs);
         // TODO: better shape validation
         if (!shape || !shape.length) ; else if (!Array.isArray(shape[0])) {
-          stop("Invalid TopoJSON", geom.type, "geometry");
+          stop$1("Invalid TopoJSON", geom.type, "geometry");
         } else {
           shapes[shapeId] = curr ? curr.concat(shape) : shape;
         }
       } else if (geom.type) {
-        stop("Invalid TopoJSON geometry type:", geom.type);
+        stop$1("Invalid TopoJSON geometry type:", geom.type);
       }
     };
 
@@ -28290,7 +30493,7 @@ ${svg}
         types[shapeId] = type;
         this.updateCollectionType(type);
       } else if (currType != type) {
-        stop("Unable to import mixed-type TopoJSON geometries");
+        stop$1("Unable to import mixed-type TopoJSON geometries");
       }
     };
 
@@ -28322,7 +30525,7 @@ ${svg}
   TopoJSON.importPolygonArcs = function(rings, arcs) {
     var ring = rings[0],
         imported = null, area;
-    if (!arcs) stop("Invalid TopoJSON file: missing arc data.");
+    if (!arcs) stop$1("Invalid TopoJSON file: missing arc data.");
     area = ring ? geom.getPlanarPathArea(ring, arcs) : null;
     if (!area) {
       return null;
@@ -28432,14 +30635,14 @@ ${svg}
     var src = ByteReader(reader, 0);
     var isObject = seekObjectStart(src);
     if (!isObject) {
-      stop('File is not GeoJSON');
+      stop$1('File is not GeoJSON');
     }
     var obj = readObject(src, cb);
     if (obj.type == 'FeatureCollection' || obj.type == 'GeometryCollection') {
       return obj;
     }
     if (!obj.type) { // TODO: validate type
-      stop('Invalid GeoJSON');
+      stop$1('Invalid GeoJSON');
     }
     cb(obj);
     // try to read newline-delimited GeoJSON
@@ -28456,7 +30659,7 @@ ${svg}
     if (i >= 0) {
       msg += ' at position ' + i;
     }
-    stop(msg);
+    stop$1(msg);
   }
 
   function unexpectedCharAt(tok, i) {
@@ -29001,14 +31204,14 @@ ${svg}
           content = JSON.parse(content); // ~3sec for 100MB string
         } catch(e) {
           // stop("Unable to parse JSON");
-          stop('JSON parsing error:', e.message);
+          stop$1('JSON parsing error:', e.message);
         }
       }
       if (opts.json_path) {
         content = selectFromObject(content, opts.json_path);
         fmt = identifyJSONObject(content);
         if (!fmt) {
-          stop('Unexpected object type at JSON path:', opts.json_path);
+          stop$1('Unexpected object type at JSON path:', opts.json_path);
         }
       } else {
         fmt = identifyJSONObject(content);
@@ -29020,7 +31223,7 @@ ${svg}
       } else if (fmt == 'json') {
         retn.dataset = importJSONTable(content);
       } else {
-        stop("Unknown JSON format");
+        stop$1("Unknown JSON format");
       }
       retn.format = fmt;
     }
@@ -29064,6 +31267,188 @@ ${svg}
     return importGeoJSON(geojson, opts || {});
   }
 
+  async function importFlatgeobuf(content, opts) {
+    var bytes = new Uint8Array(content);
+    var headerMeta = getHeaderMeta(bytes);
+    var readFeature = getFeatureReader(bytes, headerMeta);
+    var importer = new GeoJSONParser(opts);
+    var feat = readFeature();
+    var dataset;
+    while (feat) {
+      importer.parseObject(feat);
+      feat = readFeature();
+    }
+    dataset = importer.done();
+    dataset.info = dataset.info || {};
+    dataset.info.flatgeobuf_header = headerMeta;
+    var crs = normalizeCRSMeta(headerMeta.crs || null);
+    dataset.info.flatgeobuf_crs = crs;
+    if (crs && crs.org && crs.code) {
+      dataset.info.crs_string = crs.org.toLowerCase() + ':' + crs.code;
+      await initProjLibrary({crs: dataset.info.crs_string});
+    } else if (crs && crs.wkt) {
+      warnOnce('Unable to import WKT2 CRS from FlatGeobuf');
+    }
+    return dataset;
+  }
+
+  function normalizeCRSMeta(crs) {
+    if (!crs) return null;
+    var code = +crs.code;
+    if (crs.org || !Number.isFinite(code)) return crs;
+    code = Math.round(code);
+    if (code >= 2000 && code <= 1000000) {
+      // Some encoders write code but omit authority org; default to EPSG.
+      return Object.assign({}, crs, {
+        org: 'EPSG',
+        code_string: crs.code_string || ('EPSG:' + code)
+      });
+    }
+    return crs;
+  }
+
+  async function importGeoPackage(content, optsArg) {
+    var opts = optsArg || {};
+    var geopackage = require$1('@ngageoint/geopackage');
+    var gpkg;
+    var datasets;
+    var source;
+
+    if (!geopackage || !geopackage.GeoPackageAPI) {
+      stop$1('GeoPackage library is not loaded');
+    }
+
+    source = utils.isString(content) ? content : new Uint8Array(content);
+    gpkg = await geopackage.GeoPackageAPI.open(source);
+    try {
+      datasets = readFeatureTableDatasets(gpkg, opts);
+    } finally {
+      gpkg.close();
+    }
+
+    if (datasets.length === 0) {
+      return {
+        layers: [{name: '', data: null}],
+        info: {}
+      };
+    }
+
+    await initProjLib(datasets);
+
+    return mergeDatasets(datasets);
+  }
+
+  // load lookup tables for epsg codes if needed (for browser)
+  async function initProjLib(datasets) {
+    for (const dataset of datasets) {
+      if (dataset.info?.crs_string) {
+        await initProjLibrary({crs: dataset.info.crs_string});
+      }
+    }
+  }
+
+  function readFeatureTableDatasets(gpkg, opts) {
+    var tables = gpkg.getFeatureTables() || [];
+    return tables.map(function(table) {
+      return readFeatureTable(gpkg, table, opts);
+    });
+  }
+
+  function convertOrgToProj4(crs) {
+    var org = crs.organization.toLowerCase();
+    if (org == 'epsg' || org == 'esri') {
+      return org + ':' + crs.organization_coordsys_id;
+    }
+    return null;
+  }
+
+  function readFeatureTable(gpkg, table, opts) {
+    var featureDao = gpkg.getFeatureDao(table);
+    var iterator = featureDao.queryForEach();
+    var importer = new GeoJSONParser(opts);
+    var crs = getTableCrs(gpkg, table);
+
+    for (var row of iterator) {
+      var featureRow = featureDao.getRow(row);
+      var feature = convertFeatureRow(featureRow);
+      if (feature) {
+        importer.parseObject(feature);
+      }
+    }
+
+    var dataset = importer.done();
+    dataset.layers.forEach(function(lyr) {
+      lyr.name = table;
+    });
+    dataset.info = dataset.info || {};
+    dataset.info.geopackage_crs = crs;
+    if (crs?.definition && crs.definition !== 'undefined') {
+      dataset.info.wkt1 = crs.definition;
+    } else if (crs?.organization && crs.organization !== 'undefined') {
+      dataset.info.crs_string = convertOrgToProj4(crs);
+    }
+    return dataset;
+  }
+
+  function convertFeatureRow(featureRow) {
+    var feature = {
+      type: 'Feature',
+      properties: {},
+      geometry: null
+    };
+    try {
+      var geomData = featureRow.geometry;
+      if (geomData) {
+        feature.geometry = geomData.toGeoJSON();
+      }
+    } catch (e) {
+      // skip feature if geometry can't be parsed
+      return null;
+    }
+    if (!feature.geometry) return null;
+    var geomColName = featureRow.geometryColumn.name;
+    for (var key in featureRow.values) {
+      if (Object.prototype.hasOwnProperty.call(featureRow.values, key) &&
+          key !== geomColName) {
+        feature.properties[key] = featureRow.values[key];
+      }
+    }
+    feature.id = featureRow.id;
+    return feature;
+  }
+
+  function getTableCrs(gpkg, table) {
+    var contents, srsId, srs;
+    try {
+      contents = gpkg.getTableContents(table);
+      srsId = contents && (contents.srs_id ?? contents.srsId);
+      if (srsId > -1) {
+        srs = gpkg.getSrs(srsId);
+      }
+    } catch (e) {
+      srs = null;
+    }
+    return srs ? normalizeSrs(srs) : null;
+  }
+
+  function normalizeSrs(srs) {
+    var obj = {
+      id: srs.srs_id ?? srs.srsId ?? null,
+      organization: srs.organization ?? null,
+      organization_coordsys_id: srs.organization_coordsys_id ?? srs.organizationCoordsysId ?? null,
+      definition: srs.definition ?? null,
+      description: srs.description ?? null
+    };
+    var wkt2 = srs.definition_12_063 ?? srs.definition12063 ?? null;
+    if (wkt2 && wkt2 !== 'undefined') {
+      obj.definition_12_063 = wkt2;
+      if (!obj.definition) {
+        warnOnce('Unable to import WKT2 CRS from GeoPackage');
+      }
+    }
+    return obj;
+  }
+
   // Parse content of one or more input files and return a dataset
   // @obj: file data, indexed by file type
   // File data objects have two properties:
@@ -29071,67 +31456,65 @@ ${svg}
   //    filename: String or null
   //
   function importContent(obj, opts) {
-    var dataset, fileFmt, data;
+    var dataset, dataFmt, data;
     opts = opts || {};
     if (obj.json) {
       data = importJSON(obj.json, opts);
-      fileFmt = data.format;
+      dataFmt = data.format;
       dataset = data.dataset;
       cleanPathsAfterImport(dataset, opts);
 
     } else if (obj.text) {
-      fileFmt = 'dsv';
+      dataFmt = 'dsv';
       data = obj.text;
       dataset = importDelim2(data, opts);
 
     } else if (obj.shp) {
-      fileFmt = 'shapefile';
+      dataFmt = 'shapefile';
       data = obj.shp;
       dataset = importShapefile(obj, opts);
       cleanPathsAfterImport(dataset, opts);
 
     } else if (obj.dbf) {
-      fileFmt = 'dbf';
+      dataFmt = 'dbf';
       data = obj.dbf;
       dataset = importDbf(obj, opts);
 
     } else if (obj.prj) {
       // added for -proj command source
-      fileFmt = 'prj';
+      dataFmt = 'prj';
       data = obj.prj;
-      dataset = {layers: [], info: {prj: data.content}};
+      dataset = {layers: [], info: {wkt1: data.content}};
 
     } else if (obj.kml) {
-      fileFmt = 'kml';
+      dataFmt = 'kml';
       data = obj.kml;
       dataset = importKML(data.content, opts);
+
+    } else if (obj.fgb) {
+      stop$1("FlatGeobuf import requires async import path");
+    } else if (obj.gpkg) {
+      stop$1("GeoPackage import requires async import path");
     }
 
-    if (!dataset) {
-      stop("Missing an expected input type");
-    }
+    return finalizeImportedDataset(dataset, dataFmt, data, opts);
+  }
 
-    // Convert to topological format, if needed
-    if (dataset.arcs && !opts.no_topology && fileFmt != 'topojson') {
-      buildTopology(dataset);
+  async function importContentAsync(obj, opts) {
+    var dataset, dataFmt, data;
+    opts = opts || {};
+    if (obj.fgb) {
+      dataFmt = 'flatgeobuf';
+      data = obj.fgb;
+      dataset = await importFlatgeobuf(data.content, opts);
+    } else if (obj.gpkg) {
+      dataFmt = 'geopackage';
+      data = obj.gpkg;
+      dataset = await importGeoPackage(data.content || data.filename, opts);
+    } else {
+      return importContent(obj, opts);
     }
-
-    // Use file basename for layer name, except TopoJSON, which uses object names
-    if (fileFmt != 'topojson') {
-      dataset.layers.forEach(function(lyr) {
-        if (!lyr.name) {
-          lyr.name = filenameToLayerName(data.filename || '');
-        }
-      });
-    }
-
-    // Add input filename and format to the dataset's 'info' object
-    // (this is useful when exporting if format or name has not been specified.)
-    if (data.filename) {
-      dataset.info.input_files = [data.filename];
-    }
-    dataset.info.input_formats = [fileFmt];
-    return dataset;
+    return finalizeImportedDataset(dataset, dataFmt, data, opts);
   }
 
   // Deprecated (included for compatibility with older tests)
@@ -29158,7 +31541,7 @@ ${svg}
       }
     }
     if (obj.prj) {
-      dataset.info.prj = obj.prj.content;
+      dataset.info.wkt1 = obj.prj.content;
     }
     if (obj.cpg) {
       // TODO: consider using the input encoding as the default output encoding
@@ -29192,9 +31575,38 @@ ${svg}
     return name;
   }
 
+  function finalizeImportedDataset(dataset, dataFmt, data, opts) {
+    if (!dataset) {
+      stop$1("Missing an expected input type");
+    }
+
+    // Convert to topological format, if needed
+    if (dataset.arcs && !opts.no_topology && dataFmt != 'topojson') {
+      buildTopology(dataset);
+    }
+
+    // Use file basename for layer name, except TopoJSON, which uses object names
+    if (dataFmt != 'topojson') {
+      dataset.layers.forEach(function(lyr) {
+        if (!lyr.name) {
+          lyr.name = filenameToLayerName(data.filename || '');
+        }
+      });
+    }
+
+    // Add input filename and format to the dataset's 'info' object
+    // (this is useful when exporting if format or name has not been specified.)
+    if (data.filename) {
+      dataset.info.input_files = [data.filename];
+    }
+    dataset.info.input_formats = [dataFmt];
+    return dataset;
+  }
+
   var Import = /*#__PURE__*/Object.freeze({
     __proto__: null,
     importContent: importContent,
+    importContentAsync: importContentAsync,
     importFileContent: importFileContent
   });
 
@@ -29207,7 +31619,7 @@ ${svg}
 
   async function restoreSessionData(obj) {
     if (!isValidSession(obj)) {
-      stop('Invalid mapshaper session data object');
+      stop$1('Invalid mapshaper session data object');
     }
     var datasets = await Promise.all(obj.datasets.map(importDataset));
     datasets = datasets.filter(Boolean); // skip corrupted datasets
@@ -29306,13 +31718,13 @@ ${svg}
     var dataset;
 
     if (opts.stdin) {
-      dataset = importFile('/dev/stdin', opts);
+      dataset = await importFileAsync('/dev/stdin', opts);
       catalog.addDataset(dataset);
       return dataset;
     }
 
     if (files.length > 0 === false) {
-      stop('Missing input file(s)');
+      stop$1('Missing input file(s)');
     }
 
     verbose("Importing: " + files.join(' '));
@@ -29326,22 +31738,22 @@ ${svg}
     files = expandFiles(files, opts.input);
 
     if (files.length === 0) {
-      stop('Missing importable files');
+      stop$1('Missing importable files');
     }
 
     // special case: package file
     if (files.some(isPackageFile)) {
       if (files.length > 1) {
-        stop('Expected a single package file');
+        stop$1('Expected a single package file');
       }
       dataset = await importMshpFile(files[0], catalog, opts);
       return dataset;
     }
 
     if (files.length == 1) {
-      dataset = importFile(files[0], opts);
+      dataset = await importFileAsync(files[0], opts);
     } else {
-      dataset = importFilesTogether(files, opts);
+      dataset = await importFilesTogetherAsync(files, opts);
     }
 
     if (opts.merge_files && files.length > 1) {
@@ -29437,6 +31849,10 @@ ${svg}
     return _importFile(path, opts);
   }
 
+  async function importFileAsync(path, opts) {
+    return _importFileAsync(path, opts);
+  }
+
   var _importFile = function(path, opts) {
     var fileType = guessInputFileType(path),
         input = {},
@@ -29455,7 +31871,7 @@ ${svg}
       content = cli.readFile(path, null, cache);
       if (utils.isString(content)) {
         // Fix for issue #264 (applyCommands() input is file path instead of binary content)
-        stop('Expected binary content, received a string');
+        stop$1('Expected binary content, received a string');
       }
 
     } else if (fileType) { // string type, e.g. kml, geojson
@@ -29466,7 +31882,7 @@ ${svg}
       path = pathgz.replace(/\.gz$/, '');
       fileType = guessInputFileType(path);
       if (!fileType) {
-        stop('Unrecognized file type:', path);
+        stop$1('Unrecognized file type:', path);
       }
       content = gunzipSync(cli.readFile(pathgz, null, cache), path);
 
@@ -29480,7 +31896,7 @@ ${svg}
     }
 
     if (!fileType) {
-      stop(getUnsupportedFileMessage(path));
+      stop$1(getUnsupportedFileMessage(path));
     }
     input[fileType] = {filename: path, content: content};
     content = null; // for g.c.
@@ -29492,6 +31908,60 @@ ${svg}
     }
     return importContent(input, opts);
   };
+
+  async function _importFileAsync(path, opts) {
+    var fileType = guessInputFileType(path),
+        input = {},
+        encoding = opts && opts.encoding || null,
+        cache = opts && opts.input || null,
+        cached = cache && (path in cache),
+        content;
+
+    cli.checkFileExists(path, cache);
+
+    if ((fileType == 'shp' || fileType == 'json' || fileType == 'text' || fileType == 'dbf') && !cached) {
+      // these file types are read incrementally
+      content = null;
+
+    } else if (fileType && isSupportedBinaryInputType(path)) {
+      content = cli.readFile(path, null, cache);
+      if (utils.isString(content)) {
+        stop$1('Expected binary content, received a string');
+      }
+
+    } else if (fileType) {
+      content = cli.readFile(path, encoding || 'utf-8', cache);
+
+    } else if (getFileExtension(path) == 'gz') {
+      var pathgz = path;
+      path = pathgz.replace(/\.gz$/, '');
+      fileType = guessInputFileType(path);
+      if (!fileType) {
+        stop$1('Unrecognized file type:', path);
+      }
+      content = gunzipSync(cli.readFile(pathgz, null, cache), path);
+
+    } else {
+      content = cli.readFile(path, encoding || 'utf-8', cache);
+      fileType = guessInputContentType(content);
+      if (fileType == 'text' && content.indexOf('\ufffd') > -1) {
+        fileType = null;
+      }
+    }
+
+    if (!fileType) {
+      stop$1(getUnsupportedFileMessage(path));
+    }
+    input[fileType] = {filename: path, content: content};
+    content = null;
+    if (fileType == 'shp' || fileType == 'dbf') {
+      readShapefileAuxFiles(path, input, cache);
+    }
+    if (fileType == 'shp' && !input.dbf) {
+      message(utils.format("[%s] .dbf file is missing - shapes imported without attribute data.", path));
+    }
+    return fileType == 'gpkg' || fileType == 'fgb' ? importContentAsync(input, opts) : importContent(input, opts);
+  }
 
   // Import multiple files to a single dataset
   function importFilesTogether(files, opts) {
@@ -29511,6 +31981,26 @@ ${svg}
     // Build topology, if needed
     // TODO: consider updating topology of TopoJSON files instead of concatenating arcs
     // (but problem of mismatched coordinates due to quantization in input files.)
+    if (unbuiltTopology && !opts.no_topology) {
+      cleanPathsAfterImport(combined, opts);
+      buildTopology(combined);
+    }
+    return combined;
+  }
+
+  async function importFilesTogetherAsync(files, opts) {
+    var unbuiltTopology = false;
+    var datasets = [];
+    for (var fname of files) {
+      // import without topology or snapping
+      var importOpts = utils.defaults({no_topology: true, snap: false, snap_interval: null, files: [fname]}, opts);
+      var dataset = await importFileAsync(fname, importOpts);
+      if (dataset.arcs && dataset.arcs.size() > 0 && dataset.info.input_formats[0] != 'topojson') {
+        unbuiltTopology = true;
+      }
+      datasets.push(dataset);
+    }
+    var combined = mergeDatasets(datasets);
     if (unbuiltTopology && !opts.no_topology) {
       cleanPathsAfterImport(combined, opts);
       buildTopology(combined);
@@ -29555,14 +32045,16 @@ ${svg}
   var FileImport = /*#__PURE__*/Object.freeze({
     __proto__: null,
     importFile: importFile,
+    importFileAsync: importFileAsync,
     importFilesTogether: importFilesTogether,
+    importFilesTogetherAsync: importFilesTogetherAsync,
     replaceImportFile: replaceImportFile
   });
 
   function convertSourceName(name, targets) {
     if (!nameIsInterpolated(name)) return name;
     if (targets.length > 1 || targets[0].layers.length != 1) {
-      stop("Interpolated names are not compatible with multiple targets.");
+      stop$1("Interpolated names are not compatible with multiple targets.");
     }
     return convertInterpolatedName(name, targets[0].layers[0]);
   }
@@ -29575,7 +32067,7 @@ ${svg}
       func = new Function("$$ctx", body);
       name = func(ctx);
     } catch(e) {
-      stop("Unable to interpolate [" + name + "]");
+      stop$1("Unable to interpolate [" + name + "]");
     }
     return name;
   }
@@ -29594,9 +32086,9 @@ ${svg}
       //    clip/erase -- topology is built later, when datasets are combined
       sourceDataset = importFile(sourceName, utils.defaults({no_topology: true}, opts));
       if (!sourceDataset) {
-        stop(utils.format('Unable to find source [%s]', sourceName));
+        stop$1(utils.format('Unable to find source [%s]', sourceName));
       } else if (sourceDataset.layers.length > 1) {
-        stop('Multiple-layer sources are not supported');
+        stop$1('Multiple-layer sources are not supported');
       }
       // mark as disposable to indicate that data can be mutated
       source = {dataset: sourceDataset, layer: sourceDataset.layers[0], disposable: true};
@@ -29669,7 +32161,7 @@ ${svg}
     this.findSingleLayer = function(pattern) {
       var matches = findMatchingLayers(this.getLayers(), pattern);
       if (matches.length > 1) {
-        stop('Ambiguous pattern (multiple layers were matched):', pattern);
+        stop$1('Ambiguous pattern (multiple layers were matched):', pattern);
       }
       return matches[0] || null;
     };
@@ -29873,7 +32365,7 @@ ${svg}
 
   function addShape(targetLayers, targetDataset, opts) {
     if (targetLayers.length > 1) {
-      stop('Command expects a single target layer');
+      stop$1('Command expects a single target layer');
     }
     var targetLyr = targetLayers[0]; // may be undefined
     var targetType = !opts.no_replace && targetLyr && targetLyr.geometry_type || null;
@@ -29896,15 +32388,15 @@ ${svg}
     var geom = opts.coordinates && parseCoordsAsGeometry(opts.coordinates) || null;
 
     if (!geom) {
-      stop('Missing required shape coordinates');
+      stop$1('Missing required shape coordinates');
     }
 
     if (geomType == 'point' && geom.type != 'Point') {
-      stop('Expected point coordinates, received', geom.type);
+      stop$1('Expected point coordinates, received', geom.type);
     }
 
     if (geomType == 'polygon' && geom.type != 'Polygon') {
-      stop('Expected polygon coordinates, received', geom.type);
+      stop$1('Expected polygon coordinates, received', geom.type);
     }
 
     if (geomType == 'polyline') {
@@ -29912,7 +32404,7 @@ ${svg}
         geom.coordinates = geom.coordinates[0];
         geom.type = 'LineString';
       } else {
-        stop('Expected polyline coordinates, received', geom.type);
+        stop$1('Expected polyline coordinates, received', geom.type);
       }
     }
 
@@ -29958,7 +32450,7 @@ ${svg}
       coords.push([arr[i], arr[i+1]]);
     }
     if (!isArrayOfPoints(coords)) {
-      stop('Unable to parse x,y,x,y... coordinates');
+      stop$1('Unable to parse x,y,x,y... coordinates');
     }
     return coords;
   }
@@ -29996,7 +32488,7 @@ ${svg}
       };
     }
 
-    stop('Unable to import coordinates');
+    stop$1('Unable to import coordinates');
   }
 
   // Apply rotation, scale and/or shift to some or all of the features in a dataset
@@ -30900,7 +33392,7 @@ ${svg}
   cmd.alphaShapes = function(pointLyr, targetDataset, opts) {
     requirePointLayer(pointLyr);
     if (opts.interval > 0 === false) {
-      stop('Expected a non-negative interval parameter');
+      stop$1('Expected a non-negative interval parameter');
     }
     var filter = getAlphaDistanceFilter(targetDataset, opts.interval);
     var dataset = getPolygonDataset$2(pointLyr, filter, opts);
@@ -31171,7 +33663,7 @@ ${svg}
 
   function getBufferDistanceFunction(lyr, dataset, opts) {
     if (!opts.radius) {
-      stop('Missing expected radius parameter');
+      stop$1('Missing expected radius parameter');
     }
     var unitStr = opts.units || '';
     var crs = getDatasetCRS(dataset);
@@ -32685,7 +35177,7 @@ ${svg}
     } else if (lyr.geometry_type == 'polygon') {
       dataset2 = makePolygonBuffer(lyr, dataset, opts);
     } else {
-      stop("Unsupported geometry type");
+      stop$1("Unsupported geometry type");
     }
 
     return mergeOutputLayersIntoDataset(lyr, dataset, dataset2, opts);
@@ -32705,7 +35197,7 @@ ${svg}
   };
 
   function handleError(msg, opts) {
-    var report = opts.strict ? stop : message;
+    var report = opts.strict ? stop$1 : message;
     report(msg);
   }
 
@@ -32825,7 +35317,7 @@ ${svg}
   function getRangeScale(range) {
     var s = 1;
     if (range > 0.0001 === false || range < 1e9 === false) {
-      stop('Data range error');
+      stop$1('Data range error');
     }
     while (range > 100) {
       range /= 10;
@@ -33579,10 +36071,10 @@ ${svg}
     var min = stops[0] / 100,
         max = stops[1] / 100;
     if (stops.length != 2) {
-      stop('Only two stops are currently supported');
+      stop$1('Only two stops are currently supported');
     }
     if (!(min >= 0 && max <= 1 && min < max)) {
-      stop('Invalid gradient stops:', stops);
+      stop$1('Invalid gradient stops:', stops);
     }
     return function(t) {
       return t * (max - min) + min;
@@ -33997,7 +36489,7 @@ ${svg}
       breaks = getNiceBreaks(ascending, numBreaks);
       message('Nice breaks:', breaks);
     } else {
-      stop('Unknown classification method:', method);
+      stop$1('Unknown classification method:', method);
     }
 
     printDistributionInfo(ascending, breaks, nullCount);
@@ -34097,7 +36589,7 @@ ${svg}
       breaks = breaks.concat().reverse();
       inverted = true;
     } else {
-      stop('Invalid class breaks:', breaks.join(','));
+      stop$1('Invalid class breaks:', breaks.join(','));
     }
     return function(val) {
       var i = -1;
@@ -34192,7 +36684,7 @@ ${svg}
     var minval = range[0];
     var maxval = range[1];
     if (maxval > minval === false) {
-      stop('Invalid data range:', range);
+      stop$1('Invalid data range:', range);
     }
     var values2 = values.map(function(val) {
       if (val < minval) val = minval;
@@ -34584,7 +37076,7 @@ ${svg}
       }
     });
     if (invalid.length > 0) {
-      stop(`Class index field contains invalid value(s): ${invalid.slice(0, 5)}`);
+      stop$1(`Class index field contains invalid value(s): ${invalid.slice(0, 5)}`);
     }
     return maxId + 1;
   }
@@ -35217,7 +37709,7 @@ ${svg}
     initSchemes();
     name = standardName(name);
     if (!isColorSchemeName(name)) {
-      stop('Unknown color scheme name:', name);
+      stop$1('Unknown color scheme name:', name);
     } else if (isCategoricalColorScheme(name)) {
       colors = ramps[name] || d3Scales['scheme' + name];
     } else {
@@ -35257,10 +37749,10 @@ ${svg}
     var interpolate = d3Scales['interpolate' + name];
     var ramp;
     if (!ramps && !interpolate) {
-      stop('Unknown color scheme name:', name);
+      stop$1('Unknown color scheme name:', name);
     }
     if (index.categorical.includes(name)) {
-      stop(name, ' is a categorical color scheme (expected a sequential color scheme)');
+      stop$1(name, ' is a categorical color scheme (expected a sequential color scheme)');
     }
     if (ramps && ramps[n]) {
       ramp = ramps[n];
@@ -35326,7 +37818,7 @@ ${svg}
     } else if (isColorSchemeName(colorArg)) {
       colorScheme = colorArg;
     } else if (colorArg && !parseColor(colorArg)) {
-      stop('Unrecognized color scheme name:', colorArg);
+      stop$1('Unrecognized color scheme name:', colorArg);
     } else if (opts.colors) {
       opts.colors.forEach(validateColor);
     }
@@ -35351,7 +37843,7 @@ ${svg}
 
   function getCategoricalValues(values, n) {
     if (n != values.length) {
-      stop('Mismatch in number of categories and number of values');
+      stop$1('Mismatch in number of categories and number of values');
     }
     return parseValues(values); // convert numerical strings to numbers
   }
@@ -35401,21 +37893,21 @@ ${svg}
     } else  if (dataType == 'number') {
       method = 'quantile'; // TODO: validate data field
     } else if (dataType == 'date' || dataType == 'object') {
-      stop('Data type does not support classification:', dataType);
+      stop$1('Data type does not support classification:', dataType);
     } else if (dataType === null) {
       // data field is empty
       return null; // kludge
     } else if (dataType === undefined) {
       // no data field was given
-      stop('Expected a data field to classify or the non-adjacent option');
+      stop$1('Expected a data field to classify or the non-adjacent option');
     } else {
-      stop('Unable to determine which classification method to use.');
+      stop$1('Unable to determine which classification method to use.');
     }
     if (!all.includes(method)) {
-      stop('Not a recognized classification method:', method);
+      stop$1('Not a recognized classification method:', method);
     }
     if (sequential.includes(method) && dataType != 'number' && dataType !== null) {
-      stop('The', method, 'method requires a numerical data field');
+      stop$1('The', method, 'method requires a numerical data field');
     }
     return method;
   }
@@ -35513,7 +38005,7 @@ ${svg}
     var method;
 
     if (opts.color_scheme) {
-      stop('color-scheme is not a valid option, use colors instead');
+      stop$1('color-scheme is not a valid option, use colors instead');
     }
 
     // get data field to use for classification
@@ -35536,13 +38028,13 @@ ${svg}
     // validate classification method
     if (method == 'non-adjacent') {
       if (lyr.geometry_type != 'polygon') {
-        stop('The non-adjacent option requires a polygon layer');
+        stop$1('The non-adjacent option requires a polygon layer');
       }
       if (dataField) {
-        stop('The non-adjacent option does not accept a data field argument');
+        stop$1('The non-adjacent option does not accept a data field argument');
       }
     } else if (!dataField) {
-      stop('Missing a data field to classify');
+      stop$1('Missing a data field to classify');
     }
 
     // get the number of classes and the number of values
@@ -35560,7 +38052,7 @@ ${svg}
 
     if (opts.classes) {
       if (!utils.isInteger(opts.classes) || opts.classes > 1 === false) {
-        stop('Invalid number of classes:', opts.classes, '(expected a value greater than 1)');
+        stop$1('Invalid number of classes:', opts.classes, '(expected a value greater than 1)');
       }
       numClasses = opts.classes;
     } else if (method == 'blacki') {
@@ -35582,7 +38074,7 @@ ${svg}
     }
     numValues = opts.continuous ? numClasses + 1 : numClasses;
     if (numValues > 1 === false) {
-      stop('Missing a valid number of values');
+      stop$1('Missing a valid number of values');
     }
 
     // get colors or other values
@@ -35651,7 +38143,7 @@ ${svg}
   function formatColorsAsHex(colors) {
     return colors.map(function(col) {
       var o = color(col);
-      if (!o) stop('Unable to parse color:', col);
+      if (!o) stop$1('Unable to parse color:', col);
       return o.formatHex();
     });
   }
@@ -36076,7 +38568,7 @@ ${svg}
       clipDataset = convertClipBounds(bbox);
       clipLyr = clipDataset.layers[0];
     } else if (!clipSrc) {
-      stop("Command requires a source file, layer id or bbox");
+      stop$1("Command requires a source file, layer id or bbox");
     } else if (clipSrc.layer && clipSrc.dataset) {
       clipLyr = clipSrc.layer;
       clipDataset = utils.defaults({layers: [clipLyr]}, clipSrc.dataset);
@@ -36109,7 +38601,7 @@ ${svg}
         arc = [[x0, y0], [x0, y1], [x1, y1], [x1, y0], [x0, y0]];
 
     if (!(y1 > y0 && x1 > x0)) {
-      stop("Invalid bbox (should be [xmin, ymin, xmax, ymax]):", bb);
+      stop$1("Invalid bbox (should be [xmin, ymin, xmax, ymax]):", bb);
     }
     return {
       arcs: new ArcCollection([arc]),
@@ -36359,7 +38851,7 @@ ${svg}
       return targetLyr; // ignore empty layer
     }
     if (targetLyr === clipLyr) {
-      stop('Can\'t clip a layer with itself');
+      stop$1('Can\'t clip a layer with itself');
     }
 
     // TODO: optimize some of these functions for bbox clipping
@@ -36370,7 +38862,7 @@ ${svg}
     } else if (targetLyr.geometry_type == 'polyline') {
       clippedShapes = clipPolylines(targetLyr.shapes, clipLyr.shapes, nodes, type);
     } else {
-      stop('Invalid target layer:', targetLyr.name);
+      stop$1('Invalid target layer:', targetLyr.name);
     }
 
     outputLyr = {
@@ -36459,7 +38951,7 @@ ${svg}
     var mergeIndex = {}; // keep track of merges, to prevent duplicates
     var next;
 
-    if (groupField && !lyr.data) stop("Missing attribute data table");
+    if (groupField && !lyr.data) stop$1("Missing attribute data table");
 
     // Populate mergeItems array
     findPairsOfNeighbors(lyr, arcs).forEach(function(ab, i) {
@@ -36623,10 +39115,10 @@ ${svg}
 
   cmd.colorizer = function(opts) {
     if (!opts.name) {
-      stop("Missing required name= parameter");
+      stop$1("Missing required name= parameter");
     }
     if (isReservedName(opts.name)) {
-      stop('"' + opts.name + '" is a reserved name');
+      stop$1('"' + opts.name + '" is a reserved name');
     }
     getStashedVar('defs')[opts.name] = getColorizerFunction(opts);
   };
@@ -36641,23 +39133,23 @@ ${svg}
     var colorFunction;
 
     if (!opts.random && (!opts.colors || !opts.colors.length)) {
-      stop("Missing colors= parameter");
+      stop$1("Missing colors= parameter");
     }
 
     if (opts.random) {
       colorFunction = getRandomColorFunction(opts.colors);
     } else if (opts.breaks) {
       if (opts.colors.length != opts.breaks.length + 1) {
-        stop("Number of colors should be one more than number of class breaks");
+        stop$1("Number of colors should be one more than number of class breaks");
       }
       colorFunction = getSequentialClassifier(opts.breaks, opts.colors, nodataColor, round);
     } else if (opts.categories) {
       if (opts.colors.length != opts.categories.length) {
-        stop("Number of colors should be equal to the number of categories");
+        stop$1("Number of colors should be equal to the number of categories");
       }
       colorFunction = getCategoricalClassifier(opts.colors, nodataColor, opts);
     } else {
-      stop("Missing categories= or breaks= parameter");
+      stop$1("Missing categories= or breaks= parameter");
     }
 
     return colorFunction;
@@ -36718,10 +39210,10 @@ ${svg}
     var dashLen = opts.dash_length ? convertDistanceParam(opts.dash_length, crs) : 0;
     var gapLen = opts.gap_length ? convertDistanceParam(opts.gap_length, crs) : 0;
     if (dashLen > 0 === false) {
-      stop('Missing required dash-length parameter');
+      stop$1('Missing required dash-length parameter');
     }
     if (gapLen >= 0 == false) {
-      stop('Invalid gap-length option');
+      stop$1('Invalid gap-length option');
     }
     var splitLine = getSplitLineFunction(crs, dashLen, gapLen, opts);
     return function(feat) {
@@ -36845,9 +39337,9 @@ ${svg}
 
   cmd.dataFill = function(lyr, arcs, opts) {
     var field = opts.field;
-    if (!field) stop("Missing required field= parameter");
+    if (!field) stop$1("Missing required field= parameter");
     requireDataField(lyr, field);
-    if (lyr.geometry_type != 'polygon') stop("Target layer must be polygon type");
+    if (lyr.geometry_type != 'polygon') stop$1("Target layer must be polygon type");
     var getNeighbors = getNeighborLookupFunction(lyr, arcs);
     var fillCount, islandCount;
 
@@ -37394,7 +39886,7 @@ ${svg}
     var targets = catalog.findCommandTargets(targetId);
     var isSingle = targets.length == 1 && targets[0].layers.length == 1;
     if (targets.length === 0 && targetId) {
-      stop('Layer not found:', targetId);
+      stop$1('Layer not found:', targetId);
     }
     var defs = getStashedVar('defs') || {};
 
@@ -37429,7 +39921,7 @@ ${svg}
         return func.call(ctx, defs, ctx);
       } catch(e) {
         // if (opts.quiet) throw e;
-        stop(e.name, "in expression [" + expr + "]:", e.message);
+        stop$1(e.name, "in expression [" + expr + "]:", e.message);
       }
     };
   }
@@ -37445,7 +39937,7 @@ ${svg}
 
   cmd.define = function(catalog, opts) {
     if (!opts.expression) {
-      stop('Missing an assignment expression');
+      stop$1('Missing an assignment expression');
     }
     var defs = getStashedVar('defs');
     var compiled = compileFeatureExpression(opts.expression, {}, null,
@@ -37600,7 +40092,10 @@ ${svg}
         unmatchedRecords = [],
         joinFields = getFieldsToJoin(dest.getFields(), src.getFields(), opts),
         sumFields = opts.sum_fields || [],
-        copyFields = utils.difference(joinFields, sumFields),
+        calculatedFields = sumFields.concat(opts.interpolate || []),
+        // copy data from fields that are not calculated
+        // (todo: use calc() expressions for interpolation and summing)
+        copyFields = utils.difference(joinFields, calculatedFields),
         joinCounts = new Uint32Array(srcRecords.length),
         matchCount = 0,
         collisionCount = 0,
@@ -37612,7 +40107,7 @@ ${svg}
     // support for duplication of destination records for many-to-one joins
     var duplicateRecords, destShapes;
     if (useDuplication) {
-      if (opts.calc) stop('duplication and calc options cannot be used together');
+      if (opts.calc) stop$1('duplication and calc options cannot be used together');
       duplicateRecords = dest.clone().getRecords();
       destShapes = destLyr.shapes || [];
     }
@@ -37699,7 +40194,7 @@ ${svg}
   function validateFieldNames(arr) {
     arr.forEach(function(name) {
       if (/:(str|num)/.test(name)) {
-        stop("Unsupported use of type hints. Use string-fields= or field-types= options instead");
+        stop$1("Unsupported use of type hints. Use string-fields= or field-types= options instead");
       }
     });
   }
@@ -38502,7 +40997,7 @@ ${svg}
   cmd.dots = function(lyr, arcs, opts) {
     requirePolygonLayer(lyr);
     if (!Array.isArray(opts.fields)) {
-      stop("Missing required fields parameter");
+      stop$1("Missing required fields parameter");
     }
     if (layerHasNonNullData(lyr)) {
       opts.fields.forEach(function(f, i) {
@@ -38745,7 +41240,7 @@ ${svg}
 
   cmd.filterGeom = function(lyr, arcs, opts) {
     if (!layerHasGeometry(lyr)) {
-      stop("Layer is missing geometry");
+      stop$1("Layer is missing geometry");
     }
     if (opts.bbox) {
       filterByBoundsIntersection(lyr, arcs, opts);
@@ -38884,7 +41379,7 @@ ${svg}
     }
 
     if (!filter) {
-      stop("Missing a filter criterion");
+      stop$1("Missing a filter criterion");
     }
 
     utils.repeat(n, function(shapeId) {
@@ -39015,13 +41510,13 @@ ${svg}
   function validateExternalCommand(defn) {
     var targetTypes = ['layer', 'layers'];
     if (typeof defn.command != 'function') {
-      stop('Expected "command" parameter function');
+      stop$1('Expected "command" parameter function');
     }
     if (!defn.target) {
-      stop('Missing required "target" parameter');
+      stop$1('Missing required "target" parameter');
     }
     if (!targetTypes.includes(defn.target)) {
-      stop('Unrecognized command target type:', defn.target);
+      stop$1('Unrecognized command target type:', defn.target);
     }
   }
 
@@ -39029,7 +41524,7 @@ ${svg}
     var name = cmdOpts.name;
     var cmdDefn = externalCommands[name];
     if (!cmdDefn) {
-      stop('Unsupported command:', name);
+      stop$1('Unsupported command:', name);
     }
     var targetType = cmdDefn.target;
     var opts = parseExternalCommand(name, cmdDefn, cmdOpts._);
@@ -39037,13 +41532,13 @@ ${svg}
     var target = targets[0];
     var output;
     if (!target) {
-      stop('Missing a target');
+      stop$1('Missing a target');
     }
     if (targetType == 'layer' && (target.layers.length != 1 || targets.length > 1)) {
-      stop('This command only supports targeting a single layer');
+      stop$1('This command only supports targeting a single layer');
     }
     if (targets.length > 1) {
-      stop("Targetting layers from multiple datasets is not supported");
+      stop$1("Targetting layers from multiple datasets is not supported");
     }
     if (targetType == 'layer') {
       output = cmdDefn.command(target.layers[0], target.dataset, opts.options);
@@ -39058,13 +41553,13 @@ ${svg}
   // TODO: remove restrictions on output data
   function integrateOutput(output, input, catalog, opts) {
     if (!output.dataset || !output.layers || output.layers.length > 0 === false) {
-      stop('Invalid command output');
+      stop$1('Invalid command output');
     }
     if (output.dataset == input.dataset) {
-      stop('External commands are not currently allowed to modify input datasets');
+      stop$1('External commands are not currently allowed to modify input datasets');
     }
     if (output.dataset.layers.length != output.layers.length) {
-      stop('Currently not supported: targetting a subset of output layers');
+      stop$1('Currently not supported: targetting a subset of output layers');
     }
     if (!opts.no_replace) {
       input.layers.forEach(function(lyr) {
@@ -39374,7 +41869,7 @@ ${svg}
 
     } else {
       if (!layerHasGeometry(targetLyr)) {
-        stop("Layer is missing geometric shapes");
+        stop$1("Layer is missing geometric shapes");
       }
       geometries = shapesToBoxGeometries(targetLyr, targetDataset, opts);
     }
@@ -39422,7 +41917,7 @@ ${svg}
     for (var i=0; i<n; i++) {
       result = compiled(i);
       if (!looksLikeBbox(result)) {
-        stop('Invalid bbox value (expected a GeoJSON-type bbox):', result);
+        stop$1('Invalid bbox value (expected a GeoJSON-type bbox):', result);
       }
       geometries.push(bboxToPolygon(result));
     }
@@ -39469,7 +41964,7 @@ ${svg}
     }
     bounds = bounds && applyRectangleOptions(bounds, crsInfo.crs, opts);
     if (!bounds || !bounds.hasBounds()) {
-      stop('Missing rectangle extent');
+      stop$1('Missing rectangle extent');
     }
     var feature = {
       type: 'Feature',
@@ -39558,13 +42053,13 @@ ${svg}
     if (opts.width) {
       widthPx = parseSizeParam(opts.width);
       if (widthPx > 0 === false) {
-        stop('Invalid width parameter:', opts.width);
+        stop$1('Invalid width parameter:', opts.width);
       }
     }
     if (opts.height) {
       heightPx = parseSizeParam(opts.height);
       if (heightPx > 0 === false) {
-        stop('Invalid height parameter:', opts.height);
+        stop$1('Invalid height parameter:', opts.height);
       }
     }
     if (!widthPx && !heightPx) {
@@ -39574,7 +42069,7 @@ ${svg}
 
     if (opts.aspect_ratio) {
       if (opts.aspect_ratio > 0 === false) {
-        stop('Invalid aspect-ratio parameter:', opts.aspect_ratio);
+        stop$1('Invalid aspect-ratio parameter:', opts.aspect_ratio);
       }
       if (!heightPx) {
         heightPx = roundToDigits(widthPx / opts.aspect_ratio, 1);
@@ -39591,7 +42086,7 @@ ${svg}
       requireDatasetsHaveCompatibleCRS(datasets, 'Targets include both projected and unprojected coordinates');
       bbox = getTargetBbox(targets);
       if (!bbox) {
-        stop('Command target is missing geographical bounds');
+        stop$1('Command target is missing geographical bounds');
       }
     }
 
@@ -39599,7 +42094,7 @@ ${svg}
     applyPixelOffsets(bbox, widthPx, heightPx, opts.offset || opts.offsets);
 
     if (bbox[3] - bbox[1] > 0 === false || bbox[2] - bbox[0] > 0 === false) {
-      stop('Frame has a collapsed bbox');
+      stop$1('Frame has a collapsed bbox');
     }
 
     aspectRatio = (bbox[2] - bbox[0]) / (bbox[3] - bbox[1]);
@@ -39702,7 +42197,7 @@ ${svg}
       return [arg[0], arg[0], arg[0], arg[0]];
     }
     if (arg.length != 4) {
-      stop('List of offsets should have 4 values');
+      stop$1('List of offsets should have 4 values');
     }
     return arg;
   }
@@ -39898,7 +42393,7 @@ ${svg}
       var parts = str.split('='),
           dest = utils.trimQuotes(parts[0]),
           src = parts.length > 1 ? utils.trimQuotes(parts[1]) : dest;
-      if (!src || !dest) stop("Invalid name assignment:", str);
+      if (!src || !dest) stop$1("Invalid name assignment:", str);
       memo[src] = dest;
       return memo;
     }, {});
@@ -39928,7 +42423,7 @@ ${svg}
   cmd.filterPoints = function(lyr, dataset, opts) {
     requireSinglePointLayer(lyr);
     if (opts.group_interval > 0 === false) {
-      stop('Expected a positive group_interval parameter');
+      stop$1('Expected a positive group_interval parameter');
     }
 
     // TODO: remove duplication with mapshaper-alpha-shapes.js
@@ -39976,7 +42471,7 @@ ${svg}
       targetLyr.data = new DataTable(targetLyr.shapes.length);
     }
     if (!srcLyr.data) {
-      stop("Can't join a layer that is missing attribute data");
+      stop$1("Can't join a layer that is missing attribute data");
     }
   }
 
@@ -40039,7 +42534,7 @@ ${svg}
   cmd.fuzzyJoin = function(polygonLyr, arcs, src, opts) {
     var pointLyr = src ? src.layer : null;
     if (!pointLyr || !layerHasPoints(pointLyr)) {
-      stop('Missing a point layer to join from');
+      stop$1('Missing a point layer to join from');
     }
     requireDataField(pointLyr, opts.field);
     requirePolygonLayer(polygonLyr);
@@ -40321,10 +42816,10 @@ ${svg}
 
   function rotateDataset(dataset, opts) {
     if (!isLatLngCRS(getDatasetCRS(dataset))) {
-      stop('Command requires a lat-long dataset.');
+      stop$1('Command requires a lat-long dataset.');
     }
     if (!Array.isArray(opts.rotation) || !opts.rotation.length) {
-      stop('Invalid rotation parameter');
+      stop$1('Invalid rotation parameter');
     }
     var rotatePoint = getRotationFunction2(opts.rotation, opts.invert);
     var editor = new DatasetEditor(dataset);
@@ -40552,7 +43047,7 @@ ${svg}
         outputLyr;
 
     if (fields.length > 0 && !lyr.data) {
-      stop("Missing a data table");
+      stop$1("Missing a data table");
     }
 
     addLines(extractOuterLines(lyr.shapes, classifier), 'outer');
@@ -40954,7 +43449,7 @@ ${svg}
 
   function getBBox(dataset) {
     if (!isLatLngCRS(getDatasetCRS(dataset))) {
-      stop('Expected unprojected data');
+      stop$1('Expected unprojected data');
     }
     return getDatasetBounds(dataset).toArray();
   }
@@ -40986,7 +43481,7 @@ ${svg}
     var srcInfo, destInfo, destStr;
     if (opts.init) {
       srcInfo = fetchCrsInfo(opts.init, catalog);
-      if (!srcInfo.crs) stop("Unknown projection source:", opts.init);
+      if (!srcInfo.crs) stop$1("Unknown projection source:", opts.init);
       setDatasetCrsInfo(dataset, srcInfo);
     }
     if (opts.match) {
@@ -41008,7 +43503,7 @@ ${svg}
         target = {info: dataset.info || {}};
 
     if (!destInfo.crs) {
-      stop("Missing projection data");
+      stop$1("Missing projection data");
     }
 
     if (!datasetHasGeometry(dataset)) {
@@ -41019,7 +43514,7 @@ ${svg}
 
     var srcInfo = getDatasetCrsInfo(dataset);
     if (!srcInfo.crs) {
-      stop("Unable to project -- source coordinate system is unknown");
+      stop$1("Unable to project -- source coordinate system is unknown");
     }
 
     if (crsAreEqual(srcInfo.crs, destInfo.crs)) {
@@ -41042,7 +43537,7 @@ ${svg}
 
     projectDataset(target, srcInfo.crs, destInfo.crs, opts || {});
 
-    // dataset.info.prj = destInfo.prj; // may be undefined
+    // dataset.info.wkt1 = destInfo.wkt1; // may be undefined
     setDatasetCrsInfo(target, destInfo);
 
     dataset.arcs = target.arcs;
@@ -41061,8 +43556,8 @@ ${svg}
     if (/\.prj$/i.test(name)) {
       dataset = importFile(name, {});
       if (dataset) {
-        info.prj = dataset.info.prj;
-        info.crs = parsePrj(info.prj);
+        info.wkt1 = dataset.info.wkt1;
+        info.crs = parsePrj(info.wkt1);
       }
       return info;
     }
@@ -41191,7 +43686,7 @@ ${svg}
     if (dataset && !isLatLngDataset(dataset)) {
       // project graticule to match dataset
       destInfo = getDatasetCrsInfo(dataset);
-      if (!destInfo.crs) stop("Coordinate system is unknown, unable to create a graticule");
+      if (!destInfo.crs) stop$1("Coordinate system is unknown, unable to create a graticule");
       graticule = opts.polygon ?
         createProjectedPolygon(destInfo.crs, opts) :
         createProjectedGraticule(destInfo.crs, opts);
@@ -41252,7 +43747,7 @@ ${svg}
   function createGraticule(P, outlined, opts) {
     var interval = opts.interval || 10;
     if (Math.round(interval) != interval || interval > 0 === false) {
-      stop('Invalid interval:', interval);
+      stop$1('Invalid interval:', interval);
     }
     P.lam0 * 180 / Math.PI;
     var precision = interval > 10 ? 1 : 0.5; // degrees between each vertex
@@ -41417,14 +43912,14 @@ ${svg}
 
   cmd.elif = function(job, opts) {
     if (!inControlBlock(job)) {
-      stop('-elif command must be preceded by an -if command.');
+      stop$1('-elif command must be preceded by an -if command.');
     }
     evaluateIf(job, opts);
   };
 
   cmd.else = function(job) {
     if (!inControlBlock(job)) {
-      stop('-else command must be preceded by an -if command.');
+      stop$1('-else command must be preceded by an -if command.');
     }
     if (blockIsComplete(job)) {
       enterInactiveBranch(job);
@@ -41435,7 +43930,7 @@ ${svg}
 
   cmd.endif = function(job) {
     if (!inControlBlock(job)) {
-      stop('-endif command must be preceded by an -if command.');
+      stop$1('-endif command must be preceded by an -if command.');
     }
     leaveBlock(job);
   };
@@ -41469,14 +43964,14 @@ ${svg}
     var content, obj, context;
     // TODO: handle web context
     if (!opts.file) {
-      stop("Missing name of a JS file to load");
+      stop$1("Missing name of a JS file to load");
     }
     // opts.input is an optional file cache (used by applyCommands())
     cli.checkFileExists(opts.file, opts.input);
     content = cli.readFile(opts.file, 'utf8', opts.input);
     if (typeof content == 'string') {
       if (!/^\s*\{[\s\S]*\}\s*$/.test(content)) {
-        stop("Expected a JavaScript object containing key:value pairs");
+        stop$1("Expected a JavaScript object containing key:value pairs");
       }
       try {
         // Try to isolate the imported JS code from the program scope and global environment
@@ -41487,7 +43982,7 @@ ${svg}
         obj = Function('ctx', 'with(ctx) {return (' + content + ');}').call({}, context);
         // obj = eval('(' + content + ')');
       } catch(e) {
-        stop(e.name, 'in JS source:', e.message);
+        stop$1(e.name, 'in JS source:', e.message);
       }
     } else if (typeof content == 'object') {
       // content could be an object if an object is passed to applyCommands()
@@ -41594,7 +44089,7 @@ ${svg}
         ids = [],
         filter;
     if (!opts.expression) {
-      stop("Missing a JS expression for selecting a feature");
+      stop$1("Missing a JS expression for selecting a feature");
     }
     filter = compileFeatureExpression(opts.expression, lyr, arcs);
     utils.repeat(n, function(id) {
@@ -41628,7 +44123,7 @@ ${svg}
     var joinFunction = getPolygonToPolygonFunction(targetLyr, sourceLyr, mosaicIndex, joinOpts);
     var retn = joinTableToLayer(targetLyr, sourceLyr.data, joinFunction, joinOpts);
     if (opts.interpolate) {
-      if (opts.duplication) stop('duplication and interpolate options cannot be used together');
+      if (opts.duplication) stop$1('duplication and interpolate options cannot be used together');
       interpolateFieldsByArea(targetLyr, sourceLyr, mosaicIndex, opts);
     }
     return retn;
@@ -41969,7 +44464,7 @@ ${svg}
     } else if (!srcLyr.geometry_type) {
       destLyr.shapes = pointsFromDataTableAuto(srcLyr.data);
     } else {
-      stop("Expected a polygon or polyline layer");
+      stop$1("Expected a polygon or polyline layer");
     }
     destLyr.geometry_type = 'point';
 
@@ -42042,8 +44537,8 @@ ${svg}
   function interpolatedPointsFromVertices(lyr, dataset, opts) {
     var interval = convertIntervalParam(opts.interval, getDatasetCRS(dataset));
     var coords;
-    if (interval > 0 === false) stop("Invalid interpolation interval:", opts.interval);
-    if (lyr.geometry_type != 'polyline') stop("Expected a polyline layer");
+    if (interval > 0 === false) stop$1("Invalid interpolation interval:", opts.interval);
+    if (lyr.geometry_type != 'polyline') stop$1("Expected a polyline layer");
     return lyr.shapes.map(function(shp, shpId) {
       coords = [];
       if (shp) shp.forEach(nextPart);
@@ -42059,7 +44554,7 @@ ${svg}
   function pointsFromVertices(lyr, arcs, opts) {
     var coords, index;
     if (lyr.geometry_type != "polygon" && lyr.geometry_type != 'polyline') {
-      stop("Expected a polygon or polyline layer");
+      stop$1("Expected a polygon or polyline layer");
     }
     return lyr.shapes.map(function(shp, shpId) {
       coords = [];
@@ -42089,7 +44584,7 @@ ${svg}
   function pointsFromVertices2(lyr, arcs, opts) {
     var coords;
     if (lyr.geometry_type != "polygon" && lyr.geometry_type != 'polyline') {
-      stop("Expected a polygon or polyline layer");
+      stop$1("Expected a polygon or polyline layer");
     }
     return lyr.shapes.map(function(shp, shpId) {
       coords = [];
@@ -42108,7 +44603,7 @@ ${svg}
   function pointsFromEndpoints(lyr, arcs) {
     var coords, index;
     if (lyr.geometry_type != "polygon" && lyr.geometry_type != 'polyline') {
-      stop("Expected a polygon or polyline layer");
+      stop$1("Expected a polygon or polyline layer");
     }
     return lyr.shapes.map(function(shp, shpId) {
       coords = [];
@@ -42197,9 +44692,9 @@ ${svg}
   }
 
   function pointsFromDataTable(data, opts) {
-    if (!data) stop("Layer is missing a data table");
+    if (!data) stop$1("Layer is missing a data table");
     if (!opts.x || !opts.y || !data.fieldExists(opts.x) || !data.fieldExists(opts.y)) {
-      stop("Missing x,y data fields");
+      stop$1("Missing x,y data fields");
     }
 
     return data.getRecords().map(function(rec) {
@@ -42269,7 +44764,7 @@ ${svg}
 
   function validateOpts(opts) {
     if (!opts.point_method) {
-      stop('The "point-method" flag is required for polyline-polygon joins');
+      stop$1('The "point-method" flag is required for polyline-polygon joins');
     }
   }
 
@@ -42607,15 +45102,15 @@ ${svg}
   cmd.join = function(targetLyr, targetDataset, src, opts) {
     var srcType, targetType, retn;
     if (!src || !src.dataset) {
-      stop("Missing a joinable data source");
+      stop$1("Missing a joinable data source");
     }
     if (opts.keys) {
       // join using data in attribute fields
       if (opts.keys.length != 2) {
-        stop("Expected two key fields: a target field and a source field");
+        stop$1("Expected two key fields: a target field and a source field");
       }
       if (!src.layer.data) {
-        stop("Source layer is missing attribute data");
+        stop$1("Source layer is missing attribute data");
       }
       retn = joinAttributesToFeatures(targetLyr, src.layer.data, opts);
     } else {
@@ -42642,7 +45137,7 @@ ${svg}
       } else if (srcType == 'polygon' && targetType == 'polyline') {
         retn = joinPolygonsToPolylines(targetLyr, targetDataset, src, opts);
       } else {
-        stop(utils.format("Unable to join %s geometry to %s geometry",
+        stop$1(utils.format("Unable to join %s geometry to %s geometry",
             srcType || 'null', targetType || 'null'));
       }
     }
@@ -42669,10 +45164,10 @@ ${svg}
   // of two key fields.
   function getJoinByKey(dest, destKey, src, srcKey) {
     if (!dest) {
-      stop('Target layer is missing an attribute table');
+      stop$1('Target layer is missing an attribute table');
     }
     if (!src) {
-      stop('Source layer is missing an attribute table');
+      stop$1('Source layer is missing an attribute table');
     }
     var destRecords = dest.getRecords();
     var srcRecords = src.getRecords();
@@ -42689,7 +45184,7 @@ ${svg}
     validateJoinFieldType(srcKey, srcType);
     validateJoinFieldType(destKey, destType);
     if (srcType != destType) {
-      stop("Join keys have mismatched data types:", destType, "and", srcType);
+      stop$1("Join keys have mismatched data types:", destType, "and", srcType);
     }
     return function(i) {
       var destRec = destRecords[i],
@@ -42705,7 +45200,7 @@ ${svg}
 
   function validateJoinFieldType(field, type) {
     if (!type || type == 'object') {
-      stop('[' + field + '] field has an unsupported data type. Expected string or number.');
+      stop$1('[' + field + '] field has an unsupported data type. Expected string or number.');
     }
   }
 
@@ -42733,7 +45228,7 @@ ${svg}
   cmd.mosaic = function(layers, dataset, opts) {
     var lyr = layers[0];
     if (!lyr || layers.length > 1) {
-      stop('Command takes a single target layer');
+      stop$1('Command takes a single target layer');
     }
     requirePolygonLayer(lyr);
     var nodes = addIntersectionCuts(dataset, opts);
@@ -43202,7 +45697,7 @@ ${svg}
     } else if (params.type == 'hex') {
       grid = getHexGridMaker(params.bbox, params.interval, opts);
     } else {
-      stop('Unsupported grid type');
+      stop$1('Unsupported grid type');
     }
     var features = [];
     for (var i=0, n=grid.cells(); i<n; i++) {
@@ -43230,7 +45725,7 @@ ${svg}
     } else if (params.type == 'hex') {
       geojson = getPointGridGeoJSON(getHexGridCoordinates(params));
     } else {
-      stop('Unsupported grid type');
+      stop$1('Unsupported grid type');
     }
     alignGridToBounds(geojson, params.bbox);
     var gridDataset = importGeoJSON(geojson, {});
@@ -43249,7 +45744,7 @@ ${svg}
       geojson = getHexGridGeoJSON(getHexGridCoordinates(swapGridParams(params)));
       swapPolygonCoords(geojson);
     } else {
-      stop('Unsupported grid type');
+      stop$1('Unsupported grid type');
     }
     alignGridToBounds(geojson, params.bbox);
     dataset = importGeoJSON(geojson, {});
@@ -43280,7 +45775,7 @@ ${svg}
     if (opts.interval) {
       params.interval = convertIntervalParam(opts.interval, crs);
     } else {
-      stop('Missing required interval option');
+      stop$1('Missing required interval option');
     }
     if (opts.bbox) {
       params.bbox = opts.bbox;
@@ -43288,7 +45783,7 @@ ${svg}
       dataset = utils.defaults({layers: layers}, dataset);
       params.bbox = getDatasetBounds(dataset).toArray();
     } else {
-      stop('Missing grid bbox');
+      stop$1('Missing grid bbox');
     }
     params.width = params.bbox[2] - params.bbox[0];
     params.height = params.bbox[3] - params.bbox[1];
@@ -43512,7 +46007,7 @@ ${svg}
     }
 
     if (dx > 0 === false || dy > 0 === false) {
-      stop('Invalid grid parameters');
+      stop$1('Invalid grid parameters');
     }
 
     y = y0;
@@ -43591,7 +46086,7 @@ ${svg}
   cmd.pointToGrid = function(targetLayers, targetDataset, opts) {
     targetLayers.forEach(requirePointLayer);
     if (opts.interval > 0 === false) {
-      stop('Expected a non-negative interval parameter');
+      stop$1('Expected a non-negative interval parameter');
     }
     if (opts.radius > 0 === false) ;
     // var bbox = getLayerBounds(pointLyr).toArray();
@@ -43602,7 +46097,7 @@ ${svg}
     var datasets = [targetDataset];
     var outputLayers = targetLayers.map(function(pointLyr) {
       if (countMultiPartFeatures(pointLyr) > 0) {
-        stop('This command requires single points');
+        stop$1('This command requires single points');
       }
       var dataset = getPolygonDataset(pointLyr, bbox, opts);
       var gridLyr = dataset.layers[0];
@@ -43822,7 +46317,7 @@ ${svg}
       addIntersectionCuts(dataset, opts);
     }
     return layers.map(function(lyr) {
-      if (lyr.geometry_type != 'polyline') stop("Expected a polyline layer");
+      if (lyr.geometry_type != 'polyline') stop$1("Expected a polyline layer");
       if (opts.from_rings) {
         return createPolygonLayerFromRings(lyr, dataset);
       }
@@ -43908,7 +46403,7 @@ ${svg}
       var parts = str.split('='),
           dest = utils.trimQuotes(parts[0]),
           src = utils.trimQuotes(parts[1] || '');
-      if (!src) stop("Invalid name assignment:", str);
+      if (!src) stop$1("Invalid name assignment:", str);
       memo[src] = dest;
       return memo;
     }, {});
@@ -43948,7 +46443,7 @@ ${svg}
     try {
       output = Function('ctx', 'with(ctx) {return (' + expression + ');}').call({}, ctx);
     } catch(e) {
-      stop(e.name, 'in JS source:', e.message);
+      stop$1(e.name, 'in JS source:', e.message);
     }
     return output;
   }
@@ -44039,7 +46534,7 @@ ${svg}
     var globals = getStashedVar('defs');
     var moduleFile, moduleName, mod;
     if (!opts.module) {
-      stop("Missing module name or path to module");
+      stop$1("Missing module name or path to module");
     }
     if (cli.isFile(opts.module)) {
       moduleFile = opts.module;
@@ -44064,7 +46559,7 @@ ${svg}
       }
     } catch(e) {
       if (!mod) {
-        stop('Unable to load external module:', e.message, getErrorDetail(e));
+        stop$1('Unable to load external module:', e.message, getErrorDetail(e));
       }
     }
     if (moduleName || opts.alias) {
@@ -44117,7 +46612,7 @@ ${svg}
     var parsed = parseCommands(str);
     parsed.forEach(function(cmd) {
       if (['i', 'include', 'require', 'external'].includes(cmd.name)) {
-        stop('The ' + cmd.name + ' command cannot be run in the web console.');
+        stop$1('The ' + cmd.name + ' command cannot be run in the web console.');
       }
     });
     return parsed;
@@ -44176,14 +46671,14 @@ ${svg}
   cmd.run = async function(job, targets, opts) {
     var tmp, commands, ctx;
     if (!opts.expression) {
-      stop("Missing expression parameter");
+      stop$1("Missing expression parameter");
     }
     ctx = getBaseContext();
     // io proxy adds ability to add datasets dynamically in a required function
     ctx.io = getIOProxy();
     tmp = await evalTemplateExpression(opts.expression, targets, ctx);
     if (tmp && !utils.isString(tmp)) {
-      stop('Expected a string containing mapshaper commands; received:', tmp);
+      stop$1('Expected a string containing mapshaper commands; received:', tmp);
     }
     if (tmp) {
       // truncate message (command might include a large GeoJSON string in an -i command)
@@ -44210,7 +46705,7 @@ ${svg}
     } else if (opts.type == 'rectangle' && opts.bbox) {
       geojson = getRectangleGeoJSON(opts);
     } else {
-      stop('Missing coordinates parameter');
+      stop$1('Missing coordinates parameter');
     }
     // TODO: project shape if targetDataset is projected
     dataset = importGeoJSON(geojson, {});
@@ -44254,7 +46749,7 @@ ${svg}
 
   function makeCircle(opts) {
     if (opts.radius > 0 === false && opts.radius_angle > 0 === false) {
-      stop('Missing required radius parameter.');
+      stop$1('Missing required radius parameter.');
     }
     var cp = opts.center || [0, 0];
     var radius = opts.radius || getCircleRadiusFromAngle(parseCrsString('wgs84'), opts.radius_angle);
@@ -44267,7 +46762,7 @@ ${svg}
     var coords = opts.coordinates;
     var type, i, x, y;
     if (coords.length >= 2 === false) {
-      stop('Invalid coordinates parameter.');
+      stop$1('Invalid coordinates parameter.');
     }
     for (i=0; i<coords.length; i+= 2) {
       x = coords[i];
@@ -44976,7 +47471,7 @@ ${svg}
     } else if (opts.presimplify) {
       return;
     } else {
-      stop("Missing a simplification amount");
+      stop$1("Missing a simplification amount");
     }
 
     finalizeSimplification(dataset, opts);
@@ -45065,7 +47560,7 @@ ${svg}
     } else if (opts.method == 'weighted_visvalingam') {
       f = Visvalingam.getWeightedSimplifier(opts, opts.spherical);
     } else {
-      stop('Unsupported simplify method:', opts.method);
+      stop$1('Unsupported simplify method:', opts.method);
     }
     return f;
   }
@@ -45137,7 +47632,7 @@ ${svg}
       h = parts.length == 2 ? Number(parts[1]) || 0 : w;
     }
     if (!(w >= 0 && h >= 0 && w + h > 0)) {
-      stop("Invalid simplify resolution:", raw);
+      stop$1("Invalid simplify resolution:", raw);
     }
     return [w, h]; // TODO: validate;
   }
@@ -45227,7 +47722,7 @@ ${svg}
     var repairArcs;
     var arcBounds = arcs && arcs.getBounds();
     if (!arcBounds || !arcBounds.hasBounds()) {
-      stop('Dataset is missing path data');
+      stop$1('Dataset is missing path data');
     }
 
     arcs.flatten(); // bake in any simplification
@@ -45587,7 +48082,7 @@ ${svg}
     }
 
     if (o.headWidth < o.stemWidth && o.headWidth > 0) {
-      stop('Arrow head must be at least as wide as the stem.');
+      stop$1('Arrow head must be at least as wide as the stem.');
     }
     return o;
   }
@@ -45688,7 +48183,7 @@ ${svg}
 
     if (radius > 0 === false) return null;
     if (sides >= 3 === false) {
-      stop(`Invalid number of sides (${sides})`);
+      stop$1(`Invalid number of sides (${sides})`);
     }
     if (d.orientation == 'b' || d.flipped || d.rotated) {
       rotated = !rotated;
@@ -45727,7 +48222,7 @@ ${svg}
 
     if (radius > 0 === false) return null;
     if (points < 5) {
-      stop(`Invalid number of points for a star (${points})`);
+      stop$1(`Invalid number of points for a star (${points})`);
     }
     for (var i=0; i<sides; i++) {
       len = i % 2 == 0 ? minorRadius : radius;
@@ -45959,10 +48454,10 @@ ${svg}
     var pattern = opts.target || '*';
     var targets = catalog.findCommandTargets(pattern, type);
     if (type && 'polygon,polyline,point'.split(',').indexOf(type) == -1) {
-      stop("Invalid layer type:", opts.type);
+      stop$1("Invalid layer type:", opts.type);
     }
     if (targets.length === 0) {
-      stop("No layers were matched (pattern: " + pattern + (type ? ' type: ' + type : '') + ")");
+      stop$1("No layers were matched (pattern: " + pattern + (type ? ' type: ' + type : '') + ")");
     }
     if (opts.name || opts.name === '') {
       // TODO: improve this
@@ -46005,7 +48500,7 @@ ${svg}
 
   cmd.union = function(targetLayers, targetDataset, opts) {
     if (targetLayers.length < 2) {
-      stop('Command requires at least two target layers');
+      stop$1('Command requires at least two target layers');
     }
     targetLayers.forEach(requirePolygonLayer);
 
@@ -46134,10 +48629,10 @@ ${svg}
     var getShapeThreshold;
     var arcThresholds;
     if (layers.length != 1) {
-      stop('Variable simplification requires a single target layer');
+      stop$1('Variable simplification requires a single target layer');
     }
     if (!layerHasPaths(lyr)) {
-      stop('Target layer is missing path data');
+      stop$1('Target layer is missing path data');
     }
 
     opts = getStandardSimplifyOpts(dataset, opts);
@@ -46150,7 +48645,7 @@ ${svg}
     } else if (opts.resolution) {
       getShapeThreshold = getVariableResolutionFunction(opts.resolution, lyr, dataset, opts);
     } else {
-      stop("Missing a simplification expression");
+      stop$1("Missing a simplification expression");
     }
 
     arcThresholds = calculateVariableThresholds(lyr, arcs, getShapeThreshold);
@@ -46247,7 +48742,7 @@ ${svg}
         properties;
 
     if (!type) {
-      stop("Layer has no geometry");
+      stop$1("Layer has no geometry");
     }
 
     if (!lyr.data) {
@@ -46278,7 +48773,7 @@ ${svg}
           h = bounds.height();
 
       if (rows > 0 === false || cols > 0 === false) {
-        stop('Invalid grid parameters');
+        stop$1('Invalid grid parameters');
       }
 
       if (w > 0 === false || h > 0 === false) {
@@ -46456,17 +48951,17 @@ ${svg}
           job.catalog.setDefaultTarget(targetLayers, targetDataset);
 
         } else if (targets.length > 1) {
-          stop("This command does not support targetting layers from different datasets");
+          stop$1("This command does not support targetting layers from different datasets");
         }
       }
 
       if (targets.length === 0) {
         if (opts.target) {
-          stop(utils.format('Missing target: %s\nAvailable layers: %s',
+          stop$1(utils.format('Missing target: %s\nAvailable layers: %s',
               opts.target, getFormattedLayerList(job.catalog)));
         }
         if (!commandAcceptsEmptyTarget(name)) {
-          stop("No data is available");
+          stop$1("No data is available");
         }
       }
 
@@ -46848,7 +49343,7 @@ ${svg}
     });
   }
 
-  var version = "0.6.113";
+  var version = "0.6.115";
 
   // Parse command line args into commands and run them
   // Function takes an optional Node-style callback. A Promise is returned if no callback is given.
@@ -47522,6 +50017,7 @@ ${svg}
     FileImport,
     FilenameUtils,
     FileReader$1,
+    FileFormats,
     FileTypes,
     FilterGeom,
     Frame,

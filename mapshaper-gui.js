@@ -462,6 +462,16 @@
     }
   }
 
+  async function loadScript(src) {
+    return new Promise((resolve, reject) => {
+      const script = document.createElement('script');
+      script.src = src;
+      script.onload = () => resolve(script);
+      script.onerror = () => reject(new Error(`Failed to load script: ${src}`));
+      document.head.appendChild(script);
+    });
+  }
+
   var tagOrIdSelectorRE = /^#?[\w-]+$/;
 
   El.__select = function(selector, root) {
@@ -1934,6 +1944,18 @@
     }
   }
 
+  var geopackagePromise = null;
+
+  async function loadGeopackageLib() {
+    if (!window.modules || !window.modules['@ngageoint/geopackage']) {
+      if (!geopackagePromise) {
+        geopackagePromise = loadScript('geopackage.js');
+      }
+      await geopackagePromise;
+      geopackagePromise = null;
+    }
+  }
+
   // @cb function(<FileList>)
   function DropControl(gui, el, cb) {
     var area = El(el);
@@ -2305,7 +2327,15 @@
     }
 
     async function importDataset(group, importOpts) {
-      var dataset = internal.importContent(group, importOpts);
+      var dataset;
+      if (group.gpkg) {
+        await loadGeopackageLib();
+      }
+      if (group.gpkg || group.fgb) {
+        dataset = await internal.importContentAsync(group, importOpts);
+      } else {
+        dataset = internal.importContent(group, importOpts);
+      }
       if (datasetIsEmpty(dataset)) return false;
       if (group.layername) {
         dataset.layers.forEach(lyr => lyr.name = group.layername);
@@ -2492,6 +2522,8 @@
       }
     }
 
+    // Group multiple files belonging to the same dataset together
+    // (applies to Shapefiles)
     function groupFilesForImport(data, importOpts) {
       var names = importOpts.name ? [importOpts.name] : null;
       if (initialImport && opts.name) { // name from mapshaper-gui --name option
@@ -4551,8 +4583,16 @@
     async function exportMenuSelection(targets) {
       // note: command line "target" option gets ignored
       var opts = getExportOpts();
+      if (opts.format == 'geopackage') {
+        await loadGeopackageLib();
+      }
       opts.active_layer = gui.model.getActiveLayer().layer; // kludge to support restoring active layer in gui
-      var files = await internal.exportTargetLayers(model, targets, opts);
+      try {
+        var files = await internal.exportTargetLayers(model, targets, opts);
+      } catch(e) {
+        console.error(e);
+        throw e;
+      }
       gui.session.layersExported(getTargetLayerIds(), getExportOptsAsString());
       if (files.length == 1 && checkboxOn(clipboardCheckbox)) {
         await saveFileContentToClipboard(files[0].content);
@@ -4674,7 +4714,7 @@
 
     function getExportFormats() {
       // return ['shapefile', 'geojson', 'topojson', 'json', 'dsv', 'kml', 'svg', internal.PACKAGE_EXT];
-      return ['shapefile', 'json', 'geojson', 'dsv', 'topojson', 'kml', internal.PACKAGE_EXT, 'svg'];
+      return ['shapefile', 'json', 'geojson', 'dsv', 'topojson', 'flatgeobuf', 'geopackage', 'kml', internal.PACKAGE_EXT, 'svg'];
     }
 
     function initFormatMenu() {
@@ -5330,7 +5370,7 @@
         if (!lyr.data) {
           missing.push('.dbf');
         }
-        if (!dataset.info.prj && !dataset.info.crs) {
+        if (!dataset.info.wkt1 && !dataset.info.crs) {
           missing.push('.prj');
         }
       }
@@ -6239,6 +6279,8 @@
     throw new NonFatalError(formatLogArgs(arguments));
   };
 
+  var onceMessages = [];
+
   setLoggingForCLI();
 
   function getLoggingSetter() {
@@ -6297,6 +6339,13 @@
   }
 
   function warn() {
+    _warn.apply(null, messageArgs(arguments));
+  }
+
+  function warnOnce() {
+    var str = formatLogArgs(arguments);
+    if (onceMessages.includes(str)) return;
+    onceMessages.push(str);
     _warn.apply(null, messageArgs(arguments));
   }
 
@@ -13587,12 +13636,12 @@ GUI and setting the size and crop of SVG output.</p><div><input type="text" clas
       layers: []
     };
 
-  function loadScript(url, cb) {
-    var script = document.createElement('script');
-    script.onload = cb;
-    script.src = url;
-    document.head.appendChild(script);
-  }
+  // function loadScript(url, cb) {
+  //   var script = document.createElement('script');
+  //   script.onload = cb;
+  //   script.src = url;
+  //   document.head.appendChild(script);
+  // }
 
   function loadStylesheet(url) {
     var el = document.createElement('link');
@@ -13900,34 +13949,33 @@ GUI and setting the size and crop of SVG output.</p><div><input type="text" clas
       return bbox2;
     }
 
-    function initMap() {
+    async function initMap() {
       // var accessToken = (window.location.hostname == 'localhost' ?
       //   params.localhost_key : params.production_key) || params.key;
       if (!enabled() || map || loading) return;
       loading = true;
       loadStylesheet(params.css);
-      loadScript(params.js, function() {
-        map = new window.mapboxgl.Map({
-          logoPosition: 'bottom-left',
-          container: mapEl.node(),
-          // style: activeStyle.url,
-          style: EMPTY_STYLE, // initializing with empty style to support custom styles
-          bounds: getLonLatBounds(),
-          doubleClickZoom: false,
-          dragPan: false,
-          dragRotate: false,
-          scrollZoom: false,
-          interactive: false,
-          keyboard: false,
-          maxPitch: 0,
-          projection: 'mercator', // prevent globe view when zoomed out
-          renderWorldCopies: true // false // false prevents panning off the map
-        });
-        setStyle(activeStyle);
-        map.on('load', function() {
-          loading = false;
-          refresh();
-        });
+      await loadScript(params.js);
+      map = new window.mapboxgl.Map({
+        logoPosition: 'bottom-left',
+        container: mapEl.node(),
+        // style: activeStyle.url,
+        style: EMPTY_STYLE, // initializing with empty style to support custom styles
+        bounds: getLonLatBounds(),
+        doubleClickZoom: false,
+        dragPan: false,
+        dragRotate: false,
+        scrollZoom: false,
+        interactive: false,
+        keyboard: false,
+        maxPitch: 0,
+        projection: 'mercator', // prevent globe view when zoomed out
+        renderWorldCopies: true // false // false prevents panning off the map
+      });
+      setStyle(activeStyle);
+      map.on('load', function() {
+        loading = false;
+        refresh();
       });
     }
 
