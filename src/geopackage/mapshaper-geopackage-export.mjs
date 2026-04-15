@@ -41,22 +41,28 @@ async function createGeoPackageQuietly(geoPackageAPI) {
 }
 
 async function exportLayerToGeoPackage(lyr, dataset, gpkg, opts) {
-  var features, fields, columns;
+  var features, fields, columns, tableName, targetSrs;
   if (!lyr.geometry_type) return;
   features = exportLayerAsGeoJSON(lyr, dataset, opts, true, null)
     .filter(feat => !!(feat && feat.geometry));
   if (features.length === 0) return;
   fields = inferFieldTypes(features);
-  var tableName = getTableName(lyr.name);
+  tableName = getTableName(lyr.name);
   columns = fields.map(function(field) {
     return {
       name: field.name,
       dataType: field.type
     };
   });
-  await gpkg.createFeatureTableFromProperties(tableName, columns);
+  targetSrs = getExportSrs(dataset);
+  await ensureSrsExists(gpkg, targetSrs);
+  // createFeatureTableFromProperties() hardcodes EPSG:4326
+  await gpkg.createFeatureTable(tableName, null, columns, undefined, targetSrs.srs_id);
   var featureDao = gpkg.getFeatureDao(tableName);
-  var srs = normalizeSrsForInsert(featureDao && featureDao.srs);
+  // addGeoJSONFeatureToGeoPackageWithFeatureDaoAndSrs() assumes source
+  // GeoJSON is EPSG:4326 and reprojects unless given EPSG:4326 metadata.
+  // Mapshaper output coords are already in target CRS, so suppress reprojection.
+  var srs = getSourceSrsWithoutReprojection(featureDao && featureDao.srs, targetSrs);
   for (var i = 0; i < features.length; i++) {
     var feat = features[i];
     var normalized = normalizeFeature(feat, fields);
@@ -155,6 +161,143 @@ function normalizeFeature(feature, fields) {
   return removeUndefinedValues(output);
 }
 
+function getExportSrs(dataset) {
+  var info = dataset.info || {};
+  var gpkgCrs = normalizeSrsForInsert(info.geopackage_crs);
+  if (gpkgCrs) {
+    if (!gpkgCrs.definition && info.wkt1) {
+      gpkgCrs.definition = info.wkt1;
+    }
+    return gpkgCrs;
+  }
+  var parsed = parseCrsString(info.crs_string);
+  if (parsed) {
+    if (info.wkt1) parsed.definition = info.wkt1;
+    return parsed;
+  }
+  var fromWkt = parseWktAuthority(info.wkt1);
+  if (fromWkt) {
+    fromWkt.definition = info.wkt1;
+    return fromWkt;
+  }
+  if (info.wkt1) {
+    return buildCustomSrsFromWkt(info.wkt1);
+  }
+  return {
+    srs_id: 4326,
+    organization: 'EPSG',
+    organization_coordsys_id: 4326
+  };
+}
+
+function parseCrsString(str) {
+  if (!str || typeof str != 'string') return null;
+  var match = str.match(/^([a-z]+):(\d+)$/i);
+  if (!match) return null;
+  var org = match[1].toUpperCase();
+  var code = +match[2];
+  if (!code) return null;
+  return {
+    srs_id: code,
+    organization: org,
+    organization_coordsys_id: code
+  };
+}
+
+function parseWktAuthority(wkt) {
+  if (!wkt || typeof wkt != 'string') return null;
+  var rootAuthority = findTopLevelWktAuthority(wkt);
+  if (!rootAuthority) return null;
+  var org = String(rootAuthority[1]).toUpperCase();
+  var code = +rootAuthority[2];
+  if (!code) return null;
+  return {
+    srs_id: code,
+    organization: org,
+    organization_coordsys_id: code
+  };
+}
+
+function findTopLevelWktAuthority(wkt) {
+  var depth = 0;
+  var inQuote = false;
+  for (var i = 0; i < wkt.length; i++) {
+    var c = wkt.charAt(i);
+    if (c == '"') {
+      inQuote = !inQuote;
+      continue;
+    }
+    if (inQuote) continue;
+    if (c == '[') {
+      depth++;
+      continue;
+    }
+    if (c == ']') {
+      depth--;
+      continue;
+    }
+    if (depth != 1) continue;
+    if (wkt.slice(i, i + 10).toUpperCase() == 'AUTHORITY[') {
+      return wkt.slice(i).match(/^AUTHORITY\["([^"]+)","(\d+)"\]/i);
+    }
+  }
+  return null;
+}
+
+function buildCustomSrsFromWkt(wkt) {
+  var srsId = getCustomSrsId(wkt);
+  return {
+    srs_id: srsId,
+    srs_name: getWktName(wkt) || 'CUSTOM_CRS',
+    organization: 'NONE',
+    organization_coordsys_id: srsId,
+    definition: wkt,
+    description: 'Custom projection'
+  };
+}
+
+function getWktName(wkt) {
+  var match = wkt && String(wkt).match(/^(?:PROJCS|GEOGCS)\["([^"]+)"/i);
+  return match ? match[1] : null;
+}
+
+function getCustomSrsId(wkt) {
+  var str = String(wkt || '');
+  var hash = 2166136261; // FNV-1a
+  for (var i = 0; i < str.length; i++) {
+    hash ^= str.charCodeAt(i);
+    hash = (hash * 16777619) >>> 0;
+  }
+  return 100000 + (hash % 900000);
+}
+
+async function ensureSrsExists(gpkg, srs) {
+  if (!srs || !srs.srs_id) return;
+  var existing = gpkg.getSrs(srs.srs_id);
+  if (existing) return;
+  if (!srs.definition) {
+    stop('Unable to export GeoPackage with missing CRS definition for SRS ' + srs.srs_id);
+  }
+  var geopackage = require('@ngageoint/geopackage');
+  var spatialReferenceSystem = new geopackage.SpatialReferenceSystem();
+  spatialReferenceSystem.srs_id = srs.srs_id;
+  spatialReferenceSystem.srs_name = srs.srs_name || (srs.organization + ':' + srs.organization_coordsys_id);
+  spatialReferenceSystem.organization = srs.organization;
+  spatialReferenceSystem.organization_coordsys_id = srs.organization_coordsys_id;
+  spatialReferenceSystem.definition = srs.definition;
+  spatialReferenceSystem.description = srs.description || null;
+  gpkg.createSpatialReferenceSystem(spatialReferenceSystem);
+}
+
+function getSourceSrsWithoutReprojection(tableSrs, fallbackSrs) {
+  var target = normalizeSrsForInsert(tableSrs) || normalizeSrsForInsert(fallbackSrs);
+  return {
+    srs_id: target.srs_id,
+    organization: 'EPSG',
+    organization_coordsys_id: 4326
+  };
+}
+
 function normalizeValue(value, type) {
   if (value === null || value === undefined) return null;
   if (type == 'TEXT' && typeof value != 'string') {
@@ -212,14 +355,14 @@ function isSupportedPropertyName(name) {
 }
 
 function normalizeSrsForInsert(srs) {
-  if (!srs) {
-    return {
-      srs_id: 4326,
-      organization: 'EPSG',
-      organization_coordsys_id: 4326
-    };
-  }
+  if (!srs) return null;
   var normalized = Object.assign({}, srs);
+  if (normalized.srs_id == null && normalized.id != null) {
+    normalized.srs_id = normalized.id;
+  }
+  if (normalized.organization_coordsys_id == null && normalized.code != null) {
+    normalized.organization_coordsys_id = normalized.code;
+  }
   if (normalized.srs_id == null && normalized.srsId != null) {
     normalized.srs_id = normalized.srsId;
   }
@@ -233,6 +376,7 @@ function normalizeSrsForInsert(srs) {
   if (!normalized.organization) {
     normalized.organization = 'EPSG';
   }
+  normalized.organization = String(normalized.organization).toUpperCase();
   if (normalized.organization_coordsys_id == null) {
     normalized.organization_coordsys_id = normalized.srs_id || 4326;
   }

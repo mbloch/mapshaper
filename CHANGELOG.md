@@ -1,3 +1,6 @@
+v0.6.116
+* Fixed GeoPackage i/o bugs.
+
 v0.6.114
 * Support for reading and writing FlatGeobuf files.
 * Support for reading and writing GeoPackage files.
