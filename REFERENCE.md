@@ -1,6 +1,6 @@
 # COMMAND REFERENCE
 
-This documentation applies to version 0.6.112 of mapshaper's command line program. Run `mapshaper -v` to check your version. For an introduction to the command line tool, read [this page](https://github.com/mbloch/mapshaper/wiki/Introduction-to-the-Command-Line-Tool) first.
+This documentation applies to version 0.6.114 of mapshaper's command line program. Run `mapshaper -v` to check your version. For an introduction to the command line tool, read [this page](https://github.com/mbloch/mapshaper/wiki/Introduction-to-the-Command-Line-Tool) first.
 
 ## Command line syntax
 
@@ -126,21 +126,17 @@ mapshaper states.geojson -filter 'ST == "AK"' + name=alaska -o output/ target=*
 
 ### -i (input)
 
-Input one or more files in Shapefile, JSON, DBF or delimited text format.
+Input one or more files in a supported vector data format. Supported file types include: Shapefile, GeoJSON, TopoJSON, GeoPackage, FlatGeobuf, KML, JSON data records, DBF, CSV/TSV.
 
 The `-i` command is assumed if `mapshaper` is followed by an input filename.
 
-JSON files can be GeoJSON, TopoJSON, or an array of data records.
-
-Each named geometry object of a TopoJSON input file is imported as a separate layer.
-
 Mapshaper does not fully support M and Z type Shapefiles. The M and Z data is lost when these files are imported.
 
-By default, multiple input files are processed separately, as if running mapshaper multiple times with the same set of commands. `combine-files` and `merge-files` change this behavior.
+By default, multiple input files are processed separately, as if running mapshaper multiple times with the same set of commands. Using the `combine-files` option, multiple files are imported together as a group of layers with shared topology.
 
 **Options**
 
-`<files>` or `files=`  File(s) to input (space-separated list). Use `-` to import TopoJSON or GeoJSON from `/dev/stdin`. Literal JSON data can also be used instead of a file name.
+`<files>` or `files=`  File(s) to input (space-separated list). Use `-` to import from `/dev/stdin`. Literal JSON data can also be used instead of a file name.
 
 `combine-files` Import multiple files to separate layers with shared topology. Useful for generating a single TopoJSON file containing multiple geometry objects.
 
@@ -195,7 +191,7 @@ Save content of the target layer(s) to a file or files.
 
 `<file>|<directory>|-`  Name of output file or directory. Use `-` to export text-based formats to `/dev/stdout`.
 
-`format=shapefile|geojson|topojson|json|dbf|csv|tsv|svg` Specify output format. If the `format=` option is missing, Mapshaper tries to infer the format from the output filename. If no filename is given, Mapshaper uses the input format. The `json` format is an array of objects containing data properties for each feature.
+`format=shapefile|geojson|topojson|flatgeobuf|geopackage|json|dbf|csv|tsv|svg` Specify output format. If the `format=` option is missing, Mapshaper tries to infer the format from the output filename. If no filename is given, Mapshaper exports to the same format as the input format. The `json` format is an array of objects containing data properties for each feature.
 
 `target=` Specify layer(s) to export (comma-separated list). The default target is the output layer(s) of the previous command. Use `target=*` to select all layers.
 
