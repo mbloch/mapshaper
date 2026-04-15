@@ -27,6 +27,13 @@ const onGeoPackageBundle = {
   }
 };
 
+function onGeoPackageWarn(warning, warn) {
+  // @ngageoint/geopackage includes eval() in bundled vendor code.
+  // Ignore this warning to avoid printing the full minified library source.
+  if (warning.code == 'EVAL') return;
+  warn(warning);
+}
+
 export default [{
   treeshake: false,
   input: 'src/gui/gui.mjs',
@@ -55,6 +62,7 @@ export default [{
 }, {
   treeshake: false,
   input: 'src/mapshaper-gui-geopackage.mjs',
+  onwarn: onGeoPackageWarn,
   output: {
     file: 'www/geopackage.js',
     format: 'iife',

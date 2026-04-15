@@ -1,6 +1,6 @@
 {
   "name": "mapshaper",
-  "version": "0.6.114",
+  "version": "0.6.115",
   "description": "A tool for editing vector datasets for mapping and GIS.",
   "keywords": [
     "shapefile",
@@ -26,7 +26,7 @@
     "test": "mocha test",
     "build": "rollup --config",
     "lint": "eslint --ext mjs src/",
-    "prepublishOnly": "npm lint; npm test; ./pre-publish",
+    "prepublishOnly": "npm test; ./pre-publish",
     "postpublish": "./release_web_ui; ./release_github_version",
     "dev": "rollup --config --watch"
   },
