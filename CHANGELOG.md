@@ -1,3 +1,6 @@
+v0.6.117
+* Partial support for importing SVG files.
+
 v0.6.116
 * Fixed GeoPackage i/o bugs.
 
