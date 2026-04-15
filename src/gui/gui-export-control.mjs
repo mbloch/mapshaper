@@ -4,6 +4,7 @@ import { sortLayersForMenuDisplay, cleanLayerName, formatLayerNameForDisplay } f
 import { El } from './gui-el';
 import { GUI } from './gui-lib';
 import { ClickText2 } from './gui-elements';
+import { loadGeopackageLib } from './gui-import-utils';
 
 export async function saveFileContentToClipboard(content) {
   var str = utils.isString(content) ? content : content.toString();
@@ -150,8 +151,16 @@ export var ExportControl = function(gui) {
   async function exportMenuSelection(targets) {
     // note: command line "target" option gets ignored
     var opts = getExportOpts();
+    if (opts.format == 'geopackage') {
+      await loadGeopackageLib();
+    }
     opts.active_layer = gui.model.getActiveLayer().layer; // kludge to support restoring active layer in gui
-    var files = await internal.exportTargetLayers(model, targets, opts);
+    try {
+      var files = await internal.exportTargetLayers(model, targets, opts);
+    } catch(e) {
+      console.error(e);
+      throw e;
+    }
     gui.session.layersExported(getTargetLayerIds(), getExportOptsAsString());
     if (files.length == 1 && checkboxOn(clipboardCheckbox)) {
       await saveFileContentToClipboard(files[0].content);
@@ -273,7 +282,7 @@ export var ExportControl = function(gui) {
 
   function getExportFormats() {
     // return ['shapefile', 'geojson', 'topojson', 'json', 'dsv', 'kml', 'svg', internal.PACKAGE_EXT];
-    return ['shapefile', 'json', 'geojson', 'dsv', 'topojson', 'flatgeobuf', 'kml', internal.PACKAGE_EXT, 'svg'];
+    return ['shapefile', 'json', 'geojson', 'dsv', 'topojson', 'flatgeobuf', 'geopackage', 'kml', internal.PACKAGE_EXT, 'svg'];
   }
 
   function initFormatMenu() {
