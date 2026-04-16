@@ -1,41 +1,52 @@
 import { getXYHash } from '../topology/mapshaper-hash-function';
-import utils from '../utils/mapshaper-utils';
+import { initializeArray } from '../utils/mapshaper-utils';
 
-// Used for building topology
+// Used for building topology.
+//
+// Every arc is stored as a reference into some source coordinate arrays
+// (srcXX/srcYY) plus an inclusive [start..end] index range. The caller
+// decides which buffer to hand in: the shared xx/yy for normal arcs, or
+// a freshly-allocated merged buffer for split/wrap-around arcs. ArcIndex
+// doesn't care which — no sentinels, no special cases in its own code.
 //
 export function ArcIndex(pointCount) {
   var hashTableSize = Math.floor(pointCount * 0.25 + 1),
       hash = getXYHash(hashTableSize),
       hashTable = new Int32Array(hashTableSize),
       chainIds = [],
-      arcs = [],
+      arcSrcXX = [],
+      arcSrcYY = [],
+      arcStart = [],
+      arcEnd = [],
       arcPoints = 0;
 
-  utils.initializeArray(hashTable, -1);
+  initializeArray(hashTable, -1);
 
-  this.addArc = function(xx, yy) {
-    var end = xx.length - 1,
-        key = hash(xx[end], yy[end]),
-        chainId = hashTable[key],
-        arcId = arcs.length;
+  // Register an arc whose coordinates are `srcXX[start..end]`, `srcYY[start..end]`
+  // (inclusive). Returns the new arc id.
+  this.addArc = function(srcXX, srcYY, start, end) {
+    var arcId = arcSrcXX.length,
+        key = hash(srcXX[end], srcYY[end]);
+    chainIds.push(hashTable[key]);
     hashTable[key] = arcId;
-    arcs.push([xx, yy]);
-    arcPoints += xx.length;
-    chainIds.push(chainId);
+    arcSrcXX.push(srcXX);
+    arcSrcYY.push(srcYY);
+    arcStart.push(start);
+    arcEnd.push(end);
+    arcPoints += end - start + 1;
     return arcId;
   };
 
-  // Look for a previously generated arc with the same sequence of coords, but in the
-  // opposite direction. (This program uses the convention of CW for space-enclosing rings, CCW for holes,
-  // so coincident boundaries should contain the same points in reverse sequence).
+  // Look for a previously generated arc with the same sequence of coords, but
+  // in the opposite direction. (This program uses the convention of CW for
+  // space-enclosing rings, CCW for holes, so coincident boundaries should
+  // contain the same points in reverse sequence.)
   //
   this.findDuplicateArc = function(xx, yy, start, end, getNext, getPrev) {
-    // First, look for a reverse match
     var arcId = findArcNeighbor(xx, yy, start, end, getNext);
     if (arcId === null) {
-      // Look for forward match
-      // (Abnormal topology, but we're accepting it because in-the-wild
-      // Shapefiles sometimes have duplicate paths)
+      // Look for forward match (abnormal topology, but we accept it because
+      // in-the-wild Shapefiles sometimes have duplicate paths).
       arcId = findArcNeighbor(xx, yy, end, start, getPrev);
     } else {
       arcId = ~arcId;
@@ -47,17 +58,14 @@ export function ArcIndex(pointCount) {
     var next = getNext(start),
         key = hash(xx[start], yy[start]),
         arcId = hashTable[key],
-        arcX, arcY, len;
-
+        sx, sy, s, e;
     while (arcId != -1) {
-      // check endpoints and one segment...
-      // it would be more rigorous but slower to identify a match
-      // by comparing all segments in the coordinate sequence
-      arcX = arcs[arcId][0];
-      arcY = arcs[arcId][1];
-      len = arcX.length;
-      if (arcX[0] === xx[end] && arcX[len-1] === xx[start] && arcX[len-2] === xx[next] &&
-          arcY[0] === yy[end] && arcY[len-1] === yy[start] && arcY[len-2] === yy[next]) {
+      sx = arcSrcXX[arcId]; sy = arcSrcYY[arcId];
+      s = arcStart[arcId];  e = arcEnd[arcId];
+      // Check endpoints and one segment. A more rigorous match would compare
+      // every segment, but that's slower and this is sufficient in practice.
+      if (sx[s] === xx[end] && sx[e] === xx[start] && sx[e - 1] === xx[next] &&
+          sy[s] === yy[end] && sy[e] === yy[start] && sy[e - 1] === yy[next]) {
         return arcId;
       }
       arcId = chainIds[arcId];
@@ -66,22 +74,31 @@ export function ArcIndex(pointCount) {
   }
 
   this.getVertexData = function() {
-    var xx = new Float64Array(arcPoints),
-        yy = new Float64Array(arcPoints),
-        nn = new Uint32Array(arcs.length),
+    var arcCount = arcSrcXX.length,
+        destXX = new Float64Array(arcPoints),
+        destYY = new Float64Array(arcPoints),
+        nn = new Uint32Array(arcCount),
         copied = 0,
-        arc, len;
-    for (var i=0, n=arcs.length; i<n; i++) {
-      arc = arcs[i];
-      len = arc[0].length;
-      utils.copyElements(arc[0], 0, xx, copied, len);
-      utils.copyElements(arc[1], 0, yy, copied, len);
+        sx, sy, s, e, len, i;
+    for (i = 0; i < arcCount; i++) {
+      sx = arcSrcXX[i]; sy = arcSrcYY[i];
+      s = arcStart[i];  e = arcEnd[i];
+      len = e - s + 1;
+      if (sx.subarray) {
+        destXX.set(sx.subarray(s, e + 1), copied);
+        destYY.set(sy.subarray(s, e + 1), copied);
+      } else {
+        for (var k = 0; k < len; k++) {
+          destXX[copied + k] = sx[s + k];
+          destYY[copied + k] = sy[s + k];
+        }
+      }
       nn[i] = len;
       copied += len;
     }
     return {
-      xx: xx,
-      yy: yy,
+      xx: destXX,
+      yy: destYY,
       nn: nn
     };
   };
