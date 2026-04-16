@@ -90,7 +90,7 @@ describe('mapshaper-geopackage-import.js', function () {
   });
 
   it('imports a projected multi-layer GeoPackage file', async function () {
-    var gpkgPath = fixPath('data/geodatabase/Oregon.gpkg');
+    var gpkgPath = fixPath('data/geopackage/Oregon.gpkg');
     var dataset = await api.internal.importFileAsync(gpkgPath, {});
     assert.equal(dataset.layers.length, 2);
 
@@ -109,5 +109,51 @@ describe('mapshaper-geopackage-import.js', function () {
     assert(dataset.info.wkt1.includes('NAD83'));
     assert.equal(dataset.info.geopackage_crs.organization, 'EPSG');
     assert.equal(dataset.info.geopackage_crs.organization_coordsys_id, 2269);
+  });
+
+  it('imports a GDAL LOCAL_CS GeoPackage without setting wkt1/crs_string', async function () {
+    var gpkgPath = fixPath('data/geopackage/null_crs_gdal.gpkg');
+    var dataset = await api.internal.importFileAsync(gpkgPath, {});
+    assert.equal(dataset.layers.length, 1);
+    assert.equal(dataset.layers[0].name, 'land');
+    assert.equal(dataset.info.wkt1, undefined);
+    assert.equal(dataset.info.crs_string, undefined);
+  });
+
+  it('imports mixed CRS tables as separate datasets', async function () {
+    var gpkgPath = fixPath('data/geopackage/mixed_crs.gpkg');
+    var result = await api.internal.importFileAsync(gpkgPath, {});
+    assert(Array.isArray(result), 'result is an array of datasets');
+    assert.equal(result.length, 2);
+    var layerNames = result.reduce(function(memo, dataset) {
+      return memo.concat(dataset.layers.map(function(lyr) { return lyr.name; }));
+    }, []).sort();
+    assert.deepEqual(layerNames, ['oregon_2269', 'oregon_4326']);
+  });
+
+  it('groups missing-CRS tables into projected and unprojected datasets', async function () {
+    var gpkgPath = fixPath('data/geopackage/missing_crs_mixed_ranges.gpkg');
+    var result = await api.internal.importFileAsync(gpkgPath, {});
+    assert(Array.isArray(result), 'result is an array of datasets');
+    assert.equal(result.length, 2);
+    var groupedLayers = result.map(function(dataset) {
+      return dataset.layers.map(function(lyr) { return lyr.name; }).sort();
+    }).sort(function(a, b) {
+      return a.join(',').localeCompare(b.join(','));
+    });
+    assert.deepEqual(groupedLayers, [['OR_land_2269'], ['OR_land_4326']]);
+  });
+
+  it('imports rows from GeoPackage tables with null geometries', async function () {
+    var gpkgPath = fixPath('data/geopackage/data_only_tables.gpkg');
+    var dataset = await api.internal.importFileAsync(gpkgPath, {});
+    var oregon = dataset.layers.find(lyr => lyr.name == 'oregon_cities');
+    var washington = dataset.layers.find(lyr => lyr.name == 'washington_cities');
+    assert(oregon, 'oregon_cities layer exists');
+    assert(washington, 'washington_cities layer exists');
+    assert.equal(oregon.geometry_type, null);
+    assert.equal(washington.geometry_type, null);
+    assert.equal(oregon.data.size(), 5);
+    assert.equal(washington.data.size(), 6);
   });
 });

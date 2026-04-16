@@ -24,12 +24,18 @@ import { formatVersionedFileName } from '../io/mapshaper-export';
 
 cmd.importFiles = async function(catalog, opts) {
   var files = opts.files || [];
-  var dataset;
+  var dataset, datasets, target;
 
   if (opts.stdin) {
     dataset = await importFileAsync('/dev/stdin', opts);
-    catalog.addDataset(dataset);
-    return dataset;
+    datasets = normalizeImportedDatasets(dataset);
+    catalog.addDatasets(datasets);
+    if (datasets.length > 1) {
+      catalog.setDefaultTargets(datasets.map(function(ds) {
+        return {dataset: ds, layers: ds.layers};
+      }));
+    }
+    return normalizeImportedTarget(datasets);
   }
 
   if (files.length > 0 === false) {
@@ -64,14 +70,21 @@ cmd.importFiles = async function(catalog, opts) {
   } else {
     dataset = await importFilesTogetherAsync(files, opts);
   }
+  datasets = normalizeImportedDatasets(dataset);
 
   if (opts.merge_files && files.length > 1) {
     // TODO: deprecate and remove this option (use -merge-layers cmd instead)
-    dataset.layers = cmd.mergeLayers(dataset.layers);
+    datasets[0].layers = cmd.mergeLayers(datasets[0].layers);
   }
 
-  catalog.addDataset(dataset);
-  return dataset;
+  catalog.addDatasets(datasets);
+  if (datasets.length > 1) {
+    catalog.setDefaultTargets(datasets.map(function(ds) {
+      return {dataset: ds, layers: ds.layers};
+    }));
+  }
+  target = normalizeImportedTarget(datasets);
+  return target;
 };
 
 // replace any JSON data objects with filenames and cache the data
@@ -275,17 +288,20 @@ async function _importFileAsync(path, opts) {
 // Import multiple files to a single dataset
 export function importFilesTogether(files, opts) {
   var unbuiltTopology = false;
-  var datasets = files.map(function(fname) {
+  var datasets = files.reduce(function(memo, fname) {
     // import without topology or snapping
     var importOpts = utils.defaults({no_topology: true, snap: false, snap_interval: null, files: [fname]}, opts);
-    var dataset = importFile(fname, importOpts);
+    var imported = normalizeImportedDatasets(importFile(fname, importOpts));
     // check if dataset contains non-topological paths
     // TODO: may also need to rebuild topology if multiple topojson files are merged
-    if (dataset.arcs && dataset.arcs.size() > 0 && dataset.info.input_formats[0] != 'topojson') {
-      unbuiltTopology = true;
-    }
-    return dataset;
-  });
+    imported.forEach(function(dataset) {
+      if (dataset.arcs && dataset.arcs.size() > 0 && dataset.info.input_formats[0] != 'topojson') {
+        unbuiltTopology = true;
+      }
+      memo.push(dataset);
+    });
+    return memo;
+  }, []);
   var combined = mergeDatasets(datasets);
   // Build topology, if needed
   // TODO: consider updating topology of TopoJSON files instead of concatenating arcs
@@ -303,11 +319,13 @@ export async function importFilesTogetherAsync(files, opts) {
   for (var fname of files) {
     // import without topology or snapping
     var importOpts = utils.defaults({no_topology: true, snap: false, snap_interval: null, files: [fname]}, opts);
-    var dataset = await importFileAsync(fname, importOpts);
-    if (dataset.arcs && dataset.arcs.size() > 0 && dataset.info.input_formats[0] != 'topojson') {
-      unbuiltTopology = true;
-    }
-    datasets.push(dataset);
+    var imported = normalizeImportedDatasets(await importFileAsync(fname, importOpts));
+    imported.forEach(function(dataset) {
+      if (dataset.arcs && dataset.arcs.size() > 0 && dataset.info.input_formats[0] != 'topojson') {
+        unbuiltTopology = true;
+      }
+      datasets.push(dataset);
+    });
   }
   var combined = mergeDatasets(datasets);
   if (unbuiltTopology && !opts.no_topology) {
@@ -315,6 +333,19 @@ export async function importFilesTogetherAsync(files, opts) {
     buildTopology(combined);
   }
   return combined;
+}
+
+function normalizeImportedDatasets(datasetOrArray) {
+  return Array.isArray(datasetOrArray) ? datasetOrArray : [datasetOrArray];
+}
+
+function normalizeImportedTarget(datasets) {
+  if (datasets.length == 1) return datasets[0];
+  return {
+    layers: datasets.reduce(function(memo, dataset) {
+      return memo.concat(dataset.layers);
+    }, [])
+  };
 }
 
 function getUnsupportedFileMessage(path) {

@@ -1,5 +1,5 @@
 
-.PHONY: svg
+.PHONY: svg geopackage
 
 svg:
 	mapshaper two_states.json  name=states \
@@ -15,3 +15,6 @@ svg:
 	-style label-text=STATE_NAME text-anchor=middle dy=3 fill=black font-size=13 \
 	-target '*' \
 	-o svg/two_states.svg
+
+geopackage:
+	mapshaper 

@@ -5,6 +5,8 @@ import utils from '../utils/mapshaper-utils';
 import require from '../mapshaper-require';
 import { initProjLibrary } from '../crs/mapshaper-projections';
 import { runningInBrowser } from '../mapshaper-env';
+import { probablyDecimalDegreeBounds } from '../geom/mapshaper-latlon';
+import { getDatasetBounds } from '../dataset/mapshaper-dataset-utils';
 
 export async function importGeoPackage(content, optsArg) {
   var opts = optsArg || {};
@@ -19,9 +21,16 @@ export async function importGeoPackage(content, optsArg) {
   }
 
   if (utils.isString(content)) {
-    source = content;
+    if (!runningInBrowser()) {
+      tmpPath = copyGeoPackageTempFile(content);
+      sanitizeGeoPackageCrsMetadata(tmpPath);
+      source = tmpPath;
+    } else {
+      source = content;
+    }
   } else if (!runningInBrowser()) {
     tmpPath = writeGeoPackageTempFile(content);
+    sanitizeGeoPackageCrsMetadata(tmpPath);
     source = tmpPath;
   } else {
     source = new Uint8Array(content);
@@ -42,8 +51,7 @@ export async function importGeoPackage(content, optsArg) {
   }
 
   await initProjLib(datasets);
-
-  return mergeDatasets(datasets);
+  return mergeGeoPackageDatasets(datasets);
 }
 
 function writeGeoPackageTempFile(content) {
@@ -54,6 +62,28 @@ function writeGeoPackageTempFile(content) {
   var tmpPath = path.join(os.tmpdir(), 'mapshaper-gpkg-import-' + unique + '.gpkg');
   fs.writeFileSync(tmpPath, Buffer.from(new Uint8Array(content)));
   return tmpPath;
+}
+
+function copyGeoPackageTempFile(filepath) {
+  var fs = require('fs');
+  var os = require('os');
+  var path = require('path');
+  var unique = Date.now() + '-' + process.pid + '-' + Math.random().toString(36).slice(2);
+  var tmpPath = path.join(os.tmpdir(), 'mapshaper-gpkg-import-' + unique + '.gpkg');
+  fs.copyFileSync(filepath, tmpPath);
+  return tmpPath;
+}
+
+function sanitizeGeoPackageCrsMetadata(filepath) {
+  var Database = require('better-sqlite3');
+  var db = new Database(filepath);
+  try {
+    // GDAL may write LOCAL_CS definitions that proj4 can't parse.
+    // Normalize to 'undefined' so GeoPackageAPI.open() won't throw.
+    db.prepare("UPDATE gpkg_spatial_ref_sys SET definition = 'undefined' WHERE definition LIKE 'LOCAL_CS[%'").run();
+  } finally {
+    db.close();
+  }
 }
 
 function removeTempGeoPackageFile(filepath) {
@@ -80,7 +110,68 @@ function readFeatureTableDatasets(gpkg, opts) {
   });
 }
 
-function convertOrgToProj4(crs) {
+function mergeGeoPackageDatasets(datasets) {
+  var groups = groupGeoPackageDatasets(datasets);
+  var merged = groups.map(function(group) {
+    return group.length == 1 ? group[0] : mergeDatasets(group);
+  });
+  return merged.length == 1 ? merged[0] : merged;
+}
+
+function groupGeoPackageDatasets(datasets) {
+  var index = {};
+  datasets.forEach(function(dataset) {
+    var key = getGeoPackageDatasetGroupKey(dataset);
+    if (!index[key]) index[key] = [];
+    index[key].push(dataset);
+  });
+  return Object.keys(index).map(function(key) {
+    return index[key];
+  });
+}
+
+function getGeoPackageDatasetGroupKey(dataset) {
+  var info = dataset.info || {};
+  var crs = info.geopackage_crs || null;
+  if (isDataOnlyDataset(dataset)) {
+    return 'data-only';
+  }
+  if (crs) {
+    var org = normalizeCrsOrg(crs.organization);
+    var code = normalizeNumericCode(crs.organization_coordsys_id);
+    if (isTrustedCrsAuthority(org) && code !== null && !(org == 'NONE' && code <= 0)) {
+      return 'crs:' + org + ':' + code;
+    }
+    if (isUsableWkt1Definition(crs.definition)) {
+      return 'wkt:' + crs.definition;
+    }
+  }
+  return probablyDecimalDegreeBounds(getDatasetBounds(dataset)) ?
+    'unknown:unprojected' :
+    'unknown:projected';
+}
+
+function isDataOnlyDataset(dataset) {
+  return (dataset.layers || []).every(function(lyr) {
+    return !lyr.geometry_type;
+  });
+}
+
+function normalizeNumericCode(val) {
+  var n = +val;
+  return Number.isFinite(n) ? n : null;
+}
+
+function normalizeCrsOrg(org) {
+  if (!org || org == 'undefined') return null;
+  return String(org).toUpperCase();
+}
+
+function isTrustedCrsAuthority(org) {
+  return org == 'EPSG' || org == 'ESRI' || org == 'NONE';
+}
+
+function convertOrgToProjString(crs) {
   var org = crs.organization.toLowerCase();
   if (org == 'epsg' || org == 'esri') {
     return org + ':' + crs.organization_coordsys_id;
@@ -108,12 +199,23 @@ function readFeatureTable(gpkg, table, opts) {
   });
   dataset.info = dataset.info || {};
   dataset.info.geopackage_crs = crs;
-  if (crs?.definition && crs.definition !== 'undefined') {
+  if (isUsableWkt1Definition(crs?.definition)) {
     dataset.info.wkt1 = crs.definition;
   } else if (crs?.organization && crs.organization !== 'undefined') {
-    dataset.info.crs_string = convertOrgToProj4(crs);
+    var crsString = convertOrgToProjString(crs);
+    if (crsString) {
+      dataset.info.crs_string = crsString;
+    }
   }
   return dataset;
+}
+
+function isUsableWkt1Definition(defn) {
+  if (!defn || defn === 'undefined') return false;
+  // GDAL may emit LOCAL_CS["Undefined SRS", ...] for null CRS;
+  // this is not a usable projected/geographic CRS for mapshaper.
+  if (/^\s*LOCAL_CS\[/i.test(defn)) return false;
+  return true;
 }
 
 function convertFeatureRow(featureRow) {
@@ -131,8 +233,7 @@ function convertFeatureRow(featureRow) {
     // skip feature if geometry can't be parsed
     return null;
   }
-  if (!feature.geometry) return null;
-  var geomColName = featureRow.geometryColumn.name;
+  var geomColName = featureRow.geometryColumn && featureRow.geometryColumn.name;
   for (var key in featureRow.values) {
     if (Object.prototype.hasOwnProperty.call(featureRow.values, key) &&
         key !== geomColName) {
