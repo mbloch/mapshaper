@@ -19,7 +19,7 @@
     get expandoBuffer () { return expandoBuffer; },
     get extend () { return extend$1; },
     get extendBuffer () { return extendBuffer; },
-    get find () { return find; },
+    get find () { return find$1; },
     get findMedian () { return findMedian; },
     get findQuantile () { return findQuantile; },
     get findRankByValue () { return findRankByValue; },
@@ -442,7 +442,7 @@
     }, true);
   }
 
-  function find(arr, test, ctx) {
+  function find$1(arr, test, ctx) {
     var matches = arr.filter(test, ctx);
     return matches.length === 0 ? null : matches[0];
   }
@@ -6399,41 +6399,52 @@
     };
   }
 
-  // Used for building topology
+  // Used for building topology.
+  //
+  // Every arc is stored as a reference into some source coordinate arrays
+  // (srcXX/srcYY) plus an inclusive [start..end] index range. The caller
+  // decides which buffer to hand in: the shared xx/yy for normal arcs, or
+  // a freshly-allocated merged buffer for split/wrap-around arcs. ArcIndex
+  // doesn't care which — no sentinels, no special cases in its own code.
   //
   function ArcIndex(pointCount) {
     var hashTableSize = Math.floor(pointCount * 0.25 + 1),
         hash = getXYHash(hashTableSize),
         hashTable = new Int32Array(hashTableSize),
         chainIds = [],
-        arcs = [],
+        arcSrcXX = [],
+        arcSrcYY = [],
+        arcStart = [],
+        arcEnd = [],
         arcPoints = 0;
 
-    utils.initializeArray(hashTable, -1);
+    initializeArray(hashTable, -1);
 
-    this.addArc = function(xx, yy) {
-      var end = xx.length - 1,
-          key = hash(xx[end], yy[end]),
-          chainId = hashTable[key],
-          arcId = arcs.length;
+    // Register an arc whose coordinates are `srcXX[start..end]`, `srcYY[start..end]`
+    // (inclusive). Returns the new arc id.
+    this.addArc = function(srcXX, srcYY, start, end) {
+      var arcId = arcSrcXX.length,
+          key = hash(srcXX[end], srcYY[end]);
+      chainIds.push(hashTable[key]);
       hashTable[key] = arcId;
-      arcs.push([xx, yy]);
-      arcPoints += xx.length;
-      chainIds.push(chainId);
+      arcSrcXX.push(srcXX);
+      arcSrcYY.push(srcYY);
+      arcStart.push(start);
+      arcEnd.push(end);
+      arcPoints += end - start + 1;
       return arcId;
     };
 
-    // Look for a previously generated arc with the same sequence of coords, but in the
-    // opposite direction. (This program uses the convention of CW for space-enclosing rings, CCW for holes,
-    // so coincident boundaries should contain the same points in reverse sequence).
+    // Look for a previously generated arc with the same sequence of coords, but
+    // in the opposite direction. (This program uses the convention of CW for
+    // space-enclosing rings, CCW for holes, so coincident boundaries should
+    // contain the same points in reverse sequence.)
     //
     this.findDuplicateArc = function(xx, yy, start, end, getNext, getPrev) {
-      // First, look for a reverse match
       var arcId = findArcNeighbor(xx, yy, start, end, getNext);
       if (arcId === null) {
-        // Look for forward match
-        // (Abnormal topology, but we're accepting it because in-the-wild
-        // Shapefiles sometimes have duplicate paths)
+        // Look for forward match (abnormal topology, but we accept it because
+        // in-the-wild Shapefiles sometimes have duplicate paths).
         arcId = findArcNeighbor(xx, yy, end, start, getPrev);
       } else {
         arcId = ~arcId;
@@ -6445,17 +6456,14 @@
       var next = getNext(start),
           key = hash(xx[start], yy[start]),
           arcId = hashTable[key],
-          arcX, arcY, len;
-
+          sx, sy, s, e;
       while (arcId != -1) {
-        // check endpoints and one segment...
-        // it would be more rigorous but slower to identify a match
-        // by comparing all segments in the coordinate sequence
-        arcX = arcs[arcId][0];
-        arcY = arcs[arcId][1];
-        len = arcX.length;
-        if (arcX[0] === xx[end] && arcX[len-1] === xx[start] && arcX[len-2] === xx[next] &&
-            arcY[0] === yy[end] && arcY[len-1] === yy[start] && arcY[len-2] === yy[next]) {
+        sx = arcSrcXX[arcId]; sy = arcSrcYY[arcId];
+        s = arcStart[arcId];  e = arcEnd[arcId];
+        // Check endpoints and one segment. A more rigorous match would compare
+        // every segment, but that's slower and this is sufficient in practice.
+        if (sx[s] === xx[end] && sx[e] === xx[start] && sx[e - 1] === xx[next] &&
+            sy[s] === yy[end] && sy[e] === yy[start] && sy[e - 1] === yy[next]) {
           return arcId;
         }
         arcId = chainIds[arcId];
@@ -6464,22 +6472,31 @@
     }
 
     this.getVertexData = function() {
-      var xx = new Float64Array(arcPoints),
-          yy = new Float64Array(arcPoints),
-          nn = new Uint32Array(arcs.length),
+      var arcCount = arcSrcXX.length,
+          destXX = new Float64Array(arcPoints),
+          destYY = new Float64Array(arcPoints),
+          nn = new Uint32Array(arcCount),
           copied = 0,
-          arc, len;
-      for (var i=0, n=arcs.length; i<n; i++) {
-        arc = arcs[i];
-        len = arc[0].length;
-        utils.copyElements(arc[0], 0, xx, copied, len);
-        utils.copyElements(arc[1], 0, yy, copied, len);
+          sx, sy, s, e, len, i;
+      for (i = 0; i < arcCount; i++) {
+        sx = arcSrcXX[i]; sy = arcSrcYY[i];
+        s = arcStart[i];  e = arcEnd[i];
+        len = e - s + 1;
+        if (sx.subarray) {
+          destXX.set(sx.subarray(s, e + 1), copied);
+          destYY.set(sy.subarray(s, e + 1), copied);
+        } else {
+          for (var k = 0; k < len; k++) {
+            destXX[copied + k] = sx[s + k];
+            destYY[copied + k] = sy[s + k];
+          }
+        }
         nn[i] = len;
         copied += len;
       }
       return {
-        xx: xx,
-        yy: yy,
+        xx: destXX,
+        yy: destYY,
         nn: nn
       };
     };
@@ -6578,17 +6595,14 @@
     var pointCount = xx.length,
         chainIds = initPointChains(xx, yy),
         pathIds = initPathIds(pointCount, nn),
+        pathIsRing = initPathIsRing(nn, xx, yy),
+        isNode = computeIsNode(nn, xx, yy, chainIds, pathIds, pathIsRing),
         index = new ArcIndex(pointCount),
-        slice = usingTypedArrays() ? xx.subarray : Array.prototype.slice,
         paths, retn;
     paths = convertPaths(nn);
     retn = index.getVertexData();
     retn.paths = paths;
     return retn;
-
-    function usingTypedArrays() {
-      return !!(xx.subarray && yy.subarray);
-    }
 
     function convertPaths(nn) {
       var paths = [],
@@ -6602,28 +6616,28 @@
       return paths;
     }
 
+    // Fast neighbour lookups using the precomputed pathIsRing cache.
+    // Used by findDuplicateArc (via addEdge/addSplitEdge) and by addRing.
     function nextPoint(id) {
       var partId = pathIds[id],
           nextId = id + 1;
       if (nextId < pointCount && pathIds[nextId] === partId) {
-        return id + 1;
+        return nextId;
       }
-      var len = nn[partId];
-      return sameXY(id, id - len + 1) ? id - len + 2 : -1;
+      return pathIsRing[partId] ? id - nn[partId] + 2 : -1;
     }
 
     function prevPoint(id) {
       var partId = pathIds[id],
           prevId = id - 1;
       if (prevId >= 0 && pathIds[prevId] === partId) {
-        return id - 1;
+        return prevId;
       }
-      var len = nn[partId];
-      return sameXY(id, id + len - 1) ? id + len - 2 : -1;
+      return pathIsRing[partId] ? id + nn[partId] - 2 : -1;
     }
 
-    function sameXY(a, b) {
-      return xx[a] == xx[b] && yy[a] == yy[b];
+    function pointIsArcEndpoint(id) {
+      return isNode[id] === 1;
     }
 
     // Convert a non-topological path to one or more topological arcs
@@ -6666,49 +6680,9 @@
       return arcIds;
     }
 
-    // Test if a point @id is an endpoint of a topological path
-    function pointIsArcEndpoint(id) {
-      var id2 = chainIds[id],
-          prev = prevPoint(id),
-          next = nextPoint(id),
-          prev2, next2;
-      if (prev == -1 || next == -1) {
-        // @id is an endpoint if it is the start or end of an open path
-        return true;
-      }
-      while (id != id2) {
-        prev2 = prevPoint(id2);
-        next2 = nextPoint(id2);
-        if (prev2 == -1 || next2 == -1 || brokenEdge(prev, next, prev2, next2)) {
-          // there is a discontinuity at @id -- point is arc endpoint
-          return true;
-        }
-        id2 = chainIds[id2];
-      }
-      return false;
-    }
-
-    // a and b are two vertices with the same x, y coordinates
-    // test if the segments on either side of them are also identical
-    function brokenEdge(aprev, anext, bprev, bnext) {
-      var apx = xx[aprev],
-          anx = xx[anext],
-          bpx = xx[bprev],
-          bnx = xx[bnext],
-          apy = yy[aprev],
-          any = yy[anext],
-          bpy = yy[bprev],
-          bny = yy[bnext];
-      if (apx == bnx && anx == bpx && apy == bny && any == bpy ||
-          apx == bpx && anx == bnx && apy == bpy && any == bny) {
-        return false;
-      }
-      return true;
-    }
-
     function mergeArcParts(src, startId, endId, startId2, endId2) {
       var len = endId - startId + endId2 - startId2 + 2,
-          ArrayClass = usingTypedArrays() ? Float64Array : Array,
+          ArrayClass = src.subarray ? Float64Array : Array,
           dest = new ArrayClass(len),
           j = 0, i;
       for (i=startId; i <= endId; i++) {
@@ -6723,8 +6697,12 @@
     function addSplitEdge(start1, end1, start2, end2) {
       var arcId = index.findDuplicateArc(xx, yy, start1, end2, nextPoint, prevPoint);
       if (arcId === null) {
-        arcId = index.addArc(mergeArcParts(xx, start1, end1, start2, end2),
-            mergeArcParts(yy, start1, end1, start2, end2));
+        // Coordinates for a split (wrap-around) edge don't form a contiguous
+        // slice of xx/yy, so we build a standalone buffer and hand it to the
+        // index as the arc's source.
+        var mx = mergeArcParts(xx, start1, end1, start2, end2),
+            my = mergeArcParts(yy, start1, end1, start2, end2);
+        arcId = index.addArc(mx, my, 0, mx.length - 1);
       }
       return arcId;
     }
@@ -6733,8 +6711,7 @@
       // search for a matching edge that has already been generated
       var arcId = index.findDuplicateArc(xx, yy, start, end, nextPoint, prevPoint);
       if (arcId === null) {
-        arcId = index.addArc(slice.call(xx, start, end + 1),
-            slice.call(yy, start, end + 1));
+        arcId = index.addArc(xx, yy, start, end);
       }
       return arcId;
     }
@@ -6775,6 +6752,87 @@
       }
     }
     return pathIds;
+  }
+
+  // Per-path flag: 1 if the path is a closed ring (first vertex coincides with
+  // last vertex), else 0. Computed once so that prevPoint()/nextPoint() don't
+  // need to call sameXY() at path boundaries.
+  //
+  function initPathIsRing(nn, xx, yy) {
+    var pathCount = nn.length,
+        pathIsRing = new Uint8Array(pathCount),
+        pstart = 0, len;
+    for (var p = 0; p < pathCount; p++) {
+      len = nn[p];
+      if (len > 1 &&
+          xx[pstart] === xx[pstart + len - 1] &&
+          yy[pstart] === yy[pstart + len - 1]) {
+        pathIsRing[p] = 1;
+      }
+      pstart += len;
+    }
+    return pathIsRing;
+  }
+
+  // Decide, for every point, whether it is a topological node (an arc
+  // endpoint). Being a node is a property of the entire coincident-point
+  // chain: all points sharing a location agree on the answer. So we walk
+  // each chain at most once — O(n) total — instead of doing the walk
+  // independently at every point (O(n * K), quadratic per chain).
+  //
+  // A chain's points are nodes iff:
+  //   - any member has a missing neighbour (open-path endpoint), or
+  //   - two members disagree on the unordered pair of neighbour coords.
+  //
+  function computeIsNode(nn, xx, yy, chainIds, pathIds, pathIsRing) {
+    var n = xx.length,
+        isNode = new Uint8Array(n),
+        done = new Uint8Array(n);
+
+    function nextPoint(id) {
+      var part = pathIds[id], nid = id + 1;
+      if (nid < n && pathIds[nid] === part) return nid;
+      return pathIsRing[part] ? id - nn[part] + 2 : -1;
+    }
+
+    function prevPoint(id) {
+      var part = pathIds[id], pid = id - 1;
+      if (pid >= 0 && pathIds[pid] === part) return pid;
+      return pathIsRing[part] ? id + nn[part] - 2 : -1;
+    }
+
+    for (var i = 0; i < n; i++) {
+      if (done[i]) continue;
+      var result = chainIsBroken(i);
+      var id = i;
+      do {
+        isNode[id] = result;
+        done[id] = 1;
+        id = chainIds[id];
+      } while (id !== i);
+    }
+    return isNode;
+
+    // Returns 1 if the chain containing `start` has any broken neighbour
+    // signature (i.e. all members are nodes), else 0.
+    function chainIsBroken(start) {
+      var prev = prevPoint(start),
+          next = nextPoint(start);
+      if (prev === -1 || next === -1) return 1;
+      var refPX = xx[prev], refPY = yy[prev],
+          refNX = xx[next], refNY = yy[next];
+      var id = chainIds[start];
+      while (id !== start) {
+        var p = prevPoint(id), q = nextPoint(id);
+        if (p === -1 || q === -1) return 1;
+        var px = xx[p], py = yy[p], qx = xx[q], qy = yy[q];
+        var fwd = px === refPX && py === refPY && qx === refNX && qy === refNY;
+        var rev = px === refNX && py === refNY && qx === refPX && qy === refPY;
+        if (!fwd && !rev) return 1;
+        id = chainIds[id];
+      }
+      return 0;
+    }
   }
 
   function replaceArcIds(src, replacements) {
@@ -18724,13 +18782,13 @@
     // default is true iff layers contain attributes
     return utils.some(layers, function(lyr) {
       var fields = lyr.data ? lyr.data.getFields() : [];
-      var haveData = useFeatureProperties(fields, opts);
+      var haveData = useFeatureProperties$1(fields, opts);
       var haveId = !!getIdField(fields, opts);
       return haveData || haveId;
     });
   }
 
-  function useFeatureProperties(fields, opts) {
+  function useFeatureProperties$1(fields, opts) {
     return !(opts.drop_table || opts.cut_table || fields.length === 0 ||
         fields.length == 1 && fields[0] == GeoJSON.ID_FIELD);
   }
@@ -18739,7 +18797,7 @@
     var fields = table ? table.getFields() : [],
         idField = getIdField(fields, opts),
         properties, records;
-    if (!useFeatureProperties(fields, opts)) {
+    if (!useFeatureProperties$1(fields, opts)) {
       return null;
     }
     records = table.getRecords();
@@ -24500,12 +24558,10 @@ ${svg}
   }
 
   async function exportLayerToGeoPackage(lyr, dataset, gpkg, opts) {
-    var features, fields, columns, tableName, targetSrs;
+    var fields, columns, tableName, targetSrs, state;
     if (!lyr.geometry_type) return;
-    features = exportLayerAsGeoJSON(lyr, dataset, opts, true, null)
-      .filter(feat => !!(feat && feat.geometry));
-    if (features.length === 0) return;
-    fields = inferFieldTypes(features);
+    fields = inferFieldTypesFromLayer(lyr, dataset, opts);
+    if (!fields) return;
     tableName = getTableName(lyr.name);
     columns = fields.map(function(field) {
       return {
@@ -24522,8 +24578,11 @@ ${svg}
     // GeoJSON is EPSG:4326 and reprojects unless given EPSG:4326 metadata.
     // Mapshaper output coords are already in target CRS, so suppress reprojection.
     var srs = getSourceSrsWithoutReprojection(featureDao && featureDao.srs, targetSrs);
-    for (var i = 0; i < features.length; i++) {
-      var feat = features[i];
+    state = initLayerFeatureExportState(lyr, dataset, opts);
+    var featureIndex = 0;
+    for (var i = 0; i < state.count; i++) {
+      var feat = exportFeatureAtIndex(state, i);
+      if (!feat || !feat.geometry) continue;
       var normalized = normalizeFeature(feat, fields);
       try {
         await gpkg.addGeoJSONFeatureToGeoPackageWithFeatureDaoAndSrs(
@@ -24533,8 +24592,9 @@ ${svg}
         );
       } catch (e) {
         throw Error('GeoPackage insert failed at layer "' + tableName +
-          '", feature ' + i + ': ' + e.message);
+          '", feature ' + featureIndex + ': ' + e.message);
       }
+      featureIndex++;
     }
   }
 
@@ -24561,9 +24621,11 @@ ${svg}
     stop$1('Unable to export GeoPackage bytes');
   }
 
-  function inferFieldTypes(features) {
+  function inferFieldTypesFromLayer(lyr, dataset, opts) {
+    var sawFeature = false;
     var index = {};
-    features.forEach(function(feat) {
+    forEachLayerExportFeature(lyr, dataset, opts, function(feat) {
+      sawFeature = true;
       var props = feat.properties || {};
       Object.keys(props).forEach(function(name) {
         if (!isSupportedPropertyName(name)) return;
@@ -24577,9 +24639,77 @@ ${svg}
         }
       });
     });
+    if (!sawFeature) return null;
     return Object.keys(index).map(function(name) {
       return {name: name, type: index[name]};
     });
+  }
+
+  function forEachLayerExportFeature(lyr, dataset, opts, cb) {
+    var state = initLayerFeatureExportState(lyr, dataset, opts);
+    var featureIndex = 0;
+    for (var i = 0; i < state.count; i++) {
+      var feature = exportFeatureAtIndex(state, i);
+      if (!feature || !feature.geometry) continue;
+      cb(feature, featureIndex++, i);
+    }
+  }
+
+  function initLayerFeatureExportState(lyr, dataset, opts) {
+    var records = lyr.data ? lyr.data.getRecords() : null;
+    var fields = lyr.data ? lyr.data.getFields() : [];
+    var shapes = lyr.shapes || null;
+    if (records && shapes && records.length !== shapes.length) {
+      stop$1('Mismatch between number of properties and number of shapes');
+    }
+    return {
+      lyr: lyr,
+      dataset: dataset,
+      opts: opts || {},
+      fields: fields,
+      records: records,
+      shapes: shapes,
+      count: Math.max(records ? records.length : 0, shapes ? shapes.length : 0),
+      idField: getIdField(fields, opts || {}),
+      useProps: useFeatureProperties(fields, opts || {})
+    };
+  }
+
+  function exportFeatureAtIndex(state, i) {
+    var shape = state.shapes ? state.shapes[i] : null;
+    var geom = shape ? GeoJSON.exporters[state.lyr.geometry_type](shape, state.dataset.arcs, state.opts) : null;
+    var rec = state.records ? state.records[i] : null;
+    var props = null;
+    if (state.useProps && rec) {
+      if (state.idField == GeoJSON.ID_FIELD) {
+        props = Object.assign({}, rec);
+        delete props[state.idField];
+      } else {
+        props = rec;
+      }
+    }
+    var feat = GeoJSON.toFeature(geom, props);
+    if (state.idField && rec) {
+      feat.id = state.idField in rec ? rec[state.idField] : null;
+    }
+    if (state.opts.no_null_props && !feat.properties) {
+      feat.properties = {};
+    }
+    if (Array.isArray(state.opts.hoist) && feat.properties) {
+      feat.properties = Object.assign({}, feat.properties);
+      state.opts.hoist.forEach(function(field) {
+        if (Object.prototype.hasOwnProperty.call(feat.properties, field)) {
+          feat[field] = feat.properties[field];
+          delete feat.properties[field];
+        }
+      });
+    }
+    return feat;
+  }
+
+  function useFeatureProperties(fields, opts) {
+    return !(opts.drop_table || opts.cut_table || fields.length === 0 ||
+        fields.length == 1 && fields[0] == GeoJSON.ID_FIELD);
   }
 
   function inferValueType(value) {
@@ -24600,10 +24730,6 @@ ${svg}
   }
 
   function normalizeFeature(feature, fields) {
-    fields.reduce(function(memo, field) {
-      memo[field.name] = field.type;
-      return memo;
-    }, {});
     var props = {};
     fields.forEach(function(field) {
       var value = feature.properties && Object.prototype.hasOwnProperty.call(feature.properties, field.name) ?
@@ -24622,11 +24748,8 @@ ${svg}
 
   function getExportSrs(dataset) {
     var info = dataset.info || {};
-    var gpkgCrs = normalizeSrsForInsert(info.geopackage_crs);
+    var gpkgCrs = resolveExportSrs(normalizeSrsForInsert(info.geopackage_crs), info.wkt1);
     if (gpkgCrs) {
-      if (!gpkgCrs.definition && info.wkt1) {
-        gpkgCrs.definition = info.wkt1;
-      }
       return gpkgCrs;
     }
     var parsed = parseCrsString(info.crs_string);
@@ -24642,11 +24765,81 @@ ${svg}
     if (info.wkt1) {
       return buildCustomSrsFromWkt(info.wkt1);
     }
+    // If the dataset has an in-memory CRS object (e.g. set by -proj) but no
+    // metadata source, derive a WKT1 definition from it so a projected CRS
+    // isn't lost on round-trip.
+    var derivedWkt = getWktFromDatasetCrs(dataset);
+    if (derivedWkt) {
+      return buildCustomSrsFromWkt(derivedWkt);
+    }
+    // Unknown CRS fallback:
+    // - probable decimal-degree coordinates => allow WGS84 assumption
+    // - otherwise use undefined cartesian CRS (null/unknown projection)
+    if (probablyDecimalDegreeBounds(getDatasetBounds(dataset))) {
+      return {
+        srs_id: 4326,
+        organization: 'EPSG',
+        organization_coordsys_id: 4326
+      };
+    }
     return {
-      srs_id: 4326,
-      organization: 'EPSG',
-      organization_coordsys_id: 4326
+      srs_id: -1,
+      srs_name: 'Undefined Cartesian SRS',
+      organization: 'NONE',
+      organization_coordsys_id: -1
     };
+  }
+
+  function getWktFromDatasetCrs(dataset) {
+    // Only derive from an explicitly-set CRS object (e.g. from -proj).
+    // This avoids building a custom SRS for lat/lon datasets that were
+    // auto-defaulted to WGS84 by getDatasetCRS().
+    var info = dataset && dataset.info;
+    if (!info || !info.crs) return null;
+    try {
+      return crsToPrj(info.crs) || null;
+    } catch (e) {
+      return null;
+    }
+  }
+
+  function resolveExportSrs(srs, fallbackWkt) {
+    if (!srs) return null;
+    var out = Object.assign({}, srs);
+    if (!out.definition && fallbackWkt) {
+      out.definition = fallbackWkt;
+    }
+    if (out.srs_id == null && out.organization_coordsys_id != null) {
+      out.srs_id = out.organization_coordsys_id;
+    }
+    if (out.srs_id == null) {
+      var fromWkt = parseWktAuthority(out.definition);
+      if (fromWkt) {
+        out.srs_id = fromWkt.srs_id;
+        if (!out.organization) out.organization = fromWkt.organization;
+        if (out.organization_coordsys_id == null) {
+          out.organization_coordsys_id = fromWkt.organization_coordsys_id;
+        }
+      }
+    }
+    if (out.srs_id == null && out.definition) {
+      var custom = buildCustomSrsFromWkt(out.definition);
+      out.srs_id = custom.srs_id;
+      if (!out.srs_name) out.srs_name = custom.srs_name;
+      if (!out.organization) out.organization = custom.organization;
+      if (out.organization_coordsys_id == null) {
+        out.organization_coordsys_id = custom.organization_coordsys_id;
+      }
+      if (!out.description) out.description = custom.description;
+    }
+    if (out.srs_id == null) return null;
+    if (out.organization_coordsys_id == null) {
+      out.organization_coordsys_id = out.srs_id;
+    }
+    if (!out.organization) {
+      out.organization = 'NONE';
+    }
+    return out;
   }
 
   function parseCrsString(str) {
@@ -24740,9 +24933,10 @@ ${svg}
     var geopackage = require$1('@ngageoint/geopackage');
     var spatialReferenceSystem = new geopackage.SpatialReferenceSystem();
     spatialReferenceSystem.srs_id = srs.srs_id;
-    spatialReferenceSystem.srs_name = srs.srs_name || (srs.organization + ':' + srs.organization_coordsys_id);
-    spatialReferenceSystem.organization = srs.organization;
-    spatialReferenceSystem.organization_coordsys_id = srs.organization_coordsys_id;
+    spatialReferenceSystem.srs_name = srs.srs_name || (String(srs.organization || 'NONE') + ':' + srs.organization_coordsys_id);
+    spatialReferenceSystem.organization = srs.organization || 'NONE';
+    spatialReferenceSystem.organization_coordsys_id = srs.organization_coordsys_id != null ?
+      srs.organization_coordsys_id : srs.srs_id;
     spatialReferenceSystem.definition = srs.definition;
     spatialReferenceSystem.description = srs.description || null;
     gpkg.createSpatialReferenceSystem(spatialReferenceSystem);
@@ -24751,7 +24945,9 @@ ${svg}
   function getSourceSrsWithoutReprojection(tableSrs, fallbackSrs) {
     var target = normalizeSrsForInsert(tableSrs) || normalizeSrsForInsert(fallbackSrs);
     return {
-      srs_id: target.srs_id,
+      // geopackage writer rejects negative srs_id for source metadata;
+      // use 0 (undefined geographic) when target is undefined cartesian (-1).
+      srs_id: target.srs_id < 0 ? 0 : target.srs_id,
       organization: 'EPSG',
       organization_coordsys_id: 4326
     };
@@ -24828,18 +25024,21 @@ ${svg}
     if (normalized.organization_coordsys_id == null && normalized.organizationCoordsysId != null) {
       normalized.organization_coordsys_id = normalized.organizationCoordsysId;
     }
-    if (normalized.srs_id == null) {
-      normalized.srs_id = normalized.organization_coordsys_id || 4326;
+    if (normalized.srs_id != null) {
+      normalized.srs_id = +normalized.srs_id;
+      if (!Number.isFinite(normalized.srs_id)) {
+        normalized.srs_id = null;
+      }
     }
-    normalized.srs_id = +normalized.srs_id || 4326;
-    if (!normalized.organization) {
-      normalized.organization = 'EPSG';
+    if (normalized.organization) {
+      normalized.organization = String(normalized.organization).toUpperCase();
     }
-    normalized.organization = String(normalized.organization).toUpperCase();
-    if (normalized.organization_coordsys_id == null) {
-      normalized.organization_coordsys_id = normalized.srs_id || 4326;
+    if (normalized.organization_coordsys_id != null) {
+      normalized.organization_coordsys_id = +normalized.organization_coordsys_id;
+      if (!Number.isFinite(normalized.organization_coordsys_id)) {
+        normalized.organization_coordsys_id = null;
+      }
     }
-    normalized.organization_coordsys_id = +normalized.organization_coordsys_id || 4326;
     return normalized;
   }
 
@@ -26868,6 +27067,10 @@ ${svg}
       .option('field-types', fieldTypesOpt)
       .option('name', {
         describe: 'rename the imported layer(s)'
+      })
+      .option('layers', {
+        type: 'strings',
+        describe: '[GPKG] comma-sep. list of layers to import'
       })
       .option('geometry-type', {
         // undocumented; GeoJSON import rejects all but one kind of geometry
@@ -31463,24 +31666,35 @@ ${svg}
     var geopackage = require$1('@ngageoint/geopackage');
     var gpkg;
     var datasets;
-    var source;
     var tmpPath = null;
 
     if (!geopackage || !geopackage.GeoPackageAPI) {
       stop$1('GeoPackage library is not loaded');
     }
 
-    if (utils.isString(content)) {
-      source = content;
-    } else if (!runningInBrowser()) {
-      tmpPath = writeGeoPackageTempFile(content);
-      source = tmpPath;
-    } else {
-      source = new Uint8Array(content);
-    }
-    gpkg = await geopackage.GeoPackageAPI.open(source);
+    ({gpkg, tmpPath} = await openGeoPackage(content, geopackage));
+    var availableLayers;
+    var filterApplied;
     try {
-      datasets = readFeatureTableDatasets(gpkg, opts);
+      try {
+        ({datasets, availableLayers, filterApplied} = readFeatureTableDatasets(gpkg, opts));
+      } catch (e) {
+        if (!runningInBrowser() && isLocalCsProjError(e)) {
+          gpkg.close();
+          if (tmpPath) {
+            sanitizeGeoPackageCrsMetadata(tmpPath);
+          } else if (utils.isString(content)) {
+            tmpPath = copyGeoPackageTempFile(content);
+            sanitizeGeoPackageCrsMetadata(tmpPath);
+          } else {
+            throw e;
+          }
+          gpkg = await geopackage.GeoPackageAPI.open(tmpPath);
+          ({datasets, availableLayers, filterApplied} = readFeatureTableDatasets(gpkg, opts));
+        } else {
+          throw e;
+        }
+      }
     } finally {
       gpkg.close();
       removeTempGeoPackageFile(tmpPath);
@@ -31489,13 +31703,72 @@ ${svg}
     if (datasets.length === 0) {
       return {
         layers: [{name: '', data: null}],
-        info: {}
+        info: {
+          _gpkg_available_layers: availableLayers,
+          _gpkg_placeholder: !!filterApplied
+        }
       };
     }
 
     await initProjLib(datasets);
+    var merged = mergeGeoPackageDatasets(datasets);
+    var mergedArr = Array.isArray(merged) ? merged : [merged];
+    mergedArr.forEach(function(ds) {
+      ds.info = ds.info || {};
+      ds.info._gpkg_available_layers = availableLayers;
+    });
+    return merged;
+  }
 
-    return mergeDatasets(datasets);
+  async function openGeoPackage(content, geopackage) {
+    var source;
+    var tmpPath = null;
+    if (utils.isString(content)) {
+      if (!runningInBrowser()) {
+        try {
+          return {
+            gpkg: await geopackage.GeoPackageAPI.open(content),
+            tmpPath: null
+          };
+        } catch (e) {
+          if (!isLocalCsProjError(e)) throw e;
+          tmpPath = copyGeoPackageTempFile(content);
+          sanitizeGeoPackageCrsMetadata(tmpPath);
+          return {
+            gpkg: await geopackage.GeoPackageAPI.open(tmpPath),
+            tmpPath: tmpPath
+          };
+        }
+      }
+      source = content;
+    } else if (!runningInBrowser()) {
+      tmpPath = writeGeoPackageTempFile(content);
+      try {
+        return {
+          gpkg: await geopackage.GeoPackageAPI.open(tmpPath),
+          tmpPath: tmpPath
+        };
+      } catch (e) {
+        if (!isLocalCsProjError(e)) throw e;
+        sanitizeGeoPackageCrsMetadata(tmpPath);
+        return {
+          gpkg: await geopackage.GeoPackageAPI.open(tmpPath),
+          tmpPath: tmpPath
+        };
+      }
+    } else {
+      source = new Uint8Array(content);
+    }
+    return {
+      gpkg: await geopackage.GeoPackageAPI.open(source),
+      tmpPath: null
+    };
+  }
+
+  function isLocalCsProjError(err) {
+    var msg = err && err.message ? String(err.message) : '';
+    return msg.includes("havn't handled \"_\" in keyword yet") ||
+      msg.includes('LOCAL_CS');
   }
 
   function writeGeoPackageTempFile(content) {
@@ -31504,8 +31777,38 @@ ${svg}
     var path = require$1('path');
     var unique = Date.now() + '-' + process.pid + '-' + Math.random().toString(36).slice(2);
     var tmpPath = path.join(os.tmpdir(), 'mapshaper-gpkg-import-' + unique + '.gpkg');
-    fs.writeFileSync(tmpPath, Buffer.from(new Uint8Array(content)));
+    if (Buffer.isBuffer(content)) {
+      fs.writeFileSync(tmpPath, content);
+    } else if (content instanceof Uint8Array) {
+      fs.writeFileSync(tmpPath, Buffer.from(content.buffer, content.byteOffset, content.byteLength));
+    } else if (content instanceof ArrayBuffer) {
+      fs.writeFileSync(tmpPath, Buffer.from(content));
+    } else {
+      fs.writeFileSync(tmpPath, Buffer.from(new Uint8Array(content)));
+    }
     return tmpPath;
+  }
+
+  function copyGeoPackageTempFile(filepath) {
+    var fs = require$1('fs');
+    var os = require$1('os');
+    var path = require$1('path');
+    var unique = Date.now() + '-' + process.pid + '-' + Math.random().toString(36).slice(2);
+    var tmpPath = path.join(os.tmpdir(), 'mapshaper-gpkg-import-' + unique + '.gpkg');
+    fs.copyFileSync(filepath, tmpPath);
+    return tmpPath;
+  }
+
+  function sanitizeGeoPackageCrsMetadata(filepath) {
+    var Database = require$1('better-sqlite3');
+    var db = new Database(filepath);
+    try {
+      // GDAL may write LOCAL_CS definitions that proj4 can't parse.
+      // Normalize to 'undefined' so GeoPackageAPI.open() won't throw.
+      db.prepare("UPDATE gpkg_spatial_ref_sys SET definition = 'undefined' WHERE definition LIKE 'LOCAL_CS[%'").run();
+    } finally {
+      db.close();
+    }
   }
 
   function removeTempGeoPackageFile(filepath) {
@@ -31526,13 +31829,207 @@ ${svg}
   }
 
   function readFeatureTableDatasets(gpkg, opts) {
-    var tables = gpkg.getFeatureTables() || [];
-    return tables.map(function(table) {
+    var selected = getSelectedGeoPackageLayers(opts);
+    var availableLayers = gpkg.getFeatureTables() || [];
+    var tables = filterGeoPackageTables(availableLayers, selected);
+    var filterApplied = Array.isArray(selected) && selected.length > 0;
+    var datasets = tables.map(function(table) {
       return readFeatureTable(gpkg, table, opts);
+    });
+    return {datasets: datasets, availableLayers: availableLayers, filterApplied: filterApplied};
+  }
+
+  function getSelectedGeoPackageLayers(opts) {
+    if (!opts) return null;
+    return opts.gpkg_layers || opts.layers || null;
+  }
+
+  function filterGeoPackageTables(tables, selected) {
+    if (!Array.isArray(selected) || selected.length === 0) return tables;
+    var index = selected.reduce(function(memo, name) {
+      memo[name] = true;
+      return memo;
+    }, {});
+    return tables.filter(function(name) {
+      return !!index[name];
     });
   }
 
-  function convertOrgToProj4(crs) {
+  function mergeGeoPackageDatasets(datasets) {
+    var groups = groupGeoPackageDatasets(datasets);
+    var merged = groups.reduce(function(memo, group) {
+      return memo.concat(mergeGeoPackageDatasetGroup(group));
+    }, []);
+    return merged.length == 1 ? merged[0] : merged;
+  }
+
+  function mergeGeoPackageDatasetGroup(group) {
+    var pathDatasets = [];
+    var pointDatasets = [];
+    var dataDatasets = [];
+
+    group.forEach(function(dataset) {
+      var kind = getDatasetGeometryKind(dataset);
+      if (kind == 'path') {
+        pathDatasets.push(dataset);
+      } else if (kind == 'point') {
+        pointDatasets.push(dataset);
+      } else {
+        dataDatasets.push(dataset);
+      }
+    });
+
+    var output = [];
+    if (dataDatasets.length > 0) {
+      output.push(dataDatasets.length == 1 ? dataDatasets[0] : mergeDatasets(dataDatasets));
+    }
+    if (pointDatasets.length > 0) {
+      output.push(pointDatasets.length == 1 ? pointDatasets[0] : mergeDatasets(pointDatasets));
+    }
+    if (pathDatasets.length > 0) {
+      var groupedPaths = groupPathDatasetsBySharedArcs(pathDatasets);
+      if (groupedPaths.mergedDataset) {
+        output.push(groupedPaths.mergedDataset);
+      } else {
+        groupedPaths.components.forEach(function(component) {
+          output.push(component.length == 1 ? component[0] : mergeDatasets(component));
+        });
+      }
+    }
+    return output;
+  }
+
+  function groupGeoPackageDatasets(datasets) {
+    var index = {};
+    datasets.forEach(function(dataset) {
+      var key = getGeoPackageDatasetGroupKey(dataset);
+      if (!index[key]) index[key] = [];
+      index[key].push(dataset);
+    });
+    return Object.keys(index).map(function(key) {
+      return index[key];
+    });
+  }
+
+  function getGeoPackageDatasetGroupKey(dataset) {
+    var info = dataset.info || {};
+    var crs = info.geopackage_crs || null;
+    if (isDataOnlyDataset(dataset)) {
+      return 'data-only';
+    }
+    if (crs) {
+      var org = normalizeCrsOrg(crs.organization);
+      var code = normalizeNumericCode(crs.organization_coordsys_id);
+      if (isTrustedCrsAuthority(org) && code !== null && !(org == 'NONE' && code <= 0)) {
+        return 'crs:' + org + ':' + code;
+      }
+      if (isUsableWkt1Definition(crs.definition)) {
+        return 'wkt:' + crs.definition;
+      }
+    }
+    return probablyDecimalDegreeBounds(getDatasetBounds(dataset)) ?
+      'unknown:unprojected' :
+      'unknown:projected';
+  }
+
+  function isDataOnlyDataset(dataset) {
+    return (dataset.layers || []).every(function(lyr) {
+      return !lyr.geometry_type;
+    });
+  }
+
+  function getDatasetGeometryKind(dataset) {
+    if (isDataOnlyDataset(dataset)) return 'data';
+    if (datasetHasPaths(dataset)) return 'path';
+    var hasPoints = (dataset.layers || []).some(function(lyr) {
+      return layerHasPoints(lyr);
+    });
+    return hasPoints ? 'point' : 'data';
+  }
+
+  function groupPathDatasetsBySharedArcs(datasets) {
+    if (datasets.length < 2) {
+      return {
+        mergedDataset: datasets[0] || null,
+        components: []
+      };
+    }
+    var copy = datasets.map(copyDatasetForExport);
+    var merged = mergeDatasets(copy);
+    if (!merged.arcs || merged.arcs.size() === 0) {
+      return {
+        mergedDataset: null,
+        components: datasets.map(function(dataset) { return [dataset]; })
+      };
+    }
+    buildTopology(merged);
+    var parent = datasets.map(function(_, i) { return i; });
+    var arcOwner = new Map();
+    merged.layers.forEach(function(layer, layerIdx) {
+      var seen = new Set();
+      forEachArcId(layer.shapes || [], function(arcId) {
+        seen.add(arcId < 0 ? ~arcId : arcId);
+      });
+      seen.forEach(function(absId) {
+        if (!arcOwner.has(absId)) {
+          arcOwner.set(absId, layerIdx);
+        } else {
+          union(parent, layerIdx, arcOwner.get(absId));
+        }
+      });
+    });
+    var components = {};
+    datasets.forEach(function(dataset, i) {
+      var root = find(parent, i);
+      if (!components[root]) components[root] = [];
+      components[root].push(dataset);
+    });
+    var grouped = Object.keys(components).map(function(key) {
+      return components[key];
+    });
+    if (grouped.length == 1) {
+      return {
+        mergedDataset: merged,
+        components: []
+      };
+    }
+    return {
+      mergedDataset: null,
+      components: grouped
+    };
+  }
+
+  function find(parent, i) {
+    var p = parent[i];
+    if (p !== i) {
+      parent[i] = find(parent, p);
+    }
+    return parent[i];
+  }
+
+  function union(parent, a, b) {
+    var ra = find(parent, a);
+    var rb = find(parent, b);
+    if (ra !== rb) {
+      parent[rb] = ra;
+    }
+  }
+
+  function normalizeNumericCode(val) {
+    var n = +val;
+    return Number.isFinite(n) ? n : null;
+  }
+
+  function normalizeCrsOrg(org) {
+    if (!org || org == 'undefined') return null;
+    return String(org).toUpperCase();
+  }
+
+  function isTrustedCrsAuthority(org) {
+    return org == 'EPSG' || org == 'ESRI' || org == 'NONE';
+  }
+
+  function convertOrgToProjString(crs) {
     var org = crs.organization.toLowerCase();
     if (org == 'epsg' || org == 'esri') {
       return org + ':' + crs.organization_coordsys_id;
@@ -31560,12 +32057,23 @@ ${svg}
     });
     dataset.info = dataset.info || {};
     dataset.info.geopackage_crs = crs;
-    if (crs?.definition && crs.definition !== 'undefined') {
+    if (isUsableWkt1Definition(crs?.definition)) {
       dataset.info.wkt1 = crs.definition;
     } else if (crs?.organization && crs.organization !== 'undefined') {
-      dataset.info.crs_string = convertOrgToProj4(crs);
+      var crsString = convertOrgToProjString(crs);
+      if (crsString) {
+        dataset.info.crs_string = crsString;
+      }
     }
     return dataset;
+  }
+
+  function isUsableWkt1Definition(defn) {
+    if (!defn || defn === 'undefined') return false;
+    // GDAL may emit LOCAL_CS["Undefined SRS", ...] for null CRS;
+    // this is not a usable projected/geographic CRS for mapshaper.
+    if (/^\s*LOCAL_CS\[/i.test(defn)) return false;
+    return true;
   }
 
   function convertFeatureRow(featureRow) {
@@ -31583,8 +32091,7 @@ ${svg}
       // skip feature if geometry can't be parsed
       return null;
     }
-    if (!feature.geometry) return null;
-    var geomColName = featureRow.geometryColumn.name;
+    var geomColName = featureRow.geometryColumn && featureRow.geometryColumn.name;
     for (var key in featureRow.values) {
       if (Object.prototype.hasOwnProperty.call(featureRow.values, key) &&
           key !== geomColName) {
@@ -32363,6 +32870,11 @@ ${svg}
     } else {
       return importContent(obj, opts);
     }
+    if (Array.isArray(dataset)) {
+      return dataset.map(function(ds) {
+        return finalizeImportedDataset(ds, dataFmt, data, opts);
+      });
+    }
     return finalizeImportedDataset(dataset, dataFmt, data, opts);
   }
 
@@ -32564,12 +33076,18 @@ ${svg}
 
   cmd.importFiles = async function(catalog, opts) {
     var files = opts.files || [];
-    var dataset;
+    var dataset, datasets, target;
 
     if (opts.stdin) {
       dataset = await importFileAsync('/dev/stdin', opts);
-      catalog.addDataset(dataset);
-      return dataset;
+      datasets = normalizeImportedDatasets(dataset);
+      catalog.addDatasets(datasets);
+      if (datasets.length > 1) {
+        catalog.setDefaultTargets(datasets.map(function(ds) {
+          return {dataset: ds, layers: ds.layers};
+        }));
+      }
+      return normalizeImportedTarget(datasets);
     }
 
     if (files.length > 0 === false) {
@@ -32604,14 +33122,22 @@ ${svg}
     } else {
       dataset = await importFilesTogetherAsync(files, opts);
     }
+    datasets = normalizeImportedDatasets(dataset);
+    datasets = validateAndCleanGpkgSelection(datasets, opts);
 
     if (opts.merge_files && files.length > 1) {
       // TODO: deprecate and remove this option (use -merge-layers cmd instead)
-      dataset.layers = cmd.mergeLayers(dataset.layers);
+      datasets[0].layers = cmd.mergeLayers(datasets[0].layers);
     }
 
-    catalog.addDataset(dataset);
-    return dataset;
+    catalog.addDatasets(datasets);
+    if (datasets.length > 1) {
+      catalog.setDefaultTargets(datasets.map(function(ds) {
+        return {dataset: ds, layers: ds.layers};
+      }));
+    }
+    target = normalizeImportedTarget(datasets);
+    return target;
   };
 
   // replace any JSON data objects with filenames and cache the data
@@ -32712,7 +33238,8 @@ ${svg}
 
     cli.checkFileExists(path, cache);
 
-    if ((fileType == 'shp' || fileType == 'json' || fileType == 'text' || fileType == 'dbf') && !cached) {
+    if ((fileType == 'shp' || fileType == 'json' || fileType == 'text' || fileType == 'dbf' ||
+        fileType == 'gpkg') && !cached) {
       // these file types are read incrementally
       content = null;
 
@@ -32815,17 +33342,20 @@ ${svg}
   // Import multiple files to a single dataset
   function importFilesTogether(files, opts) {
     var unbuiltTopology = false;
-    var datasets = files.map(function(fname) {
+    var datasets = files.reduce(function(memo, fname) {
       // import without topology or snapping
       var importOpts = utils.defaults({no_topology: true, snap: false, snap_interval: null, files: [fname]}, opts);
-      var dataset = importFile(fname, importOpts);
+      var imported = normalizeImportedDatasets(importFile(fname, importOpts));
       // check if dataset contains non-topological paths
       // TODO: may also need to rebuild topology if multiple topojson files are merged
-      if (dataset.arcs && dataset.arcs.size() > 0 && dataset.info.input_formats[0] != 'topojson') {
-        unbuiltTopology = true;
-      }
-      return dataset;
-    });
+      imported.forEach(function(dataset) {
+        if (dataset.arcs && dataset.arcs.size() > 0 && dataset.info.input_formats[0] != 'topojson') {
+          unbuiltTopology = true;
+        }
+        memo.push(dataset);
+      });
+      return memo;
+    }, []);
     var combined = mergeDatasets(datasets);
     // Build topology, if needed
     // TODO: consider updating topology of TopoJSON files instead of concatenating arcs
@@ -32843,18 +33373,75 @@ ${svg}
     for (var fname of files) {
       // import without topology or snapping
       var importOpts = utils.defaults({no_topology: true, snap: false, snap_interval: null, files: [fname]}, opts);
-      var dataset = await importFileAsync(fname, importOpts);
-      if (dataset.arcs && dataset.arcs.size() > 0 && dataset.info.input_formats[0] != 'topojson') {
-        unbuiltTopology = true;
-      }
-      datasets.push(dataset);
+      var imported = normalizeImportedDatasets(await importFileAsync(fname, importOpts));
+      imported.forEach(function(dataset) {
+        if (dataset.arcs && dataset.arcs.size() > 0 && dataset.info.input_formats[0] != 'topojson') {
+          unbuiltTopology = true;
+        }
+        datasets.push(dataset);
+      });
     }
+    datasets = validateAndCleanGpkgSelection(datasets, opts);
     var combined = mergeDatasets(datasets);
     if (unbuiltTopology && !opts.no_topology) {
       cleanPathsAfterImport(combined, opts);
       buildTopology(combined);
     }
     return combined;
+  }
+
+  // Validate the GeoPackage layers= selection across all imported datasets,
+  // remove any placeholder datasets produced by filter misses, and strip the
+  // bookkeeping metadata attached by the GeoPackage importer.
+  function validateAndCleanGpkgSelection(datasets, opts) {
+    var availableSet = new Set();
+    var importedSet = new Set();
+    var sawGpkg = false;
+    datasets.forEach(function(ds) {
+      var info = ds && ds.info;
+      if (!info || !Array.isArray(info._gpkg_available_layers)) return;
+      sawGpkg = true;
+      info._gpkg_available_layers.forEach(function(name) { availableSet.add(name); });
+      if (!info._gpkg_placeholder) {
+        (ds.layers || []).forEach(function(lyr) {
+          if (lyr && lyr.name) importedSet.add(lyr.name);
+        });
+      }
+    });
+    if (sawGpkg && Array.isArray(opts.layers) && opts.layers.length > 0) {
+      var missing = opts.layers.filter(function(name) {
+        return !importedSet.has(name);
+      });
+      if (missing.length > 0) {
+        stop$1(
+          'Missing GeoPackage layer(s): ' + missing.join(', ') + '\n' +
+          'Existing layers: ' + Array.from(availableSet).join(' ')
+        );
+      }
+    }
+    var cleaned = datasets.filter(function(ds) {
+      return !(ds && ds.info && ds.info._gpkg_placeholder);
+    });
+    cleaned.forEach(function(ds) {
+      if (ds && ds.info) {
+        delete ds.info._gpkg_available_layers;
+        delete ds.info._gpkg_placeholder;
+      }
+    });
+    return cleaned;
+  }
+
+  function normalizeImportedDatasets(datasetOrArray) {
+    return Array.isArray(datasetOrArray) ? datasetOrArray : [datasetOrArray];
+  }
+
+  function normalizeImportedTarget(datasets) {
+    if (datasets.length == 1) return datasets[0];
+    return {
+      layers: datasets.reduce(function(memo, dataset) {
+        return memo.concat(dataset.layers);
+      }, [])
+    };
   }
 
   function getUnsupportedFileMessage(path) {
@@ -50192,7 +50779,7 @@ ${svg}
     });
   }
 
-  var version = "0.6.117";
+  var version = "0.6.118";
 
   // Parse command line args into commands and run them
   // Function takes an optional Node-style callback. A Promise is returned if no callback is given.
