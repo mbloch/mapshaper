@@ -185,7 +185,8 @@ var _importFile = function(path, opts) {
 
   cli.checkFileExists(path, cache);
 
-  if ((fileType == 'shp' || fileType == 'json' || fileType == 'text' || fileType == 'dbf') && !cached) {
+  if ((fileType == 'shp' || fileType == 'json' || fileType == 'text' || fileType == 'dbf' ||
+      fileType == 'gpkg') && !cached) {
     // these file types are read incrementally
     content = null;
 

@@ -91,11 +91,15 @@ describe('mapshaper-geopackage-import.js', function () {
 
   it('imports a projected multi-layer GeoPackage file', async function () {
     var gpkgPath = fixPath('data/geopackage/Oregon.gpkg');
-    var dataset = await api.internal.importFileAsync(gpkgPath, {});
-    assert.equal(dataset.layers.length, 2);
+    var result = await api.internal.importFileAsync(gpkgPath, {});
+    var datasets = Array.isArray(result) ? result : [result];
+    var layers = datasets.reduce(function(memo, dataset) {
+      return memo.concat(dataset.layers);
+    }, []);
+    assert.equal(layers.length, 2);
 
-    var land = dataset.layers.find(lyr => lyr.name === 'land');
-    var roads = dataset.layers.find(lyr => lyr.name === 'roads');
+    var land = layers.find(lyr => lyr.name === 'land');
+    var roads = layers.find(lyr => lyr.name === 'roads');
     assert(land, 'land layer exists');
     assert(roads, 'roads layer exists');
 
@@ -106,9 +110,11 @@ describe('mapshaper-geopackage-import.js', function () {
     assert.equal(roads.geometry_type, 'polyline');
     assert.equal(roads.shapes.length, 121);
 
-    assert(dataset.info.wkt1.includes('NAD83'));
-    assert.equal(dataset.info.geopackage_crs.organization, 'EPSG');
-    assert.equal(dataset.info.geopackage_crs.organization_coordsys_id, 2269);
+    datasets.forEach(function(dataset) {
+      assert(dataset.info.wkt1.includes('NAD83'));
+      assert.equal(dataset.info.geopackage_crs.organization, 'EPSG');
+      assert.equal(dataset.info.geopackage_crs.organization_coordsys_id, 2269);
+    });
   });
 
   it('imports a GDAL LOCAL_CS GeoPackage without setting wkt1/crs_string', async function () {
@@ -142,6 +148,28 @@ describe('mapshaper-geopackage-import.js', function () {
       return a.join(',').localeCompare(b.join(','));
     });
     assert.deepEqual(groupedLayers, [['OR_land_2269'], ['OR_land_4326']]);
+  });
+
+  it('groups same-CRS point layers into one dataset', async function () {
+    var gpkgPath = fixPath('data/geopackage/same_crs_points.gpkg');
+    var result = await api.internal.importFileAsync(gpkgPath, {});
+    var datasets = Array.isArray(result) ? result : [result];
+    assert.equal(datasets.length, 1);
+    var layerNames = datasets[0].layers.map(function(lyr) { return lyr.name; }).sort();
+    assert.deepEqual(layerNames, ['oregon_cities', 'washington_cities']);
+  });
+
+  it('groups path layers by shared arcs within the same CRS', async function () {
+    var gpkgPath = fixPath('data/geopackage/shared_vs_unshared_paths.gpkg');
+    var result = await api.internal.importFileAsync(gpkgPath, {});
+    assert(Array.isArray(result), 'result is an array of datasets');
+    assert.equal(result.length, 2);
+    var groupedLayers = result.map(function(dataset) {
+      return dataset.layers.map(function(lyr) { return lyr.name; }).sort();
+    }).sort(function(a, b) {
+      return a.join(',').localeCompare(b.join(','));
+    });
+    assert.deepEqual(groupedLayers, [['counties', 'state'], ['roads']]);
   });
 
   it('imports rows from GeoPackage tables with null geometries', async function () {

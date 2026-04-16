@@ -1,4 +1,4 @@
-import { exportLayerAsGeoJSON } from '../geojson/geojson-export';
+import GeoJSON, { getIdField } from '../geojson/geojson-export';
 import { stop } from '../utils/mapshaper-logging';
 import require from '../mapshaper-require';
 import { getFileExtension } from '../utils/mapshaper-filename-utils';
@@ -43,12 +43,10 @@ async function createGeoPackageQuietly(geoPackageAPI) {
 }
 
 async function exportLayerToGeoPackage(lyr, dataset, gpkg, opts) {
-  var features, fields, columns, tableName, targetSrs;
+  var fields, columns, tableName, targetSrs, state;
   if (!lyr.geometry_type) return;
-  features = exportLayerAsGeoJSON(lyr, dataset, opts, true, null)
-    .filter(feat => !!(feat && feat.geometry));
-  if (features.length === 0) return;
-  fields = inferFieldTypes(features);
+  fields = inferFieldTypesFromLayer(lyr, dataset, opts);
+  if (!fields) return;
   tableName = getTableName(lyr.name);
   columns = fields.map(function(field) {
     return {
@@ -65,8 +63,11 @@ async function exportLayerToGeoPackage(lyr, dataset, gpkg, opts) {
   // GeoJSON is EPSG:4326 and reprojects unless given EPSG:4326 metadata.
   // Mapshaper output coords are already in target CRS, so suppress reprojection.
   var srs = getSourceSrsWithoutReprojection(featureDao && featureDao.srs, targetSrs);
-  for (var i = 0; i < features.length; i++) {
-    var feat = features[i];
+  state = initLayerFeatureExportState(lyr, dataset, opts);
+  var featureIndex = 0;
+  for (var i = 0; i < state.count; i++) {
+    var feat = exportFeatureAtIndex(state, i);
+    if (!feat || !feat.geometry) continue;
     var normalized = normalizeFeature(feat, fields);
     try {
       await gpkg.addGeoJSONFeatureToGeoPackageWithFeatureDaoAndSrs(
@@ -76,8 +77,9 @@ async function exportLayerToGeoPackage(lyr, dataset, gpkg, opts) {
       );
     } catch (e) {
       throw Error('GeoPackage insert failed at layer "' + tableName +
-        '", feature ' + i + ': ' + e.message);
+        '", feature ' + featureIndex + ': ' + e.message);
     }
+    featureIndex++;
   }
 }
 
@@ -104,9 +106,11 @@ async function exportGeoPackageBytes(gpkg) {
   stop('Unable to export GeoPackage bytes');
 }
 
-function inferFieldTypes(features) {
+function inferFieldTypesFromLayer(lyr, dataset, opts) {
+  var sawFeature = false;
   var index = {};
-  features.forEach(function(feat) {
+  forEachLayerExportFeature(lyr, dataset, opts, function(feat) {
+    sawFeature = true;
     var props = feat.properties || {};
     Object.keys(props).forEach(function(name) {
       if (!isSupportedPropertyName(name)) return;
@@ -120,9 +124,77 @@ function inferFieldTypes(features) {
       }
     });
   });
+  if (!sawFeature) return null;
   return Object.keys(index).map(function(name) {
     return {name: name, type: index[name]};
   });
+}
+
+function forEachLayerExportFeature(lyr, dataset, opts, cb) {
+  var state = initLayerFeatureExportState(lyr, dataset, opts);
+  var featureIndex = 0;
+  for (var i = 0; i < state.count; i++) {
+    var feature = exportFeatureAtIndex(state, i);
+    if (!feature || !feature.geometry) continue;
+    cb(feature, featureIndex++, i);
+  }
+}
+
+function initLayerFeatureExportState(lyr, dataset, opts) {
+  var records = lyr.data ? lyr.data.getRecords() : null;
+  var fields = lyr.data ? lyr.data.getFields() : [];
+  var shapes = lyr.shapes || null;
+  if (records && shapes && records.length !== shapes.length) {
+    stop('Mismatch between number of properties and number of shapes');
+  }
+  return {
+    lyr: lyr,
+    dataset: dataset,
+    opts: opts || {},
+    fields: fields,
+    records: records,
+    shapes: shapes,
+    count: Math.max(records ? records.length : 0, shapes ? shapes.length : 0),
+    idField: getIdField(fields, opts || {}),
+    useProps: useFeatureProperties(fields, opts || {})
+  };
+}
+
+function exportFeatureAtIndex(state, i) {
+  var shape = state.shapes ? state.shapes[i] : null;
+  var geom = shape ? GeoJSON.exporters[state.lyr.geometry_type](shape, state.dataset.arcs, state.opts) : null;
+  var rec = state.records ? state.records[i] : null;
+  var props = null;
+  if (state.useProps && rec) {
+    if (state.idField == GeoJSON.ID_FIELD) {
+      props = Object.assign({}, rec);
+      delete props[state.idField];
+    } else {
+      props = rec;
+    }
+  }
+  var feat = GeoJSON.toFeature(geom, props);
+  if (state.idField && rec) {
+    feat.id = state.idField in rec ? rec[state.idField] : null;
+  }
+  if (state.opts.no_null_props && !feat.properties) {
+    feat.properties = {};
+  }
+  if (Array.isArray(state.opts.hoist) && feat.properties) {
+    feat.properties = Object.assign({}, feat.properties);
+    state.opts.hoist.forEach(function(field) {
+      if (Object.prototype.hasOwnProperty.call(feat.properties, field)) {
+        feat[field] = feat.properties[field];
+        delete feat.properties[field];
+      }
+    });
+  }
+  return feat;
+}
+
+function useFeatureProperties(fields, opts) {
+  return !(opts.drop_table || opts.cut_table || fields.length === 0 ||
+      fields.length == 1 && fields[0] == GeoJSON.ID_FIELD);
 }
 
 function inferValueType(value) {
@@ -143,10 +215,6 @@ function mergeFieldTypes(a, b) {
 }
 
 function normalizeFeature(feature, fields) {
-  var fieldIndex = fields.reduce(function(memo, field) {
-    memo[field.name] = field.type;
-    return memo;
-  }, {});
   var props = {};
   fields.forEach(function(field) {
     var value = feature.properties && Object.prototype.hasOwnProperty.call(feature.properties, field.name) ?

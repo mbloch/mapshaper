@@ -6,38 +6,43 @@ import require from '../mapshaper-require';
 import { initProjLibrary } from '../crs/mapshaper-projections';
 import { runningInBrowser } from '../mapshaper-env';
 import { probablyDecimalDegreeBounds } from '../geom/mapshaper-latlon';
-import { getDatasetBounds } from '../dataset/mapshaper-dataset-utils';
+import { getDatasetBounds, datasetHasPaths, copyDatasetForExport } from '../dataset/mapshaper-dataset-utils';
+import { layerHasPoints } from '../dataset/mapshaper-layer-utils';
+import { forEachArcId } from '../paths/mapshaper-path-utils';
+import { buildTopology } from '../topology/mapshaper-topology';
 
 export async function importGeoPackage(content, optsArg) {
   var opts = optsArg || {};
   var geopackage = require('@ngageoint/geopackage');
   var gpkg;
   var datasets;
-  var source;
   var tmpPath = null;
 
   if (!geopackage || !geopackage.GeoPackageAPI) {
     stop('GeoPackage library is not loaded');
   }
 
-  if (utils.isString(content)) {
-    if (!runningInBrowser()) {
-      tmpPath = copyGeoPackageTempFile(content);
-      sanitizeGeoPackageCrsMetadata(tmpPath);
-      source = tmpPath;
-    } else {
-      source = content;
-    }
-  } else if (!runningInBrowser()) {
-    tmpPath = writeGeoPackageTempFile(content);
-    sanitizeGeoPackageCrsMetadata(tmpPath);
-    source = tmpPath;
-  } else {
-    source = new Uint8Array(content);
-  }
-  gpkg = await geopackage.GeoPackageAPI.open(source);
+  ({gpkg, tmpPath} = await openGeoPackage(content, geopackage));
   try {
-    datasets = readFeatureTableDatasets(gpkg, opts);
+    try {
+      datasets = readFeatureTableDatasets(gpkg, opts);
+    } catch (e) {
+      if (!runningInBrowser() && isLocalCsProjError(e)) {
+        gpkg.close();
+        if (tmpPath) {
+          sanitizeGeoPackageCrsMetadata(tmpPath);
+        } else if (utils.isString(content)) {
+          tmpPath = copyGeoPackageTempFile(content);
+          sanitizeGeoPackageCrsMetadata(tmpPath);
+        } else {
+          throw e;
+        }
+        gpkg = await geopackage.GeoPackageAPI.open(tmpPath);
+        datasets = readFeatureTableDatasets(gpkg, opts);
+      } else {
+        throw e;
+      }
+    }
   } finally {
     gpkg.close();
     removeTempGeoPackageFile(tmpPath);
@@ -54,13 +59,72 @@ export async function importGeoPackage(content, optsArg) {
   return mergeGeoPackageDatasets(datasets);
 }
 
+async function openGeoPackage(content, geopackage) {
+  var source;
+  var tmpPath = null;
+  if (utils.isString(content)) {
+    if (!runningInBrowser()) {
+      try {
+        return {
+          gpkg: await geopackage.GeoPackageAPI.open(content),
+          tmpPath: null
+        };
+      } catch (e) {
+        if (!isLocalCsProjError(e)) throw e;
+        tmpPath = copyGeoPackageTempFile(content);
+        sanitizeGeoPackageCrsMetadata(tmpPath);
+        return {
+          gpkg: await geopackage.GeoPackageAPI.open(tmpPath),
+          tmpPath: tmpPath
+        };
+      }
+    }
+    source = content;
+  } else if (!runningInBrowser()) {
+    tmpPath = writeGeoPackageTempFile(content);
+    try {
+      return {
+        gpkg: await geopackage.GeoPackageAPI.open(tmpPath),
+        tmpPath: tmpPath
+      };
+    } catch (e) {
+      if (!isLocalCsProjError(e)) throw e;
+      sanitizeGeoPackageCrsMetadata(tmpPath);
+      return {
+        gpkg: await geopackage.GeoPackageAPI.open(tmpPath),
+        tmpPath: tmpPath
+      };
+    }
+  } else {
+    source = new Uint8Array(content);
+  }
+  return {
+    gpkg: await geopackage.GeoPackageAPI.open(source),
+    tmpPath: null
+  };
+}
+
+function isLocalCsProjError(err) {
+  var msg = err && err.message ? String(err.message) : '';
+  return msg.includes("havn't handled \"_\" in keyword yet") ||
+    msg.includes('LOCAL_CS');
+}
+
 function writeGeoPackageTempFile(content) {
   var fs = require('fs');
   var os = require('os');
   var path = require('path');
   var unique = Date.now() + '-' + process.pid + '-' + Math.random().toString(36).slice(2);
   var tmpPath = path.join(os.tmpdir(), 'mapshaper-gpkg-import-' + unique + '.gpkg');
-  fs.writeFileSync(tmpPath, Buffer.from(new Uint8Array(content)));
+  if (Buffer.isBuffer(content)) {
+    fs.writeFileSync(tmpPath, content);
+  } else if (content instanceof Uint8Array) {
+    fs.writeFileSync(tmpPath, Buffer.from(content.buffer, content.byteOffset, content.byteLength));
+  } else if (content instanceof ArrayBuffer) {
+    fs.writeFileSync(tmpPath, Buffer.from(content));
+  } else {
+    fs.writeFileSync(tmpPath, Buffer.from(new Uint8Array(content)));
+  }
   return tmpPath;
 }
 
@@ -112,10 +176,46 @@ function readFeatureTableDatasets(gpkg, opts) {
 
 function mergeGeoPackageDatasets(datasets) {
   var groups = groupGeoPackageDatasets(datasets);
-  var merged = groups.map(function(group) {
-    return group.length == 1 ? group[0] : mergeDatasets(group);
-  });
+  var merged = groups.reduce(function(memo, group) {
+    return memo.concat(mergeGeoPackageDatasetGroup(group));
+  }, []);
   return merged.length == 1 ? merged[0] : merged;
+}
+
+function mergeGeoPackageDatasetGroup(group) {
+  var pathDatasets = [];
+  var pointDatasets = [];
+  var dataDatasets = [];
+
+  group.forEach(function(dataset) {
+    var kind = getDatasetGeometryKind(dataset);
+    if (kind == 'path') {
+      pathDatasets.push(dataset);
+    } else if (kind == 'point') {
+      pointDatasets.push(dataset);
+    } else {
+      dataDatasets.push(dataset);
+    }
+  });
+
+  var output = [];
+  if (dataDatasets.length > 0) {
+    output.push(dataDatasets.length == 1 ? dataDatasets[0] : mergeDatasets(dataDatasets));
+  }
+  if (pointDatasets.length > 0) {
+    output.push(pointDatasets.length == 1 ? pointDatasets[0] : mergeDatasets(pointDatasets));
+  }
+  if (pathDatasets.length > 0) {
+    var groupedPaths = groupPathDatasetsBySharedArcs(pathDatasets);
+    if (groupedPaths.mergedDataset) {
+      output.push(groupedPaths.mergedDataset);
+    } else {
+      groupedPaths.components.forEach(function(component) {
+        output.push(component.length == 1 ? component[0] : mergeDatasets(component));
+      });
+    }
+  }
+  return output;
 }
 
 function groupGeoPackageDatasets(datasets) {
@@ -155,6 +255,83 @@ function isDataOnlyDataset(dataset) {
   return (dataset.layers || []).every(function(lyr) {
     return !lyr.geometry_type;
   });
+}
+
+function getDatasetGeometryKind(dataset) {
+  if (isDataOnlyDataset(dataset)) return 'data';
+  if (datasetHasPaths(dataset)) return 'path';
+  var hasPoints = (dataset.layers || []).some(function(lyr) {
+    return layerHasPoints(lyr);
+  });
+  return hasPoints ? 'point' : 'data';
+}
+
+function groupPathDatasetsBySharedArcs(datasets) {
+  if (datasets.length < 2) {
+    return {
+      mergedDataset: datasets[0] || null,
+      components: []
+    };
+  }
+  var copy = datasets.map(copyDatasetForExport);
+  var merged = mergeDatasets(copy);
+  if (!merged.arcs || merged.arcs.size() === 0) {
+    return {
+      mergedDataset: null,
+      components: datasets.map(function(dataset) { return [dataset]; })
+    };
+  }
+  buildTopology(merged);
+  var parent = datasets.map(function(_, i) { return i; });
+  var arcOwner = new Map();
+  merged.layers.forEach(function(layer, layerIdx) {
+    var seen = new Set();
+    forEachArcId(layer.shapes || [], function(arcId) {
+      seen.add(arcId < 0 ? ~arcId : arcId);
+    });
+    seen.forEach(function(absId) {
+      if (!arcOwner.has(absId)) {
+        arcOwner.set(absId, layerIdx);
+      } else {
+        union(parent, layerIdx, arcOwner.get(absId));
+      }
+    });
+  });
+  var components = {};
+  datasets.forEach(function(dataset, i) {
+    var root = find(parent, i);
+    if (!components[root]) components[root] = [];
+    components[root].push(dataset);
+  });
+  var grouped = Object.keys(components).map(function(key) {
+    return components[key];
+  });
+  if (grouped.length == 1) {
+    return {
+      mergedDataset: merged,
+      components: []
+    };
+  }
+  return {
+    mergedDataset: null,
+    components: grouped
+  };
+}
+
+function find(parent, i) {
+  var p = parent[i];
+  if (p !== i) {
+    parent[i] = find(parent, p);
+  }
+  return parent[i];
+}
+
+function union(parent, a, b) {
+  var ra = find(parent, a);
+  var rb = find(parent, b);
+  if (ra !== rb) {
+    parent[rb] = ra;
+  }
 }
 
 function normalizeNumericCode(val) {
