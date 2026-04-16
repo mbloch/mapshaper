@@ -1,17 +1,18 @@
 import api from '../mapshaper.js';
 import assert from 'assert';
+import path from 'path';
 var cli = api.cli;
 
 describe('mapshaper-cli-lib.js', function () {
 
   describe('expandInputFiles()', function () {
     it('files without wildcards are passed through (even missing files)', function () {
-      assert.deepEqual(cli.expandInputFiles(['missing.json']), ['missing.json']);
+      assert.deepEqual(cli.expandInputFiles(['missing.json']), ['missing.json'].map(path.normalize));
     });
 
     it('expands wild cards', function() {
       assert.deepEqual(cli.expandInputFiles(['test/data/features/centroids/*.shp']),
-        ['test/data/features/centroids/a.shp', 'test/data/features/centroids/b.shp']);
+        ['test/data/features/centroids/a.shp', 'test/data/features/centroids/b.shp'].map(path.normalize));
     })
 
     it('expands wild cards 2', function() {
@@ -21,18 +22,18 @@ describe('mapshaper-cli-lib.js', function () {
 
     it('expands wild card directories', function() {
       assert.deepEqual(cli.expandInputFiles(['test/data/features/centroids*/*.shp']),
-        ['test/data/features/centroids/a.shp', 'test/data/features/centroids/b.shp']);
+        ['test/data/features/centroids/a.shp', 'test/data/features/centroids/b.shp'].map(path.normalize));
     })
 
     it('expands wild card directories, ignores matching directories with no matching files', function() {
       assert.deepEqual(cli.expandInputFiles(['*/affine-test.mjs']),
-        ['test/affine-test.mjs']);
+        ['test/affine-test.mjs'].map(path.normalize));
     })
 
 
     it('expands wild card directories 2', function() {
       assert.deepEqual(cli.expandInputFiles(['test/*/six_counties.shp']),
-        ['test/data/six_counties.shp']);
+        ['test/data/six_counties.shp'].map(path.normalize));
     })
 
     it('API error if wild card expansion fails', function() {
