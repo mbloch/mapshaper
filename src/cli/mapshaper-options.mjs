@@ -158,6 +158,10 @@ export function getOptionParser() {
     .option('name', {
       describe: 'rename the imported layer(s)'
     })
+    .option('layers', {
+      type: 'strings',
+      describe: '[GPKG] comma-sep. list of layers to import'
+    })
     .option('geometry-type', {
       // undocumented; GeoJSON import rejects all but one kind of geometry
       // describe: '[GeoJSON] Import one kind of geometry (point|polygon|polyline)'

@@ -25,3 +25,25 @@ export async function loadGeopackageLib() {
   }
 }
 
+export async function getGeoPackageFeatureTables(content) {
+  var geopackage, gpkg, source;
+  await loadGeopackageLib();
+  geopackage = window.modules && window.modules['@ngageoint/geopackage'];
+  if (!geopackage || !geopackage.GeoPackageAPI) {
+    throw Error('GeoPackage library is not loaded');
+  }
+  if (content instanceof Uint8Array) {
+    source = content;
+  } else if (content instanceof ArrayBuffer) {
+    source = new Uint8Array(content);
+  } else {
+    source = content;
+  }
+  gpkg = await geopackage.GeoPackageAPI.open(source);
+  try {
+    return gpkg.getFeatureTables() || [];
+  } finally {
+    gpkg.close();
+  }
+}
+

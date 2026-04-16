@@ -33,6 +33,7 @@ describe('mapshaper-options.js', function () {
     good("file.shp name=''", {files:['file.shp'], name: ''});
     good("file.shp name='a b'", {files:['file.shp'], name: 'a b'});
     good("file.shp name 'a b'", {files:['file.shp'], name: 'a b'});
+    good("file.gpkg layers=roads,land", {files:['file.gpkg'], layers: ['roads', 'land']});
     good("file1.shp file2.shp", {files:['file1.shp', 'file2.shp']}); // accepts multiple files
     // disallowing whitespace tokens
     // good("file.shp name ''", {files:['file.shp'], name: ''})

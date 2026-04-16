@@ -6,7 +6,7 @@ import { GUI } from './gui-lib';
 import { setLayerPinning } from './gui-layer-utils';
 import { importSessionData } from './gui-session-snapshot-control';
 import { openAddLayerPopup } from './gui-add-layer-popup';
-import { considerReprojecting, loadGeopackageLib } from './gui-import-utils';
+import { considerReprojecting, loadGeopackageLib, getGeoPackageFeatureTables } from './gui-import-utils';
 
 // @cb function(<FileList>)
 function DropControl(gui, el, cb) {
@@ -157,6 +157,10 @@ export function ImportControl(gui, opts) {
   var importTotal = 0;
   var useQuickView = false;
   var queuedFiles = [];
+  var gpkgLayerEntries = [];
+  var gpkgSelectAllBtn = null;
+  var gpkgListRequestId = 0;
+  var gpkgListPending = false;
   var manifestFiles = opts.files || [];
   var catalog;
 
@@ -244,6 +248,7 @@ export function ImportControl(gui, opts) {
 
   function clearQueuedFiles() {
     queuedFiles = [];
+    clearGeoPackageLayerSelectionMenu();
     gui.container.removeClass('queued-files');
     gui.container.findChild('.dropped-file-list').empty();
   }
@@ -275,12 +280,13 @@ export function ImportControl(gui, opts) {
         });
         if (queuedFiles.length > 0) {
           showQueuedFiles();
+          updateGeoPackageLayerSelectionMenu();
         } else {
           gui.clearMode();
         }
       });
     });
-    submitBtn.classed('disabled', queuedFiles.length === 0);
+    updateImportSubmitState();
   }
 
   function receiveDroppedItems(arr) {
@@ -329,6 +335,7 @@ export function ImportControl(gui, opts) {
     gui.container.classed('queued-files', queuedFiles.length > 0);
     El('#path-import-options').classed('hidden', !filesMayContainPaths(queuedFiles));
     showQueuedFiles();
+    updateGeoPackageLayerSelectionMenu();
   }
 
   function hideImportMenu() {
@@ -365,13 +372,14 @@ export function ImportControl(gui, opts) {
     var optStr = GUI.formatCommandOptions(importOpts);
     fileData = null;
     for (var group of groups) {
+      var groupImportOpts = getGroupImportOpts(group, importOpts);
       if (group.size > 4e7) {
         gui.showProgressMessage('Importing');
         await wait(35);
       }
       if (group[internal.PACKAGE_EXT]) {
         await importSessionData(group[internal.PACKAGE_EXT].content, gui);
-      } else if (await importDataset(group, importOpts)) {
+      } else if (await importDataset(group, groupImportOpts)) {
         importCount++;
         gui.session.fileImported(group.filename, optStr);
       }
@@ -416,7 +424,7 @@ export function ImportControl(gui, opts) {
   function filesMayContainPaths(files) {
     return utils.some(files, function(f) {
         var type = internal.guessInputFileType(f.name);
-        return type == 'shp' || type == 'json' || internal.isZipFile(f.name);
+        return type == 'shp' || type == 'json' || type == 'gpkg' || internal.isZipFile(f.name);
     });
   }
 
@@ -439,6 +447,167 @@ export function ImportControl(gui, opts) {
       importOpts = GUI.parseFreeformOptions(freeform, 'i');
     }
     return importOpts;
+  }
+
+  function getGroupImportOpts(group, importOpts) {
+    var layersByFile, filename, selected;
+    if (!group.gpkg) return importOpts;
+    layersByFile = getSelectedGeoPackageLayersByFile();
+    filename = group.gpkg.filename;
+    selected = layersByFile[filename];
+    if (!selected || selected.length === 0) return importOpts;
+    return Object.assign({}, importOpts, {
+      gpkg_layers: selected
+    });
+  }
+
+  function clearGeoPackageLayerSelectionMenu() {
+    gpkgLayerEntries = [];
+    gpkgSelectAllBtn = null;
+    gpkgListPending = false;
+    var container = El('#gpkg-import-options');
+    if (!container.node()) return;
+    container.addClass('hidden');
+    container.findChild('.gpkg-layer-list').empty();
+  }
+
+  function getQueuedGeoPackageFiles() {
+    return queuedFiles.filter(function(file) {
+      return internal.guessInputFileType(file.name) == 'gpkg';
+    });
+  }
+
+  async function updateGeoPackageLayerSelectionMenu() {
+    var gpkgFiles = getQueuedGeoPackageFiles();
+    var requestId = ++gpkgListRequestId;
+    clearGeoPackageLayerSelectionMenu();
+    if (useQuickView || gpkgFiles.length === 0) {
+      updateImportSubmitState();
+      return;
+    }
+    gpkgListPending = true;
+    updateImportSubmitState();
+    try {
+      var tablesByFile = await Promise.all(gpkgFiles.map(async function(file) {
+        return {
+          file: file,
+          tables: await getGeoPackageFeatureTables(file.content)
+        };
+      }));
+      if (requestId != gpkgListRequestId) return;
+      renderGeoPackageLayerSelectionMenu(tablesByFile);
+    } catch (e) {
+      console.error(e);
+      if (requestId == gpkgListRequestId) {
+        clearGeoPackageLayerSelectionMenu();
+        gui.alert(e.message || 'Unable to read GeoPackage layers', 'Import error');
+      }
+    } finally {
+      if (requestId == gpkgListRequestId) {
+        gpkgListPending = false;
+        updateImportSubmitState();
+      }
+    }
+  }
+
+  function renderGeoPackageLayerSelectionMenu(tablesByFile) {
+    var container = El('#gpkg-import-options');
+    var list = container.findChild('.gpkg-layer-list').empty();
+    gpkgLayerEntries = [];
+    gpkgSelectAllBtn = null;
+    tablesByFile.forEach(function(item) {
+      var filename = item.file.name;
+      var tables = item.tables || [];
+      if (tables.length === 0) return;
+      tables.forEach(function(tableName) {
+        var label = El('label').addClass('gpkg-layer-item');
+        var box = El('input')
+          .attr('type', 'checkbox')
+          .attr('data-gpkg-file', filename)
+          .attr('data-gpkg-layer', tableName)
+          .node();
+        box.checked = true;
+        box.addEventListener('click', updateGeoPackageSelectAllToggle);
+        label.appendChild(box);
+        label.appendChild(El('span').text(' ' + tableName));
+        list.appendChild(label);
+        var entry = {
+          filename: filename,
+          layer: tableName,
+          checkbox: box
+        };
+        gpkgLayerEntries.push(entry);
+      });
+    });
+    if (gpkgLayerEntries.length === 0) {
+      container.addClass('hidden');
+      return;
+    }
+    if (gpkgLayerEntries.length > 1) {
+      list.node().insertBefore(initGeoPackageSelectAllToggle().node(), list.node().firstChild);
+    }
+    container.removeClass('hidden');
+    updateGeoPackageSelectAllToggle();
+  }
+
+  function initGeoPackageSelectAllToggle() {
+    var toggle = El('label').addClass('gpkg-layer-item');
+    var btn = El('input')
+      .attr('type', 'checkbox')
+      .attr('value', 'toggle')
+      .node();
+    btn.checked = true;
+    btn.addEventListener('click', function() {
+      var state = getGeoPackageSelectionState();
+      setGeoPackageLayerSelection(state != 'all');
+      updateGeoPackageSelectAllToggle();
+    });
+    toggle.appendChild(btn);
+    toggle.appendChild(El('span').text(' Select all'));
+    gpkgSelectAllBtn = btn;
+    return toggle;
+  }
+
+  function setGeoPackageLayerSelection(checked) {
+    gpkgLayerEntries.forEach(function(entry) {
+      entry.checkbox.checked = !!checked;
+    });
+  }
+
+  function getGeoPackageSelectionState() {
+    var count = getSelectedGeoPackageLayerCount();
+    if (gpkgLayerEntries.length > 0 && count == gpkgLayerEntries.length) return 'all';
+    if (count === 0) return 'none';
+    return 'some';
+  }
+
+  function getSelectedGeoPackageLayerCount() {
+    return gpkgLayerEntries.reduce(function(memo, entry) {
+      return memo + (entry.checkbox.checked ? 1 : 0);
+    }, 0);
+  }
+
+  function getSelectedGeoPackageLayersByFile() {
+    return gpkgLayerEntries.reduce(function(memo, entry) {
+      if (!entry.checkbox.checked) return memo;
+      if (!memo[entry.filename]) memo[entry.filename] = [];
+      memo[entry.filename].push(entry.layer);
+      return memo;
+    }, {});
+  }
+
+  function updateGeoPackageSelectAllToggle() {
+    if (gpkgSelectAllBtn) {
+      gpkgSelectAllBtn.checked = getGeoPackageSelectionState() == 'all';
+    }
+    updateImportSubmitState();
+  }
+
+  function updateImportSubmitState() {
+    var disabled = queuedFiles.length === 0 ||
+      gpkgListPending ||
+      (gpkgLayerEntries.length > 0 && getSelectedGeoPackageLayerCount() === 0);
+    submitBtn.classed('disabled', disabled);
   }
 
   // @file a File object

@@ -71,6 +71,7 @@ cmd.importFiles = async function(catalog, opts) {
     dataset = await importFilesTogetherAsync(files, opts);
   }
   datasets = normalizeImportedDatasets(dataset);
+  datasets = validateAndCleanGpkgSelection(datasets, opts);
 
   if (opts.merge_files && files.length > 1) {
     // TODO: deprecate and remove this option (use -merge-layers cmd instead)
@@ -328,12 +329,54 @@ export async function importFilesTogetherAsync(files, opts) {
       datasets.push(dataset);
     });
   }
+  datasets = validateAndCleanGpkgSelection(datasets, opts);
   var combined = mergeDatasets(datasets);
   if (unbuiltTopology && !opts.no_topology) {
     cleanPathsAfterImport(combined, opts);
     buildTopology(combined);
   }
   return combined;
+}
+
+// Validate the GeoPackage layers= selection across all imported datasets,
+// remove any placeholder datasets produced by filter misses, and strip the
+// bookkeeping metadata attached by the GeoPackage importer.
+function validateAndCleanGpkgSelection(datasets, opts) {
+  var availableSet = new Set();
+  var importedSet = new Set();
+  var sawGpkg = false;
+  datasets.forEach(function(ds) {
+    var info = ds && ds.info;
+    if (!info || !Array.isArray(info._gpkg_available_layers)) return;
+    sawGpkg = true;
+    info._gpkg_available_layers.forEach(function(name) { availableSet.add(name); });
+    if (!info._gpkg_placeholder) {
+      (ds.layers || []).forEach(function(lyr) {
+        if (lyr && lyr.name) importedSet.add(lyr.name);
+      });
+    }
+  });
+  if (sawGpkg && Array.isArray(opts.layers) && opts.layers.length > 0) {
+    var missing = opts.layers.filter(function(name) {
+      return !importedSet.has(name);
+    });
+    if (missing.length > 0) {
+      stop(
+        'Missing GeoPackage layer(s): ' + missing.join(', ') + '\n' +
+        'Existing layers: ' + Array.from(availableSet).join(' ')
+      );
+    }
+  }
+  var cleaned = datasets.filter(function(ds) {
+    return !(ds && ds.info && ds.info._gpkg_placeholder);
+  });
+  cleaned.forEach(function(ds) {
+    if (ds && ds.info) {
+      delete ds.info._gpkg_available_layers;
+      delete ds.info._gpkg_placeholder;
+    }
+  });
+  return cleaned;
 }
 
 function normalizeImportedDatasets(datasetOrArray) {
