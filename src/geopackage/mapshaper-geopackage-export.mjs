@@ -3,6 +3,8 @@ import { stop } from '../utils/mapshaper-logging';
 import require from '../mapshaper-require';
 import { getFileExtension } from '../utils/mapshaper-filename-utils';
 import { runningInBrowser } from '../mapshaper-env';
+import { probablyDecimalDegreeBounds } from '../geom/mapshaper-latlon';
+import { getDatasetBounds } from '../dataset/mapshaper-dataset-utils';
 
 export async function exportGeoPackage(dataset, opts) {
   var geopackage = require('@ngageoint/geopackage');
@@ -163,11 +165,8 @@ function normalizeFeature(feature, fields) {
 
 function getExportSrs(dataset) {
   var info = dataset.info || {};
-  var gpkgCrs = normalizeSrsForInsert(info.geopackage_crs);
+  var gpkgCrs = resolveExportSrs(normalizeSrsForInsert(info.geopackage_crs), info.wkt1);
   if (gpkgCrs) {
-    if (!gpkgCrs.definition && info.wkt1) {
-      gpkgCrs.definition = info.wkt1;
-    }
     return gpkgCrs;
   }
   var parsed = parseCrsString(info.crs_string);
@@ -183,11 +182,61 @@ function getExportSrs(dataset) {
   if (info.wkt1) {
     return buildCustomSrsFromWkt(info.wkt1);
   }
+  // Unknown CRS fallback:
+  // - probable decimal-degree coordinates => allow WGS84 assumption
+  // - otherwise use undefined cartesian CRS (null/unknown projection)
+  if (probablyDecimalDegreeBounds(getDatasetBounds(dataset))) {
+    return {
+      srs_id: 4326,
+      organization: 'EPSG',
+      organization_coordsys_id: 4326
+    };
+  }
   return {
-    srs_id: 4326,
-    organization: 'EPSG',
-    organization_coordsys_id: 4326
+    srs_id: -1,
+    srs_name: 'Undefined Cartesian SRS',
+    organization: 'NONE',
+    organization_coordsys_id: -1
   };
+}
+
+function resolveExportSrs(srs, fallbackWkt) {
+  if (!srs) return null;
+  var out = Object.assign({}, srs);
+  if (!out.definition && fallbackWkt) {
+    out.definition = fallbackWkt;
+  }
+  if (out.srs_id == null && out.organization_coordsys_id != null) {
+    out.srs_id = out.organization_coordsys_id;
+  }
+  if (out.srs_id == null) {
+    var fromWkt = parseWktAuthority(out.definition);
+    if (fromWkt) {
+      out.srs_id = fromWkt.srs_id;
+      if (!out.organization) out.organization = fromWkt.organization;
+      if (out.organization_coordsys_id == null) {
+        out.organization_coordsys_id = fromWkt.organization_coordsys_id;
+      }
+    }
+  }
+  if (out.srs_id == null && out.definition) {
+    var custom = buildCustomSrsFromWkt(out.definition);
+    out.srs_id = custom.srs_id;
+    if (!out.srs_name) out.srs_name = custom.srs_name;
+    if (!out.organization) out.organization = custom.organization;
+    if (out.organization_coordsys_id == null) {
+      out.organization_coordsys_id = custom.organization_coordsys_id;
+    }
+    if (!out.description) out.description = custom.description;
+  }
+  if (out.srs_id == null) return null;
+  if (out.organization_coordsys_id == null) {
+    out.organization_coordsys_id = out.srs_id;
+  }
+  if (!out.organization) {
+    out.organization = 'NONE';
+  }
+  return out;
 }
 
 function parseCrsString(str) {
@@ -281,9 +330,10 @@ async function ensureSrsExists(gpkg, srs) {
   var geopackage = require('@ngageoint/geopackage');
   var spatialReferenceSystem = new geopackage.SpatialReferenceSystem();
   spatialReferenceSystem.srs_id = srs.srs_id;
-  spatialReferenceSystem.srs_name = srs.srs_name || (srs.organization + ':' + srs.organization_coordsys_id);
-  spatialReferenceSystem.organization = srs.organization;
-  spatialReferenceSystem.organization_coordsys_id = srs.organization_coordsys_id;
+  spatialReferenceSystem.srs_name = srs.srs_name || (String(srs.organization || 'NONE') + ':' + srs.organization_coordsys_id);
+  spatialReferenceSystem.organization = srs.organization || 'NONE';
+  spatialReferenceSystem.organization_coordsys_id = srs.organization_coordsys_id != null ?
+    srs.organization_coordsys_id : srs.srs_id;
   spatialReferenceSystem.definition = srs.definition;
   spatialReferenceSystem.description = srs.description || null;
   gpkg.createSpatialReferenceSystem(spatialReferenceSystem);
@@ -292,7 +342,9 @@ async function ensureSrsExists(gpkg, srs) {
 function getSourceSrsWithoutReprojection(tableSrs, fallbackSrs) {
   var target = normalizeSrsForInsert(tableSrs) || normalizeSrsForInsert(fallbackSrs);
   return {
-    srs_id: target.srs_id,
+    // geopackage writer rejects negative srs_id for source metadata;
+    // use 0 (undefined geographic) when target is undefined cartesian (-1).
+    srs_id: target.srs_id < 0 ? 0 : target.srs_id,
     organization: 'EPSG',
     organization_coordsys_id: 4326
   };
@@ -369,17 +421,20 @@ function normalizeSrsForInsert(srs) {
   if (normalized.organization_coordsys_id == null && normalized.organizationCoordsysId != null) {
     normalized.organization_coordsys_id = normalized.organizationCoordsysId;
   }
-  if (normalized.srs_id == null) {
-    normalized.srs_id = normalized.organization_coordsys_id || 4326;
+  if (normalized.srs_id != null) {
+    normalized.srs_id = +normalized.srs_id;
+    if (!Number.isFinite(normalized.srs_id)) {
+      normalized.srs_id = null;
+    }
   }
-  normalized.srs_id = +normalized.srs_id || 4326;
-  if (!normalized.organization) {
-    normalized.organization = 'EPSG';
+  if (normalized.organization) {
+    normalized.organization = String(normalized.organization).toUpperCase();
   }
-  normalized.organization = String(normalized.organization).toUpperCase();
-  if (normalized.organization_coordsys_id == null) {
-    normalized.organization_coordsys_id = normalized.srs_id || 4326;
+  if (normalized.organization_coordsys_id != null) {
+    normalized.organization_coordsys_id = +normalized.organization_coordsys_id;
+    if (!Number.isFinite(normalized.organization_coordsys_id)) {
+      normalized.organization_coordsys_id = null;
+    }
   }
-  normalized.organization_coordsys_id = +normalized.organization_coordsys_id || 4326;
   return normalized;
 }

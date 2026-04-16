@@ -155,7 +155,7 @@ describe('geopackage export', function () {
   });
 
   it('round-trips projected GeoPackage CRS metadata', async function () {
-    var srcPath = fixPath('data/geodatabase/Oregon.gpkg');
+    var srcPath = fixPath('data/geopackage/Oregon.gpkg');
     var srcBytes = fs.readFileSync(srcPath);
     var output = await api.applyCommands('-i Oregon.gpkg -o format=geopackage', {
       'Oregon.gpkg': srcBytes
@@ -171,7 +171,7 @@ describe('geopackage export', function () {
   });
 
   it('round-trips custom projected CRS without authority', async function () {
-    var shpPath = fixPath('data/geodatabase/Oregon_customCRS.shp');
+    var shpPath = fixPath('data/geopackage/Oregon_customCRS.shp');
     var output = await api.applyCommands('-i "' + shpPath + '" -o format=geopackage', {});
     var names = Object.keys(output);
     var dataset = await importGeoPackageOutput(output, names[0], 'custom');
@@ -180,5 +180,23 @@ describe('geopackage export', function () {
     assert(dataset.info.wkt1 && dataset.info.wkt1.includes('Lambert_Conformal_Conic'));
     assert.equal(dataset.info.geopackage_crs.organization, 'NONE');
     assert.notEqual(dataset.info.geopackage_crs.organization_coordsys_id, 4326);
+  });
+
+  it('uses undefined cartesian CRS for projected data without CRS metadata', async function () {
+    var input = {
+      type: 'FeatureCollection',
+      features: [{
+        type: 'Feature',
+        properties: {name: 'p'},
+        geometry: {type: 'Point', coordinates: [500000, 4500000]}
+      }]
+    };
+    var output = await api.applyCommands('-i in.json -o format=geopackage', {'in.json': input});
+    var names = Object.keys(output);
+    var info = await readGeoPackageTableInfo(output, names[0], 'unknown-projected');
+
+    assert.equal(names.length, 1);
+    assert.equal(info.length, 1);
+    assert.equal(info[0].srsId, -1);
   });
 });

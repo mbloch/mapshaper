@@ -380,6 +380,8 @@ export function ImportControl(gui, opts) {
 
   async function importDataset(group, importOpts) {
     var dataset;
+    var datasets;
+    var imported = false;
     if (group.gpkg) {
       await loadGeopackageLib();
     }
@@ -388,21 +390,25 @@ export function ImportControl(gui, opts) {
     } else {
       dataset = internal.importContent(group, importOpts);
     }
-    if (datasetIsEmpty(dataset)) return false;
-    if (group.layername) {
-      dataset.layers.forEach(lyr => lyr.name = group.layername);
+    datasets = Array.isArray(dataset) ? dataset : [dataset];
+    for (var d of datasets) {
+      if (datasetIsEmpty(d)) continue;
+      if (group.layername) {
+        d.layers.forEach(lyr => lyr.name = group.layername);
+      }
+      // TODO: add popup here
+      // save import options for use by repair control, etc.
+      d.info.import_options = importOpts;
+      try {
+        await considerReprojecting(gui, d, importOpts);
+      } catch(e) {
+        gui.alert(e.message, 'Projection error');
+        return false;
+      }
+      model.addDataset(d);
+      imported = true;
     }
-    // TODO: add popup here
-    // save import options for use by repair control, etc.
-    dataset.info.import_options = importOpts;
-    try {
-      await considerReprojecting(gui, dataset, importOpts);
-    } catch(e) {
-      gui.alert(e.message, 'Projection error');
-      return false;
-    }
-    model.addDataset(dataset);
-    return true;
+    return imported;
   }
 
 

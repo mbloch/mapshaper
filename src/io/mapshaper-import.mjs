@@ -83,6 +83,11 @@ export async function importContentAsync(obj, opts) {
   } else {
     return importContent(obj, opts);
   }
+  if (Array.isArray(dataset)) {
+    return dataset.map(function(ds) {
+      return finalizeImportedDataset(ds, dataFmt, data, opts);
+    });
+  }
   return finalizeImportedDataset(dataset, dataFmt, data, opts);
 }
 
