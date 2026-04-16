@@ -23,9 +23,11 @@ export async function importGeoPackage(content, optsArg) {
   }
 
   ({gpkg, tmpPath} = await openGeoPackage(content, geopackage));
+  var availableLayers;
+  var filterApplied;
   try {
     try {
-      datasets = readFeatureTableDatasets(gpkg, opts);
+      ({datasets, availableLayers, filterApplied} = readFeatureTableDatasets(gpkg, opts));
     } catch (e) {
       if (!runningInBrowser() && isLocalCsProjError(e)) {
         gpkg.close();
@@ -38,7 +40,7 @@ export async function importGeoPackage(content, optsArg) {
           throw e;
         }
         gpkg = await geopackage.GeoPackageAPI.open(tmpPath);
-        datasets = readFeatureTableDatasets(gpkg, opts);
+        ({datasets, availableLayers, filterApplied} = readFeatureTableDatasets(gpkg, opts));
       } else {
         throw e;
       }
@@ -51,12 +53,21 @@ export async function importGeoPackage(content, optsArg) {
   if (datasets.length === 0) {
     return {
       layers: [{name: '', data: null}],
-      info: {}
+      info: {
+        _gpkg_available_layers: availableLayers,
+        _gpkg_placeholder: !!filterApplied
+      }
     };
   }
 
   await initProjLib(datasets);
-  return mergeGeoPackageDatasets(datasets);
+  var merged = mergeGeoPackageDatasets(datasets);
+  var mergedArr = Array.isArray(merged) ? merged : [merged];
+  mergedArr.forEach(function(ds) {
+    ds.info = ds.info || {};
+    ds.info._gpkg_available_layers = availableLayers;
+  });
+  return merged;
 }
 
 async function openGeoPackage(content, geopackage) {
@@ -168,9 +179,29 @@ async function initProjLib(datasets) {
 }
 
 function readFeatureTableDatasets(gpkg, opts) {
-  var tables = gpkg.getFeatureTables() || [];
-  return tables.map(function(table) {
+  var selected = getSelectedGeoPackageLayers(opts);
+  var availableLayers = gpkg.getFeatureTables() || [];
+  var tables = filterGeoPackageTables(availableLayers, selected);
+  var filterApplied = Array.isArray(selected) && selected.length > 0;
+  var datasets = tables.map(function(table) {
     return readFeatureTable(gpkg, table, opts);
+  });
+  return {datasets: datasets, availableLayers: availableLayers, filterApplied: filterApplied};
+}
+
+function getSelectedGeoPackageLayers(opts) {
+  if (!opts) return null;
+  return opts.gpkg_layers || opts.layers || null;
+}
+
+function filterGeoPackageTables(tables, selected) {
+  if (!Array.isArray(selected) || selected.length === 0) return tables;
+  var index = selected.reduce(function(memo, name) {
+    memo[name] = true;
+    return memo;
+  }, {});
+  return tables.filter(function(name) {
+    return !!index[name];
   });
 }
 

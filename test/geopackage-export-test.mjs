@@ -182,6 +182,23 @@ describe('geopackage export', function () {
     assert.notEqual(dataset.info.geopackage_crs.organization_coordsys_id, 4326);
   });
 
+  it('preserves a -proj assigned projection on GeoPackage round-trip', async function () {
+    var input = fs.readFileSync(fixPath('data/world_land.json'));
+    var output = await api.applyCommands(
+      '-i world_land.json -proj +proj=robin -o format=geopackage',
+      {'world_land.json': input}
+    );
+    var names = Object.keys(output);
+    var info = await readGeoPackageTableInfo(output, names[0], 'robinson');
+    var dataset = await importGeoPackageOutput(output, names[0], 'robinson');
+
+    assert.equal(names.length, 1);
+    assert.equal(info.length, 1);
+    assert.notEqual(info[0].srsId, -1, 'srs_id should not be the undefined cartesian SRS');
+    assert(dataset.info.wkt1 && /Robinson/i.test(dataset.info.wkt1),
+      'round-tripped wkt1 should contain Robinson projection metadata');
+  });
+
   it('uses undefined cartesian CRS for projected data without CRS metadata', async function () {
     var input = {
       type: 'FeatureCollection',

@@ -5,6 +5,7 @@ import { getFileExtension } from '../utils/mapshaper-filename-utils';
 import { runningInBrowser } from '../mapshaper-env';
 import { probablyDecimalDegreeBounds } from '../geom/mapshaper-latlon';
 import { getDatasetBounds } from '../dataset/mapshaper-dataset-utils';
+import { crsToPrj } from '../crs/mapshaper-projections';
 
 export async function exportGeoPackage(dataset, opts) {
   var geopackage = require('@ngageoint/geopackage');
@@ -250,6 +251,13 @@ function getExportSrs(dataset) {
   if (info.wkt1) {
     return buildCustomSrsFromWkt(info.wkt1);
   }
+  // If the dataset has an in-memory CRS object (e.g. set by -proj) but no
+  // metadata source, derive a WKT1 definition from it so a projected CRS
+  // isn't lost on round-trip.
+  var derivedWkt = getWktFromDatasetCrs(dataset);
+  if (derivedWkt) {
+    return buildCustomSrsFromWkt(derivedWkt);
+  }
   // Unknown CRS fallback:
   // - probable decimal-degree coordinates => allow WGS84 assumption
   // - otherwise use undefined cartesian CRS (null/unknown projection)
@@ -266,6 +274,19 @@ function getExportSrs(dataset) {
     organization: 'NONE',
     organization_coordsys_id: -1
   };
+}
+
+function getWktFromDatasetCrs(dataset) {
+  // Only derive from an explicitly-set CRS object (e.g. from -proj).
+  // This avoids building a custom SRS for lat/lon datasets that were
+  // auto-defaulted to WGS84 by getDatasetCRS().
+  var info = dataset && dataset.info;
+  if (!info || !info.crs) return null;
+  try {
+    return crsToPrj(info.crs) || null;
+  } catch (e) {
+    return null;
+  }
 }
 
 function resolveExportSrs(srs, fallbackWkt) {

@@ -117,6 +117,107 @@ describe('mapshaper-geopackage-import.js', function () {
     });
   });
 
+  it('imports all GeoPackage tables when gpkg_layers is unset', async function () {
+    var gpkgPath = fixPath('data/geopackage/Oregon.gpkg');
+    var result = await api.internal.importFileAsync(gpkgPath, {});
+    var datasets = Array.isArray(result) ? result : [result];
+    var names = datasets.reduce(function(memo, dataset) {
+      return memo.concat(dataset.layers.map(function(lyr) { return lyr.name; }));
+    }, []).sort();
+    assert.deepEqual(names, ['land', 'roads']);
+  });
+
+  it('imports only selected GeoPackage tables using gpkg_layers', async function () {
+    var gpkgPath = fixPath('data/geopackage/Oregon.gpkg');
+    var result = await api.internal.importFileAsync(gpkgPath, {
+      gpkg_layers: ['roads']
+    });
+    var datasets = Array.isArray(result) ? result : [result];
+    var names = datasets.reduce(function(memo, dataset) {
+      return memo.concat(dataset.layers.map(function(lyr) { return lyr.name; }));
+    }, []).sort();
+    assert.deepEqual(names, ['roads']);
+  });
+
+  it('ignores unknown gpkg_layers entries without throwing', async function () {
+    var gpkgPath = fixPath('data/geopackage/Oregon.gpkg');
+    var result = await api.internal.importFileAsync(gpkgPath, {
+      gpkg_layers: ['roads', 'missing_layer_name']
+    });
+    var datasets = Array.isArray(result) ? result : [result];
+    var names = datasets.reduce(function(memo, dataset) {
+      return memo.concat(dataset.layers.map(function(lyr) { return lyr.name; }));
+    }, []).sort();
+    assert.deepEqual(names, ['roads']);
+  });
+
+  it('imports selected GeoPackage table using -i layers option', async function () {
+    var gpkgPath = fixPath('data/geopackage/Oregon.gpkg');
+    var output = await new Promise(function(resolve, reject) {
+      var cmd = '-i "' + gpkgPath + '" layers=roads -o format=json';
+      api.applyCommands(cmd, {}, function(err, out) {
+        if (err) reject(err);
+        else resolve(out);
+      });
+    });
+    var names = Object.keys(output).sort();
+    assert.deepEqual(names, ['roads.json']);
+    var json = JSON.parse(output['roads.json']);
+    assert.equal(json.length, 121);
+  });
+
+  it('throws if -i layers does not match any GeoPackage table', async function () {
+    var gpkgPath = fixPath('data/geopackage/shared_vs_unshared_paths.gpkg');
+    var err = null;
+    try {
+      await api.applyCommands('-i "' + gpkgPath + '" layers=statesj -info');
+    } catch (e) {
+      err = e;
+    }
+    assert(err, 'expected an error');
+    var msg = String(err.message);
+    assert(msg.includes('Missing GeoPackage layer(s): statesj'), msg);
+    assert(msg.includes('Existing layers:'), msg);
+    ['counties', 'state', 'roads'].forEach(function(name) {
+      assert(msg.includes(name), 'existing layers list includes ' + name);
+    });
+  });
+
+  it('throws if -i layers lists a mix of existing and missing tables', async function () {
+    var gpkgPath = fixPath('data/geopackage/shared_vs_unshared_paths.gpkg');
+    var err = null;
+    try {
+      await api.applyCommands('-i "' + gpkgPath + '" layers=state,ghost -info');
+    } catch (e) {
+      err = e;
+    }
+    assert(err, 'expected an error');
+    var msg = String(err.message);
+    assert(msg.includes('Missing GeoPackage layer(s): ghost'), msg);
+    assert(!/Missing GeoPackage layer\(s\): [^\n]*state\b/.test(msg),
+      'state should not be listed as missing');
+  });
+
+  it('aggregates available layers across multiple GeoPackage files', async function () {
+    var gpkg1 = fixPath('data/geopackage/Oregon.gpkg');
+    var gpkg2 = fixPath('data/geopackage/same_crs_points.gpkg');
+    var err = null;
+    try {
+      await api.applyCommands(
+        '-i "' + gpkg1 + '" "' + gpkg2 + '" combine-files layers=ghost -info'
+      );
+    } catch (e) {
+      err = e;
+    }
+    assert(err, 'expected an error');
+    var msg = String(err.message);
+    assert(msg.includes('Missing GeoPackage layer(s): ghost'), msg);
+    ['land', 'roads', 'oregon_cities', 'washington_cities'].forEach(function(name) {
+      assert(msg.includes(name), 'existing layers list includes ' + name);
+    });
+  });
+
+
   it('imports a GDAL LOCAL_CS GeoPackage without setting wkt1/crs_string', async function () {
     var gpkgPath = fixPath('data/geopackage/null_crs_gdal.gpkg');
     var dataset = await api.internal.importFileAsync(gpkgPath, {});

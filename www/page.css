@@ -256,6 +256,18 @@ body.map-view {
 	white-space: nowrap;
 }
 
+.gpkg-layer-list .gpkg-layer-item {
+	display: block;
+	white-space: nowrap;
+}
+
+.gpkg-layer-list {
+	max-height: 200px;
+	overflow: hidden;
+	overflow-y: auto;
+	margin-right: -3px;
+}
+
 /* --- Main area ------------- */
 
 .main-area {
