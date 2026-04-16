@@ -1,6 +1,6 @@
 # COMMAND REFERENCE
 
-This documentation applies to version 0.6.114 of mapshaper's command line program. Run `mapshaper -v` to check your version. For an introduction to the command line tool, read [this page](https://github.com/mbloch/mapshaper/wiki/Introduction-to-the-Command-Line-Tool) first.
+This documentation applies to version 0.6.118 of mapshaper's command line program. Run `mapshaper -v` to check your version. For an introduction to the command line tool, read [this page](https://github.com/mbloch/mapshaper/wiki/Introduction-to-the-Command-Line-Tool) first.
 
 ## Command line syntax
 
@@ -173,6 +173,8 @@ By default, multiple input files are processed separately, as if running mapshap
 `csv-filter=` A JavaScript expression for importing a subset of the records in a CSV file. Records are filtered as the file is read, which reduces the memory needed to import very large CSV files.
 
 `json-path=` [JSON] Path to an array of data records or a GeoJSON object. For example, `json-path=data/counties` expects a JSON object with the following structure `{"data": {"counties": []}}`.
+
+`layers=` [GeoPackage] Comma-separated list of layer names to import from a GeoPackage file. If omitted, all layers are imported.
 
 `name=`  Rename the imported layer (or layers).
 

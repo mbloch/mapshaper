@@ -1,3 +1,8 @@
+v0.6.118
+* Added a selectable list of GeoPackage layers to the "advanced options" import menu in the web UI.
+* Added a layers=<list> to the -i command to allow importing a subset of GeoPackage layers.
+* Improved GeoPackage i/o. Topologically related layers are imported together, so -simplify and other commands can edit them together. Unrelated layers are imported separately (with a different arc table), which allows -simplify to be applied more selectively.
+
 v0.6.117
 * Partial support for importing SVG files.
 
