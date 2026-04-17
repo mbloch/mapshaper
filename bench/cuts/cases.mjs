@@ -2,11 +2,40 @@
 // Each case is { id, label, argv, runs?, warmup? }.
 // argv is fed straight to mapshaper.runCommands().
 //
-// Files live at the path below; override with MAPSHAPER_BENCH_DATA env var.
+// The benchmark sample files live outside the repo. Set
+// MAPSHAPER_BENCH_DATA in your environment, or copy `.env.example` to
+// `.env` in this directory and put the absolute path there. `.env` is
+// gitignored.
 
-import { existsSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
+import { dirname, resolve } from 'node:path';
 
-var DATA = process.env.MAPSHAPER_BENCH_DATA || '/Users/matthewbloch/nytweb/2026/mapshaper/cuts';
+var SELF_DIR = dirname(fileURLToPath(import.meta.url));
+
+function loadDotEnv() {
+  var path = resolve(SELF_DIR, '.env');
+  if (!existsSync(path)) return;
+  var text = readFileSync(path, 'utf8');
+  text.split(/\r?\n/).forEach(function(line) {
+    var m = line.match(/^\s*([A-Z_][A-Z0-9_]*)\s*=\s*(.*?)\s*$/);
+    if (!m) return;
+    var k = m[1];
+    var v = m[2].replace(/^["'](.*)["']$/, '$1');
+    if (!(k in process.env)) process.env[k] = v;
+  });
+}
+
+loadDotEnv();
+
+var DATA = process.env.MAPSHAPER_BENCH_DATA;
+if (!DATA) {
+  throw new Error(
+    'MAPSHAPER_BENCH_DATA is not set. Copy bench/cuts/.env.example to ' +
+    'bench/cuts/.env and set the path to your sample-file directory, or ' +
+    'export the variable in your shell.'
+  );
+}
 
 function f(name) {
   var p = DATA + '/' + name;

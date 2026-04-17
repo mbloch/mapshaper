@@ -16,4 +16,5 @@ nacis
 .cursorignore
 bench/cuts/results-*.json
 bench/cuts/results-*.log
+bench/cuts/.env
 /DEVELOPING.md
