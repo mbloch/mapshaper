@@ -154,14 +154,22 @@ export function PathIndex(shapes, arcs) {
 
   function testPointInRing(p, cand) {
     if (!cand.bounds.containsPoint(p[0], p[1])) return false;
-    if (!cand.index && cand.bounds.area() > totalArea * 0.01) {
-      // index larger polygons (because they are slower to test via pointInRing()
-      //    and they are more likely to be involved in repeated hit tests).
-      cand.index = new PolygonIndex([cand.ids], arcs);
+    if (!cand.index) {
+      // Build a per-ring scanline index when (a) the ring is large relative to
+      // the dataset (likely involved in many hit tests anyway) or (b) the same
+      // ring has already been tested at least once, indicating it lies in a
+      // hot spot for repeated point-in-polygon queries (e.g. coastal counties
+      // tested by every offshore-island CCW ring during mosaic enclosure
+      // detection). Building on the second hit avoids paying the index build
+      // cost for rings that are tested only once.
+      if (cand._tested || cand.bounds.area() > totalArea * 0.01) {
+        cand.index = new PolygonIndex([cand.ids], arcs);
+      } else {
+        cand._tested = true;
+        return geom.testPointInRing(p[0], p[1], cand.ids, arcs);
+      }
     }
-    return cand.index ?
-        cand.index.pointInPolygon(p[0], p[1]) :
-        geom.testPointInRing(p[0], p[1], cand.ids, arcs);
+    return cand.index.pointInPolygon(p[0], p[1]);
   }
 
   //

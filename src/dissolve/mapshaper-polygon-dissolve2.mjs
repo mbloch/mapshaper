@@ -7,6 +7,7 @@ import { getCategoryClassifier } from '../dissolve/mapshaper-data-aggregation';
 import { DataTable } from '../datatable/mapshaper-data-table';
 import { NodeCollection } from '../topology/mapshaper-nodes';
 import { MosaicIndex } from '../polygons/mapshaper-mosaic-index';
+import { profileStart, profileEnd } from '../utils/mapshaper-profile';
 import utils from '../utils/mapshaper-utils';
 import { message } from '../utils/mapshaper-logging';
 
@@ -67,22 +68,30 @@ function getGapRemovalMessage(removed, retained, areaLabel) {
 }
 
 export function dissolvePolygonGroups2(groups, lyr, dataset, opts) {
+  profileStart('dissolvePolygonGroups2');
+  profileStart('dpg2.NodeCollection');
   var arcFilter = getArcPresenceTest(lyr.shapes, dataset.arcs);
   var nodes = new NodeCollection(dataset.arcs, arcFilter);
+  profileEnd('dpg2.NodeCollection');
   var mosaicOpts = {
     flat: !opts.allow_overlaps,
     simple: groups.length == 1,
     overlap_rule: opts.overlap_rule
   };
+  profileStart('dpg2.MosaicIndex');
   var mosaicIndex = new MosaicIndex(lyr, nodes, mosaicOpts);
+  profileEnd('dpg2.MosaicIndex');
   // gap fill doesn't work yet with overlapping shapes
   var fillGaps = !opts.allow_overlaps && (opts.sliver_control || opts.gap_fill_area);
   var cleanupData, filterData;
   if (fillGaps) {
+    profileStart('dpg2.removeGaps');
     var sliverOpts = utils.extend({sliver_control: 1}, opts);
     filterData = getSliverFilter(lyr, dataset, sliverOpts);
     cleanupData = mosaicIndex.removeGaps(filterData.filter);
+    profileEnd('dpg2.removeGaps');
   }
+  profileStart('dpg2.dissolveTiles');
   var pathfind = getRingIntersector(mosaicIndex.nodes);
   var dissolvedShapes = groups.map(function(shapeIds) {
     var tiles = mosaicIndex.getTilesByShapeIds(shapeIds);
@@ -93,14 +102,16 @@ export function dissolvePolygonGroups2(groups, lyr, dataset, opts) {
     }
     return dissolveTileGroup2(tiles, pathfind);
   });
-  // convert self-intersecting rings to outer/inner rings, for OGC
-  // Simple Features compliance
+  profileEnd('dpg2.dissolveTiles');
+  profileStart('dpg2.fixTangentHoles');
   dissolvedShapes = fixTangentHoles(dissolvedShapes, pathfind);
+  profileEnd('dpg2.fixTangentHoles');
 
   if (fillGaps && !opts.quiet) {
     var msg = getGapRemovalMessage(cleanupData.removed, cleanupData.remaining, filterData.label);
     if (msg) message(msg);
   }
+  profileEnd('dissolvePolygonGroups2');
   return dissolvedShapes;
 }
 

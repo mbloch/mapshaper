@@ -3,22 +3,33 @@ import { NodeCollection } from '../topology/mapshaper-nodes';
 import { layerHasPaths } from '../dataset/mapshaper-layer-utils';
 import { editShapes } from '../paths/mapshaper-shape-utils';
 import { absArcId } from '../paths/mapshaper-arc-utils';
+import { profileStart, profileEnd } from '../utils/mapshaper-profile';
 
 
 // Remap any references to duplicate arcs in paths to use the same arcs
 // Remove any unused arcs from the dataset's ArcCollection.
 // Return a NodeCollection
 export function cleanArcReferences(dataset) {
+  profileStart('NodeCollection#1');
   var nodes = new NodeCollection(dataset.arcs);
+  profileEnd('NodeCollection#1');
+  profileStart('findDuplicateArcs');
   var map = findDuplicateArcs(nodes);
+  profileEnd('findDuplicateArcs');
   var dropCount;
   if (map) {
+    profileStart('replaceIndexedArcIds');
     replaceIndexedArcIds(dataset, map);
+    profileEnd('replaceIndexedArcIds');
   }
+  profileStart('deleteUnusedArcs');
   dropCount = deleteUnusedArcs(dataset);
+  profileEnd('deleteUnusedArcs');
   if (dropCount > 0) {
     // rebuild nodes if arcs have changed
+    profileStart('NodeCollection#2');
     nodes = new NodeCollection(dataset.arcs);
+    profileEnd('NodeCollection#2');
   }
   return nodes;
 }

@@ -7,17 +7,20 @@ import { getArcPresenceTest2 } from '../dataset/mapshaper-layer-utils';
 import { verbose } from '../utils/mapshaper-logging';
 import { NodeCollection } from '../topology/mapshaper-nodes';
 import { ArcCollection } from '../paths/mapshaper-arcs';
+import { profileStart, profileEnd } from '../utils/mapshaper-profile';
 import utils from '../utils/mapshaper-utils';
 
 // Dissolve arcs that can be merged without affecting topology of layers
 // remove arcs that are not referenced by any layer; remap arc ids
 // in layers. (dataset.arcs is replaced).
 export function dissolveArcs(dataset) {
+  profileStart('dissolveArcs.body');
   var arcs = dataset.arcs,
       layers = dataset.layers.filter(layerHasPaths);
 
   if (!arcs || !layers.length) {
     dataset.arcs = null;
+    profileEnd('dissolveArcs.body');
     return;
   }
 
@@ -27,14 +30,17 @@ export function dissolveArcs(dataset) {
       arcIndex = new Int32Array(arcs.size()), // maps old arc ids to new ids
       arcStatus = new Uint8Array(arcs.size());
       // arcStatus: 0 = unvisited, 1 = dropped, 2 = remapped, 3 = remapped + reversed
+  profileStart('dissolveArcs.translatePaths');
   layers.forEach(function(lyr) {
-    // modify copies of the original shapes; original shapes should be unmodified
-    // (need to test this)
     lyr.shapes = lyr.shapes.map(function(shape, i) {
       return editShapeParts(shape && shape.concat(), translatePath);
     });
   });
+  profileEnd('dissolveArcs.translatePaths');
+  profileStart('dissolveArcs.dissolveArcCollection');
   dataset.arcs = dissolveArcCollection(arcs, newArcs, totalPoints);
+  profileEnd('dissolveArcs.dissolveArcCollection');
+  profileEnd('dissolveArcs.body');
 
   function translatePath(path) {
     var pointCount = 0;

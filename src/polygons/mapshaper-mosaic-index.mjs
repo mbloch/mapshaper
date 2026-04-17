@@ -5,26 +5,26 @@ import { IdTestIndex } from '../indexing/mapshaper-id-test-index';
 import { ArcLookupIndex } from '../indexing/mapshaper-id-lookup-index';
 import { PolygonTiler } from '../polygons/mapshaper-polygon-tiler';
 import { error, stop } from '../utils/mapshaper-logging';
+import { profileStart, profileEnd } from '../utils/mapshaper-profile';
 import geom from '../geom/mapshaper-geom';
 
 export function MosaicIndex(lyr, nodes, optsArg) {
+  profileStart('MosaicIndex.ctor');
   var opts = optsArg || {};
   var shapes = lyr.shapes;
+  profileStart('mi.buildPolygonMosaic');
   var mosaic = buildPolygonMosaic(nodes).mosaic;
-  // map arc ids to tile ids
+  profileEnd('mi.buildPolygonMosaic');
+  profileStart('mi.ShapeArcIndex');
   var arcTileIndex = new ShapeArcIndex(mosaic, nodes.arcs);
-  // keep track of which tiles have been assigned to shapes
+  profileEnd('mi.ShapeArcIndex');
   var fetchedTileIndex = new IdTestIndex(mosaic.length, true);
-  // bidirection index of tile ids <=> shape ids
   var tileShapeIndex = new TileShapeIndex(mosaic, opts);
-  // assign tiles to shapes
+  profileStart('mi.PolygonTiler.ctor');
   var shapeTiler = new PolygonTiler(mosaic, arcTileIndex, nodes, opts);
+  profileEnd('mi.PolygonTiler.ctor');
   var weightFunction = null;
   if (!opts.simple && opts.flat) {
-    // opts.simple is an optimization when dissolving everything into one polygon
-    // using -dissolve2. In this situation, we don't need a weight function.
-    // Otherwise, if polygons are being dissolved into multiple groups,
-    // we use a function to assign tiles in overlapping areas to a single shape.
     weightFunction = getOverlapPriorityFunction(lyr.shapes, nodes.arcs, opts.overlap_rule);
   }
   this.mosaic = mosaic;
@@ -32,16 +32,19 @@ export function MosaicIndex(lyr, nodes, optsArg) {
   this.getSourceIdsByTileId = tileShapeIndex.getShapeIdsByTileId; // expose for -mosaic command
   this.getTileIdsByShapeId = tileShapeIndex.getTileIdsByShapeId;
 
-  // Assign shape ids to mosaic tile shapes.
+  profileStart('mi.assignTilesToShapes');
   shapes.forEach(function(shp, shapeId) {
     var tileIds = shapeTiler.getTilesInShape(shp, shapeId);
     tileShapeIndex.indexTileIdsByShapeId(shapeId, tileIds, weightFunction);
   });
+  profileEnd('mi.assignTilesToShapes');
 
-  // ensure each tile is assigned to only one shape
   if (opts.flat) {
+    profileStart('mi.tileShapeIndex.flatten');
     tileShapeIndex.flatten();
+    profileEnd('mi.tileShapeIndex.flatten');
   }
+  profileEnd('MosaicIndex.ctor');
 
   // fill gaps
   // (assumes that tiles have been allocated to shapes and mosaic has been flattened)
