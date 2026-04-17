@@ -1,3 +1,6 @@
+v0.6.119
+* Performance optimizations
+
 v0.6.118
 * Added a selectable list of GeoPackage layers to the "advanced options" import menu in the web UI.
 * Added a layers=<list> to the -i command to allow importing a subset of GeoPackage layers.
