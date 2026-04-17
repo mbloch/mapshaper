@@ -195,6 +195,11 @@ body.map-view {
 .btn.toggle-btn.active {
 	background-color: black;
 }
+
+#donate-btn {
+	color: #ffa;
+}
+
 .separator {
 	border-left: 1px solid white;
 	height: 10px;
