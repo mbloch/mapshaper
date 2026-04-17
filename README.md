@@ -94,6 +94,16 @@ From the project directory, run `npm run build` to build both the cli and web UI
 
 Run `npm test` to run mapshaper's tests.
 
+## Supporting mapshaper
+
+Mapshaper is free and open source. If it's useful to you or your organization, please consider supporting its continued development:
+
+* [Ko-fi](https://ko-fi.com/mapshaper) &mdash; one-time or recurring donations, no account required.
+* [GitHub Sponsors](https://github.com/sponsors/mbloch) &mdash; recurring sponsorship.
+
+You can also help by [reporting bugs](https://github.com/mbloch/mapshaper/issues) or [telling me what you'd like to see improved](https://tally.so/r/44Njok).
+
+
 ## License
 
 This software is licensed under [MPL 2.0](http://www.mozilla.org/MPL/2.0/).
@@ -107,3 +117,5 @@ According to Mozilla's [FAQ](http://www.mozilla.org/MPL/2.0/FAQ.html), "The MPL'
 My colleagues at The New York Times, for countless suggestions, bug reports and general helpfulness.
 
 Mark Harrower, for collaborating on the original "MapShaper" program at the University of Wisconsin&ndash;Madison.
+
+[Mapbox](https://www.mapbox.com), for donating basemap services to mapshaper.org.
