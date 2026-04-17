@@ -970,7 +970,7 @@ Common options: `target=`
 
 ### -proj
 
-Project a dataset using a PROJ string, EPSG code or alias. This command affects all layers in the dataset(s) containing the targeted layer or layers. Information on PROJ string syntax can be found on the (PROJ website)[https://proj.org/usage/index.html#].
+Project a dataset using a PROJ string, EPSG code or alias. This command affects all layers in the dataset(s) containing the targeted layer or layers. Information on PROJ string syntax can be found on the [PROJ website](https://proj.org/usage/index.html).
 
 `<crs>` or `crs=`  Target CRS, given as a Proj.4 definition or an alias. Use the [`-projections`](#-projections) command to list available projections and aliases.  In projections which require additional parameters, such as a zone in UTM, you can pass a Proj4 string enclosed in quotes.  For example, `crs='+proj=utm +zone=27'`.
 
