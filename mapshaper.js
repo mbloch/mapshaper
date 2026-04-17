@@ -3208,6 +3208,25 @@
 
   //import { findCrossIntersection_big } from '../geom/mapshaper-segment-geom-big';
 
+  // Ad-hoc counters (reset by segmentIntersectionStatsReset, inspected by
+  // segmentIntersectionStats). Cheap when unused, so safe to leave in.
+  var STATS = {
+    calls: 0,            // segmentIntersection() invocations
+    touches: 0,          // pairs that returned a T-touch result
+    endpointHits: 0,     // pairs that returned null via testEndpointHit
+    crossCandidates: 0,  // pairs that reached findCrossIntersection()
+    crossRejectedFast: 0,// rejected by segmentHit_fast early-out
+    crossRobust: 0,      // useRobustCross() === true, ran BigInt math
+    crossFast: 0,        // useRobustCross() === false, ran fp math
+    crossNull: 0         // findCrossIntersection returned null (e.g. collinear)
+  };
+  function segmentIntersectionStatsReset() {
+    for (var k in STATS) STATS[k] = 0;
+  }
+  function segmentIntersectionStats() {
+    return Object.assign({}, STATS);
+  }
+
   // Find the intersection between two 2D segments
   // Returns 0, 1 or 2 [x, y] locations as null, [x, y], or [x1, y1, x2, y2]
   // Special cases:
@@ -3217,6 +3236,7 @@
   //    is counted as an intersection (there will be either one or two)
   //
   function segmentIntersection(ax, ay, bx, by, cx, cy, dx, dy, epsArg) {
+    STATS.calls++;
     // Use a small tolerance interval, so collinear segments and T-intersections
     // are detected (floating point rounding often causes exact functions to fail)
     var eps = epsArg > 0 ? epsArg :
@@ -3230,8 +3250,10 @@
     // segments that share an endpoint. Two touches indicates overlapping
     // collinear segments that do not share an endpoint.
     touches = findPointSegTouches(epsSq, ax, ay, bx, by, cx, cy, dx, dy);
+    if (touches) STATS.touches++;
     // Ignore endpoint-only intersections
     if (!touches && testEndpointHit(epsSq, ax, ay, bx, by, cx, cy, dx, dy)) {
+      STATS.endpointHits++;
       return null;
     }
     // Detect cross intersection
@@ -3243,6 +3265,7 @@
   }
 
   function findCrossIntersection(ax, ay, bx, by, cx, cy, dx, dy, eps) {
+    STATS.crossCandidates++;
     var p;
     // The normal-precision hit function works for all inputs when eps > 0 because
     // the geometries that cause the ordinary function fails are detected as
@@ -3250,8 +3273,10 @@
     // data samples that were tested).
     //
     if (eps > 0 && !segmentHit_fast(ax, ay, bx, by, cx, cy, dx, dy)) {
+      STATS.crossRejectedFast++;
       return null;
     } else if (eps === 0 && !segmentHit_robust(ax, ay, bx, by, cx, cy, dx, dy)) {
+      STATS.crossRejectedFast++;
       return null;
     }
 
@@ -3260,17 +3285,13 @@
     // the positional error within a small interval (e.g. 50% of eps)
     //
     if (useRobustCross(ax, ay, bx, by, cx, cy, dx, dy)) {
+      STATS.crossRobust++;
       p = findCrossIntersection_robust(ax, ay, bx, by, cx, cy, dx, dy);
-      // var p2 = findCrossIntersection_big(ax, ay, bx, by, cx, cy, dx, dy);
-      // var dx = p[0] - p2[0];
-      // var dy = p[1] - p2[1];
-      // if (dx != 0 || dy != 0) {
-      //   console.log(dx, dy)
-      // }
     } else {
+      STATS.crossFast++;
       p = findCrossIntersection_fast(ax, ay, bx, by, cx, cy, dx, dy);
     }
-    if (!p) return null;
+    if (!p) { STATS.crossNull++; return null; }
 
     // Snap p to a vertex if very close to one
     // This avoids tiny segments caused by T-intersection overshoots and prevents
@@ -3590,6 +3611,8 @@
     orient2D_robust: orient2D_robust,
     segmentHit_fast: segmentHit_fast,
     segmentIntersection: segmentIntersection,
+    segmentIntersectionStats: segmentIntersectionStats,
+    segmentIntersectionStatsReset: segmentIntersectionStatsReset,
     segmentTurn: segmentTurn
   });
 
@@ -7320,15 +7343,201 @@
     };
   }
 
+  // Lightweight hierarchical profiler.
+  // Intended for ad-hoc performance work on hot pipelines (e.g. addIntersectionCuts).
+  //
+  // Usage:
+  //   import { profileStart, profileEnd, profileWrap, ... } from './utils/mapshaper-profile';
+  //   profileStart('phase'); doWork(); profileEnd('phase');
+  //   var result = profileWrap('phase', () => doWork());
+  //
+  // When disabled (the default) every call short-circuits in ~one comparison; safe
+  // to leave in hot code paths. Enable from the CLI with the `-profile` command,
+  // from JS with enableProfiling(), or by setting the MAPSHAPER_PROFILE env var.
+  //
+  // The profiler tracks a stack of currently-open phases so calls can nest. Each
+  // unique stack path accumulates ms-elapsed and a call count. profileReport()
+  // returns a flat array; formatProfileReport() pretty-prints a tree.
+
+  var ENABLED = false;
+  var ROOT = makeNode('<root>');
+  var STACK = [ROOT];
+  var WALL_START = 0;
+
+  function makeNode(label) {
+    return {
+      label: label,
+      totalMs: 0,
+      selfMs: 0,
+      calls: 0,
+      childMsAccum: 0,
+      children: Object.create(null)
+    };
+  }
+
+  function nowMs() {
+    if (typeof process !== 'undefined' && process.hrtime && process.hrtime.bigint) {
+      // bigint -> number division: precision down to 1 microsecond is fine for our needs
+      return Number(process.hrtime.bigint()) / 1e6;
+    }
+    if (typeof performance !== 'undefined' && performance.now) {
+      return performance.now();
+    }
+    return Date.now();
+  }
+
+  function enableProfiling() {
+    ENABLED = true;
+    WALL_START = nowMs();
+  }
+
+  function disableProfiling() {
+    ENABLED = false;
+  }
+
+  function profileEnabled() {
+    return ENABLED;
+  }
+
+  function profileReset() {
+    ROOT = makeNode('<root>');
+    STACK = [ROOT];
+    WALL_START = ENABLED ? nowMs() : 0;
+  }
+
+  // Open a new phase. Cheap (~one branch) when disabled.
+  function profileStart(label) {
+    if (!ENABLED) return;
+    var parent = STACK[STACK.length - 1];
+    var node = parent.children[label];
+    if (!node) {
+      node = makeNode(label);
+      parent.children[label] = node;
+    }
+    node._t0 = nowMs();
+    STACK.push(node);
+  }
+
+  function profileEnd(label) {
+    if (!ENABLED) return;
+    var node = STACK[STACK.length - 1];
+    if (label && node.label !== label) {
+      // Mismatched labels usually mean an early return forgot to call profileEnd().
+      // Walk up the stack until we find a match, closing the intervening frames.
+      while (STACK.length > 1 && STACK[STACK.length - 1].label !== label) {
+        profileEnd(STACK[STACK.length - 1].label);
+      }
+      node = STACK[STACK.length - 1];
+      if (node.label !== label) return; // give up rather than throw
+    }
+    var elapsed = nowMs() - node._t0;
+    node._t0 = 0;
+    node.totalMs += elapsed;
+    node.calls += 1;
+    STACK.pop();
+    var parent = STACK[STACK.length - 1];
+    parent.childMsAccum += elapsed;
+  }
+
+  // Wrap a function call. Re-throws if the callback throws but still closes the
+  // phase so the stack stays consistent.
+  function profileWrap(label, fn) {
+    if (!ENABLED) return fn();
+    profileStart(label);
+    try {
+      return fn();
+    } finally {
+      profileEnd(label);
+    }
+  }
+
+  // Build a flat tree report: array of {depth, label, totalMs, selfMs, calls}.
+  function profileReport() {
+    var rows = [];
+    function visit(node, depth) {
+      if (depth > 0) {
+        rows.push({
+          depth: depth - 1,
+          label: node.label,
+          totalMs: node.totalMs,
+          selfMs: Math.max(0, node.totalMs - node.childMsAccum),
+          calls: node.calls
+        });
+      }
+      var keys = Object.keys(node.children);
+      keys.sort(function(a, b) {
+        return node.children[b].totalMs - node.children[a].totalMs;
+      });
+      for (var i = 0; i < keys.length; i++) {
+        visit(node.children[keys[i]], depth + 1);
+      }
+    }
+    visit(ROOT, 0);
+    return rows;
+  }
+
+  function profileWallElapsedMs() {
+    return ENABLED && WALL_START ? nowMs() - WALL_START : 0;
+  }
+
+  // Pretty-print the current report as a column-aligned tree.
+  function formatProfileReport(opts) {
+    var rows = profileReport();
+    if (rows.length === 0) return '(profile is empty)';
+    opts = opts || {};
+    var indent = '  ';
+    var lines = [];
+    // header
+    lines.push(['phase', 'total ms', 'self ms', 'calls'].join('\t'));
+    for (var i = 0; i < rows.length; i++) {
+      var r = rows[i];
+      var label = '';
+      for (var j = 0; j < r.depth; j++) label += indent;
+      label += r.label;
+      lines.push([
+        label,
+        r.totalMs.toFixed(2),
+        r.selfMs.toFixed(2),
+        String(r.calls)
+      ].join('\t'));
+    }
+    if (opts.includeWall) {
+      lines.push('');
+      lines.push('wall elapsed ms: ' + profileWallElapsedMs().toFixed(2));
+    }
+    return lines.join('\n');
+  }
+
+  // Honour an env var so users (and CI harnesses) can opt in without code changes.
+  if (typeof process !== 'undefined' && process.env && process.env.MAPSHAPER_PROFILE) {
+    enableProfiling();
+  }
+
+  var Profile = /*#__PURE__*/Object.freeze({
+    __proto__: null,
+    disableProfiling: disableProfiling,
+    enableProfiling: enableProfiling,
+    formatProfileReport: formatProfileReport,
+    profileEnabled: profileEnabled,
+    profileEnd: profileEnd,
+    profileReport: profileReport,
+    profileReset: profileReset,
+    profileStart: profileStart,
+    profileWallElapsedMs: profileWallElapsedMs,
+    profileWrap: profileWrap
+  });
+
   // Dissolve arcs that can be merged without affecting topology of layers
   // remove arcs that are not referenced by any layer; remap arc ids
   // in layers. (dataset.arcs is replaced).
   function dissolveArcs(dataset) {
+    profileStart('dissolveArcs.body');
     var arcs = dataset.arcs,
         layers = dataset.layers.filter(layerHasPaths);
 
     if (!arcs || !layers.length) {
       dataset.arcs = null;
+      profileEnd('dissolveArcs.body');
       return;
     }
 
@@ -7338,14 +7547,17 @@
         arcIndex = new Int32Array(arcs.size()), // maps old arc ids to new ids
         arcStatus = new Uint8Array(arcs.size());
         // arcStatus: 0 = unvisited, 1 = dropped, 2 = remapped, 3 = remapped + reversed
+    profileStart('dissolveArcs.translatePaths');
     layers.forEach(function(lyr) {
-      // modify copies of the original shapes; original shapes should be unmodified
-      // (need to test this)
       lyr.shapes = lyr.shapes.map(function(shape, i) {
         return editShapeParts(shape && shape.concat(), translatePath);
       });
     });
+    profileEnd('dissolveArcs.translatePaths');
+    profileStart('dissolveArcs.dissolveArcCollection');
     dataset.arcs = dissolveArcCollection(arcs, newArcs, totalPoints);
+    profileEnd('dissolveArcs.dissolveArcCollection');
+    profileEnd('dissolveArcs.body');
 
     function translatePath(path) {
       var pointCount = 0;
@@ -12507,14 +12719,22 @@
 
     function testPointInRing(p, cand) {
       if (!cand.bounds.containsPoint(p[0], p[1])) return false;
-      if (!cand.index && cand.bounds.area() > totalArea * 0.01) {
-        // index larger polygons (because they are slower to test via pointInRing()
-        //    and they are more likely to be involved in repeated hit tests).
-        cand.index = new PolygonIndex([cand.ids], arcs);
+      if (!cand.index) {
+        // Build a per-ring scanline index when (a) the ring is large relative to
+        // the dataset (likely involved in many hit tests anyway) or (b) the same
+        // ring has already been tested at least once, indicating it lies in a
+        // hot spot for repeated point-in-polygon queries (e.g. coastal counties
+        // tested by every offshore-island CCW ring during mosaic enclosure
+        // detection). Building on the second hit avoids paying the index build
+        // cost for rings that are tested only once.
+        if (cand._tested || cand.bounds.area() > totalArea * 0.01) {
+          cand.index = new PolygonIndex([cand.ids], arcs);
+        } else {
+          cand._tested = true;
+          return geom.testPointInRing(p[0], p[1], cand.ids, arcs);
+        }
       }
-      return cand.index ?
-          cand.index.pointInPolygon(p[0], p[1]) :
-          geom.testPointInRing(p[0], p[1], cand.ids, arcs);
+      return cand.index.pointInPolygon(p[0], p[1]);
     }
 
     //
@@ -13534,6 +13754,7 @@
 
     function singleStripeId(y) {return 0;}
     // Count segments in each stripe
+    profileStart('stripeSetup');
     arcs.forEachSegment(function(id1, id2, xx, yy) {
       var s1 = stripeId(yy[id1]),
           s2 = stripeId(yy[id2]);
@@ -13570,8 +13791,10 @@
         s1 += s2 > s1 ? 1 : -1;
       }
     });
+    profileEnd('stripeSetup');
 
     // Detect intersections among segments in each stripe.
+    profileStart('intersectSegments');
     var raw = arcs.getVertexData(),
         intersections = [],
         arr;
@@ -13581,7 +13804,11 @@
         intersections.push(arr[j]);
       }
     }
-    return dedupIntersections(intersections, opts.unique ? getUniqueIntersectionKey : null);
+    profileEnd('intersectSegments');
+    profileStart('dedupIntersections');
+    var deduped = dedupIntersections(intersections, opts.unique ? getUniqueIntersectionKey : null);
+    profileEnd('dedupIntersections');
+    return deduped;
   }
 
 
@@ -13594,22 +13821,42 @@
 
 
   function dedupIntersections(arr, keyFunction) {
-    var index = {};
-    var getKey = keyFunction || getIntersectionKey;
-    return arr.filter(function(o) {
-      var key = getKey(o);
-      if (key in index) {
-        return false;
+    if (keyFunction) {
+      var index = new Map();
+      var out = [];
+      for (var i = 0, n = arr.length; i < n; i++) {
+        var o = arr[i];
+        var k = keyFunction(o);
+        if (index.has(k)) continue;
+        index.set(k, true);
+        out.push(o);
       }
-      index[key] = true;
-      return true;
-    });
-  }
-
-  // Get an indexable key from an intersection object
-  // Assumes that vertex ids of o.a and o.b are sorted
-  function getIntersectionKey(o) {
-    return o.a.join(',') + ';' + o.b.join(',');
+      return out;
+    }
+    // Default key is the pair of segments (a, b). Each segment is a vertex id
+    // pair where the second id is either equal to or one greater than the first
+    // (see formatIntersectingSegment). Pack each segment into a single number
+    // (id * 2 + isMidSegment) and use a two-level Map keyed by integers, which
+    // avoids the per-call string allocation of the previous Array#join key.
+    var outer = new Map();
+    var result = [];
+    for (var ii = 0, nn = arr.length; ii < nn; ii++) {
+      var o2 = arr[ii];
+      var a = o2.a, b = o2.b;
+      var ak = a[0] * 2 + (a[0] === a[1] ? 0 : 1);
+      var bk = b[0] * 2 + (b[0] === b[1] ? 0 : 1);
+      var inner = outer.get(ak);
+      if (inner) {
+        if (inner.has(bk)) continue;
+        inner.add(bk);
+      } else {
+        inner = new Set();
+        inner.add(bk);
+        outer.set(ak, inner);
+      }
+      result.push(o2);
+    }
+    return result;
   }
 
   function getUniqueIntersectionKey(o) {
@@ -17003,16 +17250,26 @@
   // Remove any unused arcs from the dataset's ArcCollection.
   // Return a NodeCollection
   function cleanArcReferences(dataset) {
+    profileStart('NodeCollection#1');
     var nodes = new NodeCollection(dataset.arcs);
+    profileEnd('NodeCollection#1');
+    profileStart('findDuplicateArcs');
     var map = findDuplicateArcs(nodes);
+    profileEnd('findDuplicateArcs');
     var dropCount;
     if (map) {
+      profileStart('replaceIndexedArcIds');
       replaceIndexedArcIds(dataset, map);
+      profileEnd('replaceIndexedArcIds');
     }
+    profileStart('deleteUnusedArcs');
     dropCount = deleteUnusedArcs(dataset);
+    profileEnd('deleteUnusedArcs');
     if (dropCount > 0) {
       // rebuild nodes if arcs have changed
+      profileStart('NodeCollection#2');
       nodes = new NodeCollection(dataset.arcs);
+      profileEnd('NodeCollection#2');
     }
     return nodes;
   }
@@ -17072,11 +17329,13 @@
   // and re-index the paths of all the layers that reference the arc collection.
   // (in-place)
   function addIntersectionCuts(dataset, _opts) {
+    profileStart('addIntersectionCuts');
     var opts = _opts || {};
     var arcs = dataset.arcs;
     var arcBounds = arcs && arcs.getBounds();
     var snapDist, nodes;
     if (!arcBounds || !arcBounds.hasBounds()) {
+      profileEnd('addIntersectionCuts');
       return new NodeCollection([]);
     }
 
@@ -17091,46 +17350,74 @@
 
     // bake-in any simplification (bug fix; before, -simplify followed by dissolve2
     // used to reset simplification)
+    profileStart('flatten');
     arcs.flatten();
+    profileEnd('flatten');
 
     var changed = snapAndCut(dataset, snapDist);
 
     // Detect topology again if coordinates have changed
     if (changed || opts.rebuild_topology) {
+      profileStart('buildTopology');
       buildTopology(dataset);
+      profileEnd('buildTopology');
     }
     // Remove degenerate shapes
     // Without this step, pathfinder function would encounter dead ends.
+    profileStart('cleanShapes');
     dataset.layers.forEach(function(lyr) {
       if (layerHasPaths(lyr)) {
         cleanShapes(lyr.shapes, arcs, lyr.geometry_type);
       }
     });
+    profileEnd('cleanShapes');
     // Further clean-up -- remove duplicate and unused arcs, etc.
+    profileStart('cleanArcReferences');
     nodes = cleanArcReferences(dataset);
+    profileEnd('cleanArcReferences');
+    profileEnd('addIntersectionCuts');
     return nodes;
   }
 
   function snapAndCut(dataset, snapDist) {
+    profileStart('snapAndCut');
     var arcs = dataset.arcs;
     var cutOpts = snapDist > 0 ? {tolerance: snapDist} : {tolerance: 0};
     var coordsHaveChanged = false;
-    var snapCount, dupeCount, cutCount;
+    var snapCount = 0, dupeCount, cutCount;
     var maxLoops = 4, loopCount = 0;
+    // After pass 1, snap & dedup can be skipped IF pass 1 snap moved nothing:
+    // cuts inserted exact intersection coordinates that match either an existing
+    // vertex (handled by formatIntersectingSegment) or a fresh point. The only
+    // way a fresh cut point could need re-snapping is if it falls within snap
+    // interval of a third (unrelated) vertex by coincidence; in clean data that
+    // didn't happen on pass 1 either, so we skip the redundant O(V log V) sort.
+    var skipFollowupSnap;
 
-    // snap + cut until no more cuts are needed
     do {
       loopCount++;
       cutCount = 0;
-      snapCount = snapCoordsByInterval(arcs, snapDist);
-      dupeCount = arcs.dedupCoords();
+      skipFollowupSnap = loopCount > 1 && snapCount === 0;
+      if (!skipFollowupSnap) {
+        profileStart('snap');
+        snapCount = snapCoordsByInterval(arcs, snapDist);
+        profileEnd('snap');
+        profileStart('dedupCoords');
+        dupeCount = arcs.dedupCoords();
+        profileEnd('dedupCoords');
+      } else {
+        snapCount = 0;
+        dupeCount = 0;
+      }
       if (snapCount > 0 || cutCount > 0 || loopCount == 1) {
-        // cut arcs at points where segments intersect
+        profileStart('cutPathsAtIntersections');
         cutCount = cutPathsAtIntersections(dataset, cutOpts);
+        profileEnd('cutPathsAtIntersections');
       }
       coordsHaveChanged |= (snapCount + dupeCount + cutCount) > 0;
-      debug("[snapAndCut] pass:", loopCount, "snaps:", snapCount, "dupes:", dupeCount, "cuts:", cutCount);
+      debug("[snapAndCut] pass:", loopCount, "snaps:", snapCount, "dupes:", dupeCount, "cuts:", cutCount, skipFollowupSnap ? "(skipped snap)" : "");
     } while (loopCount < maxLoops && cutCount > 0);
+    profileEnd('snapAndCut');
 
     // should this be added?
     // if (cutCount > 0 && loopCount == maxLoops) {
@@ -17195,9 +17482,13 @@
   // Divides a collection of arcs at points where arc paths cross each other
   // Returns array for remapping arc ids
   function divideArcs(arcs, opts) {
+    profileStart('findClippingPoints');
     var points = findClippingPoints(arcs, opts);
+    profileEnd('findClippingPoints');
     // TODO: avoid the following if no points need to be added
+    profileStart('insertCutPoints');
     var map = insertCutPoints(points, arcs);
+    profileEnd('insertCutPoints');
     // segment-point intersections currently create duplicate points
     // TODO: consider dedup in a later cleanup pass?
     // arcs.dedupCoords();
@@ -17205,9 +17496,14 @@
   }
 
   function findClippingPoints(arcs, opts) {
-    var intersections = findSegmentIntersections(arcs, opts),
-        data = arcs.getVertexData();
-    return convertIntersectionsToCutPoints(intersections, data.xx, data.yy);
+    profileStart('findSegmentIntersections');
+    var intersections = findSegmentIntersections(arcs, opts);
+    profileEnd('findSegmentIntersections');
+    profileStart('convertIntersectionsToCutPoints');
+    var data = arcs.getVertexData();
+    var points = convertIntersectionsToCutPoints(intersections, data.xx, data.yy);
+    profileEnd('convertIntersectionsToCutPoints');
+    return points;
   }
 
   // Inserts array of cutting points into an ArcCollection
@@ -17221,9 +17517,24 @@
         i1 = 0,
         nn1 = [],
         srcArcTotal = arcs.size(),
-        map = new Uint32Array(srcArcTotal),
-        points = filterSortedCutPoints(sortCutPoints(unfilteredPoints, xx0, yy0), arcs),
-        destPointTotal = arcs.getPointCount() + points.length * 2,
+        map = new Uint32Array(srcArcTotal);
+    profileStart('sortCutPoints');
+    var sorted = sortCutPoints(unfilteredPoints, xx0, yy0);
+    profileEnd('sortCutPoints');
+    profileStart('filterSortedCutPoints');
+    var points = filterSortedCutPoints(sorted, arcs);
+    profileEnd('filterSortedCutPoints');
+    // Skip the full xx/yy rewrite when nothing actually needs cutting.
+    // map[k] stores the destination arc-id at which source arc k begins; with no
+    // cuts, source arc k becomes destination arc k (map is the identity).
+    if (points.length === 0) {
+      for (var k = 0; k < srcArcTotal; k++) {
+        map[k] = k;
+      }
+      return map;
+    }
+    profileStart('rewriteVertexData');
+    var destPointTotal = arcs.getPointCount() + points.length * 2,
         xx1 = new Float64Array(destPointTotal),
         yy1 = new Float64Array(destPointTotal),
         n0, n1, arcLen, p;
@@ -17265,6 +17576,7 @@
 
     if (i1 != destPointTotal) error("[insertCutPoints()] Counting error");
     arcs.updateVertexData(nn1, xx1, yy1, null);
+    profileEnd('rewriteVertexData');
     return map;
   }
 
@@ -17307,14 +17619,35 @@
   // Insertion order: ascending id of first endpoint of containing segment and
   //   ascending distance from same endpoint.
   function sortCutPoints(points, xx, yy) {
-    points.sort(function(a, b) {
-      if (a.i != b.i) return a.i - b.i;
-      return geom.distanceSq(xx[a.i], yy[a.i], a.x, a.y) - geom.distanceSq(xx[b.i], yy[b.i], b.x, b.y);
-      // The old code below is no longer reliable, now that out-of-range intersection
-      // points are allowed.
-      // return Math.abs(a.x - xx[a.i]) - Math.abs(b.x - xx[b.i]) ||
-      // Math.abs(a.y - yy[a.i]) - Math.abs(b.y - yy[b.i]);
-    });
+    var len = points.length;
+    // Precompute the sort key once per point. The comparator below would
+    // otherwise do 2*log(n) distanceSq evaluations per element. Distances are
+    // kept in a parallel array so we don't mutate the caller's point objects.
+    var dists = xx ? new Float64Array(len) : null;
+    if (dists) {
+      for (var k = 0; k < len; k++) {
+        var p = points[k];
+        var dx = p.x - xx[p.i];
+        var dy = p.y - yy[p.i];
+        dists[k] = dx * dx + dy * dy;
+      }
+      // Decorate-sort-undecorate: attach (point, dist) tuples, sort by (i, dist),
+      // then write back. Avoids closing over `dists` lookup-by-identity.
+      var tagged = new Array(len);
+      for (var t = 0; t < len; t++) {
+        tagged[t] = [points[t], dists[t]];
+      }
+      tagged.sort(function(a, b) {
+        return a[0].i - b[0].i || a[1] - b[1];
+      });
+      for (var u = 0; u < len; u++) {
+        points[u] = tagged[u][0];
+      }
+    } else {
+      points.sort(function(a, b) {
+        return a.i - b.i;
+      });
+    }
     return points;
   }
 
@@ -17426,31 +17759,32 @@
   //
   function buildPolygonMosaic(nodes) {
     T$1.start();
-    // Detach any acyclic paths (spikes) from arc graph (these would interfere with
-    //    the ring finding operation). This modifies @nodes -- a side effect.
+    profileStart('bpm.detachAcyclicArcs');
     nodes.detachAcyclicArcs();
+    profileEnd('bpm.detachAcyclicArcs');
+    profileStart('bpm.findMosaicRings');
     var data = findMosaicRings(nodes);
+    profileEnd('bpm.findMosaicRings');
 
-    // Process CW rings: these are indivisible space-enclosing boundaries of mosaic tiles
     var mosaic = data.cw.map(function(ring) {return [ring];});
     debug('Find mosaic rings', T$1.stop());
     T$1.start();
 
-    // Process CCW rings: these are either holes or enclosure
-    // TODO: optimize -- testing CCW path of every island is costly
     var enclosures = [];
-    var index = new PathIndex(mosaic, nodes.arcs); // index CW rings to help identify holes
+    profileStart('bpm.PathIndex');
+    var index = new PathIndex(mosaic, nodes.arcs);
+    profileEnd('bpm.PathIndex');
+    profileStart('bpm.findEnclosingForCCW');
     data.ccw.forEach(function(ring) {
       var id = index.findSmallestEnclosingPolygon(ring);
       if (id > -1) {
-        // Enclosed CCW rings are holes in the enclosing mosaic tile
         mosaic[id].push(ring);
       } else {
-        // Non-enclosed CCW rings are outer boundaries -- add to enclosures layer
         reversePath(ring);
         enclosures.push([ring]);
       }
     });
+    profileEnd('bpm.findEnclosingForCCW');
     debug(utils.format("Detect holes (holes: %d, enclosures: %d)", data.ccw.length - enclosures.length, enclosures.length), T$1.stop());
 
     return {mosaic: mosaic, enclosures: enclosures, lostArcs: data.lostArcs};
@@ -17750,23 +18084,22 @@
   });
 
   function MosaicIndex(lyr, nodes, optsArg) {
+    profileStart('MosaicIndex.ctor');
     var opts = optsArg || {};
     var shapes = lyr.shapes;
+    profileStart('mi.buildPolygonMosaic');
     var mosaic = buildPolygonMosaic(nodes).mosaic;
-    // map arc ids to tile ids
+    profileEnd('mi.buildPolygonMosaic');
+    profileStart('mi.ShapeArcIndex');
     var arcTileIndex = new ShapeArcIndex(mosaic, nodes.arcs);
-    // keep track of which tiles have been assigned to shapes
+    profileEnd('mi.ShapeArcIndex');
     var fetchedTileIndex = new IdTestIndex(mosaic.length);
-    // bidirection index of tile ids <=> shape ids
     var tileShapeIndex = new TileShapeIndex(mosaic, opts);
-    // assign tiles to shapes
+    profileStart('mi.PolygonTiler.ctor');
     var shapeTiler = new PolygonTiler(mosaic, arcTileIndex, nodes, opts);
+    profileEnd('mi.PolygonTiler.ctor');
     var weightFunction = null;
     if (!opts.simple && opts.flat) {
-      // opts.simple is an optimization when dissolving everything into one polygon
-      // using -dissolve2. In this situation, we don't need a weight function.
-      // Otherwise, if polygons are being dissolved into multiple groups,
-      // we use a function to assign tiles in overlapping areas to a single shape.
       weightFunction = getOverlapPriorityFunction(lyr.shapes, nodes.arcs, opts.overlap_rule);
     }
     this.mosaic = mosaic;
@@ -17774,16 +18107,19 @@
     this.getSourceIdsByTileId = tileShapeIndex.getShapeIdsByTileId; // expose for -mosaic command
     this.getTileIdsByShapeId = tileShapeIndex.getTileIdsByShapeId;
 
-    // Assign shape ids to mosaic tile shapes.
+    profileStart('mi.assignTilesToShapes');
     shapes.forEach(function(shp, shapeId) {
       var tileIds = shapeTiler.getTilesInShape(shp, shapeId);
       tileShapeIndex.indexTileIdsByShapeId(shapeId, tileIds, weightFunction);
     });
+    profileEnd('mi.assignTilesToShapes');
 
-    // ensure each tile is assigned to only one shape
     if (opts.flat) {
+      profileStart('mi.tileShapeIndex.flatten');
       tileShapeIndex.flatten();
+      profileEnd('mi.tileShapeIndex.flatten');
     }
+    profileEnd('MosaicIndex.ctor');
 
     // fill gaps
     // (assumes that tiles have been allocated to shapes and mosaic has been flattened)
@@ -17963,22 +18299,30 @@
   }
 
   function dissolvePolygonGroups2(groups, lyr, dataset, opts) {
+    profileStart('dissolvePolygonGroups2');
+    profileStart('dpg2.NodeCollection');
     var arcFilter = getArcPresenceTest(lyr.shapes, dataset.arcs);
     var nodes = new NodeCollection(dataset.arcs, arcFilter);
+    profileEnd('dpg2.NodeCollection');
     var mosaicOpts = {
       flat: !opts.allow_overlaps,
       simple: groups.length == 1,
       overlap_rule: opts.overlap_rule
     };
+    profileStart('dpg2.MosaicIndex');
     var mosaicIndex = new MosaicIndex(lyr, nodes, mosaicOpts);
+    profileEnd('dpg2.MosaicIndex');
     // gap fill doesn't work yet with overlapping shapes
     var fillGaps = !opts.allow_overlaps && (opts.sliver_control || opts.gap_fill_area);
     var cleanupData, filterData;
     if (fillGaps) {
+      profileStart('dpg2.removeGaps');
       var sliverOpts = utils.extend({sliver_control: 1}, opts);
       filterData = getSliverFilter(lyr, dataset, sliverOpts);
       cleanupData = mosaicIndex.removeGaps(filterData.filter);
+      profileEnd('dpg2.removeGaps');
     }
+    profileStart('dpg2.dissolveTiles');
     var pathfind = getRingIntersector(mosaicIndex.nodes);
     var dissolvedShapes = groups.map(function(shapeIds) {
       var tiles = mosaicIndex.getTilesByShapeIds(shapeIds);
@@ -17989,14 +18333,16 @@
       }
       return dissolveTileGroup2(tiles, pathfind);
     });
-    // convert self-intersecting rings to outer/inner rings, for OGC
-    // Simple Features compliance
+    profileEnd('dpg2.dissolveTiles');
+    profileStart('dpg2.fixTangentHoles');
     dissolvedShapes = fixTangentHoles(dissolvedShapes, pathfind);
+    profileEnd('dpg2.fixTangentHoles');
 
     if (fillGaps && !opts.quiet) {
       var msg = getGapRemovalMessage(cleanupData.removed, cleanupData.remaining, filterData.label);
       if (msg) message(msg);
     }
+    profileEnd('dissolvePolygonGroups2');
     return dissolvedShapes;
   }
 
@@ -18216,40 +18562,52 @@
   cmd.cleanLayers = cleanLayers;
 
   function cleanLayers(layers, dataset, optsArg) {
+    profileStart('cleanLayers');
     var opts = optsArg || {};
     var deepClean = !opts.only_arcs;
     var pathClean = utils.some(layers, layerHasPaths);
     var nodes;
     if (opts.debug) {
       addIntersectionCuts(dataset, opts);
+      profileEnd('cleanLayers');
       return;
     }
     layers.forEach(function(lyr) {
       if (!layerHasGeometry(lyr)) return;
       if (lyr.geometry_type == 'polygon' && opts.rewind) {
+        profileStart('rewindPolygons');
         rewindPolygons(lyr, dataset.arcs);
+        profileEnd('rewindPolygons');
       }
       if (deepClean) {
         if (!nodes) {
           nodes = addIntersectionCuts(dataset, opts);
         }
         if (lyr.geometry_type == 'polygon') {
+          profileStart('cleanPolygonLayerGeometry');
           cleanPolygonLayerGeometry(lyr, dataset, opts);
+          profileEnd('cleanPolygonLayerGeometry');
         } else if (lyr.geometry_type == 'polyline') {
+          profileStart('cleanPolylineLayerGeometry');
           cleanPolylineLayerGeometry(lyr, dataset);
+          profileEnd('cleanPolylineLayerGeometry');
         } else if (lyr.geometry_type == 'point') {
           cleanPointLayerGeometry(lyr);
         }
       }
       if (!opts.allow_empty) {
+        profileStart('filterFeatures');
         cmd.filterFeatures(lyr, dataset.arcs, {remove_empty: true, verbose: opts.verbose});
+        profileEnd('filterFeatures');
       }
     });
 
     if (!opts.no_arc_dissolve && pathClean && dataset.arcs) {
-      // remove leftover endpoints within contiguous lines
+      profileStart('dissolveArcs');
       dissolveArcs(dataset);
+      profileEnd('dissolveArcs');
     }
+    profileEnd('cleanLayers');
   }
 
   function cleanPolygonLayerGeometry(lyr, dataset, opts) {
@@ -39726,6 +40084,7 @@ ${svg}
 
   // assumes layers and arcs have been prepared for clipping
   function clipPolygons(targetShapes, clipShapes, nodes, type, optsArg) {
+    profileStart('clipPolygons');
     var arcs = nodes.arcs;
     var opts = optsArg || {};
     var clipFlags = new Uint8Array(arcs.size());
@@ -39736,59 +40095,47 @@ ${svg}
     var findPath = getPathFinder(nodes, useRoute, routeIsActive);
     var dissolvePolygon = getPolygonDissolver(nodes);
 
-    // The following cleanup step is a performance bottleneck (it often takes longer than
-    // other clipping operations) and is usually not needed. Furthermore, it only
-    // eliminates a few kinds of problems, like target polygons with abnormal winding
-    // or overlapping rings. TODO: try to optimize or remove it for all cases
-
-    // skipping shape cleanup when using the experimental fast bbox clipping option
-    // if (!opts.bbox2 && !opts.no_cleanup) {
     if (!opts.bbox2) {
-      // clean each target polygon by dissolving its rings
+      profileStart('cp.dissolveTargetRings');
       targetShapes = targetShapes.map(dissolvePolygon);
+      profileEnd('cp.dissolveTargetRings');
     }
 
-    // Originally, clip shapes were dissolved here as an optimization, using
-    // an unreliable dissolve function.
-    // Now, clip shapes are dissolved using a more reliable (but slower)
-    // function in mapshaper-clip-erase.js
-    // clipShapes = [dissolvePolygon(internal.concatShapes(clipShapes))];
-
-    // Open pathways in the clip/erase layer
-    // Need to expose clip/erase routes in both directions by setting route
-    // in both directions to visible -- this is how cut-out shapes are detected
-    // Or-ing with 0x11 makes both directions visible (so reverse paths will block)
+    profileStart('cp.openClipRoutes');
     openArcRoutes(clipShapes, arcs, clipFlags, type == 'clip', type == 'erase', true, 0x11);
+    profileEnd('cp.openClipRoutes');
+    profileStart('cp.PathIndex#1');
     var index = new PathIndex(clipShapes, arcs);
+    profileEnd('cp.PathIndex#1');
+    profileStart('cp.clipShapes');
     var clippedShapes = targetShapes.map(function(shape, i) {
       if (shape) {
         return clipPolygon(shape, type, index);
       }
       return null;
     });
+    profileEnd('cp.clipShapes');
 
-    markPathsAsUsed(clippedShapes, routeFlags); // to help us find unused paths later
+    markPathsAsUsed(clippedShapes, routeFlags);
 
-
-    // add clip/erase polygons that are fully contained in a target polygon
-    // need to index only non-intersecting clip shapes
-    // (Intersecting shapes have one or more arcs that have been scanned)
-
-    // first, find shapes that do not intersect the target layer
-    // (these could be inside or outside the target polygons)
-
+    profileStart('cp.findUndividedClip');
     var undividedClipShapes = findUndividedClipShapes(clipShapes);
+    profileEnd('cp.findUndividedClip');
 
-    closeArcRoutes(clipShapes, arcs, routeFlags, true, true); // not needed?
+    closeArcRoutes(clipShapes, arcs, routeFlags, true, true);
+    profileStart('cp.PathIndex#2');
     index = new PathIndex(undividedClipShapes, arcs);
+    profileEnd('cp.PathIndex#2');
+    profileStart('cp.findInteriorPaths');
     targetShapes.forEach(function(shape, shapeId) {
-      // find clipping paths that are internal to this target polygon
       var paths = shape ? findInteriorPaths(shape, type, index) : null;
       if (paths) {
         clippedShapes[shapeId] = (clippedShapes[shapeId] || []).concat(paths);
       }
     });
+    profileEnd('cp.findInteriorPaths');
 
+    profileEnd('clipPolygons');
     return clippedShapes;
 
     function clipPolygon(shape, type, index) {
@@ -40216,31 +40563,36 @@ ${svg}
   // @clipSrc: layer in @dataset or filename
   // @type: 'clip' or 'erase'
   function clipLayers(targetLayers, clipSrc, targetDataset, type, opts) {
+    profileStart('clipLayers');
     var usingPathClip = utils.some(targetLayers, layerHasPaths);
-    var mergedDataset, clipLyr, nodes;
+    var mergedDataset, clipLyr, nodes, result;
     opts = opts || {no_cleanup: true}; // TODO: update testing functions
     if (opts.bbox2 && usingPathClip) { // assumes target dataset has arcs
-      return clipLayersByBBox(targetLayers, targetDataset, opts);
+      result = clipLayersByBBox(targetLayers, targetDataset, opts);
+      profileEnd('clipLayers');
+      return result;
     }
+    profileStart('mergeLayersForOverlay');
     mergedDataset = mergeLayersForOverlay(targetLayers, targetDataset, clipSrc, opts);
+    profileEnd('mergeLayersForOverlay');
     clipLyr = mergedDataset.layers[mergedDataset.layers.length-1];
     if (usingPathClip) {
-      // add vertices at all line intersections
-      // (generally slower than actual clipping)
       nodes = addIntersectionCuts(mergedDataset, opts);
       targetDataset.arcs = mergedDataset.arcs;
-      // dissolve clip layer shapes (to remove overlaps and other topological issues
-      // that might confuse the clipping function)
-      // use a data-free copy of the clip lyr, so data records are not dissolved
-      // (this avoids triggering an unnecessary and expensive DBF read operation in some cases).
+      profileStart('clipDissolvePolygonLayer2');
       clipLyr = utils.defaults({data: null}, clipLyr);
       clipLyr = dissolvePolygonLayer2(clipLyr, mergedDataset, {quiet: true, silent: true});
+      profileEnd('clipDissolvePolygonLayer2');
 
     } else {
       nodes = new NodeCollection(mergedDataset.arcs);
     }
 
-    return clipLayersByLayer(targetLayers, clipLyr, nodes, type, opts);
+    profileStart('clipLayersByLayer');
+    result = clipLayersByLayer(targetLayers, clipLyr, nodes, type, opts);
+    profileEnd('clipLayersByLayer');
+    profileEnd('clipLayers');
+    return result;
   }
 
   function clipLayersByBBox(layers, dataset, opts) {
@@ -51477,6 +51829,7 @@ ${svg}
     LayerUtils,
     Lines,
     Logging,
+    Profile,
     Merging,
     MosaicIndex$1,
     OptionParsingUtils,
