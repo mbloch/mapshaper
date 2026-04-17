@@ -7,9 +7,14 @@ construction, etc.).
 
 ## Test data
 
-Drop the files referenced in `cases.mjs` into
-`/Users/matthewbloch/nytweb/2026/mapshaper/cuts/` (or override with
-`MAPSHAPER_BENCH_DATA=/some/path`):
+Drop the files referenced in `cases.mjs` into some directory on disk and
+point the harness at it. Either:
+
+- copy `.env.example` to `.env` in this directory and set
+  `MAPSHAPER_BENCH_DATA=/absolute/path/to/your/data`, or
+- export `MAPSHAPER_BENCH_DATA` in your shell.
+
+`.env` is gitignored. Expected files:
 
 - `COUNTY_2019_US_SL050_Coast_Clipped.shp` (200 MB, US counties, EPSG:4326)
 - `srprec_061_g24_v01.shp` (6.9 MB, CA Placer precincts, NAD83)
