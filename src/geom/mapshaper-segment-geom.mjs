@@ -5,6 +5,25 @@ import { distance2D, distanceSq, pointSegDistSq2 } from '../geom/mapshaper-basic
 import { fromScaledStr, toScaledStr, findBigIntScaleFactor } from '../geom/mapshaper-bigint-utils';
 //import { findCrossIntersection_big } from '../geom/mapshaper-segment-geom-big';
 
+// Ad-hoc counters (reset by segmentIntersectionStatsReset, inspected by
+// segmentIntersectionStats). Cheap when unused, so safe to leave in.
+var STATS = {
+  calls: 0,            // segmentIntersection() invocations
+  touches: 0,          // pairs that returned a T-touch result
+  endpointHits: 0,     // pairs that returned null via testEndpointHit
+  crossCandidates: 0,  // pairs that reached findCrossIntersection()
+  crossRejectedFast: 0,// rejected by segmentHit_fast early-out
+  crossRobust: 0,      // useRobustCross() === true, ran BigInt math
+  crossFast: 0,        // useRobustCross() === false, ran fp math
+  crossNull: 0         // findCrossIntersection returned null (e.g. collinear)
+};
+export function segmentIntersectionStatsReset() {
+  for (var k in STATS) STATS[k] = 0;
+}
+export function segmentIntersectionStats() {
+  return Object.assign({}, STATS);
+}
+
 // Find the intersection between two 2D segments
 // Returns 0, 1 or 2 [x, y] locations as null, [x, y], or [x1, y1, x2, y2]
 // Special cases:
@@ -14,6 +33,7 @@ import { fromScaledStr, toScaledStr, findBigIntScaleFactor } from '../geom/mapsh
 //    is counted as an intersection (there will be either one or two)
 //
 export function segmentIntersection(ax, ay, bx, by, cx, cy, dx, dy, epsArg) {
+  STATS.calls++;
   // Use a small tolerance interval, so collinear segments and T-intersections
   // are detected (floating point rounding often causes exact functions to fail)
   var eps = epsArg > 0 ? epsArg :
@@ -27,8 +47,10 @@ export function segmentIntersection(ax, ay, bx, by, cx, cy, dx, dy, epsArg) {
   // segments that share an endpoint. Two touches indicates overlapping
   // collinear segments that do not share an endpoint.
   touches = findPointSegTouches(epsSq, ax, ay, bx, by, cx, cy, dx, dy);
+  if (touches) STATS.touches++;
   // Ignore endpoint-only intersections
   if (!touches && testEndpointHit(epsSq, ax, ay, bx, by, cx, cy, dx, dy)) {
+    STATS.endpointHits++;
     return null;
   }
   // Detect cross intersection
@@ -40,6 +62,7 @@ export function segmentIntersection(ax, ay, bx, by, cx, cy, dx, dy, epsArg) {
 }
 
 function findCrossIntersection(ax, ay, bx, by, cx, cy, dx, dy, eps) {
+  STATS.crossCandidates++;
   var p;
   // The normal-precision hit function works for all inputs when eps > 0 because
   // the geometries that cause the ordinary function fails are detected as
@@ -47,8 +70,10 @@ function findCrossIntersection(ax, ay, bx, by, cx, cy, dx, dy, eps) {
   // data samples that were tested).
   //
   if (eps > 0 && !segmentHit_fast(ax, ay, bx, by, cx, cy, dx, dy)) {
+    STATS.crossRejectedFast++;
     return null;
   } else if (eps === 0 && !segmentHit_robust(ax, ay, bx, by, cx, cy, dx, dy)) {
+    STATS.crossRejectedFast++;
     return null;
   }
 
@@ -57,17 +82,13 @@ function findCrossIntersection(ax, ay, bx, by, cx, cy, dx, dy, eps) {
   // the positional error within a small interval (e.g. 50% of eps)
   //
   if (useRobustCross(ax, ay, bx, by, cx, cy, dx, dy)) {
+    STATS.crossRobust++;
     p = findCrossIntersection_robust(ax, ay, bx, by, cx, cy, dx, dy);
-    // var p2 = findCrossIntersection_big(ax, ay, bx, by, cx, cy, dx, dy);
-    // var dx = p[0] - p2[0];
-    // var dy = p[1] - p2[1];
-    // if (dx != 0 || dy != 0) {
-    //   console.log(dx, dy)
-    // }
   } else {
+    STATS.crossFast++;
     p = findCrossIntersection_fast(ax, ay, bx, by, cx, cy, dx, dy);
   }
-  if (!p) return null;
+  if (!p) { STATS.crossNull++; return null; }
 
   // Snap p to a vertex if very close to one
   // This avoids tiny segments caused by T-intersection overshoots and prevents

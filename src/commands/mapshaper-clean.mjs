@@ -5,46 +5,59 @@ import { layerHasGeometry, layerHasPaths } from '../dataset/mapshaper-layer-util
 import { addIntersectionCuts } from '../paths/mapshaper-intersection-cuts';
 import { rewindPolygons } from '../polygons/mapshaper-ring-nesting';
 import { buildTopology } from '../topology/mapshaper-topology';
+import { profileStart, profileEnd } from '../utils/mapshaper-profile';
 import utils from '../utils/mapshaper-utils';
 import cmd from '../mapshaper-cmd';
 
 cmd.cleanLayers = cleanLayers;
 
 export function cleanLayers(layers, dataset, optsArg) {
+  profileStart('cleanLayers');
   var opts = optsArg || {};
   var deepClean = !opts.only_arcs;
   var pathClean = utils.some(layers, layerHasPaths);
   var nodes;
   if (opts.debug) {
     addIntersectionCuts(dataset, opts);
+    profileEnd('cleanLayers');
     return;
   }
   layers.forEach(function(lyr) {
     if (!layerHasGeometry(lyr)) return;
     if (lyr.geometry_type == 'polygon' && opts.rewind) {
+      profileStart('rewindPolygons');
       rewindPolygons(lyr, dataset.arcs);
+      profileEnd('rewindPolygons');
     }
     if (deepClean) {
       if (!nodes) {
         nodes = addIntersectionCuts(dataset, opts);
       }
       if (lyr.geometry_type == 'polygon') {
+        profileStart('cleanPolygonLayerGeometry');
         cleanPolygonLayerGeometry(lyr, dataset, opts);
+        profileEnd('cleanPolygonLayerGeometry');
       } else if (lyr.geometry_type == 'polyline') {
+        profileStart('cleanPolylineLayerGeometry');
         cleanPolylineLayerGeometry(lyr, dataset, opts);
+        profileEnd('cleanPolylineLayerGeometry');
       } else if (lyr.geometry_type == 'point') {
         cleanPointLayerGeometry(lyr, dataset, opts);
       }
     }
     if (!opts.allow_empty) {
+      profileStart('filterFeatures');
       cmd.filterFeatures(lyr, dataset.arcs, {remove_empty: true, verbose: opts.verbose});
+      profileEnd('filterFeatures');
     }
   });
 
   if (!opts.no_arc_dissolve && pathClean && dataset.arcs) {
-    // remove leftover endpoints within contiguous lines
+    profileStart('dissolveArcs');
     dissolveArcs(dataset);
+    profileEnd('dissolveArcs');
   }
+  profileEnd('cleanLayers');
 }
 
 function cleanPolygonLayerGeometry(lyr, dataset, opts) {

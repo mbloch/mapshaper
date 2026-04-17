@@ -9,11 +9,13 @@ import {
 import { getPolygonDissolver } from '../dissolve/mapshaper-polygon-dissolver';
 import { PathIndex } from '../paths/mapshaper-path-index';
 import { absArcId } from '../paths/mapshaper-arc-utils';
+import { profileStart, profileEnd } from '../utils/mapshaper-profile';
 
 // TODO: remove dependency on old polygon dissolve function
 
 // assumes layers and arcs have been prepared for clipping
 export function clipPolygons(targetShapes, clipShapes, nodes, type, optsArg) {
+  profileStart('clipPolygons');
   var arcs = nodes.arcs;
   var opts = optsArg || {};
   var clipFlags = new Uint8Array(arcs.size());
@@ -24,59 +26,47 @@ export function clipPolygons(targetShapes, clipShapes, nodes, type, optsArg) {
   var findPath = getPathFinder(nodes, useRoute, routeIsActive);
   var dissolvePolygon = getPolygonDissolver(nodes);
 
-  // The following cleanup step is a performance bottleneck (it often takes longer than
-  // other clipping operations) and is usually not needed. Furthermore, it only
-  // eliminates a few kinds of problems, like target polygons with abnormal winding
-  // or overlapping rings. TODO: try to optimize or remove it for all cases
-
-  // skipping shape cleanup when using the experimental fast bbox clipping option
-  // if (!opts.bbox2 && !opts.no_cleanup) {
   if (!opts.bbox2) {
-    // clean each target polygon by dissolving its rings
+    profileStart('cp.dissolveTargetRings');
     targetShapes = targetShapes.map(dissolvePolygon);
+    profileEnd('cp.dissolveTargetRings');
   }
 
-  // Originally, clip shapes were dissolved here as an optimization, using
-  // an unreliable dissolve function.
-  // Now, clip shapes are dissolved using a more reliable (but slower)
-  // function in mapshaper-clip-erase.js
-  // clipShapes = [dissolvePolygon(internal.concatShapes(clipShapes))];
-
-  // Open pathways in the clip/erase layer
-  // Need to expose clip/erase routes in both directions by setting route
-  // in both directions to visible -- this is how cut-out shapes are detected
-  // Or-ing with 0x11 makes both directions visible (so reverse paths will block)
+  profileStart('cp.openClipRoutes');
   openArcRoutes(clipShapes, arcs, clipFlags, type == 'clip', type == 'erase', !!"dissolve", 0x11);
+  profileEnd('cp.openClipRoutes');
+  profileStart('cp.PathIndex#1');
   var index = new PathIndex(clipShapes, arcs);
+  profileEnd('cp.PathIndex#1');
+  profileStart('cp.clipShapes');
   var clippedShapes = targetShapes.map(function(shape, i) {
     if (shape) {
       return clipPolygon(shape, type, index);
     }
     return null;
   });
+  profileEnd('cp.clipShapes');
 
-  markPathsAsUsed(clippedShapes, routeFlags); // to help us find unused paths later
+  markPathsAsUsed(clippedShapes, routeFlags);
 
-
-  // add clip/erase polygons that are fully contained in a target polygon
-  // need to index only non-intersecting clip shapes
-  // (Intersecting shapes have one or more arcs that have been scanned)
-
-  // first, find shapes that do not intersect the target layer
-  // (these could be inside or outside the target polygons)
-
+  profileStart('cp.findUndividedClip');
   var undividedClipShapes = findUndividedClipShapes(clipShapes);
+  profileEnd('cp.findUndividedClip');
 
-  closeArcRoutes(clipShapes, arcs, routeFlags, true, true); // not needed?
+  closeArcRoutes(clipShapes, arcs, routeFlags, true, true);
+  profileStart('cp.PathIndex#2');
   index = new PathIndex(undividedClipShapes, arcs);
+  profileEnd('cp.PathIndex#2');
+  profileStart('cp.findInteriorPaths');
   targetShapes.forEach(function(shape, shapeId) {
-    // find clipping paths that are internal to this target polygon
     var paths = shape ? findInteriorPaths(shape, type, index) : null;
     if (paths) {
       clippedShapes[shapeId] = (clippedShapes[shapeId] || []).concat(paths);
     }
   });
+  profileEnd('cp.findInteriorPaths');
 
+  profileEnd('clipPolygons');
   return clippedShapes;
 
   function clipPolygon(shape, type, index) {

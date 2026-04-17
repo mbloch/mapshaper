@@ -6,6 +6,7 @@ import { PathIndex } from '../paths/mapshaper-path-index';
 import { debug, stop } from '../utils/mapshaper-logging';
 import { T } from '../utils/mapshaper-timing';
 import { absArcId } from '../paths/mapshaper-arc-utils';
+import { profileStart, profileEnd } from '../utils/mapshaper-profile';
 import geom from '../geom/mapshaper-geom';
 import utils from '../utils/mapshaper-utils';
 
@@ -70,31 +71,32 @@ export function mosaic(dataset, opts) {
 //
 export function buildPolygonMosaic(nodes) {
   T.start();
-  // Detach any acyclic paths (spikes) from arc graph (these would interfere with
-  //    the ring finding operation). This modifies @nodes -- a side effect.
+  profileStart('bpm.detachAcyclicArcs');
   nodes.detachAcyclicArcs();
+  profileEnd('bpm.detachAcyclicArcs');
+  profileStart('bpm.findMosaicRings');
   var data = findMosaicRings(nodes);
+  profileEnd('bpm.findMosaicRings');
 
-  // Process CW rings: these are indivisible space-enclosing boundaries of mosaic tiles
   var mosaic = data.cw.map(function(ring) {return [ring];});
   debug('Find mosaic rings', T.stop());
   T.start();
 
-  // Process CCW rings: these are either holes or enclosure
-  // TODO: optimize -- testing CCW path of every island is costly
   var enclosures = [];
-  var index = new PathIndex(mosaic, nodes.arcs); // index CW rings to help identify holes
+  profileStart('bpm.PathIndex');
+  var index = new PathIndex(mosaic, nodes.arcs);
+  profileEnd('bpm.PathIndex');
+  profileStart('bpm.findEnclosingForCCW');
   data.ccw.forEach(function(ring) {
     var id = index.findSmallestEnclosingPolygon(ring);
     if (id > -1) {
-      // Enclosed CCW rings are holes in the enclosing mosaic tile
       mosaic[id].push(ring);
     } else {
-      // Non-enclosed CCW rings are outer boundaries -- add to enclosures layer
       reversePath(ring);
       enclosures.push([ring]);
     }
   });
+  profileEnd('bpm.findEnclosingForCCW');
   debug(utils.format("Detect holes (holes: %d, enclosures: %d)", data.ccw.length - enclosures.length, enclosures.length), T.stop());
 
   return {mosaic: mosaic, enclosures: enclosures, lostArcs: data.lostArcs};

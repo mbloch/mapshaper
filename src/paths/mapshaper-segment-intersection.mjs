@@ -7,6 +7,7 @@ import { getHighPrecisionSnapInterval } from '../paths/mapshaper-snapping';
 import { SimpleIdTestIndex } from '../indexing/mapshaper-id-test-index';
 import { absArcId, findArcIdFromVertexId } from '../paths/mapshaper-arc-utils';
 import { segmentIntersection } from '../geom/mapshaper-segment-geom';
+import { profileStart, profileEnd } from '../utils/mapshaper-profile';
 
 export function getIntersectionPoints(intersections) {
   return intersections.map(function(obj) {
@@ -75,6 +76,7 @@ export function findSegmentIntersections(arcs, optArg) {
 
   function singleStripeId(y) {return 0;}
   // Count segments in each stripe
+  profileStart('stripeSetup');
   arcs.forEachSegment(function(id1, id2, xx, yy) {
     var s1 = stripeId(yy[id1]),
         s2 = stripeId(yy[id2]);
@@ -111,8 +113,10 @@ export function findSegmentIntersections(arcs, optArg) {
       s1 += s2 > s1 ? 1 : -1;
     }
   });
+  profileEnd('stripeSetup');
 
   // Detect intersections among segments in each stripe.
+  profileStart('intersectSegments');
   var raw = arcs.getVertexData(),
       intersections = [],
       arr;
@@ -122,7 +126,11 @@ export function findSegmentIntersections(arcs, optArg) {
       intersections.push(arr[j]);
     }
   }
-  return dedupIntersections(intersections, opts.unique ? getUniqueIntersectionKey : null);
+  profileEnd('intersectSegments');
+  profileStart('dedupIntersections');
+  var deduped = dedupIntersections(intersections, opts.unique ? getUniqueIntersectionKey : null);
+  profileEnd('dedupIntersections');
+  return deduped;
 }
 
 
@@ -135,22 +143,42 @@ export function sortIntersections(arr) {
 
 
 export function dedupIntersections(arr, keyFunction) {
-  var index = {};
-  var getKey = keyFunction || getIntersectionKey;
-  return arr.filter(function(o) {
-    var key = getKey(o);
-    if (key in index) {
-      return false;
+  if (keyFunction) {
+    var index = new Map();
+    var out = [];
+    for (var i = 0, n = arr.length; i < n; i++) {
+      var o = arr[i];
+      var k = keyFunction(o);
+      if (index.has(k)) continue;
+      index.set(k, true);
+      out.push(o);
     }
-    index[key] = true;
-    return true;
-  });
-}
-
-// Get an indexable key from an intersection object
-// Assumes that vertex ids of o.a and o.b are sorted
-function getIntersectionKey(o) {
-  return o.a.join(',') + ';' + o.b.join(',');
+    return out;
+  }
+  // Default key is the pair of segments (a, b). Each segment is a vertex id
+  // pair where the second id is either equal to or one greater than the first
+  // (see formatIntersectingSegment). Pack each segment into a single number
+  // (id * 2 + isMidSegment) and use a two-level Map keyed by integers, which
+  // avoids the per-call string allocation of the previous Array#join key.
+  var outer = new Map();
+  var result = [];
+  for (var ii = 0, nn = arr.length; ii < nn; ii++) {
+    var o2 = arr[ii];
+    var a = o2.a, b = o2.b;
+    var ak = a[0] * 2 + (a[0] === a[1] ? 0 : 1);
+    var bk = b[0] * 2 + (b[0] === b[1] ? 0 : 1);
+    var inner = outer.get(ak);
+    if (inner) {
+      if (inner.has(bk)) continue;
+      inner.add(bk);
+    } else {
+      inner = new Set();
+      inner.add(bk);
+      outer.set(ak, inner);
+    }
+    result.push(o2);
+  }
+  return result;
 }
 
 function getUniqueIntersectionKey(o) {

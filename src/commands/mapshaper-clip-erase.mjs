@@ -14,6 +14,7 @@ import { ArcCollection } from '../paths/mapshaper-arcs';
 import { NodeCollection } from '../topology/mapshaper-nodes';
 import { dissolveArcs } from '../paths/mapshaper-arc-dissolve';
 import { dissolvePolygonLayer2 } from '../dissolve/mapshaper-polygon-dissolve2';
+import { profileStart, profileEnd } from '../utils/mapshaper-profile';
 
 cmd.clipLayers = function(target, src, dataset, opts) {
   return clipLayers(target, src, dataset, "clip", opts);
@@ -53,31 +54,36 @@ export function clipLayersInPlace(layers, clipSrc, dataset, type, opts) {
 // @clipSrc: layer in @dataset or filename
 // @type: 'clip' or 'erase'
 export function clipLayers(targetLayers, clipSrc, targetDataset, type, opts) {
+  profileStart('clipLayers');
   var usingPathClip = utils.some(targetLayers, layerHasPaths);
-  var mergedDataset, clipLyr, nodes;
+  var mergedDataset, clipLyr, nodes, result;
   opts = opts || {no_cleanup: true}; // TODO: update testing functions
   if (opts.bbox2 && usingPathClip) { // assumes target dataset has arcs
-    return clipLayersByBBox(targetLayers, targetDataset, opts);
+    result = clipLayersByBBox(targetLayers, targetDataset, opts);
+    profileEnd('clipLayers');
+    return result;
   }
+  profileStart('mergeLayersForOverlay');
   mergedDataset = mergeLayersForOverlay(targetLayers, targetDataset, clipSrc, opts);
+  profileEnd('mergeLayersForOverlay');
   clipLyr = mergedDataset.layers[mergedDataset.layers.length-1];
   if (usingPathClip) {
-    // add vertices at all line intersections
-    // (generally slower than actual clipping)
     nodes = addIntersectionCuts(mergedDataset, opts);
     targetDataset.arcs = mergedDataset.arcs;
-    // dissolve clip layer shapes (to remove overlaps and other topological issues
-    // that might confuse the clipping function)
-    // use a data-free copy of the clip lyr, so data records are not dissolved
-    // (this avoids triggering an unnecessary and expensive DBF read operation in some cases).
+    profileStart('clipDissolvePolygonLayer2');
     clipLyr = utils.defaults({data: null}, clipLyr);
     clipLyr = dissolvePolygonLayer2(clipLyr, mergedDataset, {quiet: true, silent: true});
+    profileEnd('clipDissolvePolygonLayer2');
 
   } else {
     nodes = new NodeCollection(mergedDataset.arcs);
   }
 
-  return clipLayersByLayer(targetLayers, clipLyr, nodes, type, opts);
+  profileStart('clipLayersByLayer');
+  result = clipLayersByLayer(targetLayers, clipLyr, nodes, type, opts);
+  profileEnd('clipLayersByLayer');
+  profileEnd('clipLayers');
+  return result;
 }
 
 export function clipLayersByBBox(layers, dataset, opts) {
