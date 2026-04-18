@@ -20,7 +20,11 @@ import utils from '../utils/mapshaper-utils';
   version: 1,
   created: 'YYYY-MM-DDTHH:mm:ss.sssZ', // ISO string
   datasets: [],
-  gui: {} // see gui-session-snapshot-control.mjs
+  gui: {}, // see gui-session-snapshot-control.mjs
+  history: { // optional; only present in snapshots created by the GUI
+    commands: ['-i foo.shp', '-simplify 10%', ...],
+    savedAtIndex: 0 // index of the first command after the last save boundary
+  }
 }
 */
 
@@ -44,12 +48,16 @@ export function pack(obj) {
 //    exporting from command line: { compact: true, file: 'tmp.msx', final: true }
 //    exporting from gui export menu: {compact: true, format: 'msx'}
 //    saving gui temp snapshot: {compact: false}
+// opts.history: optional GUI session history captured by SessionHistory#getHistorySnapshot
 export async function exportDatasetsToPack(datasets, opts) {
   var obj = {
     version: 1,
     created: (new Date).toISOString(),
     datasets: await Promise.all(datasets.map(dataset => exportDataset(dataset, opts)))
   };
+  if (opts.history) {
+    obj.history = opts.history;
+  }
   return obj;
 }
 

@@ -69,6 +69,19 @@ export function SessionSnapshots(gui) {
       action: saveSnapshot
     });
 
+    if (!gui.session.isEmpty()) {
+      // Surface the console "history" command via the snapshot menu so users
+      // can browse the session's command history without knowing about the
+      // console keyword. Hidden when there's nothing to show.
+      addMenuLink({
+        slug: 'history',
+        label: 'view session history',
+        action: function(gui) {
+          gui.console.runCommand('history');
+        }
+      });
+    }
+
     // var available = await getAvailableStorage();
     // if (available) {
     //   El('div').addClass('save-menu-entry').text(available + ' available').appendTo(menu);
@@ -192,10 +205,24 @@ async function restoreSnapshotById(id, gui) {
   }
   gui.model.clear();
   importDatasets(data.datasets, gui);
+  // Reinstate the session history (including its saved/unsaved boundary) that
+  // was in effect when the snapshot was taken. If the snapshot has no history
+  // field (e.g. older snapshots), this resets to a clean state.
+  gui.session.restoreHistorySnapshot(data.history);
   gui.clearMode();
 }
 
-// Add datasets to the current project
+// Import datasets from a packed .msx buffer.
+// Behavior depends on whether the current session contains data:
+//   - empty session: full project restore -- datasets and any embedded session
+//     history are loaded as if continuing the original session.
+//   - non-empty session: merge -- datasets are added to the current project,
+//     but any embedded session history is discarded (the imported commands
+//     assume different layer indices and a different starting state, so
+//     merging them into the current session would produce a misleading history).
+// Returns true if a full restore occurred, false if a merge occurred. The
+// caller uses this to decide whether to record an additional -i command in
+// the current session's history (see gui-import-control.mjs).
 // TODO: figure out if interface data should be imported (e.g. should
 //   visibility flag of imported layers be imported)
 export async function importSessionData(buf, gui) {
@@ -203,7 +230,12 @@ export async function importSessionData(buf, gui) {
     buf = new Uint8Array(buf);
   }
   var data = await internal.unpackSessionData(buf);
+  var fullRestore = gui.model.isEmpty();
   importDatasets(data.datasets, gui);
+  if (fullRestore) {
+    gui.session.restoreHistorySnapshot(data.history);
+  }
+  return fullRestore;
 }
 
 function importDatasets(datasets, gui) {
@@ -219,7 +251,13 @@ async function captureSnapshot(gui) {
   if (!lyr) return null; // no data -- no snapshot
   // compact: true applies compression to vector coordinates, for ~30% reduction
   //   in file size in a typical polygon or polyline file, but longer processing time
-  var opts = {compact: false, active_layer: lyr};
+  // history: capture session commands + saved/unsaved boundary so the history
+  //   can be reinstated if this snapshot is restored or re-imported later.
+  var opts = {
+    compact: false,
+    active_layer: lyr,
+    history: gui.session.getHistorySnapshot()
+  };
   var datasets = gui.model.getDatasets();
   var obj = await internal.exportDatasetsToPack(datasets, opts);
   obj.gui = getGuiState(gui);

@@ -155,6 +155,17 @@ export var ExportControl = function(gui) {
       await loadGeopackageLib();
     }
     opts.active_layer = gui.model.getActiveLayer().layer; // kludge to support restoring active layer in gui
+    if (opts.format == internal.PACKAGE_EXT) {
+      // Embed the session history in .msx exports so that re-importing the
+      // file into a fresh session restores the original command history.
+      // The .msx file itself is a durable artifact, so mark every captured
+      // command as "saved" -- a user reloading the file shouldn't see an
+      // unsaved-changes warning for work that lives in the file they just
+      // opened.
+      var snapshot = gui.session.getHistorySnapshot();
+      snapshot.savedAtIndex = snapshot.commands.length;
+      opts.history = snapshot;
+    }
     try {
       var files = await internal.exportTargetLayers(model, targets, opts);
     } catch(e) {
