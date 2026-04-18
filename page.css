@@ -196,11 +196,11 @@ body.map-view {
 	background-color: black;
 }
 
-#donate-btn {
+#sponsor-btn {
 	color: #ffa;
 }
 
-#donate-btn svg {
+#sponsor-btn svg {
 	width: 12px;
 	height: 12px;
 	fill: currentColor;

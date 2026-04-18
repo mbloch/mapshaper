@@ -1,0 +1,215 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Support mapshaper</title>
+<meta name="description" content="Support the development of mapshaper, free open-source software for editing geographic data.">
+<link rel="icon" type="image/png" href="images/icon.png">
+
+<style>
+  @font-face {
+    font-family: 'SourceSans3';
+    src: url('assets/SourceSans3-VariableFont_wght.ttf') format('truetype');
+    font-display: swap;
+  }
+
+  html, body {
+    margin: 0;
+    padding: 0;
+    background-color: #f8fdff;
+    font: 16px/1.55 'SourceSans3', Arial, sans-serif;
+    color: #333;
+  }
+
+  a { color: #10699b; }
+  a:hover { color: #1A6A96; }
+
+  .page-header {
+    background-color: #1385B7;
+    color: white;
+    padding: 0 11px;
+    height: 29px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+
+  .mapshaper-logo,
+  .mapshaper-logo:hover {
+    font-weight: 600;
+    font-size: 17px;
+    color: white;
+    text-decoration: none;
+  }
+
+  .mapshaper-logo .logo-highlight {
+    color: #ffa;
+  }
+
+  .header-back {
+    color: white;
+    text-decoration: none;
+    font-size: 14px;
+    height: 29px;
+    display: inline-flex;
+    align-items: center;
+    padding: 0 10px;
+  }
+
+  .header-back:hover {
+    background-color: #1A6A96;
+    color: white;
+  }
+
+  main {
+    max-width: 640px;
+    margin: 0 auto;
+    padding: 40px 24px 80px;
+  }
+
+  h1 {
+    font-weight: 600;
+    font-size: 32px;
+    margin: 0 0 12px;
+    color: #222;
+  }
+
+  .tagline {
+    font-size: 17px;
+    color: #555;
+    margin: 0 0 32px;
+  }
+
+  .sponsor-buttons {
+    display: flex;
+    gap: 12px;
+    flex-wrap: wrap;
+    margin: 24px 0 12px;
+  }
+
+  .btn {
+    display: inline-block;
+    padding: 12px 22px;
+    background-color: #1385B7;
+    color: white;
+    text-decoration: none;
+    font-weight: 600;
+    font-size: 16px;
+    border-radius: 3px;
+    transition: background-color 0.15s;
+  }
+
+  .btn:hover {
+    background-color: #1A6A96;
+    color: white;
+  }
+
+  .btn.btn-secondary {
+    background-color: #444;
+  }
+
+  .btn.btn-secondary:hover {
+    background-color: #222;
+  }
+
+  .sponsor-note {
+    font-size: 14px;
+    color: #666;
+    margin: 0 0 32px;
+  }
+
+  h2 {
+    font-weight: 600;
+    font-size: 20px;
+    margin: 32px 0 12px;
+    color: #222;
+  }
+
+  ul.support-list {
+    padding-left: 20px;
+    margin: 8px 0 24px;
+  }
+
+  ul.support-list li {
+    margin-bottom: 6px;
+  }
+
+  .feedback-cta {
+    background-color: #fff;
+    border-left: 3px solid #1385B7;
+    padding: 14px 18px;
+    margin: 24px 0;
+  }
+
+  .signature {
+    margin-top: 32px;
+    color: #555;
+    font-style: italic;
+  }
+
+  .footer-note {
+    margin-top: 48px;
+    padding-top: 24px;
+    border-top: 1px solid #e0e8ec;
+    font-size: 14px;
+    color: #777;
+  }
+
+  @media (max-width: 480px) {
+    main { padding: 24px 18px 60px; }
+    h1 { font-size: 26px; }
+    .sponsor-buttons { flex-direction: column; align-items: stretch; }
+    .btn { text-align: center; }
+  }
+</style>
+</head>
+<body>
+
+<header class="page-header">
+  <a href="index.html" class="mapshaper-logo">map<span class="logo-highlight">shaper</span></a>
+  <a href="index.html" class="header-back">&larr; Back to mapshaper</a>
+</header>
+
+<main>
+
+<h1>Support mapshaper</h1>
+
+<p class="tagline">Mapshaper is free, open-source software for editing geographic data &mdash; used worldwide for everything from classroom exercises to professional map work.</p>
+
+<div class="sponsor-buttons">
+  <a href="https://ko-fi.com/mapshaper" class="btn">Support via Ko-fi</a>
+  <a href="https://github.com/sponsors/mbloch" class="btn btn-secondary">Sponsor on GitHub</a>
+</div>
+
+<p class="sponsor-note">Ko-fi accepts one-time or recurring contributions &mdash; no account required. GitHub Sponsors offers recurring sponsorship.</p>
+
+<h2>What your contribution supports</h2>
+<ul class="support-list">
+  <li>Development time &mdash; bug fixes, new features, performance improvements</li>
+  <li>Responding to user issues and requests</li>
+</ul>
+
+<h2>Recent work</h2>
+<ul class="support-list">
+  <li><strong>GeoPackage</strong> import and export</li>
+  <li><strong>FlatGeobuf</strong> import and export</li>
+  <li><strong>SVG import</strong> &mdash; for round-tripping maps originally exported from Mapshaper</li>
+  <li><strong>Performance improvements</strong> for large datasets</li>
+</ul>
+<p><a href="https://github.com/mbloch/mapshaper/blob/master/CHANGELOG.md">See the full changelog &rarr;</a></p>
+
+<div class="feedback-cta">
+  <strong>Want to help shape the roadmap?</strong> Take a <a href="https://tally.so/r/44Njok">one-minute survey</a> and tell me what you'd like to see improved.
+</div>
+
+<p class="signature">&mdash; Matthew Bloch, maintainer</p>
+
+<div class="footer-note">
+  Mapshaper&rsquo;s basemap services are generously provided by <a href="https://www.mapbox.com">Mapbox</a>.
+</div>
+
+</main>
+
+</body>
+</html>

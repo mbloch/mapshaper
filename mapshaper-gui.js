@@ -3079,25 +3079,13 @@
           throw Error('Internal error');
         }
       }
-      var userInterval = unfilteredArcs.getRetainedInterval();
       // switch to filtered version of arcs at small scales
-      var unitsPerPixel = 1/ext.getTransform().mx,
-          useFiltering = filteredArcs && unitsPerPixel > filteredSegLen * 1.5;
-      if (useFiltering) {
-        // Dynamic LOD: drop any vertex whose Visvalingam triangle-area
-        // contribution is smaller than half a square pixel at the current
-        // zoom. Visually imperceptible, but can remove a large fraction of
-        // vertices on very zoomed-out views of highly detailed arcs.
-        // Never go below the user's own simplification setting.
-        var displayInterval = unitsPerPixel * unitsPerPixel * 0.5;
-        filteredArcs.setRetainedInterval(Math.max(userInterval, displayInterval));
-        return filteredArcs;
-      }
+      var useFiltering = filteredArcs && 1/ext.getTransform().mx > filteredSegLen * 1.5;
       if (filteredArcs) {
-        // match simplification of unfiltered arcs, in case we switch back
-        filteredArcs.setRetainedInterval(userInterval);
+        // match simplification of unfiltered arcs
+        filteredArcs.setRetainedInterval(unfilteredArcs.getRetainedInterval());
       }
-      return unfilteredArcs;
+      return useFiltering ? filteredArcs : unfilteredArcs;
     };
   }
 
@@ -12333,7 +12321,7 @@
   function getArcFilter(arcs, ext, usedFlag, arcCounts) {
     // Arcs whose bbox is smaller than this pixel threshold collapse to a dot
     // under roundToPix anyway; skipping them saves per-arc iteration.
-    var MIN_PATH_LEN = 0.5;
+    var MIN_PATH_LEN = 0.35;
     var minPathLen = ext.getPixelSize() * MIN_PATH_LEN,
         geoBounds = ext.getBounds(),
         geoBBox = geoBounds.toArray(),
@@ -12466,7 +12454,7 @@
     // Optimized to draw paths in same-style batches (faster Canvas drawing)
     _self.drawStyledPaths = function(shapes, arcs, style, filter) {
       var styleIndex = {};
-      var batchSize = 1500;
+      var batchSize = 100;
       var startPath = getPathStart(_ext, getScaledLineScale(_ext, style));
       var draw = getShapePencil(arcs, _ext);
       var key, item, shp;
