@@ -1580,6 +1580,19 @@
         action: saveSnapshot
       });
 
+      if (!gui.session.isEmpty()) {
+        // Surface the console "history" command via the snapshot menu so users
+        // can browse the session's command history without knowing about the
+        // console keyword. Hidden when there's nothing to show.
+        addMenuLink({
+          slug: 'history',
+          label: 'view session history',
+          action: function(gui) {
+            gui.console.runCommand('history');
+          }
+        });
+      }
+
       // var available = await getAvailableStorage();
       // if (available) {
       //   El('div').addClass('save-menu-entry').text(available + ' available').appendTo(menu);
@@ -1703,10 +1716,24 @@
     }
     gui.model.clear();
     importDatasets(data.datasets, gui);
+    // Reinstate the session history (including its saved/unsaved boundary) that
+    // was in effect when the snapshot was taken. If the snapshot has no history
+    // field (e.g. older snapshots), this resets to a clean state.
+    gui.session.restoreHistorySnapshot(data.history);
     gui.clearMode();
   }
 
-  // Add datasets to the current project
+  // Import datasets from a packed .msx buffer.
+  // Behavior depends on whether the current session contains data:
+  //   - empty session: full project restore -- datasets and any embedded session
+  //     history are loaded as if continuing the original session.
+  //   - non-empty session: merge -- datasets are added to the current project,
+  //     but any embedded session history is discarded (the imported commands
+  //     assume different layer indices and a different starting state, so
+  //     merging them into the current session would produce a misleading history).
+  // Returns true if a full restore occurred, false if a merge occurred. The
+  // caller uses this to decide whether to record an additional -i command in
+  // the current session's history (see gui-import-control.mjs).
   // TODO: figure out if interface data should be imported (e.g. should
   //   visibility flag of imported layers be imported)
   async function importSessionData(buf, gui) {
@@ -1714,7 +1741,12 @@
       buf = new Uint8Array(buf);
     }
     var data = await internal.unpackSessionData(buf);
+    var fullRestore = gui.model.isEmpty();
     importDatasets(data.datasets, gui);
+    if (fullRestore) {
+      gui.session.restoreHistorySnapshot(data.history);
+    }
+    return fullRestore;
   }
 
   function importDatasets(datasets, gui) {
@@ -1730,7 +1762,13 @@
     if (!lyr) return null; // no data -- no snapshot
     // compact: true applies compression to vector coordinates, for ~30% reduction
     //   in file size in a typical polygon or polyline file, but longer processing time
-    var opts = {compact: false, active_layer: lyr};
+    // history: capture session commands + saved/unsaved boundary so the history
+    //   can be reinstated if this snapshot is restored or re-imported later.
+    var opts = {
+      compact: false,
+      active_layer: lyr,
+      history: gui.session.getHistorySnapshot()
+    };
     var datasets = gui.model.getDatasets();
     var obj = await internal.exportDatasetsToPack(datasets, opts);
     obj.gui = getGuiState(gui);
@@ -2348,7 +2386,16 @@
           await wait(35);
         }
         if (group[internal.PACKAGE_EXT]) {
-          await importSessionData(group[internal.PACKAGE_EXT].content, gui);
+          var fullRestore = await importSessionData(group[internal.PACKAGE_EXT].content, gui);
+          importCount++;
+          // Skip recording an -i command if the .msx import was a full project
+          // restore: the previous session's history (including the original -i)
+          // has already been reinstated, so adding another entry here would be
+          // misleading. For the merge case, record the import as a regular -i
+          // so the snapshot contributes a CLI-replayable entry to the session.
+          if (!fullRestore) {
+            gui.session.fileImported(group[internal.PACKAGE_EXT].filename, optStr);
+          }
         } else if (await importDataset(group, groupImportOpts)) {
           importCount++;
           gui.session.fileImported(group.filename, optStr);
@@ -3958,12 +4005,17 @@
     // expose this function, so other components can run commands (e.g. box tool)
     this.runMapshaperCommands = runMapshaperCommands;
 
-    this.runInitialCommands = function(str) {
+    // Open the console (if closed) and run a command, as if the user had
+    // typed it. Used by UI controls that surface console functionality, e.g.
+    // the "view command history" link in the snapshot menu.
+    this.runCommand = function(str) {
       str = str.trim();
       if (!str) return;
       turnOn();
       submit(str);
     };
+
+    this.runInitialCommands = this.runCommand;
 
     consoleMessage(PROMPT);
     gui.keyboard.on('keydown', onKeyDown);
@@ -4783,6 +4835,17 @@
         await loadGeopackageLib();
       }
       opts.active_layer = gui.model.getActiveLayer().layer; // kludge to support restoring active layer in gui
+      if (opts.format == internal.PACKAGE_EXT) {
+        // Embed the session history in .msx exports so that re-importing the
+        // file into a fresh session restores the original command history.
+        // The .msx file itself is a durable artifact, so mark every captured
+        // command as "saved" -- a user reloading the file shouldn't see an
+        // unsaved-changes warning for work that lives in the file they just
+        // opened.
+        var snapshot = gui.session.getHistorySnapshot();
+        snapshot.savedAtIndex = snapshot.commands.length;
+        opts.history = snapshot;
+      }
       try {
         var files = await internal.exportTargetLayers(model, targets, opts);
       } catch(e) {
@@ -5592,18 +5655,52 @@
 
   function SessionHistory(gui) {
     var commands = [];
+    // index of first command after the last "save" boundary; commands at indices
+    // [savedAtIndex .. commands.length) are considered unsaved
+    var savedAtIndex = 0;
     // commands that can be ignored when checking for unsaved changes
-    var nonEditingCommands = 'i,target,info,version,verbose,projections,inspect,help,h,encodings,calc'.split(',');
+    var nonEditingCommands = 'i,target,info,version,verbose,projections,inspect,help,h,encodings,calc,comment'.split(',');
 
     this.unsavedChanges = function() {
-      var cmd, cmdName;
-      for (var i=commands.length - 1; i >= 0; i--) {
-        cmdName = getCommandName(commands[i]);
-        if (cmdName == 'o') break;
+      for (var i = commands.length - 1; i >= savedAtIndex; i--) {
+        var cmdName = getCommandName(commands[i]);
         if (nonEditingCommands.includes(cmdName)) continue;
         return true;
       }
       return false;
+    };
+
+    this.isEmpty = function() {
+      return commands.length === 0;
+    };
+
+    // Mark the current end of the history as a "saved" boundary -- called after
+    // data has been written somewhere durable (e.g. an -o export). Snapshots
+    // are session-scoped and are NOT durable, so creating one does not mark saved.
+    this.markSaved = function() {
+      savedAtIndex = commands.length;
+    };
+
+    // Capture a serializable copy of the history for inclusion in a snapshot.
+    this.getHistorySnapshot = function() {
+      return {
+        commands: commands.slice(),
+        savedAtIndex: savedAtIndex
+      };
+    };
+
+    // Replace the current history with one captured by getHistorySnapshot().
+    // Used when restoring an in-session snapshot. If the snapshot has no history
+    // (e.g. older snapshots, or external .msx files), starts from a clean state.
+    this.restoreHistorySnapshot = function(obj) {
+      if (obj && Array.isArray(obj.commands)) {
+        commands = obj.commands.slice();
+        savedAtIndex = typeof obj.savedAtIndex == 'number' ?
+          Math.min(obj.savedAtIndex, commands.length) : commands.length;
+      } else {
+        commands = [];
+        savedAtIndex = 0;
+      }
     };
 
     this.fileImported = function(file, optStr) {
@@ -5665,6 +5762,8 @@
         cmd += ' ' + optStr;
       }
       commands.push(cmd);
+      // -o writes data to a durable location, so treat this as a save boundary
+      savedAtIndex = commands.length;
     };
 
     this.setTargetLayer = function(lyr) {
