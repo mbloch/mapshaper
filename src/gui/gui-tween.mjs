@@ -71,6 +71,9 @@ export function Tween(ease) {
     var pct = ease ? ease(e.pct) : e.pct,
         val = end * pct + start * (1 - pct);
     self.dispatchEvent('change', {value: val});
+    if (e.done) {
+      self.dispatchEvent('done');
+    }
   }
 }
 

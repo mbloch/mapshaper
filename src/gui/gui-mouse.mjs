@@ -94,6 +94,7 @@ export function MouseWheel(mouse) {
     }
     if (evt.done) {
       active = false;
+      self.dispatchEvent('mousewheelend');
     } else {
       if (fadeFactor > 0) {
         // Decelerate towards the end of the sustain interval (for smoother zooming)

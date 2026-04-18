@@ -48,6 +48,16 @@ export function MapNav(gui, ext, mouse) {
     ext.zoomToExtent(e.value, _fx, _fy);
   });
 
+  // Signal end-of-interaction so downstream modules (e.g. LayerRenderer) can
+  // trigger a settle/redraw immediately, instead of waiting on a debounce.
+  zoomTween.on('done', function() {
+    gui.dispatchEvent('map_interaction_end');
+  });
+
+  wheel.on('mousewheelend', function() {
+    gui.dispatchEvent('map_interaction_end');
+  });
+
   mouse.on('click', function(e) {
     gui.dispatchEvent('map_click', e);
   });
@@ -98,6 +108,7 @@ export function MapNav(gui, ext, mouse) {
       zoomBox.turnOff();
     } else {
       El('body').removeClass('panning').removeClass('pan');
+      gui.dispatchEvent('map_interaction_end');
     }
   });
 
