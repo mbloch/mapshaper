@@ -43,13 +43,12 @@ export function enhanceArcCollectionForDisplay(unfilteredArcs) {
         throw Error('Internal error');
       }
     }
+    // switch to filtered version of arcs at small scales
+    var useFiltering = filteredArcs && 1/ext.getTransform().mx > filteredSegLen * 1.5;
     if (filteredArcs) {
       // match simplification of unfiltered arcs
       filteredArcs.setRetainedInterval(unfilteredArcs.getRetainedInterval());
     }
-    // switch to filtered version of arcs at small scales
-    var unitsPerPixel = 1/ext.getTransform().mx,
-        useFiltering = filteredArcs && unitsPerPixel > filteredSegLen * 1.5;
     return useFiltering ? filteredArcs : unfilteredArcs;
   };
 }
