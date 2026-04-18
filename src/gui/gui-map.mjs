@@ -512,6 +512,7 @@ export function MshpMap(gui) {
 
     // RENDERING
     // draw main content layers
+
     _renderer.drawMainLayers(contentLayers, action);
 
     // draw hover & selection overlay
