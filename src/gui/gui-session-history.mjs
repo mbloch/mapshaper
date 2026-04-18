@@ -2,18 +2,52 @@ import { internal } from './gui-core';
 
 export function SessionHistory(gui) {
   var commands = [];
+  // index of first command after the last "save" boundary; commands at indices
+  // [savedAtIndex .. commands.length) are considered unsaved
+  var savedAtIndex = 0;
   // commands that can be ignored when checking for unsaved changes
-  var nonEditingCommands = 'i,target,info,version,verbose,projections,inspect,help,h,encodings,calc'.split(',');
+  var nonEditingCommands = 'i,target,info,version,verbose,projections,inspect,help,h,encodings,calc,comment'.split(',');
 
   this.unsavedChanges = function() {
-    var cmd, cmdName;
-    for (var i=commands.length - 1; i >= 0; i--) {
-      cmdName = getCommandName(commands[i]);
-      if (cmdName == 'o') break;
+    for (var i = commands.length - 1; i >= savedAtIndex; i--) {
+      var cmdName = getCommandName(commands[i]);
       if (nonEditingCommands.includes(cmdName)) continue;
       return true;
     }
     return false;
+  };
+
+  this.isEmpty = function() {
+    return commands.length === 0;
+  };
+
+  // Mark the current end of the history as a "saved" boundary -- called after
+  // data has been written somewhere durable (e.g. an -o export). Snapshots
+  // are session-scoped and are NOT durable, so creating one does not mark saved.
+  this.markSaved = function() {
+    savedAtIndex = commands.length;
+  };
+
+  // Capture a serializable copy of the history for inclusion in a snapshot.
+  this.getHistorySnapshot = function() {
+    return {
+      commands: commands.slice(),
+      savedAtIndex: savedAtIndex
+    };
+  };
+
+  // Replace the current history with one captured by getHistorySnapshot().
+  // Used when restoring an in-session snapshot. If the snapshot has no history
+  // (e.g. older snapshots, or external .msx files), starts from a clean state.
+  this.restoreHistorySnapshot = function(obj) {
+    if (obj && Array.isArray(obj.commands)) {
+      commands = obj.commands.slice();
+      savedAtIndex = typeof obj.savedAtIndex == 'number' ?
+        Math.min(obj.savedAtIndex, commands.length) : commands.length;
+    } else {
+      commands = [];
+      savedAtIndex = 0;
+    }
   };
 
   this.fileImported = function(file, optStr) {
@@ -75,6 +109,8 @@ export function SessionHistory(gui) {
       cmd += ' ' + optStr;
     }
     commands.push(cmd);
+    // -o writes data to a durable location, so treat this as a save boundary
+    savedAtIndex = commands.length;
   };
 
   this.setTargetLayer = function(lyr) {

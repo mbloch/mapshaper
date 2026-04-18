@@ -378,7 +378,16 @@ export function ImportControl(gui, opts) {
         await wait(35);
       }
       if (group[internal.PACKAGE_EXT]) {
-        await importSessionData(group[internal.PACKAGE_EXT].content, gui);
+        var fullRestore = await importSessionData(group[internal.PACKAGE_EXT].content, gui);
+        importCount++;
+        // Skip recording an -i command if the .msx import was a full project
+        // restore: the previous session's history (including the original -i)
+        // has already been reinstated, so adding another entry here would be
+        // misleading. For the merge case, record the import as a regular -i
+        // so the snapshot contributes a CLI-replayable entry to the session.
+        if (!fullRestore) {
+          gui.session.fileImported(group[internal.PACKAGE_EXT].filename, optStr);
+        }
       } else if (await importDataset(group, groupImportOpts)) {
         importCount++;
         gui.session.fileImported(group.filename, optStr);

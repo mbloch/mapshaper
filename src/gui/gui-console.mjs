@@ -29,12 +29,17 @@ export function Console(gui) {
   // expose this function, so other components can run commands (e.g. box tool)
   this.runMapshaperCommands = runMapshaperCommands;
 
-  this.runInitialCommands = function(str) {
+  // Open the console (if closed) and run a command, as if the user had
+  // typed it. Used by UI controls that surface console functionality, e.g.
+  // the "view command history" link in the snapshot menu.
+  this.runCommand = function(str) {
     str = str.trim();
     if (!str) return;
     turnOn();
     submit(str);
   };
+
+  this.runInitialCommands = this.runCommand;
 
   consoleMessage(PROMPT);
   gui.keyboard.on('keydown', onKeyDown);
