@@ -1,6 +1,13 @@
 <!DOCTYPE html>
 <html lang="en">
-<head>
+<head><!-- Google tag (gtag.js) -->
+<script async src="https://www.googletagmanager.com/gtag/js?id=G-QYR8W1YHEF"></script>
+<script>
+  window.dataLayer = window.dataLayer || [];
+  function gtag(){dataLayer.push(arguments);}
+  gtag('js', new Date());
+  gtag('config', 'G-QYR8W1YHEF');
+</script>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Support mapshaper</title>
@@ -156,6 +163,10 @@
     color: #777;
   }
 
+  .footer-note a {
+    color: #777;
+  }
+
   @media (max-width: 480px) {
     main { padding: 24px 18px 60px; }
     h1 { font-size: 26px; }
@@ -167,8 +178,8 @@
 <body>
 
 <header class="page-header">
-  <a href="index.html" class="mapshaper-logo">map<span class="logo-highlight">shaper</span></a>
-  <a href="index.html" class="header-back">&larr; Back to mapshaper</a>
+  <a href="." class="mapshaper-logo">map<span class="logo-highlight">shaper</span></a>
+  <a href="." class="header-back">&larr; Back to mapshaper</a>
 </header>
 
 <main>
@@ -207,6 +218,8 @@
 
 <div class="footer-note">
   Mapshaper&rsquo;s basemap services are generously provided by <a href="https://www.mapbox.com">Mapbox</a>.
+  <br>
+  <a href="privacy.html">Privacy Policy</a> &middot; <a href="terms.html">Terms of Service</a>
 </div>
 
 </main>
