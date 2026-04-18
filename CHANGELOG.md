@@ -1,3 +1,6 @@
+v0.6.120
+* Optimized GUI rendering of large datasets
+
 v0.6.119
 * Performance optimizations
 
