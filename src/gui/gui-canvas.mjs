@@ -42,7 +42,6 @@ export function drawOutlineLayerToCanvas(lyr, canv, ext) {
 }
 
 export function drawStyledLayerToCanvas(lyr, canv, ext) {
-  // TODO: add filter for out-of-view shapes
   var style = lyr.gui.style;
   var layer = lyr.gui.displayLayer;
   var arcs, filter;
@@ -54,7 +53,7 @@ export function drawStyledLayerToCanvas(lyr, canv, ext) {
     }
   } else {
     arcs = getArcsForRendering(lyr, ext);
-    filter = getShapeFilter(arcs, ext);
+    filter = getShapeFilter(arcs, layer.shapes, ext);
     canv.drawStyledPaths(layer.shapes, arcs, style, filter);
     if (style.vertices) {
       canv.drawVertices(layer.shapes, arcs, style, filter);
@@ -63,11 +62,12 @@ export function drawStyledLayerToCanvas(lyr, canv, ext) {
   canv.clearStyles();
 }
 
-
 // Return a function for testing if an arc should be drawn in the current view
 function getArcFilter(arcs, ext, usedFlag, arcCounts) {
-  var MIN_PATH_LEN = 0.1;
-  var minPathLen = ext.getPixelSize() * MIN_PATH_LEN, // * 0.5
+  // Arcs whose bbox is smaller than this pixel threshold collapse to a dot
+  // under roundToPix anyway; skipping them saves per-arc iteration.
+  var MIN_PATH_LEN = 0.35;
+  var minPathLen = ext.getPixelSize() * MIN_PATH_LEN,
       geoBounds = ext.getBounds(),
       geoBBox = geoBounds.toArray(),
       allIn = geoBounds.contains(arcs.getBounds()),
@@ -87,15 +87,20 @@ function getArcFilter(arcs, ext, usedFlag, arcCounts) {
     };
   }
 
-// Return a function for testing if a shape should be drawn in the current view
-function getShapeFilter(arcs, ext) {
-  var viewBounds = ext.getBounds();
-  var bounds = new Bounds();
-  if (ext.scale() < 1.1) return null; // full or almost-full zoom: no filter
-  return function(shape) {
-    bounds.empty();
-    arcs.getMultiShapeBounds(shape, bounds);
-    return viewBounds.intersects(bounds);
+// Return a function for testing if a shape should be drawn in the current
+// view. The filter takes a shape index and tests the shape's bbox against
+// the viewport. At nearly full extent the test is a no-op, so we return
+// null to let the caller skip it entirely.
+function getShapeFilter(arcs, shapes, ext) {
+  if (ext.scale() < 1.1) return null;
+  var view = ext.getBounds();
+  var b = new Bounds();
+  return function(i) {
+    var shp = shapes[i];
+    if (!shp) return false;
+    b.empty();
+    arcs.getMultiShapeBounds(shp, b);
+    return view.intersects(b);
   };
 }
 
@@ -168,7 +173,7 @@ export function DisplayCanvas() {
     _ctx.fillStyle = color;
     for (i=0; i<shapes.length; i++) {
       var shp = shapes[i];
-      if (!shp || filter && !filter(shp)) continue;
+      if (!shp || filter && !filter(i)) continue;
       for (j=0; j<shp.length; j++) {
         iter.init(shp[j]);
         while (iter.hasNext()) {
@@ -194,14 +199,14 @@ export function DisplayCanvas() {
   // Optimized to draw paths in same-style batches (faster Canvas drawing)
   _self.drawStyledPaths = function(shapes, arcs, style, filter) {
     var styleIndex = {};
-    var batchSize = 1500;
+    var batchSize = 100;
     var startPath = getPathStart(_ext, getScaledLineScale(_ext, style));
     var draw = getShapePencil(arcs, _ext);
     var key, item, shp;
     var styler = style.styler || null;
     for (var i=0; i<shapes.length; i++) {
       shp = shapes[i];
-      if (!shp || filter && !filter(shp)) continue;
+      if (!shp || filter && !filter(i)) continue;
       if (styler) {
         styler(style, i);
       }
@@ -369,7 +374,8 @@ export function DisplayCanvas() {
     var startPath = getPathStart(_ext, getLineScale(_ext)),
         t = getScaledTransform(_ext),
         ctx = _ctx,
-        batch = 25, // render paths in batches of this size (an optimization)
+        // Larger batches reduce the number of stroke() flushes.
+        batch = 100,
         count = 0,
         n = arcs.size(),
         i, iter;

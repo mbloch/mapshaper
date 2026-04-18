@@ -39,9 +39,18 @@ export function LayerRenderer(gui, container) {
   var _fastActive = false;
   var _settleTimer = null;
   var _redrawPending = false;
+  var _settleRequested = false;
 
+  // 'map_interaction_end' may arrive before the in-flight 'nav' draw runs,
+  // because drawLayers() schedules its work via requestAnimationFrame.
+  // We latch the intent so that whichever order things happen in, the
+  // settle fires immediately rather than waiting on the fallback timer.
   gui.on('map_interaction_end', function() {
-    if (_redrawPending) settleNow();
+    if (_redrawPending) {
+      settleNow();
+    } else {
+      _settleRequested = true;
+    }
   });
 
   // don't let furniture container block events to symbol layers
@@ -65,6 +74,7 @@ export function LayerRenderer(gui, container) {
     var needSvgRedraw = action != 'nav' && action != 'hover';
     cancelSettle();
     _redrawPending = false;
+    _settleRequested = false; // a full render satisfies any pending settle
     clearFastTransform();
     _mainCanv.prep(_ext);
     if (needSvgRedraw) {
@@ -211,11 +221,19 @@ export function LayerRenderer(gui, container) {
   // event (or the fallback timer) can trigger a real redraw. Each fast-nav
   // frame resets the fallback timer so it only fires after the user truly
   // stops interacting, as a backstop for any interaction path that doesn't
-  // emit 'map_interaction_end'.
+  // emit 'map_interaction_end'. If 'map_interaction_end' was already
+  // received before this frame ran (e.g. the home button reset, which
+  // dispatches synchronously while the nav draw is still queued in rAF),
+  // settle right now instead of waiting.
   function markRedrawPending() {
     _redrawPending = true;
     cancelSettle();
-    _settleTimer = setTimeout(settleNow, FAST_SETTLE_FALLBACK_MS);
+    if (_settleRequested) {
+      _settleRequested = false;
+      settleNow();
+    } else {
+      _settleTimer = setTimeout(settleNow, FAST_SETTLE_FALLBACK_MS);
+    }
   }
 
   function settleNow() {

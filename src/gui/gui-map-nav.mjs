@@ -42,6 +42,10 @@ export function MapNav(gui, ext, mouse) {
 
   gui.on('map_reset', function() {
     ext.reset(true);
+    // ext.reset() synchronously triggers a 'nav' draw; signal end-of-
+    // interaction so the LayerRenderer settles on a sharp frame
+    // immediately instead of waiting on the fallback timer.
+    gui.dispatchEvent('map_interaction_end');
   });
 
   zoomTween.on('change', function(e) {
