@@ -98,7 +98,7 @@ Run `npm test` to run mapshaper's tests.
 
 Mapshaper is free and open source. If it's useful to you or your organization, please consider supporting its continued development:
 
-* [Ko-fi](https://ko-fi.com/mapshaper) &mdash; one-time or recurring donations, no account required.
+* [Ko-fi](https://ko-fi.com/mapshaper) &mdash; one-time or recurring contributions, no account required.
 * [GitHub Sponsors](https://github.com/sponsors/mbloch) &mdash; recurring sponsorship.
 
 You can also help by [reporting bugs](https://github.com/mbloch/mapshaper/issues) or [telling me what you'd like to see improved](https://tally.so/r/44Njok).
