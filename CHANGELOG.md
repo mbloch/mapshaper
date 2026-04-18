@@ -1,3 +1,7 @@
+v0.6.121
+* Added session history to snapshots. This history is imported into a new session only if the session starts by opening the snapshot file.
+* Added a "view session history" link to the snapshot menu (ribbon icon) (an alternative to typing "history" in the console).
+
 v0.6.120
 * Optimized GUI rendering of large datasets
 
@@ -6,7 +10,7 @@ v0.6.119
 
 v0.6.118
 * Added a selectable list of GeoPackage layers to the "advanced options" import menu in the web UI.
-* Added a layers=<list> to the -i command to allow importing a subset of GeoPackage layers.
+* Added a layers= option to the -i command to allow importing a subset of GeoPackage layers.
 * Improved GeoPackage i/o. Topologically related layers are imported together, so -simplify and other commands can edit them together. Unrelated layers are imported separately (with a different arc table), which allows -simplify to be applied more selectively.
 
 v0.6.117
