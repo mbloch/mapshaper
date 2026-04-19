@@ -148,6 +148,11 @@ function _runCommands(argv, opts, callback) {
     if (outputArr && (cmd.name == 'o' || cmd.name == 'info' && cmd.options.save_to)) {
       cmd.options.output = outputArr;
     }
+    // -i commands may resolve to script files; propagate the output array so
+    // that -o commands nested inside the script can write to it too.
+    if (outputArr && cmd.name == 'i') {
+      cmd.options.output = outputArr;
+    }
   });
 
   var lastCmd = commands[commands.length - 1];
