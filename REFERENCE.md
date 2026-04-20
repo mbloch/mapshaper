@@ -37,6 +37,86 @@ The following options are documented here, because they are used by many command
 mapshaper states.geojson -filter 'ST == "AK"' + name=alaska -o output/ target=*
 ```
 
+## Command files
+
+As an alternative to typing commands on the command line, you can put them in a plain-text command file and run them with the mapshaper CLI.
+
+Command files offer a few conveniences over a shell script or Makefile:
+
+- Hash-delimited (`#`) comments, both on their own line and at the end of a line.
+- No need to escape `*` or other shell metacharacters; commands aren't passed through the shell.
+- Trailing-backslash line continuations are accepted but not required &mdash; lines that don't begin with `-` are joined onto the previous command.
+- Variable interpolation using `{{VAR}}` placeholders. See [variables](#variables) below.
+
+(Support for running command files in the mapshaper web UI is planned for a future release.)
+
+### File format
+
+A mapshaper command file is a `.txt` file whose first non-blank, non-comment line starts with `mapshaper`.
+
+```
+mapshaper
+-i provinces.shp
+# Use Douglas Peucker simplification
+-simplify dp 20%
+-o precision=0.00001 output.geojson
+```
+
+If you write the command file using shell-compatible syntax &mdash; trailing `\` for line continuations and no `#` comments &mdash; it can also be pasted directly onto a bash command line, where the leading `mapshaper` word invokes the CLI. To make the above example shell compatible, you could write:
+
+```
+mapshaper \
+-i provinces.shp \
+-simplify dp 20% \
+-o precision=0.00001 output.geojson
+```
+
+### Running a command file
+
+The command for running a command file is [`-run`](#-run):
+
+```bash
+mapshaper -run build.txt
+```
+
+`mapshaper commands.txt` is a shortcut for `mapshaper -run commands.txt`.
+
+## Variable interpolation
+
+Command files and command lines may contain `{{VAR}}` placeholders, which are substituted just before each command runs. Two forms are recognized:
+
+- `{{VAR}}` &mdash; substituted with the value of `VAR`.
+- `{{env.NAME}}` &mdash; substituted with the value of the `NAME` environment variable.
+
+This syntax allows you to interpolate all or part of a command option. For example, `-simplify {{SIMPLIFY_METHOD}} resolution={{SIMPLIFY_RESOLUTION}}`.
+
+Variables can be set in several ways:
+- The [`-vars`](#-vars) command sets one or more variables, always overwriting any previous value.
+- The [`-defaults`](#-defaults) command set only those values that do not already exist.
+- Assignments in `-calc` and `-define` expressions create new variables.
+- Assigning a property to the `global` object in an `-each` expression creates a new variable.
+
+#### Example
+
+`build.txt`:
+```
+mapshaper
+-defaults YEAR=2024 PCT=10                    # overridable defaults
+-i sources/counties_{{YEAR}}.shp
+-simplify {{PCT}}%
+-o out/counties_{{YEAR}}_simplified.shp
+```
+
+Run with the command file's defaults:
+```bash
+mapshaper build.txt
+```
+
+Or override default values from the command line:
+```bash
+mapshaper -vars YEAR=2030 PCT=5 -run build.txt
+```
+
 ## Index of commands
 
 **File I/O**
@@ -111,6 +191,7 @@ mapshaper states.geojson -filter 'ST == "AK"' + name=alaska -o output/ target=*
 [-calc](#-calc)
 [-colors](#-colors)
 [-comment](#-comment)
+[-defaults](#-defaults)
 [-encodings](#-encodings)
 [-help](#-help)
 [-info](#-info)
@@ -118,6 +199,7 @@ mapshaper states.geojson -filter 'ST == "AK"' + name=alaska -o output/ target=*
 [-print](#-print)
 [-projections](#-projections)
 [-quiet](#-quiet)
+[-vars](#-vars)
 [-verbose](#-verbose)
 [-version](#-version)
 
@@ -128,7 +210,7 @@ mapshaper states.geojson -filter 'ST == "AK"' + name=alaska -o output/ target=*
 
 Input one or more files in a supported vector data format. Supported file types include: Shapefile, GeoJSON, TopoJSON, GeoPackage, FlatGeobuf, KML, JSON data records, DBF, CSV/TSV.
 
-The `-i` command is assumed if `mapshaper` is followed by an input filename.
+The `-i` command is assumed if `mapshaper` is followed by the path of an input data file.
 
 Mapshaper does not fully support M and Z type Shapefiles. The M and Z data is lost when these files are imported.
 
@@ -1088,9 +1170,11 @@ $ mapshaper data.json \
 
 ### -run
 
-Create mapshaper commands on-the-fly and run them.
+Run mapshaper commands from a [command file](#command-files) or generated on-the-fly from a JS expression.
 
-`<expression>` or `expression=`  A JS expression or template containing embedded expressions, for generating one or more mapshaper commands.
+`<file|expression>`  Either:
+- A path to a mapshaper [command file](#command-files).
+- A JS expression or template containing embedded expressions, for generating one or more mapshaper commands.
 
 * Embedded expressions are enclosed in curly braces (see below).
 * Expressions can access `target` and `io` objects.
@@ -1683,6 +1767,41 @@ Print list of supported proj4 projection ids and projection aliases.
 ### -quiet
 
 Inhibit console messages.
+
+### -vars
+
+Define variables for [`{{VAR}}` interpolation](#variables). Each argument is either an inline assignment (`KEY=value`) or a path to a JSON file containing a flat object whose keys are variable names and whose values are strings, numbers or booleans.
+
+`-vars` can be used on the command line, inside a command file, or anywhere else a command is accepted. Each invocation writes to the global variable store, overwriting any previously defined value. Use [`-defaults`](#-defaults) instead if you want set-if-unset behavior.
+
+**Options**
+
+`<values>` Space-separated list of `KEY=value` assignments and/or paths to JSON files containing variable definitions.
+
+**Example**
+
+```bash
+# Set YEAR=2024 before running the command file
+mapshaper -vars YEAR=2024 -run build.txt
+
+# Load values from a JSON file, then override one of them
+mapshaper -vars values.json YEAR=2030 -run build.txt
+```
+
+### -defaults
+
+Like [`-vars`](#-vars), but writes only those keys that are not already defined. Used inside a command file to declare overridable defaults: a CLI `-vars` (or any earlier write) preempts the command file's `-defaults` for the same key.
+
+**Options**
+
+`<values>` Space-separated list of `KEY=value` assignments and/or paths to JSON files containing variable definitions.
+
+**Example**
+
+```bash
+# build.txt declares YEAR=2024 as a default; this CLI invocation overrides it
+mapshaper -vars YEAR=2030 -run build.txt
+```
 
 ### -verbose
 

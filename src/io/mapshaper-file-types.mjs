@@ -80,17 +80,17 @@ export function isPackageFile(file) {
   return file.endsWith('.' + PACKAGE_EXT);
 }
 
-// Returns true if @file has an extension that may identify a mapshaper script
-// file (e.g. "commands.txt"). Detection still requires a content sniff via
-// stringLooksLikeScript().
-export function isPotentialScriptFile(file) {
+// Returns true if @file has an extension that may identify a mapshaper
+// command file (e.g. "commands.txt"). Detection still requires a content
+// sniff via stringLooksLikeCommandFile().
+export function isPotentialCommandFile(file) {
   var ext = getFileExtension(file || '').toLowerCase();
   return ext === 'txt';
 }
 
-// True if @str looks like the content of a mapshaper script file: the first
+// True if @str looks like the content of a mapshaper command file: the first
 // non-blank, non-comment line begins with the magic word "mapshaper".
-export function stringLooksLikeScript(str) {
+export function stringLooksLikeCommandFile(str) {
   str = String(str || '');
   // Skip a leading BOM
   if (str.charCodeAt(0) === 0xFEFF) str = str.slice(1);

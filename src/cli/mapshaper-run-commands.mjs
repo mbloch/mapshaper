@@ -3,8 +3,10 @@ import { printProjections } from '../crs/mapshaper-projections';
 import { printEncodings } from '../text/mapshaper-encodings';
 import { printColorSchemeNames } from '../color/color-schemes';
 import { parseCommands } from '../cli/mapshaper-parse-commands';
+import { containsPlaceholder, interpolateString } from '../cli/mapshaper-vars-utils';
+import { skipCommand } from '../commands/mapshaper-if-elif-else-endif';
 import { guessInputContentType } from '../io/mapshaper-file-types';
-import { error, UserError, message, print, loggingEnabled, printError } from '../utils/mapshaper-logging';
+import { error, UserError, stop, message, print, loggingEnabled, printError } from '../utils/mapshaper-logging';
 import { Job } from '../mapshaper-job';
 import { runningInBrowser } from '../mapshaper-env';
 import utils from '../utils/mapshaper-utils';
@@ -148,9 +150,9 @@ function _runCommands(argv, opts, callback) {
     if (outputArr && (cmd.name == 'o' || cmd.name == 'info' && cmd.options.save_to)) {
       cmd.options.output = outputArr;
     }
-    // -i commands may resolve to script files; propagate the output array so
-    // that -o commands nested inside the script can write to it too.
-    if (outputArr && cmd.name == 'i') {
+    // -run may load and execute a command file; propagate the output array
+    // so that -o commands nested inside it can write to it too.
+    if (outputArr && cmd.name == 'run') {
       cmd.options.output = outputArr;
     }
   });
@@ -245,12 +247,72 @@ export function runParsedCommands(commands, job, done) {
   utils.reduceAsync(commands, job, nextCommand, done);
 
   function nextCommand(job, cmd, next) {
-    runCommand(cmd, job).then(function(result) {
+    var resolved;
+    try {
+      resolved = maybeInterpolateCommand(cmd, job);
+    } catch(e) {
+      return next(e);
+    }
+    runCommand(resolved, job).then(function(result) {
       next(null, result);
     }).catch(function(e) {
       next(e);
     });
   }
+}
+
+// Late-binding interpolation: just before each command runs, replace any
+// {{X}} placeholders in its source tokens against the live job.defs object,
+// then re-parse to get fresh option values.
+//
+// Returns either the original cmd (no placeholders, no _tokens, or the
+// command will be skipped) or a fresh cmd object with re-parsed options.
+// The original cmd is never mutated, so commands shared across batches
+// (see divideImportCommand) still see their un-interpolated tokens.
+function maybeInterpolateCommand(cmd, job) {
+  var tokens = cmd._tokens;
+  if (!tokens || tokens.length === 0) return cmd;
+  if (!tokens.some(containsPlaceholder)) return cmd;
+  // If the command would be skipped (inactive -if branch, stopped job, etc.),
+  // don't try to interpolate -- the command body never runs and unset
+  // variables shouldn't error here.
+  if (skipCommand(cmd.name, job)) return cmd;
+
+  var defs = job.defs || {};
+  var interpolated;
+  try {
+    interpolated = tokens.map(function(tok) {
+      return interpolateString(tok, defs);
+    });
+  } catch(e) {
+    e.message = '[' + cmd.name + '] ' + e.message;
+    throw e;
+  }
+
+  var reparsed;
+  try {
+    reparsed = parseCommands(interpolated);
+  } catch(e) {
+    e.message = '[' + cmd.name + '] ' + e.message;
+    throw e;
+  }
+  if (reparsed.length !== 1) {
+    stop('[' + cmd.name + '] Internal error: token re-parse produced ' +
+      reparsed.length + ' commands');
+  }
+  var newCmd = reparsed[0];
+  // Preserve externally-injected options (input cache, output array,
+  // _run_depth, final flag, replace flag, etc.) that aren't reproduced
+  // by re-parsing the source tokens.
+  Object.keys(cmd.options).forEach(function(k) {
+    if (!(k in newCmd.options)) {
+      newCmd.options[k] = cmd.options[k];
+    }
+  });
+  // Keep the original tokens around so re-runs (e.g. divided import batches)
+  // see the un-interpolated source.
+  newCmd._tokens = tokens;
+  return newCmd;
 }
 
 function handleNonFatalError(err) {

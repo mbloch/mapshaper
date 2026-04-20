@@ -1,5 +1,6 @@
 import { getOptionParser } from '../cli/mapshaper-options';
 import { splitShellTokens } from '../cli/mapshaper-option-parsing-utils';
+import { isPotentialCommandFile } from '../io/mapshaper-file-types';
 import { stop } from '../utils/mapshaper-logging';
 import utils from '../utils/mapshaper-utils';
 import cli from './mapshaper-cli-utils';
@@ -49,10 +50,10 @@ export function parseConsoleCommands(raw) {
   return parsed;
 }
 
-// Parse the text content of a mapshaper script file (e.g. "commands.txt")
+// Parse the text content of a mapshaper command file (e.g. "commands.txt")
 // into a single normalized command string suitable for parseCommands().
 //
-// Script syntax (a superset of the equivalent shell command line):
+// Command file syntax (a superset of the equivalent shell command line):
 //   - Optional leading "mapshaper" magic word (used by the file-type sniffer).
 //   - "#" begins a comment that runs to the end of the line. Comments are
 //     ignored unless the "#" appears inside a quoted string.
@@ -62,18 +63,30 @@ export function parseConsoleCommands(raw) {
 //   - Commands must begin with "-" (e.g. "-i", "-target"). Lines that do
 //     not start with "-" are treated as continuations of the previous
 //     command.
-//   - As on the CLI, an initial "-i" is implied: if the first non-blank
-//     content (after the optional "mapshaper" word) does not start with
-//     "-", "-i " is prepended to it.
+//   - As on the CLI, an initial command is implied for the first bare token
+//     after the optional "mapshaper" word: a .txt file routes to
+//     "-run <path>" (command file), and any other bare token routes to
+//     "-i <token>" (data file).
 //
-export function parseScriptContent(content) {
+// "{{VAR}}" placeholders are substituted at execution time, against the
+// live job.defs object. See mapshaper-vars-utils.mjs and the late-binding
+// hook in mapshaper-run-commands.mjs.
+//
+export function parseCommandFileContent(content) {
   if (typeof content != 'string') {
     content = String(content || '');
   }
   // Strip BOM if present
   if (content.charCodeAt(0) === 0xFEFF) content = content.slice(1);
+  var commands = groupCommandFileLines(extractLogicalLines(content));
+  return commands.join(' ');
+}
 
-  var lines = []; // logical lines, with embedded newlines if inside quotes
+// Walk command file content into logical lines, respecting quoted strings and
+// stripping "#" comments. Quoted-string contents (including embedded
+// newlines) are preserved verbatim.
+function extractLogicalLines(content) {
+  var lines = [];
   var current = '';
   var quote = null; // null, "'", or '"'
   var inComment = false;
@@ -86,13 +99,11 @@ export function parseScriptContent(content) {
         lines.push(current);
         current = '';
       }
-      // else: skip char inside the comment
       continue;
     }
     if (quote) {
       current += c;
       if (c === quote) {
-        // count preceding backslashes; an odd count means the quote is escaped
         var bs = 0;
         for (var j = i - 1; j >= 0 && content.charAt(j) === '\\'; j--) bs++;
         if (bs % 2 === 0) quote = null;
@@ -113,15 +124,24 @@ export function parseScriptContent(content) {
   }
   if (current.length > 0) lines.push(current);
   if (quote) {
-    stop('Unterminated quoted string in script');
+    stop('Unterminated quoted string in command file');
   }
+  return lines;
+}
 
+// Group an array of logical lines into command strings:
+//   - Strip trailing-backslash continuations.
+//   - Strip a leading "mapshaper" magic word from the first non-blank line.
+//   - Lines starting with "-" begin a new command.
+//   - Other lines are continuations of the previous command.
+//   - The very first bare token is treated as an implicit -i (data file)
+//     or -run (command file), matching CLI behavior.
+function groupCommandFileLines(lines) {
   var commands = [];
   var cur = '';
   var sawMagicWord = false;
   for (var k = 0; k < lines.length; k++) {
     var line = lines[k];
-    // Strip trailing backslash continuation (and any whitespace before/after it)
     line = line.replace(/\s*\\\s*$/, '').trim();
     if (!line) continue;
 
@@ -136,13 +156,25 @@ export function parseScriptContent(content) {
       if (cur) commands.push(cur);
       cur = line;
     } else if (!cur && commands.length === 0) {
-      // Implicit -i for the first command, mirroring CLI behavior:
-      //   "mapshaper foo.shp" => "mapshaper -i foo.shp"
-      cur = '-i ' + line;
+      cur = implicitFirstCommand(line);
     } else {
       cur += ' ' + line;
     }
   }
   if (cur) commands.push(cur);
-  return commands.join(' ');
+  return commands;
+}
+
+// Build the implicit command for a leading bare token:
+//   foo.txt          -> -run foo.txt
+//   anything else    -> -i <line>
+// Only the first whitespace-separated token of @line is sniffed for the .txt
+// extension; any trailing tokens (rare but possible after line joining) are
+// passed through unchanged.
+function implicitFirstCommand(line) {
+  var firstTok = line.split(/\s+/)[0];
+  if (isPotentialCommandFile(firstTok)) {
+    return '-run ' + line;
+  }
+  return '-i ' + line;
 }

@@ -1,7 +1,9 @@
 
 
 export function commandTakesFileInput(name) {
-  return (name == 'i' || name == 'join' || name == 'erase' || name == 'clip' || name == 'include');
+  return (name == 'i' || name == 'join' || name == 'erase' || name == 'clip' ||
+    name == 'include' || name == 'vars' || name == 'defaults' ||
+    name == 'run');
 }
 
 // TODO: implement these and other functions
