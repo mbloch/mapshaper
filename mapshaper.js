@@ -11960,6 +11960,29 @@
     return file.endsWith('.' + PACKAGE_EXT);
   }
 
+  // Returns true if @file has an extension that may identify a mapshaper
+  // command file (e.g. "commands.txt"). Detection still requires a content
+  // sniff via stringLooksLikeCommandFile().
+  function isPotentialCommandFile(file) {
+    var ext = getFileExtension(file || '').toLowerCase();
+    return ext === 'txt';
+  }
+
+  // True if @str looks like the content of a mapshaper command file: the first
+  // non-blank, non-comment line begins with the magic word "mapshaper".
+  function stringLooksLikeCommandFile(str) {
+    str = String(str || '');
+    // Skip a leading BOM
+    if (str.charCodeAt(0) === 0xFEFF) str = str.slice(1);
+    var lines = str.split(/\r?\n/);
+    for (var i = 0; i < lines.length; i++) {
+      var line = lines[i].trim();
+      if (!line || line.charAt(0) === '#') continue;
+      return /^mapshaper(\s|$)/.test(line);
+    }
+    return false;
+  }
+
   function isZipFile(file) {
     return /\.zip$/i.test(file);
   }
@@ -12004,10 +12027,12 @@
     isImportableAsBinary: isImportableAsBinary,
     isKmzFile: isKmzFile,
     isPackageFile: isPackageFile,
+    isPotentialCommandFile: isPotentialCommandFile,
     isSupportedBinaryInputType: isSupportedBinaryInputType,
     isZipFile: isZipFile,
     looksLikeContentFile: looksLikeContentFile,
     looksLikeImportableFile: looksLikeImportableFile,
+    stringLooksLikeCommandFile: stringLooksLikeCommandFile,
     stringLooksLikeJSON: stringLooksLikeJSON,
     stringLooksLikeKML: stringLooksLikeKML,
     stringLooksLikeSVG: stringLooksLikeSVG
@@ -13805,12 +13830,17 @@
     profileStart('intersectSegments');
     var raw = arcs.getVertexData(),
         intersections = [],
+        // opts.limit (optional): stop searching once this many intersections have
+        // been found. Used for cheap "is this dataset clean?" checks where we
+        // only need a small sample.
+        limit = opts.limit > 0 ? opts.limit : 0,
         arr;
     for (i=0; i<stripeCount; i++) {
       arr = intersectSegments(stripes[i], raw.xx, raw.yy, opts);
       for (j=0; j<arr.length; j++) {
         intersections.push(arr[j]);
       }
+      if (limit > 0 && intersections.length >= limit) break;
     }
     profileEnd('intersectSegments');
     profileStart('dedupIntersections');
@@ -16106,7 +16136,7 @@
 
   // Get a copy of a layer containing a subset of the layer's features,
   // given a "where" expression in the options object
-  function getLayerSelection(lyr, arcs, opts) {
+  function getLayerSelection$1(lyr, arcs, opts) {
     var lyr2 = utils.extend({}, lyr);
     var filterOpts = {
           expression: opts.where,
@@ -16123,11 +16153,11 @@
     if (!opts || !opts.where) {
       error('Missing required "where" parameter');
     }
-    var subsetLyr = getLayerSelection(lyr, arcs, opts);
+    var subsetLyr = getLayerSelection$1(lyr, arcs, opts);
     var cmdOpts = utils.defaults({where: null}, opts); // prevent infinite recursion
     var outputLyr = commandFunc(subsetLyr, arcs, cmdOpts);
     var filterOpts = utils.defaults({invert: true}, opts);
-    var filteredLyr = getLayerSelection(lyr, arcs, filterOpts);
+    var filteredLyr = getLayerSelection$1(lyr, arcs, filterOpts);
     var merged = cmd.mergeLayers([filteredLyr, outputLyr], {verbose: false, force: true});
     return merged[0];
   }
@@ -16156,7 +16186,7 @@
         result, compiled, defs, d;
     if (opts.where) {
       // TODO: implement no_replace option for filter() instead of this
-      lyr = getLayerSelection(lyr, arcs, opts);
+      lyr = getLayerSelection$1(lyr, arcs, opts);
       msg += ' where ' + opts.where;
     }
     // Save any assigned variables to the defs object, so they will be available
@@ -16878,208 +16908,6 @@
     dissolvePolygonGeometry: dissolvePolygonGeometry
   });
 
-  // Generate a dissolved layer
-  // @opts.fields (optional) names of data fields (dissolves all if falsy)
-  // @opts.sum-fields (Array) (optional)
-  // @opts.copy-fields (Array) (optional)
-  //
-  cmd.dissolve = function(lyr, arcs, opts) {
-    var dissolveShapes, getGroupId;
-    opts = utils.extend({}, opts);
-    if (opts.where) {
-      return applyCommandToLayerSelection(cmd.dissolve, lyr, arcs, opts);
-    }
-    if (opts.field) opts.fields = [opts.field]; // support old "field" parameter
-    getGroupId = getCategoryClassifier(opts.fields, lyr.data);
-    if (opts.multipart || opts.group_points) {
-      dissolveShapes = makeMultipartShapes(lyr, getGroupId);
-    } else if (lyr.geometry_type == 'polygon') {
-      dissolveShapes = dissolvePolygonGeometry(lyr.shapes, getGroupId);
-    } else if (lyr.geometry_type == 'polyline') {
-      dissolveShapes = dissolvePolylineGeometry(lyr, getGroupId, arcs);
-    } else if (lyr.geometry_type == 'point') {
-      dissolveShapes = dissolvePointGeometry(lyr, getGroupId, opts);
-    }
-    return composeDissolveLayer(lyr, dissolveShapes, getGroupId, opts);
-  };
-
-  function makeMultipartShapes(lyr, getGroupId) {
-    if (!lyr.shapes || !lyr.geometry_type) {
-      stop$1('Layer is missing geometry');
-    }
-    cloneShapes(lyr.shapes);
-    var shapes2 = [];
-    lyr.shapes.forEach(function(shp, i) {
-      var groupId = getGroupId(i);
-      if (!shp) return;
-      if (!shapes2[groupId]) {
-        shapes2[groupId] = shp;
-      } else {
-        shapes2[groupId].push.apply(shapes2[groupId], shp);
-      }
-    });
-    return shapes2;
-  }
-
-  // @lyr: original undissolved layer
-  // @shapes: dissolved shapes
-  function composeDissolveLayer(lyr, shapes, getGroupId, opts) {
-    var records = null;
-    var lyr2;
-    if (lyr.data) {
-      records = aggregateDataRecords(lyr.data.getRecords(), getGroupId, opts);
-      // replace missing shapes with nulls
-      for (var i=0, n=records.length; i<n; i++) {
-        if (shapes && !shapes[i]) {
-          shapes[i] = null;
-        }
-      }
-    }
-    lyr2 = {
-      name: opts.no_replace ? null : lyr.name,
-      shapes: shapes,
-      data: records ? new DataTable(records) : null,
-      geometry_type: lyr.geometry_type
-    };
-    if (!opts.silent) {
-      printDissolveMessage(lyr, lyr2);
-    }
-    return lyr2;
-  }
-
-  function printDissolveMessage(pre, post) {
-    var n1 = getFeatureCount(pre),
-        n2 = getFeatureCount(post),
-        msg = utils.format('Dissolved %,d feature%s into %,d feature%s',
-          n1, utils.pluralSuffix(n1), n2,
-          utils.pluralSuffix(n2));
-    message(msg);
-  }
-
-  // Maps tile ids to shape ids (both are non-negative integers). Supports
-  //    one-to-many mapping (a tile may belong to multiple shapes)
-  // Also maps shape ids to tile ids. A shape may contain multiple tiles
-  // Also supports 'flattening' -- removing one-to-many tile-shape mappings by
-  //    removing all but one shape from a tile.
-  // Supports one-to-many mapping
-  function TileShapeIndex(mosaic, opts) {
-    // indexes for mapping tile ids to shape ids
-    var singleIndex = new Int32Array(mosaic.length);
-    utils.initializeArray(singleIndex, -1);
-    var multipleIndex = [];
-    // index that maps shape ids to tile ids
-    var shapeIndex = [];
-
-    this.getTileIdsByShapeId = function(shapeId) {
-      var ids = shapeIndex[shapeId];
-      // need to filter out tile ids that have been set to -1 (indicating removal)
-      return ids ? ids.filter(function(id) {return id >= 0;}) : [];
-    };
-
-    // assumes index has been flattened
-    this.getShapeIdByTileId = function(id) {
-      var shapeId = singleIndex[id];
-      return shapeId >= 0 ? shapeId : -1;
-    };
-
-    // return ids of all shapes that include a tile
-    this.getShapeIdsByTileId = function(id) {
-      var singleId = singleIndex[id];
-      if (singleId >= 0) {
-        return [singleId];
-      }
-      if (singleId == -1) {
-        return [];
-      }
-      return multipleIndex[id];
-    };
-
-    this.indexTileIdsByShapeId = function(shapeId, tileIds, weightFunction) {
-      shapeIndex[shapeId] = [];
-      for (var i=0; i<tileIds.length; i++) {
-        indexShapeIdByTileId(shapeId, tileIds[i], weightFunction);
-      }
-    };
-
-    // remove many-to-one tile=>shape mappings
-    this.flatten = function() {
-      multipleIndex.forEach(function(shapeIds, tileId) {
-        flattenStackedTile(tileId);
-      });
-      multipleIndex = [];
-    };
-
-    this.getUnusedTileIds = function() {
-      var ids = [];
-      for (var i=0, n=singleIndex.length; i<n; i++) {
-        if (singleIndex[i] == -1) ids.push(i);
-      }
-      return ids;
-    };
-
-    // used by gap fill; assumes that flatten() has been called
-    this.addTileToShape = function(shapeId, tileId) {
-      if (shapeId in shapeIndex === false || singleIndex[tileId] != -1) {
-        error('Internal error');
-      }
-      singleIndex[tileId] = shapeId;
-      shapeIndex[shapeId].push(tileId);
-    };
-
-    // add a shape id to a tile
-    function indexShapeIdByTileId(shapeId, tileId, weightFunction) {
-      var singleId = singleIndex[tileId];
-      if (singleId != -1 && opts.flat) {
-        // pick the best shape if we have a weight function
-        if (weightFunction && weightFunction(shapeId) > weightFunction(singleId)) {
-          // replace existing shape reference
-          removeTileFromShape(tileId, singleId); // bottleneck when overlaps are many
-          singleIndex[tileId] = singleId;
-          singleId = -1;
-        } else {
-          // keep existing shape reference
-          return;
-        }
-      }
-      if (singleId == -1) {
-        singleIndex[tileId] = shapeId;
-      } else if (singleId == -2) {
-        multipleIndex[tileId].push(shapeId);
-      } else {
-        multipleIndex[tileId] = [singleId, shapeId];
-        singleIndex[tileId] = -2;
-      }
-      shapeIndex[shapeId].push(tileId);
-    }
-
-
-    function flattenStackedTile(tileId) {
-      // TODO: select the best shape (using some metric)
-      var shapeIds = multipleIndex[tileId];
-      // if (!shapeIds || shapeIds.length > 1 === false) error('flattening error');
-      var selectedId = shapeIds[0];
-      var shapeId;
-      singleIndex[tileId] = selectedId; // add shape to single index
-      // remove tile from other stacked shapes
-      for (var i=0; i<shapeIds.length; i++) {
-        shapeId = shapeIds[i];
-        if (shapeId != selectedId) {
-          removeTileFromShape(tileId, shapeId);
-        }
-      }
-    }
-
-    function removeTileFromShape(tileId, shapeId) {
-      var tileIds = shapeIndex[shapeId];
-      for (var i=0; i<tileIds.length; i++) {
-        if (tileIds[i] === tileId) {
-          tileIds[i] = -1;
-          break;
-        }
-      }
-    }
-  }
-
   // Clean polygon or polyline shapes (in-place)
   //
   function cleanShapes(shapes, arcs, type) {
@@ -17695,6 +17523,336 @@
     remapDividedArcs: remapDividedArcs,
     sortCutPoints: sortCutPoints
   });
+
+  // Options that require the topology-repair algorithm and are not supported
+  // by the no-repair fast path.
+  var REPAIR_REQUIRED_OPTS = ['gap_fill_area', 'sliver_control', 'allow_overlaps'];
+
+  // Sample size used to detect intersections in no-repair mode. Detection stops
+  // after this many hits, so the warning message can include sample locations
+  // without paying for an exhaustive scan on badly-formed input.
+  var INTERSECTION_SAMPLE_LIMIT = 10;
+
+  // cmd.dissolve accepts two signatures:
+  //   (layers, dataset, opts) — multi-layer entry used by the CLI dispatcher.
+  //     Polygon layers go through the topology-repairing algorithm by default,
+  //     or through the legacy fast algorithm when opts.no_repair is set.
+  //   (lyr, arcs, opts) — legacy single-layer entry, retained for backward
+  //     compatibility with internal callers and existing tests. Always uses the
+  //     legacy fast algorithm; does not perform topology repair.
+  //
+  cmd.dissolve = function(arg1, arg2, opts) {
+    if (Array.isArray(arg1)) {
+      return dissolveLayers(arg1, arg2, opts);
+    }
+    return dissolveSingleLayer(arg1, arg2, opts);
+  };
+
+  function dissolveLayers(layers, dataset, optsArg) {
+    var opts = utils.extend({}, optsArg);
+    if (opts.field) opts.fields = [opts.field]; // support old "field" parameter
+
+    if (opts.no_repair) {
+      var conflicting = REPAIR_REQUIRED_OPTS.filter(function(k) { return opts[k]; });
+      if (conflicting.length > 0) {
+        stop$1('The no-repair option is incompatible with',
+          conflicting.map(function(k) { return k.replace(/_/g, '-'); }).join(', '));
+      }
+    }
+
+    var anyPolygon = layers.some(function(lyr) {
+      return lyr.geometry_type == 'polygon' && layerHasPaths(lyr);
+    });
+
+    if (anyPolygon) {
+      if (opts.no_repair) {
+        detectAndWarnIntersections(dataset, opts);
+      } else {
+        addIntersectionCuts(dataset, opts);
+      }
+    }
+
+    return layers.map(function(lyr) {
+      return dissolveOneLayer(lyr, dataset, opts);
+    });
+  }
+
+  function dissolveOneLayer(lyr, dataset, opts) {
+    if (opts.where) {
+      return dissolveLayerWithWhereClause(lyr, dataset, opts);
+    }
+    if (opts.multipart || opts.group_points) {
+      var classifier = getCategoryClassifier(opts.fields, lyr.data);
+      return composeDissolveLayer(lyr, makeMultipartShapes(lyr, classifier), classifier, opts);
+    }
+    if (lyr.geometry_type == 'polygon') {
+      return dissolvePolygonInLayer(lyr, dataset, opts);
+    }
+    if (lyr.geometry_type == 'polyline') {
+      var polylineClassifier = getCategoryClassifier(opts.fields, lyr.data);
+      var polylineShapes = dissolvePolylineGeometry(lyr, polylineClassifier, dataset.arcs);
+      return composeDissolveLayer(lyr, polylineShapes, polylineClassifier, opts);
+    }
+    if (lyr.geometry_type == 'point') {
+      var pointClassifier = getCategoryClassifier(opts.fields, lyr.data);
+      var pointShapes = dissolvePointGeometry(lyr, pointClassifier, opts);
+      return composeDissolveLayer(lyr, pointShapes, pointClassifier, opts);
+    }
+    // tabular (no geometry): aggregate records only
+    var nullClassifier = getCategoryClassifier(opts.fields, lyr.data);
+    return composeDissolveLayer(lyr, undefined, nullClassifier, opts);
+  }
+
+  function dissolvePolygonInLayer(lyr, dataset, opts) {
+    if (!layerHasPaths(lyr)) return lyr;
+    if (opts.no_repair) {
+      var classifier = getCategoryClassifier(opts.fields, lyr.data);
+      var shapes = dissolvePolygonGeometry(lyr.shapes, classifier);
+      return composeDissolveLayer(lyr, shapes, classifier, opts);
+    }
+    return dissolvePolygonLayer2(lyr, dataset, opts);
+  }
+
+  function dissolveLayerWithWhereClause(lyr, dataset, opts) {
+    // Run dissolve on a subset of features defined by opts.where, then merge the
+    // dissolved subset back together with the unselected features.
+    // Topology repair (if needed) was already performed at the dataset level by
+    // dissolveLayers, so the recursive call uses no_repair=true to avoid doing
+    // the work a second time on a subset of the same arcs.
+    var arcs = dataset.arcs;
+    var subsetLyr = getLayerSelection(lyr, arcs, opts);
+    var cmdOpts = utils.defaults({where: null, no_repair: true}, opts);
+    var dissolved = dissolveOneLayer(subsetLyr, dataset, cmdOpts);
+    var filteredLyr = getLayerSelection(lyr, arcs, utils.defaults({invert: true}, opts));
+    var merged = cmd.mergeLayers([filteredLyr, dissolved], {verbose: false, force: true});
+    return merged[0];
+  }
+
+  function getLayerSelection(lyr, arcs, opts) {
+    var lyr2 = utils.extend({}, lyr);
+    var filterOpts = {
+      expression: opts.where,
+      invert: !!opts.invert,
+      verbose: false,
+      no_replace: opts.no_replace
+    };
+    return cmd.filterFeatures(lyr2, arcs, filterOpts);
+  }
+
+  // Detect a small sample of segment intersections; print a warning if any are
+  // found. Used by the no-repair fast path to alert users that their input has
+  // topology problems. Detection stops after INTERSECTION_SAMPLE_LIMIT hits, so
+  // the cost is bounded for badly-formed input.
+  function detectAndWarnIntersections(dataset, opts) {
+    if (opts.quiet || opts.silent) return;
+    if (!dataset.arcs || dataset.arcs.size() === 0) return;
+    var sample = findSegmentIntersections(dataset.arcs, {limit: INTERSECTION_SAMPLE_LIMIT});
+    if (sample.length === 0) return;
+    var atLeast = sample.length >= INTERSECTION_SAMPLE_LIMIT ? 'at least ' : '';
+    message('Warning: found ' + atLeast + sample.length +
+      ' segment intersection' + (sample.length == 1 ? '' : 's') +
+      '. The no-repair option assumes clean topology; output may be incorrect.');
+  }
+
+  // Backward-compat: the legacy per-layer entry, still used by internal callers
+  // and by tests that exercise the original fast algorithm directly. Retains
+  // the original behavior (no topology repair, no multi-layer prep).
+  function dissolveSingleLayer(lyr, arcs, opts) {
+    var dissolveShapes, classifier;
+    opts = utils.extend({}, opts);
+    if (opts.where) {
+      return applyCommandToLayerSelection(dissolveSingleLayer, lyr, arcs, opts);
+    }
+    if (opts.field) opts.fields = [opts.field];
+    classifier = getCategoryClassifier(opts.fields, lyr.data);
+    if (opts.multipart || opts.group_points) {
+      dissolveShapes = makeMultipartShapes(lyr, classifier);
+    } else if (lyr.geometry_type == 'polygon') {
+      dissolveShapes = dissolvePolygonGeometry(lyr.shapes, classifier);
+    } else if (lyr.geometry_type == 'polyline') {
+      dissolveShapes = dissolvePolylineGeometry(lyr, classifier, arcs);
+    } else if (lyr.geometry_type == 'point') {
+      dissolveShapes = dissolvePointGeometry(lyr, classifier, opts);
+    }
+    return composeDissolveLayer(lyr, dissolveShapes, classifier, opts);
+  }
+
+  function makeMultipartShapes(lyr, getGroupId) {
+    if (!lyr.shapes || !lyr.geometry_type) {
+      stop$1('Layer is missing geometry');
+    }
+    cloneShapes(lyr.shapes);
+    var shapes2 = [];
+    lyr.shapes.forEach(function(shp, i) {
+      var groupId = getGroupId(i);
+      if (!shp) return;
+      if (!shapes2[groupId]) {
+        shapes2[groupId] = shp;
+      } else {
+        shapes2[groupId].push.apply(shapes2[groupId], shp);
+      }
+    });
+    return shapes2;
+  }
+
+  // @lyr: original undissolved layer
+  // @shapes: dissolved shapes
+  function composeDissolveLayer(lyr, shapes, getGroupId, opts) {
+    var records = null;
+    var lyr2;
+    if (lyr.data) {
+      records = aggregateDataRecords(lyr.data.getRecords(), getGroupId, opts);
+      // replace missing shapes with nulls
+      for (var i=0, n=records.length; i<n; i++) {
+        if (shapes && !shapes[i]) {
+          shapes[i] = null;
+        }
+      }
+    }
+    lyr2 = {
+      name: opts.no_replace ? null : lyr.name,
+      shapes: shapes,
+      data: records ? new DataTable(records) : null,
+      geometry_type: lyr.geometry_type
+    };
+    if (!opts.silent) {
+      printDissolveMessage(lyr, lyr2);
+    }
+    return lyr2;
+  }
+
+  function printDissolveMessage(pre, post) {
+    var n1 = getFeatureCount(pre),
+        n2 = getFeatureCount(post),
+        msg = utils.format('Dissolved %,d feature%s into %,d feature%s',
+          n1, utils.pluralSuffix(n1), n2,
+          utils.pluralSuffix(n2));
+    message(msg);
+  }
+
+  // Maps tile ids to shape ids (both are non-negative integers). Supports
+  //    one-to-many mapping (a tile may belong to multiple shapes)
+  // Also maps shape ids to tile ids. A shape may contain multiple tiles
+  // Also supports 'flattening' -- removing one-to-many tile-shape mappings by
+  //    removing all but one shape from a tile.
+  // Supports one-to-many mapping
+  function TileShapeIndex(mosaic, opts) {
+    // indexes for mapping tile ids to shape ids
+    var singleIndex = new Int32Array(mosaic.length);
+    utils.initializeArray(singleIndex, -1);
+    var multipleIndex = [];
+    // index that maps shape ids to tile ids
+    var shapeIndex = [];
+
+    this.getTileIdsByShapeId = function(shapeId) {
+      var ids = shapeIndex[shapeId];
+      // need to filter out tile ids that have been set to -1 (indicating removal)
+      return ids ? ids.filter(function(id) {return id >= 0;}) : [];
+    };
+
+    // assumes index has been flattened
+    this.getShapeIdByTileId = function(id) {
+      var shapeId = singleIndex[id];
+      return shapeId >= 0 ? shapeId : -1;
+    };
+
+    // return ids of all shapes that include a tile
+    this.getShapeIdsByTileId = function(id) {
+      var singleId = singleIndex[id];
+      if (singleId >= 0) {
+        return [singleId];
+      }
+      if (singleId == -1) {
+        return [];
+      }
+      return multipleIndex[id];
+    };
+
+    this.indexTileIdsByShapeId = function(shapeId, tileIds, weightFunction) {
+      shapeIndex[shapeId] = [];
+      for (var i=0; i<tileIds.length; i++) {
+        indexShapeIdByTileId(shapeId, tileIds[i], weightFunction);
+      }
+    };
+
+    // remove many-to-one tile=>shape mappings
+    this.flatten = function() {
+      multipleIndex.forEach(function(shapeIds, tileId) {
+        flattenStackedTile(tileId);
+      });
+      multipleIndex = [];
+    };
+
+    this.getUnusedTileIds = function() {
+      var ids = [];
+      for (var i=0, n=singleIndex.length; i<n; i++) {
+        if (singleIndex[i] == -1) ids.push(i);
+      }
+      return ids;
+    };
+
+    // used by gap fill; assumes that flatten() has been called
+    this.addTileToShape = function(shapeId, tileId) {
+      if (shapeId in shapeIndex === false || singleIndex[tileId] != -1) {
+        error('Internal error');
+      }
+      singleIndex[tileId] = shapeId;
+      shapeIndex[shapeId].push(tileId);
+    };
+
+    // add a shape id to a tile
+    function indexShapeIdByTileId(shapeId, tileId, weightFunction) {
+      var singleId = singleIndex[tileId];
+      if (singleId != -1 && opts.flat) {
+        // pick the best shape if we have a weight function
+        if (weightFunction && weightFunction(shapeId) > weightFunction(singleId)) {
+          // replace existing shape reference
+          removeTileFromShape(tileId, singleId); // bottleneck when overlaps are many
+          singleIndex[tileId] = singleId;
+          singleId = -1;
+        } else {
+          // keep existing shape reference
+          return;
+        }
+      }
+      if (singleId == -1) {
+        singleIndex[tileId] = shapeId;
+      } else if (singleId == -2) {
+        multipleIndex[tileId].push(shapeId);
+      } else {
+        multipleIndex[tileId] = [singleId, shapeId];
+        singleIndex[tileId] = -2;
+      }
+      shapeIndex[shapeId].push(tileId);
+    }
+
+
+    function flattenStackedTile(tileId) {
+      // TODO: select the best shape (using some metric)
+      var shapeIds = multipleIndex[tileId];
+      // if (!shapeIds || shapeIds.length > 1 === false) error('flattening error');
+      var selectedId = shapeIds[0];
+      var shapeId;
+      singleIndex[tileId] = selectedId; // add shape to single index
+      // remove tile from other stacked shapes
+      for (var i=0; i<shapeIds.length; i++) {
+        shapeId = shapeIds[i];
+        if (shapeId != selectedId) {
+          removeTileFromShape(tileId, shapeId);
+        }
+      }
+    }
+
+    function removeTileFromShape(tileId, shapeId) {
+      var tileIds = shapeIndex[shapeId];
+      for (var i=0; i<tileIds.length; i++) {
+        if (tileIds[i] === tileId) {
+          tileIds[i] = -1;
+          break;
+        }
+      }
+    }
+  }
 
   // Support for timing using T.start() and T.stop()
   var T$1 = {
@@ -26874,26 +27032,71 @@ ${svg}
         // show help if only a command name is given
         argv.unshift('-help'); // kludge (assumes -help <command> syntax)
       } else if (argv.length > 0 && !tokenLooksLikeCommand(argv[0]) && _default) {
-        // if there are arguments before the first explicit command, use the default command
-        argv.unshift('-' + _default);
+        // if there are arguments before the first explicit command, use the default
+        // command. If _default is a function, let it inspect/mutate argv directly
+        // (this lets callers route by file type, e.g. .txt -> -run).
+        if (typeof _default == 'function') {
+          _default(argv);
+        } else {
+          argv.unshift('-' + _default);
+        }
       }
 
+      // snapshot the argv so we can record the source tokens consumed by each
+      // command (used by the late-binding {{...}} interpolator)
+      var argvSnapshot = argv.slice();
+      var totalLen = argvSnapshot.length;
+
       while (argv.length > 0) {
+        var consumedBefore = totalLen - argv.length;
         cmdName = readCommandName(argv);
         if (!cmdName) {
           stop$1("Invalid command:", argv[0]);
         }
         cmdDef = findCommandDefn(cmdName, commandDefs) || null;
+        // Look ahead at the option tokens this command will consume. If any
+        // contains a {{...}} placeholder, the late-binding interpolator (in
+        // mapshaper-run-commands.mjs) will re-parse this command after
+        // substitution, so we skip validation here to avoid premature errors
+        // on un-interpolated tokens.
+        var lookaheadTokens = peekCommandTokens(argv);
+        var deferValidate = lookaheadTokens.some(tokenContainsPlaceholder);
         if (!cmdDef) {
           cmd = parseUnknownCommandOptions(argv, cmdName);
         } else {
-          cmd = parseCommandOptions(argv, cmdDef);
+          cmd = parseCommandOptions(argv, cmdDef, deferValidate);
         }
+        var consumedAfter = totalLen - argv.length;
+        // Stash the source tokens for the late-binding {{...}} interpolator.
+        // Defined as non-enumerable so existing tests that deep-equal parsed
+        // commands aren't affected.
+        Object.defineProperty(cmd, '_tokens', {
+          value: argvSnapshot.slice(consumedBefore, consumedAfter),
+          enumerable: false,
+          writable: true,
+          configurable: true
+        });
         commands.push(cmd);
       }
       return commands;
 
-      function parseCommandOptions(argv, cmdDef) {
+      // Return the tokens (without removing them) that the next command would
+      // consume. Boundary is the next command name, matching the rule in
+      // parseCommandOptions.
+      function peekCommandTokens(argv) {
+        var out = [];
+        for (var i = 0; i < argv.length; i++) {
+          if (tokenLooksLikeCommand(argv[i])) break;
+          out.push(argv[i]);
+        }
+        return out;
+      }
+
+      function tokenContainsPlaceholder(s) {
+        return typeof s == 'string' && s.indexOf('{{') !== -1;
+      }
+
+      function parseCommandOptions(argv, cmdDef, deferValidate) {
         var cmd = {
           name: cmdDef.name,
           options: {},
@@ -26905,10 +27108,10 @@ ${svg}
         }
 
         try {
-          if (cmd._.length > 0) {
+          if (cmd._.length > 0 && !deferValidate) {
             readDefaultOptionValue(cmd, cmdDef);
           }
-          if (cmdDef.validate) {
+          if (cmdDef.validate && !deferValidate) {
             cmdDef.validate(cmd);
           }
           delete cmd.options._; // kludge to remove -o placeholder option
@@ -27385,7 +27588,16 @@ ${svg}
 
     parser.section('I/O commands');
 
-    parser.default('i');
+    // When the command line begins with a non-command argument, route .txt files
+    // to "-run <path>" (command files) and everything else to "-i <path>" (data
+    // files). The actual file-or-expression check happens inside cmd.run.
+    parser.default(function(argv) {
+      if (isPotentialCommandFile(argv[0])) {
+        argv.unshift('-run');
+      } else {
+        argv.unshift('-i');
+      }
+    });
 
     parser.command('i')
       .describe('input one or more files')
@@ -27400,6 +27612,10 @@ ${svg}
       })
       .option('combine-files', {
         describe: 'import files to separate layers with shared topology',
+        type: 'flag'
+      })
+      .option('batch-mode', {
+        describe: 'apply subsequent commands separately to each input file',
         type: 'flag'
       })
       .option('merge-files', {
@@ -28033,7 +28249,7 @@ ${svg}
       });
 
     parser.command('dissolve')
-      .describe('merge features within a layer')
+      .describe('merge features within a layer (repairs polygon topology)')
       .example('Dissolve all polygons in a feature layer into a single polygon\n' +
         '$ mapshaper states.shp -dissolve -o country.shp')
       .example('Generate state-level polygons by dissolving a layer of counties\n' +
@@ -28060,19 +28276,33 @@ ${svg}
         type: 'flag',
         describe: '[points] use 2D math to find centroids of latlong points'
       })
+      .option('gap-fill-area', {
+        describe: '[polygons] threshold for filling gaps, e.g. 1.5km2',
+        type: 'area'
+      })
+      .option('sliver-control', sliverControlOpt)
+      .option('allow-overlaps', {
+        describe: '[polygons] allow output polygons to overlap (disables gap fill)',
+        type: 'flag'
+      })
+      .option('no-repair', {
+        describe: '[polygons] skip topology repair (faster; assumes clean input)',
+        type: 'flag'
+      })
+      .option('snap-interval', snapIntervalOpt)
+      .option('no-snap', noSnapOpt)
       .option('name', nameOpt)
       .option('target', targetOpt)
       .option('no-replace', noReplaceOpt);
 
 
+    // -dissolve2 is now an alias for -dissolve (the topology repair behavior of
+    // -dissolve2 is now the default behavior of -dissolve). Kept for backward
+    // compatibility; prints a deprecation notice when used.
     parser.command('dissolve2')
-      .describe('merge adjacent polygons (repairs overlaps and gaps)')
+      .describe('alias for -dissolve (deprecated)')
       .option('field', {}) // old arg handled by dissolve function
       .option('fields', dissolveFieldsOpt)
-      // UPDATE: Use -mosaic command for debugging
-      //.option('mosaic', {type: 'flag'}) // debugging option
-      //.option('arcs', {type: 'flag'}) // debugging option
-      //.option('tiles', {type: 'flag'}) // debugging option
       .option('calc', calcOpt)
       .option('sum-fields', sumFieldsOpt)
       .option('copy-fields', copyFieldsOpt)
@@ -29352,10 +29582,11 @@ ${svg}
       });
 
     parser.command('run')
-      .describe('create commands on-the-fly and run them')
+      .describe('run commands from a command file or JS expression')
       .option('expression', {
         DEFAULT: true,
-        describe: 'JS expression or template to generate command(s)'
+        label: '<file|expression>',
+        describe: 'path to a .txt command file, or a JS expression/template'
       })
       // deprecated
       .option('commands', {alias_to: 'expression'})
@@ -29527,6 +29758,14 @@ ${svg}
         }
       });
 
+    parser.command('defaults')
+      .describe('set {{VAR}} interpolation variables only if not already set')
+      .option('values', {
+        DEFAULT: {
+          multi_arg: true
+        }
+      });
+
     parser.command('encodings')
       .describe('print list of supported text encodings (for .dbf import)');
 
@@ -29570,6 +29809,14 @@ ${svg}
 
     parser.command('quiet')
       .describe('inhibit console messages');
+
+    parser.command('vars')
+      .describe('define variables for {{VAR}} interpolation (overwrites)')
+      .option('values', {
+        DEFAULT: {
+          multi_arg: true
+        }
+      });
 
     parser.command('verbose')
       .describe('print verbose processing messages');
@@ -41741,14 +41988,205 @@ ${svg}
     compiled(null, defs);
   };
 
-  // Removes small gaps and all overlaps
-  cmd.dissolve2 = function(layers, dataset, opts) {
-    layers.forEach(requirePolygonLayer);
-    addIntersectionCuts(dataset, opts);
-    return layers.map(function(lyr) {
-      if (!layerHasPaths(lyr)) return lyr;
-      return dissolvePolygonLayer2(lyr, dataset, opts);
+  // Variable name pattern. Matches simple identifiers: must start with a letter
+  // or underscore, followed by letters, digits or underscores.
+  var VAR_NAME_RXP = /^[A-Za-z_][A-Za-z0-9_]*$/;
+
+  // Pattern that matches a {{...}} placeholder in command text. The optional
+  // leading character is a backslash (escape) which keeps the placeholder
+  // literal. The braces themselves cannot appear inside a placeholder.
+  //
+  // Group 1: the leading escape (if present)
+  // Group 2: the contents between {{ and }}
+  //
+  var PLACEHOLDER_RXP = /(\\?)\{\{([^{}]+?)\}\}/g;
+
+  // Pattern matching a "KEY=value" inline -vars argument.
+  var ASSIGNMENT_RXP = /^([A-Za-z_][A-Za-z0-9_]*)=(.*)$/;
+
+  // Returns true if @s is a valid mapshaper variable name.
+  function isValidVarName(s) {
+    return typeof s == 'string' && VAR_NAME_RXP.test(s);
+  }
+
+  // Returns true if @str might contain a {{...}} placeholder. This is a cheap
+  // fast-path test used to skip re-parsing for commands that have no
+  // placeholders. False positives (e.g. literal "{{" inside a quoted JS
+  // expression) just trigger an interpolation pass that finds nothing to do.
+  function containsPlaceholder(str) {
+    return typeof str == 'string' && str.indexOf('{{') !== -1;
+  }
+
+  // Validate the parsed contents of a -vars JSON file. The file must contain a
+  // flat object whose values are primitive (string, number, boolean, null).
+  // Throws on invalid input. Returns the same object.
+  function validateVarsObject(obj, source) {
+    source = source || '<vars>';
+    if (!utils.isObject(obj) || Array.isArray(obj)) {
+      stop$1('Invalid vars file (' + source + '): expected an object at the top level');
+    }
+    Object.keys(obj).forEach(function(key) {
+      if (!isValidVarName(key)) {
+        stop$1('Invalid var name in ' + source + ': ' + JSON.stringify(key));
+      }
+      var v = obj[key];
+      if (v !== null && typeof v != 'string' && typeof v != 'number' &&
+          typeof v != 'boolean') {
+        stop$1('Invalid value for var "' + key + '" in ' + source +
+          ': expected a string, number, boolean or null');
+      }
     });
+    return obj;
+  }
+
+  // Resolve a single -vars argument. Each argument is either:
+  //   * an inline assignment "KEY=value" (key must be a valid var name)
+  //   * a path to a JSON file containing a flat object of vars
+  //
+  // @arg: the raw argument string
+  // @cache: optional input cache (passed to cli.readFile so files dropped into
+  //   the GUI can be resolved by name)
+  // @merge: target object that receives the resolved entries
+  //
+  function resolveVarsArg(arg, cache, merge) {
+    var assignment = ASSIGNMENT_RXP.exec(arg);
+    if (assignment) {
+      merge[assignment[1]] = assignment[2];
+      return;
+    }
+    // Treat as a JSON file path
+    cli.checkFileExists(arg, cache);
+    var content = cli.readFile(arg, 'utf8', cache);
+    var obj;
+    try {
+      obj = JSON.parse(content);
+    } catch(e) {
+      stop$1('Failed to parse vars file (' + arg + '): ' + e.message);
+    }
+    validateVarsObject(obj, arg);
+    Object.keys(obj).forEach(function(key) {
+      merge[key] = obj[key];
+    });
+  }
+
+  // Resolve an array of -vars arguments into a flat scope object. Later
+  // arguments override earlier ones.
+  function parseVarsArgs(args, cache) {
+    var scope = {};
+    if (!Array.isArray(args)) return scope;
+    args.forEach(function(arg) {
+      resolveVarsArg(arg, cache, scope);
+    });
+    return scope;
+  }
+
+  // Look up env.* variables. Throws in environments without process.env.
+  function lookupEnvVar(name) {
+    if (typeof process == 'undefined' || !process.env) {
+      stop$1('Environment variables are not available in this context');
+    }
+    return process.env[name];
+  }
+
+  // Resolve a single placeholder expression to a string. Recognised forms:
+  //   VAR     -> defs[VAR]
+  //   env.VAR -> process.env[VAR]
+  //
+  // Throws on undefined names, invalid syntax, or non-primitive values.
+  //
+  function resolvePlaceholder(expr, defs) {
+    expr = expr.trim();
+    var envMatch = /^env\.([A-Za-z_][A-Za-z0-9_]*)$/.exec(expr);
+    var val;
+    if (envMatch) {
+      val = lookupEnvVar(envMatch[1]);
+      if (val === undefined || val === null) {
+        stop$1('Undefined environment variable: ' + envMatch[1]);
+      }
+      return String(val);
+    }
+    if (!isValidVarName(expr)) {
+      stop$1('Invalid variable reference: {{' + expr + '}}');
+    }
+    if (!defs || !(expr in defs)) {
+      stop$1('Undefined variable: ' + expr);
+    }
+    val = defs[expr];
+    if (val === null || val === undefined) {
+      stop$1('Undefined variable: ' + expr);
+    }
+    if (typeof val != 'string' && typeof val != 'number' &&
+        typeof val != 'boolean') {
+      stop$1('Variable {{' + expr + '}} is not a primitive value (got ' +
+        (typeof val) + ')');
+    }
+    return String(val);
+  }
+
+  // Substitute {{...}} placeholders in @str using @defs. Placeholders that
+  // are preceded by a backslash are left literal (with the backslash removed).
+  // Substitution is single-pass (no recursion) so that values containing
+  // "{{...}}" do not trigger further interpolation.
+  //
+  function interpolateString(str, defs) {
+    if (typeof str != 'string') return str;
+    return str.replace(PLACEHOLDER_RXP, function(match, escape, expr) {
+      if (escape === '\\') return '{{' + expr + '}}';
+      return resolvePlaceholder(expr, defs);
+    });
+  }
+
+  // -vars KEY=value [KEY=value ...]   inline assignments
+  // -vars file.json [more ...]        load primitives from a flat JSON object
+  // Mixed forms allowed; later args override earlier ones.
+  //
+  // Writes into job.defs (the same object read by {{X}} interpolation,
+  // -define, -calc and -include).
+  cmd.vars = function(job, opts) {
+    var values = (opts && opts.values) || [];
+    if (!values.length) {
+      stop$1('-vars requires one or more KEY=value or file.json arguments');
+    }
+    var parsed = parseVarsArgs(values, opts && opts.input);
+    if (!job.defs) job.defs = {};
+    Object.keys(parsed).forEach(function(key) {
+      job.defs[key] = parsed[key];
+    });
+  };
+
+  // -defaults KEY=value [KEY=value ...]   set-if-unset
+  // Same syntax as -vars, but a key is only assigned if it is not already
+  // present in job.defs. Lets a command file declare overridable defaults
+  // that a CLI -vars can pre-empt.
+  cmd.defaults = function(job, opts) {
+    var values = (opts && opts.values) || [];
+    if (!values.length) {
+      stop$1('-defaults requires one or more KEY=value or file.json arguments');
+    }
+    var parsed = parseVarsArgs(values, opts && opts.input);
+    if (!job.defs) job.defs = {};
+    Object.keys(parsed).forEach(function(key) {
+      if (!(key in job.defs)) {
+        job.defs[key] = parsed[key];
+      }
+    });
+  };
+
+  // -dissolve2 is now an alias for -dissolve. The repair-on-by-default behavior
+  // of -dissolve2 has been promoted to be the default behavior of -dissolve;
+  // the legacy fast-dissolve algorithm is available via -dissolve no-repair.
+  //
+  // This alias prints a deprecation notice and forwards to cmd.dissolve.
+  //
+  var deprecationWarned = false;
+
+  cmd.dissolve2 = function(layers, dataset, opts) {
+    if (!deprecationWarned && !(opts && opts.quiet)) {
+      message('This command has been merged into -dissolve and is deprecated. ' +
+        'Use -dissolve (or -dissolve no-repair for the legacy fast algorithm).');
+      deprecationWarned = true;
+    }
+    return cmd.dissolve(layers, dataset, opts);
   };
 
   // Returns a function for filtering multiple source-table records
@@ -48414,8 +48852,138 @@ ${svg}
     return parsed;
   }
 
+  // Parse the text content of a mapshaper command file (e.g. "commands.txt")
+  // into a single normalized command string suitable for parseCommands().
+  //
+  // Command file syntax (a superset of the equivalent shell command line):
+  //   - Optional leading "mapshaper" magic word (used by the file-type sniffer).
+  //   - "#" begins a comment that runs to the end of the line. Comments are
+  //     ignored unless the "#" appears inside a quoted string.
+  //   - Newlines are command separators (unless they fall inside a quoted
+  //     string). A trailing backslash on a line is stripped, so shell-style
+  //     "\" line continuations are accepted but not required.
+  //   - Commands must begin with "-" (e.g. "-i", "-target"). Lines that do
+  //     not start with "-" are treated as continuations of the previous
+  //     command.
+  //   - As on the CLI, an initial command is implied for the first bare token
+  //     after the optional "mapshaper" word: a .txt file routes to
+  //     "-run <path>" (command file), and any other bare token routes to
+  //     "-i <token>" (data file).
+  //
+  // "{{VAR}}" placeholders are substituted at execution time, against the
+  // live job.defs object. See mapshaper-vars-utils.mjs and the late-binding
+  // hook in mapshaper-run-commands.mjs.
+  //
+  function parseCommandFileContent(content) {
+    if (typeof content != 'string') {
+      content = String(content || '');
+    }
+    // Strip BOM if present
+    if (content.charCodeAt(0) === 0xFEFF) content = content.slice(1);
+    var commands = groupCommandFileLines(extractLogicalLines(content));
+    return commands.join(' ');
+  }
+
+  // Walk command file content into logical lines, respecting quoted strings and
+  // stripping "#" comments. Quoted-string contents (including embedded
+  // newlines) are preserved verbatim.
+  function extractLogicalLines(content) {
+    var lines = [];
+    var current = '';
+    var quote = null; // null, "'", or '"'
+    var inComment = false;
+
+    for (var i = 0; i < content.length; i++) {
+      var c = content.charAt(i);
+      if (inComment) {
+        if (c === '\n') {
+          inComment = false;
+          lines.push(current);
+          current = '';
+        }
+        continue;
+      }
+      if (quote) {
+        current += c;
+        if (c === quote) {
+          var bs = 0;
+          for (var j = i - 1; j >= 0 && content.charAt(j) === '\\'; j--) bs++;
+          if (bs % 2 === 0) quote = null;
+        }
+        continue;
+      }
+      if (c === '#') {
+        inComment = true;
+      } else if (c === "'" || c === '"') {
+        quote = c;
+        current += c;
+      } else if (c === '\n') {
+        lines.push(current);
+        current = '';
+      } else {
+        current += c;
+      }
+    }
+    if (current.length > 0) lines.push(current);
+    if (quote) {
+      stop$1('Unterminated quoted string in command file');
+    }
+    return lines;
+  }
+
+  // Group an array of logical lines into command strings:
+  //   - Strip trailing-backslash continuations.
+  //   - Strip a leading "mapshaper" magic word from the first non-blank line.
+  //   - Lines starting with "-" begin a new command.
+  //   - Other lines are continuations of the previous command.
+  //   - The very first bare token is treated as an implicit -i (data file)
+  //     or -run (command file), matching CLI behavior.
+  function groupCommandFileLines(lines) {
+    var commands = [];
+    var cur = '';
+    var sawMagicWord = false;
+    for (var k = 0; k < lines.length; k++) {
+      var line = lines[k];
+      line = line.replace(/\s*\\\s*$/, '').trim();
+      if (!line) continue;
+
+      if (!sawMagicWord && commands.length === 0 && cur === '' &&
+          /^mapshaper(\s|$)/.test(line)) {
+        sawMagicWord = true;
+        line = line.replace(/^mapshaper\s*/, '');
+        if (!line) continue;
+      }
+
+      if (line.charAt(0) === '-') {
+        if (cur) commands.push(cur);
+        cur = line;
+      } else if (!cur && commands.length === 0) {
+        cur = implicitFirstCommand(line);
+      } else {
+        cur += ' ' + line;
+      }
+    }
+    if (cur) commands.push(cur);
+    return commands;
+  }
+
+  // Build the implicit command for a leading bare token:
+  //   foo.txt          -> -run foo.txt
+  //   anything else    -> -i <line>
+  // Only the first whitespace-separated token of @line is sniffed for the .txt
+  // extension; any trailing tokens (rare but possible after line joining) are
+  // passed through unchanged.
+  function implicitFirstCommand(line) {
+    var firstTok = line.split(/\s+/)[0];
+    if (isPotentialCommandFile(firstTok)) {
+      return '-run ' + line;
+    }
+    return '-i ' + line;
+  }
+
   var ParseCommands = /*#__PURE__*/Object.freeze({
     __proto__: null,
+    parseCommandFileContent: parseCommandFileContent,
     parseCommands: parseCommands,
     parseConsoleCommands: parseConsoleCommands,
     standardizeConsoleCommands: standardizeConsoleCommands
@@ -48438,7 +49006,9 @@ ${svg}
   }
 
   function commandTakesFileInput(name) {
-    return (name == 'i' || name == 'join' || name == 'erase' || name == 'clip' || name == 'include');
+    return (name == 'i' || name == 'join' || name == 'erase' || name == 'clip' ||
+      name == 'include' || name == 'vars' || name == 'defaults' ||
+      name == 'run');
   }
 
   // TODO: implement these and other functions
@@ -48464,11 +49034,116 @@ ${svg}
   //     flags.mosaic || flags.snap;
   // }
 
-  cmd.run = async function(job, targets, opts) {
-    var tmp, commands, ctx;
-    if (!opts.expression) {
-      stop$1("Missing expression parameter");
+  // Maximum nesting depth for command files that load other command files
+  var MAX_RUN_DEPTH = 10;
+
+  // Returns the text content of a command file, or null if @file does not look
+  // like a mapshaper command file (wrong extension or missing magic word).
+  // On match, the file content is left in the cache so a subsequent reader
+  // can reuse it.
+  function readCommandFile(file, cache) {
+    if (!isPotentialCommandFile(file)) return null;
+    cli.checkFileExists(file, cache);
+    // cli.readFile(... cache) deletes the entry from the cache after reading,
+    // so we put it back in case downstream code expects to find it there.
+    var content = cli.readFile(file, 'utf8', cache);
+    if (!stringLooksLikeCommandFile(content)) {
+      if (cache) cache[file] = content;
+      return null;
     }
+    if (cache) cache[file] = content;
+    return content;
+  }
+
+  // Parse and execute the commands in a mapshaper command file within the
+  // given job. Invoked by the -run command when its argument is a .txt file.
+  //
+  // @file: command file path
+  // @content: command file content (string)
+  // @job: parent Job object (commands run in this job)
+  // @opts: options object from the parent -run command (used for input cache and
+  //   recursion-depth tracking)
+  //
+  async function runCommandFile(file, content, job, opts) {
+    var depth = (opts && opts._run_depth || 0) + 1;
+    if (depth > MAX_RUN_DEPTH) {
+      stop$1('Command file nesting limit exceeded (' + MAX_RUN_DEPTH + ') at: ' + file);
+    }
+
+    var cache = opts && opts.input || null;
+    var commandStr;
+    try {
+      commandStr = parseCommandFileContent(content);
+    } catch(e) {
+      e.message = 'Error in command file ' + file + ': ' + e.message;
+      throw e;
+    }
+
+    if (!commandStr) {
+      message('Command file contains no commands:', file);
+      return;
+    }
+
+    verbose('Running command file:', file);
+
+    var commands;
+    try {
+      commands = parseCommands(commandStr);
+    } catch(e) {
+      e.message = 'Error in command file ' + file + ': ' + e.message;
+      throw e;
+    }
+
+    // Forward the input cache, output array and depth tracker to nested
+    // commands. This lets a command file's -i find sibling files in the same
+    // cache, lets nested -o commands write to the same output collector (e.g.
+    // when running under applyCommands), and lets nested -run commands respect
+    // the recursion limit.
+    var outputArr = opts && opts.output || null;
+    commands.forEach(function(c) {
+      if (commandTakesFileInput(c.name) && cache) {
+        c.options.input = cache;
+      }
+      if (outputArr && (c.name == 'o' || c.name == 'i' || c.name == 'run' ||
+          c.name == 'info' && c.options.save_to)) {
+        c.options.output = outputArr;
+      }
+      if (c.name == 'run') {
+        c.options._run_depth = depth;
+      }
+    });
+
+    await utils.promisify(runParsedCommands)(commands, job);
+  }
+
+  cmd.run = async function(job, targets, opts) {
+    var arg = opts.expression;
+    if (!arg) {
+      stop$1('-run requires a command file path or a JS expression');
+    }
+    // Auto-detect a leading argument that looks like a command file (.txt).
+    // If detection succeeds, treat as a command file; otherwise the argument
+    // is a JS expression (the original -run behavior).
+    if (isPotentialCommandFile(arg)) {
+      if (opts.target) {
+        stop$1('-run does not accept a target= option for command files');
+      }
+      await runFromFile(job, arg, opts);
+    } else {
+      await runFromExpression(job, targets, opts);
+    }
+  };
+
+  async function runFromFile(job, file, opts) {
+    var content = readCommandFile(file, opts.input);
+    if (content === null) {
+      stop$1('Not a mapshaper command file (missing "mapshaper" magic word):', file);
+    }
+    await runCommandFile(file, content, job, opts);
+  }
+
+  async function runFromExpression(job, targets, opts) {
+    var tmp, commands, ctx;
     ctx = getBaseContext();
     // io proxy adds ability to add datasets dynamically in a required function
     ctx.io = getIOProxy();
@@ -48482,15 +49157,23 @@ ${svg}
       commands = parseCommands(tmp);
 
       // TODO: remove duplication with mapshaper-run-commands.mjs
+      var outputArr = opts && opts.output || null;
       commands.forEach(function(cmd) {
         if (commandTakesFileInput(cmd.name)) {
           cmd.options.input = ctx.io._cache;
+        }
+        // Forward the output collector to commands that produce output, so a
+        // generated -o (or info save_to=, or nested -run) writes into the same
+        // output object (e.g. when running under applyCommands).
+        if (outputArr && (cmd.name == 'o' || cmd.name == 'run' ||
+            cmd.name == 'info' && cmd.options.save_to)) {
+          cmd.options.output = outputArr;
         }
       });
 
       await utils.promisify(runParsedCommands)(commands, job);
     }
-  };
+  }
 
   cmd.shape = function(targetDataset, opts) {
     var geojson, dataset;
@@ -50685,7 +51368,7 @@ ${svg}
       name == 'require' || name == 'run' || name == 'define' ||
       name == 'include' || name == 'print' || name == 'comment' || name == 'if' || name == 'elif' ||
       name == 'else' || name == 'endif' || name == 'stop' || name == 'add-shape' ||
-      name == 'scalebar';
+      name == 'scalebar' || name == 'vars' || name == 'defaults';
   }
 
   async function runCommand(command, job) {
@@ -50820,8 +51503,14 @@ ${svg}
       } else if (name == 'define') {
         cmd.define(job.catalog, opts);
 
+      } else if (name == 'vars') {
+        cmd.vars(job, opts);
+
+      } else if (name == 'defaults') {
+        cmd.defaults(job, opts);
+
       } else if (name == 'dissolve') {
-        outputLayers = applyCommandToEachLayer(cmd.dissolve, targetLayers, arcs, opts);
+        outputLayers = cmd.dissolve(targetLayers, targetDataset, opts);
 
       } else if (name == 'dissolve2') {
         outputLayers = cmd.dissolve2(targetLayers, targetDataset, opts);
@@ -51139,7 +51828,7 @@ ${svg}
     });
   }
 
-  var version = "0.6.121";
+  var version = "0.7.0";
 
   // Parse command line args into commands and run them
   // Function takes an optional Node-style callback. A Promise is returned if no callback is given.
@@ -51276,6 +51965,11 @@ ${svg}
       if (outputArr && (cmd.name == 'o' || cmd.name == 'info' && cmd.options.save_to)) {
         cmd.options.output = outputArr;
       }
+      // -run may load and execute a command file; propagate the output array
+      // so that -o commands nested inside it can write to it too.
+      if (outputArr && cmd.name == 'run') {
+        cmd.options.output = outputArr;
+      }
     });
 
     var lastCmd = commands[commands.length - 1];
@@ -51368,12 +52062,72 @@ ${svg}
     utils.reduceAsync(commands, job, nextCommand, done);
 
     function nextCommand(job, cmd, next) {
-      runCommand(cmd, job).then(function(result) {
+      var resolved;
+      try {
+        resolved = maybeInterpolateCommand(cmd, job);
+      } catch(e) {
+        return next(e);
+      }
+      runCommand(resolved, job).then(function(result) {
         next(null, result);
       }).catch(function(e) {
         next(e);
       });
     }
+  }
+
+  // Late-binding interpolation: just before each command runs, replace any
+  // {{X}} placeholders in its source tokens against the live job.defs object,
+  // then re-parse to get fresh option values.
+  //
+  // Returns either the original cmd (no placeholders, no _tokens, or the
+  // command will be skipped) or a fresh cmd object with re-parsed options.
+  // The original cmd is never mutated, so commands shared across batches
+  // (see divideImportCommand) still see their un-interpolated tokens.
+  function maybeInterpolateCommand(cmd, job) {
+    var tokens = cmd._tokens;
+    if (!tokens || tokens.length === 0) return cmd;
+    if (!tokens.some(containsPlaceholder)) return cmd;
+    // If the command would be skipped (inactive -if branch, stopped job, etc.),
+    // don't try to interpolate -- the command body never runs and unset
+    // variables shouldn't error here.
+    if (skipCommand(cmd.name, job)) return cmd;
+
+    var defs = job.defs || {};
+    var interpolated;
+    try {
+      interpolated = tokens.map(function(tok) {
+        return interpolateString(tok, defs);
+      });
+    } catch(e) {
+      e.message = '[' + cmd.name + '] ' + e.message;
+      throw e;
+    }
+
+    var reparsed;
+    try {
+      reparsed = parseCommands(interpolated);
+    } catch(e) {
+      e.message = '[' + cmd.name + '] ' + e.message;
+      throw e;
+    }
+    if (reparsed.length !== 1) {
+      stop$1('[' + cmd.name + '] Internal error: token re-parse produced ' +
+        reparsed.length + ' commands');
+    }
+    var newCmd = reparsed[0];
+    // Preserve externally-injected options (input cache, output array,
+    // _run_depth, final flag, replace flag, etc.) that aren't reproduced
+    // by re-parsing the source tokens.
+    Object.keys(cmd.options).forEach(function(k) {
+      if (!(k in newCmd.options)) {
+        newCmd.options[k] = cmd.options[k];
+      }
+    });
+    // Keep the original tokens around so re-runs (e.g. divided import batches)
+    // see the un-interpolated source.
+    newCmd._tokens = tokens;
+    return newCmd;
   }
 
   function handleNonFatalError(err) {
@@ -51397,6 +52151,18 @@ ${svg}
     if (firstCmd.name != 'i' || opts.stdin || opts.merge_files ||
       opts.combine_files || !opts.files || opts.files.length < 2) {
       return [commands];
+    }
+
+    // Multiple files trigger batch mode by default. This is a long-standing
+    // wart: most multi-file CLI tools combine inputs by default, and silently
+    // splitting into per-file pipelines is an easy way for users to get wrong
+    // output without noticing. Print a one-time deprecation warning when batch
+    // mode is implicit so existing scripts can migrate before the default flips
+    // in a future major release.
+    if (!opts.batch_mode) {
+      message('Note: implicit batch processing is deprecated. Add `batch-mode` ' +
+        'to keep this behavior, or `combine-files` to import the files as a ' +
+        'group of layers. The default will change in a future release.');
     }
 
     return opts.files.map(function(file) {
