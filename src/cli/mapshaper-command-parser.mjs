@@ -66,26 +66,71 @@ export function CommandParser() {
       // show help if only a command name is given
       argv.unshift('-help'); // kludge (assumes -help <command> syntax)
     } else if (argv.length > 0 && !tokenLooksLikeCommand(argv[0]) && _default) {
-      // if there are arguments before the first explicit command, use the default command
-      argv.unshift('-' + _default);
+      // if there are arguments before the first explicit command, use the default
+      // command. If _default is a function, let it inspect/mutate argv directly
+      // (this lets callers route by file type, e.g. .txt -> -run).
+      if (typeof _default == 'function') {
+        _default(argv);
+      } else {
+        argv.unshift('-' + _default);
+      }
     }
 
+    // snapshot the argv so we can record the source tokens consumed by each
+    // command (used by the late-binding {{...}} interpolator)
+    var argvSnapshot = argv.slice();
+    var totalLen = argvSnapshot.length;
+
     while (argv.length > 0) {
+      var consumedBefore = totalLen - argv.length;
       cmdName = readCommandName(argv);
       if (!cmdName) {
         stop("Invalid command:", argv[0]);
       }
       cmdDef = findCommandDefn(cmdName, commandDefs) || null;
+      // Look ahead at the option tokens this command will consume. If any
+      // contains a {{...}} placeholder, the late-binding interpolator (in
+      // mapshaper-run-commands.mjs) will re-parse this command after
+      // substitution, so we skip validation here to avoid premature errors
+      // on un-interpolated tokens.
+      var lookaheadTokens = peekCommandTokens(argv);
+      var deferValidate = lookaheadTokens.some(tokenContainsPlaceholder);
       if (!cmdDef) {
         cmd = parseUnknownCommandOptions(argv, cmdName);
       } else {
-        cmd = parseCommandOptions(argv, cmdDef);
+        cmd = parseCommandOptions(argv, cmdDef, deferValidate);
       }
+      var consumedAfter = totalLen - argv.length;
+      // Stash the source tokens for the late-binding {{...}} interpolator.
+      // Defined as non-enumerable so existing tests that deep-equal parsed
+      // commands aren't affected.
+      Object.defineProperty(cmd, '_tokens', {
+        value: argvSnapshot.slice(consumedBefore, consumedAfter),
+        enumerable: false,
+        writable: true,
+        configurable: true
+      });
       commands.push(cmd);
     }
     return commands;
 
-    function parseCommandOptions(argv, cmdDef) {
+    // Return the tokens (without removing them) that the next command would
+    // consume. Boundary is the next command name, matching the rule in
+    // parseCommandOptions.
+    function peekCommandTokens(argv) {
+      var out = [];
+      for (var i = 0; i < argv.length; i++) {
+        if (tokenLooksLikeCommand(argv[i])) break;
+        out.push(argv[i]);
+      }
+      return out;
+    }
+
+    function tokenContainsPlaceholder(s) {
+      return typeof s == 'string' && s.indexOf('{{') !== -1;
+    }
+
+    function parseCommandOptions(argv, cmdDef, deferValidate) {
       var cmd = {
         name: cmdDef.name,
         options: {},
@@ -97,10 +142,10 @@ export function CommandParser() {
       }
 
       try {
-        if (cmd._.length > 0) {
+        if (cmd._.length > 0 && !deferValidate) {
           readDefaultOptionValue(cmd, cmdDef);
         }
-        if (cmdDef.validate) {
+        if (cmdDef.validate && !deferValidate) {
           cmdDef.validate(cmd);
         }
         delete cmd.options._; // kludge to remove -o placeholder option

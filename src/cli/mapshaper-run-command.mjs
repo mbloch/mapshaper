@@ -14,8 +14,6 @@ import utils from '../utils/mapshaper-utils';
 import cmd from '../mapshaper-cmd';
 import { stashVar, clearStash } from '../mapshaper-stash';
 import { applyCommandToEachLayer, applyCommandToEachTarget } from '../cli/mapshaper-command-utils';
-import { readScriptFile, runScriptFile } from '../cli/mapshaper-run-script';
-
 import '../commands/mapshaper-add-shape';
 import '../commands/mapshaper-affine';
 import '../commands/mapshaper-alpha-shapes';
@@ -31,6 +29,7 @@ import '../commands/mapshaper-comment';
 import '../commands/mapshaper-dashlines';
 import '../commands/mapshaper-data-fill';
 import '../commands/mapshaper-define';
+import '../commands/mapshaper-vars';
 import '../commands/mapshaper-dissolve';
 import '../commands/mapshaper-dissolve2';
 import '../commands/mapshaper-divide';
@@ -105,7 +104,7 @@ function commandAcceptsEmptyTarget(name) {
     name == 'require' || name == 'run' || name == 'define' ||
     name == 'include' || name == 'print' || name == 'comment' || name == 'if' || name == 'elif' ||
     name == 'else' || name == 'endif' || name == 'stop' || name == 'add-shape' ||
-    name == 'scalebar';
+    name == 'scalebar' || name == 'vars' || name == 'defaults';
 }
 
 export async function runCommand(command, job) {
@@ -240,6 +239,12 @@ export async function runCommand(command, job) {
     } else if (name == 'define') {
       cmd.define(job.catalog, opts);
 
+    } else if (name == 'vars') {
+      cmd.vars(job, opts);
+
+    } else if (name == 'defaults') {
+      cmd.defaults(job, opts);
+
     } else if (name == 'dissolve') {
       outputLayers = applyCommandToEachLayer(cmd.dissolve, targetLayers, arcs, opts);
 
@@ -311,12 +316,9 @@ export async function runCommand(command, job) {
 
     } else if (name == 'i') {
       if (opts.replace) job.catalog = new Catalog(); // is this what we want?
-      var scriptResult = await maybeRunScriptImport(opts, job);
-      if (!scriptResult) {
-        targetDataset = await cmd.importFiles(job.catalog, command.options);
-        if (targetDataset) {
-          outputLayers = targetDataset.layers; // kludge to allow layer naming below
-        }
+      targetDataset = await cmd.importFiles(job.catalog, command.options);
+      if (targetDataset) {
+        outputLayers = targetDataset.layers; // kludge to allow layer naming below
       }
 
     } else if (name == 'if' || name == 'elif') {
@@ -560,27 +562,4 @@ function outputLayersAreDifferent(output, input) {
   return !utils.some(input, function(lyr) {
     return output.indexOf(lyr) > -1;
   });
-}
-
-// If the -i command's input is a single mapshaper script file, parse and
-// execute its commands within the current job and return true. Otherwise
-// return false to let the regular file-import path handle the input.
-async function maybeRunScriptImport(opts, job) {
-  var files = opts.files || [];
-  if (files.length === 0) return false;
-
-  if (files.length > 1) {
-    // Disallow mixing scripts with other inputs in a single -i invocation.
-    for (var i = 0; i < files.length; i++) {
-      if (readScriptFile(files[i], opts.input)) {
-        stop('Script files cannot be combined with other input files in a single -i command');
-      }
-    }
-    return false;
-  }
-
-  var content = readScriptFile(files[0], opts.input);
-  if (content === null) return false;
-  await runScriptFile(files[0], content, job, opts);
-  return true;
 }

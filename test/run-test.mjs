@@ -162,7 +162,6 @@ describe('mapshaper-run.js', function () {
     })
 
     it('fix: -o command does not remove data', async function() {
-      console.log('TODO: fully support -o in -run commands');
       var include = `{
         run: function() {
           return "-rectangle bbox=0,0,1,1";
@@ -173,6 +172,23 @@ describe('mapshaper-run.js', function () {
       var cmd = '-include include.js -run "run()" -o out2.json';
       var output = await api.applyCommands(cmd, input);
       assert (!!output['out2.json'])
+    })
+
+    it('-o emitted by a -run JS expression is captured by applyCommands', async function() {
+      // Regression: previously, a -run expression that returned an -o
+      // command would write to disk because the output collector wasn't
+      // forwarded to the generated commands.
+      var include = `{
+        run: function() {
+          return "-o expr-out.csv";
+        }}`;
+      var input = {
+        'data.csv': 'a,b\n1,2\n',
+        'include.js': include
+      };
+      var cmd = '-i data.csv -include include.js -run "run()"';
+      var output = await api.applyCommands(cmd, input);
+      assert.equal(output['expr-out.csv'], 'a,b\n1,2');
     })
   })
 })

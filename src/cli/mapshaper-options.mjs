@@ -1,6 +1,7 @@
 import * as V from '../cli/mapshaper-option-validation';
 import { error } from '../utils/mapshaper-logging';
 import { CommandParser } from '../cli/mapshaper-command-parser';
+import { isPotentialCommandFile } from '../io/mapshaper-file-types';
 
 export function getOptionParser() {
   // definitions of options shared by more than one command
@@ -109,7 +110,16 @@ export function getOptionParser() {
 
   parser.section('I/O commands');
 
-  parser.default('i');
+  // When the command line begins with a non-command argument, route .txt files
+  // to "-run <path>" (command files) and everything else to "-i <path>" (data
+  // files). The actual file-or-expression check happens inside cmd.run.
+  parser.default(function(argv) {
+    if (isPotentialCommandFile(argv[0])) {
+      argv.unshift('-run');
+    } else {
+      argv.unshift('-i');
+    }
+  });
 
   parser.command('i')
     .describe('input one or more files')
@@ -2076,10 +2086,11 @@ export function getOptionParser() {
     });
 
   parser.command('run')
-    .describe('create commands on-the-fly and run them')
+    .describe('run commands from a command file or JS expression')
     .option('expression', {
       DEFAULT: true,
-      describe: 'JS expression or template to generate command(s)'
+      label: '<file|expression>',
+      describe: 'path to a .txt command file, or a JS expression/template'
     })
     // deprecated
     .option('commands', {alias_to: 'expression'})
@@ -2251,6 +2262,14 @@ export function getOptionParser() {
       }
     });
 
+  parser.command('defaults')
+    .describe('set {{VAR}} interpolation variables only if not already set')
+    .option('values', {
+      DEFAULT: {
+        multi_arg: true
+      }
+    });
+
   parser.command('encodings')
     .describe('print list of supported text encodings (for .dbf import)');
 
@@ -2294,6 +2313,14 @@ export function getOptionParser() {
 
   parser.command('quiet')
     .describe('inhibit console messages');
+
+  parser.command('vars')
+    .describe('define variables for {{VAR}} interpolation (overwrites)')
+    .option('values', {
+      DEFAULT: {
+        multi_arg: true
+      }
+    });
 
   parser.command('verbose')
     .describe('print verbose processing messages');
