@@ -79,6 +79,29 @@ function snapAndCut(dataset, snapDist) {
   profileStart('snapAndCut');
   var arcs = dataset.arcs;
   var cutOpts = snapDist > 0 ? {tolerance: snapDist} : {tolerance: 0};
+
+  // Probe for intersections before any modification. If the input has none,
+  // every pass of the loop below is provably a no-op: snap() can only
+  // consolidate FP noise around intersection points, cutPathsAtIntersections
+  // inserts cut points only where segments cross, and buildTopology is gated
+  // on coordsHaveChanged. So we can return early and skip a ~O(V log V) snap
+  // that would snap zero points, which is the dominant cost of robust
+  // dissolve on already-clean polygon input.
+  //
+  // limit=1 makes the probe cheap on dirty input too — it stops the stripe
+  // scan after the first hit, so the probe's full cost is only paid on
+  // truly clean input (where it replaces the equivalent scan that
+  // cutPathsAtIntersections would otherwise do on pass 1).
+  var probeOpts = {tolerance: cutOpts.tolerance, limit: 1};
+  profileStart('probeIntersections');
+  var probe = findSegmentIntersections(arcs, probeOpts);
+  profileEnd('probeIntersections');
+  if (probe.length === 0) {
+    debug('[snapAndCut] skipped (no intersections)');
+    profileEnd('snapAndCut');
+    return false;
+  }
+
   var coordsHaveChanged = false;
   var snapCount = 0, dupeCount, cutCount;
   var maxLoops = 4, loopCount = 0;
