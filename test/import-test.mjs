@@ -11,6 +11,33 @@ describe('mapshaper-import.js', function () {
     assert.deepEqual(data, [{foo: 'bar'}, {foo: 'baz'}]);
   })
 
+  describe('batch-mode flag', function() {
+    var inputs = {
+      'a.json': '[{"foo":"a"}]',
+      'b.json': '[{"foo":"b"}]'
+    };
+
+    it('explicit batch-mode runs commands once per input file', async function() {
+      var out = await api.applyCommands('-i a.json b.json batch-mode -o', inputs);
+      assert.deepEqual(JSON.parse(out['a.json']), [{foo: 'a'}]);
+      assert.deepEqual(JSON.parse(out['b.json']), [{foo: 'b'}]);
+    });
+
+    it('implicit batch processing still works (deprecation period)', async function() {
+      var out = await api.applyCommands('-i a.json b.json -o', inputs);
+      assert.deepEqual(JSON.parse(out['a.json']), [{foo: 'a'}]);
+      assert.deepEqual(JSON.parse(out['b.json']), [{foo: 'b'}]);
+    });
+
+    it('combine-files imports the files as a group of layers', async function() {
+      var out = await api.applyCommands(
+          '-i a.json b.json combine-files -merge-layers name=combined -o',
+          inputs);
+      assert.deepEqual(JSON.parse(out['combined.json']),
+          [{foo: 'a'}, {foo: 'b'}]);
+    });
+  })
+
   it('supports importing JSON data on the command line (double quotes)', async function() {
     var cmd = `-i "[{\\"foo\\": \\"bar\\"}]" -o`;
     var out = await api.applyCommands(cmd);

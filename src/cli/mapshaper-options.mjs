@@ -136,6 +136,10 @@ export function getOptionParser() {
       describe: 'import files to separate layers with shared topology',
       type: 'flag'
     })
+    .option('batch-mode', {
+      describe: 'apply subsequent commands separately to each input file',
+      type: 'flag'
+    })
     .option('merge-files', {
       // describe: 'merge features from compatible files into the same layer',
       type: 'flag'
