@@ -1,6 +1,8 @@
 v0.6.121
 * Added session history to snapshots. This history is imported into a new session only if the session starts by opening the snapshot file.
 * Added a "view session history" link to the snapshot menu (ribbon icon) (an alternative to typing "history" in the console).
+* The -dissolve command now repairs polygon topology by default, producing correct output on inputs that contain overlaps, gaps or other topology errors. The legacy fast algorithm is still available via -dissolve no-repair, which prints a warning if it detects segment intersections in the input.
+* The -dissolve2 command is now a deprecated alias for -dissolve.
 
 v0.6.120
 * Optimized GUI rendering of large datasets

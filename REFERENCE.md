@@ -549,6 +549,8 @@ Split lines into sections, with or without a gap.
 
 Aggregate groups of features using a data field, or aggregate all features if no field is given. For polygon layers, `-dissolve` merges adjacent polygons by erasing shared boundaries. For point layers, `-dissolve` replaces a group of points with their centroid. For polyline layers, `-dissolve` tries to merge contiguous polylines into as few polylines as possible.
 
+For polygon layers, `-dissolve` repairs topology before dissolving, so it produces correct results on inputs that contain overlaps, gaps or other topology errors. The `no-repair` option skips this step for a faster (but less robust) dissolve.
+
 `<fields>` or `fields=` (optional) Name of a data field or fields to dissolve on. Accepts a comma-separated list of field names.
 
 `group-points`   [points] Group the points from each dissolved group of features into a multi-point feature instead of converting multiple points into a single-point centroid feature.
@@ -556,6 +558,14 @@ Aggregate groups of features using a data field, or aggregate all features if no
 `weight=`  [points] Name of a field or a JS expression for generating weighted centroids. For example, the following command estimates the "center of mass" of the U.S. population: ` mapshaper census_tracts.shp -points -dissolve weight=POPULATION -o out.shp`
 
 `planar`   [points] Treat decimal degree coordinates as planar cartesian coordinates when calculating dissolve centroids. (By default, mapshaper calculates the centroids of lat-long point data in 3D space.)
+
+`gap-fill-area=`  [polygons] Gaps smaller than this area will be filled; larger gaps will be retained as holes in the polygon mosaic. Example values: 2km2 500m2 0. Defaults to a dynamic value calculated from the geometry of the dataset.
+
+`sliver-control=` [polygons] Preferentially remove slivers (polygons with a high perimeter-area ratio). Accepts values from 0-1, default is 1. Implementation: multiplies the area of gap areas by the "Polsby Popper" compactness metric before applying area threshold.
+
+`allow-overlaps` [polygons] Allow dissolved groups of features to overlap each other. The default behavior is to remove overlaps.
+
+`no-repair` [polygons] Skip topology repair before dissolving. Use when the input is known to be clean and you want a faster dissolve. Mapshaper checks for segment intersections and prints a warning if the assumption appears to be wrong, but it still performs the dissolve. Incompatible with `gap-fill-area=`, `sliver-control=` and `allow-overlaps`.
 
 `calc=` Use built-in JavaScript functions to create data fields in the dissolved layer. See example below; see [-calc](#-calc) for a list of supported functions.
 
@@ -580,15 +590,7 @@ mapshaper counties.shp -dissolve STATE calc='n = count(), total_pop = sum(POP), 
 
 ### -dissolve2
 
-Similar to `-dissolve`, but able to handle polygon datasets containing overlaps and gaps between adjacent polygons.
-
-`gap-fill-area=`  (polygons) Gaps smaller than this area will be filled; larger gaps will be retained as holes in the polygon mosaic. Example values: 2km2 500m2 0. Defaults to a dynamic value calculated from the geometry of the dataset.
-
-`sliver-control=` (polygons) Preferentially remove slivers (polygons with a high perimeter-area ratio). Accepts values from 0-1, default is 1. Implementation: multiplies the area of gap areas by the "Polsby Popper" compactness metric before applying area threshold.
-
-`allow-overlaps` Allow dissolved groups of features to overlap each other. The default behavior is to remove overlaps.
-
-Other options: `<fields>` `calc=` `sum-fields=` `copy-fields=` `name=` `+` `target=`
+Deprecated alias for [`-dissolve`](#-dissolve). The topology-repairing behavior of `-dissolve2` has been promoted to be the default behavior of `-dissolve`. Existing scripts that use `-dissolve2` will continue to work but print a deprecation notice.
 
 ### -divide
 
