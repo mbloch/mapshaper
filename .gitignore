@@ -14,8 +14,6 @@ pre-release.js
 release*
 nacis
 .cursorignore
-bench/cuts/results-*.json
-bench/cuts/results-*.log
-bench/cuts/.env
+bench/
 /DEVELOPING.md
 /DESIGN*
