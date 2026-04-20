@@ -767,7 +767,7 @@ export function getOptionParser() {
     });
 
   parser.command('dissolve')
-    .describe('merge features within a layer')
+    .describe('merge features within a layer (repairs polygon topology)')
     .example('Dissolve all polygons in a feature layer into a single polygon\n' +
       '$ mapshaper states.shp -dissolve -o country.shp')
     .example('Generate state-level polygons by dissolving a layer of counties\n' +
@@ -794,19 +794,33 @@ export function getOptionParser() {
       type: 'flag',
       describe: '[points] use 2D math to find centroids of latlong points'
     })
+    .option('gap-fill-area', {
+      describe: '[polygons] threshold for filling gaps, e.g. 1.5km2',
+      type: 'area'
+    })
+    .option('sliver-control', sliverControlOpt)
+    .option('allow-overlaps', {
+      describe: '[polygons] allow output polygons to overlap (disables gap fill)',
+      type: 'flag'
+    })
+    .option('no-repair', {
+      describe: '[polygons] skip topology repair (faster; assumes clean input)',
+      type: 'flag'
+    })
+    .option('snap-interval', snapIntervalOpt)
+    .option('no-snap', noSnapOpt)
     .option('name', nameOpt)
     .option('target', targetOpt)
     .option('no-replace', noReplaceOpt);
 
 
+  // -dissolve2 is now an alias for -dissolve (the topology repair behavior of
+  // -dissolve2 is now the default behavior of -dissolve). Kept for backward
+  // compatibility; prints a deprecation notice when used.
   parser.command('dissolve2')
-    .describe('merge adjacent polygons (repairs overlaps and gaps)')
+    .describe('alias for -dissolve (deprecated)')
     .option('field', {}) // old arg handled by dissolve function
     .option('fields', dissolveFieldsOpt)
-    // UPDATE: Use -mosaic command for debugging
-    //.option('mosaic', {type: 'flag'}) // debugging option
-    //.option('arcs', {type: 'flag'}) // debugging option
-    //.option('tiles', {type: 'flag'}) // debugging option
     .option('calc', calcOpt)
     .option('sum-fields', sumFieldsOpt)
     .option('copy-fields', copyFieldsOpt)

@@ -246,7 +246,7 @@ export async function runCommand(command, job) {
       cmd.defaults(job, opts);
 
     } else if (name == 'dissolve') {
-      outputLayers = applyCommandToEachLayer(cmd.dissolve, targetLayers, arcs, opts);
+      outputLayers = cmd.dissolve(targetLayers, targetDataset, opts);
 
     } else if (name == 'dissolve2') {
       outputLayers = cmd.dissolve2(targetLayers, targetDataset, opts);

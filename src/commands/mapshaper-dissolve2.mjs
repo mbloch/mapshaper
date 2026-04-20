@@ -1,14 +1,20 @@
 import cmd from '../mapshaper-cmd';
-import { dissolvePolygonLayer2 } from '../dissolve/mapshaper-polygon-dissolve2';
-import { addIntersectionCuts } from '../paths/mapshaper-intersection-cuts';
-import { requirePolygonLayer, layerHasPaths } from '../dataset/mapshaper-layer-utils';
+import './mapshaper-dissolve';
+import { message } from '../utils/mapshaper-logging';
 
-// Removes small gaps and all overlaps
+// -dissolve2 is now an alias for -dissolve. The repair-on-by-default behavior
+// of -dissolve2 has been promoted to be the default behavior of -dissolve;
+// the legacy fast-dissolve algorithm is available via -dissolve no-repair.
+//
+// This alias prints a deprecation notice and forwards to cmd.dissolve.
+//
+var deprecationWarned = false;
+
 cmd.dissolve2 = function(layers, dataset, opts) {
-  layers.forEach(requirePolygonLayer);
-  var nodes = addIntersectionCuts(dataset, opts);
-  return layers.map(function(lyr) {
-    if (!layerHasPaths(lyr)) return lyr;
-    return dissolvePolygonLayer2(lyr, dataset, opts);
-  });
+  if (!deprecationWarned && !(opts && opts.quiet)) {
+    message('This command has been merged into -dissolve and is deprecated. ' +
+      'Use -dissolve (or -dissolve no-repair for the legacy fast algorithm).');
+    deprecationWarned = true;
+  }
+  return cmd.dissolve(layers, dataset, opts);
 };

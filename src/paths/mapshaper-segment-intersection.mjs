@@ -119,12 +119,17 @@ export function findSegmentIntersections(arcs, optArg) {
   profileStart('intersectSegments');
   var raw = arcs.getVertexData(),
       intersections = [],
+      // opts.limit (optional): stop searching once this many intersections have
+      // been found. Used for cheap "is this dataset clean?" checks where we
+      // only need a small sample.
+      limit = opts.limit > 0 ? opts.limit : 0,
       arr;
   for (i=0; i<stripeCount; i++) {
     arr = intersectSegments(stripes[i], raw.xx, raw.yy, opts);
     for (j=0; j<arr.length; j++) {
       intersections.push(arr[j]);
     }
+    if (limit > 0 && intersections.length >= limit) break;
   }
   profileEnd('intersectSegments');
   profileStart('dedupIntersections');

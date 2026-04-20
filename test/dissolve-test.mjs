@@ -712,4 +712,51 @@ describe('mapshaper-dissolve.js', function () {
 
     })
   })
+
+  describe('-dissolve uses topology-repairing algorithm by default', function() {
+    var overlapping = {
+      type: 'GeometryCollection',
+      geometries: [
+        {type: 'Polygon', coordinates: [[[0, 0], [2, 0], [2, 2], [0, 2], [0, 0]]]},
+        {type: 'Polygon', coordinates: [[[1, 1], [3, 1], [3, 3], [1, 3], [1, 1]]]}
+      ]
+    };
+
+    it('-dissolve repairs overlapping polygons into a single ring', async function() {
+      var out = await api.applyCommands('-i in.json -dissolve -o out.json',
+          {'in.json': overlapping});
+      var json = JSON.parse(out['out.json']);
+      assert.equal(json.geometries.length, 1);
+      // overlap is repaired: result is a single polygon, not multipolygon
+      assert.equal(json.geometries[0].type, 'Polygon');
+    });
+
+    it('-dissolve no-repair uses the legacy fast algorithm (no merging on overlap)', async function() {
+      var out = await api.applyCommands('-i in.json -dissolve no-repair -o out.json',
+          {'in.json': overlapping});
+      var json = JSON.parse(out['out.json']);
+      assert.equal(json.geometries.length, 1);
+      // overlap is not repaired: result is a multipolygon (two unmerged rings)
+      assert.equal(json.geometries[0].type, 'MultiPolygon');
+      assert.equal(json.geometries[0].coordinates.length, 2);
+    });
+
+    it('-dissolve no-repair with allow-overlaps is rejected', async function() {
+      try {
+        await api.applyCommands('-i in.json -dissolve no-repair allow-overlaps -o out.json',
+            {'in.json': overlapping});
+        assert.fail('expected an error');
+      } catch (e) {
+        assert.match(e.message, /no-repair/);
+      }
+    });
+
+    it('-dissolve2 still works as a deprecated alias for -dissolve', async function() {
+      var out = await api.applyCommands('-i in.json -dissolve2 -o out.json',
+          {'in.json': overlapping});
+      var json = JSON.parse(out['out.json']);
+      assert.equal(json.geometries.length, 1);
+      assert.equal(json.geometries[0].type, 'Polygon');
+    });
+  })
 })
