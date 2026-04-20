@@ -338,6 +338,18 @@ function divideImportCommand(commands) {
     return [commands];
   }
 
+  // Multiple files trigger batch mode by default. This is a long-standing
+  // wart: most multi-file CLI tools combine inputs by default, and silently
+  // splitting into per-file pipelines is an easy way for users to get wrong
+  // output without noticing. Print a one-time deprecation warning when batch
+  // mode is implicit so existing scripts can migrate before the default flips
+  // in a future major release.
+  if (!opts.batch_mode) {
+    message('Note: implicit batch processing is deprecated. Add `batch-mode` ' +
+      'to keep this behavior, or `combine-files` to import the files as a ' +
+      'group of layers. The default will change in a future release.');
+  }
+
   return opts.files.map(function(file) {
     var group = [{
       name: 'i',

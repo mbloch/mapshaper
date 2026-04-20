@@ -214,13 +214,17 @@ The `-i` command is assumed if `mapshaper` is followed by the path of an input d
 
 Mapshaper does not fully support M and Z type Shapefiles. The M and Z data is lost when these files are imported.
 
-By default, multiple input files are processed separately, as if running mapshaper multiple times with the same set of commands. Using the `combine-files` option, multiple files are imported together as a group of layers with shared topology.
+When multiple input files are given, they can either be processed together (as a group of layers with shared topology) or separately (as a sequence of independent runs). Use `combine-files` to process them together, or `batch-mode` to process them separately.
+
+For backward compatibility, multiple input files are currently processed separately by default; this default will change in a future release. Mapshaper prints a deprecation notice when batch mode is triggered implicitly. Existing scripts that rely on batch processing should add the `batch-mode` flag.
 
 **Options**
 
 `<files>` or `files=`  File(s) to input (space-separated list). Use `-` to import from `/dev/stdin`. Literal JSON data can also be used instead of a file name.
 
 `combine-files` Import multiple files to separate layers with shared topology. Useful for generating a single TopoJSON file containing multiple geometry objects.
+
+`batch-mode` Apply subsequent commands separately to each input file, as if running mapshaper multiple times with the same set of commands. Used together with `-o` to transform a directory of files. Required (in a future release) to use this batch-processing behavior.
 
 `merge-files` (Deprecated) Merge features from multiple input files into as few layers as possible. Preferred method: import files to separate layers using `-i combine-files`, then use the `-merge-layers` command to merge layers. 
 
@@ -360,7 +364,7 @@ Save content of the target layer(s) to a file or files.
 **Example**
 ```bash
 # Convert all the Shapefiles in one directory into GeoJSON files in a different directory.
-mapshaper shapefiles/*.shp -o geojson/ format=geojson
+mapshaper -i shapefiles/*.shp batch-mode -o geojson/ format=geojson
 ```
 
 ## Editing Commands

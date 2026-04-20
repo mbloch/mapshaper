@@ -1,8 +1,14 @@
+v0.7.0
+* Added support for command files: a sequence of mapshaper commands stored in a `.txt` file, with `#` comments and no need for shell quoting or backslash line continuations. Run a command file with `-run <file>` (or just `mapshaper commands.txt`).
+* Added `{{VAR}}` variable interpolation for mapshaper command options, resolved at run time against environment variables (`{{env.HOME}}`), variables set by `-vars` and `-defaults`, and variables defined dynamically by commands like `-calc`, `-define` and `-each`.
+* Added the -vars command to assign variables (from key=value pairs or a JSON file) and the -defaults command to set variables only if they are not already defined.
+* The -dissolve command now repairs polygon topology by default, producing correct output on inputs that contain overlaps, gaps or other topology errors. The legacy fast algorithm is still available via -dissolve no-repair, which prints a warning if it detects segment intersections in the input.
+* The -dissolve2 command is now a deprecated alias for -dissolve.
+* Added a `batch-mode` flag to the -i command, which makes batch processing of multiple input files explicit (mapshaper *.shp batch-mode -o dest/). Implicit batch mode (triggered by passing multiple files without a flag) is now deprecated and will print a notice; the default will change in a future release so multiple files are imported together unless `batch-mode` is given.
+
 v0.6.121
 * Added session history to snapshots. This history is imported into a new session only if the session starts by opening the snapshot file.
 * Added a "view session history" link to the snapshot menu (ribbon icon) (an alternative to typing "history" in the console).
-* The -dissolve command now repairs polygon topology by default, producing correct output on inputs that contain overlaps, gaps or other topology errors. The legacy fast algorithm is still available via -dissolve no-repair, which prints a warning if it detects segment intersections in the input.
-* The -dissolve2 command is now a deprecated alias for -dissolve.
 
 v0.6.120
 * Optimized GUI rendering of large datasets
