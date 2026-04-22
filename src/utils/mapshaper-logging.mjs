@@ -45,6 +45,10 @@ export function enableLogging() {
   LOGGING = true;
 }
 
+export function disableLogging() {
+  LOGGING = false;
+}
+
 export function loggingEnabled() {
   return !!LOGGING;
 }
