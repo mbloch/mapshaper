@@ -89,7 +89,12 @@ async function importInfo(o) {
     // load external files (e.g. epsg definitions) if needed in GUI
     await initProjLibrary({crs: o.crs_string});
     o.crs = parseCrsString(o.crs_string);
+  } else if (o.wkt1) {
+    // Shapefile-sourced snapshots typically carry wkt1 but no crs_string;
+    // reconstitute the proj object from it so direct readers of info.crs work.
+    o.crs = parsePrj(o.wkt1);
   } else if (o.prj) {
+    // legacy field name; older snapshots may have stored the .prj content here
     o.crs = parsePrj(o.prj);
   }
   return o;
