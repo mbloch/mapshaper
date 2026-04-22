@@ -208,6 +208,7 @@ describe('flatgeobuf export', function () {
   });
 
   it('warns and writes no CRS when the projection has no EPSG code', async function () {
+    var loggingWasEnabled = api.internal.loggingEnabled();
     api.enableLogging();
     var calls = [];
     var origError = console.error;
@@ -238,6 +239,7 @@ describe('flatgeobuf export', function () {
       );
     } finally {
       console.error = origError;
+      if (!loggingWasEnabled) api.internal.disableLogging();
     }
   });
 });
