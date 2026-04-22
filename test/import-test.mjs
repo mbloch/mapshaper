@@ -52,6 +52,59 @@ describe('mapshaper-import.js', function () {
     assert.deepEqual(data, [{foo: 'bar'}]);
   })
 
+  describe('inline CSV string as -i argument', function() {
+    it('accepts a CSV string with literal \\n escape', async function() {
+      var cmd = `-i 'lat,lon,label\\n48.86,2.35,Paris\\n51.51,-0.13,London' -o format=json`;
+      var out = await api.applyCommands(cmd);
+      var data = JSON.parse(out['layer.json']);
+      assert.deepEqual(data, [
+        {lat: 48.86, lon: 2.35, label: 'Paris'},
+        {lat: 51.51, lon: -0.13, label: 'London'}
+      ]);
+    })
+
+    it('accepts a CSV string with real newlines', async function() {
+      var cmd = `-i 'lat,lon,label\n48.86,2.35,Paris\n51.51,-0.13,London' -o format=json`;
+      var out = await api.applyCommands(cmd);
+      var data = JSON.parse(out['layer.json']);
+      assert.deepEqual(data, [
+        {lat: 48.86, lon: 2.35, label: 'Paris'},
+        {lat: 51.51, lon: -0.13, label: 'London'}
+      ]);
+    })
+
+    it('treats the inline CSV as a layer named "layer"', async function() {
+      var cmd = `-i 'a,b\\n1,2' -o format=csv`;
+      var out = await api.applyCommands(cmd);
+      assert(out['layer.csv']);
+      var lines = out['layer.csv'].split(/\r?\n/);
+      assert.equal(lines[0], 'a,b');
+      assert.equal(lines[1], '1,2');
+    })
+
+    it('rejects a non-CSV bare string as a missing file', async function() {
+      // a comma-only single-line string should not be misclassified as CSV
+      var threw = false;
+      try {
+        await api.applyCommands(`-i 'a,b,c' -o`);
+      } catch(e) {
+        threw = true;
+      }
+      assert(threw, 'expected a missing-file error');
+    })
+
+    it('combines an inline CSV with an inline JSON via combine-files', async function() {
+      var cmd = `-i 'name,val\\nfoo,1' '[{"name":"bar","val":2}]' combine-files ` +
+        `-merge-layers name=combined -o format=json`;
+      var out = await api.applyCommands(cmd);
+      var data = JSON.parse(out['combined.json']);
+      assert.deepEqual(data, [
+        {name: 'foo', val: 1},
+        {name: 'bar', val: 2}
+      ]);
+    })
+  })
+
   it('import a point GeoJSON and a csv file', async function() {
     var a = 'test/data/three_points.geojson',
         b = 'test/data/text/two_states.csv';

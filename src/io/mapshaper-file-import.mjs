@@ -7,6 +7,8 @@ import {
   isZipFile,
   isKmzFile,
   stringLooksLikeJSON,
+  stringLooksLikeCsv,
+  unescapeInlineCsv,
   isPackageFile } from '../io/mapshaper-file-types';
 import cmd from '../mapshaper-cmd';
 import cli from '../cli/mapshaper-cli-utils';
@@ -88,20 +90,37 @@ cmd.importFiles = async function(catalog, opts) {
   return target;
 };
 
-// replace any JSON data objects with filenames and cache the data
+// Replace any inline data strings (JSON objects/arrays or comma-delimited
+// text) with synthetic filenames and stash the content in @cache so the
+// downstream importer can read it as if it had come from a file.
 function convertDataObjects(files, cache) {
-  var names = files.map(str => stringLooksLikeJSON(str) ? 'layer.json' : null).filter(Boolean);
-  if (names.length === 0) return;
-  if (names.length > 1) {
-    // make unique names if importing multiple objects
-    names = utils.uniqifyNames(names, formatVersionedFileName);
+  var slots = files.map(classifyInlineData);
+  var inlineCount = slots.filter(Boolean).length;
+  if (inlineCount === 0) return;
+  if (inlineCount > 1) {
+    // ensure unique filenames when multiple inline strings are passed together
+    var names = slots.filter(Boolean).map(function(s) { return s.filename; });
+    var unique = utils.uniqifyNames(names, formatVersionedFileName);
+    var idx = 0;
+    slots.forEach(function(slot) {
+      if (slot) slot.filename = unique[idx++];
+    });
   }
-  files.forEach((str, i) => {
-    if (!stringLooksLikeJSON(str)) return;
-    var name = names.shift();
-    cache[name] = str;
-    files[i] = name;
+  slots.forEach(function(slot, i) {
+    if (!slot) return;
+    cache[slot.filename] = slot.content;
+    files[i] = slot.filename;
   });
+}
+
+function classifyInlineData(str) {
+  if (stringLooksLikeJSON(str)) {
+    return {filename: 'layer.json', content: str};
+  }
+  if (stringLooksLikeCsv(str)) {
+    return {filename: 'layer.csv', content: unescapeInlineCsv(str)};
+  }
+  return null;
 }
 
 async function importMshpFile(file, catalog, opts) {
