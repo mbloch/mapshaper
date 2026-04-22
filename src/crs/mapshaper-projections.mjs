@@ -310,3 +310,55 @@ export function wkt1ToProj(str) {
 export function parsePrj(str) {
   return parseCrsString(wkt1ToProj(str));
 }
+
+// Extract an EPSG (or other authority) code from a short string like
+// "epsg:4326" or "ESRI:54030". Returns {org, code} or null.
+export function parseAuthorityCodeString(str) {
+  if (!str || typeof str != 'string') return null;
+  var match = str.match(/^([a-z]+):(\d+)$/i);
+  if (!match) return null;
+  var code = +match[2];
+  if (!code) return null;
+  return {
+    org: match[1].toUpperCase(),
+    code: code
+  };
+}
+
+// Extract the top-level AUTHORITY clause from a WKT1 .prj string.
+// Returns {org, code} or null. Skips nested AUTHORITY clauses on inner
+// elements like the datum or unit, which would otherwise produce the
+// wrong code for projected CRSes.
+export function parseAuthorityCodeFromWkt(wkt) {
+  if (!wkt || typeof wkt != 'string') return null;
+  var depth = 0;
+  var inQuote = false;
+  for (var i = 0; i < wkt.length; i++) {
+    var c = wkt.charAt(i);
+    if (c == '"') {
+      inQuote = !inQuote;
+      continue;
+    }
+    if (inQuote) continue;
+    if (c == '[' || c == '(') {
+      depth++;
+      continue;
+    }
+    if (c == ']' || c == ')') {
+      depth--;
+      continue;
+    }
+    if (depth != 1) continue;
+    var slice = wkt.slice(i, i + 10).toUpperCase();
+    if (slice == 'AUTHORITY[' || slice.slice(0, 10) == 'AUTHORITY(') {
+      var match = wkt.slice(i).match(/^AUTHORITY\s*[[(]\s*"([^"]+)"\s*,\s*"?(\d+)"?\s*[\])]/i);
+      if (match) {
+        return {
+          org: String(match[1]).toUpperCase(),
+          code: +match[2]
+        };
+      }
+    }
+  }
+  return null;
+}

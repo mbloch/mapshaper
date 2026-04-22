@@ -110,4 +110,50 @@ describe('mapshaper-projections.js', function() {
     })
   })
 
+  describe('parseAuthorityCodeString()', function () {
+    var fn = api.internal.parseAuthorityCodeString;
+    it('parses "epsg:4326"', function () {
+      assert.deepEqual(fn('epsg:4326'), {org: 'EPSG', code: 4326});
+    });
+    it('parses "ESRI:54030" with mixed case', function () {
+      assert.deepEqual(fn('ESRI:54030'), {org: 'ESRI', code: 54030});
+    });
+    it('returns null for proj4 strings, aliases, and junk', function () {
+      assert.equal(fn('+proj=longlat +datum=WGS84'), null);
+      assert.equal(fn('wgs84'), null);
+      assert.equal(fn(''), null);
+      assert.equal(fn(null), null);
+      assert.equal(fn('epsg:'), null);
+      assert.equal(fn('epsg:0'), null);
+    });
+  });
+
+  describe('parseAuthorityCodeFromWkt()', function () {
+    var fn = api.internal.parseAuthorityCodeFromWkt;
+    it('extracts the top-level AUTHORITY clause and ignores nested ones', function () {
+      var wkt = 'GEOGCS["NAD27",DATUM["North_American_Datum_1927",' +
+        'SPHEROID["Clarke 1866",6378206.4,294.9786982139006,AUTHORITY["EPSG","7008"]],' +
+        'AUTHORITY["EPSG","6267"]],PRIMEM["Greenwich",0,AUTHORITY["EPSG","8901"]],' +
+        'UNIT["degree",0.0174532925199433,AUTHORITY["EPSG","9122"]],' +
+        'AUTHORITY["EPSG","4267"]]';
+      assert.deepEqual(fn(wkt), {org: 'EPSG', code: 4267});
+    });
+    it('handles a simple PROJCS root authority', function () {
+      var wkt = 'PROJCS["WGS 84 / UTM zone 10N",GEOGCS["WGS 84",AUTHORITY["EPSG","4326"]],' +
+        'PROJECTION["Transverse_Mercator"],AUTHORITY["EPSG","32610"]]';
+      assert.deepEqual(fn(wkt), {org: 'EPSG', code: 32610});
+    });
+    it('returns null when there is no top-level AUTHORITY', function () {
+      var wkt = 'GEOGCS["GCS_WGS_1984",DATUM["D_WGS_1984",' +
+        'SPHEROID["WGS_1984",6378137.0,298.257223563]],PRIMEM["Greenwich",0.0],' +
+        'UNIT["Degree",0.0174532925199433]]';
+      assert.equal(fn(wkt), null);
+    });
+    it('returns null for empty/invalid input', function () {
+      assert.equal(fn(''), null);
+      assert.equal(fn(null), null);
+      assert.equal(fn(undefined), null);
+    });
+  });
+
 });

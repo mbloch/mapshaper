@@ -6,8 +6,15 @@ import {
   magicbytes,
   SIZE_PREFIX_LEN
 } from '../flatgeobuf/mapshaper-flatgeobuf-lib';
-import { stop } from '../utils/mapshaper-logging';
+import { stop, message } from '../utils/mapshaper-logging';
 import { getFileExtension } from '../utils/mapshaper-filename-utils';
+import {
+  getDatasetCrsInfo,
+  isWGS84,
+  isWebMercator,
+  parseAuthorityCodeString,
+  parseAuthorityCodeFromWkt
+} from '../crs/mapshaper-projections';
 
 export function exportFlatGeobuf(dataset, opts) {
   var extension = opts.extension || 'fgb';
@@ -15,13 +22,19 @@ export function exportFlatGeobuf(dataset, opts) {
     // Keep behavior consistent with other exporters that honor explicit output filename.
     extension = getFileExtension(opts.file) || extension;
   }
+  var crsMeta = resolveOutputCRS(dataset);
   return dataset.layers.map(function(lyr) {
     var geojson = getFeatureCollection(lyr, dataset, opts);
     var content = serialize(geojson);
-    content = setOutputCRS(content, dataset.info && dataset.info.flatgeobuf_crs);
+    var filename = lyr.name + '.' + extension;
+    if (crsMeta) {
+      content = rewriteHeaderWithCRS(content, crsMeta);
+    } else {
+      message('Wrote', filename, 'without a CRS in the FlatGeobuf header (mapshaper could not derive an EPSG code for this dataset). Downstream tools may misinterpret the coordinates or refuse to load the file.');
+    }
     return {
       content: content,
-      filename: lyr.name + '.' + extension
+      filename: filename
     };
   });
 }
@@ -37,10 +50,55 @@ function getFeatureCollection(lyr, dataset, opts) {
   };
 }
 
-function setOutputCRS(content, crs) {
-  var crsMeta = normalizeCRS(crs);
-  if (!crsMeta) return content;
-  return rewriteHeaderWithCRS(content, crsMeta);
+// Try several strategies to derive an EPSG code for the dataset. Returns
+// a CRS-meta object suitable for buildHeaderWithCRS(), or null if no
+// EPSG code could be found. We don't write WKT-only CRSes -- mapshaper
+// can't reliably round-trip them and many readers ignore the WKT field.
+function resolveOutputCRS(dataset) {
+  var info = (dataset && dataset.info) || {};
+  var meta;
+
+  // 1. Round-tripped from another FlatGeobuf
+  meta = normalizeCRS(info.flatgeobuf_crs);
+  if (meta) return meta;
+
+  // 2. Round-tripped from a GeoPackage with an EPSG-coded SRS
+  if (info.geopackage_crs &&
+      String(info.geopackage_crs.organization || '').toUpperCase() === 'EPSG') {
+    meta = normalizeCRS({
+      org: 'EPSG',
+      code: info.geopackage_crs.organization_coordsys_id || info.geopackage_crs.srs_id
+    });
+    if (meta) return meta;
+  }
+
+  // 3. Explicit "epsg:NNNN" / "esri:NNNN" string set by -proj or alike
+  meta = normalizeCRS(parseAuthorityCodeString(info.crs_string));
+  if (meta) return meta;
+
+  // 4. AUTHORITY["EPSG", N] in a .prj/WKT1 string (typically from a Shapefile)
+  meta = normalizeCRS(parseAuthorityCodeFromWkt(info.wkt1));
+  if (meta) return meta;
+
+  // 5. Recognized CRS object: WGS-84 (any encoding) or Web Mercator.
+  // getDatasetCrsInfo() also auto-detects WGS-84 from lat/lng-like bounds,
+  // which is how GeoJSON sources end up with a usable CRS object.
+  var crsInfo;
+  try {
+    crsInfo = getDatasetCrsInfo(dataset);
+  } catch (e) {
+    crsInfo = null;
+  }
+  if (crsInfo && crsInfo.crs) {
+    if (isWGS84(crsInfo.crs)) {
+      return normalizeCRS({org: 'EPSG', code: 4326});
+    }
+    if (isWebMercator(crsInfo.crs)) {
+      return normalizeCRS({org: 'EPSG', code: 3857});
+    }
+  }
+
+  return null;
 }
 
 function normalizeCRS(crs) {
