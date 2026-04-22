@@ -48,6 +48,39 @@ export function stringLooksLikeJSON(str) {
   return /^\s*[{[]/.test(String(str));
 }
 
+// Heuristic: detect inline comma-delimited data passed as an -i argument.
+// Required signals (intentionally strict to avoid false positives on filenames):
+//   1. Contains a real newline OR the literal escape sequence "\n"
+//   2. The first and second non-empty lines each contain at least one comma
+// Multi-character delimiters (tab, semicolon, pipe) are not detected here;
+// only comma-delimited input is supported as inline data for now.
+export function stringLooksLikeCsv(str) {
+  if (typeof str !== 'string' || str.length === 0) return false;
+  if (!stringHasInlineCsvNewline(str)) return false;
+  var normalized = unescapeInlineCsv(str);
+  var lines = normalized.split(/\r?\n/).filter(function(line) {
+    return line.length > 0;
+  });
+  if (lines.length < 2) return false;
+  return lines[0].indexOf(',') > -1 && lines[1].indexOf(',') > -1;
+}
+
+// True if @str contains either a real newline or the literal two-character
+// escape sequence "\n" (backslash + n) anywhere in the string.
+export function stringHasInlineCsvNewline(str) {
+  return str.indexOf('\n') > -1 || /\\n/.test(str);
+}
+
+// Convert literal "\n" / "\r\n" escape sequences in an inline CSV string
+// into real newline characters. If the input already contains a real newline,
+// it is returned unchanged so that backslash-n sequences inside quoted cells
+// are preserved verbatim.
+export function unescapeInlineCsv(str) {
+  if (typeof str !== 'string') return str;
+  if (str.indexOf('\n') > -1) return str;
+  return str.replace(/\\r\\n/g, '\n').replace(/\\n/g, '\n');
+}
+
 export function stringLooksLikeKML(str) {
   str = String(str);
   return str.includes('<kml ') && str.includes('xmlns="http://www.opengis.net/kml/');

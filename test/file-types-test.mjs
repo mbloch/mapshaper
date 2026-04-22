@@ -2,7 +2,9 @@ import assert from 'assert';
 import {
   filenameIsUnsupportedOutputType,
   guessInputType,
-  stringLooksLikeJSON
+  stringLooksLikeJSON,
+  stringLooksLikeCsv,
+  unescapeInlineCsv
 } from '../src/io/mapshaper-file-types';
 import { inferOutputFormat } from '../src/io/mapshaper-output-format';
 
@@ -81,6 +83,56 @@ describe('mapshaper-file-types.js', function () {
     })
     it('whitespace', function() {
       assert(!stringLooksLikeJSON(' \n'));
+    })
+  })
+
+  describe('stringLooksLikeCsv()', function() {
+    it('detects literal-newline CSV string', function() {
+      assert(stringLooksLikeCsv('lat,lon,label\\n48.86,2.35,Paris'));
+    })
+    it('detects real-newline CSV string', function() {
+      assert(stringLooksLikeCsv('lat,lon,label\n48.86,2.35,Paris'));
+    })
+    it('detects CRLF-escape CSV string', function() {
+      assert(stringLooksLikeCsv('a,b\\r\\n1,2'));
+    })
+    it('rejects ordinary filenames with no newline', function() {
+      assert(!stringLooksLikeCsv('data/cities.csv'));
+      assert(!stringLooksLikeCsv('a,b,c'));
+    })
+    it('rejects single-line CSV (header only)', function() {
+      assert(!stringLooksLikeCsv('lat,lon,label\\n'));
+      assert(!stringLooksLikeCsv('lat,lon,label\n'));
+    })
+    it('rejects strings with newline but no commas', function() {
+      assert(!stringLooksLikeCsv('foo\\nbar'));
+      assert(!stringLooksLikeCsv('foo\nbar'));
+    })
+    it('rejects strings where only one line has a comma', function() {
+      assert(!stringLooksLikeCsv('a,b\\nfoo'));
+      assert(!stringLooksLikeCsv('foo\\na,b'));
+    })
+    it('rejects empty string and non-strings', function() {
+      assert(!stringLooksLikeCsv(''));
+      assert(!stringLooksLikeCsv(null));
+      assert(!stringLooksLikeCsv(undefined));
+      assert(!stringLooksLikeCsv(42));
+    })
+  })
+
+  describe('unescapeInlineCsv()', function() {
+    it('converts \\n escapes to real newlines', function() {
+      assert.equal(unescapeInlineCsv('a,b\\n1,2'), 'a,b\n1,2');
+    })
+    it('converts \\r\\n escapes to a single newline', function() {
+      assert.equal(unescapeInlineCsv('a,b\\r\\n1,2'), 'a,b\n1,2');
+    })
+    it('preserves real-newline strings verbatim', function() {
+      // backslash-n inside cells is preserved when input already has real newlines
+      assert.equal(unescapeInlineCsv('a,b\n1,\\n'), 'a,b\n1,\\n');
+    })
+    it('passes non-string values through', function() {
+      assert.equal(unescapeInlineCsv(null), null);
     })
   })
 

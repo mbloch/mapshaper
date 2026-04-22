@@ -6,6 +6,7 @@ import utils from '../utils/mapshaper-utils';
 import { runningInBrowser } from '../mapshaper-env';
 import { getStashedVar } from '../mapshaper-stash';
 import { parseLocalPath } from '../utils/mapshaper-filename-utils';
+import { stringLooksLikeJSON, stringLooksLikeCsv } from '../io/mapshaper-file-types';
 import require from '../mapshaper-require';
 
 var cli = {};
@@ -143,10 +144,14 @@ cli.expandFileName = function(name) {
   return files;
 };
 
-// Expand any wildcards.
+// Expand any wildcards. Inline data strings (JSON / CSV passed directly on
+// the command line) are passed through unchanged so that "*" appearing
+// inside the data isn't interpreted as a glob.
 cli.expandInputFiles = function(files) {
   return files.reduce(function(memo, name) {
-    if (name.indexOf('*') > -1) {
+    if (stringLooksLikeJSON(name) || stringLooksLikeCsv(name)) {
+      memo.push(name);
+    } else if (name.indexOf('*') > -1) {
       memo = memo.concat(cli.expandFileName(name));
     } else {
       memo.push(name);
