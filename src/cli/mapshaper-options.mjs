@@ -1493,7 +1493,7 @@ export function getOptionParser() {
     })
     .option('interval', {
       // alias: 'i',
-      describe: 'output resolution as a distance (e.g. 100)',
+      describe: 'output resolution as a distance (e.g. 100m)',
       type: 'distance'
     })
     /*
