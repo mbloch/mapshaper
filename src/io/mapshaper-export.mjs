@@ -30,10 +30,22 @@ export async function exportTargetLayers(catalog, targets, opts) {
     var bounds = getLayerBounds(target.layer, target.dataset.arcs);
     opts = Object.assign({svg_bbox: bounds.toArray()}, opts);
   }
-  // convert target fmt to dataset fmt
-  var datasets = targets.map(function(target) {
-    return utils.defaults({layers: target.layers}, target.dataset);
-  });
+  var format = getOutputFormat(targets[0].dataset, opts);
+  var datasets;
+  if (format == PACKAGE_EXT && !runningInBrowser()) {
+    // CLI .msx export captures the whole session: every dataset/layer in the
+    // catalog ships in the snapshot, not just the -target subset. Targeted
+    // layers come back visible (pinned) and stacked in the order matched by
+    // -target; untargeted layers come along for the ride, hidden and parked
+    // at the bottom of the GUI stack. This matches GUI snapshot semantics
+    // and lets `mapshaper a.shp b.shp -target a -o foo.msx` produce a
+    // shareable bundle without losing b.shp.
+    datasets = prepareCatalogForCliPackExport(catalog, targets);
+  } else {
+    datasets = targets.map(function(target) {
+      return utils.defaults({layers: target.layers}, target.dataset);
+    });
+  }
   return exportDatasets(datasets, opts);
 }
 
@@ -278,4 +290,60 @@ function sortExportLayers(dataset) {
     // target_id was assigned to each layer by findCommandTargets()
     utils.sortOn(dataset.layers, 'target_id', true);
   }
+}
+
+// Prepare the full catalog for a CLI `-o foo.msx` export. Returns a
+// shallow-copied datasets/layers tree (the live model is left alone) where:
+//
+//   - every dataset and every layer in the catalog is present, not just the
+//     -target subset, so .msx round-trips the entire working session;
+//   - layers matched by -target are marked `pinned: true` so the GUI shows
+//     them on load (no `&display-all` URL flag needed);
+//   - those targeted layers get menu_order values that follow the linear
+//     -target list (first targeted = bottom of the stack, last = top),
+//     matching the SVG draw order from the same -target line;
+//   - untargeted layers get menu_order values below every targeted layer,
+//     so they sit at the bottom of the GUI panel out of the way (they're
+//     hidden, but if the user pins one later it doesn't pop above the
+//     intended stack).
+//
+// Intra-dataset array order is preserved so re-importing with `mapshaper
+// foo.msx -target * -o bar.svg` still iterates layers in the order they
+// appeared during the original run.
+function prepareCatalogForCliPackExport(catalog, targets) {
+  var targeted = new Set();
+  targets.forEach(function(t) {
+    t.layers.forEach(function(lyr) { targeted.add(lyr); });
+  });
+  var datasets = catalog.getDatasets();
+  // Count untargeted layers globally so we can offset targeted layers'
+  // menu_order to sit above them in a single consecutive range.
+  var untargetedCount = 0;
+  datasets.forEach(function(d) {
+    d.layers.forEach(function(lyr) {
+      if (!targeted.has(lyr)) untargetedCount++;
+    });
+  });
+  var untargetedSeq = 0;
+  return datasets.map(function(dataset) {
+    var layers = dataset.layers.map(function(lyr) {
+      var isTargeted = targeted.has(lyr);
+      var menuOrder;
+      if (isTargeted && lyr.target_id != null && lyr.target_id >= 0) {
+        // target_id is 0-based across the whole -target list; offset past
+        // the untargeted block so targeted layers occupy [untargetedCount+1
+        // .. untargetedCount+N].
+        menuOrder = untargetedCount + lyr.target_id + 1;
+      } else {
+        // Untargeted (or untargeted-shaped target_id): pack into the bottom
+        // of the global stack, in catalog walk order.
+        menuOrder = ++untargetedSeq;
+      }
+      return utils.defaults({
+        pinned: isTargeted,
+        menu_order: menuOrder
+      }, lyr);
+    });
+    return utils.defaults({layers: layers}, dataset);
+  });
 }
