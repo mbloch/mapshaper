@@ -1,0 +1,55 @@
+# Mapshaper
+
+> Mapshaper is a command-line tool and in-browser editor for geographic vector data. It reads and writes Shapefile, GeoJSON, TopoJSON, GeoPackage, FlatGeobuf, KML/KMZ, CSV/TSV, DBF, JSON records and SVG, and can simplify, clip, dissolve, join, project and otherwise transform layers. The CLI and web app share the same command language, so commands written interactively in the browser console run unchanged in scripts.
+
+These docs cover the same material in two forms:
+
+- **Markdown mirrors** of every page (this file links to them) for use by language models and other tools.
+- **HTML pages** at the same paths without the trailing `.md`, with navigation, search and syntax highlighting, intended for humans.
+
+When in doubt about a command's behavior, the [command reference](https://mapshaper.org/docs/reference.html.md) is the source of truth. The Node.js source code lives at <https://github.com/mbloch/mapshaper>.
+
+## Getting started
+
+- [The command-line tool](https://mapshaper.org/docs/essentials/command-line.html.md): Install the mapshaper CLI, run your first commands and learn how Mapshaper organizes data into layers.
+- [The web app](https://mapshaper.org/docs/essentials/web-app.html.md): A tour of Mapshaper's web interface, including loading data, the console, the right-click menu, snapshots, browser support and running it locally.
+
+## Guides
+
+- [Simplification](https://mapshaper.org/docs/guides/simplification.html.md): How to choose between Visvalingam and Douglas-Peucker, and tips for getting good-looking results from polygon and polyline simplification.
+- [JavaScript expressions](https://mapshaper.org/docs/guides/expressions.html.md): Reference for the JS expressions used in -each, -filter, -calc, -where, -sort, -if, -run and other Mapshaper commands.
+- [Projections](https://mapshaper.org/docs/guides/projections.html.md): How to reproject geographic data with Mapshaper, including CRS notation, built-in aliases, and the albersusa composite projection.
+- [Topology and cleaning](https://mapshaper.org/docs/guides/topology.html.md): How Mapshaper detects shared boundaries between features, and how to fix the common topology errors that creep into Shapefile and GeoJSON datasets.
+- [Combining two layers](https://mapshaper.org/docs/guides/combining-layers.html.md): A step-by-step walkthrough of combining and pruning two boundary layers to produce a custom GeoJSON basemap.
+- [Using Mapshaper from Node.js](https://mapshaper.org/docs/guides/programmatic.html.md): Integrating Mapshaper into JavaScript builds and applications via its Node.js API.
+
+## Formats
+
+- [Shapefile](https://mapshaper.org/docs/formats/shapefile.html.md): How Mapshaper reads and writes ESRI Shapefiles, including encoding and field-name notes.
+- [GeoJSON](https://mapshaper.org/docs/formats/geojson.html.md): How Mapshaper reads and writes GeoJSON, including precision, ndjson and RFC 7946 options.
+- [TopoJSON](https://mapshaper.org/docs/formats/topojson.html.md): How Mapshaper reads and writes TopoJSON, including quantization and multi-layer output.
+- [GeoPackage](https://mapshaper.org/docs/formats/geopackage.html.md): How Mapshaper reads and writes GeoPackage (.gpkg), the OGC's SQLite-based GIS container.
+- [FlatGeobuf](https://mapshaper.org/docs/formats/flatgeobuf.html.md): How Mapshaper reads and writes FlatGeobuf (.fgb), a streamable binary vector format.
+- [KML / KMZ](https://mapshaper.org/docs/formats/kml.html.md): How Mapshaper reads and writes KML and KMZ files for use with Google Earth and similar tools.
+- [CSV / TSV](https://mapshaper.org/docs/formats/csv.html.md): How Mapshaper reads and writes CSV/TSV, including encoding, type hints and large-file handling.
+- [DBF](https://mapshaper.org/docs/formats/dbf.html.md): How Mapshaper reads and writes standalone DBF files, the tabular component of Shapefile.
+- [JSON records](https://mapshaper.org/docs/formats/json.html.md): How Mapshaper reads and writes plain JSON arrays of objects (no geometry), useful for tabular data exchange.
+- [SVG](https://mapshaper.org/docs/formats/svg.html.md): How Mapshaper exports vector data as SVG, including width, scale, bounding-box and per-feature data attributes.
+- [Mapshaper snapshot](https://mapshaper.org/docs/formats/snapshot.html.md): A single-file binary snapshot of a Mapshaper session, used to save work in progress and share reproducible projects.
+
+## Examples
+
+- [Basics](https://mapshaper.org/docs/examples/basics.html.md): A scannable collection of short Mapshaper recipes for common GIS tasks — format conversion, joins, simplification, dissolves, projection, classification, web export and more.
+- [Globe](https://mapshaper.org/docs/examples/globe.html.md): A simple locator map in the shape of a globe.
+- [U.S. state map](https://mapshaper.org/docs/examples/us-states.html.md): Simple U.S. state map with random, non-adjacent colors
+
+## Command reference
+
+- [Command reference](https://mapshaper.org/docs/reference.html.md): Exhaustive reference for every mapshaper command and its options, with short examples.
+
+## Optional
+
+- [Home](https://mapshaper.org/docs/index.html.md): Documentation for mapshaper, the command-line tool and web app for editing Shapefile, GeoJSON, TopoJSON, GeoPackage, FlatGeobuf, KML and CSV data.
+- [What's new](https://mapshaper.org/docs/whats-new.html.md): A curated log of recently added user-visible features in Mapshaper, with links into the rest of the docs.
+- [Gallery](https://mapshaper.org/docs/gallery/index.html.md): Example maps made with Mapshaper, with full source data and reproduction steps for each.
+- [Formats overview](https://mapshaper.org/docs/formats/overview.html.md): A quick comparison of every file format Mapshaper can read and write, with links to per-format details.

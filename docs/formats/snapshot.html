@@ -1,0 +1,94 @@
+<!DOCTYPE html>
+<html lang="en">
+<head><!-- Google tag (gtag.js) -->
+<script async src="https://www.googletagmanager.com/gtag/js?id=G-QYR8W1YHEF"></script>
+<script>
+  window.dataLayer = window.dataLayer || [];
+  function gtag(){dataLayer.push(arguments);}
+  gtag('js', new Date());
+  gtag('config', 'G-QYR8W1YHEF');
+</script>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Mapshaper snapshot (.msx) &middot; mapshaper docs</title>
+<meta name="description" content="A single-file binary snapshot of a Mapshaper session, used to save work in progress and share reproducible projects.">
+<link rel="icon" type="image/png" href="/images/icon.png">
+<link rel="stylesheet" href="/docs/_assets/highlight.css">
+<link rel="stylesheet" href="/docs/_assets/docs.css">
+</head>
+<body class="">
+
+<header class="page-header">
+  <a href="/" class="mapshaper-logo">map<span class="logo-highlight">shaper</span></a>
+  <span class="header-section-label">Docs</span>
+  <nav class="header-nav">
+    <a href="/">Web app</a>
+    <a href="https://github.com/mbloch/mapshaper">GitHub</a>
+    <a href="/sponsor.html" class="sponsor-link"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z"/></svg> Become a sponsor</a>
+  </nav>
+</header>
+
+<div class="docs-layout">
+
+  <aside class="docs-sidebar">
+    <div class="sidebar-inner">
+      <nav class="docs-nav"><ul class="top-links"><li><a href="/docs/">Home</a></li><li><a href="/docs/whats-new.html">What&#39;s new</a></li><li><a href="/docs/reference.html">Command reference</a></li><li><a href="/docs/gallery/">Gallery</a></li></ul><h2>Getting started</h2><ul><li><a href="/docs/essentials/command-line.html">The command-line tool</a></li><li><a href="/docs/essentials/web-app.html">The web app</a></li></ul><h2>Guides</h2><ul><li><a href="/docs/guides/simplification.html">Simplification</a></li><li><a href="/docs/guides/expressions.html">JavaScript expressions</a></li><li><a href="/docs/guides/projections.html">Projections</a></li><li><a href="/docs/guides/topology.html">Topology and cleaning</a></li><li><a href="/docs/guides/combining-layers.html">Combining two layers</a></li><li><a href="/docs/guides/programmatic.html">Using Mapshaper from Node.js</a></li></ul><h2>Formats</h2><ul><li><a href="/docs/formats/overview.html">Overview</a></li><li><a href="/docs/formats/shapefile.html">Shapefile</a></li><li><a href="/docs/formats/geojson.html">GeoJSON</a></li><li><a href="/docs/formats/topojson.html">TopoJSON</a></li><li><a href="/docs/formats/geopackage.html">GeoPackage</a></li><li><a href="/docs/formats/flatgeobuf.html">FlatGeobuf</a></li><li><a href="/docs/formats/kml.html">KML / KMZ</a></li><li><a href="/docs/formats/csv.html">CSV / TSV</a></li><li><a href="/docs/formats/dbf.html">DBF</a></li><li><a href="/docs/formats/json.html">JSON records</a></li><li><a href="/docs/formats/svg.html">SVG</a></li><li><a href="/docs/formats/snapshot.html" class="is-active">Mapshaper snapshot</a></li></ul><h2>Examples</h2><ul><li><a href="/docs/examples/basics.html">Basics</a></li><li><a href="/docs/examples/globe.html">Globe</a></li><li><a href="/docs/examples/us-states.html">U.S. state map</a></li></ul></nav>
+    </div>
+  </aside>
+
+  <main class="docs-main">
+    <article class="docs-article">
+      <div class="docs-breadcrumbs"><a href="/docs/">Docs</a> &rsaquo; Formats &rsaquo; Mapshaper snapshot</div>
+      <h1 id="mapshaper-snapshot-msx">Mapshaper snapshot (.msx)</h1>
+<p>A Mapshaper snapshot captures the current state of a session &mdash; arcs, layers, attributes, CRS metadata, topology and (when written from the web app) the command history that produced it &mdash; as a single binary file. Snapshots are Mapshaper-specific and not intended for interchange with other GIS tools; for that, use <a href="/docs/formats/shapefile.html">Shapefile</a>, <a href="/docs/formats/geopackage.html">GeoPackage</a>, <a href="/docs/formats/flatgeobuf.html">FlatGeobuf</a> or <a href="/docs/formats/geojson.html">GeoJSON</a>.</p>
+<p><strong>File extension:</strong> <code>.msx</code> &middot; <strong>Read:</strong> &check; &middot; <strong>Write:</strong> &check; &middot; <strong>Multi-layer:</strong> &check;</p>
+<h3 id="when-to-use-a-snapshot">When to use a snapshot</h3>
+<ul>
+<li><strong>Saving work-in-progress</strong> for later editing, with topology, layer order and (in the web app) command history intact.</li>
+<li><strong>Bundling a collection of datasets</strong> into a single compact file that is quicker to re-open than re-running an import pipeline.</li>
+<li><strong>In the browser, as a quick &quot;save point&quot;</strong> before doing something experimental that might fail or give the wrong result &mdash; restore the snapshot to roll back.</li>
+</ul>
+<h3 id="from-the-cli">From the CLI</h3>
+<p><code>-o foo.msx</code> captures the <strong>entire session</strong> &mdash; every dataset and every layer Mapshaper has loaded, not just the ones currently selected by <code>-target</code>. This makes a <code>.msx</code> file a faithful &quot;save point&quot; of the working state, regardless of which layers happen to be active.</p>
+<p><code>-target</code> controls <em>visibility and stacking order</em>, not which layers are written:</p>
+<ul>
+<li>Layers matched by the active <code>-target</code> (or the <code>target=</code> option on <code>-o</code> itself) come back <strong>visible</strong> in the web app, with no further setup.</li>
+<li>They are stacked in the order matched by <code>-target</code> &mdash; first targeted on the bottom, last on top &mdash; so the GUI&#39;s layer stack matches the draw order you&#39;d get from an SVG export of the same target list.</li>
+<li>Layers that weren&#39;t targeted come along <strong>hidden</strong>, parked at the bottom of the layer panel. They&#39;re still in the file (so you can pin them visible later), but they don&#39;t get in the way of the intended view.</li>
+<li>If you want to drop layers from the snapshot rather than just hide them, run an explicit step like <code>-filter-layers</code> or <code>-target b -drop</code> before <code>-o foo.msx</code>.</li>
+</ul>
+<h3 id="in-the-web-app">In the web app</h3>
+<p>The ribbon icon in the layer panel opens the <strong>snapshot menu</strong>. From there you can:</p>
+<ul>
+<li><strong>Create a snapshot</strong> &mdash; saves to in-browser storage. These are session-scoped and <strong>deleted when the tab closes or the page is reloaded.</strong> For anything you want to keep, <strong>Save snapshot to file</strong> writes a <code>.msx</code> file you can re-open later.</li>
+<li><strong>Export</strong> a stored snapshot to a <code>.msx</code> file on disk. Persisted <code>.msx</code> files survive browser restarts and can be re-imported by drag-drop, the <strong>Add files</strong> button, or the <code>?files=</code> URL parameter.</li>
+<li><strong>Restore</strong> a stored snapshot into the current session.</li>
+</ul>
+<h2 id="external-resources">External resources</h2>
+<ul>
+<li><a href="https://msgpack.org/">msgpack.org</a> &mdash; the binary serialization format used inside <code>.msx</code> (via the <a href="https://github.com/kriszyp/msgpackr">msgpackr</a> library).</li>
+</ul>
+
+      <div class="edit-link">
+        <a href="https://github.com/mbloch/mapshaper/edit/master/docs/formats/snapshot.md">Edit this page on GitHub</a>
+      </div>
+    </article>
+  </main>
+
+  <aside class="docs-toc">
+    <div class="docs-toc-title">On this page</div><ul><li class="lvl-3"><a href="#when-to-use-a-snapshot">When to use a snapshot</a></li><li class="lvl-3"><a href="#from-the-cli">From the CLI</a></li><li class="lvl-3"><a href="#in-the-web-app">In the web app</a></li><li class="lvl-2"><a href="#external-resources">External resources</a></li></ul>
+  </aside>
+
+</div>
+
+<script src="/docs/_assets/docs.js" defer></script>
+
+<footer class="docs-footer">
+  <div class="docs-footer-inner">
+    <span>mapshaper is free software, licensed under <a href="https://www.mozilla.org/MPL/2.0/">MPL 2.0</a>.</span>
+    <span><a href="/privacy.html">Privacy</a> &middot; <a href="/terms.html">Terms</a> &middot; <a href="/sponsor.html">Support mapshaper</a></span>
+  </div>
+</footer>
+
+</body>
+</html>

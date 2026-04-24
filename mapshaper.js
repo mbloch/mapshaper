@@ -1269,6 +1269,10 @@
     LOGGING = true;
   }
 
+  function disableLogging() {
+    LOGGING = false;
+  }
+
   function loggingEnabled() {
     return !!LOGGING;
   }
@@ -1475,6 +1479,7 @@
     NonFatalError: NonFatalError,
     UserError: UserError,
     debug: debug,
+    disableLogging: disableLogging,
     enableLogging: enableLogging,
     error: error,
     formatColumns: formatColumns,
@@ -5499,6 +5504,58 @@
     return parseCrsString$1(wkt1ToProj(str));
   }
 
+  // Extract an EPSG (or other authority) code from a short string like
+  // "epsg:4326" or "ESRI:54030". Returns {org, code} or null.
+  function parseAuthorityCodeString(str) {
+    if (!str || typeof str != 'string') return null;
+    var match = str.match(/^([a-z]+):(\d+)$/i);
+    if (!match) return null;
+    var code = +match[2];
+    if (!code) return null;
+    return {
+      org: match[1].toUpperCase(),
+      code: code
+    };
+  }
+
+  // Extract the top-level AUTHORITY clause from a WKT1 .prj string.
+  // Returns {org, code} or null. Skips nested AUTHORITY clauses on inner
+  // elements like the datum or unit, which would otherwise produce the
+  // wrong code for projected CRSes.
+  function parseAuthorityCodeFromWkt(wkt) {
+    if (!wkt || typeof wkt != 'string') return null;
+    var depth = 0;
+    var inQuote = false;
+    for (var i = 0; i < wkt.length; i++) {
+      var c = wkt.charAt(i);
+      if (c == '"') {
+        inQuote = !inQuote;
+        continue;
+      }
+      if (inQuote) continue;
+      if (c == '[' || c == '(') {
+        depth++;
+        continue;
+      }
+      if (c == ']' || c == ')') {
+        depth--;
+        continue;
+      }
+      if (depth != 1) continue;
+      var slice = wkt.slice(i, i + 10).toUpperCase();
+      if (slice == 'AUTHORITY[' || slice.slice(0, 10) == 'AUTHORITY(') {
+        var match = wkt.slice(i).match(/^AUTHORITY\s*[[(]\s*"([^"]+)"\s*,\s*"?(\d+)"?\s*[\])]/i);
+        if (match) {
+          return {
+            org: String(match[1]).toUpperCase(),
+            code: +match[2]
+          };
+        }
+      }
+    }
+    return null;
+  }
+
   var Projections = /*#__PURE__*/Object.freeze({
     __proto__: null,
     crsAreEqual: crsAreEqual,
@@ -5522,6 +5579,8 @@
     isWGS84: isWGS84,
     isWebMercator: isWebMercator,
     looksLikeProj4String: looksLikeProj4String,
+    parseAuthorityCodeFromWkt: parseAuthorityCodeFromWkt,
+    parseAuthorityCodeString: parseAuthorityCodeString,
     parseCrsString: parseCrsString$1,
     parsePrj: parsePrj,
     printProjections: printProjections,
@@ -11928,6 +11987,39 @@
     return /^\s*[{[]/.test(String(str));
   }
 
+  // Heuristic: detect inline comma-delimited data passed as an -i argument.
+  // Required signals (intentionally strict to avoid false positives on filenames):
+  //   1. Contains a real newline OR the literal escape sequence "\n"
+  //   2. The first and second non-empty lines each contain at least one comma
+  // Multi-character delimiters (tab, semicolon, pipe) are not detected here;
+  // only comma-delimited input is supported as inline data for now.
+  function stringLooksLikeCsv(str) {
+    if (typeof str !== 'string' || str.length === 0) return false;
+    if (!stringHasInlineCsvNewline(str)) return false;
+    var normalized = unescapeInlineCsv(str);
+    var lines = normalized.split(/\r?\n/).filter(function(line) {
+      return line.length > 0;
+    });
+    if (lines.length < 2) return false;
+    return lines[0].indexOf(',') > -1 && lines[1].indexOf(',') > -1;
+  }
+
+  // True if @str contains either a real newline or the literal two-character
+  // escape sequence "\n" (backslash + n) anywhere in the string.
+  function stringHasInlineCsvNewline(str) {
+    return str.indexOf('\n') > -1 || /\\n/.test(str);
+  }
+
+  // Convert literal "\n" / "\r\n" escape sequences in an inline CSV string
+  // into real newline characters. If the input already contains a real newline,
+  // it is returned unchanged so that backslash-n sequences inside quoted cells
+  // are preserved verbatim.
+  function unescapeInlineCsv(str) {
+    if (typeof str !== 'string') return str;
+    if (str.indexOf('\n') > -1) return str;
+    return str.replace(/\\r\\n/g, '\n').replace(/\\n/g, '\n');
+  }
+
   function stringLooksLikeKML(str) {
     str = String(str);
     return str.includes('<kml ') && str.includes('xmlns="http://www.opengis.net/kml/');
@@ -12032,10 +12124,13 @@
     isZipFile: isZipFile,
     looksLikeContentFile: looksLikeContentFile,
     looksLikeImportableFile: looksLikeImportableFile,
+    stringHasInlineCsvNewline: stringHasInlineCsvNewline,
     stringLooksLikeCommandFile: stringLooksLikeCommandFile,
+    stringLooksLikeCsv: stringLooksLikeCsv,
     stringLooksLikeJSON: stringLooksLikeJSON,
     stringLooksLikeKML: stringLooksLikeKML,
-    stringLooksLikeSVG: stringLooksLikeSVG
+    stringLooksLikeSVG: stringLooksLikeSVG,
+    unescapeInlineCsv: unescapeInlineCsv
   });
 
   // input: A file path or a buffer
@@ -12283,10 +12378,14 @@
     return files;
   };
 
-  // Expand any wildcards.
+  // Expand any wildcards. Inline data strings (JSON / CSV passed directly on
+  // the command line) are passed through unchanged so that "*" appearing
+  // inside the data isn't interpreted as a glob.
   cli.expandInputFiles = function(files) {
     return files.reduce(function(memo, name) {
-      if (name.indexOf('*') > -1) {
+      if (stringLooksLikeJSON(name) || stringLooksLikeCsv(name)) {
+        memo.push(name);
+      } else if (name.indexOf('*') > -1) {
         memo = memo.concat(cli.expandFileName(name));
       } else {
         memo.push(name);
@@ -15623,7 +15722,7 @@
           if (utils.isObject(obj)) {
             _records[_id] = obj;
           } else {
-            stop$1("Can't assign non-object to $.properties");
+            stop$1("Can't assign non-object to this.properties");
           }
         }, get: function() {
           var rec = _records[_id];
@@ -15756,7 +15855,7 @@
           if (!obj || utils.isArray(obj)) {
             lyr.shapes[_id] = obj || null;
           } else {
-            stop$1("Can't assign non-array to $.coordinates");
+            stop$1("Can't assign non-array to this.coordinates");
           }
         }, get: function() {
           return lyr.shapes[_id] || null;
@@ -16177,7 +16276,7 @@
   // Calculate an expression across a group of features, print and return the result
   // Supported functions include sum(), average(), max(), min(), median(), count()
   // Functions receive an expression to be applied to each feature (like the -each command)
-  // Examples: 'sum($.area)' 'min(income)'
+  // Examples: 'sum(this.area)' 'min(income)'
   // opts.expression  Expression to evaluate
   // opts.where  Optional filter expression (see -filter command)
   //
@@ -21431,18 +21530,18 @@ ${svg}
     validateSvgDataFields: validateSvgDataFields
   });
 
-  // import { isKmzFile } from '../io/mapshaper-file-types';
-
   function exportKML(dataset, opts) {
     var toKML = require$1("@placemarkio/tokml").toKML;
     var geojsonOpts = Object.assign({combine_layers: true, geojson_type: 'FeatureCollection'}, opts);
     var geojson = exportDatasetAsGeoJSON(dataset, geojsonOpts);
     var kml = toKML(geojson);
-    // TODO: add KMZ output
-    // var useKmz = opts.file && isKmzFile(opts.file);
-    var ofile = opts.file || getOutputFileBase(dataset) + '.kml';
+    var useKmz = !!(opts.file && isKmzFile(opts.file));
+    var ofile = opts.file || getOutputFileBase(dataset) + (useKmz ? '.kmz' : '.kml');
+    var content = useKmz
+      ? zipSync([{ filename: 'doc.kml', content: kml }])
+      : kml;
     return [{
-      content: kml,
+      content: content,
       filename: ofile
     }];
   }
@@ -25000,13 +25099,19 @@ ${svg}
       // Keep behavior consistent with other exporters that honor explicit output filename.
       extension = getFileExtension(opts.file) || extension;
     }
+    var crsMeta = resolveOutputCRS(dataset);
     return dataset.layers.map(function(lyr) {
       var geojson = getFeatureCollection(lyr, dataset, opts);
       var content = serialize(geojson);
-      content = setOutputCRS(content, dataset.info && dataset.info.flatgeobuf_crs);
+      var filename = lyr.name + '.' + extension;
+      if (crsMeta) {
+        content = rewriteHeaderWithCRS(content, crsMeta);
+      } else {
+        message('Wrote', filename, 'without a CRS in the FlatGeobuf header (mapshaper could not derive an EPSG code for this dataset). Downstream tools may misinterpret the coordinates or refuse to load the file.');
+      }
       return {
         content: content,
-        filename: lyr.name + '.' + extension
+        filename: filename
       };
     });
   }
@@ -25022,10 +25127,55 @@ ${svg}
     };
   }
 
-  function setOutputCRS(content, crs) {
-    var crsMeta = normalizeCRS(crs);
-    if (!crsMeta) return content;
-    return rewriteHeaderWithCRS(content, crsMeta);
+  // Try several strategies to derive an EPSG code for the dataset. Returns
+  // a CRS-meta object suitable for buildHeaderWithCRS(), or null if no
+  // EPSG code could be found. We don't write WKT-only CRSes -- mapshaper
+  // can't reliably round-trip them and many readers ignore the WKT field.
+  function resolveOutputCRS(dataset) {
+    var info = (dataset && dataset.info) || {};
+    var meta;
+
+    // 1. Round-tripped from another FlatGeobuf
+    meta = normalizeCRS(info.flatgeobuf_crs);
+    if (meta) return meta;
+
+    // 2. Round-tripped from a GeoPackage with an EPSG-coded SRS
+    if (info.geopackage_crs &&
+        String(info.geopackage_crs.organization || '').toUpperCase() === 'EPSG') {
+      meta = normalizeCRS({
+        org: 'EPSG',
+        code: info.geopackage_crs.organization_coordsys_id || info.geopackage_crs.srs_id
+      });
+      if (meta) return meta;
+    }
+
+    // 3. Explicit "epsg:NNNN" / "esri:NNNN" string set by -proj or alike
+    meta = normalizeCRS(parseAuthorityCodeString(info.crs_string));
+    if (meta) return meta;
+
+    // 4. AUTHORITY["EPSG", N] in a .prj/WKT1 string (typically from a Shapefile)
+    meta = normalizeCRS(parseAuthorityCodeFromWkt(info.wkt1));
+    if (meta) return meta;
+
+    // 5. Recognized CRS object: WGS-84 (any encoding) or Web Mercator.
+    // getDatasetCrsInfo() also auto-detects WGS-84 from lat/lng-like bounds,
+    // which is how GeoJSON sources end up with a usable CRS object.
+    var crsInfo;
+    try {
+      crsInfo = getDatasetCrsInfo(dataset);
+    } catch (e) {
+      crsInfo = null;
+    }
+    if (crsInfo && crsInfo.crs) {
+      if (isWGS84(crsInfo.crs)) {
+        return normalizeCRS({org: 'EPSG', code: 4326});
+      }
+      if (isWebMercator(crsInfo.crs)) {
+        return normalizeCRS({org: 'EPSG', code: 3857});
+      }
+    }
+
+    return null;
   }
 
   function normalizeCRS(crs) {
@@ -25668,10 +25818,22 @@ ${svg}
       var bounds = getLayerBounds(target.layer, target.dataset.arcs);
       opts = Object.assign({svg_bbox: bounds.toArray()}, opts);
     }
-    // convert target fmt to dataset fmt
-    var datasets = targets.map(function(target) {
-      return utils.defaults({layers: target.layers}, target.dataset);
-    });
+    var format = getOutputFormat(targets[0].dataset, opts);
+    var datasets;
+    if (format == PACKAGE_EXT && !runningInBrowser()) {
+      // CLI .msx export captures the whole session: every dataset/layer in the
+      // catalog ships in the snapshot, not just the -target subset. Targeted
+      // layers come back visible (pinned) and stacked in the order matched by
+      // -target; untargeted layers come along for the ride, hidden and parked
+      // at the bottom of the GUI stack. This matches GUI snapshot semantics
+      // and lets `mapshaper a.shp b.shp -target a -o foo.msx` produce a
+      // shareable bundle without losing b.shp.
+      datasets = prepareCatalogForCliPackExport(catalog, targets);
+    } else {
+      datasets = targets.map(function(target) {
+        return utils.defaults({layers: target.layers}, target.dataset);
+      });
+    }
     return exportDatasets(datasets, opts);
   }
 
@@ -25916,6 +26078,62 @@ ${svg}
       // target_id was assigned to each layer by findCommandTargets()
       utils.sortOn(dataset.layers, 'target_id', true);
     }
+  }
+
+  // Prepare the full catalog for a CLI `-o foo.msx` export. Returns a
+  // shallow-copied datasets/layers tree (the live model is left alone) where:
+  //
+  //   - every dataset and every layer in the catalog is present, not just the
+  //     -target subset, so .msx round-trips the entire working session;
+  //   - layers matched by -target are marked `pinned: true` so the GUI shows
+  //     them on load (no `&display-all` URL flag needed);
+  //   - those targeted layers get menu_order values that follow the linear
+  //     -target list (first targeted = bottom of the stack, last = top),
+  //     matching the SVG draw order from the same -target line;
+  //   - untargeted layers get menu_order values below every targeted layer,
+  //     so they sit at the bottom of the GUI panel out of the way (they're
+  //     hidden, but if the user pins one later it doesn't pop above the
+  //     intended stack).
+  //
+  // Intra-dataset array order is preserved so re-importing with `mapshaper
+  // foo.msx -target * -o bar.svg` still iterates layers in the order they
+  // appeared during the original run.
+  function prepareCatalogForCliPackExport(catalog, targets) {
+    var targeted = new Set();
+    targets.forEach(function(t) {
+      t.layers.forEach(function(lyr) { targeted.add(lyr); });
+    });
+    var datasets = catalog.getDatasets();
+    // Count untargeted layers globally so we can offset targeted layers'
+    // menu_order to sit above them in a single consecutive range.
+    var untargetedCount = 0;
+    datasets.forEach(function(d) {
+      d.layers.forEach(function(lyr) {
+        if (!targeted.has(lyr)) untargetedCount++;
+      });
+    });
+    var untargetedSeq = 0;
+    return datasets.map(function(dataset) {
+      var layers = dataset.layers.map(function(lyr) {
+        var isTargeted = targeted.has(lyr);
+        var menuOrder;
+        if (isTargeted && lyr.target_id != null && lyr.target_id >= 0) {
+          // target_id is 0-based across the whole -target list; offset past
+          // the untargeted block so targeted layers occupy [untargetedCount+1
+          // .. untargetedCount+N].
+          menuOrder = untargetedCount + lyr.target_id + 1;
+        } else {
+          // Untargeted (or untargeted-shaped target_id): pack into the bottom
+          // of the global stack, in catalog walk order.
+          menuOrder = ++untargetedSeq;
+        }
+        return utils.defaults({
+          pinned: isTargeted,
+          menu_order: menuOrder
+        }, lyr);
+      });
+      return utils.defaults({layers: layers}, dataset);
+    });
   }
 
   var Export = /*#__PURE__*/Object.freeze({
@@ -28428,7 +28646,7 @@ ${svg}
     parser.command('each')
       .describe('create/update/delete data fields using a JS expression')
       .example('Add two calculated data fields to a layer of U.S. counties\n' +
-          '$ mapshaper counties.shp -each \'STATE_FIPS=CNTY_FIPS.substr(0, 2), AREA=$.area\'')
+          '$ mapshaper counties.shp -each \'STATE_FIPS=CNTY_FIPS.substr(0, 2), AREA=this.area\'')
       .option('expression', {
         DEFAULT: true,
         describe: 'JS expression to apply to each target feature'
@@ -28583,7 +28801,8 @@ ${svg}
         describe: 'create a polygon to match the outline of the graticule',
         type: 'flag'
       })
-      .option('name', nameOpt);
+      .option('name', nameOpt)
+      .option('target', targetOpt);
 
 
     // for testing grid update
@@ -28993,7 +29212,7 @@ ${svg}
       })
       .option('interval', {
         // alias: 'i',
-        describe: 'output resolution as a distance (e.g. 100)',
+        describe: 'output resolution as a distance (e.g. 100m)',
         type: 'distance'
       })
       /*
@@ -29756,7 +29975,7 @@ ${svg}
     parser.command('calc')
       .describe('calculate statistics about the features in a layer')
       .example('Calculate the total area of a polygon layer\n' +
-        '$ mapshaper polygons.shp -calc \'sum($.area)\'')
+        '$ mapshaper polygons.shp -calc \'sum(this.area)\'')
       .example('Count census blocks in NY with zero population\n' +
         '$ mapshaper ny-census-blocks.shp -calc \'count()\' where=\'POPULATION == 0\'')
       .validate(validateExpressionOpt)
@@ -33688,7 +33907,12 @@ ${svg}
       // load external files (e.g. epsg definitions) if needed in GUI
       await initProjLibrary({crs: o.crs_string});
       o.crs = parseCrsString$1(o.crs_string);
+    } else if (o.wkt1) {
+      // Shapefile-sourced snapshots typically carry wkt1 but no crs_string;
+      // reconstitute the proj object from it so direct readers of info.crs work.
+      o.crs = parsePrj(o.wkt1);
     } else if (o.prj) {
+      // legacy field name; older snapshots may have stored the .prj content here
       o.crs = parsePrj(o.prj);
     }
     return o;
@@ -33776,20 +34000,37 @@ ${svg}
     return target;
   };
 
-  // replace any JSON data objects with filenames and cache the data
+  // Replace any inline data strings (JSON objects/arrays or comma-delimited
+  // text) with synthetic filenames and stash the content in @cache so the
+  // downstream importer can read it as if it had come from a file.
   function convertDataObjects(files, cache) {
-    var names = files.map(str => stringLooksLikeJSON(str) ? 'layer.json' : null).filter(Boolean);
-    if (names.length === 0) return;
-    if (names.length > 1) {
-      // make unique names if importing multiple objects
-      names = utils.uniqifyNames(names, formatVersionedFileName);
+    var slots = files.map(classifyInlineData);
+    var inlineCount = slots.filter(Boolean).length;
+    if (inlineCount === 0) return;
+    if (inlineCount > 1) {
+      // ensure unique filenames when multiple inline strings are passed together
+      var names = slots.filter(Boolean).map(function(s) { return s.filename; });
+      var unique = utils.uniqifyNames(names, formatVersionedFileName);
+      var idx = 0;
+      slots.forEach(function(slot) {
+        if (slot) slot.filename = unique[idx++];
+      });
     }
-    files.forEach((str, i) => {
-      if (!stringLooksLikeJSON(str)) return;
-      var name = names.shift();
-      cache[name] = str;
-      files[i] = name;
+    slots.forEach(function(slot, i) {
+      if (!slot) return;
+      cache[slot.filename] = slot.content;
+      files[i] = slot.filename;
     });
+  }
+
+  function classifyInlineData(str) {
+    if (stringLooksLikeJSON(str)) {
+      return {filename: 'layer.json', content: str};
+    }
+    if (stringLooksLikeCsv(str)) {
+      return {filename: 'layer.csv', content: unescapeInlineCsv(str)};
+    }
+    return null;
   }
 
   async function importMshpFile(file, catalog, opts) {
@@ -34370,6 +34611,7 @@ ${svg}
     var job = {
       catalog: catalog || new Catalog(),
       defs: {},
+      vars: {},
       settings: {},
       input_files: []
     };
@@ -34405,6 +34647,7 @@ ${svg}
     stashVar('VERBOSE', job.settings.VERBOSE || cmd.verbose);
     stashVar('QUIET', job.settings.QUIET || cmd.quiet);
     stashVar('defs', job.defs);
+    stashVar('vars', job.vars);
     stashVar('input_files', job.input_files);
   }
 
@@ -42112,15 +42355,22 @@ ${svg}
   }
 
   // Resolve a single placeholder expression to a string. Recognised forms:
-  //   VAR     -> defs[VAR]
+  //   VAR     -> vars[VAR] if present, else defs[VAR]
   //   env.VAR -> process.env[VAR]
+  //
+  // vars is the templating-scope object (-vars / -defaults writes).
+  // defs is the expression-scope object (-define / -calc / -include /
+  //   -require / -colorizer writes). The fallback exists so that
+  //   "-define base = 'out'" -> "-o {{base}}.geojson" and
+  //   "-calc 'N = count()'" -> "-if '{{N}} > 100'" keep working without
+  //   the user having to know which scope a value lives in.
   //
   // Throws on undefined names, invalid syntax, or non-primitive values.
   //
-  function resolvePlaceholder(expr, defs) {
+  function resolvePlaceholder(expr, vars, defs) {
     expr = expr.trim();
     var envMatch = /^env\.([A-Za-z_][A-Za-z0-9_]*)$/.exec(expr);
-    var val;
+    var val, source;
     if (envMatch) {
       val = lookupEnvVar(envMatch[1]);
       if (val === undefined || val === null) {
@@ -42131,10 +42381,14 @@ ${svg}
     if (!isValidVarName(expr)) {
       stop$1('Invalid variable reference: {{' + expr + '}}');
     }
-    if (!defs || !(expr in defs)) {
+    if (vars && expr in vars) {
+      source = vars;
+    } else if (defs && expr in defs) {
+      source = defs;
+    } else {
       stop$1('Undefined variable: ' + expr);
     }
-    val = defs[expr];
+    val = source[expr];
     if (val === null || val === undefined) {
       stop$1('Undefined variable: ' + expr);
     }
@@ -42146,16 +42400,33 @@ ${svg}
     return String(val);
   }
 
-  // Substitute {{...}} placeholders in @str using @defs. Placeholders that
-  // are preceded by a backslash are left literal (with the backslash removed).
-  // Substitution is single-pass (no recursion) so that values containing
-  // "{{...}}" do not trigger further interpolation.
+  // Substitute {{...}} placeholders in @str.
   //
-  function interpolateString(str, defs) {
+  // Two call signatures, kept for backward compatibility:
+  //   interpolateString(str, vars, defs)  -- preferred, two-store form
+  //   interpolateString(str, defs)        -- legacy, single-store form
+  //
+  // In the legacy form, the second argument is treated as the expression
+  // scope (defs); there is no template scope. New callers should use the
+  // two-store form.
+  //
+  // Placeholders preceded by a backslash are left literal (with the
+  // backslash removed). Substitution is single-pass (no recursion) so
+  // values containing "{{...}}" do not trigger further interpolation.
+  //
+  function interpolateString(str, varsOrDefs, defsArg) {
     if (typeof str != 'string') return str;
+    var vars, defs;
+    if (arguments.length >= 3) {
+      vars = varsOrDefs;
+      defs = defsArg;
+    } else {
+      vars = null;
+      defs = varsOrDefs;
+    }
     return str.replace(PLACEHOLDER_RXP, function(match, escape, expr) {
       if (escape === '\\') return '{{' + expr + '}}';
-      return resolvePlaceholder(expr, defs);
+      return resolvePlaceholder(expr, vars, defs);
     });
   }
 
@@ -42163,23 +42434,27 @@ ${svg}
   // -vars file.json [more ...]        load primitives from a flat JSON object
   // Mixed forms allowed; later args override earlier ones.
   //
-  // Writes into job.defs (the same object read by {{X}} interpolation,
-  // -define, -calc and -include).
+  // Writes into job.vars, the templating-scope object read by {{X}}
+  // interpolation. Values written here are NOT visible by bare name in JS
+  // expressions (-each, -filter, -define, etc.); use -define for that.
+  // {{X}} substitution falls back to job.defs if a name is missing from
+  // vars, so values set by -define / -calc / -include are still
+  // referenceable from {{X}}.
   cmd.vars = function(job, opts) {
     var values = (opts && opts.values) || [];
     if (!values.length) {
       stop$1('-vars requires one or more KEY=value or file.json arguments');
     }
     var parsed = parseVarsArgs(values, opts && opts.input);
-    if (!job.defs) job.defs = {};
+    if (!job.vars) job.vars = {};
     Object.keys(parsed).forEach(function(key) {
-      job.defs[key] = parsed[key];
+      job.vars[key] = parsed[key];
     });
   };
 
   // -defaults KEY=value [KEY=value ...]   set-if-unset
   // Same syntax as -vars, but a key is only assigned if it is not already
-  // present in job.defs. Lets a command file declare overridable defaults
+  // present in job.vars. Lets a command file declare overridable defaults
   // that a CLI -vars can pre-empt.
   cmd.defaults = function(job, opts) {
     var values = (opts && opts.values) || [];
@@ -42187,10 +42462,10 @@ ${svg}
       stop$1('-defaults requires one or more KEY=value or file.json arguments');
     }
     var parsed = parseVarsArgs(values, opts && opts.input);
-    if (!job.defs) job.defs = {};
+    if (!job.vars) job.vars = {};
     Object.keys(parsed).forEach(function(key) {
-      if (!(key in job.defs)) {
-        job.defs[key] = parsed[key];
+      if (!(key in job.vars)) {
+        job.vars[key] = parsed[key];
       }
     });
   };
@@ -48894,8 +49169,9 @@ ${svg}
   //     "-i <token>" (data file).
   //
   // "{{VAR}}" placeholders are substituted at execution time, against the
-  // live job.defs object. See mapshaper-vars-utils.mjs and the late-binding
-  // hook in mapshaper-run-commands.mjs.
+  // live job.vars object (with job.defs as a fallback for values written by
+  // -define / -calc / -include). See mapshaper-vars-utils.mjs and the
+  // late-binding hook in mapshaper-run-commands.mjs.
   //
   function parseCommandFileContent(content) {
     if (typeof content != 'string') {
@@ -51851,7 +52127,7 @@ ${svg}
     });
   }
 
-  var version = "0.7.0";
+  var version = "0.7.1";
 
   // Parse command line args into commands and run them
   // Function takes an optional Node-style callback. A Promise is returned if no callback is given.
@@ -52100,8 +52376,9 @@ ${svg}
   }
 
   // Late-binding interpolation: just before each command runs, replace any
-  // {{X}} placeholders in its source tokens against the live job.defs object,
-  // then re-parse to get fresh option values.
+  // {{X}} placeholders in its source tokens against the live job.vars and
+  // job.defs objects (vars first, defs as fallback), then re-parse to get
+  // fresh option values.
   //
   // Returns either the original cmd (no placeholders, no _tokens, or the
   // command will be skipped) or a fresh cmd object with re-parsed options.
@@ -52116,11 +52393,12 @@ ${svg}
     // variables shouldn't error here.
     if (skipCommand(cmd.name, job)) return cmd;
 
+    var vars = job.vars || {};
     var defs = job.defs || {};
     var interpolated;
     try {
       interpolated = tokens.map(function(tok) {
-        return interpolateString(tok, defs);
+        return interpolateString(tok, vars, defs);
       });
     } catch(e) {
       e.message = '[' + cmd.name + '] ' + e.message;

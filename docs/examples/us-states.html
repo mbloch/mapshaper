@@ -1,0 +1,95 @@
+<!DOCTYPE html>
+<html lang="en">
+<head><!-- Google tag (gtag.js) -->
+<script async src="https://www.googletagmanager.com/gtag/js?id=G-QYR8W1YHEF"></script>
+<script>
+  window.dataLayer = window.dataLayer || [];
+  function gtag(){dataLayer.push(arguments);}
+  gtag('js', new Date());
+  gtag('config', 'G-QYR8W1YHEF');
+</script>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>U.S. States &middot; mapshaper docs</title>
+<meta name="description" content="Simple U.S. state map with random, non-adjacent colors">
+<link rel="icon" type="image/png" href="/images/icon.png">
+<link rel="stylesheet" href="/docs/_assets/highlight.css">
+<link rel="stylesheet" href="/docs/_assets/docs.css">
+</head>
+<body class="is-example-map">
+
+<header class="page-header">
+  <a href="/" class="mapshaper-logo">map<span class="logo-highlight">shaper</span></a>
+  <span class="header-section-label">Docs</span>
+  <nav class="header-nav">
+    <a href="/">Web app</a>
+    <a href="https://github.com/mbloch/mapshaper">GitHub</a>
+    <a href="/sponsor.html" class="sponsor-link"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z"/></svg> Become a sponsor</a>
+  </nav>
+</header>
+
+<div class="docs-layout">
+
+  <aside class="docs-sidebar">
+    <div class="sidebar-inner">
+      <nav class="docs-nav"><ul class="top-links"><li><a href="/docs/">Home</a></li><li><a href="/docs/whats-new.html">What&#39;s new</a></li><li><a href="/docs/reference.html">Command reference</a></li><li><a href="/docs/gallery/">Gallery</a></li></ul><h2>Getting started</h2><ul><li><a href="/docs/essentials/command-line.html">The command-line tool</a></li><li><a href="/docs/essentials/web-app.html">The web app</a></li></ul><h2>Guides</h2><ul><li><a href="/docs/guides/simplification.html">Simplification</a></li><li><a href="/docs/guides/expressions.html">JavaScript expressions</a></li><li><a href="/docs/guides/projections.html">Projections</a></li><li><a href="/docs/guides/topology.html">Topology and cleaning</a></li><li><a href="/docs/guides/combining-layers.html">Combining two layers</a></li><li><a href="/docs/guides/programmatic.html">Using Mapshaper from Node.js</a></li></ul><h2>Formats</h2><ul><li><a href="/docs/formats/overview.html">Overview</a></li><li><a href="/docs/formats/shapefile.html">Shapefile</a></li><li><a href="/docs/formats/geojson.html">GeoJSON</a></li><li><a href="/docs/formats/topojson.html">TopoJSON</a></li><li><a href="/docs/formats/geopackage.html">GeoPackage</a></li><li><a href="/docs/formats/flatgeobuf.html">FlatGeobuf</a></li><li><a href="/docs/formats/kml.html">KML / KMZ</a></li><li><a href="/docs/formats/csv.html">CSV / TSV</a></li><li><a href="/docs/formats/dbf.html">DBF</a></li><li><a href="/docs/formats/json.html">JSON records</a></li><li><a href="/docs/formats/svg.html">SVG</a></li><li><a href="/docs/formats/snapshot.html">Mapshaper snapshot</a></li></ul><h2>Examples</h2><ul><li><a href="/docs/examples/basics.html">Basics</a></li><li><a href="/docs/examples/globe.html">Globe</a></li><li><a href="/docs/examples/us-states.html" class="is-active">U.S. state map</a></li></ul></nav>
+    </div>
+  </aside>
+
+  <main class="docs-main">
+    <article class="docs-article">
+      <div class="docs-breadcrumbs"><a href="/docs/">Docs</a> &rsaquo; Examples &rsaquo; U.S. state map</div>
+      <h1 id="us-state-map">U.S. state map</h1>
+<p>Difficulty: easy</p>
+<p><img src="/docs/examples/data/us-states.svg" alt="U.S. States"></p>
+<h3 id="steps">Steps</h3>
+<ol>
+<li>Load state/province polygons (source: Natural Earth)</li>
+<li>Keep only U.S. states</li>
+<li>Project to the &quot;Albers USA&quot; projection</li>
+<li>Assign random, non-adjacent colors</li>
+<li>Export as SVG</li>
+</ol>
+<h3 id="code">Code</h3>
+<pre><code class="hljs language-bash">mapshaper \
+-i ne_50m_admin_1_states_provinces_lakes.geojson name=states \
+-filter <span class="hljs-string">&#x27;admin == &quot;United States of America&quot;&#x27;</span> \
+-proj albersusa \
+-classify non-adjacent colors=Tableau10 \
+-o us-states.svg height=400 width=600
+</code></pre>
+<h3 id="notes">Notes</h3>
+<ul>
+<li>To see the list of built-in color schemes to use with <code>-classify</code>, run <code>mapshaper -colors</code>. You can also use <code>colors=random</code>.</li>
+<li>The Albers USA projection (<code>-proj albersusa</code>) is a custom projection used by The New York Times for U.S. maps.</li>
+</ul>
+<h3 id="assets">Assets</h3>
+<ul>
+<li><a href="https://mapshaper.org/?files=https%3A%2F%2Fmapshaper.org%2Fdocs%2Fexamples%2Fdata%2Fus-states.msx&q" data-open-snapshot="/docs/examples/data/us-states.msx">Open in the web app</a> &mdash; loads a snapshot file containing the finished map</li>
+<li><a href="/docs/examples/data/us-states.msx">Download snapshot (<code>us-states.msx</code>)</a></li>
+<li><a href="/docs/examples/data/us-states.zip">Download source data (<code>us-states.zip</code>)</a></li>
+</ul>
+
+      <div class="edit-link">
+        <a href="https://github.com/mbloch/mapshaper/edit/master/docs/examples/us-states.md">Edit this page on GitHub</a>
+      </div>
+    </article>
+  </main>
+
+  <aside class="docs-toc">
+    <div class="docs-toc-title">On this page</div><ul><li class="lvl-3"><a href="#steps">Steps</a></li><li class="lvl-3"><a href="#code">Code</a></li><li class="lvl-3"><a href="#notes">Notes</a></li><li class="lvl-3"><a href="#assets">Assets</a></li></ul>
+  </aside>
+
+</div>
+
+<script src="/docs/_assets/docs.js" defer></script>
+
+<footer class="docs-footer">
+  <div class="docs-footer-inner">
+    <span>mapshaper is free software, licensed under <a href="https://www.mozilla.org/MPL/2.0/">MPL 2.0</a>.</span>
+    <span><a href="/privacy.html">Privacy</a> &middot; <a href="/terms.html">Terms</a> &middot; <a href="/sponsor.html">Support mapshaper</a></span>
+  </div>
+</footer>
+
+</body>
+</html>

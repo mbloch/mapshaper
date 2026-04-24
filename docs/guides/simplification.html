@@ -1,0 +1,117 @@
+<!DOCTYPE html>
+<html lang="en">
+<head><!-- Google tag (gtag.js) -->
+<script async src="https://www.googletagmanager.com/gtag/js?id=G-QYR8W1YHEF"></script>
+<script>
+  window.dataLayer = window.dataLayer || [];
+  function gtag(){dataLayer.push(arguments);}
+  gtag('js', new Date());
+  gtag('config', 'G-QYR8W1YHEF');
+</script>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Simplification &middot; mapshaper docs</title>
+<meta name="description" content="How to choose between Visvalingam and Douglas-Peucker, and tips for getting good-looking results from polygon and polyline simplification.">
+<link rel="icon" type="image/png" href="/images/icon.png">
+<link rel="stylesheet" href="/docs/_assets/highlight.css">
+<link rel="stylesheet" href="/docs/_assets/docs.css">
+</head>
+<body class="">
+
+<header class="page-header">
+  <a href="/" class="mapshaper-logo">map<span class="logo-highlight">shaper</span></a>
+  <span class="header-section-label">Docs</span>
+  <nav class="header-nav">
+    <a href="/">Web app</a>
+    <a href="https://github.com/mbloch/mapshaper">GitHub</a>
+    <a href="/sponsor.html" class="sponsor-link"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z"/></svg> Become a sponsor</a>
+  </nav>
+</header>
+
+<div class="docs-layout">
+
+  <aside class="docs-sidebar">
+    <div class="sidebar-inner">
+      <nav class="docs-nav"><ul class="top-links"><li><a href="/docs/">Home</a></li><li><a href="/docs/whats-new.html">What&#39;s new</a></li><li><a href="/docs/reference.html">Command reference</a></li><li><a href="/docs/gallery/">Gallery</a></li></ul><h2>Getting started</h2><ul><li><a href="/docs/essentials/command-line.html">The command-line tool</a></li><li><a href="/docs/essentials/web-app.html">The web app</a></li></ul><h2>Guides</h2><ul><li><a href="/docs/guides/simplification.html" class="is-active">Simplification</a></li><li><a href="/docs/guides/expressions.html">JavaScript expressions</a></li><li><a href="/docs/guides/projections.html">Projections</a></li><li><a href="/docs/guides/topology.html">Topology and cleaning</a></li><li><a href="/docs/guides/combining-layers.html">Combining two layers</a></li><li><a href="/docs/guides/programmatic.html">Using Mapshaper from Node.js</a></li></ul><h2>Formats</h2><ul><li><a href="/docs/formats/overview.html">Overview</a></li><li><a href="/docs/formats/shapefile.html">Shapefile</a></li><li><a href="/docs/formats/geojson.html">GeoJSON</a></li><li><a href="/docs/formats/topojson.html">TopoJSON</a></li><li><a href="/docs/formats/geopackage.html">GeoPackage</a></li><li><a href="/docs/formats/flatgeobuf.html">FlatGeobuf</a></li><li><a href="/docs/formats/kml.html">KML / KMZ</a></li><li><a href="/docs/formats/csv.html">CSV / TSV</a></li><li><a href="/docs/formats/dbf.html">DBF</a></li><li><a href="/docs/formats/json.html">JSON records</a></li><li><a href="/docs/formats/svg.html">SVG</a></li><li><a href="/docs/formats/snapshot.html">Mapshaper snapshot</a></li></ul><h2>Examples</h2><ul><li><a href="/docs/examples/basics.html">Basics</a></li><li><a href="/docs/examples/globe.html">Globe</a></li><li><a href="/docs/examples/us-states.html">U.S. state map</a></li></ul></nav>
+    </div>
+  </aside>
+
+  <main class="docs-main">
+    <article class="docs-article">
+      <div class="docs-breadcrumbs"><a href="/docs/">Docs</a> &rsaquo; Guides &rsaquo; Simplification</div>
+      <h1 id="simplification">Simplification</h1>
+<p>Simplification reduces the number of vertices in polylines and polygon boundaries while preserving as much of their shape as possible. It is Mapshaper&#39;s original feature, and the workhorse for reducing large, detailed datasets to a size practical for web maps.</p>
+<h2 id="choosing-a-method">Choosing a method</h2>
+<p>Mapshaper offers three simplification methods, selectable as flags to <code>-simplify</code>:</p>
+<ul>
+<li><strong><code>dp</code></strong> &mdash; Douglas-Peucker (also known as Ramer–Douglas–Peucker). Guarantees that simplified lines stay within a fixed distance of the original. Good for stripping excess vertices to reduce file size, but tends to grow visible spikes at high simplification.</li>
+<li><strong><code>visvalingam</code></strong> &mdash; The Visvalingam algorithm. Iteratively removes the point that forms the smallest triangle with its two neighbors.</li>
+<li><strong><code>weighted_visvalingam</code></strong> (Mapshaper&#39;s default) &mdash; Visvalingam&#39;s effective-area algorithm with a custom weighting that underweights points at sharp angles, so they are removed earlier than in standard Visvalingam. The result is visibly smoother lines and fewer jagged spikes at high simplification. This method can be effective at generalizing very detailed source files, but be careful that it doesn&#39;t remove long, thin geographic features that you want to keep.</li>
+</ul>
+<p>Weighted Visvalingam is the default because it has proven to be versatile and effective at reducing detail in highly detailed source data. If you are only interested in minimizing file size, Douglas-Peucker is generally the better choice.</p>
+<p>You can control the amount of weighting used by Weighted Visvalingam with the <code>weighting=</code> option (default is 0.7).</p>
+<p><strong>Figures</strong></p>
+<p>Natural Earth 10m coastlines, simplified with modified Visvalingam at 5% point retention.
+<img src="/docs/images/simplification-mod2.png" alt="image"></p>
+<p>Same file using Douglas-Peucker, also 5% simplification.
+<img src="/docs/images/simplification-dp.png" alt="image"></p>
+<p>Zoomed-in view of Norwegian coastline at 5% simplification; left: weighted Visvalingam, right: Douglas-Peucker.
+<img src="/docs/images/simplification-detail.png" alt="image"></p>
+<h2 id="simplification-amount">Simplification amount</h2>
+<p>On the command line, there are three ways to specify the amount of simplification to apply: <code>percentage</code>, <code>interval</code>, and <code>resolution</code>.</p>
+<p>Percentage is the default (you don&#39;t need to type <code>percentage=</code>). It gives the percentage of removable vertices to retain, so lower numbers = more simplification.</p>
+<pre><code class="hljs language-bash">mapshaper provinces.geojson -simplify 20% \
+  -o provinces_simplified.geojson
+</code></pre>
+<p>The <code>interval</code> option takes a distance threshold. With Douglas-Peucker simplification (see below), this is the maximum deviation of the simplified line from the original. With Visvalingam-based methods, <code>interval=</code> describes the approximate size of the smallest details in the simplified output.</p>
+<pre><code class="hljs language-bash">mapshaper provinces.geojson -simplify interval=500m \
+  -o provinces_simplified.geojson
+</code></pre>
+<p>The <code>resolution=</code> option lets you specify the intended display size of your map in SVG units (equivalent to CSS pixels). A larger value retains more detail, since Mapshaper estimates the display size using the full extent of your data. Be careful with this option if your final map will show a smaller geographic area, as the paths may be over-simplified.</p>
+<pre><code class="hljs language-bash">mapshaper provinces.geojson -simplify resolution=800 \
+  -o provinces_simplified.geojson
+</code></pre>
+<p>See the <a href="/docs/reference.html#-simplify"><code>-simplify</code> reference</a> for the full set of options.</p>
+<h2 id="avoiding-shape-removal">Avoiding shape removal</h2>
+<p>At high simplification, small polygons can disappear entirely. Pass <code>keep-shapes</code> to <code>-simplify</code> (or tick <strong>prevent shape removal</strong> in the web UI&#39;s Simplify panel) to retain at least one ring per multipart feature, regardless of how aggressive the simplification is.</p>
+<pre><code class="hljs language-bash">mapshaper provinces.shp -simplify 5% keep-shapes -o provinces.geojson
+</code></pre>
+<h2 id="spherical-vs-planar-geometry">Spherical vs planar geometry</h2>
+<p>By default, Mapshaper simplifies lat/long coordinates on the surface of a sphere, using 3D geometry. This applies a consistent amount of simplification across the whole globe, including near the poles. If your data is in a projected coordinate system, simplification uses 2D planar geometry.</p>
+<h2 id="avoiding-self-intersections">Avoiding self-intersections</h2>
+<p>Heavy simplification can pull adjacent polygon edges across each other, producing self-intersections. The <code>-simplify</code> command detects and tries to remove intersections automatically by rolling back simplification where the intersections occur. In the web UI, you can enable &quot;detect line intersections&quot; on the Display panel to show intersections as red dots. In this mode, you will see a button for repairing intersections caused by simplification.</p>
+<p>The <a href="/docs/reference.html#-clean"><code>-clean</code></a> command will also remove intersections:</p>
+<pre><code class="hljs language-bash">mapshaper provinces.shp -simplify 5% -clean -o provinces.geojson
+</code></pre>
+<h2 id="simplifying-multiple-layers-consistently">Simplifying multiple layers consistently</h2>
+<p>When you import multiple layers using <code>-i combine-files</code>, Mapshaper builds a shared topology. This means that boundaries shared between layers — for example, aligned state and county polygon borders — are simplified identically across both.
+Without this, the layers would diverge during simplification, creating visible gaps and overlaps where they should align.</p>
+<pre><code class="hljs language-bash">mapshaper -i states.shp counties.shp combine-files \
+  -simplify 10% \
+  -o out/
+</code></pre>
+<p>The web app does <strong>not</strong> combine files automatically when you import multiple layers. To get the shared-topology behavior in the web app, tick <strong>with advanced options</strong> in the import dialog and add <code>combine-files</code> to the options field.</p>
+
+      <div class="edit-link">
+        <a href="https://github.com/mbloch/mapshaper/edit/master/docs/guides/simplification.md">Edit this page on GitHub</a>
+      </div>
+    </article>
+  </main>
+
+  <aside class="docs-toc">
+    <div class="docs-toc-title">On this page</div><ul><li class="lvl-2"><a href="#choosing-a-method">Choosing a method</a></li><li class="lvl-2"><a href="#simplification-amount">Simplification amount</a></li><li class="lvl-2"><a href="#avoiding-shape-removal">Avoiding shape removal</a></li><li class="lvl-2"><a href="#spherical-vs-planar-geometry">Spherical vs planar geometry</a></li><li class="lvl-2"><a href="#avoiding-self-intersections">Avoiding self-intersections</a></li><li class="lvl-2"><a href="#simplifying-multiple-layers-consistently">Simplifying multiple layers consistently</a></li></ul>
+  </aside>
+
+</div>
+
+<script src="/docs/_assets/docs.js" defer></script>
+
+<footer class="docs-footer">
+  <div class="docs-footer-inner">
+    <span>mapshaper is free software, licensed under <a href="https://www.mozilla.org/MPL/2.0/">MPL 2.0</a>.</span>
+    <span><a href="/privacy.html">Privacy</a> &middot; <a href="/terms.html">Terms</a> &middot; <a href="/sponsor.html">Support mapshaper</a></span>
+  </div>
+</footer>
+
+</body>
+</html>

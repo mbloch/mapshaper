@@ -1,0 +1,114 @@
+<!DOCTYPE html>
+<html lang="en">
+<head><!-- Google tag (gtag.js) -->
+<script async src="https://www.googletagmanager.com/gtag/js?id=G-QYR8W1YHEF"></script>
+<script>
+  window.dataLayer = window.dataLayer || [];
+  function gtag(){dataLayer.push(arguments);}
+  gtag('js', new Date());
+  gtag('config', 'G-QYR8W1YHEF');
+</script>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>GeoJSON &middot; mapshaper docs</title>
+<meta name="description" content="How Mapshaper reads and writes GeoJSON, including precision, ndjson and RFC 7946 options.">
+<link rel="icon" type="image/png" href="/images/icon.png">
+<link rel="stylesheet" href="/docs/_assets/highlight.css">
+<link rel="stylesheet" href="/docs/_assets/docs.css">
+</head>
+<body class="">
+
+<header class="page-header">
+  <a href="/" class="mapshaper-logo">map<span class="logo-highlight">shaper</span></a>
+  <span class="header-section-label">Docs</span>
+  <nav class="header-nav">
+    <a href="/">Web app</a>
+    <a href="https://github.com/mbloch/mapshaper">GitHub</a>
+    <a href="/sponsor.html" class="sponsor-link"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z"/></svg> Become a sponsor</a>
+  </nav>
+</header>
+
+<div class="docs-layout">
+
+  <aside class="docs-sidebar">
+    <div class="sidebar-inner">
+      <nav class="docs-nav"><ul class="top-links"><li><a href="/docs/">Home</a></li><li><a href="/docs/whats-new.html">What&#39;s new</a></li><li><a href="/docs/reference.html">Command reference</a></li><li><a href="/docs/gallery/">Gallery</a></li></ul><h2>Getting started</h2><ul><li><a href="/docs/essentials/command-line.html">The command-line tool</a></li><li><a href="/docs/essentials/web-app.html">The web app</a></li></ul><h2>Guides</h2><ul><li><a href="/docs/guides/simplification.html">Simplification</a></li><li><a href="/docs/guides/expressions.html">JavaScript expressions</a></li><li><a href="/docs/guides/projections.html">Projections</a></li><li><a href="/docs/guides/topology.html">Topology and cleaning</a></li><li><a href="/docs/guides/combining-layers.html">Combining two layers</a></li><li><a href="/docs/guides/programmatic.html">Using Mapshaper from Node.js</a></li></ul><h2>Formats</h2><ul><li><a href="/docs/formats/overview.html">Overview</a></li><li><a href="/docs/formats/shapefile.html">Shapefile</a></li><li><a href="/docs/formats/geojson.html" class="is-active">GeoJSON</a></li><li><a href="/docs/formats/topojson.html">TopoJSON</a></li><li><a href="/docs/formats/geopackage.html">GeoPackage</a></li><li><a href="/docs/formats/flatgeobuf.html">FlatGeobuf</a></li><li><a href="/docs/formats/kml.html">KML / KMZ</a></li><li><a href="/docs/formats/csv.html">CSV / TSV</a></li><li><a href="/docs/formats/dbf.html">DBF</a></li><li><a href="/docs/formats/json.html">JSON records</a></li><li><a href="/docs/formats/svg.html">SVG</a></li><li><a href="/docs/formats/snapshot.html">Mapshaper snapshot</a></li></ul><h2>Examples</h2><ul><li><a href="/docs/examples/basics.html">Basics</a></li><li><a href="/docs/examples/globe.html">Globe</a></li><li><a href="/docs/examples/us-states.html">U.S. state map</a></li></ul></nav>
+    </div>
+  </aside>
+
+  <main class="docs-main">
+    <article class="docs-article">
+      <div class="docs-breadcrumbs"><a href="/docs/">Docs</a> &rsaquo; Formats &rsaquo; GeoJSON</div>
+      <h1 id="geojson">GeoJSON</h1>
+<p>GeoJSON is a simple, human-readable format for geospatial vector data. It is used by many web mapping APIs, although formats like TopoJSON, FlatGeobuf, GeoParquet, and vector tiles have replaced it for specific use cases such as large-file efficiency, cloud-optimized access, and tiled rendering.</p>
+<p><strong>File extensions:</strong> <code>.json</code>, <code>.geojson</code> &middot; <strong>Read:</strong> &check; &middot; <strong>Write:</strong> &check; &middot; <strong>Multi-layer:</strong> one layer per file (combinable)</p>
+<h3 id="cli-examples">CLI examples</h3>
+<pre><code class="hljs language-bash">mapshaper input.shp -o provinces.geojson
+mapshaper input.shp -o precision=0.001 prettify provinces.geojson
+</code></pre>
+<h3 id="format-specific-input-options">Format-specific input options</h3>
+<ul>
+<li><code>id-field=</code> &mdash; import the value of each Feature&#39;s top-level <code>id</code> property into a data field of the given name.</li>
+<li><code>json-path=</code> &mdash; for files where the GeoJSON object is nested inside a larger JSON document, e.g. <code>json-path=data/regions</code>.</li>
+</ul>
+<h3 id="format-specific-output-options">Format-specific output options</h3>
+<ul>
+<li><code>precision=</code> &mdash; round coordinates to a fixed precision. This is a simple way to reduce file size.</li>
+<li><code>prettify</code> &mdash; pretty-print the JSON with line breaks and indentation.</li>
+<li><code>id-field=</code> &mdash; promote one or more attribute fields to the GeoJSON <code>id</code> property (comma-separated; first matching field per layer is used).</li>
+<li><code>bbox</code> &mdash; add a <code>bbox</code> array to the top-level FeatureCollection.</li>
+<li><code>extension=</code> &mdash; override the default <code>.json</code> extension (e.g. <code>extension=geojson</code>).</li>
+<li><code>combine-layers</code> &mdash; merge multiple layers into a single GeoJSON output file (geometries are kept separate as Features, attribute schemas are unioned).</li>
+<li><code>geojson-type=</code> &mdash; output a <code>Feature</code>, <code>FeatureCollection</code> or bare <code>GeometryCollection</code> instead of the default FeatureCollection.</li>
+<li><code>no-null-props</code> &mdash; emit <code>&quot;properties&quot;: {}</code> instead of <code>&quot;properties&quot;: null</code> for Features without attributes.</li>
+<li><code>hoist=</code> &mdash; promote one or more properties out of the <code>properties</code> object onto the Feature itself. Useful for non-standard consumers like <a href="https://github.com/felt/tippecanoe">tippecanoe</a>.</li>
+<li><code>gj2008</code> &mdash; emit pre-RFC-7946 GeoJSON (clockwise outer rings). This option produces files that can be rendered with <code>d3</code>.</li>
+<li><code>ndjson</code> &mdash; write one Feature per line as newline-delimited JSON (works with the <a href="/docs/formats/json.html"><code>json</code> records</a> family of options as well).</li>
+<li><code>id-prefix=</code> &mdash; prefix layer/feature ids when exporting multiple layers.</li>
+</ul>
+<h3 id="practical-notes">Practical notes</h3>
+<ul>
+<li>The GeoJSON spec states that GeoJSON uses WGS-84 coordinates (the lat-long coordinate system used by GPS), but Mapshaper will also export GeoJSON files with projected coordinates.</li>
+<li>Coordinates are emitted at full precision &mdash; consider <code>precision=</code> to reduce file size. <code>precision=0.0001</code> equates to ~11 m at the equator, ~8 m in New York City, and ~6 m in Reykjavík, Iceland.</li>
+<li>Polygon ring winding follows RFC 7946 (CCW outer, CW holes); the <code>gj2008</code> option outputs the CW outer rings expected by <code>d3</code>.</li>
+<li>Output is minified by default; pass <code>prettify</code> for human-readable JSON.</li>
+<li>If you are loading the data into a web map and you want the smallest possible file size, consider <a href="/docs/formats/topojson.html">TopoJSON</a> as an alternative to GeoJSON. For datasets with shared boundaries, file sizes are often a fraction of the equivalent GeoJSON size.</li>
+<li><code>precision=</code> rounding can introduce sliver overlaps at boundaries. Pair it with <code>fix-geometry</code> if downstream tools are strict.</li>
+</ul>
+<h3 id="reading-very-large-geojson-files">Reading very large GeoJSON files</h3>
+<p>Mapshaper&#39;s custom GeoJSON parser is not limited by the ~500 MB ceiling affecting tools that use <code>JSON.parse()</code>.</p>
+<p>In the <a href="/docs/essentials/web-app.html">web app</a>, the theoretical upper bound is around 2 GB per file in most browsers, though in practice the browser may run out of memory and crash well before that. If a GeoJSON is too big to open in the browser, use the CLI instead.</p>
+<p><code>mapshaper-xl</code> can handle multi-gigabyte files. It allocates 8 GB of memory by default, but you can assign more.</p>
+<pre><code class="hljs language-bash">mapshaper-xl huge.geojson -info
+mapshaper-xl 32gb huge.geojson -simplify 5% -o huge.topojson
+</code></pre>
+<h2 id="external-resources">External resources</h2>
+<ul>
+<li><a href="https://datatracker.ietf.org/doc/html/rfc7946">RFC 7946: The GeoJSON Format</a> &mdash; the IETF specification Mapshaper writes by default.</li>
+<li><a href="https://macwright.com/2015/03/23/geojson-second-bite.html">More than you ever wanted to know about GeoJSON</a> &mdash; Tom MacWright&#39;s detailed practical introduction.</li>
+<li><a href="https://geojson.org/">geojson.org</a> &mdash; spec home with links to tooling and validators.</li>
+</ul>
+
+      <div class="edit-link">
+        <a href="https://github.com/mbloch/mapshaper/edit/master/docs/formats/geojson.md">Edit this page on GitHub</a>
+      </div>
+    </article>
+  </main>
+
+  <aside class="docs-toc">
+    <div class="docs-toc-title">On this page</div><ul><li class="lvl-3"><a href="#cli-examples">CLI examples</a></li><li class="lvl-3"><a href="#format-specific-input-options">Format-specific input options</a></li><li class="lvl-3"><a href="#format-specific-output-options">Format-specific output options</a></li><li class="lvl-3"><a href="#practical-notes">Practical notes</a></li><li class="lvl-3"><a href="#reading-very-large-geojson-files">Reading very large GeoJSON files</a></li><li class="lvl-2"><a href="#external-resources">External resources</a></li></ul>
+  </aside>
+
+</div>
+
+<script src="/docs/_assets/docs.js" defer></script>
+
+<footer class="docs-footer">
+  <div class="docs-footer-inner">
+    <span>mapshaper is free software, licensed under <a href="https://www.mozilla.org/MPL/2.0/">MPL 2.0</a>.</span>
+    <span><a href="/privacy.html">Privacy</a> &middot; <a href="/terms.html">Terms</a> &middot; <a href="/sponsor.html">Support mapshaper</a></span>
+  </div>
+</footer>
+
+</body>
+</html>

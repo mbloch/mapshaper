@@ -1,0 +1,97 @@
+<!DOCTYPE html>
+<html lang="en">
+<head><!-- Google tag (gtag.js) -->
+<script async src="https://www.googletagmanager.com/gtag/js?id=G-QYR8W1YHEF"></script>
+<script>
+  window.dataLayer = window.dataLayer || [];
+  function gtag(){dataLayer.push(arguments);}
+  gtag('js', new Date());
+  gtag('config', 'G-QYR8W1YHEF');
+</script>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Topology and cleaning &middot; mapshaper docs</title>
+<meta name="description" content="How Mapshaper detects shared boundaries between features, and how to fix the common topology errors that creep into Shapefile and GeoJSON datasets.">
+<link rel="icon" type="image/png" href="/images/icon.png">
+<link rel="stylesheet" href="/docs/_assets/highlight.css">
+<link rel="stylesheet" href="/docs/_assets/docs.css">
+</head>
+<body class="">
+
+<header class="page-header">
+  <a href="/" class="mapshaper-logo">map<span class="logo-highlight">shaper</span></a>
+  <span class="header-section-label">Docs</span>
+  <nav class="header-nav">
+    <a href="/">Web app</a>
+    <a href="https://github.com/mbloch/mapshaper">GitHub</a>
+    <a href="/sponsor.html" class="sponsor-link"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z"/></svg> Become a sponsor</a>
+  </nav>
+</header>
+
+<div class="docs-layout">
+
+  <aside class="docs-sidebar">
+    <div class="sidebar-inner">
+      <nav class="docs-nav"><ul class="top-links"><li><a href="/docs/">Home</a></li><li><a href="/docs/whats-new.html">What&#39;s new</a></li><li><a href="/docs/reference.html">Command reference</a></li><li><a href="/docs/gallery/">Gallery</a></li></ul><h2>Getting started</h2><ul><li><a href="/docs/essentials/command-line.html">The command-line tool</a></li><li><a href="/docs/essentials/web-app.html">The web app</a></li></ul><h2>Guides</h2><ul><li><a href="/docs/guides/simplification.html">Simplification</a></li><li><a href="/docs/guides/expressions.html">JavaScript expressions</a></li><li><a href="/docs/guides/projections.html">Projections</a></li><li><a href="/docs/guides/topology.html" class="is-active">Topology and cleaning</a></li><li><a href="/docs/guides/combining-layers.html">Combining two layers</a></li><li><a href="/docs/guides/programmatic.html">Using Mapshaper from Node.js</a></li></ul><h2>Formats</h2><ul><li><a href="/docs/formats/overview.html">Overview</a></li><li><a href="/docs/formats/shapefile.html">Shapefile</a></li><li><a href="/docs/formats/geojson.html">GeoJSON</a></li><li><a href="/docs/formats/topojson.html">TopoJSON</a></li><li><a href="/docs/formats/geopackage.html">GeoPackage</a></li><li><a href="/docs/formats/flatgeobuf.html">FlatGeobuf</a></li><li><a href="/docs/formats/kml.html">KML / KMZ</a></li><li><a href="/docs/formats/csv.html">CSV / TSV</a></li><li><a href="/docs/formats/dbf.html">DBF</a></li><li><a href="/docs/formats/json.html">JSON records</a></li><li><a href="/docs/formats/svg.html">SVG</a></li><li><a href="/docs/formats/snapshot.html">Mapshaper snapshot</a></li></ul><h2>Examples</h2><ul><li><a href="/docs/examples/basics.html">Basics</a></li><li><a href="/docs/examples/globe.html">Globe</a></li><li><a href="/docs/examples/us-states.html">U.S. state map</a></li></ul></nav>
+    </div>
+  </aside>
+
+  <main class="docs-main">
+    <article class="docs-article">
+      <div class="docs-breadcrumbs"><a href="/docs/">Docs</a> &rsaquo; Guides &rsaquo; Topology and cleaning</div>
+      <h1 id="topology-and-cleaning">Topology and cleaning</h1>
+<p>Shapefile and GeoJSON are non-topological formats &mdash; they don&#39;t record the spatial relationships between adjacent polygons or intersecting polylines. Each polygon is just a list of coordinates; whether two polygons share an edge has to be detected.</p>
+<p>Mapshaper detects topology on import by identifying coordinates that are exactly shared between features. This is what makes operations like simplification, dissolving and clipping work correctly: when two polygons share an edge, the shared path (or &quot;arc&quot;) is stored once and edited once.</p>
+<p>But coordinates that &quot;should be&quot; identical often aren&#39;t. Source datasets routinely contain misalignments (tiny gaps or overlaps between adjacent polygons) that defeat exact-match topology detection. The result is that what looks like a clean boundary turns into duplicated, slightly-offset arcs &mdash; and simplification, dissolving and clipping all start to misbehave.</p>
+<h2 id="snapping">Snapping</h2>
+<p>The simplest fix is to ask Mapshaper to snap nearby vertices together at import time.</p>
+<p>In the <strong>command line</strong>, pass the <code>snap</code> flag to <code>-i</code>:</p>
+<pre><code class="hljs language-bash">mapshaper countries.shp snap -dissolve CONTINENT -o continents.shp
+</code></pre>
+<p>In the <strong>web app</strong>, tick &quot;snap vertices&quot; in the import dialog (open the import options with the <strong>with advanced options</strong> checkbox).</p>
+<p>By default, snapping uses an automatic threshold of about 0.0025× the average segment length, which is designed to catch misalignments caused by floating-point rounding. To set an explicit snapping distance, use <code>snap-interval=</code>:</p>
+<pre><code class="hljs language-bash">mapshaper countries.shp snap-interval=0.0001 -o cleaned.shp
+</code></pre>
+<h2 id="cleaning">Cleaning</h2>
+<p>Snapping handles slightly offset pairs of vertices, but doesn&#39;t help much when adjacent polygons have small overlapping regions or gaps along their shared boundaries. The <a href="/docs/reference.html#-clean"><code>-clean</code></a> command repairs these by recomputing the polygon mosaic and snapping geometry that&#39;s nearly identical:</p>
+<pre><code class="hljs language-bash">mapshaper countries.shp -clean -o cleaned.shp
+</code></pre>
+<p><code>-clean</code> accepts a <code>gap-fill-area=</code> option to control how aggressively gaps are filled, and a <code>sliver-control=</code> setting for handling sliver polygons. <a href="/docs/reference.html#-dissolve"><code>-dissolve</code></a> runs an equivalent repair by default, so explicitly running <code>-clean</code> is mainly useful when you want clean output without dissolving anything.</p>
+<p>In the web app, <code>-clean</code> runs from the <strong>Console</strong> the same way as on the CLI &mdash; the leading <code>-</code> is optional, e.g. just <code>clean gap-fill-area=100</code>.</p>
+<h2 id="dissolving-with-topology-repair">Dissolving with topology repair</h2>
+<p><a href="/docs/reference.html#-dissolve"><code>-dissolve</code></a> repairs topology automatically. To skip the repair pass (faster, but only safe when you trust the input topology), pass <code>no-repair</code> &mdash; Mapshaper will then warn if it detects segment intersections in the input.</p>
+<pre><code class="hljs language-bash">mapshaper counties.shp -dissolve STATE_FIPS -o states.shp
+</code></pre>
+<h2 id="detecting-line-intersections">Detecting line intersections</h2>
+<p>The web app can highlight self-intersections in your data: open the <strong>Display</strong> panel and tick &quot;detect line intersections&quot;. Intersections often indicate either a topology error in the source data or self-intersections introduced by simplification &mdash; the <strong>Repair</strong> button at the top-left of the map attempts to fix the latter.</p>
+<p>On the command line, <a href="/docs/reference.html#-clean"><code>-clean</code></a> and <a href="/docs/reference.html#-dissolve"><code>-dissolve</code></a> both detect and fix intersections.</p>
+<h2 id="notes-on-common-sources-of-topology-errors">Notes on common sources of topology errors</h2>
+<p>A few patterns to watch out for:</p>
+<ul>
+<li><strong><code>.shp</code> files exported from older GIS tools.</strong> Some pipelines round coordinates inconsistently between adjacent features, producing systematic misalignments. Importing with <code>snap</code> is usually enough.</li>
+<li><strong>Older versions of ArcGIS&#39;s dissolve tool</strong> have been observed to produce topology errors when dissolving a Shapefile that hasn&#39;t first been added to a Geodatabase. If you&#39;re starting from such output, run it through <code>mapshaper input.shp -clean -o cleaned.shp</code> to repair before further processing.</li>
+</ul>
+
+      <div class="edit-link">
+        <a href="https://github.com/mbloch/mapshaper/edit/master/docs/guides/topology.md">Edit this page on GitHub</a>
+      </div>
+    </article>
+  </main>
+
+  <aside class="docs-toc">
+    <div class="docs-toc-title">On this page</div><ul><li class="lvl-2"><a href="#snapping">Snapping</a></li><li class="lvl-2"><a href="#cleaning">Cleaning</a></li><li class="lvl-2"><a href="#dissolving-with-topology-repair">Dissolving with topology repair</a></li><li class="lvl-2"><a href="#detecting-line-intersections">Detecting line intersections</a></li><li class="lvl-2"><a href="#notes-on-common-sources-of-topology-errors">Notes on common sources of topology errors</a></li></ul>
+  </aside>
+
+</div>
+
+<script src="/docs/_assets/docs.js" defer></script>
+
+<footer class="docs-footer">
+  <div class="docs-footer-inner">
+    <span>mapshaper is free software, licensed under <a href="https://www.mozilla.org/MPL/2.0/">MPL 2.0</a>.</span>
+    <span><a href="/privacy.html">Privacy</a> &middot; <a href="/terms.html">Terms</a> &middot; <a href="/sponsor.html">Support mapshaper</a></span>
+  </div>
+</footer>
+
+</body>
+</html>

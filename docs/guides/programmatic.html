@@ -1,0 +1,124 @@
+<!DOCTYPE html>
+<html lang="en">
+<head><!-- Google tag (gtag.js) -->
+<script async src="https://www.googletagmanager.com/gtag/js?id=G-QYR8W1YHEF"></script>
+<script>
+  window.dataLayer = window.dataLayer || [];
+  function gtag(){dataLayer.push(arguments);}
+  gtag('js', new Date());
+  gtag('config', 'G-QYR8W1YHEF');
+</script>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Using Mapshaper from Node.js &middot; mapshaper docs</title>
+<meta name="description" content="Integrating Mapshaper into JavaScript builds and applications via its Node.js API.">
+<link rel="icon" type="image/png" href="/images/icon.png">
+<link rel="stylesheet" href="/docs/_assets/highlight.css">
+<link rel="stylesheet" href="/docs/_assets/docs.css">
+</head>
+<body class="">
+
+<header class="page-header">
+  <a href="/" class="mapshaper-logo">map<span class="logo-highlight">shaper</span></a>
+  <span class="header-section-label">Docs</span>
+  <nav class="header-nav">
+    <a href="/">Web app</a>
+    <a href="https://github.com/mbloch/mapshaper">GitHub</a>
+    <a href="/sponsor.html" class="sponsor-link"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z"/></svg> Become a sponsor</a>
+  </nav>
+</header>
+
+<div class="docs-layout">
+
+  <aside class="docs-sidebar">
+    <div class="sidebar-inner">
+      <nav class="docs-nav"><ul class="top-links"><li><a href="/docs/">Home</a></li><li><a href="/docs/whats-new.html">What&#39;s new</a></li><li><a href="/docs/reference.html">Command reference</a></li><li><a href="/docs/gallery/">Gallery</a></li></ul><h2>Getting started</h2><ul><li><a href="/docs/essentials/command-line.html">The command-line tool</a></li><li><a href="/docs/essentials/web-app.html">The web app</a></li></ul><h2>Guides</h2><ul><li><a href="/docs/guides/simplification.html">Simplification</a></li><li><a href="/docs/guides/expressions.html">JavaScript expressions</a></li><li><a href="/docs/guides/projections.html">Projections</a></li><li><a href="/docs/guides/topology.html">Topology and cleaning</a></li><li><a href="/docs/guides/combining-layers.html">Combining two layers</a></li><li><a href="/docs/guides/programmatic.html" class="is-active">Using Mapshaper from Node.js</a></li></ul><h2>Formats</h2><ul><li><a href="/docs/formats/overview.html">Overview</a></li><li><a href="/docs/formats/shapefile.html">Shapefile</a></li><li><a href="/docs/formats/geojson.html">GeoJSON</a></li><li><a href="/docs/formats/topojson.html">TopoJSON</a></li><li><a href="/docs/formats/geopackage.html">GeoPackage</a></li><li><a href="/docs/formats/flatgeobuf.html">FlatGeobuf</a></li><li><a href="/docs/formats/kml.html">KML / KMZ</a></li><li><a href="/docs/formats/csv.html">CSV / TSV</a></li><li><a href="/docs/formats/dbf.html">DBF</a></li><li><a href="/docs/formats/json.html">JSON records</a></li><li><a href="/docs/formats/svg.html">SVG</a></li><li><a href="/docs/formats/snapshot.html">Mapshaper snapshot</a></li></ul><h2>Examples</h2><ul><li><a href="/docs/examples/basics.html">Basics</a></li><li><a href="/docs/examples/globe.html">Globe</a></li><li><a href="/docs/examples/us-states.html">U.S. state map</a></li></ul></nav>
+    </div>
+  </aside>
+
+  <main class="docs-main">
+    <article class="docs-article">
+      <div class="docs-breadcrumbs"><a href="/docs/">Docs</a> &rsaquo; Guides &rsaquo; Using Mapshaper from Node.js</div>
+      <h1 id="using-mapshaper-from-nodejs">Using Mapshaper from Node.js</h1>
+<p>This page is for developers who want to use Mapshaper&#39;s geoprocessing functions inside their own programs &mdash; either by shelling out to the CLI from a build tool, or by calling Mapshaper&#39;s API from Node.js code directly.</p>
+<h2 id="calling-the-cli-from-a-build-tool">Calling the CLI from a build tool</h2>
+<p>The simplest way to script Mapshaper is to invoke the <code>mapshaper</code> (or <code>mapshaper-xl</code>) command from <code>make</code> or a shell script.</p>
+<p>Example <code>Makefile</code> target:</p>
+<pre><code class="hljs language-make"><span class="hljs-section">europe.topojson: shp/world_countries.shp</span>
+	mapshaper <span class="hljs-variable">{{CONTENT}}lt;</span> \
+	  -filter <span class="hljs-string">&quot;CONTINENT == &#x27;Europe&#x27;&quot;</span> \
+	  -simplify interval=100m keep-shapes \
+	  -o <span class="hljs-variable">$@</span>
+</code></pre>
+<p>An alternative to embedding a long series of Mapshaper commands on the command line is to put them in a <code>.txt</code> file and pass the file to <code>mapshaper</code>. See <a href="/docs/reference.html#command-files">command files</a> and <a href="/docs/reference.html#variable-interpolation">variable interpolation</a> in the reference.</p>
+<h2 id="the-nodejs-api">The Node.js API</h2>
+<p>Mapshaper exposes three top-level functions for running editing commands programmatically. All three accept the same command-line string format as the <code>mapshaper</code> CLI.</p>
+<h3 id="runcommandscommands-input-callback"><code>runCommands(commands[, input][, callback])</code></h3>
+<p>Runs a command line against files on disk (or in-memory). The <code>-o</code> command(s) write their output to disk.</p>
+<ul>
+<li><code>commands</code> &mdash; a command-line string.</li>
+<li><code>input</code> (optional) &mdash; an object whose keys are filenames and whose values are file contents. Files referenced by <code>-i</code> are looked up here first, then on the filesystem.</li>
+<li><code>callback</code> (optional) &mdash; a Node-style <code>function(err)</code>. Without a callback, <code>runCommands</code> returns a Promise.</li>
+</ul>
+<pre><code class="hljs language-javascript"><span class="hljs-keyword">import</span> mapshaper <span class="hljs-keyword">from</span> <span class="hljs-string">&#x27;mapshaper&#x27;</span>;
+
+<span class="hljs-keyword">await</span> mapshaper.<span class="hljs-title function_">runCommands</span>(<span class="hljs-string">&#x27;-i shapefiles/*.shp -o geojson/ format=geojson&#x27;</span>);
+</code></pre>
+<h3 id="applycommandscommands-input-callback"><code>applyCommands(commands[, input][, callback])</code></h3>
+<p>Same signature as <code>runCommands</code>, but instead of writing files to disk, the contents produced by <code>-o</code> are returned to the caller as a <code>{ filename: Buffer }</code> object. Useful for processing data without touching the filesystem.</p>
+<pre><code class="hljs language-javascript"><span class="hljs-keyword">import</span> mapshaper <span class="hljs-keyword">from</span> <span class="hljs-string">&#x27;mapshaper&#x27;</span>;
+
+<span class="hljs-keyword">const</span> input = { <span class="hljs-string">&#x27;input.csv&#x27;</span>: <span class="hljs-string">&#x27;lat,lng,value\n40.3,-72.3,1000&#x27;</span> };
+<span class="hljs-keyword">const</span> cmd   = <span class="hljs-string">&#x27;-i input.csv -points x=lng y=lat -o output.geojson&#x27;</span>;
+
+<span class="hljs-keyword">const</span> output = <span class="hljs-keyword">await</span> mapshaper.<span class="hljs-title function_">applyCommands</span>(cmd, input);
+<span class="hljs-comment">// output[&#x27;output.geojson&#x27;] is a Buffer containing GeoJSON</span>
+</code></pre>
+<h3 id="runcommandsxlcommands-options-callback"><code>runCommandsXL(commands[, options][, callback])</code></h3>
+<p>Like <code>runCommands</code>, but the work runs in a child Node process configured with a larger maximum heap (8 GB by default). Equivalent to running <code>mapshaper-xl</code> from the command line. Override the heap size with the <code>xl</code> option:</p>
+<pre><code class="hljs language-javascript"><span class="hljs-keyword">await</span> mapshaper.<span class="hljs-title function_">runCommandsXL</span>(commands, { <span class="hljs-attr">xl</span>: <span class="hljs-string">&#x27;16gb&#x27;</span> });
+</code></pre>
+<p>This function reads input only from the filesystem &mdash; there&#39;s no <code>input</code> argument as on <code>runCommands</code>/<code>applyCommands</code>.</p>
+<h2 id="working-with-shapefiles-in-applycommands">Working with Shapefiles in <code>applyCommands</code></h2>
+<p>Shapefiles are really a set of component files. To import one through <code>applyCommands</code>, pass the contents of all the parts you care about:</p>
+<ul>
+<li><code>.shp</code> &mdash; geometry (Buffer or ArrayBuffer)</li>
+<li><code>.dbf</code> &mdash; attribute table (Buffer or ArrayBuffer)</li>
+<li><code>.prj</code> &mdash; coordinate system (string)</li>
+</ul>
+<p>Without <code>.dbf</code> you&#39;ll get geometry but no attributes; without <code>.prj</code>, projection-dependent commands won&#39;t have a coordinate system to work from.</p>
+<pre><code class="hljs language-javascript"><span class="hljs-keyword">const</span> input = {
+  <span class="hljs-string">&#x27;world.shp&#x27;</span>: shpBuffer,
+  <span class="hljs-string">&#x27;world.dbf&#x27;</span>: dbfBuffer,
+  <span class="hljs-string">&#x27;world.prj&#x27;</span>: prjString
+};
+<span class="hljs-keyword">const</span> output = <span class="hljs-keyword">await</span> mapshaper.<span class="hljs-title function_">applyCommands</span>(
+  <span class="hljs-string">&#x27;-i world.shp -simplify 10% -o world.geojson&#x27;</span>, input
+);
+</code></pre>
+<h2 id="versioning">Versioning</h2>
+<p>The Node API is stable across minor Mapshaper releases, but new options and commands appear regularly. The full set of accepted command-line options is the same as the CLI&#39;s, so the <a href="/docs/reference.html">command reference</a> is the authoritative list of what you can put into the <code>commands</code> string.</p>
+
+      <div class="edit-link">
+        <a href="https://github.com/mbloch/mapshaper/edit/master/docs/guides/programmatic.md">Edit this page on GitHub</a>
+      </div>
+    </article>
+  </main>
+
+  <aside class="docs-toc">
+    <div class="docs-toc-title">On this page</div><ul><li class="lvl-2"><a href="#calling-the-cli-from-a-build-tool">Calling the CLI from a build tool</a></li><li class="lvl-2"><a href="#the-nodejs-api">The Node.js API</a></li><li class="lvl-3"><a href="#runcommandscommands-input-callback">runCommands(commands[, input][, callback])</a></li><li class="lvl-3"><a href="#applycommandscommands-input-callback">applyCommands(commands[, input][, callback])</a></li><li class="lvl-3"><a href="#runcommandsxlcommands-options-callback">runCommandsXL(commands[, options][, callback])</a></li><li class="lvl-2"><a href="#working-with-shapefiles-in-applycommands">Working with Shapefiles in applyCommands</a></li><li class="lvl-2"><a href="#versioning">Versioning</a></li></ul>
+  </aside>
+
+</div>
+
+<script src="/docs/_assets/docs.js" defer></script>
+
+<footer class="docs-footer">
+  <div class="docs-footer-inner">
+    <span>mapshaper is free software, licensed under <a href="https://www.mozilla.org/MPL/2.0/">MPL 2.0</a>.</span>
+    <span><a href="/privacy.html">Privacy</a> &middot; <a href="/terms.html">Terms</a> &middot; <a href="/sponsor.html">Support mapshaper</a></span>
+  </div>
+</footer>
+
+</body>
+</html>

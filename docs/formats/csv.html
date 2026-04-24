@@ -1,0 +1,134 @@
+<!DOCTYPE html>
+<html lang="en">
+<head><!-- Google tag (gtag.js) -->
+<script async src="https://www.googletagmanager.com/gtag/js?id=G-QYR8W1YHEF"></script>
+<script>
+  window.dataLayer = window.dataLayer || [];
+  function gtag(){dataLayer.push(arguments);}
+  gtag('js', new Date());
+  gtag('config', 'G-QYR8W1YHEF');
+</script>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>CSV and TSV &middot; mapshaper docs</title>
+<meta name="description" content="How Mapshaper reads and writes CSV/TSV, including encoding, type hints and large-file handling.">
+<link rel="icon" type="image/png" href="/images/icon.png">
+<link rel="stylesheet" href="/docs/_assets/highlight.css">
+<link rel="stylesheet" href="/docs/_assets/docs.css">
+</head>
+<body class="">
+
+<header class="page-header">
+  <a href="/" class="mapshaper-logo">map<span class="logo-highlight">shaper</span></a>
+  <span class="header-section-label">Docs</span>
+  <nav class="header-nav">
+    <a href="/">Web app</a>
+    <a href="https://github.com/mbloch/mapshaper">GitHub</a>
+    <a href="/sponsor.html" class="sponsor-link"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z"/></svg> Become a sponsor</a>
+  </nav>
+</header>
+
+<div class="docs-layout">
+
+  <aside class="docs-sidebar">
+    <div class="sidebar-inner">
+      <nav class="docs-nav"><ul class="top-links"><li><a href="/docs/">Home</a></li><li><a href="/docs/whats-new.html">What&#39;s new</a></li><li><a href="/docs/reference.html">Command reference</a></li><li><a href="/docs/gallery/">Gallery</a></li></ul><h2>Getting started</h2><ul><li><a href="/docs/essentials/command-line.html">The command-line tool</a></li><li><a href="/docs/essentials/web-app.html">The web app</a></li></ul><h2>Guides</h2><ul><li><a href="/docs/guides/simplification.html">Simplification</a></li><li><a href="/docs/guides/expressions.html">JavaScript expressions</a></li><li><a href="/docs/guides/projections.html">Projections</a></li><li><a href="/docs/guides/topology.html">Topology and cleaning</a></li><li><a href="/docs/guides/combining-layers.html">Combining two layers</a></li><li><a href="/docs/guides/programmatic.html">Using Mapshaper from Node.js</a></li></ul><h2>Formats</h2><ul><li><a href="/docs/formats/overview.html">Overview</a></li><li><a href="/docs/formats/shapefile.html">Shapefile</a></li><li><a href="/docs/formats/geojson.html">GeoJSON</a></li><li><a href="/docs/formats/topojson.html">TopoJSON</a></li><li><a href="/docs/formats/geopackage.html">GeoPackage</a></li><li><a href="/docs/formats/flatgeobuf.html">FlatGeobuf</a></li><li><a href="/docs/formats/kml.html">KML / KMZ</a></li><li><a href="/docs/formats/csv.html" class="is-active">CSV / TSV</a></li><li><a href="/docs/formats/dbf.html">DBF</a></li><li><a href="/docs/formats/json.html">JSON records</a></li><li><a href="/docs/formats/svg.html">SVG</a></li><li><a href="/docs/formats/snapshot.html">Mapshaper snapshot</a></li></ul><h2>Examples</h2><ul><li><a href="/docs/examples/basics.html">Basics</a></li><li><a href="/docs/examples/globe.html">Globe</a></li><li><a href="/docs/examples/us-states.html">U.S. state map</a></li></ul></nav>
+    </div>
+  </aside>
+
+  <main class="docs-main">
+    <article class="docs-article">
+      <div class="docs-breadcrumbs"><a href="/docs/">Docs</a> &rsaquo; Formats &rsaquo; CSV / TSV</div>
+      <h1 id="csv-and-tsv">CSV and TSV</h1>
+<p>Plain-text tabular data. Mapshaper treats CSV/TSV as pure attribute data by default, or as a point layer when longitude and latitude columns are present. Combined with <a href="/docs/reference.html#-join"><code>-join</code></a>, CSV is the lowest-friction way to attach external attributes (population, election results, anything keyed on a stable id) to a geometry layer.</p>
+<p><strong>File extensions:</strong> <code>.csv</code>, <code>.tsv</code> &middot; <strong>Read:</strong> &check; &middot; <strong>Write:</strong> &check; &middot; <strong>Multi-layer:</strong> no</p>
+<h3 id="cli-examples">CLI examples</h3>
+<pre><code class="hljs language-bash">mapshaper data.csv -info
+mapshaper data.csv -points x=lon y=lat -o points.geojson
+mapshaper big.csv csv-fields=<span class="hljs-built_in">id</span>,name,pop -info
+mapshaper provinces.shp -drop-table -o stats.csv
+mapshaper data.csv -o delimiter=<span class="hljs-string">&quot;;&quot;</span> out.csv
+</code></pre>
+<h3 id="format-specific-input-options">Format-specific input options</h3>
+<ul>
+<li><code>encoding=</code> &mdash; text encoding. Default is UTF-8.</li>
+<li><code>string-fields=</code> &mdash; comma-separated list of fields to import as strings even if their values look numeric. Use <code>string-fields=*</code> to import every field as a string. Essential for ZIP codes, FIPS codes and anything else where leading zeros matter.</li>
+<li><code>field-types=</code> &mdash; per-field type hints, e.g. <code>FIPS:str,population:num</code>. More flexible alternative to <code>string-fields=</code>.</li>
+<li><code>csv-skip-lines=</code> &mdash; skip N lines at the top of the file. Useful for spreadsheet exports with notes above the data.</li>
+<li><code>csv-lines=</code> &mdash; import only the first N data rows.</li>
+<li><code>csv-field-names=</code> &mdash; assign explicit field names. Combine with <code>csv-skip-lines=1</code> to override existing headers.</li>
+<li><code>csv-fields=</code> &mdash; import only the named columns. Filtering happens during the read, so this option dramatically reduces peak memory for wide CSVs.</li>
+<li><code>csv-filter=</code> &mdash; a JavaScript expression evaluated per row. Rows that return false are dropped before they ever reach the layer.</li>
+<li><code>csv-dedup-fields</code> &mdash; rename duplicate column headers (otherwise Mapshaper errors out).</li>
+<li><code>decimal-comma</code> &mdash; parse numbers using <code>1.000,01</code> European convention instead of <code>1,000.01</code>.</li>
+</ul>
+<h3 id="format-specific-output-options">Format-specific output options</h3>
+<ul>
+<li><code>encoding=</code> &mdash; text encoding for the output. Default is UTF-8.</li>
+<li><code>delimiter=</code> &mdash; override the field delimiter, e.g. <code>delimiter=&quot;|&quot;</code>.</li>
+<li><code>decimal-comma</code> &mdash; emit numbers using the European decimal-comma convention.</li>
+<li><code>field-order=ascending</code> &mdash; sort columns alphabetically.</li>
+</ul>
+<h3 id="practical-notes">Practical notes</h3>
+<ul>
+<li>The delimiter is auto-detected from the extension (<code>.csv</code> &rarr; comma, <code>.tsv</code> &rarr; tab). Use <code>-i format=csv</code> to force CSV parsing for a differently-named file (e.g. <code>.txt</code>).</li>
+<li>When exporting non-point geometry to CSV, Mapshaper writes only the attribute table. Use <a href="/docs/reference.html#-points"><code>-points</code></a> first if you want to export point coordinates as <code>lon</code>/<code>lat</code> columns.</li>
+<li>BOM-prefixed files (typically from Excel) are handled transparently on read.</li>
+<li>Output has no quoting unless a value contains the delimiter, a quote or a newline.</li>
+</ul>
+<h3 id="importing-identifier-like-fields-zip-fips-phone-numbers-hellip">Importing identifier-like fields (ZIP, FIPS, phone numbers&hellip;)</h3>
+<p>This is the single biggest CSV footgun. Mapshaper guesses each column&#39;s type from its values, so a column of US ZIP codes like <code>02134</code>, <code>90210</code>, <code>10001</code> looks numeric and gets imported as numbers &mdash; silently stripping leading zeros and breaking any subsequent join. The same applies to FIPS codes, phone numbers, account numbers and any other identifier that happens to contain only digits.</p>
+<p>Always declare these columns as strings on import:</p>
+<pre><code class="hljs language-bash">mapshaper -i counties.csv string-fields=GEOID,STATEFP,COUNTYFP -info
+mapshaper -i zips.csv string-fields=zipcode -<span class="hljs-built_in">join</span> points key=zipcode,zipcode
+</code></pre>
+<p>If you don&#39;t trust the schema at all, <code>string-fields=*</code> imports every column as a string. You can also be precise with <code>field-types=</code>:</p>
+<pre><code class="hljs language-bash">mapshaper -i data.csv field-types=GEOID:str,population:num,year:str -info
+</code></pre>
+<p>A symptom of getting this wrong is a join silently dropping all rows because <code>02134</code> (string) doesn&#39;t match <code>2134</code> (number).</p>
+<h3 id="prefiltering-large-csvs">Prefiltering large CSVs</h3>
+<p>For multi-gigabyte CSVs &mdash; election precinct records, OSM extract attribute tables, parcel data &mdash; it usually isn&#39;t viable to load the whole file into memory and then filter. Mapshaper has two options that filter <strong>during</strong> the read, before the data lands in a layer:</p>
+<ul>
+<li><code>csv-fields=</code> &mdash; keep only the named columns. Wide CSVs (hundreds of columns, only a few of interest) shrink dramatically.</li>
+<li><code>csv-filter=</code> &mdash; a JavaScript expression evaluated per row. Rows that return false are skipped.</li>
+</ul>
+<p>Example (note that numerical fields have not been converted from strings at this point):</p>
+<pre><code class="hljs language-bash">mapshaper -i big.csv \
+  csv-fields=GEOID,name,population,state \
+  csv-filter=<span class="hljs-string">&#x27;state == &quot;TX&quot; &amp;&amp; population &gt; &quot;10000&quot;&#x27;</span> \
+  -o cities-tx.csv
+</code></pre>
+<h3 id="in-the-web-app">In the web app</h3>
+<p>The same import options work in the <a href="/docs/essentials/web-app.html">web app</a>. Tick <strong>with advanced options</strong> in the import dialog and pass any of <code>string-fields=</code>, <code>field-types=</code>, <code>encoding=</code>, <code>csv-fields=</code>, <code>csv-filter=</code> etc. as you would on the CLI:</p>
+<pre><code>string-fields=GEOID,STATEFP encoding=utf8
+</code></pre>
+<p>For very large CSVs, <code>csv-fields=</code> and <code>csv-filter=</code> are the most useful options for keeping memory under control. If a file is too big for the browser to load, the <a href="/docs/essentials/command-line.html"><code>mapshaper-xl</code> CLI</a> is the fallback.</p>
+<h2 id="external-resources">External resources</h2>
+<ul>
+<li><a href="https://datatracker.ietf.org/doc/html/rfc4180">RFC 4180: Common Format and MIME Type for CSV</a> &mdash; the closest thing to a CSV specification, though many real-world files diverge from it.</li>
+<li><a href="https://specs.frictionlessdata.io/csv-dialect/">Frictionless CSV Dialect spec</a> &mdash; a practical schema for declaring how a particular CSV file is formatted (delimiter, quoting, line terminator).</li>
+</ul>
+
+      <div class="edit-link">
+        <a href="https://github.com/mbloch/mapshaper/edit/master/docs/formats/csv.md">Edit this page on GitHub</a>
+      </div>
+    </article>
+  </main>
+
+  <aside class="docs-toc">
+    <div class="docs-toc-title">On this page</div><ul><li class="lvl-3"><a href="#cli-examples">CLI examples</a></li><li class="lvl-3"><a href="#format-specific-input-options">Format-specific input options</a></li><li class="lvl-3"><a href="#format-specific-output-options">Format-specific output options</a></li><li class="lvl-3"><a href="#practical-notes">Practical notes</a></li><li class="lvl-3"><a href="#importing-identifier-like-fields-zip-fips-phone-numbers-hellip">Importing identifier-like fields (ZIP, FIPS, phone numbers&amp;hellip;)</a></li><li class="lvl-3"><a href="#prefiltering-large-csvs">Prefiltering large CSVs</a></li><li class="lvl-3"><a href="#in-the-web-app">In the web app</a></li><li class="lvl-2"><a href="#external-resources">External resources</a></li></ul>
+  </aside>
+
+</div>
+
+<script src="/docs/_assets/docs.js" defer></script>
+
+<footer class="docs-footer">
+  <div class="docs-footer-inner">
+    <span>mapshaper is free software, licensed under <a href="https://www.mozilla.org/MPL/2.0/">MPL 2.0</a>.</span>
+    <span><a href="/privacy.html">Privacy</a> &middot; <a href="/terms.html">Terms</a> &middot; <a href="/sponsor.html">Support mapshaper</a></span>
+  </div>
+</footer>
+
+</body>
+</html>

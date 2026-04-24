@@ -1,0 +1,130 @@
+<!DOCTYPE html>
+<html lang="en">
+<head><!-- Google tag (gtag.js) -->
+<script async src="https://www.googletagmanager.com/gtag/js?id=G-QYR8W1YHEF"></script>
+<script>
+  window.dataLayer = window.dataLayer || [];
+  function gtag(){dataLayer.push(arguments);}
+  gtag('js', new Date());
+  gtag('config', 'G-QYR8W1YHEF');
+</script>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Shapefile &middot; mapshaper docs</title>
+<meta name="description" content="How Mapshaper reads and writes ESRI Shapefiles, including encoding and field-name notes.">
+<link rel="icon" type="image/png" href="/images/icon.png">
+<link rel="stylesheet" href="/docs/_assets/highlight.css">
+<link rel="stylesheet" href="/docs/_assets/docs.css">
+</head>
+<body class="">
+
+<header class="page-header">
+  <a href="/" class="mapshaper-logo">map<span class="logo-highlight">shaper</span></a>
+  <span class="header-section-label">Docs</span>
+  <nav class="header-nav">
+    <a href="/">Web app</a>
+    <a href="https://github.com/mbloch/mapshaper">GitHub</a>
+    <a href="/sponsor.html" class="sponsor-link"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z"/></svg> Become a sponsor</a>
+  </nav>
+</header>
+
+<div class="docs-layout">
+
+  <aside class="docs-sidebar">
+    <div class="sidebar-inner">
+      <nav class="docs-nav"><ul class="top-links"><li><a href="/docs/">Home</a></li><li><a href="/docs/whats-new.html">What&#39;s new</a></li><li><a href="/docs/reference.html">Command reference</a></li><li><a href="/docs/gallery/">Gallery</a></li></ul><h2>Getting started</h2><ul><li><a href="/docs/essentials/command-line.html">The command-line tool</a></li><li><a href="/docs/essentials/web-app.html">The web app</a></li></ul><h2>Guides</h2><ul><li><a href="/docs/guides/simplification.html">Simplification</a></li><li><a href="/docs/guides/expressions.html">JavaScript expressions</a></li><li><a href="/docs/guides/projections.html">Projections</a></li><li><a href="/docs/guides/topology.html">Topology and cleaning</a></li><li><a href="/docs/guides/combining-layers.html">Combining two layers</a></li><li><a href="/docs/guides/programmatic.html">Using Mapshaper from Node.js</a></li></ul><h2>Formats</h2><ul><li><a href="/docs/formats/overview.html">Overview</a></li><li><a href="/docs/formats/shapefile.html" class="is-active">Shapefile</a></li><li><a href="/docs/formats/geojson.html">GeoJSON</a></li><li><a href="/docs/formats/topojson.html">TopoJSON</a></li><li><a href="/docs/formats/geopackage.html">GeoPackage</a></li><li><a href="/docs/formats/flatgeobuf.html">FlatGeobuf</a></li><li><a href="/docs/formats/kml.html">KML / KMZ</a></li><li><a href="/docs/formats/csv.html">CSV / TSV</a></li><li><a href="/docs/formats/dbf.html">DBF</a></li><li><a href="/docs/formats/json.html">JSON records</a></li><li><a href="/docs/formats/svg.html">SVG</a></li><li><a href="/docs/formats/snapshot.html">Mapshaper snapshot</a></li></ul><h2>Examples</h2><ul><li><a href="/docs/examples/basics.html">Basics</a></li><li><a href="/docs/examples/globe.html">Globe</a></li><li><a href="/docs/examples/us-states.html">U.S. state map</a></li></ul></nav>
+    </div>
+  </aside>
+
+  <main class="docs-main">
+    <article class="docs-article">
+      <div class="docs-breadcrumbs"><a href="/docs/">Docs</a> &rsaquo; Formats &rsaquo; Shapefile</div>
+      <h1 id="shapefile">Shapefile</h1>
+<p>Shapefile is ESRI&#39;s long-standing vector format and remains widely used as an exchange format in desktop GIS workflows. Rather than a single file, a Shapefile is a collection of files — at minimum .shp, .shx, and .dbf, plus commonly .prj (coordinate reference system) and .cpg (character encoding). It has well-known limitations, including a 2 GB size cap per component file, attribute field names limited to 10 characters, attribute values limited to 254 characters, no support for mixed geometry types, and unreliable character encoding declaration. Newer formats like <a href="/docs/formats/geopackage.html">GeoPackage</a> and <a href="/docs/formats/flatgeobuf.html">FlatGeobuf</a> solve most of the limitations.</p>
+<p><strong>File extensions:</strong> <code>.shp</code> (geometry), <code>.dbf</code> (attributes), <code>.shx</code> (index), <code>.prj</code> (projection), <code>.cpg</code> (encoding hint)
+&middot; <strong>Read:</strong> &check; &middot; <strong>Write:</strong> &check; &middot; <strong>Multi-layer:</strong> no</p>
+<h3 id="cli-examples">CLI examples</h3>
+<pre><code class="hljs language-bash">mapshaper provinces.shp -info
+mapshaper provinces.shp -simplify 20% -o provinces.geojson
+mapshaper input.geojson -o provinces.shp
+</code></pre>
+<h3 id="format-specific-input-options">Format-specific input options</h3>
+<ul>
+<li><code>encoding=</code> &mdash; encoding used by the <code>.dbf</code> text fields. If omitted, Mapshaper auto-detects, falling back to the value declared in a <code>.cpg</code> file when present. Common values: <code>latin1</code>, <code>utf8</code>, <code>gb18030</code>. Run <code>mapshaper -encodings</code> for the full list.</li>
+</ul>
+<h3 id="format-specific-output-options">Format-specific output options</h3>
+<ul>
+<li><code>encoding=</code> &mdash; text encoding for the <code>.dbf</code>. Defaults to UTF-8 (with a matching <code>.cpg</code> sidecar).</li>
+<li><code>field-order=ascending</code> &mdash; sort attribute fields alphabetically (case-insensitive).</li>
+</ul>
+<h3 id="practical-notes">Practical notes</h3>
+<ul>
+<li>A Shapefile dataset is a bundle of files sharing a base name. The Mapshaper CLI inputs the <code>.shp</code> and picks up any sibling <code>.dbf</code>, <code>.shx</code>, <code>.prj</code> and <code>.cpg</code> files automatically. In the <a href="/docs/essentials/web-app.html">web app</a> you select or drag-drop them together &mdash; see <a href="#in-the-web-app">In the web app</a> below.</li>
+<li>Field names longer than 10 characters are silently truncated on write, which can produce duplicates. Mapshaper disambiguates by appending digits, or you can rename fields beforehand with <a href="/docs/reference.html#-rename-fields"><code>-rename-fields</code></a>.</li>
+<li>Field values longer than 254 characters are truncated on write.</li>
+<li>Mapshaper does not fully support M (measured) and Z (3D) Shapefiles &mdash; M and Z values are dropped on import.</li>
+<li>When exporting, the Mapshaper CLI produces separate companion files (<code>.shp</code>, <code>.shx</code>, <code>.dbf</code>, <code>.prj</code>). In the web app, the component files get bundled in a <code>.zip</code> file.</li>
+<li>If the <code>.prj</code> file is missing, Mapshaper reads the geometry without coordinate-reference information. Coordinates in the lat-long range are assumed to be WGS-84. You can use the <code>-proj</code> command to assign a CRS (e.g. <code>-proj init=...</code>).</li>
+<li>A standalone <code>.dbf</code> can be imported on its own as a tabular layer &mdash; see the <a href="/docs/formats/dbf.html">DBF page</a>.</li>
+</ul>
+<h3 id="in-the-web-app">In the web app</h3>
+<p>Browsers can&#39;t read files from the filesystem the CLI can, so you have to supply all the parts of a Shapefile together. Two options are:</p>
+<ol>
+<li><strong>Select all the components together.</strong> Click <strong>Add files</strong> and shift- or cmd-click the <code>.shp</code>, <code>.dbf</code>, <code>.prj</code> (and <code>.shx</code>/<code>.cpg</code> if present) in one go, or drag the whole selection onto the import area.</li>
+<li><strong>Drop a <code>.zip</code> containing the bundle.</strong> Shapefiles are very commonly distributed this way.</li>
+</ol>
+<p>If the import warns about an unknown text encoding, re-import with the <strong>with advanced options</strong> checkbox ticked and pass <code>encoding=</code> (e.g. <code>encoding=win1252</code>, <code>encoding=gb18030</code>). The same <code>encoding=</code> values that work on the CLI work here.</p>
+<h3 id="reading-a-shapefile-with-missing-sidecars">Reading a Shapefile with missing sidecars</h3>
+<p>Mapshaper will read a <code>.shp</code> whose <code>.dbf</code> and/or <code>.shx</code> companion files are missing &mdash; useful when you&#39;re handed an incomplete bundle, or when you only care about geometry:</p>
+<ul>
+<li><strong>Missing <code>.dbf</code></strong>: the geometry is imported with no attribute table.</li>
+<li><strong>Missing <code>.shx</code></strong>: Mapshaper recovers feature offsets by reading the <code>.shp</code> directly. This works for normal Shapefiles with densely-packed records; it only fails on the rare Shapefiles that contain out-of-order records, where the <code>.shx</code> is needed to locate each feature.</li>
+</ul>
+<h3 id="dbf-text-encoding"><code>.dbf</code> text encoding</h3>
+<p>The .dbf format is a legacy binary format dating to dBASE III in the early 1980s, predating Unicode. Character encoding is not declared within the file itself, which can cause encoding errors when working with Shapefiles containing non-ASCII characters. In practice, most Shapefiles now come with a <code>.cpg</code> file or use UTF-8, which is almost always auto-detected correctly.</p>
+<p>Mapshaper handles encoding in the following order:</p>
+<ol>
+<li>If <code>encoding=</code> is set on <code>-i</code>, that wins.</li>
+<li>If a <code>.cpg</code> sidecar file is present, Mapshaper uses the encoding it names.</li>
+<li>Otherwise Mapshaper tries to auto-detect the encoding from the <code>.dbf</code> contents.</li>
+</ol>
+<p>Auto-detection covers most public datasets, but it can guess wrong on sparsely-populated columns or unusual codepages. If you see mojibake (<code>Ã©</code> instead of <code>é</code>, <code>?</code> characters where accented letters should be), set <code>encoding=</code> explicitly:</p>
+<pre><code class="hljs language-bash">mapshaper -i provinces.shp encoding=utf8 -info
+mapshaper -i historical.shp encoding=win1252 -o cleaned.geojson
+mapshaper -i china.shp encoding=gb18030 -o cleaned.geojson
+</code></pre>
+<p>When writing, Mapshaper emits UTF-8 plus a <code>.cpg</code> sidecar by default so other tools can decode correctly. Override with <code>encoding=</code> on <code>-o</code> if a downstream consumer requires a specific codepage.</p>
+<h2 id="external-resources">External resources</h2>
+<ul>
+<li><a href="https://desktop.arcgis.com/en/arcmap/latest/manage-data/shapefiles/shapefile-file-extensions.htm">Shapefile file extensions (ArcMap docs)</a> &mdash; ESRI&#39;s own practical reference describing what each <code>.shp</code>/<code>.shx</code>/<code>.dbf</code>/<code>.prj</code>/<code>.cpg</code>/<code>.sbn</code> etc. file actually contains. Useful when you encounter unfamiliar sidecar files.</li>
+<li><a href="https://switchfromshapefile.org/">Switch from Shapefile</a> &mdash; a long-running campaign cataloguing the format&#39;s well-known limitations and pointing to alternatives.</li>
+<li><a href="https://www.esri.com/content/dam/esrisites/sitecore-archive/Files/Pdfs/library/whitepapers/pdfs/shapefile.pdf">ESRI Shapefile Technical Description (PDF)</a> &mdash; the original 1998 white paper that defines the format. Dry but authoritative.</li>
+</ul>
+<h2 id="see-also">See also</h2>
+<ul>
+<li><a href="/docs/formats/dbf.html">DBF format</a></li>
+</ul>
+
+      <div class="edit-link">
+        <a href="https://github.com/mbloch/mapshaper/edit/master/docs/formats/shapefile.md">Edit this page on GitHub</a>
+      </div>
+    </article>
+  </main>
+
+  <aside class="docs-toc">
+    <div class="docs-toc-title">On this page</div><ul><li class="lvl-3"><a href="#cli-examples">CLI examples</a></li><li class="lvl-3"><a href="#format-specific-input-options">Format-specific input options</a></li><li class="lvl-3"><a href="#format-specific-output-options">Format-specific output options</a></li><li class="lvl-3"><a href="#practical-notes">Practical notes</a></li><li class="lvl-3"><a href="#in-the-web-app">In the web app</a></li><li class="lvl-3"><a href="#reading-a-shapefile-with-missing-sidecars">Reading a Shapefile with missing sidecars</a></li><li class="lvl-3"><a href="#dbf-text-encoding">.dbf text encoding</a></li><li class="lvl-2"><a href="#external-resources">External resources</a></li><li class="lvl-2"><a href="#see-also">See also</a></li></ul>
+  </aside>
+
+</div>
+
+<script src="/docs/_assets/docs.js" defer></script>
+
+<footer class="docs-footer">
+  <div class="docs-footer-inner">
+    <span>mapshaper is free software, licensed under <a href="https://www.mozilla.org/MPL/2.0/">MPL 2.0</a>.</span>
+    <span><a href="/privacy.html">Privacy</a> &middot; <a href="/terms.html">Terms</a> &middot; <a href="/sponsor.html">Support mapshaper</a></span>
+  </div>
+</footer>
+
+</body>
+</html>

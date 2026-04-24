@@ -1,0 +1,165 @@
+<!DOCTYPE html>
+<html lang="en">
+<head><!-- Google tag (gtag.js) -->
+<script async src="https://www.googletagmanager.com/gtag/js?id=G-QYR8W1YHEF"></script>
+<script>
+  window.dataLayer = window.dataLayer || [];
+  function gtag(){dataLayer.push(arguments);}
+  gtag('js', new Date());
+  gtag('config', 'G-QYR8W1YHEF');
+</script>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Projections &middot; mapshaper docs</title>
+<meta name="description" content="How to reproject geographic data with Mapshaper, including CRS notation, built-in aliases, and the albersusa composite projection.">
+<link rel="icon" type="image/png" href="/images/icon.png">
+<link rel="stylesheet" href="/docs/_assets/highlight.css">
+<link rel="stylesheet" href="/docs/_assets/docs.css">
+</head>
+<body class="">
+
+<header class="page-header">
+  <a href="/" class="mapshaper-logo">map<span class="logo-highlight">shaper</span></a>
+  <span class="header-section-label">Docs</span>
+  <nav class="header-nav">
+    <a href="/">Web app</a>
+    <a href="https://github.com/mbloch/mapshaper">GitHub</a>
+    <a href="/sponsor.html" class="sponsor-link"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z"/></svg> Become a sponsor</a>
+  </nav>
+</header>
+
+<div class="docs-layout">
+
+  <aside class="docs-sidebar">
+    <div class="sidebar-inner">
+      <nav class="docs-nav"><ul class="top-links"><li><a href="/docs/">Home</a></li><li><a href="/docs/whats-new.html">What&#39;s new</a></li><li><a href="/docs/reference.html">Command reference</a></li><li><a href="/docs/gallery/">Gallery</a></li></ul><h2>Getting started</h2><ul><li><a href="/docs/essentials/command-line.html">The command-line tool</a></li><li><a href="/docs/essentials/web-app.html">The web app</a></li></ul><h2>Guides</h2><ul><li><a href="/docs/guides/simplification.html">Simplification</a></li><li><a href="/docs/guides/expressions.html">JavaScript expressions</a></li><li><a href="/docs/guides/projections.html" class="is-active">Projections</a></li><li><a href="/docs/guides/topology.html">Topology and cleaning</a></li><li><a href="/docs/guides/combining-layers.html">Combining two layers</a></li><li><a href="/docs/guides/programmatic.html">Using Mapshaper from Node.js</a></li></ul><h2>Formats</h2><ul><li><a href="/docs/formats/overview.html">Overview</a></li><li><a href="/docs/formats/shapefile.html">Shapefile</a></li><li><a href="/docs/formats/geojson.html">GeoJSON</a></li><li><a href="/docs/formats/topojson.html">TopoJSON</a></li><li><a href="/docs/formats/geopackage.html">GeoPackage</a></li><li><a href="/docs/formats/flatgeobuf.html">FlatGeobuf</a></li><li><a href="/docs/formats/kml.html">KML / KMZ</a></li><li><a href="/docs/formats/csv.html">CSV / TSV</a></li><li><a href="/docs/formats/dbf.html">DBF</a></li><li><a href="/docs/formats/json.html">JSON records</a></li><li><a href="/docs/formats/svg.html">SVG</a></li><li><a href="/docs/formats/snapshot.html">Mapshaper snapshot</a></li></ul><h2>Examples</h2><ul><li><a href="/docs/examples/basics.html">Basics</a></li><li><a href="/docs/examples/globe.html">Globe</a></li><li><a href="/docs/examples/us-states.html">U.S. state map</a></li></ul></nav>
+    </div>
+  </aside>
+
+  <main class="docs-main">
+    <article class="docs-article">
+      <div class="docs-breadcrumbs"><a href="/docs/">Docs</a> &rsaquo; Guides &rsaquo; Projections</div>
+      <h1 id="projections">Projections</h1>
+<p>Mapshaper&#39;s <a href="/docs/reference.html#-proj"><code>-proj</code></a> command reprojects a dataset from one coordinate reference system (CRS) to another, using a JavaScript port of the <a href="https://proj.org/">PROJ</a> coordinate transformation library.</p>
+<p><strong>Examples</strong></p>
+<pre><code class="hljs language-bash"><span class="hljs-comment"># Project a Shapefile to UTM zone 11N using a PROJ string</span>
+mapshaper nevada.shp -proj +proj=utm +zone=11 -o
+
+<span class="hljs-comment"># Convert a projected Shapefile to WGS84 — the following are equivalent:</span>
+mapshaper nyc.shp -proj EPSG:4326 -o
+mapshaper nyc.shp -proj wgs84 -o
+mapshaper nyc.shp -proj +proj=longlat +datum=WGS84 -o
+
+<span class="hljs-comment"># Composite projection for U.S. maps with Alaska, Hawaii, and Puerto Rico insets</span>
+mapshaper us-states.shp -proj albersusa +PR -o
+</code></pre>
+<h2 id="forms-of-crs-notation">Forms of CRS notation</h2>
+<p><code>-proj</code> accepts a CRS in any of three forms.</p>
+<p><strong>PROJ strings</strong> are sequences of <code>+key=value</code> parameters. They are the lowest-level form and expose the full set of options for each projection. Parameters that have sensible defaults (datum, units, false easting/northing) can usually be omitted.</p>
+<pre><code class="hljs language-bash">mapshaper data.shp -proj +proj=lcc +lat_1=33 +lat_2=45 +lat_0=39 +lon_0=-96 -o
+</code></pre>
+<p><strong>EPSG codes</strong> are numeric identifiers from the <a href="https://epsg.io/">EPSG registry</a>. Thousands of national and regional coordinate systems have EPSG codes, making them a compact and unambiguous way to specify a CRS.</p>
+<pre><code class="hljs language-bash">mapshaper data.shp -proj EPSG:3857 -o   <span class="hljs-comment"># Web Mercator</span>
+mapshaper data.shp -proj EPSG:32611 -o  <span class="hljs-comment"># UTM zone 11N (WGS84)</span>
+</code></pre>
+<p><strong>Aliases</strong> are short names for common projections. Run <code>mapshaper -projections</code> to print the full list. The built-in aliases are:</p>
+<table>
+<thead>
+<tr>
+<th>Alias</th>
+<th>Equivalent PROJ string</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>wgs84</code></td>
+<td><code>+proj=longlat +datum=WGS84</code></td>
+</tr>
+<tr>
+<td><code>webmercator</code></td>
+<td><code>+proj=merc +a=6378137 +b=6378137</code></td>
+</tr>
+<tr>
+<td><code>robinson</code></td>
+<td><code>+proj=robin +datum=WGS84</code></td>
+</tr>
+<tr>
+<td><code>albersusa</code></td>
+<td><a href="#albersusa">Composite U.S. projection</a> (see below)</td>
+</tr>
+</tbody></table>
+<p>You can also use a bare PROJ projection name (without <code>+proj=</code>) as shorthand when no extra parameters are required:</p>
+<pre><code class="hljs language-bash">mapshaper world.shp -proj robin -o
+</code></pre>
+<h2 id="auto-fitted-parameters">Auto-fitted parameters</h2>
+<p>For some conic and cylindrical projections, you can supply just the projection name and Mapshaper will calculate suitable parameters from the extent of the data. This is useful when you want a locally appropriate projection without looking up specific values.</p>
+<p>For <strong>Lambert Conformal Conic</strong> (<code>lcc</code>) and <strong>Albers Equal Area Conic</strong> (<code>aea</code>), Mapshaper calculates the central meridian (<code>lon_0</code>) and two standard parallels (<code>lat_1</code>, <code>lat_2</code>) using the one-sixth rule applied to the data&#39;s bounding box.</p>
+<p>For <strong>Transverse Mercator</strong> (<code>tmerc</code>, <code>etmerc</code>), it calculates the central meridian and latitude of origin (<code>lon_0</code>, <code>lat_0</code>) from the center of the bounding box.</p>
+<pre><code class="hljs language-bash"><span class="hljs-comment"># Mapshaper fills in lon_0, lat_1, lat_2 based on the data extent</span>
+mapshaper region.geojson -proj lcc -o region_lcc.geojson
+
+<span class="hljs-comment"># Equivalent — Mapshaper fills in lon_0 and lat_0</span>
+mapshaper region.geojson -proj tmerc -o region_tmerc.geojson
+</code></pre>
+<p>When Mapshaper auto-fits parameters, it prints the expanded PROJ string so you can see exactly what was applied — for example: <code>Converted &quot;lcc&quot; to &quot;+proj=lcc +lon_0=-95.5 +lat_1=30.17 +lat_2=44.83&quot;</code>. You can copy that string and use it explicitly if you need reproducible output.</p>
+<h2 id="albersusa">albersusa</h2>
+<p><code>albersusa</code> is a Mapshaper-specific composite projection for maps of the United States. It is not part of the PROJ library. It applies Albers Equal Area Conic to the contiguous 48 states, then tiles Alaska (scaled down) and Hawaii as insets in the lower-left corner of the map.</p>
+<pre><code class="hljs language-bash">mapshaper us-states.shp -proj albersusa -o
+</code></pre>
+<p>Two optional flags add insets for outlying territories:</p>
+<ul>
+<li><code>+PR</code> — Puerto Rico</li>
+<li><code>+VI</code> — U.S. Virgin Islands (placed alongside Puerto Rico)</li>
+</ul>
+<pre><code class="hljs language-bash">mapshaper us-states.shp -proj albersusa +PR +VI -o
+</code></pre>
+<p>The position, scale, rotation, and other properties of each inset can be overridden with named parameters if the defaults do not suit your map. See the <a href="/docs/reference.html#-proj"><code>-proj</code> reference</a> for the full option syntax.</p>
+<h2 id="finding-crs-definitions">Finding CRS definitions</h2>
+<p>Several websites provide PROJ strings and EPSG codes for coordinate systems worldwide:</p>
+<ul>
+<li><strong><a href="https://epsg.io/">EPSG.io</a></strong> — search by place name, CRS name, or EPSG code. Each entry shows the PROJ string and WKT definition and lets you preview the projection on a map.</li>
+<li><strong><a href="https://spatialreference.org/">SpatialReference.org</a></strong> — similar database built directly from the PROJ library. Good for browsing the full set of supported systems.</li>
+<li><strong><a href="https://proj.org/operations/projections/">PROJ documentation</a></strong> — reference for every projection in PROJ, including all supported parameters. Mapshaper&#39;s JavaScript port supports most but not all of them; run <code>mapshaper -projections</code> to see the exact list.</li>
+</ul>
+<h2 id="coordinate-system-quirks-and-limitations">Coordinate system quirks and limitations</h2>
+<ul>
+<li><p>GeoJSON and TopoJSON files are assumed to use WGS84 when their bounding boxes fall within the normal range for decimal degree coordinates.</p>
+</li>
+<li><p>Mapshaper does not support coordinate transformations that require grid-shift files (for example, NAD27 → WGS84). If a transformation silently fails, this is the likely cause.</p>
+</li>
+<li><p>Projections that can only represent part of the globe — including orthographic (<code>ortho</code>), near-side perspective (<code>nsper</code>, <code>geos</code>), gnomonic (<code>gnom</code>), stereographic (<code>stere</code>), and Lambert Azimuthal Equal-Area (<code>laea</code>) — automatically clip input data to the projection&#39;s valid extent before projecting. This prevents distorted or invalid geometry from coordinates outside the visible area.</p>
+</li>
+<li><p>For projections that introduce significant curvature along straight lines, add the <code>densify</code> option to interpolate extra vertices along long segments:</p>
+<pre><code class="hljs language-bash">mapshaper data.shp -proj +proj=ortho +lat_0=45 +lon_0=-100 densify -o
+</code></pre>
+</li>
+<li><p>When <code>-proj</code> targets a layer, all topologically related layers (those sharing the same geometry) are also reprojected. To reproject all layers, use <code>target=*</code>.</p>
+</li>
+<li><p>The <code>init=</code> option is available for files whose source CRS is unknown and cannot be inferred from a <code>.prj</code> file. Shapefiles normally carry a <code>.prj</code> sidecar; GeoJSON and TopoJSON are assumed to be WGS84 when their coordinates fall within the standard lat/long range.</p>
+</li>
+</ul>
+<h2 id="the--proj-command">The -proj command</h2>
+<p>See the <a href="/docs/reference.html#-proj"><code>-proj</code> reference</a> for the full list of options.</p>
+
+      <div class="edit-link">
+        <a href="https://github.com/mbloch/mapshaper/edit/master/docs/guides/projections.md">Edit this page on GitHub</a>
+      </div>
+    </article>
+  </main>
+
+  <aside class="docs-toc">
+    <div class="docs-toc-title">On this page</div><ul><li class="lvl-2"><a href="#forms-of-crs-notation">Forms of CRS notation</a></li><li class="lvl-2"><a href="#auto-fitted-parameters">Auto-fitted parameters</a></li><li class="lvl-2"><a href="#albersusa">albersusa</a></li><li class="lvl-2"><a href="#finding-crs-definitions">Finding CRS definitions</a></li><li class="lvl-2"><a href="#coordinate-system-quirks-and-limitations">Coordinate system quirks and limitations</a></li><li class="lvl-2"><a href="#the--proj-command">The -proj command</a></li></ul>
+  </aside>
+
+</div>
+
+<script src="/docs/_assets/docs.js" defer></script>
+
+<footer class="docs-footer">
+  <div class="docs-footer-inner">
+    <span>mapshaper is free software, licensed under <a href="https://www.mozilla.org/MPL/2.0/">MPL 2.0</a>.</span>
+    <span><a href="/privacy.html">Privacy</a> &middot; <a href="/terms.html">Terms</a> &middot; <a href="/sponsor.html">Support mapshaper</a></span>
+  </div>
+</footer>
+
+</body>
+</html>

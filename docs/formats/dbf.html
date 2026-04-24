@@ -1,0 +1,94 @@
+<!DOCTYPE html>
+<html lang="en">
+<head><!-- Google tag (gtag.js) -->
+<script async src="https://www.googletagmanager.com/gtag/js?id=G-QYR8W1YHEF"></script>
+<script>
+  window.dataLayer = window.dataLayer || [];
+  function gtag(){dataLayer.push(arguments);}
+  gtag('js', new Date());
+  gtag('config', 'G-QYR8W1YHEF');
+</script>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>DBF &middot; mapshaper docs</title>
+<meta name="description" content="How Mapshaper reads and writes standalone DBF files, the tabular component of Shapefile.">
+<link rel="icon" type="image/png" href="/images/icon.png">
+<link rel="stylesheet" href="/docs/_assets/highlight.css">
+<link rel="stylesheet" href="/docs/_assets/docs.css">
+</head>
+<body class="">
+
+<header class="page-header">
+  <a href="/" class="mapshaper-logo">map<span class="logo-highlight">shaper</span></a>
+  <span class="header-section-label">Docs</span>
+  <nav class="header-nav">
+    <a href="/">Web app</a>
+    <a href="https://github.com/mbloch/mapshaper">GitHub</a>
+    <a href="/sponsor.html" class="sponsor-link"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z"/></svg> Become a sponsor</a>
+  </nav>
+</header>
+
+<div class="docs-layout">
+
+  <aside class="docs-sidebar">
+    <div class="sidebar-inner">
+      <nav class="docs-nav"><ul class="top-links"><li><a href="/docs/">Home</a></li><li><a href="/docs/whats-new.html">What&#39;s new</a></li><li><a href="/docs/reference.html">Command reference</a></li><li><a href="/docs/gallery/">Gallery</a></li></ul><h2>Getting started</h2><ul><li><a href="/docs/essentials/command-line.html">The command-line tool</a></li><li><a href="/docs/essentials/web-app.html">The web app</a></li></ul><h2>Guides</h2><ul><li><a href="/docs/guides/simplification.html">Simplification</a></li><li><a href="/docs/guides/expressions.html">JavaScript expressions</a></li><li><a href="/docs/guides/projections.html">Projections</a></li><li><a href="/docs/guides/topology.html">Topology and cleaning</a></li><li><a href="/docs/guides/combining-layers.html">Combining two layers</a></li><li><a href="/docs/guides/programmatic.html">Using Mapshaper from Node.js</a></li></ul><h2>Formats</h2><ul><li><a href="/docs/formats/overview.html">Overview</a></li><li><a href="/docs/formats/shapefile.html">Shapefile</a></li><li><a href="/docs/formats/geojson.html">GeoJSON</a></li><li><a href="/docs/formats/topojson.html">TopoJSON</a></li><li><a href="/docs/formats/geopackage.html">GeoPackage</a></li><li><a href="/docs/formats/flatgeobuf.html">FlatGeobuf</a></li><li><a href="/docs/formats/kml.html">KML / KMZ</a></li><li><a href="/docs/formats/csv.html">CSV / TSV</a></li><li><a href="/docs/formats/dbf.html" class="is-active">DBF</a></li><li><a href="/docs/formats/json.html">JSON records</a></li><li><a href="/docs/formats/svg.html">SVG</a></li><li><a href="/docs/formats/snapshot.html">Mapshaper snapshot</a></li></ul><h2>Examples</h2><ul><li><a href="/docs/examples/basics.html">Basics</a></li><li><a href="/docs/examples/globe.html">Globe</a></li><li><a href="/docs/examples/us-states.html">U.S. state map</a></li></ul></nav>
+    </div>
+  </aside>
+
+  <main class="docs-main">
+    <article class="docs-article">
+      <div class="docs-breadcrumbs"><a href="/docs/">Docs</a> &rsaquo; Formats &rsaquo; DBF</div>
+      <h1 id="dbf">DBF</h1>
+<p>DBF is the dBase database format. It&#39;s best known as the attribute-table half of a Shapefile, but Mapshaper can also import a <code>.dbf</code> on its own as a tabular layer with no geometry. <a href="/docs/formats/csv.html">CSV</a> is generally preferred as an exchange format for tabular data.</p>
+<p><strong>File extension:</strong> <code>.dbf</code> &middot; <strong>Read:</strong> &check; &middot; <strong>Write:</strong> &check; &middot; <strong>Geometry:</strong> none</p>
+<h3 id="cli-examples">CLI examples</h3>
+<pre><code class="hljs language-bash">mapshaper provinces.dbf -info
+mapshaper provinces.dbf -filter <span class="hljs-string">&#x27;&quot;BC,AB,SK&quot;.indexOf(prov) &gt; -1&#x27;</span> -o subset.csv
+mapshaper data.csv -o data.dbf
+</code></pre>
+<h3 id="format-specific-input-options">Format-specific input options</h3>
+<ul>
+<li><code>encoding=</code> &mdash; text encoding. If omitted, Mapshaper auto-detects, falling back to a <code>.cpg</code> sidecar file if present. Run <code>mapshaper -encodings</code> for the list of supported encodings.</li>
+</ul>
+<h3 id="format-specific-output-options">Format-specific output options</h3>
+<ul>
+<li><code>encoding=</code> &mdash; output text encoding. Default UTF-8 (with a matching <code>.cpg</code> sidecar).</li>
+<li><code>field-order=ascending</code> &mdash; sort columns alphabetically.</li>
+</ul>
+<h3 id="practical-notes">Practical notes</h3>
+<ul>
+<li>DBF holds tabular data only &mdash; no geometry.</li>
+<li>DBF files do not declare their text encoding internally. Mapshaper auto-detects against UTF-8, Windows-1252 and a few other common encodings. See the <a href="/docs/formats/shapefile.html#dbf-text-encoding">Shapefile encoding notes</a> for the full picture.</li>
+<li>Field names are limited to 10 ASCII characters. Longer names are truncated on write; duplicate truncated names are disambiguated with numeric suffixes.</li>
+<li>Field values are limited to 254 characters; longer strings will have been truncated when the file was written.</li>
+</ul>
+<h2 id="external-resources">External resources</h2>
+<ul>
+<li><a href="https://en.wikipedia.org/wiki/.dbf">Wikipedia: .dbf</a> &mdash; useful overview of the format&#39;s history and dialects.</li>
+<li><a href="https://www.clicketyclick.dk/databases/xbase/format/">Xbase File Format Description</a> &mdash; Erik Bachmann&#39;s reference for the dBase / xBase family. The standard external citation for byte-level DBF details.</li>
+</ul>
+
+      <div class="edit-link">
+        <a href="https://github.com/mbloch/mapshaper/edit/master/docs/formats/dbf.md">Edit this page on GitHub</a>
+      </div>
+    </article>
+  </main>
+
+  <aside class="docs-toc">
+    <div class="docs-toc-title">On this page</div><ul><li class="lvl-3"><a href="#cli-examples">CLI examples</a></li><li class="lvl-3"><a href="#format-specific-input-options">Format-specific input options</a></li><li class="lvl-3"><a href="#format-specific-output-options">Format-specific output options</a></li><li class="lvl-3"><a href="#practical-notes">Practical notes</a></li><li class="lvl-2"><a href="#external-resources">External resources</a></li></ul>
+  </aside>
+
+</div>
+
+<script src="/docs/_assets/docs.js" defer></script>
+
+<footer class="docs-footer">
+  <div class="docs-footer-inner">
+    <span>mapshaper is free software, licensed under <a href="https://www.mozilla.org/MPL/2.0/">MPL 2.0</a>.</span>
+    <span><a href="/privacy.html">Privacy</a> &middot; <a href="/terms.html">Terms</a> &middot; <a href="/sponsor.html">Support mapshaper</a></span>
+  </div>
+</footer>
+
+</body>
+</html>

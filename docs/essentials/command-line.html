@@ -1,0 +1,134 @@
+<!DOCTYPE html>
+<html lang="en">
+<head><!-- Google tag (gtag.js) -->
+<script async src="https://www.googletagmanager.com/gtag/js?id=G-QYR8W1YHEF"></script>
+<script>
+  window.dataLayer = window.dataLayer || [];
+  function gtag(){dataLayer.push(arguments);}
+  gtag('js', new Date());
+  gtag('config', 'G-QYR8W1YHEF');
+</script>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>The command-line tool &middot; mapshaper docs</title>
+<meta name="description" content="Install the mapshaper CLI, run your first commands and learn how Mapshaper organizes data into layers.">
+<link rel="icon" type="image/png" href="/images/icon.png">
+<link rel="stylesheet" href="/docs/_assets/highlight.css">
+<link rel="stylesheet" href="/docs/_assets/docs.css">
+</head>
+<body class="">
+
+<header class="page-header">
+  <a href="/" class="mapshaper-logo">map<span class="logo-highlight">shaper</span></a>
+  <span class="header-section-label">Docs</span>
+  <nav class="header-nav">
+    <a href="/">Web app</a>
+    <a href="https://github.com/mbloch/mapshaper">GitHub</a>
+    <a href="/sponsor.html" class="sponsor-link"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z"/></svg> Become a sponsor</a>
+  </nav>
+</header>
+
+<div class="docs-layout">
+
+  <aside class="docs-sidebar">
+    <div class="sidebar-inner">
+      <nav class="docs-nav"><ul class="top-links"><li><a href="/docs/">Home</a></li><li><a href="/docs/whats-new.html">What&#39;s new</a></li><li><a href="/docs/reference.html">Command reference</a></li><li><a href="/docs/gallery/">Gallery</a></li></ul><h2>Getting started</h2><ul><li><a href="/docs/essentials/command-line.html" class="is-active">The command-line tool</a></li><li><a href="/docs/essentials/web-app.html">The web app</a></li></ul><h2>Guides</h2><ul><li><a href="/docs/guides/simplification.html">Simplification</a></li><li><a href="/docs/guides/expressions.html">JavaScript expressions</a></li><li><a href="/docs/guides/projections.html">Projections</a></li><li><a href="/docs/guides/topology.html">Topology and cleaning</a></li><li><a href="/docs/guides/combining-layers.html">Combining two layers</a></li><li><a href="/docs/guides/programmatic.html">Using Mapshaper from Node.js</a></li></ul><h2>Formats</h2><ul><li><a href="/docs/formats/overview.html">Overview</a></li><li><a href="/docs/formats/shapefile.html">Shapefile</a></li><li><a href="/docs/formats/geojson.html">GeoJSON</a></li><li><a href="/docs/formats/topojson.html">TopoJSON</a></li><li><a href="/docs/formats/geopackage.html">GeoPackage</a></li><li><a href="/docs/formats/flatgeobuf.html">FlatGeobuf</a></li><li><a href="/docs/formats/kml.html">KML / KMZ</a></li><li><a href="/docs/formats/csv.html">CSV / TSV</a></li><li><a href="/docs/formats/dbf.html">DBF</a></li><li><a href="/docs/formats/json.html">JSON records</a></li><li><a href="/docs/formats/svg.html">SVG</a></li><li><a href="/docs/formats/snapshot.html">Mapshaper snapshot</a></li></ul><h2>Examples</h2><ul><li><a href="/docs/examples/basics.html">Basics</a></li><li><a href="/docs/examples/globe.html">Globe</a></li><li><a href="/docs/examples/us-states.html">U.S. state map</a></li></ul></nav>
+    </div>
+  </aside>
+
+  <main class="docs-main">
+    <article class="docs-article">
+      <div class="docs-breadcrumbs"><a href="/docs/">Docs</a> &rsaquo; Getting started &rsaquo; The command-line tool</div>
+      <h1 id="the-command-line-tool">The command-line tool</h1>
+<p>Mapshaper ships as a command-line tool and a <a href="/docs/essentials/web-app.html">web app</a>. This page is a tour of the CLI and the most common things you&#39;ll use it for.</p>
+<h2 id="install">Install</h2>
+<p>Mapshaper requires <a href="https://nodejs.org">Node.js</a>. With Node installed:</p>
+<pre><code class="hljs language-bash">npm install -g mapshaper
+</code></pre>
+<p>That gives you three executables:</p>
+<ul>
+<li><code>mapshaper</code> &mdash; the main CLI.</li>
+<li><code>mapshaper-xl</code> &mdash; same as <code>mapshaper</code>, but launched with a larger Node heap (8 GB by default) for processing very large files. Override the limit with <code>mapshaper-xl 16gb [commands]</code>.</li>
+<li><code>mapshaper-gui</code> &mdash; runs the <a href="/docs/essentials/web-app.html">web UI</a> locally on <code>http://localhost:5555</code>.</li>
+</ul>
+<p>You can also run mapshaper without installing it via <a href="https://bun.sh/">Bun</a> (<code>bunx mapshaper [commands]</code>) or with <code>npx mapshaper [commands]</code>.</p>
+<p>Check the install with:</p>
+<pre><code class="hljs language-bash">mapshaper -v
+</code></pre>
+<h2 id="anatomy-of-a-mapshaper-command">Anatomy of a Mapshaper command</h2>
+<p>A Mapshaper invocation is a sequence of commands run left-to-right. Each command starts with a hyphen-prefixed name and is followed by zero or more options. The initial <code>-i</code> (input) command is implied if the first argument is a file path.</p>
+<pre><code class="hljs language-bash">mapshaper provinces.shp -simplify dp 20% -o precision=0.00001 output.geojson
+</code></pre>
+<p>This reads a Shapefile, simplifies it using the Douglas-Peucker algorithm to 20% of its vertices, and writes a GeoJSON file with rounded coordinates.</p>
+<p>Options come in three forms:</p>
+<ul>
+<li><strong>Values</strong> like <code>provinces.shp</code> and <code>output.geojson</code>.</li>
+<li><strong>Flags</strong> like <code>dp</code>.</li>
+<li><strong>Name/value pairs</strong> like <code>precision=0.00001</code>.</li>
+</ul>
+<p>For the full reference, see the <a href="/docs/reference.html">command reference</a>.</p>
+<h2 id="some-examples">Some examples</h2>
+<h3 id="get-help">Get help</h3>
+<pre><code class="hljs language-bash">mapshaper -h                 <span class="hljs-comment"># list all commands</span>
+mapshaper -h simplify        <span class="hljs-comment"># detailed options for one command</span>
+</code></pre>
+<h3 id="chain-commands">Chain commands</h3>
+<pre><code class="hljs language-bash"><span class="hljs-comment"># From census blocks: dissolve populated Census blocks to tract level.</span>
+mapshaper tabblock2010_36_pophu.shp \
+  -filter <span class="hljs-string">&#x27;POP10 &gt; 0&#x27;</span> \
+  -each <span class="hljs-string">&#x27;TRACT=BLOCKID10.substr(0,11)&#x27;</span> \
+  -dissolve TRACT sum-fields=POP10 \
+  -o tracts.shp
+</code></pre>
+<pre><code class="hljs language-bash"><span class="hljs-comment"># Generate state and national boundaries from one county-level Shapefile.</span>
+<span class="hljs-comment"># Output: states.shp, usa.shp and other Shapefile component files</span>
+mapshaper counties.shp \
+  -dissolve STATE_FIPS name=states \
+  -dissolve + name=usa \
+  -o target=<span class="hljs-string">&#x27;*&#x27;</span>
+</code></pre>
+<p>For a broader set of recipes — filtering, joining, dissolving, reprojection, styling and more — see <a href="/docs/examples/basics.html">Basics</a>.</p>
+<h2 id="working-with-layers">Working with layers</h2>
+<p>Most commands operate on <strong>layers</strong> of data features. A layer is a collection of features with the same geometry type and a consistent attribute schema. Mapshaper supports polygon, polyline and point layers; a single feature may contain one shape, multiple shapes, or no shapes at all.</p>
+<p>The simplest case is a single layer in, a single layer out:</p>
+<pre><code class="hljs language-bash">mapshaper counties.shp -filter <span class="hljs-string">&#x27;this.isNull === false&#x27;</span> -o counties_notnull.shp
+</code></pre>
+<p>When a command runs on a multi-layer dataset, it acts on the <strong>target</strong> layer(s). Most commands accept a <code>target=</code> option, and the <a href="/docs/reference.html#-target"><code>-target</code></a> command sets the target for everything that follows.</p>
+<p>The <code>+</code> option keeps the original layer and creates a new one from the command&#39;s output. Combined with <code>name=</code>, it&#39;s the idiomatic way to derive a new layer:</p>
+<pre><code class="hljs language-bash"><span class="hljs-comment"># Output: out/provinces.json and out/lines.json</span>
+mapshaper provinces.shp \
+  -simplify 20% \
+  -innerlines + name=lines \
+  -target provinces,lines \
+  -o format=geojson out/
+</code></pre>
+<p>This produces <code>out/provinces.json</code> and <code>out/lines.json</code>.</p>
+<p>When importing a TopoJSON file, each named object becomes a layer:</p>
+<pre><code class="hljs language-bash">mapshaper usa.topojson \
+  -filter <span class="hljs-string">&#x27;STATE == &quot;HI&quot;&#x27;</span> target=states \
+  -o out/hawaii.geojson
+</code></pre>
+
+      <div class="edit-link">
+        <a href="https://github.com/mbloch/mapshaper/edit/master/docs/essentials/command-line.md">Edit this page on GitHub</a>
+      </div>
+    </article>
+  </main>
+
+  <aside class="docs-toc">
+    <div class="docs-toc-title">On this page</div><ul><li class="lvl-2"><a href="#install">Install</a></li><li class="lvl-2"><a href="#anatomy-of-a-mapshaper-command">Anatomy of a Mapshaper command</a></li><li class="lvl-2"><a href="#some-examples">Some examples</a></li><li class="lvl-3"><a href="#get-help">Get help</a></li><li class="lvl-3"><a href="#chain-commands">Chain commands</a></li><li class="lvl-2"><a href="#working-with-layers">Working with layers</a></li></ul>
+  </aside>
+
+</div>
+
+<script src="/docs/_assets/docs.js" defer></script>
+
+<footer class="docs-footer">
+  <div class="docs-footer-inner">
+    <span>mapshaper is free software, licensed under <a href="https://www.mozilla.org/MPL/2.0/">MPL 2.0</a>.</span>
+    <span><a href="/privacy.html">Privacy</a> &middot; <a href="/terms.html">Terms</a> &middot; <a href="/sponsor.html">Support mapshaper</a></span>
+  </div>
+</footer>
+
+</body>
+</html>

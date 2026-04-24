@@ -1,0 +1,145 @@
+<!DOCTYPE html>
+<html lang="en">
+<head><!-- Google tag (gtag.js) -->
+<script async src="https://www.googletagmanager.com/gtag/js?id=G-QYR8W1YHEF"></script>
+<script>
+  window.dataLayer = window.dataLayer || [];
+  function gtag(){dataLayer.push(arguments);}
+  gtag('js', new Date());
+  gtag('config', 'G-QYR8W1YHEF');
+</script>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>The web app &middot; mapshaper docs</title>
+<meta name="description" content="A tour of Mapshaper&#39;s web interface, including loading data, the console, the right-click menu, snapshots, browser support and running it locally.">
+<link rel="icon" type="image/png" href="/images/icon.png">
+<link rel="stylesheet" href="/docs/_assets/highlight.css">
+<link rel="stylesheet" href="/docs/_assets/docs.css">
+</head>
+<body class="">
+
+<header class="page-header">
+  <a href="/" class="mapshaper-logo">map<span class="logo-highlight">shaper</span></a>
+  <span class="header-section-label">Docs</span>
+  <nav class="header-nav">
+    <a href="/">Web app</a>
+    <a href="https://github.com/mbloch/mapshaper">GitHub</a>
+    <a href="/sponsor.html" class="sponsor-link"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z"/></svg> Become a sponsor</a>
+  </nav>
+</header>
+
+<div class="docs-layout">
+
+  <aside class="docs-sidebar">
+    <div class="sidebar-inner">
+      <nav class="docs-nav"><ul class="top-links"><li><a href="/docs/">Home</a></li><li><a href="/docs/whats-new.html">What&#39;s new</a></li><li><a href="/docs/reference.html">Command reference</a></li><li><a href="/docs/gallery/">Gallery</a></li></ul><h2>Getting started</h2><ul><li><a href="/docs/essentials/command-line.html">The command-line tool</a></li><li><a href="/docs/essentials/web-app.html" class="is-active">The web app</a></li></ul><h2>Guides</h2><ul><li><a href="/docs/guides/simplification.html">Simplification</a></li><li><a href="/docs/guides/expressions.html">JavaScript expressions</a></li><li><a href="/docs/guides/projections.html">Projections</a></li><li><a href="/docs/guides/topology.html">Topology and cleaning</a></li><li><a href="/docs/guides/combining-layers.html">Combining two layers</a></li><li><a href="/docs/guides/programmatic.html">Using Mapshaper from Node.js</a></li></ul><h2>Formats</h2><ul><li><a href="/docs/formats/overview.html">Overview</a></li><li><a href="/docs/formats/shapefile.html">Shapefile</a></li><li><a href="/docs/formats/geojson.html">GeoJSON</a></li><li><a href="/docs/formats/topojson.html">TopoJSON</a></li><li><a href="/docs/formats/geopackage.html">GeoPackage</a></li><li><a href="/docs/formats/flatgeobuf.html">FlatGeobuf</a></li><li><a href="/docs/formats/kml.html">KML / KMZ</a></li><li><a href="/docs/formats/csv.html">CSV / TSV</a></li><li><a href="/docs/formats/dbf.html">DBF</a></li><li><a href="/docs/formats/json.html">JSON records</a></li><li><a href="/docs/formats/svg.html">SVG</a></li><li><a href="/docs/formats/snapshot.html">Mapshaper snapshot</a></li></ul><h2>Examples</h2><ul><li><a href="/docs/examples/basics.html">Basics</a></li><li><a href="/docs/examples/globe.html">Globe</a></li><li><a href="/docs/examples/us-states.html">U.S. state map</a></li></ul></nav>
+    </div>
+  </aside>
+
+  <main class="docs-main">
+    <article class="docs-article">
+      <div class="docs-breadcrumbs"><a href="/docs/">Docs</a> &rsaquo; Getting started &rsaquo; The web app</div>
+      <h1 id="the-web-app">The web app</h1>
+<p>The Mapshaper web app at <a href="/">mapshaper.org</a> is designed for interactive editing and visual exploration. Its built-in console exposes the complete command set, so almost anything the CLI can do is available directly in the browser.</p>
+<p>All processing happens in your browser. Your data stays on your machine, even when you use the public website.</p>
+<h2 id="loading-data">Loading data</h2>
+<p>Drag-drop, paste, or use the <strong>Add files</strong> button to import data.</p>
+<p>A few less-obvious behaviors:</p>
+<ul>
+<li><strong>Drop a <code>.zip</code> containing a Shapefile bundle</strong> &mdash; Mapshaper unzips it on the fly and pulls out the sidecars. (Same goes for <code>.gz</code> for single-file formats and <code>.kmz</code> for KML.)</li>
+<li><strong>Paste a URL</strong> anywhere on the page to import the file at that address.</li>
+<li><strong>Query-string preload</strong> &mdash; <code>https://mapshaper.org/?files=URL1,URL2</code> imports a comma-separated list of URLs. All files need to be served from a host that allows cross-origin requests. Append <code>&amp;q</code> to skip the import dialog and open the files immediately.</li>
+<li><strong>With advanced options</strong> is a freeform text field. Anything you&#39;d pass after <code>-i</code> on the CLI works here, including <code>encoding=</code>, <code>string-fields=</code>, <code>csv-fields=</code>, <code>csv-filter=</code>, <code>combine-files</code>, <code>name=</code> and so on.</li>
+<li><strong>Multiple files do not auto-combine.</strong> Selecting several files at once imports them as independent layers. To get a shared topology (so common boundaries simplify identically), tick <strong>with advanced options</strong> and add <code>combine-files</code>.</li>
+</ul>
+<h3 id="tips-for-importing-shapefiles">Tips for importing Shapefiles</h3>
+<ul>
+<li>Drag-drop or select the <code>.shp</code>, <code>.dbf</code> and <code>.prj</code> files together. Without <code>.dbf</code> you&#39;ll have geometry but no attributes; without <code>.prj</code>, projection-dependent commands won&#39;t know what to do.</li>
+<li>If you see a warning about an unknown text encoding, re-import using the <strong>with advanced options</strong> checkbox and set <code>encoding=</code> (for example, <code>encoding=big5</code> for Big-5).</li>
+</ul>
+<h2 id="the-console">The console</h2>
+<p>The Console (top-right of the header, or <strong>space bar</strong> to toggle) is the most powerful part of the UI. Anything the <a href="/docs/reference.html">CLI</a> can do, you can do here.</p>
+<h3 id="keyboard">Keyboard</h3>
+<ul>
+<li><strong>Space</strong> &mdash; open or close the console (only when you&#39;re not typing in another text field).</li>
+<li><strong>Esc</strong> &mdash; close the console, or close any open panel.</li>
+<li><strong>Up / Down</strong> &mdash; cycle through previous commands. The history persists across page reloads.</li>
+<li><strong>Backslash <code>\</code> at end of line</strong> &mdash; continue a long command on the next line. The Enter key adds the wrap; another <strong>Enter</strong> runs the full command.</li>
+</ul>
+<h3 id="syntax">Syntax</h3>
+<ul>
+<li>The leading <code>-</code> is optional in the console: <code>clip places</code> works the same as <code>-clip places</code>.</li>
+<li>Commands run on the <strong>currently-selected layer</strong> by default. Switch layers in the layer panel before issuing a command, or pass <code>target=</code> to be explicit (<code>target=*</code> runs against every layer).</li>
+</ul>
+<h3 id="magic-words-at-the-prompt">Magic words at the prompt</h3>
+<p>These are recognized directly by the console, not by Mapshaper:</p>
+<ul>
+<li><code>history</code> &mdash; print the current session as a single command-line string. Handy for reproducing an interactive workflow as a script.</li>
+<li><code>layers</code> &mdash; print the list of loaded layers.</li>
+<li><code>clear</code> &mdash; clear the console buffer.</li>
+<li><code>close</code> / <code>exit</code> / <code>quit</code> &mdash; close the console.</li>
+</ul>
+<h3 id="discovering-commands">Discovering commands</h3>
+<ul>
+<li><code>help</code> lists every available command.</li>
+<li><code>help &lt;command&gt;</code> shows the full options for one command, e.g. <code>help dissolve</code>.</li>
+<li>The <a href="/docs/reference.html">command reference</a> is the same content with a search box.</li>
+</ul>
+<h2 id="the-map">The map</h2>
+<h3 id="right-click-menu">Right-click menu</h3>
+<p>The right-click menu adapts to what&#39;s under the cursor:</p>
+<ul>
+<li><strong>Copy lon, lat</strong> &mdash; copy the WGS84 coordinates of the click point to the clipboard.</li>
+<li><strong>Copy x, y</strong> &mdash; copy the projected coordinates of the click point.</li>
+<li><strong>Copy as GeoJSON</strong> &mdash; copy the selected feature(s) to the clipboard as GeoJSON. Useful for snipping out one polygon for use elsewhere.</li>
+<li><strong>Delete vertex</strong> / <strong>delete point</strong> / <strong>delete feature</strong> &mdash; available in the corresponding edit modes.</li>
+</ul>
+<h3 id="layer-navigation">Layer navigation</h3>
+<ul>
+<li><strong>Left / Right arrows</strong> (when not typing) &mdash; cycle through the loaded layers.</li>
+</ul>
+<h2 id="display-options">Display options</h2>
+<p>The <strong>Display</strong> button at the top right opens the display options panel.</p>
+<ul>
+<li><strong>Detect line intersections</strong> &mdash; highlights self-intersections in red as you simplify or edit. The quickest way to spot simplification damage. The setting is remembered between sessions.</li>
+</ul>
+<h2 id="snapshots-and-session-history">Snapshots and session history</h2>
+<p>The ribbon icon in the layer panel opens the snapshot menu. Snapshots save the current state of a session so you can return to it. They also record the <strong>session history</strong> that produced the snapshot, so when you re-open one the full history is available too.</p>
+<ul>
+<li><strong>Create a snapshot</strong> &mdash; saves to in-browser storage. These are session-scoped and <strong>deleted when the tab closes or the page is reloaded.</strong> For anything you want to keep, <strong>Save snapshot to file</strong> writes a <code>.msx</code> file you can re-open later.</li>
+<li><strong>View session history</strong> &mdash; a shortcut for typing <code>history</code> in the console: prints the full sequence of commands that produced the current state.</li>
+</ul>
+<p>See the <a href="/docs/formats/snapshot.html">Mapshaper snapshot format page</a> for more on what a <code>.msx</code> file contains and how to use it from the CLI.</p>
+<h2 id="running-the-web-ui-locally">Running the web UI locally</h2>
+<p><code>mapshaper-gui</code> (installed alongside <code>mapshaper</code> when you <code>npm install -g mapshaper</code>) starts a local Node web server and opens the web UI at <code>http://localhost:5555</code>. Use <code>--port</code> to pick a different port.</p>
+<p>You can pre-load files by listing them on the command line, which skips the import dialog:</p>
+<pre><code class="hljs language-bash">mapshaper-gui states.shp rivers.shp
+</code></pre>
+<h2 id="browser-support">Browser support</h2>
+<p>When importing very large files (hundreds of megabytes), the web app may run out of memory and crash. Firefox used to be better than Chrome at handling large files, but Chrome seems to have improved recently. If the web app crashes, try the <a href="/docs/essentials/command-line.html"><code>mapshaper-xl</code> command-line tool</a>, which can allocate a large amount of memory.</p>
+<h2 id="privacy">Privacy</h2>
+<p>The Mapshaper web app runs entirely in your browser. No file content is uploaded to any server. The only network traffic is for static assets (the app itself), basemap tiles when you&#39;ve enabled a basemap, and analytics for <code>mapshaper.org</code> page loads. See the <a href="/privacy.html">privacy policy</a> for details.</p>
+
+      <div class="edit-link">
+        <a href="https://github.com/mbloch/mapshaper/edit/master/docs/essentials/web-app.md">Edit this page on GitHub</a>
+      </div>
+    </article>
+  </main>
+
+  <aside class="docs-toc">
+    <div class="docs-toc-title">On this page</div><ul><li class="lvl-2"><a href="#loading-data">Loading data</a></li><li class="lvl-3"><a href="#tips-for-importing-shapefiles">Tips for importing Shapefiles</a></li><li class="lvl-2"><a href="#the-console">The console</a></li><li class="lvl-3"><a href="#keyboard">Keyboard</a></li><li class="lvl-3"><a href="#syntax">Syntax</a></li><li class="lvl-3"><a href="#magic-words-at-the-prompt">Magic words at the prompt</a></li><li class="lvl-3"><a href="#discovering-commands">Discovering commands</a></li><li class="lvl-2"><a href="#the-map">The map</a></li><li class="lvl-3"><a href="#right-click-menu">Right-click menu</a></li><li class="lvl-3"><a href="#layer-navigation">Layer navigation</a></li><li class="lvl-2"><a href="#display-options">Display options</a></li><li class="lvl-2"><a href="#snapshots-and-session-history">Snapshots and session history</a></li><li class="lvl-2"><a href="#running-the-web-ui-locally">Running the web UI locally</a></li><li class="lvl-2"><a href="#browser-support">Browser support</a></li><li class="lvl-2"><a href="#privacy">Privacy</a></li></ul>
+  </aside>
+
+</div>
+
+<script src="/docs/_assets/docs.js" defer></script>
+
+<footer class="docs-footer">
+  <div class="docs-footer-inner">
+    <span>mapshaper is free software, licensed under <a href="https://www.mozilla.org/MPL/2.0/">MPL 2.0</a>.</span>
+    <span><a href="/privacy.html">Privacy</a> &middot; <a href="/terms.html">Terms</a> &middot; <a href="/sponsor.html">Support mapshaper</a></span>
+  </div>
+</footer>
+
+</body>
+</html>

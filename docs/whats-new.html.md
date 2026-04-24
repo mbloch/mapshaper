@@ -1,0 +1,53 @@
+---
+title: What's new
+description: A curated log of recently added user-visible features in Mapshaper, with links into the rest of the docs.
+---
+
+# What's new
+
+This is a curated list of recently added features. For the full list of changes, including bug fixes and internal work, see the [changelog](https://github.com/mbloch/mapshaper/blob/master/CHANGELOG.md) on GitHub.
+
+## April 2026
+
+<div class="whats-new-entry">
+
+**Command files.** A sequence of Mapshaper commands can be written to a `.txt` file with `#` comments and no shell quoting, and run with `-run <file>` (or just `mapshaper commands.txt`). Command files can also be written in a shell-compatible way, if you want to be able to paste the commands into the terminal or add them to a shell script. In a future release, these files will also be runnable in the browser.
+
+```bash
+mapshaper build.txt
+```
+
+→ See [Command files](/docs/reference.html.md#command-files) in the reference.
+</div>
+
+<div class="whats-new-entry">
+
+**Variable interpolation in commands.** Command files and command lines support `{{VAR}}` placeholders, resolved at run time against environment variables (`{{env.HOME}}`), values set with the new `-vars` and `-defaults` commands, and variables defined dynamically by `-calc`, `-define` and `-each` expressions.
+
+```bash
+mapshaper -vars YEAR=2030 PCT=5 -run build.txt
+```
+
+→ See [Variable interpolation](/docs/reference.html.md#variable-interpolation), [`-vars`](/docs/reference.html.md#-vars) and [`-defaults`](/docs/reference.html.md#-defaults).
+</div>
+
+<div class="whats-new-entry">
+
+**Farewell to dissolve2.** The `-dissolve` command now uses Mapshaper's most robust dissolve function, which can handle overlaps, gaps and other topology errors. The legacy faster algorithm is still available as `-dissolve no-repair`. (The old `-dissolve2` is just an alias for `-dissolve`.)
+
+→ See [`-dissolve`](/docs/reference.html.md#-dissolve).
+</div>
+
+<div class="whats-new-entry">
+
+**FlatGeobuf and GeoPackage support.** Mapshaper reads and writes FlatGeobuf (`.fgb`) and GeoPackage (`.gpkg`) files.
+
+→ See [FlatGeobuf](/docs/formats/flatgeobuf.html.md), [GeoPackage](/docs/formats/geopackage.html.md) and [`-i layers=`](/docs/reference.html.md#-i-input).
+</div>
+
+<div class="whats-new-entry">
+
+**SVG import.** SVG files exported by Mapshaper can be re-imported &mdash; useful for making stylistic edits.
+
+→ See [SVG](/docs/formats/svg.html.md).
+</div>

@@ -1,0 +1,94 @@
+<!DOCTYPE html>
+<html lang="en">
+<head><!-- Google tag (gtag.js) -->
+<script async src="https://www.googletagmanager.com/gtag/js?id=G-QYR8W1YHEF"></script>
+<script>
+  window.dataLayer = window.dataLayer || [];
+  function gtag(){dataLayer.push(arguments);}
+  gtag('js', new Date());
+  gtag('config', 'G-QYR8W1YHEF');
+</script>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>GeoPackage &middot; mapshaper docs</title>
+<meta name="description" content="How Mapshaper reads and writes GeoPackage (.gpkg), the OGC&#39;s SQLite-based GIS container.">
+<link rel="icon" type="image/png" href="/images/icon.png">
+<link rel="stylesheet" href="/docs/_assets/highlight.css">
+<link rel="stylesheet" href="/docs/_assets/docs.css">
+</head>
+<body class="">
+
+<header class="page-header">
+  <a href="/" class="mapshaper-logo">map<span class="logo-highlight">shaper</span></a>
+  <span class="header-section-label">Docs</span>
+  <nav class="header-nav">
+    <a href="/">Web app</a>
+    <a href="https://github.com/mbloch/mapshaper">GitHub</a>
+    <a href="/sponsor.html" class="sponsor-link"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z"/></svg> Become a sponsor</a>
+  </nav>
+</header>
+
+<div class="docs-layout">
+
+  <aside class="docs-sidebar">
+    <div class="sidebar-inner">
+      <nav class="docs-nav"><ul class="top-links"><li><a href="/docs/">Home</a></li><li><a href="/docs/whats-new.html">What&#39;s new</a></li><li><a href="/docs/reference.html">Command reference</a></li><li><a href="/docs/gallery/">Gallery</a></li></ul><h2>Getting started</h2><ul><li><a href="/docs/essentials/command-line.html">The command-line tool</a></li><li><a href="/docs/essentials/web-app.html">The web app</a></li></ul><h2>Guides</h2><ul><li><a href="/docs/guides/simplification.html">Simplification</a></li><li><a href="/docs/guides/expressions.html">JavaScript expressions</a></li><li><a href="/docs/guides/projections.html">Projections</a></li><li><a href="/docs/guides/topology.html">Topology and cleaning</a></li><li><a href="/docs/guides/combining-layers.html">Combining two layers</a></li><li><a href="/docs/guides/programmatic.html">Using Mapshaper from Node.js</a></li></ul><h2>Formats</h2><ul><li><a href="/docs/formats/overview.html">Overview</a></li><li><a href="/docs/formats/shapefile.html">Shapefile</a></li><li><a href="/docs/formats/geojson.html">GeoJSON</a></li><li><a href="/docs/formats/topojson.html">TopoJSON</a></li><li><a href="/docs/formats/geopackage.html" class="is-active">GeoPackage</a></li><li><a href="/docs/formats/flatgeobuf.html">FlatGeobuf</a></li><li><a href="/docs/formats/kml.html">KML / KMZ</a></li><li><a href="/docs/formats/csv.html">CSV / TSV</a></li><li><a href="/docs/formats/dbf.html">DBF</a></li><li><a href="/docs/formats/json.html">JSON records</a></li><li><a href="/docs/formats/svg.html">SVG</a></li><li><a href="/docs/formats/snapshot.html">Mapshaper snapshot</a></li></ul><h2>Examples</h2><ul><li><a href="/docs/examples/basics.html">Basics</a></li><li><a href="/docs/examples/globe.html">Globe</a></li><li><a href="/docs/examples/us-states.html">U.S. state map</a></li></ul></nav>
+    </div>
+  </aside>
+
+  <main class="docs-main">
+    <article class="docs-article">
+      <div class="docs-breadcrumbs"><a href="/docs/">Docs</a> &rsaquo; Formats &rsaquo; GeoPackage</div>
+      <h1 id="geopackage">GeoPackage</h1>
+<p>GeoPackage is the OGC&#39;s modern, open replacement for Shapefile &mdash; a single SQLite database file that holds one or many vector layers along with their CRS metadata. It solves most of Shapefile&#39;s problems (long field names, UTF-8 encoding, no companion files, multiple layers per file, no 2 GB cap) and is well-supported across QGIS, ArcGIS and <code>ogr2ogr</code>.</p>
+<p><strong>File extension:</strong> <code>.gpkg</code> &middot; <strong>Read:</strong> &check; &middot; <strong>Write:</strong> &check; &middot; <strong>Multi-layer:</strong> &check;</p>
+<h3 id="cli-examples">CLI examples</h3>
+<pre><code class="hljs language-bash">mapshaper basemap.gpkg -info
+mapshaper basemap.gpkg -o format=geojson regions.geojson
+mapshaper -i basemap.gpkg layers=provinces,cities -info
+mapshaper provinces.shp -o provinces.gpkg
+mapshaper a.shp b.shp -o combined.gpkg
+</code></pre>
+<h3 id="format-specific-input-options">Format-specific input options</h3>
+<ul>
+<li><code>layers=</code> &mdash; comma-separated list of layer names to import. Useful for picking a subset out of a large multi-layer GeoPackage. Omit to import everything.</li>
+</ul>
+<h3 id="format-specific-output-options">Format-specific output options</h3>
+<p>There are no GeoPackage-specific <code>-o</code> options. The format honors the general flags (<code>precision=</code>, <code>gzip</code>, <code>zip</code>, etc.) where they apply.</p>
+<h3 id="practical-notes">Practical notes</h3>
+<ul>
+<li>By default, every vector layer in the file is imported as a separate Mapshaper layer. To pick a subset, use the <code>layers=</code> option on the CLI; in the web app, tick the <strong>with advanced options</strong> checkbox in the import dialog to bring up a per-layer selection list.</li>
+<li>When multiple layers are exported to a single <code>.gpkg</code>, each becomes a separate layer table inside the database, named after the source layer.</li>
+<li>Raster tile layers (the OGC GeoPackage spec also covers tiles) are ignored &mdash; Mapshaper is vector-only.</li>
+</ul>
+<h2 id="external-resources">External resources</h2>
+<ul>
+<li><a href="https://www.geopackage.org/">geopackage.org</a> &mdash; project home with spec, FAQs and tool support.</li>
+<li><a href="https://docs.qgis.org/latest/en/docs/user_manual/managing_data_source/supported_data.html">QGIS user manual: supported data formats</a> &mdash; the practical reference on how QGIS treats GeoPackage, including multi-layer use and project storage.</li>
+<li><a href="https://www.gispo.fi/en/blog/learn-spatial-sql-and-master-geopackage-with-qgis-3/">Learn spatial SQL and master GeoPackage with QGIS</a> &mdash; tutorial from Gispo showing how to query GeoPackage layers with SQL directly from QGIS.</li>
+<li>GeoPackage reading and writing in Mapshaper is delegated to NGA&#39;s <a href="https://github.com/ngageoint/geopackage-js"><code>@ngageoint/geopackage</code></a> library, which handles the underlying SQLite database, the OGC table schemas and the WKB-to-GeoJSON geometry conversions.</li>
+</ul>
+
+      <div class="edit-link">
+        <a href="https://github.com/mbloch/mapshaper/edit/master/docs/formats/geopackage.md">Edit this page on GitHub</a>
+      </div>
+    </article>
+  </main>
+
+  <aside class="docs-toc">
+    <div class="docs-toc-title">On this page</div><ul><li class="lvl-3"><a href="#cli-examples">CLI examples</a></li><li class="lvl-3"><a href="#format-specific-input-options">Format-specific input options</a></li><li class="lvl-3"><a href="#format-specific-output-options">Format-specific output options</a></li><li class="lvl-3"><a href="#practical-notes">Practical notes</a></li><li class="lvl-2"><a href="#external-resources">External resources</a></li></ul>
+  </aside>
+
+</div>
+
+<script src="/docs/_assets/docs.js" defer></script>
+
+<footer class="docs-footer">
+  <div class="docs-footer-inner">
+    <span>mapshaper is free software, licensed under <a href="https://www.mozilla.org/MPL/2.0/">MPL 2.0</a>.</span>
+    <span><a href="/privacy.html">Privacy</a> &middot; <a href="/terms.html">Terms</a> &middot; <a href="/sponsor.html">Support mapshaper</a></span>
+  </div>
+</footer>
+
+</body>
+</html>

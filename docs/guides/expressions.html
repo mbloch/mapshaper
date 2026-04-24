@@ -1,0 +1,607 @@
+<!DOCTYPE html>
+<html lang="en">
+<head><!-- Google tag (gtag.js) -->
+<script async src="https://www.googletagmanager.com/gtag/js?id=G-QYR8W1YHEF"></script>
+<script>
+  window.dataLayer = window.dataLayer || [];
+  function gtag(){dataLayer.push(arguments);}
+  gtag('js', new Date());
+  gtag('config', 'G-QYR8W1YHEF');
+</script>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>JavaScript expressions &middot; mapshaper docs</title>
+<meta name="description" content="Reference for the JS expressions used in -each, -filter, -calc, -where, -sort, -if, -run and other Mapshaper commands.">
+<link rel="icon" type="image/png" href="/images/icon.png">
+<link rel="stylesheet" href="/docs/_assets/highlight.css">
+<link rel="stylesheet" href="/docs/_assets/docs.css">
+</head>
+<body class="">
+
+<header class="page-header">
+  <a href="/" class="mapshaper-logo">map<span class="logo-highlight">shaper</span></a>
+  <span class="header-section-label">Docs</span>
+  <nav class="header-nav">
+    <a href="/">Web app</a>
+    <a href="https://github.com/mbloch/mapshaper">GitHub</a>
+    <a href="/sponsor.html" class="sponsor-link"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z"/></svg> Become a sponsor</a>
+  </nav>
+</header>
+
+<div class="docs-layout">
+
+  <aside class="docs-sidebar">
+    <div class="sidebar-inner">
+      <nav class="docs-nav"><ul class="top-links"><li><a href="/docs/">Home</a></li><li><a href="/docs/whats-new.html">What&#39;s new</a></li><li><a href="/docs/reference.html">Command reference</a></li><li><a href="/docs/gallery/">Gallery</a></li></ul><h2>Getting started</h2><ul><li><a href="/docs/essentials/command-line.html">The command-line tool</a></li><li><a href="/docs/essentials/web-app.html">The web app</a></li></ul><h2>Guides</h2><ul><li><a href="/docs/guides/simplification.html">Simplification</a></li><li><a href="/docs/guides/expressions.html" class="is-active">JavaScript expressions</a></li><li><a href="/docs/guides/projections.html">Projections</a></li><li><a href="/docs/guides/topology.html">Topology and cleaning</a></li><li><a href="/docs/guides/combining-layers.html">Combining two layers</a></li><li><a href="/docs/guides/programmatic.html">Using Mapshaper from Node.js</a></li></ul><h2>Formats</h2><ul><li><a href="/docs/formats/overview.html">Overview</a></li><li><a href="/docs/formats/shapefile.html">Shapefile</a></li><li><a href="/docs/formats/geojson.html">GeoJSON</a></li><li><a href="/docs/formats/topojson.html">TopoJSON</a></li><li><a href="/docs/formats/geopackage.html">GeoPackage</a></li><li><a href="/docs/formats/flatgeobuf.html">FlatGeobuf</a></li><li><a href="/docs/formats/kml.html">KML / KMZ</a></li><li><a href="/docs/formats/csv.html">CSV / TSV</a></li><li><a href="/docs/formats/dbf.html">DBF</a></li><li><a href="/docs/formats/json.html">JSON records</a></li><li><a href="/docs/formats/svg.html">SVG</a></li><li><a href="/docs/formats/snapshot.html">Mapshaper snapshot</a></li></ul><h2>Examples</h2><ul><li><a href="/docs/examples/basics.html">Basics</a></li><li><a href="/docs/examples/globe.html">Globe</a></li><li><a href="/docs/examples/us-states.html">U.S. state map</a></li></ul></nav>
+    </div>
+  </aside>
+
+  <main class="docs-main">
+    <article class="docs-article">
+      <div class="docs-breadcrumbs"><a href="/docs/">Docs</a> &rsaquo; Guides &rsaquo; JavaScript expressions</div>
+      <h1 id="javascript-expressions">JavaScript expressions</h1>
+<p>Many Mapshaper commands take a <strong>JS expression</strong> as an argument or option. Expressions let you read and write per-feature attributes, derive new fields, filter records, sort, generate templated commands, and inspect layer-level metadata. The same expression syntax and execution context are reused across commands, so once you&#39;ve learned the shape of a <code>-each</code> expression you can use it almost everywhere.</p>
+<pre><code class="hljs language-bash">mapshaper counties.shp \
+  -each <span class="hljs-string">&#x27;STATE_FIPS = COUNTY_FIPS.substr(0, 2),
+         AREA_KM2 = this.area / 1e6&#x27;</span> \
+  -o out.shp
+</code></pre>
+<p>Expressions are plain JavaScript. They can use any built-in language feature (arithmetic, string methods, conditionals, regex, etc.). Some commands also expect the expression to return a particular kind of value &mdash; <code>-filter</code> and <code>-inspect</code> expect <code>true</code> or <code>false</code>, <code>-sort</code> expects a sort key, <code>-split</code> expects a group identifier, and so on.</p>
+<h2 id="where-expressions-appear">Where expressions appear</h2>
+<table>
+<thead>
+<tr>
+<th>Command</th>
+<th>Expression role</th>
+<th>Type</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><a href="/docs/reference.html#-each"><code>-each</code></a></td>
+<td>Run side-effects per feature, including assignments to data fields</td>
+<td>feature</td>
+</tr>
+<tr>
+<td><a href="/docs/reference.html#-filter"><code>-filter</code></a></td>
+<td>Boolean test, kept if <code>true</code></td>
+<td>feature, returns boolean</td>
+</tr>
+<tr>
+<td><a href="/docs/reference.html#-sort"><code>-sort</code></a></td>
+<td>Returns the sort key for each feature</td>
+<td>feature</td>
+</tr>
+<tr>
+<td><a href="/docs/reference.html#-inspect"><code>-inspect</code></a></td>
+<td>Boolean test, prints matching feature(s)</td>
+<td>feature, returns boolean</td>
+</tr>
+<tr>
+<td><a href="/docs/reference.html#-split"><code>-split</code></a></td>
+<td>Returns the value used to group features into output layers</td>
+<td>feature</td>
+</tr>
+<tr>
+<td><a href="/docs/reference.html#-subdivide"><code>-subdivide</code></a></td>
+<td>Boolean test driving recursive partitioning, can call group functions like <code>sum()</code></td>
+<td>feature, returns boolean</td>
+</tr>
+<tr>
+<td><a href="/docs/reference.html#-calc"><code>-calc</code> and <code>calc=</code> options</a></td>
+<td>Aggregations across a group of features (<code>sum</code>, <code>count</code>, <code>median</code>, etc.)</td>
+<td>calc</td>
+</tr>
+<tr>
+<td><code>where=</code> (on <code>-filter</code>, <code>-each</code>, <code>-affine</code>, <code>-dashlines</code>, <code>-dissolve</code>, <code>-innerlines</code>, <code>-join</code>, <code>-style</code>, <code>-symbols</code>, <code>-calc</code>)</td>
+<td>Sub-filter applied before the main operation</td>
+<td>feature, returns boolean</td>
+</tr>
+<tr>
+<td><code>weight=</code> on <code>-dissolve</code>/<code>-points</code></td>
+<td>Weighting expression for centroid calculation</td>
+<td>feature</td>
+</tr>
+<tr>
+<td>Attribute options on <a href="/docs/reference.html#-style"><code>-style</code></a> and <a href="/docs/reference.html#-symbols"><code>-symbols</code></a></td>
+<td>Most values (<code>fill=</code>, <code>stroke=</code>, <code>stroke-width=</code>, <code>opacity=</code>, <code>r=</code>, <code>label-text=</code>, <code>dx=</code>, <code>dy=</code>, <code>font-size=</code>, etc.) accept either a literal or a JS expression evaluated per feature</td>
+<td>feature</td>
+</tr>
+<tr>
+<td><a href="/docs/reference.html#-lines"><code>-lines where=</code> and <code>each=</code></a></td>
+<td>Operates on <strong>pairs</strong> of features either side of a path, exposed as <code>A</code> and <code>B</code></td>
+<td>pair</td>
+</tr>
+<tr>
+<td><a href="/docs/reference.html#-if"><code>-if</code> / <code>-elif</code></a></td>
+<td>Boolean test on layer-level metadata</td>
+<td>layer</td>
+</tr>
+<tr>
+<td><a href="/docs/reference.html#-define"><code>-define</code></a></td>
+<td>Stores variables and helper functions in a global namespace shared by later expressions</td>
+<td>layer</td>
+</tr>
+<tr>
+<td><a href="/docs/reference.html#-run"><code>-run</code></a></td>
+<td>Generates command strings, with embedded <code>{...}</code> template substitutions</td>
+<td>template</td>
+</tr>
+</tbody></table>
+<!-- | `bbox=` on `-rectangles` | Returns a `[xmin, ymin, xmax, ymax]` per feature | feature | -->
+<p>These five flavors &mdash; <strong>feature</strong>, <strong>calc</strong>, <strong>pair</strong>, <strong>layer</strong> and <strong>template</strong> &mdash; share most of their context but differ in which variables are available and which functions are in scope.</p>
+<h2 id="the-execution-context">The execution context</h2>
+<p>Inside any feature-level expression you have access to:</p>
+<ul>
+<li><strong>Field names as bare variables.</strong> Reading a field name returns its value. Assigning to a field name updates the current feature&#39;s record (and creates the field on first use). If a field name is not a valid JavaScript identifier (e.g. it contains spaces or starts with a digit), use <code>d[&quot;field name&quot;]</code> to reference it.</li>
+<li><strong><code>this</code></strong>, the feature proxy. Provides geometry-derived properties (<code>this.area</code>, <code>this.bbox</code>, etc.) and read/write access to the feature&#39;s <code>properties</code>, <code>geojson</code> and <code>coordinates</code>.</li>
+<li><strong><code>d</code></strong>, a reference to the data record (the same object as <code>this.properties</code>).</li>
+<li><strong><code>global</code></strong>, an object that persists across commands. Variables created by <code>-define</code>, by assignment in a <code>-calc</code> expression, or by writing to <code>global.foo = ...</code> inside <code>-each</code> end up here. Values set by <a href="/docs/reference.html#-vars"><code>-vars</code></a> and <a href="/docs/reference.html#-defaults"><code>-defaults</code></a> live in a separate <em>templating</em> scope (read by <code>{{X}}</code> substitution) and are <strong>not</strong> visible by bare name in expressions; use <code>-define</code> if you want a value reachable from both <code>{{X}}</code> and JS expressions.</li>
+<li><strong><code>console.log()</code></strong> for printing values to stderr while debugging.</li>
+<li><strong>Built-in helpers</strong> (see <a href="#helper-functions">Helper functions</a> below).</li>
+<li><strong>User helpers</strong> loaded by <a href="/docs/reference.html#-define"><code>-define</code></a>, <a href="/docs/reference.html#-include"><code>-include</code></a> or <a href="/docs/reference.html#-require"><code>-require</code></a>.</li>
+</ul>
+<p>If a name is referenced but not present in any of the above, JavaScript treats it as <code>undefined</code>, <em>not</em> an error. This is convenient when chaining expressions across heterogeneous datasets but can mask typos &mdash; double-check field names with <code>mapshaper -info</code> if a <code>-filter</code> returns a suspiciously empty result.</p>
+<h3 id="field-assignment">Field assignment</h3>
+<p>Assigning to a bare name creates or updates a data field on the current feature:</p>
+<pre><code class="hljs language-bash">mapshaper counties.shp -each <span class="hljs-string">&#x27;POP_DENSITY = POPULATION / (this.area / 1e6)&#x27;</span> -o
+</code></pre>
+<p>Bare assignments like <code>POP_DENSITY = ...</code> will create the data table if the layer doesn&#39;t already have one. Assignments routed through <code>this.properties.X = ...</code> or <code>d.X = ...</code> only update an existing data table &mdash; prefer a bare assignment if you&#39;re not sure the layer has one yet.</p>
+<p>To delete a field, use the JS <code>delete</code> operator:</p>
+<pre><code class="hljs language-bash">mapshaper states.shp -each <span class="hljs-string">&#x27;delete STATE_NAME, delete GEOID&#x27;</span> -o
+</code></pre>
+<p>To replace the entire record, assign to <code>this.properties</code>:</p>
+<pre><code class="hljs language-bash">mapshaper states.shp -each <span class="hljs-string">&#x27;this.properties = {FID: this.id, NAME: NAME}&#x27;</span> -o
+</code></pre>
+<h3 id="multiple-statements">Multiple statements</h3>
+<p>Use commas to evaluate multiple sub-expressions. The value of the whole expression is the value of the last sub-expression (relevant for <code>-filter</code>, <code>-sort</code>, <code>-split</code>):</p>
+<pre><code class="hljs language-bash">mapshaper data.csv -each <span class="hljs-string">&#x27;A = parseInt(A), B = A * 2, C = A + B&#x27;</span>
+</code></pre>
+<p>Inside command files, you can also break a long expression across lines with <code>\</code>:</p>
+<pre><code>-each &#39;
+  STATE_FIPS = COUNTY_FIPS.substr(0, 2),  \
+  AREA_KM2   = this.area / 1e6,           \
+  CENTROID_X = this.centroidX,            \
+  CENTROID_Y = this.centroidY
+&#39;
+</code></pre>
+<h2 id="feature-properties-this">Feature properties (<code>this</code>)</h2>
+<p><code>this</code> is a proxy for the current feature. It gives you geometry-derived properties and a few editing affordances. The properties below are read-only unless the description says otherwise.</p>
+<h3 id="all-layer-types">All layer types</h3>
+<table>
+<thead>
+<tr>
+<th>Name</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>this.id</code></td>
+<td>0-based numerical id of the feature</td>
+</tr>
+<tr>
+<td><code>this.layer_name</code></td>
+<td>Name of the layer (or empty string)</td>
+</tr>
+<tr>
+<td><code>this.properties</code></td>
+<td>Data record. Read/write &mdash; assign a new object to replace all attributes.</td>
+</tr>
+<tr>
+<td><code>this.layer</code></td>
+<td>Layer proxy &mdash; see <a href="#layer-level-properties-thislayer">Layer-level properties</a></td>
+</tr>
+<tr>
+<td><code>this.geojson</code></td>
+<td>GeoJSON Feature (geometry + properties). Read/write &mdash; assign a new Feature to replace this one.</td>
+</tr>
+<tr>
+<td><code>this.geometry</code></td>
+<td>Just the GeoJSON geometry. Read/write.</td>
+</tr>
+</tbody></table>
+<h3 id="polygon-polyline-and-point-layers-with-geometry">Polygon, polyline and point layers (with geometry)</h3>
+<table>
+<thead>
+<tr>
+<th>Name</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>this.partCount</code></td>
+<td>1 for single-part features, &gt;1 for multi-part, 0 for null</td>
+</tr>
+<tr>
+<td><code>this.isNull</code></td>
+<td><code>true</code> if <code>partCount === 0</code></td>
+</tr>
+<tr>
+<td><code>this.bbox</code></td>
+<td><code>[xmin, ymin, xmax, ymax]</code></td>
+</tr>
+<tr>
+<td><code>this.width</code>, <code>this.height</code></td>
+<td>Bounding-box width and height</td>
+</tr>
+<tr>
+<td><code>this.bboxContainsPoint(x, y)</code></td>
+<td><code>true</code> if the bbox covers the point</td>
+</tr>
+<tr>
+<td><code>this.bboxIntersectsRectangle(a, b, c, d)</code></td>
+<td><code>true</code> if the bbox overlaps the rectangle</td>
+</tr>
+<tr>
+<td><code>this.bboxContainsRectangle(a, b, c, d)</code></td>
+<td><code>true</code> if the bbox fully contains the rectangle</td>
+</tr>
+<tr>
+<td><code>this.bboxContainedByRectangle(a, b, c, d)</code></td>
+<td><code>true</code> if the bbox is fully inside the rectangle</td>
+</tr>
+</tbody></table>
+<h3 id="polygon-only">Polygon-only</h3>
+<table>
+<thead>
+<tr>
+<th>Name</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>this.area</code></td>
+<td>Area in source units (square meters for unprojected lat/long, computed on a sphere)</td>
+</tr>
+<tr>
+<td><code>this.planarArea</code></td>
+<td>Treats lat/long as planar &mdash; useful inside expressions that already account for projection</td>
+</tr>
+<tr>
+<td><code>this.originalArea</code></td>
+<td>Area before any <code>-simplify</code> was applied</td>
+</tr>
+<tr>
+<td><code>this.perimeter</code></td>
+<td>Perimeter length (meters for unprojected lat/long)</td>
+</tr>
+<tr>
+<td><code>this.compactness</code></td>
+<td>Polsby-Popper compactness ratio (0&ndash;1)</td>
+</tr>
+<tr>
+<td><code>this.innerPct</code></td>
+<td>Fraction of the perimeter that is shared with neighboring polygons</td>
+</tr>
+<tr>
+<td><code>this.centroidX</code>, <code>this.centroidY</code></td>
+<td>Centroid coordinates (computed from the largest ring; ignores holes)</td>
+</tr>
+<tr>
+<td><code>this.innerX</code>, <code>this.innerY</code></td>
+<td>An interior point useful for placing a label or symbol</td>
+</tr>
+</tbody></table>
+<h3 id="polyline-only">Polyline-only</h3>
+<table>
+<thead>
+<tr>
+<th>Name</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>this.length</code></td>
+<td>Total length (meters for unprojected lat/long)</td>
+</tr>
+</tbody></table>
+<h3 id="point-only">Point-only</h3>
+<table>
+<thead>
+<tr>
+<th>Name</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>this.coordinates</code></td>
+<td>The full nested coordinate array, or <code>null</code>. Read/write &mdash; assign <code>null</code> to drop the geometry.</td>
+</tr>
+<tr>
+<td><code>this.x</code>, <code>this.y</code></td>
+<td>Coordinates of the first point of the (possibly multi-) feature. Read/write.</td>
+</tr>
+</tbody></table>
+<blockquote>
+<p><strong>Why it matters for unprojected data:</strong> <code>this.area</code> and <code>this.length</code> use <em>spherical</em> (not planar or ellipsoidal) geometry on lat/long datasets. Results are in square meters / meters and accurate to within ~0.5% for most use cases. If you need ellipsoidal accuracy, project first with <code>-proj</code>.</p>
+</blockquote>
+<h2 id="layer-level-properties-thislayer">Layer-level properties (<code>this.layer</code>)</h2>
+<p><code>this.layer</code> exposes information about the layer the feature belongs to. Useful in expressions that need to know about other features:</p>
+<table>
+<thead>
+<tr>
+<th>Name</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>this.layer.name</code></td>
+<td>Layer name</td>
+</tr>
+<tr>
+<td><code>this.layer.type</code></td>
+<td><code>&#39;polygon&#39;</code>, <code>&#39;polyline&#39;</code>, <code>&#39;point&#39;</code> or <code>null</code></td>
+</tr>
+<tr>
+<td><code>this.layer.size</code></td>
+<td>Feature count</td>
+</tr>
+<tr>
+<td><code>this.layer.empty</code></td>
+<td><code>true</code> if <code>size === 0</code></td>
+</tr>
+<tr>
+<td><code>this.layer.bbox</code></td>
+<td><code>[xmin, ymin, xmax, ymax]</code>, with extra <code>cx</code>, <code>cy</code>, <code>width</code>, <code>height</code>, <code>left</code>, <code>right</code>, <code>top</code>, <code>bottom</code> properties</td>
+</tr>
+<tr>
+<td><code>this.layer.data</code></td>
+<td>The full array of data records (use sparingly inside per-feature loops)</td>
+</tr>
+<tr>
+<td><code>this.layer.field_exists(name)</code></td>
+<td>Returns <code>true</code> if a field exists</td>
+</tr>
+<tr>
+<td><code>this.layer.field_type(name)</code></td>
+<td>Returns <code>&#39;string&#39;</code>, <code>&#39;number&#39;</code>, <code>&#39;object&#39;</code> etc., or <code>null</code></td>
+</tr>
+<tr>
+<td><code>this.layer.field_includes(name, value)</code></td>
+<td>Returns <code>true</code> if any record&#39;s <code>name</code> field equals <code>value</code></td>
+</tr>
+</tbody></table>
+<h2 id="helper-functions">Helper functions</h2>
+<p>These are always in scope inside feature expressions:</p>
+<ul>
+<li><code>round(num [, decimals])</code> &mdash; Round to N decimal places (default 0). Faster and easier than <code>Math.round</code>.</li>
+<li><code>sprintf(fmt, ...)</code> &mdash; printf-style formatter (uses <a href="https://github.com/SheetJS/printj">printj</a> syntax).</li>
+<li><code>format_dms(coord [, fmt])</code> &mdash; Format a number as a degrees/minutes/seconds string. Common formats: <code>&#39;DD° MM′ SS.SSSSS″ [NS]&#39;</code>, <code>&#39;DdMmSs [EW]&#39;</code>, <code>&#39;[+-]DDDMM.MMMMM&#39;</code>, <code>&#39;[-]DD.DDDDD°&#39;</code>.</li>
+<li><code>parse_dms(string [, fmt])</code> &mdash; Parse a DMS string back to a number.</li>
+<li><code>blend(c1, c2, ...)</code> &mdash; Mix CSS color strings together (returns a hex string).</li>
+<li><code>console.log(...)</code> &mdash; Write to stderr.</li>
+</ul>
+<p>JavaScript&#39;s built-in <code>Math</code>, <code>JSON</code>, <code>Number</code>, <code>String</code>, <code>Array</code>, <code>Date</code>, <code>Object</code> etc. are all available. Node-specific globals like <code>process</code>, <code>require</code> and <code>setTimeout</code> are not.</p>
+<h2 id="calc-expressions">Calc expressions</h2>
+<p><code>-calc</code> and any command&#39;s <code>calc=</code> option use the same context as <code>-each</code> plus a set of <em>aggregate</em> functions that operate over the entire group of features (or the entire layer for <code>-calc</code>). Each aggregate function takes a per-feature expression and reduces it to a single value across the group.</p>
+<table>
+<thead>
+<tr>
+<th>Function</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>count()</code></td>
+<td>Number of records in the collection</td>
+</tr>
+<tr>
+<td><code>sum(&lt;expr&gt;)</code></td>
+<td>Sum of the per-feature expression</td>
+</tr>
+<tr>
+<td><code>mean(&lt;expr&gt;)</code>, <code>average(&lt;expr&gt;)</code></td>
+<td>Arithmetic mean</td>
+</tr>
+<tr>
+<td><code>median(&lt;expr&gt;)</code></td>
+<td>Median value</td>
+</tr>
+<tr>
+<td><code>mode(&lt;expr&gt;)</code></td>
+<td>Most common value (first one wins ties)</td>
+</tr>
+<tr>
+<td><code>min(&lt;expr&gt;)</code>, <code>max(&lt;expr&gt;)</code></td>
+<td>Extremes</td>
+</tr>
+<tr>
+<td><code>quartile1(&lt;expr&gt;)</code>, <code>quartile2(&lt;expr&gt;)</code>, <code>quartile3(&lt;expr&gt;)</code></td>
+<td>Quartiles</td>
+</tr>
+<tr>
+<td><code>iqr(&lt;expr&gt;)</code></td>
+<td>Interquartile range</td>
+</tr>
+<tr>
+<td><code>quantile(&lt;expr&gt;, &lt;pct&gt;)</code></td>
+<td>Arbitrary percentile (0&ndash;1)</td>
+</tr>
+<tr>
+<td><code>collect(&lt;expr&gt;)</code></td>
+<td>Array of all values (preserves order)</td>
+</tr>
+<tr>
+<td><code>collectIds()</code></td>
+<td>Array of feature ids</td>
+</tr>
+<tr>
+<td><code>first(&lt;expr&gt;)</code>, <code>last(&lt;expr&gt;)</code></td>
+<td>First / last value seen</td>
+</tr>
+<tr>
+<td><code>every(&lt;expr&gt;)</code>, <code>some(&lt;expr&gt;)</code></td>
+<td>Boolean reductions</td>
+</tr>
+</tbody></table>
+<p>Argument expressions use the same syntax as <code>-each</code>, so per-feature properties and helpers are available:</p>
+<pre><code class="hljs language-bash">mapshaper counties.shp \
+  -calc <span class="hljs-string">&#x27;TOTAL_POP = sum(POP),
+         MEAN_AREA_KM2 = sum(this.area / 1e6) / count(),
+         TOP_DENSITY = max(POP / this.area)&#x27;</span>
+</code></pre>
+<p>Calc expressions can also use assignments to expose values to subsequent commands via the <code>global</code> namespace (see <a href="#sharing-state-across-commands">Sharing state across commands</a> below).</p>
+<h2 id="pair-expressions-a-and-b">Pair expressions (<code>A</code> and <code>B</code>)</h2>
+<p>The <code>-lines where=</code> and <code>each=</code> options operate on path segments shared between two adjacent features. Inside these expressions:</p>
+<ul>
+<li><code>A</code> is the feature on one side of the path</li>
+<li><code>B</code> is the feature on the other side, or <code>null</code> for outer boundaries</li>
+</ul>
+<p>Both <code>A</code> and <code>B</code> give you the full set of feature properties (<code>A.properties</code>, <code>A.area</code>, <code>A.id</code>, etc.).</p>
+<pre><code class="hljs language-bash"><span class="hljs-comment"># Keep only inner boundaries between two different states</span>
+mapshaper counties.shp \
+  -lines <span class="hljs-built_in">where</span>=<span class="hljs-string">&#x27;B &amp;&amp; A.STATE != B.STATE&#x27;</span> \
+  -o state-borders.shp
+</code></pre>
+<h2 id="layer-level-expressions--if--define">Layer-level expressions (<code>-if</code>, <code>-define</code>)</h2>
+<p>The <code>-if</code> family and <code>-define</code> evaluate against the <em>current command&#39;s target layer(s)</em>, not per feature. The context exposes:</p>
+<ul>
+<li><code>target</code> &mdash; the proxy for the single target layer (only set when there&#39;s exactly one target)</li>
+<li><code>targets</code> &mdash; an array-like of layer proxies, also indexable by name (<code>targets.states</code>)</li>
+<li><code>layer_name</code>, <code>data</code>, <code>type</code>, <code>size</code>, <code>empty</code>, <code>bbox</code></li>
+<li><code>field_exists(name)</code>, <code>field_type(name)</code>, <code>field_includes(name, value)</code></li>
+<li><code>layer_exists(name [, geometry_type])</code></li>
+<li><code>file_exists(path)</code></li>
+<li><code>global</code> &mdash; the shared variable namespace</li>
+</ul>
+<pre><code class="hljs language-bash">mapshaper data.csv \
+  -calc <span class="hljs-string">&#x27;N = count()&#x27;</span> \
+  -<span class="hljs-keyword">if</span> <span class="hljs-string">&#x27;global.N &lt; 5&#x27;</span> -<span class="hljs-built_in">print</span> <span class="hljs-string">&#x27;LOW SAMPLE SIZE, STOPPING&#x27;</span> -stop -endif
+</code></pre>
+<p>Each entry in <code>targets</code> exposes useful summary stats from <code>-info</code>: <code>layer_name</code>, <code>feature_count</code>, <code>null_shape_count</code>, <code>null_data_count</code>, <code>bbox</code>, <code>proj4</code>. Reading <code>targets[0].geojson</code> returns the layer as a GeoJSON FeatureCollection; assigning to it replaces the layer with the FeatureCollection you provide.</p>
+<h2 id="template-expressions--run">Template expressions (<code>-run</code>)</h2>
+<p><code>-run</code> accepts either a path to a <a href="/docs/reference.html#command-files">command file</a> or a string containing one or more curly-brace template expressions. Each <code>{...}</code> is evaluated as a JS expression and substituted into the resulting command string before Mapshaper parses it.</p>
+<pre><code class="hljs language-bash"><span class="hljs-comment"># Project to a transverse Mercator centred on the layer</span>
+mapshaper -i country.shp -require projection.js \
+  -run <span class="hljs-string">&#x27;-proj {tmerc(target.bbox)}&#x27;</span> -o
+</code></pre>
+<p>Inside the curly braces you have:</p>
+<ul>
+<li><code>target</code> and <code>targets</code> (same as <code>-if</code>)</li>
+<li><code>io.ifile(filename, data)</code> &mdash; spill data to a temp file and yield its path, useful for piping computed JSON back into <code>-i</code></li>
+<li>Anything loaded by <code>-require</code> or <code>-define</code></li>
+</ul>
+<p>Bare function calls outside curly braces are also evaluated directly, so <code>-run &#39;tmerc(target.bbox)&#39;</code> works the same as <code>-run &#39;{tmerc(target.bbox)}&#39;</code> when the function name was loaded via <code>-require</code>.</p>
+<h2 id="loading-helpers">Loading helpers</h2>
+<p>Three commands extend the expression context with your own variables and helpers:</p>
+<ul>
+<li><a href="/docs/reference.html#-define"><code>-define</code></a> takes an inline JS expression and stores any assignments on the global namespace. Good for one-liners.</li>
+<li><a href="/docs/reference.html#-include"><code>-include</code></a> loads a <code>.js</code> file containing a single object literal; each property of that object becomes a variable in subsequent expressions.</li>
+<li><a href="/docs/reference.html#-require"><code>-require</code></a> loads an installed npm module or a local module file. With <code>alias=foo</code> the module is bound to that name; without an alias, the module&#39;s exported names are added directly to the context.</li>
+</ul>
+<pre><code class="hljs language-bash">mapshaper data.json \
+  -require ./helpers.mjs \
+  -each <span class="hljs-string">&#x27;displayname = formatName(d)&#x27;</span> \
+  -o data.json
+</code></pre>
+<pre><code class="hljs language-bash">mapshaper -define <span class="hljs-string">&#x27;KM_PER_MILE = 1.609344&#x27;</span> \
+  routes.geojson \
+  -each <span class="hljs-string">&#x27;KM = MILES * global.KM_PER_MILE&#x27;</span> \
+  -o
+</code></pre>
+<h2 id="sharing-state-across-commands">Sharing state across commands</h2>
+<p>Mapshaper has two scopes for values that persist between commands. They share a name lookup for <code>{{X}}</code> substitution but are otherwise independent.</p>
+<ul>
+<li><strong>Expression scope (<code>global</code>)</strong> &mdash; written by <code>-define</code>, <code>-include</code>, <code>-require</code>, <code>-colorizer</code>, and <code>-calc</code> assignments (e.g. <code>N = count()</code>) or any <code>global.foo = ...</code> inside <code>-each</code>. Values can be any JavaScript value (numbers, strings, functions, objects). Read by JS expressions as bare names, and as <code>global.X</code> everywhere. <code>{{X}}</code> substitution falls back to this scope, so <code>-define base = &quot;out&quot;</code> &rarr; <code>-o {{base}}.geojson</code> and <code>-calc &#39;N = count()&#39;</code> &rarr; <code>-if &#39;{{N}} &gt; 100&#39;</code> work as you&#39;d expect.</li>
+<li><strong>Templating scope</strong> &mdash; written by <a href="/docs/reference.html#-vars"><code>-vars</code></a> and <a href="/docs/reference.html#-defaults"><code>-defaults</code></a>. Values must be primitives (string / number / boolean / null) and are validated at write time. Read by <code>{{X}}</code> substitution; <code>{{X}}</code> checks the templating scope first, then falls back to the expression scope. <strong>Not</strong> visible by bare name in JS expressions &mdash; that&#39;s deliberate, so a string set by <code>-vars N=5</code> can&#39;t silently coerce into arithmetic.</li>
+</ul>
+<p>If you want one value usable in both contexts, set it once with <code>-define</code>. If you only need it in command strings, use <code>-vars</code> (or <code>-defaults</code> for command-file overridable defaults).</p>
+<pre><code class="hljs language-bash">mapshaper counties.shp \
+  -calc <span class="hljs-string">&#x27;BIG = count(&quot;POP &gt; 1000000&quot;)&#x27;</span> \
+  -<span class="hljs-keyword">if</span> <span class="hljs-string">&#x27;global.BIG &gt; 0&#x27;</span> \
+    -filter <span class="hljs-string">&#x27;POP &gt; 1000000&#x27;</span> \
+    -o big-counties.shp \
+  -endif
+</code></pre>
+<h2 id="common-pitfalls">Common pitfalls</h2>
+<ul>
+<li><strong>Quoting.</strong> In bash/zsh, wrap expressions in single quotes so the shell doesn&#39;t expand <code>!</code>, <code>$</code> or backticks. In Windows <code>cmd.exe</code>, use double quotes and escape inner quotes with backslashes. In PowerShell, prefer single quotes, or escape <code>$</code> with a backtick.</li>
+<li><strong>Type coercion from CSVs.</strong> Numeric-looking strings in CSVs are parsed as numbers by default; identifier-like strings (FIPS, ZIP) need <code>string-fields=</code> on <code>-i</code> to preserve leading zeros. See <a href="/docs/formats/csv.html#practical-notes">CSV practical notes</a>.</li>
+<li><strong>Field name collisions.</strong> A field called <code>area</code>, <code>length</code>, <code>id</code> etc. shadows the built-in property of the same name. Mapshaper prints a warning. Either rename the field with <code>-rename-fields</code>, or read the property via <code>this.area</code> rather than the bare name.</li>
+<li><strong>Lat/long area surprises.</strong> <code>this.area</code> on an unprojected polygon returns <em>square meters on a sphere</em>, not square degrees. To get square kilometres, divide by <code>1e6</code>. To get planar square degrees (e.g. for sanity checks), use <code>this.planarArea</code>.</li>
+<li><strong>Centroids ignore holes.</strong> <code>this.centroidX/Y</code> is the centroid of the largest ring. For a labelling point that&#39;s guaranteed inside the polygon, use <code>innerX</code>/<code>innerY</code>.</li>
+<li><strong><code>-each</code> doesn&#39;t return values.</strong> Its expression is evaluated for side-effects only. Use <code>-filter</code>, <code>-sort</code> or <code>-calc</code> if you want the return value to drive behavior.</li>
+<li><strong>Reserved names.</strong> <code>this</code>, <code>d</code>, <code>_</code>, <code>global</code>, <code>console</code>, <code>target</code>, <code>targets</code> and the helper function names listed above are not safe to use as field names.</li>
+<li><strong>Auto-vivification of fields.</strong> Assigning to a name that isn&#39;t a known field creates a new field on every record. If you only want to set a field on <em>some</em> records, wrap it in a conditional and assign explicit <code>null</code> for the others, otherwise downstream readers may see <code>undefined</code> instead of a real null.</li>
+</ul>
+<h2 id="examples">Examples</h2>
+<pre><code class="hljs language-bash"><span class="hljs-comment"># Add two derived fields</span>
+mapshaper counties.shp \
+  -each <span class="hljs-string">&#x27;STATE_FIPS = COUNTY_FIPS.substr(0, 2),
+         AREA_KM2 = round(this.area / 1e6, 2)&#x27;</span> \
+  -o out.shp
+
+<span class="hljs-comment"># Drop features outside a date window</span>
+mapshaper events.csv \
+  -filter <span class="hljs-string">&#x27;new Date(DATE) &gt;= new Date(&quot;2020-01-01&quot;)&#x27;</span> \
+  -o recent.csv
+
+<span class="hljs-comment"># Sort polygons largest-first</span>
+mapshaper countries.geojson \
+  -<span class="hljs-built_in">sort</span> <span class="hljs-string">&#x27;-this.area&#x27;</span> \
+  -o sorted.geojson
+
+<span class="hljs-comment"># Look up one feature</span>
+mapshaper states.geojson -inspect <span class="hljs-string">&#x27;NAME == &quot;Delaware&quot;&#x27;</span>
+
+<span class="hljs-comment"># Aggregate stats during a dissolve</span>
+mapshaper counties.shp \
+  -dissolve STATE calc=<span class="hljs-string">&#x27;N = count(),
+                        POP = sum(POP),
+                        MEDIAN_INC = median(MEDIAN_INC)&#x27;</span> \
+  -o states.shp
+
+<span class="hljs-comment"># Conditional pipeline based on a calc result</span>
+mapshaper data.csv \
+  -calc <span class="hljs-string">&#x27;N = count()&#x27;</span> \
+  -<span class="hljs-keyword">if</span> <span class="hljs-string">&#x27;global.N == 0&#x27;</span> -stop -endif \
+  -o data.csv
+
+<span class="hljs-comment"># Filter shared boundaries</span>
+mapshaper counties.shp \
+  -lines <span class="hljs-built_in">where</span>=<span class="hljs-string">&#x27;B &amp;&amp; A.STATE != B.STATE&#x27;</span> \
+  -o state-borders.shp
+
+<span class="hljs-comment"># Per-feature styling: circle radius from POP, fill from an expression</span>
+mapshaper cities.geojson \
+  -style r=<span class="hljs-string">&#x27;Math.sqrt(POP) / 40&#x27;</span> \
+         fill=<span class="hljs-string">&#x27;POP &gt; 1e6 ? &quot;#c33&quot; : &quot;#39c&quot;&#x27;</span> \
+         opacity=0.7 \
+  -o cities.svg
+
+<span class="hljs-comment"># Project to a layer-specific CRS</span>
+mapshaper -i country.shp -require ./projection.js \
+  -run <span class="hljs-string">&#x27;-proj {tmerc(target.bbox)}&#x27;</span> -o
+</code></pre>
+<h2 id="see-also">See also</h2>
+<ul>
+<li><a href="/docs/reference.html#-each"><code>-each</code></a> &mdash; the canonical feature-expression command</li>
+<li><a href="/docs/reference.html#-filter"><code>-filter</code></a></li>
+<li><a href="/docs/reference.html#-calc"><code>-calc</code></a></li>
+<li><a href="/docs/reference.html#-define"><code>-define</code></a>, <a href="/docs/reference.html#-include"><code>-include</code></a>, <a href="/docs/reference.html#-require"><code>-require</code></a></li>
+<li><a href="/docs/reference.html#-run"><code>-run</code></a></li>
+<li><a href="/docs/examples/basics.html">Basics</a> &mdash; recipes that put expressions to work</li>
+</ul>
+
+      <div class="edit-link">
+        <a href="https://github.com/mbloch/mapshaper/edit/master/docs/guides/expressions.md">Edit this page on GitHub</a>
+      </div>
+    </article>
+  </main>
+
+  <aside class="docs-toc">
+    <div class="docs-toc-title">On this page</div><ul><li class="lvl-2"><a href="#where-expressions-appear">Where expressions appear</a></li><li class="lvl-2"><a href="#the-execution-context">The execution context</a></li><li class="lvl-3"><a href="#field-assignment">Field assignment</a></li><li class="lvl-3"><a href="#multiple-statements">Multiple statements</a></li><li class="lvl-2"><a href="#feature-properties-this">Feature properties (this)</a></li><li class="lvl-3"><a href="#all-layer-types">All layer types</a></li><li class="lvl-3"><a href="#polygon-polyline-and-point-layers-with-geometry">Polygon, polyline and point layers (with geometry)</a></li><li class="lvl-3"><a href="#polygon-only">Polygon-only</a></li><li class="lvl-3"><a href="#polyline-only">Polyline-only</a></li><li class="lvl-3"><a href="#point-only">Point-only</a></li><li class="lvl-2"><a href="#layer-level-properties-thislayer">Layer-level properties (this.layer)</a></li><li class="lvl-2"><a href="#helper-functions">Helper functions</a></li><li class="lvl-2"><a href="#calc-expressions">Calc expressions</a></li><li class="lvl-2"><a href="#pair-expressions-a-and-b">Pair expressions (A and B)</a></li><li class="lvl-2"><a href="#layer-level-expressions--if--define">Layer-level expressions (-if, -define)</a></li><li class="lvl-2"><a href="#template-expressions--run">Template expressions (-run)</a></li><li class="lvl-2"><a href="#loading-helpers">Loading helpers</a></li><li class="lvl-2"><a href="#sharing-state-across-commands">Sharing state across commands</a></li><li class="lvl-2"><a href="#common-pitfalls">Common pitfalls</a></li><li class="lvl-2"><a href="#examples">Examples</a></li><li class="lvl-2"><a href="#see-also">See also</a></li></ul>
+  </aside>
+
+</div>
+
+<script src="/docs/_assets/docs.js" defer></script>
+
+<footer class="docs-footer">
+  <div class="docs-footer-inner">
+    <span>mapshaper is free software, licensed under <a href="https://www.mozilla.org/MPL/2.0/">MPL 2.0</a>.</span>
+    <span><a href="/privacy.html">Privacy</a> &middot; <a href="/terms.html">Terms</a> &middot; <a href="/sponsor.html">Support mapshaper</a></span>
+  </div>
+</footer>
+
+</body>
+</html>

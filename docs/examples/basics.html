@@ -1,0 +1,283 @@
+<!DOCTYPE html>
+<html lang="en">
+<head><!-- Google tag (gtag.js) -->
+<script async src="https://www.googletagmanager.com/gtag/js?id=G-QYR8W1YHEF"></script>
+<script>
+  window.dataLayer = window.dataLayer || [];
+  function gtag(){dataLayer.push(arguments);}
+  gtag('js', new Date());
+  gtag('config', 'G-QYR8W1YHEF');
+</script>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Basics &middot; mapshaper docs</title>
+<meta name="description" content="A scannable collection of short Mapshaper recipes for common GIS tasks — format conversion, joins, simplification, dissolves, projection, classification, web export and more.">
+<link rel="icon" type="image/png" href="/images/icon.png">
+<link rel="stylesheet" href="/docs/_assets/highlight.css">
+<link rel="stylesheet" href="/docs/_assets/docs.css">
+</head>
+<body class="">
+
+<header class="page-header">
+  <a href="/" class="mapshaper-logo">map<span class="logo-highlight">shaper</span></a>
+  <span class="header-section-label">Docs</span>
+  <nav class="header-nav">
+    <a href="/">Web app</a>
+    <a href="https://github.com/mbloch/mapshaper">GitHub</a>
+    <a href="/sponsor.html" class="sponsor-link"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z"/></svg> Become a sponsor</a>
+  </nav>
+</header>
+
+<div class="docs-layout">
+
+  <aside class="docs-sidebar">
+    <div class="sidebar-inner">
+      <nav class="docs-nav"><ul class="top-links"><li><a href="/docs/">Home</a></li><li><a href="/docs/whats-new.html">What&#39;s new</a></li><li><a href="/docs/reference.html">Command reference</a></li><li><a href="/docs/gallery/">Gallery</a></li></ul><h2>Getting started</h2><ul><li><a href="/docs/essentials/command-line.html">The command-line tool</a></li><li><a href="/docs/essentials/web-app.html">The web app</a></li></ul><h2>Guides</h2><ul><li><a href="/docs/guides/simplification.html">Simplification</a></li><li><a href="/docs/guides/expressions.html">JavaScript expressions</a></li><li><a href="/docs/guides/projections.html">Projections</a></li><li><a href="/docs/guides/topology.html">Topology and cleaning</a></li><li><a href="/docs/guides/combining-layers.html">Combining two layers</a></li><li><a href="/docs/guides/programmatic.html">Using Mapshaper from Node.js</a></li></ul><h2>Formats</h2><ul><li><a href="/docs/formats/overview.html">Overview</a></li><li><a href="/docs/formats/shapefile.html">Shapefile</a></li><li><a href="/docs/formats/geojson.html">GeoJSON</a></li><li><a href="/docs/formats/topojson.html">TopoJSON</a></li><li><a href="/docs/formats/geopackage.html">GeoPackage</a></li><li><a href="/docs/formats/flatgeobuf.html">FlatGeobuf</a></li><li><a href="/docs/formats/kml.html">KML / KMZ</a></li><li><a href="/docs/formats/csv.html">CSV / TSV</a></li><li><a href="/docs/formats/dbf.html">DBF</a></li><li><a href="/docs/formats/json.html">JSON records</a></li><li><a href="/docs/formats/svg.html">SVG</a></li><li><a href="/docs/formats/snapshot.html">Mapshaper snapshot</a></li></ul><h2>Examples</h2><ul><li><a href="/docs/examples/basics.html" class="is-active">Basics</a></li><li><a href="/docs/examples/globe.html">Globe</a></li><li><a href="/docs/examples/us-states.html">U.S. state map</a></li></ul></nav>
+    </div>
+  </aside>
+
+  <main class="docs-main">
+    <article class="docs-article">
+      <div class="docs-breadcrumbs"><a href="/docs/">Docs</a> &rsaquo; Examples &rsaquo; Basics</div>
+      <h1 id="basics">Basics</h1>
+<p>Short Mapshaper recipes for common GIS tasks. The filenames and field names are illustrative &mdash; substitute your own. Most recipes also work in the <a href="/docs/essentials/web-app.html">web app&#39;s</a> console: drop the leading <code>mapshaper</code> and the input filename, since the GUI already has the layer loaded.</p>
+<blockquote>
+<p>Looking for the syntax of a particular command or option? See the <a href="/docs/reference.html">command reference</a>. For the JS expression context used by <code>-each</code>, <code>-filter</code>, <code>calc=</code> and other commands, see <a href="/docs/guides/expressions.html">JavaScript expressions</a>.</p>
+</blockquote>
+<h2 id="inspecting-and-exploring">Inspecting and exploring</h2>
+<h3 id="print-a-summary-of-a-dataset">Print a summary of a dataset</h3>
+<pre><code class="hljs language-bash">mapshaper input.shp -info
+</code></pre>
+<p><code>-info</code> prints the geometry type, feature count, CRS (if known), bounding box, and the name and type of every attribute field. It&#39;s the fastest way to remind yourself what a file actually contains. Add <code>save-to=info.json</code> to capture it as JSON.</p>
+<h3 id="count-features-grouped-by-a-field">Count features grouped by a field</h3>
+<pre><code class="hljs language-bash">mapshaper counties.shp \
+  -drop geometry \
+  -dissolve STATE calc=<span class="hljs-string">&#x27;N = count(), POP = sum(POP)&#x27;</span> \
+  -o state_data.csv
+</code></pre>
+<p>A dissolve with a <code>calc=</code> clause is an idiomatic way to aggregate data values.</p>
+<h2 id="filtering-and-selecting">Filtering and selecting</h2>
+<h3 id="keep-features-matching-a-condition">Keep features matching a condition</h3>
+<pre><code class="hljs language-bash">mapshaper countries.geojson -filter <span class="hljs-string">&#x27;CONTINENT == &quot;Asia&quot; &amp;&amp; POP &gt; 1e7&#x27;</span> \
+  -o output.geojson
+</code></pre>
+<p><code>-filter</code> keeps features for which the expression returns <code>true</code>.</p>
+<h3 id="keep-features-inside-a-bounding-box">Keep features inside a bounding box</h3>
+<pre><code class="hljs language-bash">mapshaper world.shp -clip bbox=-10,35,30,60 -o europe.shp
+</code></pre>
+<p>The four bbox numbers are <code>xmin,ymin,xmax,ymax</code> in the layer&#39;s own coordinates.</p>
+<h3 id="keep-the-top-n-features-by-some-attribute">Keep the top N features by some attribute</h3>
+<pre><code class="hljs language-bash">mapshaper cities.geojson \
+  -<span class="hljs-built_in">sort</span> POP descending \
+  -filter <span class="hljs-string">&#x27;this.id &lt; 50&#x27;</span> \
+  -o top50.geojson
+</code></pre>
+<p><code>-sort POP descending</code> orders by population from largest to smallest. Features have numerical ids starting with <code>0</code>, so <code>this.id &lt; 50</code> keeps the first 50.</p>
+<h3 id="drop-features-with-empty-geometry">Drop features with empty geometry</h3>
+<pre><code class="hljs language-bash">mapshaper messy.geojson -filter remove-empty -o clean.geojson
+</code></pre>
+<p>The <code>remove-empty</code> flag drops features with missing or empty geometry.</p>
+<h2 id="editing-attributes">Editing attributes</h2>
+<h3 id="add-derived-fields">Add derived fields</h3>
+<pre><code class="hljs language-bash">mapshaper counties.shp \
+  -each <span class="hljs-string">&#x27;STATE_FIPS = COUNTY_FIPS.substr(0, 2),
+         AREA_KM2 = round(this.area / 1e6, 1)&#x27;</span> \
+  -o out.shp
+</code></pre>
+<p><code>-each</code> runs a JS expression on each feature; assigning to a bare name creates or updates a field. <code>round(x, 1)</code> is Mapshaper&#39;s rounding helper (one decimal here). On unprojected lat/long data, <code>this.area</code> returns square meters, dividing by 1e6 converts to square kilometers.</p>
+<h3 id="rename-and-filter-fields">Rename and filter fields</h3>
+<pre><code class="hljs language-bash">mapshaper data.csv \
+  -rename-fields POPULATION=POP,MEDIAN_INCOME=MEDIAN_INC \
+  -filter-fields STATE,COUNTY,POPULATION,MEDIAN_INCOME \
+  -o cleaned.csv
+</code></pre>
+<p><code>-rename-fields</code> takes <code>NEW=OLD</code> pairs. <code>-filter-fields</code> keeps only the listed fields, in the listed order &mdash; convenient for shaping CSV output.</p>
+<h3 id="preserve-leading-zeros-from-a-csv">Preserve leading zeros from a CSV</h3>
+<pre><code class="hljs language-bash">mapshaper -i counties.csv string-fields=FIPS,STATEFIPS \
+  -o counties.shp
+</code></pre>
+<p>By default Mapshaper parses any numeric-looking CSV column as a number, which silently drops leading zeros from FIPS, ZIP and similar identifier columns. <code>string-fields=</code> forces the named columns to stay as strings.</p>
+<h2 id="joining-data">Joining data</h2>
+<h3 id="join-a-csv-to-a-shapefile-by-key">Join a CSV to a Shapefile by key</h3>
+<pre><code class="hljs language-bash">mapshaper states.shp \
+  -<span class="hljs-built_in">join</span> demographics.csv keys=STATE_FIPS,FIPS string-fields=FIPS \
+  -o states_with_data.shp
+</code></pre>
+<p><code>keys=A,B</code> means &quot;match the target&#39;s <code>A</code> field to the source&#39;s <code>B</code> field&quot;. <code>string-fields=FIPS</code> (passed through to the CSV import) keeps the FIPS code as a string so <code>&quot;06&quot;</code> matches <code>&quot;06&quot;</code> rather than being parsed to <code>6</code>. To pull just a few columns from the source, add <code>fields=FIELD_A,FIELD_B</code>.</p>
+<h3 id="spatial-join-tag-points-with-the-polygon-they-fall-in">Spatial join: tag points with the polygon they fall in</h3>
+<pre><code class="hljs language-bash">mapshaper crimes.geojson \
+  -<span class="hljs-built_in">join</span> precinct_polygons.shp \
+  -o crimes_with_precinct.geojson
+</code></pre>
+<p>When <code>keys=</code> is omitted, <code>-join</code> falls back to a spatial join based on the geometry types involved. Here, every point inherits the attributes of the polygon containing it. Use <code>fields=PRECINCT_ID,DIVISION</code> to keep just specific columns.</p>
+<h3 id="many-to-one-join-with-an-aggregation">Many-to-one join with an aggregation</h3>
+<pre><code class="hljs language-bash">mapshaper precincts.shp \
+  -<span class="hljs-built_in">join</span> crimes.geojson calc=<span class="hljs-string">&#x27;N = count(), AVG_SEVERITY = mean(SEVERITY)&#x27;</span> \
+  -o precincts_with_stats.shp
+</code></pre>
+<p>A polygon-to-many-points join can use <code>calc=</code> to summarize the matched source records into one or more new fields per target feature. The functions in <code>calc=</code> are the same set documented under <a href="/docs/reference.html#-calc"><code>-calc</code></a>.</p>
+<h2 id="simplifying">Simplifying</h2>
+<h3 id="simplify-a-polygon-layer-for-the-web">Simplify a polygon layer for the web</h3>
+<pre><code class="hljs language-bash">mapshaper provinces.shp \
+  -simplify 5% keep-shapes \
+  -clean \
+  -o format=topojson provinces.topojson
+</code></pre>
+<p><code>-simplify 5%</code> keeps 5% of the original vertices using the default weighted Visvalingam algorithm. <code>keep-shapes</code> prevents simplification from wiping out very small polygons. <code>-clean</code> mops up any topology errors introduced by aggressive simplification. TopoJSON output is usually 2&ndash;5x smaller than the equivalent GeoJSON.</p>
+<h3 id="simplify-multiple-files-with-shared-topology">Simplify multiple files with shared topology</h3>
+<pre><code class="hljs language-bash">mapshaper -i states.shp counties.shp combine-files \
+  -simplify 10% \
+  -o out/
+</code></pre>
+<p><code>combine-files</code> merges the inputs into one dataset before Mapshaper builds its arc topology, so vertices shared between layers stay shared after simplification &mdash; no gaps or overlaps along state/county boundaries. Each input still gets written back out as a separate file in <code>out/</code>. In the web app, add <code>combine-files</code> in the <strong>Advanced options</strong> field at import time to get the same behavior.</p>
+<h3 id="repair-topology-errors">Repair topology errors</h3>
+<pre><code class="hljs language-bash">mapshaper messy.shp -clean -o cleaned.shp
+</code></pre>
+<p><code>-clean</code> snaps near-duplicate vertices, removes tiny gaps and overlaps between polygons, and fixes self-intersecting lines. It&#39;s a safe first step before any spatial operation. You can tune <code>gap-fill-area=</code>, <code>sliver-control=</code> or <code>snap-interval=</code> if necessary.</p>
+<h2 id="aggregating">Aggregating</h2>
+<h3 id="dissolve-to-a-parent-geography">Dissolve to a parent geography</h3>
+<pre><code class="hljs language-bash">mapshaper counties.shp -dissolve STATE -o states.shp
+</code></pre>
+<p><code>-dissolve</code> merges adjacent polygons that share a value in the named field.</p>
+<h3 id="dissolve-while-computing-per-group-stats">Dissolve while computing per-group stats</h3>
+<pre><code class="hljs language-bash">mapshaper counties.shp \
+  -dissolve STATE calc=<span class="hljs-string">&#x27;N = count(),
+                        POP = sum(POP),
+                        MEDIAN_INC = median(MEDIAN_INC)&#x27;</span> \
+  -o states_with_stats.shp
+</code></pre>
+<p><code>calc=</code> works inside <code>-dissolve</code> as well as <code>-join</code>. The named functions (<code>count</code>, <code>sum</code>, <code>mean</code>, <code>median</code>, <code>mode</code>, <code>min</code>, <code>max</code>, <code>quartile1/2/3</code>, <code>iqr</code>, <code>quantile</code>, <code>collect</code>, <code>every</code>, <code>some</code>, <code>first</code>, <code>last</code>) all see the same per-feature context as <code>-each</code>.</p>
+<h3 id="convert-points-to-population-weighted-centroids">Convert points to population-weighted centroids</h3>
+<pre><code class="hljs language-bash">mapshaper cities.shp \
+  -dissolve STATE_FIPS weight=POPULATION \
+  -o state_centers.shp
+</code></pre>
+<p>Dissolve groups of points that share a <code>STATE_FIPS</code> value into a single weighted centroid per group. The <code>weight=</code> option accepts a field name or a JS expression. Omitting a grouping field dissolves all points into one centroid.</p>
+<h2 id="spatial-operations">Spatial operations</h2>
+<h3 id="erase-one-layer-from-another">Erase one layer from another</h3>
+<pre><code class="hljs language-bash">mapshaper land.shp -erase lakes.shp -o land_no_lakes.shp
+</code></pre>
+<p><code>-erase</code> removes the parts of the target layer that fall inside the source layer&#39;s polygons. Useful for masking out water, parks, or any &quot;do-not-count&quot; region. The inverse is <code>-clip</code>, which keeps the inside instead.</p>
+<h3 id="compute-interior-boundaries">Compute interior boundaries</h3>
+<pre><code class="hljs language-bash">mapshaper counties.shp -innerlines -o county_borders.shp
+</code></pre>
+<p><code>-innerlines</code> returns the shared boundaries between polygons as a polyline layer, which is usually used for adding a stroke to interior boundaries on a styled map. Use <a href="/docs/reference.html#-lines"><code>-lines</code></a> instead if you want to retain both outer and inner boundaries.</p>
+<h3 id="generate-a-hex-grid-covering-a-layer">Generate a hex grid covering a layer</h3>
+<pre><code class="hljs language-bash">mapshaper region.shp \
+  -grid <span class="hljs-built_in">type</span>=hex interval=10km name=hex \
+  -o hex.shp
+</code></pre>
+<p><code>-grid</code> builds a regular grid (<code>square</code>, <code>hex</code>, <code>hex2</code>) covering the target&#39;s bounding box. Pair it with a spatial join to style the grid cells using interpolated count data (<code>-join interpolate=POPULATION</code>).</p>
+<h2 id="reprojection">Reprojection</h2>
+<h3 id="project-to-a-named-crs">Project to a named CRS</h3>
+<pre><code class="hljs language-bash">mapshaper world.geojson -proj robinson -o world_robinson.geojson
+</code></pre>
+<p><code>-proj</code> accepts EPSG codes (<code>EPSG:3857</code>), PROJ strings (<code>+proj=tmerc +lon_0=...</code>), or short aliases (<code>wgs84</code>, <code>webmercator</code>, <code>robinson</code>, <code>albersusa</code>). See the <a href="/docs/guides/projections.html">Projections guide</a> for details.</p>
+<h3 id="match-the-projection-of-another-file">Match the projection of another file</h3>
+<pre><code class="hljs language-bash">mapshaper points.shp -proj match=basemap.shp -o points_aligned.shp
+</code></pre>
+<p><code>match=</code> reads the CRS of another file and projects the target to match it &mdash; handy when assembling multiple datasets that need to share a coordinate system.</p>
+<h2 id="classification-and-styling">Classification and styling</h2>
+<h3 id="quantile-classify-into-a-color-ramp">Quantile-classify into a color ramp</h3>
+<pre><code class="hljs language-bash">mapshaper covid_cases.geojson \
+  -classify save-as=fill quantile classes=6 color-scheme=Oranges \
+  -o themed.geojson
+</code></pre>
+<p><code>-classify</code> writes a class index or a derived value (here, a fill color) into the named field. The default is sequential quantile classification, but you can switch to <code>equal-interval</code>, <code>nice</code>, <code>categorical</code> or <code>non-adjacent</code>. Run <code>mapshaper -colors</code> to list the built-in color schemes.</p>
+<h3 id="add-svg-styling-for-export">Add SVG styling for export</h3>
+<pre><code class="hljs language-bash">mapshaper boundaries.shp \
+  -style stroke=<span class="hljs-string">&quot;#444&quot;</span> stroke-width=0.5 fill=none \
+  -style <span class="hljs-built_in">where</span>=<span class="hljs-string">&#x27;RANK == 0&#x27;</span> stroke=<span class="hljs-string">&quot;#000&quot;</span> stroke-width=1.5 \
+  -o map.svg
+</code></pre>
+<p><code>-style</code> writes SVG presentation attributes onto each feature; the <code>where=</code> form lets you set them conditionally. The result is a valid SVG you can drop into a print or web layout.</p>
+<h2 id="output-and-conversion">Output and conversion</h2>
+<h3 id="convert-shapefile-harr-geojson">Convert Shapefile &harr; GeoJSON</h3>
+<pre><code class="hljs language-bash">mapshaper input.shp -o input.geojson
+mapshaper input.geojson -o input.shp
+</code></pre>
+<p>The output format is inferred from the file extension. Use <code>format=</code> to force it (e.g. <code>-o format=topojson out.json</code>). When writing a Shapefile, Mapshaper produces <code>.shp</code>, <code>.shx</code>, <code>.dbf</code>, and <code>.prj</code>. If no output filename is given, the output file takes the name of the targeted layer.</p>
+<h3 id="quantized-topojson">Quantized TopoJSON</h3>
+<pre><code class="hljs language-bash">mapshaper boundaries.shp -o boundaries.topojson
+</code></pre>
+<p>TopoJSON output is quantized by default — Mapshaper picks a quantization level based on the data&#39;s coordinate range. Quantization rounds coordinates to a grid, which dramatically shrinks file size. The default can be overridden with <code>quantization=</code> (e.g. <code>quantization=1e5</code>). Combined with <code>-simplify</code> and TopoJSON&#39;s shared-arc encoding, quantized output is routinely 2&ndash;5&times; smaller than equivalent GeoJSON.</p>
+<h3 id="output-as-ndjson">Output as ndjson</h3>
+<pre><code class="hljs language-bash">mapshaper big.geojson -o ndjson big.ndjson
+</code></pre>
+<p>Newline-delimited JSON is friendlier to line-oriented tools like jq, BigQuery, and DuckDB. One Feature per line, no enclosing FeatureCollection.</p>
+<h3 id="split-a-layer-into-multiple-files">Split a layer into multiple files</h3>
+<pre><code class="hljs language-bash">mapshaper counties.shp \
+  -<span class="hljs-built_in">split</span> STATE \
+  -o out/ extension=geojson
+</code></pre>
+<p><code>-split FIELD</code> partitions features into separate layers by the value of <code>FIELD</code>; <code>-o</code> to a directory then writes one file per layer, named after the field value.</p>
+<h2 id="workflow-patterns">Workflow patterns</h2>
+<h3 id="run-a-chain-of-commands-from-a-file">Run a chain of commands from a file</h3>
+<pre><code># build.txt
+mapshaper
+-i counties.shp
+-rename-fields POP=POPULATION
+-dissolve STATE calc=&#39;POP = sum(POP)&#39;
+-simplify 5%
+-o out/states.topojson
+</code></pre>
+<pre><code class="hljs language-bash">mapshaper -run build.txt
+<span class="hljs-comment"># or simply:</span>
+mapshaper build.txt
+</code></pre>
+<p>Long pipelines can be kept in a <a href="/docs/reference.html#command-files">command file</a>.</p>
+<h3 id="parameterize-a-command-file">Parameterize a command file</h3>
+<pre><code class="hljs language-bash">mapshaper -vars YEAR=2024 PCT=10 -run build.txt
+</code></pre>
+<pre><code># build.txt
+mapshaper
+-defaults YEAR=2020 PCT=5
+-i sources/counties_{{YEAR}}.shp
+-simplify {{PCT}}%
+-o out/counties_{{YEAR}}.shp
+</code></pre>
+<p><code>{{VAR}}</code> placeholders are substituted at parse time. <code>-defaults</code> sets values that the caller can override with <code>-vars</code> (or with <code>{{env.NAME}}</code> for environment variables).</p>
+<h3 id="stop-a-pipeline-early-on-bad-input">Stop a pipeline early on bad input</h3>
+<pre><code class="hljs language-bash">mapshaper input.csv \
+  -calc <span class="hljs-string">&#x27;N = count()&#x27;</span> \
+  -<span class="hljs-keyword">if</span> <span class="hljs-string">&#x27;global.N == 0&#x27;</span> \
+    -<span class="hljs-built_in">print</span> <span class="hljs-string">&#x27;No records, exiting&#x27;</span> \
+    -stop \
+  -endif \
+  -o out.csv
+</code></pre>
+<p><code>-calc</code> expressions can publish values to the <code>global</code> object via simple assignment. <code>-if</code>/<code>-stop</code> then guard the rest of the pipeline. Useful in scripts where bad upstream data should fail loudly rather than silently produce empty output.</p>
+<h3 id="increase-the-heap-for-very-large-files">Increase the heap for very large files</h3>
+<pre><code class="hljs language-bash">mapshaper-xl 16gb counties_5m.shp -simplify 10% -o counties_5m.topojson
+</code></pre>
+<p><code>mapshaper-xl</code> is a wrapper that launches Node with extra heap space (default 8 GB; pass a size to override). Use it whenever you see &quot;JavaScript heap out of memory&quot; errors.</p>
+<h2 id="see-also">See also</h2>
+<ul>
+<li><a href="/docs/reference.html">Command reference</a> &mdash; every command and option</li>
+<li><a href="/docs/guides/expressions.html">JavaScript expressions</a> &mdash; the syntax and context used by <code>-each</code>, <code>-filter</code>, <code>calc=</code>, etc.</li>
+<li><a href="/docs/guides/">Guides</a> &mdash; longer-form walk-throughs of simplification, topology cleaning, and more</li>
+</ul>
+
+      <div class="edit-link">
+        <a href="https://github.com/mbloch/mapshaper/edit/master/docs/examples/basics.md">Edit this page on GitHub</a>
+      </div>
+    </article>
+  </main>
+
+  <aside class="docs-toc">
+    <div class="docs-toc-title">On this page</div><ul><li class="lvl-2"><a href="#inspecting-and-exploring">Inspecting and exploring</a></li><li class="lvl-3"><a href="#print-a-summary-of-a-dataset">Print a summary of a dataset</a></li><li class="lvl-3"><a href="#count-features-grouped-by-a-field">Count features grouped by a field</a></li><li class="lvl-2"><a href="#filtering-and-selecting">Filtering and selecting</a></li><li class="lvl-3"><a href="#keep-features-matching-a-condition">Keep features matching a condition</a></li><li class="lvl-3"><a href="#keep-features-inside-a-bounding-box">Keep features inside a bounding box</a></li><li class="lvl-3"><a href="#keep-the-top-n-features-by-some-attribute">Keep the top N features by some attribute</a></li><li class="lvl-3"><a href="#drop-features-with-empty-geometry">Drop features with empty geometry</a></li><li class="lvl-2"><a href="#editing-attributes">Editing attributes</a></li><li class="lvl-3"><a href="#add-derived-fields">Add derived fields</a></li><li class="lvl-3"><a href="#rename-and-filter-fields">Rename and filter fields</a></li><li class="lvl-3"><a href="#preserve-leading-zeros-from-a-csv">Preserve leading zeros from a CSV</a></li><li class="lvl-2"><a href="#joining-data">Joining data</a></li><li class="lvl-3"><a href="#join-a-csv-to-a-shapefile-by-key">Join a CSV to a Shapefile by key</a></li><li class="lvl-3"><a href="#spatial-join-tag-points-with-the-polygon-they-fall-in">Spatial join: tag points with the polygon they fall in</a></li><li class="lvl-3"><a href="#many-to-one-join-with-an-aggregation">Many-to-one join with an aggregation</a></li><li class="lvl-2"><a href="#simplifying">Simplifying</a></li><li class="lvl-3"><a href="#simplify-a-polygon-layer-for-the-web">Simplify a polygon layer for the web</a></li><li class="lvl-3"><a href="#simplify-multiple-files-with-shared-topology">Simplify multiple files with shared topology</a></li><li class="lvl-3"><a href="#repair-topology-errors">Repair topology errors</a></li><li class="lvl-2"><a href="#aggregating">Aggregating</a></li><li class="lvl-3"><a href="#dissolve-to-a-parent-geography">Dissolve to a parent geography</a></li><li class="lvl-3"><a href="#dissolve-while-computing-per-group-stats">Dissolve while computing per-group stats</a></li><li class="lvl-3"><a href="#convert-points-to-population-weighted-centroids">Convert points to population-weighted centroids</a></li><li class="lvl-2"><a href="#spatial-operations">Spatial operations</a></li><li class="lvl-3"><a href="#erase-one-layer-from-another">Erase one layer from another</a></li><li class="lvl-3"><a href="#compute-interior-boundaries">Compute interior boundaries</a></li><li class="lvl-3"><a href="#generate-a-hex-grid-covering-a-layer">Generate a hex grid covering a layer</a></li><li class="lvl-2"><a href="#reprojection">Reprojection</a></li><li class="lvl-3"><a href="#project-to-a-named-crs">Project to a named CRS</a></li><li class="lvl-3"><a href="#match-the-projection-of-another-file">Match the projection of another file</a></li><li class="lvl-2"><a href="#classification-and-styling">Classification and styling</a></li><li class="lvl-3"><a href="#quantile-classify-into-a-color-ramp">Quantile-classify into a color ramp</a></li><li class="lvl-3"><a href="#add-svg-styling-for-export">Add SVG styling for export</a></li><li class="lvl-2"><a href="#output-and-conversion">Output and conversion</a></li><li class="lvl-3"><a href="#convert-shapefile-harr-geojson">Convert Shapefile &amp;harr; GeoJSON</a></li><li class="lvl-3"><a href="#quantized-topojson">Quantized TopoJSON</a></li><li class="lvl-3"><a href="#output-as-ndjson">Output as ndjson</a></li><li class="lvl-3"><a href="#split-a-layer-into-multiple-files">Split a layer into multiple files</a></li><li class="lvl-2"><a href="#workflow-patterns">Workflow patterns</a></li><li class="lvl-3"><a href="#run-a-chain-of-commands-from-a-file">Run a chain of commands from a file</a></li><li class="lvl-3"><a href="#parameterize-a-command-file">Parameterize a command file</a></li><li class="lvl-3"><a href="#stop-a-pipeline-early-on-bad-input">Stop a pipeline early on bad input</a></li><li class="lvl-3"><a href="#increase-the-heap-for-very-large-files">Increase the heap for very large files</a></li><li class="lvl-2"><a href="#see-also">See also</a></li></ul>
+  </aside>
+
+</div>
+
+<script src="/docs/_assets/docs.js" defer></script>
+
+<footer class="docs-footer">
+  <div class="docs-footer-inner">
+    <span>mapshaper is free software, licensed under <a href="https://www.mozilla.org/MPL/2.0/">MPL 2.0</a>.</span>
+    <span><a href="/privacy.html">Privacy</a> &middot; <a href="/terms.html">Terms</a> &middot; <a href="/sponsor.html">Support mapshaper</a></span>
+  </div>
+</footer>
+
+</body>
+</html>
