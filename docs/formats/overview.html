@@ -170,7 +170,6 @@
 <ul>
 <li><strong>Auto-detection by extension.</strong> You usually don&#39;t need to tell Mapshaper what format a file is &mdash; it picks the right reader from the file extension. Use <code>format=</code> on <code>-i</code> or <code>-o</code> to override.</li>
 <li><strong>TopoJSON is the only interchange format that preserves topology</strong> in the file itself. Topology-aware operations like <a href="/docs/reference.html#-dissolve"><code>-dissolve</code></a>, <a href="/docs/reference.html#-clean"><code>-clean</code></a> and <a href="/docs/reference.html#-simplify"><code>-simplify</code></a> work correctly regardless of the input format, but only TopoJSON keeps shared boundaries between adjacent polygons from being duplicated on disk. (Mapshaper&#39;s own <a href="/docs/formats/snapshot.html"><code>.msx</code></a> snapshots also preserve topology, but they&#39;re not readable by other tools.)</li>
-<li><strong>Most formats are single-layer per file.</strong> Multi-layer GeoJSON, Shapefile and FlatGeobuf datasets are conventionally split across multiple files (in the same directory on the CLI; selected together or zipped in the <a href="/docs/essentials/web-app.html">web app</a>); TopoJSON, GeoPackage and KML can hold many layers in one file.</li>
 <li><strong>Encoding.</strong> The <code>encoding=</code> option on <code>-i</code> and <code>-o</code> applies to Shapefile, DBF and CSV/TSV i/o (UTF-8 is the default) &mdash; the other formats are UTF-8-only.</li>
 </ul>
 
