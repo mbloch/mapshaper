@@ -66,7 +66,7 @@ export function initFeatureProxy(lyr, arcs, optsArg) {
         if (utils.isObject(obj)) {
           _records[_id] = obj;
         } else {
-          stop("Can't assign non-object to $.properties");
+          stop("Can't assign non-object to this.properties");
         }
       }, get: function() {
         var rec = _records[_id];
@@ -199,7 +199,7 @@ export function initFeatureProxy(lyr, arcs, optsArg) {
         if (!obj || utils.isArray(obj)) {
           lyr.shapes[_id] = obj || null;
         } else {
-          stop("Can't assign non-array to $.coordinates");
+          stop("Can't assign non-array to this.coordinates");
         }
       }, get: function() {
         return lyr.shapes[_id] || null;

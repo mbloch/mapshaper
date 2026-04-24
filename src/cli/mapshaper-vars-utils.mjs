@@ -103,15 +103,22 @@ function lookupEnvVar(name) {
 }
 
 // Resolve a single placeholder expression to a string. Recognised forms:
-//   VAR     -> defs[VAR]
+//   VAR     -> vars[VAR] if present, else defs[VAR]
 //   env.VAR -> process.env[VAR]
+//
+// vars is the templating-scope object (-vars / -defaults writes).
+// defs is the expression-scope object (-define / -calc / -include /
+//   -require / -colorizer writes). The fallback exists so that
+//   "-define base = 'out'" -> "-o {{base}}.geojson" and
+//   "-calc 'N = count()'" -> "-if '{{N}} > 100'" keep working without
+//   the user having to know which scope a value lives in.
 //
 // Throws on undefined names, invalid syntax, or non-primitive values.
 //
-function resolvePlaceholder(expr, defs) {
+function resolvePlaceholder(expr, vars, defs) {
   expr = expr.trim();
   var envMatch = /^env\.([A-Za-z_][A-Za-z0-9_]*)$/.exec(expr);
-  var val;
+  var val, source;
   if (envMatch) {
     val = lookupEnvVar(envMatch[1]);
     if (val === undefined || val === null) {
@@ -122,10 +129,14 @@ function resolvePlaceholder(expr, defs) {
   if (!isValidVarName(expr)) {
     stop('Invalid variable reference: {{' + expr + '}}');
   }
-  if (!defs || !(expr in defs)) {
+  if (vars && expr in vars) {
+    source = vars;
+  } else if (defs && expr in defs) {
+    source = defs;
+  } else {
     stop('Undefined variable: ' + expr);
   }
-  val = defs[expr];
+  val = source[expr];
   if (val === null || val === undefined) {
     stop('Undefined variable: ' + expr);
   }
@@ -137,15 +148,32 @@ function resolvePlaceholder(expr, defs) {
   return String(val);
 }
 
-// Substitute {{...}} placeholders in @str using @defs. Placeholders that
-// are preceded by a backslash are left literal (with the backslash removed).
-// Substitution is single-pass (no recursion) so that values containing
-// "{{...}}" do not trigger further interpolation.
+// Substitute {{...}} placeholders in @str.
 //
-export function interpolateString(str, defs) {
+// Two call signatures, kept for backward compatibility:
+//   interpolateString(str, vars, defs)  -- preferred, two-store form
+//   interpolateString(str, defs)        -- legacy, single-store form
+//
+// In the legacy form, the second argument is treated as the expression
+// scope (defs); there is no template scope. New callers should use the
+// two-store form.
+//
+// Placeholders preceded by a backslash are left literal (with the
+// backslash removed). Substitution is single-pass (no recursion) so
+// values containing "{{...}}" do not trigger further interpolation.
+//
+export function interpolateString(str, varsOrDefs, defsArg) {
   if (typeof str != 'string') return str;
+  var vars, defs;
+  if (arguments.length >= 3) {
+    vars = varsOrDefs;
+    defs = defsArg;
+  } else {
+    vars = null;
+    defs = varsOrDefs;
+  }
   return str.replace(PLACEHOLDER_RXP, function(match, escape, expr) {
     if (escape === '\\') return '{{' + expr + '}}';
-    return resolvePlaceholder(expr, defs);
+    return resolvePlaceholder(expr, vars, defs);
   });
 }

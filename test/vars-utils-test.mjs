@@ -84,7 +84,10 @@ describe('mapshaper-vars-utils.js', function () {
     })
   })
 
-  describe('interpolateString()', function () {
+  describe('interpolateString() -- legacy single-store form', function () {
+    // The two-argument form treats its second argument as the expression
+    // scope (defs). New callers should use the three-argument form.
+
     it('substitutes a single variable', function () {
       assert.equal(interpolateString('a {{X}} b', {X: '1'}), 'a 1 b');
     })
@@ -162,6 +165,64 @@ describe('mapshaper-vars-utils.js', function () {
       }, /not a primitive/);
       assert.throws(function () {
         interpolateString('{{X}}', {X: function () {}});
+      }, /not a primitive/);
+    })
+  })
+
+  describe('interpolateString() -- two-store form', function () {
+    // The three-argument form takes (str, vars, defs). vars is the
+    // templating scope (-vars / -defaults) and is checked first; defs
+    // is the expression scope (-define / -calc / -include / ...) and
+    // acts as a fallback so values set by those commands are still
+    // referenceable from {{X}}.
+
+    it('reads from vars when the name is in vars', function () {
+      assert.equal(
+        interpolateString('{{X}}', {X: 'from-vars'}, {X: 'from-defs'}),
+        'from-vars');
+    })
+
+    it('falls back to defs when the name is missing from vars', function () {
+      assert.equal(
+        interpolateString('{{Y}}', {X: 'a'}, {Y: 'from-defs'}),
+        'from-defs');
+    })
+
+    it('vars=null falls back to defs only', function () {
+      assert.equal(
+        interpolateString('{{X}}', null, {X: 'from-defs'}),
+        'from-defs');
+    })
+
+    it('errors if the name is in neither store', function () {
+      assert.throws(function () {
+        interpolateString('{{MISSING}}', {X: 'a'}, {Y: 'b'});
+      }, /Undefined variable: MISSING/);
+    })
+
+    it('null/undefined in vars errors rather than falling back', function () {
+      // An explicit null in vars (only reachable via -vars file.json) is
+      // treated as "set to null" and errors on read. We don't fall through
+      // to defs in this case because the user said they wanted null.
+      assert.throws(function () {
+        interpolateString('{{X}}', {X: null}, {X: 'from-defs'});
+      }, /Undefined variable: X/);
+    })
+
+    it('non-primitive in vars rejected even with defs fallback present', function () {
+      // vars is hit first; the non-primitive check applies to the
+      // resolved store, so this errors rather than silently falling
+      // through. (vars values come from -vars/-defaults which already
+      // validate primitive-only at write time, so this case shouldn't
+      // arise in practice -- the test just pins the behavior.)
+      assert.throws(function () {
+        interpolateString('{{X}}', {X: {a: 1}}, {X: 'safe'});
+      }, /not a primitive/);
+    })
+
+    it('non-primitive in defs (no vars hit) is rejected', function () {
+      assert.throws(function () {
+        interpolateString('{{X}}', {}, {X: function () {}});
       }, /not a primitive/);
     })
   })
