@@ -1,10 +1,18 @@
+v0.7.1
+* Added documentation pages and a build script.
+* The -i command can now import a string of inline CSV data on the command line.
+* When exporting snapshot files from the CLI, targeted layers will all be visible when the snapshot is opened in the web UI.
+* Improved support for exporting CRS metadata in FlatGeobuf files.
+* Writing to a `.kmz` output filename now produces a real KMZ (zipped KML) instead of uncompressed KML.
+* The -vars and -defaults commands now write to a separate templating-scope store, distinct from the expression-scope store used by -define, -calc and -include. Values set by -vars are reachable from `{{X}}` substitution but no longer silently leak into JS expressions as bare names. Use -define for values you want visible in both contexts. `{{X}}` substitution falls back to the expression scope, so existing patterns like -calc 'N = count()' followed by `{{N}}` continue to work.
+
 v0.7.0
 * Added support for command files: a sequence of mapshaper commands stored in a `.txt` file, with `#` comments and no need for shell quoting or backslash line continuations. Run a command file with `-run <file>` (or just `mapshaper commands.txt`).
 * Added `{{VAR}}` variable interpolation for mapshaper command options, resolved at run time against environment variables (`{{env.HOME}}`), variables set by `-vars` and `-defaults`, and variables defined dynamically by commands like `-calc`, `-define` and `-each`.
 * Added the -vars command to assign variables (from key=value pairs or a JSON file) and the -defaults command to set variables only if they are not already defined.
 * The -dissolve command now repairs polygon topology by default, producing correct output on inputs that contain overlaps, gaps or other topology errors. The legacy fast algorithm is still available via -dissolve no-repair, which prints a warning if it detects segment intersections in the input.
 * The -dissolve2 command is now a deprecated alias for -dissolve.
-* Added a `batch-mode` flag to the -i command, which makes batch processing of multiple input files explicit (mapshaper *.shp batch-mode -o dest/). Implicit batch mode (triggered by passing multiple files without a flag) is now deprecated and will print a notice; the default will change in a future release so multiple files are imported together unless `batch-mode` is given.
+* Added a `batch-mode` flag to the -i command, which makes batch processing of multiple input files explicit (mapshaper \*.shp batch-mode -o dest/). Implicit batch mode (triggered by passing multiple files without a flag) is now deprecated and will print a notice; the default will change in a future release so multiple files are imported together unless `batch-mode` is given.
 
 v0.6.121
 * Added session history to snapshots. This history is imported into a new session only if the session starts by opening the snapshot file.
