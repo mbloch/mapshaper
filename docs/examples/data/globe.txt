@@ -1,0 +1,21 @@
+mapshaper \
+-i ne_50m_admin_0_countries.geojson name=countries \
+-proj +proj=nsper +h=1e7 +lat_0=35 +lon_0=2.35 \
+-simplify resolution=400 \
+-lines + name=lines \
+-graticule polygon name=background \
+-filter true + name=shadow \
+-graticule target=countries name=graticule interval=20 \
+-i "lat,lon,label\n48.86,2.35,Paris" name=dot \
+-points \
+-proj match=countries \
+-filter true + name=label \
+-style target=background fill='#f7f7f7' \
+-style target=shadow fill-effect=sphere fill='#ccc' \
+-style target=graticule stroke='#ccc' \
+-style target=countries fill='#e4e4e4' \
+-style target=lines stroke='TYPE == "inner" ? "#bbb" : "#c2c2c2"' \
+-style target=dot fill='#dd0000' r=4 \
+-style target=label label-text=label text-anchor=start dy=5 dx=10 font-size=16 \
+-target background,countries,lines,graticule,dot,label,shadow \
+-o globe.svg height=400 width=600

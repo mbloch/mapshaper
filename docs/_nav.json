@@ -1,0 +1,57 @@
+{
+  "topLinks": [
+    { "label": "Home", "file": "index.md" },
+    { "label": "What's new", "file": "whats-new.md" },
+    { "label": "Command reference", "file": "reference.md", "transform": "command-reference", "mainContent": true, "description": "Exhaustive reference for every mapshaper command and its options, with short examples." },
+    { "label": "Gallery", "file": "gallery/index.md" }
+  ],
+  "sections": [
+    {
+      "label": "Getting started",
+      "path": "essentials",
+      "pages": [
+        { "label": "The command-line tool", "file": "command-line.md" },
+        { "label": "The web app", "file": "web-app.md" }
+      ]
+    },
+    {
+      "label": "Guides",
+      "path": "guides",
+      "pages": [
+        { "label": "Simplification", "file": "simplification.md" },
+        { "label": "JavaScript expressions", "file": "expressions.md" },
+        { "label": "Projections", "file": "projections.md" },
+        { "label": "Topology and cleaning", "file": "topology.md" },
+        { "label": "Combining two layers", "file": "combining-layers.md" },
+        { "label": "Using Mapshaper from Node.js", "file": "programmatic.md" }
+      ]
+    },
+    {
+      "label": "Formats",
+      "path": "formats",
+      "pages": [
+        { "label": "Overview", "file": "overview.md" },
+        { "label": "Shapefile", "file": "shapefile.md" },
+        { "label": "GeoJSON", "file": "geojson.md" },
+        { "label": "TopoJSON", "file": "topojson.md" },
+        { "label": "GeoPackage", "file": "geopackage.md" },
+        { "label": "FlatGeobuf", "file": "flatgeobuf.md" },
+        { "label": "KML / KMZ", "file": "kml.md" },
+        { "label": "CSV / TSV", "file": "csv.md" },
+        { "label": "DBF", "file": "dbf.md" },
+        { "label": "JSON records", "file": "json.md" },
+        { "label": "SVG", "file": "svg.md" },
+        { "label": "Mapshaper snapshot", "file": "snapshot.md" }
+      ]
+    },
+    {
+      "label": "Examples",
+      "path": "examples",
+      "pages": [
+        { "label": "Basics", "file": "basics.md" },
+        { "label": "Globe", "file": "globe.md" },
+        { "label": "U.S. state map", "file": "us-states.md"}
+      ]
+    }
+  ]
+}
