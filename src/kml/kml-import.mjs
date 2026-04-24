@@ -1,4 +1,3 @@
-
 import { importGeoJSON } from '../geojson/geojson-import';
 import require from '../mapshaper-require';
 

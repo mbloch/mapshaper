@@ -21,4 +21,24 @@ describe('kml i/o', function () {
     assert(/^<kml/.test(out['Albania.kml']));
   })
 
+  it('-o foo.kmz produces zipped KML and round-trips', async function() {
+    var file = 'test/data/kml/Albania.kmz';
+    var cmd = `-i ${file} -o out.kmz`;
+    var out = await api.applyCommands(cmd);
+    var content = out['out.kmz'];
+    // Output should be binary (Buffer or Uint8Array), not a KML string
+    assert(content instanceof Uint8Array || Buffer.isBuffer(content),
+      'KMZ output should be binary');
+    // ZIP local file header magic: 0x50 0x4B 0x03 0x04 ("PK\x03\x04")
+    assert.equal(content[0], 0x50);
+    assert.equal(content[1], 0x4B);
+    assert.equal(content[2], 0x03);
+    assert.equal(content[3], 0x04);
+    // Re-import the generated KMZ to confirm it's a valid round-trip
+    var cmd2 = '-i out.kmz -o format=geojson';
+    var out2 = await api.applyCommands(cmd2, {'out.kmz': content});
+    var geojson = JSON.parse(out2['out.json']);
+    assert.equal(geojson.features[0].geometry.type, 'Point');
+  })
+
 });
