@@ -1,0 +1,712 @@
+/* Mapshaper docs site
+ * Reuses the look-and-feel of mapshaper.org (page.css):
+ *   primary blue: #1385B7   accent: #10699b   bg: #f8fdff
+ */
+
+@font-face {
+  font-family: 'SourceSans3';
+  src: url('/assets/SourceSans3-VariableFont_wght.ttf') format('truetype');
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'JetBrains Mono';
+  src: url('/assets/jetbrains-mono-regular.woff2') format('woff2');
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+
+* { box-sizing: border-box; }
+
+html, body {
+  margin: 0;
+  padding: 0;
+  background-color: #f8fdff;
+  color: #333;
+  font: 16px/1.55 'SourceSans3', Arial, sans-serif;
+}
+
+a { color: #10699b; text-decoration: none; }
+a:hover { color: #1A6A96; text-decoration: underline; }
+
+code, pre, .mono {
+  font-family: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 0.88em;
+}
+
+/* --- Header ---------------------------------------------------------- */
+
+.page-header {
+  background-color: #1385B7;
+  color: white;
+  padding: 0 14px;
+  height: 36px;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+
+.mapshaper-logo,
+.mapshaper-logo:hover {
+  font-weight: 600;
+  font-size: 18px;
+  color: white;
+  text-decoration: none;
+}
+
+.mapshaper-logo .logo-highlight { color: #ffa; }
+
+.header-section-label {
+  font-weight: 400;
+  font-size: 14px;
+  color: rgba(255,255,255,0.85);
+  border-left: 1px solid rgba(255,255,255,0.3);
+  padding-left: 14px;
+}
+
+.header-nav {
+  margin-left: auto;
+  display: flex;
+  gap: 4px;
+}
+
+.header-nav a,
+.header-nav a:hover {
+  color: white;
+  text-decoration: none;
+  font-size: 14px;
+  padding: 6px 10px;
+  border-radius: 3px;
+}
+
+.header-nav a:hover { background-color: rgba(255,255,255,0.15); }
+
+.header-nav a.sponsor-link,
+.header-nav a.sponsor-link:hover { color: #ffa; }
+
+.header-nav a.sponsor-link svg {
+  width: 12px;
+  height: 12px;
+  fill: currentColor;
+  vertical-align: -1px;
+  margin-right: 2px;
+}
+
+/* --- Layout ---------------------------------------------------------- */
+
+.docs-layout {
+  display: grid;
+  grid-template-columns: 240px minmax(0, 1fr) 220px;
+  gap: 32px;
+  max-width: 1280px;
+  margin: 0 auto;
+  padding: 24px;
+  align-items: start;
+}
+
+.docs-sidebar {
+  position: sticky;
+  top: 24px;
+  align-self: start;
+  max-height: calc(100vh - 48px);
+  overflow-y: auto;
+}
+
+.sidebar-inner { padding-right: 8px; }
+
+.docs-main { min-width: 0; }
+
+.docs-article {
+  background: #fff;
+  border: 1px solid #e0e8ec;
+  border-radius: 4px;
+  padding: 28px 36px 36px;
+}
+
+.docs-toc {
+  position: sticky;
+  top: 24px;
+  align-self: start;
+  max-height: calc(100vh - 48px);
+  overflow-y: auto;
+  font-size: 14px;
+}
+
+@media (max-width: 1080px) {
+  .docs-layout { grid-template-columns: 220px minmax(0, 1fr); }
+  .docs-toc { display: none; }
+}
+
+@media (max-width: 720px) {
+  .docs-layout {
+    grid-template-columns: 1fr;
+    padding: 16px;
+    gap: 16px;
+  }
+  .docs-sidebar { position: static; max-height: none; }
+  .docs-article { padding: 20px; }
+}
+
+/* --- Sidebar nav ----------------------------------------------------- */
+
+.docs-nav h2 {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: #888;
+  margin: 18px 0 6px;
+  font-weight: 600;
+}
+
+.docs-nav ul { list-style: none; padding: 0; margin: 0; }
+
+.docs-nav li { margin: 0; }
+
+.docs-nav a {
+  display: block;
+  padding: 4px 8px;
+  border-radius: 3px;
+  color: #333;
+  font-size: 14px;
+}
+
+.docs-nav a:hover {
+  background-color: #eaf3f7;
+  color: #10699b;
+  text-decoration: none;
+}
+
+.docs-nav a.is-active {
+  background-color: #1385B7;
+  color: white;
+  font-weight: 600;
+}
+
+.docs-nav .top-links { margin-bottom: 18px; }
+.docs-nav .top-links a { font-weight: 600; }
+
+/* --- TOC ------------------------------------------------------------- */
+
+.docs-toc-title {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: #888;
+  margin: 0 0 8px;
+  font-weight: 600;
+}
+
+.docs-toc ul { list-style: none; padding: 0; margin: 0; }
+
+.docs-toc li { margin: 2px 0; }
+
+.docs-toc a {
+  color: #555;
+  display: block;
+  padding: 2px 6px;
+  border-left: 2px solid transparent;
+  line-height: 1.35;
+}
+
+.docs-toc a:hover {
+  color: #10699b;
+  border-left-color: #10699b;
+  text-decoration: none;
+}
+
+.docs-toc .lvl-3 { padding-left: 14px; font-size: 13px; }
+
+/* --- Article content ------------------------------------------------- */
+
+.docs-article h1 {
+  font-size: 32px;
+  font-weight: 600;
+  margin: 0 0 6px;
+  color: #1f2d33;
+  line-height: 1.2;
+}
+
+.docs-article > .lead {
+  font-size: 17px;
+  color: #555;
+  margin: 0 0 24px;
+}
+
+.docs-article h2 {
+  font-size: 22px;
+  font-weight: 600;
+  margin: 32px 0 10px;
+  padding-top: 8px;
+  color: #1f2d33;
+  border-top: 1px solid #eaeef0;
+  scroll-margin-top: 24px;
+}
+
+.docs-article h2:first-child,
+.docs-article h2:first-of-type:not(:first-child) { /* keep simple */ }
+
+.docs-article h3 {
+  font-size: 17px;
+  font-weight: 600;
+  margin: 22px 0 8px;
+  color: #1f2d33;
+  scroll-margin-top: 24px;
+}
+
+.docs-article h4 {
+  font-size: 15px;
+  font-weight: 600;
+  margin: 18px 0 6px;
+  color: #1f2d33;
+}
+
+.docs-article p { margin: 10px 0; }
+
+.docs-article ul,
+.docs-article ol { margin: 10px 0; padding-left: 22px; }
+
+.docs-article li { margin: 4px 0; }
+
+.docs-article code {
+  background-color: #f3f6f8;
+  padding: 1px 5px;
+  border-radius: 3px;
+  border: 1px solid #e6ecef;
+  white-space: nowrap;
+}
+
+.docs-article pre {
+  background-color: #1e2a30;
+  color: #e9eef1;
+  padding: 14px 16px;
+  border-radius: 4px;
+  overflow-x: auto;
+  line-height: 1.5;
+}
+
+/* --- Copy-to-clipboard button on code blocks ------------------------- */
+
+.docs-article pre.has-copy-btn { position: relative; }
+
+.copy-btn {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  padding: 3px 8px;
+  font: inherit;
+  font-size: 11px;
+  line-height: 1.2;
+  color: #cdd6da;
+  background-color: rgba(255,255,255,0.08);
+  border: 1px solid rgba(255,255,255,0.18);
+  border-radius: 3px;
+  cursor: pointer;
+  transition: background-color 0.15s ease, color 0.15s ease, border-color 0.15s ease;
+}
+
+.copy-btn:hover,
+.copy-btn:focus {
+  background-color: rgba(255,255,255,0.18);
+  color: #fff;
+  outline: none;
+}
+
+.copy-btn.is-flashing {
+  color: #cdeac8;
+  border-color: rgba(180, 230, 160, 0.4);
+}
+
+.docs-article pre code {
+  background: transparent;
+  border: 0;
+  padding: 0;
+  white-space: pre;
+  color: inherit;
+}
+
+/* highlight.js theme overrides:
+ * Use the theme's per-token colors but keep our own pre/code background and
+ * padding (the theme would otherwise paint a different shade of dark behind
+ * the code and add inconsistent padding). */
+.docs-article pre code.hljs,
+.docs-article code.hljs {
+  background: transparent;
+  padding: 0;
+  color: inherit;
+}
+
+.docs-article blockquote {
+  border-left: 3px solid #1385B7;
+  margin: 14px 0;
+  padding: 4px 14px;
+  color: #444;
+  background-color: #f3f8fb;
+}
+
+.docs-article table {
+  border-collapse: collapse;
+  margin: 14px 0;
+  font-size: 14px;
+}
+
+.docs-article th,
+.docs-article td {
+  border: 1px solid #e0e8ec;
+  padding: 6px 10px;
+  text-align: left;
+  vertical-align: top;
+}
+
+.docs-article th { background-color: #f3f6f8; font-weight: 600; }
+
+/* Wrapper for wide tables (e.g. the formats comparison matrix) so they
+ * scroll horizontally instead of overflowing the article on narrow screens. */
+.formats-table-wrap { overflow-x: auto; }
+.formats-table-wrap table { margin: 14px 0; }
+
+.docs-article hr {
+  border: 0;
+  border-top: 1px solid #e0e8ec;
+  margin: 28px 0;
+}
+
+/* Breadcrumbs */
+.docs-breadcrumbs {
+  font-size: 13px;
+  color: #888;
+  margin: 0 0 14px;
+}
+
+.docs-breadcrumbs a { color: #10699b; }
+
+/* Edit link footer */
+.edit-link {
+  margin-top: 36px;
+  padding-top: 14px;
+  border-top: 1px solid #eaeef0;
+  font-size: 13px;
+  color: #888;
+}
+
+/* --- Home page ------------------------------------------------------- */
+
+body.is-home .docs-article { padding: 32px 40px 40px; }
+
+.section-cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 14px;
+  margin: 24px 0 12px;
+}
+
+.section-card {
+  display: block;
+  border: 1px solid #d9e3e8;
+  border-radius: 4px;
+  padding: 16px 18px;
+  background-color: #fff;
+  color: inherit;
+  transition: border-color 0.1s, box-shadow 0.1s;
+}
+
+.section-card:hover {
+  border-color: #1385B7;
+  box-shadow: 0 1px 4px rgba(19, 133, 183, 0.12);
+  text-decoration: none;
+  color: inherit;
+}
+
+.section-card .card-title {
+  font-weight: 600;
+  font-size: 16px;
+  color: #1f2d33;
+  margin: 0 0 4px;
+}
+
+.section-card .card-desc {
+  font-size: 14px;
+  color: #555;
+  margin: 0;
+}
+
+.quickstart {
+  background-color: #1e2a30;
+  color: #e9eef1;
+  border-radius: 4px;
+  padding: 18px 20px;
+  margin: 24px 0;
+}
+
+.quickstart h3 {
+  margin: 0 0 8px;
+  font-size: 14px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: #9ec3d4;
+  font-weight: 600;
+}
+
+.quickstart pre {
+  margin: 0;
+  background: transparent;
+  padding: 0;
+}
+
+/* --- Command-reference search ---------------------------------------- */
+
+.cmd-search-wrap {
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  background-color: #fff;
+  /* break out of the article's padding so the bottom border spans full width */
+  margin: 0 -36px 18px;
+  padding: 12px 36px 10px;
+  border-bottom: 1px solid #eaeef0;
+}
+
+.cmd-search-input {
+  width: 100%;
+  padding: 8px 12px;
+  font-family: inherit;
+  font-size: 15px;
+  color: inherit;
+  background-color: #fff;
+  border: 1px solid #c8d4d9;
+  border-radius: 4px;
+  -webkit-appearance: none;
+  appearance: none;
+}
+
+.cmd-search-input:focus {
+  outline: none;
+  border-color: #1385B7;
+  box-shadow: 0 0 0 3px rgba(19, 133, 183, 0.2);
+}
+
+/* Floating dropdown of matching commands. Positioned just below the input
+ * within the sticky wrap, so it overlays page content rather than pushing
+ * sections out of the way. */
+.cmd-search-results {
+  position: absolute;
+  left: 36px;
+  right: 36px;
+  top: 100%;
+  margin-top: 4px;
+  background-color: #fff;
+  border: 1px solid #c8d4d9;
+  border-radius: 4px;
+  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.12);
+  overflow: hidden;
+}
+
+.cmd-search-status {
+  font-size: 13px;
+  color: #6a7a82;
+  padding: 6px 12px;
+  background-color: #f4f8fa;
+  border-bottom: 1px solid #eaeef0;
+}
+
+.cmd-search-list {
+  list-style: none;
+  margin: 0;
+  padding: 4px 0;
+  max-height: 360px;
+  overflow-y: auto;
+}
+
+.cmd-result {
+  margin: 0;
+}
+
+.cmd-result-link {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+  padding: 6px 12px;
+  color: inherit;
+  text-decoration: none;
+  cursor: pointer;
+}
+
+.cmd-result-link:hover {
+  text-decoration: none;
+}
+
+.cmd-result.is-active .cmd-result-link {
+  background-color: #e8f3f9;
+  color: #10699b;
+}
+
+.cmd-result-name {
+  font-family: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 0.92em;
+  color: #10699b;
+  white-space: nowrap;
+}
+
+.cmd-result.is-active .cmd-result-name {
+  color: inherit;
+}
+
+.cmd-result-cat {
+  margin-left: auto;
+  font-size: 12px;
+  color: #8a9aa3;
+  white-space: nowrap;
+}
+
+/* When the user clicks an anchor on the command reference page, leave room
+ * for the sticky search bar above the target heading so it doesn't end up
+ * hidden behind the bar. The :has() selector scopes the rule to the
+ * command reference article (the only one with a .cmd-search-wrap), so
+ * every id'd heading in that article -- including the prose headings
+ * above the first command (Conventions, Common options, Command files,
+ * Variable interpolation, Index of commands) -- gets the offset.
+ * scroll-margin-top has to live on the actual scroll target, which is the
+ * heading itself (the id is on the h2/h3/h4, not the wrapping section). */
+.docs-article:has(.cmd-search-wrap) :is(h2, h3, h4)[id],
+.docs-article:has(.cmd-search-wrap) .cmd-section {
+  scroll-margin-top: 76px;
+}
+
+@media (max-width: 720px) {
+  .cmd-search-wrap { margin: 0 -20px 14px; padding: 10px 20px 8px; }
+  .cmd-search-results { left: 20px; right: 20px; }
+  .docs-article:has(.cmd-search-wrap) :is(h2, h3, h4)[id],
+  .docs-article:has(.cmd-search-wrap) .cmd-section {
+    scroll-margin-top: 64px;
+  }
+}
+
+/* --- Gallery -------------------------------------------------------- */
+
+.gallery-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 18px;
+  margin: 20px 0 28px;
+}
+
+.gallery-tile {
+  display: flex;
+  flex-direction: column;
+  border: 1px solid #d9e3e8;
+  border-radius: 4px;
+  background-color: #fff;
+  color: inherit;
+  overflow: hidden;
+  transition: border-color 0.1s, box-shadow 0.1s;
+}
+
+.gallery-tile:hover {
+  border-color: #1385B7;
+  box-shadow: 0 2px 8px rgba(19, 133, 183, 0.15);
+  text-decoration: none;
+  color: inherit;
+}
+
+.gallery-tile-image {
+  background-color: #f3f6f8;
+  aspect-ratio: 3 / 2;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+}
+
+.gallery-tile-image img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  display: block;
+}
+
+.gallery-tile-caption {
+  padding: 12px 14px 14px;
+}
+
+.gallery-tile-title {
+  font-weight: 600;
+  font-size: 15px;
+  color: #1f2d33;
+  margin: 0 0 4px;
+}
+
+.gallery-tile-desc {
+  font-size: 13px;
+  color: #555;
+  line-height: 1.4;
+}
+
+/* Home-page featured strip: same tile look, smaller grid, no descriptions. */
+.featured-maps {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 14px;
+  margin: 16px 0 8px;
+}
+
+.featured-maps .gallery-tile-image { aspect-ratio: 3 / 2; }
+.featured-maps .gallery-tile-caption { padding: 10px 12px 12px; }
+.featured-maps .gallery-tile-title { font-size: 14px; }
+
+.featured-maps-link {
+  margin: 0 0 16px;
+  font-size: 14px;
+}
+
+/* Example-page hero image: the <img> emitted by <!-- mapshaper:image -->.
+ * Targets the first paragraph that contains a single image inside an article.
+ * Keeps the image full-width but capped, with a subtle frame to match tiles. */
+.docs-article .example-hero,
+.docs-article p > img:only-child {
+  display: block;
+  max-width: 100%;
+  height: auto;
+  margin: 16px auto;
+  background-color: #f3f6f8;
+  border: 1px solid #e0e8ec;
+  border-radius: 4px;
+}
+
+/* What's-new entries */
+.whats-new-entry {
+  border-left: 3px solid #1385B7;
+  padding: 4px 14px;
+  margin: 18px 0;
+  background-color: #f3f8fb;
+}
+
+.whats-new-entry .date {
+  font-size: 13px;
+  color: #777;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+/* --- Footer ---------------------------------------------------------- */
+
+.docs-footer {
+  border-top: 1px solid #e0e8ec;
+  margin-top: 24px;
+  padding: 16px 0;
+  background-color: #fff;
+}
+
+.docs-footer-inner {
+  max-width: 1280px;
+  margin: 0 auto;
+  padding: 0 24px;
+  display: flex;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 12px;
+  font-size: 13px;
+  color: #777;
+}
+
+.docs-footer a { color: #777; }

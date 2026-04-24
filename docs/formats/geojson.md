@@ -1,0 +1,65 @@
+---
+title: GeoJSON
+description: How Mapshaper reads and writes GeoJSON, including precision, ndjson and RFC 7946 options.
+---
+
+# GeoJSON
+
+GeoJSON is a simple, human-readable format for geospatial vector data. It is used by many web mapping APIs, although formats like TopoJSON, FlatGeobuf, GeoParquet, and vector tiles have replaced it for specific use cases such as large-file efficiency, cloud-optimized access, and tiled rendering.
+
+**File extensions:** `.json`, `.geojson` &middot; **Read:** &check; &middot; **Write:** &check; &middot; **Multi-layer:** one layer per file (combinable)
+
+### CLI examples
+
+```bash
+mapshaper input.shp -o provinces.geojson
+mapshaper input.shp -o precision=0.001 prettify provinces.geojson
+```
+
+### Format-specific input options
+
+- `id-field=` &mdash; import the value of each Feature's top-level `id` property into a data field of the given name.
+- `json-path=` &mdash; for files where the GeoJSON object is nested inside a larger JSON document, e.g. `json-path=data/regions`.
+
+### Format-specific output options
+
+- `precision=` &mdash; round coordinates to a fixed precision. This is a simple way to reduce file size.
+- `prettify` &mdash; pretty-print the JSON with line breaks and indentation.
+- `id-field=` &mdash; promote one or more attribute fields to the GeoJSON `id` property (comma-separated; first matching field per layer is used).
+- `bbox` &mdash; add a `bbox` array to the top-level FeatureCollection.
+- `extension=` &mdash; override the default `.json` extension (e.g. `extension=geojson`).
+- `combine-layers` &mdash; merge multiple layers into a single GeoJSON output file (geometries are kept separate as Features, attribute schemas are unioned).
+- `geojson-type=` &mdash; output a `Feature`, `FeatureCollection` or bare `GeometryCollection` instead of the default FeatureCollection.
+- `no-null-props` &mdash; emit `"properties": {}` instead of `"properties": null` for Features without attributes.
+- `hoist=` &mdash; promote one or more properties out of the `properties` object onto the Feature itself. Useful for non-standard consumers like [tippecanoe](https://github.com/felt/tippecanoe).
+- `gj2008` &mdash; emit pre-RFC-7946 GeoJSON (clockwise outer rings). This option produces files that can be rendered with `d3`.
+- `ndjson` &mdash; write one Feature per line as newline-delimited JSON (works with the [`json` records](/docs/formats/json.html) family of options as well).
+- `id-prefix=` &mdash; prefix layer/feature ids when exporting multiple layers.
+
+### Practical notes
+
+- The GeoJSON spec states that GeoJSON uses WGS-84 coordinates (the lat-long coordinate system used by GPS), but Mapshaper will also export GeoJSON files with projected coordinates.
+- Coordinates are emitted at full precision &mdash; consider `precision=` to reduce file size. `precision=0.0001` equates to ~11 m at the equator, ~8 m in New York City, and ~6 m in Reykjavík, Iceland.
+- Polygon ring winding follows RFC 7946 (CCW outer, CW holes); the `gj2008` option outputs the CW outer rings expected by `d3`.
+- Output is minified by default; pass `prettify` for human-readable JSON.
+- If you are loading the data into a web map and you want the smallest possible file size, consider [TopoJSON](/docs/formats/topojson.html) as an alternative to GeoJSON. For datasets with shared boundaries, file sizes are often a fraction of the equivalent GeoJSON size.
+- `precision=` rounding can introduce sliver overlaps at boundaries. Pair it with `fix-geometry` if downstream tools are strict.
+
+### Reading very large GeoJSON files
+
+Mapshaper's custom GeoJSON parser is not limited by the ~500 MB ceiling affecting tools that use `JSON.parse()`.
+
+In the [web app](/docs/essentials/web-app.html), the theoretical upper bound is around 2 GB per file in most browsers, though in practice the browser may run out of memory and crash well before that. If a GeoJSON is too big to open in the browser, use the CLI instead.
+
+`mapshaper-xl` can handle multi-gigabyte files. It allocates 8 GB of memory by default, but you can assign more.
+
+```bash
+mapshaper-xl huge.geojson -info
+mapshaper-xl 32gb huge.geojson -simplify 5% -o huge.topojson
+```
+
+## External resources
+
+- [RFC 7946: The GeoJSON Format](https://datatracker.ietf.org/doc/html/rfc7946) &mdash; the IETF specification Mapshaper writes by default.
+- [More than you ever wanted to know about GeoJSON](https://macwright.com/2015/03/23/geojson-second-bite.html) &mdash; Tom MacWright's detailed practical introduction.
+- [geojson.org](https://geojson.org/) &mdash; spec home with links to tooling and validators.
