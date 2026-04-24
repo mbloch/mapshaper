@@ -43,8 +43,8 @@ code, pre, .mono {
   /* Asymmetric vertical padding (4px top, 8px bottom) optically centers the
      baseline-aligned row: ascenders are taller than descenders, so equal
      padding makes the text look ~2px low. */
-  padding: 4px 14px 8px;
-  height: 36px;
+  padding: 2px 14px 8px;
+  height: 32px;
   display: flex;
   /* baseline-align so the 18px logo and the 14px nav text share a baseline,
      not just a vertical center */
@@ -175,7 +175,7 @@ code, pre, .mono {
   display: block;
   /* Asymmetric vertical padding (6px top, 2px bottom) optically centers
      the text inside the active/hover background. */
-  padding: 6px 8px 2px;
+  padding: 5px 8px 2px;
   border-radius: 3px;
   color: #333;
   font-size: 14px;

@@ -7,6 +7,7 @@ import { AlertControl } from './gui-alert';
 import { IntersectionControl } from './gui-intersection-control';
 import { ExportControl } from './gui-export-control';
 import { LayerControl } from './gui-layer-control';
+import { HeaderMenu } from './gui-header-menu';
 import { GuiInstance } from './gui-instance';
 import { onload } from './dom-utils';
 import { GUI } from './gui-lib';
@@ -66,6 +67,7 @@ var startEditing = function() {
   new ImportControl(gui, importOpts);
   new ExportControl(gui);
   new LayerControl(gui);
+  HeaderMenu();
   gui.console = new Console(gui);
 
   startEditing = function() {};
