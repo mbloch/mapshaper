@@ -6,7 +6,9 @@ Mapshaper is software for editing Shapefile, GeoJSON, [TopoJSON](https://github.
 
 Mapshaper supports essential map making tasks like simplifying shapes, editing attribute data, clipping, erasing, dissolving, filtering and more.
 
-See the [project wiki](https://github.com/mbloch/mapshaper/wiki) for documentation on how to use mapshaper.
+See the [documentation](https://mapshaper.org/docs/) for guides, examples and a complete command reference.
+
+If you're using an AI assistant or another tool that can read documentation, point it at [`mapshaper.org/llms.txt`](https://mapshaper.org/llms.txt) — an [llms.txt](https://llmstxt.org/) index of every docs page in machine-readable form. Each page is also available as Markdown by appending `.md` to its URL (for example, [`mapshaper.org/docs/essentials/command-line.html.md`](https://mapshaper.org/docs/essentials/command-line.html.md)). The full corpus in a single file is at [`mapshaper.org/llms-full.txt`](https://mapshaper.org/llms-full.txt).
 
 To suggest improvements, add an [issue](https://github.com/mbloch/mapshaper/issues).
 
@@ -19,9 +21,9 @@ Mapshaper includes several command line programs, which can be run under Mac OS 
 * `mapshaper-xl` Works the same as `mapshaper`, but runs with more RAM to support larger files.
 * `mapshaper-gui` Runs the mapshaper Web interface locally.
 
-The project wiki has an [introduction](https://github.com/mbloch/mapshaper/wiki/Introduction-to-the-Command-Line-Tool) to using the command line tool that includes many simple examples.
+The docs include an [introduction](https://mapshaper.org/docs/essentials/command-line.html) to using the command line tool that includes many simple examples.
 
-For a detailed reference, see the [Command Reference](https://github.com/mbloch/mapshaper/wiki/Command-Reference).
+For a detailed reference, see the [Command Reference](https://mapshaper.org/docs/reference.html).
 
 
 ## Interactive web interface

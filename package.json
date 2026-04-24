@@ -1,6 +1,6 @@
 {
   "name": "mapshaper",
-  "version": "0.7.0",
+  "version": "0.7.1",
   "description": "A tool for editing vector datasets for mapping and GIS.",
   "keywords": [
     "shapefile",
@@ -25,6 +25,7 @@
   "scripts": {
     "test": "mocha test",
     "build": "rollup --config",
+    "docs": "node build-docs.mjs",
     "lint": "eslint --ext mjs src/",
     "prepublishOnly": "npm test; ./pre-publish",
     "postpublish": "./release_web_ui; ./release_github_version",
@@ -72,6 +73,8 @@
     "@rollup/plugin-node-resolve": "^16.0.1",
     "csv-spectrum": "^1.0.0",
     "eslint": "^8.16.0",
+    "highlight.js": "^11.11.1",
+    "marked": "^18.0.2",
     "mocha": "^10.2.0",
     "rollup": "^4.44.1",
     "rollup-plugin-polyfill-node": "^0.13.0",
@@ -81,7 +84,7 @@
   "mocha": {
     "reporter": "dot",
     "node-option": [
-      "experimental-loader=./test/_loader.js"
+      "import=./test/_register.mjs"
     ],
     "check-leaks": true,
     "parallel": true,
