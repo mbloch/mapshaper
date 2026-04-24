@@ -24,7 +24,8 @@ export function Console(gui) {
   var historyId = 0;
   var _isOpen = false;
   var btn = gui.container.findChild('.console-btn').on('click', toggle);
-  var globals = {}; // share user-defined globals between runs
+  var globals = {}; // share user-defined globals (job.defs) between runs
+  var sharedVars = {}; // share -vars / -defaults templating scope between runs
 
   // expose this function, so other components can run commands (e.g. box tool)
   this.runMapshaperCommands = runMapshaperCommands;
@@ -428,6 +429,7 @@ export function Console(gui) {
         job = new internal.Job(model);
 
     job.defs = globals; // share globals between runs
+    job.vars = sharedVars; // share templating scope between runs
     internal.runParsedCommands(commands, job, function(err) {
       var flags = getCommandFlags(commands),
           active2 = model.getActiveLayer(),

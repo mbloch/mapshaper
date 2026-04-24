@@ -69,8 +69,9 @@ export function parseConsoleCommands(raw) {
 //     "-i <token>" (data file).
 //
 // "{{VAR}}" placeholders are substituted at execution time, against the
-// live job.defs object. See mapshaper-vars-utils.mjs and the late-binding
-// hook in mapshaper-run-commands.mjs.
+// live job.vars object (with job.defs as a fallback for values written by
+// -define / -calc / -include). See mapshaper-vars-utils.mjs and the
+// late-binding hook in mapshaper-run-commands.mjs.
 //
 export function parseCommandFileContent(content) {
   if (typeof content != 'string') {

@@ -7,6 +7,7 @@ export function Job(catalog) {
   var job = {
     catalog: catalog || new Catalog(),
     defs: {},
+    vars: {},
     settings: {},
     input_files: []
   };
@@ -42,5 +43,6 @@ function stashVars(job, cmd) {
   stashVar('VERBOSE', job.settings.VERBOSE || cmd.verbose);
   stashVar('QUIET', job.settings.QUIET || cmd.quiet);
   stashVar('defs', job.defs);
+  stashVar('vars', job.vars);
   stashVar('input_files', job.input_files);
 }

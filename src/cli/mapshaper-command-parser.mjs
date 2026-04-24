@@ -188,7 +188,7 @@ export function CommandParser() {
         if (!optDef) {
           // left-hand identifier is not a recognized option...
           // assignment to an unrecognized identifier could be an expression
-          // (e.g. -each 'id=$.id') -- handle this case below
+          // (e.g. -each 'id=this.id') -- handle this case below
         } else if (optDef.type == 'flag' || optDef.assign_to) {
           stop("-" + cmdDef.name + " " + parts[0] + " option doesn't take a value");
         } else {

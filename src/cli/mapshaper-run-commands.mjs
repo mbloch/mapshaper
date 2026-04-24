@@ -262,8 +262,9 @@ export function runParsedCommands(commands, job, done) {
 }
 
 // Late-binding interpolation: just before each command runs, replace any
-// {{X}} placeholders in its source tokens against the live job.defs object,
-// then re-parse to get fresh option values.
+// {{X}} placeholders in its source tokens against the live job.vars and
+// job.defs objects (vars first, defs as fallback), then re-parse to get
+// fresh option values.
 //
 // Returns either the original cmd (no placeholders, no _tokens, or the
 // command will be skipped) or a fresh cmd object with re-parsed options.
@@ -278,11 +279,12 @@ function maybeInterpolateCommand(cmd, job) {
   // variables shouldn't error here.
   if (skipCommand(cmd.name, job)) return cmd;
 
+  var vars = job.vars || {};
   var defs = job.defs || {};
   var interpolated;
   try {
     interpolated = tokens.map(function(tok) {
-      return interpolateString(tok, defs);
+      return interpolateString(tok, vars, defs);
     });
   } catch(e) {
     e.message = '[' + cmd.name + '] ' + e.message;

@@ -377,7 +377,7 @@ describe('mapshaper-run-command-file.js', function() {
       assert.equal(out['out.csv'], 'a,b\n2,y\n3,z');
     });
 
-    it('-defaults is a no-op when defs.X is already set', async function() {
+    it('-defaults is a no-op when vars.X is already set', async function() {
       var input = { 'data.csv': 'a,b\n1,2\n' };
       var out = await api.applyCommands(
         '-vars X=keep -defaults X=overwrite -i data.csv -o {{X}}.csv',
@@ -427,6 +427,91 @@ describe('mapshaper-run-command-file.js', function() {
       await api.applyCommands(
         '-vars MSG="hello world" -i data.csv -print {{MSG}}',
         input);
+    });
+
+  });
+
+  describe('vars / defs scope split', function() {
+
+    it('-vars values are NOT visible by bare name in JS expressions', async function() {
+      // -vars writes to job.vars (templating scope). -each reads from
+      // job.defs only. A bare reference to X in -each that isn't a data
+      // field is a ReferenceError, which is the desired loud failure --
+      // before the split, `X` would have silently coerced to the string
+      // "fromvars" and produced wrong arithmetic / equality results.
+      var input = { 'data.csv': 'a,b\n1,x\n' };
+      var err;
+      try {
+        await api.applyCommands(
+          "-vars X=fromvars -i data.csv -each 'd.got = X' -o out.csv",
+          input);
+      } catch(e) { err = e; }
+      assert.ok(err);
+      assert.ok(/X is not defined/.test(err.message),
+        'expected ReferenceError on bare -vars name; got: ' + (err && err.message));
+    });
+
+    it('-define values ARE visible by bare name in -each expressions', async function() {
+      // -define writes to job.defs (expression scope). Bare X in -each
+      // resolves to it.
+      var input = { 'data.csv': 'a,b\n1,x\n' };
+      var out = await api.applyCommands(
+        "-i data.csv -define 'X = \"fromdef\"' -each 'd.got = X' -o out.csv",
+        input);
+      assert.equal(out['out.csv'], 'a,b,got\n1,x,fromdef');
+    });
+
+    it('{{X}} reads from vars when the name is in vars', async function() {
+      var input = { 'data.csv': 'a,b\n1,2\n' };
+      var out = await api.applyCommands(
+        '-vars NAME=fromvars -i data.csv -o {{NAME}}.csv',
+        input);
+      assert.ok(out['fromvars.csv']);
+    });
+
+    it('{{X}} falls back to defs when the name is missing from vars', async function() {
+      // The bridge rule: -define puts the value in defs; {{X}} sees it
+      // because vars has no X and defs is the fallback.
+      var input = { 'data.csv': 'a,b\n1,2\n' };
+      var out = await api.applyCommands(
+        "-i data.csv -define 'NAME = \"fromdef\"' -o {{NAME}}.csv",
+        input);
+      assert.ok(out['fromdef.csv']);
+    });
+
+    it('-vars and -define can coexist with the same name', async function() {
+      // No clobbering: vars.X and defs.X are independent. {{X}} sees the
+      // vars value (vars-first rule); the expression sees the defs value.
+      var input = { 'data.csv': 'a,b\n1,2\n' };
+      var out = await api.applyCommands(
+        "-vars X=fromvars -i data.csv -define 'X = \"fromdef\"' " +
+        "-each 'd.got = X' -o {{X}}.csv",
+        input);
+      // Filename comes from vars (vars-first in interpolation)
+      assert.ok(out['fromvars.csv']);
+      // Field value comes from defs (expression scope)
+      assert.equal(out['fromvars.csv'], 'a,b,got\n1,2,fromdef');
+    });
+
+    it('-defaults checks the vars scope, not defs', async function() {
+      // -define earlier writes X to defs only. -defaults X=... should
+      // still apply because vars.X is unset; it writes to vars.
+      var input = { 'data.csv': 'a,b\n1,2\n' };
+      var out = await api.applyCommands(
+        "-i data.csv -define 'X = \"fromdef\"' " +
+        "-defaults X=fromdefaults -o {{X}}.csv",
+        input);
+      // Defaults won (vars.X was unset). {{X}} hits vars first.
+      assert.ok(out['fromdefaults.csv']);
+    });
+
+    it('-calc result in defs is reachable via {{X}} (fallback)', async function() {
+      // Regression: -calc 'N = count()' must keep flowing into {{N}}.
+      var input = { 'data.csv': 'a\n1\n2\n3\n' };
+      var out = await api.applyCommands(
+        "-i data.csv -calc 'N = count()' -o count_{{N}}.csv",
+        input);
+      assert.ok(out['count_3.csv']);
     });
 
   });

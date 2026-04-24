@@ -24,7 +24,7 @@ cmd.calc = function(layers, arcs, opts) {
 // Calculate an expression across a group of features, print and return the result
 // Supported functions include sum(), average(), max(), min(), median(), count()
 // Functions receive an expression to be applied to each feature (like the -each command)
-// Examples: 'sum($.area)' 'min(income)'
+// Examples: 'sum(this.area)' 'min(income)'
 // opts.expression  Expression to evaluate
 // opts.where  Optional filter expression (see -filter command)
 //

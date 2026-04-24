@@ -927,7 +927,7 @@ export function getOptionParser() {
   parser.command('each')
     .describe('create/update/delete data fields using a JS expression')
     .example('Add two calculated data fields to a layer of U.S. counties\n' +
-        '$ mapshaper counties.shp -each \'STATE_FIPS=CNTY_FIPS.substr(0, 2), AREA=$.area\'')
+        '$ mapshaper counties.shp -each \'STATE_FIPS=CNTY_FIPS.substr(0, 2), AREA=this.area\'')
     .option('expression', {
       DEFAULT: true,
       describe: 'JS expression to apply to each target feature'
@@ -2256,7 +2256,7 @@ export function getOptionParser() {
   parser.command('calc')
     .describe('calculate statistics about the features in a layer')
     .example('Calculate the total area of a polygon layer\n' +
-      '$ mapshaper polygons.shp -calc \'sum($.area)\'')
+      '$ mapshaper polygons.shp -calc \'sum(this.area)\'')
     .example('Count census blocks in NY with zero population\n' +
       '$ mapshaper ny-census-blocks.shp -calc \'count()\' where=\'POPULATION == 0\'')
     .validate(V.validateExpressionOpt)
