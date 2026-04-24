@@ -175,7 +175,7 @@ code, pre, .mono {
   display: block;
   /* Asymmetric vertical padding (6px top, 2px bottom) optically centers
      the text inside the active/hover background. */
-  padding: 6px 8px 2px;
+  padding: 5px 8px 2px;
   border-radius: 3px;
   color: #333;
   font-size: 14px;

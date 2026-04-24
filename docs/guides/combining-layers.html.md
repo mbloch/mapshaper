@@ -20,6 +20,14 @@ We'll use two source files:
 - A county boundary file from the California Open Data Portal &mdash; or, in this case, a [version clipped to the shoreline](https://geodata.lib.berkeley.edu/catalog/ark28722-s7hs4j) from UC Berkeley's Geo Data Commons. The shoreline-clipped version reads more naturally on a map than the legal-boundary version, which extends into the bay.
 - A statewide [places boundary file](https://geodata.lib.berkeley.edu/catalog/ark28722-s7bp4z) for city boundaries.
 
+The legal county boundaries from the Census TIGER files extend straight across the water &mdash; San Francisco even reaches out to include the Farallon Islands:
+
+![Bay Area counties from the Census TIGER file, with boundaries cutting across the bay and extending offshore](/docs/images/tiger-counties.png)
+
+The Berkeley library's version is clipped to the shoreline, so the bay shows as empty space between the counties:
+
+![The same Bay Area counties, with each polygon clipped to the coastline so the bay is visible between them](/docs/images/cal-counties.png)
+
 Download both as `.zip` files.
 
 ## Open them in Mapshaper

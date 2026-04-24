@@ -170,7 +170,7 @@ body.map-view {
 	position: absolute;
 	top: 0px;
 	right: 0px;
-	margin: 0 6px 3px 0;	
+	margin: 0 3px 3px 0;
 }
 
 .btn.header-btn {
@@ -205,6 +205,63 @@ body.map-view {
 	height: 12px;
 	fill: currentColor;
 	vertical-align: -1px;
+}
+
+/* --- Hamburger menu (post-edit overflow links) --- */
+
+#header-menu-btn {
+	cursor: pointer;
+	padding: 8px 7px 4px 7px;
+	user-select: none;
+	/* All header buttons are 29px tall, so top-align the hamburger to keep its
+	   row baseline-neutral. Without this, the SVG-only button (no text) makes
+	   its inline-block baseline = bottom edge, which drags the surrounding
+	   text-containing buttons down to match. */
+	vertical-align: top;
+}
+
+#header-menu-btn svg {
+	display: block;
+	fill: currentColor;
+}
+
+#header-menu-dropdown {
+	position: absolute;
+	top: 30px;
+	right: 0;
+	min-width: 180px;
+	background-color: #fff;
+	color: #333;
+	border: 1px solid #ccc;
+	border-radius: 3px;
+	box-shadow: 0 2px 6px rgba(0, 0, 0, 0.15);
+	padding: 4px 0;
+	z-index: 50;
+}
+
+.header-menu-item {
+	display: block;
+	padding: 4px 14px;
+	color: #333;
+	font-size: 14px;
+	line-height: 1.3;
+	text-decoration: none;
+	white-space: nowrap;
+}
+
+.header-menu-item:hover,
+.header-menu-item:focus {
+	background-color: #e6f7ff;
+	color: #1A6A96;
+	outline: none;
+}
+
+.header-menu-item.header-menu-sponsor svg {
+	width: 12px;
+	height: 12px;
+	fill: #d63384;
+	vertical-align: -1px;
+	margin-right: 6px;
 }
 
 .separator {

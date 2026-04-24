@@ -52,6 +52,10 @@
 <li>A county boundary file from the California Open Data Portal &mdash; or, in this case, a <a href="https://geodata.lib.berkeley.edu/catalog/ark28722-s7hs4j">version clipped to the shoreline</a> from UC Berkeley&#39;s Geo Data Commons. The shoreline-clipped version reads more naturally on a map than the legal-boundary version, which extends into the bay.</li>
 <li>A statewide <a href="https://geodata.lib.berkeley.edu/catalog/ark28722-s7bp4z">places boundary file</a> for city boundaries.</li>
 </ul>
+<p>The legal county boundaries from the Census TIGER files extend straight across the water &mdash; San Francisco even reaches out to include the Farallon Islands:</p>
+<p><img src="/docs/images/tiger-counties.png" alt="Bay Area counties from the Census TIGER file, with boundaries cutting across the bay and extending offshore"></p>
+<p>The Berkeley library&#39;s version is clipped to the shoreline, so the bay shows as empty space between the counties:</p>
+<p><img src="/docs/images/cal-counties.png" alt="The same Bay Area counties, with each polygon clipped to the coastline so the bay is visible between them"></p>
 <p>Download both as <code>.zip</code> files.</p>
 <h2 id="open-them-in-mapshaper">Open them in Mapshaper</h2>
 <p>Drag the two <code>.zip</code> files onto <a href="/">mapshaper.org</a>, or run the web app locally with <code>mapshaper-gui</code>. You&#39;ll end up with two layers loaded into the session.</p>
