@@ -462,13 +462,13 @@ mapshaper counties.shp \
 <p><code>holes</code>  Delete any holes from a polygon layer.</p>
 <p><code>target=</code>  Layer(s) to target.</p>
 </section>
-<section class="cmd-section" data-id="-each" data-name="-each" data-options="this expression where target calc weight radius bbox"><h3 id="-each">-each</h3>
+<section class="cmd-section" data-id="-each" data-name="-each" data-options="this expression where target"><h3 id="-each">-each</h3>
 <p>Apply a JavaScript expression to each feature in a layer. Data properties are available as local variables; the feature&#39;s geometry-derived properties are available on the <code>this</code> object (e.g. <code>this.area</code>, <code>this.centroidX</code>, <code>this.bbox</code>).</p>
 <p><strong>Tip:</strong> Enclose JS expressions in single quotes when using the bash shell (Mac and Linux) to avoid shell expansion of <code>!</code> and other special characters. Using the Windows command interpreter, enclose JS expressions in double quotes.</p>
 <p><code>&lt;expression&gt;</code> or <code>expression=</code>  JavaScript expression to apply to each feature.</p>
 <p><code>where=</code>  Secondary boolean JS expression for targetting a subset of features.</p>
 <p><code>target=</code>  Layer to target.</p>
-<p>The same expression syntax and execution context are used by <code>-each</code>, <code>-filter</code>, <code>-sort</code>, <code>-inspect</code>, <code>-split</code>, <code>-subdivide</code>, <code>-calc</code> (and <code>calc=</code> options on <code>-dissolve</code>, <code>-join</code>, etc.), <code>-style</code>, <code>-symbols</code>, and any <code>where=</code>, <code>weight=</code>, <code>radius=</code> or <code>bbox=</code> option. See <a href="/docs/guides/expressions.html">JavaScript expressions</a> for the full reference: the available <code>this.*</code> properties for each geometry type, helper functions like <code>round()</code>, <code>sprintf()</code> and <code>format_dms()</code>, the <code>-calc</code> aggregation functions, the <code>A</code>/<code>B</code> pair context used by <code>-lines</code>, and common pitfalls. The <a href="/docs/examples/basics.html">Basics</a> page has practical recipes that put expressions to work.</p>
+<p>The same expression syntax and execution context are used by all commands that support expressions. See <a href="/docs/guides/expressions.html">JavaScript expressions</a> for the full reference. The <a href="/docs/examples/basics.html">Basics</a> page has practical recipes that put expressions to work.</p>
 <p><strong>Examples</strong></p>
 <pre><code class="hljs language-bash"><span class="hljs-comment"># Create two fields</span>
 mapshaper counties.shp \

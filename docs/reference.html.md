@@ -681,7 +681,7 @@ Apply a JavaScript expression to each feature in a layer. Data properties are av
 
 `target=`  Layer to target.
 
-The same expression syntax and execution context are used by `-each`, `-filter`, `-sort`, `-inspect`, `-split`, `-subdivide`, `-calc` (and `calc=` options on `-dissolve`, `-join`, etc.), `-style`, `-symbols`, and any `where=`, `weight=`, `radius=` or `bbox=` option. See [JavaScript expressions](/docs/guides/expressions.html.md) for the full reference: the available `this.*` properties for each geometry type, helper functions like `round()`, `sprintf()` and `format_dms()`, the `-calc` aggregation functions, the `A`/`B` pair context used by `-lines`, and common pitfalls. The [Basics](/docs/examples/basics.html.md) page has practical recipes that put expressions to work.
+The same expression syntax and execution context are used by all commands that support expressions. See [JavaScript expressions](/docs/guides/expressions.html.md) for the full reference. The [Basics](/docs/examples/basics.html.md) page has practical recipes that put expressions to work.
 
 **Examples**
 
