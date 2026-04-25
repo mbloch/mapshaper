@@ -1,6 +1,6 @@
 {
   "name": "mapshaper",
-  "version": "0.7.2",
+  "version": "0.7.3",
   "description": "A tool for editing vector datasets for mapping and GIS.",
   "keywords": [
     "shapefile",
@@ -38,7 +38,9 @@
     "/www/**",
     "!/www/nacis/**",
     "/mapshaper.js",
-    "!.DS_Store"
+    "!.DS_Store",
+    "!/www/docs/**",
+    "!/www/llms*"
   ],
   "dependencies": {
     "@ngageoint/geopackage": "^4.2.6",
