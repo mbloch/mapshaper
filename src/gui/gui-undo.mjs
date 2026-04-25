@@ -195,6 +195,15 @@ export function Undo(gui) {
 
   this.clear = function() {
     reset();
+    fireHistoryChange();
+  };
+
+  this.canUndo = function() {
+    return history.length - offset > 0;
+  };
+
+  this.canRedo = function() {
+    return offset > 0;
   };
 
   function addHistoryState(undo, redo) {
@@ -203,6 +212,14 @@ export function Undo(gui) {
       offset = 0;
     }
     history.push({undo, redo});
+    fireHistoryChange();
+  }
+
+  function fireHistoryChange() {
+    gui.dispatchEvent('history_change', {
+      canUndo: history.length - offset > 0,
+      canRedo: offset > 0
+    });
   }
 
   this.undo = function() {
@@ -215,6 +232,7 @@ export function Undo(gui) {
       item.undo();
       gui.dispatchEvent('undo_redo_post', {type: 'undo'});
       gui.dispatchEvent('map-needs-refresh');
+      fireHistoryChange();
     }
   };
 
@@ -226,6 +244,7 @@ export function Undo(gui) {
     item.redo();
     gui.dispatchEvent('undo_redo_post', {type: 'redo'});
     gui.dispatchEvent('map-needs-refresh');
+    fireHistoryChange();
   };
 
   function getHistoryItem() {

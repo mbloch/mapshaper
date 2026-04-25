@@ -138,9 +138,9 @@ export function initLineEditing(gui, ext, hit) {
   function showInstructions() {
     var isMac = navigator.userAgent.includes('Mac');
     var undoKey = isMac ? '⌘' : '^';
-    var msg = `Instructions: click to start a path, click or drag to keep drawing. Drag vertices to reshape a path. Type ${undoKey}Z/${undoKey}Y to undo/redo.`;
+    var msg = `Instructions: click to start a path, click or drag to keep drawing. Drag vertices to reshape a path.`;
       alert = showPopupAlert(msg, null, {
-        non_blocking: true, max_width: '388px'});
+        non_blocking: true, max_width: '350px'});
   }
 
   function hideInstructions() {

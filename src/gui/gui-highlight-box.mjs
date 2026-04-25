@@ -186,6 +186,10 @@ export function HighlightBox(gui, optsArg) {
 
   box.setDataCoords = function(bbox) {
     boxCoords = bbox;
+    // Box is being placed programmatically (e.g. around a pinned rectangle);
+    // enable pointer events on the handles so they can be dragged. Without
+    // this, mousedowns fall through to the map and trigger pan.
+    el.classed('hittable', true);
     redraw();
   };
 
@@ -209,6 +213,7 @@ export function HighlightBox(gui, optsArg) {
   // remove the current box (if any)
   box.hide = function() {
     el.hide();
+    el.classed('hittable', false);
     boxCoords = null;
     _visible = false;
     clickStartPoint = null;

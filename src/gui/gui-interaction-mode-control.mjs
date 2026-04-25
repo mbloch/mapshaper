@@ -100,6 +100,10 @@ export function InteractionMode(gui) {
     return ['info', 'selection', 'data', 'box', 'labels', 'edit_points', 'rectangles'].includes(mode);
   };
 
+  this.modeSupportsUndo = function(mode) {
+    return ['data', 'labels', 'edit_points', 'edit_lines', 'edit_polygons', 'vertices', 'rectangles'].includes(mode);
+  };
+
   this.getMode = getInteractionMode;
 
   this.setMode = function(mode) {
