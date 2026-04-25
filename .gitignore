@@ -28,6 +28,9 @@ bench/
 /DEVELOPING.md
 /DESIGN*
 /CITATION*
-/ROADMAP*
-/GOVERNANCE*
+/RO*
+/GO*
+/FU*
+/docs/future-directions.md
 .cursor*
+build-roadmap.mjs

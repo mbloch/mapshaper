@@ -1,3 +1,7 @@
+v0.7.2
+* Added undo/redo toolbar to the web UI. The toolbar appears in interactive editing modes where undo/redo is supported.
+* Added hamburger menu to the web UI with links to Docs, GitHub, etc.
+
 v0.7.1
 * Added documentation pages and a build script.
 * The -i command can now import a string of inline CSV data on the command line.
