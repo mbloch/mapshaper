@@ -84,7 +84,7 @@ code, pre, .mono {
   /* line-height: 1 keeps each anchor's hover background tight enough to fit
      inside the 36px header once the row is baseline-aligned. */
   line-height: 1;
-  padding: 6px 10px;
+  padding: 6px 6px;
   border-radius: 3px;
 }
 

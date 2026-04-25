@@ -27,7 +27,6 @@ There are no FlatGeobuf-specific `-o` options. The format honors the general fla
 
 ### Practical notes
 
-- FlatGeobuf is single-layer per file. Use [GeoPackage](/docs/formats/geopackage.html) or [TopoJSON](/docs/formats/topojson.html) when you need to package multiple layers in one file.
 - Mapshaper reads CRS metadata from the file header when it's encoded as an EPSG code. WKT2-only definitions can't be parsed and produce an "Unable to import WKT2 CRS from FlatGeobuf" warning &mdash; the layer comes in without a CRS.
 - On output, Mapshaper embeds an EPSG code in the FlatGeobuf header whenever it can derive one from the source: a round-tripped FlatGeobuf or GeoPackage CRS, an `epsg:NNNN` string passed to `-proj`, an `AUTHORITY["EPSG", N]` clause in a Shapefile `.prj`, or any encoding of WGS-84 or Web Mercator (which covers most GeoJSON, CSV-with-lat/lon and `-proj wgs84`/`-proj webmercator` outputs).
 - Mapshaper cannot yet convert an arbitrary proj4 definition (such as a custom Albers projection set with `-proj +proj=aea ...`) to an EPSG code. In that case the file is written with no CRS in the header and a warning is printed: *"Wrote `foo.fgb` without a CRS in the FlatGeobuf header..."*. Re-run the file through `ogr2ogr` if you need the CRS embedded for downstream tools.
