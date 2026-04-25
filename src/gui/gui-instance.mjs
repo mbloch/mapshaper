@@ -5,6 +5,7 @@ import { SidebarButtons } from './gui-sidebar-buttons';
 import { ModeSwitcher } from './gui-modes';
 import { KeyboardEvents } from './gui-keyboard';
 import { InteractionMode } from './gui-interaction-mode-control';
+import { EditToolbar } from './gui-edit-toolbar';
 import { SessionSnapshots } from './gui-session-snapshot-control';
 import { Model } from './gui-model';
 import { MshpMap } from './gui-map';
@@ -57,6 +58,7 @@ export function GuiInstance(container, opts) {
     new SessionSnapshots(gui);
   }
   gui.interaction = new InteractionMode(gui);
+  gui.editToolbar = new EditToolbar(gui);
 
   gui.showProgressMessage = function(msg) {
     if (!gui.progressMessage) {

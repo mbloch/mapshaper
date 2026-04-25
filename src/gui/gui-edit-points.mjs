@@ -28,8 +28,8 @@ export function initPointEditing(gui, ext, hit) {
   function showInstructions() {
     var isMac = navigator.userAgent.includes('Mac');
     var symbol = isMac ? '⌘' : '^';
-    var msg = `Instructions: Click on the map to add points. Move points by dragging. Type ${symbol}Z/${symbol}Y to undo/redo.`;
-    alert = showPopupAlert(msg, null, { non_blocking: true, max_width: '360px'});
+    var msg = `Instructions: click on the map to add points. Move points by dragging.`;
+    alert = showPopupAlert(msg, null, { non_blocking: true, max_width: '290px'});
   }
 
   gui.on('interaction_mode_change', function(e) {
