@@ -63,6 +63,12 @@ This is a curated list of recently added features. For the full list of changes,
 
 <div class="whats-new-entry">
 
+**Undo/redo buttons.** The web UI now has an undo/redo toolbar. Undo and redo were already supported in the geometry and attribute editing modes; the toolbar makes them more discoverable for users who didn't know the keyboard shortcuts (**⌘Z** / **⌘⇧Z**) existed.
+
+</div>
+
+<div class="whats-new-entry">
+
 **Command files.** A sequence of Mapshaper commands can be written to a `.txt` file with `#` comments and no shell quoting, and run with `-run <file>` (or just `mapshaper commands.txt`). Command files can also be written in a shell-compatible way, if you want to be able to paste the commands into the terminal or add them to a shell script. In a future release, these files will also be runnable in the browser.
 
 ```bash
@@ -2168,11 +2174,13 @@ Mapshaper offers three simplification methods, selectable as flags to `-simplify
 
 - **`dp`** &mdash; Douglas-Peucker (also known as Ramer–Douglas–Peucker). Guarantees that simplified lines stay within a fixed distance of the original. Good for stripping excess vertices to reduce file size, but tends to grow visible spikes at high simplification.
 - **`visvalingam`** &mdash; The Visvalingam algorithm. Iteratively removes the point that forms the smallest triangle with its two neighbors.
-- **`weighted_visvalingam`** (Mapshaper's default) &mdash; Visvalingam's effective-area algorithm with a custom weighting that underweights points at sharp angles, so they are removed earlier than in standard Visvalingam. The result is visibly smoother lines and fewer jagged spikes at high simplification. This method can be effective at generalizing very detailed source files, but be careful that it doesn't remove long, thin geographic features that you want to keep.
+- **`weighted_visvalingam`** (Mapshaper's default) &mdash; Visvalingam's effective-area algorithm with a custom weighting that underweights points at sharp angles, so they are removed earlier than in standard Visvalingam. The result is visibly smoother lines and fewer jagged spikes at high simplification.
 
-Weighted Visvalingam is the default because it has proven to be versatile and effective at reducing detail in highly detailed source data. If you are only interested in minimizing file size, Douglas-Peucker is generally the better choice.
+Weighted Visvalingam is the default because it has proven to be versatile and effective at reducing detail in highly detailed source data. This method can be effective at generalizing very detailed source files, but be careful that it doesn't remove long, thin geographic features that you want to keep.You can control the amount of weighting used by Weighted Visvalingam with the `weighting=` option (default is 0.7).
 
-You can control the amount of weighting used by Weighted Visvalingam with the `weighting=` option (default is 0.7).
+If you are only interested in minimizing file size, Douglas-Peucker is generally the better choice.
+
+
 
 **Figures**
 
@@ -3292,7 +3300,6 @@ There are no FlatGeobuf-specific `-o` options. The format honors the general fla
 
 ### Practical notes
 
-- FlatGeobuf is single-layer per file. Use [GeoPackage](/docs/formats/geopackage.html.md) or [TopoJSON](/docs/formats/topojson.html.md) when you need to package multiple layers in one file.
 - Mapshaper reads CRS metadata from the file header when it's encoded as an EPSG code. WKT2-only definitions can't be parsed and produce an "Unable to import WKT2 CRS from FlatGeobuf" warning &mdash; the layer comes in without a CRS.
 - On output, Mapshaper embeds an EPSG code in the FlatGeobuf header whenever it can derive one from the source: a round-tripped FlatGeobuf or GeoPackage CRS, an `epsg:NNNN` string passed to `-proj`, an `AUTHORITY["EPSG", N]` clause in a Shapefile `.prj`, or any encoding of WGS-84 or Web Mercator (which covers most GeoJSON, CSV-with-lat/lon and `-proj wgs84`/`-proj webmercator` outputs).
 - Mapshaper cannot yet convert an arbitrary proj4 definition (such as a custom Albers projection set with `-proj +proj=aea ...`) to an EPSG code. In that case the file is written with no CRS in the header and a warning is printed: *"Wrote `foo.fgb` without a CRS in the FlatGeobuf header..."*. Re-run the file through `ogr2ogr` if you need the CRS embedded for downstream tools.
@@ -3612,7 +3619,7 @@ The ribbon icon in the layer panel opens the **snapshot menu**. From there you c
 
 # Basics
 
-Short Mapshaper recipes for common GIS tasks. The filenames and field names are illustrative &mdash; substitute your own. Most recipes also work in the [web app's](/docs/essentials/web-app.html.md) console: drop the leading `mapshaper` and the input filename, since the GUI already has the layer loaded.
+Short Mapshaper examples for common tasks. The filenames and field names are illustrative &mdash; substitute your own. Most recipes also work in the [web app's](/docs/essentials/web-app.html.md) console: drop the leading `mapshaper` and the input filename; the GUI should already your data loaded.
 
 > Looking for the syntax of a particular command or option? See the [command reference](/docs/reference.html.md). For the JS expression context used by `-each`, `-filter`, `calc=` and other commands, see [JavaScript expressions](/docs/guides/expressions.html.md).
 
@@ -3975,7 +3982,6 @@ mapshaper-xl 16gb counties_5m.shp -simplify 10% -o counties_5m.topojson
 
 - [Command reference](/docs/reference.html.md) &mdash; every command and option
 - [JavaScript expressions](/docs/guides/expressions.html.md) &mdash; the syntax and context used by `-each`, `-filter`, `calc=`, etc.
-- [Guides](/docs/guides/index.html.md) &mdash; longer-form walk-throughs of simplification, topology cleaning, and more
 
 ---
 

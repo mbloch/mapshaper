@@ -6043,6 +6043,15 @@
 
     this.clear = function() {
       reset();
+      fireHistoryChange();
+    };
+
+    this.canUndo = function() {
+      return history.length - offset > 0;
+    };
+
+    this.canRedo = function() {
+      return offset > 0;
     };
 
     function addHistoryState(undo, redo) {
@@ -6051,6 +6060,14 @@
         offset = 0;
       }
       history.push({undo, redo});
+      fireHistoryChange();
+    }
+
+    function fireHistoryChange() {
+      gui.dispatchEvent('history_change', {
+        canUndo: history.length - offset > 0,
+        canRedo: offset > 0
+      });
     }
 
     this.undo = function() {
@@ -6063,6 +6080,7 @@
         item.undo();
         gui.dispatchEvent('undo_redo_post', {type: 'undo'});
         gui.dispatchEvent('map-needs-refresh');
+        fireHistoryChange();
       }
     };
 
@@ -6074,6 +6092,7 @@
       item.redo();
       gui.dispatchEvent('undo_redo_post', {type: 'redo'});
       gui.dispatchEvent('map-needs-refresh');
+      fireHistoryChange();
     };
 
     function getHistoryItem() {
@@ -6387,6 +6406,10 @@
       return ['info', 'selection', 'data', 'box', 'labels', 'edit_points', 'rectangles'].includes(mode);
     };
 
+    this.modeSupportsUndo = function(mode) {
+      return ['data', 'labels', 'edit_points', 'edit_lines', 'edit_polygons', 'vertices', 'rectangles'].includes(mode);
+    };
+
     this.getMode = getInteractionMode;
 
     this.setMode = function(mode) {
@@ -6526,6 +6549,214 @@
         el = El(el);
         el.classed('selected', el.attr('data-name') == _editMode);
       });
+    }
+  }
+
+  // A reusable floating toolbar anchored at the bottom-center of the map area.
+  //
+  // Multiple toolbars stack vertically inside a shared container, so additional
+  // per-mode toolbars (e.g. feature styling) can coexist with the edit toolbar.
+  //
+  // The DOM is structured to leave room for a future drag handle without
+  // requiring rework: the toolbar element is a flex row with a content slot,
+  // and a sibling drag-handle slot can be added later.
+  //
+  // Constructor options:
+  //   name:       optional CSS class added to the toolbar element
+  //   transition: ms for the show/hide transition (default 150)
+  //
+  // API:
+  //   toolbar.addButton(iconRef, opts) -> ToolbarButton
+  //   toolbar.addSeparator()
+  //   toolbar.show()
+  //   toolbar.hide()
+  //   toolbar.visible()
+  //   toolbar.node()
+
+  function FloatingToolbar(gui, opts) {
+    opts = opts || {};
+    var transitionMs = opts.transition || 150;
+    var root = gui.container.findChild('.mshp-main-map');
+    var stack = root.findChild('.floating-toolbar-stack');
+    if (!stack) {
+      stack = El('div').addClass('floating-toolbar-stack').appendTo(root);
+    }
+    var el = El('div').addClass('floating-toolbar');
+    if (opts.name) el.addClass(opts.name);
+    var content = El('div').addClass('floating-toolbar-content').appendTo(el);
+    var visible = false;
+    var hideTimer = null;
+
+    el.appendTo(stack);
+    el.css('display', 'none');
+
+    // Hide when this gui instance becomes inactive (e.g. multi-instance mode)
+    gui.on('active', updateVisibility);
+    gui.on('inactive', updateVisibility);
+
+    this.addButton = function(iconRef, btnOpts) {
+      return new ToolbarButton(content, iconRef, btnOpts || {});
+    };
+
+    this.addSeparator = function() {
+      return El('div').addClass('floating-toolbar-separator').appendTo(content);
+    };
+
+    this.show = function() {
+      if (visible) return;
+      visible = true;
+      updateVisibility();
+    };
+
+    this.hide = function() {
+      if (!visible) return;
+      visible = false;
+      updateVisibility();
+    };
+
+    this.visible = function() {
+      return visible;
+    };
+
+    this.node = function() {
+      return el.node();
+    };
+
+    function updateVisibility() {
+      var shouldShow = visible && GUI.isActiveInstance(gui);
+      if (shouldShow) {
+        clearTimeout(hideTimer);
+        hideTimer = null;
+        el.css('display', 'flex');
+        // wait one frame so the browser registers the initial state before
+        // the transition kicks in
+        requestAnimationFrame(function() {
+          el.addClass('visible');
+        });
+      } else {
+        el.removeClass('visible');
+        // wait for the transition to finish before hiding completely
+        clearTimeout(hideTimer);
+        hideTimer = setTimeout(function() {
+          if (!(visible && GUI.isActiveInstance(gui))) {
+            el.css('display', 'none');
+          }
+        }, transitionMs);
+      }
+    }
+  }
+
+  function ToolbarButton(parent, iconRef, opts) {
+    var btn = El('div').addClass('floating-toolbar-btn').appendTo(parent);
+    if (iconRef) {
+      var iconNode = El('body').findChild(iconRef);
+      if (iconNode) {
+        var icon = iconNode.node().cloneNode(true);
+        if (icon.hasAttribute('id')) icon.removeAttribute('id');
+        btn.node().appendChild(icon);
+      }
+    }
+    var enabled = true;
+    var clickHandlers = [];
+
+    if (opts.tooltip) setTooltip(opts.tooltip);
+
+    // Block native dblclick to avoid the map's double-click zoom
+    btn.on('dblclick', function(e) { e.stopPropagation(); });
+
+    btn.on('click', function(e) {
+      if (!enabled) return;
+      for (var i = 0; i < clickHandlers.length; i++) {
+        clickHandlers[i](e);
+      }
+    });
+
+    this.on = function(event, fn) {
+      if (event == 'click') {
+        clickHandlers.push(fn);
+      } else {
+        btn.on(event, fn);
+      }
+      return this;
+    };
+
+    this.enable = function() { return this.setEnabled(true); };
+    this.disable = function() { return this.setEnabled(false); };
+
+    this.setEnabled = function(b) {
+      enabled = !!b;
+      btn.classed('disabled', !enabled);
+      return this;
+    };
+
+    this.setTooltip = setTooltip;
+
+    this.node = function() {
+      return btn.node();
+    };
+
+    function setTooltip(text) {
+      btn.attr('data-tooltip', text);
+    }
+  }
+
+  // Floating toolbar that exposes undo/redo while the user is in an editing
+  // interaction mode. The toolbar is the first consumer of FloatingToolbar;
+  // future per-mode toolbars (e.g. feature styling) can follow the same pattern.
+
+  function EditToolbar(gui) {
+    var toolbar = new FloatingToolbar(gui, { name: 'edit-toolbar' });
+    var isMac = navigator.userAgent.includes('Mac');
+    var modKey = isMac ? '\u2318' : 'Ctrl+';
+    var shiftKey = isMac ? '\u21e7' : 'Shift+';
+
+    var undoBtn = toolbar.addButton('#undo-icon', {
+      tooltip: 'Undo (' + modKey + 'Z)'
+    }).on('click', function() {
+      gui.undo.undo();
+    });
+
+    var redoBtn = toolbar.addButton('#redo-icon', {
+      tooltip: 'Redo (' + shiftKey + modKey + 'Z)'
+    }).on('click', function() {
+      gui.undo.redo();
+    });
+
+    updateButtons();
+
+    gui.on('interaction_mode_change', function() {
+      updateVisibility();
+      // history is cleared on mode change; refresh button states next tick
+      updateButtons();
+    });
+
+    gui.on('history_change', function(e) {
+      undoBtn.setEnabled(!!e.canUndo);
+      redoBtn.setEnabled(!!e.canRedo);
+      // Visibility may also depend on history (e.g. attribute edits via popup
+      // happen in modes that don't otherwise support undo).
+      updateVisibility();
+    });
+
+    updateVisibility();
+
+    function updateVisibility() {
+      if (!gui.interaction) {
+        toolbar.hide();
+        return;
+      }
+      var mode = gui.interaction.getMode();
+      var hasHistory = gui.undo.canUndo() || gui.undo.canRedo();
+      if (gui.interaction.modeSupportsUndo(mode) || hasHistory) {
+        toolbar.show();
+      } else {
+        toolbar.hide();
+      }
+    }
+
+    function updateButtons() {
+      undoBtn.setEnabled(gui.undo.canUndo());
+      redoBtn.setEnabled(gui.undo.canRedo());
     }
   }
 
@@ -9626,6 +9857,10 @@
 
     box.setDataCoords = function(bbox) {
       boxCoords = bbox;
+      // Box is being placed programmatically (e.g. around a pinned rectangle);
+      // enable pointer events on the handles so they can be dragged. Without
+      // this, mousedowns fall through to the map and trigger pan.
+      el.classed('hittable', true);
       redraw();
     };
 
@@ -9649,6 +9884,7 @@
     // remove the current box (if any)
     box.hide = function() {
       el.hide();
+      el.classed('hittable', false);
       boxCoords = null;
       _visible = false;
       clickStartPoint = null;
@@ -10999,8 +11235,8 @@
     function showInstructions() {
       var isMac = navigator.userAgent.includes('Mac');
       var symbol = isMac ? '⌘' : '^';
-      var msg = `Instructions: Click on the map to add points. Move points by dragging. Type ${symbol}Z/${symbol}Y to undo/redo.`;
-      alert = showPopupAlert(msg, null, { non_blocking: true, max_width: '360px'});
+      var msg = `Instructions: click on the map to add points. Move points by dragging.`;
+      alert = showPopupAlert(msg, null, { non_blocking: true, max_width: '290px'});
     }
 
     gui.on('interaction_mode_change', function(e) {
@@ -11217,9 +11453,9 @@
     function showInstructions() {
       var isMac = navigator.userAgent.includes('Mac');
       var undoKey = isMac ? '⌘' : '^';
-      var msg = `Instructions: click to start a path, click or drag to keep drawing. Drag vertices to reshape a path. Type ${undoKey}Z/${undoKey}Y to undo/redo.`;
+      var msg = `Instructions: click to start a path, click or drag to keep drawing. Drag vertices to reshape a path.`;
         alert = showPopupAlert(msg, null, {
-          non_blocking: true, max_width: '388px'});
+          non_blocking: true, max_width: '350px'});
     }
 
     function hideInstructions() {
@@ -14681,6 +14917,7 @@ GUI and setting the size and crop of SVG output.</p><div><input type="text" clas
       new SessionSnapshots(gui);
     }
     gui.interaction = new InteractionMode(gui);
+    gui.editToolbar = new EditToolbar(gui);
 
     gui.showProgressMessage = function(msg) {
       if (!gui.progressMessage) {

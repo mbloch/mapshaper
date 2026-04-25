@@ -13,11 +13,13 @@ Mapshaper offers three simplification methods, selectable as flags to `-simplify
 
 - **`dp`** &mdash; Douglas-Peucker (also known as Ramer–Douglas–Peucker). Guarantees that simplified lines stay within a fixed distance of the original. Good for stripping excess vertices to reduce file size, but tends to grow visible spikes at high simplification.
 - **`visvalingam`** &mdash; The Visvalingam algorithm. Iteratively removes the point that forms the smallest triangle with its two neighbors.
-- **`weighted_visvalingam`** (Mapshaper's default) &mdash; Visvalingam's effective-area algorithm with a custom weighting that underweights points at sharp angles, so they are removed earlier than in standard Visvalingam. The result is visibly smoother lines and fewer jagged spikes at high simplification. This method can be effective at generalizing very detailed source files, but be careful that it doesn't remove long, thin geographic features that you want to keep.
+- **`weighted_visvalingam`** (Mapshaper's default) &mdash; Visvalingam's effective-area algorithm with a custom weighting that underweights points at sharp angles, so they are removed earlier than in standard Visvalingam. The result is visibly smoother lines and fewer jagged spikes at high simplification.
 
-Weighted Visvalingam is the default because it has proven to be versatile and effective at reducing detail in highly detailed source data. If you are only interested in minimizing file size, Douglas-Peucker is generally the better choice.
+Weighted Visvalingam is the default because it has proven to be versatile and effective at reducing detail in highly detailed source data. This method can be effective at generalizing very detailed source files, but be careful that it doesn't remove long, thin geographic features that you want to keep.You can control the amount of weighting used by Weighted Visvalingam with the `weighting=` option (default is 0.7).
 
-You can control the amount of weighting used by Weighted Visvalingam with the `weighting=` option (default is 0.7).
+If you are only interested in minimizing file size, Douglas-Peucker is generally the better choice.
+
+
 
 **Figures**
 

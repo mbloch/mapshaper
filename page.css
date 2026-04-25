@@ -484,6 +484,14 @@ div.alert-box {
 	margin: 0 0 5px 0;
 }
 
+input[type=text]:focus,
+input[type=number]:focus,
+textarea:focus {
+	outline: none;
+	border-color: #d3aa00;
+	box-shadow: 0 0 0 2px rgba(212, 168, 0, 0.4);
+}
+
 ::placeholder {
 	color: #aaa;
 	opacity: 1;
@@ -552,13 +560,6 @@ div.alert-box {
 	padding-left: 12px;
 }
 
-.info-box,.popup {
-	border-radius: 9px;
-	border: 1px solid #d5d5d5;
-	box-shadow: 0 1px 7px rgba(0,0,0,0.18);
-	background-color: #fff;
-}
-
 .contextmenu {
 	position: absolute;
 	border-radius: 6px;
@@ -575,6 +576,12 @@ div.alert-box {
 	padding: 6px;
 }
 
+.info-box,.popup {
+	border-radius: 11px;
+	border: 1px solid #d5d5d5;
+	box-shadow: 0 1px 7px rgba(0,0,0,0.18);
+	background-color: #fff;
+}
 
 .info-box {
 	min-width: 230px;
@@ -582,7 +589,8 @@ div.alert-box {
 	text-align: left;
 	margin-top: 12px;
 	margin-right: 20px;
-	padding: 12px 16px 12px 18px;
+	/* padding: 12px 16px 12px 18px; */
+	padding: 15px 17px 13px 19px;
 	vertical-align: top;
 	display: inline-block;
 	/* border: 1px solid #aaa; */
@@ -632,7 +640,7 @@ div.alert-box {
 .info-box p {
 	white-space: pre-line;
 	margin: 0 0 6px 0;
-	line-height: 1.2;
+	line-height: 1.25;
 	/* font-size: 90%; */
 }
 
@@ -1607,6 +1615,119 @@ body.pan.panning .map-layers:not(.drawing) {
 .nav-btn.disabled {
 	opacity: 0.4;
 	cursor: default;
+}
+
+/* --- FLOATING TOOLBAR --- */
+
+/*
+ * Anchored at bottom-center of the map area. Multiple toolbars stack
+ * vertically (newest on top). Designed to host buttons and other small
+ * controls; the inner content slot leaves room for a future drag handle.
+ */
+
+.floating-toolbar-stack {
+	position: absolute;
+	z-index: 25;
+	bottom: 24px;
+	left: 50%;
+	transform: translateX(-50%);
+	display: flex;
+	flex-direction: column-reverse;
+	align-items: center;
+	gap: 8px;
+	pointer-events: none;
+}
+
+.floating-toolbar {
+	pointer-events: auto;
+	display: flex;
+	align-items: center;
+	background-color: rgba(255, 255, 255, 0.96);
+	border: 1px solid #ddd;
+	border-radius: 8px;
+	box-shadow: 0 2px 12px rgba(0, 0, 0, 0.15);
+	padding: 4px;
+	opacity: 0;
+	transform: translateY(6px);
+	transition: opacity 150ms ease, transform 150ms ease;
+}
+
+.floating-toolbar.visible {
+	opacity: 1;
+	transform: translateY(0);
+}
+
+.floating-toolbar-content {
+	display: flex;
+	align-items: center;
+	gap: 0;
+}
+
+.floating-toolbar-separator {
+	width: 1px;
+	height: 18px;
+	margin: 0 4px;
+	background-color: #ddd;
+}
+
+.floating-toolbar-btn {
+	position: relative;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	width: 28px;
+	height: 28px;
+	border-radius: 5px;
+	cursor: pointer;
+	user-select: none;
+}
+
+.floating-toolbar-btn svg {
+	width: 24px;
+	height: 24px;
+}
+
+.floating-toolbar-btn svg * {
+	fill: #1385B7;
+	transition: fill 100ms ease;
+}
+
+.floating-toolbar-btn:hover:not(.disabled) {
+	background-color: #e6f7ff;
+}
+
+.floating-toolbar-btn:hover:not(.disabled) svg * {
+	fill: #166689;
+}
+
+.floating-toolbar-btn:active:not(.disabled) {
+	background-color: #cdebf9;
+}
+
+.floating-toolbar-btn.disabled {
+	cursor: default;
+}
+
+.floating-toolbar-btn.disabled svg * {
+	fill: #b8c4ca;
+}
+
+/* Tooltip shown above the button on hover */
+.floating-toolbar-btn[data-tooltip]:hover:not(.disabled)::after {
+	content: attr(data-tooltip);
+	position: absolute;
+	bottom: calc(100% + 8px);
+	left: 50%;
+	transform: translateX(-50%);
+	background-color: rgba(40, 40, 40, 0.92);
+	color: #fff;
+	font-size: 11px;
+	line-height: 1;
+	white-space: nowrap;
+	padding: 5px 7px;
+	border-radius: 4px;
+	pointer-events: none;
+	z-index: 1;
 }
 
 .zoom-box {
