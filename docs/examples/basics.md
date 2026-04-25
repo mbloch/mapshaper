@@ -5,7 +5,7 @@ description: A scannable collection of short Mapshaper recipes for common GIS ta
 
 # Basics
 
-Short Mapshaper recipes for common GIS tasks. The filenames and field names are illustrative &mdash; substitute your own. Most recipes also work in the [web app's](/docs/essentials/web-app.html) console: drop the leading `mapshaper` and the input filename, since the GUI already has the layer loaded.
+Short Mapshaper examples for common tasks. The filenames and field names are illustrative &mdash; substitute your own. Most recipes also work in the [web app's](/docs/essentials/web-app.html) console: drop the leading `mapshaper` and the input filename; the GUI should already your data loaded.
 
 > Looking for the syntax of a particular command or option? See the [command reference](/docs/reference.html). For the JS expression context used by `-each`, `-filter`, `calc=` and other commands, see [JavaScript expressions](/docs/guides/expressions.html).
 
@@ -368,4 +368,3 @@ mapshaper-xl 16gb counties_5m.shp -simplify 10% -o counties_5m.topojson
 
 - [Command reference](/docs/reference.html) &mdash; every command and option
 - [JavaScript expressions](/docs/guides/expressions.html) &mdash; the syntax and context used by `-each`, `-filter`, `calc=`, etc.
-- [Guides](/docs/guides/) &mdash; longer-form walk-throughs of simplification, topology cleaning, and more

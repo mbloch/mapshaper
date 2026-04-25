@@ -11,6 +11,12 @@ This is a curated list of recently added features. For the full list of changes,
 
 <div class="whats-new-entry">
 
+**Undo/redo buttons.** The web UI now has an undo/redo toolbar. Undo and redo were already supported in the geometry and attribute editing modes; the toolbar makes them more discoverable for users who didn't know the keyboard shortcuts (**⌘Z** / **⌘⇧Z**) existed.
+
+</div>
+
+<div class="whats-new-entry">
+
 **Command files.** A sequence of Mapshaper commands can be written to a `.txt` file with `#` comments and no shell quoting, and run with `-run <file>` (or just `mapshaper commands.txt`). Command files can also be written in a shell-compatible way, if you want to be able to paste the commands into the terminal or add them to a shell script. In a future release, these files will also be runnable in the browser.
 
 ```bash
