@@ -3,4 +3,7 @@ mapshaper \
 -filter 'admin == "United States of America"' \
 -proj albersusa \
 -classify non-adjacent colors=Tableau10 \
+-innerlines + name=innerlines \
+-style stroke=white stroke-width=0.5 \
+-target states,innerlines \
 -o us-states.svg height=400 width=600

@@ -19,7 +19,8 @@ Difficulty: easy
 2. Keep only U.S. states
 3. Project to the "Albers USA" projection
 4. Assign random, non-adjacent colors
-5. Export as SVG
+5. Add a stroke to borders between two states
+6. Export as SVG
 
 ### Code
 
@@ -29,6 +30,7 @@ Difficulty: easy
 
 * To see the list of built-in color schemes to use with `-classify`, run `mapshaper -colors`. You can also use `colors=random`.
 * The Albers USA projection (`-proj albersusa`) is a custom projection used by The New York Times for U.S. maps.
+* Applying a stroke to interior lines using `-innerlines` (and not to exterior lines) creates a more accurate and crisper-looking coastline.
 
 ### Assets
 

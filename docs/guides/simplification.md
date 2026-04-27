@@ -11,14 +11,13 @@ Simplification reduces the number of vertices in polylines and polygon boundarie
 
 Mapshaper offers three simplification methods, selectable as flags to `-simplify`:
 
-- **`dp`** &mdash; Douglas-Peucker (also known as Ramer–Douglas–Peucker). Guarantees that simplified lines stay within a fixed distance of the original. Good for stripping excess vertices to reduce file size, but tends to grow visible spikes at high simplification.
-- **`visvalingam`** &mdash; The Visvalingam algorithm. Iteratively removes the point that forms the smallest triangle with its two neighbors.
-- **`weighted_visvalingam`** (Mapshaper's default) &mdash; Visvalingam's effective-area algorithm with a custom weighting that underweights points at sharp angles, so they are removed earlier than in standard Visvalingam. The result is visibly smoother lines and fewer jagged spikes at high simplification.
+- **`dp`** &mdash; Douglas-Peucker (also known as Ramer–Douglas–Peucker). Guarantees that simplified lines stay within a fixed distance of the original. Good for stripping excess vertices to reduce file size, but tends to introduce visible spikes at high simplification.
+- **`visvalingam`** &mdash; The Visvalingam algorithm. Iteratively removes the point that forms the triangle of smallest area with its two neighbors.
+- **`weighted_visvalingam`** (Mapshaper's default) &mdash; Visvalingam's algorithm with a custom weighting that underweights points at sharp angles, so they are removed earlier than in standard Visvalingam. The result is visibly smoother lines and fewer jagged spikes at high simplification. You can fine tune this effect by setting the `weighting=` option (default is 0.7). The larger the parameter, the greater the smoothing effect. (Make sure that long, thin geographic features that you want to keep do not get smoothed away.)
 
-Weighted Visvalingam is the default because it has proven to be versatile and effective at reducing detail in highly detailed source data. This method can be effective at generalizing very detailed source files, but be careful that it doesn't remove long, thin geographic features that you want to keep.You can control the amount of weighting used by Weighted Visvalingam with the `weighting=` option (default is 0.7).
+Weighted Visvalingam is the default because it produces good-looking generalizations of highly detailed source layers. But none of these methods can approach the quality that a cartographer achieves when generalizing linework by hand.
 
-If you are only interested in minimizing file size, Douglas-Peucker is generally the better choice.
-
+If you are primarily interested in removing as many vertices as possible without visible changes to the shape of the lines, you may find that Douglas-Peucker combined with an appropriate `interval=` or `resolution=` parameter gives the best results.
 
 
 **Figures**
@@ -84,7 +83,7 @@ mapshaper provinces.shp -simplify 5% -clean -o provinces.geojson
 
 ## Simplifying multiple layers consistently
 
-When you import multiple layers using `-i combine-files`, Mapshaper builds a shared topology. This means that boundaries shared between layers — for example, aligned state and county polygon borders — are simplified identically across both.
+When you import multiple layers using `-i combine-files`, Mapshaper builds a shared topology. This means that boundaries shared between layers — for example, aligned state and county polygon borders — are simplified identically across all layers.
 Without this, the layers would diverge during simplification, creating visible gaps and overlaps where they should align.
 
 ```bash
