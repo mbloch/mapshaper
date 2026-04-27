@@ -13,7 +13,7 @@ This section explains how each supported file format is handled, what format-spe
 
 | Format | Extension | Read | Write | Geometry | Attributes | Topology | Multi-layer |
 |---|---|:---:|:---:|---|---|:---:|:---:|
-| [Shapefile](/docs/formats/shapefile.html.md) | `.shp` | &check; | &check; | vector | DBF (10-char names) | &mdash; | &mdash; |
+| [Shapefile](/docs/formats/shapefile.html.md) | `.shp` `.shx` `.dbf` `.prj` `.cpg` | &check; | &check; | vector | DBF (10-char names) | &mdash; | &mdash; |
 | [GeoJSON](/docs/formats/geojson.html.md) | `.json` `.geojson` | &check; | &check; | vector | yes | &mdash; | &mdash; |
 | [TopoJSON](/docs/formats/topojson.html.md) | `.json` `.topojson` | &check; | &check; | vector | yes | **&check;** | &check; |
 | [GeoPackage](/docs/formats/geopackage.html.md) | `.gpkg` | &check; | &check; | vector | yes | &mdash; | &check; |
@@ -29,6 +29,6 @@ This section explains how each supported file format is handled, what format-spe
 
 A few things worth knowing across all formats:
 
-- **Auto-detection by extension.** You usually don't need to tell Mapshaper what format a file is &mdash; it picks the right reader from the file extension. Use `format=` on `-i` or `-o` to override.
+- **Auto-detection by extension.** You usually don't need to tell Mapshaper what format a file is — the input and output format are both inferred from the file extension. Use `format=` on `-i` or `-o` to override.
 - **TopoJSON is the only interchange format that preserves topology** in the file itself. Topology-aware operations like [`-dissolve`](/docs/reference.html.md#-dissolve), [`-clean`](/docs/reference.html.md#-clean) and [`-simplify`](/docs/reference.html.md#-simplify) work correctly regardless of the input format, but only TopoJSON keeps shared boundaries between adjacent polygons from being duplicated on disk. (Mapshaper's own [`.msx`](/docs/formats/snapshot.html.md) snapshots also preserve topology, but they're not readable by other tools.)
 - **Encoding.** The `encoding=` option on `-i` and `-o` applies to Shapefile, DBF and CSV/TSV i/o (UTF-8 is the default) &mdash; the other formats are UTF-8-only.

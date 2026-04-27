@@ -21372,10 +21372,25 @@ ${svg}
     var geojson = exportDatasetAsGeoJSON(d, opts);
     var features = geojson.features || geojson.geometries || (geojson.type ? [geojson] : []);
     var children = importGeoJSONFeatures(features, opts);
+    // Drop empty placeholder <g/> elements (features whose geometry was null in the
+    // source data, collapsed during simplification, or otherwise produced no
+    // visible output). Keep the layer's records in lockstep so that data-*
+    // attributes added via -o svg-data= remain correctly aligned.
+    var records = lyr.data ? lyr.data.getRecords() : null;
+    var keptRecords = records ? [] : null;
+    children = children.filter(function(child, i) {
+      if (isEmptyPlaceholder(child)) return false;
+      if (keptRecords) keptRecords.push(records[i]);
+      return true;
+    });
     if (opts.svg_data && lyr.data) {
-      addDataAttributesToSVG(children, lyr.data, opts.svg_data);
+      addDataAttributesToSVG(children, keptRecords, lyr.data.getFields(), opts.svg_data);
     }
     return children;
+  }
+
+  function isEmptyPlaceholder(o) {
+    return o.tag == 'g' && (!o.children || o.children.length === 0);
   }
 
   function validateSvgDataFields(layers, fieldsArg) {
@@ -21397,15 +21412,13 @@ ${svg}
     }
   }
 
-  function addDataAttributesToSVG(children, table, fieldsArg) {
-    var allFields = table.getFields();
+  function addDataAttributesToSVG(children, records, allFields, fieldsArg) {
     var dataFields = fieldsArg.indexOf('*') > -1 ? allFields.concat() : fieldsArg;
     var missingFields = utils.difference(dataFields, allFields);
     if (missingFields.length > 0) {
       dataFields = utils.difference(dataFields, missingFields);
       // stop("Missing data field(s):", missingFields.join(', '));
     }
-    var records = table.getRecords();
     var data = exportDataAttributesForSVG(records, dataFields);
     if (children.length != data.length) {
       error("Mismatch between number of SVG symbols and data attributes");

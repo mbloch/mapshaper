@@ -345,10 +345,11 @@ In place of a file name, you can also pass data inline:
   - **CSV.** A comma-delimited string is treated as inline CSV when it contains a newline (a real one or the literal escape sequence `\n`) and both the first and second lines contain at least one comma.
 
 ```bash
-mapshaper -i 'lat,lon,label\n48.86,2.35,Paris\n51.51,-0.13,London' -o cities.json
+mapshaper -i 'lat,lon,label\n48.86,2.35,Paris\n51.51,-0.13,London' \
+  -o cities.json
 ```
 
-`combine-files` Import multiple files to separate layers with shared topology. Useful for generating a single TopoJSON file containing multiple geometry objects.
+`combine-files` Import multiple files to separate layers with shared topology.
 
 `batch-mode` Apply subsequent commands separately to each input file, as if running mapshaper multiple times with the same set of commands. Used together with `-o` to transform a directory of files. Required (in a future release) to use this batch-processing behavior.
 
@@ -3087,7 +3088,7 @@ This section explains how each supported file format is handled, what format-spe
 
 | Format | Extension | Read | Write | Geometry | Attributes | Topology | Multi-layer |
 |---|---|:---:|:---:|---|---|:---:|:---:|
-| [Shapefile](/docs/formats/shapefile.html.md) | `.shp` | &check; | &check; | vector | DBF (10-char names) | &mdash; | &mdash; |
+| [Shapefile](/docs/formats/shapefile.html.md) | `.shp` `.shx` `.dbf` `.prj` `.cpg` | &check; | &check; | vector | DBF (10-char names) | &mdash; | &mdash; |
 | [GeoJSON](/docs/formats/geojson.html.md) | `.json` `.geojson` | &check; | &check; | vector | yes | &mdash; | &mdash; |
 | [TopoJSON](/docs/formats/topojson.html.md) | `.json` `.topojson` | &check; | &check; | vector | yes | **&check;** | &check; |
 | [GeoPackage](/docs/formats/geopackage.html.md) | `.gpkg` | &check; | &check; | vector | yes | &mdash; | &check; |
@@ -3103,7 +3104,7 @@ This section explains how each supported file format is handled, what format-spe
 
 A few things worth knowing across all formats:
 
-- **Auto-detection by extension.** You usually don't need to tell Mapshaper what format a file is &mdash; it picks the right reader from the file extension. Use `format=` on `-i` or `-o` to override.
+- **Auto-detection by extension.** You usually don't need to tell Mapshaper what format a file is — the input and output format are both inferred from the file extension. Use `format=` on `-i` or `-o` to override.
 - **TopoJSON is the only interchange format that preserves topology** in the file itself. Topology-aware operations like [`-dissolve`](/docs/reference.html.md#-dissolve), [`-clean`](/docs/reference.html.md#-clean) and [`-simplify`](/docs/reference.html.md#-simplify) work correctly regardless of the input format, but only TopoJSON keeps shared boundaries between adjacent polygons from being duplicated on disk. (Mapshaper's own [`.msx`](/docs/formats/snapshot.html.md) snapshots also preserve topology, but they're not readable by other tools.)
 - **Encoding.** The `encoding=` option on `-i` and `-o` applies to Shapefile, DBF and CSV/TSV i/o (UTF-8 is the default) &mdash; the other formats are UTF-8-only.
 
@@ -3119,6 +3120,8 @@ Shapefile is ESRI's long-standing vector format and remains widely used as an ex
 &middot; **Read:** &check; &middot; **Write:** &check; &middot; **Multi-layer:** no
 
 ### CLI examples
+
+When using the CLI, reference only the `.shp` file — Mapshaper automatically reads the companion `.shx`, `.dbf`, `.prj` and `.cpg` files from the same directory if they are present.
 
 ```bash
 mapshaper provinces.shp -info

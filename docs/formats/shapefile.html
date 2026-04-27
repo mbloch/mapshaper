@@ -44,6 +44,7 @@
 <p><strong>File extensions:</strong> <code>.shp</code> (geometry), <code>.dbf</code> (attributes), <code>.shx</code> (index), <code>.prj</code> (projection), <code>.cpg</code> (encoding hint)
 &middot; <strong>Read:</strong> &check; &middot; <strong>Write:</strong> &check; &middot; <strong>Multi-layer:</strong> no</p>
 <h3 id="cli-examples">CLI examples</h3>
+<p>When using the CLI, reference only the <code>.shp</code> file — Mapshaper automatically reads the companion <code>.shx</code>, <code>.dbf</code>, <code>.prj</code> and <code>.cpg</code> files from the same directory if they are present.</p>
 <pre><code class="hljs language-bash">mapshaper provinces.shp -info
 mapshaper provinces.shp -simplify 20% -o provinces.geojson
 mapshaper input.geojson -o provinces.shp

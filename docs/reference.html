@@ -214,9 +214,10 @@ mapshaper states.geojson -filter <span class="hljs-string">&#x27;ST == &quot;AK&
 <li><strong>JSON.</strong> A string starting with <code>{</code> or <code>[</code> is treated as a literal JSON object or array.</li>
 <li><strong>CSV.</strong> A comma-delimited string is treated as inline CSV when it contains a newline (a real one or the literal escape sequence <code>\n</code>) and both the first and second lines contain at least one comma.</li>
 </ul>
-<pre><code class="hljs language-bash">mapshaper -i <span class="hljs-string">&#x27;lat,lon,label\n48.86,2.35,Paris\n51.51,-0.13,London&#x27;</span> -o cities.json
+<pre><code class="hljs language-bash">mapshaper -i <span class="hljs-string">&#x27;lat,lon,label\n48.86,2.35,Paris\n51.51,-0.13,London&#x27;</span> \
+  -o cities.json
 </code></pre>
-<p><code>combine-files</code> Import multiple files to separate layers with shared topology. Useful for generating a single TopoJSON file containing multiple geometry objects.</p>
+<p><code>combine-files</code> Import multiple files to separate layers with shared topology.</p>
 <p><code>batch-mode</code> Apply subsequent commands separately to each input file, as if running mapshaper multiple times with the same set of commands. Used together with <code>-o</code> to transform a directory of files. Required (in a future release) to use this batch-processing behavior.</p>
 <p><code>merge-files</code> (Deprecated) Merge features from multiple input files into as few layers as possible. Preferred method: import files to separate layers using <code>-i combine-files</code>, then use the <code>-merge-layers</code> command to merge layers. </p>
 <p><code>snap</code>     Snap together vertices within a small distance threshold. This option is intended to fix minor coordinate misalignments in adjacent polygons. The snapping distance is 0.0025 of the average segment length.</p>

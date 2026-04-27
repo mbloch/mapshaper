@@ -229,10 +229,11 @@ In place of a file name, you can also pass data inline:
   - **CSV.** A comma-delimited string is treated as inline CSV when it contains a newline (a real one or the literal escape sequence `\n`) and both the first and second lines contain at least one comma.
 
 ```bash
-mapshaper -i 'lat,lon,label\n48.86,2.35,Paris\n51.51,-0.13,London' -o cities.json
+mapshaper -i 'lat,lon,label\n48.86,2.35,Paris\n51.51,-0.13,London' \
+  -o cities.json
 ```
 
-`combine-files` Import multiple files to separate layers with shared topology. Useful for generating a single TopoJSON file containing multiple geometry objects.
+`combine-files` Import multiple files to separate layers with shared topology.
 
 `batch-mode` Apply subsequent commands separately to each input file, as if running mapshaper multiple times with the same set of commands. Used together with `-o` to transform a directory of files. Required (in a future release) to use this batch-processing behavior.
 

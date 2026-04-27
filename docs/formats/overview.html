@@ -57,7 +57,7 @@
 </thead>
 <tbody><tr>
 <td><a href="/docs/formats/shapefile.html">Shapefile</a></td>
-<td><code>.shp</code></td>
+<td><code>.shp</code> <code>.shx</code> <code>.dbf</code> <code>.prj</code> <code>.cpg</code></td>
 <td align="center">&check;</td>
 <td align="center">&check;</td>
 <td>vector</td>
@@ -168,7 +168,7 @@
 </tbody></table>
 </div><p>A few things worth knowing across all formats:</p>
 <ul>
-<li><strong>Auto-detection by extension.</strong> You usually don&#39;t need to tell Mapshaper what format a file is &mdash; it picks the right reader from the file extension. Use <code>format=</code> on <code>-i</code> or <code>-o</code> to override.</li>
+<li><strong>Auto-detection by extension.</strong> You usually don&#39;t need to tell Mapshaper what format a file is — the input and output format are both inferred from the file extension. Use <code>format=</code> on <code>-i</code> or <code>-o</code> to override.</li>
 <li><strong>TopoJSON is the only interchange format that preserves topology</strong> in the file itself. Topology-aware operations like <a href="/docs/reference.html#-dissolve"><code>-dissolve</code></a>, <a href="/docs/reference.html#-clean"><code>-clean</code></a> and <a href="/docs/reference.html#-simplify"><code>-simplify</code></a> work correctly regardless of the input format, but only TopoJSON keeps shared boundaries between adjacent polygons from being duplicated on disk. (Mapshaper&#39;s own <a href="/docs/formats/snapshot.html"><code>.msx</code></a> snapshots also preserve topology, but they&#39;re not readable by other tools.)</li>
 <li><strong>Encoding.</strong> The <code>encoding=</code> option on <code>-i</code> and <code>-o</code> applies to Shapefile, DBF and CSV/TSV i/o (UTF-8 is the default) &mdash; the other formats are UTF-8-only.</li>
 </ul>
