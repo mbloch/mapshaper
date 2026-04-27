@@ -29,6 +29,9 @@ mapshaper \
 -filter 'admin == "United States of America"' \
 -proj albersusa \
 -classify non-adjacent colors=Tableau10 \
+-innerlines + name=innerlines \
+-style stroke=white stroke-width=0.5 \
+-target states,innerlines \
 -o us-states.svg height=400 width=600
 ```
 
@@ -36,6 +39,7 @@ mapshaper \
 
 * To see the list of built-in color schemes to use with `-classify`, run `mapshaper -colors`. You can also use `colors=random`.
 * The Albers USA projection (`-proj albersusa`) is a custom projection used by The New York Times for U.S. maps.
+* Applying a stroke to interior lines using `-innerlines` (and not to exterior lines) creates a more accurate and crisper-looking coastline.
 
 ### Assets
 

@@ -44,12 +44,12 @@
 <h2 id="choosing-a-method">Choosing a method</h2>
 <p>Mapshaper offers three simplification methods, selectable as flags to <code>-simplify</code>:</p>
 <ul>
-<li><strong><code>dp</code></strong> &mdash; Douglas-Peucker (also known as Ramer–Douglas–Peucker). Guarantees that simplified lines stay within a fixed distance of the original. Good for stripping excess vertices to reduce file size, but tends to grow visible spikes at high simplification.</li>
-<li><strong><code>visvalingam</code></strong> &mdash; The Visvalingam algorithm. Iteratively removes the point that forms the smallest triangle with its two neighbors.</li>
-<li><strong><code>weighted_visvalingam</code></strong> (Mapshaper&#39;s default) &mdash; Visvalingam&#39;s effective-area algorithm with a custom weighting that underweights points at sharp angles, so they are removed earlier than in standard Visvalingam. The result is visibly smoother lines and fewer jagged spikes at high simplification.</li>
+<li><strong><code>dp</code></strong> &mdash; Douglas-Peucker (also known as Ramer–Douglas–Peucker). Guarantees that simplified lines stay within a fixed distance of the original. Good for stripping excess vertices to reduce file size, but tends to introduce visible spikes at high simplification.</li>
+<li><strong><code>visvalingam</code></strong> &mdash; The Visvalingam algorithm. Iteratively removes the point that forms the triangle of smallest area with its two neighbors.</li>
+<li><strong><code>weighted_visvalingam</code></strong> (Mapshaper&#39;s default) &mdash; Visvalingam&#39;s algorithm with a custom weighting that underweights points at sharp angles, so they are removed earlier than in standard Visvalingam. The result is visibly smoother lines and fewer jagged spikes at high simplification. You can fine tune this effect by setting the <code>weighting=</code> option (default is 0.7). The smaller the parameter, the greater the tendency to smooth away long, thin geographic features.</li>
 </ul>
-<p>Weighted Visvalingam is the default because it has proven to be versatile and effective at reducing detail in highly detailed source data. This method can be effective at generalizing very detailed source files, but be careful that it doesn&#39;t remove long, thin geographic features that you want to keep.You can control the amount of weighting used by Weighted Visvalingam with the <code>weighting=</code> option (default is 0.7).</p>
-<p>If you are only interested in minimizing file size, Douglas-Peucker is generally the better choice.</p>
+<p>Weighted Visvalingam is the default because it produces good-looking generalizations of highly detailed source layers. But none of these methods can approach the quality that a cartographer achieves when generalizing linework by hand.</p>
+<p>If you are primarily interested in removing as many vertices as possible without visible changes to the shape of the lines, you may find that Douglas-Peucker combined with an appropriate <code>interval=</code> or <code>resolution=</code> parameter gives the best results.</p>
 <p><strong>Figures</strong></p>
 <p>Natural Earth 10m coastlines, simplified with modified Visvalingam at 5% point retention.
 <img src="/docs/images/simplification-mod2.png" alt="image"></p>
@@ -84,7 +84,7 @@
 <pre><code class="hljs language-bash">mapshaper provinces.shp -simplify 5% -clean -o provinces.geojson
 </code></pre>
 <h2 id="simplifying-multiple-layers-consistently">Simplifying multiple layers consistently</h2>
-<p>When you import multiple layers using <code>-i combine-files</code>, Mapshaper builds a shared topology. This means that boundaries shared between layers — for example, aligned state and county polygon borders — are simplified identically across both.
+<p>When you import multiple layers using <code>-i combine-files</code>, Mapshaper builds a shared topology. This means that boundaries shared between layers — for example, aligned state and county polygon borders — are simplified identically across all layers.
 Without this, the layers would diverge during simplification, creating visible gaps and overlaps where they should align.</p>
 <pre><code class="hljs language-bash">mapshaper -i states.shp counties.shp combine-files \
   -simplify 10% \

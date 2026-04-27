@@ -56,12 +56,16 @@
 -filter <span class="hljs-string">&#x27;admin == &quot;United States of America&quot;&#x27;</span> \
 -proj albersusa \
 -classify non-adjacent colors=Tableau10 \
+-innerlines + name=innerlines \
+-style stroke=white stroke-width=0.5 \
+-target states,innerlines \
 -o us-states.svg height=400 width=600
 </code></pre>
 <h3 id="notes">Notes</h3>
 <ul>
 <li>To see the list of built-in color schemes to use with <code>-classify</code>, run <code>mapshaper -colors</code>. You can also use <code>colors=random</code>.</li>
 <li>The Albers USA projection (<code>-proj albersusa</code>) is a custom projection used by The New York Times for U.S. maps.</li>
+<li>Applying a stroke to interior lines using <code>-innerlines</code> (and not to exterior lines) creates a more accurate and crisper-looking coastline.</li>
 </ul>
 <h3 id="assets">Assets</h3>
 <ul>
