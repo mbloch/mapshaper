@@ -47,6 +47,53 @@
   -o out.shp
 </code></pre>
 <p>Expressions are plain JavaScript. They can use any built-in language feature (arithmetic, string methods, conditionals, regex, etc.). Some commands also expect the expression to return a particular kind of value &mdash; <code>-filter</code> and <code>-inspect</code> expect <code>true</code> or <code>false</code>, <code>-sort</code> expects a sort key, <code>-split</code> expects a group identifier, and so on.</p>
+<h2 id="what-is-a-javascript-expression">What is a JavaScript expression?</h2>
+<p>An <strong>expression</strong> is any fragment of JavaScript code that produces a value. The key distinction is between an expression (which <em>evaluates to something</em>) and a statement (which <em>does something but produces no value</em>). Mapshaper always expects an expression — a piece of code that can be evaluated and whose result is used by the command.</p>
+<p>The simplest expressions are literals:</p>
+<pre><code class="hljs language-js"><span class="hljs-literal">true</span>          <span class="hljs-comment">// the boolean value true</span>
+<span class="hljs-number">42</span>            <span class="hljs-comment">// the number 42</span>
+<span class="hljs-string">&quot;hello&quot;</span>       <span class="hljs-comment">// the string &quot;hello&quot;</span>
+</code></pre>
+<p>A field name from the attribute table is also an expression — it evaluates to that field&#39;s value for the current feature:</p>
+<pre><code class="hljs language-js"><span class="hljs-variable constant_">POPULATION</span>    <span class="hljs-comment">// the value of the POPULATION field</span>
+</code></pre>
+<p>Arithmetic, comparisons and string operations are expressions:</p>
+<pre><code class="hljs language-js"><span class="hljs-variable constant_">POPULATION</span> / <span class="hljs-variable constant_">AREA</span>        <span class="hljs-comment">// division of two fields</span>
+<span class="hljs-variable constant_">NAME</span>.<span class="hljs-title function_">toUpperCase</span>()       <span class="hljs-comment">// calling a string method</span>
+<span class="hljs-title class_">Math</span>.<span class="hljs-title function_">abs</span>(<span class="hljs-variable constant_">CHANGE</span>)         <span class="hljs-comment">// calling a built-in math function</span>
+<span class="hljs-variable constant_">POPULATION</span> &gt; <span class="hljs-number">1000000</span>     <span class="hljs-comment">// comparison, evaluates to true or false</span>
+</code></pre>
+<p>A <strong>ternary expression</strong> (<code>condition ? value_if_true : value_if_false</code>) is a compact conditional that evaluates to one of two values:</p>
+<pre><code class="hljs language-js"><span class="hljs-variable constant_">TYPE</span> == <span class="hljs-string">&#x27;inner&#x27;</span> ? <span class="hljs-string">&#x27;blue&#x27;</span> : <span class="hljs-string">&#x27;pink&#x27;</span>
+</code></pre>
+<p>Multiple expressions separated by commas evaluate left to right; the last value is returned. This is how <code>-each</code> handles multiple field assignments in one call:</p>
+<pre><code class="hljs language-js"><span class="hljs-variable constant_">AREA_KM2</span> = <span class="hljs-variable language_">this</span>.<span class="hljs-property">area</span> / <span class="hljs-number">1e6</span>, <span class="hljs-variable constant_">POP_DENSITY</span> = <span class="hljs-variable constant_">POPULATION</span> / <span class="hljs-variable constant_">AREA_KM2</span>
+</code></pre>
+<p><strong>What is not an expression.</strong> Statements and control-flow blocks are not expressions and cannot be used directly as a Mapshaper expression argument:</p>
+<pre><code class="hljs language-js"><span class="hljs-comment">// ✗ if statement — not an expression</span>
+<span class="hljs-keyword">if</span> (<span class="hljs-variable constant_">POPULATION</span> &gt; <span class="hljs-number">1000000</span>) { <span class="hljs-variable constant_">LARGE</span> = <span class="hljs-literal">true</span> }
+
+<span class="hljs-comment">// ✗ try/catch block — not an expression</span>
+<span class="hljs-keyword">try</span> { result = <span class="hljs-title function_">riskyCalc</span>() } <span class="hljs-keyword">catch</span>(e) { result = <span class="hljs-number">0</span> }
+
+<span class="hljs-comment">// ✗ for loop — not an expression</span>
+<span class="hljs-keyword">for</span> (<span class="hljs-keyword">var</span> i = <span class="hljs-number">0</span>; i &lt; <span class="hljs-number">10</span>; i++) { ... }
+</code></pre>
+<p>If you need logic more complex than a ternary, define a helper function in an external file and load it with <a href="/docs/reference.html#-include"><code>-include</code></a>:</p>
+<pre><code class="hljs language-bash">mapshaper data.geojson \
+  -include helpers.js \
+  -each <span class="hljs-string">&#x27;SIZE = classify(POPULATION)&#x27;</span> \
+  -o out.geojson
+</code></pre>
+<h2 id="quoting-expressions-in-the-shell">Quoting expressions in the shell</h2>
+<p>Expression arguments must be quoted in the shell. The most common style is single quotes, which prevent the shell from interpreting special characters inside the expression:</p>
+<pre><code class="hljs language-bash">mapshaper data.geojson -filter <span class="hljs-string">&#x27;POPULATION &gt; 1000000&#x27;</span> -o out.geojson
+</code></pre>
+<p>If the expression itself contains single quotes — for example, a string literal — wrap it in double quotes instead, and vice versa:</p>
+<pre><code class="hljs language-bash">mapshaper data.geojson -filter <span class="hljs-string">&quot;TYPE == &#x27;inner&#x27;&quot;</span> -o out.geojson
+</code></pre>
+<p>Backtick quoting is also available as a third option when both single and double quotes appear in the expression.</p>
+<p>Backslash escapes (<code>\&quot;</code>, <code>\&#39;</code>) can also resolve quoting conflicts, but the shell processes them before passing the expression to mapshaper, which can strip the backslashes and produce a JS syntax error. This gets particularly confusing inside shell scripts and Makefiles, where an additional level of escaping may be needed. When possible, switching the outer quote style is simpler than relying on backslash escapes.</p>
 <h2 id="where-expressions-appear">Where expressions appear</h2>
 <table>
 <thead>
@@ -589,7 +636,7 @@ mapshaper -i country.shp -require ./projection.js \
   </main>
 
   <aside class="docs-toc">
-    <div class="docs-toc-title">On this page</div><ul><li class="lvl-2"><a href="#where-expressions-appear">Where expressions appear</a></li><li class="lvl-2"><a href="#the-execution-context">The execution context</a></li><li class="lvl-3"><a href="#field-assignment">Field assignment</a></li><li class="lvl-3"><a href="#multiple-statements">Multiple statements</a></li><li class="lvl-2"><a href="#feature-properties-this">Feature properties (this)</a></li><li class="lvl-3"><a href="#all-layer-types">All layer types</a></li><li class="lvl-3"><a href="#polygon-polyline-and-point-layers-with-geometry">Polygon, polyline and point layers (with geometry)</a></li><li class="lvl-3"><a href="#polygon-only">Polygon-only</a></li><li class="lvl-3"><a href="#polyline-only">Polyline-only</a></li><li class="lvl-3"><a href="#point-only">Point-only</a></li><li class="lvl-2"><a href="#layer-level-properties-thislayer">Layer-level properties (this.layer)</a></li><li class="lvl-2"><a href="#helper-functions">Helper functions</a></li><li class="lvl-2"><a href="#calc-expressions">Calc expressions</a></li><li class="lvl-2"><a href="#pair-expressions-a-and-b">Pair expressions (A and B)</a></li><li class="lvl-2"><a href="#layer-level-expressions--if--define">Layer-level expressions (-if, -define)</a></li><li class="lvl-2"><a href="#template-expressions--run">Template expressions (-run)</a></li><li class="lvl-2"><a href="#loading-helpers">Loading helpers</a></li><li class="lvl-2"><a href="#sharing-state-across-commands">Sharing state across commands</a></li><li class="lvl-2"><a href="#common-pitfalls">Common pitfalls</a></li><li class="lvl-2"><a href="#examples">Examples</a></li><li class="lvl-2"><a href="#see-also">See also</a></li></ul>
+    <div class="docs-toc-title">On this page</div><ul><li class="lvl-2"><a href="#what-is-a-javascript-expression">What is a JavaScript expression?</a></li><li class="lvl-2"><a href="#quoting-expressions-in-the-shell">Quoting expressions in the shell</a></li><li class="lvl-2"><a href="#where-expressions-appear">Where expressions appear</a></li><li class="lvl-2"><a href="#the-execution-context">The execution context</a></li><li class="lvl-3"><a href="#field-assignment">Field assignment</a></li><li class="lvl-3"><a href="#multiple-statements">Multiple statements</a></li><li class="lvl-2"><a href="#feature-properties-this">Feature properties (this)</a></li><li class="lvl-3"><a href="#all-layer-types">All layer types</a></li><li class="lvl-3"><a href="#polygon-polyline-and-point-layers-with-geometry">Polygon, polyline and point layers (with geometry)</a></li><li class="lvl-3"><a href="#polygon-only">Polygon-only</a></li><li class="lvl-3"><a href="#polyline-only">Polyline-only</a></li><li class="lvl-3"><a href="#point-only">Point-only</a></li><li class="lvl-2"><a href="#layer-level-properties-thislayer">Layer-level properties (this.layer)</a></li><li class="lvl-2"><a href="#helper-functions">Helper functions</a></li><li class="lvl-2"><a href="#calc-expressions">Calc expressions</a></li><li class="lvl-2"><a href="#pair-expressions-a-and-b">Pair expressions (A and B)</a></li><li class="lvl-2"><a href="#layer-level-expressions--if--define">Layer-level expressions (-if, -define)</a></li><li class="lvl-2"><a href="#template-expressions--run">Template expressions (-run)</a></li><li class="lvl-2"><a href="#loading-helpers">Loading helpers</a></li><li class="lvl-2"><a href="#sharing-state-across-commands">Sharing state across commands</a></li><li class="lvl-2"><a href="#common-pitfalls">Common pitfalls</a></li><li class="lvl-2"><a href="#examples">Examples</a></li><li class="lvl-2"><a href="#see-also">See also</a></li></ul>
   </aside>
 
 </div>

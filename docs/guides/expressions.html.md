@@ -16,6 +16,85 @@ mapshaper counties.shp \
 
 Expressions are plain JavaScript. They can use any built-in language feature (arithmetic, string methods, conditionals, regex, etc.). Some commands also expect the expression to return a particular kind of value &mdash; `-filter` and `-inspect` expect `true` or `false`, `-sort` expects a sort key, `-split` expects a group identifier, and so on.
 
+## What is a JavaScript expression?
+
+An **expression** is any fragment of JavaScript code that produces a value. The key distinction is between an expression (which *evaluates to something*) and a statement (which *does something but produces no value*). Mapshaper always expects an expression — a piece of code that can be evaluated and whose result is used by the command.
+
+The simplest expressions are literals:
+
+```js
+true          // the boolean value true
+42            // the number 42
+"hello"       // the string "hello"
+```
+
+A field name from the attribute table is also an expression — it evaluates to that field's value for the current feature:
+
+```js
+POPULATION    // the value of the POPULATION field
+```
+
+Arithmetic, comparisons and string operations are expressions:
+
+```js
+POPULATION / AREA        // division of two fields
+NAME.toUpperCase()       // calling a string method
+Math.abs(CHANGE)         // calling a built-in math function
+POPULATION > 1000000     // comparison, evaluates to true or false
+```
+
+A **ternary expression** (`condition ? value_if_true : value_if_false`) is a compact conditional that evaluates to one of two values:
+
+```js
+TYPE == 'inner' ? 'blue' : 'pink'
+```
+
+Multiple expressions separated by commas evaluate left to right; the last value is returned. This is how `-each` handles multiple field assignments in one call:
+
+```js
+AREA_KM2 = this.area / 1e6, POP_DENSITY = POPULATION / AREA_KM2
+```
+
+**What is not an expression.** Statements and control-flow blocks are not expressions and cannot be used directly as a Mapshaper expression argument:
+
+```js
+// ✗ if statement — not an expression
+if (POPULATION > 1000000) { LARGE = true }
+
+// ✗ try/catch block — not an expression
+try { result = riskyCalc() } catch(e) { result = 0 }
+
+// ✗ for loop — not an expression
+for (var i = 0; i < 10; i++) { ... }
+```
+
+If you need logic more complex than a ternary, define a helper function in an external file and load it with [`-include`](/docs/reference.html.md#-include):
+
+```bash
+mapshaper data.geojson \
+  -include helpers.js \
+  -each 'SIZE = classify(POPULATION)' \
+  -o out.geojson
+```
+
+## Quoting expressions in the shell
+
+Expression arguments must be quoted in the shell. The most common style is single quotes, which prevent the shell from interpreting special characters inside the expression:
+
+```bash
+mapshaper data.geojson -filter 'POPULATION > 1000000' -o out.geojson
+```
+
+If the expression itself contains single quotes — for example, a string literal — wrap it in double quotes instead, and vice versa:
+
+```bash
+mapshaper data.geojson -filter "TYPE == 'inner'" -o out.geojson
+```
+
+Backtick quoting is also available as a third option when both single and double quotes appear in the expression.
+
+Backslash escapes (`\"`, `\'`) can also resolve quoting conflicts, but the shell processes them before passing the expression to mapshaper, which can strip the backslashes and produce a JS syntax error. This gets particularly confusing inside shell scripts and Makefiles, where an additional level of escaping may be needed. When possible, switching the outer quote style is simpler than relying on backslash escapes.
+
 ## Where expressions appear
 
 | Command | Expression role | Type |
