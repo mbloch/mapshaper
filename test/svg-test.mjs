@@ -132,6 +132,83 @@ describe('mapshaper-svg.js', function () {
     });
   });
 
+  it ('features with null/empty geometry produce no SVG output', function(done) {
+    var geo = {
+      type: 'FeatureCollection',
+      features: [{
+        type: 'Feature',
+        properties: {name: 'a'},
+        geometry: {
+          type: 'Polygon',
+          coordinates: [[[0, 0], [0, 1], [1, 1], [1, 0], [0, 0]]]
+        }
+      }, {
+        type: 'Feature',
+        properties: {name: 'b'},
+        geometry: null
+      }, {
+        type: 'Feature',
+        properties: {name: 'c'},
+        geometry: {
+          type: 'MultiPolygon',
+          coordinates: []
+        }
+      }]
+    };
+    var cmd = '-i shapes.json -o shapes.svg margin=0 width=100';
+    api.applyCommands(cmd, {'shapes.json': geo}, function(err, output) {
+      assert.ifError(err);
+      var svg = output['shapes.svg'];
+      // Only the valid polygon survives -- no empty <g/> placeholders for the
+      // null-geometry or empty-coordinates features.
+      assert.equal((svg.match(/<path/g) || []).length, 1);
+      assert(!/<g\/>/.test(svg));
+      done();
+    });
+  })
+
+  it ('-o svg-data= keeps records aligned after dropping empty-geometry features', function(done) {
+    var geo = {
+      type: 'FeatureCollection',
+      features: [{
+        type: 'Feature',
+        properties: {name: 'a'},
+        geometry: null
+      }, {
+        type: 'Feature',
+        properties: {name: 'b'},
+        geometry: {
+          type: 'Polygon',
+          coordinates: [[[0, 0], [0, 1], [1, 1], [1, 0], [0, 0]]]
+        }
+      }, {
+        type: 'Feature',
+        properties: {name: 'c'},
+        geometry: null
+      }, {
+        type: 'Feature',
+        properties: {name: 'd'},
+        geometry: {
+          type: 'Polygon',
+          coordinates: [[[2, 0], [2, 1], [3, 1], [3, 0], [2, 0]]]
+        }
+      }]
+    };
+    var cmd = '-i shapes.json -o shapes.svg svg-data=name margin=0 width=100';
+    api.applyCommands(cmd, {'shapes.json': geo}, function(err, output) {
+      assert.ifError(err);
+      var svg = output['shapes.svg'];
+      // The two surviving paths must carry the data-* attributes from the
+      // matching source records (b and d), not the dropped ones (a and c).
+      assert.equal((svg.match(/<path/g) || []).length, 2);
+      assert(svg.indexOf('data-name="b"') > -1);
+      assert(svg.indexOf('data-name="d"') > -1);
+      assert.equal(svg.indexOf('data-name="a"'), -1);
+      assert.equal(svg.indexOf('data-name="c"'), -1);
+      done();
+    });
+  })
+
   it ('multipolygon exported as single path', function(done) {
     var geo = {
       type: 'Feature',
