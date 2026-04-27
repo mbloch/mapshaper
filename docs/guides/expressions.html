@@ -40,7 +40,7 @@
     <article class="docs-article">
       <div class="docs-breadcrumbs"><a href="/docs/">Docs</a> &rsaquo; Guides &rsaquo; JavaScript expressions</div>
       <h1 id="javascript-expressions">JavaScript expressions</h1>
-<p>Many Mapshaper commands take a <strong>JS expression</strong> as an argument or option. Expressions let you read and write per-feature attributes, derive new fields, filter records, sort, generate templated commands, and inspect layer-level metadata. The same expression syntax and execution context are reused across commands, so once you&#39;ve learned the shape of a <code>-each</code> expression you can use it almost everywhere.</p>
+<p>Many Mapshaper commands take a <strong>JS expression</strong> as an argument or option. Expressions let you read and write per-feature attributes, derive new fields, filter records, sort, generate templated commands, and inspect layer-level metadata. The expression language is standard JavaScript, and the variables available inside expressions — field names, <code>this</code>, <code>d</code>, helper functions — are consistent across most commands.</p>
 <pre><code class="hljs language-bash">mapshaper counties.shp \
   -each <span class="hljs-string">&#x27;STATE_FIPS = COUNTY_FIPS.substr(0, 2),
          AREA_KM2 = this.area / 1e6&#x27;</span> \

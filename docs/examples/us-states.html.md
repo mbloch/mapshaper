@@ -19,7 +19,8 @@ Difficulty: easy
 2. Keep only U.S. states
 3. Project to the "Albers USA" projection
 4. Assign random, non-adjacent colors
-5. Export as SVG
+5. Add a stroke to borders between two states
+6. Export as SVG
 
 ### Code
 

@@ -5,7 +5,7 @@ description: Reference for the JS expressions used in -each, -filter, -calc, -wh
 
 # JavaScript expressions
 
-Many Mapshaper commands take a **JS expression** as an argument or option. Expressions let you read and write per-feature attributes, derive new fields, filter records, sort, generate templated commands, and inspect layer-level metadata. The same expression syntax and execution context are reused across commands, so once you've learned the shape of a `-each` expression you can use it almost everywhere.
+Many Mapshaper commands take a **JS expression** as an argument or option. Expressions let you read and write per-feature attributes, derive new fields, filter records, sort, generate templated commands, and inspect layer-level metadata. The expression language is standard JavaScript, and the variables available inside expressions — field names, `this`, `d`, helper functions — are consistent across most commands.
 
 ```bash
 mapshaper counties.shp \

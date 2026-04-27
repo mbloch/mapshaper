@@ -2261,7 +2261,7 @@ The web app does **not** combine files automatically when you import multiple la
 
 # JavaScript expressions
 
-Many Mapshaper commands take a **JS expression** as an argument or option. Expressions let you read and write per-feature attributes, derive new fields, filter records, sort, generate templated commands, and inspect layer-level metadata. The same expression syntax and execution context are reused across commands, so once you've learned the shape of a `-each` expression you can use it almost everywhere.
+Many Mapshaper commands take a **JS expression** as an argument or option. Expressions let you read and write per-feature attributes, derive new fields, filter records, sort, generate templated commands, and inspect layer-level metadata. The expression language is standard JavaScript, and the variables available inside expressions — field names, `this`, `d`, helper functions — are consistent across most commands.
 
 ```bash
 mapshaper counties.shp \
@@ -4113,7 +4113,8 @@ Difficulty: easy
 2. Keep only U.S. states
 3. Project to the "Albers USA" projection
 4. Assign random, non-adjacent colors
-5. Export as SVG
+5. Add a stroke to borders between two states
+6. Export as SVG
 
 ### Code
 
