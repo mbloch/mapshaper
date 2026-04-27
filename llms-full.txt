@@ -2333,9 +2333,9 @@ mapshaper data.geojson \
   -o out.geojson
 ```
 
-## Quoting expressions in the shell
+## Quoting expressions
 
-Expression arguments must be quoted in the shell. The most common style is single quotes, which prevent the shell from interpreting special characters inside the expression:
+An expression containing spaces or special characters needs to be quoted, otherwise mapshaper will interpret the parts as separate arguments and produce a syntax error. Single quotes are the most common style:
 
 ```bash
 mapshaper data.geojson -filter 'POPULATION > 1000000' -o out.geojson
@@ -2349,7 +2349,7 @@ mapshaper data.geojson -filter "TYPE == 'inner'" -o out.geojson
 
 Backtick quoting is also available as a third option when both single and double quotes appear in the expression.
 
-Backslash escapes (`\"`, `\'`) can also resolve quoting conflicts, but the shell processes them before passing the expression to mapshaper, which can strip the backslashes and produce a JS syntax error. This gets particularly confusing inside shell scripts and Makefiles, where an additional level of escaping may be needed. When possible, switching the outer quote style is simpler than relying on backslash escapes.
+Backslash escapes (`\"`, `\'`) can also resolve quoting conflicts, but when running commands in a shell the shell processes them before passing the expression to mapshaper, which can strip the backslashes and produce a JS syntax error. This gets particularly confusing inside shell scripts and Makefiles, where an additional level of escaping may be needed. When possible, switching the outer quote style is simpler than relying on backslash escapes.
 
 ## Where expressions appear
 
