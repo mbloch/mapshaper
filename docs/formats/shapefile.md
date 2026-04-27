@@ -12,6 +12,8 @@ Shapefile is ESRI's long-standing vector format and remains widely used as an ex
 
 ### CLI examples
 
+When using the CLI, reference only the `.shp` file — Mapshaper automatically reads the companion `.shx`, `.dbf`, `.prj` and `.cpg` files from the same directory if they are present.
+
 ```bash
 mapshaper provinces.shp -info
 mapshaper provinces.shp -simplify 20% -o provinces.geojson
