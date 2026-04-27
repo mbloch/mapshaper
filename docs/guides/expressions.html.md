@@ -259,7 +259,7 @@ JavaScript's built-in `Math`, `JSON`, `Number`, `String`, `Array`, `Date`, `Obje
 
 ## Calc expressions
 
-`-calc` and any command's `calc=` option use the same context as `-each` plus a set of *aggregate* functions that operate over the entire group of features (or the entire layer for `-calc`). Each aggregate function takes a per-feature expression and reduces it to a single value across the group.
+`-calc` and any command's `calc=` option use the same context as `-each` plus a set of *reduction functions* — functions that convert data from a group of features or an entire layer to a single value. Each reduction function takes a per-feature expression and reduces it across the group.
 
 | Function | Description |
 | --- | --- |
@@ -409,7 +409,7 @@ mapshaper events.csv \
 
 # Sort polygons largest-first
 mapshaper countries.geojson \
-  -sort '-this.area' \
+  -sort this.area descending \
   -o sorted.geojson
 
 # Look up one feature
@@ -447,9 +447,9 @@ mapshaper -i country.shp -require ./projection.js \
 
 ## See also
 
-- [`-each`](/docs/reference.html.md#-each) &mdash; the canonical feature-expression command
+- [`-each`](/docs/reference.html.md#-each)
 - [`-filter`](/docs/reference.html.md#-filter)
 - [`-calc`](/docs/reference.html.md#-calc)
 - [`-define`](/docs/reference.html.md#-define), [`-include`](/docs/reference.html.md#-include), [`-require`](/docs/reference.html.md#-require)
 - [`-run`](/docs/reference.html.md#-run)
-- [Basics](/docs/examples/basics.html.md) &mdash; recipes that put expressions to work
+- [Basics](/docs/examples/basics.html.md) &mdash; many examples that use expressions

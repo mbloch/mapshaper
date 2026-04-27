@@ -419,7 +419,7 @@
 </ul>
 <p>JavaScript&#39;s built-in <code>Math</code>, <code>JSON</code>, <code>Number</code>, <code>String</code>, <code>Array</code>, <code>Date</code>, <code>Object</code> etc. are all available. Node-specific globals like <code>process</code>, <code>require</code> and <code>setTimeout</code> are not.</p>
 <h2 id="calc-expressions">Calc expressions</h2>
-<p><code>-calc</code> and any command&#39;s <code>calc=</code> option use the same context as <code>-each</code> plus a set of <em>aggregate</em> functions that operate over the entire group of features (or the entire layer for <code>-calc</code>). Each aggregate function takes a per-feature expression and reduces it to a single value across the group.</p>
+<p><code>-calc</code> and any command&#39;s <code>calc=</code> option use the same context as <code>-each</code> plus a set of <em>reduction functions</em> — functions that convert data from a group of features or an entire layer to a single value. Each reduction function takes a per-feature expression and reduces it across the group.</p>
 <table>
 <thead>
 <tr>
@@ -584,7 +584,7 @@ mapshaper events.csv \
 
 <span class="hljs-comment"># Sort polygons largest-first</span>
 mapshaper countries.geojson \
-  -<span class="hljs-built_in">sort</span> <span class="hljs-string">&#x27;-this.area&#x27;</span> \
+  -<span class="hljs-built_in">sort</span> this.area descending \
   -o sorted.geojson
 
 <span class="hljs-comment"># Look up one feature</span>
@@ -621,12 +621,12 @@ mapshaper -i country.shp -require ./projection.js \
 </code></pre>
 <h2 id="see-also">See also</h2>
 <ul>
-<li><a href="/docs/reference.html#-each"><code>-each</code></a> &mdash; the canonical feature-expression command</li>
+<li><a href="/docs/reference.html#-each"><code>-each</code></a></li>
 <li><a href="/docs/reference.html#-filter"><code>-filter</code></a></li>
 <li><a href="/docs/reference.html#-calc"><code>-calc</code></a></li>
 <li><a href="/docs/reference.html#-define"><code>-define</code></a>, <a href="/docs/reference.html#-include"><code>-include</code></a>, <a href="/docs/reference.html#-require"><code>-require</code></a></li>
 <li><a href="/docs/reference.html#-run"><code>-run</code></a></li>
-<li><a href="/docs/examples/basics.html">Basics</a> &mdash; recipes that put expressions to work</li>
+<li><a href="/docs/examples/basics.html">Basics</a> &mdash; many examples that use expressions</li>
 </ul>
 
       <div class="edit-link">

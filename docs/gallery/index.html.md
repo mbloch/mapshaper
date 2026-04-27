@@ -5,7 +5,7 @@ description: Example maps made with Mapshaper, with full source data and reprodu
 
 # Gallery
 
-A collection of example maps made with Mapshaper. Each tile links to a full write-up with the recipe, the source data, and a one-click link to open the finished snapshot in the [web app](/).
+A collection of example maps made with Mapshaper. Each tile links to its own page with the recipe, the source data, and a link to open the finished map in the [web app](/).
 
 <div class="gallery-grid">
   <a class="gallery-tile" href="/docs/examples/globe.html">
