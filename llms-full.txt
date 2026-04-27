@@ -2840,9 +2840,21 @@ Mapshaper detects topology on import by identifying coordinates that are exactly
 
 But coordinates that "should be" identical often aren't. Source datasets routinely contain misalignments (tiny gaps or overlaps between adjacent polygons) that defeat exact-match topology detection. The result is that what looks like a clean boundary turns into duplicated, slightly-offset arcs &mdash; and simplification, dissolving and clipping all start to misbehave.
 
+## Cleaning
+
+The [`-clean`](/docs/reference.html.md#-clean) command is the general-purpose repair tool for topology errors. It snaps near-duplicate vertices, removes small gaps and overlaps between adjacent polygons, and fixes self-intersecting lines:
+
+```bash
+mapshaper countries.shp -clean -o cleaned.shp
+```
+
+`-clean` accepts a `gap-fill-area=` option to control how aggressively gaps are filled, and a `sliver-control=` setting for handling sliver polygons. [`-dissolve`](/docs/reference.html.md#-dissolve) runs an equivalent repair by default, so explicitly running `-clean` is mainly useful when you want clean output without dissolving anything.
+
+In the web app, `-clean` runs from the **Console** the same way as on the CLI  (the leading `-` is optional, e.g. just `clean gap-fill-area=100`).
+
 ## Snapping
 
-The simplest fix is to ask Mapshaper to snap nearby vertices together at import time.
+For datasets where adjacent polygons have vertices that should be identical but are slightly offset — typically due to floating-point rounding in the source tool — you can ask Mapshaper to snap those vertices together at import time:
 
 In the **command line**, pass the `snap` flag to `-i`:
 
@@ -2852,23 +2864,13 @@ mapshaper countries.shp snap -dissolve CONTINENT -o continents.shp
 
 In the **web app**, tick "snap vertices" in the import dialog (open the import options with the **with advanced options** checkbox).
 
-By default, snapping uses an automatic threshold of about 0.0025× the average segment length, which is designed to catch misalignments caused by floating-point rounding. To set an explicit snapping distance, use `snap-interval=`:
+By default, snapping uses an automatic threshold of about 0.0025× the average segment length. To set an explicit snapping distance, use `snap-interval=`:
 
 ```bash
 mapshaper countries.shp snap-interval=0.0001 -o cleaned.shp
 ```
 
-## Cleaning
-
-Snapping handles slightly offset pairs of vertices, but doesn't help much when adjacent polygons have small overlapping regions or gaps along their shared boundaries. The [`-clean`](/docs/reference.html.md#-clean) command repairs these by recomputing the polygon mosaic and snapping geometry that's nearly identical:
-
-```bash
-mapshaper countries.shp -clean -o cleaned.shp
-```
-
-`-clean` accepts a `gap-fill-area=` option to control how aggressively gaps are filled, and a `sliver-control=` setting for handling sliver polygons. [`-dissolve`](/docs/reference.html.md#-dissolve) runs an equivalent repair by default, so explicitly running `-clean` is mainly useful when you want clean output without dissolving anything.
-
-In the web app, `-clean` runs from the **Console** the same way as on the CLI &mdash; the leading `-` is optional, e.g. just `clean gap-fill-area=100`.
+Snapping is only effective when the misalignment is limited to nearly-identical coordinate pairs. Most real-world datasets with topology errors have more complex problems — gaps, overlaps, or self-intersections that snapping alone cannot fix. There is no easy way to know in advance whether snapping is sufficient without inspecting the result, so `-clean` is usually the better starting point.
 
 ## Dissolving with topology repair
 
@@ -2888,7 +2890,7 @@ On the command line, [`-clean`](/docs/reference.html.md#-clean) and [`-dissolve`
 
 A few patterns to watch out for:
 
-- **`.shp` files exported from older GIS tools.** Some pipelines round coordinates inconsistently between adjacent features, producing systematic misalignments. Importing with `snap` is usually enough.
+- **`.shp` files exported from older GIS tools.** Some pipelines round coordinates inconsistently between adjacent features, producing systematic misalignments. Running `-clean` (or importing with `snap` if the misalignments are small and consistent) usually resolves these.
 - **Older versions of ArcGIS's dissolve tool** have been observed to produce topology errors when dissolving a Shapefile that hasn't first been added to a Geodatabase. If you're starting from such output, run it through `mapshaper input.shp -clean -o cleaned.shp` to repair before further processing.
 
 ---

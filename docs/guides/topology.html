@@ -43,21 +43,22 @@
 <p>Shapefile and GeoJSON are non-topological formats &mdash; they don&#39;t record the spatial relationships between adjacent polygons or intersecting polylines. Each polygon is just a list of coordinates; whether two polygons share an edge has to be detected.</p>
 <p>Mapshaper detects topology on import by identifying coordinates that are exactly shared between features. This is what makes operations like simplification, dissolving and clipping work correctly: when two polygons share an edge, the shared path (or &quot;arc&quot;) is stored once and edited once.</p>
 <p>But coordinates that &quot;should be&quot; identical often aren&#39;t. Source datasets routinely contain misalignments (tiny gaps or overlaps between adjacent polygons) that defeat exact-match topology detection. The result is that what looks like a clean boundary turns into duplicated, slightly-offset arcs &mdash; and simplification, dissolving and clipping all start to misbehave.</p>
+<h2 id="cleaning">Cleaning</h2>
+<p>The <a href="/docs/reference.html#-clean"><code>-clean</code></a> command is the general-purpose repair tool for topology errors. It snaps near-duplicate vertices, removes small gaps and overlaps between adjacent polygons, and fixes self-intersecting lines:</p>
+<pre><code class="hljs language-bash">mapshaper countries.shp -clean -o cleaned.shp
+</code></pre>
+<p><code>-clean</code> accepts a <code>gap-fill-area=</code> option to control how aggressively gaps are filled, and a <code>sliver-control=</code> setting for handling sliver polygons. <a href="/docs/reference.html#-dissolve"><code>-dissolve</code></a> runs an equivalent repair by default, so explicitly running <code>-clean</code> is mainly useful when you want clean output without dissolving anything.</p>
+<p>In the web app, <code>-clean</code> runs from the <strong>Console</strong> the same way as on the CLI  (the leading <code>-</code> is optional, e.g. just <code>clean gap-fill-area=100</code>).</p>
 <h2 id="snapping">Snapping</h2>
-<p>The simplest fix is to ask Mapshaper to snap nearby vertices together at import time.</p>
+<p>For datasets where adjacent polygons have vertices that should be identical but are slightly offset — typically due to floating-point rounding in the source tool — you can ask Mapshaper to snap those vertices together at import time:</p>
 <p>In the <strong>command line</strong>, pass the <code>snap</code> flag to <code>-i</code>:</p>
 <pre><code class="hljs language-bash">mapshaper countries.shp snap -dissolve CONTINENT -o continents.shp
 </code></pre>
 <p>In the <strong>web app</strong>, tick &quot;snap vertices&quot; in the import dialog (open the import options with the <strong>with advanced options</strong> checkbox).</p>
-<p>By default, snapping uses an automatic threshold of about 0.0025× the average segment length, which is designed to catch misalignments caused by floating-point rounding. To set an explicit snapping distance, use <code>snap-interval=</code>:</p>
+<p>By default, snapping uses an automatic threshold of about 0.0025× the average segment length. To set an explicit snapping distance, use <code>snap-interval=</code>:</p>
 <pre><code class="hljs language-bash">mapshaper countries.shp snap-interval=0.0001 -o cleaned.shp
 </code></pre>
-<h2 id="cleaning">Cleaning</h2>
-<p>Snapping handles slightly offset pairs of vertices, but doesn&#39;t help much when adjacent polygons have small overlapping regions or gaps along their shared boundaries. The <a href="/docs/reference.html#-clean"><code>-clean</code></a> command repairs these by recomputing the polygon mosaic and snapping geometry that&#39;s nearly identical:</p>
-<pre><code class="hljs language-bash">mapshaper countries.shp -clean -o cleaned.shp
-</code></pre>
-<p><code>-clean</code> accepts a <code>gap-fill-area=</code> option to control how aggressively gaps are filled, and a <code>sliver-control=</code> setting for handling sliver polygons. <a href="/docs/reference.html#-dissolve"><code>-dissolve</code></a> runs an equivalent repair by default, so explicitly running <code>-clean</code> is mainly useful when you want clean output without dissolving anything.</p>
-<p>In the web app, <code>-clean</code> runs from the <strong>Console</strong> the same way as on the CLI &mdash; the leading <code>-</code> is optional, e.g. just <code>clean gap-fill-area=100</code>.</p>
+<p>Snapping is only effective when the misalignment is limited to nearly-identical coordinate pairs. Most real-world datasets with topology errors have more complex problems — gaps, overlaps, or self-intersections that snapping alone cannot fix. There is no easy way to know in advance whether snapping is sufficient without inspecting the result, so <code>-clean</code> is usually the better starting point.</p>
 <h2 id="dissolving-with-topology-repair">Dissolving with topology repair</h2>
 <p><a href="/docs/reference.html#-dissolve"><code>-dissolve</code></a> repairs topology automatically. To skip the repair pass (faster, but only safe when you trust the input topology), pass <code>no-repair</code> &mdash; Mapshaper will then warn if it detects segment intersections in the input.</p>
 <pre><code class="hljs language-bash">mapshaper counties.shp -dissolve STATE_FIPS -o states.shp
@@ -68,7 +69,7 @@
 <h2 id="notes-on-common-sources-of-topology-errors">Notes on common sources of topology errors</h2>
 <p>A few patterns to watch out for:</p>
 <ul>
-<li><strong><code>.shp</code> files exported from older GIS tools.</strong> Some pipelines round coordinates inconsistently between adjacent features, producing systematic misalignments. Importing with <code>snap</code> is usually enough.</li>
+<li><strong><code>.shp</code> files exported from older GIS tools.</strong> Some pipelines round coordinates inconsistently between adjacent features, producing systematic misalignments. Running <code>-clean</code> (or importing with <code>snap</code> if the misalignments are small and consistent) usually resolves these.</li>
 <li><strong>Older versions of ArcGIS&#39;s dissolve tool</strong> have been observed to produce topology errors when dissolving a Shapefile that hasn&#39;t first been added to a Geodatabase. If you&#39;re starting from such output, run it through <code>mapshaper input.shp -clean -o cleaned.shp</code> to repair before further processing.</li>
 </ul>
 
@@ -79,7 +80,7 @@
   </main>
 
   <aside class="docs-toc">
-    <div class="docs-toc-title">On this page</div><ul><li class="lvl-2"><a href="#snapping">Snapping</a></li><li class="lvl-2"><a href="#cleaning">Cleaning</a></li><li class="lvl-2"><a href="#dissolving-with-topology-repair">Dissolving with topology repair</a></li><li class="lvl-2"><a href="#detecting-line-intersections">Detecting line intersections</a></li><li class="lvl-2"><a href="#notes-on-common-sources-of-topology-errors">Notes on common sources of topology errors</a></li></ul>
+    <div class="docs-toc-title">On this page</div><ul><li class="lvl-2"><a href="#cleaning">Cleaning</a></li><li class="lvl-2"><a href="#snapping">Snapping</a></li><li class="lvl-2"><a href="#dissolving-with-topology-repair">Dissolving with topology repair</a></li><li class="lvl-2"><a href="#detecting-line-intersections">Detecting line intersections</a></li><li class="lvl-2"><a href="#notes-on-common-sources-of-topology-errors">Notes on common sources of topology errors</a></li></ul>
   </aside>
 
 </div>
