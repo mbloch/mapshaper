@@ -21,15 +21,25 @@ export function setLoggingForGUI(gui) {
 
   function message() {
     var msg = GUI.formatMessageArgs(arguments);
-    gui.message(msg);
-    internal.logArgs(arguments);
+    if (gui.notify) {
+      gui.notify({severity: 'info', body: msg});
+    } else {
+      // Fallback for early messages before MessageControl is constructed
+      gui.message(msg);
+      internal.logArgs(arguments);
+    }
   }
 
-  // GUI warning uses the alert popup, which replaces previous popup
-  // (unlike message) -- this allows for catching and handling errors
-  // by replacing the error popup with a warning.
+  // CLI warnings used to surface as modal alerts, which interrupt the user
+  // and replace any previous popup. They now go to the Messages inbox so
+  // they can accumulate non-disruptively.
   function warn() {
-    gui.alert(GUI.formatMessageArgs(arguments));
+    var msg = GUI.formatMessageArgs(arguments);
+    if (gui.notify) {
+      gui.notify({severity: 'warn', body: msg, dedupKey: 'warn:' + msg});
+    } else {
+      gui.alert(msg);
+    }
   }
 
   internal.setLoggingFunctions(message, error, stop, warn);
@@ -48,7 +58,11 @@ export function WriteFilesProxy(gui) {
       try {
         await utils.promisify(saveFilesToServer)(paths, data);
         if (files.length >= 1) {
-          gui.alert('<b>Saved</b><br>' + paths.join('<br>'));
+          if (gui.notify) {
+            gui.notify({severity: 'info', title: 'Saved', body: paths.join('\n')});
+          } else {
+            gui.alert('<b>Saved</b><br>' + paths.join('<br>'));
+          }
         }
       } catch(err) {
         msg = "<b>Direct save failed</b><br>Reason: " + err.message + ".";

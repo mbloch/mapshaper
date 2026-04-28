@@ -165,6 +165,13 @@ body.map-view {
 
 }
 
+/* When the page is preloaded with data (CLI files, ?files= or ?catalog= URL
+   params), suppress the splash header links so they don't flash into view
+   for ~a second before the editor mounts and hides them. */
+.mapshaper-preload #splash-buttons {
+	display: none;
+}
+
 .page-header-buttons {
 	z-index: 20;
 	position: absolute;
@@ -1195,6 +1202,156 @@ img.close-btn:hover,
 .display-options .info-box {
 	width:  min-content;
 	pointer-events: initial;
+}
+
+/* --- Messages inbox --------------- */
+
+.messages-btn.btn {
+	/* SVG-only button; align like the hamburger so its baseline doesn't drag
+	   the row's text-bearing buttons down. */
+	padding: 8px 8px 4px 8px;
+	user-select: none;
+	vertical-align: top;
+	cursor: pointer;
+	position: relative;
+}
+
+.messages-btn.btn.hidden {
+	display: none;
+}
+
+.messages-btn svg {
+	display: block;
+	fill: currentColor;
+}
+
+.messages-badge {
+	position: absolute;
+	top: 2px;
+	right: -1px;
+	min-width: 14px;
+	height: 14px;
+	padding: 0 3px;
+	border-radius: 7px;
+	background-color: #d63333;
+	color: #fff;
+	font-size: 10px;
+	line-height: 14px;
+	font-weight: 600;
+	text-align: center;
+	box-sizing: border-box;
+	pointer-events: none;
+}
+
+.messages-badge.warn {
+	background-color: #d68f33;
+}
+
+/* Quick pulse to draw attention when a new message arrives. The animation
+   is added by JS for ~2s and then removed, so it doesn't cycle forever. */
+.messages-btn.pulse .messages-badge {
+	animation: messages-pulse 0.9s ease-out 2;
+}
+
+@keyframes messages-pulse {
+	0%   { transform: scale(1);   box-shadow: 0 0 0 0 rgba(214, 51, 51, 0.55); }
+	60%  { transform: scale(1.15); box-shadow: 0 0 0 6px rgba(214, 51, 51, 0); }
+	100% { transform: scale(1);   box-shadow: 0 0 0 0 rgba(214, 51, 51, 0); }
+}
+
+.messages-panel {
+	pointer-events: none;
+}
+
+.messages-panel .info-box {
+	pointer-events: initial;
+	width: 360px;
+	max-width: 90vw;
+}
+
+.messages-empty {
+	color: #888;
+	font-size: 13px;
+	font-style: italic;
+	padding: 4px 0 8px 0;
+}
+
+.messages-list {
+	max-height: 50vh;
+	overflow: hidden;
+	overflow-y: auto;
+	margin: 0 -4px 6px -4px;
+}
+
+.message-item {
+	position: relative;
+	border-left: 3px solid #888;
+	background-color: #f4f7fa;
+	padding: 6px 22px 6px 9px;
+	margin: 4px 4px;
+	border-radius: 3px;
+	font-size: 13px;
+	line-height: 1.35;
+}
+
+.message-item.severity-warn {
+	border-left-color: #d68f33;
+	background-color: #fbf3e6;
+}
+
+.message-item.severity-error {
+	border-left-color: #d63333;
+	background-color: #fbecec;
+}
+
+.message-item .message-title {
+	font-weight: 600;
+	display: block;
+	margin-bottom: 1px;
+}
+
+.message-item .message-body {
+	white-space: pre-wrap;
+	word-wrap: break-word;
+}
+
+.message-item .message-time {
+	color: #888;
+	font-size: 11px;
+	margin-top: 2px;
+	display: block;
+}
+
+.message-item .message-dismiss {
+	position: absolute;
+	top: 3px;
+	right: 5px;
+	width: 16px;
+	height: 16px;
+	line-height: 14px;
+	text-align: center;
+	color: #888;
+	cursor: pointer;
+	font-size: 14px;
+	user-select: none;
+	border-radius: 8px;
+}
+
+.message-item .message-dismiss:hover {
+	color: #333;
+	background-color: rgba(0, 0, 0, 0.05);
+}
+
+.messages-footer {
+	text-align: right;
+	padding-top: 4px;
+	border-top: 1px solid #eee;
+}
+
+.messages-footer .messages-clear-btn {
+	font-size: 12px;
+	min-width: 0;
+	padding: 3px 9px;
 }
 
 .basemap-container {

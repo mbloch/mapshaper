@@ -391,8 +391,32 @@ export function ImportControl(gui, opts) {
       } else if (await importDataset(group, groupImportOpts)) {
         importCount++;
         gui.session.fileImported(group.filename, optStr);
+        notifyMissingShapefileParts(group);
       }
     }
+  }
+
+  // Surface a passive warning if a .shp file came in without its .dbf or .prj
+  // sibling. Both files are technically optional, but their absence has very
+  // different consequences (no attribute data, no projection metadata) and
+  // users frequently load just the .shp by accident. Mapshaper generally
+  // doesn't need .shx, so we don't warn about that.
+  function notifyMissingShapefileParts(group) {
+    if (!group.shp || !gui.notify) return;
+    var missing = [];
+    if (!group.dbf) missing.push({ext: '.dbf', why: 'no attribute data'});
+    if (!group.prj) missing.push({ext: '.prj', why: 'no projection metadata'});
+    if (!missing.length) return;
+    var base = internal.getFileBase(group.shp.filename);
+    var parts = missing.map(function(m) { return m.ext; }).join(' and ');
+    var consequences = missing.map(function(m) { return m.why; }).join(', ');
+    gui.notify({
+      severity: 'warn',
+      body: base + '.shp was loaded without its ' + parts +
+            (missing.length > 1 ? ' files' : ' file') +
+            ' (' + consequences + ').',
+      dedupKey: 'shp-missing:' + base
+    });
   }
 
   async function importDataset(group, importOpts) {
