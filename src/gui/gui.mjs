@@ -81,12 +81,19 @@ var startEditing = function() {
     }
   });
 
-  window.addEventListener('unload', function(e) {
-    if (window.location.hostname == 'localhost') {
-      // send termination signal for mapshaper-gui
-      var req = new XMLHttpRequest();
-      req.open('GET', '/close');
-      req.send();
+  // Send termination signal to mapshaper-gui when the tab is closed.
+  // Use 'pagehide' rather than 'unload' (the latter is increasingly suppressed
+  // by Chrome/Edge for bfcache reasons), and use sendBeacon / keepalive fetch
+  // because async XHR in the unload path is not guaranteed to be sent.
+  window.addEventListener('pagehide', function(e) {
+    if (window.location.hostname != 'localhost') return;
+    if (e.persisted) return; // page is being cached, not actually closed
+    if (navigator.sendBeacon) {
+      navigator.sendBeacon('/close');
+    } else {
+      try {
+        fetch('/close', {method: 'GET', keepalive: true});
+      } catch (err) {}
     }
   });
 
