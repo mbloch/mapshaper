@@ -1,7 +1,7 @@
 
 import { encodeString, decodeString, stringIsAscii } from '../text/mapshaper-encodings';
 import { findFieldNames, getUniqFieldNames } from '../datatable/mapshaper-data-utils';
-import { error, message } from '../utils/mapshaper-logging';
+import { error, message, warn } from '../utils/mapshaper-logging';
 import utils from '../utils/mapshaper-utils';
 import { BinArray } from '../utils/mapshaper-binarray';
 var Dbf = {};
@@ -232,16 +232,80 @@ function encodeFieldNames(names, encoding) {
   });
 }
 
-// Truncate and dedup field names
-//
+// Truncate and dedup field names so they fit Shapefile's 10-character DBF
+// limit, and surface a one-shot summary so users notice rather than having
+// downstream joins/scripts fail silently against the new names.
 function convertFieldNames(names, encoding) {
-  var names2 = getUniqFieldNames(names.map(cleanFieldName), 10, encoding);
-  names2.forEach(function(name2, i) {
-    if (names[i] != name2) {
-      message('Changed field name from "' + names[i] + '" to "' + name2 + '"');
+  var cleaned = names.map(cleanFieldName);
+  var names2 = getUniqFieldNames(cleaned, 10, encoding);
+
+  // Group renames by category so the message is informative without being
+  // noisy. cleanedOnly is just whitespace/dash -> underscore (low signal);
+  // truncated and collided both shorten the name to <= 10 bytes, with
+  // collided being the highest-signal case (two long names collapsed onto
+  // each other and one had to be suffixed to stay unique).
+  var cleanedOnly = [];
+  var truncated = [];
+  var collided = [];
+
+  // Two cleaned names collide if they share their first-10-byte prefix in
+  // the target encoding. Cheaper to bucket than to re-derive from names2.
+  var prefixCounts = {};
+  cleaned.forEach(function(c) {
+    var key = encodedFieldNameKey(c, encoding);
+    prefixCounts[key] = (prefixCounts[key] || 0) + 1;
+  });
+
+  names.forEach(function(orig, i) {
+    var cleanedName = cleaned[i];
+    var finalName = names2[i];
+    if (orig === finalName) return;
+    if (cleanedName === finalName) {
+      cleanedOnly.push({from: orig, to: finalName});
+    } else if (prefixCounts[encodedFieldNameKey(cleanedName, encoding)] > 1) {
+      collided.push({from: orig, to: finalName});
+    } else {
+      truncated.push({from: orig, to: finalName});
     }
   });
+
+  if (collided.length > 0) {
+    warn('Field names collided after Shapefile\'s 10-character DBF limit; ' +
+      'a numeric suffix was appended to keep the colliding names unique. ' +
+      'Use -rename-fields to avoid automatic renaming.\n' +
+      formatRenameList(collided));
+  }
+  if (truncated.length > 0) {
+    warn('Field names were truncated to fit Shapefile\'s 10-character DBF limit:\n' +
+      formatRenameList(truncated));
+  }
+  if (cleanedOnly.length > 0) {
+    message('Field names cleaned for Shapefile DBF compatibility:\n' +
+      formatRenameList(cleanedOnly));
+  }
   return names2;
+}
+
+function formatRenameList(pairs) {
+  return pairs.map(function(p) {
+    return '  ' + p.from + ' -> ' + p.to;
+  }).join('\n');
+}
+
+// Approximate the bucket a field name would occupy in the truncated DBF
+// header. For ASCII this is just the first 10 chars; for multi-byte
+// encodings we have to count bytes, since the DBF header limit is 10
+// *bytes* (one Chinese char in UTF-8 is three bytes, hence the existing
+// test cases expecting 3-char and 5-char prefixes).
+function encodedFieldNameKey(name, encoding) {
+  if (!encoding || encoding == 'ascii' || stringIsAscii(name)) {
+    return name.substr(0, 10);
+  }
+  var encoded = encodeString(name, encoding);
+  var truncated = encoded.length > 10 ? encoded.slice(0, 10) : encoded;
+  // Decode and re-encode so partial multi-byte sequences at the boundary
+  // collapse the same way the writer would handle them.
+  return decodeString(truncated, encoding);
 }
 
 // Replace non-alphanumeric characters with _ and merge adjacent _

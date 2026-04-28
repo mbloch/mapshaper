@@ -10,7 +10,8 @@ export default {
   coordinatesAlmostEqual: coordinatesAlmostEqual,
   almostEqual: almostEqual,
   Reader: Reader,
-  fixPath: fixPath
+  fixPath: fixPath,
+  captureLogCalls: captureLogCalls
 };
 
 var utils = api.utils;
@@ -63,3 +64,21 @@ function Reader(str, chunkLen) {
 }
 
 Reader.prototype.findString = api.internal.FileReader.prototype.findString;
+
+// Run fn() with mapshaper logging temporarily enabled and console.error
+// captured, returning the recorded log lines. Restores prior logging state
+// and console.error on exit so other tests aren't affected.
+export function captureLogCalls(fn) {
+  var loggingWasEnabled = api.internal.loggingEnabled();
+  var calls = [];
+  var origError = console.error;
+  console.error = function() { calls.push(Array.prototype.join.call(arguments, ' ')); };
+  api.enableLogging();
+  try {
+    fn();
+  } finally {
+    console.error = origError;
+    if (!loggingWasEnabled) api.internal.disableLogging();
+  }
+  return calls;
+}
