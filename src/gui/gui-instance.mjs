@@ -17,6 +17,7 @@ import { initModeRules } from './gui-mode-rules';
 import { ContextMenu } from './gui-context-menu';
 import { Basemap } from './gui-basemap-control';
 import { DisplayOptions } from './gui-display-options-menu';
+import { MessageControl } from './gui-messages';
 // import { ProjectOptions } from './gui-project-control';
 
 
@@ -38,6 +39,7 @@ export function GuiInstance(container, opts) {
   gui.keyboard = new KeyboardEvents(gui);
   gui.buttons = new SidebarButtons(gui);
   gui.display = new DisplayOptions(gui);
+  gui.messages = new MessageControl(gui);
   gui.basemap = new Basemap(gui);
   gui.session = new SessionHistory(gui);
   gui.contextMenu = new ContextMenu();

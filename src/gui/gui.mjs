@@ -75,10 +75,9 @@ var startEditing = function() {
       importOpts = getImportOpts(manifest),
       gui = new GuiInstance('body');
 
-  // TODO: re-enable the "blurb"
-  // if (manifest.blurb) {
-  //   El('#splash-screen-blurb').text(manifest.blurb);
-  // }
+  if (!importOpts.files?.length) {
+    El('body').removeClass('mapshaper-preload');
+  }
 
   new AlertControl(gui);
   new IntersectionControl(gui);
