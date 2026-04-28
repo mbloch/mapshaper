@@ -1,9 +1,11 @@
-vNext
+v0.7.4
 * Removed support for fetching remote SVG assets at export time.
 * Bumped the minimum supported Node.js version from 12 to 20.11 (Maintenance LTS).
 * Updated dependencies.
 * `mapshaper-gui` improvements.
 * Snapshot cleanup in the web UI is more dependable.
+* Added a Messages inbox to the web UI for warnings and non-urgent info messages.
+* Loading a Shapefile in the web UI without its `.dbf` or `.prj` sibling now posts a Messages-inbox warning.
 
 v0.7.2
 * Added undo/redo toolbar to the web UI. The toolbar appears in interactive editing modes where undo/redo is supported.
