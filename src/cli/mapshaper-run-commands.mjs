@@ -165,10 +165,15 @@ function _runCommands(argv, opts, callback) {
   }
 
   var batches = divideImportCommand(commands);
+  // Shared across all batches in this invocation so writeFiles() can detect
+  // when the same resolved output path is written by more than one batch
+  // (e.g. `mapshaper *.shp batch-mode -o out.json` writing all inputs to the
+  // same target on disk).
+  var sharedOutputs = [];
   utils.reduceAsync(batches, null, nextGroup, done);
 
   function nextGroup(prevJob, commands, next) {
-    runParsedCommands(commands, new Job(), function(err, job) {
+    runParsedCommands(commands, new Job(null, {output_files: sharedOutputs}), function(err, job) {
       err = handleNonFatalError(err);
       next(err, job);
     });
