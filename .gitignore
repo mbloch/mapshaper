@@ -31,6 +31,7 @@ bench/
 /RO*
 /GO*
 /FU*
-/docs/future-directions.md
 .cursor*
 build-roadmap.mjs
+/docs/future-directions.md
+docs/troubleshooting.md
