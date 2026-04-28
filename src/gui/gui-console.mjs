@@ -82,11 +82,16 @@ export function Console(gui) {
     if (!_isOpen) {
       btn.addClass('active');
       _isOpen = true;
-      // use console for messages while open
+      // Route logging output to the in-app console while it's open, so a
+      // user typing CLI commands here sees the results inline -- the same
+      // way a CLI user sees output in their terminal. warn() goes to a
+      // distinct consoleWarn() rather than to the Messages inbox: warnings
+      // emitted by command pipelines should land where the user typed,
+      // not in a separate UI surface they might not notice.
       // TODO: find a solution for logging problem when switching between multiple
       // gui instances with the console open. E.g. console could close
       // when an instance loses focus.
-      internal.setLoggingFunctions(consoleMessage, consoleError, consoleStop);
+      internal.setLoggingFunctions(consoleMessage, consoleError, consoleStop, consoleWarn);
       gui.container.addClass('console-open');
       el.show();
       gui.dispatchEvent('resize');
@@ -482,6 +487,15 @@ export function Console(gui) {
   function consoleWarning() {
     var msg = GUI.formatMessageArgs(arguments);
     toLog(msg, 'console-error');
+  }
+
+  // Routed from internal.warn() while the console is open. Distinct from
+  // consoleWarning() (which is used for hard-stop errors) so the styling
+  // can differ -- warnings shouldn't read as red "something went wrong",
+  // they're just heads-ups about how the input was interpreted.
+  function consoleWarn() {
+    var msg = GUI.formatMessageArgs(arguments);
+    toLog(msg, 'console-warn');
   }
 
   function consoleMessage() {
