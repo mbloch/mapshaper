@@ -278,6 +278,40 @@ function preprocessExample(body, meta, page) {
   return body;
 }
 
+// Walk every section page and copy each frontmatter-referenced data file
+// (`image:`, `snapshot:`, `download:`) from its source `data/` directory
+// into the matching output `data/` directory. The `recipe:` file is
+// intentionally skipped because its contents are inlined into the page at
+// build time -- it never needs to be served as a separate URL.
+function copyReferencedDataFiles() {
+  const ASSET_FIELDS = ['image', 'snapshot', 'download'];
+  const seen = new Set(); // dedupe across pages that share an asset
+  for (const page of allPages) {
+    if (page.kind !== 'section') continue;
+    const src = readFile(page.sourcePath);
+    const { meta } = parseFrontmatter(src);
+    const names = ASSET_FIELDS
+      .map(f => meta[f])
+      .filter(Boolean);
+    if (names.length === 0) continue;
+    const srcDataDir = path.join(path.dirname(page.sourcePath), 'data');
+    const destDataDir = path.join(OUT_DIR,
+      path.dirname(page.outRel), 'data');
+    for (const name of names) {
+      const srcPath = path.join(srcDataDir, name);
+      const destPath = path.join(destDataDir, name);
+      if (seen.has(destPath)) continue;
+      seen.add(destPath);
+      // Mirror the existing requireFile() behaviour: if a referenced asset
+      // is missing, render-time code will throw a clear error. Don't throw
+      // here too; we want the copy step to be best-effort.
+      if (!fs.existsSync(srcPath)) continue;
+      ensureDir(destDataDir);
+      fs.copyFileSync(srcPath, destPath);
+    }
+  }
+}
+
 // Walk the Examples section in nav order and collect a tile descriptor for
 // every page that declares an `image:` in its frontmatter. Cached so we
 // don't re-read every example's source for each render pass.
@@ -748,11 +782,11 @@ function build() {
   if (fs.existsSync(imagesSrc)) {
     copyDir(imagesSrc, path.join(OUT_DIR, 'images'));
   }
-  // Copy any per-section data directory verbatim so example pages can
-  // reference images, snapshots and download bundles via stable URLs like
-  // /docs/examples/data/<file>.
-  copyDir(path.join(SRC_DIR, 'examples', 'data'),
-          path.join(OUT_DIR, 'examples', 'data'));
+  // Copy only the data files that are explicitly referenced from page
+  // frontmatter. The source `data/` directories also contain build-time
+  // inputs (Makefile, source GeoJSON, .txt recipes that get inlined) which
+  // would otherwise bloat gh-pages without being served from any docs page.
+  copyReferencedDataFiles();
 
   let count = 0;
   for (const page of allPages) {

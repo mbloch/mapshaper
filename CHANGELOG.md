@@ -1,3 +1,8 @@
+vNext
+* Removed support for fetching remote SVG assets at export time.
+* Bumped the minimum supported Node.js version from 12 to 20.11 (Maintenance LTS).
+* Updated dependencies.
+
 v0.7.2
 * Added undo/redo toolbar to the web UI. The toolbar appears in interactive editing modes where undo/redo is supported.
 * Added hamburger menu to the web UI with links to Docs, GitHub, etc.
