@@ -66,10 +66,24 @@ function startServer(port) {
       // block attempts to load files outside webroot
       serve404(response);
     } else if (uri == '/close') {
-      // end process when page closes, unless page is immediately refreshed
+      // End process when page closes, unless page is immediately refreshed.
+      // The grace window (1500ms) gives the refreshed page time to send
+      // /cancel-close. A short window is not safe here: with sendBeacon,
+      // /close frequently arrives at the server *after* the new page's
+      // resource fetches have already been served, so we can't rely on
+      // those fetches to reset the timer for us.
       timeout = setTimeout(function() {
         process.exit(0);
-      }, 200);
+      }, 1500);
+      response.writeHead(204); // no content
+      response.end();
+    } else if (uri == '/cancel-close') {
+      // The page-load-time refresh detection in src/gui/gui.mjs sends this
+      // when sessionStorage indicates the new page is a refresh of the
+      // previous tab incarnation. clearTimeout above already cancelled any
+      // pending exit; we just need to acknowledge the request.
+      response.writeHead(204);
+      response.end();
     } else if (uri == "/manifest.js") {
       if (!sessionId && opts.directSave) {
         // create a session id for authenticating requests to save files
@@ -86,9 +100,11 @@ function startServer(port) {
     } else if (uri.indexOf('/save') === 0) {
       saveContent(request, response);
     } else {
-      // serve a file from the web root
-      if (uri == '/') {
-        uri = '/index.html';
+      // serve a file from the web root. Translate directory paths (any URI
+      // ending in '/') to their index.html so that links like '/docs/' work
+      // the way they do behind a normal static-file host (mapshaper.org).
+      if (uri.endsWith('/')) {
+        uri += 'index.html';
       }
       serveFile(getAssetFilePath(uri), response);
     }

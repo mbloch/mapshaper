@@ -13,6 +13,25 @@ import { onload } from './dom-utils';
 import { GUI } from './gui-lib';
 import { El } from './gui-el';
 
+// Refresh detection for mapshaper-gui: if the previous incarnation of this
+// tab set the 'navigating away' marker on pagehide, then this page load is a
+// reload (not a fresh tab). Tell the server to cancel any pending /close,
+// otherwise the server's grace window can race past while the new page is
+// idle and terminate the process. sessionStorage is per-tab and survives a
+// refresh, but is gone after a real close -- exactly the signal we need.
+// This runs before onload to fire as early as possible in the page lifecycle.
+if (typeof window !== 'undefined' &&
+    window.location.hostname === 'localhost' &&
+    window.sessionStorage &&
+    window.sessionStorage.getItem('mapshaper_navigating_away')) {
+  window.sessionStorage.removeItem('mapshaper_navigating_away');
+  if (navigator.sendBeacon) {
+    navigator.sendBeacon('/cancel-close');
+  } else {
+    try { fetch('/cancel-close', {method: 'GET', keepalive: true}); } catch (err) {}
+  }
+}
+
 onload(function() {
   if (!GUI.browserIsSupported()) {
     El("#mshp-not-supported").show();
@@ -85,9 +104,13 @@ var startEditing = function() {
   // Use 'pagehide' rather than 'unload' (the latter is increasingly suppressed
   // by Chrome/Edge for bfcache reasons), and use sendBeacon / keepalive fetch
   // because async XHR in the unload path is not guaranteed to be sent.
+  // The sessionStorage marker is the refresh-vs-close signal: if a new page
+  // loads in the same tab, it'll see the marker and send /cancel-close to
+  // abort the pending exit (see the top of this file).
   window.addEventListener('pagehide', function(e) {
     if (window.location.hostname != 'localhost') return;
     if (e.persisted) return; // page is being cached, not actually closed
+    try { window.sessionStorage.setItem('mapshaper_navigating_away', '1'); } catch (err) {}
     if (navigator.sendBeacon) {
       navigator.sendBeacon('/close');
     } else {

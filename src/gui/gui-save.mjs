@@ -88,6 +88,7 @@ export async function saveBlobToSelectedFile(filename, blob, done) {
   //
   var options = getSaveFileOptions(filename);
   var handle;
+  done = done || function() {};
   try {
     handle = await window.showSaveFilePicker(options);
     var writable = await handle.createWritable();

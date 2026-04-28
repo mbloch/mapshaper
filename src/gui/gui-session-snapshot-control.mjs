@@ -8,13 +8,36 @@ var idb = require('idb-keyval');
 // https://github.com/jakearchibald/idb-keyval
 var sessionId = getUniqId('session');
 var snapshotCount = 0;
+// IDs of snapshots created (and not removed) by this tab. Tracked in memory
+// so the pagehide handler can fire a single batched delMany() without first
+// awaiting idb.keys() -- the page may not survive the round trip.
+var ownSnapshotIds = new Set();
+
+// Lifecycle constants for snapshot cleanup.
+// HEARTBEAT_INTERVAL_MS: how often this tab refreshes its localStorage entry.
+// STALE_THRESHOLD_MS: a session whose heartbeat is older than this is treated
+//   as dead. Generous enough to tolerate backgrounded/throttled tabs.
+// BROADCAST_DISCOVERY_MS: how long startup waits for live tabs to identify
+//   themselves over BroadcastChannel before deciding what to delete.
+var HEARTBEAT_INTERVAL_MS = 30 * 1000;
+var STALE_THRESHOLD_MS = 5 * 60 * 1000;
+var BROADCAST_DISCOVERY_MS = 200;
+var SESSION_DATA_KEY = 'session_data';
+var BROADCAST_CHANNEL_NAME = 'mapshaper-snapshots';
 
 function getUniqId(prefix) {
   return prefix + '_' + (Math.random() + 1).toString(36).substring(2,8);
 }
 
+function getSessionFromSnapshotId(snapshotId) {
+  // Snapshot ids look like 'session_<6chars>_<NNN>'. The session id is the
+  // 'session_<6chars>' prefix.
+  var m = /^(session_[a-z0-9]+)_\d+$/.exec(snapshotId);
+  return m ? m[1] : null;
+}
+
 function isSnapshotId(str) {
-  return /^session_/.test(str);
+  return getSessionFromSnapshotId(str) !== null;
 }
 
 export function SessionSnapshots(gui) {
@@ -32,13 +55,20 @@ export function SessionSnapshots(gui) {
       return;
     }
     menu = El('div').addClass('nav-sub-menu save-menu').appendTo(btn.node());
+    startLifecycle();
     await initialCleanup();
 
-    window.addEventListener('beforeunload', async function() {
-      // delete snapshot data
-      // This is not ideal, because the data gets deleted even if the user
-      // cancels the page close... but there's no apparent good alternative
-      await finalCleanup();
+    // 'pagehide' is more reliable than 'unload' across modern browsers
+    // (Chrome's bfcache rules increasingly suppress 'unload'). Sync work
+    // (localStorage write, BroadcastChannel notice) always completes; the
+    // best-effort delMany() below frequently completes in Chrome/Firefox and
+    // sometimes in Safari, but is not relied upon -- the next session's
+    // startup cleanup is the safety net.
+    window.addEventListener('pagehide', function(e) {
+      if (e.persisted) return; // bfcache: tab may come back, leave entry alive
+      removeOwnSession();
+      announceLeaving();
+      attemptOwnDataDeletion();
     });
 
     btn.on('mouseenter', function() {
@@ -62,12 +92,6 @@ export function SessionSnapshots(gui) {
     var snapshots = await fetchSnapshotList();
 
     menu.empty();
-    addMenuLink({
-      slug: 'stash',
-      // label: 'save data snapshot',
-      label: 'create a snapshot',
-      action: saveSnapshot
-    });
 
     if (!gui.session.isEmpty()) {
       // Surface the console "history" command via the snapshot menu so users
@@ -81,6 +105,15 @@ export function SessionSnapshots(gui) {
         }
       });
     }
+
+    addMenuLink({
+      slug: 'stash',
+      // label: 'save data snapshot',
+      label: 'create a snapshot',
+      action: saveSnapshot
+    });
+
+
 
     // var available = await getAvailableStorage();
     // if (available) {
@@ -165,6 +198,7 @@ export function SessionSnapshots(gui) {
     };
 
     await idb.set(entry.id, obj);
+    ownSnapshotIds.add(entry.id);
     await addToIndex(entry);
     renderMenu();
   }
@@ -179,7 +213,7 @@ function formatSize(bytes) {
 }
 
 async function fetchSnapshotList() {
-  await removeMissingSnapshots();
+  await pruneIndexAgainstKeys();
   var index = await fetchIndex();
   var snapshots = index.snapshots;
   snapshots = snapshots.filter(function(o) {return o.session == sessionId;});
@@ -188,6 +222,7 @@ async function fetchSnapshotList() {
 
 async function removeSnapshotById(id, gui) {
   await idb.del(id);
+  ownSnapshotIds.delete(id);
   return updateIndex(function(index) {
     index.snapshots = index.snapshots.filter(function(snap) {
       return snap.id != id;
@@ -285,13 +320,16 @@ async function updateIndex(action) {
 }
 
 async function addToIndex(obj) {
-  updateSessionData();
+  touchOwnSession();
   return updateIndex(function(index) {
     index.snapshots.push(obj);
   });
 }
 
-async function removeMissingSnapshots() {
+// Drop index entries whose underlying IndexedDB blob has gone missing
+// (e.g. cleared by another tab). Cheaper than reclaimDeadSessionData; used
+// before rendering the menu to keep stale entries out of the UI.
+async function pruneIndexAgainstKeys() {
   var keys = await idb.keys();
   return updateIndex(function(index) {
     index.snapshots = index.snapshots.filter(function(snap) {
@@ -300,32 +338,65 @@ async function removeMissingSnapshots() {
   });
 }
 
+// Run on every fresh page load. Aggressively reclaim space by deleting any
+// snapshot whose owning session is no longer alive.
 async function initialCleanup() {
-  // (Safari workaround) remove any lingering data from past sessions
-  if (getSessionData().length === 0) {
-    await idb.clear();
-  }
-  // remove any snapshots that are not indexed
+  touchOwnSession();
+  pruneStaleSessionData();
+  var liveSessions = await discoverLiveSessions();
+  await reclaimDeadSessionData(liveSessions);
+}
+
+// Delete every snapshot in IndexedDB whose session id is not in liveSessions,
+// and keep the on-disk index consistent with the actual key set.
+async function reclaimDeadSessionData(liveSessions) {
   var keys = await idb.keys();
-  var indexedIds = (await fetchIndex()).snapshots.map(function(snap) {return snap.id;});
+  var doomedKeys = [];
+  var doomedSessions = new Set();
   keys.forEach(function(key) {
-    if (isSnapshotId(key) && !indexedIds.includes(key)) {
-      idb.del(key);
+    var sid = getSessionFromSnapshotId(key);
+    if (sid && !liveSessions.has(sid)) {
+      doomedKeys.push(key);
+      doomedSessions.add(sid);
     }
   });
-  // remove old indexed snapshots
+
+  // Sum sizes from the index for an informative log message. We only know
+  // the size of snapshots that still have an index entry; orphaned blobs
+  // are counted but their sizes contribute 0.
+  var sizeBytes = 0;
+  if (doomedKeys.length) {
+    var index = await fetchIndex();
+    var doomedKeySet = new Set(doomedKeys);
+    index.snapshots.forEach(function(snap) {
+      if (doomedKeySet.has(snap.id) && typeof snap.size === 'number') {
+        sizeBytes += snap.size;
+      }
+    });
+    await Promise.all(doomedKeys.map(function(k) { return idb.del(k); }));
+  }
+
+  // Drop index entries pointing to deleted snapshots, and any entries whose
+  // session is dead even if the underlying key was already gone.
+  var remainingKeys = await idb.keys();
+  var keySet = new Set(remainingKeys);
   await updateIndex(function(index) {
     index.snapshots = index.snapshots.filter(function(snap) {
-      var msPerDay = 1000 * 60 * 60 * 24;
-      var daysOld = (Date.now() - snap.created) / msPerDay;
-      if (daysOld > 1) {
-        if (keys.includes(snap.id)) idb.del(snap.id);
-        return false;
-      }
-      return true;
+      if (!keySet.has(snap.id)) return false;
+      var sid = getSessionFromSnapshotId(snap.id);
+      return sid && liveSessions.has(sid);
     });
-    return index;
   });
+
+  if (doomedKeys.length) {
+    var msg = '[mapshaper] startup cleanup reclaimed ' +
+      doomedKeys.length + ' snapshot' + (doomedKeys.length === 1 ? '' : 's') +
+      ' from ' + doomedSessions.size + ' stale session' +
+      (doomedSessions.size === 1 ? '' : 's');
+    var sizeStr = sizeBytes > 0 ? formatSize(sizeBytes) : '';
+    if (sizeStr) msg += ' (' + sizeStr + ')';
+    console.log(msg);
+  }
 }
 
 async function getAvailableStorage() {
@@ -363,52 +434,164 @@ function findTargetLayer(datasets) {
   return target;
 }
 
-// Clean up snapshot data (called just before browser tab is closed)
-async function finalCleanup() {
-  // When called on 'beforeunload', idb.clear() seems to complete
-  // before tab is unloaded in Chrome and Firefox, but not in Safari.
-  // Calling idb.del(key) to selectively delete data for the current session
-  // does not seem to complete in any browser.
-  // So we wait until the last open session is ending at this URL, and delete
-  // data for all recently open sessions.
-  //
-  var sessions = getSessionData().filter(function(item) {
-    // remove current session
-    var daysOld = (Date.now() - item.timestamp) / (1000 * 60 * 60 * 24);
-    if (item.session == sessionId) return false;
-    // also remove any lingering old sessions (ordinarily this shouldn't be needed)
-    if (daysOld > 1) return false;
-    return true;
-  });
-  setSessionData(sessions);
-  if (sessions.length === 0) {
-    await idb.clear();
+// Heartbeat + BroadcastChannel state. The localStorage map and the channel
+// together let other tabs identify themselves on demand and let crashed tabs'
+// data be reclaimed safely.
+//
+// localStorage 'session_data' shape: { <sessionId>: <lastSeenMs>, ... }
+// (The previous build stored an array; old data is overwritten on first
+//  touchOwnSession() call. Only used for cleanup heuristics, not user data.)
+
+var _heartbeatTimer = null;
+var _channel = null;
+
+function startLifecycle() {
+  touchOwnSession();
+  _heartbeatTimer = setInterval(touchOwnSession, HEARTBEAT_INTERVAL_MS);
+  if (typeof BroadcastChannel == 'function') {
+    try {
+      _channel = new BroadcastChannel(BROADCAST_CHANNEL_NAME);
+      _channel.onmessage = function(e) {
+        var msg = e.data;
+        if (!msg || msg.from === sessionId) return;
+        if (msg.type === 'whois') {
+          try {
+            _channel.postMessage({type: 'iam', from: sessionId});
+          } catch (err) {} // channel can throw if tab is being torn down
+        }
+      };
+    } catch (err) {
+      _channel = null; // sandboxed contexts may forbid BroadcastChannel
+    }
   }
 }
 
-function updateSessionData() {
-  // make sure the current session is added to the list of open sessions
-  var sessions = getSessionData();
-  if (sessions.find(o => o.session == sessionId)) return;
-  var entry = {
-    session: sessionId,
-    timestamp: Date.now()
-  };
-  setSessionData(sessions.concat([entry]));
+// Discover other live tabs. Returns a Set of session ids that should be
+// considered alive (always includes our own).
+function discoverLiveSessions() {
+  return new Promise(function(resolve) {
+    var live = new Set([sessionId]);
+    // localStorage heartbeat data is the durable signal; it survives
+    // backgrounded/throttled tabs that may not respond to BroadcastChannel
+    // promptly.
+    var data = readSessionData();
+    Object.keys(data).forEach(function(sid) {
+      if (Date.now() - data[sid] < STALE_THRESHOLD_MS) {
+        live.add(sid);
+      }
+    });
+    if (!_channel) {
+      resolve(live);
+      return;
+    }
+    // Broadcast 'whois' and add any tab that responds within the discovery
+    // window. This is fast and authoritative for foreground tabs.
+    var listener = function(e) {
+      var msg = e.data;
+      if (msg && msg.type === 'iam' && msg.from && msg.from !== sessionId) {
+        live.add(msg.from);
+      }
+    };
+    _channel.addEventListener('message', listener);
+    try {
+      _channel.postMessage({type: 'whois', from: sessionId});
+    } catch (err) {}
+    setTimeout(function() {
+      _channel.removeEventListener('message', listener);
+      resolve(live);
+    }, BROADCAST_DISCOVERY_MS);
+  });
 }
 
-function getSessionData() {
-  var data = JSON.parse(window.localStorage.getItem('session_data'));
-  return data || [];
+function announceLeaving() {
+  if (!_channel) return;
+  try {
+    _channel.postMessage({type: 'leaving', from: sessionId});
+    _channel.close();
+  } catch (err) {}
 }
 
-function setSessionData(arr) {
-  window.localStorage.setItem('session_data', JSON.stringify(arr));
+// Best-effort eager cleanup at end-of-session. Snapshots can be tens or
+// hundreds of MB, so we don't want to rely solely on the next session's
+// startup to reclaim space. A single delMany() transaction is cheap to
+// launch and frequently commits before the page is fully torn down,
+// especially in Chrome/Firefox; Safari is less reliable. Anything that
+// doesn't complete here will be reclaimed by the next session anyway.
+//
+// Important: do NOT await any of this. The browser doesn't await async work
+// in the unload path; we just want the IDB transaction to be queued before
+// the page is killed.
+function attemptOwnDataDeletion() {
+  if (ownSnapshotIds.size === 0) return;
+  var ids = Array.from(ownSnapshotIds);
+  ownSnapshotIds.clear();
+  // Delete the blobs in a single transaction.
+  try {
+    idb.delMany(ids).catch(function() {});
+  } catch (err) {}
+  // Drop our entries from the index in a separate (also fire-and-forget)
+  // transaction. If only one of the two completes, startup cleanup will
+  // reconcile -- reclaimDeadSessionData() handles both "key gone, index
+  // entry remains" and "index entry gone, key remains".
+  try {
+    updateIndex(function(index) {
+      index.snapshots = index.snapshots.filter(function(snap) {
+        return getSessionFromSnapshotId(snap.id) !== sessionId;
+      });
+    }).catch(function() {});
+  } catch (err) {}
+}
+
+function touchOwnSession() {
+  var data = readSessionData();
+  data[sessionId] = Date.now();
+  writeSessionData(data);
+}
+
+function removeOwnSession() {
+  var data = readSessionData();
+  if (sessionId in data) {
+    delete data[sessionId];
+    writeSessionData(data);
+  }
+}
+
+function pruneStaleSessionData() {
+  var data = readSessionData();
+  var now = Date.now();
+  var changed = false;
+  Object.keys(data).forEach(function(sid) {
+    if (now - data[sid] > STALE_THRESHOLD_MS) {
+      delete data[sid];
+      changed = true;
+    }
+  });
+  if (changed) writeSessionData(data);
+}
+
+function readSessionData() {
+  try {
+    var raw = window.localStorage.getItem(SESSION_DATA_KEY);
+    var parsed = raw ? JSON.parse(raw) : null;
+    // Tolerate the legacy array shape by ignoring it (next write replaces it).
+    if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+      return parsed;
+    }
+    return {};
+  } catch (e) {
+    return {};
+  }
+}
+
+function writeSessionData(obj) {
+  try {
+    window.localStorage.setItem(SESSION_DATA_KEY, JSON.stringify(obj));
+  } catch (e) {} // localStorage can throw on quota exceeded; non-fatal
 }
 
 async function isStorageEnabled() {
   try {
-    setSessionData(getSessionData());
+    writeSessionData(readSessionData());
     await updateIndex(function() {});
     return true;
   } catch(e) {
