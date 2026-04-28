@@ -1,6 +1,7 @@
 import * as V from '../cli/mapshaper-option-validation';
 import { error } from '../utils/mapshaper-logging';
 import { CommandParser } from '../cli/mapshaper-command-parser';
+import { applyExamples } from '../cli/mapshaper-examples';
 import { isPotentialCommandFile } from '../io/mapshaper-file-types';
 
 export function getOptionParser() {
@@ -683,7 +684,6 @@ export function getOptionParser() {
 
   parser.command('clip')
     .describe('use a polygon layer to clip another layer')
-    .example('$ mapshaper states.shp -clip land_area.shp -o clipped.shp')
     .option('source', {
       DEFAULT: true,
       describe: 'file or layer containing clip polygons'
@@ -736,10 +736,7 @@ export function getOptionParser() {
     .option('precision', {
       describe: 'rounding precision to apply before classification (e.g. 0.1)',
       type: 'number'
-    })
-    .example('Define a sequential color scheme and use it to create a new field\n' +
-        '$ mapshaper data.json -colorizer name=getColor nodata=#eee breaks=20,40 \\\n' +
-        '  colors=#e0f3db,#a8ddb5,#43a2ca -each \'fill = getColor(RATING)\' -o output.json');
+    });
 
   parser.command('dashlines')
     .describe('split lines into sections, with or without a gap')
@@ -772,11 +769,6 @@ export function getOptionParser() {
 
   parser.command('dissolve')
     .describe('merge features within a layer (repairs polygon topology)')
-    .example('Dissolve all polygons in a feature layer into a single polygon\n' +
-      '$ mapshaper states.shp -dissolve -o country.shp')
-    .example('Generate state-level polygons by dissolving a layer of counties\n' +
-      '(STATE_FIPS, POPULATION and STATE_NAME are attribute field names)\n' +
-      '$ mapshaper counties.shp -dissolve STATE_FIPS copy-fields=STATE_NAME sum-fields=POPULATION -o states.shp')
     .option('field', {}) // old arg handled by dissolve function
     .option('fields', dissolveFieldsOpt)
     .option('calc', calcOpt)
@@ -926,8 +918,6 @@ export function getOptionParser() {
 
   parser.command('each')
     .describe('create/update/delete data fields using a JS expression')
-    .example('Add two calculated data fields to a layer of U.S. counties\n' +
-        '$ mapshaper counties.shp -each \'STATE_FIPS=CNTY_FIPS.substr(0, 2), AREA=this.area\'')
     .option('expression', {
       DEFAULT: true,
       describe: 'JS expression to apply to each target feature'
@@ -940,7 +930,6 @@ export function getOptionParser() {
 
   parser.command('erase')
     .describe('use a polygon layer to erase another layer')
-    .example('$ mapshaper land_areas.shp -erase water_bodies.shp -o erased.shp')
     .option('source', {
       DEFAULT: true,
       describe: 'file or layer containing erase polygons'
@@ -1147,8 +1136,6 @@ export function getOptionParser() {
 
   parser.command('join')
     .describe('join data records from a file or layer to a layer')
-    .example('Join a csv table to a Shapefile (don\'t auto-convert FIPS column to numbers)\n' +
-      '$ mapshaper states.shp -join data.csv keys=STATE_FIPS,FIPS string-fields=FIPS -o joined.shp')
     .validate(function(cmd) {
       if (!cmd.options.source) {
         error('Command requires the name of a layer or file to join');
@@ -1460,7 +1447,6 @@ export function getOptionParser() {
 
   parser.command('simplify')
     .validate(V.validateSimplifyOpts)
-    .example('Retain 10% of removable vertices\n$ mapshaper input.shp -simplify 10%')
     .describe('simplify the geometry of polygon and polyline features')
     .option('percentage', {
       DEFAULT: true,
@@ -2255,10 +2241,6 @@ export function getOptionParser() {
 
   parser.command('calc')
     .describe('calculate statistics about the features in a layer')
-    .example('Calculate the total area of a polygon layer\n' +
-      '$ mapshaper polygons.shp -calc \'sum(this.area)\'')
-    .example('Count census blocks in NY with zero population\n' +
-      '$ mapshaper ny-census-blocks.shp -calc \'count()\' where=\'POPULATION == 0\'')
     .validate(V.validateExpressionOpt)
     .option('expression', {
       DEFAULT: true,
@@ -2349,6 +2331,10 @@ export function getOptionParser() {
     .describe('print mapshaper version');
 
   parser.command('debug');
+
+  // Per-command usage examples live in a separate file so they're easy to
+  // browse and curate without scrolling past 2300 lines of option defs.
+  applyExamples(parser);
 
   return parser;
 }

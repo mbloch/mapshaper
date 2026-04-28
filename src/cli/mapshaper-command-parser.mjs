@@ -50,6 +50,16 @@ export function CommandParser() {
     return opts;
   };
 
+  // Look up a CommandOptions wrapper that has already been registered, so a
+  // caller (e.g. mapshaper-examples.mjs) can attach examples to it without
+  // touching the option list. Returns null if the command isn't found.
+  this.findCommand = function(name) {
+    return utils.find(_commands, function(c) {
+      var def = c.done();
+      return def.name === name || def.alias === name || def.old_alias === name;
+    }) || null;
+  };
+
   this.section = function(name) {
     return this.command("").title(name);
   };
