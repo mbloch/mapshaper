@@ -1,6 +1,7 @@
 import api from '../mapshaper.js';
 import assert from 'assert';
 import iconv from 'iconv-lite';
+import { captureLogCalls } from './helpers';
 
 var Dbf = api.internal.Dbf,
     Node = api.internal.Node,
@@ -33,6 +34,49 @@ describe('dbf-writer.js', function () {
       var names = ['一二三四五', '一二三四五六'];
       var names2 = Dbf.convertFieldNames(names, 'gbk');
       assert.deepEqual(names2, ['一二三四五', '一二三四1']);
+    })
+    it ('warns when long field names are truncated to fit the 10-byte limit', function() {
+      var calls = captureLogCalls(function() {
+        var names = ['state_population_2020']; // 21 chars
+        var names2 = Dbf.convertFieldNames(names, 'utf8');
+        assert.deepEqual(names2, ['state_popu']);
+      });
+      assert.ok(
+        calls.some(s => /truncated to fit Shapefile/.test(s) && /state_population_2020 -> state_popu/.test(s)),
+        'expected a truncation warning, got:\n' + calls.join('\n')
+      );
+    })
+    it ('warns about collisions when truncated names would otherwise duplicate', function() {
+      var calls = captureLogCalls(function() {
+        var names = ['state_population_2020', 'state_population_2010'];
+        var names2 = Dbf.convertFieldNames(names, 'utf8');
+        assert.deepEqual(names2, ['state_popu', 'state_pop1']);
+      });
+      assert.ok(
+        calls.some(s => /collided/.test(s) && /-rename-fields/.test(s)),
+        'expected a collision warning mentioning -rename-fields, got:\n' + calls.join('\n')
+      );
+    })
+    it ('does not warn when names need no changes', function() {
+      var calls = captureLogCalls(function() {
+        var names2 = Dbf.convertFieldNames(['NAME', 'STATE_FIPS'], 'utf8');
+        assert.deepEqual(names2, ['NAME', 'STATE_FIPS']);
+      });
+      assert.deepEqual(calls, []);
+    })
+    it ('emits a low-key info message when names just need character cleanup', function() {
+      var calls = captureLogCalls(function() {
+        var names2 = Dbf.convertFieldNames(['city name', 'state-id'], 'utf8');
+        assert.deepEqual(names2, ['city_name', 'state_id']);
+      });
+      assert.ok(
+        calls.some(s => /cleaned for Shapefile/.test(s)),
+        'expected a "cleaned" message, got:\n' + calls.join('\n')
+      );
+      assert.ok(
+        !calls.some(s => /truncated/.test(s)),
+        'did not expect a truncation warning, got:\n' + calls.join('\n')
+      );
     })
   })
 

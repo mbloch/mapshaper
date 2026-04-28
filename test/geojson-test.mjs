@@ -5,6 +5,7 @@ import helpers from './helpers';
 var DataTable = api.internal.DataTable;
 var Utils = api.utils;
 var fixPath = helpers.fixPath;
+var captureLogCalls = helpers.captureLogCalls;
 
 describe('mapshaper-geojson.js', function () {
   describe('-o hoist option', function() {
@@ -364,6 +365,91 @@ describe('mapshaper-geojson.js', function () {
       var output = api.internal.exportDatasetAsGeoJSON(dataset, {});
       assert.deepEqual(output.features[0], target);
     })
+
+    describe('Warning when GeoJSON has projected-looking coordinates', function() {
+      it('warns when polygon coords are clearly outside lat-long range', function() {
+        var json = {
+          type: 'FeatureCollection',
+          features: [{
+            type: 'Feature',
+            properties: {},
+            geometry: {type: 'Polygon', coordinates: [[
+              [500000, 4500000], [600000, 4500000],
+              [600000, 4600000], [500000, 4600000], [500000, 4500000]
+            ]]}
+          }]
+        };
+        var calls = captureLogCalls(function() {
+          api.internal.importGeoJSON(json, {});
+        });
+        assert.ok(
+          calls.some(s => /coordinates outside the lat-long range/.test(s) && /-proj init=/.test(s)),
+          'expected a "projected coords" warning, got:\n' + calls.join('\n')
+        );
+      });
+
+      it('warns for a single point with projected coords', function() {
+        var json = {type: 'Point', coordinates: [500000, 4500000]};
+        var calls = captureLogCalls(function() {
+          api.internal.importGeoJSON(json, {});
+        });
+        assert.ok(
+          calls.some(s => /coordinates outside the lat-long range/.test(s)),
+          'expected a "projected coords" warning, got:\n' + calls.join('\n')
+        );
+      });
+
+      it('does not warn when coords are clearly in lat-long range', function() {
+        var json = {
+          type: 'FeatureCollection',
+          features: [{
+            type: 'Feature',
+            properties: {},
+            geometry: {type: 'Point', coordinates: [-122.4, 37.8]}
+          }]
+        };
+        var calls = captureLogCalls(function() {
+          api.internal.importGeoJSON(json, {});
+        });
+        assert.ok(
+          !calls.some(s => /coordinates outside the lat-long range/.test(s)),
+          'did not expect a warning, got:\n' + calls.join('\n')
+        );
+      });
+
+      it('does not warn when the GeoJSON declares an explicit crs', function() {
+        var json = {
+          type: 'FeatureCollection',
+          crs: {type: 'name', properties: {name: 'EPSG:32633'}},
+          features: [{
+            type: 'Feature',
+            properties: {},
+            geometry: {type: 'Point', coordinates: [500000, 4500000]}
+          }]
+        };
+        var calls = captureLogCalls(function() {
+          api.internal.importGeoJSON(json, {});
+        });
+        assert.ok(
+          !calls.some(s => /coordinates outside the lat-long range/.test(s)),
+          'did not expect a warning when crs is set, got:\n' + calls.join('\n')
+        );
+      });
+
+      it('does not warn for an attributes-only FeatureCollection', function() {
+        var json = {
+          type: 'FeatureCollection',
+          features: [{type: 'Feature', properties: {a: 1}, geometry: null}]
+        };
+        var calls = captureLogCalls(function() {
+          api.internal.importGeoJSON(json, {});
+        });
+        assert.ok(
+          !calls.some(s => /coordinates outside the lat-long range/.test(s)),
+          'did not expect a warning, got:\n' + calls.join('\n')
+        );
+      });
+    });
   })
 
 

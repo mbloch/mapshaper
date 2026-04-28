@@ -1,8 +1,10 @@
-import { verbose } from '../utils/mapshaper-logging';
+import { verbose, warn } from '../utils/mapshaper-logging';
 import GeoJSON from '../geojson/geojson-common';
 import utils from '../utils/mapshaper-utils';
 import { PathImporter } from '../paths/mapshaper-path-import';
 import { copyRecord } from '../datatable/mapshaper-data-utils';
+import { Bounds } from '../geom/mapshaper-bounds';
+import { probablyDecimalDegreeBounds } from '../geom/mapshaper-latlon';
 
 export function importGeoJSON(src, optsArg) {
   var opts = optsArg || {};
@@ -28,7 +30,43 @@ export function importGeoJSON(src, optsArg) {
   (srcCollection.features || srcCollection.geometries || []).forEach(importer.parseObject);
   dataset = importer.done();
   importCRS(dataset, srcObj); // TODO: remove this
+  warnIfProjectedCoords(dataset, srcObj);
   return dataset;
+}
+
+// RFC 7946 GeoJSON is required to be in WGS84 lon/lat (so omits the legacy
+// `crs` member). If the imported file makes no CRS claim but its coordinates
+// are clearly outside lat-long range, warn the user: silent fallthrough here
+// usually surfaces later as cryptic -proj errors or grossly wrong output.
+function warnIfProjectedCoords(dataset, jsonObj) {
+  if (jsonObj && jsonObj.crs) return; // user has explicitly declared a CRS
+  var bounds = getRoughDatasetBounds(dataset);
+  if (!bounds || !bounds.hasBounds()) return;
+  if (probablyDecimalDegreeBounds(bounds)) return;
+  warn('Imported GeoJSON has coordinates outside the lat-long range &mdash; ' +
+    ' importing as projected geometry with unknown CRS. Commands ' +
+    'like -proj that require a CRS will not work until you set a source ' +
+    'CRS, e.g. -proj init=EPSG:3857.');
+}
+
+// Local bounds helper to avoid pulling getDatasetBounds (and its transitive
+// dependency on mapshaper-merging / mapshaper-topology) into the GeoJSON
+// import path.
+function getRoughDatasetBounds(dataset) {
+  var bounds = new Bounds();
+  if (dataset.arcs) {
+    bounds.mergeBounds(dataset.arcs.getBounds());
+  }
+  (dataset.layers || []).forEach(function(lyr) {
+    if (lyr.geometry_type !== 'point' || !lyr.shapes) return;
+    lyr.shapes.forEach(function(shape) {
+      if (!shape) return;
+      shape.forEach(function(pt) {
+        if (pt && pt.length >= 2) bounds.mergePoint(pt[0], pt[1]);
+      });
+    });
+  });
+  return bounds;
 }
 
 export function GeoJSONParser(opts) {
