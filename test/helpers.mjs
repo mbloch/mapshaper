@@ -11,7 +11,8 @@ export default {
   almostEqual: almostEqual,
   Reader: Reader,
   fixPath: fixPath,
-  captureLogCalls: captureLogCalls
+  captureLogCalls: captureLogCalls,
+  captureLogCallsAsync: captureLogCallsAsync
 };
 
 var utils = api.utils;
@@ -81,4 +82,23 @@ export function captureLogCalls(fn) {
     if (!loggingWasEnabled) api.internal.disableLogging();
   }
   return calls;
+}
+
+// Async-aware variant of captureLogCalls: awaits fn() before restoring
+// console.error and the prior logging state. Use this when fn() returns a
+// Promise (e.g. api.applyCommands), so warnings emitted during async
+// continuations are still captured.
+export async function captureLogCallsAsync(fn) {
+  var loggingWasEnabled = api.internal.loggingEnabled();
+  var calls = [];
+  var origError = console.error;
+  console.error = function() { calls.push(Array.prototype.join.call(arguments, ' ')); };
+  api.enableLogging();
+  try {
+    var result = await fn();
+    return {log: calls, result: result};
+  } finally {
+    console.error = origError;
+    if (!loggingWasEnabled) api.internal.disableLogging();
+  }
 }

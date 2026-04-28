@@ -1,15 +1,24 @@
 import { Catalog } from './dataset/mapshaper-catalog';
 import { stashVar, clearStash } from './mapshaper-stash';
 
-export function Job(catalog) {
+// `seed` (optional) lets a caller pre-seed shared state across jobs in a
+// single user invocation -- in particular, output_files is threaded across
+// the per-input batches that divideImportCommand creates so that filename
+// collisions across batches can be detected by writeFiles().
+export function Job(catalog, seed) {
   var currentCmd;
+  seed = seed || {};
 
   var job = {
     catalog: catalog || new Catalog(),
     defs: {},
     vars: {},
     settings: {},
-    input_files: []
+    input_files: [],
+    // Tracks resolved output paths written so far in this run. We only ever
+    // store path strings here, never file content, so the per-write memory
+    // cost is negligible. See writeFiles() in mapshaper-file-export.mjs.
+    output_files: seed.output_files || []
   };
 
   job.initSettings = function(o) {
@@ -45,4 +54,5 @@ function stashVars(job, cmd) {
   stashVar('defs', job.defs);
   stashVar('vars', job.vars);
   stashVar('input_files', job.input_files);
+  stashVar('output_files', job.output_files);
 }
