@@ -3,10 +3,11 @@ import { initFeatureProxy } from '../expressions/mapshaper-feature-proxy';
 import { addLayerGetters } from '../expressions/mapshaper-layer-proxy';
 import { initDataTable } from '../dataset/mapshaper-layer-utils';
 import utils from '../utils/mapshaper-utils';
-import { message, stop } from '../utils/mapshaper-logging';
+import { message, stop, warnOnce } from '../utils/mapshaper-logging';
 import { getStashedVar } from '../mapshaper-stash';
 import { getAssignedVars, getExpressionFunction, getBaseContext, nullifyUnsetProperties}
   from './mapshaper-expressions';
+import { getShadowedNames, formatShadowWarning } from './mapshaper-expression-globals';
 
 export function compileFeatureExpression(exp, lyr, arcs, optsArg) {
   var opts = optsArg || {},
@@ -89,6 +90,10 @@ function getFeatureExpressionContext(lyr, mixins, opts) {
   var fields = lyr.data ? lyr.data.getFields() : [];
   opts = opts || {};
   addFeatureExpressionUtils(env); // mix in round(), sprintf(), etc.
+  // Snapshot the helper names BEFORE field placeholders are nullified into
+  // env -- otherwise the field names themselves would look like helper
+  // bindings when we run the shadow-detection check below.
+  var helperNames = Object.keys(env);
   if (fields.length > 0) {
     // default to null values, so assignments to missing data properties
     // are applied to the data record, not the global object
@@ -98,7 +103,9 @@ function getFeatureExpressionContext(lyr, mixins, opts) {
   mixins = utils.defaults(mixins || {}, defs);
   // also add defs as 'global' object
   env.global = defs;
+  helperNames.push('global');
   Object.keys(mixins).forEach(function(key) {
+    helperNames.push(key);
     // Catch name collisions between data fields and user-defined functions
     var d = Object.getOwnPropertyDescriptor(mixins, key);
     if (d.get) {
@@ -109,17 +116,29 @@ function getFeatureExpressionContext(lyr, mixins, opts) {
       Object.defineProperty(ctx, key, {value: mixins[key]});
     }
   });
+
+  // Warn once per (layer, shadowed-set) when data field names mask either a
+  // JS global or a mapshaper helper. Since `with($$record){...}` is searched
+  // before `with($$env){...}`, the field always wins at runtime -- which is
+  // why an expression like `Math.PI` silently breaks when a record has a
+  // `Math` field. warnOnce dedupes by message text, so re-running the same
+  // command on the same layer doesn't repeat the warning.
+  if (!opts.no_warn && fields.length > 0) {
+    var shadowed = getShadowedNames(fields, helperNames);
+    if (shadowed.length > 0) {
+      warnOnce(formatShadowWarning(shadowed, lyr.name));
+    }
+  }
+
   // make context properties non-writable, so they can't be replaced by an expression
   return Object.keys(env).reduce(function(memo, key) {
     if (key in memo) {
       // property has already been set (probably by a mixin, above): skip
-      // "no_warn" option used in calc= expressions
-      if (!opts.no_warn) {
-        if (typeof memo[key] == 'function' && fields.indexOf(key) > -1) {
-          message('Warning: ' + key + '() function is hiding a data field with the same name');
-        } else {
-          message('Warning: "' + key + '" has multiple definitions');
-        }
+      // "no_warn" option used in calc= expressions. Field-vs-helper
+      // collisions are handled by the dedicated shadow warning above; this
+      // branch is for the rarer mixin-vs-mixin case.
+      if (!opts.no_warn && fields.indexOf(key) === -1) {
+        message('Warning: "' + key + '" has multiple definitions');
       }
     } else {
       Object.defineProperty(memo, key, {value: env[key]}); // writable: false is default
