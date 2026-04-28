@@ -3,7 +3,6 @@ import { convertFillPattern } from '../svg/svg-hatch';
 import { convertFillEffect } from '../svg/svg-effect';
 import { stop } from '../utils/mapshaper-logging';
 import utils from '../utils/mapshaper-utils';
-import { fetchFileSync } from '../svg/svg-fetch';
 import require from '../mapshaper-require';
 
 // convert object properties to definitions for images and hatch fills
@@ -30,6 +29,13 @@ export function convertPropertiesToDefinitions(obj, defs) {
 function convertSvgImage(obj, defs) {
   // Same-origin policy prevents embedding images in the web UI
   var href = obj.properties.href;
+  // Remote URLs were previously fetched at export time so the SVG could be
+  // embedded inline. That capability has been removed (it required a
+  // synchronous-HTTP dependency built on a child-process hack); download
+  // the asset first and reference it by local path instead.
+  if (href.indexOf('http') === 0) {
+    stop('Remote SVG asset references are not supported. Download the file first and reference it by a local path:', href);
+  }
   // look for a previously added definition to use
   // (assumes that images that share the same href can also use the same defn)
   var item = utils.find(defs, function(item) {return item.href == href;});
@@ -50,12 +56,12 @@ function convertSvgImage(obj, defs) {
   }
 }
 
-// Returns the content of an SVG file from a local path or URL
-// Returns '' if unable to get the content (e.g. due to cross-domain security rules)
+// Returns the content of an SVG file from a local path.
+// Returns '' if unable to get the content; the caller leaves the original
+// <image> tag in the output so the SVG renderer can attempt to load it.
 function serializeSvgImage(href, id) {
   var svg = '';
   try {
-    // try to download the SVG content and use that
     svg = convertSvgToDefn(getSvgContent(href), id) + '\n';
     svg = '<!-- ' + href + '-->\n' + svg; // add href as a comment, to aid in debugging
   } catch(e) {
@@ -66,20 +72,12 @@ function serializeSvgImage(href, id) {
   return svg;
 }
 
-// href: A URL or a local path
-// TODO: download SVG files asynchronously
-// (currently, files are downloaded synchronously, which is obviously undesirable)
-//
+// href: A local path
 function getSvgContent(href) {
-  var content;
-  if (href.indexOf('http') === 0) {
-    content = fetchFileSync(href);
-  } else if (require('fs').existsSync(href)) {
-    content = require('fs').readFileSync(href, 'utf8');
-  } else {
-    stop("Invalid SVG location:", href);
+  if (require('fs').existsSync(href)) {
+    return require('fs').readFileSync(href, 'utf8');
   }
-  return content;
+  stop("Invalid SVG location:", href);
 }
 
 function convertSvgToDefn(svg, id) {
