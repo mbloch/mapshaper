@@ -1418,6 +1418,7 @@
     //
     var options = getSaveFileOptions(filename);
     var handle;
+    done = done || function() {};
     try {
       handle = await window.showSaveFilePicker(options);
       var writable = await handle.createWritable();
@@ -1519,13 +1520,36 @@
   // https://github.com/jakearchibald/idb-keyval
   var sessionId = getUniqId('session');
   var snapshotCount = 0;
+  // IDs of snapshots created (and not removed) by this tab. Tracked in memory
+  // so the pagehide handler can fire a single batched delMany() without first
+  // awaiting idb.keys() -- the page may not survive the round trip.
+  var ownSnapshotIds = new Set();
+
+  // Lifecycle constants for snapshot cleanup.
+  // HEARTBEAT_INTERVAL_MS: how often this tab refreshes its localStorage entry.
+  // STALE_THRESHOLD_MS: a session whose heartbeat is older than this is treated
+  //   as dead. Generous enough to tolerate backgrounded/throttled tabs.
+  // BROADCAST_DISCOVERY_MS: how long startup waits for live tabs to identify
+  //   themselves over BroadcastChannel before deciding what to delete.
+  var HEARTBEAT_INTERVAL_MS = 30 * 1000;
+  var STALE_THRESHOLD_MS = 5 * 60 * 1000;
+  var BROADCAST_DISCOVERY_MS = 200;
+  var SESSION_DATA_KEY = 'session_data';
+  var BROADCAST_CHANNEL_NAME = 'mapshaper-snapshots';
 
   function getUniqId(prefix) {
     return prefix + '_' + (Math.random() + 1).toString(36).substring(2,8);
   }
 
+  function getSessionFromSnapshotId(snapshotId) {
+    // Snapshot ids look like 'session_<6chars>_<NNN>'. The session id is the
+    // 'session_<6chars>' prefix.
+    var m = /^(session_[a-z0-9]+)_\d+$/.exec(snapshotId);
+    return m ? m[1] : null;
+  }
+
   function isSnapshotId(str) {
-    return /^session_/.test(str);
+    return getSessionFromSnapshotId(str) !== null;
   }
 
   function SessionSnapshots(gui) {
@@ -1543,13 +1567,20 @@
         return;
       }
       menu = El('div').addClass('nav-sub-menu save-menu').appendTo(btn.node());
+      startLifecycle();
       await initialCleanup();
 
-      window.addEventListener('beforeunload', async function() {
-        // delete snapshot data
-        // This is not ideal, because the data gets deleted even if the user
-        // cancels the page close... but there's no apparent good alternative
-        await finalCleanup();
+      // 'pagehide' is more reliable than 'unload' across modern browsers
+      // (Chrome's bfcache rules increasingly suppress 'unload'). Sync work
+      // (localStorage write, BroadcastChannel notice) always completes; the
+      // best-effort delMany() below frequently completes in Chrome/Firefox and
+      // sometimes in Safari, but is not relied upon -- the next session's
+      // startup cleanup is the safety net.
+      window.addEventListener('pagehide', function(e) {
+        if (e.persisted) return; // bfcache: tab may come back, leave entry alive
+        removeOwnSession();
+        announceLeaving();
+        attemptOwnDataDeletion();
       });
 
       btn.on('mouseenter', function() {
@@ -1573,12 +1604,6 @@
       var snapshots = await fetchSnapshotList();
 
       menu.empty();
-      addMenuLink({
-        slug: 'stash',
-        // label: 'save data snapshot',
-        label: 'create a snapshot',
-        action: saveSnapshot
-      });
 
       if (!gui.session.isEmpty()) {
         // Surface the console "history" command via the snapshot menu so users
@@ -1592,6 +1617,15 @@
           }
         });
       }
+
+      addMenuLink({
+        slug: 'stash',
+        // label: 'save data snapshot',
+        label: 'create a snapshot',
+        action: saveSnapshot
+      });
+
+
 
       // var available = await getAvailableStorage();
       // if (available) {
@@ -1676,6 +1710,7 @@
       };
 
       await idb.set(entry.id, obj);
+      ownSnapshotIds.add(entry.id);
       await addToIndex(entry);
       renderMenu();
     }
@@ -1690,7 +1725,7 @@
   }
 
   async function fetchSnapshotList() {
-    await removeMissingSnapshots();
+    await pruneIndexAgainstKeys();
     var index = await fetchIndex();
     var snapshots = index.snapshots;
     snapshots = snapshots.filter(function(o) {return o.session == sessionId;});
@@ -1699,6 +1734,7 @@
 
   async function removeSnapshotById(id, gui) {
     await idb.del(id);
+    ownSnapshotIds.delete(id);
     return updateIndex(function(index) {
       index.snapshots = index.snapshots.filter(function(snap) {
         return snap.id != id;
@@ -1796,13 +1832,16 @@
   }
 
   async function addToIndex(obj) {
-    updateSessionData();
+    touchOwnSession();
     return updateIndex(function(index) {
       index.snapshots.push(obj);
     });
   }
 
-  async function removeMissingSnapshots() {
+  // Drop index entries whose underlying IndexedDB blob has gone missing
+  // (e.g. cleared by another tab). Cheaper than reclaimDeadSessionData; used
+  // before rendering the menu to keep stale entries out of the UI.
+  async function pruneIndexAgainstKeys() {
     var keys = await idb.keys();
     return updateIndex(function(index) {
       index.snapshots = index.snapshots.filter(function(snap) {
@@ -1811,32 +1850,65 @@
     });
   }
 
+  // Run on every fresh page load. Aggressively reclaim space by deleting any
+  // snapshot whose owning session is no longer alive.
   async function initialCleanup() {
-    // (Safari workaround) remove any lingering data from past sessions
-    if (getSessionData().length === 0) {
-      await idb.clear();
-    }
-    // remove any snapshots that are not indexed
+    touchOwnSession();
+    pruneStaleSessionData();
+    var liveSessions = await discoverLiveSessions();
+    await reclaimDeadSessionData(liveSessions);
+  }
+
+  // Delete every snapshot in IndexedDB whose session id is not in liveSessions,
+  // and keep the on-disk index consistent with the actual key set.
+  async function reclaimDeadSessionData(liveSessions) {
     var keys = await idb.keys();
-    var indexedIds = (await fetchIndex()).snapshots.map(function(snap) {return snap.id;});
+    var doomedKeys = [];
+    var doomedSessions = new Set();
     keys.forEach(function(key) {
-      if (isSnapshotId(key) && !indexedIds.includes(key)) {
-        idb.del(key);
+      var sid = getSessionFromSnapshotId(key);
+      if (sid && !liveSessions.has(sid)) {
+        doomedKeys.push(key);
+        doomedSessions.add(sid);
       }
     });
-    // remove old indexed snapshots
+
+    // Sum sizes from the index for an informative log message. We only know
+    // the size of snapshots that still have an index entry; orphaned blobs
+    // are counted but their sizes contribute 0.
+    var sizeBytes = 0;
+    if (doomedKeys.length) {
+      var index = await fetchIndex();
+      var doomedKeySet = new Set(doomedKeys);
+      index.snapshots.forEach(function(snap) {
+        if (doomedKeySet.has(snap.id) && typeof snap.size === 'number') {
+          sizeBytes += snap.size;
+        }
+      });
+      await Promise.all(doomedKeys.map(function(k) { return idb.del(k); }));
+    }
+
+    // Drop index entries pointing to deleted snapshots, and any entries whose
+    // session is dead even if the underlying key was already gone.
+    var remainingKeys = await idb.keys();
+    var keySet = new Set(remainingKeys);
     await updateIndex(function(index) {
       index.snapshots = index.snapshots.filter(function(snap) {
-        var msPerDay = 1000 * 60 * 60 * 24;
-        var daysOld = (Date.now() - snap.created) / msPerDay;
-        if (daysOld > 1) {
-          if (keys.includes(snap.id)) idb.del(snap.id);
-          return false;
-        }
-        return true;
+        if (!keySet.has(snap.id)) return false;
+        var sid = getSessionFromSnapshotId(snap.id);
+        return sid && liveSessions.has(sid);
       });
-      return index;
     });
+
+    if (doomedKeys.length) {
+      var msg = '[mapshaper] startup cleanup reclaimed ' +
+        doomedKeys.length + ' snapshot' + (doomedKeys.length === 1 ? '' : 's') +
+        ' from ' + doomedSessions.size + ' stale session' +
+        (doomedSessions.size === 1 ? '' : 's');
+      var sizeStr = sizeBytes > 0 ? formatSize(sizeBytes) : '';
+      if (sizeStr) msg += ' (' + sizeStr + ')';
+      console.log(msg);
+    }
   }
 
   async function getAvailableStorage() {
@@ -1874,52 +1946,164 @@
     return target;
   }
 
-  // Clean up snapshot data (called just before browser tab is closed)
-  async function finalCleanup() {
-    // When called on 'beforeunload', idb.clear() seems to complete
-    // before tab is unloaded in Chrome and Firefox, but not in Safari.
-    // Calling idb.del(key) to selectively delete data for the current session
-    // does not seem to complete in any browser.
-    // So we wait until the last open session is ending at this URL, and delete
-    // data for all recently open sessions.
-    //
-    var sessions = getSessionData().filter(function(item) {
-      // remove current session
-      var daysOld = (Date.now() - item.timestamp) / (1000 * 60 * 60 * 24);
-      if (item.session == sessionId) return false;
-      // also remove any lingering old sessions (ordinarily this shouldn't be needed)
-      if (daysOld > 1) return false;
-      return true;
-    });
-    setSessionData(sessions);
-    if (sessions.length === 0) {
-      await idb.clear();
+  // Heartbeat + BroadcastChannel state. The localStorage map and the channel
+  // together let other tabs identify themselves on demand and let crashed tabs'
+  // data be reclaimed safely.
+  //
+  // localStorage 'session_data' shape: { <sessionId>: <lastSeenMs>, ... }
+  // (The previous build stored an array; old data is overwritten on first
+  //  touchOwnSession() call. Only used for cleanup heuristics, not user data.)
+
+  var _heartbeatTimer = null;
+  var _channel = null;
+
+  function startLifecycle() {
+    touchOwnSession();
+    _heartbeatTimer = setInterval(touchOwnSession, HEARTBEAT_INTERVAL_MS);
+    if (typeof BroadcastChannel == 'function') {
+      try {
+        _channel = new BroadcastChannel(BROADCAST_CHANNEL_NAME);
+        _channel.onmessage = function(e) {
+          var msg = e.data;
+          if (!msg || msg.from === sessionId) return;
+          if (msg.type === 'whois') {
+            try {
+              _channel.postMessage({type: 'iam', from: sessionId});
+            } catch (err) {} // channel can throw if tab is being torn down
+          }
+        };
+      } catch (err) {
+        _channel = null; // sandboxed contexts may forbid BroadcastChannel
+      }
     }
   }
 
-  function updateSessionData() {
-    // make sure the current session is added to the list of open sessions
-    var sessions = getSessionData();
-    if (sessions.find(o => o.session == sessionId)) return;
-    var entry = {
-      session: sessionId,
-      timestamp: Date.now()
-    };
-    setSessionData(sessions.concat([entry]));
+  // Discover other live tabs. Returns a Set of session ids that should be
+  // considered alive (always includes our own).
+  function discoverLiveSessions() {
+    return new Promise(function(resolve) {
+      var live = new Set([sessionId]);
+      // localStorage heartbeat data is the durable signal; it survives
+      // backgrounded/throttled tabs that may not respond to BroadcastChannel
+      // promptly.
+      var data = readSessionData();
+      Object.keys(data).forEach(function(sid) {
+        if (Date.now() - data[sid] < STALE_THRESHOLD_MS) {
+          live.add(sid);
+        }
+      });
+      if (!_channel) {
+        resolve(live);
+        return;
+      }
+      // Broadcast 'whois' and add any tab that responds within the discovery
+      // window. This is fast and authoritative for foreground tabs.
+      var listener = function(e) {
+        var msg = e.data;
+        if (msg && msg.type === 'iam' && msg.from && msg.from !== sessionId) {
+          live.add(msg.from);
+        }
+      };
+      _channel.addEventListener('message', listener);
+      try {
+        _channel.postMessage({type: 'whois', from: sessionId});
+      } catch (err) {}
+      setTimeout(function() {
+        _channel.removeEventListener('message', listener);
+        resolve(live);
+      }, BROADCAST_DISCOVERY_MS);
+    });
   }
 
-  function getSessionData() {
-    var data = JSON.parse(window.localStorage.getItem('session_data'));
-    return data || [];
+  function announceLeaving() {
+    if (!_channel) return;
+    try {
+      _channel.postMessage({type: 'leaving', from: sessionId});
+      _channel.close();
+    } catch (err) {}
   }
 
-  function setSessionData(arr) {
-    window.localStorage.setItem('session_data', JSON.stringify(arr));
+  // Best-effort eager cleanup at end-of-session. Snapshots can be tens or
+  // hundreds of MB, so we don't want to rely solely on the next session's
+  // startup to reclaim space. A single delMany() transaction is cheap to
+  // launch and frequently commits before the page is fully torn down,
+  // especially in Chrome/Firefox; Safari is less reliable. Anything that
+  // doesn't complete here will be reclaimed by the next session anyway.
+  //
+  // Important: do NOT await any of this. The browser doesn't await async work
+  // in the unload path; we just want the IDB transaction to be queued before
+  // the page is killed.
+  function attemptOwnDataDeletion() {
+    if (ownSnapshotIds.size === 0) return;
+    var ids = Array.from(ownSnapshotIds);
+    ownSnapshotIds.clear();
+    // Delete the blobs in a single transaction.
+    try {
+      idb.delMany(ids).catch(function() {});
+    } catch (err) {}
+    // Drop our entries from the index in a separate (also fire-and-forget)
+    // transaction. If only one of the two completes, startup cleanup will
+    // reconcile -- reclaimDeadSessionData() handles both "key gone, index
+    // entry remains" and "index entry gone, key remains".
+    try {
+      updateIndex(function(index) {
+        index.snapshots = index.snapshots.filter(function(snap) {
+          return getSessionFromSnapshotId(snap.id) !== sessionId;
+        });
+      }).catch(function() {});
+    } catch (err) {}
+  }
+
+  function touchOwnSession() {
+    var data = readSessionData();
+    data[sessionId] = Date.now();
+    writeSessionData(data);
+  }
+
+  function removeOwnSession() {
+    var data = readSessionData();
+    if (sessionId in data) {
+      delete data[sessionId];
+      writeSessionData(data);
+    }
+  }
+
+  function pruneStaleSessionData() {
+    var data = readSessionData();
+    var now = Date.now();
+    var changed = false;
+    Object.keys(data).forEach(function(sid) {
+      if (now - data[sid] > STALE_THRESHOLD_MS) {
+        delete data[sid];
+        changed = true;
+      }
+    });
+    if (changed) writeSessionData(data);
+  }
+
+  function readSessionData() {
+    try {
+      var raw = window.localStorage.getItem(SESSION_DATA_KEY);
+      var parsed = raw ? JSON.parse(raw) : null;
+      // Tolerate the legacy array shape by ignoring it (next write replaces it).
+      if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+        return parsed;
+      }
+      return {};
+    } catch (e) {
+      return {};
+    }
+  }
+
+  function writeSessionData(obj) {
+    try {
+      window.localStorage.setItem(SESSION_DATA_KEY, JSON.stringify(obj));
+    } catch (e) {} // localStorage can throw on quota exceeded; non-fatal
   }
 
   async function isStorageEnabled() {
     try {
-      setSessionData(getSessionData());
+      writeSessionData(readSessionData());
       await updateIndex(function() {});
       return true;
     } catch(e) {
@@ -2399,8 +2583,32 @@
         } else if (await importDataset(group, groupImportOpts)) {
           importCount++;
           gui.session.fileImported(group.filename, optStr);
+          notifyMissingShapefileParts(group);
         }
       }
+    }
+
+    // Surface a passive warning if a .shp file came in without its .dbf or .prj
+    // sibling. Both files are technically optional, but their absence has very
+    // different consequences (no attribute data, no projection metadata) and
+    // users frequently load just the .shp by accident. Mapshaper generally
+    // doesn't need .shx, so we don't warn about that.
+    function notifyMissingShapefileParts(group) {
+      if (!group.shp || !gui.notify) return;
+      var missing = [];
+      if (!group.dbf) missing.push({ext: '.dbf', why: 'no attribute data'});
+      if (!group.prj) missing.push({ext: '.prj', why: 'no projection metadata'});
+      if (!missing.length) return;
+      var base = internal.getFileBase(group.shp.filename);
+      var parts = missing.map(function(m) { return m.ext; }).join(' and ');
+      var consequences = missing.map(function(m) { return m.why; }).join(', ');
+      gui.notify({
+        severity: 'warn',
+        body: base + '.shp was loaded without its ' + parts +
+              (missing.length > 1 ? ' files' : ' file') +
+              ' (' + consequences + ').',
+        dedupKey: 'shp-missing:' + base
+      });
     }
 
     async function importDataset(group, importOpts) {
@@ -2943,15 +3151,25 @@
 
     function message() {
       var msg = GUI.formatMessageArgs(arguments);
-      gui.message(msg);
-      internal.logArgs(arguments);
+      if (gui.notify) {
+        gui.notify({severity: 'info', body: msg});
+      } else {
+        // Fallback for early messages before MessageControl is constructed
+        gui.message(msg);
+        internal.logArgs(arguments);
+      }
     }
 
-    // GUI warning uses the alert popup, which replaces previous popup
-    // (unlike message) -- this allows for catching and handling errors
-    // by replacing the error popup with a warning.
+    // CLI warnings used to surface as modal alerts, which interrupt the user
+    // and replace any previous popup. They now go to the Messages inbox so
+    // they can accumulate non-disruptively.
     function warn() {
-      gui.alert(GUI.formatMessageArgs(arguments));
+      var msg = GUI.formatMessageArgs(arguments);
+      if (gui.notify) {
+        gui.notify({severity: 'warn', body: msg, dedupKey: 'warn:' + msg});
+      } else {
+        gui.alert(msg);
+      }
     }
 
     internal.setLoggingFunctions(message, error, stop, warn);
@@ -2970,7 +3188,11 @@
         try {
           await utils$1.promisify(saveFilesToServer)(paths, data);
           if (files.length >= 1) {
-            gui.alert('<b>Saved</b><br>' + paths.join('<br>'));
+            if (gui.notify) {
+              gui.notify({severity: 'info', title: 'Saved', body: paths.join('\n')});
+            } else {
+              gui.alert('<b>Saved</b><br>' + paths.join('<br>'));
+            }
           }
         } catch(err) {
           msg = "<b>Direct save failed</b><br>Reason: " + err.message + ".";
@@ -14876,6 +15098,200 @@ GUI and setting the size and crop of SVG output.</p><div><input type="text" clas
     };
   }
 
+  // Passive "Messages" inbox: a non-blocking alternative to modal alerts for
+  // status messages and warnings. Backed by a header button (the envelope icon)
+  // in #mode-buttons and a popup-dialog panel.
+  //
+  // Public API (attached to the gui instance):
+  //   gui.notify({severity, body, title?, dedupKey?})   add an entry
+  //   gui.notify(message)                                shorthand: info severity
+  //
+  // severity is one of 'info' | 'warn' | 'error' (default 'info').
+  // If dedupKey is given and an entry with the same key already exists, the
+  // existing entry's count is incremented and its timestamp updated instead of
+  // adding a new row -- handy for repeated CLI warnings.
+
+
+  var SEVERITIES = {info: true, warn: true, error: true};
+  var PULSE_DURATION_MS = 1900; // matches the CSS animation total runtime
+
+  function MessageControl(gui) {
+    var btn = gui.container.findChild('.messages-btn');
+    var badge = btn.findChild('.messages-badge');
+    var panel = gui.container.findChild('.messages-panel');
+    var listEl = panel.findChild('.messages-list');
+    var emptyEl = panel.findChild('.messages-empty');
+    var clearBtn = new SimpleButton(panel.findChild('.messages-clear-btn'));
+    var closeBtn = new SimpleButton(panel.findChild('.close2-btn'));
+    var entries = [];
+    var nextId = 1;
+    var pulseTimer = null;
+    var rendered = false;
+
+    // Start fully hidden until the first notification arrives, so the icon
+    // doesn't take up header space when there's nothing to show.
+    btn.addClass('hidden');
+    gui.addMode('messages', turnOn, turnOff, btn);
+
+    closeBtn.on('click', function() {
+      gui.clearMode();
+    });
+
+    clearBtn.on('click', function() {
+      if (entries.length === 0) return;
+      entries = [];
+      // Close the panel so the now-disabled envelope isn't holding open a
+      // panel the user can no longer dismiss with a header click.
+      gui.clearMode();
+      renderList();
+      updateBadge();
+    });
+
+    // Public API
+    gui.notify = function(opts) {
+      if (typeof opts == 'string') {
+        opts = {body: opts};
+      }
+      opts = opts || {};
+      var severity = SEVERITIES[opts.severity] ? opts.severity : 'info';
+      var body = opts.body == null ? '' : String(opts.body);
+      var title = opts.title || null;
+      if (!body && !title) return;
+
+      if (opts.dedupKey) {
+        for (var i = 0; i < entries.length; i++) {
+          if (entries[i].dedupKey === opts.dedupKey) {
+            entries[i].count = (entries[i].count || 1) + 1;
+            entries[i].time = new Date();
+            // Promote severity if a later occurrence is more severe.
+            if (severityRank(severity) > severityRank(entries[i].severity)) {
+              entries[i].severity = severity;
+            }
+            renderList();
+            pulseBadge();
+            return;
+          }
+        }
+      }
+
+      entries.unshift({
+        id: nextId++,
+        severity: severity,
+        title: title,
+        body: body,
+        count: 1,
+        time: new Date(),
+        dedupKey: opts.dedupKey || null
+      });
+      renderList();
+      updateBadge();
+      pulseBadge();
+
+      // Mirror to the JS console so power users still see a record even if they
+      // never open the panel. Use the matching console method per severity.
+      var rec = (title ? title + ': ' : '') + body;
+      if (severity === 'error') console.error(rec);
+      else if (severity === 'warn') console.warn(rec);
+      else if (typeof internal !== 'undefined' && internal.logArgs) {
+        internal.logArgs([rec]);
+      } else {
+        console.log(rec);
+      }
+    };
+
+    function severityRank(s) {
+      return s === 'error' ? 2 : s === 'warn' ? 1 : 0;
+    }
+
+    function turnOn() {
+      if (!rendered) renderList();
+      panel.show();
+    }
+
+    function turnOff() {
+      panel.hide();
+    }
+
+    function updateBadge() {
+      var n = entries.length;
+      var hasWarn = false;
+      var hasError = false;
+      for (var i = 0; i < entries.length; i++) {
+        if (entries[i].severity === 'error') hasError = true;
+        else if (entries[i].severity === 'warn') hasWarn = true;
+      }
+      badge.text(n > 99 ? '99+' : String(n));
+      badge.classed('hidden', n === 0);
+      badge.classed('warn', hasWarn && !hasError);
+      badge.classed('error', hasError);
+      btn.classed('hidden', n === 0);
+    }
+
+    function pulseBadge() {
+      btn.removeClass('pulse');
+      // Force reflow so removing+adding the class restarts the CSS animation.
+      void btn.node().offsetWidth;
+      btn.addClass('pulse');
+      if (pulseTimer) clearTimeout(pulseTimer);
+      pulseTimer = setTimeout(function() {
+        btn.removeClass('pulse');
+        pulseTimer = null;
+      }, PULSE_DURATION_MS);
+    }
+
+    function renderList() {
+      rendered = true;
+      listEl.empty();
+      if (entries.length === 0) {
+        emptyEl.show();
+        return;
+      }
+      emptyEl.hide();
+      for (var i = 0; i < entries.length; i++) {
+        listEl.node().appendChild(renderItem(entries[i]).node());
+      }
+    }
+
+    function renderItem(entry) {
+      var item = El('div').addClass('message-item').addClass('severity-' + entry.severity);
+      if (entry.title) {
+        El('span').addClass('message-title').text(entry.title).appendTo(item);
+      }
+      var bodyText = entry.body || '';
+      if (entry.count > 1) {
+        bodyText += '  (\u00d7' + entry.count + ')';
+      }
+      El('div').addClass('message-body').text(bodyText).appendTo(item);
+      El('span').addClass('message-time').text(formatTime(entry.time)).appendTo(item);
+      var dismiss = El('span').addClass('message-dismiss').attr('title', 'Dismiss').text('\u00d7').appendTo(item);
+      var entryId = entry.id;
+      dismiss.on('click', function(e) {
+        // Prevent the click from also triggering any panel-level handlers.
+        if (e && e.stopPropagation) e.stopPropagation();
+        entries = entries.filter(function(x) { return x.id !== entryId; });
+        // If we just dismissed the last entry, close the panel for the same
+        // reason as Clear all: the envelope will go disabled and the user
+        // wouldn't be able to dismiss the panel by clicking the header again.
+        if (entries.length === 0) gui.clearMode();
+        renderList();
+        updateBadge();
+      });
+      return item;
+    }
+
+    function formatTime(d) {
+      if (!(d instanceof Date)) return '';
+      var hh = String(d.getHours()).padStart(2, '0');
+      var mm = String(d.getMinutes()).padStart(2, '0');
+      return hh + ':' + mm;
+    }
+
+    return {
+      notify: gui.notify,
+      count: function() { return entries.length; }
+    };
+  }
+
   // import { ProjectOptions } from './gui-project-control';
 
 
@@ -14897,6 +15313,7 @@ GUI and setting the size and crop of SVG output.</p><div><input type="text" clas
     gui.keyboard = new KeyboardEvents(gui);
     gui.buttons = new SidebarButtons(gui);
     gui.display = new DisplayOptions(gui);
+    gui.messages = new MessageControl(gui);
     gui.basemap = new Basemap(gui);
     gui.session = new SessionHistory(gui);
     gui.contextMenu = new ContextMenu();
@@ -14988,6 +15405,25 @@ GUI and setting the size and crop of SVG output.</p><div><input type="text" clas
   // This is the entry point for bundling mapshaper's web UI
 
 
+  // Refresh detection for mapshaper-gui: if the previous incarnation of this
+  // tab set the 'navigating away' marker on pagehide, then this page load is a
+  // reload (not a fresh tab). Tell the server to cancel any pending /close,
+  // otherwise the server's grace window can race past while the new page is
+  // idle and terminate the process. sessionStorage is per-tab and survives a
+  // refresh, but is gone after a real close -- exactly the signal we need.
+  // This runs before onload to fire as early as possible in the page lifecycle.
+  if (typeof window !== 'undefined' &&
+      window.location.hostname === 'localhost' &&
+      window.sessionStorage &&
+      window.sessionStorage.getItem('mapshaper_navigating_away')) {
+    window.sessionStorage.removeItem('mapshaper_navigating_away');
+    if (navigator.sendBeacon) {
+      navigator.sendBeacon('/cancel-close');
+    } else {
+      try { fetch('/cancel-close', {method: 'GET', keepalive: true}); } catch (err) {}
+    }
+  }
+
   onload(function() {
     if (!GUI.browserIsSupported()) {
       El("#mshp-not-supported").show();
@@ -15031,10 +15467,9 @@ GUI and setting the size and crop of SVG output.</p><div><input type="text" clas
         importOpts = getImportOpts(manifest),
         gui = new GuiInstance('body');
 
-    // TODO: re-enable the "blurb"
-    // if (manifest.blurb) {
-    //   El('#splash-screen-blurb').text(manifest.blurb);
-    // }
+    if (!importOpts.files?.length) {
+      El('body').removeClass('mapshaper-preload');
+    }
 
     new AlertControl(gui);
     new IntersectionControl(gui);
@@ -15056,12 +15491,23 @@ GUI and setting the size and crop of SVG output.</p><div><input type="text" clas
       }
     });
 
-    window.addEventListener('unload', function(e) {
-      if (window.location.hostname == 'localhost') {
-        // send termination signal for mapshaper-gui
-        var req = new XMLHttpRequest();
-        req.open('GET', '/close');
-        req.send();
+    // Send termination signal to mapshaper-gui when the tab is closed.
+    // Use 'pagehide' rather than 'unload' (the latter is increasingly suppressed
+    // by Chrome/Edge for bfcache reasons), and use sendBeacon / keepalive fetch
+    // because async XHR in the unload path is not guaranteed to be sent.
+    // The sessionStorage marker is the refresh-vs-close signal: if a new page
+    // loads in the same tab, it'll see the marker and send /cancel-close to
+    // abort the pending exit (see the top of this file).
+    window.addEventListener('pagehide', function(e) {
+      if (window.location.hostname != 'localhost') return;
+      if (e.persisted) return; // page is being cached, not actually closed
+      try { window.sessionStorage.setItem('mapshaper_navigating_away', '1'); } catch (err) {}
+      if (navigator.sendBeacon) {
+        navigator.sendBeacon('/close');
+      } else {
+        try {
+          fetch('/close', {method: 'GET', keepalive: true});
+        } catch (err) {}
       }
     });
 

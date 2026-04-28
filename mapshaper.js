@@ -12416,8 +12416,8 @@
     return obj;
   };
 
-  async function writeFiles(exports, opts) {
-    return _writeFiles(exports, opts);
+  async function writeFiles(exports$1, opts) {
+    return _writeFiles(exports$1, opts);
   }
 
   // Used by GUI to replace the CLI version of writeFiles()
@@ -12426,24 +12426,24 @@
     _writeFiles = func;
   }
 
-  var _writeFiles = function(exports, opts) {
-    if (exports.length > 0 === false) {
+  var _writeFiles = function(exports$1, opts) {
+    if (exports$1.length > 0 === false) {
       message("No files to save");
     } else if (opts.dry_run) ; else if (opts.stdout) {
       // Using async writeFile() function -- synchronous output to stdout can
       // trigger EAGAIN error, e.g. when piped to less.
-      require$1('rw').writeFile('/dev/stdout', exports[0].content, function() {});
+      require$1('rw').writeFile('/dev/stdout', exports$1[0].content, function() {});
     } else {
       if (opts.zip) {
-        exports = [{
+        exports$1 = [{
           // TODO: add output subdirectory, if relevant
           filename: opts.zipfile || 'output.zip',
-          content: zipSync(exports)
+          content: zipSync(exports$1)
         }];
       }
-      var paths = getOutputPaths(utils.pluck(exports, 'filename'), opts);
+      var paths = getOutputPaths(utils.pluck(exports$1, 'filename'), opts);
       var inputFiles = getStashedVar('input_files');
-      exports.forEach(function(obj, i) {
+      exports$1.forEach(function(obj, i) {
         var path = paths[i];
         if (obj.content instanceof ArrayBuffer) {
           // replacing content so ArrayBuffers can be gc'd
@@ -14993,10 +14993,10 @@
     return d;
   }
 
-  var cache$1 = {};
+  var cache = {};
 
   function getParseRxp(fmt) {
-    if (fmt in cache$1) return cache$1[fmt];
+    if (fmt in cache) return cache[fmt];
     var rxp = fmt;
     rxp = rxp.replace('[-]', '(?<prefix>-)?'); // optional -
     rxp = rxp.replace(/\[[NSEW, +-]{2,}\]/, '(?<prefix>$&)');
@@ -15020,11 +15020,11 @@
     rxp = '^' + rxp + '$';
     try {
       // TODO: make sure all DMS codes have been matched
-      cache$1[fmt] = new RegExp(rxp);
+      cache[fmt] = new RegExp(rxp);
     } catch(e) {
       stop$1('Invalid DMS format string:', fmt);
     }
-    return cache$1[fmt];
+    return cache[fmt];
   }
 
   function formatNumber(val, integers, decimals) {
@@ -21150,15 +21150,6 @@
     getSphereEffectParams: getSphereEffectParams
   });
 
-  var cache = {};
-  function fetchFileSync(url) {
-    if (url in cache) return cache[url];
-    var res  = require$1('sync-request')('GET', url, {timeout: 2000});
-    var content = res.getBody().toString();
-    cache[url] = content;
-    return content;
-  }
-
   // convert object properties to definitions for images and hatch fills
   function convertPropertiesToDefinitions(obj, defs) {
     procNode(obj);
@@ -21183,6 +21174,13 @@
   function convertSvgImage(obj, defs) {
     // Same-origin policy prevents embedding images in the web UI
     var href = obj.properties.href;
+    // Remote URLs were previously fetched at export time so the SVG could be
+    // embedded inline. That capability has been removed (it required a
+    // synchronous-HTTP dependency built on a child-process hack); download
+    // the asset first and reference it by local path instead.
+    if (href.indexOf('http') === 0) {
+      stop$1('Remote SVG asset references are not supported. Download the file first and reference it by a local path:', href);
+    }
     // look for a previously added definition to use
     // (assumes that images that share the same href can also use the same defn)
     var item = utils.find(defs, function(item) {return item.href == href;});
@@ -21200,12 +21198,12 @@
     }
   }
 
-  // Returns the content of an SVG file from a local path or URL
-  // Returns '' if unable to get the content (e.g. due to cross-domain security rules)
+  // Returns the content of an SVG file from a local path.
+  // Returns '' if unable to get the content; the caller leaves the original
+  // <image> tag in the output so the SVG renderer can attempt to load it.
   function serializeSvgImage(href, id) {
     var svg = '';
     try {
-      // try to download the SVG content and use that
       svg = convertSvgToDefn(getSvgContent(href), id) + '\n';
       svg = '<!-- ' + href + '-->\n' + svg; // add href as a comment, to aid in debugging
     } catch(e) {
@@ -21216,20 +21214,12 @@
     return svg;
   }
 
-  // href: A URL or a local path
-  // TODO: download SVG files asynchronously
-  // (currently, files are downloaded synchronously, which is obviously undesirable)
-  //
+  // href: A local path
   function getSvgContent(href) {
-    var content;
-    if (href.indexOf('http') === 0) {
-      content = fetchFileSync(href);
-    } else if (require$1('fs').existsSync(href)) {
-      content = require$1('fs').readFileSync(href, 'utf8');
-    } else {
-      stop$1("Invalid SVG location:", href);
+    if (require$1('fs').existsSync(href)) {
+      return require$1('fs').readFileSync(href, 'utf8');
     }
-    return content;
+    stop$1("Invalid SVG location:", href);
   }
 
   function convertSvgToDefn(svg, id) {
@@ -52140,7 +52130,7 @@ ${svg}
     });
   }
 
-  var version = "0.7.3";
+  var version = "0.7.4";
 
   // Parse command line args into commands and run them
   // Function takes an optional Node-style callback. A Promise is returned if no callback is given.

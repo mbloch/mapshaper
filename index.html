@@ -13,11 +13,27 @@
 	<meta charset="UTF-8">
 	<meta name="viewport" content="width=device-width, initial-scale=1">
 	<meta http-equiv="X-UA-Compatible" content="IE=edge">
+	<script>
+	// If the page is opened with preloaded data (?files= or ?catalog= in the
+	// URL), tag <html> so CSS hides the splash-screen header links right away.
+	// Without this they flash into view for ~a second before the editor mounts
+	// and hides them. Done as the first script in <head> so the class is set
+	// before any layout.  bin/mapshaper-gui adds the same class server-side
+	// when files are passed on the command line.
+	(function() {
+		try {
+			var s = location.search || '';
+			if (s.indexOf('files=') !== -1 || s.indexOf('catalog=') !== -1) {
+				document.documentElement.className += ' mapshaper-preload';
+			}
+		} catch (e) {}
+	})();
+	</script>
 	<link rel="stylesheet" href="page.css">
 	<link rel="stylesheet" href="elements.css">
 	<link rel="icon" type="image/png" href="images/icon.png">
 </head>
-<body>
+<body class="mapshaper-preload">
 <div class="hidden">
 	<svg version="1.1" id="home-icon" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" x="0px"
 		 y="0px" width="14px" height="19px" viewBox="0 0 14 16">
@@ -75,7 +91,7 @@
 	</div></div>
 	<div id="mode-buttons" class="page-header-buttons">
 		<!-- <span class="project-btn header-btn btn">Project</span><span class="separator"> -->
-		<span class="console-btn header-btn btn">Console</span><span class="display-btn header-btn btn">Display</span><span class="separator"></span><span class="separator"></span></span><span class="simplify-btn header-btn btn">Simplify</span><span class="separator"></span><span class="export-btn header-btn btn">Export</span><span class="separator"></span><span id="header-menu-btn" class="header-btn btn" role="button" aria-label="More links" aria-haspopup="true" aria-expanded="false" tabindex="0"><svg viewBox="0 0 16 16" aria-hidden="true" width="16" height="14"><rect x="1" y="3" width="14" height="2"/><rect x="1" y="7" width="14" height="2"/><rect x="1" y="11" width="14" height="2"/></svg></span>
+		<span class="messages-btn header-btn btn" role="button" aria-label="Messages" aria-haspopup="true" aria-expanded="false" title="Messages"><svg viewBox="0 0 16 16" aria-hidden="true" width="16" height="14"><path d="M2 3 h12 a1 1 0 0 1 1 1 v7 a1 1 0 0 1 -1 1 H8 l-5 4 v-4 H2 a1 1 0 0 1 -1 -1 V4 a1 1 0 0 1 1 -1 z"/></svg><span class="messages-badge hidden" aria-hidden="true">0</span></span><span class="display-btn header-btn btn">Display</span><span class="separator"></span><span class="console-btn header-btn btn">Console</span><span class="separator"></span><span class="simplify-btn header-btn btn">Simplify</span><span class="separator"></span><span class="export-btn header-btn btn">Export</span><span class="separator"></span><span id="header-menu-btn" class="header-btn btn" role="button" aria-label="More links" aria-haspopup="true" aria-expanded="false" tabindex="0"><svg viewBox="0 0 16 16" aria-hidden="true" width="16" height="14"><rect x="1" y="3" width="14" height="2"/><rect x="1" y="7" width="14" height="2"/><rect x="1" y="11" width="14" height="2"/></svg></span>
 		<div id="header-menu-dropdown" class="hidden" role="menu" aria-labelledby="header-menu-btn">
 			<a class="header-menu-item" href="/docs/" target="_blank" rel="noopener" role="menuitem">Docs</a>
 			<a class="header-menu-item" href="https://github.com/mbloch/mapshaper" target="_blank" rel="noopener" role="menuitem">GitHub</a>
@@ -168,7 +184,7 @@
 		<div style="height:11px"></div>
 
 		<div class="option-menu"><input type="text" class="text-input advanced-options" placeholder="command line options">
-		<a href="/docs/essentials/commands.html#-o-output" target="mapshaper_output_docs">
+		<a href="/docs/reference.html#-o-output" target="mapshaper_output_docs">
 			<div class="tip-button">?<div class="tip-anchor">
 		<div class="tip">Enter options from the command line interface for
 the -o command. Examples: bbox no-quantization
@@ -182,6 +198,18 @@ precision=0.001. Click to see all options.</div></div></div></a>
 		</div>
 		<div id="export-btn" class="btn dialog-btn" style="margin-top: 5px;">Export</div>
 
+	</div>
+</div>
+
+<div class="messages-panel main-area popup-dialog popup-align-left">
+	<div class="info-box messages-box">
+		<div class="close2-btn"></div>
+		<h3>Messages</h3>
+		<div class="messages-empty">No messages yet.</div>
+		<div class="messages-list"></div>
+		<div class="messages-footer">
+			<span class="messages-clear-btn btn dialog-btn">Clear all</span>
+		</div>
 	</div>
 </div>
 
@@ -315,7 +343,7 @@ a smoother appearance.</div></div></div></div>
 					</div>
 			</div>
 			<div style="margin-top: 10px"><input type="text" class="text-input advanced-options" placeholder="import options">
-				<a href="/docs/essentials/commands.html#-i-input" target="mapshaper_import_docs">
+				<a href="/docs/reference.html#-i-input" target="mapshaper_import_docs">
 				<div class="tip-button">?<div class="tip-anchor">
 	<div class="tip">Enter options from the command line
 interface. Examples: <span id="import-option-examples">snap no-topology

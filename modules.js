@@ -13503,7 +13503,7 @@
 	function requireEncodings () {
 		if (hasRequiredEncodings) return encodings;
 		hasRequiredEncodings = 1;
-		(function (exports) {
+		(function (exports$1) {
 			"use strict";
 
 			// Update this array if you add/rename/remove files in this directory.
@@ -13525,7 +13525,7 @@
 			    var module = modules[i];
 			    for (var enc in module)
 			        if (Object.prototype.hasOwnProperty.call(module, enc))
-			            exports[enc] = module[enc];
+			            exports$1[enc] = module[enc];
 			} 
 		} (encodings));
 		return encodings;
@@ -18975,7 +18975,7 @@
 		tcxGen: tcxGen
 	});
 
-	var __filename = '/Users/matthewbloch/mb4/mapshaper/node_modules/mproj/dist';
+	var __filename$1 = '/Users/matthewbloch/mb4/mapshaper/node_modules/mproj/dist';
 
 	var mproj$2 = {exports: {}};
 
@@ -19247,7 +19247,7 @@
 	function requireMproj () {
 		if (hasRequiredMproj) return mproj$2.exports;
 		hasRequiredMproj = 1;
-		(function (module, exports) {
+		(function (module, exports$1) {
 			(function(){
 
 			// add math.h functions to library scope
@@ -19967,7 +19967,7 @@
 			  var fs = require$$0,
 			      path = require$$1,
 			      // path to library assumes mproj script is in the dist/ directory
-			      dir = path.join(path.dirname(__filename), '../nad'),
+			      dir = path.join(path.dirname(__filename$1), '../nad'),
 			      pathUC = path.join(dir, libFile.toUpperCase()),
 			      pathLC = path.join(dir, libFile.toLowerCase()),
 			      contents;
