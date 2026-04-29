@@ -395,7 +395,7 @@ export async function runCommand(command, job) {
       await initProjLibrary(opts);
       job.resumeCommand();
       targets.forEach(function(targ) {
-        cmd.proj(targ.dataset, job.catalog, opts);
+        cmd.proj(targ.dataset, job.catalog, opts, targ.layers);
       });
 
     } else if (name == 'rectangle') {

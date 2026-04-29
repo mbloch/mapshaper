@@ -10,7 +10,7 @@ import require from '../mapshaper-require';
 // Works for lcc, aea, tmerc, etc.
 // TODO: add more projections
 //
-export function expandProjDefn(str, dataset) {
+export function expandProjDefn(str, dataset, targetLayers) {
   var mproj = require('mproj');
   var proj4, params, bbox, isConic2SP, isCentered, decimals;
   if (str in mproj.internal.pj_list === false) {
@@ -21,7 +21,7 @@ export function expandProjDefn(str, dataset) {
   isCentered = ['tmerc', 'etmerc'].includes(str);
   proj4 = '+proj=' + str;
   if (isConic2SP || isCentered) {
-    bbox = getBBox(dataset); // TODO: support projected datasets
+    bbox = getBBox(dataset, targetLayers); // TODO: support projected datasets
     decimals = getBoundsPrecisionForDisplay(bbox);
     params = isCentered ? getCenterParams(bbox, decimals) : getConicParams(bbox, decimals);
     proj4 += ' ' + params;
@@ -30,11 +30,16 @@ export function expandProjDefn(str, dataset) {
   return proj4;
 }
 
-function getBBox(dataset) {
+function getBBox(dataset, targetLayers) {
+  var source = targetLayers && targetLayers.length > 0 ? {
+    arcs: dataset.arcs,
+    layers: targetLayers,
+    info: dataset.info
+  } : dataset;
   if (!isLatLngCRS(getDatasetCRS(dataset))) {
     stop('Expected unprojected data');
   }
-  return getDatasetBounds(dataset).toArray();
+  return getDatasetBounds(source).toArray();
 }
 
 // See: Savric & Jenny, "Automating the selection of standard parallels for conic map projections"
