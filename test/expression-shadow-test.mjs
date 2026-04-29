@@ -79,7 +79,7 @@ describe('Expression context: shadowed-field warning', function() {
       var msg = formatShadowWarning(['Math'], 'states');
       assert.match(msg, /\bField name "Math"/);
       assert.match(msg, /layer "states"/);
-      assert.match(msg, /d\.Math/);
+      assert.match(msg, /hides the global\/helper binding/);
       assert.match(msg, /-rename-fields/);
     });
 
@@ -168,7 +168,7 @@ describe('Expression context: shadowed-field warning', function() {
     it('does NOT warn when no field shadows a global or helper', function() {
       var name = uniq('shadow_clean');
       var cmd = '-i a.json -rename-layers ' + name + ' -each "x = 1"';
-      var input = {'a.json': [{NAME: 'Foo', POPULATION: 100, STATE_FIPS: '06'}]};
+      var input = {'a.json': [{NAME: 'Foo', name: 'Bar', POPULATION: 100, STATE_FIPS: '06'}]};
       return runAndCapture(cmd, input).then(function(res) {
         assert.equal(shadowLines(res.log).length, 0);
       });

@@ -94,7 +94,7 @@ export function formatShadowWarning(shadowed, layerName) {
   var first = shadowed[0];
   var where = layerName ? ' in layer "' + layerName + '"' : '';
   return 'Field ' + label + ' ' + quoted + where + ' ' + verb + ' JS globals ' +
-    'or mapshaper helpers; in expressions, "' + first + '" refers to the ' +
-    'field value, not the global. Use d.' + first + ' to access the field ' +
-    'explicitly, or rename the field with -rename-fields.';
+    'or mapshaper helpers; in expressions, "' + first + '" resolves to the ' +
+    'field value and hides the global/helper binding. If you intended the ' +
+    'global/helper, rename the field with -rename-fields.';
 }
