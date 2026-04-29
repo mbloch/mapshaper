@@ -4,6 +4,7 @@ import helpers from './helpers';
 import fs from 'fs';
 import {
   importDelim,
+  importDelim2,
   guessDelimiter,
   getFieldTypeHints,
   adjustRecordTypes
@@ -18,6 +19,26 @@ function stringifyEqual(a, b) {
 }
 
 describe('mapshaper-delim-import.js', function() {
+
+  describe('importDelim2() releases the caller\'s buffer reference', function () {
+    // When the caller passes a Buffer/ArrayBuffer, importDelim2 wraps it
+    // in a BufferReader (which keeps its own reference) and then nulls
+    // input.content so we don't hold both the source bytes and the
+    // parsed records in memory for the duration of the parse.
+    it('nulls input.content for Buffer input', function () {
+      var input = {filename: 'test.csv', content: Buffer.from('a,b\n1,2')};
+      var dataset = importDelim2(input, {});
+      assert.equal(dataset.layers[0].data.size(), 1);
+      assert.equal(input.content, null);
+    });
+
+    it('leaves input.content alone when content is already a string', function () {
+      var input = {filename: 'test.csv', content: 'a,b\n1,2'};
+      importDelim2(input, {});
+      // String is the parse target; nulling would lose data.
+      assert.equal(typeof input.content, 'string');
+    });
+  });
 
   describe('Auto-detecting UTF-8 and UTF-16 with BOM', function () {
     var content = `election_dt	county_name	polling_place_id	polling_place_name	precinct_name	house_num	street_name	city	state	zip

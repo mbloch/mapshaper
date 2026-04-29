@@ -33,6 +33,10 @@ export function importDelim2(data, opts) {
     // Web API may import as ArrayBuffer, to support larger files
     reader = new BufferReader(content);
     content = null;
+    // BufferReader keeps its own reference; release the caller's so we
+    // don't hold both the source bytes and the parsed records in memory
+    // for the duration of the parse.
+    data.content = null;
   } else if (utils.isString(content)) {
     // import as string
   } else {

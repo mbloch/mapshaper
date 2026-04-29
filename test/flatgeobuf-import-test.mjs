@@ -25,6 +25,9 @@ describe('flatgeobuf import', function () {
     assert.equal(typeof dataset.info.flatgeobuf_crs.wkt, 'string');
     assert(dataset.info.flatgeobuf_crs.wkt.includes('GEOGCRS['));
     assert.equal(dataset.info.crs_string, 'epsg:4326');
+    // Parsed header is metadata used internally during import only;
+    // it should not be retained on the imported dataset.
+    assert.equal(dataset.info.flatgeobuf_header, undefined);
   });
 
   it('imports poly00 fixture from FlatGeobuf test suite', async function () {

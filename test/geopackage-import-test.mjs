@@ -29,18 +29,23 @@ describe('mapshaper-geopackage-import.js', function () {
     await createTestGeoPackage(tmpPath);
     try {
       var content = fs.readFileSync(tmpPath);
-      var dataset = await api.internal.importContentAsync({
+      var input = {
         gpkg: {
           filename: tmpPath,
           content: content
         }
-      }, {});
+      };
+      var dataset = await api.internal.importContentAsync(input, {});
       var points = dataset.layers.find(lyr => lyr.name == 'points');
       assert(points, 'points layer exists');
       assert.equal(points.geometry_type, 'point');
       assert.equal(points.shapes.length, 1);
       assert.deepEqual(points.data.getRecords()[0].name, 'alpha');
       assert.equal(dataset.info.input_formats[0], 'geopackage');
+      // After import, the caller's buffer reference has been released --
+      // the GeoPackage data is on disk in a temp file, so we don't need
+      // to also keep it pinned in RAM.
+      assert.equal(input.gpkg.content, null);
     } finally {
       if (fs.existsSync(tmpPath)) {
         fs.unlinkSync(tmpPath);

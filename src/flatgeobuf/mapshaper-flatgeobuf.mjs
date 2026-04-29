@@ -16,7 +16,6 @@ export async function importFlatgeobuf(content, opts) {
   }
   dataset = importer.done();
   dataset.info = dataset.info || {};
-  dataset.info.flatgeobuf_header = headerMeta;
   var crs = normalizeCRSMeta(headerMeta.crs || null);
   dataset.info.flatgeobuf_crs = crs;
   if (crs && crs.org && crs.code) {
