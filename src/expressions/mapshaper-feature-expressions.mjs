@@ -86,14 +86,18 @@ export function compileFeaturePairExpression(exp, lyr, arcs) {
 function getFeatureExpressionContext(lyr, mixins, opts) {
   var defs = getStashedVar('defs');
   var env = getBaseContext();
+  var before = Object.assign({}, env);
   var ctx = {};
   var fields = lyr.data ? lyr.data.getFields() : [];
+  var helperNames = [];
   opts = opts || {};
   addFeatureExpressionUtils(env); // mix in round(), sprintf(), etc.
-  // Snapshot the helper names BEFORE field placeholders are nullified into
-  // env -- otherwise the field names themselves would look like helper
-  // bindings when we run the shadow-detection check below.
-  var helperNames = Object.keys(env);
+  // getBaseContext() masks enumerable globals into `env` (typically undefined).
+  // Capture only names that addFeatureExpressionUtils() actually introduced or
+  // changed; this avoids false positives like `name` (window.name in browsers).
+  helperNames = Object.keys(env).filter(function(key) {
+    return before[key] !== env[key];
+  });
   if (fields.length > 0) {
     // default to null values, so assignments to missing data properties
     // are applied to the data record, not the global object
