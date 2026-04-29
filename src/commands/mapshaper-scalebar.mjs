@@ -5,7 +5,7 @@ import utils from '../utils/mapshaper-utils';
 import { DataTable } from '../datatable/mapshaper-data-table';
 import { stop, message } from '../utils/mapshaper-logging';
 import { symbolRenderers } from '../svg/svg-symbols';
-import { importLineString, importMultiLineString } from '../svg/geojson-to-svg';
+import { importLineString, importMultiLineString } from '../svg/svg-geom-primitives';
 
 cmd.scalebar = function(catalog, opts) {
   var lyr = getScalebarLayer(opts);

@@ -1,10 +1,9 @@
 import { Buffer } from '../utils/mapshaper-node-buffer';
-import { error, stop } from '../utils/mapshaper-logging';
 
-// Export all the functions in this module as the default export
-// So other modules can do: 'import utils from '../mapshaper-utils''
-import * as utils from '../utils/mapshaper-utils';
-export default utils;
+// We do NOT import from mapshaper-logging here to avoid a circular dependency
+function error() {
+  throw new Error(Array.prototype.slice.call(arguments).join(' '));
+}
 
 var uniqCount = 0;
 export function getUniqueName(prefix) {
@@ -985,21 +984,6 @@ export function findStringPrefix(a, b) {
   return a.substr(0, i);
 }
 
-export function parsePercent(o) {
-  var str = String(o);
-  var isPct = str.indexOf('%') > 0;
-  var pct;
-  if (isPct) {
-    pct = Number(str.replace('%', '')) / 100;
-  } else {
-    pct = Number(str);
-  }
-  if (!(pct >= 0 && pct <= 1)) {
-    stop(format("Invalid percentage: %s", str));
-  }
-  return pct;
-}
-
 export function formatVersionedName(name, i) {
   var suffix = String(i);
   if (/[0-9]$/.test(name)) {
@@ -1086,3 +1070,37 @@ export function trimQuotes(str) {
   }
   return str;
 }
+
+// Default export so consumers can do `import utils from './mapshaper-utils'`
+// and call `utils.isObject(x)` etc. Listing the names explicitly (instead
+// of using `import * as utils from './mapshaper-utils'`) avoids a
+// self-import and the resulting Rollup circular-dependency warning.
+export default {
+  addThousandsSep, addslashes, arrayToIndex,
+  clamp, cleanNumericString, contains, copyElements, countValues, createBuffer,
+  defaults, difference,
+  endsWith, every, expandoBuffer, extend, extendBuffer,
+  find, findMedian, findQuantile, findRankByValue, findStringPrefix,
+  findValueByPct, findValueByRank, forEach, forEachProperty, format,
+  formatDateISO, formatIntlNumber, formatNumber, formatNumberForDisplay,
+  formatVersionedName, formatter,
+  genericSort, getArrayBounds, getGenericComparator, getKeyComparator,
+  getSortedIds, getUniqueName, groupBy,
+  htmlEscape,
+  indexOf, indexOn, inherit, initializeArray, intersection,
+  isArray, isArrayLike, isBoolean, isDate, isEven, isFiniteNumber, isFunction,
+  isInteger, isNonNegNumber, isNumber, isObject, isOdd, isPromise, isString,
+  isValidNumber,
+  lpad, ltrim,
+  mean, merge, mergeNames,
+  numToStr,
+  parseIntlNumber, parseNumber, parseString, pickOne, pluck,
+  pluralSuffix, promisify,
+  quicksort, quicksortPartition,
+  range, reduceAsync, regexEscape, reorderArray, repeat, repeatString,
+  replaceArray, rpad, rtrim,
+  shuffle, some, sortArrayIndex, sortOn, splitLines, sum,
+  toArray, toBuffer, trim, trimQuotes,
+  uniq, uniqifyNames,
+  wildcardToRegExp
+};

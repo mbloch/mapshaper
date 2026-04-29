@@ -1,5 +1,5 @@
 import { calcSimplifyStats } from '../simplify/mapshaper-simplify-stats';
-import { useSphericalSimplify, getSimplifyMethod } from '../commands/mapshaper-simplify';
+import { useSphericalSimplify, getSimplifyMethod } from '../simplify/mapshaper-simplify-options';
 import { message } from '../utils/mapshaper-logging';
 import utils from '../utils/mapshaper-utils';
 import Visvalingam from '../simplify/mapshaper-visvalingam';

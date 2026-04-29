@@ -5,7 +5,7 @@ import { probablyDecimalDegreeBounds } from '../geom/mapshaper-latlon';
 import { getDatasetCRS, getDatasetCrsInfo, setDatasetCrsInfo} from '../crs/mapshaper-projections';
 import { getDatasetBounds } from '../dataset/mapshaper-dataset-utils';
 import { getLayerBounds } from '../dataset/mapshaper-layer-utils';
-import { importPolygon } from '../svg/geojson-to-svg';
+import { importPolygon } from '../svg/svg-geom-primitives';
 import cmd from '../mapshaper-cmd';
 import utils from '../utils/mapshaper-utils';
 import { Bounds } from '../geom/mapshaper-bounds';
@@ -15,6 +15,7 @@ import { expandCommandTargets } from '../dataset/mapshaper-target-utils';
 import { requireDatasetsHaveCompatibleCRS } from '../crs/mapshaper-projections';
 import { importGeoJSON } from '../geojson/geojson-import';
 import { roundToDigits } from '../geom/mapshaper-rounding';
+import { parsePercent } from '../cli/mapshaper-option-parsing-utils';
 
 cmd.frame = function(catalog, targets, opts) {
   var widthPx, heightPx, aspectRatio, scale, bbox;
@@ -149,7 +150,7 @@ function applyPixelOffsets(bbox, widthPx, heightPx, arg) {
 
 function getPctOffsets(arg) {
   return adjustOffsetsArg(arg).map(str => {
-    return str.includes('%') ? utils.parsePercent(str) : 0;
+    return str.includes('%') ? parsePercent(str) : 0;
   });
 }
 

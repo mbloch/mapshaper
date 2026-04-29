@@ -1,6 +1,6 @@
 import { roundCoordsForSVG, applySymbolStyles } from '../symbols/mapshaper-symbol-utils';
 import { error } from '../utils/mapshaper-logging';
-import { flattenMultiPolygonCoords } from '../svg/geojson-to-svg';
+import { flattenMultiPolygonCoords } from '../svg/svg-geom-primitives';
 
 // Returns an svg-symbol data object for one symbol
 export function makePathSymbol(coords, properties, geojsonType) {

@@ -1,4 +1,4 @@
-import { getQuantileBreaks, getDistributionData } from '../classification/mapshaper-sequential-classifier';
+import { getQuantileBreaks, getDistributionData } from '../classification/mapshaper-class-stats';
 import { stop, error } from '../utils/mapshaper-logging';
 import utils from '../utils/mapshaper-utils';
 import { getRoundingFunction } from '../geom/mapshaper-rounding';

@@ -1,4 +1,5 @@
 import utils from '../utils/mapshaper-utils';
+import { stop } from '../utils/mapshaper-logging';
 var assignmentRxp = /^([a-z0-9_+-]+)=(?!=)(.*)$/i; // exclude ==
 
 export function splitShellTokens(str) {
@@ -12,6 +13,21 @@ export function splitShellTokens(str) {
     return !!chunk && chunk != '\\';
   }).map(utils.trimQuotes);
   return chunks;
+}
+
+export function parsePercent(o) {
+  var str = String(o);
+  var isPct = str.indexOf('%') > 0;
+  var pct;
+  if (isPct) {
+    pct = Number(str.replace('%', '')) / 100;
+  } else {
+    pct = Number(str);
+  }
+  if (!(pct >= 0 && pct <= 1)) {
+    stop(utils.format("Invalid percentage: %s", str));
+  }
+  return pct;
 }
 
 export function parseNumberList(token) {

@@ -2,6 +2,8 @@ import { convertIntervalParam, convertDistanceParam } from '../geom/mapshaper-un
 import { getDatasetCRS } from '../crs/mapshaper-projections';
 import { printSimplifyInfo } from '../simplify/mapshaper-simplify-info';
 import { postSimplifyRepair } from '../simplify/mapshaper-post-simplify-repair';
+import { useSphericalSimplify, getSimplifyMethod } from '../simplify/mapshaper-simplify-options';
+import { parsePercent } from '../cli/mapshaper-option-parsing-utils';
 import cmd from '../mapshaper-cmd';
 import { stop } from '../utils/mapshaper-logging';
 import geom from '../geom/mapshaper-geom';
@@ -11,6 +13,10 @@ import DouglasPeucker from '../simplify/mapshaper-dp';
 import { keepEveryPolygon } from '../simplify/mapshaper-keep-shapes';
 import { getWorldBounds } from '../geom/mapshaper-latlon';
 
+// Re-export shared option helpers so any external consumer that still
+// imports them from this module keeps working.
+export { useSphericalSimplify, getSimplifyMethod };
+
 cmd.simplify = function(dataset, opts) {
   var arcs = dataset.arcs;
   if (!arcs || arcs.size() === 0) return; // removed in v0.4.125: stop("Missing path data");
@@ -19,7 +25,7 @@ cmd.simplify = function(dataset, opts) {
 
   // calculate and apply simplification interval
   if (opts.percentage || opts.percentage === 0) {
-    arcs.setRetainedPct(utils.parsePercent(opts.percentage));
+    arcs.setRetainedPct(parsePercent(opts.percentage));
   } else if (opts.interval || opts.interval === 0) {
     arcs.setRetainedInterval(convertSimplifyInterval(opts.interval, dataset, opts));
   } else if (opts.resolution) {
@@ -59,10 +65,6 @@ export function getStandardSimplifyOpts(dataset, opts) {
   }, opts);
 }
 
-export function useSphericalSimplify(arcs, opts) {
-  return !opts.planar && !arcs.isPlanar();
-}
-
 // Calculate simplification thresholds for each vertex of an arc collection
 // (modifies @arcs ArcCollection in-place)
 export function simplifyPaths(arcs, opts) {
@@ -97,14 +99,6 @@ function simplifyPaths3D(arcs, simplify) {
     geom.convLngLatToSph(xx, yy, xx2, yy2, zz2);
     simplify(kk, xx2, yy2, zz2);
   });
-}
-
-export function getSimplifyMethod(opts) {
-  var m = opts.method;
-  if (!m || m == 'weighted' || m == 'visvalingam' && opts.weighting) {
-    m =  'weighted_visvalingam';
-  }
-  return m;
 }
 
 function getSimplifyFunction(opts) {

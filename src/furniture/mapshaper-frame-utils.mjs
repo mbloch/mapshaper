@@ -1,7 +1,7 @@
 import { Bounds } from '../geom/mapshaper-bounds';
 import { getDatasetCRS, getScaleFactorAtXY} from '../crs/mapshaper-projections';
 import { getDatasetBounds } from '../dataset/mapshaper-dataset-utils';
-import { getFurnitureLayerType, getFurnitureLayerData } from '../furniture/mapshaper-furniture';
+import { getFurnitureLayerType, getFurnitureLayerData } from '../furniture/mapshaper-furniture-utils';
 import { error } from '../utils/mapshaper-logging';
 import { layerIsRectangle, getLayerBounds } from '../dataset/mapshaper-layer-utils';
 import { transformPoints } from '../dataset/mapshaper-dataset-utils';

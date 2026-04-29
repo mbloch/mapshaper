@@ -2,7 +2,7 @@ import { reversePath } from '../paths/mapshaper-path-utils';
 import { getRingIntersector } from '../paths/mapshaper-pathfinder';
 import { getSliverFilter } from '../polygons/mapshaper-slivers';
 import { getArcPresenceTest } from '../paths/mapshaper-path-utils';
-import { composeDissolveLayer } from '../commands/mapshaper-dissolve';
+import { composeDissolveLayer } from '../dissolve/mapshaper-dissolve-compose';
 import { getCategoryClassifier } from '../dissolve/mapshaper-data-aggregation';
 import { DataTable } from '../datatable/mapshaper-data-table';
 import { NodeCollection } from '../topology/mapshaper-nodes';
