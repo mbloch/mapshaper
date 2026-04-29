@@ -87,9 +87,15 @@ export function importJSON(data, opts) {
     if ((content.byteLength || content.length) < 1e7) {
       // content = utils.createBuffer(content).toString();
       content = bufferToString(utils.createBuffer(content));
+      // Release the caller's buffer reference now that we have a string
+      // copy -- avoids holding both a ~50MB ArrayBuffer and its decoded
+      // string in memory while we JSON.parse below.
+      data.content = null;
     } else {
       reader = new BufferReader(content);
       content = null;
+      // BufferReader keeps its own reference; release the caller's.
+      data.content = null;
     }
   }
 

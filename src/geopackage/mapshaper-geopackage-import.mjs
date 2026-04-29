@@ -11,18 +11,27 @@ import { layerHasPoints } from '../dataset/mapshaper-layer-utils';
 import { forEachArcId } from '../paths/mapshaper-path-utils';
 import { buildTopology } from '../topology/mapshaper-topology';
 
-export async function importGeoPackage(content, optsArg) {
+// `input` is a {content, filename} object (as produced by the file-import
+// pipeline). We accept the wrapper rather than just the bytes so we can
+// release the caller's `input.content` reference once we've written the
+// data to a temp file -- a 1GB GeoPackage no longer pins both the in-memory
+// buffer and the on-disk copy for the duration of the parse.
+export async function importGeoPackage(input, optsArg) {
   var opts = optsArg || {};
   var geopackage = require('@ngageoint/geopackage');
   var gpkg;
   var datasets;
   var tmpPath = null;
+  // Cache only a *string* filename for recovery purposes. If input.content
+  // is a buffer, openGeoPackage() will create a temp file for us and the
+  // recovery path goes through that tmpPath instead.
+  var sourceFilename = utils.isString(input.content) ? input.content : input.filename;
 
   if (!geopackage || !geopackage.GeoPackageAPI) {
     stop('GeoPackage library is not loaded');
   }
 
-  ({gpkg, tmpPath} = await openGeoPackage(content, geopackage));
+  ({gpkg, tmpPath} = await openGeoPackage(input, geopackage));
   var availableLayers;
   var filterApplied;
   try {
@@ -33,8 +42,8 @@ export async function importGeoPackage(content, optsArg) {
         gpkg.close();
         if (tmpPath) {
           sanitizeGeoPackageCrsMetadata(tmpPath);
-        } else if (utils.isString(content)) {
-          tmpPath = copyGeoPackageTempFile(content);
+        } else if (sourceFilename) {
+          tmpPath = copyGeoPackageTempFile(sourceFilename);
           sanitizeGeoPackageCrsMetadata(tmpPath);
         } else {
           throw e;
@@ -70,7 +79,8 @@ export async function importGeoPackage(content, optsArg) {
   return merged;
 }
 
-async function openGeoPackage(content, geopackage) {
+async function openGeoPackage(input, geopackage) {
+  var content = input.content || input.filename;
   var source;
   var tmpPath = null;
   if (utils.isString(content)) {
@@ -93,6 +103,11 @@ async function openGeoPackage(content, geopackage) {
     source = content;
   } else if (!runningInBrowser()) {
     tmpPath = writeGeoPackageTempFile(content);
+    // The buffer is now duplicated on disk; release every in-process
+    // reference so a 1GB GeoPackage doesn't pin 1GB of RAM for the rest
+    // of the parse.
+    input.content = null;
+    content = null;
     try {
       return {
         gpkg: await geopackage.GeoPackageAPI.open(tmpPath),
@@ -107,6 +122,8 @@ async function openGeoPackage(content, geopackage) {
       };
     }
   } else {
+    // Browser path: we don't have a filesystem to write to; the
+    // GeoPackage library reads directly from the typed array.
     source = new Uint8Array(content);
   }
   return {

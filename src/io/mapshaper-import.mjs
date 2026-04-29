@@ -79,7 +79,7 @@ export async function importContentAsync(obj, opts) {
   } else if (obj.gpkg) {
     dataFmt = 'geopackage';
     data = obj.gpkg;
-    dataset = await importGeoPackage(data.content || data.filename, opts);
+    dataset = await importGeoPackage(data, opts);
   } else {
     return importContent(obj, opts);
   }
