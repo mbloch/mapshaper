@@ -2,37 +2,53 @@
 import { mergeDatasets } from '../dataset/mapshaper-merging';
 import { copyLayerShapes } from '../dataset/mapshaper-layer-utils';
 import { layerHasPaths } from '../dataset/mapshaper-layer-utils';
-import { stop } from '../utils/mapshaper-logging';
+import { stop, error } from '../utils/mapshaper-logging';
 import { buildTopology } from '../topology/mapshaper-topology';
 import utils from '../utils/mapshaper-utils';
 import { ArcCollection } from '../paths/mapshaper-arcs';
+
+// Convert a source parameter (which can take several forms) into
+// a dataset with a single layer.
+export function normalizeOverlaySource(clipSrc, targetDataset, optsArg) {
+  var opts = optsArg || {};
+  var bbox = opts.bbox || opts.bbox2;
+  var clipDataset;
+  if (bbox) {
+    clipDataset = convertClipBounds(bbox);
+  } else if (!clipSrc) {
+    stop('Command requires a source file, layer id or bbox');
+  } else if (clipSrc.geometry_type) {
+    // clipSrc is a layer (assumed in targetDataset)
+    // TODO: update tests to remove this case (only used in tests)
+    // error('Unsupported source format');
+    clipDataset = utils.defaults({layers: [clipSrc], disposable: true}, targetDataset);
+  } else if (clipSrc.layer && clipSrc.dataset) {
+    clipDataset = utils.defaults({layers: [clipSrc.layer]}, clipSrc.dataset);
+  } else if (clipSrc.layers?.length == 1) {
+    clipDataset = clipSrc;
+  } else {
+    error('Invalid source format');
+  }
+  if (clipSrc?.disposable) {
+    clipDataset.disposable = true;
+  }
+  return clipDataset;
+}
 
 // Create a merged dataset by appending the overlay layer to the target dataset
 // so it is last in the layers array.
 // DOES NOT insert clipping points
 export function mergeLayersForOverlay(targetLayers, targetDataset, clipSrc, opts) {
-  var usingPathClip = utils.some(targetLayers, layerHasPaths);
-  var bbox = opts.bbox || opts.bbox2;
-  var mergedDataset, clipDataset, clipLyr;
-  if (clipSrc && clipSrc.geometry_type) {
-    // TODO: update tests to remove this case (clipSrc is a layer)
-    clipSrc = {dataset: targetDataset, layer: clipSrc, disposable: true};
-  }
-  if (bbox) {
-    clipDataset = convertClipBounds(bbox);
-    clipLyr = clipDataset.layers[0];
-  } else if (!clipSrc) {
-    stop("Command requires a source file, layer id or bbox");
-  } else if (clipSrc.layer && clipSrc.dataset) {
-    clipLyr = clipSrc.layer;
-    clipDataset = utils.defaults({layers: [clipLyr]}, clipSrc.dataset);
-  } else if (clipSrc.layers && clipSrc.layers.length == 1) {
-    clipLyr = clipSrc.layers[0];
-    clipDataset = clipSrc;
-  }
+  var clipDataset = normalizeOverlaySource(clipSrc, targetDataset, opts);
+  return mergeLayersForOverlay2(targetLayers, targetDataset, clipDataset);
+}
+
+export function mergeLayersForOverlay2(targetLayers, targetDataset, clipDataset) {
+  var mergedDataset;
+  var clipLyr = clipDataset.layers[0];
   if (targetDataset.arcs != clipDataset.arcs) {
     // using external dataset -- need to merge arcs
-    if (clipSrc && !clipSrc.disposable) {
+    if (!clipDataset.disposable) {
       // copy overlay layer shapes because arc ids will be reindexed during merging
       clipDataset.layers[0] = copyLayerShapes(clipDataset.layers[0]);
     }
@@ -60,6 +76,7 @@ function convertClipBounds(bb) {
   return {
     arcs: new ArcCollection([arc]),
     layers: [{
+      name: 'bbox',
       shapes: [[[0]]],
       geometry_type: 'polygon'
     }]

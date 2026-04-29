@@ -2,13 +2,14 @@ import { filterClipSlivers } from '../commands/mapshaper-filter-slivers';
 import { clipPolylines } from '../clipping/mapshaper-polyline-clipping';
 import { clipPolygons } from '../clipping/mapshaper-polygon-clipping';
 import { clipPoints } from '../clipping/mapshaper-point-clipping';
-import { requirePolygonLayer } from '../dataset/mapshaper-layer-utils';
+import { requirePolygonLayer, getLayerBounds } from '../dataset/mapshaper-layer-utils';
 import { addIntersectionCuts } from '../paths/mapshaper-intersection-cuts';
-import { mergeLayersForOverlay } from '../clipping/mapshaper-overlay-utils';
+import { mergeLayersForOverlay2, normalizeOverlaySource } from '../clipping/mapshaper-overlay-utils';
 import { divideDatasetByBBox } from '../clipping/mapshaper-bbox2-clipping';
 import { layerHasPaths } from '../dataset/mapshaper-layer-utils';
+import { Bounds } from '../geom/mapshaper-bounds';
 import cmd from '../mapshaper-cmd';
-import { stop, message } from '../utils/mapshaper-logging';
+import { stop, message, warnOnce } from '../utils/mapshaper-logging';
 import utils from '../utils/mapshaper-utils';
 import { ArcCollection } from '../paths/mapshaper-arcs';
 import { NodeCollection } from '../topology/mapshaper-nodes';
@@ -55,16 +56,20 @@ export function clipLayersInPlace(layers, clipSrc, dataset, type, opts) {
 // @type: 'clip' or 'erase'
 export function clipLayers(targetLayers, clipSrc, targetDataset, type, opts) {
   profileStart('clipLayers');
+  opts = opts || {no_cleanup: true}; // TODO: update testing functions
   var usingPathClip = utils.some(targetLayers, layerHasPaths);
   var mergedDataset, clipLyr, nodes, result;
-  opts = opts || {no_cleanup: true}; // TODO: update testing functions
+  var clipDataset = normalizeOverlaySource(clipSrc, targetDataset, opts);
+  if (!opts.no_warn) {
+    warnIfBoundsDontOverlap(targetLayers, targetDataset, clipDataset, type);
+  }
   if (opts.bbox2 && usingPathClip) { // assumes target dataset has arcs
     result = clipLayersByBBox(targetLayers, targetDataset, opts);
     profileEnd('clipLayers');
     return result;
   }
   profileStart('mergeLayersForOverlay');
-  mergedDataset = mergeLayersForOverlay(targetLayers, targetDataset, clipSrc, opts);
+  mergedDataset = mergeLayersForOverlay2(targetLayers, targetDataset, clipDataset);
   profileEnd('mergeLayersForOverlay');
   clipLyr = mergedDataset.layers[mergedDataset.layers.length-1];
   if (usingPathClip) {
@@ -180,6 +185,42 @@ export function getClipMessage(nullCount, sliverCount) {
     return utils.format('Removed %s%s%s', nullMsg, (nullMsg && sliverMsg ? ' and ' : ''), sliverMsg);
   }
   return '';
+}
+
+// Warn (once per source/target pair) if a -clip / -erase / slice is being
+// asked to operate on layers whose bounding boxes don't overlap. The common
+// causes are CRS mismatch or picking the wrong source layer. Empty layers
+// are ignored: they're a separate failure mode and would produce noisy false
+// positives. Skipped if opts.no_warn is set.
+export function warnIfBoundsDontOverlap(targetLayers, targetDataset, clipDataset, type) {
+  var srcBounds = getLayerBounds(clipDataset.layers[0], clipDataset.arcs);
+  if (!srcBounds || !srcBounds.hasBounds()) return;
+  var srcName = clipDataset.layers[0].name || '<unnamed>';
+  targetLayers.forEach(function(targetLyr) {
+    var targetBounds = getLayerBounds(targetLyr, targetDataset.arcs);
+    if (!targetBounds || !targetBounds.hasBounds()) return;
+    if (srcBounds.intersects(targetBounds)) return;
+    warnOnce(formatNoOverlapMessage(type, srcName, targetLyr.name,
+      srcBounds, targetBounds));
+  });
+}
+
+function formatNoOverlapMessage(type, srcName, targetName, srcBounds, targetBounds) {
+  // 'slice' is a per-feature -clip variant; in user terms it has the same
+  // empty-output failure mode as clip, so we describe it under the same
+  // verb to keep the message simple.
+  var verb = type === 'erase' ? 'erase' : 'clip';
+  var consequence = type === 'erase'
+    ? 'will leave "' + (targetName || '<unnamed>') + '" unchanged'
+    : 'will produce empty output for "' + (targetName || '<unnamed>') + '"';
+  return '-' + verb + ': source "' + srcName + '" ' + bbToText(srcBounds) +
+    ' does not overlap target "' + (targetName || '<unnamed>') + '" ' +
+    bbToText(targetBounds) + '. The -' + verb + ' ' + consequence +
+    '. This usually indicates a coordinate system mismatch.';
+}
+
+function bbToText(b) {
+  return JSON.stringify(b.toArray());
 }
 
 
