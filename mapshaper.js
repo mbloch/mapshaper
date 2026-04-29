@@ -1,116 +1,19 @@
 (function () {
 
-  var utils = /*#__PURE__*/Object.freeze({
-    __proto__: null,
-    get addThousandsSep () { return addThousandsSep; },
-    get addslashes () { return addslashes; },
-    get arrayToIndex () { return arrayToIndex; },
-    get clamp () { return clamp; },
-    get cleanNumericString () { return cleanNumericString; },
-    get contains () { return contains; },
-    get copyElements () { return copyElements; },
-    get countValues () { return countValues; },
-    get createBuffer () { return createBuffer; },
-    get default () { return utils; },
-    get defaults () { return defaults; },
-    get difference () { return difference; },
-    get endsWith () { return endsWith; },
-    get every () { return every; },
-    get expandoBuffer () { return expandoBuffer; },
-    get extend () { return extend$1; },
-    get extendBuffer () { return extendBuffer; },
-    get find () { return find$1; },
-    get findMedian () { return findMedian; },
-    get findQuantile () { return findQuantile; },
-    get findRankByValue () { return findRankByValue; },
-    get findStringPrefix () { return findStringPrefix; },
-    get findValueByPct () { return findValueByPct; },
-    get findValueByRank () { return findValueByRank; },
-    get forEach () { return forEach; },
-    get forEachProperty () { return forEachProperty; },
-    get format () { return format; },
-    get formatDateISO () { return formatDateISO; },
-    get formatIntlNumber () { return formatIntlNumber; },
-    get formatNumber () { return formatNumber$1; },
-    get formatNumberForDisplay () { return formatNumberForDisplay; },
-    get formatVersionedName () { return formatVersionedName; },
-    get formatter () { return formatter; },
-    get genericSort () { return genericSort; },
-    get getArrayBounds () { return getArrayBounds; },
-    get getGenericComparator () { return getGenericComparator; },
-    get getKeyComparator () { return getKeyComparator; },
-    get getSortedIds () { return getSortedIds; },
-    get getUniqueName () { return getUniqueName; },
-    get groupBy () { return groupBy; },
-    get htmlEscape () { return htmlEscape; },
-    get indexOf () { return indexOf; },
-    get indexOn () { return indexOn; },
-    get inherit () { return inherit; },
-    get initializeArray () { return initializeArray; },
-    get intersection () { return intersection; },
-    get isArray () { return isArray; },
-    get isArrayLike () { return isArrayLike; },
-    get isBoolean () { return isBoolean; },
-    get isDate () { return isDate; },
-    get isEven () { return isEven; },
-    get isFiniteNumber () { return isFiniteNumber$1; },
-    get isFunction () { return isFunction; },
-    get isInteger () { return isInteger; },
-    get isNonNegNumber () { return isNonNegNumber; },
-    get isNumber () { return isNumber; },
-    get isObject () { return isObject; },
-    get isOdd () { return isOdd$1; },
-    get isPromise () { return isPromise; },
-    get isString () { return isString; },
-    get isValidNumber () { return isValidNumber; },
-    get lpad () { return lpad; },
-    get ltrim () { return ltrim; },
-    get mean () { return mean; },
-    get merge () { return merge$1; },
-    get mergeNames () { return mergeNames; },
-    get numToStr () { return numToStr; },
-    get parseIntlNumber () { return parseIntlNumber; },
-    get parseNumber () { return parseNumber$1; },
-    get parsePercent () { return parsePercent; },
-    get parseString () { return parseString; },
-    get pickOne () { return pickOne; },
-    get pluck () { return pluck; },
-    get pluralSuffix () { return pluralSuffix; },
-    get promisify () { return promisify; },
-    get quicksort () { return quicksort$1; },
-    get quicksortPartition () { return quicksortPartition; },
-    get range () { return range; },
-    get reduceAsync () { return reduceAsync; },
-    get regexEscape () { return regexEscape; },
-    get reorderArray () { return reorderArray; },
-    get repeat () { return repeat; },
-    get repeatString () { return repeatString; },
-    get replaceArray () { return replaceArray; },
-    get rpad () { return rpad; },
-    get rtrim () { return rtrim; },
-    get shuffle () { return shuffle; },
-    get some () { return some; },
-    get sortArrayIndex () { return sortArrayIndex; },
-    get sortOn () { return sortOn; },
-    get splitLines () { return splitLines; },
-    get sum () { return sum$1; },
-    get toArray () { return toArray; },
-    get toBuffer () { return toBuffer; },
-    get trim () { return trim; },
-    get trimQuotes () { return trimQuotes; },
-    get uniq () { return uniq; },
-    get uniqifyNames () { return uniqifyNames; },
-    get wildcardToRegExp () { return wildcardToRegExp; }
-  });
-
   // This module provides a way for multiple jobs to run together asynchronously
   // while keeping job-level context variables (like "defs") separate.
+  //
+  // We deliberately do NOT import from mapshaper-logging here -- the logging
+  // module imports from this one, and avoiding the back-edge keeps the
+  // foundational dependency graph acyclic. (The single error path below is
+  // an internal-bug guard, not a user-facing message, so a plain Error is
+  // adequate.)
 
   var stash = {};
 
   function stashVar(key, val) {
     if (key in stash) {
-      error('Tried to replace a stashed variable:', key);
+      throw new Error('Tried to replace a stashed variable: ' + key);
     }
     stash[key] = val;
   }
@@ -152,6 +55,11 @@
 
   // Fall back to browserify's Buffer polyfill
   var B$3 = typeof Buffer != 'undefined' ? Buffer : require$1('buffer').Buffer;
+
+  // We do NOT import from mapshaper-logging here to avoid a circular dependency
+  function error$1() {
+    throw new Error(Array.prototype.slice.call(arguments).join(' '));
+  }
 
   var uniqCount = 0;
   function getUniqueName(prefix) {
@@ -234,7 +142,7 @@
   // Convert an array-like object to an Array, or make a copy if @obj is an Array
   function toArray(obj) {
     var arr;
-    if (!isArrayLike(obj)) error("toArray() requires an array-like object");
+    if (!isArrayLike(obj)) error$1("toArray() requires an array-like object");
     try {
       arr = Array.prototype.slice.call(obj, 0); // breaks in ie8
     } catch(e) {
@@ -386,7 +294,7 @@
   // Append elements of @src array to @dest array
   function merge$1(dest, src) {
     if (!isArray(dest) || !isArray(src)) {
-      error("Usage: merge(destArray, srcArray);");
+      error$1("Usage: merge(destArray, srcArray);");
     }
     for (var i=0, n=src.length; i<n; i++) {
       dest.push(src[i]);
@@ -427,7 +335,7 @@
     else if (isArrayLike(container)) {
       return indexOf(container, item) != -1;
     }
-    error("Expected Array or String argument");
+    error$1("Expected Array or String argument");
   }
 
   function some(arr, test) {
@@ -474,7 +382,7 @@
   // Assumes: no other non-numeric objects in array
   //
   function sum$1(arr, info) {
-    if (!isArrayLike(arr)) error ("sum() expects an array, received:", arr);
+    if (!isArrayLike(arr)) error$1 ("sum() expects an array, received:", arr);
     var tot = 0,
         nan = 0,
         val;
@@ -756,7 +664,7 @@
     var arr2 = [];
     for (var i=0; i<len; i++) {
       var idx = idxs[i];
-      if (idx < 0 || idx >= len) error("Out-of-bounds array idx");
+      if (idx < 0 || idx >= len) error$1("Out-of-bounds array idx");
       arr2[i] = arr[idx];
     }
     replaceArray(arr, arr2);
@@ -841,7 +749,7 @@
   // Elements of @arr are reordered
   //
   function findValueByRank(arr, rank) {
-    if (!arr.length || rank < 1 || rank > arr.length) error("[findValueByRank()] invalid input");
+    if (!arr.length || rank < 1 || rank > arr.length) error$1("[findValueByRank()] invalid input");
 
     rank = clamp(rank | 0, 1, arr.length);
     var k = rank - 1, // conv. rank to array index
@@ -1032,7 +940,7 @@
       var str = literals[0],
           n = arguments.length;
       if (n != formatCodes.length) {
-        error("[format()] Data does not match format string; format:", fmt, "data:", arguments);
+        error$1("[format()] Data does not match format string; format:", fmt, "data:", arguments);
       }
       for (var i=0; i<n; i++) {
         str += formatValue(arguments[i], formatCodes[i]) + literals[i+1];
@@ -1063,7 +971,7 @@
     if (src instanceof Uint8Array) {
       return B$3.from(src.buffer, src.byteOffset, src.byteLength);
     }
-    error('Unexpected argument type');
+    error$1('Unexpected argument type');
   }
 
   function expandoBuffer(constructor, rate) {
@@ -1085,7 +993,7 @@
         offs = 0,
         k;
     if (rev) {
-      if (same) error('copy error');
+      if (same) error$1('copy error');
       inc = -1;
       offs = n - 1;
     }
@@ -1122,21 +1030,6 @@
       if (a[i] !== b[i]) break;
     }
     return a.substr(0, i);
-  }
-
-  function parsePercent(o) {
-    var str = String(o);
-    var isPct = str.indexOf('%') > 0;
-    var pct;
-    if (isPct) {
-      pct = Number(str.replace('%', '')) / 100;
-    } else {
-      pct = Number(str);
-    }
-    if (!(pct >= 0 && pct <= 1)) {
-      stop$1(format("Invalid percentage: %s", str));
-    }
-    return pct;
   }
 
   function formatVersionedName(name, i) {
@@ -1225,6 +1118,40 @@
     }
     return str;
   }
+
+  // Default export so consumers can do `import utils from './mapshaper-utils'`
+  // and call `utils.isObject(x)` etc. Listing the names explicitly (instead
+  // of using `import * as utils from './mapshaper-utils'`) avoids a
+  // self-import and the resulting Rollup circular-dependency warning.
+  var utils = {
+    addThousandsSep, addslashes, arrayToIndex,
+    clamp, cleanNumericString, contains, copyElements, countValues, createBuffer,
+    defaults, difference,
+    endsWith, every, expandoBuffer, extend: extend$1, extendBuffer,
+    find: find$1, findMedian, findQuantile, findRankByValue, findStringPrefix,
+    findValueByPct, findValueByRank, forEach, forEachProperty, format,
+    formatDateISO, formatIntlNumber, formatNumber: formatNumber$1, formatNumberForDisplay,
+    formatVersionedName, formatter,
+    genericSort, getArrayBounds, getGenericComparator, getKeyComparator,
+    getSortedIds, getUniqueName, groupBy,
+    htmlEscape,
+    indexOf, indexOn, inherit, initializeArray, intersection,
+    isArray, isArrayLike, isBoolean, isDate, isEven, isFiniteNumber: isFiniteNumber$1, isFunction,
+    isInteger, isNonNegNumber, isNumber, isObject, isOdd: isOdd$1, isPromise, isString,
+    isValidNumber,
+    lpad, ltrim,
+    mean, merge: merge$1, mergeNames,
+    numToStr,
+    parseIntlNumber, parseNumber: parseNumber$1, parseString, pickOne, pluck,
+    pluralSuffix, promisify,
+    quicksort: quicksort$1, quicksortPartition,
+    range, reduceAsync, regexEscape, reorderArray, repeat, repeatString,
+    replaceArray, rpad, rtrim,
+    shuffle, some, sortArrayIndex, sortOn, splitLines, sum: sum$1,
+    toArray, toBuffer, trim, trimQuotes,
+    uniq, uniqifyNames,
+    wildcardToRegExp
+  };
 
   var LOGGING = false;
   var STDOUT = false; // use stdout for status messages
@@ -1505,6 +1432,35 @@
     warn: warn,
     warnOnce: warnOnce
   });
+
+  // Pure geometry-type predicates for layers. Extracted from layer-utils.mjs
+  // so that point-utils -- which only needs `layerHasPoints` -- can avoid
+  // importing from layer-utils (which in turn imports point-utils for its
+  // path/bound helpers, forming a cycle).
+
+
+  function layerHasGeometry(lyr) {
+    return layerHasPaths(lyr) || layerHasPoints(lyr);
+  }
+
+  function layerIsGeometric(lyr) {
+    return !!lyr.geometry_type; // only checks type, includes empty layers
+  }
+
+  function layerHasPaths(lyr) {
+    return (lyr.geometry_type == 'polygon' || lyr.geometry_type == 'polyline') &&
+      layerHasNonNullShapes(lyr);
+  }
+
+  function layerHasPoints(lyr) {
+    return lyr.geometry_type == 'point' && layerHasNonNullShapes(lyr);
+  }
+
+  function layerHasNonNullShapes(lyr) {
+    return utils.some(lyr.shapes || [], function(shp) {
+      return !!shp;
+    });
+  }
 
   function Transform() {
     this.mx = this.my = 1;
@@ -4560,23 +4516,6 @@
     return lyr.data && getFirstNonEmptyRecord(lyr.data.getRecords()) ? true : false;
   }
 
-  function layerHasGeometry(lyr) {
-    return layerHasPaths(lyr) || layerHasPoints(lyr);
-  }
-
-  function layerIsGeometric(lyr) {
-    return !!lyr.geometry_type; // only checks type, includes empty layers
-  }
-
-  function layerHasPaths(lyr) {
-    return (lyr.geometry_type == 'polygon' || lyr.geometry_type == 'polyline') &&
-      layerHasNonNullShapes(lyr);
-  }
-
-  function layerHasPoints(lyr) {
-    return lyr.geometry_type == 'point' && layerHasNonNullShapes(lyr);
-  }
-
   function layerIsRectangle(lyr, arcs) {
     return layerOnlyHasRectangles(lyr, arcs) && lyr.shapes.length == 1;
   }
@@ -4587,12 +4526,6 @@
     return lyr.shapes.every(function(shp) {
       if (!shp) return true;
       return pathIsRectangle(shp[0], arcs);
-    });
-  }
-
-  function layerHasNonNullShapes(lyr) {
-    return utils.some(lyr.shapes || [], function(shp) {
-      return !!shp;
     });
   }
 
@@ -8048,2134 +7981,203 @@
     toLowerCaseExtension: toLowerCaseExtension
   });
 
-  var decoder;
-  try {
-  	decoder = new TextDecoder();
-  } catch(error) {}
-  var src;
-  var srcEnd;
-  var position$1 = 0;
-  var currentUnpackr = {};
-  var currentStructures;
-  var srcString;
-  var srcStringStart = 0;
-  var srcStringEnd = 0;
-  var bundledStrings$1;
-  var referenceMap;
-  var currentExtensions = [];
-  var dataView;
-  var defaultOptions = {
-  	useRecords: false,
-  	mapsAsObjects: true
-  };
-  class C1Type {}
-  const C1$1 = new C1Type();
-  C1$1.name = 'MessagePack 0xC1';
-  var sequentialMode = false;
-  var inlineObjectReadThreshold = 2;
-  var readStruct;
-  // no-eval build
-  try {
-  	new Function('');
-  } catch(error) {
-  	// if eval variants are not supported, do not create inline object readers ever
-  	inlineObjectReadThreshold = Infinity;
+  // Constants shared between the .msx (mapshaper snapshot) writer in
+  // mapshaper-pack.mjs and the file-type registry in
+  // io/mapshaper-file-types.mjs. Living here lets file-types reference the
+  // extension without pulling in the full pack module (which transitively
+  // depends back on file-types via the gzip helper).
+  var PACKAGE_EXT = 'msx';
+
+  // Guess the type of a data file from file extension, or return null if not sure
+  // File type is different than data type
+  //
+  function guessInputFileType(file) {
+    var ext = getFileExtension(file || '').toLowerCase(),
+        type = null;
+    if (ext == 'dbf' || ext == 'shp' || ext == 'kml' || ext == 'svg' || ext == 'fgb' || ext == 'gpkg') {
+      type = ext;
+    } else if (isAuxiliaryInputFileType(ext)) {
+      type = ext;
+    } else if (/json$/.test(ext)) { // matches topojson, geojson, json
+      type = 'json';
+    } else if (ext == 'csv' || ext == 'tsv' || ext == 'txt' || ext == 'tab') {
+      type = 'text';
+    } else if (ext == PACKAGE_EXT) {
+      type = PACKAGE_EXT;
+    }
+    return type;
   }
 
-  class Unpackr {
-  	constructor(options) {
-  		if (options) {
-  			if (options.useRecords === false && options.mapsAsObjects === undefined)
-  				options.mapsAsObjects = true;
-  			if (options.sequential && options.trusted !== false) {
-  				options.trusted = true;
-  				if (!options.structures && options.useRecords != false) {
-  					options.structures = [];
-  					if (!options.maxSharedStructures)
-  						options.maxSharedStructures = 0;
-  				}
-  			}
-  			if (options.structures)
-  				options.structures.sharedLength = options.structures.length;
-  			else if (options.getStructures) {
-  				(options.structures = []).uninitialized = true; // this is what we use to denote an uninitialized structures
-  				options.structures.sharedLength = 0;
-  			}
-  			if (options.int64AsNumber) {
-  				options.int64AsType = 'number';
-  			}
-  		}
-  		Object.assign(this, options);
-  	}
-  	unpack(source, options) {
-  		if (src) {
-  			// re-entrant execution, save the state and restore it after we do this unpack
-  			return saveState(() => {
-  				clearSource();
-  				return this ? this.unpack(source, options) : Unpackr.prototype.unpack.call(defaultOptions, source, options)
-  			})
-  		}
-  		if (!source.buffer && source.constructor === ArrayBuffer)
-  			source = typeof Buffer !== 'undefined' ? Buffer.from(source) : new Uint8Array(source);
-  		if (typeof options === 'object') {
-  			srcEnd = options.end || source.length;
-  			position$1 = options.start || 0;
-  		} else {
-  			position$1 = 0;
-  			srcEnd = options > -1 ? options : source.length;
-  		}
-  		srcStringEnd = 0;
-  		srcString = null;
-  		bundledStrings$1 = null;
-  		src = source;
-  		// this provides cached access to the data view for a buffer if it is getting reused, which is a recommend
-  		// technique for getting data from a database where it can be copied into an existing buffer instead of creating
-  		// new ones
-  		try {
-  			dataView = source.dataView || (source.dataView = new DataView(source.buffer, source.byteOffset, source.byteLength));
-  		} catch(error) {
-  			// if it doesn't have a buffer, maybe it is the wrong type of object
-  			src = null;
-  			if (source instanceof Uint8Array)
-  				throw error
-  			throw new Error('Source must be a Uint8Array or Buffer but was a ' + ((source && typeof source == 'object') ? source.constructor.name : typeof source))
-  		}
-  		if (this instanceof Unpackr) {
-  			currentUnpackr = this;
-  			if (this.structures) {
-  				currentStructures = this.structures;
-  				return checkedRead(options)
-  			} else if (!currentStructures || currentStructures.length > 0) {
-  				currentStructures = [];
-  			}
-  		} else {
-  			currentUnpackr = defaultOptions;
-  			if (!currentStructures || currentStructures.length > 0)
-  				currentStructures = [];
-  		}
-  		return checkedRead(options)
-  	}
-  	unpackMultiple(source, forEach) {
-  		let values, lastPosition = 0;
-  		try {
-  			sequentialMode = true;
-  			let size = source.length;
-  			let value = this ? this.unpack(source, size) : defaultUnpackr.unpack(source, size);
-  			if (forEach) {
-  				if (forEach(value, lastPosition, position$1) === false) return;
-  				while(position$1 < size) {
-  					lastPosition = position$1;
-  					if (forEach(checkedRead(), lastPosition, position$1) === false) {
-  						return
-  					}
-  				}
-  			}
-  			else {
-  				values = [ value ];
-  				while(position$1 < size) {
-  					lastPosition = position$1;
-  					values.push(checkedRead());
-  				}
-  				return values
-  			}
-  		} catch(error) {
-  			error.lastPosition = lastPosition;
-  			error.values = values;
-  			throw error
-  		} finally {
-  			sequentialMode = false;
-  			clearSource();
-  		}
-  	}
-  	_mergeStructures(loadedStructures, existingStructures) {
-  		loadedStructures = loadedStructures || [];
-  		if (Object.isFrozen(loadedStructures))
-  			loadedStructures = loadedStructures.map(structure => structure.slice(0));
-  		for (let i = 0, l = loadedStructures.length; i < l; i++) {
-  			let structure = loadedStructures[i];
-  			if (structure) {
-  				structure.isShared = true;
-  				if (i >= 32)
-  					structure.highByte = (i - 32) >> 5;
-  			}
-  		}
-  		loadedStructures.sharedLength = loadedStructures.length;
-  		for (let id in existingStructures || []) {
-  			if (id >= 0) {
-  				let structure = loadedStructures[id];
-  				let existing = existingStructures[id];
-  				if (existing) {
-  					if (structure)
-  						(loadedStructures.restoreStructures || (loadedStructures.restoreStructures = []))[id] = structure;
-  					loadedStructures[id] = existing;
-  				}
-  			}
-  		}
-  		return this.structures = loadedStructures
-  	}
-  	decode(source, options) {
-  		return this.unpack(source, options)
-  	}
-  }
-  function checkedRead(options) {
-  	try {
-  		if (!currentUnpackr.trusted && !sequentialMode) {
-  			let sharedLength = currentStructures.sharedLength || 0;
-  			if (sharedLength < currentStructures.length)
-  				currentStructures.length = sharedLength;
-  		}
-  		let result;
-  		if (currentUnpackr.randomAccessStructure && src[position$1] < 0x40 && src[position$1] >= 0x20 && readStruct) ; else
-  			result = read();
-  		if (bundledStrings$1) { // bundled strings to skip past
-  			position$1 = bundledStrings$1.postBundlePosition;
-  			bundledStrings$1 = null;
-  		}
-  		if (sequentialMode)
-  			// we only need to restore the structures if there was an error, but if we completed a read,
-  			// we can clear this out and keep the structures we read
-  			currentStructures.restoreStructures = null;
-
-  		if (position$1 == srcEnd) {
-  			// finished reading this source, cleanup references
-  			if (currentStructures && currentStructures.restoreStructures)
-  				restoreStructures();
-  			currentStructures = null;
-  			src = null;
-  			if (referenceMap)
-  				referenceMap = null;
-  		} else if (position$1 > srcEnd) {
-  			// over read
-  			throw new Error('Unexpected end of MessagePack data')
-  		} else if (!sequentialMode) {
-  			let jsonView;
-  			try {
-  				jsonView = JSON.stringify(result, (_, value) => typeof value === "bigint" ? `${value}n` : value).slice(0, 100);
-  			} catch(error) {
-  				jsonView = '(JSON view not available ' + error + ')';
-  			}
-  			throw new Error('Data read, but end of buffer not reached ' + jsonView)
-  		}
-  		// else more to read, but we are reading sequentially, so don't clear source yet
-  		return result
-  	} catch(error) {
-  		if (currentStructures && currentStructures.restoreStructures)
-  			restoreStructures();
-  		clearSource();
-  		if (error instanceof RangeError || error.message.startsWith('Unexpected end of buffer') || position$1 > srcEnd) {
-  			error.incomplete = true;
-  		}
-  		throw error
-  	}
+  // File types that can be imported but are not convertible to datasets
+  function isAuxiliaryInputFileType(type) {
+    return type == 'prj' || type == 'shx' || type == 'cpg';
   }
 
-  function restoreStructures() {
-  	for (let id in currentStructures.restoreStructures) {
-  		currentStructures[id] = currentStructures.restoreStructures[id];
-  	}
-  	currentStructures.restoreStructures = null;
+  function guessInputContentType(content) {
+    var type = null;
+    if (utils.isString(content)) {
+      type = stringLooksLikeJSON(content) && 'json' ||
+        stringLooksLikeKML(content) && 'kml' ||
+        stringLooksLikeSVG(content) && 'svg' || 'text';
+    } else if (utils.isObject(content) && content.type || utils.isArray(content)) {
+      type = 'json';
+    }
+    return type;
   }
 
-  function read() {
-  	let token = src[position$1++];
-  	if (token < 0xa0) {
-  		if (token < 0x80) {
-  			if (token < 0x40)
-  				return token
-  			else {
-  				let structure = currentStructures[token & 0x3f] ||
-  					currentUnpackr.getStructures && loadStructures()[token & 0x3f];
-  				if (structure) {
-  					if (!structure.read) {
-  						structure.read = createStructureReader(structure, token & 0x3f);
-  					}
-  					return structure.read()
-  				} else
-  					return token
-  			}
-  		} else if (token < 0x90) {
-  			// map
-  			token -= 0x80;
-  			if (currentUnpackr.mapsAsObjects) {
-  				let object = {};
-  				for (let i = 0; i < token; i++) {
-  					let key = readKey();
-  					if (key === '__proto__')
-  						key = '__proto_';
-  					object[key] = read();
-  				}
-  				return object
-  			} else {
-  				let map = new Map();
-  				for (let i = 0; i < token; i++) {
-  					map.set(read(), read());
-  				}
-  				return map
-  			}
-  		} else {
-  			token -= 0x90;
-  			let array = new Array(token);
-  			for (let i = 0; i < token; i++) {
-  				array[i] = read();
-  			}
-  			if (currentUnpackr.freezeData)
-  				return Object.freeze(array)
-  			return array
-  		}
-  	} else if (token < 0xc0) {
-  		// fixstr
-  		let length = token - 0xa0;
-  		if (srcStringEnd >= position$1) {
-  			return srcString.slice(position$1 - srcStringStart, (position$1 += length) - srcStringStart)
-  		}
-  		if (srcStringEnd == 0 && srcEnd < 140) {
-  			// for small blocks, avoiding the overhead of the extract call is helpful
-  			let string = length < 16 ? shortStringInJS(length) : longStringInJS(length);
-  			if (string != null)
-  				return string
-  		}
-  		return readFixedString(length)
-  	} else {
-  		let value;
-  		switch (token) {
-  			case 0xc0: return null
-  			case 0xc1:
-  				if (bundledStrings$1) {
-  					value = read(); // followed by the length of the string in characters (not bytes!)
-  					if (value > 0)
-  						return bundledStrings$1[1].slice(bundledStrings$1.position1, bundledStrings$1.position1 += value)
-  					else
-  						return bundledStrings$1[0].slice(bundledStrings$1.position0, bundledStrings$1.position0 -= value)
-  				}
-  				return C1$1; // "never-used", return special object to denote that
-  			case 0xc2: return false
-  			case 0xc3: return true
-  			case 0xc4:
-  				// bin 8
-  				value = src[position$1++];
-  				if (value === undefined)
-  					throw new Error('Unexpected end of buffer')
-  				return readBin(value)
-  			case 0xc5:
-  				// bin 16
-  				value = dataView.getUint16(position$1);
-  				position$1 += 2;
-  				return readBin(value)
-  			case 0xc6:
-  				// bin 32
-  				value = dataView.getUint32(position$1);
-  				position$1 += 4;
-  				return readBin(value)
-  			case 0xc7:
-  				// ext 8
-  				return readExt(src[position$1++])
-  			case 0xc8:
-  				// ext 16
-  				value = dataView.getUint16(position$1);
-  				position$1 += 2;
-  				return readExt(value)
-  			case 0xc9:
-  				// ext 32
-  				value = dataView.getUint32(position$1);
-  				position$1 += 4;
-  				return readExt(value)
-  			case 0xca:
-  				value = dataView.getFloat32(position$1);
-  				if (currentUnpackr.useFloat32 > 2) {
-  					// this does rounding of numbers that were encoded in 32-bit float to nearest significant decimal digit that could be preserved
-  					let multiplier = mult10[((src[position$1] & 0x7f) << 1) | (src[position$1 + 1] >> 7)];
-  					position$1 += 4;
-  					return ((multiplier * value + (value > 0 ? 0.5 : -0.5)) >> 0) / multiplier
-  				}
-  				position$1 += 4;
-  				return value
-  			case 0xcb:
-  				value = dataView.getFloat64(position$1);
-  				position$1 += 8;
-  				return value
-  			// uint handlers
-  			case 0xcc:
-  				return src[position$1++]
-  			case 0xcd:
-  				value = dataView.getUint16(position$1);
-  				position$1 += 2;
-  				return value
-  			case 0xce:
-  				value = dataView.getUint32(position$1);
-  				position$1 += 4;
-  				return value
-  			case 0xcf:
-  				if (currentUnpackr.int64AsType === 'number') {
-  					value = dataView.getUint32(position$1) * 0x100000000;
-  					value += dataView.getUint32(position$1 + 4);
-  				} else if (currentUnpackr.int64AsType === 'string') {
-  					value = dataView.getBigUint64(position$1).toString();
-  				} else if (currentUnpackr.int64AsType === 'auto') {
-  					value = dataView.getBigUint64(position$1);
-  					if (value<=BigInt(2)<<BigInt(52)) value=Number(value);
-  				} else
-  					value = dataView.getBigUint64(position$1);
-  				position$1 += 8;
-  				return value
-
-  			// int handlers
-  			case 0xd0:
-  				return dataView.getInt8(position$1++)
-  			case 0xd1:
-  				value = dataView.getInt16(position$1);
-  				position$1 += 2;
-  				return value
-  			case 0xd2:
-  				value = dataView.getInt32(position$1);
-  				position$1 += 4;
-  				return value
-  			case 0xd3:
-  				if (currentUnpackr.int64AsType === 'number') {
-  					value = dataView.getInt32(position$1) * 0x100000000;
-  					value += dataView.getUint32(position$1 + 4);
-  				} else if (currentUnpackr.int64AsType === 'string') {
-  					value = dataView.getBigInt64(position$1).toString();
-  				} else if (currentUnpackr.int64AsType === 'auto') {
-  					value = dataView.getBigInt64(position$1);
-  					if (value>=BigInt(-2)<<BigInt(52)&&value<=BigInt(2)<<BigInt(52)) value=Number(value);
-  				} else
-  					value = dataView.getBigInt64(position$1);
-  				position$1 += 8;
-  				return value
-
-  			case 0xd4:
-  				// fixext 1
-  				value = src[position$1++];
-  				if (value == 0x72) {
-  					return recordDefinition(src[position$1++] & 0x3f)
-  				} else {
-  					let extension = currentExtensions[value];
-  					if (extension) {
-  						if (extension.read) {
-  							position$1++; // skip filler byte
-  							return extension.read(read())
-  						} else if (extension.noBuffer) {
-  							position$1++; // skip filler byte
-  							return extension()
-  						} else
-  							return extension(src.subarray(position$1, ++position$1))
-  					} else
-  						throw new Error('Unknown extension ' + value)
-  				}
-  			case 0xd5:
-  				// fixext 2
-  				value = src[position$1];
-  				if (value == 0x72) {
-  					position$1++;
-  					return recordDefinition(src[position$1++] & 0x3f, src[position$1++])
-  				} else
-  					return readExt(2)
-  			case 0xd6:
-  				// fixext 4
-  				return readExt(4)
-  			case 0xd7:
-  				// fixext 8
-  				return readExt(8)
-  			case 0xd8:
-  				// fixext 16
-  				return readExt(16)
-  			case 0xd9:
-  			// str 8
-  				value = src[position$1++];
-  				if (srcStringEnd >= position$1) {
-  					return srcString.slice(position$1 - srcStringStart, (position$1 += value) - srcStringStart)
-  				}
-  				return readString8(value)
-  			case 0xda:
-  			// str 16
-  				value = dataView.getUint16(position$1);
-  				position$1 += 2;
-  				if (srcStringEnd >= position$1) {
-  					return srcString.slice(position$1 - srcStringStart, (position$1 += value) - srcStringStart)
-  				}
-  				return readString16(value)
-  			case 0xdb:
-  			// str 32
-  				value = dataView.getUint32(position$1);
-  				position$1 += 4;
-  				if (srcStringEnd >= position$1) {
-  					return srcString.slice(position$1 - srcStringStart, (position$1 += value) - srcStringStart)
-  				}
-  				return readString32(value)
-  			case 0xdc:
-  			// array 16
-  				value = dataView.getUint16(position$1);
-  				position$1 += 2;
-  				return readArray$1(value)
-  			case 0xdd:
-  			// array 32
-  				value = dataView.getUint32(position$1);
-  				position$1 += 4;
-  				return readArray$1(value)
-  			case 0xde:
-  			// map 16
-  				value = dataView.getUint16(position$1);
-  				position$1 += 2;
-  				return readMap(value)
-  			case 0xdf:
-  			// map 32
-  				value = dataView.getUint32(position$1);
-  				position$1 += 4;
-  				return readMap(value)
-  			default: // negative int
-  				if (token >= 0xe0)
-  					return token - 0x100
-  				if (token === undefined) {
-  					let error = new Error('Unexpected end of MessagePack data');
-  					error.incomplete = true;
-  					throw error
-  				}
-  				throw new Error('Unknown MessagePack token ' + token)
-
-  		}
-  	}
-  }
-  const validName = /^[a-zA-Z_$][a-zA-Z\d_$]*$/;
-  function createStructureReader(structure, firstId) {
-  	function readObject() {
-  		// This initial function is quick to instantiate, but runs slower. After several iterations pay the cost to build the faster function
-  		if (readObject.count++ > inlineObjectReadThreshold) {
-  			let readObject = structure.read = (new Function('r', 'return function(){return ' + (currentUnpackr.freezeData ? 'Object.freeze' : '') +
-  				'({' + structure.map(key => key === '__proto__' ? '__proto_:r()' : validName.test(key) ? key + ':r()' : ('[' + JSON.stringify(key) + ']:r()')).join(',') + '})}'))(read);
-  			if (structure.highByte === 0)
-  				structure.read = createSecondByteReader(firstId, structure.read);
-  			return readObject() // second byte is already read, if there is one so immediately read object
-  		}
-  		let object = {};
-  		for (let i = 0, l = structure.length; i < l; i++) {
-  			let key = structure[i];
-  			if (key === '__proto__')
-  				key = '__proto_';
-  			object[key] = read();
-  		}
-  		if (currentUnpackr.freezeData)
-  			return Object.freeze(object);
-  		return object
-  	}
-  	readObject.count = 0;
-  	if (structure.highByte === 0) {
-  		return createSecondByteReader(firstId, readObject)
-  	}
-  	return readObject
+  function guessInputType(file, content) {
+    return guessInputFileType(file) || guessInputContentType(content);
   }
 
-  const createSecondByteReader = (firstId, read0) => {
-  	return function() {
-  		let highByte = src[position$1++];
-  		if (highByte === 0)
-  			return read0()
-  		let id = firstId < 32 ? -(firstId + (highByte << 5)) : firstId + (highByte << 5);
-  		let structure = currentStructures[id] || loadStructures()[id];
-  		if (!structure) {
-  			throw new Error('Record id is not defined for ' + id)
-  		}
-  		if (!structure.read)
-  			structure.read = createStructureReader(structure, firstId);
-  		return structure.read()
-  	}
-  };
-
-  function loadStructures() {
-  	let loadedStructures = saveState(() => {
-  		// save the state in case getStructures modifies our buffer
-  		src = null;
-  		return currentUnpackr.getStructures()
-  	});
-  	return currentStructures = currentUnpackr._mergeStructures(loadedStructures, currentStructures)
+  function stringLooksLikeJSON(str) {
+    return /^\s*[{[]/.test(String(str));
   }
 
-  var readFixedString = readStringJS;
-  var readString8 = readStringJS;
-  var readString16 = readStringJS;
-  var readString32 = readStringJS;
-  function readStringJS(length) {
-  	let result;
-  	if (length < 16) {
-  		if (result = shortStringInJS(length))
-  			return result
-  	}
-  	if (length > 64 && decoder)
-  		return decoder.decode(src.subarray(position$1, position$1 += length))
-  	const end = position$1 + length;
-  	const units = [];
-  	result = '';
-  	while (position$1 < end) {
-  		const byte1 = src[position$1++];
-  		if ((byte1 & 0x80) === 0) {
-  			// 1 byte
-  			units.push(byte1);
-  		} else if ((byte1 & 0xe0) === 0xc0) {
-  			// 2 bytes
-  			const byte2 = src[position$1++] & 0x3f;
-  			units.push(((byte1 & 0x1f) << 6) | byte2);
-  		} else if ((byte1 & 0xf0) === 0xe0) {
-  			// 3 bytes
-  			const byte2 = src[position$1++] & 0x3f;
-  			const byte3 = src[position$1++] & 0x3f;
-  			units.push(((byte1 & 0x1f) << 12) | (byte2 << 6) | byte3);
-  		} else if ((byte1 & 0xf8) === 0xf0) {
-  			// 4 bytes
-  			const byte2 = src[position$1++] & 0x3f;
-  			const byte3 = src[position$1++] & 0x3f;
-  			const byte4 = src[position$1++] & 0x3f;
-  			let unit = ((byte1 & 0x07) << 0x12) | (byte2 << 0x0c) | (byte3 << 0x06) | byte4;
-  			if (unit > 0xffff) {
-  				unit -= 0x10000;
-  				units.push(((unit >>> 10) & 0x3ff) | 0xd800);
-  				unit = 0xdc00 | (unit & 0x3ff);
-  			}
-  			units.push(unit);
-  		} else {
-  			units.push(byte1);
-  		}
-
-  		if (units.length >= 0x1000) {
-  			result += fromCharCode.apply(String, units);
-  			units.length = 0;
-  		}
-  	}
-
-  	if (units.length > 0) {
-  		result += fromCharCode.apply(String, units);
-  	}
-
-  	return result
+  // Heuristic: detect inline comma-delimited data passed as an -i argument.
+  // Required signals (intentionally strict to avoid false positives on filenames):
+  //   1. Contains a real newline OR the literal escape sequence "\n"
+  //   2. The first and second non-empty lines each contain at least one comma
+  // Multi-character delimiters (tab, semicolon, pipe) are not detected here;
+  // only comma-delimited input is supported as inline data for now.
+  function stringLooksLikeCsv(str) {
+    if (typeof str !== 'string' || str.length === 0) return false;
+    if (!stringHasInlineCsvNewline(str)) return false;
+    var normalized = unescapeInlineCsv(str);
+    var lines = normalized.split(/\r?\n/).filter(function(line) {
+      return line.length > 0;
+    });
+    if (lines.length < 2) return false;
+    return lines[0].indexOf(',') > -1 && lines[1].indexOf(',') > -1;
   }
 
-  function readArray$1(length) {
-  	let array = new Array(length);
-  	for (let i = 0; i < length; i++) {
-  		array[i] = read();
-  	}
-  	if (currentUnpackr.freezeData)
-  		return Object.freeze(array)
-  	return array
+  // True if @str contains either a real newline or the literal two-character
+  // escape sequence "\n" (backslash + n) anywhere in the string.
+  function stringHasInlineCsvNewline(str) {
+    return str.indexOf('\n') > -1 || /\\n/.test(str);
   }
 
-  function readMap(length) {
-  	if (currentUnpackr.mapsAsObjects) {
-  		let object = {};
-  		for (let i = 0; i < length; i++) {
-  			let key = readKey();
-  			if (key === '__proto__')
-  				key = '__proto_';
-  			object[key] = read();
-  		}
-  		return object
-  	} else {
-  		let map = new Map();
-  		for (let i = 0; i < length; i++) {
-  			map.set(read(), read());
-  		}
-  		return map
-  	}
+  // Convert literal "\n" / "\r\n" escape sequences in an inline CSV string
+  // into real newline characters. If the input already contains a real newline,
+  // it is returned unchanged so that backslash-n sequences inside quoted cells
+  // are preserved verbatim.
+  function unescapeInlineCsv(str) {
+    if (typeof str !== 'string') return str;
+    if (str.indexOf('\n') > -1) return str;
+    return str.replace(/\\r\\n/g, '\n').replace(/\\n/g, '\n');
   }
 
-  var fromCharCode = String.fromCharCode;
-  function longStringInJS(length) {
-  	let start = position$1;
-  	let bytes = new Array(length);
-  	for (let i = 0; i < length; i++) {
-  		const byte = src[position$1++];
-  		if ((byte & 0x80) > 0) {
-  				position$1 = start;
-  				return
-  			}
-  			bytes[i] = byte;
-  		}
-  		return fromCharCode.apply(String, bytes)
-  }
-  function shortStringInJS(length) {
-  	if (length < 4) {
-  		if (length < 2) {
-  			if (length === 0)
-  				return ''
-  			else {
-  				let a = src[position$1++];
-  				if ((a & 0x80) > 1) {
-  					position$1 -= 1;
-  					return
-  				}
-  				return fromCharCode(a)
-  			}
-  		} else {
-  			let a = src[position$1++];
-  			let b = src[position$1++];
-  			if ((a & 0x80) > 0 || (b & 0x80) > 0) {
-  				position$1 -= 2;
-  				return
-  			}
-  			if (length < 3)
-  				return fromCharCode(a, b)
-  			let c = src[position$1++];
-  			if ((c & 0x80) > 0) {
-  				position$1 -= 3;
-  				return
-  			}
-  			return fromCharCode(a, b, c)
-  		}
-  	} else {
-  		let a = src[position$1++];
-  		let b = src[position$1++];
-  		let c = src[position$1++];
-  		let d = src[position$1++];
-  		if ((a & 0x80) > 0 || (b & 0x80) > 0 || (c & 0x80) > 0 || (d & 0x80) > 0) {
-  			position$1 -= 4;
-  			return
-  		}
-  		if (length < 6) {
-  			if (length === 4)
-  				return fromCharCode(a, b, c, d)
-  			else {
-  				let e = src[position$1++];
-  				if ((e & 0x80) > 0) {
-  					position$1 -= 5;
-  					return
-  				}
-  				return fromCharCode(a, b, c, d, e)
-  			}
-  		} else if (length < 8) {
-  			let e = src[position$1++];
-  			let f = src[position$1++];
-  			if ((e & 0x80) > 0 || (f & 0x80) > 0) {
-  				position$1 -= 6;
-  				return
-  			}
-  			if (length < 7)
-  				return fromCharCode(a, b, c, d, e, f)
-  			let g = src[position$1++];
-  			if ((g & 0x80) > 0) {
-  				position$1 -= 7;
-  				return
-  			}
-  			return fromCharCode(a, b, c, d, e, f, g)
-  		} else {
-  			let e = src[position$1++];
-  			let f = src[position$1++];
-  			let g = src[position$1++];
-  			let h = src[position$1++];
-  			if ((e & 0x80) > 0 || (f & 0x80) > 0 || (g & 0x80) > 0 || (h & 0x80) > 0) {
-  				position$1 -= 8;
-  				return
-  			}
-  			if (length < 10) {
-  				if (length === 8)
-  					return fromCharCode(a, b, c, d, e, f, g, h)
-  				else {
-  					let i = src[position$1++];
-  					if ((i & 0x80) > 0) {
-  						position$1 -= 9;
-  						return
-  					}
-  					return fromCharCode(a, b, c, d, e, f, g, h, i)
-  				}
-  			} else if (length < 12) {
-  				let i = src[position$1++];
-  				let j = src[position$1++];
-  				if ((i & 0x80) > 0 || (j & 0x80) > 0) {
-  					position$1 -= 10;
-  					return
-  				}
-  				if (length < 11)
-  					return fromCharCode(a, b, c, d, e, f, g, h, i, j)
-  				let k = src[position$1++];
-  				if ((k & 0x80) > 0) {
-  					position$1 -= 11;
-  					return
-  				}
-  				return fromCharCode(a, b, c, d, e, f, g, h, i, j, k)
-  			} else {
-  				let i = src[position$1++];
-  				let j = src[position$1++];
-  				let k = src[position$1++];
-  				let l = src[position$1++];
-  				if ((i & 0x80) > 0 || (j & 0x80) > 0 || (k & 0x80) > 0 || (l & 0x80) > 0) {
-  					position$1 -= 12;
-  					return
-  				}
-  				if (length < 14) {
-  					if (length === 12)
-  						return fromCharCode(a, b, c, d, e, f, g, h, i, j, k, l)
-  					else {
-  						let m = src[position$1++];
-  						if ((m & 0x80) > 0) {
-  							position$1 -= 13;
-  							return
-  						}
-  						return fromCharCode(a, b, c, d, e, f, g, h, i, j, k, l, m)
-  					}
-  				} else {
-  					let m = src[position$1++];
-  					let n = src[position$1++];
-  					if ((m & 0x80) > 0 || (n & 0x80) > 0) {
-  						position$1 -= 14;
-  						return
-  					}
-  					if (length < 15)
-  						return fromCharCode(a, b, c, d, e, f, g, h, i, j, k, l, m, n)
-  					let o = src[position$1++];
-  					if ((o & 0x80) > 0) {
-  						position$1 -= 15;
-  						return
-  					}
-  					return fromCharCode(a, b, c, d, e, f, g, h, i, j, k, l, m, n, o)
-  				}
-  			}
-  		}
-  	}
+  function stringLooksLikeKML(str) {
+    str = String(str);
+    return str.includes('<kml ') && str.includes('xmlns="http://www.opengis.net/kml/');
   }
 
-  function readOnlyJSString() {
-  	let token = src[position$1++];
-  	let length;
-  	if (token < 0xc0) {
-  		// fixstr
-  		length = token - 0xa0;
-  	} else {
-  		switch(token) {
-  			case 0xd9:
-  			// str 8
-  				length = src[position$1++];
-  				break
-  			case 0xda:
-  			// str 16
-  				length = dataView.getUint16(position$1);
-  				position$1 += 2;
-  				break
-  			case 0xdb:
-  			// str 32
-  				length = dataView.getUint32(position$1);
-  				position$1 += 4;
-  				break
-  			default:
-  				throw new Error('Expected string')
-  		}
-  	}
-  	return readStringJS(length)
+  function stringLooksLikeSVG(str) {
+    str = String(str);
+    return str.includes('<svg ') && str.includes('xmlns="http://www.w3.org/2000/svg"');
   }
 
-
-  function readBin(length) {
-  	return currentUnpackr.copyBuffers ?
-  		// specifically use the copying slice (not the node one)
-  		Uint8Array.prototype.slice.call(src, position$1, position$1 += length) :
-  		src.subarray(position$1, position$1 += length)
-  }
-  function readExt(length) {
-  	let type = src[position$1++];
-  	if (currentExtensions[type]) {
-  		let end;
-  		return currentExtensions[type](src.subarray(position$1, end = (position$1 += length)), (readPosition) => {
-  			position$1 = readPosition;
-  			try {
-  				return read();
-  			} finally {
-  				position$1 = end;
-  			}
-  		})
-  	}
-  	else
-  		throw new Error('Unknown extension type ' + type)
+  function couldBeDsvFile(name) {
+    var ext = getFileExtension(name).toLowerCase();
+    return /csv|tsv|txt$/.test(ext);
   }
 
-  var keyCache = new Array(4096);
-  function readKey() {
-  	let length = src[position$1++];
-  	if (length >= 0xa0 && length < 0xc0) {
-  		// fixstr, potentially use key cache
-  		length = length - 0xa0;
-  		if (srcStringEnd >= position$1) // if it has been extracted, must use it (and faster anyway)
-  			return srcString.slice(position$1 - srcStringStart, (position$1 += length) - srcStringStart)
-  		else if (!(srcStringEnd == 0 && srcEnd < 180))
-  			return readFixedString(length)
-  	} else { // not cacheable, go back and do a standard read
-  		position$1--;
-  		return asSafeString(read())
-  	}
-  	let key = ((length << 5) ^ (length > 1 ? dataView.getUint16(position$1) : length > 0 ? src[position$1] : 0)) & 0xfff;
-  	let entry = keyCache[key];
-  	let checkPosition = position$1;
-  	let end = position$1 + length - 3;
-  	let chunk;
-  	let i = 0;
-  	if (entry && entry.bytes == length) {
-  		while (checkPosition < end) {
-  			chunk = dataView.getUint32(checkPosition);
-  			if (chunk != entry[i++]) {
-  				checkPosition = 0x70000000;
-  				break
-  			}
-  			checkPosition += 4;
-  		}
-  		end += 3;
-  		while (checkPosition < end) {
-  			chunk = src[checkPosition++];
-  			if (chunk != entry[i++]) {
-  				checkPosition = 0x70000000;
-  				break
-  			}
-  		}
-  		if (checkPosition === end) {
-  			position$1 = checkPosition;
-  			return entry.string
-  		}
-  		end -= 3;
-  		checkPosition = position$1;
-  	}
-  	entry = [];
-  	keyCache[key] = entry;
-  	entry.bytes = length;
-  	while (checkPosition < end) {
-  		chunk = dataView.getUint32(checkPosition);
-  		entry.push(chunk);
-  		checkPosition += 4;
-  	}
-  	end += 3;
-  	while (checkPosition < end) {
-  		chunk = src[checkPosition++];
-  		entry.push(chunk);
-  	}
-  	// for small blocks, avoiding the overhead of the extract call is helpful
-  	let string = length < 16 ? shortStringInJS(length) : longStringInJS(length);
-  	if (string != null)
-  		return entry.string = string
-  	return entry.string = readFixedString(length)
+  // File looks like an importable file type
+  // name: filename or path
+  function looksLikeImportableFile(name) {
+    return !!guessInputFileType(name) || isImportableAsBinary(name);
   }
 
-  function asSafeString(property) {
-  	if (typeof property === 'string') return property;
-  	if (typeof property === 'number') return property.toString();
-  	throw new Error('Invalid property type for record', typeof property);
-  }
-  // the registration of the record definition extension (as "r")
-  const recordDefinition = (id, highByte) => {
-  	let structure = read().map(asSafeString); // ensure that all keys are strings and
-  	// that the array is mutable
-  	let firstByte = id;
-  	if (highByte !== undefined) {
-  		id = id < 32 ? -((highByte << 5) + id) : ((highByte << 5) + id);
-  		structure.highByte = highByte;
-  	}
-  	let existingStructure = currentStructures[id];
-  	// If it is a shared structure, we need to restore any changes after reading.
-  	// Also in sequential mode, we may get incomplete reads and thus errors, and we need to restore
-  	// to the state prior to an incomplete read in order to properly resume.
-  	if (existingStructure && (existingStructure.isShared || sequentialMode)) {
-  		(currentStructures.restoreStructures || (currentStructures.restoreStructures = []))[id] = existingStructure;
-  	}
-  	currentStructures[id] = structure;
-  	structure.read = createStructureReader(structure, firstByte);
-  	return structure.read()
-  };
-  currentExtensions[0] = () => {}; // notepack defines extension 0 to mean undefined, so use that as the default here
-  currentExtensions[0].noBuffer = true;
-
-  currentExtensions[0x42] = (data) => {
-  	// decode bigint
-  	let length = data.length;
-  	let value = BigInt(data[0] & 0x80 ? data[0] - 0x100 : data[0]);
-  	for (let i = 1; i < length; i++) {
-  		value <<= 8n;
-  		value += BigInt(data[i]);
-  	}
-  	return value;
-  };
-
-  let errors = { Error, TypeError, ReferenceError };
-  currentExtensions[0x65] = () => {
-  	let data = read();
-  	return (errors[data[0]] || Error)(data[1])
-  };
-
-  currentExtensions[0x69] = (data) => {
-  	// id extension (for structured clones)
-  	if (currentUnpackr.structuredClone === false) throw new Error('Structured clone extension is disabled')
-  	let id = dataView.getUint32(position$1 - 4);
-  	if (!referenceMap)
-  		referenceMap = new Map();
-  	let token = src[position$1];
-  	let target;
-  	// TODO: handle Maps, Sets, and other types that can cycle; this is complicated, because you potentially need to read
-  	// ahead past references to record structure definitions
-  	if (token >= 0x90 && token < 0xa0 || token == 0xdc || token == 0xdd)
-  		target = [];
-  	else
-  		target = {};
-
-  	let refEntry = { target }; // a placeholder object
-  	referenceMap.set(id, refEntry);
-  	let targetProperties = read(); // read the next value as the target object to id
-  	if (refEntry.used) // there is a cycle, so we have to assign properties to original target
-  		return Object.assign(target, targetProperties)
-  	refEntry.target = targetProperties; // the placeholder wasn't used, replace with the deserialized one
-  	return targetProperties // no cycle, can just use the returned read object
-  };
-
-  currentExtensions[0x70] = (data) => {
-  	// pointer extension (for structured clones)
-  	if (currentUnpackr.structuredClone === false) throw new Error('Structured clone extension is disabled')
-  	let id = dataView.getUint32(position$1 - 4);
-  	let refEntry = referenceMap.get(id);
-  	refEntry.used = true;
-  	return refEntry.target
-  };
-
-  currentExtensions[0x73] = () => new Set(read());
-
-  const typedArrays = ['Int8','Uint8','Uint8Clamped','Int16','Uint16','Int32','Uint32','Float32','Float64','BigInt64','BigUint64'].map(type => type + 'Array');
-
-  let glbl = typeof globalThis === 'object' ? globalThis : window;
-  currentExtensions[0x74] = (data) => {
-  	let typeCode = data[0];
-  	let typedArrayName = typedArrays[typeCode];
-  	if (!typedArrayName)
-  		throw new Error('Could not find typed array for code ' + typeCode)
-  	// we have to always slice/copy here to get a new ArrayBuffer that is word/byte aligned
-  	return new glbl[typedArrayName](Uint8Array.prototype.slice.call(data, 1).buffer)
-  };
-  currentExtensions[0x78] = () => {
-  	let data = read();
-  	return new RegExp(data[0], data[1])
-  };
-  const TEMP_BUNDLE = [];
-  currentExtensions[0x62] = (data) => {
-  	let dataSize = (data[0] << 24) + (data[1] << 16) + (data[2] << 8) + data[3];
-  	let dataPosition = position$1;
-  	position$1 += dataSize - data.length;
-  	bundledStrings$1 = TEMP_BUNDLE;
-  	bundledStrings$1 = [readOnlyJSString(), readOnlyJSString()];
-  	bundledStrings$1.position0 = 0;
-  	bundledStrings$1.position1 = 0;
-  	bundledStrings$1.postBundlePosition = position$1;
-  	position$1 = dataPosition;
-  	return read()
-  };
-
-  currentExtensions[0xff] = (data) => {
-  	// 32-bit date extension
-  	if (data.length == 4)
-  		return new Date((data[0] * 0x1000000 + (data[1] << 16) + (data[2] << 8) + data[3]) * 1000)
-  	else if (data.length == 8)
-  		return new Date(
-  			((data[0] << 22) + (data[1] << 14) + (data[2] << 6) + (data[3] >> 2)) / 1000000 +
-  			((data[3] & 0x3) * 0x100000000 + data[4] * 0x1000000 + (data[5] << 16) + (data[6] << 8) + data[7]) * 1000)
-  	else if (data.length == 12)// TODO: Implement support for negative
-  		return new Date(
-  			((data[0] << 24) + (data[1] << 16) + (data[2] << 8) + data[3]) / 1000000 +
-  			(((data[4] & 0x80) ? -281474976710656 : 0) + data[6] * 0x10000000000 + data[7] * 0x100000000 + data[8] * 0x1000000 + (data[9] << 16) + (data[10] << 8) + data[11]) * 1000)
-  	else
-  		return new Date('invalid')
-  }; // notepack defines extension 0 to mean undefined, so use that as the default here
-  // registration of bulk record definition?
-  // currentExtensions[0x52] = () =>
-
-  function saveState(callback) {
-  	let savedSrcEnd = srcEnd;
-  	let savedPosition = position$1;
-  	let savedSrcStringStart = srcStringStart;
-  	let savedSrcStringEnd = srcStringEnd;
-  	let savedSrcString = srcString;
-  	let savedReferenceMap = referenceMap;
-  	let savedBundledStrings = bundledStrings$1;
-
-  	// TODO: We may need to revisit this if we do more external calls to user code (since it could be slow)
-  	let savedSrc = new Uint8Array(src.slice(0, srcEnd)); // we copy the data in case it changes while external data is processed
-  	let savedStructures = currentStructures;
-  	let savedStructuresContents = currentStructures.slice(0, currentStructures.length);
-  	let savedPackr = currentUnpackr;
-  	let savedSequentialMode = sequentialMode;
-  	let value = callback();
-  	srcEnd = savedSrcEnd;
-  	position$1 = savedPosition;
-  	srcStringStart = savedSrcStringStart;
-  	srcStringEnd = savedSrcStringEnd;
-  	srcString = savedSrcString;
-  	referenceMap = savedReferenceMap;
-  	bundledStrings$1 = savedBundledStrings;
-  	src = savedSrc;
-  	sequentialMode = savedSequentialMode;
-  	currentStructures = savedStructures;
-  	currentStructures.splice(0, currentStructures.length, ...savedStructuresContents);
-  	currentUnpackr = savedPackr;
-  	dataView = new DataView(src.buffer, src.byteOffset, src.byteLength);
-  	return value
-  }
-  function clearSource() {
-  	src = null;
-  	referenceMap = null;
-  	currentStructures = null;
+  // File looks like a directly readable data file type
+  // name: filename or path
+  function looksLikeContentFile(name) {
+    var type = guessInputFileType(name);
+    return !!type && type != 'gz' && type != 'zip';
   }
 
-  const mult10 = new Array(147); // this is a table matching binary exponents to the multiplier to determine significant digit rounding
-  for (let i = 0; i < 256; i++) {
-  	mult10[i] = +('1e' + Math.floor(45.15 - i * 0.30103));
-  }
-  var defaultUnpackr = new Unpackr({ useRecords: false });
-  const unpack = defaultUnpackr.unpack;
-  defaultUnpackr.unpackMultiple;
-  defaultUnpackr.unpack;
-  let f32Array = new Float32Array(1);
-  new Uint8Array(f32Array.buffer, 0, 4);
-
-  let textEncoder;
-  try {
-  	textEncoder = new TextEncoder();
-  } catch (error) {}
-  let extensions, extensionClasses;
-  const hasNodeBuffer = typeof Buffer !== 'undefined';
-  const ByteArrayAllocate = hasNodeBuffer ?
-  	function(length) { return Buffer.allocUnsafeSlow(length) } : Uint8Array;
-  const ByteArray = hasNodeBuffer ? Buffer : Uint8Array;
-  const MAX_BUFFER_SIZE = hasNodeBuffer ? 0x100000000 : 0x7fd00000;
-  let target, keysTarget;
-  let targetView;
-  let position = 0;
-  let safeEnd;
-  let bundledStrings = null;
-  let writeStructSlots;
-  const MAX_BUNDLE_SIZE = 0x5500; // maximum characters such that the encoded bytes fits in 16 bits.
-  const hasNonLatin = /[\u0080-\uFFFF]/;
-  const RECORD_SYMBOL = Symbol('record-id');
-  class Packr extends Unpackr {
-  	constructor(options) {
-  		super(options);
-  		this.offset = 0;
-  		let start;
-  		let hasSharedUpdate;
-  		let structures;
-  		let referenceMap;
-  		let encodeUtf8 = ByteArray.prototype.utf8Write ? function(string, position) {
-  			return target.utf8Write(string, position, 0xffffffff)
-  		} : (textEncoder && textEncoder.encodeInto) ?
-  			function(string, position) {
-  				return textEncoder.encodeInto(string, target.subarray(position)).written
-  			} : false;
-
-  		let packr = this;
-  		if (!options)
-  			options = {};
-  		let isSequential = options && options.sequential;
-  		let hasSharedStructures = options.structures || options.saveStructures;
-  		let maxSharedStructures = options.maxSharedStructures;
-  		if (maxSharedStructures == null)
-  			maxSharedStructures = hasSharedStructures ? 32 : 0;
-  		if (maxSharedStructures > 8160)
-  			throw new Error('Maximum maxSharedStructure is 8160')
-  		if (options.structuredClone && options.moreTypes == undefined) {
-  			this.moreTypes = true;
-  		}
-  		let maxOwnStructures = options.maxOwnStructures;
-  		if (maxOwnStructures == null)
-  			maxOwnStructures = hasSharedStructures ? 32 : 64;
-  		if (!this.structures && options.useRecords != false)
-  			this.structures = [];
-  		// two byte record ids for shared structures
-  		let useTwoByteRecords = maxSharedStructures > 32 || (maxOwnStructures + maxSharedStructures > 64);		
-  		let sharedLimitId = maxSharedStructures + 0x40;
-  		let maxStructureId = maxSharedStructures + maxOwnStructures + 0x40;
-  		if (maxStructureId > 8256) {
-  			throw new Error('Maximum maxSharedStructure + maxOwnStructure is 8192')
-  		}
-  		let recordIdsToRemove = [];
-  		let transitionsCount = 0;
-  		let serializationsSinceTransitionRebuild = 0;
-
-  		this.pack = this.encode = function(value, encodeOptions) {
-  			if (!target) {
-  				target = new ByteArrayAllocate(8192);
-  				targetView = target.dataView || (target.dataView = new DataView(target.buffer, 0, 8192));
-  				position = 0;
-  			}
-  			safeEnd = target.length - 10;
-  			if (safeEnd - position < 0x800) {
-  				// don't start too close to the end, 
-  				target = new ByteArrayAllocate(target.length);
-  				targetView = target.dataView || (target.dataView = new DataView(target.buffer, 0, target.length));
-  				safeEnd = target.length - 10;
-  				position = 0;
-  			} else
-  				position = (position + 7) & 0x7ffffff8; // Word align to make any future copying of this buffer faster
-  			start = position;
-  			if (encodeOptions & RESERVE_START_SPACE) position += (encodeOptions & 0xff);
-  			referenceMap = packr.structuredClone ? new Map() : null;
-  			if (packr.bundleStrings && typeof value !== 'string') {
-  				bundledStrings = [];
-  				bundledStrings.size = Infinity; // force a new bundle start on first string
-  			} else
-  				bundledStrings = null;
-  			structures = packr.structures;
-  			if (structures) {
-  				if (structures.uninitialized)
-  					structures = packr._mergeStructures(packr.getStructures());
-  				let sharedLength = structures.sharedLength || 0;
-  				if (sharedLength > maxSharedStructures) {
-  					//if (maxSharedStructures <= 32 && structures.sharedLength > 32) // TODO: could support this, but would need to update the limit ids
-  					throw new Error('Shared structures is larger than maximum shared structures, try increasing maxSharedStructures to ' + structures.sharedLength)
-  				}
-  				if (!structures.transitions) {
-  					// rebuild our structure transitions
-  					structures.transitions = Object.create(null);
-  					for (let i = 0; i < sharedLength; i++) {
-  						let keys = structures[i];
-  						if (!keys)
-  							continue
-  						let nextTransition, transition = structures.transitions;
-  						for (let j = 0, l = keys.length; j < l; j++) {
-  							let key = keys[j];
-  							nextTransition = transition[key];
-  							if (!nextTransition) {
-  								nextTransition = transition[key] = Object.create(null);
-  							}
-  							transition = nextTransition;
-  						}
-  						transition[RECORD_SYMBOL] = i + 0x40;
-  					}
-  					this.lastNamedStructuresLength = sharedLength;
-  				}
-  				if (!isSequential) {
-  					structures.nextId = sharedLength + 0x40;
-  				}
-  			}
-  			if (hasSharedUpdate)
-  				hasSharedUpdate = false;
-  			let encodingError;
-  			try {
-  				if (packr.randomAccessStructure && value && value.constructor && value.constructor === Object)
-  					writeStruct(value);
-  				else
-  					pack(value);
-  				let lastBundle = bundledStrings;
-  				if (bundledStrings)
-  					writeBundles(start, pack, 0);
-  				if (referenceMap && referenceMap.idsToInsert) {
-  					let idsToInsert = referenceMap.idsToInsert.sort((a, b) => a.offset > b.offset ? 1 : -1);
-  					let i = idsToInsert.length;
-  					let incrementPosition = -1;
-  					while (lastBundle && i > 0) {
-  						let insertionPoint = idsToInsert[--i].offset + start;
-  						if (insertionPoint < (lastBundle.stringsPosition + start) && incrementPosition === -1)
-  							incrementPosition = 0;
-  						if (insertionPoint > (lastBundle.position + start)) {
-  							if (incrementPosition >= 0)
-  								incrementPosition += 6;
-  						} else {
-  							if (incrementPosition >= 0) {
-  								// update the bundle reference now
-  								targetView.setUint32(lastBundle.position + start,
-  									targetView.getUint32(lastBundle.position + start) + incrementPosition);
-  								incrementPosition = -1; // reset
-  							}
-  							lastBundle = lastBundle.previous;
-  							i++;
-  						}
-  					}
-  					if (incrementPosition >= 0 && lastBundle) {
-  						// update the bundle reference now
-  						targetView.setUint32(lastBundle.position + start,
-  							targetView.getUint32(lastBundle.position + start) + incrementPosition);
-  					}
-  					position += idsToInsert.length * 6;
-  					if (position > safeEnd)
-  						makeRoom(position);
-  					packr.offset = position;
-  					let serialized = insertIds(target.subarray(start, position), idsToInsert);
-  					referenceMap = null;
-  					return serialized
-  				}
-  				packr.offset = position; // update the offset so next serialization doesn't write over our buffer, but can continue writing to same buffer sequentially
-  				if (encodeOptions & REUSE_BUFFER_MODE) {
-  					target.start = start;
-  					target.end = position;
-  					return target
-  				}
-  				return target.subarray(start, position) // position can change if we call pack again in saveStructures, so we get the buffer now
-  			} catch(error) {
-  				encodingError = error;
-  				throw error;
-  			} finally {
-  				if (structures) {
-  					resetStructures();
-  					if (hasSharedUpdate && packr.saveStructures) {
-  						let sharedLength = structures.sharedLength || 0;
-  						// we can't rely on start/end with REUSE_BUFFER_MODE since they will (probably) change when we save
-  						let returnBuffer = target.subarray(start, position);
-  						let newSharedData = prepareStructures(structures, packr);
-  						if (!encodingError) { // TODO: If there is an encoding error, should make the structures as uninitialized so they get rebuilt next time
-  							if (packr.saveStructures(newSharedData, newSharedData.isCompatible) === false) {
-  								// get updated structures and try again if the update failed
-  								return packr.pack(value, encodeOptions)
-  							}
-  							packr.lastNamedStructuresLength = sharedLength;
-  							return returnBuffer
-  						}
-  					}
-  				}
-  				if (encodeOptions & RESET_BUFFER_MODE)
-  					position = start;
-  			}
-  		};
-  		const resetStructures = () => {
-  			if (serializationsSinceTransitionRebuild < 10)
-  				serializationsSinceTransitionRebuild++;
-  			let sharedLength = structures.sharedLength || 0;
-  			if (structures.length > sharedLength && !isSequential)
-  				structures.length = sharedLength;
-  			if (transitionsCount > 10000) {
-  				// force a rebuild occasionally after a lot of transitions so it can get cleaned up
-  				structures.transitions = null;
-  				serializationsSinceTransitionRebuild = 0;
-  				transitionsCount = 0;
-  				if (recordIdsToRemove.length > 0)
-  					recordIdsToRemove = [];
-  			} else if (recordIdsToRemove.length > 0 && !isSequential) {
-  				for (let i = 0, l = recordIdsToRemove.length; i < l; i++) {
-  					recordIdsToRemove[i][RECORD_SYMBOL] = 0;
-  				}
-  				recordIdsToRemove = [];
-  			}
-  		};
-  		const packArray = (value) => {
-  			var length = value.length;
-  			if (length < 0x10) {
-  				target[position++] = 0x90 | length;
-  			} else if (length < 0x10000) {
-  				target[position++] = 0xdc;
-  				target[position++] = length >> 8;
-  				target[position++] = length & 0xff;
-  			} else {
-  				target[position++] = 0xdd;
-  				targetView.setUint32(position, length);
-  				position += 4;
-  			}
-  			for (let i = 0; i < length; i++) {
-  				pack(value[i]);
-  			}
-  		};
-  		const pack = (value) => {
-  			if (position > safeEnd)
-  				target = makeRoom(position);
-
-  			var type = typeof value;
-  			var length;
-  			if (type === 'string') {
-  				let strLength = value.length;
-  				if (bundledStrings && strLength >= 4 && strLength < 0x1000) {
-  					if ((bundledStrings.size += strLength) > MAX_BUNDLE_SIZE) {
-  						let extStart;
-  						let maxBytes = (bundledStrings[0] ? bundledStrings[0].length * 3 + bundledStrings[1].length : 0) + 10;
-  						if (position + maxBytes > safeEnd)
-  							target = makeRoom(position + maxBytes);
-  						let lastBundle;
-  						if (bundledStrings.position) { // here we use the 0x62 extension to write the last bundle and reserve space for the reference pointer to the next/current bundle
-  							lastBundle = bundledStrings;
-  							target[position] = 0xc8; // ext 16
-  							position += 3; // reserve for the writing bundle size
-  							target[position++] = 0x62; // 'b'
-  							extStart = position - start;
-  							position += 4; // reserve for writing bundle reference
-  							writeBundles(start, pack, 0); // write the last bundles
-  							targetView.setUint16(extStart + start - 3, position - start - extStart);
-  						} else { // here we use the 0x62 extension just to reserve the space for the reference pointer to the bundle (will be updated once the bundle is written)
-  							target[position++] = 0xd6; // fixext 4
-  							target[position++] = 0x62; // 'b'
-  							extStart = position - start;
-  							position += 4; // reserve for writing bundle reference
-  						}
-  						bundledStrings = ['', '']; // create new ones
-  						bundledStrings.previous = lastBundle;
-  						bundledStrings.size = 0;
-  						bundledStrings.position = extStart;
-  					}
-  					let twoByte = hasNonLatin.test(value);
-  					bundledStrings[twoByte ? 0 : 1] += value;
-  					target[position++] = 0xc1;
-  					pack(twoByte ? -strLength : strLength);
-  					return
-  				}
-  				let headerSize;
-  				// first we estimate the header size, so we can write to the correct location
-  				if (strLength < 0x20) {
-  					headerSize = 1;
-  				} else if (strLength < 0x100) {
-  					headerSize = 2;
-  				} else if (strLength < 0x10000) {
-  					headerSize = 3;
-  				} else {
-  					headerSize = 5;
-  				}
-  				let maxBytes = strLength * 3;
-  				if (position + maxBytes > safeEnd)
-  					target = makeRoom(position + maxBytes);
-
-  				if (strLength < 0x40 || !encodeUtf8) {
-  					let i, c1, c2, strPosition = position + headerSize;
-  					for (i = 0; i < strLength; i++) {
-  						c1 = value.charCodeAt(i);
-  						if (c1 < 0x80) {
-  							target[strPosition++] = c1;
-  						} else if (c1 < 0x800) {
-  							target[strPosition++] = c1 >> 6 | 0xc0;
-  							target[strPosition++] = c1 & 0x3f | 0x80;
-  						} else if (
-  							(c1 & 0xfc00) === 0xd800 &&
-  							((c2 = value.charCodeAt(i + 1)) & 0xfc00) === 0xdc00
-  						) {
-  							c1 = 0x10000 + ((c1 & 0x03ff) << 10) + (c2 & 0x03ff);
-  							i++;
-  							target[strPosition++] = c1 >> 18 | 0xf0;
-  							target[strPosition++] = c1 >> 12 & 0x3f | 0x80;
-  							target[strPosition++] = c1 >> 6 & 0x3f | 0x80;
-  							target[strPosition++] = c1 & 0x3f | 0x80;
-  						} else {
-  							target[strPosition++] = c1 >> 12 | 0xe0;
-  							target[strPosition++] = c1 >> 6 & 0x3f | 0x80;
-  							target[strPosition++] = c1 & 0x3f | 0x80;
-  						}
-  					}
-  					length = strPosition - position - headerSize;
-  				} else {
-  					length = encodeUtf8(value, position + headerSize);
-  				}
-
-  				if (length < 0x20) {
-  					target[position++] = 0xa0 | length;
-  				} else if (length < 0x100) {
-  					if (headerSize < 2) {
-  						target.copyWithin(position + 2, position + 1, position + 1 + length);
-  					}
-  					target[position++] = 0xd9;
-  					target[position++] = length;
-  				} else if (length < 0x10000) {
-  					if (headerSize < 3) {
-  						target.copyWithin(position + 3, position + 2, position + 2 + length);
-  					}
-  					target[position++] = 0xda;
-  					target[position++] = length >> 8;
-  					target[position++] = length & 0xff;
-  				} else {
-  					if (headerSize < 5) {
-  						target.copyWithin(position + 5, position + 3, position + 3 + length);
-  					}
-  					target[position++] = 0xdb;
-  					targetView.setUint32(position, length);
-  					position += 4;
-  				}
-  				position += length;
-  			} else if (type === 'number') {
-  				if (value >>> 0 === value) {// positive integer, 32-bit or less
-  					// positive uint
-  					if (value < 0x20 || (value < 0x80 && this.useRecords === false) || (value < 0x40 && !this.randomAccessStructure)) {
-  						target[position++] = value;
-  					} else if (value < 0x100) {
-  						target[position++] = 0xcc;
-  						target[position++] = value;
-  					} else if (value < 0x10000) {
-  						target[position++] = 0xcd;
-  						target[position++] = value >> 8;
-  						target[position++] = value & 0xff;
-  					} else {
-  						target[position++] = 0xce;
-  						targetView.setUint32(position, value);
-  						position += 4;
-  					}
-  				} else if (value >> 0 === value) { // negative integer
-  					if (value >= -32) {
-  						target[position++] = 0x100 + value;
-  					} else if (value >= -128) {
-  						target[position++] = 0xd0;
-  						target[position++] = value + 0x100;
-  					} else if (value >= -32768) {
-  						target[position++] = 0xd1;
-  						targetView.setInt16(position, value);
-  						position += 2;
-  					} else {
-  						target[position++] = 0xd2;
-  						targetView.setInt32(position, value);
-  						position += 4;
-  					}
-  				} else {
-  					let useFloat32;
-  					if ((useFloat32 = this.useFloat32) > 0 && value < 0x100000000 && value >= -2147483648) {
-  						target[position++] = 0xca;
-  						targetView.setFloat32(position, value);
-  						let xShifted;
-  						if (useFloat32 < 4 ||
-  								// this checks for rounding of numbers that were encoded in 32-bit float to nearest significant decimal digit that could be preserved
-  								((xShifted = value * mult10[((target[position] & 0x7f) << 1) | (target[position + 1] >> 7)]) >> 0) === xShifted) {
-  							position += 4;
-  							return
-  						} else
-  							position--; // move back into position for writing a double
-  					}
-  					target[position++] = 0xcb;
-  					targetView.setFloat64(position, value);
-  					position += 8;
-  				}
-  			} else if (type === 'object' || type === 'function') {
-  				if (!value)
-  					target[position++] = 0xc0;
-  				else {
-  					if (referenceMap) {
-  						let referee = referenceMap.get(value);
-  						if (referee) {
-  							if (!referee.id) {
-  								let idsToInsert = referenceMap.idsToInsert || (referenceMap.idsToInsert = []);
-  								referee.id = idsToInsert.push(referee);
-  							}
-  							target[position++] = 0xd6; // fixext 4
-  							target[position++] = 0x70; // "p" for pointer
-  							targetView.setUint32(position, referee.id);
-  							position += 4;
-  							return
-  						} else 
-  							referenceMap.set(value, { offset: position - start });
-  					}
-  					let constructor = value.constructor;
-  					if (constructor === Object) {
-  						writeObject(value, true);
-  					} else if (constructor === Array) {
-  						packArray(value);
-  					} else if (constructor === Map) {
-  						if (this.mapAsEmptyObject) target[position++] = 0x80;
-  						else {
-  							length = value.size;
-  							if (length < 0x10) {
-  								target[position++] = 0x80 | length;
-  							} else if (length < 0x10000) {
-  								target[position++] = 0xde;
-  								target[position++] = length >> 8;
-  								target[position++] = length & 0xff;
-  							} else {
-  								target[position++] = 0xdf;
-  								targetView.setUint32(position, length);
-  								position += 4;
-  							}
-  							for (let [key, entryValue] of value) {
-  								pack(key);
-  								pack(entryValue);
-  							}
-  						}
-  					} else {	
-  						for (let i = 0, l = extensions.length; i < l; i++) {
-  							let extensionClass = extensionClasses[i];
-  							if (value instanceof extensionClass) {
-  								let extension = extensions[i];
-  								if (extension.write) {
-  									if (extension.type) {
-  										target[position++] = 0xd4; // one byte "tag" extension
-  										target[position++] = extension.type;
-  										target[position++] = 0;
-  									}
-  									let writeResult = extension.write.call(this, value);
-  									if (writeResult === value) { // avoid infinite recursion
-  										if (Array.isArray(value)) {
-  											packArray(value);
-  										} else {
-  											writeObject(value);
-  										}
-  									} else {
-  										pack(writeResult);
-  									}
-  									return
-  								}
-  								let currentTarget = target;
-  								let currentTargetView = targetView;
-  								let currentPosition = position;
-  								target = null;
-  								let result;
-  								try {
-  									result = extension.pack.call(this, value, (size) => {
-  										// restore target and use it
-  										target = currentTarget;
-  										currentTarget = null;
-  										position += size;
-  										if (position > safeEnd)
-  											makeRoom(position);
-  										return {
-  											target, targetView, position: position - size
-  										}
-  									}, pack);
-  								} finally {
-  									// restore current target information (unless already restored)
-  									if (currentTarget) {
-  										target = currentTarget;
-  										targetView = currentTargetView;
-  										position = currentPosition;
-  										safeEnd = target.length - 10;
-  									}
-  								}
-  								if (result) {
-  									if (result.length + position > safeEnd)
-  										makeRoom(result.length + position);
-  									position = writeExtensionData(result, target, position, extension.type);
-  								}
-  								return
-  							}
-  						}
-  						// check isArray after extensions, because extensions can extend Array
-  						if (Array.isArray(value)) {
-  							packArray(value);
-  						} else {
-  							// use this as an alternate mechanism for expressing how to serialize
-  							if (value.toJSON) {
-  								const json = value.toJSON();
-  								// if for some reason value.toJSON returns itself it'll loop forever
-  								if (json !== value)
-  									return pack(json)
-  							}
-  							
-  							// if there is a writeFunction, use it, otherwise just encode as undefined
-  							if (type === 'function')
-  								return pack(this.writeFunction && this.writeFunction(value));
-  							
-  							// no extension found, write as object
-  							writeObject(value, !value.hasOwnProperty); // if it doesn't have hasOwnProperty, don't do hasOwnProperty checks
-  						}
-  					}
-  				}
-  			} else if (type === 'boolean') {
-  				target[position++] = value ? 0xc3 : 0xc2;
-  			} else if (type === 'bigint') {
-  				if (value < (BigInt(1)<<BigInt(63)) && value >= -(BigInt(1)<<BigInt(63))) {
-  					// use a signed int as long as it fits
-  					target[position++] = 0xd3;
-  					targetView.setBigInt64(position, value);
-  				} else if (value < (BigInt(1)<<BigInt(64)) && value > 0) {
-  					// if we can fit an unsigned int, use that
-  					target[position++] = 0xcf;
-  					targetView.setBigUint64(position, value);
-  				} else {
-  					// overflow
-  					if (this.largeBigIntToFloat) {
-  						target[position++] = 0xcb;
-  						targetView.setFloat64(position, Number(value));
-  					} else if (this.useBigIntExtension && value < 2n**(1023n) && value > -(2n**(1023n))) {
-  						target[position++] = 0xc7;
-  						position++;
-  						target[position++] = 0x42; // "B" for BigInt
-  						let bytes = [];
-  						let alignedSign;
-  						do {
-  							let byte = value & 0xffn;
-  							alignedSign = (byte & 0x80n) === (value < 0n ? 0x80n : 0n);
-  							bytes.push(byte);
-  							value >>= 8n;
-  						} while (!((value === 0n || value === -1n) && alignedSign));
-  						target[position-2] = bytes.length;
-  						for (let i = bytes.length; i > 0;) {
-  							target[position++] = Number(bytes[--i]);
-  						}
-  						return
-  					} else {
-  						throw new RangeError(value + ' was too large to fit in MessagePack 64-bit integer format, use' +
-  							' useBigIntExtension or set largeBigIntToFloat to convert to float-64')
-  					}
-  				}
-  				position += 8;
-  			} else if (type === 'undefined') {
-  				if (this.encodeUndefinedAsNil)
-  					target[position++] = 0xc0;
-  				else {
-  					target[position++] = 0xd4; // a number of implementations use fixext1 with type 0, data 0 to denote undefined, so we follow suite
-  					target[position++] = 0;
-  					target[position++] = 0;
-  				}
-  			} else {
-  				throw new Error('Unknown type: ' + type)
-  			}
-  		};
-
-  		const writePlainObject = (this.variableMapSize || this.coercibleKeyAsNumber) ? (object) => {
-  			// this method is slightly slower, but generates "preferred serialization" (optimally small for smaller objects)
-  			let keys = Object.keys(object);
-  			let length = keys.length;
-  			if (length < 0x10) {
-  				target[position++] = 0x80 | length;
-  			} else if (length < 0x10000) {
-  				target[position++] = 0xde;
-  				target[position++] = length >> 8;
-  				target[position++] = length & 0xff;
-  			} else {
-  				target[position++] = 0xdf;
-  				targetView.setUint32(position, length);
-  				position += 4;
-  			}
-  			let key;
-  			if (this.coercibleKeyAsNumber) {
-  				for (let i = 0; i < length; i++) {
-  					key = keys[i];
-  					let num = Number(key);
-  					pack(isNaN(num) ? key : num);
-  					pack(object[key]);
-  				}
-
-  			} else {
-  				for (let i = 0; i < length; i++) {
-  					pack(key = keys[i]);
-  					pack(object[key]);
-  				}
-  			}
-  		} :
-  		(object, safePrototype) => {
-  			target[position++] = 0xde; // always using map 16, so we can preallocate and set the length afterwards
-  			let objectOffset = position - start;
-  			position += 2;
-  			let size = 0;
-  			for (let key in object) {
-  				if (safePrototype || object.hasOwnProperty(key)) {
-  					pack(key);
-  					pack(object[key]);
-  					size++;
-  				}
-  			}
-  			target[objectOffset++ + start] = size >> 8;
-  			target[objectOffset + start] = size & 0xff;
-  		};
-
-  		const writeRecord = this.useRecords === false ? writePlainObject :
-  		(options.progressiveRecords && !useTwoByteRecords) ?  // this is about 2% faster for highly stable structures, since it only requires one for-in loop (but much more expensive when new structure needs to be written)
-  		(object, safePrototype) => {
-  			let nextTransition, transition = structures.transitions || (structures.transitions = Object.create(null));
-  			let objectOffset = position++ - start;
-  			let wroteKeys;
-  			for (let key in object) {
-  				if (safePrototype || object.hasOwnProperty(key)) {
-  					nextTransition = transition[key];
-  					if (nextTransition)
-  						transition = nextTransition;
-  					else {
-  						// record doesn't exist, create full new record and insert it
-  						let keys = Object.keys(object);
-  						let lastTransition = transition;
-  						transition = structures.transitions;
-  						let newTransitions = 0;
-  						for (let i = 0, l = keys.length; i < l; i++) {
-  							let key = keys[i];
-  							nextTransition = transition[key];
-  							if (!nextTransition) {
-  								nextTransition = transition[key] = Object.create(null);
-  								newTransitions++;
-  							}
-  							transition = nextTransition;
-  						}
-  						if (objectOffset + start + 1 == position) {
-  							// first key, so we don't need to insert, we can just write record directly
-  							position--;
-  							newRecord(transition, keys, newTransitions);
-  						} else // otherwise we need to insert the record, moving existing data after the record
-  							insertNewRecord(transition, keys, objectOffset, newTransitions);
-  						wroteKeys = true;
-  						transition = lastTransition[key];
-  					}
-  					pack(object[key]);
-  				}
-  			}
-  			if (!wroteKeys) {
-  				let recordId = transition[RECORD_SYMBOL];
-  				if (recordId)
-  					target[objectOffset + start] = recordId;
-  				else
-  					insertNewRecord(transition, Object.keys(object), objectOffset, 0);
-  			}
-  		} :
-  		(object, safePrototype) => {
-  			let nextTransition, transition = structures.transitions || (structures.transitions = Object.create(null));
-  			let newTransitions = 0;
-  			for (let key in object) if (safePrototype || object.hasOwnProperty(key)) {
-  				nextTransition = transition[key];
-  				if (!nextTransition) {
-  					nextTransition = transition[key] = Object.create(null);
-  					newTransitions++;
-  				}
-  				transition = nextTransition;
-  			}
-  			let recordId = transition[RECORD_SYMBOL];
-  			if (recordId) {
-  				if (recordId >= 0x60 && useTwoByteRecords) {
-  					target[position++] = ((recordId -= 0x60) & 0x1f) + 0x60;
-  					target[position++] = recordId >> 5;
-  				} else
-  					target[position++] = recordId;
-  			} else {
-  				newRecord(transition, transition.__keys__ || Object.keys(object), newTransitions);
-  			}
-  			// now write the values
-  			for (let key in object)
-  				if (safePrototype || object.hasOwnProperty(key)) {
-  					pack(object[key]);
-  				}
-  		};
-
-  		// craete reference to useRecords if useRecords is a function
-  		const checkUseRecords = typeof this.useRecords == 'function' && this.useRecords;
-  		
-  		const writeObject = checkUseRecords ? (object, safePrototype) => {
-  			checkUseRecords(object) ? writeRecord(object,safePrototype) : writePlainObject(object,safePrototype);
-  		} : writeRecord;
-
-  		const makeRoom = (end) => {
-  			let newSize;
-  			if (end > 0x1000000) {
-  				// special handling for really large buffers
-  				if ((end - start) > MAX_BUFFER_SIZE)
-  					throw new Error('Packed buffer would be larger than maximum buffer size')
-  				newSize = Math.min(MAX_BUFFER_SIZE,
-  					Math.round(Math.max((end - start) * (end > 0x4000000 ? 1.25 : 2), 0x400000) / 0x1000) * 0x1000);
-  			} else // faster handling for smaller buffers
-  				newSize = ((Math.max((end - start) << 2, target.length - 1) >> 12) + 1) << 12;
-  			let newBuffer = new ByteArrayAllocate(newSize);
-  			targetView = newBuffer.dataView || (newBuffer.dataView = new DataView(newBuffer.buffer, 0, newSize));
-  			end = Math.min(end, target.length);
-  			if (target.copy)
-  				target.copy(newBuffer, 0, start, end);
-  			else
-  				newBuffer.set(target.slice(start, end));
-  			position -= start;
-  			start = 0;
-  			safeEnd = newBuffer.length - 10;
-  			return target = newBuffer
-  		};
-  		const newRecord = (transition, keys, newTransitions) => {
-  			let recordId = structures.nextId;
-  			if (!recordId)
-  				recordId = 0x40;
-  			if (recordId < sharedLimitId && this.shouldShareStructure && !this.shouldShareStructure(keys)) {
-  				recordId = structures.nextOwnId;
-  				if (!(recordId < maxStructureId))
-  					recordId = sharedLimitId;
-  				structures.nextOwnId = recordId + 1;
-  			} else {
-  				if (recordId >= maxStructureId)// cycle back around
-  					recordId = sharedLimitId;
-  				structures.nextId = recordId + 1;
-  			}
-  			let highByte = keys.highByte = recordId >= 0x60 && useTwoByteRecords ? (recordId - 0x60) >> 5 : -1;
-  			transition[RECORD_SYMBOL] = recordId;
-  			transition.__keys__ = keys;
-  			structures[recordId - 0x40] = keys;
-
-  			if (recordId < sharedLimitId) {
-  				keys.isShared = true;
-  				structures.sharedLength = recordId - 0x3f;
-  				hasSharedUpdate = true;
-  				if (highByte >= 0) {
-  					target[position++] = (recordId & 0x1f) + 0x60;
-  					target[position++] = highByte;
-  				} else {
-  					target[position++] = recordId;
-  				}
-  			} else {
-  				if (highByte >= 0) {
-  					target[position++] = 0xd5; // fixext 2
-  					target[position++] = 0x72; // "r" record defintion extension type
-  					target[position++] = (recordId & 0x1f) + 0x60;
-  					target[position++] = highByte;
-  				} else {
-  					target[position++] = 0xd4; // fixext 1
-  					target[position++] = 0x72; // "r" record defintion extension type
-  					target[position++] = recordId;
-  				}
-
-  				if (newTransitions)
-  					transitionsCount += serializationsSinceTransitionRebuild * newTransitions;
-  				// record the removal of the id, we can maintain our shared structure
-  				if (recordIdsToRemove.length >= maxOwnStructures)
-  					recordIdsToRemove.shift()[RECORD_SYMBOL] = 0; // we are cycling back through, and have to remove old ones
-  				recordIdsToRemove.push(transition);
-  				pack(keys);
-  			}
-  		};
-  		const insertNewRecord = (transition, keys, insertionOffset, newTransitions) => {
-  			let mainTarget = target;
-  			let mainPosition = position;
-  			let mainSafeEnd = safeEnd;
-  			let mainStart = start;
-  			target = keysTarget;
-  			position = 0;
-  			start = 0;
-  			if (!target)
-  				keysTarget = target = new ByteArrayAllocate(8192);
-  			safeEnd = target.length - 10;
-  			newRecord(transition, keys, newTransitions);
-  			keysTarget = target;
-  			let keysPosition = position;
-  			target = mainTarget;
-  			position = mainPosition;
-  			safeEnd = mainSafeEnd;
-  			start = mainStart;
-  			if (keysPosition > 1) {
-  				let newEnd = position + keysPosition - 1;
-  				if (newEnd > safeEnd)
-  					makeRoom(newEnd);
-  				let insertionPosition = insertionOffset + start;
-  				target.copyWithin(insertionPosition + keysPosition, insertionPosition + 1, position);
-  				target.set(keysTarget.slice(0, keysPosition), insertionPosition);
-  				position = newEnd;
-  			} else {
-  				target[insertionOffset + start] = keysTarget[0];
-  			}
-  		};
-  		const writeStruct = (object, safePrototype) => {
-  			let newPosition = writeStructSlots(object, target, start, position, structures, makeRoom, (value, newPosition, notifySharedUpdate) => {
-  				if (notifySharedUpdate)
-  					return hasSharedUpdate = true;
-  				position = newPosition;
-  				let startTarget = target;
-  				pack(value);
-  				resetStructures();
-  				if (startTarget !== target) {
-  					return { position, targetView, target }; // indicate the buffer was re-allocated
-  				}
-  				return position;
-  			}, this);
-  			if (newPosition === 0) // bail and go to a msgpack object
-  				return writeObject(object, true);
-  			position = newPosition;
-  		};
-  	}
-  	useBuffer(buffer) {
-  		// this means we are finished using our own buffer and we can write over it safely
-  		target = buffer;
-  		targetView = new DataView(target.buffer, target.byteOffset, target.byteLength);
-  		position = 0;
-  	}
-  	clearSharedData() {
-  		if (this.structures)
-  			this.structures = [];
-  		if (this.typedStructs)
-  			this.typedStructs = [];
-  	}
+  function isPackageFile(file) {
+    return file.endsWith('.' + PACKAGE_EXT);
   }
 
-  extensionClasses = [ Date, Set, Error, RegExp, ArrayBuffer, Object.getPrototypeOf(Uint8Array.prototype).constructor /*TypedArray*/, C1Type ];
-  extensions = [{
-  	pack(date, allocateForWrite, pack) {
-  		let seconds = date.getTime() / 1000;
-  		if ((this.useTimestamp32 || date.getMilliseconds() === 0) && seconds >= 0 && seconds < 0x100000000) {
-  			// Timestamp 32
-  			let { target, targetView, position} = allocateForWrite(6);
-  			target[position++] = 0xd6;
-  			target[position++] = 0xff;
-  			targetView.setUint32(position, seconds);
-  		} else if (seconds > 0 && seconds < 0x100000000) {
-  			// Timestamp 64
-  			let { target, targetView, position} = allocateForWrite(10);
-  			target[position++] = 0xd7;
-  			target[position++] = 0xff;
-  			targetView.setUint32(position, date.getMilliseconds() * 4000000 + ((seconds / 1000 / 0x100000000) >> 0));
-  			targetView.setUint32(position + 4, seconds);
-  		} else if (isNaN(seconds)) {
-  			if (this.onInvalidDate) {
-  				allocateForWrite(0);
-  				return pack(this.onInvalidDate())
-  			}
-  			// Intentionally invalid timestamp
-  			let { target, targetView, position} = allocateForWrite(3);
-  			target[position++] = 0xd4;
-  			target[position++] = 0xff;
-  			target[position++] = 0xff;
-  		} else {
-  			// Timestamp 96
-  			let { target, targetView, position} = allocateForWrite(15);
-  			target[position++] = 0xc7;
-  			target[position++] = 12;
-  			target[position++] = 0xff;
-  			targetView.setUint32(position, date.getMilliseconds() * 1000000);
-  			targetView.setBigInt64(position + 4, BigInt(Math.floor(seconds)));
-  		}
-  	}
-  }, {
-  	pack(set, allocateForWrite, pack) {
-  		if (this.setAsEmptyObject) {
-  			allocateForWrite(0);
-  			return pack({})
-  		}
-  		let array = Array.from(set);
-  		let { target, position} = allocateForWrite(this.moreTypes ? 3 : 0);
-  		if (this.moreTypes) {
-  			target[position++] = 0xd4;
-  			target[position++] = 0x73; // 's' for Set
-  			target[position++] = 0;
-  		}
-  		pack(array);
-  	}
-  }, {
-  	pack(error, allocateForWrite, pack) {
-  		let { target, position} = allocateForWrite(this.moreTypes ? 3 : 0);
-  		if (this.moreTypes) {
-  			target[position++] = 0xd4;
-  			target[position++] = 0x65; // 'e' for error
-  			target[position++] = 0;
-  		}
-  		pack([ error.name, error.message ]);
-  	}
-  }, {
-  	pack(regex, allocateForWrite, pack) {
-  		let { target, position} = allocateForWrite(this.moreTypes ? 3 : 0);
-  		if (this.moreTypes) {
-  			target[position++] = 0xd4;
-  			target[position++] = 0x78; // 'x' for regeXp
-  			target[position++] = 0;
-  		}
-  		pack([ regex.source, regex.flags ]);
-  	}
-  }, {
-  	pack(arrayBuffer, allocateForWrite) {
-  		if (this.moreTypes)
-  			writeExtBuffer(arrayBuffer, 0x10, allocateForWrite);
-  		else
-  			writeBuffer(hasNodeBuffer ? Buffer.from(arrayBuffer) : new Uint8Array(arrayBuffer), allocateForWrite);
-  	}
-  }, {
-  	pack(typedArray, allocateForWrite) {
-  		let constructor = typedArray.constructor;
-  		if (constructor !== ByteArray && this.moreTypes)
-  			writeExtBuffer(typedArray, typedArrays.indexOf(constructor.name), allocateForWrite);
-  		else
-  			writeBuffer(typedArray, allocateForWrite);
-  	}
-  }, {
-  	pack(c1, allocateForWrite) { // specific 0xC1 object
-  		let { target, position} = allocateForWrite(1);
-  		target[position] = 0xc1;
-  	}
-  }];
-
-  function writeExtBuffer(typedArray, type, allocateForWrite, encode) {
-  	let length = typedArray.byteLength;
-  	if (length + 1 < 0x100) {
-  		var { target, position } = allocateForWrite(4 + length);
-  		target[position++] = 0xc7;
-  		target[position++] = length + 1;
-  	} else if (length + 1 < 0x10000) {
-  		var { target, position } = allocateForWrite(5 + length);
-  		target[position++] = 0xc8;
-  		target[position++] = (length + 1) >> 8;
-  		target[position++] = (length + 1) & 0xff;
-  	} else {
-  		var { target, position, targetView } = allocateForWrite(7 + length);
-  		target[position++] = 0xc9;
-  		targetView.setUint32(position, length + 1); // plus one for the type byte
-  		position += 4;
-  	}
-  	target[position++] = 0x74; // "t" for typed array
-  	target[position++] = type;
-  	target.set(new Uint8Array(typedArray.buffer, typedArray.byteOffset, typedArray.byteLength), position);
-  }
-  function writeBuffer(buffer, allocateForWrite) {
-  	let length = buffer.byteLength;
-  	var target, position;
-  	if (length < 0x100) {
-  		var { target, position } = allocateForWrite(length + 2);
-  		target[position++] = 0xc4;
-  		target[position++] = length;
-  	} else if (length < 0x10000) {
-  		var { target, position } = allocateForWrite(length + 3);
-  		target[position++] = 0xc5;
-  		target[position++] = length >> 8;
-  		target[position++] = length & 0xff;
-  	} else {
-  		var { target, position, targetView } = allocateForWrite(length + 5);
-  		target[position++] = 0xc6;
-  		targetView.setUint32(position, length);
-  		position += 4;
-  	}
-  	target.set(buffer, position);
+  // Returns true if @file has an extension that may identify a mapshaper
+  // command file (e.g. "commands.txt"). Detection still requires a content
+  // sniff via stringLooksLikeCommandFile().
+  function isPotentialCommandFile(file) {
+    var ext = getFileExtension(file || '').toLowerCase();
+    return ext === 'txt';
   }
 
-  function writeExtensionData(result, target, position, type) {
-  	let length = result.length;
-  	switch (length) {
-  		case 1:
-  			target[position++] = 0xd4;
-  			break
-  		case 2:
-  			target[position++] = 0xd5;
-  			break
-  		case 4:
-  			target[position++] = 0xd6;
-  			break
-  		case 8:
-  			target[position++] = 0xd7;
-  			break
-  		case 16:
-  			target[position++] = 0xd8;
-  			break
-  		default:
-  			if (length < 0x100) {
-  				target[position++] = 0xc7;
-  				target[position++] = length;
-  			} else if (length < 0x10000) {
-  				target[position++] = 0xc8;
-  				target[position++] = length >> 8;
-  				target[position++] = length & 0xff;
-  			} else {
-  				target[position++] = 0xc9;
-  				target[position++] = length >> 24;
-  				target[position++] = (length >> 16) & 0xff;
-  				target[position++] = (length >> 8) & 0xff;
-  				target[position++] = length & 0xff;
-  			}
-  	}
-  	target[position++] = type;
-  	target.set(result, position);
-  	position += length;
-  	return position
+  // True if @str looks like the content of a mapshaper command file: the first
+  // non-blank, non-comment line begins with the magic word "mapshaper".
+  function stringLooksLikeCommandFile(str) {
+    str = String(str || '');
+    // Skip a leading BOM
+    if (str.charCodeAt(0) === 0xFEFF) str = str.slice(1);
+    var lines = str.split(/\r?\n/);
+    for (var i = 0; i < lines.length; i++) {
+      var line = lines[i].trim();
+      if (!line || line.charAt(0) === '#') continue;
+      return /^mapshaper(\s|$)/.test(line);
+    }
+    return false;
   }
 
-  function insertIds(serialized, idsToInsert) {
-  	// insert the ids that need to be referenced for structured clones
-  	let nextId;
-  	let distanceToMove = idsToInsert.length * 6;
-  	let lastEnd = serialized.length - distanceToMove;
-  	while (nextId = idsToInsert.pop()) {
-  		let offset = nextId.offset;
-  		let id = nextId.id;
-  		serialized.copyWithin(offset + distanceToMove, offset, lastEnd);
-  		distanceToMove -= 6;
-  		let position = offset + distanceToMove;
-  		serialized[position++] = 0xd6;
-  		serialized[position++] = 0x69; // 'i'
-  		serialized[position++] = id >> 24;
-  		serialized[position++] = (id >> 16) & 0xff;
-  		serialized[position++] = (id >> 8) & 0xff;
-  		serialized[position++] = id & 0xff;
-  		lastEnd = offset;
-  	}
-  	return serialized
+  function isZipFile(file) {
+    return /\.zip$/i.test(file);
   }
 
-  function writeBundles(start, pack, incrementPosition) {
-  	if (bundledStrings.length > 0) {
-  		targetView.setUint32(bundledStrings.position + start, position + incrementPosition - bundledStrings.position - start);
-  		bundledStrings.stringsPosition = position - start;
-  		let writeStrings = bundledStrings;
-  		bundledStrings = null;
-  		pack(writeStrings[0]);
-  		pack(writeStrings[1]);
-  	}
-  }
-  function prepareStructures(structures, packr) {
-  	structures.isCompatible = (existingStructures) => {
-  		let compatible = !existingStructures || ((packr.lastNamedStructuresLength || 0) === existingStructures.length);
-  		if (!compatible) // we want to merge these existing structures immediately since we already have it and we are in the right transaction
-  			packr._mergeStructures(existingStructures);
-  		return compatible;
-  	};
-  	return structures
+  function isKmzFile(file) {
+    return /\.kmz$/i.test(file);
   }
 
-  let defaultPackr = new Packr({ useRecords: false });
-  const pack$1 = defaultPackr.pack;
-  defaultPackr.pack;
-  const REUSE_BUFFER_MODE = 512;
-  const RESET_BUFFER_MODE = 1024;
-  const RESERVE_START_SPACE = 2048;
+  function isGzipFile(file) {
+    return /\.gz$/i.test(file);
+  }
+
+  // Assumes file at @path is one of Mapshaper's supported file types
+  function isSupportedBinaryInputType(path) {
+    var ext = getFileExtension(path).toLowerCase();
+    return ext == 'shp' || ext == 'shx' || ext == 'dbf' ||
+      ext == 'fgb' || ext == 'gpkg' || ext == PACKAGE_EXT; // GUI also supports zip files
+  }
+
+  function isImportableAsBinary(path) {
+    var type = guessInputFileType(path);
+    return isSupportedBinaryInputType(path) || isZipFile(path) ||
+      isGzipFile(path) || isKmzFile(path) || isPackageFile(path) ||
+      type == 'json' || type == 'text';
+  }
+
+  // Detect extensions of some unsupported file types, for cmd line validation
+  function filenameIsUnsupportedOutputType(file) {
+    var rxp = /\.(shx|prj|xls|xlsx|gdb|sbn|sbx|xml)$/i;
+    return rxp.test(file);
+  }
+
+  var FileTypes = /*#__PURE__*/Object.freeze({
+    __proto__: null,
+    couldBeDsvFile: couldBeDsvFile,
+    filenameIsUnsupportedOutputType: filenameIsUnsupportedOutputType,
+    guessInputContentType: guessInputContentType,
+    guessInputFileType: guessInputFileType,
+    guessInputType: guessInputType,
+    isAuxiliaryInputFileType: isAuxiliaryInputFileType,
+    isGzipFile: isGzipFile,
+    isImportableAsBinary: isImportableAsBinary,
+    isKmzFile: isKmzFile,
+    isPackageFile: isPackageFile,
+    isPotentialCommandFile: isPotentialCommandFile,
+    isSupportedBinaryInputType: isSupportedBinaryInputType,
+    isZipFile: isZipFile,
+    looksLikeContentFile: looksLikeContentFile,
+    looksLikeImportableFile: looksLikeImportableFile,
+    stringHasInlineCsvNewline: stringHasInlineCsvNewline,
+    stringLooksLikeCommandFile: stringLooksLikeCommandFile,
+    stringLooksLikeCsv: stringLooksLikeCsv,
+    stringLooksLikeJSON: stringLooksLikeJSON,
+    stringLooksLikeKML: stringLooksLikeKML,
+    stringLooksLikeSVG: stringLooksLikeSVG,
+    unescapeInlineCsv: unescapeInlineCsv
+  });
 
   // DEFLATE is a complex format; to read this code, you should probably check the RFC first:
   // https://tools.ietf.org/html/rfc1951
@@ -11627,512 +9629,6 @@
     runningInBrowser: runningInBrowser
   });
 
-  // Checks if @arg is a Uint8Array containing gzipped data
-  function isGzipped(arg) {
-    return arg.length > 2 && arg.buffer instanceof ArrayBuffer && arg[0] == 0x1f && arg[1] == 0x8b;
-  }
-
-  function gzipSync(content, opts) {
-    // TODO: use native module in Node if available
-    // require('zlib').
-    if (typeof content == 'string') {
-      content = strToU8(content);
-    }
-    if (runningInBrowser()) {
-      return gzipSync$1(content, opts);
-    }
-    return require('zlib').gzipSync(content, opts);
-  }
-
-  async function gzipAsync(content, opts) {
-    if (typeof content == 'string') {
-      content = strToU8(content);
-    }
-    var gzip$1 = runningInBrowser() ? utils.promisify(gzip) : utils.promisify(require('zlib').gzip);
-    return gzip$1(content, opts);
-  }
-
-  async function gunzipAsync(buf, opts) {
-    if (buf instanceof ArrayBuffer) {
-      buf = new Uint8Array(buf);
-    }
-    opts = opts || {};
-    var gunzip$1 = runningInBrowser() ? utils.promisify(gunzip) : utils.promisify(require('zlib').gunzip);
-    var out = await gunzip$1(buf, opts);
-    if (opts.filename && !isImportableAsBinary(opts.filename)) {
-      out = strFromU8(out);
-    }
-    return out;
-  }
-
-  function gunzipSync(buf, filename) {
-    if (buf instanceof ArrayBuffer) {
-      buf = new Uint8Array(buf);
-    }
-    var out = gunzipSync$1(buf); // returns Uint8Array
-    if (filename && !isImportableAsBinary(filename)) {
-      out = strFromU8(out);
-    }
-    return out;
-  }
-
-  var Gzip = /*#__PURE__*/Object.freeze({
-    __proto__: null,
-    gunzipAsync: gunzipAsync,
-    gunzipSync: gunzipSync,
-    gzipAsync: gzipAsync,
-    gzipSync: gzipSync,
-    isGzipped: isGzipped
-  });
-
-  // Export in a column-first format
-  // Faster than exportTable(), and can handle some data that can't be
-  // converted to JSON, like Date objects.
-  async function exportTable2(table) {
-    var fields = table.getFields();
-    var records = table.getRecords();
-    var types = [];
-    var columns = await Promise.all(fields.map(function(name) {
-      var type = getColumnType(name, records);
-      types.push(type);
-      return exportColumn(name, type, records);
-    }));
-    return ({
-      fields: fields,
-      types: types,
-      data: columns,
-      size: records.length
-    });
-  }
-
-  // Returns array of records
-  function importTable(data) {
-    if (looksLikeType2Table(data)) {
-      return importTable2(data);
-    }
-    if (isGzipped(data)) {
-      return JSON.parse(strFromU8(gunzipSync(data)));
-    }
-    if (Array.isArray(data)) {
-      return data;
-    }
-    error('Unknown packed table format');
-  }
-
-  function looksLikeType2Table(o) {
-    return Array.isArray(o.fields) &&
-      Array.isArray(o.types) && Array.isArray(o.data) &&
-      o.fields.length == o.types.length && o.fields.length == o.data.length &&
-      o.size >= 0;
-  }
-
-  function importTable2(obj) {
-    var n = obj.size;
-    var records = [];
-    for (var i=0; i<n; i++) {
-      records[i] = {};
-    }
-    for (var j=0, m=obj.fields.length; j<m; j++) {
-      importColumn(obj.fields[j], obj.types[j], obj.data[j], records);
-      obj.data[j] = null;
-    }
-    return records;
-  }
-
-  function importColumn(field, type, data, records) {
-    var arr, rec;
-    if (isGzipped(data)) {
-      arr = JSON.parse(strFromU8(gunzipSync(data)));
-    } else if (Array.isArray(data)) {
-      arr = data;
-    } else {
-      error('Unexpected packed table format');
-    }
-    for (var i=0, n=records.length; i<n; i++) {
-      rec = records[i];
-      rec[field] = arr[i];
-    }
-  }
-
-  async function exportColumn(name, type, records) {
-    if (type == 'number' || type == 'string') {
-      return gzipAsync(JSON.stringify(getFieldValues(records, name)), {level: 2, consume: true});
-    }
-    return getFieldValues(records, name);
-  }
-
-  // faster for decimal numbers?
-  // function exportNumberField(field, records) {
-  //   var arr = new Float64Array(records.length);
-  //   for (var i=0, n=records.length; i<n; i++) {
-  //     arr[i] = records[i][field];
-  //   }
-  //   return gzipSync(arr, {level: 2});
-  // }
-
-  var PACKAGE_EXT = 'msx';
-
-  // libraries
-  // https://msgpack.org/index.html
-  //
-
-  // session format (including gui state)
-  /*
-  {
-    version: 1,
-    created: 'YYYY-MM-DDTHH:mm:ss.sssZ', // ISO string
-    datasets: [],
-    gui: {}, // see gui-session-snapshot-control.mjs
-    history: { // optional; only present in snapshots created by the GUI
-      commands: ['-i foo.shp', '-simplify 10%', ...],
-      savedAtIndex: 0 // index of the first command after the last save boundary
-    }
-  }
-  */
-
-  async function exportPackedDatasets(datasets, opts) {
-    var content = pack(await exportDatasetsToPack(datasets, opts));
-    return [{
-      content: content,
-      filename: opts.file || 'mapshaper_snapshot.' + PACKAGE_EXT
-    }];
-  }
-
-  function pack(obj) {
-    // encode options: see https://github.com/msgpack/msgpack-javascript
-    // initialBufferSize  number  2048
-    // ignoreUndefined boolean false
-    return pack$1(obj, {});
-  }
-
-  // gui: (optional) gui instance
-  // opts examples:
-  //    exporting from command line: { compact: true, file: 'tmp.msx', final: true }
-  //    exporting from gui export menu: {compact: true, format: 'msx'}
-  //    saving gui temp snapshot: {compact: false}
-  // opts.history: optional GUI session history captured by SessionHistory#getHistorySnapshot
-  async function exportDatasetsToPack(datasets, opts) {
-    var obj = {
-      version: 1,
-      created: (new Date).toISOString(),
-      datasets: await Promise.all(datasets.map(dataset => exportDataset(dataset, opts)))
-    };
-    if (opts.history) {
-      obj.history = opts.history;
-    }
-    return obj;
-  }
-
-  async function exportDataset(dataset, opts) {
-    var arcs = dataset.arcs;
-    var arcData = null;
-    if (arcs) {
-      arcData = arcs.getVertexData();
-      arcData.zlimit = arcs.getRetainedInterval(); // TODO: add this to getVertexData()
-      arcData = await exportArcData(arcData, opts);
-    }
-    var layers = dataset.layers.map(lyr => exportLayer(lyr, opts));
-    return {
-      arcs: arcData,
-      info: dataset.info ? exportInfo(dataset.info) : null,
-      layers: await Promise.all(layers)
-    };
-  }
-
-  // compress unpacked + uncompressed snapshot data in-place
-  async function compressSnapshotForExport(obj) {
-    var promises = obj.datasets.map(d => {
-      compressDatasetForExport(d);
-    });
-    await Promise.all(promises);
-    return;
-  }
-
-  async function compressDatasetForExport(obj) {
-    if (!obj.arcs) return;
-    var arcData = importArcData(obj.arcs); // convert buffers to typed arrays
-    obj.arcs = await exportArcData(arcData, {compact: true}); // re-export to compressed buffers
-  }
-
-  function flattenArcs(arcData) {
-    if (arcData.zz && arcData.zlimit) {
-      // replace unfiltered arc data with flattened arc data
-      arcData = filterVertexData(arcData, arcData.zlimit);
-      delete arcData.zz;
-    }
-    return arcData;
-  }
-
-  async function gzipArcData(obj, opts) {
-    var gzipOpts = Object.assign({level: 1, consume: false}, opts);
-    var promises = [gzipAsync(obj.nn, gzipOpts), gzipAsync(obj.xx, gzipOpts), gzipAsync(obj.yy, gzipOpts)];
-    if (obj.zz) promises.push(gzipAsync(obj.zz, gzipOpts));
-    var results = await Promise.all(promises);
-    obj.nn = results.shift();
-    obj.xx = results.shift();
-    obj.yy = results.shift();
-    if (obj.zz) obj.zz = results.shift();
-  }
-
-  function importArcData(obj) {
-    return {
-      nn: new Uint32Array(obj.nn.buffer, 0, obj.nn.length / 4),
-      xx: new Float64Array(obj.xx.buffer, 0, obj.xx.length / 8),
-      yy: new Float64Array(obj.yy.buffer, 0, obj.yy.length / 8),
-      zz: obj.zz ? new Float64Array(obj.zz.buffer, 0, obj.zz.length / 8) : null,
-      zlimit: obj.zlimit || 0
-    };
-  }
-
-  async function exportArcData(data, opts) {
-    // TODO: consider removing arcs that are not referenced by any layer
-    if (opts.compact && data.zz) {
-      data = flattenArcs(data); // bake in any simplification
-    }
-    var output = {
-      nn: typedArrayToBuffer(data.nn),
-      xx: typedArrayToBuffer(data.xx),
-      yy: typedArrayToBuffer(data.yy),
-      zz: data.zz ? typedArrayToBuffer(data.zz) : null,
-      zlimit: data.zlimit || 0
-    };
-    if (opts.compact && data.zz) {
-      await gzipArcData(output);
-    }
-    return output;
-  }
-
-  function typedArrayToBuffer(arr) {
-    return new Uint8Array(arr.buffer, arr.byteOffset, arr.byteLength);
-  }
-
-  async function exportLayer(lyr, opts) {
-    var data = null;
-    if (lyr.data) {
-      data = await exportTable2(lyr.data);
-    }
-    return {
-      name: lyr.name || null,
-      geometry_type: lyr.geometry_type || null,
-      shapes: lyr.shapes || null,
-      data: data,
-      menu_order: lyr.menu_order || null,
-      pinned: lyr.pinned || opts.show_all || false,
-      active: !!(lyr.active || lyr == opts.active_layer) // lyr.active: deprecated
-    };
-  }
-
-  function exportInfo(info) {
-    info = Object.assign({}, info);
-    if (info.crs && !info.crs_string && !info.wkt1) {
-      info.crs_string = crsToProj4(info.crs);
-    }
-    delete info.crs; // proj object cannot be serialized (need to reconstitute in unpack)
-    return info;
-  }
-
-  var Pack = /*#__PURE__*/Object.freeze({
-    __proto__: null,
-    PACKAGE_EXT: PACKAGE_EXT,
-    compressSnapshotForExport: compressSnapshotForExport,
-    exportDataset: exportDataset,
-    exportDatasetsToPack: exportDatasetsToPack,
-    exportInfo: exportInfo,
-    exportPackedDatasets: exportPackedDatasets,
-    pack: pack
-  });
-
-  // Guess the type of a data file from file extension, or return null if not sure
-  // File type is different than data type
-  //
-  function guessInputFileType(file) {
-    var ext = getFileExtension(file || '').toLowerCase(),
-        type = null;
-    if (ext == 'dbf' || ext == 'shp' || ext == 'kml' || ext == 'svg' || ext == 'fgb' || ext == 'gpkg') {
-      type = ext;
-    } else if (isAuxiliaryInputFileType(ext)) {
-      type = ext;
-    } else if (/json$/.test(ext)) { // matches topojson, geojson, json
-      type = 'json';
-    } else if (ext == 'csv' || ext == 'tsv' || ext == 'txt' || ext == 'tab') {
-      type = 'text';
-    } else if (ext == PACKAGE_EXT) {
-      type = PACKAGE_EXT;
-    }
-    return type;
-  }
-
-  // File types that can be imported but are not convertible to datasets
-  function isAuxiliaryInputFileType(type) {
-    return type == 'prj' || type == 'shx' || type == 'cpg';
-  }
-
-  function guessInputContentType(content) {
-    var type = null;
-    if (utils.isString(content)) {
-      type = stringLooksLikeJSON(content) && 'json' ||
-        stringLooksLikeKML(content) && 'kml' ||
-        stringLooksLikeSVG(content) && 'svg' || 'text';
-    } else if (utils.isObject(content) && content.type || utils.isArray(content)) {
-      type = 'json';
-    }
-    return type;
-  }
-
-  function guessInputType(file, content) {
-    return guessInputFileType(file) || guessInputContentType(content);
-  }
-
-  function stringLooksLikeJSON(str) {
-    return /^\s*[{[]/.test(String(str));
-  }
-
-  // Heuristic: detect inline comma-delimited data passed as an -i argument.
-  // Required signals (intentionally strict to avoid false positives on filenames):
-  //   1. Contains a real newline OR the literal escape sequence "\n"
-  //   2. The first and second non-empty lines each contain at least one comma
-  // Multi-character delimiters (tab, semicolon, pipe) are not detected here;
-  // only comma-delimited input is supported as inline data for now.
-  function stringLooksLikeCsv(str) {
-    if (typeof str !== 'string' || str.length === 0) return false;
-    if (!stringHasInlineCsvNewline(str)) return false;
-    var normalized = unescapeInlineCsv(str);
-    var lines = normalized.split(/\r?\n/).filter(function(line) {
-      return line.length > 0;
-    });
-    if (lines.length < 2) return false;
-    return lines[0].indexOf(',') > -1 && lines[1].indexOf(',') > -1;
-  }
-
-  // True if @str contains either a real newline or the literal two-character
-  // escape sequence "\n" (backslash + n) anywhere in the string.
-  function stringHasInlineCsvNewline(str) {
-    return str.indexOf('\n') > -1 || /\\n/.test(str);
-  }
-
-  // Convert literal "\n" / "\r\n" escape sequences in an inline CSV string
-  // into real newline characters. If the input already contains a real newline,
-  // it is returned unchanged so that backslash-n sequences inside quoted cells
-  // are preserved verbatim.
-  function unescapeInlineCsv(str) {
-    if (typeof str !== 'string') return str;
-    if (str.indexOf('\n') > -1) return str;
-    return str.replace(/\\r\\n/g, '\n').replace(/\\n/g, '\n');
-  }
-
-  function stringLooksLikeKML(str) {
-    str = String(str);
-    return str.includes('<kml ') && str.includes('xmlns="http://www.opengis.net/kml/');
-  }
-
-  function stringLooksLikeSVG(str) {
-    str = String(str);
-    return str.includes('<svg ') && str.includes('xmlns="http://www.w3.org/2000/svg"');
-  }
-
-  function couldBeDsvFile(name) {
-    var ext = getFileExtension(name).toLowerCase();
-    return /csv|tsv|txt$/.test(ext);
-  }
-
-  // File looks like an importable file type
-  // name: filename or path
-  function looksLikeImportableFile(name) {
-    return !!guessInputFileType(name) || isImportableAsBinary(name);
-  }
-
-  // File looks like a directly readable data file type
-  // name: filename or path
-  function looksLikeContentFile(name) {
-    var type = guessInputFileType(name);
-    return !!type && type != 'gz' && type != 'zip';
-  }
-
-  function isPackageFile(file) {
-    return file.endsWith('.' + PACKAGE_EXT);
-  }
-
-  // Returns true if @file has an extension that may identify a mapshaper
-  // command file (e.g. "commands.txt"). Detection still requires a content
-  // sniff via stringLooksLikeCommandFile().
-  function isPotentialCommandFile(file) {
-    var ext = getFileExtension(file || '').toLowerCase();
-    return ext === 'txt';
-  }
-
-  // True if @str looks like the content of a mapshaper command file: the first
-  // non-blank, non-comment line begins with the magic word "mapshaper".
-  function stringLooksLikeCommandFile(str) {
-    str = String(str || '');
-    // Skip a leading BOM
-    if (str.charCodeAt(0) === 0xFEFF) str = str.slice(1);
-    var lines = str.split(/\r?\n/);
-    for (var i = 0; i < lines.length; i++) {
-      var line = lines[i].trim();
-      if (!line || line.charAt(0) === '#') continue;
-      return /^mapshaper(\s|$)/.test(line);
-    }
-    return false;
-  }
-
-  function isZipFile(file) {
-    return /\.zip$/i.test(file);
-  }
-
-  function isKmzFile(file) {
-    return /\.kmz$/i.test(file);
-  }
-
-  function isGzipFile(file) {
-    return /\.gz$/i.test(file);
-  }
-
-  // Assumes file at @path is one of Mapshaper's supported file types
-  function isSupportedBinaryInputType(path) {
-    var ext = getFileExtension(path).toLowerCase();
-    return ext == 'shp' || ext == 'shx' || ext == 'dbf' ||
-      ext == 'fgb' || ext == 'gpkg' || ext == PACKAGE_EXT; // GUI also supports zip files
-  }
-
-  function isImportableAsBinary(path) {
-    var type = guessInputFileType(path);
-    return isSupportedBinaryInputType(path) || isZipFile(path) ||
-      isGzipFile(path) || isKmzFile(path) || isPackageFile(path) ||
-      type == 'json' || type == 'text';
-  }
-
-  // Detect extensions of some unsupported file types, for cmd line validation
-  function filenameIsUnsupportedOutputType(file) {
-    var rxp = /\.(shx|prj|xls|xlsx|gdb|sbn|sbx|xml)$/i;
-    return rxp.test(file);
-  }
-
-  var FileTypes = /*#__PURE__*/Object.freeze({
-    __proto__: null,
-    couldBeDsvFile: couldBeDsvFile,
-    filenameIsUnsupportedOutputType: filenameIsUnsupportedOutputType,
-    guessInputContentType: guessInputContentType,
-    guessInputFileType: guessInputFileType,
-    guessInputType: guessInputType,
-    isAuxiliaryInputFileType: isAuxiliaryInputFileType,
-    isGzipFile: isGzipFile,
-    isImportableAsBinary: isImportableAsBinary,
-    isKmzFile: isKmzFile,
-    isPackageFile: isPackageFile,
-    isPotentialCommandFile: isPotentialCommandFile,
-    isSupportedBinaryInputType: isSupportedBinaryInputType,
-    isZipFile: isZipFile,
-    looksLikeContentFile: looksLikeContentFile,
-    looksLikeImportableFile: looksLikeImportableFile,
-    stringHasInlineCsvNewline: stringHasInlineCsvNewline,
-    stringLooksLikeCommandFile: stringLooksLikeCommandFile,
-    stringLooksLikeCsv: stringLooksLikeCsv,
-    stringLooksLikeJSON: stringLooksLikeJSON,
-    stringLooksLikeKML: stringLooksLikeKML,
-    stringLooksLikeSVG: stringLooksLikeSVG,
-    unescapeInlineCsv: unescapeInlineCsv
-  });
-
   // input: A file path or a buffer
   function unzipSync(input) {
     if (input instanceof ArrayBuffer) {
@@ -12417,6 +9913,7 @@
   };
 
   async function writeFiles(exports$1, opts) {
+    warnOnPathCollisions(exports$1, opts);
     return _writeFiles(exports$1, opts);
   }
 
@@ -12457,6 +9954,11 @@
           stop$1('Need to use the "-o force" option to overwrite input files.');
         }
         cli.writeFileSync(path, obj.content);
+        // Drop the buffer reference so V8 can reclaim it before we move on to
+        // the next file. Without this, every file's bytes are pinned alive by
+        // the local exports[] reference until the entire forEach completes,
+        // which matters for large `-o batch-mode` runs that emit many files.
+        obj.content = null;
         message("Wrote " + path);
       });
     }
@@ -12470,6 +9972,38 @@
       });
     }
     return files;
+  }
+
+  // Emit a one-shot warning when a -o command writes to a path that's already
+  // been written in this run. Catches three cases with a single message:
+  //   1. Two -o commands in one chain naming the same file.
+  //   2. Implicit collisions where -o derives filenames from layer names that
+  //      happen to match (or use a generic default like 'output').
+  //   3. Cross-batch collisions when batch-mode runs the same -o command per
+  //      input and they all converge on the same path on disk.
+  // The check only stores resolved path strings, never file content, so the
+  // memory cost is negligible. When the stash isn't initialized (e.g. tests
+  // that call writeFiles() outside a Job, or a degenerate caller) tracking
+  // silently no-ops.
+  function warnOnPathCollisions(exports$1, opts) {
+    if (!exports$1 || exports$1.length === 0) return;
+    if (opts.dry_run || opts.stdout) return;
+    var written = getStashedVar('output_files');
+    if (!Array.isArray(written)) return;
+    var pendingPaths;
+    if (opts.zip) {
+      pendingPaths = [opts.zipfile || 'output.zip'];
+    } else {
+      pendingPaths = getOutputPaths(utils.pluck(exports$1, 'filename'), opts);
+    }
+    pendingPaths.forEach(function(path) {
+      if (written.indexOf(path) !== -1) {
+        warn('Output file ' + path + ' was written more than once in this run; ' +
+          'only the last write is preserved.');
+      } else {
+        written.push(path);
+      }
+    });
   }
 
   var FileExport = /*#__PURE__*/Object.freeze({
@@ -16031,6 +13565,107 @@
     nullifyUnsetProperties: nullifyUnsetProperties
   });
 
+  // Detection support for the "data field shadows a JS global" warning.
+  //
+  // Background: getBaseContext() in mapshaper-expressions.mjs masks every
+  // _enumerable_ property of the global object. ECMAScript built-ins are
+  // defined as non-enumerable on globalThis (per spec), so they slip through
+  // the mask and remain reachable inside a `with(env){with(record){...}}`
+  // scope. As a result, a record with a field named e.g. `Math` silently
+  // shadows the global Math whenever an expression touches it -- and the
+  // failure is silent because `Math.PI` parses fine; it just resolves to
+  // `undefined.PI` and then `TypeError: cannot read property PI of undefined`.
+  //
+  // We can't enumerate "what's in scope" at runtime in a useful way: probing
+  // `Object.getOwnPropertyNames(globalThis)` works in Node but in browsers
+  // also pulls in ~250 Window members (`name`, `length`, `top`, `find`,
+  // `print`, `status`, ...) which are extremely common field names in real
+  // datasets. Warning on every match against that surface produces an
+  // avalanche of false positives.
+  //
+  // Instead this module hard-codes a small curated list of ECMAScript
+  // built-ins that (a) are stable across versions and host environments and
+  // (b) almost never make sense as data field names. Mapshaper-injected
+  // helpers (sprintf, round, count, sum, etc.) are detected dynamically by
+  // inspecting the per-command env -- see getShadowedNames() below.
+
+  var RESERVED_GLOBALS = [
+    // Constructors / namespaces
+    'Array',
+    'Boolean',
+    'Date',
+    'Error',
+    'Function',
+    'JSON',
+    'Map',
+    'Math',
+    'Number',
+    'Object',
+    'Promise',
+    'RegExp',
+    'Set',
+    'String',
+    'Symbol',
+    'WeakMap',
+    'WeakSet',
+    // Top-level functions
+    'parseInt',
+    'parseFloat',
+    'isNaN',
+    'isFinite',
+    'encodeURI',
+    'encodeURIComponent',
+    'decodeURI',
+    'decodeURIComponent',
+    // Constants
+    'NaN',
+    'Infinity',
+    'undefined',
+    'globalThis'
+  ];
+
+  // Return the subset of `fieldNames` that, if used as record properties,
+  // would shadow either:
+  //   - A curated ECMAScript built-in (RESERVED_GLOBALS), or
+  //   - A name already bound in `extraNames` -- i.e. the per-command helper
+  //     namespace assembled by addFeatureExpressionUtils() and any -calc /
+  //     -include / mixin additions on top of it.
+  //
+  // `extraNames` is optional and accepts either an array of names OR an
+  // object whose own keys are the names. The object form is convenient when
+  // the caller already has an env-like map; the array form fits the common
+  // "I built this list of bindings as I went" pattern in
+  // getFeatureExpressionContext().
+  function getShadowedNames(fieldNames, extraNames) {
+    if (!fieldNames || !fieldNames.length) return [];
+    var reserved = {};
+    RESERVED_GLOBALS.forEach(function(n) { reserved[n] = true; });
+    if (extraNames) {
+      var names = Array.isArray(extraNames) ? extraNames : Object.keys(extraNames);
+      names.forEach(function(k) { reserved[k] = true; });
+    }
+    return fieldNames.filter(function(name) {
+      return Object.prototype.hasOwnProperty.call(reserved, name);
+    });
+  }
+
+  // Build a single user-facing warning string for one or more shadowed
+  // field names. Phrasing is intentionally explicit about who wins at
+  // runtime (the field), since the natural reading of "shadows" in code is
+  // often the other way around. The example uses the first shadowed name
+  // because we don't know which (if any) the user actually plans to touch.
+  function formatShadowWarning(shadowed, layerName) {
+    var label = shadowed.length === 1 ? 'name' : 'names';
+    var verb = shadowed.length === 1 ? 'shadows' : 'shadow';
+    var quoted = shadowed.map(function(s) { return '"' + s + '"'; }).join(', ');
+    var first = shadowed[0];
+    var where = layerName ? ' in layer "' + layerName + '"' : '';
+    return 'Field ' + label + ' ' + quoted + where + ' ' + verb + ' JS globals ' +
+      'or mapshaper helpers; in expressions, "' + first + '" resolves to the ' +
+      'field value and hides the global/helper binding. If you intended the ' +
+      'global/helper, rename the field with -rename-fields.';
+  }
+
   function compileFeatureExpression(exp, lyr, arcs, optsArg) {
     var opts = optsArg || {},
         vars = getAssignedVars(exp);
@@ -16108,10 +13743,18 @@
   function getFeatureExpressionContext(lyr, mixins, opts) {
     var defs = getStashedVar('defs');
     var env = getBaseContext();
+    var before = Object.assign({}, env);
     var ctx = {};
     var fields = lyr.data ? lyr.data.getFields() : [];
+    var helperNames = [];
     opts = opts || {};
     addFeatureExpressionUtils(env); // mix in round(), sprintf(), etc.
+    // getBaseContext() masks enumerable globals into `env` (typically undefined).
+    // Capture only names that addFeatureExpressionUtils() actually introduced or
+    // changed; this avoids false positives like `name` (window.name in browsers).
+    helperNames = Object.keys(env).filter(function(key) {
+      return before[key] !== env[key];
+    });
     if (fields.length > 0) {
       // default to null values, so assignments to missing data properties
       // are applied to the data record, not the global object
@@ -16121,7 +13764,9 @@
     mixins = utils.defaults(mixins || {}, defs);
     // also add defs as 'global' object
     env.global = defs;
+    helperNames.push('global');
     Object.keys(mixins).forEach(function(key) {
+      helperNames.push(key);
       // Catch name collisions between data fields and user-defined functions
       var d = Object.getOwnPropertyDescriptor(mixins, key);
       if (d.get) {
@@ -16132,17 +13777,29 @@
         Object.defineProperty(ctx, key, {value: mixins[key]});
       }
     });
+
+    // Warn once per (layer, shadowed-set) when data field names mask either a
+    // JS global or a mapshaper helper. Since `with($$record){...}` is searched
+    // before `with($$env){...}`, the field always wins at runtime -- which is
+    // why an expression like `Math.PI` silently breaks when a record has a
+    // `Math` field. warnOnce dedupes by message text, so re-running the same
+    // command on the same layer doesn't repeat the warning.
+    if (!opts.no_warn && fields.length > 0) {
+      var shadowed = getShadowedNames(fields, helperNames);
+      if (shadowed.length > 0) {
+        warnOnce(formatShadowWarning(shadowed, lyr.name));
+      }
+    }
+
     // make context properties non-writable, so they can't be replaced by an expression
     return Object.keys(env).reduce(function(memo, key) {
       if (key in memo) {
         // property has already been set (probably by a mixin, above): skip
-        // "no_warn" option used in calc= expressions
-        if (!opts.no_warn) {
-          if (typeof memo[key] == 'function' && fields.indexOf(key) > -1) {
-            message('Warning: ' + key + '() function is hiding a data field with the same name');
-          } else {
-            message('Warning: "' + key + '" has multiple definitions');
-          }
+        // "no_warn" option used in calc= expressions. Field-vs-helper
+        // collisions are handled by the dedicated shadow warning above; this
+        // branch is for the rarer mixin-vs-mixin case.
+        if (!opts.no_warn && fields.indexOf(key) === -1) {
+          message('Warning: "' + key + '" has multiple definitions');
         }
       } else {
         Object.defineProperty(memo, key, {value: env[key]}); // writable: false is default
@@ -16648,364 +14305,170 @@
     recombineDataRecords: recombineDataRecords
   });
 
-  function dissolvePointGeometry(lyr, getGroupId, opts) {
-    var useSph = !opts.planar && probablyDecimalDegreeBounds(getLayerBounds(lyr));
-    var getWeight = opts.weight ? compileFeatureExpression(opts.weight, lyr, null) : null;
-    var groups = [];
+  // Builds a "dissolved" layer object from input shapes plus a grouping fn.
+  // Extracted from mapshaper-dissolve.mjs so that both -dissolve (the
+  // command) and polygon-dissolve2 (a helper used by -dissolve as well as
+  // other commands) can share the helper without forming an import cycle.
 
-    // TODO: support multipoints
-    if (countMultiPartFeatures(lyr.shapes) !== 0) {
-      stop$1("Dissolving multi-part points is not supported");
-    }
 
-    lyr.shapes.forEach(function(shp, i) {
-      var groupId = getGroupId(i);
-      var weight = getWeight ? getWeight(i) : 1;
-      var p = shp && shp[0]; // Using first point (TODO: handle multi-point features)
-      var tmp;
-      if (!p) return;
-      if (useSph) {
-        tmp = [];
-        geom.lngLatToXYZ(p[0], p[1], tmp);
-        p = tmp;
-      }
-      groups[groupId] = reducePointCentroid(groups[groupId], p, weight);
-    });
-
-    return groups.map(function(memo) {
-      var p1, p2;
-      if (!memo) return null;
-      if (useSph) {
-        p1 = memo.centroid;
-        p2 = [];
-        geom.xyzToLngLat(p1[0], p1[1], p1[2], p2);
-      } else {
-        p2 = memo.centroid;
-      }
-      return memo ? [p2] : null;
-    });
-  }
-
-  function reducePointCentroid(memo, p, weight) {
-    var x = p[0],
-        y = p[1],
-        sum, k;
-
-    if (x == x && y == y && weight > 0) {
-      if (!memo) {
-        memo = {sum: weight, centroid: p.concat()};
-      } else {
-        sum = memo.sum + weight;
-        k = memo.sum / sum;
-        memo.centroid[0] = k * memo.centroid[0] + weight * x / sum;
-        memo.centroid[1] = k * memo.centroid[1] + weight * y / sum;
-        if (p.length == 3) {
-          memo.centroid[2] = k * memo.centroid[2] + weight * p[2] / sum;
+  // @lyr: original undissolved layer
+  // @shapes: dissolved shapes
+  function composeDissolveLayer(lyr, shapes, getGroupId, opts) {
+    var records = null;
+    var lyr2;
+    if (lyr.data) {
+      records = aggregateDataRecords(lyr.data.getRecords(), getGroupId, opts);
+      // replace missing shapes with nulls
+      for (var i=0, n=records.length; i<n; i++) {
+        if (shapes && !shapes[i]) {
+          shapes[i] = null;
         }
-        memo.sum = sum;
       }
     }
-    return memo;
-  }
-
-  // Dissolve polyline features
-  function dissolvePolylineGeometry(lyr, getGroupId, arcs, opts) {
-    var groups = getPolylineDissolveGroups(lyr.shapes, getGroupId);
-    var dissolve = getPolylineDissolver(arcs);
-    return groups.map(dissolve);
-  }
-
-  // Create one array of arc ids for each group
-  function getPolylineDissolveGroups(shapes, getGroupId) {
-    var groups = [];
-    traversePaths(shapes, function(o) {
-      var groupId = getGroupId(o.shapeId);
-      if (groupId in groups === false) {
-        groups[groupId] = [];
-      }
-      groups[groupId].push(o.arcId);
-    });
-    return groups;
-  }
-
-  function getPolylineDissolver(arcs) {
-    var flags = new Uint8Array(arcs.size());
-    var testArc = function(id) {return flags[absArcId(id)] > 0;};
-    var useArc = function(id) {flags[absArcId(id)] = 0;};
-    var nodes = new NodeCollection(arcs);
-    return function(ids) {
-      ids.forEach(function(id) {flags[absArcId(id)] = 1;});
-      var ends = findPolylineEnds(ids, nodes, testArc);
-      var straightParts = collectPolylineArcs(ends, nodes, testArc, useArc);
-      var ringParts = collectPolylineArcs(ids, nodes, testArc, useArc);
-      var allParts = straightParts.concat(ringParts);
-      ids.forEach(function(id) {flags[absArcId(id)] = 0;}); // may not be necessary
-      return allParts;
+    lyr2 = {
+      name: opts.no_replace ? null : lyr.name,
+      shapes: shapes,
+      data: records ? new DataTable(records) : null,
+      geometry_type: lyr.geometry_type
     };
+    if (!opts.silent) {
+      printDissolveMessage(lyr, lyr2);
+    }
+    return lyr2;
   }
 
-  /*
+  function printDissolveMessage(pre, post) {
+    var n1 = getFeatureCount(pre),
+        n2 = getFeatureCount(post),
+        msg = utils.format('Dissolved %,d feature%s into %,d feature%s',
+          n1, utils.pluralSuffix(n1), n2,
+          utils.pluralSuffix(n2));
+    message(msg);
+  }
 
+  // Maps tile ids to shape ids (both are non-negative integers). Supports
+  //    one-to-many mapping (a tile may belong to multiple shapes)
+  // Also maps shape ids to tile ids. A shape may contain multiple tiles
+  // Also supports 'flattening' -- removing one-to-many tile-shape mappings by
+  //    removing all but one shape from a tile.
+  // Supports one-to-many mapping
+  function TileShapeIndex(mosaic, opts) {
+    // indexes for mapping tile ids to shape ids
+    var singleIndex = new Int32Array(mosaic.length);
+    utils.initializeArray(singleIndex, -1);
+    var multipleIndex = [];
+    // index that maps shape ids to tile ids
+    var shapeIndex = [];
 
+    this.getTileIdsByShapeId = function(shapeId) {
+      var ids = shapeIndex[shapeId];
+      // need to filter out tile ids that have been set to -1 (indicating removal)
+      return ids ? ids.filter(function(id) {return id >= 0;}) : [];
+    };
 
-  */
+    // assumes index has been flattened
+    this.getShapeIdByTileId = function(id) {
+      var shapeId = singleIndex[id];
+      return shapeId >= 0 ? shapeId : -1;
+    };
 
-  // TODO: use polygon pathfinder shared code
-  function collectPolylineArcs(ids, nodes, testArc, useArc) {
-    var parts = [];
-    ids.forEach(function(startId) {
-      var part = [];
-      var nextId = startId;
-      var nextIds;
-      while (testArc(nextId)) {
-        part.push(nextId);
-        nextIds = testArc(nextId) ? nodes.getConnectedArcs(nextId, testArc) : [];
-        useArc(nextId); // use (unset) arc after connections have been found
-        if (nextIds.length > 0) {
-          nextId = ~nextIds[0]; // switch arc direction to lead away from node
+    // return ids of all shapes that include a tile
+    this.getShapeIdsByTileId = function(id) {
+      var singleId = singleIndex[id];
+      if (singleId >= 0) {
+        return [singleId];
+      }
+      if (singleId == -1) {
+        return [];
+      }
+      return multipleIndex[id];
+    };
+
+    this.indexTileIdsByShapeId = function(shapeId, tileIds, weightFunction) {
+      shapeIndex[shapeId] = [];
+      for (var i=0; i<tileIds.length; i++) {
+        indexShapeIdByTileId(shapeId, tileIds[i], weightFunction);
+      }
+    };
+
+    // remove many-to-one tile=>shape mappings
+    this.flatten = function() {
+      multipleIndex.forEach(function(shapeIds, tileId) {
+        flattenStackedTile(tileId);
+      });
+      multipleIndex = [];
+    };
+
+    this.getUnusedTileIds = function() {
+      var ids = [];
+      for (var i=0, n=singleIndex.length; i<n; i++) {
+        if (singleIndex[i] == -1) ids.push(i);
+      }
+      return ids;
+    };
+
+    // used by gap fill; assumes that flatten() has been called
+    this.addTileToShape = function(shapeId, tileId) {
+      if (shapeId in shapeIndex === false || singleIndex[tileId] != -1) {
+        error('Internal error');
+      }
+      singleIndex[tileId] = shapeId;
+      shapeIndex[shapeId].push(tileId);
+    };
+
+    // add a shape id to a tile
+    function indexShapeIdByTileId(shapeId, tileId, weightFunction) {
+      var singleId = singleIndex[tileId];
+      if (singleId != -1 && opts.flat) {
+        // pick the best shape if we have a weight function
+        if (weightFunction && weightFunction(shapeId) > weightFunction(singleId)) {
+          // replace existing shape reference
+          removeTileFromShape(tileId, singleId); // bottleneck when overlaps are many
+          singleIndex[tileId] = singleId;
+          singleId = -1;
         } else {
+          // keep existing shape reference
+          return;
+        }
+      }
+      if (singleId == -1) {
+        singleIndex[tileId] = shapeId;
+      } else if (singleId == -2) {
+        multipleIndex[tileId].push(shapeId);
+      } else {
+        multipleIndex[tileId] = [singleId, shapeId];
+        singleIndex[tileId] = -2;
+      }
+      shapeIndex[shapeId].push(tileId);
+    }
+
+
+    function flattenStackedTile(tileId) {
+      // TODO: select the best shape (using some metric)
+      var shapeIds = multipleIndex[tileId];
+      // if (!shapeIds || shapeIds.length > 1 === false) error('flattening error');
+      var selectedId = shapeIds[0];
+      var shapeId;
+      singleIndex[tileId] = selectedId; // add shape to single index
+      // remove tile from other stacked shapes
+      for (var i=0; i<shapeIds.length; i++) {
+        shapeId = shapeIds[i];
+        if (shapeId != selectedId) {
+          removeTileFromShape(tileId, shapeId);
+        }
+      }
+    }
+
+    function removeTileFromShape(tileId, shapeId) {
+      var tileIds = shapeIndex[shapeId];
+      for (var i=0; i<tileIds.length; i++) {
+        if (tileIds[i] === tileId) {
+          tileIds[i] = -1;
           break;
         }
       }
-      if (part.length > 0) parts.push(part);
-    });
-    return parts;
-  }
-
-  // Return array of dead-end arcs for a dissolved group.
-  function findPolylineEnds(ids, nodes, filter) {
-    var ends = [];
-    ids.forEach(function(arcId) {
-      if (nodes.getConnectedArcs(arcId, filter).length === 0) {
-        ends.push(~arcId); // arc points away from terminus
-      }
-      if (nodes.getConnectedArcs(~arcId, filter).length === 0) {
-        ends.push(arcId);
-      }
-    });
-    return ends;
-  }
-
-  function dissolvePolygonGeometry(shapes, getGroupId) {
-    var segments = dissolveFirstPass(shapes, getGroupId);
-    return dissolveSecondPass(segments, shapes, getGroupId);
-  }
-
-  // First pass -- identify pairs of segments that can be dissolved
-  function dissolveFirstPass(shapes, getGroupId) {
-    var groups = [],
-        largeGroups = [],
-        segments = [],
-        ids = shapes.map(function(shp, i) {
-          return getGroupId(i);
-        });
-
-    traversePaths(shapes, procArc);
-    largeGroups.forEach(splitGroup);
-    return segments;
-
-    function procArc(obj) {
-      var arcId = obj.arcId,
-          idx = arcId < 0 ? ~arcId : arcId,
-          segId = segments.length,
-          group = groups[idx];
-      if (!group) {
-        group = [];
-        groups[idx] = group;
-      }
-      group.push(segId);
-      obj.group = group;
-      segments.push(obj);
-
-      // Three or more segments sharing the same arc is abnormal topology...
-      // Need to try to identify pairs of matching segments in each of these
-      // groups.
-      //
-      if (group.length == 3) {
-        largeGroups.push(group);
-      }
-    }
-
-    function findMatchingPair(group, cb) {
-      var arc1, arc2;
-      for (var i=0; i<group.length - 1; i++) {
-        arc1 = segments[group[i]];
-        for (var j=i+1; j<group.length; j++) {
-          arc2 = segments[group[j]];
-          if (cb(arc1, arc2)) {
-            return [arc1.segId, arc2.segId];
-          }
-        }
-      }
-      return null;
-    }
-
-    function checkFwExtension(arc1, arc2) {
-      return getNextSegment(arc1, segments, shapes).arcId ===
-          ~getNextSegment(arc2, segments, shapes).arcId;
-    }
-
-    function checkBwExtension(arc1, arc2) {
-      return getPrevSegment(arc1, segments, shapes).arcId ===
-          ~getPrevSegment(arc2, segments, shapes).arcId;
-    }
-
-    function checkDoubleExtension(arc1, arc2) {
-      return checkPairwiseMatch(arc1, arc2) &&
-          checkFwExtension(arc1, arc2) &&
-          checkBwExtension(arc1, arc2);
-    }
-
-    function checkSingleExtension(arc1, arc2) {
-      return checkPairwiseMatch(arc1, arc2) &&
-          (checkFwExtension(arc1, arc2) ||
-          checkBwExtension(arc1, arc2));
-    }
-
-    function checkPairwiseMatch(arc1, arc2) {
-      return arc1.arcId === ~arc2.arcId && ids[arc1.shapeId] ===
-          ids[arc2.shapeId];
-    }
-
-    function updateGroupIds(ids) {
-      ids.forEach(function(id) {
-        segments[id].group = ids;
-      });
-    }
-
-    // split a group of segments into pairs of matching segments + a residual group
-    // @group Array of segment ids
-    //
-    function splitGroup(group) {
-      // find best-match segment pair
-      var group2 = findMatchingPair(group, checkDoubleExtension) ||
-          findMatchingPair(group, checkSingleExtension) ||
-          findMatchingPair(group, checkPairwiseMatch);
-      if (group2) {
-        group = group.filter(function(i) {
-          return !utils.contains(group2, i);
-        });
-        updateGroupIds(group);
-        updateGroupIds(group2);
-        // Split again if reduced group is still large
-        if (group.length > 2) splitGroup(group);
-      }
     }
   }
-
-  // Second pass -- generate dissolved shapes
-  //
-  function dissolveSecondPass(segments, shapes, getGroupId) {
-    var dissolveShapes = [];
-    segments.forEach(procSegment);
-    return dissolveShapes;
-
-    // @obj is an arc instance
-    function procSegment(obj) {
-      if (obj.used) return;
-      var match = findDissolveArc(obj);
-      if (!match) buildRing(obj);
-    }
-
-    function addRing(arcs, i) {
-      if (i in dissolveShapes === false) {
-        dissolveShapes[i] = [];
-      }
-      dissolveShapes[i].push(arcs);
-    }
-
-    // Generate a dissolved ring
-    // @firstArc the first arc instance in the ring
-    //
-    function buildRing(firstArc) {
-      var newArcs = [firstArc.arcId],
-          nextArc = getNextArc(firstArc);
-          firstArc.used = true;
-
-      while (nextArc && nextArc != firstArc) {
-        newArcs.push(nextArc.arcId);
-        nextArc.used = true;
-        nextArc = getNextArc(nextArc);
-        if (nextArc && nextArc != firstArc && nextArc.used) error("buildRing() topology error");
-      }
-
-      if (!nextArc) error("buildRing() traversal error");
-      firstArc.used = true;
-      addRing(newArcs, getGroupId(firstArc.shapeId));
-    }
-
-    // Get the next arc in a dissolved polygon ring
-    // @obj an undissolvable arc instance
-    //
-    function getNextArc(obj, depth) {
-      var next = getNextSegment(obj, segments, shapes),
-          match;
-      depth = depth || 0;
-      if (next != obj) {
-        match = findDissolveArc(next);
-        if (match) {
-          if (depth > 100) {
-            error ('deep recursion -- unhandled topology problem');
-          }
-          // if (match.part.arcs.length == 1) {
-          if (shapes[match.shapeId][match.partId].length == 1) {
-            // case: @obj has an island inclusion -- keep traversing @obj
-            // TODO: test case if @next is first arc in the ring
-            next = getNextArc(next, depth + 1);
-          } else {
-            next = getNextArc(match, depth + 1);
-          }
-        }
-      }
-      return next;
-    }
-
-    // Look for an arc instance that can be dissolved with segment @obj
-    // (must be going the opposite direction and have same dissolve key, etc)
-    // Return matching segment or null if no match
-    //
-    function findDissolveArc(obj) {
-      var dissolveId = getGroupId(obj.shapeId), // obj.shape.dissolveKey,
-          match, matchId;
-      matchId = utils.find(obj.group, function(i) {
-        var a = obj,
-            b = segments[i];
-        if (a == b ||
-            b.used ||
-            getGroupId(b.shapeId) !== dissolveId ||
-            // don't prevent rings from dissolving with themselves (risky?)
-            // a.shapeId == b.shapeId && a.partId == b.partId ||
-            a.arcId != ~b.arcId) return false;
-        return true;
-      });
-      match = matchId === null ? null : segments[matchId];
-      return match;
-    }
-  }
-
-  function getNextSegment(seg, segments, shapes) {
-    return getSegmentByOffs(seg, segments, shapes, 1);
-  }
-
-  function getPrevSegment(seg, segments, shapes) {
-    return getSegmentByOffs(seg, segments, shapes, -1);
-  }
-
-  function getSegmentByOffs(seg, segments, shapes, offs) {
-    var arcs = shapes[seg.shapeId][seg.partId],
-        partLen = arcs.length,
-        nextOffs = (seg.i + offs) % partLen,
-        nextSeg;
-    if (nextOffs < 0) nextOffs += partLen;
-    nextSeg = segments[seg.segId - seg.i + nextOffs];
-    if (!nextSeg || nextSeg.shapeId != seg.shapeId) error("index error");
-    return nextSeg;
-  }
-
-  var PolygonDissolve = /*#__PURE__*/Object.freeze({
-    __proto__: null,
-    dissolvePolygonGeometry: dissolvePolygonGeometry
-  });
 
   // Clean polygon or polyline shapes (in-place)
   //
@@ -17645,336 +15108,6 @@
     remapDividedArcs: remapDividedArcs,
     sortCutPoints: sortCutPoints
   });
-
-  // Options that require the topology-repair algorithm and are not supported
-  // by the no-repair fast path.
-  var REPAIR_REQUIRED_OPTS = ['gap_fill_area', 'sliver_control', 'allow_overlaps'];
-
-  // Sample size used to detect intersections in no-repair mode. Detection stops
-  // after this many hits, so the warning message can include sample locations
-  // without paying for an exhaustive scan on badly-formed input.
-  var INTERSECTION_SAMPLE_LIMIT = 10;
-
-  // cmd.dissolve accepts two signatures:
-  //   (layers, dataset, opts) — multi-layer entry used by the CLI dispatcher.
-  //     Polygon layers go through the topology-repairing algorithm by default,
-  //     or through the legacy fast algorithm when opts.no_repair is set.
-  //   (lyr, arcs, opts) — legacy single-layer entry, retained for backward
-  //     compatibility with internal callers and existing tests. Always uses the
-  //     legacy fast algorithm; does not perform topology repair.
-  //
-  cmd.dissolve = function(arg1, arg2, opts) {
-    if (Array.isArray(arg1)) {
-      return dissolveLayers(arg1, arg2, opts);
-    }
-    return dissolveSingleLayer(arg1, arg2, opts);
-  };
-
-  function dissolveLayers(layers, dataset, optsArg) {
-    var opts = utils.extend({}, optsArg);
-    if (opts.field) opts.fields = [opts.field]; // support old "field" parameter
-
-    if (opts.no_repair) {
-      var conflicting = REPAIR_REQUIRED_OPTS.filter(function(k) { return opts[k]; });
-      if (conflicting.length > 0) {
-        stop$1('The no-repair option is incompatible with',
-          conflicting.map(function(k) { return k.replace(/_/g, '-'); }).join(', '));
-      }
-    }
-
-    var anyPolygon = layers.some(function(lyr) {
-      return lyr.geometry_type == 'polygon' && layerHasPaths(lyr);
-    });
-
-    if (anyPolygon) {
-      if (opts.no_repair) {
-        detectAndWarnIntersections(dataset, opts);
-      } else {
-        addIntersectionCuts(dataset, opts);
-      }
-    }
-
-    return layers.map(function(lyr) {
-      return dissolveOneLayer(lyr, dataset, opts);
-    });
-  }
-
-  function dissolveOneLayer(lyr, dataset, opts) {
-    if (opts.where) {
-      return dissolveLayerWithWhereClause(lyr, dataset, opts);
-    }
-    if (opts.multipart || opts.group_points) {
-      var classifier = getCategoryClassifier(opts.fields, lyr.data);
-      return composeDissolveLayer(lyr, makeMultipartShapes(lyr, classifier), classifier, opts);
-    }
-    if (lyr.geometry_type == 'polygon') {
-      return dissolvePolygonInLayer(lyr, dataset, opts);
-    }
-    if (lyr.geometry_type == 'polyline') {
-      var polylineClassifier = getCategoryClassifier(opts.fields, lyr.data);
-      var polylineShapes = dissolvePolylineGeometry(lyr, polylineClassifier, dataset.arcs);
-      return composeDissolveLayer(lyr, polylineShapes, polylineClassifier, opts);
-    }
-    if (lyr.geometry_type == 'point') {
-      var pointClassifier = getCategoryClassifier(opts.fields, lyr.data);
-      var pointShapes = dissolvePointGeometry(lyr, pointClassifier, opts);
-      return composeDissolveLayer(lyr, pointShapes, pointClassifier, opts);
-    }
-    // tabular (no geometry): aggregate records only
-    var nullClassifier = getCategoryClassifier(opts.fields, lyr.data);
-    return composeDissolveLayer(lyr, undefined, nullClassifier, opts);
-  }
-
-  function dissolvePolygonInLayer(lyr, dataset, opts) {
-    if (!layerHasPaths(lyr)) return lyr;
-    if (opts.no_repair) {
-      var classifier = getCategoryClassifier(opts.fields, lyr.data);
-      var shapes = dissolvePolygonGeometry(lyr.shapes, classifier);
-      return composeDissolveLayer(lyr, shapes, classifier, opts);
-    }
-    return dissolvePolygonLayer2(lyr, dataset, opts);
-  }
-
-  function dissolveLayerWithWhereClause(lyr, dataset, opts) {
-    // Run dissolve on a subset of features defined by opts.where, then merge the
-    // dissolved subset back together with the unselected features.
-    // Topology repair (if needed) was already performed at the dataset level by
-    // dissolveLayers, so the recursive call uses no_repair=true to avoid doing
-    // the work a second time on a subset of the same arcs.
-    var arcs = dataset.arcs;
-    var subsetLyr = getLayerSelection(lyr, arcs, opts);
-    var cmdOpts = utils.defaults({where: null, no_repair: true}, opts);
-    var dissolved = dissolveOneLayer(subsetLyr, dataset, cmdOpts);
-    var filteredLyr = getLayerSelection(lyr, arcs, utils.defaults({invert: true}, opts));
-    var merged = cmd.mergeLayers([filteredLyr, dissolved], {verbose: false, force: true});
-    return merged[0];
-  }
-
-  function getLayerSelection(lyr, arcs, opts) {
-    var lyr2 = utils.extend({}, lyr);
-    var filterOpts = {
-      expression: opts.where,
-      invert: !!opts.invert,
-      verbose: false,
-      no_replace: opts.no_replace
-    };
-    return cmd.filterFeatures(lyr2, arcs, filterOpts);
-  }
-
-  // Detect a small sample of segment intersections; print a warning if any are
-  // found. Used by the no-repair fast path to alert users that their input has
-  // topology problems. Detection stops after INTERSECTION_SAMPLE_LIMIT hits, so
-  // the cost is bounded for badly-formed input.
-  function detectAndWarnIntersections(dataset, opts) {
-    if (opts.quiet || opts.silent) return;
-    if (!dataset.arcs || dataset.arcs.size() === 0) return;
-    var sample = findSegmentIntersections(dataset.arcs, {limit: INTERSECTION_SAMPLE_LIMIT});
-    if (sample.length === 0) return;
-    var atLeast = sample.length >= INTERSECTION_SAMPLE_LIMIT ? 'at least ' : '';
-    message('Warning: found ' + atLeast + sample.length +
-      ' segment intersection' + (sample.length == 1 ? '' : 's') +
-      '. The no-repair option assumes clean topology; output may be incorrect.');
-  }
-
-  // Backward-compat: the legacy per-layer entry, still used by internal callers
-  // and by tests that exercise the original fast algorithm directly. Retains
-  // the original behavior (no topology repair, no multi-layer prep).
-  function dissolveSingleLayer(lyr, arcs, opts) {
-    var dissolveShapes, classifier;
-    opts = utils.extend({}, opts);
-    if (opts.where) {
-      return applyCommandToLayerSelection(dissolveSingleLayer, lyr, arcs, opts);
-    }
-    if (opts.field) opts.fields = [opts.field];
-    classifier = getCategoryClassifier(opts.fields, lyr.data);
-    if (opts.multipart || opts.group_points) {
-      dissolveShapes = makeMultipartShapes(lyr, classifier);
-    } else if (lyr.geometry_type == 'polygon') {
-      dissolveShapes = dissolvePolygonGeometry(lyr.shapes, classifier);
-    } else if (lyr.geometry_type == 'polyline') {
-      dissolveShapes = dissolvePolylineGeometry(lyr, classifier, arcs);
-    } else if (lyr.geometry_type == 'point') {
-      dissolveShapes = dissolvePointGeometry(lyr, classifier, opts);
-    }
-    return composeDissolveLayer(lyr, dissolveShapes, classifier, opts);
-  }
-
-  function makeMultipartShapes(lyr, getGroupId) {
-    if (!lyr.shapes || !lyr.geometry_type) {
-      stop$1('Layer is missing geometry');
-    }
-    cloneShapes(lyr.shapes);
-    var shapes2 = [];
-    lyr.shapes.forEach(function(shp, i) {
-      var groupId = getGroupId(i);
-      if (!shp) return;
-      if (!shapes2[groupId]) {
-        shapes2[groupId] = shp;
-      } else {
-        shapes2[groupId].push.apply(shapes2[groupId], shp);
-      }
-    });
-    return shapes2;
-  }
-
-  // @lyr: original undissolved layer
-  // @shapes: dissolved shapes
-  function composeDissolveLayer(lyr, shapes, getGroupId, opts) {
-    var records = null;
-    var lyr2;
-    if (lyr.data) {
-      records = aggregateDataRecords(lyr.data.getRecords(), getGroupId, opts);
-      // replace missing shapes with nulls
-      for (var i=0, n=records.length; i<n; i++) {
-        if (shapes && !shapes[i]) {
-          shapes[i] = null;
-        }
-      }
-    }
-    lyr2 = {
-      name: opts.no_replace ? null : lyr.name,
-      shapes: shapes,
-      data: records ? new DataTable(records) : null,
-      geometry_type: lyr.geometry_type
-    };
-    if (!opts.silent) {
-      printDissolveMessage(lyr, lyr2);
-    }
-    return lyr2;
-  }
-
-  function printDissolveMessage(pre, post) {
-    var n1 = getFeatureCount(pre),
-        n2 = getFeatureCount(post),
-        msg = utils.format('Dissolved %,d feature%s into %,d feature%s',
-          n1, utils.pluralSuffix(n1), n2,
-          utils.pluralSuffix(n2));
-    message(msg);
-  }
-
-  // Maps tile ids to shape ids (both are non-negative integers). Supports
-  //    one-to-many mapping (a tile may belong to multiple shapes)
-  // Also maps shape ids to tile ids. A shape may contain multiple tiles
-  // Also supports 'flattening' -- removing one-to-many tile-shape mappings by
-  //    removing all but one shape from a tile.
-  // Supports one-to-many mapping
-  function TileShapeIndex(mosaic, opts) {
-    // indexes for mapping tile ids to shape ids
-    var singleIndex = new Int32Array(mosaic.length);
-    utils.initializeArray(singleIndex, -1);
-    var multipleIndex = [];
-    // index that maps shape ids to tile ids
-    var shapeIndex = [];
-
-    this.getTileIdsByShapeId = function(shapeId) {
-      var ids = shapeIndex[shapeId];
-      // need to filter out tile ids that have been set to -1 (indicating removal)
-      return ids ? ids.filter(function(id) {return id >= 0;}) : [];
-    };
-
-    // assumes index has been flattened
-    this.getShapeIdByTileId = function(id) {
-      var shapeId = singleIndex[id];
-      return shapeId >= 0 ? shapeId : -1;
-    };
-
-    // return ids of all shapes that include a tile
-    this.getShapeIdsByTileId = function(id) {
-      var singleId = singleIndex[id];
-      if (singleId >= 0) {
-        return [singleId];
-      }
-      if (singleId == -1) {
-        return [];
-      }
-      return multipleIndex[id];
-    };
-
-    this.indexTileIdsByShapeId = function(shapeId, tileIds, weightFunction) {
-      shapeIndex[shapeId] = [];
-      for (var i=0; i<tileIds.length; i++) {
-        indexShapeIdByTileId(shapeId, tileIds[i], weightFunction);
-      }
-    };
-
-    // remove many-to-one tile=>shape mappings
-    this.flatten = function() {
-      multipleIndex.forEach(function(shapeIds, tileId) {
-        flattenStackedTile(tileId);
-      });
-      multipleIndex = [];
-    };
-
-    this.getUnusedTileIds = function() {
-      var ids = [];
-      for (var i=0, n=singleIndex.length; i<n; i++) {
-        if (singleIndex[i] == -1) ids.push(i);
-      }
-      return ids;
-    };
-
-    // used by gap fill; assumes that flatten() has been called
-    this.addTileToShape = function(shapeId, tileId) {
-      if (shapeId in shapeIndex === false || singleIndex[tileId] != -1) {
-        error('Internal error');
-      }
-      singleIndex[tileId] = shapeId;
-      shapeIndex[shapeId].push(tileId);
-    };
-
-    // add a shape id to a tile
-    function indexShapeIdByTileId(shapeId, tileId, weightFunction) {
-      var singleId = singleIndex[tileId];
-      if (singleId != -1 && opts.flat) {
-        // pick the best shape if we have a weight function
-        if (weightFunction && weightFunction(shapeId) > weightFunction(singleId)) {
-          // replace existing shape reference
-          removeTileFromShape(tileId, singleId); // bottleneck when overlaps are many
-          singleIndex[tileId] = singleId;
-          singleId = -1;
-        } else {
-          // keep existing shape reference
-          return;
-        }
-      }
-      if (singleId == -1) {
-        singleIndex[tileId] = shapeId;
-      } else if (singleId == -2) {
-        multipleIndex[tileId].push(shapeId);
-      } else {
-        multipleIndex[tileId] = [singleId, shapeId];
-        singleIndex[tileId] = -2;
-      }
-      shapeIndex[shapeId].push(tileId);
-    }
-
-
-    function flattenStackedTile(tileId) {
-      // TODO: select the best shape (using some metric)
-      var shapeIds = multipleIndex[tileId];
-      // if (!shapeIds || shapeIds.length > 1 === false) error('flattening error');
-      var selectedId = shapeIds[0];
-      var shapeId;
-      singleIndex[tileId] = selectedId; // add shape to single index
-      // remove tile from other stacked shapes
-      for (var i=0; i<shapeIds.length; i++) {
-        shapeId = shapeIds[i];
-        if (shapeId != selectedId) {
-          removeTileFromShape(tileId, shapeId);
-        }
-      }
-    }
-
-    function removeTileFromShape(tileId, shapeId) {
-      var tileIds = shapeIndex[shapeId];
-      for (var i=0; i<tileIds.length; i++) {
-        if (tileIds[i] === tileId) {
-          tileIds[i] = -1;
-          break;
-        }
-      }
-    }
-  }
 
   // Support for timing using T.start() and T.stop()
   var T$1 = {
@@ -19499,6 +16632,21 @@
     warnIfNotWgs84: warnIfNotWgs84
   });
 
+  // Lightweight accessors for furniture-layer metadata. Extracted from
+  // mapshaper-furniture.mjs so that frame-utils -- which only needs the
+  // type/data accessors -- doesn't form an import cycle with the
+  // scalebar-aware renderer registry that lives in furniture.mjs.
+
+  // @lyr dataset layer
+  function getFurnitureLayerType(lyr) {
+    var rec = lyr.data && lyr.data.getReadOnlyRecordAt(0);
+    return rec && rec.type || null;
+  }
+
+  function getFurnitureLayerData(lyr) {
+    return lyr.data && lyr.data.getReadOnlyRecordAt(0);
+  }
+
   /*
   {
     width: size[0],
@@ -19757,6 +16905,81 @@
       layers: [lyr]
     };
     catalog.getDatasets().push(o);
+  }
+
+  // Pure geometry-to-SVG-path primitives. Extracted from geojson-to-svg.mjs
+  // so that svg-symbols.mjs can use them without going through geojson-to-svg
+  // (which would otherwise form an import cycle, because geojson-to-svg's
+  // point importer calls back into svg-symbols for renderPoint).
+
+  function importLineString(coords) {
+    var d = stringifyLineStringCoords$1(coords);
+    return {
+      tag: 'path',
+      properties: {d: d}
+    };
+  }
+
+  function importMultiLineString(coords) {
+    var d = coords.map(stringifyLineStringCoords$1).join(' ');
+    return {
+      tag: 'path',
+      properties: {d: d}
+    };
+  }
+
+  function importMultiPolygon(coords) {
+   return importPolygon(flattenMultiPolygonCoords(coords));
+  }
+
+  function flattenMultiPolygonCoords(coords) {
+    return coords.reduce(function(memo, poly) {
+      return memo.concat(poly);
+    }, []);
+  }
+
+  function importPolygon(coords) {
+    if (coords.length === 0) return null;
+    var o = {
+      tag: 'path',
+      properties: {
+        d: stringifyPolygonCoords$1(coords)
+      }
+    };
+    if (coords.length > 1) {
+      o.properties['fill-rule'] = 'evenodd'; // support polygons with holes
+    }
+    return o;
+  }
+
+  function stringifyPolygonCoords$1(coords) {
+    var parts = [];
+    for (var i=0; i<coords.length; i++) {
+      parts.push(stringifyLineStringCoords$1(coords[i]) + ' Z');
+    }
+    return parts.length > 0 ? parts.join(' ') : '';
+  }
+
+  function stringifyLineStringCoords$1(coords) {
+    if (coords.length === 0) return '';
+    var d = 'M';
+    for (var i=0, n=coords.length; i<n; i++) {
+      d += ' ' + coords[i][0] + ' ' + coords[i][1];
+    }
+    return d;
+  }
+
+  // Tiny predicates for inspecting SVG-bound feature records. Extracted so
+  // that svg-symbols.mjs can use them without having to import from the
+  // higher-level mapshaper-svg.mjs (which would otherwise form a cycle).
+
+  function featureHasSvgSymbol(d) {
+    return !!(d && (d['svg-symbol'] || d.r));
+  }
+
+  function featureHasLabel(d) {
+    var text = d && d['label-text'];
+    return text || text === 0; // accept numerical 0 as label text
   }
 
   /* example patterns
@@ -20265,153 +17488,6 @@
     mightBeExpression: mightBeExpression,
     parseBoolean: parseBoolean,
     parseSvgMeasure: parseSvgMeasure
-  });
-
-  var geojsonImporters = {
-    Point: importPoint,
-    Polygon: importPolygon,
-    LineString: importLineString,
-    MultiPoint: importMultiPoint,
-    MultiLineString: importMultiLineString,
-    MultiPolygon: importMultiPolygon
-  };
-
-  function importGeoJSONFeatures(features, opts) {
-    opts = opts || {};
-    return features.map(function(obj) {
-      var geom = obj.type == 'Feature' ? obj.geometry : obj; // could be null
-      var geomType = geom && geom.type;
-      var msType = GeoJSON.translateGeoJSONType(geomType);
-      var d = obj.properties || {};
-      var svgObj = null;
-      if (geomType && geom.coordinates) {
-        svgObj = geojsonImporters[geomType](geom.coordinates, d);
-      }
-      if (!svgObj) {
-        return {tag: 'g'}; // empty element
-      } else if (msType == 'polyline' || msType == 'polygon') {
-        applyStyleAttributes(svgObj, msType, d);
-      } else if (msType == 'point' && isSimpleCircle(d)) {
-        // kludge -- maintains bw compatibility/passes tests -- style attributes
-        // are applied to the <g> container, 'r' property is applied to circle
-        applyStyleAttributes(svgObj, msType, d, simpleCircleFilter);
-      } else ;
-      if ('id' in obj) {
-        if (!svgObj.properties) {
-          svgObj.properties = {};
-        }
-        svgObj.properties.id = (opts.id_prefix || '') + obj.id;
-      }
-      return svgObj;
-    });
-  }
-
-  function importPoint(coords, rec) {
-    rec = rec || {};
-    if (isSimpleCircle(rec)) {
-      return {
-        tag: 'circle',
-        properties: {
-          cx: coords[0],
-          cy: coords[1],
-          r: rec.r
-        }
-      };
-    }
-    var o = renderPoint(rec);
-    if (o) o.properties.transform = getTransform(coords);
-    return o;
-  }
-
-  function simpleCircleFilter(k) {
-    return k != 'r';
-  }
-
-  // just a dot, no label or icon
-  function isSimpleCircle(rec) {
-    return rec && (rec.r > 0 && !rec['svg-symbol'] && !rec['label-text']);
-  }
-
-  function importMultiPoint(coords, rec) {
-    var children = [], p;
-    for (var i=0; i<coords.length; i++) {
-      p = importPoint(coords[i], rec);
-      if (!p) continue;
-      if (p.tag == 'g' && p.children) {
-        children = children.concat(p.children);
-      } else {
-        children.push(p);
-      }
-    }
-    return children.length > 0 ? {tag: 'g', children: children} : null;
-  }
-
-  function importLineString(coords) {
-    var d = stringifyLineStringCoords$1(coords);
-    return {
-      tag: 'path',
-      properties: {d: d}
-    };
-  }
-
-  function importMultiLineString(coords) {
-    var d = coords.map(stringifyLineStringCoords$1).join(' ');
-    return {
-      tag: 'path',
-      properties: {d: d}
-    };
-  }
-
-  function importMultiPolygon(coords) {
-   return importPolygon(flattenMultiPolygonCoords(coords));
-  }
-
-  function flattenMultiPolygonCoords(coords) {
-    return coords.reduce(function(memo, poly) {
-      return memo.concat(poly);
-    }, []);
-  }
-
-  function importPolygon(coords) {
-    if (coords.length === 0) return null;
-    var o = {
-      tag: 'path',
-      properties: {
-        d: stringifyPolygonCoords$1(coords)
-      }
-    };
-    if (coords.length > 1) {
-      o.properties['fill-rule'] = 'evenodd'; // support polygons with holes
-    }
-    return o;
-  }
-
-  function stringifyPolygonCoords$1(coords) {
-    var parts = [];
-    for (var i=0; i<coords.length; i++) {
-      parts.push(stringifyLineStringCoords$1(coords[i]) + ' Z');
-    }
-    return parts.length > 0 ? parts.join(' ') : '';
-  }
-
-  function stringifyLineStringCoords$1(coords) {
-    if (coords.length === 0) return '';
-    var d = 'M';
-    for (var i=0, n=coords.length; i<n; i++) {
-      d += ' ' + coords[i][0] + ' ' + coords[i][1];
-    }
-    return d;
-  }
-
-  var GeojsonToSvg = /*#__PURE__*/Object.freeze({
-    __proto__: null,
-    flattenMultiPolygonCoords: flattenMultiPolygonCoords,
-    importGeoJSONFeatures: importGeoJSONFeatures,
-    importLineString: importLineString,
-    importMultiLineString: importMultiLineString,
-    importMultiPolygon: importMultiPolygon,
-    importPoint: importPoint,
-    importPolygon: importPolygon
   });
 
   function toLabelString(val) {
@@ -20966,16 +18042,6 @@
     return layerHasFurniture(lyr);
   }
 
-  // @lyr dataset layer
-  function getFurnitureLayerType(lyr) {
-    var rec = lyr.data && lyr.data.getReadOnlyRecordAt(0);
-    return rec && rec.type || null;
-  }
-
-  function getFurnitureLayerData(lyr) {
-    return lyr.data && lyr.data.getReadOnlyRecordAt(0);
-  }
-
   function renderFurnitureLayer(lyr, frame) {
     var d = getFurnitureLayerData(lyr);
     var renderer = furnitureRenderers[d.type];
@@ -21255,6 +18321,96 @@
   }
   */
 
+  var geojsonImporters = {
+    Point: importPoint,
+    Polygon: importPolygon,
+    LineString: importLineString,
+    MultiPoint: importMultiPoint,
+    MultiLineString: importMultiLineString,
+    MultiPolygon: importMultiPolygon
+  };
+
+  function importGeoJSONFeatures(features, opts) {
+    opts = opts || {};
+    return features.map(function(obj) {
+      var geom = obj.type == 'Feature' ? obj.geometry : obj; // could be null
+      var geomType = geom && geom.type;
+      var msType = GeoJSON.translateGeoJSONType(geomType);
+      var d = obj.properties || {};
+      var svgObj = null;
+      if (geomType && geom.coordinates) {
+        svgObj = geojsonImporters[geomType](geom.coordinates, d);
+      }
+      if (!svgObj) {
+        return {tag: 'g'}; // empty element
+      } else if (msType == 'polyline' || msType == 'polygon') {
+        applyStyleAttributes(svgObj, msType, d);
+      } else if (msType == 'point' && isSimpleCircle(d)) {
+        // kludge -- maintains bw compatibility/passes tests -- style attributes
+        // are applied to the <g> container, 'r' property is applied to circle
+        applyStyleAttributes(svgObj, msType, d, simpleCircleFilter);
+      } else ;
+      if ('id' in obj) {
+        if (!svgObj.properties) {
+          svgObj.properties = {};
+        }
+        svgObj.properties.id = (opts.id_prefix || '') + obj.id;
+      }
+      return svgObj;
+    });
+  }
+
+  function importPoint(coords, rec) {
+    rec = rec || {};
+    if (isSimpleCircle(rec)) {
+      return {
+        tag: 'circle',
+        properties: {
+          cx: coords[0],
+          cy: coords[1],
+          r: rec.r
+        }
+      };
+    }
+    var o = renderPoint(rec);
+    if (o) o.properties.transform = getTransform(coords);
+    return o;
+  }
+
+  function simpleCircleFilter(k) {
+    return k != 'r';
+  }
+
+  // just a dot, no label or icon
+  function isSimpleCircle(rec) {
+    return rec && (rec.r > 0 && !rec['svg-symbol'] && !rec['label-text']);
+  }
+
+  function importMultiPoint(coords, rec) {
+    var children = [], p;
+    for (var i=0; i<coords.length; i++) {
+      p = importPoint(coords[i], rec);
+      if (!p) continue;
+      if (p.tag == 'g' && p.children) {
+        children = children.concat(p.children);
+      } else {
+        children.push(p);
+      }
+    }
+    return children.length > 0 ? {tag: 'g', children: children} : null;
+  }
+
+  var GeojsonToSvg = /*#__PURE__*/Object.freeze({
+    __proto__: null,
+    flattenMultiPolygonCoords: flattenMultiPolygonCoords,
+    importGeoJSONFeatures: importGeoJSONFeatures,
+    importLineString: importLineString,
+    importMultiLineString: importMultiLineString,
+    importMultiPolygon: importMultiPolygon,
+    importPoint: importPoint,
+    importPolygon: importPolygon
+  });
+
   //
   function exportSVG(dataset, opts) {
     var namespace = 'xmlns="http://www.w3.org/2000/svg"';
@@ -21496,15 +18652,6 @@ ${svg}
     }
 
     return layerObj;
-  }
-
-  function featureHasSvgSymbol(d) {
-    return !!(d && (d['svg-symbol'] || d.r));
-  }
-
-  function featureHasLabel(d) {
-    var text = d && d['label-text'];
-    return text || text === 0; // accept numerical 0 as label text
   }
 
   function layerHasSvgSymbols(lyr) {
@@ -22067,16 +19214,80 @@ ${svg}
     });
   }
 
-  // Truncate and dedup field names
-  //
+  // Truncate and dedup field names so they fit Shapefile's 10-character DBF
+  // limit, and surface a one-shot summary so users notice rather than having
+  // downstream joins/scripts fail silently against the new names.
   function convertFieldNames(names, encoding) {
-    var names2 = getUniqFieldNames(names.map(cleanFieldName), 10, encoding);
-    names2.forEach(function(name2, i) {
-      if (names[i] != name2) {
-        message('Changed field name from "' + names[i] + '" to "' + name2 + '"');
+    var cleaned = names.map(cleanFieldName);
+    var names2 = getUniqFieldNames(cleaned, 10, encoding);
+
+    // Group renames by category so the message is informative without being
+    // noisy. cleanedOnly is just whitespace/dash -> underscore (low signal);
+    // truncated and collided both shorten the name to <= 10 bytes, with
+    // collided being the highest-signal case (two long names collapsed onto
+    // each other and one had to be suffixed to stay unique).
+    var cleanedOnly = [];
+    var truncated = [];
+    var collided = [];
+
+    // Two cleaned names collide if they share their first-10-byte prefix in
+    // the target encoding. Cheaper to bucket than to re-derive from names2.
+    var prefixCounts = {};
+    cleaned.forEach(function(c) {
+      var key = encodedFieldNameKey(c, encoding);
+      prefixCounts[key] = (prefixCounts[key] || 0) + 1;
+    });
+
+    names.forEach(function(orig, i) {
+      var cleanedName = cleaned[i];
+      var finalName = names2[i];
+      if (orig === finalName) return;
+      if (cleanedName === finalName) {
+        cleanedOnly.push({from: orig, to: finalName});
+      } else if (prefixCounts[encodedFieldNameKey(cleanedName, encoding)] > 1) {
+        collided.push({from: orig, to: finalName});
+      } else {
+        truncated.push({from: orig, to: finalName});
       }
     });
+
+    if (collided.length > 0) {
+      warn('Field names collided after Shapefile\'s 10-character DBF limit; ' +
+        'a numeric suffix was appended to keep the colliding names unique. ' +
+        'Use -rename-fields to avoid automatic renaming.\n' +
+        formatRenameList(collided));
+    }
+    if (truncated.length > 0) {
+      warn('Field names were truncated to fit Shapefile\'s 10-character DBF limit:\n' +
+        formatRenameList(truncated));
+    }
+    if (cleanedOnly.length > 0) {
+      message('Field names cleaned for Shapefile DBF compatibility:\n' +
+        formatRenameList(cleanedOnly));
+    }
     return names2;
+  }
+
+  function formatRenameList(pairs) {
+    return pairs.map(function(p) {
+      return '  ' + p.from + ' -> ' + p.to;
+    }).join('\n');
+  }
+
+  // Approximate the bucket a field name would occupy in the truncated DBF
+  // header. For ASCII this is just the first 10 chars; for multi-byte
+  // encodings we have to count bytes, since the DBF header limit is 10
+  // *bytes* (one Chinese char in UTF-8 is three bytes, hence the existing
+  // test cases expecting 3-char and 5-char prefixes).
+  function encodedFieldNameKey(name, encoding) {
+    if (!encoding || encoding == 'ascii' || stringIsAscii(name)) {
+      return name.substr(0, 10);
+    }
+    var encoded = encodeString(name, encoding);
+    var truncated = encoded.length > 10 ? encoded.slice(0, 10) : encoded;
+    // Decode and re-encode so partial multi-byte sequences at the boundary
+    // collapse the same way the writer would handle them.
+    return decodeString(truncated, encoding);
   }
 
   // Support non-ascii field names
@@ -22258,6 +19469,2448 @@ ${svg}
       filename: lyr.name + '.dbf'
     }];
   }
+
+  var decoder;
+  try {
+  	decoder = new TextDecoder();
+  } catch(error) {}
+  var src;
+  var srcEnd;
+  var position$1 = 0;
+  var currentUnpackr = {};
+  var currentStructures;
+  var srcString;
+  var srcStringStart = 0;
+  var srcStringEnd = 0;
+  var bundledStrings$1;
+  var referenceMap;
+  var currentExtensions = [];
+  var dataView;
+  var defaultOptions = {
+  	useRecords: false,
+  	mapsAsObjects: true
+  };
+  class C1Type {}
+  const C1$1 = new C1Type();
+  C1$1.name = 'MessagePack 0xC1';
+  var sequentialMode = false;
+  var inlineObjectReadThreshold = 2;
+  var readStruct;
+  // no-eval build
+  try {
+  	new Function('');
+  } catch(error) {
+  	// if eval variants are not supported, do not create inline object readers ever
+  	inlineObjectReadThreshold = Infinity;
+  }
+
+  class Unpackr {
+  	constructor(options) {
+  		if (options) {
+  			if (options.useRecords === false && options.mapsAsObjects === undefined)
+  				options.mapsAsObjects = true;
+  			if (options.sequential && options.trusted !== false) {
+  				options.trusted = true;
+  				if (!options.structures && options.useRecords != false) {
+  					options.structures = [];
+  					if (!options.maxSharedStructures)
+  						options.maxSharedStructures = 0;
+  				}
+  			}
+  			if (options.structures)
+  				options.structures.sharedLength = options.structures.length;
+  			else if (options.getStructures) {
+  				(options.structures = []).uninitialized = true; // this is what we use to denote an uninitialized structures
+  				options.structures.sharedLength = 0;
+  			}
+  			if (options.int64AsNumber) {
+  				options.int64AsType = 'number';
+  			}
+  		}
+  		Object.assign(this, options);
+  	}
+  	unpack(source, options) {
+  		if (src) {
+  			// re-entrant execution, save the state and restore it after we do this unpack
+  			return saveState(() => {
+  				clearSource();
+  				return this ? this.unpack(source, options) : Unpackr.prototype.unpack.call(defaultOptions, source, options)
+  			})
+  		}
+  		if (!source.buffer && source.constructor === ArrayBuffer)
+  			source = typeof Buffer !== 'undefined' ? Buffer.from(source) : new Uint8Array(source);
+  		if (typeof options === 'object') {
+  			srcEnd = options.end || source.length;
+  			position$1 = options.start || 0;
+  		} else {
+  			position$1 = 0;
+  			srcEnd = options > -1 ? options : source.length;
+  		}
+  		srcStringEnd = 0;
+  		srcString = null;
+  		bundledStrings$1 = null;
+  		src = source;
+  		// this provides cached access to the data view for a buffer if it is getting reused, which is a recommend
+  		// technique for getting data from a database where it can be copied into an existing buffer instead of creating
+  		// new ones
+  		try {
+  			dataView = source.dataView || (source.dataView = new DataView(source.buffer, source.byteOffset, source.byteLength));
+  		} catch(error) {
+  			// if it doesn't have a buffer, maybe it is the wrong type of object
+  			src = null;
+  			if (source instanceof Uint8Array)
+  				throw error
+  			throw new Error('Source must be a Uint8Array or Buffer but was a ' + ((source && typeof source == 'object') ? source.constructor.name : typeof source))
+  		}
+  		if (this instanceof Unpackr) {
+  			currentUnpackr = this;
+  			if (this.structures) {
+  				currentStructures = this.structures;
+  				return checkedRead(options)
+  			} else if (!currentStructures || currentStructures.length > 0) {
+  				currentStructures = [];
+  			}
+  		} else {
+  			currentUnpackr = defaultOptions;
+  			if (!currentStructures || currentStructures.length > 0)
+  				currentStructures = [];
+  		}
+  		return checkedRead(options)
+  	}
+  	unpackMultiple(source, forEach) {
+  		let values, lastPosition = 0;
+  		try {
+  			sequentialMode = true;
+  			let size = source.length;
+  			let value = this ? this.unpack(source, size) : defaultUnpackr.unpack(source, size);
+  			if (forEach) {
+  				if (forEach(value, lastPosition, position$1) === false) return;
+  				while(position$1 < size) {
+  					lastPosition = position$1;
+  					if (forEach(checkedRead(), lastPosition, position$1) === false) {
+  						return
+  					}
+  				}
+  			}
+  			else {
+  				values = [ value ];
+  				while(position$1 < size) {
+  					lastPosition = position$1;
+  					values.push(checkedRead());
+  				}
+  				return values
+  			}
+  		} catch(error) {
+  			error.lastPosition = lastPosition;
+  			error.values = values;
+  			throw error
+  		} finally {
+  			sequentialMode = false;
+  			clearSource();
+  		}
+  	}
+  	_mergeStructures(loadedStructures, existingStructures) {
+  		loadedStructures = loadedStructures || [];
+  		if (Object.isFrozen(loadedStructures))
+  			loadedStructures = loadedStructures.map(structure => structure.slice(0));
+  		for (let i = 0, l = loadedStructures.length; i < l; i++) {
+  			let structure = loadedStructures[i];
+  			if (structure) {
+  				structure.isShared = true;
+  				if (i >= 32)
+  					structure.highByte = (i - 32) >> 5;
+  			}
+  		}
+  		loadedStructures.sharedLength = loadedStructures.length;
+  		for (let id in existingStructures || []) {
+  			if (id >= 0) {
+  				let structure = loadedStructures[id];
+  				let existing = existingStructures[id];
+  				if (existing) {
+  					if (structure)
+  						(loadedStructures.restoreStructures || (loadedStructures.restoreStructures = []))[id] = structure;
+  					loadedStructures[id] = existing;
+  				}
+  			}
+  		}
+  		return this.structures = loadedStructures
+  	}
+  	decode(source, options) {
+  		return this.unpack(source, options)
+  	}
+  }
+  function checkedRead(options) {
+  	try {
+  		if (!currentUnpackr.trusted && !sequentialMode) {
+  			let sharedLength = currentStructures.sharedLength || 0;
+  			if (sharedLength < currentStructures.length)
+  				currentStructures.length = sharedLength;
+  		}
+  		let result;
+  		if (currentUnpackr.randomAccessStructure && src[position$1] < 0x40 && src[position$1] >= 0x20 && readStruct) ; else
+  			result = read();
+  		if (bundledStrings$1) { // bundled strings to skip past
+  			position$1 = bundledStrings$1.postBundlePosition;
+  			bundledStrings$1 = null;
+  		}
+  		if (sequentialMode)
+  			// we only need to restore the structures if there was an error, but if we completed a read,
+  			// we can clear this out and keep the structures we read
+  			currentStructures.restoreStructures = null;
+
+  		if (position$1 == srcEnd) {
+  			// finished reading this source, cleanup references
+  			if (currentStructures && currentStructures.restoreStructures)
+  				restoreStructures();
+  			currentStructures = null;
+  			src = null;
+  			if (referenceMap)
+  				referenceMap = null;
+  		} else if (position$1 > srcEnd) {
+  			// over read
+  			throw new Error('Unexpected end of MessagePack data')
+  		} else if (!sequentialMode) {
+  			let jsonView;
+  			try {
+  				jsonView = JSON.stringify(result, (_, value) => typeof value === "bigint" ? `${value}n` : value).slice(0, 100);
+  			} catch(error) {
+  				jsonView = '(JSON view not available ' + error + ')';
+  			}
+  			throw new Error('Data read, but end of buffer not reached ' + jsonView)
+  		}
+  		// else more to read, but we are reading sequentially, so don't clear source yet
+  		return result
+  	} catch(error) {
+  		if (currentStructures && currentStructures.restoreStructures)
+  			restoreStructures();
+  		clearSource();
+  		if (error instanceof RangeError || error.message.startsWith('Unexpected end of buffer') || position$1 > srcEnd) {
+  			error.incomplete = true;
+  		}
+  		throw error
+  	}
+  }
+
+  function restoreStructures() {
+  	for (let id in currentStructures.restoreStructures) {
+  		currentStructures[id] = currentStructures.restoreStructures[id];
+  	}
+  	currentStructures.restoreStructures = null;
+  }
+
+  function read() {
+  	let token = src[position$1++];
+  	if (token < 0xa0) {
+  		if (token < 0x80) {
+  			if (token < 0x40)
+  				return token
+  			else {
+  				let structure = currentStructures[token & 0x3f] ||
+  					currentUnpackr.getStructures && loadStructures()[token & 0x3f];
+  				if (structure) {
+  					if (!structure.read) {
+  						structure.read = createStructureReader(structure, token & 0x3f);
+  					}
+  					return structure.read()
+  				} else
+  					return token
+  			}
+  		} else if (token < 0x90) {
+  			// map
+  			token -= 0x80;
+  			if (currentUnpackr.mapsAsObjects) {
+  				let object = {};
+  				for (let i = 0; i < token; i++) {
+  					let key = readKey();
+  					if (key === '__proto__')
+  						key = '__proto_';
+  					object[key] = read();
+  				}
+  				return object
+  			} else {
+  				let map = new Map();
+  				for (let i = 0; i < token; i++) {
+  					map.set(read(), read());
+  				}
+  				return map
+  			}
+  		} else {
+  			token -= 0x90;
+  			let array = new Array(token);
+  			for (let i = 0; i < token; i++) {
+  				array[i] = read();
+  			}
+  			if (currentUnpackr.freezeData)
+  				return Object.freeze(array)
+  			return array
+  		}
+  	} else if (token < 0xc0) {
+  		// fixstr
+  		let length = token - 0xa0;
+  		if (srcStringEnd >= position$1) {
+  			return srcString.slice(position$1 - srcStringStart, (position$1 += length) - srcStringStart)
+  		}
+  		if (srcStringEnd == 0 && srcEnd < 140) {
+  			// for small blocks, avoiding the overhead of the extract call is helpful
+  			let string = length < 16 ? shortStringInJS(length) : longStringInJS(length);
+  			if (string != null)
+  				return string
+  		}
+  		return readFixedString(length)
+  	} else {
+  		let value;
+  		switch (token) {
+  			case 0xc0: return null
+  			case 0xc1:
+  				if (bundledStrings$1) {
+  					value = read(); // followed by the length of the string in characters (not bytes!)
+  					if (value > 0)
+  						return bundledStrings$1[1].slice(bundledStrings$1.position1, bundledStrings$1.position1 += value)
+  					else
+  						return bundledStrings$1[0].slice(bundledStrings$1.position0, bundledStrings$1.position0 -= value)
+  				}
+  				return C1$1; // "never-used", return special object to denote that
+  			case 0xc2: return false
+  			case 0xc3: return true
+  			case 0xc4:
+  				// bin 8
+  				value = src[position$1++];
+  				if (value === undefined)
+  					throw new Error('Unexpected end of buffer')
+  				return readBin(value)
+  			case 0xc5:
+  				// bin 16
+  				value = dataView.getUint16(position$1);
+  				position$1 += 2;
+  				return readBin(value)
+  			case 0xc6:
+  				// bin 32
+  				value = dataView.getUint32(position$1);
+  				position$1 += 4;
+  				return readBin(value)
+  			case 0xc7:
+  				// ext 8
+  				return readExt(src[position$1++])
+  			case 0xc8:
+  				// ext 16
+  				value = dataView.getUint16(position$1);
+  				position$1 += 2;
+  				return readExt(value)
+  			case 0xc9:
+  				// ext 32
+  				value = dataView.getUint32(position$1);
+  				position$1 += 4;
+  				return readExt(value)
+  			case 0xca:
+  				value = dataView.getFloat32(position$1);
+  				if (currentUnpackr.useFloat32 > 2) {
+  					// this does rounding of numbers that were encoded in 32-bit float to nearest significant decimal digit that could be preserved
+  					let multiplier = mult10[((src[position$1] & 0x7f) << 1) | (src[position$1 + 1] >> 7)];
+  					position$1 += 4;
+  					return ((multiplier * value + (value > 0 ? 0.5 : -0.5)) >> 0) / multiplier
+  				}
+  				position$1 += 4;
+  				return value
+  			case 0xcb:
+  				value = dataView.getFloat64(position$1);
+  				position$1 += 8;
+  				return value
+  			// uint handlers
+  			case 0xcc:
+  				return src[position$1++]
+  			case 0xcd:
+  				value = dataView.getUint16(position$1);
+  				position$1 += 2;
+  				return value
+  			case 0xce:
+  				value = dataView.getUint32(position$1);
+  				position$1 += 4;
+  				return value
+  			case 0xcf:
+  				if (currentUnpackr.int64AsType === 'number') {
+  					value = dataView.getUint32(position$1) * 0x100000000;
+  					value += dataView.getUint32(position$1 + 4);
+  				} else if (currentUnpackr.int64AsType === 'string') {
+  					value = dataView.getBigUint64(position$1).toString();
+  				} else if (currentUnpackr.int64AsType === 'auto') {
+  					value = dataView.getBigUint64(position$1);
+  					if (value<=BigInt(2)<<BigInt(52)) value=Number(value);
+  				} else
+  					value = dataView.getBigUint64(position$1);
+  				position$1 += 8;
+  				return value
+
+  			// int handlers
+  			case 0xd0:
+  				return dataView.getInt8(position$1++)
+  			case 0xd1:
+  				value = dataView.getInt16(position$1);
+  				position$1 += 2;
+  				return value
+  			case 0xd2:
+  				value = dataView.getInt32(position$1);
+  				position$1 += 4;
+  				return value
+  			case 0xd3:
+  				if (currentUnpackr.int64AsType === 'number') {
+  					value = dataView.getInt32(position$1) * 0x100000000;
+  					value += dataView.getUint32(position$1 + 4);
+  				} else if (currentUnpackr.int64AsType === 'string') {
+  					value = dataView.getBigInt64(position$1).toString();
+  				} else if (currentUnpackr.int64AsType === 'auto') {
+  					value = dataView.getBigInt64(position$1);
+  					if (value>=BigInt(-2)<<BigInt(52)&&value<=BigInt(2)<<BigInt(52)) value=Number(value);
+  				} else
+  					value = dataView.getBigInt64(position$1);
+  				position$1 += 8;
+  				return value
+
+  			case 0xd4:
+  				// fixext 1
+  				value = src[position$1++];
+  				if (value == 0x72) {
+  					return recordDefinition(src[position$1++] & 0x3f)
+  				} else {
+  					let extension = currentExtensions[value];
+  					if (extension) {
+  						if (extension.read) {
+  							position$1++; // skip filler byte
+  							return extension.read(read())
+  						} else if (extension.noBuffer) {
+  							position$1++; // skip filler byte
+  							return extension()
+  						} else
+  							return extension(src.subarray(position$1, ++position$1))
+  					} else
+  						throw new Error('Unknown extension ' + value)
+  				}
+  			case 0xd5:
+  				// fixext 2
+  				value = src[position$1];
+  				if (value == 0x72) {
+  					position$1++;
+  					return recordDefinition(src[position$1++] & 0x3f, src[position$1++])
+  				} else
+  					return readExt(2)
+  			case 0xd6:
+  				// fixext 4
+  				return readExt(4)
+  			case 0xd7:
+  				// fixext 8
+  				return readExt(8)
+  			case 0xd8:
+  				// fixext 16
+  				return readExt(16)
+  			case 0xd9:
+  			// str 8
+  				value = src[position$1++];
+  				if (srcStringEnd >= position$1) {
+  					return srcString.slice(position$1 - srcStringStart, (position$1 += value) - srcStringStart)
+  				}
+  				return readString8(value)
+  			case 0xda:
+  			// str 16
+  				value = dataView.getUint16(position$1);
+  				position$1 += 2;
+  				if (srcStringEnd >= position$1) {
+  					return srcString.slice(position$1 - srcStringStart, (position$1 += value) - srcStringStart)
+  				}
+  				return readString16(value)
+  			case 0xdb:
+  			// str 32
+  				value = dataView.getUint32(position$1);
+  				position$1 += 4;
+  				if (srcStringEnd >= position$1) {
+  					return srcString.slice(position$1 - srcStringStart, (position$1 += value) - srcStringStart)
+  				}
+  				return readString32(value)
+  			case 0xdc:
+  			// array 16
+  				value = dataView.getUint16(position$1);
+  				position$1 += 2;
+  				return readArray$1(value)
+  			case 0xdd:
+  			// array 32
+  				value = dataView.getUint32(position$1);
+  				position$1 += 4;
+  				return readArray$1(value)
+  			case 0xde:
+  			// map 16
+  				value = dataView.getUint16(position$1);
+  				position$1 += 2;
+  				return readMap(value)
+  			case 0xdf:
+  			// map 32
+  				value = dataView.getUint32(position$1);
+  				position$1 += 4;
+  				return readMap(value)
+  			default: // negative int
+  				if (token >= 0xe0)
+  					return token - 0x100
+  				if (token === undefined) {
+  					let error = new Error('Unexpected end of MessagePack data');
+  					error.incomplete = true;
+  					throw error
+  				}
+  				throw new Error('Unknown MessagePack token ' + token)
+
+  		}
+  	}
+  }
+  const validName = /^[a-zA-Z_$][a-zA-Z\d_$]*$/;
+  function createStructureReader(structure, firstId) {
+  	function readObject() {
+  		// This initial function is quick to instantiate, but runs slower. After several iterations pay the cost to build the faster function
+  		if (readObject.count++ > inlineObjectReadThreshold) {
+  			let readObject = structure.read = (new Function('r', 'return function(){return ' + (currentUnpackr.freezeData ? 'Object.freeze' : '') +
+  				'({' + structure.map(key => key === '__proto__' ? '__proto_:r()' : validName.test(key) ? key + ':r()' : ('[' + JSON.stringify(key) + ']:r()')).join(',') + '})}'))(read);
+  			if (structure.highByte === 0)
+  				structure.read = createSecondByteReader(firstId, structure.read);
+  			return readObject() // second byte is already read, if there is one so immediately read object
+  		}
+  		let object = {};
+  		for (let i = 0, l = structure.length; i < l; i++) {
+  			let key = structure[i];
+  			if (key === '__proto__')
+  				key = '__proto_';
+  			object[key] = read();
+  		}
+  		if (currentUnpackr.freezeData)
+  			return Object.freeze(object);
+  		return object
+  	}
+  	readObject.count = 0;
+  	if (structure.highByte === 0) {
+  		return createSecondByteReader(firstId, readObject)
+  	}
+  	return readObject
+  }
+
+  const createSecondByteReader = (firstId, read0) => {
+  	return function() {
+  		let highByte = src[position$1++];
+  		if (highByte === 0)
+  			return read0()
+  		let id = firstId < 32 ? -(firstId + (highByte << 5)) : firstId + (highByte << 5);
+  		let structure = currentStructures[id] || loadStructures()[id];
+  		if (!structure) {
+  			throw new Error('Record id is not defined for ' + id)
+  		}
+  		if (!structure.read)
+  			structure.read = createStructureReader(structure, firstId);
+  		return structure.read()
+  	}
+  };
+
+  function loadStructures() {
+  	let loadedStructures = saveState(() => {
+  		// save the state in case getStructures modifies our buffer
+  		src = null;
+  		return currentUnpackr.getStructures()
+  	});
+  	return currentStructures = currentUnpackr._mergeStructures(loadedStructures, currentStructures)
+  }
+
+  var readFixedString = readStringJS;
+  var readString8 = readStringJS;
+  var readString16 = readStringJS;
+  var readString32 = readStringJS;
+  function readStringJS(length) {
+  	let result;
+  	if (length < 16) {
+  		if (result = shortStringInJS(length))
+  			return result
+  	}
+  	if (length > 64 && decoder)
+  		return decoder.decode(src.subarray(position$1, position$1 += length))
+  	const end = position$1 + length;
+  	const units = [];
+  	result = '';
+  	while (position$1 < end) {
+  		const byte1 = src[position$1++];
+  		if ((byte1 & 0x80) === 0) {
+  			// 1 byte
+  			units.push(byte1);
+  		} else if ((byte1 & 0xe0) === 0xc0) {
+  			// 2 bytes
+  			const byte2 = src[position$1++] & 0x3f;
+  			units.push(((byte1 & 0x1f) << 6) | byte2);
+  		} else if ((byte1 & 0xf0) === 0xe0) {
+  			// 3 bytes
+  			const byte2 = src[position$1++] & 0x3f;
+  			const byte3 = src[position$1++] & 0x3f;
+  			units.push(((byte1 & 0x1f) << 12) | (byte2 << 6) | byte3);
+  		} else if ((byte1 & 0xf8) === 0xf0) {
+  			// 4 bytes
+  			const byte2 = src[position$1++] & 0x3f;
+  			const byte3 = src[position$1++] & 0x3f;
+  			const byte4 = src[position$1++] & 0x3f;
+  			let unit = ((byte1 & 0x07) << 0x12) | (byte2 << 0x0c) | (byte3 << 0x06) | byte4;
+  			if (unit > 0xffff) {
+  				unit -= 0x10000;
+  				units.push(((unit >>> 10) & 0x3ff) | 0xd800);
+  				unit = 0xdc00 | (unit & 0x3ff);
+  			}
+  			units.push(unit);
+  		} else {
+  			units.push(byte1);
+  		}
+
+  		if (units.length >= 0x1000) {
+  			result += fromCharCode.apply(String, units);
+  			units.length = 0;
+  		}
+  	}
+
+  	if (units.length > 0) {
+  		result += fromCharCode.apply(String, units);
+  	}
+
+  	return result
+  }
+
+  function readArray$1(length) {
+  	let array = new Array(length);
+  	for (let i = 0; i < length; i++) {
+  		array[i] = read();
+  	}
+  	if (currentUnpackr.freezeData)
+  		return Object.freeze(array)
+  	return array
+  }
+
+  function readMap(length) {
+  	if (currentUnpackr.mapsAsObjects) {
+  		let object = {};
+  		for (let i = 0; i < length; i++) {
+  			let key = readKey();
+  			if (key === '__proto__')
+  				key = '__proto_';
+  			object[key] = read();
+  		}
+  		return object
+  	} else {
+  		let map = new Map();
+  		for (let i = 0; i < length; i++) {
+  			map.set(read(), read());
+  		}
+  		return map
+  	}
+  }
+
+  var fromCharCode = String.fromCharCode;
+  function longStringInJS(length) {
+  	let start = position$1;
+  	let bytes = new Array(length);
+  	for (let i = 0; i < length; i++) {
+  		const byte = src[position$1++];
+  		if ((byte & 0x80) > 0) {
+  				position$1 = start;
+  				return
+  			}
+  			bytes[i] = byte;
+  		}
+  		return fromCharCode.apply(String, bytes)
+  }
+  function shortStringInJS(length) {
+  	if (length < 4) {
+  		if (length < 2) {
+  			if (length === 0)
+  				return ''
+  			else {
+  				let a = src[position$1++];
+  				if ((a & 0x80) > 1) {
+  					position$1 -= 1;
+  					return
+  				}
+  				return fromCharCode(a)
+  			}
+  		} else {
+  			let a = src[position$1++];
+  			let b = src[position$1++];
+  			if ((a & 0x80) > 0 || (b & 0x80) > 0) {
+  				position$1 -= 2;
+  				return
+  			}
+  			if (length < 3)
+  				return fromCharCode(a, b)
+  			let c = src[position$1++];
+  			if ((c & 0x80) > 0) {
+  				position$1 -= 3;
+  				return
+  			}
+  			return fromCharCode(a, b, c)
+  		}
+  	} else {
+  		let a = src[position$1++];
+  		let b = src[position$1++];
+  		let c = src[position$1++];
+  		let d = src[position$1++];
+  		if ((a & 0x80) > 0 || (b & 0x80) > 0 || (c & 0x80) > 0 || (d & 0x80) > 0) {
+  			position$1 -= 4;
+  			return
+  		}
+  		if (length < 6) {
+  			if (length === 4)
+  				return fromCharCode(a, b, c, d)
+  			else {
+  				let e = src[position$1++];
+  				if ((e & 0x80) > 0) {
+  					position$1 -= 5;
+  					return
+  				}
+  				return fromCharCode(a, b, c, d, e)
+  			}
+  		} else if (length < 8) {
+  			let e = src[position$1++];
+  			let f = src[position$1++];
+  			if ((e & 0x80) > 0 || (f & 0x80) > 0) {
+  				position$1 -= 6;
+  				return
+  			}
+  			if (length < 7)
+  				return fromCharCode(a, b, c, d, e, f)
+  			let g = src[position$1++];
+  			if ((g & 0x80) > 0) {
+  				position$1 -= 7;
+  				return
+  			}
+  			return fromCharCode(a, b, c, d, e, f, g)
+  		} else {
+  			let e = src[position$1++];
+  			let f = src[position$1++];
+  			let g = src[position$1++];
+  			let h = src[position$1++];
+  			if ((e & 0x80) > 0 || (f & 0x80) > 0 || (g & 0x80) > 0 || (h & 0x80) > 0) {
+  				position$1 -= 8;
+  				return
+  			}
+  			if (length < 10) {
+  				if (length === 8)
+  					return fromCharCode(a, b, c, d, e, f, g, h)
+  				else {
+  					let i = src[position$1++];
+  					if ((i & 0x80) > 0) {
+  						position$1 -= 9;
+  						return
+  					}
+  					return fromCharCode(a, b, c, d, e, f, g, h, i)
+  				}
+  			} else if (length < 12) {
+  				let i = src[position$1++];
+  				let j = src[position$1++];
+  				if ((i & 0x80) > 0 || (j & 0x80) > 0) {
+  					position$1 -= 10;
+  					return
+  				}
+  				if (length < 11)
+  					return fromCharCode(a, b, c, d, e, f, g, h, i, j)
+  				let k = src[position$1++];
+  				if ((k & 0x80) > 0) {
+  					position$1 -= 11;
+  					return
+  				}
+  				return fromCharCode(a, b, c, d, e, f, g, h, i, j, k)
+  			} else {
+  				let i = src[position$1++];
+  				let j = src[position$1++];
+  				let k = src[position$1++];
+  				let l = src[position$1++];
+  				if ((i & 0x80) > 0 || (j & 0x80) > 0 || (k & 0x80) > 0 || (l & 0x80) > 0) {
+  					position$1 -= 12;
+  					return
+  				}
+  				if (length < 14) {
+  					if (length === 12)
+  						return fromCharCode(a, b, c, d, e, f, g, h, i, j, k, l)
+  					else {
+  						let m = src[position$1++];
+  						if ((m & 0x80) > 0) {
+  							position$1 -= 13;
+  							return
+  						}
+  						return fromCharCode(a, b, c, d, e, f, g, h, i, j, k, l, m)
+  					}
+  				} else {
+  					let m = src[position$1++];
+  					let n = src[position$1++];
+  					if ((m & 0x80) > 0 || (n & 0x80) > 0) {
+  						position$1 -= 14;
+  						return
+  					}
+  					if (length < 15)
+  						return fromCharCode(a, b, c, d, e, f, g, h, i, j, k, l, m, n)
+  					let o = src[position$1++];
+  					if ((o & 0x80) > 0) {
+  						position$1 -= 15;
+  						return
+  					}
+  					return fromCharCode(a, b, c, d, e, f, g, h, i, j, k, l, m, n, o)
+  				}
+  			}
+  		}
+  	}
+  }
+
+  function readOnlyJSString() {
+  	let token = src[position$1++];
+  	let length;
+  	if (token < 0xc0) {
+  		// fixstr
+  		length = token - 0xa0;
+  	} else {
+  		switch(token) {
+  			case 0xd9:
+  			// str 8
+  				length = src[position$1++];
+  				break
+  			case 0xda:
+  			// str 16
+  				length = dataView.getUint16(position$1);
+  				position$1 += 2;
+  				break
+  			case 0xdb:
+  			// str 32
+  				length = dataView.getUint32(position$1);
+  				position$1 += 4;
+  				break
+  			default:
+  				throw new Error('Expected string')
+  		}
+  	}
+  	return readStringJS(length)
+  }
+
+
+  function readBin(length) {
+  	return currentUnpackr.copyBuffers ?
+  		// specifically use the copying slice (not the node one)
+  		Uint8Array.prototype.slice.call(src, position$1, position$1 += length) :
+  		src.subarray(position$1, position$1 += length)
+  }
+  function readExt(length) {
+  	let type = src[position$1++];
+  	if (currentExtensions[type]) {
+  		let end;
+  		return currentExtensions[type](src.subarray(position$1, end = (position$1 += length)), (readPosition) => {
+  			position$1 = readPosition;
+  			try {
+  				return read();
+  			} finally {
+  				position$1 = end;
+  			}
+  		})
+  	}
+  	else
+  		throw new Error('Unknown extension type ' + type)
+  }
+
+  var keyCache = new Array(4096);
+  function readKey() {
+  	let length = src[position$1++];
+  	if (length >= 0xa0 && length < 0xc0) {
+  		// fixstr, potentially use key cache
+  		length = length - 0xa0;
+  		if (srcStringEnd >= position$1) // if it has been extracted, must use it (and faster anyway)
+  			return srcString.slice(position$1 - srcStringStart, (position$1 += length) - srcStringStart)
+  		else if (!(srcStringEnd == 0 && srcEnd < 180))
+  			return readFixedString(length)
+  	} else { // not cacheable, go back and do a standard read
+  		position$1--;
+  		return asSafeString(read())
+  	}
+  	let key = ((length << 5) ^ (length > 1 ? dataView.getUint16(position$1) : length > 0 ? src[position$1] : 0)) & 0xfff;
+  	let entry = keyCache[key];
+  	let checkPosition = position$1;
+  	let end = position$1 + length - 3;
+  	let chunk;
+  	let i = 0;
+  	if (entry && entry.bytes == length) {
+  		while (checkPosition < end) {
+  			chunk = dataView.getUint32(checkPosition);
+  			if (chunk != entry[i++]) {
+  				checkPosition = 0x70000000;
+  				break
+  			}
+  			checkPosition += 4;
+  		}
+  		end += 3;
+  		while (checkPosition < end) {
+  			chunk = src[checkPosition++];
+  			if (chunk != entry[i++]) {
+  				checkPosition = 0x70000000;
+  				break
+  			}
+  		}
+  		if (checkPosition === end) {
+  			position$1 = checkPosition;
+  			return entry.string
+  		}
+  		end -= 3;
+  		checkPosition = position$1;
+  	}
+  	entry = [];
+  	keyCache[key] = entry;
+  	entry.bytes = length;
+  	while (checkPosition < end) {
+  		chunk = dataView.getUint32(checkPosition);
+  		entry.push(chunk);
+  		checkPosition += 4;
+  	}
+  	end += 3;
+  	while (checkPosition < end) {
+  		chunk = src[checkPosition++];
+  		entry.push(chunk);
+  	}
+  	// for small blocks, avoiding the overhead of the extract call is helpful
+  	let string = length < 16 ? shortStringInJS(length) : longStringInJS(length);
+  	if (string != null)
+  		return entry.string = string
+  	return entry.string = readFixedString(length)
+  }
+
+  function asSafeString(property) {
+  	if (typeof property === 'string') return property;
+  	if (typeof property === 'number') return property.toString();
+  	throw new Error('Invalid property type for record', typeof property);
+  }
+  // the registration of the record definition extension (as "r")
+  const recordDefinition = (id, highByte) => {
+  	let structure = read().map(asSafeString); // ensure that all keys are strings and
+  	// that the array is mutable
+  	let firstByte = id;
+  	if (highByte !== undefined) {
+  		id = id < 32 ? -((highByte << 5) + id) : ((highByte << 5) + id);
+  		structure.highByte = highByte;
+  	}
+  	let existingStructure = currentStructures[id];
+  	// If it is a shared structure, we need to restore any changes after reading.
+  	// Also in sequential mode, we may get incomplete reads and thus errors, and we need to restore
+  	// to the state prior to an incomplete read in order to properly resume.
+  	if (existingStructure && (existingStructure.isShared || sequentialMode)) {
+  		(currentStructures.restoreStructures || (currentStructures.restoreStructures = []))[id] = existingStructure;
+  	}
+  	currentStructures[id] = structure;
+  	structure.read = createStructureReader(structure, firstByte);
+  	return structure.read()
+  };
+  currentExtensions[0] = () => {}; // notepack defines extension 0 to mean undefined, so use that as the default here
+  currentExtensions[0].noBuffer = true;
+
+  currentExtensions[0x42] = (data) => {
+  	// decode bigint
+  	let length = data.length;
+  	let value = BigInt(data[0] & 0x80 ? data[0] - 0x100 : data[0]);
+  	for (let i = 1; i < length; i++) {
+  		value <<= 8n;
+  		value += BigInt(data[i]);
+  	}
+  	return value;
+  };
+
+  let errors = { Error, TypeError, ReferenceError };
+  currentExtensions[0x65] = () => {
+  	let data = read();
+  	return (errors[data[0]] || Error)(data[1])
+  };
+
+  currentExtensions[0x69] = (data) => {
+  	// id extension (for structured clones)
+  	if (currentUnpackr.structuredClone === false) throw new Error('Structured clone extension is disabled')
+  	let id = dataView.getUint32(position$1 - 4);
+  	if (!referenceMap)
+  		referenceMap = new Map();
+  	let token = src[position$1];
+  	let target;
+  	// TODO: handle Maps, Sets, and other types that can cycle; this is complicated, because you potentially need to read
+  	// ahead past references to record structure definitions
+  	if (token >= 0x90 && token < 0xa0 || token == 0xdc || token == 0xdd)
+  		target = [];
+  	else
+  		target = {};
+
+  	let refEntry = { target }; // a placeholder object
+  	referenceMap.set(id, refEntry);
+  	let targetProperties = read(); // read the next value as the target object to id
+  	if (refEntry.used) // there is a cycle, so we have to assign properties to original target
+  		return Object.assign(target, targetProperties)
+  	refEntry.target = targetProperties; // the placeholder wasn't used, replace with the deserialized one
+  	return targetProperties // no cycle, can just use the returned read object
+  };
+
+  currentExtensions[0x70] = (data) => {
+  	// pointer extension (for structured clones)
+  	if (currentUnpackr.structuredClone === false) throw new Error('Structured clone extension is disabled')
+  	let id = dataView.getUint32(position$1 - 4);
+  	let refEntry = referenceMap.get(id);
+  	refEntry.used = true;
+  	return refEntry.target
+  };
+
+  currentExtensions[0x73] = () => new Set(read());
+
+  const typedArrays = ['Int8','Uint8','Uint8Clamped','Int16','Uint16','Int32','Uint32','Float32','Float64','BigInt64','BigUint64'].map(type => type + 'Array');
+
+  let glbl = typeof globalThis === 'object' ? globalThis : window;
+  currentExtensions[0x74] = (data) => {
+  	let typeCode = data[0];
+  	let typedArrayName = typedArrays[typeCode];
+  	if (!typedArrayName)
+  		throw new Error('Could not find typed array for code ' + typeCode)
+  	// we have to always slice/copy here to get a new ArrayBuffer that is word/byte aligned
+  	return new glbl[typedArrayName](Uint8Array.prototype.slice.call(data, 1).buffer)
+  };
+  currentExtensions[0x78] = () => {
+  	let data = read();
+  	return new RegExp(data[0], data[1])
+  };
+  const TEMP_BUNDLE = [];
+  currentExtensions[0x62] = (data) => {
+  	let dataSize = (data[0] << 24) + (data[1] << 16) + (data[2] << 8) + data[3];
+  	let dataPosition = position$1;
+  	position$1 += dataSize - data.length;
+  	bundledStrings$1 = TEMP_BUNDLE;
+  	bundledStrings$1 = [readOnlyJSString(), readOnlyJSString()];
+  	bundledStrings$1.position0 = 0;
+  	bundledStrings$1.position1 = 0;
+  	bundledStrings$1.postBundlePosition = position$1;
+  	position$1 = dataPosition;
+  	return read()
+  };
+
+  currentExtensions[0xff] = (data) => {
+  	// 32-bit date extension
+  	if (data.length == 4)
+  		return new Date((data[0] * 0x1000000 + (data[1] << 16) + (data[2] << 8) + data[3]) * 1000)
+  	else if (data.length == 8)
+  		return new Date(
+  			((data[0] << 22) + (data[1] << 14) + (data[2] << 6) + (data[3] >> 2)) / 1000000 +
+  			((data[3] & 0x3) * 0x100000000 + data[4] * 0x1000000 + (data[5] << 16) + (data[6] << 8) + data[7]) * 1000)
+  	else if (data.length == 12)// TODO: Implement support for negative
+  		return new Date(
+  			((data[0] << 24) + (data[1] << 16) + (data[2] << 8) + data[3]) / 1000000 +
+  			(((data[4] & 0x80) ? -281474976710656 : 0) + data[6] * 0x10000000000 + data[7] * 0x100000000 + data[8] * 0x1000000 + (data[9] << 16) + (data[10] << 8) + data[11]) * 1000)
+  	else
+  		return new Date('invalid')
+  }; // notepack defines extension 0 to mean undefined, so use that as the default here
+  // registration of bulk record definition?
+  // currentExtensions[0x52] = () =>
+
+  function saveState(callback) {
+  	let savedSrcEnd = srcEnd;
+  	let savedPosition = position$1;
+  	let savedSrcStringStart = srcStringStart;
+  	let savedSrcStringEnd = srcStringEnd;
+  	let savedSrcString = srcString;
+  	let savedReferenceMap = referenceMap;
+  	let savedBundledStrings = bundledStrings$1;
+
+  	// TODO: We may need to revisit this if we do more external calls to user code (since it could be slow)
+  	let savedSrc = new Uint8Array(src.slice(0, srcEnd)); // we copy the data in case it changes while external data is processed
+  	let savedStructures = currentStructures;
+  	let savedStructuresContents = currentStructures.slice(0, currentStructures.length);
+  	let savedPackr = currentUnpackr;
+  	let savedSequentialMode = sequentialMode;
+  	let value = callback();
+  	srcEnd = savedSrcEnd;
+  	position$1 = savedPosition;
+  	srcStringStart = savedSrcStringStart;
+  	srcStringEnd = savedSrcStringEnd;
+  	srcString = savedSrcString;
+  	referenceMap = savedReferenceMap;
+  	bundledStrings$1 = savedBundledStrings;
+  	src = savedSrc;
+  	sequentialMode = savedSequentialMode;
+  	currentStructures = savedStructures;
+  	currentStructures.splice(0, currentStructures.length, ...savedStructuresContents);
+  	currentUnpackr = savedPackr;
+  	dataView = new DataView(src.buffer, src.byteOffset, src.byteLength);
+  	return value
+  }
+  function clearSource() {
+  	src = null;
+  	referenceMap = null;
+  	currentStructures = null;
+  }
+
+  const mult10 = new Array(147); // this is a table matching binary exponents to the multiplier to determine significant digit rounding
+  for (let i = 0; i < 256; i++) {
+  	mult10[i] = +('1e' + Math.floor(45.15 - i * 0.30103));
+  }
+  var defaultUnpackr = new Unpackr({ useRecords: false });
+  const unpack = defaultUnpackr.unpack;
+  defaultUnpackr.unpackMultiple;
+  defaultUnpackr.unpack;
+  let f32Array = new Float32Array(1);
+  new Uint8Array(f32Array.buffer, 0, 4);
+
+  let textEncoder;
+  try {
+  	textEncoder = new TextEncoder();
+  } catch (error) {}
+  let extensions, extensionClasses;
+  const hasNodeBuffer = typeof Buffer !== 'undefined';
+  const ByteArrayAllocate = hasNodeBuffer ?
+  	function(length) { return Buffer.allocUnsafeSlow(length) } : Uint8Array;
+  const ByteArray = hasNodeBuffer ? Buffer : Uint8Array;
+  const MAX_BUFFER_SIZE = hasNodeBuffer ? 0x100000000 : 0x7fd00000;
+  let target, keysTarget;
+  let targetView;
+  let position = 0;
+  let safeEnd;
+  let bundledStrings = null;
+  let writeStructSlots;
+  const MAX_BUNDLE_SIZE = 0x5500; // maximum characters such that the encoded bytes fits in 16 bits.
+  const hasNonLatin = /[\u0080-\uFFFF]/;
+  const RECORD_SYMBOL = Symbol('record-id');
+  class Packr extends Unpackr {
+  	constructor(options) {
+  		super(options);
+  		this.offset = 0;
+  		let start;
+  		let hasSharedUpdate;
+  		let structures;
+  		let referenceMap;
+  		let encodeUtf8 = ByteArray.prototype.utf8Write ? function(string, position) {
+  			return target.utf8Write(string, position, 0xffffffff)
+  		} : (textEncoder && textEncoder.encodeInto) ?
+  			function(string, position) {
+  				return textEncoder.encodeInto(string, target.subarray(position)).written
+  			} : false;
+
+  		let packr = this;
+  		if (!options)
+  			options = {};
+  		let isSequential = options && options.sequential;
+  		let hasSharedStructures = options.structures || options.saveStructures;
+  		let maxSharedStructures = options.maxSharedStructures;
+  		if (maxSharedStructures == null)
+  			maxSharedStructures = hasSharedStructures ? 32 : 0;
+  		if (maxSharedStructures > 8160)
+  			throw new Error('Maximum maxSharedStructure is 8160')
+  		if (options.structuredClone && options.moreTypes == undefined) {
+  			this.moreTypes = true;
+  		}
+  		let maxOwnStructures = options.maxOwnStructures;
+  		if (maxOwnStructures == null)
+  			maxOwnStructures = hasSharedStructures ? 32 : 64;
+  		if (!this.structures && options.useRecords != false)
+  			this.structures = [];
+  		// two byte record ids for shared structures
+  		let useTwoByteRecords = maxSharedStructures > 32 || (maxOwnStructures + maxSharedStructures > 64);		
+  		let sharedLimitId = maxSharedStructures + 0x40;
+  		let maxStructureId = maxSharedStructures + maxOwnStructures + 0x40;
+  		if (maxStructureId > 8256) {
+  			throw new Error('Maximum maxSharedStructure + maxOwnStructure is 8192')
+  		}
+  		let recordIdsToRemove = [];
+  		let transitionsCount = 0;
+  		let serializationsSinceTransitionRebuild = 0;
+
+  		this.pack = this.encode = function(value, encodeOptions) {
+  			if (!target) {
+  				target = new ByteArrayAllocate(8192);
+  				targetView = target.dataView || (target.dataView = new DataView(target.buffer, 0, 8192));
+  				position = 0;
+  			}
+  			safeEnd = target.length - 10;
+  			if (safeEnd - position < 0x800) {
+  				// don't start too close to the end, 
+  				target = new ByteArrayAllocate(target.length);
+  				targetView = target.dataView || (target.dataView = new DataView(target.buffer, 0, target.length));
+  				safeEnd = target.length - 10;
+  				position = 0;
+  			} else
+  				position = (position + 7) & 0x7ffffff8; // Word align to make any future copying of this buffer faster
+  			start = position;
+  			if (encodeOptions & RESERVE_START_SPACE) position += (encodeOptions & 0xff);
+  			referenceMap = packr.structuredClone ? new Map() : null;
+  			if (packr.bundleStrings && typeof value !== 'string') {
+  				bundledStrings = [];
+  				bundledStrings.size = Infinity; // force a new bundle start on first string
+  			} else
+  				bundledStrings = null;
+  			structures = packr.structures;
+  			if (structures) {
+  				if (structures.uninitialized)
+  					structures = packr._mergeStructures(packr.getStructures());
+  				let sharedLength = structures.sharedLength || 0;
+  				if (sharedLength > maxSharedStructures) {
+  					//if (maxSharedStructures <= 32 && structures.sharedLength > 32) // TODO: could support this, but would need to update the limit ids
+  					throw new Error('Shared structures is larger than maximum shared structures, try increasing maxSharedStructures to ' + structures.sharedLength)
+  				}
+  				if (!structures.transitions) {
+  					// rebuild our structure transitions
+  					structures.transitions = Object.create(null);
+  					for (let i = 0; i < sharedLength; i++) {
+  						let keys = structures[i];
+  						if (!keys)
+  							continue
+  						let nextTransition, transition = structures.transitions;
+  						for (let j = 0, l = keys.length; j < l; j++) {
+  							let key = keys[j];
+  							nextTransition = transition[key];
+  							if (!nextTransition) {
+  								nextTransition = transition[key] = Object.create(null);
+  							}
+  							transition = nextTransition;
+  						}
+  						transition[RECORD_SYMBOL] = i + 0x40;
+  					}
+  					this.lastNamedStructuresLength = sharedLength;
+  				}
+  				if (!isSequential) {
+  					structures.nextId = sharedLength + 0x40;
+  				}
+  			}
+  			if (hasSharedUpdate)
+  				hasSharedUpdate = false;
+  			let encodingError;
+  			try {
+  				if (packr.randomAccessStructure && value && value.constructor && value.constructor === Object)
+  					writeStruct(value);
+  				else
+  					pack(value);
+  				let lastBundle = bundledStrings;
+  				if (bundledStrings)
+  					writeBundles(start, pack, 0);
+  				if (referenceMap && referenceMap.idsToInsert) {
+  					let idsToInsert = referenceMap.idsToInsert.sort((a, b) => a.offset > b.offset ? 1 : -1);
+  					let i = idsToInsert.length;
+  					let incrementPosition = -1;
+  					while (lastBundle && i > 0) {
+  						let insertionPoint = idsToInsert[--i].offset + start;
+  						if (insertionPoint < (lastBundle.stringsPosition + start) && incrementPosition === -1)
+  							incrementPosition = 0;
+  						if (insertionPoint > (lastBundle.position + start)) {
+  							if (incrementPosition >= 0)
+  								incrementPosition += 6;
+  						} else {
+  							if (incrementPosition >= 0) {
+  								// update the bundle reference now
+  								targetView.setUint32(lastBundle.position + start,
+  									targetView.getUint32(lastBundle.position + start) + incrementPosition);
+  								incrementPosition = -1; // reset
+  							}
+  							lastBundle = lastBundle.previous;
+  							i++;
+  						}
+  					}
+  					if (incrementPosition >= 0 && lastBundle) {
+  						// update the bundle reference now
+  						targetView.setUint32(lastBundle.position + start,
+  							targetView.getUint32(lastBundle.position + start) + incrementPosition);
+  					}
+  					position += idsToInsert.length * 6;
+  					if (position > safeEnd)
+  						makeRoom(position);
+  					packr.offset = position;
+  					let serialized = insertIds(target.subarray(start, position), idsToInsert);
+  					referenceMap = null;
+  					return serialized
+  				}
+  				packr.offset = position; // update the offset so next serialization doesn't write over our buffer, but can continue writing to same buffer sequentially
+  				if (encodeOptions & REUSE_BUFFER_MODE) {
+  					target.start = start;
+  					target.end = position;
+  					return target
+  				}
+  				return target.subarray(start, position) // position can change if we call pack again in saveStructures, so we get the buffer now
+  			} catch(error) {
+  				encodingError = error;
+  				throw error;
+  			} finally {
+  				if (structures) {
+  					resetStructures();
+  					if (hasSharedUpdate && packr.saveStructures) {
+  						let sharedLength = structures.sharedLength || 0;
+  						// we can't rely on start/end with REUSE_BUFFER_MODE since they will (probably) change when we save
+  						let returnBuffer = target.subarray(start, position);
+  						let newSharedData = prepareStructures(structures, packr);
+  						if (!encodingError) { // TODO: If there is an encoding error, should make the structures as uninitialized so they get rebuilt next time
+  							if (packr.saveStructures(newSharedData, newSharedData.isCompatible) === false) {
+  								// get updated structures and try again if the update failed
+  								return packr.pack(value, encodeOptions)
+  							}
+  							packr.lastNamedStructuresLength = sharedLength;
+  							return returnBuffer
+  						}
+  					}
+  				}
+  				if (encodeOptions & RESET_BUFFER_MODE)
+  					position = start;
+  			}
+  		};
+  		const resetStructures = () => {
+  			if (serializationsSinceTransitionRebuild < 10)
+  				serializationsSinceTransitionRebuild++;
+  			let sharedLength = structures.sharedLength || 0;
+  			if (structures.length > sharedLength && !isSequential)
+  				structures.length = sharedLength;
+  			if (transitionsCount > 10000) {
+  				// force a rebuild occasionally after a lot of transitions so it can get cleaned up
+  				structures.transitions = null;
+  				serializationsSinceTransitionRebuild = 0;
+  				transitionsCount = 0;
+  				if (recordIdsToRemove.length > 0)
+  					recordIdsToRemove = [];
+  			} else if (recordIdsToRemove.length > 0 && !isSequential) {
+  				for (let i = 0, l = recordIdsToRemove.length; i < l; i++) {
+  					recordIdsToRemove[i][RECORD_SYMBOL] = 0;
+  				}
+  				recordIdsToRemove = [];
+  			}
+  		};
+  		const packArray = (value) => {
+  			var length = value.length;
+  			if (length < 0x10) {
+  				target[position++] = 0x90 | length;
+  			} else if (length < 0x10000) {
+  				target[position++] = 0xdc;
+  				target[position++] = length >> 8;
+  				target[position++] = length & 0xff;
+  			} else {
+  				target[position++] = 0xdd;
+  				targetView.setUint32(position, length);
+  				position += 4;
+  			}
+  			for (let i = 0; i < length; i++) {
+  				pack(value[i]);
+  			}
+  		};
+  		const pack = (value) => {
+  			if (position > safeEnd)
+  				target = makeRoom(position);
+
+  			var type = typeof value;
+  			var length;
+  			if (type === 'string') {
+  				let strLength = value.length;
+  				if (bundledStrings && strLength >= 4 && strLength < 0x1000) {
+  					if ((bundledStrings.size += strLength) > MAX_BUNDLE_SIZE) {
+  						let extStart;
+  						let maxBytes = (bundledStrings[0] ? bundledStrings[0].length * 3 + bundledStrings[1].length : 0) + 10;
+  						if (position + maxBytes > safeEnd)
+  							target = makeRoom(position + maxBytes);
+  						let lastBundle;
+  						if (bundledStrings.position) { // here we use the 0x62 extension to write the last bundle and reserve space for the reference pointer to the next/current bundle
+  							lastBundle = bundledStrings;
+  							target[position] = 0xc8; // ext 16
+  							position += 3; // reserve for the writing bundle size
+  							target[position++] = 0x62; // 'b'
+  							extStart = position - start;
+  							position += 4; // reserve for writing bundle reference
+  							writeBundles(start, pack, 0); // write the last bundles
+  							targetView.setUint16(extStart + start - 3, position - start - extStart);
+  						} else { // here we use the 0x62 extension just to reserve the space for the reference pointer to the bundle (will be updated once the bundle is written)
+  							target[position++] = 0xd6; // fixext 4
+  							target[position++] = 0x62; // 'b'
+  							extStart = position - start;
+  							position += 4; // reserve for writing bundle reference
+  						}
+  						bundledStrings = ['', '']; // create new ones
+  						bundledStrings.previous = lastBundle;
+  						bundledStrings.size = 0;
+  						bundledStrings.position = extStart;
+  					}
+  					let twoByte = hasNonLatin.test(value);
+  					bundledStrings[twoByte ? 0 : 1] += value;
+  					target[position++] = 0xc1;
+  					pack(twoByte ? -strLength : strLength);
+  					return
+  				}
+  				let headerSize;
+  				// first we estimate the header size, so we can write to the correct location
+  				if (strLength < 0x20) {
+  					headerSize = 1;
+  				} else if (strLength < 0x100) {
+  					headerSize = 2;
+  				} else if (strLength < 0x10000) {
+  					headerSize = 3;
+  				} else {
+  					headerSize = 5;
+  				}
+  				let maxBytes = strLength * 3;
+  				if (position + maxBytes > safeEnd)
+  					target = makeRoom(position + maxBytes);
+
+  				if (strLength < 0x40 || !encodeUtf8) {
+  					let i, c1, c2, strPosition = position + headerSize;
+  					for (i = 0; i < strLength; i++) {
+  						c1 = value.charCodeAt(i);
+  						if (c1 < 0x80) {
+  							target[strPosition++] = c1;
+  						} else if (c1 < 0x800) {
+  							target[strPosition++] = c1 >> 6 | 0xc0;
+  							target[strPosition++] = c1 & 0x3f | 0x80;
+  						} else if (
+  							(c1 & 0xfc00) === 0xd800 &&
+  							((c2 = value.charCodeAt(i + 1)) & 0xfc00) === 0xdc00
+  						) {
+  							c1 = 0x10000 + ((c1 & 0x03ff) << 10) + (c2 & 0x03ff);
+  							i++;
+  							target[strPosition++] = c1 >> 18 | 0xf0;
+  							target[strPosition++] = c1 >> 12 & 0x3f | 0x80;
+  							target[strPosition++] = c1 >> 6 & 0x3f | 0x80;
+  							target[strPosition++] = c1 & 0x3f | 0x80;
+  						} else {
+  							target[strPosition++] = c1 >> 12 | 0xe0;
+  							target[strPosition++] = c1 >> 6 & 0x3f | 0x80;
+  							target[strPosition++] = c1 & 0x3f | 0x80;
+  						}
+  					}
+  					length = strPosition - position - headerSize;
+  				} else {
+  					length = encodeUtf8(value, position + headerSize);
+  				}
+
+  				if (length < 0x20) {
+  					target[position++] = 0xa0 | length;
+  				} else if (length < 0x100) {
+  					if (headerSize < 2) {
+  						target.copyWithin(position + 2, position + 1, position + 1 + length);
+  					}
+  					target[position++] = 0xd9;
+  					target[position++] = length;
+  				} else if (length < 0x10000) {
+  					if (headerSize < 3) {
+  						target.copyWithin(position + 3, position + 2, position + 2 + length);
+  					}
+  					target[position++] = 0xda;
+  					target[position++] = length >> 8;
+  					target[position++] = length & 0xff;
+  				} else {
+  					if (headerSize < 5) {
+  						target.copyWithin(position + 5, position + 3, position + 3 + length);
+  					}
+  					target[position++] = 0xdb;
+  					targetView.setUint32(position, length);
+  					position += 4;
+  				}
+  				position += length;
+  			} else if (type === 'number') {
+  				if (value >>> 0 === value) {// positive integer, 32-bit or less
+  					// positive uint
+  					if (value < 0x20 || (value < 0x80 && this.useRecords === false) || (value < 0x40 && !this.randomAccessStructure)) {
+  						target[position++] = value;
+  					} else if (value < 0x100) {
+  						target[position++] = 0xcc;
+  						target[position++] = value;
+  					} else if (value < 0x10000) {
+  						target[position++] = 0xcd;
+  						target[position++] = value >> 8;
+  						target[position++] = value & 0xff;
+  					} else {
+  						target[position++] = 0xce;
+  						targetView.setUint32(position, value);
+  						position += 4;
+  					}
+  				} else if (value >> 0 === value) { // negative integer
+  					if (value >= -32) {
+  						target[position++] = 0x100 + value;
+  					} else if (value >= -128) {
+  						target[position++] = 0xd0;
+  						target[position++] = value + 0x100;
+  					} else if (value >= -32768) {
+  						target[position++] = 0xd1;
+  						targetView.setInt16(position, value);
+  						position += 2;
+  					} else {
+  						target[position++] = 0xd2;
+  						targetView.setInt32(position, value);
+  						position += 4;
+  					}
+  				} else {
+  					let useFloat32;
+  					if ((useFloat32 = this.useFloat32) > 0 && value < 0x100000000 && value >= -2147483648) {
+  						target[position++] = 0xca;
+  						targetView.setFloat32(position, value);
+  						let xShifted;
+  						if (useFloat32 < 4 ||
+  								// this checks for rounding of numbers that were encoded in 32-bit float to nearest significant decimal digit that could be preserved
+  								((xShifted = value * mult10[((target[position] & 0x7f) << 1) | (target[position + 1] >> 7)]) >> 0) === xShifted) {
+  							position += 4;
+  							return
+  						} else
+  							position--; // move back into position for writing a double
+  					}
+  					target[position++] = 0xcb;
+  					targetView.setFloat64(position, value);
+  					position += 8;
+  				}
+  			} else if (type === 'object' || type === 'function') {
+  				if (!value)
+  					target[position++] = 0xc0;
+  				else {
+  					if (referenceMap) {
+  						let referee = referenceMap.get(value);
+  						if (referee) {
+  							if (!referee.id) {
+  								let idsToInsert = referenceMap.idsToInsert || (referenceMap.idsToInsert = []);
+  								referee.id = idsToInsert.push(referee);
+  							}
+  							target[position++] = 0xd6; // fixext 4
+  							target[position++] = 0x70; // "p" for pointer
+  							targetView.setUint32(position, referee.id);
+  							position += 4;
+  							return
+  						} else 
+  							referenceMap.set(value, { offset: position - start });
+  					}
+  					let constructor = value.constructor;
+  					if (constructor === Object) {
+  						writeObject(value, true);
+  					} else if (constructor === Array) {
+  						packArray(value);
+  					} else if (constructor === Map) {
+  						if (this.mapAsEmptyObject) target[position++] = 0x80;
+  						else {
+  							length = value.size;
+  							if (length < 0x10) {
+  								target[position++] = 0x80 | length;
+  							} else if (length < 0x10000) {
+  								target[position++] = 0xde;
+  								target[position++] = length >> 8;
+  								target[position++] = length & 0xff;
+  							} else {
+  								target[position++] = 0xdf;
+  								targetView.setUint32(position, length);
+  								position += 4;
+  							}
+  							for (let [key, entryValue] of value) {
+  								pack(key);
+  								pack(entryValue);
+  							}
+  						}
+  					} else {	
+  						for (let i = 0, l = extensions.length; i < l; i++) {
+  							let extensionClass = extensionClasses[i];
+  							if (value instanceof extensionClass) {
+  								let extension = extensions[i];
+  								if (extension.write) {
+  									if (extension.type) {
+  										target[position++] = 0xd4; // one byte "tag" extension
+  										target[position++] = extension.type;
+  										target[position++] = 0;
+  									}
+  									let writeResult = extension.write.call(this, value);
+  									if (writeResult === value) { // avoid infinite recursion
+  										if (Array.isArray(value)) {
+  											packArray(value);
+  										} else {
+  											writeObject(value);
+  										}
+  									} else {
+  										pack(writeResult);
+  									}
+  									return
+  								}
+  								let currentTarget = target;
+  								let currentTargetView = targetView;
+  								let currentPosition = position;
+  								target = null;
+  								let result;
+  								try {
+  									result = extension.pack.call(this, value, (size) => {
+  										// restore target and use it
+  										target = currentTarget;
+  										currentTarget = null;
+  										position += size;
+  										if (position > safeEnd)
+  											makeRoom(position);
+  										return {
+  											target, targetView, position: position - size
+  										}
+  									}, pack);
+  								} finally {
+  									// restore current target information (unless already restored)
+  									if (currentTarget) {
+  										target = currentTarget;
+  										targetView = currentTargetView;
+  										position = currentPosition;
+  										safeEnd = target.length - 10;
+  									}
+  								}
+  								if (result) {
+  									if (result.length + position > safeEnd)
+  										makeRoom(result.length + position);
+  									position = writeExtensionData(result, target, position, extension.type);
+  								}
+  								return
+  							}
+  						}
+  						// check isArray after extensions, because extensions can extend Array
+  						if (Array.isArray(value)) {
+  							packArray(value);
+  						} else {
+  							// use this as an alternate mechanism for expressing how to serialize
+  							if (value.toJSON) {
+  								const json = value.toJSON();
+  								// if for some reason value.toJSON returns itself it'll loop forever
+  								if (json !== value)
+  									return pack(json)
+  							}
+  							
+  							// if there is a writeFunction, use it, otherwise just encode as undefined
+  							if (type === 'function')
+  								return pack(this.writeFunction && this.writeFunction(value));
+  							
+  							// no extension found, write as object
+  							writeObject(value, !value.hasOwnProperty); // if it doesn't have hasOwnProperty, don't do hasOwnProperty checks
+  						}
+  					}
+  				}
+  			} else if (type === 'boolean') {
+  				target[position++] = value ? 0xc3 : 0xc2;
+  			} else if (type === 'bigint') {
+  				if (value < (BigInt(1)<<BigInt(63)) && value >= -(BigInt(1)<<BigInt(63))) {
+  					// use a signed int as long as it fits
+  					target[position++] = 0xd3;
+  					targetView.setBigInt64(position, value);
+  				} else if (value < (BigInt(1)<<BigInt(64)) && value > 0) {
+  					// if we can fit an unsigned int, use that
+  					target[position++] = 0xcf;
+  					targetView.setBigUint64(position, value);
+  				} else {
+  					// overflow
+  					if (this.largeBigIntToFloat) {
+  						target[position++] = 0xcb;
+  						targetView.setFloat64(position, Number(value));
+  					} else if (this.useBigIntExtension && value < 2n**(1023n) && value > -(2n**(1023n))) {
+  						target[position++] = 0xc7;
+  						position++;
+  						target[position++] = 0x42; // "B" for BigInt
+  						let bytes = [];
+  						let alignedSign;
+  						do {
+  							let byte = value & 0xffn;
+  							alignedSign = (byte & 0x80n) === (value < 0n ? 0x80n : 0n);
+  							bytes.push(byte);
+  							value >>= 8n;
+  						} while (!((value === 0n || value === -1n) && alignedSign));
+  						target[position-2] = bytes.length;
+  						for (let i = bytes.length; i > 0;) {
+  							target[position++] = Number(bytes[--i]);
+  						}
+  						return
+  					} else {
+  						throw new RangeError(value + ' was too large to fit in MessagePack 64-bit integer format, use' +
+  							' useBigIntExtension or set largeBigIntToFloat to convert to float-64')
+  					}
+  				}
+  				position += 8;
+  			} else if (type === 'undefined') {
+  				if (this.encodeUndefinedAsNil)
+  					target[position++] = 0xc0;
+  				else {
+  					target[position++] = 0xd4; // a number of implementations use fixext1 with type 0, data 0 to denote undefined, so we follow suite
+  					target[position++] = 0;
+  					target[position++] = 0;
+  				}
+  			} else {
+  				throw new Error('Unknown type: ' + type)
+  			}
+  		};
+
+  		const writePlainObject = (this.variableMapSize || this.coercibleKeyAsNumber) ? (object) => {
+  			// this method is slightly slower, but generates "preferred serialization" (optimally small for smaller objects)
+  			let keys = Object.keys(object);
+  			let length = keys.length;
+  			if (length < 0x10) {
+  				target[position++] = 0x80 | length;
+  			} else if (length < 0x10000) {
+  				target[position++] = 0xde;
+  				target[position++] = length >> 8;
+  				target[position++] = length & 0xff;
+  			} else {
+  				target[position++] = 0xdf;
+  				targetView.setUint32(position, length);
+  				position += 4;
+  			}
+  			let key;
+  			if (this.coercibleKeyAsNumber) {
+  				for (let i = 0; i < length; i++) {
+  					key = keys[i];
+  					let num = Number(key);
+  					pack(isNaN(num) ? key : num);
+  					pack(object[key]);
+  				}
+
+  			} else {
+  				for (let i = 0; i < length; i++) {
+  					pack(key = keys[i]);
+  					pack(object[key]);
+  				}
+  			}
+  		} :
+  		(object, safePrototype) => {
+  			target[position++] = 0xde; // always using map 16, so we can preallocate and set the length afterwards
+  			let objectOffset = position - start;
+  			position += 2;
+  			let size = 0;
+  			for (let key in object) {
+  				if (safePrototype || object.hasOwnProperty(key)) {
+  					pack(key);
+  					pack(object[key]);
+  					size++;
+  				}
+  			}
+  			target[objectOffset++ + start] = size >> 8;
+  			target[objectOffset + start] = size & 0xff;
+  		};
+
+  		const writeRecord = this.useRecords === false ? writePlainObject :
+  		(options.progressiveRecords && !useTwoByteRecords) ?  // this is about 2% faster for highly stable structures, since it only requires one for-in loop (but much more expensive when new structure needs to be written)
+  		(object, safePrototype) => {
+  			let nextTransition, transition = structures.transitions || (structures.transitions = Object.create(null));
+  			let objectOffset = position++ - start;
+  			let wroteKeys;
+  			for (let key in object) {
+  				if (safePrototype || object.hasOwnProperty(key)) {
+  					nextTransition = transition[key];
+  					if (nextTransition)
+  						transition = nextTransition;
+  					else {
+  						// record doesn't exist, create full new record and insert it
+  						let keys = Object.keys(object);
+  						let lastTransition = transition;
+  						transition = structures.transitions;
+  						let newTransitions = 0;
+  						for (let i = 0, l = keys.length; i < l; i++) {
+  							let key = keys[i];
+  							nextTransition = transition[key];
+  							if (!nextTransition) {
+  								nextTransition = transition[key] = Object.create(null);
+  								newTransitions++;
+  							}
+  							transition = nextTransition;
+  						}
+  						if (objectOffset + start + 1 == position) {
+  							// first key, so we don't need to insert, we can just write record directly
+  							position--;
+  							newRecord(transition, keys, newTransitions);
+  						} else // otherwise we need to insert the record, moving existing data after the record
+  							insertNewRecord(transition, keys, objectOffset, newTransitions);
+  						wroteKeys = true;
+  						transition = lastTransition[key];
+  					}
+  					pack(object[key]);
+  				}
+  			}
+  			if (!wroteKeys) {
+  				let recordId = transition[RECORD_SYMBOL];
+  				if (recordId)
+  					target[objectOffset + start] = recordId;
+  				else
+  					insertNewRecord(transition, Object.keys(object), objectOffset, 0);
+  			}
+  		} :
+  		(object, safePrototype) => {
+  			let nextTransition, transition = structures.transitions || (structures.transitions = Object.create(null));
+  			let newTransitions = 0;
+  			for (let key in object) if (safePrototype || object.hasOwnProperty(key)) {
+  				nextTransition = transition[key];
+  				if (!nextTransition) {
+  					nextTransition = transition[key] = Object.create(null);
+  					newTransitions++;
+  				}
+  				transition = nextTransition;
+  			}
+  			let recordId = transition[RECORD_SYMBOL];
+  			if (recordId) {
+  				if (recordId >= 0x60 && useTwoByteRecords) {
+  					target[position++] = ((recordId -= 0x60) & 0x1f) + 0x60;
+  					target[position++] = recordId >> 5;
+  				} else
+  					target[position++] = recordId;
+  			} else {
+  				newRecord(transition, transition.__keys__ || Object.keys(object), newTransitions);
+  			}
+  			// now write the values
+  			for (let key in object)
+  				if (safePrototype || object.hasOwnProperty(key)) {
+  					pack(object[key]);
+  				}
+  		};
+
+  		// craete reference to useRecords if useRecords is a function
+  		const checkUseRecords = typeof this.useRecords == 'function' && this.useRecords;
+  		
+  		const writeObject = checkUseRecords ? (object, safePrototype) => {
+  			checkUseRecords(object) ? writeRecord(object,safePrototype) : writePlainObject(object,safePrototype);
+  		} : writeRecord;
+
+  		const makeRoom = (end) => {
+  			let newSize;
+  			if (end > 0x1000000) {
+  				// special handling for really large buffers
+  				if ((end - start) > MAX_BUFFER_SIZE)
+  					throw new Error('Packed buffer would be larger than maximum buffer size')
+  				newSize = Math.min(MAX_BUFFER_SIZE,
+  					Math.round(Math.max((end - start) * (end > 0x4000000 ? 1.25 : 2), 0x400000) / 0x1000) * 0x1000);
+  			} else // faster handling for smaller buffers
+  				newSize = ((Math.max((end - start) << 2, target.length - 1) >> 12) + 1) << 12;
+  			let newBuffer = new ByteArrayAllocate(newSize);
+  			targetView = newBuffer.dataView || (newBuffer.dataView = new DataView(newBuffer.buffer, 0, newSize));
+  			end = Math.min(end, target.length);
+  			if (target.copy)
+  				target.copy(newBuffer, 0, start, end);
+  			else
+  				newBuffer.set(target.slice(start, end));
+  			position -= start;
+  			start = 0;
+  			safeEnd = newBuffer.length - 10;
+  			return target = newBuffer
+  		};
+  		const newRecord = (transition, keys, newTransitions) => {
+  			let recordId = structures.nextId;
+  			if (!recordId)
+  				recordId = 0x40;
+  			if (recordId < sharedLimitId && this.shouldShareStructure && !this.shouldShareStructure(keys)) {
+  				recordId = structures.nextOwnId;
+  				if (!(recordId < maxStructureId))
+  					recordId = sharedLimitId;
+  				structures.nextOwnId = recordId + 1;
+  			} else {
+  				if (recordId >= maxStructureId)// cycle back around
+  					recordId = sharedLimitId;
+  				structures.nextId = recordId + 1;
+  			}
+  			let highByte = keys.highByte = recordId >= 0x60 && useTwoByteRecords ? (recordId - 0x60) >> 5 : -1;
+  			transition[RECORD_SYMBOL] = recordId;
+  			transition.__keys__ = keys;
+  			structures[recordId - 0x40] = keys;
+
+  			if (recordId < sharedLimitId) {
+  				keys.isShared = true;
+  				structures.sharedLength = recordId - 0x3f;
+  				hasSharedUpdate = true;
+  				if (highByte >= 0) {
+  					target[position++] = (recordId & 0x1f) + 0x60;
+  					target[position++] = highByte;
+  				} else {
+  					target[position++] = recordId;
+  				}
+  			} else {
+  				if (highByte >= 0) {
+  					target[position++] = 0xd5; // fixext 2
+  					target[position++] = 0x72; // "r" record defintion extension type
+  					target[position++] = (recordId & 0x1f) + 0x60;
+  					target[position++] = highByte;
+  				} else {
+  					target[position++] = 0xd4; // fixext 1
+  					target[position++] = 0x72; // "r" record defintion extension type
+  					target[position++] = recordId;
+  				}
+
+  				if (newTransitions)
+  					transitionsCount += serializationsSinceTransitionRebuild * newTransitions;
+  				// record the removal of the id, we can maintain our shared structure
+  				if (recordIdsToRemove.length >= maxOwnStructures)
+  					recordIdsToRemove.shift()[RECORD_SYMBOL] = 0; // we are cycling back through, and have to remove old ones
+  				recordIdsToRemove.push(transition);
+  				pack(keys);
+  			}
+  		};
+  		const insertNewRecord = (transition, keys, insertionOffset, newTransitions) => {
+  			let mainTarget = target;
+  			let mainPosition = position;
+  			let mainSafeEnd = safeEnd;
+  			let mainStart = start;
+  			target = keysTarget;
+  			position = 0;
+  			start = 0;
+  			if (!target)
+  				keysTarget = target = new ByteArrayAllocate(8192);
+  			safeEnd = target.length - 10;
+  			newRecord(transition, keys, newTransitions);
+  			keysTarget = target;
+  			let keysPosition = position;
+  			target = mainTarget;
+  			position = mainPosition;
+  			safeEnd = mainSafeEnd;
+  			start = mainStart;
+  			if (keysPosition > 1) {
+  				let newEnd = position + keysPosition - 1;
+  				if (newEnd > safeEnd)
+  					makeRoom(newEnd);
+  				let insertionPosition = insertionOffset + start;
+  				target.copyWithin(insertionPosition + keysPosition, insertionPosition + 1, position);
+  				target.set(keysTarget.slice(0, keysPosition), insertionPosition);
+  				position = newEnd;
+  			} else {
+  				target[insertionOffset + start] = keysTarget[0];
+  			}
+  		};
+  		const writeStruct = (object, safePrototype) => {
+  			let newPosition = writeStructSlots(object, target, start, position, structures, makeRoom, (value, newPosition, notifySharedUpdate) => {
+  				if (notifySharedUpdate)
+  					return hasSharedUpdate = true;
+  				position = newPosition;
+  				let startTarget = target;
+  				pack(value);
+  				resetStructures();
+  				if (startTarget !== target) {
+  					return { position, targetView, target }; // indicate the buffer was re-allocated
+  				}
+  				return position;
+  			}, this);
+  			if (newPosition === 0) // bail and go to a msgpack object
+  				return writeObject(object, true);
+  			position = newPosition;
+  		};
+  	}
+  	useBuffer(buffer) {
+  		// this means we are finished using our own buffer and we can write over it safely
+  		target = buffer;
+  		targetView = new DataView(target.buffer, target.byteOffset, target.byteLength);
+  		position = 0;
+  	}
+  	clearSharedData() {
+  		if (this.structures)
+  			this.structures = [];
+  		if (this.typedStructs)
+  			this.typedStructs = [];
+  	}
+  }
+
+  extensionClasses = [ Date, Set, Error, RegExp, ArrayBuffer, Object.getPrototypeOf(Uint8Array.prototype).constructor /*TypedArray*/, C1Type ];
+  extensions = [{
+  	pack(date, allocateForWrite, pack) {
+  		let seconds = date.getTime() / 1000;
+  		if ((this.useTimestamp32 || date.getMilliseconds() === 0) && seconds >= 0 && seconds < 0x100000000) {
+  			// Timestamp 32
+  			let { target, targetView, position} = allocateForWrite(6);
+  			target[position++] = 0xd6;
+  			target[position++] = 0xff;
+  			targetView.setUint32(position, seconds);
+  		} else if (seconds > 0 && seconds < 0x100000000) {
+  			// Timestamp 64
+  			let { target, targetView, position} = allocateForWrite(10);
+  			target[position++] = 0xd7;
+  			target[position++] = 0xff;
+  			targetView.setUint32(position, date.getMilliseconds() * 4000000 + ((seconds / 1000 / 0x100000000) >> 0));
+  			targetView.setUint32(position + 4, seconds);
+  		} else if (isNaN(seconds)) {
+  			if (this.onInvalidDate) {
+  				allocateForWrite(0);
+  				return pack(this.onInvalidDate())
+  			}
+  			// Intentionally invalid timestamp
+  			let { target, targetView, position} = allocateForWrite(3);
+  			target[position++] = 0xd4;
+  			target[position++] = 0xff;
+  			target[position++] = 0xff;
+  		} else {
+  			// Timestamp 96
+  			let { target, targetView, position} = allocateForWrite(15);
+  			target[position++] = 0xc7;
+  			target[position++] = 12;
+  			target[position++] = 0xff;
+  			targetView.setUint32(position, date.getMilliseconds() * 1000000);
+  			targetView.setBigInt64(position + 4, BigInt(Math.floor(seconds)));
+  		}
+  	}
+  }, {
+  	pack(set, allocateForWrite, pack) {
+  		if (this.setAsEmptyObject) {
+  			allocateForWrite(0);
+  			return pack({})
+  		}
+  		let array = Array.from(set);
+  		let { target, position} = allocateForWrite(this.moreTypes ? 3 : 0);
+  		if (this.moreTypes) {
+  			target[position++] = 0xd4;
+  			target[position++] = 0x73; // 's' for Set
+  			target[position++] = 0;
+  		}
+  		pack(array);
+  	}
+  }, {
+  	pack(error, allocateForWrite, pack) {
+  		let { target, position} = allocateForWrite(this.moreTypes ? 3 : 0);
+  		if (this.moreTypes) {
+  			target[position++] = 0xd4;
+  			target[position++] = 0x65; // 'e' for error
+  			target[position++] = 0;
+  		}
+  		pack([ error.name, error.message ]);
+  	}
+  }, {
+  	pack(regex, allocateForWrite, pack) {
+  		let { target, position} = allocateForWrite(this.moreTypes ? 3 : 0);
+  		if (this.moreTypes) {
+  			target[position++] = 0xd4;
+  			target[position++] = 0x78; // 'x' for regeXp
+  			target[position++] = 0;
+  		}
+  		pack([ regex.source, regex.flags ]);
+  	}
+  }, {
+  	pack(arrayBuffer, allocateForWrite) {
+  		if (this.moreTypes)
+  			writeExtBuffer(arrayBuffer, 0x10, allocateForWrite);
+  		else
+  			writeBuffer(hasNodeBuffer ? Buffer.from(arrayBuffer) : new Uint8Array(arrayBuffer), allocateForWrite);
+  	}
+  }, {
+  	pack(typedArray, allocateForWrite) {
+  		let constructor = typedArray.constructor;
+  		if (constructor !== ByteArray && this.moreTypes)
+  			writeExtBuffer(typedArray, typedArrays.indexOf(constructor.name), allocateForWrite);
+  		else
+  			writeBuffer(typedArray, allocateForWrite);
+  	}
+  }, {
+  	pack(c1, allocateForWrite) { // specific 0xC1 object
+  		let { target, position} = allocateForWrite(1);
+  		target[position] = 0xc1;
+  	}
+  }];
+
+  function writeExtBuffer(typedArray, type, allocateForWrite, encode) {
+  	let length = typedArray.byteLength;
+  	if (length + 1 < 0x100) {
+  		var { target, position } = allocateForWrite(4 + length);
+  		target[position++] = 0xc7;
+  		target[position++] = length + 1;
+  	} else if (length + 1 < 0x10000) {
+  		var { target, position } = allocateForWrite(5 + length);
+  		target[position++] = 0xc8;
+  		target[position++] = (length + 1) >> 8;
+  		target[position++] = (length + 1) & 0xff;
+  	} else {
+  		var { target, position, targetView } = allocateForWrite(7 + length);
+  		target[position++] = 0xc9;
+  		targetView.setUint32(position, length + 1); // plus one for the type byte
+  		position += 4;
+  	}
+  	target[position++] = 0x74; // "t" for typed array
+  	target[position++] = type;
+  	target.set(new Uint8Array(typedArray.buffer, typedArray.byteOffset, typedArray.byteLength), position);
+  }
+  function writeBuffer(buffer, allocateForWrite) {
+  	let length = buffer.byteLength;
+  	var target, position;
+  	if (length < 0x100) {
+  		var { target, position } = allocateForWrite(length + 2);
+  		target[position++] = 0xc4;
+  		target[position++] = length;
+  	} else if (length < 0x10000) {
+  		var { target, position } = allocateForWrite(length + 3);
+  		target[position++] = 0xc5;
+  		target[position++] = length >> 8;
+  		target[position++] = length & 0xff;
+  	} else {
+  		var { target, position, targetView } = allocateForWrite(length + 5);
+  		target[position++] = 0xc6;
+  		targetView.setUint32(position, length);
+  		position += 4;
+  	}
+  	target.set(buffer, position);
+  }
+
+  function writeExtensionData(result, target, position, type) {
+  	let length = result.length;
+  	switch (length) {
+  		case 1:
+  			target[position++] = 0xd4;
+  			break
+  		case 2:
+  			target[position++] = 0xd5;
+  			break
+  		case 4:
+  			target[position++] = 0xd6;
+  			break
+  		case 8:
+  			target[position++] = 0xd7;
+  			break
+  		case 16:
+  			target[position++] = 0xd8;
+  			break
+  		default:
+  			if (length < 0x100) {
+  				target[position++] = 0xc7;
+  				target[position++] = length;
+  			} else if (length < 0x10000) {
+  				target[position++] = 0xc8;
+  				target[position++] = length >> 8;
+  				target[position++] = length & 0xff;
+  			} else {
+  				target[position++] = 0xc9;
+  				target[position++] = length >> 24;
+  				target[position++] = (length >> 16) & 0xff;
+  				target[position++] = (length >> 8) & 0xff;
+  				target[position++] = length & 0xff;
+  			}
+  	}
+  	target[position++] = type;
+  	target.set(result, position);
+  	position += length;
+  	return position
+  }
+
+  function insertIds(serialized, idsToInsert) {
+  	// insert the ids that need to be referenced for structured clones
+  	let nextId;
+  	let distanceToMove = idsToInsert.length * 6;
+  	let lastEnd = serialized.length - distanceToMove;
+  	while (nextId = idsToInsert.pop()) {
+  		let offset = nextId.offset;
+  		let id = nextId.id;
+  		serialized.copyWithin(offset + distanceToMove, offset, lastEnd);
+  		distanceToMove -= 6;
+  		let position = offset + distanceToMove;
+  		serialized[position++] = 0xd6;
+  		serialized[position++] = 0x69; // 'i'
+  		serialized[position++] = id >> 24;
+  		serialized[position++] = (id >> 16) & 0xff;
+  		serialized[position++] = (id >> 8) & 0xff;
+  		serialized[position++] = id & 0xff;
+  		lastEnd = offset;
+  	}
+  	return serialized
+  }
+
+  function writeBundles(start, pack, incrementPosition) {
+  	if (bundledStrings.length > 0) {
+  		targetView.setUint32(bundledStrings.position + start, position + incrementPosition - bundledStrings.position - start);
+  		bundledStrings.stringsPosition = position - start;
+  		let writeStrings = bundledStrings;
+  		bundledStrings = null;
+  		pack(writeStrings[0]);
+  		pack(writeStrings[1]);
+  	}
+  }
+  function prepareStructures(structures, packr) {
+  	structures.isCompatible = (existingStructures) => {
+  		let compatible = !existingStructures || ((packr.lastNamedStructuresLength || 0) === existingStructures.length);
+  		if (!compatible) // we want to merge these existing structures immediately since we already have it and we are in the right transaction
+  			packr._mergeStructures(existingStructures);
+  		return compatible;
+  	};
+  	return structures
+  }
+
+  let defaultPackr = new Packr({ useRecords: false });
+  const pack$1 = defaultPackr.pack;
+  defaultPackr.pack;
+  const REUSE_BUFFER_MODE = 512;
+  const RESET_BUFFER_MODE = 1024;
+  const RESERVE_START_SPACE = 2048;
+
+  // Checks if @arg is a Uint8Array containing gzipped data
+  function isGzipped(arg) {
+    return arg.length > 2 && arg.buffer instanceof ArrayBuffer && arg[0] == 0x1f && arg[1] == 0x8b;
+  }
+
+  function gzipSync(content, opts) {
+    // TODO: use native module in Node if available
+    // require('zlib').
+    if (typeof content == 'string') {
+      content = strToU8(content);
+    }
+    if (runningInBrowser()) {
+      return gzipSync$1(content, opts);
+    }
+    return require('zlib').gzipSync(content, opts);
+  }
+
+  async function gzipAsync(content, opts) {
+    if (typeof content == 'string') {
+      content = strToU8(content);
+    }
+    var gzip$1 = runningInBrowser() ? utils.promisify(gzip) : utils.promisify(require('zlib').gzip);
+    return gzip$1(content, opts);
+  }
+
+  async function gunzipAsync(buf, opts) {
+    if (buf instanceof ArrayBuffer) {
+      buf = new Uint8Array(buf);
+    }
+    opts = opts || {};
+    var gunzip$1 = runningInBrowser() ? utils.promisify(gunzip) : utils.promisify(require('zlib').gunzip);
+    var out = await gunzip$1(buf, opts);
+    if (opts.filename && !isImportableAsBinary(opts.filename)) {
+      out = strFromU8(out);
+    }
+    return out;
+  }
+
+  function gunzipSync(buf, filename) {
+    if (buf instanceof ArrayBuffer) {
+      buf = new Uint8Array(buf);
+    }
+    var out = gunzipSync$1(buf); // returns Uint8Array
+    if (filename && !isImportableAsBinary(filename)) {
+      out = strFromU8(out);
+    }
+    return out;
+  }
+
+  var Gzip = /*#__PURE__*/Object.freeze({
+    __proto__: null,
+    gunzipAsync: gunzipAsync,
+    gunzipSync: gunzipSync,
+    gzipAsync: gzipAsync,
+    gzipSync: gzipSync,
+    isGzipped: isGzipped
+  });
+
+  // Export in a column-first format
+  // Faster than exportTable(), and can handle some data that can't be
+  // converted to JSON, like Date objects.
+  async function exportTable2(table) {
+    var fields = table.getFields();
+    var records = table.getRecords();
+    var types = [];
+    var columns = await Promise.all(fields.map(function(name) {
+      var type = getColumnType(name, records);
+      types.push(type);
+      return exportColumn(name, type, records);
+    }));
+    return ({
+      fields: fields,
+      types: types,
+      data: columns,
+      size: records.length
+    });
+  }
+
+  // Returns array of records
+  function importTable(data) {
+    if (looksLikeType2Table(data)) {
+      return importTable2(data);
+    }
+    if (isGzipped(data)) {
+      return JSON.parse(strFromU8(gunzipSync(data)));
+    }
+    if (Array.isArray(data)) {
+      return data;
+    }
+    error('Unknown packed table format');
+  }
+
+  function looksLikeType2Table(o) {
+    return Array.isArray(o.fields) &&
+      Array.isArray(o.types) && Array.isArray(o.data) &&
+      o.fields.length == o.types.length && o.fields.length == o.data.length &&
+      o.size >= 0;
+  }
+
+  function importTable2(obj) {
+    var n = obj.size;
+    var records = [];
+    for (var i=0; i<n; i++) {
+      records[i] = {};
+    }
+    for (var j=0, m=obj.fields.length; j<m; j++) {
+      importColumn(obj.fields[j], obj.types[j], obj.data[j], records);
+      obj.data[j] = null;
+    }
+    return records;
+  }
+
+  function importColumn(field, type, data, records) {
+    var arr, rec;
+    if (isGzipped(data)) {
+      arr = JSON.parse(strFromU8(gunzipSync(data)));
+    } else if (Array.isArray(data)) {
+      arr = data;
+    } else {
+      error('Unexpected packed table format');
+    }
+    for (var i=0, n=records.length; i<n; i++) {
+      rec = records[i];
+      rec[field] = arr[i];
+    }
+  }
+
+  async function exportColumn(name, type, records) {
+    if (type == 'number' || type == 'string') {
+      return gzipAsync(JSON.stringify(getFieldValues(records, name)), {level: 2, consume: true});
+    }
+    return getFieldValues(records, name);
+  }
+
+  // faster for decimal numbers?
+  // function exportNumberField(field, records) {
+  //   var arr = new Float64Array(records.length);
+  //   for (var i=0, n=records.length; i<n; i++) {
+  //     arr[i] = records[i][field];
+  //   }
+  //   return gzipSync(arr, {level: 2});
+  // }
+
+  // libraries
+  // https://msgpack.org/index.html
+  //
+
+  // session format (including gui state)
+  /*
+  {
+    version: 1,
+    created: 'YYYY-MM-DDTHH:mm:ss.sssZ', // ISO string
+    datasets: [],
+    gui: {}, // see gui-session-snapshot-control.mjs
+    history: { // optional; only present in snapshots created by the GUI
+      commands: ['-i foo.shp', '-simplify 10%', ...],
+      savedAtIndex: 0 // index of the first command after the last save boundary
+    }
+  }
+  */
+
+  async function exportPackedDatasets(datasets, opts) {
+    var content = pack(await exportDatasetsToPack(datasets, opts));
+    return [{
+      content: content,
+      filename: opts.file || 'mapshaper_snapshot.' + PACKAGE_EXT
+    }];
+  }
+
+  function pack(obj) {
+    // encode options: see https://github.com/msgpack/msgpack-javascript
+    // initialBufferSize  number  2048
+    // ignoreUndefined boolean false
+    return pack$1(obj, {});
+  }
+
+  // gui: (optional) gui instance
+  // opts examples:
+  //    exporting from command line: { compact: true, file: 'tmp.msx', final: true }
+  //    exporting from gui export menu: {compact: true, format: 'msx'}
+  //    saving gui temp snapshot: {compact: false}
+  // opts.history: optional GUI session history captured by SessionHistory#getHistorySnapshot
+  async function exportDatasetsToPack(datasets, opts) {
+    var obj = {
+      version: 1,
+      created: (new Date).toISOString(),
+      datasets: await Promise.all(datasets.map(dataset => exportDataset(dataset, opts)))
+    };
+    if (opts.history) {
+      obj.history = opts.history;
+    }
+    return obj;
+  }
+
+  async function exportDataset(dataset, opts) {
+    var arcs = dataset.arcs;
+    var arcData = null;
+    if (arcs) {
+      arcData = arcs.getVertexData();
+      arcData.zlimit = arcs.getRetainedInterval(); // TODO: add this to getVertexData()
+      arcData = await exportArcData(arcData, opts);
+    }
+    var layers = dataset.layers.map(lyr => exportLayer(lyr, opts));
+    return {
+      arcs: arcData,
+      info: dataset.info ? exportInfo(dataset.info) : null,
+      layers: await Promise.all(layers)
+    };
+  }
+
+  // compress unpacked + uncompressed snapshot data in-place
+  async function compressSnapshotForExport(obj) {
+    var promises = obj.datasets.map(d => {
+      compressDatasetForExport(d);
+    });
+    await Promise.all(promises);
+    return;
+  }
+
+  async function compressDatasetForExport(obj) {
+    if (!obj.arcs) return;
+    var arcData = importArcData(obj.arcs); // convert buffers to typed arrays
+    obj.arcs = await exportArcData(arcData, {compact: true}); // re-export to compressed buffers
+  }
+
+  function flattenArcs(arcData) {
+    if (arcData.zz && arcData.zlimit) {
+      // replace unfiltered arc data with flattened arc data
+      arcData = filterVertexData(arcData, arcData.zlimit);
+      delete arcData.zz;
+    }
+    return arcData;
+  }
+
+  async function gzipArcData(obj, opts) {
+    var gzipOpts = Object.assign({level: 1, consume: false}, opts);
+    var promises = [gzipAsync(obj.nn, gzipOpts), gzipAsync(obj.xx, gzipOpts), gzipAsync(obj.yy, gzipOpts)];
+    if (obj.zz) promises.push(gzipAsync(obj.zz, gzipOpts));
+    var results = await Promise.all(promises);
+    obj.nn = results.shift();
+    obj.xx = results.shift();
+    obj.yy = results.shift();
+    if (obj.zz) obj.zz = results.shift();
+  }
+
+  function importArcData(obj) {
+    return {
+      nn: new Uint32Array(obj.nn.buffer, 0, obj.nn.length / 4),
+      xx: new Float64Array(obj.xx.buffer, 0, obj.xx.length / 8),
+      yy: new Float64Array(obj.yy.buffer, 0, obj.yy.length / 8),
+      zz: obj.zz ? new Float64Array(obj.zz.buffer, 0, obj.zz.length / 8) : null,
+      zlimit: obj.zlimit || 0
+    };
+  }
+
+  async function exportArcData(data, opts) {
+    // TODO: consider removing arcs that are not referenced by any layer
+    if (opts.compact && data.zz) {
+      data = flattenArcs(data); // bake in any simplification
+    }
+    var output = {
+      nn: typedArrayToBuffer(data.nn),
+      xx: typedArrayToBuffer(data.xx),
+      yy: typedArrayToBuffer(data.yy),
+      zz: data.zz ? typedArrayToBuffer(data.zz) : null,
+      zlimit: data.zlimit || 0
+    };
+    if (opts.compact && data.zz) {
+      await gzipArcData(output);
+    }
+    return output;
+  }
+
+  function typedArrayToBuffer(arr) {
+    return new Uint8Array(arr.buffer, arr.byteOffset, arr.byteLength);
+  }
+
+  async function exportLayer(lyr, opts) {
+    var data = null;
+    if (lyr.data) {
+      data = await exportTable2(lyr.data);
+    }
+    return {
+      name: lyr.name || null,
+      geometry_type: lyr.geometry_type || null,
+      shapes: lyr.shapes || null,
+      data: data,
+      menu_order: lyr.menu_order || null,
+      pinned: lyr.pinned || opts.show_all || false,
+      active: !!(lyr.active || lyr == opts.active_layer) // lyr.active: deprecated
+    };
+  }
+
+  function exportInfo(info) {
+    info = Object.assign({}, info);
+    if (info.crs && !info.crs_string && !info.wkt1) {
+      info.crs_string = crsToProj4(info.crs);
+    }
+    delete info.crs; // proj object cannot be serialized (need to reconstitute in unpack)
+    return info;
+  }
+
+  var Pack = /*#__PURE__*/Object.freeze({
+    __proto__: null,
+    PACKAGE_EXT: PACKAGE_EXT,
+    compressSnapshotForExport: compressSnapshotForExport,
+    exportDataset: exportDataset,
+    exportDatasetsToPack: exportDatasetsToPack,
+    exportInfo: exportInfo,
+    exportPackedDatasets: exportPackedDatasets,
+    pack: pack
+  });
 
   function exportRecordsAsFixedWidthString(fields, records, opts) {
     var rows = [], col;
@@ -26753,6 +26406,10 @@ ${svg}
       // Web API may import as ArrayBuffer, to support larger files
       reader = new BufferReader(content);
       content = null;
+      // BufferReader keeps its own reference; release the caller's so we
+      // don't hold both the source bytes and the parsed records in memory
+      // for the duration of the parse.
+      data.content = null;
     } else if (utils.isString(content)) ; else {
       error("Unexpected object type");
     }
@@ -27118,6 +26775,21 @@ ${svg}
     return chunks;
   }
 
+  function parsePercent(o) {
+    var str = String(o);
+    var isPct = str.indexOf('%') > 0;
+    var pct;
+    if (isPct) {
+      pct = Number(str.replace('%', '')) / 100;
+    } else {
+      pct = Number(str);
+    }
+    if (!(pct >= 0 && pct <= 1)) {
+      stop$1(utils.format("Invalid percentage: %s", str));
+    }
+    return pct;
+  }
+
   function parseNumberList(token) {
     return token.split(',').map(parseFloat);
   }
@@ -27215,6 +26887,7 @@ ${svg}
     isAssignment: isAssignment,
     parseColorList: parseColorList,
     parseNumberList: parseNumberList,
+    parsePercent: parsePercent,
     parseStringList: parseStringList,
     splitAssignment: splitAssignment,
     splitShellTokens: splitShellTokens
@@ -27258,6 +26931,16 @@ ${svg}
       opts.option('debug', {type: 'flag'});
       _commands.push(opts);
       return opts;
+    };
+
+    // Look up a CommandOptions wrapper that has already been registered, so a
+    // caller (e.g. mapshaper-examples.mjs) can attach examples to it without
+    // touching the option list. Returns null if the command isn't found.
+    this.findCommand = function(name) {
+      return utils.find(_commands, function(c) {
+        var def = c.done();
+        return def.name === name || def.alias === name || def.old_alias === name;
+      }) || null;
     };
 
     this.section = function(name) {
@@ -27468,6 +27151,8 @@ ${svg}
         cmd.options[optDef.name] = value;
       }
 
+
+
       function parseOptionValue(token, optDef) {
         var type = optDef.type;
         var val, err;
@@ -27482,7 +27167,6 @@ ${svg}
         } else if (type == 'bbox' || type == 'numbers') {
           val = parseNumberList(token);
         } else if (type == 'percent') {
-          // val = utils.parsePercent(token);
           val = token; // string value is parsed by command function
         } else if (type == 'distance' || type == 'area') {
           val = token; // string value is parsed by command function
@@ -27723,6 +27407,349 @@ ${svg}
     this.done = function() {
       return _command;
     };
+  }
+
+  // =============================================================================
+  // Usage examples shown by `mapshaper -help <command>`.
+  //
+  // HOW TO READ THIS FILE
+  //   - The default export is keyed by command name (the same name passed to
+  //     parser.command(...) in mapshaper-options.mjs).
+  //   - Each value is an array of example entries; entries render in order.
+  //   - An entry is { description?, command }:
+  //       description -- one or more lines of plain text shown above the
+  //                      command line. Optional; omit for self-explanatory
+  //                      one-liners.
+  //       command     -- the bare argv string. The "$ mapshaper " prefix is
+  //                      added automatically by applyExamples() so all examples
+  //                      look consistent on screen. May span multiple lines if
+  //                      the example uses backslash-continuation; just write a
+  //                      template literal with literal newlines in it.
+  //
+  // HOW TO COMMENT OUT
+  //   - Single example, lightweight: just comment the `command:` line. Entries
+  //     without a `command` are silently skipped, so this is the fastest way
+  //     to park a description while you're polishing the invocation.
+  //   - Single example, fully: comment the `{...},` entry.
+  //   - All examples for a command: comment the `cmd: [...]` entry.
+  //   - applyExamples() throws if a top-level key isn't a real command name,
+  //     so typos in command names can't slip in unnoticed.
+  //
+  // SCOPE
+  //   This is per-command help only. Top-level examples on the bare
+  //   `mapshaper -help` page still go through parser.example(...) directly in
+  //   mapshaper-options.mjs.
+  // =============================================================================
+
+  const examples = {
+
+    // -------------------------------------------------------------------------
+    // I/O
+    // -------------------------------------------------------------------------
+
+    i: [
+      {
+        description: 'Import a Shapefile and print a summary',
+        command: 'states.shp -info'
+      },
+      {
+        description: 'Import several files as a single set of layers',
+        command: 'states.geojson cities.geojson combine-files'
+      }
+    ],
+
+    o: [
+      {
+        description: 'Convert a Shapefile to GeoJSON',
+        command: 'states.shp -o states.geojson'
+      },
+      {
+        description: 'Write each input layer to a separate file in dest/',
+        // command: 'states.shp counties.shp combine-files -o dest/'
+      }
+    ],
+
+    // -------------------------------------------------------------------------
+    // Editing geometry
+    // -------------------------------------------------------------------------
+
+    affine: [
+      {
+        description: 'Nudge a layer 50m east and 200m north',
+        command: 'roads.geojson -affine shift=50m,200m'
+      }
+    ],
+
+    buffer: [
+      {
+        description: 'Buffer points by 500m and write the result as GeoJSON',
+        // command: 'wells.shp -buffer 500m -o format=geojson buffered.json'
+      }
+    ],
+
+    clean: [
+      {
+        description: 'Repair overlaps and gaps before converting to lines',
+        command: 'parcels.shp -clean -lines'
+      }
+    ],
+
+    clip: [
+      {
+        command: 'states.shp -clip land_area.geojson'
+      }
+    ],
+
+    dissolve: [
+      {
+        description: 'Dissolve all polygons in a feature layer into a single polygon',
+        command: 'states.geojson -dissolve'
+      },
+      {
+        description:
+          'Generate state-level polygons by dissolving a layer of counties\n' +
+          '(STATE_FIPS, POPULATION and STATE_NAME are attribute field names)',
+        command:
+          'counties.shp -dissolve STATE_FIPS copy-fields=STATE_NAME ' +
+          'sum-fields=POPULATION'
+      }
+    ],
+
+    erase: [
+      {
+        command: 'land_areas.shp -erase water_bodies.shp'
+      }
+    ],
+
+    explode: [
+      {
+        // description: 'Split each multi-part feature into individual single-part features',
+        command: 'admin.geojson -explode'
+      }
+    ],
+
+    innerlines: [
+      {
+        description: 'Extract the shared boundaries between adjacent counties',
+        command: 'counties.shp -innerlines -o county_lines.shp'
+      }
+    ],
+
+    lines: [
+      {
+        description: 'Convert polygon boundaries to lines, keeping a per-state ID',
+        // command: 'states.shp -lines STATE_FIPS -o state_lines.shp'
+      }
+    ],
+
+    // -------------------------------------------------------------------------
+    // Topology, simplification, generalization
+    // -------------------------------------------------------------------------
+
+    simplify: [
+      {
+        description: 'Simplify using default method',
+        command: 'states.shp -simplify 10%'
+      },
+      {
+        description: 'Simplify using Douglas-Peucker and 100m threshold',
+        command: 'states.shp -simplify dp interval=100m'
+      }
+    ],
+
+    snap: [
+      {
+        description: 'Snap nearby vertices to clean up tiny topology errors',
+        command: 'parcels.shp -snap'
+      }
+    ],
+
+    // -------------------------------------------------------------------------
+    // Attribute editing
+    // -------------------------------------------------------------------------
+
+    calc: [
+      {
+        description: 'Calculate the total area of a polygon layer',
+        command: "polygons.shp -calc 'sum(this.area)'"
+      },
+      {
+        description: 'Count census blocks in NY with zero population',
+        command: "ny-census-blocks.shp -calc 'count()' where='POPULATION == 0'"
+      }
+    ],
+
+    classify: [
+      {
+        description: 'Bucket counties into 5 quantiles by population density',
+        command: 'counties.shp -classify field=DENSITY classes=5 method=quantile'
+      }
+    ],
+
+    colorizer: [
+      {
+        description: 'Define a sequential color scheme and use it to create a new field',
+        command:
+          'data.json -colorizer name=getColor nodata=#eee breaks=20,40 \\\n' +
+          "  colors=#e0f3db,#a8ddb5,#43a2ca -each 'fill = getColor(RATING)'"
+      }
+    ],
+
+    each: [
+      {
+        description: 'Add two calculated data fields to a layer of U.S. counties',
+        command:
+          "counties.shp -each 'STATE_FIPS=CNTY_FIPS.substr(0, 2), AREA=this.area'"
+      }
+    ],
+
+    filter: [
+      {
+        description: 'Keep only features whose POPULATION exceeds 1,000,000',
+        command: "places.shp -filter 'POPULATION > 1e6'"
+      }
+    ],
+
+    'filter-fields': [
+      {
+        description: 'Keep only the listed fields',
+        command: 'states.shp -filter-fields STATE_FIPS,STATE_NAME'
+      }
+    ],
+
+    join: [
+      {
+        description: "Join a CSV table to a Shapefile (don't auto-convert FIPS column to numbers)",
+        command:
+          'states.shp -join data.csv keys=STATE_FIPS,FIPS string-fields=FIPS ' +
+          '-o joined.shp'
+      }
+    ],
+
+    'rename-fields': [
+      {
+        description: 'Rename two fields in place',
+        command: 'data.shp -rename-fields STATE=STATE_FIPS,POP=POPULATION'
+      }
+    ],
+
+    sort: [
+      {
+        description: 'Sort features by population, descending',
+        command: "counties.shp -sort POPULATION descending"
+      }
+    ],
+
+    // -------------------------------------------------------------------------
+    // Layers
+    // -------------------------------------------------------------------------
+
+    'merge-layers': [
+      {
+        description: 'Combine all loaded layers into one',
+        command: '*.shp combine-files -merge-layers -o merged.shp'
+      }
+    ],
+
+    'rename-layers': [
+      {
+        description: 'Give the active layer a meaningful name',
+        // command: 'data.json -rename-layers parcels -o'
+      }
+    ],
+
+    split: [
+      {
+        description: 'Split a layer into one layer per STATE_FIPS value',
+        command: 'counties.shp -split STATE_FIPS -o dest/'
+      }
+    ],
+
+    target: [
+      {
+        description: 'Direct the next command at a named layer',
+        command: 'states.shp counties.shp combine-files -target counties -dissolve STATE_FIPS -o'
+      }
+    ],
+
+    // -------------------------------------------------------------------------
+    // Projections
+    // -------------------------------------------------------------------------
+
+    proj: [
+      {
+        description: 'Re-project to Web Mercator',
+        command: 'states.geojson -proj webmercator'
+      },
+      {
+        description: 'Set a source CRS without re-projecting (e.g. for unprojected GeoJSON)',
+        command: 'data.geojson -proj init=EPSG:2263'
+      }
+    ],
+
+    // -------------------------------------------------------------------------
+    // Informational
+    // -------------------------------------------------------------------------
+
+    info: [
+      {
+        description: 'Print a summary of a dataset',
+        command: 'states.shp -info'
+      }
+    ],
+
+    inspect: [
+      {
+        description: 'Print full attribute and geometry info for a single feature',
+        command: "places.shp -inspect 'NAME == \"Fort Wayne\"'"
+      }
+    ]
+  };
+
+  // `cmd` is the parser created by getOptionParser(). For each entry in the
+  // table above, look up the matching CommandOptions and forward the formatted
+  // string to its existing .example() method, so the help printer needs no
+  // changes.
+  //
+  // Entries without a usable `command` field (missing, commented out, blank)
+  // are silently skipped, so a single `// command: '...'` is enough to disable
+  // one example without commenting out its surrounding object.
+  //
+  // Top-level keys that don't match a registered command throw at startup, so
+  // command-name typos surface immediately rather than disappearing.
+  //
+  // `table` is optional and defaults to the bundled `examples` object; it
+  // exists so tests can pump synthetic tables through the same skip-and-format
+  // logic without having to mutate the singleton.
+  function applyExamples(parser, table) {
+    table = table || examples;
+    Object.keys(table).forEach(function(cmdName) {
+      var entries = table[cmdName];
+      if (!Array.isArray(entries) || entries.length === 0) return;
+      var cmd = parser.findCommand(cmdName);
+      if (!cmd) {
+        throw new Error('mapshaper-examples.mjs: no parser command named "' + cmdName + '"');
+      }
+      entries.forEach(function(entry) {
+        if (!isUsable(entry)) return;
+        cmd.example(formatExample(entry));
+      });
+    });
+  }
+
+  function isUsable(entry) {
+    return entry && typeof entry.command === 'string' && entry.command.length > 0;
+  }
+
+  // Build the on-screen string for one example. Mirrors the historical inline
+  // format of `description\n$ mapshaper <command>`, so existing rendering in
+  // mapshaper-command-parser.mjs (split-on-newline, two-space indent) keeps
+  // working unchanged.
+  function formatExample(entry) {
+    var out = '';
+    if (entry.description) out += entry.description + '\n';
+    out += '$ mapshaper ' + entry.command;
+    return out;
   }
 
   function getOptionParser() {
@@ -28405,7 +28432,6 @@ ${svg}
 
     parser.command('clip')
       .describe('use a polygon layer to clip another layer')
-      .example('$ mapshaper states.shp -clip land_area.shp -o clipped.shp')
       .option('source', {
         DEFAULT: true,
         describe: 'file or layer containing clip polygons'
@@ -28458,10 +28484,7 @@ ${svg}
       .option('precision', {
         describe: 'rounding precision to apply before classification (e.g. 0.1)',
         type: 'number'
-      })
-      .example('Define a sequential color scheme and use it to create a new field\n' +
-          '$ mapshaper data.json -colorizer name=getColor nodata=#eee breaks=20,40 \\\n' +
-          '  colors=#e0f3db,#a8ddb5,#43a2ca -each \'fill = getColor(RATING)\' -o output.json');
+      });
 
     parser.command('dashlines')
       .describe('split lines into sections, with or without a gap')
@@ -28494,11 +28517,6 @@ ${svg}
 
     parser.command('dissolve')
       .describe('merge features within a layer (repairs polygon topology)')
-      .example('Dissolve all polygons in a feature layer into a single polygon\n' +
-        '$ mapshaper states.shp -dissolve -o country.shp')
-      .example('Generate state-level polygons by dissolving a layer of counties\n' +
-        '(STATE_FIPS, POPULATION and STATE_NAME are attribute field names)\n' +
-        '$ mapshaper counties.shp -dissolve STATE_FIPS copy-fields=STATE_NAME sum-fields=POPULATION -o states.shp')
       .option('field', {}) // old arg handled by dissolve function
       .option('fields', dissolveFieldsOpt)
       .option('calc', calcOpt)
@@ -28648,8 +28666,6 @@ ${svg}
 
     parser.command('each')
       .describe('create/update/delete data fields using a JS expression')
-      .example('Add two calculated data fields to a layer of U.S. counties\n' +
-          '$ mapshaper counties.shp -each \'STATE_FIPS=CNTY_FIPS.substr(0, 2), AREA=this.area\'')
       .option('expression', {
         DEFAULT: true,
         describe: 'JS expression to apply to each target feature'
@@ -28662,7 +28678,6 @@ ${svg}
 
     parser.command('erase')
       .describe('use a polygon layer to erase another layer')
-      .example('$ mapshaper land_areas.shp -erase water_bodies.shp -o erased.shp')
       .option('source', {
         DEFAULT: true,
         describe: 'file or layer containing erase polygons'
@@ -28869,8 +28884,6 @@ ${svg}
 
     parser.command('join')
       .describe('join data records from a file or layer to a layer')
-      .example('Join a csv table to a Shapefile (don\'t auto-convert FIPS column to numbers)\n' +
-        '$ mapshaper states.shp -join data.csv keys=STATE_FIPS,FIPS string-fields=FIPS -o joined.shp')
       .validate(function(cmd) {
         if (!cmd.options.source) {
           error('Command requires the name of a layer or file to join');
@@ -29182,7 +29195,6 @@ ${svg}
 
     parser.command('simplify')
       .validate(validateSimplifyOpts)
-      .example('Retain 10% of removable vertices\n$ mapshaper input.shp -simplify 10%')
       .describe('simplify the geometry of polygon and polyline features')
       .option('percentage', {
         DEFAULT: true,
@@ -29977,10 +29989,6 @@ ${svg}
 
     parser.command('calc')
       .describe('calculate statistics about the features in a layer')
-      .example('Calculate the total area of a polygon layer\n' +
-        '$ mapshaper polygons.shp -calc \'sum(this.area)\'')
-      .example('Count census blocks in NY with zero population\n' +
-        '$ mapshaper ny-census-blocks.shp -calc \'count()\' where=\'POPULATION == 0\'')
       .validate(validateExpressionOpt)
       .option('expression', {
         DEFAULT: true,
@@ -30071,6 +30079,10 @@ ${svg}
       .describe('print mapshaper version');
 
     parser.command('debug');
+
+    // Per-command usage examples live in a separate file so they're easy to
+    // browse and curate without scrolling past 2300 lines of option defs.
+    applyExamples(parser);
 
     return parser;
   }
@@ -31397,7 +31409,43 @@ ${svg}
     (srcCollection.features || srcCollection.geometries || []).forEach(importer.parseObject);
     dataset = importer.done();
     importCRS(dataset, srcObj); // TODO: remove this
+    warnIfProjectedCoords(dataset, srcObj);
     return dataset;
+  }
+
+  // RFC 7946 GeoJSON is required to be in WGS84 lon/lat (so omits the legacy
+  // `crs` member). If the imported file makes no CRS claim but its coordinates
+  // are clearly outside lat-long range, warn the user: silent fallthrough here
+  // usually surfaces later as cryptic -proj errors or grossly wrong output.
+  function warnIfProjectedCoords(dataset, jsonObj) {
+    if (jsonObj && jsonObj.crs) return; // user has explicitly declared a CRS
+    var bounds = getRoughDatasetBounds(dataset);
+    if (!bounds || !bounds.hasBounds()) return;
+    if (probablyDecimalDegreeBounds(bounds)) return;
+    warn('Imported GeoJSON has coordinates outside the lat-long range &mdash; ' +
+      ' importing as projected geometry with unknown CRS. Commands ' +
+      'like -proj that require a CRS will not work until you set a source ' +
+      'CRS, e.g. -proj init=EPSG:3857.');
+  }
+
+  // Local bounds helper to avoid pulling getDatasetBounds (and its transitive
+  // dependency on mapshaper-merging / mapshaper-topology) into the GeoJSON
+  // import path.
+  function getRoughDatasetBounds(dataset) {
+    var bounds = new Bounds();
+    if (dataset.arcs) {
+      bounds.mergeBounds(dataset.arcs.getBounds());
+    }
+    (dataset.layers || []).forEach(function(lyr) {
+      if (lyr.geometry_type !== 'point' || !lyr.shapes) return;
+      lyr.shapes.forEach(function(shape) {
+        if (!shape) return;
+        shape.forEach(function(pt) {
+          if (pt && pt.length >= 2) bounds.mergePoint(pt[0], pt[1]);
+        });
+      });
+    });
+    return bounds;
   }
 
   function GeoJSONParser(opts) {
@@ -32394,9 +32442,15 @@ ${svg}
       if ((content.byteLength || content.length) < 1e7) {
         // content = utils.createBuffer(content).toString();
         content = bufferToString(utils.createBuffer(content));
+        // Release the caller's buffer reference now that we have a string
+        // copy -- avoids holding both a ~50MB ArrayBuffer and its decoded
+        // string in memory while we JSON.parse below.
+        data.content = null;
       } else {
         reader = new BufferReader(content);
         content = null;
+        // BufferReader keeps its own reference; release the caller's.
+        data.content = null;
       }
     }
 
@@ -32492,7 +32546,6 @@ ${svg}
     }
     dataset = importer.done();
     dataset.info = dataset.info || {};
-    dataset.info.flatgeobuf_header = headerMeta;
     var crs = normalizeCRSMeta(headerMeta.crs || null);
     dataset.info.flatgeobuf_crs = crs;
     if (crs && crs.org && crs.code) {
@@ -32519,18 +32572,27 @@ ${svg}
     return crs;
   }
 
-  async function importGeoPackage(content, optsArg) {
+  // `input` is a {content, filename} object (as produced by the file-import
+  // pipeline). We accept the wrapper rather than just the bytes so we can
+  // release the caller's `input.content` reference once we've written the
+  // data to a temp file -- a 1GB GeoPackage no longer pins both the in-memory
+  // buffer and the on-disk copy for the duration of the parse.
+  async function importGeoPackage(input, optsArg) {
     var opts = optsArg || {};
     var geopackage = require$1('@ngageoint/geopackage');
     var gpkg;
     var datasets;
     var tmpPath = null;
+    // Cache only a *string* filename for recovery purposes. If input.content
+    // is a buffer, openGeoPackage() will create a temp file for us and the
+    // recovery path goes through that tmpPath instead.
+    var sourceFilename = utils.isString(input.content) ? input.content : input.filename;
 
     if (!geopackage || !geopackage.GeoPackageAPI) {
       stop$1('GeoPackage library is not loaded');
     }
 
-    ({gpkg, tmpPath} = await openGeoPackage(content, geopackage));
+    ({gpkg, tmpPath} = await openGeoPackage(input, geopackage));
     var availableLayers;
     var filterApplied;
     try {
@@ -32541,8 +32603,8 @@ ${svg}
           gpkg.close();
           if (tmpPath) {
             sanitizeGeoPackageCrsMetadata(tmpPath);
-          } else if (utils.isString(content)) {
-            tmpPath = copyGeoPackageTempFile(content);
+          } else if (sourceFilename) {
+            tmpPath = copyGeoPackageTempFile(sourceFilename);
             sanitizeGeoPackageCrsMetadata(tmpPath);
           } else {
             throw e;
@@ -32578,7 +32640,8 @@ ${svg}
     return merged;
   }
 
-  async function openGeoPackage(content, geopackage) {
+  async function openGeoPackage(input, geopackage) {
+    var content = input.content || input.filename;
     var source;
     var tmpPath = null;
     if (utils.isString(content)) {
@@ -32601,6 +32664,11 @@ ${svg}
       source = content;
     } else if (!runningInBrowser()) {
       tmpPath = writeGeoPackageTempFile(content);
+      // The buffer is now duplicated on disk; release every in-process
+      // reference so a 1GB GeoPackage doesn't pin 1GB of RAM for the rest
+      // of the parse.
+      input.content = null;
+      content = null;
       try {
         return {
           gpkg: await geopackage.GeoPackageAPI.open(tmpPath),
@@ -32615,6 +32683,8 @@ ${svg}
         };
       }
     } else {
+      // Browser path: we don't have a filesystem to write to; the
+      // GeoPackage library reads directly from the typed array.
       source = new Uint8Array(content);
     }
     return {
@@ -33724,7 +33794,7 @@ ${svg}
     } else if (obj.gpkg) {
       dataFmt = 'geopackage';
       data = obj.gpkg;
-      dataset = await importGeoPackage(data.content || data.filename, opts);
+      dataset = await importGeoPackage(data, opts);
     } else {
       return importContent(obj, opts);
     }
@@ -34608,15 +34678,24 @@ ${svg}
     getFormattedLayerList: getFormattedLayerList
   });
 
-  function Job(catalog) {
+  // `seed` (optional) lets a caller pre-seed shared state across jobs in a
+  // single user invocation -- in particular, output_files is threaded across
+  // the per-input batches that divideImportCommand creates so that filename
+  // collisions across batches can be detected by writeFiles().
+  function Job(catalog, seed) {
     var currentCmd;
+    seed = seed || {};
 
     var job = {
       catalog: catalog || new Catalog(),
       defs: {},
       vars: {},
       settings: {},
-      input_files: []
+      input_files: [],
+      // Tracks resolved output paths written so far in this run. We only ever
+      // store path strings here, never file content, so the per-write memory
+      // cost is negligible. See writeFiles() in mapshaper-file-export.mjs.
+      output_files: seed.output_files || []
     };
 
     job.initSettings = function(o) {
@@ -34652,6 +34731,7 @@ ${svg}
     stashVar('defs', job.defs);
     stashVar('vars', job.vars);
     stashVar('input_files', job.input_files);
+    stashVar('output_files', job.output_files);
   }
 
   // Apply a command to an array of target layers
@@ -37519,6 +37599,77 @@ ${svg}
     report(msg);
   }
 
+  // Pure stats helpers used by the sequential classifier and its sister
+  // modules (-nice-breaks, -key). Extracted so that nice-breaks.mjs and
+  // furniture/key.mjs can compute breaks/distributions without importing
+  // from the classifier (which would otherwise create a cycle).
+
+
+  function getEqualIntervalBreaks(ascending, numBreaks) {
+    var numRanges = numBreaks + 1,
+        minVal = ascending[0],
+        maxVal = ascending[ascending.length - 1],
+        interval = (maxVal - minVal) / numRanges,
+        breaks = [],
+        i;
+    for (i = 1; i<numRanges; i++) {
+      breaks.push(minVal + i * interval);
+    }
+    return breaks;
+  }
+
+  function getQuantileBreaks(ascending, numBreaks) {
+    var numRanges = numBreaks + 1;
+    var n = ascending.length / numRanges;
+    var breaks = [];
+    var i, j;
+    for (i = 1; i<numRanges; i++) {
+      j = Math.floor(i * n);
+      breaks.push(ascending[j]);
+    }
+    return breaks;
+  }
+
+  // inner breaks have equal-interval spacing
+  // first and last bucket are sized like quantiles (they are sized to contain
+  // a proportional share of the data)
+  function getHybridBreaks(ascending, numBreaks) {
+    var quantileBreaks = getQuantileBreaks(ascending, numBreaks);
+    if (numBreaks < 3) return quantileBreaks;
+    var lowerBreak = quantileBreaks[0];
+    var upperBreak = quantileBreaks[quantileBreaks.length-1];
+    var innerValues = ascending.filter(function(val) {
+      return val >= lowerBreak && val < upperBreak;
+    });
+    var innerBreaks = getEqualIntervalBreaks(innerValues, numBreaks - 2);
+    var breaks = [lowerBreak].concat(innerBreaks).concat(upperBreak);
+    return breaks;
+  }
+
+  function getDistributionData(breaks, ascending) {
+    var arr = utils.initializeArray(new Array(breaks.length + 1), 0);
+    ascending.forEach(function(val) {
+      var i = getClassId(val, breaks);
+      if (i == -1) {
+        error('Indexing error');
+      } else {
+        arr[i]++;
+      }
+    });
+    return arr;
+  }
+
+  // breaks: threshold values between ranges (ascending order)
+  // Returns array index of a sequential range, or -1 if @val not numeric
+  function getClassId(val, breaks) {
+    var i = 0;
+    if (!utils.isValidNumber(val)) {
+      return -1;
+    }
+    while (i < breaks.length && val >= breaks[i]) i++;
+    return i;
+  }
+
   var scaledIntervals =
     [10,12,15,18,20,22,25,30,35,40,45,50,60,70,80,90,100];
   var precisions =
@@ -38944,60 +39095,6 @@ ${svg}
     };
   }
 
-  function getEqualIntervalBreaks(ascending, numBreaks) {
-    var numRanges = numBreaks + 1,
-        minVal = ascending[0],
-        maxVal = ascending[ascending.length - 1],
-        interval = (maxVal - minVal) / numRanges,
-        breaks = [],
-        i;
-    for (i = 1; i<numRanges; i++) {
-      breaks.push(minVal + i * interval);
-    }
-    return breaks;
-  }
-
-  function getQuantileBreaks(ascending, numBreaks) {
-    var numRanges = numBreaks + 1;
-    var n = ascending.length / numRanges;
-    var breaks = [];
-    var i, j;
-    for (i = 1; i<numRanges; i++) {
-      j = Math.floor(i * n);
-      breaks.push(ascending[j]);
-    }
-    return breaks;
-  }
-
-  // inner breaks have equal-interval spacing
-  // first and last bucket are sized like quantiles (they are sized to contain
-  // a proportional share of the data)
-  function getHybridBreaks(ascending, numBreaks) {
-    var quantileBreaks = getQuantileBreaks(ascending, numBreaks);
-    if (numBreaks < 3) return quantileBreaks;
-    var lowerBreak = quantileBreaks[0];
-    var upperBreak = quantileBreaks[quantileBreaks.length-1];
-    var innerValues = ascending.filter(function(val) {
-      return val >= lowerBreak && val < upperBreak;
-    });
-    var innerBreaks = getEqualIntervalBreaks(innerValues, numBreaks - 2);
-    var breaks = [lowerBreak].concat(innerBreaks).concat(upperBreak);
-    return breaks;
-  }
-
-  function getDistributionData(breaks, ascending) {
-    var arr = utils.initializeArray(new Array(breaks.length + 1), 0);
-    ascending.forEach(function(val) {
-      var i = getClassId(val, breaks);
-      if (i == -1) {
-        error('Indexing error');
-      } else {
-        arr[i]++;
-      }
-    });
-    return arr;
-  }
-
   function applyDataRange(values, range) {
     var minval = range[0];
     var maxval = range[1];
@@ -39037,17 +39134,6 @@ ${svg}
 
   function testDescendingNumbers(arr) {
     return arraysAreIdentical(arr, utils.genericSort(arr.map(parseFloat), false));
-  }
-
-  // breaks: threshold values between ranges (ascending order)
-  // Returns array index of a sequential range, or -1 if @val not numeric
-  function getClassId(val, breaks) {
-    var i = 0;
-    if (!utils.isValidNumber(val)) {
-      return -1;
-    }
-    while (i < breaks.length && val >= breaks[i]) i++;
-    return i;
   }
 
   function getCategoricalClassifier(classValues, nullVal, opts) {
@@ -40860,32 +40946,48 @@ ${svg}
     clipPoints: clipPoints
   });
 
+  // Convert a source parameter (which can take several forms) into
+  // a dataset with a single layer.
+  function normalizeOverlaySource(clipSrc, targetDataset, optsArg) {
+    var opts = optsArg || {};
+    var bbox = opts.bbox || opts.bbox2;
+    var clipDataset;
+    if (bbox) {
+      clipDataset = convertClipBounds(bbox);
+    } else if (!clipSrc) {
+      stop$1('Command requires a source file, layer id or bbox');
+    } else if (clipSrc.geometry_type) {
+      // clipSrc is a layer (assumed in targetDataset)
+      // TODO: update tests to remove this case (only used in tests)
+      // error('Unsupported source format');
+      clipDataset = utils.defaults({layers: [clipSrc], disposable: true}, targetDataset);
+    } else if (clipSrc.layer && clipSrc.dataset) {
+      clipDataset = utils.defaults({layers: [clipSrc.layer]}, clipSrc.dataset);
+    } else if (clipSrc.layers?.length == 1) {
+      clipDataset = clipSrc;
+    } else {
+      error('Invalid source format');
+    }
+    if (clipSrc?.disposable) {
+      clipDataset.disposable = true;
+    }
+    return clipDataset;
+  }
+
   // Create a merged dataset by appending the overlay layer to the target dataset
   // so it is last in the layers array.
   // DOES NOT insert clipping points
   function mergeLayersForOverlay(targetLayers, targetDataset, clipSrc, opts) {
-    utils.some(targetLayers, layerHasPaths);
-    var bbox = opts.bbox || opts.bbox2;
-    var mergedDataset, clipDataset, clipLyr;
-    if (clipSrc && clipSrc.geometry_type) {
-      // TODO: update tests to remove this case (clipSrc is a layer)
-      clipSrc = {dataset: targetDataset, layer: clipSrc, disposable: true};
-    }
-    if (bbox) {
-      clipDataset = convertClipBounds(bbox);
-      clipLyr = clipDataset.layers[0];
-    } else if (!clipSrc) {
-      stop$1("Command requires a source file, layer id or bbox");
-    } else if (clipSrc.layer && clipSrc.dataset) {
-      clipLyr = clipSrc.layer;
-      clipDataset = utils.defaults({layers: [clipLyr]}, clipSrc.dataset);
-    } else if (clipSrc.layers && clipSrc.layers.length == 1) {
-      clipLyr = clipSrc.layers[0];
-      clipDataset = clipSrc;
-    }
+    var clipDataset = normalizeOverlaySource(clipSrc, targetDataset, opts);
+    return mergeLayersForOverlay2(targetLayers, targetDataset, clipDataset);
+  }
+
+  function mergeLayersForOverlay2(targetLayers, targetDataset, clipDataset) {
+    var mergedDataset;
+    var clipLyr = clipDataset.layers[0];
     if (targetDataset.arcs != clipDataset.arcs) {
       // using external dataset -- need to merge arcs
-      if (clipSrc && !clipSrc.disposable) {
+      if (!clipDataset.disposable) {
         // copy overlay layer shapes because arc ids will be reindexed during merging
         clipDataset.layers[0] = copyLayerShapes(clipDataset.layers[0]);
       }
@@ -40913,6 +41015,7 @@ ${svg}
     return {
       arcs: new ArcCollection([arc]),
       layers: [{
+        name: 'bbox',
         shapes: [[[0]]],
         geometry_type: 'polygon'
       }]
@@ -40921,7 +41024,9 @@ ${svg}
 
   var OverlayUtils = /*#__PURE__*/Object.freeze({
     __proto__: null,
-    mergeLayersForOverlay: mergeLayersForOverlay
+    mergeLayersForOverlay: mergeLayersForOverlay,
+    mergeLayersForOverlay2: mergeLayersForOverlay2,
+    normalizeOverlaySource: normalizeOverlaySource
   });
 
   // Insert cutting points in arcs, where bbox intersects other shapes
@@ -41088,16 +41193,20 @@ ${svg}
   // @type: 'clip' or 'erase'
   function clipLayers(targetLayers, clipSrc, targetDataset, type, opts) {
     profileStart('clipLayers');
+    opts = opts || {no_fcleanup: true}; // TODO: update testing functions
     var usingPathClip = utils.some(targetLayers, layerHasPaths);
     var mergedDataset, clipLyr, nodes, result;
-    opts = opts || {no_cleanup: true}; // TODO: update testing functions
+    var clipDataset = normalizeOverlaySource(clipSrc, targetDataset, opts);
+    if (!opts.no_warn) {
+      warnIfBoundsDontOverlap(targetLayers, targetDataset, clipDataset, type);
+    }
     if (opts.bbox2 && usingPathClip) { // assumes target dataset has arcs
       result = clipLayersByBBox(targetLayers, targetDataset, opts);
       profileEnd('clipLayers');
       return result;
     }
     profileStart('mergeLayersForOverlay');
-    mergedDataset = mergeLayersForOverlay(targetLayers, targetDataset, clipSrc, opts);
+    mergedDataset = mergeLayersForOverlay2(targetLayers, targetDataset, clipDataset);
     profileEnd('mergeLayersForOverlay');
     clipLyr = mergedDataset.layers[mergedDataset.layers.length-1];
     if (usingPathClip) {
@@ -41215,13 +41324,81 @@ ${svg}
     return '';
   }
 
+  // Warn (once per source/target pair) when a -clip / -erase / slice almost
+  // certainly won't do what the user wants. Two checks, in order of strength:
+  //
+  //   1. CRS mismatch -- one side is lat/lng and the other is projected. This
+  //      uses the same logic as requireDatasetsHaveCompatibleCRS() in
+  //      mapshaper-merging.mjs, but fires here as a friendlier, command-aware
+  //      warning before mergeDatasets() would otherwise stop() with a generic
+  //      message. It also catches a class of cases the bbox check misses: a
+  //      projected layer whose bbox straddles (0,0) often *does* overlap an
+  //      unprojected lat/lng bbox, even though the two are useless together.
+  //   2. Bbox-disjoint -- a fallback for the case where CRSes look compatible
+  //      (or are unknown on both sides) but the layers clearly aren't in the
+  //      same place. Usually a wrong-source-picker error.
+  //
+  // Empty target layers are ignored (separate failure mode; would just be
+  // noise). The CRS warning suppresses the bbox warning for the same target,
+  // so users see one warning per problem, not two.
+  // Skipped entirely if opts.no_warn is set.
+  function warnIfBoundsDontOverlap(targetLayers, targetDataset, clipDataset, type) {
+    var srcCRS = getDatasetCRS(clipDataset);
+    var targetCRS = getDatasetCRS(targetDataset);
+    var crsMismatch = srcCRS && targetCRS && isLatLngCRS(srcCRS) != isLatLngCRS(targetCRS);
+    var srcName = clipDataset.layers[0].name || '<unnamed>';
+    var srcBounds = getLayerBounds(clipDataset.layers[0], clipDataset.arcs);
+    targetLayers.forEach(function(targetLyr) {
+      var targetBounds = getLayerBounds(targetLyr, targetDataset.arcs);
+      if (!targetBounds || !targetBounds.hasBounds()) return;
+      if (crsMismatch) {
+        warnOnce(formatCRSMismatchMessage(type, srcName, targetLyr.name,
+          srcCRS, targetCRS));
+        return; // Don't also fire the (likely-misleading) bbox warning.
+      }
+      if (!srcBounds || !srcBounds.hasBounds()) return;
+      if (srcBounds.intersects(targetBounds)) return;
+      warnOnce(formatNoOverlapMessage(type, srcName, targetLyr.name,
+        srcBounds, targetBounds));
+    });
+  }
+
+  function formatCRSMismatchMessage(type, srcName, targetName, srcCRS, targetCRS) {
+    var verb = type === 'erase' ? 'erase' : 'clip';
+    var srcKind = isLatLngCRS(srcCRS) ? 'lng/lat (geographic)' : 'projected';
+    var targetKind = isLatLngCRS(targetCRS) ? 'lng/lat (geographic)' : 'projected';
+    return '-' + verb + ': source "' + srcName + '" uses ' + srcKind +
+      ' coordinates but target "' + (targetName || '<unnamed>') + '" uses ' +
+      targetKind + ' coordinates. The -' + verb +
+      ' will not produce a useful result; project one side to match the other first.';
+  }
+
+  function formatNoOverlapMessage(type, srcName, targetName, srcBounds, targetBounds) {
+    // 'slice' is a per-feature -clip variant; in user terms it has the same
+    // empty-output failure mode as clip, so we describe it under the same
+    // verb to keep the message simple.
+    var verb = type === 'erase' ? 'erase' : 'clip';
+    var consequence = type === 'erase'
+      ? 'will leave "' + (targetName || '<unnamed>') + '" unchanged'
+      : 'will produce empty output for "' + (targetName || '<unnamed>') + '"';
+    return '-' + verb + ': source "' + srcName + '" ' + bbToText(srcBounds) +
+      ' does not overlap target "' + (targetName || '<unnamed>') + '" ' +
+      bbToText(targetBounds) + '. The -' + verb + ' ' + consequence +
+      '. This usually indicates a coordinate system mismatch.';
+  }
+
+  function bbToText(b) {
+    return JSON.stringify(b.toArray());
+  }
+
   var ClipErase = /*#__PURE__*/Object.freeze({
     __proto__: null,
     clipLayers: clipLayers,
     clipLayersByBBox: clipLayersByBBox,
     clipLayersByLayer: clipLayersByLayer,
     clipLayersInPlace: clipLayersInPlace,
-    getClipMessage: getClipMessage
+    getClipMessage: getClipMessage,
+    warnIfBoundsDontOverlap: warnIfBoundsDontOverlap
   });
 
   // Assign a cluster id to each polygon in a dataset, which can be used with
@@ -41242,7 +41419,7 @@ ${svg}
   function calcPolygonClusters(lyr, arcs, opts) {
     var calcScore = getPolygonClusterCalculator(opts);
     var size = lyr.shapes.length;
-    var pct = opts.pct ? utils.parsePercent(opts.pct) : 1;
+    var pct = opts.pct ? parsePercent(opts.pct) : 1;
     var count = Math.round(size * pct);
     var groupField = opts.group_by || null;
 
@@ -42473,6 +42650,536 @@ ${svg}
     });
   };
 
+  function dissolvePointGeometry(lyr, getGroupId, opts) {
+    var useSph = !opts.planar && probablyDecimalDegreeBounds(getLayerBounds(lyr));
+    var getWeight = opts.weight ? compileFeatureExpression(opts.weight, lyr, null) : null;
+    var groups = [];
+
+    // TODO: support multipoints
+    if (countMultiPartFeatures(lyr.shapes) !== 0) {
+      stop$1("Dissolving multi-part points is not supported");
+    }
+
+    lyr.shapes.forEach(function(shp, i) {
+      var groupId = getGroupId(i);
+      var weight = getWeight ? getWeight(i) : 1;
+      var p = shp && shp[0]; // Using first point (TODO: handle multi-point features)
+      var tmp;
+      if (!p) return;
+      if (useSph) {
+        tmp = [];
+        geom.lngLatToXYZ(p[0], p[1], tmp);
+        p = tmp;
+      }
+      groups[groupId] = reducePointCentroid(groups[groupId], p, weight);
+    });
+
+    return groups.map(function(memo) {
+      var p1, p2;
+      if (!memo) return null;
+      if (useSph) {
+        p1 = memo.centroid;
+        p2 = [];
+        geom.xyzToLngLat(p1[0], p1[1], p1[2], p2);
+      } else {
+        p2 = memo.centroid;
+      }
+      return memo ? [p2] : null;
+    });
+  }
+
+  function reducePointCentroid(memo, p, weight) {
+    var x = p[0],
+        y = p[1],
+        sum, k;
+
+    if (x == x && y == y && weight > 0) {
+      if (!memo) {
+        memo = {sum: weight, centroid: p.concat()};
+      } else {
+        sum = memo.sum + weight;
+        k = memo.sum / sum;
+        memo.centroid[0] = k * memo.centroid[0] + weight * x / sum;
+        memo.centroid[1] = k * memo.centroid[1] + weight * y / sum;
+        if (p.length == 3) {
+          memo.centroid[2] = k * memo.centroid[2] + weight * p[2] / sum;
+        }
+        memo.sum = sum;
+      }
+    }
+    return memo;
+  }
+
+  // Dissolve polyline features
+  function dissolvePolylineGeometry(lyr, getGroupId, arcs, opts) {
+    var groups = getPolylineDissolveGroups(lyr.shapes, getGroupId);
+    var dissolve = getPolylineDissolver(arcs);
+    return groups.map(dissolve);
+  }
+
+  // Create one array of arc ids for each group
+  function getPolylineDissolveGroups(shapes, getGroupId) {
+    var groups = [];
+    traversePaths(shapes, function(o) {
+      var groupId = getGroupId(o.shapeId);
+      if (groupId in groups === false) {
+        groups[groupId] = [];
+      }
+      groups[groupId].push(o.arcId);
+    });
+    return groups;
+  }
+
+  function getPolylineDissolver(arcs) {
+    var flags = new Uint8Array(arcs.size());
+    var testArc = function(id) {return flags[absArcId(id)] > 0;};
+    var useArc = function(id) {flags[absArcId(id)] = 0;};
+    var nodes = new NodeCollection(arcs);
+    return function(ids) {
+      ids.forEach(function(id) {flags[absArcId(id)] = 1;});
+      var ends = findPolylineEnds(ids, nodes, testArc);
+      var straightParts = collectPolylineArcs(ends, nodes, testArc, useArc);
+      var ringParts = collectPolylineArcs(ids, nodes, testArc, useArc);
+      var allParts = straightParts.concat(ringParts);
+      ids.forEach(function(id) {flags[absArcId(id)] = 0;}); // may not be necessary
+      return allParts;
+    };
+  }
+
+  /*
+
+
+
+  */
+
+  // TODO: use polygon pathfinder shared code
+  function collectPolylineArcs(ids, nodes, testArc, useArc) {
+    var parts = [];
+    ids.forEach(function(startId) {
+      var part = [];
+      var nextId = startId;
+      var nextIds;
+      while (testArc(nextId)) {
+        part.push(nextId);
+        nextIds = testArc(nextId) ? nodes.getConnectedArcs(nextId, testArc) : [];
+        useArc(nextId); // use (unset) arc after connections have been found
+        if (nextIds.length > 0) {
+          nextId = ~nextIds[0]; // switch arc direction to lead away from node
+        } else {
+          break;
+        }
+      }
+      if (part.length > 0) parts.push(part);
+    });
+    return parts;
+  }
+
+  // Return array of dead-end arcs for a dissolved group.
+  function findPolylineEnds(ids, nodes, filter) {
+    var ends = [];
+    ids.forEach(function(arcId) {
+      if (nodes.getConnectedArcs(arcId, filter).length === 0) {
+        ends.push(~arcId); // arc points away from terminus
+      }
+      if (nodes.getConnectedArcs(~arcId, filter).length === 0) {
+        ends.push(arcId);
+      }
+    });
+    return ends;
+  }
+
+  function dissolvePolygonGeometry(shapes, getGroupId) {
+    var segments = dissolveFirstPass(shapes, getGroupId);
+    return dissolveSecondPass(segments, shapes, getGroupId);
+  }
+
+  // First pass -- identify pairs of segments that can be dissolved
+  function dissolveFirstPass(shapes, getGroupId) {
+    var groups = [],
+        largeGroups = [],
+        segments = [],
+        ids = shapes.map(function(shp, i) {
+          return getGroupId(i);
+        });
+
+    traversePaths(shapes, procArc);
+    largeGroups.forEach(splitGroup);
+    return segments;
+
+    function procArc(obj) {
+      var arcId = obj.arcId,
+          idx = arcId < 0 ? ~arcId : arcId,
+          segId = segments.length,
+          group = groups[idx];
+      if (!group) {
+        group = [];
+        groups[idx] = group;
+      }
+      group.push(segId);
+      obj.group = group;
+      segments.push(obj);
+
+      // Three or more segments sharing the same arc is abnormal topology...
+      // Need to try to identify pairs of matching segments in each of these
+      // groups.
+      //
+      if (group.length == 3) {
+        largeGroups.push(group);
+      }
+    }
+
+    function findMatchingPair(group, cb) {
+      var arc1, arc2;
+      for (var i=0; i<group.length - 1; i++) {
+        arc1 = segments[group[i]];
+        for (var j=i+1; j<group.length; j++) {
+          arc2 = segments[group[j]];
+          if (cb(arc1, arc2)) {
+            return [arc1.segId, arc2.segId];
+          }
+        }
+      }
+      return null;
+    }
+
+    function checkFwExtension(arc1, arc2) {
+      return getNextSegment(arc1, segments, shapes).arcId ===
+          ~getNextSegment(arc2, segments, shapes).arcId;
+    }
+
+    function checkBwExtension(arc1, arc2) {
+      return getPrevSegment(arc1, segments, shapes).arcId ===
+          ~getPrevSegment(arc2, segments, shapes).arcId;
+    }
+
+    function checkDoubleExtension(arc1, arc2) {
+      return checkPairwiseMatch(arc1, arc2) &&
+          checkFwExtension(arc1, arc2) &&
+          checkBwExtension(arc1, arc2);
+    }
+
+    function checkSingleExtension(arc1, arc2) {
+      return checkPairwiseMatch(arc1, arc2) &&
+          (checkFwExtension(arc1, arc2) ||
+          checkBwExtension(arc1, arc2));
+    }
+
+    function checkPairwiseMatch(arc1, arc2) {
+      return arc1.arcId === ~arc2.arcId && ids[arc1.shapeId] ===
+          ids[arc2.shapeId];
+    }
+
+    function updateGroupIds(ids) {
+      ids.forEach(function(id) {
+        segments[id].group = ids;
+      });
+    }
+
+    // split a group of segments into pairs of matching segments + a residual group
+    // @group Array of segment ids
+    //
+    function splitGroup(group) {
+      // find best-match segment pair
+      var group2 = findMatchingPair(group, checkDoubleExtension) ||
+          findMatchingPair(group, checkSingleExtension) ||
+          findMatchingPair(group, checkPairwiseMatch);
+      if (group2) {
+        group = group.filter(function(i) {
+          return !utils.contains(group2, i);
+        });
+        updateGroupIds(group);
+        updateGroupIds(group2);
+        // Split again if reduced group is still large
+        if (group.length > 2) splitGroup(group);
+      }
+    }
+  }
+
+  // Second pass -- generate dissolved shapes
+  //
+  function dissolveSecondPass(segments, shapes, getGroupId) {
+    var dissolveShapes = [];
+    segments.forEach(procSegment);
+    return dissolveShapes;
+
+    // @obj is an arc instance
+    function procSegment(obj) {
+      if (obj.used) return;
+      var match = findDissolveArc(obj);
+      if (!match) buildRing(obj);
+    }
+
+    function addRing(arcs, i) {
+      if (i in dissolveShapes === false) {
+        dissolveShapes[i] = [];
+      }
+      dissolveShapes[i].push(arcs);
+    }
+
+    // Generate a dissolved ring
+    // @firstArc the first arc instance in the ring
+    //
+    function buildRing(firstArc) {
+      var newArcs = [firstArc.arcId],
+          nextArc = getNextArc(firstArc);
+          firstArc.used = true;
+
+      while (nextArc && nextArc != firstArc) {
+        newArcs.push(nextArc.arcId);
+        nextArc.used = true;
+        nextArc = getNextArc(nextArc);
+        if (nextArc && nextArc != firstArc && nextArc.used) error("buildRing() topology error");
+      }
+
+      if (!nextArc) error("buildRing() traversal error");
+      firstArc.used = true;
+      addRing(newArcs, getGroupId(firstArc.shapeId));
+    }
+
+    // Get the next arc in a dissolved polygon ring
+    // @obj an undissolvable arc instance
+    //
+    function getNextArc(obj, depth) {
+      var next = getNextSegment(obj, segments, shapes),
+          match;
+      depth = depth || 0;
+      if (next != obj) {
+        match = findDissolveArc(next);
+        if (match) {
+          if (depth > 100) {
+            error ('deep recursion -- unhandled topology problem');
+          }
+          // if (match.part.arcs.length == 1) {
+          if (shapes[match.shapeId][match.partId].length == 1) {
+            // case: @obj has an island inclusion -- keep traversing @obj
+            // TODO: test case if @next is first arc in the ring
+            next = getNextArc(next, depth + 1);
+          } else {
+            next = getNextArc(match, depth + 1);
+          }
+        }
+      }
+      return next;
+    }
+
+    // Look for an arc instance that can be dissolved with segment @obj
+    // (must be going the opposite direction and have same dissolve key, etc)
+    // Return matching segment or null if no match
+    //
+    function findDissolveArc(obj) {
+      var dissolveId = getGroupId(obj.shapeId), // obj.shape.dissolveKey,
+          match, matchId;
+      matchId = utils.find(obj.group, function(i) {
+        var a = obj,
+            b = segments[i];
+        if (a == b ||
+            b.used ||
+            getGroupId(b.shapeId) !== dissolveId ||
+            // don't prevent rings from dissolving with themselves (risky?)
+            // a.shapeId == b.shapeId && a.partId == b.partId ||
+            a.arcId != ~b.arcId) return false;
+        return true;
+      });
+      match = matchId === null ? null : segments[matchId];
+      return match;
+    }
+  }
+
+  function getNextSegment(seg, segments, shapes) {
+    return getSegmentByOffs(seg, segments, shapes, 1);
+  }
+
+  function getPrevSegment(seg, segments, shapes) {
+    return getSegmentByOffs(seg, segments, shapes, -1);
+  }
+
+  function getSegmentByOffs(seg, segments, shapes, offs) {
+    var arcs = shapes[seg.shapeId][seg.partId],
+        partLen = arcs.length,
+        nextOffs = (seg.i + offs) % partLen,
+        nextSeg;
+    if (nextOffs < 0) nextOffs += partLen;
+    nextSeg = segments[seg.segId - seg.i + nextOffs];
+    if (!nextSeg || nextSeg.shapeId != seg.shapeId) error("index error");
+    return nextSeg;
+  }
+
+  var PolygonDissolve = /*#__PURE__*/Object.freeze({
+    __proto__: null,
+    dissolvePolygonGeometry: dissolvePolygonGeometry
+  });
+
+  // Options that require the topology-repair algorithm and are not supported
+  // by the no-repair fast path.
+  var REPAIR_REQUIRED_OPTS = ['gap_fill_area', 'sliver_control', 'allow_overlaps'];
+
+  // Sample size used to detect intersections in no-repair mode. Detection stops
+  // after this many hits, so the warning message can include sample locations
+  // without paying for an exhaustive scan on badly-formed input.
+  var INTERSECTION_SAMPLE_LIMIT = 10;
+
+  // cmd.dissolve accepts two signatures:
+  //   (layers, dataset, opts) — multi-layer entry used by the CLI dispatcher.
+  //     Polygon layers go through the topology-repairing algorithm by default,
+  //     or through the legacy fast algorithm when opts.no_repair is set.
+  //   (lyr, arcs, opts) — legacy single-layer entry, retained for backward
+  //     compatibility with internal callers and existing tests. Always uses the
+  //     legacy fast algorithm; does not perform topology repair.
+  //
+  cmd.dissolve = function(arg1, arg2, opts) {
+    if (Array.isArray(arg1)) {
+      return dissolveLayers(arg1, arg2, opts);
+    }
+    return dissolveSingleLayer(arg1, arg2, opts);
+  };
+
+  function dissolveLayers(layers, dataset, optsArg) {
+    var opts = utils.extend({}, optsArg);
+    if (opts.field) opts.fields = [opts.field]; // support old "field" parameter
+
+    if (opts.no_repair) {
+      var conflicting = REPAIR_REQUIRED_OPTS.filter(function(k) { return opts[k]; });
+      if (conflicting.length > 0) {
+        stop$1('The no-repair option is incompatible with',
+          conflicting.map(function(k) { return k.replace(/_/g, '-'); }).join(', '));
+      }
+    }
+
+    var anyPolygon = layers.some(function(lyr) {
+      return lyr.geometry_type == 'polygon' && layerHasPaths(lyr);
+    });
+
+    if (anyPolygon) {
+      if (opts.no_repair) {
+        detectAndWarnIntersections(dataset, opts);
+      } else {
+        addIntersectionCuts(dataset, opts);
+      }
+    }
+
+    return layers.map(function(lyr) {
+      return dissolveOneLayer(lyr, dataset, opts);
+    });
+  }
+
+  function dissolveOneLayer(lyr, dataset, opts) {
+    if (opts.where) {
+      return dissolveLayerWithWhereClause(lyr, dataset, opts);
+    }
+    if (opts.multipart || opts.group_points) {
+      var classifier = getCategoryClassifier(opts.fields, lyr.data);
+      return composeDissolveLayer(lyr, makeMultipartShapes(lyr, classifier), classifier, opts);
+    }
+    if (lyr.geometry_type == 'polygon') {
+      return dissolvePolygonInLayer(lyr, dataset, opts);
+    }
+    if (lyr.geometry_type == 'polyline') {
+      var polylineClassifier = getCategoryClassifier(opts.fields, lyr.data);
+      var polylineShapes = dissolvePolylineGeometry(lyr, polylineClassifier, dataset.arcs);
+      return composeDissolveLayer(lyr, polylineShapes, polylineClassifier, opts);
+    }
+    if (lyr.geometry_type == 'point') {
+      var pointClassifier = getCategoryClassifier(opts.fields, lyr.data);
+      var pointShapes = dissolvePointGeometry(lyr, pointClassifier, opts);
+      return composeDissolveLayer(lyr, pointShapes, pointClassifier, opts);
+    }
+    // tabular (no geometry): aggregate records only
+    var nullClassifier = getCategoryClassifier(opts.fields, lyr.data);
+    return composeDissolveLayer(lyr, undefined, nullClassifier, opts);
+  }
+
+  function dissolvePolygonInLayer(lyr, dataset, opts) {
+    if (!layerHasPaths(lyr)) return lyr;
+    if (opts.no_repair) {
+      var classifier = getCategoryClassifier(opts.fields, lyr.data);
+      var shapes = dissolvePolygonGeometry(lyr.shapes, classifier);
+      return composeDissolveLayer(lyr, shapes, classifier, opts);
+    }
+    return dissolvePolygonLayer2(lyr, dataset, opts);
+  }
+
+  function dissolveLayerWithWhereClause(lyr, dataset, opts) {
+    // Run dissolve on a subset of features defined by opts.where, then merge the
+    // dissolved subset back together with the unselected features.
+    // Topology repair (if needed) was already performed at the dataset level by
+    // dissolveLayers, so the recursive call uses no_repair=true to avoid doing
+    // the work a second time on a subset of the same arcs.
+    var arcs = dataset.arcs;
+    var subsetLyr = getLayerSelection(lyr, arcs, opts);
+    var cmdOpts = utils.defaults({where: null, no_repair: true}, opts);
+    var dissolved = dissolveOneLayer(subsetLyr, dataset, cmdOpts);
+    var filteredLyr = getLayerSelection(lyr, arcs, utils.defaults({invert: true}, opts));
+    var merged = cmd.mergeLayers([filteredLyr, dissolved], {verbose: false, force: true});
+    return merged[0];
+  }
+
+  function getLayerSelection(lyr, arcs, opts) {
+    var lyr2 = utils.extend({}, lyr);
+    var filterOpts = {
+      expression: opts.where,
+      invert: !!opts.invert,
+      verbose: false,
+      no_replace: opts.no_replace
+    };
+    return cmd.filterFeatures(lyr2, arcs, filterOpts);
+  }
+
+  // Detect a small sample of segment intersections; print a warning if any are
+  // found. Used by the no-repair fast path to alert users that their input has
+  // topology problems. Detection stops after INTERSECTION_SAMPLE_LIMIT hits, so
+  // the cost is bounded for badly-formed input.
+  function detectAndWarnIntersections(dataset, opts) {
+    if (opts.quiet || opts.silent) return;
+    if (!dataset.arcs || dataset.arcs.size() === 0) return;
+    var sample = findSegmentIntersections(dataset.arcs, {limit: INTERSECTION_SAMPLE_LIMIT});
+    if (sample.length === 0) return;
+    var atLeast = sample.length >= INTERSECTION_SAMPLE_LIMIT ? 'at least ' : '';
+    message('Warning: found ' + atLeast + sample.length +
+      ' segment intersection' + (sample.length == 1 ? '' : 's') +
+      '. The no-repair option assumes clean topology; output may be incorrect.');
+  }
+
+  // Backward-compat: the legacy per-layer entry, still used by internal callers
+  // and by tests that exercise the original fast algorithm directly. Retains
+  // the original behavior (no topology repair, no multi-layer prep).
+  function dissolveSingleLayer(lyr, arcs, opts) {
+    var dissolveShapes, classifier;
+    opts = utils.extend({}, opts);
+    if (opts.where) {
+      return applyCommandToLayerSelection(dissolveSingleLayer, lyr, arcs, opts);
+    }
+    if (opts.field) opts.fields = [opts.field];
+    classifier = getCategoryClassifier(opts.fields, lyr.data);
+    if (opts.multipart || opts.group_points) {
+      dissolveShapes = makeMultipartShapes(lyr, classifier);
+    } else if (lyr.geometry_type == 'polygon') {
+      dissolveShapes = dissolvePolygonGeometry(lyr.shapes, classifier);
+    } else if (lyr.geometry_type == 'polyline') {
+      dissolveShapes = dissolvePolylineGeometry(lyr, classifier, arcs);
+    } else if (lyr.geometry_type == 'point') {
+      dissolveShapes = dissolvePointGeometry(lyr, classifier, opts);
+    }
+    return composeDissolveLayer(lyr, dissolveShapes, classifier, opts);
+  }
+
+  function makeMultipartShapes(lyr, getGroupId) {
+    if (!lyr.shapes || !lyr.geometry_type) {
+      stop$1('Layer is missing geometry');
+    }
+    cloneShapes(lyr.shapes);
+    var shapes2 = [];
+    lyr.shapes.forEach(function(shp, i) {
+      var groupId = getGroupId(i);
+      if (!shp) return;
+      if (!shapes2[groupId]) {
+        shapes2[groupId] = shp;
+      } else {
+        shapes2[groupId].push.apply(shapes2[groupId], shp);
+      }
+    });
+    return shapes2;
+  }
+
   // -dissolve2 is now an alias for -dissolve. The repair-on-by-default behavior
   // of -dissolve2 has been promoted to be the default behavior of -dissolve;
   // the legacy fast-dissolve algorithm is available via -dissolve no-repair.
@@ -42637,6 +43344,13 @@ ${svg}
         collisionFields = [],
         skipCount = 0,
         retn = {},
+        destKey = opts.keys ? opts.keys[0] : null,
+        srcKey = opts.keys ? opts.keys[1] : null,
+        // Key-based joins (opts.keys present) collect the *full* set of
+        // distinct unmatched key values from each side. We sort and sample
+        // from the complete set when formatting the post-join message.
+        unmatchedTargetKeys = new Set(),
+        unusedSourceKeys = new Set(),
         srcRec, srcId, destRec, joinIds, count, filter, calc, i, j, n, m;
 
     // support for duplication of destination records for many-to-one joins
@@ -42702,12 +43416,33 @@ ${svg}
           // are added.
           unmatchedRecords.push(utils.extend({}, destRec));
         }
+        collectKeySample(unmatchedTargetKeys, destRec, destKey);
         updateUnmatchedRecord(destRec, copyFields, sumFields, prefix);
       }
     }
 
-    printJoinMessage(matchCount, n,
-        countJoins(joinCounts), srcRecords.length, skipCount, collisionCount, collisionFields);
+    if (srcKey) {
+      for (var si = 0; si < srcRecords.length; si++) {
+        if (joinCounts[si] === 0) {
+          collectKeySample(unusedSourceKeys, srcRecords[si], srcKey);
+        }
+      }
+    }
+
+    printJoinMessage({
+      matches: matchCount,
+      n: n,
+      joins: countJoins(joinCounts),
+      m: srcRecords.length,
+      skipped: skipCount,
+      collisions: collisionCount,
+      collisionFields: collisionFields,
+      destKey: destKey,
+      srcKey: srcKey,
+      unmatchedTargetKeys: takeSampleKeys(unmatchedTargetKeys),
+      unusedSourceKeys: takeSampleKeys(unusedSourceKeys),
+      opts: opts
+    });
 
     if (opts.unjoined) {
       retn.unjoined = {
@@ -42795,31 +43530,138 @@ ${svg}
     }
   }
 
-  function printJoinMessage(matches, n, joins, m, skipped, collisions, collisionFields) {
-    // TODO: add tip for troubleshooting join problems, if join is less than perfect.
-    var unmatched = n - matches;
-    if (matches > 0 === false) {
-      message("No records could be joined");
-      return;
+  // Cap displayed samples at this many distinct values per side; small enough
+  // to stay scannable, large enough to reveal a pattern.
+  var KEY_SAMPLE_LIMIT = 5;
+
+  // Add a key value (drawn from `rec[key]`) to a Set of distinct orphan keys.
+  // No-op if `key` is falsy or `rec` is missing.
+  function collectKeySample(samples, rec, key) {
+    if (!key || !rec) return;
+    samples.add(rec[key]);
+  }
+
+  // Convert a Set of distinct orphan keys into a sorted, capped array for
+  // display. Sorting *before* capping is what makes the two sides line up:
+  // both lists show the alphabetically-first KEY_SAMPLE_LIMIT keys, so any
+  // shared (modulo whitespace / case / leading zeros) entries land at the
+  // same display index regardless of the order they appeared in the data.
+  function takeSampleKeys(set) {
+    return Array.from(set).sort(compareKeys).slice(0, KEY_SAMPLE_LIMIT);
+  }
+
+  // Build a single, scannable summary of join results and emit it as one log
+  // call. We promote to warn() for cases that usually indicate a problem
+  // (no matches, or many-to-one with conflicting field values), so the GUI
+  // inbox / in-app console highlight them; in the CLI, warn() and message()
+  // render identically.
+  function printJoinMessage(p) {
+    var unmatched = p.n - p.matches;
+    var unused = p.m - p.joins;
+    var lines = [formatJoinHeadline(p.matches, p.n, p.joins, p.m)];
+    var detail = [];
+    if (p.matches > 0 && (unmatched > 0 || unused > 0)) {
+      detail.push(formatGapDetail(unmatched, unused));
     }
-    message(utils.format("Joined data from %'d source record%s to %'d target record%s",
-        joins, utils.pluralSuffix(joins), matches, utils.pluralSuffix(matches)));
-    if (unmatched > 0) {
-      message(utils.format('%d target record%s received no data', unmatched, utils.pluralSuffix(unmatched)));
-      // message(utils.format('%d target records received no data', n-matches));
+    if (p.skipped > 0) {
+      detail.push(utils.format("%'d source%s skipped by where=", p.skipped, utils.pluralSuffix(p.skipped)));
     }
-    if (joins < m) {
-      message(utils.format("%d/%d source records could not be joined", m-joins, m));
+    if (p.collisions > 0) {
+      var line = utils.format("%'d target%s had multiple source matches", p.collisions, utils.pluralSuffix(p.collisions));
+      if (p.collisionFields.length > 0) {
+        line += utils.format('; conflicting values in [%s] (kept first)', p.collisionFields.join(','));
+      }
+      detail.push(line);
     }
-    if (skipped > 0) {
-      message(utils.format("%d/%d source records were skipped", skipped, m));
-    }
-    if (collisions > 0) {
-      message(utils.format('%d/%d target records were matched by multiple source records (many-to-one relationship)', collisions, n));
-      if (collisionFields.length > 0) {
-        message(utils.format('Inconsistent values were found in field%s [%s] during many-to-one join. Values in the first joining record were used.', utils.pluralSuffix(collisionFields.length), collisionFields.join(',')));
+    // Only show sample keys when *both* sides have orphans -- a one-sided
+    // gap is the expected shape of a subset/superset join and the samples
+    // would just be noise.
+    if (unmatched > 0 && unused > 0 && p.destKey && p.srcKey) {
+      if (p.unmatchedTargetKeys.length > 0) {
+        detail.push(formatKeySampleLine('unmatched target', p.destKey, p.unmatchedTargetKeys));
+      }
+      if (p.unusedSourceKeys.length > 0) {
+        detail.push(formatKeySampleLine('unused source', p.srcKey, p.unusedSourceKeys));
       }
     }
+    var hint = formatFlagHint(unmatched, unused, p.opts);
+    if (hint) detail.push(hint);
+    for (var i = 0; i < detail.length; i++) {
+      lines.push('  ' + detail[i]);
+    }
+    var msg = lines.join('\n');
+    if (p.matches === 0 || p.collisionFields.length > 0) {
+      warn(msg);
+    } else {
+      message(msg);
+    }
+  }
+
+  function formatJoinHeadline(matches, n, joins, m) {
+    if (matches === 0) {
+      return utils.format("Join: 0/%'d targets matched (no records joined)", n);
+    }
+    return utils.format('Join: %s, %s',
+        formatRatio(matches, n, 'target'),
+        formatRatio(joins, m, 'source', 'used'));
+  }
+
+  // e.g. "850/1000 targets matched (85%)" or "1000/1000 targets matched"
+  function formatRatio(num, total, noun, verb) {
+    verb = verb || 'matched';
+    var s = utils.format("%'d/%'d %s%s %s", num, total, noun, utils.pluralSuffix(total), verb);
+    if (num < total) {
+      s += ' (' + Math.round(100 * num / total) + '%)';
+    }
+    return s;
+  }
+
+  function formatGapDetail(unmatched, unused) {
+    var parts = [];
+    if (unmatched > 0) parts.push(utils.format("%'d target%s unmatched", unmatched, utils.pluralSuffix(unmatched)));
+    if (unused > 0) parts.push(utils.format("%'d source%s unused", unused, utils.pluralSuffix(unused)));
+    return parts.join(', ');
+  }
+
+  // e.g. Sample unmatched target keys (NAME): "Bar ", "Baz ", "Foo "
+  // `samples` is already sorted+capped by takeSampleKeys().
+  function formatKeySampleLine(label, fieldName, samples) {
+    return utils.format('Sample %s keys (%s): %s',
+        label, fieldName, samples.map(formatKeyValue).join(', '));
+  }
+
+  // Reproducible cross-environment compare: numeric ordering for numbers,
+  // plain code-point string compare otherwise.
+  function compareKeys(a, b) {
+    if (typeof a === 'number' && typeof b === 'number') return a - b;
+    var sa = String(a), sb = String(b);
+    return sa < sb ? -1 : sa > sb ? 1 : 0;
+  }
+
+  // JSON-quote strings so trailing whitespace, empty strings, etc. are visible.
+  // Other types stringify to their JSON form (numbers, null, booleans).
+  function formatKeyValue(v) {
+    if (v === undefined) return 'undefined';
+    var s = JSON.stringify(v);
+    if (typeof v === 'string' && s.length > 42) {
+      s = s.slice(0, 39) + '..."';
+    }
+    return s;
+  }
+
+  function formatFlagHint(unmatched, unused, opts) {
+    var needUnmatched = unmatched > 0 && !opts.unmatched;
+    var needUnjoined = unused > 0 && !opts.unjoined;
+    if (needUnmatched && needUnjoined) {
+      return 'Add the unmatched and/or unjoined flag to keep these records as separate layers';
+    }
+    if (needUnmatched) {
+      return 'Add the unmatched flag to keep unmatched targets as a separate layer';
+    }
+    if (needUnjoined) {
+      return 'Add the unjoined flag to keep unused sources as a separate layer';
+    }
+    return null;
   }
 
   function getFieldsToJoin(destFields, srcFields, opts) {
@@ -44716,7 +45558,7 @@ ${svg}
 
   function getPctOffsets(arg) {
     return adjustOffsetsArg(arg).map(str => {
-      return str.includes('%') ? utils.parsePercent(str) : 0;
+      return str.includes('%') ? parsePercent(str) : 0;
     });
   }
 
@@ -49678,6 +50520,22 @@ ${svg}
     return arcs.getPointCount() - endpoints + nodes;
   }
 
+  // Small option-shape helpers shared between -simplify (the command) and
+  // the simplify-info reporter. Extracted so neither side needs to import
+  // from the other.
+
+  function useSphericalSimplify(arcs, opts) {
+    return !opts.planar && !arcs.isPlanar();
+  }
+
+  function getSimplifyMethod(opts) {
+    var m = opts.method;
+    if (!m || m == 'weighted' || m == 'visvalingam' && opts.weighting) {
+      m =  'weighted_visvalingam';
+    }
+    return m;
+  }
+
   var Visvalingam = {};
 
   Visvalingam.getArcCalculator = function(metric, is3D) {
@@ -50244,7 +51102,7 @@ ${svg}
 
     // calculate and apply simplification interval
     if (opts.percentage || opts.percentage === 0) {
-      arcs.setRetainedPct(utils.parsePercent(opts.percentage));
+      arcs.setRetainedPct(parsePercent(opts.percentage));
     } else if (opts.interval || opts.interval === 0) {
       arcs.setRetainedInterval(convertSimplifyInterval(opts.interval, dataset, opts));
     } else if (opts.resolution) {
@@ -50284,10 +51142,6 @@ ${svg}
     }, opts);
   }
 
-  function useSphericalSimplify(arcs, opts) {
-    return !opts.planar && !arcs.isPlanar();
-  }
-
   // Calculate simplification thresholds for each vertex of an arc collection
   // (modifies @arcs ArcCollection in-place)
   function simplifyPaths(arcs, opts) {
@@ -50322,14 +51176,6 @@ ${svg}
       geom.convLngLatToSph(xx, yy, xx2, yy2, zz2);
       simplify(kk, xx2, yy2, zz2);
     });
-  }
-
-  function getSimplifyMethod(opts) {
-    var m = opts.method;
-    if (!m || m == 'weighted' || m == 'visvalingam' && opts.weighting) {
-      m =  'weighted_visvalingam';
-    }
-    return m;
   }
 
   function getSimplifyFunction(opts) {
@@ -51457,7 +52303,7 @@ ${svg}
     var pctToInterval = getThresholdFunction(dataset.arcs);
     return function(shpId) {
       var val = compiled(shpId);
-      var pct = utils.parsePercent(val);
+      var pct = parsePercent(val);
       return pctToInterval(pct);
     };
   }
@@ -52130,7 +52976,7 @@ ${svg}
     });
   }
 
-  var version = "0.7.4";
+  var version = "0.7.5";
 
   // Parse command line args into commands and run them
   // Function takes an optional Node-style callback. A Promise is returned if no callback is given.
@@ -52282,10 +53128,15 @@ ${svg}
     }
 
     var batches = divideImportCommand(commands);
+    // Shared across all batches in this invocation so writeFiles() can detect
+    // when the same resolved output path is written by more than one batch
+    // (e.g. `mapshaper *.shp batch-mode -o out.json` writing all inputs to the
+    // same target on disk).
+    var sharedOutputs = [];
     utils.reduceAsync(batches, null, nextGroup, done);
 
     function nextGroup(prevJob, commands, next) {
-      runParsedCommands(commands, new Job(), function(err, job) {
+      runParsedCommands(commands, new Job(null, {output_files: sharedOutputs}), function(err, job) {
         err = handleNonFatalError(err);
         next(err, job);
       });

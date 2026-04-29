@@ -792,6 +792,10 @@ body.console-open .map-area {
 	color: #f93b00;
 }
 
+.console-warn {
+	color: #f5b542;
+}
+
 .console-message {
 	color: #eddd98;
 }

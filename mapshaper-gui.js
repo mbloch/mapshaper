@@ -1,108 +1,5 @@
 (function () {
 
-  var utils = /*#__PURE__*/Object.freeze({
-    __proto__: null,
-    get addThousandsSep () { return addThousandsSep; },
-    get addslashes () { return addslashes; },
-    get arrayToIndex () { return arrayToIndex; },
-    get clamp () { return clamp; },
-    get cleanNumericString () { return cleanNumericString; },
-    get contains () { return contains; },
-    get copyElements () { return copyElements; },
-    get countValues () { return countValues; },
-    get createBuffer () { return createBuffer; },
-    get default () { return utils; },
-    get defaults () { return defaults; },
-    get difference () { return difference; },
-    get endsWith () { return endsWith; },
-    get every () { return every; },
-    get expandoBuffer () { return expandoBuffer; },
-    get extend () { return extend; },
-    get extendBuffer () { return extendBuffer; },
-    get find () { return find; },
-    get findMedian () { return findMedian; },
-    get findQuantile () { return findQuantile; },
-    get findRankByValue () { return findRankByValue; },
-    get findStringPrefix () { return findStringPrefix; },
-    get findValueByPct () { return findValueByPct; },
-    get findValueByRank () { return findValueByRank; },
-    get forEach () { return forEach; },
-    get forEachProperty () { return forEachProperty; },
-    get format () { return format; },
-    get formatDateISO () { return formatDateISO; },
-    get formatIntlNumber () { return formatIntlNumber; },
-    get formatNumber () { return formatNumber; },
-    get formatNumberForDisplay () { return formatNumberForDisplay; },
-    get formatVersionedName () { return formatVersionedName; },
-    get formatter () { return formatter; },
-    get genericSort () { return genericSort; },
-    get getArrayBounds () { return getArrayBounds; },
-    get getGenericComparator () { return getGenericComparator; },
-    get getKeyComparator () { return getKeyComparator; },
-    get getSortedIds () { return getSortedIds; },
-    get getUniqueName () { return getUniqueName; },
-    get groupBy () { return groupBy; },
-    get htmlEscape () { return htmlEscape; },
-    get indexOf () { return indexOf; },
-    get indexOn () { return indexOn; },
-    get inherit () { return inherit; },
-    get initializeArray () { return initializeArray; },
-    get intersection () { return intersection; },
-    get isArray () { return isArray; },
-    get isArrayLike () { return isArrayLike; },
-    get isBoolean () { return isBoolean; },
-    get isDate () { return isDate; },
-    get isEven () { return isEven; },
-    get isFiniteNumber () { return isFiniteNumber; },
-    get isFunction () { return isFunction; },
-    get isInteger () { return isInteger; },
-    get isNonNegNumber () { return isNonNegNumber; },
-    get isNumber () { return isNumber; },
-    get isObject () { return isObject; },
-    get isOdd () { return isOdd; },
-    get isPromise () { return isPromise; },
-    get isString () { return isString; },
-    get isValidNumber () { return isValidNumber; },
-    get lpad () { return lpad; },
-    get ltrim () { return ltrim; },
-    get mean () { return mean; },
-    get merge () { return merge; },
-    get mergeNames () { return mergeNames; },
-    get numToStr () { return numToStr; },
-    get parseIntlNumber () { return parseIntlNumber; },
-    get parseNumber () { return parseNumber; },
-    get parsePercent () { return parsePercent; },
-    get parseString () { return parseString; },
-    get pickOne () { return pickOne; },
-    get pluck () { return pluck; },
-    get pluralSuffix () { return pluralSuffix; },
-    get promisify () { return promisify; },
-    get quicksort () { return quicksort; },
-    get quicksortPartition () { return quicksortPartition; },
-    get range () { return range; },
-    get reduceAsync () { return reduceAsync; },
-    get regexEscape () { return regexEscape; },
-    get reorderArray () { return reorderArray; },
-    get repeat () { return repeat; },
-    get repeatString () { return repeatString; },
-    get replaceArray () { return replaceArray; },
-    get rpad () { return rpad; },
-    get rtrim () { return rtrim; },
-    get shuffle () { return shuffle; },
-    get some () { return some; },
-    get sortArrayIndex () { return sortArrayIndex; },
-    get sortOn () { return sortOn; },
-    get splitLines () { return splitLines; },
-    get sum () { return sum; },
-    get toArray () { return toArray; },
-    get toBuffer () { return toBuffer; },
-    get trim () { return trim; },
-    get trimQuotes () { return trimQuotes; },
-    get uniq () { return uniq; },
-    get uniqifyNames () { return uniqifyNames; },
-    get wildcardToRegExp () { return wildcardToRegExp; }
-  });
-
   var api = window.mapshaper; // assuming mapshaper is in global scope
   var mapshaper = api,
     utils$1 = api.utils,
@@ -113,7 +10,7 @@
     UserError$1 = internal.UserError,
     message$1 = internal.message, // stop, error and message are overridden in gui-proxy.js
     stop$1 = internal.stop,
-    error$1 = internal.error;
+    error$2 = internal.error;
 
   api.enableLogging();
 
@@ -232,7 +129,7 @@
       evt = new EventData(this.type);
       evt.target = this.target;
     } else if (evt.target != this.target || evt.type != this.type) {
-      error$1("[Handler] event target/type have changed.");
+      error$2("[Handler] event target/type have changed.");
     }
     this.callback.call(this.listener, evt);
   };
@@ -481,10 +378,10 @@
       try {
         els = root.querySelectorAll(selector);
       } catch (e) {
-        error$1("Invalid selector:", selector);
+        error$2("Invalid selector:", selector);
       }
     } else {
-      error$1("This browser doesn't support CSS query selectors");
+      error$2("This browser doesn't support CSS query selectors");
     }
     return utils$1.toArray(els);
   };
@@ -522,7 +419,7 @@
   };
 
   function El(ref) {
-    if (!ref) error$1("Element() needs a reference");
+    if (!ref) error$2("Element() needs a reference");
     if (ref instanceof El) {
       return ref;
     }
@@ -543,7 +440,7 @@
     } else if (ref.tagName) {
       node = ref;
     }
-    if (!node) error$1("Unmatched element selector:", ref);
+    if (!node) error$2("Unmatched element selector:", ref);
     this.el = node;
   }
 
@@ -1087,7 +984,7 @@
       }
       var val = utils$1.clamp(arg, _min, _max);
       if (!_validator(val)) {
-        error$1("ClickText#value() invalid value:", arg);
+        error$2("ClickText#value() invalid value:", arg);
       } else {
         _value = val;
       }
@@ -4033,7 +3930,7 @@
     slider.on('change', function(e) {
       var pct = fromSliderPct(e.pct);
       text.value(pct);
-      pct = utils$1.parsePercent(text.text()); // use rounded value (for consistency w/ cli)
+      pct = internal.parsePercent(text.text()); // use rounded value (for consistency w/ cli)
       onChange(pct);
     });
     slider.on('start', function(e) {
@@ -4280,11 +4177,16 @@
       if (!_isOpen) {
         btn.addClass('active');
         _isOpen = true;
-        // use console for messages while open
+        // Route logging output to the in-app console while it's open, so a
+        // user typing CLI commands here sees the results inline -- the same
+        // way a CLI user sees output in their terminal. warn() goes to a
+        // distinct consoleWarn() rather than to the Messages inbox: warnings
+        // emitted by command pipelines should land where the user typed,
+        // not in a separate UI surface they might not notice.
         // TODO: find a solution for logging problem when switching between multiple
         // gui instances with the console open. E.g. console could close
         // when an instance loses focus.
-        internal.setLoggingFunctions(consoleMessage, consoleError, consoleStop);
+        internal.setLoggingFunctions(consoleMessage, consoleError, consoleStop, consoleWarn);
         gui.container.addClass('console-open');
         el.show();
         gui.dispatchEvent('resize');
@@ -4682,6 +4584,15 @@
       toLog(msg, 'console-error');
     }
 
+    // Routed from internal.warn() while the console is open. Distinct from
+    // consoleWarning() (which is used for hard-stop errors) so the styling
+    // can differ -- warnings shouldn't read as red "something went wrong",
+    // they're just heads-ups about how the input was interpreted.
+    function consoleWarn() {
+      var msg = GUI.formatMessageArgs(arguments);
+      toLog(msg, 'console-warn');
+    }
+
     function consoleMessage() {
       var msg = GUI.formatMessageArgs(arguments);
       if (internal.loggingEnabled()) {
@@ -4932,7 +4843,7 @@
       });
 
       internal.writeFiles = function() {
-        error$1(unsupportedMsg);
+        error$2(unsupportedMsg);
       };
       return;
     }
@@ -7047,277 +6958,9 @@
   // Fall back to browserify's Buffer polyfill
   var B = typeof Buffer != 'undefined' ? Buffer : require$1('buffer').Buffer;
 
-  // This module provides a way for multiple jobs to run together asynchronously
-  // while keeping job-level context variables (like "defs") separate.
-
-  var stash = {};
-
-  function stashVar(key, val) {
-    if (key in stash) {
-      error('Tried to replace a stashed variable:', key);
-    }
-    stash[key] = val;
-  }
-
-  function getStashedVar(key) {
-    if (key in stash === false) {
-      return undefined; // to support running commands in tests
-      // error('Tried to read a nonexistent variable from the stash:', key);
-    }
-    return stash[key];
-  }
-
-  function clearStash() {
-    stash = {};
-  }
-
-  var LOGGING = false;
-  var STDOUT = false; // use stdout for status messages
-  var _error, _stop, _message, _warn;
-
-  var _interrupt = function() {
-    throw new NonFatalError(formatLogArgs(arguments));
-  };
-
-  var onceMessages = [];
-
-  setLoggingForCLI();
-
-  function getLoggingSetter() {
-    var e = _error, s = _stop, m = _message, w = _warn;
-    return function() {
-      setLoggingFunctions(m, e, s, w);
-    };
-  }
-
-  function setLoggingForCLI() {
-    function stop() {
-      throw new UserError(formatLogArgs(arguments));
-    }
-
-    function error() {
-      var msg = utils.toArray(arguments).join(' ');
-      throw new Error(msg);
-    }
-
-    function message() {
-      logArgs(arguments);
-    }
-
-    // CLI warning is just a message (GUI behaves differently)
-    var warn = message;
-
-    setLoggingFunctions(message, error, stop, warn);
-  }
-
-  function enableLogging() {
-    LOGGING = true;
-  }
-
-  function disableLogging() {
-    LOGGING = false;
-  }
-
-  function loggingEnabled() {
-    return !!LOGGING;
-  }
-
-  // Handle an unexpected condition (internal error)
-  function error() {
-    _error.apply(null, utils.toArray(arguments));
-  }
-
-  // Handle an error caused by invalid input or misuse of API
-  function stop() {
-    // _stop.apply(null, utils.toArray(arguments));
-    _stop.apply(null, messageArgs(arguments));
-  }
-
-  function interrupt() {
-    _interrupt.apply(null, utils.toArray(arguments));
-  }
-
-  // Print a status message
-  function message() {
-    _message.apply(null, messageArgs(arguments));
-  }
-
-  function warn() {
-    _warn.apply(null, messageArgs(arguments));
-  }
-
-  function warnOnce() {
-    var str = formatLogArgs(arguments);
-    if (onceMessages.includes(str)) return;
-    onceMessages.push(str);
-    _warn.apply(null, messageArgs(arguments));
-  }
-
-  // A way for the GUI to replace the CLI logging functions
-  function setLoggingFunctions(message, error, stop, warn) {
-    _message = message;
-    _error = error;
-    _stop = stop;
-    _warn = warn;
-  }
-
-  // get detailed error information from error stack (if available)
-  // Example stack string (Node.js):
-  /*
-  /Users/someuser/somescript.js:226
-      opacity: Math.round(weight * 5 / 5 // 0.2 0.4 0.6 etc
-                                       ^
-
-  SyntaxError: missing ) after argument list
-      at internalCompileFunction (node:internal/vm:73:18)
-      at wrapSafe (node:internal/modules/cjs/loader:1149:20)
-      at Module._compile (node:internal/modules/cjs/loader:1190:27)
-      ...
-  */
-  function getErrorDetail(e) {
-    var parts = (typeof e.stack == 'string') ? e.stack.split(/\n\s*\n/) : [];
-    if (parts.length > 1 || true) {
-      return '\nError details:\n' + parts[0];
-    }
-    return '';
-  }
-
-  // print a message to stdout
-  function print() {
-    STDOUT = true; // tell logArgs() to print to stdout, not stderr
-    // calling message() adds the "[command name]" prefix
-    _message(utils.toArray(arguments));
-    STDOUT = false;
-  }
-
-  function verbose() {
-    // verbose can be set globally with the -verbose command or separately for each command
-    if (useVerbose()) {
-      message.apply(null, arguments);
-    }
-  }
-
-  function useVerbose() {
-    return getStashedVar('VERBOSE');
-  }
-
-  function useDebug() {
-    return getStashedVar('DEBUG');
-  }
-
-  function debug() {
-    if (useDebug()) {
-      logArgs(arguments);
-    }
-  }
-
-  function time(slug) {
-    if (useDebug()) {
-      console.time(slug);
-    }
-  }
-
-  function timeEnd(slug) {
-    if (useDebug()) {
-      console.timeEnd(slug);
-    }
-  }
-
-  function printError(err) {
-    var msg;
-    if (!LOGGING) return;
-    if (utils.isString(err)) {
-      err = new UserError(err);
-    }
-    if (err.name == 'NonFatalError') {
-      console.error(messageArgs([err.message]).join(' '));
-    } else if (err.name == 'UserError') {
-      msg = err.message;
-      if (!/Error/.test(msg)) {
-        msg = "Error: " + msg;
-      }
-      console.error(messageArgs([msg]).join(' '));
-      console.error("Run mapshaper -h to view help");
-    } else {
-      // not a user error (i.e. a bug in mapshaper)
-      console.error(err);
-      // throw err;
-    }
-  }
-
-  function UserError(msg) {
-    var err = new Error(msg);
-    err.name = 'UserError';
-    return err;
-  }
-
-  function NonFatalError(msg) {
-    var err = new Error(msg);
-    err.name = 'NonFatalError';
-    return err;
-  }
-
-  function formatColumns(arr, alignments) {
-    var widths = arr.reduce(function(memo, line) {
-      return line.map(function(str, i) {
-        return memo ? Math.max(memo[i], str.length) : str.length;
-      });
-    }, null);
-    return arr.map(function(line) {
-      line = line.map(function(str, i) {
-        var rt = alignments && alignments[i] == 'right';
-        var pad = (rt ? str.padStart : str.padEnd).bind(str);
-        return pad(widths[i], ' ');
-      });
-      return '  ' + line.join(' ');
-    }).join('\n');
-  }
-
-  // Format an array of (preferably short) strings in columns for console logging.
-  function formatStringsAsGrid(arr, width) {
-    // TODO: variable column width
-    var longest = arr.reduce(function(len, str) {
-          return Math.max(len, str.length);
-        }, 0),
-        colWidth = longest + 2,
-        perLine = Math.floor((width || 80) / colWidth) || 1;
-    return arr.reduce(function(memo, name, i) {
-      var col = i % perLine;
-      if (i > 0 && col === 0) memo += '\n';
-      if (col < perLine - 1) { // right-pad all but rightmost column
-        name = utils.rpad(name, colWidth - 2, ' ');
-      }
-      return memo +  '  ' + name;
-    }, '');
-  }
-
-  // expose so GUI can use it
-  function formatLogArgs(args) {
-    return utils.toArray(args).join(' ');
-  }
-
-  function messageArgs(args) {
-    var arr = utils.toArray(args);
-    var cmd = getStashedVar('current_command');
-    if (cmd && cmd != 'help') {
-      arr.unshift('[' + cmd + ']');
-    }
-    return arr;
-  }
-
-  function logArgs(args) {
-    if (!LOGGING || getStashedVar('QUIET') || !utils.isArrayLike(args)) return;
-    var msg = formatLogArgs(args);
-    if (STDOUT) console.log(msg);
-    else console.error(msg);
-  }
-
-  function truncateString(str, maxLen) {
-    maxLen = maxLen || 80;
-    if (str.length > maxLen) {
-      str = str.substring(0, maxLen - 3).trimEnd() + '...';
-    }
-    return str;
+  // We do NOT import from mapshaper-logging here to avoid a circular dependency
+  function error$1() {
+    throw new Error(Array.prototype.slice.call(arguments).join(' '));
   }
 
   var uniqCount = 0;
@@ -7401,7 +7044,7 @@
   // Convert an array-like object to an Array, or make a copy if @obj is an Array
   function toArray(obj) {
     var arr;
-    if (!isArrayLike(obj)) error("toArray() requires an array-like object");
+    if (!isArrayLike(obj)) error$1("toArray() requires an array-like object");
     try {
       arr = Array.prototype.slice.call(obj, 0); // breaks in ie8
     } catch(e) {
@@ -7561,7 +7204,7 @@
   // Append elements of @src array to @dest array
   function merge(dest, src) {
     if (!isArray(dest) || !isArray(src)) {
-      error("Usage: merge(destArray, srcArray);");
+      error$1("Usage: merge(destArray, srcArray);");
     }
     for (var i=0, n=src.length; i<n; i++) {
       dest.push(src[i]);
@@ -7602,7 +7245,7 @@
     else if (isArrayLike(container)) {
       return indexOf(container, item) != -1;
     }
-    error("Expected Array or String argument");
+    error$1("Expected Array or String argument");
   }
 
   function some(arr, test) {
@@ -7649,7 +7292,7 @@
   // Assumes: no other non-numeric objects in array
   //
   function sum(arr, info) {
-    if (!isArrayLike(arr)) error ("sum() expects an array, received:", arr);
+    if (!isArrayLike(arr)) error$1 ("sum() expects an array, received:", arr);
     var tot = 0,
         nan = 0,
         val;
@@ -7931,7 +7574,7 @@
     var arr2 = [];
     for (var i=0; i<len; i++) {
       var idx = idxs[i];
-      if (idx < 0 || idx >= len) error("Out-of-bounds array idx");
+      if (idx < 0 || idx >= len) error$1("Out-of-bounds array idx");
       arr2[i] = arr[idx];
     }
     replaceArray(arr, arr2);
@@ -8016,7 +7659,7 @@
   // Elements of @arr are reordered
   //
   function findValueByRank(arr, rank) {
-    if (!arr.length || rank < 1 || rank > arr.length) error("[findValueByRank()] invalid input");
+    if (!arr.length || rank < 1 || rank > arr.length) error$1("[findValueByRank()] invalid input");
 
     rank = clamp(rank | 0, 1, arr.length);
     var k = rank - 1, // conv. rank to array index
@@ -8207,7 +7850,7 @@
       var str = literals[0],
           n = arguments.length;
       if (n != formatCodes.length) {
-        error("[format()] Data does not match format string; format:", fmt, "data:", arguments);
+        error$1("[format()] Data does not match format string; format:", fmt, "data:", arguments);
       }
       for (var i=0; i<n; i++) {
         str += formatValue(arguments[i], formatCodes[i]) + literals[i+1];
@@ -8238,7 +7881,7 @@
     if (src instanceof Uint8Array) {
       return B.from(src.buffer, src.byteOffset, src.byteLength);
     }
-    error('Unexpected argument type');
+    error$1('Unexpected argument type');
   }
 
   function expandoBuffer(constructor, rate) {
@@ -8260,7 +7903,7 @@
         offs = 0,
         k;
     if (rev) {
-      if (same) error('copy error');
+      if (same) error$1('copy error');
       inc = -1;
       offs = n - 1;
     }
@@ -8297,21 +7940,6 @@
       if (a[i] !== b[i]) break;
     }
     return a.substr(0, i);
-  }
-
-  function parsePercent(o) {
-    var str = String(o);
-    var isPct = str.indexOf('%') > 0;
-    var pct;
-    if (isPct) {
-      pct = Number(str.replace('%', '')) / 100;
-    } else {
-      pct = Number(str);
-    }
-    if (!(pct >= 0 && pct <= 1)) {
-      stop(format("Invalid percentage: %s", str));
-    }
-    return pct;
   }
 
   function formatVersionedName(name, i) {
@@ -8397,6 +8025,319 @@
         // remove string escapes
         str = str.replace(first == '"' ? /\\(?=")/g : /\\(?=')/g, '');
       }
+    }
+    return str;
+  }
+
+  // Default export so consumers can do `import utils from './mapshaper-utils'`
+  // and call `utils.isObject(x)` etc. Listing the names explicitly (instead
+  // of using `import * as utils from './mapshaper-utils'`) avoids a
+  // self-import and the resulting Rollup circular-dependency warning.
+  var utils = {
+    addThousandsSep, addslashes, arrayToIndex,
+    clamp, cleanNumericString, contains, copyElements, countValues, createBuffer,
+    defaults, difference,
+    endsWith, every, expandoBuffer, extend, extendBuffer,
+    find, findMedian, findQuantile, findRankByValue, findStringPrefix,
+    findValueByPct, findValueByRank, forEach, forEachProperty, format,
+    formatDateISO, formatIntlNumber, formatNumber, formatNumberForDisplay,
+    formatVersionedName, formatter,
+    genericSort, getArrayBounds, getGenericComparator, getKeyComparator,
+    getSortedIds, getUniqueName, groupBy,
+    htmlEscape,
+    indexOf, indexOn, inherit, initializeArray, intersection,
+    isArray, isArrayLike, isBoolean, isDate, isEven, isFiniteNumber, isFunction,
+    isInteger, isNonNegNumber, isNumber, isObject, isOdd, isPromise, isString,
+    isValidNumber,
+    lpad, ltrim,
+    mean, merge, mergeNames,
+    numToStr,
+    parseIntlNumber, parseNumber, parseString, pickOne, pluck,
+    pluralSuffix, promisify,
+    quicksort, quicksortPartition,
+    range, reduceAsync, regexEscape, reorderArray, repeat, repeatString,
+    replaceArray, rpad, rtrim,
+    shuffle, some, sortArrayIndex, sortOn, splitLines, sum,
+    toArray, toBuffer, trim, trimQuotes,
+    uniq, uniqifyNames,
+    wildcardToRegExp
+  };
+
+  // This module provides a way for multiple jobs to run together asynchronously
+  // while keeping job-level context variables (like "defs") separate.
+  //
+  // We deliberately do NOT import from mapshaper-logging here -- the logging
+  // module imports from this one, and avoiding the back-edge keeps the
+  // foundational dependency graph acyclic. (The single error path below is
+  // an internal-bug guard, not a user-facing message, so a plain Error is
+  // adequate.)
+
+  var stash = {};
+
+  function stashVar(key, val) {
+    if (key in stash) {
+      throw new Error('Tried to replace a stashed variable: ' + key);
+    }
+    stash[key] = val;
+  }
+
+  function getStashedVar(key) {
+    if (key in stash === false) {
+      return undefined; // to support running commands in tests
+      // error('Tried to read a nonexistent variable from the stash:', key);
+    }
+    return stash[key];
+  }
+
+  function clearStash() {
+    stash = {};
+  }
+
+  var LOGGING = false;
+  var STDOUT = false; // use stdout for status messages
+  var _error, _stop, _message, _warn;
+
+  var _interrupt = function() {
+    throw new NonFatalError(formatLogArgs(arguments));
+  };
+
+  var onceMessages = [];
+
+  setLoggingForCLI();
+
+  function getLoggingSetter() {
+    var e = _error, s = _stop, m = _message, w = _warn;
+    return function() {
+      setLoggingFunctions(m, e, s, w);
+    };
+  }
+
+  function setLoggingForCLI() {
+    function stop() {
+      throw new UserError(formatLogArgs(arguments));
+    }
+
+    function error() {
+      var msg = utils.toArray(arguments).join(' ');
+      throw new Error(msg);
+    }
+
+    function message() {
+      logArgs(arguments);
+    }
+
+    // CLI warning is just a message (GUI behaves differently)
+    var warn = message;
+
+    setLoggingFunctions(message, error, stop, warn);
+  }
+
+  function enableLogging() {
+    LOGGING = true;
+  }
+
+  function disableLogging() {
+    LOGGING = false;
+  }
+
+  function loggingEnabled() {
+    return !!LOGGING;
+  }
+
+  // Handle an unexpected condition (internal error)
+  function error() {
+    _error.apply(null, utils.toArray(arguments));
+  }
+
+  // Handle an error caused by invalid input or misuse of API
+  function stop() {
+    // _stop.apply(null, utils.toArray(arguments));
+    _stop.apply(null, messageArgs(arguments));
+  }
+
+  function interrupt() {
+    _interrupt.apply(null, utils.toArray(arguments));
+  }
+
+  // Print a status message
+  function message() {
+    _message.apply(null, messageArgs(arguments));
+  }
+
+  function warn() {
+    _warn.apply(null, messageArgs(arguments));
+  }
+
+  function warnOnce() {
+    var str = formatLogArgs(arguments);
+    if (onceMessages.includes(str)) return;
+    onceMessages.push(str);
+    _warn.apply(null, messageArgs(arguments));
+  }
+
+  // A way for the GUI to replace the CLI logging functions
+  function setLoggingFunctions(message, error, stop, warn) {
+    _message = message;
+    _error = error;
+    _stop = stop;
+    _warn = warn;
+  }
+
+  // get detailed error information from error stack (if available)
+  // Example stack string (Node.js):
+  /*
+  /Users/someuser/somescript.js:226
+      opacity: Math.round(weight * 5 / 5 // 0.2 0.4 0.6 etc
+                                       ^
+
+  SyntaxError: missing ) after argument list
+      at internalCompileFunction (node:internal/vm:73:18)
+      at wrapSafe (node:internal/modules/cjs/loader:1149:20)
+      at Module._compile (node:internal/modules/cjs/loader:1190:27)
+      ...
+  */
+  function getErrorDetail(e) {
+    var parts = (typeof e.stack == 'string') ? e.stack.split(/\n\s*\n/) : [];
+    if (parts.length > 1 || true) {
+      return '\nError details:\n' + parts[0];
+    }
+    return '';
+  }
+
+  // print a message to stdout
+  function print() {
+    STDOUT = true; // tell logArgs() to print to stdout, not stderr
+    // calling message() adds the "[command name]" prefix
+    _message(utils.toArray(arguments));
+    STDOUT = false;
+  }
+
+  function verbose() {
+    // verbose can be set globally with the -verbose command or separately for each command
+    if (useVerbose()) {
+      message.apply(null, arguments);
+    }
+  }
+
+  function useVerbose() {
+    return getStashedVar('VERBOSE');
+  }
+
+  function useDebug() {
+    return getStashedVar('DEBUG');
+  }
+
+  function debug() {
+    if (useDebug()) {
+      logArgs(arguments);
+    }
+  }
+
+  function time(slug) {
+    if (useDebug()) {
+      console.time(slug);
+    }
+  }
+
+  function timeEnd(slug) {
+    if (useDebug()) {
+      console.timeEnd(slug);
+    }
+  }
+
+  function printError(err) {
+    var msg;
+    if (!LOGGING) return;
+    if (utils.isString(err)) {
+      err = new UserError(err);
+    }
+    if (err.name == 'NonFatalError') {
+      console.error(messageArgs([err.message]).join(' '));
+    } else if (err.name == 'UserError') {
+      msg = err.message;
+      if (!/Error/.test(msg)) {
+        msg = "Error: " + msg;
+      }
+      console.error(messageArgs([msg]).join(' '));
+      console.error("Run mapshaper -h to view help");
+    } else {
+      // not a user error (i.e. a bug in mapshaper)
+      console.error(err);
+      // throw err;
+    }
+  }
+
+  function UserError(msg) {
+    var err = new Error(msg);
+    err.name = 'UserError';
+    return err;
+  }
+
+  function NonFatalError(msg) {
+    var err = new Error(msg);
+    err.name = 'NonFatalError';
+    return err;
+  }
+
+  function formatColumns(arr, alignments) {
+    var widths = arr.reduce(function(memo, line) {
+      return line.map(function(str, i) {
+        return memo ? Math.max(memo[i], str.length) : str.length;
+      });
+    }, null);
+    return arr.map(function(line) {
+      line = line.map(function(str, i) {
+        var rt = alignments && alignments[i] == 'right';
+        var pad = (rt ? str.padStart : str.padEnd).bind(str);
+        return pad(widths[i], ' ');
+      });
+      return '  ' + line.join(' ');
+    }).join('\n');
+  }
+
+  // Format an array of (preferably short) strings in columns for console logging.
+  function formatStringsAsGrid(arr, width) {
+    // TODO: variable column width
+    var longest = arr.reduce(function(len, str) {
+          return Math.max(len, str.length);
+        }, 0),
+        colWidth = longest + 2,
+        perLine = Math.floor((width || 80) / colWidth) || 1;
+    return arr.reduce(function(memo, name, i) {
+      var col = i % perLine;
+      if (i > 0 && col === 0) memo += '\n';
+      if (col < perLine - 1) { // right-pad all but rightmost column
+        name = utils.rpad(name, colWidth - 2, ' ');
+      }
+      return memo +  '  ' + name;
+    }, '');
+  }
+
+  // expose so GUI can use it
+  function formatLogArgs(args) {
+    return utils.toArray(args).join(' ');
+  }
+
+  function messageArgs(args) {
+    var arr = utils.toArray(args);
+    var cmd = getStashedVar('current_command');
+    if (cmd && cmd != 'help') {
+      arr.unshift('[' + cmd + ']');
+    }
+    return arr;
+  }
+
+  function logArgs(args) {
+    if (!LOGGING || getStashedVar('QUIET') || !utils.isArrayLike(args)) return;
+    var msg = formatLogArgs(args);
+    if (STDOUT) console.log(msg);
+    else console.error(msg);
+  }
+
+  function truncateString(str, maxLen) {
+    maxLen = maxLen || 80;
+    if (str.length > maxLen) {
+      str = str.substring(0, maxLen - 3).trimEnd() + '...';
     }
     return str;
   }
@@ -8637,7 +8578,7 @@
     } else if (geoType == 'polygon') {
       test = polygonTest;
     } else {
-      error$1("Unexpected geometry type:", geoType);
+      error$2("Unexpected geometry type:", geoType);
     }
     return test;
 
@@ -11313,7 +11254,7 @@
     hit.on('drag', function(e) {
       if (!labelSelected(e) || activeId == -1) return;
       if (e.id != activeId) {
-        error$1("Mismatched hit ids:", e.id, activeId);
+        error$2("Mismatched hit ids:", e.id, activeId);
       }
       var scale = ext.getSymbolScale() || 1;
       var symNode, textNode;
@@ -13689,9 +13630,12 @@
     //   is noticeably slower during animations with multiple canvases.
     // Highlights are drawn on a separate canvas while hovering, because this
     //   is generally faster than redrawing all of the shapes.
+    // Fast-nav forces the same path: _mainCanv has a CSS transform but stale
+    //   pixels, so painting on it would visually go through that transform a
+    //   second time and detach the highlight from its feature.
     this.drawOverlayLayers = function(layers, action) {
       var canv;
-      if (action == 'hover') {
+      if (action == 'hover' || _fastActive) {
         canv = _overlayCanv;
         _overlayCanv.prep(_ext);
       } else {
@@ -14871,7 +14815,7 @@ GUI and setting the size and crop of SVG output.</p><div><input type="text" clas
           ]
         });
       } else {
-        error$1('unsupported map style:', style);
+        error$2('unsupported map style:', style);
       }
     }
 

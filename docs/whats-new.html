@@ -42,7 +42,8 @@
       <h1 id="whats-new">What&#39;s new</h1>
 <p>This is a curated list of recently added features. For the full list of changes, including bug fixes and internal work, see the <a href="https://github.com/mbloch/mapshaper/blob/master/CHANGELOG.md">changelog</a> on GitHub.</p>
 <h2 id="april-2026">April 2026</h2>
-<div class="whats-new-entry"><p><strong>Undo/redo buttons.</strong> The web UI now has an undo/redo toolbar. Undo and redo were already supported in the geometry and attribute editing modes; the toolbar makes them more discoverable for users who didn&#39;t know the keyboard shortcuts (<strong>⌘Z</strong> / <strong>⌘⇧Z</strong>) existed.</p>
+<div class="whats-new-entry"><p><strong>Messages panel.</strong> Warnings and informational messages are now collected in a messages panel. When new messages are available, an icon with a count appears in the header bar; clicking it opens the panel. This keeps important information accessible without interrupting your session with a modal popup.</p>
+</div><div class="whats-new-entry"><p><strong>Undo/redo buttons.</strong> The web UI now has an undo/redo toolbar. Undo and redo were already supported in the geometry and attribute editing modes; the toolbar makes them more discoverable for users who didn&#39;t know the keyboard shortcuts (<strong>⌘Z</strong> / <strong>⌘⇧Z</strong>) existed.</p>
 </div><div class="whats-new-entry"><p><strong>Command files.</strong> A sequence of Mapshaper commands can be written to a <code>.txt</code> file with <code>#</code> comments and no shell quoting, and run with <code>-run &lt;file&gt;</code> (or just <code>mapshaper commands.txt</code>). Command files can also be written in a shell-compatible way, if you want to be able to paste the commands into the terminal or add them to a shell script. In a future release, these files will also be runnable in the browser.</p>
 <pre><code class="hljs language-bash">mapshaper build.txt
 </code></pre>
