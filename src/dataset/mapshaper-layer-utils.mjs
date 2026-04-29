@@ -9,6 +9,16 @@ import { getFirstNonEmptyRecord } from '../datatable/mapshaper-data-utils';
 import utils from '../utils/mapshaper-utils';
 import { absArcId } from '../paths/mapshaper-arc-utils';
 import { pathIsRectangle } from '../paths/mapshaper-rectangle-utils';
+import {
+  layerHasGeometry, layerIsGeometric, layerHasPaths,
+  layerHasPoints, layerHasNonNullShapes
+} from '../dataset/mapshaper-layer-type-utils';
+
+// Re-exported from mapshaper-layer-type-utils.mjs for back-compat.
+export {
+  layerHasGeometry, layerIsGeometric, layerHasPaths,
+  layerHasPoints, layerHasNonNullShapes
+};
 
 // Insert a column of values into a (new or existing) data field
 export function insertFieldValues(lyr, fieldName, values) {
@@ -41,23 +51,6 @@ export function layerHasNonNullData(lyr) {
   return lyr.data && getFirstNonEmptyRecord(lyr.data.getRecords()) ? true : false;
 }
 
-export function layerHasGeometry(lyr) {
-  return layerHasPaths(lyr) || layerHasPoints(lyr);
-}
-
-export function layerIsGeometric(lyr) {
-  return !!lyr.geometry_type; // only checks type, includes empty layers
-}
-
-export function layerHasPaths(lyr) {
-  return (lyr.geometry_type == 'polygon' || lyr.geometry_type == 'polyline') &&
-    layerHasNonNullShapes(lyr);
-}
-
-export function layerHasPoints(lyr) {
-  return lyr.geometry_type == 'point' && layerHasNonNullShapes(lyr);
-}
-
 export function layerIsRectangle(lyr, arcs) {
   return layerOnlyHasRectangles(lyr, arcs) && lyr.shapes.length == 1;
 }
@@ -68,12 +61,6 @@ export function layerOnlyHasRectangles(lyr, arcs) {
   return lyr.shapes.every(function(shp) {
     if (!shp) return true;
     return pathIsRectangle(shp[0], arcs);
-  });
-}
-
-export function layerHasNonNullShapes(lyr) {
-  return utils.some(lyr.shapes || [], function(shp) {
-    return !!shp;
   });
 }
 

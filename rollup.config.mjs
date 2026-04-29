@@ -31,6 +31,28 @@ function onGeoPackageWarn(warning, warn) {
   // @ngageoint/geopackage includes eval() in bundled vendor code.
   // Ignore this warning to avoid printing the full minified library source.
   if (warning.code == 'EVAL') return;
+  if (isVendorCircular(warning)) return;
+  warn(warning);
+}
+
+// Filter out CIRCULAR_DEPENDENCY warnings whose cycle lies entirely inside
+// third-party packages we don't control. Currently:
+//   - polyfill-node._stream_{readable,writable,duplex}.js (Node streams
+//     polyfill, well-known intentional internal circular). Rollup tags
+//     these as virtual modules with a leading null byte.
+//   - node_modules/d3-interpolate/src/{value,array,object}.js (d3 design).
+function isVendorCircular(warning) {
+  if (warning.code !== 'CIRCULAR_DEPENDENCY') return false;
+  var ids = warning.ids || [];
+  if (ids.length === 0) return false;
+  return ids.every(function(p) {
+    return /polyfill-node\b/.test(p) ||
+      /\bnode_modules\/d3-interpolate\//.test(p);
+  });
+}
+
+function onMainWarn(warning, warn) {
+  if (isVendorCircular(warning)) return;
   warn(warning);
 }
 
@@ -45,6 +67,7 @@ export default [{
 }, {
   treeshake: false,
   input: 'src/mapshaper-gui-modules.mjs',
+  onwarn: onMainWarn,
   output: {
     file: 'www/modules.js',
     format: 'iife',
@@ -82,6 +105,7 @@ export default [{
   treeshake: true,
   context: 'null', // prevent a Rollup warning from msgpack
   input: 'src/mapshaper.mjs',
+  onwarn: onMainWarn,
   output: [{
     strict: false,
     format: 'iife',

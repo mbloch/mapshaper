@@ -1,5 +1,4 @@
-import { getFeatureCount, layerHasPaths } from '../dataset/mapshaper-layer-utils';
-import { aggregateDataRecords } from '../dissolve/mapshaper-data-aggregation';
+import { layerHasPaths } from '../dataset/mapshaper-layer-utils';
 import { cloneShapes } from '../paths/mapshaper-shape-utils';
 import { dissolvePointGeometry } from '../dissolve/mapshaper-point-dissolve';
 import { dissolvePolylineGeometry } from '../dissolve/mapshaper-polyline-dissolve';
@@ -9,10 +8,14 @@ import { addIntersectionCuts } from '../paths/mapshaper-intersection-cuts';
 import { findSegmentIntersections } from '../paths/mapshaper-segment-intersection';
 import { getCategoryClassifier } from '../dissolve/mapshaper-data-aggregation';
 import { applyCommandToLayerSelection } from '../dataset/mapshaper-command-utils';
+import { composeDissolveLayer } from '../dissolve/mapshaper-dissolve-compose';
 import utils from '../utils/mapshaper-utils';
 import { message, stop } from '../utils/mapshaper-logging';
 import cmd from '../mapshaper-cmd';
-import { DataTable } from '../datatable/mapshaper-data-table';
+
+// Re-export so any pre-existing consumer that imports composeDissolveLayer
+// from this module keeps working.
+export { composeDissolveLayer };
 
 // Options that require the topology-repair algorithm and are not supported
 // by the no-repair fast path.
@@ -185,37 +188,3 @@ function makeMultipartShapes(lyr, getGroupId) {
   return shapes2;
 }
 
-// @lyr: original undissolved layer
-// @shapes: dissolved shapes
-export function composeDissolveLayer(lyr, shapes, getGroupId, opts) {
-  var records = null;
-  var lyr2;
-  if (lyr.data) {
-    records = aggregateDataRecords(lyr.data.getRecords(), getGroupId, opts);
-    // replace missing shapes with nulls
-    for (var i=0, n=records.length; i<n; i++) {
-      if (shapes && !shapes[i]) {
-        shapes[i] = null;
-      }
-    }
-  }
-  lyr2 = {
-    name: opts.no_replace ? null : lyr.name,
-    shapes: shapes,
-    data: records ? new DataTable(records) : null,
-    geometry_type: lyr.geometry_type
-  };
-  if (!opts.silent) {
-    printDissolveMessage(lyr, lyr2);
-  }
-  return lyr2;
-}
-
-function printDissolveMessage(pre, post) {
-  var n1 = getFeatureCount(pre),
-      n2 = getFeatureCount(post),
-      msg = utils.format('Dissolved %,d feature%s into %,d feature%s',
-        n1, utils.pluralSuffix(n1), n2,
-        utils.pluralSuffix(n2));
-  message(msg);
-}

@@ -80,7 +80,7 @@ export var SimplifyControl = function(gui) {
   slider.on('change', function(e) {
     var pct = fromSliderPct(e.pct);
     text.value(pct);
-    pct = utils.parsePercent(text.text()); // use rounded value (for consistency w/ cli)
+    pct = internal.parsePercent(text.text()); // use rounded value (for consistency w/ cli)
     onChange(pct);
   });
   slider.on('start', function(e) {

@@ -1,5 +1,6 @@
 import { findPairsOfNeighbors } from '../polygons/mapshaper-polygon-neighbors';
 import { insertFieldValues, requirePolygonLayer } from '../dataset/mapshaper-layer-utils';
+import { parsePercent } from '../cli/mapshaper-option-parsing-utils';
 import cmd from '../mapshaper-cmd';
 import geom from '../geom/mapshaper-geom';
 import utils from '../utils/mapshaper-utils';
@@ -23,7 +24,7 @@ cmd.cluster = function(lyr, arcs, opts) {
 function calcPolygonClusters(lyr, arcs, opts) {
   var calcScore = getPolygonClusterCalculator(opts);
   var size = lyr.shapes.length;
-  var pct = opts.pct ? utils.parsePercent(opts.pct) : 1;
+  var pct = opts.pct ? parsePercent(opts.pct) : 1;
   var count = Math.round(size * pct);
   var groupField = opts.group_by || null;
 

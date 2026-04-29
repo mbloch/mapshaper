@@ -4,6 +4,7 @@ import { getThresholdFunction } from '../simplify/mapshaper-simplify-pct';
 import { finalizeSimplification, convertSimplifyInterval, convertSimplifyResolution,
   simplifyPaths, getStandardSimplifyOpts } from '../commands/mapshaper-simplify';
 import { layerHasPaths } from '../dataset/mapshaper-layer-utils';
+import { parsePercent } from '../cli/mapshaper-option-parsing-utils';
 import { stop } from '../utils/mapshaper-logging';
 import utils from '../utils/mapshaper-utils';
 import cmd from '../mapshaper-cmd';
@@ -61,7 +62,7 @@ function getVariablePercentageFunction(exp, lyr, dataset, opts) {
   var pctToInterval = getThresholdFunction(dataset.arcs);
   return function(shpId) {
     var val = compiled(shpId);
-    var pct = utils.parsePercent(val);
+    var pct = parsePercent(val);
     return pctToInterval(pct);
   };
 }

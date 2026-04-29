@@ -4,6 +4,17 @@ import { getRoundingFunction } from '../geom/mapshaper-rounding';
 import { getNiceBreaks } from '../classification/mapshaper-nice-breaks';
 import { getOutputFunction } from '../classification/mapshaper-classification';
 import { makeSimpleKey, makeDatavizKey, makeGradientKey } from '../furniture/mapshaper-key';
+import {
+  getEqualIntervalBreaks, getQuantileBreaks, getHybridBreaks,
+  getDistributionData, getClassId
+} from '../classification/mapshaper-class-stats';
+
+// Re-exported from mapshaper-class-stats.mjs for back-compat -- the
+// classifier owned these helpers historically.
+export {
+  getEqualIntervalBreaks, getQuantileBreaks, getHybridBreaks,
+  getDistributionData, getClassId
+};
 
 export function getSequentialClassifier(classValues, nullValue, dataValues, method, opts) {
   var numValues = classValues.length;
@@ -195,61 +206,6 @@ export function getContinuousClassifier(breaks, minVal, maxVal) {
   };
 }
 
-export function getEqualIntervalBreaks(ascending, numBreaks) {
-  var numRanges = numBreaks + 1,
-      minVal = ascending[0],
-      maxVal = ascending[ascending.length - 1],
-      interval = (maxVal - minVal) / numRanges,
-      breaks = [],
-      i;
-  for (i = 1; i<numRanges; i++) {
-    breaks.push(minVal + i * interval);
-  }
-  return breaks;
-}
-
-export function getQuantileBreaks(ascending, numBreaks) {
-  var numRanges = numBreaks + 1;
-  var n = ascending.length / numRanges;
-  var breaks = [];
-  var i, j;
-  for (i = 1; i<numRanges; i++) {
-    j = Math.floor(i * n);
-    breaks.push(ascending[j]);
-  }
-  return breaks;
-}
-
-// inner breaks have equal-interval spacing
-// first and last bucket are sized like quantiles (they are sized to contain
-// a proportional share of the data)
-export function getHybridBreaks(ascending, numBreaks) {
-  var quantileBreaks = getQuantileBreaks(ascending, numBreaks);
-  if (numBreaks < 3) return quantileBreaks;
-  var lowerBreak = quantileBreaks[0];
-  var upperBreak = quantileBreaks[quantileBreaks.length-1];
-  var innerValues = ascending.filter(function(val) {
-    return val >= lowerBreak && val < upperBreak;
-  });
-  var innerBreaks = getEqualIntervalBreaks(innerValues, numBreaks - 2);
-  var breaks = [lowerBreak].concat(innerBreaks).concat(upperBreak);
-  return breaks;
-}
-
-export function getDistributionData(breaks, ascending) {
-  var arr = utils.initializeArray(new Array(breaks.length + 1), 0);
-  var nulls = 0;
-  ascending.forEach(function(val) {
-    var i = getClassId(val, breaks);
-    if (i == -1) {
-      error('Indexing error');
-    } else {
-      arr[i]++;
-    }
-  });
-  return arr;
-}
-
 export function applyDataRange(values, range) {
   var minval = range[0];
   var maxval = range[1];
@@ -291,13 +247,3 @@ function testDescendingNumbers(arr) {
   return arraysAreIdentical(arr, utils.genericSort(arr.map(parseFloat), false));
 }
 
-// breaks: threshold values between ranges (ascending order)
-// Returns array index of a sequential range, or -1 if @val not numeric
-export function getClassId(val, breaks) {
-  var i = 0;
-  if (!utils.isValidNumber(val)) {
-    return -1;
-  }
-  while (i < breaks.length && val >= breaks[i]) i++;
-  return i;
-}

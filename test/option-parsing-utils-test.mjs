@@ -2,10 +2,41 @@ import assert from 'assert';
 import {
   parseColorList,
   parseStringList,
-  splitShellTokens
+  splitShellTokens,
+  parsePercent
 } from '../src/cli/mapshaper-option-parsing-utils';
 
 describe('mapshaper-option-parsing-utils.js', function () {
+
+  describe('parsePercent()', function () {
+    it('correctly parse values with %', function () {
+      assert.equal(parsePercent('4%'), 0.04);
+      assert.equal(parsePercent('0%'), 0);
+      assert.equal(parsePercent('100%'), 1);
+    })
+
+    it('correctly parse fractions', function () {
+      assert.equal(parsePercent('0.04'), 0.04);
+      assert.equal(parsePercent('0'), 0);
+      assert.equal(parsePercent('1'), 1);
+    })
+
+    it('throws on invalid values', function () {
+      assert.throws(function() {
+        parsePercent('a');
+      });
+      assert.throws(function() {
+        parsePercent('101%');
+      });
+      assert.throws(function() {
+        parsePercent('10');
+      });
+      assert.throws(function() {
+        parsePercent('-1%');
+      });
+    })
+
+  })
 
   describe('parseStringList()', function () {
     var list1 = '"County FIPS,State FIPS"',

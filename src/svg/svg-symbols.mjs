@@ -1,7 +1,7 @@
 // convert data records (properties like svg-symbol, label-text, fill, r) to svg symbols
 //
-import { importLineString, importMultiLineString, importPolygon } from '../svg/geojson-to-svg';
-import { featureHasSvgSymbol, featureHasLabel } from '../svg/mapshaper-svg';
+import { importLineString, importMultiLineString, importPolygon } from '../svg/svg-geom-primitives';
+import { featureHasSvgSymbol, featureHasLabel } from '../svg/svg-feature-utils';
 import { renderStyledLabel } from './svg-labels';
 import utils from '../utils/mapshaper-utils';
 import { applyStyleAttributes } from '../svg/svg-properties';

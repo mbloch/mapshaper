@@ -1,7 +1,7 @@
 
 import utils from '../utils/mapshaper-utils';
 import { getFileExtension } from '../utils/mapshaper-filename-utils';
-import { PACKAGE_EXT } from '../pack/mapshaper-pack';
+import { PACKAGE_EXT } from '../pack/mapshaper-pack-constants';
 
 // Guess the type of a data file from file extension, or return null if not sure
 // File type is different than data type

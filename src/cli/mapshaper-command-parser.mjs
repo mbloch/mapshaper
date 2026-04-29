@@ -272,6 +272,8 @@ export function CommandParser() {
       cmd.options[optDef.name] = value;
     }
 
+
+
     function parseOptionValue(token, optDef) {
       var type = optDef.type;
       var val, err;
@@ -286,7 +288,6 @@ export function CommandParser() {
       } else if (type == 'bbox' || type == 'numbers') {
         val = parseNumberList(token);
       } else if (type == 'percent') {
-        // val = utils.parsePercent(token);
         val = token; // string value is parsed by command function
       } else if (type == 'distance' || type == 'area') {
         val = token; // string value is parsed by command function

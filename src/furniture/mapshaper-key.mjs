@@ -2,7 +2,7 @@
 import { exportSVG } from '../svg/mapshaper-svg';
 import { importGeoJSON } from '../geojson/geojson-import';
 import { writeFiles } from '../io/mapshaper-file-export';
-import { getEqualIntervalBreaks, getDistributionData } from '../classification/mapshaper-sequential-classifier';
+import { getEqualIntervalBreaks, getDistributionData } from '../classification/mapshaper-class-stats';
 import { mergeDatasets } from '../dataset/mapshaper-merging';
 import { roundToDigits } from '../geom/mapshaper-rounding';
 import { stop, message } from '../utils/mapshaper-logging';

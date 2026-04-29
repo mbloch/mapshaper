@@ -1,4 +1,4 @@
-import { layerHasPoints } from '../dataset/mapshaper-layer-utils';
+import { layerHasPoints } from '../dataset/mapshaper-layer-type-utils';
 import { Bounds } from '../geom/mapshaper-bounds';
 import { stop } from '../utils/mapshaper-logging';
 

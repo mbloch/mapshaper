@@ -2,6 +2,11 @@ import { stop } from '../utils/mapshaper-logging';
 import { renderScalebar } from '../commands/mapshaper-scalebar';
 // import { renderFrame } from '../commands/mapshaper-frame';
 import { isProjectedCRS } from '../crs/mapshaper-projections';
+import { getFurnitureLayerType, getFurnitureLayerData } from '../furniture/mapshaper-furniture-utils';
+
+// Re-export accessors for back-compat with consumers that still expect
+// to find them on this module.
+export { getFurnitureLayerType, getFurnitureLayerData };
 
 var furnitureRenderers = {
   scalebar: renderScalebar
@@ -17,16 +22,6 @@ export function layerHasFurniture(lyr) {
 export function isFurnitureLayer(lyr) {
   // return !!mapLayer.furniture;
   return layerHasFurniture(lyr);
-}
-
-// @lyr dataset layer
-export function getFurnitureLayerType(lyr) {
-  var rec = lyr.data && lyr.data.getReadOnlyRecordAt(0);
-  return rec && rec.type || null;
-}
-
-export function getFurnitureLayerData(lyr) {
-  return lyr.data && lyr.data.getReadOnlyRecordAt(0);
 }
 
 export function renderFurnitureLayer(lyr, frame) {

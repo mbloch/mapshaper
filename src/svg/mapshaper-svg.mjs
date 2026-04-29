@@ -255,14 +255,8 @@ export function getEmptyLayerForSVG(lyr, opts) {
   return layerObj;
 }
 
-export function featureHasSvgSymbol(d) {
-  return !!(d && (d['svg-symbol'] || d.r));
-}
-
-export function featureHasLabel(d) {
-  var text = d && d['label-text'];
-  return text || text === 0; // accept numerical 0 as label text
-}
+// Re-exported from svg-feature-utils.mjs for back-compat.
+export { featureHasSvgSymbol, featureHasLabel } from '../svg/svg-feature-utils';
 
 export function layerHasSvgSymbols(lyr) {
   return lyr.geometry_type == 'point' && lyr.data && lyr.data.fieldExists('svg-symbol');
