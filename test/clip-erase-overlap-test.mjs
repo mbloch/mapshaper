@@ -22,6 +22,15 @@ describe('-clip / -erase: non-overlapping bounds warning', function() {
     });
   }
 
+  function crsMismatchWarnLines(log) {
+    return log.filter(function(line) {
+      // The CRS-mismatch warning fires before the bbox check and uses
+      // distinct wording -- assert on phrasing that won't accidentally
+      // match the bbox-disjoint message above.
+      return /uses .* coordinates but target/.test(line);
+    });
+  }
+
   // Use distinct layer names per test so warnOnce dedup across the suite
   // doesn't suppress legitimate warnings in later tests. (warnOnce keys
   // on full message text, which includes the layer names.)
@@ -190,6 +199,101 @@ describe('-clip / -erase: non-overlapping bounds warning', function() {
         '-target ' + t + ' -erase source=' + s + ' -o format=json';
       var input = {'target.json': eu(t), 'source.json': germany(s)};
       return runAndCapture(cmd, input).then(function(res) {
+        assert.equal(overlapWarnLines(res.log).length, 0);
+      });
+    });
+  });
+
+  describe('CRS mismatch (independent of bbox overlap)', function() {
+
+    // The bbox check has a known false-negative: a projected layer whose
+    // bbox straddles (0, 0) often does intersect an unprojected lat/lng
+    // bbox, even though clip/erase between them is meaningless. These
+    // tests cover the CRS-compatibility check that catches that case.
+
+    function originStraddlingLngLat(name) {
+      // Spans (0,0); bbox = [-10, -5, 10, 5] in lng/lat.
+      return {
+        type: 'FeatureCollection',
+        features: [{
+          type: 'Feature', properties: {name: name},
+          geometry: {type: 'Polygon', coordinates: [[
+            [-10, -5], [10, -5], [10, 5], [-10, 5], [-10, -5]
+          ]]}
+        }]
+      };
+    }
+
+    function runExpectingFailure(cmd, input) {
+      // -clip across mismatched CRSes hits requireDatasetsHaveCompatibleCRS()
+      // downstream and stops. We only care about the warning that fires
+      // *before* that stop -- swallow the rejection so we can inspect the
+      // log.
+      return captureLogCallsAsync(function() {
+        return api.applyCommands(cmd, input).catch(function() { return null; });
+      }).then(function(captured) { return {log: captured.log}; });
+    }
+
+    it('warns when source is projected and target is lng/lat (overlapping bboxes)', function() {
+      var t = uniq('crs_target');
+      var s = uniq('crs_src_proj');
+      // Both inputs straddle the origin, so post-projection their bboxes
+      // both contain (0, 0) and therefore intersect. Without the CRS
+      // check, no warning would fire.
+      var cmd =
+        '-i target.json name=' + t + ' ' +
+        '-i source.json name=' + s + ' -proj webmercator ' +
+        '-target ' + t + ' -clip source=' + s + ' -o format=json';
+      var input = {
+        'target.json': originStraddlingLngLat(t),
+        'source.json': originStraddlingLngLat(s)
+      };
+      return runExpectingFailure(cmd, input).then(function(res) {
+        var hits = crsMismatchWarnLines(res.log);
+        assert.equal(hits.length, 1);
+        assert.match(hits[0], /^\[clip\] -clip:/);
+        assert.match(hits[0], new RegExp('source "' + s + '"'));
+        assert.match(hits[0], new RegExp('target "' + t + '"'));
+        assert.match(hits[0], /projected/);
+        assert.match(hits[0], /lng\/lat/);
+        // Make sure the (likely-misleading) bbox warning was suppressed.
+        assert.equal(overlapWarnLines(res.log).length, 0);
+      });
+    });
+
+    it('warns the same way for -erase', function() {
+      var t = uniq('crs_target');
+      var s = uniq('crs_src_proj');
+      var cmd =
+        '-i target.json name=' + t + ' ' +
+        '-i source.json name=' + s + ' -proj webmercator ' +
+        '-target ' + t + ' -erase source=' + s + ' -o format=json';
+      var input = {
+        'target.json': originStraddlingLngLat(t),
+        'source.json': originStraddlingLngLat(s)
+      };
+      return runExpectingFailure(cmd, input).then(function(res) {
+        var hits = crsMismatchWarnLines(res.log);
+        assert.equal(hits.length, 1);
+        assert.match(hits[0], /^\[erase\] -erase:/);
+      });
+    });
+
+    it('does NOT warn when both sides share the same CRS family (both lng/lat)', function() {
+      // Same-family CRS + intersecting bboxes -> no CRS warning, no
+      // bbox warning. Sanity-checks that we don't warn on the happy path.
+      var t = uniq('crs_ok_target');
+      var s = uniq('crs_ok_src');
+      var cmd =
+        '-i target.json name=' + t + ' ' +
+        '-i source.json name=' + s + ' ' +
+        '-target ' + t + ' -clip source=' + s + ' -o format=json';
+      var input = {
+        'target.json': originStraddlingLngLat(t),
+        'source.json': originStraddlingLngLat(s)
+      };
+      return runAndCapture(cmd, input).then(function(res) {
+        assert.equal(crsMismatchWarnLines(res.log).length, 0);
         assert.equal(overlapWarnLines(res.log).length, 0);
       });
     });

@@ -7,7 +7,7 @@ import { addIntersectionCuts } from '../paths/mapshaper-intersection-cuts';
 import { mergeLayersForOverlay2, normalizeOverlaySource } from '../clipping/mapshaper-overlay-utils';
 import { divideDatasetByBBox } from '../clipping/mapshaper-bbox2-clipping';
 import { layerHasPaths } from '../dataset/mapshaper-layer-utils';
-import { Bounds } from '../geom/mapshaper-bounds';
+import { getDatasetCRS, isLatLngCRS } from '../crs/mapshaper-projections';
 import cmd from '../mapshaper-cmd';
 import { stop, message, warnOnce } from '../utils/mapshaper-logging';
 import utils from '../utils/mapshaper-utils';
@@ -56,7 +56,7 @@ export function clipLayersInPlace(layers, clipSrc, dataset, type, opts) {
 // @type: 'clip' or 'erase'
 export function clipLayers(targetLayers, clipSrc, targetDataset, type, opts) {
   profileStart('clipLayers');
-  opts = opts || {no_cleanup: true}; // TODO: update testing functions
+  opts = opts || {no_fcleanup: true}; // TODO: update testing functions
   var usingPathClip = utils.some(targetLayers, layerHasPaths);
   var mergedDataset, clipLyr, nodes, result;
   var clipDataset = normalizeOverlaySource(clipSrc, targetDataset, opts);
@@ -187,22 +187,53 @@ export function getClipMessage(nullCount, sliverCount) {
   return '';
 }
 
-// Warn (once per source/target pair) if a -clip / -erase / slice is being
-// asked to operate on layers whose bounding boxes don't overlap. The common
-// causes are CRS mismatch or picking the wrong source layer. Empty layers
-// are ignored: they're a separate failure mode and would produce noisy false
-// positives. Skipped if opts.no_warn is set.
+// Warn (once per source/target pair) when a -clip / -erase / slice almost
+// certainly won't do what the user wants. Two checks, in order of strength:
+//
+//   1. CRS mismatch -- one side is lat/lng and the other is projected. This
+//      uses the same logic as requireDatasetsHaveCompatibleCRS() in
+//      mapshaper-merging.mjs, but fires here as a friendlier, command-aware
+//      warning before mergeDatasets() would otherwise stop() with a generic
+//      message. It also catches a class of cases the bbox check misses: a
+//      projected layer whose bbox straddles (0,0) often *does* overlap an
+//      unprojected lat/lng bbox, even though the two are useless together.
+//   2. Bbox-disjoint -- a fallback for the case where CRSes look compatible
+//      (or are unknown on both sides) but the layers clearly aren't in the
+//      same place. Usually a wrong-source-picker error.
+//
+// Empty target layers are ignored (separate failure mode; would just be
+// noise). The CRS warning suppresses the bbox warning for the same target,
+// so users see one warning per problem, not two.
+// Skipped entirely if opts.no_warn is set.
 export function warnIfBoundsDontOverlap(targetLayers, targetDataset, clipDataset, type) {
-  var srcBounds = getLayerBounds(clipDataset.layers[0], clipDataset.arcs);
-  if (!srcBounds || !srcBounds.hasBounds()) return;
+  var srcCRS = getDatasetCRS(clipDataset);
+  var targetCRS = getDatasetCRS(targetDataset);
+  var crsMismatch = srcCRS && targetCRS && isLatLngCRS(srcCRS) != isLatLngCRS(targetCRS);
   var srcName = clipDataset.layers[0].name || '<unnamed>';
+  var srcBounds = getLayerBounds(clipDataset.layers[0], clipDataset.arcs);
   targetLayers.forEach(function(targetLyr) {
     var targetBounds = getLayerBounds(targetLyr, targetDataset.arcs);
     if (!targetBounds || !targetBounds.hasBounds()) return;
+    if (crsMismatch) {
+      warnOnce(formatCRSMismatchMessage(type, srcName, targetLyr.name,
+        srcCRS, targetCRS));
+      return; // Don't also fire the (likely-misleading) bbox warning.
+    }
+    if (!srcBounds || !srcBounds.hasBounds()) return;
     if (srcBounds.intersects(targetBounds)) return;
     warnOnce(formatNoOverlapMessage(type, srcName, targetLyr.name,
       srcBounds, targetBounds));
   });
+}
+
+function formatCRSMismatchMessage(type, srcName, targetName, srcCRS, targetCRS) {
+  var verb = type === 'erase' ? 'erase' : 'clip';
+  var srcKind = isLatLngCRS(srcCRS) ? 'lng/lat (geographic)' : 'projected';
+  var targetKind = isLatLngCRS(targetCRS) ? 'lng/lat (geographic)' : 'projected';
+  return '-' + verb + ': source "' + srcName + '" uses ' + srcKind +
+    ' coordinates but target "' + (targetName || '<unnamed>') + '" uses ' +
+    targetKind + ' coordinates. The -' + verb +
+    ' will not produce a useful result; project one side to match the other first.';
 }
 
 function formatNoOverlapMessage(type, srcName, targetName, srcBounds, targetBounds) {
