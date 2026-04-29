@@ -103,9 +103,12 @@ export function LayerRenderer(gui, container) {
   //   is noticeably slower during animations with multiple canvases.
   // Highlights are drawn on a separate canvas while hovering, because this
   //   is generally faster than redrawing all of the shapes.
+  // Fast-nav forces the same path: _mainCanv has a CSS transform but stale
+  //   pixels, so painting on it would visually go through that transform a
+  //   second time and detach the highlight from its feature.
   this.drawOverlayLayers = function(layers, action) {
     var canv;
-    if (action == 'hover') {
+    if (action == 'hover' || _fastActive) {
       canv = _overlayCanv;
       _overlayCanv.prep(_ext);
     } else {
