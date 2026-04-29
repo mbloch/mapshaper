@@ -1,11 +1,16 @@
+v0.7.5
+* Added warnings for a number of common user errors.
+* Added more usage examples to `mapshaper -help <command>`.
+* Improved the summary message after running `-join`.
+* Various other small UI improvements.
+
 v0.7.4
 * Removed support for fetching remote SVG assets at export time.
 * Bumped the minimum supported Node.js version from 12 to 20.11 (Maintenance LTS).
 * Updated dependencies.
 * `mapshaper-gui` improvements.
-* Snapshot cleanup in the web UI is more dependable.
+* Snapshot cleanup in the web UI is now more dependable.
 * Added a Messages inbox to the web UI for warnings and non-urgent info messages.
-* Loading a Shapefile in the web UI without its `.dbf` or `.prj` sibling now posts a Messages-inbox warning.
 
 v0.7.2
 * Added undo/redo toolbar to the web UI. The toolbar appears in interactive editing modes where undo/redo is supported.
