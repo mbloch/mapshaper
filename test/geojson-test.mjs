@@ -367,6 +367,20 @@ describe('mapshaper-geojson.js', function () {
     })
 
     describe('Warning when GeoJSON has projected-looking coordinates', function() {
+      it('does not warn by default for projected-looking coords', function() {
+        var json = {
+          type: 'Point',
+          coordinates: [500000, 4500000]
+        };
+        var calls = captureLogCalls(function() {
+          api.internal.importGeoJSON(json, {});
+        });
+        assert.ok(
+          !calls.some(s => /coordinates outside the lat-long range/.test(s)),
+          'did not expect a warning by default, got:\n' + calls.join('\n')
+        );
+      });
+
       it('warns when polygon coords are clearly outside lat-long range', function() {
         var json = {
           type: 'FeatureCollection',
@@ -380,7 +394,7 @@ describe('mapshaper-geojson.js', function () {
           }]
         };
         var calls = captureLogCalls(function() {
-          api.internal.importGeoJSON(json, {});
+          api.internal.importGeoJSON(json, {warn_projected_coords: true});
         });
         assert.ok(
           calls.some(s => /coordinates outside the lat-long range/.test(s) && /-proj init=/.test(s)),
@@ -391,7 +405,7 @@ describe('mapshaper-geojson.js', function () {
       it('warns for a single point with projected coords', function() {
         var json = {type: 'Point', coordinates: [500000, 4500000]};
         var calls = captureLogCalls(function() {
-          api.internal.importGeoJSON(json, {});
+          api.internal.importGeoJSON(json, {warn_projected_coords: true});
         });
         assert.ok(
           calls.some(s => /coordinates outside the lat-long range/.test(s)),
@@ -428,7 +442,7 @@ describe('mapshaper-geojson.js', function () {
           }]
         };
         var calls = captureLogCalls(function() {
-          api.internal.importGeoJSON(json, {});
+          api.internal.importGeoJSON(json, {warn_projected_coords: true});
         });
         assert.ok(
           !calls.some(s => /coordinates outside the lat-long range/.test(s)),
