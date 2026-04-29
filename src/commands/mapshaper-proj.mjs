@@ -23,7 +23,7 @@ import cmd from '../mapshaper-cmd';
 import utils from '../utils/mapshaper-utils';
 import geom from '../geom/mapshaper-geom';
 
-cmd.proj = function(dataset, catalog, opts) {
+cmd.proj = function(dataset, catalog, opts, targetLayers) {
   var srcInfo, destInfo, destStr;
   if (opts.init) {
     srcInfo = fetchCrsInfo(opts.init, catalog);
@@ -33,7 +33,7 @@ cmd.proj = function(dataset, catalog, opts) {
   if (opts.match) {
     destInfo = fetchCrsInfo(opts.match, catalog);
   } else if (opts.crs) {
-    destStr = expandProjDefn(opts.crs, dataset);
+    destStr = expandProjDefn(opts.crs, dataset, targetLayers);
     destInfo = getCrsInfo(destStr);
   }
   if (destInfo) {
