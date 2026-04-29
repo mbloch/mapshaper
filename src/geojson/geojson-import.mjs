@@ -30,7 +30,7 @@ export function importGeoJSON(src, optsArg) {
   (srcCollection.features || srcCollection.geometries || []).forEach(importer.parseObject);
   dataset = importer.done();
   importCRS(dataset, srcObj); // TODO: remove this
-  warnIfProjectedCoords(dataset, srcObj);
+  warnIfProjectedCoords(dataset, srcObj, opts);
   return dataset;
 }
 
@@ -38,12 +38,13 @@ export function importGeoJSON(src, optsArg) {
 // `crs` member). If the imported file makes no CRS claim but its coordinates
 // are clearly outside lat-long range, warn the user: silent fallthrough here
 // usually surfaces later as cryptic -proj errors or grossly wrong output.
-function warnIfProjectedCoords(dataset, jsonObj) {
+function warnIfProjectedCoords(dataset, jsonObj, opts) {
+  if (!opts.warn_projected_coords) return;
   if (jsonObj && jsonObj.crs) return; // user has explicitly declared a CRS
   var bounds = getRoughDatasetBounds(dataset);
   if (!bounds || !bounds.hasBounds()) return;
   if (probablyDecimalDegreeBounds(bounds)) return;
-  warn('Imported GeoJSON has coordinates outside the lat-long range &mdash; ' +
+  warn('Imported GeoJSON has coordinates outside the lat-long range -- ' +
     ' importing as projected geometry with unknown CRS. Commands ' +
     'like -proj that require a CRS will not work until you set a source ' +
     'CRS, e.g. -proj init=EPSG:3857.');

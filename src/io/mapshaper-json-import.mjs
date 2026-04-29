@@ -130,7 +130,7 @@ export function importJSON(data, opts) {
     if (fmt == 'topojson') {
       retn.dataset = importTopoJSON(content, opts);
     } else if (fmt == 'geojson') {
-      retn.dataset = importGeoJSON(content, opts);
+      retn.dataset = importGeoJSON(content, getGeoJSONImportOpts(opts));
     } else if (fmt == 'json') {
       retn.dataset = importJSONTable(content, opts);
     } else {
@@ -140,6 +140,12 @@ export function importJSON(data, opts) {
   }
 
   return retn;
+}
+
+function getGeoJSONImportOpts(opts) {
+  return Object.assign({}, opts, {
+    warn_projected_coords: true
+  });
 }
 
 // path: path from top-level to the target object
