@@ -1,6 +1,6 @@
 import { getJoinCalc } from '../join/mapshaper-join-calc';
 import { getJoinFilter } from '../join/mapshaper-join-filter';
-import { message, stop } from '../utils/mapshaper-logging';
+import { message, warn, stop } from '../utils/mapshaper-logging';
 import utils from '../utils/mapshaper-utils';
 import { DataTable } from '../datatable/mapshaper-data-table';
 import { cloneShape } from '../paths/mapshaper-shape-utils';
@@ -42,6 +42,13 @@ export function joinTableToLayer(destLyr, src, join, opts) {
       collisionFields = [],
       skipCount = 0,
       retn = {},
+      destKey = opts.keys ? opts.keys[0] : null,
+      srcKey = opts.keys ? opts.keys[1] : null,
+      // Key-based joins (opts.keys present) collect the *full* set of
+      // distinct unmatched key values from each side. We sort and sample
+      // from the complete set when formatting the post-join message.
+      unmatchedTargetKeys = new Set(),
+      unusedSourceKeys = new Set(),
       srcRec, srcId, destRec, joinIds, count, filter, calc, i, j, n, m;
 
   // support for duplication of destination records for many-to-one joins
@@ -107,12 +114,33 @@ export function joinTableToLayer(destLyr, src, join, opts) {
         // are added.
         unmatchedRecords.push(utils.extend({}, destRec));
       }
+      collectKeySample(unmatchedTargetKeys, destRec, destKey);
       updateUnmatchedRecord(destRec, copyFields, sumFields, prefix);
     }
   }
 
-  printJoinMessage(matchCount, n,
-      countJoins(joinCounts), srcRecords.length, skipCount, collisionCount, collisionFields);
+  if (srcKey) {
+    for (var si = 0; si < srcRecords.length; si++) {
+      if (joinCounts[si] === 0) {
+        collectKeySample(unusedSourceKeys, srcRecords[si], srcKey);
+      }
+    }
+  }
+
+  printJoinMessage({
+    matches: matchCount,
+    n: n,
+    joins: countJoins(joinCounts),
+    m: srcRecords.length,
+    skipped: skipCount,
+    collisions: collisionCount,
+    collisionFields: collisionFields,
+    destKey: destKey,
+    srcKey: srcKey,
+    unmatchedTargetKeys: takeSampleKeys(unmatchedTargetKeys),
+    unusedSourceKeys: takeSampleKeys(unusedSourceKeys),
+    opts: opts
+  });
 
   if (opts.unjoined) {
     retn.unjoined = {
@@ -200,31 +228,138 @@ export function findCollisionFields(dest, src, fields, collisionFields) {
   }
 }
 
-function printJoinMessage(matches, n, joins, m, skipped, collisions, collisionFields) {
-  // TODO: add tip for troubleshooting join problems, if join is less than perfect.
-  var unmatched = n - matches;
-  if (matches > 0 === false) {
-    message("No records could be joined");
-    return;
+// Cap displayed samples at this many distinct values per side; small enough
+// to stay scannable, large enough to reveal a pattern.
+var KEY_SAMPLE_LIMIT = 5;
+
+// Add a key value (drawn from `rec[key]`) to a Set of distinct orphan keys.
+// No-op if `key` is falsy or `rec` is missing.
+function collectKeySample(samples, rec, key) {
+  if (!key || !rec) return;
+  samples.add(rec[key]);
+}
+
+// Convert a Set of distinct orphan keys into a sorted, capped array for
+// display. Sorting *before* capping is what makes the two sides line up:
+// both lists show the alphabetically-first KEY_SAMPLE_LIMIT keys, so any
+// shared (modulo whitespace / case / leading zeros) entries land at the
+// same display index regardless of the order they appeared in the data.
+function takeSampleKeys(set) {
+  return Array.from(set).sort(compareKeys).slice(0, KEY_SAMPLE_LIMIT);
+}
+
+// Build a single, scannable summary of join results and emit it as one log
+// call. We promote to warn() for cases that usually indicate a problem
+// (no matches, or many-to-one with conflicting field values), so the GUI
+// inbox / in-app console highlight them; in the CLI, warn() and message()
+// render identically.
+function printJoinMessage(p) {
+  var unmatched = p.n - p.matches;
+  var unused = p.m - p.joins;
+  var lines = [formatJoinHeadline(p.matches, p.n, p.joins, p.m)];
+  var detail = [];
+  if (p.matches > 0 && (unmatched > 0 || unused > 0)) {
+    detail.push(formatGapDetail(unmatched, unused));
   }
-  message(utils.format("Joined data from %'d source record%s to %'d target record%s",
-      joins, utils.pluralSuffix(joins), matches, utils.pluralSuffix(matches)));
-  if (unmatched > 0) {
-    message(utils.format('%d target record%s received no data', unmatched, utils.pluralSuffix(unmatched)));
-    // message(utils.format('%d target records received no data', n-matches));
+  if (p.skipped > 0) {
+    detail.push(utils.format("%'d source%s skipped by where=", p.skipped, utils.pluralSuffix(p.skipped)));
   }
-  if (joins < m) {
-    message(utils.format("%d/%d source records could not be joined", m-joins, m));
+  if (p.collisions > 0) {
+    var line = utils.format("%'d target%s had multiple source matches", p.collisions, utils.pluralSuffix(p.collisions));
+    if (p.collisionFields.length > 0) {
+      line += utils.format('; conflicting values in [%s] (kept first)', p.collisionFields.join(','));
+    }
+    detail.push(line);
   }
-  if (skipped > 0) {
-    message(utils.format("%d/%d source records were skipped", skipped, m));
-  }
-  if (collisions > 0) {
-    message(utils.format('%d/%d target records were matched by multiple source records (many-to-one relationship)', collisions, n));
-    if (collisionFields.length > 0) {
-      message(utils.format('Inconsistent values were found in field%s [%s] during many-to-one join. Values in the first joining record were used.', utils.pluralSuffix(collisionFields.length), collisionFields.join(',')));
+  // Only show sample keys when *both* sides have orphans -- a one-sided
+  // gap is the expected shape of a subset/superset join and the samples
+  // would just be noise.
+  if (unmatched > 0 && unused > 0 && p.destKey && p.srcKey) {
+    if (p.unmatchedTargetKeys.length > 0) {
+      detail.push(formatKeySampleLine('unmatched target', p.destKey, p.unmatchedTargetKeys));
+    }
+    if (p.unusedSourceKeys.length > 0) {
+      detail.push(formatKeySampleLine('unused source', p.srcKey, p.unusedSourceKeys));
     }
   }
+  var hint = formatFlagHint(unmatched, unused, p.opts);
+  if (hint) detail.push(hint);
+  for (var i = 0; i < detail.length; i++) {
+    lines.push('  ' + detail[i]);
+  }
+  var msg = lines.join('\n');
+  if (p.matches === 0 || p.collisionFields.length > 0) {
+    warn(msg);
+  } else {
+    message(msg);
+  }
+}
+
+function formatJoinHeadline(matches, n, joins, m) {
+  if (matches === 0) {
+    return utils.format("Join: 0/%'d targets matched (no records joined)", n);
+  }
+  return utils.format('Join: %s, %s',
+      formatRatio(matches, n, 'target'),
+      formatRatio(joins, m, 'source', 'used'));
+}
+
+// e.g. "850/1000 targets matched (85%)" or "1000/1000 targets matched"
+function formatRatio(num, total, noun, verb) {
+  verb = verb || 'matched';
+  var s = utils.format("%'d/%'d %s%s %s", num, total, noun, utils.pluralSuffix(total), verb);
+  if (num < total) {
+    s += ' (' + Math.round(100 * num / total) + '%)';
+  }
+  return s;
+}
+
+function formatGapDetail(unmatched, unused) {
+  var parts = [];
+  if (unmatched > 0) parts.push(utils.format("%'d target%s unmatched", unmatched, utils.pluralSuffix(unmatched)));
+  if (unused > 0) parts.push(utils.format("%'d source%s unused", unused, utils.pluralSuffix(unused)));
+  return parts.join(', ');
+}
+
+// e.g. Sample unmatched target keys (NAME): "Bar ", "Baz ", "Foo "
+// `samples` is already sorted+capped by takeSampleKeys().
+function formatKeySampleLine(label, fieldName, samples) {
+  return utils.format('Sample %s keys (%s): %s',
+      label, fieldName, samples.map(formatKeyValue).join(', '));
+}
+
+// Reproducible cross-environment compare: numeric ordering for numbers,
+// plain code-point string compare otherwise.
+function compareKeys(a, b) {
+  if (typeof a === 'number' && typeof b === 'number') return a - b;
+  var sa = String(a), sb = String(b);
+  return sa < sb ? -1 : sa > sb ? 1 : 0;
+}
+
+// JSON-quote strings so trailing whitespace, empty strings, etc. are visible.
+// Other types stringify to their JSON form (numbers, null, booleans).
+function formatKeyValue(v) {
+  if (v === undefined) return 'undefined';
+  var s = JSON.stringify(v);
+  if (typeof v === 'string' && s.length > 42) {
+    s = s.slice(0, 39) + '..."';
+  }
+  return s;
+}
+
+function formatFlagHint(unmatched, unused, opts) {
+  var needUnmatched = unmatched > 0 && !opts.unmatched;
+  var needUnjoined = unused > 0 && !opts.unjoined;
+  if (needUnmatched && needUnjoined) {
+    return 'Add the unmatched and/or unjoined flag to keep these records as separate layers';
+  }
+  if (needUnmatched) {
+    return 'Add the unmatched flag to keep unmatched targets as a separate layer';
+  }
+  if (needUnjoined) {
+    return 'Add the unjoined flag to keep unused sources as a separate layer';
+  }
+  return null;
 }
 
 export function getFieldsToJoin(destFields, srcFields, opts) {
