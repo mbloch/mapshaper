@@ -20,6 +20,29 @@ describe('mapshaper-projection-params.js', function () {
     it('webmercator alias is unchanged', function() {
       assert.equal(api.internal.expandProjDefn('webmercator'), 'webmercator');
     })
+
+    it('fits params to target layers when provided', function() {
+      var layerA = {
+        geometry_type: 'point',
+        shapes: [
+          [[-170, 10]],
+          [[-160, 20]]
+        ]
+      };
+      var layerB = {
+        geometry_type: 'point',
+        shapes: [
+          [[100, 40]],
+          [[110, 50]]
+        ]
+      };
+      var dataset = {
+        layers: [layerA, layerB],
+        info: {crs_string: 'wgs84'}
+      };
+      var str = api.internal.expandProjDefn('tmerc', dataset, [layerA]);
+      assert.equal(str, '+proj=tmerc +lon_0=-165.00 +lat_0=15.00');
+    });
   })
 
   it('getConicParams()', function() {

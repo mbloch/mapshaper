@@ -1,7 +1,10 @@
 import assert from 'assert';
 import api from '../mapshaper.js';
+import helpers from './helpers';
 import { applyAspectRatio } from '../src/commands/mapshaper-rectangle';
 import { Bounds } from '../src/geom/mapshaper-bounds';
+var captureLogCalls = helpers.captureLogCalls;
+var captureLogCallsAsync = helpers.captureLogCallsAsync;
 
 describe('mapshaper-rectangle.js', function () {
 
@@ -84,6 +87,18 @@ describe('mapshaper-rectangle.js', function () {
       done();
     });
   })
+
+  it('does not warn when -rectangle imports projected internal GeoJSON', async function() {
+    var output = await captureLogCallsAsync(async function() {
+      await api.applyCommands('-rectangle bbox=100,100,1000,1000 -o out.json', {});
+    });
+    var calls = output.log;
+    assert.equal(
+      calls.some(s => /coordinates outside the lat-long range/.test(s)),
+      false,
+      'did not expect projected-coords warning from internal GeoJSON import'
+    );
+  });
 
   it ('create a rectangle from an existing layer with percentage offsets', function(done) {
     var geom = {
