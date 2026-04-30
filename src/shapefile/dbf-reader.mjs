@@ -170,6 +170,7 @@ export default function DbfReader(src, encodingArg) {
   };
 
   this.getFields = getFieldNames;
+  this.getEncoding = getEncoding;
 
   // TODO: switch to streaming output under Node.js
   this.getBuffer = function() {

@@ -44,6 +44,19 @@ export function ShapefileTable(src, encoding) {
     return Dbf.exportRecords(getTable().getRecords(), opts.encoding, opts.field_order);
   };
 
+  // Return the text encoding that exportAsDbf() will use for the current
+  // options. If we're exporting the untouched original DBF bytes, use the
+  // reader's detected/declared encoding; otherwise we regenerate with either
+  // opts.encoding or the writer default (utf8).
+  this.getDbfEncoding = function(optsArg) {
+    var opts = optsArg || {};
+    var useOriginal = !!reader && !altered && !opts.field_order && !opts.encoding;
+    if (useOriginal) {
+      return reader.getEncoding();
+    }
+    return opts.encoding || 'utf8';
+  };
+
   this.getReadOnlyRecordAt = function(i) {
     return reader ? reader.readRow(i) : table.getReadOnlyRecordAt(i);
   };
