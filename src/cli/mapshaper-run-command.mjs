@@ -438,7 +438,7 @@ export async function runCommand(command, job) {
       if (opts.variable) {
         cmd.variableSimplify(targetLayers, targetDataset, opts);
       } else {
-        cmd.simplify(targetDataset, opts);
+        cmd.simplify(targetDataset, opts, targetLayers);
       }
 
     } else if (name == 'slice') {

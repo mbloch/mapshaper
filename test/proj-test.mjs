@@ -2,6 +2,7 @@
 import assert from 'assert';
 import api from '../mapshaper.js';
 import helpers from './helpers';
+import { captureLogCallsAsync } from './helpers';
 import fs from 'fs';
 
 describe('mapshaper-proj.js', function() {
@@ -169,4 +170,45 @@ describe('mapshaper-proj.js', function() {
     })
 
   })
+
+  describe('-proj target-layer side effects', function() {
+    it('reports non-target layers that were also projected', async function() {
+      var a = {
+        type: 'FeatureCollection',
+        features: [{type: 'Feature', properties: {id: 1}, geometry: {type: 'Point', coordinates: [0, 0]}}]
+      };
+      var b = {
+        type: 'FeatureCollection',
+        features: [{type: 'Feature', properties: {id: 2}, geometry: {type: 'Point', coordinates: [1, 1]}}]
+      };
+      var cmd = '-i a.json b.json combine-files -rename-layers alpha,beta -target alpha -proj webmercator -o format=geojson';
+      var captured = await captureLogCallsAsync(function() {
+        return api.applyCommands(cmd, {'a.json': a, 'b.json': b});
+      });
+      var hit = captured.log.find(function(line) {
+        return /\[proj\] Also projected non-target layer/.test(line);
+      });
+      assert(hit, 'expected side-effect projection message');
+      assert(hit.includes('beta'), hit);
+    });
+
+    it('does not report side-effect layers when all layers are targeted', async function() {
+      var a = {
+        type: 'FeatureCollection',
+        features: [{type: 'Feature', properties: {id: 1}, geometry: {type: 'Point', coordinates: [0, 0]}}]
+      };
+      var b = {
+        type: 'FeatureCollection',
+        features: [{type: 'Feature', properties: {id: 2}, geometry: {type: 'Point', coordinates: [1, 1]}}]
+      };
+      var cmd = '-i a.json b.json combine-files -rename-layers alpha,beta -proj webmercator -o format=geojson';
+      var captured = await captureLogCallsAsync(function() {
+        return api.applyCommands(cmd, {'a.json': a, 'b.json': b});
+      });
+      var hasMessage = captured.log.some(function(line) {
+        return /\[proj\] Also projected non-target layer/.test(line);
+      });
+      assert.equal(hasMessage, false);
+    });
+  });
 });
