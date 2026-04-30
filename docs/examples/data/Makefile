@@ -11,7 +11,7 @@
 #   2. appending a target below following the globe pattern
 #   3. adding the slug to `EXAMPLES`
 
-EXAMPLES := globe us-states
+EXAMPLES := globe us-states ny-state
 
 all: $(EXAMPLES)
 
@@ -27,5 +27,11 @@ globe:
 us-states:
 	mapshaper us-states.txt -o us-states.msx
 	rm -f us-states.zip && zip us-states.zip ne_50m_admin_1_states_provinces_lakes.geojson
+
+ny-state:
+	mapshaper ny-state.txt -o ny-state.msx
+	rm -f ny-state.zip && zip ny-state usa_can_admin1_lakes.geojson usa_can_roads.geojson
+
+
 
 .PHONY: all clean $(EXAMPLES)

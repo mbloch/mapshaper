@@ -15,6 +15,16 @@
       ]
     },
     {
+      "label": "Examples",
+      "path": "examples",
+      "pages": [
+        { "label": "Basics", "file": "basics.md" },
+        { "label": "Globe locator map", "file": "globe.md" },
+        { "label": "U.S. state map", "file": "us-states.md"},
+        { "label": "New York map", "file": "ny-state.md"}
+      ]
+    },
+    {
       "label": "Guides",
       "path": "guides",
       "pages": [
@@ -42,15 +52,6 @@
         { "label": "JSON records", "file": "json.md" },
         { "label": "SVG", "file": "svg.md" },
         { "label": "Mapshaper snapshot", "file": "snapshot.md" }
-      ]
-    },
-    {
-      "label": "Examples",
-      "path": "examples",
-      "pages": [
-        { "label": "Basics", "file": "basics.md" },
-        { "label": "Globe", "file": "globe.md" },
-        { "label": "U.S. state map", "file": "us-states.md"}
       ]
     }
   ]
