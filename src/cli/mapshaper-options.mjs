@@ -218,6 +218,10 @@ export function getOptionParser() {
       old_alias: 'json-subtree',
       describe: '[JSON] path to JSON input data; separator is /'
     })
+    .option('ndjson', {
+      type: 'flag',
+      describe: '[JSON/GeoJSON] input is newline-delimited JSON objects'
+    })
     .option('single-part', {
       type: 'flag',
       // describe: '[GeoJSON] split multi-part features into single-part features'
