@@ -13,8 +13,9 @@ import { BinArray } from '../utils/mapshaper-binarray';
 export function exportShapefile(dataset, opts) {
   return dataset.layers.reduce(function(files, lyr) {
     var prj = exportPrjFile(lyr, dataset);
+    var dbfOpts = utils.defaults({export_cpg: true}, opts);
     files = files.concat(exportShpAndShxFiles(lyr, dataset, opts));
-    files = files.concat(exportDbfFile(lyr, dataset, opts));
+    files = files.concat(exportDbfFile(lyr, dataset, dbfOpts));
     if (prj) files.push(prj);
     return files;
   }, []);
