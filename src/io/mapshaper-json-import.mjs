@@ -58,7 +58,13 @@ function readJSONFile(reader, opts) {
   var str = readFirstChars(reader, 1000);
   var type = identifyJSONString(str, opts);
   var dataset, retn;
-  if (type == 'geojson') { // consider only for larger files
+  if (opts.ndjson) {
+    // NDJSON can represent either newline-delimited GeoJSON features/geometries
+    // or plain JSON records. Defer type detection until after line parsing.
+    retn = {
+      content: reader.toString('utf8')
+    };
+  } else if (type == 'geojson') { // consider only for larger files
     dataset = importGeoJSONFile(reader, opts);
     retn = {
       dataset: dataset,
@@ -110,6 +116,12 @@ export function importJSON(data, opts) {
   }
 
   if (content) {
+    if (opts.ndjson) {
+      var nd = importNDJSON(content, opts);
+      retn.dataset = nd.dataset;
+      retn.format = nd.format;
+      return retn;
+    }
     if (utils.isString(content)) {
       try {
         content = JSON.parse(content); // ~3sec for 100MB string
@@ -146,6 +158,54 @@ function getGeoJSONImportOpts(opts) {
   return Object.assign({}, opts, {
     warn_projected_coords: true
   });
+}
+
+function importNDJSON(content, opts) {
+  var lines = utils.isString(content) ? utils.splitLines(content) : [];
+  var objects = [];
+  var firstGeo = null;
+  for (var i = 0; i < lines.length; i++) {
+    var raw = lines[i].trim();
+    if (!raw) continue;
+    var obj;
+    try {
+      obj = JSON.parse(raw);
+    } catch (e) {
+      stop('NDJSON parsing error on line ' + (i + 1) + ': ' + e.message);
+    }
+    objects.push(obj);
+    if (firstGeo === null) {
+      firstGeo = isGeoJSONObject(obj);
+    } else if (firstGeo !== isGeoJSONObject(obj)) {
+      stop('NDJSON input mixes GeoJSON and non-GeoJSON objects');
+    }
+  }
+  if (objects.length === 0) {
+    stop('NDJSON input does not contain any JSON objects');
+  }
+  if (!firstGeo) {
+    return {dataset: importJSONTable(objects, opts), format: 'json'};
+  }
+  var parser = new GeoJSONParser(getGeoJSONImportOpts(opts));
+  objects.forEach(function(obj) {
+    if (obj && obj.type == 'FeatureCollection') {
+      (obj.features || []).forEach(parser.parseObject);
+    } else if (obj && obj.type == 'GeometryCollection') {
+      (obj.geometries || []).forEach(parser.parseObject);
+    } else {
+      parser.parseObject(obj);
+    }
+  });
+  return {dataset: parser.done(), format: 'geojson'};
+}
+
+function isGeoJSONObject(obj) {
+  if (!obj || typeof obj != 'object') return false;
+  var type = obj.type;
+  return type == 'Feature' || type == 'FeatureCollection' ||
+    type == 'GeometryCollection' || type == 'Point' || type == 'MultiPoint' ||
+    type == 'LineString' || type == 'MultiLineString' ||
+    type == 'Polygon' || type == 'MultiPolygon';
 }
 
 // path: path from top-level to the target object

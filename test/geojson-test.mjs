@@ -41,8 +41,7 @@ describe('mapshaper-geojson.js', function () {
   });
 
   describe('ndjson input', function () {
-    console.log('TODO: support reading ndjson')
-    false && it('reads features from an ndjson string', function (done) {
+    it('reads features from an ndjson string', function (done) {
       var a = {
         type: 'Feature',
         properties: {id: 1},
@@ -54,13 +53,28 @@ describe('mapshaper-geojson.js', function () {
         geometry: null
       };
       var json = JSON.stringify(a) + '\n' + JSON.stringify(b);
-      var buf = Buffer.from(json);
-      var cmd = '-i data.json -o';
-      api.applyCommands(cmd, {'data.json': buf}, function(err, out) {
-        console.log(err, out)
+      var cmd = '-i data.json ndjson -o';
+      api.applyCommands(cmd, {'data.json': json}, function(err, out) {
+        var o = JSON.parse(out['data.json']);
+        assert.equal(o.features.length, 2);
+        assert.equal(o.features[0].properties.id, 1);
+        assert.equal(o.features[1].properties.id, 2);
         done();
       });
-    })
+    });
+
+    it('reads records from ndjson as a JSON table', function(done) {
+      var lines = [
+        JSON.stringify({id: 1, name: 'A'}),
+        JSON.stringify({id: 2, name: 'B'})
+      ].join('\n');
+      var cmd = '-i data.json ndjson -o format=json';
+      api.applyCommands(cmd, {'data.json': lines}, function(err, out) {
+        var records = JSON.parse(out['data.json']);
+        assert.deepEqual(records, [{id: 1, name: 'A'}, {id: 2, name: 'B'}]);
+        done();
+      });
+    });
   })
 
   describe('-o ndjson option', function () {
