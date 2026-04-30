@@ -89,6 +89,20 @@ describe('mapshaper-shapefile.js', function () {
       });
     });
 
+    it('.cpg is generated using the default DBF encoding (UTF-8)', function(done) {
+      api.applyCommands('-i test/data/three_points.geojson -o format=shapefile', {}, function(err, output) {
+        assert.equal(output['three_points.cpg'], 'UTF-8');
+        done();
+      });
+    });
+
+    it('.cpg matches the requested DBF encoding', function(done) {
+      api.applyCommands('-i test/data/three_points.geojson -o format=shapefile encoding=latin1', {}, function(err, output) {
+        assert.equal(output['three_points.cpg'], 'latin1');
+        done();
+      });
+    });
+
   })
 
   describe('Export and import layers containing data but no shapes', function () {

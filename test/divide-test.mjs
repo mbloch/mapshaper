@@ -1,5 +1,6 @@
 import api from '../mapshaper.js';
 import assert from 'assert';
+import { captureLogCallsAsync } from './helpers';
 
 
 describe('mapshaper-divide.js', function () {
@@ -25,6 +26,17 @@ describe('mapshaper-divide.js', function () {
       assert.deepEqual(json, target);
       done();
     })
+  });
+
+  it('does not print internal -join summary messages', async function() {
+    var cmd = '-i test/data/features/divide/ex1_line.json -divide test/data/features/divide/ex1_polygon.json -o output.json';
+    var capture = await captureLogCallsAsync(function() {
+      return api.applyCommands(cmd, {});
+    });
+    var hasJoinSummary = capture.log.some(function(line) {
+      return /^\[divide\] Join:/.test(line);
+    });
+    assert.equal(hasJoinSummary, false, 'divide should not print internal join summary');
   });
 
 });
