@@ -196,6 +196,27 @@ describe('svg import', function () {
     assert.deepEqual(p, [10, 60]);
   });
 
+  it('imports hidden metadata text with numeric quote entities', function() {
+    var svg = [
+      '<?xml version="1.0"?>',
+      '<svg xmlns="http://www.w3.org/2000/svg" version="1.2" baseProfile="tiny" viewBox="0 0 100 100">',
+      '<g id="mapshaper-metadata"><text opacity="0" font-size="0.1"><tspan>{&#34;crs&#34;:&#34;epsg:4326&#34;,&#34;bbox&#34;:[10,20,30,60]}</tspan></text></g>',
+      '<g id="pts">',
+      '<circle cx="0" cy="0" r="1"/>',
+      '</g>',
+      '</svg>'
+    ].join('\n');
+    var dataset = api.internal.importContent({
+      svg: {filename: 'figma-meta.svg', content: svg}
+    }, {});
+    var pts = dataset.layers.find(lyr => lyr.name == 'pts');
+    var p = pts.shapes[0][0];
+    var crs = api.internal.getDatasetCRS(dataset);
+
+    assert(crs && crs.is_latlong, 'CRS is recovered from numeric entity metadata text');
+    assert.deepEqual(p, [10, 60]);
+  });
+
   it('uses hidden metadata rectangle coordinates after artwork is moved and scaled', function() {
     var svg = [
       '<?xml version="1.0"?>',
