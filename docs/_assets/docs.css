@@ -40,24 +40,19 @@ code, pre, .mono {
 .page-header {
   background-color: #1385B7;
   color: white;
-  /* Asymmetric vertical padding (4px top, 8px bottom) optically centers the
-     baseline-aligned row: ascenders are taller than descenders, so equal
-     padding makes the text look ~2px low. */
-  padding: 2px 14px 8px;
-  height: 32px;
+  height: 30px;
   display: flex;
-  /* baseline-align so the 18px logo and the 14px nav text share a baseline,
-     not just a vertical center */
   align-items: baseline;
-  gap: 14px;
 }
 
 .mapshaper-logo,
 .mapshaper-logo:hover {
   font-weight: 600;
-  font-size: 18px;
+  font-size: 17px;
   color: white;
   text-decoration: none;
+  margin: 5px 0 0 11px;
+  line-height: 1;
 }
 
 .mapshaper-logo .logo-highlight { color: #ffa; }
@@ -67,13 +62,16 @@ code, pre, .mono {
   font-size: 14px;
   color: rgba(255,255,255,0.85);
   border-left: 1px solid rgba(255,255,255,0.3);
-  padding-left: 14px;
+  padding-left: 12px;
+  margin-left: 12px;
+  line-height: 1;
 }
 
 .header-nav {
-  margin-left: auto;
   display: flex;
-  gap: 4px;
+  align-items: flex-start;
+  gap: 0;
+  margin: 0 3px 0 auto;
 }
 
 .header-nav a,
@@ -81,14 +79,16 @@ code, pre, .mono {
   color: white;
   text-decoration: none;
   font-size: 14px;
-  /* line-height: 1 keeps each anchor's hover background tight enough to fit
-     inside the 36px header once the row is baseline-aligned. */
+  font-weight: 500;
   line-height: 1;
-  padding: 6px 6px;
-  border-radius: 3px;
+  padding: 8px 8px 0 8px;
+  border-radius: 1px;
+  height: 29px;
+  box-sizing: border-box;
+  display: inline-block;
 }
 
-.header-nav a:hover { background-color: rgba(255,255,255,0.15); }
+.header-nav a:hover { background-color: #1A6A96; }
 
 .header-nav a.sponsor-link,
 .header-nav a.sponsor-link:hover { color: #ffa; }
