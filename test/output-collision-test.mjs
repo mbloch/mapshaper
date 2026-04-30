@@ -69,7 +69,7 @@ describe('-o output filename collision warning', function() {
   });
 
   it('does not warn for the multi-file Shapefile bundle from a single -o', function() {
-    // Shapefile output emits .shp, .shx, .dbf, .prj together but they are
+    // Shapefile output emits .shp, .shx, .dbf, .cpg, .prj together but they are
     // distinct paths -- not a collision.
     var cmd = '-i a.json -rename-layers shape -o format=shapefile';
     return runAndCapture(cmd, {'a.json': {
@@ -83,7 +83,7 @@ describe('-o output filename collision warning', function() {
   });
 
   it('warns for a re-export of the same Shapefile bundle', function() {
-    // Two -o calls writing the same .shp/.dbf/.shx/.prj quartet should each
+    // Two -o calls writing the same .shp/.dbf/.shx/.cpg/.prj bundle should each
     // trigger the collision warning, so the user sees that *every* part of
     // the bundle is being overwritten -- not just one mystery member.
     var cmd = '-i a.json -rename-layers shape -o format=shapefile -o format=shapefile';
@@ -94,8 +94,8 @@ describe('-o output filename collision warning', function() {
       }}]
     }}).then(function(res) {
       var hits = collisionLines(res.log);
-      // shp, shx, dbf, prj
-      assert.equal(hits.length, 4);
+      // shp, shx, dbf, cpg, prj
+      assert.equal(hits.length, 5);
     });
   });
 
