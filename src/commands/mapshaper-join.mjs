@@ -12,6 +12,9 @@ import { requireDatasetsHaveCompatibleCRS, getDatasetCRS } from '../crs/mapshape
 import { initDataTable } from '../dataset/mapshaper-layer-utils';
 
 cmd.join = function(targetLyr, targetDataset, src, opts) {
+  // Opt in to the post-join summary emitted by joinTableToLayer().
+  // Other commands can reuse the helper without showing this message.
+  opts = Object.assign({}, opts, {show_join_message: true});
   var srcType, targetType, retn;
   if (!src || !src.dataset) {
     stop("Missing a joinable data source");

@@ -127,20 +127,24 @@ export function joinTableToLayer(destLyr, src, join, opts) {
     }
   }
 
-  printJoinMessage({
-    matches: matchCount,
-    n: n,
-    joins: countJoins(joinCounts),
-    m: srcRecords.length,
-    skipped: skipCount,
-    collisions: collisionCount,
-    collisionFields: collisionFields,
-    destKey: destKey,
-    srcKey: srcKey,
-    unmatchedTargetKeys: takeSampleKeys(unmatchedTargetKeys),
-    unusedSourceKeys: takeSampleKeys(unusedSourceKeys),
-    opts: opts
-  });
+  // Opt-in summary logging. Some commands (e.g. -divide) reuse this join
+  // helper internally and don't want user-facing join diagnostics.
+  if (opts.show_join_message) {
+    printJoinMessage({
+      matches: matchCount,
+      n: n,
+      joins: countJoins(joinCounts),
+      m: srcRecords.length,
+      skipped: skipCount,
+      collisions: collisionCount,
+      collisionFields: collisionFields,
+      destKey: destKey,
+      srcKey: srcKey,
+      unmatchedTargetKeys: takeSampleKeys(unmatchedTargetKeys),
+      unusedSourceKeys: takeSampleKeys(unusedSourceKeys),
+      opts: opts
+    });
+  }
 
   if (opts.unjoined) {
     retn.unjoined = {
