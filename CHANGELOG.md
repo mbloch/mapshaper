@@ -1,3 +1,8 @@
+v0.7.6
+* Added a warning if -proj and -simplify affect non-targeted layers. (These commands modify all layers in a dataset, not just the targeted layer(s), because they modify the dataset's shared geometry.)
+* When projection parameters are calculated from a bounding box, the bbox of the targeted layer(s) should be used, not the bbox of all the layers in the dataset.
+* Start exporting a .cpg (codepage/text encoding) along with other Shapefile component files.
+
 v0.7.5
 * Added warnings for a number of common user errors.
 * Added more usage examples to `mapshaper -help <command>`.
