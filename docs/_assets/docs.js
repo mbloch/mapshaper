@@ -15,9 +15,29 @@
 //    blocks are short snippets where the buttons would be visual noise.
 //    Falls back gracefully if the Clipboard API is unavailable.
 (function () {
+  initMobileNavToggle();
   rewriteOpenInWebAppLinks();
   if (document.body.classList.contains('is-example-map')) {
     addCopyButtons();
+  }
+
+  function initMobileNavToggle() {
+    var btn = document.querySelector('.docs-nav-toggle');
+    var label = btn && btn.querySelector('.docs-nav-toggle-label');
+    var mql = window.matchMedia('(max-width: 720px)');
+    if (!btn) return;
+    btn.addEventListener('click', function () {
+      var open = document.body.classList.toggle('docs-nav-open');
+      btn.setAttribute('aria-expanded', open ? 'true' : 'false');
+      if (label) label.textContent = open ? 'Close menu' : 'Menu';
+    });
+    mql.addEventListener('change', function (e) {
+      if (!e.matches) {
+        document.body.classList.remove('docs-nav-open');
+        btn.setAttribute('aria-expanded', 'false');
+        if (label) label.textContent = 'Menu';
+      }
+    });
   }
 
   function rewriteOpenInWebAppLinks() {

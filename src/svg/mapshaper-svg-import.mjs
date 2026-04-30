@@ -236,6 +236,11 @@ function normalizeMetadataJSONText(str) {
 
 function decodeHTMLEntities(str) {
   return String(str || '')
+    .replace(/&#34;|&#x22;/gi, '"')
+    .replace(/&#39;|&#x27;/gi, "'")
+    .replace(/&#38;|&#x26;/gi, '&')
+    .replace(/&#60;|&#x3c;/gi, '<')
+    .replace(/&#62;|&#x3e;/gi, '>')
     .replace(/&quot;/g, '"')
     .replace(/&apos;/g, "'")
     .replace(/&amp;/g, '&')
