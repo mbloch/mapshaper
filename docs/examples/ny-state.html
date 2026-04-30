@@ -30,7 +30,16 @@
 
 <div class="docs-layout">
 
-  <aside class="docs-sidebar">
+  <button type="button" class="docs-nav-toggle" aria-expanded="false" aria-controls="docs-sidebar">
+    <span class="docs-nav-toggle-icon" aria-hidden="true">
+      <svg viewBox="0 0 24 24" focusable="false">
+        <path d="M4 7h16v2H4zm0 5h16v2H4zm0 5h16v2H4z"/>
+      </svg>
+    </span>
+    <span class="docs-nav-toggle-label">Menu</span>
+  </button>
+
+  <aside class="docs-sidebar" id="docs-sidebar">
     <div class="sidebar-inner">
       <nav class="docs-nav"><ul class="top-links"><li><a href="/docs/">Home</a></li><li><a href="/docs/whats-new.html">What&#39;s new</a></li><li><a href="/docs/reference.html">Command reference</a></li><li><a href="/docs/gallery/">Gallery</a></li></ul><h2>Getting started</h2><ul><li><a href="/docs/essentials/command-line.html">The command-line tool</a></li><li><a href="/docs/essentials/web-app.html">The web app</a></li></ul><h2>Examples</h2><ul><li><a href="/docs/examples/basics.html">Basics</a></li><li><a href="/docs/examples/globe.html">Globe locator map</a></li><li><a href="/docs/examples/us-states.html">U.S. state map</a></li><li><a href="/docs/examples/ny-state.html" class="is-active">New York map</a></li></ul><h2>Guides</h2><ul><li><a href="/docs/guides/simplification.html">Simplification</a></li><li><a href="/docs/guides/expressions.html">JavaScript expressions</a></li><li><a href="/docs/guides/projections.html">Projections</a></li><li><a href="/docs/guides/topology.html">Topology and cleaning</a></li><li><a href="/docs/guides/combining-layers.html">Combining two layers</a></li><li><a href="/docs/guides/programmatic.html">Using Mapshaper from Node.js</a></li></ul><h2>Formats</h2><ul><li><a href="/docs/formats/overview.html">Overview</a></li><li><a href="/docs/formats/shapefile.html">Shapefile</a></li><li><a href="/docs/formats/geojson.html">GeoJSON</a></li><li><a href="/docs/formats/topojson.html">TopoJSON</a></li><li><a href="/docs/formats/geopackage.html">GeoPackage</a></li><li><a href="/docs/formats/flatgeobuf.html">FlatGeobuf</a></li><li><a href="/docs/formats/kml.html">KML / KMZ</a></li><li><a href="/docs/formats/csv.html">CSV / TSV</a></li><li><a href="/docs/formats/dbf.html">DBF</a></li><li><a href="/docs/formats/json.html">JSON records</a></li><li><a href="/docs/formats/svg.html">SVG</a></li><li><a href="/docs/formats/snapshot.html">Mapshaper snapshot</a></li></ul></nav>
     </div>
@@ -63,7 +72,7 @@
 	-i usa_can_roads.geojson name=roads \
 	-proj match=NY \
 	-target NY \
-	-rectangle aspect-ratio 1.5 offset=4% + name=rectangle \
+	-frame height=400 width=600 offset=4% name=rectangle \
 	-target states \
 	-lines + name=borders \
 	-target states \
@@ -79,12 +88,12 @@
 	-style target=labels label-text=name dy=4 fill=<span class="hljs-string">&#x27;#aaa&#x27;</span> font-size=13px \
 	-style target=labels fill=<span class="hljs-string">&#x27;#666&#x27;</span> font-size=20px <span class="hljs-built_in">where</span>=<span class="hljs-string">&#x27;name == &quot;New York&quot;&#x27;</span> \
 	-style target=roads stroke=<span class="hljs-string">&#x27;name == &quot;New York&quot; ? &quot;#aaa&quot; : &quot;#e2e2e2&quot;&#x27;</span> stroke-width=0.6 \
-	-style target=states fill=<span class="hljs-string">&#x27;name == &quot;New York&quot; ? &quot;hsl(0 0 92)&quot; : &quot;hsl(0 0 99)&quot;&#x27;</span> \
+	-style target=states fill=<span class="hljs-string">&#x27;name == &quot;New York&quot; ? &quot;#ececec&quot; : &quot;#fafafa&quot;&#x27;</span> \
 	-style target=borders stroke=<span class="hljs-string">&#x27;#c5c5c5&#x27;</span> stroke-width=<span class="hljs-string">&#x27;TYPE == &quot;inner&quot; ? 1 : 0.7&#x27;</span> \
 	-style target=NY stroke=<span class="hljs-string">&#x27;#555&#x27;</span> stroke-width=1.2 \
 	-style target=rectangle fill=<span class="hljs-string">&#x27;#f1f1f1&#x27;</span> \
-	-target rectangle,states,roads,borders,NY,labels \ 
-	-o width=600 height=400 ny-state.svg
+	-target rectangle,states,roads,borders,NY,labels \
+	-o ny-state.svg
 </code></pre>
 <h3 id="notes">Notes</h3>
 <ul>

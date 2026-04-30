@@ -18443,7 +18443,7 @@
   function exportSVG(dataset, opts) {
     var namespace = 'xmlns="http://www.w3.org/2000/svg"';
     var defs = [];
-    var frame, svg, layers;
+    var frame, svg, layers, metadataJSON;
     var style = '';
 
     // kludge for map keys
@@ -18467,6 +18467,9 @@
     frame = getFrameData(dataset, opts);
     fitDatasetToFrame(dataset, frame);
     setCoordinatePrecision(dataset, opts.precision || 0.01);
+    if (opts.metadata) {
+      metadataJSON = JSON.stringify(getGeospatialMetadata(dataset, frame));
+    }
 
     // error if one or more svg_data fields are not present in any layers
     if (opts.svg_data) validateSvgDataFields(dataset.layers, opts.svg_data);
@@ -18485,6 +18488,10 @@
       convertPropertiesToDefinitions(obj, defs);
       return stringify(obj);
     }).join('\n');
+
+    if (metadataJSON) {
+      svg = getMetadataBlock(metadataJSON, [0, 0, frame.width, frame.height]) + svg;
+    }
 
     if (defs.length > 0) {
       svg = '<defs>\n' + utils.pluck(defs, 'svg').join('') + '</defs>\n' + svg;
@@ -18511,6 +18518,57 @@ ${svg}
       content: svg,
       filename: opts.file || getOutputFileBase(dataset) + '.svg'
     }];
+  }
+
+  function getMetadataBlock(metadataJSON, viewBox) {
+    var x = 0;
+    var y = 0;
+    var width = viewBox && viewBox[2] || 0;
+    var height = viewBox && viewBox[3] || 0;
+    return '<metadata>' + metadataJSON + '</metadata>\n' +
+      '<g id="mapshaper-metadata">\n' +
+      '<rect x="' + x + '" y="' + y + '" width="' + width + '" height="' + height + '" opacity="0"/>\n' +
+      '<text opacity="0" font-size="0.1">' + metadataJSON + '</text>\n' +
+      '</g>\n';
+  }
+
+  function getGeospatialMetadata(dataset, frame) {
+    return {
+      crs: getSVGMetadataCRS(dataset),
+      bbox: frame.bbox || null
+    };
+  }
+
+  function getSVGMetadataCRS(dataset) {
+    var crs = getDatasetCRS(dataset);
+    var info = getDatasetCrsInfo(dataset);
+    var proj4 = null;
+    if (crs) {
+      proj4 = crsToProj4(crs);
+    }
+    if (proj4) return proj4;
+    return getAuthorityCodeString(info) || null;
+  }
+
+  function getAuthorityCodeString(info) {
+    var authority = null;
+    if (info && info.crs_string) {
+      authority = parseAuthorityCodeString(info.crs_string);
+    }
+    if (!authority && info && info.wkt1) {
+      authority = parseAuthorityCodeFromWkt(info.wkt1);
+    }
+    if (!authority && info && info.geopackage_crs) {
+      authority = parseGeoPackageAuthority(info.geopackage_crs);
+    }
+    return authority ? authority.authority + ':' + authority.code : null;
+  }
+
+  function parseGeoPackageAuthority(o) {
+    if (!o) return null;
+    var authority = o.organization || o.authority || null;
+    var code = o.organization_coordsys_id || o.code || null;
+    return authority && code != null ? {authority: String(authority).toUpperCase(), code: String(code)} : null;
   }
 
   function exportFurnitureLayerForSVG(lyr, frame, opts) {
@@ -28017,6 +28075,10 @@ ${svg}
         old_alias: 'json-subtree',
         describe: '[JSON] path to JSON input data; separator is /'
       })
+      .option('ndjson', {
+        type: 'flag',
+        describe: '[JSON/GeoJSON] input is newline-delimited JSON objects'
+      })
       .option('single-part', {
         type: 'flag',
         // describe: '[GeoJSON] split multi-part features into single-part features'
@@ -28110,7 +28172,7 @@ ${svg}
         type: 'flag'
       })
       .option('metadata', {
-        // describe: '[TopoJSON] Add a metadata object containing CRS information',
+        describe: '[SVG/TopoJSON] include metadata in output',
         type: 'flag'
       })
       .option('no-point-quantization', {
@@ -28217,10 +28279,7 @@ ${svg}
       .option('final', {
         type: 'flag' // for testing
       })
-      .option('metadata', {
-        // describe: '[TopoJSON] add a metadata object',
-        type: 'flag'
-      });
+      ;
 
     parser.section('Editing commands');
 
@@ -32479,7 +32538,13 @@ ${svg}
     var str = readFirstChars(reader, 1000);
     var type = identifyJSONString(str, opts);
     var dataset, retn;
-    if (type == 'geojson') { // consider only for larger files
+    if (opts.ndjson) {
+      // NDJSON can represent either newline-delimited GeoJSON features/geometries
+      // or plain JSON records. Defer type detection until after line parsing.
+      retn = {
+        content: reader.toString('utf8')
+      };
+    } else if (type == 'geojson') { // consider only for larger files
       dataset = importGeoJSONFile(reader, opts);
       retn = {
         dataset: dataset,
@@ -32531,6 +32596,12 @@ ${svg}
     }
 
     if (content) {
+      if (opts.ndjson) {
+        var nd = importNDJSON(content, opts);
+        retn.dataset = nd.dataset;
+        retn.format = nd.format;
+        return retn;
+      }
       if (utils.isString(content)) {
         try {
           content = JSON.parse(content); // ~3sec for 100MB string
@@ -32567,6 +32638,54 @@ ${svg}
     return Object.assign({}, opts, {
       warn_projected_coords: true
     });
+  }
+
+  function importNDJSON(content, opts) {
+    var lines = utils.isString(content) ? utils.splitLines(content) : [];
+    var objects = [];
+    var firstGeo = null;
+    for (var i = 0; i < lines.length; i++) {
+      var raw = lines[i].trim();
+      if (!raw) continue;
+      var obj;
+      try {
+        obj = JSON.parse(raw);
+      } catch (e) {
+        stop$1('NDJSON parsing error on line ' + (i + 1) + ': ' + e.message);
+      }
+      objects.push(obj);
+      if (firstGeo === null) {
+        firstGeo = isGeoJSONObject(obj);
+      } else if (firstGeo !== isGeoJSONObject(obj)) {
+        stop$1('NDJSON input mixes GeoJSON and non-GeoJSON objects');
+      }
+    }
+    if (objects.length === 0) {
+      stop$1('NDJSON input does not contain any JSON objects');
+    }
+    if (!firstGeo) {
+      return {dataset: importJSONTable(objects), format: 'json'};
+    }
+    var parser = new GeoJSONParser(getGeoJSONImportOpts(opts));
+    objects.forEach(function(obj) {
+      if (obj && obj.type == 'FeatureCollection') {
+        (obj.features || []).forEach(parser.parseObject);
+      } else if (obj && obj.type == 'GeometryCollection') {
+        (obj.geometries || []).forEach(parser.parseObject);
+      } else {
+        parser.parseObject(obj);
+      }
+    });
+    return {dataset: parser.done(), format: 'geojson'};
+  }
+
+  function isGeoJSONObject(obj) {
+    if (!obj || typeof obj != 'object') return false;
+    var type = obj.type;
+    return type == 'Feature' || type == 'FeatureCollection' ||
+      type == 'GeometryCollection' || type == 'Point' || type == 'MultiPoint' ||
+      type == 'LineString' || type == 'MultiLineString' ||
+      type == 'Polygon' || type == 'MultiPolygon';
   }
 
   // path: path from top-level to the target object
@@ -33159,6 +33278,7 @@ ${svg}
     var Parser = typeof DOMParser == 'undefined' ? require$1('@xmldom/xmldom').DOMParser : DOMParser;
     var doc = new Parser().parseFromString(str, 'text/xml');
     var root = doc && doc.documentElement;
+    var geometadata = parseSVGGeometadata(root, str);
     var groups = getTopLevelLayerGroups(root);
     var layerData = [];
     var datasets = [];
@@ -33175,7 +33295,11 @@ ${svg}
       });
     });
 
-    flipYCoordinates(layerData);
+    if (geometadata && geometadata.bbox && geometadata.viewBox) {
+      remapCoordinatesFromSVGToMap(layerData, geometadata.viewBox, geometadata.bbox);
+    } else {
+      flipYCoordinates(layerData);
+    }
 
     layerData.forEach(function(layer) {
       datasets.push(importLayerFeatures(layer.name, layer.features, opts));
@@ -33185,9 +33309,237 @@ ${svg}
       return {layers: [], info: {}};
     }
     if (datasets.length === 1) {
-      return datasets[0];
+      return applySVGGeometadata(datasets[0], geometadata);
     }
-    return mergeDatasets(datasets);
+    return applySVGGeometadata(mergeDatasets(datasets), geometadata);
+  }
+
+  function applySVGGeometadata(dataset, geometadata) {
+    if (geometadata && geometadata.crs) {
+      setDatasetCrsInfo(dataset, getCrsInfo(geometadata.crs));
+    }
+    return dataset;
+  }
+
+  function parseSVGGeometadata(root, svgText) {
+    var json = findMetadataJSONString(root, svgText);
+    var obj;
+    var metadataViewport = getMetadataViewportRect(root);
+    if (!json) return null;
+    obj = parseMetadataJSONObject(json);
+    if (!obj) return null;
+    return {
+      crs: normalizeMetadataCRS(obj.crs),
+      bbox: normalizeMetadataBBox(obj.bbox),
+      viewBox: metadataViewport || parseSVGViewBox(root && root.getAttribute && root.getAttribute('viewBox'))
+    };
+  }
+
+  function findMetadataJSONString(root, svgText) {
+    var text = getMetadataTagText(root) || getHiddenMetadataText(root);
+    if (!text && svgText) {
+      text = extractHiddenMetadataFromSource(svgText);
+    }
+    return normalizeMetadataJSONText(text);
+  }
+
+  function getMetadataTagText(root) {
+    var nodes = getElementChildren(root);
+    for (var i = 0; i < nodes.length; i++) {
+      if (getTagName(nodes[i]) == 'metadata') {
+        return nodes[i].textContent || '';
+      }
+    }
+    return null;
+  }
+
+  function getHiddenMetadataText(root) {
+    var node = getMetadataGroupNode(root);
+    if (node) {
+      return node.textContent || '';
+    }
+    return null;
+  }
+
+  function getMetadataGroupNode(root) {
+    var nodes = getElementChildren(root);
+    var i, node;
+    for (i = 0; i < nodes.length; i++) {
+      node = nodes[i];
+      if (getTagName(node) == 'g' && node.getAttribute && node.getAttribute('id') == 'mapshaper-metadata') {
+        return node;
+      }
+    }
+    return null;
+  }
+
+  function getMetadataViewportRect(root) {
+    var node = getMetadataGroupNode(root);
+    var children, i, rect;
+    if (!node) return null;
+    children = getElementChildren(node);
+    for (i = 0; i < children.length; i++) {
+      if (getTagName(children[i]) == 'rect') {
+        rect = parseMetadataRectNode(children[i]);
+        if (rect) return rect;
+      }
+    }
+    return null;
+  }
+
+  function parseMetadataRectNode(node) {
+    var x = parseNumber(node.getAttribute('x')) || 0;
+    var y = parseNumber(node.getAttribute('y')) || 0;
+    var width = parseNumber(node.getAttribute('width'));
+    var height = parseNumber(node.getAttribute('height'));
+    var pts, i, p;
+    var xmin = Infinity, ymin = Infinity, xmax = -Infinity, ymax = -Infinity;
+    if (!isFiniteNumber(width) || !isFiniteNumber(height) || width === 0 || height === 0) {
+      return null;
+    }
+    pts = [
+      [x, y],
+      [x + width, y],
+      [x, y + height],
+      [x + width, y + height]
+    ];
+    for (i = 0; i < pts.length; i++) {
+      p = applyNodeTransformChain(node, pts[i]);
+      xmin = Math.min(xmin, p[0]);
+      ymin = Math.min(ymin, p[1]);
+      xmax = Math.max(xmax, p[0]);
+      ymax = Math.max(ymax, p[1]);
+    }
+    if (!isFiniteNumber(xmin) || !isFiniteNumber(ymin) || !isFiniteNumber(xmax) || !isFiniteNumber(ymax)) {
+      return null;
+    }
+    return [xmin, ymin, xmax - xmin, ymax - ymin];
+  }
+
+  function applyNodeTransformChain(node, point) {
+    var chain = [];
+    var p = [point[0], point[1]];
+    var i;
+    while (node && node.nodeType == 1) {
+      chain.unshift(node);
+      node = node.parentNode;
+    }
+    for (i = 0; i < chain.length; i++) {
+      p = applyTransformString(chain[i].getAttribute && chain[i].getAttribute('transform'), p);
+    }
+    return p;
+  }
+
+  function applyTransformString(str, point) {
+    var re = /([a-z]+)\s*\(([^)]*)\)/ig;
+    var m = null;
+    var p = [point[0], point[1]];
+    while ((m = re.exec(String(str || '')))) {
+      p = applyTransformCommand(m[1].toLowerCase(), parseTransformNumbers(m[2]), p);
+    }
+    return p;
+  }
+
+  function parseTransformNumbers(str) {
+    return String(str || '')
+      .trim()
+      .split(/[\s,]+/)
+      .filter(Boolean)
+      .map(Number)
+      .filter(function(v) { return isFiniteNumber(v); });
+  }
+
+  function applyTransformCommand(cmd, nums, point) {
+    var x = point[0], y = point[1];
+    var sx, sy;
+    if (cmd == 'translate') {
+      return [x + (nums[0] || 0), y + (nums.length > 1 ? nums[1] : 0)];
+    }
+    if (cmd == 'scale') {
+      sx = nums.length > 0 ? nums[0] : 1;
+      sy = nums.length > 1 ? nums[1] : sx;
+      return [x * sx, y * sy];
+    }
+    if (cmd == 'matrix' && nums.length >= 6) {
+      return [
+        nums[0] * x + nums[2] * y + nums[4],
+        nums[1] * x + nums[3] * y + nums[5]
+      ];
+    }
+    return point;
+  }
+
+  function extractHiddenMetadataFromSource(str) {
+    var m = String(str || '').match(/<g[^>]*\bid\s*=\s*["']mapshaper-metadata["'][^>]*>([\s\S]*?)<\/g>/i);
+    if (!m) return null;
+    return stripMarkupTags(m[1]);
+  }
+
+  function stripMarkupTags(str) {
+    return String(str || '').replace(/<[^>]*>/g, '');
+  }
+
+  function normalizeMetadataJSONText(str) {
+    if (!str) return null;
+    return decodeHTMLEntities(stripMarkupTags(String(str))).trim();
+  }
+
+  function decodeHTMLEntities(str) {
+    return String(str || '')
+      .replace(/&#34;|&#x22;/gi, '"')
+      .replace(/&#39;|&#x27;/gi, "'")
+      .replace(/&#38;|&#x26;/gi, '&')
+      .replace(/&#60;|&#x3c;/gi, '<')
+      .replace(/&#62;|&#x3e;/gi, '>')
+      .replace(/&quot;/g, '"')
+      .replace(/&apos;/g, "'")
+      .replace(/&amp;/g, '&')
+      .replace(/&lt;/g, '<')
+      .replace(/&gt;/g, '>');
+  }
+
+  function parseMetadataJSONObject(text) {
+    try {
+      return JSON.parse(text);
+    } catch (e) {
+      return null;
+    }
+  }
+
+  function normalizeMetadataCRS(crs) {
+    return typeof crs == 'string' && crs.trim() ? crs.trim() : null;
+  }
+
+  function normalizeMetadataBBox(bbox) {
+    if (!Array.isArray(bbox) || bbox.length != 4) return null;
+    var out = bbox.map(function(v) { return Number(v); });
+    return out.every(isFiniteNumber) ? out : null;
+  }
+
+  function parseSVGViewBox(str) {
+    var parts = String(str || '').trim().split(/[\s,]+/).map(Number);
+    if (parts.length != 4 || !parts.every(isFiniteNumber) || parts[2] === 0 || parts[3] === 0) {
+      return null;
+    }
+    return parts;
+  }
+
+  function remapCoordinatesFromSVGToMap(layerData, viewBox, bbox) {
+    var vx = viewBox[0], vy = viewBox[1], vw = viewBox[2], vh = viewBox[3];
+    var minX = bbox[0], minY = bbox[1], maxX = bbox[2], maxY = bbox[3];
+    var scaleX = (maxX - minX) / vw;
+    var scaleY = (maxY - minY) / vh;
+
+    layerData.forEach(function(layer) {
+      layer.features.forEach(function(feature) {
+        forEachGeometryCoordinate(feature && feature.geometry, function(coord) {
+          var sx = coord[0];
+          var sy = coord[1];
+          coord[0] = minX + (sx - vx) * scaleX;
+          coord[1] = maxY - (sy - vy) * scaleY;
+        });
+      });
+    });
   }
 
   function importLayerFeatures(layerName, features, opts) {
@@ -33215,6 +33567,7 @@ ${svg}
     childNodes.forEach(function(node) {
       var tag = getTagName(node);
       if (tag == 'defs') return;
+      if (tag == 'g' && node.getAttribute && node.getAttribute('id') == 'mapshaper-metadata') return;
       if (tag == 'g') {
         groups.push({
           node: node,
@@ -48147,17 +48500,62 @@ ${svg}
     });
   }
 
+  function parseWKTPoint(val) {
+    if (!utils.isString(val)) return null;
+    // Support 2D POINT WKT, case-insensitive, with optional Z/M tokens.
+    // Examples:
+    //   POINT (1 2)
+    //   point(1 2)
+    //   POINT Z (1 2 3)
+    //   POINT M (1 2 3)
+    //   POINT ZM (1 2 3 4)
+    var m = /^\s*POINT(?:\s+Z(?:M)?|\s+M)?\s*\(\s*([^\s,]+)\s+([^\s,]+)(?:\s+[^)]*)?\)\s*$/i.exec(val);
+    if (!m) return null;
+    var x = coordinateFromValue(m[1]);
+    var y = coordinateFromValue(m[2]);
+    if (isNaN(x) || isNaN(y)) return null;
+    return [x, y];
+  }
+
+  function findWKTField(records, fields) {
+    var sampleSize = Math.min(records.length, 50);
+    return utils.find(fields, function(name) {
+      var seen = 0;
+      var matches = 0;
+      for (var i = 0; i < sampleSize; i++) {
+        var rec = records[i];
+        if (!rec) continue;
+        var val = rec[name];
+        if (!utils.isString(val) || val.trim() === '') continue;
+        seen++;
+        if (parseWKTPoint(val)) matches++;
+      }
+      // Require at least one non-empty sample and majority parseable as POINT.
+      return seen > 0 && matches / seen >= 0.6;
+    });
+  }
+
   function pointsFromDataTableAuto(data) {
     var fields = data ? data.getFields() : [];
+    var records = data ? data.getRecords() : [];
     var opts = {
       x: findXField(fields),
       y: findYField(fields)
     };
+    if (!opts.x || !opts.y) {
+      opts.wkt = findWKTField(records, fields);
+    }
     return pointsFromDataTable(data, opts);
   }
 
   function pointsFromDataTable(data, opts) {
     if (!data) stop$1("Layer is missing a data table");
+    if (opts.wkt && data.fieldExists(opts.wkt)) {
+      return data.getRecords().map(function(rec) {
+        var p = parseWKTPoint(rec[opts.wkt]);
+        return p ? [p] : null;
+      });
+    }
     if (!opts.x || !opts.y || !data.fieldExists(opts.x) || !data.fieldExists(opts.y)) {
       stop$1("Missing x,y data fields");
     }
@@ -48175,8 +48573,10 @@ ${svg}
   var Points = /*#__PURE__*/Object.freeze({
     __proto__: null,
     coordinateFromValue: coordinateFromValue,
+    findWKTField: findWKTField,
     findXField: findXField,
     findYField: findYField,
+    parseWKTPoint: parseWKTPoint,
     pointsFromPolygons: pointsFromPolygons
   });
 

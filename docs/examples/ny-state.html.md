@@ -36,7 +36,7 @@ mapshaper \
 	-i usa_can_roads.geojson name=roads \
 	-proj match=NY \
 	-target NY \
-	-rectangle aspect-ratio 1.5 offset=4% + name=rectangle \
+	-frame height=400 width=600 offset=4% name=rectangle \
 	-target states \
 	-lines + name=borders \
 	-target states \
@@ -52,12 +52,12 @@ mapshaper \
 	-style target=labels label-text=name dy=4 fill='#aaa' font-size=13px \
 	-style target=labels fill='#666' font-size=20px where='name == "New York"' \
 	-style target=roads stroke='name == "New York" ? "#aaa" : "#e2e2e2"' stroke-width=0.6 \
-	-style target=states fill='name == "New York" ? "hsl(0 0 92)" : "hsl(0 0 99)"' \
+	-style target=states fill='name == "New York" ? "#ececec" : "#fafafa"' \
 	-style target=borders stroke='#c5c5c5' stroke-width='TYPE == "inner" ? 1 : 0.7' \
 	-style target=NY stroke='#555' stroke-width=1.2 \
 	-style target=rectangle fill='#f1f1f1' \
-	-target rectangle,states,roads,borders,NY,labels \ 
-	-o width=600 height=400 ny-state.svg
+	-target rectangle,states,roads,borders,NY,labels \
+	-o ny-state.svg
 ```
 
 ### Notes
