@@ -3,6 +3,15 @@ import assert from 'assert';
 
 var SVG = api.internal.svg;
 
+function getMapshaperMetadataJSON(svg) {
+  var metaMatch = svg.match(/<metadata>([\s\S]*?)<\/metadata>/);
+  var hiddenMatch = svg.match(/<g id="mapshaper-metadata">[\s\S]*?<text[^>]*>([\s\S]*?)<\/text>[\s\S]*?<\/g>/);
+  assert(metaMatch, 'expected <metadata> payload');
+  assert(hiddenMatch, 'expected hidden mapshaper metadata group');
+  assert.equal(hiddenMatch[1], metaMatch[1], 'metadata payloads should match');
+  return JSON.parse(metaMatch[1]);
+}
+
 
 describe('mapshaper-svg.js', function () {
 
@@ -353,6 +362,31 @@ describe('mapshaper-svg.js', function () {
       assert.equal(data, svg)
       done();
     });
+  });
+
+  it('exports geospatial metadata to <metadata> and hidden text', async function() {
+    var geo = {
+      type: 'Feature',
+      geometry: {
+        type: 'LineString',
+        coordinates: [[-10, -5], [10, 5]]
+      },
+      properties: null
+    };
+    var out = await api.applyCommands('-i line.json -o map.svg format=svg metadata margin=0 width=100', {'line.json': geo});
+    var metadata = getMapshaperMetadataJSON(out['map.svg']);
+    assert.equal(typeof metadata.crs, 'string');
+    assert(Array.isArray(metadata.bbox));
+    assert.equal(metadata.bbox.length, 4);
+    assert(out['map.svg'].includes('<rect x="0" y="0" width="100" height="50" opacity="0"/>'));
+  });
+
+  it('exports crs:null in geospatial metadata when CRS is unavailable', async function() {
+    var csv = 'x,y\n500000,2000000\n500100,2000100';
+    var out = await api.applyCommands('-i pts.csv -points x=x y=y -o map.svg format=svg metadata margin=0 width=100', {'pts.csv': csv});
+    var metadata = getMapshaperMetadataJSON(out['map.svg']);
+    assert.equal(metadata.crs, null);
+    assert.deepEqual(metadata.bbox, [500000, 2000000, 500100, 2000100]);
   });
 
 
