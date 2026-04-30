@@ -259,17 +259,62 @@ export function findYField(fields) {
   });
 }
 
+export function parseWKTPoint(val) {
+  if (!utils.isString(val)) return null;
+  // Support 2D POINT WKT, case-insensitive, with optional Z/M tokens.
+  // Examples:
+  //   POINT (1 2)
+  //   point(1 2)
+  //   POINT Z (1 2 3)
+  //   POINT M (1 2 3)
+  //   POINT ZM (1 2 3 4)
+  var m = /^\s*POINT(?:\s+Z(?:M)?|\s+M)?\s*\(\s*([^\s,]+)\s+([^\s,]+)(?:\s+[^)]*)?\)\s*$/i.exec(val);
+  if (!m) return null;
+  var x = coordinateFromValue(m[1]);
+  var y = coordinateFromValue(m[2]);
+  if (isNaN(x) || isNaN(y)) return null;
+  return [x, y];
+}
+
+export function findWKTField(records, fields) {
+  var sampleSize = Math.min(records.length, 50);
+  return utils.find(fields, function(name) {
+    var seen = 0;
+    var matches = 0;
+    for (var i = 0; i < sampleSize; i++) {
+      var rec = records[i];
+      if (!rec) continue;
+      var val = rec[name];
+      if (!utils.isString(val) || val.trim() === '') continue;
+      seen++;
+      if (parseWKTPoint(val)) matches++;
+    }
+    // Require at least one non-empty sample and majority parseable as POINT.
+    return seen > 0 && matches / seen >= 0.6;
+  });
+}
+
 function pointsFromDataTableAuto(data) {
   var fields = data ? data.getFields() : [];
+  var records = data ? data.getRecords() : [];
   var opts = {
     x: findXField(fields),
     y: findYField(fields)
   };
+  if (!opts.x || !opts.y) {
+    opts.wkt = findWKTField(records, fields);
+  }
   return pointsFromDataTable(data, opts);
 }
 
 function pointsFromDataTable(data, opts) {
   if (!data) stop("Layer is missing a data table");
+  if (opts.wkt && data.fieldExists(opts.wkt)) {
+    return data.getRecords().map(function(rec) {
+      var p = parseWKTPoint(rec[opts.wkt]);
+      return p ? [p] : null;
+    });
+  }
   if (!opts.x || !opts.y || !data.fieldExists(opts.x) || !data.fieldExists(opts.y)) {
     stop("Missing x,y data fields");
   }

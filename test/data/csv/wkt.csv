@@ -1,0 +1,4 @@
+id;name;amount;city;geom
+1;Kevin;2.1;Rapperswil;POINT(8.8249 47.2274)
+2;Eva;2.2;Zürich;POINT(8.5435 47.3768)
+3;"Jimmy;Muff";2.3;;POINT(7.4397 46.9487)
