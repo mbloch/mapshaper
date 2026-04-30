@@ -14,6 +14,13 @@ When in doubt about a command's behavior, the [command reference](https://mapsha
 - [The command-line tool](https://mapshaper.org/docs/essentials/command-line.html.md): Install the mapshaper CLI, run your first commands and learn how Mapshaper organizes data into layers.
 - [The web app](https://mapshaper.org/docs/essentials/web-app.html.md): A tour of Mapshaper's web interface, including loading data, the console, the right-click menu, snapshots, browser support and running it locally.
 
+## Examples
+
+- [Basics](https://mapshaper.org/docs/examples/basics.html.md): A scannable collection of short Mapshaper recipes for common GIS tasks — format conversion, joins, simplification, dissolves, projection, classification, web export and more.
+- [Globe locator map](https://mapshaper.org/docs/examples/globe.html.md): A simple locator map in the shape of a globe.
+- [U.S. state map](https://mapshaper.org/docs/examples/us-states.html.md): Simple U.S. state map with random, non-adjacent colors
+- [New York map](https://mapshaper.org/docs/examples/ny-state.html.md): Map of New York and surrounding states, with labels
+
 ## Guides
 
 - [Simplification](https://mapshaper.org/docs/guides/simplification.html.md): How to choose between Visvalingam and Douglas-Peucker, and tips for getting good-looking results from polygon and polyline simplification.
@@ -36,12 +43,6 @@ When in doubt about a command's behavior, the [command reference](https://mapsha
 - [JSON records](https://mapshaper.org/docs/formats/json.html.md): How Mapshaper reads and writes plain JSON arrays of objects (no geometry), useful for tabular data exchange.
 - [SVG](https://mapshaper.org/docs/formats/svg.html.md): How Mapshaper exports vector data as SVG, including width, scale, bounding-box and per-feature data attributes.
 - [Mapshaper snapshot](https://mapshaper.org/docs/formats/snapshot.html.md): A single-file binary snapshot of a Mapshaper session, used to save work in progress and share reproducible projects.
-
-## Examples
-
-- [Basics](https://mapshaper.org/docs/examples/basics.html.md): A scannable collection of short Mapshaper recipes for common GIS tasks — format conversion, joins, simplification, dissolves, projection, classification, web export and more.
-- [Globe](https://mapshaper.org/docs/examples/globe.html.md): A simple locator map in the shape of a globe.
-- [U.S. state map](https://mapshaper.org/docs/examples/us-states.html.md): Simple U.S. state map with random, non-adjacent colors
 
 ## Command reference
 

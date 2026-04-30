@@ -4629,6 +4629,32 @@
     return inputs && inputs[0] || '';
   }
 
+  // Return layers in @dataset that were *not* selected by the current target
+  // set but still match a command-specific geometry predicate.
+  //
+  // Used for command side-effect messaging, e.g.:
+  //   - -proj (shared dataset reprojection)
+  //   - -simplify (shared arc simplification)
+  //
+  // @targetLayers should be the layer selection that triggered the command.
+  // If all layers are targeted (or target selection is missing), returns [].
+  // @filterFn optional predicate (lyr -> bool) for command-specific relevance.
+  function getImplicitlyTargetedLayers(dataset, targetLayers, filterFn) {
+    if (!targetLayers || targetLayers.length === 0 || targetLayers.length >= dataset.layers.length) {
+      return [];
+    }
+    var targeted = new Set(targetLayers);
+    return dataset.layers.filter(function(lyr) {
+      return !targeted.has(lyr) && (!filterFn || filterFn(lyr));
+    });
+  }
+
+  function getImplicitlyTargetedLayerNames(dataset, targetLayers, filterFn) {
+    return getImplicitlyTargetedLayers(dataset, targetLayers, filterFn).map(function(lyr) {
+      return lyr.name || '[unnamed]';
+    });
+  }
+
   // Divide a collection of features with mixed types into layers of a single type
   // (Used for importing TopoJSON and GeoJSON features)
   function divideFeaturesByType(shapes, properties, types) {
@@ -4769,6 +4795,8 @@
     filterPathLayerByArcIds: filterPathLayerByArcIds,
     getArcPresenceTest2: getArcPresenceTest2,
     getFeatureCount: getFeatureCount,
+    getImplicitlyTargetedLayerNames: getImplicitlyTargetedLayerNames,
+    getImplicitlyTargetedLayers: getImplicitlyTargetedLayers,
     getLayerBounds: getLayerBounds,
     getLayerDataTable: getLayerDataTable,
     getLayerSourceFile: getLayerSourceFile,
@@ -19446,7 +19474,9 @@ ${svg}
 
   function exportDbfFile(lyr, dataset, opts) {
     var data = lyr.data,
-        buf;
+        buf,
+        files,
+        encoding;
     // create empty data table if missing a table or table is being cut out
     if (!data || opts.cut_table || opts.drop_table) {
       data = new DataTable(lyr.shapes ? lyr.shapes.length : 0);
@@ -19460,14 +19490,34 @@ ${svg}
     } else {
       buf = Dbf.exportRecords(data.getRecords(), opts.encoding, opts.field_order);
     }
+    encoding = getDbfExportEncoding(data, opts);
     if (utils.isInteger(opts.ldid)) {
       new Uint8Array(buf)[29] = opts.ldid; // set language driver id
     }
-    // TODO: also export .cpg page
-    return [{
+    files = [{
       content: buf,
       filename: lyr.name + '.dbf'
     }];
+    if (opts.export_cpg && encoding) {
+      files.push({
+        content: formatCpgEncoding(encoding),
+        filename: lyr.name + '.cpg'
+      });
+    }
+    return files;
+  }
+
+  function getDbfExportEncoding(data, opts) {
+    if (data && data.getDbfEncoding) {
+      return data.getDbfEncoding(opts);
+    }
+    return opts.encoding || 'utf8';
+  }
+
+  function formatCpgEncoding(encoding) {
+    // Canonical spelling for the default.
+    if (/^utf-?8$/i.test(String(encoding))) return 'UTF-8';
+    return String(encoding);
   }
 
   var decoder;
@@ -22232,8 +22282,9 @@ ${svg}
   function exportShapefile(dataset, opts) {
     return dataset.layers.reduce(function(files, lyr) {
       var prj = exportPrjFile(lyr, dataset);
+      var dbfOpts = utils.defaults({export_cpg: true}, opts);
       files = files.concat(exportShpAndShxFiles(lyr, dataset));
-      files = files.concat(exportDbfFile(lyr, dataset, opts));
+      files = files.concat(exportDbfFile(lyr, dataset, dbfOpts));
       if (prj) files.push(prj);
       return files;
     }, []);
@@ -30251,6 +30302,7 @@ ${svg}
     };
 
     this.getFields = getFieldNames;
+    this.getEncoding = getEncoding;
 
     // TODO: switch to streaming output under Node.js
     this.getBuffer = function() {
@@ -30568,6 +30620,19 @@ ${svg}
         } catch(e) {}
       }
       return Dbf.exportRecords(getTable().getRecords(), opts.encoding, opts.field_order);
+    };
+
+    // Return the text encoding that exportAsDbf() will use for the current
+    // options. If we're exporting the untouched original DBF bytes, use the
+    // reader's detected/declared encoding; otherwise we regenerate with either
+    // opts.encoding or the writer default (utf8).
+    this.getDbfEncoding = function(optsArg) {
+      var opts = optsArg || {};
+      var useOriginal = !!reader && !altered && !opts.field_order && !opts.encoding;
+      if (useOriginal) {
+        return reader.getEncoding();
+      }
+      return opts.encoding || 'utf8';
     };
 
     this.getReadOnlyRecordAt = function(i) {
@@ -31409,7 +31474,7 @@ ${svg}
     (srcCollection.features || srcCollection.geometries || []).forEach(importer.parseObject);
     dataset = importer.done();
     importCRS(dataset, srcObj); // TODO: remove this
-    warnIfProjectedCoords(dataset, srcObj);
+    warnIfProjectedCoords(dataset, srcObj, opts);
     return dataset;
   }
 
@@ -31417,12 +31482,13 @@ ${svg}
   // `crs` member). If the imported file makes no CRS claim but its coordinates
   // are clearly outside lat-long range, warn the user: silent fallthrough here
   // usually surfaces later as cryptic -proj errors or grossly wrong output.
-  function warnIfProjectedCoords(dataset, jsonObj) {
+  function warnIfProjectedCoords(dataset, jsonObj, opts) {
+    if (!opts.warn_projected_coords) return;
     if (jsonObj && jsonObj.crs) return; // user has explicitly declared a CRS
     var bounds = getRoughDatasetBounds(dataset);
     if (!bounds || !bounds.hasBounds()) return;
     if (probablyDecimalDegreeBounds(bounds)) return;
-    warn('Imported GeoJSON has coordinates outside the lat-long range &mdash; ' +
+    warn('Imported GeoJSON has coordinates outside the lat-long range -- ' +
       ' importing as projected geometry with unknown CRS. Commands ' +
       'like -proj that require a CRS will not work until you set a source ' +
       'CRS, e.g. -proj init=EPSG:3857.');
@@ -32485,7 +32551,7 @@ ${svg}
       if (fmt == 'topojson') {
         retn.dataset = importTopoJSON(content, opts);
       } else if (fmt == 'geojson') {
-        retn.dataset = importGeoJSON(content, opts);
+        retn.dataset = importGeoJSON(content, getGeoJSONImportOpts(opts));
       } else if (fmt == 'json') {
         retn.dataset = importJSONTable(content);
       } else {
@@ -32495,6 +32561,12 @@ ${svg}
     }
 
     return retn;
+  }
+
+  function getGeoJSONImportOpts(opts) {
+    return Object.assign({}, opts, {
+      warn_projected_coords: true
+    });
   }
 
   // path: path from top-level to the target object
@@ -43429,20 +43501,24 @@ ${svg}
       }
     }
 
-    printJoinMessage({
-      matches: matchCount,
-      n: n,
-      joins: countJoins(joinCounts),
-      m: srcRecords.length,
-      skipped: skipCount,
-      collisions: collisionCount,
-      collisionFields: collisionFields,
-      destKey: destKey,
-      srcKey: srcKey,
-      unmatchedTargetKeys: takeSampleKeys(unmatchedTargetKeys),
-      unusedSourceKeys: takeSampleKeys(unusedSourceKeys),
-      opts: opts
-    });
+    // Opt-in summary logging. Some commands (e.g. -divide) reuse this join
+    // helper internally and don't want user-facing join diagnostics.
+    if (opts.show_join_message) {
+      printJoinMessage({
+        matches: matchCount,
+        n: n,
+        joins: countJoins(joinCounts),
+        m: srcRecords.length,
+        skipped: skipCount,
+        collisions: collisionCount,
+        collisionFields: collisionFields,
+        destKey: destKey,
+        srcKey: srcKey,
+        unmatchedTargetKeys: takeSampleKeys(unmatchedTargetKeys),
+        unusedSourceKeys: takeSampleKeys(unusedSourceKeys),
+        opts: opts
+      });
+    }
 
     if (opts.unjoined) {
       retn.unjoined = {
@@ -46804,7 +46880,7 @@ ${svg}
   // Works for lcc, aea, tmerc, etc.
   // TODO: add more projections
   //
-  function expandProjDefn(str, dataset) {
+  function expandProjDefn(str, dataset, targetLayers) {
     var mproj = require$1('mproj');
     var proj4, params, bbox, isConic2SP, isCentered, decimals;
     if (str in mproj.internal.pj_list === false) {
@@ -46815,7 +46891,7 @@ ${svg}
     isCentered = ['tmerc', 'etmerc'].includes(str);
     proj4 = '+proj=' + str;
     if (isConic2SP || isCentered) {
-      bbox = getBBox(dataset); // TODO: support projected datasets
+      bbox = getBBox(dataset, targetLayers); // TODO: support projected datasets
       decimals = getBoundsPrecisionForDisplay(bbox);
       params = isCentered ? getCenterParams(bbox, decimals) : getConicParams(bbox, decimals);
       proj4 += ' ' + params;
@@ -46824,11 +46900,16 @@ ${svg}
     return proj4;
   }
 
-  function getBBox(dataset) {
+  function getBBox(dataset, targetLayers) {
+    var source = targetLayers && targetLayers.length > 0 ? {
+      arcs: dataset.arcs,
+      layers: targetLayers,
+      info: dataset.info
+    } : dataset;
     if (!isLatLngCRS(getDatasetCRS(dataset))) {
       stop$1('Expected unprojected data');
     }
-    return getDatasetBounds(dataset).toArray();
+    return getDatasetBounds(source).toArray();
   }
 
   // See: Savric & Jenny, "Automating the selection of standard parallels for conic map projections"
@@ -46854,8 +46935,9 @@ ${svg}
     getConicParams: getConicParams
   });
 
-  cmd.proj = function(dataset, catalog, opts) {
+  cmd.proj = function(dataset, catalog, opts, targetLayers) {
     var srcInfo, destInfo, destStr;
+    var implicitlyProjectedNames = getImplicitlyTargetedLayerNames(dataset, targetLayers, layerHasGeometry);
     if (opts.init) {
       srcInfo = fetchCrsInfo(opts.init, catalog);
       if (!srcInfo.crs) stop$1("Unknown projection source:", opts.init);
@@ -46864,11 +46946,17 @@ ${svg}
     if (opts.match) {
       destInfo = fetchCrsInfo(opts.match, catalog);
     } else if (opts.crs) {
-      destStr = expandProjDefn(opts.crs, dataset);
+      destStr = expandProjDefn(opts.crs, dataset, targetLayers);
       destInfo = getCrsInfo(destStr);
     }
     if (destInfo) {
-      projCmd(dataset, destInfo, opts);
+      var didProject = projCmd(dataset, destInfo, opts);
+      if (didProject && implicitlyProjectedNames.length > 0) {
+        message(
+          'Also projected non-target layer' + utils.pluralSuffix(implicitlyProjectedNames.length) +
+          ' from the same dataset: ' + implicitlyProjectedNames.join(', ')
+        );
+      }
     }
   };
 
@@ -46886,7 +46974,7 @@ ${svg}
     if (!datasetHasGeometry(dataset)) {
       // still set the crs of datasets that are missing geometry
       setDatasetCrsInfo(dataset, destInfo);
-      return;
+      return false;
     }
 
     var srcInfo = getDatasetCrsInfo(dataset);
@@ -46896,7 +46984,7 @@ ${svg}
 
     if (crsAreEqual(srcInfo.crs, destInfo.crs)) {
       message("Source and destination CRS are the same");
-      return;
+      return false;
     }
 
     if (dataset.arcs) {
@@ -46922,8 +47010,8 @@ ${svg}
       // replace original layers with modified layers
       utils.extend(lyr, target.layers[i]);
     });
+    return true;
   }
-
 
   // name: a layer identifier, .prj file or projection defn
   // Converts layer ids and .prj files to CRS defn
@@ -48477,6 +48565,9 @@ ${svg}
   }
 
   cmd.join = function(targetLyr, targetDataset, src, opts) {
+    // Opt in to the post-join summary emitted by joinTableToLayer().
+    // Other commands can reuse the helper without showing this message.
+    opts = Object.assign({}, opts, {show_join_message: true});
     var srcType, targetType, retn;
     if (!src || !src.dataset) {
       stop$1("Missing a joinable data source");
@@ -51094,8 +51185,9 @@ ${svg}
     replaceInArray: replaceInArray
   });
 
-  cmd.simplify = function(dataset, opts) {
+  cmd.simplify = function(dataset, opts, targetLayers) {
     var arcs = dataset.arcs;
+    var implicitlySimplifiedNames = getImplicitlyTargetedLayerNames(dataset, targetLayers, layerHasPaths);
     if (!arcs || arcs.size() === 0) return; // removed in v0.4.125: stop("Missing path data");
     opts = getStandardSimplifyOpts(dataset, opts); // standardize options
     simplifyPaths(arcs, opts);
@@ -51114,6 +51206,12 @@ ${svg}
     }
 
     finalizeSimplification(dataset, opts);
+    if (implicitlySimplifiedNames.length > 0) {
+      message(
+        'Also simplified non-target layer' + utils.pluralSuffix(implicitlySimplifiedNames.length) +
+        ' from the same dataset: ' + implicitlySimplifiedNames.join(', ')
+      );
+    }
   };
 
   function finalizeSimplification(dataset, opts) {
@@ -52807,7 +52905,7 @@ ${svg}
         await initProjLibrary(opts);
         job.resumeCommand();
         targets.forEach(function(targ) {
-          cmd.proj(targ.dataset, job.catalog, opts);
+          cmd.proj(targ.dataset, job.catalog, opts, targ.layers);
         });
 
       } else if (name == 'rectangle') {
@@ -52850,7 +52948,7 @@ ${svg}
         if (opts.variable) {
           cmd.variableSimplify(targetLayers, targetDataset, opts);
         } else {
-          cmd.simplify(targetDataset, opts);
+          cmd.simplify(targetDataset, opts, targetLayers);
         }
 
       } else if (name == 'slice') {
@@ -52976,7 +53074,7 @@ ${svg}
     });
   }
 
-  var version = "0.7.5";
+  var version = "0.7.6";
 
   // Parse command line args into commands and run them
   // Function takes an optional Node-style callback. A Promise is returned if no callback is given.

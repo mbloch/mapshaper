@@ -26,4 +26,13 @@ A collection of example maps made with Mapshaper. Each tile links to its own pag
       <div class="gallery-tile-desc">Simple U.S. state map with random, non-adjacent colors</div>
     </div>
   </a>
+  <a class="gallery-tile" href="/docs/examples/ny-state.html">
+    <div class="gallery-tile-image">
+      <img src="/docs/examples/data/ny-state.svg" alt="New York State map">
+    </div>
+    <div class="gallery-tile-caption">
+      <div class="gallery-tile-title">New York State map</div>
+      <div class="gallery-tile-desc">Map of New York and surrounding states, with labels</div>
+    </div>
+  </a>
 </div>
