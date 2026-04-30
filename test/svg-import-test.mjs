@@ -150,4 +150,76 @@ describe('svg import', function () {
     assert(exported.includes('stroke="black"'));
     assert(exported.includes('stroke-width="2"'));
   });
+
+  it('imports SVG geometadata from <metadata> to set CRS and coordinate scale', function() {
+    var svg = [
+      '<?xml version="1.0"?>',
+      '<svg xmlns="http://www.w3.org/2000/svg" version="1.2" baseProfile="tiny" viewBox="0 0 100 100">',
+      '<metadata>{"crs":"epsg:4326","bbox":[10,20,30,60]}</metadata>',
+      '<g id="pts">',
+      '<circle cx="0" cy="0" r="1"/>',
+      '<circle cx="100" cy="100" r="1"/>',
+      '</g>',
+      '</svg>'
+    ].join('\n');
+    var dataset = api.internal.importContent({
+      svg: {filename: 'meta.svg', content: svg}
+    }, {});
+    var pts = dataset.layers.find(lyr => lyr.name == 'pts');
+    var p1 = pts.shapes[0][0];
+    var p2 = pts.shapes[1][0];
+    var crs = api.internal.getDatasetCRS(dataset);
+
+    assert(crs && crs.is_latlong, 'CRS is set from metadata');
+    assert.deepEqual(p1, [10, 60]);
+    assert.deepEqual(p2, [30, 20]);
+  });
+
+  it('imports Illustrator-split hidden metadata text with &quot; entities', function() {
+    var svg = [
+      '<?xml version="1.0"?>',
+      '<svg xmlns="http://www.w3.org/2000/svg" version="1.2" baseProfile="tiny" viewBox="0 0 100 100">',
+      '<g id="mapshaper-metadata"><text opacity="0" font-size="0.1"><tspan>{&quot;crs&quot;:&quot;epsg:4326&quot;,&quot;bbox&quot;:[10,20,30,60]}</tspan></text></g>',
+      '<g id="pts">',
+      '<circle cx="0" cy="0" r="1"/>',
+      '</g>',
+      '</svg>'
+    ].join('\n');
+    var dataset = api.internal.importContent({
+      svg: {filename: 'ai-meta.svg', content: svg}
+    }, {});
+    var pts = dataset.layers.find(lyr => lyr.name == 'pts');
+    var p = pts.shapes[0][0];
+    var crs = api.internal.getDatasetCRS(dataset);
+
+    assert(crs && crs.is_latlong, 'CRS is recovered from hidden metadata text');
+    assert.deepEqual(p, [10, 60]);
+  });
+
+  it('uses hidden metadata rectangle coordinates after artwork is moved and scaled', function() {
+    var svg = [
+      '<?xml version="1.0"?>',
+      '<svg xmlns="http://www.w3.org/2000/svg" version="1.2" baseProfile="tiny" viewBox="0 0 100 100">',
+      '<g id="mapshaper-metadata">',
+      '<rect x="50" y="100" width="200" height="200" opacity="0"/>',
+      '<text opacity="0" font-size="0.1"><tspan>{&quot;crs&quot;:&quot;epsg:4326&quot;,&quot;bbox&quot;:[10,20,30,60]}</tspan></text>',
+      '</g>',
+      '<g id="pts">',
+      '<circle cx="50" cy="100" r="1"/>',
+      '<circle cx="250" cy="300" r="1"/>',
+      '</g>',
+      '</svg>'
+    ].join('\n');
+    var dataset = api.internal.importContent({
+      svg: {filename: 'ai-shifted.svg', content: svg}
+    }, {});
+    var pts = dataset.layers.find(lyr => lyr.name == 'pts');
+    var p1 = pts.shapes[0][0];
+    var p2 = pts.shapes[1][0];
+    var metaLayer = dataset.layers.find(lyr => lyr.name == 'mapshaper-metadata');
+
+    assert.equal(metaLayer, undefined, 'internal metadata layer is not imported');
+    assert.deepEqual(p1, [10, 60]);
+    assert.deepEqual(p2, [30, 20]);
+  });
 });

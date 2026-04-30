@@ -1,6 +1,7 @@
 import require from '../mapshaper-require';
 import { importGeoJSON } from '../geojson/geojson-import';
 import { mergeDatasets } from '../dataset/mapshaper-merging';
+import { getCrsInfo, setDatasetCrsInfo } from '../crs/mapshaper-projections';
 
 var INHERITED_STYLE_KEYS = [
   'fill', 'fill-opacity',
@@ -27,6 +28,7 @@ export function importSVG(str, optsArg) {
   var Parser = typeof DOMParser == 'undefined' ? require('@xmldom/xmldom').DOMParser : DOMParser;
   var doc = new Parser().parseFromString(str, 'text/xml');
   var root = doc && doc.documentElement;
+  var geometadata = parseSVGGeometadata(root, str);
   var groups = getTopLevelLayerGroups(root);
   var layerData = [];
   var datasets = [];
@@ -43,7 +45,11 @@ export function importSVG(str, optsArg) {
     });
   });
 
-  flipYCoordinates(layerData);
+  if (geometadata && geometadata.bbox && geometadata.viewBox) {
+    remapCoordinatesFromSVGToMap(layerData, geometadata.viewBox, geometadata.bbox);
+  } else {
+    flipYCoordinates(layerData);
+  }
 
   layerData.forEach(function(layer) {
     datasets.push(importLayerFeatures(layer.name, layer.features, opts));
@@ -53,9 +59,232 @@ export function importSVG(str, optsArg) {
     return {layers: [], info: {}};
   }
   if (datasets.length === 1) {
-    return datasets[0];
+    return applySVGGeometadata(datasets[0], geometadata);
   }
-  return mergeDatasets(datasets);
+  return applySVGGeometadata(mergeDatasets(datasets), geometadata);
+}
+
+function applySVGGeometadata(dataset, geometadata) {
+  if (geometadata && geometadata.crs) {
+    setDatasetCrsInfo(dataset, getCrsInfo(geometadata.crs));
+  }
+  return dataset;
+}
+
+function parseSVGGeometadata(root, svgText) {
+  var json = findMetadataJSONString(root, svgText);
+  var obj;
+  var metadataViewport = getMetadataViewportRect(root);
+  if (!json) return null;
+  obj = parseMetadataJSONObject(json);
+  if (!obj) return null;
+  return {
+    crs: normalizeMetadataCRS(obj.crs),
+    bbox: normalizeMetadataBBox(obj.bbox),
+    viewBox: metadataViewport || parseSVGViewBox(root && root.getAttribute && root.getAttribute('viewBox'))
+  };
+}
+
+function findMetadataJSONString(root, svgText) {
+  var text = getMetadataTagText(root) || getHiddenMetadataText(root);
+  if (!text && svgText) {
+    text = extractHiddenMetadataFromSource(svgText);
+  }
+  return normalizeMetadataJSONText(text);
+}
+
+function getMetadataTagText(root) {
+  var nodes = getElementChildren(root);
+  for (var i = 0; i < nodes.length; i++) {
+    if (getTagName(nodes[i]) == 'metadata') {
+      return nodes[i].textContent || '';
+    }
+  }
+  return null;
+}
+
+function getHiddenMetadataText(root) {
+  var node = getMetadataGroupNode(root);
+  if (node) {
+    return node.textContent || '';
+  }
+  return null;
+}
+
+function getMetadataGroupNode(root) {
+  var nodes = getElementChildren(root);
+  var i, node;
+  for (i = 0; i < nodes.length; i++) {
+    node = nodes[i];
+    if (getTagName(node) == 'g' && node.getAttribute && node.getAttribute('id') == 'mapshaper-metadata') {
+      return node;
+    }
+  }
+  return null;
+}
+
+function getMetadataViewportRect(root) {
+  var node = getMetadataGroupNode(root);
+  var children, i, rect;
+  if (!node) return null;
+  children = getElementChildren(node);
+  for (i = 0; i < children.length; i++) {
+    if (getTagName(children[i]) == 'rect') {
+      rect = parseMetadataRectNode(children[i]);
+      if (rect) return rect;
+    }
+  }
+  return null;
+}
+
+function parseMetadataRectNode(node) {
+  var x = parseNumber(node.getAttribute('x')) || 0;
+  var y = parseNumber(node.getAttribute('y')) || 0;
+  var width = parseNumber(node.getAttribute('width'));
+  var height = parseNumber(node.getAttribute('height'));
+  var pts, i, p;
+  var xmin = Infinity, ymin = Infinity, xmax = -Infinity, ymax = -Infinity;
+  if (!isFiniteNumber(width) || !isFiniteNumber(height) || width === 0 || height === 0) {
+    return null;
+  }
+  pts = [
+    [x, y],
+    [x + width, y],
+    [x, y + height],
+    [x + width, y + height]
+  ];
+  for (i = 0; i < pts.length; i++) {
+    p = applyNodeTransformChain(node, pts[i]);
+    xmin = Math.min(xmin, p[0]);
+    ymin = Math.min(ymin, p[1]);
+    xmax = Math.max(xmax, p[0]);
+    ymax = Math.max(ymax, p[1]);
+  }
+  if (!isFiniteNumber(xmin) || !isFiniteNumber(ymin) || !isFiniteNumber(xmax) || !isFiniteNumber(ymax)) {
+    return null;
+  }
+  return [xmin, ymin, xmax - xmin, ymax - ymin];
+}
+
+function applyNodeTransformChain(node, point) {
+  var chain = [];
+  var p = [point[0], point[1]];
+  var i;
+  while (node && node.nodeType == 1) {
+    chain.unshift(node);
+    node = node.parentNode;
+  }
+  for (i = 0; i < chain.length; i++) {
+    p = applyTransformString(chain[i].getAttribute && chain[i].getAttribute('transform'), p);
+  }
+  return p;
+}
+
+function applyTransformString(str, point) {
+  var re = /([a-z]+)\s*\(([^)]*)\)/ig;
+  var m = null;
+  var p = [point[0], point[1]];
+  while ((m = re.exec(String(str || '')))) {
+    p = applyTransformCommand(m[1].toLowerCase(), parseTransformNumbers(m[2]), p);
+  }
+  return p;
+}
+
+function parseTransformNumbers(str) {
+  return String(str || '')
+    .trim()
+    .split(/[\s,]+/)
+    .filter(Boolean)
+    .map(Number)
+    .filter(function(v) { return isFiniteNumber(v); });
+}
+
+function applyTransformCommand(cmd, nums, point) {
+  var x = point[0], y = point[1];
+  var sx, sy;
+  if (cmd == 'translate') {
+    return [x + (nums[0] || 0), y + (nums.length > 1 ? nums[1] : 0)];
+  }
+  if (cmd == 'scale') {
+    sx = nums.length > 0 ? nums[0] : 1;
+    sy = nums.length > 1 ? nums[1] : sx;
+    return [x * sx, y * sy];
+  }
+  if (cmd == 'matrix' && nums.length >= 6) {
+    return [
+      nums[0] * x + nums[2] * y + nums[4],
+      nums[1] * x + nums[3] * y + nums[5]
+    ];
+  }
+  return point;
+}
+
+function extractHiddenMetadataFromSource(str) {
+  var m = String(str || '').match(/<g[^>]*\bid\s*=\s*["']mapshaper-metadata["'][^>]*>([\s\S]*?)<\/g>/i);
+  if (!m) return null;
+  return stripMarkupTags(m[1]);
+}
+
+function stripMarkupTags(str) {
+  return String(str || '').replace(/<[^>]*>/g, '');
+}
+
+function normalizeMetadataJSONText(str) {
+  if (!str) return null;
+  return decodeHTMLEntities(stripMarkupTags(String(str))).trim();
+}
+
+function decodeHTMLEntities(str) {
+  return String(str || '')
+    .replace(/&quot;/g, '"')
+    .replace(/&apos;/g, "'")
+    .replace(/&amp;/g, '&')
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>');
+}
+
+function parseMetadataJSONObject(text) {
+  try {
+    return JSON.parse(text);
+  } catch (e) {
+    return null;
+  }
+}
+
+function normalizeMetadataCRS(crs) {
+  return typeof crs == 'string' && crs.trim() ? crs.trim() : null;
+}
+
+function normalizeMetadataBBox(bbox) {
+  if (!Array.isArray(bbox) || bbox.length != 4) return null;
+  var out = bbox.map(function(v) { return Number(v); });
+  return out.every(isFiniteNumber) ? out : null;
+}
+
+function parseSVGViewBox(str) {
+  var parts = String(str || '').trim().split(/[\s,]+/).map(Number);
+  if (parts.length != 4 || !parts.every(isFiniteNumber) || parts[2] === 0 || parts[3] === 0) {
+    return null;
+  }
+  return parts;
+}
+
+function remapCoordinatesFromSVGToMap(layerData, viewBox, bbox) {
+  var vx = viewBox[0], vy = viewBox[1], vw = viewBox[2], vh = viewBox[3];
+  var minX = bbox[0], minY = bbox[1], maxX = bbox[2], maxY = bbox[3];
+  var scaleX = (maxX - minX) / vw;
+  var scaleY = (maxY - minY) / vh;
+
+  layerData.forEach(function(layer) {
+    layer.features.forEach(function(feature) {
+      forEachGeometryCoordinate(feature && feature.geometry, function(coord) {
+        var sx = coord[0];
+        var sy = coord[1];
+        coord[0] = minX + (sx - vx) * scaleX;
+        coord[1] = maxY - (sy - vy) * scaleY;
+      });
+    });
+  });
 }
 
 function importLayerFeatures(layerName, features, opts) {
@@ -83,6 +312,7 @@ function getTopLevelLayerGroups(root) {
   childNodes.forEach(function(node) {
     var tag = getTagName(node);
     if (tag == 'defs') return;
+    if (tag == 'g' && node.getAttribute && node.getAttribute('id') == 'mapshaper-metadata') return;
     if (tag == 'g') {
       groups.push({
         node: node,

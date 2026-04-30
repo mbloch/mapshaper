@@ -315,7 +315,7 @@ export function getOptionParser() {
       type: 'flag'
     })
     .option('metadata', {
-      // describe: '[TopoJSON] Add a metadata object containing CRS information',
+      describe: '[SVG/TopoJSON] include metadata in output',
       type: 'flag'
     })
     .option('no-point-quantization', {
@@ -422,10 +422,7 @@ export function getOptionParser() {
     .option('final', {
       type: 'flag' // for testing
     })
-    .option('metadata', {
-      // describe: '[TopoJSON] add a metadata object',
-      type: 'flag'
-    });
+    ;
 
   parser.section('Editing commands');
 

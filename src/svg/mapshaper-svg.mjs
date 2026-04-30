@@ -11,12 +11,13 @@ import { convertPropertiesToDefinitions } from '../svg/svg-definitions';
 import { getOutputFileBase } from '../utils/mapshaper-filename-utils';
 import { importGeoJSONFeatures } from '../svg/geojson-to-svg';
 import { layerIsRectangle, getLayerDataTable, copyLayer } from '../dataset/mapshaper-layer-utils';
+import { getDatasetCRS, getDatasetCrsInfo, crsToProj4, parseAuthorityCodeString, parseAuthorityCodeFromWkt } from '../crs/mapshaper-projections';
 
 //
 export function exportSVG(dataset, opts) {
   var namespace = 'xmlns="http://www.w3.org/2000/svg"';
   var defs = [];
-  var frame, svg, layers;
+  var frame, svg, layers, metadataJSON;
   var style = '';
 
   // kludge for map keys
@@ -40,6 +41,9 @@ export function exportSVG(dataset, opts) {
   frame = getFrameData(dataset, opts);
   fitDatasetToFrame(dataset, frame);
   setCoordinatePrecision(dataset, opts.precision || 0.01);
+  if (opts.metadata) {
+    metadataJSON = JSON.stringify(getGeospatialMetadata(dataset, frame));
+  }
 
   // error if one or more svg_data fields are not present in any layers
   if (opts.svg_data) validateSvgDataFields(dataset.layers, opts.svg_data);
@@ -58,6 +62,10 @@ export function exportSVG(dataset, opts) {
     convertPropertiesToDefinitions(obj, defs);
     return stringify(obj);
   }).join('\n');
+
+  if (metadataJSON) {
+    svg = getMetadataBlock(metadataJSON, [0, 0, frame.width, frame.height]) + svg;
+  }
 
   if (defs.length > 0) {
     svg = '<defs>\n' + utils.pluck(defs, 'svg').join('') + '</defs>\n' + svg;
@@ -84,6 +92,57 @@ ${svg}
     content: svg,
     filename: opts.file || getOutputFileBase(dataset) + '.svg'
   }];
+}
+
+function getMetadataBlock(metadataJSON, viewBox) {
+  var x = viewBox && viewBox[0] || 0;
+  var y = viewBox && viewBox[1] || 0;
+  var width = viewBox && viewBox[2] || 0;
+  var height = viewBox && viewBox[3] || 0;
+  return '<metadata>' + metadataJSON + '</metadata>\n' +
+    '<g id="mapshaper-metadata">\n' +
+    '<rect x="' + x + '" y="' + y + '" width="' + width + '" height="' + height + '" opacity="0"/>\n' +
+    '<text opacity="0" font-size="0.1">' + metadataJSON + '</text>\n' +
+    '</g>\n';
+}
+
+function getGeospatialMetadata(dataset, frame) {
+  return {
+    crs: getSVGMetadataCRS(dataset),
+    bbox: frame.bbox || null
+  };
+}
+
+function getSVGMetadataCRS(dataset) {
+  var crs = getDatasetCRS(dataset);
+  var info = getDatasetCrsInfo(dataset);
+  var proj4 = null;
+  if (crs) {
+    proj4 = crsToProj4(crs);
+  }
+  if (proj4) return proj4;
+  return getAuthorityCodeString(info) || null;
+}
+
+function getAuthorityCodeString(info) {
+  var authority = null;
+  if (info && info.crs_string) {
+    authority = parseAuthorityCodeString(info.crs_string);
+  }
+  if (!authority && info && info.wkt1) {
+    authority = parseAuthorityCodeFromWkt(info.wkt1);
+  }
+  if (!authority && info && info.geopackage_crs) {
+    authority = parseGeoPackageAuthority(info.geopackage_crs);
+  }
+  return authority ? authority.authority + ':' + authority.code : null;
+}
+
+function parseGeoPackageAuthority(o) {
+  if (!o) return null;
+  var authority = o.organization || o.authority || null;
+  var code = o.organization_coordsys_id || o.code || null;
+  return authority && code != null ? {authority: String(authority).toUpperCase(), code: String(code)} : null;
 }
 
 export function exportFurnitureLayerForSVG(lyr, frame, opts) {
