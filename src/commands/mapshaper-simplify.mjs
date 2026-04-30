@@ -5,20 +5,22 @@ import { postSimplifyRepair } from '../simplify/mapshaper-post-simplify-repair';
 import { useSphericalSimplify, getSimplifyMethod } from '../simplify/mapshaper-simplify-options';
 import { parsePercent } from '../cli/mapshaper-option-parsing-utils';
 import cmd from '../mapshaper-cmd';
-import { stop } from '../utils/mapshaper-logging';
+import { message, stop } from '../utils/mapshaper-logging';
 import geom from '../geom/mapshaper-geom';
 import utils from '../utils/mapshaper-utils';
 import Visvalingam from '../simplify/mapshaper-visvalingam';
 import DouglasPeucker from '../simplify/mapshaper-dp';
 import { keepEveryPolygon } from '../simplify/mapshaper-keep-shapes';
 import { getWorldBounds } from '../geom/mapshaper-latlon';
+import { layerHasPaths, getImplicitlyTargetedLayerNames } from '../dataset/mapshaper-layer-utils';
 
 // Re-export shared option helpers so any external consumer that still
 // imports them from this module keeps working.
 export { useSphericalSimplify, getSimplifyMethod };
 
-cmd.simplify = function(dataset, opts) {
+cmd.simplify = function(dataset, opts, targetLayers) {
   var arcs = dataset.arcs;
+  var implicitlySimplifiedNames = getImplicitlyTargetedLayerNames(dataset, targetLayers, layerHasPaths);
   if (!arcs || arcs.size() === 0) return; // removed in v0.4.125: stop("Missing path data");
   opts = getStandardSimplifyOpts(dataset, opts); // standardize options
   simplifyPaths(arcs, opts);
@@ -37,6 +39,12 @@ cmd.simplify = function(dataset, opts) {
   }
 
   finalizeSimplification(dataset, opts);
+  if (implicitlySimplifiedNames.length > 0) {
+    message(
+      'Also simplified non-target layer' + utils.pluralSuffix(implicitlySimplifiedNames.length) +
+      ' from the same dataset: ' + implicitlySimplifiedNames.join(', ')
+    );
+  }
 };
 
 export function finalizeSimplification(dataset, opts) {

@@ -13,7 +13,10 @@ import { cleanLayers } from '../commands/mapshaper-clean';
 import { dissolveArcs } from '../paths/mapshaper-arc-dissolve';
 import { projectAndDensifyArcs } from '../crs/mapshaper-densify';
 import { expandProjDefn } from '../crs/mapshaper-projection-params';
-import { layerHasPoints, copyLayerShapes } from '../dataset/mapshaper-layer-utils';
+import {
+  layerHasPoints, layerHasGeometry, copyLayerShapes,
+  getImplicitlyTargetedLayerNames
+} from '../dataset/mapshaper-layer-utils';
 import { datasetHasGeometry } from '../dataset/mapshaper-dataset-utils';
 import { runningInBrowser } from '../mapshaper-env';
 import { stop, message, error } from '../utils/mapshaper-logging';
@@ -25,6 +28,7 @@ import geom from '../geom/mapshaper-geom';
 
 cmd.proj = function(dataset, catalog, opts, targetLayers) {
   var srcInfo, destInfo, destStr;
+  var implicitlyProjectedNames = getImplicitlyTargetedLayerNames(dataset, targetLayers, layerHasGeometry);
   if (opts.init) {
     srcInfo = fetchCrsInfo(opts.init, catalog);
     if (!srcInfo.crs) stop("Unknown projection source:", opts.init);
@@ -37,7 +41,13 @@ cmd.proj = function(dataset, catalog, opts, targetLayers) {
     destInfo = getCrsInfo(destStr);
   }
   if (destInfo) {
-    projCmd(dataset, destInfo, opts);
+    var didProject = projCmd(dataset, destInfo, opts);
+    if (didProject && implicitlyProjectedNames.length > 0) {
+      message(
+        'Also projected non-target layer' + utils.pluralSuffix(implicitlyProjectedNames.length) +
+        ' from the same dataset: ' + implicitlyProjectedNames.join(', ')
+      );
+    }
   }
 };
 
@@ -55,7 +65,7 @@ function projCmd(dataset, destInfo, opts) {
   if (!datasetHasGeometry(dataset)) {
     // still set the crs of datasets that are missing geometry
     setDatasetCrsInfo(dataset, destInfo);
-    return;
+    return false;
   }
 
   var srcInfo = getDatasetCrsInfo(dataset);
@@ -65,7 +75,7 @@ function projCmd(dataset, destInfo, opts) {
 
   if (crsAreEqual(srcInfo.crs, destInfo.crs)) {
     message("Source and destination CRS are the same");
-    return;
+    return false;
   }
 
   if (dataset.arcs) {
@@ -91,8 +101,8 @@ function projCmd(dataset, destInfo, opts) {
     // replace original layers with modified layers
     utils.extend(lyr, target.layers[i]);
   });
+  return true;
 }
-
 
 // name: a layer identifier, .prj file or projection defn
 // Converts layer ids and .prj files to CRS defn

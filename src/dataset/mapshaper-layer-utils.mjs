@@ -164,6 +164,32 @@ export function getLayerSourceFile(lyr, dataset) {
   return inputs && inputs[0] || '';
 }
 
+// Return layers in @dataset that were *not* selected by the current target
+// set but still match a command-specific geometry predicate.
+//
+// Used for command side-effect messaging, e.g.:
+//   - -proj (shared dataset reprojection)
+//   - -simplify (shared arc simplification)
+//
+// @targetLayers should be the layer selection that triggered the command.
+// If all layers are targeted (or target selection is missing), returns [].
+// @filterFn optional predicate (lyr -> bool) for command-specific relevance.
+export function getImplicitlyTargetedLayers(dataset, targetLayers, filterFn) {
+  if (!targetLayers || targetLayers.length === 0 || targetLayers.length >= dataset.layers.length) {
+    return [];
+  }
+  var targeted = new Set(targetLayers);
+  return dataset.layers.filter(function(lyr) {
+    return !targeted.has(lyr) && (!filterFn || filterFn(lyr));
+  });
+}
+
+export function getImplicitlyTargetedLayerNames(dataset, targetLayers, filterFn) {
+  return getImplicitlyTargetedLayers(dataset, targetLayers, filterFn).map(function(lyr) {
+    return lyr.name || '[unnamed]';
+  });
+}
+
 // Divide a collection of features with mixed types into layers of a single type
 // (Used for importing TopoJSON and GeoJSON features)
 export function divideFeaturesByType(shapes, properties, types) {

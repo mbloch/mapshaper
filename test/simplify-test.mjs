@@ -1,5 +1,6 @@
 import assert from 'assert';
 import api from '../mapshaper.js';
+import { captureLogCallsAsync } from './helpers';
 var utils = api.utils;
 
 describe("mapshaper-simplify.js", function() {
@@ -74,6 +75,45 @@ describe("mapshaper-simplify.js", function() {
         done();
       });
     })
+
+    it('reports non-target layers that were also simplified', async function() {
+      var a = {
+        type: 'LineString',
+        coordinates: [[0, 0], [0, 1], [1, 1]]
+      };
+      var b = {
+        type: 'LineString',
+        coordinates: [[2, 0], [2, 1], [3, 1]]
+      };
+      var cmd = '-i a.json b.json combine-files -rename-layers alpha,beta -target alpha -simplify 5% -o target=*';
+      var captured = await captureLogCallsAsync(function() {
+        return api.applyCommands(cmd, {'a.json': a, 'b.json': b});
+      });
+      var hit = captured.log.find(function(line) {
+        return /\[simplify\] Also simplified non-target layer/.test(line);
+      });
+      assert(hit, 'expected side-effect simplify message');
+      assert(hit.includes('beta'), hit);
+    });
+
+    it('does not report non-target layers when all layers are targeted', async function() {
+      var a = {
+        type: 'LineString',
+        coordinates: [[0, 0], [0, 1], [1, 1]]
+      };
+      var b = {
+        type: 'LineString',
+        coordinates: [[2, 0], [2, 1], [3, 1]]
+      };
+      var cmd = '-i a.json b.json combine-files -rename-layers alpha,beta -simplify 5% -o target=*';
+      var captured = await captureLogCallsAsync(function() {
+        return api.applyCommands(cmd, {'a.json': a, 'b.json': b});
+      });
+      var hasMessage = captured.log.some(function(line) {
+        return /\[simplify\] Also simplified non-target layer/.test(line);
+      });
+      assert.equal(hasMessage, false);
+    });
   })
 
 
