@@ -3,7 +3,9 @@ import api from '../mapshaper.js';
 import {
   coordinateFromValue,
   findXField,
-  findYField
+  findYField,
+  parseWKTPoint,
+  findWKTField
 } from '../src/commands/mapshaper-points';
 
 describe('mapshaper-points.js', function () {
@@ -144,6 +146,25 @@ describe('mapshaper-points.js', function () {
       });
     });
 
+    it('detects a WKT point field when x,y fields are absent', function(done) {
+      var csv = 'name,wkt\nA,"POINT (10 20)"\nB,"POINT(5 2)"';
+      var target = {
+        type: 'GeometryCollection',
+        geometries: [{
+          type: 'Point',
+          coordinates: [10, 20]
+        }, {
+          type: 'Point',
+          coordinates: [5, 2]
+        }]
+      };
+      api.applyCommands('-i data.csv -points -filter-fields -o data.json', {'data.csv': csv}, function(err, data) {
+        var output = JSON.parse(data['data.json']);
+        assert.deepEqual(output, target);
+        done();
+      });
+    });
+
   })
 
   describe('findXField() and findYField()', function() {
@@ -159,6 +180,21 @@ describe('mapshaper-points.js', function () {
       });
     });
 
+  });
+
+  describe('WKT point helpers', function() {
+    it('parseWKTPoint() parses POINT forms', function() {
+      assert.deepEqual(parseWKTPoint('POINT (10 20)'), [10, 20]);
+      assert.deepEqual(parseWKTPoint('point(5 2)'), [5, 2]);
+      assert.deepEqual(parseWKTPoint('POINT Z (1 2 3)'), [1, 2]);
+      assert.equal(parseWKTPoint('LINESTRING (0 0, 1 1)'), null);
+    });
+
+    it('findWKTField() identifies likely point-wkt fields', function() {
+      var records = [{geom: 'POINT (1 2)'}, {geom: 'POINT (3 4)'}, {geom: ''}];
+      assert.equal(findWKTField(records, ['geom']), 'geom');
+      assert.equal(findWKTField([{wkt: 'foo'}], ['wkt']), undefined);
+    });
   });
 
   describe('coordinateFromValue()', function () {
