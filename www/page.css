@@ -875,8 +875,8 @@ body.simplify .layer-control-btn {
 
 	.layer-control-btn > .btn.header-btn {
 		margin-right: 0;
-		width: 34px;
-		height: 34px;
+		width: 30px;
+		height: 30px;
 		box-sizing: content-box;
 		padding: 0;
 		border-radius: 4px;
@@ -921,8 +921,8 @@ body.simplify .layer-control-btn {
 	}
 
 	.mshp-main-map .basemap-overlay-buttons .basemap-style-btn.basemap-overlay-btn {
-		width: 34px !important;
-		height: 34px !important;
+		width: 30px !important;
+		height: 30px !important;
 		margin: 0 0 0 4px !important;
 		border-radius: 4px !important;
 	}
@@ -1729,7 +1729,7 @@ body.pan.panning .map-layers:not(.drawing) {
 	position: relative;
 	cursor:pointer;
 	/* padding: 3px 3px 5px 3px; */
-	padding: 4px;
+	padding: 4px 5px;
 	line-height: 1;
 }
 

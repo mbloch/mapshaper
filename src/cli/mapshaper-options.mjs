@@ -314,10 +314,6 @@ export function getOptionParser() {
       describe: '[TopoJSON] export coordinates without quantization',
       type: 'flag'
     })
-    .option('metadata', {
-      describe: '[SVG/TopoJSON] include metadata in output',
-      type: 'flag'
-    })
     .option('no-point-quantization', {
       // describe: '[TopoJSON] export point coordinates without quantization',
       type: 'flag'
@@ -358,6 +354,10 @@ export function getOptionParser() {
     })
     .option('ndjson', {
       describe: '[GeoJSON/JSON] output newline-delimited features or records',
+      type: 'flag'
+    })
+    .option('metadata', {
+      describe: '[SVG/TopoJSON] include metadata in output',
       type: 'flag'
     })
     .option('width', {
