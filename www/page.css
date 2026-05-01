@@ -172,12 +172,20 @@ body.map-view {
 	display: none;
 }
 
+/* On narrow screens, splash links collide with the logo; keep the header clean
+   until data is loaded and the editor controls take over. */
+@media (max-width: 500px) {
+	#splash-buttons {
+		display: none;
+	}
+}
+
 .page-header-buttons {
 	z-index: 20;
 	position: absolute;
 	top: 0px;
 	right: 0px;
-	margin: 0 3px 3px 0;
+	margin: 0 2px 3px 0;
 }
 
 .btn.header-btn {
@@ -218,7 +226,6 @@ body.map-view {
 
 #header-menu-btn {
 	cursor: pointer;
-	padding: 8px 7px 4px 7px;
 	user-select: none;
 	/* All header buttons are 29px tall, so top-align the hamburger to keep its
 	   row baseline-neutral. Without this, the SVG-only button (no text) makes
@@ -841,6 +848,84 @@ body.console-open .map-area {
 
 body.simplify .layer-control-btn {
 	display: none;
+}
+
+/* On small screens, move the layer menu trigger out of the header center and
+   render it as an icon-only floating map button. */
+@media (max-width: 700px) {
+	.info-box {
+		margin-top: 8px;
+	}
+
+	div.nav-buttons {
+		top: 2px;
+	}
+
+	.btn.header-btn {
+		padding-left: 5px;
+		padding-right: 5px;
+	}
+
+	.layer-control-btn {
+		width: auto;
+		left: 9px;
+		top: 38px; /* below the 30px header */
+		text-align: left;
+	}
+
+	.layer-control-btn > .btn.header-btn {
+		margin-right: 0;
+		width: 34px;
+		height: 34px;
+		box-sizing: content-box;
+		padding: 0;
+		border-radius: 4px;
+		border: 2px solid rgba(255, 255, 255, 0.45);
+		display: inline-flex;
+		align-items: center;
+		justify-content: center;
+	}
+
+	/* The clickable header button element itself has class "layer-name", so
+	   hide text on the button directly (not a child selector). */
+	.layer-control-btn > .btn.header-btn.layer-name {
+		color: transparent;
+		font-size: 0;
+		line-height: 0;
+		text-indent: -9999px;
+		overflow: hidden;
+	}
+
+	/* Mobile layer-button icon */
+	.layer-control-btn > .btn.header-btn::before {
+		content: "";
+		display: block;
+	}
+
+	/* Two diagonally offset squares */
+	.layer-control-btn.icon-duo > .btn.header-btn::before {
+		width: 13px;
+		height: 13px;
+		margin: 2px 0 0 2px;
+		border: 1px solid rgba(255, 255, 255, 0.95);
+		border-radius: 1px;
+		box-shadow: -4px -4px 0 -1px rgba(255, 255, 255, 0.72);
+	}
+
+	.mshp-main-map .basemap-overlay-buttons {
+		top: 10px; /* map-relative offset to align with page-level layer button */
+		right: 33px;
+		padding: 0;
+		background: transparent;
+		border-radius: 0;
+	}
+
+	.mshp-main-map .basemap-overlay-buttons .basemap-style-btn.basemap-overlay-btn {
+		width: 34px !important;
+		height: 34px !important;
+		margin: 0 0 0 4px !important;
+		border-radius: 4px !important;
+	}
 }
 
 .layer-control .info-box {

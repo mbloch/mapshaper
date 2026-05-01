@@ -47,9 +47,9 @@ mapshaper input.shp -o precision=0.001 prettify provinces.geojson
 
 ### Reading very large GeoJSON files
 
-Mapshaper's custom GeoJSON parser is not limited by the ~500 MB ceiling affecting tools that use `JSON.parse()`.
+Mapshaper uses a custom GeoJSON parser, so it is not constrained in the same way as tools that must load an entire file into a JavaScript string and call `JSON.parse()`.
 
-In the [web app](/docs/essentials/web-app.html), the theoretical upper bound is around 2 GB per file in most browsers, though in practice the browser may run out of memory and crash well before that. If a GeoJSON is too big to open in the browser, use the CLI instead.
+In both Node.js and browsers, `JSON.parse()` workflows hit string-size and memory limits much earlier than the raw file-size limit. In practice, browser imports can fail well below 1 GB, and large files may crash the tab. If a GeoJSON is too big for the [web app](/docs/essentials/web-app.html), use the CLI (or `mapshaper-xl`) instead.
 
 `mapshaper-xl` can handle multi-gigabyte files. It allocates 8 GB of memory by default, but you can assign more.
 
