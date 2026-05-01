@@ -1,3 +1,9 @@
+v0.7.7
+* Support for reading NDJSON-formatted GeoJSON features and JSON data records.
+* -points command uses WKT-formatted coordinates if found in the attribute table.
+* Exporting SVG with the -o metadata flag writes metadata into the SVG file that can survive a round trip through Adobe Illustrator. If the SVG is re-imported into Mapshaper, the original geographic coordinates are restored.
+* Made web UI and docs pages more mobile friendly.
+
 v0.7.6
 * Added a warning if -proj and -simplify affect non-targeted layers. (These commands modify all layers in a dataset, not just the targeted layer(s), because they modify the dataset's shared geometry.)
 * When projection parameters are calculated from a bounding box, the bbox of the targeted layer(s) should be used, not the bbox of all the layers in the dataset.
