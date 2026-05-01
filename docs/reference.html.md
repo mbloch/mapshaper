@@ -2,7 +2,7 @@
 
 ## Command line syntax
 
-Mapshaper takes a list of commands and runs them in sequence, from left to right. A command consists of the name of a command prefixed by a hyphen, followed by options for the command. The initial import command `-i` can be omitted.
+Mapshaper takes a list of commands and runs them in sequence, from left to right. A command consists of the name of a command prefixed by a hyphen, followed by options for the command. If the first token is not a command, Mapshaper infers one: most file paths are treated as `-i`, while `.txt` command files are treated as `-run`.
 
 #### Example
 
@@ -344,6 +344,8 @@ Save content of the target layer(s) to a file or files.
 `no-null-props`   (GeoJSON) use `"properties": {}` instead of `"properties": null` when outputting a Feature with no attribute data.
 
 `hoist=`  (GeoJSON) Move one or more properties to the root level of each Feature. Hoisting a field named "id" creates an id for each Feature. This option can also be used to create non-standard Feature attributes (as used by the tippecanoe program).
+
+`metadata`  (SVG/TopoJSON) Include metadata in output. In the case of SVG output, CRS and bbox data is embedded in the file, so when the SVG is re-imported the original geographic coordinates can be recovered.
 
 `width=`    (SVG/TopoJSON) Set the width of the output dataset in pixels. When used with TopoJSON output, this option switches the output coordinates from geographic units to pixels and flips the Y axis. SVG output is always in pixels (default SVG width is 800).
 
@@ -874,7 +876,7 @@ Join attribute data from a source layer or file to a target layer. If the `keys=
 
 `where=`  Use a boolean JS expression to filter records from the source table. The expression has the same syntax as the expression used by the `-filter` command. The functions `isMax(<field>)` `isMin(<field>)` and `isMode(<field>)` can be used in many-to-one joins to select among source records.
 
-`fields=`  A comma-separated list of fields to copy from the external table. If the `fields` option and `calc` options are both absent, all fields are copied except the key field (if joining on keys) unless the. Use `fields=*` to copy all fields, including any key field. Use `fields=` (empty list) to copy no fields.
+`fields=`  A comma-separated list of fields to copy from the external table. If both `fields` and `calc` are absent, all source fields are copied (except the source key field when joining with `keys=`). If `calc` is present and `fields` is absent, no fields are copied by default unless assigned by `calc`. Use `fields=*` to copy all source fields, including any key field. Use `fields=` (empty list) to copy no fields.
 
 `prefix=` Add a prefix to the names of fields joined from the external attribute table.
 

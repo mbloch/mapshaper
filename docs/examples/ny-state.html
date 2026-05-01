@@ -56,44 +56,42 @@
 <li>Load states/provinces (source: Natural Earth)</li>
 <li>Make a layer containing just N.Y. State</li>
 <li>Project to Lambert Confirmal Conic</li>
-<li>Load roads (source: Natural Earth) and project</li>
 <li>Create a rectangular frame around N.Y.</li>
-<li>Derive a lines layer from the states/provinces layer</li>
-<li>Create a set of label points from the state polygons</li>
-<li>Use the rectangle to clip the other layers</li>
+<li>Clip the states to the frame</li>
+<li>Derive label points from the states/provinces</li>
+<li>Extract lines from the states/provinces</li>
+<li>Load roads (source: Natural Earth)</li>
+<li>Project and clip</li>
+<li>Divide the roads at the N.Y. border (for styling)</li>
 <li>Style all the layers</li>
 <li>Export as SVG</li>
 </ol>
 <h3 id="code">Code</h3>
 <pre><code class="hljs language-bash">mapshaper \
-	-i usa_can_admin1_lakes.geojson name=states \
-	-filter <span class="hljs-string">&#x27;name == &quot;New York&quot;&#x27;</span> + name=NY \
-	-proj lcc densify \
-	-i usa_can_roads.geojson name=roads \
-	-proj match=NY \
-	-target NY \
-	-frame height=400 width=600 offset=4% name=rectangle \
-	-target states \
-	-lines + name=borders \
-	-target states \
-	-clip rectangle \
-	-each <span class="hljs-string">&#x27;labelled = this.area &gt; 1e10&#x27;</span> \
-	-points inner + name=labels \
-	-filter labelled \
-	-target borders \
-	-clip rectangle \
-	-target roads \
-	-clip rectangle \
-	-divide NY \
-	-style target=labels label-text=name dy=4 fill=<span class="hljs-string">&#x27;#aaa&#x27;</span> font-size=13px \
-	-style target=labels fill=<span class="hljs-string">&#x27;#666&#x27;</span> font-size=20px <span class="hljs-built_in">where</span>=<span class="hljs-string">&#x27;name == &quot;New York&quot;&#x27;</span> \
-	-style target=roads stroke=<span class="hljs-string">&#x27;name == &quot;New York&quot; ? &quot;#aaa&quot; : &quot;#e2e2e2&quot;&#x27;</span> stroke-width=0.6 \
-	-style target=states fill=<span class="hljs-string">&#x27;name == &quot;New York&quot; ? &quot;#ececec&quot; : &quot;#fafafa&quot;&#x27;</span> \
-	-style target=borders stroke=<span class="hljs-string">&#x27;#c5c5c5&#x27;</span> stroke-width=<span class="hljs-string">&#x27;TYPE == &quot;inner&quot; ? 1 : 0.7&#x27;</span> \
-	-style target=NY stroke=<span class="hljs-string">&#x27;#555&#x27;</span> stroke-width=1.2 \
-	-style target=rectangle fill=<span class="hljs-string">&#x27;#f1f1f1&#x27;</span> \
-	-target rectangle,states,roads,borders,NY,labels \
-	-o ny-state.svg
+  -i usa_can_admin1_lakes.geojson name=states \
+  -filter <span class="hljs-string">&#x27;name == &quot;New York&quot;&#x27;</span> + name=NY \
+  -proj lcc densify \
+  -frame height=400 width=600 offset=4% name=rectangle \
+  -target states \
+  -clip rectangle \
+  -each <span class="hljs-string">&#x27;labelled = this.area &gt; 1e10&#x27;</span> \
+  -points inner + name=labels \
+  -filter labelled \
+  -target states \
+  -lines + name=borders \
+  -i usa_can_roads.geojson name=roads \
+  -proj match=NY \
+  -clip rectangle \
+  -divide NY \
+  -style target=labels label-text=name dy=4 fill=<span class="hljs-string">&#x27;#aaa&#x27;</span> font-size=13px \
+  -style target=labels fill=<span class="hljs-string">&#x27;#666&#x27;</span> font-size=20px <span class="hljs-built_in">where</span>=<span class="hljs-string">&#x27;name==&quot;New York&quot;&#x27;</span> \
+  -style target=roads stroke=<span class="hljs-string">&#x27;name==&quot;New York&quot; ? &quot;#aaa&quot; : &quot;#e2e2e2&quot;&#x27;</span> stroke-width=0.6 \
+  -style target=states fill=<span class="hljs-string">&#x27;name==&quot;New York&quot; ? &quot;#ececec&quot; : &quot;#fafafa&quot;&#x27;</span> \
+  -style target=borders stroke=<span class="hljs-string">&#x27;#c5c5c5&#x27;</span> stroke-width=<span class="hljs-string">&#x27;TYPE==&quot;inner&quot; ? 1 : 0.7&#x27;</span> \
+  -style target=NY stroke=<span class="hljs-string">&#x27;#555&#x27;</span> stroke-width=1.2 \
+  -style target=rectangle fill=<span class="hljs-string">&#x27;#f1f1f1&#x27;</span> \
+  -target rectangle,states,roads,borders,NY,labels \
+  -o ny-state.svg
 </code></pre>
 <h3 id="notes">Notes</h3>
 <ul>

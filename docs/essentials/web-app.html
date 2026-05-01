@@ -49,7 +49,7 @@
     <article class="docs-article">
       <div class="docs-breadcrumbs"><a href="/docs/">Docs</a> &rsaquo; Getting started &rsaquo; The web app</div>
       <h1 id="the-web-app">The web app</h1>
-<p>The Mapshaper web app at <a href="/">mapshaper.org</a> is designed for interactive editing and visual exploration. Its built-in console exposes the complete command set, so almost anything the CLI can do is available directly in the browser.</p>
+<p>The Mapshaper web app at <a href="/">mapshaper.org</a> is designed for interactive editing and visual exploration. Its built-in console supports the same editing syntax as the CLI for most workflows once data is loaded.</p>
 <p>All processing happens in your browser. Your data stays on your machine, even when you use the public website.</p>
 <h2 id="loading-data">Loading data</h2>
 <p>Drag-drop, paste, or use the <strong>Add files</strong> button to import data.</p>
@@ -67,7 +67,7 @@
 <li>If you see a warning about an unknown text encoding, re-import using the <strong>with advanced options</strong> checkbox and set <code>encoding=</code> (for example, <code>encoding=big5</code> for Big-5).</li>
 </ul>
 <h2 id="the-console">The console</h2>
-<p>The Console (top-right of the header, or <strong>space bar</strong> to toggle) is the most powerful part of the UI. Anything the <a href="/docs/reference.html">CLI</a> can do, you can do here.</p>
+<p>The Console (top-right of the header, or <strong>space bar</strong> to toggle) is the most powerful part of the UI. Most <a href="/docs/reference.html">CLI</a> commands are available here, except file-loading commands like <code>-i</code>, <code>-include</code> and <code>-require</code>, which are disabled in the browser console.</p>
 <h3 id="keyboard">Keyboard</h3>
 <ul>
 <li><strong>Space</strong> &mdash; open or close the console (only when you&#39;re not typing in another text field).</li>
@@ -115,7 +115,7 @@
 <h2 id="snapshots-and-session-history">Snapshots and session history</h2>
 <p>The ribbon icon in the layer panel opens the snapshot menu. Snapshots save the current state of a session so you can return to it. They also record the <strong>session history</strong> that produced the snapshot, so when you re-open one the full history is available too.</p>
 <ul>
-<li><strong>Create a snapshot</strong> &mdash; saves to in-browser storage. These are session-scoped and <strong>deleted when the tab closes or the page is reloaded.</strong> For anything you want to keep, <strong>Save snapshot to file</strong> writes a <code>.msx</code> file you can re-open later.</li>
+<li><strong>Create a snapshot</strong> &mdash; saves to in-browser storage. These are session-scoped and intended to be temporary; Mapshaper tries to clean them up when the tab closes or the page reloads. For anything you want to keep, <strong>Save snapshot to file</strong> writes a <code>.msx</code> file you can re-open later.</li>
 <li><strong>View session history</strong> &mdash; a shortcut for typing <code>history</code> in the console: prints the full sequence of commands that produced the current state.</li>
 </ul>
 <p>See the <a href="/docs/formats/snapshot.html">Mapshaper snapshot format page</a> for more on what a <code>.msx</code> file contains and how to use it from the CLI.</p>

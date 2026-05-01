@@ -15412,7 +15412,8 @@ GUI and setting the size and crop of SVG output.</p><div><input type="text" clas
         gui = new GuiInstance('body');
 
     if (!importOpts.files?.length) {
-      El('body').removeClass('mapshaper-preload');
+      // show header links if not preloading files
+      document.documentElement.classList.remove('mapshaper-preload');
     }
 
     new AlertControl(gui);

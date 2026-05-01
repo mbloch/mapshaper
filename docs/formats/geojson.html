@@ -85,8 +85,8 @@ mapshaper input.shp -o precision=0.001 prettify provinces.geojson
 <li><code>precision=</code> rounding can introduce sliver overlaps at boundaries. Pair it with <code>fix-geometry</code> if downstream tools are strict.</li>
 </ul>
 <h3 id="reading-very-large-geojson-files">Reading very large GeoJSON files</h3>
-<p>Mapshaper&#39;s custom GeoJSON parser is not limited by the ~500 MB ceiling affecting tools that use <code>JSON.parse()</code>.</p>
-<p>In the <a href="/docs/essentials/web-app.html">web app</a>, the theoretical upper bound is around 2 GB per file in most browsers, though in practice the browser may run out of memory and crash well before that. If a GeoJSON is too big to open in the browser, use the CLI instead.</p>
+<p>Mapshaper uses a custom GeoJSON parser, so it is not constrained in the same way as tools that must load an entire file into a JavaScript string and call <code>JSON.parse()</code>.</p>
+<p>In both Node.js and browsers, <code>JSON.parse()</code> workflows hit string-size and memory limits much earlier than the raw file-size limit. In practice, browser imports can fail well below 1 GB, and large files may crash the tab. If a GeoJSON is too big for the <a href="/docs/essentials/web-app.html">web app</a>, use the CLI (or <code>mapshaper-xl</code>) instead.</p>
 <p><code>mapshaper-xl</code> can handle multi-gigabyte files. It allocates 8 GB of memory by default, but you can assign more.</p>
 <pre><code class="hljs language-bash">mapshaper-xl huge.geojson -info
 mapshaper-xl 32gb huge.geojson -simplify 5% -o huge.topojson

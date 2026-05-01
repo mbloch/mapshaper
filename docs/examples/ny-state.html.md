@@ -18,46 +18,44 @@ Difficulty: moderate
 1. Load states/provinces (source: Natural Earth)
 2. Make a layer containing just N.Y. State
 3. Project to Lambert Confirmal Conic
-4. Load roads (source: Natural Earth) and project
-5. Create a rectangular frame around N.Y.
-6. Derive a lines layer from the states/provinces layer
-7. Create a set of label points from the state polygons
-8. Use the rectangle to clip the other layers
-9. Style all the layers
-10. Export as SVG
+4. Create a rectangular frame around N.Y.
+5. Clip the states to the frame
+6. Derive label points from the states/provinces
+7. Extract lines from the states/provinces
+8. Load roads (source: Natural Earth)
+9. Project and clip
+10. Divide the roads at the N.Y. border (for styling)
+11. Style all the layers
+12. Export as SVG
 
 ### Code
 
 ```bash
 mapshaper \
-	-i usa_can_admin1_lakes.geojson name=states \
-	-filter 'name == "New York"' + name=NY \
-	-proj lcc densify \
-	-i usa_can_roads.geojson name=roads \
-	-proj match=NY \
-	-target NY \
-	-frame height=400 width=600 offset=4% name=rectangle \
-	-target states \
-	-lines + name=borders \
-	-target states \
-	-clip rectangle \
-	-each 'labelled = this.area > 1e10' \
-	-points inner + name=labels \
-	-filter labelled \
-	-target borders \
-	-clip rectangle \
-	-target roads \
-	-clip rectangle \
-	-divide NY \
-	-style target=labels label-text=name dy=4 fill='#aaa' font-size=13px \
-	-style target=labels fill='#666' font-size=20px where='name == "New York"' \
-	-style target=roads stroke='name == "New York" ? "#aaa" : "#e2e2e2"' stroke-width=0.6 \
-	-style target=states fill='name == "New York" ? "#ececec" : "#fafafa"' \
-	-style target=borders stroke='#c5c5c5' stroke-width='TYPE == "inner" ? 1 : 0.7' \
-	-style target=NY stroke='#555' stroke-width=1.2 \
-	-style target=rectangle fill='#f1f1f1' \
-	-target rectangle,states,roads,borders,NY,labels \
-	-o ny-state.svg
+  -i usa_can_admin1_lakes.geojson name=states \
+  -filter 'name == "New York"' + name=NY \
+  -proj lcc densify \
+  -frame height=400 width=600 offset=4% name=rectangle \
+  -target states \
+  -clip rectangle \
+  -each 'labelled = this.area > 1e10' \
+  -points inner + name=labels \
+  -filter labelled \
+  -target states \
+  -lines + name=borders \
+  -i usa_can_roads.geojson name=roads \
+  -proj match=NY \
+  -clip rectangle \
+  -divide NY \
+  -style target=labels label-text=name dy=4 fill='#aaa' font-size=13px \
+  -style target=labels fill='#666' font-size=20px where='name=="New York"' \
+  -style target=roads stroke='name=="New York" ? "#aaa" : "#e2e2e2"' stroke-width=0.6 \
+  -style target=states fill='name=="New York" ? "#ececec" : "#fafafa"' \
+  -style target=borders stroke='#c5c5c5' stroke-width='TYPE=="inner" ? 1 : 0.7' \
+  -style target=NY stroke='#555' stroke-width=1.2 \
+  -style target=rectangle fill='#f1f1f1' \
+  -target rectangle,states,roads,borders,NY,labels \
+  -o ny-state.svg
 ```
 
 ### Notes

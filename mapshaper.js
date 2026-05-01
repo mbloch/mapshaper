@@ -28171,10 +28171,6 @@ ${svg}
         describe: '[TopoJSON] export coordinates without quantization',
         type: 'flag'
       })
-      .option('metadata', {
-        describe: '[SVG/TopoJSON] include metadata in output',
-        type: 'flag'
-      })
       .option('no-point-quantization', {
         // describe: '[TopoJSON] export point coordinates without quantization',
         type: 'flag'
@@ -28215,6 +28211,10 @@ ${svg}
       })
       .option('ndjson', {
         describe: '[GeoJSON/JSON] output newline-delimited features or records',
+        type: 'flag'
+      })
+      .option('metadata', {
+        describe: '[SVG/TopoJSON] include metadata in output',
         type: 'flag'
       })
       .option('width', {
@@ -41618,7 +41618,7 @@ ${svg}
   // @type: 'clip' or 'erase'
   function clipLayers(targetLayers, clipSrc, targetDataset, type, opts) {
     profileStart('clipLayers');
-    opts = opts || {no_fcleanup: true}; // TODO: update testing functions
+    opts = opts || {no_cleanup: true}; // TODO: update testing functions
     var usingPathClip = utils.some(targetLayers, layerHasPaths);
     var mergedDataset, clipLyr, nodes, result;
     var clipDataset = normalizeOverlaySource(clipSrc, targetDataset, opts);
@@ -53474,7 +53474,7 @@ ${svg}
     });
   }
 
-  var version = "0.7.6";
+  var version = "0.7.7";
 
   // Parse command line args into commands and run them
   // Function takes an optional Node-style callback. A Promise is returned if no callback is given.

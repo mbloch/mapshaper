@@ -8,22 +8,18 @@
   gtag('js', new Date());
   gtag('config', 'G-QYR8W1YHEF');
 </script>
-	<title>mapshaper</title>
-	<meta name="Description" content="A tool for topologically aware shape simplification. Reads and writes Shapefile, GeoJSON, TopoJSON, KML, GeoPackage and FlatGeobuf formats.">
+	<title>Mapshaper</title>
+	<meta name="Description" content="A topology-aware tool for editing and converting geospatial vector data. Works with Shapefile, GeoJSON, TopoJSON, GeoPackage, FlatGeobuf and KML — in the browser or on the command line.">
 	<meta charset="UTF-8">
 	<meta name="viewport" content="width=device-width, initial-scale=1">
 	<meta http-equiv="X-UA-Compatible" content="IE=edge">
 	<script>
-	// If the page is opened with preloaded data (?files= or ?catalog= in the
-	// URL), tag <html> so CSS hides the splash-screen header links right away.
-	// Without this they flash into view for ~a second before the editor mounts
-	// and hides them. Done as the first script in <head> so the class is set
-	// before any layout.  bin/mapshaper-gui adds the same class server-side
-	// when files are passed on the command line.
 	(function() {
 		try {
 			var s = location.search || '';
-			if (s.indexOf('files=') !== -1 || s.indexOf('catalog=') !== -1) {
+			if (!window.location.hostname.endsWith("mapshaper.org") ||
+				s.indexOf('files=') !== -1 || s.indexOf('catalog=') !== -1) {
+				// hide spash-screen header links
 				document.documentElement.className += ' mapshaper-preload';
 			}
 		} catch (e) {}
@@ -33,7 +29,7 @@
 	<link rel="stylesheet" href="elements.css">
 	<link rel="icon" type="image/png" href="images/icon.png">
 </head>
-<body class="mapshaper-preload">
+<body>
 <div class="hidden">
 	<svg version="1.1" id="home-icon" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" x="0px"
 		 y="0px" width="14px" height="19px" viewBox="0 0 14 16">
@@ -79,7 +75,7 @@
 <div class="page-header">
 	<div class="mapshaper-logo">map<span class="logo-highlight">shaper</span></div>
 
-	<div class="layer-control-btn"><span class="btn header-btn layer-name"></span></div>
+	<div class="layer-control-btn icon-duo"><span class="btn header-btn layer-name"></span></div>
 
 	<div class="simplify-control-wrapper"><div class="simplify-control"><div class="header-btn btn simplify-settings-btn">Settings</div>
 		<div class="slider">
