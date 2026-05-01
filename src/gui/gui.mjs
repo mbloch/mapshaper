@@ -76,7 +76,8 @@ var startEditing = function() {
       gui = new GuiInstance('body');
 
   if (!importOpts.files?.length) {
-    El('body').removeClass('mapshaper-preload');
+    // show header links if not preloading files
+    document.documentElement.classList.remove('mapshaper-preload');
   }
 
   new AlertControl(gui);

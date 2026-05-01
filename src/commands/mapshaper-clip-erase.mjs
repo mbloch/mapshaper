@@ -56,7 +56,7 @@ export function clipLayersInPlace(layers, clipSrc, dataset, type, opts) {
 // @type: 'clip' or 'erase'
 export function clipLayers(targetLayers, clipSrc, targetDataset, type, opts) {
   profileStart('clipLayers');
-  opts = opts || {no_fcleanup: true}; // TODO: update testing functions
+  opts = opts || {no_cleanup: true}; // TODO: update testing functions
   var usingPathClip = utils.some(targetLayers, layerHasPaths);
   var mergedDataset, clipLyr, nodes, result;
   var clipDataset = normalizeOverlaySource(clipSrc, targetDataset, opts);
