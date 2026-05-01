@@ -5,7 +5,7 @@ description: A tour of Mapshaper's web interface, including loading data, the co
 
 # The web app
 
-The Mapshaper web app at [mapshaper.org](/) is designed for interactive editing and visual exploration. Its built-in console exposes the complete command set, so almost anything the CLI can do is available directly in the browser.
+The Mapshaper web app at [mapshaper.org](/) is designed for interactive editing and visual exploration. Its built-in console supports the same editing syntax as the CLI for most workflows once data is loaded.
 
 All processing happens in your browser. Your data stays on your machine, even when you use the public website.
 
@@ -28,7 +28,7 @@ A few less-obvious behaviors:
 
 ## The console
 
-The Console (top-right of the header, or **space bar** to toggle) is the most powerful part of the UI. Anything the [CLI](/docs/reference.html) can do, you can do here.
+The Console (top-right of the header, or **space bar** to toggle) is the most powerful part of the UI. Most [CLI](/docs/reference.html) commands are available here, except file-loading commands like `-i`, `-include` and `-require`, which are disabled in the browser console.
 
 ### Keyboard
 
@@ -82,7 +82,7 @@ The **Display** button at the top right opens the display options panel.
 
 The ribbon icon in the layer panel opens the snapshot menu. Snapshots save the current state of a session so you can return to it. They also record the **session history** that produced the snapshot, so when you re-open one the full history is available too.
 
-- **Create a snapshot** &mdash; saves to in-browser storage. These are session-scoped and **deleted when the tab closes or the page is reloaded.** For anything you want to keep, **Save snapshot to file** writes a `.msx` file you can re-open later.
+- **Create a snapshot** &mdash; saves to in-browser storage. These are session-scoped and intended to be temporary; Mapshaper tries to clean them up when the tab closes or the page reloads. For anything you want to keep, **Save snapshot to file** writes a `.msx` file you can re-open later.
 - **View session history** &mdash; a shortcut for typing `history` in the console: prints the full sequence of commands that produced the current state.
 
 See the [Mapshaper snapshot format page](/docs/formats/snapshot.html) for more on what a `.msx` file contains and how to use it from the CLI.
