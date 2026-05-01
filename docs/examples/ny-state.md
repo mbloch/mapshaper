@@ -18,13 +18,15 @@ Difficulty: moderate
 1. Load states/provinces (source: Natural Earth)
 2. Make a layer containing just N.Y. State
 3. Project to Lambert Confirmal Conic
-4. Load roads (source: Natural Earth) and project
-5. Create a rectangular frame around N.Y.
-6. Derive a lines layer from the states/provinces layer
-7. Create a set of label points from the state polygons
-8. Use the rectangle to clip the other layers
-9. Style all the layers
-10. Export as SVG
+4. Create a rectangular frame around N.Y.
+5. Clip the states to the frame
+6. Derive label points from the states/provinces
+7. Extract lines from the states/provinces
+8. Load roads (source: Natural Earth)
+9. Project and clip
+10. Divide the roads at the N.Y. border (for styling)
+11. Style all the layers
+12. Export as SVG
 
 ### Code
 
