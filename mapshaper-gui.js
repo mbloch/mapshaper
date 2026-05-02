@@ -2064,6 +2064,7 @@
   }
 
   var geopackagePromise = null;
+  var geoParquetPromise = null;
 
   async function loadGeopackageLib() {
     if (!window.modules || !window.modules['@ngageoint/geopackage']) {
@@ -2094,6 +2095,16 @@
       return gpkg.getFeatureTables() || [];
     } finally {
       gpkg.close();
+    }
+  }
+
+  async function loadGeoParquetLib() {
+    if (!window.modules || !window.modules.hyparquet || !window.modules['hyparquet-writer']) {
+      if (!geoParquetPromise) {
+        geoParquetPromise = loadScript('geoparquet.js');
+      }
+      await geoParquetPromise;
+      geoParquetPromise = null;
     }
   }
 
@@ -2515,7 +2526,10 @@
       if (group.gpkg) {
         await loadGeopackageLib();
       }
-      if (group.gpkg || group.fgb) {
+      if (group.parquet) {
+        await loadGeoParquetLib();
+      }
+      if (group.gpkg || group.fgb || group.parquet) {
         dataset = await internal.importContentAsync(group, importOpts);
       } else {
         dataset = internal.importContent(group, importOpts);
@@ -2546,7 +2560,7 @@
     function filesMayContainPaths(files) {
       return utils$1.some(files, function(f) {
           var type = internal.guessInputFileType(f.name);
-          return type == 'shp' || type == 'json' || type == 'gpkg' || internal.isZipFile(f.name);
+          return type == 'shp' || type == 'json' || type == 'gpkg' || type == 'parquet' || internal.isZipFile(f.name);
       });
     }
 
@@ -4968,6 +4982,8 @@
       var opts = getExportOpts();
       if (opts.format == 'geopackage') {
         await loadGeopackageLib();
+      } else if (opts.format == 'geoparquet') {
+        await loadGeoParquetLib();
       }
       opts.active_layer = gui.model.getActiveLayer().layer; // kludge to support restoring active layer in gui
       if (opts.format == internal.PACKAGE_EXT) {
@@ -5108,7 +5124,7 @@
 
     function getExportFormats() {
       // return ['shapefile', 'geojson', 'topojson', 'json', 'dsv', 'kml', 'svg', internal.PACKAGE_EXT];
-      return ['shapefile', 'json', 'geojson', 'dsv', 'topojson', 'flatgeobuf', 'geopackage', 'kml', internal.PACKAGE_EXT, 'svg'];
+      return ['shapefile', 'json', 'geojson', 'dsv', 'topojson', 'flatgeobuf', 'geopackage', 'geoparquet', 'kml', internal.PACKAGE_EXT, 'svg'];
     }
 
     function initFormatMenu() {

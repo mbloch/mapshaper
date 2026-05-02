@@ -15,7 +15,7 @@ When in doubt about a command's behavior, the [command reference](https://mapsha
 
 # Mapshaper documentation
 
-<p class="lead">Mapshaper is a tool for editing Shapefile, GeoJSON, TopoJSON, GeoPackage, FlatGeobuf, KML and CSV data &mdash; available as a command-line program and as a web app at <a href="/">mapshaper.org</a>.</p>
+<p class="lead">Mapshaper is a tool for editing Shapefile, GeoJSON, TopoJSON, GeoPackage, FlatGeobuf, GeoParquet, KML and CSV data &mdash; available as a command-line program and as a web app at <a href="/">mapshaper.org</a>.</p>
 
 <div class="section-cards">
   <a class="section-card" href="/docs/reference.html">
@@ -62,6 +62,16 @@ When in doubt about a command's behavior, the [command reference](https://mapsha
 # What's new
 
 This is a curated list of recently added features. For the full list of changes, including bug fixes and internal work, see the [changelog](https://github.com/mbloch/mapshaper/blob/master/CHANGELOG.md) on GitHub.
+
+## May 2026
+
+
+<div class="whats-new-entry">
+
+**GeoParquet support.** Mapshaper reads and writes GeoParquet (`.parquet`) files.
+
+→ See [GeoParquet](/docs/formats/geoparquet.html.md).
+</div>
 
 ## April 2026
 
@@ -335,7 +345,7 @@ mapshaper -vars YEAR=2030 PCT=5 -run build.txt
 
 ### -i (input)
 
-Input one or more files in a supported vector data format. Supported file types include: Shapefile, GeoJSON, TopoJSON, GeoPackage, FlatGeobuf, KML, JSON data records, DBF, CSV/TSV.
+Input one or more files in a supported vector data format. Supported file types include: Shapefile, GeoJSON, TopoJSON, GeoPackage, FlatGeobuf, GeoParquet, KML, JSON data records, DBF, CSV/TSV.
 
 The `-i` command is assumed if `mapshaper` is followed by the path of an input data file.
 
@@ -3583,6 +3593,7 @@ This section explains how each supported file format is handled, what format-spe
 | [TopoJSON](/docs/formats/topojson.html.md) | `.json` `.topojson` | &check; | &check; | vector | yes | **&check;** | &check; |
 | [GeoPackage](/docs/formats/geopackage.html.md) | `.gpkg` | &check; | &check; | vector | yes | &mdash; | &check; |
 | [FlatGeobuf](/docs/formats/flatgeobuf.html.md) | `.fgb` | &check; | &check; | vector | yes | &mdash; | &mdash; |
+| [GeoParquet](/docs/formats/geoparquet.html.md) | `.parquet` `.geoparquet` | &check; | &check; | vector | yes | &mdash; | &mdash; |
 | [KML / KMZ](/docs/formats/kml.html.md) | `.kml` `.kmz` | &check; | &check; | vector | limited | &mdash; | &check; |
 | [CSV / TSV](/docs/formats/csv.html.md) | `.csv` `.tsv` | &check; | &check; | points (X/Y) | yes | &mdash; | &mdash; |
 | [DBF](/docs/formats/dbf.html.md) | `.dbf` | &check; | &check; | none | yes | &mdash; | &mdash; |
@@ -3847,6 +3858,47 @@ There are no GeoPackage-specific `-o` options. The format honors the general fla
 
 ---
 
+<!-- https://mapshaper.org/docs/formats/geoparquet.html -->
+
+# GeoParquet
+
+GeoParquet is a compact columnar format that stores vector geometries alongside tabular attributes. It is now a common cloud-native interchange format for vector data: the Overture Maps Foundation publishes its global releases in GeoParquet, and tools such as DuckDB (with spatial), GeoPandas, BigQuery, Athena and Synapse can query GeoParquet datasets directly.
+
+**File extensions:** `.parquet`, `.geoparquet` &middot; **Read:** &check; &middot; **Write:** &check; &middot; **Multi-layer:** no (one layer per file)
+
+### CLI examples
+
+```bash
+mapshaper roads.parquet -info
+mapshaper roads.parquet -o roads.geojson
+mapshaper roads.geojson -o roads.parquet
+```
+
+### Format-specific input options
+
+There are no GeoParquet-specific `-i` options.
+
+### Format-specific output options
+
+There are no GeoParquet-specific `-o` options.
+
+### Practical notes
+
+- Mapshaper imports one geometry column per file (the GeoParquet `primary_column` when present). Additional geometry columns are currently ignored.
+- Mapshaper writes a single WKB geometry column named `geometry`.
+- There is no fixed maximum GeoParquet file size. Limits are memory-driven:
+  - In the regular CLI, the limit is your Node heap. For very large files, use `mapshaper-xl`, which starts with an 8 GB heap by default (and can be increased, e.g. `mapshaper-xl 16gb ...`).
+  - In the web app, very large imports (often in the hundreds of MB, depending on browser/device) can run out of memory and crash the tab. For large GeoParquet files, prefer the CLI / `mapshaper-xl`.
+
+## External resources
+
+- [GeoParquet specification](https://geoparquet.org/) &mdash; official format specification and metadata model.
+- [Apache Parquet geospatial logical types](https://github.com/apache/parquet-format/blob/apache-parquet-format-2.12.0/Geospatial.md) &mdash; core Parquet geospatial typing details.
+- Cloud-Native Geospatial Formats Guide: GeoParquet &mdash; [Overview](https://guide.cloudnativegeo.org/geoparquet/) and [Example](https://guide.cloudnativegeo.org/geoparquet/geoparquet-example.html) pages.
+- GeoParquet import in Mapshaper uses the [`hyparquet`](https://github.com/hyparam/hyparquet) JavaScript library.
+
+---
+
 <!-- https://mapshaper.org/docs/formats/flatgeobuf.html -->
 
 # FlatGeobuf
@@ -3873,9 +3925,6 @@ There are no FlatGeobuf-specific `-o` options. The format honors the general fla
 
 ### Practical notes
 
-- Mapshaper reads CRS metadata from the file header when it's encoded as an EPSG code. WKT2-only definitions can't be parsed and produce an "Unable to import WKT2 CRS from FlatGeobuf" warning &mdash; the layer comes in without a CRS.
-- On output, Mapshaper embeds an EPSG code in the FlatGeobuf header whenever it can derive one from the source: a round-tripped FlatGeobuf or GeoPackage CRS, an `epsg:NNNN` string passed to `-proj`, an `AUTHORITY["EPSG", N]` clause in a Shapefile `.prj`, or any encoding of WGS-84 or Web Mercator (which covers most GeoJSON, CSV-with-lat/lon and `-proj wgs84`/`-proj webmercator` outputs).
-- Mapshaper cannot yet convert an arbitrary proj4 definition (such as a custom Albers projection set with `-proj +proj=aea ...`) to an EPSG code. In that case the file is written with no CRS in the header and a warning is printed: *"Wrote `foo.fgb` without a CRS in the FlatGeobuf header..."*. Re-run the file through `ogr2ogr` if you need the CRS embedded for downstream tools.
 - Mapshaper does not write the optional packed R-tree spatial index, and it doesn't use the index for selective reads of indexed input either &mdash; the whole file is read into memory. If you need an indexed `.fgb` for HTTP range-request reads, build it with `ogr2ogr` or the [`flatgeobuf` CLI](https://github.com/flatgeobuf/flatgeobuf).
 
 ## External resources
@@ -3883,7 +3932,7 @@ There are no FlatGeobuf-specific `-o` options. The format honors the general fla
 - [flatgeobuf.org](https://flatgeobuf.org/) &mdash; project home with spec links and language bindings.
 - [Kicking the Tires: FlatGeobuf](https://worace.works/2022/02/23/kicking-the-tires-flatgeobuf/) &mdash; an independent practical writeup with benchmarks against Shapefile, GeoJSON and GeoPackage.
 - [Bryce Mecum: Flatgeobuf](https://brycemecum.com/2022/04/04/flatgeobuf/) &mdash; a hands-on exploration of streaming reads in the browser, including a worth-knowing gotcha about the spatial index sitting at the front of the file.
-- [Cloud-Native Geospatial Formats Guide: FlatGeobuf](https://guide.cloudnativegeo.org/flatgeobuf/) &mdash; how the format fits into modern cloud-storage workflows.
+- Cloud-Native Geospatial Formats Guide: FlatGeobuf &mdash; [Overview](https://guide.cloudnativegeo.org/flatgeobuf/intro.html) and [Example](https://guide.cloudnativegeo.org/flatgeobuf/flatgeobuf.html) pages.
 - FlatGeobuf reading and writing in Mapshaper is built on the official [`flatgeobuf`](https://github.com/flatgeobuf/flatgeobuf) JavaScript library, which provides the FlatBuffers schema, header parsing and feature serialisation primitives.
 
 ---
@@ -4024,6 +4073,41 @@ For very large CSVs, `csv-fields=` and `csv-filter=` are the most useful options
 
 ---
 
+<!-- https://mapshaper.org/docs/formats/json.html -->
+
+# JSON records
+
+A JSON-records file is a plain JSON array of objects, one per record, with no geometry.
+
+**File extension:** `.json` &middot; **Read:** &check; &middot; **Write:** &check; &middot; **Geometry:** none
+
+A JSON-records file looks like this:
+
+```json
+[
+  { "id": 1, "name": "Alice", "city": "Toronto" },
+  { "id": 2, "name": "Bob",   "city": "Vancouver" }
+]
+```
+
+### Format-specific input options
+
+- `json-path=` &mdash; for files where the array is nested inside a larger object, e.g. `json-path=data/records` for `{"data": {"records": [...]}}`.
+
+### Format-specific output options
+
+- `ndjson` &mdash; emit newline-delimited JSON instead of an array. One record per line. Often easier to process with line-oriented tools.
+
+### Practical notes
+
+- When exporting non-tabular layers as JSON records, the geometry is dropped &mdash; you get just the attribute table as JSON.
+
+## External resources
+
+- [JSON Lines (jsonlines.org)](https://jsonlines.org/) &mdash; the spec for the newline-delimited JSON variant emitted by Mapshaper's `ndjson` option.
+
+---
+
 <!-- https://mapshaper.org/docs/formats/dbf.html -->
 
 # DBF
@@ -4060,41 +4144,6 @@ mapshaper data.csv -o data.dbf
 
 - [Wikipedia: .dbf](https://en.wikipedia.org/wiki/.dbf) &mdash; useful overview of the format's history and dialects.
 - [Xbase File Format Description](https://www.clicketyclick.dk/databases/xbase/format/) &mdash; Erik Bachmann's reference for the dBase / xBase family. The standard external citation for byte-level DBF details.
-
----
-
-<!-- https://mapshaper.org/docs/formats/json.html -->
-
-# JSON records
-
-A JSON-records file is a plain JSON array of objects, one per record, with no geometry.
-
-**File extension:** `.json` &middot; **Read:** &check; &middot; **Write:** &check; &middot; **Geometry:** none
-
-A JSON-records file looks like this:
-
-```json
-[
-  { "id": 1, "name": "Alice", "city": "Toronto" },
-  { "id": 2, "name": "Bob",   "city": "Vancouver" }
-]
-```
-
-### Format-specific input options
-
-- `json-path=` &mdash; for files where the array is nested inside a larger object, e.g. `json-path=data/records` for `{"data": {"records": [...]}}`.
-
-### Format-specific output options
-
-- `ndjson` &mdash; emit newline-delimited JSON instead of an array. One record per line. Often easier to process with line-oriented tools.
-
-### Practical notes
-
-- When exporting non-tabular layers as JSON records, the geometry is dropped &mdash; you get just the attribute table as JSON.
-
-## External resources
-
-- [JSON Lines (jsonlines.org)](https://jsonlines.org/) &mdash; the spec for the newline-delimited JSON variant emitted by Mapshaper's `ndjson` option.
 
 ---
 

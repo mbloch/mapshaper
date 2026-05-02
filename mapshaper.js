@@ -4879,7 +4879,7 @@
     this.ty -= cy * (sy - 1);
   };
 
-  var mproj$1 = require$1('mproj');
+  var mproj$2 = require$1('mproj');
 
   // Constructor function for a compound projection consisting of a default
   //   projection and one or more rectangular frames that are projected separately
@@ -4893,7 +4893,7 @@
     var mainFrame = initFrame(mainParams);
     var mainP = mainFrame.crs;
     var frames = [mainFrame];
-    var mixedP = initMixedProjection(mproj$1);
+    var mixedP = initMixedProjection(mproj$2);
 
     // This CRS masquerades as the main projection... the version with
     // custom insets is exposed to savvy users
@@ -4937,7 +4937,7 @@
     function initFrame(params) {
       return {
         bounds: new Bounds(bboxToRadians(params.bbox)),
-        crs:  mproj$1.pj_init(params.proj)
+        crs:  mproj$2.pj_init(params.proj)
       };
     }
 
@@ -4949,7 +4949,7 @@
     }
 
     function projectFrameOrigin(origin, P) {
-      var xy = mproj$1.pj_fwd_deg({lam: origin[0], phi: origin[1]}, P);
+      var xy = mproj$2.pj_fwd_deg({lam: origin[0], phi: origin[1]}, P);
       return [xy.x, xy.y];
     }
 
@@ -4958,7 +4958,7 @@
       for (var i=0, n=frames.length; i<n; i++) {
         frame = frames[i];
         if (frame.bounds.containsPoint(lp.lam, lp.phi)) {
-          xy2 = mproj$1.pj_fwd(lp, frame.crs);
+          xy2 = mproj$2.pj_fwd(lp, frame.crs);
           if (frame.matrix) {
             frame.matrix.transformXY(xy2.x, xy2.y, xy2);
           }
@@ -5161,7 +5161,7 @@
     probablyDecimalDegreeBounds: probablyDecimalDegreeBounds
   });
 
-  var mproj = require$1('mproj');
+  var mproj$1 = require$1('mproj');
 
   var asyncLoader = null;
 
@@ -5202,7 +5202,7 @@
         else if (x > 180) x = 180;
       }
       xy = [x, y];
-      mproj.pj_transform_point(src, dest, xy);
+      mproj$1.pj_transform_point(src, dest, xy);
       return xy;
     };
   }
@@ -5212,8 +5212,8 @@
   function getProjTransform2(src, dest) {
     var xx = [0],
         yy = [0],
-        preK = src.is_latlong ? mproj.internal.DEG_TO_RAD : 1,
-        postK = dest.is_latlong ? mproj.internal.RAD_TO_DEG : 1,
+        preK = src.is_latlong ? mproj$1.internal.DEG_TO_RAD : 1,
+        postK = dest.is_latlong ? mproj$1.internal.RAD_TO_DEG : 1,
         clampSrc = isLatLngCRS(src);
 
     return function(x, y) {
@@ -5227,7 +5227,7 @@
       yy[0] = y * preK;
       try {
         dest = dest.__mixed_crs || dest;
-        mproj.pj_transform(src, dest, xx, yy);
+        mproj$1.pj_transform(src, dest, xx, yy);
         fail = xx[0] == Infinity; // mproj invalid coord value
       } catch(e) {
         fail = true;
@@ -5258,15 +5258,25 @@
   }
 
   function crsToProj4(P) {
-    return mproj.internal.get_proj_defn(P);
+    return mproj$1.internal.get_proj_defn(P);
   }
 
   function crsToPrj(P) {
     var wkt;
     try {
-      wkt = mproj.internal.wkt_from_proj4(P);
+      wkt = mproj$1.internal.wkt_from_proj4(P);
     } catch(e) {
       // console.log(e)
+    }
+    return wkt;
+  }
+
+  function crsToWkt2(P) {
+    var wkt;
+    try {
+      wkt = mproj$1.internal.wkt2_from_proj4(P);
+    } catch(e) {
+      // WKT2 export may be unavailable for some custom definitions.
     }
     return wkt;
   }
@@ -5287,7 +5297,7 @@
     var defn;
     // prepend '+proj=' to bare proj names
     str = str.replace(/(^| )([\w]+)($| )/, function(a, b, c, d) {
-      if (c in mproj.internal.pj_list) {
+      if (c in mproj$1.internal.pj_list) {
         return b + '+proj=' + c + d;
       }
       return a;
@@ -5335,7 +5345,7 @@
       P = defn;
     } else {
       try {
-        P = mproj.pj_init(defn);
+        P = mproj$1.pj_init(defn);
       } catch(e) {
         stop$1('Unable to use projection', defn, '(' + e.message + ')');
       }
@@ -5399,8 +5409,8 @@
   // Returns k, the ratio of coordinate distance to distance on the ground
   function getScaleFactorAtXY(x, y, crs) {
     var dist = 1 / crs.to_meter;
-    var lp = mproj.pj_inv_deg({x: x, y: y}, crs);
-    var lp2 = mproj.pj_inv_deg({x: x + dist, y: y}, crs);
+    var lp = mproj$1.pj_inv_deg({x: x, y: y}, crs);
+    var lp2 = mproj$1.pj_inv_deg({x: x + dist, y: y}, crs);
     var k = 1 / geom.greatCircleDistance(lp.lam, lp.phi, lp2.lam, lp2.phi);
     return k;
   }
@@ -5438,7 +5448,7 @@
   }
 
   function printProjections() {
-    var index = mproj.internal.pj_list;
+    var index = mproj$1.internal.pj_list;
     var msg = 'Proj4 projections\n';
     Object.keys(index).sort().forEach(function(id) {
       msg += '  ' + utils.rpad(id, 7, ' ') + '  ' + index[id].name + '\n';
@@ -5453,9 +5463,33 @@
   function wkt1ToProj(str) {
     var proj4;
     try {
-      proj4 = mproj.internal.wkt_to_proj4(str);
+      proj4 = mproj$1.internal.wkt_to_proj4(str);
     } catch(e) {
       stop$1('Unusable .prj file (' + e.message + ')');
+    }
+    return proj4;
+  }
+
+  function wkt2ToProj(str) {
+    var proj4;
+    try {
+      proj4 = mproj$1.internal.wkt2_to_proj4(str);
+    } catch(e) {
+      stop$1('Unusable WKT2 CRS (' + e.message + ')');
+    }
+    return proj4;
+  }
+
+  function wktToProj(str) {
+    var proj4;
+    try {
+      proj4 = mproj$1.internal.wkt2_to_proj4(str);
+    } catch(e) {
+      try {
+        proj4 = mproj$1.internal.wkt_to_proj4(str);
+      } catch(e2) {
+        stop$1('Unusable WKT CRS (' + e2.message + ')');
+      }
     }
     return proj4;
   }
@@ -5463,6 +5497,10 @@
   // Convert contents of a .prj file to a projection object
   function parsePrj(str) {
     return parseCrsString$1(wkt1ToProj(str));
+  }
+
+  function parseWkt(str) {
+    return parseCrsString$1(wktToProj(str));
   }
 
   // Extract an EPSG (or other authority) code from a short string like
@@ -5522,6 +5560,7 @@
     crsAreEqual: crsAreEqual,
     crsToPrj: crsToPrj,
     crsToProj4: crsToProj4,
+    crsToWkt2: crsToWkt2,
     findProjLibs: findProjLibs,
     getCrsInfo: getCrsInfo,
     getDatasetCRS: getDatasetCRS,
@@ -5544,6 +5583,7 @@
     parseAuthorityCodeString: parseAuthorityCodeString,
     parseCrsString: parseCrsString$1,
     parsePrj: parsePrj,
+    parseWkt: parseWkt,
     printProjections: printProjections,
     projectPoint: projectPoint,
     requireDatasetsHaveCompatibleCRS: requireDatasetsHaveCompatibleCRS,
@@ -5551,7 +5591,9 @@
     setDatasetCrsInfo: setDatasetCrsInfo,
     setProjectionLoader: setProjectionLoader,
     toLngLat: toLngLat,
-    wkt1ToProj: wkt1ToProj
+    wkt1ToProj: wkt1ToProj,
+    wkt2ToProj: wkt2ToProj,
+    wktToProj: wktToProj
   });
 
   // Coordinate iterators
@@ -8024,6 +8066,8 @@
         type = null;
     if (ext == 'dbf' || ext == 'shp' || ext == 'kml' || ext == 'svg' || ext == 'fgb' || ext == 'gpkg') {
       type = ext;
+    } else if (ext == 'parquet' || ext == 'geoparquet') {
+      type = 'parquet';
     } else if (isAuxiliaryInputFileType(ext)) {
       type = ext;
     } else if (/json$/.test(ext)) { // matches topojson, geojson, json
@@ -8165,7 +8209,7 @@
   function isSupportedBinaryInputType(path) {
     var ext = getFileExtension(path).toLowerCase();
     return ext == 'shp' || ext == 'shx' || ext == 'dbf' ||
-      ext == 'fgb' || ext == 'gpkg' || ext == PACKAGE_EXT; // GUI also supports zip files
+      ext == 'fgb' || ext == 'gpkg' || ext == 'parquet' || ext == 'geoparquet' || ext == PACKAGE_EXT; // GUI also supports zip files
   }
 
   function isImportableAsBinary(path) {
@@ -24748,11 +24792,7 @@ ${svg}
       }); });
   }
 
-  function inferGeometryType(t){let r;for(let f of t){if(r===GeometryType.Unknown)break;let t=f.getGeometry?toGeometryType(f.getGeometry().getType()):toGeometryType(f.geometry.type);void 0===r?r=t:r!==t&&(r=GeometryType.Unknown);}if(void 0===r)throw Error("Could not infer geometry type for collection of features.");return r}
-
-  function buildHeader(t,r=0){let n,o=new Builder,i=0;t.columns&&(i=Header.createColumnsVector(o,t.columns.map(e=>{let t;return t=o.createString(e.name),Column.startColumn(o),Column.addName(o,t),Column.addType(o,e.type),Column.endColumn(o)})));let f=o.createString("L1");r&&(Crs.startCrs(o),Crs.addCode(o,r),n=Crs.endCrs(o)),Header.startHeader(o),n&&Header.addCrs(o,n),Header.addFeaturesCount(o,BigInt(t.featuresCount)),Header.addGeometryType(o,t.geometryType),Header.addIndexNodeSize(o,0),i&&Header.addColumns(o,i),Header.addName(o,f);let u=Header.endHeader(o);return o.finishSizePrefixed(u),o.asUint8Array()}function mapColumn(e,t){return {name:t,type:function(e){if("boolean"==typeof e)return ColumnType.Bool;if("number"==typeof e)return ColumnType.Double;if("string"==typeof e||null===e)return ColumnType.String;if(e instanceof Uint8Array)return ColumnType.Binary;if("object"==typeof e)return ColumnType.Json;throw Error(`Unknown type (value '${e}')`)}(e[t]),title:null,description:null,width:-1,precision:-1,scale:-1,nullable:true,unique:false,primary_key:false}}
-
-  function serialize(i,l=0){var n;let a,p,f=(a=(n=i).features[0].properties,p=null,a&&(p=Object.keys(a).map(e=>mapColumn(a,e))),{geometryType:inferGeometryType(n.features),columns:p,featuresCount:n.features.length}),c=buildHeader(f,l),g=i.features.map(e=>buildFeature("GeometryCollection"===e.geometry.type?parseGC(e.geometry):parseGeometry(e.geometry),e.properties,f)),d=g.map(e=>e.length).reduce((e,t)=>e+t),y=new Uint8Array(magicbytes.length+c.length+d);y.set(c,magicbytes.length);let h=magicbytes.length+c.length;for(let e of g)y.set(e,h),h+=e.length;return y.set(magicbytes),y}
+  function buildHeader(t,r=0){let n,o=new Builder,i=0;t.columns&&(i=Header.createColumnsVector(o,t.columns.map(e=>{let t;return t=o.createString(e.name),Column.startColumn(o),Column.addName(o,t),Column.addType(o,e.type),Column.endColumn(o)})));let f=o.createString("L1");r&&(Crs.startCrs(o),Crs.addCode(o,r),n=Crs.endCrs(o)),Header.startHeader(o),n&&Header.addCrs(o,n),Header.addFeaturesCount(o,BigInt(t.featuresCount)),Header.addGeometryType(o,t.geometryType),Header.addIndexNodeSize(o,0),i&&Header.addColumns(o,i),Header.addName(o,f);let u=Header.endHeader(o);return o.finishSizePrefixed(u),o.asUint8Array()}
 
   // bytes: Uint8Array
   function getHeaderMeta(bytes) {
@@ -24788,6 +24828,7 @@ ${svg}
       bb.setPosition(offset);
       var feature = Feature.getSizePrefixedRootAsFeature(bb);
       geojsonFeature = fromFeature(id++, feature, headerMeta);
+      delete geojsonFeature.id;
       offset += SIZE_PREFIX_LEN + featureLength;
       return geojsonFeature;
     };
@@ -24815,6 +24856,66 @@ ${svg}
     var offset = Header.endHeader(builder);
     builder.finishSizePrefixed(offset);
     return builder.asUint8Array();
+  }
+
+  function serializeWithColumns(geojson, columns) {
+    var headerMeta = {
+      geometryType: inferGeometryType(geojson.features),
+      columns: columns,
+      featuresCount: geojson.features.length};
+    var header = buildHeader(headerMeta);
+    var features = geojson.features.map(function(feature) {
+      var geometry = feature.geometry.type == 'GeometryCollection' ?
+        parseGC(feature.geometry) :
+        parseGeometry(feature.geometry);
+      omitRedundantGeometryType(geometry, headerMeta.geometryType);
+      return buildFeature(geometry, normalizeProperties(feature.properties, columns), headerMeta);
+    });
+    var featureBytes = features.reduce(function(sum, feature) {
+      return sum + feature.length;
+    }, 0);
+    var output = new Uint8Array(magicbytes.length + header.length + featureBytes);
+    var offset = magicbytes.length;
+    output.set(header, offset);
+    offset += header.length;
+    features.forEach(function(feature) {
+      output.set(feature, offset);
+      offset += feature.length;
+    });
+    output.set(magicbytes);
+    return output;
+  }
+
+  function omitRedundantGeometryType(geometry, headerType) {
+    if (headerType != GeometryType.Unknown && geometry.type == headerType) {
+      geometry.type = GeometryType.Unknown;
+    }
+  }
+
+  function inferGeometryType(features) {
+    var type;
+    features.forEach(function(feature) {
+      var next = GeometryType[feature.geometry.type] || GeometryType.Unknown;
+      if (type === undefined) {
+        type = next;
+      } else if (type != next) {
+        type = GeometryType.Unknown;
+      }
+    });
+    if (type === undefined) {
+      throw new Error('Could not infer geometry type for collection of features.');
+    }
+    return type;
+  }
+
+  function normalizeProperties(properties, columns) {
+    var copy = {};
+    properties = properties || {};
+    columns.forEach(function(column) {
+      var val = properties[column.name];
+      copy[column.name] = val === undefined ? null : val;
+    });
+    return copy;
   }
 
   function createColumnsVector(builder, columns) {
@@ -24867,12 +24968,13 @@ ${svg}
     var crsMeta = resolveOutputCRS(dataset);
     return dataset.layers.map(function(lyr) {
       var geojson = getFeatureCollection(lyr, dataset, opts);
-      var content = serialize(geojson);
+      var columns = getFlatGeobufColumns(lyr);
+      var content = serializeWithColumns(geojson, columns);
       var filename = lyr.name + '.' + extension;
       if (crsMeta) {
         content = rewriteHeaderWithCRS(content, crsMeta);
       } else {
-        message('Wrote', filename, 'without a CRS in the FlatGeobuf header (mapshaper could not derive an EPSG code for this dataset). Downstream tools may misinterpret the coordinates or refuse to load the file.');
+        message('Wrote', filename, 'without a CRS in the FlatGeobuf header (mapshaper could not derive CRS metadata for this dataset). Downstream tools may misinterpret the coordinates or refuse to load the file.');
       }
       return {
         content: content,
@@ -24892,17 +24994,64 @@ ${svg}
     };
   }
 
-  // Try several strategies to derive an EPSG code for the dataset. Returns
+  function getFlatGeobufColumns(lyr) {
+    var records = lyr.data ? lyr.data.getRecords() : [];
+    return lyr.data ? lyr.data.getFields().map(function(name) {
+      return {
+        name: name,
+        type: getFlatGeobufColumnType(name, records),
+        title: null,
+        description: null,
+        width: -1,
+        precision: -1,
+        scale: -1,
+        nullable: true,
+        unique: false,
+        primary_key: false
+      };
+    }) : [];
+  }
+
+  function getFlatGeobufColumnType(name, records) {
+    var type = getColumnType(name, records);
+    if (type == 'boolean') return 2; // ColumnType.Bool
+    if (type == 'number') return getFlatGeobufNumberType(name, records);
+    if (type == 'object') return 12; // ColumnType.Json
+    return 11; // ColumnType.String
+  }
+
+  function getFlatGeobufNumberType(name, records) {
+    var min = Infinity;
+    var max = -Infinity;
+    var hasValue = false;
+    var val;
+    for (var i = 0; i < records.length; i++) {
+      val = records[i] ? records[i][name] : null;
+      if (val === null || val === undefined) continue;
+      if (!Number.isFinite(val) || Math.floor(val) !== val) {
+        return 10; // ColumnType.Double
+      }
+      hasValue = true;
+      if (val < min) min = val;
+      if (val > max) max = val;
+    }
+    if (!hasValue) return 10; // ColumnType.Double
+    if (min >= -2147483648 && max <= 2147483647) return 5; // ColumnType.Int
+    if (Number.isSafeInteger(min) && Number.isSafeInteger(max)) return 7; // ColumnType.Long
+    return 10; // ColumnType.Double
+  }
+
+  // Try several strategies to derive CRS metadata for the dataset. Returns
   // a CRS-meta object suitable for buildHeaderWithCRS(), or null if no
-  // EPSG code could be found. We don't write WKT-only CRSes -- mapshaper
-  // can't reliably round-trip them and many readers ignore the WKT field.
+  // CRS metadata could be found. Prefer authority/code when available, but
+  // also write WKT so custom CRSes can be read by CRS-aware tools.
   function resolveOutputCRS(dataset) {
     var info = (dataset && dataset.info) || {};
     var meta;
 
     // 1. Round-tripped from another FlatGeobuf
     meta = normalizeCRS(info.flatgeobuf_crs);
-    if (meta) return meta;
+    if (meta) return addWktToCRS(meta, dataset);
 
     // 2. Round-tripped from a GeoPackage with an EPSG-coded SRS
     if (info.geopackage_crs &&
@@ -24911,16 +25060,16 @@ ${svg}
         org: 'EPSG',
         code: info.geopackage_crs.organization_coordsys_id || info.geopackage_crs.srs_id
       });
-      if (meta) return meta;
+      if (meta) return addWktToCRS(meta, dataset);
     }
 
     // 3. Explicit "epsg:NNNN" / "esri:NNNN" string set by -proj or alike
     meta = normalizeCRS(parseAuthorityCodeString(info.crs_string));
-    if (meta) return meta;
+    if (meta) return addWktToCRS(meta, dataset);
 
     // 4. AUTHORITY["EPSG", N] in a .prj/WKT1 string (typically from a Shapefile)
     meta = normalizeCRS(parseAuthorityCodeFromWkt(info.wkt1));
-    if (meta) return meta;
+    if (meta) return addWktToCRS(meta, dataset);
 
     // 5. Recognized CRS object: WGS-84 (any encoding) or Web Mercator.
     // getDatasetCrsInfo() also auto-detects WGS-84 from lat/lng-like bounds,
@@ -24933,34 +25082,63 @@ ${svg}
     }
     if (crsInfo && crsInfo.crs) {
       if (isWGS84(crsInfo.crs)) {
-        return normalizeCRS({org: 'EPSG', code: 4326});
+        return addWktToCRS(normalizeCRS({org: 'EPSG', code: 4326}), dataset, crsInfo);
       }
       if (isWebMercator(crsInfo.crs)) {
-        return normalizeCRS({org: 'EPSG', code: 3857});
+        return addWktToCRS(normalizeCRS({org: 'EPSG', code: 3857}), dataset, crsInfo);
       }
+      meta = addWktToCRS({}, dataset, crsInfo);
+      if (meta) return meta;
     }
 
     return null;
   }
 
   function normalizeCRS(crs) {
-    if (!crs || !crs.code) return null;
+    if (!crs) return null;
     var code = +crs.code;
-    if (!Number.isFinite(code) || code <= 0) return null;
-    code = Math.round(code);
+    var hasCode = Number.isFinite(code) && code > 0;
+    if (hasCode) code = Math.round(code);
     var org = crs.org ? String(crs.org).toUpperCase() : null;
-    if (!org && looksLikeEPSGCode(code)) {
+    if (!org && hasCode && looksLikeEPSGCode(code)) {
       org = 'EPSG';
     }
-    if (org != 'EPSG') return null;
+    if (hasCode && org != 'EPSG') return null;
+    if (!hasCode && !crs.wkt) return null;
     return {
-      org: 'EPSG',
-      code: code,
+      org: hasCode ? 'EPSG' : null,
+      code: hasCode ? code : null,
       name: crs.name || null,
       description: crs.description || null,
       wkt: crs.wkt || null,
-      code_string: crs.code_string || ('EPSG:' + code)
+      code_string: hasCode ? (crs.code_string || ('EPSG:' + code)) : null
     };
+  }
+
+  function addWktToCRS(meta, dataset, crsInfoArg) {
+    if (!meta) return null;
+    var info = dataset && dataset.info || {};
+    if (meta.wkt && isWkt2(meta.wkt)) return meta;
+    var crsInfo = crsInfoArg || getSafeDatasetCrsInfo(dataset);
+    var crs = crsInfo && crsInfo.crs;
+    var wkt = crs ? crsToWkt2(crs) : null;
+    if (!wkt && meta.wkt) wkt = meta.wkt;
+    if (!wkt && crs) wkt = crsToPrj(crs);
+    if (!wkt && info.wkt1) wkt = info.wkt1;
+    if (wkt) meta.wkt = wkt;
+    return meta.code || meta.wkt ? meta : null;
+  }
+
+  function getSafeDatasetCrsInfo(dataset) {
+    try {
+      return getDatasetCrsInfo(dataset);
+    } catch (e) {
+      return null;
+    }
+  }
+
+  function isWkt2(wkt) {
+    return /^(GEODCRS|GEOGCRS|PROJCRS|VERTCRS|ENGCRS|BOUNDCRS|COMPOUNDCRS)\s*\[/i.test(String(wkt || '').trim());
   }
 
   function looksLikeEPSGCode(code) {
@@ -25092,7 +25270,7 @@ ${svg}
       Object.keys(props).forEach(function(name) {
         if (!isSupportedPropertyName(name)) return;
         var value = props[name];
-        var next = inferValueType(value);
+        var next = inferValueType$1(value);
         if (!next) return;
         if (!(name in index)) {
           index[name] = next;
@@ -25174,7 +25352,7 @@ ${svg}
         fields.length == 1 && fields[0] == GeoJSON.ID_FIELD);
   }
 
-  function inferValueType(value) {
+  function inferValueType$1(value) {
     if (value === null || value === undefined) return null;
     if (value instanceof Date) return 'DATETIME';
     if (typeof value == 'boolean') return 'BOOLEAN';
@@ -25504,6 +25682,210 @@ ${svg}
     return normalized;
   }
 
+  var writerPromise = null;
+  var dynamicImportModule$1 = Function('id', 'return import(id)');
+
+  async function exportGeoParquet(dataset, opts, filenameOverride) {
+    var writer = await loadGeoParquetWriter();
+    var extension = opts.extension || 'parquet';
+    if (opts.file) {
+      extension = getFileExtension(opts.file) || extension;
+    }
+    return dataset.layers.map(function(lyr) {
+      if (!lyr.geometry_type) {
+        stop$1('GeoParquet export requires a geometry layer');
+      }
+      var features = exportLayerAsGeoJSON(lyr, dataset, opts, true, null);
+      var output = buildGeoParquetColumns(features);
+      var geoMetadata = buildGeoMetadata(features, dataset);
+      var content = writer.parquetWriteBuffer({
+        columnData: output.columnData,
+        kvMetadata: [{
+          key: 'geo',
+          value: JSON.stringify(geoMetadata)
+        }]
+      });
+      return {
+        filename: filenameOverride || (lyr.name + '.' + extension),
+        content: content
+      };
+    });
+  }
+
+  function buildGeoParquetColumns(features, writer) {
+    var geometryName = 'geometry';
+    var names = getPropertyNames(features);
+    var columnData = [];
+    columnData.push({
+      name: geometryName,
+      data: features.map(function(feat) {
+        return feat.geometry || null;
+      }),
+      type: 'GEOMETRY'
+    });
+    names.forEach(function(name) {
+      var values = features.map(function(feat) {
+        return feat.properties ? feat.properties[name] : null;
+      });
+      columnData.push(buildAttributeColumn(name, values));
+    });
+    return {columnData: columnData, geometryColumn: geometryName};
+  }
+
+  function buildAttributeColumn(name, values) {
+    var info = inferColumnType(values);
+    return {
+      name: name,
+      data: values.map(function(value) {
+        return normalizeFieldValue(value, info.type);
+      }),
+      type: info.type
+    };
+  }
+
+  function inferColumnType(values) {
+    var type = null;
+    for (var i = 0; i < values.length; i++) {
+      var valueType = inferValueType(values[i]);
+      if (!valueType) continue;
+      if (!type) {
+        type = valueType;
+      } else if (type != valueType) {
+        if ((type == 'INT32' || type == 'DOUBLE') &&
+            (valueType == 'INT32' || valueType == 'DOUBLE')) {
+          type = 'DOUBLE';
+        } else {
+          type = 'STRING';
+          break;
+        }
+      }
+    }
+    return {type: type || 'STRING'};
+  }
+
+  function inferValueType(value) {
+    if (value === null || value === undefined) return null;
+    if (typeof value == 'boolean') return 'BOOLEAN';
+    if (typeof value == 'number') {
+      if (!Number.isFinite(value)) return 'STRING';
+      if (Math.floor(value) === value && value >= -2147483648 && value <= 2147483647) {
+        return 'INT32';
+      }
+      return 'DOUBLE';
+    }
+    if (typeof value == 'bigint') return 'STRING';
+    if (value instanceof Date) return 'TIMESTAMP';
+    if (value instanceof Uint8Array) return 'BYTE_ARRAY';
+    if (typeof Buffer == 'function' && Buffer.isBuffer(value)) return 'BYTE_ARRAY';
+    if (Array.isArray(value) || utils.isObject(value)) return 'JSON';
+    return 'STRING';
+  }
+
+  function normalizeFieldValue(value, type) {
+    if (value === undefined) return null;
+    if (value === null) return null;
+    if (type == 'TIMESTAMP') return value instanceof Date ? value : new Date(value);
+    if (type == 'BYTE_ARRAY') {
+      if (value instanceof Uint8Array) return value;
+      if (typeof Buffer == 'function' && Buffer.isBuffer(value)) {
+        return new Uint8Array(value.buffer, value.byteOffset, value.byteLength);
+      }
+      return null;
+    }
+    if (type == 'JSON') return value;
+    if (type == 'BOOLEAN') return !!value;
+    if (type == 'INT32' || type == 'DOUBLE') {
+      var num = Number(value);
+      return Number.isFinite(num) ? num : null;
+    }
+    return String(value);
+  }
+
+  function getPropertyNames(features) {
+    var index = {};
+    features.forEach(function(feat) {
+      var props = feat.properties || {};
+      Object.keys(props).forEach(function(name) {
+        index[name] = true;
+      });
+    });
+    return Object.keys(index);
+  }
+
+  function buildGeoMetadata(features, dataset) {
+    var geomTypes = utils.uniq(features.map(function(feat) {
+      return feat.geometry && feat.geometry.type || null;
+    }).filter(Boolean));
+    var crs = getGeoMetadataCrs(dataset);
+    var geomMeta = {
+      encoding: 'WKB',
+      geometry_types: geomTypes
+    };
+    if (crs) {
+      geomMeta.crs = crs;
+    }
+    return {
+      version: '1.1.0',
+      primary_column: 'geometry',
+      columns: {
+        geometry: geomMeta
+      }
+    };
+  }
+
+  function getGeoMetadataCrs(dataset) {
+    var info = dataset && dataset.info || {};
+    if (info.geoparquet_crs && utils.isObject(info.geoparquet_crs)) {
+      return info.geoparquet_crs;
+    }
+    return convertCrsToProjjson(info.crs_string, info.wkt1);
+  }
+
+  function convertCrsToProjjson(crsString, wkt1) {
+    var mproj = require$1('mproj');
+    var converter = getProjjsonFromProj4Converter(mproj);
+    if (!converter) return null;
+    try {
+      var crsObj = crsString ? parseCrsString$1(crsString) : (wkt1 ? parsePrj(wkt1) : null);
+      if (!crsObj) return null;
+      var projjson = converter(crsObj);
+      if (utils.isString(projjson)) {
+        projjson = JSON.parse(projjson);
+      }
+      return utils.isObject(projjson) ? projjson : null;
+    } catch (e) {
+      return null;
+    }
+  }
+
+  function getProjjsonFromProj4Converter(mproj) {
+    if (mproj && typeof mproj.projjson_from_proj4 == 'function') {
+      return mproj.projjson_from_proj4;
+    }
+    if (mproj && mproj.internal && typeof mproj.internal.projjson_from_proj4 == 'function') {
+      return mproj.internal.projjson_from_proj4;
+    }
+    return null;
+  }
+
+  async function loadGeoParquetWriter() {
+    if (runningInBrowser()) {
+      var mod = require$1('hyparquet-writer');
+      if (mod && mod.default && !mod.parquetWriteBuffer) {
+        mod = mod.default;
+      }
+      if (!mod || !mod.parquetWriteBuffer) {
+        stop$1('GeoParquet writer library is not loaded');
+      }
+      return mod;
+    }
+    if (!writerPromise) {
+      writerPromise = dynamicImportModule$1('hyparquet-writer');
+    }
+    var nodeMod = await writerPromise;
+    return nodeMod.default && !nodeMod.parquetWriteBuffer ? nodeMod.default : nodeMod;
+  }
+
   function getOutputFormat(dataset, opts) {
     var outFile = opts.file || null,
         inFmt = dataset.info && dataset.info.input_formats && dataset.info.input_formats[0],
@@ -25547,6 +25929,8 @@ ${svg}
       format = 'geopackage';
     } else if (ext == 'fgb') {
       format = 'flatgeobuf';
+    } else if (ext == 'parquet' || ext == 'geoparquet') {
+      format = 'geoparquet';
     } else if (ext == 'svg') {
       format = 'svg';
     } else if (ext == 'kml' || ext == 'kmz') {
@@ -25637,6 +26021,16 @@ ${svg}
       }
       datasets.forEach(sortExportLayers);
       files = await exportGeoPackage(datasets[0], opts);
+    } else if (format == 'geoparquet') {
+      var layerCount = datasets.reduce(function(sum, d) {
+        return sum + d.layers.length;
+      }, 0);
+      var singleFileName = opts.file && layerCount == 1 ? opts.file : null;
+      files = [];
+      for (var i = 0; i < datasets.length; i++) {
+        sortExportLayers(datasets[i]);
+        files = files.concat(await exportGeoParquet(datasets[i], opts, singleFileName));
+      }
     } else {
       files = datasets.reduce(function(memo, dataset) {
         sortExportLayers(dataset);
@@ -26709,7 +27103,7 @@ ${svg}
   });
 
   function isSupportedOutputFormat(fmt) {
-    var types = ['geojson', 'topojson', 'json', 'dsv', 'dbf', 'shapefile', 'svg', 'kml', PACKAGE_EXT, 'flatgeobuf', 'geopackage'];
+    var types = ['geojson', 'topojson', 'json', 'dsv', 'dbf', 'shapefile', 'svg', 'kml', PACKAGE_EXT, 'flatgeobuf', 'geopackage', 'geoparquet'];
     return types.indexOf(fmt) > -1;
   }
 
@@ -26726,6 +27120,7 @@ ${svg}
       shapefile: 'Shapefile',
       flatgeobuf: 'Flatgeobuf',
       geopackage: 'GeoPackage',
+      geoparquet: 'GeoParquet',
       svg: 'SVG'
     }[fmt] || '';
   }
@@ -26837,6 +27232,8 @@ ${svg}
       } else if (o.format == 'tsv') {
         o.format = 'dsv';
         o.delimiter = o.delimiter || '\t';
+      } else if (o.format == 'parquet') {
+        o.format = 'geoparquet';
       }
       if (!isSupportedOutputFormat(o.format)) {
         error('Unsupported output format:', o.format);
@@ -28095,7 +28492,7 @@ ${svg}
         }
       })
       .option('format', {
-        describe: 'options: shapefile,geojson,topojson,flatgeobuf,geopackage,json,dbf,csv,tsv,svg'
+        describe: 'options: shapefile,geojson,topojson,flatgeobuf,geopackage,geoparquet,json,dbf,csv,tsv,svg'
       })
       .option('target', targetOpt)
       .option('force', {
@@ -32739,19 +33136,43 @@ ${svg}
     dataset.info = dataset.info || {};
     var crs = normalizeCRSMeta(headerMeta.crs || null);
     dataset.info.flatgeobuf_crs = crs;
-    if (crs && crs.org && crs.code) {
-      dataset.info.crs_string = crs.org.toLowerCase() + ':' + crs.code;
-      await initProjLibrary({crs: dataset.info.crs_string});
-    } else if (crs && crs.wkt) {
-      warnOnce('Unable to import WKT2 CRS from FlatGeobuf');
+    if (crs) {
+      await importFlatGeobufCRS(dataset, crs);
     }
     return dataset;
+  }
+
+  async function importFlatGeobufCRS(dataset, crs) {
+    var crsString = crs.org && crs.code ? crs.org.toLowerCase() + ':' + crs.code : null;
+    if (crsString) {
+      try {
+        await initProjLibrary({crs: crsString});
+        dataset.info.crs_string = crsString;
+        return;
+      } catch (e) {
+        // Fall through and try WKT metadata if an authority lookup is unavailable.
+      }
+    }
+    if (crs.wkt) {
+      try {
+        // Validate that mproj can parse the WKT, then keep the equivalent Proj4
+        // string in crs_string so downstream projection handling works normally.
+        parseWkt(crs.wkt);
+        dataset.info.crs_string = wktToProj(crs.wkt);
+        return;
+      } catch (e) {
+        warnOnce('Unable to import WKT CRS from FlatGeobuf');
+      }
+    }
   }
 
   function normalizeCRSMeta(crs) {
     if (!crs) return null;
     var code = +crs.code;
-    if (crs.org || !Number.isFinite(code)) return crs;
+    if (!Number.isFinite(code) || code <= 0) {
+      return Object.assign({}, crs, {code: null});
+    }
+    if (crs.org) return crs;
     code = Math.round(code);
     if (code >= 2000 && code <= 1000000) {
       // Some encoders write code but omit authority org; default to EPSG.
@@ -33251,6 +33672,372 @@ ${svg}
       }
     }
     return obj;
+  }
+
+  var hyparquetPromise = null;
+  var dynamicImportModule = Function('id', 'return import(id)');
+  var mproj = null;
+
+  async function importGeoParquet(input, optsArg) {
+    var opts = optsArg || {};
+    var hyparquet = await loadHyparquetLib();
+    var source = getGeoParquetSource(input);
+    var file = await getHyparquetFile(source, hyparquet);
+    var metadata = await hyparquet.parquetMetadataAsync(file);
+    var geo = parseGeoParquetMetadata(metadata);
+    var rows = await hyparquet.parquetReadObjects({
+      file: file,
+      rowFormat: 'object'
+    });
+    var geometryColumn = getGeoParquetGeometryColumn(rows, geo);
+    if (!geometryColumn && hasUnsupportedGeometryEncoding(geo)) {
+      warnOnce('Unable to import GeoParquet geometry: native encodings are not supported (expected WKB). Importing attribute data only.');
+    }
+    var dataset = convertGeoParquetRows(rows, geo, opts, geometryColumn);
+    var crs = getGeoParquetCrs(geo, geometryColumn);
+    dataset.info = dataset.info || {};
+    dataset.info.geoparquet_geo = geo;
+    dataset.info.geoparquet_crs = crs;
+    if (crs) {
+      var crsString = await resolveGeoParquetCrsString(crs);
+      if (!crsString) {
+        warnOnce('Unable to import CRS from GeoParquet metadata');
+      }
+      dataset.info.crs_string = crsString || null;
+    }
+    return dataset;
+  }
+
+  async function loadHyparquetLib() {
+    if (runningInBrowser()) {
+      var mod = require$1('hyparquet');
+      if (mod && mod.default && !mod.parquetReadObjects) {
+        mod = mod.default;
+      }
+      if (!mod || !mod.parquetReadObjects || !mod.parquetMetadataAsync) {
+        stop$1('GeoParquet library is not loaded');
+      }
+      return mod;
+    }
+    if (!hyparquetPromise) {
+      hyparquetPromise = dynamicImportModule('hyparquet');
+    }
+    var nodeMod = await hyparquetPromise;
+    return nodeMod.default && !nodeMod.parquetReadObjects ? nodeMod.default : nodeMod;
+  }
+
+  function getGeoParquetSource(input) {
+    if (!input) return null;
+    if (Object.prototype.hasOwnProperty.call(input, 'content')) {
+      return input.content || input.filename || null;
+    }
+    return input;
+  }
+
+  async function getHyparquetFile(source, hyparquet) {
+    if (!source) {
+      stop$1('Missing GeoParquet data');
+    }
+    if (utils.isString(source)) {
+      if (!hyparquet.asyncBufferFromFile) {
+        stop$1('Unable to read GeoParquet file path');
+      }
+      return hyparquet.asyncBufferFromFile(source);
+    }
+    return toArrayBuffer(source);
+  }
+
+  function toArrayBuffer(content) {
+    if (content instanceof ArrayBuffer) {
+      return content;
+    }
+    if (content instanceof Uint8Array) {
+      return content.buffer.slice(content.byteOffset, content.byteOffset + content.byteLength);
+    }
+    if (typeof Buffer == 'function' && Buffer.isBuffer(content)) {
+      return content.buffer.slice(content.byteOffset, content.byteOffset + content.byteLength);
+    }
+    if (ArrayBuffer.isView(content)) {
+      return content.buffer.slice(content.byteOffset, content.byteOffset + content.byteLength);
+    }
+    if (utils.isArray(content)) {
+      return new Uint8Array(content).buffer;
+    }
+    stop$1('Unsupported GeoParquet input type');
+  }
+
+  function convertGeoParquetRows(rows, geo, opts, geometryColumnArg) {
+    var importer = new GeoJSONParser(opts);
+    var geometryColumn = geometryColumnArg === undefined ?
+      getGeoParquetGeometryColumn(rows, geo) :
+      geometryColumnArg;
+    var geometryColumns = getGeoParquetGeometryColumns(geo);
+    rows.forEach(function(row) {
+      if (!utils.isObject(row)) return;
+      var feature = convertGeoParquetRow(row, geometryColumn, geometryColumns);
+      importer.parseObject(feature);
+    });
+    return importer.done();
+  }
+
+  function convertGeoParquetRow(row, geometryColumn, geometryColumns) {
+    var feature = {
+      type: 'Feature',
+      properties: {},
+      geometry: null
+    };
+    if (geometryColumn && row[geometryColumn] !== undefined) {
+      feature.geometry = row[geometryColumn] || null;
+    }
+    for (var key in row) {
+      if (!Object.prototype.hasOwnProperty.call(row, key)) continue;
+      if (key == geometryColumn || geometryColumns.indexOf(key) > -1) continue;
+      feature.properties[key] = normalizeGeoParquetValue(row[key], key);
+    }
+    return feature;
+  }
+
+  function normalizeGeoParquetValue(val, fieldName) {
+    if (typeof val == 'bigint') {
+      return normalizeBigIntValue(val, fieldName);
+    }
+    if (Array.isArray(val)) {
+      return val.map(function(item) {
+        return normalizeGeoParquetValue(item, fieldName);
+      });
+    }
+    if (val && utils.isObject(val)) {
+      var out = {};
+      for (var key in val) {
+        if (Object.prototype.hasOwnProperty.call(val, key)) {
+          out[key] = normalizeGeoParquetValue(val[key], fieldName);
+        }
+      }
+      return out;
+    }
+    return val;
+  }
+
+  function normalizeBigIntValue(val, fieldName) {
+    var num = Number(val);
+    if (!Number.isFinite(num)) {
+      warnOnce('GeoParquet field "' + fieldName + '" contains BigInt values outside JavaScript Number range; precision will be lost.');
+      return num;
+    }
+    if (BigInt(Math.trunc(num)) !== val) {
+      warnOnce('GeoParquet field "' + fieldName + '" contains BigInt values that exceed Number.MAX_SAFE_INTEGER; precision will be lost.');
+    }
+    return num;
+  }
+
+  function getGeoParquetGeometryColumns(geo) {
+    if (!geo || !utils.isObject(geo.columns)) return [];
+    return Object.keys(geo.columns);
+  }
+
+  function getGeoParquetGeometryColumn(rows, geo) {
+    var row = rows && rows.length > 0 && utils.isObject(rows[0]) ? rows[0] : null;
+    var keys = row ? Object.keys(row) : [];
+    var candidate;
+    if (geo && utils.isObject(geo.columns)) {
+      var wkbColumns = getWkbGeometryColumns(geo);
+      candidate = geo.primary_column;
+      if (candidate && wkbColumns.indexOf(candidate) > -1 && keys.indexOf(candidate) > -1) {
+        return candidate;
+      }
+      candidate = wkbColumns.find(function(name) {
+        return keys.indexOf(name) > -1;
+      });
+      if (candidate) return candidate;
+      return null;
+    }
+    if (keys.indexOf('geometry') > -1) {
+      return 'geometry';
+    }
+    candidate = keys.find(function(key) {
+      return looksLikeGeoJSONGeometry(row[key]);
+    });
+    return candidate || null;
+  }
+
+  function getWkbGeometryColumns(geo) {
+    if (!geo || !utils.isObject(geo.columns)) return [];
+    return Object.keys(geo.columns).filter(function(name) {
+      var encoding = geo.columns[name] && geo.columns[name].encoding;
+      return utils.isString(encoding) && encoding.toUpperCase() == 'WKB';
+    });
+  }
+
+  function hasUnsupportedGeometryEncoding(geo) {
+    if (!geo || !utils.isObject(geo.columns)) return false;
+    var columnNames = Object.keys(geo.columns);
+    if (columnNames.length === 0) return false;
+    return getWkbGeometryColumns(geo).length === 0;
+  }
+
+  function looksLikeGeoJSONGeometry(obj) {
+    return !!(obj && utils.isObject(obj) && utils.isString(obj.type));
+  }
+
+  function parseGeoParquetMetadata(metadata) {
+    var kv = getParquetKeyValueMetadata(metadata);
+    var entry = kv.find(function(item) {
+      return getMetadataKey(item) == 'geo';
+    });
+    var value = entry ? getMetadataValue(entry) : null;
+    if (!value) return null;
+    if (utils.isObject(value)) return value;
+    try {
+      return JSON.parse(normalizeMetadataString(value));
+    } catch (e) {
+      warnOnce('Unable to parse GeoParquet metadata');
+      return null;
+    }
+  }
+
+  function getParquetKeyValueMetadata(metadata) {
+    if (!metadata) return [];
+    if (Array.isArray(metadata.key_value_metadata)) {
+      return metadata.key_value_metadata;
+    }
+    if (Array.isArray(metadata.keyValueMetadata)) {
+      return metadata.keyValueMetadata;
+    }
+    if (utils.isObject(metadata.metadata)) {
+      return Object.keys(metadata.metadata).map(function(key) {
+        return {key: key, value: metadata.metadata[key]};
+      });
+    }
+    return [];
+  }
+
+  function getMetadataKey(entry) {
+    if (!entry || !utils.isObject(entry)) return null;
+    return entry.key || entry.name || null;
+  }
+
+  function getMetadataValue(entry) {
+    if (!entry || !utils.isObject(entry)) return null;
+    return entry.value ?? entry.val ?? null;
+  }
+
+  function normalizeMetadataString(value) {
+    if (utils.isString(value)) return value;
+    if (value instanceof Uint8Array) {
+      return new TextDecoder('utf-8').decode(value);
+    }
+    if (typeof Buffer == 'function' && Buffer.isBuffer(value)) {
+      return value.toString('utf-8');
+    }
+    return String(value);
+  }
+
+  function getGeoParquetCrs(geo, geometryColumn) {
+    if (!geo || !utils.isObject(geo.columns)) return null;
+    if (geometryColumn && geo.columns[geometryColumn]) {
+      return geo.columns[geometryColumn].crs ?? null;
+    }
+    var cols = Object.keys(geo.columns);
+    for (var i = 0; i < cols.length; i++) {
+      var crs = geo.columns[cols[i]].crs;
+      if (crs) return crs;
+    }
+    return null;
+  }
+
+  function getGeoParquetAuthority(crs) {
+    var match = findPrimaryAuthorityId(crs);
+    if (!match) return null;
+    var org = String(match.authority || '').toUpperCase();
+    var code = Number(match.code);
+    if (!org || !Number.isFinite(code)) return null;
+    if (org != 'EPSG' && org != 'ESRI') return null;
+    return {
+      org: org,
+      code: Math.round(code)
+    };
+  }
+
+  async function resolveGeoParquetCrsString(crs) {
+    var candidates = getGeoParquetCrsStrings(crs);
+    for (var i = 0; i < candidates.length; i++) {
+      try {
+        parseCrsString$1(candidates[i]);
+        await initProjLibrary({crs: candidates[i]});
+        return candidates[i];
+      } catch (e) {
+        // Keep trying candidates; if none initialize, caller will warn.
+      }
+    }
+    return null;
+  }
+
+  function getGeoParquetCrsStrings(crs) {
+    var strings = [];
+    var authority = getGeoParquetAuthority(crs);
+    if (authority) {
+      strings.push(authority.org.toLowerCase() + ':' + authority.code);
+    }
+    var proj4 = convertProjjsonToProj4(crs);
+    if (proj4 && strings.indexOf(proj4) == -1) {
+      strings.push(proj4);
+    }
+    return strings;
+  }
+
+  function convertProjjsonToProj4(crs) {
+    var converter = getProjjsonToProj4Converter();
+    if (!converter) return null;
+    try {
+      return converter(crs);
+    } catch (e) {
+      return null;
+    }
+  }
+
+  function getProjjsonToProj4Converter() {
+    if (!mproj) {
+      mproj = require$1('mproj');
+    }
+    if (mproj && typeof mproj.projjson_to_proj4 == 'function') {
+      return mproj.projjson_to_proj4;
+    }
+    if (mproj && mproj.internal && typeof mproj.internal.projjson_to_proj4 == 'function') {
+      return mproj.internal.projjson_to_proj4;
+    }
+    return null;
+  }
+
+  function findPrimaryAuthorityId(crs) {
+    if (!crs || !utils.isObject(crs)) return null;
+    if (utils.isString(crs)) {
+      return parseAuthorityString(crs);
+    }
+    var match = parseAuthorityObject(crs.id);
+    if (match) return match;
+    if (crs.base_crs && utils.isObject(crs.base_crs)) {
+      match = parseAuthorityObject(crs.base_crs.id);
+      if (match) return match;
+    }
+    return null;
+  }
+
+  function parseAuthorityObject(id) {
+    if (!id || !utils.isObject(id)) return null;
+    if (id.authority === undefined || id.code === undefined) return null;
+    return {
+      authority: id.authority,
+      code: id.code
+    };
+  }
+
+  function parseAuthorityString(str) {
+    var match = /^([A-Za-z]+)\s*:\s*([0-9]+)$/.exec(str);
+    if (!match) return null;
+    return {
+      authority: match[1],
+      code: Number(match[2])
+    };
   }
 
   var INHERITED_STYLE_KEYS = [
@@ -34204,6 +34991,8 @@ ${svg}
       stop$1("FlatGeobuf import requires async import path");
     } else if (obj.gpkg) {
       stop$1("GeoPackage import requires async import path");
+    } else if (obj.parquet) {
+      stop$1("GeoParquet import requires async import path");
     }
 
     return finalizeImportedDataset(dataset, dataFmt, data, opts);
@@ -34220,6 +35009,10 @@ ${svg}
       dataFmt = 'geopackage';
       data = obj.gpkg;
       dataset = await importGeoPackage(data, opts);
+    } else if (obj.parquet) {
+      dataFmt = 'geoparquet';
+      data = obj.parquet;
+      dataset = await importGeoParquet(data, opts);
     } else {
       return importContent(obj, opts);
     }
@@ -34711,7 +35504,7 @@ ${svg}
     if (fileType == 'shp' && !input.dbf) {
       message(utils.format("[%s] .dbf file is missing - shapes imported without attribute data.", path));
     }
-    return fileType == 'gpkg' || fileType == 'fgb' ? importContentAsync(input, opts) : importContent(input, opts);
+    return fileType == 'gpkg' || fileType == 'fgb' || fileType == 'parquet' ? importContentAsync(input, opts) : importContent(input, opts);
   }
 
   // Import multiple files to a single dataset
@@ -53474,7 +54267,7 @@ ${svg}
     });
   }
 
-  var version = "0.7.7";
+  var version = "0.7.8";
 
   // Parse command line args into commands and run them
   // Function takes an optional Node-style callback. A Promise is returned if no callback is given.

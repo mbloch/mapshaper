@@ -36,11 +36,12 @@ When in doubt about a command's behavior, the [command reference](https://mapsha
 - [GeoJSON](https://mapshaper.org/docs/formats/geojson.html.md): How Mapshaper reads and writes GeoJSON, including precision, ndjson and RFC 7946 options.
 - [TopoJSON](https://mapshaper.org/docs/formats/topojson.html.md): How Mapshaper reads and writes TopoJSON, including quantization and multi-layer output.
 - [GeoPackage](https://mapshaper.org/docs/formats/geopackage.html.md): How Mapshaper reads and writes GeoPackage (.gpkg), the OGC's SQLite-based GIS container.
+- [GeoParquet](https://mapshaper.org/docs/formats/geoparquet.html.md): How Mapshaper reads GeoParquet (.parquet), a columnar binary vector format.
 - [FlatGeobuf](https://mapshaper.org/docs/formats/flatgeobuf.html.md): How Mapshaper reads and writes FlatGeobuf (.fgb), a streamable binary vector format.
 - [KML / KMZ](https://mapshaper.org/docs/formats/kml.html.md): How Mapshaper reads and writes KML and KMZ files for use with Google Earth and similar tools.
 - [CSV / TSV](https://mapshaper.org/docs/formats/csv.html.md): How Mapshaper reads and writes CSV/TSV, including encoding, type hints and large-file handling.
-- [DBF](https://mapshaper.org/docs/formats/dbf.html.md): How Mapshaper reads and writes standalone DBF files, the tabular component of Shapefile.
 - [JSON records](https://mapshaper.org/docs/formats/json.html.md): How Mapshaper reads and writes plain JSON arrays of objects (no geometry), useful for tabular data exchange.
+- [DBF](https://mapshaper.org/docs/formats/dbf.html.md): How Mapshaper reads and writes standalone DBF files, the tabular component of Shapefile.
 - [SVG](https://mapshaper.org/docs/formats/svg.html.md): How Mapshaper exports vector data as SVG, including width, scale, bounding-box and per-feature data attributes.
 - [Mapshaper snapshot](https://mapshaper.org/docs/formats/snapshot.html.md): A single-file binary snapshot of a Mapshaper session, used to save work in progress and share reproducible projects.
 
@@ -50,7 +51,7 @@ When in doubt about a command's behavior, the [command reference](https://mapsha
 
 ## Optional
 
-- [Home](https://mapshaper.org/docs/index.html.md): Documentation for mapshaper, the command-line tool and web app for editing Shapefile, GeoJSON, TopoJSON, GeoPackage, FlatGeobuf, KML and CSV data.
+- [Home](https://mapshaper.org/docs/index.html.md): Documentation for mapshaper, the command-line tool and web app for editing Shapefile, GeoJSON, TopoJSON, GeoPackage, FlatGeobuf, GeoParquet, KML and CSV data.
 - [What's new](https://mapshaper.org/docs/whats-new.html.md): A curated log of recently added user-visible features in Mapshaper, with links into the rest of the docs.
 - [Gallery](https://mapshaper.org/docs/gallery/index.html.md): Example maps made with Mapshaper, with full source data and reproduction steps for each.
 - [Formats overview](https://mapshaper.org/docs/formats/overview.html.md): A quick comparison of every file format Mapshaper can read and write, with links to per-format details.

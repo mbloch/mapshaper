@@ -1,11 +1,11 @@
 ---
 title: Mapshaper documentation
-description: Documentation for mapshaper, the command-line tool and web app for editing Shapefile, GeoJSON, TopoJSON, GeoPackage, FlatGeobuf, KML and CSV data.
+description: Documentation for mapshaper, the command-line tool and web app for editing Shapefile, GeoJSON, TopoJSON, GeoPackage, FlatGeobuf, GeoParquet, KML and CSV data.
 ---
 
 # Mapshaper documentation
 
-<p class="lead">Mapshaper is a tool for editing Shapefile, GeoJSON, TopoJSON, GeoPackage, FlatGeobuf, KML and CSV data &mdash; available as a command-line program and as a web app at <a href="/">mapshaper.org</a>.</p>
+<p class="lead">Mapshaper is a tool for editing Shapefile, GeoJSON, TopoJSON, GeoPackage, FlatGeobuf, GeoParquet, KML and CSV data &mdash; available as a command-line program and as a web app at <a href="/">mapshaper.org</a>.</p>
 
 <div class="section-cards">
   <a class="section-card" href="/docs/reference.html">

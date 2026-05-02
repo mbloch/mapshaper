@@ -209,7 +209,7 @@ mapshaper -vars YEAR=2030 PCT=5 -run build.txt
 
 ### -i (input)
 
-Input one or more files in a supported vector data format. Supported file types include: Shapefile, GeoJSON, TopoJSON, GeoPackage, FlatGeobuf, KML, JSON data records, DBF, CSV/TSV.
+Input one or more files in a supported vector data format. Supported file types include: Shapefile, GeoJSON, TopoJSON, GeoPackage, FlatGeobuf, GeoParquet, KML, JSON data records, DBF, CSV/TSV.
 
 The `-i` command is assumed if `mapshaper` is followed by the path of an input data file.
 

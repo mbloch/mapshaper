@@ -18,6 +18,7 @@ This section explains how each supported file format is handled, what format-spe
 | [TopoJSON](/docs/formats/topojson.html.md) | `.json` `.topojson` | &check; | &check; | vector | yes | **&check;** | &check; |
 | [GeoPackage](/docs/formats/geopackage.html.md) | `.gpkg` | &check; | &check; | vector | yes | &mdash; | &check; |
 | [FlatGeobuf](/docs/formats/flatgeobuf.html.md) | `.fgb` | &check; | &check; | vector | yes | &mdash; | &mdash; |
+| [GeoParquet](/docs/formats/geoparquet.html.md) | `.parquet` `.geoparquet` | &check; | &check; | vector | yes | &mdash; | &mdash; |
 | [KML / KMZ](/docs/formats/kml.html.md) | `.kml` `.kmz` | &check; | &check; | vector | limited | &mdash; | &check; |
 | [CSV / TSV](/docs/formats/csv.html.md) | `.csv` `.tsv` | &check; | &check; | points (X/Y) | yes | &mdash; | &mdash; |
 | [DBF](/docs/formats/dbf.html.md) | `.dbf` | &check; | &check; | none | yes | &mdash; | &mdash; |

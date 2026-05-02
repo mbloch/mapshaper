@@ -1,0 +1,103 @@
+<!DOCTYPE html>
+<html lang="en">
+<head><!-- Google tag (gtag.js) -->
+<script async src="https://www.googletagmanager.com/gtag/js?id=G-QYR8W1YHEF"></script>
+<script>
+  window.dataLayer = window.dataLayer || [];
+  function gtag(){dataLayer.push(arguments);}
+  gtag('js', new Date());
+  gtag('config', 'G-QYR8W1YHEF');
+</script>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>GeoParquet &middot; mapshaper docs</title>
+<meta name="description" content="How Mapshaper reads GeoParquet (.parquet), a columnar binary vector format.">
+<link rel="icon" type="image/png" href="/images/icon.png">
+<link rel="stylesheet" href="/docs/_assets/highlight.css">
+<link rel="stylesheet" href="/docs/_assets/docs.css">
+</head>
+<body class="">
+
+<header class="page-header">
+  <a href="/" class="mapshaper-logo">map<span class="logo-highlight">shaper</span></a>
+  <span class="header-section-label">Docs</span>
+  <nav class="header-nav">
+    <a href="/">Web app</a>
+    <a href="https://github.com/mbloch/mapshaper">GitHub</a>
+    <a href="/sponsor.html" class="sponsor-link"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z"/></svg> Become a sponsor</a>
+  </nav>
+</header>
+
+<div class="docs-layout">
+
+  <button type="button" class="docs-nav-toggle" aria-expanded="false" aria-controls="docs-sidebar">
+    <span class="docs-nav-toggle-icon" aria-hidden="true">
+      <svg viewBox="0 0 24 24" focusable="false">
+        <path d="M4 7h16v2H4zm0 5h16v2H4zm0 5h16v2H4z"/>
+      </svg>
+    </span>
+    <span class="docs-nav-toggle-label">Menu</span>
+  </button>
+
+  <aside class="docs-sidebar" id="docs-sidebar">
+    <div class="sidebar-inner">
+      <nav class="docs-nav"><ul class="top-links"><li><a href="/docs/">Home</a></li><li><a href="/docs/whats-new.html">What&#39;s new</a></li><li><a href="/docs/reference.html">Command reference</a></li><li><a href="/docs/gallery/">Gallery</a></li></ul><h2>Getting started</h2><ul><li><a href="/docs/essentials/command-line.html">The command-line tool</a></li><li><a href="/docs/essentials/web-app.html">The web app</a></li></ul><h2>Examples</h2><ul><li><a href="/docs/examples/basics.html">Basics</a></li><li><a href="/docs/examples/globe.html">Globe locator map</a></li><li><a href="/docs/examples/us-states.html">U.S. state map</a></li><li><a href="/docs/examples/ny-state.html">New York map</a></li></ul><h2>Guides</h2><ul><li><a href="/docs/guides/simplification.html">Simplification</a></li><li><a href="/docs/guides/expressions.html">JavaScript expressions</a></li><li><a href="/docs/guides/projections.html">Projections</a></li><li><a href="/docs/guides/topology.html">Topology and cleaning</a></li><li><a href="/docs/guides/combining-layers.html">Combining two layers</a></li><li><a href="/docs/guides/programmatic.html">Using Mapshaper from Node.js</a></li></ul><h2>Formats</h2><ul><li><a href="/docs/formats/overview.html">Overview</a></li><li><a href="/docs/formats/shapefile.html">Shapefile</a></li><li><a href="/docs/formats/geojson.html">GeoJSON</a></li><li><a href="/docs/formats/topojson.html">TopoJSON</a></li><li><a href="/docs/formats/geopackage.html">GeoPackage</a></li><li><a href="/docs/formats/geoparquet.html" class="is-active">GeoParquet</a></li><li><a href="/docs/formats/flatgeobuf.html">FlatGeobuf</a></li><li><a href="/docs/formats/kml.html">KML / KMZ</a></li><li><a href="/docs/formats/csv.html">CSV / TSV</a></li><li><a href="/docs/formats/json.html">JSON records</a></li><li><a href="/docs/formats/dbf.html">DBF</a></li><li><a href="/docs/formats/svg.html">SVG</a></li><li><a href="/docs/formats/snapshot.html">Mapshaper snapshot</a></li></ul></nav>
+    </div>
+  </aside>
+
+  <main class="docs-main">
+    <article class="docs-article">
+      <div class="docs-breadcrumbs"><a href="/docs/">Docs</a> &rsaquo; Formats &rsaquo; GeoParquet</div>
+      <h1 id="geoparquet">GeoParquet</h1>
+<p>GeoParquet is a compact columnar format that stores vector geometries alongside tabular attributes. It is now a common cloud-native interchange format for vector data: the Overture Maps Foundation publishes its global releases in GeoParquet, and tools such as DuckDB (with spatial), GeoPandas, BigQuery, Athena and Synapse can query GeoParquet datasets directly.</p>
+<p><strong>File extensions:</strong> <code>.parquet</code>, <code>.geoparquet</code> &middot; <strong>Read:</strong> &check; &middot; <strong>Write:</strong> &check; &middot; <strong>Multi-layer:</strong> no (one layer per file)</p>
+<h3 id="cli-examples">CLI examples</h3>
+<pre><code class="hljs language-bash">mapshaper roads.parquet -info
+mapshaper roads.parquet -o roads.geojson
+mapshaper roads.geojson -o roads.parquet
+</code></pre>
+<h3 id="format-specific-input-options">Format-specific input options</h3>
+<p>There are no GeoParquet-specific <code>-i</code> options.</p>
+<h3 id="format-specific-output-options">Format-specific output options</h3>
+<p>There are no GeoParquet-specific <code>-o</code> options.</p>
+<h3 id="practical-notes">Practical notes</h3>
+<ul>
+<li>Mapshaper imports one geometry column per file (the GeoParquet <code>primary_column</code> when present). Additional geometry columns are currently ignored.</li>
+<li>Mapshaper writes a single WKB geometry column named <code>geometry</code>.</li>
+<li>There is no fixed maximum GeoParquet file size. Limits are memory-driven:<ul>
+<li>In the regular CLI, the limit is your Node heap. For very large files, use <code>mapshaper-xl</code>, which starts with an 8 GB heap by default (and can be increased, e.g. <code>mapshaper-xl 16gb ...</code>).</li>
+<li>In the web app, very large imports (often in the hundreds of MB, depending on browser/device) can run out of memory and crash the tab. For large GeoParquet files, prefer the CLI / <code>mapshaper-xl</code>.</li>
+</ul>
+</li>
+</ul>
+<h2 id="external-resources">External resources</h2>
+<ul>
+<li><a href="https://geoparquet.org/">GeoParquet specification</a> &mdash; official format specification and metadata model.</li>
+<li><a href="https://github.com/apache/parquet-format/blob/apache-parquet-format-2.12.0/Geospatial.md">Apache Parquet geospatial logical types</a> &mdash; core Parquet geospatial typing details.</li>
+<li>Cloud-Native Geospatial Formats Guide: GeoParquet &mdash; <a href="https://guide.cloudnativegeo.org/geoparquet/">Overview</a> and <a href="https://guide.cloudnativegeo.org/geoparquet/geoparquet-example.html">Example</a> pages.</li>
+<li>GeoParquet import in Mapshaper uses the <a href="https://github.com/hyparam/hyparquet"><code>hyparquet</code></a> JavaScript library.</li>
+</ul>
+
+      <div class="edit-link">
+        <a href="https://github.com/mbloch/mapshaper/edit/master/docs/formats/geoparquet.md">Edit this page on GitHub</a>
+      </div>
+    </article>
+  </main>
+
+  <aside class="docs-toc">
+    <div class="docs-toc-title">On this page</div><ul><li class="lvl-3"><a href="#cli-examples">CLI examples</a></li><li class="lvl-3"><a href="#format-specific-input-options">Format-specific input options</a></li><li class="lvl-3"><a href="#format-specific-output-options">Format-specific output options</a></li><li class="lvl-3"><a href="#practical-notes">Practical notes</a></li><li class="lvl-2"><a href="#external-resources">External resources</a></li></ul>
+  </aside>
+
+</div>
+
+<script src="/docs/_assets/docs.js" defer></script>
+
+<footer class="docs-footer">
+  <div class="docs-footer-inner">
+    <span>mapshaper is free software, licensed under <a href="https://www.mozilla.org/MPL/2.0/">MPL 2.0</a>.</span>
+    <span><a href="/privacy.html">Privacy</a> &middot; <a href="/terms.html">Terms</a> &middot; <a href="/sponsor.html">Support mapshaper</a></span>
+  </div>
+</footer>
+
+</body>
+</html>
