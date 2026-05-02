@@ -6,7 +6,7 @@ import { GUI } from './gui-lib';
 import { setLayerPinning } from './gui-layer-utils';
 import { importSessionData } from './gui-session-snapshot-control';
 import { openAddLayerPopup } from './gui-add-layer-popup';
-import { considerReprojecting, loadGeopackageLib, getGeoPackageFeatureTables } from './gui-import-utils';
+import { considerReprojecting, loadGeopackageLib, getGeoPackageFeatureTables, loadGeoParquetLib } from './gui-import-utils';
 
 // @cb function(<FileList>)
 function DropControl(gui, el, cb) {
@@ -426,7 +426,10 @@ export function ImportControl(gui, opts) {
     if (group.gpkg) {
       await loadGeopackageLib();
     }
-    if (group.gpkg || group.fgb) {
+    if (group.parquet) {
+      await loadGeoParquetLib();
+    }
+    if (group.gpkg || group.fgb || group.parquet) {
       dataset = await internal.importContentAsync(group, importOpts);
     } else {
       dataset = internal.importContent(group, importOpts);
@@ -457,7 +460,7 @@ export function ImportControl(gui, opts) {
   function filesMayContainPaths(files) {
     return utils.some(files, function(f) {
         var type = internal.guessInputFileType(f.name);
-        return type == 'shp' || type == 'json' || type == 'gpkg' || internal.isZipFile(f.name);
+        return type == 'shp' || type == 'json' || type == 'gpkg' || type == 'parquet' || internal.isZipFile(f.name);
     });
   }
 

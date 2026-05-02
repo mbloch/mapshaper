@@ -303,7 +303,7 @@ async function _importFileAsync(path, opts) {
   if (fileType == 'shp' && !input.dbf) {
     message(utils.format("[%s] .dbf file is missing - shapes imported without attribute data.", path));
   }
-  return fileType == 'gpkg' || fileType == 'fgb' ? importContentAsync(input, opts) : importContent(input, opts);
+  return fileType == 'gpkg' || fileType == 'fgb' || fileType == 'parquet' ? importContentAsync(input, opts) : importContent(input, opts);
 }
 
 // Import multiple files to a single dataset

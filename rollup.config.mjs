@@ -102,6 +102,24 @@ export default [{
     nodePolyfills()
   ]
 }, {
+  treeshake: false,
+  input: 'src/mapshaper-gui-geoparquet.mjs',
+  onwarn: onMainWarn,
+  output: {
+    file: 'www/geoparquet.js',
+    format: 'iife',
+    name: 'mapshaperGeoParquet'
+  },
+  plugins: [
+    nodeResolve({
+      browser: true,
+      preferBuiltins: false
+    }),
+    commonjs(),
+    json(),
+    nodePolyfills()
+  ]
+}, {
   treeshake: true,
   context: 'null', // prevent a Rollup warning from msgpack
   input: 'src/mapshaper.mjs',
