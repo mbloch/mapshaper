@@ -45,11 +45,12 @@
         { "label": "GeoJSON", "file": "geojson.md" },
         { "label": "TopoJSON", "file": "topojson.md" },
         { "label": "GeoPackage", "file": "geopackage.md" },
+        { "label": "GeoParquet", "file": "geoparquet.md" },
         { "label": "FlatGeobuf", "file": "flatgeobuf.md" },
         { "label": "KML / KMZ", "file": "kml.md" },
         { "label": "CSV / TSV", "file": "csv.md" },
-        { "label": "DBF", "file": "dbf.md" },
         { "label": "JSON records", "file": "json.md" },
+        { "label": "DBF", "file": "dbf.md" },
         { "label": "SVG", "file": "svg.md" },
         { "label": "Mapshaper snapshot", "file": "snapshot.md" }
       ]

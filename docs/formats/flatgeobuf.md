@@ -37,5 +37,5 @@ There are no FlatGeobuf-specific `-o` options. The format honors the general fla
 - [flatgeobuf.org](https://flatgeobuf.org/) &mdash; project home with spec links and language bindings.
 - [Kicking the Tires: FlatGeobuf](https://worace.works/2022/02/23/kicking-the-tires-flatgeobuf/) &mdash; an independent practical writeup with benchmarks against Shapefile, GeoJSON and GeoPackage.
 - [Bryce Mecum: Flatgeobuf](https://brycemecum.com/2022/04/04/flatgeobuf/) &mdash; a hands-on exploration of streaming reads in the browser, including a worth-knowing gotcha about the spatial index sitting at the front of the file.
-- [Cloud-Native Geospatial Formats Guide: FlatGeobuf](https://guide.cloudnativegeo.org/flatgeobuf/) &mdash; how the format fits into modern cloud-storage workflows.
+- Cloud-Native Geospatial Formats Guide: FlatGeobuf &mdash; [Overview](https://guide.cloudnativegeo.org/flatgeobuf/intro.html) and [Example](https://guide.cloudnativegeo.org/flatgeobuf/flatgeobuf.html) pages.
 - FlatGeobuf reading and writing in Mapshaper is built on the official [`flatgeobuf`](https://github.com/flatgeobuf/flatgeobuf) JavaScript library, which provides the FlatBuffers schema, header parsing and feature serialisation primitives.
