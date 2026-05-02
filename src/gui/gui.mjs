@@ -88,6 +88,8 @@ var startEditing = function() {
   new LayerControl(gui);
   HeaderMenu();
   gui.console = new Console(gui);
+  window.mapshaper.getRuntimeStateContext = gui.getRuntimeStateContext;
+  window.mapshaper.stringifyRuntimeStateContext = gui.stringifyRuntimeStateContext;
 
   startEditing = function() {};
 

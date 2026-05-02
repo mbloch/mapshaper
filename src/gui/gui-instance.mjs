@@ -18,6 +18,7 @@ import { ContextMenu } from './gui-context-menu';
 import { Basemap } from './gui-basemap-control';
 import { DisplayOptions } from './gui-display-options-menu';
 import { MessageControl } from './gui-messages';
+import { getRuntimeStateContext, stringifyRuntimeStateContext } from './gui-runtime-context';
 // import { ProjectOptions } from './gui-project-control';
 
 
@@ -91,6 +92,14 @@ export function GuiInstance(container, opts) {
 
   gui.consoleIsOpen = function() {
     return gui.container.hasClass('console-open');
+  };
+
+  gui.getRuntimeStateContext = function() {
+    return getRuntimeStateContext(gui);
+  };
+
+  gui.stringifyRuntimeStateContext = function() {
+    return stringifyRuntimeStateContext(gui);
   };
 
   // Make this instance interactive and editable

@@ -3,6 +3,8 @@ import { internal, utils, message, UserError } from './gui-core';
 import { El } from './gui-el';
 import { setDisplayProjection } from './gui-dynamic-crs';
 import { GUI } from './gui-lib';
+import { saveBlobToLocalFile2 } from './gui-save';
+import { stringifyRuntimeStateContext } from './gui-runtime-context';
 
 export function Console(gui) {
   var model = gui.model;
@@ -367,6 +369,10 @@ export function Console(gui) {
         clear();
       } else if (cmd == 'tips') {
         printExamples();
+      } else if (cmd == 'context') {
+        toLog(stringifyRuntimeStateContext(gui));
+      } else if (cmd == 'context download') {
+        saveRuntimeContext();
       } else if (cmd == 'history') {
         toLog(gui.session.toCommandLineString());
       } else if (cmd == 'layers') {
@@ -519,10 +525,17 @@ export function Console(gui) {
     printExample("See a list of all console commands", "$ help");
     printExample("Get help using a single command", "$ help innerlines");
     printExample("Get information about imported datasets", "$ info");
+    printExample("Print bot/debug runtime context as JSON", "$ context");
     printExample("Display browser session as shell commands", "$ history");
     printExample("Delete one state from a national dataset","$ filter 'STATE != \"Alaska\"'");
     printExample("Aggregate counties to states by dissolving shared edges" ,"$ dissolve 'STATE'");
     printExample("Clear the console", "$ clear");
+  }
+
+  function saveRuntimeContext() {
+    var json = stringifyRuntimeStateContext(gui);
+    saveBlobToLocalFile2('mapshaper-runtime-context.json', new Blob([json], {type: 'application/json'}));
+    toLog('Saved runtime context to mapshaper-runtime-context.json', 'console-message');
   }
 
 }
