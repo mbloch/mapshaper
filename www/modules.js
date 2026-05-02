@@ -23113,7 +23113,11 @@
 	      }
 	      return normalized;
 	    case 'COMPOUNDCRS':
-	      wkt_error('COMPOUNDCRS not supported');
+	      var horizontal = wkt2_extract_horizontal_crs(node);
+	      if (!horizontal) {
+	        wkt_error('COMPOUNDCRS missing supported horizontal component');
+	      }
+	      return wkt2_normalize(horizontal);
 	    case 'VERTCRS':
 	    case 'VERTICALCRS':
 	      wkt_error('VERTCRS not supported');
@@ -23123,6 +23127,46 @@
 	    default:
 	      wkt_error('Unsupported WKT2 root element: ' + kw);
 	  }
+	}
+
+	function wkt2_extract_horizontal_crs(compoundNode) {
+	  // COMPOUNDCRS["name", <horizontal-crs>, <vertical-crs>, ...]
+	  // Keep behavior pragmatic: select the first horizontal component and ignore
+	  // vertical/temporal components for Proj4 conversion.
+	  var horizontalTypes = {
+	    PROJCRS: 1,
+	    PROJECTEDCRS: 1,
+	    GEOGCRS: 1,
+	    GEODCRS: 1,
+	    GEODETICCRS: 1,
+	    GEOGRAPHICCRS: 1,
+	    BOUNDCRS: 1
+	  };
+	  // Fast path: direct children first, preserving declared component order.
+	  for (var i = 1; i < compoundNode.length; i++) {
+	    var child = compoundNode[i];
+	    if (Array.isArray(child) && horizontalTypes[child[0]]) {
+	      return child;
+	    }
+	  }
+	  // Defensive path: some producers may wrap components in extra entities
+	  // (e.g., COMPONENT["horizontal", PROJCRS[...]]). Search descendants.
+	  for (var j = 1; j < compoundNode.length; j++) {
+	    var nested = wkt2_find_horizontal_descendant(compoundNode[j], horizontalTypes);
+	    if (nested) return nested;
+	  }
+	  return null;
+	}
+
+	function wkt2_find_horizontal_descendant(node, horizontalTypes) {
+	  if (!Array.isArray(node)) return null;
+	  if (horizontalTypes[node[0]]) return node;
+	  for (var i = 1; i < node.length; i++) {
+	    if (!Array.isArray(node[i])) continue;
+	    var found = wkt2_find_horizontal_descendant(node[i], horizontalTypes);
+	    if (found) return found;
+	  }
+	  return null;
 	}
 
 	// --- GEOGCRS / BASEGEOGCRS --------------------------------------------------

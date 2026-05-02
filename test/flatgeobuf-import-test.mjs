@@ -28,6 +28,7 @@ describe('flatgeobuf import', function () {
     // Parsed header is metadata used internally during import only;
     // it should not be retained on the imported dataset.
     assert.equal(dataset.info.flatgeobuf_header, undefined);
+    assert.equal(dataset.layers[0].data.getFields().indexOf('FID'), -1);
   });
 
   it('imports poly00 fixture from FlatGeobuf test suite', async function () {

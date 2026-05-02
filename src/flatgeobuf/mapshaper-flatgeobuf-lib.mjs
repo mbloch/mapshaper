@@ -1,10 +1,13 @@
 import { fromFeature } from 'flatgeobuf/lib/mjs/geojson/feature.js';
 import { serialize } from 'flatgeobuf/lib/mjs/geojson/featurecollection.js';
+import { buildFeature } from 'flatgeobuf/lib/mjs/generic/feature.js';
 import { buildHeader } from 'flatgeobuf/lib/mjs/generic/featurecollection.js';
 import { magicbytes, SIZE_PREFIX_LEN } from 'flatgeobuf/lib/mjs/constants.js';
 import { Header } from 'flatgeobuf/lib/mjs/flat-geobuf/header.js';
 import { Crs } from 'flatgeobuf/lib/mjs/flat-geobuf/crs.js';
 import { Column } from 'flatgeobuf/lib/mjs/flat-geobuf/column.js';
+import { GeometryType } from 'flatgeobuf/lib/mjs/flat-geobuf/geometry-type.js';
+import { parseGC, parseGeometry } from 'flatgeobuf/lib/mjs/geojson/geometry.js';
 import * as flatbuffers from 'flatbuffers';
 import { fromByteBuffer } from 'flatgeobuf/lib/mjs/header-meta.js';
 import { calcTreeSize } from 'flatgeobuf/lib/mjs/packedrtree.js';
@@ -45,6 +48,7 @@ function getFeatureReader(bytes, headerMetaArg) {
     bb.setPosition(offset);
     var feature = Feature.getSizePrefixedRootAsFeature(bb);
     geojsonFeature = fromFeature(id++, feature, headerMeta);
+    delete geojsonFeature.id;
     offset += SIZE_PREFIX_LEN + featureLength;
     return geojsonFeature;
   };
@@ -72,6 +76,73 @@ function buildHeaderWithCRS(headerMeta, crsMeta) {
   var offset = Header.endHeader(builder);
   builder.finishSizePrefixed(offset);
   return builder.asUint8Array();
+}
+
+function serializeWithColumns(geojson, columns) {
+  var headerMeta = {
+    geometryType: inferGeometryType(geojson.features),
+    columns: columns,
+    envelope: null,
+    featuresCount: geojson.features.length,
+    indexNodeSize: 0,
+    crs: null,
+    title: null,
+    description: null,
+    metadata: null
+  };
+  var header = buildHeader(headerMeta);
+  var features = geojson.features.map(function(feature) {
+    var geometry = feature.geometry.type == 'GeometryCollection' ?
+      parseGC(feature.geometry) :
+      parseGeometry(feature.geometry);
+    omitRedundantGeometryType(geometry, headerMeta.geometryType);
+    return buildFeature(geometry, normalizeProperties(feature.properties, columns), headerMeta);
+  });
+  var featureBytes = features.reduce(function(sum, feature) {
+    return sum + feature.length;
+  }, 0);
+  var output = new Uint8Array(magicbytes.length + header.length + featureBytes);
+  var offset = magicbytes.length;
+  output.set(header, offset);
+  offset += header.length;
+  features.forEach(function(feature) {
+    output.set(feature, offset);
+    offset += feature.length;
+  });
+  output.set(magicbytes);
+  return output;
+}
+
+function omitRedundantGeometryType(geometry, headerType) {
+  if (headerType != GeometryType.Unknown && geometry.type == headerType) {
+    geometry.type = GeometryType.Unknown;
+  }
+}
+
+function inferGeometryType(features) {
+  var type;
+  features.forEach(function(feature) {
+    var next = GeometryType[feature.geometry.type] || GeometryType.Unknown;
+    if (type === undefined) {
+      type = next;
+    } else if (type != next) {
+      type = GeometryType.Unknown;
+    }
+  });
+  if (type === undefined) {
+    throw new Error('Could not infer geometry type for collection of features.');
+  }
+  return type;
+}
+
+function normalizeProperties(properties, columns) {
+  var copy = {};
+  properties = properties || {};
+  columns.forEach(function(column) {
+    var val = properties[column.name];
+    copy[column.name] = val === undefined ? null : val;
+  });
+  return copy;
 }
 
 function createColumnsVector(builder, columns) {
@@ -119,6 +190,7 @@ export {
   getHeaderMeta,
   getFeatureReader,
   serialize,
+  serializeWithColumns,
   buildHeader,
   buildHeaderWithCRS,
   magicbytes,
