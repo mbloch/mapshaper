@@ -102,6 +102,18 @@ export function MessageControl(gui) {
     }
   };
 
+  gui.getMessages = function() {
+    return entries.map(function(entry) {
+      return {
+        severity: entry.severity,
+        title: entry.title,
+        body: entry.body,
+        count: entry.count,
+        time: entry.time.toISOString()
+      };
+    });
+  };
+
   function severityRank(s) {
     return s === 'error' ? 2 : s === 'warn' ? 1 : 0;
   }
