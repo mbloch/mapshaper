@@ -1,19 +1,20 @@
 ---
 title: GeoParquet
-description: How Mapshaper reads GeoParquet (.parquet), including CRS import behavior and coordinate preservation.
+description: How Mapshaper reads GeoParquet (.parquet), a columnar binary vector format.
 ---
 
 # GeoParquet
 
 GeoParquet is a compact columnar format that stores vector geometries alongside tabular attributes. It is now a common cloud-native interchange format for vector data: the Overture Maps Foundation publishes its global releases in GeoParquet, and tools such as DuckDB (with spatial), GeoPandas, BigQuery, Athena and Synapse can query GeoParquet datasets directly.
 
-**File extensions:** `.parquet`, `.geoparquet` &middot; **Read:** &check; &middot; **Write:** &mdash; &middot; **Multi-layer:** no (one layer per file)
+**File extensions:** `.parquet`, `.geoparquet` &middot; **Read:** &check; &middot; **Write:** &check; &middot; **Multi-layer:** no (one layer per file)
 
 ### CLI examples
 
 ```bash
 mapshaper roads.parquet -info
 mapshaper roads.parquet -o roads.geojson
+mapshaper roads.geojson -o roads.parquet
 ```
 
 ### Format-specific input options
@@ -22,12 +23,12 @@ There are no GeoParquet-specific `-i` options.
 
 ### Format-specific output options
 
-Mapshaper does not currently write GeoParquet files.
+There are no GeoParquet-specific `-o` options.
 
 ### Practical notes
 
-- GeoParquet import in Mapshaper is currently **read-only**. To write GeoParquet, export to another format and use an external converter.
 - Mapshaper imports one geometry column per file (the GeoParquet `primary_column` when present). Additional geometry columns are currently ignored.
+- Mapshaper writes a single WKB geometry column named `geometry`.
 - There is no fixed maximum GeoParquet file size. Limits are memory-driven:
   - In the regular CLI, the limit is your Node heap. For very large files, use `mapshaper-xl`, which starts with an 8 GB heap by default (and can be increased, e.g. `mapshaper-xl 16gb ...`).
   - In the web app, very large imports (often in the hundreds of MB, depending on browser/device) can run out of memory and crash the tab. For large GeoParquet files, prefer the CLI / `mapshaper-xl`.

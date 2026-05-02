@@ -10,6 +10,7 @@ import { exportGeoJSON } from '../geojson/geojson-export';
 import { exportJSON } from '../datatable/mapshaper-json-table';
 import { exportFlatGeobuf } from '../flatgeobuf/mapshaper-flatgeobuf-export';
 import { exportGeoPackage } from '../geopackage/mapshaper-geopackage-export';
+import { exportGeoParquet } from '../geoparquet/mapshaper-geoparquet-export';
 import { setCoordinatePrecision } from '../geom/mapshaper-rounding';
 import { copyDatasetForExport, copyDatasetForRenaming } from '../dataset/mapshaper-dataset-utils';
 import { mergeDatasetsForExport } from '../dataset/mapshaper-merging';
@@ -84,6 +85,16 @@ async function exportDatasets(datasets, opts) {
     }
     datasets.forEach(sortExportLayers);
     files = await exportGeoPackage(datasets[0], opts);
+  } else if (format == 'geoparquet') {
+    var layerCount = datasets.reduce(function(sum, d) {
+      return sum + d.layers.length;
+    }, 0);
+    var singleFileName = opts.file && layerCount == 1 ? opts.file : null;
+    files = [];
+    for (var i = 0; i < datasets.length; i++) {
+      sortExportLayers(datasets[i]);
+      files = files.concat(await exportGeoParquet(datasets[i], opts, singleFileName));
+    }
   } else {
     files = datasets.reduce(function(memo, dataset) {
       sortExportLayers(dataset);

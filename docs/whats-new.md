@@ -9,6 +9,14 @@ This is a curated list of recently added features. For the full list of changes,
 
 ## April 2026
 
+
+<div class="whats-new-entry">
+
+**GeoParquet support.** Mapshaper reads and writes GeoParquet (`.parquet`) files.
+
+→ See [GeoParquet](/docs/formats/geoparquet.html).
+</div>
+
 <div class="whats-new-entry">
 
 **Messages panel.** Warnings and informational messages are now collected in a messages panel. When new messages are available, an icon with a count appears in the header bar; clicking it opens the panel. This keeps important information accessible without interrupting your session with a modal popup.

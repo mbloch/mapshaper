@@ -505,7 +505,7 @@
    * @param {SchemaTree[]} schemaPath
    * @returns {number} max repetition level
    */
-  function getMaxRepetitionLevel(schemaPath) {
+  function getMaxRepetitionLevel$1(schemaPath) {
     let maxLevel = 0;
     for (const { element } of schemaPath) {
       if (element.repetition_type === 'REPEATED') {
@@ -596,17 +596,17 @@
    */
 
   // TCompactProtocol types
-  const STOP = 0;
-  const TRUE = 1;
-  const FALSE = 2;
-  const BYTE = 3;
+  const STOP$1 = 0;
+  const TRUE$1 = 1;
+  const FALSE$1 = 2;
+  const BYTE$1 = 3;
   const I16 = 4;
-  const I32 = 5;
-  const I64 = 6;
-  const DOUBLE = 7;
-  const BINARY = 8;
-  const LIST = 9;
-  const STRUCT = 12;
+  const I32$1 = 5;
+  const I64$1 = 6;
+  const DOUBLE$1 = 7;
+  const BINARY$1 = 8;
+  const LIST$1 = 9;
+  const STRUCT$1 = 12;
 
   /**
    * Parse TCompactProtocol
@@ -623,7 +623,7 @@
       // Parse each field based on its type and add to the result object
       const byte = reader.view.getUint8(reader.offset++);
       const type = byte & 0x0f;
-      if (type === STOP) break
+      if (type === STOP$1) break
       const delta = byte >> 4;
       fid = delta ? fid + delta : readZigZag(reader);
       value[`field_${fid}`] = readElement(reader, type);
@@ -641,43 +641,43 @@
    */
   function readElement(reader, type) {
     switch (type) {
-    case TRUE:
+    case TRUE$1:
       return true
-    case FALSE:
+    case FALSE$1:
       return false
-    case BYTE:
+    case BYTE$1:
       return reader.view.getInt8(reader.offset++)
     case I16:
-    case I32:
+    case I32$1:
       return readZigZag(reader)
-    case I64:
+    case I64$1:
       return readZigZagBigInt(reader)
-    case DOUBLE: {
+    case DOUBLE$1: {
       const value = reader.view.getFloat64(reader.offset, true);
       reader.offset += 8;
       return value
     }
-    case BINARY: {
+    case BINARY$1: {
       const stringLength = readVarInt(reader);
       const strBytes = new Uint8Array(reader.view.buffer, reader.view.byteOffset + reader.offset, stringLength);
       reader.offset += stringLength;
       return strBytes
     }
-    case LIST: {
+    case LIST$1: {
       const byte = reader.view.getUint8(reader.offset++);
       const elemType = byte & 0x0f;
       let listSize = byte >> 4;
       if (listSize === 15) {
         listSize = readVarInt(reader);
       }
-      const boolType = elemType === TRUE || elemType === FALSE;
+      const boolType = elemType === TRUE$1 || elemType === FALSE$1;
       const values = new Array(listSize);
       for (let i = 0; i < listSize; i++) {
-        values[i] = boolType ? readElement(reader, BYTE) === 1 : readElement(reader, elemType);
+        values[i] = boolType ? readElement(reader, BYTE$1) === 1 : readElement(reader, elemType);
       }
       return values
     }
-    case STRUCT:
+    case STRUCT$1:
       // main function handles struct parsing
       return deserializeTCompactProtocol(reader)
     default:
@@ -907,7 +907,7 @@
       scale: field.field_7,
       precision: field.field_8,
       field_id: field.field_9,
-      logical_type: logicalType(field.field_10),
+      logical_type: logicalType$1(field.field_10),
     }));
     // schema element per column index
     const columnSchema = schema.filter(e => e.type);
@@ -1012,7 +1012,7 @@
    * @param {any} logicalType
    * @returns {LogicalType | undefined}
    */
-  function logicalType(logicalType) {
+  function logicalType$1(logicalType) {
     if (logicalType?.field_1) return { type: 'STRING' }
     if (logicalType?.field_2) return { type: 'MAP' }
     if (logicalType?.field_3) return { type: 'LIST' }
@@ -1026,12 +1026,12 @@
     if (logicalType?.field_7) return {
       type: 'TIME',
       isAdjustedToUTC: logicalType.field_7.field_1,
-      unit: timeUnit(logicalType.field_7.field_2),
+      unit: timeUnit$1(logicalType.field_7.field_2),
     }
     if (logicalType?.field_8) return {
       type: 'TIMESTAMP',
       isAdjustedToUTC: logicalType.field_8.field_1,
-      unit: timeUnit(logicalType.field_8.field_2),
+      unit: timeUnit$1(logicalType.field_8.field_2),
     }
     if (logicalType?.field_10) return {
       type: 'INTEGER',
@@ -1063,7 +1063,7 @@
    * @param {any} unit
    * @returns {TimeUnit}
    */
-  function timeUnit(unit) {
+  function timeUnit$1(unit) {
     if (unit.field_1) return 'MILLIS'
     if (unit.field_2) return 'MICROS'
     if (unit.field_3) return 'NANOS'
@@ -2419,7 +2419,7 @@
    * @param {number} count
    * @param {Uint8Array[]} output
    */
-  function deltaLengthByteArray(reader, count, output) {
+  function deltaLengthByteArray$1(reader, count, output) {
     const lengths = new Int32Array(count);
     deltaBinaryUnpack(reader, count, lengths);
     for (let i = 0; i < count; i++) {
@@ -2433,7 +2433,7 @@
    * @param {number} count
    * @param {Uint8Array[]} output
    */
-  function deltaByteArray(reader, count, output) {
+  function deltaByteArray$1(reader, count, output) {
     const prefixData = new Int32Array(count);
     deltaBinaryUnpack(reader, count, prefixData);
     const suffixData = new Int32Array(count);
@@ -2979,7 +2979,7 @@
       deltaBinaryUnpack(reader, nValues, dataPage);
     } else if (daph.encoding === 'DELTA_LENGTH_BYTE_ARRAY') {
       dataPage = new Array(nValues);
-      deltaLengthByteArray(reader, nValues, dataPage);
+      deltaLengthByteArray$1(reader, nValues, dataPage);
     } else {
       throw new Error(`parquet unsupported encoding: ${daph.encoding}`)
     }
@@ -2995,10 +2995,10 @@
    */
   function readRepetitionLevels(reader, daph, schemaPath) {
     if (schemaPath.length > 1) {
-      const maxRepetitionLevel = getMaxRepetitionLevel(schemaPath);
+      const maxRepetitionLevel = getMaxRepetitionLevel$1(schemaPath);
       if (maxRepetitionLevel) {
         const values = new Array(daph.num_values);
-        readRleBitPackedHybrid(reader, bitWidth(maxRepetitionLevel), values);
+        readRleBitPackedHybrid(reader, bitWidth$1(maxRepetitionLevel), values);
         return values
       }
     }
@@ -3016,7 +3016,7 @@
     if (!maxDefinitionLevel) return { definitionLevels: [], numNulls: 0 }
 
     const definitionLevels = new Array(daph.num_values);
-    readRleBitPackedHybrid(reader, bitWidth(maxDefinitionLevel), definitionLevels);
+    readRleBitPackedHybrid(reader, bitWidth$1(maxDefinitionLevel), definitionLevels);
 
     // count nulls
     let numNulls = daph.num_values;
@@ -3112,10 +3112,10 @@
       deltaBinaryUnpack(pageReader, nValues, dataPage);
     } else if (daph2.encoding === 'DELTA_LENGTH_BYTE_ARRAY') {
       dataPage = new Array(nValues);
-      deltaLengthByteArray(pageReader, nValues, dataPage);
+      deltaLengthByteArray$1(pageReader, nValues, dataPage);
     } else if (daph2.encoding === 'DELTA_BYTE_ARRAY') {
       dataPage = new Array(nValues);
-      deltaByteArray(pageReader, nValues, dataPage);
+      deltaByteArray$1(pageReader, nValues, dataPage);
     } else if (daph2.encoding === 'BYTE_STREAM_SPLIT') {
       dataPage = byteStreamSplit(pageReader, nValues, type, element.type_length);
     } else {
@@ -3132,11 +3132,11 @@
    * @returns {any[]} repetition levels
    */
   function readRepetitionLevelsV2(reader, daph2, schemaPath) {
-    const maxRepetitionLevel = getMaxRepetitionLevel(schemaPath);
+    const maxRepetitionLevel = getMaxRepetitionLevel$1(schemaPath);
     if (!maxRepetitionLevel) return []
 
     const values = new Array(daph2.num_values);
-    readRleBitPackedHybrid(reader, bitWidth(maxRepetitionLevel), values, daph2.repetition_levels_byte_length);
+    readRleBitPackedHybrid(reader, bitWidth$1(maxRepetitionLevel), values, daph2.repetition_levels_byte_length);
     return values
   }
 
@@ -3151,7 +3151,7 @@
     if (maxDefinitionLevel) {
       // V2 we know the length
       const values = new Array(daph2.num_values);
-      readRleBitPackedHybrid(reader, bitWidth(maxDefinitionLevel), values, daph2.definition_levels_byte_length);
+      readRleBitPackedHybrid(reader, bitWidth$1(maxDefinitionLevel), values, daph2.definition_levels_byte_length);
       return values
     }
   }
@@ -3162,7 +3162,7 @@
    * @param {number} value
    * @returns {number}
    */
-  function bitWidth(value) {
+  function bitWidth$1(value) {
     return 32 - Math.clz32(value)
   }
 
@@ -3990,7 +3990,3106 @@
     toJson: toJson
   });
 
+  /**
+   * @import {Writer} from '../src/types.js'
+   */
+
+  /**
+   * Writes data to an auto-expanding ArrayBuffer.
+   *
+   * @param {number} [initalSize]
+   * @returns {Writer}
+   */
+  function ByteWriter(initalSize = 1024) {
+    this.buffer = new ArrayBuffer(initalSize);
+    this.view = new DataView(this.buffer);
+    this.offset = 0; // total bytes written
+    this.index = 0; // index in buffer (may be reset when flushing to file)
+    return this
+  }
+
+  /**
+   * @param {number} size
+   */
+  ByteWriter.prototype.ensure = function(size) {
+    // auto-expanding buffer
+    if (this.index + size > this.buffer.byteLength) {
+      const newSize = Math.max(this.buffer.byteLength * 2, this.index + size);
+      const newBuffer = new ArrayBuffer(newSize);
+      // TODO: save buffers until later and merge once?
+      new Uint8Array(newBuffer).set(new Uint8Array(this.buffer));
+      this.buffer = newBuffer;
+      this.view = new DataView(this.buffer);
+    }
+  };
+
+  ByteWriter.prototype.finish = function() {
+  };
+
+  ByteWriter.prototype.getBuffer = function() {
+    return this.buffer.slice(0, this.index)
+  };
+
+  ByteWriter.prototype.getBytes = function() {
+    return new Uint8Array(this.buffer, 0, this.index)
+  };
+
+  /**
+   * @param {number} value
+   */
+  ByteWriter.prototype.appendUint8 = function(value) {
+    this.ensure(this.index + 1);
+    this.view.setUint8(this.index, value);
+    this.offset++;
+    this.index++;
+  };
+
+  /**
+   * @param {number} value
+   */
+  ByteWriter.prototype.appendUint32 = function(value) {
+    this.ensure(this.index + 4);
+    this.view.setUint32(this.index, value, true);
+    this.offset += 4;
+    this.index += 4;
+  };
+
+  /**
+   * @param {number} value
+   */
+  ByteWriter.prototype.appendInt32 = function(value) {
+    this.ensure(this.index + 4);
+    this.view.setInt32(this.index, value, true);
+    this.offset += 4;
+    this.index += 4;
+  };
+
+  /**
+   * @param {bigint} value
+   */
+  ByteWriter.prototype.appendInt64 = function(value) {
+    this.ensure(this.index + 8);
+    this.view.setBigInt64(this.index, BigInt(value), true);
+    this.offset += 8;
+    this.index += 8;
+  };
+
+  /**
+   * @param {number} value
+   */
+  ByteWriter.prototype.appendFloat32 = function(value) {
+    this.ensure(this.index + 8);
+    this.view.setFloat32(this.index, value, true);
+    this.offset += 4;
+    this.index += 4;
+  };
+
+  /**
+   * @param {number} value
+   */
+  ByteWriter.prototype.appendFloat64 = function(value) {
+    this.ensure(this.index + 8);
+    this.view.setFloat64(this.index, value, true);
+    this.offset += 8;
+    this.index += 8;
+  };
+
+  /**
+   * @param {ArrayBuffer} value
+   */
+  ByteWriter.prototype.appendBuffer = function(value) {
+    this.appendBytes(new Uint8Array(value));
+  };
+
+  /**
+   * @param {Uint8Array} value
+   */
+  ByteWriter.prototype.appendBytes = function(value) {
+    this.ensure(this.index + value.length);
+    new Uint8Array(this.buffer, this.index, value.length).set(value);
+    this.offset += value.length;
+    this.index += value.length;
+  };
+
+  /**
+   * Convert a 32-bit signed integer to varint (1-5 bytes).
+   * Writes out groups of 7 bits at a time, setting high bit if more to come.
+   *
+   * @param {number} value
+   */
+  ByteWriter.prototype.appendVarInt = function(value) {
+    while (true) {
+      if ((value & ~0x7f) === 0) {
+        // fits in 7 bits
+        this.appendUint8(value);
+        return
+      } else {
+        // write 7 bits and set high bit
+        this.appendUint8(value & 0x7f | 0x80);
+        value >>>= 7;
+      }
+    }
+  };
+
+  /**
+   * Convert a bigint to varint (1-10 bytes for 64-bit range).
+   *
+   * @param {bigint} value
+   */
+  ByteWriter.prototype.appendVarBigInt = function(value) {
+    while (true) {
+      if ((value & ~0x7fn) === 0n) {
+        // fits in 7 bits
+        this.appendUint8(Number(value));
+        return
+      } else {
+        // write 7 bits and set high bit
+        this.appendUint8(Number(value & 0x7fn | 0x80n));
+        value >>= 7n;
+      }
+    }
+  };
+
+  /**
+   * Convert number to zigzag encoding and write as varint.
+   *
+   * @param {number | bigint} value
+   */
+  ByteWriter.prototype.appendZigZag = function(value) {
+    if (typeof value === 'number') {
+      this.appendVarInt(value << 1 ^ value >> 31);
+    } else {
+      this.appendVarBigInt(value << 1n ^ value >> 63n);
+    }
+  };
+
+  /**
+   * Delta Binary Packed encoding for parquet.
+   * Encodes integers as deltas with variable bit-width packing.
+   *
+   * @import {DecodedArray} from 'hyparquet'
+   * @import {Writer} from '../src/types.js'
+   */
+
+  const BLOCK_SIZE$1 = 128;
+  const MINIBLOCKS_PER_BLOCK = 4;
+  const VALUES_PER_MINIBLOCK = BLOCK_SIZE$1 / MINIBLOCKS_PER_BLOCK; // 32
+
+  /**
+   * Write values using delta binary packed encoding.
+   *
+   * @param {Writer} writer
+   * @param {DecodedArray} values
+   */
+  function deltaBinaryPack(writer, values) {
+    const count = values.length;
+    if (count === 0) {
+      // Write header with zero count
+      writer.appendVarInt(BLOCK_SIZE$1);
+      writer.appendVarInt(MINIBLOCKS_PER_BLOCK);
+      writer.appendVarInt(0);
+      writer.appendVarInt(0);
+      return
+    }
+    if (typeof values[0] !== 'number' && typeof values[0] !== 'bigint') {
+      throw new Error('deltaBinaryPack only supports number or bigint arrays')
+    }
+
+    // Write header
+    writer.appendVarInt(BLOCK_SIZE$1);
+    writer.appendVarInt(MINIBLOCKS_PER_BLOCK);
+    writer.appendVarInt(count);
+    writer.appendZigZag(values[0]);
+
+    // Process blocks
+    let index = 1;
+    while (index < count) {
+      const blockEnd = Math.min(index + BLOCK_SIZE$1, count);
+      const blockSize = blockEnd - index;
+
+      // Compute deltas for this block
+      const blockDeltas = new BigInt64Array(blockSize);
+      let minDelta = BigInt(values[index]) - BigInt(values[index - 1]);
+      blockDeltas[0] = minDelta;
+      for (let i = 1; i < blockSize; i++) {
+        const delta = BigInt(values[index + i]) - BigInt(values[index + i - 1]);
+        blockDeltas[i] = delta;
+        if (delta < minDelta) minDelta = delta;
+      }
+      writer.appendZigZag(minDelta);
+
+      // Calculate bit widths for each miniblock
+      const bitWidths = new Uint8Array(MINIBLOCKS_PER_BLOCK);
+      for (let mb = 0; mb < MINIBLOCKS_PER_BLOCK; mb++) {
+        const mbStart = mb * VALUES_PER_MINIBLOCK;
+        const mbEnd = Math.min(mbStart + VALUES_PER_MINIBLOCK, blockSize);
+
+        let maxAdjusted = 0n;
+        for (let i = mbStart; i < mbEnd; i++) {
+          const adjusted = blockDeltas[i] - minDelta;
+          if (adjusted > maxAdjusted) maxAdjusted = adjusted;
+        }
+        bitWidths[mb] = bitWidth(maxAdjusted);
+      }
+
+      // Write bit widths
+      writer.appendBytes(bitWidths);
+
+      // Write packed miniblocks
+      for (let mb = 0; mb < MINIBLOCKS_PER_BLOCK; mb++) {
+        const bitWidth = bitWidths[mb];
+        if (bitWidth === 0) continue // No data needed for zero bit width
+
+        const mbStart = mb * VALUES_PER_MINIBLOCK;
+        const mbEnd = Math.min(mbStart + VALUES_PER_MINIBLOCK, blockSize);
+
+        // Bit pack the adjusted deltas
+        let buffer = 0n;
+        let bitsUsed = 0;
+
+        for (let i = 0; i < VALUES_PER_MINIBLOCK; i++) {
+          const adjusted = mbStart + i < mbEnd ? blockDeltas[mbStart + i] - minDelta : 0n;
+          buffer |= adjusted << BigInt(bitsUsed);
+          bitsUsed += bitWidth;
+
+          // Flush complete bytes
+          while (bitsUsed >= 8) {
+            writer.appendUint8(Number(buffer & 0xffn));
+            buffer >>= 8n;
+            bitsUsed -= 8;
+          }
+        }
+        // assert(bitsUsed === 0) // because multiple of 8
+      }
+
+      index = blockEnd;
+    }
+  }
+
+  /**
+   * Write byte arrays using delta length encoding.
+   * Encodes lengths using delta binary packed, then writes raw bytes.
+   *
+   * @param {Writer} writer
+   * @param {DecodedArray} values
+   */
+  function deltaLengthByteArray(writer, values) {
+    // Extract lengths
+    const lengths = new Int32Array(values.length);
+    for (let i = 0; i < values.length; i++) {
+      const value = values[i];
+      if (!(value instanceof Uint8Array)) {
+        throw new Error('deltaLengthByteArray expects Uint8Array values')
+      }
+      lengths[i] = value.length;
+    }
+
+    // Write delta-packed lengths
+    deltaBinaryPack(writer, lengths);
+
+    // Write raw byte data
+    for (const value of values) {
+      writer.appendBytes(value);
+    }
+  }
+
+  /**
+   * Write byte arrays using delta encoding with prefix compression.
+   * Stores common prefixes with previous value to improve compression.
+   *
+   * @param {Writer} writer
+   * @param {DecodedArray} values
+   */
+  function deltaByteArray(writer, values) {
+    if (values.length === 0) {
+      deltaBinaryPack(writer, []);
+      deltaBinaryPack(writer, []);
+      return
+    }
+
+    // Calculate prefix lengths and suffixes
+    const prefixLengths = new Int32Array(values.length);
+    const suffixLengths = new Int32Array(values.length);
+    /** @type {Uint8Array[]} */
+    const suffixes = new Array(values.length);
+
+    // First value has no prefix
+    const value = values[0];
+    if (!(value instanceof Uint8Array)) {
+      throw new Error('deltaByteArray expects Uint8Array values')
+    }
+    prefixLengths[0] = 0;
+    suffixLengths[0] = values[0].length;
+    suffixes[0] = values[0];
+
+    for (let i = 1; i < values.length; i++) {
+      const prev = values[i - 1];
+      const curr = values[i];
+      if (!(curr instanceof Uint8Array)) {
+        throw new Error('deltaByteArray expects Uint8Array values')
+      }
+
+      // Find common prefix length
+      let prefixLen = 0;
+      const maxPrefix = Math.min(prev.length, curr.length);
+      while (prefixLen < maxPrefix && prev[prefixLen] === curr[prefixLen]) {
+        prefixLen++;
+      }
+
+      prefixLengths[i] = prefixLen;
+      suffixLengths[i] = curr.length - prefixLen;
+      suffixes[i] = curr.subarray(prefixLen);
+    }
+
+    // Write delta-packed prefix lengths
+    deltaBinaryPack(writer, prefixLengths);
+
+    // Write delta-packed suffix lengths
+    deltaBinaryPack(writer, suffixLengths);
+
+    // Write suffix bytes
+    for (const suffix of suffixes) {
+      writer.appendBytes(suffix);
+    }
+  }
+
+  /**
+   * Minimum bits needed to store value.
+   *
+   * @param {bigint} value
+   * @returns {number}
+   */
+  function bitWidth(value) {
+    if (value === 0n) return 0
+    let bits = 0;
+    while (value > 0n) {
+      bits++;
+      value >>= 1n;
+    }
+    return bits
+  }
+
+  /**
+   * @import {DecodedArray} from 'hyparquet'
+   * @import {Writer} from '../src/types.js'
+   */
+
+  /**
+   * @param {Writer} writer
+   * @param {DecodedArray} values
+   * @param {number} bitWidth
+   * @returns {number} bytes written
+   */
+  function writeRleBitPackedHybrid(writer, values, bitWidth) {
+    const offsetStart = writer.offset;
+    let pendingBitPackedGroups = 0;
+    let bitPackedStart = 0;
+    let i = 0;
+
+    while (i < values.length) {
+      // Try to write RLE runs of 8+ values
+      let rleCount = 1;
+      const firstVal = values[i];
+      while (i + rleCount < values.length && values[i + rleCount] === firstVal) {
+        rleCount++;
+      }
+      if (rleCount >= 8) {
+        // Flush pending bit-packed groups
+        if (pendingBitPackedGroups) {
+          writeBitPackedGroups(writer, values, bitPackedStart, pendingBitPackedGroups, bitWidth);
+          pendingBitPackedGroups = 0;
+        }
+
+        // Write RLE run
+        writeRleRun(writer, firstVal, rleCount, bitWidth);
+        i += rleCount;
+      } else {
+        // Add to pending bit-packed groups
+        if (pendingBitPackedGroups === 0) {
+          bitPackedStart = i;
+        }
+        pendingBitPackedGroups++;
+        i += 8;
+      }
+    }
+
+    // Flush remaining
+    if (pendingBitPackedGroups) {
+      writeBitPackedGroups(writer, values, bitPackedStart, pendingBitPackedGroups, bitWidth);
+    }
+
+    return writer.offset - offsetStart
+  }
+
+  /**
+   * Write a single RLE run: a repeated value and its count.
+   *
+   * @param {Writer} writer
+   * @param {number} value
+   * @param {number} count
+   * @param {number} bitWidth
+   */
+  function writeRleRun(writer, value, count, bitWidth) {
+    writer.appendVarInt(count << 1); // rle header
+    const width = bitWidth + 7 >> 3;
+    for (let j = 0; j < width; j++) {
+      writer.appendUint8(value >> (j << 3) & 0xff);
+    }
+  }
+
+  /**
+   * Write consecutive bit-packed groups of 8 values each.
+   *
+   * @param {Writer} writer
+   * @param {DecodedArray} values
+   * @param {number} start index of first value
+   * @param {number} numGroups number of 8-value groups
+   * @param {number} bitWidth
+   */
+  function writeBitPackedGroups(writer, values, start, numGroups, bitWidth) {
+    writer.appendVarInt(numGroups << 1 | 1); // bp header
+
+    if (bitWidth === 0) return
+
+    const mask = (1 << bitWidth) - 1;
+    let buffer = 0;
+    let bitsUsed = 0;
+    const totalValues = numGroups * 8;
+
+    for (let i = 0; i < totalValues; i++) {
+      const idx = start + i;
+      const v = idx < values.length ? values[idx] & mask : 0;
+      buffer |= v << bitsUsed;
+      bitsUsed += bitWidth;
+
+      // Flush full bytes
+      while (bitsUsed >= 8) {
+        writer.appendUint8(buffer & 0xff);
+        buffer >>>= 8;
+        bitsUsed -= 8;
+      }
+    }
+
+    // Flush any remaining bits
+    if (bitsUsed > 0) {
+      writer.appendUint8(buffer & 0xff);
+    }
+  }
+
+  /**
+   * @import {DecodedArray, ParquetType} from 'hyparquet'
+   * @import {Writer} from '../src/types.js'
+   * @param {Writer} writer
+   * @param {DecodedArray} values
+   * @param {ParquetType} type
+   * @param {number | undefined} fixedLength
+   */
+  function writePlain(writer, values, type, fixedLength) {
+    if (type === 'BOOLEAN') {
+      writePlainBoolean(writer, values);
+    } else if (type === 'INT32') {
+      writePlainInt32(writer, values);
+    } else if (type === 'INT64') {
+      writePlainInt64(writer, values);
+    } else if (type === 'FLOAT') {
+      writePlainFloat(writer, values);
+    } else if (type === 'DOUBLE') {
+      writePlainDouble(writer, values);
+    } else if (type === 'BYTE_ARRAY') {
+      writePlainByteArray(writer, values);
+    } else if (type === 'FIXED_LEN_BYTE_ARRAY') {
+      if (!fixedLength) throw new Error('parquet FIXED_LEN_BYTE_ARRAY expected type_length')
+      writePlainByteArrayFixed(writer, values, fixedLength);
+    } else {
+      throw new Error(`parquet unsupported type: ${type}`)
+    }
+  }
+
+  /**
+   * @param {Writer} writer
+   * @param {DecodedArray} values
+   */
+  function writePlainBoolean(writer, values) {
+    let currentByte = 0;
+
+    for (let i = 0; i < values.length; i++) {
+      const value = values[i];
+      if (typeof value !== 'boolean') throw new Error('parquet expected boolean value, got ' + value)
+      const bitOffset = i % 8;
+
+      if (value) {
+        currentByte |= 1 << bitOffset;
+      }
+
+      // once we've packed 8 bits or are at a multiple of 8, we write out the byte
+      if (bitOffset === 7) {
+        writer.appendUint8(currentByte);
+        currentByte = 0;
+      }
+    }
+
+    // if the array length is not a multiple of 8, write the leftover bits
+    if (values.length % 8) {
+      writer.appendUint8(currentByte);
+    }
+  }
+
+  /**
+   * @param {Writer} writer
+   * @param {DecodedArray} values
+   */
+  function writePlainInt32(writer, values) {
+    for (const value of values) {
+      if (!Number.isSafeInteger(value)) throw new Error('parquet expected integer value, got ' + value)
+      if (value < -2147483648 || value > 2147483647) throw new Error('parquet expected int32 value, got ' + value)
+      writer.appendInt32(value);
+    }
+  }
+
+  /**
+   * @param {Writer} writer
+   * @param {DecodedArray} values
+   */
+  function writePlainInt64(writer, values) {
+    for (const value of values) {
+      if (typeof value !== 'bigint') throw new Error('parquet expected bigint value, got ' + value)
+      writer.appendInt64(value);
+    }
+  }
+
+  /**
+   * @param {Writer} writer
+   * @param {DecodedArray} values
+   */
+  function writePlainFloat(writer, values) {
+    for (const value of values) {
+      if (typeof value !== 'number') throw new Error('parquet expected number value, got ' + value)
+      writer.appendFloat32(value);
+    }
+  }
+
+  /**
+   * @param {Writer} writer
+   * @param {DecodedArray} values
+   */
+  function writePlainDouble(writer, values) {
+    for (const value of values) {
+      if (typeof value !== 'number') throw new Error('parquet expected number value, got ' + value)
+      writer.appendFloat64(value);
+    }
+  }
+
+  /**
+   * @param {Writer} writer
+   * @param {DecodedArray} values
+   */
+  function writePlainByteArray(writer, values) {
+    for (const value of values) {
+      let bytes = value;
+      if (typeof bytes === 'string') {
+        // convert string to Uint8Array
+        bytes = new TextEncoder().encode(value);
+      }
+      if (!(bytes instanceof Uint8Array)) {
+        throw new Error('parquet expected Uint8Array value, got ' + typeof bytes)
+      }
+      writer.appendUint32(bytes.length);
+      writer.appendBytes(bytes);
+    }
+  }
+
+  /**
+   * @param {Writer} writer
+   * @param {DecodedArray} values
+   * @param {number} fixedLength
+   */
+  function writePlainByteArrayFixed(writer, values, fixedLength) {
+    for (const value of values) {
+      if (!(value instanceof Uint8Array)) throw new Error('parquet expected Uint8Array value, got ' + typeof value)
+      if (value.length !== fixedLength) throw new Error(`parquet expected Uint8Array of length ${fixedLength}`)
+      writer.appendBytes(value);
+    }
+  }
+
+  /**
+   * @import {ConvertedType, DecodedArray, FieldRepetitionType, ParquetType, SchemaElement} from 'hyparquet'
+   * @import {BasicType, ColumnSource} from '../src/types.js'
+   */
+
+  /**
+   * Infer a schema from column data.
+   * Accepts optional schemaOverrides to override the type of columns by name.
+   *
+   * @param {object} options
+   * @param {ColumnSource[]} options.columnData
+   * @param {Record<string, SchemaElement>} [options.schemaOverrides]
+   * @returns {SchemaElement[]}
+   */
+  function schemaFromColumnData({ columnData, schemaOverrides }) {
+    /** @type {SchemaElement[]} */
+    const schema = [{
+      name: 'root',
+      num_children: columnData.length,
+    }];
+
+    for (const { name, data, type, nullable } of columnData) {
+      if (schemaOverrides?.[name]) {
+        // use schema override
+        const override = schemaOverrides[name];
+        if (type || nullable !== undefined) {
+          throw new Error(`cannot provide both type and schema override for column ${name}`)
+        }
+        if (override.name !== name) {
+          throw new Error(`schema override for column ${name} must have matching name, got ${override.name}`)
+        }
+        if (override.type === 'FIXED_LEN_BYTE_ARRAY' && !override.type_length) {
+          throw new Error('schema override for FIXED_LEN_BYTE_ARRAY must include type_length')
+        }
+        // TODO: support nested schema overrides
+        if (override.num_children) {
+          throw new Error('schema override does not support nested types')
+        }
+        schema.push(override);
+      } else if (type) {
+        // use provided type
+        schema.push(basicTypeToSchemaElement(name, type, nullable));
+      } else {
+        // auto-detect type from first 1000 values
+        schema.push(autoSchemaElement(name, data.slice(0, 1000)));
+      }
+    }
+
+    return schema
+  }
+
+  /**
+   * @param {string} name
+   * @param {BasicType} type
+   * @param {boolean} [nullable]
+   * @returns {SchemaElement}
+   */
+  function basicTypeToSchemaElement(name, type, nullable) {
+    const repetition_type = nullable === false ? 'REQUIRED' : 'OPTIONAL';
+    if (type === 'STRING') {
+      return { name, type: 'BYTE_ARRAY', converted_type: 'UTF8', repetition_type }
+    }
+    if (type === 'JSON') {
+      return { name, type: 'BYTE_ARRAY', converted_type: 'JSON', repetition_type }
+    }
+    if (type === 'TIMESTAMP') {
+      return { name, type: 'INT64', converted_type: 'TIMESTAMP_MILLIS', repetition_type }
+    }
+    if (type === 'UUID') {
+      return { name, type: 'FIXED_LEN_BYTE_ARRAY', type_length: 16, logical_type: { type: 'UUID' }, repetition_type }
+    }
+    if (type === 'FLOAT16') {
+      return { name, type: 'FIXED_LEN_BYTE_ARRAY', type_length: 2, logical_type: { type: 'FLOAT16' }, repetition_type }
+    }
+    if (type === 'GEOMETRY') {
+      return { name, type: 'BYTE_ARRAY', logical_type: { type: 'GEOMETRY' }, repetition_type }
+    }
+    if (type === 'GEOGRAPHY') {
+      return { name, type: 'BYTE_ARRAY', logical_type: { type: 'GEOGRAPHY' }, repetition_type }
+    }
+    return { name, type, repetition_type }
+  }
+
+  /**
+   * Automatically determine a SchemaElement from an array of values.
+   *
+   * @param {string} name the column name
+   * @param {DecodedArray} values the column values
+   * @returns {SchemaElement}
+   */
+  function autoSchemaElement(name, values) {
+    /** @type {ParquetType | undefined} */
+    let type;
+    /** @type {FieldRepetitionType} */
+    let repetition_type = 'REQUIRED';
+    /** @type {ConvertedType | undefined} */
+    let converted_type;
+
+    if (values instanceof Int32Array) return { name, type: 'INT32', repetition_type }
+    if (values instanceof BigInt64Array) return { name, type: 'INT64', repetition_type }
+    if (values instanceof Float32Array) return { name, type: 'FLOAT', repetition_type }
+    if (values instanceof Float64Array) return { name, type: 'DOUBLE', repetition_type }
+
+    for (const value of values) {
+      if (value === null || value === undefined) {
+        repetition_type = 'OPTIONAL';
+      } else {
+        // value is defined, infer type
+        /** @type {ParquetType} */
+        let valueType;
+        /** @type {ConvertedType | undefined} */
+        let valueConvertedType;
+        if (typeof value === 'boolean') valueType = 'BOOLEAN';
+        else if (typeof value === 'bigint') valueType = 'INT64';
+        else if (Number.isInteger(value)) valueType = 'INT32';
+        else if (typeof value === 'number') valueType = 'DOUBLE';
+        else if (value instanceof Uint8Array) valueType = 'BYTE_ARRAY';
+        else if (typeof value === 'string') {
+          valueType = 'BYTE_ARRAY';
+          valueConvertedType = 'UTF8';
+        }
+        else if (value instanceof Date) {
+          valueType = 'INT64';
+          valueConvertedType = 'TIMESTAMP_MILLIS';
+        }
+        else if (typeof value === 'object') {
+          // use json (TODO: native list and object types)
+          valueType = 'BYTE_ARRAY';
+          valueConvertedType = 'JSON';
+        }
+        else throw new Error(`cannot determine parquet type for: ${value}`)
+
+        // expand type if necessary
+        if (type === undefined) {
+          type = valueType;
+          converted_type = valueConvertedType;
+        } else if (type === 'INT32' && valueType === 'DOUBLE') {
+          type = 'DOUBLE';
+        } else if (type === 'DOUBLE' && valueType === 'INT32') {
+          valueType = 'DOUBLE';
+        } else if (type !== valueType || converted_type !== valueConvertedType) {
+          throw new Error(`parquet cannot write mixed types: ${converted_type ?? type} and ${valueConvertedType ?? valueType}`)
+        }
+      }
+    }
+    if (!type) {
+      // fallback to nullable BYTE_ARRAY
+      // TODO: logical_type: 'NULL'
+      type = 'BYTE_ARRAY';
+      repetition_type = 'OPTIONAL';
+    }
+    return { name, type, repetition_type, converted_type }
+  }
+
+  /**
+   * Get the max repetition level for a given schema path.
+   *
+   * @param {SchemaElement[]} schemaPath
+   * @returns {number} max repetition level
+   */
+  function getMaxRepetitionLevel(schemaPath) {
+    let maxLevel = 0;
+    for (const element of schemaPath) {
+      if (element.repetition_type === 'REPEATED') {
+        maxLevel++;
+      }
+    }
+    return maxLevel
+  }
+
+  /**
+   * Write values using BYTE_STREAM_SPLIT encoding.
+   * This encoding writes all first bytes of values, then all second bytes, etc.
+   * Can improve compression for floating-point and fixed-width numeric data.
+   *
+   * @import {DecodedArray, ParquetType} from 'hyparquet'
+   * @import {Writer} from '../src/types.js'
+   * @param {Writer} writer
+   * @param {DecodedArray} values
+   * @param {ParquetType} type
+   * @param {number | undefined} typeLength
+   */
+  function writeByteStreamSplit(writer, values, type, typeLength) {
+    const count = values.length;
+
+    // Get bytes from values based on type
+    /** @type {Uint8Array} */
+    let bytes;
+    /** @type {number} */
+    let width;
+    if (type === 'FLOAT') {
+      const typed = values instanceof Float32Array ? values : new Float32Array(numberArray(values));
+      bytes = new Uint8Array(typed.buffer, typed.byteOffset, typed.byteLength);
+      width = 4;
+    } else if (type === 'DOUBLE') {
+      const typed = values instanceof Float64Array ? values : new Float64Array(numberArray(values));
+      bytes = new Uint8Array(typed.buffer, typed.byteOffset, typed.byteLength);
+      width = 8;
+    } else if (type === 'INT32') {
+      const typed = values instanceof Int32Array ? values : new Int32Array(numberArray(values));
+      bytes = new Uint8Array(typed.buffer, typed.byteOffset, typed.byteLength);
+      width = 4;
+    } else if (type === 'INT64') {
+      const typed = bigIntArray(values);
+      bytes = new Uint8Array(typed.buffer, typed.byteOffset, typed.byteLength);
+      width = 8;
+    } else if (type === 'FIXED_LEN_BYTE_ARRAY') {
+      if (!typeLength) throw new Error('parquet byte_stream_split missing type_length')
+      width = typeLength;
+      bytes = new Uint8Array(count * width);
+      for (let i = 0; i < count; i++) {
+        bytes.set(values[i], i * width);
+      }
+    } else {
+      throw new Error(`parquet byte_stream_split unsupported type: ${type}`)
+    }
+
+    // Write bytes in column format (all byte 0 from all values, then byte 1, etc.)
+    for (let b = 0; b < width; b++) {
+      for (let i = 0; i < count; i++) {
+        writer.appendUint8(bytes[i * width + b]);
+      }
+    }
+  }
+
+  /**
+   * @param {DecodedArray} values
+   * @returns {number[]}
+   */
+  function numberArray(values) {
+    if (Array.isArray(values) && values.every(v => typeof v === 'number')) {
+      return values
+    }
+    throw new Error('Expected number array for BYTE_STREAM_SPLIT encoding')
+  }
+
+  /**
+   * @param {DecodedArray} values
+   * @returns {BigInt64Array}
+   */
+  function bigIntArray(values) {
+    if (values instanceof BigInt64Array) return values
+    if (Array.isArray(values) && values.every(v => typeof v === 'bigint')) {
+      return new BigInt64Array(values)
+    }
+    throw new Error('Expected bigint array for BYTE_STREAM_SPLIT encoding')
+  }
+
+  /**
+   * @import {ThriftType} from 'hyparquet/src/types.js'
+   * @import {Writer} from '../src/types.js'
+   */
+
+  // TCompactProtocol types
+  const STOP = 0;
+  const TRUE = 1;
+  const FALSE = 2;
+  const BYTE = 3;
+  const I32 = 5;
+  const I64 = 6;
+  const DOUBLE = 7;
+  const BINARY = 8;
+  const LIST = 9;
+  const STRUCT = 12;
+
+  /**
+   * Serialize a JS object in TCompactProtocol format.
+   *
+   * Expects keys named like "field_1", "field_2", etc. in ascending order.
+   *
+   * @param {Writer} writer
+   * @param {{ [key: `field_${number}`]: any }} data
+   */
+  function serializeTCompactProtocol(writer, data) {
+    writeElement(writer, STRUCT, data);
+  }
+
+  /**
+   * Write a single value of a given compact type.
+   *
+   * @param {Writer} writer
+   * @param {number} type
+   * @param {ThriftType} value
+   */
+  function writeElement(writer, type, value) {
+    // true/false is stored in the type
+    if (type === TRUE) return
+    if (type === FALSE) return
+    if (type === BYTE && typeof value === 'number') {
+      writer.appendUint8(value);
+    } else if (type === I32 && typeof value === 'number') {
+      writer.appendZigZag(value);
+    } else if (type === I64 && typeof value === 'bigint') {
+      writer.appendZigZag(value);
+    } else if (type === DOUBLE && typeof value === 'number') {
+      writer.appendFloat64(value);
+    } else if (type === BINARY && typeof value === 'string') {
+      // store length as a varint, then raw bytes
+      const bytes = new TextEncoder().encode(value);
+      writer.appendVarInt(bytes.length);
+      writer.appendBytes(bytes);
+    } else if (type === BINARY && value instanceof Uint8Array) {
+      // store length as a varint, then raw bytes
+      writer.appendVarInt(value.byteLength);
+      writer.appendBytes(value);
+    } else if (type === LIST && Array.isArray(value)) {
+      // Guess the element type from the first element
+      const elemType = getCompactTypeForList(value);
+
+      // Header: size << 4 | elementType
+      if (value.length > 14) {
+        writer.appendUint8(15 << 4 | elemType);
+        writer.appendVarInt(value.length);
+      } else {
+        writer.appendUint8(value.length << 4 | elemType);
+      }
+
+      if (elemType === FALSE) {
+        // Special case for boolean list
+        for (const v of value) {
+          writer.appendUint8(v ? 1 : 0);
+        }
+      } else {
+        for (const v of value) {
+          writeElement(writer, elemType, v);
+        }
+      }
+    } else if (type === STRUCT && typeof value === 'object') {
+      // write struct fields
+      let lastFid = 0;
+      for (const [k, v] of Object.entries(value)) {
+        if (v === undefined) continue
+
+        const fid = parseInt(k.replace(/^field_/, ''), 10);
+        if (Number.isNaN(fid)) {
+          throw new Error(`thrift invalid field name: ${k}. Expected "field_###"`)
+        }
+        const t = getCompactTypeForValue(v);
+        const delta = fid - lastFid;
+        if (delta <= 0) {
+          throw new Error(`thrift non-monotonic field id: fid=${fid}, lastFid=${lastFid}`)
+        }
+        if (delta > 15) {
+          writer.appendUint8(t);
+          writer.appendZigZag(fid);
+        } else {
+          writer.appendUint8(delta << 4 | t);
+        }
+        writeElement(writer, t, v);
+        lastFid = fid;
+      }
+      // end struct
+      writer.appendUint8(STOP);
+    } else {
+      throw new Error(`thrift invalid type ${type} for value ${value}`)
+    }
+  }
+
+  /**
+   * Infer type from JS value
+   *
+   * @param {any} value
+   * @returns {number} CompactType
+   */
+  function getCompactTypeForValue(value) {
+    if (value === true) return TRUE
+    if (value === false) return FALSE
+    if (Number.isInteger(value)) return I32
+    if (typeof value === 'number') return DOUBLE
+    if (typeof value === 'bigint') return I64
+    if (typeof value === 'string') return BINARY
+    if (value instanceof Uint8Array) return BINARY
+    if (Array.isArray(value)) return LIST
+    if (value && typeof value === 'object') return STRUCT
+    throw new Error(`Cannot determine thrift compact type for: ${value}`)
+  }
+
+  /**
+   * Infer type for list elements, expand types as needed
+   *
+   * @param {any[]} value
+   * @returns {number} CompactType
+   */
+  function getCompactTypeForList(value) {
+    let elemType = 0;
+    for (const v of value) {
+      let t = getCompactTypeForValue(v);
+      if (t === TRUE) t = FALSE; // booleans map to FALSE
+      if (!elemType) elemType = t; // first element
+      if (elemType === DOUBLE && t === I32) t = DOUBLE; // expand int to float
+      if (elemType === I32 && t === DOUBLE) elemType = DOUBLE; // expand int to float
+      if (t !== elemType) {
+        throw new Error(`thrift invalid type for list element: ${v} (expected type ${elemType})`)
+      }
+    }
+    return elemType ?? BYTE // BYTE for empty list
+  }
+
+  /**
+   * @param {Object} options
+   * @param {Writer} options.writer
+   * @param {ColumnEncoder} options.column
+   * @param {Encoding} options.encoding
+   * @param {PageData} options.pageData
+   */
+  function writeDataPageV2({ writer, column, encoding, pageData }) {
+    const { columnName, element, codec, compressors } = column;
+    const { type, type_length, repetition_type } = element;
+
+    if (!type) throw new Error(`column ${columnName} cannot determine type`)
+    if (repetition_type === 'REPEATED') throw new Error(`column ${columnName} repeated types not supported`)
+
+    // write levels to temp buffer
+    const levelWriter = new ByteWriter();
+    const {
+      definition_levels_byte_length,
+      repetition_levels_byte_length,
+      num_nulls,
+      num_values,
+      num_rows,
+    } = writeLevels(levelWriter, column, pageData);
+
+    // TODO: skip nulls while writing instead of filtering
+    const nonnull = num_nulls ? pageData.values.filter(v => v !== null && v !== undefined) : pageData.values;
+
+    // write page data to temp buffer
+    const page = new ByteWriter();
+    if (encoding === 'PLAIN') {
+      writePlain(page, nonnull, type, type_length);
+    } else if (encoding === 'RLE') {
+      if (type !== 'BOOLEAN') throw new Error('RLE encoding only supported for BOOLEAN type')
+      const rleData = new ByteWriter();
+      writeRleBitPackedHybrid(rleData, nonnull, 1);
+      page.appendUint32(rleData.offset); // prepend byte length
+      page.appendBytes(rleData.getBytes());
+    } else if (encoding === 'PLAIN_DICTIONARY' || encoding === 'RLE_DICTIONARY') {
+      // find max bitwidth
+      let maxValue = 0;
+      for (const v of nonnull) if (v > maxValue) maxValue = v;
+      const bitWidth = Math.ceil(Math.log2(maxValue + 1));
+      page.appendUint8(bitWidth); // prepend bitWidth
+      writeRleBitPackedHybrid(page, nonnull, bitWidth);
+    } else if (encoding === 'DELTA_BINARY_PACKED') {
+      if (type !== 'INT32' && type !== 'INT64') {
+        throw new Error('DELTA_BINARY_PACKED encoding only supported for INT32 and INT64 types')
+      }
+      deltaBinaryPack(page, nonnull);
+    } else if (encoding === 'DELTA_LENGTH_BYTE_ARRAY') {
+      if (type !== 'BYTE_ARRAY') {
+        throw new Error('DELTA_LENGTH_BYTE_ARRAY encoding only supported for BYTE_ARRAY type')
+      }
+      deltaLengthByteArray(page, nonnull);
+    } else if (encoding === 'DELTA_BYTE_ARRAY') {
+      if (type !== 'BYTE_ARRAY') {
+        throw new Error('DELTA_BYTE_ARRAY encoding only supported for BYTE_ARRAY type')
+      }
+      deltaByteArray(page, nonnull);
+    } else if (encoding === 'BYTE_STREAM_SPLIT') {
+      writeByteStreamSplit(page, nonnull, type, type_length);
+    } else {
+      throw new Error(`parquet unsupported encoding: ${encoding}`)
+    }
+
+    // compress page data
+    const pageBytes = page.getBytes();
+    const compressedBytes = compressors[codec]?.(pageBytes) ?? pageBytes;
+
+    // write page header
+    writePageHeader(writer, {
+      type: 'DATA_PAGE_V2',
+      uncompressed_page_size: levelWriter.offset + page.offset,
+      compressed_page_size: levelWriter.offset + compressedBytes.length,
+      data_page_header_v2: {
+        num_values,
+        num_nulls,
+        num_rows,
+        encoding,
+        definition_levels_byte_length,
+        repetition_levels_byte_length,
+        is_compressed: !!codec,
+        // is there benefit to page statistics here?
+      },
+    });
+
+    // write levels
+    writer.appendBytes(levelWriter.getBytes());
+
+    // write page data
+    writer.appendBytes(compressedBytes);
+  }
+
+  /**
+   * @param {Writer} writer
+   * @param {PageHeader} header
+   */
+  function writePageHeader(writer, header) {
+    /** @type {ThriftObject} */
+    const compact = {
+      field_1: PageTypes.indexOf(header.type),
+      field_2: header.uncompressed_page_size,
+      field_3: header.compressed_page_size,
+      field_4: header.crc,
+      field_5: header.data_page_header && {
+        field_1: header.data_page_header.num_values,
+        field_2: Encodings.indexOf(header.data_page_header.encoding),
+        field_3: Encodings.indexOf(header.data_page_header.definition_level_encoding),
+        field_4: Encodings.indexOf(header.data_page_header.repetition_level_encoding),
+        // field_5: header.data_page_header.statistics,
+      },
+      field_7: header.dictionary_page_header && {
+        field_1: header.dictionary_page_header.num_values,
+        field_2: Encodings.indexOf(header.dictionary_page_header.encoding),
+      },
+      field_8: header.data_page_header_v2 && {
+        field_1: header.data_page_header_v2.num_values,
+        field_2: header.data_page_header_v2.num_nulls,
+        field_3: header.data_page_header_v2.num_rows,
+        field_4: Encodings.indexOf(header.data_page_header_v2.encoding),
+        field_5: header.data_page_header_v2.definition_levels_byte_length,
+        field_6: header.data_page_header_v2.repetition_levels_byte_length,
+        field_7: header.data_page_header_v2.is_compressed ? undefined : false, // default true
+      },
+    };
+    serializeTCompactProtocol(writer, compact);
+  }
+
+  /**
+   * @import {DecodedArray, Encoding, PageHeader} from 'hyparquet'
+   * @import {ColumnEncoder, PageData, ThriftObject, Writer} from '../src/types.js'
+   * @param {Writer} writer
+   * @param {ColumnEncoder} column
+   * @param {PageData} dataPage
+   * @returns {{
+   *   definition_levels_byte_length: number
+   *   repetition_levels_byte_length: number
+   *   num_values: number
+   *   num_nulls: number
+   *   num_rows: number
+   * }}
+   */
+  function writeLevels(writer, column, dataPage) {
+    const { schemaPath } = column;
+    const { values, definitionLevels, repetitionLevels, maxDefinitionLevel } = dataPage;
+    const num_values = definitionLevels.length || values.length;
+    let num_nulls = 0;
+    let num_rows = 0;
+    if (repetitionLevels.length) {
+      for (let i = 0; i < repetitionLevels.length; i++) {
+        if (repetitionLevels[i] === 0) num_rows++;
+      }
+    } else {
+      num_rows = values.length;
+    }
+    if (definitionLevels.length) {
+      for (let i = 0; i < definitionLevels.length; i++) {
+        if (definitionLevels[i] < maxDefinitionLevel) num_nulls++;
+      }
+    }
+
+    const maxRepetitionLevel = getMaxRepetitionLevel(schemaPath);
+    let repetition_levels_byte_length = 0;
+    if (maxRepetitionLevel) {
+      const bitWidth = Math.ceil(Math.log2(maxRepetitionLevel + 1));
+      repetition_levels_byte_length = writeRleBitPackedHybrid(writer, repetitionLevels, bitWidth);
+    }
+
+    let definition_levels_byte_length = 0;
+    if (maxDefinitionLevel) {
+      const bitWidth = Math.ceil(Math.log2(maxDefinitionLevel + 1));
+      definition_levels_byte_length = writeRleBitPackedHybrid(writer, definitionLevels, bitWidth);
+    }
+    return { definition_levels_byte_length, repetition_levels_byte_length, num_values, num_nulls, num_rows }
+  }
+
+  /**
+   * Compute geospatial statistics for GEOMETRY and GEOGRAPHY columns.
+   *
+   * @import {BoundingBox, DecodedArray, Geometry, GeospatialStatistics} from 'hyparquet/src/types.js'
+   * @param {DecodedArray} values
+   * @returns {GeospatialStatistics | undefined}
+   */
+  function geospatialStatistics(values) {
+    /** @type {Set<number>} */
+    const typeCodes = new Set();
+    /** @type {Partial<BoundingBox> | undefined} */
+    let partial;
+
+    for (const value of values) {
+      if (value === null || value === undefined) continue
+      if (typeof value !== 'object') {
+        throw new Error('geospatial column expects GeoJSON geometries')
+      }
+      partial = extendBoundsFromGeometry(partial, value);
+      typeCodes.add(geometryTypeCodeWithDimension(value));
+    }
+
+    // If either the X or Y dimension has no finite values, the bounding box itself is not produced
+    /** @type {BoundingBox | undefined} */
+    let bbox;
+    const { xmin, ymin, xmax, ymax } = partial ?? {};
+    if (xmin !== undefined && ymin !== undefined && xmax !== undefined && ymax !== undefined) {
+      bbox = { ...partial, xmin, ymin, xmax, ymax };
+    }
+
+    if (typeCodes.size || bbox) {
+      return {
+        bbox,
+        // Geospatial type codes of all instances, or an empty list if not known
+        geospatial_types: typeCodes.size ? Array.from(typeCodes).sort((a, b) => a - b) : [],
+      }
+    }
+  }
+
+  /**
+   * @param {Partial<BoundingBox> | undefined} bbox
+   * @param {Geometry} geometry
+   * @returns {Partial<BoundingBox> | undefined}
+   */
+  function extendBoundsFromGeometry(bbox, geometry) {
+    if (geometry.type === 'GeometryCollection') {
+      for (const child of geometry.geometries || []) {
+        bbox = extendBoundsFromGeometry(bbox, child);
+      }
+      return bbox
+    }
+    return extendBoundsFromCoordinates(bbox, geometry.coordinates)
+  }
+
+  /**
+   * Recurse through nested coordinate arrays. At a leaf position [x,y,(z),(m)],
+   * each dimension is filtered independently — a NaN/non-finite value in one
+   * dimension does not skip the others.
+   * @param {Partial<BoundingBox> | undefined} bbox
+   * @param {any[]} coordinates
+   * @returns {Partial<BoundingBox> | undefined}
+   */
+  function extendBoundsFromCoordinates(bbox, coordinates) {
+    if (typeof coordinates[0] === 'number') {
+      // Expand bbox
+      bbox = updateAxis(bbox, 'xmin', 'xmax', coordinates[0]);
+      bbox = updateAxis(bbox, 'ymin', 'ymax', coordinates[1]);
+      if (coordinates.length > 2) bbox = updateAxis(bbox, 'zmin', 'zmax', coordinates[2]);
+      if (coordinates.length > 3) bbox = updateAxis(bbox, 'mmin', 'mmax', coordinates[3]);
+      return bbox
+    }
+    for (const child of coordinates) {
+      bbox = extendBoundsFromCoordinates(bbox, child);
+    }
+    return bbox
+  }
+
+  /**
+   * @param {Partial<BoundingBox> | undefined} bbox
+   * @param {'xmin' | 'ymin' | 'zmin' | 'mmin'} minKey
+   * @param {'xmax' | 'ymax' | 'zmax' | 'mmax'} maxKey
+   * @param {number | undefined} value
+   * @returns {Partial<BoundingBox> | undefined}
+   */
+  function updateAxis(bbox, minKey, maxKey, value) {
+    if (value === undefined || !Number.isFinite(value)) return bbox
+    if (!bbox) bbox = {};
+    const min = bbox[minKey];
+    const max = bbox[maxKey];
+    if (min === undefined || value < min) bbox[minKey] = value;
+    if (max === undefined || value > max) bbox[maxKey] = value;
+    return bbox
+  }
+
+  /**
+   * @param {Geometry} geometry
+   * @returns {number}
+   */
+  function geometryTypeCodeWithDimension(geometry) {
+    const base = geometryTypeCodes[geometry.type];
+    if (base === undefined) throw new Error(`unknown geometry type: ${geometry.type}`)
+    const dim = inferGeometryDimensions$1(geometry);
+    if (dim === 2) return base
+    if (dim === 3) return base + 1000
+    if (dim === 4) return base + 3000
+    throw new Error(`unsupported geometry dimensions: ${dim}`)
+  }
+
+  const geometryTypeCodes = {
+    Point: 1,
+    LineString: 2,
+    Polygon: 3,
+    MultiPoint: 4,
+    MultiLineString: 5,
+    MultiPolygon: 6,
+    GeometryCollection: 7,
+  };
+
+  /**
+   * Determine the maximum coordinate dimensions for the geometry.
+   * @param {Geometry} geometry
+   * @returns {number}
+   */
+  function inferGeometryDimensions$1(geometry) {
+    if (geometry.type === 'GeometryCollection') {
+      let maxDim = 0;
+      for (const child of geometry.geometries || []) {
+        maxDim = Math.max(maxDim, inferGeometryDimensions$1(child));
+      }
+      return maxDim || 2
+    }
+    return inferCoordinateDimensions$1(geometry.coordinates)
+  }
+
+  /**
+   * @param {any[]} value
+   * @returns {number}
+   */
+  function inferCoordinateDimensions$1(value) {
+    if (!value.length) return 2
+    if (typeof value[0] === 'number') return value.length
+    let maxDim = 0;
+    for (const item of value) {
+      maxDim = Math.max(maxDim, inferCoordinateDimensions$1(item));
+    }
+    return maxDim || 2
+  }
+
+  /**
+   * @import {Geometry, Position} from 'hyparquet/src/types.js'
+   */
+
+  /**
+   * Serialize a GeoJSON geometry into ISO WKB.
+   *
+   * @param {Geometry} geometry
+   * @returns {Uint8Array}
+   */
+  function geojsonToWkb(geometry) {
+    const writer = new ByteWriter();
+    writeGeometry(writer, geometry);
+    return writer.getBytes()
+  }
+
+  /**
+   * @param {ByteWriter} writer
+   * @param {Geometry} geometry
+   */
+  function writeGeometry(writer, geometry) {
+    if (typeof geometry !== 'object') {
+      throw new Error('geometry values must be GeoJSON geometries')
+    }
+    const typeCode = geometryTypeCode(geometry.type);
+
+    // infer dimensions
+    const dim = inferGeometryDimensions(geometry);
+    let flag = 0;
+    if (dim === 3) flag = 1;
+    else if (dim === 4) flag = 3;
+    else if (dim > 4) throw new Error(`unsupported geometry dimensions: ${dim}`)
+
+    writer.appendUint8(1); // little endian
+    writer.appendUint32(typeCode + flag * 1000);
+
+    if (geometry.type === 'Point') {
+      writePosition(writer, geometry.coordinates, dim);
+    } else if (geometry.type === 'LineString') {
+      writeLine(writer, geometry.coordinates, dim);
+    } else if (geometry.type === 'Polygon') {
+      writer.appendUint32(geometry.coordinates.length);
+      for (const ring of geometry.coordinates) {
+        writeLine(writer, ring, dim);
+      }
+    } else if (geometry.type === 'MultiPoint') {
+      writer.appendUint32(geometry.coordinates.length);
+      for (const coordinates of geometry.coordinates) {
+        writeGeometry(writer, { type: 'Point', coordinates });
+      }
+    } else if (geometry.type === 'MultiLineString') {
+      writer.appendUint32(geometry.coordinates.length);
+      for (const coordinates of geometry.coordinates) {
+        writeGeometry(writer, { type: 'LineString', coordinates });
+      }
+    } else if (geometry.type === 'MultiPolygon') {
+      writer.appendUint32(geometry.coordinates.length);
+      for (const coordinates of geometry.coordinates) {
+        writeGeometry(writer, { type: 'Polygon', coordinates });
+      }
+    } else if (geometry.type === 'GeometryCollection') {
+      writer.appendUint32(geometry.geometries.length);
+      for (const child of geometry.geometries) {
+        writeGeometry(writer, child);
+      }
+    } else {
+      throw new Error('unsupported geometry type')
+    }
+  }
+
+  /**
+   * @param {ByteWriter} writer
+   * @param {Position} position
+   * @param {number} dim
+   */
+  function writePosition(writer, position, dim) {
+    if (position.length < dim) {
+      throw new Error('geometry position dimensions mismatch')
+    }
+    for (let i = 0; i < dim; i++) {
+      writer.appendFloat64(position[i]);
+    }
+  }
+
+  /**
+   * @param {ByteWriter} writer
+   * @param {Position[]} coordinates
+   * @param {number} dim
+   */
+  function writeLine(writer, coordinates, dim) {
+    writer.appendUint32(coordinates.length);
+    for (const position of coordinates) {
+      writePosition(writer, position, dim);
+    }
+  }
+
+  /**
+   * @param {Geometry['type']} type
+   * @returns {number}
+   */
+  function geometryTypeCode(type) {
+    if (type === 'Point') return 1
+    if (type === 'LineString') return 2
+    if (type === 'Polygon') return 3
+    if (type === 'MultiPoint') return 4
+    if (type === 'MultiLineString') return 5
+    if (type === 'MultiPolygon') return 6
+    if (type === 'GeometryCollection') return 7
+    throw new Error(`unknown geometry type: ${type}`)
+  }
+
+  /**
+   * Determine the maximum coordinate dimensions for the geometry.
+   *
+   * @param {Geometry} geometry
+   * @returns {number}
+   */
+  function inferGeometryDimensions(geometry) {
+    if (geometry.type === 'GeometryCollection') {
+      let maxDim = 0;
+      for (const child of geometry.geometries) {
+        maxDim = Math.max(maxDim, inferGeometryDimensions(child));
+      }
+      return maxDim || 2
+    }
+    return inferCoordinateDimensions(geometry.coordinates)
+  }
+
+  /**
+   * @param {any} value
+   * @returns {number}
+   */
+  function inferCoordinateDimensions(value) {
+    if (!Array.isArray(value)) return 2
+    if (!value.length) return 2
+    if (typeof value[0] === 'number') return value.length
+    let maxDim = 0;
+    for (const item of value) {
+      maxDim = Math.max(maxDim, inferCoordinateDimensions(item));
+    }
+    return maxDim || 2
+  }
+
+  /**
+   * @import {DecodedArray, SchemaElement, Statistics} from 'hyparquet'
+   * @import {MinMaxType} from 'hyparquet/src/types.js'
+   * @import {ThriftObject} from '../src/types.js'
+   */
+
+  const dayMillis = 86400000; // 1 day in milliseconds
+
+  /**
+   * Convert from rich to primitive types.
+   *
+   * @param {SchemaElement} element
+   * @param {DecodedArray} values
+   * @returns {DecodedArray}
+   */
+  function unconvert(element, values) {
+    const { type, converted_type: ctype, logical_type: ltype } = element;
+    if (ctype === 'DECIMAL') {
+      const factor = 10 ** (element.scale || 0);
+      return values.map(v => {
+        if (v === null || v === undefined) return v
+        if (typeof v !== 'number') throw new Error('DECIMAL must be a number')
+        return unconvertDecimal(element, BigInt(Math.round(v * factor)))
+      })
+    }
+    if (ctype === 'DATE') {
+      return Array.from(values).map(v => {
+        if (v instanceof Date) return Math.floor(v.getTime() / dayMillis)
+        return v
+      })
+    }
+    if (ctype === 'TIMESTAMP_MILLIS') {
+      return Array.from(values).map(v => {
+        if (v === null || v === undefined) return v
+        if (v instanceof Date) return BigInt(v.getTime())
+        return BigInt(v)
+      })
+    }
+    if (ctype === 'TIMESTAMP_MICROS') {
+      return Array.from(values).map(v => {
+        if (v === null || v === undefined) return v
+        if (v instanceof Date) return BigInt(v.getTime() * 1000)
+        return BigInt(v)
+      })
+    }
+    if (ctype === 'JSON') {
+      if (!Array.isArray(values)) throw new Error('JSON must be an array')
+      const encoder = new TextEncoder();
+      return values.map(v => v === undefined ? undefined : encoder.encode(JSON.stringify(toJson(v))))
+    }
+    if (ctype === 'UTF8') {
+      if (!Array.isArray(values)) throw new Error('strings must be an array')
+      const encoder = new TextEncoder();
+      return values.map(v => typeof v === 'string' ? encoder.encode(v) : v)
+    }
+    if (ctype === 'UINT_32' || ltype?.type === 'INTEGER' && ltype.bitWidth === 32 && !ltype.isSigned) {
+      if (values instanceof Uint32Array) return values
+      if (values instanceof Int32Array) return new Uint32Array(values.buffer, values.byteOffset, values.length)
+      return Array.from(values).map(v => {
+        if (v === null || v === undefined) return v
+        if (!Number.isSafeInteger(v)) throw new Error('expected integer value, got ' + v)
+        if (v < 0 || v > 4294967295) throw new Error('expected uint32 value, got ' + v)
+        if (v > 2147483647) return v - 4294967296 // convert to signed range
+        return v
+      })
+    }
+    if (ltype?.type === 'FLOAT16') {
+      if (type !== 'FIXED_LEN_BYTE_ARRAY') throw new Error('FLOAT16 must be FIXED_LEN_BYTE_ARRAY type')
+      if (element.type_length !== 2) throw new Error('FLOAT16 expected type_length to be 2 bytes')
+      return Array.from(values).map(unconvertFloat16)
+    }
+    if (ltype?.type === 'UUID') {
+      if (!Array.isArray(values)) throw new Error('UUID must be an array')
+      if (type !== 'FIXED_LEN_BYTE_ARRAY') throw new Error('UUID must be FIXED_LEN_BYTE_ARRAY type')
+      if (element.type_length !== 16) throw new Error('UUID expected type_length to be 16 bytes')
+      return values.map(unconvertUuid)
+    }
+    if (ltype?.type === 'TIMESTAMP') {
+      return Array.from(values).map(v => {
+        if (v === null || v === undefined) return v
+        if (v instanceof Date) {
+          const millis = BigInt(v.getTime());
+          if (ltype.unit === 'NANOS') return millis * 1_000_000n
+          if (ltype.unit === 'MICROS') return millis * 1_000n
+          return millis // MILLIS (default)
+        }
+        return BigInt(v)
+      })
+    }
+    if (ltype?.type === 'GEOMETRY' || ltype?.type === 'GEOGRAPHY') {
+      if (!Array.isArray(values)) throw new Error('geometry must be an array')
+      return values.map(v => {
+        if (v === null || v === undefined) return v
+        return geojsonToWkb(v)
+      })
+    }
+    return values
+  }
+
+  /**
+   * @param {Uint8Array | string | undefined} value
+   * @returns {Uint8Array | undefined}
+   */
+  function unconvertUuid(value) {
+    if (value === undefined || value === null) return
+    if (value instanceof Uint8Array) return value
+    if (typeof value === 'string') {
+      const uuidRegex = /^[0-9a-f]{8}-?[0-9a-f]{4}-?[0-9a-f]{4}-?[0-9a-f]{4}-?[0-9a-f]{12}$/i;
+      if (!uuidRegex.test(value)) {
+        throw new Error('UUID must be a valid UUID string')
+      }
+      value = value.replace(/-/g, '').toLowerCase();
+      const bytes = new Uint8Array(16);
+      for (let i = 0; i < 16; i++) {
+        bytes[i] = parseInt(value.slice(i * 2, i * 2 + 2), 16);
+      }
+      return bytes
+    }
+    throw new Error('UUID must be a string or Uint8Array')
+  }
+
+  /**
+   * Uncovert from rich type to byte array for metadata statistics.
+   *
+   * @param {MinMaxType | undefined} value
+   * @param {SchemaElement} element
+   * @returns {Uint8Array | undefined}
+   */
+  function unconvertMinMax(value, element) {
+    if (value === undefined || value === null) return undefined
+    const { type, converted_type } = element;
+    if (type === 'BOOLEAN') return new Uint8Array([value ? 1 : 0])
+    if (converted_type === 'DECIMAL') {
+      if (typeof value !== 'number') throw new Error('DECIMAL must be a number')
+      const factor = 10 ** (element.scale || 0);
+      const out = unconvertDecimal(element, BigInt(Math.round(value * factor)));
+      if (out instanceof Uint8Array) return out
+      if (typeof out === 'number') {
+        const buffer = new ArrayBuffer(4);
+        new DataView(buffer).setFloat32(0, out, true);
+        return new Uint8Array(buffer)
+      }
+      if (typeof out === 'bigint') {
+        const buffer = new ArrayBuffer(8);
+        new DataView(buffer).setBigInt64(0, out, true);
+        return new Uint8Array(buffer)
+      }
+    }
+    if (type === 'BYTE_ARRAY' || type === 'FIXED_LEN_BYTE_ARRAY') {
+      // truncate byte arrays to 16 bytes for statistics
+      if (value instanceof Uint8Array) return value.slice(0, 16)
+      return new TextEncoder().encode(value.toString().slice(0, 16))
+    }
+    if (type === 'FLOAT' && typeof value === 'number') {
+      const buffer = new ArrayBuffer(4);
+      new DataView(buffer).setFloat32(0, value, true);
+      return new Uint8Array(buffer)
+    }
+    if (type === 'DOUBLE' && typeof value === 'number') {
+      const buffer = new ArrayBuffer(8);
+      new DataView(buffer).setFloat64(0, value, true);
+      return new Uint8Array(buffer)
+    }
+    if (type === 'INT32' && typeof value === 'number') {
+      const buffer = new ArrayBuffer(4);
+      new DataView(buffer).setInt32(0, value, true);
+      return new Uint8Array(buffer)
+    }
+    if (type === 'INT64' && typeof value === 'bigint') {
+      const buffer = new ArrayBuffer(8);
+      new DataView(buffer).setBigInt64(0, value, true);
+      return new Uint8Array(buffer)
+    }
+    if (type === 'INT32' && converted_type === 'DATE' && value instanceof Date) {
+      const buffer = new ArrayBuffer(4);
+      new DataView(buffer).setInt32(0, Math.floor(value.getTime() / dayMillis), true);
+      return new Uint8Array(buffer)
+    }
+    if (type === 'INT64' && converted_type === 'TIMESTAMP_MILLIS' && value instanceof Date) {
+      const buffer = new ArrayBuffer(8);
+      new DataView(buffer).setBigInt64(0, BigInt(value.getTime()), true);
+      return new Uint8Array(buffer)
+    }
+    if (type === 'INT64' && converted_type === 'TIMESTAMP_MICROS' && value instanceof Date) {
+      const buffer = new ArrayBuffer(8);
+      new DataView(buffer).setBigInt64(0, BigInt(value.getTime() * 1000), true);
+      return new Uint8Array(buffer)
+    }
+    if (type === 'INT64' && element.logical_type?.type === 'TIMESTAMP' && value instanceof Date) {
+      const millis = BigInt(value.getTime());
+      const { unit } = element.logical_type;
+      let bigintValue = millis;
+      if (unit === 'NANOS') bigintValue = millis * 1_000_000n;
+      else if (unit === 'MICROS') bigintValue = millis * 1_000n;
+      const buffer = new ArrayBuffer(8);
+      new DataView(buffer).setBigInt64(0, bigintValue, true);
+      return new Uint8Array(buffer)
+    }
+    throw new Error(`unsupported type for statistics: ${type} with value ${value}`)
+  }
+
+  /**
+   * @param {Statistics} stats
+   * @param {SchemaElement} element
+   * @returns {ThriftObject}
+   */
+  function unconvertStatistics(stats, element) {
+    return {
+      field_1: unconvertMinMax(stats.max, element),
+      field_2: unconvertMinMax(stats.min, element),
+      field_3: stats.null_count,
+      field_4: stats.distinct_count,
+      field_5: unconvertMinMax(stats.max_value, element),
+      field_6: unconvertMinMax(stats.min_value, element),
+      field_7: stats.is_max_value_exact,
+      field_8: stats.is_min_value_exact,
+    }
+  }
+
+  /**
+   * @param {SchemaElement} element
+   * @param {bigint} value
+   * @returns {number | bigint | Uint8Array}
+   */
+  function unconvertDecimal({ type, type_length }, value) {
+    if (type === 'INT32') return Number(value)
+    if (type === 'INT64') return value
+    if (type === 'FIXED_LEN_BYTE_ARRAY' && !type_length) {
+      throw new Error('fixed length byte array type_length is required')
+    }
+    if (!type_length && !value) return new Uint8Array()
+
+    const bytes = [];
+    while (true) {
+      // extract the lowest 8 bits
+      const byte = Number(value & 0xffn);
+      bytes.unshift(byte);
+      value >>= 8n;
+
+      if (type_length) {
+        if (bytes.length >= type_length) break // fixed length
+      } else {
+        // for nonnegative: stop when top byte has signBit = 0 AND shifted value == 0n
+        // for negative: stop when top byte has signBit = 1 AND shifted value == -1n
+        const sign = byte & 0x80;
+        if (!sign && value === 0n || sign && value === -1n) {
+          break
+        }
+      }
+    }
+
+    return new Uint8Array(bytes)
+  }
+
+  /**
+   * @param {number | undefined} value
+   * @returns {Uint8Array | undefined}
+   */
+  function unconvertFloat16(value) {
+    if (value === undefined || value === null) return
+    if (typeof value !== 'number') throw new Error('parquet float16 expected number value')
+    if (Number.isNaN(value)) return new Uint8Array([0x00, 0x7e])
+
+    const sign = value < 0 || Object.is(value, -0) ? 1 : 0;
+    const abs = Math.abs(value);
+
+    // infinities
+    if (!isFinite(abs)) return new Uint8Array([0x00, sign << 7 | 0x7c])
+
+    // ±0
+    if (abs === 0) return new Uint8Array([0x00, sign << 7])
+
+    // write as f32 to get raw bits
+    const buf = new ArrayBuffer(4);
+    new Float32Array(buf)[0] = abs;
+    const bits32 = new Uint32Array(buf)[0];
+
+    let exp32 = bits32 >>> 23 & 0xff;
+    let mant32 = bits32 & 0x7fffff;
+
+    // convert 32‑bit exponent to unbiased, then to 16‑bit
+    exp32 -= 127;
+
+    // handle numbers too small for a normal 16‑bit exponent
+    if (exp32 < -14) {
+      // sub‑normal: shift mantissa so that result = mant * 2^-14
+      const shift = -14 - exp32;
+      mant32 = (mant32 | 0x800000) >> shift + 13;
+
+      // round‑to‑nearest‑even
+      if (mant32 & 1) mant32 += 1;
+
+      const bits16 = sign << 15 | mant32;
+      return new Uint8Array([bits16 & 0xff, bits16 >> 8])
+    }
+
+    // overflow
+    if (exp32 > 15) return new Uint8Array([0x00, sign << 7 | 0x7c])
+
+    // normal number
+    let exp16 = exp32 + 15;
+    mant32 = mant32 + 0x1000; // add rounding bit
+
+    // handle mantissa overflow after rounding
+    if (mant32 & 0x800000) {
+      mant32 = 0;
+      if (++exp16 === 31) // became infinity
+        return new Uint8Array([0x00, sign << 7 | 0x7c])
+    }
+
+    const bits16 = sign << 15 | exp16 << 10 | mant32 >> 13;
+    return new Uint8Array([bits16 & 0xff, bits16 >> 8])
+  }
+
+  /**
+   * @import {ColumnChunk, ColumnIndex, DecodedArray, Encoding, OffsetIndex, ParquetType, Statistics} from 'hyparquet'
+   * @import {PageEncodingStats} from 'hyparquet/src/types.js'
+   * @import {ColumnEncoder, PageData, Writer} from '../src/types.js'
+   */
+
+  /**
+   * Write a column chunk to the writer.
+   *
+   * @param {object} options
+   * @param {Writer} options.writer
+   * @param {ColumnEncoder} options.column
+   * @param {PageData} options.pageData
+   * @returns {{ chunk: ColumnChunk, columnIndex?: ColumnIndex, offsetIndex?: OffsetIndex }}
+   */
+  function writeColumn({ writer, column, pageData }) {
+    const { columnName, element, schemaPath, stats, pageSize, encoding: userEncoding } = column;
+    const { type, type_length } = element;
+    if (!type) throw new Error(`column ${columnName} cannot determine type`)
+    const { values, definitionLevels, repetitionLevels, maxDefinitionLevel } = pageData;
+    const offsetStart = writer.offset;
+
+    /** @type {Encoding[]} */
+    const encodings = [];
+
+    const isGeospatial = element?.logical_type?.type === 'GEOMETRY' || element?.logical_type?.type === 'GEOGRAPHY';
+
+    // Compute statistics
+    const statistics = stats ? getStatistics(values) : undefined;
+    const geospatial_statistics = stats && isGeospatial ? geospatialStatistics(values) : undefined;
+
+    // dictionary encoding
+    /** @type {bigint | undefined} */
+    let dictionary_page_offset;
+    const { dictionary, indexes } = useDictionary(values, type, type_length, userEncoding, pageSize);
+
+    // Determine encoding and prepare values for writing
+    /** @type {Encoding} */
+    let encoding;
+    /** @type {DecodedArray} */
+    let writeValues;
+    let writeType = type;
+    if (dictionary && indexes) {
+      // replace values with dictionary indices
+      writeValues = indexes;
+      writeType = 'INT32';
+      encoding = 'RLE_DICTIONARY';
+
+      // write dictionary page first
+      dictionary_page_offset = BigInt(writer.offset);
+      const unconverted = unconvert(element, dictionary);
+      writeDictionaryPage(writer, column, unconverted);
+    } else {
+      // unconvert values from rich types to simple
+      writeValues = unconvert(element, values);
+      encoding = userEncoding ?? (type === 'BOOLEAN' && values.length > 16 ? 'RLE' : 'PLAIN');
+    }
+    encodings.push(encoding);
+
+    // Split values into pages based on pageSize
+    const pageBoundaries = getPageBoundaries(writeValues, writeType, type_length, pageSize);
+
+    // Initialize index structures if requested
+    /** @type {ColumnIndex | undefined} */
+    const columnIndex = column.columnIndex && pageBoundaries.length > 1 ? {
+      null_pages: [],
+      min_values: [],
+      max_values: [],
+      boundary_order: 'UNORDERED',
+      null_counts: [],
+    } : undefined;
+    /** @type {OffsetIndex | undefined} */
+    const offsetIndex = column.offsetIndex && pageBoundaries.length > 1 ? {
+      page_locations: [],
+    } : undefined;
+
+    // Write data pages
+    const data_page_offset = BigInt(writer.offset);
+    let first_row_index = 0n;
+    let prevStart = 0;
+    let prevMinValue;
+    let prevMaxValue;
+    let ascending = true;
+    let descending = true;
+
+    for (const { start, end } of pageBoundaries) {
+      const pageOffset = writer.offset;
+
+      // Slice into subpage and write levels and data
+      const pageChunk = {
+        values: writeValues.slice(start, end),
+        definitionLevels: definitionLevels.slice(start, end),
+        repetitionLevels: repetitionLevels.slice(start, end),
+        maxDefinitionLevel,
+      };
+      writeDataPageV2({ writer, column, encoding, pageData: pageChunk });
+
+      // ColumnIndex construction
+      if (columnIndex) {
+        const pageValues = values.slice(start, end); // original values not indexes
+        const { min_value, max_value, null_count = 0n } = getStatistics(pageValues);
+
+        columnIndex.null_pages.push(null_count === BigInt(end - start)); // all nulls
+        // Spec: for all-null pages set "byte[0]"
+        columnIndex.min_values.push(unconvertMinMax(min_value, element) ?? new Uint8Array());
+        columnIndex.max_values.push(unconvertMinMax(max_value, element) ?? new Uint8Array());
+        columnIndex.null_counts?.push(null_count);
+
+        // Track boundary order using original JS values
+        if (prevMinValue !== undefined && min_value !== undefined) {
+          if (prevMinValue > min_value) ascending = false;
+          if (prevMinValue < min_value) descending = false;
+        }
+        if (prevMaxValue !== undefined && max_value !== undefined) {
+          if (prevMaxValue > max_value) ascending = false;
+          if (prevMaxValue < max_value) descending = false;
+        }
+        prevMinValue = min_value;
+        prevMaxValue = max_value;
+      }
+
+      // OffsetIndex construction
+      if (offsetIndex) {
+        if (repetitionLevels.length) {
+          // Count row boundaries from previous page
+          for (let i = prevStart + 1; i <= start; i++) {
+            if (repetitionLevels[i] === 0) first_row_index++;
+          }
+        } else {
+          first_row_index = BigInt(start); // Flat column
+        }
+
+        offsetIndex.page_locations.push({
+          offset: BigInt(pageOffset),
+          compressed_page_size: writer.offset - pageOffset,
+          first_row_index,
+        });
+      }
+
+      prevStart = start;
+    }
+
+    // Set boundary order after all pages are written
+    if (columnIndex) {
+      if (ascending) columnIndex.boundary_order = 'ASCENDING';
+      else if (descending) columnIndex.boundary_order = 'DESCENDING';
+    }
+
+    // Build encoding stats
+    /** @type {PageEncodingStats[] | undefined} */
+    let encoding_stats;
+    if (stats) {
+      encoding_stats = [];
+      if (dictionary_page_offset !== undefined) {
+        encoding_stats.push({ page_type: 'DICTIONARY_PAGE', encoding: 'PLAIN', count: 1 });
+      }
+      encoding_stats.push({ page_type: 'DATA_PAGE_V2', encoding, count: pageBoundaries.length });
+    }
+
+    return {
+      chunk: {
+        meta_data: {
+          type,
+          encodings,
+          path_in_schema: schemaPath.slice(1).map(s => s.name),
+          codec: column.codec ?? 'UNCOMPRESSED',
+          num_values: BigInt(values.length),
+          total_compressed_size: BigInt(writer.offset - offsetStart),
+          total_uncompressed_size: BigInt(writer.offset - offsetStart), // TODO: uncompressed pages + headers
+          data_page_offset,
+          dictionary_page_offset,
+          statistics,
+          encoding_stats,
+          geospatial_statistics,
+        },
+        file_offset: BigInt(offsetStart),
+      },
+      columnIndex,
+      offsetIndex,
+    }
+  }
+
+  /**
+   * Get page boundaries based on estimated byte size.
+   * TODO: split pages on row boundaries
+   *
+   * @param {DecodedArray} values
+   * @param {ParquetType} type
+   * @param {number | undefined} type_length
+   * @param {number} pageSize
+   * @returns {{start: number, end: number}[]}
+   */
+  function getPageBoundaries(values, type, type_length, pageSize) {
+    // If no pageSize limit, return single page with all values
+    if (!pageSize) {
+      return [{ start: 0, end: values.length }]
+    }
+
+    const boundaries = [];
+    let start = 0;
+    let accumulatedBytes = 0;
+
+    for (let i = 0; i < values.length; i++) {
+      const valueSize = estimateValueSize(values[i], type, type_length);
+      accumulatedBytes += valueSize;
+
+      // Check if we should start a new page
+      if (accumulatedBytes >= pageSize && i > start) {
+        boundaries.push({ start, end: i });
+        start = i;
+        accumulatedBytes = valueSize;
+      }
+    }
+
+    // Final page with remaining values
+    if (start < values.length) {
+      boundaries.push({ start, end: values.length });
+    }
+
+    return boundaries
+  }
+
+  /**
+   * Estimate the byte size of a value for page size calculation.
+   *
+   * @param {any} value
+   * @param {ParquetType} type
+   * @param {number} [type_length]
+   * @returns {number}
+   */
+  function estimateValueSize(value, type, type_length) {
+    if (value === null || value === undefined) return 0
+    if (type === 'BOOLEAN') return 0.125
+    if (type === 'INT32' || type === 'FLOAT') return 4
+    if (type === 'INT64' || type === 'DOUBLE') return 8
+    if (type === 'INT96') return 12
+    if (type === 'FIXED_LEN_BYTE_ARRAY') return type_length ?? 0
+    if (type === 'BYTE_ARRAY') {
+      if (value instanceof Uint8Array) return value.byteLength
+      if (typeof value === 'string') return value.length
+    }
+    return 0
+  }
+
+  /**
+   * @param {DecodedArray} values
+   * @param {ParquetType} type
+   * @param {number | undefined} type_length
+   * @param {Encoding | undefined} encoding
+   * @param {number} pageSize
+   * @returns {{ dictionary?: any[], indexes?: number[] }}
+   */
+  function useDictionary(values, type, type_length, encoding, pageSize) {
+    if (encoding && encoding !== 'RLE_DICTIONARY') return {}
+    if (type === 'BOOLEAN') return {}
+
+    // uniqueness on a sample
+    const sample = values.slice(0, 1000);
+    const sampleUnique = new Set(sample).size;
+    if (sampleUnique === 0 || sampleUnique / sample.length > 0.5) return {}
+
+    // build dictionary and indexes
+    /** @type {Map<any, number>} */
+    const unique = new Map();
+    /** @type {number[]} */
+    const indexes = new Array(values.length);
+    let dictSize = 0;
+    for (let i = 0; i < values.length; i++) {
+      const value = values[i];
+      if (value === null || value === undefined) continue
+
+      // find index for value in dictionary
+      let index = unique.get(value);
+      if (index === undefined) {
+        // dictionary cannot exceed page size
+        dictSize += estimateValueSize(value, type, type_length);
+        if (pageSize && dictSize > pageSize) return {}
+        index = unique.size;
+        unique.set(value, index);
+      }
+      indexes[i] = index;
+    }
+
+    // TODO: sort by frequency?
+    return { dictionary: Array.from(unique.keys()), indexes }
+  }
+
+  /**
+   * @param {Writer} writer
+   * @param {ColumnEncoder} column
+   * @param {DecodedArray} dictionary
+   */
+  function writeDictionaryPage(writer, column, dictionary) {
+    const { element, codec, compressors } = column;
+    const { type, type_length } = element;
+    if (!type) throw new Error(`column ${column.columnName} cannot determine type`)
+
+    // write values to temp buffer
+    const dictionaryPage = new ByteWriter();
+    writePlain(dictionaryPage, dictionary, type, type_length);
+    const dictionaryBytes = dictionaryPage.getBytes();
+
+    // compress dictionary page data
+    const compressedBytes = compressors[codec]?.(dictionaryBytes) ?? dictionaryBytes;
+
+    // write dictionary page header
+    writePageHeader(writer, {
+      type: 'DICTIONARY_PAGE',
+      uncompressed_page_size: dictionaryBytes.byteLength,
+      compressed_page_size: compressedBytes.byteLength,
+      dictionary_page_header: {
+        num_values: dictionary.length,
+        encoding: 'PLAIN',
+      },
+    });
+    writer.appendBytes(compressedBytes);
+  }
+
+  /**
+   * @param {DecodedArray} values
+   * @returns {Statistics}
+   */
+  function getStatistics(values) {
+    let min_value = undefined;
+    let max_value = undefined;
+    let null_count = 0n;
+    for (const value of values) {
+      if (value === null || value === undefined) {
+        null_count++;
+        continue
+      }
+      if (typeof value === 'object') continue // skip objects
+      if (min_value === undefined || value < min_value) min_value = value;
+      if (max_value === undefined || value > max_value) max_value = value;
+    }
+    return { min_value, max_value, null_count }
+  }
+
+  /**
+   * @import {DecodedArray, SchemaElement, SchemaTree} from 'hyparquet'
+   * @import {PageData} from '../src/types.js'
+   */
+
+  /**
+   * Encode column values into repetition and definition levels following the
+   * Dremel algorithm. Returns page data for one subcolumn (leaf node in the schema).
+   *
+   * @param {SchemaTree[]} treePath schema tree nodes from root to leaf
+   * @param {DecodedArray} rows top-level column data
+   * @returns {PageData}
+   */
+  function encodeNestedValues(treePath, rows) {
+    const schemaPath = treePath.map(n => n.element);
+    if (treePath.length < 2) throw new Error('parquet schema path must include column')
+
+    /** @type {number[]} */
+    const definitionLevels = [];
+    /** @type {number[]} */
+    const repetitionLevels = [];
+    const maxDefinitionLevel = getMaxDefinitionLevel(treePath);
+
+    // Flat required columns don't need dremel encoding
+    if (treePath.length === 2 && maxDefinitionLevel === 0) {
+      return { values: rows, definitionLevels, repetitionLevels, maxDefinitionLevel }
+    }
+
+    // Flat optional columns: just compute definition levels
+    if (treePath.length === 2 && maxDefinitionLevel === 1) {
+      const definitionLevels = new Array(rows.length);
+      for (let i = 0; i < rows.length; i++) {
+        definitionLevels[i] = rows[i] === null || rows[i] === undefined ? 0 : 1;
+      }
+      return { values: rows, definitionLevels, repetitionLevels, maxDefinitionLevel }
+    }
+
+    // Track repetition depth prior to each level
+    const repLevelPrior = new Array(treePath.length);
+    let repeatedCount = 0;
+    for (let i = 0; i < treePath.length; i++) {
+      repLevelPrior[i] = repeatedCount;
+      if (schemaPath[i].repetition_type === 'REPEATED') repeatedCount++;
+    }
+
+    /** @type {any[]} */
+    const values = [];
+
+    for (const row of rows) {
+      visit(1, row, 0, 0, false);
+    }
+
+    return { values, definitionLevels, repetitionLevels, maxDefinitionLevel }
+
+    /**
+     * Recursively walk the schema path, emitting definition/repetition pairs.
+     *
+     * @param {number} depth index into schemaPath
+     * @param {any} value value at the current depth
+     * @param {number} defLevel definition level accumulated so far
+     * @param {number} repLevel repetition level for the next emitted slot
+     * @param {boolean} allowNull whether the current value is allowed to be null
+     */
+    function visit(depth, value, defLevel, repLevel, allowNull) {
+      const element = schemaPath[depth];
+      const repetition = element.repetition_type || 'REQUIRED';
+
+      // Leaf node
+      if (depth === treePath.length - 1) {
+        if (value === null || value === undefined) {
+          if (repetition === 'REQUIRED' && !allowNull) {
+            throw new Error('parquet required value is undefined')
+          }
+          definitionLevels.push(defLevel);
+        } else {
+          definitionLevels.push(repetition === 'REQUIRED' ? defLevel : defLevel + 1);
+        }
+        repetitionLevels.push(repLevel);
+        values.push(value);
+        return
+      }
+
+      if (repetition === 'REPEATED') {
+        if (value === null || value === undefined) {
+          if (!allowNull) throw new Error('parquet required value is undefined')
+          visit(depth + 1, undefined, defLevel, repLevel, true);
+          return
+        }
+        if (!Array.isArray(value)) {
+          throw new Error(`parquet repeated field ${element.name} must be an array`)
+        }
+        if (!value.length) {
+          visit(depth + 1, undefined, defLevel, repLevel, true);
+          return
+        }
+        // For MAP key_value entries, extract the child field (key or value) from each entry
+        const isMapEntry = isMapLike(treePath[depth - 1]);
+        const childElement = schemaPath[depth + 1];
+        for (let i = 0; i < value.length; i++) {
+          let childValue = value[i];
+          if (isMapEntry && childValue && typeof childValue === 'object' && childElement) {
+            childValue = childValue[childElement.name];
+          }
+          const childRep = i === 0 ? repLevel : repLevelPrior[depth] + 1;
+          visit(depth + 1, childValue, defLevel + 1, childRep, false);
+        }
+        return
+      }
+
+      if (repetition === 'OPTIONAL') {
+        if (value === null || value === undefined) {
+          visit(depth + 1, undefined, defLevel, repLevel, true);
+        } else {
+          const childValue = getChildValue(depth, value);
+          const childIsNull = childValue === null || childValue === undefined;
+          // Increment def level if: (1) this is a struct (contributes to def even if child is null),
+          // or (2) the child value exists. LIST/MAP wrappers don't increment def level themselves.
+          const isLogicalContainer = isListLike(treePath[depth]) || isMapLike(treePath[depth]);
+          const isStruct = element.num_children && !element.type && !isLogicalContainer;
+          const nextDef = isStruct || !childIsNull ? defLevel + 1 : defLevel;
+          visit(depth + 1, childValue, nextDef, repLevel, childIsNull);
+        }
+        return
+      }
+
+      // REQUIRED
+      if (value === null || value === undefined) {
+        if (!allowNull) throw new Error('parquet required value is undefined')
+        visit(depth + 1, undefined, defLevel, repLevel, true);
+      } else {
+        visit(depth + 1, getChildValue(depth, value), defLevel, repLevel, false);
+      }
+    }
+
+    /**
+     * Select the child value for the next schema element in the path.
+     * Normalizes maps to {key, value} entries.
+     *
+     * @param {number} depth current schema depth
+     * @param {any} currentValue current value at this depth
+     * @returns {any}
+     */
+    function getChildValue(depth, currentValue) {
+      if (currentValue === null || currentValue === undefined) return undefined
+      const child = schemaPath[depth + 1];
+      if (!child) return undefined
+
+      // LIST and MAP wrappers
+      if (isListLike(treePath[depth])) return currentValue
+      if (isMapLike(treePath[depth])) {
+        return normalizeMap(currentValue, schemaPath[depth])
+      }
+
+      if (typeof currentValue === 'object' && !Array.isArray(currentValue)) {
+        return currentValue[child.name]
+      }
+
+      throw new Error(`parquet expected struct, got ${currentValue}`)
+    }
+
+  }
+
+  /**
+   * Normalize a map value to an array of {key, value} entries.
+   * Accepts Map, plain object, array of [k, v] pairs, or array of {key, value}.
+   *
+   * @param {any} value
+   * @param {SchemaElement} element
+   * @returns {{key: any, value: any}[]}
+   */
+  function normalizeMap(value, element) {
+    if (value instanceof Map) {
+      return Array.from(value.entries(), ([k, v]) => ({ key: k, value: v }))
+    }
+    if (Array.isArray(value)) {
+      return value.map(entry => {
+        if (entry && typeof entry === 'object' && 'key' in entry && 'value' in entry) {
+          return entry
+        }
+        if (Array.isArray(entry) && entry.length === 2) {
+          return { key: entry[0], value: entry[1] }
+        }
+        throw new Error('parquet map entry must provide key and value')
+      })
+    }
+    if (typeof value === 'object') {
+      return Object.entries(value).map(([k, v]) => ({ key: k, value: v }))
+    }
+    throw new Error(`parquet map field ${element.name} must be Map, array, or object`)
+  }
+
+  /**
+   * @import {ColumnChunk, ColumnIndex, OffsetIndex} from 'hyparquet'
+   * @import {PageIndexes, Writer} from '../src/types.js'
+   */
+
+  /**
+   * Write ColumnIndex and OffsetIndex for the given columns.
+   *
+   * @param {Writer} writer
+   * @param {PageIndexes[]} pageIndexes
+   */
+  function writeIndexes(writer, pageIndexes) {
+    for (const { chunk, columnIndex } of pageIndexes) {
+      writeColumnIndex(writer, chunk, columnIndex);
+    }
+    for (const { chunk, offsetIndex } of pageIndexes) {
+      writeOffsetIndex(writer, chunk, offsetIndex);
+    }
+  }
+
+  /**
+   * @param {Writer} writer
+   * @param {ColumnChunk} columnChunk
+   * @param {ColumnIndex} [columnIndex]
+   */
+  function writeColumnIndex(writer, columnChunk, columnIndex) {
+    // Page indexes only help when multiple pages
+    if (!columnIndex || columnIndex.min_values.length <= 1) return
+    const columnIndexOffset = writer.offset;
+    serializeTCompactProtocol(writer, {
+      field_1: columnIndex.null_pages,
+      field_2: columnIndex.min_values,
+      field_3: columnIndex.max_values,
+      field_4: BoundaryOrders.indexOf(columnIndex.boundary_order),
+      field_5: columnIndex.null_counts,
+    });
+    columnChunk.column_index_offset = BigInt(columnIndexOffset);
+    columnChunk.column_index_length = writer.offset - columnIndexOffset;
+  }
+
+  /**
+   * @param {Writer} writer
+   * @param {ColumnChunk} columnChunk
+   * @param {OffsetIndex} [offsetIndex]
+   */
+  function writeOffsetIndex(writer, columnChunk, offsetIndex) {
+    // Page indexes only help when multiple pages
+    if (!offsetIndex || offsetIndex.page_locations.length <= 1) return
+    const offsetIndexOffset = writer.offset;
+    serializeTCompactProtocol(writer, {
+      field_1: offsetIndex.page_locations.map(p => ({
+        field_1: p.offset,
+        field_2: p.compressed_page_size,
+        field_3: p.first_row_index,
+      })),
+    });
+    columnChunk.offset_index_offset = BigInt(offsetIndexOffset);
+    columnChunk.offset_index_length = writer.offset - offsetIndexOffset;
+  }
+
+  /**
+   * @import {FileMetaData, LogicalType, SchemaElement, TimeUnit} from 'hyparquet'
+   * @import {ThriftObject, Writer} from '../src/types.js'
+   */
+
+  /**
+   * Write Parquet file metadata as thrift.
+   *
+   * @param {Writer} writer
+   * @param {FileMetaData} metadata
+   */
+  function writeMetadata(writer, metadata) {
+    /** @type {ThriftObject} */
+    const compact = {
+      field_1: metadata.version,
+      field_2: metadata.schema.map(element => ({
+        field_1: element.type && ParquetTypes.indexOf(element.type),
+        field_2: element.type_length,
+        field_3: element.repetition_type && FieldRepetitionTypes.indexOf(element.repetition_type),
+        field_4: element.name,
+        field_5: element.num_children,
+        field_6: element.converted_type && ConvertedTypes.indexOf(element.converted_type),
+        field_7: element.scale,
+        field_8: element.precision,
+        field_9: element.field_id,
+        field_10: logicalType(element.logical_type),
+      })),
+      field_3: metadata.num_rows,
+      field_4: metadata.row_groups.map(rg => ({
+        field_1: rg.columns.map(c => ({
+          field_1: c.file_path,
+          field_2: c.file_offset,
+          field_3: c.meta_data && {
+            field_1: ParquetTypes.indexOf(c.meta_data.type),
+            field_2: c.meta_data.encodings.map(e => Encodings.indexOf(e)),
+            field_3: c.meta_data.path_in_schema,
+            field_4: CompressionCodecs.indexOf(c.meta_data.codec),
+            field_5: c.meta_data.num_values,
+            field_6: c.meta_data.total_uncompressed_size,
+            field_7: c.meta_data.total_compressed_size,
+            field_8: c.meta_data.key_value_metadata && c.meta_data.key_value_metadata.map(kv => ({
+              field_1: kv.key,
+              field_2: kv.value,
+            })),
+            field_9: c.meta_data.data_page_offset,
+            field_10: c.meta_data.index_page_offset,
+            field_11: c.meta_data.dictionary_page_offset,
+            field_12: c.meta_data.statistics && unconvertStatistics(
+              c.meta_data.statistics,
+              schemaElement(metadata.schema, c.meta_data.path_in_schema)
+            ),
+            field_13: c.meta_data.encoding_stats && c.meta_data.encoding_stats.map(es => ({
+              field_1: PageTypes.indexOf(es.page_type),
+              field_2: Encodings.indexOf(es.encoding),
+              field_3: es.count,
+            })),
+            field_14: c.meta_data.bloom_filter_offset,
+            field_15: c.meta_data.bloom_filter_length,
+            field_16: c.meta_data.size_statistics && {
+              field_1: c.meta_data.size_statistics.unencoded_byte_array_data_bytes,
+              field_2: c.meta_data.size_statistics.repetition_level_histogram,
+              field_3: c.meta_data.size_statistics.definition_level_histogram,
+            },
+            field_17: c.meta_data.geospatial_statistics && {
+              field_1: c.meta_data.geospatial_statistics.bbox && {
+                field_1: c.meta_data.geospatial_statistics.bbox.xmin,
+                field_2: c.meta_data.geospatial_statistics.bbox.xmax,
+                field_3: c.meta_data.geospatial_statistics.bbox.ymin,
+                field_4: c.meta_data.geospatial_statistics.bbox.ymax,
+                field_5: c.meta_data.geospatial_statistics.bbox.zmin,
+                field_6: c.meta_data.geospatial_statistics.bbox.zmax,
+                field_7: c.meta_data.geospatial_statistics.bbox.mmin,
+                field_8: c.meta_data.geospatial_statistics.bbox.mmax,
+              },
+              field_2: c.meta_data.geospatial_statistics.geospatial_types,
+            },
+          },
+          field_4: c.offset_index_offset,
+          field_5: c.offset_index_length,
+          field_6: c.column_index_offset,
+          field_7: c.column_index_length,
+          // field_8: c.crypto_metadata,
+          field_9: c.encrypted_column_metadata,
+        })),
+        field_2: rg.total_byte_size,
+        field_3: rg.num_rows,
+        field_4: rg.sorting_columns && rg.sorting_columns.map(sc => ({
+          field_1: sc.column_idx,
+          field_2: sc.descending,
+          field_3: sc.nulls_first,
+        })),
+        field_5: rg.file_offset,
+        field_6: rg.total_compressed_size,
+        // field_7: rg.ordinal, // should be int16
+      })),
+      field_5: metadata.key_value_metadata && metadata.key_value_metadata.map(kv => ({
+        field_1: kv.key,
+        field_2: kv.value,
+      })),
+      field_6: metadata.created_by,
+    };
+
+    // write metadata as thrift
+    const metadataStart = writer.offset;
+    serializeTCompactProtocol(writer, compact);
+    // write metadata length
+    const metadataLength = writer.offset - metadataStart;
+    writer.appendUint32(metadataLength);
+  }
+
+  /**
+   * Resolve schema element for statistics using the stored path.
+   *
+   * @param {SchemaElement[]} schema
+   * @param {string[]} path
+   * @returns {SchemaElement}
+   */
+  function schemaElement(schema, path) {
+    const tree = getSchemaPath(schema, path);
+    return tree[tree.length - 1].element
+  }
+
+  /**
+   * @param {LogicalType | undefined} type
+   * @returns {ThriftObject | undefined}
+   */
+  function logicalType(type) {
+    if (!type) return
+    if (type.type === 'STRING') return { field_1: {} }
+    if (type.type === 'MAP') return { field_2: {} }
+    if (type.type === 'LIST') return { field_3: {} }
+    if (type.type === 'ENUM') return { field_4: {} }
+    if (type.type === 'DECIMAL') return { field_5: {
+      field_1: type.scale,
+      field_2: type.precision,
+    } }
+    if (type.type === 'DATE') return { field_6: {} }
+    if (type.type === 'TIME') return { field_7: {
+      field_1: type.isAdjustedToUTC,
+      field_2: timeUnit(type.unit),
+    } }
+    if (type.type === 'TIMESTAMP') return { field_8: {
+      field_1: type.isAdjustedToUTC,
+      field_2: timeUnit(type.unit),
+    } }
+    if (type.type === 'INTEGER') return { field_10: {
+      field_1: type.bitWidth,
+      field_2: type.isSigned,
+    } }
+    if (type.type === 'NULL') return { field_11: {} }
+    if (type.type === 'JSON') return { field_12: {} }
+    if (type.type === 'BSON') return { field_13: {} }
+    if (type.type === 'UUID') return { field_14: {} }
+    if (type.type === 'FLOAT16') return { field_15: {} }
+    if (type.type === 'VARIANT') return { field_16: {} }
+    if (type.type === 'GEOMETRY') return { field_17: {
+      field_1: type.crs,
+    } }
+    if (type.type === 'GEOGRAPHY') return { field_18: {
+      field_1: type.crs,
+      field_2: type.algorithm && EdgeInterpolationAlgorithms.indexOf(type.algorithm),
+    } }
+  }
+
+  /**
+   * @param {TimeUnit} unit
+   * @returns {ThriftObject}
+   */
+  function timeUnit(unit) {
+    if (unit === 'NANOS') return { field_3: {} }
+    if (unit === 'MICROS') return { field_2: {} }
+    return { field_1: {} }
+  }
+
+  /**
+   * The MIT License (MIT)
+   * Copyright (c) 2016 Zhipeng Jia
+   * https://github.com/zhipeng-jia/snappyjs
+   */
+
+
+  /**
+   * @import {Writer} from '../src/types.js'
+   */
+
+  const BLOCK_LOG = 16;
+  const BLOCK_SIZE = 1 << BLOCK_LOG;
+
+  const MAX_HASH_TABLE_BITS = 14;
+  const globalHashTables = new Array(MAX_HASH_TABLE_BITS + 1);
+
+  /**
+   * Compress snappy data.
+   * Returns Snappy-compressed bytes as Uint8Array.
+   *
+   * @param {Uint8Array} input - uncompressed data
+   * @returns {Uint8Array}
+   */
+  function snappyCompress(input) {
+    const writer = new ByteWriter();
+    writer.appendVarInt(input.length); // uncompressed length
+
+    // Process input in 64K blocks
+    let pos = 0;
+    while (pos < input.length) {
+      const fragmentSize = Math.min(input.length - pos, BLOCK_SIZE);
+      compressFragment(writer, input, pos, fragmentSize);
+      pos += fragmentSize;
+    }
+
+    return writer.getBytes()
+  }
+
+  /**
+   * Hash function used in the reference implementation.
+   *
+   * @param {number} key
+   * @param {number} hashFuncShift
+   * @returns {number}
+   */
+  function hashFunc(key, hashFuncShift) {
+    return key * 0x1e35a7bd >>> hashFuncShift
+  }
+
+  /**
+   * Load a 32-bit little-endian integer from a byte array.
+   *
+   * @param {Uint8Array} array
+   * @param {number} pos
+   * @returns {number}
+   */
+  function load32(array, pos) {
+    return (
+      array[pos] +
+      (array[pos + 1] << 8) +
+      (array[pos + 2] << 16) +
+      (array[pos + 3] << 24)
+    )
+  }
+
+  /**
+   * Compare two 32-bit sequences for equality.
+   *
+   * @param {Uint8Array} array
+   * @param {number} pos1
+   * @param {number} pos2
+   * @returns {boolean}
+   */
+  function equals32(array, pos1, pos2) {
+    return (
+      array[pos1] === array[pos2] &&
+      array[pos1 + 1] === array[pos2 + 1] &&
+      array[pos1 + 2] === array[pos2 + 2] &&
+      array[pos1 + 3] === array[pos2 + 3]
+    )
+  }
+
+  /**
+   * Emit a literal chunk of data.
+   * @param {Writer} writer
+   * @param {Uint8Array} input
+   * @param {number} ip
+   * @param {number} len
+   */
+  function emitLiteral(writer, input, ip, len) {
+    // The first byte(s) encode the literal length
+    if (len <= 60) {
+      writer.appendUint8(len - 1 << 2);
+    } else if (len < 256) {
+      writer.appendUint8(60 << 2);
+      writer.appendUint8(len - 1);
+    } else {
+      writer.appendUint8(61 << 2);
+      writer.appendUint8(len - 1 & 0xff);
+      writer.appendUint8(len - 1 >>> 8);
+    }
+
+    // Then copy the literal bytes
+    writer.appendBytes(input.subarray(ip, ip + len));
+  }
+
+  /**
+   * Emit a copy of previous data.
+   * @param {Writer} writer
+   * @param {number} offset
+   * @param {number} len
+   */
+  function emitCopyLessThan64(writer, offset, len) {
+    if (len < 12 && offset < 2048) {
+      // Copy 4..11 bytes, offset < 2048
+      //    --> [  1   | (len-4)<<2 | (offset>>8)<<5 ]
+      writer.appendUint8(1 + (len - 4 << 2) + (offset >>> 8 << 5));
+      writer.appendUint8(offset & 0xff);
+    } else {
+      // Copy len bytes, offset 1..65535
+      //    --> [  2   | (len-1)<<2 ]
+      writer.appendUint8(2 + (len - 1 << 2));
+      writer.appendUint8(offset & 0xff);
+      writer.appendUint8(offset >>> 8);
+    }
+  }
+
+  /**
+   * Emit a copy of previous data.
+   * @param {Writer} writer
+   * @param {number} offset
+   * @param {number} len
+   */
+  function emitCopy(writer, offset, len) {
+    // Emit 64-byte copies as long as we can
+    while (len >= 68) {
+      emitCopyLessThan64(writer, offset, 64);
+      len -= 64;
+    }
+    // Emit one 60-byte copy if needed
+    if (len > 64) {
+      emitCopyLessThan64(writer, offset, 60);
+      len -= 60;
+    }
+    // Final copy
+    emitCopyLessThan64(writer, offset, len);
+  }
+
+  /**
+   * Compress a fragment of data.
+   * @param {Writer} writer
+   * @param {Uint8Array} input
+   * @param {number} ip
+   * @param {number} inputSize
+   */
+  function compressFragment(writer, input, ip, inputSize) {
+    let hashTableBits = 1;
+    while (1 << hashTableBits <= inputSize && hashTableBits <= MAX_HASH_TABLE_BITS) {
+      hashTableBits++;
+    }
+    hashTableBits--;
+    const hashFuncShift = 32 - hashTableBits;
+
+    // Initialize the hash table
+    globalHashTables[hashTableBits] ??= new Uint16Array(1 << hashTableBits);
+    const hashTable = globalHashTables[hashTableBits];
+    hashTable.fill(0);
+
+    const ipEnd = ip + inputSize;
+    let ipLimit;
+    const baseIp = ip;
+    let nextEmit = ip;
+
+    let hash, nextHash;
+    let nextIp, candidate, skip;
+    let bytesBetweenHashLookups;
+    let base, matched, offset;
+    let prevHash, curHash;
+    let flag = true;
+
+    const INPUT_MARGIN = 15;
+    if (inputSize >= INPUT_MARGIN) {
+      ipLimit = ipEnd - INPUT_MARGIN;
+      ip++;
+      nextHash = hashFunc(load32(input, ip), hashFuncShift);
+
+      while (flag) {
+        skip = 32;
+        nextIp = ip;
+        do {
+          ip = nextIp;
+          hash = nextHash;
+          bytesBetweenHashLookups = skip >>> 5;
+          skip++;
+          nextIp = ip + bytesBetweenHashLookups;
+          if (ip > ipLimit) {
+            flag = false;
+            break
+          }
+          nextHash = hashFunc(load32(input, nextIp), hashFuncShift);
+          candidate = baseIp + hashTable[hash];
+          hashTable[hash] = ip - baseIp;
+        } while (!equals32(input, ip, candidate))
+
+        if (!flag) {
+          break
+        }
+
+        // Emit the literal from `nextEmit` to `ip`
+        emitLiteral(writer, input, nextEmit, ip - nextEmit);
+
+        // We found a match. Repeatedly match and emit copies
+        do {
+          base = ip;
+          matched = 4;
+          while (
+            ip + matched < ipEnd &&
+            input[ip + matched] === input[candidate + matched]
+          ) {
+            matched++;
+          }
+          ip += matched;
+          offset = base - candidate;
+          emitCopy(writer, offset, matched);
+
+          nextEmit = ip;
+          if (ip >= ipLimit) {
+            flag = false;
+            break
+          }
+          prevHash = hashFunc(load32(input, ip - 1), hashFuncShift);
+          hashTable[prevHash] = ip - 1 - baseIp;
+          curHash = hashFunc(load32(input, ip), hashFuncShift);
+          candidate = baseIp + hashTable[curHash];
+          hashTable[curHash] = ip - baseIp;
+        } while (equals32(input, ip, candidate))
+
+        if (!flag) {
+          break
+        }
+
+        ip++;
+        nextHash = hashFunc(load32(input, ip), hashFuncShift);
+      }
+    }
+
+    // Emit the last literal (if any)
+    if (nextEmit < ipEnd) {
+      emitLiteral(writer, input, nextEmit, ipEnd - nextEmit);
+    }
+  }
+
+  /**
+   * @import {ColumnChunk, CompressionCodec, FileMetaData, KeyValue, RowGroup, SchemaElement, SchemaTree} from 'hyparquet'
+   * @import {ColumnEncoder, ColumnSource, Compressors, PageIndexes, Writer} from '../src/types.js'
+   */
+
+  /**
+   * ParquetWriter class allows incremental writing of parquet files.
+   *
+   * @param {object} options
+   * @param {Writer} options.writer
+   * @param {SchemaElement[]} options.schema
+   * @param {CompressionCodec} [options.codec]
+   * @param {Compressors} [options.compressors]
+   * @param {boolean} [options.statistics]
+   * @param {KeyValue[]} [options.kvMetadata]
+   */
+  function ParquetWriter({ writer, schema, codec = 'SNAPPY', compressors, statistics = true, kvMetadata }) {
+    this.writer = writer;
+    this.schema = schema;
+    this.codec = codec;
+    // Include built-in snappy as fallback
+    this.compressors = { SNAPPY: snappyCompress, ...compressors };
+    this.statistics = statistics;
+    this.kvMetadata = kvMetadata;
+
+    /** @type {RowGroup[]} */
+    this.row_groups = [];
+    this.num_rows = 0n;
+
+    /** @type {PageIndexes[]} */
+    this.pendingIndexes = [];
+
+    // write header PAR1
+    this.writer.appendUint32(0x31524150);
+  }
+
+  /**
+   * Write data to the file.
+   * Will split data into row groups of the specified size.
+   * Calls writer.flush() (if defined) after each row group; if it returns a
+   * Promise, subsequent row groups await it before encoding more data.
+   *
+   * @param {object} options
+   * @param {ColumnSource[]} options.columnData
+   * @param {number | number[]} [options.rowGroupSize]
+   * @param {number} [options.pageSize]
+   * @returns {void | Promise<void>}
+   */
+  ParquetWriter.prototype.write = function({ columnData, rowGroupSize = [1000, 100000], pageSize = 1048576 }) {
+    const columnDataRows = columnData[0]?.data?.length || 0;
+    /** @type {Promise<void> | undefined} */
+    let pending;
+    for (const { groupStartIndex, groupSize } of groupIterator({ columnDataRows, rowGroupSize })) {
+      const writeGroup = () => {
+        const groupStartOffset = this.writer.offset;
+        /** @type {ColumnChunk[]} */
+        const columns = [];
+
+        // write columns
+        for (let j = 0; j < columnData.length; j++) {
+          const { name, data, encoding, columnIndex = false, offsetIndex = true } = columnData[j];
+
+          // Spec: if ColumnIndex is present, OffsetIndex must also be present
+          if (columnIndex && !offsetIndex) {
+            throw new Error('parquet ColumnIndex cannot be present without OffsetIndex')
+          }
+          if (data.length !== columnDataRows) {
+            throw new Error('parquet columns must have the same length')
+          }
+
+          const groupData = data.slice(groupStartIndex, groupStartIndex + groupSize);
+          const columnPath = getSchemaPath(this.schema, [name]);
+          const leafPaths = getLeafSchemaPaths(columnPath);
+
+          for (const leafPath of leafPaths) {
+            const schemaPath = leafPath.map(node => node.element);
+
+            /** @type {ColumnEncoder} */
+            const column = {
+              columnName: schemaPath.slice(1).map(s => s.name).join('.'),
+              element: schemaPath[schemaPath.length - 1],
+              schemaPath,
+              codec: this.codec,
+              compressors: this.compressors,
+              stats: this.statistics,
+              pageSize,
+              columnIndex,
+              offsetIndex,
+              encoding,
+            };
+
+            const pageData = encodeNestedValues(leafPath, groupData);
+            const result = writeColumn({
+              writer: this.writer,
+              column,
+              pageData,
+            });
+
+            columns.push(result.chunk);
+            this.pendingIndexes.push(result);
+          }
+        }
+
+        this.num_rows += BigInt(groupSize);
+        this.row_groups.push({
+          columns,
+          total_byte_size: BigInt(this.writer.offset - groupStartOffset),
+          num_rows: BigInt(groupSize),
+        });
+        return this.writer.flush?.()
+      };
+      if (pending) {
+        pending = pending.then(writeGroup);
+      } else {
+        const r = writeGroup();
+        if (r) pending = Promise.resolve(r);
+      }
+    }
+    return pending
+  };
+
+  /**
+   * Finish writing the file.
+   *
+   * @returns {void | Promise<void>}
+   */
+  ParquetWriter.prototype.finish = function() {
+    // Write all indexes at end of file
+    writeIndexes(this.writer, this.pendingIndexes);
+
+    // write metadata
+    /** @type {FileMetaData} */
+    const metadata = {
+      version: 2,
+      created_by: 'hyparquet',
+      schema: this.schema,
+      num_rows: this.num_rows,
+      row_groups: this.row_groups,
+      metadata_length: 0,
+      key_value_metadata: this.kvMetadata,
+    };
+    // @ts-ignore don't want to actually serialize metadata_length
+    delete metadata.metadata_length;
+    writeMetadata(this.writer, metadata);
+
+    // write footer PAR1
+    this.writer.appendUint32(0x31524150);
+    return this.writer.finish()
+  };
+
+  /**
+   * Create an iterator for row groups based on the specified row group size.
+   * If rowGroupSize is an array, it will return groups based on the sizes in the array.
+   * When the array runs out, it will continue with the last size.
+   *
+   * @param {object} options
+   * @param {number} options.columnDataRows - Total number of rows in the column data
+   * @param {number | number[]} options.rowGroupSize - Size of each row group or an array of sizes
+   * @returns {Array<{groupStartIndex: number, groupSize: number}>}
+   */
+  function groupIterator({ columnDataRows, rowGroupSize }) {
+    if (Array.isArray(rowGroupSize) && !rowGroupSize.length) {
+      throw new Error('rowGroupSize array cannot be empty')
+    }
+    const groups = [];
+    let groupIndex = 0;
+    let groupStartIndex = 0;
+    while (groupStartIndex < columnDataRows) {
+      const size = Array.isArray(rowGroupSize)
+        ? rowGroupSize[Math.min(groupIndex, rowGroupSize.length - 1)]
+        : rowGroupSize;
+      const groupSize = Math.min(size, columnDataRows - groupStartIndex);
+      groups.push({ groupStartIndex, groupSize });
+      groupStartIndex += size;
+      groupIndex++;
+    }
+    return groups
+  }
+
+  /**
+   * Expand a schema path to all primitive leaf nodes under the column.
+   *
+   * @param {SchemaTree[]} schemaPath
+   * @returns {SchemaTree[][]}
+   */
+  function getLeafSchemaPaths(schemaPath) {
+    /** @type {SchemaTree[][]} */
+    const leaves = [];
+    dfs(schemaPath);
+    return leaves
+
+    /**
+     * @param {SchemaTree[]} path
+     */
+    function dfs(path) {
+      const node = path[path.length - 1];
+      if (!node.children.length) {
+        leaves.push(path);
+        return
+      }
+      for (const child of node.children) {
+        dfs([...path, child]);
+      }
+    }
+  }
+
+  /**
+   * @import {ParquetWriteOptions} from '../src/types.js'
+   */
+
+  /**
+   * Write data as parquet to a file or stream.
+   *
+   * @param {ParquetWriteOptions} options
+   * @returns {void | Promise<void>}
+   */
+  function parquetWrite({
+    writer,
+    columnData,
+    schema,
+    codec = 'SNAPPY',
+    compressors,
+    statistics = true,
+    rowGroupSize = [1000, 100000],
+    kvMetadata,
+    pageSize = 1048576,
+  }) {
+    if (!schema) {
+      schema = schemaFromColumnData({ columnData });
+    } else if (columnData.some(({ type }) => type)) {
+      throw new Error('cannot provide both schema and columnData type')
+    } else {
+      // TODO: validate schema
+    }
+    const pq = new ParquetWriter({
+      writer,
+      schema,
+      codec,
+      compressors,
+      statistics,
+      kvMetadata,
+    });
+    const w = pq.write({
+      columnData,
+      rowGroupSize,
+      pageSize,
+    });
+    return w ? w.then(() => pq.finish()) : pq.finish()
+  }
+
+  /**
+   * Write data as parquet to an ArrayBuffer.
+   *
+   * @param {Omit<ParquetWriteOptions, 'writer'>} options
+   * @returns {ArrayBuffer}
+   */
+  function parquetWriteBuffer(options) {
+    const writer = new ByteWriter();
+    parquetWrite({ ...options, writer });
+    return writer.getBuffer()
+  }
+
+  /**
+   * @typedef {import('hyparquet').KeyValue} KeyValue
+   * @typedef {import('hyparquet').SchemaElement} SchemaElement
+   * @typedef {import('../src/types.d.ts').BasicType} BasicType
+   * @typedef {import('../src/types.d.ts').ColumnSource} ColumnSource
+   * @typedef {import('../src/types.d.ts').ParquetWriteOptions} ParquetWriteOptions
+   * @typedef {import('../src/types.d.ts').Writer} Writer
+   */
+
+  var hyparquetWriter = /*#__PURE__*/Object.freeze({
+    __proto__: null,
+    ByteWriter: ByteWriter,
+    ParquetWriter: ParquetWriter,
+    autoSchemaElement: autoSchemaElement,
+    geojsonToWkb: geojsonToWkb,
+    parquetWrite: parquetWrite,
+    parquetWriteBuffer: parquetWriteBuffer,
+    schemaFromColumnData: schemaFromColumnData
+  });
+
   window.modules = window.modules || {};
   window.modules.hyparquet = hyparquet;
+  window.modules['hyparquet-writer'] = hyparquetWriter;
 
 })();

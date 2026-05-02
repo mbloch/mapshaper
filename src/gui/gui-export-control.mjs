@@ -4,7 +4,7 @@ import { sortLayersForMenuDisplay, cleanLayerName, formatLayerNameForDisplay } f
 import { El } from './gui-el';
 import { GUI } from './gui-lib';
 import { ClickText2 } from './gui-elements';
-import { loadGeopackageLib } from './gui-import-utils';
+import { loadGeopackageLib, loadGeoParquetLib } from './gui-import-utils';
 
 export async function saveFileContentToClipboard(content) {
   var str = utils.isString(content) ? content : content.toString();
@@ -153,6 +153,8 @@ export var ExportControl = function(gui) {
     var opts = getExportOpts();
     if (opts.format == 'geopackage') {
       await loadGeopackageLib();
+    } else if (opts.format == 'geoparquet') {
+      await loadGeoParquetLib();
     }
     opts.active_layer = gui.model.getActiveLayer().layer; // kludge to support restoring active layer in gui
     if (opts.format == internal.PACKAGE_EXT) {
@@ -293,7 +295,7 @@ export var ExportControl = function(gui) {
 
   function getExportFormats() {
     // return ['shapefile', 'geojson', 'topojson', 'json', 'dsv', 'kml', 'svg', internal.PACKAGE_EXT];
-    return ['shapefile', 'json', 'geojson', 'dsv', 'topojson', 'flatgeobuf', 'geopackage', 'kml', internal.PACKAGE_EXT, 'svg'];
+    return ['shapefile', 'json', 'geojson', 'dsv', 'topojson', 'flatgeobuf', 'geopackage', 'geoparquet', 'kml', internal.PACKAGE_EXT, 'svg'];
   }
 
   function initFormatMenu() {

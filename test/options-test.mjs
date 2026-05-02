@@ -80,6 +80,8 @@ describe('mapshaper-options.js', function () {
     good("-o format=tsv", {format: "dsv", delimiter: "\t"});
     good("-o format=dbf", {format: "dbf"});
     good("-o format=json", {format: "json"});
+    good("-o format=geoparquet", {format: "geoparquet"});
+    good("-o format=parquet", {format: "geoparquet"});
 
     // invalid formats
     bad("-o topojson");
