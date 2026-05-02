@@ -14129,9 +14129,9 @@
 	  return ret;
 	}
 
-	var inherits$1;
+	var inherits;
 	if (typeof Object.create === 'function'){
-	  inherits$1 = function inherits(ctor, superCtor) {
+	  inherits = function inherits(ctor, superCtor) {
 	    // implementation from standard node.js 'util' module
 	    ctor.super_ = superCtor;
 	    ctor.prototype = Object.create(superCtor.prototype, {
@@ -14144,7 +14144,7 @@
 	    });
 	  };
 	} else {
-	  inherits$1 = function inherits(ctor, superCtor) {
+	  inherits = function inherits(ctor, superCtor) {
 	    ctor.super_ = superCtor;
 	    var TempCtor = function () {};
 	    TempCtor.prototype = superCtor.prototype;
@@ -14152,7 +14152,7 @@
 	    ctor.prototype.constructor = ctor;
 	  };
 	}
-	var inherits = inherits$1;
+	var inherits$1 = inherits;
 
 	var getOwnPropertyDescriptors = Object.getOwnPropertyDescriptors ||
 	  function getOwnPropertyDescriptors(obj) {
@@ -14806,7 +14806,7 @@
 	}
 
 	var _polyfillNode_util = {
-	  inherits: inherits,
+	  inherits: inherits$1,
 	  _extend: _extend,
 	  log: log$1,
 	  isBuffer: isBuffer,
@@ -14894,7 +14894,7 @@
 	Readable.ReadableState = ReadableState;
 
 	var debug = debuglog('stream');
-	inherits(Readable, EventEmitter);
+	inherits$1(Readable, EventEmitter);
 
 	function prependListener(emitter, event, fn) {
 	  // Sadly this is not cacheable as some libraries bundle their own
@@ -15783,7 +15783,7 @@
 	// the drain event emission and buffering.
 
 	Writable.WritableState = WritableState;
-	inherits(Writable, EventEmitter);
+	inherits$1(Writable, EventEmitter);
 
 	function nop() {}
 
@@ -16254,7 +16254,7 @@
 	  };
 	}
 
-	inherits(Duplex, Readable);
+	inherits$1(Duplex, Readable);
 
 	var keys$1 = Object.keys(Writable.prototype);
 	for (var v = 0; v < keys$1.length; v++) {
@@ -16334,7 +16334,7 @@
 	// would be consumed, and then the rest would wait (un-transformed) until
 	// the results of the previous transformed chunk were consumed.
 
-	inherits(Transform, Duplex);
+	inherits$1(Transform, Duplex);
 
 	function TransformState(stream) {
 	  this.afterTransform = function (er, data) {
@@ -16461,7 +16461,7 @@
 	  return stream.push(null);
 	}
 
-	inherits(PassThrough, Transform);
+	inherits$1(PassThrough, Transform);
 	function PassThrough(options) {
 	  if (!(this instanceof PassThrough)) return new PassThrough(options);
 
@@ -16472,7 +16472,7 @@
 	  cb(null, chunk);
 	};
 
-	inherits(Stream, EventEmitter);
+	inherits$1(Stream, EventEmitter);
 	Stream.Readable = Readable;
 	Stream.Writable = Writable;
 	Stream.Duplex = Duplex;

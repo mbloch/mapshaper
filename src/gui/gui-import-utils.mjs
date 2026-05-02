@@ -49,7 +49,7 @@ export async function getGeoPackageFeatureTables(content) {
 }
 
 export async function loadGeoParquetLib() {
-  if (!window.modules || !window.modules.hyparquet) {
+  if (!window.modules || !window.modules.hyparquet || !window.modules['hyparquet-writer']) {
     if (!geoParquetPromise) {
       geoParquetPromise = loadScript('geoparquet.js');
     }

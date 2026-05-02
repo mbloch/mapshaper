@@ -61,6 +61,7 @@
     "geographiclib-geodesic": "^2.2.0",
     "geokdbush": "^1.1.0",
     "hyparquet": "^1.25.6",
+    "hyparquet-writer": "^0.14.0",
     "iconv-lite": "^0.6.3",
     "idb-keyval": "^6.2.0",
     "kdbush": "^3.0.0",

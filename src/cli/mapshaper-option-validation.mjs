@@ -108,6 +108,8 @@ export function validateOutputOpts(cmd) {
     } else if (o.format == 'tsv') {
       o.format = 'dsv';
       o.delimiter = o.delimiter || '\t';
+    } else if (o.format == 'parquet') {
+      o.format = 'geoparquet';
     }
     if (!isSupportedOutputFormat(o.format)) {
       error('Unsupported output format:', o.format);
