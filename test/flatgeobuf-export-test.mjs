@@ -62,6 +62,57 @@ describe('flatgeobuf export', function () {
     assert(names.every(name => /\.fgb$/i.test(name)));
   });
 
+  it('exports sparse properties without mutating first-row values', async function() {
+    var input = {
+      type: 'FeatureCollection',
+      features: [{
+        type: 'Feature',
+        properties: {a: null, b: undefined},
+        geometry: {type: 'Point', coordinates: [0, 0]}
+      }, {
+        type: 'Feature',
+        properties: {a: 7, b: 'x'},
+        geometry: {type: 'Point', coordinates: [1, 1]}
+      }]
+    };
+    var output = await api.applyCommands('-i in.json -o format=flatgeobuf', {'in.json': input});
+    var fgbName = Object.keys(output)[0];
+    var roundtrip = await api.internal.importContentAsync({
+      fgb: {filename: fgbName, content: output[fgbName]}
+    }, {});
+    var records = roundtrip.layers[0].data.getRecords();
+
+    assert.equal(records[0].a, undefined);
+    assert.equal(records[0].b, undefined);
+    assert.equal(records[1].a, 7);
+    assert.equal(records[1].b, 'x');
+  });
+
+  it('uses integer column types for integer-valued numeric fields', async function() {
+    var input = {
+      type: 'FeatureCollection',
+      features: [{
+        type: 'Feature',
+        properties: {small: 1, large: 3000000000, decimal: 1.5},
+        geometry: {type: 'Point', coordinates: [0, 0]}
+      }, {
+        type: 'Feature',
+        properties: {small: -2, large: 3000000001, decimal: 2},
+        geometry: {type: 'Point', coordinates: [1, 1]}
+      }]
+    };
+    var output = await api.applyCommands('-i in.json -o format=flatgeobuf', {'in.json': input});
+    var fgbName = Object.keys(output)[0];
+    var roundtrip = await api.internal.importContentAsync({
+      fgb: {filename: fgbName, content: output[fgbName]}
+    }, {});
+    var records = roundtrip.layers[0].data.getRecords();
+
+    assert.deepEqual(records.map(rec => rec.small), [1, -2]);
+    assert.deepEqual(records.map(rec => rec.large), [3000000000, 3000000001]);
+    assert.deepEqual(records.map(rec => rec.decimal), [1.5, 2]);
+  });
+
   it('preserves EPSG code from dataset.info.flatgeobuf_crs on export', async function () {
     var src = fixPath('data/flatgeobuf/countries.fgb');
     var imported = await api.internal.importFileAsync(src, {});
@@ -78,6 +129,7 @@ describe('flatgeobuf export', function () {
 
     assert.equal(roundtrip.info.flatgeobuf_crs.org, 'EPSG');
     assert.equal(roundtrip.info.flatgeobuf_crs.code, 4326);
+    assert(/^GEOGCRS\[/i.test(roundtrip.info.flatgeobuf_crs.wkt));
   });
 
   it('treats missing org + EPSG-like code as EPSG', async function () {
@@ -207,39 +259,52 @@ describe('flatgeobuf export', function () {
     assert.equal(roundtrip.info.flatgeobuf_crs.code, 4267);
   });
 
-  it('warns and writes no CRS when the projection has no EPSG code', async function () {
-    var loggingWasEnabled = api.internal.loggingEnabled();
-    api.enableLogging();
-    var calls = [];
-    var origError = console.error;
-    console.error = function() { calls.push(Array.prototype.join.call(arguments, ' ')); };
-    try {
-      var input = {
-        type: 'FeatureCollection',
-        features: [{
-          type: 'Feature',
-          properties: {name: 'a'},
-          geometry: {type: 'Point', coordinates: [-122.4, 37.8]}
-        }]
-      };
-      // +proj=aea is a custom projection that mapshaper can't tag with an EPSG code.
-      var output = await api.applyCommands(
-        '-i in.json -proj "+proj=aea +lat_1=29.5 +lat_2=45.5 +lat_0=37.5 +lon_0=-96 +datum=WGS84" -o format=flatgeobuf',
-        {'in.json': input}
-      );
-      var fgbName = Object.keys(output)[0];
-      var roundtrip = await api.internal.importContentAsync({
-        fgb: {filename: fgbName, content: output[fgbName]}
-      }, {});
+  it('writes WKT-only CRS metadata when the projection has no EPSG code', async function () {
+    var input = {
+      type: 'FeatureCollection',
+      features: [{
+        type: 'Feature',
+        properties: {name: 'a'},
+        geometry: {type: 'Point', coordinates: [-122.4, 37.8]}
+      }]
+    };
+    // +proj=aea is a custom projection that mapshaper can't tag with an EPSG code.
+    var output = await api.applyCommands(
+      '-i in.json -proj "+proj=aea +lat_1=29.5 +lat_2=45.5 +lat_0=37.5 +lon_0=-96 +datum=WGS84" -o format=flatgeobuf',
+      {'in.json': input}
+    );
+    var fgbName = Object.keys(output)[0];
+    var roundtrip = await api.internal.importContentAsync({
+      fgb: {filename: fgbName, content: output[fgbName]}
+    }, {});
 
-      assert.strictEqual(roundtrip.info.flatgeobuf_crs, null);
-      assert.ok(
-        calls.some(s => /without a CRS in the FlatGeobuf header/.test(s)),
-        'expected a "no CRS" warning but got:\n' + calls.join('\n')
-      );
-    } finally {
-      console.error = origError;
-      if (!loggingWasEnabled) api.internal.disableLogging();
-    }
+    assert.equal(roundtrip.info.flatgeobuf_crs.org, null);
+    assert.equal(roundtrip.info.flatgeobuf_crs.code, null);
+    assert(/^PROJCRS\[/i.test(roundtrip.info.flatgeobuf_crs.wkt));
+    assert(/\+proj=aea/.test(roundtrip.info.crs_string), roundtrip.info.crs_string);
+  });
+
+  it('imports WKT1-only CRS metadata from FlatGeobuf', async function () {
+    var dataset = {
+      info: {
+        flatgeobuf_crs: {
+          wkt: 'GEOGCS["WGS84",DATUM["WGS_1984",' +
+            'SPHEROID["WGS 84",6378137,298.257223563]],' +
+            'PRIMEM["Greenwich",0],UNIT["degree",0.0174532925199433]]'
+        }
+      },
+      layers: [{
+        name: 'pts',
+        geometry_type: 'point',
+        shapes: [[[500000, 4500000]]]
+      }]
+    };
+    var files = api.internal.exportFileContent(dataset, {format: 'flatgeobuf'});
+    var roundtrip = await api.internal.importContentAsync({
+      fgb: {filename: files[0].filename, content: files[0].content}
+    }, {});
+
+    assert(/^GEOGCS\[/i.test(roundtrip.info.flatgeobuf_crs.wkt));
+    assert(/\+datum=WGS84/.test(roundtrip.info.crs_string), roundtrip.info.crs_string);
   });
 });

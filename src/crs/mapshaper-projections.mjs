@@ -117,6 +117,16 @@ export function crsToPrj(P) {
   return wkt;
 }
 
+export function crsToWkt2(P) {
+  var wkt;
+  try {
+    wkt = mproj.internal.wkt2_from_proj4(P);
+  } catch(e) {
+    // WKT2 export may be unavailable for some custom definitions.
+  }
+  return wkt;
+}
+
 export function crsAreEqual(a, b) {
   var str = crsToProj4(a);
   return !!str && str == crsToProj4(b);
@@ -306,9 +316,37 @@ export function wkt1ToProj(str) {
   return proj4;
 }
 
+export function wkt2ToProj(str) {
+  var proj4;
+  try {
+    proj4 = mproj.internal.wkt2_to_proj4(str);
+  } catch(e) {
+    stop('Unusable WKT2 CRS (' + e.message + ')');
+  }
+  return proj4;
+}
+
+export function wktToProj(str) {
+  var proj4;
+  try {
+    proj4 = mproj.internal.wkt2_to_proj4(str);
+  } catch(e) {
+    try {
+      proj4 = mproj.internal.wkt_to_proj4(str);
+    } catch(e2) {
+      stop('Unusable WKT CRS (' + e2.message + ')');
+    }
+  }
+  return proj4;
+}
+
 // Convert contents of a .prj file to a projection object
 export function parsePrj(str) {
   return parseCrsString(wkt1ToProj(str));
+}
+
+export function parseWkt(str) {
+  return parseCrsString(wktToProj(str));
 }
 
 // Extract an EPSG (or other authority) code from a short string like
