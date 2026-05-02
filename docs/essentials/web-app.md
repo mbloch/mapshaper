@@ -39,8 +39,37 @@ The Console (top-right of the header, or **space bar** to toggle) is the most po
 
 ### Syntax
 
-- The leading `-` is optional in the console: `clip places` works the same as `-clip places`.
+- The leading `-` is optional for a single console command: `clip places` works the same as `-clip places`.
+- When entering a sequence of commands, include the leading `-` before each command after the first. The examples in these docs include leading `-` prefixes because that style works in both the web console and the CLI.
 - Commands run on the **currently-selected layer** by default. Switch layers in the layer panel before issuing a command, or pass `target=` to be explicit (`target=*` runs against every layer).
+
+### Using CLI examples in the web console
+
+Many Mapshaper examples are written for the command line. To run them in the web app, first load your data by dragging it onto the page or using **Add files**, then type only the editing commands in the Console.
+
+For example, this command-line example:
+
+```bash
+mapshaper counties.shp -filter 'STATE == "CA"' -simplify 10% keep-shapes -o california.geojson
+```
+
+becomes this in the web console:
+
+```text
+-filter 'STATE == "CA"' \
+  -simplify 10% keep-shapes
+```
+
+Use the **Export** button when you're ready to save the result.
+
+The general rules are:
+
+- Drop the initial `mapshaper` command.
+- Drop input filenames such as `counties.shp` after your data has been loaded.
+- Don't use file-loading commands like `-i`, `-include` or `-require`; they are disabled in the browser console.
+- Keep the leading `-` on command names when copying examples from the docs. It works in the web console and avoids confusion in command sequences.
+- Use `target=` when you want a command to operate on a layer other than the currently selected layer.
+- Export from the web UI instead of copying the CLI `-o output.geojson` part of an example.
 
 ### Magic words at the prompt
 
@@ -48,6 +77,8 @@ These are recognized directly by the console, not by Mapshaper:
 
 - `history` &mdash; print the current session as a single command-line string. Handy for reproducing an interactive workflow as a script.
 - `layers` &mdash; print the list of loaded layers.
+- `context` &mdash; print the current runtime context as JSON. This is the metadata that can be shared with debugging tools or a help bot: layer names, field names/types, counts, CRS, recent commands and recent messages, but not geometry or attribute records.
+- `context download` &mdash; save the same runtime context JSON to a local file.
 - `clear` &mdash; clear the console buffer.
 - `close` / `exit` / `quit` &mdash; close the console.
 
