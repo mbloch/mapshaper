@@ -11,6 +11,7 @@ import { message, stop, error } from '../utils/mapshaper-logging';
 import { getFileBase, parseLocalPath } from '../utils/mapshaper-filename-utils';
 import { importFlatgeobuf } from '../flatgeobuf/mapshaper-flatgeobuf';
 import { importGeoPackage } from '../geopackage/mapshaper-geopackage-import';
+import { importGeoParquet } from '../geoparquet/mapshaper-geoparquet-import';
 import { importSVG } from '../svg/mapshaper-svg-import';
 
 // Parse content of one or more input files and return a dataset
@@ -64,6 +65,8 @@ export function importContent(obj, opts) {
     stop("FlatGeobuf import requires async import path");
   } else if (obj.gpkg) {
     stop("GeoPackage import requires async import path");
+  } else if (obj.parquet) {
+    stop("GeoParquet import requires async import path");
   }
 
   return finalizeImportedDataset(dataset, dataFmt, data, opts);
@@ -80,6 +83,10 @@ export async function importContentAsync(obj, opts) {
     dataFmt = 'geopackage';
     data = obj.gpkg;
     dataset = await importGeoPackage(data, opts);
+  } else if (obj.parquet) {
+    dataFmt = 'geoparquet';
+    data = obj.parquet;
+    dataset = await importGeoParquet(data, opts);
   } else {
     return importContent(obj, opts);
   }

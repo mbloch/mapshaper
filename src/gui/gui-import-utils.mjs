@@ -14,6 +14,7 @@ export async function considerReprojecting(gui, dataset, opts) {
 }
 
 var geopackagePromise = null;
+var geoParquetPromise = null;
 
 export async function loadGeopackageLib() {
   if (!window.modules || !window.modules['@ngageoint/geopackage']) {
@@ -44,6 +45,16 @@ export async function getGeoPackageFeatureTables(content) {
     return gpkg.getFeatureTables() || [];
   } finally {
     gpkg.close();
+  }
+}
+
+export async function loadGeoParquetLib() {
+  if (!window.modules || !window.modules.hyparquet) {
+    if (!geoParquetPromise) {
+      geoParquetPromise = loadScript('geoparquet.js');
+    }
+    await geoParquetPromise;
+    geoParquetPromise = null;
   }
 }
 

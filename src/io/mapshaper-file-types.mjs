@@ -11,6 +11,8 @@ export function guessInputFileType(file) {
       type = null;
   if (ext == 'dbf' || ext == 'shp' || ext == 'kml' || ext == 'svg' || ext == 'fgb' || ext == 'gpkg') {
     type = ext;
+  } else if (ext == 'parquet' || ext == 'geoparquet') {
+    type = 'parquet';
   } else if (isAuxiliaryInputFileType(ext)) {
     type = ext;
   } else if (/json$/.test(ext)) { // matches topojson, geojson, json
@@ -152,7 +154,7 @@ export function isGzipFile(file) {
 export function isSupportedBinaryInputType(path) {
   var ext = getFileExtension(path).toLowerCase();
   return ext == 'shp' || ext == 'shx' || ext == 'dbf' ||
-    ext == 'fgb' || ext == 'gpkg' || ext == PACKAGE_EXT; // GUI also supports zip files
+    ext == 'fgb' || ext == 'gpkg' || ext == 'parquet' || ext == 'geoparquet' || ext == PACKAGE_EXT; // GUI also supports zip files
 }
 
 export function isImportableAsBinary(path) {
