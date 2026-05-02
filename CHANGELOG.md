@@ -1,3 +1,8 @@
+v0.7.8
+* Support for reading/writing GeoParquet files.
+* Added support for PROJJSON and WKT2 CRS definitions (used by GeoParquet and FlatGeobuf).
+* Improved FlatGeobuf i/o.
+
 v0.7.7
 * Support for reading NDJSON-formatted GeoJSON features and JSON data records.
 * -points command uses WKT-formatted coordinates if found in the attribute table.
