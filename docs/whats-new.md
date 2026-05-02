@@ -7,7 +7,7 @@ description: A curated log of recently added user-visible features in Mapshaper,
 
 This is a curated list of recently added features. For the full list of changes, including bug fixes and internal work, see the [changelog](https://github.com/mbloch/mapshaper/blob/master/CHANGELOG.md) on GitHub.
 
-## April 2026
+## May 2026
 
 
 <div class="whats-new-entry">
@@ -16,6 +16,8 @@ This is a curated list of recently added features. For the full list of changes,
 
 → See [GeoParquet](/docs/formats/geoparquet.html).
 </div>
+
+## April 2026
 
 <div class="whats-new-entry">
 
