@@ -1,3 +1,8 @@
+v0.7.9
+* Support ZSTD compression in GeoParquet files with the new output option: `compression="snappy,zstd,none"` (snappy is default).
+* Added the `-o level=` option for setting ZSTD compression level (range is 1-22).
+* Allow exporting tabular `.parquet` files (with no geometry).
+
 v0.7.8
 * Support for reading/writing GeoParquet files.
 * Added support for PROJJSON and WKT2 CRS definitions (used by GeoParquet and FlatGeobuf).
