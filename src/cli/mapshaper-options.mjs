@@ -415,6 +415,13 @@ export function getOptionParser() {
       type: 'flag',
       describe: '[CSV] export numbers with decimal commas not points'
     })
+    .option('compression', {
+      describe: '[GeoParquet] options: snappy,zstd,none (default is snappy)'
+    })
+    .option('level', {
+      describe: '[GeoParquet] zstd compression level',
+      type: 'integer'
+    })
     .option('show-all', {
       type: 'flag',
       describe: '[Snapshot] show all layers in Web UI'

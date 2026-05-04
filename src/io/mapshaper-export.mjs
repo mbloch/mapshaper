@@ -55,6 +55,9 @@ export async function exportTargetLayers(catalog, targets, opts) {
 async function exportDatasets(datasets, opts) {
   var format = getOutputFormat(datasets[0], opts);
   var files;
+  if (format != 'geoparquet' && (opts.compression || opts.level !== undefined)) {
+    error('The compression= and level= options only apply to GeoParquet output');
+  }
   if (format == PACKAGE_EXT) {
     opts = utils.defaults({compact: true}, opts);
     return exportPackedDatasets(datasets, opts);

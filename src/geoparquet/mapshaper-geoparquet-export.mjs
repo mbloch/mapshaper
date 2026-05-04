@@ -7,15 +7,18 @@ import utils from '../utils/mapshaper-utils';
 import require from '../mapshaper-require';
 
 var writerPromise = null;
+var zstdPromise = null;
 var dynamicImportModule = Function('id', 'return import(id)');
 
 export async function exportGeoParquet(dataset, opts, filenameOverride) {
   var writer = await loadGeoParquetWriter();
+  var compression = await getGeoParquetCompression(opts);
   var extension = opts.extension || 'parquet';
+  var files = [];
   if (opts.file) {
     extension = getFileExtension(opts.file) || extension;
   }
-  return dataset.layers.map(function(lyr) {
+  dataset.layers.forEach(function(lyr) {
     if (!lyr.geometry_type) {
       stop('GeoParquet export requires a geometry layer');
     }
@@ -24,16 +27,20 @@ export async function exportGeoParquet(dataset, opts, filenameOverride) {
     var geoMetadata = buildGeoMetadata(features, dataset);
     var content = writer.parquetWriteBuffer({
       columnData: output.columnData,
+      codec: compression.codec,
+      compressors: compression.compressors,
+      pageSize: compression.pageSize,
       kvMetadata: [{
         key: 'geo',
         value: JSON.stringify(geoMetadata)
       }]
     });
-    return {
+    files.push({
       filename: filenameOverride || (lyr.name + '.' + extension),
       content: content
-    };
+    });
   });
+  return files;
 }
 
 function buildGeoParquetColumns(features, writer) {
@@ -208,4 +215,97 @@ async function loadGeoParquetWriter() {
   }
   var nodeMod = await writerPromise;
   return nodeMod.default && !nodeMod.parquetWriteBuffer ? nodeMod.default : nodeMod;
+}
+
+async function getGeoParquetCompression(opts) {
+  var codec = normalizeGeoParquetCompression(opts.compression);
+  var level = validateGeoParquetCompressionLevel(opts.level, codec);
+  if (codec != 'ZSTD') {
+    return {codec: codec, compressors: null};
+  }
+  var zstd = await loadZstdLib();
+  if (!zstd || typeof zstd.compress != 'function') {
+    stop('GeoParquet ZSTD compressor is not loaded');
+  }
+  return {
+    codec: codec,
+    pageSize: getGeoParquetPageSize(level),
+    compressors: {
+      ZSTD: function(bytes) {
+        return compressZstdPage(zstd, bytes, level);
+      }
+    }
+  };
+}
+
+function compressZstdPage(zstd, bytes, level) {
+  var compressed;
+  try {
+    compressed = zstd.compress(bytes, level);
+  } catch (e) {
+    stop('Unable to apply GeoParquet ZSTD compression. Try a lower level= value.');
+  }
+  if (!compressed) {
+    stop('Unable to apply GeoParquet ZSTD compression. Try a lower level= value.');
+  }
+  return compressed;
+}
+
+function getGeoParquetPageSize(level) {
+  return level >= 10 ? 64 * 1024 : undefined;
+}
+
+function normalizeGeoParquetCompression(compression) {
+  var str = compression === undefined || compression === null ? 'snappy' : String(compression).toLowerCase();
+  if (str == 'snappy') return 'SNAPPY';
+  if (str == 'zstd') return 'ZSTD';
+  if (str == 'none' || str == 'uncompressed') return null;
+  stop('Unsupported GeoParquet compression:', compression);
+}
+
+function validateGeoParquetCompressionLevel(level, codec) {
+  if (level === undefined) return undefined;
+  if (codec != 'ZSTD') {
+    stop('The level= option only applies with compression=zstd');
+  }
+  if (level >= 1 && level <= 22 && Math.floor(level) === level) {
+    return level;
+  }
+  stop('GeoParquet ZSTD level= option must be an integer from 1 to 22');
+}
+
+async function loadZstdLib() {
+  var mod;
+  if (runningInBrowser()) {
+    mod = require('zstd-codec');
+  } else {
+    if (!zstdPromise) {
+      zstdPromise = dynamicImportModule('zstd-codec');
+    }
+    mod = await zstdPromise;
+  }
+  if (mod && mod.default && !mod.ZstdCodec) {
+    mod = mod.default;
+  }
+  if (!mod || !mod.ZstdCodec || typeof mod.ZstdCodec.run != 'function') {
+    stop('GeoParquet ZSTD compressor is not loaded');
+  }
+  return initZstdCodec(mod.ZstdCodec);
+}
+
+function initZstdCodec(codec) {
+  return new Promise(function(resolve, reject) {
+    try {
+      codec.run(function(zstd) {
+        var simple = new zstd.Simple();
+        resolve({
+          compress: function(bytes, level) {
+            return simple.compress(bytes, level);
+          }
+        });
+      });
+    } catch (e) {
+      reject(e);
+    }
+  });
 }

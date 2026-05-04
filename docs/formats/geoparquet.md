@@ -23,7 +23,8 @@ There are no GeoParquet-specific `-i` options.
 
 ### Format-specific output options
 
-There are no GeoParquet-specific `-o` options.
+- `compression=snappy|zstd|none` &mdash; select Parquet column compression. The default is `snappy`. Use `none` or `uncompressed` to write uncompressed Parquet data.
+- `level=` &mdash; set the ZSTD compression level when using `compression=zstd`. Valid values are integers from 1 to 22. If omitted, the ZSTD library default is used.
 
 ### Practical notes
 
