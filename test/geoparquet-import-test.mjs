@@ -1,5 +1,6 @@
 import assert from 'assert';
 import { createRequire } from 'module';
+import { asyncBufferFromFile, parquetMetadataAsync } from 'hyparquet';
 import api from '../mapshaper.js';
 import {
   convertGeoParquetRows,
@@ -140,6 +141,21 @@ describe('geoparquet import helpers', function () {
 });
 
 describe('geoparquet fixture import', function () {
+  it('imports ZSTD-compressed GeoParquet files', async function () {
+    var file = fixPath('data/geoparquet/sample-zstd.parquet');
+    var metadata = await parquetMetadataAsync(await asyncBufferFromFile(file));
+    var codecs = getParquetCodecs(metadata);
+    assert.deepEqual(codecs, ['ZSTD']);
+
+    var dataset = await api.internal.importFileAsync(file, {});
+    assert.equal(dataset.layers.length, 1);
+    assert.equal(dataset.layers[0].geometry_type, 'point');
+    assert.equal(dataset.layers[0].shapes.length, 3);
+    assert.deepEqual(dataset.layers[0].data.getRecords().map(function(rec) {
+      return rec.name;
+    }), ['alpha', 'beta', 'gamma']);
+  });
+
   it('imports WKB-encoded geometry fixtures with geometry intact', async function () {
     var dataset = await api.internal.importFileAsync(
       fixPath('data/geoparquet/data-point-encoding_wkb.parquet'),
@@ -238,3 +254,13 @@ describe('geoparquet fixture import', function () {
   });
 
 });
+
+function getParquetCodecs(metadata) {
+  var index = {};
+  (metadata.row_groups || []).forEach(function(rowGroup) {
+    (rowGroup.columns || []).forEach(function(column) {
+      index[column.meta_data && column.meta_data.codec] = true;
+    });
+  });
+  return Object.keys(index).sort();
+}

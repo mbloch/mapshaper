@@ -6,6 +6,7 @@ import utils from '../utils/mapshaper-utils';
 import require from '../mapshaper-require';
 
 var hyparquetPromise = null;
+var compressorsPromise = null;
 var dynamicImportModule = Function('id', 'return import(id)');
 var mproj = null;
 
@@ -16,8 +17,10 @@ export async function importGeoParquet(input, optsArg) {
   var file = await getHyparquetFile(source, hyparquet);
   var metadata = await hyparquet.parquetMetadataAsync(file);
   var geo = parseGeoParquetMetadata(metadata);
+  var compressors = await loadHyparquetCompressors();
   var rows = await hyparquet.parquetReadObjects({
     file: file,
+    compressors: compressors,
     rowFormat: 'object'
   });
   var geometryColumn = getGeoParquetGeometryColumn(rows, geo);
@@ -55,6 +58,26 @@ async function loadHyparquetLib() {
   }
   var nodeMod = await hyparquetPromise;
   return nodeMod.default && !nodeMod.parquetReadObjects ? nodeMod.default : nodeMod;
+}
+
+async function loadHyparquetCompressors() {
+  if (runningInBrowser()) {
+    return getHyparquetCompressors(require('hyparquet-compressors'));
+  }
+  if (!compressorsPromise) {
+    compressorsPromise = dynamicImportModule('hyparquet-compressors');
+  }
+  return getHyparquetCompressors(await compressorsPromise);
+}
+
+function getHyparquetCompressors(mod) {
+  if (mod && mod.default && !mod.compressors) {
+    mod = mod.default;
+  }
+  if (!mod || !mod.compressors) {
+    stop('GeoParquet compression library is not loaded');
+  }
+  return mod.compressors;
 }
 
 function getGeoParquetSource(input) {

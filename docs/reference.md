@@ -291,7 +291,7 @@ Save content of the target layer(s) to a file or files.
 
 `<file>|<directory>|-`  Name of output file or directory. Use `-` to export text-based formats to `/dev/stdout`.
 
-`format=shapefile|geojson|topojson|flatgeobuf|geopackage|json|dbf|csv|tsv|svg` Specify output format. If the `format=` option is missing, Mapshaper tries to infer the format from the output filename. If no filename is given, Mapshaper exports to the same format as the input format. The `json` format is an array of objects containing data properties for each feature.
+`format=shapefile|geojson|topojson|flatgeobuf|geopackage|geoparquet|json|dbf|csv|tsv|svg` Specify output format. If the `format=` option is missing, Mapshaper tries to infer the format from the output filename. If no filename is given, Mapshaper exports to the same format as the input format. The `json` format is an array of objects containing data properties for each feature.
 
 `target=` Specify layer(s) to export (comma-separated list). The default target is the output layer(s) of the previous command. Use `target=*` to select all layers.
 
@@ -372,6 +372,10 @@ Save content of the target layer(s) to a file or files.
 `delimiter=`  (CSV) Set the field delimiter for CSV/delimited text output; e.g. `delimiter=|`.
 
 `decimal-comma`  (CSV) Export numbers with decimal commas instead of decimal points (common in Europe and elsewhere).
+
+`compression=`  (GeoParquet) Select Parquet column compression. One of: `snappy` `zstd` `none`. The default is `snappy`.
+
+`level=`  (GeoParquet) Set the ZSTD compression level when using `compression=zstd`. Valid values are integers from 1 to 22.
 
 `show-all`  [Snapshot] All layers of the exported snapshot will be displayed when opened in the web UI.
 
