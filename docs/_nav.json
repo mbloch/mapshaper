@@ -29,6 +29,7 @@
       "path": "guides",
       "pages": [
         { "label": "Simplification", "file": "simplification.md" },
+        { "label": "Styles and Symbols", "file": "styles-and-symbols.md" },
         { "label": "JavaScript expressions", "file": "expressions.md" },
         { "label": "Projections", "file": "projections.md" },
         { "label": "Topology and cleaning", "file": "topology.md" },

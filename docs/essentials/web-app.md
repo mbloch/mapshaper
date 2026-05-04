@@ -128,10 +128,33 @@ You can pre-load files by listing them on the command line, which skips the impo
 mapshaper-gui states.shp rivers.shp
 ```
 
+## Optional AI assistant
+
+Some Mapshaper installations may enable an optional AI assistant by serving an `ai-config.js` file alongside the web app. If the file is missing or disabled, no assistant UI is shown.
+
+When enabled, the assistant can receive the same runtime context shown by the console's `context` command: layer names, field names/types, feature counts, CRS, recent commands and recent messages. It does not include geometry or full attribute records.
+
+Development builds can use a mock assistant or direct provider calls from `localhost`. Production deployments should use a proxy endpoint so provider secrets, rate limits and logging policy are not exposed in the browser.
+
+An `ai-config.js` file can also point the assistant at static documentation, such as `llms-full.txt`, for providers or proxies that support prompt caching:
+
+```js
+window.mapshaperAI = {
+  enabled: true,
+  mode: "proxy",
+  endpoint: "/api/mapshaper-assist",
+  staticContextUrl: "/llms-full.txt",
+  cacheControl: {type: "ephemeral"},
+  cacheTtl: "1h"
+};
+```
+
+For local testing without a proxy, `mode: "direct"` supports OpenAI-compatible Responses requests and Anthropic Messages requests. Anthropic direct mode sends static context as cacheable system content when `provider: "anthropic"` is configured. Direct mode should only be used with disposable development keys on `localhost`.
+
 ## Browser support
 
 When importing very large files (hundreds of megabytes), the web app may run out of memory and crash. Firefox used to be better than Chrome at handling large files, but Chrome seems to have improved recently. If the web app crashes, try the [`mapshaper-xl` command-line tool](/docs/essentials/command-line.html), which can allocate a large amount of memory.
 
 ## Privacy
 
-The Mapshaper web app runs entirely in your browser. No file content is uploaded to any server. The only network traffic is for static assets (the app itself), basemap tiles when you've enabled a basemap, and analytics for `mapshaper.org` page loads. See the [privacy policy](/privacy.html) for details.
+The Mapshaper web app runs entirely in your browser. No file content is uploaded to any server. The only network traffic is for static assets (the app itself), basemap tiles when you've enabled a basemap, optional AI assistant requests when an installation has enabled them, and analytics for `mapshaper.org` page loads. See the [privacy policy](/privacy.html) for details.
