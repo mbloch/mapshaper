@@ -1,7 +1,7 @@
 import api from '../mapshaper.js';
 import assert from 'assert';
 import { parquetMetadataAsync } from 'hyparquet';
-import { fixPath } from './helpers';
+import { fixPath, captureLogCallsAsync } from './helpers';
 
 describe('geoparquet export', function() {
   it('exports GeoParquet and round-trips via async import', async function() {
@@ -50,6 +50,74 @@ describe('geoparquet export', function() {
     var names = Object.keys(output);
     assert.equal(names.length, 1);
     assert(/\.parquet$/i.test(names[0]));
+  });
+
+  it('exports tabular layers as Parquet without a geometry column', async function() {
+    var input = [{
+      name: 'alpha',
+      value: 3
+    }, {
+      name: 'beta',
+      value: 7
+    }];
+    var out = await captureLogCallsAsync(function() {
+      return api.applyCommands('-i in.json -o format=geoparquet', {'in.json': input});
+    });
+    var output = out.result;
+    var fileName = Object.keys(output)[0];
+    var metadata = await parquetMetadataAsync(toArrayBuffer(output[fileName]));
+    var fields = getParquetFieldNames(metadata);
+    assert(!fields.includes('geometry'));
+    assert(/writing attribute data only/.test(out.log.join('\n')));
+
+    var dataset = await api.internal.importContentAsync({
+      parquet: {
+        filename: fileName,
+        content: output[fileName]
+      }
+    }, {});
+    assert.equal(dataset.layers[0].geometry_type, null);
+    assert.deepEqual(dataset.layers[0].data.getRecords(), input);
+  });
+
+  it('exports null-geometry features with attributes as Parquet tables', async function() {
+    var input = {
+      type: 'FeatureCollection',
+      features: [{
+        type: 'Feature',
+        properties: {name: 'alpha'},
+        geometry: null
+      }]
+    };
+    var out = await captureLogCallsAsync(function() {
+      return api.applyCommands('-i in.json -o format=geoparquet', {'in.json': input});
+    });
+    var output = out.result;
+    var fileName = Object.keys(output)[0];
+    var metadata = await parquetMetadataAsync(toArrayBuffer(output[fileName]));
+    assert(!getParquetFieldNames(metadata).includes('geometry'));
+    assert(/writing attribute data only/.test(out.log.join('\n')));
+  });
+
+  it('rejects empty GeoParquet output layers', async function() {
+    var emptyInput = {
+      type: 'FeatureCollection',
+      features: []
+    };
+    var nullOnlyInput = {
+      type: 'FeatureCollection',
+      features: [{
+        type: 'Feature',
+        properties: null,
+        geometry: null
+      }]
+    };
+    await assert.rejects(function() {
+      return api.applyCommands('-i in.json -o format=geoparquet', {'in.json': emptyInput});
+    }, /requires at least one record/);
+    await assert.rejects(function() {
+      return api.applyCommands('-i in.json -o format=geoparquet', {'in.json': nullOnlyInput});
+    }, /requires at least one record|requires geometry or attribute data/);
   });
 
   it('exports ZSTD-compressed GeoParquet when requested', async function() {
@@ -135,6 +203,12 @@ function getParquetCodecs(metadata) {
     });
   });
   return Object.keys(index).sort();
+}
+
+function getParquetFieldNames(metadata) {
+  return metadata.schema.map(function(field) {
+    return field.name;
+  });
 }
 
 function toArrayBuffer(content) {
