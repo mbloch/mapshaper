@@ -2,7 +2,7 @@ import { exportLayerAsGeoJSON } from '../geojson/geojson-export';
 import { parseCrsString, parsePrj } from '../crs/mapshaper-projections';
 import { runningInBrowser } from '../mapshaper-env';
 import { getFileExtension } from '../utils/mapshaper-filename-utils';
-import { stop } from '../utils/mapshaper-logging';
+import { stop, warn } from '../utils/mapshaper-logging';
 import utils from '../utils/mapshaper-utils';
 import require from '../mapshaper-require';
 
@@ -19,22 +19,26 @@ export async function exportGeoParquet(dataset, opts, filenameOverride) {
     extension = getFileExtension(opts.file) || extension;
   }
   dataset.layers.forEach(function(lyr) {
-    if (!lyr.geometry_type) {
-      stop('GeoParquet export requires a geometry layer');
-    }
     var features = exportLayerAsGeoJSON(lyr, dataset, opts, true, null);
-    var output = buildGeoParquetColumns(features, writer);
-    var geoMetadata = buildGeoMetadata(features, dataset);
-    var content = writer.parquetWriteBuffer({
+    var hasGeometry = features.some(function(feat) {
+      return !!feat.geometry;
+    });
+    var output = buildGeoParquetColumns(features, hasGeometry);
+    var writeOptions = {
       columnData: output.columnData,
       codec: compression.codec,
       compressors: compression.compressors,
-      pageSize: compression.pageSize,
-      kvMetadata: [{
+      pageSize: compression.pageSize
+    };
+    if (hasGeometry) {
+      writeOptions.kvMetadata = [{
         key: 'geo',
-        value: JSON.stringify(geoMetadata)
-      }]
-    });
+        value: JSON.stringify(buildGeoMetadata(features, dataset))
+      }];
+    } else {
+      warn('GeoParquet export: layer has no geometry; writing attribute data only.');
+    }
+    var content = writer.parquetWriteBuffer(writeOptions);
     files.push({
       filename: filenameOverride || (lyr.name + '.' + extension),
       content: content
@@ -43,23 +47,31 @@ export async function exportGeoParquet(dataset, opts, filenameOverride) {
   return files;
 }
 
-function buildGeoParquetColumns(features, writer) {
+function buildGeoParquetColumns(features, includeGeometry) {
   var geometryName = 'geometry';
   var names = getPropertyNames(features);
   var columnData = [];
-  columnData.push({
-    name: geometryName,
-    data: features.map(function(feat) {
-      return feat.geometry || null;
-    }),
-    type: 'GEOMETRY'
-  });
+  if (features.length === 0) {
+    stop('GeoParquet export requires at least one record');
+  }
+  if (includeGeometry) {
+    columnData.push({
+      name: geometryName,
+      data: features.map(function(feat) {
+        return feat.geometry || null;
+      }),
+      type: 'GEOMETRY'
+    });
+  }
   names.forEach(function(name) {
     var values = features.map(function(feat) {
       return feat.properties ? feat.properties[name] : null;
     });
     columnData.push(buildAttributeColumn(name, values));
   });
+  if (columnData.length === 0) {
+    stop('GeoParquet export requires geometry or attribute data');
+  }
   return {columnData: columnData, geometryColumn: geometryName};
 }
 
