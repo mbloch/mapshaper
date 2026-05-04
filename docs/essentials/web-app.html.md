@@ -39,8 +39,37 @@ The Console (top-right of the header, or **space bar** to toggle) is the most po
 
 ### Syntax
 
-- The leading `-` is optional in the console: `clip places` works the same as `-clip places`.
+- The leading `-` is optional for a single console command: `clip places` works the same as `-clip places`.
+- When entering a sequence of commands, include the leading `-` before each command after the first. The examples in these docs include leading `-` prefixes because that style works in both the web console and the CLI.
 - Commands run on the **currently-selected layer** by default. Switch layers in the layer panel before issuing a command, or pass `target=` to be explicit (`target=*` runs against every layer).
+
+### Using CLI examples in the web console
+
+Many Mapshaper examples are written for the command line. To run them in the web app, first load your data by dragging it onto the page or using **Add files**, then type only the editing commands in the Console.
+
+For example, this command-line example:
+
+```bash
+mapshaper counties.shp -filter 'STATE == "CA"' -simplify 10% keep-shapes -o california.geojson
+```
+
+becomes this in the web console:
+
+```text
+-filter 'STATE == "CA"' \
+  -simplify 10% keep-shapes
+```
+
+Use the **Export** button when you're ready to save the result.
+
+The general rules are:
+
+- Drop the initial `mapshaper` command.
+- Drop input filenames such as `counties.shp` after your data has been loaded.
+- Don't use file-loading commands like `-i`, `-include` or `-require`; they are disabled in the browser console.
+- Keep the leading `-` on command names when copying examples from the docs. It works in the web console and avoids confusion in command sequences.
+- Use `target=` when you want a command to operate on a layer other than the currently selected layer.
+- Export from the web UI instead of copying the CLI `-o output.geojson` part of an example.
 
 ### Magic words at the prompt
 
@@ -48,6 +77,8 @@ These are recognized directly by the console, not by Mapshaper:
 
 - `history` &mdash; print the current session as a single command-line string. Handy for reproducing an interactive workflow as a script.
 - `layers` &mdash; print the list of loaded layers.
+- `context` &mdash; print the current runtime context as JSON. This is the metadata that can be shared with debugging tools or a help bot: layer names, field names/types, counts, CRS, recent commands and recent messages, but not geometry or attribute records.
+- `context download` &mdash; save the same runtime context JSON to a local file.
 - `clear` &mdash; clear the console buffer.
 - `close` / `exit` / `quit` &mdash; close the console.
 
@@ -97,10 +128,33 @@ You can pre-load files by listing them on the command line, which skips the impo
 mapshaper-gui states.shp rivers.shp
 ```
 
+## Optional AI assistant
+
+Some Mapshaper installations may enable an optional AI assistant by serving an `ai-config.js` file alongside the web app. If the file is missing or disabled, no assistant UI is shown.
+
+When enabled, the assistant can receive the same runtime context shown by the console's `context` command: layer names, field names/types, feature counts, CRS, recent commands and recent messages. It does not include geometry or full attribute records.
+
+Development builds can use a mock assistant or direct provider calls from `localhost`. Production deployments should use a proxy endpoint so provider secrets, rate limits and logging policy are not exposed in the browser.
+
+An `ai-config.js` file can also point the assistant at static documentation, such as `llms-full.txt`, for providers or proxies that support prompt caching:
+
+```js
+window.mapshaperAI = {
+  enabled: true,
+  mode: "proxy",
+  endpoint: "/api/mapshaper-assist",
+  staticContextUrl: "/llms-full.txt",
+  cacheControl: {type: "ephemeral"},
+  cacheTtl: "1h"
+};
+```
+
+For local testing without a proxy, `mode: "direct"` supports OpenAI-compatible Responses requests and Anthropic Messages requests. Anthropic direct mode sends static context as cacheable system content when `provider: "anthropic"` is configured. Direct mode should only be used with disposable development keys on `localhost`.
+
 ## Browser support
 
 When importing very large files (hundreds of megabytes), the web app may run out of memory and crash. Firefox used to be better than Chrome at handling large files, but Chrome seems to have improved recently. If the web app crashes, try the [`mapshaper-xl` command-line tool](/docs/essentials/command-line.html.md), which can allocate a large amount of memory.
 
 ## Privacy
 
-The Mapshaper web app runs entirely in your browser. No file content is uploaded to any server. The only network traffic is for static assets (the app itself), basemap tiles when you've enabled a basemap, and analytics for `mapshaper.org` page loads. See the [privacy policy](/privacy.html) for details.
+The Mapshaper web app runs entirely in your browser. No file content is uploaded to any server. The only network traffic is for static assets (the app itself), basemap tiles when you've enabled a basemap, optional AI assistant requests when an installation has enabled them, and analytics for `mapshaper.org` page loads. See the [privacy policy](/privacy.html) for details.

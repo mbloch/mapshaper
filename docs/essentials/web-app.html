@@ -41,7 +41,7 @@
 
   <aside class="docs-sidebar" id="docs-sidebar">
     <div class="sidebar-inner">
-      <nav class="docs-nav"><ul class="top-links"><li><a href="/docs/">Home</a></li><li><a href="/docs/whats-new.html">What&#39;s new</a></li><li><a href="/docs/reference.html">Command reference</a></li><li><a href="/docs/gallery/">Gallery</a></li></ul><h2>Getting started</h2><ul><li><a href="/docs/essentials/command-line.html">The command-line tool</a></li><li><a href="/docs/essentials/web-app.html" class="is-active">The web app</a></li></ul><h2>Examples</h2><ul><li><a href="/docs/examples/basics.html">Basics</a></li><li><a href="/docs/examples/globe.html">Globe locator map</a></li><li><a href="/docs/examples/us-states.html">U.S. state map</a></li><li><a href="/docs/examples/ny-state.html">New York map</a></li></ul><h2>Guides</h2><ul><li><a href="/docs/guides/simplification.html">Simplification</a></li><li><a href="/docs/guides/expressions.html">JavaScript expressions</a></li><li><a href="/docs/guides/projections.html">Projections</a></li><li><a href="/docs/guides/topology.html">Topology and cleaning</a></li><li><a href="/docs/guides/combining-layers.html">Combining two layers</a></li><li><a href="/docs/guides/programmatic.html">Using Mapshaper from Node.js</a></li></ul><h2>Formats</h2><ul><li><a href="/docs/formats/overview.html">Overview</a></li><li><a href="/docs/formats/shapefile.html">Shapefile</a></li><li><a href="/docs/formats/geojson.html">GeoJSON</a></li><li><a href="/docs/formats/topojson.html">TopoJSON</a></li><li><a href="/docs/formats/geopackage.html">GeoPackage</a></li><li><a href="/docs/formats/geoparquet.html">GeoParquet</a></li><li><a href="/docs/formats/flatgeobuf.html">FlatGeobuf</a></li><li><a href="/docs/formats/kml.html">KML / KMZ</a></li><li><a href="/docs/formats/csv.html">CSV / TSV</a></li><li><a href="/docs/formats/json.html">JSON records</a></li><li><a href="/docs/formats/dbf.html">DBF</a></li><li><a href="/docs/formats/svg.html">SVG</a></li><li><a href="/docs/formats/snapshot.html">Mapshaper snapshot</a></li></ul></nav>
+      <nav class="docs-nav"><ul class="top-links"><li><a href="/docs/">Home</a></li><li><a href="/docs/whats-new.html">What&#39;s new</a></li><li><a href="/docs/reference.html">Command reference</a></li><li><a href="/docs/gallery/">Gallery</a></li></ul><h2>Getting started</h2><ul><li><a href="/docs/essentials/command-line.html">The command-line tool</a></li><li><a href="/docs/essentials/web-app.html" class="is-active">The web app</a></li></ul><h2>Examples</h2><ul><li><a href="/docs/examples/basics.html">Basics</a></li><li><a href="/docs/examples/globe.html">Globe locator map</a></li><li><a href="/docs/examples/us-states.html">U.S. state map</a></li><li><a href="/docs/examples/ny-state.html">New York map</a></li></ul><h2>Guides</h2><ul><li><a href="/docs/guides/simplification.html">Simplification</a></li><li><a href="/docs/guides/styles-and-symbols.html">Styles and Symbols</a></li><li><a href="/docs/guides/expressions.html">JavaScript expressions</a></li><li><a href="/docs/guides/projections.html">Projections</a></li><li><a href="/docs/guides/topology.html">Topology and cleaning</a></li><li><a href="/docs/guides/combining-layers.html">Combining two layers</a></li><li><a href="/docs/guides/programmatic.html">Using Mapshaper from Node.js</a></li></ul><h2>Formats</h2><ul><li><a href="/docs/formats/overview.html">Overview</a></li><li><a href="/docs/formats/shapefile.html">Shapefile</a></li><li><a href="/docs/formats/geojson.html">GeoJSON</a></li><li><a href="/docs/formats/topojson.html">TopoJSON</a></li><li><a href="/docs/formats/geopackage.html">GeoPackage</a></li><li><a href="/docs/formats/geoparquet.html">GeoParquet</a></li><li><a href="/docs/formats/flatgeobuf.html">FlatGeobuf</a></li><li><a href="/docs/formats/kml.html">KML / KMZ</a></li><li><a href="/docs/formats/csv.html">CSV / TSV</a></li><li><a href="/docs/formats/json.html">JSON records</a></li><li><a href="/docs/formats/dbf.html">DBF</a></li><li><a href="/docs/formats/svg.html">SVG</a></li><li><a href="/docs/formats/snapshot.html">Mapshaper snapshot</a></li></ul></nav>
     </div>
   </aside>
 
@@ -77,14 +77,36 @@
 </ul>
 <h3 id="syntax">Syntax</h3>
 <ul>
-<li>The leading <code>-</code> is optional in the console: <code>clip places</code> works the same as <code>-clip places</code>.</li>
+<li>The leading <code>-</code> is optional for a single console command: <code>clip places</code> works the same as <code>-clip places</code>.</li>
+<li>When entering a sequence of commands, include the leading <code>-</code> before each command after the first. The examples in these docs include leading <code>-</code> prefixes because that style works in both the web console and the CLI.</li>
 <li>Commands run on the <strong>currently-selected layer</strong> by default. Switch layers in the layer panel before issuing a command, or pass <code>target=</code> to be explicit (<code>target=*</code> runs against every layer).</li>
+</ul>
+<h3 id="using-cli-examples-in-the-web-console">Using CLI examples in the web console</h3>
+<p>Many Mapshaper examples are written for the command line. To run them in the web app, first load your data by dragging it onto the page or using <strong>Add files</strong>, then type only the editing commands in the Console.</p>
+<p>For example, this command-line example:</p>
+<pre><code class="hljs language-bash">mapshaper counties.shp -filter <span class="hljs-string">&#x27;STATE == &quot;CA&quot;&#x27;</span> -simplify 10% keep-shapes -o california.geojson
+</code></pre>
+<p>becomes this in the web console:</p>
+<pre><code class="hljs language-text">-filter &#x27;STATE == &quot;CA&quot;&#x27; \
+  -simplify 10% keep-shapes
+</code></pre>
+<p>Use the <strong>Export</strong> button when you&#39;re ready to save the result.</p>
+<p>The general rules are:</p>
+<ul>
+<li>Drop the initial <code>mapshaper</code> command.</li>
+<li>Drop input filenames such as <code>counties.shp</code> after your data has been loaded.</li>
+<li>Don&#39;t use file-loading commands like <code>-i</code>, <code>-include</code> or <code>-require</code>; they are disabled in the browser console.</li>
+<li>Keep the leading <code>-</code> on command names when copying examples from the docs. It works in the web console and avoids confusion in command sequences.</li>
+<li>Use <code>target=</code> when you want a command to operate on a layer other than the currently selected layer.</li>
+<li>Export from the web UI instead of copying the CLI <code>-o output.geojson</code> part of an example.</li>
 </ul>
 <h3 id="magic-words-at-the-prompt">Magic words at the prompt</h3>
 <p>These are recognized directly by the console, not by Mapshaper:</p>
 <ul>
 <li><code>history</code> &mdash; print the current session as a single command-line string. Handy for reproducing an interactive workflow as a script.</li>
 <li><code>layers</code> &mdash; print the list of loaded layers.</li>
+<li><code>context</code> &mdash; print the current runtime context as JSON. This is the metadata that can be shared with debugging tools or a help bot: layer names, field names/types, counts, CRS, recent commands and recent messages, but not geometry or attribute records.</li>
+<li><code>context download</code> &mdash; save the same runtime context JSON to a local file.</li>
 <li><code>clear</code> &mdash; clear the console buffer.</li>
 <li><code>close</code> / <code>exit</code> / <code>quit</code> &mdash; close the console.</li>
 </ul>
@@ -124,10 +146,25 @@
 <p>You can pre-load files by listing them on the command line, which skips the import dialog:</p>
 <pre><code class="hljs language-bash">mapshaper-gui states.shp rivers.shp
 </code></pre>
+<h2 id="optional-ai-assistant">Optional AI assistant</h2>
+<p>Some Mapshaper installations may enable an optional AI assistant by serving an <code>ai-config.js</code> file alongside the web app. If the file is missing or disabled, no assistant UI is shown.</p>
+<p>When enabled, the assistant can receive the same runtime context shown by the console&#39;s <code>context</code> command: layer names, field names/types, feature counts, CRS, recent commands and recent messages. It does not include geometry or full attribute records.</p>
+<p>Development builds can use a mock assistant or direct provider calls from <code>localhost</code>. Production deployments should use a proxy endpoint so provider secrets, rate limits and logging policy are not exposed in the browser.</p>
+<p>An <code>ai-config.js</code> file can also point the assistant at static documentation, such as <code>llms-full.txt</code>, for providers or proxies that support prompt caching:</p>
+<pre><code class="hljs language-js"><span class="hljs-variable language_">window</span>.<span class="hljs-property">mapshaperAI</span> = {
+  <span class="hljs-attr">enabled</span>: <span class="hljs-literal">true</span>,
+  <span class="hljs-attr">mode</span>: <span class="hljs-string">&quot;proxy&quot;</span>,
+  <span class="hljs-attr">endpoint</span>: <span class="hljs-string">&quot;/api/mapshaper-assist&quot;</span>,
+  <span class="hljs-attr">staticContextUrl</span>: <span class="hljs-string">&quot;/llms-full.txt&quot;</span>,
+  <span class="hljs-attr">cacheControl</span>: {<span class="hljs-attr">type</span>: <span class="hljs-string">&quot;ephemeral&quot;</span>},
+  <span class="hljs-attr">cacheTtl</span>: <span class="hljs-string">&quot;1h&quot;</span>
+};
+</code></pre>
+<p>For local testing without a proxy, <code>mode: &quot;direct&quot;</code> supports OpenAI-compatible Responses requests and Anthropic Messages requests. Anthropic direct mode sends static context as cacheable system content when <code>provider: &quot;anthropic&quot;</code> is configured. Direct mode should only be used with disposable development keys on <code>localhost</code>.</p>
 <h2 id="browser-support">Browser support</h2>
 <p>When importing very large files (hundreds of megabytes), the web app may run out of memory and crash. Firefox used to be better than Chrome at handling large files, but Chrome seems to have improved recently. If the web app crashes, try the <a href="/docs/essentials/command-line.html"><code>mapshaper-xl</code> command-line tool</a>, which can allocate a large amount of memory.</p>
 <h2 id="privacy">Privacy</h2>
-<p>The Mapshaper web app runs entirely in your browser. No file content is uploaded to any server. The only network traffic is for static assets (the app itself), basemap tiles when you&#39;ve enabled a basemap, and analytics for <code>mapshaper.org</code> page loads. See the <a href="/privacy.html">privacy policy</a> for details.</p>
+<p>The Mapshaper web app runs entirely in your browser. No file content is uploaded to any server. The only network traffic is for static assets (the app itself), basemap tiles when you&#39;ve enabled a basemap, optional AI assistant requests when an installation has enabled them, and analytics for <code>mapshaper.org</code> page loads. See the <a href="/privacy.html">privacy policy</a> for details.</p>
 
       <div class="edit-link">
         <a href="https://github.com/mbloch/mapshaper/edit/master/docs/essentials/web-app.md">Edit this page on GitHub</a>
@@ -136,7 +173,7 @@
   </main>
 
   <aside class="docs-toc">
-    <div class="docs-toc-title">On this page</div><ul><li class="lvl-2"><a href="#loading-data">Loading data</a></li><li class="lvl-3"><a href="#tips-for-importing-shapefiles">Tips for importing Shapefiles</a></li><li class="lvl-2"><a href="#the-console">The console</a></li><li class="lvl-3"><a href="#keyboard">Keyboard</a></li><li class="lvl-3"><a href="#syntax">Syntax</a></li><li class="lvl-3"><a href="#magic-words-at-the-prompt">Magic words at the prompt</a></li><li class="lvl-3"><a href="#discovering-commands">Discovering commands</a></li><li class="lvl-2"><a href="#the-map">The map</a></li><li class="lvl-3"><a href="#right-click-menu">Right-click menu</a></li><li class="lvl-3"><a href="#layer-navigation">Layer navigation</a></li><li class="lvl-2"><a href="#display-options">Display options</a></li><li class="lvl-2"><a href="#snapshots-and-session-history">Snapshots and session history</a></li><li class="lvl-2"><a href="#running-the-web-ui-locally">Running the web UI locally</a></li><li class="lvl-2"><a href="#browser-support">Browser support</a></li><li class="lvl-2"><a href="#privacy">Privacy</a></li></ul>
+    <div class="docs-toc-title">On this page</div><ul><li class="lvl-2"><a href="#loading-data">Loading data</a></li><li class="lvl-3"><a href="#tips-for-importing-shapefiles">Tips for importing Shapefiles</a></li><li class="lvl-2"><a href="#the-console">The console</a></li><li class="lvl-3"><a href="#keyboard">Keyboard</a></li><li class="lvl-3"><a href="#syntax">Syntax</a></li><li class="lvl-3"><a href="#using-cli-examples-in-the-web-console">Using CLI examples in the web console</a></li><li class="lvl-3"><a href="#magic-words-at-the-prompt">Magic words at the prompt</a></li><li class="lvl-3"><a href="#discovering-commands">Discovering commands</a></li><li class="lvl-2"><a href="#the-map">The map</a></li><li class="lvl-3"><a href="#right-click-menu">Right-click menu</a></li><li class="lvl-3"><a href="#layer-navigation">Layer navigation</a></li><li class="lvl-2"><a href="#display-options">Display options</a></li><li class="lvl-2"><a href="#snapshots-and-session-history">Snapshots and session history</a></li><li class="lvl-2"><a href="#running-the-web-ui-locally">Running the web UI locally</a></li><li class="lvl-2"><a href="#optional-ai-assistant">Optional AI assistant</a></li><li class="lvl-2"><a href="#browser-support">Browser support</a></li><li class="lvl-2"><a href="#privacy">Privacy</a></li></ul>
   </aside>
 
 </div>

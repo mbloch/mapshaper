@@ -9,16 +9,15 @@ Simplification reduces the number of vertices in polylines and polygon boundarie
 
 ## Choosing a method
 
-Mapshaper offers three simplification methods, selectable as flags to `-simplify`:
+Mapshaper offers three simplification methods, selectable as method options in the web UI's Simplification menu or flags to `-simplify` on the command line. 
 
-- **`dp`** &mdash; Douglas-Peucker (also known as Ramer–Douglas–Peucker). Guarantees that simplified lines stay within a fixed distance of the original. Good for stripping excess vertices to reduce file size, but tends to introduce visible spikes at high simplification.
-- **`visvalingam`** &mdash; The Visvalingam algorithm. Iteratively removes the point that forms the triangle of smallest area with its two neighbors.
-- **`weighted_visvalingam`** (Mapshaper's default) &mdash; Visvalingam's algorithm with a custom weighting that underweights points at sharp angles, so they are removed earlier than in standard Visvalingam. The result is visibly smoother lines and fewer jagged spikes at high simplification. You can fine tune this effect by setting the `weighting=` option (default is 0.7). The larger the parameter, the greater the smoothing effect. (Make sure that long, thin geographic features that you want to keep do not get smoothed away.)
+- **`Douglas-Peucker`** (also known as Ramer–Douglas–Peucker). Guarantees that simplified lines stay within a fixed distance of the original. Good for stripping excess vertices to reduce file size, but tends to introduce visible spikes at high simplification.
+- **`Visvalingam / effective area`**. Iteratively removes the point that forms the triangle of smallest area with its two neighbors.
+- **`Visvalingam / weighted area`**. A variation on Visvalingam's algorithm that underweights points at sharp angles, so they are removed earlier than in standard Visvalingam. The result is visibly smoother lines and fewer jagged spikes at high simplification. You can fine tune this effect by setting the `weighting=` option (default is 0.7). The larger the parameter, the greater the smoothing effect.
 
-Weighted Visvalingam is the default because it produces good-looking generalizations of highly detailed source layers. But none of these methods can approach the quality that a cartographer achieves when generalizing linework by hand.
+Weighted Visvalingam is Mapshaper's default method because it can produce good-looking generalizations of highly detailed source layers. But be aware that none of these methods can approach the quality that a cartographer achieves when generalizing linework by hand.
 
 If you are primarily interested in removing as many vertices as possible without visible changes to the shape of the lines, you may find that Douglas-Peucker combined with an appropriate `interval=` or `resolution=` parameter gives the best results.
-
 
 **Figures**
 
@@ -64,7 +63,7 @@ See the [`-simplify` reference](/docs/reference.html.md#-simplify) for the full 
 At high simplification, small polygons can disappear entirely. Pass `keep-shapes` to `-simplify` (or tick **prevent shape removal** in the web UI's Simplify panel) to retain at least one ring per multipart feature, regardless of how aggressive the simplification is.
 
 ```bash
-mapshaper provinces.shp -simplify 5% keep-shapes -o provinces.geojson
+mapshaper islands.geojson -simplify 5% keep-shapes -o islands-simplified.geojson
 ```
 
 ## Spherical vs planar geometry

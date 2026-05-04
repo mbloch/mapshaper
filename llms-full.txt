@@ -427,7 +427,7 @@ Save content of the target layer(s) to a file or files.
 
 `<file>|<directory>|-`  Name of output file or directory. Use `-` to export text-based formats to `/dev/stdout`.
 
-`format=shapefile|geojson|topojson|flatgeobuf|geopackage|json|dbf|csv|tsv|svg` Specify output format. If the `format=` option is missing, Mapshaper tries to infer the format from the output filename. If no filename is given, Mapshaper exports to the same format as the input format. The `json` format is an array of objects containing data properties for each feature.
+`format=shapefile|geojson|topojson|flatgeobuf|geopackage|geoparquet|json|dbf|csv|tsv|svg` Specify output format. If the `format=` option is missing, Mapshaper tries to infer the format from the output filename. If no filename is given, Mapshaper exports to the same format as the input format. The `json` format is an array of objects containing data properties for each feature.
 
 `target=` Specify layer(s) to export (comma-separated list). The default target is the output layer(s) of the previous command. Use `target=*` to select all layers.
 
@@ -508,6 +508,10 @@ Save content of the target layer(s) to a file or files.
 `delimiter=`  (CSV) Set the field delimiter for CSV/delimited text output; e.g. `delimiter=|`.
 
 `decimal-comma`  (CSV) Export numbers with decimal commas instead of decimal points (common in Europe and elsewhere).
+
+`compression=`  (GeoParquet) Select Parquet column compression. One of: `snappy` `zstd` `none`. The default is `snappy`.
+
+`level=`  (GeoParquet) Set the ZSTD compression level when using `compression=zstd`. Valid values are integers from 1 to 22.
 
 `show-all`  [Snapshot] All layers of the exported snapshot will be displayed when opened in the web UI.
 
@@ -2117,8 +2121,37 @@ The Console (top-right of the header, or **space bar** to toggle) is the most po
 
 ### Syntax
 
-- The leading `-` is optional in the console: `clip places` works the same as `-clip places`.
+- The leading `-` is optional for a single console command: `clip places` works the same as `-clip places`.
+- When entering a sequence of commands, include the leading `-` before each command after the first. The examples in these docs include leading `-` prefixes because that style works in both the web console and the CLI.
 - Commands run on the **currently-selected layer** by default. Switch layers in the layer panel before issuing a command, or pass `target=` to be explicit (`target=*` runs against every layer).
+
+### Using CLI examples in the web console
+
+Many Mapshaper examples are written for the command line. To run them in the web app, first load your data by dragging it onto the page or using **Add files**, then type only the editing commands in the Console.
+
+For example, this command-line example:
+
+```bash
+mapshaper counties.shp -filter 'STATE == "CA"' -simplify 10% keep-shapes -o california.geojson
+```
+
+becomes this in the web console:
+
+```text
+-filter 'STATE == "CA"' \
+  -simplify 10% keep-shapes
+```
+
+Use the **Export** button when you're ready to save the result.
+
+The general rules are:
+
+- Drop the initial `mapshaper` command.
+- Drop input filenames such as `counties.shp` after your data has been loaded.
+- Don't use file-loading commands like `-i`, `-include` or `-require`; they are disabled in the browser console.
+- Keep the leading `-` on command names when copying examples from the docs. It works in the web console and avoids confusion in command sequences.
+- Use `target=` when you want a command to operate on a layer other than the currently selected layer.
+- Export from the web UI instead of copying the CLI `-o output.geojson` part of an example.
 
 ### Magic words at the prompt
 
@@ -2126,6 +2159,8 @@ These are recognized directly by the console, not by Mapshaper:
 
 - `history` &mdash; print the current session as a single command-line string. Handy for reproducing an interactive workflow as a script.
 - `layers` &mdash; print the list of loaded layers.
+- `context` &mdash; print the current runtime context as JSON. This is the metadata that can be shared with debugging tools or a help bot: layer names, field names/types, counts, CRS, recent commands and recent messages, but not geometry or attribute records.
+- `context download` &mdash; save the same runtime context JSON to a local file.
 - `clear` &mdash; clear the console buffer.
 - `close` / `exit` / `quit` &mdash; close the console.
 
@@ -2175,13 +2210,36 @@ You can pre-load files by listing them on the command line, which skips the impo
 mapshaper-gui states.shp rivers.shp
 ```
 
+## Optional AI assistant
+
+Some Mapshaper installations may enable an optional AI assistant by serving an `ai-config.js` file alongside the web app. If the file is missing or disabled, no assistant UI is shown.
+
+When enabled, the assistant can receive the same runtime context shown by the console's `context` command: layer names, field names/types, feature counts, CRS, recent commands and recent messages. It does not include geometry or full attribute records.
+
+Development builds can use a mock assistant or direct provider calls from `localhost`. Production deployments should use a proxy endpoint so provider secrets, rate limits and logging policy are not exposed in the browser.
+
+An `ai-config.js` file can also point the assistant at static documentation, such as `llms-full.txt`, for providers or proxies that support prompt caching:
+
+```js
+window.mapshaperAI = {
+  enabled: true,
+  mode: "proxy",
+  endpoint: "/api/mapshaper-assist",
+  staticContextUrl: "/llms-full.txt",
+  cacheControl: {type: "ephemeral"},
+  cacheTtl: "1h"
+};
+```
+
+For local testing without a proxy, `mode: "direct"` supports OpenAI-compatible Responses requests and Anthropic Messages requests. Anthropic direct mode sends static context as cacheable system content when `provider: "anthropic"` is configured. Direct mode should only be used with disposable development keys on `localhost`.
+
 ## Browser support
 
 When importing very large files (hundreds of megabytes), the web app may run out of memory and crash. Firefox used to be better than Chrome at handling large files, but Chrome seems to have improved recently. If the web app crashes, try the [`mapshaper-xl` command-line tool](/docs/essentials/command-line.html.md), which can allocate a large amount of memory.
 
 ## Privacy
 
-The Mapshaper web app runs entirely in your browser. No file content is uploaded to any server. The only network traffic is for static assets (the app itself), basemap tiles when you've enabled a basemap, and analytics for `mapshaper.org` page loads. See the [privacy policy](/privacy.html) for details.
+The Mapshaper web app runs entirely in your browser. No file content is uploaded to any server. The only network traffic is for static assets (the app itself), basemap tiles when you've enabled a basemap, optional AI assistant requests when an installation has enabled them, and analytics for `mapshaper.org` page loads. See the [privacy policy](/privacy.html) for details.
 
 ---
 
@@ -2189,7 +2247,9 @@ The Mapshaper web app runs entirely in your browser. No file content is uploaded
 
 # Basics
 
-Short Mapshaper examples for common tasks. The filenames and field names are illustrative &mdash; substitute your own. Most recipes also work in the [web app's](/docs/essentials/web-app.html.md) console: drop the leading `mapshaper` and the input filename; the GUI should already your data loaded.
+Short Mapshaper recipes for common tasks. The examples are written for the [web app's](/docs/essentials/web-app.html.md) Console: load your data first, then run the commands shown here. Filenames, layer names and field names are illustrative &mdash; substitute your own.
+
+These examples keep the leading `-` on command names because that style works in both the web console and the CLI, and because command sequences need it after the first command. To run most examples from the command line, add `mapshaper input-file` before the command sequence and `-o output-file` after it.
 
 > Looking for the syntax of a particular command or option? See the [command reference](/docs/reference.html.md). For the JS expression context used by `-each`, `-filter`, `calc=` and other commands, see [JavaScript expressions](/docs/guides/expressions.html.md).
 
@@ -2197,58 +2257,68 @@ Short Mapshaper examples for common tasks. The filenames and field names are ill
 
 ### Print a summary of a dataset
 
-```bash
-mapshaper input.shp -info
+```text
+-info
 ```
 
-`-info` prints the geometry type, feature count, CRS (if known), bounding box, and the name and type of every attribute field. It's the fastest way to remind yourself what a file actually contains. Add `save-to=info.json` to capture it as JSON.
+`-info` prints the geometry type, feature count, CRS (if known), bounding box, and the name and type of every attribute field. It's the fastest way to remind yourself what a file actually contains. In the CLI, add `save-to=info.json` to capture it as JSON.
 
+### Run a command on another layer
+
+```text
+-info target=counties
+```
+
+Commands run on the currently selected layer by default. Use `target=` to name a different layer, or `target=*` to run a command on every layer.
 
 ### Count features grouped by a field
 
-```bash
-mapshaper counties.shp \
-  -drop geometry \
-  -dissolve STATE calc='N = count(), POP = sum(POP)' \
-  -o state_data.csv
+```text
+-drop geometry \
+  -dissolve STATE calc='N = count(), POP = sum(POP)'
 ```
 
-A dissolve with a `calc=` clause is an idiomatic way to aggregate data values.
+A dissolve with a `calc=` clause is an idiomatic way to aggregate data values. Here, `-drop geometry` turns the result into a table, ready to export as CSV.
 
 ## Filtering and selecting
 
 ### Keep features matching a condition
 
-```bash
-mapshaper countries.geojson -filter 'CONTINENT == "Asia" && POP > 1e7' \
-  -o output.geojson
+```text
+-filter 'CONTINENT == "Asia" && POP > 1e7'
 ```
 
 `-filter` keeps features for which the expression returns `true`.
 
+### Keep the original layer while filtering
+
+```text
+-filter 'POP > 100000' + name=large_places
+```
+
+The `+` flag saves the result as a new layer instead of replacing the active layer. Use `name=` to give the new layer a useful name.
+
 ### Keep features inside a bounding box
 
-```bash
-mapshaper world.shp -clip bbox=-10,35,30,60 -o europe.shp
+```text
+-clip bbox=-10,35,30,60
 ```
 
 The four bbox numbers are `xmin,ymin,xmax,ymax` in the layer's own coordinates.
 
 ### Keep the top N features by some attribute
 
-```bash
-mapshaper cities.geojson \
-  -sort POP descending \
-  -filter 'this.id < 50' \
-  -o top50.geojson
+```text
+-sort POP descending \
+  -filter 'this.id < 50'
 ```
 
 `-sort POP descending` orders by population from largest to smallest. Features have numerical ids starting with `0`, so `this.id < 50` keeps the first 50.
 
 ### Drop features with empty geometry
 
-```bash
-mapshaper messy.geojson -filter remove-empty -o clean.geojson
+```text
+-filter remove-empty
 ```
 
 The `remove-empty` flag drops features with missing or empty geometry.
@@ -2257,63 +2327,52 @@ The `remove-empty` flag drops features with missing or empty geometry.
 
 ### Add derived fields
 
-```bash
-mapshaper counties.shp \
-  -each 'STATE_FIPS = COUNTY_FIPS.substr(0, 2),
-         AREA_KM2 = round(this.area / 1e6, 1)' \
-  -o out.shp
+```text
+-each 'STATE_FIPS = COUNTY_FIPS.substr(0, 2),
+       AREA_KM2 = round(this.area / 1e6, 1)'
 ```
 
 `-each` runs a JS expression on each feature; assigning to a bare name creates or updates a field. `round(x, 1)` is Mapshaper's rounding helper (one decimal here). On unprojected lat/long data, `this.area` returns square meters, dividing by 1e6 converts to square kilometers.
 
 ### Rename and filter fields
 
-```bash
-mapshaper data.csv \
-  -rename-fields POPULATION=POP,MEDIAN_INCOME=MEDIAN_INC \
-  -filter-fields STATE,COUNTY,POPULATION,MEDIAN_INCOME \
-  -o cleaned.csv
+```text
+-rename-fields POPULATION=POP,MEDIAN_INCOME=MEDIAN_INC \
+  -filter-fields STATE,COUNTY,POPULATION,MEDIAN_INCOME
 ```
 
 `-rename-fields` takes `NEW=OLD` pairs. `-filter-fields` keeps only the listed fields, in the listed order &mdash; convenient for shaping CSV output.
 
 ### Preserve leading zeros from a CSV
 
-```bash
-mapshaper -i counties.csv string-fields=FIPS,STATEFIPS \
-  -o counties.shp
+```text
+string-fields=FIPS,STATEFIPS
 ```
 
-By default Mapshaper parses any numeric-looking CSV column as a number, which silently drops leading zeros from FIPS, ZIP and similar identifier columns. `string-fields=` forces the named columns to stay as strings.
+By default Mapshaper parses any numeric-looking CSV column as a number, which silently drops leading zeros from FIPS, ZIP and similar identifier columns. In the web app, enter `string-fields=FIPS,STATEFIPS` in the **Advanced options** field when importing the CSV. In the CLI, pass it with `-i`: `mapshaper -i counties.csv string-fields=FIPS,STATEFIPS`.
 
 ## Joining data
 
 ### Join a CSV to a Shapefile by key
 
-```bash
-mapshaper states.shp \
-  -join demographics.csv keys=STATE_FIPS,FIPS string-fields=FIPS \
-  -o states_with_data.shp
+```text
+-join demographics keys=STATE_FIPS,FIPS
 ```
 
-`keys=A,B` means "match the target's `A` field to the source's `B` field". `string-fields=FIPS` (passed through to the CSV import) keeps the FIPS code as a string so `"06"` matches `"06"` rather than being parsed to `6`. To pull just a few columns from the source, add `fields=FIELD_A,FIELD_B`.
+Load both the target layer and the CSV before running the join. `keys=A,B` means "match the target's `A` field to the source's `B` field". If the source key is a FIPS, ZIP or other code with leading zeros, import the CSV with `string-fields=FIPS` so `"06"` matches `"06"` rather than being parsed to `6`. To pull just a few columns from the source, add `fields=FIELD_A,FIELD_B`.
 
 ### Spatial join: tag points with the polygon they fall in
 
-```bash
-mapshaper crimes.geojson \
-  -join precinct_polygons.shp \
-  -o crimes_with_precinct.geojson
+```text
+-join precinct_polygons
 ```
 
 When `keys=` is omitted, `-join` falls back to a spatial join based on the geometry types involved. Here, every point inherits the attributes of the polygon containing it. Use `fields=PRECINCT_ID,DIVISION` to keep just specific columns.
 
 ### Many-to-one join with an aggregation
 
-```bash
-mapshaper precincts.shp \
-  -join crimes.geojson calc='N = count(), AVG_SEVERITY = mean(SEVERITY)' \
-  -o precincts_with_stats.shp
+```text
+-join crimes calc='N = count(), AVG_SEVERITY = mean(SEVERITY)'
 ```
 
 A polygon-to-many-points join can use `calc=` to summarize the matched source records into one or more new fields per target feature. The functions in `calc=` are the same set documented under [`-calc`](/docs/reference.html.md#-calc).
@@ -2322,29 +2381,25 @@ A polygon-to-many-points join can use `calc=` to summarize the matched source re
 
 ### Simplify a polygon layer for the web
 
-```bash
-mapshaper provinces.shp \
-  -simplify 5% keep-shapes \
-  -clean \
-  -o format=topojson provinces.topojson
+```text
+-simplify 5% keep-shapes \
+  -clean
 ```
 
-`-simplify 5%` keeps 5% of the original vertices using the default weighted Visvalingam algorithm. `keep-shapes` prevents simplification from wiping out very small polygons. `-clean` mops up any topology errors introduced by aggressive simplification. TopoJSON output is usually 2&ndash;5x smaller than the equivalent GeoJSON.
+`-simplify 5%` keeps 5% of the original vertices using the default weighted Visvalingam algorithm. `keep-shapes` prevents simplification from wiping out very small polygons. `-clean` mops up any topology errors introduced by aggressive simplification. TopoJSON output is usually 2&ndash;5x smaller than the equivalent GeoJSON; choose TopoJSON in the Export dialog or use `-o format=topojson provinces.topojson` in the CLI.
 
 ### Simplify multiple files with shared topology
 
-```bash
-mapshaper -i states.shp counties.shp combine-files \
-  -simplify 10% \
-  -o out/
+```text
+-simplify 10%
 ```
 
-`combine-files` merges the inputs into one dataset before Mapshaper builds its arc topology, so vertices shared between layers stay shared after simplification &mdash; no gaps or overlaps along state/county boundaries. Each input still gets written back out as a separate file in `out/`. In the web app, add `combine-files` in the **Advanced options** field at import time to get the same behavior.
+When importing the files in the web app, add `combine-files` in the **Advanced options** field. This merges the inputs into one dataset before Mapshaper builds its arc topology, so vertices shared between layers stay shared after simplification &mdash; no gaps or overlaps along state/county boundaries.
 
 ### Repair topology errors
 
-```bash
-mapshaper messy.shp -clean -o cleaned.shp
+```text
+-clean
 ```
 
 `-clean` snaps near-duplicate vertices, removes tiny gaps and overlaps between polygons, and fixes self-intersecting lines. It's a safe first step before any spatial operation. You can tune `gap-fill-area=`, `sliver-control=` or `snap-interval=` if necessary.
@@ -2353,30 +2408,26 @@ mapshaper messy.shp -clean -o cleaned.shp
 
 ### Dissolve to a parent geography
 
-```bash
-mapshaper counties.shp -dissolve STATE -o states.shp
+```text
+-dissolve STATE
 ```
 
 `-dissolve` merges adjacent polygons that share a value in the named field.
 
 ### Dissolve while computing per-group stats
 
-```bash
-mapshaper counties.shp \
-  -dissolve STATE calc='N = count(),
-                        POP = sum(POP),
-                        MEDIAN_INC = median(MEDIAN_INC)' \
-  -o states_with_stats.shp
+```text
+-dissolve STATE calc='N = count(),
+                      POP = sum(POP),
+                      MEDIAN_INC = median(MEDIAN_INC)'
 ```
 
 `calc=` works inside `-dissolve` as well as `-join`. The named functions (`count`, `sum`, `mean`, `median`, `mode`, `min`, `max`, `quartile1/2/3`, `iqr`, `quantile`, `collect`, `every`, `some`, `first`, `last`) all see the same per-feature context as `-each`.
 
 ### Convert points to population-weighted centroids
 
-```bash
-mapshaper cities.shp \
-  -dissolve STATE_FIPS weight=POPULATION \
-  -o state_centers.shp
+```text
+-dissolve STATE_FIPS weight=POPULATION
 ```
 
 Dissolve groups of points that share a `STATE_FIPS` value into a single weighted centroid per group. The `weight=` option accepts a field name or a JS expression. Omitting a grouping field dissolves all points into one centroid.
@@ -2385,87 +2436,91 @@ Dissolve groups of points that share a `STATE_FIPS` value into a single weighted
 
 ### Erase one layer from another
 
-```bash
-mapshaper land.shp -erase lakes.shp -o land_no_lakes.shp
+```text
+-erase lakes
 ```
 
 `-erase` removes the parts of the target layer that fall inside the source layer's polygons. Useful for masking out water, parks, or any "do-not-count" region. The inverse is `-clip`, which keeps the inside instead.
 
 ### Compute interior boundaries
 
-```bash
-mapshaper counties.shp -innerlines -o county_borders.shp
+```text
+-innerlines
 ```
 
 `-innerlines` returns the shared boundaries between polygons as a polyline layer, which is usually used for adding a stroke to interior boundaries on a styled map. Use [`-lines`](/docs/reference.html.md#-lines) instead if you want to retain both outer and inner boundaries.
 
 ### Generate a hex grid covering a layer
 
-```bash
-mapshaper region.shp \
-  -grid type=hex interval=10km name=hex \
-  -o hex.shp
+```text
+-grid type=hex interval=10km name=hex
 ```
 
 `-grid` builds a regular grid (`square`, `hex`, `hex2`) covering the target's bounding box. Pair it with a spatial join to style the grid cells using interpolated count data (`-join interpolate=POPULATION`).
+
+### Merge compatible layers
+
+```text
+-merge-layers target=OR,WA,CA,AK name=pacific_states
+```
+
+`-merge-layers` combines layers with compatible geometry types into one layer. Use `force` if the layers have different attribute fields and you want Mapshaper to fill missing values.
 
 ## Reprojection
 
 ### Project to a named CRS
 
-```bash
-mapshaper world.geojson -proj robinson -o world_robinson.geojson
+```text
+-proj robinson
 ```
 
 `-proj` accepts EPSG codes (`EPSG:3857`), PROJ strings (`+proj=tmerc +lon_0=...`), or short aliases (`wgs84`, `webmercator`, `robinson`, `albersusa`). See the [Projections guide](/docs/guides/projections.html.md) for details.
 
 ### Match the projection of another file
 
-```bash
-mapshaper points.shp -proj match=basemap.shp -o points_aligned.shp
+```text
+-proj match=basemap
 ```
 
-`match=` reads the CRS of another file and projects the target to match it &mdash; handy when assembling multiple datasets that need to share a coordinate system.
+`match=` reads the CRS of another layer or `.prj` file and projects the target to match it &mdash; handy when assembling multiple datasets that need to share a coordinate system.
 
 ## Classification and styling
 
 ### Quantile-classify into a color ramp
 
-```bash
-mapshaper covid_cases.geojson \
-  -classify save-as=fill quantile classes=6 color-scheme=Oranges \
-  -o themed.geojson
+```text
+-classify save-as=fill quantile classes=6 color-scheme=Oranges
 ```
 
-`-classify` writes a class index or a derived value (here, a fill color) into the named field. The default is sequential quantile classification, but you can switch to `equal-interval`, `nice`, `categorical` or `non-adjacent`. Run `mapshaper -colors` to list the built-in color schemes.
+`-classify` writes a class index or a derived value (here, a fill color) into the named field. The default is sequential quantile classification, but you can switch to `equal-interval`, `nice`, `categorical` or `non-adjacent`. In the CLI, run `mapshaper -colors` to list the built-in color schemes.
 
 ### Add SVG styling for export
 
-```bash
-mapshaper boundaries.shp \
-  -style stroke="#444" stroke-width=0.5 fill=none \
-  -style where='RANK == 0' stroke="#000" stroke-width=1.5 \
-  -o map.svg
+```text
+-style stroke="#444" stroke-width=0.5 fill=none \
+  -style where='RANK == 0' stroke="#000" stroke-width=1.5
 ```
 
-`-style` writes SVG presentation attributes onto each feature; the `where=` form lets you set them conditionally. The result is a valid SVG you can drop into a print or web layout.
+`-style` writes SVG presentation attributes onto each feature; the `where=` form lets you set them conditionally. Export as SVG when you're ready to use the styled map in a print or web layout.
 
 ## Output and conversion
 
 ### Convert Shapefile &harr; GeoJSON
+
+Use the Export button and choose GeoJSON or Shapefile.
+
+In the CLI, the output format is inferred from the file extension:
 
 ```bash
 mapshaper input.shp -o input.geojson
 mapshaper input.geojson -o input.shp
 ```
 
-The output format is inferred from the file extension. Use `format=` to force it (e.g. `-o format=topojson out.json`). When writing a Shapefile, Mapshaper produces `.shp`, `.shx`, `.dbf`, and `.prj`. If no output filename is given, the output file takes the name of the targeted layer.
+Use `format=` to force a format (e.g. `-o format=topojson out.json`). When writing a Shapefile, Mapshaper produces `.shp`, `.shx`, `.dbf`, and `.prj`. If no output filename is given, the output file takes the name of the targeted layer.
 
 ### Quantized TopoJSON
 
-```bash
-mapshaper boundaries.shp -o boundaries.topojson
-```
+Use the Export button and choose TopoJSON.
 
 TopoJSON output is quantized by default — Mapshaper picks a quantization level based on the data's coordinate range. Quantization rounds coordinates to a grid, which dramatically shrinks file size. The default can be overridden with `quantization=` (e.g. `quantization=1e5`). Combined with `-simplify` and TopoJSON's shared-arc encoding, quantized output is routinely 2&ndash;5&times; smaller than equivalent GeoJSON.
 
@@ -2475,7 +2530,7 @@ TopoJSON output is quantized by default — Mapshaper picks a quantization level
 mapshaper big.geojson -o ndjson big.ndjson
 ```
 
-Newline-delimited JSON is friendlier to line-oriented tools like jq, BigQuery, and DuckDB. One Feature per line, no enclosing FeatureCollection.
+Newline-delimited JSON is friendlier to line-oriented tools like jq, BigQuery, and DuckDB. One Feature per line, no enclosing FeatureCollection. This is mainly a CLI workflow.
 
 ### Split a layer into multiple files
 
@@ -2485,7 +2540,7 @@ mapshaper counties.shp \
   -o out/ extension=geojson
 ```
 
-`-split FIELD` partitions features into separate layers by the value of `FIELD`; `-o` to a directory then writes one file per layer, named after the field value.
+`-split FIELD` partitions features into separate layers by the value of `FIELD`; `-o` to a directory then writes one file per layer, named after the field value. This is mainly a CLI workflow.
 
 ## Workflow patterns
 
@@ -2507,7 +2562,7 @@ mapshaper -run build.txt
 mapshaper build.txt
 ```
 
-Long pipelines can be kept in a [command file](/docs/reference.html.md#command-files).
+Long pipelines can be kept in a [command file](/docs/reference.html.md#command-files). This is a CLI workflow; support for running command files in the web app is planned for a future release.
 
 ### Parameterize a command file
 
@@ -2671,16 +2726,15 @@ Simplification reduces the number of vertices in polylines and polygon boundarie
 
 ## Choosing a method
 
-Mapshaper offers three simplification methods, selectable as flags to `-simplify`:
+Mapshaper offers three simplification methods, selectable as method options in the web UI's Simplification menu or flags to `-simplify` on the command line. 
 
-- **`dp`** &mdash; Douglas-Peucker (also known as Ramer–Douglas–Peucker). Guarantees that simplified lines stay within a fixed distance of the original. Good for stripping excess vertices to reduce file size, but tends to introduce visible spikes at high simplification.
-- **`visvalingam`** &mdash; The Visvalingam algorithm. Iteratively removes the point that forms the triangle of smallest area with its two neighbors.
-- **`weighted_visvalingam`** (Mapshaper's default) &mdash; Visvalingam's algorithm with a custom weighting that underweights points at sharp angles, so they are removed earlier than in standard Visvalingam. The result is visibly smoother lines and fewer jagged spikes at high simplification. You can fine tune this effect by setting the `weighting=` option (default is 0.7). The larger the parameter, the greater the smoothing effect. (Make sure that long, thin geographic features that you want to keep do not get smoothed away.)
+- **`Douglas-Peucker`** (also known as Ramer–Douglas–Peucker). Guarantees that simplified lines stay within a fixed distance of the original. Good for stripping excess vertices to reduce file size, but tends to introduce visible spikes at high simplification.
+- **`Visvalingam / effective area`**. Iteratively removes the point that forms the triangle of smallest area with its two neighbors.
+- **`Visvalingam / weighted area`**. A variation on Visvalingam's algorithm that underweights points at sharp angles, so they are removed earlier than in standard Visvalingam. The result is visibly smoother lines and fewer jagged spikes at high simplification. You can fine tune this effect by setting the `weighting=` option (default is 0.7). The larger the parameter, the greater the smoothing effect.
 
-Weighted Visvalingam is the default because it produces good-looking generalizations of highly detailed source layers. But none of these methods can approach the quality that a cartographer achieves when generalizing linework by hand.
+Weighted Visvalingam is Mapshaper's default method because it can produce good-looking generalizations of highly detailed source layers. But be aware that none of these methods can approach the quality that a cartographer achieves when generalizing linework by hand.
 
 If you are primarily interested in removing as many vertices as possible without visible changes to the shape of the lines, you may find that Douglas-Peucker combined with an appropriate `interval=` or `resolution=` parameter gives the best results.
-
 
 **Figures**
 
@@ -2726,7 +2780,7 @@ See the [`-simplify` reference](/docs/reference.html.md#-simplify) for the full 
 At high simplification, small polygons can disappear entirely. Pass `keep-shapes` to `-simplify` (or tick **prevent shape removal** in the web UI's Simplify panel) to retain at least one ring per multipart feature, regardless of how aggressive the simplification is.
 
 ```bash
-mapshaper provinces.shp -simplify 5% keep-shapes -o provinces.geojson
+mapshaper islands.geojson -simplify 5% keep-shapes -o islands-simplified.geojson
 ```
 
 ## Spherical vs planar geometry
@@ -2755,6 +2809,160 @@ mapshaper -i states.shp counties.shp combine-files \
 ```
 
 The web app does **not** combine files automatically when you import multiple layers. To get the shared-topology behavior in the web app, tick **with advanced options** in the import dialog and add `combine-files` to the options field.
+
+---
+
+<!-- https://mapshaper.org/docs/guides/styles-and-symbols.html -->
+
+# Styles and Symbols
+
+Mapshaper can attach SVG styling properties to features with [`-style`](/docs/reference.html.md#-style), and it can assign colors or other values from data with [`-classify`](/docs/reference.html.md#-classify). The [`-symbols`](/docs/reference.html.md#-symbols) command creates arrows and other symbols. These commands are useful when you want to create a styled map that can be exported as an SVG file.
+
+The examples below are written for the web app's Console. Load your data first, then run the commands. The same command sequences also work on the CLI when you add `mapshaper input-file` before them and `-o output.svg` after them.
+
+> **Illustration placeholder:** Add a composite image showing a map with muted base layers, proportional point symbols, a classified choropleth layer and labels.
+
+## The `-style` command
+
+`-style` writes common SVG presentation attributes to each feature. Line layers can be styled with `stroke=`, `stroke-width=`, `stroke-opacity=`, `stroke-dasharray=` and `opacity=`. Polygon layers add `fill=` and `fill-opacity=` options.
+
+Style values can be literal values, like `stroke="#777"`, or JavaScript expressions, like `r='sqrt(POP) / 100'`. Use `where=` to override the styles of a selected group of features.
+
+```text
+-style fill="#eee" stroke="#999" \
+-style where='TYPE == "primary"' stroke="#555" stroke-width=1.5
+```
+
+### Making circles
+
+To make circles from a point layer, add a `r=` (for radius) property along with fill and stroke styles. For scaled circles, use a JavaScript expression for `r=`. Use `Math.sqrt()` in your expression so the area of the circle is proportional to your data values.
+
+```text
+-style r='Math.sqrt(POP) / 250' \
+  fill='rgba(227, 74, 51, 0.65)' \
+  stroke='rgba(0, 0, 0, 0.15)'
+```
+
+## Styling data layers with the `-classify` command
+
+### Classed and unclassed color gradients
+
+`-classify` can assign colors or other values based on a data field. For numeric data, mapshaper can automatically classify a data field using `method=quantile|equal-interval|nice|hybrid`.
+
+This example applies a six-class orange color ramp to a `RATE` field. By default, the colors are assigned to the `fill` field (the `save-as=` option changes this).
+
+```text
+-classify RATE method=quantile classes=6 color-scheme=Oranges
+```
+
+Quantiles put roughly the same number of features in each class. Equal intervals use evenly spaced numeric ranges.
+
+```text
+-classify RATE method=equal-interval classes=5 color-scheme=Blues
+```
+
+Mapshaper's `nice` method is similar to `equal-interval` but finds rounded class breaks that look better in a map legend.
+
+The `hybrid` method uses equal-interval breaks in the interior of the class range paired with variable-size outer breaks to handle data outliers.
+
+Use the `breaks=` option when you want to define the class breaks yourself.
+
+```text
+-classify RATE breaks=10,25,50,100 \
+  colors="#f7fbff,#c6dbef,#6baed6,#2171b5,#08306b"
+```
+
+For continuous, unclassed color ramps, add `continuous`.
+
+```text
+-classify RATE continuous color-scheme=Viridis
+```
+
+### Styling categorical data
+
+Categorical data uses named groups rather than numeric ranges: party, land use, road class, region, status and similar fields. Use `categories=` and `colors=` to map known values to colors.
+
+Run `-colors` in the web console, or `mapshaper -colors` on the CLI, to see the names of Mapshaper's built-in categorical color schemes.
+
+```text
+-classify PARTY save-as=fill \
+  categories=Democratic,Republican,Independent \
+  colors="#2b8cbe,#de2d26,#756bb1" \
+  other="#ddd"
+```
+
+The `other=` value is used for records whose category is missing from the list. This is useful when a field has miscellaneous or unexpected values to which you want to apply a fallback color instead of the missing-data color.
+
+## Making arrows with the `-symbols` command
+
+Use [`-symbols`](/docs/reference.html.md#-symbols) to turn a point layer into arrows or other symbol shapes. Arrow options accept expressions, so you can drive the length and direction of each arrow from data fields.
+
+For a point layer with `SPEED` and `BEARING` fields, this example scales arrow length from `SPEED` and points each arrow using `BEARING`.
+
+```text
+-symbols type=arrow \
+  length='max(8, min(60, SPEED * 2))' \
+  direction=BEARING \
+  fill="rgba(49, 130, 189, 0.65)" \
+  stem-width=3 head-width=12 anchor=middle
+```
+
+`direction=` is measured in degrees off vertical: `0` points up and `-90` points left. If your data stores compass bearings clockwise from north, those values can usually be used directly as `direction=` values.
+
+For a lighter vector-field style, use stick arrows. This draws arrow strokes instead of filled polygons.
+
+```text
+-symbols type=arrow arrow-style=stick \
+  length='max(6, min(45, WIND_SPEED * 1.5))' \
+  direction=WIND_DIR \
+  stroke="#2b8cbe" stroke-width=1.2 \
+  head-length=6 anchor=middle
+```
+
+## Making labels with `-style`
+
+Labels are created from point layers by setting `label-text=`. The label text can be a field name or an expression. Label styling uses familiar CSS-like properties such as `font-size=`, `font-family=` and `font-weight=`. The SVG properties `text-anchor=`, `dx=` and `dy=` place the label relative to its anchor point.
+
+Labels are centered horizontally by default (equivalent to setting `text-anchor=middle`). To center labels vertically, nudge them down a bit by setting a small `dy=` value. This is required because SVG aligns text vertically to the font baseline.
+
+```text
+-style label-text=NAME font-size=13 dy=4
+```
+
+Use `dx=` together with `text-anchor=start` or `text-anchor=end` to place labels to the left or right of their anchor points. Typically you would combine this with a dot over the anchor point. You can add the dots to the label layer by adding an `r=` property.
+
+```text
+-style label-text=NAME dx=6 dy=3 font-size=12 text-anchor=start r=2
+```
+
+You can combine `where=` with multiple `-style` commands to emphasize important labels.
+
+```text
+-style label-text=NAME font-size=12 fill="#555" dy=3 \
+  -style where='POP > 1000000' font-size=15 dy=4 font-weight=bold
+```
+
+## Exporting styled maps
+
+Style fields are most useful when exporting SVG:
+
+```bash
+mapshaper input.geojson \
+  -classify RATE save-as=fill quantile classes=6 color-scheme=Oranges \
+  -style stroke="#fff" stroke-width=0.4 \
+  -o map.svg
+```
+
+In the web app, run the styling commands in the Console, then open **Export** and choose SVG.
+
+## Tips
+
+- Use transparency (`fill=rgba(...)` or `fill-opacity=...`) when dense symbols overlap.
+- Prefer `Math.sqrt()` scaling for proportional circles.
+- Use `-sort r descending` to place larger circles behind smaller circles.
+- Use `where=` for exceptions and emphasis instead of splitting off highlighted shapes onto a separate layer.
+- Run `-style clear` if earlier styling is confusing the current result.
+- See [`-style`](/docs/reference.html.md#-style), [`-classify`](/docs/reference.html.md#-classify), [`-colors`](/docs/reference.html.md#-colors) and [JavaScript expressions](/docs/guides/expressions.html.md) for the full syntax.
 
 ---
 
@@ -3880,7 +4088,8 @@ There are no GeoParquet-specific `-i` options.
 
 ### Format-specific output options
 
-There are no GeoParquet-specific `-o` options.
+- `compression=snappy|zstd|none` &mdash; select Parquet column compression. The default is `snappy`. Use `none` or `uncompressed` to write uncompressed Parquet data.
+- `level=` &mdash; set the ZSTD compression level when using `compression=zstd`. Valid values are integers from 1 to 22. If omitted, the ZSTD library default is used.
 
 ### Practical notes
 

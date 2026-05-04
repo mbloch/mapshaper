@@ -25683,52 +25683,71 @@ ${svg}
   }
 
   var writerPromise = null;
+  var zstdPromise = null;
   var dynamicImportModule$1 = Function('id', 'return import(id)');
 
   async function exportGeoParquet(dataset, opts, filenameOverride) {
     var writer = await loadGeoParquetWriter();
+    var compression = await getGeoParquetCompression(opts);
     var extension = opts.extension || 'parquet';
+    var files = [];
     if (opts.file) {
       extension = getFileExtension(opts.file) || extension;
     }
-    return dataset.layers.map(function(lyr) {
-      if (!lyr.geometry_type) {
-        stop$1('GeoParquet export requires a geometry layer');
-      }
+    dataset.layers.forEach(function(lyr) {
       var features = exportLayerAsGeoJSON(lyr, dataset, opts, true, null);
-      var output = buildGeoParquetColumns(features);
-      var geoMetadata = buildGeoMetadata(features, dataset);
-      var content = writer.parquetWriteBuffer({
-        columnData: output.columnData,
-        kvMetadata: [{
-          key: 'geo',
-          value: JSON.stringify(geoMetadata)
-        }]
+      var hasGeometry = features.some(function(feat) {
+        return !!feat.geometry;
       });
-      return {
+      var output = buildGeoParquetColumns(features, hasGeometry);
+      var writeOptions = {
+        columnData: output.columnData,
+        codec: compression.codec,
+        compressors: compression.compressors,
+        pageSize: compression.pageSize
+      };
+      if (hasGeometry) {
+        writeOptions.kvMetadata = [{
+          key: 'geo',
+          value: JSON.stringify(buildGeoMetadata(features, dataset))
+        }];
+      } else {
+        warn('GeoParquet export: layer has no geometry; writing attribute data only.');
+      }
+      var content = writer.parquetWriteBuffer(writeOptions);
+      files.push({
         filename: filenameOverride || (lyr.name + '.' + extension),
         content: content
-      };
+      });
     });
+    return files;
   }
 
-  function buildGeoParquetColumns(features, writer) {
+  function buildGeoParquetColumns(features, includeGeometry) {
     var geometryName = 'geometry';
     var names = getPropertyNames(features);
     var columnData = [];
-    columnData.push({
-      name: geometryName,
-      data: features.map(function(feat) {
-        return feat.geometry || null;
-      }),
-      type: 'GEOMETRY'
-    });
+    if (features.length === 0) {
+      stop$1('GeoParquet export requires at least one record');
+    }
+    if (includeGeometry) {
+      columnData.push({
+        name: geometryName,
+        data: features.map(function(feat) {
+          return feat.geometry || null;
+        }),
+        type: 'GEOMETRY'
+      });
+    }
     names.forEach(function(name) {
       var values = features.map(function(feat) {
         return feat.properties ? feat.properties[name] : null;
       });
       columnData.push(buildAttributeColumn(name, values));
     });
+    if (columnData.length === 0) {
+      stop$1('GeoParquet export requires geometry or attribute data');
+    }
     return {columnData: columnData, geometryColumn: geometryName};
   }
 
@@ -25886,6 +25905,99 @@ ${svg}
     return nodeMod.default && !nodeMod.parquetWriteBuffer ? nodeMod.default : nodeMod;
   }
 
+  async function getGeoParquetCompression(opts) {
+    var codec = normalizeGeoParquetCompression(opts.compression);
+    var level = validateGeoParquetCompressionLevel(opts.level, codec);
+    if (codec != 'ZSTD') {
+      return {codec: codec, compressors: null};
+    }
+    var zstd = await loadZstdLib();
+    if (!zstd || typeof zstd.compress != 'function') {
+      stop$1('GeoParquet ZSTD compressor is not loaded');
+    }
+    return {
+      codec: codec,
+      pageSize: getGeoParquetPageSize(level),
+      compressors: {
+        ZSTD: function(bytes) {
+          return compressZstdPage(zstd, bytes, level);
+        }
+      }
+    };
+  }
+
+  function compressZstdPage(zstd, bytes, level) {
+    var compressed;
+    try {
+      compressed = zstd.compress(bytes, level);
+    } catch (e) {
+      stop$1('Unable to apply GeoParquet ZSTD compression. Try a lower level= value.');
+    }
+    if (!compressed) {
+      stop$1('Unable to apply GeoParquet ZSTD compression. Try a lower level= value.');
+    }
+    return compressed;
+  }
+
+  function getGeoParquetPageSize(level) {
+    return level >= 10 ? 64 * 1024 : undefined;
+  }
+
+  function normalizeGeoParquetCompression(compression) {
+    var str = compression === undefined || compression === null ? 'snappy' : String(compression).toLowerCase();
+    if (str == 'snappy') return 'SNAPPY';
+    if (str == 'zstd') return 'ZSTD';
+    if (str == 'none' || str == 'uncompressed') return null;
+    stop$1('Unsupported GeoParquet compression:', compression);
+  }
+
+  function validateGeoParquetCompressionLevel(level, codec) {
+    if (level === undefined) return undefined;
+    if (codec != 'ZSTD') {
+      stop$1('The level= option only applies with compression=zstd');
+    }
+    if (level >= 1 && level <= 22 && Math.floor(level) === level) {
+      return level;
+    }
+    stop$1('GeoParquet ZSTD level= option must be an integer from 1 to 22');
+  }
+
+  async function loadZstdLib() {
+    var mod;
+    if (runningInBrowser()) {
+      mod = require$1('zstd-codec');
+    } else {
+      if (!zstdPromise) {
+        zstdPromise = dynamicImportModule$1('zstd-codec');
+      }
+      mod = await zstdPromise;
+    }
+    if (mod && mod.default && !mod.ZstdCodec) {
+      mod = mod.default;
+    }
+    if (!mod || !mod.ZstdCodec || typeof mod.ZstdCodec.run != 'function') {
+      stop$1('GeoParquet ZSTD compressor is not loaded');
+    }
+    return initZstdCodec(mod.ZstdCodec);
+  }
+
+  function initZstdCodec(codec) {
+    return new Promise(function(resolve, reject) {
+      try {
+        codec.run(function(zstd) {
+          var simple = new zstd.Simple();
+          resolve({
+            compress: function(bytes, level) {
+              return simple.compress(bytes, level);
+            }
+          });
+        });
+      } catch (e) {
+        reject(e);
+      }
+    });
+  }
+
   function getOutputFormat(dataset, opts) {
     var outFile = opts.file || null,
         inFmt = dataset.info && dataset.info.input_formats && dataset.info.input_formats[0],
@@ -25991,6 +26103,9 @@ ${svg}
   async function exportDatasets(datasets, opts) {
     var format = getOutputFormat(datasets[0], opts);
     var files;
+    if (format != 'geoparquet' && (opts.compression || opts.level !== undefined)) {
+      error('The compression= and level= options only apply to GeoParquet output');
+    }
     if (format == PACKAGE_EXT) {
       opts = utils.defaults({compact: true}, opts);
       return exportPackedDatasets(datasets, opts);
@@ -28668,6 +28783,13 @@ ${svg}
       .option('decimal-comma', {
         type: 'flag',
         describe: '[CSV] export numbers with decimal commas not points'
+      })
+      .option('compression', {
+        describe: '[GeoParquet] options: snappy,zstd,none (default is snappy)'
+      })
+      .option('level', {
+        describe: '[GeoParquet] zstd compression level',
+        type: 'integer'
       })
       .option('show-all', {
         type: 'flag',
@@ -33675,6 +33797,7 @@ ${svg}
   }
 
   var hyparquetPromise = null;
+  var compressorsPromise = null;
   var dynamicImportModule = Function('id', 'return import(id)');
   var mproj = null;
 
@@ -33685,8 +33808,10 @@ ${svg}
     var file = await getHyparquetFile(source, hyparquet);
     var metadata = await hyparquet.parquetMetadataAsync(file);
     var geo = parseGeoParquetMetadata(metadata);
+    var compressors = await loadHyparquetCompressors();
     var rows = await hyparquet.parquetReadObjects({
       file: file,
+      compressors: compressors,
       rowFormat: 'object'
     });
     var geometryColumn = getGeoParquetGeometryColumn(rows, geo);
@@ -33724,6 +33849,26 @@ ${svg}
     }
     var nodeMod = await hyparquetPromise;
     return nodeMod.default && !nodeMod.parquetReadObjects ? nodeMod.default : nodeMod;
+  }
+
+  async function loadHyparquetCompressors() {
+    if (runningInBrowser()) {
+      return getHyparquetCompressors(require$1('hyparquet-compressors'));
+    }
+    if (!compressorsPromise) {
+      compressorsPromise = dynamicImportModule('hyparquet-compressors');
+    }
+    return getHyparquetCompressors(await compressorsPromise);
+  }
+
+  function getHyparquetCompressors(mod) {
+    if (mod && mod.default && !mod.compressors) {
+      mod = mod.default;
+    }
+    if (!mod || !mod.compressors) {
+      stop$1('GeoParquet compression library is not loaded');
+    }
+    return mod.compressors;
   }
 
   function getGeoParquetSource(input) {
@@ -54267,7 +54412,7 @@ ${svg}
     });
   }
 
-  var version = "0.7.8";
+  var version = "0.7.9";
 
   // Parse command line args into commands and run them
   // Function takes an optional Node-style callback. A Promise is returned if no callback is given.

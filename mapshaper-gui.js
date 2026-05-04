@@ -2099,7 +2099,7 @@
   }
 
   async function loadGeoParquetLib() {
-    if (!window.modules || !window.modules.hyparquet || !window.modules['hyparquet-writer']) {
+    if (!window.modules || !window.modules.hyparquet || !window.modules['hyparquet-compressors'] || !window.modules['hyparquet-writer'] || !window.modules['zstd-codec']) {
       if (!geoParquetPromise) {
         geoParquetPromise = loadScript('geoparquet.js');
       }
@@ -4113,6 +4113,116 @@
     }
   };
 
+  var FIELD_TYPE_SCAN_LIMIT = 1000;
+  var RECENT_COMMAND_LIMIT = 20;
+  var RECENT_MESSAGE_LIMIT = 10;
+
+  function getRuntimeStateContext(gui) {
+    var layers = gui.model.getLayers();
+    var active = gui.model.getActiveLayer();
+    var history = gui.session.getHistorySnapshot();
+    var messages = gui.getMessages ? gui.getMessages() : [];
+
+    return {
+      schema: 'mapshaper-runtime-context',
+      schema_version: 1,
+      generated_at: new Date().toISOString(),
+      privacy_note: 'Contains project metadata only: layer names, field names/types, counts, CRS, recent commands and recent messages. It does not include geometry or attribute records.',
+      ui: getUiContext(gui),
+      active_layer: active ? getLayerTargetId(gui, active.layer) : null,
+      default_targets: getDefaultTargets(gui),
+      layers: layers.map(function(o, i) {
+        return getLayerContext(gui, o.layer, o.dataset, i, active && active.layer);
+      }),
+      session: {
+        command_count: history.commands.length,
+        recent_commands: history.commands.slice(-RECENT_COMMAND_LIMIT),
+        unsaved_changes: gui.session.unsavedChanges()
+      },
+      messages: messages.slice(0, RECENT_MESSAGE_LIMIT)
+    };
+  }
+
+  function stringifyRuntimeStateContext(gui) {
+    return JSON.stringify(getRuntimeStateContext(gui), null, 2);
+  }
+
+  function getUiContext(gui) {
+    return {
+      interface: 'web_app',
+      console_open: gui.consoleIsOpen(),
+      panel_mode: gui.getMode(),
+      interaction_mode: gui.interaction ? gui.interaction.getMode() : null,
+      dataset_count: gui.model.getDatasets().length,
+      layer_count: gui.model.getLayers().length,
+      has_data: !gui.model.isEmpty()
+    };
+  }
+
+  function getDefaultTargets(gui) {
+    return gui.model.getDefaultTargets().map(function(target) {
+      return {
+        layers: target.layers.map(function(lyr) {
+          return getLayerTargetId(gui, lyr);
+        })
+      };
+    });
+  }
+
+  function getLayerContext(gui, lyr, dataset, i, activeLyr) {
+    var fields = getFieldContexts(lyr);
+    var context = {
+      id: i + 1,
+      target_id: getLayerTargetId(gui, lyr),
+      name: lyr.name || null,
+      active: lyr == activeLyr,
+      geometry_type: lyr.geometry_type || null,
+      feature_count: internal.getFeatureCount(lyr),
+      field_count: fields.length,
+      fields: fields
+    };
+    if (lyr.geometry_type) {
+      context.crs = getCrsContext(dataset);
+    }
+    if (dataset.info && dataset.info.input_formats) {
+      context.input_formats = dataset.info.input_formats.slice();
+    }
+    return context;
+  }
+
+  function getCrsContext(dataset) {
+    var crs = null;
+    try {
+      crs = internal.getProjInfo(dataset);
+    } catch(e) {}
+    return crs || null;
+  }
+
+  function getFieldContexts(lyr) {
+    if (!lyr.data || lyr.data.size() === 0) return [];
+    return lyr.data.getFields().map(function(name) {
+      return {
+        name: name,
+        type: getSampledFieldType(lyr.data, name)
+      };
+    });
+  }
+
+  function getSampledFieldType(table, name) {
+    var n = Math.min(table.size(), FIELD_TYPE_SCAN_LIMIT);
+    var rec, type;
+    for (var i = 0; i < n; i++) {
+      rec = table.getReadOnlyRecordAt(i);
+      type = rec ? internal.getValueType(rec[name]) : null;
+      if (type) return type;
+    }
+    return null;
+  }
+
+  function getLayerTargetId(gui, lyr) {
+    return internal.formatOptionValue(internal.getLayerTargetId(gui.model, lyr));
+  }
+
   function Console(gui) {
     var model = gui.model;
     var CURSOR = '$ ';
@@ -4476,6 +4586,10 @@
           clear();
         } else if (cmd == 'tips') {
           printExamples();
+        } else if (cmd == 'context') {
+          toLog(stringifyRuntimeStateContext(gui));
+        } else if (cmd == 'context download') {
+          saveRuntimeContext();
         } else if (cmd == 'history') {
           toLog(gui.session.toCommandLineString());
         } else if (cmd == 'layers') {
@@ -4628,10 +4742,17 @@
       printExample("See a list of all console commands", "$ help");
       printExample("Get help using a single command", "$ help innerlines");
       printExample("Get information about imported datasets", "$ info");
+      printExample("Print bot/debug runtime context as JSON", "$ context");
       printExample("Display browser session as shell commands", "$ history");
       printExample("Delete one state from a national dataset","$ filter 'STATE != \"Alaska\"'");
       printExample("Aggregate counties to states by dissolving shared edges" ,"$ dissolve 'STATE'");
       printExample("Clear the console", "$ clear");
+    }
+
+    function saveRuntimeContext() {
+      var json = stringifyRuntimeStateContext(gui);
+      saveBlobToLocalFile2('mapshaper-runtime-context.json', new Blob([json], {type: 'application/json'}));
+      toLog('Saved runtime context to mapshaper-runtime-context.json', 'console-message');
     }
 
   }
@@ -15159,6 +15280,18 @@ GUI and setting the size and crop of SVG output.</p><div><input type="text" clas
       }
     };
 
+    gui.getMessages = function() {
+      return entries.map(function(entry) {
+        return {
+          severity: entry.severity,
+          title: entry.title,
+          body: entry.body,
+          count: entry.count,
+          time: entry.time.toISOString()
+        };
+      });
+    };
+
     function severityRank(s) {
       return s === 'error' ? 2 : s === 'warn' ? 1 : 0;
     }
@@ -15327,6 +15460,14 @@ GUI and setting the size and crop of SVG output.</p><div><input type="text" clas
       return gui.container.hasClass('console-open');
     };
 
+    gui.getRuntimeStateContext = function() {
+      return getRuntimeStateContext(gui);
+    };
+
+    gui.stringifyRuntimeStateContext = function() {
+      return stringifyRuntimeStateContext(gui);
+    };
+
     // Make this instance interactive and editable
     gui.focus = function() {
       var curr = GUI.__active;
@@ -15440,6 +15581,8 @@ GUI and setting the size and crop of SVG output.</p><div><input type="text" clas
     new LayerControl(gui);
     HeaderMenu();
     gui.console = new Console(gui);
+    window.mapshaper.getRuntimeStateContext = gui.getRuntimeStateContext;
+    window.mapshaper.stringifyRuntimeStateContext = gui.stringifyRuntimeStateContext;
 
     startEditing = function() {};
 
