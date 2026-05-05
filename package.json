@@ -40,7 +40,8 @@
     "/mapshaper.js",
     "!.DS_Store",
     "!/www/docs/**",
-    "!/www/llms*"
+    "!/www/llms*",
+    "!/www/ai-config.js"
   ],
   "dependencies": {
     "@ngageoint/geopackage": "^4.2.6",
