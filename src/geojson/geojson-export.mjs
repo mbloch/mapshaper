@@ -278,7 +278,8 @@ GeoJSON.exportPolygonGeom = function(ids, arcs, opts) {
   var groups = groupPolygonRings(obj.pathData, arcs, opts.invert_y);
   // invert_y is used internally for SVG generation
   // mapshaper's internal winding order is the opposite of RFC 7946
-  var reverse = opts.rfc7946 && !opts.invert_y;
+  var rfc7946 = opts.rfc7946 === true;
+  var reverse = rfc7946 !== !!opts.reverse_winding && !opts.invert_y;
   var coords = groups.map(function(paths) {
     return paths.map(function(path) {
       if (reverse) path.points.reverse();

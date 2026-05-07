@@ -573,6 +573,24 @@ describe('mapshaper-geojson.js', function () {
       });
     });
 
+    it('-o reverse-winding reverses GeoJSON polygon winding order', async function() {
+      var input = {
+        type:"GeometryCollection",
+        geometries:[{
+          type: "Polygon",
+          coordinates: [[[100.0, 0.0], [100.0, 10.0], [110.0, 10.0], [110.0, 0.0], [100.0, 0.0]],
+            [[101.0, 1.0], [109.0, 1.0], [109.0, 9.0], [101.0, 9.0], [101.0, 1.0]]
+          ]
+      }]};
+
+      var target = [[[100.0, 0.0], [100.0, 10.0], [110.0, 10.0], [110.0, 0.0], [100.0, 0.0]],
+            [[101.0, 1.0], [109.0, 1.0], [109.0, 9.0], [101.0, 9.0], [101.0, 1.0]]
+          ];
+      var output = await api.applyCommands('-i input.json -o reverse-winding output.json', {'input.json': input});
+      var json = JSON.parse(output['output.json']);
+      assert.deepEqual(json.geometries[0].coordinates, target);
+    });
+
 
     describe('-i geometry-type option', function () {
       it('filters geometry types inside nested GeometryCollection', function (done) {

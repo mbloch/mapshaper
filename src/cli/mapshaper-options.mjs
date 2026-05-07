@@ -333,6 +333,10 @@ export function getOptionParser() {
       describe: '[GeoJSON] use original GeoJSON spec (not RFC 7946)',
       type: 'flag'
     })
+    .option('reverse-winding', {
+      describe: '[GeoJSON] reverse polygon winding order',
+      type: 'flag'
+    })
     .option('rfc7946', {
       // dummy option so old commands do not break
       type: 'flag'
