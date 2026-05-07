@@ -73,12 +73,15 @@ export function captureLogCalls(fn) {
   var loggingWasEnabled = api.internal.loggingEnabled();
   var calls = [];
   var origError = console.error;
+  var restoreLogging = api.internal.getLoggingSetter();
   console.error = function() { calls.push(Array.prototype.join.call(arguments, ' ')); };
+  api.internal.setLoggingForCLI();
   api.enableLogging();
   try {
     fn();
   } finally {
     console.error = origError;
+    restoreLogging();
     if (!loggingWasEnabled) api.internal.disableLogging();
   }
   return calls;
@@ -92,13 +95,16 @@ export async function captureLogCallsAsync(fn) {
   var loggingWasEnabled = api.internal.loggingEnabled();
   var calls = [];
   var origError = console.error;
+  var restoreLogging = api.internal.getLoggingSetter();
   console.error = function() { calls.push(Array.prototype.join.call(arguments, ' ')); };
+  api.internal.setLoggingForCLI();
   api.enableLogging();
   try {
     var result = await fn();
     return {log: calls, result: result};
   } finally {
     console.error = origError;
+    restoreLogging();
     if (!loggingWasEnabled) api.internal.disableLogging();
   }
 }
