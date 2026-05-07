@@ -1,3 +1,9 @@
+v0.7.10
+* Added web UI undo and redo.
+* Added a History menu to the web UI's top bar for turning on undo (disabled by default), moved the console button to a tab on the left side.
+* Added new cell shapes to the -grid command: triangle, triangle2, rhombus, rhombus2, square2.
+* Added cell-scale= option to -grid. Takes a value between 0 and 2 for scaling each grid cell shape.
+
 v0.7.9
 * Support ZSTD compression in GeoParquet files with the new output option: `compression="snappy,zstd,none"` (snappy is default).
 * Added the `-o level=` option for setting ZSTD compression level (range is 1-22).

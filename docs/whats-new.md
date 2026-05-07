@@ -9,6 +9,18 @@ This is a curated list of recently added features. For the full list of changes,
 
 ## May 2026
 
+<div class="whats-new-entry">
+
+**Undo/redo for web UI commands.** The web UI can now save temporary restore data while you work, so many console commands and layer actions can be undone and redone from the undo/redo toolbar. Turn on this feature from the new History menu.
+
+</div>
+
+<div class="whats-new-entry">
+
+**More grid options.** The `-grid` command can now create rhombus and triangle grids, and supports `cols=`, `rows=`, `cells=` and `cell-scale=` options for controlling grid layout.
+
+→ See [`-grid`](/docs/reference.html#-grid).
+</div>
 
 <div class="whats-new-entry">
 
