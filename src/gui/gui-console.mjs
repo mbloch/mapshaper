@@ -5,7 +5,6 @@ import { setDisplayProjection } from './gui-dynamic-crs';
 import { GUI } from './gui-lib';
 import { saveBlobToLocalFile2 } from './gui-save';
 import { stringifyRuntimeStateContext } from './gui-runtime-context';
-import { createUndoFeasibilityMonitor } from './gui-undo-feasibility';
 import {
   appUndoIsEnabled,
   getStoredUndoHistory,
@@ -41,8 +40,6 @@ export function Console(gui) {
     });
   var globals = {}; // share user-defined globals (job.defs) between runs
   var sharedVars = {}; // share -vars / -defaults templating scope between runs
-  var undoFeasibility = createUndoFeasibilityMonitor(gui);
-  gui.undoFeasibility = undoFeasibility;
 
   // expose this function, so other components can run commands (e.g. box tool)
   this.runMapshaperCommands = runMapshaperCommands;
@@ -444,7 +441,6 @@ export function Console(gui) {
         prevTable = active?.layer.data,
         prevTableSize = prevTable ? prevTable.size() : 0,
         prevArcCount = prevArcs ? prevArcs.size() : 0,
-        undoCapture = undoFeasibility.beforeCommand(commands, commandString),
         undoTransaction = createCommandUndoTransaction(commandString),
         job = new internal.Job(model),
         commandStart = Date.now();
@@ -493,7 +489,6 @@ export function Console(gui) {
       // signal the map to update even if an error has occured, because the
       // commands may have partially succeeded and changes may have occured to
       // the data.
-      undoFeasibility.afterCommand(undoCapture, {error: err, flags: flags});
       if (!err) {
         commandString = internal.standardizeConsoleCommands(commandString);
         historyIds.push(gui.session.consoleCommands(commandString));
