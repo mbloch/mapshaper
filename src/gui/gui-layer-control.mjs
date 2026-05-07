@@ -9,7 +9,10 @@ import { El } from './gui-el';
 import { ClickText2 } from './gui-elements';
 import { GUI } from './gui-lib';
 import { openContextMenu } from './gui-context-menu';
-import { createStoredUndoHistory } from './gui-stored-undo-history';
+import {
+  addUndoTransactionToHistory,
+  createUndoTransaction
+} from './gui-app-undo';
 
 export function LayerControl(gui) {
   var model = gui.model;
@@ -278,8 +281,9 @@ export function LayerControl(gui) {
 
     function deleteLayer() {
       var target = findLayerById(id);
-      var undoTransaction = createDeleteLayerUndoTransaction(target);
+      var undoTransaction;
       if (!target) return;
+      undoTransaction = createUndoTransaction(gui, 'delete layer');
       if (map.isVisibleLayer(target.layer)) {
         // TODO: check for double map refresh after model.deleteLayer() below
         setLayerPinning(target.layer, false);
@@ -288,7 +292,10 @@ export function LayerControl(gui) {
         undoTransaction.run(function() {
           model.deleteLayer(target.layer, target.dataset);
         });
-        addDeleteLayerUndoHistory(undoTransaction);
+        addUndoTransactionToHistory(gui, undoTransaction, {
+          flags: {select: true, arc_count: true},
+          entryPrefix: 'delete-layer'
+        });
       } else {
         model.deleteLayer(target.layer, target.dataset);
       }
@@ -389,41 +396,18 @@ export function LayerControl(gui) {
     return str;
   }
 
-  function createDeleteLayerUndoTransaction(target) {
-    return createLayerMenuUndoTransaction(target, 'delete layer');
-  }
-
-  function createLayerRenameUndoTransaction(target) {
-    return createLayerMenuUndoTransaction(target, 'rename layer');
-  }
-
-  function createLayerMenuUndoTransaction(target, label) {
-    var Transaction;
-    if (!target || !appUndoIsEnabled()) return null;
-    if (!gui.undo || typeof gui.undo.addHistoryState != 'function') return null;
-    Transaction = internal.UndoTransaction && (internal.UndoTransaction.UndoTransaction || internal.UndoTransaction);
-    return Transaction ? new Transaction(label) : null;
-  }
-
-  function addDeleteLayerUndoHistory(tx) {
-    getStoredUndoHistory().addTransaction(tx, {
-      flags: {select: true, arc_count: true},
-      entryPrefix: 'delete-layer',
-      maxStates: getUndoHistoryLimit()
-    }).catch(function(e) {
-      console.error(e);
-    });
-  }
-
   function renameLayer(target, name) {
     var undoTransaction;
     if (!target || target.layer.name == name) return;
-    undoTransaction = createLayerRenameUndoTransaction(target);
+    undoTransaction = createUndoTransaction(gui, 'rename layer');
     if (undoTransaction) {
       undoTransaction.captureLayerMetadataBefore(target.layer, {operation: 'renameLayer', unit: 'name'});
       target.layer.name = name;
       markLayerChanged(target.layer, {operation: 'renameLayer', unit: 'name'});
-      addLayerRenameUndoHistory(undoTransaction);
+      addUndoTransactionToHistory(gui, undoTransaction, {
+        flags: {select: true},
+        entryPrefix: 'rename-layer'
+      });
     } else {
       target.layer.name = name;
     }
@@ -431,52 +415,10 @@ export function LayerControl(gui) {
     updateMenuBtn();
   }
 
-  function addLayerRenameUndoHistory(tx) {
-    getStoredUndoHistory().addTransaction(tx, {
-      flags: {select: true},
-      entryPrefix: 'rename-layer',
-      maxStates: getUndoHistoryLimit()
-    }).catch(function(e) {
-      console.error(e);
-    });
-  }
-
   function markLayerChanged(layer, detail) {
     if (internal.UndoTracking && internal.UndoTracking.markLayerChanged) {
       internal.UndoTracking.markLayerChanged(layer, detail);
     }
-  }
-
-  function getStoredUndoHistory() {
-    if (!gui.storedUndoHistory) {
-      gui.storedUndoHistory = createStoredUndoHistory(gui);
-    }
-    return gui.storedUndoHistory;
-  }
-
-  function getUndoHistoryLimit() {
-    var opt = gui.options && gui.options.undoHistoryLimit;
-    return opt > 0 ? opt : 10;
-  }
-
-  function appUndoIsEnabled() {
-    var opt = gui.options && (gui.options.undoCommands || gui.options.appUndo);
-    var query = getQueryValue('undo');
-    if (opt === true || query == 'on' || query == 'commands') return true;
-    if (gui.appUndoIsEnabled) return gui.appUndoIsEnabled();
-    try {
-      return window.localStorage && window.localStorage.getItem('mapshaper.undo') == 'on';
-    } catch(e) {
-      return false;
-    }
-  }
-
-  function getQueryValue(key) {
-    var rxp, match;
-    if (typeof window == 'undefined' || !window.location) return null;
-    rxp = new RegExp('[?&]' + key + '=([^&]+)');
-    match = rxp.exec(window.location.search);
-    return match ? decodeURIComponent(match[1]) : null;
   }
 
   function getWarnings(lyr, dataset) {

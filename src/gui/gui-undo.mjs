@@ -1,5 +1,5 @@
 import { internal } from './gui-core';
-import { createStoredUndoHistory } from './gui-stored-undo-history';
+import { appUndoIsEnabled, getStoredUndoHistory } from './gui-app-undo';
 import {
   setPointCoords,
   setVertexCoords,
@@ -29,8 +29,7 @@ function getEventKey(e) {
 }
 
 export function Undo(gui) {
-  var history, offset, stashedUndo, storedUndoHistory, editSession;
-  storedUndoHistory = createStoredUndoHistory(gui);
+  var history, offset, stashedUndo, editSession;
   editSession = createEditSessionUndo();
   reset();
 
@@ -392,7 +391,7 @@ export function Undo(gui) {
     function start(nextMode) {
       var target, Transaction;
       if (!isEditSessionMode(nextMode)) return;
-      if (!appUndoIsEnabled()) return;
+      if (!appUndoIsEnabled(gui)) return;
       target = gui.model.getActiveLayer();
       if (!target || !target.layer) return;
       Transaction = getUndoTransactionConstructor();
@@ -411,7 +410,7 @@ export function Undo(gui) {
       }
       resetSession();
       if (!wasChanged) return;
-      storedUndoHistory.addTransaction(finishedTx, {
+      getStoredUndoHistory(gui).addTransaction(finishedTx, {
         flags: {select: true},
         entryPrefix: 'edit-session',
         maxStates: getEditSessionUndoHistoryLimit()
@@ -464,26 +463,6 @@ export function Undo(gui) {
   function getEditSessionUndoHistoryLimit() {
     var opt = gui.options && gui.options.undoHistoryLimit;
     return opt > 0 ? opt : 10;
-  }
-
-  function appUndoIsEnabled() {
-    var opt = gui.options && (gui.options.undoCommands || gui.options.appUndo);
-    var query = getQueryValue('undo');
-    if (opt === true || query == 'on' || query == 'commands') return true;
-    if (gui.appUndoIsEnabled) return gui.appUndoIsEnabled();
-    try {
-      return window.localStorage && window.localStorage.getItem('mapshaper.undo') == 'on';
-    } catch(e) {
-      return false;
-    }
-  }
-
-  function getQueryValue(key) {
-    var rxp, match;
-    if (typeof window == 'undefined' || !window.location) return null;
-    rxp = new RegExp('[?&]' + key + '=([^&]+)');
-    match = rxp.exec(window.location.search);
-    return match ? decodeURIComponent(match[1]) : null;
   }
 
 }

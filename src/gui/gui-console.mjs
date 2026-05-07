@@ -6,7 +6,11 @@ import { GUI } from './gui-lib';
 import { saveBlobToLocalFile2 } from './gui-save';
 import { stringifyRuntimeStateContext } from './gui-runtime-context';
 import { createUndoFeasibilityMonitor } from './gui-undo-feasibility';
-import { createStoredUndoHistory } from './gui-stored-undo-history';
+import {
+  appUndoIsEnabled,
+  getStoredUndoHistory,
+  getUndoQueryValue
+} from './gui-app-undo';
 
 export function Console(gui) {
   var model = gui.model;
@@ -38,7 +42,6 @@ export function Console(gui) {
   var globals = {}; // share user-defined globals (job.defs) between runs
   var sharedVars = {}; // share -vars / -defaults templating scope between runs
   var undoFeasibility = createUndoFeasibilityMonitor(gui);
-  var storedUndoHistory = createStoredUndoHistory(gui);
   gui.undoFeasibility = undoFeasibility;
 
   // expose this function, so other components can run commands (e.g. box tool)
@@ -516,7 +519,7 @@ export function Console(gui) {
   function createCommandUndoTransaction(commandString) {
     var Transaction;
     if (!isCommandUndoEnabled()) return null;
-    storedUndoHistory.getPayloadStore();
+    getStoredUndoHistory(gui).getPayloadStore();
     Transaction = internal.UndoTransaction.UndoTransaction || internal.UndoTransaction;
     return new Transaction(commandString);
   }
@@ -540,7 +543,7 @@ export function Console(gui) {
   }
 
   async function addCommandUndoHistory(tx, err, flags, historyIds) {
-    return storedUndoHistory.addTransaction(tx, {
+    return getStoredUndoHistory(gui).addTransaction(tx, {
       error: err,
       flags: flags,
       entryPrefix: 'command',
@@ -555,15 +558,8 @@ export function Console(gui) {
   }
 
   function isCommandUndoEnabled() {
-    var opt = gui.options && (gui.options.undoCommands || gui.options.appUndo);
-    var query = getQueryValue('undo');
     if (!gui.undo || typeof gui.undo.addHistoryState != 'function') return false;
-    if (opt === true || query == 'on' || query == 'commands') return true;
-    try {
-      return window.localStorage && window.localStorage.getItem('mapshaper.undo') == 'on';
-    } catch(e) {
-      return false;
-    }
+    return appUndoIsEnabled(gui);
   }
 
   function getCommandUndoHistoryLimit() {
@@ -572,8 +568,8 @@ export function Console(gui) {
   }
 
   function logCommandTiming(commandString, commands, err, totalMillis, undoTiming) {
-    var enabled = getQueryValue('command-timing') == 'on' ||
-      getQueryValue('undo-timing') == 'on';
+    var enabled = getQueryFlag('command-timing') == 'on' ||
+      getQueryFlag('undo-timing') == 'on';
     var undoMillis = undoTiming && undoTiming.undoMillis || 0;
     if (!enabled || typeof console == 'undefined' || !console.log) return;
     console.log('[mapshaper command timing]', {
@@ -589,7 +585,7 @@ export function Console(gui) {
     });
   }
 
-  function getQueryValue(key) {
+  function getQueryFlag(key) {
     var rxp, match;
     if (typeof window == 'undefined' || !window.location) return null;
     rxp = new RegExp('[?&]' + key + '=([^&]+)');
