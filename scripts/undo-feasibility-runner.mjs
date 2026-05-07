@@ -6,7 +6,7 @@ import {
   captureModelState,
   createRuntimeIdTracker,
   diffModelStates
-} from '../src/gui/gui-undo-feasibility';
+} from './undo-feasibility-monitor.mjs';
 
 var internal = api.internal;
 
