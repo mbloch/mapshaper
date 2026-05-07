@@ -31,7 +31,9 @@ export function IntersectionControl(gui) {
   repairBtn.on('click', function() {
     var e = model.getActiveLayer();
     if (!_simplifiedXX || !e.dataset.arcs) return;
+    noteArcsSimplificationWillChange(e.dataset.arcs, {operation: 'repairIntersections'});
     _simplifiedXX = internal.repairIntersections(e.dataset.arcs, _simplifiedXX);
+    markArcsSimplificationChanged(e.dataset.arcs, {operation: 'repairIntersections'});
     showIntersections(_simplifiedXX, e.layer, e.dataset.arcs);
     repairBtn.hide();
     model.updated({repair: true});
@@ -148,3 +150,15 @@ export function IntersectionControl(gui) {
 }
 
 utils.inherit(IntersectionControl, EventDispatcher);
+
+function noteArcsSimplificationWillChange(arcs, detail) {
+  if (internal.UndoTracking && internal.UndoTracking.noteArcsSimplificationWillChange) {
+    internal.UndoTracking.noteArcsSimplificationWillChange(arcs, detail);
+  }
+}
+
+function markArcsSimplificationChanged(arcs, detail) {
+  if (internal.UndoTracking && internal.UndoTracking.markArcsSimplificationChanged) {
+    internal.UndoTracking.markArcsSimplificationChanged(arcs, detail);
+  }
+}

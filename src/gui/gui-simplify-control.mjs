@@ -3,6 +3,7 @@ import { utils, internal, mapshaper } from './gui-core';
 import { SimpleButton, ClickText } from './gui-elements';
 import { GUI } from './gui-lib';
 import { setZ, updateZ } from './gui-drawing-utils';
+import { createStoredUndoHistory } from './gui-stored-undo-history';
 
 /*
 How changes in the simplify control should affect other components
@@ -35,6 +36,7 @@ export var SimplifyControl = function(gui) {
   var menu = gui.container.findChild('.simplify-options');
   var slider, text, fromPct;
   var menuBtn = gui.container.findChild('.simplify-btn').addClass('disabled');
+  var undoSession;
 
   // init settings menu
   new SimpleButton(menu.findChild('.submit-btn').addClass('default-btn')).on('click', onSubmit);
@@ -62,7 +64,8 @@ export var SimplifyControl = function(gui) {
     // exit simplify mode if data has been changed from outside the simplify
     // tool
     // (TODO: try to only respond to changes that might affect simplification)
-    if (e.flags.simplify_method || e.flags.simplify_amount) {
+    if (e.flags.simplify_method || e.flags.simplify_amount || e.flags.repair) {
+      if (e.flags.repair) noteSimplifyUndoChanged();
       return;
     }
     menuBtn.classed('disabled', !model.getActiveLayer());
@@ -151,6 +154,7 @@ export var SimplifyControl = function(gui) {
     } else {
       showMenu();
     }
+    startSimplifyUndoSession(target.dataset);
   }
 
   function showMenu() {
@@ -167,6 +171,7 @@ export var SimplifyControl = function(gui) {
   function turnOff() {
     menu.hide();
     control.reset();
+    finishSimplifyUndoSession();
   }
 
   function onSubmit() {
@@ -181,6 +186,7 @@ export var SimplifyControl = function(gui) {
     setTimeout(function() {
       var opts = getSimplifyOptions();
       mapshaper.cmd.simplify(dataset, opts);
+      noteSimplifyUndoChanged();
       gui.session.simplificationApplied(getSimplifyOptionsAsString());
       updateZ(gui.map.getActiveLayer()); // question: does this update all display layers?
       model.updated({
@@ -236,10 +242,80 @@ export var SimplifyControl = function(gui) {
       _value = pct;
       // model.getActiveLayer().dataset.arcs.setRetainedInterval(fromPct(pct));
       setZ(gui.map.getActiveLayer(), fromPct(pct));
+      noteSimplifyUndoChanged();
       gui.session.updateSimplificationPct(pct);
       model.updated({'simplify_amount': true});
       updateSliderDisplay();
     }
+  }
+
+  function startSimplifyUndoSession(dataset) {
+    var tx;
+    if (!dataset || !dataset.arcs || !appUndoIsEnabled()) return;
+    tx = createSimplifyUndoTransaction();
+    if (!tx) return;
+    tx.captureArcsSimplificationBefore(dataset.arcs, {operation: 'simplifyTool'});
+    tx.captureDatasetInfoBefore(dataset, {operation: 'simplifyTool'});
+    undoSession = {
+      tx: tx,
+      changed: false
+    };
+  }
+
+  function noteSimplifyUndoChanged() {
+    if (undoSession) undoSession.changed = true;
+  }
+
+  function finishSimplifyUndoSession() {
+    var session = undoSession;
+    undoSession = null;
+    if (!session || !session.changed) return;
+    getStoredUndoHistory().addTransaction(session.tx, {
+      flags: {simplify: true, info: true},
+      entryPrefix: 'simplify-tool',
+      maxStates: getUndoHistoryLimit()
+    }).catch(function(e) {
+      console.error(e);
+    });
+  }
+
+  function createSimplifyUndoTransaction() {
+    var Transaction;
+    if (!gui.undo || typeof gui.undo.addHistoryState != 'function') return null;
+    Transaction = internal.UndoTransaction && (internal.UndoTransaction.UndoTransaction || internal.UndoTransaction);
+    return Transaction ? new Transaction('simplify') : null;
+  }
+
+  function getStoredUndoHistory() {
+    if (!gui.storedUndoHistory) {
+      gui.storedUndoHistory = createStoredUndoHistory(gui);
+    }
+    return gui.storedUndoHistory;
+  }
+
+  function getUndoHistoryLimit() {
+    var opt = gui.options && gui.options.undoHistoryLimit;
+    return opt > 0 ? opt : 10;
+  }
+
+  function appUndoIsEnabled() {
+    var opt = gui.options && (gui.options.undoCommands || gui.options.appUndo);
+    var query = getQueryValue('undo');
+    if (opt === true || query == 'on' || query == 'commands') return true;
+    if (gui.appUndoIsEnabled) return gui.appUndoIsEnabled();
+    try {
+      return window.localStorage && window.localStorage.getItem('mapshaper.undo') == 'on';
+    } catch(e) {
+      return false;
+    }
+  }
+
+  function getQueryValue(key) {
+    var rxp, match;
+    if (typeof window == 'undefined' || !window.location) return null;
+    rxp = new RegExp('[?&]' + key + '=([^&]+)');
+    match = rxp.exec(window.location.search);
+    return match ? decodeURIComponent(match[1]) : null;
   }
 
   function updateSliderDisplay() {

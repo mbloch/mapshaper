@@ -3,6 +3,10 @@ import assert from 'assert';
 import path from 'path';
 import helpers from './helpers';
 import { DataTable } from '../src/datatable/mapshaper-data-table';
+import {
+  clearActiveUndoTransaction,
+  setActiveUndoTransaction
+} from '../src/undo/mapshaper-undo-tracking';
 
 describe('data-table.js', function () {
 
@@ -123,6 +127,68 @@ describe('data-table.js', function () {
         });
         var expected = [{'bar': 22}, {'bar': 0}];
         assert.deepEqual(table.getRecords(), expected);
+      })
+    })
+
+    describe('undo tracking hooks', function () {
+      afterEach(function() {
+        clearActiveUndoTransaction();
+      })
+
+      it('tracks table identity and revisions', function() {
+        var table = new DataTable([{foo: 'a'}]);
+        var id = table.getUndoId();
+        assert.equal(table.getUndoId(), id);
+        assert.equal(table.getUndoRevision(), 0);
+        table.markChanged();
+        assert.equal(table.getUndoRevision(), 1);
+      })
+
+      it('captures schema changes when a transaction is active', function() {
+        var table = new DataTable([{foo: 'a'}]);
+        var events = [];
+        setActiveUndoTransaction({
+          captureTableSchemaBefore: function(tableArg, detail) {
+            events.push({type: 'capture', table: tableArg, detail: detail});
+          },
+          markChanged: function(tableArg, detail) {
+            events.push({type: 'mark', table: tableArg, detail: detail});
+          }
+        });
+
+        table.addField('bar', 1);
+
+        assert.equal(events.length, 2);
+        assert.equal(events[0].type, 'capture');
+        assert.equal(events[0].table, table);
+        assert.equal(events[0].detail.operation, 'addField');
+        assert.equal(events[1].type, 'mark');
+        assert.equal(events[1].detail.granularity, 'schema');
+        assert.equal(table.getUndoRevision(), 1);
+      })
+
+      it('supports record-level capture without table-level capture', function() {
+        var table = new DataTable([{foo: 'a'}, {foo: 'b'}]);
+        var events = [];
+        setActiveUndoTransaction({
+          captureTableRecordsBefore: function(tableArg, detail) {
+            events.push({type: 'capture', table: tableArg, detail: detail});
+          },
+          markChanged: function(tableArg, detail) {
+            events.push({type: 'mark', table: tableArg, detail: detail});
+          }
+        });
+
+        table.captureRecordsBefore([1], {operation: 'popup-edit'});
+        table.getRecordAt(1).foo = 'c';
+        table.markRecordsChanged([1], {operation: 'popup-edit'});
+
+        assert.equal(events.length, 2);
+        assert.deepEqual(events[0].detail.ids, [1]);
+        assert.equal(events[0].detail.operation, 'popup-edit');
+        assert.equal(events[1].detail.granularity, 'records');
+        assert.deepEqual(events[1].detail.ids, [1]);
+        assert.equal(table.getRecords()[1].foo, 'c');
       })
     })
   })

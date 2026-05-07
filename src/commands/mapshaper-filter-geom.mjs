@@ -6,6 +6,7 @@ import cmd from '../mapshaper-cmd';
 import { Bounds } from '../geom/mapshaper-bounds';
 import geom from '../geom/mapshaper-geom';
 import { stop } from '../utils/mapshaper-logging';
+import { markLayerChanged, noteLayerWillChange } from '../undo/mapshaper-undo-tracking';
 
 cmd.filterGeom = function(lyr, arcs, opts) {
   if (!layerHasGeometry(lyr)) {
@@ -19,7 +20,9 @@ cmd.filterGeom = function(lyr, arcs, opts) {
 
 function filterByBoundsIntersection(lyr, arcs, opts) {
   var filter = getBoundsIntersectionFilter(opts.bbox, lyr, arcs);
+  noteLayerWillChange(lyr, {operation: 'filter-geom', unit: 'shapes'});
   editShapes(lyr.shapes, filter);
+  markLayerChanged(lyr, {operation: 'filter-geom', unit: 'shapes'});
 }
 
 function getBoundsIntersectionFilter(bbox, lyr, arcs) {

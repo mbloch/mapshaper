@@ -12,6 +12,12 @@ import { editShapes } from '../paths/mapshaper-shape-utils';
 import { findSegmentIntersections } from '../paths/mapshaper-segment-intersection';
 import { cleanArcReferences } from './mapshaper-arc-clean';
 import geom from '../geom/mapshaper-geom';
+import {
+  markArcsChanged,
+  markLayerChanged,
+  noteArcsWillChange,
+  noteLayerWillChange
+} from '../undo/mapshaper-undo-tracking';
 
 // Functions for dividing polygons and polygons at points where arc-segments intersect
 
@@ -34,6 +40,12 @@ export function addIntersectionCuts(dataset, _opts) {
     profileEnd('addIntersectionCuts');
     return new NodeCollection([]);
   }
+  noteArcsWillChange(arcs, {operation: 'addIntersectionCuts'});
+  dataset.layers.forEach(function(lyr) {
+    if (layerHasPaths(lyr)) {
+      noteLayerWillChange(lyr, {operation: 'addIntersectionCuts', unit: 'shapes'});
+    }
+  });
 
   if (opts.snap_interval) {
     snapDist = convertIntervalParam(opts.snap_interval, getDatasetCRS(dataset));
@@ -71,6 +83,12 @@ export function addIntersectionCuts(dataset, _opts) {
   profileStart('cleanArcReferences');
   nodes = cleanArcReferences(dataset);
   profileEnd('cleanArcReferences');
+  dataset.layers.forEach(function(lyr) {
+    if (layerHasPaths(lyr)) {
+      markLayerChanged(lyr, {operation: 'addIntersectionCuts', unit: 'shapes'});
+    }
+  });
+  markArcsChanged(arcs, {operation: 'addIntersectionCuts'});
   profileEnd('addIntersectionCuts');
   return nodes;
 }

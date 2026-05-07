@@ -185,6 +185,8 @@ import * as TargetUtils from './dataset/mapshaper-target-utils';
 import * as TopojsonExport from './topojson/topojson-export';
 import * as TopojsonImport from './topojson/topojson-import';
 import * as Topology from './topology/mapshaper-topology';
+import * as UndoTransaction from './undo/mapshaper-undo-transaction';
+import * as UndoTracking from './undo/mapshaper-undo-tracking';
 import * as Units from './geom/mapshaper-units';
 import * as SvgHatch from './svg/svg-hatch';
 import * as SvgEffect from './svg/svg-effect';
@@ -309,6 +311,8 @@ Object.assign(internal,
   TopojsonExport,
   TopojsonImport,
   Topology,
+  UndoTransaction,
+  UndoTracking,
   Units,
   SvgHatch,
   SvgEffect,

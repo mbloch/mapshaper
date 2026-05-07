@@ -1,6 +1,7 @@
 import cmd from '../mapshaper-cmd';
 import utils from '../utils/mapshaper-utils';
 import { stop } from '../utils/mapshaper-logging';
+import { markLayerMetadataChanged, noteLayerMetadataWillChange } from '../undo/mapshaper-undo-tracking';
 
 cmd.renameLayers = function(layers, names, catalog) {
   if (names && names.join('').indexOf('=') > -1) {
@@ -14,7 +15,9 @@ function renameByAssignment(names, catalog) {
   var index = mapLayerNames(names);
   catalog.forEachLayer(function(lyr) {
     if (index[lyr.name]) {
+      noteLayerMetadataWillChange(lyr, {operation: 'rename-layers'});
       lyr.name = index[lyr.name];
+      markLayerMetadataChanged(lyr, {operation: 'rename-layers'});
     }
   });
 }
@@ -30,7 +33,9 @@ function renameTargetLayers(names, layers) {
     if (name && nameCount < layers.length && (i >= nameCount - 1)) {
       suffix = (suffix || 0) + 1;
     }
+    noteLayerMetadataWillChange(lyr, {operation: 'rename-layers'});
     lyr.name = name + suffix;
+    markLayerMetadataChanged(lyr, {operation: 'rename-layers'});
   });
 }
 

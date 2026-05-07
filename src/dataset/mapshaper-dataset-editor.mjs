@@ -1,6 +1,13 @@
 import { buildTopology } from '../topology/mapshaper-topology';
 import { ArcCollection } from '../paths/mapshaper-arcs';
 import { stop, error } from '../utils/mapshaper-logging';
+import {
+  markDatasetChanged,
+  markLayerChanged,
+  noteDatasetWillChange,
+  noteLayerWillChange,
+  withActiveUndoTransaction
+} from '../undo/mapshaper-undo-tracking';
 
 export function DatasetEditor(dataset) {
   var layers = [];
@@ -9,8 +16,12 @@ export function DatasetEditor(dataset) {
   this.done = function() {
     dataset.layers = layers;
     if (arcs.length) {
+      noteDatasetWillChange(dataset, {operation: 'DatasetEditor.done', unit: 'arcs'});
       dataset.arcs = new ArcCollection(arcs);
-      buildTopology(dataset);
+      markDatasetChanged(dataset, {operation: 'DatasetEditor.done', unit: 'arcs'});
+      withActiveUndoTransaction(null, function() {
+        buildTopology(dataset);
+      });
     }
   };
 
@@ -37,7 +48,9 @@ export function DatasetEditor(dataset) {
       }
       return shape2.length > 0 ? shape2 : null;
     });
+    noteLayerWillChange(lyr, {operation: 'DatasetEditor.editLayer', unit: 'shapes'});
     layers.push(Object.assign(lyr, {shapes: shapes}));
+    markLayerChanged(lyr, {operation: 'DatasetEditor.editLayer', unit: 'shapes'});
   };
 
   function extendPathShape(shape, parts) {

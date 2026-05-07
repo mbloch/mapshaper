@@ -1,6 +1,18 @@
 import { error } from '../utils/mapshaper-logging';
 import utils from '../utils/mapshaper-utils';
 import { copyRecord, findFieldNames } from '../datatable/mapshaper-data-utils';
+import {
+  getUndoId,
+  getUndoRevision,
+  markTableChanged,
+  markTableFieldsChanged,
+  markTableRecordsChanged,
+  markTableSchemaChanged,
+  noteTableFieldsWillChange,
+  noteTableRecordsWillChange,
+  noteTableSchemaWillChange,
+  noteTableWillChange
+} from '../undo/mapshaper-undo-tracking';
 
 export function DataTable(obj) {
   var records;
@@ -30,6 +42,46 @@ export function DataTable(obj) {
 
 DataTable.prototype = {
 
+  getUndoId: function() {
+    return getUndoId(this);
+  },
+
+  getUndoRevision: function() {
+    return getUndoRevision(this);
+  },
+
+  captureTableBefore: function(detail) {
+    noteTableWillChange(this, detail);
+  },
+
+  captureRecordsBefore: function(ids, detail) {
+    noteTableRecordsWillChange(this, ids, detail);
+  },
+
+  captureFieldsBefore: function(fields, detail) {
+    noteTableFieldsWillChange(this, fields, detail);
+  },
+
+  captureSchemaBefore: function(detail) {
+    noteTableSchemaWillChange(this, detail);
+  },
+
+  markChanged: function(detail) {
+    return markTableChanged(this, detail);
+  },
+
+  markRecordsChanged: function(ids, detail) {
+    return markTableRecordsChanged(this, ids, detail);
+  },
+
+  markFieldsChanged: function(fields, detail) {
+    return markTableFieldsChanged(this, fields, detail);
+  },
+
+  markSchemaChanged: function(detail) {
+    return markTableSchemaChanged(this, detail);
+  },
+
   fieldExists: function(name) {
     return utils.contains(this.getFields(), name);
   },
@@ -49,9 +101,11 @@ DataTable.prototype = {
     // var dataFieldRxp = /^[a-zA-Z_][a-zA-Z_0-9]*$/;
     // if (!dataFieldRxp.test(name)) error("DataTable#addField() invalid field name:", name);
 
+    this.captureSchemaBefore({operation: 'addField', field: name});
     this.getRecords().forEach(function(obj, i) {
       obj[name] = useFunction ? init(obj, i) : init;
     });
+    this.markSchemaChanged({operation: 'addField', field: name});
   },
 
   getRecordAt: function(i) {
@@ -65,9 +119,11 @@ DataTable.prototype = {
   },
 
   deleteField: function(f) {
+    this.captureSchemaBefore({operation: 'deleteField', field: f});
     this.getRecords().forEach(function(o) {
       delete o[f];
     });
+    this.markSchemaChanged({operation: 'deleteField', field: f});
   },
 
   getFields: function() {
@@ -80,9 +136,11 @@ DataTable.prototype = {
 
   update: function(f) {
     var records = this.getRecords();
+    this.captureTableBefore({operation: 'update'});
     for (var i=0, n=records.length; i<n; i++) {
       records[i] = f(records[i], i);
     }
+    this.markChanged({operation: 'update'});
   },
 
   clone: function() {

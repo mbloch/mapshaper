@@ -5,6 +5,10 @@ import utils from '../utils/mapshaper-utils';
 import { DataTable } from '../datatable/mapshaper-data-table';
 import { cloneShape } from '../paths/mapshaper-shape-utils';
 import { copyRecord } from '../datatable/mapshaper-data-utils';
+import {
+  markLayerChanged,
+  noteLayerWillChange
+} from '../undo/mapshaper-undo-tracking';
 
 // Join data from @src table to records in @dest table
 export function joinTables(dest, src, join, opts) {
@@ -65,6 +69,19 @@ export function joinTableToLayer(destLyr, src, join, opts) {
 
   if (opts.calc) {
     calc = getJoinCalc(src, opts.calc);
+  }
+
+  if (useDuplication) {
+    noteLayerWillChange(destLyr, {operation: 'join', duplication: true});
+  } else if (opts.calc) {
+    dest.captureTableBefore({operation: 'join', calc: true});
+  } else {
+    dest.captureSchemaBefore({
+      operation: 'join',
+      fields: copyFields.concat(sumFields).map(function(field) {
+        return prefix + field;
+      })
+    });
   }
 
   // join source records to target records
@@ -159,6 +176,13 @@ export function joinTableToLayer(destLyr, src, join, opts) {
       name: 'unmatched',
       data: new DataTable(unmatchedRecords)
     };
+  }
+  if (useDuplication) {
+    markLayerChanged(destLyr, {operation: 'join', duplication: true});
+  } else if (opts.calc) {
+    dest.markChanged({operation: 'join', calc: true});
+  } else {
+    dest.markSchemaChanged({operation: 'join'});
   }
   return retn;
 }

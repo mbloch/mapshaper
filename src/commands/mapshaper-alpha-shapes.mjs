@@ -9,6 +9,7 @@ import { mergeDatasets } from '../dataset/mapshaper-merging';
 import { greatCircleDistance, distance2D } from '../geom/mapshaper-basic-geom';
 import { buildTopology } from '../topology/mapshaper-topology';
 import { cleanLayers } from '../commands/mapshaper-clean';
+import { markDatasetChanged, noteDatasetWillChange } from '../undo/mapshaper-undo-tracking';
 
 cmd.alphaShapes = function(pointLyr, targetDataset, opts) {
   requirePointLayer(pointLyr);
@@ -19,7 +20,9 @@ cmd.alphaShapes = function(pointLyr, targetDataset, opts) {
   var dataset = getPolygonDataset(pointLyr, filter, opts);
   var merged = mergeDatasets([targetDataset, dataset]);
   var lyr = merged.layers.pop();
+  noteDatasetWillChange(targetDataset, {operation: 'alpha-shapes', unit: 'arcs'});
   targetDataset.arcs = merged.arcs;
+  markDatasetChanged(targetDataset, {operation: 'alpha-shapes', unit: 'arcs'});
   setOutputLayerName(lyr, pointLyr, null, opts);
   return lyr;
 };

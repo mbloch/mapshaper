@@ -30,11 +30,17 @@ cmd.evaluateEachFeature = function(lyr, dataset, expArg, opts) {
     filter = combineFilters(filter, getIdFilter(opts.ids));
   }
   compiled = compileFeatureExpression(exp, lyr, arcs, exprOpts);
+  if (lyr.data) {
+    lyr.data.captureTableBefore({operation: 'each'});
+  }
   // call compiled expression with id of each record
   for (var i=0; i<n; i++) {
     if (!filter || filter(i)) {
       compiled(i);
     }
+  }
+  if (lyr.data) {
+    lyr.data.markChanged({operation: 'each'});
   }
 
   var replacement = exprOpts.geojson_editor ? exprOpts.geojson_editor.done() : null;

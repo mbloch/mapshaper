@@ -7,6 +7,7 @@ import { setLayerPinning } from './gui-layer-utils';
 import { importSessionData } from './gui-session-snapshot-control';
 import { openAddLayerPopup } from './gui-add-layer-popup';
 import { considerReprojecting, loadGeopackageLib, getGeoPackageFeatureTables, loadGeoParquetLib } from './gui-import-utils';
+import { createStoredUndoHistory } from './gui-stored-undo-history';
 
 // @cb function(<FileList>)
 function DropControl(gui, el, cb) {
@@ -211,10 +212,16 @@ export function ImportControl(gui, opts) {
     // gui.container.removeClass('queued-files');
     hideImportMenu();
     var files = queuedFiles;
+    var undoTransaction = createImportUndoTransaction();
+    var imported = false;
     try {
       if (files.length > 0) {
         queuedFiles = [];
+        if (undoTransaction) {
+          undoTransaction.captureCatalogBefore(model, {operation: 'importFiles'});
+        }
         await importFiles(files, readImportOpts());
+        imported = importCount > 0;
       }
     } catch(e) {
       console.log(e);
@@ -223,6 +230,9 @@ export function ImportControl(gui, opts) {
     if (gui.getMode() == 'import') {
       // Mode could also be 'alert' if an error is thrown and handled
       gui.clearMode();
+    }
+    if (undoTransaction && imported) {
+      addImportUndoHistory(undoTransaction);
     }
   }
 
@@ -453,6 +463,56 @@ export function ImportControl(gui, opts) {
       imported = true;
     }
     return imported;
+  }
+
+  function createImportUndoTransaction() {
+    var Transaction;
+    if (model.isEmpty() || !appUndoIsEnabled()) return null;
+    if (!gui.undo || typeof gui.undo.addHistoryState != 'function') return null;
+    Transaction = internal.UndoTransaction && (internal.UndoTransaction.UndoTransaction || internal.UndoTransaction);
+    return Transaction ? new Transaction('import files') : null;
+  }
+
+  function addImportUndoHistory(tx) {
+    getStoredUndoHistory().addTransaction(tx, {
+      flags: {select: true, arc_count: true},
+      entryPrefix: 'import',
+      maxStates: getUndoHistoryLimit()
+    }).catch(function(e) {
+      console.error(e);
+    });
+  }
+
+  function getStoredUndoHistory() {
+    if (!gui.storedUndoHistory) {
+      gui.storedUndoHistory = createStoredUndoHistory(gui);
+    }
+    return gui.storedUndoHistory;
+  }
+
+  function getUndoHistoryLimit() {
+    var opt = gui.options && gui.options.undoHistoryLimit;
+    return opt > 0 ? opt : 10;
+  }
+
+  function appUndoIsEnabled() {
+    var opt = gui.options && (gui.options.undoCommands || gui.options.appUndo);
+    var query = getQueryValue('undo');
+    if (opt === true || query == 'on' || query == 'commands') return true;
+    if (gui.appUndoIsEnabled) return gui.appUndoIsEnabled();
+    try {
+      return window.localStorage && window.localStorage.getItem('mapshaper.undo') == 'on';
+    } catch(e) {
+      return false;
+    }
+  }
+
+  function getQueryValue(key) {
+    var rxp, match;
+    if (typeof window == 'undefined' || !window.location) return null;
+    rxp = new RegExp('[?&]' + key + '=([^&]+)');
+    match = rxp.exec(window.location.search);
+    return match ? decodeURIComponent(match[1]) : null;
   }
 
 

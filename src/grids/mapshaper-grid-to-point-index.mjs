@@ -1,4 +1,5 @@
 import { IdTestIndex } from '../indexing/mapshaper-id-test-index';
+import require from '../mapshaper-require';
 
 
 

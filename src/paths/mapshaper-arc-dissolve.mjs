@@ -8,6 +8,12 @@ import { verbose } from '../utils/mapshaper-logging';
 import { NodeCollection } from '../topology/mapshaper-nodes';
 import { ArcCollection } from '../paths/mapshaper-arcs';
 import { profileStart, profileEnd } from '../utils/mapshaper-profile';
+import {
+  markDatasetChanged,
+  markLayerChanged,
+  noteDatasetWillChange,
+  noteLayerWillChange
+} from '../undo/mapshaper-undo-tracking';
 import utils from '../utils/mapshaper-utils';
 
 // Dissolve arcs that can be merged without affecting topology of layers
@@ -19,7 +25,9 @@ export function dissolveArcs(dataset) {
       layers = dataset.layers.filter(layerHasPaths);
 
   if (!arcs || !layers.length) {
+    if (dataset.arcs) noteDatasetWillChange(dataset, {operation: 'dissolveArcs', unit: 'arcs'});
     dataset.arcs = null;
+    if (arcs) markDatasetChanged(dataset, {operation: 'dissolveArcs', unit: 'arcs'});
     profileEnd('dissolveArcs.body');
     return;
   }
@@ -32,13 +40,17 @@ export function dissolveArcs(dataset) {
       // arcStatus: 0 = unvisited, 1 = dropped, 2 = remapped, 3 = remapped + reversed
   profileStart('dissolveArcs.translatePaths');
   layers.forEach(function(lyr) {
+    noteLayerWillChange(lyr, {operation: 'dissolveArcs', unit: 'shapes'});
     lyr.shapes = lyr.shapes.map(function(shape, i) {
-      return editShapeParts(shape && shape.concat(), translatePath);
+      return editShapeParts(getDissolveShapeParts(shape, lyr), translatePath);
     });
+    markLayerChanged(lyr, {operation: 'dissolveArcs', unit: 'shapes'});
   });
   profileEnd('dissolveArcs.translatePaths');
   profileStart('dissolveArcs.dissolveArcCollection');
+  noteDatasetWillChange(dataset, {operation: 'dissolveArcs', unit: 'arcs'});
   dataset.arcs = dissolveArcCollection(arcs, newArcs, totalPoints);
+  markDatasetChanged(dataset, {operation: 'dissolveArcs', unit: 'arcs'});
   profileEnd('dissolveArcs.dissolveArcCollection');
   profileEnd('dissolveArcs.body');
 
@@ -88,6 +100,42 @@ export function dissolveArcs(dataset) {
     totalPoints += pointCount;
     return newPath;
   }
+}
+
+function getDissolveShapeParts(shape, lyr) {
+  if (!shape) return null;
+  shape = shape.concat();
+  if (lyr.geometry_type == 'polygon' && shape.length > 1) {
+    shape.sort(comparePolygonRingsByMinArcId);
+  }
+  return shape;
+}
+
+function comparePolygonRingsByMinArcId(a, b) {
+  var minA = getPathMinArcId(a),
+      minB = getPathMinArcId(b);
+  if (minA != minB) return minA - minB;
+  return comparePathsByArcId(a, b);
+}
+
+function getPathMinArcId(path) {
+  var minId = Infinity,
+      id;
+  for (var i=0, n=path.length; i<n; i++) {
+    id = absArcId(path[i]);
+    if (id < minId) minId = id;
+  }
+  return minId;
+}
+
+function comparePathsByArcId(a, b) {
+  var n = Math.min(a.length, b.length),
+      diff;
+  for (var i=0; i<n; i++) {
+    diff = absArcId(a[i]) - absArcId(b[i]);
+    if (diff) return diff;
+  }
+  return a.length - b.length;
 }
 
 function dissolveArcCollection(arcs, newArcs, newLen) {

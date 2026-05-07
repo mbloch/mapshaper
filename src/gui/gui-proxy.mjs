@@ -114,7 +114,9 @@ export function ImportFileProxy(gui) {
   });
 }
 
-internal.setProjectionLoader(loadProjLibs);
+if (isBrowserProjectionLoaderAvailable()) {
+  internal.setProjectionLoader(loadProjLibs);
+}
 
 // load Proj.4 CRS definition files dynamically
 //
@@ -127,4 +129,8 @@ async function loadProjLibs(opts) {
     if (!content) stop(`Unable to load projection resource [${libName}]`);
     mproj.internal.mproj_insert_libcache(libName, content);
   }
+}
+
+function isBrowserProjectionLoaderAvailable() {
+  return typeof window != 'undefined' && typeof window.fetch == 'function';
 }

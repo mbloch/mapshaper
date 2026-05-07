@@ -15,15 +15,29 @@ cmd.filterFields = function(lyr, names, opts) {
   if (opts.invert) {
     map = invertFieldMap(map, table.getFields());
   }
-  lyr.data.update(getRecordMapper(map));
+  replaceTableFields(table, map, {operation: 'filter-fields'});
 };
 
 cmd.renameFields = function(lyr, names) {
   var map = mapFieldNames(names);
   requireDataFields(lyr.data, Object.keys(map));
   utils.defaults(map, mapFieldNames(lyr.data.getFields()));
-  lyr.data.update(getRecordMapper(map));
+  replaceTableFields(lyr.data, map, {operation: 'rename-fields'});
 };
+
+function replaceTableFields(table, map, detail) {
+  var fields = table.getFields();
+  var records = table.getRecords();
+  var mapper = getRecordMapper(map);
+  var columnDetail = Object.assign({schema_transform: true}, detail);
+  table.captureSchemaBefore(detail);
+  table.captureFieldsBefore(fields, columnDetail);
+  for (var i=0, n=records.length; i<n; i++) {
+    records[i] = mapper(records[i], i);
+  }
+  table.markFieldsChanged(fields, columnDetail);
+  table.markSchemaChanged(detail);
+}
 
 function invertFieldMap(map, fields) {
   return fields.reduce(function(memo, name) {

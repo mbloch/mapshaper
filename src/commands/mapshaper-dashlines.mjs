@@ -7,6 +7,7 @@ import { requirePolylineLayer } from '../dataset/mapshaper-layer-utils';
 import { greatCircleDistance, distance2D } from '../geom/mapshaper-basic-geom';
 import { getInterpolationFunction } from '../geom/mapshaper-geodesic';
 import { getStashedVar } from '../mapshaper-stash';
+import { markLayerChanged, noteLayerWillChange } from '../undo/mapshaper-undo-tracking';
 
 cmd.dashlines = function(lyr, dataset, opts) {
   var crs = getDatasetCRS(dataset);
@@ -14,7 +15,9 @@ cmd.dashlines = function(lyr, dataset, opts) {
   var exp = `this.geojson = splitFeature(this.geojson)`;
   requirePolylineLayer(lyr);
   defs.splitFeature = getSplitFeatureFunction(crs, opts);
+  noteLayerWillChange(lyr, {operation: 'dashlines', unit: 'shapes'});
   cmd.evaluateEachFeature(lyr, dataset, exp, opts);
+  markLayerChanged(lyr, {operation: 'dashlines', unit: 'shapes'});
   delete defs.splitFeature;
 };
 

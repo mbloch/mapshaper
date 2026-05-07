@@ -131,7 +131,8 @@ export function Basemap(gui) {
     //   }
     // });
 
-    gui.model.on('update', onUpdate);
+    // set a lower priority so Map can update active layer first
+    gui.model.on('update', onUpdate, null, -1);
 
     gui.on('map_click', function() {
       // close menu if user click on the map

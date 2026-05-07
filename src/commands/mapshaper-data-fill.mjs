@@ -19,6 +19,7 @@ cmd.dataFill = function(lyr, arcs, opts) {
   var getNeighbors = getNeighborLookupFunction(lyr, arcs);
   var fillCount, islandCount;
 
+  lyr.data.captureFieldsBefore([field], {operation: 'data-fill'});
   // get function to check if a shape was empty before data-fill
   var initiallyEmpty = (function() {
     var flags = lyr.data.getRecords().map(function(rec) {
@@ -37,6 +38,7 @@ cmd.dataFill = function(lyr, arcs, opts) {
   if (opts.contiguous) {
     islandCount = dataFillIslandGroups(field, lyr, arcs, getNeighbors, opts);
   }
+  lyr.data.markFieldsChanged([field], {operation: 'data-fill'});
 
   message('Filled', fillCount, 'empty polygons' + utils.pluralSuffix(fillCount));
   if (islandCount > 0) {

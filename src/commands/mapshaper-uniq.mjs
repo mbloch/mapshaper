@@ -4,6 +4,7 @@ import { message } from '../utils/mapshaper-logging';
 import utils from '../utils/mapshaper-utils';
 import cmd from '../mapshaper-cmd';
 import { DataTable } from '../datatable/mapshaper-data-table';
+import { markLayerChanged, noteLayerWillChange } from '../undo/mapshaper-undo-tracking';
 
 cmd.uniq = function(lyr, arcs, opts) {
   var n = getFeatureCount(lyr),
@@ -37,11 +38,17 @@ cmd.uniq = function(lyr, arcs, opts) {
     }
   });
 
+  if (lyr.shapes || records) {
+    noteLayerWillChange(lyr, {operation: 'uniq'});
+  }
   if (lyr.shapes) {
     lyr.shapes = lyr.shapes.filter(filter);
   }
   if (records) {
     lyr.data = new DataTable(records.filter(filter));
+  }
+  if (lyr.shapes || records) {
+    markLayerChanged(lyr, {operation: 'uniq'});
   }
   if (opts.verbose !== false) {
     message(utils.format('Retained %,d of %,d features', getFeatureCount(lyr), n));

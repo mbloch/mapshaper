@@ -3,6 +3,7 @@ import { getFeatureCount, copyLayer } from '../dataset/mapshaper-layer-utils';
 import cmd from '../mapshaper-cmd';
 import utils from '../utils/mapshaper-utils';
 import { DataTable } from '../datatable/mapshaper-data-table';
+import { markLayerChanged, noteLayerWillChange } from '../undo/mapshaper-undo-tracking';
 // @expression: optional field name or expression
 //
 cmd.splitLayer = function(src, expression, optsArg) {
@@ -32,6 +33,7 @@ cmd.splitLayer = function(src, expression, optsArg) {
     return [lyr0];
   }
 
+  noteLayerWillChange(lyr0, {operation: 'split', unit: 'shared-shapes-data'});
   utils.repeat(n, function(i) {
     var name = namer(i),
         lyr;
@@ -55,6 +57,7 @@ cmd.splitLayer = function(src, expression, optsArg) {
       lyr.data.getRecords().push(properties[i]);
     }
   });
+  markLayerChanged(lyr0, {operation: 'split', unit: 'shared-shapes-data'});
 
   return splitLayers;
 };

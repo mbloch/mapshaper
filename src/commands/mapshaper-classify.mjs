@@ -158,9 +158,11 @@ cmd.classify = function(lyr, dataset, optsArg) {
     // message('Use save-as=<field> to save to a different field');
   }
 
+  lyr.data.captureSchemaBefore({operation: 'classify', field: outputField});
   records.forEach(function(d, i) {
     d[outputField] = classifyByRecordId(i);
   });
+  lyr.data.markSchemaChanged({operation: 'classify', field: outputField});
 };
 
 function formatValuesForLogging(arr) {

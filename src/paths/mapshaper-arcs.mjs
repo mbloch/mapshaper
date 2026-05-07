@@ -7,6 +7,14 @@ import { Bounds } from '../geom/mapshaper-bounds';
 import { probablyDecimalDegreeBounds } from '../geom/mapshaper-latlon';
 import { error } from '../utils/mapshaper-logging';
 import utils from '../utils/mapshaper-utils';
+import {
+  getUndoId,
+  getUndoRevision,
+  markArcsChanged,
+  markArcsSimplificationChanged,
+  noteArcsSimplificationWillChange,
+  noteArcsWillChange
+} from '../undo/mapshaper-undo-tracking';
 
 // An interface for managing a collection of paths.
 // Constructor signatures:
@@ -111,12 +119,40 @@ export function ArcCollection() {
   }
 
   this.updateArcBounds = function(arcId) {
+    this.captureArcsBefore({operation: 'updateArcBounds', arcId: arcId});
     initArcBounds(arcId);
+    this.markArcsChanged({operation: 'updateArcBounds', arcId: arcId});
   };
 
   this.updateVertexData = function(nn, xx, yy, zz) {
+    this.captureArcsBefore({operation: 'updateVertexData'});
     initXYData(nn, xx, yy);
     initZData(zz || null);
+    this.markArcsChanged({operation: 'updateVertexData'});
+  };
+
+  this.getUndoId = function() {
+    return getUndoId(this);
+  };
+
+  this.getUndoRevision = function() {
+    return getUndoRevision(this);
+  };
+
+  this.captureArcsBefore = function(detail) {
+    noteArcsWillChange(this, detail);
+  };
+
+  this.captureArcsSimplificationBefore = function(detail) {
+    noteArcsSimplificationWillChange(this, detail);
+  };
+
+  this.markArcsChanged = function(detail) {
+    return markArcsChanged(this, detail);
+  };
+
+  this.markArcsSimplificationChanged = function(detail) {
+    return markArcsSimplificationChanged(this, detail);
   };
 
   this.getCopy = function() {
@@ -212,6 +248,7 @@ export function ArcCollection() {
 
   this.transformPoints = function(f) {
     var xx = _xx, yy = _yy, arcId = -1, n = 0, p;
+    this.captureArcsBefore({operation: 'transformPoints'});
     for (var i=0, len=xx.length; i<len; i++, n--) {
       while (n === 0) {
         n = _nn[++arcId];
@@ -223,6 +260,7 @@ export function ArcCollection() {
       }
     }
     initBounds();
+    this.markArcsChanged({operation: 'transformPoints'});
   };
 
   // Return an ArcIter object for each path in the dataset
@@ -280,7 +318,9 @@ export function ArcCollection() {
       }
     }
     if (goodArcs < n) {
+      this.captureArcsBefore({operation: 'deleteArcs'});
       condenseArcs(map);
+      this.markArcsChanged({operation: 'deleteArcs'});
     }
     return map;
   };
@@ -313,6 +353,7 @@ export function ArcCollection() {
         arcCount = this.size(),
         zz = _zz,
         arcLen, arcLen2;
+    this.captureArcsBefore({operation: 'dedupCoords'});
     while (arcId < arcCount) {
       arcLen = _nn[arcId];
       arcLen2 = dedupArcCoords(i, i2, arcLen, _xx, _yy, zz);
@@ -325,6 +366,7 @@ export function ArcCollection() {
       initXYData(_nn, _xx.subarray(0, i2), _yy.subarray(0, i2));
       if (zz) initZData(zz.subarray(0, i2));
     }
+    this.markArcsChanged({operation: 'dedupCoords'});
     return i - i2;
   };
 
@@ -448,6 +490,7 @@ export function ArcCollection() {
   this.setThresholds = function(thresholds) {
     var n = this.getPointCount(),
         zz = null;
+    this.captureArcsSimplificationBefore({operation: 'setThresholds'});
     if (!thresholds) {
       // nop
     } else if (thresholds.length == n) {
@@ -458,6 +501,7 @@ export function ArcCollection() {
       error("Invalid threshold data");
     }
     initZData(zz);
+    this.markArcsSimplificationChanged({operation: 'setThresholds'});
     return this;
   };
 
@@ -475,6 +519,7 @@ export function ArcCollection() {
 
   // bake in current simplification level, if any
   this.flatten = function() {
+    this.captureArcsBefore({operation: 'flatten'});
     if (_zlimit > 0) {
       var data = getFilteredVertexData();
       this.updateVertexData(data.nn, data.xx, data.yy);
@@ -482,6 +527,7 @@ export function ArcCollection() {
     } else {
       _zz = null;
     }
+    this.markArcsChanged({operation: 'flatten'});
   };
 
   this.isFlat = function() { return !_zz; };
@@ -491,7 +537,9 @@ export function ArcCollection() {
   };
 
   this.setRetainedInterval = function(z) {
+    this.captureArcsSimplificationBefore({operation: 'setRetainedInterval'});
     _zlimit = z;
+    this.markArcsSimplificationChanged({operation: 'setRetainedInterval'});
     return this;
   };
 
@@ -500,12 +548,14 @@ export function ArcCollection() {
   };
 
   this.setRetainedPct = function(pct) {
+    this.captureArcsSimplificationBefore({operation: 'setRetainedPct'});
     if (pct >= 1) {
       _zlimit = 0;
     } else {
       _zlimit = this.getThresholdByPct(pct);
       _zlimit = clampIntervalByPct(_zlimit, pct);
     }
+    this.markArcsSimplificationChanged({operation: 'setRetainedPct'});
     return this;
   };
 

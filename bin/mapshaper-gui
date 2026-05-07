@@ -109,6 +109,7 @@ function startServer(port) {
       serveFile(getAssetFilePath(uri), response);
     }
   }).listen(port, 'localhost', function() {
+    if (process.env.MAPSHAPER_GUI_NO_OPEN) return;
     // `open` is ESM-only since v9, so import it dynamically from this CJS bin
     // script. Failure to launch a browser is non-fatal: the user can still
     // visit the URL printed (or implied) by the running server.

@@ -8,6 +8,12 @@ import { buildTopology } from '../topology/mapshaper-topology';
 import { profileStart, profileEnd } from '../utils/mapshaper-profile';
 import utils from '../utils/mapshaper-utils';
 import cmd from '../mapshaper-cmd';
+import {
+  markArcsChanged,
+  markLayerChanged,
+  noteArcsWillChange,
+  noteLayerWillChange
+} from '../undo/mapshaper-undo-tracking';
 
 cmd.cleanLayers = cleanLayers;
 
@@ -54,7 +60,9 @@ export function cleanLayers(layers, dataset, optsArg) {
 
   if (!opts.no_arc_dissolve && pathClean && dataset.arcs) {
     profileStart('dissolveArcs');
+    noteArcsWillChange(dataset.arcs, {operation: 'clean-dissolveArcs'});
     dissolveArcs(dataset);
+    markArcsChanged(dataset.arcs, {operation: 'clean-dissolveArcs'});
     profileEnd('dissolveArcs');
   }
   profileEnd('cleanLayers');
@@ -66,13 +74,16 @@ function cleanPolygonLayerGeometry(lyr, dataset, opts) {
   var groups = lyr.shapes.map(function(shp, i) {
     return [i];
   });
+  noteLayerWillChange(lyr, {operation: 'cleanPolygonLayerGeometry', unit: 'shapes'});
   lyr.shapes = dissolvePolygonGroups2(groups, lyr, dataset, opts);
+  markLayerChanged(lyr, {operation: 'cleanPolygonLayerGeometry', unit: 'shapes'});
 }
 
 // Remove duplicate points from multipoint geometries
 // TODO: consider checking for invalid coordinates
 function cleanPointLayerGeometry(lyr, dataset, opts) {
   var index, parts;
+  noteLayerWillChange(lyr, {operation: 'cleanPointLayerGeometry', unit: 'shapes'});
   lyr.shapes = lyr.shapes.map(function(shp, i) {
     if (!shp || shp.length > 0 === false) {
       return null;
@@ -89,6 +100,7 @@ function cleanPointLayerGeometry(lyr, dataset, opts) {
     }
     return parts;
   });
+  markLayerChanged(lyr, {operation: 'cleanPointLayerGeometry', unit: 'shapes'});
 
   function onPoint(p) {
     var key = p.join('~');

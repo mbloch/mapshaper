@@ -10,15 +10,26 @@ import { PathIndex } from '../paths/mapshaper-path-index';
 import { DataTable } from '../datatable/mapshaper-data-table';
 import { absArcId } from '../paths/mapshaper-arc-utils';
 import utils from '../utils/mapshaper-utils';
+import {
+  markDatasetChanged,
+  markLayerChanged,
+  noteDatasetWillChange,
+  noteLayerWillChange
+} from '../undo/mapshaper-undo-tracking';
 
 cmd.divide = function(targetLayers, targetDataset, source, opts) {
   targetLayers.forEach(requirePolylineLayer);
+  targetLayers.forEach(function(lyr) {
+    noteLayerWillChange(lyr, {operation: 'divide', unit: 'shapes-data'});
+  });
   var mergedDataset = mergeLayersForOverlay(targetLayers, targetDataset, source, opts);
   var nodes = addIntersectionCuts(mergedDataset, opts);
   var polygonLyr = mergedDataset.layers.pop();
   requirePolygonLayer(polygonLyr);
   // Assume that topology is now built
+  noteDatasetWillChange(targetDataset, {operation: 'divide', unit: 'arcs'});
   targetDataset.arcs = mergedDataset.arcs;
+  markDatasetChanged(targetDataset, {operation: 'divide', unit: 'arcs'});
   targetLayers.forEach(function(polylineLyr) {
     dividePolylineLayer(polylineLyr, polygonLyr, nodes, opts);
   });
@@ -47,12 +58,13 @@ function dividePolylineLayer(polylineLyr, polygonLyr, nodes, opts) {
     forEachShapePart(shp, onPart);
     outputLines.forEach(function(shape2, i) {
       shapes2.push(shape2);
-      records2.push(i > 0 ? utils.extend({}, rec) : rec); // assume input data is being replaced
+      records2.push(utils.extend({}, rec));
       index2.push(outputMatches[i]);
     });
   });
   polylineLyr.shapes = shapes2;
   polylineLyr.data = new DataTable(records2);
+  markLayerChanged(polylineLyr, {operation: 'divide', unit: 'shapes-data'});
   joinTables(polylineLyr.data, polygonLyr.data, function(i) {
     return index2[i] || [];
   }, opts);

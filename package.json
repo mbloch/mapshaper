@@ -30,7 +30,8 @@
     "lint": "eslint --ext mjs src/",
     "prepublishOnly": "npm test; ./pre-publish",
     "postpublish": "./release_web_ui; ./release_github_version",
-    "dev": "rollup --config --watch"
+    "dev": "rollup --config --watch",
+    "test:browser": "playwright test"
   },
   "main": "./mapshaper.js",
   "files": [
@@ -75,6 +76,7 @@
     "zstd-codec": "^0.1.5"
   },
   "devDependencies": {
+    "@playwright/test": "^1.59.1",
     "@rollup/plugin-commonjs": "^28.0.6",
     "@rollup/plugin-json": "^6.1.0",
     "@rollup/plugin-node-resolve": "^16.0.1",

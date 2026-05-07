@@ -22,6 +22,13 @@ import { runningInBrowser } from '../mapshaper-env';
 import { stop, message, error } from '../utils/mapshaper-logging';
 import { importFile } from '../io/mapshaper-file-import';
 import { buildTopology } from '../topology/mapshaper-topology';
+import {
+  markDatasetChanged,
+  markLayerChanged,
+  noteDatasetWillChange,
+  noteLayerWillChange,
+  withActiveUndoTransaction
+} from '../undo/mapshaper-undo-tracking';
 import cmd from '../mapshaper-cmd';
 import utils from '../utils/mapshaper-utils';
 import geom from '../geom/mapshaper-geom';
@@ -82,6 +89,7 @@ function projCmd(dataset, destInfo, opts) {
     dataset.arcs.flatten(); // bake in any pending simplification
     target.arcs = modifyCopy ? dataset.arcs.getCopy() : dataset.arcs;
   }
+  noteDatasetWillChange(dataset, {operation: 'proj'});
 
   target.layers = dataset.layers.map(function(lyr) {
     if (modifyCopy) {
@@ -91,16 +99,45 @@ function projCmd(dataset, destInfo, opts) {
     return lyr;
   });
 
-  projectDataset(target, srcInfo.crs, destInfo.crs, opts || {});
+  withActiveUndoTransaction(null, function() {
+    projectDataset(target, srcInfo.crs, destInfo.crs, opts || {});
 
-  // dataset.info.wkt1 = destInfo.wkt1; // may be undefined
-  setDatasetCrsInfo(target, destInfo);
+    // dataset.info.wkt1 = destInfo.wkt1; // may be undefined
+    setDatasetCrsInfo(target, destInfo);
+  });
 
   dataset.arcs = target.arcs;
   originals.forEach(function(lyr, i) {
     // replace original layers with modified layers
-    utils.extend(lyr, target.layers[i]);
+    if (layerWasChangedByProjection(lyr, target.layers[i])) {
+      noteLayerWillChange(lyr, {operation: 'proj'});
+      utils.extend(lyr, target.layers[i]);
+      markLayerChanged(lyr, {operation: 'proj'});
+    }
   });
+  markDatasetChanged(dataset, {operation: 'proj'});
+  return true;
+}
+
+function layerWasChangedByProjection(a, b) {
+  return a.name != b.name ||
+    a.geometry_type != b.geometry_type ||
+    a.data !== b.data ||
+    !arraysAreEqual(a.shapes, b.shapes);
+}
+
+function arraysAreEqual(a, b) {
+  var val;
+  if (a === b) return true;
+  if (!a || !b || a.length !== b.length) return false;
+  for (var i = 0; i < a.length; i++) {
+    val = a[i];
+    if (Array.isArray(val)) {
+      if (!arraysAreEqual(val, b[i])) return false;
+    } else if (val !== b[i]) {
+      return false;
+    }
+  }
   return true;
 }
 

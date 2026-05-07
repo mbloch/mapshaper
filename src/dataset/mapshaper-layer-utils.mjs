@@ -10,6 +10,10 @@ import utils from '../utils/mapshaper-utils';
 import { absArcId } from '../paths/mapshaper-arc-utils';
 import { pathIsRectangle } from '../paths/mapshaper-rectangle-utils';
 import {
+  markLayerChanged,
+  noteLayerWillChange
+} from '../undo/mapshaper-undo-tracking';
+import {
   layerHasGeometry, layerIsGeometric, layerHasPaths,
   layerHasPoints, layerHasNonNullShapes
 } from '../dataset/mapshaper-layer-type-utils';
@@ -23,22 +27,42 @@ export {
 // Insert a column of values into a (new or existing) data field
 export function insertFieldValues(lyr, fieldName, values) {
   var size = getFeatureCount(lyr) || values.length,
-      table = lyr.data = (lyr.data || new DataTable(size)),
-      records = table.getRecords(),
+      table = lyr.data,
+      fieldExists,
+      records,
       rec, val;
 
+  if (!table) {
+    noteLayerWillChange(lyr, {operation: 'insertFieldValues', unit: 'data'});
+    table = lyr.data = new DataTable(size);
+    markLayerChanged(lyr, {operation: 'insertFieldValues', unit: 'data'});
+  }
+  fieldExists = table.fieldExists(fieldName);
+  if (fieldExists) {
+    table.captureFieldsBefore([fieldName], {operation: 'insertFieldValues'});
+  } else {
+    table.captureSchemaBefore({operation: 'insertFieldValues', field: fieldName});
+  }
+  records = table.getRecords();
   for (var i=0, n=records.length; i<n; i++) {
     rec = records[i];
     val = values[i];
     if (!rec) rec = records[i] = {};
     rec[fieldName] = val === undefined ? null : val;
   }
+  if (fieldExists) {
+    table.markFieldsChanged([fieldName], {operation: 'insertFieldValues'});
+  } else {
+    table.markSchemaChanged({operation: 'insertFieldValues', field: fieldName});
+  }
 }
 
 export function getLayerDataTable(lyr) {
   var data = lyr.data;
   if (!data) {
+    noteLayerWillChange(lyr, {operation: 'getLayerDataTable', unit: 'data'});
     data = lyr.data = new DataTable(lyr.shapes ? lyr.shapes.length : 0);
+    markLayerChanged(lyr, {operation: 'getLayerDataTable', unit: 'data'});
   }
   return data;
 }
@@ -65,18 +89,28 @@ export function layerOnlyHasRectangles(lyr, arcs) {
 }
 
 export function deleteFeatureById(lyr, i) {
-  if (lyr.shapes) lyr.shapes.splice(i, 1);
-  if (lyr.data) lyr.data.getRecords().splice(i, 1);
+  if (lyr.shapes) {
+    noteLayerWillChange(lyr, {operation: 'deleteFeatureById', unit: 'shapes'});
+    lyr.shapes.splice(i, 1);
+    markLayerChanged(lyr, {operation: 'deleteFeatureById', unit: 'shapes'});
+  }
+  if (lyr.data) {
+    lyr.data.captureTableBefore({operation: 'deleteFeatureById'});
+    lyr.data.getRecords().splice(i, 1);
+    lyr.data.markChanged({operation: 'deleteFeatureById'});
+  }
 }
 
 // TODO: move elsewhere (moved here from mapshaper-point-utils to avoid circular dependency)
 export function transformPointsInLayer(lyr, f) {
   if (layerHasPoints(lyr)) {
+    noteLayerWillChange(lyr, {operation: 'transformPointsInLayer', unit: 'shapes'});
     forEachPoint(lyr.shapes, function(p) {
       var p2 = f(p[0], p[1]);
       p[0] = p2[0];
       p[1] = p2[1];
     });
+    markLayerChanged(lyr, {operation: 'transformPointsInLayer', unit: 'shapes'});
   }
 }
 
@@ -319,5 +353,7 @@ export function isolateLayer(layer, dataset) {
 }
 
 export function initDataTable(lyr) {
+  noteLayerWillChange(lyr, {operation: 'initDataTable', unit: 'data'});
   lyr.data = new DataTable(getFeatureCount(lyr));
+  markLayerChanged(lyr, {operation: 'initDataTable', unit: 'data'});
 }

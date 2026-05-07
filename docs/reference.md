@@ -829,15 +829,23 @@ Create a graticule layer appropriate for a world map centered on longitude 0.
 
 ### -grid
 
-Create a continuous grid of square or hexagonal polygons.
+Create a continuous grid of square, hexagonal, rhombus or triangle polygons.
 
 The `-grid` command should have a projected layer as its target. The cells of the grid will completely enclose the bounding box of the target layer.
 
 This command is intended for visualizing data in a grid. Typically, you would use the `-join` command to join data from a polygon or point layer to a grid layer. Use `-join interpolate=<fields>` to interpolate data values (typically count data) from the polygon layer to the grid layer based on area. Use `-join calc='<field> = sum(<field>)'` or `-join calc='<field> = count()'` to aggregate point data values.
 
-`type=`  Supported values: `square` `hex` `hex2`. The `hex` and `hex2` types have different rotations.
+`type=`  Supported values: `square` `square2` `hex` `hex2` `rhombus` `rhombus2` `triangle` `triangle2`. The `square` and `square2` types have different rotations. The `hex` and `hex2` types have different rotations. `rhombus` and `rhombus2` subdivide `hex` and `hex2` cells into rhombi; `triangle` and `triangle2` subdivide them into triangles.
 
 `interval=` The length of one side of a grid cell. Example values: `500m` `2km`.
+
+`cols=` The target number of grid columns. For non-square grids, this option sets a comparable horizontal grid resolution, not an exact column count.
+
+`rows=` The target number of grid rows. For non-square grids, this option sets a comparable vertical grid resolution, not an exact row count.
+
+`cells=` The target number of grid cells. The actual number may be larger because the grid is extended to enclose the target layer.
+
+`cell-scale=` Scale each grid cell from its center. Values must be greater than 0 and less than 2. Values less than 1 create gaps between cells; values greater than 1 create overlaps.
 
 Other options: `name=` `+` `target=`
 

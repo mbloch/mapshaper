@@ -4,6 +4,10 @@ import { initPointChains } from '../topology/mapshaper-topology-chains-v2';
 import { reversePath } from '../paths/mapshaper-path-utils';
 import { absArcId } from '../paths/mapshaper-arc-utils';
 import { error } from '../utils/mapshaper-logging';
+import {
+  markLayerChanged,
+  noteLayerWillChange
+} from '../undo/mapshaper-undo-tracking';
 
 // Converts all polygon and polyline paths in a dataset to a topological format
 // (in-place)
@@ -14,7 +18,9 @@ export function buildTopology(dataset) {
   dataset.arcs.updateVertexData(cooked.nn, cooked.xx, cooked.yy);
   dataset.layers.forEach(function(lyr) {
     if (lyr.geometry_type == 'polyline' || lyr.geometry_type == 'polygon') {
+      noteLayerWillChange(lyr, {operation: 'buildTopology', unit: 'shapes'});
       lyr.shapes = replaceArcIds(lyr.shapes, cooked.paths);
+      markLayerChanged(lyr, {operation: 'buildTopology', unit: 'shapes'});
     }
   });
 }

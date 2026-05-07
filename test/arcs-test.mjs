@@ -3,6 +3,10 @@ import assert from 'assert';
 import { ArcCollection } from '../src/paths/mapshaper-arcs';
 import { ArcIter } from '../src/paths/mapshaper-shape-iter';
 import { Transform } from '../src/geom/mapshaper-transform';
+import {
+  clearActiveUndoTransaction,
+  setActiveUndoTransaction
+} from '../src/undo/mapshaper-undo-tracking';
 
 var utils = api.utils;
 
@@ -37,6 +41,10 @@ var arcs5 = [];
 
 describe('mapshaper-arcs.js', function () {
   describe('ArcCollection', function () {
+
+    afterEach(function() {
+      clearActiveUndoTransaction();
+    })
 
     describe('dedupCoords()', function () {
       it('NaNs are removed', function() {
@@ -133,6 +141,71 @@ describe('mapshaper-arcs.js', function () {
       arcs.setRetainedInterval(4.5);
       assert.deepEqual([[[3, 1], [1, 1], [3, 1]], [[3, 1], [5, 1], [3, 1]]], arcs.toArray());
     });
+
+    describe('undo tracking hooks', function() {
+      it('tracks arc identity and revisions', function() {
+        var arcs = new ArcCollection(arcs1);
+        var id = arcs.getUndoId();
+        assert.equal(arcs.getUndoId(), id);
+        assert.equal(arcs.getUndoRevision(), 0);
+        arcs.markArcsChanged();
+        assert.equal(arcs.getUndoRevision(), 1);
+      })
+
+      it('captures before coordinate transforms when a transaction is active', function() {
+        var arcs = new ArcCollection([[[0, 0], [1, 1]]]);
+        var events = [];
+        setActiveUndoTransaction({
+          captureArcsBefore: function(arcsArg, detail) {
+            events.push({type: 'capture', arcs: arcsArg, detail: detail});
+          },
+          captureArcsSimplificationBefore: function(arcsArg, detail) {
+            events.push({type: 'capture', arcs: arcsArg, detail: detail});
+          },
+          markChanged: function(arcsArg, detail) {
+            events.push({type: 'mark', arcs: arcsArg, detail: detail});
+          }
+        });
+
+        arcs.transformPoints(function(x, y) {
+          return [x + 1, y + 2];
+        });
+
+        assert.deepEqual(arcs.toArray(), [[[1, 2], [2, 3]]]);
+        assert.equal(events.length, 2);
+        assert.equal(events[0].type, 'capture');
+        assert.equal(events[0].arcs, arcs);
+        assert.equal(events[0].detail.operation, 'transformPoints');
+        assert.equal(events[1].type, 'mark');
+        assert.equal(events[1].detail.type, 'arcs');
+        assert.equal(events[1].detail.operation, 'transformPoints');
+        assert.equal(arcs.getUndoRevision(), 1);
+      })
+
+      it('captures simplification threshold mutations', function() {
+        var arcs = new ArcCollection(arcs2);
+        var events = [];
+        setActiveUndoTransaction({
+          captureArcsBefore: function(arcsArg, detail) {
+            events.push({type: 'capture', arcs: arcsArg, detail: detail});
+          },
+          captureArcsSimplificationBefore: function(arcsArg, detail) {
+            events.push({type: 'capture', arcs: arcsArg, detail: detail});
+          },
+          markChanged: function(arcsArg, detail) {
+            events.push({type: 'mark', arcs: arcsArg, detail: detail});
+          }
+        });
+
+        arcs.setThresholds([[Infinity, 5, 4, Infinity], [Infinity, 4, 7, Infinity]]);
+
+        assert.equal(events.length, 2);
+        assert.equal(events[0].detail.operation, 'setThresholds');
+        assert.equal(events[1].detail.operation, 'setThresholds');
+        assert.equal(events[1].detail.granularity, 'simplification');
+        assert.equal(arcs.getUndoRevision(), 1);
+      })
+    })
 
     it('#setThresholds() + #setRetainedInterval() + #getFilteredCopy() works', function() {
       var thresholds = [[Infinity, 5, 4, Infinity], [Infinity, 4, 7, Infinity]];

@@ -84,6 +84,34 @@ describe('json-parse.js', function () {
 
   describe('parseGeoJSON', function() {
 
+    function parseGeoJSONString(str) {
+      var objects = [];
+      var retn = parseGeoJSON(new StringReader(str), obj => {
+        objects.push(obj);
+      });
+      return {
+        objects: objects,
+        retn: retn
+      };
+    }
+
+    function expectParsedGeoJSON(str, target) {
+      var parsed = parseGeoJSONString(str);
+      var result;
+      if (parsed.retn === null && parsed.objects.length == 1) {
+        result = parsed.objects[0];
+      } else if (parsed.retn && parsed.retn.geometries === null) {
+        parsed.retn.geometries = parsed.objects;
+        result = parsed.retn;
+      } else if (parsed.retn && parsed.retn.features === null) {
+        parsed.retn.features = parsed.objects;
+        result = parsed.retn;
+      } else {
+        throw Error('failed to parse as GeoJSON');
+      }
+      assert.deepEqual(result, target);
+    }
+
     function testReadingFromFile(file, readerOpts) {
       var reader = new FileReader(file, readerOpts);
       var features = [];
@@ -96,21 +124,7 @@ describe('json-parse.js', function () {
     function test(label, target) {
       it(label, function() {
         var str = JSON.stringify(target, null, 2);
-        var objects = [];
-        var retn = parseGeoJSON(new StringReader(str), obj => {
-          objects.push(obj);
-        });
-        if (retn === null && objects.length == 1) {
-          assert.deepEqual(objects[0], target);
-        } else if (retn && retn.geometries === null) {
-          retn.geometries = objects;
-          assert.deepEqual(retn, target);
-        } else if (retn && retn.features === null) {
-          retn.features = objects;
-          assert.deepEqual(retn, target);
-        } else {
-          throw Error('failed to parse as GeoJSON');
-        }
+        expectParsedGeoJSON(str, target);
       });
     }
 
@@ -159,6 +173,80 @@ describe('json-parse.js', function () {
     test('Feature', ex2)
     test('GeometryCollection', ex3)
     test('FeatureCollection with nonstandard property', ex4)
+
+    it('FeatureCollection with features before type', function() {
+      var str = '{"features":[{"type":"Feature","properties":{"id":1},"geometry":null}],"type":"FeatureCollection"}';
+      expectParsedGeoJSON(str, {
+        type: 'FeatureCollection',
+        features: [{
+          type: 'Feature',
+          properties: {id: 1},
+          geometry: null
+        }]
+      });
+    });
+
+    it('GeometryCollection with geometries before type', function() {
+      var str = '{"geometries":[{"type":"Point","coordinates":[1,2]}],"type":"GeometryCollection"}';
+      expectParsedGeoJSON(str, {
+        type: 'GeometryCollection',
+        geometries: [{
+          type: 'Point',
+          coordinates: [1, 2]
+        }]
+      });
+    });
+
+    it('empty collections', function() {
+      expectParsedGeoJSON('{"type":"FeatureCollection","features":[]}', {
+        type: 'FeatureCollection',
+        features: []
+      });
+      expectParsedGeoJSON('{"type":"GeometryCollection","geometries":[]}', {
+        type: 'GeometryCollection',
+        geometries: []
+      });
+    });
+
+    it('preserves collection-named properties inside streamed features', function() {
+      var target = {
+        type: 'FeatureCollection',
+        features: [{
+          type: 'Feature',
+          properties: {
+            features: [{id: 1}],
+            geometries: [{id: 2}]
+          },
+          geometry: null
+        }]
+      };
+      expectParsedGeoJSON(JSON.stringify(target), target);
+    });
+
+    it('preserves collection-named foreign members on a single feature', function() {
+      var target = {
+        type: 'Feature',
+        features: [{id: 1}],
+        geometries: [{id: 2}],
+        properties: {},
+        geometry: null
+      };
+      expectParsedGeoJSON(JSON.stringify(target), target);
+    });
+
+    it('newline-delimited GeoJSON sequence', function() {
+      var target = [{
+        type: 'Feature',
+        properties: {name: 'a'},
+        geometry: null
+      }, {
+        type: 'Point',
+        coordinates: [1, 2]
+      }];
+      var parsed = parseGeoJSONString(target.map(JSON.stringify).join('\n'));
+      assert.equal(parsed.retn, null);
+      assert.deepEqual(parsed.objects, target);
+    });
 
     it('file reading test', function() {
       testReadingFromFile('test/data/three_points.geojson', null);

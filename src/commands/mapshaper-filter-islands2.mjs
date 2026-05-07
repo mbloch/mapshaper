@@ -9,6 +9,7 @@ import { absArcId } from '../paths/mapshaper-arc-utils';
 import cmd from '../mapshaper-cmd';
 import utils from '../utils/mapshaper-utils';
 import geom from '../geom/mapshaper-geom';
+import { markLayerChanged, noteLayerWillChange } from '../undo/mapshaper-undo-tracking';
 
 cmd.filterIslands2 = function(lyr, dataset, optsArg) {
   var opts = utils.extend({sliver_control: 0}, optsArg); // no sliver control
@@ -28,7 +29,9 @@ cmd.filterIslands2 = function(lyr, dataset, optsArg) {
   } else {
     filter = getVertexCountTest(opts.min_vertices, arcs);
   }
+  noteLayerWillChange(lyr, {operation: 'filter-islands2', unit: 'shapes'});
   removed += filterIslands2(lyr, arcs, filter);
+  markLayerChanged(lyr, {operation: 'filter-islands2', unit: 'shapes'});
   if (opts.remove_empty) {
     cmd.filterFeatures(lyr, arcs, {remove_empty: true, verbose: false});
   }

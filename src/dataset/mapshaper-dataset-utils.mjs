@@ -16,6 +16,14 @@ import { mergeDatasetsIntoDataset } from '../dataset/mapshaper-merging';
 import { buildTopology } from '../topology/mapshaper-topology';
 import { dissolveArcs } from '../paths/mapshaper-arc-dissolve';
 import { error } from '../utils/mapshaper-logging';
+import {
+  markDatasetChanged,
+  markDatasetInfoChanged,
+  markLayerChanged,
+  noteDatasetInfoWillChange,
+  noteDatasetWillChange,
+  noteLayerWillChange
+} from '../undo/mapshaper-undo-tracking';
 
 // utility functions for datasets
 
@@ -37,10 +45,12 @@ export function splitDataset(dataset) {
 export function mergeDatasetInfo(dest, src) {
   var srcInfo = src.info || {};
   var destInfo = dest.info || (dest.info = {});
+  noteDatasetInfoWillChange(dest, {operation: 'mergeDatasetInfo'});
   destInfo.input_files = utils.uniq((destInfo.input_files || []).concat(srcInfo.input_files || []));
   destInfo.input_formats = utils.uniq((destInfo.input_formats || []).concat(srcInfo.input_formats || []));
   // merge other info properties (e.g. input_geojson_crs, input_delimiter, prj, crs)
   utils.defaults(destInfo, srcInfo);
+  markDatasetInfoChanged(dest, {operation: 'mergeDatasetInfo'});
 }
 
 export function copyDatasetInfo(info) {
@@ -55,6 +65,7 @@ export function copyDatasetInfo(info) {
 
 export function splitApartLayers(dataset, layers) {
   var datasets = [];
+  noteDatasetWillChange(dataset, {operation: 'splitApartLayers', unit: 'layers'});
   dataset.layers = dataset.layers.filter(function(lyr) {
     if (!layers.includes(lyr)) {
       return true;
@@ -72,6 +83,7 @@ export function splitApartLayers(dataset, layers) {
     dissolveArcs(dataset);
     datasets.push(dataset);
   }
+  markDatasetChanged(dataset, {operation: 'splitApartLayers', unit: 'layers'});
   return datasets;
 }
 
@@ -134,7 +146,9 @@ export function datasetHasPaths(dataset) {
 // (currently cleanupArcs() is run after every command, so be mindful of performance)
 export function cleanupArcs(dataset) {
   if (dataset.arcs && !utils.some(dataset.layers, layerHasPaths)) {
+    noteDatasetWillChange(dataset, {operation: 'cleanupArcs', unit: 'arcs'});
     dataset.arcs = null;
+    markDatasetChanged(dataset, {operation: 'cleanupArcs', unit: 'arcs'});
     return true;
   }
 }
@@ -153,6 +167,7 @@ export function pruneArcs(dataset) {
 export function replaceLayers(dataset, cutLayers, newLayers) {
   // modify a copy in case cutLayers == dataset.layers
   var currLayers = dataset.layers.concat();
+  noteDatasetWillChange(dataset, {operation: 'replaceLayers', unit: 'layers'});
   utils.repeat(Math.max(cutLayers.length, newLayers.length), function(i) {
     var cutLyr = cutLayers[i],
         newLyr = newLayers[i],
@@ -166,6 +181,7 @@ export function replaceLayers(dataset, cutLayers, newLayers) {
     }
   });
   dataset.layers = currLayers;
+  markDatasetChanged(dataset, {operation: 'replaceLayers', unit: 'layers'});
 }
 
 // Replace a layer with a layer from a second dataset
@@ -203,7 +219,9 @@ export function mergeOutputLayersIntoDataset(lyr, dataset, dataset2, opts) {
   }
   lyr2.name = opts.name || lyr.name;
   if (!opts.no_replace) {
+    noteLayerWillChange(lyr, {operation: 'mergeOutputLayersIntoDataset'});
     outputLayers[0] = Object.assign(lyr, {data: null, shapes: null}, lyr2);
+    markLayerChanged(lyr, {operation: 'mergeOutputLayersIntoDataset'});
     if (layerHasPaths(lyr)) {
       // Remove unused arcs from replaced layer
       // TODO: consider using clean insead of this
