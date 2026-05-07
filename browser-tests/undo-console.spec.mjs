@@ -964,7 +964,7 @@ test('history menu stays open and updates restore data after clearing undo histo
   await expect(page.locator('.history-menu-note')).toContainText(/estimated on-disk restore data: [0-9]/);
   await page.locator('.history-clear-btn').click();
   await expect(page.locator('.history-menu-dropdown')).toBeVisible();
-  await expect(page.locator('.history-menu-note')).toContainText('estimated on-disk restore data: none');
+  await expect(page.locator('.history-menu-note')).toContainText('estimated on-disk restore data: 0 KB');
   expect((await getUndoState(page)).undo.canUndo).toBe(false);
   expect((await getUndoState(page)).payloadStore.ownBytes).toBe(0);
 });

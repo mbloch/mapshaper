@@ -139,9 +139,6 @@ function setAppUndoEnabled(enabled) {
 function getRestoreDataNote(gui) {
   var stats = getUndoPayloadStats(gui);
   var bytes = stats ? stats.ownBytes || 0 : 0;
-  if (bytes === 0) {
-    return 'estimated on-disk restore data: none';
-  }
   return 'estimated on-disk restore data: ' + formatBytes(bytes);
 }
 
@@ -151,12 +148,12 @@ function getUndoPayloadStats(gui) {
 }
 
 function formatBytes(bytes) {
-  var units = ['B', 'KB', 'MB', 'GB'];
-  var value = bytes;
+  var units = ['KB', 'MB', 'GB'];
+  var value = bytes / 1000;
   var i = 0;
   while (value >= 1000 && i < units.length - 1) {
     value /= 1000;
     i++;
   }
-  return (i === 0 ? String(value) : value.toFixed(value < 10 ? 1 : 0)) + ' ' + units[i];
+  return value.toFixed(value < 10 && value >= 0.5 ? 1 : 0) + ' ' + units[i];
 }
