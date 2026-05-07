@@ -222,7 +222,10 @@ export function MshpMap(gui) {
     var needReset;
 
     if (!updated) {
-      return; // e.g. if command is run in console before data is loaded
+      clearMapState();
+      drawLayers();
+      map.dispatchEvent('updated');
+      return;
     }
 
     if (arcsMayHaveChanged(e.flags)) {
@@ -284,6 +287,17 @@ export function MshpMap(gui) {
     }
     drawLayers();
     map.dispatchEvent('updated');
+  }
+
+  function clearMapState() {
+    _activeLyr = null;
+    _visibleLayers = [];
+    _intersectionLyr = null;
+    _overlayLayers = null;
+    if (_hit) {
+      _hit.clearSelection();
+      _hit.setLayer(null);
+    }
   }
 
   function getDisplayOptions() {

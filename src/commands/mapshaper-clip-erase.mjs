@@ -16,6 +16,7 @@ import { NodeCollection } from '../topology/mapshaper-nodes';
 import { dissolveArcs } from '../paths/mapshaper-arc-dissolve';
 import { dissolvePolygonLayer2 } from '../dissolve/mapshaper-polygon-dissolve2';
 import { profileStart, profileEnd } from '../utils/mapshaper-profile';
+import { markDatasetChanged, noteDatasetWillChange } from '../undo/mapshaper-undo-tracking';
 
 cmd.clipLayers = function(target, src, dataset, opts) {
   return clipLayers(target, src, dataset, "clip", opts);
@@ -74,7 +75,9 @@ export function clipLayers(targetLayers, clipSrc, targetDataset, type, opts) {
   clipLyr = mergedDataset.layers[mergedDataset.layers.length-1];
   if (usingPathClip) {
     nodes = addIntersectionCuts(mergedDataset, opts);
+    noteDatasetWillChange(targetDataset, {operation: type, unit: 'arcs'});
     targetDataset.arcs = mergedDataset.arcs;
+    markDatasetChanged(targetDataset, {operation: type, unit: 'arcs'});
     profileStart('clipDissolvePolygonLayer2');
     clipLyr = utils.defaults({data: null}, clipLyr);
     clipLyr = dissolvePolygonLayer2(clipLyr, mergedDataset, {quiet: true, silent: true});

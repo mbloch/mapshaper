@@ -14,6 +14,10 @@ import utils from '../utils/mapshaper-utils';
 import cmd from '../mapshaper-cmd';
 import { stashVar, clearStash } from '../mapshaper-stash';
 import { applyCommandToEachLayer, applyCommandToEachTarget } from '../cli/mapshaper-command-utils';
+import {
+  markDatasetChanged,
+  noteDatasetWillChange
+} from '../undo/mapshaper-undo-tracking';
 import '../commands/mapshaper-add-shape';
 import '../commands/mapshaper-affine';
 import '../commands/mapshaper-alpha-shapes';
@@ -511,7 +515,9 @@ export async function runCommand(command, job) {
           error('Command returned invalid output');
         }
 
+        noteDatasetWillChange(targetDataset, {operation: 'appendOutputLayers', command: name});
         targetDataset.layers = targetDataset.layers.concat(outputLayers);
+        markDatasetChanged(targetDataset, {operation: 'appendOutputLayers', command: name});
       } else {
         // TODO: consider replacing old layers as they are generated, for gc
         replaceLayers(targetDataset, targetLayers, outputLayers);

@@ -24,7 +24,19 @@ cmd.symbols = function(inputLyr, dataset, opts) {
     requireProjectedDataset(dataset);
     metersPerPx = opts.pixel_scale || getMetersPerPixel(lyr, dataset);
   }
-  var records = getLayerDataTable(lyr).getRecords();
+  var table = getLayerDataTable(lyr);
+  var symbolFields = getSymbolOutputFields(shapeMode, opts);
+  var hasNewSymbolFields = symbolFields.some(function(field) {
+    return !table.fieldExists(field);
+  });
+  if (symbolFields.length > 0) {
+    if (hasNewSymbolFields) {
+      table.captureSchemaBefore({operation: 'symbols', fields: symbolFields});
+    } else {
+      table.captureFieldsBefore(symbolFields, {operation: 'symbols'});
+    }
+  }
+  var records = table.getRecords();
   var getSymbolData = getSymbolDataAccessor(lyr, opts);
   var geometries = lyr.shapes.map(function(shp, i) {
     if (!shp) return null;
@@ -84,8 +96,22 @@ cmd.symbols = function(inputLyr, dataset, opts) {
   } else {
     outputLyr = lyr;
   }
+  if (symbolFields.length > 0) {
+    if (hasNewSymbolFields) {
+      table.markSchemaChanged({operation: 'symbols'});
+    } else {
+      table.markFieldsChanged(symbolFields, {operation: 'symbols'});
+    }
+  }
   return [outputLyr];
 };
+
+function getSymbolOutputFields(shapeMode, opts) {
+  if (!shapeMode) return ['svg-symbol'];
+  return ['fill', 'stroke', 'opacity'].filter(function(field) {
+    return field in opts;
+  });
+}
 
 function importGeometries(geometries, records) {
   var features = geometries.map(function(geom, i) {

@@ -8,6 +8,10 @@ import { parsePercent } from '../cli/mapshaper-option-parsing-utils';
 import { stop } from '../utils/mapshaper-logging';
 import utils from '../utils/mapshaper-utils';
 import cmd from '../mapshaper-cmd';
+import {
+  markDatasetInfoChanged,
+  noteDatasetInfoWillChange
+} from '../undo/mapshaper-undo-tracking';
 
 cmd.variableSimplify = function(layers, dataset, opts) {
   var lyr = layers[0];
@@ -37,7 +41,9 @@ cmd.variableSimplify = function(layers, dataset, opts) {
   arcThresholds = calculateVariableThresholds(lyr, arcs, getShapeThreshold);
   applyArcThresholds(arcs, arcThresholds);
   arcs.setRetainedInterval(1e20); // set to a huge value
+  noteDatasetInfoWillChange(dataset, {operation: 'variable-simplify'});
   finalizeSimplification(dataset, opts);
+  markDatasetInfoChanged(dataset, {operation: 'variable-simplify'});
   arcs.flatten(); // bake in simplification (different from standard -simplify)
 };
 

@@ -6,6 +6,10 @@ import utils from '../utils/mapshaper-utils';
 import cmd from '../mapshaper-cmd';
 import { stop, message } from '../utils/mapshaper-logging';
 import { DataTable } from '../datatable/mapshaper-data-table';
+import {
+  markLayerChanged,
+  noteLayerWillChange
+} from '../undo/mapshaper-undo-tracking';
 import geom from '../geom/mapshaper-geom';
 
 cmd.filterFeatures = function(lyr, arcs, opts) {
@@ -48,8 +52,14 @@ cmd.filterFeatures = function(lyr, arcs, opts) {
     }
   });
 
+  if (filteredLyr == lyr) {
+    noteLayerWillChange(lyr, {operation: 'filter'});
+  }
   filteredLyr.shapes = filteredShapes;
   filteredLyr.data = filteredRecords ? new DataTable(filteredRecords) : null;
+  if (filteredLyr == lyr) {
+    markLayerChanged(lyr, {operation: 'filter'});
+  }
   if (opts.no_replace) {
     // if adding a layer, don't share objects between source and filtered layer
     filteredLyr = copyLayer(filteredLyr);
@@ -78,8 +88,10 @@ export function filterLayerInPlace(lyr, filter, invert) {
       if (records) filteredRecords.push(records[shapeId] || null);
     }
   });
+  noteLayerWillChange(lyr, {operation: 'filterLayerInPlace'});
   lyr.shapes = filteredShapes;
   lyr.data = filteredRecords ? new DataTable(filteredRecords) : null;
+  markLayerChanged(lyr, {operation: 'filterLayerInPlace'});
 }
 
 export function getIdFilter(ids) {

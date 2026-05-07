@@ -4,6 +4,7 @@ import { stop } from '../utils/mapshaper-logging';
 import { DataTable } from '../datatable/mapshaper-data-table';
 import cmd from '../mapshaper-cmd';
 import utils from '../utils/mapshaper-utils';
+import { markLayerChanged, noteLayerWillChange } from '../undo/mapshaper-undo-tracking';
 
 // Split the shapes in a layer according to a grid
 // Return array of layers. Use -o bbox-index option to create index
@@ -21,16 +22,20 @@ cmd.splitLayerOnGrid = function(lyr, arcs, opts) {
   }
 
   if (!lyr.data) {
+    noteLayerWillChange(lyr, {operation: 'split-on-grid', unit: 'data'});
     lyr.data = new DataTable(shapes.length);
+    markLayerChanged(lyr, {operation: 'split-on-grid', unit: 'data'});
   }
   properties = lyr.data.getRecords();
 
+  lyr.data.captureSchemaBefore({operation: 'split-on-grid', field: fieldName});
   lyr.shapes.forEach(function(shp, i) {
     var bounds = type == 'point' ? getPointBounds([shp]) : arcs.getMultiShapeBounds(shp);
     var name = bounds.hasBounds() ? classify(bounds) : '';
     var rec = properties[i] = properties[i] || {};
     rec[fieldName] = name;
   });
+  lyr.data.markSchemaChanged({operation: 'split-on-grid', field: fieldName});
 
   if (setId) return lyr; // don't split layer (instead assign cell ids)
 

@@ -1,6 +1,14 @@
 
 import { findCommandTargets, findMatchingLayers } from '../dataset/mapshaper-target-utils';
 import { stop } from '../utils/mapshaper-logging';
+import {
+  getUndoId,
+  getUndoRevision,
+  markCatalogChanged,
+  markDatasetChanged,
+  noteDatasetWillChange,
+  noteCatalogWillChange
+} from '../undo/mapshaper-undo-tracking';
 
 // Catalog contains zero or more multi-layer datasets
 // One layer is always "active", corresponding to the currently selected
@@ -8,6 +16,22 @@ import { stop } from '../utils/mapshaper-logging';
 export function Catalog() {
   var datasets = [],
       defaultTargets = [];// saved default command targets [{layers:[], dataset}, ...]
+
+  this.getUndoId = function() {
+    return getUndoId(this);
+  };
+
+  this.getUndoRevision = function() {
+    return getUndoRevision(this);
+  };
+
+  this.captureCatalogBefore = function(detail) {
+    noteCatalogWillChange(this, detail);
+  };
+
+  this.markCatalogChanged = function(detail) {
+    return markCatalogChanged(this, detail);
+  };
 
   this.forEachLayer = function(cb) {
     var i = 0;
@@ -20,16 +44,19 @@ export function Catalog() {
 
   // remove a layer from a dataset
   this.deleteLayer = function(lyr, dataset) {
+    this.captureCatalogBefore({operation: 'deleteLayer'});
     // if deleting first target layer (selected in gui) -- switch to some other layer
     if (this.getActiveLayer().layer == lyr) {
       defaultTargets = [];
     }
 
     // remove layer from its dataset
+    noteDatasetWillChange(dataset, {operation: 'deleteLayer', unit: 'layers'});
     dataset.layers.splice(dataset.layers.indexOf(lyr), 1);
     if (dataset.layers.length === 0) {
-      this.removeDataset(dataset);
+      removeDatasetRaw(dataset);
     }
+    markDatasetChanged(dataset, {operation: 'deleteLayer', unit: 'layers'});
 
     // remove layer from defaultTargets
     defaultTargets = defaultTargets.filter(function(targ) {
@@ -38,6 +65,7 @@ export function Catalog() {
       targ.layers.splice(i, 1);
       return targ.layers.length > 0;
     });
+    this.markCatalogChanged({operation: 'deleteLayer'});
   };
 
   // @arg: a layer object or a test function
@@ -66,17 +94,16 @@ export function Catalog() {
   };
 
   this.clear = function() {
+    this.captureCatalogBefore({operation: 'clear'});
     datasets = [];
     defaultTargets = [];
+    this.markCatalogChanged({operation: 'clear'});
   };
 
   this.removeDataset = function(dataset) {
-    defaultTargets = defaultTargets.filter(function(targ) {
-      return targ.dataset != dataset;
-    });
-    datasets = datasets.filter(function(d) {
-      return d != dataset;
-    });
+    this.captureCatalogBefore({operation: 'removeDataset'});
+    removeDatasetRaw(dataset);
+    this.markCatalogChanged({operation: 'removeDataset'});
   };
 
   this.getDatasets = function() {
@@ -138,12 +165,15 @@ export function Catalog() {
 
   // arr: array of target objects {layers:[], dataset:{}}
   this.setDefaultTargets = function(arr) {
+    if (targetsAreSame(defaultTargets, arr)) return;
+    this.captureCatalogBefore({operation: 'setDefaultTargets'});
     arr.forEach(function(target) {
       if (datasets.indexOf(target.dataset) == -1) {
         datasets.push(target.dataset);
       }
     });
     defaultTargets = arr;
+    this.markCatalogChanged({operation: 'setDefaultTargets'});
   };
 
   // should be in gui-model.js, moved here for testing
@@ -168,12 +198,39 @@ export function Catalog() {
     };
   }
 
+  function targetsAreSame(a, b) {
+    if (a.length != b.length) return false;
+    for (var i = 0; i < a.length; i++) {
+      if (a[i].dataset != b[i].dataset || !layersAreSame(a[i].layers, b[i].layers)) {
+        return false;
+      }
+    }
+    return true;
+  }
+
+  function layersAreSame(a, b) {
+    if (a.length != b.length) return false;
+    for (var i = 0; i < a.length; i++) {
+      if (a[i] != b[i]) return false;
+    }
+    return true;
+  }
+
   function indexOfLayer(lyr, layers) {
     var idx = -1;
     layers.forEach(function(o, i) {
       if (o.layer == lyr) idx = i;
     });
     return idx;
+  }
+
+  function removeDatasetRaw(dataset) {
+    defaultTargets = defaultTargets.filter(function(targ) {
+      return targ.dataset != dataset;
+    });
+    datasets = datasets.filter(function(d) {
+      return d != dataset;
+    });
   }
 }
 

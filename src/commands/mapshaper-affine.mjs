@@ -13,6 +13,12 @@ import cmd from '../mapshaper-cmd';
 import { absArcId } from '../paths/mapshaper-arc-utils';
 import { Bounds } from '../geom/mapshaper-bounds';
 import { calcFrameData } from '../furniture/mapshaper-frame-utils';
+import {
+  markDatasetChanged,
+  markLayerChanged,
+  noteDatasetWillChange,
+  noteLayerWillChange
+} from '../undo/mapshaper-undo-tracking';
 
 // Apply rotation, scale and/or shift to some or all of the features in a dataset
 //
@@ -31,6 +37,7 @@ cmd.affine = function(targetLayers, dataset, opts) {
   var targetShapes = [];
   var otherShapes = [];
   var targetPoints = [];
+  var targetPointLayers = [];
   var targetFlags, otherFlags, transform, transformOpts;
   dataset.layers.filter(layerHasGeometry).forEach(function(lyr) {
     var hits = [],
@@ -48,6 +55,7 @@ cmd.affine = function(targetLayers, dataset, opts) {
     }
     if (lyr.geometry_type == 'point') {
       targetPoints = targetPoints.concat(hits);
+      if (hits.length > 0) targetPointLayers.push(lyr);
     } else {
       targetShapes = targetShapes.concat(hits);
       otherShapes = otherShapes.concat(misses);
@@ -67,7 +75,9 @@ cmd.affine = function(targetLayers, dataset, opts) {
     if (otherShapes.length > 0) {
       countArcsInShapes(otherShapes, otherFlags);
       applyArrayMask(otherFlags, targetFlags);
+      noteDatasetWillChange(dataset, {operation: 'affine', unit: 'arcs'});
       dataset.arcs = duplicateSelectedArcs(otherShapes, arcs, otherFlags);
+      markDatasetChanged(dataset, {operation: 'affine', unit: 'arcs'});
     }
     dataset.arcs.transformPoints(function(x, y, arcId) {
       if (arcId < targetFlags.length && targetFlags[arcId] > 0) {
@@ -75,10 +85,16 @@ cmd.affine = function(targetLayers, dataset, opts) {
       }
     });
   }
+  targetPointLayers.forEach(function(lyr) {
+    noteLayerWillChange(lyr, {operation: 'affine', unit: 'shapes'});
+  });
   forEachPoint(targetPoints, function(p) {
     var p2 = transform(p[0], p[1]);
     p[0] = p2[0];
     p[1] = p2[1];
+  });
+  targetPointLayers.forEach(function(lyr) {
+    markLayerChanged(lyr, {operation: 'affine', unit: 'shapes'});
   });
 };
 

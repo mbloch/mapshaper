@@ -294,24 +294,20 @@ export var ExportControl = function(gui) {
   }
 
   function getExportFormats() {
-    // return ['shapefile', 'geojson', 'topojson', 'json', 'dsv', 'kml', 'svg', internal.PACKAGE_EXT];
-    return ['shapefile', 'json', 'geojson', 'dsv', 'topojson', 'flatgeobuf', 'geopackage', 'geoparquet', 'kml', internal.PACKAGE_EXT, 'svg'];
+    return ['shapefile', 'json', 'geojson', 'dsv', 'topojson', 'flatgeobuf', 'geopackage', 'geoparquet', 'kml', 'svg', internal.PACKAGE_EXT];
   }
 
   function initFormatMenu() {
     var formats = getExportFormats();
-    // var formats = utils.uniq(getExportFormats().concat(getInputFormats()));
     var items = formats.map(function(fmt) {
       return utils.format('<td><label><input type="radio" name="format" value="%s"' +
         ' class="radio">%s</label></td>', fmt, internal.getFormatName(fmt));
     });
     var table = '<table>';
     for (var i=0; i<items.length; i+=2) {
-      table += '<tr>' + items[i] + items[i+1] + '<tr>';
+      table += '<tr>' + items[i] + (items[i+1] || '<td></td>') + '<tr>';
     }
     table += '</table>';
-
-    // menu.findChild('.export-formats').html(items.join('\n'));
     menu.findChild('.export-formats').html(table);
     menu.findChild('.export-formats input[value="' + getDefaultExportFormat() + '"]').node().checked = true;
     // update save-as settings when value changes
@@ -335,7 +331,7 @@ export var ExportControl = function(gui) {
   }
 
   function getSelectedFormat() {
-    return menu.findChild('.export-formats input:checked').node().value;
+    return menu.findChild('.export-formats input:checked')?.node()?.value;
   }
 
   function getZipOption() {

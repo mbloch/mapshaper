@@ -9,6 +9,7 @@ import { message, stop } from '../utils/mapshaper-logging';
 import geom from '../geom/mapshaper-geom';
 import { getArcPresenceTest } from '../paths/mapshaper-path-utils';
 import { NodeCollection } from '../topology/mapshaper-nodes';
+import { markLayerChanged, noteLayerWillChange } from '../undo/mapshaper-undo-tracking';
 
 cmd.polygons = function(layers, dataset, opts) {
   layers.forEach(requirePolylineLayer);
@@ -33,6 +34,7 @@ cmd.polygons = function(layers, dataset, opts) {
 function createPolygonLayerFromRings(lyr, dataset) {
   var arcs = dataset.arcs;
   var openCount = 0;
+  noteLayerWillChange(lyr, {operation: 'polygons-from-rings', unit: 'geometry'});
   editShapes(lyr.shapes, function(part) {
     if (geom.pathIsClosed(part, arcs)) {
       return part;
@@ -45,6 +47,7 @@ function createPolygonLayerFromRings(lyr, dataset) {
   }
   lyr.geometry_type = 'polygon';
   rewindPolygons(lyr, arcs);
+  markLayerChanged(lyr, {operation: 'polygons-from-rings', unit: 'geometry'});
   return lyr;
 }
 

@@ -85,6 +85,20 @@ describe('mapshaper-arc-dissolve.js', function () {
       assert.deepEqual(arcs.toArray(), coords); // arcs have not changed
     });
 
+    it('sorts polygon rings by minimum arc id before remapping', function() {
+      var coords = [
+        [[0, 0], [1, 0], [1, 1], [0, 0]],
+        [[2, 0], [3, 0], [3, 1], [2, 0]]
+      ];
+      var arcs = new ArcCollection(coords);
+      var layers = [{geometry_type: 'polygon', shapes: [[[1], [0]]]}];
+      var dataset = {layers: layers, arcs: arcs};
+
+      api.internal.dissolveArcs(dataset);
+      assert.deepEqual(dataset.layers[0].shapes, [[[0], [1]]]);
+      assert.deepEqual(dataset.arcs.toArray(), coords);
+    });
+
     describe('issue #140 -- partially overlapping lines', function() {
       //
       //  b --- c

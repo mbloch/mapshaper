@@ -13,10 +13,15 @@ import geom from '../geom/mapshaper-geom';
 import { stop, message } from '../utils/mapshaper-logging';
 import { findSegmentIntersections } from '../paths/mapshaper-segment-intersection';
 import { interpolatePoint2D } from '../geom/mapshaper-geodesic';
+import { noteLayerWillChange, markLayerChanged } from '../undo/mapshaper-undo-tracking';
 
 cmd.createPointLayer = function(srcLyr, dataset, opts) {
   var destLyr = getOutputLayer(srcLyr, opts);
   var arcs = dataset.arcs;
+  var replacingSource = destLyr == srcLyr;
+  if (replacingSource) {
+    noteLayerWillChange(destLyr, {operation: 'createPointLayer', unit: 'geometry'});
+  }
   if (opts.intersections) {
     testIntersections(arcs);
     destLyr = srcLyr;
@@ -55,6 +60,9 @@ cmd.createPointLayer = function(srcLyr, dataset, opts) {
   }
   if (srcLyr.data) {
     destLyr.data = opts.no_replace ? srcLyr.data.clone() : srcLyr.data;
+  }
+  if (replacingSource) {
+    markLayerChanged(destLyr, {operation: 'createPointLayer', unit: 'geometry'});
   }
   return destLyr;
 };

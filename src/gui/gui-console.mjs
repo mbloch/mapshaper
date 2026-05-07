@@ -5,6 +5,8 @@ import { setDisplayProjection } from './gui-dynamic-crs';
 import { GUI } from './gui-lib';
 import { saveBlobToLocalFile2 } from './gui-save';
 import { stringifyRuntimeStateContext } from './gui-runtime-context';
+import { createUndoFeasibilityMonitor } from './gui-undo-feasibility';
+import { createStoredUndoHistory } from './gui-stored-undo-history';
 
 export function Console(gui) {
   var model = gui.model;
@@ -25,9 +27,19 @@ export function Console(gui) {
   var history = [];
   var historyId = 0;
   var _isOpen = false;
-  var btn = gui.container.findChild('.console-btn').on('click', toggle);
+  var btn = gui.container.findChild('.console-btn')
+    .on('click', toggle)
+    .on('keydown', function(e) {
+      if (e.key == 'Enter' || e.key == ' ') {
+        e.preventDefault();
+        toggle();
+      }
+    });
   var globals = {}; // share user-defined globals (job.defs) between runs
   var sharedVars = {}; // share -vars / -defaults templating scope between runs
+  var undoFeasibility = createUndoFeasibilityMonitor(gui);
+  var storedUndoHistory = createStoredUndoHistory(gui);
+  gui.undoFeasibility = undoFeasibility;
 
   // expose this function, so other components can run commands (e.g. box tool)
   this.runMapshaperCommands = runMapshaperCommands;
@@ -415,15 +427,7 @@ export function Console(gui) {
       return done(e, {});
     }
     if (commands.length === 0) return done();
-    applyParsedCommands(commands, function(err, flags) {
-      if (!err) {
-        str = internal.standardizeConsoleCommands(str);
-        gui.session.consoleCommands(str);
-        // kludge to terminate unclosed -if blocks
-        if (str.includes('-if') && !str.includes('-endif')) {
-          gui.session.consoleCommands('-endif');
-        }
-      }
+    applyParsedCommands(commands, str, function(err, flags) {
       if (flags) {
         model.updated(flags); // info commands do not return flags
       }
@@ -431,18 +435,34 @@ export function Console(gui) {
     });
   }
 
-  function applyParsedCommands(commands, done) {
+  function applyParsedCommands(commands, commandString, done) {
     var active = model.getActiveLayer(),
         prevArcs = active?.dataset.arcs,
         prevTable = active?.layer.data,
         prevTableSize = prevTable ? prevTable.size() : 0,
         prevArcCount = prevArcs ? prevArcs.size() : 0,
-        job = new internal.Job(model);
+        undoCapture = undoFeasibility.beforeCommand(commands, commandString),
+        undoTransaction = createCommandUndoTransaction(commandString),
+        job = new internal.Job(model),
+        commandStart = Date.now();
 
     job.defs = globals; // share globals between runs
     job.vars = sharedVars; // share templating scope between runs
-    internal.runParsedCommands(commands, job, function(err) {
+    if (undoTransaction) {
+      setActiveUndoTransaction(undoTransaction);
+    }
+    try {
+      internal.runParsedCommands(commands, job, onCommandsDone);
+    } catch(e) {
+      if (undoTransaction) {
+        clearActiveUndoTransaction(undoTransaction);
+      }
+      throw e;
+    }
+
+    function onCommandsDone(err) {
       var flags = getCommandFlags(commands),
+          historyIds = [],
           active2 = model.getActiveLayer(),
           postArcs = active2?.dataset.arcs,
           postArcCount = postArcs ? postArcs.size() : 0,
@@ -451,6 +471,9 @@ export function Console(gui) {
           sameTable = prevTable == postTable && prevTableSize == postTableSize,
           sameArcs = prevArcs == postArcs && postArcCount == prevArcCount;
 
+      if (undoTransaction) {
+        clearActiveUndoTransaction(undoTransaction);
+      }
       // kludge to signal map that filtered arcs need refreshing
       // TODO: find a better solution, outside the console
       if (!sameArcs) {
@@ -467,8 +490,111 @@ export function Console(gui) {
       // signal the map to update even if an error has occured, because the
       // commands may have partially succeeded and changes may have occured to
       // the data.
-      done(err, flags);
+      undoFeasibility.afterCommand(undoCapture, {error: err, flags: flags});
+      if (!err) {
+        commandString = internal.standardizeConsoleCommands(commandString);
+        historyIds.push(gui.session.consoleCommands(commandString));
+        // kludge to terminate unclosed -if blocks
+        if (commandString.includes('-if') && !commandString.includes('-endif')) {
+          historyIds.push(gui.session.consoleCommands('-endif'));
+        }
+      }
+      addCommandUndoHistory(undoTransaction, err, flags, historyIds).then(function(undoTiming) {
+        logCommandTiming(commandString, commands, err, Date.now() - commandStart, undoTiming);
+        done(err, flags);
+      }).catch(function(e) {
+        console.error(e);
+        consoleWarn('Undo state was not saved:', e.message || e);
+        logCommandTiming(commandString, commands, err || e, Date.now() - commandStart, {
+          error: e.message || String(e)
+        });
+        done(err, flags);
+      });
+    }
+  }
+
+  function createCommandUndoTransaction(commandString) {
+    var Transaction;
+    if (!isCommandUndoEnabled()) return null;
+    storedUndoHistory.getPayloadStore();
+    Transaction = internal.UndoTransaction.UndoTransaction || internal.UndoTransaction;
+    return new Transaction(commandString);
+  }
+
+  function setActiveUndoTransaction(tx) {
+    var tracking = internal.UndoTracking;
+    if (tracking && tracking.setActiveUndoTransaction) {
+      tracking.setActiveUndoTransaction(tx);
+    } else {
+      internal.setActiveUndoTransaction(tx);
+    }
+  }
+
+  function clearActiveUndoTransaction(tx) {
+    var tracking = internal.UndoTracking;
+    if (tracking && tracking.clearActiveUndoTransaction) {
+      tracking.clearActiveUndoTransaction(tx);
+    } else {
+      internal.clearActiveUndoTransaction(tx);
+    }
+  }
+
+  async function addCommandUndoHistory(tx, err, flags, historyIds) {
+    return storedUndoHistory.addTransaction(tx, {
+      error: err,
+      flags: flags,
+      entryPrefix: 'command',
+      maxStates: getCommandUndoHistoryLimit(),
+      onUndo: function() {
+        gui.session.setCommandsActive(historyIds, false);
+      },
+      onRedo: function() {
+        gui.session.setCommandsActive(historyIds, true);
+      }
     });
+  }
+
+  function isCommandUndoEnabled() {
+    var opt = gui.options && (gui.options.undoCommands || gui.options.appUndo);
+    var query = getQueryValue('undo');
+    if (!gui.undo || typeof gui.undo.addHistoryState != 'function') return false;
+    if (opt === true || query == 'on' || query == 'commands') return true;
+    try {
+      return window.localStorage && window.localStorage.getItem('mapshaper.undo') == 'on';
+    } catch(e) {
+      return false;
+    }
+  }
+
+  function getCommandUndoHistoryLimit() {
+    var opt = gui.options && gui.options.undoHistoryLimit;
+    return opt > 0 ? opt : 10;
+  }
+
+  function logCommandTiming(commandString, commands, err, totalMillis, undoTiming) {
+    var enabled = getQueryValue('command-timing') == 'on' ||
+      getQueryValue('undo-timing') == 'on';
+    var undoMillis = undoTiming && undoTiming.undoMillis || 0;
+    if (!enabled || typeof console == 'undefined' || !console.log) return;
+    console.log('[mapshaper command timing]', {
+      command: commandString,
+      commandNames: commands.map(function(cmd) { return cmd.name; }),
+      failed: !!err,
+      commandMillis: totalMillis - undoMillis,
+      undoMillis: undoMillis,
+      redoCaptureMillis: undoTiming && undoTiming.redoCaptureMillis || 0,
+      storeMillis: undoTiming && undoTiming.storeMillis || 0,
+      totalMillis: totalMillis,
+      undo: undoTiming || null
+    });
+  }
+
+  function getQueryValue(key) {
+    var rxp, match;
+    if (typeof window == 'undefined' || !window.location) return null;
+    rxp = new RegExp('[?&]' + key + '=([^&]+)');
+    match = rxp.exec(window.location.search);
+    return match ? decodeURIComponent(match[1]) : null;
   }
 
   function onError(err) {

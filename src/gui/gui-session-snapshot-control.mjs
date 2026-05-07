@@ -45,6 +45,15 @@ export function SessionSnapshots(gui) {
   var _menuTimeout;
   var btn, menu;
 
+  gui.sessionSnapshots = {
+    saveSnapshot: function() {
+      return saveSnapshot(gui);
+    },
+    restoreLatestSnapshot: function() {
+      return restoreLatestSnapshot(gui);
+    }
+  };
+
   init();
 
   async function init() {
@@ -92,19 +101,6 @@ export function SessionSnapshots(gui) {
     var snapshots = await fetchSnapshotList();
 
     menu.empty();
-
-    if (!gui.session.isEmpty()) {
-      // Surface the console "history" command via the snapshot menu so users
-      // can browse the session's command history without knowing about the
-      // console keyword. Hidden when there's nothing to show.
-      addMenuLink({
-        slug: 'history',
-        label: 'view session history',
-        action: function(gui) {
-          gui.console.runCommand('history');
-        }
-      });
-    }
 
     addMenuLink({
       slug: 'stash',
@@ -244,7 +240,18 @@ async function restoreSnapshotById(id, gui) {
   // was in effect when the snapshot was taken. If the snapshot has no history
   // field (e.g. older snapshots), this resets to a clean state.
   gui.session.restoreHistorySnapshot(data.history);
+  if (gui.undo) gui.undo.clear();
   gui.clearMode();
+}
+
+async function restoreLatestSnapshot(gui) {
+  var snapshots = await fetchSnapshotList();
+  var latest = snapshots.reduce(function(memo, item) {
+    return !memo || item.created > memo.created ? item : memo;
+  }, null);
+  if (!latest) return false;
+  await restoreSnapshotById(latest.id, gui);
+  return true;
 }
 
 // Import datasets from a packed .msx buffer.

@@ -1,0 +1,18 @@
+{
+  "type": "FeatureCollection",
+  "features": [{
+    "type": "Feature",
+    "properties": {"name": "a"},
+    "geometry": {
+      "type": "MultiPolygon",
+      "coordinates": [
+        [[[1, 100], [1, 200], [2, 200], [2, 100], [1, 100]]],
+        [[[1, 1], [1, 2], [2, 1], [1, 1]]]
+      ]
+    }
+  }, {
+    "type": "Feature",
+    "properties": {"name": "b"},
+    "geometry": null
+  }]
+}

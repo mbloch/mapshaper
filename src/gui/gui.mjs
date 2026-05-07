@@ -8,10 +8,12 @@ import { IntersectionControl } from './gui-intersection-control';
 import { ExportControl } from './gui-export-control';
 import { LayerControl } from './gui-layer-control';
 import { HeaderMenu } from './gui-header-menu';
+import { HistoryMenu } from './gui-history-menu';
 import { GuiInstance } from './gui-instance';
 import { onload } from './dom-utils';
 import { GUI } from './gui-lib';
 import { El } from './gui-el';
+import { createUndoTestApi, isUndoTestApiEnabled } from './gui-undo-test-api';
 
 // Refresh detection for mapshaper-gui: if the previous incarnation of this
 // tab set the 'navigating away' marker on pagehide, then this page load is a
@@ -88,8 +90,12 @@ var startEditing = function() {
   new LayerControl(gui);
   HeaderMenu();
   gui.console = new Console(gui);
+  HistoryMenu(gui);
   window.mapshaper.getRuntimeStateContext = gui.getRuntimeStateContext;
   window.mapshaper.stringifyRuntimeStateContext = gui.stringifyRuntimeStateContext;
+  if (isUndoTestApiEnabled()) {
+    window.mapshaper.undoTest = createUndoTestApi(gui);
+  }
 
   startEditing = function() {};
 

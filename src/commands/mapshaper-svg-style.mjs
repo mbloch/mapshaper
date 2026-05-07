@@ -6,7 +6,7 @@ import { isSupportedSvgStyleProperty } from '../svg/svg-properties';
 import cmd from '../mapshaper-cmd';
 
 cmd.svgStyle = function(lyr, dataset, opts) {
-  var filterFn;
+  var filterFn, table, fields, hasNewFields;
   if (getFeatureCount(lyr) === 0) {
     return;
   }
@@ -19,6 +19,20 @@ cmd.svgStyle = function(lyr, dataset, opts) {
   if (opts.clear) {
     lyr.data.getFields().filter(isSupportedSvgStyleProperty).forEach(lyr.data.deleteField, lyr.data);
   }
+  table = getLayerDataTable(lyr);
+  fields = Object.keys(opts).map(function(optName) {
+    return optName.replace('_', '-');
+  }).filter(isSupportedSvgStyleProperty);
+  hasNewFields = fields.some(function(field) {
+    return !table.fieldExists(field);
+  });
+  if (fields.length > 0) {
+    if (hasNewFields) {
+      table.captureSchemaBefore({operation: 'style', fields: fields});
+    } else {
+      table.captureFieldsBefore(fields, {operation: 'style'});
+    }
+  }
   Object.keys(opts).forEach(function(optName) {
     var svgName = optName.replace('_', '-'); // undo cli parser name conversion
     if (!isSupportedSvgStyleProperty(svgName)) {
@@ -26,7 +40,7 @@ cmd.svgStyle = function(lyr, dataset, opts) {
     }
     var strVal = opts[optName].trim();
     var accessor = getSymbolPropertyAccessor(strVal, svgName, lyr);
-    getLayerDataTable(lyr).getRecords().forEach(function(rec, i) {
+    table.getRecords().forEach(function(rec, i) {
       if (filterFn && !filterFn(i)) {
         // make sure field exists if record is excluded by filter
         if (svgName in rec === false) {
@@ -37,5 +51,12 @@ cmd.svgStyle = function(lyr, dataset, opts) {
       }
     });
   });
+  if (fields.length > 0) {
+    if (hasNewFields) {
+      table.markSchemaChanged({operation: 'style'});
+    } else {
+      table.markFieldsChanged(fields, {operation: 'style'});
+    }
+  }
 };
 

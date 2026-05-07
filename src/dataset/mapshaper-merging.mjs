@@ -1,6 +1,12 @@
 import { requireDatasetsHaveCompatibleCRS } from '../crs/mapshaper-projections';
 import { forEachArcId } from '../paths/mapshaper-path-utils';
 import { copyLayerShapes } from '../dataset/mapshaper-layer-utils';
+import {
+  markDatasetChanged,
+  markLayerChanged,
+  noteDatasetWillChange,
+  noteLayerWillChange
+} from '../undo/mapshaper-undo-tracking';
 import utils from '../utils/mapshaper-utils';
 import { verbose, stop, error } from '../utils/mapshaper-logging';
 import { ArcCollection } from '../paths/mapshaper-arcs';
@@ -9,11 +15,13 @@ import { buildTopology } from '../topology/mapshaper-topology';
 // Merge arcs from one or more source datasets into target dataset
 // return array of layers from the source dataset (instead of adding them to the target dataset)
 export function mergeDatasetsIntoDataset(dataset, datasets) {
+  noteDatasetWillChange(dataset, {operation: 'mergeDatasetsIntoDataset'});
   var merged = mergeDatasets([dataset].concat(datasets));
   var mergedLayers = datasets.reduce(function(memo, dataset) {
     return memo.concat(dataset.layers);
   }, []);
   dataset.arcs = merged.arcs;
+  markDatasetChanged(dataset, {operation: 'mergeDatasetsIntoDataset'});
   return mergedLayers;
 }
 
@@ -48,7 +56,9 @@ export function mergeCommandTargets(targets, catalog) {
   }
 
   // remove old datasets after merging, so catalog is not affected if merge throws an error
-  targetDatasets.forEach(catalog.removeDataset);
+  targetDatasets.forEach(function(dataset) {
+    catalog.removeDataset(dataset);
+  });
   catalog.addDataset(merged); // sets default target to all layers in merged dataset
   catalog.setDefaultTarget(targetLayers, merged); // reset default target
   return [{
@@ -79,9 +89,15 @@ export function mergeDatasets(arr) {
     mergeDatasetInfo(merged, dataset);
     dataset.layers.forEach(function(lyr) {
       if (lyr.geometry_type == 'polygon' || lyr.geometry_type == 'polyline') {
+        if (arcCount > 0) {
+          noteLayerWillChange(lyr, {operation: 'mergeDatasets', unit: 'arc-ids'});
+        }
         forEachArcId(lyr.shapes, function(id) {
           return id < 0 ? id - arcCount : id + arcCount;
         });
+        if (arcCount > 0) {
+          markLayerChanged(lyr, {operation: 'mergeDatasets', unit: 'arc-ids'});
+        }
       }
       merged.layers.push(lyr);
     });

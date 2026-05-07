@@ -1,6 +1,7 @@
 import cmd from '../mapshaper-cmd';
 import { mergeLayersForOverlay } from '../clipping/mapshaper-overlay-utils';
 import { requirePolygonLayer, copyLayer } from '../dataset/mapshaper-layer-utils';
+import { markDatasetChanged, noteDatasetWillChange } from '../undo/mapshaper-undo-tracking';
 
 // TODO: make sure that the inlay shapes and data are not shared
 cmd.inlay = function(targetLayers, src, targetDataset, opts) {
@@ -17,6 +18,8 @@ cmd.inlay = function(targetLayers, src, targetDataset, opts) {
     lyr2.name = lyr0.name;
     return lyr2;
   });
+  noteDatasetWillChange(targetDataset, {operation: 'inlay', unit: 'arcs'});
   targetDataset.arcs = mergedDataset.arcs;
+  markDatasetChanged(targetDataset, {operation: 'inlay', unit: 'arcs'});
   return outputLayers;
 };

@@ -7,6 +7,7 @@ import { message } from '../utils/mapshaper-logging';
 import utils from '../utils/mapshaper-utils';
 import cmd from '../mapshaper-cmd';
 import { absArcId } from '../paths/mapshaper-arc-utils';
+import { markLayerChanged, noteLayerWillChange } from '../undo/mapshaper-undo-tracking';
 
 // Remove small-area polygon rings (very simple implementation of sliver removal)
 // TODO: more sophisticated sliver detection (e.g. could consider ratio of area to perimeter)
@@ -32,7 +33,9 @@ function filterSlivers(lyr, dataset, optsArg) {
     }
   };
 
+  noteLayerWillChange(lyr, {operation: 'filter-slivers', unit: 'shapes'});
   editShapes(lyr.shapes, pathFilter);
+  markLayerChanged(lyr, {operation: 'filter-slivers', unit: 'shapes'});
   message(utils.format("Removed %'d sliver%s using %s", removed, utils.pluralSuffix(removed), filterData.label));
 
   // Remove null shapes (likely removed by clipping/erasing, although possibly already present)
@@ -67,7 +70,9 @@ export function filterClipSlivers(lyr, clipLyr, arcs) {
   };
 
   countArcsInShapes(clipLyr.shapes, flags);
+  noteLayerWillChange(lyr, {operation: 'filter-clip-slivers', unit: 'shapes'});
   editShapes(lyr.shapes, pathFilter);
+  markLayerChanged(lyr, {operation: 'filter-clip-slivers', unit: 'shapes'});
   return removed;
 }
 

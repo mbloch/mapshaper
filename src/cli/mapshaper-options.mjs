@@ -1097,19 +1097,29 @@ export function getOptionParser() {
     .option('no-replace', noReplaceOpt);
 
   parser.command('grid')
-    .describe('create a grid of square or hexagonal polygons')
+    .describe('create a grid of square, hexagonal, rhombus or triangle polygons')
     .option('type', {
-      describe: 'square, hex or hex2 (default is square)'
+      describe: 'square, square2, hex, hex2, rhombus, rhombus2, triangle or triangle2 (default is square)'
     })
     .option('interval', {
       describe: 'side length (e.g. 500m, 12km)',
       type: 'distance'
     })
     .option('cols', {
+      describe: 'target number of grid columns',
       type: 'integer'
     })
     .option('rows', {
+      describe: 'target number of grid rows',
       type: 'integer'
+    })
+    .option('cells', {
+      describe: 'target number of grid cells',
+      type: 'integer'
+    })
+    .option('cell-scale', {
+      describe: 'scale factor for cells, between 0 and 2',
+      type: 'number'
     })
     // .option('bbox', {
     //   type: 'bbox',

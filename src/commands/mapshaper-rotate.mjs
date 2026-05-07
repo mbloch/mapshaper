@@ -17,6 +17,7 @@ import {
 import { cleanProjectedPathLayers } from '../commands/mapshaper-proj';
 import { stop, error, debug } from '../utils/mapshaper-logging';
 import { buildTopology } from '../topology/mapshaper-topology';
+import { withActiveUndoTransaction } from '../undo/mapshaper-undo-tracking';
 import {
   samePoint,
   snapToEdge,
@@ -48,8 +49,10 @@ export function rotateDataset(dataset, opts) {
   });
   editor.done();
   if (!opts.debug) {
-    buildTopology(dataset);
-    cleanProjectedPathLayers(dataset);
+    withActiveUndoTransaction(null, function() {
+      buildTopology(dataset);
+      cleanProjectedPathLayers(dataset);
+    });
   }
 }
 

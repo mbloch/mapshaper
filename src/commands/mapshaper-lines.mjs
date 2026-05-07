@@ -11,6 +11,7 @@ import cmd from '../mapshaper-cmd';
 import geom from '../geom/mapshaper-geom';
 import { stop } from '../utils/mapshaper-logging';
 import utils from '../utils/mapshaper-utils';
+import { markDatasetChanged, noteDatasetWillChange } from '../undo/mapshaper-undo-tracking';
 
 cmd.lines = function(lyr, dataset, opts) {
   opts = opts || {};
@@ -70,7 +71,9 @@ function convertShapesToSegments(lyr, dataset) {
     });
   }
   var merged = mergeDatasets([dataset, importGeoJSON(geojson, {})]);
+  noteDatasetWillChange(dataset, {operation: 'lines-segments', unit: 'arcs'});
   dataset.arcs = merged.arcs;
+  markDatasetChanged(dataset, {operation: 'lines-segments', unit: 'arcs'});
   // buildTopology(dataset);
   return merged.layers.pop();
 }

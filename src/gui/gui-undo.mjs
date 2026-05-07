@@ -1,4 +1,5 @@
 import { internal } from './gui-core';
+import { createStoredUndoHistory } from './gui-stored-undo-history';
 import {
   setPointCoords,
   setVertexCoords,
@@ -15,20 +16,31 @@ import {
 var copyRecord = internal.copyRecord;
 
 function isUndoEvt(e) {
-  return (e.ctrlKey || e.metaKey) && !e.shiftKey && e.key == 'z';
+  return (e.ctrlKey || e.metaKey) && !e.shiftKey && getEventKey(e) == 'z';
 }
 
 function isRedoEvt(e) {
-  return (e.ctrlKey || e.metaKey) && (e.shiftKey && e.key == 'z' || !e.shiftKey && e.key == 'y');
+  var key = getEventKey(e);
+  return (e.ctrlKey || e.metaKey) && (e.shiftKey && key == 'z' || !e.shiftKey && key == 'y');
+}
+
+function getEventKey(e) {
+  return (e.key || '').toLowerCase();
 }
 
 export function Undo(gui) {
-  var history, offset, stashedUndo;
+  var history, offset, stashedUndo, storedUndoHistory, editSession;
+  storedUndoHistory = createStoredUndoHistory(gui);
+  editSession = createEditSessionUndo();
   reset();
 
-  // Undo history is cleared when the editing mode changes.
+  // Closure-based editing states are cleared when the interaction mode changes.
+  // App command states opt out, because view/inspection modes should not erase
+  // command history.
   gui.on('interaction_mode_change', function(e) {
-    gui.undo.clear();
+    editSession.finish(e.prev_mode);
+    clearModeHistory();
+    editSession.start(e.mode);
   });
 
   function reset() {
@@ -60,8 +72,8 @@ export function Undo(gui) {
   }
 
   gui.keyboard.on('keydown', function(evt) {
-    var e = evt.originalEvent,
-        kc = e.keyCode;
+    var e = evt.originalEvent;
+    if (targetHandlesTextUndo(e.target)) return;
     if (isUndoEvt(e)) {
       this.undo();
       e.stopPropagation();
@@ -73,6 +85,25 @@ export function Undo(gui) {
       e.preventDefault();
     }
   }, this, 10);
+
+  function targetHandlesTextUndo(target) {
+    var tagName, type;
+    if (!target) return false;
+    if (target.isContentEditable || closestContentEditable(target)) return true;
+    tagName = (target.tagName || '').toLowerCase();
+    if (tagName == 'textarea') return true;
+    if (tagName != 'input') return false;
+    type = (target.type || 'text').toLowerCase();
+    return !'button,checkbox,color,file,hidden,image,radio,range,reset,submit'.includes(type);
+  }
+
+  function closestContentEditable(target) {
+    while (target && target.nodeType == 1) {
+      if (target.getAttribute && target.getAttribute('contenteditable') == 'true') return target;
+      target = target.parentNode;
+    }
+    return null;
+  }
 
   gui.on('symbol_dragend', function(e) {
     var target = e.data.target;
@@ -194,6 +225,7 @@ export function Undo(gui) {
   });
 
   this.clear = function() {
+    disposeHistoryItems(history);
     reset();
     fireHistoryChange();
   };
@@ -206,13 +238,79 @@ export function Undo(gui) {
     return offset > 0;
   };
 
-  function addHistoryState(undo, redo) {
+  this.addHistoryState = function(undo, redo, cleanup, opts) {
+    addHistoryState(undo, redo, cleanup, opts);
+  };
+
+  this.evictOldestHistoryState = function(opts) {
+    return evictOldestHistoryState(opts || {});
+  };
+
+  function addHistoryState(undo, redo, cleanup, opts) {
+    var preserveOnModeChange = !!(opts && opts.preserveOnModeChange);
     if (offset > 0) {
-      history.splice(-offset);
+      disposeHistoryItems(history.splice(-offset));
       offset = 0;
     }
-    history.push({undo, redo});
+    history.push({
+      undo: undo,
+      redo: redo,
+      cleanup: cleanup,
+      evictToken: opts && opts.evictToken,
+      preserveOnModeChange: preserveOnModeChange
+    });
+    if (!preserveOnModeChange) {
+      editSession.noteEdit();
+    }
+    trimHistory(opts);
     fireHistoryChange();
+  }
+
+  async function evictOldestHistoryState(opts) {
+    var exclude = opts && opts.exclude;
+    var index = -1;
+    for (var i = 0; i < history.length; i++) {
+      if (!exclude || history[i].evictToken !== exclude) {
+        index = i;
+        break;
+      }
+    }
+    if (index == -1) return false;
+    var item = history.splice(index, 1)[0];
+    if (index >= history.length + 1 - offset) {
+      offset--;
+    }
+    await disposeHistoryItem(item);
+    fireHistoryChange();
+    return true;
+  }
+
+  function clearModeHistory() {
+    var doneCount = history.length - offset;
+    var nextHistory = [];
+    var removed = [];
+    var nextDoneCount = 0;
+    history.forEach(function(item, i) {
+      if (item.preserveOnModeChange) {
+        if (i < doneCount) nextDoneCount++;
+        nextHistory.push(item);
+      } else {
+        removed.push(item);
+      }
+    });
+    if (removed.length === 0) return;
+    disposeHistoryItems(removed);
+    history = nextHistory;
+    offset = history.length - nextDoneCount;
+    fireHistoryChange();
+  }
+
+  function trimHistory(opts) {
+    var max = opts && opts.maxStates;
+    var overflow;
+    if (!(max > 0) || history.length <= max) return;
+    overflow = history.length - max;
+    disposeHistoryItems(history.splice(0, overflow));
   }
 
   function fireHistoryChange() {
@@ -229,10 +327,9 @@ export function Undo(gui) {
     var item = getHistoryItem();
     if (item) {
       offset++;
-      item.undo();
-      gui.dispatchEvent('undo_redo_post', {type: 'undo'});
-      gui.dispatchEvent('map-needs-refresh');
-      fireHistoryChange();
+      return runHistoryAction(item.undo, 'undo', function() {
+        offset--;
+      });
     }
   };
 
@@ -241,15 +338,152 @@ export function Undo(gui) {
     if (offset <= 0) return;
     offset--;
     var item = getHistoryItem();
-    item.redo();
-    gui.dispatchEvent('undo_redo_post', {type: 'redo'});
-    gui.dispatchEvent('map-needs-refresh');
-    fireHistoryChange();
+    return runHistoryAction(item.redo, 'redo', function() {
+      offset++;
+    });
   };
+
+  function runHistoryAction(action, type, rollback) {
+    return Promise.resolve(action()).then(function() {
+      gui.dispatchEvent('undo_redo_post', {type: type});
+      gui.dispatchEvent('map-needs-refresh');
+      fireHistoryChange();
+    }).catch(function(err) {
+      rollback();
+      fireHistoryChange();
+      console.error(err);
+      throw err;
+    });
+  }
+
+  function disposeHistoryItems(items) {
+    items.forEach(function(item) {
+      disposeHistoryItem(item);
+    });
+  }
+
+  function disposeHistoryItem(item) {
+    var result;
+    if (!item || !item.cleanup) return Promise.resolve();
+    try {
+      result = item.cleanup();
+      if (result && typeof result.then == 'function') {
+        return result.catch(function() {});
+      }
+    } catch(e) {}
+    return Promise.resolve();
+  }
 
   function getHistoryItem() {
     var item = history[history.length - offset - 1];
     return item || null;
+  }
+
+  function createEditSessionUndo() {
+    var tx = null;
+    var changed = false;
+
+    return {
+      start: start,
+      finish: finish,
+      noteEdit: noteEdit
+    };
+
+    function start(nextMode) {
+      var target, Transaction;
+      if (!isEditSessionMode(nextMode)) return;
+      if (!appUndoIsEnabled()) return;
+      target = gui.model.getActiveLayer();
+      if (!target || !target.layer) return;
+      Transaction = getUndoTransactionConstructor();
+      if (!Transaction) return;
+      changed = false;
+      tx = new Transaction('edit session');
+      captureEditTarget(tx, target, nextMode);
+    }
+
+    function finish(prevMode) {
+      var finishedTx = tx;
+      var wasChanged = changed;
+      if (!finishedTx || !isEditSessionMode(prevMode)) {
+        resetSession();
+        return;
+      }
+      resetSession();
+      if (!wasChanged) return;
+      storedUndoHistory.addTransaction(finishedTx, {
+        flags: {select: true},
+        entryPrefix: 'edit-session',
+        maxStates: getEditSessionUndoHistoryLimit()
+      }).catch(function(e) {
+        console.error(e);
+      });
+    }
+
+    function noteEdit() {
+      if (tx) {
+        changed = true;
+      }
+    }
+
+    function resetSession() {
+      tx = null;
+      changed = false;
+    }
+  }
+
+  function captureEditTarget(tx, target, mode) {
+    var layer = target.layer;
+    var dataset = target.dataset;
+    if (mode == 'data' || mode == 'labels') {
+      if (layer.data) {
+        tx.captureTableBefore(layer.data, {operation: 'edit-session', mode: mode});
+      }
+      return;
+    }
+    tx.captureLayerBefore(layer, {operation: 'edit-session', mode: mode, unit: 'layer'});
+    if (layer.data) {
+      tx.captureTableBefore(layer.data, {operation: 'edit-session', mode: mode});
+    }
+    if (dataset && dataset.arcs && internal.layerHasPaths(layer)) {
+      tx.captureArcsBefore(dataset.arcs, {operation: 'edit-session', mode: mode});
+    }
+  }
+
+  function isEditSessionMode(mode) {
+    if (gui.interaction && gui.interaction.modeSupportsUndo) {
+      return gui.interaction.modeSupportsUndo(mode);
+    }
+    return ['data', 'labels', 'edit_points', 'edit_lines', 'edit_polygons', 'vertices', 'rectangles'].includes(mode);
+  }
+
+  function getUndoTransactionConstructor() {
+    return internal.UndoTransaction && (internal.UndoTransaction.UndoTransaction || internal.UndoTransaction);
+  }
+
+  function getEditSessionUndoHistoryLimit() {
+    var opt = gui.options && gui.options.undoHistoryLimit;
+    return opt > 0 ? opt : 10;
+  }
+
+  function appUndoIsEnabled() {
+    var opt = gui.options && (gui.options.undoCommands || gui.options.appUndo);
+    var query = getQueryValue('undo');
+    if (opt === true || query == 'on' || query == 'commands') return true;
+    if (gui.appUndoIsEnabled) return gui.appUndoIsEnabled();
+    try {
+      return window.localStorage && window.localStorage.getItem('mapshaper.undo') == 'on';
+    } catch(e) {
+      return false;
+    }
+  }
+
+  function getQueryValue(key) {
+    var rxp, match;
+    if (typeof window == 'undefined' || !window.location) return null;
+    rxp = new RegExp('[?&]' + key + '=([^&]+)');
+    match = rxp.exec(window.location.search);
+    return match ? decodeURIComponent(match[1]) : null;
   }
 
 }
