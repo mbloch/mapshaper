@@ -71,8 +71,10 @@ export function runCommandsXL(argv) {
   var child = require('child_process').exec(command, {}, function(err, stdout, stderr) {
     opts.callback(err);
   });
-  child.stdout.pipe(process.stdout);
-  child.stderr.pipe(process.stderr);
+  if (loggingEnabled()) {
+    child.stdout.pipe(process.stdout);
+    child.stderr.pipe(process.stderr);
+  }
   if (opts.promise) return opts.promise;
 }
 

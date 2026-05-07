@@ -23,7 +23,7 @@
     "node": ">=20.11.0"
   },
   "scripts": {
-    "test": "mocha test",
+    "test": "mocha --require test/mocha-hooks.mjs test",
     "build": "rollup --config",
     "docs": "node build-docs.mjs",
     "roadmap": "node build-roadmap.mjs",
