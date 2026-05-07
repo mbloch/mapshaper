@@ -1,3 +1,8 @@
+import {
+  appUndoForcedByUrl,
+  appUndoSettingIsOn
+} from './gui-app-undo';
+
 var APP_UNDO_KEY = 'mapshaper.undo';
 
 export function HistoryMenu(gui) {
@@ -123,19 +128,6 @@ function setItemEnabled(el, enabled) {
   el.attr('aria-disabled', enabled ? 'false' : 'true');
 }
 
-function appUndoForcedByUrl() {
-  var query = getQueryValue('undo');
-  return query == 'on' || query == 'commands';
-}
-
-function appUndoSettingIsOn() {
-  try {
-    return window.localStorage && window.localStorage.getItem(APP_UNDO_KEY) == 'on';
-  } catch(e) {
-    return false;
-  }
-}
-
 function setAppUndoEnabled(enabled) {
   try {
     if (window.localStorage) {
@@ -167,12 +159,4 @@ function formatBytes(bytes) {
     i++;
   }
   return (i === 0 ? String(value) : value.toFixed(value < 10 ? 1 : 0)) + ' ' + units[i];
-}
-
-function getQueryValue(key) {
-  var rxp, match;
-  if (typeof window == 'undefined' || !window.location) return null;
-  rxp = new RegExp('[?&]' + key + '=([^&]+)');
-  match = rxp.exec(window.location.search);
-  return match ? decodeURIComponent(match[1]) : null;
 }

@@ -3,7 +3,11 @@ import { utils, internal, mapshaper } from './gui-core';
 import { SimpleButton, ClickText } from './gui-elements';
 import { GUI } from './gui-lib';
 import { setZ, updateZ } from './gui-drawing-utils';
-import { createStoredUndoHistory } from './gui-stored-undo-history';
+import {
+  addUndoTransactionToHistory,
+  appUndoIsEnabled,
+  createUndoTransaction
+} from './gui-app-undo';
 
 /*
 How changes in the simplify control should affect other components
@@ -251,8 +255,8 @@ export var SimplifyControl = function(gui) {
 
   function startSimplifyUndoSession(dataset) {
     var tx;
-    if (!dataset || !dataset.arcs || !appUndoIsEnabled()) return;
-    tx = createSimplifyUndoTransaction();
+    if (!dataset || !dataset.arcs || !appUndoIsEnabled(gui)) return;
+    tx = createUndoTransaction(gui, 'simplify');
     if (!tx) return;
     tx.captureArcsSimplificationBefore(dataset.arcs, {operation: 'simplifyTool'});
     tx.captureDatasetInfoBefore(dataset, {operation: 'simplifyTool'});
@@ -270,52 +274,10 @@ export var SimplifyControl = function(gui) {
     var session = undoSession;
     undoSession = null;
     if (!session || !session.changed) return;
-    getStoredUndoHistory().addTransaction(session.tx, {
+    addUndoTransactionToHistory(gui, session.tx, {
       flags: {simplify: true, info: true},
-      entryPrefix: 'simplify-tool',
-      maxStates: getUndoHistoryLimit()
-    }).catch(function(e) {
-      console.error(e);
+      entryPrefix: 'simplify-tool'
     });
-  }
-
-  function createSimplifyUndoTransaction() {
-    var Transaction;
-    if (!gui.undo || typeof gui.undo.addHistoryState != 'function') return null;
-    Transaction = internal.UndoTransaction && (internal.UndoTransaction.UndoTransaction || internal.UndoTransaction);
-    return Transaction ? new Transaction('simplify') : null;
-  }
-
-  function getStoredUndoHistory() {
-    if (!gui.storedUndoHistory) {
-      gui.storedUndoHistory = createStoredUndoHistory(gui);
-    }
-    return gui.storedUndoHistory;
-  }
-
-  function getUndoHistoryLimit() {
-    var opt = gui.options && gui.options.undoHistoryLimit;
-    return opt > 0 ? opt : 10;
-  }
-
-  function appUndoIsEnabled() {
-    var opt = gui.options && (gui.options.undoCommands || gui.options.appUndo);
-    var query = getQueryValue('undo');
-    if (opt === true || query == 'on' || query == 'commands') return true;
-    if (gui.appUndoIsEnabled) return gui.appUndoIsEnabled();
-    try {
-      return window.localStorage && window.localStorage.getItem('mapshaper.undo') == 'on';
-    } catch(e) {
-      return false;
-    }
-  }
-
-  function getQueryValue(key) {
-    var rxp, match;
-    if (typeof window == 'undefined' || !window.location) return null;
-    rxp = new RegExp('[?&]' + key + '=([^&]+)');
-    match = rxp.exec(window.location.search);
-    return match ? decodeURIComponent(match[1]) : null;
   }
 
   function updateSliderDisplay() {
