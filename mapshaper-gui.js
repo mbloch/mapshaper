@@ -1412,10 +1412,10 @@
   }
   var require$1 = f;
 
-  var idb = require$1('idb-keyval');
+  var idb$1 = require$1('idb-keyval');
   // https://github.com/jakearchibald/idb
   // https://github.com/jakearchibald/idb-keyval
-  var sessionId = getUniqId('session');
+  var sessionId = getUniqId$1('session');
   var snapshotCount = 0;
   // IDs of snapshots created (and not removed) by this tab. Tracked in memory
   // so the pagehide handler can fire a single batched delMany() without first
@@ -1428,13 +1428,13 @@
   //   as dead. Generous enough to tolerate backgrounded/throttled tabs.
   // BROADCAST_DISCOVERY_MS: how long startup waits for live tabs to identify
   //   themselves over BroadcastChannel before deciding what to delete.
-  var HEARTBEAT_INTERVAL_MS = 30 * 1000;
-  var STALE_THRESHOLD_MS = 5 * 60 * 1000;
+  var HEARTBEAT_INTERVAL_MS$1 = 30 * 1000;
+  var STALE_THRESHOLD_MS$1 = 5 * 60 * 1000;
   var BROADCAST_DISCOVERY_MS = 200;
   var SESSION_DATA_KEY = 'session_data';
   var BROADCAST_CHANNEL_NAME = 'mapshaper-snapshots';
 
-  function getUniqId(prefix) {
+  function getUniqId$1(prefix) {
     return prefix + '_' + (Math.random() + 1).toString(36).substring(2,8);
   }
 
@@ -1453,6 +1453,15 @@
     var _menuOpen = false;
     var _menuTimeout;
     var btn, menu;
+
+    gui.sessionSnapshots = {
+      saveSnapshot: function() {
+        return saveSnapshot(gui);
+      },
+      restoreLatestSnapshot: function() {
+        return restoreLatestSnapshot(gui);
+      }
+    };
 
     init();
 
@@ -1502,19 +1511,6 @@
 
       menu.empty();
 
-      if (!gui.session.isEmpty()) {
-        // Surface the console "history" command via the snapshot menu so users
-        // can browse the session's command history without knowing about the
-        // console keyword. Hidden when there's nothing to show.
-        addMenuLink({
-          slug: 'history',
-          label: 'view session history',
-          action: function(gui) {
-            gui.console.runCommand('history');
-          }
-        });
-      }
-
       addMenuLink({
         slug: 'stash',
         // label: 'save data snapshot',
@@ -1543,7 +1539,7 @@
           closeMenu(100);
         }).text('restore');
         El('span').addClass('save-menu-btn').appendTo(line).on('click', async function(e) {
-          var obj = await idb.get(item.id);
+          var obj = await idb$1.get(item.id);
           await internal.compressSnapshotForExport(obj);
           var buf = internal.pack(obj);
           var fileName = `snapshot-${String(item.number).padStart(2, '0')}.msx`;
@@ -1606,7 +1602,7 @@
         display_size: formatSize(size)
       };
 
-      await idb.set(entry.id, obj);
+      await idb$1.set(entry.id, obj);
       ownSnapshotIds.add(entry.id);
       await addToIndex(entry);
       renderMenu();
@@ -1630,7 +1626,7 @@
   }
 
   async function removeSnapshotById(id, gui) {
-    await idb.del(id);
+    await idb$1.del(id);
     ownSnapshotIds.delete(id);
     return updateIndex(function(index) {
       index.snapshots = index.snapshots.filter(function(snap) {
@@ -1642,7 +1638,7 @@
   async function restoreSnapshotById(id, gui) {
     var data;
     try {
-      data = await internal.restoreSessionData(await idb.get(id));
+      data = await internal.restoreSessionData(await idb$1.get(id));
     } catch(e) {
       console.error(e);
       stop$1('Snapshot is not available');
@@ -1653,7 +1649,18 @@
     // was in effect when the snapshot was taken. If the snapshot has no history
     // field (e.g. older snapshots), this resets to a clean state.
     gui.session.restoreHistorySnapshot(data.history);
+    if (gui.undo) gui.undo.clear();
     gui.clearMode();
+  }
+
+  async function restoreLatestSnapshot(gui) {
+    var snapshots = await fetchSnapshotList();
+    var latest = snapshots.reduce(function(memo, item) {
+      return !memo || item.created > memo.created ? item : memo;
+    }, null);
+    if (!latest) return false;
+    await restoreSnapshotById(latest.id, gui);
+    return true;
   }
 
   // Import datasets from a packed .msx buffer.
@@ -1714,12 +1721,12 @@
   }
 
   async function fetchIndex() {
-    var index = await idb.get('msx_index');
+    var index = await idb$1.get('msx_index');
     return index || {snapshots: []};
   }
 
   async function updateIndex(action) {
-    return idb.update('msx_index', function(index) {
+    return idb$1.update('msx_index', function(index) {
       if (!index || !Array.isArray(index.snapshots)) {
         index = {snapshots: []};
       }
@@ -1739,7 +1746,7 @@
   // (e.g. cleared by another tab). Cheaper than reclaimDeadSessionData; used
   // before rendering the menu to keep stale entries out of the UI.
   async function pruneIndexAgainstKeys() {
-    var keys = await idb.keys();
+    var keys = await idb$1.keys();
     return updateIndex(function(index) {
       index.snapshots = index.snapshots.filter(function(snap) {
         return keys.includes(snap.id);
@@ -1759,7 +1766,7 @@
   // Delete every snapshot in IndexedDB whose session id is not in liveSessions,
   // and keep the on-disk index consistent with the actual key set.
   async function reclaimDeadSessionData(liveSessions) {
-    var keys = await idb.keys();
+    var keys = await idb$1.keys();
     var doomedKeys = [];
     var doomedSessions = new Set();
     keys.forEach(function(key) {
@@ -1782,12 +1789,12 @@
           sizeBytes += snap.size;
         }
       });
-      await Promise.all(doomedKeys.map(function(k) { return idb.del(k); }));
+      await Promise.all(doomedKeys.map(function(k) { return idb$1.del(k); }));
     }
 
     // Drop index entries pointing to deleted snapshots, and any entries whose
     // session is dead even if the underlying key was already gone.
-    var remainingKeys = await idb.keys();
+    var remainingKeys = await idb$1.keys();
     var keySet = new Set(remainingKeys);
     await updateIndex(function(index) {
       index.snapshots = index.snapshots.filter(function(snap) {
@@ -1856,7 +1863,7 @@
 
   function startLifecycle() {
     touchOwnSession();
-    _heartbeatTimer = setInterval(touchOwnSession, HEARTBEAT_INTERVAL_MS);
+    _heartbeatTimer = setInterval(touchOwnSession, HEARTBEAT_INTERVAL_MS$1);
     if (typeof BroadcastChannel == 'function') {
       try {
         _channel = new BroadcastChannel(BROADCAST_CHANNEL_NAME);
@@ -1885,7 +1892,7 @@
       // promptly.
       var data = readSessionData();
       Object.keys(data).forEach(function(sid) {
-        if (Date.now() - data[sid] < STALE_THRESHOLD_MS) {
+        if (Date.now() - data[sid] < STALE_THRESHOLD_MS$1) {
           live.add(sid);
         }
       });
@@ -1936,7 +1943,7 @@
     ownSnapshotIds.clear();
     // Delete the blobs in a single transaction.
     try {
-      idb.delMany(ids).catch(function() {});
+      idb$1.delMany(ids).catch(function() {});
     } catch (err) {}
     // Drop our entries from the index in a separate (also fire-and-forget)
     // transaction. If only one of the two completes, startup cleanup will
@@ -1970,7 +1977,7 @@
     var now = Date.now();
     var changed = false;
     Object.keys(data).forEach(function(sid) {
-      if (now - data[sid] > STALE_THRESHOLD_MS) {
+      if (now - data[sid] > STALE_THRESHOLD_MS$1) {
         delete data[sid];
         changed = true;
       }
@@ -2008,6 +2015,3553 @@
     }
   }
 
+  var idb = require$1('idb-keyval');
+  var DEFAULT_INDEX_KEY = 'msu_index';
+  var DEFAULT_SESSION_KEY = 'mapshaper_undo_sessions';
+  var DEFAULT_KEY_PREFIX = 'msu';
+  var HEARTBEAT_INTERVAL_MS = 30 * 1000;
+  var STALE_THRESHOLD_MS = 5 * 60 * 1000;
+
+  function createUndoPayloadStore(opts) {
+    opts = opts || {};
+    var win = opts.window || getWindow();
+    var backend = opts.backend || createBackend(win);
+    var sessionId = opts.sessionId || getUniqId('undo');
+    var indexKey = opts.indexKey || DEFAULT_INDEX_KEY;
+    var sessionKey = opts.sessionKey || DEFAULT_SESSION_KEY;
+    var keyPrefix = opts.keyPrefix || DEFAULT_KEY_PREFIX;
+    var heartbeatInterval = opts.heartbeatInterval || HEARTBEAT_INTERVAL_MS;
+    var staleThreshold = opts.staleThreshold || STALE_THRESHOLD_MS;
+    var maxBytes = opts.maxBytes || 0;
+    var maxPayloadBytes = opts.maxPayloadBytes || 0;
+    var payloadCount = 0;
+    var ownKeys = new Set();
+    var ownPayloadSizes = {};
+    var ownPayloadItems = {};
+    var ownBytes = 0;
+    var heartbeatTimer = null;
+    var lifecycleStarted = false;
+
+    return {
+      put: put,
+      get: get,
+      del: del,
+      delMany: delMany,
+      clear: clear,
+      startLifecycle: startLifecycle,
+      cleanupStaleSessions: cleanupStaleSessions,
+      getSessionId: function() { return sessionId; },
+      getOwnKeys: function() { return Array.from(ownKeys); },
+      getOwnPayloads: getOwnPayloads,
+      getStats: getStats,
+      isPersistent: function() { return backend.persistent; }
+    };
+
+    async function put(value, meta) {
+      var key = makePayloadKey();
+      var size = estimatePayloadSize(value);
+      var item = Object.assign({}, meta || {}, {
+        key: key,
+        sessionId: sessionId,
+        createdAt: Date.now(),
+        size: size
+      });
+      validatePayloadSize(size);
+      await backend.set(key, value);
+      notePayloadStored(item);
+      touchOwnSession();
+      try {
+        await updateIndex(function(index) {
+          index.payloads.push(item);
+        });
+      } catch(e) {
+        await backend.del(key);
+        notePayloadRemoved(key);
+        throw e;
+      }
+      return item;
+    }
+
+    function get(ref) {
+      return backend.get(getPayloadKey(ref));
+    }
+
+    async function del(ref) {
+      var key = getPayloadKey(ref);
+      await backend.del(key);
+      notePayloadRemoved(key);
+      await removeIndexKeys([key]);
+    }
+
+    async function delMany(refs) {
+      var keys = refs.map(getPayloadKey).filter(Boolean);
+      if (keys.length === 0) return;
+      await backend.delMany(keys);
+      keys.forEach(function(key) {
+        notePayloadRemoved(key);
+      });
+      await removeIndexKeys(keys);
+    }
+
+    async function clear() {
+      var keys = Array.from(ownKeys);
+      if (keys.length > 0) {
+        await backend.delMany(keys);
+        keys.forEach(notePayloadRemoved);
+        await removeIndexKeys(keys);
+      }
+      removeOwnSession();
+    }
+
+    function startLifecycle() {
+      if (lifecycleStarted) return;
+      lifecycleStarted = true;
+      touchOwnSession();
+      if (win && win.setInterval) {
+        heartbeatTimer = win.setInterval(touchOwnSession, heartbeatInterval);
+      } else if (typeof setInterval == 'function') {
+        heartbeatTimer = setInterval(touchOwnSession, heartbeatInterval);
+      }
+      if (win && win.addEventListener) {
+        win.addEventListener('pagehide', function(e) {
+          if (e.persisted) return;
+          stopLifecycle();
+          attemptOwnDataDeletion();
+        });
+      }
+    }
+
+    async function cleanupStaleSessions() {
+      var liveSessions = getLiveSessions();
+      var keys = await backend.keys();
+      var doomedKeys = keys.filter(function(key) {
+        var sid = getSessionFromPayloadKey(key);
+        return sid && !liveSessions[sid];
+      });
+      if (doomedKeys.length > 0) {
+        await backend.delMany(doomedKeys);
+      }
+      await updateIndex(function(index) {
+        index.payloads = index.payloads.filter(function(item) {
+          return liveSessions[item.sessionId];
+        });
+      });
+      return doomedKeys;
+    }
+
+    function stopLifecycle() {
+      if (heartbeatTimer) {
+        if (win && win.clearInterval) {
+          win.clearInterval(heartbeatTimer);
+        } else if (typeof clearInterval == 'function') {
+          clearInterval(heartbeatTimer);
+        }
+        heartbeatTimer = null;
+      }
+      removeOwnSession();
+    }
+
+    function attemptOwnDataDeletion() {
+      var keys = Array.from(ownKeys);
+      keys.forEach(notePayloadRemoved);
+      if (keys.length === 0) return;
+      try {
+        backend.delMany(keys).catch(function() {});
+      } catch(e) {}
+      try {
+        removeIndexKeys(keys).catch(function() {});
+      } catch(e) {}
+    }
+
+    function makePayloadKey() {
+      payloadCount++;
+      return keyPrefix + ':' + sessionId + ':' + payloadCount;
+    }
+
+    function validatePayloadSize(size) {
+      if (maxPayloadBytes > 0 && size > maxPayloadBytes) {
+        throw new Error('Undo payload exceeds per-payload limit');
+      }
+      if (maxBytes > 0 && ownBytes + size > maxBytes) {
+        throw new Error('Undo payload store exceeds session limit');
+      }
+    }
+
+    function notePayloadStored(item) {
+      var key = item.key;
+      ownKeys.add(key);
+      ownPayloadItems[key] = copyPayloadItem(item);
+      ownPayloadSizes[key] = item.size;
+      ownBytes += item.size;
+    }
+
+    function notePayloadRemoved(key) {
+      if (key in ownPayloadSizes) {
+        ownBytes -= ownPayloadSizes[key];
+        delete ownPayloadSizes[key];
+      }
+      delete ownPayloadItems[key];
+      ownKeys.delete(key);
+    }
+
+    function getOwnPayloads() {
+      return Array.from(ownKeys).map(function(key) {
+        return copyPayloadItem(ownPayloadItems[key]);
+      });
+    }
+
+    function getStats() {
+      return {
+        persistent: backend.persistent,
+        ownPayloadCount: ownKeys.size,
+        ownBytes: ownBytes,
+        maxBytes: maxBytes,
+        maxPayloadBytes: maxPayloadBytes
+      };
+    }
+
+    async function fetchIndex() {
+      var index = await backend.get(indexKey);
+      if (!index || !Array.isArray(index.payloads)) {
+        index = {payloads: []};
+      }
+      return index;
+    }
+
+    async function updateIndex(action) {
+      var index = await fetchIndex();
+      action(index);
+      await backend.set(indexKey, index);
+      return index;
+    }
+
+    function removeIndexKeys(keys) {
+      var index = {};
+      keys.forEach(function(key) {
+        index[key] = true;
+      });
+      return updateIndex(function(data) {
+        data.payloads = data.payloads.filter(function(item) {
+          return !index[item.key];
+        });
+      });
+    }
+
+    function touchOwnSession() {
+      var sessions = readSessions();
+      sessions[sessionId] = Date.now();
+      writeSessions(sessions);
+    }
+
+    function removeOwnSession() {
+      var sessions = readSessions();
+      if (sessions[sessionId]) {
+        delete sessions[sessionId];
+        writeSessions(sessions);
+      }
+    }
+
+    function getLiveSessions() {
+      var sessions = readSessions();
+      var live = {};
+      var now = Date.now();
+      live[sessionId] = true;
+      Object.keys(sessions).forEach(function(sid) {
+        if (now - sessions[sid] < staleThreshold) {
+          live[sid] = true;
+        }
+      });
+      return live;
+    }
+
+    function readSessions() {
+      var storage = win && win.localStorage;
+      var raw, parsed;
+      if (!storage) return {};
+      try {
+        raw = storage.getItem(sessionKey);
+        parsed = raw ? JSON.parse(raw) : null;
+        return parsed && typeof parsed == 'object' && !Array.isArray(parsed) ? parsed : {};
+      } catch(e) {
+        return {};
+      }
+    }
+
+    function writeSessions(sessions) {
+      var storage = win && win.localStorage;
+      if (!storage) return;
+      try {
+        storage.setItem(sessionKey, JSON.stringify(sessions));
+      } catch(e) {}
+    }
+  }
+
+  function getPayloadKey(ref) {
+    return ref && (ref.key || ref);
+  }
+
+  function copyPayloadItem(item) {
+    return Object.assign({}, item || {});
+  }
+
+  function getSessionFromPayloadKey(key) {
+    var match = /^msu:([^:]+):\d+$/.exec(key);
+    return match ? match[1] : null;
+  }
+
+  function getUniqId(prefix) {
+    return prefix + '_' + (Math.random() + 1).toString(36).substring(2, 8);
+  }
+
+  function getWindow() {
+    return typeof window == 'undefined' ? null : window;
+  }
+
+  function createBackend(win) {
+    if (win && win.indexedDB && idb) {
+      return createIdbBackend();
+    }
+    return createMemoryBackend();
+  }
+
+  function createIdbBackend() {
+    return {
+      persistent: true,
+      get: idb.get,
+      set: idb.set,
+      del: idb.del,
+      keys: idb.keys,
+      delMany: function(keys) {
+        return idb.delMany ? idb.delMany(keys) :
+          Promise.all(keys.map(function(key) { return idb.del(key); }));
+      }
+    };
+  }
+
+  function createMemoryUndoPayloadBackend() {
+    return createMemoryBackend();
+  }
+
+  function createMemoryBackend() {
+    var data = new Map();
+    return {
+      persistent: false,
+      get: function(key) {
+        return Promise.resolve(data.get(key));
+      },
+      set: function(key, val) {
+        data.set(key, val);
+        return Promise.resolve();
+      },
+      del: function(key) {
+        data.delete(key);
+        return Promise.resolve();
+      },
+      keys: function() {
+        return Promise.resolve(Array.from(data.keys()));
+      },
+      delMany: function(keys) {
+        keys.forEach(function(key) {
+          data.delete(key);
+        });
+        return Promise.resolve();
+      }
+    };
+  }
+
+  function estimatePayloadSize(value, seen) {
+    var bytes = 0;
+    if (!value) return 0;
+    if (value.byteLength) return value.byteLength;
+    if (value.buffer && value.buffer.byteLength) return value.buffer.byteLength;
+    if (typeof value == 'string') return value.length * 2;
+    if (typeof value == 'number') return 8;
+    if (typeof value == 'boolean') return 4;
+    if (typeof value != 'object') return 0;
+    seen = seen || new Set();
+    if (seen.has(value)) return 0;
+    seen.add(value);
+    if (Array.isArray(value)) {
+      value.forEach(function(item) {
+        bytes += estimatePayloadSize(item, seen);
+      });
+    } else {
+      Object.keys(value).forEach(function(key) {
+        bytes += key.length * 2 + estimatePayloadSize(value[key], seen);
+      });
+    }
+    return bytes;
+  }
+
+  // Fall back to browserify's Buffer polyfill
+  var B = typeof Buffer != 'undefined' ? Buffer : require$1('buffer').Buffer;
+
+  // We do NOT import from mapshaper-logging here to avoid a circular dependency
+  function error$1() {
+    throw new Error(Array.prototype.slice.call(arguments).join(' '));
+  }
+
+  var uniqCount = 0;
+  function getUniqueName(prefix) {
+    return (prefix || "__id_") + (++uniqCount);
+  }
+
+  function isFunction(obj) {
+    return typeof obj == 'function';
+  }
+
+  function isPromise(arg) {
+    return arg ? isFunction(arg.then) : false;
+  }
+
+  function isObject(obj) {
+    return obj === Object(obj); // via underscore
+  }
+
+  function clamp(val, min, max) {
+    return val < min ? min : (val > max ? max : val);
+  }
+
+  function isArray(obj) {
+    return Array.isArray(obj);
+  }
+
+  // Is obj a valid number or NaN? (test if obj is type number)
+  function isNumber(obj) {
+    return obj != null && obj.constructor == Number;
+  }
+
+  function isValidNumber(val) {
+    return isNumber(val) && !isNaN(val);
+  }
+
+  // Similar to isFinite() but does not coerce strings or other types
+  function isFiniteNumber(val) {
+    return isValidNumber(val) && val !== Infinity && val !== -Infinity;
+  }
+
+  // This uses type conversion
+  // export function isFiniteNumber(val) {
+  //   return val > -Infinity && val < Infinity;
+  // }
+
+  function isNonNegNumber(val) {
+    return isNumber(val) && val >= 0;
+  }
+
+  function isInteger(obj) {
+    return isNumber(obj) && ((obj | 0) === obj);
+  }
+
+  function isEven(obj) {
+    return (obj % 2) === 0;
+  }
+
+  function isOdd(obj) {
+    return (obj % 2) === 1;
+  }
+
+  function isString(obj) {
+    return obj != null && obj.toString === String.prototype.toString;
+    // TODO: replace w/ something better.
+  }
+
+  function isDate(obj) {
+    return !!obj && obj.getTime === Date.prototype.getTime;
+  }
+
+  function isBoolean(obj) {
+    return obj === true || obj === false;
+  }
+
+  function formatDateISO(d) {
+    if (!isDate(d)) return '';
+    return d.toISOString().replace(':00.000Z', 'Z');
+  }
+
+  // Convert an array-like object to an Array, or make a copy if @obj is an Array
+  function toArray(obj) {
+    var arr;
+    if (!isArrayLike(obj)) error$1("toArray() requires an array-like object");
+    try {
+      arr = Array.prototype.slice.call(obj, 0); // breaks in ie8
+    } catch(e) {
+      // support ie8
+      arr = [];
+      for (var i=0, n=obj.length; i<n; i++) {
+        arr[i] = obj[i];
+      }
+    }
+    return arr;
+  }
+
+  // Array like: has length property, is numerically indexed and mutable.
+  // TODO: try to detect objects with length property but no indexed data elements
+  function isArrayLike(obj) {
+    if (!obj) return false;
+    if (isArray(obj)) return true;
+    if (isString(obj)) return false;
+    if (obj.length === 0 || obj.length > 0) return true;
+    return false;
+  }
+
+  // See https://raw.github.com/kvz/phpjs/master/functions/strings/addslashes.js
+  function addslashes(str) {
+    return (str + '').replace(/[\\"']/g, '\\$&').replace(/\u0000/g, '\\0');
+  }
+
+  // Escape a literal string to use in a regexp.
+  // Ref.: http://simonwillison.net/2006/Jan/20/escape/
+  function regexEscape(str) {
+    return str.replace(/[-[\]{}()*+?.,\\^$|#\s]/g, '\\$&');
+  }
+
+
+  // See https://github.com/janl/mustache.js/blob/master/mustache.js
+  var entityMap = {
+    '&': '&amp;',
+    '<': '&lt;',
+    '>': '&gt;',
+    '"': '&quot;',
+    "'": '&#39;',
+    '/': '&#x2F;'
+  };
+  function htmlEscape(s) {
+    return String(s).replace(/[&<>"'/]/g, function(s) {
+      return entityMap[s];
+    });
+  }
+
+
+  function defaults(dest) {
+    for (var i=1, n=arguments.length; i<n; i++) {
+      var src = arguments[i] || {};
+      for (var key in src) {
+        if (key in dest === false && src.hasOwnProperty(key)) {
+          dest[key] = src[key];
+        }
+      }
+    }
+    return dest;
+  }
+
+  function extend(o) {
+    var dest = o || {},
+        n = arguments.length,
+        key, i, src;
+    for (i=1; i<n; i++) {
+      src = arguments[i] || {};
+      for (key in src) {
+        if (src.hasOwnProperty(key)) {
+          dest[key] = src[key];
+        }
+      }
+    }
+    return dest;
+  }
+
+  // Pseudoclassical inheritance
+  //
+  // Inherit from a Parent function:
+  //    inherit(Child, Parent);
+  // Call parent's constructor (inside child constructor):
+  //    this.__super__([args...]);
+  function inherit(targ, src) {
+    var f = function() {
+      if (this.__super__ == f) {
+        // add __super__ of parent to front of lookup chain
+        // so parent class constructor can call its parent using this.__super__
+        this.__super__ = src.prototype.__super__;
+        // call parent constructor function. this.__super__ now points to parent-of-parent
+        src.apply(this, arguments);
+        // remove temp __super__, expose targ.prototype.__super__ again
+        delete this.__super__;
+      }
+    };
+
+    f.prototype = src.prototype || src; // added || src to allow inheriting from objects as well as functions
+    // Extend targ prototype instead of wiping it out --
+    //   in case inherit() is called after targ.prototype = {stuff}; statement
+    targ.prototype = extend(new f(), targ.prototype); //
+    targ.prototype.constructor = targ;
+    targ.prototype.__super__ = f;
+  }
+
+  function promisify(asyncFn) {
+    return function() {
+      var args = toArray(arguments);
+      return new Promise((resolve, reject) => {
+        var cb = function(err, data) {
+          if (err) reject(err);
+          else resolve(data);
+        };
+        args.push(cb);
+        asyncFn.apply(this, args);
+      });
+    };
+  }
+
+   function runAsync(fn, arg) {
+      return new Promise((resolve, reject) => {
+        fn(arg, function(err, data) {
+          return err ? reject(err) : resolve(data);
+        });
+      });
+    }
+
+  // Call @iter on each member of an array (similar to Array#reduce(iter))
+  //    iter: function(memo, item, callback)
+  // Call @done when all members have been processed or if an error occurs
+  //    done: function(err, memo)
+  // @memo: Initial value
+  //
+  function reduceAsync(arr, memo, iter, done) {
+    var call = typeof setImmediate == 'undefined' ? setTimeout : setImmediate;
+    var i=0;
+    next(null, memo);
+
+    function next(err, memo) {
+      // Detach next operation from call stack to prevent overflow
+      // Don't use setTimeout(, 0) if setImmediate is available
+      // (setTimeout() can introduce a long delay if previous operation was slow,
+      //    as of Node 0.10.32 -- a bug?)
+      if (err) {
+        return done(err, null);
+      }
+      call(function() {
+        if (i < arr.length === false) {
+          done(null, memo);
+        } else {
+          iter(memo, arr[i++], next);
+        }
+      }, 0);
+    }
+  }
+
+
+  // Append elements of @src array to @dest array
+  function merge(dest, src) {
+    if (!isArray(dest) || !isArray(src)) {
+      error$1("Usage: merge(destArray, srcArray);");
+    }
+    for (var i=0, n=src.length; i<n; i++) {
+      dest.push(src[i]);
+    }
+    return dest;
+  }
+
+  // Returns elements in arr and not in other
+  // (similar to underscore diff)
+  function difference(arr, other) {
+    var index = arrayToIndex(other);
+    return arr.filter(function(el) {
+      return !Object.prototype.hasOwnProperty.call(index, el);
+    });
+  }
+
+  // Return the intersection of two arrays
+  function intersection(a, b) {
+    return a.filter(function(el) {
+      return b.includes(el);
+    });
+  }
+
+  function indexOf(arr, item) {
+    var nan = item !== item;
+    for (var i = 0, len = arr.length || 0; i < len; i++) {
+      if (arr[i] === item) return i;
+      if (nan && arr[i] !== arr[i]) return i;
+    }
+    return -1;
+  }
+
+  // Test a string or array-like object for existence of substring or element
+  function contains(container, item) {
+    if (isString(container)) {
+      return container.indexOf(item) != -1;
+    }
+    else if (isArrayLike(container)) {
+      return indexOf(container, item) != -1;
+    }
+    error$1("Expected Array or String argument");
+  }
+
+  function some(arr, test) {
+    return arr.reduce(function(val, item) {
+      return val || test(item); // TODO: short-circuit?
+    }, false);
+  }
+
+  function every(arr, test) {
+    return arr.reduce(function(val, item) {
+      return val && test(item);
+    }, true);
+  }
+
+  function find(arr, test, ctx) {
+    var matches = arr.filter(test, ctx);
+    return matches.length === 0 ? null : matches[0];
+  }
+
+  function range(len, start, inc) {
+    var arr = [],
+        v = start === void 0 ? 0 : start,
+        i = inc === void 0 ? 1 : inc;
+    while(len--) {
+      arr.push(v);
+      v += i;
+    }
+    return arr;
+  }
+
+  function repeat(times, func) {
+    var values = [],
+        val;
+    for (var i=0; i<times; i++) {
+      val = func(i);
+      if (val !== void 0) {
+        values[i] = val;
+      }
+    }
+    return values.length > 0 ? values : void 0;
+  }
+
+  // Calc sum, skip falsy and NaN values
+  // Assumes: no other non-numeric objects in array
+  //
+  function sum(arr, info) {
+    if (!isArrayLike(arr)) error$1 ("sum() expects an array, received:", arr);
+    var tot = 0,
+        nan = 0,
+        val;
+    for (var i=0, n=arr.length; i<n; i++) {
+      val = arr[i];
+      if (val) {
+        tot += val;
+      } else if (isNaN(val)) {
+        nan++;
+      }
+    }
+    if (info) {
+      info.nan = nan;
+    }
+    return tot;
+  }
+
+  // Calculate min and max values of an array, ignoring NaN values
+  function getArrayBounds(arr) {
+    var min = Infinity,
+      max = -Infinity,
+      nan = 0, val;
+    for (var i=0, len=arr.length; i<len; i++) {
+      val = arr[i];
+      if (val !== val) nan++;
+      if (val < min) min = val;
+      if (val > max) max = val;
+    }
+    return {
+      min: min,
+      max: max,
+      nan: nan
+    };
+  }
+
+  // export function uniq(src) {
+  //   var index = {};
+  //   return src.reduce(function(memo, el) {
+  //     if (el in index === false) {
+  //       index[el] = true;
+  //       memo.push(el);
+  //     }
+  //     return memo;
+  //   }, []);
+  // }
+
+  function uniq(src) {
+    var index = new Set();
+    var arr = [];
+    var item;
+    for (var i=0, n=src.length; i<n; i++) {
+      item = src[i];
+      if (!index.has(item)) {
+        arr.push(item);
+        index.add(item);
+      }
+    }
+    return arr;
+  }
+
+  function pluck(arr, key) {
+    return arr.map(function(obj) {
+      return obj[key];
+    });
+  }
+
+  function countValues(arr) {
+    return arr.reduce(function(memo, val) {
+      memo[val] = (val in memo) ? memo[val] + 1 : 1;
+      return memo;
+    }, {});
+  }
+
+  function indexOn(arr, k) {
+    return arr.reduce(function(index, o) {
+      index[o[k]] = o;
+      return index;
+    }, {});
+  }
+
+  function groupBy(arr, k) {
+    return arr.reduce(function(index, o) {
+      var keyval = o[k];
+      if (keyval in index) {
+        index[keyval].push(o);
+      } else {
+        index[keyval] = [o];
+      }
+      return index;
+    }, {});
+  }
+
+  function arrayToIndex(arr, val) {
+    var init = arguments.length > 1;
+    return arr.reduce(function(index, key) {
+      index[key] = init ? val : true;
+      return index;
+    }, {});
+  }
+
+  // Support for iterating over array-like objects, like typed arrays
+  function forEach(arr, func, ctx) {
+    if (!isArrayLike(arr)) {
+      throw new Error("#forEach() takes an array-like argument. " + arr);
+    }
+    for (var i=0, n=arr.length; i < n; i++) {
+      func.call(ctx, arr[i], i);
+    }
+  }
+
+  function forEachProperty(o, func, ctx) {
+    Object.keys(o).forEach(function(key) {
+      func.call(ctx, o[key], key);
+    });
+  }
+
+  function initializeArray(arr, init) {
+    for (var i=0, len=arr.length; i<len; i++) {
+      arr[i] = init;
+    }
+    return arr;
+  }
+
+  function replaceArray(arr, arr2) {
+    arr.splice(0, arr.length);
+    for (var i=0, n=arr2.length; i<n; i++) {
+      arr.push(arr2[i]);
+    }
+  }
+
+  function repeatString(src, n) {
+    var str = "";
+    for (var i=0; i<n; i++)
+      str += src;
+    return str;
+  }
+
+  function splitLines(str) {
+    return str.split(/\r?\n/);
+  }
+
+  function pluralSuffix(count) {
+    return count != 1 ? 's' : '';
+  }
+
+  function endsWith(str, ending) {
+      return str.indexOf(ending, str.length - ending.length) !== -1;
+  }
+
+  function lpad(str, size, pad) {
+    pad = pad || ' ';
+    str = String(str);
+    return repeatString(pad, size - str.length) + str;
+  }
+
+  function rpad(str, size, pad) {
+    pad = pad || ' ';
+    str = String(str);
+    return str + repeatString(pad, size - str.length);
+  }
+
+  function trim(str) {
+    return ltrim(rtrim(str));
+  }
+
+  var ltrimRxp = /^\s+/;
+  function ltrim(str) {
+    return str.replace(ltrimRxp, '');
+  }
+
+  var rtrimRxp = /\s+$/;
+  function rtrim(str) {
+    return str.replace(rtrimRxp, '');
+  }
+
+  function addThousandsSep(str) {
+    var fmt = '',
+        start = str[0] == '-' ? 1 : 0,
+        dec = str.indexOf('.'),
+        end = str.length,
+        ins = (dec == -1 ? end : dec) - 3;
+    while (ins > start) {
+      fmt = ',' + str.substring(ins, end) + fmt;
+      end = ins;
+      ins -= 3;
+    }
+    return str.substring(0, end) + fmt;
+  }
+
+  function numToStr(num, decimals) {
+    return decimals >= 0 ? num.toFixed(decimals) : String(num);
+  }
+
+  function formatNumber(val) {
+    return val + '';
+  }
+
+  function formatIntlNumber(val) {
+    var str = formatNumber(val);
+    return '"' + str.replace('.', ',') + '"'; // need to quote if comma-delimited
+  }
+
+  function formatNumberForDisplay(num, decimals, nullStr, showPos) {
+    var fmt;
+    if (isNaN(num)) {
+      fmt = nullStr || '-';
+    } else {
+      fmt = numToStr(num, decimals);
+      fmt = addThousandsSep(fmt);
+      if (showPos && parseFloat(fmt) > 0) {
+        fmt = "+" + fmt;
+      }
+    }
+    return fmt;
+  }
+
+  function shuffle(arr) {
+    var tmp, i, j;
+    for (i = arr.length - 1; i > 0; i--) {
+      j = Math.floor(Math.random() * (i + 1));
+      tmp = arr[i];
+      arr[i] = arr[j];
+      arr[j] = tmp;
+    }
+  }
+
+  function pickOne(arr) {
+    return arr[Math.floor(Math.random() * arr.length)];
+  }
+
+  // Sort an array of objects based on one or more properties.
+  // Usage: sortOn(array, key1, asc?[, key2, asc? ...])
+  //
+  function sortOn(arr) {
+    var comparators = [];
+    for (var i=1; i<arguments.length; i+=2) {
+      comparators.push(getKeyComparator(arguments[i], arguments[i+1]));
+    }
+    arr.sort(function(a, b) {
+      var cmp = 0,
+          i = 0,
+          n = comparators.length;
+      while (i < n && cmp === 0) {
+        cmp = comparators[i](a, b);
+        i++;
+      }
+      return cmp;
+    });
+    return arr;
+  }
+
+  // Sort array of values that can be compared with < > operators (strings, numbers)
+  // null, undefined and NaN are sorted to the end of the array
+  // default order is ascending
+  //
+  function genericSort(arr, ascending) {
+    var compare = getGenericComparator(ascending);
+    Array.prototype.sort.call(arr, compare);
+    return arr;
+  }
+
+  function getSortedIds(arr, asc) {
+    var ids = range(arr.length);
+    sortArrayIndex(ids, arr, asc);
+    return ids;
+  }
+
+  function sortArrayIndex(ids, arr, asc) {
+    var compare = getGenericComparator(asc);
+    ids.sort(function(i, j) {
+      // added i, j comparison to guarantee that sort is stable
+      var cmp = compare(arr[i], arr[j]);
+      return cmp > 0 || cmp === 0 && i > j ? 1 : -1;
+    });
+  }
+
+  function reorderArray$1(arr, idxs) {
+    var len = idxs.length;
+    var arr2 = [];
+    for (var i=0; i<len; i++) {
+      var idx = idxs[i];
+      if (idx < 0 || idx >= len) error$1("Out-of-bounds array idx");
+      arr2[i] = arr[idx];
+    }
+    replaceArray(arr, arr2);
+  }
+
+  function getKeyComparator(key, asc) {
+    var compare = getGenericComparator(asc);
+    return function(a, b) {
+      return compare(a[key], b[key]);
+    };
+  }
+
+  function getGenericComparator(asc) {
+    asc = asc !== false && asc != 'descending'; // ascending is the default
+    return function(a, b) {
+      var retn = 0;
+      if (b == null) {
+        retn = a == null ? 0 : -1;
+      } else if (a == null) {
+        retn = 1;
+      } else if (a < b) {
+        retn = asc ? -1 : 1;
+      } else if (a > b) {
+        retn = asc ? 1 : -1;
+      } else if (a !== a) {
+        retn = 1;
+      } else if (b !== b) {
+        retn = -1;
+      }
+      return retn;
+    };
+  }
+
+
+  // Generic in-place sort (null, NaN, undefined not handled)
+  function quicksort(arr, asc) {
+    quicksortPartition(arr, 0, arr.length-1);
+    if (asc === false) Array.prototype.reverse.call(arr); // Works with typed arrays
+    return arr;
+  }
+
+  // Moved out of quicksort() (saw >100% speedup in Chrome with deep recursion)
+  function quicksortPartition (a, lo, hi) {
+    var i = lo,
+        j = hi,
+        pivot, tmp;
+    while (i < hi) {
+      pivot = a[lo + hi >> 1]; // avoid n^2 performance on sorted arrays
+      while (i <= j) {
+        while (a[i] < pivot) i++;
+        while (a[j] > pivot) j--;
+        if (i <= j) {
+          tmp = a[i];
+          a[i] = a[j];
+          a[j] = tmp;
+          i++;
+          j--;
+        }
+      }
+      if (lo < j) quicksortPartition(a, lo, j);
+      lo = i;
+      j = hi;
+    }
+  }
+
+
+  function findRankByValue(arr, value) {
+    if (isNaN(value)) return arr.length;
+    var rank = 1;
+    for (var i=0, n=arr.length; i<n; i++) {
+      if (value > arr[i]) rank++;
+    }
+    return rank;
+  }
+
+  function findValueByPct(arr, pct) {
+    var rank = Math.ceil((1-pct) * (arr.length));
+    return findValueByRank(arr, rank);
+  }
+
+  // See http://ndevilla.free.fr/median/median/src/wirth.c
+  // Elements of @arr are reordered
+  //
+  function findValueByRank(arr, rank) {
+    if (!arr.length || rank < 1 || rank > arr.length) error$1("[findValueByRank()] invalid input");
+
+    rank = clamp(rank | 0, 1, arr.length);
+    var k = rank - 1, // conv. rank to array index
+        n = arr.length,
+        l = 0,
+        m = n - 1,
+        i, j, val, tmp;
+
+    while (l < m) {
+      val = arr[k];
+      i = l;
+      j = m;
+      do {
+        while (arr[i] < val) {i++;}
+        while (val < arr[j]) {j--;}
+        if (i <= j) {
+          tmp = arr[i];
+          arr[i] = arr[j];
+          arr[j] = tmp;
+          i++;
+          j--;
+        }
+      } while (i <= j);
+      if (j < k) l = i;
+      if (k < i) m = j;
+    }
+    return arr[k];
+  }
+
+  function findMedian(arr) {
+    return findQuantile(arr, 0.5);
+  }
+
+  function findQuantile(arr, k) {
+    var n = arr.length,
+        i1 = Math.floor((n - 1) * k),
+        i2 = Math.ceil((n - 1) * k);
+    if (i1 < 0 || i2 >= n) return NaN;
+    var v1 = findValueByRank(arr, i1 + 1);
+    if (i1 == i2) return v1;
+    var v2 = findValueByRank(arr, i2 + 1);
+    // use linear interpolation
+    var w1 = i2 / (n - 1) - k;
+    var w2 = k - i1 / (n - 1);
+    var v = (v1 * w1 + v2 * w2) * (n - 1);
+    return v;
+  }
+
+  function mean(arr) {
+    var count = 0,
+        avg = NaN,
+        val;
+    for (var i=0, n=arr.length; i<n; i++) {
+      val = arr[i];
+      if (isNaN(val)) continue;
+      avg = ++count == 1 ? val : val / count + (count - 1) / count * avg;
+    }
+    return avg;
+  }
+
+
+  /*
+  A simplified version of printf formatting
+  Format codes: %[flags][width][.precision]type
+
+  supported flags:
+    +   add '+' before positive numbers
+    0   left-pad with '0'
+    '   Add thousands separator
+  width: 1 to many
+  precision: .(1 to many)
+  type:
+    s     string
+    di    integers
+    f     decimal numbers
+    xX    hexidecimal (unsigned)
+    %     literal '%'
+
+  Examples:
+    code    val    formatted
+    %+d     1      '+1'
+    %4i     32     '  32'
+    %04i    32     '0032'
+    %x      255    'ff'
+    %.2f    0.125  '0.13'
+    %'f     1000   '1,000'
+  */
+
+  // Usage: format(formatString, [values])
+  // Tip: When reusing the same format many times, use formatter() for 5x - 10x better performance
+  //
+  function format(fmt) {
+    var fn = formatter(fmt);
+    var str = fn.apply(null, Array.prototype.slice.call(arguments, 1));
+    return str;
+  }
+
+  function formatValue(val, matches) {
+    var flags = matches[1];
+    var padding = matches[2];
+    var decimals = matches[3] ? parseInt(matches[3].substr(1)) : void 0;
+    var type = matches[4];
+    var isString = type == 's',
+        isHex = type == 'x' || type == 'X',
+        // isInt = type == 'd' || type == 'i',
+        // isFloat = type == 'f',
+        isNumber = !isString;
+
+    var sign = "",
+        padDigits = 0,
+        isZero = false,
+        isNeg = false;
+
+    var str, padChar, padStr;
+    if (isString) {
+      str = String(val);
+    }
+    else if (isHex) {
+      str = val.toString(16);
+      if (type == 'X')
+        str = str.toUpperCase();
+    }
+    else if (isNumber) {
+      // str = formatNumberForDisplay(val, isInt ? 0 : decimals);
+      str = numToStr(val, decimals);
+      if (str[0] == '-') {
+        isNeg = true;
+        str = str.substr(1);
+      }
+      isZero = parseFloat(str) == 0;
+      if (flags.indexOf("'") != -1 || flags.indexOf(',') != -1) {
+        str = addThousandsSep(str);
+      }
+      if (!isZero) { // BUG: sign is added when num rounds to 0
+        if (isNeg) {
+          sign = "\u2212"; // U+2212
+        } else if (flags.indexOf('+') != -1) {
+          sign = '+';
+        }
+      }
+    }
+
+    if (padding) {
+      var strLen = str.length + sign.length;
+      var minWidth = parseInt(padding, 10);
+      if (strLen < minWidth) {
+        padDigits = minWidth - strLen;
+        padChar = flags.indexOf('0') == -1 ? ' ' : '0';
+        padStr = repeatString(padChar, padDigits);
+      }
+    }
+
+    if (padDigits == 0) {
+      str = sign + str;
+    } else if (padChar == '0') {
+      str = sign + padStr + str;
+    } else {
+      str = padStr + sign + str;
+    }
+    return str;
+  }
+
+  // Get a function for interpolating formatted values into a string.
+  function formatter(fmt) {
+    var codeRxp = /%([',+0]*)([1-9]?)((?:\.[1-9])?)([sdifxX%])/g;
+    var literals = [],
+        formatCodes = [],
+        startIdx = 0,
+        prefix = "",
+        matches = codeRxp.exec(fmt),
+        literal;
+
+    while (matches) {
+      literal = fmt.substring(startIdx, codeRxp.lastIndex - matches[0].length);
+      if (matches[0] == '%%') {
+        prefix += literal + '%';
+      } else {
+        literals.push(prefix + literal);
+        prefix = '';
+        formatCodes.push(matches);
+      }
+      startIdx = codeRxp.lastIndex;
+      matches = codeRxp.exec(fmt);
+    }
+    literals.push(prefix + fmt.substr(startIdx));
+
+    return function() {
+      var str = literals[0],
+          n = arguments.length;
+      if (n != formatCodes.length) {
+        error$1("[format()] Data does not match format string; format:", fmt, "data:", arguments);
+      }
+      for (var i=0; i<n; i++) {
+        str += formatValue(arguments[i], formatCodes[i]) + literals[i+1];
+      }
+      return str;
+    };
+  }
+
+  function wildcardToRegExp(name) {
+    var rxp = name.split('*').map(function(str) {
+      return regexEscape(str);
+    }).join('.*');
+    return new RegExp('^' + rxp + '$');
+  }
+
+  function createBuffer(arg, arg2) {
+    if (isInteger(arg)) {
+      return B.allocUnsafe ? B.allocUnsafe(arg) : new B(arg);
+    } else {
+      // check allocUnsafe to make sure Buffer.from() will accept strings (it didn't before Node v5.10)
+      return B.from && B.allocUnsafe ? B.from(arg, arg2) : new B(arg, arg2);
+    }
+  }
+
+  function toBuffer(src) {
+    if (src instanceof B) return src;
+    if (src instanceof ArrayBuffer) return B.from(src);
+    if (src instanceof Uint8Array) {
+      return B.from(src.buffer, src.byteOffset, src.byteLength);
+    }
+    error$1('Unexpected argument type');
+  }
+
+  function expandoBuffer(constructor, rate) {
+    var capacity = 0,
+        k = rate >= 1 ? rate : 1.2,
+        buf;
+    return function(size) {
+      if (size > capacity) {
+        capacity = Math.ceil(size * k);
+        buf = constructor ? new constructor(capacity) : createBuffer(capacity);
+      }
+      return buf;
+    };
+  }
+
+  function copyElements(src, i, dest, j, n, rev) {
+    var same = src == dest || src.buffer && src.buffer == dest.buffer;
+    var inc = 1,
+        offs = 0,
+        k;
+    if (rev) {
+      if (same) error$1('copy error');
+      inc = -1;
+      offs = n - 1;
+    }
+    if (same && j > i) {
+      for (k=n-1; k>=0; k--) {
+        dest[j + k] = src[i + k];
+      }
+    } else {
+      for (k=0; k<n; k++, offs += inc) {
+        dest[k + j] = src[i + offs];
+      }
+    }
+  }
+
+  function extendBuffer(src, newLen, copyLen) {
+    var len = Math.max(src.length, newLen);
+    var n = copyLen || src.length;
+    var dest = new src.constructor(len);
+    copyElements(src, 0, dest, 0, n);
+    return dest;
+  }
+
+  function mergeNames(name1, name2) {
+    var merged;
+    if (name1 && name2) {
+      merged = findStringPrefix(name1, name2).replace(/[-_]$/, '');
+    }
+    return merged || '';
+  }
+
+  function findStringPrefix(a, b) {
+    var i = 0;
+    for (var n=a.length; i<n; i++) {
+      if (a[i] !== b[i]) break;
+    }
+    return a.substr(0, i);
+  }
+
+  function formatVersionedName(name, i) {
+    var suffix = String(i);
+    if (/[0-9]$/.test(name)) {
+      suffix = '-' + suffix;
+    }
+    return name + suffix;
+  }
+
+  function uniqifyNames(names, formatter) {
+    var counts = countValues(names),
+        format = formatter || formatVersionedName,
+        names2 = [];
+
+    names.forEach(function(name) {
+      var i = 0,
+          candidate = name,
+          versionedName;
+      while (
+          names2.indexOf(candidate) > -1 || // candidate name has already been used
+          candidate == name && counts[candidate] > 1 || // duplicate unversioned names
+          candidate != name && counts[candidate] > 0) { // versioned name is a preexisting name
+        i++;
+        versionedName = format(name, i);
+        if (!versionedName || versionedName == candidate) {
+          throw new Error("Naming error"); // catch buggy versioning function
+        }
+        candidate = versionedName;
+      }
+      names2.push(candidate);
+    });
+    return names2;
+  }
+
+
+  // Assume: @raw is string, undefined or null
+  function parseString(raw) {
+    return raw ? raw : "";
+  }
+
+  // Assume: @raw is string, undefined or null
+  // Use null instead of NaN for unparsable values
+  // (in part because if NaN is used, empty strings get converted to "NaN"
+  // when re-exported).
+  function parseNumber(raw) {
+    return parseToNum(raw, cleanNumericString);
+  }
+
+  function parseIntlNumber(raw) {
+    return parseToNum(raw, convertIntlNumString);
+  }
+
+  function parseToNum(raw, clean) {
+    var str = String(raw).trim();
+    var parsed = str ? Number(clean(str)) : NaN;
+    return isNaN(parsed) ? null : parsed;
+  }
+
+  // Remove comma separators from strings
+  function cleanNumericString(str) {
+    return (str.indexOf(',') > 0) ? str.replace(/,([0-9]{3})/g, '$1') : str;
+  }
+
+  function convertIntlNumString(str) {
+    str = str.replace(/[ .]([0-9]{3})/g, '$1');
+    return str.replace(',', '.');
+  }
+
+  function trimQuotes(str) {
+    var len = str.length, first, last;
+    if (len >= 2) {
+      first = str.charAt(0);
+      last = str.charAt(len-1);
+      // if (first == '"' && last == '"' && !str.includes('","') ||
+      //     first == "'" && last == "'" && !str.includes("','")) {
+      // don't strip if there are unescaped quotes
+      // e.g. expressions that start and end with quotes
+      // e.g. comma-separated list of quoted values
+      if (first == '"' && last == '"' && !/[^\\]"./.test(str) ||
+          first == "'" && last == "'" && !/[^\\]'./.test(str)) {
+        str = str.substr(1, len-2);
+        // remove string escapes
+        str = str.replace(first == '"' ? /\\(?=")/g : /\\(?=')/g, '');
+      }
+    }
+    return str;
+  }
+
+  // Default export so consumers can do `import utils from './mapshaper-utils'`
+  // and call `utils.isObject(x)` etc. Listing the names explicitly (instead
+  // of using `import * as utils from './mapshaper-utils'`) avoids a
+  // self-import and the resulting Rollup circular-dependency warning.
+  var utils = {
+    addThousandsSep, addslashes, arrayToIndex,
+    clamp, cleanNumericString, contains, copyElements, countValues, createBuffer,
+    defaults, difference,
+    endsWith, every, expandoBuffer, extend, extendBuffer,
+    find, findMedian, findQuantile, findRankByValue, findStringPrefix,
+    findValueByPct, findValueByRank, forEach, forEachProperty, format,
+    formatDateISO, formatIntlNumber, formatNumber, formatNumberForDisplay,
+    formatVersionedName, formatter,
+    genericSort, getArrayBounds, getGenericComparator, getKeyComparator,
+    getSortedIds, getUniqueName, groupBy,
+    htmlEscape,
+    indexOf, indexOn, inherit, initializeArray, intersection,
+    isArray, isArrayLike, isBoolean, isDate, isEven, isFiniteNumber, isFunction,
+    isInteger, isNonNegNumber, isNumber, isObject, isOdd, isPromise, isString,
+    isValidNumber,
+    lpad, ltrim,
+    mean, merge, mergeNames,
+    numToStr,
+    parseIntlNumber, parseNumber, parseString, pickOne, pluck,
+    pluralSuffix, promisify,
+    quicksort, quicksortPartition,
+    range, reduceAsync, regexEscape, reorderArray: reorderArray$1, repeat, repeatString,
+    replaceArray, rpad, rtrim,
+    shuffle, some, sortArrayIndex, sortOn, splitLines, sum,
+    toArray, toBuffer, trim, trimQuotes,
+    uniq, uniqifyNames,
+    wildcardToRegExp
+  };
+
+  // This module provides a way for multiple jobs to run together asynchronously
+  // while keeping job-level context variables (like "defs") separate.
+  //
+  // We deliberately do NOT import from mapshaper-logging here -- the logging
+  // module imports from this one, and avoiding the back-edge keeps the
+  // foundational dependency graph acyclic. (The single error path below is
+  // an internal-bug guard, not a user-facing message, so a plain Error is
+  // adequate.)
+
+  var stash = {};
+
+  function stashVar(key, val) {
+    if (key in stash) {
+      throw new Error('Tried to replace a stashed variable: ' + key);
+    }
+    stash[key] = val;
+  }
+
+  function getStashedVar(key) {
+    if (key in stash === false) {
+      return undefined; // to support running commands in tests
+      // error('Tried to read a nonexistent variable from the stash:', key);
+    }
+    return stash[key];
+  }
+
+  function clearStash() {
+    stash = {};
+  }
+
+  var LOGGING = false;
+  var STDOUT = false; // use stdout for status messages
+  var _error, _stop, _message, _warn;
+
+  var _interrupt = function() {
+    throw new NonFatalError(formatLogArgs(arguments));
+  };
+
+  var onceMessages = [];
+
+  setLoggingForCLI();
+
+  function getLoggingSetter() {
+    var e = _error, s = _stop, m = _message, w = _warn;
+    return function() {
+      setLoggingFunctions(m, e, s, w);
+    };
+  }
+
+  function setLoggingForCLI() {
+    function stop() {
+      throw new UserError(formatLogArgs(arguments));
+    }
+
+    function error() {
+      var msg = utils.toArray(arguments).join(' ');
+      throw new Error(msg);
+    }
+
+    function message() {
+      logArgs(arguments);
+    }
+
+    // CLI warning is just a message (GUI behaves differently)
+    var warn = message;
+
+    setLoggingFunctions(message, error, stop, warn);
+  }
+
+  function enableLogging() {
+    LOGGING = true;
+  }
+
+  function disableLogging() {
+    LOGGING = false;
+  }
+
+  function loggingEnabled() {
+    return !!LOGGING;
+  }
+
+  // Handle an unexpected condition (internal error)
+  function error() {
+    _error.apply(null, utils.toArray(arguments));
+  }
+
+  // Handle an error caused by invalid input or misuse of API
+  function stop() {
+    // _stop.apply(null, utils.toArray(arguments));
+    _stop.apply(null, messageArgs(arguments));
+  }
+
+  function interrupt() {
+    _interrupt.apply(null, utils.toArray(arguments));
+  }
+
+  // Print a status message
+  function message() {
+    _message.apply(null, messageArgs(arguments));
+  }
+
+  function warn() {
+    _warn.apply(null, messageArgs(arguments));
+  }
+
+  function warnOnce() {
+    var str = formatLogArgs(arguments);
+    if (onceMessages.includes(str)) return;
+    onceMessages.push(str);
+    _warn.apply(null, messageArgs(arguments));
+  }
+
+  // A way for the GUI to replace the CLI logging functions
+  function setLoggingFunctions(message, error, stop, warn) {
+    _message = message;
+    _error = error;
+    _stop = stop;
+    _warn = warn;
+  }
+
+  // get detailed error information from error stack (if available)
+  // Example stack string (Node.js):
+  /*
+  /Users/someuser/somescript.js:226
+      opacity: Math.round(weight * 5 / 5 // 0.2 0.4 0.6 etc
+                                       ^
+
+  SyntaxError: missing ) after argument list
+      at internalCompileFunction (node:internal/vm:73:18)
+      at wrapSafe (node:internal/modules/cjs/loader:1149:20)
+      at Module._compile (node:internal/modules/cjs/loader:1190:27)
+      ...
+  */
+  function getErrorDetail(e) {
+    var parts = (typeof e.stack == 'string') ? e.stack.split(/\n\s*\n/) : [];
+    if (parts.length > 1 || true) {
+      return '\nError details:\n' + parts[0];
+    }
+    return '';
+  }
+
+  // print a message to stdout
+  function print() {
+    STDOUT = true; // tell logArgs() to print to stdout, not stderr
+    // calling message() adds the "[command name]" prefix
+    _message(utils.toArray(arguments));
+    STDOUT = false;
+  }
+
+  function verbose() {
+    // verbose can be set globally with the -verbose command or separately for each command
+    if (useVerbose()) {
+      message.apply(null, arguments);
+    }
+  }
+
+  function useVerbose() {
+    return getStashedVar('VERBOSE');
+  }
+
+  function useDebug() {
+    return getStashedVar('DEBUG');
+  }
+
+  function debug() {
+    if (useDebug()) {
+      logArgs(arguments);
+    }
+  }
+
+  function time(slug) {
+    if (useDebug()) {
+      console.time(slug);
+    }
+  }
+
+  function timeEnd(slug) {
+    if (useDebug()) {
+      console.timeEnd(slug);
+    }
+  }
+
+  function printError(err) {
+    var msg;
+    if (!LOGGING) return;
+    if (utils.isString(err)) {
+      err = new UserError(err);
+    }
+    if (err.name == 'NonFatalError') {
+      console.error(messageArgs([err.message]).join(' '));
+    } else if (err.name == 'UserError') {
+      msg = err.message;
+      if (!/Error/.test(msg)) {
+        msg = "Error: " + msg;
+      }
+      console.error(messageArgs([msg]).join(' '));
+      console.error("Run mapshaper -h to view help");
+    } else {
+      // not a user error (i.e. a bug in mapshaper)
+      console.error(err);
+      // throw err;
+    }
+  }
+
+  function UserError(msg) {
+    var err = new Error(msg);
+    err.name = 'UserError';
+    return err;
+  }
+
+  function NonFatalError(msg) {
+    var err = new Error(msg);
+    err.name = 'NonFatalError';
+    return err;
+  }
+
+  function formatColumns(arr, alignments) {
+    var widths = arr.reduce(function(memo, line) {
+      return line.map(function(str, i) {
+        return memo ? Math.max(memo[i], str.length) : str.length;
+      });
+    }, null);
+    return arr.map(function(line) {
+      line = line.map(function(str, i) {
+        var rt = alignments && alignments[i] == 'right';
+        var pad = (rt ? str.padStart : str.padEnd).bind(str);
+        return pad(widths[i], ' ');
+      });
+      return '  ' + line.join(' ');
+    }).join('\n');
+  }
+
+  // Format an array of (preferably short) strings in columns for console logging.
+  function formatStringsAsGrid(arr, width) {
+    // TODO: variable column width
+    var longest = arr.reduce(function(len, str) {
+          return Math.max(len, str.length);
+        }, 0),
+        colWidth = longest + 2,
+        perLine = Math.floor((width || 80) / colWidth) || 1;
+    return arr.reduce(function(memo, name, i) {
+      var col = i % perLine;
+      if (i > 0 && col === 0) memo += '\n';
+      if (col < perLine - 1) { // right-pad all but rightmost column
+        name = utils.rpad(name, colWidth - 2, ' ');
+      }
+      return memo +  '  ' + name;
+    }, '');
+  }
+
+  // expose so GUI can use it
+  function formatLogArgs(args) {
+    return utils.toArray(args).join(' ');
+  }
+
+  function messageArgs(args) {
+    var arr = utils.toArray(args);
+    var cmd = getStashedVar('current_command');
+    if (cmd && cmd != 'help') {
+      arr.unshift('[' + cmd + ']');
+    }
+    return arr;
+  }
+
+  function logArgs(args) {
+    if (!LOGGING || getStashedVar('QUIET') || !utils.isArrayLike(args)) return;
+    var msg = formatLogArgs(args);
+    if (STDOUT) console.log(msg);
+    else console.error(msg);
+  }
+
+  function truncateString(str, maxLen) {
+    maxLen = maxLen || 80;
+    if (str.length > maxLen) {
+      str = str.substring(0, maxLen - 3).trimEnd() + '...';
+    }
+    return str;
+  }
+
+  var iconv = require$1('iconv-lite');
+
+  // import iconv from 'iconv-lite';
+  // import * as iconv from 'iconv-lite';
+  // import * as iconv from '../../node_modules/iconv-lite/lib/index.js';
+
+  // List of encodings supported by iconv-lite:
+  // https://github.com/ashtuchkin/iconv-lite/wiki/Supported-Encodings
+
+  var toUtf8 = getNativeEncoder('utf8');
+  var fromUtf8 = getNativeDecoder('utf8');
+
+  // Return list of supported encodings
+  function getEncodings() {
+    iconv.encodingExists('ascii'); // make iconv load its encodings
+    return Object.keys(iconv.encodings);
+  }
+
+  function validateEncoding(enc) {
+    if (!encodingIsSupported(enc)) {
+      stop("Unknown encoding:", enc, "\nRun the -encodings command see a list of supported encodings");
+    }
+    return enc;
+  }
+
+  function stringsAreAscii(arr) {
+    return stringIsAscii(arr.join(''));
+  }
+
+  function stringIsAscii(str) {
+    var c;
+    for (var i=0, n=str.length; i<n; i++) {
+      c = str.charCodeAt(i);
+      if (c >= 128) return false;
+    }
+    return true;
+  }
+
+  function encodingIsUtf8(enc) {
+    // treating utf-8 as default
+    return !enc || /^utf-?8$/i.test(String(enc));
+  }
+
+  // Identify the most common encodings that are supersets of ascii at the
+  // single-byte level (meaning that bytes in 0 - 0x7f range must be ascii)
+  // (this allows identifying line breaks and other ascii patterns in buffers)
+  function encodingIsAsciiCompat(enc) {
+    enc = standardizeEncodingName(enc);
+    // gb.* selects the Guo Biao encodings
+    // big5 in not compatible -- second byte starts at 0x40
+    return !enc || /^(win|latin|utf8|ascii|iso88|gb)/.test(enc);
+  }
+
+  // Ex. convert UTF-8 to utf8
+  function standardizeEncodingName(enc) {
+    return (enc || '').toLowerCase().replace(/[_-]/g, '');
+  }
+
+  // Similar to Buffer#toString(); tries to speed up utf8 conversion in
+  // web browser (when using browserify Buffer shim)
+  function bufferToString(buf, enc, start, end) {
+    if (start >= 0) {
+      buf = buf.slice(start, end);
+    }
+    return decodeString(buf, enc);
+  }
+
+  function getNativeEncoder(enc) {
+    var encoder = null;
+    enc = standardizeEncodingName(enc);
+    if (enc != 'utf8') {
+      // TODO: support more encodings if TextEncoder is available
+      return null;
+    }
+    if (typeof TextEncoder != 'undefined') {
+      encoder = new TextEncoder(enc);
+    }
+    return function(str) {
+      // Convert Uint8Array from encoder to Buffer (fix for issue #216)
+      return encoder ? B.from(encoder.encode(str).buffer) : utils.createBuffer(str, enc);
+    };
+  }
+
+  function encodeString(str, enc) {
+    // TODO: faster ascii encoding?
+    var buf;
+    if (encodingIsUtf8(enc)) {
+      buf = toUtf8(str);
+    } else {
+      buf = iconv.encode(str, enc);
+    }
+    return buf;
+  }
+
+  function getNativeDecoder(enc) {
+    var decoder = null;
+    enc = standardizeEncodingName(enc);
+    if (enc != 'utf8') {
+      // TODO: support more encodings if TextDecoder is available
+      return null;
+    }
+    if (typeof TextDecoder != 'undefined') {
+      decoder = new TextDecoder(enc);
+    }
+    return function(buf) {
+      return decoder ? decoder.decode(buf) : buf.toString(enc);
+    };
+  }
+
+  // @buf a Node Buffer
+  function decodeString(buf, enc) {
+    var str;
+    if (encodingIsUtf8(enc)) {
+      str = fromUtf8(buf);
+    } else {
+      str = iconv.decode(buf, enc);
+    }
+    return str;
+  }
+
+  function encodingIsSupported(raw) {
+    var enc = standardizeEncodingName(raw);
+    return getEncodings().includes(enc);
+  }
+
+  function trimBOM(str) {
+    // remove BOM if present
+    if (str.charCodeAt(0) == 0xfeff) {
+      str = str.substr(1);
+    }
+    return str;
+  }
+
+  function printEncodings() {
+    var encodings = getEncodings().filter(function(name) {
+      // filter out some aliases and non-applicable encodings
+      return !/^(_|cs|internal|ibm|isoir|singlebyte|table|[0-9]|l[0-9]|windows)/.test(name);
+    });
+    encodings.sort();
+    print("Supported encodings:\n" + formatStringsAsGrid(encodings));
+  }
+
+  // Not a general-purpose deep copy function
+  function copyRecord$1(o) {
+    var o2 = {}, key, val;
+    if (!o) return null;
+    for (key in o) {
+      if (o.hasOwnProperty(key)) {
+        val = o[key];
+        if (val == o) {
+          // avoid infinite recursion if val is a circular reference, by copying all properties except key
+          val = utils.extend({}, val);
+          delete val[key];
+        }
+        o2[key] = val && val.constructor === Object ? copyRecord$1(val) : val;
+      }
+    }
+    return o2;
+  }
+
+  function getValueType(val) {
+    var type = null;
+    if (val === null || val === undefined) {
+      // optimization, when scanning columns containing mostly null values
+      type = null;
+    } else if (utils.isString(val)) {
+      type = 'string';
+    } else if (utils.isNumber(val)) {
+      type = 'number';
+    } else if (utils.isBoolean(val)) {
+      type = 'boolean';
+    } else if (utils.isDate(val)) {
+      type = 'date';
+    } else if (utils.isObject(val)) {
+      type = 'object';
+    }
+    return type;
+  }
+
+  // Fill out a data table with undefined values
+  // The undefined members will disappear when records are exported as JSON,
+  // but will show up when fields are listed using Object.keys()
+  function fixInconsistentFields(records) {
+    var fields = findIncompleteFields(records);
+    patchMissingFields(records, fields);
+  }
+
+  function findIncompleteFields(records) {
+    var counts = {},
+        i, j, keys;
+    for (i=0; i<records.length; i++) {
+      keys = Object.keys(records[i] || {});
+      for (j=0; j<keys.length; j++) {
+        counts[keys[j]] = (counts[keys[j]] | 0) + 1;
+      }
+    }
+    return Object.keys(counts).filter(function(k) {return counts[k] < records.length;});
+  }
+
+  function patchMissingFields(records, fields) {
+    var rec, i, j, f;
+    for (i=0; i<records.length; i++) {
+      rec = records[i] || (records[i] = {});
+      for (j=0; j<fields.length; j++) {
+        f = fields[j];
+        if (f in rec === false) {
+          rec[f] = undefined;
+        }
+      }
+    }
+  }
+
+  function fieldListContainsAll(list, fields) {
+    return list.indexOf('*') > -1 || utils.difference(fields, list).length === 0;
+  }
+
+  function getColumnType(key, records) {
+    var type = null,
+        rec;
+    for (var i=0, n=records.length; i<n; i++) {
+      rec = records[i];
+      type = rec ? getValueType(rec[key]) : null;
+      if (type) break;
+    }
+    return type;
+  }
+
+  function deleteFields(table, test) {
+    table.getFields().forEach(function(name) {
+      if (test(name)) {
+        table.deleteField(name);
+      }
+    });
+  }
+
+  function isInvalidFieldName(f) {
+    // Reject empty and all-whitespace strings. TODO: consider other criteria
+    return /^\s*$/.test(f);
+  }
+
+  // Resolve name conflicts in field names by appending numbers
+  // @fields Array of field names
+  // @maxLen (optional) Maximum chars in name
+  //
+  function getUniqFieldNames(fields, maxLen, encoding) {
+    var used = {};
+    return fields.map(function(name) {
+      var i = 0,
+          validName;
+      do {
+        validName = encoding && encoding != 'ascii' ?
+          adjustEncodedFieldName(name, maxLen, i, encoding) :
+          adjustFieldName(name, maxLen, i);
+        i++;
+      } while ((validName in used) ||
+        // don't replace an existing valid field name with a truncated name
+        name != validName && utils.contains(fields, validName));
+      used[validName] = true;
+      return validName;
+    });
+  }
+
+  function getFieldValues(records, field) {
+    return records.map(function(rec) {
+      return rec ? rec[field] : undefined;
+    });
+  }
+
+  function getUniqFieldValues(records, field) {
+    var index = {};
+    var values = [];
+    records.forEach(function(rec) {
+      var val = rec[field];
+      if (val in index === false) {
+        index[val] = true;
+        values.push(val);
+      }
+    });
+    return values;
+  }
+
+  // Truncate and/or uniqify a name (if relevant params are present)
+  function adjustFieldName(name, maxLen, i) {
+    var name2, suff;
+    maxLen = maxLen || 256;
+    if (!i) {
+      name2 = name.substr(0, maxLen);
+    } else {
+      suff = String(i);
+      if (suff.length == 1) {
+        suff = '_' + suff;
+      }
+      name2 = name.substr(0, maxLen - suff.length) + suff;
+    }
+    return name2;
+  }
+
+  // Truncate and/or uniqify a name (if relevant params are present)
+  function adjustEncodedFieldName(name, maxLen, i, encoding) {
+    var suff = i ? String(i) : '';
+    var name2 = name + suff;
+    var buf = encodeString(name2, encoding);
+    if (buf.length > (maxLen || 256)) {
+      name = name.substr(0, name.length - 1);
+      return adjustEncodedFieldName(name, maxLen, i, encoding);
+    }
+    return name2;
+  }
+
+  function applyFieldOrder(arr, option) {
+    if (option == 'ascending') {
+      arr.sort(function(a, b) {
+        return a.toLowerCase() < b.toLowerCase() ? -1 : 1;
+      });
+    }
+    return arr;
+  }
+
+  function getFirstNonEmptyRecord(records) {
+    for (var i=0, n=records ? records.length : 0; i<n; i++) {
+      if (records[i]) return records[i];
+    }
+    return null;
+  }
+
+  function findFieldNames(records, order) {
+    var first = getFirstNonEmptyRecord(records);
+    var names = first ? Object.keys(first) : [];
+    return applyFieldOrder(names, order);
+  }
+
+
+  function parseUnknownType(str) {
+    var val = getInputParser('number')(str);
+    if (val !== null) return val;
+    val = getInputParser('object')(str);
+    if (val !== null) return val;
+    return str;
+  }
+
+  // used by GUI data editing
+  function getInputParser(type) {
+    return inputParsers[type || 'multiple'];
+  }
+
+  var inputParsers = {
+    date: function(raw) {
+      var d = new Date(raw);
+      return isNaN(+d) ? null : d;
+    },
+    string: function(raw) {
+      return raw;
+    },
+    number: function(raw) {
+      var val = Number(raw);
+      if (raw == 'NaN') {
+        val = NaN;
+      } else if (isNaN(val)) {
+        val = null;
+      }
+      return val;
+    },
+    object: function(raw) {
+      var val = null;
+      try {
+        val = JSON.parse(raw);
+      } catch(e) {}
+      return val;
+    },
+    boolean: function(raw) {
+      var val = null;
+      if (raw == 'true') {
+        val = true;
+      } else if (raw == 'false') {
+        val = false;
+      }
+      return val;
+    },
+    multiple: function(raw) {
+      var val = Number(raw);
+      return isNaN(val) ? raw : val;
+    }
+  };
+
+  // Utility functions for both paths and points
+
+  // @shp An element of the layer.shapes array
+  //   (may be null, or, depending on layer type, an array of points or an array of arrays of arc ids)
+  function cloneShape(shp) {
+    if (!shp) return null;
+    return shp.map(function(part) {
+      return part.concat();
+    });
+  }
+
+  function cloneShapes(arr) {
+    return utils.isArray(arr) ? arr.map(cloneShape) : null;
+  }
+
+  function forEachShapePart(paths, cb) {
+    editShapeParts(paths, cb);
+  }
+
+  // Updates shapes array in-place.
+  // editPart: callback function
+  function editShapes(shapes, editPart) {
+    for (var i=0, n=shapes.length; i<n; i++) {
+      shapes[i] = editShapeParts(shapes[i], editPart, i);
+    }
+  }
+
+  // @parts: geometry of a feature (array of paths, array of points or null)
+  // @cb: function(part, i, parts)
+  //    If @cb returns an array, it replaces the existing value
+  //    If @cb returns null, the path is removed from the feature
+  // @shpId: (optional) id of shape
+  //
+  function editShapeParts(parts, cb, shpId) {
+    if (!parts) return null; // null geometry not edited
+    if (!utils.isArray(parts)) error("Expected an array, received:", parts);
+    var nulls = 0,
+        n = parts.length,
+        retn;
+
+    for (var i=0; i<n; i++) {
+      retn = cb(parts[i], i, parts, shpId);
+      if (retn === null) {
+        parts[i] = null;
+      } else if (utils.isArray(retn)) {
+        parts[i] = retn.length > 0 ? retn : null;
+      }
+      if (parts[i] === null) {
+        nulls++;
+      }
+    }
+    if (nulls == n) {
+      return null;
+    } else if (nulls > 0) {
+      return parts.filter(function(part) {return !!part;});
+    } else {
+      return parts;
+    }
+  }
+
+  // Get max number of parts in a single shape from an array of shapes.
+  // Caveat: polygon holes are counted as separate parts.
+  function findMaxPartCount(shapes) {
+    var maxCount = 0, shp;
+    for (var i=0, n=shapes.length; i<n; i++) {
+      shp = shapes[i];
+      if (shp && shp.length > maxCount) {
+        maxCount = shp.length;
+      }
+    }
+    return maxCount;
+  }
+
+  // Lightweight hooks that make in-place mutations observable to GUI undo.
+  // Normal CLI runs leave activeTransaction unset, so capture hooks are no-ops.
+
+  var activeTransaction = null;
+  var nextUndoId = 1;
+  var objectMetadata = new WeakMap();
+
+  function getActiveUndoTransaction() {
+    return activeTransaction;
+  }
+
+  function setActiveUndoTransaction(tx) {
+    activeTransaction = tx || null;
+  }
+
+  function clearActiveUndoTransaction(tx) {
+    if (!tx || activeTransaction == tx) {
+      activeTransaction = null;
+    }
+  }
+
+  function withActiveUndoTransaction(tx, cb) {
+    var prev = activeTransaction;
+    activeTransaction = tx || null;
+    try {
+      return cb();
+    } finally {
+      activeTransaction = prev;
+    }
+  }
+
+  function getUndoMetadata(obj) {
+    var meta = objectMetadata.get(obj);
+    if (!meta) {
+      meta = {
+        id: 'u' + nextUndoId++,
+        revision: 0
+      };
+      objectMetadata.set(obj, meta);
+    }
+    return meta;
+  }
+
+  function getUndoId(obj) {
+    return getUndoMetadata(obj).id;
+  }
+
+  function getUndoRevision(obj) {
+    return getUndoMetadata(obj).revision;
+  }
+
+  function markChanged(obj, detail) {
+    var tx = activeTransaction;
+    var meta = objectMetadata.get(obj);
+    if (!tx && !meta) return 0;
+    if (!meta) meta = getUndoMetadata(obj);
+    meta.revision++;
+    notifyTransaction(tx, 'markChanged', obj, detail);
+    return meta.revision;
+  }
+
+  function noteTableWillChange(table, detail) {
+    notifyTransaction(activeTransaction, 'captureTableBefore', table, detail || {});
+  }
+
+  function noteTableRecordsWillChange(table, ids, detail) {
+    notifyTransaction(activeTransaction, 'captureTableRecordsBefore', table, Object.assign({
+      ids: normalizeIds(ids)
+    }, detail || {}));
+  }
+
+  function noteTableFieldsWillChange(table, fields, detail) {
+    notifyTransaction(activeTransaction, 'captureTableFieldsBefore', table, Object.assign({
+      fields: normalizeStrings(fields)
+    }, detail || {}));
+  }
+
+  function noteTableOrderWillChange(table, ids, detail) {
+    notifyTransaction(activeTransaction, 'captureTableOrderBefore', table, Object.assign({
+      ids: normalizeIds(ids)
+    }, detail || {}));
+  }
+
+  function noteTableSchemaWillChange(table, detail) {
+    notifyTransaction(activeTransaction, 'captureTableSchemaBefore', table, detail || {});
+  }
+
+  function markTableChanged(table, detail) {
+    return markChanged(table, Object.assign({type: 'table'}, detail || {}));
+  }
+
+  function markTableRecordsChanged(table, ids, detail) {
+    return markTableChanged(table, Object.assign({
+      granularity: 'records',
+      ids: normalizeIds(ids)
+    }, detail || {}));
+  }
+
+  function markTableFieldsChanged(table, fields, detail) {
+    return markTableChanged(table, Object.assign({
+      granularity: 'fields',
+      fields: normalizeStrings(fields)
+    }, detail || {}));
+  }
+
+  function markTableSchemaChanged(table, detail) {
+    return markTableChanged(table, Object.assign({
+      granularity: 'schema'
+    }, detail || {}));
+  }
+
+  function markTableOrderChanged(table, ids, detail) {
+    return markTableChanged(table, Object.assign({
+      granularity: 'order',
+      ids: normalizeIds(ids)
+    }, detail || {}));
+  }
+
+  function noteArcsWillChange(arcs, detail) {
+    notifyTransaction(activeTransaction, 'captureArcsBefore', arcs, detail || {});
+  }
+
+  function noteArcsSimplificationWillChange$1(arcs, detail) {
+    notifyTransaction(activeTransaction, 'captureArcsSimplificationBefore', arcs, detail || {});
+  }
+
+  function markArcsChanged(arcs, detail) {
+    return markChanged(arcs, Object.assign({type: 'arcs'}, detail || {}));
+  }
+
+  function markArcsSimplificationChanged$1(arcs, detail) {
+    return markArcsChanged(arcs, Object.assign({granularity: 'simplification'}, detail || {}));
+  }
+
+  function noteCatalogWillChange(catalog, detail) {
+    notifyTransaction(activeTransaction, 'captureCatalogBefore', catalog, detail || {});
+  }
+
+  function markCatalogChanged(catalog, detail) {
+    return markChanged(catalog, Object.assign({type: 'catalog'}, detail || {}));
+  }
+
+  function noteDatasetWillChange(dataset, detail) {
+    notifyTransaction(activeTransaction, 'captureDatasetBefore', dataset, detail || {});
+  }
+
+  function noteDatasetInfoWillChange(dataset, detail) {
+    notifyTransaction(activeTransaction, 'captureDatasetInfoBefore', dataset, detail || {});
+  }
+
+  function markDatasetChanged(dataset, detail) {
+    return markChanged(dataset, Object.assign({type: 'dataset'}, detail || {}));
+  }
+
+  function markDatasetInfoChanged(dataset, detail) {
+    return markDatasetChanged(dataset, Object.assign({granularity: 'info'}, detail || {}));
+  }
+
+  function noteLayerWillChange(layer, detail) {
+    notifyTransaction(activeTransaction, 'captureLayerBefore', layer, detail || {});
+  }
+
+  function noteLayerMetadataWillChange(layer, detail) {
+    notifyTransaction(activeTransaction, 'captureLayerMetadataBefore', layer, detail || {});
+  }
+
+  function noteLayerOrderWillChange(layer, ids, detail) {
+    notifyTransaction(activeTransaction, 'captureLayerOrderBefore', layer, Object.assign({
+      ids: normalizeIds(ids)
+    }, detail || {}));
+  }
+
+  function markLayerChanged(layer, detail) {
+    return markChanged(layer, Object.assign({type: 'layer'}, detail || {}));
+  }
+
+  function markLayerMetadataChanged(layer, detail) {
+    return markLayerChanged(layer, Object.assign({granularity: 'metadata'}, detail || {}));
+  }
+
+  function markLayerOrderChanged(layer, ids, detail) {
+    return markLayerChanged(layer, Object.assign({
+      granularity: 'order',
+      ids: normalizeIds(ids)
+    }, detail || {}));
+  }
+
+  function notifyTransaction(tx, method, obj, detail) {
+    if (tx && typeof tx[method] == 'function') {
+      tx[method](obj, detail || {});
+    }
+  }
+
+  function normalizeIds(ids) {
+    if (ids == null) return [];
+    return Array.isArray(ids) ? ids.slice() : [ids];
+  }
+
+  function normalizeStrings(arr) {
+    if (arr == null) return [];
+    return Array.isArray(arr) ? arr.slice() : [arr];
+  }
+
+  function UndoTransaction(label) {
+    this.label = label || '';
+    this.units = [];
+    this._captured = {};
+  }
+
+  UndoTransaction.prototype = {
+    run: function(cb) {
+      return withActiveUndoTransaction(this, cb);
+    },
+
+    getCapturedUnits: function() {
+      return this.units.slice();
+    },
+
+    restore: function() {
+      restoreCapturedUnits(this.units);
+    },
+
+    captureCurrentState: function() {
+      return captureCurrentUnits(this.units);
+    },
+
+    captureTableBefore: function(table, detail) {
+      var key = unitKey('table', table);
+      if (this._captured[key]) return;
+      this._captured[key] = true;
+      this.units.push({
+        type: 'table',
+        target: table,
+        id: getUndoId(table),
+        revision: getUndoRevision(table),
+        detail: copyDetail(detail),
+        records: table.getRecords().map(copyRecord$1)
+      });
+    },
+
+    captureTableRecordsBefore: function(table, detail) {
+      var ids = uniqueNumbers(detail.ids);
+      var captured = [];
+      var records = table.getRecords();
+      ids.forEach(function(id) {
+        var key = unitKey('table-record', table, id);
+        if (this._captured[key]) return;
+        this._captured[key] = true;
+        captured.push({
+          id: id,
+          record: copyRecord$1(records[id])
+        });
+      }, this);
+      if (captured.length > 0) {
+        this.units.push({
+          type: 'table-records',
+          target: table,
+          id: getUndoId(table),
+          revision: getUndoRevision(table),
+          detail: copyDetail(detail),
+          records: captured
+        });
+      }
+    },
+
+    captureTableFieldsBefore: function(table, detail) {
+      var fields = uniqueStrings(detail.fields);
+      var records = table.getRecords();
+      var columns = [];
+      fields.forEach(function(field) {
+        var key = unitKey('table-field', table, field);
+        if (this._captured[key]) return;
+        this._captured[key] = true;
+        columns.push({
+          field: field,
+          values: records.map(function(rec) {
+            return rec ? rec[field] : undefined;
+          })
+        });
+      }, this);
+      if (columns.length > 0) {
+        this.units.push({
+          type: 'table-fields',
+          target: table,
+          id: getUndoId(table),
+          revision: getUndoRevision(table),
+          detail: copyDetail(detail),
+          columns: columns
+        });
+      }
+    },
+
+    captureTableOrderBefore: function(table, detail) {
+      captureOrderUnit(this, 'table-order', table, detail);
+    },
+
+    captureTableSchemaBefore: function(table, detail) {
+      var key = unitKey('table-schema', table);
+      if (this._captured[key]) return;
+      this._captured[key] = true;
+      this.units.push({
+        type: 'table-schema',
+        target: table,
+        id: getUndoId(table),
+        revision: getUndoRevision(table),
+        detail: copyDetail(detail),
+        fields: table.getFields()
+      });
+      if (detail && (detail.field || detail.fields)) {
+        this.captureTableFieldsBefore(table, {
+          fields: detail.fields || [detail.field],
+          operation: detail.operation
+        });
+      }
+    },
+
+    captureArcsBefore: function(arcs, detail) {
+      var data, key;
+      key = unitKey('arcs', arcs);
+      if (this._captured[key]) return;
+      this._captured[key] = true;
+      data = arcs.getVertexData();
+      this.units.push({
+        type: 'arcs',
+        target: arcs,
+        id: getUndoId(arcs),
+        revision: getUndoRevision(arcs),
+        detail: copyDetail(detail),
+        nn: new Uint32Array(data.nn),
+        xx: new Float64Array(data.xx),
+        yy: new Float64Array(data.yy),
+        zz: data.zz ? new Float64Array(data.zz) : null,
+        zlimit: arcs.getRetainedInterval()
+      });
+    },
+
+    captureArcsSimplificationBefore: function(arcs, detail) {
+      var data, key;
+      key = unitKey('arcs-simplification', arcs);
+      if (this._captured[key]) return;
+      this._captured[key] = true;
+      data = arcs.getVertexData();
+      this.units.push({
+        type: 'arcs-simplification',
+        target: arcs,
+        id: getUndoId(arcs),
+        revision: getUndoRevision(arcs),
+        detail: copyDetail(detail),
+        zz: data.zz ? new Float64Array(data.zz) : null,
+        zlimit: arcs.getRetainedInterval()
+      });
+    },
+
+    captureCatalogBefore: function(catalog, detail) {
+      var key = unitKey('catalog', catalog);
+      if (this._captured[key]) return;
+      this._captured[key] = true;
+      this.units.push({
+        type: 'catalog',
+        target: catalog,
+        id: getUndoId(catalog),
+        revision: getUndoRevision(catalog),
+        detail: copyDetail(detail),
+        datasets: catalog.getDatasets().slice(),
+        targets: catalog.getDefaultTargets().map(function(target) {
+          return {
+            dataset: target.dataset,
+            layers: target.layers.slice()
+          };
+        })
+      });
+    },
+
+    captureDatasetBefore: function(dataset, detail) {
+      var key = unitKey('dataset', dataset, detail && detail.unit || '');
+      if (this._captured[key]) return;
+      this._captured[key] = true;
+      this.units.push({
+        type: 'dataset',
+        target: dataset,
+        id: getUndoId(dataset),
+        revision: getUndoRevision(dataset),
+        detail: copyDetail(detail),
+        layers: dataset.layers ? dataset.layers.slice() : null,
+        arcs: dataset.arcs || null,
+        info: dataset.info ? copyRecord$1(dataset.info) : null
+      });
+    },
+
+    captureDatasetInfoBefore: function(dataset, detail) {
+      var key = unitKey('dataset-info', dataset);
+      if (this._captured[key]) return;
+      this._captured[key] = true;
+      this.units.push({
+        type: 'dataset-info',
+        target: dataset,
+        id: getUndoId(dataset),
+        revision: getUndoRevision(dataset),
+        detail: copyDetail(detail),
+        info: dataset.info ? copyRecord$1(dataset.info) : null
+      });
+    },
+
+    captureLayerBefore: function(layer, detail) {
+      var key = unitKey('layer', layer, detail && detail.unit || '');
+      if (this._captured[key]) return;
+      this._captured[key] = true;
+      this.units.push({
+        type: 'layer',
+        target: layer,
+        id: getUndoId(layer),
+        revision: getUndoRevision(layer),
+        detail: copyDetail(detail),
+        name: layer.name,
+        geometry_type: layer.geometry_type,
+        shapes: layer.shapes ? cloneShapes(layer.shapes) : null,
+        data: layer.data || null
+      });
+    },
+
+    captureLayerMetadataBefore: function(layer, detail) {
+      var key = unitKey('layer-metadata', layer, detail && detail.unit || '');
+      if (this._captured[key]) return;
+      this._captured[key] = true;
+      this.units.push({
+        type: 'layer-metadata',
+        target: layer,
+        id: getUndoId(layer),
+        revision: getUndoRevision(layer),
+        detail: copyDetail(detail),
+        name: layer.name,
+        geometry_type: layer.geometry_type
+      });
+    },
+
+    captureLayerOrderBefore: function(layer, detail) {
+      captureOrderUnit(this, 'layer-order', layer, detail);
+    },
+
+    markChanged: function(obj, detail) {
+      this.units.push({
+        type: 'changed',
+        id: getUndoId(obj),
+        revision: getUndoRevision(obj),
+        detail: copyDetail(detail)
+      });
+    }
+  };
+
+  function restoreCapturedUnits(units) {
+    for (var i = units.length - 1; i >= 0; i--) {
+      restoreUnit(units[i]);
+    }
+  }
+
+  function captureCurrentUnits(units) {
+    var captured = [];
+    units.forEach(function(unit) {
+      var current = captureCurrentUnit(unit);
+      if (current) captured.push(current);
+    });
+    return captured;
+  }
+
+  function filterUnchangedRestoreUnits(units) {
+    var arcChanges = getArcsUnitChangeIndex(units);
+    var normalized = units.map(function(unit) {
+      return normalizeUnchangedDatasetArcs(unit, arcChanges);
+    });
+    var protectedArcs = getDatasetRestoreArcsIndex(normalized);
+    var protectedSimplification = getArcsRestoreIndex(normalized);
+    return normalized.filter(function(unit) {
+      return unit.type == 'changed' ||
+        restoreUnitHasChanged(unit, protectedArcs, protectedSimplification);
+    });
+  }
+
+  function normalizeUnchangedDatasetArcs(unit, arcChanges) {
+    var arcsId = unit.arcs && getUndoId(unit.arcs);
+    if (unit.type == 'dataset' &&
+        unit.arcs &&
+        unit.target.arcs &&
+        unit.arcs !== unit.target.arcs &&
+        arcChanges[arcsId] === false &&
+        arcCollectionsAreEqual(unit.arcs, unit.target.arcs)) {
+      return Object.assign({}, unit, {arcs: unit.target.arcs});
+    }
+    return unit;
+  }
+
+  function restoreUnitHasChanged(unit, protectedArcs, protectedSimplification) {
+    if (unit.type == 'arcs') {
+      if (protectedArcs[getUndoId(unit.target)]) return true;
+      return arcsUnitHasChanged(unit);
+    } else if (unit.type == 'arcs-simplification') {
+      if (protectedSimplification[getUndoId(unit.target)]) return true;
+      return arcsSimplificationUnitHasChanged(unit);
+    }
+    return true;
+  }
+
+  function getArcsUnitChangeIndex(units) {
+    var index = {};
+    units.forEach(function(unit) {
+      if (unit.type == 'arcs') {
+        index[getUndoId(unit.target)] = arcsUnitHasChanged(unit);
+      }
+    });
+    return index;
+  }
+
+  function getDatasetRestoreArcsIndex(units) {
+    var index = {};
+    units.forEach(function(unit) {
+      if (unit.type == 'dataset' && unit.arcs && unit.target.arcs !== unit.arcs) {
+        index[getUndoId(unit.arcs)] = true;
+      }
+    });
+    return index;
+  }
+
+  function getArcsRestoreIndex(units) {
+    var index = {};
+    units.forEach(function(unit) {
+      if (unit.type == 'arcs') {
+        index[getUndoId(unit.target)] = true;
+      }
+    });
+    return index;
+  }
+
+  function arcCollectionsAreEqual(a, b) {
+    var dataA, dataB;
+    if (a === b) return true;
+    if (!a || !b) return !a && !b;
+    dataA = a.getVertexData();
+    dataB = b.getVertexData();
+    return a.getRetainedInterval() == b.getRetainedInterval() &&
+      arrayLikeDataIsEqual(dataA.nn, dataB.nn) &&
+      arrayLikeDataIsEqual(dataA.xx, dataB.xx) &&
+      arrayLikeDataIsEqual(dataA.yy, dataB.yy) &&
+      arrayLikeDataIsEqual(dataA.zz, dataB.zz);
+  }
+
+  function arcsUnitHasChanged(unit) {
+    var data = unit.target.getVertexData();
+    return unit.zlimit != unit.target.getRetainedInterval() ||
+      !arrayLikeDataIsEqual(unit.nn, data.nn) ||
+      !arrayLikeDataIsEqual(unit.xx, data.xx) ||
+      !arrayLikeDataIsEqual(unit.yy, data.yy) ||
+      !arrayLikeDataIsEqual(unit.zz, data.zz);
+  }
+
+  function arcsSimplificationUnitHasChanged(unit) {
+    var data = unit.target.getVertexData();
+    return unit.zlimit != unit.target.getRetainedInterval() ||
+      !arrayLikeDataIsEqual(unit.zz, data.zz);
+  }
+
+  function arrayLikeDataIsEqual(a, b) {
+    if (a === b) return true;
+    if (!a || !b) return !a && !b;
+    if (a.length !== b.length) return false;
+    for (var i = 0; i < a.length; i++) {
+      if (a[i] !== b[i]) return false;
+    }
+    return true;
+  }
+
+  function captureCurrentUnit(unit) {
+    if (unit.type == 'changed') return null;
+    if (unit.type == 'table') {
+      return captureCurrentTable(unit);
+    } else if (unit.type == 'table-records') {
+      return captureCurrentTableRecords(unit);
+    } else if (unit.type == 'table-fields') {
+      return captureCurrentTableFields(unit);
+    } else if (unit.type == 'table-order') {
+      return captureCurrentOrder(unit);
+    } else if (unit.type == 'table-schema') {
+      return captureCurrentTableSchema(unit);
+    } else if (unit.type == 'arcs') {
+      return captureCurrentArcs(unit);
+    } else if (unit.type == 'arcs-simplification') {
+      return captureCurrentArcsSimplification(unit);
+    } else if (unit.type == 'catalog') {
+      return captureCurrentCatalog(unit);
+    } else if (unit.type == 'dataset') {
+      return captureCurrentDataset(unit);
+    } else if (unit.type == 'dataset-info') {
+      return captureCurrentDatasetInfo(unit);
+    } else if (unit.type == 'layer') {
+      return captureCurrentLayer(unit);
+    } else if (unit.type == 'layer-metadata') {
+      return captureCurrentLayerMetadata(unit);
+    } else if (unit.type == 'layer-order') {
+      return captureCurrentOrder(unit);
+    }
+    return null;
+  }
+
+  function captureCurrentTable(unit) {
+    return Object.assign({}, unit, {
+      revision: getUndoRevision(unit.target),
+      records: unit.target.getRecords().map(copyRecord$1)
+    });
+  }
+
+  function captureCurrentTableRecords(unit) {
+    var records = unit.target.getRecords();
+    return Object.assign({}, unit, {
+      revision: getUndoRevision(unit.target),
+      records: unit.records.map(function(item) {
+        return {
+          id: item.id,
+          record: copyRecord$1(records[item.id])
+        };
+      })
+    });
+  }
+
+  function captureCurrentTableFields(unit) {
+    var records = unit.target.getRecords();
+    var fields = unit.detail && unit.detail.schema_transform ?
+      unit.target.getFields() :
+      unit.columns.map(function(column) { return column.field; });
+    return Object.assign({}, unit, {
+      revision: getUndoRevision(unit.target),
+      columns: fields.map(function(field) {
+        return {
+          field: field,
+          values: records.map(function(rec) {
+            return rec ? rec[field] : undefined;
+          })
+        };
+      })
+    });
+  }
+
+  function captureCurrentOrder(unit) {
+    return Object.assign({}, unit, {
+      revision: getUndoRevision(unit.target),
+      ids: invertIds(unit.ids)
+    });
+  }
+
+  function captureCurrentTableSchema(unit) {
+    return Object.assign({}, unit, {
+      revision: getUndoRevision(unit.target),
+      fields: unit.target.getFields()
+    });
+  }
+
+  function captureCurrentArcs(unit) {
+    var data = unit.target.getVertexData();
+    return Object.assign({}, unit, {
+      revision: getUndoRevision(unit.target),
+      nn: new Uint32Array(data.nn),
+      xx: new Float64Array(data.xx),
+      yy: new Float64Array(data.yy),
+      zz: data.zz ? new Float64Array(data.zz) : null,
+      zlimit: unit.target.getRetainedInterval()
+    });
+  }
+
+  function captureCurrentArcsSimplification(unit) {
+    var data = unit.target.getVertexData();
+    return Object.assign({}, unit, {
+      revision: getUndoRevision(unit.target),
+      zz: data.zz ? new Float64Array(data.zz) : null,
+      zlimit: unit.target.getRetainedInterval()
+    });
+  }
+
+  function captureCurrentCatalog(unit) {
+    return Object.assign({}, unit, {
+      revision: getUndoRevision(unit.target),
+      datasets: unit.target.getDatasets().slice(),
+      targets: unit.target.getDefaultTargets().map(function(target) {
+        return {
+          dataset: target.dataset,
+          layers: target.layers.slice()
+        };
+      })
+    });
+  }
+
+  function captureCurrentDataset(unit) {
+    return Object.assign({}, unit, {
+      revision: getUndoRevision(unit.target),
+      layers: unit.target.layers ? unit.target.layers.slice() : null,
+      arcs: unit.target.arcs || null,
+      info: unit.target.info ? copyRecord$1(unit.target.info) : null
+    });
+  }
+
+  function captureCurrentDatasetInfo(unit) {
+    return Object.assign({}, unit, {
+      revision: getUndoRevision(unit.target),
+      info: unit.target.info ? copyRecord$1(unit.target.info) : null
+    });
+  }
+
+  function captureCurrentLayer(unit) {
+    return Object.assign({}, unit, {
+      revision: getUndoRevision(unit.target),
+      name: unit.target.name,
+      geometry_type: unit.target.geometry_type,
+      shapes: unit.target.shapes ? cloneShapes(unit.target.shapes) : null,
+      data: unit.target.data || null
+    });
+  }
+
+  function captureCurrentLayerMetadata(unit) {
+    return Object.assign({}, unit, {
+      revision: getUndoRevision(unit.target),
+      name: unit.target.name,
+      geometry_type: unit.target.geometry_type
+    });
+  }
+
+  function restoreUnit(unit) {
+    if (unit.type == 'changed') return;
+    if (unit.type == 'table') {
+      restoreTable(unit);
+    } else if (unit.type == 'table-records') {
+      restoreTableRecords(unit);
+    } else if (unit.type == 'table-fields') {
+      restoreTableFields(unit);
+    } else if (unit.type == 'table-order') {
+      restoreTableOrder(unit);
+    } else if (unit.type == 'table-schema') {
+      restoreTableSchema(unit);
+    } else if (unit.type == 'arcs') {
+      restoreArcs(unit);
+    } else if (unit.type == 'arcs-simplification') {
+      restoreArcsSimplification(unit);
+    } else if (unit.type == 'catalog') {
+      restoreCatalog(unit);
+    } else if (unit.type == 'dataset') {
+      restoreDataset(unit);
+    } else if (unit.type == 'dataset-info') {
+      restoreDatasetInfo(unit);
+    } else if (unit.type == 'layer') {
+      restoreLayer(unit);
+    } else if (unit.type == 'layer-metadata') {
+      restoreLayerMetadata(unit);
+    } else if (unit.type == 'layer-order') {
+      restoreLayerOrder(unit);
+    }
+  }
+
+  function restoreTable(unit) {
+    var records = unit.target.getRecords();
+    records.splice(0, records.length);
+    unit.records.forEach(function(rec) {
+      records.push(copyRecord$1(rec));
+    });
+  }
+
+  function restoreTableRecords(unit) {
+    var records = unit.target.getRecords();
+    unit.records.forEach(function(item) {
+      records[item.id] = copyRecord$1(item.record);
+    });
+  }
+
+  function restoreTableFields(unit) {
+    var records = unit.target.getRecords();
+    unit.columns.forEach(function(column) {
+      column.values.forEach(function(val, i) {
+        if (!records[i]) records[i] = {};
+        records[i][column.field] = val;
+      });
+    });
+  }
+
+  function restoreTableOrder(unit) {
+    reorderArray(unit.target.getRecords(), unit.ids);
+  }
+
+  function restoreTableSchema(unit) {
+    var records = unit.target.getRecords();
+    records.forEach(function(rec, i) {
+      var reordered = {};
+      unit.fields.forEach(function(field) {
+        reordered[field] = rec ? rec[field] : undefined;
+      });
+      records[i] = reordered;
+    });
+  }
+
+  function restoreArcs(unit) {
+    unit.target.updateVertexData(
+      new Uint32Array(unit.nn),
+      new Float64Array(unit.xx),
+      new Float64Array(unit.yy),
+      unit.zz ? new Float64Array(unit.zz) : null
+    );
+    unit.target.setRetainedInterval(unit.zlimit);
+  }
+
+  function restoreArcsSimplification(unit) {
+    unit.target.setThresholds(unit.zz ? new Float64Array(unit.zz) : null);
+    unit.target.setRetainedInterval(unit.zlimit);
+  }
+
+  function restoreCatalog(unit) {
+    var datasets = unit.target.getDatasets();
+    datasets.splice(0, datasets.length);
+    unit.datasets.forEach(function(dataset) {
+      datasets.push(dataset);
+    });
+    unit.target.setDefaultTargets(unit.targets.map(function(target) {
+      return {
+        dataset: target.dataset,
+        layers: target.layers.slice()
+      };
+    }));
+  }
+
+  function restoreDataset(unit) {
+    unit.target.layers = unit.layers ? unit.layers.slice() : null;
+    unit.target.arcs = unit.arcs;
+    unit.target.info = unit.info ? copyRecord$1(unit.info) : null;
+  }
+
+  function restoreDatasetInfo(unit) {
+    unit.target.info = unit.info ? copyRecord$1(unit.info) : null;
+  }
+
+  function restoreLayer(unit) {
+    unit.target.name = unit.name;
+    unit.target.geometry_type = unit.geometry_type;
+    unit.target.shapes = unit.shapes ? cloneShapes(unit.shapes) : null;
+    unit.target.data = unit.data;
+  }
+
+  function restoreLayerMetadata(unit) {
+    unit.target.name = unit.name;
+    unit.target.geometry_type = unit.geometry_type;
+  }
+
+  function restoreLayerOrder(unit) {
+    reorderArray(unit.target.shapes, unit.ids);
+  }
+
+  function unitKey(type, obj, extra) {
+    return type + ':' + getUndoId(obj) + (extra == null ? '' : ':' + extra);
+  }
+
+  function captureOrderUnit(tx, type, target, detail) {
+    var unit = findOrderUnit(tx.units, type, target);
+    var ids = uniquePermutation(detail.ids);
+    if (unit) {
+      unit.ids = composeIds(ids, unit.ids);
+      unit.detail = copyDetail(detail);
+      return;
+    }
+    tx.units.push({
+      type: type,
+      target: target,
+      id: getUndoId(target),
+      revision: getUndoRevision(target),
+      detail: copyDetail(detail),
+      ids: ids
+    });
+  }
+
+  function findOrderUnit(units, type, target) {
+    for (var i = units.length - 1; i >= 0; i--) {
+      if (units[i].type == type && units[i].target == target) {
+        return units[i];
+      }
+    }
+    return null;
+  }
+
+  function reorderArray(arr, ids) {
+    var copy = ids.map(function(id) {
+      return arr[id];
+    });
+    arr.splice.apply(arr, [0, arr.length].concat(copy));
+  }
+
+  function composeIds(a, b) {
+    return b.map(function(id) {
+      return a[id];
+    });
+  }
+
+  function invertIds(ids) {
+    var inverse = [];
+    ids.forEach(function(id, i) {
+      inverse[id] = i;
+    });
+    return inverse;
+  }
+
+  function uniquePermutation(ids) {
+    var index = {};
+    ids = ids || [];
+    ids.forEach(function(id) {
+      if (id < 0 || id >= ids.length || index[id]) {
+        throw new Error('Invalid undo order permutation');
+      }
+      index[id] = true;
+    });
+    return ids.slice();
+  }
+
+  function copyDetail(detail) {
+    return Object.assign({}, detail || {});
+  }
+
+  function uniqueNumbers(ids) {
+    var index = {};
+    ids = ids || [];
+    ids.forEach(function(id) {
+      if (id >= 0) index[id] = true;
+    });
+    return Object.keys(index).map(Number);
+  }
+
+  function uniqueStrings(fields) {
+    var index = {};
+    fields = fields || [];
+    fields.forEach(function(field) {
+      index[field] = true;
+    });
+    return Object.keys(index);
+  }
+
+  var PAYLOAD_FIELDS = {
+    table: ['records'],
+    'table-records': ['records'],
+    'table-fields': ['columns'],
+    'table-schema': ['fields'],
+    arcs: ['nn', 'xx', 'yy', 'zz', 'zlimit'],
+    'arcs-simplification': ['zz'],
+    layer: ['shapes']
+  };
+
+  async function storeUndoUnits(units, store, entryId, role) {
+    var stored = [];
+    try {
+      for (var i = 0; i < units.length; i++) {
+        stored.push(await storeUndoUnit(units[i], store, entryId, role));
+      }
+    } catch(e) {
+      await store.delMany(getStoredUndoPayloadRefs(stored));
+      throw e;
+    }
+    return stored;
+  }
+
+  async function restoreStoredUndoUnits(units, store) {
+    var hydrated = await hydrateStoredUndoUnits(units, store);
+    restoreCapturedUnits(hydrated);
+  }
+
+  async function hydrateStoredUndoUnits(units, store) {
+    var hydrated = [];
+    for (var i = 0; i < units.length; i++) {
+      hydrated.push(await hydrateStoredUndoUnit(units[i], store));
+    }
+    return hydrated;
+  }
+
+  function getStoredUndoPayloadRefs(units) {
+    var refs = [];
+    units.forEach(function(unit) {
+      if (unit.payloadRef) refs.push(unit.payloadRef);
+    });
+    return refs;
+  }
+
+  function getUndoRestoreFlags(units, baseFlags) {
+    var flags = Object.assign({}, baseFlags || {}, {undo_restore: true});
+    units.forEach(function(unit) {
+      if (unit.type == 'changed') return;
+      if (unit.type == 'arcs') {
+        flags.arc_count = true;
+      } else if (unit.type == 'arcs-simplification') {
+        flags.simplify = true;
+      } else if (unit.type == 'table' ||
+          unit.type == 'table-records' ||
+          unit.type == 'table-fields' ||
+          unit.type == 'table-order' ||
+          unit.type == 'table-schema') {
+        flags.same_table = false;
+      } else if (unit.type == 'catalog' || unit.type == 'dataset') {
+        flags.select = true;
+        flags.arc_count = true;
+      } else if (unit.type == 'dataset-info') {
+        flags.info = true;
+      } else if (unit.type == 'layer' ||
+          unit.type == 'layer-metadata' ||
+          unit.type == 'layer-order') {
+        flags.select = true;
+      }
+    });
+    return flags;
+  }
+
+  async function storeUndoUnit(unit, store, entryId, role) {
+    var payload = await getUnitPayload(unit);
+    var stored = stripPayload(unit);
+    if (payload) {
+      stored.payloadRef = await store.put(payload, {
+        entryId: entryId,
+        role: role,
+        unitType: unit.type
+      });
+    }
+    return stored;
+  }
+
+  async function hydrateStoredUndoUnit(unit, store) {
+    var hydrated = Object.assign({}, unit);
+    var payload;
+    if (unit.payloadRef) {
+      payload = await store.get(unit.payloadRef);
+      if (!payload) {
+        throw new Error('Missing undo payload: ' + unit.payloadRef.key);
+      }
+      payload = unpackPayload(unit, payload);
+      Object.assign(hydrated, payload);
+    }
+    delete hydrated.payloadRef;
+    return hydrated;
+  }
+
+  async function getUnitPayload(unit) {
+    var fields = PAYLOAD_FIELDS[unit.type];
+    var payload, hasPayload;
+    if (!fields) return null;
+    payload = {};
+    fields.forEach(function(field) {
+      if (field in unit) {
+        payload[field] = unit[field];
+        hasPayload = true;
+      }
+    });
+    if (!hasPayload) return null;
+    return unit.type == 'table' ? packTablePayload(payload) : payload;
+  }
+
+  async function packTablePayload(payload) {
+    return {
+      packedRecords: packRecordsAsColumns(payload.records)
+    };
+  }
+
+  function unpackPayload(unit, payload) {
+    if (unit.type == 'table' && payload.packedRecords) {
+      return {
+        records: unpackRecordsFromColumns(payload.packedRecords)
+      };
+    }
+    return payload;
+  }
+
+  function packRecordsAsColumns(records) {
+    var fields = getRecordFields(records);
+    return {
+      fields: fields,
+      types: fields.map(function() { return null; }),
+      data: fields.map(function(field) {
+        return records.map(function(rec) {
+          return rec ? rec[field] : undefined;
+        });
+      }),
+      size: records.length
+    };
+  }
+
+  function getRecordFields(records) {
+    var index = {};
+    records.forEach(function(rec) {
+      Object.keys(rec || {}).forEach(function(field) {
+        index[field] = true;
+      });
+    });
+    return Object.keys(index);
+  }
+
+  function unpackRecordsFromColumns(data) {
+    var records = [];
+    for (var i = 0; i < data.size; i++) {
+      records[i] = {};
+    }
+    data.fields.forEach(function(field, j) {
+      var values = data.data[j];
+      values.forEach(function(val, i) {
+        records[i][field] = val;
+      });
+    });
+    return records;
+  }
+
+  function stripPayload(unit) {
+    var fields = PAYLOAD_FIELDS[unit.type];
+    var stripped = Object.assign({}, unit);
+    if (fields) {
+      fields.forEach(function(field) {
+        delete stripped[field];
+      });
+    }
+    return stripped;
+  }
+
+  function createStoredUndoHistory(gui) {
+    var undoEntryId = 0;
+
+    return {
+      addTransaction: addTransaction,
+      getPayloadStore: getPayloadStore
+    };
+
+    async function addTransaction(tx, opts) {
+      var undoUnits, redoCaptureUnits, updateFlags, store, entryId, storedUndoUnits,
+          storedRedoUnits, storeStart, storeMillis = 0, evictToken = {};
+      opts = opts || {};
+      if (!tx || opts.error) return {skipped: true};
+      undoUnits = filterUnchangedRestoreUnits(tx.getCapturedUnits());
+      if (!undoUnits.some(isRestoreUnit)) return {
+        skipped: true,
+        unitCount: undoUnits.length,
+        restoreUnitCount: 0
+      };
+      redoCaptureUnits = getRedoCaptureUnits(undoUnits);
+      updateFlags = getUndoRestoreFlags(undoUnits, opts.flags);
+      store = getPayloadStore();
+      entryId = (opts.entryPrefix || 'undo') + '-' + (++undoEntryId);
+      try {
+        storeStart = Date.now();
+        storedUndoUnits = await storeUndoUnitsWithEviction(undoUnits, store, entryId, 'undo');
+        storeMillis = Date.now() - storeStart;
+      } catch(e) {
+        if (storedUndoUnits) {
+          await store.delMany(getStoredUndoPayloadRefs(storedUndoUnits));
+        }
+        notifyUndoWarning(gui, 'Undo state was not saved', e);
+        throw e;
+      }
+      gui.undo.addHistoryState(async function() {
+        try {
+          if (!storedRedoUnits) {
+            storedRedoUnits = await captureAndStoreRedoUnits(redoCaptureUnits, store, entryId, evictToken);
+          }
+          await restoreStoredUndoUnits(storedUndoUnits, store);
+          if (opts.onUndo) opts.onUndo();
+          gui.model.updated(updateFlags);
+        } catch(e) {
+          notifyUndoWarning(gui, 'Undo restore failed', e);
+          throw e;
+        }
+      }, async function() {
+        try {
+          if (!storedRedoUnits) {
+            throw new Error('Missing redo restore data');
+          }
+          await restoreStoredUndoUnits(storedRedoUnits, store);
+          if (opts.onRedo) opts.onRedo();
+          gui.model.updated(updateFlags);
+        } catch(e) {
+          notifyUndoWarning(gui, 'Redo restore failed', e);
+          throw e;
+        }
+      }, function() {
+        return store.delMany(getStoredUndoPayloadRefs(storedUndoUnits)
+          .concat(storedRedoUnits ? getStoredUndoPayloadRefs(storedRedoUnits) : []))
+          .catch(function(e) {
+            notifyUndoWarning(gui, 'Undo restore data was not deleted', e);
+          });
+      }, {
+        maxStates: opts.maxStates,
+        evictToken: evictToken,
+        preserveOnModeChange: true
+      });
+      return {
+        skipped: false,
+        unitCount: undoUnits.length,
+        restoreUnitCount: undoUnits.filter(isRestoreUnit).length,
+        redoCaptureMillis: 0,
+        storeMillis: storeMillis,
+        undoMillis: storeMillis,
+        payloadCount: getStoredUndoPayloadRefs(storedUndoUnits).length
+      };
+    }
+
+    async function captureAndStoreRedoUnits(captureUnits, store, entryId, evictToken) {
+      var redoUnits = captureCurrentUnits(captureUnits);
+      return storeUndoUnitsWithEviction(redoUnits, store, entryId, 'redo', evictToken);
+    }
+
+    async function storeUndoUnitsWithEviction(units, store, entryId, role, evictToken) {
+      var didEvict;
+      var notified = false;
+      while (true) {
+        try {
+          return await storeUndoUnits(units, store, entryId, role);
+        } catch(e) {
+          if (!isSessionLimitError(e) || !gui.undo || !gui.undo.evictOldestHistoryState) {
+            throw e;
+          }
+          didEvict = await gui.undo.evictOldestHistoryState({exclude: evictToken});
+          if (!didEvict) throw e;
+          if (!notified) {
+            notifyUndoHistoryEvicted(gui, store);
+            notified = true;
+          }
+        }
+      }
+    }
+
+    function getPayloadStore() {
+      if (!gui.undoPayloadStore) {
+        gui.undoPayloadStore = createUndoPayloadStore(getUndoPayloadStoreOptions());
+        gui.undoPayloadStore.startLifecycle();
+        gui.undoPayloadStore.cleanupStaleSessions();
+      }
+      return gui.undoPayloadStore;
+    }
+
+    function getUndoPayloadStoreOptions() {
+      return {
+        maxBytes: getUndoStorageLimit('undoStorageMaxBytes', 1024 * 1024 * 1024),
+        maxPayloadBytes: getUndoStorageLimit('undoPayloadMaxBytes', 512 * 1024 * 1024)
+      };
+    }
+
+    function getUndoStorageLimit(name, defaultValue) {
+      var opt = gui.options && gui.options[name],
+          query = getQueryValue$4(name);
+      if (query !== null && +query >= 0) return +query;
+      return opt >= 0 ? opt : defaultValue;
+    }
+  }
+
+  function getRedoCaptureUnits(units) {
+    return units.map(function(unit) {
+      var copy = Object.assign({}, unit);
+      if (copy.type == 'table-records' && copy.records) {
+        copy.records = copy.records.map(function(item) {
+          return {id: item.id};
+        });
+      } else if (copy.type == 'table-fields' && copy.columns) {
+        copy.columns = copy.columns.map(function(column) {
+          return {field: column.field};
+        });
+      }
+      delete copy.nn;
+      delete copy.xx;
+      delete copy.yy;
+      delete copy.zz;
+      delete copy.zlimit;
+      delete copy.shapes;
+      if (copy.type != 'table-records') delete copy.records;
+      if (copy.type != 'table-fields') delete copy.columns;
+      delete copy.fields;
+      return copy;
+    });
+  }
+
+  function isSessionLimitError(e) {
+    return e && /session limit/.test(e.message || '');
+  }
+
+  function isRestoreUnit(unit) {
+    return unit.type != 'changed';
+  }
+
+  function notifyUndoWarning(gui, title, err) {
+    var msg = err && err.message || String(err || 'Unknown error');
+    if (gui && gui.notify) {
+      gui.notify({
+        severity: 'warn',
+        title: title,
+        body: msg,
+        dedupKey: 'undo:' + title + ':' + msg
+      });
+    } else if (typeof console != 'undefined' && console.warn) {
+      console.warn(title + ': ' + msg);
+    }
+  }
+
+  function notifyUndoHistoryEvicted(gui, store) {
+    if (gui && gui.notify) {
+      gui.notify({
+        severity: 'warn',
+        title: 'Older undo history was discarded',
+        body: 'Mapshaper caps on-disk recovery data at ' + getUndoStorageLimitLabel(store) + '.',
+        dedupKey: 'undo:history-evicted'
+      });
+    } else if (typeof console != 'undefined' && console.warn) {
+      console.warn('Older undo history was discarded');
+    }
+  }
+
+  function getUndoStorageLimitLabel(store) {
+    var stats = store && store.getStats ? store.getStats() : null;
+    return formatBytes$2(stats && stats.maxBytes || 1024 * 1024 * 1024);
+  }
+
+  function formatBytes$2(bytes) {
+    var units = ['B', 'KB', 'MB', 'GB'];
+    var value = bytes;
+    var i = 0;
+    while (value >= 1024 && i < units.length - 1) {
+      value /= 1024;
+      i++;
+    }
+    return (i === 0 ? String(value) : value.toFixed(value < 10 ? 1 : 0)) + ' ' + units[i];
+  }
+
+  function getQueryValue$4(key) {
+    var rxp, match;
+    if (typeof window == 'undefined' || !window.location) return null;
+    rxp = new RegExp('[?&]' + key + '=([^&]+)');
+    match = rxp.exec(window.location.search);
+    return match ? decodeURIComponent(match[1]) : null;
+  }
+
   function openAddLayerPopup(gui) {
     var popup = showPopupAlert('', 'Add empty layer');
     var el = popup.container();
@@ -2034,6 +5588,7 @@
   function addEmptyLayer(gui, name, type) {
     var targ = gui.model.getActiveLayer();
     var crsInfo = targ && internal.getDatasetCrsInfo(targ.dataset);
+    var undoTransaction = createAddLayerUndoTransaction(gui);
     var dataset = {
       layers: [{
         name: name || undefined,
@@ -2048,8 +5603,63 @@
     if (crsInfo) {
       internal.setDatasetCrsInfo(dataset, crsInfo);
     }
+    if (undoTransaction) {
+      undoTransaction.captureCatalogBefore(gui.model, {operation: 'addEmptyLayer'});
+    }
     gui.model.addDataset(dataset);
     gui.model.updated({select: true});
+    addEmptyLayerUndoHistory(gui, undoTransaction);
+  }
+
+  function createAddLayerUndoTransaction(gui) {
+    var Transaction;
+    if (!appUndoIsEnabled(gui)) return null;
+    if (!gui.undo || typeof gui.undo.addHistoryState != 'function') return null;
+    Transaction = internal.UndoTransaction && (internal.UndoTransaction.UndoTransaction || internal.UndoTransaction);
+    return Transaction ? new Transaction('add empty layer') : null;
+  }
+
+  function addEmptyLayerUndoHistory(gui, tx) {
+    if (!tx) return;
+    getStoredUndoHistory(gui).addTransaction(tx, {
+      flags: {select: true},
+      entryPrefix: 'add-layer',
+      maxStates: getUndoHistoryLimit(gui)
+    }).catch(function(e) {
+      console.error(e);
+    });
+  }
+
+  function getStoredUndoHistory(gui) {
+    if (!gui.storedUndoHistory) {
+      gui.storedUndoHistory = createStoredUndoHistory(gui);
+    }
+    return gui.storedUndoHistory;
+  }
+
+  function getUndoHistoryLimit(gui) {
+    var opt = gui.options && gui.options.undoHistoryLimit;
+    return opt > 0 ? opt : 10;
+  }
+
+  function appUndoIsEnabled(gui) {
+    var opt = gui.options && (gui.options.undoCommands || gui.options.appUndo);
+    var query = getQueryValue$3('undo');
+    if (opt === true || query == 'on' || query == 'commands') return true;
+    if (gui.appUndoIsEnabled) return gui.appUndoIsEnabled();
+    try {
+      return window.localStorage && window.localStorage.getItem('mapshaper.undo') == 'on';
+    } catch(e) {
+      return false;
+    }
+  }
+
+  function getQueryValue$3(key) {
+    var rxp, match;
+    if (typeof window == 'undefined' || !window.location) return null;
+    rxp = new RegExp('[?&]' + key + '=([^&]+)');
+    match = rxp.exec(window.location.search);
+    return match ? decodeURIComponent(match[1]) : null;
   }
 
   async function considerReprojecting(gui, dataset, opts) {
@@ -2311,10 +5921,16 @@
       // gui.container.removeClass('queued-files');
       hideImportMenu();
       var files = queuedFiles;
+      var undoTransaction = createImportUndoTransaction();
+      var imported = false;
       try {
         if (files.length > 0) {
           queuedFiles = [];
+          if (undoTransaction) {
+            undoTransaction.captureCatalogBefore(model, {operation: 'importFiles'});
+          }
           await importFiles(files, readImportOpts());
+          imported = importCount > 0;
         }
       } catch(e) {
         console.log(e);
@@ -2323,6 +5939,9 @@
       if (gui.getMode() == 'import') {
         // Mode could also be 'alert' if an error is thrown and handled
         gui.clearMode();
+      }
+      if (undoTransaction && imported) {
+        addImportUndoHistory(undoTransaction);
       }
     }
 
@@ -2553,6 +6172,56 @@
         imported = true;
       }
       return imported;
+    }
+
+    function createImportUndoTransaction() {
+      var Transaction;
+      if (model.isEmpty() || !appUndoIsEnabled()) return null;
+      if (!gui.undo || typeof gui.undo.addHistoryState != 'function') return null;
+      Transaction = internal.UndoTransaction && (internal.UndoTransaction.UndoTransaction || internal.UndoTransaction);
+      return Transaction ? new Transaction('import files') : null;
+    }
+
+    function addImportUndoHistory(tx) {
+      getStoredUndoHistory().addTransaction(tx, {
+        flags: {select: true, arc_count: true},
+        entryPrefix: 'import',
+        maxStates: getUndoHistoryLimit()
+      }).catch(function(e) {
+        console.error(e);
+      });
+    }
+
+    function getStoredUndoHistory() {
+      if (!gui.storedUndoHistory) {
+        gui.storedUndoHistory = createStoredUndoHistory(gui);
+      }
+      return gui.storedUndoHistory;
+    }
+
+    function getUndoHistoryLimit() {
+      var opt = gui.options && gui.options.undoHistoryLimit;
+      return opt > 0 ? opt : 10;
+    }
+
+    function appUndoIsEnabled() {
+      var opt = gui.options && (gui.options.undoCommands || gui.options.appUndo);
+      var query = getQueryValue('undo');
+      if (opt === true || query == 'on' || query == 'commands') return true;
+      if (gui.appUndoIsEnabled) return gui.appUndoIsEnabled();
+      try {
+        return window.localStorage && window.localStorage.getItem('mapshaper.undo') == 'on';
+      } catch(e) {
+        return false;
+      }
+    }
+
+    function getQueryValue(key) {
+      var rxp, match;
+      if (typeof window == 'undefined' || !window.location) return null;
+      rxp = new RegExp('[?&]' + key + '=([^&]+)');
+      match = rxp.exec(window.location.search);
+      return match ? decodeURIComponent(match[1]) : null;
     }
 
 
@@ -3155,7 +6824,9 @@
     });
   }
 
-  internal.setProjectionLoader(loadProjLibs);
+  if (isBrowserProjectionLoaderAvailable()) {
+    internal.setProjectionLoader(loadProjLibs);
+  }
 
   // load Proj.4 CRS definition files dynamically
   //
@@ -3168,6 +6839,10 @@
       if (!content) stop$1(`Unable to load projection resource [${libName}]`);
       mproj.internal.mproj_insert_libcache(libName, content);
     }
+  }
+
+  function isBrowserProjectionLoaderAvailable() {
+    return typeof window != 'undefined' && typeof window.fetch == 'function';
   }
 
   function getDatasetCrsInfo(dataset) {
@@ -3899,6 +7574,7 @@
     var menu = gui.container.findChild('.simplify-options');
     var slider, text, fromPct;
     var menuBtn = gui.container.findChild('.simplify-btn').addClass('disabled');
+    var undoSession;
 
     // init settings menu
     new SimpleButton(menu.findChild('.submit-btn').addClass('default-btn')).on('click', onSubmit);
@@ -3926,7 +7602,8 @@
       // exit simplify mode if data has been changed from outside the simplify
       // tool
       // (TODO: try to only respond to changes that might affect simplification)
-      if (e.flags.simplify_method || e.flags.simplify_amount) {
+      if (e.flags.simplify_method || e.flags.simplify_amount || e.flags.repair) {
+        if (e.flags.repair) noteSimplifyUndoChanged();
         return;
       }
       menuBtn.classed('disabled', !model.getActiveLayer());
@@ -4015,6 +7692,7 @@
       } else {
         showMenu();
       }
+      startSimplifyUndoSession(target.dataset);
     }
 
     function showMenu() {
@@ -4031,6 +7709,7 @@
     function turnOff() {
       menu.hide();
       control.reset();
+      finishSimplifyUndoSession();
     }
 
     function onSubmit() {
@@ -4045,6 +7724,7 @@
       setTimeout(function() {
         var opts = getSimplifyOptions();
         mapshaper.cmd.simplify(dataset, opts);
+        noteSimplifyUndoChanged();
         gui.session.simplificationApplied(getSimplifyOptionsAsString());
         updateZ(gui.map.getActiveLayer()); // question: does this update all display layers?
         model.updated({
@@ -4100,10 +7780,80 @@
         _value = pct;
         // model.getActiveLayer().dataset.arcs.setRetainedInterval(fromPct(pct));
         setZ(gui.map.getActiveLayer(), fromPct(pct));
+        noteSimplifyUndoChanged();
         gui.session.updateSimplificationPct(pct);
         model.updated({'simplify_amount': true});
         updateSliderDisplay();
       }
+    }
+
+    function startSimplifyUndoSession(dataset) {
+      var tx;
+      if (!dataset || !dataset.arcs || !appUndoIsEnabled()) return;
+      tx = createSimplifyUndoTransaction();
+      if (!tx) return;
+      tx.captureArcsSimplificationBefore(dataset.arcs, {operation: 'simplifyTool'});
+      tx.captureDatasetInfoBefore(dataset, {operation: 'simplifyTool'});
+      undoSession = {
+        tx: tx,
+        changed: false
+      };
+    }
+
+    function noteSimplifyUndoChanged() {
+      if (undoSession) undoSession.changed = true;
+    }
+
+    function finishSimplifyUndoSession() {
+      var session = undoSession;
+      undoSession = null;
+      if (!session || !session.changed) return;
+      getStoredUndoHistory().addTransaction(session.tx, {
+        flags: {simplify: true, info: true},
+        entryPrefix: 'simplify-tool',
+        maxStates: getUndoHistoryLimit()
+      }).catch(function(e) {
+        console.error(e);
+      });
+    }
+
+    function createSimplifyUndoTransaction() {
+      var Transaction;
+      if (!gui.undo || typeof gui.undo.addHistoryState != 'function') return null;
+      Transaction = internal.UndoTransaction && (internal.UndoTransaction.UndoTransaction || internal.UndoTransaction);
+      return Transaction ? new Transaction('simplify') : null;
+    }
+
+    function getStoredUndoHistory() {
+      if (!gui.storedUndoHistory) {
+        gui.storedUndoHistory = createStoredUndoHistory(gui);
+      }
+      return gui.storedUndoHistory;
+    }
+
+    function getUndoHistoryLimit() {
+      var opt = gui.options && gui.options.undoHistoryLimit;
+      return opt > 0 ? opt : 10;
+    }
+
+    function appUndoIsEnabled() {
+      var opt = gui.options && (gui.options.undoCommands || gui.options.appUndo);
+      var query = getQueryValue('undo');
+      if (opt === true || query == 'on' || query == 'commands') return true;
+      if (gui.appUndoIsEnabled) return gui.appUndoIsEnabled();
+      try {
+        return window.localStorage && window.localStorage.getItem('mapshaper.undo') == 'on';
+      } catch(e) {
+        return false;
+      }
+    }
+
+    function getQueryValue(key) {
+      var rxp, match;
+      if (typeof window == 'undefined' || !window.location) return null;
+      rxp = new RegExp('[?&]' + key + '=([^&]+)');
+      match = rxp.exec(window.location.search);
+      return match ? decodeURIComponent(match[1]) : null;
     }
 
     function updateSliderDisplay() {
@@ -4223,6 +7973,599 @@
     return internal.formatOptionValue(internal.getLayerTargetId(gui.model, lyr));
   }
 
+  // Diagnostic-only scaffolding for app-wide undo/redo R&D.
+  // It is intentionally dormant unless explicitly enabled.
+
+  var DEFAULT_POLICY = {
+    maxStates: 20,
+    maxBytes: 256 * 1024 * 1024,
+    largeChangeBytes: 64 * 1024 * 1024,
+    captureMode: 'diagnostic',
+    sessionHistory: 'audit-log'
+  };
+
+  var EDITOR_UNDO_INVENTORY = [
+    {
+      name: 'attributes',
+      events: ['data_preupdate', 'data_postupdate'],
+      capture: 'record copies',
+      reusable: true
+    },
+    {
+      name: 'labels',
+      events: ['label_dragstart', 'label_dragend'],
+      capture: 'record copies',
+      reusable: true
+    },
+    {
+      name: 'points and symbols',
+      events: ['symbol_dragend', 'point_add', 'feature_delete'],
+      capture: 'coordinate and feature inserts/deletes',
+      reusable: true
+    },
+    {
+      name: 'vertices and rectangles',
+      events: ['vertex_dragend', 'vertex_delete', 'rectangle_dragend'],
+      capture: 'coordinate and vertex inserts/deletes',
+      reusable: true
+    },
+    {
+      name: 'path drawing',
+      events: ['path_add', 'path_extend'],
+      capture: 'editor events replayed through drawing mode',
+      reusable: false
+    }
+  ];
+
+  function createUndoFeasibilityMonitor(gui, opts) {
+    opts = Object.assign({}, DEFAULT_POLICY, opts || {});
+    var tracker = createRuntimeIdTracker();
+    var enabled = isUndoFeasibilityEnabled(gui);
+    var lastReport = null;
+
+    return {
+      beforeCommand,
+      afterCommand,
+      isEnabled: function() { return enabled; },
+      setEnabled: function(val) { enabled = !!val; },
+      getPolicy: function() { return Object.assign({}, opts); },
+      getLastReport: function() { return lastReport; },
+      getEditorUndoInventory: function() { return EDITOR_UNDO_INVENTORY.slice(); }
+    };
+
+    function beforeCommand(commands, commandString) {
+      var start, before;
+      if (!enabled || !gui.model || gui.model.isEmpty()) return null;
+      start = Date.now();
+      before = captureModelState(gui.model, tracker);
+      return {
+        commandString: commandString || '',
+        commandNames: commands.map(function(cmd) { return cmd.name; }),
+        before: before,
+        beforeCaptureMillis: Date.now() - start,
+        startedAt: start
+      };
+    }
+
+    function afterCommand(token, o) {
+      var start, after, report;
+      if (!token) return null;
+      start = Date.now();
+      after = captureModelState(gui.model, tracker);
+      report = diffModelStates(token.before, after, {
+        commandString: token.commandString,
+        commandNames: token.commandNames,
+        error: o && o.error,
+        flags: o && o.flags,
+        policy: opts,
+        timings: {
+          beforeCaptureMillis: token.beforeCaptureMillis,
+          afterCaptureMillis: Date.now() - start,
+          elapsedMillis: Date.now() - token.startedAt
+        }
+      });
+      lastReport = report;
+      gui.dispatchEvent('undo_feasibility_change', report);
+      logUndoFeasibilityReport(report);
+      return report;
+    }
+  }
+
+  function captureModelState(model, tracker) {
+    tracker = tracker || createRuntimeIdTracker();
+    var datasets = model.getDatasets();
+    var active = model.getActiveLayer && model.getActiveLayer();
+    var targets = model.getDefaultTargets ? model.getDefaultTargets() : [];
+    var state = {
+      datasets: [],
+      datasetsById: {},
+      layersById: {},
+      activeLayerId: active && active.layer ? tracker.layerId(active.layer) : null,
+      activeDatasetId: active && active.dataset ? tracker.datasetId(active.dataset) : null,
+      targetHash: hashStableValue(targets.map(function(target) {
+        return {
+          dataset: tracker.datasetId(target.dataset),
+          layers: target.layers.map(function(lyr) {
+            return tracker.layerId(lyr);
+          })
+        };
+      })),
+      editorUndo: EDITOR_UNDO_INVENTORY.slice(),
+      policy: Object.assign({}, DEFAULT_POLICY)
+    };
+
+    datasets.forEach(function(dataset, i) {
+      var datasetState = captureDatasetState(dataset, i, tracker);
+      state.datasets.push(datasetState);
+      state.datasetsById[datasetState.id] = datasetState;
+      datasetState.layers.forEach(function(layerState) {
+        state.layersById[layerState.id] = layerState;
+      });
+    });
+    state.catalogHash = hashStableValue({
+      datasets: state.datasets.map(function(dataset) {
+        return {
+          id: dataset.id,
+          index: dataset.index,
+          layers: dataset.layerIds
+        };
+      }),
+      activeLayerId: state.activeLayerId,
+      activeDatasetId: state.activeDatasetId,
+      targetHash: state.targetHash
+    });
+    state.bytes = estimateStateBytes(state);
+    return state;
+  }
+
+  function diffModelStates(before, after, opts) {
+    opts = opts || {};
+    var changes = {
+      catalog: before.catalogHash != after.catalogHash,
+      selection: before.activeLayerId != after.activeLayerId ||
+        before.activeDatasetId != after.activeDatasetId ||
+        before.targetHash != after.targetHash,
+      datasets: [],
+      layers: []
+    };
+    var ids = mergeKeys(before.datasetsById, after.datasetsById);
+    var layerIds = mergeKeys(before.layersById, after.layersById);
+
+    ids.forEach(function(id) {
+      var a = before.datasetsById[id];
+      var b = after.datasetsById[id];
+      var change = diffDatasetState(a, b);
+      if (change) changes.datasets.push(change);
+    });
+
+    layerIds.forEach(function(id) {
+      var a = before.layersById[id];
+      var b = after.layersById[id];
+      var change = diffLayerState(a, b);
+      if (change) changes.layers.push(change);
+    });
+
+    return {
+      type: 'undo-feasibility',
+      command: opts.commandString || '',
+      commandNames: opts.commandNames || [],
+      failed: !!(opts.error),
+      error: opts.error ? String(opts.error.message || opts.error) : null,
+      changes: changes,
+      storage: estimateUndoStorage(before, after, changes, opts.policy || DEFAULT_POLICY),
+      timings: opts.timings || null,
+      restore: getRestoreContract(changes),
+      policy: getUndoPolicy(opts.policy || DEFAULT_POLICY)
+    };
+  }
+
+  function getUndoPolicy(policy) {
+    policy = Object.assign({}, DEFAULT_POLICY, policy || {});
+    return {
+      optIn: true,
+      enableWith: ['gui option undoFeasibility', 'URL parameter undo=diagnostic', 'localStorage mapshaper.undo=diagnostic'],
+      stackLimits: {
+        maxStates: policy.maxStates,
+        maxBytes: policy.maxBytes,
+        largeChangeBytes: policy.largeChangeBytes
+      },
+      coexistence: 'Existing editor undo remains event-based; app-wide command undo should use the same UI state events after it graduates from diagnostics.',
+      sessionHistory: 'Session history remains an audit log and is not rewound by undo/redo.'
+    };
+  }
+
+  function getRestoreContract(changes) {
+    var flags = {
+      select: changes.selection || changes.catalog,
+      arc_count: false
+    };
+    var levels = [];
+
+    changes.datasets.forEach(function(change) {
+      if (change.status != 'changed') {
+        levels.push('catalog');
+      } else {
+        if (change.arcs) {
+          levels.push('dataset');
+          flags.arc_count = true;
+        }
+        if (change.info) levels.push('dataset-info');
+        if (change.layerOrder) levels.push('layer-order');
+      }
+    });
+    changes.layers.forEach(function(change) {
+      if (change.status != 'changed') {
+        levels.push('catalog');
+      } else {
+        if (change.shapes) levels.push('layer-shapes');
+        if (change.data) levels.push('layer-data');
+        if (change.meta) levels.push('layer-meta');
+      }
+    });
+
+    return {
+      levels: unique(levels),
+      updateFlags: flags,
+      redoInvalidation: 'Discard redo entries when a new command report contains data, catalog, or selection changes.',
+      failureHandling: 'Capture starts before command execution, so partial success after an error can still be rolled back.'
+    };
+  }
+
+  function createRuntimeIdTracker() {
+    var datasetIds = new WeakMap();
+    var layerIds = new WeakMap();
+    var datasetId = 0;
+    var layerId = 0;
+    return {
+      datasetId: function(dataset) {
+        if (!datasetIds.has(dataset)) datasetIds.set(dataset, 'd' + (++datasetId));
+        return datasetIds.get(dataset);
+      },
+      layerId: function(layer) {
+        if (!layerIds.has(layer)) layerIds.set(layer, 'l' + (++layerId));
+        return layerIds.get(layer);
+      }
+    };
+  }
+
+  function captureDatasetState(dataset, i, tracker) {
+    var layers = dataset.layers.map(function(lyr, j) {
+      return captureLayerState(lyr, j, tracker, dataset);
+    });
+    var arcs = captureArcsState(dataset.arcs);
+    var info = captureValueState(dataset.info || null);
+    var state = {
+      id: tracker.datasetId(dataset),
+      index: i,
+      layerIds: layers.map(function(lyr) { return lyr.id; }),
+      layerOrderHash: hashStableValue(layers.map(function(lyr) { return lyr.id; })),
+      arcs: arcs,
+      info: info,
+      layers: layers
+    };
+    state.bytes = arcs.bytes + info.bytes + layers.reduce(function(memo, lyr) {
+      return memo + lyr.bytes;
+    }, 0);
+    return state;
+  }
+
+  function captureLayerState(lyr, i, tracker, dataset) {
+    var data = captureDataState(lyr.data);
+    var shapes = captureValueState(lyr.shapes || null);
+    var meta = captureValueState(getLayerMeta(lyr));
+    return {
+      id: tracker.layerId(lyr),
+      datasetId: tracker.datasetId(dataset),
+      index: i,
+      name: lyr.name || '',
+      geometry_type: lyr.geometry_type || null,
+      data: data,
+      shapes: shapes,
+      meta: meta,
+      bytes: data.bytes + shapes.bytes + meta.bytes
+    };
+  }
+
+  function captureDataState(data) {
+    var records = data ? data.getRecords() : null;
+    var state = captureValueState(records);
+    state.recordCount = data ? data.size() : 0;
+    state.fields = data ? data.getFields() : [];
+    return state;
+  }
+
+  function captureArcsState(arcs) {
+    var data, bytes;
+    if (!arcs) {
+      return {
+        exists: false,
+        arcCount: 0,
+        pointCount: 0,
+        retainedInterval: 0,
+        hash: 'null',
+        bytes: 0
+      };
+    }
+    data = arcs.getVertexData();
+    bytes = typedBytes(data.nn) + typedBytes(data.xx) + typedBytes(data.yy) + typedBytes(data.zz);
+    return {
+      exists: true,
+      arcCount: arcs.size(),
+      pointCount: arcs.getPointCount(),
+      retainedInterval: arcs.getRetainedInterval(),
+      hash: hashStableValue({
+        nn: hashTypedArray(data.nn),
+        xx: hashTypedArray(data.xx),
+        yy: hashTypedArray(data.yy),
+        zz: data.zz ? hashTypedArray(data.zz) : null,
+        zlimit: arcs.getRetainedInterval()
+      }),
+      bytes: bytes
+    };
+  }
+
+  function captureValueState(obj) {
+    var str = stableStringify$1(obj);
+    return {
+      hash: hashString$1(str),
+      bytes: estimateStringBytes(str)
+    };
+  }
+
+  function diffDatasetState(a, b) {
+    if (!a) return {id: b.id, status: 'added', bytes: b.bytes};
+    if (!b) return {id: a.id, status: 'removed', bytes: a.bytes};
+    var change = {
+      id: a.id,
+      status: 'changed',
+      index: a.index != b.index,
+      layerOrder: a.layerOrderHash != b.layerOrderHash,
+      arcs: a.arcs.hash != b.arcs.hash,
+      info: a.info.hash != b.info.hash,
+      beforeBytes: a.bytes,
+      afterBytes: b.bytes
+    };
+    return change.index || change.layerOrder || change.arcs || change.info ? change : null;
+  }
+
+  function diffLayerState(a, b) {
+    if (!a) return {id: b.id, datasetId: b.datasetId, status: 'added', bytes: b.bytes};
+    if (!b) return {id: a.id, datasetId: a.datasetId, status: 'removed', bytes: a.bytes};
+    var change = {
+      id: a.id,
+      datasetId: b.datasetId,
+      status: 'changed',
+      index: a.index != b.index,
+      data: a.data.hash != b.data.hash,
+      shapes: a.shapes.hash != b.shapes.hash,
+      meta: a.meta.hash != b.meta.hash,
+      beforeBytes: a.bytes,
+      afterBytes: b.bytes,
+      recordCount: b.data.recordCount,
+      fields: b.data.fields
+    };
+    return change.index || change.data || change.shapes || change.meta ? change : null;
+  }
+
+  function estimateUndoStorage(before, after, changes, policy) {
+    var bytes = 0;
+    var strategy = 'none';
+    var changedDatasets = {};
+    var changedLayers = {};
+    var alternatives = estimateStorageAlternatives(before, after, changes);
+
+    changes.datasets.forEach(function(change) {
+      var beforeState = before.datasetsById[change.id];
+      var afterState = after.datasetsById[change.id];
+      if (change.status != 'changed' || change.arcs || change.layerOrder) {
+        bytes += (beforeState ? beforeState.bytes : 0) + (afterState ? afterState.bytes : 0);
+        changedDatasets[change.id] = true;
+      } else if (change.info) {
+        bytes += (beforeState ? beforeState.info.bytes : 0) + (afterState ? afterState.info.bytes : 0);
+        strategy = strategy == 'none' ? 'dataset-info' : strategy;
+      }
+    });
+    changes.layers.forEach(function(change) {
+      var beforeState = before.layersById[change.id];
+      var afterState = after.layersById[change.id];
+      if (changedDatasets[change.datasetId]) return;
+      if (change.data && !change.shapes && !change.meta) {
+        bytes += (beforeState ? beforeState.data.bytes : 0) + (afterState ? afterState.data.bytes : 0);
+        strategy = strategy == 'none' ? 'table' : strategy;
+      } else {
+        bytes += (beforeState ? beforeState.bytes : 0) + (afterState ? afterState.bytes : 0);
+        changedLayers[change.id] = true;
+      }
+    });
+
+    if (Object.keys(changedDatasets).length > 0) {
+      strategy = 'dataset';
+    } else if (Object.keys(changedLayers).length > 0) {
+      strategy = strategy == 'none' ? 'layer' : 'mixed';
+    }
+
+    return {
+      strategy: strategy,
+      estimatedBytes: bytes,
+      displaySize: formatBytes$1(bytes),
+      alternatives: alternatives,
+      exceedsLargeChangeLimit: bytes > policy.largeChangeBytes,
+      exceedsStackLimit: bytes > policy.maxBytes
+    };
+  }
+
+  function estimateStorageAlternatives(before, after, changes) {
+    var alternatives = {
+      fullSession: before.bytes + after.bytes,
+      changedDatasets: 0,
+      changedLayers: 0,
+      changedTables: 0,
+      changedArcs: 0
+    };
+    var datasetIds = {};
+
+    changes.datasets.forEach(function(change) {
+      var beforeState = before.datasetsById[change.id];
+      var afterState = after.datasetsById[change.id];
+      var datasetBytes = (beforeState ? beforeState.bytes : 0) + (afterState ? afterState.bytes : 0);
+      alternatives.changedDatasets += datasetBytes;
+      datasetIds[change.id] = true;
+      if (change.arcs) {
+        alternatives.changedArcs += (beforeState ? beforeState.arcs.bytes : 0) +
+          (afterState ? afterState.arcs.bytes : 0);
+      }
+    });
+    changes.layers.forEach(function(change) {
+      var beforeState = before.layersById[change.id];
+      var afterState = after.layersById[change.id];
+      if (datasetIds[change.datasetId]) return;
+      alternatives.changedLayers += (beforeState ? beforeState.bytes : 0) +
+        (afterState ? afterState.bytes : 0);
+      if (change.data) {
+        alternatives.changedTables += (beforeState ? beforeState.data.bytes : 0) +
+          (afterState ? afterState.data.bytes : 0);
+      }
+    });
+    Object.keys(alternatives).forEach(function(key) {
+      alternatives[key] = {
+        estimatedBytes: alternatives[key],
+        displaySize: formatBytes$1(alternatives[key])
+      };
+    });
+    return alternatives;
+  }
+
+  function estimateStateBytes(state) {
+    return state.datasets.reduce(function(memo, dataset) {
+      return memo + dataset.bytes;
+    }, 0);
+  }
+
+  function getLayerMeta(lyr) {
+    var meta = {};
+    Object.keys(lyr).sort().forEach(function(key) {
+      if (key == 'data' || key == 'shapes') return;
+      meta[key] = lyr[key];
+    });
+    return meta;
+  }
+
+  function isUndoFeasibilityEnabled(gui) {
+    var opt = gui.options && gui.options.undoFeasibility;
+    var query = getQueryValue$2('undo');
+    if (opt === true || opt == 'diagnostic') return true;
+    if (query == 'diagnostic' || query == 'debug') return true;
+    try {
+      return window.localStorage && window.localStorage.getItem('mapshaper.undo') == 'diagnostic';
+    } catch(e) {
+      return false;
+    }
+  }
+
+  function getQueryValue$2(key) {
+    var rxp, match;
+    if (typeof window == 'undefined' || !window.location) return null;
+    rxp = new RegExp('[?&]' + key + '=([^&]+)');
+    match = rxp.exec(window.location.search);
+    return match ? decodeURIComponent(match[1]) : null;
+  }
+
+  function logUndoFeasibilityReport(report) {
+    if (typeof console == 'undefined' || !console.log) return;
+    console.log('[mapshaper undo feasibility]', {
+      command: report.command,
+      failed: report.failed,
+      changes: report.changes,
+      storage: report.storage,
+      restore: report.restore
+    });
+  }
+
+  function mergeKeys(a, b) {
+    var index = {};
+    Object.keys(a).forEach(function(key) { index[key] = true; });
+    Object.keys(b).forEach(function(key) { index[key] = true; });
+    return Object.keys(index);
+  }
+
+  function unique(arr) {
+    var index = {};
+    arr.forEach(function(item) { index[item] = true; });
+    return Object.keys(index);
+  }
+
+  function hashStableValue(obj) {
+    return hashString$1(stableStringify$1(obj));
+  }
+
+  function stableStringify$1(obj) {
+    var seen = [];
+    return stringify(obj, 0);
+
+    function stringify(val, depth) {
+      var keys;
+      if (val === null) return 'null';
+      if (val === undefined) return 'undefined';
+      if (typeof val == 'number') return Number.isNaN(val) ? 'NaN' : String(val);
+      if (typeof val == 'string') return JSON.stringify(val);
+      if (typeof val == 'boolean') return String(val);
+      if (typeof val == 'function') return '[Function]';
+      if (ArrayBuffer.isView(val)) return hashTypedArray(val);
+      if (seen.indexOf(val) > -1) return '[Circular]';
+      if (depth > 8) return '[MaxDepth]';
+      seen.push(val);
+      if (Array.isArray(val)) {
+        return '[' + val.map(function(item) {
+          return stringify(item, depth + 1);
+        }).join(',') + ']';
+      }
+      keys = Object.keys(val).sort();
+      return '{' + keys.map(function(key) {
+        return JSON.stringify(key) + ':' + stringify(val[key], depth + 1);
+      }).join(',') + '}';
+    }
+  }
+
+  function hashTypedArray(arr) {
+    var hash, view;
+    if (!arr) return 'null';
+    view = new Uint8Array(arr.buffer, arr.byteOffset, arr.byteLength);
+    hash = hashBytes(view);
+    return arr.constructor.name + ':' + arr.length + ':' + hash;
+  }
+
+  function hashBytes(bytes) {
+    var hash = 2166136261;
+    for (var i=0, n=bytes.length; i<n; i++) {
+      hash ^= bytes[i];
+      hash += (hash << 1) + (hash << 4) + (hash << 7) + (hash << 8) + (hash << 24);
+    }
+    return (hash >>> 0).toString(16);
+  }
+
+  function hashString$1(str) {
+    var hash = 2166136261;
+    for (var i=0, n=str.length; i<n; i++) {
+      hash ^= str.charCodeAt(i);
+      hash += (hash << 1) + (hash << 4) + (hash << 7) + (hash << 8) + (hash << 24);
+    }
+    return (hash >>> 0).toString(16);
+  }
+
+  function typedBytes(arr) {
+    return arr ? arr.byteLength : 0;
+  }
+
+  function estimateStringBytes(str) {
+    return str.length * 2;
+  }
+
+  function formatBytes$1(bytes) {
+    if (bytes > 1024 * 1024) return (bytes / (1024 * 1024)).toFixed(1) + 'MB';
+    if (bytes > 1024) return Math.round(bytes / 1024) + 'KB';
+    return bytes + 'B';
+  }
+
   function Console(gui) {
     var model = gui.model;
     var CURSOR = '$ ';
@@ -4242,9 +8585,19 @@
     var history = [];
     var historyId = 0;
     var _isOpen = false;
-    var btn = gui.container.findChild('.console-btn').on('click', toggle);
+    var btn = gui.container.findChild('.console-btn')
+      .on('click', toggle)
+      .on('keydown', function(e) {
+        if (e.key == 'Enter' || e.key == ' ') {
+          e.preventDefault();
+          toggle();
+        }
+      });
     var globals = {}; // share user-defined globals (job.defs) between runs
     var sharedVars = {}; // share -vars / -defaults templating scope between runs
+    var undoFeasibility = createUndoFeasibilityMonitor(gui);
+    var storedUndoHistory = createStoredUndoHistory(gui);
+    gui.undoFeasibility = undoFeasibility;
 
     // expose this function, so other components can run commands (e.g. box tool)
     this.runMapshaperCommands = runMapshaperCommands;
@@ -4632,15 +8985,7 @@
         return done(e, {});
       }
       if (commands.length === 0) return done();
-      applyParsedCommands(commands, function(err, flags) {
-        if (!err) {
-          str = internal.standardizeConsoleCommands(str);
-          gui.session.consoleCommands(str);
-          // kludge to terminate unclosed -if blocks
-          if (str.includes('-if') && !str.includes('-endif')) {
-            gui.session.consoleCommands('-endif');
-          }
-        }
+      applyParsedCommands(commands, str, function(err, flags) {
         if (flags) {
           model.updated(flags); // info commands do not return flags
         }
@@ -4648,18 +8993,34 @@
       });
     }
 
-    function applyParsedCommands(commands, done) {
+    function applyParsedCommands(commands, commandString, done) {
       var active = model.getActiveLayer(),
           prevArcs = active?.dataset.arcs,
           prevTable = active?.layer.data,
           prevTableSize = prevTable ? prevTable.size() : 0,
           prevArcCount = prevArcs ? prevArcs.size() : 0,
-          job = new internal.Job(model);
+          undoCapture = undoFeasibility.beforeCommand(commands, commandString),
+          undoTransaction = createCommandUndoTransaction(commandString),
+          job = new internal.Job(model),
+          commandStart = Date.now();
 
       job.defs = globals; // share globals between runs
       job.vars = sharedVars; // share templating scope between runs
-      internal.runParsedCommands(commands, job, function(err) {
+      if (undoTransaction) {
+        setActiveUndoTransaction(undoTransaction);
+      }
+      try {
+        internal.runParsedCommands(commands, job, onCommandsDone);
+      } catch(e) {
+        if (undoTransaction) {
+          clearActiveUndoTransaction(undoTransaction);
+        }
+        throw e;
+      }
+
+      function onCommandsDone(err) {
         var flags = getCommandFlags(commands),
+            historyIds = [],
             active2 = model.getActiveLayer(),
             postArcs = active2?.dataset.arcs,
             postArcCount = postArcs ? postArcs.size() : 0,
@@ -4668,6 +9029,9 @@
             sameTable = prevTable == postTable && prevTableSize == postTableSize,
             sameArcs = prevArcs == postArcs && postArcCount == prevArcCount;
 
+        if (undoTransaction) {
+          clearActiveUndoTransaction(undoTransaction);
+        }
         // kludge to signal map that filtered arcs need refreshing
         // TODO: find a better solution, outside the console
         if (!sameArcs) {
@@ -4684,8 +9048,111 @@
         // signal the map to update even if an error has occured, because the
         // commands may have partially succeeded and changes may have occured to
         // the data.
-        done(err, flags);
+        undoFeasibility.afterCommand(undoCapture, {error: err, flags: flags});
+        if (!err) {
+          commandString = internal.standardizeConsoleCommands(commandString);
+          historyIds.push(gui.session.consoleCommands(commandString));
+          // kludge to terminate unclosed -if blocks
+          if (commandString.includes('-if') && !commandString.includes('-endif')) {
+            historyIds.push(gui.session.consoleCommands('-endif'));
+          }
+        }
+        addCommandUndoHistory(undoTransaction, err, flags, historyIds).then(function(undoTiming) {
+          logCommandTiming(commandString, commands, err, Date.now() - commandStart, undoTiming);
+          done(err, flags);
+        }).catch(function(e) {
+          console.error(e);
+          consoleWarn('Undo state was not saved:', e.message || e);
+          logCommandTiming(commandString, commands, err || e, Date.now() - commandStart, {
+            error: e.message || String(e)
+          });
+          done(err, flags);
+        });
+      }
+    }
+
+    function createCommandUndoTransaction(commandString) {
+      var Transaction;
+      if (!isCommandUndoEnabled()) return null;
+      storedUndoHistory.getPayloadStore();
+      Transaction = internal.UndoTransaction.UndoTransaction || internal.UndoTransaction;
+      return new Transaction(commandString);
+    }
+
+    function setActiveUndoTransaction(tx) {
+      var tracking = internal.UndoTracking;
+      if (tracking && tracking.setActiveUndoTransaction) {
+        tracking.setActiveUndoTransaction(tx);
+      } else {
+        internal.setActiveUndoTransaction(tx);
+      }
+    }
+
+    function clearActiveUndoTransaction(tx) {
+      var tracking = internal.UndoTracking;
+      if (tracking && tracking.clearActiveUndoTransaction) {
+        tracking.clearActiveUndoTransaction(tx);
+      } else {
+        internal.clearActiveUndoTransaction(tx);
+      }
+    }
+
+    async function addCommandUndoHistory(tx, err, flags, historyIds) {
+      return storedUndoHistory.addTransaction(tx, {
+        error: err,
+        flags: flags,
+        entryPrefix: 'command',
+        maxStates: getCommandUndoHistoryLimit(),
+        onUndo: function() {
+          gui.session.setCommandsActive(historyIds, false);
+        },
+        onRedo: function() {
+          gui.session.setCommandsActive(historyIds, true);
+        }
       });
+    }
+
+    function isCommandUndoEnabled() {
+      var opt = gui.options && (gui.options.undoCommands || gui.options.appUndo);
+      var query = getQueryValue('undo');
+      if (!gui.undo || typeof gui.undo.addHistoryState != 'function') return false;
+      if (opt === true || query == 'on' || query == 'commands') return true;
+      try {
+        return window.localStorage && window.localStorage.getItem('mapshaper.undo') == 'on';
+      } catch(e) {
+        return false;
+      }
+    }
+
+    function getCommandUndoHistoryLimit() {
+      var opt = gui.options && gui.options.undoHistoryLimit;
+      return opt > 0 ? opt : 10;
+    }
+
+    function logCommandTiming(commandString, commands, err, totalMillis, undoTiming) {
+      var enabled = getQueryValue('command-timing') == 'on' ||
+        getQueryValue('undo-timing') == 'on';
+      var undoMillis = undoTiming && undoTiming.undoMillis || 0;
+      if (!enabled || typeof console == 'undefined' || !console.log) return;
+      console.log('[mapshaper command timing]', {
+        command: commandString,
+        commandNames: commands.map(function(cmd) { return cmd.name; }),
+        failed: !!err,
+        commandMillis: totalMillis - undoMillis,
+        undoMillis: undoMillis,
+        redoCaptureMillis: undoTiming && undoTiming.redoCaptureMillis || 0,
+        storeMillis: undoTiming && undoTiming.storeMillis || 0,
+        totalMillis: totalMillis,
+        undo: undoTiming || null
+      });
+    }
+
+    function getQueryValue(key) {
+      var rxp, match;
+      if (typeof window == 'undefined' || !window.location) return null;
+      rxp = new RegExp('[?&]' + key + '=([^&]+)');
+      match = rxp.exec(window.location.search);
+      return match ? decodeURIComponent(match[1]) : null;
     }
 
     function onError(err) {
@@ -4838,7 +9305,9 @@
     repairBtn.on('click', function() {
       var e = model.getActiveLayer();
       if (!_simplifiedXX || !e.dataset.arcs) return;
+      noteArcsSimplificationWillChange(e.dataset.arcs, {operation: 'repairIntersections'});
       _simplifiedXX = internal.repairIntersections(e.dataset.arcs, _simplifiedXX);
+      markArcsSimplificationChanged(e.dataset.arcs, {operation: 'repairIntersections'});
       showIntersections(_simplifiedXX, e.layer, e.dataset.arcs);
       repairBtn.hide();
       model.updated({repair: true});
@@ -4955,6 +9424,18 @@
   }
 
   utils$1.inherit(IntersectionControl, EventDispatcher);
+
+  function noteArcsSimplificationWillChange(arcs, detail) {
+    if (internal.UndoTracking && internal.UndoTracking.noteArcsSimplificationWillChange) {
+      internal.UndoTracking.noteArcsSimplificationWillChange(arcs, detail);
+    }
+  }
+
+  function markArcsSimplificationChanged(arcs, detail) {
+    if (internal.UndoTracking && internal.UndoTracking.markArcsSimplificationChanged) {
+      internal.UndoTracking.markArcsSimplificationChanged(arcs, detail);
+    }
+  }
 
   async function saveFileContentToClipboard(content) {
     var str = utils$1.isString(content) ? content : content.toString();
@@ -5244,24 +9725,20 @@
     }
 
     function getExportFormats() {
-      // return ['shapefile', 'geojson', 'topojson', 'json', 'dsv', 'kml', 'svg', internal.PACKAGE_EXT];
-      return ['shapefile', 'json', 'geojson', 'dsv', 'topojson', 'flatgeobuf', 'geopackage', 'geoparquet', 'kml', internal.PACKAGE_EXT, 'svg'];
+      return ['shapefile', 'json', 'geojson', 'dsv', 'topojson', 'flatgeobuf', 'geopackage', 'geoparquet', 'kml', 'svg', internal.PACKAGE_EXT];
     }
 
     function initFormatMenu() {
       var formats = getExportFormats();
-      // var formats = utils.uniq(getExportFormats().concat(getInputFormats()));
       var items = formats.map(function(fmt) {
         return utils$1.format('<td><label><input type="radio" name="format" value="%s"' +
           ' class="radio">%s</label></td>', fmt, internal.getFormatName(fmt));
       });
       var table = '<table>';
       for (var i=0; i<items.length; i+=2) {
-        table += '<tr>' + items[i] + items[i+1] + '<tr>';
+        table += '<tr>' + items[i] + (items[i+1] || '<td></td>') + '<tr>';
       }
       table += '</table>';
-
-      // menu.findChild('.export-formats').html(items.join('\n'));
       menu.findChild('.export-formats').html(table);
       menu.findChild('.export-formats input[value="' + getDefaultExportFormat() + '"]').node().checked = true;
       // update save-as settings when value changes
@@ -5285,7 +9762,7 @@
     }
 
     function getSelectedFormat() {
-      return menu.findChild('.export-formats input:checked').node().value;
+      return menu.findChild('.export-formats input:checked')?.node()?.value;
     }
 
     function getZipOption() {
@@ -5787,11 +10264,20 @@
 
       function deleteLayer() {
         var target = findLayerById(id);
+        var undoTransaction = createDeleteLayerUndoTransaction(target);
+        if (!target) return;
         if (map.isVisibleLayer(target.layer)) {
           // TODO: check for double map refresh after model.deleteLayer() below
           setLayerPinning(target.layer, false);
         }
-        model.deleteLayer(target.layer, target.dataset);
+        if (undoTransaction) {
+          undoTransaction.run(function() {
+            model.deleteLayer(target.layer, target.dataset);
+          });
+          addDeleteLayerUndoHistory(undoTransaction);
+        } else {
+          model.deleteLayer(target.layer, target.dataset);
+        }
       }
 
       function selectLayer(closeMenu) {
@@ -5853,9 +10339,7 @@
           var target = findLayerById(id);
           var str = cleanLayerName(this.value());
           this.value(formatLayerNameForDisplay(str));
-          target.layer.name = str;
-          gui.session.layerRenamed(target.layer, str);
-          updateMenuBtn();
+          renameLayer(target, str);
         });
 
       // init click-to-select
@@ -5889,6 +10373,96 @@
         str = "[empty]";
       }
       return str;
+    }
+
+    function createDeleteLayerUndoTransaction(target) {
+      return createLayerMenuUndoTransaction(target, 'delete layer');
+    }
+
+    function createLayerRenameUndoTransaction(target) {
+      return createLayerMenuUndoTransaction(target, 'rename layer');
+    }
+
+    function createLayerMenuUndoTransaction(target, label) {
+      var Transaction;
+      if (!target || !appUndoIsEnabled()) return null;
+      if (!gui.undo || typeof gui.undo.addHistoryState != 'function') return null;
+      Transaction = internal.UndoTransaction && (internal.UndoTransaction.UndoTransaction || internal.UndoTransaction);
+      return Transaction ? new Transaction(label) : null;
+    }
+
+    function addDeleteLayerUndoHistory(tx) {
+      getStoredUndoHistory().addTransaction(tx, {
+        flags: {select: true, arc_count: true},
+        entryPrefix: 'delete-layer',
+        maxStates: getUndoHistoryLimit()
+      }).catch(function(e) {
+        console.error(e);
+      });
+    }
+
+    function renameLayer(target, name) {
+      var undoTransaction;
+      if (!target || target.layer.name == name) return;
+      undoTransaction = createLayerRenameUndoTransaction(target);
+      if (undoTransaction) {
+        undoTransaction.captureLayerMetadataBefore(target.layer, {operation: 'renameLayer', unit: 'name'});
+        target.layer.name = name;
+        markLayerChanged(target.layer, {operation: 'renameLayer', unit: 'name'});
+        addLayerRenameUndoHistory(undoTransaction);
+      } else {
+        target.layer.name = name;
+      }
+      gui.session.layerRenamed(target.layer, name);
+      updateMenuBtn();
+    }
+
+    function addLayerRenameUndoHistory(tx) {
+      getStoredUndoHistory().addTransaction(tx, {
+        flags: {select: true},
+        entryPrefix: 'rename-layer',
+        maxStates: getUndoHistoryLimit()
+      }).catch(function(e) {
+        console.error(e);
+      });
+    }
+
+    function markLayerChanged(layer, detail) {
+      if (internal.UndoTracking && internal.UndoTracking.markLayerChanged) {
+        internal.UndoTracking.markLayerChanged(layer, detail);
+      }
+    }
+
+    function getStoredUndoHistory() {
+      if (!gui.storedUndoHistory) {
+        gui.storedUndoHistory = createStoredUndoHistory(gui);
+      }
+      return gui.storedUndoHistory;
+    }
+
+    function getUndoHistoryLimit() {
+      var opt = gui.options && gui.options.undoHistoryLimit;
+      return opt > 0 ? opt : 10;
+    }
+
+    function appUndoIsEnabled() {
+      var opt = gui.options && (gui.options.undoCommands || gui.options.appUndo);
+      var query = getQueryValue('undo');
+      if (opt === true || query == 'on' || query == 'commands') return true;
+      if (gui.appUndoIsEnabled) return gui.appUndoIsEnabled();
+      try {
+        return window.localStorage && window.localStorage.getItem('mapshaper.undo') == 'on';
+      } catch(e) {
+        return false;
+      }
+    }
+
+    function getQueryValue(key) {
+      var rxp, match;
+      if (typeof window == 'undefined' || !window.location) return null;
+      rxp = new RegExp('[?&]' + key + '=([^&]+)');
+      match = rxp.exec(window.location.search);
+      return match ? decodeURIComponent(match[1]) : null;
     }
 
     function getWarnings(lyr, dataset) {
@@ -5975,8 +10549,188 @@
     });
   }
 
+  var APP_UNDO_KEY = 'mapshaper.undo';
+
+  function HistoryMenu(gui) {
+    var btn = gui.container.findChild('.history-btn');
+    var menu = gui.container.findChild('.history-menu-dropdown');
+    if (!btn || !menu) return;
+
+    var closeBtn = menu.findChild('.close2-btn');
+    // var undoBtn = menu.findChild('.history-undo-btn');
+    // var redoBtn = menu.findChild('.history-redo-btn');
+    var toggleBtn = menu.findChild('.history-toggle-btn');
+    var toggleCheckbox = menu.findChild('.history-undo-checkbox');
+    var note = menu.findChild('.history-menu-note');
+    var clearBtn = menu.findChild('.history-clear-btn');
+    var commandLogBtn = menu.findChild('.history-command-log-btn');
+
+    gui.appUndoIsEnabled = isAppUndoEnabled;
+
+    gui.addMode('history_menu', turnOn, turnOff, btn);
+
+    btn.on('keydown', function(e) {
+      if (e.key == 'Enter' || e.key == ' ') {
+        e.preventDefault();
+        gui.enterMode(gui.getMode() == 'history_menu' ? null : 'history_menu');
+      }
+    });
+
+    closeBtn.on('click', gui.clearMode);
+
+    // undoBtn.on('click', function(e) {
+    //   e.stopPropagation();
+    //   if (gui.undo.canUndo()) gui.undo.undo();
+    //   gui.clearMode();
+    // });
+
+    // redoBtn.on('click', function(e) {
+    //   e.stopPropagation();
+    //   if (gui.undo.canRedo()) gui.undo.redo();
+    //   gui.clearMode();
+    // });
+
+    toggleBtn.on('click', function(e) {
+      e.stopPropagation();
+    });
+
+    toggleCheckbox.on('change', function(e) {
+      e.stopPropagation();
+      if (appUndoForcedByUrl()) return;
+      setAppUndoEnabled(!!toggleCheckbox.node().checked);
+      updateMenuState();
+    });
+
+    clearBtn.on('click', function(e) {
+      e.stopPropagation();
+      gui.undo.clear();
+      updateMenuState();
+      clearUndoPayloadStore().then(updateMenuState).catch(function(err) {
+        console.error(err);
+      });
+    });
+
+    commandLogBtn.on('click', function(e) {
+      e.stopPropagation();
+      if (gui.console) gui.console.runCommand('history');
+      gui.clearMode();
+    });
+
+    document.addEventListener('keydown', function(e) {
+      if (gui.getMode() == 'history_menu' && e.key == 'Escape') {
+        gui.clearMode();
+        btn.node().focus();
+      }
+    });
+
+    gui.on('history_change', updateMenuState);
+    updateMenuState();
+
+    function turnOn() {
+      btn.attr('aria-expanded', 'true');
+      updateMenuState();
+      menu.show();
+    }
+
+    function turnOff() {
+      btn.attr('aria-expanded', 'false');
+      menu.hide();
+    }
+
+    function updateMenuState() {
+      // setItemEnabled(undoBtn, gui.undo.canUndo());
+      // setItemEnabled(redoBtn, gui.undo.canRedo());
+      setItemEnabled(clearBtn, gui.undo.canUndo() || gui.undo.canRedo());
+      updateToggle();
+    }
+
+    function updateToggle() {
+      var enabled = isAppUndoEnabled();
+      var forced = appUndoForcedByUrl();
+      toggleBtn.classed('disabled', forced);
+      toggleCheckbox.node().checked = enabled;
+      toggleCheckbox.node().disabled = forced;
+      toggleCheckbox.attr('aria-disabled', forced ? 'true' : 'false');
+      note.text(enabled ?
+        getRestoreDataNote(gui) :
+        'Turn on undo before running commands you may want to undo.');
+    }
+
+    function clearUndoPayloadStore() {
+      var store = gui.undoPayloadStore;
+      if (store && store.clear) {
+        return store.clear();
+      }
+      return Promise.resolve();
+    }
+  }
+
+  function isAppUndoEnabled() {
+    return appUndoForcedByUrl() || appUndoSettingIsOn();
+  }
+
+  function setItemEnabled(el, enabled) {
+    el.classed('disabled', !enabled);
+    el.attr('aria-disabled', enabled ? 'false' : 'true');
+  }
+
+  function appUndoForcedByUrl() {
+    var query = getQueryValue$1('undo');
+    return query == 'on' || query == 'commands';
+  }
+
+  function appUndoSettingIsOn() {
+    try {
+      return window.localStorage && window.localStorage.getItem(APP_UNDO_KEY) == 'on';
+    } catch(e) {
+      return false;
+    }
+  }
+
+  function setAppUndoEnabled(enabled) {
+    try {
+      if (window.localStorage) {
+        window.localStorage.setItem(APP_UNDO_KEY, enabled ? 'on' : 'off');
+      }
+    } catch(e) {}
+  }
+
+  function getRestoreDataNote(gui) {
+    var stats = getUndoPayloadStats(gui);
+    var bytes = stats ? stats.ownBytes || 0 : 0;
+    if (bytes === 0) {
+      return 'estimated on-disk restore data: none';
+    }
+    return 'estimated on-disk restore data: ' + formatBytes(bytes);
+  }
+
+  function getUndoPayloadStats(gui) {
+    var store = gui && gui.undoPayloadStore;
+    return store && store.getStats ? store.getStats() : null;
+  }
+
+  function formatBytes(bytes) {
+    var units = ['B', 'KB', 'MB', 'GB'];
+    var value = bytes;
+    var i = 0;
+    while (value >= 1000 && i < units.length - 1) {
+      value /= 1000;
+      i++;
+    }
+    return (i === 0 ? String(value) : value.toFixed(value < 10 ? 1 : 0)) + ' ' + units[i];
+  }
+
+  function getQueryValue$1(key) {
+    var rxp, match;
+    if (typeof window == 'undefined' || !window.location) return null;
+    rxp = new RegExp('[?&]' + key + '=([^&]+)');
+    match = rxp.exec(window.location.search);
+    return match ? decodeURIComponent(match[1]) : null;
+  }
+
   function SessionHistory(gui) {
     var commands = [];
+    var commandId = 0;
     // index of first command after the last "save" boundary; commands at indices
     // [savedAtIndex .. commands.length) are considered unsaved
     var savedAtIndex = 0;
@@ -5985,7 +10739,8 @@
 
     this.unsavedChanges = function() {
       for (var i = commands.length - 1; i >= savedAtIndex; i--) {
-        var cmdName = getCommandName(commands[i]);
+        if (!commandIsActive(commands[i])) continue;
+        var cmdName = getCommandName(getCommandString(commands[i]));
         if (nonEditingCommands.includes(cmdName)) continue;
         return true;
       }
@@ -5993,7 +10748,7 @@
     };
 
     this.isEmpty = function() {
-      return commands.length === 0;
+      return getActiveCommands().length === 0;
     };
 
     // Mark the current end of the history as a "saved" boundary -- called after
@@ -6006,8 +10761,8 @@
     // Capture a serializable copy of the history for inclusion in a snapshot.
     this.getHistorySnapshot = function() {
       return {
-        commands: commands.slice(),
-        savedAtIndex: savedAtIndex
+        commands: getActiveCommands(),
+        savedAtIndex: Math.min(savedAtIndex, getActiveCommands().length)
       };
     };
 
@@ -6016,7 +10771,7 @@
     // (e.g. older snapshots, or external .msx files), starts from a clean state.
     this.restoreHistorySnapshot = function(obj) {
       if (obj && Array.isArray(obj.commands)) {
-        commands = obj.commands.slice();
+        commands = obj.commands.map(createCommandEntry);
         savedAtIndex = typeof obj.savedAtIndex == 'number' ?
           Math.min(obj.savedAtIndex, commands.length) : commands.length;
       } else {
@@ -6030,26 +10785,38 @@
       if (optStr) {
         cmd += ' ' + optStr;
       }
-      commands.push(cmd);
+      addCommand(cmd);
     };
 
     this.layerRenamed = function(lyr, name) {
       var currTarget = getCurrentTarget();
       var layerTarget = getTargetFromLayer(lyr);
       if (currTarget == layerTarget) {
-        commands.push('-rename-layers ' + name);
+        addCommand('-rename-layers ' + name);
       } else {
-        commands.push('-rename-layers ' + name + ' target=' + layerTarget);
-        commands.push('-target ' + currTarget);
+        addCommand('-rename-layers ' + name + ' target=' + layerTarget);
+        addCommand('-target ' + currTarget);
       }
     };
 
     this.consoleCommands = function(str) {
-      commands.push(str); // todo: split commands?
+      return addCommand(str); // todo: split commands?
+    };
+
+    this.setCommandsActive = function(ids, active) {
+      var idIndex = {};
+      (ids || []).forEach(function(id) {
+        idIndex[id] = true;
+      });
+      commands.forEach(function(entry) {
+        if (entry && idIndex[entry.id]) {
+          entry.active = !!active;
+        }
+      });
     };
 
     this.simplificationApplied = function(optStr) {
-      commands.push('-simplify ' + optStr);
+      addCommand('-simplify ' + optStr);
     };
 
     this.simplificationRepair = function() {
@@ -6058,20 +10825,20 @@
       //  consider adding a (hidden) repair command to handle this event
       var i = indexOfLastCommand('-simplify');
       if (i > -1) {
-        commands[i] = commands[i].replace(' no-repair', '');
+        commands[i].command = commands[i].command.replace(' no-repair', '');
       }
     };
 
     this.updateSimplificationPct = function(pct) {
       var i = indexOfLastCommand('-simplify');
       if (i > -1) {
-        commands[i] = commands[i].replace(/percentage=[^ ]+/, 'percentage=' + pct);
+        commands[i].command = commands[i].command.replace(/percentage=[^ ]+/, 'percentage=' + pct);
       }
     };
 
     this.dataValueUpdated = function(ids, field, value) {
       var cmd = `-each 'd[${JSON.stringify(field)}] = ${JSON.stringify(value)}' ids=${ids.join(",")}`;
-      commands.push(cmd);
+      addCommand(cmd);
     };
 
     this.layersExported = function(ids, optStr) {
@@ -6083,7 +10850,7 @@
       if (optStr) {
         cmd += ' ' + optStr;
       }
-      commands.push(cmd);
+      addCommand(cmd);
       // -o writes data to a durable location, so treat this as a save boundary
       savedAtIndex = commands.length;
     };
@@ -6094,14 +10861,55 @@
         if (indexOfLastCommand('-target') == commands.length - 1) {
           commands.pop(); // if last commands was -target, remove it
         }
-        commands.push('-target ' + getTargetFromLayer(lyr));
+        addCommand('-target ' + getTargetFromLayer(lyr));
       }
     };
 
     this.toCommandLineString = function() {
-      var str = commands.join(' \\\n  ');
+      var str = getActiveCommands().join(' \\\n  ');
       return 'mapshaper ' + str;
     };
+
+    function addCommand(cmd) {
+      discardInactiveTail();
+      commands.push(createCommandEntry(cmd));
+      return commands[commands.length - 1].id;
+    }
+
+    function createCommandEntry(cmd) {
+      if (cmd && typeof cmd == 'object') {
+        commandId = Math.max(commandId, cmd.id || 0);
+        return {
+          id: cmd.id || ++commandId,
+          command: cmd.command || '',
+          active: cmd.active !== false
+        };
+      }
+      return {
+        id: ++commandId,
+        command: cmd,
+        active: true
+      };
+    }
+
+    function discardInactiveTail() {
+      while (commands.length > 0 && !commandIsActive(commands[commands.length - 1])) {
+        commands.pop();
+      }
+      savedAtIndex = Math.min(savedAtIndex, commands.length);
+    }
+
+    function getActiveCommands() {
+      return commands.filter(commandIsActive).map(getCommandString);
+    }
+
+    function commandIsActive(entry) {
+      return entry && entry.active !== false;
+    }
+
+    function getCommandString(entry) {
+      return typeof entry == 'string' ? entry : entry.command;
+    }
 
     function getCommandName(cmd) {
       var rxp = /^-([a-z0-9-]+)/;
@@ -6115,6 +10923,7 @@
 
     function indexOfLastCommand(cmd) {
       return commands.reduce(function(memo, str, i) {
+        str = commandIsActive(str) ? getCommandString(str) : '';
         return str.indexOf(cmd) === 0 ? i : memo;
       }, -1);
     }
@@ -6133,20 +10942,31 @@
   var copyRecord = internal.copyRecord;
 
   function isUndoEvt(e) {
-    return (e.ctrlKey || e.metaKey) && !e.shiftKey && e.key == 'z';
+    return (e.ctrlKey || e.metaKey) && !e.shiftKey && getEventKey(e) == 'z';
   }
 
   function isRedoEvt(e) {
-    return (e.ctrlKey || e.metaKey) && (e.shiftKey && e.key == 'z' || !e.shiftKey && e.key == 'y');
+    var key = getEventKey(e);
+    return (e.ctrlKey || e.metaKey) && (e.shiftKey && key == 'z' || !e.shiftKey && key == 'y');
+  }
+
+  function getEventKey(e) {
+    return (e.key || '').toLowerCase();
   }
 
   function Undo(gui) {
-    var history, offset, stashedUndo;
+    var history, offset, stashedUndo, storedUndoHistory, editSession;
+    storedUndoHistory = createStoredUndoHistory(gui);
+    editSession = createEditSessionUndo();
     reset();
 
-    // Undo history is cleared when the editing mode changes.
+    // Closure-based editing states are cleared when the interaction mode changes.
+    // App command states opt out, because view/inspection modes should not erase
+    // command history.
     gui.on('interaction_mode_change', function(e) {
-      gui.undo.clear();
+      editSession.finish(e.prev_mode);
+      clearModeHistory();
+      editSession.start(e.mode);
     });
 
     function reset() {
@@ -6178,8 +10998,8 @@
     }
 
     gui.keyboard.on('keydown', function(evt) {
-      var e = evt.originalEvent,
-          kc = e.keyCode;
+      var e = evt.originalEvent;
+      if (targetHandlesTextUndo(e.target)) return;
       if (isUndoEvt(e)) {
         this.undo();
         e.stopPropagation();
@@ -6191,6 +11011,25 @@
         e.preventDefault();
       }
     }, this, 10);
+
+    function targetHandlesTextUndo(target) {
+      var tagName, type;
+      if (!target) return false;
+      if (target.isContentEditable || closestContentEditable(target)) return true;
+      tagName = (target.tagName || '').toLowerCase();
+      if (tagName == 'textarea') return true;
+      if (tagName != 'input') return false;
+      type = (target.type || 'text').toLowerCase();
+      return !'button,checkbox,color,file,hidden,image,radio,range,reset,submit'.includes(type);
+    }
+
+    function closestContentEditable(target) {
+      while (target && target.nodeType == 1) {
+        if (target.getAttribute && target.getAttribute('contenteditable') == 'true') return target;
+        target = target.parentNode;
+      }
+      return null;
+    }
 
     gui.on('symbol_dragend', function(e) {
       var target = e.data.target;
@@ -6312,6 +11151,7 @@
     });
 
     this.clear = function() {
+      disposeHistoryItems(history);
       reset();
       fireHistoryChange();
     };
@@ -6324,13 +11164,79 @@
       return offset > 0;
     };
 
-    function addHistoryState(undo, redo) {
+    this.addHistoryState = function(undo, redo, cleanup, opts) {
+      addHistoryState(undo, redo, cleanup, opts);
+    };
+
+    this.evictOldestHistoryState = function(opts) {
+      return evictOldestHistoryState(opts || {});
+    };
+
+    function addHistoryState(undo, redo, cleanup, opts) {
+      var preserveOnModeChange = !!(opts && opts.preserveOnModeChange);
       if (offset > 0) {
-        history.splice(-offset);
+        disposeHistoryItems(history.splice(-offset));
         offset = 0;
       }
-      history.push({undo, redo});
+      history.push({
+        undo: undo,
+        redo: redo,
+        cleanup: cleanup,
+        evictToken: opts && opts.evictToken,
+        preserveOnModeChange: preserveOnModeChange
+      });
+      if (!preserveOnModeChange) {
+        editSession.noteEdit();
+      }
+      trimHistory(opts);
       fireHistoryChange();
+    }
+
+    async function evictOldestHistoryState(opts) {
+      var exclude = opts && opts.exclude;
+      var index = -1;
+      for (var i = 0; i < history.length; i++) {
+        if (!exclude || history[i].evictToken !== exclude) {
+          index = i;
+          break;
+        }
+      }
+      if (index == -1) return false;
+      var item = history.splice(index, 1)[0];
+      if (index >= history.length + 1 - offset) {
+        offset--;
+      }
+      await disposeHistoryItem(item);
+      fireHistoryChange();
+      return true;
+    }
+
+    function clearModeHistory() {
+      var doneCount = history.length - offset;
+      var nextHistory = [];
+      var removed = [];
+      var nextDoneCount = 0;
+      history.forEach(function(item, i) {
+        if (item.preserveOnModeChange) {
+          if (i < doneCount) nextDoneCount++;
+          nextHistory.push(item);
+        } else {
+          removed.push(item);
+        }
+      });
+      if (removed.length === 0) return;
+      disposeHistoryItems(removed);
+      history = nextHistory;
+      offset = history.length - nextDoneCount;
+      fireHistoryChange();
+    }
+
+    function trimHistory(opts) {
+      var max = opts && opts.maxStates;
+      var overflow;
+      if (!(max > 0) || history.length <= max) return;
+      overflow = history.length - max;
+      disposeHistoryItems(history.splice(0, overflow));
     }
 
     function fireHistoryChange() {
@@ -6347,10 +11253,9 @@
       var item = getHistoryItem();
       if (item) {
         offset++;
-        item.undo();
-        gui.dispatchEvent('undo_redo_post', {type: 'undo'});
-        gui.dispatchEvent('map-needs-refresh');
-        fireHistoryChange();
+        return runHistoryAction(item.undo, 'undo', function() {
+          offset--;
+        });
       }
     };
 
@@ -6359,15 +11264,152 @@
       if (offset <= 0) return;
       offset--;
       var item = getHistoryItem();
-      item.redo();
-      gui.dispatchEvent('undo_redo_post', {type: 'redo'});
-      gui.dispatchEvent('map-needs-refresh');
-      fireHistoryChange();
+      return runHistoryAction(item.redo, 'redo', function() {
+        offset++;
+      });
     };
+
+    function runHistoryAction(action, type, rollback) {
+      return Promise.resolve(action()).then(function() {
+        gui.dispatchEvent('undo_redo_post', {type: type});
+        gui.dispatchEvent('map-needs-refresh');
+        fireHistoryChange();
+      }).catch(function(err) {
+        rollback();
+        fireHistoryChange();
+        console.error(err);
+        throw err;
+      });
+    }
+
+    function disposeHistoryItems(items) {
+      items.forEach(function(item) {
+        disposeHistoryItem(item);
+      });
+    }
+
+    function disposeHistoryItem(item) {
+      var result;
+      if (!item || !item.cleanup) return Promise.resolve();
+      try {
+        result = item.cleanup();
+        if (result && typeof result.then == 'function') {
+          return result.catch(function() {});
+        }
+      } catch(e) {}
+      return Promise.resolve();
+    }
 
     function getHistoryItem() {
       var item = history[history.length - offset - 1];
       return item || null;
+    }
+
+    function createEditSessionUndo() {
+      var tx = null;
+      var changed = false;
+
+      return {
+        start: start,
+        finish: finish,
+        noteEdit: noteEdit
+      };
+
+      function start(nextMode) {
+        var target, Transaction;
+        if (!isEditSessionMode(nextMode)) return;
+        if (!appUndoIsEnabled()) return;
+        target = gui.model.getActiveLayer();
+        if (!target || !target.layer) return;
+        Transaction = getUndoTransactionConstructor();
+        if (!Transaction) return;
+        changed = false;
+        tx = new Transaction('edit session');
+        captureEditTarget(tx, target, nextMode);
+      }
+
+      function finish(prevMode) {
+        var finishedTx = tx;
+        var wasChanged = changed;
+        if (!finishedTx || !isEditSessionMode(prevMode)) {
+          resetSession();
+          return;
+        }
+        resetSession();
+        if (!wasChanged) return;
+        storedUndoHistory.addTransaction(finishedTx, {
+          flags: {select: true},
+          entryPrefix: 'edit-session',
+          maxStates: getEditSessionUndoHistoryLimit()
+        }).catch(function(e) {
+          console.error(e);
+        });
+      }
+
+      function noteEdit() {
+        if (tx) {
+          changed = true;
+        }
+      }
+
+      function resetSession() {
+        tx = null;
+        changed = false;
+      }
+    }
+
+    function captureEditTarget(tx, target, mode) {
+      var layer = target.layer;
+      var dataset = target.dataset;
+      if (mode == 'data' || mode == 'labels') {
+        if (layer.data) {
+          tx.captureTableBefore(layer.data, {operation: 'edit-session', mode: mode});
+        }
+        return;
+      }
+      tx.captureLayerBefore(layer, {operation: 'edit-session', mode: mode, unit: 'layer'});
+      if (layer.data) {
+        tx.captureTableBefore(layer.data, {operation: 'edit-session', mode: mode});
+      }
+      if (dataset && dataset.arcs && internal.layerHasPaths(layer)) {
+        tx.captureArcsBefore(dataset.arcs, {operation: 'edit-session', mode: mode});
+      }
+    }
+
+    function isEditSessionMode(mode) {
+      if (gui.interaction && gui.interaction.modeSupportsUndo) {
+        return gui.interaction.modeSupportsUndo(mode);
+      }
+      return ['data', 'labels', 'edit_points', 'edit_lines', 'edit_polygons', 'vertices', 'rectangles'].includes(mode);
+    }
+
+    function getUndoTransactionConstructor() {
+      return internal.UndoTransaction && (internal.UndoTransaction.UndoTransaction || internal.UndoTransaction);
+    }
+
+    function getEditSessionUndoHistoryLimit() {
+      var opt = gui.options && gui.options.undoHistoryLimit;
+      return opt > 0 ? opt : 10;
+    }
+
+    function appUndoIsEnabled() {
+      var opt = gui.options && (gui.options.undoCommands || gui.options.appUndo);
+      var query = getQueryValue('undo');
+      if (opt === true || query == 'on' || query == 'commands') return true;
+      if (gui.appUndoIsEnabled) return gui.appUndoIsEnabled();
+      try {
+        return window.localStorage && window.localStorage.getItem('mapshaper.undo') == 'on';
+      } catch(e) {
+        return false;
+      }
+    }
+
+    function getQueryValue(key) {
+      var rxp, match;
+      if (typeof window == 'undefined' || !window.location) return null;
+      rxp = new RegExp('[?&]' + key + '=([^&]+)');
+      match = rxp.exec(window.location.search);
+      return match ? decodeURIComponent(match[1]) : null;
     }
 
   }
@@ -7090,1393 +12132,6 @@
     };
 
     return self;
-  }
-
-  // Fall back to browserify's Buffer polyfill
-  var B = typeof Buffer != 'undefined' ? Buffer : require$1('buffer').Buffer;
-
-  // We do NOT import from mapshaper-logging here to avoid a circular dependency
-  function error$1() {
-    throw new Error(Array.prototype.slice.call(arguments).join(' '));
-  }
-
-  var uniqCount = 0;
-  function getUniqueName(prefix) {
-    return (prefix || "__id_") + (++uniqCount);
-  }
-
-  function isFunction(obj) {
-    return typeof obj == 'function';
-  }
-
-  function isPromise(arg) {
-    return arg ? isFunction(arg.then) : false;
-  }
-
-  function isObject(obj) {
-    return obj === Object(obj); // via underscore
-  }
-
-  function clamp(val, min, max) {
-    return val < min ? min : (val > max ? max : val);
-  }
-
-  function isArray(obj) {
-    return Array.isArray(obj);
-  }
-
-  // Is obj a valid number or NaN? (test if obj is type number)
-  function isNumber(obj) {
-    return obj != null && obj.constructor == Number;
-  }
-
-  function isValidNumber(val) {
-    return isNumber(val) && !isNaN(val);
-  }
-
-  // Similar to isFinite() but does not coerce strings or other types
-  function isFiniteNumber(val) {
-    return isValidNumber(val) && val !== Infinity && val !== -Infinity;
-  }
-
-  // This uses type conversion
-  // export function isFiniteNumber(val) {
-  //   return val > -Infinity && val < Infinity;
-  // }
-
-  function isNonNegNumber(val) {
-    return isNumber(val) && val >= 0;
-  }
-
-  function isInteger(obj) {
-    return isNumber(obj) && ((obj | 0) === obj);
-  }
-
-  function isEven(obj) {
-    return (obj % 2) === 0;
-  }
-
-  function isOdd(obj) {
-    return (obj % 2) === 1;
-  }
-
-  function isString(obj) {
-    return obj != null && obj.toString === String.prototype.toString;
-    // TODO: replace w/ something better.
-  }
-
-  function isDate(obj) {
-    return !!obj && obj.getTime === Date.prototype.getTime;
-  }
-
-  function isBoolean(obj) {
-    return obj === true || obj === false;
-  }
-
-  function formatDateISO(d) {
-    if (!isDate(d)) return '';
-    return d.toISOString().replace(':00.000Z', 'Z');
-  }
-
-  // Convert an array-like object to an Array, or make a copy if @obj is an Array
-  function toArray(obj) {
-    var arr;
-    if (!isArrayLike(obj)) error$1("toArray() requires an array-like object");
-    try {
-      arr = Array.prototype.slice.call(obj, 0); // breaks in ie8
-    } catch(e) {
-      // support ie8
-      arr = [];
-      for (var i=0, n=obj.length; i<n; i++) {
-        arr[i] = obj[i];
-      }
-    }
-    return arr;
-  }
-
-  // Array like: has length property, is numerically indexed and mutable.
-  // TODO: try to detect objects with length property but no indexed data elements
-  function isArrayLike(obj) {
-    if (!obj) return false;
-    if (isArray(obj)) return true;
-    if (isString(obj)) return false;
-    if (obj.length === 0 || obj.length > 0) return true;
-    return false;
-  }
-
-  // See https://raw.github.com/kvz/phpjs/master/functions/strings/addslashes.js
-  function addslashes(str) {
-    return (str + '').replace(/[\\"']/g, '\\$&').replace(/\u0000/g, '\\0');
-  }
-
-  // Escape a literal string to use in a regexp.
-  // Ref.: http://simonwillison.net/2006/Jan/20/escape/
-  function regexEscape(str) {
-    return str.replace(/[-[\]{}()*+?.,\\^$|#\s]/g, '\\$&');
-  }
-
-
-  // See https://github.com/janl/mustache.js/blob/master/mustache.js
-  var entityMap = {
-    '&': '&amp;',
-    '<': '&lt;',
-    '>': '&gt;',
-    '"': '&quot;',
-    "'": '&#39;',
-    '/': '&#x2F;'
-  };
-  function htmlEscape(s) {
-    return String(s).replace(/[&<>"'/]/g, function(s) {
-      return entityMap[s];
-    });
-  }
-
-
-  function defaults(dest) {
-    for (var i=1, n=arguments.length; i<n; i++) {
-      var src = arguments[i] || {};
-      for (var key in src) {
-        if (key in dest === false && src.hasOwnProperty(key)) {
-          dest[key] = src[key];
-        }
-      }
-    }
-    return dest;
-  }
-
-  function extend(o) {
-    var dest = o || {},
-        n = arguments.length,
-        key, i, src;
-    for (i=1; i<n; i++) {
-      src = arguments[i] || {};
-      for (key in src) {
-        if (src.hasOwnProperty(key)) {
-          dest[key] = src[key];
-        }
-      }
-    }
-    return dest;
-  }
-
-  // Pseudoclassical inheritance
-  //
-  // Inherit from a Parent function:
-  //    inherit(Child, Parent);
-  // Call parent's constructor (inside child constructor):
-  //    this.__super__([args...]);
-  function inherit(targ, src) {
-    var f = function() {
-      if (this.__super__ == f) {
-        // add __super__ of parent to front of lookup chain
-        // so parent class constructor can call its parent using this.__super__
-        this.__super__ = src.prototype.__super__;
-        // call parent constructor function. this.__super__ now points to parent-of-parent
-        src.apply(this, arguments);
-        // remove temp __super__, expose targ.prototype.__super__ again
-        delete this.__super__;
-      }
-    };
-
-    f.prototype = src.prototype || src; // added || src to allow inheriting from objects as well as functions
-    // Extend targ prototype instead of wiping it out --
-    //   in case inherit() is called after targ.prototype = {stuff}; statement
-    targ.prototype = extend(new f(), targ.prototype); //
-    targ.prototype.constructor = targ;
-    targ.prototype.__super__ = f;
-  }
-
-  function promisify(asyncFn) {
-    return function() {
-      var args = toArray(arguments);
-      return new Promise((resolve, reject) => {
-        var cb = function(err, data) {
-          if (err) reject(err);
-          else resolve(data);
-        };
-        args.push(cb);
-        asyncFn.apply(this, args);
-      });
-    };
-  }
-
-   function runAsync(fn, arg) {
-      return new Promise((resolve, reject) => {
-        fn(arg, function(err, data) {
-          return err ? reject(err) : resolve(data);
-        });
-      });
-    }
-
-  // Call @iter on each member of an array (similar to Array#reduce(iter))
-  //    iter: function(memo, item, callback)
-  // Call @done when all members have been processed or if an error occurs
-  //    done: function(err, memo)
-  // @memo: Initial value
-  //
-  function reduceAsync(arr, memo, iter, done) {
-    var call = typeof setImmediate == 'undefined' ? setTimeout : setImmediate;
-    var i=0;
-    next(null, memo);
-
-    function next(err, memo) {
-      // Detach next operation from call stack to prevent overflow
-      // Don't use setTimeout(, 0) if setImmediate is available
-      // (setTimeout() can introduce a long delay if previous operation was slow,
-      //    as of Node 0.10.32 -- a bug?)
-      if (err) {
-        return done(err, null);
-      }
-      call(function() {
-        if (i < arr.length === false) {
-          done(null, memo);
-        } else {
-          iter(memo, arr[i++], next);
-        }
-      }, 0);
-    }
-  }
-
-
-  // Append elements of @src array to @dest array
-  function merge(dest, src) {
-    if (!isArray(dest) || !isArray(src)) {
-      error$1("Usage: merge(destArray, srcArray);");
-    }
-    for (var i=0, n=src.length; i<n; i++) {
-      dest.push(src[i]);
-    }
-    return dest;
-  }
-
-  // Returns elements in arr and not in other
-  // (similar to underscore diff)
-  function difference(arr, other) {
-    var index = arrayToIndex(other);
-    return arr.filter(function(el) {
-      return !Object.prototype.hasOwnProperty.call(index, el);
-    });
-  }
-
-  // Return the intersection of two arrays
-  function intersection(a, b) {
-    return a.filter(function(el) {
-      return b.includes(el);
-    });
-  }
-
-  function indexOf(arr, item) {
-    var nan = item !== item;
-    for (var i = 0, len = arr.length || 0; i < len; i++) {
-      if (arr[i] === item) return i;
-      if (nan && arr[i] !== arr[i]) return i;
-    }
-    return -1;
-  }
-
-  // Test a string or array-like object for existence of substring or element
-  function contains(container, item) {
-    if (isString(container)) {
-      return container.indexOf(item) != -1;
-    }
-    else if (isArrayLike(container)) {
-      return indexOf(container, item) != -1;
-    }
-    error$1("Expected Array or String argument");
-  }
-
-  function some(arr, test) {
-    return arr.reduce(function(val, item) {
-      return val || test(item); // TODO: short-circuit?
-    }, false);
-  }
-
-  function every(arr, test) {
-    return arr.reduce(function(val, item) {
-      return val && test(item);
-    }, true);
-  }
-
-  function find(arr, test, ctx) {
-    var matches = arr.filter(test, ctx);
-    return matches.length === 0 ? null : matches[0];
-  }
-
-  function range(len, start, inc) {
-    var arr = [],
-        v = start === void 0 ? 0 : start,
-        i = inc === void 0 ? 1 : inc;
-    while(len--) {
-      arr.push(v);
-      v += i;
-    }
-    return arr;
-  }
-
-  function repeat(times, func) {
-    var values = [],
-        val;
-    for (var i=0; i<times; i++) {
-      val = func(i);
-      if (val !== void 0) {
-        values[i] = val;
-      }
-    }
-    return values.length > 0 ? values : void 0;
-  }
-
-  // Calc sum, skip falsy and NaN values
-  // Assumes: no other non-numeric objects in array
-  //
-  function sum(arr, info) {
-    if (!isArrayLike(arr)) error$1 ("sum() expects an array, received:", arr);
-    var tot = 0,
-        nan = 0,
-        val;
-    for (var i=0, n=arr.length; i<n; i++) {
-      val = arr[i];
-      if (val) {
-        tot += val;
-      } else if (isNaN(val)) {
-        nan++;
-      }
-    }
-    if (info) {
-      info.nan = nan;
-    }
-    return tot;
-  }
-
-  // Calculate min and max values of an array, ignoring NaN values
-  function getArrayBounds(arr) {
-    var min = Infinity,
-      max = -Infinity,
-      nan = 0, val;
-    for (var i=0, len=arr.length; i<len; i++) {
-      val = arr[i];
-      if (val !== val) nan++;
-      if (val < min) min = val;
-      if (val > max) max = val;
-    }
-    return {
-      min: min,
-      max: max,
-      nan: nan
-    };
-  }
-
-  // export function uniq(src) {
-  //   var index = {};
-  //   return src.reduce(function(memo, el) {
-  //     if (el in index === false) {
-  //       index[el] = true;
-  //       memo.push(el);
-  //     }
-  //     return memo;
-  //   }, []);
-  // }
-
-  function uniq(src) {
-    var index = new Set();
-    var arr = [];
-    var item;
-    for (var i=0, n=src.length; i<n; i++) {
-      item = src[i];
-      if (!index.has(item)) {
-        arr.push(item);
-        index.add(item);
-      }
-    }
-    return arr;
-  }
-
-  function pluck(arr, key) {
-    return arr.map(function(obj) {
-      return obj[key];
-    });
-  }
-
-  function countValues(arr) {
-    return arr.reduce(function(memo, val) {
-      memo[val] = (val in memo) ? memo[val] + 1 : 1;
-      return memo;
-    }, {});
-  }
-
-  function indexOn(arr, k) {
-    return arr.reduce(function(index, o) {
-      index[o[k]] = o;
-      return index;
-    }, {});
-  }
-
-  function groupBy(arr, k) {
-    return arr.reduce(function(index, o) {
-      var keyval = o[k];
-      if (keyval in index) {
-        index[keyval].push(o);
-      } else {
-        index[keyval] = [o];
-      }
-      return index;
-    }, {});
-  }
-
-  function arrayToIndex(arr, val) {
-    var init = arguments.length > 1;
-    return arr.reduce(function(index, key) {
-      index[key] = init ? val : true;
-      return index;
-    }, {});
-  }
-
-  // Support for iterating over array-like objects, like typed arrays
-  function forEach(arr, func, ctx) {
-    if (!isArrayLike(arr)) {
-      throw new Error("#forEach() takes an array-like argument. " + arr);
-    }
-    for (var i=0, n=arr.length; i < n; i++) {
-      func.call(ctx, arr[i], i);
-    }
-  }
-
-  function forEachProperty(o, func, ctx) {
-    Object.keys(o).forEach(function(key) {
-      func.call(ctx, o[key], key);
-    });
-  }
-
-  function initializeArray(arr, init) {
-    for (var i=0, len=arr.length; i<len; i++) {
-      arr[i] = init;
-    }
-    return arr;
-  }
-
-  function replaceArray(arr, arr2) {
-    arr.splice(0, arr.length);
-    for (var i=0, n=arr2.length; i<n; i++) {
-      arr.push(arr2[i]);
-    }
-  }
-
-  function repeatString(src, n) {
-    var str = "";
-    for (var i=0; i<n; i++)
-      str += src;
-    return str;
-  }
-
-  function splitLines(str) {
-    return str.split(/\r?\n/);
-  }
-
-  function pluralSuffix(count) {
-    return count != 1 ? 's' : '';
-  }
-
-  function endsWith(str, ending) {
-      return str.indexOf(ending, str.length - ending.length) !== -1;
-  }
-
-  function lpad(str, size, pad) {
-    pad = pad || ' ';
-    str = String(str);
-    return repeatString(pad, size - str.length) + str;
-  }
-
-  function rpad(str, size, pad) {
-    pad = pad || ' ';
-    str = String(str);
-    return str + repeatString(pad, size - str.length);
-  }
-
-  function trim(str) {
-    return ltrim(rtrim(str));
-  }
-
-  var ltrimRxp = /^\s+/;
-  function ltrim(str) {
-    return str.replace(ltrimRxp, '');
-  }
-
-  var rtrimRxp = /\s+$/;
-  function rtrim(str) {
-    return str.replace(rtrimRxp, '');
-  }
-
-  function addThousandsSep(str) {
-    var fmt = '',
-        start = str[0] == '-' ? 1 : 0,
-        dec = str.indexOf('.'),
-        end = str.length,
-        ins = (dec == -1 ? end : dec) - 3;
-    while (ins > start) {
-      fmt = ',' + str.substring(ins, end) + fmt;
-      end = ins;
-      ins -= 3;
-    }
-    return str.substring(0, end) + fmt;
-  }
-
-  function numToStr(num, decimals) {
-    return decimals >= 0 ? num.toFixed(decimals) : String(num);
-  }
-
-  function formatNumber(val) {
-    return val + '';
-  }
-
-  function formatIntlNumber(val) {
-    var str = formatNumber(val);
-    return '"' + str.replace('.', ',') + '"'; // need to quote if comma-delimited
-  }
-
-  function formatNumberForDisplay(num, decimals, nullStr, showPos) {
-    var fmt;
-    if (isNaN(num)) {
-      fmt = nullStr || '-';
-    } else {
-      fmt = numToStr(num, decimals);
-      fmt = addThousandsSep(fmt);
-      if (showPos && parseFloat(fmt) > 0) {
-        fmt = "+" + fmt;
-      }
-    }
-    return fmt;
-  }
-
-  function shuffle(arr) {
-    var tmp, i, j;
-    for (i = arr.length - 1; i > 0; i--) {
-      j = Math.floor(Math.random() * (i + 1));
-      tmp = arr[i];
-      arr[i] = arr[j];
-      arr[j] = tmp;
-    }
-  }
-
-  function pickOne(arr) {
-    return arr[Math.floor(Math.random() * arr.length)];
-  }
-
-  // Sort an array of objects based on one or more properties.
-  // Usage: sortOn(array, key1, asc?[, key2, asc? ...])
-  //
-  function sortOn(arr) {
-    var comparators = [];
-    for (var i=1; i<arguments.length; i+=2) {
-      comparators.push(getKeyComparator(arguments[i], arguments[i+1]));
-    }
-    arr.sort(function(a, b) {
-      var cmp = 0,
-          i = 0,
-          n = comparators.length;
-      while (i < n && cmp === 0) {
-        cmp = comparators[i](a, b);
-        i++;
-      }
-      return cmp;
-    });
-    return arr;
-  }
-
-  // Sort array of values that can be compared with < > operators (strings, numbers)
-  // null, undefined and NaN are sorted to the end of the array
-  // default order is ascending
-  //
-  function genericSort(arr, ascending) {
-    var compare = getGenericComparator(ascending);
-    Array.prototype.sort.call(arr, compare);
-    return arr;
-  }
-
-  function getSortedIds(arr, asc) {
-    var ids = range(arr.length);
-    sortArrayIndex(ids, arr, asc);
-    return ids;
-  }
-
-  function sortArrayIndex(ids, arr, asc) {
-    var compare = getGenericComparator(asc);
-    ids.sort(function(i, j) {
-      // added i, j comparison to guarantee that sort is stable
-      var cmp = compare(arr[i], arr[j]);
-      return cmp > 0 || cmp === 0 && i > j ? 1 : -1;
-    });
-  }
-
-  function reorderArray(arr, idxs) {
-    var len = idxs.length;
-    var arr2 = [];
-    for (var i=0; i<len; i++) {
-      var idx = idxs[i];
-      if (idx < 0 || idx >= len) error$1("Out-of-bounds array idx");
-      arr2[i] = arr[idx];
-    }
-    replaceArray(arr, arr2);
-  }
-
-  function getKeyComparator(key, asc) {
-    var compare = getGenericComparator(asc);
-    return function(a, b) {
-      return compare(a[key], b[key]);
-    };
-  }
-
-  function getGenericComparator(asc) {
-    asc = asc !== false && asc != 'descending'; // ascending is the default
-    return function(a, b) {
-      var retn = 0;
-      if (b == null) {
-        retn = a == null ? 0 : -1;
-      } else if (a == null) {
-        retn = 1;
-      } else if (a < b) {
-        retn = asc ? -1 : 1;
-      } else if (a > b) {
-        retn = asc ? 1 : -1;
-      } else if (a !== a) {
-        retn = 1;
-      } else if (b !== b) {
-        retn = -1;
-      }
-      return retn;
-    };
-  }
-
-
-  // Generic in-place sort (null, NaN, undefined not handled)
-  function quicksort(arr, asc) {
-    quicksortPartition(arr, 0, arr.length-1);
-    if (asc === false) Array.prototype.reverse.call(arr); // Works with typed arrays
-    return arr;
-  }
-
-  // Moved out of quicksort() (saw >100% speedup in Chrome with deep recursion)
-  function quicksortPartition (a, lo, hi) {
-    var i = lo,
-        j = hi,
-        pivot, tmp;
-    while (i < hi) {
-      pivot = a[lo + hi >> 1]; // avoid n^2 performance on sorted arrays
-      while (i <= j) {
-        while (a[i] < pivot) i++;
-        while (a[j] > pivot) j--;
-        if (i <= j) {
-          tmp = a[i];
-          a[i] = a[j];
-          a[j] = tmp;
-          i++;
-          j--;
-        }
-      }
-      if (lo < j) quicksortPartition(a, lo, j);
-      lo = i;
-      j = hi;
-    }
-  }
-
-
-  function findRankByValue(arr, value) {
-    if (isNaN(value)) return arr.length;
-    var rank = 1;
-    for (var i=0, n=arr.length; i<n; i++) {
-      if (value > arr[i]) rank++;
-    }
-    return rank;
-  }
-
-  function findValueByPct(arr, pct) {
-    var rank = Math.ceil((1-pct) * (arr.length));
-    return findValueByRank(arr, rank);
-  }
-
-  // See http://ndevilla.free.fr/median/median/src/wirth.c
-  // Elements of @arr are reordered
-  //
-  function findValueByRank(arr, rank) {
-    if (!arr.length || rank < 1 || rank > arr.length) error$1("[findValueByRank()] invalid input");
-
-    rank = clamp(rank | 0, 1, arr.length);
-    var k = rank - 1, // conv. rank to array index
-        n = arr.length,
-        l = 0,
-        m = n - 1,
-        i, j, val, tmp;
-
-    while (l < m) {
-      val = arr[k];
-      i = l;
-      j = m;
-      do {
-        while (arr[i] < val) {i++;}
-        while (val < arr[j]) {j--;}
-        if (i <= j) {
-          tmp = arr[i];
-          arr[i] = arr[j];
-          arr[j] = tmp;
-          i++;
-          j--;
-        }
-      } while (i <= j);
-      if (j < k) l = i;
-      if (k < i) m = j;
-    }
-    return arr[k];
-  }
-
-  function findMedian(arr) {
-    return findQuantile(arr, 0.5);
-  }
-
-  function findQuantile(arr, k) {
-    var n = arr.length,
-        i1 = Math.floor((n - 1) * k),
-        i2 = Math.ceil((n - 1) * k);
-    if (i1 < 0 || i2 >= n) return NaN;
-    var v1 = findValueByRank(arr, i1 + 1);
-    if (i1 == i2) return v1;
-    var v2 = findValueByRank(arr, i2 + 1);
-    // use linear interpolation
-    var w1 = i2 / (n - 1) - k;
-    var w2 = k - i1 / (n - 1);
-    var v = (v1 * w1 + v2 * w2) * (n - 1);
-    return v;
-  }
-
-  function mean(arr) {
-    var count = 0,
-        avg = NaN,
-        val;
-    for (var i=0, n=arr.length; i<n; i++) {
-      val = arr[i];
-      if (isNaN(val)) continue;
-      avg = ++count == 1 ? val : val / count + (count - 1) / count * avg;
-    }
-    return avg;
-  }
-
-
-  /*
-  A simplified version of printf formatting
-  Format codes: %[flags][width][.precision]type
-
-  supported flags:
-    +   add '+' before positive numbers
-    0   left-pad with '0'
-    '   Add thousands separator
-  width: 1 to many
-  precision: .(1 to many)
-  type:
-    s     string
-    di    integers
-    f     decimal numbers
-    xX    hexidecimal (unsigned)
-    %     literal '%'
-
-  Examples:
-    code    val    formatted
-    %+d     1      '+1'
-    %4i     32     '  32'
-    %04i    32     '0032'
-    %x      255    'ff'
-    %.2f    0.125  '0.13'
-    %'f     1000   '1,000'
-  */
-
-  // Usage: format(formatString, [values])
-  // Tip: When reusing the same format many times, use formatter() for 5x - 10x better performance
-  //
-  function format(fmt) {
-    var fn = formatter(fmt);
-    var str = fn.apply(null, Array.prototype.slice.call(arguments, 1));
-    return str;
-  }
-
-  function formatValue(val, matches) {
-    var flags = matches[1];
-    var padding = matches[2];
-    var decimals = matches[3] ? parseInt(matches[3].substr(1)) : void 0;
-    var type = matches[4];
-    var isString = type == 's',
-        isHex = type == 'x' || type == 'X',
-        // isInt = type == 'd' || type == 'i',
-        // isFloat = type == 'f',
-        isNumber = !isString;
-
-    var sign = "",
-        padDigits = 0,
-        isZero = false,
-        isNeg = false;
-
-    var str, padChar, padStr;
-    if (isString) {
-      str = String(val);
-    }
-    else if (isHex) {
-      str = val.toString(16);
-      if (type == 'X')
-        str = str.toUpperCase();
-    }
-    else if (isNumber) {
-      // str = formatNumberForDisplay(val, isInt ? 0 : decimals);
-      str = numToStr(val, decimals);
-      if (str[0] == '-') {
-        isNeg = true;
-        str = str.substr(1);
-      }
-      isZero = parseFloat(str) == 0;
-      if (flags.indexOf("'") != -1 || flags.indexOf(',') != -1) {
-        str = addThousandsSep(str);
-      }
-      if (!isZero) { // BUG: sign is added when num rounds to 0
-        if (isNeg) {
-          sign = "\u2212"; // U+2212
-        } else if (flags.indexOf('+') != -1) {
-          sign = '+';
-        }
-      }
-    }
-
-    if (padding) {
-      var strLen = str.length + sign.length;
-      var minWidth = parseInt(padding, 10);
-      if (strLen < minWidth) {
-        padDigits = minWidth - strLen;
-        padChar = flags.indexOf('0') == -1 ? ' ' : '0';
-        padStr = repeatString(padChar, padDigits);
-      }
-    }
-
-    if (padDigits == 0) {
-      str = sign + str;
-    } else if (padChar == '0') {
-      str = sign + padStr + str;
-    } else {
-      str = padStr + sign + str;
-    }
-    return str;
-  }
-
-  // Get a function for interpolating formatted values into a string.
-  function formatter(fmt) {
-    var codeRxp = /%([',+0]*)([1-9]?)((?:\.[1-9])?)([sdifxX%])/g;
-    var literals = [],
-        formatCodes = [],
-        startIdx = 0,
-        prefix = "",
-        matches = codeRxp.exec(fmt),
-        literal;
-
-    while (matches) {
-      literal = fmt.substring(startIdx, codeRxp.lastIndex - matches[0].length);
-      if (matches[0] == '%%') {
-        prefix += literal + '%';
-      } else {
-        literals.push(prefix + literal);
-        prefix = '';
-        formatCodes.push(matches);
-      }
-      startIdx = codeRxp.lastIndex;
-      matches = codeRxp.exec(fmt);
-    }
-    literals.push(prefix + fmt.substr(startIdx));
-
-    return function() {
-      var str = literals[0],
-          n = arguments.length;
-      if (n != formatCodes.length) {
-        error$1("[format()] Data does not match format string; format:", fmt, "data:", arguments);
-      }
-      for (var i=0; i<n; i++) {
-        str += formatValue(arguments[i], formatCodes[i]) + literals[i+1];
-      }
-      return str;
-    };
-  }
-
-  function wildcardToRegExp(name) {
-    var rxp = name.split('*').map(function(str) {
-      return regexEscape(str);
-    }).join('.*');
-    return new RegExp('^' + rxp + '$');
-  }
-
-  function createBuffer(arg, arg2) {
-    if (isInteger(arg)) {
-      return B.allocUnsafe ? B.allocUnsafe(arg) : new B(arg);
-    } else {
-      // check allocUnsafe to make sure Buffer.from() will accept strings (it didn't before Node v5.10)
-      return B.from && B.allocUnsafe ? B.from(arg, arg2) : new B(arg, arg2);
-    }
-  }
-
-  function toBuffer(src) {
-    if (src instanceof B) return src;
-    if (src instanceof ArrayBuffer) return B.from(src);
-    if (src instanceof Uint8Array) {
-      return B.from(src.buffer, src.byteOffset, src.byteLength);
-    }
-    error$1('Unexpected argument type');
-  }
-
-  function expandoBuffer(constructor, rate) {
-    var capacity = 0,
-        k = rate >= 1 ? rate : 1.2,
-        buf;
-    return function(size) {
-      if (size > capacity) {
-        capacity = Math.ceil(size * k);
-        buf = constructor ? new constructor(capacity) : createBuffer(capacity);
-      }
-      return buf;
-    };
-  }
-
-  function copyElements(src, i, dest, j, n, rev) {
-    var same = src == dest || src.buffer && src.buffer == dest.buffer;
-    var inc = 1,
-        offs = 0,
-        k;
-    if (rev) {
-      if (same) error$1('copy error');
-      inc = -1;
-      offs = n - 1;
-    }
-    if (same && j > i) {
-      for (k=n-1; k>=0; k--) {
-        dest[j + k] = src[i + k];
-      }
-    } else {
-      for (k=0; k<n; k++, offs += inc) {
-        dest[k + j] = src[i + offs];
-      }
-    }
-  }
-
-  function extendBuffer(src, newLen, copyLen) {
-    var len = Math.max(src.length, newLen);
-    var n = copyLen || src.length;
-    var dest = new src.constructor(len);
-    copyElements(src, 0, dest, 0, n);
-    return dest;
-  }
-
-  function mergeNames(name1, name2) {
-    var merged;
-    if (name1 && name2) {
-      merged = findStringPrefix(name1, name2).replace(/[-_]$/, '');
-    }
-    return merged || '';
-  }
-
-  function findStringPrefix(a, b) {
-    var i = 0;
-    for (var n=a.length; i<n; i++) {
-      if (a[i] !== b[i]) break;
-    }
-    return a.substr(0, i);
-  }
-
-  function formatVersionedName(name, i) {
-    var suffix = String(i);
-    if (/[0-9]$/.test(name)) {
-      suffix = '-' + suffix;
-    }
-    return name + suffix;
-  }
-
-  function uniqifyNames(names, formatter) {
-    var counts = countValues(names),
-        format = formatter || formatVersionedName,
-        names2 = [];
-
-    names.forEach(function(name) {
-      var i = 0,
-          candidate = name,
-          versionedName;
-      while (
-          names2.indexOf(candidate) > -1 || // candidate name has already been used
-          candidate == name && counts[candidate] > 1 || // duplicate unversioned names
-          candidate != name && counts[candidate] > 0) { // versioned name is a preexisting name
-        i++;
-        versionedName = format(name, i);
-        if (!versionedName || versionedName == candidate) {
-          throw new Error("Naming error"); // catch buggy versioning function
-        }
-        candidate = versionedName;
-      }
-      names2.push(candidate);
-    });
-    return names2;
-  }
-
-
-  // Assume: @raw is string, undefined or null
-  function parseString(raw) {
-    return raw ? raw : "";
-  }
-
-  // Assume: @raw is string, undefined or null
-  // Use null instead of NaN for unparsable values
-  // (in part because if NaN is used, empty strings get converted to "NaN"
-  // when re-exported).
-  function parseNumber(raw) {
-    return parseToNum(raw, cleanNumericString);
-  }
-
-  function parseIntlNumber(raw) {
-    return parseToNum(raw, convertIntlNumString);
-  }
-
-  function parseToNum(raw, clean) {
-    var str = String(raw).trim();
-    var parsed = str ? Number(clean(str)) : NaN;
-    return isNaN(parsed) ? null : parsed;
-  }
-
-  // Remove comma separators from strings
-  function cleanNumericString(str) {
-    return (str.indexOf(',') > 0) ? str.replace(/,([0-9]{3})/g, '$1') : str;
-  }
-
-  function convertIntlNumString(str) {
-    str = str.replace(/[ .]([0-9]{3})/g, '$1');
-    return str.replace(',', '.');
-  }
-
-  function trimQuotes(str) {
-    var len = str.length, first, last;
-    if (len >= 2) {
-      first = str.charAt(0);
-      last = str.charAt(len-1);
-      // if (first == '"' && last == '"' && !str.includes('","') ||
-      //     first == "'" && last == "'" && !str.includes("','")) {
-      // don't strip if there are unescaped quotes
-      // e.g. expressions that start and end with quotes
-      // e.g. comma-separated list of quoted values
-      if (first == '"' && last == '"' && !/[^\\]"./.test(str) ||
-          first == "'" && last == "'" && !/[^\\]'./.test(str)) {
-        str = str.substr(1, len-2);
-        // remove string escapes
-        str = str.replace(first == '"' ? /\\(?=")/g : /\\(?=')/g, '');
-      }
-    }
-    return str;
-  }
-
-  // Default export so consumers can do `import utils from './mapshaper-utils'`
-  // and call `utils.isObject(x)` etc. Listing the names explicitly (instead
-  // of using `import * as utils from './mapshaper-utils'`) avoids a
-  // self-import and the resulting Rollup circular-dependency warning.
-  var utils = {
-    addThousandsSep, addslashes, arrayToIndex,
-    clamp, cleanNumericString, contains, copyElements, countValues, createBuffer,
-    defaults, difference,
-    endsWith, every, expandoBuffer, extend, extendBuffer,
-    find, findMedian, findQuantile, findRankByValue, findStringPrefix,
-    findValueByPct, findValueByRank, forEach, forEachProperty, format,
-    formatDateISO, formatIntlNumber, formatNumber, formatNumberForDisplay,
-    formatVersionedName, formatter,
-    genericSort, getArrayBounds, getGenericComparator, getKeyComparator,
-    getSortedIds, getUniqueName, groupBy,
-    htmlEscape,
-    indexOf, indexOn, inherit, initializeArray, intersection,
-    isArray, isArrayLike, isBoolean, isDate, isEven, isFiniteNumber, isFunction,
-    isInteger, isNonNegNumber, isNumber, isObject, isOdd, isPromise, isString,
-    isValidNumber,
-    lpad, ltrim,
-    mean, merge, mergeNames,
-    numToStr,
-    parseIntlNumber, parseNumber, parseString, pickOne, pluck,
-    pluralSuffix, promisify,
-    quicksort, quicksortPartition,
-    range, reduceAsync, regexEscape, reorderArray, repeat, repeatString,
-    replaceArray, rpad, rtrim,
-    shuffle, some, sortArrayIndex, sortOn, splitLines, sum,
-    toArray, toBuffer, trim, trimQuotes,
-    uniq, uniqifyNames,
-    wildcardToRegExp
-  };
-
-  // This module provides a way for multiple jobs to run together asynchronously
-  // while keeping job-level context variables (like "defs") separate.
-  //
-  // We deliberately do NOT import from mapshaper-logging here -- the logging
-  // module imports from this one, and avoiding the back-edge keeps the
-  // foundational dependency graph acyclic. (The single error path below is
-  // an internal-bug guard, not a user-facing message, so a plain Error is
-  // adequate.)
-
-  var stash = {};
-
-  function stashVar(key, val) {
-    if (key in stash) {
-      throw new Error('Tried to replace a stashed variable: ' + key);
-    }
-    stash[key] = val;
-  }
-
-  function getStashedVar(key) {
-    if (key in stash === false) {
-      return undefined; // to support running commands in tests
-      // error('Tried to read a nonexistent variable from the stash:', key);
-    }
-    return stash[key];
-  }
-
-  function clearStash() {
-    stash = {};
-  }
-
-  var LOGGING = false;
-  var STDOUT = false; // use stdout for status messages
-  var _error, _stop, _message, _warn;
-
-  var _interrupt = function() {
-    throw new NonFatalError(formatLogArgs(arguments));
-  };
-
-  var onceMessages = [];
-
-  setLoggingForCLI();
-
-  function getLoggingSetter() {
-    var e = _error, s = _stop, m = _message, w = _warn;
-    return function() {
-      setLoggingFunctions(m, e, s, w);
-    };
-  }
-
-  function setLoggingForCLI() {
-    function stop() {
-      throw new UserError(formatLogArgs(arguments));
-    }
-
-    function error() {
-      var msg = utils.toArray(arguments).join(' ');
-      throw new Error(msg);
-    }
-
-    function message() {
-      logArgs(arguments);
-    }
-
-    // CLI warning is just a message (GUI behaves differently)
-    var warn = message;
-
-    setLoggingFunctions(message, error, stop, warn);
-  }
-
-  function enableLogging() {
-    LOGGING = true;
-  }
-
-  function disableLogging() {
-    LOGGING = false;
-  }
-
-  function loggingEnabled() {
-    return !!LOGGING;
-  }
-
-  // Handle an unexpected condition (internal error)
-  function error() {
-    _error.apply(null, utils.toArray(arguments));
-  }
-
-  // Handle an error caused by invalid input or misuse of API
-  function stop() {
-    // _stop.apply(null, utils.toArray(arguments));
-    _stop.apply(null, messageArgs(arguments));
-  }
-
-  function interrupt() {
-    _interrupt.apply(null, utils.toArray(arguments));
-  }
-
-  // Print a status message
-  function message() {
-    _message.apply(null, messageArgs(arguments));
-  }
-
-  function warn() {
-    _warn.apply(null, messageArgs(arguments));
-  }
-
-  function warnOnce() {
-    var str = formatLogArgs(arguments);
-    if (onceMessages.includes(str)) return;
-    onceMessages.push(str);
-    _warn.apply(null, messageArgs(arguments));
-  }
-
-  // A way for the GUI to replace the CLI logging functions
-  function setLoggingFunctions(message, error, stop, warn) {
-    _message = message;
-    _error = error;
-    _stop = stop;
-    _warn = warn;
-  }
-
-  // get detailed error information from error stack (if available)
-  // Example stack string (Node.js):
-  /*
-  /Users/someuser/somescript.js:226
-      opacity: Math.round(weight * 5 / 5 // 0.2 0.4 0.6 etc
-                                       ^
-
-  SyntaxError: missing ) after argument list
-      at internalCompileFunction (node:internal/vm:73:18)
-      at wrapSafe (node:internal/modules/cjs/loader:1149:20)
-      at Module._compile (node:internal/modules/cjs/loader:1190:27)
-      ...
-  */
-  function getErrorDetail(e) {
-    var parts = (typeof e.stack == 'string') ? e.stack.split(/\n\s*\n/) : [];
-    if (parts.length > 1 || true) {
-      return '\nError details:\n' + parts[0];
-    }
-    return '';
-  }
-
-  // print a message to stdout
-  function print() {
-    STDOUT = true; // tell logArgs() to print to stdout, not stderr
-    // calling message() adds the "[command name]" prefix
-    _message(utils.toArray(arguments));
-    STDOUT = false;
-  }
-
-  function verbose() {
-    // verbose can be set globally with the -verbose command or separately for each command
-    if (useVerbose()) {
-      message.apply(null, arguments);
-    }
-  }
-
-  function useVerbose() {
-    return getStashedVar('VERBOSE');
-  }
-
-  function useDebug() {
-    return getStashedVar('DEBUG');
-  }
-
-  function debug() {
-    if (useDebug()) {
-      logArgs(arguments);
-    }
-  }
-
-  function time(slug) {
-    if (useDebug()) {
-      console.time(slug);
-    }
-  }
-
-  function timeEnd(slug) {
-    if (useDebug()) {
-      console.timeEnd(slug);
-    }
-  }
-
-  function printError(err) {
-    var msg;
-    if (!LOGGING) return;
-    if (utils.isString(err)) {
-      err = new UserError(err);
-    }
-    if (err.name == 'NonFatalError') {
-      console.error(messageArgs([err.message]).join(' '));
-    } else if (err.name == 'UserError') {
-      msg = err.message;
-      if (!/Error/.test(msg)) {
-        msg = "Error: " + msg;
-      }
-      console.error(messageArgs([msg]).join(' '));
-      console.error("Run mapshaper -h to view help");
-    } else {
-      // not a user error (i.e. a bug in mapshaper)
-      console.error(err);
-      // throw err;
-    }
-  }
-
-  function UserError(msg) {
-    var err = new Error(msg);
-    err.name = 'UserError';
-    return err;
-  }
-
-  function NonFatalError(msg) {
-    var err = new Error(msg);
-    err.name = 'NonFatalError';
-    return err;
-  }
-
-  function formatColumns(arr, alignments) {
-    var widths = arr.reduce(function(memo, line) {
-      return line.map(function(str, i) {
-        return memo ? Math.max(memo[i], str.length) : str.length;
-      });
-    }, null);
-    return arr.map(function(line) {
-      line = line.map(function(str, i) {
-        var rt = alignments && alignments[i] == 'right';
-        var pad = (rt ? str.padStart : str.padEnd).bind(str);
-        return pad(widths[i], ' ');
-      });
-      return '  ' + line.join(' ');
-    }).join('\n');
-  }
-
-  // Format an array of (preferably short) strings in columns for console logging.
-  function formatStringsAsGrid(arr, width) {
-    // TODO: variable column width
-    var longest = arr.reduce(function(len, str) {
-          return Math.max(len, str.length);
-        }, 0),
-        colWidth = longest + 2,
-        perLine = Math.floor((width || 80) / colWidth) || 1;
-    return arr.reduce(function(memo, name, i) {
-      var col = i % perLine;
-      if (i > 0 && col === 0) memo += '\n';
-      if (col < perLine - 1) { // right-pad all but rightmost column
-        name = utils.rpad(name, colWidth - 2, ' ');
-      }
-      return memo +  '  ' + name;
-    }, '');
-  }
-
-  // expose so GUI can use it
-  function formatLogArgs(args) {
-    return utils.toArray(args).join(' ');
-  }
-
-  function messageArgs(args) {
-    var arr = utils.toArray(args);
-    var cmd = getStashedVar('current_command');
-    if (cmd && cmd != 'help') {
-      arr.unshift('[' + cmd + ']');
-    }
-    return arr;
-  }
-
-  function logArgs(args) {
-    if (!LOGGING || getStashedVar('QUIET') || !utils.isArrayLike(args)) return;
-    var msg = formatLogArgs(args);
-    if (STDOUT) console.log(msg);
-    else console.error(msg);
-  }
-
-  function truncateString(str, maxLen) {
-    maxLen = maxLen || 80;
-    if (str.length > maxLen) {
-      str = str.substring(0, maxLen - 3).trimEnd() + '...';
-    }
-    return str;
   }
 
   function absArcId(arcId) {
@@ -14361,7 +18016,10 @@ GUI and setting the size and crop of SVG output.</p><div><input type="text" clas
       var needReset;
 
       if (!updated) {
-        return; // e.g. if command is run in console before data is loaded
+        clearMapState();
+        drawLayers();
+        map.dispatchEvent('updated');
+        return;
       }
 
       if (arcsMayHaveChanged(e.flags)) {
@@ -14423,6 +18081,17 @@ GUI and setting the size and crop of SVG output.</p><div><input type="text" clas
       }
       drawLayers();
       map.dispatchEvent('updated');
+    }
+
+    function clearMapState() {
+      _activeLyr = null;
+      _visibleLayers = [];
+      _intersectionLyr = null;
+      _overlayLayers = null;
+      if (_hit) {
+        _hit.clearSelection();
+        _hit.setLayer(null);
+      }
     }
 
     function getDisplayOptions() {
@@ -14825,7 +18494,8 @@ GUI and setting the size and crop of SVG output.</p><div><input type="text" clas
       //   }
       // });
 
-      gui.model.on('update', onUpdate);
+      // set a lower priority so Map can update active layer first
+      gui.model.on('update', onUpdate, null, -1);
 
       gui.on('map_click', function() {
         // close menu if user click on the map
@@ -15503,6 +19173,216 @@ GUI and setting the size and crop of SVG output.</p><div><input type="text" clas
     return gui;
   }
 
+  function createUndoTestApi(gui) {
+    return {
+      getState: function() {
+        return getUndoTestState(gui);
+      },
+      getModelChecksum: function() {
+        return getModelChecksum(gui.model);
+      },
+      getSessionHistory: function() {
+        return gui.session ? gui.session.getHistorySnapshot() : null;
+      },
+      getMessages: function() {
+        return gui.getMessages ? gui.getMessages() : [];
+      },
+      runCommand: function(str) {
+        return runConsoleCommand(gui, str);
+      },
+      saveSnapshot: function() {
+        return gui.sessionSnapshots ? gui.sessionSnapshots.saveSnapshot() : null;
+      },
+      restoreLatestSnapshot: function() {
+        return gui.sessionSnapshots ? gui.sessionSnapshots.restoreLatestSnapshot() : null;
+      },
+      clearUndoHistory: function() {
+        if (gui.undo) gui.undo.clear();
+      },
+      setPanelMode: function(mode) {
+        if (mode) {
+          gui.enterMode(mode);
+        } else {
+          gui.clearMode();
+        }
+      },
+      undo: function() {
+        return gui.undo ? gui.undo.undo() : null;
+      },
+      redo: function() {
+        return gui.undo ? gui.undo.redo() : null;
+      },
+      setInteractionMode: function(mode) {
+        if (gui.interaction) gui.interaction.setMode(mode);
+      },
+      addPointToActiveLayer: function(coords) {
+        var target = gui.model.getActiveLayer();
+        var p = coords || [0, 0];
+        if (!target || !target.layer || target.layer.geometry_type != 'point') {
+          throw new Error('Active layer is not a point layer');
+        }
+        appendNewPointForTest(target.layer, p);
+        gui.dispatchEvent('point_add', {target: target.layer, p: p});
+        gui.dispatchEvent('map-needs-refresh');
+      }
+    };
+  }
+
+  function appendNewPointForTest(layer, p) {
+    var record;
+    layer.shapes.push([p]);
+    if (layer.data) {
+      record = {};
+      layer.data.getFields().forEach(function(field) {
+        record[field] = null;
+      });
+      layer.data.getRecords().push(record);
+    }
+  }
+
+  function getUndoTestState(gui) {
+    return {
+      undo: {
+        canUndo: gui.undo ? gui.undo.canUndo() : false,
+        canRedo: gui.undo ? gui.undo.canRedo() : false
+      },
+      payloadStore: getPayloadStoreState(gui.undoPayloadStore),
+      model: getModelChecksum(gui.model)
+    };
+  }
+
+  function getModelChecksum(model) {
+    var datasets = model.getDatasets();
+    var active = model.getActiveLayer();
+    return {
+      checksum: hashValue(datasets.map(getDatasetSignature)),
+      activeLayer: active && active.layer ? getLayerName(active.layer) : null,
+      datasetCount: datasets.length,
+      layerCount: model.getLayers().length,
+      datasets: datasets.map(getDatasetSummary)
+    };
+  }
+
+  function isUndoTestApiEnabled() {
+    var val = getQueryValue('undo');
+    return val == 'on' || val == 'commands' || val == 'test' ||
+      getQueryValue('undo-test') == 'on';
+  }
+
+  function getPayloadStoreState(store) {
+    var keys = store ? store.getOwnKeys() : [];
+    var stats = store && store.getStats ? store.getStats() : null;
+    var payloads = store && store.getOwnPayloads ? store.getOwnPayloads() : [];
+    return Object.assign({
+      enabled: !!store,
+      persistent: store ? store.isPersistent() : false,
+      ownPayloadCount: keys.length,
+      ownPayloadKeys: keys,
+      ownPayloads: payloads
+    }, stats || {});
+  }
+
+  function runConsoleCommand(gui, str) {
+    return new Promise(function(resolve, reject) {
+      if (!gui.console || !gui.console.runMapshaperCommands) {
+        reject(new Error('GUI console is unavailable'));
+        return;
+      }
+      gui.console.runMapshaperCommands(str, function(err, flags) {
+        if (err) {
+          reject(err);
+        } else {
+          resolve(flags || {});
+        }
+      });
+    });
+  }
+
+  function getDatasetSummary(dataset) {
+    return {
+      layerCount: dataset.layers ? dataset.layers.length : 0,
+      arcCount: dataset.arcs ? dataset.arcs.size() : 0,
+      layers: (dataset.layers || []).map(function(lyr) {
+        return {
+          name: getLayerName(lyr),
+          geometry_type: lyr.geometry_type || null,
+          shapeCount: lyr.shapes ? lyr.shapes.length : 0,
+          recordCount: lyr.data ? lyr.data.size() : 0,
+          fields: lyr.data ? lyr.data.getFields() : []
+        };
+      })
+    };
+  }
+
+  function getDatasetSignature(dataset) {
+    return {
+      info: dataset.info || null,
+      arcs: getArcsSignature(dataset.arcs),
+      layers: (dataset.layers || []).map(getLayerSignature)
+    };
+  }
+
+  function getLayerSignature(lyr) {
+    return {
+      name: getLayerName(lyr),
+      geometry_type: lyr.geometry_type || null,
+      shapes: lyr.shapes || null,
+      fields: lyr.data ? lyr.data.getFields() : [],
+      records: lyr.data ? lyr.data.getRecords() : null
+    };
+  }
+
+  function getArcsSignature(arcs) {
+    var data;
+    if (!arcs) return null;
+    data = arcs.getVertexData();
+    return {
+      size: arcs.size(),
+      zlimit: arcs.getRetainedInterval(),
+      nn: Array.from(data.nn),
+      xx: Array.from(data.xx),
+      yy: Array.from(data.yy),
+      zz: data.zz ? Array.from(data.zz) : null
+    };
+  }
+
+  function getLayerName(lyr) {
+    return lyr.name || null;
+  }
+
+  function hashValue(val) {
+    return hashString(stableStringify(val));
+  }
+
+  function hashString(str) {
+    var hash = 2166136261;
+    for (var i = 0; i < str.length; i++) {
+      hash ^= str.charCodeAt(i);
+      hash += (hash << 1) + (hash << 4) + (hash << 7) + (hash << 8) + (hash << 24);
+    }
+    return (hash >>> 0).toString(16);
+  }
+
+  function stableStringify(val) {
+    if (val === null || typeof val != 'object') {
+      return JSON.stringify(val);
+    }
+    if (Array.isArray(val)) {
+      return '[' + val.map(stableStringify).join(',') + ']';
+    }
+    return '{' + Object.keys(val).sort().map(function(key) {
+      return JSON.stringify(key) + ':' + stableStringify(val[key]);
+    }).join(',') + '}';
+  }
+
+  function getQueryValue(key) {
+    var rxp, match;
+    if (typeof window == 'undefined' || !window.location) return null;
+    rxp = new RegExp('[?&]' + key + '=([^&]+)');
+    match = rxp.exec(window.location.search);
+    return match ? decodeURIComponent(match[1]) : null;
+  }
+
   // This is the entry point for bundling mapshaper's web UI
 
 
@@ -15581,8 +19461,12 @@ GUI and setting the size and crop of SVG output.</p><div><input type="text" clas
     new LayerControl(gui);
     HeaderMenu();
     gui.console = new Console(gui);
+    HistoryMenu(gui);
     window.mapshaper.getRuntimeStateContext = gui.getRuntimeStateContext;
     window.mapshaper.stringifyRuntimeStateContext = gui.stringifyRuntimeStateContext;
+    if (isUndoTestApiEnabled()) {
+      window.mapshaper.undoTest = createUndoTestApi(gui);
+    }
 
     startEditing = function() {};
 

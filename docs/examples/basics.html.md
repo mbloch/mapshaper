@@ -214,7 +214,11 @@ Dissolve groups of points that share a `STATE_FIPS` value into a single weighted
 -grid type=hex interval=10km name=hex
 ```
 
-`-grid` builds a regular grid (`square`, `hex`, `hex2`) covering the target's bounding box. Pair it with a spatial join to style the grid cells using interpolated count data (`-join interpolate=POPULATION`).
+```text
+-grid type=hex cols=40 name=hex
+```
+
+`-grid` builds a regular grid (`square`, `square2`, `hex`, `hex2`, `rhombus`, `rhombus2`, `triangle`, `triangle2`) covering the target's bounding box. Use `interval=` to set the cell side length directly, or `cols=`, `rows=` or `cells=` to set an approximate grid resolution. Use `cell-scale=` to shrink or expand cells from their centers. Pair it with a spatial join to style the grid cells using interpolated count data (`-join interpolate=POPULATION`).
 
 ### Merge compatible layers
 

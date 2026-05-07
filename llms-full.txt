@@ -65,6 +65,18 @@ This is a curated list of recently added features. For the full list of changes,
 
 ## May 2026
 
+<div class="whats-new-entry">
+
+**Undo/redo for web UI commands.** The web UI can now save temporary restore data while you work, so many console commands and layer actions can be undone and redone from the undo/redo toolbar. Turn on this feature from the new History menu.
+
+</div>
+
+<div class="whats-new-entry">
+
+**More grid options.** The `-grid` command can now create rhombus and triangle grids, and supports `cols=`, `rows=`, `cells=` and `cell-scale=` options for controlling grid layout.
+
+→ See [`-grid`](/docs/reference.html.md#-grid).
+</div>
 
 <div class="whats-new-entry">
 
@@ -965,15 +977,23 @@ Create a graticule layer appropriate for a world map centered on longitude 0.
 
 ### -grid
 
-Create a continuous grid of square or hexagonal polygons.
+Create a continuous grid of square, hexagonal, rhombus or triangle polygons.
 
 The `-grid` command should have a projected layer as its target. The cells of the grid will completely enclose the bounding box of the target layer.
 
 This command is intended for visualizing data in a grid. Typically, you would use the `-join` command to join data from a polygon or point layer to a grid layer. Use `-join interpolate=<fields>` to interpolate data values (typically count data) from the polygon layer to the grid layer based on area. Use `-join calc='<field> = sum(<field>)'` or `-join calc='<field> = count()'` to aggregate point data values.
 
-`type=`  Supported values: `square` `hex` `hex2`. The `hex` and `hex2` types have different rotations.
+`type=`  Supported values: `square` `square2` `hex` `hex2` `rhombus` `rhombus2` `triangle` `triangle2`. The `square` and `square2` types have different rotations. The `hex` and `hex2` types have different rotations. `rhombus` and `rhombus2` subdivide `hex` and `hex2` cells into rhombi; `triangle` and `triangle2` subdivide them into triangles.
 
 `interval=` The length of one side of a grid cell. Example values: `500m` `2km`.
+
+`cols=` The target number of grid columns. For non-square grids, this option sets a comparable horizontal grid resolution, not an exact column count.
+
+`rows=` The target number of grid rows. For non-square grids, this option sets a comparable vertical grid resolution, not an exact row count.
+
+`cells=` The target number of grid cells. The actual number may be larger because the grid is extended to enclose the target layer.
+
+`cell-scale=` Scale each grid cell from its center. Values must be greater than 0 and less than 2. Values less than 1 create gaps between cells; values greater than 1 create overlaps.
 
 Other options: `name=` `+` `target=`
 
@@ -2456,7 +2476,11 @@ Dissolve groups of points that share a `STATE_FIPS` value into a single weighted
 -grid type=hex interval=10km name=hex
 ```
 
-`-grid` builds a regular grid (`square`, `hex`, `hex2`) covering the target's bounding box. Pair it with a spatial join to style the grid cells using interpolated count data (`-join interpolate=POPULATION`).
+```text
+-grid type=hex cols=40 name=hex
+```
+
+`-grid` builds a regular grid (`square`, `square2`, `hex`, `hex2`, `rhombus`, `rhombus2`, `triangle`, `triangle2`) covering the target's bounding box. Use `interval=` to set the cell side length directly, or `cols=`, `rows=` or `cells=` to set an approximate grid resolution. Use `cell-scale=` to shrink or expand cells from their centers. Pair it with a spatial join to style the grid cells using interpolated count data (`-join interpolate=POPULATION`).
 
 ### Merge compatible layers
 

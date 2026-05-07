@@ -87,7 +87,7 @@
 	</div></div>
 	<div id="mode-buttons" class="page-header-buttons">
 		<!-- <span class="project-btn header-btn btn">Project</span><span class="separator"> -->
-		<span class="messages-btn header-btn btn" role="button" aria-label="Messages" aria-haspopup="true" aria-expanded="false" title="Messages"><svg viewBox="0 0 16 16" aria-hidden="true" width="16" height="14"><path d="M2 3 h12 a1 1 0 0 1 1 1 v7 a1 1 0 0 1 -1 1 H8 l-5 4 v-4 H2 a1 1 0 0 1 -1 -1 V4 a1 1 0 0 1 1 -1 z"/></svg><span class="messages-badge hidden" aria-hidden="true">0</span></span><span class="display-btn header-btn btn">Display</span><span class="separator"></span><span class="console-btn header-btn btn">Console</span><span class="separator"></span><span class="simplify-btn header-btn btn">Simplify</span><span class="separator"></span><span class="export-btn header-btn btn">Export</span><span class="separator"></span><span id="header-menu-btn" class="header-btn btn" role="button" aria-label="More links" aria-haspopup="true" aria-expanded="false" tabindex="0"><svg viewBox="0 0 16 16" aria-hidden="true" width="16" height="14"><rect x="1" y="3" width="14" height="2"/><rect x="1" y="7" width="14" height="2"/><rect x="1" y="11" width="14" height="2"/></svg></span>
+		<span class="messages-btn header-btn btn" role="button" aria-label="Messages" aria-haspopup="true" aria-expanded="false" title="Messages"><svg viewBox="0 0 16 16" aria-hidden="true" width="16" height="14"><path d="M2 3 h12 a1 1 0 0 1 1 1 v7 a1 1 0 0 1 -1 1 H8 l-5 4 v-4 H2 a1 1 0 0 1 -1 -1 V4 a1 1 0 0 1 1 -1 z"/></svg><span class="messages-badge hidden" aria-hidden="true">0</span></span><span class="display-btn header-btn btn">Display</span><span class="separator"></span><span class="history-btn header-btn btn" role="button" aria-haspopup="true" aria-expanded="false" tabindex="0">History</span><span class="separator"></span><span class="simplify-btn header-btn btn">Simplify</span><span class="separator"></span><span class="export-btn header-btn btn">Export</span><span class="separator"></span><span id="header-menu-btn" class="header-btn btn" role="button" aria-label="More links" aria-haspopup="true" aria-expanded="false" tabindex="0"><svg viewBox="0 0 16 16" aria-hidden="true" width="16" height="14"><rect x="1" y="3" width="14" height="2"/><rect x="1" y="7" width="14" height="2"/><rect x="1" y="11" width="14" height="2"/></svg></span>
 		<div id="header-menu-dropdown" class="hidden" role="menu" aria-labelledby="header-menu-btn">
 			<a class="header-menu-item" href="/docs/" target="_blank" rel="noopener" role="menuitem">Docs</a>
 			<a class="header-menu-item" href="https://github.com/mbloch/mapshaper" target="_blank" rel="noopener" role="menuitem">GitHub</a>
@@ -99,6 +99,20 @@
 	</div>
 	<div id="splash-buttons" class="page-header-buttons">
 		<a href="/docs/"><span id="wiki-btn" class="header-btn btn">Docs</span></a><span class="separator"></span><a href="https://github.com/mbloch/mapshaper"><span id="github-btn" class="header-btn btn">GitHub</span></a><span class="separator"></span><a class="survey-en-link" href="https://tally.so/r/44Njok" target="_blank" rel="noopener"><span id="survey-en-btn" class="header-btn btn">1-minute survey</span></a><a class="survey-zh-link" href="https://tally.so/r/vGx7KQ" target="_blank" rel="noopener" style="display:none"><span id="survey-zh-btn" class="header-btn btn" lang="zh-CN">意见反馈</span></a><span class="separator"></span><a href="sponsor.html"><span id="sponsor-btn" class="header-btn btn"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z"/></svg> Become a sponsor</span></a>
+	</div>
+</div>
+
+<div class="history-menu-dropdown main-area popup-dialog" role="menu" aria-label="History menu">
+	<div class="info-box history-menu-box">
+		<div class="close2-btn"></div>
+		<h3>History</h3>
+		<div class="option-menu">
+			<label class="history-toggle-btn history-menu-item"><input type="checkbox" class="checkbox history-undo-checkbox">enable undo</label>
+			<div class="history-menu-note"></div>
+			<div class="history-clear-btn history-menu-item" role="menuitem">clear undo history</div>
+			<div class="history-menu-separator"></div>
+			<div class="history-command-log-btn history-menu-item" role="menuitem">view command history</div>
+		</div>
 	</div>
 </div>
 
@@ -364,6 +378,7 @@ encoding=big5</span>. Click to see all options.</div></div></div>
 		<div class="console-window"><div class="console-buffer selectable"></div></div>
 	</div>
 	<div class="mshp-main-map main-area map-area">
+		<div class="console-tab console-btn" role="button" tabindex="0" aria-label="Toggle console">Console</div>
 		<div class="intersection-display">
 			<span class="intersection-count">0 line intersections</span>
 			<div class="repair-btn text-btn colored-text">Repair</div>

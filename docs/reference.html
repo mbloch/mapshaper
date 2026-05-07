@@ -567,12 +567,16 @@ mapshaper states.shp -filter-fields FID,NAME -o out.shp
 <p><code>polygon</code> Create an polygon enclosing the entire area of the graticule. Useful for creating background or outline shapes for clipped projections, like Robinson or Stereographic.</p>
 <p><code>interval=</code> Specify the spacing of graticule lines (in degrees). Common options are: 5, 10, 15, 30, 45. Default is 10.</p>
 </section>
-<section class="cmd-section" data-id="-grid" data-name="-grid" data-options="type square hex hex2 interval name target"><h3 id="-grid">-grid</h3>
-<p>Create a continuous grid of square or hexagonal polygons.</p>
+<section class="cmd-section" data-id="-grid" data-name="-grid" data-options="type square square2 hex hex2 rhombus rhombus2 triangle triangle2 interval cols rows cells cell-scale name target"><h3 id="-grid">-grid</h3>
+<p>Create a continuous grid of square, hexagonal, rhombus or triangle polygons.</p>
 <p>The <code>-grid</code> command should have a projected layer as its target. The cells of the grid will completely enclose the bounding box of the target layer.</p>
 <p>This command is intended for visualizing data in a grid. Typically, you would use the <code>-join</code> command to join data from a polygon or point layer to a grid layer. Use <code>-join interpolate=&lt;fields&gt;</code> to interpolate data values (typically count data) from the polygon layer to the grid layer based on area. Use <code>-join calc=&#39;&lt;field&gt; = sum(&lt;field&gt;)&#39;</code> or <code>-join calc=&#39;&lt;field&gt; = count()&#39;</code> to aggregate point data values.</p>
-<p><code>type=</code>  Supported values: <code>square</code> <code>hex</code> <code>hex2</code>. The <code>hex</code> and <code>hex2</code> types have different rotations.</p>
+<p><code>type=</code>  Supported values: <code>square</code> <code>square2</code> <code>hex</code> <code>hex2</code> <code>rhombus</code> <code>rhombus2</code> <code>triangle</code> <code>triangle2</code>. The <code>square</code> and <code>square2</code> types have different rotations. The <code>hex</code> and <code>hex2</code> types have different rotations. <code>rhombus</code> and <code>rhombus2</code> subdivide <code>hex</code> and <code>hex2</code> cells into rhombi; <code>triangle</code> and <code>triangle2</code> subdivide them into triangles.</p>
 <p><code>interval=</code> The length of one side of a grid cell. Example values: <code>500m</code> <code>2km</code>.</p>
+<p><code>cols=</code> The target number of grid columns. For non-square grids, this option sets a comparable horizontal grid resolution, not an exact column count.</p>
+<p><code>rows=</code> The target number of grid rows. For non-square grids, this option sets a comparable vertical grid resolution, not an exact row count.</p>
+<p><code>cells=</code> The target number of grid cells. The actual number may be larger because the grid is extended to enclose the target layer.</p>
+<p><code>cell-scale=</code> Scale each grid cell from its center. Values must be greater than 0 and less than 2. Values less than 1 create gaps between cells; values greater than 1 create overlaps.</p>
 <p>Other options: <code>name=</code> <code>+</code> <code>target=</code></p>
 </section>
 <section class="cmd-section" data-id="-include" data-name="-include" data-options="file"><h3 id="-include">-include</h3>

@@ -159,7 +159,9 @@
 <h3 id="generate-a-hex-grid-covering-a-layer">Generate a hex grid covering a layer</h3>
 <pre><code class="hljs language-text">-grid type=hex interval=10km name=hex
 </code></pre>
-<p><code>-grid</code> builds a regular grid (<code>square</code>, <code>hex</code>, <code>hex2</code>) covering the target&#39;s bounding box. Pair it with a spatial join to style the grid cells using interpolated count data (<code>-join interpolate=POPULATION</code>).</p>
+<pre><code class="hljs language-text">-grid type=hex cols=40 name=hex
+</code></pre>
+<p><code>-grid</code> builds a regular grid (<code>square</code>, <code>square2</code>, <code>hex</code>, <code>hex2</code>, <code>rhombus</code>, <code>rhombus2</code>, <code>triangle</code>, <code>triangle2</code>) covering the target&#39;s bounding box. Use <code>interval=</code> to set the cell side length directly, or <code>cols=</code>, <code>rows=</code> or <code>cells=</code> to set an approximate grid resolution. Use <code>cell-scale=</code> to shrink or expand cells from their centers. Pair it with a spatial join to style the grid cells using interpolated count data (<code>-join interpolate=POPULATION</code>).</p>
 <h3 id="merge-compatible-layers">Merge compatible layers</h3>
 <pre><code class="hljs language-text">-merge-layers target=OR,WA,CA,AK name=pacific_states
 </code></pre>

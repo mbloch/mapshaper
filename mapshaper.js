@@ -659,7 +659,7 @@
     });
   }
 
-  function reorderArray(arr, idxs) {
+  function reorderArray$1(arr, idxs) {
     var len = idxs.length;
     var arr2 = [];
     for (var i=0; i<len; i++) {
@@ -1145,7 +1145,7 @@
     parseIntlNumber, parseNumber: parseNumber$1, parseString, pickOne, pluck,
     pluralSuffix, promisify,
     quicksort: quicksort$1, quicksortPartition,
-    range, reduceAsync, regexEscape, reorderArray, repeat, repeatString,
+    range, reduceAsync, regexEscape, reorderArray: reorderArray$1, repeat, repeatString,
     replaceArray, rpad, rtrim,
     shuffle, some, sortArrayIndex, sortOn, splitLines, sum: sum$1,
     toArray, toBuffer, trim, trimQuotes,
@@ -3270,7 +3270,7 @@
 
   function findCrossIntersection_fast(ax, ay, bx, by, cx, cy, dx, dy) {
     var den = determinant2D(bx - ax, by - ay, dx - cx, dy - cy);
-    var m = orient2D(cx, cy, dx, dy, ax, ay) / den;
+    var m = orient2D$1(cx, cy, dx, dy, ax, ay) / den;
     var p = [ax + m * (bx - ax), ay + m * (by - ay)];
     if (Math.abs(den) < 1e-25) {
       // changed from 1e-18 to 1e-25 (see geom ex1)
@@ -3300,7 +3300,7 @@
       debug('DIV0 error - should have been identified as collinear "touch" intersection.');
       return null;
     }
-    var num = orient2D(cx_bi, cy_bi, dx_bi, dy_bi, ax_bi, ay_bi) * k_bi;
+    var num = orient2D$1(cx_bi, cy_bi, dx_bi, dy_bi, ax_bi, ay_bi) * k_bi;
     var m_bi = num / den;
     var x_bi = ax_bi * k_bi + m_bi * (bx_bi - ax_bi);
     var y_bi = ay_bi * k_bi + m_bi * (by_bi - ay_bi);
@@ -3505,7 +3505,7 @@
   // counterclockwise order, a negative value if the points are in clockwise
   // order, and zero if the points are collinear.
   // Source: Jonathan Shewchuk http://www.cs.berkeley.edu/~jrs/meshpapers/robnotes.pdf
-  function orient2D(ax, ay, bx, by, cx, cy) {
+  function orient2D$1(ax, ay, bx, by, cx, cy) {
     return determinant2D(ax - cx, ay - cy, bx - cx, by - cy);
   }
 
@@ -3517,7 +3517,7 @@
     var by_bi = BigInt(toScaledStr(by, d));
     var cx_bi = BigInt(toScaledStr(cx, d));
     var cy_bi = BigInt(toScaledStr(cy, d));
-    var o2d_bi = orient2D(ax_bi, ay_bi, bx_bi, by_bi, cx_bi, cy_bi);
+    var o2d_bi = orient2D$1(ax_bi, ay_bi, bx_bi, by_bi, cx_bi, cy_bi);
     return fromScaledStr(o2d_bi.toString(), d);
   }
 
@@ -3538,10 +3538,10 @@
   // (Other functions were tried that were more sensitive to floating point errors
   //  than this function)
   function segmentHit_fast(ax, ay, bx, by, cx, cy, dx, dy) {
-    return orient2D(ax, ay, bx, by, cx, cy) *
-        orient2D(ax, ay, bx, by, dx, dy) <= 0 &&
-        orient2D(cx, cy, dx, dy, ax, ay) *
-        orient2D(cx, cy, dx, dy, bx, by) <= 0;
+    return orient2D$1(ax, ay, bx, by, cx, cy) *
+        orient2D$1(ax, ay, bx, by, dx, dy) <= 0 &&
+        orient2D$1(cx, cy, dx, dy, ax, ay) *
+        orient2D$1(cx, cy, dx, dy, bx, by) <= 0;
   }
 
   // Useful for determining if a segment that intersects another segment is
@@ -3559,7 +3559,7 @@
         dy = by - p3[1],
         cx = p4[0] + dx,
         cy = p4[1] + dy,
-        orientation = orient2D(ax, ay, bx, by, cx, cy);
+        orientation = orient2D$1(ax, ay, bx, by, cx, cy);
       if (!orientation) return 0;
       return orientation < 0 ? 1 : -1;
   }
@@ -3568,7 +3568,7 @@
     __proto__: null,
     findClosestPointOnSeg: findClosestPointOnSeg,
     findCrossIntersection_robust: findCrossIntersection_robust,
-    orient2D: orient2D,
+    orient2D: orient2D$1,
     orient2D_robust: orient2D_robust,
     segmentHit_fast: segmentHit_fast,
     segmentIntersection: segmentIntersection,
@@ -4362,6 +4362,247 @@
     parseUnknownType: parseUnknownType
   });
 
+  // Lightweight hooks that make in-place mutations observable to GUI undo.
+  // Normal CLI runs leave activeTransaction unset, so capture hooks are no-ops.
+
+  var activeTransaction = null;
+  var nextUndoId = 1;
+  var objectMetadata = new WeakMap();
+
+  function getActiveUndoTransaction() {
+    return activeTransaction;
+  }
+
+  function setActiveUndoTransaction(tx) {
+    activeTransaction = tx || null;
+  }
+
+  function clearActiveUndoTransaction(tx) {
+    if (!tx || activeTransaction == tx) {
+      activeTransaction = null;
+    }
+  }
+
+  function withActiveUndoTransaction(tx, cb) {
+    var prev = activeTransaction;
+    activeTransaction = tx || null;
+    try {
+      return cb();
+    } finally {
+      activeTransaction = prev;
+    }
+  }
+
+  function getUndoMetadata(obj) {
+    var meta = objectMetadata.get(obj);
+    if (!meta) {
+      meta = {
+        id: 'u' + nextUndoId++,
+        revision: 0
+      };
+      objectMetadata.set(obj, meta);
+    }
+    return meta;
+  }
+
+  function getUndoId(obj) {
+    return getUndoMetadata(obj).id;
+  }
+
+  function getUndoRevision(obj) {
+    return getUndoMetadata(obj).revision;
+  }
+
+  function markChanged(obj, detail) {
+    var tx = activeTransaction;
+    var meta = objectMetadata.get(obj);
+    if (!tx && !meta) return 0;
+    if (!meta) meta = getUndoMetadata(obj);
+    meta.revision++;
+    notifyTransaction(tx, 'markChanged', obj, detail);
+    return meta.revision;
+  }
+
+  function noteTableWillChange(table, detail) {
+    notifyTransaction(activeTransaction, 'captureTableBefore', table, detail || {});
+  }
+
+  function noteTableRecordsWillChange(table, ids, detail) {
+    notifyTransaction(activeTransaction, 'captureTableRecordsBefore', table, Object.assign({
+      ids: normalizeIds(ids)
+    }, detail || {}));
+  }
+
+  function noteTableFieldsWillChange(table, fields, detail) {
+    notifyTransaction(activeTransaction, 'captureTableFieldsBefore', table, Object.assign({
+      fields: normalizeStrings(fields)
+    }, detail || {}));
+  }
+
+  function noteTableOrderWillChange(table, ids, detail) {
+    notifyTransaction(activeTransaction, 'captureTableOrderBefore', table, Object.assign({
+      ids: normalizeIds(ids)
+    }, detail || {}));
+  }
+
+  function noteTableSchemaWillChange(table, detail) {
+    notifyTransaction(activeTransaction, 'captureTableSchemaBefore', table, detail || {});
+  }
+
+  function markTableChanged(table, detail) {
+    return markChanged(table, Object.assign({type: 'table'}, detail || {}));
+  }
+
+  function markTableRecordsChanged(table, ids, detail) {
+    return markTableChanged(table, Object.assign({
+      granularity: 'records',
+      ids: normalizeIds(ids)
+    }, detail || {}));
+  }
+
+  function markTableFieldsChanged(table, fields, detail) {
+    return markTableChanged(table, Object.assign({
+      granularity: 'fields',
+      fields: normalizeStrings(fields)
+    }, detail || {}));
+  }
+
+  function markTableSchemaChanged(table, detail) {
+    return markTableChanged(table, Object.assign({
+      granularity: 'schema'
+    }, detail || {}));
+  }
+
+  function markTableOrderChanged(table, ids, detail) {
+    return markTableChanged(table, Object.assign({
+      granularity: 'order',
+      ids: normalizeIds(ids)
+    }, detail || {}));
+  }
+
+  function noteArcsWillChange(arcs, detail) {
+    notifyTransaction(activeTransaction, 'captureArcsBefore', arcs, detail || {});
+  }
+
+  function noteArcsSimplificationWillChange(arcs, detail) {
+    notifyTransaction(activeTransaction, 'captureArcsSimplificationBefore', arcs, detail || {});
+  }
+
+  function markArcsChanged(arcs, detail) {
+    return markChanged(arcs, Object.assign({type: 'arcs'}, detail || {}));
+  }
+
+  function markArcsSimplificationChanged(arcs, detail) {
+    return markArcsChanged(arcs, Object.assign({granularity: 'simplification'}, detail || {}));
+  }
+
+  function noteCatalogWillChange(catalog, detail) {
+    notifyTransaction(activeTransaction, 'captureCatalogBefore', catalog, detail || {});
+  }
+
+  function markCatalogChanged(catalog, detail) {
+    return markChanged(catalog, Object.assign({type: 'catalog'}, detail || {}));
+  }
+
+  function noteDatasetWillChange(dataset, detail) {
+    notifyTransaction(activeTransaction, 'captureDatasetBefore', dataset, detail || {});
+  }
+
+  function noteDatasetInfoWillChange(dataset, detail) {
+    notifyTransaction(activeTransaction, 'captureDatasetInfoBefore', dataset, detail || {});
+  }
+
+  function markDatasetChanged(dataset, detail) {
+    return markChanged(dataset, Object.assign({type: 'dataset'}, detail || {}));
+  }
+
+  function markDatasetInfoChanged(dataset, detail) {
+    return markDatasetChanged(dataset, Object.assign({granularity: 'info'}, detail || {}));
+  }
+
+  function noteLayerWillChange(layer, detail) {
+    notifyTransaction(activeTransaction, 'captureLayerBefore', layer, detail || {});
+  }
+
+  function noteLayerMetadataWillChange(layer, detail) {
+    notifyTransaction(activeTransaction, 'captureLayerMetadataBefore', layer, detail || {});
+  }
+
+  function noteLayerOrderWillChange(layer, ids, detail) {
+    notifyTransaction(activeTransaction, 'captureLayerOrderBefore', layer, Object.assign({
+      ids: normalizeIds(ids)
+    }, detail || {}));
+  }
+
+  function markLayerChanged(layer, detail) {
+    return markChanged(layer, Object.assign({type: 'layer'}, detail || {}));
+  }
+
+  function markLayerMetadataChanged(layer, detail) {
+    return markLayerChanged(layer, Object.assign({granularity: 'metadata'}, detail || {}));
+  }
+
+  function markLayerOrderChanged(layer, ids, detail) {
+    return markLayerChanged(layer, Object.assign({
+      granularity: 'order',
+      ids: normalizeIds(ids)
+    }, detail || {}));
+  }
+
+  function notifyTransaction(tx, method, obj, detail) {
+    if (tx && typeof tx[method] == 'function') {
+      tx[method](obj, detail || {});
+    }
+  }
+
+  function normalizeIds(ids) {
+    if (ids == null) return [];
+    return Array.isArray(ids) ? ids.slice() : [ids];
+  }
+
+  function normalizeStrings(arr) {
+    if (arr == null) return [];
+    return Array.isArray(arr) ? arr.slice() : [arr];
+  }
+
+  var UndoTracking = /*#__PURE__*/Object.freeze({
+    __proto__: null,
+    clearActiveUndoTransaction: clearActiveUndoTransaction,
+    getActiveUndoTransaction: getActiveUndoTransaction,
+    getUndoId: getUndoId,
+    getUndoMetadata: getUndoMetadata,
+    getUndoRevision: getUndoRevision,
+    markArcsChanged: markArcsChanged,
+    markArcsSimplificationChanged: markArcsSimplificationChanged,
+    markCatalogChanged: markCatalogChanged,
+    markChanged: markChanged,
+    markDatasetChanged: markDatasetChanged,
+    markDatasetInfoChanged: markDatasetInfoChanged,
+    markLayerChanged: markLayerChanged,
+    markLayerMetadataChanged: markLayerMetadataChanged,
+    markLayerOrderChanged: markLayerOrderChanged,
+    markTableChanged: markTableChanged,
+    markTableFieldsChanged: markTableFieldsChanged,
+    markTableOrderChanged: markTableOrderChanged,
+    markTableRecordsChanged: markTableRecordsChanged,
+    markTableSchemaChanged: markTableSchemaChanged,
+    noteArcsSimplificationWillChange: noteArcsSimplificationWillChange,
+    noteArcsWillChange: noteArcsWillChange,
+    noteCatalogWillChange: noteCatalogWillChange,
+    noteDatasetInfoWillChange: noteDatasetInfoWillChange,
+    noteDatasetWillChange: noteDatasetWillChange,
+    noteLayerMetadataWillChange: noteLayerMetadataWillChange,
+    noteLayerOrderWillChange: noteLayerOrderWillChange,
+    noteLayerWillChange: noteLayerWillChange,
+    noteTableFieldsWillChange: noteTableFieldsWillChange,
+    noteTableOrderWillChange: noteTableOrderWillChange,
+    noteTableRecordsWillChange: noteTableRecordsWillChange,
+    noteTableSchemaWillChange: noteTableSchemaWillChange,
+    noteTableWillChange: noteTableWillChange,
+    setActiveUndoTransaction: setActiveUndoTransaction,
+    withActiveUndoTransaction: withActiveUndoTransaction
+  });
+
   function DataTable(obj) {
     var records;
     if (utils.isArray(obj)) {
@@ -4390,6 +4631,46 @@
 
   DataTable.prototype = {
 
+    getUndoId: function() {
+      return getUndoId(this);
+    },
+
+    getUndoRevision: function() {
+      return getUndoRevision(this);
+    },
+
+    captureTableBefore: function(detail) {
+      noteTableWillChange(this, detail);
+    },
+
+    captureRecordsBefore: function(ids, detail) {
+      noteTableRecordsWillChange(this, ids, detail);
+    },
+
+    captureFieldsBefore: function(fields, detail) {
+      noteTableFieldsWillChange(this, fields, detail);
+    },
+
+    captureSchemaBefore: function(detail) {
+      noteTableSchemaWillChange(this, detail);
+    },
+
+    markChanged: function(detail) {
+      return markTableChanged(this, detail);
+    },
+
+    markRecordsChanged: function(ids, detail) {
+      return markTableRecordsChanged(this, ids, detail);
+    },
+
+    markFieldsChanged: function(fields, detail) {
+      return markTableFieldsChanged(this, fields, detail);
+    },
+
+    markSchemaChanged: function(detail) {
+      return markTableSchemaChanged(this, detail);
+    },
+
     fieldExists: function(name) {
       return utils.contains(this.getFields(), name);
     },
@@ -4409,9 +4690,11 @@
       // var dataFieldRxp = /^[a-zA-Z_][a-zA-Z_0-9]*$/;
       // if (!dataFieldRxp.test(name)) error("DataTable#addField() invalid field name:", name);
 
+      this.captureSchemaBefore({operation: 'addField', field: name});
       this.getRecords().forEach(function(obj, i) {
         obj[name] = useFunction ? init(obj, i) : init;
       });
+      this.markSchemaChanged({operation: 'addField', field: name});
     },
 
     getRecordAt: function(i) {
@@ -4425,9 +4708,11 @@
     },
 
     deleteField: function(f) {
+      this.captureSchemaBefore({operation: 'deleteField', field: f});
       this.getRecords().forEach(function(o) {
         delete o[f];
       });
+      this.markSchemaChanged({operation: 'deleteField', field: f});
     },
 
     getFields: function() {
@@ -4440,9 +4725,11 @@
 
     update: function(f) {
       var records = this.getRecords();
+      this.captureTableBefore({operation: 'update'});
       for (var i=0, n=records.length; i<n; i++) {
         records[i] = f(records[i], i);
       }
+      this.markChanged({operation: 'update'});
     },
 
     clone: function() {
@@ -4488,22 +4775,42 @@
   // Insert a column of values into a (new or existing) data field
   function insertFieldValues(lyr, fieldName, values) {
     var size = getFeatureCount(lyr) || values.length,
-        table = lyr.data = (lyr.data || new DataTable(size)),
-        records = table.getRecords(),
+        table = lyr.data,
+        fieldExists,
+        records,
         rec, val;
 
+    if (!table) {
+      noteLayerWillChange(lyr, {operation: 'insertFieldValues', unit: 'data'});
+      table = lyr.data = new DataTable(size);
+      markLayerChanged(lyr, {operation: 'insertFieldValues', unit: 'data'});
+    }
+    fieldExists = table.fieldExists(fieldName);
+    if (fieldExists) {
+      table.captureFieldsBefore([fieldName], {operation: 'insertFieldValues'});
+    } else {
+      table.captureSchemaBefore({operation: 'insertFieldValues', field: fieldName});
+    }
+    records = table.getRecords();
     for (var i=0, n=records.length; i<n; i++) {
       rec = records[i];
       val = values[i];
       if (!rec) rec = records[i] = {};
       rec[fieldName] = val === undefined ? null : val;
     }
+    if (fieldExists) {
+      table.markFieldsChanged([fieldName], {operation: 'insertFieldValues'});
+    } else {
+      table.markSchemaChanged({operation: 'insertFieldValues', field: fieldName});
+    }
   }
 
   function getLayerDataTable(lyr) {
     var data = lyr.data;
     if (!data) {
+      noteLayerWillChange(lyr, {operation: 'getLayerDataTable', unit: 'data'});
       data = lyr.data = new DataTable(lyr.shapes ? lyr.shapes.length : 0);
+      markLayerChanged(lyr, {operation: 'getLayerDataTable', unit: 'data'});
     }
     return data;
   }
@@ -4530,18 +4837,28 @@
   }
 
   function deleteFeatureById(lyr, i) {
-    if (lyr.shapes) lyr.shapes.splice(i, 1);
-    if (lyr.data) lyr.data.getRecords().splice(i, 1);
+    if (lyr.shapes) {
+      noteLayerWillChange(lyr, {operation: 'deleteFeatureById', unit: 'shapes'});
+      lyr.shapes.splice(i, 1);
+      markLayerChanged(lyr, {operation: 'deleteFeatureById', unit: 'shapes'});
+    }
+    if (lyr.data) {
+      lyr.data.captureTableBefore({operation: 'deleteFeatureById'});
+      lyr.data.getRecords().splice(i, 1);
+      lyr.data.markChanged({operation: 'deleteFeatureById'});
+    }
   }
 
   // TODO: move elsewhere (moved here from mapshaper-point-utils to avoid circular dependency)
   function transformPointsInLayer(lyr, f) {
     if (layerHasPoints(lyr)) {
+      noteLayerWillChange(lyr, {operation: 'transformPointsInLayer', unit: 'shapes'});
       forEachPoint(lyr.shapes, function(p) {
         var p2 = f(p[0], p[1]);
         p[0] = p2[0];
         p[1] = p2[1];
       });
+      markLayerChanged(lyr, {operation: 'transformPointsInLayer', unit: 'shapes'});
     }
   }
 
@@ -4781,7 +5098,9 @@
   }
 
   function initDataTable(lyr) {
+    noteLayerWillChange(lyr, {operation: 'initDataTable', unit: 'data'});
     lyr.data = new DataTable(getFeatureCount(lyr));
+    markLayerChanged(lyr, {operation: 'initDataTable', unit: 'data'});
   }
 
   var LayerUtils = /*#__PURE__*/Object.freeze({
@@ -5918,12 +6237,40 @@
     }
 
     this.updateArcBounds = function(arcId) {
+      this.captureArcsBefore({operation: 'updateArcBounds', arcId: arcId});
       initArcBounds(arcId);
+      this.markArcsChanged({operation: 'updateArcBounds', arcId: arcId});
     };
 
     this.updateVertexData = function(nn, xx, yy, zz) {
+      this.captureArcsBefore({operation: 'updateVertexData'});
       initXYData(nn, xx, yy);
       initZData(zz || null);
+      this.markArcsChanged({operation: 'updateVertexData'});
+    };
+
+    this.getUndoId = function() {
+      return getUndoId(this);
+    };
+
+    this.getUndoRevision = function() {
+      return getUndoRevision(this);
+    };
+
+    this.captureArcsBefore = function(detail) {
+      noteArcsWillChange(this, detail);
+    };
+
+    this.captureArcsSimplificationBefore = function(detail) {
+      noteArcsSimplificationWillChange(this, detail);
+    };
+
+    this.markArcsChanged = function(detail) {
+      return markArcsChanged(this, detail);
+    };
+
+    this.markArcsSimplificationChanged = function(detail) {
+      return markArcsSimplificationChanged(this, detail);
     };
 
     this.getCopy = function() {
@@ -6019,6 +6366,7 @@
 
     this.transformPoints = function(f) {
       var xx = _xx, yy = _yy, arcId = -1, n = 0, p;
+      this.captureArcsBefore({operation: 'transformPoints'});
       for (var i=0, len=xx.length; i<len; i++, n--) {
         while (n === 0) {
           n = _nn[++arcId];
@@ -6030,6 +6378,7 @@
         }
       }
       initBounds();
+      this.markArcsChanged({operation: 'transformPoints'});
     };
 
     // Return an ArcIter object for each path in the dataset
@@ -6087,7 +6436,9 @@
         }
       }
       if (goodArcs < n) {
+        this.captureArcsBefore({operation: 'deleteArcs'});
         condenseArcs(map);
+        this.markArcsChanged({operation: 'deleteArcs'});
       }
       return map;
     };
@@ -6120,6 +6471,7 @@
           arcCount = this.size(),
           zz = _zz,
           arcLen, arcLen2;
+      this.captureArcsBefore({operation: 'dedupCoords'});
       while (arcId < arcCount) {
         arcLen = _nn[arcId];
         arcLen2 = dedupArcCoords(i, i2, arcLen, _xx, _yy, zz);
@@ -6132,6 +6484,7 @@
         initXYData(_nn, _xx.subarray(0, i2), _yy.subarray(0, i2));
         if (zz) initZData(zz.subarray(0, i2));
       }
+      this.markArcsChanged({operation: 'dedupCoords'});
       return i - i2;
     };
 
@@ -6255,6 +6608,7 @@
     this.setThresholds = function(thresholds) {
       var n = this.getPointCount(),
           zz = null;
+      this.captureArcsSimplificationBefore({operation: 'setThresholds'});
       if (!thresholds) ; else if (thresholds.length == n) {
         zz = thresholds;
       } else if (thresholds.length == this.size()) {
@@ -6263,6 +6617,7 @@
         error("Invalid threshold data");
       }
       initZData(zz);
+      this.markArcsSimplificationChanged({operation: 'setThresholds'});
       return this;
     };
 
@@ -6280,6 +6635,7 @@
 
     // bake in current simplification level, if any
     this.flatten = function() {
+      this.captureArcsBefore({operation: 'flatten'});
       if (_zlimit > 0) {
         var data = getFilteredVertexData();
         this.updateVertexData(data.nn, data.xx, data.yy);
@@ -6287,6 +6643,7 @@
       } else {
         _zz = null;
       }
+      this.markArcsChanged({operation: 'flatten'});
     };
 
     this.isFlat = function() { return !_zz; };
@@ -6296,7 +6653,9 @@
     };
 
     this.setRetainedInterval = function(z) {
+      this.captureArcsSimplificationBefore({operation: 'setRetainedInterval'});
       _zlimit = z;
+      this.markArcsSimplificationChanged({operation: 'setRetainedInterval'});
       return this;
     };
 
@@ -6305,12 +6664,14 @@
     };
 
     this.setRetainedPct = function(pct) {
+      this.captureArcsSimplificationBefore({operation: 'setRetainedPct'});
       if (pct >= 1) {
         _zlimit = 0;
       } else {
         _zlimit = this.getThresholdByPct(pct);
         _zlimit = clampIntervalByPct(_zlimit, pct);
       }
+      this.markArcsSimplificationChanged({operation: 'setRetainedPct'});
       return this;
     };
 
@@ -6652,7 +7013,9 @@
     dataset.arcs.updateVertexData(cooked.nn, cooked.xx, cooked.yy);
     dataset.layers.forEach(function(lyr) {
       if (lyr.geometry_type == 'polyline' || lyr.geometry_type == 'polygon') {
+        noteLayerWillChange(lyr, {operation: 'buildTopology', unit: 'shapes'});
         lyr.shapes = replaceArcIds(lyr.shapes, cooked.paths);
+        markLayerChanged(lyr, {operation: 'buildTopology', unit: 'shapes'});
       }
     });
   }
@@ -6959,11 +7322,13 @@
   // Merge arcs from one or more source datasets into target dataset
   // return array of layers from the source dataset (instead of adding them to the target dataset)
   function mergeDatasetsIntoDataset(dataset, datasets) {
+    noteDatasetWillChange(dataset, {operation: 'mergeDatasetsIntoDataset'});
     var merged = mergeDatasets([dataset].concat(datasets));
     var mergedLayers = datasets.reduce(function(memo, dataset) {
       return memo.concat(dataset.layers);
     }, []);
     dataset.arcs = merged.arcs;
+    markDatasetChanged(dataset, {operation: 'mergeDatasetsIntoDataset'});
     return mergedLayers;
   }
 
@@ -6998,7 +7363,9 @@
     }
 
     // remove old datasets after merging, so catalog is not affected if merge throws an error
-    targetDatasets.forEach(catalog.removeDataset);
+    targetDatasets.forEach(function(dataset) {
+      catalog.removeDataset(dataset);
+    });
     catalog.addDataset(merged); // sets default target to all layers in merged dataset
     catalog.setDefaultTarget(targetLayers, merged); // reset default target
     return [{
@@ -7029,9 +7396,15 @@
       mergeDatasetInfo$1(merged, dataset);
       dataset.layers.forEach(function(lyr) {
         if (lyr.geometry_type == 'polygon' || lyr.geometry_type == 'polyline') {
+          if (arcCount > 0) {
+            noteLayerWillChange(lyr, {operation: 'mergeDatasets', unit: 'arc-ids'});
+          }
           forEachArcId(lyr.shapes, function(id) {
             return id < 0 ? id - arcCount : id + arcCount;
           });
+          if (arcCount > 0) {
+            markLayerChanged(lyr, {operation: 'mergeDatasets', unit: 'arc-ids'});
+          }
         }
         merged.layers.push(lyr);
       });
@@ -7598,7 +7971,9 @@
         layers = dataset.layers.filter(layerHasPaths);
 
     if (!arcs || !layers.length) {
+      if (dataset.arcs) noteDatasetWillChange(dataset, {operation: 'dissolveArcs', unit: 'arcs'});
       dataset.arcs = null;
+      if (arcs) markDatasetChanged(dataset, {operation: 'dissolveArcs', unit: 'arcs'});
       profileEnd('dissolveArcs.body');
       return;
     }
@@ -7611,13 +7986,17 @@
         // arcStatus: 0 = unvisited, 1 = dropped, 2 = remapped, 3 = remapped + reversed
     profileStart('dissolveArcs.translatePaths');
     layers.forEach(function(lyr) {
+      noteLayerWillChange(lyr, {operation: 'dissolveArcs', unit: 'shapes'});
       lyr.shapes = lyr.shapes.map(function(shape, i) {
-        return editShapeParts(shape && shape.concat(), translatePath);
+        return editShapeParts(getDissolveShapeParts(shape, lyr), translatePath);
       });
+      markLayerChanged(lyr, {operation: 'dissolveArcs', unit: 'shapes'});
     });
     profileEnd('dissolveArcs.translatePaths');
     profileStart('dissolveArcs.dissolveArcCollection');
+    noteDatasetWillChange(dataset, {operation: 'dissolveArcs', unit: 'arcs'});
     dataset.arcs = dissolveArcCollection(arcs, newArcs, totalPoints);
+    markDatasetChanged(dataset, {operation: 'dissolveArcs', unit: 'arcs'});
     profileEnd('dissolveArcs.dissolveArcCollection');
     profileEnd('dissolveArcs.body');
 
@@ -7665,6 +8044,42 @@
       totalPoints += pointCount;
       return newPath;
     }
+  }
+
+  function getDissolveShapeParts(shape, lyr) {
+    if (!shape) return null;
+    shape = shape.concat();
+    if (lyr.geometry_type == 'polygon' && shape.length > 1) {
+      shape.sort(comparePolygonRingsByMinArcId);
+    }
+    return shape;
+  }
+
+  function comparePolygonRingsByMinArcId(a, b) {
+    var minA = getPathMinArcId(a),
+        minB = getPathMinArcId(b);
+    if (minA != minB) return minA - minB;
+    return comparePathsByArcId(a, b);
+  }
+
+  function getPathMinArcId(path) {
+    var minId = Infinity,
+        id;
+    for (var i=0, n=path.length; i<n; i++) {
+      id = absArcId(path[i]);
+      if (id < minId) minId = id;
+    }
+    return minId;
+  }
+
+  function comparePathsByArcId(a, b) {
+    var n = Math.min(a.length, b.length),
+        diff;
+    for (var i=0; i<n; i++) {
+      diff = absArcId(a[i]) - absArcId(b[i]);
+      if (diff) return diff;
+    }
+    return a.length - b.length;
   }
 
   function dissolveArcCollection(arcs, newArcs, newLen) {
@@ -7755,10 +8170,12 @@
   function mergeDatasetInfo(dest, src) {
     var srcInfo = src.info || {};
     var destInfo = dest.info || (dest.info = {});
+    noteDatasetInfoWillChange(dest, {operation: 'mergeDatasetInfo'});
     destInfo.input_files = utils.uniq((destInfo.input_files || []).concat(srcInfo.input_files || []));
     destInfo.input_formats = utils.uniq((destInfo.input_formats || []).concat(srcInfo.input_formats || []));
     // merge other info properties (e.g. input_geojson_crs, input_delimiter, prj, crs)
     utils.defaults(destInfo, srcInfo);
+    markDatasetInfoChanged(dest, {operation: 'mergeDatasetInfo'});
   }
 
   function copyDatasetInfo(info) {
@@ -7773,6 +8190,7 @@
 
   function splitApartLayers(dataset, layers) {
     var datasets = [];
+    noteDatasetWillChange(dataset, {operation: 'splitApartLayers', unit: 'layers'});
     dataset.layers = dataset.layers.filter(function(lyr) {
       if (!layers.includes(lyr)) {
         return true;
@@ -7790,6 +8208,7 @@
       dissolveArcs(dataset);
       datasets.push(dataset);
     }
+    markDatasetChanged(dataset, {operation: 'splitApartLayers', unit: 'layers'});
     return datasets;
   }
 
@@ -7852,7 +8271,9 @@
   // (currently cleanupArcs() is run after every command, so be mindful of performance)
   function cleanupArcs(dataset) {
     if (dataset.arcs && !utils.some(dataset.layers, layerHasPaths)) {
+      noteDatasetWillChange(dataset, {operation: 'cleanupArcs', unit: 'arcs'});
       dataset.arcs = null;
+      markDatasetChanged(dataset, {operation: 'cleanupArcs', unit: 'arcs'});
       return true;
     }
   }
@@ -7871,6 +8292,7 @@
   function replaceLayers(dataset, cutLayers, newLayers) {
     // modify a copy in case cutLayers == dataset.layers
     var currLayers = dataset.layers.concat();
+    noteDatasetWillChange(dataset, {operation: 'replaceLayers', unit: 'layers'});
     utils.repeat(Math.max(cutLayers.length, newLayers.length), function(i) {
       var cutLyr = cutLayers[i],
           newLyr = newLayers[i],
@@ -7884,6 +8306,7 @@
       }
     });
     dataset.layers = currLayers;
+    markDatasetChanged(dataset, {operation: 'replaceLayers', unit: 'layers'});
   }
 
   // Replace a layer with a layer from a second dataset
@@ -7921,7 +8344,9 @@
     }
     lyr2.name = opts.name || lyr.name;
     if (!opts.no_replace) {
+      noteLayerWillChange(lyr, {operation: 'mergeOutputLayersIntoDataset'});
       outputLayers[0] = Object.assign(lyr, {data: null, shapes: null}, lyr2);
+      markLayerChanged(lyr, {operation: 'mergeOutputLayersIntoDataset'});
       if (layerHasPaths(lyr)) {
         // Remove unused arcs from replaced layer
         // TODO: consider using clean insead of this
@@ -14808,6 +15233,12 @@
       profileEnd('addIntersectionCuts');
       return new NodeCollection([]);
     }
+    noteArcsWillChange(arcs, {operation: 'addIntersectionCuts'});
+    dataset.layers.forEach(function(lyr) {
+      if (layerHasPaths(lyr)) {
+        noteLayerWillChange(lyr, {operation: 'addIntersectionCuts', unit: 'shapes'});
+      }
+    });
 
     if (opts.snap_interval) {
       snapDist = convertIntervalParam(opts.snap_interval, getDatasetCRS(dataset));
@@ -14845,6 +15276,12 @@
     profileStart('cleanArcReferences');
     nodes = cleanArcReferences(dataset);
     profileEnd('cleanArcReferences');
+    dataset.layers.forEach(function(lyr) {
+      if (layerHasPaths(lyr)) {
+        markLayerChanged(lyr, {operation: 'addIntersectionCuts', unit: 'shapes'});
+      }
+    });
+    markArcsChanged(arcs, {operation: 'addIntersectionCuts'});
     profileEnd('addIntersectionCuts');
     return nodes;
   }
@@ -16097,7 +16534,9 @@
 
     if (!opts.no_arc_dissolve && pathClean && dataset.arcs) {
       profileStart('dissolveArcs');
+      noteArcsWillChange(dataset.arcs, {operation: 'clean-dissolveArcs'});
       dissolveArcs(dataset);
+      markArcsChanged(dataset.arcs, {operation: 'clean-dissolveArcs'});
       profileEnd('dissolveArcs');
     }
     profileEnd('cleanLayers');
@@ -16109,13 +16548,16 @@
     var groups = lyr.shapes.map(function(shp, i) {
       return [i];
     });
+    noteLayerWillChange(lyr, {operation: 'cleanPolygonLayerGeometry', unit: 'shapes'});
     lyr.shapes = dissolvePolygonGroups2(groups, lyr, dataset, opts);
+    markLayerChanged(lyr, {operation: 'cleanPolygonLayerGeometry', unit: 'shapes'});
   }
 
   // Remove duplicate points from multipoint geometries
   // TODO: consider checking for invalid coordinates
   function cleanPointLayerGeometry(lyr, dataset, opts) {
     var index, parts;
+    noteLayerWillChange(lyr, {operation: 'cleanPointLayerGeometry', unit: 'shapes'});
     lyr.shapes = lyr.shapes.map(function(shp, i) {
       if (!shp || shp.length > 0 === false) {
         return null;
@@ -16132,6 +16574,7 @@
       }
       return parts;
     });
+    markLayerChanged(lyr, {operation: 'cleanPointLayerGeometry', unit: 'shapes'});
 
     function onPoint(p) {
       var key = p.join('~');
@@ -29466,19 +29909,29 @@ ${svg}
       .option('no-replace', noReplaceOpt);
 
     parser.command('grid')
-      .describe('create a grid of square or hexagonal polygons')
+      .describe('create a grid of square, hexagonal, rhombus or triangle polygons')
       .option('type', {
-        describe: 'square, hex or hex2 (default is square)'
+        describe: 'square, square2, hex, hex2, rhombus, rhombus2, triangle or triangle2 (default is square)'
       })
       .option('interval', {
         describe: 'side length (e.g. 500m, 12km)',
         type: 'distance'
       })
       .option('cols', {
+        describe: 'target number of grid columns',
         type: 'integer'
       })
       .option('rows', {
+        describe: 'target number of grid rows',
         type: 'integer'
+      })
+      .option('cells', {
+        describe: 'target number of grid cells',
+        type: 'integer'
+      })
+      .option('cell-scale', {
+        describe: 'scale factor for cells, between 0 and 2',
+        type: 'number'
       })
       // .option('bbox', {
       //   type: 'bbox',
@@ -32538,10 +32991,12 @@ ${svg}
   function parseGeoJSON(reader, cb) {
     var src = ByteReader(reader, 0);
     var isObject = seekObjectStart(src);
+    var type;
     if (!isObject) {
       stop$1('File is not GeoJSON');
     }
-    var obj = readObject(src, cb);
+    type = readTopLevelType(src);
+    var obj = readObject(src, cb, type);
     if (obj.type == 'FeatureCollection' || obj.type == 'GeometryCollection') {
       return obj;
     }
@@ -32620,6 +33075,17 @@ ${svg}
       c = scanForAorB(src, COMMA, RBRACK);
     }
     return arr;
+  }
+
+  function skipArray(src) {
+    var c;
+    eatChar(src, LBRACK);
+    c = scanForSyntaxChar(src, RBRACK);
+    while (c != RBRACK) {
+      src.refresh();
+      skipValue(src);
+      c = scanForAorB(src, COMMA, RBRACK);
+    }
   }
 
   function readCollectionArray(src, cb) {
@@ -32710,6 +33176,18 @@ ${svg}
     return val;
   }
 
+  function skipValue(src) {
+    var c = src.peek();
+    if (isFirstNumChar(c)) readNumber(src);
+    else if (c == LBRACK) skipArray(src);
+    else if (c == DQUOTE) readString(src);
+    else if (c == LBRACE) skipObject(src);
+    else if (c == 110) readNull(src); // "n" -> null
+    else if (c == 116) readTrue(src); // "t" -> true
+    else if (c == 102) readFalse(src); // "f" -> false
+    else unexpectedCharAt(c, src.index());
+  }
+
   function readTrue(src) {
     eatChars(src, 'true');
     return true;
@@ -32736,7 +33214,7 @@ ${svg}
 
   // cb: optional callback for returning GeoJSON features or geometries
   //
-  function readObject(src, cb) {
+  function readObject(src, cb, type) {
     var o = {};
     var key, c;
     eatChar(src, LBRACE);
@@ -32747,7 +33225,8 @@ ${svg}
       skipWS(src);
       eatChar(src, 58); // ":"
       skipWS(src);
-      if ((key == 'features' || key == 'geometries') &&
+      if ((type == 'FeatureCollection' && key == 'features' ||
+          type == 'GeometryCollection' && key == 'geometries') &&
           src.peek() == LBRACK && cb) {
         readCollectionArray(src, cb);
         o[key] = null;
@@ -32759,6 +33238,43 @@ ${svg}
       c = scanForAorB(src, COMMA, RBRACE);
     }
     return o;
+  }
+
+  function skipObject(src) {
+    var c;
+    eatChar(src, LBRACE);
+    c = scanForSyntaxChar(src, RBRACE);
+    while (c != RBRACE) {
+      src.refresh();
+      readKeywordString(src);
+      skipWS(src);
+      eatChar(src, 58); // ":"
+      skipWS(src);
+      skipValue(src);
+      c = scanForAorB(src, COMMA, RBRACE);
+    }
+  }
+
+  function readTopLevelType(src) {
+    var i = src.index();
+    var type, key, c;
+    eatChar(src, LBRACE);
+    c = scanForSyntaxChar(src, RBRACE);
+    while (c != RBRACE) {
+      src.refresh();
+      key = readKeywordString(src);
+      skipWS(src);
+      eatChar(src, 58); // ":"
+      skipWS(src);
+      if (key == 'type' && src.peek() == DQUOTE) {
+        type = readKeywordString(src);
+        break;
+      }
+      skipValue(src);
+      c = scanForAorB(src, COMMA, RBRACE);
+    }
+    src.index(i);
+    return type;
   }
 
   function growReserve() {
@@ -35859,6 +36375,22 @@ ${svg}
     var datasets = [],
         defaultTargets = [];// saved default command targets [{layers:[], dataset}, ...]
 
+    this.getUndoId = function() {
+      return getUndoId(this);
+    };
+
+    this.getUndoRevision = function() {
+      return getUndoRevision(this);
+    };
+
+    this.captureCatalogBefore = function(detail) {
+      noteCatalogWillChange(this, detail);
+    };
+
+    this.markCatalogChanged = function(detail) {
+      return markCatalogChanged(this, detail);
+    };
+
     this.forEachLayer = function(cb) {
       var i = 0;
       datasets.forEach(function(dataset) {
@@ -35870,16 +36402,19 @@ ${svg}
 
     // remove a layer from a dataset
     this.deleteLayer = function(lyr, dataset) {
+      this.captureCatalogBefore({operation: 'deleteLayer'});
       // if deleting first target layer (selected in gui) -- switch to some other layer
       if (this.getActiveLayer().layer == lyr) {
         defaultTargets = [];
       }
 
       // remove layer from its dataset
+      noteDatasetWillChange(dataset, {operation: 'deleteLayer', unit: 'layers'});
       dataset.layers.splice(dataset.layers.indexOf(lyr), 1);
       if (dataset.layers.length === 0) {
-        this.removeDataset(dataset);
+        removeDatasetRaw(dataset);
       }
+      markDatasetChanged(dataset, {operation: 'deleteLayer', unit: 'layers'});
 
       // remove layer from defaultTargets
       defaultTargets = defaultTargets.filter(function(targ) {
@@ -35888,6 +36423,7 @@ ${svg}
         targ.layers.splice(i, 1);
         return targ.layers.length > 0;
       });
+      this.markCatalogChanged({operation: 'deleteLayer'});
     };
 
     // @arg: a layer object or a test function
@@ -35916,17 +36452,16 @@ ${svg}
     };
 
     this.clear = function() {
+      this.captureCatalogBefore({operation: 'clear'});
       datasets = [];
       defaultTargets = [];
+      this.markCatalogChanged({operation: 'clear'});
     };
 
     this.removeDataset = function(dataset) {
-      defaultTargets = defaultTargets.filter(function(targ) {
-        return targ.dataset != dataset;
-      });
-      datasets = datasets.filter(function(d) {
-        return d != dataset;
-      });
+      this.captureCatalogBefore({operation: 'removeDataset'});
+      removeDatasetRaw(dataset);
+      this.markCatalogChanged({operation: 'removeDataset'});
     };
 
     this.getDatasets = function() {
@@ -35988,12 +36523,15 @@ ${svg}
 
     // arr: array of target objects {layers:[], dataset:{}}
     this.setDefaultTargets = function(arr) {
+      if (targetsAreSame(defaultTargets, arr)) return;
+      this.captureCatalogBefore({operation: 'setDefaultTargets'});
       arr.forEach(function(target) {
         if (datasets.indexOf(target.dataset) == -1) {
           datasets.push(target.dataset);
         }
       });
       defaultTargets = arr;
+      this.markCatalogChanged({operation: 'setDefaultTargets'});
     };
 
     // should be in gui-model.js, moved here for testing
@@ -36018,12 +36556,39 @@ ${svg}
       };
     }
 
+    function targetsAreSame(a, b) {
+      if (a.length != b.length) return false;
+      for (var i = 0; i < a.length; i++) {
+        if (a[i].dataset != b[i].dataset || !layersAreSame(a[i].layers, b[i].layers)) {
+          return false;
+        }
+      }
+      return true;
+    }
+
+    function layersAreSame(a, b) {
+      if (a.length != b.length) return false;
+      for (var i = 0; i < a.length; i++) {
+        if (a[i] != b[i]) return false;
+      }
+      return true;
+    }
+
     function indexOfLayer(lyr, layers) {
       var idx = -1;
       layers.forEach(function(o, i) {
         if (o.layer == lyr) idx = i;
       });
       return idx;
+    }
+
+    function removeDatasetRaw(dataset) {
+      defaultTargets = defaultTargets.filter(function(targ) {
+        return targ.dataset != dataset;
+      });
+      datasets = datasets.filter(function(d) {
+        return d != dataset;
+      });
     }
   }
 
@@ -36269,6 +36834,7 @@ ${svg}
     var targetShapes = [];
     var otherShapes = [];
     var targetPoints = [];
+    var targetPointLayers = [];
     var targetFlags, otherFlags, transform;
     dataset.layers.filter(layerHasGeometry).forEach(function(lyr) {
       var hits = [],
@@ -36286,6 +36852,7 @@ ${svg}
       }
       if (lyr.geometry_type == 'point') {
         targetPoints = targetPoints.concat(hits);
+        if (hits.length > 0) targetPointLayers.push(lyr);
       } else {
         targetShapes = targetShapes.concat(hits);
         otherShapes = otherShapes.concat(misses);
@@ -36305,7 +36872,9 @@ ${svg}
       if (otherShapes.length > 0) {
         countArcsInShapes(otherShapes, otherFlags);
         applyArrayMask(otherFlags, targetFlags);
+        noteDatasetWillChange(dataset, {operation: 'affine', unit: 'arcs'});
         dataset.arcs = duplicateSelectedArcs(otherShapes, arcs, otherFlags);
+        markDatasetChanged(dataset, {operation: 'affine', unit: 'arcs'});
       }
       dataset.arcs.transformPoints(function(x, y, arcId) {
         if (arcId < targetFlags.length && targetFlags[arcId] > 0) {
@@ -36313,10 +36882,16 @@ ${svg}
         }
       });
     }
+    targetPointLayers.forEach(function(lyr) {
+      noteLayerWillChange(lyr, {operation: 'affine', unit: 'shapes'});
+    });
     forEachPoint(targetPoints, function(p) {
       var p2 = transform(p[0], p[1]);
       p[0] = p2[0];
       p[1] = p2[1];
+    });
+    targetPointLayers.forEach(function(lyr) {
+      markLayerChanged(lyr, {operation: 'affine', unit: 'shapes'});
     });
   };
 
@@ -37159,7 +37734,9 @@ ${svg}
     var dataset = getPolygonDataset$2(pointLyr, filter, opts);
     var merged = mergeDatasets([targetDataset, dataset]);
     var lyr = merged.layers.pop();
+    noteDatasetWillChange(targetDataset, {operation: 'alpha-shapes', unit: 'arcs'});
     targetDataset.arcs = merged.arcs;
+    markDatasetChanged(targetDataset, {operation: 'alpha-shapes', unit: 'arcs'});
     setOutputLayerName(lyr, pointLyr, null, opts);
     return lyr;
   };
@@ -41895,9 +42472,11 @@ ${svg}
       // message('Use save-as=<field> to save to a different field');
     }
 
+    lyr.data.captureSchemaBefore({operation: 'classify', field: outputField});
     records.forEach(function(d, i) {
       d[outputField] = classifyByRecordId(i);
     });
+    lyr.data.markSchemaChanged({operation: 'classify', field: outputField});
   };
 
   function formatValuesForLogging(arr) {
@@ -41939,7 +42518,9 @@ ${svg}
       }
     };
 
+    noteLayerWillChange(lyr, {operation: 'filter-slivers', unit: 'shapes'});
     editShapes(lyr.shapes, pathFilter);
+    markLayerChanged(lyr, {operation: 'filter-slivers', unit: 'shapes'});
     message(utils.format("Removed %'d sliver%s using %s", removed, utils.pluralSuffix(removed), filterData.label));
 
     // Remove null shapes (likely removed by clipping/erasing, although possibly already present)
@@ -41974,7 +42555,9 @@ ${svg}
     };
 
     countArcsInShapes(clipLyr.shapes, flags);
+    noteLayerWillChange(lyr, {operation: 'filter-clip-slivers', unit: 'shapes'});
     editShapes(lyr.shapes, pathFilter);
+    markLayerChanged(lyr, {operation: 'filter-clip-slivers', unit: 'shapes'});
     return removed;
   }
 
@@ -42574,7 +43157,9 @@ ${svg}
     clipLyr = mergedDataset.layers[mergedDataset.layers.length-1];
     if (usingPathClip) {
       nodes = addIntersectionCuts(mergedDataset, opts);
+      noteDatasetWillChange(targetDataset, {operation: type, unit: 'arcs'});
       targetDataset.arcs = mergedDataset.arcs;
+      markDatasetChanged(targetDataset, {operation: type, unit: 'arcs'});
       profileStart('clipDissolvePolygonLayer2');
       clipLyr = utils.defaults({data: null}, clipLyr);
       clipLyr = dissolvePolygonLayer2(clipLyr, mergedDataset, {quiet: true, silent: true});
@@ -43054,7 +43639,9 @@ ${svg}
     var exp = `this.geojson = splitFeature(this.geojson)`;
     requirePolylineLayer(lyr);
     defs.splitFeature = getSplitFeatureFunction(crs, opts);
+    noteLayerWillChange(lyr, {operation: 'dashlines', unit: 'shapes'});
     cmd.evaluateEachFeature(lyr, dataset, exp, opts);
+    markLayerChanged(lyr, {operation: 'dashlines', unit: 'shapes'});
     delete defs.splitFeature;
   };
 
@@ -43195,6 +43782,7 @@ ${svg}
     var getNeighbors = getNeighborLookupFunction(lyr, arcs);
     var fillCount, islandCount;
 
+    lyr.data.captureFieldsBefore([field], {operation: 'data-fill'});
     // get function to check if a shape was empty before data-fill
     var initiallyEmpty = (function() {
       var flags = lyr.data.getRecords().map(function(rec) {
@@ -43213,6 +43801,7 @@ ${svg}
     if (opts.contiguous) {
       islandCount = dataFillIslandGroups(field, lyr, arcs, getNeighbors, opts);
     }
+    lyr.data.markFieldsChanged([field], {operation: 'data-fill'});
 
     message('Filled', fillCount, 'empty polygons' + utils.pluralSuffix(fillCount));
     if (islandCount > 0) {
@@ -44732,6 +45321,19 @@ ${svg}
       calc = getJoinCalc(src, opts.calc);
     }
 
+    if (useDuplication) {
+      noteLayerWillChange(destLyr, {operation: 'join', duplication: true});
+    } else if (opts.calc) {
+      dest.captureTableBefore({operation: 'join', calc: true});
+    } else {
+      dest.captureSchemaBefore({
+        operation: 'join',
+        fields: copyFields.concat(sumFields).map(function(field) {
+          return prefix + field;
+        })
+      });
+    }
+
     // join source records to target records
     n = destRecords.length;
     for (i=0; i<n; i++) {
@@ -44824,6 +45426,13 @@ ${svg}
         name: 'unmatched',
         data: new DataTable(unmatchedRecords)
       };
+    }
+    if (useDuplication) {
+      markLayerChanged(destLyr, {operation: 'join', duplication: true});
+    } else if (opts.calc) {
+      dest.markChanged({operation: 'join', calc: true});
+    } else {
+      dest.markSchemaChanged({operation: 'join'});
     }
     return retn;
   }
@@ -45077,12 +45686,17 @@ ${svg}
 
   cmd.divide = function(targetLayers, targetDataset, source, opts) {
     targetLayers.forEach(requirePolylineLayer);
+    targetLayers.forEach(function(lyr) {
+      noteLayerWillChange(lyr, {operation: 'divide', unit: 'shapes-data'});
+    });
     var mergedDataset = mergeLayersForOverlay(targetLayers, targetDataset, source, opts);
     var nodes = addIntersectionCuts(mergedDataset, opts);
     var polygonLyr = mergedDataset.layers.pop();
     requirePolygonLayer(polygonLyr);
     // Assume that topology is now built
+    noteDatasetWillChange(targetDataset, {operation: 'divide', unit: 'arcs'});
     targetDataset.arcs = mergedDataset.arcs;
+    markDatasetChanged(targetDataset, {operation: 'divide', unit: 'arcs'});
     targetLayers.forEach(function(polylineLyr) {
       dividePolylineLayer(polylineLyr, polygonLyr, nodes, opts);
     });
@@ -45111,12 +45725,13 @@ ${svg}
       forEachShapePart(shp, onPart);
       outputLines.forEach(function(shape2, i) {
         shapes2.push(shape2);
-        records2.push(i > 0 ? utils.extend({}, rec) : rec); // assume input data is being replaced
+        records2.push(utils.extend({}, rec));
         index2.push(outputMatches[i]);
       });
     });
     polylineLyr.shapes = shapes2;
     polylineLyr.data = new DataTable(records2);
+    markLayerChanged(polylineLyr, {operation: 'divide', unit: 'shapes-data'});
     joinTables(polylineLyr.data, polygonLyr.data, function(i) {
       return index2[i] || [];
     }, opts);
@@ -45891,17 +46506,23 @@ ${svg}
       var allFields = fields && fieldListContainsAll(fields, lyr.data.getFields());
       var deletion = !fields && !opts.geometry && !opts.holes || allFields && opts.geometry;
       if (opts.geometry) {
+        noteLayerWillChange(lyr, {operation: 'drop-geometry'});
         updateArcs |= layerHasPaths(lyr);
         delete lyr.shapes;
         delete lyr.geometry_type;
+        markLayerChanged(lyr, {operation: 'drop-geometry'});
       }
       if (opts.holes && lyr.geometry_type == 'polygon') {
+        noteLayerWillChange(lyr, {operation: 'drop-holes'});
         deleteHoles(lyr, dataset.arcs);
+        markLayerChanged(lyr, {operation: 'drop-holes'});
       }
       if (deletion) {
         catalog.deleteLayer(lyr, dataset);
       } else if (allFields) {
+        noteLayerWillChange(lyr, {operation: 'drop-fields'});
         delete lyr.data;
+        markLayerChanged(lyr, {operation: 'drop-fields'});
       } else if (fields) {
         opts.fields.forEach(lyr.data.deleteField, lyr.data);
       }
@@ -45994,7 +46615,9 @@ ${svg}
 
   function filterByBoundsIntersection(lyr, arcs, opts) {
     var filter = getBoundsIntersectionFilter(opts.bbox, lyr, arcs);
+    noteLayerWillChange(lyr, {operation: 'filter-geom', unit: 'shapes'});
     editShapes(lyr.shapes, filter);
+    markLayerChanged(lyr, {operation: 'filter-geom', unit: 'shapes'});
   }
 
   function getBoundsIntersectionFilter(bbox, lyr, arcs) {
@@ -46136,8 +46759,14 @@ ${svg}
       }
     });
 
+    if (filteredLyr == lyr) {
+      noteLayerWillChange(lyr, {operation: 'filter'});
+    }
     filteredLyr.shapes = filteredShapes;
     filteredLyr.data = filteredRecords ? new DataTable(filteredRecords) : null;
+    if (filteredLyr == lyr) {
+      markLayerChanged(lyr, {operation: 'filter'});
+    }
     if (opts.no_replace) {
       // if adding a layer, don't share objects between source and filtered layer
       filteredLyr = copyLayer(filteredLyr);
@@ -46165,8 +46794,10 @@ ${svg}
         if (records) filteredRecords.push(records[shapeId] || null);
       }
     });
+    noteLayerWillChange(lyr, {operation: 'filterLayerInPlace'});
     lyr.shapes = filteredShapes;
     lyr.data = filteredRecords ? new DataTable(filteredRecords) : null;
+    markLayerChanged(lyr, {operation: 'filterLayerInPlace'});
   }
 
   function getIdFilter(ids) {
@@ -46219,11 +46850,17 @@ ${svg}
       filter = combineFilters(filter, getIdFilter(opts.ids));
     }
     compiled = compileFeatureExpression(exp, lyr, arcs, exprOpts);
+    if (lyr.data) {
+      lyr.data.captureTableBefore({operation: 'each'});
+    }
     // call compiled expression with id of each record
     for (var i=0; i<n; i++) {
       if (!filter || filter(i)) {
         compiled(i);
       }
+    }
+    if (lyr.data) {
+      lyr.data.markChanged({operation: 'each'});
     }
 
     var replacement = exprOpts.geojson_editor ? exprOpts.geojson_editor.done() : null;
@@ -46391,8 +47028,12 @@ ${svg}
     this.done = function() {
       dataset.layers = layers;
       if (arcs.length) {
+        noteDatasetWillChange(dataset, {operation: 'DatasetEditor.done', unit: 'arcs'});
         dataset.arcs = new ArcCollection(arcs);
-        buildTopology(dataset);
+        markDatasetChanged(dataset, {operation: 'DatasetEditor.done', unit: 'arcs'});
+        withActiveUndoTransaction(null, function() {
+          buildTopology(dataset);
+        });
       }
     };
 
@@ -46419,7 +47060,9 @@ ${svg}
         }
         return shape2.length > 0 ? shape2 : null;
       });
+      noteLayerWillChange(lyr, {operation: 'DatasetEditor.editLayer', unit: 'shapes'});
       layers.push(Object.assign(lyr, {shapes: shapes}));
+      markLayerChanged(lyr, {operation: 'DatasetEditor.editLayer', unit: 'shapes'});
     };
 
     function extendPathShape(shape, parts) {
@@ -46989,7 +47632,9 @@ ${svg}
     } else {
       filter = getVertexCountTest(opts.min_vertices, arcs);
     }
+    noteLayerWillChange(lyr, {operation: 'filter-islands', unit: 'shapes'});
     removed += filterIslands(lyr, arcs, filter);
+    markLayerChanged(lyr, {operation: 'filter-islands', unit: 'shapes'});
     if (opts.remove_empty) {
       cmd.filterFeatures(lyr, arcs, {remove_empty: true, verbose: false});
     }
@@ -47070,7 +47715,9 @@ ${svg}
     } else {
       filter = getVertexCountTest(opts.min_vertices, arcs);
     }
+    noteLayerWillChange(lyr, {operation: 'filter-islands2', unit: 'shapes'});
     removed += filterIslands2(lyr, arcs, filter);
+    markLayerChanged(lyr, {operation: 'filter-islands2', unit: 'shapes'});
     if (opts.remove_empty) {
       cmd.filterFeatures(lyr, arcs, {remove_empty: true, verbose: false});
     }
@@ -47113,15 +47760,29 @@ ${svg}
     if (opts.invert) {
       map = invertFieldMap(map, table.getFields());
     }
-    lyr.data.update(getRecordMapper(map));
+    replaceTableFields(table, map, {operation: 'filter-fields'});
   };
 
   cmd.renameFields = function(lyr, names) {
     var map = mapFieldNames(names);
     requireDataFields(lyr.data, Object.keys(map));
     utils.defaults(map, mapFieldNames(lyr.data.getFields()));
-    lyr.data.update(getRecordMapper(map));
+    replaceTableFields(lyr.data, map, {operation: 'rename-fields'});
   };
+
+  function replaceTableFields(table, map, detail) {
+    var fields = table.getFields();
+    var records = table.getRecords();
+    var mapper = getRecordMapper(map);
+    var columnDetail = Object.assign({schema_transform: true}, detail);
+    table.captureSchemaBefore(detail);
+    table.captureFieldsBefore(fields, columnDetail);
+    for (var i=0, n=records.length; i<n; i++) {
+      records[i] = mapper(records[i], i);
+    }
+    table.markFieldsChanged(fields, columnDetail);
+    table.markSchemaChanged(detail);
+  }
 
   function invertFieldMap(map, fields) {
     return fields.reduce(function(memo, name) {
@@ -47577,8 +48238,10 @@ ${svg}
     });
     editor.done();
     if (!opts.debug) {
-      buildTopology(dataset);
-      cleanProjectedPathLayers(dataset);
+      withActiveUndoTransaction(null, function() {
+        buildTopology(dataset);
+        cleanProjectedPathLayers(dataset);
+      });
     }
   }
 
@@ -47702,7 +48365,9 @@ ${svg}
       });
     }
     var merged = mergeDatasets([dataset, importGeoJSON(geojson, {})]);
+    noteDatasetWillChange(dataset, {operation: 'lines-segments', unit: 'arcs'});
     dataset.arcs = merged.arcs;
+    markDatasetChanged(dataset, {operation: 'lines-segments', unit: 'arcs'});
     // buildTopology(dataset);
     return merged.layers.pop();
   }
@@ -48282,6 +48947,7 @@ ${svg}
       dataset.arcs.flatten(); // bake in any pending simplification
       target.arcs = modifyCopy ? dataset.arcs.getCopy() : dataset.arcs;
     }
+    noteDatasetWillChange(dataset, {operation: 'proj'});
 
     target.layers = dataset.layers.map(function(lyr) {
       if (modifyCopy) {
@@ -48291,16 +48957,45 @@ ${svg}
       return lyr;
     });
 
-    projectDataset(target, srcInfo.crs, destInfo.crs, opts || {});
+    withActiveUndoTransaction(null, function() {
+      projectDataset(target, srcInfo.crs, destInfo.crs, opts || {});
 
-    // dataset.info.wkt1 = destInfo.wkt1; // may be undefined
-    setDatasetCrsInfo(target, destInfo);
+      // dataset.info.wkt1 = destInfo.wkt1; // may be undefined
+      setDatasetCrsInfo(target, destInfo);
+    });
 
     dataset.arcs = target.arcs;
     originals.forEach(function(lyr, i) {
       // replace original layers with modified layers
-      utils.extend(lyr, target.layers[i]);
+      if (layerWasChangedByProjection(lyr, target.layers[i])) {
+        noteLayerWillChange(lyr, {operation: 'proj'});
+        utils.extend(lyr, target.layers[i]);
+        markLayerChanged(lyr, {operation: 'proj'});
+      }
     });
+    markDatasetChanged(dataset, {operation: 'proj'});
+    return true;
+  }
+
+  function layerWasChangedByProjection(a, b) {
+    return a.name != b.name ||
+      a.geometry_type != b.geometry_type ||
+      a.data !== b.data ||
+      !arraysAreEqual(a.shapes, b.shapes);
+  }
+
+  function arraysAreEqual(a, b) {
+    var val;
+    if (a === b) return true;
+    if (!a || !b || a.length !== b.length) return false;
+    for (var i = 0; i < a.length; i++) {
+      val = a[i];
+      if (Array.isArray(val)) {
+        if (!arraysAreEqual(val, b[i])) return false;
+      } else if (val !== b[i]) {
+        return false;
+      }
+    }
     return true;
   }
 
@@ -48763,7 +49458,9 @@ ${svg}
       lyr2.name = lyr0.name;
       return lyr2;
     });
+    noteDatasetWillChange(targetDataset, {operation: 'inlay', unit: 'arcs'});
     targetDataset.arcs = mergedDataset.arcs;
+    markDatasetChanged(targetDataset, {operation: 'inlay', unit: 'arcs'});
     return outputLayers;
   };
 
@@ -49196,6 +49893,10 @@ ${svg}
   cmd.createPointLayer = function(srcLyr, dataset, opts) {
     var destLyr = getOutputLayer(srcLyr, opts);
     var arcs = dataset.arcs;
+    var replacingSource = destLyr == srcLyr;
+    if (replacingSource) {
+      noteLayerWillChange(destLyr, {operation: 'createPointLayer', unit: 'geometry'});
+    }
     if (opts.intersections) {
       testIntersections(arcs);
       destLyr = srcLyr;
@@ -49234,6 +49935,9 @@ ${svg}
     }
     if (srcLyr.data) {
       destLyr.data = opts.no_replace ? srcLyr.data.clone() : srcLyr.data;
+    }
+    if (replacingSource) {
+      markLayerChanged(destLyr, {operation: 'createPointLayer', unit: 'geometry'});
     }
     return destLyr;
   };
@@ -50217,8 +50921,8 @@ ${svg}
       var v1 = bottom + vi * minorInterval;
       var v2 = v1 + minorInterval;
       var orientation = cwBar ?
-        orient2D(u1, v1, u2, v2, u, v) :
-        orient2D(u2, v1, u1, v2, u, v);
+        orient2D$1(u1, v1, u2, v2, u, v) :
+        orient2D$1(u2, v1, u1, v2, u, v);
       var colId = orientation > 0 ? ui - 1 : ui;
       var rowId = Math.floor(vi / 2);
       return [colId, rowId];
@@ -50543,16 +51247,28 @@ ${svg}
     var geojson, dataset;
     if (params.type == 'square') {
       geojson = getSquareGridGeoJSON(getSquareGridCoordinates(params));
+    } else if (params.type == 'square2') {
+      geojson = getRotatedSquareGridGeoJSON(params);
     } else if (params.type == 'hex') {
       geojson = getHexGridGeoJSON(getHexGridCoordinates(params));
     } else if (params.type == 'hex2') {
       // use rotated grid
       geojson = getHexGridGeoJSON(getHexGridCoordinates(swapGridParams(params)));
       swapPolygonCoords(geojson);
+    } else if (params.type == 'rhombus') {
+      geojson = getRhombusGridGeoJSON(params, false);
+    } else if (params.type == 'rhombus2') {
+      geojson = getRhombusGridGeoJSON(params, true);
+    } else if (params.type == 'triangle') {
+      geojson = getTriangleGridGeoJSON(params, false);
+    } else if (params.type == 'triangle2') {
+      geojson = getTriangleGridGeoJSON(params, true);
     } else {
       stop$1('Unsupported grid type');
     }
+    scaleGridCells(geojson, params.cellScale);
     alignGridToBounds(geojson, params.bbox);
+    cullGridCells(geojson, params.bbox);
     dataset = importGeoJSON(geojson, {});
     buildTopology(dataset);
     return dataset;
@@ -50578,11 +51294,6 @@ ${svg}
   function getGridParams(layers, dataset, opts) {
     var params = {};
     var crs = dataset ? getDatasetCRS(dataset) : null;
-    if (opts.interval) {
-      params.interval = convertIntervalParam(opts.interval, crs);
-    } else {
-      stop$1('Missing required interval option');
-    }
     if (opts.bbox) {
       params.bbox = opts.bbox;
     } else if (dataset) {
@@ -50594,7 +51305,141 @@ ${svg}
     params.width = params.bbox[2] - params.bbox[0];
     params.height = params.bbox[3] - params.bbox[1];
     params.type = opts.type || 'square';
+    params.interval = getGridInterval(params, opts, crs);
+    params.cellScale = getCellScale(opts);
     return params;
+  }
+
+  function getCellScale(opts) {
+    var scale = opts.cell_scale == null ? 1 : opts.cell_scale;
+    if (scale > 0 && scale < 2) return scale;
+    stop$1('cell-scale= option should be greater than 0 and less than 2');
+  }
+
+  function getGridInterval(params, opts, crs) {
+    var interval = opts.interval ? convertIntervalParam(opts.interval, crs) : 0;
+    var hasSizeOpt = opts.cols != null || opts.rows != null || opts.cells != null;
+    var sizeOpts = 0;
+    if (opts.cols > 0) sizeOpts++;
+    if (opts.rows > 0) sizeOpts++;
+    if (opts.cells > 0) sizeOpts++;
+    if (interval && hasSizeOpt) {
+      stop$1('Use interval= or cols=/rows=/cells=, not both');
+    }
+    if (interval) return interval;
+    validateGridSizeOpt('cols', opts.cols);
+    validateGridSizeOpt('rows', opts.rows);
+    validateGridSizeOpt('cells', opts.cells);
+    if (sizeOpts === 0) {
+      stop$1('Missing required interval, cols, rows or cells option');
+    }
+    return getIntervalFromGridSize(params, opts);
+  }
+
+  function validateGridSizeOpt(name, value) {
+    if (value > 0 || value == null) return;
+    stop$1(name + '= option should be a positive integer');
+  }
+
+  function getIntervalFromGridSize(params, opts) {
+    var factor = getCellAreaFactor(params.type);
+    var intervals = [];
+    if (opts.cols > 0) intervals.push(params.width / opts.cols / Math.sqrt(factor));
+    if (opts.rows > 0) intervals.push(params.height / opts.rows / Math.sqrt(factor));
+    if (opts.cells > 0) intervals.push(Math.sqrt(params.width * params.height / opts.cells / factor));
+    return Math.min.apply(null, intervals);
+  }
+
+  function getCellAreaFactor(type) {
+    if (type == 'square' || type == 'square2') return 1;
+    if (type == 'hex' || type == 'hex2') return 3 * Math.sqrt(3) / 2;
+    if (type == 'rhombus' || type == 'rhombus2') return Math.sqrt(3) / 2;
+    if (type == 'triangle' || type == 'triangle2') return Math.sqrt(3) / 4;
+    stop$1('Unsupported grid type');
+  }
+
+  function scaleGridCells(geojson, scale) {
+    if (scale == 1) return;
+    geojson.geometries.forEach(function(geom) {
+      if (geom.type == 'Polygon') {
+        geom.coordinates[0] = scalePolygonRing(geom.coordinates[0], scale);
+      }
+    });
+  }
+
+  function scalePolygonRing(coords, scale) {
+    var center = getPolygonRingCenter(coords);
+    return coords.map(function(p) {
+      return [
+        center[0] + (p[0] - center[0]) * scale,
+        center[1] + (p[1] - center[1]) * scale
+      ];
+    });
+  }
+
+  function cullGridCells(geojson, bbox) {
+    geojson.geometries = geojson.geometries.filter(function(geom) {
+      return geom.type != 'Polygon' || polygonIntersectsBBox(geom.coordinates[0], bbox);
+    });
+  }
+
+  function polygonIntersectsBBox(coords, bbox) {
+    var rect = [[bbox[0], bbox[1]], [bbox[2], bbox[1]], [bbox[2], bbox[3]], [bbox[0], bbox[3]]];
+    var i, j;
+    for (i=0; i<coords.length - 1; i++) {
+      if (pointInBBox(coords[i], bbox)) return true;
+    }
+    for (i=0; i<rect.length; i++) {
+      if (pointInPolygon(rect[i], coords)) return true;
+    }
+    for (i=0; i<coords.length - 1; i++) {
+      for (j=0; j<rect.length; j++) {
+        if (segmentsIntersect(coords[i], coords[i + 1], rect[j], rect[(j + 1) % rect.length])) {
+          return true;
+        }
+      }
+    }
+    return false;
+  }
+
+  function pointInBBox(p, bbox) {
+    return p[0] >= bbox[0] && p[0] <= bbox[2] && p[1] >= bbox[1] && p[1] <= bbox[3];
+  }
+
+  function pointInPolygon(p, coords) {
+    var isInside = false;
+    var a, b;
+    for (var i=0, n=coords.length - 1, j=n - 1; i<n; j=i++) {
+      a = coords[i];
+      b = coords[j];
+      if (orient2D(a, b, p) === 0 && pointOnSegment(p, a, b)) return true;
+      if (a[1] > p[1] != b[1] > p[1] &&
+          p[0] < (b[0] - a[0]) * (p[1] - a[1]) / (b[1] - a[1]) + a[0]) {
+        isInside = !isInside;
+      }
+    }
+    return isInside;
+  }
+
+  function segmentsIntersect(a, b, c, d) {
+    var ab_c = orient2D(a, b, c);
+    var ab_d = orient2D(a, b, d);
+    var cd_a = orient2D(c, d, a);
+    var cd_b = orient2D(c, d, b);
+    if (ab_c === 0 && pointOnSegment(c, a, b)) return true;
+    if (ab_d === 0 && pointOnSegment(d, a, b)) return true;
+    if (cd_a === 0 && pointOnSegment(a, c, d)) return true;
+    if (cd_b === 0 && pointOnSegment(b, c, d)) return true;
+    return ab_c > 0 != ab_d > 0 && cd_a > 0 != cd_b > 0;
+  }
+
+  function orient2D(a, b, c) {
+    return (b[0] - a[0]) * (c[1] - a[1]) - (b[1] - a[1]) * (c[0] - a[0]);
+  }
+
+  function pointOnSegment(p, a, b) {
+    return p[0] >= Math.min(a[0], b[0]) && p[0] <= Math.max(a[0], b[0]) &&
+        p[1] >= Math.min(a[1], b[1]) && p[1] <= Math.max(a[1], b[1]);
   }
 
   function getPointGridGeoJSON(arr) {
@@ -50635,6 +51480,72 @@ ${svg}
     return {type: 'GeometryCollection', geometries: geometries};
   }
 
+  function getRhombusGridGeoJSON(params, rotated) {
+    var geojson;
+    if (rotated) {
+      geojson = getHexGridGeoJSON(getHexGridCoordinates(swapGridParams(params)));
+      swapPolygonCoords(geojson);
+    } else {
+      geojson = getHexGridGeoJSON(getHexGridCoordinates(params));
+    }
+    geojson.geometries = geojson.geometries.reduce(function(memo, geom) {
+      return memo.concat(subdivideHexagon(geom.coordinates[0]));
+    }, []);
+    return geojson;
+  }
+
+  function getTriangleGridGeoJSON(params, rotated) {
+    var geojson;
+    if (rotated) {
+      geojson = getHexGridGeoJSON(getHexGridCoordinates(swapGridParams(params)));
+      swapPolygonCoords(geojson);
+    } else {
+      geojson = getHexGridGeoJSON(getHexGridCoordinates(params));
+    }
+    geojson.geometries = geojson.geometries.reduce(function(memo, geom) {
+      return memo.concat(triangulateHexagon(geom.coordinates[0]));
+    }, []);
+    return geojson;
+  }
+
+  function subdivideHexagon(coords) {
+    var center = getPolygonRingCenter(coords);
+    return [
+      getRhombusCell(coords, center, 0),
+      getRhombusCell(coords, center, 2),
+      getRhombusCell(coords, center, 4)
+    ];
+  }
+
+  function getRhombusCell(coords, center, i) {
+    return {
+      type: 'Polygon',
+      coordinates: [[center, coords[i], coords[i + 1], coords[(i + 2) % 6], center]]
+    };
+  }
+
+  function triangulateHexagon(coords) {
+    var triangles = [];
+    var center = getPolygonRingCenter(coords);
+    for (var i=0; i<6; i++) {
+      triangles.push({
+        type: 'Polygon',
+        coordinates: [[center, coords[i], coords[(i + 1) % 6], center]]
+      });
+    }
+    return triangles;
+  }
+
+  function getPolygonRingCenter(coords) {
+    var x = 0, y = 0;
+    var n = coords.length - 1; // ignore closing point
+    for (var i=0; i<n; i++) {
+      x += coords[i][0];
+      y += coords[i][1];
+    }
+    return [x / n, y / n];
+  }
+
   function getSquareGridGeoJSON(arr) {
     var geometries = [], a, b, c, d;
     for (var row = 0, rows = arr.length - 1; row < rows; row++) {
@@ -50650,6 +51561,35 @@ ${svg}
       }
     }
     return {type: 'GeometryCollection', geometries: geometries};
+  }
+
+  function getRotatedSquareGridGeoJSON(params) {
+    var interval = params.interval;
+    var radius = interval * Math.SQRT1_2;
+    var geometries = [];
+    var row = 0;
+    var x, y, x0;
+    for (y = -radius; y <= params.height + radius; y += radius) {
+      x0 = -2 * radius + (row % 2 ? radius : 0);
+      for (x = x0; x <= params.width + 2 * radius; x += 2 * radius) {
+        geometries.push(getRotatedSquareCell(x, y, radius));
+      }
+      row++;
+    }
+    return {type: 'GeometryCollection', geometries: geometries};
+  }
+
+  function getRotatedSquareCell(x, y, radius) {
+    return {
+      type: 'Polygon',
+      coordinates: [[
+        [x, y - radius],
+        [x + radius, y],
+        [x, y + radius],
+        [x - radius, y],
+        [x, y - radius]
+      ]]
+    };
   }
 
   function getHexGridCoordinates(params) {
@@ -50847,7 +51787,7 @@ ${svg}
   // Returns a function that receives a cell index and returns indices of points
   //   within a given distance of the cell.
   function getGridToPointIndex(points, grid, radius) {
-    var Flatbush = require('flatbush');
+    var Flatbush = require$1('flatbush');
     var gridIndex = new IdTestIndex(grid.cells());
     var bboxIndex = new Flatbush(points.length);
     var empty = [];
@@ -51135,6 +52075,7 @@ ${svg}
   function createPolygonLayerFromRings(lyr, dataset) {
     var arcs = dataset.arcs;
     var openCount = 0;
+    noteLayerWillChange(lyr, {operation: 'polygons-from-rings', unit: 'geometry'});
     editShapes(lyr.shapes, function(part) {
       if (geom.pathIsClosed(part, arcs)) {
         return part;
@@ -51147,6 +52088,7 @@ ${svg}
     }
     lyr.geometry_type = 'polygon';
     rewindPolygons(lyr, arcs);
+    markLayerChanged(lyr, {operation: 'polygons-from-rings', unit: 'geometry'});
     return lyr;
   }
 
@@ -51183,7 +52125,9 @@ ${svg}
     var index = mapLayerNames(names);
     catalog.forEachLayer(function(lyr) {
       if (index[lyr.name]) {
+        noteLayerMetadataWillChange(lyr, {operation: 'rename-layers'});
         lyr.name = index[lyr.name];
+        markLayerMetadataChanged(lyr, {operation: 'rename-layers'});
       }
     });
   }
@@ -51199,7 +52143,9 @@ ${svg}
       if (name && nameCount < layers.length && (i >= nameCount - 1)) {
         suffix = (suffix || 0) + 1;
       }
+      noteLayerMetadataWillChange(lyr, {operation: 'rename-layers'});
       lyr.name = name + suffix;
+      markLayerMetadataChanged(lyr, {operation: 'rename-layers'});
     });
   }
 
@@ -52528,6 +53474,8 @@ ${svg}
     var implicitlySimplifiedNames = getImplicitlyTargetedLayerNames(dataset, targetLayers, layerHasPaths);
     if (!arcs || arcs.size() === 0) return; // removed in v0.4.125: stop("Missing path data");
     opts = getStandardSimplifyOpts(dataset, opts); // standardize options
+    noteArcsSimplificationWillChange(arcs, {operation: 'simplify'});
+    noteDatasetInfoWillChange(dataset, {operation: 'simplify'});
     simplifyPaths(arcs, opts);
 
     // calculate and apply simplification interval
@@ -52544,6 +53492,8 @@ ${svg}
     }
 
     finalizeSimplification(dataset, opts);
+    markArcsSimplificationChanged(arcs, {operation: 'simplify'});
+    markDatasetInfoChanged(dataset, {operation: 'simplify'});
     if (implicitlySimplifiedNames.length > 0) {
       message(
         'Also simplified non-target layer' + utils.pluralSuffix(implicitlySimplifiedNames.length) +
@@ -52769,13 +53719,26 @@ ${svg}
     });
 
     var ids = utils.getSortedIds(values, ascending);
+    var undoIds = invertIds$1(ids);
     if (lyr.shapes) {
+      noteLayerOrderWillChange(lyr, undoIds, {operation: 'sort'});
       utils.reorderArray(lyr.shapes, ids);
+      markLayerOrderChanged(lyr, ids, {operation: 'sort'});
     }
     if (lyr.data) {
+      noteTableOrderWillChange(lyr.data, undoIds, {operation: 'sort'});
       utils.reorderArray(lyr.data.getRecords(), ids);
+      markTableOrderChanged(lyr.data, ids, {operation: 'sort'});
     }
   };
+
+  function invertIds$1(ids) {
+    var inverse = [];
+    ids.forEach(function(id, i) {
+      inverse[id] = i;
+    });
+    return inverse;
+  }
 
   cmd.snap = function(target, opts) {
     var interval = 0;
@@ -52846,6 +53809,7 @@ ${svg}
       return [lyr0];
     }
 
+    noteLayerWillChange(lyr0, {operation: 'split', unit: 'shared-shapes-data'});
     utils.repeat(n, function(i) {
       var name = namer(i),
           lyr;
@@ -52869,6 +53833,7 @@ ${svg}
         lyr.data.getRecords().push(properties[i]);
       }
     });
+    markLayerChanged(lyr0, {operation: 'split', unit: 'shared-shapes-data'});
 
     return splitLayers;
   };
@@ -52942,7 +53907,7 @@ ${svg}
   };
 
   cmd.svgStyle = function(lyr, dataset, opts) {
-    var filterFn;
+    var filterFn, table, fields, hasNewFields;
     if (getFeatureCount(lyr) === 0) {
       return;
     }
@@ -52955,6 +53920,20 @@ ${svg}
     if (opts.clear) {
       lyr.data.getFields().filter(isSupportedSvgStyleProperty).forEach(lyr.data.deleteField, lyr.data);
     }
+    table = getLayerDataTable(lyr);
+    fields = Object.keys(opts).map(function(optName) {
+      return optName.replace('_', '-');
+    }).filter(isSupportedSvgStyleProperty);
+    hasNewFields = fields.some(function(field) {
+      return !table.fieldExists(field);
+    });
+    if (fields.length > 0) {
+      if (hasNewFields) {
+        table.captureSchemaBefore({operation: 'style', fields: fields});
+      } else {
+        table.captureFieldsBefore(fields, {operation: 'style'});
+      }
+    }
     Object.keys(opts).forEach(function(optName) {
       var svgName = optName.replace('_', '-'); // undo cli parser name conversion
       if (!isSupportedSvgStyleProperty(svgName)) {
@@ -52962,7 +53941,7 @@ ${svg}
       }
       var strVal = opts[optName].trim();
       var accessor = getSymbolPropertyAccessor(strVal, svgName, lyr);
-      getLayerDataTable(lyr).getRecords().forEach(function(rec, i) {
+      table.getRecords().forEach(function(rec, i) {
         if (filterFn && !filterFn(i)) {
           // make sure field exists if record is excluded by filter
           if (svgName in rec === false) {
@@ -52973,6 +53952,13 @@ ${svg}
         }
       });
     });
+    if (fields.length > 0) {
+      if (hasNewFields) {
+        table.markSchemaChanged({operation: 'style'});
+      } else {
+        table.markFieldsChanged(fields, {operation: 'style'});
+      }
+    }
   };
 
   var roundCoord$1 = getRoundingFunction(0.01);
@@ -53415,7 +54401,19 @@ ${svg}
       requireProjectedDataset(dataset);
       metersPerPx = opts.pixel_scale || getMetersPerPixel(lyr);
     }
-    var records = getLayerDataTable(lyr).getRecords();
+    var table = getLayerDataTable(lyr);
+    var symbolFields = getSymbolOutputFields(shapeMode, opts);
+    var hasNewSymbolFields = symbolFields.some(function(field) {
+      return !table.fieldExists(field);
+    });
+    if (symbolFields.length > 0) {
+      if (hasNewSymbolFields) {
+        table.captureSchemaBefore({operation: 'symbols', fields: symbolFields});
+      } else {
+        table.captureFieldsBefore(symbolFields, {operation: 'symbols'});
+      }
+    }
+    var records = table.getRecords();
     var getSymbolData = getSymbolDataAccessor(lyr, opts);
     var geometries = lyr.shapes.map(function(shp, i) {
       if (!shp) return null;
@@ -53475,8 +54473,22 @@ ${svg}
     } else {
       outputLyr = lyr;
     }
+    if (symbolFields.length > 0) {
+      if (hasNewSymbolFields) {
+        table.markSchemaChanged({operation: 'symbols'});
+      } else {
+        table.markFieldsChanged(symbolFields, {operation: 'symbols'});
+      }
+    }
     return [outputLyr];
   };
+
+  function getSymbolOutputFields(shapeMode, opts) {
+    if (!shapeMode) return ['svg-symbol'];
+    return ['fill', 'stroke', 'opacity'].filter(function(field) {
+      return field in opts;
+    });
+  }
 
   function importGeometries(geometries, records) {
     var features = geometries.map(function(geom, i) {
@@ -53675,11 +54687,17 @@ ${svg}
       }
     });
 
+    if (lyr.shapes || records) {
+      noteLayerWillChange(lyr, {operation: 'uniq'});
+    }
     if (lyr.shapes) {
       lyr.shapes = lyr.shapes.filter(filter);
     }
     if (records) {
       lyr.data = new DataTable(records.filter(filter));
+    }
+    if (lyr.shapes || records) {
+      markLayerChanged(lyr, {operation: 'uniq'});
     }
     if (opts.verbose !== false) {
       message(utils.format('Retained %,d of %,d features', getFeatureCount(lyr), n));
@@ -53714,7 +54732,9 @@ ${svg}
     arcThresholds = calculateVariableThresholds(lyr, arcs, getShapeThreshold);
     applyArcThresholds(arcs, arcThresholds);
     arcs.setRetainedInterval(1e20); // set to a huge value
+    noteDatasetInfoWillChange(dataset, {operation: 'variable-simplify'});
     finalizeSimplification(dataset, opts);
+    markDatasetInfoChanged(dataset, {operation: 'variable-simplify'});
     arcs.flatten(); // bake in simplification (different from standard -simplify)
   };
 
@@ -53809,16 +54829,20 @@ ${svg}
     }
 
     if (!lyr.data) {
+      noteLayerWillChange(lyr, {operation: 'split-on-grid', unit: 'data'});
       lyr.data = new DataTable(shapes.length);
+      markLayerChanged(lyr, {operation: 'split-on-grid', unit: 'data'});
     }
     properties = lyr.data.getRecords();
 
+    lyr.data.captureSchemaBefore({operation: 'split-on-grid', field: fieldName});
     lyr.shapes.forEach(function(shp, i) {
       var bounds = type == 'point' ? getPointBounds$1([shp]) : arcs.getMultiShapeBounds(shp);
       var name = bounds.hasBounds() ? classify(bounds) : '';
       var rec = properties[i] = properties[i] || {};
       rec[fieldName] = name;
     });
+    lyr.data.markSchemaChanged({operation: 'split-on-grid', field: fieldName});
 
     if (setId) return lyr; // don't split layer (instead assign cell ids)
 
@@ -54359,7 +55383,9 @@ ${svg}
             error('Command returned invalid output');
           }
 
+          noteDatasetWillChange(targetDataset, {operation: 'appendOutputLayers', command: name});
           targetDataset.layers = targetDataset.layers.concat(outputLayers);
+          markDatasetChanged(targetDataset, {operation: 'appendOutputLayers', command: name});
         } else {
           // TODO: consider replacing old layers as they are generated, for gc
           replaceLayers(targetDataset, targetLayers, outputLayers);
@@ -54412,7 +55438,7 @@ ${svg}
     });
   }
 
-  var version = "0.7.9";
+  var version = "0.7.10";
 
   // Parse command line args into commands and run them
   // Function takes an optional Node-style callback. A Promise is returned if no callback is given.
@@ -55099,6 +56125,744 @@ ${svg}
     return false;
   }
 
+  function UndoTransaction(label) {
+    this.label = label || '';
+    this.units = [];
+    this._captured = {};
+  }
+
+  UndoTransaction.prototype = {
+    run: function(cb) {
+      return withActiveUndoTransaction(this, cb);
+    },
+
+    getCapturedUnits: function() {
+      return this.units.slice();
+    },
+
+    restore: function() {
+      restoreCapturedUnits(this.units);
+    },
+
+    captureCurrentState: function() {
+      return captureCurrentUnits(this.units);
+    },
+
+    captureTableBefore: function(table, detail) {
+      var key = unitKey('table', table);
+      if (this._captured[key]) return;
+      this._captured[key] = true;
+      this.units.push({
+        type: 'table',
+        target: table,
+        id: getUndoId(table),
+        revision: getUndoRevision(table),
+        detail: copyDetail(detail),
+        records: table.getRecords().map(copyRecord)
+      });
+    },
+
+    captureTableRecordsBefore: function(table, detail) {
+      var ids = uniqueNumbers(detail.ids);
+      var captured = [];
+      var records = table.getRecords();
+      ids.forEach(function(id) {
+        var key = unitKey('table-record', table, id);
+        if (this._captured[key]) return;
+        this._captured[key] = true;
+        captured.push({
+          id: id,
+          record: copyRecord(records[id])
+        });
+      }, this);
+      if (captured.length > 0) {
+        this.units.push({
+          type: 'table-records',
+          target: table,
+          id: getUndoId(table),
+          revision: getUndoRevision(table),
+          detail: copyDetail(detail),
+          records: captured
+        });
+      }
+    },
+
+    captureTableFieldsBefore: function(table, detail) {
+      var fields = uniqueStrings(detail.fields);
+      var records = table.getRecords();
+      var columns = [];
+      fields.forEach(function(field) {
+        var key = unitKey('table-field', table, field);
+        if (this._captured[key]) return;
+        this._captured[key] = true;
+        columns.push({
+          field: field,
+          values: records.map(function(rec) {
+            return rec ? rec[field] : undefined;
+          })
+        });
+      }, this);
+      if (columns.length > 0) {
+        this.units.push({
+          type: 'table-fields',
+          target: table,
+          id: getUndoId(table),
+          revision: getUndoRevision(table),
+          detail: copyDetail(detail),
+          columns: columns
+        });
+      }
+    },
+
+    captureTableOrderBefore: function(table, detail) {
+      captureOrderUnit(this, 'table-order', table, detail);
+    },
+
+    captureTableSchemaBefore: function(table, detail) {
+      var key = unitKey('table-schema', table);
+      if (this._captured[key]) return;
+      this._captured[key] = true;
+      this.units.push({
+        type: 'table-schema',
+        target: table,
+        id: getUndoId(table),
+        revision: getUndoRevision(table),
+        detail: copyDetail(detail),
+        fields: table.getFields()
+      });
+      if (detail && (detail.field || detail.fields)) {
+        this.captureTableFieldsBefore(table, {
+          fields: detail.fields || [detail.field],
+          operation: detail.operation
+        });
+      }
+    },
+
+    captureArcsBefore: function(arcs, detail) {
+      var data, key;
+      key = unitKey('arcs', arcs);
+      if (this._captured[key]) return;
+      this._captured[key] = true;
+      data = arcs.getVertexData();
+      this.units.push({
+        type: 'arcs',
+        target: arcs,
+        id: getUndoId(arcs),
+        revision: getUndoRevision(arcs),
+        detail: copyDetail(detail),
+        nn: new Uint32Array(data.nn),
+        xx: new Float64Array(data.xx),
+        yy: new Float64Array(data.yy),
+        zz: data.zz ? new Float64Array(data.zz) : null,
+        zlimit: arcs.getRetainedInterval()
+      });
+    },
+
+    captureArcsSimplificationBefore: function(arcs, detail) {
+      var data, key;
+      key = unitKey('arcs-simplification', arcs);
+      if (this._captured[key]) return;
+      this._captured[key] = true;
+      data = arcs.getVertexData();
+      this.units.push({
+        type: 'arcs-simplification',
+        target: arcs,
+        id: getUndoId(arcs),
+        revision: getUndoRevision(arcs),
+        detail: copyDetail(detail),
+        zz: data.zz ? new Float64Array(data.zz) : null,
+        zlimit: arcs.getRetainedInterval()
+      });
+    },
+
+    captureCatalogBefore: function(catalog, detail) {
+      var key = unitKey('catalog', catalog);
+      if (this._captured[key]) return;
+      this._captured[key] = true;
+      this.units.push({
+        type: 'catalog',
+        target: catalog,
+        id: getUndoId(catalog),
+        revision: getUndoRevision(catalog),
+        detail: copyDetail(detail),
+        datasets: catalog.getDatasets().slice(),
+        targets: catalog.getDefaultTargets().map(function(target) {
+          return {
+            dataset: target.dataset,
+            layers: target.layers.slice()
+          };
+        })
+      });
+    },
+
+    captureDatasetBefore: function(dataset, detail) {
+      var key = unitKey('dataset', dataset, detail && detail.unit || '');
+      if (this._captured[key]) return;
+      this._captured[key] = true;
+      this.units.push({
+        type: 'dataset',
+        target: dataset,
+        id: getUndoId(dataset),
+        revision: getUndoRevision(dataset),
+        detail: copyDetail(detail),
+        layers: dataset.layers ? dataset.layers.slice() : null,
+        arcs: dataset.arcs || null,
+        info: dataset.info ? copyRecord(dataset.info) : null
+      });
+    },
+
+    captureDatasetInfoBefore: function(dataset, detail) {
+      var key = unitKey('dataset-info', dataset);
+      if (this._captured[key]) return;
+      this._captured[key] = true;
+      this.units.push({
+        type: 'dataset-info',
+        target: dataset,
+        id: getUndoId(dataset),
+        revision: getUndoRevision(dataset),
+        detail: copyDetail(detail),
+        info: dataset.info ? copyRecord(dataset.info) : null
+      });
+    },
+
+    captureLayerBefore: function(layer, detail) {
+      var key = unitKey('layer', layer, detail && detail.unit || '');
+      if (this._captured[key]) return;
+      this._captured[key] = true;
+      this.units.push({
+        type: 'layer',
+        target: layer,
+        id: getUndoId(layer),
+        revision: getUndoRevision(layer),
+        detail: copyDetail(detail),
+        name: layer.name,
+        geometry_type: layer.geometry_type,
+        shapes: layer.shapes ? cloneShapes(layer.shapes) : null,
+        data: layer.data || null
+      });
+    },
+
+    captureLayerMetadataBefore: function(layer, detail) {
+      var key = unitKey('layer-metadata', layer, detail && detail.unit || '');
+      if (this._captured[key]) return;
+      this._captured[key] = true;
+      this.units.push({
+        type: 'layer-metadata',
+        target: layer,
+        id: getUndoId(layer),
+        revision: getUndoRevision(layer),
+        detail: copyDetail(detail),
+        name: layer.name,
+        geometry_type: layer.geometry_type
+      });
+    },
+
+    captureLayerOrderBefore: function(layer, detail) {
+      captureOrderUnit(this, 'layer-order', layer, detail);
+    },
+
+    markChanged: function(obj, detail) {
+      this.units.push({
+        type: 'changed',
+        id: getUndoId(obj),
+        revision: getUndoRevision(obj),
+        detail: copyDetail(detail)
+      });
+    }
+  };
+
+  function restoreCapturedUnits(units) {
+    for (var i = units.length - 1; i >= 0; i--) {
+      restoreUnit(units[i]);
+    }
+  }
+
+  function captureCurrentUnits(units) {
+    var captured = [];
+    units.forEach(function(unit) {
+      var current = captureCurrentUnit(unit);
+      if (current) captured.push(current);
+    });
+    return captured;
+  }
+
+  function filterUnchangedRestoreUnits(units) {
+    var arcChanges = getArcsUnitChangeIndex(units);
+    var normalized = units.map(function(unit) {
+      return normalizeUnchangedDatasetArcs(unit, arcChanges);
+    });
+    var protectedArcs = getDatasetRestoreArcsIndex(normalized);
+    var protectedSimplification = getArcsRestoreIndex(normalized);
+    return normalized.filter(function(unit) {
+      return unit.type == 'changed' ||
+        restoreUnitHasChanged(unit, protectedArcs, protectedSimplification);
+    });
+  }
+
+  function normalizeUnchangedDatasetArcs(unit, arcChanges) {
+    var arcsId = unit.arcs && getUndoId(unit.arcs);
+    if (unit.type == 'dataset' &&
+        unit.arcs &&
+        unit.target.arcs &&
+        unit.arcs !== unit.target.arcs &&
+        arcChanges[arcsId] === false &&
+        arcCollectionsAreEqual(unit.arcs, unit.target.arcs)) {
+      return Object.assign({}, unit, {arcs: unit.target.arcs});
+    }
+    return unit;
+  }
+
+  function restoreUnitHasChanged(unit, protectedArcs, protectedSimplification) {
+    if (unit.type == 'arcs') {
+      if (protectedArcs[getUndoId(unit.target)]) return true;
+      return arcsUnitHasChanged(unit);
+    } else if (unit.type == 'arcs-simplification') {
+      if (protectedSimplification[getUndoId(unit.target)]) return true;
+      return arcsSimplificationUnitHasChanged(unit);
+    }
+    return true;
+  }
+
+  function getArcsUnitChangeIndex(units) {
+    var index = {};
+    units.forEach(function(unit) {
+      if (unit.type == 'arcs') {
+        index[getUndoId(unit.target)] = arcsUnitHasChanged(unit);
+      }
+    });
+    return index;
+  }
+
+  function getDatasetRestoreArcsIndex(units) {
+    var index = {};
+    units.forEach(function(unit) {
+      if (unit.type == 'dataset' && unit.arcs && unit.target.arcs !== unit.arcs) {
+        index[getUndoId(unit.arcs)] = true;
+      }
+    });
+    return index;
+  }
+
+  function getArcsRestoreIndex(units) {
+    var index = {};
+    units.forEach(function(unit) {
+      if (unit.type == 'arcs') {
+        index[getUndoId(unit.target)] = true;
+      }
+    });
+    return index;
+  }
+
+  function arcCollectionsAreEqual(a, b) {
+    var dataA, dataB;
+    if (a === b) return true;
+    if (!a || !b) return !a && !b;
+    dataA = a.getVertexData();
+    dataB = b.getVertexData();
+    return a.getRetainedInterval() == b.getRetainedInterval() &&
+      arrayLikeDataIsEqual(dataA.nn, dataB.nn) &&
+      arrayLikeDataIsEqual(dataA.xx, dataB.xx) &&
+      arrayLikeDataIsEqual(dataA.yy, dataB.yy) &&
+      arrayLikeDataIsEqual(dataA.zz, dataB.zz);
+  }
+
+  function arcsUnitHasChanged(unit) {
+    var data = unit.target.getVertexData();
+    return unit.zlimit != unit.target.getRetainedInterval() ||
+      !arrayLikeDataIsEqual(unit.nn, data.nn) ||
+      !arrayLikeDataIsEqual(unit.xx, data.xx) ||
+      !arrayLikeDataIsEqual(unit.yy, data.yy) ||
+      !arrayLikeDataIsEqual(unit.zz, data.zz);
+  }
+
+  function arcsSimplificationUnitHasChanged(unit) {
+    var data = unit.target.getVertexData();
+    return unit.zlimit != unit.target.getRetainedInterval() ||
+      !arrayLikeDataIsEqual(unit.zz, data.zz);
+  }
+
+  function arrayLikeDataIsEqual(a, b) {
+    if (a === b) return true;
+    if (!a || !b) return !a && !b;
+    if (a.length !== b.length) return false;
+    for (var i = 0; i < a.length; i++) {
+      if (a[i] !== b[i]) return false;
+    }
+    return true;
+  }
+
+  function captureCurrentUnit(unit) {
+    if (unit.type == 'changed') return null;
+    if (unit.type == 'table') {
+      return captureCurrentTable(unit);
+    } else if (unit.type == 'table-records') {
+      return captureCurrentTableRecords(unit);
+    } else if (unit.type == 'table-fields') {
+      return captureCurrentTableFields(unit);
+    } else if (unit.type == 'table-order') {
+      return captureCurrentOrder(unit);
+    } else if (unit.type == 'table-schema') {
+      return captureCurrentTableSchema(unit);
+    } else if (unit.type == 'arcs') {
+      return captureCurrentArcs(unit);
+    } else if (unit.type == 'arcs-simplification') {
+      return captureCurrentArcsSimplification(unit);
+    } else if (unit.type == 'catalog') {
+      return captureCurrentCatalog(unit);
+    } else if (unit.type == 'dataset') {
+      return captureCurrentDataset(unit);
+    } else if (unit.type == 'dataset-info') {
+      return captureCurrentDatasetInfo(unit);
+    } else if (unit.type == 'layer') {
+      return captureCurrentLayer(unit);
+    } else if (unit.type == 'layer-metadata') {
+      return captureCurrentLayerMetadata(unit);
+    } else if (unit.type == 'layer-order') {
+      return captureCurrentOrder(unit);
+    }
+    return null;
+  }
+
+  function captureCurrentTable(unit) {
+    return Object.assign({}, unit, {
+      revision: getUndoRevision(unit.target),
+      records: unit.target.getRecords().map(copyRecord)
+    });
+  }
+
+  function captureCurrentTableRecords(unit) {
+    var records = unit.target.getRecords();
+    return Object.assign({}, unit, {
+      revision: getUndoRevision(unit.target),
+      records: unit.records.map(function(item) {
+        return {
+          id: item.id,
+          record: copyRecord(records[item.id])
+        };
+      })
+    });
+  }
+
+  function captureCurrentTableFields(unit) {
+    var records = unit.target.getRecords();
+    var fields = unit.detail && unit.detail.schema_transform ?
+      unit.target.getFields() :
+      unit.columns.map(function(column) { return column.field; });
+    return Object.assign({}, unit, {
+      revision: getUndoRevision(unit.target),
+      columns: fields.map(function(field) {
+        return {
+          field: field,
+          values: records.map(function(rec) {
+            return rec ? rec[field] : undefined;
+          })
+        };
+      })
+    });
+  }
+
+  function captureCurrentOrder(unit) {
+    return Object.assign({}, unit, {
+      revision: getUndoRevision(unit.target),
+      ids: invertIds(unit.ids)
+    });
+  }
+
+  function captureCurrentTableSchema(unit) {
+    return Object.assign({}, unit, {
+      revision: getUndoRevision(unit.target),
+      fields: unit.target.getFields()
+    });
+  }
+
+  function captureCurrentArcs(unit) {
+    var data = unit.target.getVertexData();
+    return Object.assign({}, unit, {
+      revision: getUndoRevision(unit.target),
+      nn: new Uint32Array(data.nn),
+      xx: new Float64Array(data.xx),
+      yy: new Float64Array(data.yy),
+      zz: data.zz ? new Float64Array(data.zz) : null,
+      zlimit: unit.target.getRetainedInterval()
+    });
+  }
+
+  function captureCurrentArcsSimplification(unit) {
+    var data = unit.target.getVertexData();
+    return Object.assign({}, unit, {
+      revision: getUndoRevision(unit.target),
+      zz: data.zz ? new Float64Array(data.zz) : null,
+      zlimit: unit.target.getRetainedInterval()
+    });
+  }
+
+  function captureCurrentCatalog(unit) {
+    return Object.assign({}, unit, {
+      revision: getUndoRevision(unit.target),
+      datasets: unit.target.getDatasets().slice(),
+      targets: unit.target.getDefaultTargets().map(function(target) {
+        return {
+          dataset: target.dataset,
+          layers: target.layers.slice()
+        };
+      })
+    });
+  }
+
+  function captureCurrentDataset(unit) {
+    return Object.assign({}, unit, {
+      revision: getUndoRevision(unit.target),
+      layers: unit.target.layers ? unit.target.layers.slice() : null,
+      arcs: unit.target.arcs || null,
+      info: unit.target.info ? copyRecord(unit.target.info) : null
+    });
+  }
+
+  function captureCurrentDatasetInfo(unit) {
+    return Object.assign({}, unit, {
+      revision: getUndoRevision(unit.target),
+      info: unit.target.info ? copyRecord(unit.target.info) : null
+    });
+  }
+
+  function captureCurrentLayer(unit) {
+    return Object.assign({}, unit, {
+      revision: getUndoRevision(unit.target),
+      name: unit.target.name,
+      geometry_type: unit.target.geometry_type,
+      shapes: unit.target.shapes ? cloneShapes(unit.target.shapes) : null,
+      data: unit.target.data || null
+    });
+  }
+
+  function captureCurrentLayerMetadata(unit) {
+    return Object.assign({}, unit, {
+      revision: getUndoRevision(unit.target),
+      name: unit.target.name,
+      geometry_type: unit.target.geometry_type
+    });
+  }
+
+  function restoreUnit(unit) {
+    if (unit.type == 'changed') return;
+    if (unit.type == 'table') {
+      restoreTable(unit);
+    } else if (unit.type == 'table-records') {
+      restoreTableRecords(unit);
+    } else if (unit.type == 'table-fields') {
+      restoreTableFields(unit);
+    } else if (unit.type == 'table-order') {
+      restoreTableOrder(unit);
+    } else if (unit.type == 'table-schema') {
+      restoreTableSchema(unit);
+    } else if (unit.type == 'arcs') {
+      restoreArcs(unit);
+    } else if (unit.type == 'arcs-simplification') {
+      restoreArcsSimplification(unit);
+    } else if (unit.type == 'catalog') {
+      restoreCatalog(unit);
+    } else if (unit.type == 'dataset') {
+      restoreDataset(unit);
+    } else if (unit.type == 'dataset-info') {
+      restoreDatasetInfo(unit);
+    } else if (unit.type == 'layer') {
+      restoreLayer(unit);
+    } else if (unit.type == 'layer-metadata') {
+      restoreLayerMetadata(unit);
+    } else if (unit.type == 'layer-order') {
+      restoreLayerOrder(unit);
+    }
+  }
+
+  function restoreTable(unit) {
+    var records = unit.target.getRecords();
+    records.splice(0, records.length);
+    unit.records.forEach(function(rec) {
+      records.push(copyRecord(rec));
+    });
+  }
+
+  function restoreTableRecords(unit) {
+    var records = unit.target.getRecords();
+    unit.records.forEach(function(item) {
+      records[item.id] = copyRecord(item.record);
+    });
+  }
+
+  function restoreTableFields(unit) {
+    var records = unit.target.getRecords();
+    unit.columns.forEach(function(column) {
+      column.values.forEach(function(val, i) {
+        if (!records[i]) records[i] = {};
+        records[i][column.field] = val;
+      });
+    });
+  }
+
+  function restoreTableOrder(unit) {
+    reorderArray(unit.target.getRecords(), unit.ids);
+  }
+
+  function restoreTableSchema(unit) {
+    var records = unit.target.getRecords();
+    records.forEach(function(rec, i) {
+      var reordered = {};
+      unit.fields.forEach(function(field) {
+        reordered[field] = rec ? rec[field] : undefined;
+      });
+      records[i] = reordered;
+    });
+  }
+
+  function restoreArcs(unit) {
+    unit.target.updateVertexData(
+      new Uint32Array(unit.nn),
+      new Float64Array(unit.xx),
+      new Float64Array(unit.yy),
+      unit.zz ? new Float64Array(unit.zz) : null
+    );
+    unit.target.setRetainedInterval(unit.zlimit);
+  }
+
+  function restoreArcsSimplification(unit) {
+    unit.target.setThresholds(unit.zz ? new Float64Array(unit.zz) : null);
+    unit.target.setRetainedInterval(unit.zlimit);
+  }
+
+  function restoreCatalog(unit) {
+    var datasets = unit.target.getDatasets();
+    datasets.splice(0, datasets.length);
+    unit.datasets.forEach(function(dataset) {
+      datasets.push(dataset);
+    });
+    unit.target.setDefaultTargets(unit.targets.map(function(target) {
+      return {
+        dataset: target.dataset,
+        layers: target.layers.slice()
+      };
+    }));
+  }
+
+  function restoreDataset(unit) {
+    unit.target.layers = unit.layers ? unit.layers.slice() : null;
+    unit.target.arcs = unit.arcs;
+    unit.target.info = unit.info ? copyRecord(unit.info) : null;
+  }
+
+  function restoreDatasetInfo(unit) {
+    unit.target.info = unit.info ? copyRecord(unit.info) : null;
+  }
+
+  function restoreLayer(unit) {
+    unit.target.name = unit.name;
+    unit.target.geometry_type = unit.geometry_type;
+    unit.target.shapes = unit.shapes ? cloneShapes(unit.shapes) : null;
+    unit.target.data = unit.data;
+  }
+
+  function restoreLayerMetadata(unit) {
+    unit.target.name = unit.name;
+    unit.target.geometry_type = unit.geometry_type;
+  }
+
+  function restoreLayerOrder(unit) {
+    reorderArray(unit.target.shapes, unit.ids);
+  }
+
+  function unitKey(type, obj, extra) {
+    return type + ':' + getUndoId(obj) + (extra == null ? '' : ':' + extra);
+  }
+
+  function captureOrderUnit(tx, type, target, detail) {
+    var unit = findOrderUnit(tx.units, type, target);
+    var ids = uniquePermutation(detail.ids);
+    if (unit) {
+      unit.ids = composeIds(ids, unit.ids);
+      unit.detail = copyDetail(detail);
+      return;
+    }
+    tx.units.push({
+      type: type,
+      target: target,
+      id: getUndoId(target),
+      revision: getUndoRevision(target),
+      detail: copyDetail(detail),
+      ids: ids
+    });
+  }
+
+  function findOrderUnit(units, type, target) {
+    for (var i = units.length - 1; i >= 0; i--) {
+      if (units[i].type == type && units[i].target == target) {
+        return units[i];
+      }
+    }
+    return null;
+  }
+
+  function reorderArray(arr, ids) {
+    var copy = ids.map(function(id) {
+      return arr[id];
+    });
+    arr.splice.apply(arr, [0, arr.length].concat(copy));
+  }
+
+  function composeIds(a, b) {
+    return b.map(function(id) {
+      return a[id];
+    });
+  }
+
+  function invertIds(ids) {
+    var inverse = [];
+    ids.forEach(function(id, i) {
+      inverse[id] = i;
+    });
+    return inverse;
+  }
+
+  function uniquePermutation(ids) {
+    var index = {};
+    ids = ids || [];
+    ids.forEach(function(id) {
+      if (id < 0 || id >= ids.length || index[id]) {
+        throw new Error('Invalid undo order permutation');
+      }
+      index[id] = true;
+    });
+    return ids.slice();
+  }
+
+  function copyDetail(detail) {
+    return Object.assign({}, detail || {});
+  }
+
+  function uniqueNumbers(ids) {
+    var index = {};
+    ids = ids || [];
+    ids.forEach(function(id) {
+      if (id >= 0) index[id] = true;
+    });
+    return Object.keys(index).map(Number);
+  }
+
+  function uniqueStrings(fields) {
+    var index = {};
+    fields = fields || [];
+    fields.forEach(function(field) {
+      index[field] = true;
+    });
+    return Object.keys(index);
+  }
+
+  var UndoTransaction$1 = /*#__PURE__*/Object.freeze({
+    __proto__: null,
+    UndoTransaction: UndoTransaction,
+    captureCurrentUnits: captureCurrentUnits,
+    filterUnchangedRestoreUnits: filterUnchangedRestoreUnits,
+    restoreCapturedUnits: restoreCapturedUnits
+  });
+
   // Attach functions exported by modules to the "internal" object,
   // so they can be run by tests and by the GUI.
   // TODO: rewrite tests to import functions directly from modules,
@@ -55256,6 +57020,8 @@ ${svg}
     TopojsonExport,
     TopojsonImport,
     Topology,
+    UndoTransaction$1,
+    UndoTracking,
     Units,
     SvgHatch,
     SvgEffect,
