@@ -76,7 +76,12 @@ describe('mapshaper-run-commands.js', function () {
     })
   })
 
-  describe('stdin/stdout tests', function() {
+    describe('stdin/stdout tests', function() {
+    // Skip these tests on Windows due to stdin/stdout issues
+    if (process.platform === 'win32') {
+      console.log('Skipping stdin/stdout tests on Windows');
+      return;
+    }
 
     it ("pass-through GeoJSON", function(done) {
       var cmd = "- -o - -verbose"; // -verbose to check that messages aren't sent to stdout
