@@ -32,7 +32,8 @@ mapshaper input.shp -o precision=0.001 prettify provinces.geojson
 - `geojson-type=` &mdash; output a `Feature`, `FeatureCollection` or bare `GeometryCollection` instead of the default FeatureCollection.
 - `no-null-props` &mdash; emit `"properties": {}` instead of `"properties": null` for Features without attributes.
 - `hoist=` &mdash; promote one or more properties out of the `properties` object onto the Feature itself. Useful for non-standard consumers like [tippecanoe](https://github.com/felt/tippecanoe).
-- `gj2008` &mdash; emit pre-RFC-7946 GeoJSON (clockwise outer rings). This option produces files that can be rendered with `d3`.
+- `gj2008` &mdash; emit pre-RFC-7946 GeoJSON (clockwise outer rings).
+- `reverse-winding` &mdash; reverse the winding order of polygon rings on export.
 - `ndjson` &mdash; write one Feature per line as newline-delimited JSON (works with the [`json` records](/docs/formats/json.html.md) family of options as well).
 - `id-prefix=` &mdash; prefix layer/feature ids when exporting multiple layers.
 
@@ -40,8 +41,9 @@ mapshaper input.shp -o precision=0.001 prettify provinces.geojson
 
 - The GeoJSON spec states that GeoJSON uses WGS-84 coordinates (the lat-long coordinate system used by GPS), but Mapshaper will also export GeoJSON files with projected coordinates.
 - Coordinates are emitted at full precision &mdash; consider `precision=` to reduce file size. `precision=0.0001` equates to ~11 m at the equator, ~8 m in New York City, and ~6 m in Reykjavík, Iceland.
-- Polygon ring winding follows RFC 7946 (CCW outer, CW holes); the `gj2008` option outputs the CW outer rings expected by `d3`.
+- Polygon ring winding follows RFC 7946 (CCW outer, CW holes); use `reverse-winding` to write CW outer rings and CCW holes.
 - Output is minified by default; pass `prettify` for human-readable JSON.
+- If you are loading the data into a web map, see [Preparing data for D3 and web maps](/docs/guides/geojson-for-web-maps.html.md) for notes on WGS84, projected coordinates, polygon winding and D3 rendering.
 - If you are loading the data into a web map and you want the smallest possible file size, consider [TopoJSON](/docs/formats/topojson.html.md) as an alternative to GeoJSON. For datasets with shared boundaries, file sizes are often a fraction of the equivalent GeoJSON size.
 - `precision=` rounding can introduce sliver overlaps at boundaries. Pair it with `fix-geometry` if downstream tools are strict.
 

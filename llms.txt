@@ -24,11 +24,12 @@ When in doubt about a command's behavior, the [command reference](https://mapsha
 ## Guides
 
 - [Simplification](https://mapshaper.org/docs/guides/simplification.html.md): How to choose between Visvalingam and Douglas-Peucker, and tips for getting good-looking results from polygon and polyline simplification.
-- [Styles and Symbols](https://mapshaper.org/docs/guides/styles-and-symbols.html.md): How to use -style and -classify to style base layers, data layers and labels for SVG export and web UI previews.
+- [Styles and symbols](https://mapshaper.org/docs/guides/styles-and-symbols.html.md): How to use -style and -classify to style base layers, data layers and labels for SVG export and web UI previews.
 - [JavaScript expressions](https://mapshaper.org/docs/guides/expressions.html.md): Reference for the JS expressions used in -each, -filter, -calc, -where, -sort, -if, -run and other Mapshaper commands.
-- [Projections](https://mapshaper.org/docs/guides/projections.html.md): How to reproject geographic data with Mapshaper, including CRS notation, built-in aliases, and the albersusa composite projection.
+- [Map projections](https://mapshaper.org/docs/guides/projections.html.md): How to reproject geographic data with Mapshaper, including CRS notation, built-in aliases, and the albersusa composite projection.
 - [Topology and cleaning](https://mapshaper.org/docs/guides/topology.html.md): How Mapshaper detects shared boundaries between features, and how to fix the common topology errors that creep into Shapefile and GeoJSON datasets.
 - [Combining two layers](https://mapshaper.org/docs/guides/combining-layers.html.md): A step-by-step walkthrough of combining and pruning two boundary layers to produce a custom GeoJSON basemap.
+- [Preparing data for web maps](https://mapshaper.org/docs/guides/geojson-for-web-maps.html.md): Practical recipes for preparing GeoJSON, TopoJSON, and vector tile source data for D3, Leaflet, MapLibre, and other web mapping tools.
 - [Using Mapshaper from Node.js](https://mapshaper.org/docs/guides/programmatic.html.md): Integrating Mapshaper into JavaScript builds and applications via its Node.js API.
 
 ## Formats

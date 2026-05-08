@@ -13,6 +13,17 @@
 	src: url('assets/iosevka-light.woff2') format('woff2');
 }
 
+:root {
+	--bg-col: #eaf2f4; /* #f8fdff */
+	--xlt-theme-col: #f4f8f9;
+	--accent-col: #ffa; /* yellow logo text */
+	--theme-col: #1385B7; /* blue header / btn col */
+	--dk-theme-col: #1A6A96; /* btn hover col */
+	--lt-theme-col: #e6f7ff;
+	--colored-text: #10699b;
+	--normal-text: #333;
+}
+
 
 html, body {
 	height: 100%;
@@ -23,7 +34,7 @@ html, body {
 
 body {
 	overflow: hidden;
-	background-color: #f8fdff;
+	background-color: var(--bg-col);
 	font: 14px/1.4 'SourceSans3', Arial, sans-serif;
 	font-weight: 400;
 	color: #444;
@@ -63,7 +74,7 @@ body.map-view {
 .page-header,
 .dialog-btn,
 .sidebar-btn {
-	background-color: #1385B7;
+	background-color: var(--theme-col);
 }
 
 .colored-text,
@@ -73,11 +84,11 @@ body.map-view {
 .add-field-btn,
 .nav-menu-item,
 .edit-data-btn {
-	color: #10699b;
+	color: var(--colored-text);
 }
 
 .dot-underline {
-	border-color: #10699b;
+	border-color: var(--colored-text);
 }
 
 .dot-underline {
@@ -89,11 +100,11 @@ body.map-view {
 }
 
 /*.nav-btn * {
-	fill: #1385B7;
+	fill: var(--theme-col);
 }*/
 
 .nav-btn * {
-	fill: #1385B7;
+	fill: var(--theme-col);
 }
 
 .alert-btn + .alert-btn {
@@ -115,7 +126,7 @@ body.map-view {
 .btn.header-btn:hover,
 .dialog-btn.default-btn,
 .dialog-btn.selected-btn {
-	background-color: #1A6A96;
+	background-color: var(--dk-theme-col);
 }
 
 .dialog-btn.disabled {
@@ -123,15 +134,15 @@ body.map-view {
 }
 
 .colored-text::selection {
-	background-color: #e6f7ff;
+	background-color: var(--lt-theme-col);
 }
 
 .colored-text::-moz-selection {
-	background-color: #e6f7ff;
+	background-color: var(--lt-theme-col);
 }
 
 .layer-item.active {
-	background-color: #e6f7ff;
+	background-color: var(--lt-theme-col);
 }
 
 /* --- Page header --------------- */
@@ -153,7 +164,7 @@ body.map-view {
 }
 
 .mapshaper-logo .logo-highlight {
-	color: #ffa;
+	color: var(--accent-col);
 }
 
 .page-header a {
@@ -212,7 +223,7 @@ body.map-view {
 }
 
 #sponsor-btn {
-	color: #ffa;
+	color: var(--accent-col);
 }
 
 #sponsor-btn svg {
@@ -245,7 +256,7 @@ body.map-view {
 	right: 0;
 	min-width: 180px;
 	background-color: #fff;
-	color: #333;
+	color: var(--normal-text);
 	border: 1px solid #ccc;
 	border-radius: 3px;
 	box-shadow: 0 2px 6px rgba(0, 0, 0, 0.15);
@@ -260,7 +271,7 @@ body.map-view {
 .header-menu-item {
 	display: block;
 	padding: 4px 14px;
-	color: #333;
+	color: var(--normal-text);
 	font-size: 14px;
 	line-height: 1.3;
 	text-decoration: none;
@@ -270,7 +281,7 @@ body.map-view {
 
 .header-menu-item:hover,
 .header-menu-item:focus {
-	background-color: #e6f7ff;
+	background-color: var(--lt-theme-col);
 	color: #1A6A96;
 	outline: none;
 }
@@ -286,7 +297,7 @@ body.map-view {
 }
 
 .history-menu-item {
-	color: #333;
+	color: var(--normal-text);
 	cursor: pointer;
 	padding: 2px 0;
 	white-space: nowrap;
@@ -475,7 +486,7 @@ div.alert-box {
 	padding: 9px 11px 6px 11px;
 	margin: 9px -1px 3px -1px;
 	min-height: 130px;
-	background: #f8fdff;
+	background: var(--xlt-theme-col);
 }
 
 .catalog-mode .file-catalog {
@@ -498,7 +509,7 @@ div.alert-box {
 	overflow: hidden;
 	border: 1.5px solid #aaa;
 	border-radius: 19px;
-	background-color: #f8fdff;
+	background-color: var(--bg-col);
 }
 
 .file-catalog table {
@@ -752,7 +763,7 @@ input[type="checkbox"]
 	font-size: 15px;
 	color: black;
 	background-color: rgba(255, 255, 222, 0.85);
-	border: 1px solid #333;
+	border: 1px solid var(--normal-text);
 }
 
 /* === Editing interface ========== */
@@ -820,7 +831,7 @@ body.console-open .map-area {
 	z-index: 25;
 	writing-mode: vertical-rl;
 	transform: rotate(180deg);
-	background-color: #1385B7;
+	background-color: var(--theme-col);
 	color: white;
 	padding: 9px 4px;
 	border-radius: 5px 0 0 5px;
@@ -1500,7 +1511,7 @@ img.close-btn:hover,
 }
 
 .message-item .message-dismiss:hover {
-	color: #333;
+	color: var(--normal-text);
 	background-color: rgba(0, 0, 0, 0.05);
 }
 
@@ -1847,7 +1858,7 @@ body.pan.panning .map-layers:not(.drawing) {
 .contextmenu-item:hover,
 .nav-btn:hover .nav-sub-menu:not(.active):not(:hover) .nav-menu-item[data-name=info] {
 	color: black;
-	background: #e6f7ff;
+	background: var(--lt-theme-col);
 }
 
 .nav-menu-item.selected {
@@ -2007,12 +2018,12 @@ body.pan.panning .map-layers:not(.drawing) {
 }
 
 .floating-toolbar-btn svg * {
-	fill: #1385B7;
+	fill: var(--theme-col);
 	transition: fill 100ms ease;
 }
 
 .floating-toolbar-btn:hover:not(.disabled) {
-	background-color: #e6f7ff;
+	background-color: var(--lt-theme-col);
 }
 
 .floating-toolbar-btn:hover:not(.disabled) svg * {

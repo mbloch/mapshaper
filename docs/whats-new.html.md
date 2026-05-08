@@ -11,20 +11,20 @@ This is a curated list of recently added features. For the full list of changes,
 
 <div class="whats-new-entry">
 
-**Undo/redo for web UI commands.** The web UI can now save temporary restore data while you work, so many console commands and layer actions can be undone and redone from the undo/redo toolbar. Turn on this feature from the new History menu.
+**Undo/redo for web UI commands.** The web UI can now save temporary restore data while you work, so console commands and other data edits can be undone and redone from a pop-up toolbar. **This feature is very new and may have bugs, please report any problems that you encounter**. Turn on undo from the new History menu.
 
 </div>
 
 <div class="whats-new-entry">
 
-**More grid options.** The `-grid` command can now create rhombus and triangle grids, and supports `cols=`, `rows=`, `cells=` and `cell-scale=` options for controlling grid layout.
+**More grid options.** The `-grid` command can now create rhombus and triangle grids. There are new `cols=`, `rows=` and `cells=` options for controlling the size of the grid cells, as alternatives to the original `interval=` option. A new `cell-scale=` option lets you scale each cell within the grid (creating gaps or overlaps between adjacent cells).
 
 → See [`-grid`](/docs/reference.html.md#-grid).
 </div>
 
 <div class="whats-new-entry">
 
-**GeoParquet support.** Mapshaper reads and writes GeoParquet (`.parquet`) files.
+**GeoParquet support.** Mapshaper reads and writes GeoParquet (`.parquet`) files. To use ZSTD compression (instead of the default Snappy compression), add `compression=zstd` the output options.
 
 → See [GeoParquet](/docs/formats/geoparquet.html.md).
 </div>

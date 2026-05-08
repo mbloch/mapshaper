@@ -17021,7 +17021,8 @@
     var groups = groupPolygonRings(obj.pathData, arcs, opts.invert_y);
     // invert_y is used internally for SVG generation
     // mapshaper's internal winding order is the opposite of RFC 7946
-    var reverse = opts.rfc7946 && !opts.invert_y;
+    var rfc7946 = opts.rfc7946 === true;
+    var reverse = rfc7946 !== !!opts.reverse_winding && !opts.invert_y;
     var coords = groups.map(function(paths) {
       return paths.map(function(path) {
         if (reverse) path.points.reverse();
@@ -26408,37 +26409,25 @@ ${svg}
   async function loadZstdLib() {
     var mod;
     if (runningInBrowser()) {
-      mod = require$1('zstd-codec');
+      mod = require$1('@bokuweb/zstd-wasm');
     } else {
       if (!zstdPromise) {
-        zstdPromise = dynamicImportModule$1('zstd-codec');
+        zstdPromise = dynamicImportModule$1('@bokuweb/zstd-wasm');
       }
       mod = await zstdPromise;
     }
-    if (mod && mod.default && !mod.ZstdCodec) {
+    if (mod && mod.default && !mod.compress) {
       mod = mod.default;
     }
-    if (!mod || !mod.ZstdCodec || typeof mod.ZstdCodec.run != 'function') {
+    if (!mod || typeof mod.init != 'function' || typeof mod.compress != 'function') {
       stop$1('GeoParquet ZSTD compressor is not loaded');
     }
-    return initZstdCodec(mod.ZstdCodec);
+    await mod.init();
+    return initZstdCodec(mod);
   }
 
   function initZstdCodec(codec) {
-    return new Promise(function(resolve, reject) {
-      try {
-        codec.run(function(zstd) {
-          var simple = new zstd.Simple();
-          resolve({
-            compress: function(bytes, level) {
-              return simple.compress(bytes, level);
-            }
-          });
-        });
-      } catch (e) {
-        reject(e);
-      }
-    });
+    return codec;
   }
 
   function getOutputFormat(dataset, opts) {
@@ -29143,6 +29132,10 @@ ${svg}
       // })
       .option('gj2008', {
         describe: '[GeoJSON] use original GeoJSON spec (not RFC 7946)',
+        type: 'flag'
+      })
+      .option('reverse-winding', {
+        describe: '[GeoJSON] reverse polygon winding order',
         type: 'flag'
       })
       .option('rfc7946', {
@@ -34623,8 +34616,8 @@ ${svg}
     var candidates = getGeoParquetCrsStrings(crs);
     for (var i = 0; i < candidates.length; i++) {
       try {
-        parseCrsString$1(candidates[i]);
         await initProjLibrary({crs: candidates[i]});
+        parseCrsString$1(candidates[i]);
         return candidates[i];
       } catch (e) {
         // Keep trying candidates; if none initialize, caller will warn.
@@ -55438,7 +55431,7 @@ ${svg}
     });
   }
 
-  var version = "0.7.10";
+  var version = "0.7.11";
 
   // Parse command line args into commands and run them
   // Function takes an optional Node-style callback. A Promise is returned if no callback is given.
@@ -55496,8 +55489,10 @@ ${svg}
     var child = require$1('child_process').exec(command, {}, function(err, stdout, stderr) {
       opts.callback(err);
     });
-    child.stdout.pipe(process.stdout);
-    child.stderr.pipe(process.stderr);
+    if (loggingEnabled()) {
+      child.stdout.pipe(process.stdout);
+      child.stderr.pipe(process.stderr);
+    }
     if (opts.promise) return opts.promise;
   }
 

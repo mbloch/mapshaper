@@ -335,7 +335,9 @@ Save content of the target layer(s) to a file or files.
 
 `ndjson`  (GeoJSON/JSON) Output newline-delimited records.
 
-`gj2008`  (GeoJSON) Generate output that is consistent with the pre-RFC 7946 GeoJSON spec (dating to 2008). Polygon rings are CW and holes are CCW, which is the opposite of the default RFC 7946-compatible output. Mapshaper's default GeoJSON output is now compatible with the current specification (RFC 7946).
+`gj2008`  (GeoJSON) Generate output that is consistent with the pre-RFC 7946 GeoJSON spec (dating to 2008).
+
+`reverse-winding`  (GeoJSON) Reverse the winding order of GeoJSON polygon rings on export, so outer rings have clockwise order and holes have counter-clockwise order. This option will usually generate d3-compatible GeoJSON files, but it doesn't apply special spherical-geometry rules for very large polygons or ocean polygons.
 
 `combine-layers`  (GeoJSON) Combine multiple output layers into a single GeoJSON file.
 

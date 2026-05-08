@@ -1,0 +1,235 @@
+<!DOCTYPE html>
+<html lang="en">
+<head><!-- Google tag (gtag.js) -->
+<script async src="https://www.googletagmanager.com/gtag/js?id=G-QYR8W1YHEF"></script>
+<script>
+  window.dataLayer = window.dataLayer || [];
+  function gtag(){dataLayer.push(arguments);}
+  gtag('js', new Date());
+  gtag('config', 'G-QYR8W1YHEF');
+</script>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Preparing data for D3 and web maps &middot; mapshaper docs</title>
+<meta name="description" content="Practical recipes for preparing GeoJSON, TopoJSON, and vector tile source data for D3, Leaflet, MapLibre, and other web mapping tools.">
+<link rel="icon" type="image/png" href="/images/icon.png">
+<link rel="stylesheet" href="/docs/_assets/highlight.css">
+<link rel="stylesheet" href="/docs/_assets/docs.css">
+</head>
+<body class="">
+
+<header class="page-header">
+  <a href="/" class="mapshaper-logo">map<span class="logo-highlight">shaper</span></a>
+  <span class="header-section-label">Docs</span>
+  <nav class="header-nav">
+    <a href="/">Web app</a>
+    <a href="https://github.com/mbloch/mapshaper">GitHub</a>
+    <a href="/sponsor.html" class="sponsor-link"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z"/></svg> Become a sponsor</a>
+  </nav>
+</header>
+
+<div class="docs-layout">
+
+  <button type="button" class="docs-nav-toggle" aria-expanded="false" aria-controls="docs-sidebar">
+    <span class="docs-nav-toggle-icon" aria-hidden="true">
+      <svg viewBox="0 0 24 24" focusable="false">
+        <path d="M4 7h16v2H4zm0 5h16v2H4zm0 5h16v2H4z"/>
+      </svg>
+    </span>
+    <span class="docs-nav-toggle-label">Menu</span>
+  </button>
+
+  <aside class="docs-sidebar" id="docs-sidebar">
+    <div class="sidebar-inner">
+      <nav class="docs-nav"><ul class="top-links"><li><a href="/docs/">Home</a></li><li><a href="/docs/whats-new.html">What&#39;s new</a></li><li><a href="/docs/reference.html">Command reference</a></li><li><a href="/docs/gallery/">Gallery</a></li></ul><h2>Getting started</h2><ul><li><a href="/docs/essentials/command-line.html">The command-line tool</a></li><li><a href="/docs/essentials/web-app.html">The web app</a></li></ul><h2>Examples</h2><ul><li><a href="/docs/examples/basics.html">Basics</a></li><li><a href="/docs/examples/globe.html">Globe locator map</a></li><li><a href="/docs/examples/us-states.html">U.S. state map</a></li><li><a href="/docs/examples/ny-state.html">New York map</a></li></ul><h2>Guides</h2><ul><li><a href="/docs/guides/simplification.html">Simplification</a></li><li><a href="/docs/guides/styles-and-symbols.html">Styles and symbols</a></li><li><a href="/docs/guides/expressions.html">JavaScript expressions</a></li><li><a href="/docs/guides/projections.html">Map projections</a></li><li><a href="/docs/guides/topology.html">Topology and cleaning</a></li><li><a href="/docs/guides/combining-layers.html">Combining two layers</a></li><li><a href="/docs/guides/geojson-for-web-maps.html" class="is-active">Preparing data for web maps</a></li><li><a href="/docs/guides/programmatic.html">Using Mapshaper from Node.js</a></li></ul><h2>Formats</h2><ul><li><a href="/docs/formats/overview.html">Overview</a></li><li><a href="/docs/formats/shapefile.html">Shapefile</a></li><li><a href="/docs/formats/geojson.html">GeoJSON</a></li><li><a href="/docs/formats/topojson.html">TopoJSON</a></li><li><a href="/docs/formats/geopackage.html">GeoPackage</a></li><li><a href="/docs/formats/geoparquet.html">GeoParquet</a></li><li><a href="/docs/formats/flatgeobuf.html">FlatGeobuf</a></li><li><a href="/docs/formats/kml.html">KML / KMZ</a></li><li><a href="/docs/formats/csv.html">CSV / TSV</a></li><li><a href="/docs/formats/json.html">JSON records</a></li><li><a href="/docs/formats/dbf.html">DBF</a></li><li><a href="/docs/formats/svg.html">SVG</a></li><li><a href="/docs/formats/snapshot.html">Mapshaper snapshot</a></li></ul></nav>
+    </div>
+  </aside>
+
+  <main class="docs-main">
+    <article class="docs-article">
+      <div class="docs-breadcrumbs"><a href="/docs/">Docs</a> &rsaquo; Guides &rsaquo; Preparing data for web maps</div>
+      <h1 id="preparing-data-for-d3-and-web-maps">Preparing data for D3 and web maps</h1>
+<p>GeoJSON is the common exchange format for web maps, but different tools make different assumptions about coordinates, polygon winding, and projection. This page covers the fixes for the most common problems when moving data from Mapshaper into D3, Leaflet, MapLibre, Mapbox GL, Observable notebooks, and similar JavaScript workflows.</p>
+<h2 id="quick-recipes">Quick recipes</h2>
+<h3 id="export-geojson-for-leaflet-maplibre-mapbox-gl-and-most-web-map-apis">Export GeoJSON for Leaflet, MapLibre, Mapbox GL, and most web map APIs</h3>
+<p>Most web map libraries expect GeoJSON coordinates in WGS84 longitude/latitude, even when the map is displayed in Web Mercator. If your source file has coordinates other than WGS84, reproject to WGS84 before exporting:</p>
+<pre><code class="hljs language-bash">mapshaper input.shp -proj wgs84 -o output.geojson
+</code></pre>
+<p>If you&#39;re unsure what CRS your data file is using, you can look it up using mapshaper&#39;s <code>-info</code> command. It will give you the CRS in proj4 format, which is used by Mapshaper&#39;s <code>-proj</code> command.</p>
+<pre><code class="hljs language-bash">mapshaper input.shp -info
+</code></pre>
+<p>If your input is a (non-standard) GeoJSON of TopoJSON file with projected coordinates, you&#39;ll have to tell Mapshaper what CRS the coordinates are in before reprojecting. If you do not know the CRS, look for documentation on the source dataset&#39;s CRS. In the example below, you would replace <code>EPSG:3857</code> (Web Mercator) with the correct source CRS.</p>
+<pre><code class="hljs language-bash">mapshaper projected.geojson \
+  -proj init=EPSG:3857 \
+  -proj wgs84 \
+  -o output.geojson
+</code></pre>
+<h3 id="optimize-geojson-for-web-delivery">Optimize GeoJSON for web delivery</h3>
+<p>For browser delivery, you can shrink the size of a file by reducing coordinate precision and removing fields you do not need:</p>
+<pre><code class="hljs language-bash">mapshaper input.shp \
+  -filter-fields name,<span class="hljs-built_in">id</span>,population \
+  -proj wgs84 \
+  -o precision=0.00001 output.geojson
+</code></pre>
+<p><code>precision=0.00001</code> is about one metre at the equator. Use a coarser value for smaller files when your map scale allows it.</p>
+<h3 id="export-geojson-for-d3s-d3geopath">Export GeoJSON for D3&#39;s <code>d3.geoPath()</code></h3>
+<p>D3&#39;s geographic projections, such as <code>d3.geoMercator()</code> and <code>d3.geoAlbers()</code>, expect GeoJSON in WGS84 longitude/latitude. For polygon data, also pass <code>reverse-winding</code>, which reverses the ring orientation to match D3&#39;s spherical polygon convention (see <a href="#winding-order-and-filled-polygons">Winding order and filled polygons</a> below for details).</p>
+<pre><code class="hljs language-bash">mapshaper input.shp \
+  -proj wgs84 \
+  -o reverse-winding output.geojson
+</code></pre>
+<p>In JavaScript:</p>
+<pre><code class="hljs language-js"><span class="hljs-keyword">const</span> projection = d3.<span class="hljs-title function_">geoMercator</span>().<span class="hljs-title function_">fitSize</span>([width, height], geojson);
+<span class="hljs-keyword">const</span> path = d3.<span class="hljs-title function_">geoPath</span>(projection);
+
+svg.<span class="hljs-title function_">selectAll</span>(<span class="hljs-string">&quot;path&quot;</span>)
+  .<span class="hljs-title function_">data</span>(geojson.<span class="hljs-property">features</span>)
+  .<span class="hljs-title function_">join</span>(<span class="hljs-string">&quot;path&quot;</span>)
+  .<span class="hljs-title function_">attr</span>(<span class="hljs-string">&quot;d&quot;</span>, path);
+</code></pre>
+<h3 id="use-projected-coordinates-with-d3">Use projected coordinates with D3</h3>
+<p>If you intentionally export projected coordinates from Mapshaper, do not pass the data to <code>d3.geoMercator()</code> or another D3 geographic projection. The coordinates are already projected. Use <code>d3.geoIdentity()</code> instead, or export SVG directly from Mapshaper.</p>
+<pre><code class="hljs language-bash">mapshaper input.shp -proj albersusa -o projected.geojson
+</code></pre>
+<pre><code class="hljs language-js"><span class="hljs-keyword">const</span> projection = d3.<span class="hljs-title function_">geoIdentity</span>()
+  .<span class="hljs-title function_">reflectY</span>(<span class="hljs-literal">true</span>)
+  .<span class="hljs-title function_">fitSize</span>([width, height], geojson);
+<span class="hljs-keyword">const</span> path = d3.<span class="hljs-title function_">geoPath</span>(projection);
+</code></pre>
+<p>This treats the coordinates as planar x/y values. It is useful for custom SVG or Canvas rendering, but it is not the format expected by Leaflet, MapLibre, Mapbox GL, or most tile-based web maps.</p>
+<h3 id="export-topojson-for-d3">Export TopoJSON for D3</h3>
+<p>TopoJSON is often a better format than GeoJSON for D3 maps of polygon mosaics, such as countries, states, counties, or census areas. It stores shared boundaries once and typically uses quantized, delta-encoded path coordinates, so files are usually much smaller and adjacent features stay aligned after simplification.</p>
+<pre><code class="hljs language-bash">mapshaper counties.shp \
+  -proj wgs84 \
+  -simplify 10% keep-shapes \
+  -o counties.topojson
+</code></pre>
+<p>In D3, load the TopoJSON file and convert the object you want to draw back to GeoJSON features with the <code>topojson-client</code> library:</p>
+<pre><code class="hljs language-js"><span class="hljs-keyword">const</span> topology = <span class="hljs-keyword">await</span> d3.<span class="hljs-title function_">json</span>(<span class="hljs-string">&quot;counties.topojson&quot;</span>);
+<span class="hljs-keyword">const</span> counties = topojson.<span class="hljs-title function_">feature</span>(topology, topology.<span class="hljs-property">objects</span>.<span class="hljs-property">counties</span>);
+
+<span class="hljs-keyword">const</span> projection = d3.<span class="hljs-title function_">geoAlbersUsa</span>().<span class="hljs-title function_">fitSize</span>([width, height], counties);
+<span class="hljs-keyword">const</span> path = d3.<span class="hljs-title function_">geoPath</span>(projection);
+</code></pre>
+<p>TopoJSON still has the same coordinate-system question as GeoJSON. For D3 geographic projections, export WGS84 longitude/latitude and let D3 project in the browser. For pre-projected planar drawing, use <code>d3.geoIdentity()</code> after exporting projected TopoJSON.</p>
+<p>If you are combining multiple layers for one D3 map, TopoJSON can keep them in one file:</p>
+<pre><code class="hljs language-bash">mapshaper -i combine-files states.shp counties.shp places.shp \
+  -proj wgs84 \
+  -o format=topojson map-data.topojson
+</code></pre>
+<h2 id="understanding-the-warnings">Understanding the warnings</h2>
+<h3 id="rfc-7946-warning-non-wgs84-geojson-output">&quot;RFC 7946 warning: non-WGS84 GeoJSON output&quot;</h3>
+<p>RFC 7946, the current GeoJSON specification, defines GeoJSON coordinates as WGS84 longitude/latitude. Mapshaper can still write GeoJSON with projected coordinates, but it prints this warning because some tools will place the data in the wrong location or refuse to read it. For most web maps, reproject to WGS84 before export. The warning is informational when projected GeoJSON is intentional, such as for D3 planar rendering with <code>d3.geoIdentity()</code>.</p>
+<h3 id="my-geojson-has-projected-coordinates-but-no-crs">&quot;My GeoJSON has projected coordinates but no CRS&quot;</h3>
+<p>GeoJSON no longer has a standard <code>crs</code> member. If a projected GeoJSON is saved and re-opened later, Mapshaper cannot infer its CRS unless the coordinate bounds happen to look like longitude/latitude. Set the source CRS explicitly:</p>
+<pre><code class="hljs language-bash">mapshaper projected.geojson -proj init=EPSG:5070 -proj wgs84 -o output.geojson
+</code></pre>
+<p>To preserve CRS metadata between editing sessions, use Shapefile, GeoPackage, FlatGeobuf, GeoParquet, or a Mapshaper snapshot (<code>.msx</code>) instead of projected GeoJSON.</p>
+<h2 id="winding-order-and-filled-polygons">Winding order and filled polygons</h2>
+<p>Polygon winding controls which side of a ring is treated as the polygon interior. For most small land polygons:</p>
+<ul>
+<li>RFC 7946 GeoJSON uses counter-clockwise outer rings and clockwise holes.</li>
+<li>D3&#39;s spherical polygon convention uses the opposite orientation (see the <a href="https://observablehq.com/@d3/winding-order">d3-geo winding order notebook</a> and the <a href="https://d3js.org/d3-geo">d3-geo overview</a> for details).</li>
+<li>SVG and Canvas planar rendering usually care less, but holes can still render incorrectly when winding is inconsistent.</li>
+</ul>
+<p>Mapshaper writes RFC 7946 winding by default. For D3 geographic rendering, try:</p>
+<pre><code class="hljs language-bash">mapshaper input.shp -proj wgs84 -o reverse-winding output.geojson
+</code></pre>
+<p>If polygons disappear, holes fill in, or the entire world appears filled except your intended polygon, winding order is a likely cause.</p>
+<p><code>reverse-winding</code> is a practical fix for ordinary land polygons. It does not apply D3&#39;s special spherical rules for very large polygons, ocean masks, or polygons larger than a hemisphere. For those cases, prefer land polygons over ocean polygons, clip the data to the visible area, or test the output carefully in D3.</p>
+<h2 id="antimeridian-and-ocean-caveats">Antimeridian and ocean caveats</h2>
+<p>The antimeridian is the 180° longitude line on the opposite side of the globe from the prime meridian. Geometries that cross it — such as features covering Fiji, Russia, the Aleutian Islands, or any Pacific-spanning or global dataset — must be split into two parts at the 180° boundary. Tools like Mapshaper and QGIS expect geometries to be divided this way, and will produce rendering artifacts if they aren&#39;t. Without splitting, a polygon or line that should neatly cross the antimeridian will instead render as a streak shooting across the entire map, because the renderer interprets the coordinate jump from +180° to −180° as a straight line through planar space rather than a short hop across the date line.</p>
+<p>For D3 geographic projections, keep coordinates in WGS84 and let D3 handle spherical projection, clipping and removal of antimeridian cuts:</p>
+<pre><code class="hljs language-bash">mapshaper world.shp -proj wgs84 -o reverse-winding world.geojson
+</code></pre>
+<p>For planar rendering or libraries that do not handle dateline wrapping well, split or clean the geometry before export and test the result at the target map extent:</p>
+<pre><code class="hljs language-bash">mapshaper world.shp -clean -proj wgs84 -o world.geojson
+</code></pre>
+<p>Ocean polygons and &quot;world minus land&quot; masks are harder than ordinary land polygons because their intended interior may cover most of the globe. Winding and clipping rules differ between spherical and planar renderers. If your goal is a land map, exporting land polygons is usually more robust than exporting an ocean polygon with holes.</p>
+<h2 id="planar-vs-spherical-rendering">Planar vs spherical rendering</h2>
+<p>When troubleshooting, first decide which rendering model you are using.</p>
+<p><strong>Spherical rendering</strong> means the JavaScript library receives longitude/latitude and projects it at draw time. This is the normal model for:</p>
+<ul>
+<li>D3 with <code>d3.geoMercator()</code>, <code>d3.geoAlbers()</code>, <code>d3.geoNaturalEarth1()</code>, etc.</li>
+<li>Leaflet, MapLibre, Mapbox GL, and other web map libraries</li>
+<li>GeoJSON meant to be shared with other tools</li>
+</ul>
+<p>Use WGS84 GeoJSON:</p>
+<pre><code class="hljs language-bash">mapshaper input.shp -proj wgs84 -o output.geojson
+</code></pre>
+<p><strong>Planar rendering</strong> means coordinates are already x/y values in the drawing coordinate system or in a projected CRS. This is useful for static SVG/Canvas maps, custom D3 layouts, and pre-projected publication maps. Use Mapshaper to project first, then use <code>d3.geoIdentity()</code> to render as planar geometry — see <a href="#use-projected-coordinates-with-d3">Use projected coordinates with D3</a> above for an example.</p>
+<p>If a map appears in the wrong place, appears tiny, or is wildly distorted, the most common cause is mixing these models: projected coordinates sent to a spherical web map, or longitude/latitude coordinates treated as planar pixels.</p>
+<h2 id="preparing-data-for-vector-tile-pipelines">Preparing data for vector tile pipelines</h2>
+<p>Mapshaper is useful before a vector tile generator such as <a href="https://github.com/felt/tippecanoe">Tippecanoe</a>, Mapbox Tiling Service, or a similar hosted tile pipeline. Use Mapshaper for the editing steps it is good at: reprojecting to WGS84, cleaning topology, simplifying source geometry, joining attributes, dissolving features, clipping to an area of interest, and dropping fields you do not need in the tiles.</p>
+<p>Most vector tile pipelines expect input GeoJSON in WGS84 longitude/latitude. Do not pre-project to Web Mercator unless the tiling tool explicitly asks for it; the tile generator handles the tile-space projection.</p>
+<pre><code class="hljs language-bash">mapshaper raw-boundaries.shp \
+  -filter-fields name,<span class="hljs-built_in">id</span>,population \
+  -clean \
+  -proj wgs84 \
+  -o precision=0.00001 fix-geometry boundaries.geojson
+
+tippecanoe -o boundaries.mbtiles -zg --drop-densest-as-needed boundaries.geojson
+</code></pre>
+<p>For large datasets, newline-delimited GeoJSON (<code>ndjson</code>) is often easier for downstream tools to stream:</p>
+<pre><code class="hljs language-bash">mapshaper raw-points.csv \
+  -points x=lon y=lat \
+  -filter-fields name,<span class="hljs-built_in">type</span> \
+  -proj wgs84 \
+  -o ndjson points.ndjson
+
+tippecanoe -o points.mbtiles -zg points.ndjson
+</code></pre>
+<p>If your Mapshaper project has several logical tile layers, export separate files and pass them to the tile generator as separate layers. This usually gives clearer tile schemas than combining unrelated feature types into one GeoJSON FeatureCollection.</p>
+<pre><code class="hljs language-bash">mapshaper roads.shp -filter-fields class,name -proj wgs84 -o roads.geojson
+mapshaper water.shp -filter-fields kind,name -proj wgs84 -o water.geojson
+mapshaper places.shp -filter-fields name,population -proj wgs84 -o places.geojson
+</code></pre>
+<p>For Tippecanoe-specific metadata, Mapshaper&#39;s <code>hoist=</code> output option can promote a property out of the GeoJSON <code>properties</code> object onto the top-level Feature. This is useful for fields that Tippecanoe reads outside <code>properties</code>, such as feature-level metadata you prepared upstream. Keep this use narrow; most ordinary styling attributes should remain inside <code>properties</code>.</p>
+<pre><code class="hljs language-bash">mapshaper input.geojson -o hoist=tippecanoe output.geojson
+</code></pre>
+<p>Avoid over-processing before tiling. Tile generators simplify, clip, and drop detail differently at each zoom level. Use Mapshaper to remove obvious waste and fix source-data problems, but test tiles at several zoom levels before applying aggressive simplification or coordinate rounding.</p>
+<h2 id="checklist">Checklist</h2>
+<p>Before filing a bug or debugging renderer code, check:</p>
+<ul>
+<li>Does the target library expect WGS84 longitude/latitude GeoJSON?</li>
+<li>If the input GeoJSON is projected, did you set its CRS with <code>-proj init=...</code> before <code>-proj wgs84</code>?</li>
+<li>Are you using <code>d3.geoPath(d3.geoMercator())</code> for lon/lat data, and <code>d3.geoPath(d3.geoIdentity())</code> for projected data?</li>
+<li>For D3 polygon rendering, does <code>-o reverse-winding</code> fix missing or inverted fills?</li>
+<li>Would TopoJSON be smaller or easier for your D3 map than GeoJSON?</li>
+<li>If you are preparing vector tiles, are you giving the tile generator WGS84 input rather than pre-projected Web Mercator?</li>
+<li>Does the dataset cross the antimeridian or contain ocean/global mask polygons?</li>
+<li>Did coordinate rounding (<code>precision=</code>) introduce intersections that need <code>fix-geometry</code>?</li>
+</ul>
+<h2 id="related-docs">Related docs</h2>
+<ul>
+<li><a href="/docs/formats/geojson.html">GeoJSON format notes</a></li>
+<li><a href="/docs/formats/topojson.html">TopoJSON format notes</a></li>
+<li><a href="/docs/guides/projections.html">Projections guide</a></li>
+<li><a href="/docs/guides/topology.html">Topology and cleaning</a></li>
+<li><a href="/docs/reference.html#-proj"><code>-proj</code> reference</a></li>
+<li><a href="/docs/reference.html#-o"><code>-o</code> reference</a></li>
+</ul>
+
+      <div class="edit-link">
+        <a href="https://github.com/mbloch/mapshaper/edit/master/docs/guides/geojson-for-web-maps.md">Edit this page on GitHub</a>
+      </div>
+    </article>
+  </main>
+
+  <aside class="docs-toc">
+    <div class="docs-toc-title">On this page</div><ul><li class="lvl-2"><a href="#quick-recipes">Quick recipes</a></li><li class="lvl-3"><a href="#export-geojson-for-leaflet-maplibre-mapbox-gl-and-most-web-map-apis">Export GeoJSON for Leaflet, MapLibre, Mapbox GL, and most web map APIs</a></li><li class="lvl-3"><a href="#optimize-geojson-for-web-delivery">Optimize GeoJSON for web delivery</a></li><li class="lvl-3"><a href="#export-geojson-for-d3s-d3geopath">Export GeoJSON for D3&#39;s d3.geoPath()</a></li><li class="lvl-3"><a href="#use-projected-coordinates-with-d3">Use projected coordinates with D3</a></li><li class="lvl-3"><a href="#export-topojson-for-d3">Export TopoJSON for D3</a></li><li class="lvl-2"><a href="#understanding-the-warnings">Understanding the warnings</a></li><li class="lvl-3"><a href="#rfc-7946-warning-non-wgs84-geojson-output">&quot;RFC 7946 warning: non-WGS84 GeoJSON output&quot;</a></li><li class="lvl-3"><a href="#my-geojson-has-projected-coordinates-but-no-crs">&quot;My GeoJSON has projected coordinates but no CRS&quot;</a></li><li class="lvl-2"><a href="#winding-order-and-filled-polygons">Winding order and filled polygons</a></li><li class="lvl-2"><a href="#antimeridian-and-ocean-caveats">Antimeridian and ocean caveats</a></li><li class="lvl-2"><a href="#planar-vs-spherical-rendering">Planar vs spherical rendering</a></li><li class="lvl-2"><a href="#preparing-data-for-vector-tile-pipelines">Preparing data for vector tile pipelines</a></li><li class="lvl-2"><a href="#checklist">Checklist</a></li><li class="lvl-2"><a href="#related-docs">Related docs</a></li></ul>
+  </aside>
+
+</div>
+
+<script src="/docs/_assets/docs.js" defer></script>
+
+<footer class="docs-footer">
+  <div class="docs-footer-inner">
+    <span>mapshaper is free software, licensed under <a href="https://www.mozilla.org/MPL/2.0/">MPL 2.0</a>.</span>
+    <span><a href="/privacy.html">Privacy</a> &middot; <a href="/terms.html">Terms</a> &middot; <a href="/sponsor.html">Support mapshaper</a></span>
+  </div>
+</footer>
+
+</body>
+</html>
