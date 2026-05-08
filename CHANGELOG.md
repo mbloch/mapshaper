@@ -1,3 +1,7 @@
+v0.7.12
+* Auto-fit parameters for UTM, so running `-proj utm` finds an appropriate UTM zone.
+* Account for datasets that cross the antimeridian when auto-fitting projection parameters (e.g. New Zealand).
+
 v0.7.11
 * Fixed bugs affecting GeoParquet i/o.
 * Added a `-o reverse-winding` option to help create D3-compatible GeoJSON files.
