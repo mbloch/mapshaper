@@ -103,11 +103,15 @@ mapshaper data.shp -proj EPSG:32611 -o  <span class="hljs-comment"># UTM zone 11
 <p>For some conic and cylindrical projections, you can supply just the projection name and Mapshaper will calculate suitable parameters from the extent of the data. This is useful when you want a locally appropriate projection without looking up specific values.</p>
 <p>For <strong>Lambert Conformal Conic</strong> (<code>lcc</code>) and <strong>Albers Equal Area Conic</strong> (<code>aea</code>), Mapshaper calculates the central meridian (<code>lon_0</code>) and two standard parallels (<code>lat_1</code>, <code>lat_2</code>) using the one-sixth rule applied to the data&#39;s bounding box.</p>
 <p>For <strong>Transverse Mercator</strong> (<code>tmerc</code>, <code>etmerc</code>), it calculates the central meridian and latitude of origin (<code>lon_0</code>, <code>lat_0</code>) from the center of the bounding box.</p>
+<p>For <strong>Universal Transverse Mercator</strong> (<code>utm</code>), it calculates the UTM zone from the center longitude of the bounding box and adds <code>+south</code> when the center latitude is in the southern hemisphere.</p>
 <pre><code class="hljs language-bash"><span class="hljs-comment"># Mapshaper fills in lon_0, lat_1, lat_2 based on the data extent</span>
 mapshaper region.geojson -proj lcc -o region_lcc.geojson
 
 <span class="hljs-comment"># Equivalent — Mapshaper fills in lon_0 and lat_0</span>
 mapshaper region.geojson -proj tmerc -o region_tmerc.geojson
+
+<span class="hljs-comment"># Equivalent — Mapshaper fills in zone and hemisphere</span>
+mapshaper region.geojson -proj utm -o region_utm.geojson
 </code></pre>
 <p>When Mapshaper auto-fits parameters, it prints the expanded PROJ string so you can see exactly what was applied — for example: <code>Converted &quot;lcc&quot; to &quot;+proj=lcc +lon_0=-95.5 +lat_1=30.17 +lat_2=44.83&quot;</code>. You can copy that string and use it explicitly if you need reproducible output.</p>
 <h2 id="albersusa">albersusa</h2>

@@ -23,7 +23,7 @@ If you're unsure what CRS your data file is using, you can look it up using maps
 mapshaper input.shp -info
 ```
 
-If your input is a (non-standard) GeoJSON of TopoJSON file with projected coordinates, you'll have to tell Mapshaper what CRS the coordinates are in before reprojecting. If you do not know the CRS, look for documentation on the source dataset's CRS. In the example below, you would replace `EPSG:3857` (Web Mercator) with the correct source CRS.
+If your input is a (non-standard) GeoJSON or TopoJSON file with projected coordinates, you'll have to tell Mapshaper what CRS the coordinates are in before reprojecting. If you do not know the CRS, look for documentation on the source dataset's CRS. In the example below, you would replace `EPSG:3857` (Web Mercator) with the correct source CRS.
 
 ```bash
 mapshaper projected.geojson \

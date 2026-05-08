@@ -1059,7 +1059,7 @@ Common options: `target=`
 
 Project a dataset using a PROJ string, EPSG code or alias. This command affects all layers in the dataset(s) containing the targeted layer or layers. Information on PROJ string syntax can be found on the [PROJ website](https://proj.org/usage/index.html).
 
-`<crs>` or `crs=`  Target CRS, given as a Proj.4 definition or an alias. Use the [`-projections`](#-projections) command to list available projections and aliases.  In projections which require additional parameters, such as a zone in UTM, you can pass a Proj4 string enclosed in quotes.  For example, `crs='+proj=utm +zone=27'`.
+`<crs>` or `crs=`  Target CRS, given as a Proj.4 definition or an alias. Use the [`-projections`](#-projections) command to list available projections and aliases. In some projections that require additional parameters, Mapshaper can fit parameters automatically from the data extent, for example `crs=utm` selects a UTM zone. You can also pass a Proj4 string enclosed in quotes, for example `crs='+proj=utm +zone=27'`.
 
 `densify` Interpolate vertices along long line segments as needed to approximate curved lines.
 

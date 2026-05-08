@@ -58,7 +58,7 @@
 <p>If you&#39;re unsure what CRS your data file is using, you can look it up using mapshaper&#39;s <code>-info</code> command. It will give you the CRS in proj4 format, which is used by Mapshaper&#39;s <code>-proj</code> command.</p>
 <pre><code class="hljs language-bash">mapshaper input.shp -info
 </code></pre>
-<p>If your input is a (non-standard) GeoJSON of TopoJSON file with projected coordinates, you&#39;ll have to tell Mapshaper what CRS the coordinates are in before reprojecting. If you do not know the CRS, look for documentation on the source dataset&#39;s CRS. In the example below, you would replace <code>EPSG:3857</code> (Web Mercator) with the correct source CRS.</p>
+<p>If your input is a (non-standard) GeoJSON or TopoJSON file with projected coordinates, you&#39;ll have to tell Mapshaper what CRS the coordinates are in before reprojecting. If you do not know the CRS, look for documentation on the source dataset&#39;s CRS. In the example below, you would replace <code>EPSG:3857</code> (Web Mercator) with the correct source CRS.</p>
 <pre><code class="hljs language-bash">mapshaper projected.geojson \
   -proj init=EPSG:3857 \
   -proj wgs84 \

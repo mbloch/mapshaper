@@ -1207,7 +1207,7 @@ Common options: `target=`
 
 Project a dataset using a PROJ string, EPSG code or alias. This command affects all layers in the dataset(s) containing the targeted layer or layers. Information on PROJ string syntax can be found on the [PROJ website](https://proj.org/usage/index.html).
 
-`<crs>` or `crs=`  Target CRS, given as a Proj.4 definition or an alias. Use the [`-projections`](#-projections) command to list available projections and aliases.  In projections which require additional parameters, such as a zone in UTM, you can pass a Proj4 string enclosed in quotes.  For example, `crs='+proj=utm +zone=27'`.
+`<crs>` or `crs=`  Target CRS, given as a Proj.4 definition or an alias. Use the [`-projections`](#-projections) command to list available projections and aliases. In some projections that require additional parameters, Mapshaper can fit parameters automatically from the data extent, for example `crs=utm` selects a UTM zone. You can also pass a Proj4 string enclosed in quotes, for example `crs='+proj=utm +zone=27'`.
 
 `densify` Interpolate vertices along long line segments as needed to approximate curved lines.
 
@@ -2770,7 +2770,8 @@ Natural Earth 10m coastlines, simplified with modified Visvalingam at 5% point r
 Same file using Douglas-Peucker, also 5% simplification.
 ![image](/docs/images/simplification-dp.png)
 
-Zoomed-in view of Norwegian coastline at 5% simplification; left: weighted Visvalingam, right: Douglas-Peucker.
+Zoomed-in view of Norwegian coastline at 5% simplification; left: weighted Visvalingam, right: Douglas-Peucker. These figures illustrate the different ways each method removes detail. In a finished map, you would apply far less simplification than this — simplification artifacts generally should not be discernible to the naked eye.
+
 ![image](/docs/images/simplification-detail.png)
 
 ## Simplification amount
@@ -3508,12 +3509,17 @@ For **Lambert Conformal Conic** (`lcc`) and **Albers Equal Area Conic** (`aea`),
 
 For **Transverse Mercator** (`tmerc`, `etmerc`), it calculates the central meridian and latitude of origin (`lon_0`, `lat_0`) from the center of the bounding box.
 
+For **Universal Transverse Mercator** (`utm`), it calculates the UTM zone from the center longitude of the bounding box and adds `+south` when the center latitude is in the southern hemisphere.
+
 ```bash
 # Mapshaper fills in lon_0, lat_1, lat_2 based on the data extent
 mapshaper region.geojson -proj lcc -o region_lcc.geojson
 
 # Equivalent — Mapshaper fills in lon_0 and lat_0
 mapshaper region.geojson -proj tmerc -o region_tmerc.geojson
+
+# Equivalent — Mapshaper fills in zone and hemisphere
+mapshaper region.geojson -proj utm -o region_utm.geojson
 ```
 
 When Mapshaper auto-fits parameters, it prints the expanded PROJ string so you can see exactly what was applied — for example: `Converted "lcc" to "+proj=lcc +lon_0=-95.5 +lat_1=30.17 +lat_2=44.83"`. You can copy that string and use it explicitly if you need reproducible output.
@@ -3741,7 +3747,7 @@ If you're unsure what CRS your data file is using, you can look it up using maps
 mapshaper input.shp -info
 ```
 
-If your input is a (non-standard) GeoJSON of TopoJSON file with projected coordinates, you'll have to tell Mapshaper what CRS the coordinates are in before reprojecting. If you do not know the CRS, look for documentation on the source dataset's CRS. In the example below, you would replace `EPSG:3857` (Web Mercator) with the correct source CRS.
+If your input is a (non-standard) GeoJSON or TopoJSON file with projected coordinates, you'll have to tell Mapshaper what CRS the coordinates are in before reprojecting. If you do not know the CRS, look for documentation on the source dataset's CRS. In the example below, you would replace `EPSG:3857` (Web Mercator) with the correct source CRS.
 
 ```bash
 mapshaper projected.geojson \
