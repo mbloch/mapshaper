@@ -47,7 +47,7 @@ mapshaper input.shp \
 
 ### Export GeoJSON for D3's `d3.geoPath()`
 
-D3's geographic projections, such as `d3.geoMercator()` and `d3.geoAlbers()`, expect GeoJSON data with longitude/latitude coordinates. The polygon winding order (clockwise or counter-clockwise rings) used by D3 is not the same as standard GeoJSON. For most polygon data, the winding order is the opposite of standard GeoJSON, so to output D3-compatible polygon data you would use the `reverse-winding` flag with Mapshaper's `-o` command.  (The D3 docs refer to D3's winding order convention as "spherical coordinates).
+D3's geographic projections, such as `d3.geoMercator()` and `d3.geoAlbers()`, expect GeoJSON in WGS84 longitude/latitude. For polygon data, also pass `reverse-winding`, which reverses the ring orientation to match D3's spherical polygon convention (see [Winding order and filled polygons](#winding-order-and-filled-polygons) below for details).
 
 ```bash
 mapshaper input.shp \
@@ -120,15 +120,7 @@ mapshaper -i combine-files states.shp counties.shp places.shp \
 
 ### "RFC 7946 warning: non-WGS84 GeoJSON output"
 
-RFC 7946, the current GeoJSON specification, defines GeoJSON coordinates as WGS84 longitude/latitude. Mapshaper can still write GeoJSON with projected coordinates, but it prints this warning because some tools will place the data in the wrong location or refuse to read it.
-
-For most web maps, fix the warning by reprojecting before export:
-
-```bash
-mapshaper input.shp -proj wgs84 -o output.geojson
-```
-
-For D3 planar rendering, projected GeoJSON can be intentional. In that case the warning is informational; use `d3.geoIdentity()` or another planar renderer.
+RFC 7946, the current GeoJSON specification, defines GeoJSON coordinates as WGS84 longitude/latitude. Mapshaper can still write GeoJSON with projected coordinates, but it prints this warning because some tools will place the data in the wrong location or refuse to read it. For most web maps, reproject to WGS84 before export. The warning is informational when projected GeoJSON is intentional, such as for D3 planar rendering with `d3.geoIdentity()`.
 
 ### "My GeoJSON has projected coordinates but no CRS"
 
@@ -160,9 +152,9 @@ If polygons disappear, holes fill in, or the entire world appears filled except 
 
 ## Antimeridian and ocean caveats
 
-The antimeridian is the longitude line at 180 degrees. Some datasets cross it, including Fiji, Russia, the Aleutians, and many Pacific or global layers. A line that should cross the antimeridian can render as a long streak across the map if the renderer treats coordinates as planar x/y values.
+The antimeridian is the 180° longitude line on the opposite side of the globe from the prime meridian. Geometries that cross it — such as features covering Fiji, Russia, the Aleutian Islands, or any Pacific-spanning or global dataset — must be split into two parts at the 180° boundary. Tools like Mapshaper and QGIS expect geometries to be divided this way, and will produce rendering artifacts if they aren't. Without splitting, a polygon or line that should neatly cross the antimeridian will instead render as a streak shooting across the entire map, because the renderer interprets the coordinate jump from +180° to −180° as a straight line through planar space rather than a short hop across the date line.
 
-For D3 geographic projections, keep coordinates in WGS84 and let D3 handle spherical projection and clipping:
+For D3 geographic projections, keep coordinates in WGS84 and let D3 handle spherical projection, clipping and removal of antimeridian cuts:
 
 ```bash
 mapshaper world.shp -proj wgs84 -o reverse-winding world.geojson
@@ -192,18 +184,7 @@ Use WGS84 GeoJSON:
 mapshaper input.shp -proj wgs84 -o output.geojson
 ```
 
-**Planar rendering** means coordinates are already x/y values in the drawing coordinate system or in a projected CRS. This is useful for static SVG/Canvas maps, custom D3 layouts, and pre-projected publication maps.
-
-Use Mapshaper to project first, then render as planar geometry:
-
-```bash
-mapshaper input.shp -proj albersusa -o projected.geojson
-```
-
-```js
-const projection = d3.geoIdentity().reflectY(true).fitSize([width, height], geojson);
-const path = d3.geoPath(projection);
-```
+**Planar rendering** means coordinates are already x/y values in the drawing coordinate system or in a projected CRS. This is useful for static SVG/Canvas maps, custom D3 layouts, and pre-projected publication maps. Use Mapshaper to project first, then use `d3.geoIdentity()` to render as planar geometry — see [Use projected coordinates with D3](#use-projected-coordinates-with-d3) above for an example.
 
 If a map appears in the wrong place, appears tiny, or is wildly distorted, the most common cause is mixing these models: projected coordinates sent to a spherical web map, or longitude/latitude coordinates treated as planar pixels.
 
