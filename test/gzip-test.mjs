@@ -6,7 +6,7 @@ import * as fs from 'fs';
 describe('gzip i/o', function () {
 
   it('KML roundtrip', async function() {
-    var file = 'test/data/three_points.geojson';
+    var file = 'test/data/geojson/three_points.geojson';
     var cmd = `-i ${file} -o points.kml.gz`;
     var out = await api.applyCommands(cmd);
     var cmd2 = `-i input.kml.gz -o points.geojson`;

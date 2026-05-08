@@ -7,7 +7,7 @@ import sq from 'shell-quote';
 var format = api.utils.format,
     mapshaper = api;
 
-var states_shp = "test/data/two_states.shp";
+var states_shp = "test/data/shapefile/two_states.shp";
 
 async function runFile(cmd, done) {
   var args = sq.parse(cmd);
@@ -54,7 +54,7 @@ describe('mapshaper-run-commands.js', function () {
 
   describe('Issue #264 applyCommands()', function() {
     it ('should throw error if input is a file path, not file content', function(done) {
-      mapshaper.applyCommands('-i input.shp -o out.json', {'input.shp': 'test/data/two_states.shp'}, function(
+      mapshaper.applyCommands('-i input.shp -o out.json', {'input.shp': 'test/data/shapefile/two_states.shp'}, function(
         err, output) {
         assert(!!err);
         done();
@@ -105,7 +105,7 @@ describe('mapshaper-run-commands.js', function () {
 
   describe('context tests', function () {
     it('context vars are reset after commands run', function (done) {
-      var cmd = '-i test/data/three_points.geojson -verbose';
+      var cmd = '-i test/data/geojson/three_points.geojson -verbose';
       api.runCommands(cmd, function(err) {
         setTimeout(function() {
           assert.strictEqual(api.internal.getStashedVar('VERBOSE'), undefined);
@@ -368,8 +368,8 @@ describe('mapshaper-run-commands.js', function () {
 
 
     it('accepts Buffer objects as input (Issue #159)', function(done) {
-      var shp = fs.readFileSync('test/data/three_points.shp');
-      var dbf = fs.readFileSync('test/data/three_points.dbf');
+      var shp = fs.readFileSync('test/data/shapefile/three_points.shp');
+      var dbf = fs.readFileSync('test/data/shapefile/three_points.dbf');
       var input = {
         'points.shp': shp,
         'points.dbf': dbf
@@ -447,7 +447,7 @@ describe('mapshaper-run-commands.js', function () {
 
   describe('runCommandsXL()', function () {
     it('Works with {xl: "4gb"} option + callback', function(done) {
-      mapshaper.runCommandsXL('test/data/three_points.geojson -filter true', {xl: '4gb'}, function(err) {
+      mapshaper.runCommandsXL('test/data/geojson/three_points.geojson -filter true', {xl: '4gb'}, function(err) {
         assert(!err);
         done();
       });
@@ -542,8 +542,8 @@ describe('mapshaper-run-commands.js', function () {
   describe('testCommands()', function() {
 
     it('multiple input files are processed in sequence', function(done) {
-      mapshaper.internal.testCommands('-i test/data/three_points.geojson test/data/one_point.geojson', function(err, dataset) {
-          assert.deepEqual(dataset.info.input_files, ['test/data/one_point.geojson' ]);
+      mapshaper.internal.testCommands('-i test/data/geojson/three_points.geojson test/data/geojson/one_point.geojson', function(err, dataset) {
+          assert.deepEqual(dataset.info.input_files, ['test/data/geojson/one_point.geojson' ]);
           assert.equal(dataset.layers[0].name, 'one_point');
           done();
         });

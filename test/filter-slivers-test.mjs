@@ -7,7 +7,7 @@ import { calcMaxSliverArea } from '../src/polygons/mapshaper-slivers';
 describe('mapshaper-filter-slivers.js', function () {
 
   it('remove-empty flag', async function() {
-    var cmd = `-i test/data/two_states_mercator.shp -explode -filter-slivers
+    var cmd = `-i test/data/shapefile/two_states_mercator.shp -explode -filter-slivers
     min-area=100km2 remove-empty -o output.json`;
     var out = await api.applyCommands(cmd);
     var features = JSON.parse(out['output.json']).features;

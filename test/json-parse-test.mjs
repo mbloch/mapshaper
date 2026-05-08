@@ -249,11 +249,11 @@ describe('json-parse.js', function () {
     });
 
     it('file reading test', function() {
-      testReadingFromFile('test/data/three_points.geojson', null);
+      testReadingFromFile('test/data/geojson/three_points.geojson', null);
     });
 
     it('file reading with buffer expansion', function() {
-      testReadingFromFile('test/data/two_states.json', {cacheSize: 2, bufferSize: 2});
+      testReadingFromFile('test/data/geojson/two_states.json', {cacheSize: 2, bufferSize: 2});
     })
   })
 

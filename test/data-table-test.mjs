@@ -215,7 +215,7 @@ describe('data-table.js', function () {
             LONG: -120.00
           }];
 
-        var table = api.internal.importDbfTable(readDBF("data/two_states.dbf"));
+        var table = api.internal.importDbfTable(readDBF("data/shapefile/two_states.dbf"));
         assert.deepEqual(JSON.stringify(table.getRecords()),
             JSON.stringify(records));
       })
@@ -223,7 +223,7 @@ describe('data-table.js', function () {
 
     describe('#fieldExists()', function() {
       it ('identifies existing fields', function() {
-        var table = api.internal.importDbfTable(readDBF("data/two_states.dbf"));
+        var table = api.internal.importDbfTable(readDBF("data/shapefile/two_states.dbf"));
         assert.ok(table.fieldExists('LAT'))
         assert.ok(table.fieldExists('STATE_NAME'))
       })

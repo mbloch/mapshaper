@@ -6,7 +6,7 @@ var internal = api.internal;
 describe('mapshaper-export.js', function () {
 
   describe('-o fix-geometry tests', function() {
-    var file = 'test/data/six_counties.shp';
+    var file = 'test/data/shapefile/six_counties.shp';
 
     it('topojson with quantization', async function() {
       var cmd = `-i ${file} -o tmp.topojson quantization=1000 fix-geometry`;

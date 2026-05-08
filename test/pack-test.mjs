@@ -45,7 +45,7 @@ describe('mapshaper-pack.mjs', function () {
   })
 
   it('simplification data is removed on export', async function() {
-    var cmd = '-i test/data/two_states.json -o a.msx -simplify 50% -o b.msx';
+    var cmd = '-i test/data/geojson/two_states.json -o a.msx -simplify 50% -o b.msx';
     var out = await api.applyCommands(cmd);
     assert(out['a.msx'].length > out['b.msx'].length);
 
@@ -175,7 +175,7 @@ describe('mapshaper-pack.mjs', function () {
     // has to rebuild info.crs from wkt1 directly to support code that reads
     // info.crs without going through getDatasetCrsInfo() (e.g. the GUI).
     var tmpPath = path.join(os.tmpdir(), 'mapshaper-pack-wkt1-' + process.pid + '-' + Date.now() + '.msx');
-    api.applyCommands('-i test/data/two_states.shp -o snap.msx', function(err, out) {
+    api.applyCommands('-i test/data/shapefile/two_states.shp -o snap.msx', function(err, out) {
       if (err) return done(err);
       try {
         fs.writeFileSync(tmpPath, Buffer.from(out['snap.msx']));

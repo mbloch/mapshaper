@@ -28,10 +28,10 @@
     "docs": "node build-docs.mjs",
     "roadmap": "node build-roadmap.mjs",
     "lint": "eslint --ext mjs src/",
-    "prepublishOnly": "npm test; ./pre-publish",
+    "prepublishOnly": "npm test && npm run test:browser && ./pre-publish",
     "postpublish": "./release_web_ui; ./release_github_version",
     "dev": "rollup --config --watch",
-    "test:browser": "playwright test"
+    "test:browser": "playwright test --fully-parallel --workers=6"
   },
   "main": "./mapshaper.js",
   "files": [

@@ -1,8 +1,8 @@
 
-.PHONY: svg geopackage
+.PHONY: svg
 
 svg:
-	mapshaper two_states.json  name=states \
+	mapshaper ../geojson/two_states.json  name=states \
 	-proj lcc \
 	-style fill='#eee' \
 	-points inner + name=bubbles \
@@ -15,6 +15,3 @@ svg:
 	-style label-text=STATE_NAME text-anchor=middle dy=3 fill=black font-size=13 \
 	-target '*' \
 	-o svg/two_states.svg
-
-geopackage:
-	mapshaper 

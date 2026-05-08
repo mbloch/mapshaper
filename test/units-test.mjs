@@ -81,7 +81,7 @@ describe('mapshaper-units.js', function () {
 
   describe('convertAreaParam()', function () {
     it('km2/wgs84', function () {
-      var json = fs.readFileSync('test/data/three_points.geojson', 'utf8');
+      var json = fs.readFileSync('test/data/geojson/three_points.geojson', 'utf8');
       var crs = api.internal.getDatasetCRS(api.internal.importGeoJSON(json, {}));
       var val = convertAreaParam('20km2', crs);
       assert.equal(val, 20e6)
@@ -148,7 +148,7 @@ describe('mapshaper-units.js', function () {
     })
 
     it('km/mercator', function(done) {
-      var cmd = '-i test/data/three_points.geojson -proj webmercator';
+      var cmd = '-i test/data/geojson/three_points.geojson -proj webmercator';
       api.internal.testCommands(cmd, function(err, dataset) {
         var pair = convertIntervalPair(['2km','5km'], api.internal.getDatasetCRS(dataset));
         assert.deepEqual(pair, [2000, 5000])

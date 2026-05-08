@@ -106,17 +106,17 @@ describe('mapshaper-import.js', function () {
   })
 
   it('import a point GeoJSON and a csv file', async function() {
-    var a = 'test/data/three_points.geojson',
+    var a = 'test/data/geojson/three_points.geojson',
         b = 'test/data/text/two_states.csv';
     var combined = await api.cmd.importFiles(new Catalog(), {files: [a, b]});
     assert(api.internal.getDatasetCRS(combined).is_latlong);
-    assert.deepEqual(combined.info.input_files, ['test/data/three_points.geojson', 'test/data/text/two_states.csv']);
+    assert.deepEqual(combined.info.input_files, ['test/data/geojson/three_points.geojson', 'test/data/text/two_states.csv']);
     assert.deepEqual(combined.info.input_formats, ['geojson', 'dsv']);
   })
 
   it('import a polygon Shapefile and a polygon GeoJSON file', async function() {
-    var a = 'test/data/six_counties.shp',
-        b = 'test/data/two_states.json',
+    var a = 'test/data/shapefile/six_counties.shp',
+        b = 'test/data/geojson/two_states.json',
         combined = await api.cmd.importFiles(new Catalog(), {files: [a, b]});
     assert(api.internal.getDatasetCRS(combined).is_latlong);
     // TODO: check geometry
@@ -125,8 +125,8 @@ describe('mapshaper-import.js', function () {
   it('importing a projected and an unprojected polygon file throws an error', async function() {
     var err;
     try {
-      var a = 'test/data/two_states_mercator.shp',
-          b = 'test/data/two_states.shp',
+      var a = 'test/data/shapefile/two_states_mercator.shp',
+          b = 'test/data/shapefile/two_states.shp',
           combined = await api.cmd.importFiles(new Catalog(), {files: [a, b]});
     } catch(e) {
       err = e;

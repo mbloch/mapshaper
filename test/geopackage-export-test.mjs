@@ -183,7 +183,7 @@ describe('geopackage export', function () {
   });
 
   it('preserves a -proj assigned projection on GeoPackage round-trip', async function () {
-    var input = fs.readFileSync(fixPath('data/world_land.json'));
+    var input = fs.readFileSync(fixPath('data/geojson/world_land.json'));
     var output = await api.applyCommands(
       '-i world_land.json -proj +proj=robin -o format=geopackage',
       {'world_land.json': input}

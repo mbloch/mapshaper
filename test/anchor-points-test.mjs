@@ -29,7 +29,7 @@ describe('mapshaper-anchor-points.js', function () {
       testInnerPoints('test/data/features/centroids/b.shp', a, done);
     })
     it('file C', function(done) {
-      testInnerPoints('test/data/six_counties.shp', a, done);
+      testInnerPoints('test/data/shapefile/six_counties.shp', a, done);
     })
     it('file A v2', function(done) {
       testInnerPoints('test/data/features/centroids/a.shp', b, done);

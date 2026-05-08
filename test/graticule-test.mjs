@@ -24,7 +24,7 @@ function hasMeridians(arr) {
 }
 
 function polygonTest(str) {
-  var path = 'test/data/world_land.json';
+  var path = 'test/data/geojson/world_land.json';
   it(str, function(done) {
     var cmd = `-i ${path} -proj ${str} densify -graticule polygon -o graticule.json`;
     api.applyCommands(cmd, {}, function(err, out) {
@@ -36,7 +36,7 @@ function polygonTest(str) {
 }
 
 function projTest(str, test) {
-  var path = 'test/data/world_land.json';
+  var path = 'test/data/geojson/world_land.json';
   it(str, function(done) {
     var cmd = `-i ${path} -proj ${str} densify -graticule -o graticule.json`;
     api.applyCommands(cmd, {}, function(err, out) {
@@ -78,7 +78,7 @@ describe('mapshaper-graticule.js', function () {
 
   it('reproject to match dataset with known projection', function(done) {
 
-    api.internal.testCommands('-i test/data/three_points.shp -proj +proj=robin -graticule', function(err, dataset) {
+    api.internal.testCommands('-i test/data/shapefile/three_points.shp -proj +proj=robin -graticule', function(err, dataset) {
       var graticule = dataset.layers[0];
       var bbox = api.internal.getLayerBounds(graticule, dataset.arcs);
       assert.equal(graticule.name, 'graticule');

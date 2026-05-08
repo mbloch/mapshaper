@@ -9,7 +9,7 @@ var ShpReader = api.internal.ShpReader,
     Bounds = api.internal.Bounds;
 
 function filePath(file) {
-  return path.join(helpers.__dirname, "data", file);
+  return path.join(helpers.__dirname, "data", "shapefile", file);
 }
 
 // Compare the bounds reported in .shp file and record headers
