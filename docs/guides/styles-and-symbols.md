@@ -1,9 +1,9 @@
 ---
-title: Styles and Symbols
+title: Styles and symbols
 description: How to use -style and -classify to style base layers, data layers and labels for SVG export and web UI previews.
 ---
 
-# Styles and Symbols
+# Styles and symbols
 
 Mapshaper can attach SVG styling properties to features with [`-style`](/docs/reference.html#-style), and it can assign colors or other values from data with [`-classify`](/docs/reference.html#-classify). The [`-symbols`](/docs/reference.html#-symbols) command creates arrows and other symbols. These commands are useful when you want to create a styled map that can be exported as an SVG file.
 

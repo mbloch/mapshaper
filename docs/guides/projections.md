@@ -1,9 +1,9 @@
 ---
-title: Projections
+title: Map projections
 description: How to reproject geographic data with Mapshaper, including CRS notation, built-in aliases, and the albersusa composite projection.
 ---
 
-# Projections
+# Map projections
 
 Mapshaper's [`-proj`](/docs/reference.html#-proj) command reprojects a dataset from one coordinate reference system (CRS) to another, using a JavaScript port of the [PROJ](https://proj.org/) coordinate transformation library.
 
