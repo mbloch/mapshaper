@@ -137,7 +137,7 @@ To preserve CRS metadata between editing sessions, use Shapefile, GeoPackage, Fl
 Polygon winding controls which side of a ring is treated as the polygon interior. For most small land polygons:
 
 - RFC 7946 GeoJSON uses counter-clockwise outer rings and clockwise holes.
-- D3's spherical polygon convention uses the opposite orientation.
+- D3's spherical polygon convention uses the opposite orientation (see the [d3-geo winding order notebook](https://observablehq.com/@d3/winding-order) and the [d3-geo overview](https://d3js.org/d3-geo) for details).
 - SVG and Canvas planar rendering usually care less, but holes can still render incorrectly when winding is inconsistent.
 
 Mapshaper writes RFC 7946 winding by default. For D3 geographic rendering, try:
