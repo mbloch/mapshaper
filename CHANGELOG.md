@@ -1,3 +1,7 @@
+v0.7.11
+* Fixed bugs affecting GeoParquet i/o.
+* Added a `-o reverse-winding` option to help create D3-compatible GeoJSON files.
+
 v0.7.10
 * Added web UI undo and redo.
 * Added a History menu to the web UI's top bar for turning on undo (disabled by default), moved the console button to a tab on the left side.
