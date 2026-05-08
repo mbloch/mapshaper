@@ -276,7 +276,7 @@ LOS ANGELES,,`;
     })
 
     it('use comma as default delimiter if other methods fail', function (done) {
-      var cmd = '-i test/data/two_states.shp -o output.txt';
+      var cmd = '-i test/data/shapefile/two_states.shp -o output.txt';
       api.applyCommands(cmd, {}, function(err, output) {
         var o = output[0];
         assert.ok(output['output.txt'].indexOf(',') > -1); // got commas

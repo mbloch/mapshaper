@@ -17,7 +17,7 @@ describe('mapshaper-file-import.js', function () {
     })
 
     it('import .shp when .dbf is present', function () {
-      var path = fixPath('data/two_states.shp');
+      var path = fixPath('data/shapefile/two_states.shp');
       var dataset = api.internal.importFile(path);
       var lyr = dataset.layers[0];
       assert.equal(lyr.shapes.length, 2);

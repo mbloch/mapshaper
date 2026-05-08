@@ -37,21 +37,21 @@ describe('mapshaper-scalebar.js', function () {
 
   describe('-scalebar command', function() {
     it ('works without initial data', async function() {
-      var file = 'test/data/two_states.json';
+      var file = 'test/data/geojson/two_states.json';
       var cmd = `-scalebar -i ${file} -proj lcc -target * -o map.svg`;
       var out = await api.applyCommands(cmd);
       assert(!!out['map.svg']);
     })
 
     it ('supports custom labels', async function() {
-      var file = 'test/data/two_states.json';
+      var file = 'test/data/geojson/two_states.json';
       var cmd = `-scalebar "100 k.m." -i ${file} -proj lcc -target * -o map.svg`;
       var out = await api.applyCommands(cmd);
       assert(out['map.svg'].includes("100 k.m."));
     })
 
     it('error thrown when map is unprojected', async function() {
-      var file = 'test/data/two_states.json';
+      var file = 'test/data/geojson/two_states.json';
       var cmd = `-scalebar "100 k.m." -i ${file} -target * -o map.svg`;
       assert.rejects(async function() {
         var out = await api.applyCommands(cmd);
@@ -60,7 +60,7 @@ describe('mapshaper-scalebar.js', function () {
 
     // TODO: decide if we want to skip scalebar in GeoJSON output
     // it ('GeoJSON output', async function() {
-    //   var file = 'test/data/two_states.json';
+    //   var file = 'test/data/geojson/two_states.json';
     //   var cmd = `-scalebar -i ${file} -proj lcc -target * -o map.geojson`;
     //   var out = await api.applyCommands(cmd);
     // });

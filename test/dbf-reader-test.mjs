@@ -173,7 +173,7 @@ describe('dbf-reader.js', function () {
 
   describe('DbfReader()', function () {
     it('#readRow() method', function () {
-      var buf = fs.readFileSync('test/data/two_states.dbf');
+      var buf = fs.readFileSync('test/data/shapefile/two_states.dbf');
       var reader = new api.internal.DbfReader(buf);
       // read second row
       assert.deepEqual(reader.readRow(1), { "STATE_NAME": "Washington", "FIPS": "53", "STATE": "WA", "LAT": 47.38, "LONG": -120.0});
@@ -206,14 +206,14 @@ describe('dbf-reader.js', function () {
 
   describe('Bug## Empty string field hangs', function () {
     it('Read table with zero-length string fields, ascii', function () {
-      var rows = importRecords('three_points.dbf');
+      var rows = importRecords('shapefile/three_points.dbf');
       assert.equal(rows.length, 3);
       assert.equal(rows[0].comment, '');
       assert.equal(rows[0].subregion, '');
     })
 
     it('Read table with zero-length string fields, latin1', function () {
-      var rows = importRecords('three_points.dbf', 'latin1');
+      var rows = importRecords('shapefile/three_points.dbf', 'latin1');
       assert.equal(rows.length, 3);
       assert.equal(rows[0].comment, '');
       assert.equal(rows[0].subregion, '');

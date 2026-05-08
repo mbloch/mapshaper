@@ -192,7 +192,7 @@ describe('mapshaper-join.js', function () {
     });
 
     it('test1, with field-types= option', function (done) {
-      var shp = "test/data/two_states.shp";
+      var shp = "test/data/shapefile/two_states.shp";
       var csv = "test/data/text/states.csv";
       var cmd = api.utils.format("-i %s -join %s keys=FIPS,STATE_FIPS fields=POP2010,SUB_REGION field-types=STATE_FIPS:str", shp, csv),
           target = [{"STATE_NAME":"Oregon","FIPS":"41","STATE":"OR","LAT":43.94,"LONG":-120.55,"POP2010":3831074,"SUB_REGION":"Pacific"},
@@ -205,7 +205,7 @@ describe('mapshaper-join.js', function () {
     })
 
     it('test2, with string-fields= option', function (done) {
-      var shp = "test/data/two_states.shp";
+      var shp = "test/data/shapefile/two_states.shp";
       var csv = "test/data/text/states.csv";
       var cmd = api.utils.format("-i %s -join %s keys=FIPS,STATE_FIPS fields=POP2010,SUB_REGION string-fields=STATE_FIPS,POP2010", shp, csv),
           target = [{"STATE_NAME":"Oregon","FIPS":"41","STATE":"OR","LAT":43.94,"LONG":-120.55,"POP2010":"3831074","SUB_REGION":"Pacific"},
@@ -218,7 +218,7 @@ describe('mapshaper-join.js', function () {
     })
 
     it('join layers from two separately loaded datasets', function(done) {
-      var shp = "test/data/two_states.shp";
+      var shp = "test/data/shapefile/two_states.shp";
       var csv = "test/data/text/states.csv";
       var cmd = api.utils.format("-i %s -i %s field-types=STATE_FIPS:str -join target=two_states states keys=FIPS,STATE_FIPS fields=POP2010,SUB_REGION ", shp, csv);
       var target = [{"STATE_NAME":"Oregon","FIPS":"41","STATE":"OR","LAT":43.94,"LONG":-120.55,"POP2010":3831074,"SUB_REGION":"Pacific"},

@@ -11,7 +11,7 @@ For command implementation guidance, see
 ## Start The GUI
 
 ```sh
-MAPSHAPER_GUI_NO_OPEN=1 bin/mapshaper-gui -p 5555 test/data/one_point.geojson
+MAPSHAPER_GUI_NO_OPEN=1 bin/mapshaper-gui -p 5555 test/data/geojson/one_point.geojson
 ```
 
 Open:

@@ -31,7 +31,7 @@ describe('zip i/o', function () {
   });
 
   it('GeoJSON roundtrip', async function() {
-    var file = 'test/data/three_points.geojson';
+    var file = 'test/data/geojson/three_points.geojson';
     var cmd = `-i ${file} -o data.zip`;
     var out = await api.applyCommands(cmd);
     var cmd2 = '-i data.zip -o data.geojson';

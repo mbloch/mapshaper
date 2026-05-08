@@ -21,13 +21,11 @@ export function setLoggingForGUI(gui) {
 
   function message() {
     var msg = GUI.formatMessageArgs(arguments);
-    if (gui.notify) {
-      gui.notify({severity: 'info', body: msg});
-    } else {
+    if (!gui.notify) {
       // Fallback for early messages before MessageControl is constructed
       gui.message(msg);
-      internal.logArgs(arguments);
     }
+    internal.logArgs(arguments);
   }
 
   // CLI warnings used to surface as modal alerts, which interrupt the user

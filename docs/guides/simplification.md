@@ -27,7 +27,8 @@ Natural Earth 10m coastlines, simplified with modified Visvalingam at 5% point r
 Same file using Douglas-Peucker, also 5% simplification.
 ![image](/docs/images/simplification-dp.png)
 
-Zoomed-in view of Norwegian coastline at 5% simplification; left: weighted Visvalingam, right: Douglas-Peucker.
+Zoomed-in view of Norwegian coastline at 5% simplification; left: weighted Visvalingam, right: Douglas-Peucker. These figures illustrate the different ways each method removes detail. In a finished map, you would apply far less simplification than this — simplification artifacts generally should not be discernible to the naked eye.
+
 ![image](/docs/images/simplification-detail.png)
 
 ## Simplification amount

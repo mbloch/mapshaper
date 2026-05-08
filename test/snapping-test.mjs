@@ -86,7 +86,7 @@ describe('mapshaper-snapping.js', function () {
     });
 
     it('fix-geometry option', async function() {
-      var file = 'test/data/six_counties.shp';
+      var file = 'test/data/shapefile/six_counties.shp';
       var cmd = `-i ${file} -snap precision=0.0001 fix-geometry -check-geometry strict`;
       await api.applyCommands(cmd); // throws if geometry error
     });

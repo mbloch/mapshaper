@@ -1,6 +1,6 @@
 import { expect, test } from '@playwright/test';
 
-var POINT_FIXTURE = 'test/data/three_points.geojson';
+var POINT_FIXTURE = 'test/data/geojson/three_points.geojson';
 var LINE_FIXTURE = 'test/data/features/clean/ex20_ogc_line.json';
 var POLYGON_FIXTURE = 'test/data/features/dissolve2/ex3_two_polygons.json';
 var PROJECTED_POLYGON_FIXTURE = 'test/data/features/polygon_join/ex1_outer.json';

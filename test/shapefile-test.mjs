@@ -48,7 +48,7 @@ describe('mapshaper-shapefile.js', function () {
     });
 
     it('prj is exported if input prj is present', function() {
-      var data = api.internal.importFile(fixPath('data/three_points.shp'), {});
+      var data = api.internal.importFile(fixPath('data/shapefile/three_points.shp'), {});
       var files = api.internal.exportFileContent(data, {});
       var prj = api.utils.find(files, function(o) {
         return o.filename == 'three_points.prj';
@@ -57,7 +57,7 @@ describe('mapshaper-shapefile.js', function () {
     });
 
     it('prj is exported if data is reprojected to "webmercator"', function(done) {
-      api.applyCommands('-i test/data/three_points.shp -proj webmercator -o', {}, function(err, output) {
+      api.applyCommands('-i test/data/shapefile/three_points.shp -proj webmercator -o', {}, function(err, output) {
         var prj = output['three_points.prj']
         assert(/Pseudo-Mercator/.test(prj));
         done();
@@ -65,7 +65,7 @@ describe('mapshaper-shapefile.js', function () {
     });
 
     it('Albers WKT is exported if data is reprojected to "albersusa"', function(done) {
-      api.applyCommands('-i test/data/three_points.shp -proj albersusa -o', {}, function(err, output) {
+      api.applyCommands('-i test/data/shapefile/three_points.shp -proj albersusa -o', {}, function(err, output) {
         var prj = output['three_points.prj']
         assert(/Albers/.test(prj));
         done();
@@ -73,7 +73,7 @@ describe('mapshaper-shapefile.js', function () {
     });
 
     it('WGS84 prj is generated if input is unprojected GeoJSON', function(done) {
-      api.applyCommands('-i test/data/three_points.geojson -o format=shapefile', {}, function(err, output) {
+      api.applyCommands('-i test/data/geojson/three_points.geojson -o format=shapefile', {}, function(err, output) {
         var prj = output['three_points.prj']
         assert(/WGS84/.test(prj));
         done();
@@ -81,7 +81,7 @@ describe('mapshaper-shapefile.js', function () {
     });
 
     it('Fallback WKT (with custom_proj4 PROJECTION) is generated if CRS has no known WKT equivalent', function(done) {
-      api.applyCommands('-i test/data/three_points.geojson -proj +proj=boggs -o format=shapefile', {}, function(err, output) {
+      api.applyCommands('-i test/data/geojson/three_points.geojson -proj +proj=boggs -o format=shapefile', {}, function(err, output) {
         var prj = output['three_points.prj']
         assert(prj.indexOf('custom_proj4') > -1);
         assert(prj.indexOf('EXTENSION["PROJ4","+proj=boggs') > -1);
@@ -90,14 +90,14 @@ describe('mapshaper-shapefile.js', function () {
     });
 
     it('.cpg is generated using the default DBF encoding (UTF-8)', function(done) {
-      api.applyCommands('-i test/data/three_points.geojson -o format=shapefile', {}, function(err, output) {
+      api.applyCommands('-i test/data/geojson/three_points.geojson -o format=shapefile', {}, function(err, output) {
         assert.equal(output['three_points.cpg'], 'UTF-8');
         done();
       });
     });
 
     it('.cpg matches the requested DBF encoding', function(done) {
-      api.applyCommands('-i test/data/three_points.geojson -o format=shapefile encoding=latin1', {}, function(err, output) {
+      api.applyCommands('-i test/data/geojson/three_points.geojson -o format=shapefile encoding=latin1', {}, function(err, output) {
         assert.equal(output['three_points.cpg'], 'latin1');
         done();
       });
@@ -210,11 +210,11 @@ describe('mapshaper-shapefile.js', function () {
   describe('Export/Import roundtrip tests', function () {
 
     it('Six counties', function () {
-      shapefileRoundTrip('data/six_counties.shp');
+      shapefileRoundTrip('data/shapefile/six_counties.shp');
     })
 
     it('Six counties, two null geometries', function () {
-      shapefileRoundTrip('data/two_states.shp');
+      shapefileRoundTrip('data/shapefile/two_states.shp');
     })
 
     it('World land borders from Natural Earth', function() {
@@ -230,11 +230,11 @@ describe('mapshaper-shapefile.js', function () {
     })
 
     it('Single multipoint record (shplib)', function() {
-      shapefileRoundTrip('data/shplib/multipnt.shp');
+      shapefileRoundTrip('data/shapefile/shplib/multipnt.shp');
     })
 
     it('POINTZ layer (shplib)', function() {
-      shapefileRoundTrip('data/shplib/masspntz.shp');
+      shapefileRoundTrip('data/shapefile/shplib/masspntz.shp');
     })
 
   })
