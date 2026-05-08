@@ -316,8 +316,8 @@ async function resolveGeoParquetCrsString(crs) {
   var candidates = getGeoParquetCrsStrings(crs);
   for (var i = 0; i < candidates.length; i++) {
     try {
-      parseCrsString(candidates[i]);
       await initProjLibrary({crs: candidates[i]});
+      parseCrsString(candidates[i]);
       return candidates[i];
     } catch (e) {
       // Keep trying candidates; if none initialize, caller will warn.
