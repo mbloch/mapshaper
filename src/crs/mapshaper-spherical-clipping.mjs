@@ -7,6 +7,7 @@ import { getAntimeridian } from '../geom/mapshaper-latlon';
 import { importGeoJSON } from '../geojson/geojson-import';
 import { bboxToPolygon } from '../commands/mapshaper-rectangle';
 import { dissolveArcs } from '../paths/mapshaper-arc-dissolve';
+import { forEachSegmentInShape } from '../paths/mapshaper-path-utils';
 import { transformPoints } from '../dataset/mapshaper-dataset-utils';
 import utils from '../utils/mapshaper-utils';
 import { testBoundsInPolygon } from '../geom/mapshaper-polygon-geom';
@@ -44,7 +45,7 @@ function clipLayersIfNeeded(dataset, clipData) {
     return layerHasGeometry(lyr) && !layerIsFullyEnclosed(lyr, dataset, clipData);
   });
   if (layers.length > 0) {
-    clipLayersInPlace(layers, clipData, dataset, 'clip');
+    clipLayersInPlace(layers, clipData, dataset, 'clip', getInternalClipOpts());
     return true;
   }
   return false;
@@ -83,13 +84,21 @@ function clampDataset(dataset, bbox) {
 }
 
 function datasetCrossesLon(dataset, lon) {
-  var crosses = 0;
-  dataset.arcs.forEachSegment(function(i, j, xx, yy) {
-    var ax = xx[i],
-        bx = xx[j];
-    if (ax <= lon && bx >= lon || ax >= lon && bx <= lon) crosses++;
+  var crosses = false;
+  dataset.layers.filter(layerHasPaths).forEach(function(lyr) {
+    if (crosses) return;
+    lyr.shapes.forEach(function(shp) {
+      if (crosses || !shp) return;
+      forEachSegmentInShape(shp, dataset.arcs, function(i, j, xx, yy) {
+        var ax = xx[i],
+            bx = xx[j];
+        if (ax <= lon && bx >= lon || ax >= lon && bx <= lon) {
+          crosses = true;
+        }
+      });
+    });
   });
-  return crosses > 0;
+  return crosses;
 }
 
 function insertVerticalCut(dataset, lon) {
@@ -100,5 +109,9 @@ function insertVerticalCut(dataset, lon) {
   // densify (so cut line can curve, e.g. Cupola projection)
   var geojson = bboxToPolygon(bbox, {interval: 0.5});
   var clip = importGeoJSON(geojson);
-  clipLayersInPlace(pathLayers, clip, dataset, 'erase');
+  clipLayersInPlace(pathLayers, clip, dataset, 'erase', getInternalClipOpts());
+}
+
+function getInternalClipOpts() {
+  return {no_cleanup: true, no_warn: true};
 }

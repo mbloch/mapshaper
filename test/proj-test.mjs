@@ -20,6 +20,33 @@ describe('mapshaper-proj.js', function() {
         done();
       })
     })
+
+    it('does not warn from antimeridian pre-cut after filtering', async function() {
+      var input = {
+        type: 'FeatureCollection',
+        features: [{
+          type: 'Feature',
+          properties: {keep: true},
+          geometry: {type: 'Polygon', coordinates: [[
+            [73, 18], [135, 18], [135, 54], [73, 54], [73, 18]
+          ]]}
+        }, {
+          type: 'Feature',
+          properties: {keep: false},
+          geometry: {type: 'Polygon', coordinates: [[
+            [-100, 0], [-50, 0], [-50, 10], [-100, 10], [-100, 0]
+          ]]}
+        }]
+      };
+      var cmd = '-i countries.json name=countries -filter keep -proj lcc -o format=geojson';
+      var captured = await captureLogCallsAsync(function() {
+        return api.applyCommands(cmd, {'countries.json': input});
+      });
+      var hit = captured.log.find(function(line) {
+        return /does not overlap target/.test(line);
+      });
+      assert.equal(hit, undefined);
+    });
   })
 
   describe('dynamic projection definition using -calc', function () {
