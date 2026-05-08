@@ -289,35 +289,23 @@ function validateGeoParquetCompressionLevel(level, codec) {
 async function loadZstdLib() {
   var mod;
   if (runningInBrowser()) {
-    mod = require('zstd-codec');
+    mod = require('@bokuweb/zstd-wasm');
   } else {
     if (!zstdPromise) {
-      zstdPromise = dynamicImportModule('zstd-codec');
+      zstdPromise = dynamicImportModule('@bokuweb/zstd-wasm');
     }
     mod = await zstdPromise;
   }
-  if (mod && mod.default && !mod.ZstdCodec) {
+  if (mod && mod.default && !mod.compress) {
     mod = mod.default;
   }
-  if (!mod || !mod.ZstdCodec || typeof mod.ZstdCodec.run != 'function') {
+  if (!mod || typeof mod.init != 'function' || typeof mod.compress != 'function') {
     stop('GeoParquet ZSTD compressor is not loaded');
   }
-  return initZstdCodec(mod.ZstdCodec);
+  await mod.init();
+  return initZstdCodec(mod);
 }
 
 function initZstdCodec(codec) {
-  return new Promise(function(resolve, reject) {
-    try {
-      codec.run(function(zstd) {
-        var simple = new zstd.Simple();
-        resolve({
-          compress: function(bytes, level) {
-            return simple.compress(bytes, level);
-          }
-        });
-      });
-    } catch (e) {
-      reject(e);
-    }
-  });
+  return codec;
 }

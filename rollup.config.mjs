@@ -27,6 +27,15 @@ const onGeoPackageBundle = {
   }
 };
 
+const onGeoParquetBundle = {
+  name: 'ongeoparquetbundle',
+  writeBundle() {
+    const src = path.join(__dirname, 'node_modules/@bokuweb/zstd-wasm/dist/web/zstd.wasm');
+    const dest = path.join(__dirname, 'www/zstd.wasm');
+    fs.writeFileSync(dest, fs.readFileSync(src));
+  }
+};
+
 function onGeoPackageWarn(warning, warn) {
   // @ngageoint/geopackage includes eval() in bundled vendor code.
   // Ignore this warning to avoid printing the full minified library source.
@@ -111,6 +120,7 @@ export default [{
     name: 'mapshaperGeoParquet'
   },
   plugins: [
+    onGeoParquetBundle,
     nodeResolve({
       browser: true,
       preferBuiltins: false

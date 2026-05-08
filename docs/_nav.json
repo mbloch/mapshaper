@@ -32,9 +32,9 @@
         { "label": "Styles and symbols", "file": "styles-and-symbols.md" },
         { "label": "JavaScript expressions", "file": "expressions.md" },
         { "label": "Map projections", "file": "projections.md" },
-        { "label": "Preparing data for web maps", "file": "geojson-for-web-maps.md" },
         { "label": "Topology and cleaning", "file": "topology.md" },
         { "label": "Combining two layers", "file": "combining-layers.md" },
+        { "label": "Preparing data for web maps", "file": "geojson-for-web-maps.md" },
         { "label": "Using Mapshaper from Node.js", "file": "programmatic.md" }
       ]
     },

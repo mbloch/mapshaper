@@ -23,7 +23,7 @@ There are no GeoParquet-specific `-i` options.
 
 ### Format-specific output options
 
-- `compression=snappy|zstd|none` &mdash; select Parquet column compression. The default is `snappy`. Use `none` or `uncompressed` to write uncompressed Parquet data.
+- `compression=snappy|zstd|none` &mdash; select Parquet column compression. The default is `snappy`. Use `none` to write uncompressed Parquet data. Snappy is designed for fast compression and decompression at moderate compression ratios. ZSTD is slower to compress but typically produces smaller files and is often preferred when file size matters more than write speed (e.g. files published for download or stored in a cloud bucket).
 - `level=` &mdash; set the ZSTD compression level when using `compression=zstd`. Valid values are integers from 1 to 22. If omitted, the ZSTD library default is used.
 
 ### Practical notes
