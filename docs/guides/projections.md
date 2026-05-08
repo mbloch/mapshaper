@@ -62,12 +62,17 @@ For **Lambert Conformal Conic** (`lcc`) and **Albers Equal Area Conic** (`aea`),
 
 For **Transverse Mercator** (`tmerc`, `etmerc`), it calculates the central meridian and latitude of origin (`lon_0`, `lat_0`) from the center of the bounding box.
 
+For **Universal Transverse Mercator** (`utm`), it calculates the UTM zone from the center longitude of the bounding box and adds `+south` when the center latitude is in the southern hemisphere.
+
 ```bash
 # Mapshaper fills in lon_0, lat_1, lat_2 based on the data extent
 mapshaper region.geojson -proj lcc -o region_lcc.geojson
 
 # Equivalent — Mapshaper fills in lon_0 and lat_0
 mapshaper region.geojson -proj tmerc -o region_tmerc.geojson
+
+# Equivalent — Mapshaper fills in zone and hemisphere
+mapshaper region.geojson -proj utm -o region_utm.geojson
 ```
 
 When Mapshaper auto-fits parameters, it prints the expanded PROJ string so you can see exactly what was applied — for example: `Converted "lcc" to "+proj=lcc +lon_0=-95.5 +lat_1=30.17 +lat_2=44.83"`. You can copy that string and use it explicitly if you need reproducible output.
