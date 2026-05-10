@@ -1379,6 +1379,12 @@ Example: `hatches 45deg 2px red 2px grey`
 
 `r=`               Circle radius. Setting this exports points as SVG `<circle>` symbols, unless the `-o point-symbol=square` option is used.
 
+`icon=`            Point icon shape. Possible values are: circle, square, ring or star. Icons are rendered as SVG symbols and can be combined with labels on the same point layer.
+
+`icon-size=`       Point icon size in pixels. If `icon=` is missing, `icon-size=` creates circle icons.
+
+`icon-color=`      Point icon color. If missing, icons use the `fill=` color, or black if `fill=` is also missing. Ring icons use this color for the stroke.
+
 `label-text=`      Label text (set this to export points as labels). To create multiline labels, insert line delimiters into the label text. There are three possible line delimiters: the newline character, `\n` (backslash + "n"), and `<br>`. (When importing JSON data, `\n` in a JSON string is parsed as a newline and `\\n` is parsed as backslash + "n"). Note that Mapshaper doesn't accept multiline strings as input on the command line.
   
 `text-anchor=`     Horizontal justification of label text. Possible values are: start, end or middle (the default).

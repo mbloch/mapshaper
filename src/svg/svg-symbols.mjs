@@ -48,10 +48,42 @@ function renderSymbol(d) {
   if (d['svg-symbol']) {
     return renderComplexSymbol(d['svg-symbol']);
   }
+  if (featureHasIcon(d)) {
+    return renderIcon(d);
+  }
   if (d.r > 0) {
     return circle(d);
   }
   return empty();
+}
+
+function featureHasIcon(d) {
+  return !!(d && (d.icon || d['icon-size'] || (d['icon-color'] && d.r > 0)));
+}
+
+function renderIcon(d) {
+  var type = d.icon || 'circle';
+  var r = getIconRadius(d);
+  if (r > 0 === false) return empty();
+  if (type == 'circle') return circle(getIconStyleData(d, r));
+  if (type == 'square') return square(getIconStyleData(d, r), 0, 0);
+  if (type == 'ring') return ring(getIconStyleData(d, r), 0, 0);
+  if (type == 'star') return star(getIconStyleData(d, r));
+  message('Unknown icon type: ' + type);
+  return empty();
+}
+
+function getIconRadius(d) {
+  if (d['icon-size'] > 0) return d['icon-size'] / 2;
+  if (d.r > 0) return d.r;
+  return 5;
+}
+
+function getIconStyleData(d, r) {
+  var o = utils.extend({}, d);
+  o.r = r;
+  o.fill = d['icon-color'] || d.fill || 'black';
+  return o;
 }
 
 function renderComplexSymbol(sym, x, y) {
@@ -128,8 +160,42 @@ function square(d, x, y) {
       height: r * 2
     }
   };
-  applyStyleAttributes(o, 'point', d);
+  applyStyleAttributes(o, 'point', d, nonCirclePointFilter);
   return o;
+}
+
+function ring(d, x, y) {
+  var o = circle(d, x, y);
+  o.properties.fill = 'none';
+  o.properties.stroke = d.fill;
+  if (!o.properties['stroke-width']) {
+    o.properties['stroke-width'] = 1;
+  }
+  return o;
+}
+
+function star(d) {
+  var coords = getStarCoords(d.r);
+  var o = importPolygon([coords]);
+  applyStyleAttributes(o, 'point', d, nonCirclePointFilter);
+  return o;
+}
+
+function nonCirclePointFilter(k) {
+  return k != 'r';
+}
+
+function getStarCoords(r) {
+  var coords = [];
+  var innerR = r * 0.42;
+  var angle, len;
+  for (var i=0; i<10; i++) {
+    len = i % 2 === 0 ? r : innerR;
+    angle = -Math.PI / 2 + i * Math.PI / 5;
+    coords.push([roundToTenths(Math.cos(angle) * len), roundToTenths(Math.sin(angle) * len)]);
+  }
+  coords.push(coords[0].concat());
+  return coords;
 }
 
 function line(d, x, y) {

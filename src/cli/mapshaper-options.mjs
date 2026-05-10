@@ -1687,6 +1687,15 @@ export function getOptionParser() {
     .option('r', {
       describe: 'symbol radius (set this to export points as circles)',
     })
+    .option('icon', {
+      describe: 'point icon shape; one of: circle, square, ring, star'
+    })
+    .option('icon-size', {
+      describe: 'point icon size in pixels'
+    })
+    .option('icon-color', {
+      describe: 'point icon color (defaults to fill color, then black)'
+    })
     .option('label-text', {
       describe: 'label text (set this to export points as labels)'
     })

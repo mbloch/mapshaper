@@ -20,6 +20,9 @@ var stylePropertyTypes = {
   'font-style': null,
   'font-stretch': null,
   'font-weight': null,
+  icon: null,
+  'icon-color': 'color',
+  'icon-size': 'number',
   'label-text': null,  // leaving this null
   'letter-spacing': 'measure',
   'line-height': 'measure',
