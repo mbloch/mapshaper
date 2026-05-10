@@ -67,5 +67,48 @@ describe('svg-symbols.js', function () {
       assert.deepEqual(output, target);
     });
 
+    it('renders a square icon', function() {
+      var output = renderPoint({icon: 'square', 'icon-size': 8, fill: 'red'});
+      var target = {
+        tag: 'rect',
+        properties: {x: -4, y: -4, width: 8, height: 8, fill: 'red'}
+      };
+      assert.deepEqual(output, target);
+    });
+
+    it('renders a ring icon using fill as fallback color', function() {
+      var output = renderPoint({icon: 'ring', 'icon-size': 8, fill: 'red'});
+      var target = {
+        tag: 'circle',
+        properties: {cx: 0, cy: 0, r: 4, fill: 'none', stroke: 'red', 'stroke-width': 1}
+      };
+      assert.deepEqual(output, target);
+    });
+
+    it('lets icon-color override fill', function() {
+      var output = renderPoint({icon: 'circle', 'icon-size': 8, fill: 'red', 'icon-color': 'blue'});
+      var target = {
+        tag: 'circle',
+        properties: {cx: 0, cy: 0, r: 4, fill: 'blue'}
+      };
+      assert.deepEqual(output, target);
+    });
+
+    it('applies icon-color to r circles', function() {
+      var output = renderPoint({r: 4, 'icon-color': 'blue'});
+      var target = {
+        tag: 'circle',
+        properties: {cx: 0, cy: 0, r: 4, fill: 'blue'}
+      };
+      assert.deepEqual(output, target);
+    });
+
+    it('renders a star icon with a default black fill', function() {
+      var output = renderPoint({icon: 'star', 'icon-size': 10});
+      assert.equal(output.tag, 'path');
+      assert.equal(output.properties.fill, 'black');
+      assert(output.properties.d.includes('M 0 -5'));
+    });
+
   })
 })

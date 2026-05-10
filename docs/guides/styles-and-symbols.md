@@ -30,6 +30,14 @@ To make circles from a point layer, add a `r=` (for radius) property along with 
   stroke='rgba(0, 0, 0, 0.15)'
 ```
 
+### Making point icons
+
+Use `icon=` with `icon-size=` to add circle, square, ring or star icons to a point layer. Icons use `icon-color=` when it is provided. Otherwise they use the layer's `fill=` color, falling back to black.
+
+```text
+-style icon=star icon-size=10 fill="#333"
+```
+
 ## Styling data layers with the `-classify` command
 
 ### Classed and unclassed color gradients
@@ -120,6 +128,13 @@ Use `dx=` together with `text-anchor=start` or `text-anchor=end` to place labels
 
 ```text
 -style label-text=NAME dx=6 dy=3 font-size=12 text-anchor=start r=2
+```
+
+For labeled point icons, use `icon=` on the same layer. In this example the icon and label both use `fill="#555"`.
+
+```text
+-style label-text=NAME dx=8 dy=3 text-anchor=start \
+  icon=circle icon-size=6 fill="#555"
 ```
 
 You can combine `where=` with multiple `-style` commands to emphasize important labels.

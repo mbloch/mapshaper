@@ -3,7 +3,7 @@
 // higher-level mapshaper-svg.mjs (which would otherwise form a cycle).
 
 export function featureHasSvgSymbol(d) {
-  return !!(d && (d['svg-symbol'] || d.r));
+  return !!(d && (d['svg-symbol'] || d.r || d.icon || d['icon-size']));
 }
 
 export function featureHasLabel(d) {

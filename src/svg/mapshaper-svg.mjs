@@ -292,7 +292,7 @@ export function getEmptyLayerForSVG(lyr, opts) {
   // TODO: set fill="none" in SVG symbols, not on the container
   //   (setting fill=none on the container overrides the default black fill
   //   on paths, which may alter the appearance of SVG icons loaded from external URLs).
-  if (lyr.geometry_type == 'polyline' || layerHasSvgSymbols(lyr)) {
+  if (lyr.geometry_type == 'polyline' || layerHasSvgSymbolField(lyr)) {
     layerObj.properties.fill = 'none';
   }
 
@@ -318,6 +318,15 @@ export function getEmptyLayerForSVG(lyr, opts) {
 export { featureHasSvgSymbol, featureHasLabel } from '../svg/svg-feature-utils';
 
 export function layerHasSvgSymbols(lyr) {
+  return lyr.geometry_type == 'point' && lyr.data && (
+    lyr.data.fieldExists('svg-symbol') ||
+    lyr.data.fieldExists('icon') ||
+    lyr.data.fieldExists('icon-size') ||
+    (lyr.data.fieldExists('icon-color') && lyr.data.fieldExists('r'))
+  );
+}
+
+function layerHasSvgSymbolField(lyr) {
   return lyr.geometry_type == 'point' && lyr.data && lyr.data.fieldExists('svg-symbol');
 }
 

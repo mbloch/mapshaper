@@ -47,6 +47,23 @@ describe('mapshaper-svg-style.js', function () {
       assert(svg.includes('fill="white"'));
       assert(svg.includes('style="filter: drop-shadow(1px 1px 5px rgba(0, 0, 0, .7));"'));
     });
+
+    it('-style icon does not hide labels without fill=', async function() {
+      var geojson = {
+        type: 'FeatureCollection',
+        features: [{
+          type: 'Feature',
+          properties: {NAME: 'A'},
+          geometry: {type: 'Point', coordinates: [0, 0]}
+        }]
+      };
+      var cmd = '-i pts.geojson -style label-text=NAME icon=circle icon-size=8 -o out.svg';
+      var output = await api.applyCommands(cmd, {'pts.geojson': JSON.stringify(geojson)});
+      var svg = output['out.svg'];
+      assert(svg.includes('<circle cx="0" cy="0" r="4" fill="black"/>'));
+      assert(svg.includes('<text y="0" x="0">A</text>'));
+      assert(!svg.includes('<g id="pts" fill="none"'));
+    });
   })
 
 
@@ -170,6 +187,25 @@ describe('mapshaper-svg-style.js', function () {
         stroke: 'red',
         'label-text': 'green',
         fill: 'SteelBlue'
+      }];
+      api.cmd.svgStyle(lyr, {}, opts);
+      assert.deepEqual(lyr.data.getRecords(), target);
+    })
+
+    it('icon literals', function() {
+      var records = [{}]
+      var lyr = {
+        data: new api.internal.DataTable(records)
+      };
+      var opts = {
+        icon: 'star',
+        icon_size: '10',
+        icon_color: 'purple'
+      };
+      var target = [{
+        icon: 'star',
+        'icon-size': 10,
+        'icon-color': 'purple'
       }];
       api.cmd.svgStyle(lyr, {}, opts);
       assert.deepEqual(lyr.data.getRecords(), target);
