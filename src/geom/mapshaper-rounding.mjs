@@ -100,8 +100,10 @@ export const fround = Math.fround || fround2;
 export function setCoordinatePrecision(dataset, precision, fixGeom) {
   var round = getRoundingFunction(precision);
   var repairArcs = dataset.arcs && fixGeom ? getRepairFunction(dataset.arcs) : null;
-  transformPoints(dataset, function(x, y) {
-    return [round(x), round(y)];
+  transformPoints(dataset, function(x, y, z) {
+    return (z !== undefined)
+      ? [round(x), round(y), round(z)]
+      : [round(x), round(y)];
   });
   if (repairArcs) {
     repairArcs(dataset.arcs);
