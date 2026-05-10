@@ -324,7 +324,7 @@ mapshaper -run build.txt
 mapshaper build.txt
 ```
 
-Long pipelines can be kept in a [command file](/docs/reference.html#command-files). This is a CLI workflow; support for running command files in the web app is planned for a future release.
+Long pipelines can be kept in a [command file](/docs/essentials/command-line.html#command-files). This is a CLI workflow; support for running command files in the web app is planned for a future release.
 
 ### Parameterize a command file
 

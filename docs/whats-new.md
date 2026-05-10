@@ -51,7 +51,7 @@ This is a curated list of recently added features. For the full list of changes,
 mapshaper build.txt
 ```
 
-→ See [Command files](/docs/reference.html#command-files) in the reference.
+→ See [Command files](/docs/essentials/command-line.html#command-files) in the reference.
 </div>
 
 <div class="whats-new-entry">
@@ -62,7 +62,7 @@ mapshaper build.txt
 mapshaper -vars YEAR=2030 PCT=5 -run build.txt
 ```
 
-→ See [Variable interpolation](/docs/reference.html#variable-interpolation), [`-vars`](/docs/reference.html#-vars) and [`-defaults`](/docs/reference.html#-defaults).
+→ See [Variable interpolation](/docs/essentials/command-line.html#variable-interpolation), [`-vars`](/docs/reference.html#-vars) and [`-defaults`](/docs/reference.html#-defaults).
 </div>
 
 <div class="whats-new-entry">
