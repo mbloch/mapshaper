@@ -870,10 +870,14 @@ body.sidebar-resizing .sidebar-resize-handle::before,
 
 .sidebar-tabs {
 	position: absolute;
-	top: 55px; /* below line intersection repair link */
+	top: 85px; /* below line intersection repair link */
 	left: 0;
-	z-index: 25;
+	z-index: 40;
 	pointer-events: auto;
+}
+
+body.sidebar-open .sidebar-tabs {
+	left: var(--left-sidebar-width);
 }
 
 body.sidebar-tabs-over-popup .sidebar-tabs {
@@ -1130,12 +1134,12 @@ body.simplify .layer-control-btn {
 }
 
 .layer-control .no-layer-note {
-	color: #777;
-	margin: 4px 0 5px 0;
+	color: #999;
+	margin: 0 0 5px 0;
 }
 
 .layer-add-links {
-	margin: -2px 0 8px 0;
+	margin: 2px 0 2px 0;
 	font-size: 13px;
 	line-height: 1.2;
 }
@@ -1155,7 +1159,8 @@ body.simplify .layer-control-btn {
 }
 
 .layer-menu .layer-list {
-	margin: 6px 0 7px 0;
+	margin-top: -5px;
+	/* margin: 0 0 7px 0; */
 }
 
 .layer-menu .layer-item {
@@ -1173,12 +1178,28 @@ body.simplify .layer-control-btn {
 .pin-all img,
 .layer-item img
 {
-	position: absolute;
 	width: 16px;
 	height: 16px;
-	padding: 2px;
+	padding: 1px 2px 3px 2px;
 	right: 6px;
 }
+
+.layer-item .layer-btn {
+	position: absolute;
+	top: 5px;
+}
+
+
+.layer-item .more-btn {
+	position: absolute;
+	right: 28px;
+	width: 18px;
+	height: 18px;
+	opacity: 1;
+	cursor: pointer;
+	border-radius: 3px;
+}
+
 
 img.close-btn {
 	opacity: 0.2;
@@ -1202,24 +1223,11 @@ img.close-btn {
 }
 
 .pin-all img {
+	position: absolute;
 	top: 11px;
 	cursor: pointer;
 }
 
-.layer-item img.eye-btn {
-	top: 4px;
-}
-
-.layer-item .more-btn {
-	position: absolute;
-	top: 4px;
-	right: 28px;
-	width: 18px;
-	height: 18px;
-	opacity: 1;
-	cursor: pointer;
-	border-radius: 3px;
-}
 
 .layer-item .more-btn::before {
 	content: "";
@@ -1235,17 +1243,6 @@ img.close-btn {
 
 .layer-item .more-btn:hover {
 	background-color: #e5e5e5;
-}
-
-.layer-item img.close-btn {
-	/* top: 29px; */
-	bottom: 5px;
-}
-
-/* hide close button when not hovering */
-.layer-item:not(:hover) img.close-btn,
-.layer-item.dragging img.close-btn {
-	display: none;
 }
 
 img.eye-btn {
@@ -1265,7 +1262,6 @@ img.eye-btn {
 	opacity: 0;
 }*/
 
-img.close-btn:hover,
 .pinnable.active:not(.pinned):not(.invisible) img.black-eye,
 .pinnable.pinned:not(.active) img.green-eye,
 .pinnable.active.pinned:not(.invisible) img.black-eye {

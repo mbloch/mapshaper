@@ -6,6 +6,7 @@ import { GUI } from './gui-lib';
 
 
 var openMenu;
+var openMenuId;
 
 document.addEventListener('mousedown', function(e) {
   if (e.target.classList.contains('contextmenu-item')) {
@@ -14,17 +15,23 @@ document.addEventListener('mousedown', function(e) {
   closeOpenMenu();
 });
 
-function closeOpenMenu() {
+function closeOpenMenu(immediate) {
   if (openMenu) {
-    openMenu.close();
+    openMenu.close(immediate);
     openMenu = null;
+    openMenuId = null;
   }
 }
 
 export function openContextMenu(e, lyr, parent) {
   var menu = new ContextMenu(parent);
-  closeOpenMenu();
+  if (e.contextMenuId && e.contextMenuId == openMenuId) {
+    closeOpenMenu(true);
+    return;
+  }
+  closeOpenMenu(true);
   menu.open(e, lyr);
+  openMenuId = e.contextMenuId || null;
 }
 
 export function ContextMenu(parentArg) {
@@ -41,9 +48,14 @@ export function ContextMenu(parentArg) {
 
   this.close = close;
 
-  function close() {
+  function close(immediate) {
     var count = _openCount;
     if (!_open) return;
+    if (immediate) {
+      menu.hide();
+      _open = false;
+      return;
+    }
     setTimeout(function() {
       if (count == _openCount) {
         menu.hide();
