@@ -42,14 +42,14 @@ mapshaper provinces.geojson -simplify 20% \
   -o provinces_simplified.geojson
 ```
 
-The `interval` option takes a distance threshold. With Douglas-Peucker simplification (see below), this is the maximum deviation of the simplified line from the original. With Visvalingam-based methods, `interval=` describes the approximate size of the smallest details in the simplified output.
+The `interval` option takes a distance threshold. With Douglas-Peucker simplification, this is the maximum deviation of the simplified line from the original. With Visvalingam-based methods, `interval=` describes the approximate size of the smallest details in the simplified output.
 
 ```bash
 mapshaper provinces.geojson -simplify interval=500m \
   -o provinces_simplified.geojson
 ```
 
-The `resolution=` option lets you specify the intended display size of your map in SVG units (equivalent to CSS pixels). A larger value retains more detail, since Mapshaper estimates the display size using the full extent of your data. Be careful with this option if your final map will show a smaller geographic area, as the paths may be over-simplified.
+The `resolution=` option lets you specify the intended display size of your map in SVG units (equivalent to CSS pixels). A larger value retains more detail. Mapshaper estimates the display size using the full extent of your data, so be careful with this option if your final map will show a smaller geographic area, as the paths may be over-simplified.
 
 ```bash
 mapshaper provinces.geojson -simplify resolution=800 \
