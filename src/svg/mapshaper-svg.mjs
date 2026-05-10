@@ -5,13 +5,15 @@ import { setCoordinatePrecision } from '../geom/mapshaper-rounding';
 import { getScalebarLayer } from '../commands/mapshaper-scalebar';
 import { copyDataset } from '../dataset/mapshaper-dataset-utils';
 import utils from '../utils/mapshaper-utils';
-import { message, error, stop } from '../utils/mapshaper-logging';
+import { message, warn, error, stop } from '../utils/mapshaper-logging';
 import { stringify } from '../svg/svg-stringify';
 import { convertPropertiesToDefinitions } from '../svg/svg-definitions';
 import { getOutputFileBase } from '../utils/mapshaper-filename-utils';
 import { importGeoJSONFeatures } from '../svg/geojson-to-svg';
 import { layerIsRectangle, getLayerDataTable, copyLayer } from '../dataset/mapshaper-layer-utils';
 import { getDatasetCRS, getDatasetCrsInfo, crsToProj4, parseAuthorityCodeString, parseAuthorityCodeFromWkt } from '../crs/mapshaper-projections';
+
+var ILLUSTRATOR_PATH_VERTEX_LIMIT = 32000;
 
 //
 export function exportSVG(dataset, opts) {
@@ -177,6 +179,7 @@ function exportSymbolsForSVG(lyr, dataset, opts) {
   var d = utils.defaults({layers: [lyr]}, dataset);
   var geojson = exportDatasetAsGeoJSON(d, opts);
   var features = geojson.features || geojson.geometries || (geojson.type ? [geojson] : []);
+  warnIfIllustratorPathLimitExceeded(lyr, features);
   var children = importGeoJSONFeatures(features, opts);
   // Drop empty placeholder <g/> elements (features whose geometry was null in the
   // source data, collapsed during simplification, or otherwise produced no
@@ -193,6 +196,53 @@ function exportSymbolsForSVG(lyr, dataset, opts) {
     addDataAttributesToSVG(children, keptRecords, lyr.data.getFields(), opts.svg_data);
   }
   return children;
+}
+
+function warnIfIllustratorPathLimitExceeded(lyr, features) {
+  var count = 0;
+  var max = 0;
+  if (lyr.geometry_type != 'polygon' && lyr.geometry_type != 'polyline') return;
+  features.forEach(function(feature) {
+    var geom = feature.geometry || feature;
+    var n = countSvgPathVertices(geom);
+    if (n > ILLUSTRATOR_PATH_VERTEX_LIMIT) {
+      count++;
+      max = Math.max(max, n);
+    }
+  });
+  if (count > 0) {
+    warn(utils.format(
+      '%,d SVG path%s in layer "%s" contain%s more than %,d vertices; Adobe Illustrator may not import %s. The largest path has %,d vertices.',
+      count,
+      utils.pluralSuffix(count),
+      lyr.name || '[unnamed]',
+      count == 1 ? 's' : '',
+      ILLUSTRATOR_PATH_VERTEX_LIMIT,
+      count == 1 ? 'it' : 'them',
+      max
+    ));
+  }
+}
+
+function countSvgPathVertices(geom) {
+  var coords = geom && geom.coordinates;
+  if (!coords) return 0;
+  if (geom.type == 'LineString') return coords.length;
+  if (geom.type == 'MultiLineString' || geom.type == 'Polygon') {
+    return sumPathLengths(coords);
+  }
+  if (geom.type == 'MultiPolygon') {
+    return coords.reduce(function(sum, polygon) {
+      return sum + sumPathLengths(polygon);
+    }, 0);
+  }
+  return 0;
+}
+
+function sumPathLengths(paths) {
+  return paths.reduce(function(sum, path) {
+    return sum + path.length;
+  }, 0);
 }
 
 function isEmptyPlaceholder(o) {
