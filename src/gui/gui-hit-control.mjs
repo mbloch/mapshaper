@@ -53,8 +53,8 @@ export function HitControl(gui, ext, mouse) {
       // DELETE key
       // delete pinned feature
       // to help protect against inadvertent deletion, don't delete
-      // when console is open or a popup menu is open
-      if (!gui.getMode() && !gui.consoleIsOpen()) {
+      // when a sidebar panel or popup menu is open
+      if (!gui.getMode() && !gui.sidebarPanelIsOpen()) {
         internal.deleteFeatureById(targetLayer, pinnedId());
         self.clearSelection();
         gui.model.updated({flags: 'filter'}); // signal map to update

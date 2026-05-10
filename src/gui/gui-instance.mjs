@@ -50,6 +50,10 @@ export function GuiInstance(container, opts) {
 
 
   gui.state = {};
+  var sidebarPanel = null;
+  var lastSidebarPanel = 'console';
+  var sidebarWidth = GUI.getSavedValue('sidebar_width') || 0;
+  var sidebarResizeFrame = null;
 
   var msgCount = 0;
   var clearMsg;
@@ -90,9 +94,49 @@ export function GuiInstance(container, opts) {
     // if (gui.progressMessage) gui.progressMessage.hide();
   };
 
-  gui.consoleIsOpen = function() {
-    return gui.container.hasClass('console-open');
+  if (sidebarWidth) {
+    setSidebarWidth(sidebarWidth);
+  }
+
+  gui.getSidebarPanel = function() {
+    return sidebarPanel;
   };
+
+  gui.setSidebarPanel = function(name) {
+    var prev = sidebarPanel;
+    sidebarPanel = name || null;
+    if (sidebarPanel && gui.getMode()) {
+      gui.clearMode();
+    }
+    if (sidebarPanel == prev) return;
+    if (sidebarPanel) {
+      lastSidebarPanel = sidebarPanel;
+    }
+    gui.container
+      .classed('sidebar-open', !!sidebarPanel)
+      .classed('layers-open', sidebarPanel == 'layers')
+      .classed('console-open', sidebarPanel == 'console');
+    gui.dispatchEvent('sidebar', {name: sidebarPanel, prev: prev});
+    gui.dispatchEvent('resize');
+  };
+
+  gui.toggleSidebarPanel = function(name) {
+    gui.setSidebarPanel(sidebarPanel == name ? null : name);
+  };
+
+  gui.toggleSidebar = function() {
+    gui.setSidebarPanel(sidebarPanel ? null : lastSidebarPanel);
+  };
+
+  gui.sidebarPanelIsOpen = function() {
+    return !!sidebarPanel;
+  };
+
+  gui.consoleIsOpen = function() {
+    return sidebarPanel == 'console';
+  };
+
+  initSidebarResizing();
 
   gui.getRuntimeStateContext = function() {
     return getRuntimeStateContext(gui);
@@ -135,4 +179,48 @@ export function GuiInstance(container, opts) {
   }
 
   return gui;
+
+  function initSidebarResizing() {
+    var handle = gui.container.findChild('.sidebar-resize-handle');
+    if (!handle) return;
+    handle.on('mousedown', function(e) {
+      if (!gui.sidebarPanelIsOpen()) return;
+      e.preventDefault();
+      e.stopPropagation();
+      gui.container.addClass('sidebar-resizing');
+      window.addEventListener('mousemove', onMove);
+      window.addEventListener('mouseup', onRelease);
+    });
+
+    function onMove(e) {
+      setSidebarWidth(e.pageX);
+      scheduleSidebarResize();
+    }
+
+    function onRelease() {
+      window.removeEventListener('mousemove', onMove);
+      window.removeEventListener('mouseup', onRelease);
+      gui.container.removeClass('sidebar-resizing');
+      GUI.setSavedValue('sidebar_width', sidebarWidth);
+      scheduleSidebarResize();
+    }
+  }
+
+  function setSidebarWidth(width) {
+    sidebarWidth = clampSidebarWidth(width);
+    gui.container.node().style.setProperty('--left-sidebar-width', sidebarWidth + 'px');
+  }
+
+  function clampSidebarWidth(width) {
+    var max = Math.min(720, Math.round(window.innerWidth * 0.6));
+    return Math.max(220, Math.min(max, Math.round(width)));
+  }
+
+  function scheduleSidebarResize() {
+    if (sidebarResizeFrame) return;
+    sidebarResizeFrame = requestAnimationFrame(function() {
+      sidebarResizeFrame = null;
+      gui.dispatchEvent('resize');
+    });
+  }
 }

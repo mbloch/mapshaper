@@ -349,6 +349,7 @@ export function ImportControl(gui, opts) {
     // gui.container.addClass('queued-files');
     El('#import-options').show();
     gui.container.classed('queued-files', queuedFiles.length > 0);
+    updateSidebarTabZIndex();
     El('#path-import-options').classed('hidden', !filesMayContainPaths(queuedFiles));
     showQueuedFiles();
     updateGeoPackageLayerSelectionMenu();
@@ -356,7 +357,13 @@ export function ImportControl(gui, opts) {
 
   function hideImportMenu() {
     // gui.container.removeClass('queued-files');
+    gui.container.removeClass('sidebar-tabs-over-popup');
     El('#import-options').hide();
+  }
+
+  function updateSidebarTabZIndex() {
+    gui.container.classed('sidebar-tabs-over-popup',
+      queuedFiles.length === 0 && !gui.sidebarPanelIsOpen());
   }
 
   function getFileNames(files) {
