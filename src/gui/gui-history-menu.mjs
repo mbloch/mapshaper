@@ -139,7 +139,7 @@ function setAppUndoEnabled(enabled) {
 function getRestoreDataNote(gui) {
   var stats = getUndoPayloadStats(gui);
   var bytes = stats ? stats.ownBytes || 0 : 0;
-  return 'estimated on-disk restore data: ' + formatBytes(bytes);
+  return 'restore data stored on-disk: ' + formatBytes(bytes);
 }
 
 function getUndoPayloadStats(gui) {

@@ -17,8 +17,10 @@ import {
 export function LayerControl(gui) {
   var model = gui.model;
   var map = gui.map;
-  var el = gui.container.findChild(".layer-control").on('click', GUI.handleDirectEvent(gui.clearMode));
+  var el = gui.container.findChild(".layer-control");
   var btn = gui.container.findChild('.layer-control-btn');
+  var headerBtn = btn.findChild('.active-layer-label');
+  var tab = gui.container.findChild('.layer-tab');
   var isOpen = false;
   var cache = new DomCache();
   var pinAll = el.findChild('.pin-all'); // button for toggling layer visibility
@@ -28,7 +30,34 @@ export function LayerControl(gui) {
   var dragging = false;
   var layerOrderSlug;
 
-  gui.addMode('layer_menu', turnOn, turnOff, btn.findChild('.header-btn'));
+  headerBtn.on('click', function() {
+    gui.setSidebarPanel('layers');
+  }).on('keydown', function(e) {
+    if (e.key == 'Enter' || e.key == ' ') {
+      e.preventDefault();
+      e.stopPropagation();
+      gui.setSidebarPanel('layers');
+    }
+  });
+  tab.on('click', toggle).on('keydown', function(e) {
+    if (e.key == 'Enter' || e.key == ' ') {
+      e.preventDefault();
+      e.stopPropagation();
+      toggle();
+    }
+  });
+
+  function toggle() {
+    gui.toggleSidebarPanel('layers');
+  }
+
+  gui.on('sidebar', function(e) {
+    if (e.name == 'layers') {
+      turnOn();
+    } else if (e.prev == 'layers') {
+      turnOff();
+    }
+  });
 
   // kludge to show menu button after initial import dialog is dismissed
   gui.on('mode', function(e) {
@@ -114,53 +143,33 @@ export function LayerControl(gui) {
   }
 
   function turnOn() {
+    if (isOpen) return;
     isOpen = true;
-    el.findChild('div.info-box-scrolled').css('max-height', El('body').height() - 80);
+    tab.addClass('active').attr('aria-expanded', 'true');
     render();
     el.show();
   }
 
   function turnOff() {
+    if (!isOpen) return;
     stopDragging();
     isOpen = false;
+    tab.removeClass('active').attr('aria-expanded', 'false');
     el.hide();
   }
 
   function updateMenuBtn() {
     var lyr = model.getActiveLayer()?.layer;
     var lyrName = lyr?.name || '';
-    var menuTitle = lyrName || lyr && '[unnamed layer]' || '[no data]';
     var pageTitle = lyrName || 'mapshaper';
-    btn.classed('active', 'true').findChild('.layer-name').html(menuTitle + " &nbsp;&#9660;");
+    btn.classed('active', !!lyr);
+    headerBtn.text(lyr ? 'Active: ' + formatLayerNameForDisplay(lyr.name) : '');
     window.document.title = pageTitle;
   }
 
   function render() {
     renderLayerList();
-    renderSourceFileList();
-  }
-
-  function renderSourceFileList() {
     el.findChild('.no-layer-note').classed('hidden', model.getActiveLayer());
-    el.findChild('.source-file-section').classed('hidden', !model.getActiveLayer());
-    var list = el.findChild('.file-list');
-    var files = [];
-    list.empty();
-    model.forEachLayer(function(lyr, dataset) {
-      var file = internal.getLayerSourceFile(lyr, dataset);
-      if (!file || files.includes(file)) return;
-      files.push(file);
-      var warnings = getWarnings(lyr, dataset);
-      var html = '<div class="layer-item">';
-      html += rowHTML('name', file);
-      if (warnings) {
-        // html += rowHTML('problems', warnings, 'layer-problems');
-        html += rowHTML('', warnings, 'layer-problems');
-      }
-      html += '</div>';
-      list.appendChild(El('div').html(html).firstChild());
-    });
-
   }
 
   function renderLayerList() {
@@ -222,6 +231,7 @@ export function LayerControl(gui) {
     html += rowHTML('name', '<span class="layer-name colored-text dot-underline">' + formatLayerNameForDisplay(lyr.name) + '</span>', 'row1');
     html += rowHTML('contents', describeLyr(lyr, dataset));
     // html += '<img class="close-btn" draggable="false" src="images/close.png">';
+    html += '<span class="more-btn" role="button" tabindex="0" aria-label="More layer options"></span>';
     if (opts.pinnable) {
       html += '<img class="eye-btn black-eye" draggable="false" src="images/eye.png">';
       html += '<img class="eye-btn green-eye" draggable="false" src="images/eye2.png">';
@@ -232,8 +242,10 @@ export function LayerControl(gui) {
 
   function initMouseEvents(entry, id, pinnable) {
     entry.on('mouseover', init);
+    entry.on('focusin', init);
     function init() {
       entry.removeEventListener('mouseover', init);
+      entry.removeEventListener('focusin', init);
       initMouseEvents2(entry, id, pinnable);
     }
   }
@@ -277,6 +289,7 @@ export function LayerControl(gui) {
   }
 
   function initMouseEvents2(entry, id, pinnable) {
+    var moreBtn = entry.findChild('.more-btn');
     initLayerDragging(entry, id);
 
     function deleteLayer() {
@@ -301,7 +314,7 @@ export function LayerControl(gui) {
       }
     }
 
-    function selectLayer(closeMenu) {
+    function selectLayer() {
       var target = findLayerById(id);
       // don't select if user is typing or dragging
       if (GUI.textIsSelected() || dragging) return;
@@ -310,10 +323,21 @@ export function LayerControl(gui) {
       if (!map.isActiveLayer(target.layer)) {
         model.selectLayer(target.layer, target.dataset);
       }
-      // close menu after a delay
-      if (closeMenu === true) setTimeout(function() {
-        gui.clearMode();
-      }, 230);
+    }
+
+    function openLayerMenu(e) {
+      var menuEvent = e;
+      e.stopPropagation();
+      if (!isFinite(e.pageX) || !isFinite(e.pageY)) {
+        var rect = moreBtn.node().getBoundingClientRect();
+        menuEvent = {
+          pageX: rect.right,
+          pageY: rect.top + rect.height / 2
+        };
+      }
+      menuEvent.deleteLayer = deleteLayer;
+      menuEvent.selectLayer = selectLayer;
+      openContextMenu(menuEvent, null, null);
     }
 
     // init delete button
@@ -363,18 +387,19 @@ export function LayerControl(gui) {
         renameLayer(target, str);
       });
 
-    // init click-to-select
-    GUI.onClick(entry, function() {
-      selectLayer(true);
+    GUI.onClick(moreBtn, openLayerMenu);
+    moreBtn.on('keydown', function(e) {
+      if (e.key == 'Enter' || e.key == ' ') {
+        e.preventDefault();
+        openLayerMenu(e);
+      }
     });
 
-    GUI.onContextClick(entry, function(e) {
-      e.deleteLayer = deleteLayer;
-      e.selectLayer = selectLayer;
-      // contextMenu.open(e);
-      // openContextMenu(e, null, entry.node())
-      openContextMenu(e, null, null);
+    // init click-to-select
+    GUI.onClick(entry, function() {
+      selectLayer();
     });
+
   }
 
   function describeLyr(lyr, dataset) {
@@ -419,30 +444,6 @@ export function LayerControl(gui) {
     if (internal.UndoTracking && internal.UndoTracking.markLayerChanged) {
       internal.UndoTracking.markLayerChanged(layer, detail);
     }
-  }
-
-  function getWarnings(lyr, dataset) {
-    var file = internal.getLayerSourceFile(lyr, dataset);
-    var missing = [];
-    var msg;
-    // show missing file warning for first layer in dataset
-    // (assuming it represents the content of the original file)
-    if (utils.endsWith(file, '.shp') && lyr == dataset.layers[0]) {
-      if (!lyr.data) {
-        missing.push('.dbf');
-      }
-      if (!dataset.info.wkt1 && !dataset.info.crs) {
-        missing.push('.prj');
-      }
-    }
-    if (missing.length) {
-      msg = 'missing ' + missing.join(' and ') + ' data';
-    }
-    return msg;
-  }
-
-  function describeSrc(lyr, dataset) {
-    return internal.getLayerSourceFile(lyr, dataset);
   }
 
   function isPinnable(lyr) {

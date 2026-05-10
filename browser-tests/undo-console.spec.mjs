@@ -935,7 +935,7 @@ test('history menu toggles persisted app undo and reports restore data', async f
   expect(changed.model.checksum).not.toBe(before.model.checksum);
 
   await page.locator('.history-btn').click();
-  await expect(page.locator('.history-menu-note')).toContainText(/estimated on-disk restore data: [0-9]/);
+  await expect(page.locator('.history-menu-note')).toContainText(/restore data stored on-disk: [0-9]/);
   await page.evaluate(function() {
     return window.mapshaper.undoTest.undo();
   });
@@ -961,10 +961,10 @@ test('history menu stays open and updates restore data after clearing undo histo
   await runConsoleCommand(page, '-each \'foo = "bar"\'');
 
   await page.locator('.history-btn').click();
-  await expect(page.locator('.history-menu-note')).toContainText(/estimated on-disk restore data: [0-9]/);
+  await expect(page.locator('.history-menu-note')).toContainText(/restore data stored on-disk: [0-9]/);
   await page.locator('.history-clear-btn').click();
   await expect(page.locator('.history-menu-dropdown')).toBeVisible();
-  await expect(page.locator('.history-menu-note')).toContainText('estimated on-disk restore data: 0 KB');
+  await expect(page.locator('.history-menu-note')).toContainText('restore data stored on-disk: 0 KB');
   expect((await getUndoState(page)).undo.canUndo).toBe(false);
   expect((await getUndoState(page)).payloadStore.ownBytes).toBe(0);
 });
@@ -1079,7 +1079,7 @@ async function deleteFirstLayerFromLayerMenu(page) {
   await page.locator('.layer-control-btn').click();
   layerItem = page.locator('.layer-list .layer-item').first();
   await layerItem.hover();
-  await layerItem.click({button: 'right'});
+  await layerItem.locator('.more-btn').click();
   await page.locator('.contextmenu-item').filter({hasText: 'delete layer'}).click();
 }
 

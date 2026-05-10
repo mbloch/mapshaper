@@ -4,6 +4,7 @@ import { getProjInfo } from '../crs/mapshaper-projections';
 import { getLayerBounds, getFeatureCount, getLayerSourceFile } from '../dataset/mapshaper-layer-utils';
 import { expandCommandTargets } from '../dataset/mapshaper-target-utils';
 import { writeFiles } from '../io/mapshaper-file-export';
+import { runningInBrowser } from '../mapshaper-env';
 import utils from '../utils/mapshaper-utils';
 import geom from '../geom/mapshaper-geom';
 import { message } from '../utils/mapshaper-logging';
@@ -35,7 +36,14 @@ cmd.info = function(targets, opts) {
       }]
     };
   }
-  message(formatInfo(arr));
+  if (runningInBrowser()) {
+    message({
+      type: 'mapshaper-console-info',
+      layers: arr
+    });
+  } else {
+    message(formatInfo(arr));
+  }
 };
 
 cmd.printInfo = cmd.info; // old name
