@@ -67,6 +67,13 @@ This is a curated list of recently added features. For the full list of changes,
 
 <div class="whats-new-entry">
 
+**Point icons with `-style`.** The `-style` command has new `icon=`, `icon-size=` and `icon-color=` options for drawing simple point icons, including circles, squares, rings and stars. Icons can be combined with labels on the same point layer.
+
+→ See [`-style`](/docs/reference.html.md#-style).
+</div>
+
+<div class="whats-new-entry">
+
 **Undo/redo for web UI commands.** The web UI can now save temporary restore data while you work, so console commands and other data edits can be undone and redone from a pop-up toolbar. **This feature is very new and may have bugs, please report any problems that you encounter**. Turn on undo from the new History menu.
 
 </div>
@@ -107,7 +114,7 @@ This is a curated list of recently added features. For the full list of changes,
 mapshaper build.txt
 ```
 
-→ See [Command files](/docs/reference.html.md#command-files) in the reference.
+→ See [Command files](/docs/essentials/command-line.html.md#command-files) in the reference.
 </div>
 
 <div class="whats-new-entry">
@@ -118,7 +125,7 @@ mapshaper build.txt
 mapshaper -vars YEAR=2030 PCT=5 -run build.txt
 ```
 
-→ See [Variable interpolation](/docs/reference.html.md#variable-interpolation), [`-vars`](/docs/reference.html.md#-vars) and [`-defaults`](/docs/reference.html.md#-defaults).
+→ See [Variable interpolation](/docs/essentials/command-line.html.md#variable-interpolation), [`-vars`](/docs/reference.html.md#-vars) and [`-defaults`](/docs/reference.html.md#-defaults).
 </div>
 
 <div class="whats-new-entry">
@@ -182,88 +189,6 @@ The following options are documented here, because they are used by many command
 # Make a derived layer containing a subset of features
 # while retaining the original layer
 mapshaper states.geojson -filter 'ST == "AK"' + name=alaska -o output/ target=*
-```
-
-## Command files
-
-As an alternative to typing commands on the command line, you can put them in a plain-text command file and run them with the mapshaper CLI.
-
-Command files offer a few conveniences over a shell script or Makefile:
-
-- Hash-delimited (`#`) comments, both on their own line and at the end of a line.
-- No need to escape `*` or other shell metacharacters; commands aren't passed through the shell.
-- Trailing-backslash line continuations are accepted but not required &mdash; lines that don't begin with `-` are joined onto the previous command.
-- Variable interpolation using `{{VAR}}` placeholders. See [variables](#variables) below.
-
-(Support for running command files in the mapshaper web UI is planned for a future release.)
-
-### File format
-
-A mapshaper command file is a `.txt` file whose first non-blank, non-comment line starts with `mapshaper`.
-
-```
-mapshaper
--i provinces.shp
-# Use Douglas Peucker simplification
--simplify dp 20%
--o precision=0.00001 output.geojson
-```
-
-If you write the command file using shell-compatible syntax &mdash; trailing `\` for line continuations and no `#` comments &mdash; it can also be pasted directly onto a bash command line, where the leading `mapshaper` word invokes the CLI. To make the above example shell compatible, you could write:
-
-```
-mapshaper \
--i provinces.shp \
--simplify dp 20% \
--o precision=0.00001 output.geojson
-```
-
-### Running a command file
-
-The command for running a command file is [`-run`](#-run):
-
-```bash
-mapshaper -run build.txt
-```
-
-`mapshaper commands.txt` is a shortcut for `mapshaper -run commands.txt`.
-
-## Variable interpolation
-
-Command files and command lines may contain `{{VAR}}` placeholders, which are substituted just before each command runs. Two forms are recognized:
-
-- `{{VAR}}` &mdash; substituted with the value of `VAR`.
-- `{{env.NAME}}` &mdash; substituted with the value of the `NAME` environment variable.
-
-This syntax allows you to interpolate all or part of a command option. For example, `-simplify {{SIMPLIFY_METHOD}} resolution={{SIMPLIFY_RESOLUTION}}`.
-
-Variables can be set in several ways:
-- The [`-vars`](#-vars) command sets one or more variables, always overwriting any previous value.
-- The [`-defaults`](#-defaults) command set only those values that do not already exist.
-- Assignments in `-calc` and `-define` expressions create new variables.
-- Assigning a property to the `global` object in an `-each` expression creates a new variable.
-
-`-vars` and `-defaults` write to a templating-scope store; the other commands write to an expression-scope store (`global`). `{{X}}` substitution checks the templating scope first and falls back to the expression scope, so values from any of the four mechanisms above are reachable. Bare names in JS expressions only see the expression scope &mdash; a name set by `-vars` is *not* readable by bare name from inside `-each`, `-filter`, etc. See [JavaScript expressions](/docs/guides/expressions.html.md#sharing-state-across-commands) for the full story.
-
-#### Example
-
-`build.txt`:
-```
-mapshaper
--defaults YEAR=2024 PCT=10                    # overridable defaults
--i sources/counties_{{YEAR}}.shp
--simplify {{PCT}}%
--o out/counties_{{YEAR}}_simplified.shp
-```
-
-Run with the command file's defaults:
-```bash
-mapshaper build.txt
-```
-
-Or override default values from the command line:
-```bash
-mapshaper -vars YEAR=2030 PCT=5 -run build.txt
 ```
 
 ## Index of commands
@@ -1330,10 +1255,10 @@ $ mapshaper data.json \
 
 ### -run
 
-Run mapshaper commands from a [command file](#command-files) or generated on-the-fly from a JS expression.
+Run mapshaper commands from a [command file](/docs/essentials/command-line.html.md#command-files) or generated on-the-fly from a JS expression.
 
 `<file|expression>`  Either:
-- A path to a mapshaper [command file](#command-files).
+- A path to a mapshaper [command file](/docs/essentials/command-line.html.md#command-files).
 - A JS expression or template containing embedded expressions, for generating one or more mapshaper commands.
 
 * Embedded expressions are enclosed in curly braces (see below).
@@ -1608,6 +1533,12 @@ Example: `hatches 45deg 2px red 2px grey`
 `opacity=`         Symbol opacity (e.g. `opacity=0.5`)
 
 `r=`               Circle radius. Setting this exports points as SVG `<circle>` symbols, unless the `-o point-symbol=square` option is used.
+
+`icon=`            Point icon shape. Possible values are: circle, square, ring or star. Icons are rendered as SVG symbols and can be combined with labels on the same point layer.
+
+`icon-size=`       Point icon size in pixels. If `icon=` is missing, `icon-size=` creates circle icons.
+
+`icon-color=`      Point icon color. If missing, icons use the `fill=` color, or black if `fill=` is also missing. Ring icons use this color for the stroke.
 
 `label-text=`      Label text (set this to export points as labels). To create multiline labels, insert line delimiters into the label text. There are three possible line delimiters: the newline character, `\n` (backslash + "n"), and `<br>`. (When importing JSON data, `\n` in a JSON string is parsed as a newline and `\\n` is parsed as backslash + "n"). Note that Mapshaper doesn't accept multiline strings as input on the command line.
   
@@ -2103,6 +2034,88 @@ mapshaper usa.topojson \
   -o out/hawaii.geojson
 ```
 
+## Command files
+
+As an alternative to typing commands on the command line, you can put them in a plain-text command file and run them with the mapshaper CLI.
+
+Command files offer a few conveniences over a shell script or Makefile:
+
+- Hash-delimited (`#`) comments, both on their own line and at the end of a line.
+- No need to escape `*` or other shell metacharacters; commands aren't passed through the shell.
+- Trailing-backslash line continuations are accepted but not required &mdash; lines that don't begin with `-` are joined onto the previous command.
+- Variable interpolation using `{{VAR}}` placeholders. See [variables](#variables) below.
+
+(Support for running command files in the mapshaper web UI is planned for a future release.)
+
+### File format
+
+A mapshaper command file is a `.txt` file whose first non-blank, non-comment line starts with `mapshaper`.
+
+```
+mapshaper
+-i provinces.shp
+# Use Douglas Peucker simplification
+-simplify dp 20%
+-o precision=0.00001 output.geojson
+```
+
+If you write the command file using shell-compatible syntax &mdash; trailing `\` for line continuations and no `#` comments &mdash; it can also be pasted directly onto a bash command line, where the leading `mapshaper` word invokes the CLI. To make the above example shell compatible, you could write:
+
+```
+mapshaper \
+-i provinces.shp \
+-simplify dp 20% \
+-o precision=0.00001 output.geojson
+```
+
+### Running a command file
+
+The command for running a command file is [`-run`](#-run):
+
+```bash
+mapshaper -run build.txt
+```
+
+`mapshaper commands.txt` is a shortcut for `mapshaper -run commands.txt`.
+
+## Variable interpolation
+
+Command files and command lines may contain `{{VAR}}` placeholders, which are substituted just before each command runs. Two forms are recognized:
+
+- `{{VAR}}` &mdash; substituted with the value of `VAR`.
+- `{{env.NAME}}` &mdash; substituted with the value of the `NAME` environment variable.
+
+This syntax allows you to interpolate all or part of a command option. For example, `-simplify {{SIMPLIFY_METHOD}} resolution={{SIMPLIFY_RESOLUTION}}`.
+
+Variables can be set in several ways:
+- The [`-vars`](#-vars) command sets one or more variables, always overwriting any previous value.
+- The [`-defaults`](#-defaults) command set only those values that do not already exist.
+- Assignments in `-calc` and `-define` expressions create new variables.
+- Assigning a property to the `global` object in an `-each` expression creates a new variable.
+
+`-vars` and `-defaults` write to a templating-scope store; the other commands write to an expression-scope store (`global`). `{{X}}` substitution checks the templating scope first and falls back to the expression scope, so values from any of the four mechanisms above are reachable. Bare names in JS expressions only see the expression scope &mdash; a name set by `-vars` is *not* readable by bare name from inside `-each`, `-filter`, etc. See [JavaScript expressions](/docs/guides/expressions.html.md#sharing-state-across-commands) for the full story.
+
+#### Example
+
+`build.txt`:
+```
+mapshaper
+-defaults YEAR=2024 PCT=10                    # overridable defaults
+-i sources/counties_{{YEAR}}.shp
+-simplify {{PCT}}%
+-o out/counties_{{YEAR}}_simplified.shp
+```
+
+Run with the command file's defaults:
+```bash
+mapshaper build.txt
+```
+
+Or override default values from the command line:
+```bash
+mapshaper -vars YEAR=2030 PCT=5 -run build.txt
+```
+
 ---
 
 <!-- https://mapshaper.org/docs/essentials/web-app.html -->
@@ -2231,29 +2244,6 @@ You can pre-load files by listing them on the command line, which skips the impo
 ```bash
 mapshaper-gui states.shp rivers.shp
 ```
-
-## Optional AI assistant
-
-Some Mapshaper installations may enable an optional AI assistant by serving an `ai-config.js` file alongside the web app. If the file is missing or disabled, no assistant UI is shown.
-
-When enabled, the assistant can receive the same runtime context shown by the console's `context` command: layer names, field names/types, feature counts, CRS, recent commands and recent messages. It does not include geometry or full attribute records.
-
-Development builds can use a mock assistant or direct provider calls from `localhost`. Production deployments should use a proxy endpoint so provider secrets, rate limits and logging policy are not exposed in the browser.
-
-An `ai-config.js` file can also point the assistant at static documentation, such as `llms-full.txt`, for providers or proxies that support prompt caching:
-
-```js
-window.mapshaperAI = {
-  enabled: true,
-  mode: "proxy",
-  endpoint: "/api/mapshaper-assist",
-  staticContextUrl: "/llms-full.txt",
-  cacheControl: {type: "ephemeral"},
-  cacheTtl: "1h"
-};
-```
-
-For local testing without a proxy, `mode: "direct"` supports OpenAI-compatible Responses requests and Anthropic Messages requests. Anthropic direct mode sends static context as cacheable system content when `provider: "anthropic"` is configured. Direct mode should only be used with disposable development keys on `localhost`.
 
 ## Browser support
 
@@ -2588,7 +2578,7 @@ mapshaper -run build.txt
 mapshaper build.txt
 ```
 
-Long pipelines can be kept in a [command file](/docs/reference.html.md#command-files). This is a CLI workflow; support for running command files in the web app is planned for a future release.
+Long pipelines can be kept in a [command file](/docs/essentials/command-line.html.md#command-files). This is a CLI workflow; support for running command files in the web app is planned for a future release.
 
 ### Parameterize a command file
 
@@ -2847,8 +2837,6 @@ Mapshaper can attach SVG styling properties to features with [`-style`](/docs/re
 
 The examples below are written for the web app's Console. Load your data first, then run the commands. The same command sequences also work on the CLI when you add `mapshaper input-file` before them and `-o output.svg` after them.
 
-> **Illustration placeholder:** Add a composite image showing a map with muted base layers, proportional point symbols, a classified choropleth layer and labels.
-
 ## The `-style` command
 
 `-style` writes common SVG presentation attributes to each feature. Line layers can be styled with `stroke=`, `stroke-width=`, `stroke-opacity=`, `stroke-dasharray=` and `opacity=`. Polygon layers add `fill=` and `fill-opacity=` options.
@@ -2868,6 +2856,14 @@ To make circles from a point layer, add a `r=` (for radius) property along with 
 -style r='Math.sqrt(POP) / 250' \
   fill='rgba(227, 74, 51, 0.65)' \
   stroke='rgba(0, 0, 0, 0.15)'
+```
+
+### Making point icons
+
+Use `icon=` with `icon-size=` to add circle, square, ring or star icons to a point layer. Icons use `icon-color=` when it is provided. Otherwise they use the layer's `fill=` color, falling back to black.
+
+```text
+-style icon=star icon-size=10 fill="#333"
 ```
 
 ## Styling data layers with the `-classify` command
@@ -2960,6 +2956,13 @@ Use `dx=` together with `text-anchor=start` or `text-anchor=end` to place labels
 
 ```text
 -style label-text=NAME dx=6 dy=3 font-size=12 text-anchor=start r=2
+```
+
+For labeled point icons, use `icon=` on the same layer. In this example the icon and label both use `fill="#555"`.
+
+```text
+-style label-text=NAME dx=8 dy=3 text-anchor=start \
+  icon=circle icon-size=6 fill="#555"
 ```
 
 You can combine `where=` with multiple `-style` commands to emphasize important labels.
@@ -3318,7 +3321,7 @@ Each entry in `targets` exposes useful summary stats from `-info`: `layer_name`,
 
 ## Template expressions (`-run`)
 
-`-run` accepts either a path to a [command file](/docs/reference.html.md#command-files) or a string containing one or more curly-brace template expressions. Each `{...}` is evaluated as a JS expression and substituted into the resulting command string before Mapshaper parses it.
+`-run` accepts either a path to a [command file](/docs/essentials/command-line.html.md#command-files) or a string containing one or more curly-brace template expressions. Each `{...}` is evaluated as a JS expression and substituted into the resulting command string before Mapshaper parses it.
 
 ```bash
 # Project to a transverse Mercator centred on the layer
@@ -3810,7 +3813,7 @@ This treats the coordinates as planar x/y values. It is useful for custom SVG or
 
 ### Export TopoJSON for D3
 
-TopoJSON is often a better format than GeoJSON for D3 maps of polygon mosaics, such as countries, states, counties, or census areas. It stores shared boundaries once and typically uses quantized, delta-encoded path coordinates, so files are usually much smaller and adjacent features stay aligned after simplification.
+TopoJSON is often a better format than GeoJSON for D3 maps of polygon mosaics, such as countries, states, counties, or census areas. It stores shared boundaries once and typically uses quantized, delta-encoded path coordinates, so files are usually much smaller.
 
 ```bash
 mapshaper counties.shp \
@@ -3829,7 +3832,7 @@ const projection = d3.geoAlbersUsa().fitSize([width, height], counties);
 const path = d3.geoPath(projection);
 ```
 
-TopoJSON still has the same coordinate-system question as GeoJSON. For D3 geographic projections, export WGS84 longitude/latitude and let D3 project in the browser. For pre-projected planar drawing, use `d3.geoIdentity()` after exporting projected TopoJSON.
+TopoJSON still has the same coordinate-system question as GeoJSON. To use D3's projection system, export WGS84 longitude/latitude and let D3 project in the browser. For pre-projected planar drawing, use `d3.geoIdentity()` after exporting projected TopoJSON.
 
 If you are combining multiple layers for one D3 map, TopoJSON can keep them in one file:
 
@@ -4000,7 +4003,7 @@ europe.topojson: shp/world_countries.shp
 	  -o $@
 ```
 
-An alternative to embedding a long series of Mapshaper commands on the command line is to put them in a `.txt` file and pass the file to `mapshaper`. See [command files](/docs/reference.html.md#command-files) and [variable interpolation](/docs/reference.html.md#variable-interpolation) in the reference.
+An alternative to embedding a long series of Mapshaper commands on the command line is to put them in a `.txt` file and pass the file to `mapshaper`. See [command files](/docs/essentials/command-line.html.md#command-files) and [variable interpolation](/docs/essentials/command-line.html.md#variable-interpolation) in the reference.
 
 ## The Node.js API
 

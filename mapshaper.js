@@ -17490,7 +17490,7 @@
   // higher-level mapshaper-svg.mjs (which would otherwise form a cycle).
 
   function featureHasSvgSymbol(d) {
-    return !!(d && (d['svg-symbol'] || d.r));
+    return !!(d && (d['svg-symbol'] || d.r || d.icon || d['icon-size']));
   }
 
   function featureHasLabel(d) {
@@ -17763,6 +17763,9 @@
     'font-style': null,
     'font-stretch': null,
     'font-weight': null,
+    icon: null,
+    'icon-color': 'color',
+    'icon-size': 'number',
     'label-text': null,  // leaving this null
     'letter-spacing': 'measure',
     'line-height': 'measure',
@@ -18110,10 +18113,42 @@
     if (d['svg-symbol']) {
       return renderComplexSymbol(d['svg-symbol']);
     }
+    if (featureHasIcon(d)) {
+      return renderIcon(d);
+    }
     if (d.r > 0) {
       return circle(d);
     }
     return empty();
+  }
+
+  function featureHasIcon(d) {
+    return !!(d && (d.icon || d['icon-size'] || (d['icon-color'] && d.r > 0)));
+  }
+
+  function renderIcon(d) {
+    var type = d.icon || 'circle';
+    var r = getIconRadius(d);
+    if (r > 0 === false) return empty();
+    if (type == 'circle') return circle(getIconStyleData(d, r));
+    if (type == 'square') return square(getIconStyleData(d, r), 0, 0);
+    if (type == 'ring') return ring(getIconStyleData(d, r), 0, 0);
+    if (type == 'star') return star(getIconStyleData(d, r));
+    message('Unknown icon type: ' + type);
+    return empty();
+  }
+
+  function getIconRadius(d) {
+    if (d['icon-size'] > 0) return d['icon-size'] / 2;
+    if (d.r > 0) return d.r;
+    return 5;
+  }
+
+  function getIconStyleData(d, r) {
+    var o = utils.extend({}, d);
+    o.r = r;
+    o.fill = d['icon-color'] || d.fill || 'black';
+    return o;
   }
 
   function renderComplexSymbol(sym, x, y) {
@@ -18190,8 +18225,42 @@
         height: r * 2
       }
     };
-    applyStyleAttributes(o, 'point', d);
+    applyStyleAttributes(o, 'point', d, nonCirclePointFilter);
     return o;
+  }
+
+  function ring(d, x, y) {
+    var o = circle(d, x, y);
+    o.properties.fill = 'none';
+    o.properties.stroke = d.fill;
+    if (!o.properties['stroke-width']) {
+      o.properties['stroke-width'] = 1;
+    }
+    return o;
+  }
+
+  function star(d) {
+    var coords = getStarCoords$1(d.r);
+    var o = importPolygon([coords]);
+    applyStyleAttributes(o, 'point', d, nonCirclePointFilter);
+    return o;
+  }
+
+  function nonCirclePointFilter(k) {
+    return k != 'r';
+  }
+
+  function getStarCoords$1(r) {
+    var coords = [];
+    var innerR = r * 0.42;
+    var angle, len;
+    for (var i=0; i<10; i++) {
+      len = i % 2 === 0 ? r : innerR;
+      angle = -Math.PI / 2 + i * Math.PI / 5;
+      coords.push([roundToTenths(Math.cos(angle) * len), roundToTenths(Math.sin(angle) * len)]);
+    }
+    coords.push(coords[0].concat());
+    return coords;
   }
 
   function line(d, x, y) {
@@ -18899,7 +18968,7 @@
 
   // just a dot, no label or icon
   function isSimpleCircle(rec) {
-    return rec && (rec.r > 0 && !rec['svg-symbol'] && !rec['label-text']);
+    return rec && (rec.r > 0 && !rec['svg-symbol'] && !rec['label-text'] && !rec.icon && !rec['icon-size'] && !rec['icon-color']);
   }
 
   function importMultiPoint(coords, rec) {
@@ -18926,6 +18995,8 @@
     importPoint: importPoint,
     importPolygon: importPolygon
   });
+
+  var ILLUSTRATOR_PATH_VERTEX_LIMIT = 32000;
 
   //
   function exportSVG(dataset, opts) {
@@ -19091,6 +19162,7 @@ ${svg}
     var d = utils.defaults({layers: [lyr]}, dataset);
     var geojson = exportDatasetAsGeoJSON(d, opts);
     var features = geojson.features || geojson.geometries || (geojson.type ? [geojson] : []);
+    warnIfIllustratorPathLimitExceeded(lyr, features);
     var children = importGeoJSONFeatures(features, opts);
     // Drop empty placeholder <g/> elements (features whose geometry was null in the
     // source data, collapsed during simplification, or otherwise produced no
@@ -19107,6 +19179,53 @@ ${svg}
       addDataAttributesToSVG(children, keptRecords, lyr.data.getFields(), opts.svg_data);
     }
     return children;
+  }
+
+  function warnIfIllustratorPathLimitExceeded(lyr, features) {
+    var count = 0;
+    var max = 0;
+    if (lyr.geometry_type != 'polygon' && lyr.geometry_type != 'polyline') return;
+    features.forEach(function(feature) {
+      var geom = feature.geometry || feature;
+      var n = countSvgPathVertices(geom);
+      if (n > ILLUSTRATOR_PATH_VERTEX_LIMIT) {
+        count++;
+        max = Math.max(max, n);
+      }
+    });
+    if (count > 0) {
+      warn(utils.format(
+        '%,d SVG path%s in layer "%s" contain%s more than %,d vertices; Adobe Illustrator may not import %s. The largest path has %,d vertices.',
+        count,
+        utils.pluralSuffix(count),
+        lyr.name || '[unnamed]',
+        count == 1 ? 's' : '',
+        ILLUSTRATOR_PATH_VERTEX_LIMIT,
+        count == 1 ? 'it' : 'them',
+        max
+      ));
+    }
+  }
+
+  function countSvgPathVertices(geom) {
+    var coords = geom && geom.coordinates;
+    if (!coords) return 0;
+    if (geom.type == 'LineString') return coords.length;
+    if (geom.type == 'MultiLineString' || geom.type == 'Polygon') {
+      return sumPathLengths(coords);
+    }
+    if (geom.type == 'MultiPolygon') {
+      return coords.reduce(function(sum, polygon) {
+        return sum + sumPathLengths(polygon);
+      }, 0);
+    }
+    return 0;
+  }
+
+  function sumPathLengths(paths) {
+    return paths.reduce(function(sum, path) {
+      return sum + path.length;
+    }, 0);
   }
 
   function isEmptyPlaceholder(o) {
@@ -19206,7 +19325,7 @@ ${svg}
     // TODO: set fill="none" in SVG symbols, not on the container
     //   (setting fill=none on the container overrides the default black fill
     //   on paths, which may alter the appearance of SVG icons loaded from external URLs).
-    if (lyr.geometry_type == 'polyline' || layerHasSvgSymbols(lyr)) {
+    if (lyr.geometry_type == 'polyline' || layerHasSvgSymbolField(lyr)) {
       layerObj.properties.fill = 'none';
     }
 
@@ -19229,6 +19348,15 @@ ${svg}
   }
 
   function layerHasSvgSymbols(lyr) {
+    return lyr.geometry_type == 'point' && lyr.data && (
+      lyr.data.fieldExists('svg-symbol') ||
+      lyr.data.fieldExists('icon') ||
+      lyr.data.fieldExists('icon-size') ||
+      (lyr.data.fieldExists('icon-color') && lyr.data.fieldExists('r'))
+    );
+  }
+
+  function layerHasSvgSymbolField(lyr) {
     return lyr.geometry_type == 'point' && lyr.data && lyr.data.fieldExists('svg-symbol');
   }
 
@@ -28250,7 +28378,7 @@ ${svg}
 
     };
 
-    this.getHelpMessage = function(cmdName) {
+    this.getHelpLines = function(cmdName) {
       var helpCommands, singleCommand, lines;
       if (cmdName) {
         singleCommand = findCommandDefn(cmdName, getCommands());
@@ -28262,113 +28390,115 @@ ${svg}
         helpCommands = getCommands().filter(function(cmd) {return cmd.name && cmd.describe || cmd.title;});
         lines = getMultiCommandLines(helpCommands);
       }
-
-      return formatLines(lines);
-
-      function formatLines(lines) {
-        var colWidth = calcColWidth(lines);
-        var gutter = '  ';
-        var indent = runningInBrowser() ? '' : '  ';
-        var helpStr = lines.map(function(line) {
-          if (Array.isArray(line)) {
-            line = indent + utils.rpad(line[0], colWidth, ' ') + gutter + line[1];
-          }
-          return line;
-        }).join('\n');
-        return helpStr;
-      }
-
-      function getSingleCommandLines(cmd) {
-        var lines = [];
-        var options = [];
-        cmd.options.forEach(function(opt) {
-          options = options.concat(getOptionLines(opt));
-        });
-
-        lines.push('COMMAND', getCommandLine(cmd));
-        if (options.length > 0) {
-          lines.push('', 'OPTIONS');
-          lines = lines.concat(options);
-        }
-
-        // examples
-        if (cmd.examples) {
-          lines.push('', 'EXAMPLE' + (cmd.examples.length > 1 ? 'S' : ''));
-          cmd.examples.forEach(function(ex, i) {
-            if (i > 0) lines.push('');
-            ex.split('\n').forEach(function(line, i) {
-              lines.push('  ' + line);
-            });
-          });
-        }
-        return lines;
-      }
-
-      function getOptionLines(opt, cmd) {
-        var lines = [];
-        var description = opt.describe;
-        var label;
-        if (!description) ; else if (opt.label) {
-          lines.push([opt.label, description]);
-        } else if (opt.DEFAULT) {
-          label = opt.name + '=';
-          lines.push(['<' + opt.name + '>', 'shortcut for ' + label]);
-          lines.push([label, description]);
-        } else {
-          label = opt.name;
-          if (opt.alias) label += ', ' + opt.alias;
-          if (opt.type != 'flag' && !opt.assign_to) label += '=';
-          lines.push([label, description]);
-        }
-        return lines;
-      }
-
-      function getCommandLine(cmd) {
-        var name = cmd.name ? "-" + cmd.name : '';
-        if (cmd.alias) name += ', -' + cmd.alias;
-        return [name, cmd.describe || '(undocumented command)'];
-      }
-
-      function getMultiCommandLines(commands) {
-        var lines = [];
-        // usage
-        if (_usage) lines.push(_usage);
-
-        // list of commands
-        commands.forEach(function(cmd) {
-          if (cmd.title) {
-            lines.push('', cmd.title);
-          } else {
-            lines.push(getCommandLine(cmd));
-          }
-        });
-
-        // examples
-        if (_examples.length > 0) {
-          lines.push('', 'Examples');
-          _examples.forEach(function(str) {
-            lines.push('', str);
-          });
-        }
-
-        // note
-        if (_note) {
-          lines.push('', _note);
-        }
-        return lines;
-      }
-
-
-      function calcColWidth(lines) {
-        var w = 0;
-        lines.forEach(function(line) {
-          if (Array.isArray(line)) {
-            w = Math.max(w, line[0].length);
-          }
-        });
-        return w;
-      }
+      return lines;
     };
+
+    this.getHelpMessage = function(cmdName) {
+      return formatLines(this.getHelpLines(cmdName));
+    };
+
+    function formatLines(lines) {
+      var colWidth = calcColWidth(lines);
+      var gutter = '  ';
+      var indent = runningInBrowser() ? '' : '  ';
+      var helpStr = lines.map(function(line) {
+        if (Array.isArray(line)) {
+          line = indent + utils.rpad(line[0], colWidth, ' ') + gutter + line[1];
+        }
+        return line;
+      }).join('\n');
+      return helpStr;
+    }
+
+    function getSingleCommandLines(cmd) {
+      var lines = [];
+      var options = [];
+      cmd.options.forEach(function(opt) {
+        options = options.concat(getOptionLines(opt));
+      });
+
+      lines.push('COMMAND', getCommandLine(cmd));
+      if (options.length > 0) {
+        lines.push('', 'OPTIONS');
+        lines = lines.concat(options);
+      }
+
+      // examples
+      if (cmd.examples) {
+        lines.push('', 'EXAMPLE' + (cmd.examples.length > 1 ? 'S' : ''));
+        cmd.examples.forEach(function(ex, i) {
+          if (i > 0) lines.push('');
+          ex.split('\n').forEach(function(line, i) {
+            lines.push('  ' + line);
+          });
+        });
+      }
+      return lines;
+    }
+
+    function getOptionLines(opt, cmd) {
+      var lines = [];
+      var description = opt.describe;
+      var label;
+      if (!description) ; else if (opt.label) {
+        lines.push([opt.label, description]);
+      } else if (opt.DEFAULT) {
+        label = opt.name + '=';
+        lines.push(['<' + opt.name + '>', 'shortcut for ' + label]);
+        lines.push([label, description]);
+      } else {
+        label = opt.name;
+        if (opt.alias) label += ', ' + opt.alias;
+        if (opt.type != 'flag' && !opt.assign_to) label += '=';
+        lines.push([label, description]);
+      }
+      return lines;
+    }
+
+    function getCommandLine(cmd) {
+      var name = cmd.name ? "-" + cmd.name : '';
+      if (cmd.alias) name += ', -' + cmd.alias;
+      return [name, cmd.describe || '(undocumented command)'];
+    }
+
+    function getMultiCommandLines(commands) {
+      var lines = [];
+      // usage
+      if (_usage) lines.push(_usage);
+
+      // list of commands
+      commands.forEach(function(cmd) {
+        if (cmd.title) {
+          lines.push('', cmd.title);
+        } else {
+          lines.push(getCommandLine(cmd));
+        }
+      });
+
+      // examples
+      if (_examples.length > 0) {
+        lines.push('', 'Examples');
+        _examples.forEach(function(str) {
+          lines.push('', str);
+        });
+      }
+
+      // note
+      if (_note) {
+        lines.push('', _note);
+      }
+      return lines;
+    }
+
+    function calcColWidth(lines) {
+      var w = 0;
+      lines.forEach(function(line) {
+        if (Array.isArray(line)) {
+          w = Math.max(w, line[0].length);
+        }
+      });
+      return w;
+    }
 
     function getCommands() {
       return _commands.map(function(cmd) {
@@ -30487,6 +30617,15 @@ ${svg}
       })
       .option('r', {
         describe: 'symbol radius (set this to export points as circles)',
+      })
+      .option('icon', {
+        describe: 'point icon shape; one of: circle, square, ring, star'
+      })
+      .option('icon-size', {
+        describe: 'point icon size in pixels'
+      })
+      .option('icon-color', {
+        describe: 'point icon color (defaults to fill color, then black)'
       })
       .option('label-text', {
         describe: 'label text (set this to export points as labels)'
@@ -44055,7 +44194,14 @@ ${svg}
         }]
       };
     }
-    message(formatInfo(arr));
+    if (runningInBrowser()) {
+      message({
+        type: 'mapshaper-console-info',
+        layers: arr
+      });
+    } else {
+      message(formatInfo(arr));
+    }
   };
 
   cmd.printInfo = cmd.info; // old name
@@ -49377,8 +49523,15 @@ ${svg}
   }
 
   cmd.printHelp = function(opts) {
-    var str = getOptionParser().getHelpMessage(opts.command);
-    print(str);
+    var parser = getOptionParser();
+    if (runningInBrowser()) {
+      message({
+        type: 'mapshaper-console-help',
+        lines: parser.getHelpLines(opts.command)
+      });
+    } else {
+      print(parser.getHelpMessage(opts.command));
+    }
   };
 
   function stopJob(job) {
@@ -55528,7 +55681,7 @@ ${svg}
     });
   }
 
-  var version = "0.7.12";
+  var version = "0.7.13";
 
   // Parse command line args into commands and run them
   // Function takes an optional Node-style callback. A Promise is returned if no callback is given.

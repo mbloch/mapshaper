@@ -86,7 +86,7 @@ This treats the coordinates as planar x/y values. It is useful for custom SVG or
 
 ### Export TopoJSON for D3
 
-TopoJSON is often a better format than GeoJSON for D3 maps of polygon mosaics, such as countries, states, counties, or census areas. It stores shared boundaries once and typically uses quantized, delta-encoded path coordinates, so files are usually much smaller and adjacent features stay aligned after simplification.
+TopoJSON is often a better format than GeoJSON for D3 maps of polygon mosaics, such as countries, states, counties, or census areas. It stores shared boundaries once and typically uses quantized, delta-encoded path coordinates, so files are usually much smaller.
 
 ```bash
 mapshaper counties.shp \
@@ -105,7 +105,7 @@ const projection = d3.geoAlbersUsa().fitSize([width, height], counties);
 const path = d3.geoPath(projection);
 ```
 
-TopoJSON still has the same coordinate-system question as GeoJSON. For D3 geographic projections, export WGS84 longitude/latitude and let D3 project in the browser. For pre-projected planar drawing, use `d3.geoIdentity()` after exporting projected TopoJSON.
+TopoJSON still has the same coordinate-system question as GeoJSON. To use D3's projection system, export WGS84 longitude/latitude and let D3 project in the browser. For pre-projected planar drawing, use `d3.geoIdentity()` after exporting projected TopoJSON.
 
 If you are combining multiple layers for one D3 map, TopoJSON can keep them in one file:
 

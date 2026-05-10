@@ -51,9 +51,6 @@
       <h1 id="styles-and-symbols">Styles and symbols</h1>
 <p>Mapshaper can attach SVG styling properties to features with <a href="/docs/reference.html#-style"><code>-style</code></a>, and it can assign colors or other values from data with <a href="/docs/reference.html#-classify"><code>-classify</code></a>. The <a href="/docs/reference.html#-symbols"><code>-symbols</code></a> command creates arrows and other symbols. These commands are useful when you want to create a styled map that can be exported as an SVG file.</p>
 <p>The examples below are written for the web app&#39;s Console. Load your data first, then run the commands. The same command sequences also work on the CLI when you add <code>mapshaper input-file</code> before them and <code>-o output.svg</code> after them.</p>
-<blockquote>
-<p><strong>Illustration placeholder:</strong> Add a composite image showing a map with muted base layers, proportional point symbols, a classified choropleth layer and labels.</p>
-</blockquote>
 <h2 id="the--style-command">The <code>-style</code> command</h2>
 <p><code>-style</code> writes common SVG presentation attributes to each feature. Line layers can be styled with <code>stroke=</code>, <code>stroke-width=</code>, <code>stroke-opacity=</code>, <code>stroke-dasharray=</code> and <code>opacity=</code>. Polygon layers add <code>fill=</code> and <code>fill-opacity=</code> options.</p>
 <p>Style values can be literal values, like <code>stroke=&quot;#777&quot;</code>, or JavaScript expressions, like <code>r=&#39;sqrt(POP) / 100&#39;</code>. Use <code>where=</code> to override the styles of a selected group of features.</p>
@@ -65,6 +62,10 @@
 <pre><code class="hljs language-text">-style r=&#x27;Math.sqrt(POP) / 250&#x27; \
   fill=&#x27;rgba(227, 74, 51, 0.65)&#x27; \
   stroke=&#x27;rgba(0, 0, 0, 0.15)&#x27;
+</code></pre>
+<h3 id="making-point-icons">Making point icons</h3>
+<p>Use <code>icon=</code> with <code>icon-size=</code> to add circle, square, ring or star icons to a point layer. Icons use <code>icon-color=</code> when it is provided. Otherwise they use the layer&#39;s <code>fill=</code> color, falling back to black.</p>
+<pre><code class="hljs language-text">-style icon=star icon-size=10 fill=&quot;#333&quot;
 </code></pre>
 <h2 id="styling-data-layers-with-the--classify-command">Styling data layers with the <code>-classify</code> command</h2>
 <h3 id="classed-and-unclassed-color-gradients">Classed and unclassed color gradients</h3>
@@ -118,6 +119,10 @@
 <p>Use <code>dx=</code> together with <code>text-anchor=start</code> or <code>text-anchor=end</code> to place labels to the left or right of their anchor points. Typically you would combine this with a dot over the anchor point. You can add the dots to the label layer by adding an <code>r=</code> property.</p>
 <pre><code class="hljs language-text">-style label-text=NAME dx=6 dy=3 font-size=12 text-anchor=start r=2
 </code></pre>
+<p>For labeled point icons, use <code>icon=</code> on the same layer. In this example the icon and label both use <code>fill=&quot;#555&quot;</code>.</p>
+<pre><code class="hljs language-text">-style label-text=NAME dx=8 dy=3 text-anchor=start \
+  icon=circle icon-size=6 fill=&quot;#555&quot;
+</code></pre>
 <p>You can combine <code>where=</code> with multiple <code>-style</code> commands to emphasize important labels.</p>
 <pre><code class="hljs language-text">-style label-text=NAME font-size=12 fill=&quot;#555&quot; dy=3 \
   -style where=&#x27;POP &gt; 1000000&#x27; font-size=15 dy=4 font-weight=bold
@@ -147,7 +152,7 @@
   </main>
 
   <aside class="docs-toc">
-    <div class="docs-toc-title">On this page</div><ul><li class="lvl-2"><a href="#the--style-command">The -style command</a></li><li class="lvl-3"><a href="#making-circles">Making circles</a></li><li class="lvl-2"><a href="#styling-data-layers-with-the--classify-command">Styling data layers with the -classify command</a></li><li class="lvl-3"><a href="#classed-and-unclassed-color-gradients">Classed and unclassed color gradients</a></li><li class="lvl-3"><a href="#styling-categorical-data">Styling categorical data</a></li><li class="lvl-2"><a href="#making-arrows-with-the--symbols-command">Making arrows with the -symbols command</a></li><li class="lvl-2"><a href="#making-labels-with--style">Making labels with -style</a></li><li class="lvl-2"><a href="#exporting-styled-maps">Exporting styled maps</a></li><li class="lvl-2"><a href="#tips">Tips</a></li></ul>
+    <div class="docs-toc-title">On this page</div><ul><li class="lvl-2"><a href="#the--style-command">The -style command</a></li><li class="lvl-3"><a href="#making-circles">Making circles</a></li><li class="lvl-3"><a href="#making-point-icons">Making point icons</a></li><li class="lvl-2"><a href="#styling-data-layers-with-the--classify-command">Styling data layers with the -classify command</a></li><li class="lvl-3"><a href="#classed-and-unclassed-color-gradients">Classed and unclassed color gradients</a></li><li class="lvl-3"><a href="#styling-categorical-data">Styling categorical data</a></li><li class="lvl-2"><a href="#making-arrows-with-the--symbols-command">Making arrows with the -symbols command</a></li><li class="lvl-2"><a href="#making-labels-with--style">Making labels with -style</a></li><li class="lvl-2"><a href="#exporting-styled-maps">Exporting styled maps</a></li><li class="lvl-2"><a href="#tips">Tips</a></li></ul>
   </aside>
 
 </div>

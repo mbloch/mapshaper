@@ -98,7 +98,7 @@ svg.<span class="hljs-title function_">selectAll</span>(<span class="hljs-string
 </code></pre>
 <p>This treats the coordinates as planar x/y values. It is useful for custom SVG or Canvas rendering, but it is not the format expected by Leaflet, MapLibre, Mapbox GL, or most tile-based web maps.</p>
 <h3 id="export-topojson-for-d3">Export TopoJSON for D3</h3>
-<p>TopoJSON is often a better format than GeoJSON for D3 maps of polygon mosaics, such as countries, states, counties, or census areas. It stores shared boundaries once and typically uses quantized, delta-encoded path coordinates, so files are usually much smaller and adjacent features stay aligned after simplification.</p>
+<p>TopoJSON is often a better format than GeoJSON for D3 maps of polygon mosaics, such as countries, states, counties, or census areas. It stores shared boundaries once and typically uses quantized, delta-encoded path coordinates, so files are usually much smaller.</p>
 <pre><code class="hljs language-bash">mapshaper counties.shp \
   -proj wgs84 \
   -simplify 10% keep-shapes \
@@ -111,7 +111,7 @@ svg.<span class="hljs-title function_">selectAll</span>(<span class="hljs-string
 <span class="hljs-keyword">const</span> projection = d3.<span class="hljs-title function_">geoAlbersUsa</span>().<span class="hljs-title function_">fitSize</span>([width, height], counties);
 <span class="hljs-keyword">const</span> path = d3.<span class="hljs-title function_">geoPath</span>(projection);
 </code></pre>
-<p>TopoJSON still has the same coordinate-system question as GeoJSON. For D3 geographic projections, export WGS84 longitude/latitude and let D3 project in the browser. For pre-projected planar drawing, use <code>d3.geoIdentity()</code> after exporting projected TopoJSON.</p>
+<p>TopoJSON still has the same coordinate-system question as GeoJSON. To use D3&#39;s projection system, export WGS84 longitude/latitude and let D3 project in the browser. For pre-projected planar drawing, use <code>d3.geoIdentity()</code> after exporting projected TopoJSON.</p>
 <p>If you are combining multiple layers for one D3 map, TopoJSON can keep them in one file:</p>
 <pre><code class="hljs language-bash">mapshaper -i combine-files states.shp counties.shp places.shp \
   -proj wgs84 \

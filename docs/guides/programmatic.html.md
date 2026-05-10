@@ -21,7 +21,7 @@ europe.topojson: shp/world_countries.shp
 	  -o $@
 ```
 
-An alternative to embedding a long series of Mapshaper commands on the command line is to put them in a `.txt` file and pass the file to `mapshaper`. See [command files](/docs/reference.html.md#command-files) and [variable interpolation](/docs/reference.html.md#variable-interpolation) in the reference.
+An alternative to embedding a long series of Mapshaper commands on the command line is to put them in a `.txt` file and pass the file to `mapshaper`. See [command files](/docs/essentials/command-line.html.md#command-files) and [variable interpolation](/docs/essentials/command-line.html.md#variable-interpolation) in the reference.
 
 ## The Node.js API
 

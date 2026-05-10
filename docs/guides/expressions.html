@@ -525,7 +525,7 @@ mapshaper counties.shp \
 </code></pre>
 <p>Each entry in <code>targets</code> exposes useful summary stats from <code>-info</code>: <code>layer_name</code>, <code>feature_count</code>, <code>null_shape_count</code>, <code>null_data_count</code>, <code>bbox</code>, <code>proj4</code>. Reading <code>targets[0].geojson</code> returns the layer as a GeoJSON FeatureCollection; assigning to it replaces the layer with the FeatureCollection you provide.</p>
 <h2 id="template-expressions--run">Template expressions (<code>-run</code>)</h2>
-<p><code>-run</code> accepts either a path to a <a href="/docs/reference.html#command-files">command file</a> or a string containing one or more curly-brace template expressions. Each <code>{...}</code> is evaluated as a JS expression and substituted into the resulting command string before Mapshaper parses it.</p>
+<p><code>-run</code> accepts either a path to a <a href="/docs/essentials/command-line.html#command-files">command file</a> or a string containing one or more curly-brace template expressions. Each <code>{...}</code> is evaluated as a JS expression and substituted into the resulting command string before Mapshaper parses it.</p>
 <pre><code class="hljs language-bash"><span class="hljs-comment"># Project to a transverse Mercator centred on the layer</span>
 mapshaper -i country.shp -require projection.js \
   -run <span class="hljs-string">&#x27;-proj {tmerc(target.bbox)}&#x27;</span> -o

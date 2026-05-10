@@ -117,6 +117,64 @@ mapshaper provinces.shp \
   -filter <span class="hljs-string">&#x27;STATE == &quot;HI&quot;&#x27;</span> target=states \
   -o out/hawaii.geojson
 </code></pre>
+<h2 id="command-files">Command files</h2>
+<p>As an alternative to typing commands on the command line, you can put them in a plain-text command file and run them with the mapshaper CLI.</p>
+<p>Command files offer a few conveniences over a shell script or Makefile:</p>
+<ul>
+<li>Hash-delimited (<code>#</code>) comments, both on their own line and at the end of a line.</li>
+<li>No need to escape <code>*</code> or other shell metacharacters; commands aren&#39;t passed through the shell.</li>
+<li>Trailing-backslash line continuations are accepted but not required &mdash; lines that don&#39;t begin with <code>-</code> are joined onto the previous command.</li>
+<li>Variable interpolation using <code>{{VAR}}</code> placeholders. See <a href="#variables">variables</a> below.</li>
+</ul>
+<p>(Support for running command files in the mapshaper web UI is planned for a future release.)</p>
+<h3 id="file-format">File format</h3>
+<p>A mapshaper command file is a <code>.txt</code> file whose first non-blank, non-comment line starts with <code>mapshaper</code>.</p>
+<pre><code>mapshaper
+-i provinces.shp
+# Use Douglas Peucker simplification
+-simplify dp 20%
+-o precision=0.00001 output.geojson
+</code></pre>
+<p>If you write the command file using shell-compatible syntax &mdash; trailing <code>\</code> for line continuations and no <code>#</code> comments &mdash; it can also be pasted directly onto a bash command line, where the leading <code>mapshaper</code> word invokes the CLI. To make the above example shell compatible, you could write:</p>
+<pre><code>mapshaper \
+-i provinces.shp \
+-simplify dp 20% \
+-o precision=0.00001 output.geojson
+</code></pre>
+<h3 id="running-a-command-file">Running a command file</h3>
+<p>The command for running a command file is <a href="#-run"><code>-run</code></a>:</p>
+<pre><code class="hljs language-bash">mapshaper -run build.txt
+</code></pre>
+<p><code>mapshaper commands.txt</code> is a shortcut for <code>mapshaper -run commands.txt</code>.</p>
+<h2 id="variable-interpolation">Variable interpolation</h2>
+<p>Command files and command lines may contain <code>{{VAR}}</code> placeholders, which are substituted just before each command runs. Two forms are recognized:</p>
+<ul>
+<li><code>{{VAR}}</code> &mdash; substituted with the value of <code>VAR</code>.</li>
+<li><code>{{env.NAME}}</code> &mdash; substituted with the value of the <code>NAME</code> environment variable.</li>
+</ul>
+<p>This syntax allows you to interpolate all or part of a command option. For example, <code>-simplify {{SIMPLIFY_METHOD}} resolution={{SIMPLIFY_RESOLUTION}}</code>.</p>
+<p>Variables can be set in several ways:</p>
+<ul>
+<li>The <a href="#-vars"><code>-vars</code></a> command sets one or more variables, always overwriting any previous value.</li>
+<li>The <a href="#-defaults"><code>-defaults</code></a> command set only those values that do not already exist.</li>
+<li>Assignments in <code>-calc</code> and <code>-define</code> expressions create new variables.</li>
+<li>Assigning a property to the <code>global</code> object in an <code>-each</code> expression creates a new variable.</li>
+</ul>
+<p><code>-vars</code> and <code>-defaults</code> write to a templating-scope store; the other commands write to an expression-scope store (<code>global</code>). <code>{{X}}</code> substitution checks the templating scope first and falls back to the expression scope, so values from any of the four mechanisms above are reachable. Bare names in JS expressions only see the expression scope &mdash; a name set by <code>-vars</code> is <em>not</em> readable by bare name from inside <code>-each</code>, <code>-filter</code>, etc. See <a href="/docs/guides/expressions.html#sharing-state-across-commands">JavaScript expressions</a> for the full story.</p>
+<h4 id="example">Example</h4>
+<p><code>build.txt</code>:</p>
+<pre><code>mapshaper
+-defaults YEAR=2024 PCT=10                    # overridable defaults
+-i sources/counties_{{YEAR}}.shp
+-simplify {{PCT}}%
+-o out/counties_{{YEAR}}_simplified.shp
+</code></pre>
+<p>Run with the command file&#39;s defaults:</p>
+<pre><code class="hljs language-bash">mapshaper build.txt
+</code></pre>
+<p>Or override default values from the command line:</p>
+<pre><code class="hljs language-bash">mapshaper -vars YEAR=2030 PCT=5 -run build.txt
+</code></pre>
 
       <div class="edit-link">
         <a href="https://github.com/mbloch/mapshaper/edit/master/docs/essentials/command-line.md">Edit this page on GitHub</a>
@@ -125,7 +183,7 @@ mapshaper provinces.shp \
   </main>
 
   <aside class="docs-toc">
-    <div class="docs-toc-title">On this page</div><ul><li class="lvl-2"><a href="#install">Install</a></li><li class="lvl-2"><a href="#anatomy-of-a-mapshaper-command">Anatomy of a Mapshaper command</a></li><li class="lvl-2"><a href="#some-examples">Some examples</a></li><li class="lvl-3"><a href="#get-help">Get help</a></li><li class="lvl-3"><a href="#chain-commands">Chain commands</a></li><li class="lvl-2"><a href="#working-with-layers">Working with layers</a></li></ul>
+    <div class="docs-toc-title">On this page</div><ul><li class="lvl-2"><a href="#install">Install</a></li><li class="lvl-2"><a href="#anatomy-of-a-mapshaper-command">Anatomy of a Mapshaper command</a></li><li class="lvl-2"><a href="#some-examples">Some examples</a></li><li class="lvl-3"><a href="#get-help">Get help</a></li><li class="lvl-3"><a href="#chain-commands">Chain commands</a></li><li class="lvl-2"><a href="#working-with-layers">Working with layers</a></li><li class="lvl-2"><a href="#command-files">Command files</a></li><li class="lvl-3"><a href="#file-format">File format</a></li><li class="lvl-3"><a href="#running-a-command-file">Running a command file</a></li><li class="lvl-2"><a href="#variable-interpolation">Variable interpolation</a></li></ul>
   </aside>
 
 </div>

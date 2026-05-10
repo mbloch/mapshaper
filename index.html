@@ -75,7 +75,7 @@
 <div class="page-header">
 	<div class="mapshaper-logo">map<span class="logo-highlight">shaper</span></div>
 
-	<div class="layer-control-btn icon-duo"><span class="btn header-btn layer-name"></span></div>
+	<div class="layer-control-btn"><span class="active-layer-label btn" role="button" tabindex="0" aria-label="Open layers panel"></span></div>
 
 	<div class="simplify-control-wrapper"><div class="simplify-control"><div class="header-btn btn simplify-settings-btn">Settings</div>
 		<div class="slider">
@@ -122,32 +122,6 @@
 	<div>For best results, try <a href="https://www.google.com/chrome/browser/desktop/">Google Chrome</a> or <a href="http://www.mozilla.org/en-US/firefox/new/">Mozilla Firefox</a>.</div>
 	</div>
 </div>
-
-<div class="layer-control main-area popup-dialog">
-	<div class="info-box">
-		<div class="info-box-scrolled">
-		<div class="layer-menu">
-			<h3>Layers</h3>
-			<div class="pin-all pinnable">
-				<img class="eye-btn black-eye" src="images/eye.png" alt="">
-				<img class="eye-btn green-eye" src="images/eye2.png" alt="">
-			</div>
-			<div class="layer-list"></div>
-			<!-- <h4>Sources</h4> -->
-			<div class="no-layer-note">No data has been added</div>
-			<div class="source-file-section">
-				<h4>Source files</h4>
-				<div class="file-list"></div>
-			</div>
-			<div>
-				<div id="add-file-btn" class="dialog-btn btn">Add files</div>
-				<div id="add-empty-btn" class="dialog-btn btn">Add empty layer</div>
-			</div>
-		</div>
-		</div>
-	</div>
-</div>
-
 
 <div class="box-tool-options sidebar-buttons">
 	<div>
@@ -374,11 +348,35 @@ encoding=big5</span>. Click to see all options.</div></div></div>
 <!-- TODO: remove #mshp-main-page without causing the map to jitter when resized -->
 <div id="mshp-main-page">
 
-	<div class="console main-area console-area">
+	<div class="layer-control main-area layer-area sidebar-panel">
+		<div class="info-box">
+			<div class="info-box-scrolled">
+			<div class="layer-menu">
+				<div class="layer-add-links">
+					<span id="add-file-btn" class="layer-menu-link">Add files</span><span class="layer-menu-link-separator">&nbsp;&nbsp;·&nbsp;&nbsp;</span><span id="add-empty-btn" class="layer-menu-link">Add empty layer</span>
+				</div>
+				<div class="layer-item">
+					<h3>Layers</h3>
+					<div class="pin-all pinnable">
+						<img class="eye-btn black-eye" src="images/eye.png" alt="">
+						<img class="eye-btn green-eye" src="images/eye2.png" alt="">
+					</div>
+				</div>
+				<div class="layer-list"></div>
+				<div class="no-layer-note">No data has been added</div>
+			</div>
+			</div>
+		</div>
+	</div>
+	<div class="console main-area console-area sidebar-panel">
 		<div class="console-window"><div class="console-buffer selectable"></div></div>
 	</div>
+	<div class="sidebar-resize-handle" role="separator" aria-orientation="vertical" aria-label="Resize sidebar"></div>
+	<div class="sidebar-tabs">
+		<div class="sidebar-tab layer-tab" role="button" tabindex="0" aria-label="Toggle layers panel" aria-expanded="false">Layers</div>
+		<div class="sidebar-tab console-tab console-btn" role="button" tabindex="0" aria-label="Toggle console" aria-expanded="false">Console</div>
+	</div>
 	<div class="mshp-main-map main-area map-area">
-		<div class="console-tab console-btn" role="button" tabindex="0" aria-label="Toggle console">Console</div>
 		<div class="intersection-display">
 			<span class="intersection-count">0 line intersections</span>
 			<div class="repair-btn text-btn colored-text">Repair</div>

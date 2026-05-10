@@ -6097,6 +6097,7 @@
       // gui.container.addClass('queued-files');
       El('#import-options').show();
       gui.container.classed('queued-files', queuedFiles.length > 0);
+      updateSidebarTabZIndex();
       El('#path-import-options').classed('hidden', !filesMayContainPaths(queuedFiles));
       showQueuedFiles();
       updateGeoPackageLayerSelectionMenu();
@@ -6104,7 +6105,13 @@
 
     function hideImportMenu() {
       // gui.container.removeClass('queued-files');
+      gui.container.removeClass('sidebar-tabs-over-popup');
       El('#import-options').hide();
+    }
+
+    function updateSidebarTabZIndex() {
+      gui.container.classed('sidebar-tabs-over-popup',
+        queuedFiles.length === 0 && !gui.sidebarPanelIsOpen());
     }
 
     function getFileNames(files) {
@@ -7927,7 +7934,7 @@
   function Console(gui) {
     var model = gui.model;
     var CURSOR = '$ ';
-    var PROMPT = 'Enter mapshaper commands or type "tips" for examples and console help';
+    var PROMPT = 'Enter mapshaper commands or type "tips" for console help.';
     var el = gui.container.findChild('.console').hide();
     var content = el.findChild('.console-buffer');
     var log = El('div').appendTo(content);
@@ -7948,6 +7955,7 @@
       .on('keydown', function(e) {
         if (e.key == 'Enter' || e.key == ' ') {
           e.preventDefault();
+          e.stopPropagation();
           toggle();
         }
       });
@@ -7963,7 +7971,7 @@
     this.runCommand = function(str) {
       str = str.trim();
       if (!str) return;
-      turnOn();
+      gui.setSidebarPanel('console');
       submit(str);
     };
 
@@ -7981,9 +7989,16 @@
     });
 
     function toggle() {
-      if (_isOpen) turnOff();
-      else turnOn();
+      gui.toggleSidebarPanel('console');
     }
+
+    gui.on('sidebar', function(e) {
+      if (e.name == 'console') {
+        turnOn();
+      } else if (e.prev == 'console') {
+        turnOff();
+      }
+    });
 
     function getHistory() {
       return GUI.getSavedValue('console_history') || [];
@@ -8004,10 +8019,30 @@
       scrollDown();
     }
 
+    function toLogNode(node, cname) {
+      var msg = El('div').appendTo(log);
+      if (cname) {
+        msg.addClass(cname);
+      }
+      msg.node().appendChild(node);
+      scrollDown();
+    }
+
+    function getStructuredConsoleMessage(args) {
+      var arr = utils$1.toArray(args);
+      var msg;
+      // print() sends its arguments as one array argument.
+      if (arr.length == 1 && Array.isArray(arr[0])) {
+        arr = arr[0];
+      }
+      msg = arr[arr.length - 1];
+      return msg && msg.type && /^mapshaper-console-/.test(msg.type) ? msg : null;
+    }
+
     function turnOn() {
       // if (!_isOpen && !model.isEmpty()) {
       if (!_isOpen) {
-        btn.addClass('active');
+        btn.addClass('active').attr('aria-expanded', 'true');
         _isOpen = true;
         // Route logging output to the in-app console while it's open, so a
         // user typing CLI commands here sees the results inline -- the same
@@ -8019,9 +8054,7 @@
         // gui instances with the console open. E.g. console could close
         // when an instance loses focus.
         internal.setLoggingFunctions(consoleMessage, consoleError, consoleStop, consoleWarn);
-        gui.container.addClass('console-open');
         el.show();
-        gui.dispatchEvent('resize');
         input.node().focus();
         history = getHistory();
       }
@@ -8029,7 +8062,7 @@
 
     function turnOff() {
       if (_isOpen) {
-        btn.removeClass('active');
+        btn.removeClass('active').attr('aria-expanded', 'false');
         _isOpen = false;
         if (GUI.isActiveInstance(gui)) {
           setLoggingForGUI(gui); // reset stop, message and error functions
@@ -8037,8 +8070,6 @@
         el.hide();
         input.node().blur();
         saveHistory();
-        gui.container.removeClass('console-open');
-        gui.dispatchEvent('resize');
       }
     }
 
@@ -8098,7 +8129,7 @@
         if (gui.getMode()) {
           gui.clearMode(); // esc closes any open panels
         } else {
-          turnOff();
+          gui.setSidebarPanel(null);
         }
         capture = true;
 
@@ -8134,8 +8165,8 @@
         } else if (kc == 40) {
           forward();
         } else if (kc == 32 && (!typing || (inputText === '' && typingInConsole))) {
-          // space bar closes if nothing has been typed
-          turnOff();
+          // space bar toggles the sidebar if nothing has been typed
+          gui.toggleSidebar();
         } else if (!typing && e.target != input.node() && !metaKey(e)) {
           // typing returns focus, unless a meta key is down (to allow Cmd-C copy)
           // or user is typing in a different input area somewhere
@@ -8152,9 +8183,9 @@
 
       // various shortcuts (while not typing in an input field or editable el)
       } else if (!typing) {
-         if (kc == 32) { // space bar opens console
+         if (kc == 32) { // space bar toggles the sidebar
           capture = true;
-          turnOn();
+          gui.toggleSidebar();
         // } else if (kc == 73) { // letter i opens inspector
         //   gui.dispatchEvent('interaction_toggle');
         } else if (kc == 72) { // letter h resets map extent
@@ -8535,9 +8566,15 @@
     }
 
     function consoleMessage() {
-      var msg = GUI.formatMessageArgs(arguments);
+      var structured = getStructuredConsoleMessage(arguments);
+      var msg;
       if (internal.loggingEnabled()) {
-        toLog(msg, 'console-message');
+        if (structured) {
+          toLogNode(renderStructuredConsoleMessage(structured), 'console-message');
+        } else {
+          msg = GUI.formatMessageArgs(arguments);
+          toLog(msg, 'console-message');
+        }
       }
     }
 
@@ -8560,6 +8597,137 @@
       printExample("Delete one state from a national dataset","$ filter 'STATE != \"Alaska\"'");
       printExample("Aggregate counties to states by dissolving shared edges" ,"$ dissolve 'STATE'");
       printExample("Clear the console", "$ clear");
+    }
+
+    function renderStructuredConsoleMessage(msg) {
+      if (msg.type == 'mapshaper-console-help') {
+        return renderHelpMessage(msg.lines);
+      }
+      if (msg.type == 'mapshaper-console-info') {
+        return renderInfoMessage(msg.layers);
+      }
+      return document.createTextNode('');
+    }
+
+    function renderHelpMessage(lines) {
+      var container = document.createElement('div');
+      var rows = [];
+      container.className = 'console-help';
+      (lines || []).forEach(function(line) {
+        if (Array.isArray(line)) {
+          rows.push(line);
+        } else {
+          flushRows();
+          appendHelpLine(container, line);
+        }
+      });
+      flushRows();
+      return container;
+
+      function flushRows() {
+        if (rows.length > 0) {
+          container.appendChild(renderKeyValueTable(rows, 'console-help-table'));
+          rows = [];
+        }
+      }
+    }
+
+    function appendHelpLine(container, line) {
+      var div = document.createElement('div');
+      div.className = line ? 'console-help-line' : 'console-help-spacer';
+      div.textContent = line || '';
+      container.appendChild(div);
+    }
+
+    function renderInfoMessage(layers) {
+      var container = document.createElement('div');
+      container.className = 'console-info';
+      (layers || []).forEach(function(info) {
+        var section = document.createElement('div');
+        var title = document.createElement('div');
+        section.className = 'console-info-layer';
+        title.className = 'console-info-title';
+        title.textContent = 'Layer: ' + (info.layer_name || '[unnamed layer]');
+        section.appendChild(title);
+        section.appendChild(renderKeyValueTable(getInfoRows(info), 'console-info-table'));
+        section.appendChild(renderAttributeInfoTable(info.attribute_data));
+        container.appendChild(section);
+      });
+      return container;
+    }
+
+    function getInfoRows(info) {
+      var rows = [
+        ['Type', info.geometry_type || 'tabular data'],
+        ['Records', utils$1.format('%,d', info.feature_count)]
+      ];
+      if (info.null_shape_count > 0) {
+        rows.push(['Nulls', utils$1.format("%'d", info.null_shape_count)]);
+      }
+      if (info.geometry_type && info.feature_count > info.null_shape_count) {
+        rows.push(['Bounds', info.bbox.join(',')]);
+        rows.push(['CRS', info.proj4]);
+      }
+      rows.push(['Source', info.source_file || 'n/a']);
+      return rows;
+    }
+
+    function renderAttributeInfoTable(fields) {
+      var wrapper = document.createElement('div');
+      var title = document.createElement('div');
+      wrapper.className = 'console-attribute-info';
+      title.className = 'console-info-subtitle';
+      title.textContent = 'Attribute data';
+      wrapper.appendChild(title);
+      if (!fields) {
+        var none = document.createElement('div');
+        none.className = 'console-info-empty';
+        none.textContent = '[none]';
+        wrapper.appendChild(none);
+        return wrapper;
+      }
+      wrapper.appendChild(renderDataTable(
+        [['Field', 'First value']].concat(fields.map(function(o) {
+          var valKey = 'first_value' in o ? 'first_value' : 'value';
+          return [o.field, formatInfoValue(o[valKey])];
+        })),
+        'console-attribute-table'
+      ));
+      return wrapper;
+    }
+
+    function renderKeyValueTable(rows, className) {
+      return renderDataTable(rows, className + ' console-key-value-table');
+    }
+
+    function renderDataTable(rows, className) {
+      var table = document.createElement('table');
+      var tbody = document.createElement('tbody');
+      table.className = className;
+      rows.forEach(function(row, i) {
+        var tr = document.createElement('tr');
+        row.forEach(function(val) {
+          var cell = document.createElement(i === 0 && rows.length > 1 && className == 'console-attribute-table' ? 'th' : 'td');
+          cell.textContent = val == null ? '' : String(val);
+          tr.appendChild(cell);
+        });
+        tbody.appendChild(tr);
+      });
+      table.appendChild(tbody);
+      return table;
+    }
+
+    function formatInfoValue(val) {
+      if (val === null || val === undefined) return '';
+      if (utils$1.isString(val)) {
+        return "'" + val.replace(/[\r\t\n]/g, function(c) {
+          return c == '\n' ? '\\n' : c == '\r' ? '\\r' : '\\t';
+        }) + "'";
+      }
+      if (utils$1.isNumber(val) || val === true || val === false) {
+        return String(val);
+      }
+      return JSON.stringify(val);
     }
 
     function saveRuntimeContext() {
@@ -9148,6 +9316,7 @@
   }
 
   var openMenu;
+  var openMenuId;
 
   document.addEventListener('mousedown', function(e) {
     if (e.target.classList.contains('contextmenu-item')) {
@@ -9156,17 +9325,23 @@
     closeOpenMenu();
   });
 
-  function closeOpenMenu() {
+  function closeOpenMenu(immediate) {
     if (openMenu) {
-      openMenu.close();
+      openMenu.close(immediate);
       openMenu = null;
+      openMenuId = null;
     }
   }
 
   function openContextMenu(e, lyr, parent) {
     var menu = new ContextMenu(parent);
-    closeOpenMenu();
+    if (e.contextMenuId && e.contextMenuId == openMenuId) {
+      closeOpenMenu(true);
+      return;
+    }
+    closeOpenMenu(true);
     menu.open(e, lyr);
+    openMenuId = e.contextMenuId || null;
   }
 
   function ContextMenu(parentArg) {
@@ -9183,9 +9358,14 @@
 
     this.close = close;
 
-    function close() {
+    function close(immediate) {
       var count = _openCount;
       if (!_open) return;
+      if (immediate) {
+        menu.hide();
+        _open = false;
+        return;
+      }
       setTimeout(function() {
         if (count == _openCount) {
           menu.hide();
@@ -9346,8 +9526,10 @@
   function LayerControl(gui) {
     var model = gui.model;
     var map = gui.map;
-    var el = gui.container.findChild(".layer-control").on('click', GUI.handleDirectEvent(gui.clearMode));
+    var el = gui.container.findChild(".layer-control");
     var btn = gui.container.findChild('.layer-control-btn');
+    var headerBtn = btn.findChild('.active-layer-label');
+    var tab = gui.container.findChild('.layer-tab');
     var isOpen = false;
     var cache = new DomCache();
     var pinAll = el.findChild('.pin-all'); // button for toggling layer visibility
@@ -9357,7 +9539,34 @@
     var dragging = false;
     var layerOrderSlug;
 
-    gui.addMode('layer_menu', turnOn, turnOff, btn.findChild('.header-btn'));
+    headerBtn.on('click', function() {
+      toggle();
+    }).on('keydown', function(e) {
+      if (e.key == 'Enter' || e.key == ' ') {
+        e.preventDefault();
+        e.stopPropagation();
+        toggle();
+      }
+    });
+    tab.on('click', toggle).on('keydown', function(e) {
+      if (e.key == 'Enter' || e.key == ' ') {
+        e.preventDefault();
+        e.stopPropagation();
+        toggle();
+      }
+    });
+
+    function toggle() {
+      gui.toggleSidebarPanel('layers');
+    }
+
+    gui.on('sidebar', function(e) {
+      if (e.name == 'layers') {
+        turnOn();
+      } else if (e.prev == 'layers') {
+        turnOff();
+      }
+    });
 
     // kludge to show menu button after initial import dialog is dismissed
     gui.on('mode', function(e) {
@@ -9443,53 +9652,33 @@
     }
 
     function turnOn() {
+      if (isOpen) return;
       isOpen = true;
-      el.findChild('div.info-box-scrolled').css('max-height', El('body').height() - 80);
+      tab.addClass('active').attr('aria-expanded', 'true');
       render();
       el.show();
     }
 
     function turnOff() {
+      if (!isOpen) return;
       stopDragging();
       isOpen = false;
+      tab.removeClass('active').attr('aria-expanded', 'false');
       el.hide();
     }
 
     function updateMenuBtn() {
       var lyr = model.getActiveLayer()?.layer;
       var lyrName = lyr?.name || '';
-      var menuTitle = lyrName || lyr && '[unnamed layer]' || '[no data]';
       var pageTitle = lyrName || 'mapshaper';
-      btn.classed('active', 'true').findChild('.layer-name').html(menuTitle + " &nbsp;&#9660;");
+      btn.classed('active', !!lyr);
+      headerBtn.text(lyr ? 'Active: ' + formatLayerNameForDisplay(lyr.name) : '');
       window.document.title = pageTitle;
     }
 
     function render() {
       renderLayerList();
-      renderSourceFileList();
-    }
-
-    function renderSourceFileList() {
       el.findChild('.no-layer-note').classed('hidden', model.getActiveLayer());
-      el.findChild('.source-file-section').classed('hidden', !model.getActiveLayer());
-      var list = el.findChild('.file-list');
-      var files = [];
-      list.empty();
-      model.forEachLayer(function(lyr, dataset) {
-        var file = internal.getLayerSourceFile(lyr, dataset);
-        if (!file || files.includes(file)) return;
-        files.push(file);
-        var warnings = getWarnings(lyr, dataset);
-        var html = '<div class="layer-item">';
-        html += rowHTML('name', file);
-        if (warnings) {
-          // html += rowHTML('problems', warnings, 'layer-problems');
-          html += rowHTML('', warnings, 'layer-problems');
-        }
-        html += '</div>';
-        list.appendChild(El('div').html(html).firstChild());
-      });
-
     }
 
     function renderLayerList() {
@@ -9550,10 +9739,10 @@
       html = '<!-- ' + lyr.menu_id + '--><div class="' + classes + '">';
       html += rowHTML('name', '<span class="layer-name colored-text dot-underline">' + formatLayerNameForDisplay(lyr.name) + '</span>', 'row1');
       html += rowHTML('contents', describeLyr(lyr, dataset));
-      // html += '<img class="close-btn" draggable="false" src="images/close.png">';
+      html += '<span class="more-btn layer-btn" role="button" tabindex="0" aria-label="More layer options"></span>';
       if (opts.pinnable) {
-        html += '<img class="eye-btn black-eye" draggable="false" src="images/eye.png">';
-        html += '<img class="eye-btn green-eye" draggable="false" src="images/eye2.png">';
+        html += '<img class="eye-btn black-eye layer-btn" draggable="false" src="images/eye.png">';
+        html += '<img class="eye-btn green-eye layer-btn" draggable="false" src="images/eye2.png">';
       }
       html += '</div>';
       return html;
@@ -9561,8 +9750,10 @@
 
     function initMouseEvents(entry, id, pinnable) {
       entry.on('mouseover', init);
+      entry.on('focusin', init);
       function init() {
         entry.removeEventListener('mouseover', init);
+        entry.removeEventListener('focusin', init);
         initMouseEvents2(entry, id, pinnable);
       }
     }
@@ -9578,10 +9769,6 @@
         }
         // start dragging when button is first pressed
         if (e.buttons && !dragTargetId) {
-          // don't start dragging if pointer is over the close button
-          // (before, clicking this button wqs finicky -- the mouse had to remain
-          // perfectly still between mousedown and mouseup)
-          if (El(e.target).hasClass('close-btn')) return;
           dragTargetId = id;
           entry.addClass('drag-target');
         }
@@ -9606,6 +9793,7 @@
     }
 
     function initMouseEvents2(entry, id, pinnable) {
+      var moreBtn = entry.findChild('.more-btn');
       initLayerDragging(entry, id);
 
       function deleteLayer() {
@@ -9630,7 +9818,7 @@
         }
       }
 
-      function selectLayer(closeMenu) {
+      function selectLayer() {
         var target = findLayerById(id);
         // don't select if user is typing or dragging
         if (GUI.textIsSelected() || dragging) return;
@@ -9639,17 +9827,24 @@
         if (!map.isActiveLayer(target.layer)) {
           model.selectLayer(target.layer, target.dataset);
         }
-        // close menu after a delay
-        if (closeMenu === true) setTimeout(function() {
-          gui.clearMode();
-        }, 230);
       }
 
-      // init delete button
-      // GUI.onClick(entry.findChild('img.close-btn'), function(e) {
-      //   e.stopPropagation();
-      //   deleteLayer();
-      // });
+      function openLayerMenu(e) {
+        var menuEvent = e;
+        e.stopPropagation();
+        if (!isFinite(e.pageX) || !isFinite(e.pageY)) {
+          var rect = moreBtn.node().getBoundingClientRect();
+          menuEvent = {
+            pageX: rect.right,
+            pageY: rect.top + rect.height / 2
+          };
+        }
+        menuEvent.deleteLayer = deleteLayer;
+        menuEvent.selectLayer = selectLayer;
+        menuEvent.contextMenuId = 'layer-' + id;
+        openContextMenu(menuEvent, null, null);
+      }
+
 
       if (pinnable) {
         // init pin button
@@ -9692,18 +9887,22 @@
           renameLayer(target, str);
         });
 
-      // init click-to-select
-      GUI.onClick(entry, function() {
-        selectLayer(true);
+      moreBtn.on('mousedown', function(e) {
+        e.stopPropagation();
+      });
+      GUI.onClick(moreBtn, openLayerMenu);
+      moreBtn.on('keydown', function(e) {
+        if (e.key == 'Enter' || e.key == ' ') {
+          e.preventDefault();
+          openLayerMenu(e);
+        }
       });
 
-      GUI.onContextClick(entry, function(e) {
-        e.deleteLayer = deleteLayer;
-        e.selectLayer = selectLayer;
-        // contextMenu.open(e);
-        // openContextMenu(e, null, entry.node())
-        openContextMenu(e, null, null);
+      // init click-to-select
+      GUI.onClick(entry, function() {
+        selectLayer();
       });
+
     }
 
     function describeLyr(lyr, dataset) {
@@ -9748,30 +9947,6 @@
       if (internal.UndoTracking && internal.UndoTracking.markLayerChanged) {
         internal.UndoTracking.markLayerChanged(layer, detail);
       }
-    }
-
-    function getWarnings(lyr, dataset) {
-      var file = internal.getLayerSourceFile(lyr, dataset);
-      var missing = [];
-      var msg;
-      // show missing file warning for first layer in dataset
-      // (assuming it represents the content of the original file)
-      if (utils$1.endsWith(file, '.shp') && lyr == dataset.layers[0]) {
-        if (!lyr.data) {
-          missing.push('.dbf');
-        }
-        if (!dataset.info.wkt1 && !dataset.info.crs) {
-          missing.push('.prj');
-        }
-      }
-      if (missing.length) {
-        msg = 'missing ' + missing.join(' and ') + ' data';
-      }
-      return msg;
-    }
-
-    function describeSrc(lyr, dataset) {
-      return internal.getLayerSourceFile(lyr, dataset);
     }
 
     function isPinnable(lyr) {
@@ -9970,7 +10145,7 @@
   function getRestoreDataNote(gui) {
     var stats = getUndoPayloadStats(gui);
     var bytes = stats ? stats.ownBytes || 0 : 0;
-    return 'estimated on-disk restore data: ' + formatBytes(bytes);
+    return 'restore data stored on-disk: ' + formatBytes(bytes);
   }
 
   function getUndoPayloadStats(gui) {
@@ -11991,8 +12166,8 @@
         // DELETE key
         // delete pinned feature
         // to help protect against inadvertent deletion, don't delete
-        // when console is open or a popup menu is open
-        if (!gui.getMode() && !gui.consoleIsOpen()) {
+        // when a sidebar panel or popup menu is open
+        if (!gui.getMode() && !gui.sidebarPanelIsOpen()) {
           internal.deleteFeatureById(targetLayer, pinnedId());
           self.clearSelection();
           gui.model.updated({flags: 'filter'}); // signal map to update
@@ -18326,6 +18501,10 @@ GUI and setting the size and crop of SVG output.</p><div><input type="text" clas
 
 
     gui.state = {};
+    var sidebarPanel = null;
+    var lastSidebarPanel = 'console';
+    var sidebarWidth = GUI.getSavedValue('sidebar_width') || 0;
+    var sidebarResizeFrame = null;
 
     var msgCount = 0;
     var clearMsg;
@@ -18366,9 +18545,49 @@ GUI and setting the size and crop of SVG output.</p><div><input type="text" clas
       // if (gui.progressMessage) gui.progressMessage.hide();
     };
 
-    gui.consoleIsOpen = function() {
-      return gui.container.hasClass('console-open');
+    if (sidebarWidth) {
+      setSidebarWidth(sidebarWidth);
+    }
+
+    gui.getSidebarPanel = function() {
+      return sidebarPanel;
     };
+
+    gui.setSidebarPanel = function(name) {
+      var prev = sidebarPanel;
+      sidebarPanel = name || null;
+      if (sidebarPanel && gui.getMode()) {
+        gui.clearMode();
+      }
+      if (sidebarPanel == prev) return;
+      if (sidebarPanel) {
+        lastSidebarPanel = sidebarPanel;
+      }
+      gui.container
+        .classed('sidebar-open', !!sidebarPanel)
+        .classed('layers-open', sidebarPanel == 'layers')
+        .classed('console-open', sidebarPanel == 'console');
+      gui.dispatchEvent('sidebar', {name: sidebarPanel, prev: prev});
+      gui.dispatchEvent('resize');
+    };
+
+    gui.toggleSidebarPanel = function(name) {
+      gui.setSidebarPanel(sidebarPanel == name ? null : name);
+    };
+
+    gui.toggleSidebar = function() {
+      gui.setSidebarPanel(sidebarPanel ? null : lastSidebarPanel);
+    };
+
+    gui.sidebarPanelIsOpen = function() {
+      return !!sidebarPanel;
+    };
+
+    gui.consoleIsOpen = function() {
+      return sidebarPanel == 'console';
+    };
+
+    initSidebarResizing();
 
     gui.getRuntimeStateContext = function() {
       return getRuntimeStateContext(gui);
@@ -18411,6 +18630,50 @@ GUI and setting the size and crop of SVG output.</p><div><input type="text" clas
     }
 
     return gui;
+
+    function initSidebarResizing() {
+      var handle = gui.container.findChild('.sidebar-resize-handle');
+      if (!handle) return;
+      handle.on('mousedown', function(e) {
+        if (!gui.sidebarPanelIsOpen()) return;
+        e.preventDefault();
+        e.stopPropagation();
+        gui.container.addClass('sidebar-resizing');
+        window.addEventListener('mousemove', onMove);
+        window.addEventListener('mouseup', onRelease);
+      });
+
+      function onMove(e) {
+        setSidebarWidth(e.pageX);
+        scheduleSidebarResize();
+      }
+
+      function onRelease() {
+        window.removeEventListener('mousemove', onMove);
+        window.removeEventListener('mouseup', onRelease);
+        gui.container.removeClass('sidebar-resizing');
+        GUI.setSavedValue('sidebar_width', sidebarWidth);
+        scheduleSidebarResize();
+      }
+    }
+
+    function setSidebarWidth(width) {
+      sidebarWidth = clampSidebarWidth(width);
+      gui.container.node().style.setProperty('--left-sidebar-width', sidebarWidth + 'px');
+    }
+
+    function clampSidebarWidth(width) {
+      var max = Math.min(720, Math.round(window.innerWidth * 0.6));
+      return Math.max(220, Math.min(max, Math.round(width)));
+    }
+
+    function scheduleSidebarResize() {
+      if (sidebarResizeFrame) return;
+      sidebarResizeFrame = requestAnimationFrame(function() {
+        sidebarResizeFrame = null;
+        gui.dispatchEvent('resize');
+      });
+    }
   }
 
   function createUndoTestApi(gui) {

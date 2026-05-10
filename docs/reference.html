@@ -74,64 +74,6 @@ mapshaper provinces.shp -simplify dp 20% -o precision=0.00001 output.geojson
 <span class="hljs-comment"># while retaining the original layer</span>
 mapshaper states.geojson -filter <span class="hljs-string">&#x27;ST == &quot;AK&quot;&#x27;</span> + name=alaska -o output/ target=*
 </code></pre>
-<h2 id="command-files">Command files</h2>
-<p>As an alternative to typing commands on the command line, you can put them in a plain-text command file and run them with the mapshaper CLI.</p>
-<p>Command files offer a few conveniences over a shell script or Makefile:</p>
-<ul>
-<li>Hash-delimited (<code>#</code>) comments, both on their own line and at the end of a line.</li>
-<li>No need to escape <code>*</code> or other shell metacharacters; commands aren&#39;t passed through the shell.</li>
-<li>Trailing-backslash line continuations are accepted but not required &mdash; lines that don&#39;t begin with <code>-</code> are joined onto the previous command.</li>
-<li>Variable interpolation using <code>{{VAR}}</code> placeholders. See <a href="#variables">variables</a> below.</li>
-</ul>
-<p>(Support for running command files in the mapshaper web UI is planned for a future release.)</p>
-<h3 id="file-format">File format</h3>
-<p>A mapshaper command file is a <code>.txt</code> file whose first non-blank, non-comment line starts with <code>mapshaper</code>.</p>
-<pre><code>mapshaper
--i provinces.shp
-# Use Douglas Peucker simplification
--simplify dp 20%
--o precision=0.00001 output.geojson
-</code></pre>
-<p>If you write the command file using shell-compatible syntax &mdash; trailing <code>\</code> for line continuations and no <code>#</code> comments &mdash; it can also be pasted directly onto a bash command line, where the leading <code>mapshaper</code> word invokes the CLI. To make the above example shell compatible, you could write:</p>
-<pre><code>mapshaper \
--i provinces.shp \
--simplify dp 20% \
--o precision=0.00001 output.geojson
-</code></pre>
-<h3 id="running-a-command-file">Running a command file</h3>
-<p>The command for running a command file is <a href="#-run"><code>-run</code></a>:</p>
-<pre><code class="hljs language-bash">mapshaper -run build.txt
-</code></pre>
-<p><code>mapshaper commands.txt</code> is a shortcut for <code>mapshaper -run commands.txt</code>.</p>
-<h2 id="variable-interpolation">Variable interpolation</h2>
-<p>Command files and command lines may contain <code>{{VAR}}</code> placeholders, which are substituted just before each command runs. Two forms are recognized:</p>
-<ul>
-<li><code>{{VAR}}</code> &mdash; substituted with the value of <code>VAR</code>.</li>
-<li><code>{{env.NAME}}</code> &mdash; substituted with the value of the <code>NAME</code> environment variable.</li>
-</ul>
-<p>This syntax allows you to interpolate all or part of a command option. For example, <code>-simplify {{SIMPLIFY_METHOD}} resolution={{SIMPLIFY_RESOLUTION}}</code>.</p>
-<p>Variables can be set in several ways:</p>
-<ul>
-<li>The <a href="#-vars"><code>-vars</code></a> command sets one or more variables, always overwriting any previous value.</li>
-<li>The <a href="#-defaults"><code>-defaults</code></a> command set only those values that do not already exist.</li>
-<li>Assignments in <code>-calc</code> and <code>-define</code> expressions create new variables.</li>
-<li>Assigning a property to the <code>global</code> object in an <code>-each</code> expression creates a new variable.</li>
-</ul>
-<p><code>-vars</code> and <code>-defaults</code> write to a templating-scope store; the other commands write to an expression-scope store (<code>global</code>). <code>{{X}}</code> substitution checks the templating scope first and falls back to the expression scope, so values from any of the four mechanisms above are reachable. Bare names in JS expressions only see the expression scope &mdash; a name set by <code>-vars</code> is <em>not</em> readable by bare name from inside <code>-each</code>, <code>-filter</code>, etc. See <a href="/docs/guides/expressions.html#sharing-state-across-commands">JavaScript expressions</a> for the full story.</p>
-<h4 id="example-3">Example</h4>
-<p><code>build.txt</code>:</p>
-<pre><code>mapshaper
--defaults YEAR=2024 PCT=10                    # overridable defaults
--i sources/counties_{{YEAR}}.shp
--simplify {{PCT}}%
--o out/counties_{{YEAR}}_simplified.shp
-</code></pre>
-<p>Run with the command file&#39;s defaults:</p>
-<pre><code class="hljs language-bash">mapshaper build.txt
-</code></pre>
-<p>Or override default values from the command line:</p>
-<pre><code class="hljs language-bash">mapshaper -vars YEAR=2030 PCT=5 -run build.txt
-</code></pre>
 <h2 id="index-of-commands">Index of commands</h2>
 <p><strong>File I/O</strong></p>
 <p><a href="#-i-input">-i (input)</a>
@@ -790,10 +732,10 @@ $ mapshaper data.json \
 </code></pre>
 </section>
 <section class="cmd-section" data-id="-run" data-name="-run" data-options="target io undefined targets"><h3 id="-run">-run</h3>
-<p>Run mapshaper commands from a <a href="#command-files">command file</a> or generated on-the-fly from a JS expression.</p>
+<p>Run mapshaper commands from a <a href="/docs/essentials/command-line.html#command-files">command file</a> or generated on-the-fly from a JS expression.</p>
 <p><code>&lt;file|expression&gt;</code>  Either:</p>
 <ul>
-<li>A path to a mapshaper <a href="#command-files">command file</a>.</li>
+<li>A path to a mapshaper <a href="/docs/essentials/command-line.html#command-files">command file</a>.</li>
 <li>A JS expression or template containing embedded expressions, for generating one or more mapshaper commands.</li>
 </ul>
 <ul>
@@ -966,7 +908,7 @@ mapshaper tracts.shp
   -o tract_groups.shp
 </code></pre>
 </section>
-<section class="cmd-section" data-id="-style" data-name="-style" data-options="where clear class css style fill pink fill-pattern ortho npers stroke stroke-width stroke-dasharray opacity label-text text-anchor dx dy font-size font-family font-weight font-style font-stretch letter-spacing line-height target"><h3 id="-style">-style</h3>
+<section class="cmd-section" data-id="-style" data-name="-style" data-options="where clear class css style fill pink fill-pattern ortho npers stroke stroke-width stroke-dasharray opacity icon icon-size icon-color label-text text-anchor dx dy font-size font-family font-weight font-style font-stretch letter-spacing line-height target"><h3 id="-style">-style</h3>
 <p>Add common SVG attributes for SVG export and display in the web UI. Attribute values take either a literal value or a JS expression. See <a href="/docs/guides/expressions.html">JavaScript expressions</a> for the available context. This command was named <code>-svg-style</code> in earlier versions of mapshaper.</p>
 <p><code>where=</code>           Boolean JS expression for targetting a subset of features.</p>
 <p><code>clear</code> Remove all style properties from a layer.</p>
@@ -987,6 +929,9 @@ mapshaper tracts.shp
 <p><code>stroke-dasharray=</code> Dashes</p>
 <p><code>opacity=</code>         Symbol opacity (e.g. <code>opacity=0.5</code>)</p>
 <p><code>r=</code>               Circle radius. Setting this exports points as SVG <code>&lt;circle&gt;</code> symbols, unless the <code>-o point-symbol=square</code> option is used.</p>
+<p><code>icon=</code>            Point icon shape. Possible values are: circle, square, ring or star. Icons are rendered as SVG symbols and can be combined with labels on the same point layer.</p>
+<p><code>icon-size=</code>       Point icon size in pixels. If <code>icon=</code> is missing, <code>icon-size=</code> creates circle icons.</p>
+<p><code>icon-color=</code>      Point icon color. If missing, icons use the <code>fill=</code> color, or black if <code>fill=</code> is also missing. Ring icons use this color for the stroke.</p>
 <p><code>label-text=</code>      Label text (set this to export points as labels). To create multiline labels, insert line delimiters into the label text. There are three possible line delimiters: the newline character, <code>\n</code> (backslash + &quot;n&quot;), and <code>&lt;br&gt;</code>. (When importing JSON data, <code>\n</code> in a JSON string is parsed as a newline and <code>\\n</code> is parsed as backslash + &quot;n&quot;). Note that Mapshaper doesn&#39;t accept multiline strings as input on the command line.</p>
 <p><code>text-anchor=</code>     Horizontal justification of label text. Possible values are: start, end or middle (the default).</p>
 <p><code>dx=</code>              X offset of labels (default is 0)</p>
@@ -1309,7 +1254,7 @@ mapshaper -vars YEAR=2030 -run build.txt
   </main>
 
   <aside class="docs-toc">
-    <div class="docs-toc-title">On this page</div><ul><li class="lvl-2"><a href="#command-line-syntax">Command line syntax</a></li><li class="lvl-3"><a href="#command-options-can-take-three-forms">Command options can take three forms:</a></li><li class="lvl-3"><a href="#common-options">Common options</a></li><li class="lvl-2"><a href="#command-files">Command files</a></li><li class="lvl-3"><a href="#file-format">File format</a></li><li class="lvl-3"><a href="#running-a-command-file">Running a command file</a></li><li class="lvl-2"><a href="#variable-interpolation">Variable interpolation</a></li><li class="lvl-2"><a href="#index-of-commands">Index of commands</a></li><li class="lvl-2"><a href="#i-o-commands">I/O Commands</a></li><li class="lvl-3"><a href="#-i-input">-i (input)</a></li><li class="lvl-3"><a href="#-o-output">-o (output)</a></li><li class="lvl-2"><a href="#editing-commands">Editing Commands</a></li><li class="lvl-3"><a href="#-affine">-affine</a></li><li class="lvl-3"><a href="#-classify">-classify</a></li><li class="lvl-3"><a href="#-clean">-clean</a></li><li class="lvl-3"><a href="#-clip">-clip</a></li><li class="lvl-3"><a href="#-colorizer">-colorizer</a></li><li class="lvl-3"><a href="#-dashlines">-dashlines</a></li><li class="lvl-3"><a href="#-dissolve">-dissolve</a></li><li class="lvl-3"><a href="#-dissolve2">-dissolve2</a></li><li class="lvl-3"><a href="#-divide">-divide</a></li><li class="lvl-3"><a href="#-dots">-dots</a></li><li class="lvl-3"><a href="#-drop">-drop</a></li><li class="lvl-3"><a href="#-each">-each</a></li><li class="lvl-3"><a href="#-erase">-erase</a></li><li class="lvl-3"><a href="#-explode">-explode</a></li><li class="lvl-3"><a href="#-filter">-filter</a></li><li class="lvl-3"><a href="#-filter-fields">-filter-fields</a></li><li class="lvl-3"><a href="#-filter-islands">-filter-islands</a></li><li class="lvl-3"><a href="#-filter-slivers">-filter-slivers</a></li><li class="lvl-3"><a href="#-frame">-frame</a></li><li class="lvl-3"><a href="#-graticule">-graticule</a></li><li class="lvl-3"><a href="#-grid">-grid</a></li><li class="lvl-3"><a href="#-include">-include</a></li><li class="lvl-3"><a href="#-inlay">-inlay</a></li><li class="lvl-3"><a href="#-innerlines">-innerlines</a></li><li class="lvl-3"><a href="#-join">-join</a></li><li class="lvl-3"><a href="#-lines">-lines</a></li><li class="lvl-3"><a href="#-merge-layers">-merge-layers</a></li><li class="lvl-3"><a href="#-mosaic">-mosaic</a></li><li class="lvl-3"><a href="#-point-grid">-point-grid</a></li><li class="lvl-3"><a href="#-points">-points</a></li><li class="lvl-3"><a href="#-polygons">-polygons</a></li><li class="lvl-3"><a href="#-proj">-proj</a></li><li class="lvl-3"><a href="#-rectangle">-rectangle</a></li><li class="lvl-3"><a href="#-rectangles">-rectangles</a></li><li class="lvl-3"><a href="#-rename-fields">-rename-fields</a></li><li class="lvl-3"><a href="#-rename-layers">-rename-layers</a></li><li class="lvl-3"><a href="#-require">-require</a></li><li class="lvl-3"><a href="#-run">-run</a></li><li class="lvl-3"><a href="#-scalebar">-scalebar</a></li><li class="lvl-3"><a href="#-shape">-shape</a></li><li class="lvl-3"><a href="#-simplify">-simplify</a></li><li class="lvl-3"><a href="#-snap">-snap</a></li><li class="lvl-3"><a href="#-sort">-sort</a></li><li class="lvl-3"><a href="#-split">-split</a></li><li class="lvl-3"><a href="#-split-on-grid">-split-on-grid</a></li><li class="lvl-3"><a href="#-subdivide">-subdivide</a></li><li class="lvl-3"><a href="#-style">-style</a></li><li class="lvl-3"><a href="#-symbols">-symbols</a></li><li class="lvl-3"><a href="#-union">-union</a></li><li class="lvl-3"><a href="#-uniq">-uniq</a></li><li class="lvl-2"><a href="#control-flow-commands">Control Flow Commands</a></li><li class="lvl-3"><a href="#-if">-if</a></li><li class="lvl-3"><a href="#-elif">-elif</a></li><li class="lvl-3"><a href="#-else">-else</a></li><li class="lvl-3"><a href="#-endif">-endif</a></li><li class="lvl-3"><a href="#-stop">-stop</a></li><li class="lvl-3"><a href="#-target">-target</a></li><li class="lvl-2"><a href="#informational-commands">Informational Commands</a></li><li class="lvl-3"><a href="#-calc">-calc</a></li><li class="lvl-3"><a href="#-colors">-colors</a></li><li class="lvl-3"><a href="#-comment">-comment</a></li><li class="lvl-3"><a href="#-encodings">-encodings</a></li><li class="lvl-3"><a href="#-help">-help</a></li><li class="lvl-3"><a href="#-info">-info</a></li><li class="lvl-3"><a href="#-inspect">-inspect</a></li><li class="lvl-3"><a href="#-print">-print</a></li><li class="lvl-3"><a href="#-projections">-projections</a></li><li class="lvl-3"><a href="#-quiet">-quiet</a></li><li class="lvl-3"><a href="#-vars">-vars</a></li><li class="lvl-3"><a href="#-defaults">-defaults</a></li><li class="lvl-3"><a href="#-verbose">-verbose</a></li><li class="lvl-3"><a href="#-version">-version</a></li></ul>
+    <div class="docs-toc-title">On this page</div><ul><li class="lvl-2"><a href="#command-line-syntax">Command line syntax</a></li><li class="lvl-3"><a href="#command-options-can-take-three-forms">Command options can take three forms:</a></li><li class="lvl-3"><a href="#common-options">Common options</a></li><li class="lvl-2"><a href="#index-of-commands">Index of commands</a></li><li class="lvl-2"><a href="#i-o-commands">I/O Commands</a></li><li class="lvl-3"><a href="#-i-input">-i (input)</a></li><li class="lvl-3"><a href="#-o-output">-o (output)</a></li><li class="lvl-2"><a href="#editing-commands">Editing Commands</a></li><li class="lvl-3"><a href="#-affine">-affine</a></li><li class="lvl-3"><a href="#-classify">-classify</a></li><li class="lvl-3"><a href="#-clean">-clean</a></li><li class="lvl-3"><a href="#-clip">-clip</a></li><li class="lvl-3"><a href="#-colorizer">-colorizer</a></li><li class="lvl-3"><a href="#-dashlines">-dashlines</a></li><li class="lvl-3"><a href="#-dissolve">-dissolve</a></li><li class="lvl-3"><a href="#-dissolve2">-dissolve2</a></li><li class="lvl-3"><a href="#-divide">-divide</a></li><li class="lvl-3"><a href="#-dots">-dots</a></li><li class="lvl-3"><a href="#-drop">-drop</a></li><li class="lvl-3"><a href="#-each">-each</a></li><li class="lvl-3"><a href="#-erase">-erase</a></li><li class="lvl-3"><a href="#-explode">-explode</a></li><li class="lvl-3"><a href="#-filter">-filter</a></li><li class="lvl-3"><a href="#-filter-fields">-filter-fields</a></li><li class="lvl-3"><a href="#-filter-islands">-filter-islands</a></li><li class="lvl-3"><a href="#-filter-slivers">-filter-slivers</a></li><li class="lvl-3"><a href="#-frame">-frame</a></li><li class="lvl-3"><a href="#-graticule">-graticule</a></li><li class="lvl-3"><a href="#-grid">-grid</a></li><li class="lvl-3"><a href="#-include">-include</a></li><li class="lvl-3"><a href="#-inlay">-inlay</a></li><li class="lvl-3"><a href="#-innerlines">-innerlines</a></li><li class="lvl-3"><a href="#-join">-join</a></li><li class="lvl-3"><a href="#-lines">-lines</a></li><li class="lvl-3"><a href="#-merge-layers">-merge-layers</a></li><li class="lvl-3"><a href="#-mosaic">-mosaic</a></li><li class="lvl-3"><a href="#-point-grid">-point-grid</a></li><li class="lvl-3"><a href="#-points">-points</a></li><li class="lvl-3"><a href="#-polygons">-polygons</a></li><li class="lvl-3"><a href="#-proj">-proj</a></li><li class="lvl-3"><a href="#-rectangle">-rectangle</a></li><li class="lvl-3"><a href="#-rectangles">-rectangles</a></li><li class="lvl-3"><a href="#-rename-fields">-rename-fields</a></li><li class="lvl-3"><a href="#-rename-layers">-rename-layers</a></li><li class="lvl-3"><a href="#-require">-require</a></li><li class="lvl-3"><a href="#-run">-run</a></li><li class="lvl-3"><a href="#-scalebar">-scalebar</a></li><li class="lvl-3"><a href="#-shape">-shape</a></li><li class="lvl-3"><a href="#-simplify">-simplify</a></li><li class="lvl-3"><a href="#-snap">-snap</a></li><li class="lvl-3"><a href="#-sort">-sort</a></li><li class="lvl-3"><a href="#-split">-split</a></li><li class="lvl-3"><a href="#-split-on-grid">-split-on-grid</a></li><li class="lvl-3"><a href="#-subdivide">-subdivide</a></li><li class="lvl-3"><a href="#-style">-style</a></li><li class="lvl-3"><a href="#-symbols">-symbols</a></li><li class="lvl-3"><a href="#-union">-union</a></li><li class="lvl-3"><a href="#-uniq">-uniq</a></li><li class="lvl-2"><a href="#control-flow-commands">Control Flow Commands</a></li><li class="lvl-3"><a href="#-if">-if</a></li><li class="lvl-3"><a href="#-elif">-elif</a></li><li class="lvl-3"><a href="#-else">-else</a></li><li class="lvl-3"><a href="#-endif">-endif</a></li><li class="lvl-3"><a href="#-stop">-stop</a></li><li class="lvl-3"><a href="#-target">-target</a></li><li class="lvl-2"><a href="#informational-commands">Informational Commands</a></li><li class="lvl-3"><a href="#-calc">-calc</a></li><li class="lvl-3"><a href="#-colors">-colors</a></li><li class="lvl-3"><a href="#-comment">-comment</a></li><li class="lvl-3"><a href="#-encodings">-encodings</a></li><li class="lvl-3"><a href="#-help">-help</a></li><li class="lvl-3"><a href="#-info">-info</a></li><li class="lvl-3"><a href="#-inspect">-inspect</a></li><li class="lvl-3"><a href="#-print">-print</a></li><li class="lvl-3"><a href="#-projections">-projections</a></li><li class="lvl-3"><a href="#-quiet">-quiet</a></li><li class="lvl-3"><a href="#-vars">-vars</a></li><li class="lvl-3"><a href="#-defaults">-defaults</a></li><li class="lvl-3"><a href="#-verbose">-verbose</a></li><li class="lvl-3"><a href="#-version">-version</a></li></ul>
   </aside>
 
 </div>

@@ -146,21 +146,6 @@
 <p>You can pre-load files by listing them on the command line, which skips the import dialog:</p>
 <pre><code class="hljs language-bash">mapshaper-gui states.shp rivers.shp
 </code></pre>
-<h2 id="optional-ai-assistant">Optional AI assistant</h2>
-<p>Some Mapshaper installations may enable an optional AI assistant by serving an <code>ai-config.js</code> file alongside the web app. If the file is missing or disabled, no assistant UI is shown.</p>
-<p>When enabled, the assistant can receive the same runtime context shown by the console&#39;s <code>context</code> command: layer names, field names/types, feature counts, CRS, recent commands and recent messages. It does not include geometry or full attribute records.</p>
-<p>Development builds can use a mock assistant or direct provider calls from <code>localhost</code>. Production deployments should use a proxy endpoint so provider secrets, rate limits and logging policy are not exposed in the browser.</p>
-<p>An <code>ai-config.js</code> file can also point the assistant at static documentation, such as <code>llms-full.txt</code>, for providers or proxies that support prompt caching:</p>
-<pre><code class="hljs language-js"><span class="hljs-variable language_">window</span>.<span class="hljs-property">mapshaperAI</span> = {
-  <span class="hljs-attr">enabled</span>: <span class="hljs-literal">true</span>,
-  <span class="hljs-attr">mode</span>: <span class="hljs-string">&quot;proxy&quot;</span>,
-  <span class="hljs-attr">endpoint</span>: <span class="hljs-string">&quot;/api/mapshaper-assist&quot;</span>,
-  <span class="hljs-attr">staticContextUrl</span>: <span class="hljs-string">&quot;/llms-full.txt&quot;</span>,
-  <span class="hljs-attr">cacheControl</span>: {<span class="hljs-attr">type</span>: <span class="hljs-string">&quot;ephemeral&quot;</span>},
-  <span class="hljs-attr">cacheTtl</span>: <span class="hljs-string">&quot;1h&quot;</span>
-};
-</code></pre>
-<p>For local testing without a proxy, <code>mode: &quot;direct&quot;</code> supports OpenAI-compatible Responses requests and Anthropic Messages requests. Anthropic direct mode sends static context as cacheable system content when <code>provider: &quot;anthropic&quot;</code> is configured. Direct mode should only be used with disposable development keys on <code>localhost</code>.</p>
 <h2 id="browser-support">Browser support</h2>
 <p>When importing very large files (hundreds of megabytes), the web app may run out of memory and crash. Firefox used to be better than Chrome at handling large files, but Chrome seems to have improved recently. If the web app crashes, try the <a href="/docs/essentials/command-line.html"><code>mapshaper-xl</code> command-line tool</a>, which can allocate a large amount of memory.</p>
 <h2 id="privacy">Privacy</h2>
@@ -173,7 +158,7 @@
   </main>
 
   <aside class="docs-toc">
-    <div class="docs-toc-title">On this page</div><ul><li class="lvl-2"><a href="#loading-data">Loading data</a></li><li class="lvl-3"><a href="#tips-for-importing-shapefiles">Tips for importing Shapefiles</a></li><li class="lvl-2"><a href="#the-console">The console</a></li><li class="lvl-3"><a href="#keyboard">Keyboard</a></li><li class="lvl-3"><a href="#syntax">Syntax</a></li><li class="lvl-3"><a href="#using-cli-examples-in-the-web-console">Using CLI examples in the web console</a></li><li class="lvl-3"><a href="#magic-words-at-the-prompt">Magic words at the prompt</a></li><li class="lvl-3"><a href="#discovering-commands">Discovering commands</a></li><li class="lvl-2"><a href="#the-map">The map</a></li><li class="lvl-3"><a href="#right-click-menu">Right-click menu</a></li><li class="lvl-3"><a href="#layer-navigation">Layer navigation</a></li><li class="lvl-2"><a href="#display-options">Display options</a></li><li class="lvl-2"><a href="#snapshots-and-session-history">Snapshots and session history</a></li><li class="lvl-2"><a href="#running-the-web-ui-locally">Running the web UI locally</a></li><li class="lvl-2"><a href="#optional-ai-assistant">Optional AI assistant</a></li><li class="lvl-2"><a href="#browser-support">Browser support</a></li><li class="lvl-2"><a href="#privacy">Privacy</a></li></ul>
+    <div class="docs-toc-title">On this page</div><ul><li class="lvl-2"><a href="#loading-data">Loading data</a></li><li class="lvl-3"><a href="#tips-for-importing-shapefiles">Tips for importing Shapefiles</a></li><li class="lvl-2"><a href="#the-console">The console</a></li><li class="lvl-3"><a href="#keyboard">Keyboard</a></li><li class="lvl-3"><a href="#syntax">Syntax</a></li><li class="lvl-3"><a href="#using-cli-examples-in-the-web-console">Using CLI examples in the web console</a></li><li class="lvl-3"><a href="#magic-words-at-the-prompt">Magic words at the prompt</a></li><li class="lvl-3"><a href="#discovering-commands">Discovering commands</a></li><li class="lvl-2"><a href="#the-map">The map</a></li><li class="lvl-3"><a href="#right-click-menu">Right-click menu</a></li><li class="lvl-3"><a href="#layer-navigation">Layer navigation</a></li><li class="lvl-2"><a href="#display-options">Display options</a></li><li class="lvl-2"><a href="#snapshots-and-session-history">Snapshots and session history</a></li><li class="lvl-2"><a href="#running-the-web-ui-locally">Running the web UI locally</a></li><li class="lvl-2"><a href="#browser-support">Browser support</a></li><li class="lvl-2"><a href="#privacy">Privacy</a></li></ul>
   </aside>
 
 </div>

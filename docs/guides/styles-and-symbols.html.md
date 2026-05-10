@@ -9,8 +9,6 @@ Mapshaper can attach SVG styling properties to features with [`-style`](/docs/re
 
 The examples below are written for the web app's Console. Load your data first, then run the commands. The same command sequences also work on the CLI when you add `mapshaper input-file` before them and `-o output.svg` after them.
 
-> **Illustration placeholder:** Add a composite image showing a map with muted base layers, proportional point symbols, a classified choropleth layer and labels.
-
 ## The `-style` command
 
 `-style` writes common SVG presentation attributes to each feature. Line layers can be styled with `stroke=`, `stroke-width=`, `stroke-opacity=`, `stroke-dasharray=` and `opacity=`. Polygon layers add `fill=` and `fill-opacity=` options.
@@ -30,6 +28,14 @@ To make circles from a point layer, add a `r=` (for radius) property along with 
 -style r='Math.sqrt(POP) / 250' \
   fill='rgba(227, 74, 51, 0.65)' \
   stroke='rgba(0, 0, 0, 0.15)'
+```
+
+### Making point icons
+
+Use `icon=` with `icon-size=` to add circle, square, ring or star icons to a point layer. Icons use `icon-color=` when it is provided. Otherwise they use the layer's `fill=` color, falling back to black.
+
+```text
+-style icon=star icon-size=10 fill="#333"
 ```
 
 ## Styling data layers with the `-classify` command
@@ -122,6 +128,13 @@ Use `dx=` together with `text-anchor=start` or `text-anchor=end` to place labels
 
 ```text
 -style label-text=NAME dx=6 dy=3 font-size=12 text-anchor=start r=2
+```
+
+For labeled point icons, use `icon=` on the same layer. In this example the icon and label both use `fill="#555"`.
+
+```text
+-style label-text=NAME dx=8 dy=3 text-anchor=start \
+  icon=circle icon-size=6 fill="#555"
 ```
 
 You can combine `where=` with multiple `-style` commands to emphasize important labels.

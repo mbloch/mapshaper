@@ -22,6 +22,8 @@
 	--lt-theme-col: #e6f7ff;
 	--colored-text: #10699b;
 	--normal-text: #333;
+	--left-sidebar-width: 420px;
+	--sidebar-resize-col: #f2c65a; /* #d6a51d; */
 }
 
 
@@ -124,6 +126,7 @@ body.map-view {
 .dialog-btn:hover:not(.disabled),
 .sidebar-btn:hover,
 .btn.header-btn:hover,
+.btn.active-layer-label:hover,
 .dialog-btn.default-btn,
 .dialog-btn.selected-btn {
 	background-color: var(--dk-theme-col);
@@ -199,16 +202,18 @@ body.map-view {
 	margin: 0 2px 3px 0;
 }
 
-.btn.header-btn {
+.btn.header-btn,
+.btn.active-layer-label {
 	color: #fff;
 	border: none;
 	margin-top: 0px;
 	height: 29px;
 	box-sizing: border-box;
 	border-radius: 1px;
-	font-size: 14px;
+	line-height: 1;
+	font-size: 13px;
 	font-weight: 500;
-	padding: 8px 8px 0px 8px;
+	padding: 9px 8px 0px 8px;
 }
 
 .page-header .header-btn.disabled,
@@ -247,6 +252,8 @@ body.map-view {
 
 #header-menu-btn svg {
 	display: block;
+	width: 14px;
+	height: 13px;
 	fill: currentColor;
 }
 
@@ -775,65 +782,115 @@ input[type="checkbox"]
 }
 
 
-/* --- Console control ------------ */
+/* --- Sidebar panels ------------ */
 
-.console-area {
+.sidebar-panel {
 	right: auto;
-	width: 495px;
+	width: var(--left-sidebar-width);
 	max-width: 100%;
-	font-size: 12px;
-}
-
-body.console-open .map-area {
-	left: 495px;
-}
-
-/* responsive sizing, should be 78-80 chars per line */
-@media screen and (max-width: 525px) {
-	body.console-open .map-area {
-		display: none;
-	}
-}
-
-@media screen and (min-width: 1200px) {
-	body.console-open .map-area {
-		left: 535px;
-	}
-
-	.console-area {
-		width: 535px;
-		font-size: 13px;
-	}
-}
-
-@media screen and (min-width: 1400px) {
-	body.console-open .map-area {
-		left: 575px;
-	}
-
-	.console-area {
-		width: 575px;
-		font-size: 14px;
-	}
-}
-
-
-.console {
+	box-sizing: border-box;
+	border-right: 1px solid #c6c6c6; /*#cfd8dc;*/
+	/* box-shadow: 2px 0 8px rgba(0,0,0,0.12); */
 	z-index: 30;
 	pointer-events: none;
 	display: none;
 }
 
-.console-tab {
+.console-area {
+	font-size: 12px;
+}
+
+body.sidebar-open .map-area {
+	left: var(--left-sidebar-width);
+}
+
+.sidebar-resize-handle {
+	display: none;
 	position: absolute;
-	top: 55px; /* below line intersection repair link */
+	top: 29px;
+	bottom: 0;
+	left: calc(var(--left-sidebar-width) - 4px);
+	width: 8px;
+	z-index: 35;
+	cursor: ew-resize;
+	pointer-events: auto;
+}
+
+.sidebar-resize-handle::before {
+	content: "";
+	position: absolute;
+	top: 0;
+	bottom: 0;
+	left: 3px;
+	width: 2px;
+	background-color: transparent;
+}
+
+body.sidebar-open .sidebar-resize-handle {
+	display: block;
+}
+
+body.sidebar-resizing,
+body.sidebar-resizing * {
+	cursor: ew-resize !important;
+	user-select: none;
+}
+
+body.sidebar-resizing .sidebar-resize-handle::before,
+.sidebar-resize-handle:hover::before {
+	background-color: var(--sidebar-resize-col);
+}
+
+/* Give the console a little more line length on wide screens. */
+@media screen and (max-width: 525px) {
+	body.sidebar-open .map-area {
+		display: none;
+	}
+}
+
+@media screen and (min-width: 1200px) {
+	:root {
+		--left-sidebar-width: 460px;
+	}
+
+	.console-area {
+		font-size: 13px;
+	}
+}
+
+@media screen and (min-width: 1400px) {
+	:root {
+		--left-sidebar-width: 500px;
+	}
+
+	.console-area {
+		font-size: 14px;
+	}
+}
+
+.sidebar-tabs {
+	position: absolute;
+	top: 85px; /* below line intersection repair link */
 	left: 0;
-	z-index: 25;
+	z-index: 40;
+	pointer-events: auto;
+}
+
+body.sidebar-open .sidebar-tabs {
+	left: var(--left-sidebar-width);
+}
+
+body.sidebar-tabs-over-popup .sidebar-tabs {
+	z-index: 90;
+}
+
+.sidebar-tab {
 	writing-mode: vertical-rl;
 	transform: rotate(180deg);
 	background-color: var(--theme-col);
 	color: white;
 	padding: 9px 4px;
+	margin-bottom: 4px;
 	border-radius: 5px 0 0 5px;
 	font-size: 13px;
 	font-weight: 500;
@@ -841,7 +898,8 @@ body.console-open .map-area {
 	pointer-events: auto;
 }
 
-.console-tab:hover,
+.sidebar-tab:hover,
+body.layers-open .layer-tab,
 body.console-open .console-tab {
 	background-color: #1A6A96;
 }
@@ -894,6 +952,68 @@ body.console-open .console-tab {
 	color: #b9dffc;
 }
 
+.console-help,
+.console-info {
+	white-space: normal;
+	word-break: normal;
+	overflow-wrap: anywhere;
+}
+
+.console-help-line,
+.console-info-title,
+.console-info-subtitle {
+	white-space: pre-wrap;
+}
+
+.console-help-spacer {
+	height: 0.75em;
+}
+
+.console-help-table,
+.console-info-table,
+.console-attribute-table {
+	border-collapse: collapse;
+	margin: 2px 0 8px 0;
+	width: 100%;
+}
+
+.console-help-table td,
+.console-info-table td,
+.console-attribute-table td,
+.console-attribute-table th {
+	padding: 1px 10px 1px 0;
+	vertical-align: top;
+	text-align: left;
+	font-weight: normal;
+}
+
+.console-help-table td:first-child,
+.console-info-table td:first-child,
+.console-attribute-table td:first-child,
+.console-attribute-table th:first-child {
+	white-space: nowrap;
+	width: 1%;
+	color: #b9dffc;
+}
+
+.console-attribute-table tr:first-child {
+	border-bottom: 1px solid rgba(255,255,255,0.35);
+}
+
+.console-info-layer + .console-info-layer {
+	margin-top: 1em;
+}
+
+.console-info-title {
+	color: #fff;
+	border-bottom: 1px solid rgba(255,255,255,0.35);
+	margin: 0 0 4px 0;
+}
+
+.console-info-subtitle {
+	margin-top: 0.65em;
+}
+
 .input-field {
 	outline: none;
 	min-width: 100px;
@@ -915,26 +1035,23 @@ body.console-open .console-tab {
 	display: block;
 }
 
-.layer-control-btn > .btn.header-btn {
+.active-layer-label {
 	white-space: nowrap;
-	position: relative;
-	background-color: #1A6A96;
-	padding-left: 12px;
-	padding-right: 12px;
 	pointer-events: auto;
 	margin-right: 20px;
-}
-
-.layer-control-btn > .btn.header-btn:hover {
-	background-color: #094B70;
 }
 
 body.simplify .layer-control-btn {
 	display: none;
 }
 
-/* On small screens, move the layer menu trigger out of the header center and
-   render it as an icon-only floating map button. */
+@media (max-width: 850px) {
+	.layer-control-btn,
+	.layer-control-btn.active {
+		display: none;
+	}
+}
+
 @media (max-width: 700px) {
 	.info-box {
 		margin-top: 8px;
@@ -949,54 +1066,8 @@ body.simplify .layer-control-btn {
 		padding-right: 5px;
 	}
 
-	.layer-control-btn {
-		width: auto;
-		left: 9px;
-		top: 38px; /* below the 30px header */
-		text-align: left;
-	}
-
-	.layer-control-btn > .btn.header-btn {
-		margin-right: 0;
-		width: 30px;
-		height: 30px;
-		box-sizing: content-box;
-		padding: 0;
-		border-radius: 4px;
-		border: 2px solid rgba(255, 255, 255, 0.45);
-		display: inline-flex;
-		align-items: center;
-		justify-content: center;
-	}
-
-	/* The clickable header button element itself has class "layer-name", so
-	   hide text on the button directly (not a child selector). */
-	.layer-control-btn > .btn.header-btn.layer-name {
-		color: transparent;
-		font-size: 0;
-		line-height: 0;
-		text-indent: -9999px;
-		overflow: hidden;
-	}
-
-	/* Mobile layer-button icon */
-	.layer-control-btn > .btn.header-btn::before {
-		content: "";
-		display: block;
-	}
-
-	/* Two diagonally offset squares */
-	.layer-control-btn.icon-duo > .btn.header-btn::before {
-		width: 13px;
-		height: 13px;
-		margin: 2px 0 0 2px;
-		border: 1px solid rgba(255, 255, 255, 0.95);
-		border-radius: 1px;
-		box-shadow: -4px -4px 0 -1px rgba(255, 255, 255, 0.72);
-	}
-
 	.mshp-main-map .basemap-overlay-buttons {
-		top: 10px; /* map-relative offset to align with page-level layer button */
+		top: 10px;
 		right: 33px;
 		padding: 0;
 		background: transparent;
@@ -1035,13 +1106,61 @@ body.simplify .layer-control-btn {
 	z-index: 90;
 }
 
+.layer-area {
+	background-color: #fff;
+}
+
+.layer-area .info-box {
+	position: static;
+	z-index: auto;
+	display: block;
+	box-sizing: border-box;
+	width: 100%;
+	height: 100%;
+	min-width: 0;
+	margin: 0;
+	border: 0;
+	border-radius: 0;
+	box-shadow: none;
+}
+
+.layer-area div.info-box-scrolled {
+	z-index: auto;
+	box-sizing: border-box;
+	width: 100%;
+	height: 100%;
+	max-height: none;
+	border-radius: 0;
+}
+
 .layer-control .no-layer-note {
+	color: #999;
+	margin: 0 0 5px 0;
+}
+
+.layer-add-links {
+	margin: 2px 0 2px 0;
+	font-size: 13px;
+	line-height: 1.2;
+}
+
+.layer-menu-link {
+	color: var(--colored-text);
+	cursor: pointer;
+}
+
+.layer-menu-link:hover {
+	text-decoration: underline;
+}
+
+.layer-menu-link-separator {
 	color: #777;
-	margin: 4px 0 5px 0;
+	font-weight: bold;
 }
 
 .layer-menu .layer-list {
-	margin: 6px 0 7px 0;
+	margin-top: -5px;
+	/* margin: 0 0 7px 0; */
 }
 
 .layer-menu .layer-item {
@@ -1056,24 +1175,31 @@ body.simplify .layer-control-btn {
 	cursor: pointer;
 }
 
-.layer-menu .file-list {
-	padding-bottom: 4px;
-}
-
-.layer-menu .file-list .layer-item {
-	padding: 0px 14px 2px 14px;
-}
-
-
 .pin-all img,
 .layer-item img
 {
-	position: absolute;
 	width: 16px;
 	height: 16px;
-	padding: 2px;
+	padding: 1px 2px 3px 2px;
 	right: 6px;
 }
+
+.layer-item .layer-btn {
+	position: absolute;
+	top: 5px;
+}
+
+
+.layer-item .more-btn {
+	position: absolute;
+	right: 28px;
+	width: 18px;
+	height: 18px;
+	opacity: 1;
+	cursor: pointer;
+	border-radius: 3px;
+}
+
 
 img.close-btn {
 	opacity: 0.2;
@@ -1087,7 +1213,6 @@ img.close-btn {
 	float: right;
 	height:  18px;
 	width:  18px;
-	margin-top: 1px;
 	margin-right: -3px;
 	cursor: pointer;
 	border-radius: 4px;
@@ -1098,23 +1223,26 @@ img.close-btn {
 }
 
 .pin-all img {
+	position: absolute;
 	top: 11px;
 	cursor: pointer;
 }
 
-.layer-item img.eye-btn {
-	top: 4px;
+
+.layer-item .more-btn::before {
+	content: "";
+	position: absolute;
+	top: 8px;
+	left: 2px;
+	width: 3px;
+	height: 3px;
+	border-radius: 50%;
+	background-color: #000;
+	box-shadow: 5px 0 0 #000, 10px 0 0 #000;
 }
 
-.layer-item img.close-btn {
-	/* top: 29px; */
-	bottom: 5px;
-}
-
-/* hide close button when not hovering */
-.layer-item:not(:hover) img.close-btn,
-.layer-item.dragging img.close-btn {
-	display: none;
+.layer-item .more-btn:hover {
+	background-color: #e5e5e5;
 }
 
 img.eye-btn {
@@ -1134,7 +1262,6 @@ img.eye-btn {
 	opacity: 0;
 }*/
 
-img.close-btn:hover,
 .pinnable.active:not(.pinned):not(.invisible) img.black-eye,
 .pinnable.pinned:not(.active) img.green-eye,
 .pinnable.active.pinned:not(.invisible) img.black-eye {
@@ -1153,6 +1280,10 @@ img.close-btn:hover,
 
 .layer-item .layer-name {
 	display: inline-block;
+	max-width: 100%;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	vertical-align: top;
 	min-height: 14px; /* For FF when content is empty */
 	min-width: 2px;
 	outline: none;
@@ -1164,6 +1295,10 @@ img.close-btn:hover,
 
 .layer-item .layer-name.editing {
 	border-bottom: 1px solid transparent;
+	max-width: none;
+	overflow: visible;
+	position: relative;
+	z-index: 3;
 }
 
 .layer-item .layer-name::selection {
@@ -1191,7 +1326,9 @@ img.close-btn:hover,
 }
 
 .layer-item .row1 .col2 {
-	margin-right: 19px; /* room for buttons */
+	margin-right: 44px; /* room for row controls */
+	max-width: calc(100% - 132px);
+	vertical-align: top;
 }
 
 
