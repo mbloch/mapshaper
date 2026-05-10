@@ -1,3 +1,8 @@
+v0.7.13
+* Moved the layers panel in the web UI to the left sidebar, which it now shares with the console.
+* Added options to the `-style` command: `icon`, `icon-size` and `icon-color`. This lets you add a variety of icons to a label layer.
+* Added a warning when SVG exports contain paths with more than Adobe Illustrator's per-path limit of 32,000 vertices.
+
 v0.7.12
 * Auto-fit parameters for UTM, so running `-proj utm` finds an appropriate UTM zone.
 * Account for datasets that cross the antimeridian when auto-fitting projection parameters (e.g. New Zealand).
