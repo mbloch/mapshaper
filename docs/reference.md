@@ -36,88 +36,6 @@ The following options are documented here, because they are used by many command
 mapshaper states.geojson -filter 'ST == "AK"' + name=alaska -o output/ target=*
 ```
 
-## Command files
-
-As an alternative to typing commands on the command line, you can put them in a plain-text command file and run them with the mapshaper CLI.
-
-Command files offer a few conveniences over a shell script or Makefile:
-
-- Hash-delimited (`#`) comments, both on their own line and at the end of a line.
-- No need to escape `*` or other shell metacharacters; commands aren't passed through the shell.
-- Trailing-backslash line continuations are accepted but not required &mdash; lines that don't begin with `-` are joined onto the previous command.
-- Variable interpolation using `{{VAR}}` placeholders. See [variables](#variables) below.
-
-(Support for running command files in the mapshaper web UI is planned for a future release.)
-
-### File format
-
-A mapshaper command file is a `.txt` file whose first non-blank, non-comment line starts with `mapshaper`.
-
-```
-mapshaper
--i provinces.shp
-# Use Douglas Peucker simplification
--simplify dp 20%
--o precision=0.00001 output.geojson
-```
-
-If you write the command file using shell-compatible syntax &mdash; trailing `\` for line continuations and no `#` comments &mdash; it can also be pasted directly onto a bash command line, where the leading `mapshaper` word invokes the CLI. To make the above example shell compatible, you could write:
-
-```
-mapshaper \
--i provinces.shp \
--simplify dp 20% \
--o precision=0.00001 output.geojson
-```
-
-### Running a command file
-
-The command for running a command file is [`-run`](#-run):
-
-```bash
-mapshaper -run build.txt
-```
-
-`mapshaper commands.txt` is a shortcut for `mapshaper -run commands.txt`.
-
-## Variable interpolation
-
-Command files and command lines may contain `{{VAR}}` placeholders, which are substituted just before each command runs. Two forms are recognized:
-
-- `{{VAR}}` &mdash; substituted with the value of `VAR`.
-- `{{env.NAME}}` &mdash; substituted with the value of the `NAME` environment variable.
-
-This syntax allows you to interpolate all or part of a command option. For example, `-simplify {{SIMPLIFY_METHOD}} resolution={{SIMPLIFY_RESOLUTION}}`.
-
-Variables can be set in several ways:
-- The [`-vars`](#-vars) command sets one or more variables, always overwriting any previous value.
-- The [`-defaults`](#-defaults) command set only those values that do not already exist.
-- Assignments in `-calc` and `-define` expressions create new variables.
-- Assigning a property to the `global` object in an `-each` expression creates a new variable.
-
-`-vars` and `-defaults` write to a templating-scope store; the other commands write to an expression-scope store (`global`). `{{X}}` substitution checks the templating scope first and falls back to the expression scope, so values from any of the four mechanisms above are reachable. Bare names in JS expressions only see the expression scope &mdash; a name set by `-vars` is *not* readable by bare name from inside `-each`, `-filter`, etc. See [JavaScript expressions](/docs/guides/expressions.html#sharing-state-across-commands) for the full story.
-
-#### Example
-
-`build.txt`:
-```
-mapshaper
--defaults YEAR=2024 PCT=10                    # overridable defaults
--i sources/counties_{{YEAR}}.shp
--simplify {{PCT}}%
--o out/counties_{{YEAR}}_simplified.shp
-```
-
-Run with the command file's defaults:
-```bash
-mapshaper build.txt
-```
-
-Or override default values from the command line:
-```bash
-mapshaper -vars YEAR=2030 PCT=5 -run build.txt
-```
-
 ## Index of commands
 
 **File I/O**
@@ -1182,10 +1100,10 @@ $ mapshaper data.json \
 
 ### -run
 
-Run mapshaper commands from a [command file](#command-files) or generated on-the-fly from a JS expression.
+Run mapshaper commands from a [command file](/docs/essentials/command-line.html#command-files) or generated on-the-fly from a JS expression.
 
 `<file|expression>`  Either:
-- A path to a mapshaper [command file](#command-files).
+- A path to a mapshaper [command file](/docs/essentials/command-line.html#command-files).
 - A JS expression or template containing embedded expressions, for generating one or more mapshaper commands.
 
 * Embedded expressions are enclosed in curly braces (see below).

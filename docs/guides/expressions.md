@@ -326,7 +326,7 @@ Each entry in `targets` exposes useful summary stats from `-info`: `layer_name`,
 
 ## Template expressions (`-run`)
 
-`-run` accepts either a path to a [command file](/docs/reference.html#command-files) or a string containing one or more curly-brace template expressions. Each `{...}` is evaluated as a JS expression and substituted into the resulting command string before Mapshaper parses it.
+`-run` accepts either a path to a [command file](/docs/essentials/command-line.html#command-files) or a string containing one or more curly-brace template expressions. Each `{...}` is evaluated as a JS expression and substituted into the resulting command string before Mapshaper parses it.
 
 ```bash
 # Project to a transverse Mercator centred on the layer

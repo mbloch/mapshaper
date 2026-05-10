@@ -9,8 +9,6 @@ Mapshaper can attach SVG styling properties to features with [`-style`](/docs/re
 
 The examples below are written for the web app's Console. Load your data first, then run the commands. The same command sequences also work on the CLI when you add `mapshaper input-file` before them and `-o output.svg` after them.
 
-> **Illustration placeholder:** Add a composite image showing a map with muted base layers, proportional point symbols, a classified choropleth layer and labels.
-
 ## The `-style` command
 
 `-style` writes common SVG presentation attributes to each feature. Line layers can be styled with `stroke=`, `stroke-width=`, `stroke-opacity=`, `stroke-dasharray=` and `opacity=`. Polygon layers add `fill=` and `fill-opacity=` options.
