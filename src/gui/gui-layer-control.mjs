@@ -31,12 +31,12 @@ export function LayerControl(gui) {
   var layerOrderSlug;
 
   headerBtn.on('click', function() {
-    gui.setSidebarPanel('layers');
+    toggle();
   }).on('keydown', function(e) {
     if (e.key == 'Enter' || e.key == ' ') {
       e.preventDefault();
       e.stopPropagation();
-      gui.setSidebarPanel('layers');
+      toggle();
     }
   });
   tab.on('click', toggle).on('keydown', function(e) {
@@ -230,11 +230,10 @@ export function LayerControl(gui) {
     html = '<!-- ' + lyr.menu_id + '--><div class="' + classes + '">';
     html += rowHTML('name', '<span class="layer-name colored-text dot-underline">' + formatLayerNameForDisplay(lyr.name) + '</span>', 'row1');
     html += rowHTML('contents', describeLyr(lyr, dataset));
-    // html += '<img class="close-btn" draggable="false" src="images/close.png">';
-    html += '<span class="more-btn" role="button" tabindex="0" aria-label="More layer options"></span>';
+    html += '<span class="more-btn layer-btn" role="button" tabindex="0" aria-label="More layer options"></span>';
     if (opts.pinnable) {
-      html += '<img class="eye-btn black-eye" draggable="false" src="images/eye.png">';
-      html += '<img class="eye-btn green-eye" draggable="false" src="images/eye2.png">';
+      html += '<img class="eye-btn black-eye layer-btn" draggable="false" src="images/eye.png">';
+      html += '<img class="eye-btn green-eye layer-btn" draggable="false" src="images/eye2.png">';
     }
     html += '</div>';
     return html;
@@ -261,10 +260,6 @@ export function LayerControl(gui) {
       }
       // start dragging when button is first pressed
       if (e.buttons && !dragTargetId) {
-        // don't start dragging if pointer is over the close button
-        // (before, clicking this button wqs finicky -- the mouse had to remain
-        // perfectly still between mousedown and mouseup)
-        if (El(e.target).hasClass('close-btn')) return;
         dragTargetId = id;
         entry.addClass('drag-target');
       }
@@ -337,14 +332,10 @@ export function LayerControl(gui) {
       }
       menuEvent.deleteLayer = deleteLayer;
       menuEvent.selectLayer = selectLayer;
+      menuEvent.contextMenuId = 'layer-' + id;
       openContextMenu(menuEvent, null, null);
     }
 
-    // init delete button
-    // GUI.onClick(entry.findChild('img.close-btn'), function(e) {
-    //   e.stopPropagation();
-    //   deleteLayer();
-    // });
 
     if (pinnable) {
       // init pin button
@@ -387,6 +378,9 @@ export function LayerControl(gui) {
         renameLayer(target, str);
       });
 
+    moreBtn.on('mousedown', function(e) {
+      e.stopPropagation();
+    });
     GUI.onClick(moreBtn, openLayerMenu);
     moreBtn.on('keydown', function(e) {
       if (e.key == 'Enter' || e.key == ' ') {
