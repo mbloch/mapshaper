@@ -31,7 +31,7 @@ This is a curated list of recently added features. For the full list of changes,
 
 <div class="whats-new-entry">
 
-**GeoParquet support.** Mapshaper reads and writes GeoParquet (`.parquet`) files. To use ZSTD compression (instead of the default Snappy compression), add `compression=zstd` the output options.
+**GeoParquet support.** Mapshaper reads and writes GeoParquet (`.parquet`) files. To use ZSTD compression (instead of the default Snappy compression), add `compression=zstd` to the output options.
 
 → See [GeoParquet](/docs/formats/geoparquet.html).
 </div>
@@ -41,12 +41,6 @@ This is a curated list of recently added features. For the full list of changes,
 <div class="whats-new-entry">
 
 **Messages panel.** Warnings and informational messages are now collected in a messages panel. When new messages are available, an icon with a count appears in the header bar; clicking it opens the panel. This keeps important information accessible without interrupting your session with a modal popup.
-
-</div>
-
-<div class="whats-new-entry">
-
-**Undo/redo buttons.** The web UI now has an undo/redo toolbar. Undo and redo were already supported in the geometry and attribute editing modes; the toolbar makes them more discoverable for users who didn't know the keyboard shortcuts (**⌘Z** / **⌘⇧Z**) existed.
 
 </div>
 
