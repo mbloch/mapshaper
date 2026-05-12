@@ -35693,6 +35693,7 @@ ${svg}
   }
 
   var geotiffPromise = null;
+  var geoKeysToProj4Promise = null;
   var dynamicImportModule = Function('id', 'return import(id)');
   var DEFAULT_MAX_IMPORT_PIXELS = 16e6;
 
@@ -35732,6 +35733,18 @@ ${svg}
     }
     mod = await geotiffPromise;
     return mod.default && !mod.fromArrayBuffer ? mod.default : mod;
+  }
+
+  async function loadGeoKeysToProj4Lib() {
+    var mod;
+    if (runningInBrowser()) {
+      return require$1('geotiff-geokeys-to-proj4');
+    }
+    if (!geoKeysToProj4Promise) {
+      geoKeysToProj4Promise = dynamicImportModule('geotiff-geokeys-to-proj4');
+    }
+    mod = await geoKeysToProj4Promise;
+    return mod.default || mod;
   }
 
   async function openGeoTIFF(source, geotiff) {
@@ -36040,23 +36053,123 @@ ${svg}
   }
 
   async function importGeoTIFFCrs(dataset, image) {
-    var crsString = getGeoTIFFCrsString(image);
+    var crsInfo = await getGeoTIFFCrsInfo(image);
+    var crsString = crsInfo.crsString;
     if (!crsString) {
-      warnOnce('Unable to import CRS from GeoTIFF metadata');
+      warnOnce(getGeoTIFFCrsWarning(crsInfo));
       return;
     }
-    await initProjLibrary({crs: crsString});
     try {
+      await initProjLibrary({crs: crsString});
       setDatasetCrsInfo(dataset, getCrsInfo(crsString));
     } catch(e) {
-      dataset.info = Object.assign(dataset.info || {}, {crs_string: crsString});
+      dataset.info = dataset.info || {};
+      warnOnce(getGeoTIFFCrsWarning(crsInfo, e.message || e));
     }
   }
 
-  function getGeoTIFFCrsString(image) {
+  async function getGeoTIFFCrsInfo(image) {
     var keys = image.getGeoKeys && image.getGeoKeys() || {};
-    var code = keys.ProjectedCSTypeGeoKey || keys.GeographicTypeGeoKey;
-    return code ? 'EPSG:' + code : null;
+    var code = keys.ProjectedCSTypeGeoKey;
+    var customProjection;
+    if (isGeoTIFFAuthorityCode(code)) {
+      return {crsString: 'EPSG:' + code};
+    }
+    customProjection = await getGeoTIFFCustomProjection(keys);
+    if (customProjection.crsString) return customProjection;
+    code = keys.GeographicTypeGeoKey;
+    if (isGeoTIFFAuthorityCode(code)) return {crsString: 'EPSG:' + code};
+    return {crsString: null, warning: customProjection.warning};
+  }
+
+  function getGeoTIFFCrsWarning(crsInfo, detail) {
+    if (detail || crsInfo && crsInfo.warning) {
+      logGeoTIFFCrsWarningDetails(detail, crsInfo && crsInfo.warning);
+    }
+    return 'The GeoTIFF does not contain usable CRS data';
+  }
+
+  function isGeoTIFFAuthorityCode(code) {
+    return code > 0 && code != 32767;
+  }
+
+  async function getGeoTIFFCustomProjection(keys) {
+    var converted = await getGeoTIFFProj4FromGeoKeys(keys);
+    if (converted.crsString) return converted;
+    if (keys.ProjectedCSTypeGeoKey != 32767 && keys.ProjectionGeoKey != 32767) return converted;
+    if (keys.ProjCoordTransGeoKey == 11) {
+      return {
+        crsString: getGeoTIFFAlbersProjection(keys),
+        warning: converted.warning
+      };
+    }
+    return converted;
+  }
+
+  async function getGeoTIFFProj4FromGeoKeys(keys) {
+    var geokeysToProj4, result;
+    try {
+      geokeysToProj4 = await loadGeoKeysToProj4Lib();
+      result = geokeysToProj4.toProj4(keys);
+    } catch(e) {
+      return {crsString: null, warning: {type: 'GeoKey converter error', error: e.message || e}};
+    }
+    if (result && result.proj4) {
+      return {crsString: normalizeGeoTIFFProj4(result.proj4)};
+    }
+    return {crsString: null, warning: result && result.errors || null};
+  }
+
+  function normalizeGeoTIFFProj4(str) {
+    return String(str).replace(/\s\+axis=[^ ]+/g, '').trim();
+  }
+
+  function logGeoTIFFCrsWarningDetails(parseError, converterDetails) {
+    if (typeof console == 'undefined' || !console.warn) return;
+    console.warn('Unable to import GeoTIFF CRS metadata', {
+      parseError: parseError || null,
+      converterDetails: converterDetails || null
+    });
+  }
+
+  function getGeoTIFFAlbersProjection(keys) {
+    var units = getGeoTIFFLinearUnits(keys);
+    var ellipsoid = getGeoTIFFEllipsoid(keys);
+    if (!units || !ellipsoid ||
+        !isFinite(keys.ProjStdParallel1GeoKey) || !isFinite(keys.ProjStdParallel2GeoKey) ||
+        !isFinite(keys.ProjNatOriginLatGeoKey) || !isFinite(keys.ProjNatOriginLongGeoKey)) {
+      return null;
+    }
+    return [
+      '+proj=aea',
+      '+lat_1=' + keys.ProjStdParallel1GeoKey,
+      '+lat_2=' + keys.ProjStdParallel2GeoKey,
+      '+lat_0=' + keys.ProjNatOriginLatGeoKey,
+      '+lon_0=' + keys.ProjNatOriginLongGeoKey,
+      '+x_0=' + (keys.ProjFalseEastingGeoKey || 0),
+      '+y_0=' + (keys.ProjFalseNorthingGeoKey || 0),
+      ellipsoid,
+      units
+    ].join(' ');
+  }
+
+  function getGeoTIFFLinearUnits(keys) {
+    var code = keys.ProjLinearUnitsGeoKey;
+    if (!code || code == 9001) return '+units=m';
+    if (code == 9002) return '+units=ft';
+    if (code == 9003) return '+to_meter=0.3048006096012192';
+    return null;
+  }
+
+  function getGeoTIFFEllipsoid(keys) {
+    if (keys.GeographicTypeGeoKey == 4326) return '+datum=WGS84';
+    if (isFinite(keys.GeogSemiMajorAxisGeoKey) && isFinite(keys.GeogInvFlatteningGeoKey)) {
+      return '+a=' + keys.GeogSemiMajorAxisGeoKey + ' +rf=' + keys.GeogInvFlatteningGeoKey;
+    }
+    if (isFinite(keys.GeogSemiMajorAxisGeoKey) && isFinite(keys.GeogSemiMinorAxisGeoKey)) {
+      return '+a=' + keys.GeogSemiMajorAxisGeoKey + ' +b=' + keys.GeogSemiMinorAxisGeoKey;
+    }
+    return null;
   }
 
   async function importImageRaster(input, optsArg) {
@@ -57269,7 +57382,7 @@ ${svg}
     });
   }
 
-  var version = "0.7.14";
+  var version = "0.7.15";
 
   // Parse command line args into commands and run them
   // Function takes an optional Node-style callback. A Promise is returned if no callback is given.
