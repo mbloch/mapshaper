@@ -1,3 +1,6 @@
+v0.7.15
+* Improved support for GeoTIFF CRS metadata.
+
 v0.7.14
 * Added support for importing GeoTIFFs and also PNGs and JPEGs with world file and .prj sidecar files.
 * Rasters can only be exported as layers in an SVG.
