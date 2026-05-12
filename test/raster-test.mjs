@@ -9,6 +9,7 @@ import { PNG } from 'pngjs';
 var GEOTIFF_FIXTURE = '/Users/matthewbloch/Development/mapshaper/geotiff.js/test/data/rgb.tiff';
 var BIG_ENDIAN_DEFLATE_FIXTURE = '/Users/matthewbloch/nytweb/2026/mapshaper/rasters/Sentinel-8bit.tiff';
 var LARGE_YCBCR_FIXTURE = '/Users/matthewbloch/nytweb/2026/mapshaper/rasters/f5a3e369-efa2-449d-aa74-6f164d6b9103.tif';
+var USER_DEFINED_CRS_FIXTURE = '/Users/matthewbloch/nytweb/2026/mapshaper/rasters/usa-relief.tif';
 
 describe('raster layers', function () {
   it('exports raster previews as embedded SVG images', function () {
@@ -92,6 +93,15 @@ describe('raster layers', function () {
     assert.equal(lyr.raster.grid.width, 3050);
     assert.equal(lyr.raster.grid.height, 1260);
     assert.equal(lyr.raster.grid.bands, 3);
+  });
+
+  it('imports user-defined GeoTIFF Albers CRS metadata', async function () {
+    if (!fs.existsSync(USER_DEFINED_CRS_FIXTURE)) this.skip();
+    var dataset = await api.internal.importFileAsync(USER_DEFINED_CRS_FIXTURE, {});
+    assert.equal(dataset.info.input_formats[0], 'geotiff');
+    assert(dataset.info.crs_string.includes('+proj=aea'));
+    assert(dataset.info.crs_string.includes('+lat_1=29.5'));
+    assert(dataset.info.crs_string.includes('+lon_0=-96'));
   });
 
   it('imports PNG rasters with world and projection sidecars', async function () {
