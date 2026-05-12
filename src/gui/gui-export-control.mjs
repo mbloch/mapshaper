@@ -120,16 +120,17 @@ export var ExportControl = function(gui) {
         } else {
           // stack seems to change if Error is logged directly
           console.error(err.stack);
-          var msg = 'Export failed for an unknown reason';
-          if (err.name == 'UserError') {
-            msg = err.message;
-          }
-          gui.alert(msg, 'Export failed');
+          gui.alert(getExportErrorMessage(err), 'Export failed');
         }
       }).finally(function() {
         gui.clearProgressMessage();
       });
     }, 20);
+  }
+
+  function getExportErrorMessage(err) {
+    if (err && err.message) return err.message;
+    return 'Export failed for an unknown reason';
   }
 
   function getExportOpts() {
@@ -287,9 +288,11 @@ export var ExportControl = function(gui) {
   }
 
   function getDefaultExportFormat() {
-    var dataset = model.getActiveLayer().dataset;
+    var active = model.getActiveLayer();
+    var dataset = active.dataset;
     var inputFmt = dataset.info && dataset.info.input_formats &&
         dataset.info.input_formats[0];
+    if (active.layer && internal.layerHasRaster(active.layer)) return 'svg';
     return getExportFormats().includes(inputFmt) ? inputFmt : 'geojson';
   }
 
