@@ -23,6 +23,8 @@ This section explains how each supported file format is handled, what format-spe
 | [CSV / TSV](/docs/formats/csv.html) | `.csv` `.tsv` | &check; | &check; | points (X/Y) | yes | &mdash; | &mdash; |
 | [DBF](/docs/formats/dbf.html) | `.dbf` | &check; | &check; | none | yes | &mdash; | &mdash; |
 | [JSON records](/docs/formats/json.html) | `.json` | &check; | &check; | none | yes | &mdash; | &mdash; |
+| GeoTIFF | `.tif` `.tiff` | &check; | &mdash; | raster | &mdash; | &mdash; | &mdash; |
+| PNG / JPEG raster | `.png` `.jpg` `.jpeg` | &check; | &mdash; | raster (with world file) | &mdash; | &mdash; | &mdash; |
 | [SVG](/docs/formats/svg.html) | `.svg` | &check; | &check; | vector | as `data-*` | &mdash; | &check; |
 | [Mapshaper snapshot](/docs/formats/snapshot.html) | `.msx` | &check; | &check; | vector | yes | **&check;** | &check; |
 

@@ -287,6 +287,7 @@ Payload-backed unit data currently includes:
 - `arcs` typed arrays and `zlimit`
 - `arcs-simplification.zz`
 - `layer.shapes`
+- `layer.raster`
 
 Avoid adding live objects with methods or browser-only handles to payload-backed
 fields. IndexedDB uses structured cloning, so payloads should be plain objects,
@@ -294,6 +295,13 @@ arrays, typed arrays, strings, numbers, booleans, or null. Complex references
 such as `DataTable`, `ArcCollection`, CRS objects, catalog datasets, and layer
 data references should stay in unit metadata unless they are explicitly
 serialized.
+
+Raster layer payloads are packed specially. Undo stores canonical
+`raster.grid.samples` and raster metadata, but strips derived
+`raster.view.preview.pixels` before writing the payload. On undo/redo restore,
+the preview is regenerated from `grid.samples` and the view recipe. This avoids
+counting both sample pixels and an RGBA preview cache in the History menu's
+"restore data stored on-disk" total.
 
 ## Restore Flags
 
