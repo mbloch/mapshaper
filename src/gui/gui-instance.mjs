@@ -19,6 +19,7 @@ import { Basemap } from './gui-basemap-control';
 import { DisplayOptions } from './gui-display-options-menu';
 import { MessageControl } from './gui-messages';
 import { getRuntimeStateContext, stringifyRuntimeStateContext } from './gui-runtime-context';
+import { startRasterSourceStoreLifecycle } from './gui-raster-source-store';
 // import { ProjectOptions } from './gui-project-control';
 
 
@@ -59,6 +60,7 @@ export function GuiInstance(container, opts) {
   var clearMsg;
 
   initModeRules(gui);
+  startRasterSourceStoreLifecycle();
   gui.map.init();
 
   if (opts.saveControl) {

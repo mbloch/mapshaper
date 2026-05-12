@@ -1,6 +1,7 @@
 import { El } from './gui-el';
 import { internal, stop } from './gui-core';
 import { saveBlobToLocalFile2 } from './gui-save';
+import { logStartupCleanup, formatCleanupSize } from './gui-startup-cleanup-report';
 import require from '../mapshaper-require';
 
 var idb = require('idb-keyval');
@@ -190,7 +191,7 @@ export function SessionSnapshots(gui) {
       name: snapshotCount + '.',
       number: snapshotCount,
       size: size,
-      display_size: formatSize(size)
+      display_size: formatCleanupSize(size)
     };
 
     await idb.set(entry.id, obj);
@@ -198,14 +199,6 @@ export function SessionSnapshots(gui) {
     await addToIndex(entry);
     renderMenu();
   }
-}
-
-function formatSize(bytes) {
-  var kb = Math.round(bytes / 1000);
-  var mb = (bytes / 1e6).toFixed(1);
-  if (!kb) return '';
-  if (kb < 990) return kb + 'kB';
-  return mb + 'MB';
 }
 
 async function fetchSnapshotList() {
@@ -396,13 +389,13 @@ async function reclaimDeadSessionData(liveSessions) {
   });
 
   if (doomedKeys.length) {
-    var msg = '[mapshaper] startup cleanup reclaimed ' +
-      doomedKeys.length + ' snapshot' + (doomedKeys.length === 1 ? '' : 's') +
-      ' from ' + doomedSessions.size + ' stale session' +
-      (doomedSessions.size === 1 ? '' : 's');
-    var sizeStr = sizeBytes > 0 ? formatSize(sizeBytes) : '';
-    if (sizeStr) msg += ' (' + sizeStr + ')';
-    console.log(msg);
+    logStartupCleanup({
+      count: doomedKeys.length,
+      sessionCount: doomedSessions.size,
+      singular: 'snapshot',
+      plural: 'snapshots',
+      sizeBytes: sizeBytes
+    });
   }
 }
 

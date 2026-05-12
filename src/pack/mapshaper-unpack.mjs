@@ -105,7 +105,59 @@ function importLayer(lyr) {
   if (data) {
     data = importTable(data);
   }
+  if (lyr.raster) {
+    lyr.raster = importRasterData(lyr.raster);
+  }
   return Object.assign(lyr, {
     data: lyr.data ? new DataTable(data) : null
   });
+}
+
+function importRasterData(raster) {
+  var copy = Object.assign({}, raster);
+  if (raster.grid) {
+    copy.grid = Object.assign({}, raster.grid);
+    if (raster.grid.samples) {
+      copy.grid.samples = restoreRasterSamples(raster.grid.samples, raster.grid.pixelType);
+    }
+  }
+  if (raster.view) {
+    copy.view = Object.assign({}, raster.view);
+    if (raster.view.preview) {
+      copy.view.preview = Object.assign({}, raster.view.preview);
+      if (raster.view.preview.pixels) {
+        copy.view.preview.pixels = new Uint8ClampedArray(BinArray.copyToArrayBuffer(raster.view.preview.pixels));
+      }
+    }
+  }
+  if (raster.preview) {
+    copy.preview = Object.assign({}, raster.preview);
+    if (raster.preview.pixels) {
+      copy.preview.pixels = new Uint8ClampedArray(BinArray.copyToArrayBuffer(raster.preview.pixels));
+    }
+  }
+  if (raster.pixels) {
+    copy.pixels = new Uint8ClampedArray(BinArray.copyToArrayBuffer(raster.pixels));
+  }
+  return copy;
+}
+
+function restoreRasterSamples(buf, pixelType) {
+  var arrbuf = BinArray.copyToArrayBuffer(buf);
+  var Ctor = getRasterSampleArrayConstructor(pixelType);
+  return new Ctor(arrbuf);
+}
+
+function getRasterSampleArrayConstructor(pixelType) {
+  switch (pixelType) {
+    case 'uint8': return Uint8Array;
+    case 'int8': return Int8Array;
+    case 'uint16': return Uint16Array;
+    case 'int16': return Int16Array;
+    case 'uint32': return Uint32Array;
+    case 'int32': return Int32Array;
+    case 'float32': return Float32Array;
+    case 'float64': return Float64Array;
+  }
+  return Uint8Array;
 }

@@ -6,7 +6,8 @@ import { GUI } from './gui-lib';
 import { setLayerPinning } from './gui-layer-utils';
 import { importSessionData } from './gui-session-snapshot-control';
 import { openAddLayerPopup } from './gui-add-layer-popup';
-import { considerReprojecting, loadGeopackageLib, getGeoPackageFeatureTables, loadGeoParquetLib } from './gui-import-utils';
+import { considerReprojecting, loadGeopackageLib, getGeoPackageFeatureTables, loadGeoParquetLib, loadGeoTIFFLib } from './gui-import-utils';
+import { persistRasterSourceForDataset } from './gui-raster-source-store';
 import {
   addUndoTransactionToHistory,
   createUndoTransaction
@@ -452,7 +453,10 @@ export function ImportControl(gui, opts) {
     if (group.parquet) {
       await loadGeoParquetLib();
     }
-    if (group.gpkg || group.fgb || group.parquet) {
+    if (group.geotiff) {
+      await loadGeoTIFFLib();
+    }
+    if (group.gpkg || group.fgb || group.parquet || group.geotiff || group.png || group.jpeg) {
       dataset = await internal.importContentAsync(group, importOpts);
     } else {
       dataset = internal.importContent(group, importOpts);
@@ -463,6 +467,7 @@ export function ImportControl(gui, opts) {
       if (group.layername) {
         d.layers.forEach(lyr => lyr.name = group.layername);
       }
+      await persistRasterSourceForDataset(d, group);
       // TODO: add popup here
       // save import options for use by repair control, etc.
       d.info.import_options = importOpts;
@@ -483,7 +488,8 @@ export function ImportControl(gui, opts) {
   function filesMayContainPaths(files) {
     return utils.some(files, function(f) {
         var type = internal.guessInputFileType(f.name);
-        return type == 'shp' || type == 'json' || type == 'gpkg' || type == 'parquet' || internal.isZipFile(f.name);
+        return type == 'shp' || type == 'json' || type == 'gpkg' || type == 'parquet' ||
+            type == 'png' || type == 'jpeg' || internal.isZipFile(f.name);
     });
   }
 
@@ -495,6 +501,10 @@ export function ImportControl(gui, opts) {
 
   function isShapefilePart(name) {
     return /\.(shp|shx|dbf|prj|cpg)$/i.test(name);
+  }
+
+  function isRasterImagePart(name) {
+    return /\.(png|jpg|jpeg|tfw|pgw|pngw|jgw|jpw|jpgw|jpegw|wld|prj)$/i.test(name);
   }
 
   function readImportOpts() {
@@ -821,10 +831,17 @@ export function ImportControl(gui, opts) {
       return data.some(d => fileKey(d) == shpKey);
     }
 
+    function hasRasterImage(basename) {
+      return data.some(d => {
+        var type = fileType(d);
+        return (type == 'png' || type == 'jpeg') && fileBase(d) == basename;
+      });
+    }
+
     data.forEach(d => {
       var basename = fileBase(d);
       var type = fileType(d);
-      if (type == 'shp' || !isShapefilePart(d.name)) {
+      if (type == 'shp') {
         d.group = key(basename, type);
         d.filename = d.name;
       } else if (hasShp(basename)) {
@@ -832,6 +849,12 @@ export function ImportControl(gui, opts) {
       } else if (type == 'dbf') {
         d.filename = d.name;
         d.group = key(basename, 'dbf');
+      } else if ((type == 'png' || type == 'jpeg') || isRasterImagePart(d.name) && hasRasterImage(basename)) {
+        d.group = key(basename, type == 'png' || type == 'jpeg' ? type : getRasterImageGroupType(data, basename));
+        if (type == 'png' || type == 'jpeg') d.filename = d.name;
+      } else if (!isShapefilePart(d.name)) {
+        d.group = key(basename, type);
+        d.filename = d.name;
       } else {
         // shapefile part without a .shp file
         d.group = null;
@@ -857,5 +880,13 @@ export function ImportControl(gui, opts) {
       if (d.filename) g.filename = d.filename;
     });
     return groups;
+  }
+
+  function getRasterImageGroupType(data, basename) {
+    var match = data.find(d => {
+      var type = fileType(d);
+      return (type == 'png' || type == 'jpeg') && fileBase(d) == basename;
+    });
+    return match ? fileType(match) : null;
   }
 }

@@ -4,6 +4,8 @@ import {
   guessInputContentType,
   guessInputFileType,
   isAuxiliaryInputFileType,
+  isRasterImageInputType,
+  isWorldFileExtension,
   isZipFile,
   isKmzFile,
   stringLooksLikeJSON,
@@ -14,7 +16,7 @@ import cmd from '../mapshaper-cmd';
 import cli from '../cli/mapshaper-cli-utils';
 import utils from '../utils/mapshaper-utils';
 import { message, verbose, stop } from '../utils/mapshaper-logging';
-import { parseLocalPath, getFileExtension, replaceFileExtension } from '../utils/mapshaper-filename-utils';
+import { parseLocalPath, getFileBase, getFileExtension, replaceFileExtension } from '../utils/mapshaper-filename-utils';
 import { trimBOM, decodeString } from '../text/mapshaper-encodings';
 import { unzipSync } from './mapshaper-zip';
 import { gunzipSync } from './mapshaper-gzip';
@@ -149,11 +151,18 @@ function expandFiles(files, cache) {
 function expandKmzFile(file, cache) {
   var files = expandZipFile(file, cache);
   var name = replaceFileExtension(parseLocalPath(file).filename, 'kml');
-  if (files[0] == 'doc.kml') {
-    files[0] = name;
+  files = files.map(function(file) {
+    if (file == 'doc.kml') {
+      return name;
+    }
+    return file;
+  });
+  if ('doc.kml' in cache) {
     cache[name] = cache['doc.kml'];
   }
-  return files;
+  return files.filter(function(file) {
+    return guessInputFileType(file) == 'kml';
+  });
 }
 
 function expandZipFile(file, cache) {
@@ -245,6 +254,8 @@ var _importFile = function(path, opts) {
   content = null; // for g.c.
   if (fileType == 'shp' || fileType == 'dbf') {
     readShapefileAuxFiles(path, input, cache);
+  } else if (isRasterImageInputType(fileType)) {
+    readRasterImageAuxFiles(path, input, cache);
   }
   if (fileType == 'shp' && !input.dbf) {
     message(utils.format("[%s] .dbf file is missing - shapes imported without attribute data.", path));
@@ -299,11 +310,13 @@ async function _importFileAsync(path, opts) {
   content = null;
   if (fileType == 'shp' || fileType == 'dbf') {
     readShapefileAuxFiles(path, input, cache);
+  } else if (isRasterImageInputType(fileType)) {
+    readRasterImageAuxFiles(path, input, cache);
   }
   if (fileType == 'shp' && !input.dbf) {
     message(utils.format("[%s] .dbf file is missing - shapes imported without attribute data.", path));
   }
-  return fileType == 'gpkg' || fileType == 'fgb' || fileType == 'parquet' ? importContentAsync(input, opts) : importContent(input, opts);
+  return fileType == 'gpkg' || fileType == 'fgb' || fileType == 'parquet' || fileType == 'geotiff' || isRasterImageInputType(fileType) ? importContentAsync(input, opts) : importContent(input, opts);
 }
 
 // Import multiple files to a single dataset
@@ -337,6 +350,7 @@ export function importFilesTogether(files, opts) {
 export async function importFilesTogetherAsync(files, opts) {
   var unbuiltTopology = false;
   var datasets = [];
+  files = removeRasterImageSidecars(files);
   for (var fname of files) {
     // import without topology or snapping
     var importOpts = utils.defaults({no_topology: true, snap: false, snap_interval: null, files: [fname]}, opts);
@@ -443,4 +457,58 @@ function readShapefileAuxFiles(path, obj, cache) {
   if (obj.dbf && cli.isFile(cpgPath, cache)) {
     obj.cpg = {filename: cpgPath, content: cli.readFile(cpgPath, 'utf-8', cache).trim()};
   }
+}
+
+function readRasterImageAuxFiles(path, obj, cache) {
+  var prjPath = replaceFileExtension(path, 'prj');
+  var worldPath = findWorldFile(path, cache);
+  if (cli.isFile(prjPath, cache)) {
+    obj.prj = {filename: prjPath, content: cli.readFile(prjPath, 'utf-8', cache)};
+  }
+  if (worldPath) {
+    obj.world = {filename: worldPath, content: cli.readFile(worldPath, 'utf-8', cache)};
+  }
+}
+
+function findWorldFile(path, cache) {
+  var candidates = getWorldFileCandidates(path);
+  for (var i = 0; i < candidates.length; i++) {
+    if (cli.isFile(candidates[i], cache)) return candidates[i];
+  }
+  return null;
+}
+
+function getWorldFileCandidates(path) {
+  var ext = getFileExtension(path).toLowerCase();
+  var candidates = [replaceFileExtension(path, 'wld'), replaceFileExtension(path, 'tfw')];
+  if (ext == 'png') {
+    candidates.unshift(replaceFileExtension(path, 'pgw'), replaceFileExtension(path, 'pngw'));
+  } else if (ext == 'jpg' || ext == 'jpeg') {
+    candidates.unshift(
+      replaceFileExtension(path, 'jgw'),
+      replaceFileExtension(path, 'jpw'),
+      replaceFileExtension(path, 'jpgw'),
+      replaceFileExtension(path, 'jpegw')
+    );
+  }
+  return utils.uniq(candidates);
+}
+
+function removeRasterImageSidecars(files) {
+  var imageBases = {};
+  files.forEach(function(file) {
+    var type = guessInputFileType(file);
+    if (isRasterImageInputType(type)) {
+      imageBases[getFileBase(file).toLowerCase()] = true;
+    }
+  });
+  return files.filter(function(file) {
+    var ext = getFileExtension(file).toLowerCase();
+    var type = guessInputFileType(file);
+    var base = getFileBase(file).toLowerCase();
+    if ((type == 'prj' || isWorldFileExtension(ext)) && imageBases[base]) {
+      return false;
+    }
+    return true;
+  });
 }

@@ -177,6 +177,18 @@ export function getOptionParser() {
       type: 'strings',
       describe: '[GPKG] comma-sep. list of layers to import'
     })
+    .option('scaling', {
+      describe: '[raster] raster display scaling method: none,minmax,percentile'
+    })
+    .option('scale-range', {
+      describe: '[raster] display intensity range in percent, e.g. 0,100'
+    })
+    .option('percentile-range', {
+      describe: '[raster] input percentile range for percentile scaling, e.g. 2,98'
+    })
+    .option('rendition', {
+      describe: '[GeoTIFF] import a GeoTIFF rendition: full,overview-1,etc.'
+    })
     .option('geometry-type', {
       // undocumented; GeoJSON import rejects all but one kind of geometry
       // describe: '[GeoJSON] Import one kind of geometry (point|polygon|polyline)'

@@ -21,11 +21,18 @@ export function setLoggingForGUI(gui) {
 
   function message() {
     var msg = GUI.formatMessageArgs(arguments);
-    if (!gui.notify) {
+    if (gui.notify && messageShouldGoToInbox(msg)) {
+      gui.notify({
+        severity: 'info',
+        body: msg,
+        dedupKey: 'info:' + msg
+      });
+    } else if (!gui.notify) {
       // Fallback for early messages before MessageControl is constructed
       gui.message(msg);
+    } else {
+      internal.logArgs(arguments);
     }
-    internal.logArgs(arguments);
   }
 
   // CLI warnings used to surface as modal alerts, which interrupt the user
@@ -41,6 +48,10 @@ export function setLoggingForGUI(gui) {
   }
 
   internal.setLoggingFunctions(message, error, stop, warn);
+}
+
+function messageShouldGoToInbox(msg) {
+  return /^GeoTIFF renditions:/.test(msg);
 }
 
 export function WriteFilesProxy(gui) {

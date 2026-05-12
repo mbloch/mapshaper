@@ -9,6 +9,10 @@ export function layerHasGeometry(lyr) {
   return layerHasPaths(lyr) || layerHasPoints(lyr);
 }
 
+export function layerHasRaster(lyr) {
+  return !!(lyr && lyr.raster_type && lyr.raster);
+}
+
 export function layerIsGeometric(lyr) {
   return !!lyr.geometry_type; // only checks type, includes empty layers
 }

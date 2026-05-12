@@ -1,4 +1,5 @@
 import { restoreCapturedUnits } from '../undo/mapshaper-undo-transaction';
+import { renderRasterPreview } from '../rasters/mapshaper-raster-utils';
 
 var PAYLOAD_FIELDS = {
   table: ['records'],
@@ -7,7 +8,7 @@ var PAYLOAD_FIELDS = {
   'table-schema': ['fields'],
   arcs: ['nn', 'xx', 'yy', 'zz', 'zlimit'],
   'arcs-simplification': ['zz'],
-  layer: ['shapes']
+  layer: ['shapes', 'raster']
 };
 
 export async function storeUndoUnits(units, store, entryId, role) {
@@ -112,7 +113,17 @@ async function getUnitPayload(unit) {
     }
   });
   if (!hasPayload) return null;
+  if (unit.type == 'layer') return packLayerPayload(payload);
   return unit.type == 'table' ? packTablePayload(payload) : payload;
+}
+
+async function packLayerPayload(payload) {
+  if (payload.raster) {
+    payload = Object.assign({}, payload, {
+      raster: packRasterUndoPayload(payload.raster)
+    });
+  }
+  return payload;
 }
 
 async function packTablePayload(payload) {
@@ -127,7 +138,44 @@ function unpackPayload(unit, payload) {
       records: unpackRecordsFromColumns(payload.packedRecords)
     };
   }
+  if (unit.type == 'layer' && payload.raster) {
+    return Object.assign({}, payload, {
+      raster: unpackRasterUndoPayload(payload.raster)
+    });
+  }
   return payload;
+}
+
+function packRasterUndoPayload(raster) {
+  var copy = Object.assign({}, raster);
+  if (raster.view) {
+    copy.view = Object.assign({}, raster.view);
+    if (raster.view.preview) {
+      copy.view.preview = stripPreviewPixels(raster.view.preview);
+    }
+  }
+  if (raster.preview) {
+    copy.preview = stripPreviewPixels(raster.preview);
+  }
+  return copy;
+}
+
+function unpackRasterUndoPayload(raster) {
+  var copy = Object.assign({}, raster);
+  if (raster.view) {
+    copy.view = Object.assign({}, raster.view);
+    if (raster.view.preview && !raster.view.preview.pixels && raster.grid && raster.grid.samples) {
+      copy.view.preview = renderRasterPreview(raster.grid, raster.view.recipe, raster.view.preview.width, raster.view.preview.height);
+    }
+  }
+  return copy;
+}
+
+function stripPreviewPixels(preview) {
+  var copy = Object.assign({}, preview);
+  delete copy.canvas;
+  delete copy.pixels;
+  return copy;
 }
 
 function packRecordsAsColumns(records) {

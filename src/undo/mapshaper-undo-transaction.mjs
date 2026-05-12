@@ -1,5 +1,6 @@
 import { copyRecord } from '../datatable/mapshaper-data-utils';
 import { cloneShapes } from '../paths/mapshaper-shape-utils';
+import { copyRasterData } from '../rasters/mapshaper-raster-utils';
 import {
   getUndoId,
   getUndoRevision,
@@ -218,6 +219,8 @@ UndoTransaction.prototype = {
       detail: copyDetail(detail),
       name: layer.name,
       geometry_type: layer.geometry_type,
+      raster_type: layer.raster_type || null,
+      raster: layer.raster ? copyRasterData(layer.raster) : null,
       shapes: layer.shapes ? cloneShapes(layer.shapes) : null,
       data: layer.data || null
     });
@@ -511,6 +514,8 @@ function captureCurrentLayer(unit) {
     revision: getUndoRevision(unit.target),
     name: unit.target.name,
     geometry_type: unit.target.geometry_type,
+    raster_type: unit.target.raster_type || null,
+    raster: unit.target.raster ? copyRasterData(unit.target.raster) : null,
     shapes: unit.target.shapes ? cloneShapes(unit.target.shapes) : null,
     data: unit.target.data || null
   });
@@ -637,6 +642,8 @@ function restoreDatasetInfo(unit) {
 function restoreLayer(unit) {
   unit.target.name = unit.name;
   unit.target.geometry_type = unit.geometry_type;
+  unit.target.raster_type = unit.raster_type || null;
+  unit.target.raster = unit.raster ? copyRasterData(unit.raster) : null;
   unit.target.shapes = unit.shapes ? cloneShapes(unit.shapes) : null;
   unit.target.data = unit.data;
 }

@@ -40,6 +40,7 @@ export function LayerRenderer(gui, container) {
   var _settleTimer = null;
   var _redrawPending = false;
   var _settleRequested = false;
+  var _rasterNavRefreshPending = false;
 
   // 'map_interaction_end' may arrive before the in-flight 'nav' draw runs,
   // because drawLayers() schedules its work via requestAnimationFrame.
@@ -48,6 +49,8 @@ export function LayerRenderer(gui, container) {
   gui.on('map_interaction_end', function() {
     if (_redrawPending) {
       settleNow();
+    } else if (_rasterNavRefreshPending) {
+      settleRasterNow();
     } else {
       _settleRequested = true;
     }
@@ -58,6 +61,11 @@ export function LayerRenderer(gui, container) {
 
   this.drawMainLayers = function(layers, action) {
     if (skipMainLayerRedraw(action)) return;
+    if (action == 'nav' && layersHaveRasters(layers)) {
+      _rasterNavRefreshPending = true;
+    } else if (action != 'nav') {
+      _rasterNavRefreshPending = false;
+    }
     if (action == 'nav' && shouldUseFastNav()) {
       applyFastTransform();
       // SVG symbol reposition is already cheap; keep labels/symbols accurate
@@ -87,7 +95,7 @@ export function LayerRenderer(gui, container) {
       } else if (isSvgLayer) {
         _svg.drawLayer(lyr, 'symbol');
       } else {
-         drawCanvasLayer(lyr, _mainCanv);
+         drawCanvasLayer(lyr, _mainCanv, action);
       }
     });
     // Force synchronous rasterization so performance.now() reflects the true
@@ -96,6 +104,10 @@ export function LayerRenderer(gui, container) {
     flushCanvas(_mainCanv);
     _lastFrameMs = performance.now() - startTime;
     captureSnapshot();
+    if (action == 'nav' && _settleRequested && _rasterNavRefreshPending) {
+      _settleRequested = false;
+      settleRasterNow();
+    }
   };
 
   // Draw highlight effect for hover and selection
@@ -116,7 +128,7 @@ export function LayerRenderer(gui, container) {
       _overlayCanv.hide();
     }
     layers.forEach(function(lyr) {
-      drawCanvasLayer(lyr, canv);
+      drawCanvasLayer(lyr, canv, action);
     });
   };
 
@@ -141,9 +153,22 @@ export function LayerRenderer(gui, container) {
     return action == 'hover' && _overlayCanv.visible();
   }
 
-  function drawCanvasLayer(lyr, canv) {
+  function layersHaveRasters(layers) {
+    return layers.some(function(lyr) {
+      return lyr && lyr.gui && internal.layerHasRaster(lyr.gui.displayLayer);
+    });
+  }
+
+  function drawCanvasLayer(lyr, canv, action) {
     if (!lyr) return;
-    if (lyr.gui.style.type == 'outline') {
+    if (internal.layerHasRaster(lyr.gui.displayLayer)) {
+      canv.drawRasterLayer(lyr.gui.displayLayer, {
+        action: action,
+        onViewportPreviewReady: function() {
+          gui.dispatchEvent('map-needs-refresh');
+        }
+      });
+    } else if (lyr.gui.style.type == 'outline') {
       drawOutlineLayerToCanvas(lyr, canv, ext);
     } else {
       drawStyledLayerToCanvas(lyr, canv, ext);
@@ -243,6 +268,11 @@ export function LayerRenderer(gui, container) {
     cancelSettle();
     if (!_redrawPending) return;
     _redrawPending = false;
+    gui.dispatchEvent('map-needs-refresh');
+  }
+
+  function settleRasterNow() {
+    _rasterNavRefreshPending = false;
     gui.dispatchEvent('map-needs-refresh');
   }
 

@@ -10,8 +10,12 @@ import { stringify } from '../svg/svg-stringify';
 import { convertPropertiesToDefinitions } from '../svg/svg-definitions';
 import { getOutputFileBase } from '../utils/mapshaper-filename-utils';
 import { importGeoJSONFeatures } from '../svg/geojson-to-svg';
-import { layerIsRectangle, getLayerDataTable, copyLayer } from '../dataset/mapshaper-layer-utils';
+import { layerIsRectangle, getLayerDataTable, copyLayer, layerHasRaster } from '../dataset/mapshaper-layer-utils';
+import { Bounds } from '../geom/mapshaper-bounds';
 import { getDatasetCRS, getDatasetCrsInfo, crsToProj4, parseAuthorityCodeString, parseAuthorityCodeFromWkt } from '../crs/mapshaper-projections';
+import { runningInBrowser } from '../mapshaper-env';
+import require from '../mapshaper-require';
+import { getRasterBBox, getRasterPreview, intersectBboxes } from '../rasters/mapshaper-raster-utils';
 
 var ILLUSTRATOR_PATH_VERTEX_LIMIT = 32000;
 
@@ -58,6 +62,8 @@ export function exportSVG(dataset, opts) {
     var obj;
     if (layerHasFurniture(lyr)) {
       obj = exportFurnitureLayerForSVG(lyr, frame, opts);
+    } else if (layerHasRaster(lyr)) {
+      obj = exportRasterLayerForSVG(lyr, frame, opts);
     } else {
       obj = exportLayerForSVG(lyr, dataset, opts);
     }
@@ -172,6 +178,141 @@ export function exportLayerForSVG(lyr, dataset, opts) {
   }
   layerObj.children = exportSymbolsForSVG(lyr, dataset, opts);
   return layerObj;
+}
+
+export function exportRasterLayerForSVG(lyr, frame, opts) {
+  var raster = lyr.raster;
+  var clipped = clipRasterPreviewToFrame(raster, frame);
+  var bbox = transformRasterBboxForSVG(clipped.bbox, frame);
+  var href;
+  var layerObj = getEmptyLayerForSVG(lyr, opts);
+  if (!clipped.preview.width || !clipped.preview.height) {
+    layerObj.children = [];
+    return layerObj;
+  }
+  href = encodeRasterPreview(clipped.preview, opts);
+  layerObj.children = [{
+    tag: 'image',
+    properties: {
+      x: bbox[0],
+      y: bbox[1],
+      width: bbox[2] - bbox[0],
+      height: bbox[3] - bbox[1],
+      href: href,
+      preserveAspectRatio: 'none'
+    }
+  }];
+  return layerObj;
+}
+
+function clipRasterPreviewToFrame(raster, frame) {
+  var rasterBbox = getRasterBBox(raster);
+  var preview = getRasterPreview(raster);
+  var rasterBounds = new Bounds(rasterBbox);
+  var clipBounds = new Bounds(frame.bbox);
+  var bbox = intersectBboxes(rasterBounds.toArray(), clipBounds.toArray()) || [0, 0, 0, 0];
+  var crop = getRasterPreviewCrop(rasterBbox, preview, bbox);
+  return {
+    bbox: bbox,
+    preview: cropRasterPreview(preview, crop)
+  };
+}
+
+function getRasterPreviewCrop(rasterBbox, preview, bbox) {
+  var rb = rasterBbox;
+  var p = preview;
+  var x0 = Math.max(0, Math.floor((bbox[0] - rb[0]) / (rb[2] - rb[0]) * p.width));
+  var x1 = Math.min(p.width, Math.ceil((bbox[2] - rb[0]) / (rb[2] - rb[0]) * p.width));
+  var y0 = Math.max(0, Math.floor((rb[3] - bbox[3]) / (rb[3] - rb[1]) * p.height));
+  var y1 = Math.min(p.height, Math.ceil((rb[3] - bbox[1]) / (rb[3] - rb[1]) * p.height));
+  return {
+    x: x0,
+    y: y0,
+    width: Math.max(0, x1 - x0),
+    height: Math.max(0, y1 - y0)
+  };
+}
+
+function cropRasterPreview(preview, crop) {
+  if (crop.x === 0 && crop.y === 0 && crop.width == preview.width && crop.height == preview.height) {
+    return preview;
+  }
+  var pixels = new Uint8ClampedArray(crop.width * crop.height * 4);
+  var src, dest, rowBytes = crop.width * 4;
+  for (var y = 0; y < crop.height; y++) {
+    src = ((crop.y + y) * preview.width + crop.x) * 4;
+    dest = y * rowBytes;
+    pixels.set(preview.pixels.subarray(src, src + rowBytes), dest);
+  }
+  return Object.assign({}, preview, {
+    width: crop.width,
+    height: crop.height,
+    pixels: pixels
+  });
+}
+
+function transformRasterBboxForSVG(bbox, frame) {
+  var srcBounds = new Bounds(frame.bbox);
+  var destBounds = frame.bbox2 ? new Bounds(frame.bbox2) : new Bounds(0, 0, frame.width, frame.height);
+  srcBounds.fillOut(destBounds.width() / destBounds.height());
+  var fwd = srcBounds.getTransform(destBounds, frame.invert_y);
+  var p1 = fwd.transform(bbox[0], bbox[3]);
+  var p2 = fwd.transform(bbox[2], bbox[1]);
+  return [p1[0], p1[1], p2[0], p2[1]];
+}
+
+function encodeRasterPreview(preview, opts) {
+  var format = getSvgRasterFormat(preview, opts);
+  var data = format == 'png' ? encodePng(preview) : encodeJpeg(preview, opts);
+  return 'data:image/' + format + ';base64,' + data;
+}
+
+function getSvgRasterFormat(preview, opts) {
+  var fmt = opts.svg_raster_format || opts.raster_format || null;
+  if (fmt) return fmt == 'jpg' ? 'jpeg' : fmt;
+  return previewHasTransparency(preview) ? 'png' : 'jpeg';
+}
+
+function previewHasTransparency(preview) {
+  var pixels = preview.pixels;
+  for (var i = 3; i < pixels.length; i += 4) {
+    if (pixels[i] < 255) return true;
+  }
+  return false;
+}
+
+function encodeJpeg(preview, opts) {
+  if (runningInBrowser() && typeof document != 'undefined') {
+    return encodeWithCanvas(preview, 'image/jpeg', opts.svg_raster_quality || 0.85);
+  }
+  var jpeg = require('jpeg-js');
+  var quality = Math.round((opts.svg_raster_quality || 0.85) * 100);
+  return Buffer.from(jpeg.encode({
+    data: Buffer.from(preview.pixels),
+    width: preview.width,
+    height: preview.height
+  }, quality).data).toString('base64');
+}
+
+function encodePng(preview) {
+  if (runningInBrowser() && typeof document != 'undefined') {
+    return encodeWithCanvas(preview, 'image/png');
+  }
+  var PNG = require('pngjs').PNG;
+  var png = new PNG({width: preview.width, height: preview.height});
+  png.data = Buffer.from(preview.pixels);
+  return Buffer.from(PNG.sync.write(png)).toString('base64');
+}
+
+function encodeWithCanvas(preview, type, quality) {
+  var canvas = document.createElement('canvas');
+  var ctx = canvas.getContext('2d');
+  var dataUrl;
+  canvas.width = preview.width;
+  canvas.height = preview.height;
+  ctx.putImageData(new ImageData(preview.pixels, preview.width, preview.height), 0, 0);
+  dataUrl = canvas.toDataURL(type, quality);
+  return dataUrl.split(',')[1];
 }
 
 function exportSymbolsForSVG(lyr, dataset, opts) {

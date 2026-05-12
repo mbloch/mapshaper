@@ -53,7 +53,9 @@ describe('gui-undo-payload-store.js', function() {
 
     removed = await liveStore.cleanupStaleSessions();
 
-    assert.deepEqual(removed, ['msu:undo_old:1']);
+    assert.deepEqual(removed.keys, ['msu:undo_old:1']);
+    assert.equal(removed.sessionCount, 1);
+    assert.equal(removed.sizeBytes, 10);
     assert.equal(await backend.get('msu:undo_old:1'), undefined);
   });
 

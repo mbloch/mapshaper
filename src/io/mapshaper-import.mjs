@@ -12,6 +12,8 @@ import { getFileBase, parseLocalPath } from '../utils/mapshaper-filename-utils';
 import { importFlatgeobuf } from '../flatgeobuf/mapshaper-flatgeobuf';
 import { importGeoPackage } from '../geopackage/mapshaper-geopackage-import';
 import { importGeoParquet } from '../geoparquet/mapshaper-geoparquet-import';
+import { importGeoTIFF } from '../geotiff/mapshaper-geotiff-import';
+import { importImageRaster } from '../rasters/mapshaper-image-import';
 import { importSVG } from '../svg/mapshaper-svg-import';
 
 // Parse content of one or more input files and return a dataset
@@ -67,6 +69,10 @@ export function importContent(obj, opts) {
     stop("GeoPackage import requires async import path");
   } else if (obj.parquet) {
     stop("GeoParquet import requires async import path");
+  } else if (obj.geotiff) {
+    stop("GeoTIFF import requires async import path");
+  } else if (obj.png || obj.jpeg) {
+    stop("Image raster import requires async import path");
   }
 
   return finalizeImportedDataset(dataset, dataFmt, data, opts);
@@ -87,6 +93,14 @@ export async function importContentAsync(obj, opts) {
     dataFmt = 'geoparquet';
     data = obj.parquet;
     dataset = await importGeoParquet(data, opts);
+  } else if (obj.geotiff) {
+    dataFmt = 'geotiff';
+    data = obj.geotiff;
+    dataset = await importGeoTIFF(data, opts);
+  } else if (obj.png || obj.jpeg) {
+    dataFmt = obj.png ? 'png' : 'jpeg';
+    data = obj[dataFmt];
+    dataset = await importImageRaster(obj, opts);
   } else {
     return importContent(obj, opts);
   }

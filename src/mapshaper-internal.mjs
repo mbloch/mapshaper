@@ -125,6 +125,7 @@ import * as LayerUtils from './dataset/mapshaper-layer-utils';
 import * as Lines from './commands/mapshaper-lines';
 import * as Logging from './utils/mapshaper-logging';
 import * as Profile from './utils/mapshaper-profile';
+import * as RasterUtils from './rasters/mapshaper-raster-utils';
 import * as Merging from './dataset/mapshaper-merging';
 import * as MosaicIndex from './polygons/mapshaper-mosaic-index';
 import * as OptionParsingUtils from './cli/mapshaper-option-parsing-utils';
@@ -250,6 +251,7 @@ Object.assign(internal,
   Lines,
   Logging,
   Profile,
+  RasterUtils,
   Merging,
   MosaicIndex,
   OptionParsingUtils,

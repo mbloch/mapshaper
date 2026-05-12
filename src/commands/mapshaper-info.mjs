@@ -1,7 +1,8 @@
 import { applyFieldOrder } from '../datatable/mapshaper-data-utils';
 import { editShapes } from '../paths/mapshaper-shape-utils';
 import { getProjInfo } from '../crs/mapshaper-projections';
-import { getLayerBounds, getFeatureCount, getLayerSourceFile } from '../dataset/mapshaper-layer-utils';
+import { getLayerBounds, getFeatureCount, getLayerSourceFile, layerHasRaster } from '../dataset/mapshaper-layer-utils';
+import { getRasterBandCount, getRasterHeight, getRasterPixelType, getRasterWidth } from '../rasters/mapshaper-raster-utils';
 import { expandCommandTargets } from '../dataset/mapshaper-target-utils';
 import { writeFiles } from '../io/mapshaper-file-export';
 import { runningInBrowser } from '../mapshaper-env';
@@ -57,6 +58,16 @@ export function getLayerInfo(lyr, dataset) {
     null_shape_count: 0,
     null_data_count: lyr.data ? countNullRecords(lyr.data.getRecords()) : n
   };
+  if (layerHasRaster(lyr)) {
+    o.geometry_type = null;
+    o.raster_type = lyr.raster_type;
+    o.raster_width = getRasterWidth(lyr.raster);
+    o.raster_height = getRasterHeight(lyr.raster);
+    o.raster_bands = getRasterBandCount(lyr.raster);
+    o.raster_pixel_type = getRasterPixelType(lyr.raster);
+    o.bbox = getLayerBounds(lyr, dataset.arcs).toArray();
+    o.proj4 = getProjInfo(dataset);
+  }
   if (lyr.shapes && lyr.shapes.length > 0) {
     o.null_shape_count = countNullShapes(lyr.shapes);
     o.bbox = getLayerBounds(lyr, dataset.arcs).toArray();
@@ -86,7 +97,7 @@ function formatInfo(arr) {
   var str = '';
   arr.forEach(function(info, i) {
     var title =  'Layer:    ' + (info.layer_name || '[unnamed layer]');
-    var tableStr = formatAttributeTableInfo(info.attribute_data);
+    var tableStr = info.raster_type ? '' : formatAttributeTableInfo(info.attribute_data);
     var tableWidth = measureLongestLine(tableStr);
     var ruleLen = Math.min(Math.max(title.length, tableWidth), MAX_RULE_LEN);
     str += '\n';
@@ -101,12 +112,17 @@ function formatInfo(arr) {
 
 function formatLayerInfo(data) {
   var str = '';
-  str += "Type:     " + (data.geometry_type || "tabular data") + "\n";
-  str += utils.format("Records:  %,d\n",data.feature_count);
+  str += "Type:     " + (data.raster_type ? "raster data" : data.geometry_type || "tabular data") + "\n";
+  if (data.raster_type) {
+    str += utils.format("Size:     %,d x %,d x %,d\n", data.raster_width, data.raster_height, data.raster_bands);
+    str += "Data:     " + (data.raster_pixel_type || 'unknown') + "\n";
+  } else {
+    str += utils.format("Records:  %,d\n",data.feature_count);
+  }
   if (data.null_shape_count > 0) {
     str += utils.format("Nulls:     %'d", data.null_shape_count) + "\n";
   }
-  if (data.geometry_type && data.feature_count > data.null_shape_count) {
+  if (data.raster_type || data.geometry_type && data.feature_count > data.null_shape_count) {
     str += "Bounds:   " + data.bbox.join(',') + "\n";
     str += "CRS:      " + data.proj4 + "\n";
   }

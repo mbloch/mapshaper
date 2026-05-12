@@ -154,11 +154,44 @@ async function exportLayer(lyr, opts) {
     name: lyr.name || null,
     geometry_type: lyr.geometry_type || null,
     shapes: lyr.shapes || null,
+    raster_type: lyr.raster_type || null,
+    raster: lyr.raster ? exportRasterData(lyr.raster) : null,
     data: data,
     menu_order: lyr.menu_order || null,
     pinned: lyr.pinned || opts.show_all || false,
     active: !!(lyr.active || lyr == opts.active_layer) // lyr.active: deprecated
   };
+}
+
+function exportRasterData(raster) {
+  var copy = Object.assign({}, raster);
+  if (raster.grid) {
+    copy.grid = Object.assign({}, raster.grid);
+    if (raster.grid.samples) {
+      copy.grid.samples = typedArrayToBuffer(raster.grid.samples);
+    }
+  }
+  if (raster.view) {
+    copy.view = Object.assign({}, raster.view);
+    if (raster.view.preview) {
+      copy.view.preview = Object.assign({}, raster.view.preview);
+      delete copy.view.preview.canvas;
+      if (raster.view.preview.pixels) {
+        copy.view.preview.pixels = typedArrayToBuffer(raster.view.preview.pixels);
+      }
+    }
+  }
+  if (raster.preview) {
+    copy.preview = Object.assign({}, raster.preview);
+    delete copy.preview.canvas;
+    if (raster.preview.pixels) {
+      copy.preview.pixels = typedArrayToBuffer(raster.preview.pixels);
+    }
+  }
+  if (raster.pixels) {
+    copy.pixels = typedArrayToBuffer(raster.pixels);
+  }
+  return copy;
 }
 
 export function exportInfo(info) {

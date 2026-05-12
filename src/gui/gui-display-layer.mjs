@@ -49,7 +49,7 @@ export function enhanceLayerForDisplay(layer, dataset, opts) {
   var sourceCRS;
   var emptyArcs;
 
-  if (displayCRS && layer.geometry_type) {
+  if (displayCRS && (layer.geometry_type || internal.layerHasRaster(layer))) {
     var crsInfo = getDatasetCrsInfo(dataset);
     if (crsInfo.error) {
       // unprojectable dataset -- return empty layer
@@ -90,6 +90,15 @@ export function enhanceLayerForDisplay(layer, dataset, opts) {
 
   if (gui.unprojectable) {
     gui.displayLayer = {shapes: []}; // TODO: improve
+  } else if (internal.layerHasRaster(layer)) {
+    gui.geographic = true;
+    gui.displayLayer = layer;
+    if (needReprojectionForDisplay(sourceCRS, displayCRS)) {
+      // Raster warping is not supported yet; hide rather than misplace pixels.
+      gui.unprojectable = true;
+      gui.displayLayer = {shapes: []};
+      notifyRasterReprojectionBlocked(layer, opts);
+    }
   } else if (layer.geometry_type) {
     gui.geographic = true;
     gui.displayLayer = layer;
@@ -119,6 +128,17 @@ export function enhanceLayerForDisplay(layer, dataset, opts) {
 
   gui.bounds = getDisplayBounds(gui.displayLayer, gui.displayArcs);
   layer.gui = gui;
+}
+
+function notifyRasterReprojectionBlocked(layer, opts) {
+  if (!opts.notify) return;
+  opts.notify({
+    severity: 'warn',
+    title: 'Raster layer hidden',
+    body: 'The raster layer "' + (layer.name || '[unnamed]') +
+      '" cannot be displayed in the current map projection because raster reprojection is not supported yet.',
+    dedupKey: 'raster-reprojection-blocked:' + (layer.menu_id || layer.name || '')
+  });
 }
 
 function getDisplayBounds(lyr, arcs) {

@@ -9,6 +9,7 @@ import { El } from './gui-el';
 import { ClickText2 } from './gui-elements';
 import { GUI } from './gui-lib';
 import { openContextMenu } from './gui-context-menu';
+import { getRasterHeight, getRasterWidth } from '../rasters/mapshaper-raster-utils';
 import {
   addUndoTransactionToHistory,
   createUndoTransaction
@@ -404,9 +405,13 @@ export function LayerControl(gui) {
       type = 'data record';
     } else if (lyr.geometry_type) {
       type = lyr.geometry_type + ' feature';
+    } else if (internal.layerHasRaster(lyr)) {
+      type = 'raster layer';
     }
     if (isFrame) {
       str = 'map frame';
+    } else if (internal.layerHasRaster(lyr)) {
+      str = utils.format('%,d x %,d %s', getRasterWidth(lyr.raster), getRasterHeight(lyr.raster), type);
     } else if (type) {
       str = utils.format('%,d %s%s', n, type, utils.pluralSuffix(n));
     } else {
@@ -441,7 +446,7 @@ export function LayerControl(gui) {
   }
 
   function isPinnable(lyr) {
-    return internal.layerIsGeometric(lyr) || internal.layerHasFurniture(lyr);
+    return internal.layerIsGeometric(lyr) || internal.layerHasRaster(lyr) || internal.layerHasFurniture(lyr);
   }
 
   function rowHTML(c1, c2, cname) {

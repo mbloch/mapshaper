@@ -1,6 +1,7 @@
 import assert from 'assert';
 import { DataTable } from '../src/datatable/mapshaper-data-table';
 import { ArcCollection } from '../src/paths/mapshaper-arcs';
+import { clipLayers } from '../src/commands/mapshaper-clip-erase';
 import { UndoTransaction } from '../src/undo/mapshaper-undo-transaction';
 import {
   getStoredUndoPayloadRefs,
@@ -81,6 +82,57 @@ describe('gui-undo-unit-store.js', function() {
     await restoreStoredUndoUnits(stored, store);
 
     assert.deepEqual(table.getRecords(), [{foo: 'a', bar: 1}, {foo: 'b', bar: 2}]);
+  });
+
+  it('stores and restores raster layer payloads', async function() {
+    var layer = getRasterLayer();
+    var tx = new UndoTransaction('raster');
+    var store = makeStore();
+    var stored, payloadRef, payload;
+
+    tx.captureLayerBefore(layer, {operation: 'clip'});
+    layer.raster.grid.width = 1;
+    layer.raster.grid.samples = new Uint8Array([0, 0, 255]);
+
+    stored = await storeUndoUnits(tx.getCapturedUnits(), store, 'entry1', 'undo');
+    payloadRef = getStoredUndoPayloadRefs(stored)[0];
+    payload = await store.get(payloadRef);
+
+    assert.equal(stored[0].type, 'layer');
+    assert.equal(stored[0].raster, undefined);
+    assert.ok(payload.raster);
+    assert.equal(payload.raster.view.preview.pixels, undefined);
+    assert.ok(store.getStats().ownBytes >= 10);
+
+    await restoreStoredUndoUnits(stored, store);
+
+    assert.equal(layer.raster.grid.width, 2);
+    assert.deepEqual(Array.from(layer.raster.grid.samples), [255, 0, 0, 0, 0, 255]);
+    assert.deepEqual(Array.from(layer.raster.view.preview.pixels), [
+      255, 0, 0, 255,
+      0, 0, 255, 255
+    ]);
+  });
+
+  it('stores raster payloads captured by raster clipping command', async function() {
+    var layer = getRasterLayer();
+    var dataset = {layers: [layer]};
+    var tx = new UndoTransaction('raster clip');
+    var store = makeStore();
+    var stored, payload;
+
+    tx.run(function() {
+      clipLayers([layer], null, dataset, 'clip', {bbox2: [1, 0, 2, 1]});
+    });
+    stored = await storeUndoUnits(tx.getCapturedUnits(), store, 'entry1', 'undo');
+    payload = await store.get(getStoredUndoPayloadRefs(stored)[0]);
+
+    assert.equal(stored[0].type, 'layer');
+    assert.equal(stored[0].raster, undefined);
+    assert.ok(payload.raster);
+    assert.equal(payload.raster.view.preview.pixels, undefined);
+    assert.equal(store.getStats().ownPayloadCount, 1);
+    assert(store.getStats().ownBytes > 0);
   });
 
   it('stores record-level payloads without whole-table packing', async function() {
@@ -182,4 +234,43 @@ function makeStore() {
     sessionId: 'undo_units',
     window: {localStorage: null}
   });
+}
+
+function getRasterLayer() {
+  return {
+    name: 'raster',
+    raster_type: 'grid',
+    raster: {
+      sourceId: 'raster',
+      grid: {
+        width: 2,
+        height: 1,
+        bands: 3,
+        pixelType: 'uint8',
+        samples: new Uint8Array([255, 0, 0, 0, 0, 255]),
+        sampleBands: [0, 1, 2],
+        nodata: null,
+        bbox: [0, 0, 2, 1],
+        transform: [1, 0, 0, 0, -1, 1]
+      },
+      derivation: {
+        type: 'rgb',
+        sourceId: 'raster',
+        bands: [0, 1, 2]
+      },
+      view: {
+        preview: {
+          width: 2,
+          height: 1,
+          bands: 4,
+          pixelType: 'uint8',
+          colorModel: 'rgba',
+          pixels: new Uint8ClampedArray([
+            255, 0, 0, 255,
+            0, 0, 255, 255
+          ])
+        }
+      }
+    }
+  };
 }

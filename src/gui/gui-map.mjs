@@ -302,7 +302,8 @@ export function MshpMap(gui) {
 
   function getDisplayOptions() {
     return {
-      crs: _dynamicCRS
+      crs: _dynamicCRS,
+      notify: gui.notify
     };
   }
 

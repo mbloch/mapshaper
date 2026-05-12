@@ -1,6 +1,11 @@
 import { internal, utils, Bounds } from './gui-core';
 import { El } from './gui-el';
 import { GUI } from './gui-lib';
+import { getRasterBBox, getRasterPreview } from '../rasters/mapshaper-raster-utils';
+import {
+  getCachedRasterViewportPreview,
+  scheduleRasterViewportPreview
+} from './gui-raster-viewport-preview';
 import { getCanvasFillPattern, getCanvasFillEffect } from './gui-canvas-patterns';
 
 // TODO: consider moving this upstream
@@ -145,6 +150,22 @@ export function DisplayCanvas() {
     _self.classed('retina', pixRatio == 2);
     _self.show();
     _ext = extent;
+  };
+
+  _self.drawRasterLayer = function(layer, opts) {
+    var raster = layer.raster;
+    var options = opts || {};
+    var preview = options.action == 'nav' ? null : getCachedRasterViewportPreview(layer, _ext);
+    var bbox = preview && preview.bbox;
+    if (!preview) {
+      preview = raster && getRasterPreview(raster);
+      bbox = raster && getRasterBBox(raster);
+      if (options.action != 'nav' && options.onViewportPreviewReady) {
+        scheduleRasterViewportPreview(layer, _ext, options.onViewportPreviewReady);
+      }
+    }
+    if (!preview || !preview.pixels || !bbox) return;
+    drawRasterPreview(preview, bbox);
   };
 
   /*
@@ -343,6 +364,15 @@ export function DisplayCanvas() {
     }
   }
 
+  function drawRasterPreview(preview, bbox) {
+    var img = getRasterCanvas(preview);
+    var t = _ext.getTransform(GUI.getPixelRatio());
+    var p1 = t.transform(bbox[0], bbox[3]);
+    var p2 = t.transform(bbox[2], bbox[1]);
+    _ctx.imageSmoothingEnabled = true;
+    _ctx.drawImage(img, p1[0], p1[1], p2[0] - p1[0], p2[1] - p1[1]);
+  }
+
   // TODO: consider using drawStyledPaths(), which draws paths in batches
   // for faster Canvas rendering. Downside: changes stacking order, which
   // is bad if circles are graduated.
@@ -456,6 +486,19 @@ function getScaledTransform(ext) {
     bx: t.bx,
     by: t.by
   };
+}
+
+function getRasterCanvas(preview) {
+  if (preview.canvas) return preview.canvas;
+  var canvas = document.createElement('canvas');
+  var ctx = canvas.getContext('2d');
+  var imageData;
+  canvas.width = preview.width;
+  canvas.height = preview.height;
+  imageData = new ImageData(preview.pixels, preview.width, preview.height);
+  ctx.putImageData(imageData, 0, 0);
+  preview.canvas = canvas;
+  return canvas;
 }
 
 function drawCircle(x, y, radius, ctx) {

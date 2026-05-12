@@ -13,6 +13,9 @@ export function BoxTool(gui, ext, nav) {
   var box = new HighlightBox(gui, {name: 'box-tool', persistent: true, handles: true, draggable: true});
   var popup = gui.container.findChild('.box-tool-options');
   var coords = popup.findChild('.box-coords').hide();
+  var selectBtn = popup.findChild('.select-btn');
+  var clipBtn = popup.findChild('.clip-btn');
+  var eraseBtn = popup.findChild('.erase-btn');
   var _on = false;
   var instructionsShown = false;
   var alert;
@@ -25,7 +28,7 @@ export function BoxTool(gui, ext, nav) {
     reset();
   });
 
-  new SimpleButton(popup.findChild('.select-btn')).on('click', function() {
+  new SimpleButton(selectBtn).on('click', function() {
     var coords = box.getDataCoords();
     if (!coords || noData()) return;
     gui.enterMode('selection_tool');
@@ -40,11 +43,12 @@ export function BoxTool(gui, ext, nav) {
     return !gui.model.getActiveLayer();
   }
 
-  new SimpleButton(popup.findChild('.clip-btn')).on('click', function() {
+  new SimpleButton(clipBtn).on('click', function() {
     runCommand('-clip bbox=' + box.getDataCoords().join(','));
   });
 
-  new SimpleButton(popup.findChild('.erase-btn')).on('click', function() {
+  new SimpleButton(eraseBtn).on('click', function() {
+    if (activeLayerIsRaster()) return;
     runCommand('-erase bbox=' + box.getDataCoords().join(','));
   });
 
@@ -87,6 +91,7 @@ export function BoxTool(gui, ext, nav) {
   box.on('dragend', function(e) {
     if (_on) {
       hideInstructions();
+      updateOptionsForActiveLayer();
       popup.show();
     }
   });
@@ -140,6 +145,7 @@ export function BoxTool(gui, ext, nav) {
 
   function turnOn() {
     box.turnOn();
+    updateOptionsForActiveLayer();
     _on = true;
   }
 
@@ -158,6 +164,27 @@ export function BoxTool(gui, ext, nav) {
     box.hide();
     popup.hide();
     hideCoords();
+  }
+
+  function updateOptionsForActiveLayer() {
+    var raster = activeLayerIsRaster();
+    setButtonVisible(selectBtn, !raster);
+    setButtonVisible(clipBtn, true);
+    setButtonVisible(eraseBtn, !raster);
+  }
+
+  function activeLayerIsRaster() {
+    var active = gui.model.getActiveLayer();
+    return !!(active && internal.layerHasRaster(active.layer));
+  }
+
+  function setButtonVisible(btn, visible) {
+    btn.classed('hidden', !visible);
+    if (visible) {
+      btn.show();
+    } else {
+      btn.hide();
+    }
   }
 
   function openAddFramePopup(gui, bbox) {
