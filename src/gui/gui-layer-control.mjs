@@ -34,17 +34,25 @@ export function LayerControl(gui) {
   headerBtn.on('click', function() {
     toggle();
   }).on('keydown', function(e) {
-    if (e.key == 'Enter' || e.key == ' ') {
+    if (e.key == 'Enter') {
       e.preventDefault();
       e.stopPropagation();
       toggle();
+    } else if (e.key == ' ') {
+      e.preventDefault();
+      e.stopPropagation();
+      gui.toggleSidebarPanel('console');
     }
   });
   tab.on('click', toggle).on('keydown', function(e) {
-    if (e.key == 'Enter' || e.key == ' ') {
+    if (e.key == 'Enter') {
       e.preventDefault();
       e.stopPropagation();
       toggle();
+    } else if (e.key == ' ') {
+      e.preventDefault();
+      e.stopPropagation();
+      gui.toggleSidebarPanel('console');
     }
   });
 
