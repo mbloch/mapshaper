@@ -127,7 +127,7 @@ mapshaper states.geojson -filter 'ST == "AK"' + name=alaska -o output/ target=*
 
 ### -i (input)
 
-Input one or more files in a supported vector data format. Supported file types include: Shapefile, GeoJSON, TopoJSON, GeoPackage, FlatGeobuf, GeoParquet, KML, JSON data records, DBF, CSV/TSV.
+Input one or more files in a supported vector, table, or raster data format. Supported file types include: Shapefile, GeoJSON, TopoJSON, GeoPackage, FlatGeobuf, GeoParquet, KML, JSON data records, DBF, CSV/TSV, GeoTIFF, PNG and JPEG images with world files.
 
 The `-i` command is assumed if `mapshaper` is followed by the path of an input data file.
 
@@ -190,6 +190,14 @@ mapshaper -i 'lat,lon,label\n48.86,2.35,Paris\n51.51,-0.13,London' \
 `json-path=` [JSON] Path to an array of data records or a GeoJSON object. For example, `json-path=data/counties` expects a JSON object with the following structure `{"data": {"counties": []}}`.
 
 `layers=` [GeoPackage] Comma-separated list of layer names to import from a GeoPackage file. If omitted, all layers are imported.
+
+`scaling=none|minmax|percentile` [Raster] Display scaling method for raster imports. The default is `none` for 8-bit rasters and `percentile` for non-8-bit rasters.
+
+`scale-range=` [Raster] Output intensity range for raster display scaling, as normalized percentages. The default is `0,100`.
+
+`percentile-range=` [Raster] Input percentile range used with `scaling=percentile`. The default is `2,98`.
+
+`rendition=` [GeoTIFF] Import a specific GeoTIFF rendition, such as `full` or `overview-1`. By default, large GeoTIFFs are imported from the best available reduced-resolution rendition under Mapshaper's import size limit. Use `rendition=full` to force full-resolution import.
 
 `name=`  Rename the imported layer (or layers).
 
