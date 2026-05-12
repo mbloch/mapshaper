@@ -10,6 +10,7 @@ export function InteractionMode(gui) {
     rectangles: ['info', 'selection', 'box', 'rectangles', 'edit_polygons'],
     lines: ['info', 'selection', 'box', 'edit_lines'], // 'snip_lines'
     table: ['info', 'selection'],
+    raster: ['box'],
     labels: ['info', 'selection', 'box', 'labels', 'edit_points'],
     points: ['info', 'selection', 'box', 'edit_points'] // , 'add-points'
   };
@@ -129,6 +130,9 @@ export function InteractionMode(gui) {
     var o = gui.model.getActiveLayer();
     if (!o || !o.layer) {
       return menus.empty; // TODO: more sensible handling of missing layer
+    }
+    if (internal.layerHasRaster(o.layer)) {
+      return menus.raster;
     }
     if (!o.layer.geometry_type) {
       return menus.table;

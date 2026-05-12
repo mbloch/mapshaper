@@ -2,7 +2,7 @@ import { filterClipSlivers } from '../commands/mapshaper-filter-slivers';
 import { clipPolylines } from '../clipping/mapshaper-polyline-clipping';
 import { clipPolygons } from '../clipping/mapshaper-polygon-clipping';
 import { clipPoints } from '../clipping/mapshaper-point-clipping';
-import { requirePolygonLayer, getLayerBounds } from '../dataset/mapshaper-layer-utils';
+import { requirePolygonLayer, getLayerBounds, layerHasRaster } from '../dataset/mapshaper-layer-utils';
 import { addIntersectionCuts } from '../paths/mapshaper-intersection-cuts';
 import { mergeLayersForOverlay2, normalizeOverlaySource } from '../clipping/mapshaper-overlay-utils';
 import { divideDatasetByBBox } from '../clipping/mapshaper-bbox2-clipping';
@@ -17,6 +17,7 @@ import { dissolveArcs } from '../paths/mapshaper-arc-dissolve';
 import { dissolvePolygonLayer2 } from '../dissolve/mapshaper-polygon-dissolve2';
 import { profileStart, profileEnd } from '../utils/mapshaper-profile';
 import { markDatasetChanged, noteDatasetWillChange } from '../undo/mapshaper-undo-tracking';
+import { clipRasterToBBox } from '../rasters/mapshaper-raster-utils';
 
 cmd.clipLayers = function(target, src, dataset, opts) {
   return clipLayers(target, src, dataset, "clip", opts);
@@ -49,6 +50,10 @@ export function clipLayersInPlace(layers, clipSrc, dataset, type, opts) {
     var lyr2 = outputLayers[i];
     lyr.shapes = lyr2.shapes;
     lyr.data = lyr2.data;
+    if (lyr2.raster) {
+      lyr.raster = lyr2.raster;
+      lyr.raster_type = lyr2.raster_type;
+    }
   });
   dissolveArcs(dataset);
 }
@@ -59,8 +64,15 @@ export function clipLayers(targetLayers, clipSrc, targetDataset, type, opts) {
   profileStart('clipLayers');
   opts = opts || {no_cleanup: true}; // TODO: update testing functions
   var usingPathClip = utils.some(targetLayers, layerHasPaths);
+  var usingRasterClip = utils.some(targetLayers, layerHasRaster);
   var mergedDataset, clipLyr, nodes, result;
-  var clipDataset = normalizeOverlaySource(clipSrc, targetDataset, opts);
+  var clipDataset;
+  if (usingRasterClip) {
+    result = clipRasterLayers(targetLayers, clipSrc, targetDataset, type, opts);
+    profileEnd('clipLayers');
+    return result;
+  }
+  clipDataset = normalizeOverlaySource(clipSrc, targetDataset, opts);
   if (!opts.no_warn) {
     warnIfBoundsDontOverlap(targetLayers, targetDataset, clipDataset, type);
   }
@@ -92,6 +104,30 @@ export function clipLayers(targetLayers, clipSrc, targetDataset, type, opts) {
   profileEnd('clipLayersByLayer');
   profileEnd('clipLayers');
   return result;
+}
+
+function clipRasterLayers(targetLayers, clipSrc, targetDataset, type, opts) {
+  var clipDataset, clipBounds, bbox;
+  if (type != 'clip') {
+    stop('Raster layers only support clipping');
+  }
+  if (utils.some(targetLayers, function(lyr) {return !layerHasRaster(lyr);})) {
+    stop('Raster clipping cannot be mixed with vector target layers');
+  }
+  if (opts.bbox2) {
+    bbox = opts.bbox2;
+  } else {
+    clipDataset = normalizeOverlaySource(clipSrc, targetDataset, opts);
+    clipBounds = getLayerBounds(clipDataset.layers[0], clipDataset.arcs);
+    if (!clipBounds || !clipBounds.hasBounds()) {
+      stop('Missing raster clipping bounds');
+    }
+    bbox = clipBounds.toArray();
+  }
+  return targetLayers.map(function(lyr) {
+    clipRasterToBBox(lyr, bbox, opts);
+    return lyr;
+  });
 }
 
 export function clipLayersByBBox(layers, dataset, opts) {

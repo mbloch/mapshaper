@@ -1,4 +1,5 @@
 import require from '../mapshaper-require';
+import { createTempSessionLifecycle } from './gui-temp-session-lifecycle';
 
 var idb = require('idb-keyval');
 var DEFAULT_INDEX_KEY = 'msu_index';
@@ -17,6 +18,13 @@ export function createUndoPayloadStore(opts) {
   var keyPrefix = opts.keyPrefix || DEFAULT_KEY_PREFIX;
   var heartbeatInterval = opts.heartbeatInterval || HEARTBEAT_INTERVAL_MS;
   var staleThreshold = opts.staleThreshold || STALE_THRESHOLD_MS;
+  var lifecycle = createTempSessionLifecycle({
+    window: win,
+    sessionId: sessionId,
+    sessionKey: sessionKey,
+    heartbeatInterval: heartbeatInterval,
+    staleThreshold: staleThreshold
+  });
   var maxBytes = opts.maxBytes || 0;
   var maxPayloadBytes = opts.maxPayloadBytes || 0;
   var payloadCount = 0;
@@ -24,7 +32,6 @@ export function createUndoPayloadStore(opts) {
   var ownPayloadSizes = {};
   var ownPayloadItems = {};
   var ownBytes = 0;
-  var heartbeatTimer = null;
   var lifecycleStarted = false;
 
   return {
@@ -54,7 +61,7 @@ export function createUndoPayloadStore(opts) {
     validatePayloadSize(size);
     await backend.set(key, value);
     notePayloadStored(item);
-    touchOwnSession();
+    lifecycle.touch();
     try {
       await updateIndex(function(index) {
         index.payloads.push(item);
@@ -95,55 +102,46 @@ export function createUndoPayloadStore(opts) {
       keys.forEach(notePayloadRemoved);
       await removeIndexKeys(keys);
     }
-    removeOwnSession();
+    lifecycle.removeOwnSession();
   }
 
   function startLifecycle() {
     if (lifecycleStarted) return;
     lifecycleStarted = true;
-    touchOwnSession();
-    if (win && win.setInterval) {
-      heartbeatTimer = win.setInterval(touchOwnSession, heartbeatInterval);
-    } else if (typeof setInterval == 'function') {
-      heartbeatTimer = setInterval(touchOwnSession, heartbeatInterval);
-    }
-    if (win && win.addEventListener) {
-      win.addEventListener('pagehide', function(e) {
-        if (e.persisted) return;
-        stopLifecycle();
-        attemptOwnDataDeletion();
-      });
-    }
+    lifecycle.start(attemptOwnDataDeletion);
   }
 
   async function cleanupStaleSessions() {
-    var liveSessions = getLiveSessions();
+    var liveSessions = lifecycle.getLiveSessions();
     var keys = await backend.keys();
+    var doomedSessions = new Set();
+    var sizeBytes = 0;
     var doomedKeys = keys.filter(function(key) {
-      var sid = getSessionFromPayloadKey(key);
-      return sid && !liveSessions[sid];
+      var sid = getSessionFromPayloadKey(key, keyPrefix);
+      var stale = sid && !liveSessions[sid];
+      if (stale) doomedSessions.add(sid);
+      return stale;
     });
     if (doomedKeys.length > 0) {
       await backend.delMany(doomedKeys);
     }
     await updateIndex(function(index) {
+      var doomedKeyIndex = keyArrayToIndex(doomedKeys);
       index.payloads = index.payloads.filter(function(item) {
-        return liveSessions[item.sessionId];
+        if (!liveSessions[item.sessionId]) {
+          if (doomedKeyIndex[item.key] && typeof item.size == 'number') {
+            sizeBytes += item.size;
+          }
+          return false;
+        }
+        return true;
       });
     });
-    return doomedKeys;
-  }
-
-  function stopLifecycle() {
-    if (heartbeatTimer) {
-      if (win && win.clearInterval) {
-        win.clearInterval(heartbeatTimer);
-      } else if (typeof clearInterval == 'function') {
-        clearInterval(heartbeatTimer);
-      }
-      heartbeatTimer = null;
-    }
-    removeOwnSession();
+    return {
+      keys: doomedKeys,
+      sessionCount: doomedSessions.size,
+      sizeBytes: sizeBytes
+    };
   }
 
   function attemptOwnDataDeletion() {
@@ -232,66 +230,26 @@ export function createUndoPayloadStore(opts) {
     });
   }
 
-  function touchOwnSession() {
-    var sessions = readSessions();
-    sessions[sessionId] = Date.now();
-    writeSessions(sessions);
-  }
-
-  function removeOwnSession() {
-    var sessions = readSessions();
-    if (sessions[sessionId]) {
-      delete sessions[sessionId];
-      writeSessions(sessions);
-    }
-  }
-
-  function getLiveSessions() {
-    var sessions = readSessions();
-    var live = {};
-    var now = Date.now();
-    live[sessionId] = true;
-    Object.keys(sessions).forEach(function(sid) {
-      if (now - sessions[sid] < staleThreshold) {
-        live[sid] = true;
-      }
-    });
-    return live;
-  }
-
-  function readSessions() {
-    var storage = win && win.localStorage;
-    var raw, parsed;
-    if (!storage) return {};
-    try {
-      raw = storage.getItem(sessionKey);
-      parsed = raw ? JSON.parse(raw) : null;
-      return parsed && typeof parsed == 'object' && !Array.isArray(parsed) ? parsed : {};
-    } catch(e) {
-      return {};
-    }
-  }
-
-  function writeSessions(sessions) {
-    var storage = win && win.localStorage;
-    if (!storage) return;
-    try {
-      storage.setItem(sessionKey, JSON.stringify(sessions));
-    } catch(e) {}
-  }
 }
 
 function getPayloadKey(ref) {
   return ref && (ref.key || ref);
 }
 
+function keyArrayToIndex(keys) {
+  return keys.reduce(function(memo, key) {
+    memo[key] = true;
+    return memo;
+  }, {});
+}
+
 function copyPayloadItem(item) {
   return Object.assign({}, item || {});
 }
 
-function getSessionFromPayloadKey(key) {
-  var match = /^msu:([^:]+):\d+$/.exec(key);
-  return match ? match[1] : null;
+function getSessionFromPayloadKey(key, keyPrefix) {
+  var parts = String(key).split(':');
+  return parts.length == 3 && parts[0] == keyPrefix ? parts[1] : null;
 }
 
 function getUniqId(prefix) {

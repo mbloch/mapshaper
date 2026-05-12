@@ -8,6 +8,7 @@ import {
   copyLayerShapes,
   copyLayer,
   layerHasPoints,
+  layerHasRaster,
   layerIsEmpty,
   setOutputLayerName,
   getFeatureCount } from '../dataset/mapshaper-layer-utils';
@@ -132,6 +133,12 @@ export function datasetIsEmpty(dataset) {
 export function datasetHasGeometry(dataset) {
   return utils.some(dataset.layers, function(lyr) {
     return layerHasGeometry(lyr);
+  });
+}
+
+export function datasetHasRaster(dataset) {
+  return utils.some(dataset.layers, function(lyr) {
+    return layerHasRaster(lyr);
   });
 }
 

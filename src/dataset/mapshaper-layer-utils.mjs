@@ -13,15 +13,16 @@ import {
   markLayerChanged,
   noteLayerWillChange
 } from '../undo/mapshaper-undo-tracking';
+import { copyRasterData, getRasterLayerBounds } from '../rasters/mapshaper-raster-utils';
 import {
   layerHasGeometry, layerIsGeometric, layerHasPaths,
-  layerHasPoints, layerHasNonNullShapes
+  layerHasPoints, layerHasNonNullShapes, layerHasRaster
 } from '../dataset/mapshaper-layer-type-utils';
 
 // Re-exported from mapshaper-layer-type-utils.mjs for back-compat.
 export {
   layerHasGeometry, layerIsGeometric, layerHasPaths,
-  layerHasPoints, layerHasNonNullShapes
+  layerHasPoints, layerHasNonNullShapes, layerHasRaster
 };
 
 // Insert a column of values into a (new or existing) data field
@@ -116,7 +117,9 @@ export function transformPointsInLayer(lyr, f) {
 
 export function getFeatureCount(lyr) {
   var count = 0;
-  if (lyr.data) {
+  if (layerHasRaster(lyr)) {
+    count = 1;
+  } else if (lyr.data) {
     count = lyr.data.size();
   } else if (lyr.shapes) {
     count = lyr.shapes.length;
@@ -304,6 +307,7 @@ export function copyLayerShapes(lyr) {
   if (lyr.shapes) {
     copy.shapes = cloneShapes(lyr.shapes);
   }
+  if (lyr.raster) copy.raster = copyRasterData(lyr.raster);
   return copy;
 }
 
@@ -339,12 +343,15 @@ export function getLayerBounds(lyr, arcs) {
     bounds = getPointBounds(lyr.shapes);
   } else if (lyr.geometry_type == 'polygon' || lyr.geometry_type == 'polyline') {
     bounds = getPathBounds(lyr.shapes, arcs);
+  } else if (layerHasRaster(lyr)) {
+    bounds = getRasterLayerBounds(lyr);
   } else {
     // just return null if layer has no bounds
     // error("Layer is missing a valid geometry type");
   }
   return bounds;
 }
+
 
 export function isolateLayer(layer, dataset) {
   return utils.defaults({

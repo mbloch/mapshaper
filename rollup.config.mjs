@@ -130,6 +130,25 @@ export default [{
     nodePolyfills()
   ]
 }, {
+  treeshake: false,
+  input: 'src/mapshaper-gui-geotiff.mjs',
+  onwarn: onMainWarn,
+  output: {
+    file: 'www/geotiff.js',
+    format: 'iife',
+    name: 'mapshaperGeoTIFF',
+    inlineDynamicImports: true
+  },
+  plugins: [
+    nodeResolve({
+      browser: true,
+      preferBuiltins: false
+    }),
+    commonjs(),
+    json(),
+    nodePolyfills()
+  ]
+}, {
   treeshake: true,
   context: 'null', // prevent a Rollup warning from msgpack
   input: 'src/mapshaper.mjs',

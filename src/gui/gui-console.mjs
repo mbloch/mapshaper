@@ -730,7 +730,9 @@ export function Console(gui) {
       title.textContent = 'Layer: ' + (info.layer_name || '[unnamed layer]');
       section.appendChild(title);
       section.appendChild(renderKeyValueTable(getInfoRows(info), 'console-info-table'));
-      section.appendChild(renderAttributeInfoTable(info.attribute_data));
+      if (!info.raster_type) {
+        section.appendChild(renderAttributeInfoTable(info.attribute_data));
+      }
       container.appendChild(section);
     });
     return container;
@@ -738,13 +740,18 @@ export function Console(gui) {
 
   function getInfoRows(info) {
     var rows = [
-      ['Type', info.geometry_type || 'tabular data'],
-      ['Records', utils.format('%,d', info.feature_count)]
+      ['Type', info.raster_type ? 'raster data' : info.geometry_type || 'tabular data']
     ];
+    if (info.raster_type) {
+      rows.push(['Size', utils.format('%,d x %,d x %,d', info.raster_width, info.raster_height, info.raster_bands)]);
+      rows.push(['Data', info.raster_pixel_type || 'unknown']);
+    } else {
+      rows.push(['Records', utils.format('%,d', info.feature_count)]);
+    }
     if (info.null_shape_count > 0) {
       rows.push(['Nulls', utils.format("%'d", info.null_shape_count)]);
     }
-    if (info.geometry_type && info.feature_count > info.null_shape_count) {
+    if (info.raster_type || info.geometry_type && info.feature_count > info.null_shape_count) {
       rows.push(['Bounds', info.bbox.join(',')]);
       rows.push(['CRS', info.proj4]);
     }

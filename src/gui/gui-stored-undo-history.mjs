@@ -1,4 +1,5 @@
 import { createUndoPayloadStore } from './gui-undo-payload-store';
+import { logStartupCleanup } from './gui-startup-cleanup-report';
 import {
   getUndoRestoreFlags,
   getStoredUndoPayloadRefs,
@@ -119,7 +120,15 @@ export function createStoredUndoHistory(gui) {
     if (!gui.undoPayloadStore) {
       gui.undoPayloadStore = createUndoPayloadStore(getUndoPayloadStoreOptions());
       gui.undoPayloadStore.startLifecycle();
-      gui.undoPayloadStore.cleanupStaleSessions();
+      gui.undoPayloadStore.cleanupStaleSessions().then(function(result) {
+        logStartupCleanup({
+          count: result.keys.length,
+          sessionCount: result.sessionCount,
+          singular: 'undo payload',
+          plural: 'undo payloads',
+          sizeBytes: result.sizeBytes
+        });
+      }).catch(function() {});
     }
     return gui.undoPayloadStore;
   }
@@ -157,6 +166,7 @@ function getRedoCaptureUnits(units) {
     delete copy.zz;
     delete copy.zlimit;
     delete copy.shapes;
+    delete copy.raster;
     if (copy.type != 'table-records') delete copy.records;
     if (copy.type != 'table-fields') delete copy.columns;
     delete copy.fields;

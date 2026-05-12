@@ -1,4 +1,4 @@
-import { getLayerBounds } from '../dataset/mapshaper-layer-utils';
+import { getLayerBounds, layerHasRaster } from '../dataset/mapshaper-layer-utils';
 import { exportSVG } from '../svg/mapshaper-svg';
 import { exportKML } from '../kml/kml-export';
 import { exportDbf } from '../shapefile/dbf-export';
@@ -21,6 +21,7 @@ import { buildTopology } from '../topology/mapshaper-topology';
 import { runningInBrowser } from '../mapshaper-env';
 import { getFileBase } from '../utils/mapshaper-filename-utils';
 import { gzipSync } from '../io/mapshaper-gzip';
+import { getRasterBBox, getRasterGrid, getRasterPreview } from '../rasters/mapshaper-raster-utils';
 
 // @targets - non-empty output from Catalog#findCommandTargets()
 //
@@ -211,7 +212,11 @@ function createIndexFile(datasets) {
 // Throw errors for various error conditions
 function validateLayerData(layers) {
   layers.forEach(function(lyr) {
-    if (!lyr.geometry_type) {
+    if (layerHasRaster(lyr)) {
+      if (!getRasterBBox(lyr.raster) || !getRasterPreview(lyr.raster) && !(getRasterGrid(lyr.raster) && getRasterGrid(lyr.raster).samples)) {
+        error('A raster layer is missing preview data or bounds');
+      }
+    } else if (!lyr.geometry_type) {
       // allowing data-only layers
       if (lyr.shapes && utils.some(lyr.shapes, function(o) {
         return !!o;

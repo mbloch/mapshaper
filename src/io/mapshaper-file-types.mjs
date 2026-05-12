@@ -9,8 +9,14 @@ import { PACKAGE_EXT } from '../pack/mapshaper-pack-constants';
 export function guessInputFileType(file) {
   var ext = getFileExtension(file || '').toLowerCase(),
       type = null;
-  if (ext == 'dbf' || ext == 'shp' || ext == 'kml' || ext == 'svg' || ext == 'fgb' || ext == 'gpkg') {
+  if (ext == 'dbf' || ext == 'shp' || ext == 'kml' || ext == 'svg' || ext == 'fgb' || ext == 'gpkg' || ext == 'png') {
     type = ext;
+  } else if (ext == 'jpg' || ext == 'jpeg') {
+    type = 'jpeg';
+  } else if (ext == 'tif' || ext == 'tiff') {
+    type = 'geotiff';
+  } else if (isWorldFileExtension(ext)) {
+    type = 'world';
   } else if (ext == 'parquet' || ext == 'geoparquet') {
     type = 'parquet';
   } else if (isAuxiliaryInputFileType(ext)) {
@@ -27,7 +33,15 @@ export function guessInputFileType(file) {
 
 // File types that can be imported but are not convertible to datasets
 export function isAuxiliaryInputFileType(type) {
-  return type == 'prj' || type == 'shx' || type == 'cpg';
+  return type == 'prj' || type == 'shx' || type == 'cpg' || type == 'world';
+}
+
+export function isRasterImageInputType(type) {
+  return type == 'png' || type == 'jpeg';
+}
+
+export function isWorldFileExtension(ext) {
+  return /^(tfw|pgw|pngw|jgw|jpw|jpgw|jpegw|wld)$/i.test(ext || '');
 }
 
 export function guessInputContentType(content) {
@@ -154,7 +168,9 @@ export function isGzipFile(file) {
 export function isSupportedBinaryInputType(path) {
   var ext = getFileExtension(path).toLowerCase();
   return ext == 'shp' || ext == 'shx' || ext == 'dbf' ||
-    ext == 'fgb' || ext == 'gpkg' || ext == 'parquet' || ext == 'geoparquet' || ext == PACKAGE_EXT; // GUI also supports zip files
+    ext == 'fgb' || ext == 'gpkg' || ext == 'parquet' || ext == 'geoparquet' ||
+    ext == 'tif' || ext == 'tiff' || ext == 'png' || ext == 'jpg' || ext == 'jpeg' ||
+    ext == PACKAGE_EXT; // GUI also supports zip files
 }
 
 export function isImportableAsBinary(path) {

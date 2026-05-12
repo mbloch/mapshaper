@@ -15,6 +15,7 @@ export async function considerReprojecting(gui, dataset, opts) {
 
 var geopackagePromise = null;
 var geoParquetPromise = null;
+var geoTIFFPromise = null;
 
 export async function loadGeopackageLib() {
   if (!window.modules || !window.modules['@ngageoint/geopackage']) {
@@ -55,6 +56,16 @@ export async function loadGeoParquetLib() {
     }
     await geoParquetPromise;
     geoParquetPromise = null;
+  }
+}
+
+export async function loadGeoTIFFLib() {
+  if (!window.modules || !window.modules.geotiff) {
+    if (!geoTIFFPromise) {
+      geoTIFFPromise = loadScript('geotiff.js');
+    }
+    await geoTIFFPromise;
+    geoTIFFPromise = null;
   }
 }
 

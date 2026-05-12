@@ -31,7 +31,8 @@
     "prepublishOnly": "npm test && npm run test:browser && ./pre-publish",
     "postpublish": "./release_web_ui; ./release_github_version",
     "dev": "rollup --config --watch",
-    "test:browser": "playwright test --fully-parallel --workers=6"
+    "test:browser": "playwright test --fully-parallel --workers=6",
+    "benchmark:raster": "MAPSHAPER_RUN_BENCHMARKS=1 playwright test browser-tests/raster-resampling-benchmark.spec.mjs --project=chromium --workers=1"
   },
   "main": "./mapshaper.js",
   "files": [
@@ -63,15 +64,18 @@
     "flatgeobuf": "^4.3.4",
     "geographiclib-geodesic": "^2.2.0",
     "geokdbush": "^1.1.0",
+    "geotiff": "^3.0.5",
     "hyparquet": "^1.25.6",
     "hyparquet-compressors": "^1.1.1",
     "hyparquet-writer": "^0.14.0",
     "iconv-lite": "^0.6.3",
     "idb-keyval": "^6.2.0",
+    "jpeg-js": "^0.4.4",
     "kdbush": "^3.0.0",
     "mproj": "0.1.2",
     "msgpackr": "^1.10.1",
     "open": "^11.0.0",
+    "pngjs": "^7.0.0",
     "rw": "~1.3.3",
     "tinyqueue": "^2.0.3"
   },
