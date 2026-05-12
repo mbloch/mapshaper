@@ -1443,6 +1443,10 @@
     return layerHasPaths(lyr) || layerHasPoints(lyr);
   }
 
+  function layerHasRaster(lyr) {
+    return !!(lyr && lyr.raster_type && lyr.raster);
+  }
+
   function layerIsGeometric(lyr) {
     return !!lyr.geometry_type; // only checks type, includes empty layers
   }
@@ -4772,6 +4776,628 @@
     pathIsRectangle: pathIsRectangle
   });
 
+  var DEFAULT_MAX_PREVIEW_PIXELS = 4e6;
+
+  function getRasterGrid(raster) {
+    return raster && (raster.grid || raster);
+  }
+
+  function getRasterView(raster) {
+    return raster && (raster.view || raster);
+  }
+
+  function getRasterPreview(raster) {
+    var view = getRasterView(raster);
+    return view && (view.preview || raster.preview);
+  }
+
+  function getRasterBBox(raster) {
+    var grid = getRasterGrid(raster);
+    return grid && grid.bbox || raster && raster.bbox || null;
+  }
+
+  function getRasterTransform(raster) {
+    var grid = getRasterGrid(raster);
+    return grid && grid.transform || raster && raster.transform || null;
+  }
+
+  function getRasterWidth(raster) {
+    var grid = getRasterGrid(raster);
+    return grid && grid.width || 0;
+  }
+
+  function getRasterHeight(raster) {
+    var grid = getRasterGrid(raster);
+    return grid && grid.height || 0;
+  }
+
+  function getRasterBandCount(raster) {
+    var grid = getRasterGrid(raster);
+    return grid && grid.bands || 0;
+  }
+
+  function getRasterPixelType(raster) {
+    var grid = getRasterGrid(raster);
+    return grid && grid.pixelType || null;
+  }
+
+  function copyRasterData(raster) {
+    var copy = utils.extend({}, raster);
+    if (raster.grid) {
+      copy.grid = copyRasterGrid(raster.grid);
+    }
+    if (raster.view) {
+      copy.view = copyRasterView(raster.view);
+    }
+    if (raster.derivation) {
+      copy.derivation = utils.extend({}, raster.derivation);
+      if (raster.derivation.bands) copy.derivation.bands = copyObjectOrArray(raster.derivation.bands);
+    }
+    if (raster.source) copy.source = utils.extend({}, raster.source);
+
+    // Back-compat for the first raster model.
+    if (raster.pixels) copy.pixels = copyTypedArray(raster.pixels);
+    if (raster.preview) copy.preview = copyRasterPreview(raster.preview);
+    if (raster.bbox) copy.bbox = raster.bbox.concat();
+    if (raster.transform) copy.transform = copyObjectOrArray(raster.transform);
+    return copy;
+  }
+
+  function copyRasterGrid(grid) {
+    var copy = utils.extend({}, grid);
+    if (grid.samples) copy.samples = copyTypedArray(grid.samples);
+    if (grid.sampleBands) copy.sampleBands = grid.sampleBands.concat();
+    if (grid.bbox) copy.bbox = grid.bbox.concat();
+    if (grid.transform) copy.transform = copyObjectOrArray(grid.transform);
+    return copy;
+  }
+
+  function copyRasterView(view) {
+    var copy = utils.extend({}, view);
+    if (view.recipe) copy.recipe = copyObjectOrArray(view.recipe);
+    if (view.preview) copy.preview = copyRasterPreview(view.preview);
+    if (view.scalingStats) copy.scalingStats = copyObjectOrArray(view.scalingStats);
+    return copy;
+  }
+
+  function copyRasterPreview(preview) {
+    var copy = utils.extend({}, preview);
+    delete copy.canvas;
+    if (preview.pixels) copy.pixels = copyTypedArray(preview.pixels);
+    return copy;
+  }
+
+  function copyTypedArray(arr) {
+    if (Array.isArray(arr)) return arr.map(copyTypedArray);
+    return arr && arr.slice ? arr.slice() : arr;
+  }
+
+  function createRasterPreview(raster, opts) {
+    opts = opts || {};
+    var grid = getRasterGrid(raster);
+    var recipe = getRasterViewRecipe(grid, raster.view && raster.view.recipe, opts);
+    var stats = getRasterViewScalingStats(raster, recipe);
+    var maxPixels = opts.maxPixels || opts.raster_max_pixels || opts.rasterMaxPixels || DEFAULT_MAX_PREVIEW_PIXELS;
+    var scale = Math.min(1, Math.sqrt(maxPixels / (grid.width * grid.height)));
+    var width = Math.max(1, Math.round(grid.width * scale));
+    var height = Math.max(1, Math.round(grid.height * scale));
+    return renderRasterPreview(grid, recipe, width, height, stats);
+  }
+
+  function getRasterViewRecipe(grid, recipeArg, opts) {
+    var recipe = Object.assign({}, recipeArg || {});
+    var scaling = opts && opts.scaling || recipe.scaling || getDefaultRasterScaling(grid);
+    var scaleRange = opts && (opts.scale_range || opts.scaleRange) || recipe.scaleRange;
+    var percentileRange = opts && (opts.percentile_range || opts.percentileRange) || recipe.percentileRange;
+    if (scaling != 'none' && scaling != 'minmax' && scaling != 'percentile') {
+      stop$1('Unsupported raster scaling method:', scaling);
+    }
+    return Object.assign(recipe, {
+      type: recipe.type || (grid.bands >= 3 ? 'rgb' : 'gray'),
+      bands: recipe.bands || grid.sampleBands || null,
+      scaling: scaling,
+      scaleRange: parseRangeOption(scaleRange, [0, 100], 'scale-range'),
+      percentileRange: parseRangeOption(percentileRange, [2, 98], 'percentile-range')
+    });
+  }
+
+  function renderRasterPreview(grid, recipe, width, height, statsArg) {
+    recipe = getRasterViewRecipe(grid, recipe);
+    if (useFastRawEightBitRendering(grid, recipe)) {
+      return renderRawEightBitPreview(grid, width, height, null);
+    }
+    return renderRasterGridPreview(grid, recipe, width, height, statsArg || getRasterScalingStats(grid, recipe), null);
+  }
+
+  function renderRasterViewportPreview(grid, recipe, bbox, width, height, statsArg) {
+    recipe = getRasterViewRecipe(grid, recipe);
+    if (!intersectBboxes(grid.bbox, bbox)) return null;
+    if (useFastRawEightBitRendering(grid, recipe)) {
+      return Object.assign(renderRawEightBitPreview(grid, width, height, bbox), {
+        bbox: bbox.concat()
+      });
+    }
+    return Object.assign(renderRasterGridPreview(grid, recipe, width, height, statsArg || getRasterScalingStats(grid, recipe), bbox), {
+      bbox: bbox.concat()
+    });
+  }
+
+  function getRasterScalingStats(grid, recipe) {
+    recipe = getRasterViewRecipe(grid, recipe);
+    return getScalingStats(grid.samples, grid.bands, grid.nodata, recipe);
+  }
+
+  function getRasterViewScalingStats(raster, recipeArg) {
+    var grid = getRasterGrid(raster);
+    var view = getRasterView(raster);
+    var recipe = getRasterViewRecipe(grid, recipeArg || view && view.recipe);
+    var key, cached, stats;
+    if (recipe.scaling == 'none') return null;
+    key = getRasterScalingStatsKey(grid, recipe);
+    cached = view && view.scalingStats;
+    if (cached && cached.key == key) return cached.stats;
+    stats = getRasterScalingStats(grid, recipe);
+    if (view) {
+      view.scalingStats = {
+        key: key,
+        stats: stats
+      };
+    }
+    return stats;
+  }
+
+  function renderRasterGridPreview(grid, recipe, width, height, statsArg, sourceBbox) {
+    var samples = grid.samples;
+    var bands = grid.bands;
+    var noData = grid.nodata;
+    var pixels = new Uint8ClampedArray(width * height * 4);
+    var stats = statsArg || getScalingStats(samples, bands, noData, recipe);
+    var sourceRange = recipe.scaling == 'none' ? getPixelTypeRange(grid.pixelType) : null;
+    var displayRange = getDisplayRange(recipe.scaleRange);
+    var src, dest, val, isNoData, j;
+    for (var y = 0; y < height; y++) {
+      for (var x = 0; x < width; x++) {
+        src = getPreviewSourceOffset(grid, sourceBbox, x, y, width, height, bands);
+        dest = (y * width + x) * 4;
+        isNoData = noData !== null && noData !== undefined && allSamplesAreNoData(samples, src, bands, noData);
+        if (bands == 1) {
+          val = scaleSample(samples[src], stats && stats[0], sourceRange, displayRange);
+          pixels[dest] = val;
+          pixels[dest + 1] = val;
+          pixels[dest + 2] = val;
+          pixels[dest + 3] = isNoData ? 0 : 255;
+        } else {
+          for (j = 0; j < 3; j++) {
+            pixels[dest + j] = scaleSample(samples[src + j], stats && stats[j], sourceRange, displayRange);
+          }
+          pixels[dest + 3] = isNoData ? 0 : bands >= 4 ? scaleSample(samples[src + 3], stats && stats[3], sourceRange, [0, 255]) : 255;
+        }
+      }
+    }
+    return {
+      width: width,
+      height: height,
+      bands: 4,
+      pixelType: 'uint8',
+      colorModel: 'rgba',
+      pixels: pixels
+    };
+  }
+
+  function renderRawEightBitPreview(grid, width, height, sourceBbox) {
+    var samples = grid.samples;
+    var bands = grid.bands;
+    var pixels = new Uint8ClampedArray(width * height * 4);
+    var src, dest, val;
+    for (var y = 0; y < height; y++) {
+      for (var x = 0; x < width; x++) {
+        src = getPreviewSourceOffset(grid, sourceBbox, x, y, width, height, bands);
+        dest = (y * width + x) * 4;
+        if (bands == 1) {
+          val = samples[src];
+          pixels[dest] = val;
+          pixels[dest + 1] = val;
+          pixels[dest + 2] = val;
+          pixels[dest + 3] = 255;
+        } else {
+          pixels[dest] = samples[src];
+          pixels[dest + 1] = samples[src + 1];
+          pixels[dest + 2] = samples[src + 2];
+          pixels[dest + 3] = bands >= 4 ? samples[src + 3] : 255;
+        }
+      }
+    }
+    return {
+      width: width,
+      height: height,
+      bands: 4,
+      pixelType: 'uint8',
+      colorModel: 'rgba',
+      pixels: pixels
+    };
+  }
+
+  function getPreviewSourceOffset(grid, sourceBbox, x, y, width, height, bands) {
+    var sx, sy, mapX, mapY, rb;
+    if (!sourceBbox) {
+      sy = Math.min(grid.height - 1, Math.floor((y + 0.5) * grid.height / height));
+      sx = Math.min(grid.width - 1, Math.floor((x + 0.5) * grid.width / width));
+    } else {
+      rb = grid.bbox;
+      mapX = sourceBbox[0] + (x + 0.5) / width * (sourceBbox[2] - sourceBbox[0]);
+      mapY = sourceBbox[3] - (y + 0.5) / height * (sourceBbox[3] - sourceBbox[1]);
+      sx = Math.max(0, Math.min(grid.width - 1, Math.floor((mapX - rb[0]) / (rb[2] - rb[0]) * grid.width)));
+      sy = Math.max(0, Math.min(grid.height - 1, Math.floor((rb[3] - mapY) / (rb[3] - rb[1]) * grid.height)));
+    }
+    return (sy * grid.width + sx) * bands;
+  }
+
+  function clipRasterToBBox(lyr, bbox, opts) {
+    var raster = lyr.raster;
+    var grid = getRasterGrid(raster);
+    var clipBbox = intersectBboxes(grid.bbox, bbox);
+    if (!clipBbox) {
+      warn('Raster clipping rectangle does not intersect the raster layer');
+      return false;
+    }
+    var crop = getRasterCrop(grid, clipBbox);
+    if (crop.width === 0 || crop.height === 0) {
+      warn('Raster clipping rectangle does not intersect the raster layer');
+      return false;
+    }
+    noteLayerWillChange(lyr, {operation: 'clipRasterToBBox', unit: 'raster'});
+    raster.grid = cropRasterGrid(grid, crop, clipBbox);
+    raster.view = raster.view || {};
+    raster.view.preview = createRasterPreview(raster, opts || {});
+    clearLegacyRasterFields(raster);
+    markLayerChanged(lyr, {operation: 'clipRasterToBBox', unit: 'raster'});
+    return true;
+  }
+
+  function intersectBboxes(a, b) {
+    var bbox = [
+      Math.max(a[0], b[0]),
+      Math.max(a[1], b[1]),
+      Math.min(a[2], b[2]),
+      Math.min(a[3], b[3])
+    ];
+    return bbox[2] <= bbox[0] || bbox[3] <= bbox[1] ? null : bbox;
+  }
+
+  function getRasterCrop(grid, bbox) {
+    var rb = grid.bbox;
+    var x0 = Math.max(0, Math.floor((bbox[0] - rb[0]) / (rb[2] - rb[0]) * grid.width));
+    var x1 = Math.min(grid.width, Math.ceil((bbox[2] - rb[0]) / (rb[2] - rb[0]) * grid.width));
+    var y0 = Math.max(0, Math.floor((rb[3] - bbox[3]) / (rb[3] - rb[1]) * grid.height));
+    var y1 = Math.min(grid.height, Math.ceil((rb[3] - bbox[1]) / (rb[3] - rb[1]) * grid.height));
+    return {
+      x: x0,
+      y: y0,
+      width: Math.max(0, x1 - x0),
+      height: Math.max(0, y1 - y0)
+    };
+  }
+
+  function cropRasterGrid(grid, crop, bbox) {
+    var samples = new grid.samples.constructor(crop.width * crop.height * grid.bands);
+    var rowCount = crop.width * grid.bands;
+    var src, dest;
+    for (var y = 0; y < crop.height; y++) {
+      src = ((crop.y + y) * grid.width + crop.x) * grid.bands;
+      dest = y * rowCount;
+      samples.set(grid.samples.subarray(src, src + rowCount), dest);
+    }
+    return Object.assign({}, grid, {
+      width: crop.width,
+      height: crop.height,
+      samples: samples,
+      bbox: bbox,
+      transform: updateTransformForBBox(grid.transform, bbox, crop.width, crop.height)
+    });
+  }
+
+  function getRasterLayerBounds(lyr) {
+    var bbox = lyr.raster && getRasterBBox(lyr.raster);
+    return bbox && bbox.length == 4 ? new Bounds(bbox) : null;
+  }
+
+  function requireRasterLayer(lyr) {
+    if (!lyr || !lyr.raster_type || !lyr.raster) {
+      stop$1('Expected a raster layer');
+    }
+  }
+
+  function clearLegacyRasterFields(raster) {
+    delete raster.width;
+    delete raster.height;
+    delete raster.bands;
+    delete raster.pixelType;
+    delete raster.nodata;
+    delete raster.bbox;
+    delete raster.transform;
+    delete raster.colorModel;
+    delete raster.preview;
+    delete raster.pixels;
+  }
+
+  function updateTransformForBBox(transform, bbox, width, height) {
+    if (!transform) return null;
+    return [
+      (bbox[2] - bbox[0]) / width,
+      0,
+      bbox[0],
+      0,
+      -(bbox[3] - bbox[1]) / height,
+      bbox[3]
+    ];
+  }
+
+  function getBandStats(data, bands, noData) {
+    var stats = [];
+    for (var band = 0; band < bands; band++) {
+      stats[band] = getSingleBandStats(data, bands, band, noData);
+    }
+    return stats;
+  }
+
+  function getSingleBandStats(data, bands, band, noData) {
+    var min = Infinity;
+    var max = -Infinity;
+    var val;
+    for (var i = band; i < data.length; i += bands) {
+      val = data[i];
+      if (!isValidBandValue(val, noData)) continue;
+      if (val < min) min = val;
+      if (val > max) max = val;
+    }
+    return min < Infinity && max > min ? {min: min, max: max} : {min: 0, max: 255};
+  }
+
+  function getSharedBandStats(data, bands, noData) {
+    var stats = getBandStats(data, bands, noData);
+    var min = Math.min(stats[0].min, stats[1].min, stats[2].min);
+    var max = Math.max(stats[0].max, stats[1].max, stats[2].max);
+    var shared = max > min ? {min: min, max: max} : {min: 0, max: 255};
+    stats[0] = stats[1] = stats[2] = shared;
+    return stats;
+  }
+
+  function getScalingStats(data, bands, noData, recipe) {
+    var shared = recipe.type == 'rgb' && bands >= 3;
+    if (recipe.scaling == 'minmax') {
+      return shared ? getSharedBandStats(data, bands, noData) : getBandStats(data, bands, noData);
+    }
+    if (recipe.scaling == 'percentile') {
+      return shared ? getSharedPercentileStats(data, bands, noData, recipe.percentileRange) :
+        getBandPercentileStats(data, bands, noData, recipe.percentileRange);
+    }
+    return null;
+  }
+
+  function scaleSample(val, stats, sourceRange, displayRange) {
+    var range = stats || sourceRange || {min: 0, max: 255};
+    var pct = range.max > range.min ? (val - range.min) / (range.max - range.min) : 0;
+    var scaled = displayRange[0] + pct * (displayRange[1] - displayRange[0]);
+    return Math.max(0, Math.min(255, Math.round(scaled)));
+  }
+
+  function getDefaultRasterScaling(grid, recipe) {
+    return isEightBitPixelType(grid.pixelType) ? 'none' : 'percentile';
+  }
+
+  function parseRangeOption(val, def, name) {
+    var range;
+    if (val == null || val === '') return def;
+    range = Array.isArray(val) ? val : String(val).split(',');
+    if (range.length != 2) {
+      stop$1('Expected ' + name + '= to contain two comma-separated numbers');
+    }
+    range = range.map(Number);
+    if (!isFinite(range[0]) || !isFinite(range[1]) || range[0] < 0 || range[1] > 100 || range[1] < range[0]) {
+      stop$1('Expected ' + name + '= values between 0 and 100');
+    }
+    return range;
+  }
+
+  function getDisplayRange(scaleRange) {
+    return [
+      scaleRange[0] / 100 * 255,
+      scaleRange[1] / 100 * 255
+    ];
+  }
+
+  function getPixelTypeRange(pixelType) {
+    switch (pixelType) {
+      case 'uint8': return {min: 0, max: 255};
+      case 'uint16': return {min: 0, max: 65535};
+      case 'uint32': return {min: 0, max: 4294967295};
+      case 'int8': return {min: -128, max: 127};
+      case 'int16': return {min: -32768, max: 32767};
+      case 'int32': return {min: -2147483648, max: 2147483647};
+    }
+    return null;
+  }
+
+  function isEightBitPixelType(pixelType) {
+    return pixelType == 'uint8' || pixelType == 'int8';
+  }
+
+  function useFastRawEightBitRendering(grid, recipe) {
+    return grid.pixelType == 'uint8' &&
+      recipe.scaling == 'none' &&
+      recipe.scaleRange[0] === 0 &&
+      recipe.scaleRange[1] === 100 &&
+      (recipe.type == 'gray' && grid.bands == 1 || recipe.type == 'rgb' && grid.bands >= 3) &&
+      (grid.nodata === null || grid.nodata === undefined);
+  }
+
+  function getRasterScalingStatsKey(grid, recipe) {
+    return [
+      grid.width,
+      grid.height,
+      grid.bands,
+      grid.pixelType,
+      grid.samples && grid.samples.length,
+      grid.nodata,
+      recipe.type,
+      recipe.scaling,
+      recipe.scaleRange && recipe.scaleRange.join(','),
+      recipe.percentileRange && recipe.percentileRange.join(',')
+    ].join('|');
+  }
+
+  function getBandPercentileStats(data, bands, noData, range) {
+    var stats = [];
+    for (var band = 0; band < bands; band++) {
+      stats[band] = getPercentileStats(data, bands, [band], noData, range);
+    }
+    return stats;
+  }
+
+  function getSharedPercentileStats(data, bands, noData, range) {
+    var stats = getBandPercentileStats(data, bands, noData, range);
+    var shared = getPercentileStats(data, bands, [0, 1, 2], noData, range);
+    stats[0] = stats[1] = stats[2] = shared;
+    return stats;
+  }
+
+  function getPercentileStats(data, bands, bandIds, noData, range) {
+    var integerRange = getSmallIntegerRange(data);
+    return integerRange ?
+      getHistogramPercentileStats(data, bands, bandIds, noData, range, integerRange) :
+      getApproxHistogramPercentileStats(data, bands, bandIds, noData, range);
+  }
+
+  function getSmallIntegerRange(data) {
+    if (data instanceof Uint8Array || data instanceof Uint8ClampedArray) return {min: 0, max: 255};
+    if (data instanceof Int8Array) return {min: -128, max: 127};
+    if (data instanceof Uint16Array) return {min: 0, max: 65535};
+    if (data instanceof Int16Array) return {min: -32768, max: 32767};
+    return null;
+  }
+
+  function getHistogramPercentileStats(data, bands, bandIds, noData, range, integerRange) {
+    var counts = new Uint32Array(integerRange.max - integerRange.min + 1);
+    var count = 0, val;
+    forEachBandValue(data, bands, bandIds, noData, function(v) {
+      val = v - integerRange.min;
+      counts[val]++;
+      count++;
+    });
+    return count > 0 ? {
+      min: getHistogramPercentileValue(counts, integerRange.min, count, range[0]),
+      max: getHistogramPercentileValue(counts, integerRange.min, count, range[1])
+    } : {min: 0, max: 255};
+  }
+
+  function getApproxHistogramPercentileStats(data, bands, bandIds, noData, range) {
+    var bounds = getBandValueBounds(data, bands, bandIds, noData);
+    var binCount = 65536;
+    var counts, count, scale, maxBin;
+    if (!bounds || bounds.max <= bounds.min) {
+      return bounds || {min: 0, max: 255};
+    }
+    counts = new Uint32Array(binCount);
+    count = 0;
+    scale = (binCount - 1) / (bounds.max - bounds.min);
+    maxBin = binCount - 1;
+    forEachBandValue(data, bands, bandIds, noData, function(val) {
+      counts[Math.max(0, Math.min(maxBin, Math.floor((val - bounds.min) * scale)))]++;
+      count++;
+    });
+    return count > 0 ? {
+      min: getApproxHistogramPercentileValue(counts, bounds, count, range[0]),
+      max: getApproxHistogramPercentileValue(counts, bounds, count, range[1])
+    } : {min: 0, max: 255};
+  }
+
+  function getBandValueBounds(data, bands, bandIds, noData) {
+    var min = Infinity;
+    var max = -Infinity;
+    forEachBandValue(data, bands, bandIds, noData, function(val) {
+      if (val < min) min = val;
+      if (val > max) max = val;
+    });
+    return min < Infinity ? {min: min, max: max} : null;
+  }
+
+  function getHistogramPercentileValue(counts, offset, count, pct) {
+    var target = getPercentileRank(count, pct);
+    var sum = 0;
+    for (var i = 0; i < counts.length; i++) {
+      sum += counts[i];
+      if (sum > target) return i + offset;
+    }
+    return counts.length - 1 + offset;
+  }
+
+  function getApproxHistogramPercentileValue(counts, bounds, count, pct) {
+    var bin = getHistogramPercentileValue(counts, 0, count, pct);
+    return bounds.min + bin / (counts.length - 1) * (bounds.max - bounds.min);
+  }
+
+  function forEachBandValue(data, bands, bandIds, noData, cb) {
+    var val;
+    for (var i = 0; i < data.length; i += bands) {
+      for (var j = 0; j < bandIds.length; j++) {
+        val = data[i + bandIds[j]];
+        if (!isValidBandValue(val, noData)) continue;
+        cb(val);
+      }
+    }
+  }
+
+  function isValidBandValue(val, noData) {
+    return isFinite(val) && (noData === null || noData === undefined || val != noData);
+  }
+
+  function getPercentileRank(count, pct) {
+    return Math.max(0, Math.min(count - 1, Math.floor((count - 1) * pct / 100)));
+  }
+
+  function allSamplesAreNoData(data, offset, bands, noData) {
+    var n = Math.min(bands, 3);
+    for (var i = 0; i < n; i++) {
+      if (data[offset + i] != noData) return false;
+    }
+    return true;
+  }
+
+  function copyObjectOrArray(obj) {
+    return obj && obj.concat ? obj.concat() : utils.extend({}, obj);
+  }
+
+  var RasterUtils = /*#__PURE__*/Object.freeze({
+    __proto__: null,
+    clipRasterToBBox: clipRasterToBBox,
+    copyRasterData: copyRasterData,
+    copyRasterGrid: copyRasterGrid,
+    copyRasterPreview: copyRasterPreview,
+    copyRasterView: copyRasterView,
+    copyTypedArray: copyTypedArray,
+    createRasterPreview: createRasterPreview,
+    cropRasterGrid: cropRasterGrid,
+    getRasterBBox: getRasterBBox,
+    getRasterBandCount: getRasterBandCount,
+    getRasterCrop: getRasterCrop,
+    getRasterGrid: getRasterGrid,
+    getRasterHeight: getRasterHeight,
+    getRasterLayerBounds: getRasterLayerBounds,
+    getRasterPixelType: getRasterPixelType,
+    getRasterPreview: getRasterPreview,
+    getRasterScalingStats: getRasterScalingStats,
+    getRasterScalingStatsKey: getRasterScalingStatsKey,
+    getRasterTransform: getRasterTransform,
+    getRasterView: getRasterView,
+    getRasterViewRecipe: getRasterViewRecipe,
+    getRasterViewScalingStats: getRasterViewScalingStats,
+    getRasterWidth: getRasterWidth,
+    intersectBboxes: intersectBboxes,
+    renderRasterPreview: renderRasterPreview,
+    renderRasterViewportPreview: renderRasterViewportPreview,
+    requireRasterLayer: requireRasterLayer
+  });
+
   // Insert a column of values into a (new or existing) data field
   function insertFieldValues(lyr, fieldName, values) {
     var size = getFeatureCount(lyr) || values.length,
@@ -4864,7 +5490,9 @@
 
   function getFeatureCount(lyr) {
     var count = 0;
-    if (lyr.data) {
+    if (layerHasRaster(lyr)) {
+      count = 1;
+    } else if (lyr.data) {
       count = lyr.data.size();
     } else if (lyr.shapes) {
       count = lyr.shapes.length;
@@ -5052,6 +5680,7 @@
     if (lyr.shapes) {
       copy.shapes = cloneShapes(lyr.shapes);
     }
+    if (lyr.raster) copy.raster = copyRasterData(lyr.raster);
     return copy;
   }
 
@@ -5087,9 +5716,12 @@
       bounds = getPointBounds$1(lyr.shapes);
     } else if (lyr.geometry_type == 'polygon' || lyr.geometry_type == 'polyline') {
       bounds = getPathBounds(lyr.shapes, arcs);
+    } else if (layerHasRaster(lyr)) {
+      bounds = getRasterLayerBounds(lyr);
     } else ;
     return bounds;
   }
+
 
   function isolateLayer(layer, dataset) {
     return utils.defaults({
@@ -5129,6 +5761,7 @@
     layerHasNonNullShapes: layerHasNonNullShapes,
     layerHasPaths: layerHasPaths,
     layerHasPoints: layerHasPoints,
+    layerHasRaster: layerHasRaster,
     layerIsEmpty: layerIsEmpty,
     layerIsGeometric: layerIsGeometric,
     layerIsRectangle: layerIsRectangle,
@@ -8260,6 +8893,12 @@
     });
   }
 
+  function datasetHasRaster(dataset) {
+    return utils.some(dataset.layers, function(lyr) {
+      return layerHasRaster(lyr);
+    });
+  }
+
   function datasetHasPaths(dataset) {
     return utils.some(dataset.layers, function(lyr) {
       return layerHasPaths(lyr);
@@ -8377,6 +9016,7 @@
     copyDatasetInfo: copyDatasetInfo,
     datasetHasGeometry: datasetHasGeometry,
     datasetHasPaths: datasetHasPaths,
+    datasetHasRaster: datasetHasRaster,
     datasetIsEmpty: datasetIsEmpty,
     getDatasetBounds: getDatasetBounds,
     mergeDatasetInfo: mergeDatasetInfo,
@@ -8489,8 +9129,14 @@
   function guessInputFileType(file) {
     var ext = getFileExtension(file || '').toLowerCase(),
         type = null;
-    if (ext == 'dbf' || ext == 'shp' || ext == 'kml' || ext == 'svg' || ext == 'fgb' || ext == 'gpkg') {
+    if (ext == 'dbf' || ext == 'shp' || ext == 'kml' || ext == 'svg' || ext == 'fgb' || ext == 'gpkg' || ext == 'png') {
       type = ext;
+    } else if (ext == 'jpg' || ext == 'jpeg') {
+      type = 'jpeg';
+    } else if (ext == 'tif' || ext == 'tiff') {
+      type = 'geotiff';
+    } else if (isWorldFileExtension(ext)) {
+      type = 'world';
     } else if (ext == 'parquet' || ext == 'geoparquet') {
       type = 'parquet';
     } else if (isAuxiliaryInputFileType(ext)) {
@@ -8507,7 +9153,15 @@
 
   // File types that can be imported but are not convertible to datasets
   function isAuxiliaryInputFileType(type) {
-    return type == 'prj' || type == 'shx' || type == 'cpg';
+    return type == 'prj' || type == 'shx' || type == 'cpg' || type == 'world';
+  }
+
+  function isRasterImageInputType(type) {
+    return type == 'png' || type == 'jpeg';
+  }
+
+  function isWorldFileExtension(ext) {
+    return /^(tfw|pgw|pngw|jgw|jpw|jpgw|jpegw|wld)$/i.test(ext || '');
   }
 
   function guessInputContentType(content) {
@@ -8634,7 +9288,9 @@
   function isSupportedBinaryInputType(path) {
     var ext = getFileExtension(path).toLowerCase();
     return ext == 'shp' || ext == 'shx' || ext == 'dbf' ||
-      ext == 'fgb' || ext == 'gpkg' || ext == 'parquet' || ext == 'geoparquet' || ext == PACKAGE_EXT; // GUI also supports zip files
+      ext == 'fgb' || ext == 'gpkg' || ext == 'parquet' || ext == 'geoparquet' ||
+      ext == 'tif' || ext == 'tiff' || ext == 'png' || ext == 'jpg' || ext == 'jpeg' ||
+      ext == PACKAGE_EXT; // GUI also supports zip files
   }
 
   function isImportableAsBinary(path) {
@@ -8663,7 +9319,9 @@
     isKmzFile: isKmzFile,
     isPackageFile: isPackageFile,
     isPotentialCommandFile: isPotentialCommandFile,
+    isRasterImageInputType: isRasterImageInputType,
     isSupportedBinaryInputType: isSupportedBinaryInputType,
+    isWorldFileExtension: isWorldFileExtension,
     isZipFile: isZipFile,
     looksLikeContentFile: looksLikeContentFile,
     looksLikeImportableFile: looksLikeImportableFile,
@@ -19041,6 +19699,8 @@
       var obj;
       if (layerHasFurniture(lyr)) {
         obj = exportFurnitureLayerForSVG(lyr, frame, opts);
+      } else if (layerHasRaster(lyr)) {
+        obj = exportRasterLayerForSVG(lyr, frame, opts);
       } else {
         obj = exportLayerForSVG(lyr, dataset, opts);
       }
@@ -19155,6 +19815,141 @@ ${svg}
     }
     layerObj.children = exportSymbolsForSVG(lyr, dataset, opts);
     return layerObj;
+  }
+
+  function exportRasterLayerForSVG(lyr, frame, opts) {
+    var raster = lyr.raster;
+    var clipped = clipRasterPreviewToFrame(raster, frame);
+    var bbox = transformRasterBboxForSVG(clipped.bbox, frame);
+    var href;
+    var layerObj = getEmptyLayerForSVG(lyr, opts);
+    if (!clipped.preview.width || !clipped.preview.height) {
+      layerObj.children = [];
+      return layerObj;
+    }
+    href = encodeRasterPreview(clipped.preview, opts);
+    layerObj.children = [{
+      tag: 'image',
+      properties: {
+        x: bbox[0],
+        y: bbox[1],
+        width: bbox[2] - bbox[0],
+        height: bbox[3] - bbox[1],
+        href: href,
+        preserveAspectRatio: 'none'
+      }
+    }];
+    return layerObj;
+  }
+
+  function clipRasterPreviewToFrame(raster, frame) {
+    var rasterBbox = getRasterBBox(raster);
+    var preview = getRasterPreview(raster);
+    var rasterBounds = new Bounds(rasterBbox);
+    var clipBounds = new Bounds(frame.bbox);
+    var bbox = intersectBboxes(rasterBounds.toArray(), clipBounds.toArray()) || [0, 0, 0, 0];
+    var crop = getRasterPreviewCrop(rasterBbox, preview, bbox);
+    return {
+      bbox: bbox,
+      preview: cropRasterPreview(preview, crop)
+    };
+  }
+
+  function getRasterPreviewCrop(rasterBbox, preview, bbox) {
+    var rb = rasterBbox;
+    var p = preview;
+    var x0 = Math.max(0, Math.floor((bbox[0] - rb[0]) / (rb[2] - rb[0]) * p.width));
+    var x1 = Math.min(p.width, Math.ceil((bbox[2] - rb[0]) / (rb[2] - rb[0]) * p.width));
+    var y0 = Math.max(0, Math.floor((rb[3] - bbox[3]) / (rb[3] - rb[1]) * p.height));
+    var y1 = Math.min(p.height, Math.ceil((rb[3] - bbox[1]) / (rb[3] - rb[1]) * p.height));
+    return {
+      x: x0,
+      y: y0,
+      width: Math.max(0, x1 - x0),
+      height: Math.max(0, y1 - y0)
+    };
+  }
+
+  function cropRasterPreview(preview, crop) {
+    if (crop.x === 0 && crop.y === 0 && crop.width == preview.width && crop.height == preview.height) {
+      return preview;
+    }
+    var pixels = new Uint8ClampedArray(crop.width * crop.height * 4);
+    var src, dest, rowBytes = crop.width * 4;
+    for (var y = 0; y < crop.height; y++) {
+      src = ((crop.y + y) * preview.width + crop.x) * 4;
+      dest = y * rowBytes;
+      pixels.set(preview.pixels.subarray(src, src + rowBytes), dest);
+    }
+    return Object.assign({}, preview, {
+      width: crop.width,
+      height: crop.height,
+      pixels: pixels
+    });
+  }
+
+  function transformRasterBboxForSVG(bbox, frame) {
+    var srcBounds = new Bounds(frame.bbox);
+    var destBounds = frame.bbox2 ? new Bounds(frame.bbox2) : new Bounds(0, 0, frame.width, frame.height);
+    srcBounds.fillOut(destBounds.width() / destBounds.height());
+    var fwd = srcBounds.getTransform(destBounds, frame.invert_y);
+    var p1 = fwd.transform(bbox[0], bbox[3]);
+    var p2 = fwd.transform(bbox[2], bbox[1]);
+    return [p1[0], p1[1], p2[0], p2[1]];
+  }
+
+  function encodeRasterPreview(preview, opts) {
+    var format = getSvgRasterFormat(preview, opts);
+    var data = format == 'png' ? encodePng(preview) : encodeJpeg(preview, opts);
+    return 'data:image/' + format + ';base64,' + data;
+  }
+
+  function getSvgRasterFormat(preview, opts) {
+    var fmt = opts.svg_raster_format || opts.raster_format || null;
+    if (fmt) return fmt == 'jpg' ? 'jpeg' : fmt;
+    return previewHasTransparency(preview) ? 'png' : 'jpeg';
+  }
+
+  function previewHasTransparency(preview) {
+    var pixels = preview.pixels;
+    for (var i = 3; i < pixels.length; i += 4) {
+      if (pixels[i] < 255) return true;
+    }
+    return false;
+  }
+
+  function encodeJpeg(preview, opts) {
+    if (runningInBrowser() && typeof document != 'undefined') {
+      return encodeWithCanvas(preview, 'image/jpeg', opts.svg_raster_quality || 0.85);
+    }
+    var jpeg = require$1('jpeg-js');
+    var quality = Math.round((opts.svg_raster_quality || 0.85) * 100);
+    return Buffer.from(jpeg.encode({
+      data: Buffer.from(preview.pixels),
+      width: preview.width,
+      height: preview.height
+    }, quality).data).toString('base64');
+  }
+
+  function encodePng(preview) {
+    if (runningInBrowser() && typeof document != 'undefined') {
+      return encodeWithCanvas(preview, 'image/png');
+    }
+    var PNG = require$1('pngjs').PNG;
+    var png = new PNG({width: preview.width, height: preview.height});
+    png.data = Buffer.from(preview.pixels);
+    return Buffer.from(PNG.sync.write(png)).toString('base64');
+  }
+
+  function encodeWithCanvas(preview, type, quality) {
+    var canvas = document.createElement('canvas');
+    var ctx = canvas.getContext('2d');
+    var dataUrl;
+    canvas.width = preview.width;
+    canvas.height = preview.height;
+    ctx.putImageData(new ImageData(preview.pixels, preview.width, preview.height), 0, 0);
+    dataUrl = canvas.toDataURL(type, quality);
+    return dataUrl.split(',')[1];
   }
 
   function exportSymbolsForSVG(lyr, dataset, opts) {
@@ -19373,6 +20168,7 @@ ${svg}
     exportDataAttributesForSVG: exportDataAttributesForSVG,
     exportFurnitureLayerForSVG: exportFurnitureLayerForSVG,
     exportLayerForSVG: exportLayerForSVG,
+    exportRasterLayerForSVG: exportRasterLayerForSVG,
     exportSVG: exportSVG,
     featureHasLabel: featureHasLabel,
     featureHasSvgSymbol: featureHasSvgSymbol,
@@ -22609,11 +23405,44 @@ ${svg}
       name: lyr.name || null,
       geometry_type: lyr.geometry_type || null,
       shapes: lyr.shapes || null,
+      raster_type: lyr.raster_type || null,
+      raster: lyr.raster ? exportRasterData(lyr.raster) : null,
       data: data,
       menu_order: lyr.menu_order || null,
       pinned: lyr.pinned || opts.show_all || false,
       active: !!(lyr.active || lyr == opts.active_layer) // lyr.active: deprecated
     };
+  }
+
+  function exportRasterData(raster) {
+    var copy = Object.assign({}, raster);
+    if (raster.grid) {
+      copy.grid = Object.assign({}, raster.grid);
+      if (raster.grid.samples) {
+        copy.grid.samples = typedArrayToBuffer(raster.grid.samples);
+      }
+    }
+    if (raster.view) {
+      copy.view = Object.assign({}, raster.view);
+      if (raster.view.preview) {
+        copy.view.preview = Object.assign({}, raster.view.preview);
+        delete copy.view.preview.canvas;
+        if (raster.view.preview.pixels) {
+          copy.view.preview.pixels = typedArrayToBuffer(raster.view.preview.pixels);
+        }
+      }
+    }
+    if (raster.preview) {
+      copy.preview = Object.assign({}, raster.preview);
+      delete copy.preview.canvas;
+      if (raster.preview.pixels) {
+        copy.preview.pixels = typedArrayToBuffer(raster.preview.pixels);
+      }
+    }
+    if (raster.pixels) {
+      copy.pixels = typedArrayToBuffer(raster.pixels);
+    }
+    return copy;
   }
 
   function exportInfo(info) {
@@ -26256,7 +27085,7 @@ ${svg}
 
   var writerPromise = null;
   var zstdPromise = null;
-  var dynamicImportModule$1 = Function('id', 'return import(id)');
+  var dynamicImportModule$2 = Function('id', 'return import(id)');
 
   async function exportGeoParquet(dataset, opts, filenameOverride) {
     var writer = await loadGeoParquetWriter();
@@ -26471,7 +27300,7 @@ ${svg}
       return mod;
     }
     if (!writerPromise) {
-      writerPromise = dynamicImportModule$1('hyparquet-writer');
+      writerPromise = dynamicImportModule$2('hyparquet-writer');
     }
     var nodeMod = await writerPromise;
     return nodeMod.default && !nodeMod.parquetWriteBuffer ? nodeMod.default : nodeMod;
@@ -26540,7 +27369,7 @@ ${svg}
       mod = require$1('@bokuweb/zstd-wasm');
     } else {
       if (!zstdPromise) {
-        zstdPromise = dynamicImportModule$1('@bokuweb/zstd-wasm');
+        zstdPromise = dynamicImportModule$2('@bokuweb/zstd-wasm');
       }
       mod = await zstdPromise;
     }
@@ -26663,6 +27492,7 @@ ${svg}
   async function exportDatasets(datasets, opts) {
     var format = getOutputFormat(datasets[0], opts);
     var files;
+    validateRasterExportFormat(datasets, format);
     if (format != 'geoparquet' && (opts.compression || opts.level !== undefined)) {
       error('The compression= and level= options only apply to GeoParquet output');
     }
@@ -26732,6 +27562,18 @@ ${svg}
     return files;
   }
 
+  function validateRasterExportFormat(datasets, format) {
+    if (!datasetsHaveRasterLayers(datasets)) return;
+    if (format == 'svg' || format == PACKAGE_EXT) return;
+    stop$1('Raster layers can only be exported as SVG or ' + PACKAGE_EXT + ' files');
+  }
+
+  function datasetsHaveRasterLayers(datasets) {
+    return datasets.some(function(dataset) {
+      return dataset.layers && dataset.layers.some(layerHasRaster);
+    });
+  }
+
   // Return an array of objects with 'filename' and 'content' members.
   //
   function exportFileContent(dataset, opts) {
@@ -26744,6 +27586,7 @@ ${svg}
     } else if (!exporter) {
       error('Unknown output format:', outFmt);
     }
+    validateRasterExportFormat([dataset], outFmt);
 
     // shallow-copy dataset and layers, so layers can be renamed for export
     dataset = utils.defaults({
@@ -26819,7 +27662,11 @@ ${svg}
   // Throw errors for various error conditions
   function validateLayerData(layers) {
     layers.forEach(function(lyr) {
-      if (!lyr.geometry_type) {
+      if (layerHasRaster(lyr)) {
+        if (!getRasterBBox(lyr.raster) || !getRasterPreview(lyr.raster) && !(getRasterGrid(lyr.raster) && getRasterGrid(lyr.raster).samples)) {
+          error('A raster layer is missing preview data or bounds');
+        }
+      } else if (!lyr.geometry_type) {
         // allowing data-only layers
         if (lyr.shapes && utils.some(lyr.shapes, function(o) {
           return !!o;
@@ -29107,6 +29954,18 @@ ${svg}
       .option('layers', {
         type: 'strings',
         describe: '[GPKG] comma-sep. list of layers to import'
+      })
+      .option('scaling', {
+        describe: '[raster] raster display scaling method: none,minmax,percentile'
+      })
+      .option('scale-range', {
+        describe: '[raster] display intensity range in percent, e.g. 0,100'
+      })
+      .option('percentile-range', {
+        describe: '[raster] input percentile range for percentile scaling, e.g. 2,98'
+      })
+      .option('rendition', {
+        describe: '[GeoTIFF] import a GeoTIFF rendition: full,overview-1,etc.'
       })
       .option('geometry-type', {
         // undocumented; GeoJSON import rejects all but one kind of geometry
@@ -34446,7 +35305,7 @@ ${svg}
 
   var hyparquetPromise = null;
   var compressorsPromise = null;
-  var dynamicImportModule = Function('id', 'return import(id)');
+  var dynamicImportModule$1 = Function('id', 'return import(id)');
   var mproj = null;
 
   async function importGeoParquet(input, optsArg) {
@@ -34493,7 +35352,7 @@ ${svg}
       return mod;
     }
     if (!hyparquetPromise) {
-      hyparquetPromise = dynamicImportModule('hyparquet');
+      hyparquetPromise = dynamicImportModule$1('hyparquet');
     }
     var nodeMod = await hyparquetPromise;
     return nodeMod.default && !nodeMod.parquetReadObjects ? nodeMod.default : nodeMod;
@@ -34504,7 +35363,7 @@ ${svg}
       return getHyparquetCompressors(require$1('hyparquet-compressors'));
     }
     if (!compressorsPromise) {
-      compressorsPromise = dynamicImportModule('hyparquet-compressors');
+      compressorsPromise = dynamicImportModule$1('hyparquet-compressors');
     }
     return getHyparquetCompressors(await compressorsPromise);
   }
@@ -34830,6 +35689,555 @@ ${svg}
     return {
       authority: match[1],
       code: Number(match[2])
+    };
+  }
+
+  var geotiffPromise = null;
+  var dynamicImportModule = Function('id', 'return import(id)');
+  var DEFAULT_MAX_IMPORT_PIXELS = 16e6;
+
+  async function importGeoTIFF(input, optsArg) {
+    var opts = optsArg || {};
+    var geotiff = await loadGeoTIFFLib();
+    var source = getGeoTIFFSource(input);
+    var tiff = await openGeoTIFF(source, geotiff);
+    var sourceImage = await tiff.getImage();
+    var importImage = await selectGeoTIFFImportImage(tiff, sourceImage, opts);
+    var imported = await importGeoTIFFImage(importImage, input, opts, sourceImage);
+    var dataset = {
+      info: {
+        raster_sources: [imported.source]
+      },
+      layers: [{
+        name: input && input.filename ? getFileBase(input.filename) : null,
+        raster_type: 'grid',
+        raster: imported.raster
+      }]
+    };
+    await importGeoTIFFCrs(dataset, sourceImage);
+    return dataset;
+  }
+
+  async function loadGeoTIFFLib() {
+    var mod;
+    if (runningInBrowser()) {
+      mod = require$1('geotiff');
+      if (!mod || !mod.fromArrayBuffer) {
+        stop$1('GeoTIFF library is not loaded');
+      }
+      return mod;
+    }
+    if (!geotiffPromise) {
+      geotiffPromise = dynamicImportModule('geotiff');
+    }
+    mod = await geotiffPromise;
+    return mod.default && !mod.fromArrayBuffer ? mod.default : mod;
+  }
+
+  async function openGeoTIFF(source, geotiff) {
+    if (!source) {
+      stop$1('Missing GeoTIFF source data');
+    }
+    return geotiff.fromArrayBuffer(source);
+  }
+
+  function getGeoTIFFSource(input) {
+    var content = input && input.content;
+    if (!content) return null;
+    if (content instanceof ArrayBuffer) return content;
+    return content.buffer.slice(content.byteOffset || 0, (content.byteOffset || 0) + content.byteLength);
+  }
+
+  async function importGeoTIFFImage(importImage, input, opts, sourceImage) {
+    var image = importImage.image;
+    var width = importImage.width;
+    var height = importImage.height;
+    var samplesPerPixel = image.getSamplesPerPixel();
+    var samples = getDisplaySamples(samplesPerPixel);
+    var imageBbox = getImageBoundingBox(sourceImage);
+    repairDeferredOffsetArrays(image);
+    var data = await readGeoTIFFSamples(image, samples, width, height);
+    var noData = getNoDataValue(image);
+    var sourceId = getSourceId(input);
+    var raster = {
+      sourceId: sourceId,
+      grid: {
+        width: width,
+        height: height,
+        bands: samples.length,
+        pixelType: getPixelType(image),
+        samples: data,
+        sampleBands: samples,
+        nodata: noData,
+        bbox: imageBbox,
+        transform: getImageTransformForSize(sourceImage, width, height, imageBbox)
+      },
+      derivation: {
+        type: samples.length >= 3 ? 'rgb' : 'gray',
+        sourceId: sourceId,
+        bands: samples
+      },
+      view: {
+        recipe: {
+          type: samples.length >= 3 ? 'rgb' : 'gray',
+          bands: samples
+        }
+      }
+    };
+    raster.view.recipe = getRasterViewRecipe(raster.grid, raster.view.recipe, opts);
+    raster.view.preview = createRasterPreview(raster, opts);
+    return {
+      raster: raster,
+      source: getSourceInfo$1(input, sourceId, sourceImage)
+    };
+  }
+
+  async function selectGeoTIFFImportImage(tiff, sourceImage, opts) {
+    var maxPixels = getMaxImportPixels(opts);
+    var renditions = await getGeoTIFFRenditions(tiff, sourceImage);
+    var source = renditions[0];
+    var best = getRequestedRendition(renditions, opts.rendition);
+    var bestPixels;
+    if (!best) {
+      best = source;
+      bestPixels = best.width * best.height;
+      if (bestPixels > maxPixels) {
+        best = getAutomaticRendition(renditions, maxPixels);
+        bestPixels = best.width * best.height;
+        if (bestPixels > maxPixels) {
+          best = getResizedImportImage(best, maxPixels);
+        }
+      }
+    }
+    if (renditions.length > 1 && (runningInBrowser() || opts.rendition)) {
+      message(getRenditionsMessage(renditions, best));
+    }
+    if (best.slug != 'full' || best.width != source.width || best.height != source.height) {
+      warnOnce(getImportRenditionMessage(best, source));
+    }
+    return best;
+  }
+
+  async function getGeoTIFFRenditions(tiff, sourceImage) {
+    var imageCount = await tiff.getImageCount();
+    var renditions = [getRenditionInfo(sourceImage, 0)];
+    var image;
+    for (var i = 1; i < imageCount; i++) {
+      image = await tiff.getImage(i);
+      renditions.push(getRenditionInfo(image, i));
+    }
+    return renditions;
+  }
+
+  function getRenditionInfo(image, index) {
+    return {
+      image: image,
+      index: index,
+      slug: index === 0 ? 'full' : 'overview-' + index,
+      width: image.getWidth(),
+      height: image.getHeight()
+    };
+  }
+
+  function getRequestedRendition(renditions, slug) {
+    var match;
+    if (!slug) return null;
+    slug = String(slug);
+    match = renditions.find(function(rendition) {
+      return rendition.slug == slug || rendition.width + 'x' + rendition.height == slug;
+    });
+    if (!match) {
+      stop$1('Unknown GeoTIFF rendition:', slug + '.', 'Use one of:', renditions.map(function(rendition) {
+        return rendition.slug;
+      }).join(','));
+    }
+    return match;
+  }
+
+  function getAutomaticRendition(renditions, maxPixels) {
+    var best = renditions[0];
+    var bestPixels = best.width * best.height;
+    var rendition, pixels;
+    for (var i = 1; i < renditions.length; i++) {
+      rendition = renditions[i];
+      pixels = rendition.width * rendition.height;
+      if (pixels <= maxPixels && (bestPixels > maxPixels || pixels > bestPixels)) {
+        best = rendition;
+        bestPixels = pixels;
+      } else if (bestPixels > maxPixels && pixels < bestPixels) {
+        best = rendition;
+        bestPixels = pixels;
+      }
+    }
+    return best;
+  }
+
+  function getRenditionsMessage(renditions, selected) {
+    var lines = ['GeoTIFF renditions:'];
+    renditions.forEach(function(rendition) {
+      lines.push('  ' + rendition.slug + ': ' + rendition.width + 'x' + rendition.height +
+        (rendition.slug == selected.slug ? ' [selected]' : ''));
+    });
+    lines.push('Use import option rendition=<slug> to select a different rendition.');
+    return lines.join('\n');
+  }
+
+  function getImportRenditionMessage(importImage, source) {
+    if (importImage.resampled) {
+      return 'Using resampled GeoTIFF ' + (importImage.sourceSlug == 'full' ? 'full-resolution image' : 'rendition ' + importImage.sourceSlug) +
+        ' for import: ' + importImage.width + 'x' + importImage.height +
+        ' (source: ' + source.width + 'x' + source.height + ').';
+    }
+    return 'Using reduced-resolution GeoTIFF rendition for import: ' + importImage.slug + ' ' +
+      importImage.width + 'x' + importImage.height + ' (source: ' + source.width + 'x' + source.height + ').';
+  }
+
+  function getResizedImportImage(importImage, maxPixels) {
+    var scale = Math.min(1, Math.sqrt(maxPixels / (importImage.width * importImage.height)));
+    return Object.assign({}, importImage, {
+      sourceSlug: importImage.slug,
+      slug: importImage.slug + '-resampled',
+      resampled: true,
+      width: Math.max(1, Math.round(importImage.width * scale)),
+      height: Math.max(1, Math.round(importImage.height * scale))
+    });
+  }
+
+  function getMaxImportPixels(opts) {
+    return opts.maxPixels || opts.raster_max_pixels || opts.rasterMaxPixels ||
+      DEFAULT_MAX_IMPORT_PIXELS;
+  }
+
+  async function readGeoTIFFSamples(image, samples, width, height) {
+    var opts = {
+      interleave: true,
+      width: width,
+      height: height
+    };
+    if (useRGBRead(image, samples)) {
+      return image.readRGB(opts);
+    }
+    opts.samples = samples;
+    return image.readRasters(opts);
+  }
+
+  function useRGBRead(image, samples) {
+    return samples.length == 3 && getPhotometricInterpretation(image) == 6 && image.readRGB;
+  }
+
+  function getDisplaySamples(samplesPerPixel) {
+    if (samplesPerPixel >= 4) return [0, 1, 2, 3];
+    if (samplesPerPixel >= 3) return [0, 1, 2];
+    return [0];
+  }
+
+  function getNoDataValue(image) {
+    var val = image.getGDALNoData && image.getGDALNoData();
+    return val == null || val === '' ? null : +val;
+  }
+
+  function getPixelType(image) {
+    var fmt = image.getSampleFormat && image.getSampleFormat();
+    var bits = image.getBitsPerSample && image.getBitsPerSample();
+    if (Array.isArray(fmt)) fmt = fmt[0];
+    if (Array.isArray(bits)) bits = bits[0];
+    var type = fmt == 3 ? 'float' : fmt == 2 ? 'int' : 'uint';
+    return bits ? type + bits : type;
+  }
+
+  function getImageBoundingBox(image) {
+    try {
+      return image.getBoundingBox().map(Number);
+    } catch(e) {
+      stop$1('GeoTIFF is missing georeferencing metadata');
+    }
+  }
+
+  function getImageTransformForSize(image, width, height, bbox) {
+    var sourceBbox = bbox || getImageBoundingBox(image);
+    return [
+      (sourceBbox[2] - sourceBbox[0]) / width,
+      0,
+      sourceBbox[0],
+      0,
+      (sourceBbox[1] - sourceBbox[3]) / height,
+      sourceBbox[3]
+    ];
+  }
+
+  function getImageTransform(image) {
+    var origin = image.getOrigin && image.getOrigin();
+    var resolution = image.getResolution && image.getResolution();
+    if (!origin || !resolution) return null;
+    return [resolution[0], 0, origin[0], 0, resolution[1], origin[1]];
+  }
+
+  function getPhotometricInterpretation(image) {
+    var fileDirectory = image && image.fileDirectory;
+    return fileDirectory && fileDirectory.actualizedFields && fileDirectory.actualizedFields.get(262);
+  }
+
+  function repairDeferredOffsetArrays(image) {
+    var fileDirectory = image && image.fileDirectory;
+    var arrays = fileDirectory && fileDirectory.deferredArrays;
+    if (!arrays || !fileDirectory.actualizedFields) return;
+    // Work around geotiff.js decoding big-endian deferred offset/count arrays as little-endian.
+    [273, 279, 324, 325].forEach(function(tag) {
+      var deferred = arrays.get(tag);
+      var values;
+      if (!deferred || deferred.littleEndian) return;
+      values = decodeDeferredIntegerArray(deferred);
+      if (!values) return;
+      fileDirectory.actualizedFields.set(tag, values);
+      arrays.delete(tag);
+    });
+  }
+
+  function decodeDeferredIntegerArray(deferred) {
+    var source = deferred.source && deferred.source.arrayBuffer;
+    var offset = deferred.arrayOffset;
+    var length = deferred.length;
+    var itemSize = deferred.itemSize;
+    var view, values;
+    if (!source || !length || !itemSize) return null;
+    view = new DataView(source, offset, length * itemSize);
+    if (itemSize == 2) {
+      values = new Uint16Array(length);
+      for (var i = 0; i < length; i++) values[i] = view.getUint16(i * itemSize, false);
+      return values;
+    }
+    if (itemSize == 4) {
+      values = new Uint32Array(length);
+      for (var j = 0; j < length; j++) values[j] = view.getUint32(j * itemSize, false);
+      return values;
+    }
+    if (itemSize == 8 && typeof view.getBigUint64 == 'function') {
+      values = [];
+      for (var k = 0; k < length; k++) values[k] = Number(view.getBigUint64(k * itemSize, false));
+      return values;
+    }
+    return null;
+  }
+
+  function getSourceId(input) {
+    return input && input.filename ? getFileBase(input.filename) : 'geotiff-source';
+  }
+
+  function getSourceInfo$1(input, sourceId, image) {
+    var content = input && input.content;
+    return {
+      id: sourceId,
+      filename: input && input.filename || null,
+      byteLength: content && content.byteLength || null,
+      storage: runningInBrowser() ? 'indexeddb-pending' : 'path',
+      width: image.getWidth(),
+      height: image.getHeight(),
+      bands: image.getSamplesPerPixel(),
+      pixelType: getPixelType(image),
+      bbox: getImageBoundingBox(image),
+      transform: getImageTransform(image)
+    };
+  }
+
+  async function importGeoTIFFCrs(dataset, image) {
+    var crsString = getGeoTIFFCrsString(image);
+    if (!crsString) {
+      warnOnce('Unable to import CRS from GeoTIFF metadata');
+      return;
+    }
+    await initProjLibrary({crs: crsString});
+    try {
+      setDatasetCrsInfo(dataset, getCrsInfo(crsString));
+    } catch(e) {
+      dataset.info = Object.assign(dataset.info || {}, {crs_string: crsString});
+    }
+  }
+
+  function getGeoTIFFCrsString(image) {
+    var keys = image.getGeoKeys && image.getGeoKeys() || {};
+    var code = keys.ProjectedCSTypeGeoKey || keys.GeographicTypeGeoKey;
+    return code ? 'EPSG:' + code : null;
+  }
+
+  async function importImageRaster(input, optsArg) {
+    var opts = optsArg || {};
+    var imageType = input.png ? 'png' : input.jpeg ? 'jpeg' : null;
+    var imageInput = input[imageType];
+    var decoded = await decodeImage(imageInput, imageType);
+    var world = parseWorldFile(input.world && input.world.content);
+    var sourceId = getFileBase(imageInput.filename || imageType);
+    var transform, bbox, raster, dataset;
+    if (!world) {
+      stop$1('Image raster import requires a world file');
+    }
+    transform = getWorldTransform(world);
+    bbox = getWorldFileBBox(transform, decoded.width, decoded.height);
+    raster = {
+      sourceId: sourceId,
+      grid: {
+        width: decoded.width,
+        height: decoded.height,
+        bands: decoded.bands,
+        pixelType: 'uint8',
+        samples: decoded.samples,
+        sampleBands: decoded.sampleBands,
+        nodata: null,
+        bbox: bbox,
+        transform: transform
+      },
+      derivation: {
+        type: decoded.bands >= 3 ? 'rgb' : 'gray',
+        sourceId: sourceId,
+        bands: decoded.sampleBands
+      },
+      view: {
+        recipe: {
+          type: decoded.bands >= 3 ? 'rgb' : 'gray',
+          bands: decoded.sampleBands
+        }
+      }
+    };
+    raster.view.recipe = getRasterViewRecipe(raster.grid, raster.view.recipe, opts);
+    raster.view.preview = createRasterPreview(raster, opts);
+    dataset = {
+      info: {
+        raster_sources: [getSourceInfo(imageInput, sourceId, imageType, input)]
+      },
+      layers: [{
+        name: imageInput.filename ? getFileBase(imageInput.filename) : null,
+        raster_type: 'grid',
+        raster: raster
+      }]
+    };
+    importImageCrs(dataset, input.prj);
+    return dataset;
+  }
+
+  async function decodeImage(input, imageType) {
+    if (runningInBrowser()) {
+      return decodeImageInBrowser(input.content, imageType);
+    }
+    return imageType == 'png' ? decodePng(input.content) : decodeJpeg(input.content);
+  }
+
+  function decodePng(content) {
+    var png = require$1('pngjs').PNG.sync.read(Buffer.from(content));
+    return rgbaToImageData(png.data, png.width, png.height, true);
+  }
+
+  function decodeJpeg(content) {
+    var jpeg = require$1('jpeg-js');
+    var image = jpeg.decode(Buffer.from(content), {useTArray: true});
+    return rgbaToImageData(image.data, image.width, image.height, false);
+  }
+
+  async function decodeImageInBrowser(content, imageType) {
+    var blob = new Blob([content], {type: imageType == 'png' ? 'image/png' : 'image/jpeg'});
+    var bitmap = await createImageBitmap(blob);
+    var canvas = document.createElement('canvas');
+    var ctx, data;
+    canvas.width = bitmap.width;
+    canvas.height = bitmap.height;
+    ctx = canvas.getContext('2d');
+    ctx.drawImage(bitmap, 0, 0);
+    data = ctx.getImageData(0, 0, canvas.width, canvas.height).data;
+    if (bitmap.close) bitmap.close();
+    return rgbaToImageData(data, canvas.width, canvas.height, imageType == 'png');
+  }
+
+  function rgbaToImageData(rgba, width, height, keepAlpha) {
+    var bands = keepAlpha ? 4 : 3;
+    var samples = new Uint8Array(width * height * bands);
+    var src, dest;
+    for (var i = 0, n = width * height; i < n; i++) {
+      src = i * 4;
+      dest = i * bands;
+      samples[dest] = rgba[src];
+      samples[dest + 1] = rgba[src + 1];
+      samples[dest + 2] = rgba[src + 2];
+      if (keepAlpha) samples[dest + 3] = rgba[src + 3];
+    }
+    return {
+      width: width,
+      height: height,
+      bands: bands,
+      samples: samples,
+      sampleBands: bands == 4 ? [0, 1, 2, 3] : [0, 1, 2]
+    };
+  }
+
+  function parseWorldFile(content) {
+    if (!content) return null;
+    var vals = String(content).trim().split(/\s+/).map(Number);
+    if (vals.length < 6 || vals.some(function(val) { return !isFinite(val); })) {
+      stop$1('Invalid world file');
+    }
+    return vals.slice(0, 6);
+  }
+
+  function getWorldTransform(world) {
+    var a = world[0], d = world[1], b = world[2], e = world[3],
+        c = world[4], f = world[5];
+    return [
+      a,
+      b,
+      c - a / 2 - b / 2,
+      d,
+      e,
+      f - d / 2 - e / 2
+    ];
+  }
+
+  function getWorldFileBBox(transform, width, height) {
+    var corners = [
+      transformPoint(transform, 0, 0),
+      transformPoint(transform, width, 0),
+      transformPoint(transform, width, height),
+      transformPoint(transform, 0, height)
+    ];
+    var xs = corners.map(function(p) { return p[0]; });
+    var ys = corners.map(function(p) { return p[1]; });
+    return [
+      Math.min.apply(null, xs),
+      Math.min.apply(null, ys),
+      Math.max.apply(null, xs),
+      Math.max.apply(null, ys)
+    ];
+  }
+
+  function transformPoint(t, col, row) {
+    return [
+      t[0] * col + t[1] * row + t[2],
+      t[3] * col + t[4] * row + t[5]
+    ];
+  }
+
+  function importImageCrs(dataset, prj) {
+    var wkt = prj && prj.content;
+    if (!wkt) {
+      warn('Image raster is missing a .prj file; CRS is unknown');
+      return;
+    }
+    try {
+      setDatasetCrsInfo(dataset, {
+        wkt1: wkt,
+        crs: parsePrj(wkt)
+      });
+    } catch(e) {
+      dataset.info.wkt1 = wkt;
+    }
+  }
+
+  function getSourceInfo(input, sourceId, imageType, group) {
+    var content = input && input.content;
+    return {
+      id: sourceId,
+      type: imageType,
+      filename: input && input.filename || null,
+      byteLength: content && content.byteLength || null,
+      storage: runningInBrowser() ? 'indexeddb-pending' : 'path',
+      worldFile: group.world && group.world.filename || null,
+      prjFile: group.prj && group.prj.filename || null
     };
   }
 
@@ -35786,6 +37194,10 @@ ${svg}
       stop$1("GeoPackage import requires async import path");
     } else if (obj.parquet) {
       stop$1("GeoParquet import requires async import path");
+    } else if (obj.geotiff) {
+      stop$1("GeoTIFF import requires async import path");
+    } else if (obj.png || obj.jpeg) {
+      stop$1("Image raster import requires async import path");
     }
 
     return finalizeImportedDataset(dataset, dataFmt, data, opts);
@@ -35806,6 +37218,14 @@ ${svg}
       dataFmt = 'geoparquet';
       data = obj.parquet;
       dataset = await importGeoParquet(data, opts);
+    } else if (obj.geotiff) {
+      dataFmt = 'geotiff';
+      data = obj.geotiff;
+      dataset = await importGeoTIFF(data, opts);
+    } else if (obj.png || obj.jpeg) {
+      dataFmt = obj.png ? 'png' : 'jpeg';
+      data = obj[dataFmt];
+      dataset = await importImageRaster(obj, opts);
     } else {
       return importContent(obj, opts);
     }
@@ -36007,9 +37427,61 @@ ${svg}
     if (data) {
       data = importTable(data);
     }
+    if (lyr.raster) {
+      lyr.raster = importRasterData(lyr.raster);
+    }
     return Object.assign(lyr, {
       data: lyr.data ? new DataTable(data) : null
     });
+  }
+
+  function importRasterData(raster) {
+    var copy = Object.assign({}, raster);
+    if (raster.grid) {
+      copy.grid = Object.assign({}, raster.grid);
+      if (raster.grid.samples) {
+        copy.grid.samples = restoreRasterSamples(raster.grid.samples, raster.grid.pixelType);
+      }
+    }
+    if (raster.view) {
+      copy.view = Object.assign({}, raster.view);
+      if (raster.view.preview) {
+        copy.view.preview = Object.assign({}, raster.view.preview);
+        if (raster.view.preview.pixels) {
+          copy.view.preview.pixels = new Uint8ClampedArray(BinArray.copyToArrayBuffer(raster.view.preview.pixels));
+        }
+      }
+    }
+    if (raster.preview) {
+      copy.preview = Object.assign({}, raster.preview);
+      if (raster.preview.pixels) {
+        copy.preview.pixels = new Uint8ClampedArray(BinArray.copyToArrayBuffer(raster.preview.pixels));
+      }
+    }
+    if (raster.pixels) {
+      copy.pixels = new Uint8ClampedArray(BinArray.copyToArrayBuffer(raster.pixels));
+    }
+    return copy;
+  }
+
+  function restoreRasterSamples(buf, pixelType) {
+    var arrbuf = BinArray.copyToArrayBuffer(buf);
+    var Ctor = getRasterSampleArrayConstructor(pixelType);
+    return new Ctor(arrbuf);
+  }
+
+  function getRasterSampleArrayConstructor(pixelType) {
+    switch (pixelType) {
+      case 'uint8': return Uint8Array;
+      case 'int8': return Int8Array;
+      case 'uint16': return Uint16Array;
+      case 'int16': return Int16Array;
+      case 'uint32': return Uint32Array;
+      case 'int32': return Int32Array;
+      case 'float32': return Float32Array;
+      case 'float64': return Float64Array;
+    }
+    return Uint8Array;
   }
 
   var Unpack = /*#__PURE__*/Object.freeze({
@@ -36143,11 +37615,18 @@ ${svg}
   function expandKmzFile(file, cache) {
     var files = expandZipFile(file, cache);
     var name = replaceFileExtension(parseLocalPath(file).filename, 'kml');
-    if (files[0] == 'doc.kml') {
-      files[0] = name;
+    files = files.map(function(file) {
+      if (file == 'doc.kml') {
+        return name;
+      }
+      return file;
+    });
+    if ('doc.kml' in cache) {
       cache[name] = cache['doc.kml'];
     }
-    return files;
+    return files.filter(function(file) {
+      return guessInputFileType(file) == 'kml';
+    });
   }
 
   function expandZipFile(file, cache) {
@@ -36239,6 +37718,8 @@ ${svg}
     content = null; // for g.c.
     if (fileType == 'shp' || fileType == 'dbf') {
       readShapefileAuxFiles(path, input, cache);
+    } else if (isRasterImageInputType(fileType)) {
+      readRasterImageAuxFiles(path, input, cache);
     }
     if (fileType == 'shp' && !input.dbf) {
       message(utils.format("[%s] .dbf file is missing - shapes imported without attribute data.", path));
@@ -36293,11 +37774,13 @@ ${svg}
     content = null;
     if (fileType == 'shp' || fileType == 'dbf') {
       readShapefileAuxFiles(path, input, cache);
+    } else if (isRasterImageInputType(fileType)) {
+      readRasterImageAuxFiles(path, input, cache);
     }
     if (fileType == 'shp' && !input.dbf) {
       message(utils.format("[%s] .dbf file is missing - shapes imported without attribute data.", path));
     }
-    return fileType == 'gpkg' || fileType == 'fgb' || fileType == 'parquet' ? importContentAsync(input, opts) : importContent(input, opts);
+    return fileType == 'gpkg' || fileType == 'fgb' || fileType == 'parquet' || fileType == 'geotiff' || isRasterImageInputType(fileType) ? importContentAsync(input, opts) : importContent(input, opts);
   }
 
   // Import multiple files to a single dataset
@@ -36331,6 +37814,7 @@ ${svg}
   async function importFilesTogetherAsync(files, opts) {
     var unbuiltTopology = false;
     var datasets = [];
+    files = removeRasterImageSidecars(files);
     for (var fname of files) {
       // import without topology or snapping
       var importOpts = utils.defaults({no_topology: true, snap: false, snap_interval: null, files: [fname]}, opts);
@@ -36437,6 +37921,60 @@ ${svg}
     if (obj.dbf && cli.isFile(cpgPath, cache)) {
       obj.cpg = {filename: cpgPath, content: cli.readFile(cpgPath, 'utf-8', cache).trim()};
     }
+  }
+
+  function readRasterImageAuxFiles(path, obj, cache) {
+    var prjPath = replaceFileExtension(path, 'prj');
+    var worldPath = findWorldFile(path, cache);
+    if (cli.isFile(prjPath, cache)) {
+      obj.prj = {filename: prjPath, content: cli.readFile(prjPath, 'utf-8', cache)};
+    }
+    if (worldPath) {
+      obj.world = {filename: worldPath, content: cli.readFile(worldPath, 'utf-8', cache)};
+    }
+  }
+
+  function findWorldFile(path, cache) {
+    var candidates = getWorldFileCandidates(path);
+    for (var i = 0; i < candidates.length; i++) {
+      if (cli.isFile(candidates[i], cache)) return candidates[i];
+    }
+    return null;
+  }
+
+  function getWorldFileCandidates(path) {
+    var ext = getFileExtension(path).toLowerCase();
+    var candidates = [replaceFileExtension(path, 'wld'), replaceFileExtension(path, 'tfw')];
+    if (ext == 'png') {
+      candidates.unshift(replaceFileExtension(path, 'pgw'), replaceFileExtension(path, 'pngw'));
+    } else if (ext == 'jpg' || ext == 'jpeg') {
+      candidates.unshift(
+        replaceFileExtension(path, 'jgw'),
+        replaceFileExtension(path, 'jpw'),
+        replaceFileExtension(path, 'jpgw'),
+        replaceFileExtension(path, 'jpegw')
+      );
+    }
+    return utils.uniq(candidates);
+  }
+
+  function removeRasterImageSidecars(files) {
+    var imageBases = {};
+    files.forEach(function(file) {
+      var type = guessInputFileType(file);
+      if (isRasterImageInputType(type)) {
+        imageBases[getFileBase(file).toLowerCase()] = true;
+      }
+    });
+    return files.filter(function(file) {
+      var ext = getFileExtension(file).toLowerCase();
+      var type = guessInputFileType(file);
+      var base = getFileBase(file).toLowerCase();
+      if ((type == 'prj' || isWorldFileExtension(ext)) && imageBases[base]) {
+        return false;
+      }
+      return true;
+    });
   }
 
   var FileImport = /*#__PURE__*/Object.freeze({
@@ -43263,6 +44801,10 @@ ${svg}
       var lyr2 = outputLayers[i];
       lyr.shapes = lyr2.shapes;
       lyr.data = lyr2.data;
+      if (lyr2.raster) {
+        lyr.raster = lyr2.raster;
+        lyr.raster_type = lyr2.raster_type;
+      }
     });
     dissolveArcs(dataset);
   }
@@ -43273,8 +44815,15 @@ ${svg}
     profileStart('clipLayers');
     opts = opts || {no_cleanup: true}; // TODO: update testing functions
     var usingPathClip = utils.some(targetLayers, layerHasPaths);
+    var usingRasterClip = utils.some(targetLayers, layerHasRaster);
     var mergedDataset, clipLyr, nodes, result;
-    var clipDataset = normalizeOverlaySource(clipSrc, targetDataset, opts);
+    var clipDataset;
+    if (usingRasterClip) {
+      result = clipRasterLayers(targetLayers, clipSrc, targetDataset, type, opts);
+      profileEnd('clipLayers');
+      return result;
+    }
+    clipDataset = normalizeOverlaySource(clipSrc, targetDataset, opts);
     if (!opts.no_warn) {
       warnIfBoundsDontOverlap(targetLayers, targetDataset, clipDataset, type);
     }
@@ -43306,6 +44855,30 @@ ${svg}
     profileEnd('clipLayersByLayer');
     profileEnd('clipLayers');
     return result;
+  }
+
+  function clipRasterLayers(targetLayers, clipSrc, targetDataset, type, opts) {
+    var clipDataset, clipBounds, bbox;
+    if (type != 'clip') {
+      stop$1('Raster layers only support clipping');
+    }
+    if (utils.some(targetLayers, function(lyr) {return !layerHasRaster(lyr);})) {
+      stop$1('Raster clipping cannot be mixed with vector target layers');
+    }
+    if (opts.bbox2) {
+      bbox = opts.bbox2;
+    } else {
+      clipDataset = normalizeOverlaySource(clipSrc, targetDataset, opts);
+      clipBounds = getLayerBounds(clipDataset.layers[0], clipDataset.arcs);
+      if (!clipBounds || !clipBounds.hasBounds()) {
+        stop$1('Missing raster clipping bounds');
+      }
+      bbox = clipBounds.toArray();
+    }
+    return targetLayers.map(function(lyr) {
+      clipRasterToBBox(lyr, bbox, opts);
+      return lyr;
+    });
   }
 
   function clipLayersByBBox(layers, dataset, opts) {
@@ -44215,6 +45788,16 @@ ${svg}
       null_shape_count: 0,
       null_data_count: lyr.data ? countNullRecords(lyr.data.getRecords()) : n
     };
+    if (layerHasRaster(lyr)) {
+      o.geometry_type = null;
+      o.raster_type = lyr.raster_type;
+      o.raster_width = getRasterWidth(lyr.raster);
+      o.raster_height = getRasterHeight(lyr.raster);
+      o.raster_bands = getRasterBandCount(lyr.raster);
+      o.raster_pixel_type = getRasterPixelType(lyr.raster);
+      o.bbox = getLayerBounds(lyr, dataset.arcs).toArray();
+      o.proj4 = getProjInfo(dataset);
+    }
     if (lyr.shapes && lyr.shapes.length > 0) {
       o.null_shape_count = countNullShapes(lyr.shapes);
       o.bbox = getLayerBounds(lyr, dataset.arcs).toArray();
@@ -44244,7 +45827,7 @@ ${svg}
     var str = '';
     arr.forEach(function(info, i) {
       var title =  'Layer:    ' + (info.layer_name || '[unnamed layer]');
-      var tableStr = formatAttributeTableInfo(info.attribute_data);
+      var tableStr = info.raster_type ? '' : formatAttributeTableInfo(info.attribute_data);
       var tableWidth = measureLongestLine(tableStr);
       var ruleLen = Math.min(Math.max(title.length, tableWidth), MAX_RULE_LEN);
       str += '\n';
@@ -44259,12 +45842,17 @@ ${svg}
 
   function formatLayerInfo(data) {
     var str = '';
-    str += "Type:     " + (data.geometry_type || "tabular data") + "\n";
-    str += utils.format("Records:  %,d\n",data.feature_count);
+    str += "Type:     " + (data.raster_type ? "raster data" : data.geometry_type || "tabular data") + "\n";
+    if (data.raster_type) {
+      str += utils.format("Size:     %,d x %,d x %,d\n", data.raster_width, data.raster_height, data.raster_bands);
+      str += "Data:     " + (data.raster_pixel_type || 'unknown') + "\n";
+    } else {
+      str += utils.format("Records:  %,d\n",data.feature_count);
+    }
     if (data.null_shape_count > 0) {
       str += utils.format("Nulls:     %'d", data.null_shape_count) + "\n";
     }
-    if (data.geometry_type && data.feature_count > data.null_shape_count) {
+    if (data.raster_type || data.geometry_type && data.feature_count > data.null_shape_count) {
       str += "Bounds:   " + data.bbox.join(',') + "\n";
       str += "CRS:      " + data.proj4 + "\n";
     }
@@ -55681,7 +57269,7 @@ ${svg}
     });
   }
 
-  var version = "0.7.13";
+  var version = "0.7.14";
 
   // Parse command line args into commands and run them
   // Function takes an optional Node-style callback. A Promise is returned if no callback is given.
@@ -56582,6 +58170,8 @@ ${svg}
         detail: copyDetail(detail),
         name: layer.name,
         geometry_type: layer.geometry_type,
+        raster_type: layer.raster_type || null,
+        raster: layer.raster ? copyRasterData(layer.raster) : null,
         shapes: layer.shapes ? cloneShapes(layer.shapes) : null,
         data: layer.data || null
       });
@@ -56875,6 +58465,8 @@ ${svg}
       revision: getUndoRevision(unit.target),
       name: unit.target.name,
       geometry_type: unit.target.geometry_type,
+      raster_type: unit.target.raster_type || null,
+      raster: unit.target.raster ? copyRasterData(unit.target.raster) : null,
       shapes: unit.target.shapes ? cloneShapes(unit.target.shapes) : null,
       data: unit.target.data || null
     });
@@ -57001,6 +58593,8 @@ ${svg}
   function restoreLayer(unit) {
     unit.target.name = unit.name;
     unit.target.geometry_type = unit.geometry_type;
+    unit.target.raster_type = unit.raster_type || null;
+    unit.target.raster = unit.raster ? copyRasterData(unit.raster) : null;
     unit.target.shapes = unit.shapes ? cloneShapes(unit.shapes) : null;
     unit.target.data = unit.data;
   }
@@ -57204,6 +58798,7 @@ ${svg}
     Lines,
     Logging,
     Profile,
+    RasterUtils,
     Merging,
     MosaicIndex$1,
     OptionParsingUtils,

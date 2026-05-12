@@ -6,7 +6,7 @@
     cli = api.cli,
     geom = api.geom,
     internal = api.internal,
-    Bounds = internal.Bounds,
+    Bounds$1 = internal.Bounds,
     UserError$1 = internal.UserError,
     message$1 = internal.message, // stop, error and message are overridden in gui-proxy.js
     stop$1 = internal.stop,
@@ -1396,6 +1396,32 @@
     }, 400);
   }
 
+  function logStartupCleanup(opts) {
+    opts = opts || {};
+    var count = opts.count || 0;
+    if (!count || typeof console == 'undefined' || !console.log) return;
+    var sessionCount = opts.sessionCount || 0;
+    var singular = opts.singular || 'item';
+    var plural = opts.plural || singular + 's';
+    var itemLabel = count == 1 ? singular : plural;
+    var msg = '[mapshaper] startup cleanup reclaimed ' + count + ' ' + itemLabel;
+    if (sessionCount > 0) {
+      msg += ' from ' + sessionCount + ' stale session' + (sessionCount == 1 ? '' : 's');
+    }
+    if (opts.sizeBytes > 0) {
+      msg += ' (' + formatCleanupSize(opts.sizeBytes) + ')';
+    }
+    console.log(msg);
+  }
+
+  function formatCleanupSize(bytes) {
+    var kb = Math.round(bytes / 1000);
+    var mb = (bytes / 1e6).toFixed(1);
+    if (!kb) return '';
+    if (kb < 990) return kb + 'kB';
+    return mb + 'MB';
+  }
+
   // Several dependencies are loaded via require()
   var f;
   if (typeof require == 'function') {
@@ -1412,10 +1438,10 @@
   }
   var require$1 = f;
 
-  var idb$1 = require$1('idb-keyval');
+  var idb$2 = require$1('idb-keyval');
   // https://github.com/jakearchibald/idb
   // https://github.com/jakearchibald/idb-keyval
-  var sessionId = getUniqId$1('session');
+  var sessionId$1 = getUniqId$1('session');
   var snapshotCount = 0;
   // IDs of snapshots created (and not removed) by this tab. Tracked in memory
   // so the pagehide handler can fire a single batched delMany() without first
@@ -1539,7 +1565,7 @@
           closeMenu(100);
         }).text('restore');
         El('span').addClass('save-menu-btn').appendTo(line).on('click', async function(e) {
-          var obj = await idb$1.get(item.id);
+          var obj = await idb$2.get(item.id);
           await internal.compressSnapshotForExport(obj);
           var buf = internal.pack(obj);
           var fileName = `snapshot-${String(item.number).padStart(2, '0')}.msx`;
@@ -1590,43 +1616,35 @@
       // note: we don't know the size of unpacked snapshot objects
       // obj = internal.pack(obj);
       var entryId = String(++snapshotCount).padStart(3, '0');
-      var snapshotId = sessionId + '_' + entryId; // e.g. session_d89fw_001
+      var snapshotId = sessionId$1 + '_' + entryId; // e.g. session_d89fw_001
       var size = obj.length;
       var entry = {
         created: Date.now(),
-        session: sessionId,
+        session: sessionId$1,
         id: snapshotId,
         name: snapshotCount + '.',
         number: snapshotCount,
         size: size,
-        display_size: formatSize(size)
+        display_size: formatCleanupSize(size)
       };
 
-      await idb$1.set(entry.id, obj);
+      await idb$2.set(entry.id, obj);
       ownSnapshotIds.add(entry.id);
       await addToIndex(entry);
       renderMenu();
     }
   }
 
-  function formatSize(bytes) {
-    var kb = Math.round(bytes / 1000);
-    var mb = (bytes / 1e6).toFixed(1);
-    if (!kb) return '';
-    if (kb < 990) return kb + 'kB';
-    return mb + 'MB';
-  }
-
   async function fetchSnapshotList() {
     await pruneIndexAgainstKeys();
     var index = await fetchIndex();
     var snapshots = index.snapshots;
-    snapshots = snapshots.filter(function(o) {return o.session == sessionId;});
+    snapshots = snapshots.filter(function(o) {return o.session == sessionId$1;});
     return snapshots.sort(function(a, b) {b.created > a.created;});
   }
 
   async function removeSnapshotById(id, gui) {
-    await idb$1.del(id);
+    await idb$2.del(id);
     ownSnapshotIds.delete(id);
     return updateIndex(function(index) {
       index.snapshots = index.snapshots.filter(function(snap) {
@@ -1638,7 +1656,7 @@
   async function restoreSnapshotById(id, gui) {
     var data;
     try {
-      data = await internal.restoreSessionData(await idb$1.get(id));
+      data = await internal.restoreSessionData(await idb$2.get(id));
     } catch(e) {
       console.error(e);
       stop$1('Snapshot is not available');
@@ -1721,12 +1739,12 @@
   }
 
   async function fetchIndex() {
-    var index = await idb$1.get('msx_index');
+    var index = await idb$2.get('msx_index');
     return index || {snapshots: []};
   }
 
   async function updateIndex(action) {
-    return idb$1.update('msx_index', function(index) {
+    return idb$2.update('msx_index', function(index) {
       if (!index || !Array.isArray(index.snapshots)) {
         index = {snapshots: []};
       }
@@ -1746,7 +1764,7 @@
   // (e.g. cleared by another tab). Cheaper than reclaimDeadSessionData; used
   // before rendering the menu to keep stale entries out of the UI.
   async function pruneIndexAgainstKeys() {
-    var keys = await idb$1.keys();
+    var keys = await idb$2.keys();
     return updateIndex(function(index) {
       index.snapshots = index.snapshots.filter(function(snap) {
         return keys.includes(snap.id);
@@ -1766,7 +1784,7 @@
   // Delete every snapshot in IndexedDB whose session id is not in liveSessions,
   // and keep the on-disk index consistent with the actual key set.
   async function reclaimDeadSessionData(liveSessions) {
-    var keys = await idb$1.keys();
+    var keys = await idb$2.keys();
     var doomedKeys = [];
     var doomedSessions = new Set();
     keys.forEach(function(key) {
@@ -1789,12 +1807,12 @@
           sizeBytes += snap.size;
         }
       });
-      await Promise.all(doomedKeys.map(function(k) { return idb$1.del(k); }));
+      await Promise.all(doomedKeys.map(function(k) { return idb$2.del(k); }));
     }
 
     // Drop index entries pointing to deleted snapshots, and any entries whose
     // session is dead even if the underlying key was already gone.
-    var remainingKeys = await idb$1.keys();
+    var remainingKeys = await idb$2.keys();
     var keySet = new Set(remainingKeys);
     await updateIndex(function(index) {
       index.snapshots = index.snapshots.filter(function(snap) {
@@ -1805,13 +1823,13 @@
     });
 
     if (doomedKeys.length) {
-      var msg = '[mapshaper] startup cleanup reclaimed ' +
-        doomedKeys.length + ' snapshot' + (doomedKeys.length === 1 ? '' : 's') +
-        ' from ' + doomedSessions.size + ' stale session' +
-        (doomedSessions.size === 1 ? '' : 's');
-      var sizeStr = sizeBytes > 0 ? formatSize(sizeBytes) : '';
-      if (sizeStr) msg += ' (' + sizeStr + ')';
-      console.log(msg);
+      logStartupCleanup({
+        count: doomedKeys.length,
+        sessionCount: doomedSessions.size,
+        singular: 'snapshot',
+        plural: 'snapshots',
+        sizeBytes: sizeBytes
+      });
     }
   }
 
@@ -1869,10 +1887,10 @@
         _channel = new BroadcastChannel(BROADCAST_CHANNEL_NAME);
         _channel.onmessage = function(e) {
           var msg = e.data;
-          if (!msg || msg.from === sessionId) return;
+          if (!msg || msg.from === sessionId$1) return;
           if (msg.type === 'whois') {
             try {
-              _channel.postMessage({type: 'iam', from: sessionId});
+              _channel.postMessage({type: 'iam', from: sessionId$1});
             } catch (err) {} // channel can throw if tab is being torn down
           }
         };
@@ -1886,7 +1904,7 @@
   // considered alive (always includes our own).
   function discoverLiveSessions() {
     return new Promise(function(resolve) {
-      var live = new Set([sessionId]);
+      var live = new Set([sessionId$1]);
       // localStorage heartbeat data is the durable signal; it survives
       // backgrounded/throttled tabs that may not respond to BroadcastChannel
       // promptly.
@@ -1904,13 +1922,13 @@
       // window. This is fast and authoritative for foreground tabs.
       var listener = function(e) {
         var msg = e.data;
-        if (msg && msg.type === 'iam' && msg.from && msg.from !== sessionId) {
+        if (msg && msg.type === 'iam' && msg.from && msg.from !== sessionId$1) {
           live.add(msg.from);
         }
       };
       _channel.addEventListener('message', listener);
       try {
-        _channel.postMessage({type: 'whois', from: sessionId});
+        _channel.postMessage({type: 'whois', from: sessionId$1});
       } catch (err) {}
       setTimeout(function() {
         _channel.removeEventListener('message', listener);
@@ -1922,7 +1940,7 @@
   function announceLeaving() {
     if (!_channel) return;
     try {
-      _channel.postMessage({type: 'leaving', from: sessionId});
+      _channel.postMessage({type: 'leaving', from: sessionId$1});
       _channel.close();
     } catch (err) {}
   }
@@ -1943,7 +1961,7 @@
     ownSnapshotIds.clear();
     // Delete the blobs in a single transaction.
     try {
-      idb$1.delMany(ids).catch(function() {});
+      idb$2.delMany(ids).catch(function() {});
     } catch (err) {}
     // Drop our entries from the index in a separate (also fire-and-forget)
     // transaction. If only one of the two completes, startup cleanup will
@@ -1952,7 +1970,7 @@
     try {
       updateIndex(function(index) {
         index.snapshots = index.snapshots.filter(function(snap) {
-          return getSessionFromSnapshotId(snap.id) !== sessionId;
+          return getSessionFromSnapshotId(snap.id) !== sessionId$1;
         });
       }).catch(function() {});
     } catch (err) {}
@@ -1960,14 +1978,14 @@
 
   function touchOwnSession() {
     var data = readSessionData();
-    data[sessionId] = Date.now();
+    data[sessionId$1] = Date.now();
     writeSessionData(data);
   }
 
   function removeOwnSession() {
     var data = readSessionData();
-    if (sessionId in data) {
-      delete data[sessionId];
+    if (sessionId$1 in data) {
+      delete data[sessionId$1];
       writeSessionData(data);
     }
   }
@@ -2015,7 +2033,116 @@
     }
   }
 
-  var idb = require$1('idb-keyval');
+  var DEFAULT_HEARTBEAT_INTERVAL_MS = 30 * 1000;
+  var DEFAULT_STALE_THRESHOLD_MS = 5 * 60 * 1000;
+
+  function createTempSessionLifecycle(opts) {
+    opts = opts || {};
+    var win = opts.window || getWindow$1();
+    var sessionId = opts.sessionId || getUniqueSessionId(opts.prefix || 'tmp');
+    var sessionKey = opts.sessionKey;
+    var heartbeatInterval = opts.heartbeatInterval || DEFAULT_HEARTBEAT_INTERVAL_MS;
+    var staleThreshold = opts.staleThreshold || DEFAULT_STALE_THRESHOLD_MS;
+    var heartbeatTimer = null;
+    var started = false;
+
+    return {
+      start: start,
+      stop: stop,
+      touch: touchOwnSession,
+      removeOwnSession: removeOwnSession,
+      getLiveSessions: getLiveSessions,
+      getSessionId: function() { return sessionId; }
+    };
+
+    function start(onPageHide) {
+      if (started) return;
+      started = true;
+      touchOwnSession();
+      if (win && win.setInterval) {
+        heartbeatTimer = win.setInterval(touchOwnSession, heartbeatInterval);
+      } else if (typeof setInterval == 'function') {
+        heartbeatTimer = setInterval(touchOwnSession, heartbeatInterval);
+      }
+      if (win && win.addEventListener) {
+        win.addEventListener('pagehide', function(e) {
+          if (e.persisted) return;
+          stop();
+          if (onPageHide) onPageHide();
+        });
+      }
+    }
+
+    function stop() {
+      if (heartbeatTimer) {
+        if (win && win.clearInterval) {
+          win.clearInterval(heartbeatTimer);
+        } else if (typeof clearInterval == 'function') {
+          clearInterval(heartbeatTimer);
+        }
+        heartbeatTimer = null;
+      }
+      removeOwnSession();
+    }
+
+    function touchOwnSession() {
+      var sessions = readSessions();
+      sessions[sessionId] = Date.now();
+      writeSessions(sessions);
+    }
+
+    function removeOwnSession() {
+      var sessions = readSessions();
+      if (sessions[sessionId]) {
+        delete sessions[sessionId];
+        writeSessions(sessions);
+      }
+    }
+
+    function getLiveSessions() {
+      var sessions = readSessions();
+      var live = {};
+      var now = Date.now();
+      live[sessionId] = true;
+      Object.keys(sessions).forEach(function(sid) {
+        if (now - sessions[sid] < staleThreshold) {
+          live[sid] = true;
+        }
+      });
+      return live;
+    }
+
+    function readSessions() {
+      var storage = win && win.localStorage;
+      var raw, parsed;
+      if (!storage || !sessionKey) return {};
+      try {
+        raw = storage.getItem(sessionKey);
+        parsed = raw ? JSON.parse(raw) : null;
+        return parsed && typeof parsed == 'object' && !Array.isArray(parsed) ? parsed : {};
+      } catch(e) {
+        return {};
+      }
+    }
+
+    function writeSessions(sessions) {
+      var storage = win && win.localStorage;
+      if (!storage || !sessionKey) return;
+      try {
+        storage.setItem(sessionKey, JSON.stringify(sessions));
+      } catch(e) {}
+    }
+  }
+
+  function getWindow$1() {
+    return typeof window == 'undefined' ? null : window;
+  }
+
+  function getUniqueSessionId(prefix) {
+    return prefix + '_' + (Math.random() + 1).toString(36).substring(2, 8);
+  }
+
+  var idb$1 = require$1('idb-keyval');
   var DEFAULT_INDEX_KEY = 'msu_index';
   var DEFAULT_SESSION_KEY = 'mapshaper_undo_sessions';
   var DEFAULT_KEY_PREFIX = 'msu';
@@ -2032,6 +2159,13 @@
     var keyPrefix = opts.keyPrefix || DEFAULT_KEY_PREFIX;
     var heartbeatInterval = opts.heartbeatInterval || HEARTBEAT_INTERVAL_MS;
     var staleThreshold = opts.staleThreshold || STALE_THRESHOLD_MS;
+    var lifecycle = createTempSessionLifecycle({
+      window: win,
+      sessionId: sessionId,
+      sessionKey: sessionKey,
+      heartbeatInterval: heartbeatInterval,
+      staleThreshold: staleThreshold
+    });
     var maxBytes = opts.maxBytes || 0;
     var maxPayloadBytes = opts.maxPayloadBytes || 0;
     var payloadCount = 0;
@@ -2039,7 +2173,6 @@
     var ownPayloadSizes = {};
     var ownPayloadItems = {};
     var ownBytes = 0;
-    var heartbeatTimer = null;
     var lifecycleStarted = false;
 
     return {
@@ -2069,7 +2202,7 @@
       validatePayloadSize(size);
       await backend.set(key, value);
       notePayloadStored(item);
-      touchOwnSession();
+      lifecycle.touch();
       try {
         await updateIndex(function(index) {
           index.payloads.push(item);
@@ -2110,55 +2243,46 @@
         keys.forEach(notePayloadRemoved);
         await removeIndexKeys(keys);
       }
-      removeOwnSession();
+      lifecycle.removeOwnSession();
     }
 
     function startLifecycle() {
       if (lifecycleStarted) return;
       lifecycleStarted = true;
-      touchOwnSession();
-      if (win && win.setInterval) {
-        heartbeatTimer = win.setInterval(touchOwnSession, heartbeatInterval);
-      } else if (typeof setInterval == 'function') {
-        heartbeatTimer = setInterval(touchOwnSession, heartbeatInterval);
-      }
-      if (win && win.addEventListener) {
-        win.addEventListener('pagehide', function(e) {
-          if (e.persisted) return;
-          stopLifecycle();
-          attemptOwnDataDeletion();
-        });
-      }
+      lifecycle.start(attemptOwnDataDeletion);
     }
 
     async function cleanupStaleSessions() {
-      var liveSessions = getLiveSessions();
+      var liveSessions = lifecycle.getLiveSessions();
       var keys = await backend.keys();
+      var doomedSessions = new Set();
+      var sizeBytes = 0;
       var doomedKeys = keys.filter(function(key) {
-        var sid = getSessionFromPayloadKey(key);
-        return sid && !liveSessions[sid];
+        var sid = getSessionFromPayloadKey(key, keyPrefix);
+        var stale = sid && !liveSessions[sid];
+        if (stale) doomedSessions.add(sid);
+        return stale;
       });
       if (doomedKeys.length > 0) {
         await backend.delMany(doomedKeys);
       }
       await updateIndex(function(index) {
+        var doomedKeyIndex = keyArrayToIndex(doomedKeys);
         index.payloads = index.payloads.filter(function(item) {
-          return liveSessions[item.sessionId];
+          if (!liveSessions[item.sessionId]) {
+            if (doomedKeyIndex[item.key] && typeof item.size == 'number') {
+              sizeBytes += item.size;
+            }
+            return false;
+          }
+          return true;
         });
       });
-      return doomedKeys;
-    }
-
-    function stopLifecycle() {
-      if (heartbeatTimer) {
-        if (win && win.clearInterval) {
-          win.clearInterval(heartbeatTimer);
-        } else if (typeof clearInterval == 'function') {
-          clearInterval(heartbeatTimer);
-        }
-        heartbeatTimer = null;
-      }
-      removeOwnSession();
+      return {
+        keys: doomedKeys,
+        sessionCount: doomedSessions.size,
+        sizeBytes: sizeBytes
+      };
     }
 
     function attemptOwnDataDeletion() {
@@ -2247,66 +2371,26 @@
       });
     }
 
-    function touchOwnSession() {
-      var sessions = readSessions();
-      sessions[sessionId] = Date.now();
-      writeSessions(sessions);
-    }
-
-    function removeOwnSession() {
-      var sessions = readSessions();
-      if (sessions[sessionId]) {
-        delete sessions[sessionId];
-        writeSessions(sessions);
-      }
-    }
-
-    function getLiveSessions() {
-      var sessions = readSessions();
-      var live = {};
-      var now = Date.now();
-      live[sessionId] = true;
-      Object.keys(sessions).forEach(function(sid) {
-        if (now - sessions[sid] < staleThreshold) {
-          live[sid] = true;
-        }
-      });
-      return live;
-    }
-
-    function readSessions() {
-      var storage = win && win.localStorage;
-      var raw, parsed;
-      if (!storage) return {};
-      try {
-        raw = storage.getItem(sessionKey);
-        parsed = raw ? JSON.parse(raw) : null;
-        return parsed && typeof parsed == 'object' && !Array.isArray(parsed) ? parsed : {};
-      } catch(e) {
-        return {};
-      }
-    }
-
-    function writeSessions(sessions) {
-      var storage = win && win.localStorage;
-      if (!storage) return;
-      try {
-        storage.setItem(sessionKey, JSON.stringify(sessions));
-      } catch(e) {}
-    }
   }
 
   function getPayloadKey(ref) {
     return ref && (ref.key || ref);
   }
 
+  function keyArrayToIndex(keys) {
+    return keys.reduce(function(memo, key) {
+      memo[key] = true;
+      return memo;
+    }, {});
+  }
+
   function copyPayloadItem(item) {
     return Object.assign({}, item || {});
   }
 
-  function getSessionFromPayloadKey(key) {
-    var match = /^msu:([^:]+):\d+$/.exec(key);
-    return match ? match[1] : null;
+  function getSessionFromPayloadKey(key, keyPrefix) {
+    var parts = String(key).split(':');
+    return parts.length == 3 && parts[0] == keyPrefix ? parts[1] : null;
   }
 
   function getUniqId(prefix) {
@@ -2318,7 +2402,7 @@
   }
 
   function createBackend(win) {
-    if (win && win.indexedDB && idb) {
+    if (win && win.indexedDB && idb$1) {
       return createIdbBackend();
     }
     return createMemoryBackend();
@@ -2327,13 +2411,13 @@
   function createIdbBackend() {
     return {
       persistent: true,
-      get: idb.get,
-      set: idb.set,
-      del: idb.del,
-      keys: idb.keys,
+      get: idb$1.get,
+      set: idb$1.set,
+      del: idb$1.del,
+      keys: idb$1.keys,
       delMany: function(keys) {
-        return idb.delMany ? idb.delMany(keys) :
-          Promise.all(keys.map(function(key) { return idb.del(key); }));
+        return idb$1.delMany ? idb$1.delMany(keys) :
+          Promise.all(keys.map(function(key) { return idb$1.del(key); }));
       }
     };
   }
@@ -4237,6 +4321,314 @@
     return maxCount;
   }
 
+  function Transform() {
+    this.mx = this.my = 1;
+    this.bx = this.by = 0;
+  }
+
+  Transform.prototype.isNull = function() {
+    return !this.mx || !this.my || isNaN(this.bx) || isNaN(this.by);
+  };
+
+  Transform.prototype.invert = function() {
+    var inv = new Transform();
+    inv.mx = 1 / this.mx;
+    inv.my = 1 / this.my;
+    //inv.bx = -this.bx * inv.mx;
+    //inv.by = -this.by * inv.my;
+    inv.bx = -this.bx / this.mx;
+    inv.by = -this.by / this.my;
+    return inv;
+  };
+
+
+  Transform.prototype.transform = function(x, y, xy) {
+    xy = xy || [];
+    xy[0] = x * this.mx + this.bx;
+    xy[1] = y * this.my + this.by;
+    return xy;
+  };
+
+  Transform.prototype.toString = function() {
+    return JSON.stringify(Object.assign({}, this));
+  };
+
+  function Bounds() {
+    if (arguments.length > 0) {
+      this.setBounds.apply(this, arguments);
+    }
+  }
+
+  Bounds.from = function() {
+    var b = new Bounds();
+    return b.setBounds.apply(b, arguments);
+  };
+
+  Bounds.prototype.toString = function() {
+    return JSON.stringify({
+      xmin: this.xmin,
+      xmax: this.xmax,
+      ymin: this.ymin,
+      ymax: this.ymax
+    });
+  };
+
+  Bounds.prototype.toArray = function() {
+    return this.hasBounds() ? [this.xmin, this.ymin, this.xmax, this.ymax] : [];
+  };
+
+  Bounds.prototype.hasBounds = function() {
+    return this.xmin <= this.xmax && this.ymin <= this.ymax;
+  };
+
+  Bounds.prototype.sameBounds =
+  Bounds.prototype.equals = function(bb) {
+    return bb && this.xmin === bb.xmin && this.xmax === bb.xmax &&
+      this.ymin === bb.ymin && this.ymax === bb.ymax;
+  };
+
+  Bounds.prototype.width = function() {
+    return (this.xmax - this.xmin) || 0;
+  };
+
+  Bounds.prototype.height = function() {
+    return (this.ymax - this.ymin) || 0;
+  };
+
+  Bounds.prototype.area = function() {
+    return this.width() * this.height() || 0;
+  };
+
+  Bounds.prototype.empty = function() {
+    this.xmin = this.ymin = this.xmax = this.ymax = void 0;
+    return this;
+  };
+
+  Bounds.prototype.setBounds = function(a, b, c, d) {
+    if (arguments.length == 1) {
+      // assume first arg is a Bounds or array
+      if (utils.isArrayLike(a)) {
+        b = a[1];
+        c = a[2];
+        d = a[3];
+        a = a[0];
+      } else {
+        b = a.ymin;
+        c = a.xmax;
+        d = a.ymax;
+        a = a.xmin;
+      }
+    }
+
+    this.xmin = a;
+    this.ymin = b;
+    this.xmax = c;
+    this.ymax = d;
+    if (a > c || b > d) this.update();
+    return this;
+  };
+
+
+  Bounds.prototype.centerX = function() {
+    var x = (this.xmin + this.xmax) * 0.5;
+    return x;
+  };
+
+  Bounds.prototype.centerY = function() {
+    var y = (this.ymax + this.ymin) * 0.5;
+    return y;
+  };
+
+  Bounds.prototype.containsPoint = function(x, y) {
+    if (x >= this.xmin && x <= this.xmax &&
+      y <= this.ymax && y >= this.ymin) {
+      return true;
+    }
+    return false;
+  };
+
+  // intended to speed up slightly bubble symbol detection; could use intersects() instead
+  // TODO: fix false positive where circle is just outside a corner of the box
+  Bounds.prototype.containsBufferedPoint =
+  Bounds.prototype.containsCircle = function(x, y, buf) {
+    if ( x + buf > this.xmin && x - buf < this.xmax ) {
+      if ( y - buf < this.ymax && y + buf > this.ymin ) {
+        return true;
+      }
+    }
+    return false;
+  };
+
+  Bounds.prototype.intersects = function(bb) {
+    if (bb.xmin <= this.xmax && bb.xmax >= this.xmin &&
+      bb.ymax >= this.ymin && bb.ymin <= this.ymax) {
+      return true;
+    }
+    return false;
+  };
+
+  Bounds.prototype.contains = function(bb) {
+    if (bb.xmin >= this.xmin && bb.ymax <= this.ymax &&
+      bb.xmax <= this.xmax && bb.ymin >= this.ymin) {
+      return true;
+    }
+    return false;
+  };
+
+  Bounds.prototype.shift = function(x, y) {
+    this.setBounds(this.xmin + x,
+      this.ymin + y, this.xmax + x, this.ymax + y);
+  };
+
+  Bounds.prototype.padBounds = function(a, b, c, d) {
+    this.xmin -= a;
+    this.ymin -= b;
+    this.xmax += c;
+    this.ymax += d;
+  };
+
+  // Rescale the bounding box by a fraction. TODO: implement focus.
+  // @param {number} pct Fraction of original extents
+  // @param {number} pctY Optional amount to scale Y
+  //
+  Bounds.prototype.scale = function(pct, pctY) { /*, focusX, focusY*/
+    var halfWidth = (this.xmax - this.xmin) * 0.5;
+    var halfHeight = (this.ymax - this.ymin) * 0.5;
+    var kx = pct - 1;
+    var ky = pctY === undefined ? kx : pctY - 1;
+    this.xmin -= halfWidth * kx;
+    this.ymin -= halfHeight * ky;
+    this.xmax += halfWidth * kx;
+    this.ymax += halfHeight * ky;
+    return this;
+  };
+
+  // Return a bounding box with the same extent as this one.
+  Bounds.prototype.cloneBounds = // alias so child classes can override clone()
+  Bounds.prototype.clone = function() {
+    return new Bounds(this.xmin, this.ymin, this.xmax, this.ymax);
+  };
+
+  Bounds.prototype.clearBounds = function() {
+    this.setBounds(new Bounds());
+  };
+
+  Bounds.prototype.mergePoint = function(x, y) {
+    if (this.xmin === void 0) {
+      this.setBounds(x, y, x, y);
+    } else {
+      // this works even if x,y are NaN
+      if (x < this.xmin)  this.xmin = x;
+      else if (x > this.xmax)  this.xmax = x;
+
+      if (y < this.ymin) this.ymin = y;
+      else if (y > this.ymax) this.ymax = y;
+    }
+  };
+
+  // expands either x or y dimension to match @aspect (width/height ratio)
+  // @focusX, @focusY (optional): expansion focus, as a fraction of width and height
+  Bounds.prototype.fillOut = function(aspect, focusX, focusY) {
+    if (arguments.length < 3) {
+      focusX = 0.5;
+      focusY = 0.5;
+    }
+    var w = this.width(),
+        h = this.height(),
+        currAspect = w / h,
+        pad;
+    if (isNaN(aspect) || aspect <= 0) {
+      // error condition; don't pad
+    } else if (currAspect < aspect) { // fill out x dimension
+      pad = h * aspect - w;
+      this.xmin -= (1 - focusX) * pad;
+      this.xmax += focusX * pad;
+    } else {
+      pad = w / aspect - h;
+      this.ymin -= (1 - focusY) * pad;
+      this.ymax += focusY * pad;
+    }
+    return this;
+  };
+
+  Bounds.prototype.update = function() {
+    var tmp;
+    if (this.xmin > this.xmax) {
+      tmp = this.xmin;
+      this.xmin = this.xmax;
+      this.xmax = tmp;
+    }
+    if (this.ymin > this.ymax) {
+      tmp = this.ymin;
+      this.ymin = this.ymax;
+      this.ymax = tmp;
+    }
+  };
+
+  Bounds.prototype.transform = function(t) {
+    this.xmin = this.xmin * t.mx + t.bx;
+    this.xmax = this.xmax * t.mx + t.bx;
+    this.ymin = this.ymin * t.my + t.by;
+    this.ymax = this.ymax * t.my + t.by;
+    this.update();
+    return this;
+  };
+
+  // Returns a Transform object for mapping this onto Bounds @b2
+  // @flipY (optional) Flip y-axis coords, for converting to/from pixel coords
+  //
+  Bounds.prototype.getTransform = function(b2, flipY) {
+    var t = new Transform();
+    t.mx = b2.width() / this.width() || 1; // TODO: better handling of 0 w,h
+    t.bx = b2.xmin - t.mx * this.xmin;
+    if (flipY) {
+      t.my = -b2.height() / this.height() || 1;
+      t.by = b2.ymax - t.my * this.ymin;
+    } else {
+      t.my = b2.height() / this.height() || 1;
+      t.by = b2.ymin - t.my * this.ymin;
+    }
+    return t;
+  };
+
+  Bounds.prototype.mergeCircle = function(x, y, r) {
+    if (r < 0) r = -r;
+    this.mergeBounds([x - r, y - r, x + r, y + r]);
+  };
+
+  Bounds.prototype.mergeBounds = function(bb) {
+    var a, b, c, d;
+    if (bb instanceof Bounds) {
+      a = bb.xmin;
+      b = bb.ymin;
+      c = bb.xmax;
+      d = bb.ymax;
+    } else if (arguments.length == 4) {
+      a = arguments[0];
+      b = arguments[1];
+      c = arguments[2];
+      d = arguments[3];
+    } else if (bb.length == 4) {
+      // assume array: [xmin, ymin, xmax, ymax]
+      a = bb[0];
+      b = bb[1];
+      c = bb[2];
+      d = bb[3];
+    } else {
+      error("Bounds#mergeBounds() invalid argument:", bb);
+    }
+
+    if (this.xmin === void 0) {
+      this.setBounds(a, b, c, d);
+    } else {
+      if (a < this.xmin) this.xmin = a;
+      if (b < this.ymin) this.ymin = b;
+      if (c > this.xmax) this.xmax = c;
+      if (d > this.ymax) this.ymax = d;
+    }
+    return this;
+  };
+
   // Lightweight hooks that make in-place mutations observable to GUI undo.
   // Normal CLI runs leave activeTransaction unset, so capture hooks are no-ops.
 
@@ -4438,6 +4830,597 @@
   function normalizeStrings(arr) {
     if (arr == null) return [];
     return Array.isArray(arr) ? arr.slice() : [arr];
+  }
+
+  var DEFAULT_MAX_PREVIEW_PIXELS = 4e6;
+
+  function getRasterGrid(raster) {
+    return raster && (raster.grid || raster);
+  }
+
+  function getRasterView(raster) {
+    return raster && (raster.view || raster);
+  }
+
+  function getRasterPreview(raster) {
+    var view = getRasterView(raster);
+    return view && (view.preview || raster.preview);
+  }
+
+  function getRasterBBox(raster) {
+    var grid = getRasterGrid(raster);
+    return grid && grid.bbox || raster && raster.bbox || null;
+  }
+
+  function getRasterTransform(raster) {
+    var grid = getRasterGrid(raster);
+    return grid && grid.transform || raster && raster.transform || null;
+  }
+
+  function getRasterWidth(raster) {
+    var grid = getRasterGrid(raster);
+    return grid && grid.width || 0;
+  }
+
+  function getRasterHeight(raster) {
+    var grid = getRasterGrid(raster);
+    return grid && grid.height || 0;
+  }
+
+  function getRasterBandCount(raster) {
+    var grid = getRasterGrid(raster);
+    return grid && grid.bands || 0;
+  }
+
+  function getRasterPixelType(raster) {
+    var grid = getRasterGrid(raster);
+    return grid && grid.pixelType || null;
+  }
+
+  function copyRasterData(raster) {
+    var copy = utils.extend({}, raster);
+    if (raster.grid) {
+      copy.grid = copyRasterGrid(raster.grid);
+    }
+    if (raster.view) {
+      copy.view = copyRasterView(raster.view);
+    }
+    if (raster.derivation) {
+      copy.derivation = utils.extend({}, raster.derivation);
+      if (raster.derivation.bands) copy.derivation.bands = copyObjectOrArray(raster.derivation.bands);
+    }
+    if (raster.source) copy.source = utils.extend({}, raster.source);
+
+    // Back-compat for the first raster model.
+    if (raster.pixels) copy.pixels = copyTypedArray(raster.pixels);
+    if (raster.preview) copy.preview = copyRasterPreview(raster.preview);
+    if (raster.bbox) copy.bbox = raster.bbox.concat();
+    if (raster.transform) copy.transform = copyObjectOrArray(raster.transform);
+    return copy;
+  }
+
+  function copyRasterGrid(grid) {
+    var copy = utils.extend({}, grid);
+    if (grid.samples) copy.samples = copyTypedArray(grid.samples);
+    if (grid.sampleBands) copy.sampleBands = grid.sampleBands.concat();
+    if (grid.bbox) copy.bbox = grid.bbox.concat();
+    if (grid.transform) copy.transform = copyObjectOrArray(grid.transform);
+    return copy;
+  }
+
+  function copyRasterView(view) {
+    var copy = utils.extend({}, view);
+    if (view.recipe) copy.recipe = copyObjectOrArray(view.recipe);
+    if (view.preview) copy.preview = copyRasterPreview(view.preview);
+    if (view.scalingStats) copy.scalingStats = copyObjectOrArray(view.scalingStats);
+    return copy;
+  }
+
+  function copyRasterPreview(preview) {
+    var copy = utils.extend({}, preview);
+    delete copy.canvas;
+    if (preview.pixels) copy.pixels = copyTypedArray(preview.pixels);
+    return copy;
+  }
+
+  function copyTypedArray(arr) {
+    if (Array.isArray(arr)) return arr.map(copyTypedArray);
+    return arr && arr.slice ? arr.slice() : arr;
+  }
+
+  function createRasterPreview(raster, opts) {
+    opts = opts || {};
+    var grid = getRasterGrid(raster);
+    var recipe = getRasterViewRecipe(grid, raster.view && raster.view.recipe, opts);
+    var stats = getRasterViewScalingStats(raster, recipe);
+    var maxPixels = opts.maxPixels || opts.raster_max_pixels || opts.rasterMaxPixels || DEFAULT_MAX_PREVIEW_PIXELS;
+    var scale = Math.min(1, Math.sqrt(maxPixels / (grid.width * grid.height)));
+    var width = Math.max(1, Math.round(grid.width * scale));
+    var height = Math.max(1, Math.round(grid.height * scale));
+    return renderRasterPreview(grid, recipe, width, height, stats);
+  }
+
+  function getRasterViewRecipe(grid, recipeArg, opts) {
+    var recipe = Object.assign({}, recipeArg || {});
+    var scaling = opts && opts.scaling || recipe.scaling || getDefaultRasterScaling(grid, recipe);
+    var scaleRange = opts && (opts.scale_range || opts.scaleRange) || recipe.scaleRange;
+    var percentileRange = opts && (opts.percentile_range || opts.percentileRange) || recipe.percentileRange;
+    if (scaling != 'none' && scaling != 'minmax' && scaling != 'percentile') {
+      stop('Unsupported raster scaling method:', scaling);
+    }
+    return Object.assign(recipe, {
+      type: recipe.type || (grid.bands >= 3 ? 'rgb' : 'gray'),
+      bands: recipe.bands || grid.sampleBands || null,
+      scaling: scaling,
+      scaleRange: parseRangeOption(scaleRange, [0, 100], 'scale-range'),
+      percentileRange: parseRangeOption(percentileRange, [2, 98], 'percentile-range')
+    });
+  }
+
+  function renderRasterPreview(grid, recipe, width, height, statsArg) {
+    recipe = getRasterViewRecipe(grid, recipe);
+    if (useFastRawEightBitRendering(grid, recipe)) {
+      return renderRawEightBitPreview(grid, width, height, null);
+    }
+    return renderRasterGridPreview(grid, recipe, width, height, statsArg || getRasterScalingStats(grid, recipe), null);
+  }
+
+  function renderRasterViewportPreview(grid, recipe, bbox, width, height, statsArg) {
+    recipe = getRasterViewRecipe(grid, recipe);
+    if (!intersectBboxes(grid.bbox, bbox)) return null;
+    if (useFastRawEightBitRendering(grid, recipe)) {
+      return Object.assign(renderRawEightBitPreview(grid, width, height, bbox), {
+        bbox: bbox.concat()
+      });
+    }
+    return Object.assign(renderRasterGridPreview(grid, recipe, width, height, statsArg || getRasterScalingStats(grid, recipe), bbox), {
+      bbox: bbox.concat()
+    });
+  }
+
+  function getRasterScalingStats(grid, recipe) {
+    recipe = getRasterViewRecipe(grid, recipe);
+    return getScalingStats(grid.samples, grid.bands, grid.nodata, recipe);
+  }
+
+  function getRasterViewScalingStats(raster, recipeArg) {
+    var grid = getRasterGrid(raster);
+    var view = getRasterView(raster);
+    var recipe = getRasterViewRecipe(grid, recipeArg || view && view.recipe);
+    var key, cached, stats;
+    if (recipe.scaling == 'none') return null;
+    key = getRasterScalingStatsKey(grid, recipe);
+    cached = view && view.scalingStats;
+    if (cached && cached.key == key) return cached.stats;
+    stats = getRasterScalingStats(grid, recipe);
+    if (view) {
+      view.scalingStats = {
+        key: key,
+        stats: stats
+      };
+    }
+    return stats;
+  }
+
+  function renderRasterGridPreview(grid, recipe, width, height, statsArg, sourceBbox) {
+    var samples = grid.samples;
+    var bands = grid.bands;
+    var noData = grid.nodata;
+    var pixels = new Uint8ClampedArray(width * height * 4);
+    var stats = statsArg || getScalingStats(samples, bands, noData, recipe);
+    var sourceRange = recipe.scaling == 'none' ? getPixelTypeRange(grid.pixelType) : null;
+    var displayRange = getDisplayRange(recipe.scaleRange);
+    var src, dest, val, isNoData, j;
+    for (var y = 0; y < height; y++) {
+      for (var x = 0; x < width; x++) {
+        src = getPreviewSourceOffset(grid, sourceBbox, x, y, width, height, bands);
+        dest = (y * width + x) * 4;
+        isNoData = noData !== null && noData !== undefined && allSamplesAreNoData(samples, src, bands, noData);
+        if (bands == 1) {
+          val = scaleSample(samples[src], stats && stats[0], sourceRange, displayRange);
+          pixels[dest] = val;
+          pixels[dest + 1] = val;
+          pixels[dest + 2] = val;
+          pixels[dest + 3] = isNoData ? 0 : 255;
+        } else {
+          for (j = 0; j < 3; j++) {
+            pixels[dest + j] = scaleSample(samples[src + j], stats && stats[j], sourceRange, displayRange);
+          }
+          pixels[dest + 3] = isNoData ? 0 : bands >= 4 ? scaleSample(samples[src + 3], stats && stats[3], sourceRange, [0, 255]) : 255;
+        }
+      }
+    }
+    return {
+      width: width,
+      height: height,
+      bands: 4,
+      pixelType: 'uint8',
+      colorModel: 'rgba',
+      pixels: pixels
+    };
+  }
+
+  function renderRawEightBitPreview(grid, width, height, sourceBbox) {
+    var samples = grid.samples;
+    var bands = grid.bands;
+    var pixels = new Uint8ClampedArray(width * height * 4);
+    var src, dest, val;
+    for (var y = 0; y < height; y++) {
+      for (var x = 0; x < width; x++) {
+        src = getPreviewSourceOffset(grid, sourceBbox, x, y, width, height, bands);
+        dest = (y * width + x) * 4;
+        if (bands == 1) {
+          val = samples[src];
+          pixels[dest] = val;
+          pixels[dest + 1] = val;
+          pixels[dest + 2] = val;
+          pixels[dest + 3] = 255;
+        } else {
+          pixels[dest] = samples[src];
+          pixels[dest + 1] = samples[src + 1];
+          pixels[dest + 2] = samples[src + 2];
+          pixels[dest + 3] = bands >= 4 ? samples[src + 3] : 255;
+        }
+      }
+    }
+    return {
+      width: width,
+      height: height,
+      bands: 4,
+      pixelType: 'uint8',
+      colorModel: 'rgba',
+      pixels: pixels
+    };
+  }
+
+  function getPreviewSourceOffset(grid, sourceBbox, x, y, width, height, bands) {
+    var sx, sy, mapX, mapY, rb;
+    if (!sourceBbox) {
+      sy = Math.min(grid.height - 1, Math.floor((y + 0.5) * grid.height / height));
+      sx = Math.min(grid.width - 1, Math.floor((x + 0.5) * grid.width / width));
+    } else {
+      rb = grid.bbox;
+      mapX = sourceBbox[0] + (x + 0.5) / width * (sourceBbox[2] - sourceBbox[0]);
+      mapY = sourceBbox[3] - (y + 0.5) / height * (sourceBbox[3] - sourceBbox[1]);
+      sx = Math.max(0, Math.min(grid.width - 1, Math.floor((mapX - rb[0]) / (rb[2] - rb[0]) * grid.width)));
+      sy = Math.max(0, Math.min(grid.height - 1, Math.floor((rb[3] - mapY) / (rb[3] - rb[1]) * grid.height)));
+    }
+    return (sy * grid.width + sx) * bands;
+  }
+
+  function clipRasterToBBox(lyr, bbox, opts) {
+    var raster = lyr.raster;
+    var grid = getRasterGrid(raster);
+    var clipBbox = intersectBboxes(grid.bbox, bbox);
+    if (!clipBbox) {
+      warn('Raster clipping rectangle does not intersect the raster layer');
+      return false;
+    }
+    var crop = getRasterCrop(grid, clipBbox);
+    if (crop.width === 0 || crop.height === 0) {
+      warn('Raster clipping rectangle does not intersect the raster layer');
+      return false;
+    }
+    noteLayerWillChange(lyr, {operation: 'clipRasterToBBox', unit: 'raster'});
+    raster.grid = cropRasterGrid(grid, crop, clipBbox);
+    raster.view = raster.view || {};
+    raster.view.preview = createRasterPreview(raster, opts || {});
+    clearLegacyRasterFields(raster);
+    markLayerChanged(lyr, {operation: 'clipRasterToBBox', unit: 'raster'});
+    return true;
+  }
+
+  function intersectBboxes(a, b) {
+    var bbox = [
+      Math.max(a[0], b[0]),
+      Math.max(a[1], b[1]),
+      Math.min(a[2], b[2]),
+      Math.min(a[3], b[3])
+    ];
+    return bbox[2] <= bbox[0] || bbox[3] <= bbox[1] ? null : bbox;
+  }
+
+  function getRasterCrop(grid, bbox) {
+    var rb = grid.bbox;
+    var x0 = Math.max(0, Math.floor((bbox[0] - rb[0]) / (rb[2] - rb[0]) * grid.width));
+    var x1 = Math.min(grid.width, Math.ceil((bbox[2] - rb[0]) / (rb[2] - rb[0]) * grid.width));
+    var y0 = Math.max(0, Math.floor((rb[3] - bbox[3]) / (rb[3] - rb[1]) * grid.height));
+    var y1 = Math.min(grid.height, Math.ceil((rb[3] - bbox[1]) / (rb[3] - rb[1]) * grid.height));
+    return {
+      x: x0,
+      y: y0,
+      width: Math.max(0, x1 - x0),
+      height: Math.max(0, y1 - y0)
+    };
+  }
+
+  function cropRasterGrid(grid, crop, bbox) {
+    var samples = new grid.samples.constructor(crop.width * crop.height * grid.bands);
+    var rowCount = crop.width * grid.bands;
+    var src, dest;
+    for (var y = 0; y < crop.height; y++) {
+      src = ((crop.y + y) * grid.width + crop.x) * grid.bands;
+      dest = y * rowCount;
+      samples.set(grid.samples.subarray(src, src + rowCount), dest);
+    }
+    return Object.assign({}, grid, {
+      width: crop.width,
+      height: crop.height,
+      samples: samples,
+      bbox: bbox,
+      transform: updateTransformForBBox(grid.transform, bbox, crop.width, crop.height)
+    });
+  }
+
+  function getRasterLayerBounds(lyr) {
+    var bbox = lyr.raster && getRasterBBox(lyr.raster);
+    return bbox && bbox.length == 4 ? new Bounds(bbox) : null;
+  }
+
+  function requireRasterLayer(lyr) {
+    if (!lyr || !lyr.raster_type || !lyr.raster) {
+      stop('Expected a raster layer');
+    }
+  }
+
+  function clearLegacyRasterFields(raster) {
+    delete raster.width;
+    delete raster.height;
+    delete raster.bands;
+    delete raster.pixelType;
+    delete raster.nodata;
+    delete raster.bbox;
+    delete raster.transform;
+    delete raster.colorModel;
+    delete raster.preview;
+    delete raster.pixels;
+  }
+
+  function updateTransformForBBox(transform, bbox, width, height) {
+    if (!transform) return null;
+    return [
+      (bbox[2] - bbox[0]) / width,
+      0,
+      bbox[0],
+      0,
+      -(bbox[3] - bbox[1]) / height,
+      bbox[3]
+    ];
+  }
+
+  function getBandStats(data, bands, noData) {
+    var stats = [];
+    for (var band = 0; band < bands; band++) {
+      stats[band] = getSingleBandStats(data, bands, band, noData);
+    }
+    return stats;
+  }
+
+  function getSingleBandStats(data, bands, band, noData) {
+    var min = Infinity;
+    var max = -Infinity;
+    var val;
+    for (var i = band; i < data.length; i += bands) {
+      val = data[i];
+      if (!isValidBandValue(val, noData)) continue;
+      if (val < min) min = val;
+      if (val > max) max = val;
+    }
+    return min < Infinity && max > min ? {min: min, max: max} : {min: 0, max: 255};
+  }
+
+  function getSharedBandStats(data, bands, noData) {
+    var stats = getBandStats(data, bands, noData);
+    var min = Math.min(stats[0].min, stats[1].min, stats[2].min);
+    var max = Math.max(stats[0].max, stats[1].max, stats[2].max);
+    var shared = max > min ? {min: min, max: max} : {min: 0, max: 255};
+    stats[0] = stats[1] = stats[2] = shared;
+    return stats;
+  }
+
+  function getScalingStats(data, bands, noData, recipe) {
+    var shared = recipe.type == 'rgb' && bands >= 3;
+    if (recipe.scaling == 'minmax') {
+      return shared ? getSharedBandStats(data, bands, noData) : getBandStats(data, bands, noData);
+    }
+    if (recipe.scaling == 'percentile') {
+      return shared ? getSharedPercentileStats(data, bands, noData, recipe.percentileRange) :
+        getBandPercentileStats(data, bands, noData, recipe.percentileRange);
+    }
+    return null;
+  }
+
+  function scaleSample(val, stats, sourceRange, displayRange) {
+    var range = stats || sourceRange || {min: 0, max: 255};
+    var pct = range.max > range.min ? (val - range.min) / (range.max - range.min) : 0;
+    var scaled = displayRange[0] + pct * (displayRange[1] - displayRange[0]);
+    return Math.max(0, Math.min(255, Math.round(scaled)));
+  }
+
+  function getDefaultRasterScaling(grid, recipe) {
+    return isEightBitPixelType(grid.pixelType) ? 'none' : 'percentile';
+  }
+
+  function parseRangeOption(val, def, name) {
+    var range;
+    if (val == null || val === '') return def;
+    range = Array.isArray(val) ? val : String(val).split(',');
+    if (range.length != 2) {
+      stop('Expected ' + name + '= to contain two comma-separated numbers');
+    }
+    range = range.map(Number);
+    if (!isFinite(range[0]) || !isFinite(range[1]) || range[0] < 0 || range[1] > 100 || range[1] < range[0]) {
+      stop('Expected ' + name + '= values between 0 and 100');
+    }
+    return range;
+  }
+
+  function getDisplayRange(scaleRange) {
+    return [
+      scaleRange[0] / 100 * 255,
+      scaleRange[1] / 100 * 255
+    ];
+  }
+
+  function getPixelTypeRange(pixelType) {
+    switch (pixelType) {
+      case 'uint8': return {min: 0, max: 255};
+      case 'uint16': return {min: 0, max: 65535};
+      case 'uint32': return {min: 0, max: 4294967295};
+      case 'int8': return {min: -128, max: 127};
+      case 'int16': return {min: -32768, max: 32767};
+      case 'int32': return {min: -2147483648, max: 2147483647};
+    }
+    return null;
+  }
+
+  function isEightBitPixelType(pixelType) {
+    return pixelType == 'uint8' || pixelType == 'int8';
+  }
+
+  function useFastRawEightBitRendering(grid, recipe) {
+    return grid.pixelType == 'uint8' &&
+      recipe.scaling == 'none' &&
+      recipe.scaleRange[0] === 0 &&
+      recipe.scaleRange[1] === 100 &&
+      (recipe.type == 'gray' && grid.bands == 1 || recipe.type == 'rgb' && grid.bands >= 3) &&
+      (grid.nodata === null || grid.nodata === undefined);
+  }
+
+  function getRasterScalingStatsKey(grid, recipe) {
+    return [
+      grid.width,
+      grid.height,
+      grid.bands,
+      grid.pixelType,
+      grid.samples && grid.samples.length,
+      grid.nodata,
+      recipe.type,
+      recipe.scaling,
+      recipe.scaleRange && recipe.scaleRange.join(','),
+      recipe.percentileRange && recipe.percentileRange.join(',')
+    ].join('|');
+  }
+
+  function getBandPercentileStats(data, bands, noData, range) {
+    var stats = [];
+    for (var band = 0; band < bands; band++) {
+      stats[band] = getPercentileStats(data, bands, [band], noData, range);
+    }
+    return stats;
+  }
+
+  function getSharedPercentileStats(data, bands, noData, range) {
+    var stats = getBandPercentileStats(data, bands, noData, range);
+    var shared = getPercentileStats(data, bands, [0, 1, 2], noData, range);
+    stats[0] = stats[1] = stats[2] = shared;
+    return stats;
+  }
+
+  function getPercentileStats(data, bands, bandIds, noData, range) {
+    var integerRange = getSmallIntegerRange(data);
+    return integerRange ?
+      getHistogramPercentileStats(data, bands, bandIds, noData, range, integerRange) :
+      getApproxHistogramPercentileStats(data, bands, bandIds, noData, range);
+  }
+
+  function getSmallIntegerRange(data) {
+    if (data instanceof Uint8Array || data instanceof Uint8ClampedArray) return {min: 0, max: 255};
+    if (data instanceof Int8Array) return {min: -128, max: 127};
+    if (data instanceof Uint16Array) return {min: 0, max: 65535};
+    if (data instanceof Int16Array) return {min: -32768, max: 32767};
+    return null;
+  }
+
+  function getHistogramPercentileStats(data, bands, bandIds, noData, range, integerRange) {
+    var counts = new Uint32Array(integerRange.max - integerRange.min + 1);
+    var count = 0, val;
+    forEachBandValue(data, bands, bandIds, noData, function(v) {
+      val = v - integerRange.min;
+      counts[val]++;
+      count++;
+    });
+    return count > 0 ? {
+      min: getHistogramPercentileValue(counts, integerRange.min, count, range[0]),
+      max: getHistogramPercentileValue(counts, integerRange.min, count, range[1])
+    } : {min: 0, max: 255};
+  }
+
+  function getApproxHistogramPercentileStats(data, bands, bandIds, noData, range) {
+    var bounds = getBandValueBounds(data, bands, bandIds, noData);
+    var binCount = 65536;
+    var counts, count, scale, maxBin;
+    if (!bounds || bounds.max <= bounds.min) {
+      return bounds || {min: 0, max: 255};
+    }
+    counts = new Uint32Array(binCount);
+    count = 0;
+    scale = (binCount - 1) / (bounds.max - bounds.min);
+    maxBin = binCount - 1;
+    forEachBandValue(data, bands, bandIds, noData, function(val) {
+      counts[Math.max(0, Math.min(maxBin, Math.floor((val - bounds.min) * scale)))]++;
+      count++;
+    });
+    return count > 0 ? {
+      min: getApproxHistogramPercentileValue(counts, bounds, count, range[0]),
+      max: getApproxHistogramPercentileValue(counts, bounds, count, range[1])
+    } : {min: 0, max: 255};
+  }
+
+  function getBandValueBounds(data, bands, bandIds, noData) {
+    var min = Infinity;
+    var max = -Infinity;
+    forEachBandValue(data, bands, bandIds, noData, function(val) {
+      if (val < min) min = val;
+      if (val > max) max = val;
+    });
+    return min < Infinity ? {min: min, max: max} : null;
+  }
+
+  function getHistogramPercentileValue(counts, offset, count, pct) {
+    var target = getPercentileRank(count, pct);
+    var sum = 0;
+    for (var i = 0; i < counts.length; i++) {
+      sum += counts[i];
+      if (sum > target) return i + offset;
+    }
+    return counts.length - 1 + offset;
+  }
+
+  function getApproxHistogramPercentileValue(counts, bounds, count, pct) {
+    var bin = getHistogramPercentileValue(counts, 0, count, pct);
+    return bounds.min + bin / (counts.length - 1) * (bounds.max - bounds.min);
+  }
+
+  function forEachBandValue(data, bands, bandIds, noData, cb) {
+    var val;
+    for (var i = 0; i < data.length; i += bands) {
+      for (var j = 0; j < bandIds.length; j++) {
+        val = data[i + bandIds[j]];
+        if (!isValidBandValue(val, noData)) continue;
+        cb(val);
+      }
+    }
+  }
+
+  function isValidBandValue(val, noData) {
+    return isFinite(val) && (noData === null || noData === undefined || val != noData);
+  }
+
+  function getPercentileRank(count, pct) {
+    return Math.max(0, Math.min(count - 1, Math.floor((count - 1) * pct / 100)));
+  }
+
+  function allSamplesAreNoData(data, offset, bands, noData) {
+    var n = Math.min(bands, 3);
+    for (var i = 0; i < n; i++) {
+      if (data[offset + i] != noData) return false;
+    }
+    return true;
+  }
+
+  function copyObjectOrArray(obj) {
+    return obj && obj.concat ? obj.concat() : utils.extend({}, obj);
   }
 
   function UndoTransaction(label) {
@@ -4652,6 +5635,8 @@
         detail: copyDetail(detail),
         name: layer.name,
         geometry_type: layer.geometry_type,
+        raster_type: layer.raster_type || null,
+        raster: layer.raster ? copyRasterData(layer.raster) : null,
         shapes: layer.shapes ? cloneShapes(layer.shapes) : null,
         data: layer.data || null
       });
@@ -4945,6 +5930,8 @@
       revision: getUndoRevision(unit.target),
       name: unit.target.name,
       geometry_type: unit.target.geometry_type,
+      raster_type: unit.target.raster_type || null,
+      raster: unit.target.raster ? copyRasterData(unit.target.raster) : null,
       shapes: unit.target.shapes ? cloneShapes(unit.target.shapes) : null,
       data: unit.target.data || null
     });
@@ -5071,6 +6058,8 @@
   function restoreLayer(unit) {
     unit.target.name = unit.name;
     unit.target.geometry_type = unit.geometry_type;
+    unit.target.raster_type = unit.raster_type || null;
+    unit.target.raster = unit.raster ? copyRasterData(unit.raster) : null;
     unit.target.shapes = unit.shapes ? cloneShapes(unit.shapes) : null;
     unit.target.data = unit.data;
   }
@@ -5177,7 +6166,7 @@
     'table-schema': ['fields'],
     arcs: ['nn', 'xx', 'yy', 'zz', 'zlimit'],
     'arcs-simplification': ['zz'],
-    layer: ['shapes']
+    layer: ['shapes', 'raster']
   };
 
   async function storeUndoUnits(units, store, entryId, role) {
@@ -5282,7 +6271,17 @@
       }
     });
     if (!hasPayload) return null;
+    if (unit.type == 'layer') return packLayerPayload(payload);
     return unit.type == 'table' ? packTablePayload(payload) : payload;
+  }
+
+  async function packLayerPayload(payload) {
+    if (payload.raster) {
+      payload = Object.assign({}, payload, {
+        raster: packRasterUndoPayload(payload.raster)
+      });
+    }
+    return payload;
   }
 
   async function packTablePayload(payload) {
@@ -5297,7 +6296,44 @@
         records: unpackRecordsFromColumns(payload.packedRecords)
       };
     }
+    if (unit.type == 'layer' && payload.raster) {
+      return Object.assign({}, payload, {
+        raster: unpackRasterUndoPayload(payload.raster)
+      });
+    }
     return payload;
+  }
+
+  function packRasterUndoPayload(raster) {
+    var copy = Object.assign({}, raster);
+    if (raster.view) {
+      copy.view = Object.assign({}, raster.view);
+      if (raster.view.preview) {
+        copy.view.preview = stripPreviewPixels(raster.view.preview);
+      }
+    }
+    if (raster.preview) {
+      copy.preview = stripPreviewPixels(raster.preview);
+    }
+    return copy;
+  }
+
+  function unpackRasterUndoPayload(raster) {
+    var copy = Object.assign({}, raster);
+    if (raster.view) {
+      copy.view = Object.assign({}, raster.view);
+      if (raster.view.preview && !raster.view.preview.pixels && raster.grid && raster.grid.samples) {
+        copy.view.preview = renderRasterPreview(raster.grid, raster.view.recipe, raster.view.preview.width, raster.view.preview.height);
+      }
+    }
+    return copy;
+  }
+
+  function stripPreviewPixels(preview) {
+    var copy = Object.assign({}, preview);
+    delete copy.canvas;
+    delete copy.pixels;
+    return copy;
   }
 
   function packRecordsAsColumns(records) {
@@ -5458,7 +6494,15 @@
       if (!gui.undoPayloadStore) {
         gui.undoPayloadStore = createUndoPayloadStore(getUndoPayloadStoreOptions());
         gui.undoPayloadStore.startLifecycle();
-        gui.undoPayloadStore.cleanupStaleSessions();
+        gui.undoPayloadStore.cleanupStaleSessions().then(function(result) {
+          logStartupCleanup({
+            count: result.keys.length,
+            sessionCount: result.sessionCount,
+            singular: 'undo payload',
+            plural: 'undo payloads',
+            sizeBytes: result.sizeBytes
+          });
+        }).catch(function() {});
       }
       return gui.undoPayloadStore;
     }
@@ -5496,6 +6540,7 @@
       delete copy.zz;
       delete copy.zlimit;
       delete copy.shapes;
+      delete copy.raster;
       if (copy.type != 'table-records') delete copy.records;
       if (copy.type != 'table-fields') delete copy.columns;
       delete copy.fields;
@@ -5717,6 +6762,7 @@
 
   var geopackagePromise = null;
   var geoParquetPromise = null;
+  var geoTIFFPromise = null;
 
   async function loadGeopackageLib() {
     if (!window.modules || !window.modules['@ngageoint/geopackage']) {
@@ -5758,6 +6804,135 @@
       await geoParquetPromise;
       geoParquetPromise = null;
     }
+  }
+
+  async function loadGeoTIFFLib() {
+    if (!window.modules || !window.modules.geotiff) {
+      if (!geoTIFFPromise) {
+        geoTIFFPromise = loadScript('geotiff.js');
+      }
+      await geoTIFFPromise;
+      geoTIFFPromise = null;
+    }
+  }
+
+  var idb = require$1('idb-keyval');
+  var KEY_PREFIX = 'msr';
+  var SESSION_KEY = 'mapshaper_raster_source_sessions';
+  var lifecycle = createTempSessionLifecycle({
+    prefix: 'raster',
+    sessionKey: SESSION_KEY
+  });
+  var sessionId = lifecycle.getSessionId();
+  var ownKeys = new Set();
+  var sourceCount = 0;
+  var sampleCount = 0;
+  var lifecycleStarted = false;
+
+  async function persistRasterSourceForDataset(dataset, group) {
+    if (!idb) return;
+    var source = getRasterSourceFile(group);
+    var sourceKey = source && source.content ?
+        await persistRasterSourceBytes(dataset, source) : null;
+    await persistRasterLayerSamples(dataset);
+    lifecycle.touch();
+    return sourceKey;
+  }
+
+  function getRasterSourceFile(group) {
+    return group && (group.geotiff || group.png || group.jpeg) || null;
+  }
+
+  function startRasterSourceStoreLifecycle() {
+    if (lifecycleStarted || !idb) return;
+    lifecycleStarted = true;
+    lifecycle.start(attemptOwnSourceDeletion);
+    cleanupStaleRasterSources().then(function(result) {
+      logStartupCleanup({
+        count: result.keys.length,
+        sessionCount: result.sessionCount,
+        singular: 'raster temp file',
+        plural: 'raster temp files'
+      });
+    }).catch(function() {});
+  }
+
+  async function cleanupStaleRasterSources() {
+    if (!idb) return {keys: [], sessionCount: 0};
+    var liveSessions = lifecycle.getLiveSessions();
+    var keys = await idb.keys();
+    var doomedSessions = new Set();
+    var doomedKeys = keys.filter(function(key) {
+      var sid = getSessionFromKey(key);
+      var stale = isRasterSourceKey(key) && !liveSessions[sid];
+      if (stale && sid) doomedSessions.add(sid);
+      return stale;
+    });
+    if (doomedKeys.length > 0) {
+      await idb.delMany(doomedKeys);
+    }
+    return {
+      keys: doomedKeys,
+      sessionCount: doomedSessions.size
+    };
+  }
+
+  function makeRasterSourceKey(filename) {
+    sourceCount++;
+    return [KEY_PREFIX, sessionId, 'source', sourceCount, filename || 'raster'].join(':');
+  }
+
+  function makeRasterSamplesKey(layerName) {
+    sampleCount++;
+    return [KEY_PREFIX, sessionId, 'samples', sampleCount, layerName || 'raster'].join(':');
+  }
+
+  async function persistRasterSourceBytes(dataset, sourceFile) {
+    var key = makeRasterSourceKey(sourceFile.filename);
+    await idb.set(key, sourceFile.content);
+    ownKeys.add(key);
+    if (dataset.info && dataset.info.raster_sources) {
+      dataset.info.raster_sources.forEach(function(source) {
+        source.storage = 'indexeddb';
+        source.key = key;
+      });
+    }
+    return key;
+  }
+
+  async function persistRasterLayerSamples(dataset) {
+    var promises = [];
+    dataset.layers.forEach(function(lyr) {
+      var grid = lyr.raster && getRasterGrid(lyr.raster);
+      var key;
+      if (!grid || !grid.samples) return;
+      key = makeRasterSamplesKey(lyr.name);
+      ownKeys.add(key);
+      grid.storage = {
+        type: 'indexeddb',
+        key: key
+      };
+      promises.push(idb.set(key, grid.samples));
+    });
+    await Promise.all(promises);
+  }
+
+  function attemptOwnSourceDeletion() {
+    var keys = Array.from(ownKeys);
+    ownKeys.clear();
+    if (keys.length === 0) return;
+    try {
+      idb.delMany(keys).catch(function() {});
+    } catch(e) {}
+  }
+
+  function isRasterSourceKey(key) {
+    return typeof key == 'string' && key.indexOf(KEY_PREFIX + ':') === 0;
+  }
+
+  function getSessionFromKey(key) {
+    var parts = String(key).split(':');
+    return parts.length > 4 && parts[0] == KEY_PREFIX ? parts[1] : null;
   }
 
   // @cb function(<FileList>)
@@ -6200,7 +7375,10 @@
       if (group.parquet) {
         await loadGeoParquetLib();
       }
-      if (group.gpkg || group.fgb || group.parquet) {
+      if (group.geotiff) {
+        await loadGeoTIFFLib();
+      }
+      if (group.gpkg || group.fgb || group.parquet || group.geotiff || group.png || group.jpeg) {
         dataset = await internal.importContentAsync(group, importOpts);
       } else {
         dataset = internal.importContent(group, importOpts);
@@ -6211,6 +7389,7 @@
         if (group.layername) {
           d.layers.forEach(lyr => lyr.name = group.layername);
         }
+        await persistRasterSourceForDataset(d, group);
         // TODO: add popup here
         // save import options for use by repair control, etc.
         d.info.import_options = importOpts;
@@ -6231,7 +7410,8 @@
     function filesMayContainPaths(files) {
       return utils$1.some(files, function(f) {
           var type = internal.guessInputFileType(f.name);
-          return type == 'shp' || type == 'json' || type == 'gpkg' || type == 'parquet' || internal.isZipFile(f.name);
+          return type == 'shp' || type == 'json' || type == 'gpkg' || type == 'parquet' ||
+              type == 'png' || type == 'jpeg' || internal.isZipFile(f.name);
       });
     }
 
@@ -6243,6 +7423,10 @@
 
     function isShapefilePart(name) {
       return /\.(shp|shx|dbf|prj|cpg)$/i.test(name);
+    }
+
+    function isRasterImagePart(name) {
+      return /\.(png|jpg|jpeg|tfw|pgw|pngw|jgw|jpw|jpgw|jpegw|wld|prj)$/i.test(name);
     }
 
     function readImportOpts() {
@@ -6569,10 +7753,17 @@
         return data.some(d => fileKey(d) == shpKey);
       }
 
+      function hasRasterImage(basename) {
+        return data.some(d => {
+          var type = fileType(d);
+          return (type == 'png' || type == 'jpeg') && fileBase(d) == basename;
+        });
+      }
+
       data.forEach(d => {
         var basename = fileBase(d);
         var type = fileType(d);
-        if (type == 'shp' || !isShapefilePart(d.name)) {
+        if (type == 'shp') {
           d.group = key(basename, type);
           d.filename = d.name;
         } else if (hasShp(basename)) {
@@ -6580,6 +7771,12 @@
         } else if (type == 'dbf') {
           d.filename = d.name;
           d.group = key(basename, 'dbf');
+        } else if ((type == 'png' || type == 'jpeg') || isRasterImagePart(d.name) && hasRasterImage(basename)) {
+          d.group = key(basename, type == 'png' || type == 'jpeg' ? type : getRasterImageGroupType(data, basename));
+          if (type == 'png' || type == 'jpeg') d.filename = d.name;
+        } else if (!isShapefilePart(d.name)) {
+          d.group = key(basename, type);
+          d.filename = d.name;
         } else {
           // shapefile part without a .shp file
           d.group = null;
@@ -6605,6 +7802,14 @@
         if (d.filename) g.filename = d.filename;
       });
       return groups;
+    }
+
+    function getRasterImageGroupType(data, basename) {
+      var match = data.find(d => {
+        var type = fileType(d);
+        return (type == 'png' || type == 'jpeg') && fileBase(d) == basename;
+      });
+      return match ? fileType(match) : null;
     }
   }
 
@@ -6733,11 +7938,18 @@
 
     function message() {
       var msg = GUI.formatMessageArgs(arguments);
-      if (!gui.notify) {
+      if (gui.notify && messageShouldGoToInbox(msg)) {
+        gui.notify({
+          severity: 'info',
+          body: msg,
+          dedupKey: 'info:' + msg
+        });
+      } else if (!gui.notify) {
         // Fallback for early messages before MessageControl is constructed
         gui.message(msg);
+      } else {
+        internal.logArgs(arguments);
       }
-      internal.logArgs(arguments);
     }
 
     // CLI warnings used to surface as modal alerts, which interrupt the user
@@ -6753,6 +7965,10 @@
     }
 
     internal.setLoggingFunctions(message, error, stop, warn);
+  }
+
+  function messageShouldGoToInbox(msg) {
+    return /^GeoTIFF renditions:/.test(msg);
   }
 
   function WriteFilesProxy(gui) {
@@ -7199,7 +8415,7 @@
     var sourceCRS;
     var emptyArcs;
 
-    if (displayCRS && layer.geometry_type) {
+    if (displayCRS && (layer.geometry_type || internal.layerHasRaster(layer))) {
       var crsInfo = getDatasetCrsInfo(dataset);
       if (crsInfo.error) {
         // unprojectable dataset -- return empty layer
@@ -7240,6 +8456,15 @@
 
     if (gui.unprojectable) {
       gui.displayLayer = {shapes: []}; // TODO: improve
+    } else if (internal.layerHasRaster(layer)) {
+      gui.geographic = true;
+      gui.displayLayer = layer;
+      if (needReprojectionForDisplay(sourceCRS, displayCRS)) {
+        // Raster warping is not supported yet; hide rather than misplace pixels.
+        gui.unprojectable = true;
+        gui.displayLayer = {shapes: []};
+        notifyRasterReprojectionBlocked(layer, opts);
+      }
     } else if (layer.geometry_type) {
       gui.geographic = true;
       gui.displayLayer = layer;
@@ -7271,8 +8496,19 @@
     layer.gui = gui;
   }
 
+  function notifyRasterReprojectionBlocked(layer, opts) {
+    if (!opts.notify) return;
+    opts.notify({
+      severity: 'warn',
+      title: 'Raster layer hidden',
+      body: 'The raster layer "' + (layer.name || '[unnamed]') +
+        '" cannot be displayed in the current map projection because raster reprojection is not supported yet.',
+      dedupKey: 'raster-reprojection-blocked:' + (layer.menu_id || layer.name || '')
+    });
+  }
+
   function getDisplayBounds(lyr, arcs) {
-    var bounds = internal.getLayerBounds(lyr, arcs) || new Bounds();
+    var bounds = internal.getLayerBounds(lyr, arcs) || new Bounds$1();
     if (lyr.geometry_type == 'point' && arcs && bounds.hasBounds() && bounds.area() > 0 === false) {
       // if a point layer has no extent (e.g. contains only a single point),
       // then merge with arc bounds, to place the point in context.
@@ -8650,7 +9886,9 @@
         title.textContent = 'Layer: ' + (info.layer_name || '[unnamed layer]');
         section.appendChild(title);
         section.appendChild(renderKeyValueTable(getInfoRows(info), 'console-info-table'));
-        section.appendChild(renderAttributeInfoTable(info.attribute_data));
+        if (!info.raster_type) {
+          section.appendChild(renderAttributeInfoTable(info.attribute_data));
+        }
         container.appendChild(section);
       });
       return container;
@@ -8658,13 +9896,18 @@
 
     function getInfoRows(info) {
       var rows = [
-        ['Type', info.geometry_type || 'tabular data'],
-        ['Records', utils$1.format('%,d', info.feature_count)]
+        ['Type', info.raster_type ? 'raster data' : info.geometry_type || 'tabular data']
       ];
+      if (info.raster_type) {
+        rows.push(['Size', utils$1.format('%,d x %,d x %,d', info.raster_width, info.raster_height, info.raster_bands)]);
+        rows.push(['Data', info.raster_pixel_type || 'unknown']);
+      } else {
+        rows.push(['Records', utils$1.format('%,d', info.feature_count)]);
+      }
       if (info.null_shape_count > 0) {
         rows.push(['Nulls', utils$1.format("%'d", info.null_shape_count)]);
       }
-      if (info.geometry_type && info.feature_count > info.null_shape_count) {
+      if (info.raster_type || info.geometry_type && info.feature_count > info.null_shape_count) {
         rows.push(['Bounds', info.bbox.join(',')]);
         rows.push(['CRS', info.proj4]);
       }
@@ -8782,7 +10025,7 @@
   }
 
   function getBoundsIntersection(a, b) {
-    var c = new Bounds();
+    var c = new Bounds$1();
     if (a.intersects(b)) {
       c.setBounds(Math.max(a.xmin, b.xmin), Math.max(a.ymin, b.ymin),
       Math.min(a.xmax, b.xmax), Math.min(a.ymax, b.ymax));
@@ -9065,16 +10308,17 @@
           } else {
             // stack seems to change if Error is logged directly
             console.error(err.stack);
-            var msg = 'Export failed for an unknown reason';
-            if (err.name == 'UserError') {
-              msg = err.message;
-            }
-            gui.alert(msg, 'Export failed');
+            gui.alert(getExportErrorMessage(err), 'Export failed');
           }
         }).finally(function() {
           gui.clearProgressMessage();
         });
       }, 20);
+    }
+
+    function getExportErrorMessage(err) {
+      if (err && err.message) return err.message;
+      return 'Export failed for an unknown reason';
     }
 
     function getExportOpts() {
@@ -9232,9 +10476,11 @@
     }
 
     function getDefaultExportFormat() {
-      var dataset = model.getActiveLayer().dataset;
+      var active = model.getActiveLayer();
+      var dataset = active.dataset;
       var inputFmt = dataset.info && dataset.info.input_formats &&
           dataset.info.input_formats[0];
+      if (active.layer && internal.layerHasRaster(active.layer)) return 'svg';
       return getExportFormats().includes(inputFmt) ? inputFmt : 'geojson';
     }
 
@@ -9913,9 +11159,13 @@
         type = 'data record';
       } else if (lyr.geometry_type) {
         type = lyr.geometry_type + ' feature';
+      } else if (internal.layerHasRaster(lyr)) {
+        type = 'raster layer';
       }
       if (isFrame) {
         str = 'map frame';
+      } else if (internal.layerHasRaster(lyr)) {
+        str = utils$1.format('%,d x %,d %s', getRasterWidth(lyr.raster), getRasterHeight(lyr.raster), type);
       } else if (type) {
         str = utils$1.format('%,d %s%s', n, type, utils$1.pluralSuffix(n));
       } else {
@@ -9950,7 +11200,7 @@
     }
 
     function isPinnable(lyr) {
-      return internal.layerIsGeometric(lyr) || internal.layerHasFurniture(lyr);
+      return internal.layerIsGeometric(lyr) || internal.layerHasRaster(lyr) || internal.layerHasFurniture(lyr);
     }
 
     function rowHTML(c1, c2, cname) {
@@ -11043,6 +12293,7 @@
       rectangles: ['info', 'selection', 'box', 'rectangles', 'edit_polygons'],
       lines: ['info', 'selection', 'box', 'edit_lines'], // 'snip_lines'
       table: ['info', 'selection'],
+      raster: ['box'],
       labels: ['info', 'selection', 'box', 'labels', 'edit_points'],
       points: ['info', 'selection', 'box', 'edit_points'] // , 'add-points'
     };
@@ -11162,6 +12413,9 @@
       var o = gui.model.getActiveLayer();
       if (!o || !o.layer) {
         return menus.empty; // TODO: more sensible handling of missing layer
+      }
+      if (internal.layerHasRaster(o.layer)) {
+        return menus.raster;
       }
       if (!o.layer.geometry_type) {
         return menus.table;
@@ -13577,7 +14831,7 @@
 
     // @box Bounds with pixels from t,l corner of map area.
     function zoomToBbox(bbox) {
-      var bounds = new Bounds(bbox),
+      var bounds = new Bounds$1(bbox),
           pct = Math.max(bounds.width() / ext.width(), bounds.height() / ext.height()),
           fx = bounds.centerX() / ext.width() * (1 + pct) - pct / 2,
           fy = bounds.centerY() / ext.height() * (1 + pct) - pct / 2;
@@ -15727,7 +16981,7 @@
     // Get params for converting geographic coords to pixel coords
     this.getTransform = function(pixScale) {
       // get transform (y-flipped);
-      var viewBounds = new Bounds(0, 0, _position.width(), _position.height());
+      var viewBounds = new Bounds$1(0, 0, _position.width(), _position.height());
       if (pixScale) {
         viewBounds.xmax *= pixScale;
         viewBounds.ymax *= pixScale;
@@ -15737,7 +16991,7 @@
 
     // k scales the size of the bbox (used by gui to control fp error when zoomed very far)
     this.getBounds = function(k) {
-      if (!_fullBounds) return new Bounds();
+      if (!_fullBounds) return new Bounds$1();
       return calcBounds(_cx, _cy, _scale / (k || 1));
     };
 
@@ -15752,7 +17006,7 @@
       var b = _fullBounds = fullBounds;
       if (!b.hasBounds()) return; // kludge
       if (strictBounds) {
-        _strictBounds = Array.isArray(strictBounds) ? new Bounds(strictBounds) : strictBounds;
+        _strictBounds = Array.isArray(strictBounds) ? new Bounds$1(strictBounds) : strictBounds;
       } else {
         _strictBounds = null;
       }
@@ -15782,7 +17036,7 @@
 
     this.getSymbolScale = function() {
       if (!_frame) return 1;
-      var bounds = new Bounds(_frame.bbox);
+      var bounds = new Bounds$1(_frame.bbox);
       var bounds2 = bounds.clone().transform(this.getTransform());
       return bounds2.width() / _frame.width;
     };
@@ -15853,12 +17107,12 @@
       }
       var w = full.width() / scale;
       var h = full.height() / scale;
-      return new Bounds(cx - w/2, cy - h/2, cx + w/2, cy + h/2);
+      return new Bounds$1(cx - w/2, cy - h/2, cx + w/2, cy + h/2);
     }
 
     // Calculate viewport bounds from frame data
     function fillOutFrameBounds(frame) {
-      var bounds = new Bounds(frame.bbox);
+      var bounds = new Bounds$1(frame.bbox);
       var kx = _position.width() / frame.width;
       var ky = _position.height() / frame.height;
       bounds.scale(kx, ky);
@@ -15870,7 +17124,7 @@
           hpix = _position.height() - 2 * marginpix,
           xpad, ypad, b2;
       if (wpix <= 0 || hpix <= 0) {
-        return new Bounds(0, 0, 0, 0);
+        return new Bounds$1(0, 0, 0, 0);
       }
       b = b.clone();
       b2 = b.clone();
@@ -15907,6 +17161,198 @@
   }
 
   utils$1.inherit(MapExtent, EventDispatcher);
+
+  var MAX_VIEWPORT_PREVIEW_PIXELS = 6e6;
+  var cache = new WeakMap();
+  var requestId = 0;
+
+  function getCachedRasterViewportPreview(layer, ext) {
+    var entry = cache.get(layer);
+    var params = getRasterViewportPreviewParams(layer, ext);
+    if (!entry || !params || entry.key != params.key) return null;
+    return entry.preview;
+  }
+
+  function scheduleRasterViewportPreview(layer, ext, onReady) {
+    var params = getRasterViewportPreviewParams(layer, ext);
+    var entry = cache.get(layer);
+    var id, stats, timing, preview;
+    if (!params || !params.needed) return;
+    if (entry && entry.key == params.key) return;
+    id = ++requestId;
+    cache.set(layer, {key: params.key, pending: id});
+    setTimeout(function() {
+      var current = cache.get(layer);
+      if (!current || current.pending != id) return;
+      timing = {};
+      stats = getCachedRasterScalingStats(params, timing);
+      timing.renderStart = getTimer();
+      preview = renderRasterViewportPreview(params.grid, params.recipe, params.bbox, params.width, params.height, stats);
+      timing.renderMs = getTimer() - timing.renderStart;
+      logRasterPreviewTiming(params, timing);
+      current = cache.get(layer);
+      if (!preview || !current || current.pending != id) return;
+      cache.set(layer, {
+        key: params.key,
+        preview: preview
+      });
+      onReady();
+    }, 0);
+  }
+
+  function invalidateRasterViewportPreview(layer) {
+    cache.delete(layer);
+  }
+
+  function getRasterViewportPreviewParams(layer, ext) {
+    var raster = layer && layer.raster;
+    var grid = getRasterGrid(raster);
+    var rasterBbox = getRasterBBox(raster);
+    var mapBbox = ext.getBounds().toArray();
+    var visibleBbox = rasterBbox && intersectBboxes(rasterBbox, mapBbox);
+    var preview = getRasterPreview(raster);
+    var recipe, pixelRatio, t, p1, p2, displayWidth, displayHeight, crop, width, height, scale, key, needed;
+    if (!grid || !grid.samples || !visibleBbox || !grid.bbox) return null;
+    if (!supportsNorthUpRaster(grid)) return null;
+    crop = getRasterSourceWindow(grid, visibleBbox);
+    if (!crop) return null;
+    visibleBbox = crop.bbox;
+    recipe = getRasterViewRecipe(grid, raster.view && raster.view.recipe);
+    pixelRatio = GUI.getPixelRatio();
+    t = ext.getTransform(pixelRatio);
+    p1 = t.transform(mapBbox[0], mapBbox[3]);
+    p2 = t.transform(mapBbox[2], mapBbox[1]);
+    displayWidth = Math.max(1, Math.round(Math.abs(p2[0] - p1[0])));
+    displayHeight = Math.max(1, Math.round(Math.abs(p2[1] - p1[1])));
+    width = Math.min(displayWidth, crop.width);
+    height = Math.min(displayHeight, crop.height);
+    scale = Math.min(1, Math.sqrt(MAX_VIEWPORT_PREVIEW_PIXELS / (width * height)));
+    width = Math.max(1, Math.round(width * scale));
+    height = Math.max(1, Math.round(height * scale));
+    needed = viewportPreviewIsSharper(preview, grid, visibleBbox, width, height);
+    key = [
+      visibleBbox.map(roundKeyPart).join(','),
+      width,
+      height,
+      pixelRatio,
+      grid.width,
+      grid.height,
+      grid.samples && grid.samples.length,
+      recipe.type,
+      recipe.scaling,
+      recipe.scaleRange && recipe.scaleRange.join(','),
+      recipe.percentileRange && recipe.percentileRange.join(',')
+    ].join('|');
+    return {
+      key: key,
+      needed: needed,
+      raster: raster,
+      grid: grid,
+      recipe: recipe,
+      bbox: visibleBbox,
+      width: width,
+      height: height,
+      sourceWidth: crop.width,
+      sourceHeight: crop.height
+    };
+  }
+
+  function getCachedRasterScalingStats(params, timing) {
+    var cached = params.raster.view && params.raster.view.scalingStats;
+    var key;
+    if (params.recipe.scaling == 'none') {
+      timing.statsMs = 0;
+      timing.statsSource = 'none';
+      return null;
+    }
+    key = getRasterScalingStatsKey(params.grid, params.recipe);
+    if (cached && cached.key == key) {
+      timing.statsMs = 0;
+      timing.statsSource = 'raster-view-cache';
+      return cached.stats;
+    }
+    timing.statsSource = 'computed';
+    timing.statsStart = getTimer();
+    cached = getRasterViewScalingStats(params.raster, params.recipe);
+    timing.statsMs = getTimer() - timing.statsStart;
+    return cached;
+  }
+
+  function logRasterPreviewTiming(params, timing) {
+    if (!rasterDebugIsOn()) return;
+    console.log([
+      'Raster viewport preview:',
+      params.width + 'x' + params.height,
+      'from',
+      params.sourceWidth + 'x' + params.sourceHeight,
+      'source px,',
+      'stats=' + formatMs(timing.statsMs),
+      '(' + timing.statsSource + '),',
+      'render=' + formatMs(timing.renderMs) + ',',
+      'total=' + formatMs(timing.statsMs + timing.renderMs) + ',',
+      'scaling=' + params.recipe.scaling,
+      'type=' + params.recipe.type
+    ].join(' '));
+  }
+
+  function rasterDebugIsOn() {
+    var vars = GUI.getUrlVars();
+    return vars['raster-debug'] === true || vars['raster-debug'] == '1' || vars.raster_debug === true || vars.raster_debug == '1';
+  }
+
+  function getTimer() {
+    return typeof performance != 'undefined' && performance.now ? performance.now() : Date.now();
+  }
+
+  function formatMs(ms) {
+    return Math.round(ms * 10) / 10 + 'ms';
+  }
+
+  function supportsNorthUpRaster(grid) {
+    var t = grid.transform;
+    return !t || t[1] === 0 && t[3] === 0;
+  }
+
+  function getRasterSourcePixelSize(grid, bbox) {
+    var crop = getRasterSourceWindow(grid, bbox);
+    return crop ? {width: crop.width, height: crop.height} : {width: 0, height: 0};
+  }
+
+  function getRasterSourceWindow(grid, bbox) {
+    var rb = grid.bbox;
+    var dx = (rb[2] - rb[0]) / grid.width;
+    var dy = (rb[3] - rb[1]) / grid.height;
+    var x0 = Math.max(0, Math.floor((bbox[0] - rb[0]) / dx));
+    var x1 = Math.min(grid.width, Math.ceil((bbox[2] - rb[0]) / dx));
+    var y0 = Math.max(0, Math.floor((rb[3] - bbox[3]) / dy));
+    var y1 = Math.min(grid.height, Math.ceil((rb[3] - bbox[1]) / dy));
+    if (x1 <= x0 || y1 <= y0) return null;
+    return {
+      x: x0,
+      y: y0,
+      width: x1 - x0,
+      height: y1 - y0,
+      bbox: [
+        rb[0] + x0 * dx,
+        rb[3] - y1 * dy,
+        rb[0] + x1 * dx,
+        rb[3] - y0 * dy
+      ]
+    };
+  }
+
+  function viewportPreviewIsSharper(preview, grid, bbox, width, height) {
+    var crop = getRasterSourcePixelSize(grid, bbox);
+    var previewWidth = preview && preview.width || 0;
+    var previewHeight = preview && preview.height || 0;
+    var fallbackWidth = crop.width * previewWidth / grid.width;
+    var fallbackHeight = crop.height * previewHeight / grid.height;
+    return width > fallbackWidth * 1.25 || height > fallbackHeight * 1.25;
+  }
+
+  function roundKeyPart(val) {
+    return Math.round(val * 1e9) / 1e9;
+  }
 
   var hatches = {}; // cached patterns
 
@@ -16110,7 +17556,7 @@
   function getShapeFilter(arcs, shapes, ext) {
     if (ext.scale() < 1.1) return null;
     var view = ext.getBounds();
-    var b = new Bounds();
+    var b = new Bounds$1();
     return function(i) {
       var shp = shapes[i];
       if (!shp) return false;
@@ -16161,6 +17607,22 @@
       _self.classed('retina', pixRatio == 2);
       _self.show();
       _ext = extent;
+    };
+
+    _self.drawRasterLayer = function(layer, opts) {
+      var raster = layer.raster;
+      var options = opts || {};
+      var preview = options.action == 'nav' ? null : getCachedRasterViewportPreview(layer, _ext);
+      var bbox = preview && preview.bbox;
+      if (!preview) {
+        preview = raster && getRasterPreview(raster);
+        bbox = raster && getRasterBBox(raster);
+        if (options.action != 'nav' && options.onViewportPreviewReady) {
+          scheduleRasterViewportPreview(layer, _ext, options.onViewportPreviewReady);
+        }
+      }
+      if (!preview || !preview.pixels || !bbox) return;
+      drawRasterPreview(preview, bbox);
     };
 
     /*
@@ -16359,6 +17821,15 @@
       }
     }
 
+    function drawRasterPreview(preview, bbox) {
+      var img = getRasterCanvas(preview);
+      var t = _ext.getTransform(GUI.getPixelRatio());
+      var p1 = t.transform(bbox[0], bbox[3]);
+      var p2 = t.transform(bbox[2], bbox[1]);
+      _ctx.imageSmoothingEnabled = true;
+      _ctx.drawImage(img, p1[0], p1[1], p2[0] - p1[0], p2[1] - p1[1]);
+    }
+
     // TODO: consider using drawStyledPaths(), which draws paths in batches
     // for faster Canvas rendering. Downside: changes stacking order, which
     // is bad if circles are graduated.
@@ -16472,6 +17943,19 @@
       bx: t.bx,
       by: t.by
     };
+  }
+
+  function getRasterCanvas(preview) {
+    if (preview.canvas) return preview.canvas;
+    var canvas = document.createElement('canvas');
+    var ctx = canvas.getContext('2d');
+    var imageData;
+    canvas.width = preview.width;
+    canvas.height = preview.height;
+    imageData = new ImageData(preview.pixels, preview.width, preview.height);
+    ctx.putImageData(imageData, 0, 0);
+    preview.canvas = canvas;
+    return canvas;
   }
 
   function drawCircle(x, y, radius, ctx) {
@@ -16774,6 +18258,7 @@
     var _settleTimer = null;
     var _redrawPending = false;
     var _settleRequested = false;
+    var _rasterNavRefreshPending = false;
 
     // 'map_interaction_end' may arrive before the in-flight 'nav' draw runs,
     // because drawLayers() schedules its work via requestAnimationFrame.
@@ -16782,6 +18267,8 @@
     gui.on('map_interaction_end', function() {
       if (_redrawPending) {
         settleNow();
+      } else if (_rasterNavRefreshPending) {
+        settleRasterNow();
       } else {
         _settleRequested = true;
       }
@@ -16792,6 +18279,11 @@
 
     this.drawMainLayers = function(layers, action) {
       if (skipMainLayerRedraw(action)) return;
+      if (action == 'nav' && layersHaveRasters(layers)) {
+        _rasterNavRefreshPending = true;
+      } else if (action != 'nav') {
+        _rasterNavRefreshPending = false;
+      }
       if (action == 'nav' && shouldUseFastNav()) {
         applyFastTransform();
         // SVG symbol reposition is already cheap; keep labels/symbols accurate
@@ -16821,7 +18313,7 @@
         } else if (isSvgLayer) {
           _svg.drawLayer(lyr, 'symbol');
         } else {
-           drawCanvasLayer(lyr, _mainCanv);
+           drawCanvasLayer(lyr, _mainCanv, action);
         }
       });
       // Force synchronous rasterization so performance.now() reflects the true
@@ -16830,6 +18322,10 @@
       flushCanvas(_mainCanv);
       _lastFrameMs = performance.now() - startTime;
       captureSnapshot();
+      if (action == 'nav' && _settleRequested && _rasterNavRefreshPending) {
+        _settleRequested = false;
+        settleRasterNow();
+      }
     };
 
     // Draw highlight effect for hover and selection
@@ -16850,7 +18346,7 @@
         _overlayCanv.hide();
       }
       layers.forEach(function(lyr) {
-        drawCanvasLayer(lyr, canv);
+        drawCanvasLayer(lyr, canv, action);
       });
     };
 
@@ -16875,9 +18371,22 @@
       return action == 'hover' && _overlayCanv.visible();
     }
 
-    function drawCanvasLayer(lyr, canv) {
+    function layersHaveRasters(layers) {
+      return layers.some(function(lyr) {
+        return lyr && lyr.gui && internal.layerHasRaster(lyr.gui.displayLayer);
+      });
+    }
+
+    function drawCanvasLayer(lyr, canv, action) {
       if (!lyr) return;
-      if (lyr.gui.style.type == 'outline') {
+      if (internal.layerHasRaster(lyr.gui.displayLayer)) {
+        canv.drawRasterLayer(lyr.gui.displayLayer, {
+          action: action,
+          onViewportPreviewReady: function() {
+            gui.dispatchEvent('map-needs-refresh');
+          }
+        });
+      } else if (lyr.gui.style.type == 'outline') {
         drawOutlineLayerToCanvas(lyr, canv, ext);
       } else {
         drawStyledLayerToCanvas(lyr, canv, ext);
@@ -16980,6 +18489,11 @@
       gui.dispatchEvent('map-needs-refresh');
     }
 
+    function settleRasterNow() {
+      _rasterNavRefreshPending = false;
+      gui.dispatchEvent('map-needs-refresh');
+    }
+
     function cancelSettle() {
       if (_settleTimer) {
         clearTimeout(_settleTimer);
@@ -16995,6 +18509,9 @@
     var box = new HighlightBox(gui, {name: 'box-tool', persistent: true, handles: true, draggable: true});
     var popup = gui.container.findChild('.box-tool-options');
     var coords = popup.findChild('.box-coords').hide();
+    var selectBtn = popup.findChild('.select-btn');
+    var clipBtn = popup.findChild('.clip-btn');
+    var eraseBtn = popup.findChild('.erase-btn');
     var _on = false;
     var instructionsShown = false;
     var alert;
@@ -17007,7 +18524,7 @@
       reset();
     });
 
-    new SimpleButton(popup.findChild('.select-btn')).on('click', function() {
+    new SimpleButton(selectBtn).on('click', function() {
       var coords = box.getDataCoords();
       if (!coords || noData()) return;
       gui.enterMode('selection_tool');
@@ -17022,11 +18539,12 @@
       return !gui.model.getActiveLayer();
     }
 
-    new SimpleButton(popup.findChild('.clip-btn')).on('click', function() {
+    new SimpleButton(clipBtn).on('click', function() {
       runCommand('-clip bbox=' + box.getDataCoords().join(','));
     });
 
-    new SimpleButton(popup.findChild('.erase-btn')).on('click', function() {
+    new SimpleButton(eraseBtn).on('click', function() {
+      if (activeLayerIsRaster()) return;
       runCommand('-erase bbox=' + box.getDataCoords().join(','));
     });
 
@@ -17069,6 +18587,7 @@
     box.on('dragend', function(e) {
       if (_on) {
         hideInstructions();
+        updateOptionsForActiveLayer();
         popup.show();
       }
     });
@@ -17122,6 +18641,7 @@
 
     function turnOn() {
       box.turnOn();
+      updateOptionsForActiveLayer();
       _on = true;
     }
 
@@ -17140,6 +18660,27 @@
       box.hide();
       popup.hide();
       hideCoords();
+    }
+
+    function updateOptionsForActiveLayer() {
+      var raster = activeLayerIsRaster();
+      setButtonVisible(selectBtn, !raster);
+      setButtonVisible(clipBtn, true);
+      setButtonVisible(eraseBtn, !raster);
+    }
+
+    function activeLayerIsRaster() {
+      var active = gui.model.getActiveLayer();
+      return !!(active && internal.layerHasRaster(active.layer));
+    }
+
+    function setButtonVisible(btn, visible) {
+      btn.classed('hidden', !visible);
+      if (visible) {
+        btn.show();
+      } else {
+        btn.hide();
+      }
     }
 
     function openAddFramePopup(gui, bbox) {
@@ -17511,7 +19052,8 @@ GUI and setting the size and crop of SVG output.</p><div><input type="text" clas
 
     function getDisplayOptions() {
       return {
-        crs: _dynamicCRS
+        crs: _dynamicCRS,
+        notify: gui.notify
       };
     }
 
@@ -17528,7 +19070,7 @@ GUI and setting the size and crop of SVG output.</p><div><input type="text" clas
     }
 
     function getContentLayerBounds() {
-      var b = new Bounds();
+      var b = new Bounds$1();
       var layers = getContentLayers();
       layers.forEach(function(lyr) {
         b.mergeBounds(lyr.gui.bounds);
@@ -17545,7 +19087,7 @@ GUI and setting the size and crop of SVG output.</p><div><input type="text" clas
     function calcFullBounds() {
       var b;
       if (isPreviewView()) {
-        b = new Bounds(getFrameLayerData().bbox);
+        b = new Bounds$1(getFrameLayerData().bbox);
       } else {
         b = getContentLayerBounds();
       }
@@ -18510,6 +20052,7 @@ GUI and setting the size and crop of SVG output.</p><div><input type="text" clas
     var clearMsg;
 
     initModeRules(gui);
+    startRasterSourceStoreLifecycle();
     gui.map.init();
 
     if (opts.saveControl) {

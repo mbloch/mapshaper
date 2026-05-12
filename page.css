@@ -701,6 +701,10 @@ textarea:focus {
 	min-width: 28px;
 }
 
+.btn.sidebar-btn.hidden {
+	display: none;
+}
+
 .info-box h3 {
 	font-size: 19px;
 	line-height: 1.1;
@@ -1039,6 +1043,11 @@ body.console-open .console-tab {
 	white-space: nowrap;
 	pointer-events: auto;
 	margin-right: 20px;
+}
+
+.active-layer-label:focus,
+.active-layer-label:focus-visible {
+	outline: none;
 }
 
 body.simplify .layer-control-btn {

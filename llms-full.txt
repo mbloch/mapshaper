@@ -67,6 +67,13 @@ This is a curated list of recently added features. For the full list of changes,
 
 <div class="whats-new-entry">
 
+**Raster layer support.** Mapshaper can now import GeoTIFF rasters, plus PNG and JPEG images with world-file georeferencing, preview them in the web UI, clip them with the rectangle tool, and export raster previews embedded in SVG. Raster import supports display scaling options including `scaling=none|minmax|percentile`, `scale-range=` and `percentile-range=`. Large GeoTIFFs use reduced-resolution renditions by default; use `rendition=full` or another `rendition=` value to choose a specific GeoTIFF rendition.
+
+→ See [`-i`](/docs/reference.html.md#-i-input).
+</div>
+
+<div class="whats-new-entry">
+
 **Point icons with `-style`.** The `-style` command has new `icon=`, `icon-size=` and `icon-color=` options for drawing simple point icons, including circles, squares, rings and stars. Icons can be combined with labels on the same point layer.
 
 → See [`-style`](/docs/reference.html.md#-style).
@@ -97,12 +104,6 @@ This is a curated list of recently added features. For the full list of changes,
 <div class="whats-new-entry">
 
 **Messages panel.** Warnings and informational messages are now collected in a messages panel. When new messages are available, an icon with a count appears in the header bar; clicking it opens the panel. This keeps important information accessible without interrupting your session with a modal popup.
-
-</div>
-
-<div class="whats-new-entry">
-
-**Undo/redo buttons.** The web UI now has an undo/redo toolbar. Undo and redo were already supported in the geometry and attribute editing modes; the toolbar makes them more discoverable for users who didn't know the keyboard shortcuts (**⌘Z** / **⌘⇧Z**) existed.
 
 </div>
 
@@ -282,7 +283,7 @@ mapshaper states.geojson -filter 'ST == "AK"' + name=alaska -o output/ target=*
 
 ### -i (input)
 
-Input one or more files in a supported vector data format. Supported file types include: Shapefile, GeoJSON, TopoJSON, GeoPackage, FlatGeobuf, GeoParquet, KML, JSON data records, DBF, CSV/TSV.
+Input one or more files in a supported vector, table, or raster data format. Supported file types include: Shapefile, GeoJSON, TopoJSON, GeoPackage, FlatGeobuf, GeoParquet, KML, JSON data records, DBF, CSV/TSV, GeoTIFF, PNG and JPEG images with world files.
 
 The `-i` command is assumed if `mapshaper` is followed by the path of an input data file.
 
@@ -345,6 +346,14 @@ mapshaper -i 'lat,lon,label\n48.86,2.35,Paris\n51.51,-0.13,London' \
 `json-path=` [JSON] Path to an array of data records or a GeoJSON object. For example, `json-path=data/counties` expects a JSON object with the following structure `{"data": {"counties": []}}`.
 
 `layers=` [GeoPackage] Comma-separated list of layer names to import from a GeoPackage file. If omitted, all layers are imported.
+
+`scaling=none|minmax|percentile` [Raster] Display scaling method for raster imports. The default is `none` for 8-bit rasters and `percentile` for non-8-bit rasters.
+
+`scale-range=` [Raster] Output intensity range for raster display scaling, as normalized percentages. The default is `0,100`.
+
+`percentile-range=` [Raster] Input percentile range used with `scaling=percentile`. The default is `2,98`.
+
+`rendition=` [GeoTIFF] Import a specific GeoTIFF rendition, using a slug such as `full` or `overview-1`. When a GeoTIFF has internal overviews, Mapshaper lists the available slugs during import. By default, large GeoTIFFs are imported from the best available reduced-resolution overview under Mapshaper's import size limit, or resampled during import if no suitable overview is available. Use `rendition=full` to force full-resolution import.
 
 `name=`  Rename the imported layer (or layers).
 
@@ -4096,6 +4105,8 @@ This section explains how each supported file format is handled, what format-spe
 | [CSV / TSV](/docs/formats/csv.html.md) | `.csv` `.tsv` | &check; | &check; | points (X/Y) | yes | &mdash; | &mdash; |
 | [DBF](/docs/formats/dbf.html.md) | `.dbf` | &check; | &check; | none | yes | &mdash; | &mdash; |
 | [JSON records](/docs/formats/json.html.md) | `.json` | &check; | &check; | none | yes | &mdash; | &mdash; |
+| GeoTIFF | `.tif` `.tiff` | &check; | &mdash; | raster | &mdash; | &mdash; | &mdash; |
+| PNG / JPEG raster | `.png` `.jpg` `.jpeg` | &check; | &mdash; | raster (with world file) | &mdash; | &mdash; | &mdash; |
 | [SVG](/docs/formats/svg.html.md) | `.svg` | &check; | &check; | vector | as `data-*` | &mdash; | &check; |
 | [Mapshaper snapshot](/docs/formats/snapshot.html.md) | `.msx` | &check; | &check; | vector | yes | **&check;** | &check; |
 

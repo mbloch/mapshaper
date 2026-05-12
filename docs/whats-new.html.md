@@ -11,6 +11,13 @@ This is a curated list of recently added features. For the full list of changes,
 
 <div class="whats-new-entry">
 
+**Raster layer support.** Mapshaper can now import GeoTIFF rasters, plus PNG and JPEG images with world-file georeferencing, preview them in the web UI, clip them with the rectangle tool, and export raster previews embedded in SVG. Raster import supports display scaling options including `scaling=none|minmax|percentile`, `scale-range=` and `percentile-range=`. Large GeoTIFFs use reduced-resolution renditions by default; use `rendition=full` or another `rendition=` value to choose a specific GeoTIFF rendition.
+
+→ See [`-i`](/docs/reference.html.md#-i-input).
+</div>
+
+<div class="whats-new-entry">
+
 **Point icons with `-style`.** The `-style` command has new `icon=`, `icon-size=` and `icon-color=` options for drawing simple point icons, including circles, squares, rings and stars. Icons can be combined with labels on the same point layer.
 
 → See [`-style`](/docs/reference.html.md#-style).
@@ -41,12 +48,6 @@ This is a curated list of recently added features. For the full list of changes,
 <div class="whats-new-entry">
 
 **Messages panel.** Warnings and informational messages are now collected in a messages panel. When new messages are available, an icon with a count appears in the header bar; clicking it opens the panel. This keeps important information accessible without interrupting your session with a modal popup.
-
-</div>
-
-<div class="whats-new-entry">
-
-**Undo/redo buttons.** The web UI now has an undo/redo toolbar. Undo and redo were already supported in the geometry and attribute editing modes; the toolbar makes them more discoverable for users who didn't know the keyboard shortcuts (**⌘Z** / **⌘⇧Z**) existed.
 
 </div>
 
