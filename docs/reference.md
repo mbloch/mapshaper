@@ -197,7 +197,7 @@ mapshaper -i 'lat,lon,label\n48.86,2.35,Paris\n51.51,-0.13,London' \
 
 `percentile-range=` [Raster] Input percentile range used with `scaling=percentile`. The default is `2,98`.
 
-`rendition=` [GeoTIFF] Import a specific GeoTIFF rendition, such as `full` or `overview-1`. By default, large GeoTIFFs are imported from the best available reduced-resolution rendition under Mapshaper's import size limit. Use `rendition=full` to force full-resolution import.
+`rendition=` [GeoTIFF] Import a specific GeoTIFF rendition, using a slug such as `full` or `overview-1`. When a GeoTIFF has internal overviews, Mapshaper lists the available slugs during import. By default, large GeoTIFFs are imported from the best available reduced-resolution overview under Mapshaper's import size limit, or resampled during import if no suitable overview is available. Use `rendition=full` to force full-resolution import.
 
 `name=`  Rename the imported layer (or layers).
 

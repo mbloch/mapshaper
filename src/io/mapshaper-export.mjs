@@ -16,7 +16,7 @@ import { copyDatasetForExport, copyDatasetForRenaming } from '../dataset/mapshap
 import { mergeDatasetsForExport } from '../dataset/mapshaper-merging';
 import { getOutputFormat } from '../io/mapshaper-output-format';
 import utils from '../utils/mapshaper-utils';
-import { error } from '../utils/mapshaper-logging';
+import { error, stop } from '../utils/mapshaper-logging';
 import { buildTopology } from '../topology/mapshaper-topology';
 import { runningInBrowser } from '../mapshaper-env';
 import { getFileBase } from '../utils/mapshaper-filename-utils';
@@ -56,6 +56,7 @@ export async function exportTargetLayers(catalog, targets, opts) {
 async function exportDatasets(datasets, opts) {
   var format = getOutputFormat(datasets[0], opts);
   var files;
+  validateRasterExportFormat(datasets, format);
   if (format != 'geoparquet' && (opts.compression || opts.level !== undefined)) {
     error('The compression= and level= options only apply to GeoParquet output');
   }
@@ -125,6 +126,18 @@ async function exportDatasets(datasets, opts) {
   return files;
 }
 
+function validateRasterExportFormat(datasets, format) {
+  if (!datasetsHaveRasterLayers(datasets)) return;
+  if (format == 'svg' || format == PACKAGE_EXT) return;
+  stop('Raster layers can only be exported as SVG or ' + PACKAGE_EXT + ' files');
+}
+
+function datasetsHaveRasterLayers(datasets) {
+  return datasets.some(function(dataset) {
+    return dataset.layers && dataset.layers.some(layerHasRaster);
+  });
+}
+
 // Return an array of objects with 'filename' and 'content' members.
 //
 export function exportFileContent(dataset, opts) {
@@ -137,6 +150,7 @@ export function exportFileContent(dataset, opts) {
   } else if (!exporter) {
     error('Unknown output format:', outFmt);
   }
+  validateRasterExportFormat([dataset], outFmt);
 
   // shallow-copy dataset and layers, so layers can be renamed for export
   dataset = utils.defaults({

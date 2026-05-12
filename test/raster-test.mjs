@@ -23,6 +23,12 @@ describe('raster layers', function () {
     assert(file.content.includes('preserveAspectRatio="none"'));
   });
 
+  it('rejects raster export to vector and table formats', function () {
+    assert.throws(function() {
+      api.internal.exportFileContent(getRasterDataset(), {format: 'geojson'});
+    }, /Raster layers can only be exported as SVG or/);
+  });
+
   it('clips embedded SVG raster images to a frame layer', function () {
     var dataset = getRasterDataset();
     var frameDataset = getFrameDataset();

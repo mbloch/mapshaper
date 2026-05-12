@@ -1,3 +1,9 @@
+v0.7.14
+* Added support for importing GeoTIFFs and also PNGs and JPEGs with world file and .prj sidecar files.
+* Rasters can only be exported as layers in an SVG.
+* The only supported raster editing operation is clipping to a rectangle.
+* Raster reprojection is not yet supported.
+
 v0.7.13
 * Moved the layers panel in the web UI to the left sidebar, which it now shares with the console.
 * Added options to the `-style` command: `icon`, `icon-size` and `icon-color`. This lets you add a variety of icons to a label layer.
