@@ -670,8 +670,6 @@ textarea:focus {
 	word-wrap: break-word;
 	text-align: left;
 	margin-top: 12px;
-	margin-right: 20px;
-	/* padding: 12px 16px 12px 18px; */
 	padding: 15px 17px 13px 19px;
 	vertical-align: top;
 	display: inline-block;
