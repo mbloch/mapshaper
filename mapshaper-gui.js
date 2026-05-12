@@ -9401,8 +9401,8 @@
         } else if (kc == 40) {
           forward();
         } else if (kc == 32 && (!typing || (inputText === '' && typingInConsole))) {
-          // space bar toggles the sidebar if nothing has been typed
-          gui.toggleSidebar();
+          // space bar toggles the console tab if nothing has been typed
+          gui.toggleSidebarPanel('console');
         } else if (!typing && e.target != input.node() && !metaKey(e)) {
           // typing returns focus, unless a meta key is down (to allow Cmd-C copy)
           // or user is typing in a different input area somewhere
@@ -9419,9 +9419,9 @@
 
       // various shortcuts (while not typing in an input field or editable el)
       } else if (!typing) {
-         if (kc == 32) { // space bar toggles the sidebar
+         if (kc == 32) { // space bar toggles the console tab
           capture = true;
-          gui.toggleSidebar();
+          gui.toggleSidebarPanel('console');
         // } else if (kc == 73) { // letter i opens inspector
         //   gui.dispatchEvent('interaction_toggle');
         } else if (kc == 72) { // letter h resets map extent
@@ -10788,17 +10788,25 @@
     headerBtn.on('click', function() {
       toggle();
     }).on('keydown', function(e) {
-      if (e.key == 'Enter' || e.key == ' ') {
+      if (e.key == 'Enter') {
         e.preventDefault();
         e.stopPropagation();
         toggle();
+      } else if (e.key == ' ') {
+        e.preventDefault();
+        e.stopPropagation();
+        gui.toggleSidebarPanel('console');
       }
     });
     tab.on('click', toggle).on('keydown', function(e) {
-      if (e.key == 'Enter' || e.key == ' ') {
+      if (e.key == 'Enter') {
         e.preventDefault();
         e.stopPropagation();
         toggle();
+      } else if (e.key == ' ') {
+        e.preventDefault();
+        e.stopPropagation();
+        gui.toggleSidebarPanel('console');
       }
     });
 
