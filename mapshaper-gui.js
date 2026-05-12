@@ -6753,12 +6753,26 @@
     var mapCRS = gui.map.getActiveLayerCRS();
     var dataCRS = internal.getDatasetCRS(dataset);
     if (!dataCRS || !mapCRS || internal.crsAreEqual(mapCRS, dataCRS)) return;
+    if (datasetHasRaster(dataset)) {
+      await showRasterProjectionMessage(dataset);
+      return;
+    }
     var msg = `The input file ${dataset?.info?.input_files[0] || ''} has a different projection from the current selected layer. Would you like to reproject it to match?`;
     var reproject = await showPrompt(msg, 'Reproject file?');
     if (reproject) {
       internal.projectDataset(dataset, dataCRS, mapCRS, {densify: true});
     }
   }
+
+  async function showRasterProjectionMessage(rasterDataset) {
+    var msg = `The raster file ${rasterDataset?.info?.input_files[0] || ''} has a different projection from the current selected layer. Raster reprojection is not supported yet. You can reproject vector layer(s) to match the raster.`;
+    showPopupAlert(msg, 'Different projection').button('Close', function() {});
+  }
+
+  function datasetHasRaster(dataset) {
+    return dataset.layers && dataset.layers.some(internal.layerHasRaster);
+  }
+
 
   var geopackagePromise = null;
   var geoParquetPromise = null;
