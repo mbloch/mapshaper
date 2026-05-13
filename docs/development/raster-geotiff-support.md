@@ -7,8 +7,8 @@ description: Initial raster import support policy, test corpus, sidecar handling
 
 This document records the GeoTIFF, PNG, and JPEG support policy for the first
 raster implementation. It is intentionally conservative: import common rasters
-well, create editable working samples and usable previews, and document
-unsupported cases clearly.
+well, create editable working samples and GUI display previews, export
+grid-derived SVG images, and document unsupported cases clearly.
 
 ## Decoder
 
@@ -50,8 +50,8 @@ grouping path.
 
 ## PNG And JPEG Import
 
-PNG/JPEG import creates the same `raster.grid` and `raster.view.preview` model
-as GeoTIFF import. Source pixels are decoded as `uint8` samples:
+PNG/JPEG import creates the same `raster.grid` and `raster.view.recipe` model as
+GeoTIFF import. Source pixels are decoded as `uint8` samples:
 
 - JPEG imports as RGB samples.
 - PNG imports as RGBA samples, preserving alpha from the decoded image.
@@ -82,9 +82,9 @@ metadata; the resulting dataset CRS remains unknown.
 
 The initial implementation should prioritize:
 
-- Single-band gray working samples and previews.
-- RGB working samples and previews.
-- RGBA working samples and previews when alpha is present.
+- Single-band gray working samples and GUI previews.
+- RGB working samples and GUI previews.
+- RGBA working samples and GUI previews when alpha is present.
 - Stripped and tiled storage.
 - Pixel and band interleaving.
 - Common integer sample types.
@@ -100,8 +100,8 @@ Import success should mean:
 - Bounds and transform are extracted when georeferencing is present.
 - CRS metadata is mapped to existing `dataset.info` CRS fields when possible.
 - Selected working bands are decoded into `raster.grid.samples`.
-- A bounded RGBA preview is derived from `grid.samples` for GUI rendering and
-  SVG export.
+- In the browser, a bounded RGBA preview is derived from `grid.samples` for GUI
+  rendering. CLI/headless import skips this derived cache.
 - Source metadata is recorded in `dataset.info.raster_sources`; the original
   source is referenced by path in CLI or stored separately in IndexedDB in the
   browser.
@@ -120,7 +120,8 @@ milestone:
 - External masks.
 - Complex nodata styling beyond simple alpha handling.
 - Automatic contrast/stretch based on sidecar statistics.
-- Reprojection or warping during import or rendering.
+- Reprojection or warping during import. Reprojection is handled later by
+  display preview generation or by the `-proj` command.
 
 Unsupported cases should fail with clear messages when possible. Silent
 misrendering is worse than a visible limitation.
@@ -204,21 +205,18 @@ The GUI source-band derivation interface is deferred. Future CLI derivation
 should use repeated `-i` commands with raster import options rather than a new
 `-raster-create` command.
 
-Import also creates a bounded RGBA preview derived from `grid.samples`. The
-preview should be small enough for interactive GUI rendering and SVG export.
+Browser import also creates a bounded RGBA preview derived from `grid.samples`.
+The preview should be small enough for interactive GUI rendering. CLI/headless
+import omits previews because SVG export renders directly from `grid.samples`.
 
-The initial option design can use one of these controls:
-
-- Maximum preview pixels.
-- Target preview width and height.
-- A default limit with an advanced import override.
-
-Preview generation supports two compact import options:
+Preview generation uses a bounded maximum-pixel default for browser display
+caches. The display recipe supports these compact import options:
 
 ```text
 scaling=none|minmax|percentile
 scale-range=0,100
 percentile-range=2,98
+raster-type=image|categorical
 ```
 
 `scale-range` is a normalized output intensity range in percent. The default is
@@ -241,6 +239,12 @@ Defaults:
 
 - 8-bit layers use `scaling=none`.
 - Non-8-bit integer and floating point layers use `scaling=percentile`.
+- Rasters use `raster-type=image` unless the user passes
+  `raster-type=categorical`.
+
+`raster-type=` records semantic intent, not storage type. Image rasters default
+to bilinear resampling in later reprojection commands. Categorical rasters
+default to nearest-neighbor resampling so class/code values are not blended.
 
 Percentile calculation avoids sorting all pixel values. For small integer ranges
 such as 8-bit and 16-bit data, Mapshaper uses an exact histogram. For larger
@@ -254,11 +258,9 @@ geotiff.js exposes it. If a file relies on sidecar metadata or another
 unhandled metadata field for nodata, Mapshaper may not know the nodata value and
 it can still affect display scaling.
 
-The current preview generation uses nearest-neighbor resampling from the working
-samples. For continuous-tone imagery, bilinear resampling is a reasonable future
-improvement. For categorical or palette rasters, nearest-neighbor resampling is
-safer. If the implementation cannot reliably classify the raster, start with a
-conservative documented default and expose an import option later.
+The current import/display preview generation uses nearest-neighbor resampling
+from the working samples. Export-specific SVG rendering uses area averaging for
+downsampling and bilinear sampling for upsampling or near-native output.
 
 ## Source Preservation
 
@@ -270,8 +272,8 @@ operations:
 - Browser: store original bytes in IndexedDB separately from current sample
   payloads, and keep source metadata in `dataset.info.raster_sources`.
 
-SVG export in the first milestone should still use the preview only. Full
-source-backed export can be added after the layer/source contract is stable.
+SVG export renders an export-specific image from `raster.grid.samples`, cropped
+to the SVG frame. The original source file is not reopened during export.
 
 ## SVG Image Encoding
 
@@ -285,7 +287,7 @@ Initial formats:
 
 Default behavior:
 
-- Use JPEG when the rendered preview is opaque RGB or gray and no lossless
+- Use JPEG when the rendered raster is opaque RGB or gray and no lossless
   option is requested.
 - Use PNG when transparency is required or when the user requests lossless
   output.
@@ -293,17 +295,19 @@ Default behavior:
 WebP is not an initial target. Browser support is good, but SVG portability to
 graphics editors and non-browser renderers is less dependable than PNG/JPEG.
 
-Suggested future SVG options:
+Current SVG raster options:
 
 ```text
-svg-raster-format=jpeg|png|webp
+svg-raster-format=jpeg|png
 svg-raster-quality=0.85
-svg-raster-resolution=1x|2x
+raster-res=1
 ```
 
-The first implementation only needs the JPEG/PNG path. WebP can be considered
-after SVG compatibility has been tested in browsers, Illustrator, Inkscape, and
-common command-line renderers.
+`raster-res=` controls embedded raster pixels per SVG pixel. The default is `1`;
+larger values produce higher-resolution embedded images, capped at the available
+source grid resolution. WebP can be considered later after SVG compatibility has
+been tested in browsers, Illustrator, Inkscape, and common command-line
+renderers.
 
 ## Test Expectations
 
@@ -314,16 +318,17 @@ Early tests should assert:
 - `dataset.info` contains CRS metadata when the file provides usable CRS data.
 - Raster bounds are present and contribute to dataset bounds.
 - `raster.grid.samples` contains the selected working bands.
-- Preview dimensions are bounded by the import default or option and preview
-  pixels are derived from the grid.
+- Browser preview dimensions are bounded by the import default or option and
+  preview pixels are derived from the grid. CLI/headless imports may not contain
+  `view.preview`.
 - `scaling=none`, `scaling=minmax`, `scaling=percentile`, `scale-range=`, and
   `percentile-range=` affect preview pixels as documented.
 - RGB and grayscale previews produce expected band/color metadata.
 - `.aux.xml` sidecars are ignored without causing import failure.
 - SVG export produces an `<image>` element with `data:image/jpeg` or
   `data:image/png`.
-- Raster clipping updates grid samples, bounds, transform, and regenerated
-  preview pixels.
+- Raster clipping updates grid samples, bounds, and transform. Browser clipping
+  regenerates preview pixels; CLI/headless clipping omits preview caches.
 
 Tests should avoid asserting exact pixel values until the preview scaling and
 color stretch policy is stable.
