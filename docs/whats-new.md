@@ -11,7 +11,7 @@ This is a curated list of recently added features. For the full list of changes,
 
 <div class="whats-new-entry">
 
-**Raster layer support.** Mapshaper can now import GeoTIFF rasters, plus PNG and JPEG images with world-file georeferencing, preview them in the web UI, clip them with the rectangle tool, and export raster previews embedded in SVG. Raster import supports display scaling options including `scaling=none|minmax|percentile`, `scale-range=` and `percentile-range=`. Large GeoTIFFs use reduced-resolution renditions by default; use `rendition=full` or another `rendition=` value to choose a specific GeoTIFF rendition.
+**Raster layer support.** Mapshaper can now import GeoTIFF rasters, plus PNG and JPEG images with world-file georeferencing, preview them in the web UI, clip them with the rectangle tool, and export as images embedded in SVG. Mapshaper's default options for raster importing and projecting rasters should work well for typical image layers. When importing rasters containing data, you may need to set additional options, which are documented in the command reference.
 
 → See [`-i`](/docs/reference.html#-i-input).
 </div>

@@ -1,3 +1,9 @@
+v0.7.16
+* Support for raster reprojection. Works with the -proj command and on-the-fly reprojection in the web UI.
+* Added `-i raster-type=image|categorical` option for setting the raster type, which determines if bilinear or nearest-neighbor resampling is used when projecting (`image` is the default).
+* Added `-proj resampling=nearest|bilinear` to override the default.
+* Added `-proj nodata-color=` for setting the color of parts of the image that are outside of the projection area.
+
 v0.7.15
 * Improved support for GeoTIFF CRS metadata.
 
