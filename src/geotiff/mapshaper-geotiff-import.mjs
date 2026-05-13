@@ -87,6 +87,7 @@ async function importGeoTIFFImage(importImage, input, opts, sourceImage) {
   var sourceId = getSourceId(input);
   var raster = {
     sourceId: sourceId,
+    interpretation: getRasterInterpretation(opts),
     grid: {
       width: width,
       height: height,
@@ -111,11 +112,17 @@ async function importGeoTIFFImage(importImage, input, opts, sourceImage) {
     }
   };
   raster.view.recipe = getRasterViewRecipe(raster.grid, raster.view.recipe, opts);
-  raster.view.preview = createRasterPreview(raster, opts);
+  if (runningInBrowser()) {
+    raster.view.preview = createRasterPreview(raster, opts);
+  }
   return {
     raster: raster,
     source: getSourceInfo(input, sourceId, sourceImage)
   };
+}
+
+function getRasterInterpretation(opts) {
+  return opts.raster_type || opts.rasterType || 'image';
 }
 
 async function selectGeoTIFFImportImage(tiff, sourceImage, opts) {

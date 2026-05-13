@@ -23,6 +23,10 @@ export function validateInputOpts(cmd) {
     error('precision= option should be a positive number');
   }
 
+  if (o.raster_type && o.raster_type != 'image' && o.raster_type != 'categorical') {
+    error('Unsupported raster-type:', o.raster_type);
+  }
+
   if (o.encoding) {
     o.encoding = validateEncoding(o.encoding);
   }
@@ -36,8 +40,12 @@ export function validateSimplifyOpts(cmd) {
 }
 
 export function validateProjOpts(cmd) {
+  var resampling = cmd.options.resampling;
   if (!(cmd.options.crs || cmd.options.match || cmd.options.init)) {
     stop('Missing projection data');
+  }
+  if (resampling && resampling != 'nearest' && resampling != 'bilinear') {
+    stop('Unsupported resampling method:', resampling);
   }
 }
 

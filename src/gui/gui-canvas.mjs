@@ -6,6 +6,10 @@ import {
   getCachedRasterViewportPreview,
   scheduleRasterViewportPreview
 } from './gui-raster-viewport-preview';
+import {
+  getCachedRasterReprojectedPreview,
+  scheduleRasterReprojectedPreview
+} from './gui-raster-reprojected-preview';
 import { getCanvasFillPattern, getCanvasFillEffect } from './gui-canvas-patterns';
 
 // TODO: consider moving this upstream
@@ -155,8 +159,26 @@ export function DisplayCanvas() {
   _self.drawRasterLayer = function(layer, opts) {
     var raster = layer.raster;
     var options = opts || {};
-    var preview = options.action == 'nav' ? null : getCachedRasterViewportPreview(layer, _ext);
-    var bbox = preview && preview.bbox;
+    var preview = null;
+    var bbox;
+    if (layer.gui && layer.gui.dynamic_crs) {
+      preview = getCachedRasterReprojectedPreview(layer, _ext);
+      if (!preview) {
+        if (options.action != 'nav' && options.onViewportPreviewReady) {
+          scheduleRasterReprojectedPreview(layer, _ext, options.onViewportPreviewReady);
+        }
+        return;
+      }
+      bbox = preview.bbox;
+      if (!preview.pixels || !bbox) return;
+      drawRasterPreview(preview, bbox);
+      if (options.action != 'nav' && options.onViewportPreviewReady) {
+        scheduleRasterReprojectedPreview(layer, _ext, options.onViewportPreviewReady);
+      }
+      return;
+    }
+    preview = options.action == 'nav' ? null : getCachedRasterViewportPreview(layer, _ext);
+    bbox = preview && preview.bbox;
     if (!preview) {
       preview = raster && getRasterPreview(raster);
       bbox = raster && getRasterBBox(raster);

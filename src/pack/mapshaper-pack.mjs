@@ -173,20 +173,11 @@ function exportRasterData(raster) {
   }
   if (raster.view) {
     copy.view = Object.assign({}, raster.view);
-    if (raster.view.preview) {
-      copy.view.preview = Object.assign({}, raster.view.preview);
-      delete copy.view.preview.canvas;
-      if (raster.view.preview.pixels) {
-        copy.view.preview.pixels = typedArrayToBuffer(raster.view.preview.pixels);
-      }
-    }
+    delete copy.view.preview;
+    delete copy.view.scalingStats;
   }
   if (raster.preview) {
-    copy.preview = Object.assign({}, raster.preview);
-    delete copy.preview.canvas;
-    if (raster.preview.pixels) {
-      copy.preview.pixels = typedArrayToBuffer(raster.preview.pixels);
-    }
+    delete copy.preview;
   }
   if (raster.pixels) {
     copy.pixels = typedArrayToBuffer(raster.pixels);

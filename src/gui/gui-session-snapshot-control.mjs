@@ -274,11 +274,23 @@ export async function importSessionData(buf, gui) {
 }
 
 function importDatasets(datasets, gui) {
+  regenerateRasterPreviews(datasets);
   gui.model.addDatasets(datasets);
   var target = findTargetLayer(datasets);
   delete target.layers[0].active; // kludge, active flag only used in snapshots now
   gui.model.setDefaultTarget(target.layers, target.dataset);
   gui.model.updated({select: true, arc_count: true}); // arc_count to refresh display shapes
+}
+
+function regenerateRasterPreviews(datasets) {
+  datasets.forEach(function(dataset) {
+    dataset.layers.forEach(function(lyr) {
+      var raster = lyr.raster;
+      if (!raster || !raster.grid || raster.view && raster.view.preview) return;
+      raster.view = raster.view || {};
+      raster.view.preview = internal.createRasterPreview(raster);
+    });
+  });
 }
 
 async function captureSnapshot(gui) {

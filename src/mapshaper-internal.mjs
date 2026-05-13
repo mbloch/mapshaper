@@ -125,6 +125,7 @@ import * as LayerUtils from './dataset/mapshaper-layer-utils';
 import * as Lines from './commands/mapshaper-lines';
 import * as Logging from './utils/mapshaper-logging';
 import * as Profile from './utils/mapshaper-profile';
+import * as RasterReprojection from './rasters/mapshaper-raster-reprojection';
 import * as RasterUtils from './rasters/mapshaper-raster-utils';
 import * as Merging from './dataset/mapshaper-merging';
 import * as MosaicIndex from './polygons/mapshaper-mosaic-index';
@@ -251,6 +252,7 @@ Object.assign(internal,
   Lines,
   Logging,
   Profile,
+  RasterReprojection,
   RasterUtils,
   Merging,
   MosaicIndex,

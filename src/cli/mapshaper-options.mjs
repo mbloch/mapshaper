@@ -186,6 +186,9 @@ export function getOptionParser() {
     .option('percentile-range', {
       describe: '[raster] input percentile range for percentile scaling, e.g. 2,98'
     })
+    .option('raster-type', {
+      describe: '[raster] image or categorical (default is image)'
+    })
     .option('rendition', {
       describe: '[GeoTIFF] import a GeoTIFF rendition: full,overview-1,etc.'
     })
@@ -406,6 +409,10 @@ export function getOptionParser() {
     .option('svg-bbox', {
       describe: '[SVG] bounding box of SVG map in projected map units',
       type: 'bbox'
+    })
+    .option('raster-res', {
+      describe: '[SVG] raster pixels per SVG pixel (default is 1)',
+      type: 'number'
     })
     .option('fit-extent', {
       describe: '[SVG] layer to use for the map extent'
@@ -1427,6 +1434,12 @@ export function getOptionParser() {
     .option('clip-bbox', {
       describe: 'clip to a lat-long bounding box before projecting',
       type: 'bbox'
+    })
+    .option('nodata-color', {
+      describe: '[raster] color for uncovered pixels after reprojection'
+    })
+    .option('resampling', {
+      describe: '[raster] nearest or bilinear (default is bilinear)'
     })
     .option('target', targetOpt)
     .validate(V.validateProjOpts);

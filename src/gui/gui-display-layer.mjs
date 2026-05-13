@@ -4,6 +4,7 @@ import { needReprojectionForDisplay, projectArcsForDisplay, projectPointsForDisp
 import { filterLayerByIds } from './gui-layer-utils';
 import { internal, Bounds, utils } from './gui-core';
 import { getDatasetCrsInfo } from './gui-display-utils';
+import { getProjectedRasterGridBBox } from '../rasters/mapshaper-raster-reprojection';
 
 // lyr: a map layer with gui property
 // displayCRS: CRS to use for display, or null (which clears any current display CRS)
@@ -93,12 +94,6 @@ export function enhanceLayerForDisplay(layer, dataset, opts) {
   } else if (internal.layerHasRaster(layer)) {
     gui.geographic = true;
     gui.displayLayer = layer;
-    if (needReprojectionForDisplay(sourceCRS, displayCRS)) {
-      // Raster warping is not supported yet; hide rather than misplace pixels.
-      gui.unprojectable = true;
-      gui.displayLayer = {shapes: []};
-      notifyRasterReprojectionBlocked(layer, opts);
-    }
   } else if (layer.geometry_type) {
     gui.geographic = true;
     gui.displayLayer = layer;
@@ -123,22 +118,18 @@ export function enhanceLayerForDisplay(layer, dataset, opts) {
         // Don't try to draw paths containing coordinates that failed to project
         gui.displayLayer = internal.filterPathLayerByArcIds(gui.displayLayer, emptyArcs);
       }
+    } else if (internal.layerHasRaster(layer)) {
+      gui.bounds = getProjectedRasterDisplayBounds(layer, sourceCRS, displayCRS);
     }
   }
 
-  gui.bounds = getDisplayBounds(gui.displayLayer, gui.displayArcs);
+  gui.bounds = gui.bounds || getDisplayBounds(gui.displayLayer, gui.displayArcs);
   layer.gui = gui;
 }
 
-function notifyRasterReprojectionBlocked(layer, opts) {
-  if (!opts.notify) return;
-  opts.notify({
-    severity: 'warn',
-    title: 'Raster layer hidden',
-    body: 'The raster layer "' + (layer.name || '[unnamed]') +
-      '" cannot be displayed in the current map projection because raster reprojection is not supported yet.',
-    dedupKey: 'raster-reprojection-blocked:' + (layer.menu_id || layer.name || '')
-  });
+function getProjectedRasterDisplayBounds(layer, sourceCRS, displayCRS) {
+  var bbox = getProjectedRasterGridBBox(layer.raster, sourceCRS, displayCRS, {raster_mesh_interval: 32});
+  return bbox ? new Bounds(bbox) : new Bounds();
 }
 
 function getDisplayBounds(lyr, arcs) {

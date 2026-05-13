@@ -1,12 +1,15 @@
 import { Bounds } from '../geom/mapshaper-bounds';
 import utils from '../utils/mapshaper-utils';
 import { stop, warn } from '../utils/mapshaper-logging';
+import { runningInBrowser } from '../mapshaper-env';
 import {
   markLayerChanged,
   noteLayerWillChange
 } from '../undo/mapshaper-undo-tracking';
 
 var DEFAULT_MAX_PREVIEW_PIXELS = 4e6;
+var MAX_EXACT_AVERAGE_PIXELS = 256;
+var MAX_APPROX_AVERAGE_STEPS = 16;
 
 export function getRasterGrid(raster) {
   return raster && (raster.grid || raster);
@@ -152,6 +155,13 @@ export function renderRasterViewportPreview(grid, recipe, bbox, width, height, s
   });
 }
 
+export function renderRasterExportPreview(raster, bbox, width, height, opts) {
+  var grid = getRasterGrid(raster);
+  var recipe = getRasterViewRecipe(grid, raster.view && raster.view.recipe, opts);
+  var stats = getRasterViewScalingStats(raster, recipe);
+  return renderRasterGridPreview(grid, recipe, width, height, stats, bbox, getRasterExportResamplingMethod(grid, bbox, width, height));
+}
+
 export function getRasterScalingStats(grid, recipe) {
   recipe = getRasterViewRecipe(grid, recipe);
   return getScalingStats(grid.samples, grid.bands, grid.nodata, recipe);
@@ -176,7 +186,7 @@ export function getRasterViewScalingStats(raster, recipeArg) {
   return stats;
 }
 
-function renderRasterGridPreview(grid, recipe, width, height, statsArg, sourceBbox) {
+function renderRasterGridPreview(grid, recipe, width, height, statsArg, sourceBbox, resamplingMethod) {
   var samples = grid.samples;
   var bands = grid.bands;
   var noData = grid.nodata;
@@ -184,23 +194,29 @@ function renderRasterGridPreview(grid, recipe, width, height, statsArg, sourceBb
   var stats = statsArg || getScalingStats(samples, bands, noData, recipe);
   var sourceRange = recipe.scaling == 'none' ? getPixelTypeRange(grid.pixelType) : null;
   var displayRange = getDisplayRange(recipe.scaleRange);
-  var src, dest, val, isNoData, j;
+  var src, dest, val, isNoData, j, sample;
   for (var y = 0; y < height; y++) {
     for (var x = 0; x < width; x++) {
-      src = getPreviewSourceOffset(grid, sourceBbox, x, y, width, height, bands);
       dest = (y * width + x) * 4;
-      isNoData = noData !== null && noData !== undefined && allSamplesAreNoData(samples, src, bands, noData);
+      if (resamplingMethod) {
+        sample = getResampledRasterSample(grid, sourceBbox, x, y, width, height, resamplingMethod);
+        isNoData = !sample.valid;
+      } else {
+        src = getPreviewSourceOffset(grid, sourceBbox, x, y, width, height, bands);
+        sample = null;
+        isNoData = noData !== null && noData !== undefined && allSamplesAreNoData(samples, src, bands, noData);
+      }
       if (bands == 1) {
-        val = scaleSample(samples[src], stats && stats[0], sourceRange, displayRange);
+        val = scaleSample(sample ? sample.values[0] : samples[src], stats && stats[0], sourceRange, displayRange);
         pixels[dest] = val;
         pixels[dest + 1] = val;
         pixels[dest + 2] = val;
         pixels[dest + 3] = isNoData ? 0 : 255;
       } else {
         for (j = 0; j < 3; j++) {
-          pixels[dest + j] = scaleSample(samples[src + j], stats && stats[j], sourceRange, displayRange);
+          pixels[dest + j] = scaleSample(sample ? sample.values[j] : samples[src + j], stats && stats[j], sourceRange, displayRange);
         }
-        pixels[dest + 3] = isNoData ? 0 : bands >= 4 ? scaleSample(samples[src + 3], stats && stats[3], sourceRange, [0, 255]) : 255;
+        pixels[dest + 3] = isNoData ? 0 : bands >= 4 ? scaleSample(sample ? sample.values[3] : samples[src + 3], stats && stats[3], sourceRange, [0, 255]) : 255;
       }
     }
   }
@@ -212,6 +228,156 @@ function renderRasterGridPreview(grid, recipe, width, height, statsArg, sourceBb
     colorModel: 'rgba',
     pixels: pixels
   };
+}
+
+function getRasterExportResamplingMethod(grid, bbox, width, height) {
+  var srcSize = getRasterSourcePixelSize(grid, bbox);
+  return width < srcSize.width || height < srcSize.height ? 'average' : 'bilinear';
+}
+
+function getRasterSourcePixelSize(grid, bbox) {
+  var rb = grid.bbox;
+  return {
+    width: Math.abs((bbox[2] - bbox[0]) / (rb[2] - rb[0]) * grid.width),
+    height: Math.abs((bbox[3] - bbox[1]) / (rb[3] - rb[1]) * grid.height)
+  };
+}
+
+function getResampledRasterSample(grid, bbox, x, y, width, height, method) {
+  return method == 'average' ?
+    getAverageRasterSample(grid, bbox, x, y, width, height) :
+    getBilinearRasterSample(grid, bbox, x, y, width, height);
+}
+
+function getAverageRasterSample(grid, bbox, x, y, width, height) {
+  var bounds = getRasterSourcePixelBounds(grid, bbox, x, y, width, height);
+  if (getSourcePixelBoundsArea(bounds) > MAX_EXACT_AVERAGE_PIXELS) {
+    return getApproxAverageRasterSample(grid, bounds);
+  }
+  var samples = grid.samples;
+  var bands = grid.bands;
+  var values = new Array(bands).fill(0);
+  var total = 0;
+  var src, weight;
+  var x0 = Math.max(0, Math.floor(bounds.x0));
+  var x1 = Math.min(grid.width, Math.ceil(bounds.x1));
+  var y0 = Math.max(0, Math.floor(bounds.y0));
+  var y1 = Math.min(grid.height, Math.ceil(bounds.y1));
+  for (var sy = y0; sy < y1; sy++) {
+    for (var sx = x0; sx < x1; sx++) {
+      weight = getIntervalOverlap(bounds.x0, bounds.x1, sx, sx + 1) *
+        getIntervalOverlap(bounds.y0, bounds.y1, sy, sy + 1);
+      if (weight <= 0) continue;
+      src = (sy * grid.width + sx) * bands;
+      if (sampleIsNoData(samples, src, bands, grid.nodata)) continue;
+      for (var band = 0; band < bands; band++) {
+        values[band] += samples[src + band] * weight;
+      }
+      total += weight;
+    }
+  }
+  if (total <= 0) return {valid: false, values: values};
+  for (var i = 0; i < bands; i++) values[i] /= total;
+  return {valid: true, values: values};
+}
+
+function getApproxAverageRasterSample(grid, bounds) {
+  var samples = grid.samples;
+  var bands = grid.bands;
+  var values = new Array(bands).fill(0);
+  var xSteps = Math.min(MAX_APPROX_AVERAGE_STEPS, Math.max(1, Math.ceil(Math.abs(bounds.x1 - bounds.x0))));
+  var ySteps = Math.min(MAX_APPROX_AVERAGE_STEPS, Math.max(1, Math.ceil(Math.abs(bounds.y1 - bounds.y0))));
+  var count = 0;
+  var sx, sy, src;
+  for (var y = 0; y < ySteps; y++) {
+    for (var x = 0; x < xSteps; x++) {
+      sx = Math.max(0, Math.min(grid.width - 1, Math.floor(bounds.x0 + (x + 0.5) / xSteps * (bounds.x1 - bounds.x0))));
+      sy = Math.max(0, Math.min(grid.height - 1, Math.floor(bounds.y0 + (y + 0.5) / ySteps * (bounds.y1 - bounds.y0))));
+      src = (sy * grid.width + sx) * bands;
+      if (sampleIsNoData(samples, src, bands, grid.nodata)) continue;
+      for (var band = 0; band < bands; band++) {
+        values[band] += samples[src + band];
+      }
+      count++;
+    }
+  }
+  if (count === 0) return {valid: false, values: values};
+  for (var i = 0; i < bands; i++) values[i] /= count;
+  return {valid: true, values: values};
+}
+
+function getBilinearRasterSample(grid, bbox, x, y, width, height) {
+  var p = getRasterSourcePixelCenter(grid, bbox, x, y, width, height);
+  var x0 = Math.max(0, Math.min(grid.width - 1, Math.floor(p.x)));
+  var y0 = Math.max(0, Math.min(grid.height - 1, Math.floor(p.y)));
+  var x1 = Math.max(0, Math.min(grid.width - 1, x0 + 1));
+  var y1 = Math.max(0, Math.min(grid.height - 1, y0 + 1));
+  var tx = Math.max(0, Math.min(1, p.x - x0));
+  var ty = Math.max(0, Math.min(1, p.y - y0));
+  var samples = grid.samples;
+  var bands = grid.bands;
+  var values = new Array(bands).fill(0);
+  var offsets = [
+    (y0 * grid.width + x0) * bands,
+    (y0 * grid.width + x1) * bands,
+    (y1 * grid.width + x0) * bands,
+    (y1 * grid.width + x1) * bands
+  ];
+  var weights = [
+    (1 - tx) * (1 - ty),
+    tx * (1 - ty),
+    (1 - tx) * ty,
+    tx * ty
+  ];
+  var total = 0;
+  offsets.forEach(function(src, i) {
+    if (weights[i] <= 0 || sampleIsNoData(samples, src, bands, grid.nodata)) return;
+    for (var band = 0; band < bands; band++) {
+      values[band] += samples[src + band] * weights[i];
+    }
+    total += weights[i];
+  });
+  if (total <= 0) return {valid: false, values: values};
+  for (var j = 0; j < bands; j++) values[j] /= total;
+  return {valid: true, values: values};
+}
+
+function getRasterSourcePixelBounds(grid, bbox, x, y, width, height) {
+  return {
+    x0: mapXToRasterPixel(grid, bbox[0] + x / width * (bbox[2] - bbox[0])),
+    x1: mapXToRasterPixel(grid, bbox[0] + (x + 1) / width * (bbox[2] - bbox[0])),
+    y0: mapYToRasterPixel(grid, bbox[3] - y / height * (bbox[3] - bbox[1])),
+    y1: mapYToRasterPixel(grid, bbox[3] - (y + 1) / height * (bbox[3] - bbox[1]))
+  };
+}
+
+function getRasterSourcePixelCenter(grid, bbox, x, y, width, height) {
+  var mapX = bbox[0] + (x + 0.5) / width * (bbox[2] - bbox[0]);
+  var mapY = bbox[3] - (y + 0.5) / height * (bbox[3] - bbox[1]);
+  return {
+    x: mapXToRasterPixel(grid, mapX) - 0.5,
+    y: mapYToRasterPixel(grid, mapY) - 0.5
+  };
+}
+
+function mapXToRasterPixel(grid, x) {
+  return (x - grid.bbox[0]) / (grid.bbox[2] - grid.bbox[0]) * grid.width;
+}
+
+function mapYToRasterPixel(grid, y) {
+  return (grid.bbox[3] - y) / (grid.bbox[3] - grid.bbox[1]) * grid.height;
+}
+
+function getIntervalOverlap(a0, a1, b0, b1) {
+  return Math.max(0, Math.min(Math.max(a0, a1), b1) - Math.max(Math.min(a0, a1), b0));
+}
+
+function getSourcePixelBoundsArea(bounds) {
+  return Math.abs((bounds.x1 - bounds.x0) * (bounds.y1 - bounds.y0));
+}
+
+function sampleIsNoData(samples, offset, bands, noData) {
+  return noData !== null && noData !== undefined && allSamplesAreNoData(samples, offset, bands, noData);
 }
 
 function renderRawEightBitPreview(grid, width, height, sourceBbox) {
@@ -278,7 +444,12 @@ export function clipRasterToBBox(lyr, bbox, opts) {
   noteLayerWillChange(lyr, {operation: 'clipRasterToBBox', unit: 'raster'});
   raster.grid = cropRasterGrid(grid, crop, clipBbox);
   raster.view = raster.view || {};
-  raster.view.preview = createRasterPreview(raster, opts || {});
+  delete raster.view.scalingStats;
+  if (runningInBrowser()) {
+    raster.view.preview = createRasterPreview(raster, opts || {});
+  } else {
+    delete raster.view.preview;
+  }
   clearLegacyRasterFields(raster);
   markLayerChanged(lyr, {operation: 'clipRasterToBBox', unit: 'raster'});
   return true;

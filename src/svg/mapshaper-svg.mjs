@@ -15,7 +15,7 @@ import { Bounds } from '../geom/mapshaper-bounds';
 import { getDatasetCRS, getDatasetCrsInfo, crsToProj4, parseAuthorityCodeString, parseAuthorityCodeFromWkt } from '../crs/mapshaper-projections';
 import { runningInBrowser } from '../mapshaper-env';
 import require from '../mapshaper-require';
-import { getRasterBBox, getRasterPreview, intersectBboxes } from '../rasters/mapshaper-raster-utils';
+import { getRasterBBox, intersectBboxes, renderRasterExportPreview } from '../rasters/mapshaper-raster-utils';
 
 var ILLUSTRATOR_PATH_VERTEX_LIMIT = 32000;
 
@@ -182,15 +182,15 @@ export function exportLayerForSVG(lyr, dataset, opts) {
 
 export function exportRasterLayerForSVG(lyr, frame, opts) {
   var raster = lyr.raster;
-  var clipped = clipRasterPreviewToFrame(raster, frame);
-  var bbox = transformRasterBboxForSVG(clipped.bbox, frame);
+  var rendered = renderRasterForSVG(raster, frame, opts);
+  var bbox = transformRasterBboxForSVG(rendered.bbox, frame);
   var href;
   var layerObj = getEmptyLayerForSVG(lyr, opts);
-  if (!clipped.preview.width || !clipped.preview.height) {
+  if (!rendered.preview.width || !rendered.preview.height) {
     layerObj.children = [];
     return layerObj;
   }
-  href = encodeRasterPreview(clipped.preview, opts);
+  href = encodeRasterPreview(rendered.preview, opts);
   layerObj.children = [{
     tag: 'image',
     properties: {
@@ -205,50 +205,47 @@ export function exportRasterLayerForSVG(lyr, frame, opts) {
   return layerObj;
 }
 
-function clipRasterPreviewToFrame(raster, frame) {
+function renderRasterForSVG(raster, frame, opts) {
   var rasterBbox = getRasterBBox(raster);
-  var preview = getRasterPreview(raster);
   var rasterBounds = new Bounds(rasterBbox);
   var clipBounds = new Bounds(frame.bbox);
   var bbox = intersectBboxes(rasterBounds.toArray(), clipBounds.toArray()) || [0, 0, 0, 0];
-  var crop = getRasterPreviewCrop(rasterBbox, preview, bbox);
+  var svgBbox = transformRasterBboxForSVG(bbox, frame);
+  var size = getSvgRasterOutputSize(raster, bbox, svgBbox, opts);
   return {
     bbox: bbox,
-    preview: cropRasterPreview(preview, crop)
+    preview: size.width > 0 && size.height > 0 ?
+      renderRasterExportPreview(raster, bbox, size.width, size.height, opts) :
+      {width: 0, height: 0, pixels: new Uint8ClampedArray(0)}
   };
 }
 
-function getRasterPreviewCrop(rasterBbox, preview, bbox) {
-  var rb = rasterBbox;
-  var p = preview;
-  var x0 = Math.max(0, Math.floor((bbox[0] - rb[0]) / (rb[2] - rb[0]) * p.width));
-  var x1 = Math.min(p.width, Math.ceil((bbox[2] - rb[0]) / (rb[2] - rb[0]) * p.width));
-  var y0 = Math.max(0, Math.floor((rb[3] - bbox[3]) / (rb[3] - rb[1]) * p.height));
-  var y1 = Math.min(p.height, Math.ceil((rb[3] - bbox[1]) / (rb[3] - rb[1]) * p.height));
+function getSvgRasterOutputSize(raster, bbox, svgBbox, opts) {
+  var res = getSvgRasterResolution(opts);
+  var sourceSize = getRasterSourceSize(raster, bbox);
+  var svgWidth = Math.abs(svgBbox[2] - svgBbox[0]);
+  var svgHeight = Math.abs(svgBbox[3] - svgBbox[1]);
+  var width = svgWidth > 0 ? Math.max(1, Math.round(svgWidth * res)) : 0;
+  var height = svgHeight > 0 ? Math.max(1, Math.round(svgHeight * res)) : 0;
   return {
-    x: x0,
-    y: y0,
-    width: Math.max(0, x1 - x0),
-    height: Math.max(0, y1 - y0)
+    width: Math.max(0, Math.min(Math.max(1, Math.ceil(sourceSize.width)), width)),
+    height: Math.max(0, Math.min(Math.max(1, Math.ceil(sourceSize.height)), height))
   };
 }
 
-function cropRasterPreview(preview, crop) {
-  if (crop.x === 0 && crop.y === 0 && crop.width == preview.width && crop.height == preview.height) {
-    return preview;
-  }
-  var pixels = new Uint8ClampedArray(crop.width * crop.height * 4);
-  var src, dest, rowBytes = crop.width * 4;
-  for (var y = 0; y < crop.height; y++) {
-    src = ((crop.y + y) * preview.width + crop.x) * 4;
-    dest = y * rowBytes;
-    pixels.set(preview.pixels.subarray(src, src + rowBytes), dest);
-  }
-  return Object.assign({}, preview, {
-    width: crop.width,
-    height: crop.height,
-    pixels: pixels
-  });
+function getSvgRasterResolution(opts) {
+  var res = opts.raster_res || opts.rasterRes || 1;
+  if (res > 0 === false) stop('Expected raster-res= to be a positive number');
+  return res;
+}
+
+function getRasterSourceSize(raster, bbox) {
+  var grid = raster.grid;
+  var rb = getRasterBBox(raster);
+  return {
+    width: Math.abs((bbox[2] - bbox[0]) / (rb[2] - rb[0]) * grid.width),
+    height: Math.abs((bbox[3] - bbox[1]) / (rb[3] - rb[1]) * grid.height)
+  };
 }
 
 function transformRasterBboxForSVG(bbox, frame) {
