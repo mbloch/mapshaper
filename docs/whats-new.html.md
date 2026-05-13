@@ -11,7 +11,7 @@ This is a curated list of recently added features. For the full list of changes,
 
 <div class="whats-new-entry">
 
-**Raster layer support.** Mapshaper can now import GeoTIFF rasters, plus PNG and JPEG images with world-file georeferencing, preview them in the web UI, clip them with the rectangle tool, and export as images embedded in SVG. Mapshaper's default options for raster importing and projecting rasters should work well for typical image layers. When importing rasters containing data, you may need to set additional options, which are documented in the command reference.
+**Raster layer support.** Mapshaper can now import GeoTIFF rasters, plus PNG and JPEG images with world-file georeferencing. You can reproject, clip, and export rasters as images embedded in SVG files. Mapshaper's default options should work well for typical image layers. When importing rasters containing data, you may need to set additional options, which are documented in the command reference.
 
 → See [`-i`](/docs/reference.html.md#-i-input).
 </div>
