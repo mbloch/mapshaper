@@ -197,6 +197,8 @@ mapshaper -i 'lat,lon,label\n48.86,2.35,Paris\n51.51,-0.13,London' \
 
 `percentile-range=` [Raster] Input percentile range used with `scaling=percentile`. The default is `2,98`.
 
+`raster-type=image|categorical` [Raster] Semantic raster type. This sets the default resampling method for later raster reprojection: `image` (the default) uses bilinear resampling, while `categorical` uses nearest-neighbor resampling to preserve class/code values.
+
 `rendition=` [GeoTIFF] Import a specific GeoTIFF rendition, using a slug such as `full` or `overview-1`. When a GeoTIFF has internal overviews, Mapshaper lists the available slugs during import. By default, large GeoTIFFs are imported from the best available reduced-resolution overview under Mapshaper's import size limit, or resampled during import if no suitable overview is available. Use `rendition=full` to force full-resolution import.
 
 `name=`  Rename the imported layer (or layers).
@@ -292,6 +294,8 @@ Save content of the target layer(s) to a file or files.
 `svg-scale=`   (SVG) Scale SVG output using geographical units per pixel (an alternative to the `width=` option).
 
 `svg-bbox=<xmin,ymin,xmax,ymax>` (SVG)  Bounding box of SVG map in projected map units. By default, the extent of SVG output fits the content; this option lets you provide a custom extent. This could be useful when aligning the SVG output with other content layers, such as images or videos.
+
+`raster-res=` (SVG) Resolution of embedded raster images, in raster pixels per SVG pixel. The default is `1`; larger values produce higher-resolution embedded images, up to the resolution of the source raster.
 
 `fit-extent=<layer id>` (SVG) Use a layer (typically a layer containing a single rectangle) to set the extent of the map. Paths that overflow this extent are retained in the SVG output.
 
@@ -992,6 +996,10 @@ Project a dataset using a PROJ string, EPSG code or alias. This command affects 
 `match=` Match the projection of the given layer or .prj file.
 
 `init=` Define the pre-projected coordinate system, if unknown. This option is not needed if the source coordinate system is defined by a .prj file, or if the source CRS is WGS84. As with `crs`, you can pass a Proj4 string enclosed in quotes if the selected projection requires extra parameters, for example `init='+proj=utm +zone=33'`.
+
+`nodata-color=` (raster) Color for output pixels that do not receive source raster content after reprojection. Use `transparent` for transparent output.
+
+`resampling=nearest|bilinear` (raster) Resampling method for raster reprojection. Overrides the default set by `-i raster-type=`. Use `bilinear` for smooth continuous-tone imagery and `nearest` for categorical rasters or exact cell values.
 
 `target=` Layer(s) to target. All layers belonging to the same dataset as a targeted layer will be reprojected. To reproject all datasets, use `target=*`.
 

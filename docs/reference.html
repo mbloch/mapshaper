@@ -152,7 +152,7 @@ mapshaper states.geojson -filter <span class="hljs-string">&#x27;ST == &quot;AK&
 <a href="#-verbose">-verbose</a>
 <a href="#-version">-version</a></p>
 <h2 id="i-o-commands" class="cmd-category">I/O Commands</h2>
-<section class="cmd-section" data-id="-i-input" data-name="-i (input)" data-options="mapshaper combine-files batch-mode files merge-files snap snap-interval precision no-topology encoding id-field string-fields field-types csv-skip-lines csv-lines csv-field-names csv-fields decimal-comma csv-dedup-fields csv-filter json-path layers none percentile scale-range percentile-range rendition full overview-1 name"><h3 id="-i-input">-i (input)</h3>
+<section class="cmd-section" data-id="-i-input" data-name="-i (input)" data-options="mapshaper combine-files batch-mode files merge-files snap snap-interval precision no-topology encoding id-field string-fields field-types csv-skip-lines csv-lines csv-field-names csv-fields decimal-comma csv-dedup-fields csv-filter json-path layers none percentile scale-range percentile-range image categorical rendition full overview-1 name"><h3 id="-i-input">-i (input)</h3>
 <p>Input one or more files in a supported vector, table, or raster data format. Supported file types include: Shapefile, GeoJSON, TopoJSON, GeoPackage, FlatGeobuf, GeoParquet, KML, JSON data records, DBF, CSV/TSV, GeoTIFF, PNG and JPEG images with world files.</p>
 <p>The <code>-i</code> command is assumed if <code>mapshaper</code> is followed by the path of an input data file.</p>
 <p>Mapshaper does not fully support M and Z type Shapefiles. The M and Z data is lost when these files are imported.</p>
@@ -191,6 +191,7 @@ mapshaper states.geojson -filter <span class="hljs-string">&#x27;ST == &quot;AK&
 <p><code>scaling=none|minmax|percentile</code> [Raster] Display scaling method for raster imports. The default is <code>none</code> for 8-bit rasters and <code>percentile</code> for non-8-bit rasters.</p>
 <p><code>scale-range=</code> [Raster] Output intensity range for raster display scaling, as normalized percentages. The default is <code>0,100</code>.</p>
 <p><code>percentile-range=</code> [Raster] Input percentile range used with <code>scaling=percentile</code>. The default is <code>2,98</code>.</p>
+<p><code>raster-type=image|categorical</code> [Raster] Semantic raster type. This sets the default resampling method for later raster reprojection: <code>image</code> (the default) uses bilinear resampling, while <code>categorical</code> uses nearest-neighbor resampling to preserve class/code values.</p>
 <p><code>rendition=</code> [GeoTIFF] Import a specific GeoTIFF rendition, using a slug such as <code>full</code> or <code>overview-1</code>. When a GeoTIFF has internal overviews, Mapshaper lists the available slugs during import. By default, large GeoTIFFs are imported from the best available reduced-resolution overview under Mapshaper&#39;s import size limit, or resampled during import if no suitable overview is available. Use <code>rendition=full</code> to force full-resolution import.</p>
 <p><code>name=</code>  Rename the imported layer (or layers).</p>
 <p><strong>Example</strong> </p>
@@ -199,7 +200,7 @@ mapshaper states.geojson -filter <span class="hljs-string">&#x27;ST == &quot;AK&
 mapshaper countries_wgs84.shp encoding=latin1 -info
 </code></pre>
 </section>
-<section class="cmd-section" data-id="-o-output" data-name="-o (output)" data-options="format json target force gzip zip cut-table drop-table precision fix-geometry bbox-index encoding field-order id-field bbox extension prettify singles quantization no-quantization presimplify topojson-precision ndjson gj2008 reverse-winding combine-layers geojson-type no-null-props hoist metadata width height max-height margin pixels id-prefix svg-data svg-scale delimiter decimal-comma compression snappy zstd none level show-all"><h3 id="-o-output">-o (output)</h3>
+<section class="cmd-section" data-id="-o-output" data-name="-o (output)" data-options="format json target force gzip zip cut-table drop-table precision fix-geometry bbox-index encoding field-order id-field bbox extension prettify singles quantization no-quantization presimplify topojson-precision ndjson gj2008 reverse-winding combine-layers geojson-type no-null-props hoist metadata width height max-height margin pixels id-prefix svg-data svg-scale raster-res delimiter decimal-comma compression snappy zstd none level show-all"><h3 id="-o-output">-o (output)</h3>
 <p>Save content of the target layer(s) to a file or files.</p>
 <p><strong>Options</strong></p>
 <p><code>&lt;file&gt;|&lt;directory&gt;|-</code>  Name of output file or directory. Use <code>-</code> to export text-based formats to <code>/dev/stdout</code>.</p>
@@ -241,6 +242,7 @@ mapshaper countries_wgs84.shp encoding=latin1 -info
 <p><code>svg-data=</code> (SVG) Export a comma-seperated list of data fields as SVG data-* attributes. Attribute names should match the following regex pattern: <code>/^[a-z_][a-z0-9_-]*$/</code>. Non-conforming fields are skipped.</p>
 <p><code>svg-scale=</code>   (SVG) Scale SVG output using geographical units per pixel (an alternative to the <code>width=</code> option).</p>
 <p><code>svg-bbox=&lt;xmin,ymin,xmax,ymax&gt;</code> (SVG)  Bounding box of SVG map in projected map units. By default, the extent of SVG output fits the content; this option lets you provide a custom extent. This could be useful when aligning the SVG output with other content layers, such as images or videos.</p>
+<p><code>raster-res=</code> (SVG) Resolution of embedded raster images, in raster pixels per SVG pixel. The default is <code>1</code>; larger values produce higher-resolution embedded images, up to the resolution of the source raster.</p>
 <p><code>fit-extent=&lt;layer id&gt;</code> (SVG) Use a layer (typically a layer containing a single rectangle) to set the extent of the map. Paths that overflow this extent are retained in the SVG output.</p>
 <p><code>point-symbol=square</code>  (SVG) Use squares instead of circles to symbolize point data.</p>
 <p><code>delimiter=</code>  (CSV) Set the field delimiter for CSV/delimited text output; e.g. <code>delimiter=|</code>.</p>
@@ -647,12 +649,14 @@ mapshaper counties.shp \
 <p><code>from-rings</code>  Convert a layer of closed polyline rings into polygons. Nested rings in multipart features are converted into holes.</p>
 <p>Common options: <code>target=</code></p>
 </section>
-<section class="cmd-section" data-id="-proj" data-name="-proj" data-options="crs densify match init target"><h3 id="-proj">-proj</h3>
+<section class="cmd-section" data-id="-proj" data-name="-proj" data-options="crs densify match init nodata-color transparent bilinear nearest target"><h3 id="-proj">-proj</h3>
 <p>Project a dataset using a PROJ string, EPSG code or alias. This command affects all layers in the dataset(s) containing the targeted layer or layers. Information on PROJ string syntax can be found on the <a href="https://proj.org/usage/index.html">PROJ website</a>.</p>
 <p><code>&lt;crs&gt;</code> or <code>crs=</code>  Target CRS, given as a Proj.4 definition or an alias. Use the <a href="#-projections"><code>-projections</code></a> command to list available projections and aliases. In some projections that require additional parameters, Mapshaper can fit parameters automatically from the data extent, for example <code>crs=utm</code> selects a UTM zone. You can also pass a Proj4 string enclosed in quotes, for example <code>crs=&#39;+proj=utm +zone=27&#39;</code>.</p>
 <p><code>densify</code> Interpolate vertices along long line segments as needed to approximate curved lines.</p>
 <p><code>match=</code> Match the projection of the given layer or .prj file.</p>
 <p><code>init=</code> Define the pre-projected coordinate system, if unknown. This option is not needed if the source coordinate system is defined by a .prj file, or if the source CRS is WGS84. As with <code>crs</code>, you can pass a Proj4 string enclosed in quotes if the selected projection requires extra parameters, for example <code>init=&#39;+proj=utm +zone=33&#39;</code>.</p>
+<p><code>nodata-color=</code> (raster) Color for output pixels that do not receive source raster content after reprojection. Use <code>transparent</code> for transparent output.</p>
+<p><code>resampling=nearest|bilinear</code> (raster) Resampling method for raster reprojection. Overrides the default set by <code>-i raster-type=</code>. Use <code>bilinear</code> for smooth continuous-tone imagery and <code>nearest</code> for categorical rasters or exact cell values.</p>
 <p><code>target=</code> Layer(s) to target. All layers belonging to the same dataset as a targeted layer will be reprojected. To reproject all datasets, use <code>target=*</code>.</p>
 <p><strong>Examples</strong></p>
 <pre><code class="hljs language-bash"><span class="hljs-comment"># Convert a GeoJSON file to New York Long Island state plane CRS,</span>
