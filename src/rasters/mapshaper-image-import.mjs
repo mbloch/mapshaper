@@ -20,6 +20,7 @@ export async function importImageRaster(input, optsArg) {
   bbox = getWorldFileBBox(transform, decoded.width, decoded.height);
   raster = {
     sourceId: sourceId,
+    interpretation: getRasterInterpretation(opts),
     grid: {
       width: decoded.width,
       height: decoded.height,
@@ -44,7 +45,9 @@ export async function importImageRaster(input, optsArg) {
     }
   };
   raster.view.recipe = getRasterViewRecipe(raster.grid, raster.view.recipe, opts);
-  raster.view.preview = createRasterPreview(raster, opts);
+  if (runningInBrowser()) {
+    raster.view.preview = createRasterPreview(raster, opts);
+  }
   dataset = {
     info: {
       raster_sources: [getSourceInfo(imageInput, sourceId, imageType, input)]
@@ -57,6 +60,10 @@ export async function importImageRaster(input, optsArg) {
   };
   importImageCrs(dataset, input.prj);
   return dataset;
+}
+
+function getRasterInterpretation(opts) {
+  return opts.raster_type || opts.rasterType || 'image';
 }
 
 async function decodeImage(input, imageType) {

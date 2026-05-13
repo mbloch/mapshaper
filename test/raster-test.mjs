@@ -45,6 +45,45 @@ describe('raster layers', function () {
     assert.equal(image.height, 1);
   });
 
+  it('sets SVG raster image size from raster-res', function () {
+    var dataset = getFourPixelGrayRasterDataset();
+    var file = api.internal.exportSVG(dataset, {
+      format: 'svg',
+      margin: 0,
+      width: 2,
+      svg_raster_format: 'png'
+    })[0];
+    var image = decodeSvgPngImage(file.content);
+    assert.equal(image.width, 2);
+    assert.equal(image.height, 1);
+
+    file = api.internal.exportSVG(dataset, {
+      format: 'svg',
+      margin: 0,
+      width: 2,
+      raster_res: 2,
+      svg_raster_format: 'png'
+    })[0];
+    image = decodeSvgPngImage(file.content);
+    assert.equal(image.width, 4);
+    assert.equal(image.height, 1);
+  });
+
+  it('area-averages downsampled SVG raster images', function () {
+    var dataset = getFourPixelGrayRasterDataset();
+    var file = api.internal.exportSVG(dataset, {
+      format: 'svg',
+      margin: 0,
+      width: 2,
+      svg_raster_format: 'png'
+    })[0];
+    var image = decodeSvgPngImage(file.content);
+    assert.deepEqual(Array.from(image.data), [
+      50, 50, 50, 255,
+      200, 200, 200, 255
+    ]);
+  });
+
   it('imports GeoTIFF files when the local geotiff.js fixture exists', async function () {
     if (!fs.existsSync(GEOTIFF_FIXTURE)) this.skip();
     var dataset = await api.internal.importFileAsync(GEOTIFF_FIXTURE, {});
@@ -55,7 +94,7 @@ describe('raster layers', function () {
     assert.equal(lyr.raster.grid.height, 449);
     assert.equal(lyr.raster.grid.bands, 3);
     assert(lyr.raster.grid.samples instanceof Uint8Array);
-    assert(lyr.raster.view.preview.pixels instanceof Uint8ClampedArray);
+    assert.equal(lyr.raster.view.preview, undefined);
     assert.deepEqual(lyr.raster.grid.bbox, [11.331755000000001, 32.19025, 28.294810000000002, 46.268645]);
     assert.equal(dataset.info.raster_sources.length, 1);
   });
@@ -110,6 +149,7 @@ describe('raster layers', function () {
     assert.equal(dataset.info.input_formats[0], 'png');
     assert.equal(dataset.info.wkt1, WGS84_PRJ);
     assert.equal(lyr.raster_type, 'grid');
+    assert.equal(lyr.raster.interpretation, 'image');
     assert.equal(lyr.raster.grid.width, 2);
     assert.equal(lyr.raster.grid.height, 1);
     assert.equal(lyr.raster.grid.bands, 4);
@@ -118,6 +158,11 @@ describe('raster layers', function () {
       255, 0, 0, 255,
       0, 0, 255, 128
     ]);
+  });
+
+  it('imports categorical raster layers with raster-type=categorical', async function () {
+    var dataset = await api.internal.importContentAsync(getPngImportGroup(), {raster_type: 'categorical'});
+    assert.equal(dataset.layers[0].raster.interpretation, 'categorical');
   });
 
   it('imports PNG raster sidecars from local files', async function () {
@@ -156,7 +201,7 @@ describe('raster layers', function () {
     assert.equal(clipped.raster.grid.height, 1);
     assert.deepEqual(clipped.raster.grid.bbox, [1, 0, 2, 1]);
     assert.deepEqual(Array.from(clipped.raster.grid.samples), [0, 0, 255]);
-    assert.deepEqual(Array.from(clipped.raster.view.preview.pixels), [0, 0, 255, 255]);
+    assert.equal(clipped.raster.view.preview, undefined);
   });
 
   it('preserves raster layer when clipping rectangle does not intersect', function () {
@@ -182,14 +227,14 @@ describe('raster layers', function () {
     assert.equal(image.height, 1);
   });
 
-  it('packs and unpacks raster grids and previews', async function () {
+  it('packs and unpacks raster grids without preview caches', async function () {
     var dataset = getRasterDataset();
     var file = (await api.internal.exportPackedDatasets([dataset], {}))[0];
     var session = await api.internal.unpackSessionData(file.content);
     var raster = session.datasets[0].layers[0].raster;
     assert.equal(raster.grid.width, 2);
     assert(raster.grid.samples instanceof Uint8Array);
-    assert(raster.view.preview.pixels instanceof Uint8ClampedArray);
+    assert.equal(raster.view.preview, undefined);
     assert.deepEqual(Array.from(raster.grid.samples), [255, 0, 0, 0, 0, 255]);
   });
 
@@ -324,6 +369,232 @@ describe('raster layers', function () {
       10, 10, 10, 255
     ]);
   });
+
+  it('projects raster grids with forward mesh rasterization', function () {
+    var raster = getRasterDataset().layers[0].raster;
+    var src = api.internal.parseCrsString('wgs84');
+    var dest = api.internal.parseCrsString('webmercator');
+    var grid = api.internal.projectRasterGridForward(raster, src, dest, {raster_mesh_interval: 1});
+    assert.equal(grid.width, 2);
+    assert.equal(grid.height, 1);
+    assert.equal(grid.bands, 3);
+    assert(grid.bbox[2] > 200000);
+    assert.deepEqual(Array.from(grid.samples), [
+      255, 0, 0,
+      0, 0, 255
+    ]);
+  });
+
+  it('projects raster grids to match projected bbox aspect ratio', function () {
+    var raster = getRasterDataset().layers[0].raster;
+    var src = api.internal.parseCrsString('wgs84');
+    var dest = api.internal.parseCrsString('webmercator');
+    var grid = api.internal.projectRasterGridForward(raster, src, dest, {raster_mesh_interval: 1});
+    assert.equal(grid.width * grid.height, 2);
+    assert.equal(grid.width, 2);
+    assert.equal(grid.height, 1);
+  });
+
+  it('supports bilinear resampling during raster reprojection', function () {
+    var raster = getRasterDataset().layers[0].raster;
+    var crs = api.internal.parseCrsString('wgs84');
+    raster.grid.samples = new Uint8Array([
+      0, 0, 0,
+      100, 100, 100
+    ]);
+    var defaultGrid = api.internal.projectRasterGridForward(raster, crs, crs, {
+      raster_mesh_interval: 1,
+      output_bbox: [0, 0, 2, 1],
+      output_width: 1,
+      output_height: 1
+    });
+    var nearest = api.internal.projectRasterGridForward(raster, crs, crs, {
+      raster_mesh_interval: 1,
+      output_bbox: [0, 0, 2, 1],
+      output_width: 1,
+      output_height: 1,
+      resampling: 'nearest'
+    });
+    var bilinear = api.internal.projectRasterGridForward(raster, crs, crs, {
+      raster_mesh_interval: 1,
+      output_bbox: [0, 0, 2, 1],
+      output_width: 1,
+      output_height: 1,
+      resampling: 'bilinear'
+    });
+    assert.deepEqual(Array.from(nearest.samples), [100, 100, 100]);
+    assert.deepEqual(Array.from(defaultGrid.samples), [50, 50, 50]);
+    assert.deepEqual(Array.from(bilinear.samples), [50, 50, 50]);
+  });
+
+  it('defaults to nearest-neighbor for categorical raster reprojection', function () {
+    var raster = getRasterDataset().layers[0].raster;
+    var crs = api.internal.parseCrsString('wgs84');
+    raster.interpretation = 'categorical';
+    raster.grid.samples = new Uint8Array([
+      0, 0, 0,
+      100, 100, 100
+    ]);
+    var grid = api.internal.projectRasterGridForward(raster, crs, crs, {
+      raster_mesh_interval: 1,
+      output_bbox: [0, 0, 2, 1],
+      output_width: 1,
+      output_height: 1
+    });
+    assert.deepEqual(Array.from(grid.samples), [100, 100, 100]);
+  });
+
+  it('rejects unsupported raster reprojection resampling methods', function () {
+    var raster = getRasterDataset().layers[0].raster;
+    var crs = api.internal.parseCrsString('wgs84');
+    assert.throws(function() {
+      api.internal.projectRasterGridForward(raster, crs, crs, {
+        raster_mesh_interval: 1,
+        resampling: 'cubic'
+      });
+    }, /Unsupported resampling method/);
+  });
+
+  it('projects raster layers with projectDataset()', function () {
+    var dataset = getRasterDataset();
+    var src = api.internal.parseCrsString('wgs84');
+    var dest = api.internal.parseCrsString('webmercator');
+    api.internal.projectDataset(dataset, src, dest, {raster_mesh_interval: 1});
+    var raster = dataset.layers[0].raster;
+    assert.equal(raster.grid.width, 2);
+    assert.equal(raster.grid.height, 1);
+    assert.equal(raster.view.preview, undefined);
+    assert(dataset.info.crs);
+    assert(raster.grid.bbox[2] > 200000);
+  });
+
+  it('fills projected raster gaps with the original nodata value', function () {
+    var raster = getRasterDataset().layers[0].raster;
+    var src = api.internal.parseCrsString('wgs84');
+    var dest = api.internal.parseCrsString('webmercator');
+    raster.grid.nodata = 99;
+    var grid = api.internal.projectRasterGridForward(raster, src, dest, {
+      raster_mesh_interval: 1,
+      output_bbox: [-1e9, -1e9, -1e9 + 1000, -1e9 + 1000],
+      output_width: 1,
+      output_height: 1
+    });
+    assert.deepEqual(Array.from(grid.samples), [99, 99, 99]);
+  });
+
+  it('fills projected raster gaps with nodata-color', function () {
+    var raster = getRasterDataset().layers[0].raster;
+    var src = api.internal.parseCrsString('wgs84');
+    var dest = api.internal.parseCrsString('webmercator');
+    raster.grid.nodata = 99;
+    var grid = api.internal.projectRasterGridForward(raster, src, dest, {
+      raster_mesh_interval: 1,
+      nodata_color: '#010203',
+      output_bbox: [-1e9, -1e9, -1e9 + 1000, -1e9 + 1000],
+      output_width: 1,
+      output_height: 1
+    });
+    assert.deepEqual(Array.from(grid.samples), [1, 2, 3]);
+  });
+
+  it('does not copy uncovered source pixels during raster reprojection', function () {
+    var raster = getRasterDataset().layers[0].raster;
+    var crs = api.internal.parseCrsString('wgs84');
+    raster.grid.samples = new Uint8Array([
+      255, 0, 255,
+      9, 8, 7
+    ]);
+    raster.grid.coverage = new Uint8Array([0, 1]);
+    ['nearest', 'bilinear'].forEach(function(method) {
+      var grid = api.internal.projectRasterGridForward(raster, crs, crs, {
+        raster_mesh_interval: 1,
+        output_bbox: [0, 0, 2, 1],
+        output_width: 2,
+        output_height: 1,
+        nodata_color: 'green',
+        sample_method: method
+      });
+      assert.deepEqual(Array.from(grid.samples), [
+        0, 128, 0,
+        9, 8, 7
+      ]);
+      assert.deepEqual(Array.from(grid.coverage), [0, 1]);
+    });
+  });
+
+  it('promotes projected RGB rasters to RGBA for transparent nodata-color', function () {
+    var raster = getRasterDataset().layers[0].raster;
+    var src = api.internal.parseCrsString('wgs84');
+    var dest = api.internal.parseCrsString('webmercator');
+    var grid = api.internal.projectRasterGridForward(raster, src, dest, {
+      raster_mesh_interval: 1,
+      nodata_color: 'transparent',
+      output_bbox: [-1e9, -1e9, -1e9 + 1000, -1e9 + 1000],
+      output_width: 1,
+      output_height: 1
+    });
+    assert.equal(grid.bands, 4);
+    assert.deepEqual(Array.from(grid.samples), [0, 0, 0, 0]);
+  });
+
+  it('keeps disconnected projected mesh components by default', function () {
+    var grid = {
+      width: 4,
+      height: 1,
+      bands: 1,
+      pixelType: 'uint8',
+      samples: new Uint8Array([1, 2, 3, 4]),
+      bbox: [0, 0, 4, 1],
+      transform: [1, 0, 0, 0, -1, 1],
+      nodata: null
+    };
+    var mesh = api.internal.buildProjectedRasterMesh(grid, function(x, y) {
+      return [x < 3 ? x : 1000 + x, y];
+    }, 1);
+    var bbox = api.internal.getProjectedRasterMeshBBox(mesh, {raster_max_edge_factor: 10});
+    assert.deepEqual(bbox, [0, 0, 1004, 1]);
+  });
+
+  it('can exclude disconnected projected mesh components with an option', function () {
+    var grid = {
+      width: 4,
+      height: 1,
+      bands: 1,
+      pixelType: 'uint8',
+      samples: new Uint8Array([1, 2, 3, 4]),
+      bbox: [0, 0, 4, 1],
+      transform: [1, 0, 0, 0, -1, 1],
+      nodata: null
+    };
+    var mesh = api.internal.buildProjectedRasterMesh(grid, function(x, y) {
+      return [x < 3 ? x : 1000 + x, y];
+    }, 1);
+    var bbox = api.internal.getProjectedRasterMeshBBox(mesh, {
+      raster_max_edge_factor: 10,
+      raster_component_filter: true
+    });
+    assert.deepEqual(bbox, [0, 0, 2, 1]);
+  });
+
+  it('keeps overlapping projected mesh components from antimeridian wrapping', function () {
+    var grid = {
+      width: 6,
+      height: 1,
+      bands: 1,
+      pixelType: 'uint8',
+      samples: new Uint8Array([1, 2, 3, 4, 5, 6]),
+      bbox: [0, 0, 6, 1],
+      transform: [1, 0, 0, 0, -1, 1],
+      nodata: null
+    };
+    var mesh = api.internal.buildProjectedRasterMesh(grid, function(x, y) {
+      if (x <= 2) return [x, y];
+      if (x == 3) return [1000, y];
+      return [x - 3, y];
+    }, 1);
+    var bbox = api.internal.getProjectedRasterMeshBBox(mesh, {raster_max_edge_factor: 10});
+    assert.deepEqual(bbox, [0, 0, 3, 1]);
+  });
 });
 
 var WGS84_PRJ = 'GEOGCS["WGS 84",DATUM["WGS_1984",SPHEROID["WGS 84",6378137,298.257223563]],PRIMEM["Greenwich",0],UNIT["Degree",0.0174532925199433]]';
@@ -421,6 +692,49 @@ function getRasterDataset() {
   };
 }
 
+function getFourPixelGrayRasterDataset() {
+  return {
+    info: {crs_string: 'wgs84'},
+    layers: [{
+      name: 'raster',
+      raster_type: 'grid',
+      raster: {
+        sourceId: 'raster',
+        grid: {
+          width: 4,
+          height: 1,
+          bands: 1,
+          pixelType: 'uint8',
+          samples: new Uint8Array([0, 100, 150, 250]),
+          sampleBands: [0],
+          nodata: null,
+          bbox: [0, 0, 4, 1],
+          transform: [1, 0, 0, 0, -1, 1]
+        },
+        view: {
+          recipe: {
+            type: 'gray',
+            bands: [0]
+          },
+          preview: {
+            width: 4,
+            height: 1,
+            bands: 4,
+            pixelType: 'uint8',
+            colorModel: 'rgba',
+            pixels: new Uint8ClampedArray([
+              0, 0, 0, 255,
+              100, 100, 100, 255,
+              150, 150, 150, 255,
+              250, 250, 250, 255
+            ])
+          }
+        }
+      }
+    }]
+  };
+}
+
 function getFrameDataset() {
   var feature = {
     type: 'Feature',
@@ -433,4 +747,9 @@ function getFrameDataset() {
   var dataset = api.internal.importGeoJSON(feature);
   dataset.layers[0].name = 'frame';
   return dataset;
+}
+
+function decodeSvgPngImage(svg) {
+  var data = svg.match(/data:image\/png;base64,([^"]+)/)[1];
+  return PNG.sync.read(Buffer.from(data, 'base64'));
 }

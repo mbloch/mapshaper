@@ -14,10 +14,12 @@ import { dissolveArcs } from '../paths/mapshaper-arc-dissolve';
 import { projectAndDensifyArcs } from '../crs/mapshaper-densify';
 import { expandProjDefn } from '../crs/mapshaper-projection-params';
 import {
-  layerHasPoints, layerHasGeometry, copyLayerShapes,
+  layerHasPoints, layerHasGeometry, layerHasRaster, copyLayerShapes,
   getImplicitlyTargetedLayerNames
 } from '../dataset/mapshaper-layer-utils';
-import { datasetHasGeometry } from '../dataset/mapshaper-dataset-utils';
+import { datasetHasGeometry, datasetHasRaster } from '../dataset/mapshaper-dataset-utils';
+import { createRasterPreview } from '../rasters/mapshaper-raster-utils';
+import { projectRasterGridForward } from '../rasters/mapshaper-raster-reprojection';
 import { runningInBrowser } from '../mapshaper-env';
 import { stop, message, error } from '../utils/mapshaper-logging';
 import { importFile } from '../io/mapshaper-file-import';
@@ -69,7 +71,7 @@ function projCmd(dataset, destInfo, opts) {
     stop("Missing projection data");
   }
 
-  if (!datasetHasGeometry(dataset)) {
+  if (!datasetHasGeometry(dataset) && !datasetHasRaster(dataset)) {
     // still set the crs of datasets that are missing geometry
     setDatasetCrsInfo(dataset, destInfo);
     return false;
@@ -123,6 +125,7 @@ function layerWasChangedByProjection(a, b) {
   return a.name != b.name ||
     a.geometry_type != b.geometry_type ||
     a.data !== b.data ||
+    a.raster !== b.raster ||
     !arraysAreEqual(a.shapes, b.shapes);
 }
 
@@ -170,6 +173,8 @@ export function projectDataset(dataset, src, dest, opts) {
   dataset.layers.forEach(function(lyr) {
     if (layerHasPoints(lyr)) {
       badPoints += projectPointLayer(lyr, proj); // v2 compatible (invalid points are removed)
+    } else if (layerHasRaster(lyr)) {
+      projectRasterLayer(lyr, src, dest, opts);
     }
   });
   if (dataset.arcs) {
@@ -193,6 +198,18 @@ export function projectDataset(dataset, src, dest, opts) {
     message(`Removed ${badPoints} unprojectable ${badPoints == 1 ? 'point' : 'points'}.`);
   }
   dataset.info.crs = dest;
+}
+
+function projectRasterLayer(lyr, src, dest, opts) {
+  var raster = lyr.raster;
+  raster.grid = projectRasterGridForward(raster, src, dest, opts || {});
+  raster.view = raster.view || {};
+  delete raster.view.scalingStats;
+  if (runningInBrowser()) {
+    raster.view.preview = createRasterPreview(raster, opts || {});
+  } else {
+    delete raster.view.preview;
+  }
 }
 
 // * Heals cuts in previously split-apart polygons

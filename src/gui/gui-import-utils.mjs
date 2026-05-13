@@ -1,29 +1,39 @@
-import { showPopupAlert, showPrompt } from './gui-alert';
+import { showPrompt } from './gui-alert';
 import { internal } from './gui-core';
 import { loadScript } from './dom-utils';
 
 export async function considerReprojecting(gui, dataset, opts) {
   var mapCRS = gui.map.getActiveLayerCRS();
   var dataCRS = internal.getDatasetCRS(dataset);
+  var msg, reproject;
   if (!dataCRS || !mapCRS || internal.crsAreEqual(mapCRS, dataCRS)) return;
-  if (datasetHasRaster(dataset)) {
-    await showRasterProjectionMessage(dataset);
+  if (!datasetCanBeReprojected(dataset, dataCRS, mapCRS)) {
+    notifyProjectionMismatch(gui, dataset);
     return;
   }
-  var msg = `The input file ${dataset?.info?.input_files[0] || ''} has a different projection from the current selected layer. Would you like to reproject it to match?`;
-  var reproject = await showPrompt(msg, 'Reproject file?');
+  msg = `The input file ${dataset?.info?.input_files[0] || ''} has a different projection from the current selected layer. Would you like to reproject it to match?`;
+  reproject = await showPrompt(msg, 'Reproject file?');
   if (reproject) {
     internal.projectDataset(dataset, dataCRS, mapCRS, {densify: true});
   }
 }
 
-async function showRasterProjectionMessage(rasterDataset) {
-  var msg = `The raster file ${rasterDataset?.info?.input_files[0] || ''} has a different projection from the current selected layer. Raster reprojection is not supported yet. You can reproject vector layer(s) to match the raster.`;
-  showPopupAlert(msg, 'Different projection').button('Close', function() {});
+function datasetCanBeReprojected(dataset, srcCRS, destCRS) {
+  var bounds = internal.getDatasetBounds(dataset);
+  var transform, p;
+  if (!bounds || !bounds.hasBounds()) return false;
+  transform = internal.getProjTransform2(srcCRS, destCRS);
+  p = transform(bounds.centerX(), bounds.centerY());
+  return !!(p && isFinite(p[0]) && isFinite(p[1]));
 }
 
-function datasetHasRaster(dataset) {
-  return dataset.layers && dataset.layers.some(internal.layerHasRaster);
+function notifyProjectionMismatch(gui, dataset) {
+  if (!gui.notify) return;
+  gui.notify({
+    severity: 'warn',
+    body: `The input file ${dataset?.info?.input_files[0] || ''} has a different projection from the current selected layer, but Mapshaper cannot transform it to the current projection.`,
+    dedupKey: 'projection-mismatch:' + (dataset?.info?.input_files?.[0] || '')
+  });
 }
 
 
