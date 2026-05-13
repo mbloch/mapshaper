@@ -299,9 +299,11 @@ serialized.
 Raster layer payloads are packed specially. Undo stores canonical
 `raster.grid.samples` and raster metadata, but strips derived
 `raster.view.preview.pixels` before writing the payload. On undo/redo restore,
-the preview is regenerated from `grid.samples` and the view recipe. This avoids
-counting both sample pixels and an RGBA preview cache in the History menu's
-"restore data stored on-disk" total.
+the GUI regenerates the preview from `grid.samples` and the view recipe.
+Snapshot/MSX packing also omits raster preview pixels and scaling stats; the GUI
+regenerates missing previews when packed session data is imported or restored.
+This avoids counting both sample pixels and an RGBA preview cache in the History
+menu's "restore data stored on-disk" total.
 
 ## Restore Flags
 
