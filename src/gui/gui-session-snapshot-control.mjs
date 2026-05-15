@@ -42,29 +42,27 @@ function isSnapshotId(str) {
 }
 
 export function SessionSnapshots(gui) {
-  var _menuOpen = false;
-  var _menuTimeout;
-  var btn, menu;
-
   gui.sessionSnapshots = {
+    enabled: false,
     saveSnapshot: function() {
       return saveSnapshot(gui);
     },
     restoreLatestSnapshot: function() {
       return restoreLatestSnapshot(gui);
+    },
+    renderSnapshotList: function(el) {
+      return renderSnapshotList(el, gui);
     }
   };
 
   init();
 
   async function init() {
-    btn = gui.buttons.addButton('#ribbon-icon').addClass('menu-btn save-btn');
     var enabled = await isStorageEnabled();
     if (!enabled) {
-      btn.remove();
       return;
     }
-    menu = El('div').addClass('nav-sub-menu save-menu').appendTo(btn.node());
+    gui.sessionSnapshots.enabled = true;
     startLifecycle();
     await initialCleanup();
 
@@ -80,99 +78,6 @@ export function SessionSnapshots(gui) {
       announceLeaving();
       attemptOwnDataDeletion();
     });
-
-    btn.on('mouseenter', function() {
-      if (gui.state.label_style_panel_open) return;
-      btn.addClass('hover');
-      clearTimeout(_menuTimeout); // prevent timed closing
-      if (!_menuOpen) {
-        openMenu();
-      }
-    });
-
-    btn.on('mouseleave', function() {
-      if (!_menuOpen) {
-        btn.removeClass('hover');
-      } else {
-        closeMenu(200);
-      }
-    });
-  }
-
-  async function renderMenu() {
-    var snapshots = await fetchSnapshotList();
-
-    menu.empty();
-
-    addMenuLink({
-      slug: 'stash',
-      // label: 'save data snapshot',
-      label: 'create a snapshot',
-      action: saveSnapshot
-    });
-
-
-
-    // var available = await getAvailableStorage();
-    // if (available) {
-    //   El('div').addClass('save-menu-entry').text(available + ' available').appendTo(menu);
-    // }
-
-    // if (snapshots.length > 0) {
-    //   El('div').addClass('save-menu-entry').text('snapshots').appendTo(menu);
-    // }
-
-    snapshots.forEach(function(item, i) {
-      var line = El('div').appendTo(menu).addClass('save-menu-item');
-      El('span').appendTo(line).html(`<span class="save-item-label">#${item.number}</span> `);
-      // show snapshot size
-      El('span').appendTo(line).html(` <span class="save-item-size">${item.display_size}</span>`);
-      El('span').addClass('save-menu-btn').appendTo(line).on('click', async function(e) {
-        await restoreSnapshotById(item.id, gui);
-        closeMenu(100);
-      }).text('restore');
-      El('span').addClass('save-menu-btn').appendTo(line).on('click', async function(e) {
-        var obj = await idb.get(item.id);
-        await internal.compressSnapshotForExport(obj);
-        var buf = internal.pack(obj);
-        var fileName = `snapshot-${String(item.number).padStart(2, '0')}.msx`;
-        // choose output filename and directory every time, if supported
-        saveBlobToLocalFile2(fileName, new Blob([buf]));
-      }).text('export');
-      El('span').addClass('save-menu-btn').appendTo(line).on('click', async function(e) {
-        await removeSnapshotById(item.id);
-        closeMenu(300);
-        renderMenu();
-      }).text('remove');
-    });
-  }
-
-  function addMenuLink(item) {
-    var line = El('div').appendTo(menu);
-    var link = El('div').addClass('save-menu-link save-menu-entry').attr('data-name', item.slug).text(item.label).appendTo(line);
-    link.on('click', async function(e) {
-      await item.action(gui);
-      e.stopPropagation();
-    });
-  }
-
-  function openMenu() {
-    clearTimeout(_menuTimeout);
-    if (!_menuOpen) {
-      btn.addClass('open');
-      _menuOpen = true;
-      renderMenu();
-    }
-  }
-
-  function closeMenu(delay) {
-    if (!_menuOpen) return;
-    clearTimeout(_menuTimeout);
-    _menuTimeout = setTimeout(function() {
-      _menuOpen = false;
-      btn.removeClass('open');
-      btn.removeClass('hover');
-    }, delay || 0);
   }
 
   async function saveSnapshot(gui) {
@@ -198,8 +103,35 @@ export function SessionSnapshots(gui) {
     await idb.set(entry.id, obj);
     ownSnapshotIds.add(entry.id);
     await addToIndex(entry);
-    renderMenu();
   }
+}
+
+async function renderSnapshotList(el, gui) {
+  var snapshots = await fetchSnapshotList();
+  el.empty();
+  snapshots.forEach(function(item) {
+    var line = El('div').appendTo(el).addClass('save-menu-item');
+    El('span').appendTo(line).html(`<span class="save-item-label">#${item.number}</span> `);
+    El('span').appendTo(line).html(` <span class="save-item-size">${item.display_size}</span>`);
+    El('span').addClass('save-menu-btn').appendTo(line).on('click', async function(e) {
+      e.stopPropagation();
+      await restoreSnapshotById(item.id, gui);
+    }).text('restore');
+    El('span').addClass('save-menu-btn').appendTo(line).on('click', async function(e) {
+      var obj;
+      e.stopPropagation();
+      obj = await idb.get(item.id);
+      await internal.compressSnapshotForExport(obj);
+      var buf = internal.pack(obj);
+      var fileName = `snapshot-${String(item.number).padStart(2, '0')}.msx`;
+      saveBlobToLocalFile2(fileName, new Blob([buf]));
+    }).text('export');
+    El('span').addClass('save-menu-btn').appendTo(line).on('click', async function(e) {
+      e.stopPropagation();
+      await removeSnapshotById(item.id);
+      renderSnapshotList(el, gui);
+    }).text('remove');
+  });
 }
 
 async function fetchSnapshotList() {
