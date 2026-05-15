@@ -4,7 +4,6 @@ import { needReprojectionForDisplay, projectArcsForDisplay, projectPointsForDisp
 import { filterLayerByIds } from './gui-layer-utils';
 import { internal, Bounds, utils } from './gui-core';
 import { getDatasetCrsInfo } from './gui-display-utils';
-import { getProjectedRasterGridBBox } from '../rasters/mapshaper-raster-reprojection';
 
 // lyr: a map layer with gui property
 // displayCRS: CRS to use for display, or null (which clears any current display CRS)
@@ -128,7 +127,7 @@ export function enhanceLayerForDisplay(layer, dataset, opts) {
 }
 
 function getProjectedRasterDisplayBounds(layer, sourceCRS, displayCRS) {
-  var bbox = getProjectedRasterGridBBox(layer.raster, sourceCRS, displayCRS, {raster_mesh_interval: 32});
+  var bbox = internal.getProjectedRasterGridBBox(layer.raster, sourceCRS, displayCRS, {raster_mesh_interval: 32});
   return bbox ? new Bounds(bbox) : new Bounds();
 }
 

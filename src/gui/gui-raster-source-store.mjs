@@ -1,7 +1,7 @@
 import require from '../mapshaper-require';
+import { internal } from './gui-core';
 import { createTempSessionLifecycle } from './gui-temp-session-lifecycle';
 import { logStartupCleanup } from './gui-startup-cleanup-report';
-import { getRasterGrid } from '../rasters/mapshaper-raster-utils';
 
 var idb = require('idb-keyval');
 var KEY_PREFIX = 'msr';
@@ -90,7 +90,7 @@ async function persistRasterSourceBytes(dataset, sourceFile) {
 async function persistRasterLayerSamples(dataset) {
   var promises = [];
   dataset.layers.forEach(function(lyr) {
-    var grid = lyr.raster && getRasterGrid(lyr.raster);
+    var grid = lyr.raster && internal.getRasterGrid(lyr.raster);
     var key;
     if (!grid || !grid.samples) return;
     key = makeRasterSamplesKey(lyr.name);

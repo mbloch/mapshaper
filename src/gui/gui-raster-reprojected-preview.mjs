@@ -1,14 +1,4 @@
 import { internal } from './gui-core';
-import {
-  getRasterBBox,
-  getRasterGrid,
-  getRasterPreview,
-  getRasterViewRecipe,
-  getRasterViewScalingStats,
-  intersectBboxes,
-  renderRasterPreview
-} from '../rasters/mapshaper-raster-utils';
-import { projectRasterGridForward } from '../rasters/mapshaper-raster-reprojection';
 import { GUI } from './gui-lib';
 
 var MAX_REPROJECTED_PREVIEW_PIXELS = 6e6;
@@ -37,7 +27,7 @@ export function scheduleRasterReprojectedPreview(layer, ext, onReady) {
     if (!current || current.pending != id) return;
     timing = {};
     try {
-      grid = projectRasterGridForward({grid: params.grid}, params.sourceCRS, params.displayCRS, {
+      grid = internal.projectRasterGridForward({grid: params.grid}, params.sourceCRS, params.displayCRS, {
         raster_mesh_interval: params.meshInterval,
         output_bbox: params.bbox,
         output_width: params.width,
@@ -53,7 +43,7 @@ export function scheduleRasterReprojectedPreview(layer, ext, onReady) {
       return;
     }
     timing.renderStart = getTimer();
-    preview = renderRasterPreview(grid, params.recipe, grid.width, grid.height, params.stats);
+    preview = internal.renderRasterPreview(grid, params.recipe, grid.width, grid.height, params.stats);
     applyCoverageMask(preview, grid.coverage);
     timing.renderMs = getTimer() - timing.renderStart;
     logRasterReprojectionTiming(params, timing);
@@ -72,15 +62,15 @@ function getRasterReprojectedPreviewParams(layer, ext) {
   var sourceInfo = sourceDataset && internal.getDatasetCrsInfo(sourceDataset);
   var sourceCRS = sourceInfo && sourceInfo.crs;
   var displayCRS = gui && gui.dynamic_crs;
-  var sourceGrid = getRasterGrid(raster);
+  var sourceGrid = internal.getRasterGrid(raster);
   var rasterBbox = gui && gui.bounds && gui.bounds.hasBounds() && gui.bounds.toArray();
   var viewBbox = ext && ext.getBounds().toArray();
-  var bbox = rasterBbox && viewBbox && intersectBboxes(rasterBbox, viewBbox);
+  var bbox = rasterBbox && viewBbox && internal.intersectBboxes(rasterBbox, viewBbox);
   var size = bbox && getPreviewSize(ext, sourceGrid);
   var recipe, stats;
   if (!sourceCRS || !displayCRS || !sourceGrid || !sourceGrid.samples || !bbox || !size) return null;
-  recipe = getRasterViewRecipe(sourceGrid, raster.view && raster.view.recipe);
-  stats = getRasterViewScalingStats(raster, recipe);
+  recipe = internal.getRasterViewRecipe(sourceGrid, raster.view && raster.view.recipe);
+  stats = internal.getRasterViewScalingStats(raster, recipe);
   return {
     key: getRasterReprojectedPreviewKey(layer, bbox, size, sourceCRS, displayCRS, recipe),
     grid: sourceGrid,

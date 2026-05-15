@@ -306,7 +306,7 @@ body.map-view {
 .history-menu-item {
 	color: var(--normal-text);
 	cursor: pointer;
-	padding: 2px 0;
+	padding-top: 2px;
 	white-space: nowrap;
 }
 
@@ -323,12 +323,6 @@ body.map-view {
 	pointer-events: none;
 }
 
-.history-menu-separator {
-	height: 1px;
-	background-color: #ddd;
-	margin: 6px 0 5px 0;
-}
-
 .history-menu-note {
 	color: #777;
 	font-size: 12px;
@@ -338,9 +332,6 @@ body.map-view {
 	white-space: normal;
 }
 
-.history-snapshot-list {
-	margin-top: 4px;
-}
 
 .history-snapshot-list .save-menu-item {
 	right: auto;
@@ -681,7 +672,7 @@ textarea:focus {
 	word-wrap: break-word;
 	text-align: left;
 	margin-top: 12px;
-	padding: 15px 17px 13px 19px;
+	padding: 14px 16px 13px 18px;
 	vertical-align: top;
 	display: inline-block;
 	/* border: 1px solid #aaa; */
@@ -715,11 +706,11 @@ textarea:focus {
 }
 
 .info-box h3 {
-	font-size: 19px;
+	font-size: 17px;
 	line-height: 1.1;
 	padding: 0;
 	margin: 0 0 0.4em 0;
-	font-weight: normal;
+	font-weight: 500;
 }
 
 .info-box h3.list-header {
@@ -1020,11 +1011,26 @@ body.console-open .console-tab {
 .console-info-title {
 	color: #fff;
 	border-bottom: 1px solid rgba(255,255,255,0.35);
-	margin: 0 0 4px 0;
+	line-height: 1.45; /* space between border and text */
 }
 
 .console-info-subtitle {
 	margin-top: 0.65em;
+}
+
+.layer-info-popup .console-info-title {
+	color: var(--normal-text);
+	border-bottom-color: #ccc;
+}
+
+.layer-info-popup .console-attribute-table tr:first-child {
+	border-bottom-color: #ccc;
+}
+
+.layer-info-popup .console-info-table td:first-child,
+.layer-info-popup .console-attribute-table td:first-child,
+.layer-info-popup .console-attribute-table th:first-child {
+	color: #555;
 }
 
 .input-field {
@@ -1895,7 +1901,8 @@ body.pan.panning .map-layers:not(.drawing) {
 }
 
 .map-layers > svg text.label-style-selected {
-	stroke: #fff6b8;
+	stroke: #fce300;
+	stroke-opacity: 0.25;
 	paint-order: stroke fill;
 	stroke-width: 4px;
 	stroke-linecap: round;
@@ -2004,7 +2011,7 @@ body.pan.panning .map-layers:not(.drawing) {
 	top: 6px;
 	right: 36px;
 	width: 185px;
-	padding: 8px;
+	padding: 8px 12px 12px;
 	text-align: left;
 	background-color: white;
 	border: 1px solid #ddd;
@@ -2012,16 +2019,25 @@ body.pan.panning .map-layers:not(.drawing) {
 	box-shadow: 0 1px 7px rgba(0,0,0,0.12);
 }
 
+.label-style-panel button,
+.label-style-panel select,
+.label-style-panel input {
+	font-size: 12.5px;
+}
+
+.label-style-panel select {
+	padding: 1px 0;
+}
+
 .label-style-panel-title {
 	position: relative;
-	margin-bottom: 8px;
-	font-weight: bold;
+	font-weight: 600;
+	font-size: 16px;
 }
 
 .label-style-close {
 	position: absolute;
-	top: -3px;
-	right: -2px;
+	right: -5px;
 	border: 0;
 	background: transparent;
 	cursor: pointer;
@@ -2031,7 +2047,7 @@ body.pan.panning .map-layers:not(.drawing) {
 
 .label-style-row {
 	display: block;
-	margin: 7px 0;
+	margin-top: 7px;
 }
 
 .label-style-row span,
@@ -2102,7 +2118,7 @@ body.pan.panning .map-layers:not(.drawing) {
 .label-saved-style-row {
 	margin-top: 10px;
 	padding-top: 8px;
-	border-top: 1px solid #eee;
+	border-top: 1px solid #ccc;
 }
 
 .label-saved-style-row button {
@@ -2133,6 +2149,24 @@ body.pan.panning .map-layers:not(.drawing) {
 	position: relative;
 }
 
+.label-panel-btn {
+	box-sizing: border-box;
+	user-select: none;
+	cursor: pointer;
+	border: 1px solid #999;
+	border-radius: 3px;
+	background: #eee;
+	padding: 0;
+	height: 19px;
+	width: 19px;
+}
+
+.label-panel-btn.disabled {
+	color: #999;
+	cursor: default;
+	opacity: 0.45;
+}
+
 .label-color-row .label-color-chit {
 	display: inline-block;
 	width: 19px;
@@ -2154,8 +2188,12 @@ body.pan.panning .map-layers:not(.drawing) {
 }
 
 .label-color-row .label-color-picker {
-	left: 0;
-	right: auto;
+	left: auto;
+	right: 0;
+}
+
+.label-color-row .label-color-picker input[type="text"] {
+	width: 45px;
 }
 
 .label-css-row input {
@@ -2168,8 +2206,7 @@ body.pan.panning .map-layers:not(.drawing) {
 	z-index: 25;
 	top: 48px;
 	right: 0;
-	width: 270px;
-	padding: 7px;
+	padding: 8px;
 	background: white;
 	border: 1px solid #ddd;
 	border-radius: 6px;
@@ -2206,17 +2243,17 @@ body.dragging-color-picker * {
 
 .label-color-marker circle {
 	fill: none;
-	stroke-width: 2;
+	stroke-width: 1.5;
 }
 
 .label-color-picker-fields {
 	display: flex;
+	align-items: center;
 	gap: 6px;
 	margin-top: 6px;
 }
 
-.label-color-picker-fields label,
-.label-color-picker-hex {
+.label-color-picker-fields label {
 	display: inline-flex;
 	align-items: center;
 	gap: 3px;
@@ -2224,34 +2261,19 @@ body.dragging-color-picker * {
 	color: #555;
 }
 
-.label-color-picker-fields span,
-.label-color-picker-hex span {
+.label-color-picker-fields span {
 	display: inline;
 	margin: 0;
 	color: #555;
 }
 
 .label-color-picker-fields input {
-	width: 44px;
+	width: 34px;
 	box-sizing: border-box;
 }
 
-.label-color-picker-hex {
-	margin-top: 6px;
-}
-
-.label-color-picker-hex input {
-	width: 82px;
-	box-sizing: border-box;
-}
-
-.label-color-picker-buttons {
-	margin-top: 7px;
-	text-align: right;
-}
-
-.label-color-picker-buttons button {
-	margin-left: 5px;
+.label-color-picker-fields button {
+	margin-left: auto;
 }
 
 .label-style-selection-row button {
@@ -2264,17 +2286,18 @@ body.dragging-color-picker * {
 	gap: 2px;
 }
 
-.label-position-grid button {
-	width: 10px;
-	height: 10px;
-	padding: 0;
+.label-position-grid .label-panel-btn {
+	width: 9px;
+	height: 9px;
 	cursor: pointer;
-	border: 1px solid #aaa;
+	border-radius: 0;
 	background: white;
 }
 
-.label-position-grid button.selected {
+.label-panel-btn.selected {
 	background-color: black;
+	border-color: black;
+	color: white;
 }
 
 .label-icon-buttons {
@@ -2282,15 +2305,10 @@ body.dragging-color-picker * {
 	gap: 2px;
 }
 
-.label-icon-buttons button {
+.label-icon-buttons .label-panel-btn {
 	display: flex;
 	align-items: center;
 	justify-content: center;
-	width: 19px;
-	min-width: 19px;
-	height: 19px;
-	padding: 0;
-	cursor: pointer;
 }
 
 .label-icon-symbol {
@@ -2301,8 +2319,8 @@ body.dragging-color-picker * {
 	stroke: none;
 }
 
-.label-icon-buttons button[data-icon="none"] .label-icon-symbol,
-.label-icon-buttons button[data-icon="ring"] .label-icon-symbol {
+.label-icon-buttons .label-panel-btn[data-icon="none"] .label-icon-symbol,
+.label-icon-buttons .label-panel-btn[data-icon="ring"] .label-icon-symbol {
 	fill: none;
 	stroke: currentColor;
 	stroke-width: 1.8;
@@ -2310,38 +2328,29 @@ body.dragging-color-picker * {
 	stroke-linejoin: round;
 }
 
-.label-icon-buttons button[data-icon="star"] .label-icon-symbol {
-	width: 14px;
-	height: 14px;
+.label-icon-buttons .label-panel-btn[data-icon="star"] .label-icon-symbol {
+	transform: scale(1.4);
 }
 
-.label-size-row button,
-.label-icon-size-row button {
-	min-width: 19px;
-	height: 19px;
-	padding: 0;
+.label-size-row .label-panel-btn,
+.label-icon-size-row .label-panel-btn {
+	display: inline-block;
 	text-align: center;
-	line-height: 1;
-	cursor: pointer;
+	line-height: 18px;
 }
 
-.label-icon-buttons button.selected {
-	color: white;
-	background-color: black;
-}
-
-.label-size-row button,
-.label-icon-size-row button {
+.label-size-row .label-panel-btn,
+.label-icon-size-row .label-panel-btn {
 	margin-right: 4px;
 }
 
-.label-split-row .label-size-row button,
-.label-split-row .label-icon-size-row button {
+.label-split-row .label-size-row .label-panel-btn,
+.label-split-row .label-icon-size-row .label-panel-btn {
 	margin-right: 2px;
 }
 
-.label-split-row .label-size-row button:last-child,
-.label-split-row .label-icon-size-row button:last-child {
+.label-split-row .label-size-row .label-panel-btn:last-child,
+.label-split-row .label-icon-size-row .label-panel-btn:last-child {
 	margin-right: 0;
 }
 
@@ -2414,9 +2423,9 @@ body.dragging-color-picker * {
 	display: inline-block;
 	border-radius: 4px;
 	border: 1px solid #aaa;
-	font-size: 12px;
-	margin-left: 2px;
-	padding: 1px 2px 3px 2px;
+	font-size: 13px;
+	margin-left: 4px;
+	padding: 2px 4px 3px 4px;
 }
 
 .add-field-btn,
@@ -2462,7 +2471,7 @@ body.dragging-color-picker * {
 	text-align: right;
 	background-color: #fff;
 	white-space: nowrap;
-	padding: 2px 7px 0px 7px;
+	padding: 3px 7px 0px 7px;
 	line-height: 11px;
 	cursor: pointer;
 }

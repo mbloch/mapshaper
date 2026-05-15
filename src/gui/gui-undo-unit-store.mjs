@@ -1,5 +1,4 @@
-import { restoreCapturedUnits } from '../undo/mapshaper-undo-transaction';
-import { renderRasterPreview } from '../rasters/mapshaper-raster-utils';
+import { internal } from './gui-core';
 
 var PAYLOAD_FIELDS = {
   table: ['records'],
@@ -26,7 +25,7 @@ export async function storeUndoUnits(units, store, entryId, role) {
 
 export async function restoreStoredUndoUnits(units, store) {
   var hydrated = await hydrateStoredUndoUnits(units, store);
-  restoreCapturedUnits(hydrated);
+  internal.restoreCapturedUnits(hydrated);
 }
 
 export async function hydrateStoredUndoUnits(units, store) {
@@ -165,7 +164,7 @@ function unpackRasterUndoPayload(raster) {
   if (raster.view) {
     copy.view = Object.assign({}, raster.view);
     if (raster.view.preview && !raster.view.preview.pixels && raster.grid && raster.grid.samples) {
-      copy.view.preview = renderRasterPreview(raster.grid, raster.view.recipe, raster.view.preview.width, raster.view.preview.height);
+      copy.view.preview = internal.renderRasterPreview(raster.grid, raster.view.recipe, raster.view.preview.width, raster.view.preview.height);
     }
   }
   return copy;
