@@ -9,7 +9,7 @@ import { El } from './gui-el';
 import { ClickText2 } from './gui-elements';
 import { GUI } from './gui-lib';
 import { openContextMenu } from './gui-context-menu';
-import { getRasterHeight, getRasterWidth } from '../rasters/mapshaper-raster-utils';
+import { showPopupAlert } from './gui-alert';
 import {
   addUndoTransactionToHistory,
   createUndoTransaction
@@ -329,6 +329,15 @@ export function LayerControl(gui) {
       }
     }
 
+    function showLayerInfo() {
+      var target = findLayerById(id);
+      var popup, content;
+      if (!target) return;
+      popup = showPopupAlert('', 'Layer info');
+      content = popup.container().addClass('layer-info-popup');
+      content.node().appendChild(renderLayerInfo(internal.getLayerInfo(target.layer, target.dataset)));
+    }
+
     function openLayerMenu(e) {
       var menuEvent = e;
       e.stopPropagation();
@@ -340,7 +349,7 @@ export function LayerControl(gui) {
         };
       }
       menuEvent.deleteLayer = deleteLayer;
-      menuEvent.selectLayer = selectLayer;
+      menuEvent.showLayerInfo = showLayerInfo;
       menuEvent.contextMenuId = 'layer-' + id;
       openContextMenu(menuEvent, null, null);
     }
@@ -419,13 +428,106 @@ export function LayerControl(gui) {
     if (isFrame) {
       str = 'map frame';
     } else if (internal.layerHasRaster(lyr)) {
-      str = utils.format('%,d x %,d %s', getRasterWidth(lyr.raster), getRasterHeight(lyr.raster), type);
+      str = utils.format('%,d x %,d %s', internal.getRasterWidth(lyr.raster), internal.getRasterHeight(lyr.raster), type);
     } else if (type) {
       str = utils.format('%,d %s%s', n, type, utils.pluralSuffix(n));
     } else {
       str = "[empty]";
     }
     return str;
+  }
+
+  function renderLayerInfo(info) {
+    var container = document.createElement('div');
+    var title = document.createElement('div');
+    container.className = 'console-info';
+    title.className = 'console-info-title';
+    title.textContent = 'Layer: ' + (info.layer_name || '[unnamed layer]');
+    container.appendChild(title);
+    container.appendChild(renderKeyValueTable(getInfoRows(info), 'console-info-table'));
+    if (!info.raster_type) {
+      container.appendChild(renderAttributeInfoTable(info.attribute_data));
+    }
+    return container;
+  }
+
+  function getInfoRows(info) {
+    var rows = [
+      ['Type', info.raster_type ? 'raster data' : info.geometry_type || 'tabular data']
+    ];
+    if (info.raster_type) {
+      rows.push(['Size', utils.format('%,d x %,d x %,d', info.raster_width, info.raster_height, info.raster_bands)]);
+      rows.push(['Data', info.raster_pixel_type || 'unknown']);
+    } else {
+      rows.push(['Records', utils.format('%,d', info.feature_count)]);
+    }
+    if (info.null_shape_count > 0) {
+      rows.push(['Nulls', utils.format("%'d", info.null_shape_count)]);
+    }
+    if (info.raster_type || info.geometry_type && info.feature_count > info.null_shape_count) {
+      rows.push(['Bounds', info.bbox.join(',')]);
+      rows.push(['CRS', info.proj4]);
+    }
+    rows.push(['Source', info.source_file || 'n/a']);
+    return rows;
+  }
+
+  function renderAttributeInfoTable(fields) {
+    var wrapper = document.createElement('div');
+    var title = document.createElement('div');
+    wrapper.className = 'console-attribute-info';
+    title.className = 'console-info-subtitle';
+    title.textContent = 'Attribute data';
+    wrapper.appendChild(title);
+    if (!fields) {
+      var none = document.createElement('div');
+      none.className = 'console-info-empty';
+      none.textContent = '[none]';
+      wrapper.appendChild(none);
+      return wrapper;
+    }
+    wrapper.appendChild(renderDataTable(
+      [['Field', 'First value']].concat(fields.map(function(o) {
+        var valKey = 'first_value' in o ? 'first_value' : 'value';
+        return [o.field, formatInfoValue(o[valKey])];
+      })),
+      'console-attribute-table'
+    ));
+    return wrapper;
+  }
+
+  function renderKeyValueTable(rows, className) {
+    return renderDataTable(rows, className + ' console-key-value-table');
+  }
+
+  function renderDataTable(rows, className) {
+    var table = document.createElement('table');
+    var tbody = document.createElement('tbody');
+    table.className = className;
+    rows.forEach(function(row, i) {
+      var tr = document.createElement('tr');
+      row.forEach(function(val) {
+        var cell = document.createElement(i === 0 && rows.length > 1 && className == 'console-attribute-table' ? 'th' : 'td');
+        cell.textContent = val == null ? '' : String(val);
+        tr.appendChild(cell);
+      });
+      tbody.appendChild(tr);
+    });
+    table.appendChild(tbody);
+    return table;
+  }
+
+  function formatInfoValue(val) {
+    if (val === null || val === undefined) return '';
+    if (utils.isString(val)) {
+      return "'" + val.replace(/[\r\t\n]/g, function(c) {
+        return c == '\n' ? '\\n' : c == '\r' ? '\\r' : '\\t';
+      }) + "'";
+    }
+    if (utils.isNumber(val) || val === true || val === false) {
+      return String(val);
+    }
+    return JSON.stringify(val);
   }
 
   function renameLayer(target, name) {
