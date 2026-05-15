@@ -55,6 +55,8 @@ export function getActiveLayerStyle(lyr, opts) {
   var style;
   if (layerHasDrawableStyle(lyr) && !opts.outlineMode) {
     style = getCanvasDisplayStyle(lyr);
+  } else if (internal.layerHasLabels(lyr) && opts.interactionMode == 'label_style') {
+    style = {dotSize: 0};
   } else if (internal.layerHasLabels(lyr) && !opts.outlineMode) {
     style = copyBaseStyle(activeStyleForLabels);
   } else if (opts.darkMode) {

@@ -1724,6 +1724,9 @@ export function getOptionParser() {
     .option('label-text', {
       describe: 'label text (set this to export points as labels)'
     })
+    .option('label-pos', {
+      describe: 'label position; one of: n, s, e, w, ne, se, nw, sw, c'
+    })
     .option('text-anchor', {
       describe: 'label alignment; one of: start, end, middle (default)'
     })

@@ -139,6 +139,7 @@ export function MshpMap(gui) {
   this.isActiveLayer = isActiveLayer;
   this.isVisibleLayer = isVisibleLayer;
   this.getActiveLayer = function() { return _activeLyr; };
+  this.getHitControl = function() { return _hit; };
   // this.getViewData = function() {
   //   return {
   //     isPreview: isPreviewView(),

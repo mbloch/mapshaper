@@ -1883,6 +1883,14 @@ body.pan.panning .map-layers:not(.drawing) {
 	stroke-linejoin: round;
 }
 
+.map-layers > svg text.label-style-selected {
+	stroke: #fff6b8;
+	paint-order: stroke fill;
+	stroke-width: 4px;
+	stroke-linecap: round;
+	stroke-linejoin: round;
+}
+
 /* ---  MAP BUTTONS --- */
 
 /*.pointer-btn {
@@ -1977,6 +1985,238 @@ body.pan.panning .map-layers:not(.drawing) {
 
 .nav-btn.menu-btn.selected:not(.disabled) svg * {
 	fill: white;
+}
+
+.label-style-panel {
+	position: absolute;
+	z-index: 21;
+	top: 6px;
+	right: 36px;
+	width: 185px;
+	padding: 8px;
+	text-align: left;
+	background-color: white;
+	border: 1px solid #ddd;
+	border-radius: 6px;
+	box-shadow: 0 1px 7px rgba(0,0,0,0.12);
+}
+
+.label-style-panel-title {
+	position: relative;
+	margin-bottom: 8px;
+	font-weight: bold;
+}
+
+.label-style-close {
+	position: absolute;
+	top: -3px;
+	right: -2px;
+	border: 0;
+	background: transparent;
+	cursor: pointer;
+	font-size: 16px;
+	line-height: 1;
+}
+
+.label-style-row {
+	display: block;
+	margin: 7px 0;
+}
+
+.label-style-row span,
+.label-style-row-label {
+	display: block;
+	margin-bottom: 3px;
+	color: #555;
+}
+
+.label-style-row select {
+	width: 100%;
+	box-sizing: border-box;
+}
+
+.label-saved-style-row select {
+	width: 100%;
+	margin-bottom: 4px;
+}
+
+.label-saved-style-row button {
+	margin-right: 5px;
+}
+
+.label-color-row {
+	position: relative;
+}
+
+.label-color-row .label-color-chit {
+	display: inline-block;
+	width: 22px;
+	height: 22px;
+	margin-right: 5px;
+	padding: 0;
+	vertical-align: middle;
+	border: 1px solid #888;
+	cursor: pointer;
+}
+
+.label-color-row input[type="text"] {
+	width: 95px;
+	box-sizing: border-box;
+	vertical-align: middle;
+}
+
+.label-css-row input {
+	width: 100%;
+	box-sizing: border-box;
+}
+
+.label-color-picker {
+	position: absolute;
+	z-index: 25;
+	top: 48px;
+	right: 0;
+	width: 270px;
+	padding: 7px;
+	background: white;
+	border: 1px solid #ddd;
+	border-radius: 6px;
+	box-shadow: 0 1px 7px rgba(0,0,0,0.18);
+}
+
+.label-color-picker canvas {
+	display: block;
+	width: 256px;
+	margin: 0 0 6px 0;
+	cursor: crosshair;
+}
+
+.label-color-picker.dragging-color canvas {
+	cursor: none;
+}
+
+body.dragging-color-picker,
+body.dragging-color-picker * {
+	cursor: none !important;
+}
+
+.label-color-canvas-wrap {
+	position: relative;
+	width: 256px;
+	overflow: visible;
+}
+
+.label-color-marker {
+	position: absolute;
+	pointer-events: none;
+	overflow: visible;
+}
+
+.label-color-marker circle {
+	fill: none;
+	stroke-width: 2;
+}
+
+.label-color-picker-fields {
+	display: flex;
+	gap: 6px;
+	margin-top: 6px;
+}
+
+.label-color-picker-fields label,
+.label-color-picker-hex {
+	display: inline-flex;
+	align-items: center;
+	gap: 3px;
+	margin: 0;
+	color: #555;
+}
+
+.label-color-picker-fields span,
+.label-color-picker-hex span {
+	display: inline;
+	margin: 0;
+	color: #555;
+}
+
+.label-color-picker-fields input {
+	width: 44px;
+	box-sizing: border-box;
+}
+
+.label-color-picker-hex {
+	margin-top: 6px;
+}
+
+.label-color-picker-hex input {
+	width: 82px;
+	box-sizing: border-box;
+}
+
+.label-color-picker-buttons {
+	margin-top: 7px;
+	text-align: right;
+}
+
+.label-color-picker-buttons button {
+	margin-left: 5px;
+}
+
+.label-style-selection-row button {
+	margin-right: 5px;
+}
+
+.label-position-grid {
+	display: grid;
+	grid-template-columns: repeat(3, 14px);
+	gap: 4px;
+}
+
+.label-position-grid button {
+	width: 14px;
+	height: 14px;
+	padding: 0;
+	cursor: pointer;
+	border: 1px solid #aaa;
+	background: white;
+}
+
+.label-position-grid button.selected {
+	background-color: black;
+}
+
+.label-icon-buttons {
+	display: flex;
+	gap: 3px;
+}
+
+.label-icon-buttons button,
+.label-size-row button,
+.label-icon-size-row button {
+	min-width: 22px;
+	height: 22px;
+	padding: 0;
+	text-align: center;
+	line-height: 1;
+	cursor: pointer;
+}
+
+.label-icon-buttons button.selected {
+	color: white;
+	background-color: black;
+}
+
+.label-size-row button,
+.label-icon-size-row button {
+	margin-right: 4px;
+}
+
+.label-size-row .label-size-value,
+.label-icon-size-row .label-icon-size-value {
+	display: inline-block;
+	width: 34px;
+	margin: 0 4px 0 0;
+	text-align: center;
+	color: black;
 }
 
 .nav-menu-item,

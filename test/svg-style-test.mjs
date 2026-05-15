@@ -60,9 +60,25 @@ describe('mapshaper-svg-style.js', function () {
       var cmd = '-i pts.geojson -style label-text=NAME icon=circle icon-size=8 -o out.svg';
       var output = await api.applyCommands(cmd, {'pts.geojson': JSON.stringify(geojson)});
       var svg = output['out.svg'];
-      assert(svg.includes('<circle cx="0" cy="0" r="4" fill="black"/>'));
+      assert(svg.includes('<circle cx="0" cy="0" r="3.5" fill="black"/>'));
       assert(svg.includes('<text y="0" x="0">A</text>'));
       assert(!svg.includes('<g id="pts" fill="none"'));
+    });
+
+    it('-style label-pos sets label alignment', async function() {
+      var geojson = {
+        type: 'FeatureCollection',
+        features: [{
+          type: 'Feature',
+          properties: {NAME: 'A'},
+          geometry: {type: 'Point', coordinates: [0, 0]}
+        }]
+      };
+      var cmd = '-i pts.geojson -style label-text=NAME label-pos=SW -o out.svg';
+      var output = await api.applyCommands(cmd, {'pts.geojson': JSON.stringify(geojson)});
+      var svg = output['out.svg'];
+      assert(svg.includes('<text y="0.7em" x="-0.35em" text-anchor="end"'));
+      assert(!svg.includes('dominant-baseline'));
     });
   })
 
@@ -209,6 +225,29 @@ describe('mapshaper-svg-style.js', function () {
       }];
       api.cmd.svgStyle(lyr, {}, opts);
       assert.deepEqual(lyr.data.getRecords(), target);
+    })
+
+    it('label-pos literal is case-insensitive and sets offsets', function() {
+      var cases = {
+        n: {dx: 0, dy: '-0.45em', 'text-anchor': 'middle'},
+        s: {dx: 0, dy: '1.05em', 'text-anchor': 'middle'},
+        e: {dx: '0.4em', dy: '0.25em', 'text-anchor': 'start'},
+        w: {dx: '-0.4em', dy: '0.25em', 'text-anchor': 'end'},
+        ne: {dx: '0.35em', dy: '-0.15em', 'text-anchor': 'start'},
+        se: {dx: '0.35em', dy: '0.7em', 'text-anchor': 'start'},
+        nw: {dx: '-0.35em', dy: '-0.15em', 'text-anchor': 'end'},
+        sw: {dx: '-0.35em', dy: '0.7em', 'text-anchor': 'end'},
+        c: {dx: 0, dy: '0.25em', 'text-anchor': 'middle'}
+      };
+      Object.keys(cases).forEach(function(pos) {
+        var input = pos.toUpperCase();
+        var lyr = {
+          data: new api.internal.DataTable([{}])
+        };
+        var target = Object.assign({'label-pos': input}, cases[pos]);
+        api.cmd.svgStyle(lyr, {}, {label_pos: input});
+        assert.deepEqual(lyr.data.getRecords(), [target]);
+      });
     })
 
     it('literals 3', function() {

@@ -91,7 +91,8 @@ export function HitControl(gui, ext, mouse) {
   }
 
   function selectable() {
-    return interactionMode() == 'selection';
+    var mode = interactionMode();
+    return mode == 'selection' || mode == 'label_style';
   }
 
   function pinnable() {
@@ -109,7 +110,7 @@ export function HitControl(gui, ext, mouse) {
     var mode = interactionMode();
     // click used to pin popup and select features
     return mode == 'data' || mode == 'info' || mode == 'selection' ||
-    mode == 'rectangles' || mode == 'edit_points';
+    mode == 'label_style' || mode == 'rectangles' || mode == 'edit_points';
   }
 
   self.getHitId = function() {

@@ -6,6 +6,7 @@ import { ModeSwitcher } from './gui-modes';
 import { KeyboardEvents } from './gui-keyboard';
 import { InteractionMode } from './gui-interaction-mode-control';
 import { EditToolbar } from './gui-edit-toolbar';
+import { LabelTool } from './gui-label-tool';
 import { SessionSnapshots } from './gui-session-snapshot-control';
 import { Model } from './gui-model';
 import { MshpMap } from './gui-map';
@@ -68,6 +69,7 @@ export function GuiInstance(container, opts) {
   }
   gui.interaction = new InteractionMode(gui);
   gui.editToolbar = new EditToolbar(gui);
+  gui.labelTool = new LabelTool(gui);
 
   gui.showProgressMessage = function(msg) {
     if (!gui.progressMessage) {

@@ -82,6 +82,7 @@ export function SessionSnapshots(gui) {
     });
 
     btn.on('mouseenter', function() {
+      if (gui.state.label_style_panel_open) return;
       btn.addClass('hover');
       clearTimeout(_menuTimeout); // prevent timed closing
       if (!_menuOpen) {

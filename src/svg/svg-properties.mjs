@@ -23,6 +23,7 @@ var stylePropertyTypes = {
   icon: null,
   'icon-color': 'color',
   'icon-size': 'number',
+  'label-pos': 'labelposition',
   'label-text': null,  // leaving this null
   'letter-spacing': 'measure',
   'line-height': 'measure',
@@ -72,6 +73,20 @@ var propertiesBySymbolType = {
   point: utils.arrayToIndex(commonProperties.concat('fill', 'r')),
   label: utils.arrayToIndex(commonProperties.concat(
     'fill,font-family,font-size,text-anchor,font-weight,font-style,font-stretch,letter-spacing,dominant-baseline'.split(',')))
+};
+
+export var labelPositionFields = ['label-pos', 'dx', 'dy', 'text-anchor'];
+
+var labelPositionStyles = {
+  n: {dx: 0, dy: '-0.45em', 'text-anchor': 'middle'},
+  s: {dx: 0, dy: '1.05em', 'text-anchor': 'middle'},
+  e: {dx: '0.4em', dy: '0.25em', 'text-anchor': 'start'},
+  w: {dx: '-0.4em', dy: '0.25em', 'text-anchor': 'end'},
+  ne: {dx: '0.35em', dy: '-0.15em', 'text-anchor': 'start'},
+  se: {dx: '0.35em', dy: '0.7em', 'text-anchor': 'start'},
+  nw: {dx: '-0.35em', dy: '-0.15em', 'text-anchor': 'end'},
+  sw: {dx: '-0.35em', dy: '0.7em', 'text-anchor': 'end'},
+  c: {dx: 0, dy: '0.25em', 'text-anchor': 'middle'}
 };
 
 // symType: point, polygon, polyline, label
@@ -205,6 +220,8 @@ function parseSvgLiteralValue(strVal, type) {
     val = parseBoolean(strVal);
   } else if (type == 'inlinecss') {
     val = strVal; // TODO: validate
+  } else if (type == 'labelposition') {
+    val = parseLabelPosition(strVal);
   }
   //  else {
   //   // unknown type -- assume literal value
@@ -234,6 +251,26 @@ export function parseBoolean(o) {
   if (o === true || o === 'true') return true;
   if (o === false || o === 'false') return false;
   return null;
+}
+
+export function parseLabelPosition(str) {
+  var pos = String(str).trim();
+  return /^(n|s|e|w|ne|se|nw|sw|c)$/i.test(pos) ? pos : null;
+}
+
+export function getLabelPositionStyle(pos) {
+  pos = parseLabelPosition(pos);
+  if (!pos) return null;
+  return Object.assign({'label-pos': pos}, labelPositionStyles[pos.toLowerCase()]);
+}
+
+export function setLabelPositionStyle(rec, pos) {
+  var style = getLabelPositionStyle(pos);
+  if (!style) return false;
+  labelPositionFields.forEach(function(field) {
+    rec[field] = style[field];
+  });
+  return true;
 }
 
 export function isSvgMeasure(o) {
