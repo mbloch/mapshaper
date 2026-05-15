@@ -1,3 +1,7 @@
+v0.7.17
+* Added a new interface for creating and styling labels in the web UI.
+* Added a "show info" link to layer entries in the layers panel.
+
 v0.7.16
 * Support for raster reprojection. Works with the -proj command and on-the-fly reprojection in the web UI.
 * Added `-i raster-type=image|categorical` option for setting the raster type, which determines if bilinear or nearest-neighbor resampling is used when projecting (`image` is the default).
