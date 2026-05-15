@@ -18,6 +18,8 @@ export function HistoryMenu(gui) {
   var note = menu.findChild('.history-menu-note');
   var clearBtn = menu.findChild('.history-clear-btn');
   var commandLogBtn = menu.findChild('.history-command-log-btn');
+  var createSnapshotBtn = menu.findChild('.history-create-snapshot-btn');
+  var snapshotList = menu.findChild('.history-snapshot-list');
 
   gui.appUndoIsEnabled = isAppUndoEnabled;
 
@@ -70,6 +72,13 @@ export function HistoryMenu(gui) {
     gui.clearMode();
   });
 
+  createSnapshotBtn.on('click', function(e) {
+    e.stopPropagation();
+    if (!createSnapshotBtn.hasClass('disabled') && gui.sessionSnapshots) {
+      gui.sessionSnapshots.saveSnapshot().then(renderSnapshotList);
+    }
+  });
+
   document.addEventListener('keydown', function(e) {
     if (gui.getMode() == 'history_menu' && e.key == 'Escape') {
       gui.clearMode();
@@ -83,6 +92,7 @@ export function HistoryMenu(gui) {
   function turnOn() {
     btn.attr('aria-expanded', 'true');
     updateMenuState();
+    renderSnapshotList();
     menu.show();
   }
 
@@ -95,6 +105,7 @@ export function HistoryMenu(gui) {
     // setItemEnabled(undoBtn, gui.undo.canUndo());
     // setItemEnabled(redoBtn, gui.undo.canRedo());
     setItemEnabled(clearBtn, gui.undo.canUndo() || gui.undo.canRedo());
+    setItemEnabled(createSnapshotBtn, !!(gui.sessionSnapshots && gui.sessionSnapshots.enabled));
     updateToggle();
   }
 
@@ -116,6 +127,14 @@ export function HistoryMenu(gui) {
       return store.clear();
     }
     return Promise.resolve();
+  }
+
+  function renderSnapshotList() {
+    if (gui.sessionSnapshots && gui.sessionSnapshots.enabled && snapshotList) {
+      gui.sessionSnapshots.renderSnapshotList(snapshotList);
+    } else if (snapshotList) {
+      snapshotList.empty();
+    }
   }
 }
 

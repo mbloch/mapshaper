@@ -300,7 +300,7 @@ body.map-view {
 
 .history-menu-dropdown .info-box {
 	pointer-events: initial;
-	min-width: 230px;
+	min-width: 185px;
 }
 
 .history-menu-item {
@@ -336,6 +336,17 @@ body.map-view {
 	max-width: 215px;
 	padding: 0 0 5px 0;
 	white-space: normal;
+}
+
+.history-snapshot-list {
+	margin-top: 4px;
+}
+
+.history-snapshot-list .save-menu-item {
+	right: auto;
+	text-align: left;
+	padding-left: 0;
+	padding-right: 0;
 }
 
 .header-menu-item.header-menu-sponsor svg {
@@ -2035,13 +2046,87 @@ body.pan.panning .map-layers:not(.drawing) {
 	box-sizing: border-box;
 }
 
+.label-style-panel select {
+	background-color: white;
+	border: 1px solid #999;
+	box-shadow: none;
+}
+
+.label-style-panel select:focus {
+	border-color: #d3aa00;
+	box-shadow: none;
+	outline: none;
+}
+
+.label-style-panel input[type="text"] {
+	-webkit-appearance: none;
+	appearance: none;
+	background: white;
+	border: 1px solid #999;
+	border-radius: 0;
+	box-shadow: none;
+}
+
+.label-style-panel input[type="text"]:focus {
+	border-color: #d3aa00;
+	box-shadow: none;
+	outline: none;
+}
+
+.label-create-expression-row input {
+	width: 100%;
+	box-sizing: border-box;
+}
+
+.label-create-copy-row {
+	display: flex;
+	align-items: flex-start;
+	gap: 5px;
+}
+
+.label-create-copy-row input {
+	margin-top: 1px;
+}
+
+.label-create-copy-row span {
+	display: inline;
+	margin: 0;
+	color: #555;
+}
+
 .label-saved-style-row select {
 	width: 100%;
 	margin-bottom: 4px;
 }
 
+.label-saved-style-row {
+	margin-top: 10px;
+	padding-top: 8px;
+	border-top: 1px solid #eee;
+}
+
 .label-saved-style-row button {
 	margin-right: 5px;
+}
+
+.label-split-row {
+	display: grid;
+	grid-template-columns: 105px 1fr;
+	column-gap: 8px;
+	align-items: start;
+}
+
+.label-split-cell > span,
+.label-split-cell > .label-style-row-label {
+	display: block;
+	margin-bottom: 2px;
+	color: #555;
+}
+
+.label-split-row .label-size-row,
+.label-split-row .label-icon-size-row {
+	justify-self: end;
+	white-space: nowrap;
 }
 
 .label-color-row {
@@ -2050,19 +2135,27 @@ body.pan.panning .map-layers:not(.drawing) {
 
 .label-color-row .label-color-chit {
 	display: inline-block;
-	width: 22px;
-	height: 22px;
+	width: 19px;
+	height: 19px;
 	margin-right: 5px;
 	padding: 0;
-	vertical-align: middle;
+	vertical-align: top;
 	border: 1px solid #888;
 	cursor: pointer;
 }
 
 .label-color-row input[type="text"] {
-	width: 95px;
+	width: 79px;
+	height: 19px;
+	padding-top: 0;
+	padding-bottom: 0;
 	box-sizing: border-box;
-	vertical-align: middle;
+	vertical-align: top;
+}
+
+.label-color-row .label-color-picker {
+	left: 0;
+	right: auto;
 }
 
 .label-css-row input {
@@ -2167,13 +2260,13 @@ body.dragging-color-picker * {
 
 .label-position-grid {
 	display: grid;
-	grid-template-columns: repeat(3, 14px);
-	gap: 4px;
+	grid-template-columns: repeat(3, 10px);
+	gap: 2px;
 }
 
 .label-position-grid button {
-	width: 14px;
-	height: 14px;
+	width: 10px;
+	height: 10px;
 	padding: 0;
 	cursor: pointer;
 	border: 1px solid #aaa;
@@ -2186,14 +2279,46 @@ body.dragging-color-picker * {
 
 .label-icon-buttons {
 	display: flex;
-	gap: 3px;
+	gap: 2px;
 }
 
-.label-icon-buttons button,
+.label-icon-buttons button {
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	width: 19px;
+	min-width: 19px;
+	height: 19px;
+	padding: 0;
+	cursor: pointer;
+}
+
+.label-icon-symbol {
+	display: block;
+	width: 13px;
+	height: 13px;
+	fill: currentColor;
+	stroke: none;
+}
+
+.label-icon-buttons button[data-icon="none"] .label-icon-symbol,
+.label-icon-buttons button[data-icon="ring"] .label-icon-symbol {
+	fill: none;
+	stroke: currentColor;
+	stroke-width: 1.8;
+	stroke-linecap: round;
+	stroke-linejoin: round;
+}
+
+.label-icon-buttons button[data-icon="star"] .label-icon-symbol {
+	width: 14px;
+	height: 14px;
+}
+
 .label-size-row button,
 .label-icon-size-row button {
-	min-width: 22px;
-	height: 22px;
+	min-width: 19px;
+	height: 19px;
 	padding: 0;
 	text-align: center;
 	line-height: 1;
@@ -2210,13 +2335,29 @@ body.dragging-color-picker * {
 	margin-right: 4px;
 }
 
+.label-split-row .label-size-row button,
+.label-split-row .label-icon-size-row button {
+	margin-right: 2px;
+}
+
+.label-split-row .label-size-row button:last-child,
+.label-split-row .label-icon-size-row button:last-child {
+	margin-right: 0;
+}
+
 .label-size-row .label-size-value,
 .label-icon-size-row .label-icon-size-value {
 	display: inline-block;
-	width: 34px;
-	margin: 0 4px 0 0;
+	width: 28px;
+	margin: 0 3px 0 0;
 	text-align: center;
 	color: black;
+}
+
+.label-split-row .label-size-value,
+.label-split-row .label-icon-size-value {
+	width: 24px;
+	margin-right: 2px;
 }
 
 .nav-menu-item,

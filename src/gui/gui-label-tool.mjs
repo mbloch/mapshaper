@@ -3,8 +3,12 @@ import { El } from './gui-el';
 import { internal } from './gui-core';
 import { GUI } from './gui-lib';
 import { showPopupAlert } from './gui-alert';
-import { labelPositionFields, setLabelPositionStyle } from '../svg/svg-properties';
+import { getColumnType } from '../datatable/mapshaper-data-utils';
+import { copyLayer, getLayerDataTable } from '../dataset/mapshaper-layer-utils';
+import { markDatasetChanged, noteDatasetWillChange } from '../undo/mapshaper-undo-tracking';
+import { getSymbolPropertyAccessor, labelPositionFields, setLabelPositionStyle } from '../svg/svg-properties';
 
+var labelTextField = 'label-text';
 var fontField = 'font-family';
 var fontSizeField = 'font-size';
 var fontStyleField = 'font-style';
@@ -34,21 +38,23 @@ var savedStyleFields = [
 ];
 var labelPositions = ['nw', 'n', 'ne', 'w', 'c', 'e', 'sw', 's', 'se'];
 var iconTypes = [{
-  name: '',
-  label: '×'
+  name: ''
 }, {
-  name: 'circle',
-  label: '●'
+  name: 'circle'
 }, {
-  name: 'square',
-  label: '■'
+  name: 'square'
 }, {
-  name: 'ring',
-  label: '○'
+  name: 'ring'
 }, {
-  name: 'star',
-  label: '★'
+  name: 'star'
 }];
+var iconButtonSymbols = {
+  '': '<line x1="4.25" y1="4.25" x2="11.75" y2="11.75"></line><line x1="11.75" y1="4.25" x2="4.25" y2="11.75"></line>',
+  circle: '<circle cx="8" cy="8" r="4.25"></circle>',
+  square: '<rect x="4" y="4" width="8" height="8"></rect>',
+  ring: '<circle cx="8" cy="8" r="3.8"></circle>',
+  star: '<path d="M8 3.2l1.18 2.92 3.14.22-2.42 2 .76 3.06L8 9.75 5.34 11.4l.76-3.06-2.42-2 3.14-.22L8 3.2z"></path>'
+};
 
 export function LabelTool(gui) {
   // button is only visible when label editing is available
@@ -56,11 +62,15 @@ export function LabelTool(gui) {
   var textBtn = gui.buttons.addButton('#text-tool-icon').addClass('menu-btn pointer-btn');
   var parent = gui.container.findChild('.mshp-main-map');
   var panel = El('div').addClass('label-style-panel rollover').appendTo(parent).hide();
+  var createPanel = El('div').addClass('label-style-panel label-create-panel rollover').appendTo(parent).hide();
+  var createFieldSelect, createExprInput, createCopyCheckbox, createBtn;
   var styleSelect, fontSelect, fontStyleSelect, fontSizeText, colorChit, colorInput, colorPicker, sbCanvas, hueCanvas, sbMarker, hueMarker, pickerHexInput, pickerHsbInputs, cssInput, posBtns, iconBtns, iconSizeText, hit;
   var fontOptionsRendered = false;
   var pickerColor = {h: 0, s: 0, b: 0};
   var pickerStartColor = null;
+  var pendingStyleHistory = null;
 
+  initCreatePanel();
   initPanel();
   gui.addMode(labelStylePanelMode, turnOn, turnOff, textBtn);
   gui.model.on('update', updateVisibility);
@@ -68,7 +78,7 @@ export function LabelTool(gui) {
     setTimeout(updateSelectionDisplay, 0);
   });
   gui.on('interaction_mode_change', function(e) {
-    if (e.mode != labelStyleMode && gui.getMode() == labelStylePanelMode) {
+    if (panel.visible() && e.mode != labelStyleMode && gui.getMode() == labelStylePanelMode) {
       gui.clearMode();
     }
   });
@@ -95,17 +105,6 @@ export function LabelTool(gui) {
     El('button').appendTo(selectRow).text('Select all').on('click', selectAllLabels);
     El('button').appendTo(selectRow).text('Clear').on('click', clearSelection);
 
-    var savedRow = El('div').addClass('label-style-row label-saved-style-row').appendTo(panel);
-    El('span').appendTo(savedRow).text('Saved style');
-    styleSelect = El('select').appendTo(savedRow).on('change', function() {
-      if (styleSelect.node().value) {
-        applySavedStyle(styleSelect.node().value);
-      }
-    });
-    El('button').appendTo(savedRow).text('Save').on('click', saveCurrentStyle);
-    El('button').appendTo(savedRow).text('Delete').on('click', deleteSelectedStyle);
-    renderSavedStyles();
-
     var fontRow = El('label').addClass('label-style-row').appendTo(panel);
     El('span').appendTo(fontRow).text('Font');
     fontSelect = El('select').appendTo(fontRow).on('change', function() {
@@ -115,24 +114,15 @@ export function LabelTool(gui) {
     });
 
     var fontStyleRow = El('label').addClass('label-style-row').appendTo(panel);
-    El('span').appendTo(fontStyleRow).text('Style');
+    El('span').appendTo(fontStyleRow).text('Font style');
     fontStyleSelect = El('select').appendTo(fontStyleRow).on('change', function() {
       if (fontStyleSelect.node().value) {
         applyFontStyleVariant(fontStyleSelect.node().value);
       }
     });
 
-    var fontSizeRow = El('div').addClass('label-style-row label-size-row').appendTo(panel);
-    El('span').appendTo(fontSizeRow).text('Font size');
-    El('button').appendTo(fontSizeRow).text('−').on('click', function() {
-      nudgeFontSize(-1);
-    });
-    fontSizeText = El('span').addClass('label-size-value').appendTo(fontSizeRow);
-    El('button').appendTo(fontSizeRow).text('+').on('click', function() {
-      nudgeFontSize(1);
-    });
-
-    var colorRow = El('div').addClass('label-style-row label-color-row').appendTo(panel);
+    var colorSizeRow = El('div').addClass('label-style-row label-split-row').appendTo(panel);
+    var colorRow = El('div').addClass('label-split-cell label-color-row').appendTo(colorSizeRow);
     El('span').appendTo(colorRow).text('Color');
     colorChit = El('button').addClass('label-color-chit').appendTo(colorRow).on('click', function() {
       if (!colorChit.node().disabled) toggleColorPicker();
@@ -148,10 +138,47 @@ export function LabelTool(gui) {
     });
     initColorPicker(colorRow);
 
+    var fontSizeRow = El('div').addClass('label-split-cell label-size-row').appendTo(colorSizeRow);
+    El('span').appendTo(fontSizeRow).text('Font size');
+    El('button').appendTo(fontSizeRow).text('−').on('click', function() {
+      nudgeFontSize(-1);
+    });
+    fontSizeText = El('span').addClass('label-size-value').appendTo(fontSizeRow);
+    El('button').appendTo(fontSizeRow).text('+').on('click', function() {
+      nudgeFontSize(1);
+    });
+
     var cssRow = El('label').addClass('label-style-row label-css-row').appendTo(panel);
     El('span').appendTo(cssRow).text('Inline CSS');
     cssInput = El('input').attr('type', 'text').appendTo(cssRow).on('change', function() {
       applyInlineCss(cssInput.node().value.trim());
+    });
+
+    var iconSizeRow = El('div').addClass('label-style-row label-split-row').appendTo(panel);
+    var iconRow = El('div').addClass('label-split-cell').appendTo(iconSizeRow);
+    El('div').addClass('label-style-row-label').appendTo(iconRow).text('Icon');
+    var iconGroup = El('div').addClass('label-icon-buttons').appendTo(iconRow);
+    iconBtns = {};
+    iconTypes.forEach(function(icon) {
+      var btn = El('button')
+        .attr('data-icon', icon.name || 'none')
+        .attr('title', icon.name || 'no icon')
+        .appendTo(iconGroup)
+        .on('click', function() {
+          applyIcon(icon.name);
+        });
+      iconBtns[icon.name] = btn;
+      appendIconButtonSymbol(btn, icon.name);
+    });
+
+    var sizeRow = El('div').addClass('label-split-cell label-icon-size-row').appendTo(iconSizeRow);
+    El('span').appendTo(sizeRow).text('Icon size');
+    El('button').appendTo(sizeRow).text('−').on('click', function() {
+      nudgeIconSize(-1);
+    });
+    iconSizeText = El('span').addClass('label-icon-size-value').appendTo(sizeRow);
+    El('button').appendTo(sizeRow).text('+').on('click', function() {
+      nudgeIconSize(1);
     });
 
     var posRow = El('div').addClass('label-style-row').appendTo(panel);
@@ -168,38 +195,71 @@ export function LabelTool(gui) {
         });
     });
 
-    var iconRow = El('div').addClass('label-style-row').appendTo(panel);
-    El('div').addClass('label-style-row-label').appendTo(iconRow).text('Icon');
-    var iconGroup = El('div').addClass('label-icon-buttons').appendTo(iconRow);
-    iconBtns = {};
-    iconTypes.forEach(function(icon) {
-      iconBtns[icon.name] = El('button')
-        .attr('data-icon', icon.name || 'none')
-        .attr('title', icon.name || 'no icon')
-        .appendTo(iconGroup)
-        .text(icon.label)
-        .on('click', function() {
-          applyIcon(icon.name);
-        });
+    var savedRow = El('div').addClass('label-style-row label-saved-style-row').appendTo(panel);
+    El('span').appendTo(savedRow).text('Presets');
+    styleSelect = El('select').appendTo(savedRow).on('change', function() {
+      if (styleSelect.node().value) {
+        applySavedStyle(styleSelect.node().value);
+      }
+    });
+    El('button').appendTo(savedRow).text('Save preset').on('click', saveCurrentStyle);
+    El('button').appendTo(savedRow).text('Delete').on('click', deleteSelectedStyle);
+    renderSavedStyles();
+  }
+
+  function initCreatePanel() {
+    var header = El('div').addClass('label-style-panel-title').appendTo(createPanel).text('Create labels');
+    El('button').addClass('label-style-close').appendTo(header).text('×').on('click', function() {
+      gui.clearMode();
     });
 
-    var sizeRow = El('div').addClass('label-style-row label-icon-size-row').appendTo(panel);
-    El('span').appendTo(sizeRow).text('Icon size');
-    El('button').appendTo(sizeRow).text('−').on('click', function() {
-      nudgeIconSize(-1);
+    var fieldRow = El('label').addClass('label-style-row').appendTo(createPanel);
+    El('span').appendTo(fieldRow).text('Label field');
+    createFieldSelect = El('select').appendTo(fieldRow).on('change', function() {
+      var field = createFieldSelect.node().value;
+      if (field) {
+        createExprInput.node().value = getFieldExpression(field);
+      }
+      updateCreateButton();
     });
-    iconSizeText = El('span').addClass('label-icon-size-value').appendTo(sizeRow);
-    El('button').appendTo(sizeRow).text('+').on('click', function() {
-      nudgeIconSize(1);
-    });
+
+    var exprRow = El('label').addClass('label-style-row label-create-expression-row').appendTo(createPanel);
+    El('span').appendTo(exprRow).text('or expression');
+    createExprInput = El('input')
+      .attr('type', 'text')
+      .appendTo(exprRow)
+      .on('input', updateCreateButton)
+      .on('change', updateCreateButton);
+
+    var copyRow = El('label').addClass('label-style-row label-create-copy-row').appendTo(createPanel);
+    createCopyCheckbox = El('input').attr('type', 'checkbox').appendTo(copyRow);
+    El('span').appendTo(copyRow).text('Add labels to a copy of this layer');
+
+    var btnRow = El('div').addClass('label-style-row').appendTo(createPanel);
+    createBtn = El('button').appendTo(btnRow).text('Create labels').on('click', createLabels);
+  }
+
+  function appendIconButtonSymbol(btn, iconName) {
+    var svg = '<svg class="label-icon-symbol" viewBox="0 0 16 16" aria-hidden="true">' +
+      iconButtonSymbols[iconName] + '</svg>';
+    El(svg).appendTo(btn);
   }
 
   function turnOn() {
-    if (!activeLayerHasLabels()) {
+    if (!activeLayerIsPointLayer()) {
       gui.clearMode();
       return;
     }
+    if (!activeLayerHasLabels()) {
+      showCreatePanel();
+      return;
+    }
+    showStylePanel();
+  }
+
+  function showStylePanel() {
     renderFontOptions();
+    createPanel.hide();
     gui.interaction.setMode(labelStyleMode);
     gui.state.label_style_panel_open = true;
     panel.show();
@@ -208,8 +268,25 @@ export function LabelTool(gui) {
     updateSelectionDisplay();
   }
 
-  function turnOff() {
+  function showCreatePanel() {
     panel.hide();
+    hideColorPicker();
+    if (gui.interaction.getMode() == labelStyleMode) {
+      gui.interaction.turnOff();
+    }
+    gui.state.label_style_panel_open = true;
+    createPanel.show();
+    textBtn.addClass('selected');
+    renderCreateFields();
+    updateCreateButton();
+  }
+
+  function turnOff() {
+    if (panel.visible()) {
+      flushPendingStyleHistory();
+    }
+    panel.hide();
+    createPanel.hide();
     hideColorPicker();
     gui.state.label_style_panel_open = false;
     textBtn.removeClass('selected');
@@ -221,7 +298,7 @@ export function LabelTool(gui) {
   }
 
   function updateVisibility() {
-    var enabled = activeLayerHasLabels();
+    var enabled = activeLayerIsPointLayer();
     textBtn.classed('disabled', !enabled);
     textBtn[enabled ? 'show' : 'hide']();
     if (!enabled && gui.getMode() == labelStylePanelMode) {
@@ -232,6 +309,11 @@ export function LabelTool(gui) {
   function activeLayerHasLabels() {
     var active = gui.model.getActiveLayer();
     return !!(active && internal.layerHasLabels(active.layer));
+  }
+
+  function activeLayerIsPointLayer() {
+    var active = gui.model.getActiveLayer();
+    return !!(active && active.layer && active.layer.geometry_type == 'point');
   }
 
   function renderFontOptions() {
@@ -245,6 +327,211 @@ export function LabelTool(gui) {
         El('option').attr('value', fontName).appendTo(optgroup).text(fontName);
       });
     });
+  }
+
+  function renderCreateFields() {
+    var lyr = getActiveLayer();
+    var records = lyr && lyr.data ? lyr.data.getRecords() : [];
+    var fields = lyr && lyr.data ? lyr.data.getFields().filter(function(field) {
+      return getColumnType(field, records) == 'string';
+    }) : [];
+    var value = createFieldSelect.node().value;
+    createFieldSelect.empty();
+    El('option').attr('value', '').appendTo(createFieldSelect).text('');
+    fields.forEach(function(field) {
+      El('option').attr('value', field).appendTo(createFieldSelect).text(field);
+    });
+    createFieldSelect.node().disabled = fields.length === 0;
+    createFieldSelect.node().value = fields.indexOf(value) > -1 ? value : '';
+  }
+
+  function updateCreateButton() {
+    createBtn.node().disabled = createExprInput.node().value.trim() === '';
+  }
+
+  function getFieldExpression(field) {
+    return 'd[' + JSON.stringify(field) + ']';
+  }
+
+  function createLabels() {
+    var active = gui.model.getActiveLayer();
+    var srcLyr = active && active.layer;
+    var dataset = active && active.dataset;
+    var expr = createExprInput.node().value.trim();
+    var lyr;
+    if (!srcLyr || srcLyr.geometry_type != 'point' || !expr) return;
+    lyr = createCopyCheckbox.node().checked ? makeLabelLayerCopy(srcLyr, dataset) : srcLyr;
+    if (!applyLabelText(lyr, expr)) return;
+    if (lyr != srcLyr) {
+      addLabelLayerCopy(lyr, srcLyr, dataset);
+      recordCreateLabelsCommand(expr, lyr);
+      selectLabelLayerCopy(lyr, dataset);
+    } else {
+      gui.model.updated({style: true, same_table: true});
+      recordCreateLabelsCommand(expr);
+    }
+    showStylePanel();
+    setTimeout(function() {
+      selectAllLabels();
+    }, 0);
+  }
+
+  function makeLabelLayerCopy(srcLyr, dataset) {
+    var lyr = copyLayer(srcLyr);
+    delete lyr.gui;
+    lyr.name = 'labels';
+    return lyr;
+  }
+
+  function addLabelLayerCopy(lyr, srcLyr, dataset) {
+    var i = dataset.layers.indexOf(srcLyr);
+    noteDatasetWillChange(dataset, {operation: 'createLabelLayer', unit: 'layers'});
+    dataset.layers.splice(i + 1, 0, lyr);
+    markDatasetChanged(dataset, {operation: 'createLabelLayer', unit: 'layers'});
+  }
+
+  function selectLabelLayerCopy(lyr, dataset) {
+    gui.model.setDefaultTarget([lyr], dataset);
+    gui.model.updated({select: true});
+  }
+
+  function applyLabelText(lyr, expr) {
+    var table = getLayerDataTable(lyr);
+    var hasField = table.fieldExists(labelTextField);
+    var records = table.getRecords();
+    var accessor;
+    try {
+      accessor = getSymbolPropertyAccessor(expr, labelTextField, lyr);
+    } catch(e) {
+      showPopupAlert(e.message || 'Invalid label expression', 'Create labels');
+      return false;
+    }
+    if (hasField) {
+      table.captureFieldsBefore([labelTextField], {operation: 'create-labels'});
+    } else {
+      table.captureSchemaBefore({operation: 'create-labels', fields: [labelTextField]});
+    }
+    records.forEach(function(rec, i) {
+      if (!rec) rec = records[i] = {};
+      rec[labelTextField] = accessor(i);
+    });
+    if (hasField) {
+      table.markFieldsChanged([labelTextField], {operation: 'create-labels'});
+    } else {
+      table.markSchemaChanged({operation: 'create-labels', fields: [labelTextField]});
+    }
+    return true;
+  }
+
+  function updatePendingStyleHistory(lyr, ids, fields) {
+    if (!gui.session || !lyr || ids.length === 0) return;
+    if (pendingStyleHistory && (pendingStyleHistory.layer != lyr ||
+        !sameIds(pendingStyleHistory.ids, ids))) {
+      flushPendingStyleHistory();
+    }
+    if (!pendingStyleHistory) {
+      pendingStyleHistory = {
+        layer: lyr,
+        ids: ids.concat(),
+        fields: []
+      };
+    }
+    getHistoryStyleFields(fields).forEach(function(field) {
+      if (pendingStyleHistory.fields.indexOf(field) == -1) {
+        pendingStyleHistory.fields.push(field);
+      }
+    });
+  }
+
+  function flushPendingStyleHistory() {
+    var cmd;
+    if (!pendingStyleHistory || !gui.session) return;
+    cmd = getStyleHistoryCommand(pendingStyleHistory);
+    pendingStyleHistory = null;
+    if (cmd) {
+      gui.session.consoleCommands(cmd);
+    }
+  }
+
+  function getStyleHistoryCommand(entry) {
+    var table = entry.layer.data;
+    var records = table && table.getRecords();
+    var fields = entry.fields.filter(function(field) {
+      return field != labelTextField;
+    });
+    var parts = ['-style'];
+    var values;
+    if (!records || fields.length === 0) return '';
+    values = getHistoryStyleValues(records, entry.ids, fields);
+    Object.keys(values).forEach(function(field) {
+      parts.push(field + '=' + quoteCommandValue(values[field]));
+    });
+    if (parts.length == 1) return '';
+    if (getActiveLayer() != entry.layer) {
+      parts.push('target=' + internal.formatOptionValue(internal.getLayerTargetId(gui.model, entry.layer)));
+    }
+    if (entry.ids.length < internal.getFeatureCount(entry.layer)) {
+      parts.push('where=' + quoteCommandValue(getIdsWhereExpression(entry.ids)));
+    }
+    return parts.join(' ');
+  }
+
+  function getHistoryStyleValues(records, ids, fields) {
+    return fields.reduce(function(memo, field) {
+      var value = getCommonRecordValue(records, ids, field);
+      if (value !== undefined && value !== null && value !== '') {
+        memo[field] = value;
+      }
+      return memo;
+    }, {});
+  }
+
+  function getCommonRecordValue(records, ids, field) {
+    var value, val;
+    for (var i=0; i<ids.length; i++) {
+      val = records[ids[i]] && records[ids[i]][field];
+      if (i === 0) {
+        value = val;
+      } else if (val != value) {
+        return undefined;
+      }
+    }
+    return value;
+  }
+
+  function getHistoryStyleFields(fields) {
+    var out = [];
+    fields.forEach(function(field) {
+      if (field == 'dx' || field == 'dy' || field == 'text-anchor') return;
+      if (out.indexOf(field) == -1) out.push(field);
+    });
+    return out;
+  }
+
+  function getIdsWhereExpression(ids) {
+    return '[' + ids.join(',') + '].indexOf($.id)>-1';
+  }
+
+  function sameIds(a, b) {
+    if (!a || !b || a.length != b.length) return false;
+    for (var i=0; i<a.length; i++) {
+      if (a[i] != b[i]) return false;
+    }
+    return true;
+  }
+
+  function recordCreateLabelsCommand(expr, copyLyr) {
+    var cmd = '';
+    if (!gui.session) return;
+    if (copyLyr) {
+      cmd += '-filter true + name=' + internal.formatOptionValue(copyLyr.name) + ' ';
+    }
+    cmd += '-style label-text=' + quoteCommandValue(expr);
+    gui.session.consoleCommands(cmd);
+  }
+
+  function quoteCommandValue(str) {
+    return "'" + String(str).replace(/'/g, "\\'") + "'";
   }
 
   function selectAllLabels() {
@@ -512,7 +799,7 @@ export function LabelTool(gui) {
     var value = styleSelect && styleSelect.node().value;
     if (!styleSelect) return;
     styleSelect.empty();
-    El('option').attr('value', '').appendTo(styleSelect).text('');
+    El('option').attr('value', '').appendTo(styleSelect).text('Apply preset...');
     getSavedStyles().forEach(function(item) {
       El('option').attr('value', item.name).appendTo(styleSelect).text(item.name);
     });
@@ -920,6 +1207,7 @@ export function LabelTool(gui) {
   function applyStyleFields(fields, updateRecord) {
     var table = getActiveTable();
     var ids = getSelectionIds();
+    var lyr = getActiveLayer();
     var hasNewFields;
     if (!table || ids.length === 0) return;
     hasNewFields = fields.some(function(field) {
@@ -939,6 +1227,7 @@ export function LabelTool(gui) {
     }
     gui.dispatchEvent('data_postupdate', {ids: ids});
     gui.model.updated({style: true, same_table: true});
+    updatePendingStyleHistory(lyr, ids, fields);
     setTimeout(updateSelectionDisplay, 0);
     updateControls();
     updateSelectionDisplay();
