@@ -63,7 +63,7 @@ function featureHasIcon(d) {
 
 function renderIcon(d) {
   var type = d.icon || 'circle';
-  var r = getIconRadius(d);
+  var r = getIconRadius(d, type);
   if (r > 0 === false) return empty();
   if (type == 'circle') return circle(getIconStyleData(d, r));
   if (type == 'square') return square(getIconStyleData(d, r), 0, 0);
@@ -73,10 +73,18 @@ function renderIcon(d) {
   return empty();
 }
 
-function getIconRadius(d) {
-  if (d['icon-size'] > 0) return d['icon-size'] / 2;
-  if (d.r > 0) return d.r;
-  return 5;
+function getIconRadius(d, type) {
+  var size;
+  if (d['icon-size'] > 0 === false) {
+    return d.r > 0 ? d.r : 5;
+  }
+  size = d['icon-size'];
+  if (type == 'circle' || type == 'ring') {
+    size -= 1;
+  } else if (type == 'star') {
+    size += 1;
+  }
+  return size / 2;
 }
 
 function getIconStyleData(d, r) {

@@ -26,6 +26,7 @@ export function InteractionMode(gui) {
     info: 'inspect features',
     box: 'rectangle tool',
     data: 'edit attributes',
+    label_style: 'style labels',
     labels: 'position labels',
     edit_points: 'add/drag points',
     edit_lines: 'draw/edit polylines',
@@ -60,6 +61,7 @@ export function InteractionMode(gui) {
     });
 
     btn.on('mouseenter', function() {
+      if (gui.state.label_style_panel_open) return;
       btn.addClass('hover');
       if (_menuOpen) {
         clearTimeout(_menuTimeout); // prevent timed closing
@@ -72,7 +74,10 @@ export function InteractionMode(gui) {
     });
 
     btn.on('click', function(e) {
-      if (active()) {
+      if (_editMode == 'label_style') {
+        setMode('info');
+        closeMenu();
+      } else if (active()) {
         setMode('off');
         closeMenu();
       } else if (_menuOpen) {
@@ -83,6 +88,7 @@ export function InteractionMode(gui) {
       }
       e.stopPropagation();
     });
+
   }
 
   this.turnOff = function() {
@@ -94,7 +100,7 @@ export function InteractionMode(gui) {
   };
 
   this.modeUsesHitDetection = function(mode) {
-    return ['info', 'selection', 'data', 'labels', 'edit_points', 'vertices', 'rectangles', 'edit_lines', 'edit_polygons', 'snip_lines'].includes(mode);
+    return ['info', 'selection', 'data', 'label_style', 'labels', 'edit_points', 'vertices', 'rectangles', 'edit_lines', 'edit_polygons', 'snip_lines'].includes(mode);
   };
 
   this.modeUsesPopup = function(mode) {
@@ -102,7 +108,7 @@ export function InteractionMode(gui) {
   };
 
   this.modeSupportsUndo = function(mode) {
-    return ['data', 'labels', 'edit_points', 'edit_lines', 'edit_polygons', 'vertices', 'rectangles'].includes(mode);
+    return ['data', 'label_style', 'labels', 'edit_points', 'edit_lines', 'edit_polygons', 'vertices', 'rectangles'].includes(mode);
   };
 
   this.getMode = getInteractionMode;
@@ -184,9 +190,14 @@ export function InteractionMode(gui) {
   // if current editing mode is not available, turn off the tool
   function updateCurrentMode() {
     var modes = getAvailableModes();
-    if (modes.indexOf(_editMode) == -1) {
+    if (modes.indexOf(_editMode) == -1 && !labelStyleModeIsAvailable()) {
       setMode('off');
     }
+  }
+
+  function labelStyleModeIsAvailable() {
+    var o = gui.model.getActiveLayer();
+    return _editMode == 'label_style' && o && o.layer && internal.layerHasLabels(o.layer);
   }
 
   function openMenu() {
@@ -239,7 +250,7 @@ export function InteractionMode(gui) {
     }
     btn.classed('hover', _menuOpen);
     // btn.classed('selected', active() && !_menuOpen);
-    btn.classed('selected', active());
+    btn.classed('selected', active() && _editMode != 'label_style');
   }
 
   function updateSelectionHighlight() {

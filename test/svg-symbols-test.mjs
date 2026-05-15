@@ -80,7 +80,7 @@ describe('svg-symbols.js', function () {
       var output = renderPoint({icon: 'ring', 'icon-size': 8, fill: 'red'});
       var target = {
         tag: 'circle',
-        properties: {cx: 0, cy: 0, r: 4, fill: 'none', stroke: 'red', 'stroke-width': 1}
+        properties: {cx: 0, cy: 0, r: 3.5, fill: 'none', stroke: 'red', 'stroke-width': 1}
       };
       assert.deepEqual(output, target);
     });
@@ -89,7 +89,7 @@ describe('svg-symbols.js', function () {
       var output = renderPoint({icon: 'circle', 'icon-size': 8, fill: 'red', 'icon-color': 'blue'});
       var target = {
         tag: 'circle',
-        properties: {cx: 0, cy: 0, r: 4, fill: 'blue'}
+        properties: {cx: 0, cy: 0, r: 3.5, fill: 'blue'}
       };
       assert.deepEqual(output, target);
     });
@@ -107,7 +107,7 @@ describe('svg-symbols.js', function () {
       var output = renderPoint({icon: 'star', 'icon-size': 10});
       assert.equal(output.tag, 'path');
       assert.equal(output.properties.fill, 'black');
-      assert(output.properties.d.includes('M 0 -5'));
+      assert(output.properties.d.includes('M 0 -5.5'));
     });
 
   })

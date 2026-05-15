@@ -1,8 +1,13 @@
 import { getLayerDataTable, getFeatureCount } from '../dataset/mapshaper-layer-utils';
-import { getSymbolPropertyAccessor } from '../svg/svg-properties';
+import {
+  getSymbolPropertyAccessor,
+  labelPositionFields,
+  setLabelPositionStyle
+} from '../svg/svg-properties';
 import { compileFeatureExpression } from '../expressions/mapshaper-feature-expressions';
 import { initDataTable } from '../dataset/mapshaper-layer-utils';
 import { isSupportedSvgStyleProperty } from '../svg/svg-properties';
+import { stop } from '../utils/mapshaper-logging';
 import cmd from '../mapshaper-cmd';
 
 cmd.svgStyle = function(lyr, dataset, opts) {
@@ -20,9 +25,7 @@ cmd.svgStyle = function(lyr, dataset, opts) {
     lyr.data.getFields().filter(isSupportedSvgStyleProperty).forEach(lyr.data.deleteField, lyr.data);
   }
   table = getLayerDataTable(lyr);
-  fields = Object.keys(opts).map(function(optName) {
-    return optName.replace('_', '-');
-  }).filter(isSupportedSvgStyleProperty);
+  fields = getStyleFields(opts);
   hasNewFields = fields.some(function(field) {
     return !table.fieldExists(field);
   });
@@ -43,11 +46,14 @@ cmd.svgStyle = function(lyr, dataset, opts) {
     table.getRecords().forEach(function(rec, i) {
       if (filterFn && !filterFn(i)) {
         // make sure field exists if record is excluded by filter
-        if (svgName in rec === false) {
-          rec[svgName] = undefined;
-        }
+        setUndefinedFields(rec, svgName == 'label-pos' ? labelPositionFields : [svgName]);
       } else {
         rec[svgName] = accessor(i);
+        if (svgName == 'label-pos') {
+          if (!setLabelPositionStyle(rec, rec['label-pos'])) {
+            stop('Unexpected value for label-pos:', rec['label-pos']);
+          }
+        }
       }
     });
   });
@@ -59,4 +65,34 @@ cmd.svgStyle = function(lyr, dataset, opts) {
     }
   }
 };
+
+function getStyleFields(opts) {
+  var fields = [];
+  Object.keys(opts).forEach(function(optName) {
+    var svgName = optName.replace('_', '-');
+    if (!isSupportedSvgStyleProperty(svgName)) return;
+    addField(fields, svgName);
+    if (svgName == 'label-pos') {
+      labelPositionFields.forEach(function(field) {
+        addField(fields, field);
+      });
+    }
+  });
+  return fields;
+}
+
+function addField(fields, field) {
+  if (fields.indexOf(field) == -1) {
+    fields.push(field);
+  }
+}
+
+function setUndefinedFields(rec, fields) {
+  fields.forEach(function(field) {
+    if (field in rec === false) {
+      rec[field] = undefined;
+    }
+  });
+}
+
 
