@@ -1,13 +1,4 @@
-import {
-  getRasterBBox,
-  getRasterGrid,
-  getRasterPreview,
-  getRasterScalingStatsKey,
-  getRasterViewScalingStats,
-  getRasterViewRecipe,
-  intersectBboxes,
-  renderRasterViewportPreview
-} from '../rasters/mapshaper-raster-utils';
+import { internal } from './gui-core';
 import { GUI } from './gui-lib';
 
 var MAX_VIEWPORT_PREVIEW_PIXELS = 6e6;
@@ -35,7 +26,7 @@ export function scheduleRasterViewportPreview(layer, ext, onReady) {
     timing = {};
     stats = getCachedRasterScalingStats(params, timing);
     timing.renderStart = getTimer();
-    preview = renderRasterViewportPreview(params.grid, params.recipe, params.bbox, params.width, params.height, stats);
+    preview = internal.renderRasterViewportPreview(params.grid, params.recipe, params.bbox, params.width, params.height, stats);
     timing.renderMs = getTimer() - timing.renderStart;
     logRasterPreviewTiming(params, timing);
     current = cache.get(layer);
@@ -54,18 +45,18 @@ export function invalidateRasterViewportPreview(layer) {
 
 export function getRasterViewportPreviewParams(layer, ext) {
   var raster = layer && layer.raster;
-  var grid = getRasterGrid(raster);
-  var rasterBbox = getRasterBBox(raster);
+  var grid = internal.getRasterGrid(raster);
+  var rasterBbox = internal.getRasterBBox(raster);
   var mapBbox = ext.getBounds().toArray();
-  var visibleBbox = rasterBbox && intersectBboxes(rasterBbox, mapBbox);
-  var preview = getRasterPreview(raster);
+  var visibleBbox = rasterBbox && internal.intersectBboxes(rasterBbox, mapBbox);
+  var preview = internal.getRasterPreview(raster);
   var recipe, pixelRatio, t, p1, p2, displayWidth, displayHeight, crop, width, height, scale, key, needed;
   if (!grid || !grid.samples || !visibleBbox || !grid.bbox) return null;
   if (!supportsNorthUpRaster(grid)) return null;
   crop = getRasterSourceWindow(grid, visibleBbox);
   if (!crop) return null;
   visibleBbox = crop.bbox;
-  recipe = getRasterViewRecipe(grid, raster.view && raster.view.recipe);
+  recipe = internal.getRasterViewRecipe(grid, raster.view && raster.view.recipe);
   pixelRatio = GUI.getPixelRatio();
   t = ext.getTransform(pixelRatio);
   p1 = t.transform(mapBbox[0], mapBbox[3]);
@@ -113,7 +104,7 @@ function getCachedRasterScalingStats(params, timing) {
     timing.statsSource = 'none';
     return null;
   }
-  key = getRasterScalingStatsKey(params.grid, params.recipe);
+  key = internal.getRasterScalingStatsKey(params.grid, params.recipe);
   if (cached && cached.key == key) {
     timing.statsMs = 0;
     timing.statsSource = 'raster-view-cache';
@@ -121,7 +112,7 @@ function getCachedRasterScalingStats(params, timing) {
   }
   timing.statsSource = 'computed';
   timing.statsStart = getTimer();
-  cached = getRasterViewScalingStats(params.raster, params.recipe);
+  cached = internal.getRasterViewScalingStats(params.raster, params.recipe);
   timing.statsMs = getTimer() - timing.statsStart;
   return cached;
 }

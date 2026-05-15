@@ -1,12 +1,8 @@
 import { getFontStyleVariants, getInstalledFonts } from './gui-label-fonts';
 import { El } from './gui-el';
-import { internal } from './gui-core';
+import { internal, utils } from './gui-core';
 import { GUI } from './gui-lib';
-import { showPopupAlert } from './gui-alert';
-import { getColumnType } from '../datatable/mapshaper-data-utils';
-import { copyLayer, getLayerDataTable } from '../dataset/mapshaper-layer-utils';
-import { markDatasetChanged, noteDatasetWillChange } from '../undo/mapshaper-undo-tracking';
-import { getSymbolPropertyAccessor, labelPositionFields, setLabelPositionStyle } from '../svg/svg-properties';
+import { showPopupAlert, showPrompt } from './gui-alert';
 
 var labelTextField = 'label-text';
 var fontField = 'font-family';
@@ -25,6 +21,7 @@ var defaultIconSize = 5;
 var labelStyleMode = 'label_style';
 var labelStylePanelMode = 'label_style_tool';
 var savedStylesKey = 'label_styles';
+var labelPositionFields = internal.labelPositionFields;
 var savedStyleFields = [
   fontField,
   fontSizeField,
@@ -64,10 +61,9 @@ export function LabelTool(gui) {
   var panel = El('div').addClass('label-style-panel rollover').appendTo(parent).hide();
   var createPanel = El('div').addClass('label-style-panel label-create-panel rollover').appendTo(parent).hide();
   var createFieldSelect, createExprInput, createCopyCheckbox, createBtn;
-  var styleSelect, fontSelect, fontStyleSelect, fontSizeText, colorChit, colorInput, colorPicker, sbCanvas, hueCanvas, sbMarker, hueMarker, pickerHexInput, pickerHsbInputs, cssInput, posBtns, iconBtns, iconSizeText, hit;
+  var styleSelect, fontSelect, fontStyleSelect, fontSizeText, colorChit, colorInput, colorPicker, sbCanvas, hueCanvas, sbMarker, hueMarker, pickerHsbInputs, cssInput, posBtns, iconBtns, iconSizeText, hit;
   var fontOptionsRendered = false;
   var pickerColor = {h: 0, s: 0, b: 0};
-  var pickerStartColor = null;
   var pendingStyleHistory = null;
 
   initCreatePanel();
@@ -124,9 +120,7 @@ export function LabelTool(gui) {
     var colorSizeRow = El('div').addClass('label-style-row label-split-row').appendTo(panel);
     var colorRow = El('div').addClass('label-split-cell label-color-row').appendTo(colorSizeRow);
     El('span').appendTo(colorRow).text('Color');
-    colorChit = El('button').addClass('label-color-chit').appendTo(colorRow).on('click', function() {
-      if (!colorChit.node().disabled) toggleColorPicker();
-    });
+    colorChit = makePanelButton(colorRow, '', toggleColorPicker).addClass('label-color-chit');
     colorInput = El('input').attr('type', 'text').appendTo(colorRow).on('change', function() {
       var color = colorInput.node().value.trim();
       if (color) {
@@ -140,11 +134,11 @@ export function LabelTool(gui) {
 
     var fontSizeRow = El('div').addClass('label-split-cell label-size-row').appendTo(colorSizeRow);
     El('span').appendTo(fontSizeRow).text('Font size');
-    El('button').appendTo(fontSizeRow).text('−').on('click', function() {
+    makePanelButton(fontSizeRow, '−', function() {
       nudgeFontSize(-1);
     });
     fontSizeText = El('span').addClass('label-size-value').appendTo(fontSizeRow);
-    El('button').appendTo(fontSizeRow).text('+').on('click', function() {
+    makePanelButton(fontSizeRow, '+', function() {
       nudgeFontSize(1);
     });
 
@@ -160,24 +154,22 @@ export function LabelTool(gui) {
     var iconGroup = El('div').addClass('label-icon-buttons').appendTo(iconRow);
     iconBtns = {};
     iconTypes.forEach(function(icon) {
-      var btn = El('button')
-        .attr('data-icon', icon.name || 'none')
-        .attr('title', icon.name || 'no icon')
-        .appendTo(iconGroup)
-        .on('click', function() {
+      var btn = makePanelButton(iconGroup, '', function() {
           applyIcon(icon.name);
-        });
+        })
+        .attr('data-icon', icon.name || 'none')
+        .attr('title', icon.name || 'no icon');
       iconBtns[icon.name] = btn;
       appendIconButtonSymbol(btn, icon.name);
     });
 
     var sizeRow = El('div').addClass('label-split-cell label-icon-size-row').appendTo(iconSizeRow);
     El('span').appendTo(sizeRow).text('Icon size');
-    El('button').appendTo(sizeRow).text('−').on('click', function() {
+    makePanelButton(sizeRow, '−', function() {
       nudgeIconSize(-1);
     });
     iconSizeText = El('span').addClass('label-icon-size-value').appendTo(sizeRow);
-    El('button').appendTo(sizeRow).text('+').on('click', function() {
+    makePanelButton(sizeRow, '+', function() {
       nudgeIconSize(1);
     });
 
@@ -186,13 +178,11 @@ export function LabelTool(gui) {
     var grid = El('div').addClass('label-position-grid').appendTo(posRow);
     posBtns = {};
     labelPositions.forEach(function(pos) {
-      posBtns[pos] = El('button')
-        .attr('data-position', pos)
-        .attr('title', pos)
-        .appendTo(grid)
-        .on('click', function() {
+      posBtns[pos] = makePanelButton(grid, '', function() {
           applyLabelPosition(pos);
-        });
+        })
+        .attr('data-position', pos)
+        .attr('title', pos);
     });
 
     var savedRow = El('div').addClass('label-style-row label-saved-style-row').appendTo(panel);
@@ -201,6 +191,7 @@ export function LabelTool(gui) {
       if (styleSelect.node().value) {
         applySavedStyle(styleSelect.node().value);
       }
+      updateSavedStyleControls();
     });
     El('button').appendTo(savedRow).text('Save preset').on('click', saveCurrentStyle);
     El('button').appendTo(savedRow).text('Delete').on('click', deleteSelectedStyle);
@@ -233,7 +224,7 @@ export function LabelTool(gui) {
 
     var copyRow = El('label').addClass('label-style-row label-create-copy-row').appendTo(createPanel);
     createCopyCheckbox = El('input').attr('type', 'checkbox').appendTo(copyRow);
-    El('span').appendTo(copyRow).text('Add labels to a copy of this layer');
+    El('span').appendTo(copyRow).text('Create as new layer');
 
     var btnRow = El('div').addClass('label-style-row').appendTo(createPanel);
     createBtn = El('button').appendTo(btnRow).text('Create labels').on('click', createLabels);
@@ -243,6 +234,31 @@ export function LabelTool(gui) {
     var svg = '<svg class="label-icon-symbol" viewBox="0 0 16 16" aria-hidden="true">' +
       iconButtonSymbols[iconName] + '</svg>';
     El(svg).appendTo(btn);
+  }
+
+  function makePanelButton(parent, label, action) {
+    return El('div')
+      .addClass('label-panel-btn')
+      .attr('role', 'button')
+      .attr('tabindex', '0')
+      .appendTo(parent)
+      .text(label)
+      .on('click', function(e) {
+        if (this.classList.contains('disabled')) return;
+        action(e);
+      })
+      .on('keydown', function(e) {
+        if (e.key == 'Enter' || e.key == ' ') {
+          e.preventDefault();
+          if (!this.classList.contains('disabled')) action(e);
+        }
+      });
+  }
+
+  function setPanelButtonDisabled(el, disabled) {
+    el.classed('disabled', !!disabled)
+      .attr('aria-disabled', disabled ? 'true' : 'false')
+      .attr('tabindex', disabled ? '-1' : '0');
   }
 
   function turnOn() {
@@ -333,7 +349,7 @@ export function LabelTool(gui) {
     var lyr = getActiveLayer();
     var records = lyr && lyr.data ? lyr.data.getRecords() : [];
     var fields = lyr && lyr.data ? lyr.data.getFields().filter(function(field) {
-      return getColumnType(field, records) == 'string';
+      return internal.getColumnType(field, records) == 'string';
     }) : [];
     var value = createFieldSelect.node().value;
     createFieldSelect.empty();
@@ -377,7 +393,7 @@ export function LabelTool(gui) {
   }
 
   function makeLabelLayerCopy(srcLyr, dataset) {
-    var lyr = copyLayer(srcLyr);
+    var lyr = internal.copyLayer(srcLyr);
     delete lyr.gui;
     lyr.name = 'labels';
     return lyr;
@@ -385,9 +401,9 @@ export function LabelTool(gui) {
 
   function addLabelLayerCopy(lyr, srcLyr, dataset) {
     var i = dataset.layers.indexOf(srcLyr);
-    noteDatasetWillChange(dataset, {operation: 'createLabelLayer', unit: 'layers'});
+    internal.noteDatasetWillChange(dataset, {operation: 'createLabelLayer', unit: 'layers'});
     dataset.layers.splice(i + 1, 0, lyr);
-    markDatasetChanged(dataset, {operation: 'createLabelLayer', unit: 'layers'});
+    internal.markDatasetChanged(dataset, {operation: 'createLabelLayer', unit: 'layers'});
   }
 
   function selectLabelLayerCopy(lyr, dataset) {
@@ -396,12 +412,12 @@ export function LabelTool(gui) {
   }
 
   function applyLabelText(lyr, expr) {
-    var table = getLayerDataTable(lyr);
+    var table = internal.getLayerDataTable(lyr);
     var hasField = table.fieldExists(labelTextField);
     var records = table.getRecords();
     var accessor;
     try {
-      accessor = getSymbolPropertyAccessor(expr, labelTextField, lyr);
+      accessor = internal.getSymbolPropertyAccessor(expr, labelTextField, lyr);
     } catch(e) {
       showPopupAlert(e.message || 'Invalid label expression', 'Create labels');
       return false;
@@ -581,9 +597,7 @@ export function LabelTool(gui) {
     var iconVal = getCommonValue(ids, iconField);
     var iconSizeVal = getCommonValue(ids, iconSizeField, {useDefault: true, defaultValue: defaultIconSize});
     styleSelect.node().disabled = ids.length === 0;
-    panel.findChildren('.label-saved-style-row button').forEach(function(btn) {
-      btn.node().disabled = ids.length === 0;
-    });
+    updateSavedStyleControls();
     fontSelect.node().disabled = ids.length === 0;
     fontSelect.node().value = fontVal;
     updateFontStyleControls(fontVal, fontStyleVal, fontWeightVal);
@@ -599,15 +613,15 @@ export function LabelTool(gui) {
     var disabled = getSelectionIds().length === 0;
     labelPositions.forEach(function(name) {
       posBtns[name].classed('selected', name == pos);
-      posBtns[name].node().disabled = disabled;
+      setPanelButtonDisabled(posBtns[name], disabled);
     });
   }
 
   function updateFontSizeControls(fontSizeVal) {
     var disabled = getSelectionIds().length === 0;
     fontSizeText.text(fontSizeVal || '');
-    panel.findChildren('.label-size-row button').forEach(function(btn) {
-      btn.node().disabled = disabled;
+    panel.findChildren('.label-size-row .label-panel-btn').forEach(function(btn) {
+      setPanelButtonDisabled(btn, disabled);
     });
   }
 
@@ -629,8 +643,11 @@ export function LabelTool(gui) {
     var disabled = getSelectionIds().length === 0;
     colorInput.node().disabled = disabled;
     colorInput.node().value = colorVal || '';
-    colorChit.node().disabled = disabled || !isHexColor(colorVal);
+    setPanelButtonDisabled(colorChit, disabled || !isHexColor(colorVal));
     colorChit.css('background-color', isHexColor(colorVal) ? colorVal : 'transparent');
+    if (colorPicker.visible()) {
+      return; // avoid HSB -> RGB -> HSB rounding jumps after picker commits
+    }
     if (isHexColor(colorVal)) {
       setPickerColor(hexToHsb(colorVal));
     } else {
@@ -646,16 +663,24 @@ export function LabelTool(gui) {
   function updateIconButtons(iconVal) {
     var disabled = getSelectionIds().length === 0;
     iconTypes.forEach(function(icon) {
-      iconBtns[icon.name].classed('selected', icon.name == iconVal);
-      iconBtns[icon.name].node().disabled = disabled;
+      iconBtns[icon.name].classed('selected', !disabled && icon.name == iconVal);
+      setPanelButtonDisabled(iconBtns[icon.name], disabled);
     });
   }
 
   function updateIconSizeControls(iconSizeVal) {
     var disabled = getSelectionIds().length === 0;
     iconSizeText.text(iconSizeVal || '');
-    panel.findChildren('.label-icon-size-row button').forEach(function(btn) {
-      btn.node().disabled = disabled;
+    panel.findChildren('.label-icon-size-row .label-panel-btn').forEach(function(btn) {
+      setPanelButtonDisabled(btn, disabled);
+    });
+  }
+
+  function updateSavedStyleControls() {
+    var disabled = getSelectionIds().length === 0;
+    var buttons = panel.findChildren('.label-saved-style-row button');
+    buttons.forEach(function(btn, i) {
+      btn.node().disabled = i === 0 ? disabled : disabled || !styleSelect.node().value;
     });
   }
 
@@ -770,16 +795,17 @@ export function LabelTool(gui) {
     }
   }
 
-  function deleteSelectedStyle() {
+  async function deleteSelectedStyle() {
     var name = styleSelect.node().value;
     var styles;
     if (!name) return;
-    if (!window.confirm('Delete label style "' + name + '"?')) return;
+    if (!await showPrompt('Delete label style "' + name + '"?', 'Delete preset')) return;
     styles = getSavedStyles().filter(function(item) {
       return item.name != name;
     });
     GUI.setSavedValue(savedStylesKey, styles);
     renderSavedStyles();
+    updateSavedStyleControls();
   }
 
   function applySavedStyle(name) {
@@ -804,6 +830,7 @@ export function LabelTool(gui) {
       El('option').attr('value', item.name).appendTo(styleSelect).text(item.name);
     });
     styleSelect.node().value = value || '';
+    updateSavedStyleControls();
   }
 
   function getCurrentStyle() {
@@ -871,7 +898,7 @@ export function LabelTool(gui) {
         }
       });
       if (style['label-pos']) {
-        setLabelPositionStyle(rec, style['label-pos']);
+        internal.setLabelPositionStyle(rec, style['label-pos']);
       }
     });
   }
@@ -887,7 +914,7 @@ export function LabelTool(gui) {
 
   function applyLabelPosition(pos) {
     applyStyleFields(labelPositionFields, function(rec) {
-      setLabelPositionStyle(rec, pos);
+      internal.setLabelPositionStyle(rec, pos);
     });
   }
 
@@ -941,17 +968,7 @@ export function LabelTool(gui) {
     addPickerNumberInput(hsbRow, 'h', 'H');
     addPickerNumberInput(hsbRow, 's', 'S');
     addPickerNumberInput(hsbRow, 'b', 'B');
-    var hexRow = El('label').addClass('label-color-picker-hex').appendTo(colorPicker);
-    El('span').appendTo(hexRow).text('RGB');
-    pickerHexInput = El('input').attr('type', 'text').appendTo(hexRow).on('change', function() {
-      var hex = pickerHexInput.node().value.trim();
-      if (isHexColor(hex)) {
-        setPickerColor(hexToHsb(hex));
-      }
-    });
-    var btnRow = El('div').addClass('label-color-picker-buttons').appendTo(colorPicker);
-    El('button').appendTo(btnRow).text('Apply').on('click', applyPickerColor);
-    El('button').appendTo(btnRow).text('Close').on('click', closePickerColor);
+    El('button').appendTo(hsbRow).text('Close').on('click', closePickerColor);
     sbCanvas.on('mousedown', function(e) {
       startCanvasDrag(e, updateSbFromEvent);
     });
@@ -968,11 +985,16 @@ export function LabelTool(gui) {
       .attr('type', 'text')
       .appendTo(wrapper)
       .on('change', function() {
+        var h = parseNumberField(pickerHsbInputs.h.node().value);
+        var s = parseNumberField(pickerHsbInputs.s.node().value);
+        var b = parseNumberField(pickerHsbInputs.b.node().value);
+        if (!isFinite(h) || !isFinite(s) || !isFinite(b)) return;
         setPickerColor({
-          h: degreesToByte(parseNumberField(pickerHsbInputs.h.node().value)),
-          s: pctToByte(parseNumberField(pickerHsbInputs.s.node().value)),
-          b: pctToByte(parseNumberField(pickerHsbInputs.b.node().value))
+          h: degreesToByte(h),
+          s: pctToByte(s),
+          b: pctToByte(b)
         });
+        commitPickerColor();
       });
   }
 
@@ -980,7 +1002,6 @@ export function LabelTool(gui) {
     if (colorPicker.visible()) {
       hideColorPicker();
     } else {
-      pickerStartColor = Object.assign({}, pickerColor);
       colorPicker.show();
       drawColorPicker();
     }
@@ -988,7 +1009,6 @@ export function LabelTool(gui) {
 
   function hideColorPicker() {
     colorPicker.hide();
-    pickerStartColor = null;
   }
 
   function startCanvasDrag(e, update) {
@@ -1007,6 +1027,7 @@ export function LabelTool(gui) {
       document.removeEventListener('mouseup', onup);
       colorPicker.removeClass('dragging-color');
       El('body').removeClass('dragging-color-picker');
+      commitPickerColor();
     }
   }
 
@@ -1051,7 +1072,6 @@ export function LabelTool(gui) {
     pickerHsbInputs.h.node().value = byteToDegrees(pickerColor.h) + '°';
     pickerHsbInputs.s.node().value = byteToPct(pickerColor.s) + '%';
     pickerHsbInputs.b.node().value = byteToPct(pickerColor.b) + '%';
-    pickerHexInput.node().value = hex;
     colorInput.node().value = hex;
     colorChit.css('background-color', hex);
   }
@@ -1102,15 +1122,11 @@ export function LabelTool(gui) {
     positionMarker(hueMarker, pickerColor.h, 9, {h: pickerColor.h, s: 255, b: 255});
   }
 
-  function applyPickerColor() {
+  function commitPickerColor() {
     applyLabelColor(hsbToHex(pickerColor));
-    hideColorPicker();
   }
 
   function closePickerColor() {
-    if (pickerStartColor) {
-      setPickerColor(pickerStartColor);
-    }
     hideColorPicker();
   }
 
@@ -1125,6 +1141,8 @@ export function LabelTool(gui) {
 
   function positionMarker(marker, x, y, hsb) {
     var rgb = hsbToRgb(hsb);
+    x = utils.clamp(x, 1, 254);
+    y = utils.clamp(y, 1, 254) + 0.5;
     marker.css({
       left: x - 8,
       top: y - 8

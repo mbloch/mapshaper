@@ -532,7 +532,7 @@ export function MshpMap(gui) {
     _renderer.drawMainLayers(contentLayers, action);
 
     // draw hover & selection overlay
-    if (!_overlayLayers || action != 'nav') {
+    if (!_overlayLayers || action != 'nav' || getGlobalStyleOptions().interactionMode == 'label_style') {
       // cache layers to use when panning/zooming
       _overlayLayers = getOverlayLayers(_activeLyr, _hit.getHitState(), getGlobalStyleOptions());
     }

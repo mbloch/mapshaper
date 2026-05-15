@@ -1,7 +1,6 @@
 import { internal, utils, Bounds } from './gui-core';
 import { El } from './gui-el';
 import { GUI } from './gui-lib';
-import { getRasterBBox, getRasterPreview } from '../rasters/mapshaper-raster-utils';
 import {
   getCachedRasterViewportPreview,
   scheduleRasterViewportPreview
@@ -180,8 +179,8 @@ export function DisplayCanvas() {
     preview = options.action == 'nav' ? null : getCachedRasterViewportPreview(layer, _ext);
     bbox = preview && preview.bbox;
     if (!preview) {
-      preview = raster && getRasterPreview(raster);
-      bbox = raster && getRasterBBox(raster);
+      preview = raster && internal.getRasterPreview(raster);
+      bbox = raster && internal.getRasterBBox(raster);
       if (options.action != 'nav' && options.onViewportPreviewReady) {
         scheduleRasterViewportPreview(layer, _ext, options.onViewportPreviewReady);
       }
