@@ -300,13 +300,13 @@ body.map-view {
 
 .history-menu-dropdown .info-box {
 	pointer-events: initial;
-	min-width: 230px;
+	min-width: 185px;
 }
 
 .history-menu-item {
 	color: var(--normal-text);
 	cursor: pointer;
-	padding: 2px 0;
+	padding-top: 2px;
 	white-space: nowrap;
 }
 
@@ -323,12 +323,6 @@ body.map-view {
 	pointer-events: none;
 }
 
-.history-menu-separator {
-	height: 1px;
-	background-color: #ddd;
-	margin: 6px 0 5px 0;
-}
-
 .history-menu-note {
 	color: #777;
 	font-size: 12px;
@@ -336,6 +330,14 @@ body.map-view {
 	max-width: 215px;
 	padding: 0 0 5px 0;
 	white-space: normal;
+}
+
+
+.history-snapshot-list .save-menu-item {
+	right: auto;
+	text-align: left;
+	padding-left: 0;
+	padding-right: 0;
 }
 
 .header-menu-item.header-menu-sponsor svg {
@@ -670,7 +672,7 @@ textarea:focus {
 	word-wrap: break-word;
 	text-align: left;
 	margin-top: 12px;
-	padding: 15px 17px 13px 19px;
+	padding: 14px 16px 13px 18px;
 	vertical-align: top;
 	display: inline-block;
 	/* border: 1px solid #aaa; */
@@ -704,11 +706,11 @@ textarea:focus {
 }
 
 .info-box h3 {
-	font-size: 19px;
+	font-size: 17px;
 	line-height: 1.1;
 	padding: 0;
 	margin: 0 0 0.4em 0;
-	font-weight: normal;
+	font-weight: 500;
 }
 
 .info-box h3.list-header {
@@ -1009,11 +1011,26 @@ body.console-open .console-tab {
 .console-info-title {
 	color: #fff;
 	border-bottom: 1px solid rgba(255,255,255,0.35);
-	margin: 0 0 4px 0;
+	line-height: 1.45; /* space between border and text */
 }
 
 .console-info-subtitle {
 	margin-top: 0.65em;
+}
+
+.layer-info-popup .console-info-title {
+	color: var(--normal-text);
+	border-bottom-color: #ccc;
+}
+
+.layer-info-popup .console-attribute-table tr:first-child {
+	border-bottom-color: #ccc;
+}
+
+.layer-info-popup .console-info-table td:first-child,
+.layer-info-popup .console-attribute-table td:first-child,
+.layer-info-popup .console-attribute-table th:first-child {
+	color: #555;
 }
 
 .input-field {
@@ -1883,6 +1900,15 @@ body.pan.panning .map-layers:not(.drawing) {
 	stroke-linejoin: round;
 }
 
+.map-layers > svg text.label-style-selected {
+	stroke: #fce300;
+	stroke-opacity: 0.25;
+	paint-order: stroke fill;
+	stroke-width: 4px;
+	stroke-linecap: round;
+	stroke-linejoin: round;
+}
+
 /* ---  MAP BUTTONS --- */
 
 /*.pointer-btn {
@@ -1979,6 +2005,370 @@ body.pan.panning .map-layers:not(.drawing) {
 	fill: white;
 }
 
+.label-style-panel {
+	position: absolute;
+	z-index: 21;
+	top: 6px;
+	right: 36px;
+	width: 185px;
+	padding: 8px 12px 12px;
+	text-align: left;
+	background-color: white;
+	border: 1px solid #ddd;
+	border-radius: 6px;
+	box-shadow: 0 1px 7px rgba(0,0,0,0.12);
+}
+
+.label-style-panel button,
+.label-style-panel select,
+.label-style-panel input {
+	font-size: 12.5px;
+}
+
+.label-style-panel select {
+	padding: 1px 0;
+}
+
+.label-style-panel-title {
+	position: relative;
+	font-weight: 600;
+	font-size: 16px;
+}
+
+.label-style-close {
+	position: absolute;
+	right: -5px;
+	border: 0;
+	background: transparent;
+	cursor: pointer;
+	font-size: 16px;
+	line-height: 1;
+}
+
+.label-style-row {
+	display: block;
+	margin-top: 7px;
+}
+
+.label-style-row span,
+.label-style-row-label {
+	display: block;
+	margin-bottom: 3px;
+	color: #555;
+}
+
+.label-style-row select {
+	width: 100%;
+	box-sizing: border-box;
+}
+
+.label-style-panel select {
+	background-color: white;
+	border: 1px solid #999;
+	box-shadow: none;
+}
+
+.label-style-panel select:focus {
+	border-color: #d3aa00;
+	box-shadow: none;
+	outline: none;
+}
+
+.label-style-panel input[type="text"] {
+	-webkit-appearance: none;
+	appearance: none;
+	background: white;
+	border: 1px solid #999;
+	border-radius: 0;
+	box-shadow: none;
+}
+
+.label-style-panel input[type="text"]:focus {
+	border-color: #d3aa00;
+	box-shadow: none;
+	outline: none;
+}
+
+.label-create-expression-row input {
+	width: 100%;
+	box-sizing: border-box;
+}
+
+.label-create-copy-row {
+	display: flex;
+	align-items: flex-start;
+	gap: 5px;
+}
+
+.label-create-copy-row input {
+	margin-top: 1px;
+}
+
+.label-create-copy-row span {
+	display: inline;
+	margin: 0;
+	color: #555;
+}
+
+.label-saved-style-row select {
+	width: 100%;
+	margin-bottom: 4px;
+}
+
+.label-saved-style-row {
+	margin-top: 10px;
+	padding-top: 8px;
+	border-top: 1px solid #ccc;
+}
+
+.label-saved-style-row button {
+	margin-right: 5px;
+}
+
+.label-split-row {
+	display: grid;
+	grid-template-columns: 105px 1fr;
+	column-gap: 8px;
+	align-items: start;
+}
+
+.label-split-cell > span,
+.label-split-cell > .label-style-row-label {
+	display: block;
+	margin-bottom: 2px;
+	color: #555;
+}
+
+.label-split-row .label-size-row,
+.label-split-row .label-icon-size-row {
+	justify-self: end;
+	white-space: nowrap;
+}
+
+.label-color-row {
+	position: relative;
+}
+
+.label-panel-btn {
+	box-sizing: border-box;
+	user-select: none;
+	cursor: pointer;
+	border: 1px solid #999;
+	border-radius: 3px;
+	background: #eee;
+	padding: 0;
+	height: 19px;
+	width: 19px;
+}
+
+.label-panel-btn.disabled {
+	color: #999;
+	cursor: default;
+	opacity: 0.45;
+}
+
+.label-color-row .label-color-chit {
+	display: inline-block;
+	width: 19px;
+	height: 19px;
+	margin-right: 5px;
+	padding: 0;
+	vertical-align: top;
+	border: 1px solid #888;
+	cursor: pointer;
+}
+
+.label-color-row input[type="text"] {
+	width: 79px;
+	height: 19px;
+	padding-top: 0;
+	padding-bottom: 0;
+	box-sizing: border-box;
+	vertical-align: top;
+}
+
+.label-color-row .label-color-picker {
+	left: auto;
+	right: 0;
+}
+
+.label-color-row .label-color-picker input[type="text"] {
+	width: 45px;
+}
+
+.label-css-row input {
+	width: 100%;
+	box-sizing: border-box;
+}
+
+.label-color-picker {
+	position: absolute;
+	z-index: 25;
+	top: 48px;
+	right: 0;
+	padding: 8px;
+	background: white;
+	border: 1px solid #ddd;
+	border-radius: 6px;
+	box-shadow: 0 1px 7px rgba(0,0,0,0.18);
+}
+
+.label-color-picker canvas {
+	display: block;
+	width: 256px;
+	margin: 0 0 6px 0;
+	cursor: crosshair;
+}
+
+.label-color-picker.dragging-color canvas {
+	cursor: none;
+}
+
+body.dragging-color-picker,
+body.dragging-color-picker * {
+	cursor: none !important;
+}
+
+.label-color-canvas-wrap {
+	position: relative;
+	width: 256px;
+	overflow: visible;
+}
+
+.label-color-marker {
+	position: absolute;
+	pointer-events: none;
+	overflow: visible;
+}
+
+.label-color-marker circle {
+	fill: none;
+	stroke-width: 1.5;
+}
+
+.label-color-picker-fields {
+	display: flex;
+	align-items: center;
+	gap: 6px;
+	margin-top: 6px;
+}
+
+.label-color-picker-fields label {
+	display: inline-flex;
+	align-items: center;
+	gap: 3px;
+	margin: 0;
+	color: #555;
+}
+
+.label-color-picker-fields span {
+	display: inline;
+	margin: 0;
+	color: #555;
+}
+
+.label-color-picker-fields input {
+	width: 34px;
+	box-sizing: border-box;
+}
+
+.label-color-picker-fields button {
+	margin-left: auto;
+}
+
+.label-style-selection-row button {
+	margin-right: 5px;
+}
+
+.label-position-grid {
+	display: grid;
+	grid-template-columns: repeat(3, 10px);
+	gap: 2px;
+}
+
+.label-position-grid .label-panel-btn {
+	width: 9px;
+	height: 9px;
+	cursor: pointer;
+	border-radius: 0;
+	background: white;
+}
+
+.label-panel-btn.selected {
+	background-color: black;
+	border-color: black;
+	color: white;
+}
+
+.label-icon-buttons {
+	display: flex;
+	gap: 2px;
+}
+
+.label-icon-buttons .label-panel-btn {
+	display: flex;
+	align-items: center;
+	justify-content: center;
+}
+
+.label-icon-symbol {
+	display: block;
+	width: 13px;
+	height: 13px;
+	fill: currentColor;
+	stroke: none;
+}
+
+.label-icon-buttons .label-panel-btn[data-icon="none"] .label-icon-symbol,
+.label-icon-buttons .label-panel-btn[data-icon="ring"] .label-icon-symbol {
+	fill: none;
+	stroke: currentColor;
+	stroke-width: 1.8;
+	stroke-linecap: round;
+	stroke-linejoin: round;
+}
+
+.label-icon-buttons .label-panel-btn[data-icon="star"] .label-icon-symbol {
+	transform: scale(1.4);
+}
+
+.label-size-row .label-panel-btn,
+.label-icon-size-row .label-panel-btn {
+	display: inline-block;
+	text-align: center;
+	line-height: 18px;
+}
+
+.label-size-row .label-panel-btn,
+.label-icon-size-row .label-panel-btn {
+	margin-right: 4px;
+}
+
+.label-split-row .label-size-row .label-panel-btn,
+.label-split-row .label-icon-size-row .label-panel-btn {
+	margin-right: 2px;
+}
+
+.label-split-row .label-size-row .label-panel-btn:last-child,
+.label-split-row .label-icon-size-row .label-panel-btn:last-child {
+	margin-right: 0;
+}
+
+.label-size-row .label-size-value,
+.label-icon-size-row .label-icon-size-value {
+	display: inline-block;
+	width: 28px;
+	margin: 0 3px 0 0;
+	text-align: center;
+	color: black;
+}
+
+.label-split-row .label-size-value,
+.label-split-row .label-icon-size-value {
+	width: 24px;
+	margin-right: 2px;
+}
+
 .nav-menu-item,
 .contextmenu-item {
 	background-color: #fff;
@@ -2033,9 +2423,9 @@ body.pan.panning .map-layers:not(.drawing) {
 	display: inline-block;
 	border-radius: 4px;
 	border: 1px solid #aaa;
-	font-size: 12px;
-	margin-left: 2px;
-	padding: 1px 2px 3px 2px;
+	font-size: 13px;
+	margin-left: 4px;
+	padding: 2px 4px 3px 4px;
 }
 
 .add-field-btn,
@@ -2081,7 +2471,7 @@ body.pan.panning .map-layers:not(.drawing) {
 	text-align: right;
 	background-color: #fff;
 	white-space: nowrap;
-	padding: 2px 7px 0px 7px;
+	padding: 3px 7px 0px 7px;
 	line-height: 11px;
 	cursor: pointer;
 }

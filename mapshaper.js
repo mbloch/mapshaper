@@ -18595,6 +18595,7 @@
     icon: null,
     'icon-color': 'color',
     'icon-size': 'number',
+    'label-pos': 'labelposition',
     'label-text': null,  // leaving this null
     'letter-spacing': 'measure',
     'line-height': 'measure',
@@ -18644,6 +18645,20 @@
     point: utils.arrayToIndex(commonProperties.concat('fill', 'r')),
     label: utils.arrayToIndex(commonProperties.concat(
       'fill,font-family,font-size,text-anchor,font-weight,font-style,font-stretch,letter-spacing,dominant-baseline'.split(',')))
+  };
+
+  var labelPositionFields = ['label-pos', 'dx', 'dy', 'text-anchor'];
+
+  var labelPositionStyles = {
+    n: {dx: 0, dy: '-0.45em', 'text-anchor': 'middle'},
+    s: {dx: 0, dy: '1.05em', 'text-anchor': 'middle'},
+    e: {dx: '0.4em', dy: '0.25em', 'text-anchor': 'start'},
+    w: {dx: '-0.4em', dy: '0.25em', 'text-anchor': 'end'},
+    ne: {dx: '0.35em', dy: '-0.15em', 'text-anchor': 'start'},
+    se: {dx: '0.35em', dy: '0.7em', 'text-anchor': 'start'},
+    nw: {dx: '-0.35em', dy: '-0.15em', 'text-anchor': 'end'},
+    sw: {dx: '-0.35em', dy: '0.7em', 'text-anchor': 'end'},
+    c: {dx: 0, dy: '0.25em', 'text-anchor': 'middle'}
   };
 
   // symType: point, polygon, polyline, label
@@ -18777,6 +18792,8 @@
       val = parseBoolean(strVal);
     } else if (type == 'inlinecss') {
       val = strVal; // TODO: validate
+    } else if (type == 'labelposition') {
+      val = parseLabelPosition(strVal);
     }
     //  else {
     //   // unknown type -- assume literal value
@@ -18808,6 +18825,26 @@
     return null;
   }
 
+  function parseLabelPosition(str) {
+    var pos = String(str).trim();
+    return /^(n|s|e|w|ne|se|nw|sw|c)$/i.test(pos) ? pos : null;
+  }
+
+  function getLabelPositionStyle(pos) {
+    pos = parseLabelPosition(pos);
+    if (!pos) return null;
+    return Object.assign({'label-pos': pos}, labelPositionStyles[pos.toLowerCase()]);
+  }
+
+  function setLabelPositionStyle(rec, pos) {
+    var style = getLabelPositionStyle(pos);
+    if (!style) return false;
+    labelPositionFields.forEach(function(field) {
+      rec[field] = style[field];
+    });
+    return true;
+  }
+
   function isSvgMeasure(o) {
     return utils.isFiniteNumber(o) || utils.isString(o) && /^-?[.0-9]+[a-z]*$/.test(o);
   }
@@ -18826,6 +18863,7 @@
     __proto__: null,
     applyStyleAttributes: applyStyleAttributes,
     findStylePropertiesBySymbolGeom: findStylePropertiesBySymbolGeom,
+    getLabelPositionStyle: getLabelPositionStyle,
     getSymbolDataAccessor: getSymbolDataAccessor,
     getSymbolPropertyAccessor: getSymbolPropertyAccessor,
     isSupportedSvgStyleProperty: isSupportedSvgStyleProperty,
@@ -18833,9 +18871,12 @@
     isSvgColor: isSvgColor,
     isSvgMeasure: isSvgMeasure,
     isSvgNumber: isSvgNumber,
+    labelPositionFields: labelPositionFields,
     mightBeExpression: mightBeExpression,
     parseBoolean: parseBoolean,
-    parseSvgMeasure: parseSvgMeasure
+    parseLabelPosition: parseLabelPosition,
+    parseSvgMeasure: parseSvgMeasure,
+    setLabelPositionStyle: setLabelPositionStyle
   });
 
   function toLabelString(val) {
@@ -18957,7 +18998,7 @@
 
   function renderIcon(d) {
     var type = d.icon || 'circle';
-    var r = getIconRadius(d);
+    var r = getIconRadius(d, type);
     if (r > 0 === false) return empty();
     if (type == 'circle') return circle(getIconStyleData(d, r));
     if (type == 'square') return square(getIconStyleData(d, r), 0, 0);
@@ -18967,10 +19008,18 @@
     return empty();
   }
 
-  function getIconRadius(d) {
-    if (d['icon-size'] > 0) return d['icon-size'] / 2;
-    if (d.r > 0) return d.r;
-    return 5;
+  function getIconRadius(d, type) {
+    var size;
+    if (d['icon-size'] > 0 === false) {
+      return d.r > 0 ? d.r : 5;
+    }
+    size = d['icon-size'];
+    if (type == 'circle' || type == 'ring') {
+      size -= 1;
+    } else if (type == 'star') {
+      size += 1;
+    }
+    return size / 2;
   }
 
   function getIconStyleData(d, r) {
@@ -31668,6 +31717,9 @@ ${svg}
       })
       .option('label-text', {
         describe: 'label text (set this to export points as labels)'
+      })
+      .option('label-pos', {
+        describe: 'label position; one of: n, s, e, w, ne, se, nw, sw, c'
       })
       .option('text-anchor', {
         describe: 'label alignment; one of: start, end, middle (default)'
@@ -56649,9 +56701,7 @@ ${svg}
       lyr.data.getFields().filter(isSupportedSvgStyleProperty).forEach(lyr.data.deleteField, lyr.data);
     }
     table = getLayerDataTable(lyr);
-    fields = Object.keys(opts).map(function(optName) {
-      return optName.replace('_', '-');
-    }).filter(isSupportedSvgStyleProperty);
+    fields = getStyleFields(opts);
     hasNewFields = fields.some(function(field) {
       return !table.fieldExists(field);
     });
@@ -56672,11 +56722,14 @@ ${svg}
       table.getRecords().forEach(function(rec, i) {
         if (filterFn && !filterFn(i)) {
           // make sure field exists if record is excluded by filter
-          if (svgName in rec === false) {
-            rec[svgName] = undefined;
-          }
+          setUndefinedFields(rec, svgName == 'label-pos' ? labelPositionFields : [svgName]);
         } else {
           rec[svgName] = accessor(i);
+          if (svgName == 'label-pos') {
+            if (!setLabelPositionStyle(rec, rec['label-pos'])) {
+              stop$1('Unexpected value for label-pos:', rec['label-pos']);
+            }
+          }
         }
       });
     });
@@ -56688,6 +56741,35 @@ ${svg}
       }
     }
   };
+
+  function getStyleFields(opts) {
+    var fields = [];
+    Object.keys(opts).forEach(function(optName) {
+      var svgName = optName.replace('_', '-');
+      if (!isSupportedSvgStyleProperty(svgName)) return;
+      addField(fields, svgName);
+      if (svgName == 'label-pos') {
+        labelPositionFields.forEach(function(field) {
+          addField(fields, field);
+        });
+      }
+    });
+    return fields;
+  }
+
+  function addField(fields, field) {
+    if (fields.indexOf(field) == -1) {
+      fields.push(field);
+    }
+  }
+
+  function setUndefinedFields(rec, fields) {
+    fields.forEach(function(field) {
+      if (field in rec === false) {
+        rec[field] = undefined;
+      }
+    });
+  }
 
   var roundCoord$1 = getRoundingFunction(0.01);
 
@@ -58166,7 +58248,7 @@ ${svg}
     });
   }
 
-  var version = "0.7.16";
+  var version = "0.7.17";
 
   // Parse command line args into commands and run them
   // Function takes an optional Node-style callback. A Promise is returned if no callback is given.

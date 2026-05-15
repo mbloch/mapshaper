@@ -4,7 +4,7 @@
   var mapshaper = api,
     utils$1 = api.utils,
     cli = api.cli,
-    geom$1 = api.geom,
+    geom = api.geom,
     internal = api.internal,
     Bounds$1 = internal.Bounds,
     UserError$1 = internal.UserError,
@@ -1436,9 +1436,9 @@
     // stub to avoid runtime error in a handful of tests
     f = function() {};
   }
-  var req = f;
+  var require$1 = f;
 
-  var idb$2 = req('idb-keyval');
+  var idb$2 = require$1('idb-keyval');
   // https://github.com/jakearchibald/idb
   // https://github.com/jakearchibald/idb-keyval
   var sessionId$1 = getUniqId$1('session');
@@ -1476,29 +1476,27 @@
   }
 
   function SessionSnapshots(gui) {
-    var _menuOpen = false;
-    var _menuTimeout;
-    var btn, menu;
-
     gui.sessionSnapshots = {
+      enabled: false,
       saveSnapshot: function() {
         return saveSnapshot(gui);
       },
       restoreLatestSnapshot: function() {
         return restoreLatestSnapshot(gui);
+      },
+      renderSnapshotList: function(el) {
+        return renderSnapshotList(el, gui);
       }
     };
 
     init();
 
     async function init() {
-      btn = gui.buttons.addButton('#ribbon-icon').addClass('menu-btn save-btn');
       var enabled = await isStorageEnabled();
       if (!enabled) {
-        btn.remove();
         return;
       }
-      menu = El('div').addClass('nav-sub-menu save-menu').appendTo(btn.node());
+      gui.sessionSnapshots.enabled = true;
       startLifecycle();
       await initialCleanup();
 
@@ -1514,98 +1512,6 @@
         announceLeaving();
         attemptOwnDataDeletion();
       });
-
-      btn.on('mouseenter', function() {
-        btn.addClass('hover');
-        clearTimeout(_menuTimeout); // prevent timed closing
-        if (!_menuOpen) {
-          openMenu();
-        }
-      });
-
-      btn.on('mouseleave', function() {
-        if (!_menuOpen) {
-          btn.removeClass('hover');
-        } else {
-          closeMenu(200);
-        }
-      });
-    }
-
-    async function renderMenu() {
-      var snapshots = await fetchSnapshotList();
-
-      menu.empty();
-
-      addMenuLink({
-        slug: 'stash',
-        // label: 'save data snapshot',
-        label: 'create a snapshot',
-        action: saveSnapshot
-      });
-
-
-
-      // var available = await getAvailableStorage();
-      // if (available) {
-      //   El('div').addClass('save-menu-entry').text(available + ' available').appendTo(menu);
-      // }
-
-      // if (snapshots.length > 0) {
-      //   El('div').addClass('save-menu-entry').text('snapshots').appendTo(menu);
-      // }
-
-      snapshots.forEach(function(item, i) {
-        var line = El('div').appendTo(menu).addClass('save-menu-item');
-        El('span').appendTo(line).html(`<span class="save-item-label">#${item.number}</span> `);
-        // show snapshot size
-        El('span').appendTo(line).html(` <span class="save-item-size">${item.display_size}</span>`);
-        El('span').addClass('save-menu-btn').appendTo(line).on('click', async function(e) {
-          await restoreSnapshotById(item.id, gui);
-          closeMenu(100);
-        }).text('restore');
-        El('span').addClass('save-menu-btn').appendTo(line).on('click', async function(e) {
-          var obj = await idb$2.get(item.id);
-          await internal.compressSnapshotForExport(obj);
-          var buf = internal.pack(obj);
-          var fileName = `snapshot-${String(item.number).padStart(2, '0')}.msx`;
-          // choose output filename and directory every time, if supported
-          saveBlobToLocalFile2(fileName, new Blob([buf]));
-        }).text('export');
-        El('span').addClass('save-menu-btn').appendTo(line).on('click', async function(e) {
-          await removeSnapshotById(item.id);
-          closeMenu(300);
-          renderMenu();
-        }).text('remove');
-      });
-    }
-
-    function addMenuLink(item) {
-      var line = El('div').appendTo(menu);
-      var link = El('div').addClass('save-menu-link save-menu-entry').attr('data-name', item.slug).text(item.label).appendTo(line);
-      link.on('click', async function(e) {
-        await item.action(gui);
-        e.stopPropagation();
-      });
-    }
-
-    function openMenu() {
-      clearTimeout(_menuTimeout);
-      if (!_menuOpen) {
-        btn.addClass('open');
-        _menuOpen = true;
-        renderMenu();
-      }
-    }
-
-    function closeMenu(delay) {
-      if (!_menuOpen) return;
-      clearTimeout(_menuTimeout);
-      _menuTimeout = setTimeout(function() {
-        _menuOpen = false;
-        btn.removeClass('open');
-        btn.removeClass('hover');
-      }, delay || 0);
     }
 
     async function saveSnapshot(gui) {
@@ -1631,8 +1537,35 @@
       await idb$2.set(entry.id, obj);
       ownSnapshotIds.add(entry.id);
       await addToIndex(entry);
-      renderMenu();
     }
+  }
+
+  async function renderSnapshotList(el, gui) {
+    var snapshots = await fetchSnapshotList();
+    el.empty();
+    snapshots.forEach(function(item) {
+      var line = El('div').appendTo(el).addClass('save-menu-item');
+      El('span').appendTo(line).html(`<span class="save-item-label">#${item.number}</span> `);
+      El('span').appendTo(line).html(` <span class="save-item-size">${item.display_size}</span>`);
+      El('span').addClass('save-menu-btn').appendTo(line).on('click', async function(e) {
+        e.stopPropagation();
+        await restoreSnapshotById(item.id, gui);
+      }).text('restore');
+      El('span').addClass('save-menu-btn').appendTo(line).on('click', async function(e) {
+        var obj;
+        e.stopPropagation();
+        obj = await idb$2.get(item.id);
+        await internal.compressSnapshotForExport(obj);
+        var buf = internal.pack(obj);
+        var fileName = `snapshot-${String(item.number).padStart(2, '0')}.msx`;
+        saveBlobToLocalFile2(fileName, new Blob([buf]));
+      }).text('export');
+      El('span').addClass('save-menu-btn').appendTo(line).on('click', async function(e) {
+        e.stopPropagation();
+        await removeSnapshotById(item.id);
+        renderSnapshotList(el, gui);
+      }).text('remove');
+    });
   }
 
   async function fetchSnapshotList() {
@@ -2154,7 +2087,7 @@
     return prefix + '_' + (Math.random() + 1).toString(36).substring(2, 8);
   }
 
-  var idb$1 = req('idb-keyval');
+  var idb$1 = require$1('idb-keyval');
   var DEFAULT_INDEX_KEY = 'msu_index';
   var DEFAULT_SESSION_KEY = 'mapshaper_undo_sessions';
   var DEFAULT_KEY_PREFIX = 'msu';
@@ -2489,8 +2422,234 @@
     return bytes;
   }
 
+  var PAYLOAD_FIELDS = {
+    table: ['records'],
+    'table-records': ['records'],
+    'table-fields': ['columns'],
+    'table-schema': ['fields'],
+    arcs: ['nn', 'xx', 'yy', 'zz', 'zlimit'],
+    'arcs-simplification': ['zz'],
+    layer: ['shapes', 'raster']
+  };
+
+  async function storeUndoUnits(units, store, entryId, role) {
+    var stored = [];
+    try {
+      for (var i = 0; i < units.length; i++) {
+        stored.push(await storeUndoUnit(units[i], store, entryId, role));
+      }
+    } catch(e) {
+      await store.delMany(getStoredUndoPayloadRefs(stored));
+      throw e;
+    }
+    return stored;
+  }
+
+  async function restoreStoredUndoUnits(units, store) {
+    var hydrated = await hydrateStoredUndoUnits(units, store);
+    internal.restoreCapturedUnits(hydrated);
+  }
+
+  async function hydrateStoredUndoUnits(units, store) {
+    var hydrated = [];
+    for (var i = 0; i < units.length; i++) {
+      hydrated.push(await hydrateStoredUndoUnit(units[i], store));
+    }
+    return hydrated;
+  }
+
+  function getStoredUndoPayloadRefs(units) {
+    var refs = [];
+    units.forEach(function(unit) {
+      if (unit.payloadRef) refs.push(unit.payloadRef);
+    });
+    return refs;
+  }
+
+  function getUndoRestoreFlags(units, baseFlags) {
+    var flags = Object.assign({}, baseFlags || {}, {undo_restore: true});
+    units.forEach(function(unit) {
+      if (unit.type == 'changed') return;
+      if (unit.type == 'arcs') {
+        flags.arc_count = true;
+      } else if (unit.type == 'arcs-simplification') {
+        flags.simplify = true;
+      } else if (unit.type == 'table' ||
+          unit.type == 'table-records' ||
+          unit.type == 'table-fields' ||
+          unit.type == 'table-order' ||
+          unit.type == 'table-schema') {
+        flags.same_table = false;
+      } else if (unit.type == 'catalog' || unit.type == 'dataset') {
+        flags.select = true;
+        flags.arc_count = true;
+      } else if (unit.type == 'dataset-info') {
+        flags.info = true;
+      } else if (unit.type == 'layer' ||
+          unit.type == 'layer-metadata' ||
+          unit.type == 'layer-order') {
+        flags.select = true;
+      }
+    });
+    return flags;
+  }
+
+  async function storeUndoUnit(unit, store, entryId, role) {
+    var payload = await getUnitPayload(unit);
+    var stored = stripPayload(unit);
+    if (payload) {
+      stored.payloadRef = await store.put(payload, {
+        entryId: entryId,
+        role: role,
+        unitType: unit.type
+      });
+    }
+    return stored;
+  }
+
+  async function hydrateStoredUndoUnit(unit, store) {
+    var hydrated = Object.assign({}, unit);
+    var payload;
+    if (unit.payloadRef) {
+      payload = await store.get(unit.payloadRef);
+      if (!payload) {
+        throw new Error('Missing undo payload: ' + unit.payloadRef.key);
+      }
+      payload = unpackPayload(unit, payload);
+      Object.assign(hydrated, payload);
+    }
+    delete hydrated.payloadRef;
+    return hydrated;
+  }
+
+  async function getUnitPayload(unit) {
+    var fields = PAYLOAD_FIELDS[unit.type];
+    var payload, hasPayload;
+    if (!fields) return null;
+    payload = {};
+    fields.forEach(function(field) {
+      if (field in unit) {
+        payload[field] = unit[field];
+        hasPayload = true;
+      }
+    });
+    if (!hasPayload) return null;
+    if (unit.type == 'layer') return packLayerPayload(payload);
+    return unit.type == 'table' ? packTablePayload(payload) : payload;
+  }
+
+  async function packLayerPayload(payload) {
+    if (payload.raster) {
+      payload = Object.assign({}, payload, {
+        raster: packRasterUndoPayload(payload.raster)
+      });
+    }
+    return payload;
+  }
+
+  async function packTablePayload(payload) {
+    return {
+      packedRecords: packRecordsAsColumns(payload.records)
+    };
+  }
+
+  function unpackPayload(unit, payload) {
+    if (unit.type == 'table' && payload.packedRecords) {
+      return {
+        records: unpackRecordsFromColumns(payload.packedRecords)
+      };
+    }
+    if (unit.type == 'layer' && payload.raster) {
+      return Object.assign({}, payload, {
+        raster: unpackRasterUndoPayload(payload.raster)
+      });
+    }
+    return payload;
+  }
+
+  function packRasterUndoPayload(raster) {
+    var copy = Object.assign({}, raster);
+    if (raster.view) {
+      copy.view = Object.assign({}, raster.view);
+      if (raster.view.preview) {
+        copy.view.preview = stripPreviewPixels(raster.view.preview);
+      }
+    }
+    if (raster.preview) {
+      copy.preview = stripPreviewPixels(raster.preview);
+    }
+    return copy;
+  }
+
+  function unpackRasterUndoPayload(raster) {
+    var copy = Object.assign({}, raster);
+    if (raster.view) {
+      copy.view = Object.assign({}, raster.view);
+      if (raster.view.preview && !raster.view.preview.pixels && raster.grid && raster.grid.samples) {
+        copy.view.preview = internal.renderRasterPreview(raster.grid, raster.view.recipe, raster.view.preview.width, raster.view.preview.height);
+      }
+    }
+    return copy;
+  }
+
+  function stripPreviewPixels(preview) {
+    var copy = Object.assign({}, preview);
+    delete copy.canvas;
+    delete copy.pixels;
+    return copy;
+  }
+
+  function packRecordsAsColumns(records) {
+    var fields = getRecordFields(records);
+    return {
+      fields: fields,
+      types: fields.map(function() { return null; }),
+      data: fields.map(function(field) {
+        return records.map(function(rec) {
+          return rec ? rec[field] : undefined;
+        });
+      }),
+      size: records.length
+    };
+  }
+
+  function getRecordFields(records) {
+    var index = {};
+    records.forEach(function(rec) {
+      Object.keys(rec || {}).forEach(function(field) {
+        index[field] = true;
+      });
+    });
+    return Object.keys(index);
+  }
+
+  function unpackRecordsFromColumns(data) {
+    var records = [];
+    for (var i = 0; i < data.size; i++) {
+      records[i] = {};
+    }
+    data.fields.forEach(function(field, j) {
+      var values = data.data[j];
+      values.forEach(function(val, i) {
+        records[i][field] = val;
+      });
+    });
+    return records;
+  }
+
+  function stripPayload(unit) {
+    var fields = PAYLOAD_FIELDS[unit.type];
+    var stripped = Object.assign({}, unit);
+    if (fields) {
+      fields.forEach(function(field) {
+        delete stripped[field];
+      });
+    }
+    return stripped;
+  }
+
   // Fall back to browserify's Buffer polyfill
-  var B = typeof Buffer != 'undefined' ? Buffer : req('buffer').Buffer;
+  var B = typeof Buffer != 'undefined' ? Buffer : require$1('buffer').Buffer;
 
   // We do NOT import from mapshaper-logging here to avoid a circular dependency
   function error$1() {
@@ -2514,7 +2673,7 @@
     return obj === Object(obj); // via underscore
   }
 
-  function clamp$1(val, min, max) {
+  function clamp(val, min, max) {
     return val < min ? min : (val > max ? max : val);
   }
 
@@ -3195,7 +3354,7 @@
   function findValueByRank(arr, rank) {
     if (!arr.length || rank < 1 || rank > arr.length) error$1("[findValueByRank()] invalid input");
 
-    rank = clamp$1(rank | 0, 1, arr.length);
+    rank = clamp(rank | 0, 1, arr.length);
     var k = rank - 1, // conv. rank to array index
         n = arr.length,
         l = 0,
@@ -3569,7 +3728,7 @@
   // self-import and the resulting Rollup circular-dependency warning.
   var utils = {
     addThousandsSep, addslashes, arrayToIndex,
-    clamp: clamp$1, cleanNumericString, contains, copyElements, countValues, createBuffer,
+    clamp, cleanNumericString, contains, copyElements, countValues, createBuffer,
     defaults, difference,
     endsWith, every, expandoBuffer, extend, extendBuffer,
     find, findMedian, findQuantile, findRankByValue, findStringPrefix,
@@ -3773,7 +3932,7 @@
     }
   }
 
-  function timeEnd$1(slug) {
+  function timeEnd(slug) {
     if (useDebug()) {
       console.timeEnd(slug);
     }
@@ -3876,7 +4035,7 @@
     return str;
   }
 
-  var iconv = req('iconv-lite');
+  var iconv = require$1('iconv-lite');
 
   // import iconv from 'iconv-lite';
   // import * as iconv from 'iconv-lite';
@@ -6345,232 +6504,6 @@
     return Object.keys(index);
   }
 
-  var PAYLOAD_FIELDS = {
-    table: ['records'],
-    'table-records': ['records'],
-    'table-fields': ['columns'],
-    'table-schema': ['fields'],
-    arcs: ['nn', 'xx', 'yy', 'zz', 'zlimit'],
-    'arcs-simplification': ['zz'],
-    layer: ['shapes', 'raster']
-  };
-
-  async function storeUndoUnits(units, store, entryId, role) {
-    var stored = [];
-    try {
-      for (var i = 0; i < units.length; i++) {
-        stored.push(await storeUndoUnit(units[i], store, entryId, role));
-      }
-    } catch(e) {
-      await store.delMany(getStoredUndoPayloadRefs(stored));
-      throw e;
-    }
-    return stored;
-  }
-
-  async function restoreStoredUndoUnits(units, store) {
-    var hydrated = await hydrateStoredUndoUnits(units, store);
-    restoreCapturedUnits(hydrated);
-  }
-
-  async function hydrateStoredUndoUnits(units, store) {
-    var hydrated = [];
-    for (var i = 0; i < units.length; i++) {
-      hydrated.push(await hydrateStoredUndoUnit(units[i], store));
-    }
-    return hydrated;
-  }
-
-  function getStoredUndoPayloadRefs(units) {
-    var refs = [];
-    units.forEach(function(unit) {
-      if (unit.payloadRef) refs.push(unit.payloadRef);
-    });
-    return refs;
-  }
-
-  function getUndoRestoreFlags(units, baseFlags) {
-    var flags = Object.assign({}, baseFlags || {}, {undo_restore: true});
-    units.forEach(function(unit) {
-      if (unit.type == 'changed') return;
-      if (unit.type == 'arcs') {
-        flags.arc_count = true;
-      } else if (unit.type == 'arcs-simplification') {
-        flags.simplify = true;
-      } else if (unit.type == 'table' ||
-          unit.type == 'table-records' ||
-          unit.type == 'table-fields' ||
-          unit.type == 'table-order' ||
-          unit.type == 'table-schema') {
-        flags.same_table = false;
-      } else if (unit.type == 'catalog' || unit.type == 'dataset') {
-        flags.select = true;
-        flags.arc_count = true;
-      } else if (unit.type == 'dataset-info') {
-        flags.info = true;
-      } else if (unit.type == 'layer' ||
-          unit.type == 'layer-metadata' ||
-          unit.type == 'layer-order') {
-        flags.select = true;
-      }
-    });
-    return flags;
-  }
-
-  async function storeUndoUnit(unit, store, entryId, role) {
-    var payload = await getUnitPayload(unit);
-    var stored = stripPayload(unit);
-    if (payload) {
-      stored.payloadRef = await store.put(payload, {
-        entryId: entryId,
-        role: role,
-        unitType: unit.type
-      });
-    }
-    return stored;
-  }
-
-  async function hydrateStoredUndoUnit(unit, store) {
-    var hydrated = Object.assign({}, unit);
-    var payload;
-    if (unit.payloadRef) {
-      payload = await store.get(unit.payloadRef);
-      if (!payload) {
-        throw new Error('Missing undo payload: ' + unit.payloadRef.key);
-      }
-      payload = unpackPayload(unit, payload);
-      Object.assign(hydrated, payload);
-    }
-    delete hydrated.payloadRef;
-    return hydrated;
-  }
-
-  async function getUnitPayload(unit) {
-    var fields = PAYLOAD_FIELDS[unit.type];
-    var payload, hasPayload;
-    if (!fields) return null;
-    payload = {};
-    fields.forEach(function(field) {
-      if (field in unit) {
-        payload[field] = unit[field];
-        hasPayload = true;
-      }
-    });
-    if (!hasPayload) return null;
-    if (unit.type == 'layer') return packLayerPayload(payload);
-    return unit.type == 'table' ? packTablePayload(payload) : payload;
-  }
-
-  async function packLayerPayload(payload) {
-    if (payload.raster) {
-      payload = Object.assign({}, payload, {
-        raster: packRasterUndoPayload(payload.raster)
-      });
-    }
-    return payload;
-  }
-
-  async function packTablePayload(payload) {
-    return {
-      packedRecords: packRecordsAsColumns(payload.records)
-    };
-  }
-
-  function unpackPayload(unit, payload) {
-    if (unit.type == 'table' && payload.packedRecords) {
-      return {
-        records: unpackRecordsFromColumns(payload.packedRecords)
-      };
-    }
-    if (unit.type == 'layer' && payload.raster) {
-      return Object.assign({}, payload, {
-        raster: unpackRasterUndoPayload(payload.raster)
-      });
-    }
-    return payload;
-  }
-
-  function packRasterUndoPayload(raster) {
-    var copy = Object.assign({}, raster);
-    if (raster.view) {
-      copy.view = Object.assign({}, raster.view);
-      if (raster.view.preview) {
-        copy.view.preview = stripPreviewPixels(raster.view.preview);
-      }
-    }
-    if (raster.preview) {
-      copy.preview = stripPreviewPixels(raster.preview);
-    }
-    return copy;
-  }
-
-  function unpackRasterUndoPayload(raster) {
-    var copy = Object.assign({}, raster);
-    if (raster.view) {
-      copy.view = Object.assign({}, raster.view);
-      if (raster.view.preview && !raster.view.preview.pixels && raster.grid && raster.grid.samples) {
-        copy.view.preview = renderRasterPreview(raster.grid, raster.view.recipe, raster.view.preview.width, raster.view.preview.height);
-      }
-    }
-    return copy;
-  }
-
-  function stripPreviewPixels(preview) {
-    var copy = Object.assign({}, preview);
-    delete copy.canvas;
-    delete copy.pixels;
-    return copy;
-  }
-
-  function packRecordsAsColumns(records) {
-    var fields = getRecordFields(records);
-    return {
-      fields: fields,
-      types: fields.map(function() { return null; }),
-      data: fields.map(function(field) {
-        return records.map(function(rec) {
-          return rec ? rec[field] : undefined;
-        });
-      }),
-      size: records.length
-    };
-  }
-
-  function getRecordFields(records) {
-    var index = {};
-    records.forEach(function(rec) {
-      Object.keys(rec || {}).forEach(function(field) {
-        index[field] = true;
-      });
-    });
-    return Object.keys(index);
-  }
-
-  function unpackRecordsFromColumns(data) {
-    var records = [];
-    for (var i = 0; i < data.size; i++) {
-      records[i] = {};
-    }
-    data.fields.forEach(function(field, j) {
-      var values = data.data[j];
-      values.forEach(function(val, i) {
-        records[i][field] = val;
-      });
-    });
-    return records;
-  }
-
-  function stripPayload(unit) {
-    var fields = PAYLOAD_FIELDS[unit.type];
-    var stripped = Object.assign({}, unit);
-    if (fields) {
-      fields.forEach(function(field) {
-        delete stripped[field];
-      });
-    }
-    return stripped;
-  }
-
   function createStoredUndoHistory(gui) {
     var undoEntryId = 0;
 
@@ -7026,7 +6959,7 @@
     }
   }
 
-  var idb = req('idb-keyval');
+  var idb = require$1('idb-keyval');
   var KEY_PREFIX = 'msr';
   var SESSION_KEY = 'mapshaper_raster_source_sessions';
   var lifecycle = createTempSessionLifecycle({
@@ -7113,7 +7046,7 @@
   async function persistRasterLayerSamples(dataset) {
     var promises = [];
     dataset.layers.forEach(function(lyr) {
-      var grid = lyr.raster && getRasterGrid(lyr.raster);
+      var grid = lyr.raster && internal.getRasterGrid(lyr.raster);
       var key;
       if (!grid || !grid.samples) return;
       key = makeRasterSamplesKey(lyr.name);
@@ -8257,7 +8190,7 @@
   // load Proj.4 CRS definition files dynamically
   //
   async function loadProjLibs(opts) {
-    var mproj = req('mproj');
+    var mproj = require$1('mproj');
     var libs = internal.findProjLibs([opts.init || '', opts.match || '', opts.crs || ''].join(' '));
     libs = libs.filter(function(name) {return !mproj.internal.mproj_search_libcache(name);}); // skip loaded libs
     for (var libName of libs) {
@@ -8271,7 +8204,7 @@
     return typeof window != 'undefined' && typeof window.fetch == 'function';
   }
 
-  function getDatasetCrsInfo$1(dataset) {
+  function getDatasetCrsInfo(dataset) {
     var revertLogging = internal.getLoggingSetter();
     var crs, err;
     // prevent GUI message popup on error
@@ -8430,9 +8363,9 @@
     };
   }
 
-  var R$1 = 6378137;
-  var D2R$1 = Math.PI / 180;
-  var R2D$1 = 180 / Math.PI;
+  var R = 6378137;
+  var D2R = Math.PI / 180;
+  var R2D = 180 / Math.PI;
 
   // Assumes projections are available
 
@@ -8515,15 +8448,15 @@
 
 
   function toWebMercator(lng, lat) {
-    var k = Math.cos(lat * D2R$1);
-    var x = R$1 * lng * D2R$1;
-    var y = R$1 * Math.log(Math.tan(Math.PI * 0.25 + lat * D2R$1 * 0.5));
+    var k = Math.cos(lat * D2R);
+    var x = R * lng * D2R;
+    var y = R * Math.log(Math.tan(Math.PI * 0.25 + lat * D2R * 0.5));
     return [x, y];
   }
 
   function fromWebMercator(x, y) {
-    var lon = x / R$1 * R2D$1;
-    var lat = R2D$1 * (Math.PI * 0.5 - 2 * Math.atan(Math.exp(-y / R$1)));
+    var lon = x / R * R2D;
+    var lat = R2D * (Math.PI * 0.5 - 2 * Math.atan(Math.exp(-y / R)));
     return [lon, lat];
   }
 
@@ -8581,6609 +8514,10 @@
     }
   }
 
-  // A matrix class that supports affine transformations (scaling, translation, rotation).
-  // Elements:
-  //   a  c  tx
-  //   b  d  ty
-  //   0  0  1  (u v w are not used)
-  //
-  function Matrix2D() {
-    this.a = 1;
-    this.c = 0;
-    this.tx = 0;
-    this.b = 0;
-    this.d = 1;
-    this.ty = 0;
-  }
-
-  Matrix2D.prototype.transformXY = function(x, y, p) {
-    p = p || {};
-    p.x = x * this.a + y * this.c + this.tx;
-    p.y = x * this.b + y * this.d + this.ty;
-    return p;
-  };
-
-  Matrix2D.prototype.translate = function(dx, dy) {
-    this.tx += dx;
-    this.ty += dy;
-  };
-
-  // x, y: optional origin
-  Matrix2D.prototype.rotate = function(q, x, y) {
-    var cos = Math.cos(q);
-    var sin = Math.sin(q);
-    x = x || 0;
-    y = y || 0;
-    this.a = cos;
-    this.c = -sin;
-    this.b = sin;
-    this.d = cos;
-    this.tx += x - x * cos + y * sin;
-    this.ty += y - x * sin - y * cos;
-  };
-
-  // cx, cy: optional origin
-  Matrix2D.prototype.scale = function(sx, sy, cx, cy) {
-    cx = cx || 0;
-    cy = cy || 0;
-    this.a *= sx;
-    this.c *= sx;
-    this.b *= sy;
-    this.d *= sy;
-    this.tx -= cx * (sx - 1);
-    this.ty -= cy * (sy - 1);
-  };
-
-  var mproj$1 = req('mproj');
-
-  // Constructor function for a compound projection consisting of a default
-  //   projection and one or more rectangular frames that are projected separately
-  //   and affine transformed.
-  // @mainParams: parameters for main projection, including:
-  //    proj: Proj string
-  //    bbox: lat-lon bounding box
-  // Returns a mproj CRS object for the main CRS with the CRS objects of the
-  //    embedded projections attached.
-  function MixedProjection(mainParams, options) {
-    var mainFrame = initFrame(mainParams);
-    var mainP = mainFrame.crs;
-    var frames = [mainFrame];
-    var mixedP = initMixedProjection(mproj$1);
-
-    // This CRS masquerades as the main projection... the version with
-    // custom insets is exposed to savvy users
-    mainP.__mixed_crs = mixedP;
-
-    // required opts:
-    //    origin: [lng, lat] origin of frame (unprojected)
-    //    placement: [x, y] location (in projected coordinates) to shift the origin
-    //    proj: Proj.4 string for projecting data within the frame
-    //    bbox: Lat-long bounding box of frame area
-    //
-    // optional:
-    //    dx: x shift (meters)
-    //    dy: y shift (meters)
-    //    scale: scale factor (1 = no scaling)
-    //    rotation: rotation in degrees (0 = no rotation)
-    //
-    mainP.addFrame = function(paramsArg) {
-      var params = getFrameParams(paramsArg, options); // apply defaults and overrides
-      var frame = initFrame(params);
-      var m = new Matrix2D();
-      //  originXY: the projected coordinates of the frame origin
-      var originXY = params.origin ? projectFrameOrigin(params.origin, frame.crs) : [0, 0];
-      var placementXY = params.placement || [0, 0];
-      var dx = placementXY[0] - originXY[0] + (+params.dx || 0);
-      var dy = placementXY[1] - originXY[1] + (+params.dy || 0);
-
-      if (params.rotation) {
-        m.rotate(params.rotation * Math.PI / 180.0, originXY[0], originXY[1]);
-      }
-      if (params.scale) {
-        m.scale(params.scale, params.scale, originXY[0], originXY[1]);
-      }
-      m.translate(dx, dy);
-
-      frame.matrix = m;
-      frames.push(frame);
-      return this;
-    };
-
-    function initFrame(params) {
-      return {
-        bounds: new Bounds(bboxToRadians(params.bbox)),
-        crs:  mproj$1.pj_init(params.proj)
-      };
-    }
-
-    function bboxToRadians(bbox) {
-      var D2R = Math.PI / 180;
-      return bbox.map(function(deg) {
-        return deg * D2R;
-      });
-    }
-
-    function projectFrameOrigin(origin, P) {
-      var xy = mproj$1.pj_fwd_deg({lam: origin[0], phi: origin[1]}, P);
-      return [xy.x, xy.y];
-    }
-
-    mixedP.fwd = function(lp, xy) {
-      var frame, xy2;
-      for (var i=0, n=frames.length; i<n; i++) {
-        frame = frames[i];
-        if (frame.bounds.containsPoint(lp.lam, lp.phi)) {
-          xy2 = mproj$1.pj_fwd(lp, frame.crs);
-          if (frame.matrix) {
-            frame.matrix.transformXY(xy2.x, xy2.y, xy2);
-          }
-          break;
-        }
-      }
-      xy.x = xy2 ? xy2.x : Infinity;
-      xy.y = xy2 ? xy2.y : Infinity;
-    };
-
-    return mainP;
-  }
-
-  function initMixedProjection(mproj) {
-    if (!mproj.internal.pj_list.mixed) {
-      mproj.pj_add(function(P) {
-        P.a = 1;
-      }, 'mixed', 'Mapshaper Mixed Projection');
-    }
-    return mproj.pj_init('+proj=mixed');
-  }
-
-  function getFrameParams (params, options) {
-    var opts = options[params.name];
-    utils.defaults(params, {scale: 1, dx: 0, dy: 0, rotation: 0}); // add defaults
-    if (!opts) return params;
-    Object.keys(opts).forEach(function(key) {
-      var val = opts[key];
-      if (key in params) {
-        params[key] = opts[key];
-      } else {
-        params.proj = replaceProjParam(params.proj, key, val);
-      }
-    });
-    return params;
-  }
-
-  function replaceProjParam(proj, key, val) {
-    var param = '+' + key + '=';
-    return proj.split(' ').map(function(str) {
-      if (str.indexOf(param) === 0) {
-        str = str.substr(0, param.length) + val;
-      }
-      return str;
-    }).join(' ');
-  }
-
-  // str: a custom projection string, e.g.: "albersusa +PR"
-  function parseCustomProjection(str) {
-    var parts = str.trim().split(/ +/);
-    var params = [];
-    var names = parts.filter(function(part) {
-      if (/^\+/.test(part)) {
-        params.push(part.substr(1)); // strip '+'
-        return false;
-      }
-      return true;
-    });
-    var name = names[0];
-    var opts = parseCustomParams(params);
-    if (names.length != 1) return null; // parse error if other than one name found
-    return getCustomProjection(name, opts);
-  }
-
-  // returns a custom projection object
-  function getCustomProjection(name, opts) {
-    if (name == 'albersusa') {
-      return new AlbersUSA(opts);
-    }
-    return null;
-  }
-
-  function AlbersUSA(optsArg) {
-    var opts = optsArg || {};
-    var main = {
-      proj: '+proj=aea +lon_0=-96 +lat_0=37.5 +lat_1=29.5 +lat_2=45.5',
-      bbox: [-129,23,-62,52]
-    };
-    var AK = {
-      name: 'AK',
-      proj: '+proj=aea +lat_1=55 +lat_2=70 +lat_0=65 +lon_0=-148 +x_0=0 +y_0=0',
-      bbox: [-172.26,50.89,-127.00,73.21],
-      origin: [-152, 63],
-      placement: [-1882782,-969242],
-      scale: 0.37
-    };
-    var HI = {
-      name: 'HI',
-      proj: '+proj=aea +lat_1=19 +lat_2=24 +lat_0=20.9 +lon_0=-156.5 +x_0=0 +y_0=0',
-      bbox: [-160.50,18.72,-154.57,22.58],
-      origin: [-157, 21],
-      placement: [-1050326,-1055362]
-    };
-    var PR = {
-      name: 'PR',
-      proj: '+proj=aea +lat_1=18 +lat_2=18.43 +lat_0=17.83 +lon_0=-66.43 +x_0=0 +y_0=0',
-      bbox: [-68.092,17.824,-65.151,18.787],
-      origin: [-66.431, 18.228],
-      placement: [1993101,-1254517]
-    };
-    var VI = {
-      name: 'VI',
-      // same projection and origin as PR, so they maintain their true geographical relationship
-      proj: '+proj=aea +lat_1=18 +lat_2=18.43 +lat_0=17.83 +lon_0=-66.43 +x_0=0 +y_0=0',
-      bbox: [-65.104,17.665,-64.454,18.505],
-      origin: [-66.431, 18.228],
-      placement: [1993101,-1254517]
-    };
-    var mixed = new MixedProjection(main, opts)
-      .addFrame(AK)
-      .addFrame(HI);
-    if (opts.PR) {
-      mixed.addFrame(PR);
-    }
-    if (opts.VI) {
-      mixed.addFrame(VI);
-    }
-    return mixed;
-  }
-
-
-  function parseCustomParams(arr) {
-    var opts = {};
-    arr.forEach(function(str) {
-      parseCustomParam(str, opts);
-    });
-    return opts;
-  }
-
-  function parseCustomParam(str, opts) {
-    var parts = str.split('=');
-    var path = parts[0].split('.');
-    var key = path.pop();
-    var obj = path.reduce(function(memo, name) {
-      if (name in memo === false) {
-        memo[name] = {};
-      } else if (!utils.isObject(memo[name])) {
-        return {};// error condition, could display a warning
-      }
-      return memo[name];
-    }, opts);
-    if (parts.length > 1) {
-      obj[key] = parseCustomParamValue(parts[1]);
-    } else if (key in obj === false && !path.length) {
-      // e.g. convert string 'PR' into {PR: {}} (empty object),
-      // to show PR with default properties
-      obj[key] = {};
-    }
-  }
-
-  function parseCustomParamValue(str) {
-    var val;
-    if (str.indexOf(',') > 0) {
-      val = str.split(',').map(parseFloat);
-      // TODO: validate
-      return val;
-    }
-    val = utils.parseNumber(str);
-    if (val === null) {
-      val = str;
-    }
-    return val;
-  }
-
-  var WGS84 = {
-    // https://en.wikipedia.org/wiki/Earth_radius
-    SEMIMAJOR_AXIS: 6378137,
-    SEMIMINOR_AXIS: 6356752.3142,
-    AUTHALIC_RADIUS: 6371007.2,
-    VOLUMETRIC_RADIUS: 6371000.8
-  };
-
-  // TODO: remove this constant, use actual data from dataset CRS,
-  // also consider using ellipsoidal formulas where greater accuracy might be important.
-  var R = WGS84.SEMIMAJOR_AXIS;
-  var D2R = Math.PI / 180;
-  var R2D = 180 / Math.PI;
-
-  // Equirectangular projection
-  function degreesToMeters(deg) {
-    return deg * D2R * R;
-  }
-
-  function distance3D(ax, ay, az, bx, by, bz) {
-    var dx = ax - bx,
-      dy = ay - by,
-      dz = az - bz;
-    return Math.sqrt(dx * dx + dy * dy + dz * dz);
-  }
-
-  function distanceSq(ax, ay, bx, by) {
-    var dx = ax - bx,
-        dy = ay - by;
-    return dx * dx + dy * dy;
-  }
-
-  function distance2D(ax, ay, bx, by) {
-    var dx = ax - bx,
-        dy = ay - by;
-    return Math.sqrt(dx * dx + dy * dy);
-  }
-
-  function distanceSq3D(ax, ay, az, bx, by, bz) {
-    var dx = ax - bx,
-        dy = ay - by,
-        dz = az - bz;
-    return dx * dx + dy * dy + dz * dz;
-  }
-
-  // atan2() makes this function fairly slow, replaced by ~2x faster formula
-  function innerAngle2(ax, ay, bx, by, cx, cy) {
-    var a1 = Math.atan2(ay - by, ax - bx),
-        a2 = Math.atan2(cy - by, cx - bx),
-        a3 = Math.abs(a1 - a2);
-    if (a3 > Math.PI) {
-      a3 = 2 * Math.PI - a3;
-    }
-    return a3;
-  }
-
-  // Return angle abc in range [0, 2PI) or NaN if angle is invalid
-  // (e.g. if length of ab or bc is 0)
-  /*
-  function signedAngle2(ax, ay, bx, by, cx, cy) {
-    var a1 = Math.atan2(ay - by, ax - bx),
-        a2 = Math.atan2(cy - by, cx - bx),
-        a3 = a2 - a1;
-
-    if (ax == bx && ay == by || bx == cx && by == cy) {
-      a3 = NaN; // Use NaN for invalid angles
-    } else if (a3 >= Math.PI * 2) {
-      a3 = 2 * Math.PI - a3;
-    } else if (a3 < 0) {
-      a3 = a3 + 2 * Math.PI;
-    }
-    return a3;
-  }
-  */
-
-  function standardAngle(a) {
-    var twoPI = Math.PI * 2;
-    while (a < 0) {
-      a += twoPI;
-    }
-    while (a >= twoPI) {
-      a -= twoPI;
-    }
-    return a;
-  }
-
-  function signedAngle(ax, ay, bx, by, cx, cy) {
-    if (ax == bx && ay == by || bx == cx && by == cy) {
-      return NaN; // Use NaN for invalid angles
-    }
-    var abx = ax - bx,
-        aby = ay - by,
-        cbx = cx - bx,
-        cby = cy - by,
-        dotp = abx * cbx + aby * cby,
-        crossp = abx * cby - aby * cbx,
-        a = Math.atan2(crossp, dotp);
-    return standardAngle(a);
-  }
-
-  function bearing2D(x1, y1, x2, y2) {
-    var val = Math.PI/2 - Math.atan2(y2 - y1, x2 - x1);
-    return val > Math.PI ? val - 2 * Math.PI : val;
-  }
-
-  // Calc bearing in radians at lng1, lat1
-  function bearing(lng1, lat1, lng2, lat2) {
-    var D2R = Math.PI / 180;
-    lng1 *= D2R;
-    lng2 *= D2R;
-    lat1 *= D2R;
-    lat2 *= D2R;
-    var y = Math.sin(lng2-lng1) * Math.cos(lat2),
-        x = Math.cos(lat1) * Math.sin(lat2) -
-          Math.sin(lat1) * Math.cos(lat2) * Math.cos(lng2-lng1);
-    return Math.atan2(y, x);
-  }
-
-  // Calc angle of turn from ab to bc, in range [0, 2PI)
-  // Receive lat-lng values in degrees
-  function signedAngleSph(alng, alat, blng, blat, clng, clat) {
-    if (alng == blng && alat == blat || blng == clng && blat == clat) {
-      return NaN;
-    }
-    var b1 = bearing(blng, blat, alng, alat), // calc bearing at b
-        b2 = bearing(blng, blat, clng, clat),
-        a = Math.PI * 2 + b1 - b2;
-    return standardAngle(a);
-  }
-
-  /*
-  // Convert arrays of lng and lat coords (xsrc, ysrc) into
-  // x, y, z coords (meters) on the most common spherical Earth model.
-  //
-  function convLngLatToSph(xsrc, ysrc, xbuf, ybuf, zbuf) {
-    var deg2rad = Math.PI / 180,
-        r = R;
-    for (var i=0, len=xsrc.length; i<len; i++) {
-      var lng = xsrc[i] * deg2rad,
-          lat = ysrc[i] * deg2rad,
-          cosLat = Math.cos(lat);
-      xbuf[i] = Math.cos(lng) * cosLat * r;
-      ybuf[i] = Math.sin(lng) * cosLat * r;
-      zbuf[i] = Math.sin(lat) * r;
-    }
-  }
-  */
-
-  // Convert arrays of lng and lat coords (xsrc, ysrc) into
-  // x, y, z coords (meters) on the most common spherical Earth model.
-  //
-  function convLngLatToSph(xsrc, ysrc, xbuf, ybuf, zbuf) {
-    var p = [];
-    for (var i=0, len=xsrc.length; i<len; i++) {
-      lngLatToXYZ(xsrc[i], ysrc[i], p);
-      xbuf[i] = p[0];
-      ybuf[i] = p[1];
-      zbuf[i] = p[2];
-    }
-  }
-
-  function xyzToLngLat(x, y, z, p) {
-    var d = distance3D(0, 0, 0, x, y, z); // normalize
-    var lat = Math.asin(z / d) / D2R;
-    var lng = Math.atan2(y / d, x / d) / D2R;
-    p[0] = lng;
-    p[1] = lat;
-  }
-
-  function lngLatToXYZ(lng, lat, p) {
-    var cosLat;
-    lng *= D2R;
-    lat *= D2R;
-    cosLat = Math.cos(lat);
-    p[0] = Math.cos(lng) * cosLat * R;
-    p[1] = Math.sin(lng) * cosLat * R;
-    p[2] = Math.sin(lat) * R;
-  }
-
-  // Haversine formula (well conditioned at small distances)
-  function sphericalDistance(lam1, phi1, lam2, phi2) {
-    var dlam = lam2 - lam1,
-        dphi = phi2 - phi1,
-        a = Math.sin(dphi / 2) * Math.sin(dphi / 2) +
-            Math.cos(phi1) * Math.cos(phi2) *
-            Math.sin(dlam / 2) * Math.sin(dlam / 2),
-        c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-    return c;
-  }
-
-  // Receive: coords in decimal degrees;
-  // Return: distance in meters on spherical earth
-  function greatCircleDistance(lng1, lat1, lng2, lat2) {
-    var D2R = Math.PI / 180,
-        dist = sphericalDistance(lng1 * D2R, lat1 * D2R, lng2 * D2R, lat2 * D2R);
-    return dist * R;
-  }
-
-
-  function triangleArea(ax, ay, bx, by, cx, cy) {
-    var area = Math.abs(((ay - cy) * (bx - cx) + (by - cy) * (cx - ax)) / 2);
-    return area;
-  }
-
-  function detSq(ax, ay, bx, by, cx, cy) {
-    var det = ax * by - ax * cy + bx * cy - bx * ay + cx * ay - cx * by;
-    return det * det;
-  }
-
-  function cosine(ax, ay, bx, by, cx, cy) {
-    var den = distance2D(ax, ay, bx, by) * distance2D(bx, by, cx, cy),
-        cos = 0;
-    if (den > 0) {
-      cos = ((ax - bx) * (cx - bx) + (ay - by) * (cy - by)) / den;
-      if (cos > 1) cos = 1; // handle fp rounding error
-      else if (cos < -1) cos = -1;
-    }
-    return cos;
-  }
-
-  function cosine3D(ax, ay, az, bx, by, bz, cx, cy, cz) {
-    var den = distance3D(ax, ay, az, bx, by, bz) * distance3D(bx, by, bz, cx, cy, cz),
-        cos = 0;
-    if (den > 0) {
-      cos = ((ax - bx) * (cx - bx) + (ay - by) * (cy - by) + (az - bz) * (cz - bz)) / den;
-      if (cos > 1) cos = 1; // handle fp rounding error
-      else if (cos < -1) cos = -1;
-    }
-    return cos;
-  }
-
-  function triangleArea3D(ax, ay, az, bx, by, bz, cx, cy, cz) {
-    var area = 0.5 * Math.sqrt(detSq(ax, ay, bx, by, cx, cy) +
-      detSq(ax, az, bx, bz, cx, cz) + detSq(ay, az, by, bz, cy, cz));
-    return area;
-  }
-
-  // Given point B and segment AC, return the squared distance from B to the
-  // nearest point on AC
-  // Receive the squared length of segments AB, BC, AC
-  // TODO: analyze rounding error. Returns 0 for these coordinates:
-  //    P: [2, 3 - 1e-8]  AB: [[1, 3], [3, 3]]
-  //
-  function apexDistSq(ab2, bc2, ac2) {
-    var dist2;
-    if (ac2 === 0) {
-      dist2 = ab2;
-    } else if (ab2 >= bc2 + ac2) {
-      dist2 = bc2;
-    } else if (bc2 >= ab2 + ac2) {
-      dist2 = ab2;
-    } else {
-      var dval = (ab2 + ac2 - bc2);
-      dist2 = ab2 -  dval * dval / ac2  * 0.25;
-    }
-    if (dist2 < 0) {
-      dist2 = 0;
-    }
-    return dist2;
-  }
-
-  function pointSegDistSq(ax, ay, bx, by, cx, cy) {
-    var ab2 = distanceSq(ax, ay, bx, by),
-        ac2 = distanceSq(ax, ay, cx, cy),
-        bc2 = distanceSq(bx, by, cx, cy);
-    return apexDistSq(ab2, ac2, bc2);
-  }
-
-  function pointSegDistSq3D(ax, ay, az, bx, by, bz, cx, cy, cz) {
-    var ab2 = distanceSq3D(ax, ay, az, bx, by, bz),
-        ac2 = distanceSq3D(ax, ay, az, cx, cy, cz),
-        bc2 = distanceSq3D(bx, by, bz, cx, cy, cz);
-    return apexDistSq(ab2, ac2, bc2);
-  }
-
-  // Apparently better conditioned for some inputs than pointSegDistSq()
-  //
-  function pointSegDistSq2(px, py, ax, ay, bx, by) {
-    var ab2 = distanceSq(ax, ay, bx, by);
-    var t = ((px - ax) * (bx - ax) + (py - ay) * (by - ay)) / ab2;
-    if (ab2 === 0) return distanceSq(px, py, ax, ay);
-    if (t < 0) t = 0;
-    if (t > 1) t = 1;
-    return distanceSq(px, py, ax + t * (bx - ax), ay + t * (by - ay));
-  }
-
-  function containsBounds(a, b) {
-    return a[0] <= b[0] && a[2] >= b[2] && a[1] <= b[1] && a[3] >= b[3];
-  }
-
-  var Geom = /*#__PURE__*/Object.freeze({
-    __proto__: null,
-    D2R: D2R,
-    R: R,
-    R2D: R2D,
-    bearing: bearing,
-    bearing2D: bearing2D,
-    containsBounds: containsBounds,
-    convLngLatToSph: convLngLatToSph,
-    cosine: cosine,
-    cosine3D: cosine3D,
-    degreesToMeters: degreesToMeters,
-    distance2D: distance2D,
-    distance3D: distance3D,
-    distanceSq: distanceSq,
-    distanceSq3D: distanceSq3D,
-    greatCircleDistance: greatCircleDistance,
-    innerAngle2: innerAngle2,
-    lngLatToXYZ: lngLatToXYZ,
-    pointSegDistSq: pointSegDistSq,
-    pointSegDistSq2: pointSegDistSq2,
-    pointSegDistSq3D: pointSegDistSq3D,
-    signedAngle: signedAngle,
-    signedAngleSph: signedAngleSph,
-    sphericalDistance: sphericalDistance,
-    standardAngle: standardAngle,
-    triangleArea: triangleArea,
-    triangleArea3D: triangleArea3D,
-    xyzToLngLat: xyzToLngLat
-  });
-
-  function pathIsClosed(ids, arcs) {
-    var firstArc = ids[0];
-    var lastArc = ids[ids.length - 1];
-    var p1 = arcs.getVertex(firstArc, 0);
-    var p2 = arcs.getVertex(lastArc, -1);
-    var closed = p1.x === p2.x && p1.y === p2.y;
-    return closed;
-  }
-
-  function getPointToPathDistance(px, py, ids, arcs) {
-    return getPointToPathInfo(px, py, ids, arcs).distance;
-  }
-
-  function getPointToPathInfo(px, py, ids, arcs) {
-    var iter = arcs.getShapeIter(ids);
-    var pPathSq = Infinity;
-    var arcId;
-    var ax, ay, bx, by, axmin, aymin, bxmin, bymin, pabSq;
-    if (iter.hasNext()) {
-      ax = axmin = bxmin = iter.x;
-      ay = aymin = bymin = iter.y;
-    }
-    while (iter.hasNext()) {
-      bx = iter.x;
-      by = iter.y;
-      pabSq = pointSegDistSq2(px, py, ax, ay, bx, by);
-      if (pabSq < pPathSq) {
-        pPathSq = pabSq;
-        arcId = iter._ids[iter._i]; // kludge
-        axmin = ax;
-        aymin = ay;
-        bxmin = bx;
-        bymin = by;
-      }
-      ax = bx;
-      ay = by;
-    }
-    if (pPathSq == Infinity) return {distance: Infinity};
-    return {
-      segment: [[axmin, aymin], [bxmin, bymin]],
-      distance: Math.sqrt(pPathSq),
-      arcId: arcId
-    };
-  }
-
-
-  // Return unsigned distance of a point to the nearest point on a polygon or polyline path
-  //
-  function getPointToShapeDistance(x, y, shp, arcs) {
-    var info = getPointToShapeInfo(x, y, shp, arcs);
-    return info ? info.distance : Infinity;
-  }
-
-  function getPointToShapeInfo(x, y, shp, arcs) {
-    return (shp || []).reduce(function(memo, ids) {
-      var pathInfo = getPointToPathInfo(x, y, ids, arcs);
-      if (!memo || pathInfo.distance < memo.distance) return pathInfo;
-      return memo;
-    }, null) || {
-      distance: Infinity,
-      arcId: -1,
-      segment: null
-    };
-  }
-
-  // @ids array of arc ids
-  // @arcs ArcCollection
-  function getAvgPathXY(ids, arcs) {
-    var iter = arcs.getShapeIter(ids);
-    if (!iter.hasNext()) return null;
-    var x0 = iter.x,
-        y0 = iter.y,
-        count = 0,
-        sumX = 0,
-        sumY = 0;
-    while (iter.hasNext()) {
-      count++;
-      sumX += iter.x;
-      sumY += iter.y;
-    }
-    if (count === 0 || iter.x !== x0 || iter.y !== y0) {
-      sumX += x0;
-      sumY += y0;
-      count++;
-    }
-    return {
-      x: sumX / count,
-      y: sumY / count
-    };
-  }
-
-  // Return path with the largest (area) bounding box
-  // @shp array of array of arc ids
-  // @arcs ArcCollection
-  function getMaxPath(shp, arcs) {
-    var maxArea = 0;
-    return (shp || []).reduce(function(maxPath, path) {
-      var bbArea = arcs.getSimpleShapeBounds(path).area();
-      if (bbArea > maxArea) {
-        maxArea = bbArea;
-        maxPath = path;
-      }
-      return maxPath;
-    }, null);
-  }
-
-  function countVerticesInPath(ids, arcs) {
-    var iter = arcs.getShapeIter(ids),
-        count = 0;
-    while (iter.hasNext()) count++;
-    return count;
-  }
-
-  function getPathBounds$1(points) {
-    var bounds = new Bounds();
-    for (var i=0, n=points.length; i<n; i++) {
-      bounds.mergePoint(points[i][0], points[i][1]);
-    }
-    return bounds;
-  }
-
-  var calcPathLen;
-  calcPathLen = (function() {
-    var len, calcLen;
-    function addSegLen(i, j, xx, yy) {
-      len += calcLen(xx[i], yy[i], xx[j], yy[j]);
-    }
-    // @spherical (optional bool) calculate great circle length in meters
-    return function(path, arcs, spherical) {
-      if (spherical && arcs.isPlanar()) {
-        error("Expected lat-long coordinates");
-      }
-      calcLen = spherical ? greatCircleDistance : distance2D;
-      len = 0;
-      for (var i=0, n=path.length; i<n; i++) {
-        arcs.forEachArcSegment(path[i], addSegLen);
-      }
-      return len;
-    };
-  }());
-
-  var PathGeom = /*#__PURE__*/Object.freeze({
-    __proto__: null,
-    get calcPathLen () { return calcPathLen; },
-    countVerticesInPath: countVerticesInPath,
-    getAvgPathXY: getAvgPathXY,
-    getMaxPath: getMaxPath,
-    getPathBounds: getPathBounds$1,
-    getPointToPathDistance: getPointToPathDistance,
-    getPointToPathInfo: getPointToPathInfo,
-    getPointToShapeDistance: getPointToShapeDistance,
-    getPointToShapeInfo: getPointToShapeInfo,
-    pathIsClosed: pathIsClosed
-  });
-
-  // Get the centroid of the largest ring of a polygon
-  // TODO: Include holes in the calculation
-  // TODO: Add option to find centroid of all rings, not just the largest
-  function getShapeCentroid(shp, arcs) {
-    var maxPath = getMaxPath(shp, arcs);
-    return maxPath ? getPathCentroid(maxPath, arcs) : null;
-  }
-
-  function getPathCentroid(ids, arcs) {
-    var iter = arcs.getShapeIter(ids),
-        sum = 0,
-        sumX = 0,
-        sumY = 0,
-        dx, dy, ax, ay, bx, by, tmp, area;
-    if (!iter.hasNext()) return null;
-    // reduce effect of fp errors by shifting shape origin to 0,0 (issue #304)
-    ax = 0;
-    ay = 0;
-    dx = -iter.x;
-    dy = -iter.y;
-    while (iter.hasNext()) {
-      bx = ax;
-      by = ay;
-      ax = iter.x + dx;
-      ay = iter.y + dy;
-      tmp = bx * ay - by * ax;
-      sum += tmp;
-      sumX += tmp * (bx + ax);
-      sumY += tmp * (by + ay);
-    }
-    area = sum / 2;
-    if (area === 0) {
-      return getAvgPathXY(ids, arcs);
-    } else return {
-      x: sumX / (6 * area) - dx,
-      y: sumY / (6 * area) - dy
-    };
-  }
-
-  var PolygonCentroid = /*#__PURE__*/Object.freeze({
-    __proto__: null,
-    getPathCentroid: getPathCentroid,
-    getShapeCentroid: getShapeCentroid
-  });
-
-  function absArcId(arcId) {
-    return arcId >= 0 ? arcId : ~arcId;
-  }
-
-  function calcArcBounds(xx, yy, start, len) {
-    var i = start | 0,
-        n = isNaN(len) ? xx.length - i : len + i,
-        x, y, xmin, ymin, xmax, ymax;
-    if (n > 0) {
-      xmin = xmax = xx[i];
-      ymin = ymax = yy[i];
-    }
-    for (i++; i<n; i++) {
-      x = xx[i];
-      y = yy[i];
-      if (x < xmin) xmin = x;
-      if (x > xmax) xmax = x;
-      if (y < ymin) ymin = y;
-      if (y > ymax) ymax = y;
-    }
-    return [xmin, ymin, xmax, ymax];
-  }
-
-  function getUnfilteredArcLength(arcId, arcs) {
-    var data = arcs.getVertexData();
-    return data.nn[arcId];
-  }
-
-  function getUnfilteredArcCoords(arcId, arcs) {
-    var data = arcs.getVertexData();
-    var coords = [];
-    var start = data.ii[arcId];
-    var n = data.nn[arcId];
-    for (var i=0; i<n; i++) {
-      coords.push([data.xx[start + i], data.yy[start + i]]);
-    }
-    return coords;
-  }
-
-  function findArcIdFromVertexId(i, ii) {
-    // binary search
-    // possible optimization: use interpolation to find a better partition value.
-    var lower = 0, upper = ii.length - 1;
-    var middle;
-    while (lower < upper) {
-      middle = Math.ceil((lower + upper) / 2);
-      if (i < ii[middle]) {
-        upper = middle - 1;
-      } else {
-        lower = middle;
-      }
-    }
-    return lower; // assumes dataset is not empty
-  }
-
-  function deleteLastArc(arcs) {
-    var data = arcs.getVertexData();
-    var arcId = arcs.size() - 1;
-    var arcLen = data.nn[arcId];
-    var n = data.xx.length;
-    var z = arcs.getRetainedInterval();
-    var xx2 = new Float64Array(data.xx.buffer, 0, n-arcLen);
-    var yy2 = new Float64Array(data.yy.buffer, 0, n-arcLen);
-    var nn2 = new Int32Array(data.nn.buffer, 0, arcs.size() - 1);
-    var zz2 = arcs.isFlat() ?
-      null :
-      new Float64Array(data.zz.buffer, 0, n-arcLen);
-    arcs.updateVertexData(nn2, xx2, yy2, zz2);
-    arcs.setRetainedInterval(z);
-  }
-
-  function deleteVertex$1(arcs, i) {
-    var data = arcs.getVertexData();
-    var nn = data.nn;
-    var n = data.xx.length;
-    // avoid re-allocating memory
-    var xx2 = new Float64Array(data.xx.buffer, 0, n-1);
-    var yy2 = new Float64Array(data.yy.buffer, 0, n-1);
-    var zz2 = arcs.isFlat() ? null : new Float64Array(data.zz.buffer, 0, n-1);
-    var z = arcs.getRetainedInterval();
-    var count = 0;
-    var found = false;
-    for (var j=0; j<nn.length; j++) {
-      count += nn[j];
-      if (count >= i && !found) { // TODO: confirm this
-        nn[j] = nn[j] - 1;
-        found = true;
-      }
-    }
-    utils.copyElements(data.xx, 0, xx2, 0, i);
-    utils.copyElements(data.yy, 0, yy2, 0, i);
-    utils.copyElements(data.xx, i+1, xx2, i, n-i-1);
-    utils.copyElements(data.yy, i+1, yy2, i, n-i-1);
-    if (zz2) {
-      utils.copyElements(data.zz, 0, zz2, 0, i);
-      utils.copyElements(data.zz, i+1, zz2, i, n-i-1);
-    }
-    arcs.updateVertexData(nn, xx2, yy2, zz2);
-    arcs.setRetainedInterval(z);
-  }
-
-  function appendEmptyArc(arcs) {
-    var data = arcs.getVertexData();
-    var nn = utils.extendBuffer(data.nn, data.nn.length + 1, data.nn.length);
-    arcs.updateVertexData(nn, data.xx, data.yy, data.zz);
-  }
-
-  // adds vertex to last arc
-  // (used when adding lines in the GUI)
-  // p: [x, y] point in display coordinates
-  function appendVertex$1(arcs, p) {
-    var i = arcs.getPointCount(); // one past the last idx
-    insertVertex$1(arcs, i, p);
-  }
-
-  function insertVertex$1(arcs, i, p) {
-    var data = arcs.getVertexData();
-    var nn = data.nn;
-    var n = data.xx.length;
-    var count = 0;
-    var xx2, yy2, zz2;
-    // avoid re-allocating memory on each insertion
-    if (data.xx.buffer.byteLength >= data.xx.length * 8 + 8) {
-      xx2 = new Float64Array(data.xx.buffer, 0, n+1);
-      yy2 = new Float64Array(data.yy.buffer, 0, n+1);
-    } else {
-      xx2 = new Float64Array(new ArrayBuffer((n + 50) * 8), 0, n+1);
-      yy2 = new Float64Array(new ArrayBuffer((n + 50) * 8), 0, n+1);
-    }
-    if (!arcs.isFlat()) {
-      zz2 = new Float64Array(new ArrayBuffer((n + 1) * 8), 0, n+1);
-    }
-    if (i < 0 || i > n) {
-      error('Out-of-range vertex insertion index:', i);
-    } else if (i == n) {
-      // appending vertex to last arc
-      nn[nn.length - 1]++;
-    } else {
-      for (var j=0; j<nn.length; j++) {
-        count += nn[j];
-        if (count >= i) { // TODO: confirm this
-          nn[j] = nn[j] + 1;
-          break;
-        }
-      }
-    }
-
-    utils.copyElements(data.xx, 0, xx2, 0, i);
-    utils.copyElements(data.yy, 0, yy2, 0, i);
-    utils.copyElements(data.xx, i, xx2, i+1, n-i);
-    utils.copyElements(data.yy, i, yy2, i+1, n-i);
-    xx2[i] = p[0];
-    yy2[i] = p[1];
-    if (zz2) {
-      zz2[i] = Infinity;
-      utils.copyElements(data.zz, 0, zz2, 0, i);
-      utils.copyElements(data.zz, i, zz2, i+1, n-i);
-    }
-    arcs.updateVertexData(nn, xx2, yy2, zz2);
-  }
-
-  function countFilteredVertices(zz, zlimit) {
-    var count = 0;
-    for (var i=0, n = zz.length; i<n; i++) {
-      if (zz[i] >= zlimit) count++;
-    }
-    return count;
-  }
-
-  function filterVertexData(o, zlimit) {
-    if (!o.zz) error('Expected simplification data');
-    var xx = o.xx,
-        yy = o.yy,
-        zz = o.zz,
-        len2 = countFilteredVertices(zz, zlimit),
-        arcCount = o.nn.length,
-        xx2 = new Float64Array(len2),
-        yy2 = new Float64Array(len2),
-        zz2 = new Float64Array(len2),
-        nn2 = new Int32Array(arcCount),
-        i = 0, i2 = 0,
-        n, n2;
-
-    for (var arcId=0; arcId < arcCount; arcId++) {
-      n2 = 0;
-      n = o.nn[arcId];
-      for (var end = i+n; i < end; i++) {
-        if (zz[i] >= zlimit) {
-          xx2[i2] = xx[i];
-          yy2[i2] = yy[i];
-          zz2[i2] = zz[i];
-          i2++;
-          n2++;
-        }
-      }
-      if (n2 == 1) {
-        error("Collapsed arc");
-        // This should not happen (endpoints should be z == Infinity)
-        // Could handle like this, instead of throwing an error:
-        // n2 = 0;
-        // xx2.pop();
-        // yy2.pop();
-        // zz2.pop();
-      } else if (n2 === 0) {
-        // collapsed arc... ignoring
-      }
-      nn2[arcId] = n2;
-    }
-    return {
-      xx: xx2,
-      yy: yy2,
-      zz: zz2,
-      nn: nn2
-    };
-  }
-
-  // Utility functions for working with ArcCollection and arrays of arc ids.
-
-  // Return average segment length (with simplification)
-  function getAvgSegment(arcs) {
-    var sum = 0;
-    var count = arcs.forEachSegment(function(i, j, xx, yy) {
-      var dx = xx[i] - xx[j],
-          dy = yy[i] - yy[j];
-      sum += Math.sqrt(dx * dx + dy * dy);
-    });
-    return sum / count || 0;
-  }
-
-  // Return average magnitudes of dx, dy (with simplification)
-  function getAvgSegment2(arcs) {
-    var dx = 0, dy = 0;
-    var count = arcs.forEachSegment(function(i, j, xx, yy) {
-      dx += Math.abs(xx[i] - xx[j]);
-      dy += Math.abs(yy[i] - yy[j]);
-    });
-    return [dx / count || 0, dy / count || 0];
-  }
-
-  /*
-  this.getAvgSegmentSph2 = function() {
-    var sumx = 0, sumy = 0;
-    var count = this.forEachSegment(function(i, j, xx, yy) {
-      var lat1 = yy[i],
-          lat2 = yy[j];
-      sumy += geom.degreesToMeters(Math.abs(lat1 - lat2));
-      sumx += geom.degreesToMeters(Math.abs(xx[i] - xx[j]) *
-          Math.cos((lat1 + lat2) * 0.5 * geom.D2R);
-    });
-    return [sumx / count || 0, sumy / count || 0];
-  };
-  */
-
-  function getDirectedArcPresenceTest(shapes, n) {
-    var flags = new Uint8Array(n);
-    forEachArcId(shapes, function(id) {
-      var absId = absArcId(id);
-      if (absId < n === false) error('index error');
-      flags[absId] |= id < 0 ? 2 : 1;
-    });
-    return function(arcId) {
-      var absId = absArcId(arcId);
-      return arcId < 0 ? (flags[absId] & 2) == 2 : (flags[absId] & 1) == 1;
-    };
-  }
-
-  function getArcPresenceTest(shapes, arcs) {
-    var counts = new Uint8Array(arcs.size());
-    countArcsInShapes(shapes, counts);
-    return function(id) {
-      if (id < 0) id = ~id;
-      return counts[id] > 0;
-    };
-  }
-
-  // @counts A typed array for accumulating count of each abs arc id
-  //   (assume it won't overflow)
-  function countArcsInShapes(shapes, counts) {
-    traversePaths(shapes, null, function(obj) {
-      var arcs = obj.arcs,
-          id;
-      for (var i=0; i<arcs.length; i++) {
-        id = arcs[i];
-        if (id < 0) id = ~id;
-        counts[id]++;
-      }
-    });
-  }
-
-  function getPathBounds(shapes, arcs) {
-    var bounds = new Bounds();
-    forEachArcId(shapes, function(id) {
-      arcs.mergeArcBounds(id, bounds);
-    });
-    return bounds;
-  }
-
-  // Returns subset of shapes in @shapes that contain one or more arcs in @arcIds
-  function findShapesByArcId(shapes, arcIds, numArcs) {
-    var index = numArcs ? new Uint8Array(numArcs) : [],
-        found = [];
-    arcIds.forEach(function(id) {
-      index[absArcId(id)] = 1;
-    });
-    shapes.forEach(function(shp, shpId) {
-      var isHit = false;
-      forEachArcId(shp || [], function(id) {
-        isHit = isHit || index[absArcId(id)] == 1;
-      });
-      if (isHit) {
-        found.push(shpId);
-      }
-    });
-    return found;
-  }
-
-  function reversePath(ids) {
-    ids.reverse();
-    for (var i=0, n=ids.length; i<n; i++) {
-      ids[i] = ~ids[i];
-    }
-    return ids;
-  }
-
-  function clampIntervalByPct(z, pct) {
-    if (pct <= 0) z = Infinity;
-    else if (pct >= 1) z = 0;
-    return z;
-  }
-
-  // Return id of the vertex between @start and @end with the highest
-  // threshold that is less than @zlim, or -1 if none
-  //
-  function findNextRemovableVertex(zz, zlim, start, end) {
-    var tmp, jz = 0, j = -1, z;
-    if (start > end) {
-      tmp = start;
-      start = end;
-      end = tmp;
-    }
-    for (var i=start+1; i<end; i++) {
-      z = zz[i];
-      if (z < zlim && z > jz) {
-        j = i;
-        jz = z;
-      }
-    }
-    return j;
-  }
-
-  // Visit each arc id in a path, shape or array of shapes
-  // Use non-undefined return values of callback @cb as replacements.
-  function forEachArcId(arr, cb) {
-    var item;
-    for (var i=0; i<arr.length; i++) {
-      item = arr[i];
-      if (Array.isArray(item)) {
-        forEachArcId(item, cb);
-      } else if (utils.isInteger(item)) {
-        var val = cb(item);
-        if (val !== void 0) {
-          arr[i] = val;
-        }
-      } else if (item) {
-        error("Non-integer arc id in:", arr);
-      }
-    }
-  }
-
-  function forEachSegmentInShape(shape, arcs, cb) {
-    for (var i=0, n=shape ? shape.length : 0; i<n; i++) {
-      forEachSegmentInPath(shape[i], arcs, cb);
-    }
-  }
-
-  function forEachSegmentInPath(ids, arcs, cb) {
-    for (var i=0, n=ids.length; i<n; i++) {
-      arcs.forEachArcSegment(ids[i], cb);
-    }
-  }
-
-  function traversePaths(shapes, cbArc, cbPart, cbShape) {
-    var segId = 0;
-    shapes.forEach(function(parts, shapeId) {
-      if (!parts || parts.length === 0) return; // null shape
-      var arcIds, arcId;
-      if (cbShape) {
-        cbShape(shapeId);
-      }
-      for (var i=0, m=parts.length; i<m; i++) {
-        arcIds = parts[i];
-        if (cbPart) {
-          cbPart({
-            i: i,
-            shapeId: shapeId,
-            shape: parts,
-            arcs: arcIds
-          });
-        }
-
-        if (cbArc) {
-          for (var j=0, n=arcIds.length; j<n; j++, segId++) {
-            arcId = arcIds[j];
-            cbArc({
-              i: j,
-              shapeId: shapeId,
-              partId: i,
-              arcId: arcId,
-              segId: segId
-            });
-          }
-        }
-      }
-    });
-  }
-
-  function arcHasLength(id, coords) {
-    var iter = coords.getArcIter(id), x, y;
-    if (iter.hasNext()) {
-      x = iter.x;
-      y = iter.y;
-      while (iter.hasNext()) {
-        if (iter.x != x || iter.y != y) return true;
-      }
-    }
-    return false;
-  }
-
-  function filterEmptyArcs(shape, coords) {
-    if (!shape) return null;
-    var shape2 = [];
-    shape.forEach(function(ids) {
-      var path = [];
-      for (var i=0; i<ids.length; i++) {
-        if (arcHasLength(ids[i], coords)) {
-          path.push(ids[i]);
-        }
-      }
-      if (path.length > 0) shape2.push(path);
-    });
-    return shape2.length > 0 ? shape2 : null;
-  }
-
-  // Return an array of information about each part/ring in a polygon or polyline shape
-  function getPathMetadata(shape, arcs, type) {
-    var data = [],
-        ids;
-    for (var i=0, n=shape && shape.length; i<n; i++) {
-      ids = shape[i];
-      data.push({
-        ids: ids,
-        area: type == 'polygon' ? geom.getPlanarPathArea(ids, arcs) : 0,
-        bounds: arcs.getSimpleShapeBounds(ids)
-      });
-    }
-    return data;
-  }
-
-  function quantizeArcs(arcs, quanta) {
-    // Snap coordinates to a grid of @quanta locations on both axes
-    // This may snap nearby points to the same coordinates.
-    // Consider a cleanup pass to remove dupes, make sure collapsed arcs are
-    //   removed on export.
-    //
-    var bb1 = arcs.getBounds(),
-        bb2 = new Bounds(0, 0, quanta-1, quanta-1),
-        fw = bb1.getTransform(bb2),
-        inv = fw.invert();
-
-    arcs.transformPoints(function(x, y) {
-      var p = fw.transform(x, y);
-      return inv.transform(Math.round(p[0]), Math.round(p[1]));
-    });
-  }
-
-  function testSegmentBoundsIntersection(a, b, bb) {
-    if (bb.containsPoint(a[0], a[1])) {
-      return true;
-    }
-    return !!(
-      geom.segmentIntersection(a[0], a[1], b[0], b[1], bb.xmin, bb.ymin, bb.xmin, bb.ymax) ||
-      geom.segmentIntersection(a[0], a[1], b[0], b[1], bb.xmin, bb.ymax, bb.xmax, bb.ymax) ||
-      geom.segmentIntersection(a[0], a[1], b[0], b[1], bb.xmax, bb.ymax, bb.xmax, bb.ymin) ||
-      geom.segmentIntersection(a[0], a[1], b[0], b[1], bb.xmax, bb.ymin, bb.xmin, bb.ymin));
-  }
-
-  // A compactness measure designed for testing electoral districts for gerrymandering.
-  // Returns value in [0-1] range. 1 = perfect circle, 0 = collapsed polygon
-  function calcPolsbyPopperCompactness(area, perimeter) {
-    if (perimeter <= 0) return 0;
-    return Math.abs(area) * Math.PI * 4 / (perimeter * perimeter);
-  }
-
-  // Larger values (less severe penalty) than Polsby Popper
-  function calcSchwartzbergCompactness(area, perimeter) {
-    if (perimeter <= 0) return 0;
-    return 2 * Math.PI * Math.sqrt(Math.abs(area) / Math.PI) / perimeter;
-  }
-
-  // Returns: 1 if CW, -1 if CCW, 0 if collapsed
-  function getPathWinding(ids, arcs) {
-    var area = getPathArea(ids, arcs);
-    return area > 0 && 1 || area < 0 && -1 || 0;
-  }
-
-  function getShapeArea(shp, arcs) {
-    // return (arcs.isPlanar() ? geom.getPlanarShapeArea : geom.getSphericalShapeArea)(shp, arcs);
-    return (shp || []).reduce(function(area, ids) {
-      return area + getPathArea(ids, arcs);
-    }, 0);
-  }
-
-  function getPlanarShapeArea(shp, arcs) {
-    return (shp || []).reduce(function(area, ids) {
-      return area + getPlanarPathArea(ids, arcs);
-    }, 0);
-  }
-
-  function getSphericalShapeArea(shp, arcs, R) {
-    if (arcs.isPlanar()) {
-      error("[getSphericalShapeArea()] Function requires decimal degree coordinates");
-    }
-    return (shp || []).reduce(function(area, ids) {
-      return area + getSphericalPathArea(ids, arcs, R);
-    }, 0);
-  }
-
-  // export function getEllipsoidalShapeArea(shp, arcs, crs) {
-  //   return (shp || []).reduce(function(area, ids) {
-  //     return area + getEllipsoidalPathArea(ids, arcs, crs);
-  //   }, 0);
-  // }
-
-  // test if a rectangle is completely enclosed in a planar polygon
-  function testBoundsInPolygon(bounds, shp, arcs) {
-    if (!shp || !testPointInPolygon(bounds.xmin, bounds.ymin, shp, arcs)) return false;
-    var isIn = true;
-    shp.forEach(function(ids) {
-      forEachSegmentInPath(ids, arcs, function(a, b, xx, yy) {
-        isIn = isIn && !testSegmentBoundsIntersection([xx[a], yy[a]], [xx[b], yy[b]], bounds);
-      });
-    });
-    return isIn;
-  }
-
-  // Return true if point is inside or on boundary of a shape
-  //
-  function testPointInPolygon(x, y, shp, arcs) {
-    var isIn = false,
-        isOn = false;
-    if (!shp) return false;
-    shp.forEach(function(ids) {
-      var inRing = testPointInRing(x, y, ids, arcs);
-      if (inRing == 1) {
-        isIn = !isIn;
-      } else if (inRing == -1) {
-        isOn = true;
-      }
-    });
-    return isOn || isIn;
-  }
-
-  function getYIntercept(x, ax, ay, bx, by) {
-    return ay + (x - ax) * (by - ay) / (bx - ax);
-  }
-
-  function getXIntercept(y, ax, ay, bx, by) {
-    return ax + (y - ay) * (bx - ax) / (by - ay);
-  }
-
-
-
-  // Test if point (x, y) is inside, outside or on the boundary of a polygon ring
-  // Return 0: outside; 1: inside; -1: on boundary
-  //
-  function testPointInRing(x, y, ids, arcs) {
-    /*
-    // arcs.getSimpleShapeBounds() doesn't apply simplification, can't use here
-    //// wait, why not? simplifcation shoudn't expand bounds, so this test makes sense
-    if (!arcs.getSimpleShapeBounds(ids).containsPoint(x, y)) {
-      return false;
-    }
-    */
-    var isIn = false,
-        isOn = false;
-    forEachSegmentInPath(ids, arcs, function(a, b, xx, yy) {
-      var result = testRayIntersection(x, y, xx[a], yy[a], xx[b], yy[b]);
-      if (result == 1) {
-        isIn = !isIn;
-      } else if (isNaN(result)) {
-        isOn = true;
-      }
-    });
-    return isOn ? -1 : (isIn ? 1 : 0);
-  }
-
-  // test if a vertical ray originating at (x, y) intersects a segment
-  // returns 1 if intersection, 0 if no intersection, NaN if point touches segment
-  // (Special rules apply to endpoint intersections, to support point-in-polygon testing.)
-  function testRayIntersection(x, y, ax, ay, bx, by) {
-    var val = getRayIntersection(x, y, ax, ay, bx, by);
-    if (val != val) {
-      return NaN;
-    }
-    return val == -Infinity ? 0 : 1;
-  }
-
-  function getRayIntersection(x, y, ax, ay, bx, by) {
-    var hit = -Infinity, // default: no hit
-        yInt;
-
-    // case: p is entirely above, left or right of segment
-    if (x < ax && x < bx || x > ax && x > bx || y > ay && y > by) {
-        // no intersection
-    }
-    // case: px aligned with a segment vertex
-    else if (x === ax || x === bx) {
-      // case: vertical segment or collapsed segment
-      if (x === ax && x === bx) {
-        // p is on segment
-        if (y == ay || y == by || y > ay != y > by) {
-          hit = NaN;
-        }
-        // else: no hit
-      }
-      // case: px equal to ax (only)
-      else if (x === ax) {
-        if (y === ay) {
-          hit = NaN;
-        } else if (bx < ax && y < ay) {
-          // only score hit if px aligned to rightmost endpoint
-          hit = ay;
-        }
-      }
-      // case: px equal to bx (only)
-      else {
-        if (y === by) {
-          hit = NaN;
-        } else if (ax < bx && y < by) {
-          // only score hit if px aligned to rightmost endpoint
-          hit = by;
-        }
-      }
-    // case: px is between endpoints
-    } else {
-      yInt = getYIntercept(x, ax, ay, bx, by);
-      if (yInt > y) {
-        hit = yInt;
-      } else if (yInt == y) {
-        hit = NaN;
-      }
-    }
-    return hit;
-  }
-
-  function getPathArea(ids, arcs) {
-    return (arcs.isPlanar() ? getPlanarPathArea : getSphericalPathArea)(ids, arcs);
-  }
-
-  function getSphericalPathArea(ids, arcs, R) {
-    var iter = arcs.getShapeIter(ids);
-    return getSphericalPathArea2(iter, R);
-  }
-
-  function getSphericalPathArea2(iter, R) {
-    var sum = 0,
-        started = false,
-        deg2rad = Math.PI / 180,
-        x, y, xp, yp;
-    R = R || WGS84.SEMIMAJOR_AXIS;
-    while (iter.hasNext()) {
-      x = iter.x * deg2rad;
-      y = Math.sin(iter.y * deg2rad);
-      if (started) {
-        sum += (x - xp) * (2 + y + yp);
-      } else {
-        started = true;
-      }
-      xp = x;
-      yp = y;
-    }
-    return sum / 2 * R * R;
-  }
-
-  // Get path area from an array of [x, y] points
-  // TODO: consider removing duplication with getPathArea(), e.g. by
-  //   wrapping points in an iterator.
-  //
-  function getPlanarPathArea2(points) {
-    var sum = 0,
-        ax, ay, bx, by, dx, dy, p;
-    for (var i=0, n=points.length; i<n; i++) {
-      p = points[i];
-      if (i === 0) {
-        ax = 0;
-        ay = 0;
-        dx = -p[0];
-        dy = -p[1];
-      } else {
-        ax = p[0] + dx;
-        ay = p[1] + dy;
-        sum += ax * by - bx * ay;
-      }
-      bx = ax;
-      by = ay;
-    }
-    return sum / 2;
-  }
-
-  function getPlanarPathArea(ids, arcs) {
-    var iter = arcs.getShapeIter(ids),
-        sum = 0,
-        ax, ay, bx, by, dx, dy;
-    if (iter.hasNext()) {
-      ax = 0;
-      ay = 0;
-      dx = -iter.x;
-      dy = -iter.y;
-      while (iter.hasNext()) {
-        bx = ax;
-        by = ay;
-        ax = iter.x + dx;
-        ay = iter.y + dy;
-        sum += ax * by - bx * ay;
-      }
-    }
-    return sum / 2;
-  }
-
-  function getPathPerimeter(ids, arcs) {
-    return (arcs.isPlanar() ? getPlanarPathPerimeter : getSphericalPathPerimeter)(ids, arcs);
-  }
-
-  function getShapePerimeter(shp, arcs) {
-    return (shp || []).reduce(function(len, ids) {
-      return len + getPathPerimeter(ids, arcs);
-    }, 0);
-  }
-
-  function getSphericalShapePerimeter(shp, arcs) {
-    if (arcs.isPlanar()) {
-      error("[getSphericalShapePerimeter()] Function requires decimal degree coordinates");
-    }
-    return (shp || []).reduce(function(len, ids) {
-      return len + getSphericalPathPerimeter(ids, arcs);
-    }, 0);
-  }
-
-  function getPlanarPathPerimeter(ids, arcs) {
-    return calcPathLen(ids, arcs, false);
-  }
-
-  function getSphericalPathPerimeter(ids, arcs) {
-    return calcPathLen(ids, arcs, true);
-  }
-
-  var PolygonGeom = /*#__PURE__*/Object.freeze({
-    __proto__: null,
-    calcPolsbyPopperCompactness: calcPolsbyPopperCompactness,
-    calcSchwartzbergCompactness: calcSchwartzbergCompactness,
-    getPathArea: getPathArea,
-    getPathPerimeter: getPathPerimeter,
-    getPathWinding: getPathWinding,
-    getPlanarPathArea: getPlanarPathArea,
-    getPlanarPathArea2: getPlanarPathArea2,
-    getPlanarPathPerimeter: getPlanarPathPerimeter,
-    getPlanarShapeArea: getPlanarShapeArea,
-    getRayIntersection: getRayIntersection,
-    getShapeArea: getShapeArea,
-    getShapePerimeter: getShapePerimeter,
-    getSphericalPathArea: getSphericalPathArea,
-    getSphericalPathArea2: getSphericalPathArea2,
-    getSphericalPathPerimeter: getSphericalPathPerimeter,
-    getSphericalShapeArea: getSphericalShapeArea,
-    getSphericalShapePerimeter: getSphericalShapePerimeter,
-    testBoundsInPolygon: testBoundsInPolygon,
-    testPointInPolygon: testPointInPolygon,
-    testPointInRing: testPointInRing,
-    testRayIntersection: testRayIntersection
-  });
-
-  // Returns an interval for snapping together coordinates that be co-incident bug
-  // have diverged because of floating point rounding errors. Intended to be small
-  // enought not not to snap points that should be distinct.
-  // This is not a robust method... e.g. some formulas for some inputs may produce
-  // errors that are larger than this interval.
-  // @coords: Array of relevant coordinates (e.g. bbox coordinates of vertex coordinates
-  //   of two intersecting segments).
-  //
-
-  // Updated the original function with a smaller interval... which works
-  // better on a (limited) set of real-world sample data
-  // (less likely to create erroneous output)
-  function getHighPrecisionSnapInterval(coords) {
-    var n = Math.max.apply(null, coords.map(Math.abs));
-    var ceil = n <= 1 ? 1 : 2 ** Math.ceil(Math.log2(n));
-    // console.log(ceil < ceil + ceil / 2 ** 51) // true
-    // console.log(ceil < ceil + ceil / 2 ** 52) // true
-    // console.log(ceil < ceil + ceil / 2 ** 53) // false
-    var interval = ceil / 2 ** 51;
-    // console.log('interval:', interval)
-    return interval;
-  }
-
-  function getHighPrecisionSnapInterval_old(coords) {
-    var maxCoord = Math.max.apply(null, coords.map(Math.abs));
-    return maxCoord * 1e-14;
-  }
-
-  function snapCoords(arcs, threshold) {
-      var avgDist = getAvgSegment(arcs),
-          autoSnapDist = avgDist * 0.0025,
-          snapDist = autoSnapDist;
-
-    if (threshold > 0) {
-      snapDist = threshold;
-      message(utils.format("Applying snapping threshold of %s -- %.6f times avg. segment length", threshold, threshold / avgDist));
-    }
-    var snapCount = snapCoordsByInterval(arcs, snapDist);
-    if (snapCount > 0) arcs.dedupCoords();
-    message(utils.format("Snapped %s point%s", snapCount, utils.pluralSuffix(snapCount)));
-  }
-
-  function snapCoordsByInterval(arcs, snapDist) {
-    if (snapDist > 0 === false) return 0;
-    var ids = getCoordinateIds(arcs);
-    return snapCoordsInternal(ids, arcs, snapDist);
-  }
-
-  function snapEndpointsByInterval(arcs, snapDist) {
-    if (snapDist > 0 === false) return 0;
-    var ids = getEndpointIds(arcs);
-    return snapCoordsInternal(ids, arcs, snapDist);
-  }
-
-  // Snap together points within a small threshold
-  //
-  function snapCoordsInternal(ids, arcs, snapDist) {
-    var snapCount = 0,
-        n = ids.length,
-        data = arcs.getVertexData();
-
-    quicksortIds(data.xx, ids, 0, n-1);
-
-    // Consider: speed up sorting -- try bucket sort as first pass.
-    for (var i=0; i<n; i++) {
-      snapCount += snapPoint(i, snapDist, ids, data.xx, data.yy);
-    }
-    return snapCount;
-
-    function snapPoint(i, limit, ids, xx, yy) {
-      var j = i,
-          n = ids.length,
-          x = xx[ids[i]],
-          y = yy[ids[i]],
-          snaps = 0,
-          id2, dx, dy;
-
-      while (++j < n) {
-        id2 = ids[j];
-        dx = xx[id2] - x;
-        if (dx > limit) break;
-        dy = yy[id2] - y;
-        if (dx === 0 && dy === 0 || dx * dx + dy * dy > limit * limit) continue;
-        xx[id2] = x;
-        yy[id2] = y;
-        snaps++;
-      }
-      return snaps;
-    }
-  }
-
-  function getCoordinateIds(arcs) {
-    var data = arcs.getVertexData(),
-        n = data.xx.length,
-        ids = new Uint32Array(n);
-    for (var i=0; i<n; i++) {
-      ids[i] = i;
-    }
-    return ids;
-  }
-
-  function getEndpointIds(arcs) {
-    var i = 0;
-    var ids = [];
-    var data = arcs.getVertexData();
-    data.nn.forEach(function(n) {
-      if (n > 0 === false) return;
-      ids.push(i, i+n-1);
-      i += n;
-    });
-    return ids;
-  }
-
-  /*
-  // Returns array of array ids, in ascending order.
-  // @a array of numbers
-  //
-  utils.sortCoordinateIds = function(a) {
-    return utils.bucketSortIds(a);
-  };
-
-  // This speeds up sorting of large datasets (~2x faster for 1e7 values)
-  // worth the additional code?
-  utils.bucketSortIds = function(a, n) {
-    var len = a.length,
-        ids = new Uint32Array(len),
-        bounds = utils.getArrayBounds(a),
-        buckets = Math.ceil(n > 0 ? n : len / 10),
-        counts = new Uint32Array(buckets),
-        offsets = new Uint32Array(buckets),
-        i, j, offs, count;
-
-    // get bucket sizes
-    for (i=0; i<len; i++) {
-      j = bucketId(a[i], bounds.min, bounds.max, buckets);
-      counts[j]++;
-    }
-
-    // convert counts to offsets
-    offs = 0;
-    for (i=0; i<buckets; i++) {
-      offsets[i] = offs;
-      offs += counts[i];
-    }
-
-    // assign ids to buckets
-    for (i=0; i<len; i++) {
-      j = bucketId(a[i], bounds.min, bounds.max, buckets);
-      offs = offsets[j]++;
-      ids[offs] = i;
-    }
-
-    // sort each bucket with quicksort
-    for (i = 0; i<buckets; i++) {
-      count = counts[i];
-      if (count > 1) {
-        offs = offsets[i] - count;
-        utils.quicksortIds(a, ids, offs, offs + count - 1);
-      }
-    }
-    return ids;
-
-    function bucketId(val, min, max, buckets) {
-      var id = (buckets * (val - min) / (max - min)) | 0;
-      return id < buckets ? id : buckets - 1;
-    }
-  };
-  */
-
-  function quicksortIds(a, ids, lo, hi) {
-    if (hi - lo > 24) {
-      var pivot = a[ids[lo + hi >> 1]],
-          i = lo,
-          j = hi,
-          tmp;
-      while (i <= j) {
-        while (a[ids[i]] < pivot) i++;
-        while (a[ids[j]] > pivot) j--;
-        if (i <= j) {
-          tmp = ids[i];
-          ids[i] = ids[j];
-          ids[j] = tmp;
-          i++;
-          j--;
-        }
-      }
-      if (j > lo) quicksortIds(a, ids, lo, j);
-      if (i < hi) quicksortIds(a, ids, i, hi);
-    } else {
-      insertionSortIds(a, ids, lo, hi);
-    }
-  }
-
-  function insertionSortIds(arr, ids, start, end) {
-    var id, i, j;
-    for (j = start + 1; j <= end; j++) {
-      id = ids[j];
-      for (i = j - 1; i >= start && arr[id] < arr[ids[i]]; i--) {
-        ids[i+1] = ids[i];
-      }
-      ids[i+1] = id;
-    }
-  }
-
-  function toScaledStr(num, k) {
-    var abs = Math.abs(num);
-    var signed = num != abs;
-    // String() matches behavior of big.js
-    // (as opposed to toFixed() or toPrecision())
-    var s = abs < 1e-6 ? abs.toFixed(k) : String(abs);
-    var parts = s.split('.');
-    var integer = parts[0] == '0' ? '' : parts[0];
-    var decimal = parts.length == 2 ? parts[1] : '';
-    if (decimal.length < k) {
-      decimal = decimal.padEnd(k, '0');
-    } else if (decimal.length > k) {
-      decimal = decimal.slice(0, k);
-    }
-    var s2 = integer + decimal;
-    // remove any leading 0s
-    while (s2[0] == 0 && s2.length > 1) {
-      s2 = s2.slice(1);
-    }
-    if (signed) {
-      s2 = '-' + s2;
-    }
-    return s2;
-  }
-
-  // returns Number
-  function fromScaledStr(s, decimals) {
-    var signed = s[0] == '-';
-    var uns = signed ? s.slice(1) : s;
-    var s2, len;
-    len = uns.length;
-    if (len > decimals) {
-      s2 = uns.slice(0, len - decimals) + '.' + uns.slice(-decimals);
-    } else if (len == decimals) {
-      s2 = '0.' + uns;
-    } else {
-      s2 = '0.' + uns.padStart(decimals, '0');
-    }
-    if (signed) {
-      s2 = '-' + s2;
-    }
-    return Number(s2);
-  }
-
-  function findBigIntScaleFactor() {
-    var minVal = Infinity;
-    var intLen = 0, s;
-    for (var i=0, n=arguments.length; i<n; i++) {
-      minVal = Math.min(minVal, Math.abs(arguments[i]));
-    }
-    if (minVal >= 1) {
-      s = minVal.toFixed(1);
-      intLen = s.indexOf('.');
-    } else if (minVal !== 0) {
-      s = minVal.toFixed(10).slice(2); // decimal part, up to _ decimals
-      while (s[0] === '0') {
-        intLen--;
-        s = s.slice(1);
-      }
-    }
-    return 17 - intLen;
-  }
-
-  //import { findCrossIntersection_big } from '../geom/mapshaper-segment-geom-big';
-
-  // Ad-hoc counters (reset by segmentIntersectionStatsReset, inspected by
-  // segmentIntersectionStats). Cheap when unused, so safe to leave in.
-  var STATS = {
-    calls: 0,            // segmentIntersection() invocations
-    touches: 0,          // pairs that returned a T-touch result
-    endpointHits: 0,     // pairs that returned null via testEndpointHit
-    crossCandidates: 0,  // pairs that reached findCrossIntersection()
-    crossRejectedFast: 0,// rejected by segmentHit_fast early-out
-    crossRobust: 0,      // useRobustCross() === true, ran BigInt math
-    crossFast: 0,        // useRobustCross() === false, ran fp math
-    crossNull: 0         // findCrossIntersection returned null (e.g. collinear)
-  };
-  function segmentIntersectionStatsReset() {
-    for (var k in STATS) STATS[k] = 0;
-  }
-  function segmentIntersectionStats() {
-    return Object.assign({}, STATS);
-  }
-
-  // Find the intersection between two 2D segments
-  // Returns 0, 1 or 2 [x, y] locations as null, [x, y], or [x1, y1, x2, y2]
-  // Special cases:
-  // Endpoint-to-endpoint touches are not treated as intersections.
-  // If the segments touch at a T-intersection, it is treated as an intersection.
-  // If the segments are collinear and partially overlapping, each subsumed endpoint
-  //    is counted as an intersection (there will be either one or two)
-  //
-  function segmentIntersection(ax, ay, bx, by, cx, cy, dx, dy, epsArg) {
-    STATS.calls++;
-    // Use a small tolerance interval, so collinear segments and T-intersections
-    // are detected (floating point rounding often causes exact functions to fail)
-    var eps = epsArg > 0 ? epsArg :
-        getHighPrecisionSnapInterval([ax, ay, bx, by, cx, cy, dx, dy]);
-    var epsSq = eps * eps;
-    var touches, cross;
-
-    // Detect 0, 1 or 2 'touch' intersections, where a vertex of one segment
-    // is very close to the other segment's linear portion.
-    // One touch indicates either a T-intersection or two overlapping collinear
-    // segments that share an endpoint. Two touches indicates overlapping
-    // collinear segments that do not share an endpoint.
-    touches = findPointSegTouches(epsSq, ax, ay, bx, by, cx, cy, dx, dy);
-    if (touches) STATS.touches++;
-    // Ignore endpoint-only intersections
-    if (!touches && testEndpointHit(epsSq, ax, ay, bx, by, cx, cy, dx, dy)) {
-      STATS.endpointHits++;
-      return null;
-    }
-    // Detect cross intersection
-    // (TODO: consider cross intersections that are also endpoint hits)
-    if (!touches) {
-      cross = findCrossIntersection(ax, ay, bx, by, cx, cy, dx, dy, eps);
-    }
-    return touches || cross || null;
-  }
-
-  function findCrossIntersection(ax, ay, bx, by, cx, cy, dx, dy, eps) {
-    STATS.crossCandidates++;
-    var p;
-    // The normal-precision hit function works for all inputs when eps > 0 because
-    // the geometries that cause the ordinary function fails are detected as
-    // 'touches' or endpoint hits (at least this was true in all the real-world
-    // data samples that were tested).
-    //
-    if (eps > 0 && !segmentHit_fast(ax, ay, bx, by, cx, cy, dx, dy)) {
-      STATS.crossRejectedFast++;
-      return null;
-    } else if (eps === 0 && !segmentHit_robust(ax, ay, bx, by, cx, cy, dx, dy)) {
-      STATS.crossRejectedFast++;
-      return null;
-    }
-
-    // in a typical layer with many intersections along shared polygon boundaries,
-    // robust is preferred in most (>90%) segment intersections in order to keep
-    // the positional error within a small interval (e.g. 50% of eps)
-    //
-    if (useRobustCross(ax, ay, bx, by, cx, cy, dx, dy)) {
-      STATS.crossRobust++;
-      p = findCrossIntersection_robust(ax, ay, bx, by, cx, cy, dx, dy);
-    } else {
-      STATS.crossFast++;
-      p = findCrossIntersection_fast(ax, ay, bx, by, cx, cy, dx, dy);
-    }
-    if (!p) { STATS.crossNull++; return null; }
-
-    // Snap p to a vertex if very close to one
-    // This avoids tiny segments caused by T-intersection overshoots and prevents
-    //   pathfinder errors related to f-p rounding.
-    // (NOTE: this may no longer be needed, since T-intersections are now detected
-    // first)
-    if (eps > 0) {
-      snapIntersectionPoint(p, ax, ay, bx, by, cx, cy, dx, dy, eps);
-    }
-    // Clamp point to x range and y range of both segments
-    // (This may occur due to fp rounding, if one segment is vertical or horizontal)
-    clampIntersectionPoint(p, ax, ay, bx, by, cx, cy, dx, dy);
-    return p;
-  }
-
-  function findCrossIntersection_fast(ax, ay, bx, by, cx, cy, dx, dy) {
-    var den = determinant2D(bx - ax, by - ay, dx - cx, dy - cy);
-    var m = orient2D(cx, cy, dx, dy, ax, ay) / den;
-    var p = [ax + m * (bx - ax), ay + m * (by - ay)];
-    if (Math.abs(den) < 1e-25) {
-      // changed from 1e-18 to 1e-25 (see geom ex1)
-      // assume that collinear and near-collinear segment intersections have been
-      // accounted for already.
-      // TODO: is this really true?
-      return null;
-    }
-    return p;
-  }
-
-  // this function, using BigInt, is 3-4x faster than the version using big.js
-  function findCrossIntersection_robust(ax, ay, bx, by, cx, cy, dx, dy) {
-    var d = findBigIntScaleFactor(ax, ay, bx, by, cx, cy, dx, dy);
-    var d2 = 16; // scale numerator of integer division by this many decimal digits
-    var k_bi = 10000000000000000n; // matches d2
-    var ax_bi = BigInt(toScaledStr(ax, d));
-    var ay_bi = BigInt(toScaledStr(ay, d));
-    var bx_bi = BigInt(toScaledStr(bx, d));
-    var by_bi = BigInt(toScaledStr(by, d));
-    var cx_bi = BigInt(toScaledStr(cx, d));
-    var cy_bi = BigInt(toScaledStr(cy, d));
-    var dx_bi = BigInt(toScaledStr(dx, d));
-    var dy_bi = BigInt(toScaledStr(dy, d));
-    var den = determinant2D(bx_bi - ax_bi, by_bi - ay_bi, dx_bi - cx_bi, dy_bi - cy_bi);
-    if (den === 0n) {
-      debug('DIV0 error - should have been identified as collinear "touch" intersection.');
-      return null;
-    }
-    var num = orient2D(cx_bi, cy_bi, dx_bi, dy_bi, ax_bi, ay_bi) * k_bi;
-    var m_bi = num / den;
-    var x_bi = ax_bi * k_bi + m_bi * (bx_bi - ax_bi);
-    var y_bi = ay_bi * k_bi + m_bi * (by_bi - ay_bi);
-    var x = fromScaledStr(x_bi.toString(), d + d2);
-    var y = fromScaledStr(y_bi.toString(), d + d2);
-    return [x, y];
-  }
-
-  function useRobustCross(ax, ay, bx, by, cx, cy, dx, dy) {
-    // angle and seg length ratio thresholds were found by comparing
-    // fast and robust outputs on sample data
-    if (innerAngle(ax, ay, bx, by, cx, cy, dx, dy) < 0.1) return true;
-    var len1 = distance2D(ax, ay, bx, by);
-    var len2 = distance2D(cx, cy, dx, dy);
-    var ratio = len1 < len2 ? len1 / len2 : len2 / len1 || 0;
-    if (ratio < 0.001) return true;
-    return false;
-  }
-
-  // Returns smaller of two angles between two segments (unsigned)
-  function innerAngle(ax, ay, bx, by, cx, cy, dx, dy) {
-    var v1x = bx - ax;
-    var v1y = by - ay;
-    var v2x = dx - cx;
-    var v2y = dy - cy;
-    var dot = v1x * v2x + v1y * v2y;
-    var mag1Sq = v1x * v1x + v1y * v1y;
-    var mag2Sq = v2x * v2x + v2y * v2y;
-    if (mag1Sq === 0 || mag2Sq === 0) {
-      return 0;
-    }
-    var cosTheta = dot / Math.sqrt(mag1Sq * mag2Sq);
-    var theta;
-    if (cosTheta > 1 - 1e-14) {
-      theta = 0;
-    } else if (cosTheta < -1 + 1e-14) {
-      theta = Math.PI;
-    } else {
-      theta = Math.acos(cosTheta);
-    }
-    if (theta >= Math.PI / 2) {
-      theta = Math.PI - theta;
-    }
-    return theta;
-  }
-
-  function testEndpointHit(epsSq, ax, ay, bx, by, cx, cy, dx, dy) {
-    return distanceSq(ax, ay, cx, cy) <= epsSq ||
-      distanceSq(ax, ay, dx, dy) <= epsSq ||
-      distanceSq(bx, by, cx, cy) <= epsSq ||
-      distanceSq(bx, by, dx, dy) <= epsSq;
-  }
-
-  function findPointSegTouches(epsSq, ax, ay, bx, by, cx, cy, dx, dy) {
-    var touches = [];
-    collectPointSegTouch(touches, epsSq, ax, ay, cx, cy, dx, dy);
-    collectPointSegTouch(touches, epsSq, bx, by, cx, cy, dx, dy);
-    collectPointSegTouch(touches, epsSq, cx, cy, ax, ay, bx, by);
-    collectPointSegTouch(touches, epsSq, dx, dy, ax, ay, bx, by);
-    if (touches.length === 0) return null;
-    if (touches.length > 4) {
-      // console.log('XX', touches.length)
-      // console.log('Seg 1', getSegFeature(ax, ay, bx, by, true))
-      // console.log('Seg 2', getSegFeature(cx, cy, dx, dy, false))
-      // Geometrically, more than two touch intersections can not occur.
-      // Is it possible that fp rounding or a bug might result in >2 touches?
-      debug('Intersection detection error');
-    }
-    return touches;
-  }
-
-  function collectPointSegTouch(arr, epsSq, px, py, ax, ay, bx, by) {
-    // The original point-seg distance function caused errors in test data.
-    // (probably because of large rounding errors with some inputs).
-    // var pab = pointSegDistSq(px, py, ax, ay, bx, by);
-    var pab = pointSegDistSq2(px, py, ax, ay, bx, by);
-    if (pab > epsSq) return; // point is too far from segment to touch
-    var pa = distanceSq(ax, ay, px, py);
-    var pb = distanceSq(bx, by, px, py);
-    if (pa <= epsSq || pb <= epsSq) return; // ignore endpoint hits
-    // console.log("Dist:", Math.sqrt(pab), "eps:", Math.sqrt(epsSq), "p:", px, py)
-    arr.push(px, py); // T intersection at P and AB
-  }
-
-  // Used by mapshaper-undershoots.js
-  // TODO: make more robust, make sure result is compatible with segmentIntersection()
-  // (rounding errors currently must be handled downstream)
-  function findClosestPointOnSeg(px, py, ax, ay, bx, by, snapArg) {
-    var dx = bx - ax,
-        dy = by - ay,
-        dotp = (px - ax) * dx + (py - ay) * dy,
-        abSq = dx * dx + dy * dy,
-        k = abSq === 0 ? -1 : dotp / abSq,
-        eps = snapArg >= 0 ? snapArg : 0.1, // 1e-6, // snap to endpoint
-        p;
-    if (k <= eps) {
-      p = [ax, ay];
-    } else if (k >= 1 - eps) {
-      p = [bx, by];
-    } else {
-      p = [ax + k * dx, ay + k * dy];
-    }
-    return p;
-  }
-
-  function snapIfCloser(p, minDist, x, y, x2, y2) {
-    var dist = distance2D(x, y, x2, y2);
-    if (dist < minDist) {
-      minDist = dist;
-      p[0] = x2;
-      p[1] = y2;
-    }
-    return minDist;
-  }
-
-  function snapIntersectionPoint(p, ax, ay, bx, by, cx, cy, dx, dy, eps) {
-    var x = p[0],
-        y = p[1],
-        snapDist = eps;
-    snapDist = snapIfCloser(p, snapDist, x, y, ax, ay);
-    snapDist = snapIfCloser(p, snapDist, x, y, bx, by);
-    snapDist = snapIfCloser(p, snapDist, x, y, cx, cy);
-    snapDist = snapIfCloser(p, snapDist, x, y, dx, dy);
-  }
-
-  function clampIntersectionPoint(p, ax, ay, bx, by, cx, cy, dx, dy) {
-    // Handle intersection points that fall outside the x-y range of either
-    // segment by snapping to nearest endpoint coordinate. Out-of-range
-    // intersection points can be caused by floating point rounding errors
-    // when a segment is vertical or horizontal. This has caused problems when
-    // repeatedly applying bbox clipping along the same segment
-    var x = p[0],
-        y = p[1],
-        s1out = false,
-        s2out = false;
-
-    // assumes that segment ranges intersect
-    if (outsideRange(x, ax, bx)) {
-      x = clampToClosestEndpoint(x, ax, bx);
-      s1out = true;
-    }
-    if (outsideRange(x, cx, dx)) {
-      x = clampToClosestEndpoint(x, cx, dx);
-      s2out = true;
-    }
-    if (outsideRange(y, ay, by)) {
-      y = clampToClosestEndpoint(y, ay, by);
-      s1out = true;
-    }
-    if (outsideRange(y, cy, dy)) {
-      y = clampToClosestEndpoint(y, cy, dy);
-      s2out = true;
-    }
-    if ((s1out || s2out)) {
-      debug('Clamping a segment intersection point');
-      // console.log("angle:", innerAngle(ax, ay, bx, by, cx, cy, dx, dy))
-      // console.log('Feature 1', getSegFeature(ax, ay, bx, by, s1out));
-      // console.log('Feature 2', getSegFeature(cx, cy, dx, dy, s2out));
-      // console.log('Point:', JSON.stringify({
-      //   type: 'Feature',
-      //   properties: {fill: 'red'},
-      //   geometry: {type: 'Point', coordinates: [p[0], p[1]]}
-      // }));
-    }
-    p[0] = x;
-    p[1] = y;
-  }
-
-
-  // a: coordinate of point
-  // b: endpoint coordinate of segment
-  // c: other endpoint of segment
-  function outsideRange(a, b, c) {
-    var out;
-    if (b < c) {
-      out = a < b || a > c;
-    } else if (b > c) {
-      out = a > b || a < c;
-    } else {
-      out = a != b;
-    }
-    return out;
-  }
-
-  function clampToClosestEndpoint(a, b, c) {
-    var lim = Math.abs(a - b) < Math.abs(a - c) ? b : c;
-    var interval = Math.abs(a - lim);
-    if (interval > 1e-15) {
-      debug("[clampToClosestEndpoint()] large clamping interval:", interval);
-    }
-    return lim;
-  }
-
-  // Determinant of matrix
-  //  | a  b |
-  //  | c  d |
-  function determinant2D(a, b, c, d) {
-    return a * d - b * c;
-  }
-
-  // returns a positive value if the points a, b, and c are arranged in
-  // counterclockwise order, a negative value if the points are in clockwise
-  // order, and zero if the points are collinear.
-  // Source: Jonathan Shewchuk http://www.cs.berkeley.edu/~jrs/meshpapers/robnotes.pdf
-  function orient2D(ax, ay, bx, by, cx, cy) {
-    return determinant2D(ax - cx, ay - cy, bx - cx, by - cy);
-  }
-
-  function orient2D_robust(ax, ay, bx, by, cx, cy) {
-    var d = findBigIntScaleFactor(ax, ay, bx, by, cx, cy);
-    var ax_bi = BigInt(toScaledStr(ax, d));
-    var ay_bi = BigInt(toScaledStr(ay, d));
-    var bx_bi = BigInt(toScaledStr(bx, d));
-    var by_bi = BigInt(toScaledStr(by, d));
-    var cx_bi = BigInt(toScaledStr(cx, d));
-    var cy_bi = BigInt(toScaledStr(cy, d));
-    var o2d_bi = orient2D(ax_bi, ay_bi, bx_bi, by_bi, cx_bi, cy_bi);
-    return fromScaledStr(o2d_bi.toString(), d);
-  }
-
-  function segmentHit_robust(ax, ay, bx, by, cx, cy, dx, dy) {
-    var d = findBigIntScaleFactor(ax, ay, bx, by, cx, cy, dx, dy);
-    var ax_bi = BigInt(toScaledStr(ax, d));
-    var ay_bi = BigInt(toScaledStr(ay, d));
-    var bx_bi = BigInt(toScaledStr(bx, d));
-    var by_bi = BigInt(toScaledStr(by, d));
-    var cx_bi = BigInt(toScaledStr(cx, d));
-    var cy_bi = BigInt(toScaledStr(cy, d));
-    var dx_bi = BigInt(toScaledStr(dx, d));
-    var dy_bi = BigInt(toScaledStr(dy, d));
-    return segmentHit_fast(ax_bi, ay_bi, bx_bi, by_bi, cx_bi, cy_bi, dx_bi, dy_bi);
-  }
-
-  // Source: Sedgewick, _Algorithms in C_
-  // (Other functions were tried that were more sensitive to floating point errors
-  //  than this function)
-  function segmentHit_fast(ax, ay, bx, by, cx, cy, dx, dy) {
-    return orient2D(ax, ay, bx, by, cx, cy) *
-        orient2D(ax, ay, bx, by, dx, dy) <= 0 &&
-        orient2D(cx, cy, dx, dy, ax, ay) *
-        orient2D(cx, cy, dx, dy, bx, by) <= 0;
-  }
-
-  // Useful for determining if a segment that intersects another segment is
-  // entering or leaving an enclosed buffer area
-  // returns -1 if angle of p1p2 -> p3p4 is counter-clockwise (left turn)
-  // returns 1 if angle is clockwise
-  // return 0 if segments are collinear
-  function segmentTurn(p1, p2, p3, p4) {
-    var ax = p1[0],
-        ay = p1[1],
-        bx = p2[0],
-        by = p2[1],
-        // shift p3p4 segment to start at p2
-        dx = bx - p3[0],
-        dy = by - p3[1],
-        cx = p4[0] + dx,
-        cy = p4[1] + dy,
-        orientation = orient2D(ax, ay, bx, by, cx, cy);
-      if (!orientation) return 0;
-      return orientation < 0 ? 1 : -1;
-  }
-
-  var SegmentGeom = /*#__PURE__*/Object.freeze({
-    __proto__: null,
-    findClosestPointOnSeg: findClosestPointOnSeg,
-    findCrossIntersection_robust: findCrossIntersection_robust,
-    orient2D: orient2D,
-    orient2D_robust: orient2D_robust,
-    segmentHit_fast: segmentHit_fast,
-    segmentIntersection: segmentIntersection,
-    segmentIntersectionStats: segmentIntersectionStats,
-    segmentIntersectionStatsReset: segmentIntersectionStatsReset,
-    segmentTurn: segmentTurn
-  });
-
-  var geom = Object.assign({}, Geom, PolygonGeom, PathGeom, SegmentGeom, PolygonCentroid);
-
-  function getWorldBounds(e) {
-    e = utils.isFiniteNumber(e) ? e : 1e-10;
-    return [-180 + e, -90 + e, 180 - e, 90 - e];
-  }
-
-  function probablyDecimalDegreeBounds(b) {
-    var world = getWorldBounds(-1), // add a bit of excess
-        bbox = (b instanceof Bounds) ? b.toArray() : b;
-    return geom.containsBounds(world, bbox);
-  }
-
-  function clampToWorldBounds(b) {
-    var bbox = (b instanceof Bounds) ? b.toArray() : b;
-    return new Bounds().setBounds(Math.max(bbox[0], -180), Math.max(bbox[1], -90),
-        Math.min(bbox[2], 180), Math.min(bbox[3], 90));
-  }
-
-  function getAntimeridian(lon0) {
-    var anti = lon0 - 180;
-    while (anti <= -180) anti += 360;
-    return anti;
-  }
-
-  // Pure geometry-type predicates for layers. Extracted from layer-utils.mjs
-  // so that point-utils -- which only needs `layerHasPoints` -- can avoid
-  // importing from layer-utils (which in turn imports point-utils for its
-  // path/bound helpers, forming a cycle).
-
-
-  function layerHasGeometry(lyr) {
-    return layerHasPaths(lyr) || layerHasPoints(lyr);
-  }
-
-  function layerHasRaster(lyr) {
-    return !!(lyr && lyr.raster_type && lyr.raster);
-  }
-
-  function layerIsGeometric(lyr) {
-    return !!lyr.geometry_type; // only checks type, includes empty layers
-  }
-
-  function layerHasPaths(lyr) {
-    return (lyr.geometry_type == 'polygon' || lyr.geometry_type == 'polyline') &&
-      layerHasNonNullShapes(lyr);
-  }
-
-  function layerHasPoints(lyr) {
-    return lyr.geometry_type == 'point' && layerHasNonNullShapes(lyr);
-  }
-
-  function layerHasNonNullShapes(lyr) {
-    return utils.some(lyr.shapes || [], function(shp) {
-      return !!shp;
-    });
-  }
-
-  function countPointsInLayer(lyr) {
-    var count = 0;
-    if (layerHasPoints(lyr)) {
-      forEachPoint(lyr.shapes, function() {count++;});
-    }
-    return count;
-  }
-
-  // export function getPointBounds(shapes) {
-  //   var bounds = new Bounds();
-  //   forEachPoint(shapes, function(p) {
-  //     bounds.mergePoint(p[0], p[1]);
-  //   });
-  //   return bounds;
-  // }
-
-  function getPointBounds(shapes) {
-    var bounds = new Bounds();
-    var shp, x, y, xmin = Infinity, ymin = Infinity, xmax = -Infinity, ymax = -Infinity;
-    for (var i=0, n=shapes.length; i<n; i++) {
-      shp = shapes[i];
-      for (var j=0, m=shp ? shp.length : 0; j<m; j++) {
-        x = shp[j][0];
-        y = shp[j][1];
-        if (x > xmax) xmax = x;
-        if (x < xmin) xmin = x;
-        if (y > ymax) ymax = y;
-        if (y < ymin) ymin = y;
-      }
-    }
-    return shp ? new Bounds(xmin, ymin, xmax, ymax) : new Bounds();
-  }
-
-  function getPointFeatureBounds(shape, bounds) {
-    var n = shape ? shape.length : 0;
-    var p;
-    if (!bounds) bounds = new Bounds();
-    for (var i=0; i<n; i++) {
-      p = shape[i];
-      bounds.mergePoint(p[0], p[1]);
-    }
-    return bounds;
-  }
-
-  // NOTE: layers can have multipoint features and null features
-  function getPointsInLayer(lyr) {
-    var coords = [];
-    forEachPoint(lyr.shapes, function(p) {
-      coords.push(p);
-    });
-    return coords;
-  }
-
-  // Iterate over each [x,y] point in a layer
-  // shapes: one layer's "shapes" array
-  function forEachPoint(shapes, cb) {
-    var i, n, j, m, shp;
-    for (i=0, n=shapes.length; i<n; i++) {
-      shp = shapes[i];
-      for (j=0, m=shp ? shp.length : 0; j<m; j++) {
-        cb(shp[j], i);
-      }
-    }
-  }
-
-  function DataTable(obj) {
-    var records;
-    if (utils.isArray(obj)) {
-      records = obj;
-    } else {
-      records = [];
-      // integer object: create empty records
-      if (utils.isInteger(obj)) {
-        for (var i=0; i<obj; i++) {
-          records.push({});
-        }
-      } else if (obj) {
-        error("Invalid DataTable constructor argument:", obj);
-      }
-    }
-
-    this.getRecords = function() {
-      return records;
-    };
-
-    // Same-name method in ShapefileTable doesn't require parsing the entire DBF file
-    this.getReadOnlyRecordAt = function(i) {
-      return copyRecord$1(records[i]); // deep-copies plain objects but not other constructed objects
-    };
-  }
-
-  DataTable.prototype = {
-
-    getUndoId: function() {
-      return getUndoId(this);
-    },
-
-    getUndoRevision: function() {
-      return getUndoRevision(this);
-    },
-
-    captureTableBefore: function(detail) {
-      noteTableWillChange(this, detail);
-    },
-
-    captureRecordsBefore: function(ids, detail) {
-      noteTableRecordsWillChange(this, ids, detail);
-    },
-
-    captureFieldsBefore: function(fields, detail) {
-      noteTableFieldsWillChange(this, fields, detail);
-    },
-
-    captureSchemaBefore: function(detail) {
-      noteTableSchemaWillChange(this, detail);
-    },
-
-    markChanged: function(detail) {
-      return markTableChanged(this, detail);
-    },
-
-    markRecordsChanged: function(ids, detail) {
-      return markTableRecordsChanged(this, ids, detail);
-    },
-
-    markFieldsChanged: function(fields, detail) {
-      return markTableFieldsChanged(this, fields, detail);
-    },
-
-    markSchemaChanged: function(detail) {
-      return markTableSchemaChanged(this, detail);
-    },
-
-    fieldExists: function(name) {
-      return utils.contains(this.getFields(), name);
-    },
-
-    toString: function() {return JSON.stringify(this);},
-
-    toJSON: function() {
-      return this.getRecords();
-    },
-
-    addField: function(name, init) {
-      var useFunction = utils.isFunction(init);
-      if (!utils.isNumber(init) && !utils.isString(init) && !useFunction) {
-        error("DataTable#addField() requires a string, number or function for initialization");
-      }
-      if (this.fieldExists(name)) error("DataTable#addField() tried to add a field that already exists:", name);
-      // var dataFieldRxp = /^[a-zA-Z_][a-zA-Z_0-9]*$/;
-      // if (!dataFieldRxp.test(name)) error("DataTable#addField() invalid field name:", name);
-
-      this.captureSchemaBefore({operation: 'addField', field: name});
-      this.getRecords().forEach(function(obj, i) {
-        obj[name] = useFunction ? init(obj, i) : init;
-      });
-      this.markSchemaChanged({operation: 'addField', field: name});
-    },
-
-    getRecordAt: function(i) {
-      return this.getRecords()[i];
-    },
-
-    addIdField: function() {
-      this.addField('FID', function(obj, i) {
-        return i;
-      });
-    },
-
-    deleteField: function(f) {
-      this.captureSchemaBefore({operation: 'deleteField', field: f});
-      this.getRecords().forEach(function(o) {
-        delete o[f];
-      });
-      this.markSchemaChanged({operation: 'deleteField', field: f});
-    },
-
-    getFields: function() {
-      return findFieldNames(this.getRecords());
-    },
-
-    isEmpty: function() {
-      return this.getFields().length === 0 || this.size() === 0;
-    },
-
-    update: function(f) {
-      var records = this.getRecords();
-      this.captureTableBefore({operation: 'update'});
-      for (var i=0, n=records.length; i<n; i++) {
-        records[i] = f(records[i], i);
-      }
-      this.markChanged({operation: 'update'});
-    },
-
-    clone: function() {
-      // TODO: this could be sped up using a record constructor function
-      // (see getRecordConstructor() in DbfReader)
-      var records2 = this.getRecords().map(copyRecord$1);
-      return new DataTable(records2);
-    },
-
-    size: function() {
-      return this.getRecords().length;
-    }
-  };
-
-  // TODO: make this stricter (could give false positive on some degenerate paths)
-  function pathIsRectangle(ids, arcs) {
-    var bbox = arcs.getSimpleShapeBounds(ids).toArray();
-    var iter = arcs.getShapeIter(ids);
-    var count = 0;
-    while (iter.hasNext()) {
-      if (iter.x != bbox[0] && iter.x != bbox[2] ||
-          iter.y != bbox[1] && iter.y != bbox[3]) {
-        return false;
-      }
-      count++;
-    }
-    if (count < 5) return false;
-    if (bbox[2] > bbox[0] === false || bbox[3] > bbox[1] === false) return false;
-    return true;
-  }
-
-  function bboxToCoords(bbox) {
-    return [[bbox[0], bbox[1]], [bbox[0], bbox[3]], [bbox[2], bbox[3]],
-        [bbox[2], bbox[1]], [bbox[0], bbox[1]]];
-  }
-
-  // Insert a column of values into a (new or existing) data field
-  function insertFieldValues(lyr, fieldName, values) {
-    var size = getFeatureCount(lyr) || values.length,
-        table = lyr.data,
-        fieldExists,
-        records,
-        rec, val;
-
-    if (!table) {
-      noteLayerWillChange(lyr, {operation: 'insertFieldValues', unit: 'data'});
-      table = lyr.data = new DataTable(size);
-      markLayerChanged(lyr, {operation: 'insertFieldValues', unit: 'data'});
-    }
-    fieldExists = table.fieldExists(fieldName);
-    if (fieldExists) {
-      table.captureFieldsBefore([fieldName], {operation: 'insertFieldValues'});
-    } else {
-      table.captureSchemaBefore({operation: 'insertFieldValues', field: fieldName});
-    }
-    records = table.getRecords();
-    for (var i=0, n=records.length; i<n; i++) {
-      rec = records[i];
-      val = values[i];
-      if (!rec) rec = records[i] = {};
-      rec[fieldName] = val === undefined ? null : val;
-    }
-    if (fieldExists) {
-      table.markFieldsChanged([fieldName], {operation: 'insertFieldValues'});
-    } else {
-      table.markSchemaChanged({operation: 'insertFieldValues', field: fieldName});
-    }
-  }
-
-  function getLayerDataTable(lyr) {
-    var data = lyr.data;
-    if (!data) {
-      noteLayerWillChange(lyr, {operation: 'getLayerDataTable', unit: 'data'});
-      data = lyr.data = new DataTable(lyr.shapes ? lyr.shapes.length : 0);
-      markLayerChanged(lyr, {operation: 'getLayerDataTable', unit: 'data'});
-    }
-    return data;
-  }
-
-  function layerHasAttributeData(lyr) {
-    return lyr.data && lyr.data.getFields().length > 0;
-  }
-
-  function layerHasNonNullData(lyr) {
-    return lyr.data && getFirstNonEmptyRecord(lyr.data.getRecords()) ? true : false;
-  }
-
-  function layerIsRectangle(lyr, arcs) {
-    return layerOnlyHasRectangles(lyr, arcs) && lyr.shapes.length == 1;
-  }
-
-  function layerOnlyHasRectangles(lyr, arcs) {
-    if (!layerHasPaths(lyr)) return false;
-    if (countMultiPartFeatures(lyr) > 0) return false;
-    return lyr.shapes.every(function(shp) {
-      if (!shp) return true;
-      return pathIsRectangle(shp[0], arcs);
-    });
-  }
-
-  function deleteFeatureById(lyr, i) {
-    if (lyr.shapes) {
-      noteLayerWillChange(lyr, {operation: 'deleteFeatureById', unit: 'shapes'});
-      lyr.shapes.splice(i, 1);
-      markLayerChanged(lyr, {operation: 'deleteFeatureById', unit: 'shapes'});
-    }
-    if (lyr.data) {
-      lyr.data.captureTableBefore({operation: 'deleteFeatureById'});
-      lyr.data.getRecords().splice(i, 1);
-      lyr.data.markChanged({operation: 'deleteFeatureById'});
-    }
-  }
-
-  // TODO: move elsewhere (moved here from mapshaper-point-utils to avoid circular dependency)
-  function transformPointsInLayer(lyr, f) {
-    if (layerHasPoints(lyr)) {
-      noteLayerWillChange(lyr, {operation: 'transformPointsInLayer', unit: 'shapes'});
-      forEachPoint(lyr.shapes, function(p) {
-        var p2 = f(p[0], p[1]);
-        p[0] = p2[0];
-        p[1] = p2[1];
-      });
-      markLayerChanged(lyr, {operation: 'transformPointsInLayer', unit: 'shapes'});
-    }
-  }
-
-  function getFeatureCount(lyr) {
-    var count = 0;
-    if (layerHasRaster(lyr)) {
-      count = 1;
-    } else if (lyr.data) {
-      count = lyr.data.size();
-    } else if (lyr.shapes) {
-      count = lyr.shapes.length;
-    }
-    return count;
-  }
-
-  function layerIsEmpty(lyr) {
-    return getFeatureCount(lyr) == 0;
-  }
-
-  function requireDataField(obj, field, msg) {
-    var data = obj.fieldExists ? obj : obj.data; // accept layer or DataTable
-    if (!field) stop('Missing a field parameter');
-    if (!data || !data.fieldExists(field)) {
-      stop(msg || 'Missing a field named:', field);
-    }
-  }
-
-  function requireDataFields(table, fields) {
-    if (!fields || !fields.length) return;
-    if (!table) {
-      stop("Missing attribute data");
-    }
-    var dataFields = table.getFields(),
-        missingFields = utils.difference(fields, dataFields);
-    if (missingFields.length > 0) {
-      stop("Table is missing one or more fields:\n",
-          missingFields, "\nExisting fields:", '\n' + formatStringsAsGrid(dataFields));
-    }
-  }
-
-  function layerTypeMessage(lyr, defaultMsg, customMsg) {
-    var msg;
-    // check that custom msg is a string (could be an index if require function is called by forEach)
-    if (customMsg && utils.isString(customMsg)) {
-      msg = customMsg;
-    } else {
-      msg = defaultMsg + ', ';
-      if (!lyr || !lyr.geometry_type) {
-        msg += 'received a layer with no geometry';
-      } else {
-        msg += 'received a ' + lyr.geometry_type + ' layer';
-      }
-    }
-    return msg;
-  }
-
-  function requirePointLayer(lyr, msg) {
-    if (!lyr || lyr.geometry_type !== 'point')
-      stop(layerTypeMessage(lyr, "Expected a point layer", msg));
-  }
-
-  function requireSinglePointLayer(lyr, msg) {
-    requirePointLayer(lyr);
-    if (countMultiPartFeatures(lyr) > 0) {
-      stop(msg || 'This command requires single points; layer contains multi-point features.');
-    }
-  }
-
-  function requirePolylineLayer(lyr, msg) {
-    if (!lyr || lyr.geometry_type !== 'polyline')
-      stop(layerTypeMessage(lyr, "Expected a polyline layer", msg));
-  }
-
-  function requirePolygonLayer(lyr, msg) {
-    if (!lyr || lyr.geometry_type !== 'polygon')
-      stop(layerTypeMessage(lyr, "Expected a polygon layer", msg));
-  }
-
-  function requirePathLayer(lyr, msg) {
-    if (!lyr || !layerHasPaths(lyr))
-      stop(layerTypeMessage(lyr, "Expected a polygon or polyline layer", msg));
-  }
-
-  // Used by info command and gui layer menu
-  function getLayerSourceFile(lyr, dataset) {
-    var inputs = dataset.info && dataset.info.input_files;
-    return inputs && inputs[0] || '';
-  }
-
-  // Return layers in @dataset that were *not* selected by the current target
-  // set but still match a command-specific geometry predicate.
-  //
-  // Used for command side-effect messaging, e.g.:
-  //   - -proj (shared dataset reprojection)
-  //   - -simplify (shared arc simplification)
-  //
-  // @targetLayers should be the layer selection that triggered the command.
-  // If all layers are targeted (or target selection is missing), returns [].
-  // @filterFn optional predicate (lyr -> bool) for command-specific relevance.
-  function getImplicitlyTargetedLayers(dataset, targetLayers, filterFn) {
-    if (!targetLayers || targetLayers.length === 0 || targetLayers.length >= dataset.layers.length) {
-      return [];
-    }
-    var targeted = new Set(targetLayers);
-    return dataset.layers.filter(function(lyr) {
-      return !targeted.has(lyr) && (!filterFn || filterFn(lyr));
-    });
-  }
-
-  function getImplicitlyTargetedLayerNames(dataset, targetLayers, filterFn) {
-    return getImplicitlyTargetedLayers(dataset, targetLayers, filterFn).map(function(lyr) {
-      return lyr.name || '[unnamed]';
-    });
-  }
-
-  // Divide a collection of features with mixed types into layers of a single type
-  // (Used for importing TopoJSON and GeoJSON features)
-  function divideFeaturesByType(shapes, properties, types) {
-    var typeSet = utils.uniq(types);
-    var layers = typeSet.map(function(geoType) {
-      var p = [],
-          s = [],
-          dataNulls = 0,
-          rec;
-
-      for (var i=0, n=shapes.length; i<n; i++) {
-        if (types[i] != geoType) continue;
-        if (geoType) s.push(shapes[i]);
-        rec = properties[i];
-        p.push(rec);
-        if (!rec) dataNulls++;
-      }
-      return {
-        geometry_type: geoType,
-        shapes: s,
-        data: dataNulls < p.length ? new DataTable(p) : null
-      };
-    });
-    return layers;
-  }
-
-  // make a stub copy if the no_replace option is given, else pass thru src layer
-  function getOutputLayer(src, opts) {
-    return opts && opts.no_replace ? {geometry_type: src.geometry_type} : src;
-  }
-
-  //
-  function setOutputLayerName(dest, src, defName, opts) {
-    opts = opts || {};
-    if (opts.name) {
-      dest.name = opts.name;
-    } else if (opts.no_replace) {
-      dest.name = defName || undefined;
-    } else {
-      dest.name = src && src.name || defName || undefined;
-    }
-  }
-
-  // Make a deep copy of a layer
-  function copyLayer(lyr) {
-    var copy = copyLayerShapes(lyr);
-    if (copy.data) {
-      copy.data = copy.data.clone();
-    }
-    return copy;
-  }
-
-  // Make a shallow copy of a path layer; replace layer.shapes with an array that is
-  // filtered to exclude paths containing any of the arc ids contained in arcIds.
-  // arcIds: an array of (non-negative) arc ids to exclude
-  function filterPathLayerByArcIds(pathLyr, arcIds) {
-    var index = arcIds.reduce(function(memo, id) {
-      memo[id] = true;
-      return memo;
-    }, {});
-    // deep copy shapes; this could be optimized to only copy shapes that are modified
-    var shapes = cloneShapes(pathLyr.shapes);
-    editShapes(shapes, onPath); // remove paths that are missing shapes
-    return utils.defaults({shapes: shapes}, pathLyr);
-
-    function onPath(path) {
-      for (var i=0; i<path.length; i++) {
-        if (absArcId(path[i]) in index) {
-          return null;
-        }
-      }
-      return path;
-    }
-  }
-
-  function copyLayerShapes(lyr) {
-    var copy = utils.extend({}, lyr);
-    if (lyr.shapes) {
-      copy.shapes = cloneShapes(lyr.shapes);
-    }
-    if (lyr.raster) copy.raster = copyRasterData(lyr.raster);
-    return copy;
-  }
-
-  function countMultiPartFeatures(shapes) {
-    var count = 0;
-    for (var i=0, n=shapes.length; i<n; i++) {
-      if (shapes[i] && shapes[i].length > 1) count++;
-    }
-    return count;
-  }
-
-  // moving this here from mapshaper-path-utils to avoid circular dependency
-  function getArcPresenceTest2(layers, arcs) {
-    var counts = countArcsInLayers(layers, arcs);
-    return function(arcId) {
-      return counts[absArcId(arcId)] > 0;
-    };
-  }
-
-  // Count arcs in a collection of layers
-  function countArcsInLayers(layers, arcs) {
-    var counts = new Uint32Array(arcs.size());
-    layers.filter(layerHasPaths).forEach(function(lyr) {
-      countArcsInShapes(lyr.shapes, counts);
-    });
-    return counts;
-  }
-
-  // Returns a Bounds object
-  function getLayerBounds(lyr, arcs) {
-    var bounds = null;
-    if (lyr.geometry_type == 'point') {
-      bounds = getPointBounds(lyr.shapes);
-    } else if (lyr.geometry_type == 'polygon' || lyr.geometry_type == 'polyline') {
-      bounds = getPathBounds(lyr.shapes, arcs);
-    } else if (layerHasRaster(lyr)) {
-      bounds = getRasterLayerBounds(lyr);
-    } else {
-      // just return null if layer has no bounds
-      // error("Layer is missing a valid geometry type");
-    }
-    return bounds;
-  }
-
-
-  function isolateLayer(layer, dataset) {
-    return utils.defaults({
-      layers: dataset.layers.filter(function(lyr) {return lyr == layer;})
-    }, dataset);
-  }
-
-  function initDataTable(lyr) {
-    noteLayerWillChange(lyr, {operation: 'initDataTable', unit: 'data'});
-    lyr.data = new DataTable(getFeatureCount(lyr));
-    markLayerChanged(lyr, {operation: 'initDataTable', unit: 'data'});
-  }
-
-  // Coordinate iterators
-  //
-  // Interface:
-  //   properties: x, y
-  //   method: hasNext()
-  //
-  // Usage:
-  //   while (iter.hasNext()) {
-  //     iter.x, iter.y; // do something w/ x & y
-  //   }
-
-  // Iterate over an array of [x, y] points
-  //
-  function PointIter(points) {
-    var n = points.length,
-        i = 0,
-        iter = {
-          x: 0,
-          y: 0,
-          hasNext: hasNext
-        };
-    function hasNext() {
-      if (i >= n) return false;
-      iter.x = points[i][0];
-      iter.y = points[i][1];
-      i++;
-      return true;
-    }
-    return iter;
-  }
-
-
-  // Constructor takes arrays of coords: xx, yy, zz (optional)
-  //
-  function ArcIter(xx, yy) {
-    this._i = 0;
-    this._n = 0;
-    this._inc = 1;
-    this._xx = xx;
-    this._yy = yy;
-    this.i = 0;
-    this.x = 0;
-    this.y = 0;
-  }
-
-  ArcIter.prototype.init = function(i, len, fw) {
-    if (fw) {
-      this._i = i;
-      this._inc = 1;
-    } else {
-      this._i = i + len - 1;
-      this._inc = -1;
-    }
-    this._n = len;
-    return this;
-  };
-
-  ArcIter.prototype.hasNext = function() {
-    var i = this._i;
-    if (this._n > 0) {
-      this._i = i + this._inc;
-      this.x = this._xx[i];
-      this.y = this._yy[i];
-      this.i = i;
-      this._n--;
-      return true;
-    }
-    return false;
-  };
-
-  function FilteredArcIter(xx, yy, zz) {
-    var _zlim = 0,
-        _i = 0,
-        _inc = 1,
-        _stop = 0;
-
-    this.init = function(i, len, fw, zlim) {
-      _zlim = zlim || 0;
-      if (fw) {
-        _i = i;
-        _inc = 1;
-        _stop = i + len;
-      } else {
-        _i = i + len - 1;
-        _inc = -1;
-        _stop = i - 1;
-      }
-      return this;
-    };
-
-    this.hasNext = function() {
-      // using local vars is significantly faster when skipping many points
-      var zarr = zz,
-          i = _i,
-          j = i,
-          zlim = _zlim,
-          stop = _stop,
-          inc = _inc;
-      if (i == stop) return false;
-      do {
-        j += inc;
-      } while (j != stop && zarr[j] < zlim);
-      _i = j;
-      this.x = xx[i];
-      this.y = yy[i];
-      this.i = i;
-      return true;
-    };
-  }
-
-  function MultiShapeIter(arcs) {
-    var iter = new ShapeIter(arcs);
-
-  }
-
-  // Iterate along a path made up of one or more arcs.
-  //
-  function ShapeIter(arcs) {
-    this._arcs = arcs;
-    this._i = 0;
-    this._n = 0;
-    this.x = 0;
-    this.y = 0;
-    // this.i = -1;
-  }
-
-  ShapeIter.prototype.hasNext = function() {
-    var arc = this._arc;
-    if (this._i < this._n === false) {
-      return false;
-    }
-    if (arc.hasNext()) {
-      this.x = arc.x;
-      this.y = arc.y;
-      // this.i = arc.i;
-      return true;
-    }
-    this.nextArc();
-    return this.hasNext();
-  };
-
-  ShapeIter.prototype.init = function(ids) {
-    this._ids = ids;
-    this._n = ids.length;
-    this.reset();
-    return this;
-  };
-
-  ShapeIter.prototype.nextArc = function() {
-    var i = this._i + 1;
-    if (i < this._n) {
-      this._arc = this._arcs.getArcIter(this._ids[i]);
-      if (i > 0) this._arc.hasNext(); // skip first point
-    }
-    this._i = i;
-  };
-
-  ShapeIter.prototype.reset = function() {
-    this._i = -1;
-    this.nextArc();
-  };
-
-  // Returns a function for converting simplification ratio [0-1] to an interval value.
-  // If the dataset is large, the value is an approximation (for speed while using slider)
-  function getThresholdFunction(arcs) {
-    var size = arcs.getPointCount(),
-        nth = Math.ceil(size / 5e5),
-        sortedThresholds = arcs.getRemovableThresholds(nth);
-        // Sort simplification thresholds for all non-endpoint vertices
-        // for quick conversion of simplification percentage to threshold value.
-        // For large datasets, use every nth point, for faster sorting.
-        // utils.quicksort(sortedThresholds, false); // descending
-        utils.quicksort(sortedThresholds, true); // ascending
-
-    return function(pct) {
-      var n = sortedThresholds.length;
-      var rank = retainedPctToRank(pct, sortedThresholds.length);
-      if (rank < 1) return 0;
-      if (rank > n) return Infinity;
-      return sortedThresholds[rank-1];
-    };
-  }
-
-  // Return integer rank of n (1-indexed) or 0 if pct <= 0 or n+1 if pct >= 1
-  function retainedPctToRank(pct, n) {
-    var rank;
-    if (n === 0 || pct >= 1) {
-      rank = 0;
-    } else if (pct <= 0) {
-      rank = n + 1;
-    } else {
-      rank = Math.floor((1 - pct) * (n + 2));
-    }
-    return rank;
-  }
-
-  // nth (optional): sample every nth threshold (use estimate for speed)
-  function getThresholdByPct(pct, arcs, nth) {
-    var tmp = arcs.getRemovableThresholds(nth),
-        rank = retainedPctToRank(pct, tmp.length);
-    if (rank < 1) return 0;
-    if (rank > tmp.length) return Infinity;
-    return utils.findValueByRank(tmp, rank);
-  }
-
-  // An interface for managing a collection of paths.
-  // Constructor signatures:
-  //
-  // ArcCollection(arcs)
-  //    arcs is an array of polyline arcs; each arc is an array of points: [[x0, y0], [x1, y1], ... ]
-  //
-  // ArcCollection(nn, xx, yy)
-  //    nn is an array of arc lengths; xx, yy are arrays of concatenated coords;
-  function ArcCollection() {
-    var _xx, _yy,  // coordinates data
-        _ii, _nn,  // indexes, sizes
-        _zz, _zlimit = 0, // simplification
-        _bb, _allBounds, // bounding boxes
-        _arcIter, _filteredArcIter; // path iterators
-
-    if (arguments.length == 1) {
-      initLegacyArcs(arguments[0]);  // want to phase this out
-    } else if (arguments.length == 3) {
-      initXYData.apply(this, arguments);
-    } else if (arguments.length === 0) {
-      initLegacyArcs([]); // empty collection
-    } else {
-      error("ArcCollection() Invalid arguments");
-    }
-
-    function initLegacyArcs(arcs) {
-      var xx = [], yy = [];
-      var nn = arcs.map(function(points) {
-        var n = points ? points.length : 0;
-        for (var i=0; i<n; i++) {
-          xx.push(points[i][0]);
-          yy.push(points[i][1]);
-        }
-        return n;
-      });
-      initXYData(nn, xx, yy);
-    }
-
-    function initXYData(nn, xx, yy) {
-      var size = nn.length;
-      if (nn instanceof Array) nn = new Uint32Array(nn);
-      if (xx instanceof Array) xx = new Float64Array(xx);
-      if (yy instanceof Array) yy = new Float64Array(yy);
-      _xx = xx;
-      _yy = yy;
-      _nn = nn;
-      _zz = null;
-      _zlimit = 0;
-      _filteredArcIter = null;
-
-      // generate array of starting idxs of each arc
-      _ii = new Uint32Array(size);
-      for (var idx = 0, j=0; j<size; j++) {
-        _ii[j] = idx;
-        idx += nn[j];
-      }
-
-      if (idx != _xx.length || _xx.length != _yy.length) {
-        error("ArcCollection#initXYData() Counting error");
-      }
-
-      initBounds();
-      // Pre-allocate some path iterators for repeated use.
-      _arcIter = new ArcIter(_xx, _yy);
-      return this;
-    }
-
-    function initZData(zz) {
-      if (!zz) {
-        _zz = null;
-        _zlimit = 0;
-        _filteredArcIter = null;
-      } else {
-        if (zz.length != _xx.length) error("ArcCollection#initZData() mismatched arrays");
-        if (zz instanceof Array) zz = new Float64Array(zz);
-        _zz = zz;
-        _filteredArcIter = new FilteredArcIter(_xx, _yy, _zz);
-      }
-    }
-
-    function initBounds() {
-      var numArcs = _nn.length;
-      _bb = new Float64Array(numArcs * 4);
-      _allBounds = new Bounds();
-      for (var i=0; i<numArcs; i++) {
-        initArcBounds(i);
-      }
-    }
-
-    function initArcBounds(i) {
-      var arcLen = _nn[i];
-      var arcOffs = _ii[i];
-      var j = i * 4;
-      var b = calcArcBounds(_xx, _yy, arcOffs, arcLen);
-      // NOTE: if arcLen is 0, bounds coords are undefined, coerced to NaN in _bb.
-      _bb[j++] = b[0];
-      _bb[j++] = b[1];
-      _bb[j++] = b[2];
-      _bb[j] = b[3];
-      _allBounds.mergeBounds(b);
-    }
-
-    this.updateArcBounds = function(arcId) {
-      this.captureArcsBefore({operation: 'updateArcBounds', arcId: arcId});
-      initArcBounds(arcId);
-      this.markArcsChanged({operation: 'updateArcBounds', arcId: arcId});
-    };
-
-    this.updateVertexData = function(nn, xx, yy, zz) {
-      this.captureArcsBefore({operation: 'updateVertexData'});
-      initXYData(nn, xx, yy);
-      initZData(zz || null);
-      this.markArcsChanged({operation: 'updateVertexData'});
-    };
-
-    this.getUndoId = function() {
-      return getUndoId(this);
-    };
-
-    this.getUndoRevision = function() {
-      return getUndoRevision(this);
-    };
-
-    this.captureArcsBefore = function(detail) {
-      noteArcsWillChange(this, detail);
-    };
-
-    this.captureArcsSimplificationBefore = function(detail) {
-      noteArcsSimplificationWillChange$1(this, detail);
-    };
-
-    this.markArcsChanged = function(detail) {
-      return markArcsChanged(this, detail);
-    };
-
-    this.markArcsSimplificationChanged = function(detail) {
-      return markArcsSimplificationChanged$1(this, detail);
-    };
-
-    this.getCopy = function() {
-      var copy = new ArcCollection(new Int32Array(_nn), new Float64Array(_xx),
-          new Float64Array(_yy));
-      if (_zz) {
-        copy.setThresholds(new Float64Array(_zz));
-        copy.setRetainedInterval(_zlimit);
-      }
-      return copy;
-    };
-
-
-    // Give access to raw data arrays...
-    this.getVertexData = getVertexData;
-
-    function getVertexData() {
-      return {
-        xx: _xx,
-        yy: _yy,
-        zz: _zz,
-        bb: _bb,
-        nn: _nn,
-        ii: _ii
-      };
-    }
-
-    function getFilteredPointCount() {
-      if (!_zz || !_zlimit) return this.getPointCount();
-      return countFilteredVertices(_zz, _zlimit);
-    }
-
-    function getFilteredVertexData() {
-      return filterVertexData(getVertexData(), _zlimit);
-    }
-
-    this.getFilteredCopy = function() {
-      if (!_zz || _zlimit === 0) return this.getCopy();
-      var data = getFilteredVertexData();
-      var copy = new ArcCollection(data.nn, data.xx, data.yy);
-      copy.setThresholds(data.zz);
-      return copy;
-    };
-
-    // Return arcs as arrays of [x, y] points (intended for testing).
-    this.toArray = function() {
-      var arr = [];
-      this.forEach(function(iter) {
-        var arc = [];
-        while (iter.hasNext()) {
-          arc.push([iter.x, iter.y]);
-        }
-        arr.push(arc);
-      });
-      return arr;
-    };
-
-    this.toJSON = function() {
-      return this.toArray();
-    };
-
-    // @cb function(i, j, xx, yy)
-    this.forEachArcSegment = function(arcId, cb) {
-      var fw = arcId >= 0,
-          absId = fw ? arcId : ~arcId,
-          zlim = this.getRetainedInterval(),
-          n = _nn[absId],
-          step = fw ? 1 : -1,
-          v1 = fw ? _ii[absId] : _ii[absId] + n - 1,
-          v2 = v1,
-          xx = _xx, yy = _yy, zz = _zz,
-          count = 0;
-
-      for (var j = 1; j < n; j++) {
-        v2 += step;
-        if (zlim === 0 || zz[v2] >= zlim) {
-          cb(v1, v2, xx, yy);
-          v1 = v2;
-          count++;
-        }
-      }
-      return count;
-    };
-
-    // @cb function(i, j, xx, yy)
-    this.forEachSegment = function(cb) {
-      var count = 0;
-      for (var i=0, n=this.size(); i<n; i++) {
-        count += this.forEachArcSegment(i, cb);
-      }
-      return count;
-    };
-
-    this.transformPoints = function(f) {
-      var xx = _xx, yy = _yy, arcId = -1, n = 0, p;
-      this.captureArcsBefore({operation: 'transformPoints'});
-      for (var i=0, len=xx.length; i<len; i++, n--) {
-        while (n === 0) {
-          n = _nn[++arcId];
-        }
-        p = f(xx[i], yy[i], arcId);
-        if (p) {
-          xx[i] = p[0];
-          yy[i] = p[1];
-        }
-      }
-      initBounds();
-      this.markArcsChanged({operation: 'transformPoints'});
-    };
-
-    // Return an ArcIter object for each path in the dataset
-    //
-    this.forEach = function(cb) {
-      for (var i=0, n=this.size(); i<n; i++) {
-        cb(this.getArcIter(i), i);
-      }
-    };
-
-    // Iterate over arcs with access to low-level data
-    //
-    this.forEach2 = function(cb) {
-      for (var arcId=0, n=this.size(); arcId<n; arcId++) {
-        cb(arcId, _ii[arcId], _nn[arcId], _xx, _yy, _zz);
-      }
-    };
-
-    this.forEach3 = function(cb) {
-      var start, end, xx, yy, zz;
-      for (var arcId=0, n=this.size(); arcId<n; arcId++) {
-        start = _ii[arcId];
-        end = start + _nn[arcId];
-        xx = _xx.subarray(start, end);
-        yy = _yy.subarray(start, end);
-        if (_zz) zz = _zz.subarray(start, end);
-        cb(xx, yy, zz, arcId);
-      }
-    };
-
-    // Remove arcs that don't pass a filter test and re-index arcs
-    // Return array mapping original arc ids to re-indexed ids. If arr[n] == -1
-    // then arc n was removed. arr[n] == m indicates that the arc at n was
-    // moved to index m.
-    // Return null if no arcs were re-indexed (and no arcs were removed)
-    //
-    this.filter = function(cb) {
-      var test = function(i) {
-        return cb(this.getArcIter(i), i);
-      }.bind(this);
-      return this.deleteArcs(test);
-    };
-
-    this.deleteArcs = function(test) {
-      var n = this.size(),
-          map = new Int32Array(n),
-          goodArcs = 0,
-          goodPoints = 0;
-      for (var i=0; i<n; i++) {
-        if (test(i)) {
-          map[i] = goodArcs++;
-          goodPoints += _nn[i];
-        } else {
-          map[i] = -1;
-        }
-      }
-      if (goodArcs < n) {
-        this.captureArcsBefore({operation: 'deleteArcs'});
-        condenseArcs(map);
-        this.markArcsChanged({operation: 'deleteArcs'});
-      }
-      return map;
-    };
-
-    function condenseArcs(map) {
-      var goodPoints = 0,
-          goodArcs = 0,
-          copyElements = utils.copyElements,
-          k, arcLen;
-      for (var i=0, n=map.length; i<n; i++) {
-        k = map[i];
-        arcLen = _nn[i];
-        if (k > -1) {
-          copyElements(_xx, _ii[i], _xx, goodPoints, arcLen);
-          copyElements(_yy, _ii[i], _yy, goodPoints, arcLen);
-          if (_zz) copyElements(_zz, _ii[i], _zz, goodPoints, arcLen);
-          _nn[k] = arcLen;
-          goodPoints += arcLen;
-          goodArcs++;
-        }
-      }
-
-      initXYData(_nn.subarray(0, goodArcs), _xx.subarray(0, goodPoints),
-          _yy.subarray(0, goodPoints));
-      if (_zz) initZData(_zz.subarray(0, goodPoints));
-    }
-
-    this.dedupCoords = function() {
-      var arcId = 0, i = 0, i2 = 0,
-          arcCount = this.size(),
-          zz = _zz,
-          arcLen, arcLen2;
-      this.captureArcsBefore({operation: 'dedupCoords'});
-      while (arcId < arcCount) {
-        arcLen = _nn[arcId];
-        arcLen2 = dedupArcCoords(i, i2, arcLen, _xx, _yy, zz);
-        _nn[arcId] = arcLen2;
-        i += arcLen;
-        i2 += arcLen2;
-        arcId++;
-      }
-      if (i > i2) {
-        initXYData(_nn, _xx.subarray(0, i2), _yy.subarray(0, i2));
-        if (zz) initZData(zz.subarray(0, i2));
-      }
-      this.markArcsChanged({operation: 'dedupCoords'});
-      return i - i2;
-    };
-
-    this.getVertex = function(arcId, nth) {
-      var i = this.indexOfVertex(arcId, nth);
-      return {
-        x: _xx[i],
-        y: _yy[i]
-      };
-    };
-
-    this.getVertex2 = function(i) {
-      return [_xx[i], _yy[i]];
-    };
-
-    // @nth: index of vertex. ~(idx) starts from the opposite endpoint
-    this.indexOfVertex = function(arcId, nth) {
-      var absId = arcId < 0 ? ~arcId : arcId,
-          len = _nn[absId];
-      if (nth < 0) nth = len + nth;
-      if (absId != arcId) nth = len - nth - 1;
-      if (nth < 0 || nth >= len) {
-        error("[ArcCollection] out-of-range vertex id");
-      }
-      return _ii[absId] + nth;
-    };
-
-    // Tests if arc endpoints have same x, y coords
-    // (arc may still have collapsed);
-    this.arcIsClosed = function(arcId) {
-      var i = this.indexOfVertex(arcId, 0),
-          j = this.indexOfVertex(arcId, -1);
-      return i != j && _xx[i] == _xx[j] && _yy[i] == _yy[j];
-    };
-
-    // Tests if first and last segments mirror each other
-    // A 3-vertex arc with same endpoints tests true
-    this.arcIsLollipop = function(arcId) {
-      var len = this.getArcLength(arcId),
-          i, j;
-      if (len <= 2 || !this.arcIsClosed(arcId)) return false;
-      i = this.indexOfVertex(arcId, 1);
-      j = this.indexOfVertex(arcId, -2);
-      return _xx[i] == _xx[j] && _yy[i] == _yy[j];
-    };
-
-    this.arcIsDegenerate = function(arcId) {
-      return this.arcHasZeroLength(arcId) || this.arcIsSpike(arcId) || this.arcIsSpike_v1(arcId);
-    };
-
-    // only finds two-segment spikes
-    this.arcIsSpike_v1 = function(arcId) {
-      var iter = this.getArcIter(arcId);
-      var x0, y0;
-      if (iter.hasNext()) {
-        x0 = iter.x;
-        y0 = iter.y;
-      }
-      iter.hasNext(); // ignore second point
-      if (iter.hasNext()) {
-        if (iter.x == x0 && iter.y == y0 && !iter.hasNext()) {
-          // three-vertex arc, first two are the same
-          return true;
-        }
-      }
-      return false;
-    };
-
-    // identifies n-segment spikes
-    this.arcIsSpike = function(arcId) {
-      arcId = absArcId(arcId);
-      var i = _ii[arcId];
-      var j = i + _nn[arcId] - 1;
-      while (j > i) {
-        if (_xx[i] != _xx[j] || _yy[i] != _yy[j]) {
-          return false;
-        }
-        j--;
-        i++;
-      }
-      return true;
-    };
-
-
-    this.arcHasZeroLength = function(arcId) {
-      var iter = this.getArcIter(arcId);
-      var i = 0,
-          x, y;
-      while (iter.hasNext()) {
-        if (i > 0) {
-          if (x != iter.x || y != iter.y) return false;
-        }
-        x = iter.x;
-        y = iter.y;
-        i++;
-      }
-      return true;
-    };
-
-    this.getArcLength = function(arcId) {
-      return _nn[absArcId(arcId)];
-    };
-
-    this.getArcIter = function(arcId) {
-      var fw = arcId >= 0,
-          i = fw ? arcId : ~arcId,
-          iter = _zz && _zlimit ? _filteredArcIter : _arcIter;
-      if (i >= _nn.length) {
-        error("#getArcId() out-of-range arc id:", arcId);
-      }
-      return iter.init(_ii[i], _nn[i], fw, _zlimit);
-    };
-
-    this.getShapeIter = function(ids) {
-      return new ShapeIter(this).init(ids);
-    };
-
-    // Add simplification data to the dataset
-    // @thresholds is either a single typed array or an array of arrays of removal thresholds for each arc;
-    //
-    this.setThresholds = function(thresholds) {
-      var n = this.getPointCount(),
-          zz = null;
-      this.captureArcsSimplificationBefore({operation: 'setThresholds'});
-      if (!thresholds) {
-        // nop
-      } else if (thresholds.length == n) {
-        zz = thresholds;
-      } else if (thresholds.length == this.size()) {
-        zz = flattenThresholds(thresholds, n);
-      } else {
-        error("Invalid threshold data");
-      }
-      initZData(zz);
-      this.markArcsSimplificationChanged({operation: 'setThresholds'});
-      return this;
-    };
-
-    function flattenThresholds(arr, n) {
-      var zz = new Float64Array(n),
-          i = 0;
-      arr.forEach(function(arr) {
-        for (var j=0, n=arr.length; j<n; i++, j++) {
-          zz[i] = arr[j];
-        }
-      });
-      if (i != n) error("Mismatched thresholds");
-      return zz;
-    }
-
-    // bake in current simplification level, if any
-    this.flatten = function() {
-      this.captureArcsBefore({operation: 'flatten'});
-      if (_zlimit > 0) {
-        var data = getFilteredVertexData();
-        this.updateVertexData(data.nn, data.xx, data.yy);
-        _zlimit = 0;
-      } else {
-        _zz = null;
-      }
-      this.markArcsChanged({operation: 'flatten'});
-    };
-
-    this.isFlat = function() { return !_zz; };
-
-    this.getRetainedInterval = function() {
-      return _zlimit;
-    };
-
-    this.setRetainedInterval = function(z) {
-      this.captureArcsSimplificationBefore({operation: 'setRetainedInterval'});
-      _zlimit = z;
-      this.markArcsSimplificationChanged({operation: 'setRetainedInterval'});
-      return this;
-    };
-
-    this.getRetainedPct = function() {
-      return this.getPctByThreshold(_zlimit);
-    };
-
-    this.setRetainedPct = function(pct) {
-      this.captureArcsSimplificationBefore({operation: 'setRetainedPct'});
-      if (pct >= 1) {
-        _zlimit = 0;
-      } else {
-        _zlimit = this.getThresholdByPct(pct);
-        _zlimit = clampIntervalByPct(_zlimit, pct);
-      }
-      this.markArcsSimplificationChanged({operation: 'setRetainedPct'});
-      return this;
-    };
-
-    // Return array of z-values that can be removed for simplification
-    //
-    this.getRemovableThresholds = function(nth) {
-      if (!_zz) error("[arcs] Missing simplification data.");
-      var skip = nth | 1,
-          arr = new Float64Array(Math.ceil(_zz.length / skip)),
-          z;
-      for (var i=0, j=0, n=this.getPointCount(); i<n; i+=skip) {
-        z = _zz[i];
-        if (z != Infinity) {
-          arr[j++] = z;
-        }
-      }
-      return arr.subarray(0, j);
-    };
-
-    this.getArcThresholds = function(arcId) {
-      if (!(arcId >= 0 && arcId < this.size())) {
-        error("[arcs] Invalid arc id:", arcId);
-      }
-      var start = _ii[arcId],
-          end = start + _nn[arcId];
-      return _zz.subarray(start, end);
-    };
-
-    // nth (optional): sample every nth threshold (use estimate for speed)
-    this.getPctByThreshold = function(val, nth) {
-      var arr, rank, pct;
-      if (val > 0) {
-        arr = this.getRemovableThresholds(nth);
-        rank = utils.findRankByValue(arr, val);
-        pct = arr.length > 0 ? 1 - (rank - 1) / arr.length : 1;
-      } else {
-        pct = 1;
-      }
-      return pct;
-    };
-
-    // nth (optional): sample every nth threshold (use estimate for speed)
-    this.getThresholdByPct = function(pct, nth) {
-      return getThresholdByPct(pct, this, nth);
-    };
-
-    this.arcIntersectsBBox = function(i, b1) {
-      var b2 = _bb,
-          j = i * 4;
-      // returns false if _bb bounds are NaN
-      return b2[j] <= b1[2] && b2[j+2] >= b1[0] && b2[j+3] >= b1[1] && b2[j+1] <= b1[3];
-    };
-
-    this.arcIsContained = function(i, b1) {
-      var b2 = _bb,
-          j = i * 4;
-      // returns false if _bb bounds are NaN
-      return b2[j] >= b1[0] && b2[j+2] <= b1[2] && b2[j+1] >= b1[1] && b2[j+3] <= b1[3];
-    };
-
-    this.arcIsSmaller = function(i, units) {
-      var bb = _bb,
-          j = i * 4;
-      return bb[j+2] - bb[j] < units && bb[j+3] - bb[j+1] < units;
-    };
-
-    // TODO: allow datasets in lat-lng coord range to be flagged as planar
-    this.isPlanar = function() {
-      return !probablyDecimalDegreeBounds(this.getBounds());
-    };
-
-    this.size = function() {
-      return _ii && _ii.length || 0;
-    };
-
-    this.getPointCount = function() {
-      return _xx && _xx.length || 0;
-    };
-
-    this.getFilteredPointCount = getFilteredPointCount;
-
-    this.getBounds = function() {
-      return _allBounds.clone();
-    };
-
-    this.getSimpleShapeBounds = function(arcIds, bounds) {
-      bounds = bounds || new Bounds();
-      for (var i=0, n=arcIds.length; i<n; i++) {
-        this.mergeArcBounds(arcIds[i], bounds);
-      }
-      return bounds;
-    };
-
-    this.getSimpleShapeBbox = function(arcIds, arr) {
-      var bbox = arr || [],
-          bb = _bb,
-          arcId, offs;
-      bbox[0] = bbox[1] = Infinity;
-      bbox[2] = bbox[3] = -Infinity;
-      for (var i=0, n=arcIds.length; i<n; i++) {
-        arcId = absArcId(arcIds[i]);
-        offs = arcId * 4;
-        if (bb[offs] < bbox[0]) bbox[0] = bb[offs];
-        if (bb[++offs] < bbox[1]) bbox[1] = bb[offs];
-        if (bb[++offs] > bbox[2]) bbox[2] = bb[offs];
-        if (bb[++offs] > bbox[3]) bbox[3] = bb[offs];
-      }
-      return bbox[0] == Infinity ? [] : bbox;
-    };
-
-    // TODO: move this and similar methods out of ArcCollection
-    this.getMultiShapeBounds = function(shp, bounds) {
-      bounds = bounds || new Bounds();
-      if (shp) { // handle null shapes
-        for (var i=0, n=shp.length; i<n; i++) {
-          this.getSimpleShapeBounds(shp[i], bounds);
-        }
-      }
-      return bounds;
-    };
-
-    this.mergeArcBounds = function(arcId, bounds) {
-      if (arcId < 0) arcId = ~arcId;
-      var offs = arcId * 4;
-      if (_nn[arcId] > 0) {
-        bounds.mergeBounds(_bb[offs], _bb[offs+1], _bb[offs+2], _bb[offs+3]);
-      }
-    };
-  }
-
-  // Remove duplicate coords and NaNs
-  function dedupArcCoords(src, dest, arcLen, xx, yy, zz) {
-    var n = 0, n2 = 0; // counters
-    var x, y, i, j, keep;
-    while (n < arcLen) {
-      j = src + n;
-      x = xx[j];
-      y = yy[j];
-      keep = x == x && y == y && (n2 === 0 || x != xx[j-1] || y != yy[j-1]);
-      if (keep) {
-        i = dest + n2;
-        xx[i] = x;
-        yy[i] = y;
-        n2++;
-      }
-      if (zz && n2 > 0 && (keep || zz[j] > zz[i])) {
-        zz[i] = zz[j];
-      }
-      n++;
-    }
-    return n2 > 1 ? n2 : 0;
-  }
-
-  // Get function to Hash an x, y point to a non-negative integer
-  function getXYHash(size) {
-    var buf = new ArrayBuffer(16),
-        floats = new Float64Array(buf),
-        uints = new Uint32Array(buf),
-        lim = size | 0;
-    if (lim > 0 === false) {
-      throw new Error("Invalid size param: " + size);
-    }
-
-    return function(x, y) {
-      var u = uints, h;
-      floats[0] = x;
-      floats[1] = y;
-      h = u[0] ^ u[1];
-      h = h << 5 ^ h >> 7 ^ u[2] ^ u[3];
-      return (h & 0x7fffffff) % lim;
-    };
-  }
-
-  // Get function to Hash a single coordinate to a non-negative integer
-  function getXHash(size) {
-    var buf = new ArrayBuffer(8),
-        floats = new Float64Array(buf),
-        uints = new Uint32Array(buf),
-        lim = size | 0;
-    if (lim > 0 === false) {
-      throw new Error("Invalid size param: " + size);
-    }
-
-    return function(x) {
-      var h;
-      floats[0] = x;
-      h = uints[0] ^ uints[1];
-      h = h << 5 ^ h >> 7;
-      return (h & 0x7fffffff) % lim;
-    };
-  }
-
-  // Used for building topology.
-  //
-  // Every arc is stored as a reference into some source coordinate arrays
-  // (srcXX/srcYY) plus an inclusive [start..end] index range. The caller
-  // decides which buffer to hand in: the shared xx/yy for normal arcs, or
-  // a freshly-allocated merged buffer for split/wrap-around arcs. ArcIndex
-  // doesn't care which — no sentinels, no special cases in its own code.
-  //
-  function ArcIndex(pointCount) {
-    var hashTableSize = Math.floor(pointCount * 0.25 + 1),
-        hash = getXYHash(hashTableSize),
-        hashTable = new Int32Array(hashTableSize),
-        chainIds = [],
-        arcSrcXX = [],
-        arcSrcYY = [],
-        arcStart = [],
-        arcEnd = [],
-        arcPoints = 0;
-
-    initializeArray(hashTable, -1);
-
-    // Register an arc whose coordinates are `srcXX[start..end]`, `srcYY[start..end]`
-    // (inclusive). Returns the new arc id.
-    this.addArc = function(srcXX, srcYY, start, end) {
-      var arcId = arcSrcXX.length,
-          key = hash(srcXX[end], srcYY[end]);
-      chainIds.push(hashTable[key]);
-      hashTable[key] = arcId;
-      arcSrcXX.push(srcXX);
-      arcSrcYY.push(srcYY);
-      arcStart.push(start);
-      arcEnd.push(end);
-      arcPoints += end - start + 1;
-      return arcId;
-    };
-
-    // Look for a previously generated arc with the same sequence of coords, but
-    // in the opposite direction. (This program uses the convention of CW for
-    // space-enclosing rings, CCW for holes, so coincident boundaries should
-    // contain the same points in reverse sequence.)
-    //
-    this.findDuplicateArc = function(xx, yy, start, end, getNext, getPrev) {
-      var arcId = findArcNeighbor(xx, yy, start, end, getNext);
-      if (arcId === null) {
-        // Look for forward match (abnormal topology, but we accept it because
-        // in-the-wild Shapefiles sometimes have duplicate paths).
-        arcId = findArcNeighbor(xx, yy, end, start, getPrev);
-      } else {
-        arcId = ~arcId;
-      }
-      return arcId;
-    };
-
-    function findArcNeighbor(xx, yy, start, end, getNext) {
-      var next = getNext(start),
-          key = hash(xx[start], yy[start]),
-          arcId = hashTable[key],
-          sx, sy, s, e;
-      while (arcId != -1) {
-        sx = arcSrcXX[arcId]; sy = arcSrcYY[arcId];
-        s = arcStart[arcId];  e = arcEnd[arcId];
-        // Check endpoints and one segment. A more rigorous match would compare
-        // every segment, but that's slower and this is sufficient in practice.
-        if (sx[s] === xx[end] && sx[e] === xx[start] && sx[e - 1] === xx[next] &&
-            sy[s] === yy[end] && sy[e] === yy[start] && sy[e - 1] === yy[next]) {
-          return arcId;
-        }
-        arcId = chainIds[arcId];
-      }
-      return null;
-    }
-
-    this.getVertexData = function() {
-      var arcCount = arcSrcXX.length,
-          destXX = new Float64Array(arcPoints),
-          destYY = new Float64Array(arcPoints),
-          nn = new Uint32Array(arcCount),
-          copied = 0,
-          sx, sy, s, e, len, i;
-      for (i = 0; i < arcCount; i++) {
-        sx = arcSrcXX[i]; sy = arcSrcYY[i];
-        s = arcStart[i];  e = arcEnd[i];
-        len = e - s + 1;
-        if (sx.subarray) {
-          destXX.set(sx.subarray(s, e + 1), copied);
-          destYY.set(sy.subarray(s, e + 1), copied);
-        } else {
-          for (var k = 0; k < len; k++) {
-            destXX[copied + k] = sx[s + k];
-            destYY[copied + k] = sy[s + k];
-          }
-        }
-        nn[i] = len;
-        copied += len;
-      }
-      return {
-        xx: destXX,
-        yy: destYY,
-        nn: nn
-      };
-    };
-  }
-
-  function initPointChains(xx, yy) {
-    var chainIds = initHashChains(xx, yy),
-        j, next, prevMatchId, prevUnmatchId;
-
-    // disentangle, reverse and close the chains created by initHashChains()
-    for (var i = xx.length-1; i>=0; i--) {
-      next = chainIds[i];
-      if (next >= i) continue;
-      prevMatchId = i;
-      prevUnmatchId = -1;
-      do {
-        j = next;
-        next = chainIds[j];
-        if (yy[j] == yy[i] && xx[j] == xx[i]) {
-          chainIds[j] = prevMatchId;
-          prevMatchId = j;
-        } else {
-          if (prevUnmatchId > -1) {
-            chainIds[prevUnmatchId] = j;
-          }
-          prevUnmatchId = j;
-        }
-      } while (next < j);
-      if (prevUnmatchId > -1) {
-        // Make sure last unmatched entry is terminated
-        chainIds[prevUnmatchId] = prevUnmatchId;
-      }
-      chainIds[i] = prevMatchId; // close the chain
-    }
-    return chainIds;
-  }
-
-  function initHashChains(xx, yy) {
-    // Performance doesn't improve much above ~1.3 * point count
-    var n = xx.length,
-        m = Math.floor(n * 1.3) || 1,
-        hash = getXYHash(m),
-        hashTable = new Int32Array(m),
-        chainIds = new Int32Array(n), // Array to be filled with chain data
-        key, j, i, x, y;
-
-    for (i=0; i<n; i++) {
-      x = xx[i];
-      y = yy[i];
-      if (x != x || y != y) {
-        j = -1; // NaN coord: no hash entry, one-link chain
-      } else {
-        key = hash(x, y);
-        j = hashTable[key] - 1; // coord ids are 1-based in hash table; 0 used as null value.
-        hashTable[key] = i + 1;
-      }
-      chainIds[i] = j >= 0 ? j : i; // first item in a chain points to self
-    }
-    return chainIds;
-  }
-
-  // Converts all polygon and polyline paths in a dataset to a topological format
-  // (in-place)
-  function buildTopology(dataset) {
-    if (!dataset.arcs) return;
-    var raw = dataset.arcs.getVertexData(),
-        cooked = buildPathTopology(raw.nn, raw.xx, raw.yy);
-    dataset.arcs.updateVertexData(cooked.nn, cooked.xx, cooked.yy);
-    dataset.layers.forEach(function(lyr) {
-      if (lyr.geometry_type == 'polyline' || lyr.geometry_type == 'polygon') {
-        noteLayerWillChange(lyr, {operation: 'buildTopology', unit: 'shapes'});
-        lyr.shapes = replaceArcIds(lyr.shapes, cooked.paths);
-        markLayerChanged(lyr, {operation: 'buildTopology', unit: 'shapes'});
-      }
-    });
-  }
-
-  // buildPathTopology() converts non-topological paths into
-  // a topological format
-  //
-  // Arguments:
-  //    xx: [Array|Float64Array],   // x coords of each point in the dataset
-  //    yy: [Array|Float64Array],   // y coords ...
-  //    nn: [Array]  // length of each path
-  //
-  // (x- and y-coords of all paths are concatenated into two arrays)
-  //
-  // Returns:
-  // {
-  //    xx, yy (array)   // coordinate data
-  //    nn: (array)      // points in each arc
-  //    paths: (array)   // Paths are arrays of one or more arc id.
-  // }
-  //
-  // Negative arc ids in the paths array indicate a reversal of arc -(id + 1)
-  //
-  function buildPathTopology(nn, xx, yy) {
-    var pointCount = xx.length,
-        chainIds = initPointChains(xx, yy),
-        pathIds = initPathIds(pointCount, nn),
-        pathIsRing = initPathIsRing(nn, xx, yy),
-        isNode = computeIsNode(nn, xx, yy, chainIds, pathIds, pathIsRing),
-        index = new ArcIndex(pointCount),
-        paths, retn;
-    paths = convertPaths(nn);
-    retn = index.getVertexData();
-    retn.paths = paths;
-    return retn;
-
-    function convertPaths(nn) {
-      var paths = [],
-          pointId = 0,
-          pathLen;
-      for (var i=0, len=nn.length; i<len; i++) {
-        pathLen = nn[i];
-        paths.push(pathLen < 2 ? null : convertPath(pointId, pointId + pathLen - 1));
-        pointId += pathLen;
-      }
-      return paths;
-    }
-
-    // Fast neighbour lookups using the precomputed pathIsRing cache.
-    // Used by findDuplicateArc (via addEdge/addSplitEdge) and by addRing.
-    function nextPoint(id) {
-      var partId = pathIds[id],
-          nextId = id + 1;
-      if (nextId < pointCount && pathIds[nextId] === partId) {
-        return nextId;
-      }
-      return pathIsRing[partId] ? id - nn[partId] + 2 : -1;
-    }
-
-    function prevPoint(id) {
-      var partId = pathIds[id],
-          prevId = id - 1;
-      if (prevId >= 0 && pathIds[prevId] === partId) {
-        return prevId;
-      }
-      return pathIsRing[partId] ? id + nn[partId] - 2 : -1;
-    }
-
-    function pointIsArcEndpoint(id) {
-      return isNode[id] === 1;
-    }
-
-    // Convert a non-topological path to one or more topological arcs
-    // @start, @end are ids of first and last points in the path
-    // TODO: don't allow id ~id pairs
-    //
-    function convertPath(start, end) {
-      var arcIds = [],
-          firstNodeId = -1,
-          arcStartId;
-
-      // Visit each point in the path, up to but not including the last point
-      for (var i = start; i < end; i++) {
-        if (pointIsArcEndpoint(i)) {
-          if (firstNodeId == -1) {
-            firstNodeId = i;
-          } else {
-            arcIds.push(addEdge(arcStartId, i));
-          }
-          arcStartId = i;
-        }
-      }
-
-      // Identify the final arc in the path
-      if (firstNodeId == -1) {
-        // Not in an arc, i.e. no nodes have been found...
-        // Assuming that path is either an island or is congruent with one or more rings
-        arcIds.push(addRing(start, end));
-      }
-      else if (firstNodeId == start) {
-        // path endpoint is a node;
-        if (!pointIsArcEndpoint(end)) {
-          error("Topology error"); // TODO: better error handling
-        }
-        arcIds.push(addEdge(arcStartId, i));
-      } else {
-        // final arc wraps around
-        arcIds.push(addSplitEdge(arcStartId, end, start + 1, firstNodeId));
-      }
-      return arcIds;
-    }
-
-    function mergeArcParts(src, startId, endId, startId2, endId2) {
-      var len = endId - startId + endId2 - startId2 + 2,
-          ArrayClass = src.subarray ? Float64Array : Array,
-          dest = new ArrayClass(len),
-          j = 0, i;
-      for (i=startId; i <= endId; i++) {
-        dest[j++] = src[i];
-      }
-      for (i=startId2; i <= endId2; i++) {
-        dest[j++] = src[i];
-      }
-      return dest;
-    }
-
-    function addSplitEdge(start1, end1, start2, end2) {
-      var arcId = index.findDuplicateArc(xx, yy, start1, end2, nextPoint, prevPoint);
-      if (arcId === null) {
-        // Coordinates for a split (wrap-around) edge don't form a contiguous
-        // slice of xx/yy, so we build a standalone buffer and hand it to the
-        // index as the arc's source.
-        var mx = mergeArcParts(xx, start1, end1, start2, end2),
-            my = mergeArcParts(yy, start1, end1, start2, end2);
-        arcId = index.addArc(mx, my, 0, mx.length - 1);
-      }
-      return arcId;
-    }
-
-    function addEdge(start, end) {
-      // search for a matching edge that has already been generated
-      var arcId = index.findDuplicateArc(xx, yy, start, end, nextPoint, prevPoint);
-      if (arcId === null) {
-        arcId = index.addArc(xx, yy, start, end);
-      }
-      return arcId;
-    }
-
-    function addRing(startId, endId) {
-      var chainId = chainIds[startId],
-          pathId = pathIds[startId],
-          arcId;
-
-      while (chainId != startId) {
-        if (pathIds[chainId] < pathId) {
-          break;
-        }
-        chainId = chainIds[chainId];
-      }
-
-      if (chainId == startId) {
-        return addEdge(startId, endId);
-      }
-
-      for (var i=startId; i<endId; i++) {
-        arcId = index.findDuplicateArc(xx, yy, i, i, nextPoint, prevPoint);
-        if (arcId !== null) return arcId;
-      }
-      error("Unmatched ring; id:", pathId, "len:", nn[pathId]);
-    }
-  }
-
-
-  // Create a lookup table for path ids; path ids are indexed by point id
-  //
-  function initPathIds(size, pathSizes) {
-    var pathIds = new Int32Array(size),
-        j = 0;
-    for (var pathId=0, pathCount=pathSizes.length; pathId < pathCount; pathId++) {
-      for (var i=0, n=pathSizes[pathId]; i<n; i++, j++) {
-        pathIds[j] = pathId;
-      }
-    }
-    return pathIds;
-  }
-
-  // Per-path flag: 1 if the path is a closed ring (first vertex coincides with
-  // last vertex), else 0. Computed once so that prevPoint()/nextPoint() don't
-  // need to call sameXY() at path boundaries.
-  //
-  function initPathIsRing(nn, xx, yy) {
-    var pathCount = nn.length,
-        pathIsRing = new Uint8Array(pathCount),
-        pstart = 0, len;
-    for (var p = 0; p < pathCount; p++) {
-      len = nn[p];
-      if (len > 1 &&
-          xx[pstart] === xx[pstart + len - 1] &&
-          yy[pstart] === yy[pstart + len - 1]) {
-        pathIsRing[p] = 1;
-      }
-      pstart += len;
-    }
-    return pathIsRing;
-  }
-
-  // Decide, for every point, whether it is a topological node (an arc
-  // endpoint). Being a node is a property of the entire coincident-point
-  // chain: all points sharing a location agree on the answer. So we walk
-  // each chain at most once — O(n) total — instead of doing the walk
-  // independently at every point (O(n * K), quadratic per chain).
-  //
-  // A chain's points are nodes iff:
-  //   - any member has a missing neighbour (open-path endpoint), or
-  //   - two members disagree on the unordered pair of neighbour coords.
-  //
-  function computeIsNode(nn, xx, yy, chainIds, pathIds, pathIsRing) {
-    var n = xx.length,
-        isNode = new Uint8Array(n),
-        done = new Uint8Array(n);
-
-    function nextPoint(id) {
-      var part = pathIds[id], nid = id + 1;
-      if (nid < n && pathIds[nid] === part) return nid;
-      return pathIsRing[part] ? id - nn[part] + 2 : -1;
-    }
-
-    function prevPoint(id) {
-      var part = pathIds[id], pid = id - 1;
-      if (pid >= 0 && pathIds[pid] === part) return pid;
-      return pathIsRing[part] ? id + nn[part] - 2 : -1;
-    }
-
-    for (var i = 0; i < n; i++) {
-      if (done[i]) continue;
-      var result = chainIsBroken(i);
-      var id = i;
-      do {
-        isNode[id] = result;
-        done[id] = 1;
-        id = chainIds[id];
-      } while (id !== i);
-    }
-    return isNode;
-
-    // Returns 1 if the chain containing `start` has any broken neighbour
-    // signature (i.e. all members are nodes), else 0.
-    function chainIsBroken(start) {
-      var prev = prevPoint(start),
-          next = nextPoint(start);
-      if (prev === -1 || next === -1) return 1;
-      var refPX = xx[prev], refPY = yy[prev],
-          refNX = xx[next], refNY = yy[next];
-      var id = chainIds[start];
-      while (id !== start) {
-        var p = prevPoint(id), q = nextPoint(id);
-        if (p === -1 || q === -1) return 1;
-        var px = xx[p], py = yy[p], qx = xx[q], qy = yy[q];
-        var fwd = px === refPX && py === refPY && qx === refNX && qy === refNY;
-        var rev = px === refNX && py === refNY && qx === refPX && qy === refPY;
-        if (!fwd && !rev) return 1;
-        id = chainIds[id];
-      }
-      return 0;
-    }
-  }
-
-  function replaceArcIds(src, replacements) {
-    return src.map(function(shape) {
-      return replaceArcsInShape(shape, replacements);
-    });
-
-    function replaceArcsInShape(shape, replacements) {
-      if (!shape) return null;
-      return shape.map(function(path) {
-        return replaceArcsInPath(path, replacements);
-      });
-    }
-
-    function replaceArcsInPath(path, replacements) {
-      return path.reduce(function(memo, id) {
-        var abs = absArcId(id);
-        var topoPath = replacements[abs];
-        if (topoPath) {
-          if (id < 0) {
-            topoPath = topoPath.concat(); // TODO: need to copy?
-            reversePath(topoPath);
-          }
-          for (var i=0, n=topoPath.length; i<n; i++) {
-            memo.push(topoPath[i]);
-          }
-        }
-        return memo;
-      }, []);
-    }
-  }
-
-  // Merge arcs from one or more source datasets into target dataset
-  // return array of layers from the source dataset (instead of adding them to the target dataset)
-  function mergeDatasetsIntoDataset(dataset, datasets) {
-    noteDatasetWillChange(dataset, {operation: 'mergeDatasetsIntoDataset'});
-    var merged = mergeDatasets([dataset].concat(datasets));
-    var mergedLayers = datasets.reduce(function(memo, dataset) {
-      return memo.concat(dataset.layers);
-    }, []);
-    dataset.arcs = merged.arcs;
-    markDatasetChanged(dataset, {operation: 'mergeDatasetsIntoDataset'});
-    return mergedLayers;
-  }
-
-  // Don't modify input layers (mergeDatasets() updates arc ids in-place)
-  function mergeDatasetsForExport(arr) {
-    // copy layers but not arcs, which get copied in mergeDatasets()
-    var copy = arr.map(function(dataset) {
-      return utils.defaults({
-        layers: dataset.layers.map(copyLayerShapes)
-      }, dataset);
-    });
-    return mergeDatasets(copy);
-  }
-
-  function mergeCommandTargets(targets, catalog) {
-    var targetLayers = [];
-    var targetDatasets = [];
-    var datasetsWithArcs = 0;
-    var merged;
-
-    targets.forEach(function(target) {
-      targetLayers = targetLayers.concat(target.layers);
-      targetDatasets = targetDatasets.concat(target.dataset);
-      if (target.dataset.arcs && target.dataset.arcs.size() > 0) datasetsWithArcs++;
-    });
-
-    merged = mergeDatasets(targetDatasets);
-
-    // Rebuild topology, if multiple datasets contain arcs
-    if (datasetsWithArcs > 1) {
-      buildTopology(merged);
-    }
-
-    // remove old datasets after merging, so catalog is not affected if merge throws an error
-    targetDatasets.forEach(function(dataset) {
-      catalog.removeDataset(dataset);
-    });
-    catalog.addDataset(merged); // sets default target to all layers in merged dataset
-    catalog.setDefaultTarget(targetLayers, merged); // reset default target
-    return [{
-      layers: targetLayers,
-      dataset: merged
-    }];
-  }
-
-  // Combine multiple datasets into one using concatenation
-  // (any shared topology is ignored)
-  function mergeDatasets(arr) {
-    var arcSources = [],
-        arcCount = 0,
-        merged = {
-          info: {},
-          layers: []
-        };
-
-    // Error if incompatible CRS
-    requireDatasetsHaveCompatibleCRS(arr);
-
-    arr.forEach(function(dataset) {
-      var n = dataset.arcs ? dataset.arcs.size() : 0;
-      if (n > 0) {
-        arcSources.push(dataset.arcs);
-      }
-
-      mergeDatasetInfo$1(merged, dataset);
-      dataset.layers.forEach(function(lyr) {
-        if (lyr.geometry_type == 'polygon' || lyr.geometry_type == 'polyline') {
-          if (arcCount > 0) {
-            noteLayerWillChange(lyr, {operation: 'mergeDatasets', unit: 'arc-ids'});
-          }
-          forEachArcId(lyr.shapes, function(id) {
-            return id < 0 ? id - arcCount : id + arcCount;
-          });
-          if (arcCount > 0) {
-            markLayerChanged(lyr, {operation: 'mergeDatasets', unit: 'arc-ids'});
-          }
-        }
-        merged.layers.push(lyr);
-      });
-      arcCount += n;
-    });
-
-    if (arcSources.length > 0) {
-      merged.arcs = mergeArcs(arcSources);
-      if (merged.arcs.size() != arcCount) {
-        error("[mergeDatasets()] Arc indexing error");
-      }
-    }
-
-    return merged;
-  }
-
-  function mergeDatasetInfo$1(merged, dataset) {
-    var src = dataset.info || {};
-    var dest = merged.info || (merged.info = {});
-    dest.input_files = utils.uniq((dest.input_files || []).concat(src.input_files || []));
-    dest.input_formats = utils.uniq((dest.input_formats || []).concat(src.input_formats || []));
-    // merge other info properties (e.g. input_geojson_crs, input_delimiter, prj, crs)
-    utils.defaults(dest, src);
-  }
-
-  function mergeArcs(arr) {
-    // Returning the original causes a test to fail
-    // if (arr.length < 2) return arr[0];
-    var dataArr = arr.map(function(arcs) {
-      if (arcs.getRetainedInterval() > 0) {
-        verbose("Baking-in simplification setting.");
-        arcs.flatten();
-      }
-      return arcs.getVertexData();
-    });
-    var xx = mergeArrays(utils.pluck(dataArr, 'xx'), Float64Array),
-        yy = mergeArrays(utils.pluck(dataArr, 'yy'), Float64Array),
-        nn = mergeArrays(utils.pluck(dataArr, 'nn'), Int32Array);
-
-    return new ArcCollection(nn, xx, yy);
-  }
-
-  function countElements(arrays) {
-    return arrays.reduce(function(memo, arr) {
-      return memo + (arr.length || 0);
-    }, 0);
-  }
-
-  function mergeArrays(arrays, TypedArr) {
-    var size = countElements(arrays),
-        Arr = TypedArr || Array,
-        merged = new Arr(size),
-        offs = 0;
-    arrays.forEach(function(src) {
-      var n = src.length;
-      for (var i = 0; i<n; i++) {
-        merged[i + offs] = src[i];
-      }
-      offs += n;
-    });
-    return merged;
-  }
-
-  // Test if the second endpoint of an arc is the endpoint of any path in any layer
-  function getPathEndpointTest(layers, arcs) {
-    var index = new Uint8Array(arcs.size());
-    layers.forEach(function(lyr) {
-      if (layerHasPaths(lyr)) {
-        lyr.shapes.forEach(addShape);
-      }
-    });
-
-    function addShape(shape) {
-      forEachShapePart(shape, addPath);
-    }
-
-    function addPath(path) {
-      addEndpoint(~path[0]);
-      addEndpoint(path[path.length - 1]);
-    }
-
-    function addEndpoint(arcId) {
-      var absId = absArcId(arcId);
-      var fwd = absId == arcId;
-      index[absId] |= fwd ? 1 : 2;
-    }
-
-    return function(arcId) {
-      var absId = absArcId(arcId);
-      var fwd = absId == arcId;
-      var code = index[absId];
-      return fwd ? (code & 1) == 1 : (code & 2) == 2;
-    };
-  }
-
-  // @arcs ArcCollection
-  // @filter Optional filter function, arcIds that return false are excluded
-  //
-  function NodeCollection(arcs, filter) {
-    if (Array.isArray(arcs)) {
-      arcs = new ArcCollection(arcs);
-    }
-    var arcData = arcs.getVertexData(),
-        nn = arcData.nn,
-        xx = arcData.xx,
-        yy = arcData.yy,
-        nodeData,
-        globalFilter;
-
-    // Accessor function for arcs
-    Object.defineProperty(this, 'arcs', {value: arcs});
-
-    this.setArcFilter = function(f) {
-      globalFilter = f;
-    };
-
-    this.toArray = function() {
-      var chains = getNodeChains(),
-          flags = new Uint8Array(chains.length),
-          arr = [];
-      utils.forEach(chains, function(nextIdx, thisIdx) {
-        var node, p;
-        if (flags[thisIdx] == 1) return;
-        p = getEndpoint(thisIdx);
-        if (!p) return; // endpoints of an excluded arc
-        node = {coordinates: p, arcs: []};
-        arr.push(node);
-        while (flags[thisIdx] != 1) {
-          node.arcs.push(chainToArcId(thisIdx));
-          flags[thisIdx] = 1;
-          thisIdx = chains[thisIdx];
-        }
-      });
-      return arr;
-    };
-
-    this.size = function() {
-      return this.toArray().length;
-    };
-
-    this.findDanglingEndpoints = function() {
-      var chains = getNodeChains(),
-          arr = [], p;
-      for (var i=0, n=chains.length; i<n; i++) {
-        if (chains[i] != i) continue; // endpoint attaches to a node
-        p = getEndpoint(i);
-        if (!p) continue; // endpoint belongs to an excluded arc
-        arr.push({
-          point: p,
-          arc: chainToArcId(i)
-        });
-      }
-      return arr;
-    };
-
-    this.detachAcyclicArcs = function() {
-      var chains = getNodeChains(),
-          count = 0,
-          fwd, rev;
-      for (var i=0, n=chains.length; i<n; i+= 2) {
-        fwd = i == chains[i];
-        rev = i + 1 == chains[i + 1];
-        // detach arcs that are disconnected at one end or the other
-        if ((fwd || rev) && !linkIsDetached(i)) {
-          this.detachArc(chainToArcId(i));
-          count++;
-        }
-      }
-      if (count > 0) {
-        // removing one acyclic arc could expose another -- need another pass
-        count += this.detachAcyclicArcs();
-      }
-      return count;
-    };
-
-    this.detachArc = function(arcId) {
-      unlinkDirectedArc(arcId);
-      unlinkDirectedArc(~arcId);
-    };
-
-    this.forEachConnectedArc = function(arcId, cb) {
-      var nextId = nextConnectedArc(arcId),
-          i = 0;
-      while (nextId != arcId) {
-        cb(nextId, i++);
-        nextId = nextConnectedArc(nextId);
-      }
-    };
-
-    // Receives an arc id for an arc that enters a node.
-    // Returns an array of ids of all other arcs that are connected to the same node.
-    //    Returned ids lead into the node (as opposed to outwards from it)
-    // An optional filter function receives the directed id (positive or negative)
-    //    of each connected arc and excludes arcs for which the filter returns false.
-    //    // removed: The filter is also applied to the initial arc; if false, no arcs are returned.
-    //
-    this.getConnectedArcs = function(arcId, localFilter) {
-      var ids = [];
-      var nextId = nextConnectedArc(arcId);
-      // kludge: return empty result if arc fails global test
-      // ... applying the local filter causes tests to fail
-      if (globalFilter && !globalFilter(arcId)) {
-        return [];
-      }
-      while (nextId != arcId) {
-        // if (!filtered || filter && filter(nextId) ) {
-        if ((!localFilter || localFilter(nextId)) && (!globalFilter || globalFilter(nextId))) {
-          ids.push(nextId);
-        }
-        nextId = nextConnectedArc(nextId);
-      }
-      return ids;
-    };
-
-    // Returns the id of the first identical arc or @arcId if none found
-    // TODO: find a better function name
-    this.findDuplicateArc = function(arcId) {
-      var nextId = nextConnectedArc(arcId),
-          match = arcId;
-      while (nextId != arcId) {
-        if (testArcMatch(arcId, nextId)) {
-          if (absArcId(nextId) < absArcId(match)) match = nextId;
-        }
-        nextId = nextConnectedArc(nextId);
-      }
-      return match;
-    };
-
-    // returns null if link has been removed from node collection
-    function getEndpoint(chainId) {
-      return linkIsDetached(chainId) ? null : [nodeData.xx[chainId], nodeData.yy[chainId]];
-    }
-
-    function linkIsDetached(chainId) {
-      return isNaN(nodeData.xx[chainId]);
-    }
-
-    function unlinkDirectedArc(arcId) {
-      var chainId = arcToChainId(arcId),
-          chains = getNodeChains(),
-          nextId = chains[chainId],
-          prevId = prevChainId(chainId);
-      nodeData.xx[chainId] = NaN;
-      nodeData.yy[chainId] = NaN;
-      chains[chainId] = chainId;
-      chains[prevId] = nextId;
-    }
-
-    function chainToArcId(chainId) {
-      var absId = chainId >> 1;
-      return chainId & 1 == 1 ? absId : ~absId;
-    }
-
-    function arcToChainId(arcId) {
-      var fw = arcId >= 0;
-      return fw ? arcId * 2 + 1 : (~arcId) * 2; // if fw, use end, if rev, use start
-    }
-
-    function getNodeChains() {
-      if (!nodeData) {
-        nodeData = findNodeTopology(arcs, filter);
-        if (nn.length * 2 != nodeData.chains.length) error("[NodeCollection] count error");
-      }
-      return nodeData.chains;
-    }
-
-    function testArcMatch(a, b) {
-      var absA = a >= 0 ? a : ~a,
-          absB = b >= 0 ? b : ~b,
-          lenA = nn[absA];
-      if (lenA < 2) {
-        // Don't throw error on collapsed arcs -- assume they will be handled
-        //   appropriately downstream.
-        // error("[testArcMatch() defective arc; len:", lenA);
-        return false;
-      }
-      if (lenA != nn[absB]) return false;
-      if (testVertexMatch(a, b, -1) &&
-          testVertexMatch(a, b, 1) &&
-          testVertexMatch(a, b, -2)) {
-        return true;
-      }
-      return false;
-    }
-
-    function testVertexMatch(a, b, i) {
-      var ai = arcs.indexOfVertex(a, i),
-          bi = arcs.indexOfVertex(b, i);
-      return xx[ai] == xx[bi] && yy[ai] == yy[bi];
-    }
-
-    // return arcId of next arc in the chain, pointed towards the shared vertex
-    function nextConnectedArc(arcId) {
-      var chainId = arcToChainId(arcId),
-          chains =  getNodeChains(),
-          nextChainId = chains[chainId];
-      if (!(nextChainId >= 0 && nextChainId < chains.length)) {
-        // console.log('arcId:', arcId, 'chainId:', chainId, 'next chain id:', nextChainId)
-        error("out-of-range chain id");
-      }
-      return chainToArcId(nextChainId);
-    }
-
-    function prevChainId(chainId) {
-      var chains = getNodeChains(),
-          prevId = chainId,
-          nextId = chains[chainId];
-      while (nextId != chainId) {
-        prevId = nextId;
-        nextId = chains[nextId];
-        if (nextId == prevId) error("Node indexing error");
-      }
-      return prevId;
-    }
-
-    // expose functions for testing
-    this.internal = {
-      testArcMatch: testArcMatch,
-      testVertexMatch: testVertexMatch
-    };
-  }
-
-  function findNodeTopology(arcs, filter) {
-    var n = arcs.size() * 2,
-        xx2 = new Float64Array(n),
-        yy2 = new Float64Array(n),
-        ids2 = new Int32Array(n);
-
-    arcs.forEach2(function(arcId, i, n, xx, yy, zz) {
-      var start = i,
-          end = i + n - 1,
-          start2 = arcId * 2,
-          end2 = start2 + 1,
-          ax = xx[start],
-          ay = yy[start],
-          bx = xx[end],
-          by = yy[end];
-      if (filter && !filter(arcId)) {
-        ax = ay = bx = by = NaN;
-      }
-
-      xx2[start2] = ax;
-      yy2[start2] = ay;
-      ids2[start2] = arcId;
-      xx2[end2] = bx;
-      yy2[end2] = by;
-      ids2[end2] = arcId;
-    });
-
-    var chains = initPointChains(xx2, yy2);
-    return {
-      xx: xx2,
-      yy: yy2,
-      ids: ids2,
-      chains: chains
-    };
-  }
-
-  // Lightweight hierarchical profiler.
-  // Intended for ad-hoc performance work on hot pipelines (e.g. addIntersectionCuts).
-  //
-  // Usage:
-  //   import { profileStart, profileEnd, profileWrap, ... } from './utils/mapshaper-profile';
-  //   profileStart('phase'); doWork(); profileEnd('phase');
-  //   var result = profileWrap('phase', () => doWork());
-  //
-  // When disabled (the default) every call short-circuits in ~one comparison; safe
-  // to leave in hot code paths. Enable from the CLI with the `-profile` command,
-  // from JS with enableProfiling(), or by setting the MAPSHAPER_PROFILE env var.
-  //
-  // The profiler tracks a stack of currently-open phases so calls can nest. Each
-  // unique stack path accumulates ms-elapsed and a call count. profileReport()
-  // returns a flat array; formatProfileReport() pretty-prints a tree.
-
-  var ENABLED = false;
-  var ROOT = makeNode('<root>');
-  var STACK = [ROOT];
-  var WALL_START = 0;
-
-  function makeNode(label) {
-    return {
-      label: label,
-      totalMs: 0,
-      selfMs: 0,
-      calls: 0,
-      childMsAccum: 0,
-      children: Object.create(null)
-    };
-  }
-
-  function nowMs() {
-    if (typeof process !== 'undefined' && process.hrtime && process.hrtime.bigint) {
-      // bigint -> number division: precision down to 1 microsecond is fine for our needs
-      return Number(process.hrtime.bigint()) / 1e6;
-    }
-    if (typeof performance !== 'undefined' && performance.now) {
-      return performance.now();
-    }
-    return Date.now();
-  }
-
-  function enableProfiling() {
-    ENABLED = true;
-    WALL_START = nowMs();
-  }
-
-  function disableProfiling() {
-    ENABLED = false;
-  }
-
-  function profileEnabled() {
-    return ENABLED;
-  }
-
-  function profileReset() {
-    ROOT = makeNode('<root>');
-    STACK = [ROOT];
-    WALL_START = ENABLED ? nowMs() : 0;
-  }
-
-  // Open a new phase. Cheap (~one branch) when disabled.
-  function profileStart(label) {
-    if (!ENABLED) return;
-    var parent = STACK[STACK.length - 1];
-    var node = parent.children[label];
-    if (!node) {
-      node = makeNode(label);
-      parent.children[label] = node;
-    }
-    node._t0 = nowMs();
-    STACK.push(node);
-  }
-
-  function profileEnd(label) {
-    if (!ENABLED) return;
-    var node = STACK[STACK.length - 1];
-    if (label && node.label !== label) {
-      // Mismatched labels usually mean an early return forgot to call profileEnd().
-      // Walk up the stack until we find a match, closing the intervening frames.
-      while (STACK.length > 1 && STACK[STACK.length - 1].label !== label) {
-        profileEnd(STACK[STACK.length - 1].label);
-      }
-      node = STACK[STACK.length - 1];
-      if (node.label !== label) return; // give up rather than throw
-    }
-    var elapsed = nowMs() - node._t0;
-    node._t0 = 0;
-    node.totalMs += elapsed;
-    node.calls += 1;
-    STACK.pop();
-    var parent = STACK[STACK.length - 1];
-    parent.childMsAccum += elapsed;
-  }
-
-  // Wrap a function call. Re-throws if the callback throws but still closes the
-  // phase so the stack stays consistent.
-  function profileWrap(label, fn) {
-    if (!ENABLED) return fn();
-    profileStart(label);
-    try {
-      return fn();
-    } finally {
-      profileEnd(label);
-    }
-  }
-
-  // Build a flat tree report: array of {depth, label, totalMs, selfMs, calls}.
-  function profileReport() {
-    var rows = [];
-    function visit(node, depth) {
-      if (depth > 0) {
-        rows.push({
-          depth: depth - 1,
-          label: node.label,
-          totalMs: node.totalMs,
-          selfMs: Math.max(0, node.totalMs - node.childMsAccum),
-          calls: node.calls
-        });
-      }
-      var keys = Object.keys(node.children);
-      keys.sort(function(a, b) {
-        return node.children[b].totalMs - node.children[a].totalMs;
-      });
-      for (var i = 0; i < keys.length; i++) {
-        visit(node.children[keys[i]], depth + 1);
-      }
-    }
-    visit(ROOT, 0);
-    return rows;
-  }
-
-  function profileWallElapsedMs() {
-    return ENABLED && WALL_START ? nowMs() - WALL_START : 0;
-  }
-
-  // Pretty-print the current report as a column-aligned tree.
-  function formatProfileReport(opts) {
-    var rows = profileReport();
-    if (rows.length === 0) return '(profile is empty)';
-    opts = opts || {};
-    var indent = '  ';
-    var lines = [];
-    // header
-    lines.push(['phase', 'total ms', 'self ms', 'calls'].join('\t'));
-    for (var i = 0; i < rows.length; i++) {
-      var r = rows[i];
-      var label = '';
-      for (var j = 0; j < r.depth; j++) label += indent;
-      label += r.label;
-      lines.push([
-        label,
-        r.totalMs.toFixed(2),
-        r.selfMs.toFixed(2),
-        String(r.calls)
-      ].join('\t'));
-    }
-    if (opts.includeWall) {
-      lines.push('');
-      lines.push('wall elapsed ms: ' + profileWallElapsedMs().toFixed(2));
-    }
-    return lines.join('\n');
-  }
-
-  // Honour an env var so users (and CI harnesses) can opt in without code changes.
-  if (typeof process !== 'undefined' && process.env && process.env.MAPSHAPER_PROFILE) {
-    enableProfiling();
-  }
-
-  // Dissolve arcs that can be merged without affecting topology of layers
-  // remove arcs that are not referenced by any layer; remap arc ids
-  // in layers. (dataset.arcs is replaced).
-  function dissolveArcs(dataset) {
-    profileStart('dissolveArcs.body');
-    var arcs = dataset.arcs,
-        layers = dataset.layers.filter(layerHasPaths);
-
-    if (!arcs || !layers.length) {
-      if (dataset.arcs) noteDatasetWillChange(dataset, {operation: 'dissolveArcs', unit: 'arcs'});
-      dataset.arcs = null;
-      if (arcs) markDatasetChanged(dataset, {operation: 'dissolveArcs', unit: 'arcs'});
-      profileEnd('dissolveArcs.body');
-      return;
-    }
-
-    var arcsCanDissolve = getArcDissolveTest(layers, arcs),
-        newArcs = [],
-        totalPoints = 0,
-        arcIndex = new Int32Array(arcs.size()), // maps old arc ids to new ids
-        arcStatus = new Uint8Array(arcs.size());
-        // arcStatus: 0 = unvisited, 1 = dropped, 2 = remapped, 3 = remapped + reversed
-    profileStart('dissolveArcs.translatePaths');
-    layers.forEach(function(lyr) {
-      noteLayerWillChange(lyr, {operation: 'dissolveArcs', unit: 'shapes'});
-      lyr.shapes = lyr.shapes.map(function(shape, i) {
-        return editShapeParts(getDissolveShapeParts(shape, lyr), translatePath);
-      });
-      markLayerChanged(lyr, {operation: 'dissolveArcs', unit: 'shapes'});
-    });
-    profileEnd('dissolveArcs.translatePaths');
-    profileStart('dissolveArcs.dissolveArcCollection');
-    noteDatasetWillChange(dataset, {operation: 'dissolveArcs', unit: 'arcs'});
-    dataset.arcs = dissolveArcCollection(arcs, newArcs, totalPoints);
-    markDatasetChanged(dataset, {operation: 'dissolveArcs', unit: 'arcs'});
-    profileEnd('dissolveArcs.dissolveArcCollection');
-    profileEnd('dissolveArcs.body');
-
-    function translatePath(path) {
-      var pointCount = 0;
-      var newPath = [];
-      var newArc, arcId, absId, arcLen, fw, newArcId;
-
-      for (var i=0, n=path.length; i<n; i++) {
-        arcId = path[i];
-        absId = absArcId(arcId);
-        fw = arcId === absId;
-
-        if (arcs.arcIsDegenerate(arcId)) {
-          // arc has collapsed -- skip
-        } else if (arcStatus[absId] !== 0) {
-          // arc has already been translated -- skip
-          newArc = null;
-        } else {
-          arcLen = arcs.getArcLength(arcId);
-
-          if (newArc && arcsCanDissolve(path[i-1], arcId)) {
-            if (arcLen > 0) {
-              arcLen--; // shared endpoint not counted;
-            }
-            newArc.push(arcId);  // arc data is appended to previous arc
-            arcStatus[absId] = 1; // arc is dropped from output
-          } else {
-            // start a new dissolved arc
-            newArc = [arcId];
-            arcIndex[absId] = newArcs.length;
-            newArcs.push(newArc);
-            arcStatus[absId] = fw ? 2 : 3; // 2: unchanged; 3: reversed
-          }
-          pointCount += arcLen;
-        }
-
-        if (arcStatus[absId] > 1) {
-          // arc is retained (and renumbered) in the dissolved path -- add to path
-          newArcId = arcIndex[absId];
-          if (fw && arcStatus[absId] == 3 || !fw && arcStatus[absId] == 2) {
-            newArcId = ~newArcId;
-          }
-          newPath.push(newArcId);
-        }
-      }
-      totalPoints += pointCount;
-      return newPath;
-    }
-  }
-
-  function getDissolveShapeParts(shape, lyr) {
-    if (!shape) return null;
-    shape = shape.concat();
-    if (lyr.geometry_type == 'polygon' && shape.length > 1) {
-      shape.sort(comparePolygonRingsByMinArcId);
-    }
-    return shape;
-  }
-
-  function comparePolygonRingsByMinArcId(a, b) {
-    var minA = getPathMinArcId(a),
-        minB = getPathMinArcId(b);
-    if (minA != minB) return minA - minB;
-    return comparePathsByArcId(a, b);
-  }
-
-  function getPathMinArcId(path) {
-    var minId = Infinity,
-        id;
-    for (var i=0, n=path.length; i<n; i++) {
-      id = absArcId(path[i]);
-      if (id < minId) minId = id;
-    }
-    return minId;
-  }
-
-  function comparePathsByArcId(a, b) {
-    var n = Math.min(a.length, b.length),
-        diff;
-    for (var i=0; i<n; i++) {
-      diff = absArcId(a[i]) - absArcId(b[i]);
-      if (diff) return diff;
-    }
-    return a.length - b.length;
-  }
-
-  function dissolveArcCollection(arcs, newArcs, newLen) {
-    var nn2 = new Uint32Array(newArcs.length),
-        xx2 = new Float64Array(newLen),
-        yy2 = new Float64Array(newLen),
-        src = arcs.getVertexData(),
-        zz2 = src.zz ? new Float64Array(newLen) : null,
-        interval = arcs.getRetainedInterval(),
-        offs = 0;
-
-    newArcs.forEach(function(newArc, newId) {
-      newArc.forEach(function(oldId, i) {
-        extendDissolvedArc(oldId, newId);
-      });
-    });
-
-    return new ArcCollection(nn2, xx2, yy2).setThresholds(zz2).setRetainedInterval(interval);
-
-    function extendDissolvedArc(oldId, newId) {
-      var absId = absArcId(oldId),
-          rev = oldId < 0,
-          n = src.nn[absId],
-          i = src.ii[absId],
-          n2 = nn2[newId];
-
-      if (n > 0) {
-        if (n2 > 0) {
-          n--;
-          if (!rev) i++;
-        }
-        utils.copyElements(src.xx, i, xx2, offs, n, rev);
-        utils.copyElements(src.yy, i, yy2, offs, n, rev);
-        if (zz2) utils.copyElements(src.zz, i, zz2, offs, n, rev);
-        nn2[newId] += n;
-        offs += n;
-      }
-    }
-  }
-
-  // Test whether two arcs can be merged together
-  function getArcDissolveTest(layers, arcs) {
-    var nodes = new NodeCollection(arcs, getArcPresenceTest2(layers, arcs)),
-        // don't allow dissolving through endpoints of polyline paths
-        lineLayers = layers.filter(function(lyr) {return lyr.geometry_type == 'polyline';}),
-        testLineEndpoint = getPathEndpointTest(lineLayers, arcs),
-        linkCount, lastId;
-
-    return function(id1, id2) {
-      if (id1 == id2 || id1 == ~id2) {
-        verbose("Unexpected arc sequence:", id1, id2);
-        return false; // This is unexpected; don't try to dissolve, anyway
-      }
-      linkCount = 0;
-      nodes.forEachConnectedArc(id1, countLink);
-      return linkCount == 1 && lastId == ~id2 && !testLineEndpoint(id1) && !testLineEndpoint(~id2);
-    };
-
-    function countLink(arcId, i) {
-      linkCount++;
-      lastId = arcId;
-    }
-  }
-
-  // utility functions for datasets
-
-  // Split into datasets with one layer each
-  function splitDataset(dataset) {
-    return dataset.layers.map(function(lyr) {
-      var split = {
-        arcs: dataset.arcs,
-        layers: [lyr],
-        info: utils.extend({}, dataset.info)
-      };
-      dissolveArcs(split); // replace arcs with filtered + dissolved copy
-      return split;
-    });
-  }
-
-  // dest: destination dataset
-  // src: source dataset
-  function mergeDatasetInfo(dest, src) {
-    var srcInfo = src.info || {};
-    var destInfo = dest.info || (dest.info = {});
-    noteDatasetInfoWillChange(dest, {operation: 'mergeDatasetInfo'});
-    destInfo.input_files = utils.uniq((destInfo.input_files || []).concat(srcInfo.input_files || []));
-    destInfo.input_formats = utils.uniq((destInfo.input_formats || []).concat(srcInfo.input_formats || []));
-    // merge other info properties (e.g. input_geojson_crs, input_delimiter, prj, crs)
-    utils.defaults(destInfo, srcInfo);
-    markDatasetInfoChanged(dest, {operation: 'mergeDatasetInfo'});
-  }
-
-  function copyDatasetInfo(info) {
-    // not a deep copy... objects like info.crs are read-only, so copy-by-reference
-    // should be ok
-    var info2 = Object.assign({}, info);
-    if (Array.isArray(info.input_files)) {
-      info2.input_files = info.input_files.concat();
-    }
-    return info2;
-  }
-
-  function splitApartLayers(dataset, layers) {
-    var datasets = [];
-    noteDatasetWillChange(dataset, {operation: 'splitApartLayers', unit: 'layers'});
-    dataset.layers = dataset.layers.filter(function(lyr) {
-      if (!layers.includes(lyr)) {
-        return true;
-      }
-      var split = {
-        arcs: dataset.arcs,
-        layers: [lyr],
-        info: utils.extend({}, dataset.info)
-      };
-      dissolveArcs(split); // replace arcs with filtered + dissolved copy
-      datasets.push(split);
-      return false;
-    });
-    if (dataset.layers.length) {
-      dissolveArcs(dataset);
-      datasets.push(dataset);
-    }
-    markDatasetChanged(dataset, {operation: 'splitApartLayers', unit: 'layers'});
-    return datasets;
-  }
-
-  // clone all layers, make a filtered copy of arcs
-  function copyDataset(dataset) {
-    var d2 = utils.extend({}, dataset);
-    d2.layers = d2.layers.map(copyLayer);
-    if (d2.arcs) {
-      d2.arcs = d2.arcs.getFilteredCopy();
-    }
-    return d2;
-  }
-
-  // clone coordinate data, shallow-copy attribute data
-  function copyDatasetForExport(dataset) {
-    var d2 = utils.extend({}, dataset);
-    d2.layers = d2.layers.map(copyLayerShapes);
-    if (d2.arcs) {
-      d2.arcs = d2.arcs.getFilteredCopy();
-    }
-    return d2;
-  }
-
-  // shallow-copy layers, so they can be renamed (for export)
-  function copyDatasetForRenaming(dataset) {
-    return utils.defaults({
-      layers: dataset.layers.map(function(lyr) {return utils.extend({}, lyr);})
-    }, dataset);
-  }
-
-  function getDatasetBounds(dataset) {
-    var bounds = new Bounds();
-    dataset.layers.forEach(function(lyr) {
-      var lyrbb = getLayerBounds(lyr, dataset.arcs);
-      if (lyrbb) bounds.mergeBounds(lyrbb);
-    });
-    return bounds;
-  }
-
-  function datasetIsEmpty(dataset) {
-    return dataset.layers.every(function(lyr) {
-      return layerIsEmpty(lyr);
-    });
-  }
-
-  function datasetHasGeometry(dataset) {
-    return utils.some(dataset.layers, function(lyr) {
-      return layerHasGeometry(lyr);
-    });
-  }
-
-  function datasetHasRaster(dataset) {
-    return utils.some(dataset.layers, function(lyr) {
-      return layerHasRaster(lyr);
-    });
-  }
-
-  function datasetHasPaths(dataset) {
-    return utils.some(dataset.layers, function(lyr) {
-      return layerHasPaths(lyr);
-    });
-  }
-
-  // Remove ArcCollection of a dataset if not referenced by any layer
-  // TODO: consider doing arc dissolve, or just removing unreferenced arcs
-  // (currently cleanupArcs() is run after every command, so be mindful of performance)
-  function cleanupArcs(dataset) {
-    if (dataset.arcs && !utils.some(dataset.layers, layerHasPaths)) {
-      noteDatasetWillChange(dataset, {operation: 'cleanupArcs', unit: 'arcs'});
-      dataset.arcs = null;
-      markDatasetChanged(dataset, {operation: 'cleanupArcs', unit: 'arcs'});
-      return true;
-    }
-  }
-
-  // Remove unused arcs from a dataset
-  // Warning: using dissolveArcs() means that adjacent arcs are combined when possible
-  function pruneArcs(dataset) {
-    cleanupArcs(dataset);
-    if (dataset.arcs) {
-      dissolveArcs(dataset);
-    }
-  }
-
-  // replace cut layers in-sequence (to maintain layer indexes)
-  // append any additional new layers
-  function replaceLayers(dataset, cutLayers, newLayers) {
-    // modify a copy in case cutLayers == dataset.layers
-    var currLayers = dataset.layers.concat();
-    noteDatasetWillChange(dataset, {operation: 'replaceLayers', unit: 'layers'});
-    utils.repeat(Math.max(cutLayers.length, newLayers.length), function(i) {
-      var cutLyr = cutLayers[i],
-          newLyr = newLayers[i],
-          idx = cutLyr ? currLayers.indexOf(cutLyr) : currLayers.length;
-
-      if (cutLyr) {
-        currLayers.splice(idx, 1);
-      }
-      if (newLyr) {
-        currLayers.splice(idx, 0, newLyr);
-      }
-    });
-    dataset.layers = currLayers;
-    markDatasetChanged(dataset, {operation: 'replaceLayers', unit: 'layers'});
-  }
-
-  // Replace a layer with a layer from a second dataset
-  // (in-place)
-  // (Typically, the second dataset is imported from dynamically generated GeoJSON and contains one layer)
-  function replaceLayerContents(lyr, dataset, dataset2) {
-    var lyr2 = mergeOutputLayerIntoDataset(lyr, dataset, dataset2, {});
-    if (layerHasPaths(lyr2)) {
-      buildTopology(dataset);
-    }
-  }
-
-  function mergeOutputLayerIntoDataset(lyr, dataset, dataset2, opts) {
-    var output = mergeOutputLayersIntoDataset(lyr, dataset, dataset2, opts);
-    if (output.length != 1) {
-      error('Expected 1 output layer, received:', output.length);
-    }
-    return output[0];
-  }
-
-  function mergeOutputLayersIntoDataset(lyr, dataset, dataset2, opts) {
-    if (!dataset2 || dataset2.layers.length === 0) {
-      error('Invalid source dataset');
-    }
-    if (dataset.layers.includes(lyr) === false) {
-      error('Invalid target layer');
-    }
-    // this command returns merged layers instead of adding them to target dataset
-    var outputLayers = mergeDatasetsIntoDataset(dataset, [dataset2]);
-    var lyr2 = outputLayers[0];
-    // TODO: find a more reliable way of knowing when to copy data
-    var copyData = !lyr2.data && lyr.data && getFeatureCount(lyr2) == lyr.data.size();
-    if (copyData) {
-      lyr2.data = opts.no_replace ? lyr.data.clone() : lyr.data;
-    }
-    lyr2.name = opts.name || lyr.name;
-    if (!opts.no_replace) {
-      noteLayerWillChange(lyr, {operation: 'mergeOutputLayersIntoDataset'});
-      outputLayers[0] = Object.assign(lyr, {data: null, shapes: null}, lyr2);
-      markLayerChanged(lyr, {operation: 'mergeOutputLayersIntoDataset'});
-      if (layerHasPaths(lyr)) {
-        // Remove unused arcs from replaced layer
-        // TODO: consider using clean insead of this
-        dissolveArcs(dataset);
-      }
-    }
-    return outputLayers;
-  }
-
-  // Transform the points in a dataset in-place; don't clean up corrupted shapes
-  function transformPoints(dataset, f) {
-    if (dataset.arcs) {
-      dataset.arcs.transformPoints(f);
-    }
-    dataset.layers.forEach(function(lyr) {
-      if (layerHasPoints(lyr)) {
-        transformPointsInLayer(lyr, f);
-      }
-    });
-  }
-
-  var mproj = req('mproj');
-
-  var asyncLoader = null;
-
-  var projectionAliases = {
-    robinson: '+proj=robin +datum=WGS84',
-    webmercator: '+proj=merc +a=6378137 +b=6378137',
-    wgs84: '+proj=longlat +datum=WGS84',
-    albersusa: AlbersUSA
-  };
-
-  async function initProjLibrary(opts) {
-    if (asyncLoader) await asyncLoader(opts);
-  }
-
-  // used by web UI to support loading projection assets asyncronously
-  function setProjectionLoader(loader) {
-    asyncLoader = loader;
-  }
-
-  // Find Proj.4 definition file names in strings like "+init=epsg:3000"
-  // (Used by GUI, defined here for testing)
-  function findProjLibs(str) {
-    var matches = str.match(/\b(esri|epsg|nad83|nad27)(?=:[0-9]+\b)/ig) || [];
-    return utils.uniq(matches.map(function(str) {return str.toLowerCase();}));
-  }
-
-  // Returns a function for reprojecting [x, y] points; function throws an error
-  // if the transformation fails
-  // src, dest: proj4 objects
-  function getProjTransform(src, dest) {
-    var clampSrc = isLatLngCRS(src);
-    dest = dest.__mixed_crs || dest;
-    return function(x, y) {
-      var xy;
-      if (clampSrc) {
-        // snap lng to bounds
-        if (x < -180) x = -180;
-        else if (x > 180) x = 180;
-      }
-      xy = [x, y];
-      mproj.pj_transform_point(src, dest, xy);
-      return xy;
-    };
-  }
-
-  // Same as getProjTransform(), but return null if projection fails
-  // (also faster)
-  function getProjTransform2(src, dest) {
-    var xx = [0],
-        yy = [0],
-        preK = src.is_latlong ? mproj.internal.DEG_TO_RAD : 1,
-        postK = dest.is_latlong ? mproj.internal.RAD_TO_DEG : 1,
-        clampSrc = isLatLngCRS(src);
-
-    return function(x, y) {
-      var fail;
-      if (clampSrc) {
-        // snap lng to bounds
-        if (x < -180) x = -180;
-        else if (x > 180) x = 180;
-      }
-      xx[0] = x * preK;
-      yy[0] = y * preK;
-      try {
-        dest = dest.__mixed_crs || dest;
-        mproj.pj_transform(src, dest, xx, yy);
-        fail = xx[0] == Infinity; // mproj invalid coord value
-      } catch(e) {
-        fail = true;
-      }
-      return fail ? null : [xx[0] * postK, yy[0] * postK];
-    };
-  }
-
-  function toLngLat(xy, P) {
-    return projectPoint(xy, P, parseCrsString('wgs84'));
-  }
-
-  function projectPoint(xy, crsFrom, crsTo) {
-    if (crsAreEqual(crsFrom, crsTo)) return xy.concat();
-    var proj = getProjTransform2(crsFrom, crsTo);
-    return proj(xy[0], xy[1]);
-  }
-
-  function getProjInfo(dataset) {
-    var P, info;
-    try {
-      P = getDatasetCRS(dataset);
-      if (P) {
-        info = crsToProj4(P);
-      }
-    } catch(e) {}
-    return info || "[unknown]";
-  }
-
-  function crsToProj4(P) {
-    return mproj.internal.get_proj_defn(P);
-  }
-
-  function crsToPrj(P) {
-    var wkt;
-    try {
-      wkt = mproj.internal.wkt_from_proj4(P);
-    } catch(e) {
-      // console.log(e)
-    }
-    return wkt;
-  }
-
-  function crsToWkt2(P) {
-    var wkt;
-    try {
-      wkt = mproj.internal.wkt2_from_proj4(P);
-    } catch(e) {
-      // WKT2 export may be unavailable for some custom definitions.
-    }
-    return wkt;
-  }
-
-  function crsAreEqual(a, b) {
-    var str = crsToProj4(a);
-    return !!str && str == crsToProj4(b);
-  }
-
-  function isProjAlias(str) {
-    return str in projectionAliases;
-  }
-
-  // str: projection string in a variety of forms accepted by the -proj command
-  //   (e.g. alias, EPSG:XXXX, Proj.4 string, bare Proj.4 projection name)
-  // Returns a properly formatted Proj.4 string or an instantiated mproj object
-  function getProjDefn(str) {
-    var defn;
-    // prepend '+proj=' to bare proj names
-    str = str.replace(/(^| )([\w]+)($| )/, function(a, b, c, d) {
-      if (c in mproj.internal.pj_list) {
-        return b + '+proj=' + c + d;
-      }
-      return a;
-    });
-    if (looksLikeProj4String(str)) {
-      defn = str;
-    } else if (isProjAlias(str)) {
-      defn = projectionAliases[str];
-      if (utils.isFunction(defn)) {
-        defn = defn();
-      }
-    } else if (looksLikeInitString(str)) {
-      defn = '+init=' + str.toLowerCase();
-    } else if (str in (getStashedVar('defs') || {})) {
-      // a proj4 alias could be dynamically created in a -calc expression
-      defn = getStashedVar('defs')[str];
-    } else {
-      defn = parseCustomProjection(str);
-    }
-    if (!defn) {
-      stop("Unknown projection definition:", str);
-    }
-    return defn;
-  }
-
-  function looksLikeInitString(str) {
-    return /^(esri|epsg|nad83|nad27):[0-9]+$/i.test(String(str));
-  }
-
-  function looksLikeProj4String(str) {
-    return /^(\+[^ ]+ *)+$/.test(str);
-  }
-
-  function getCrsInfo(str) {
-    return {
-      crs_string: str,
-      crs: parseCrsString(str)
-    };
-  }
-
-  function parseCrsString(str) {
-    var defn = getProjDefn(str);  // defn is a string or a Proj object
-    var P;
-    if (!utils.isString(defn)) {
-      P = defn;
-    } else {
-      try {
-        P = mproj.pj_init(defn);
-      } catch(e) {
-        stop('Unable to use projection', defn, '(' + e.message + ')');
-      }
-    }
-    return P || null;
-  }
-
-  function requireProjectedDataset(dataset) {
-    if (isLatLngCRS(getDatasetCRS(dataset))) {
-      stop("Command requires a target with projected coordinates (not lat-long)");
-    }
-  }
-
-  function copyCrsProperties(obj) {
-    var props = 'crs,crs_string,wkt1,geopackage_crs,flatgeobuf_crs'.split(',');
-    return Object.fromEntries(props.map(k => [k, obj[k]]));
-  }
-
-  function setDatasetCrsInfo(dataset, crsInfo) {
-    crsInfo = crsInfo || {}; // also accepts null/unknown crs info
-    dataset.info = Object.assign(dataset.info || {}, copyCrsProperties(crsInfo));
-    return dataset;
-  }
-
-  function getDatasetCrsInfo(dataset) {
-    var info = copyCrsProperties(dataset.info || {});
-    if (!info.crs && info.wkt1) {
-      info.crs = parseCrsString(wkt1ToProj(info.wkt1));
-    } else if (!info.crs && info.crs_string) {
-      info.crs = parseCrsString(info.crs_string);
-    }
-    if (!info.crs) {
-      if (probablyDecimalDegreeBounds(getDatasetBounds(dataset))) {
-        // use wgs84 for probable latlong datasets with unknown datums
-        info.crs_string = 'wgs84';
-        info.crs = parseCrsString(info.crs_string);
-      }
-    }
-    return info;
-  }
-
-  function getDatasetCRS(dataset) {
-    return getDatasetCrsInfo(dataset).crs;
-  }
-
-  function requireDatasetsHaveCompatibleCRS(arr, msg) {
-    arr.reduce(function(memo, dataset) {
-      var P = getDatasetCRS(dataset);
-      if (memo && P) {
-        if (isLatLngCRS(memo) != isLatLngCRS(P)) {
-          stop(msg || "Unable to combine projected and unprojected datasets");
-        }
-      }
-      return P || memo;
-    }, null);
-  }
-
-  // Assumes conformal projections; consider returning average of vertical and
-  // horizontal scale factors.
-  // x, y: a point location in projected coordinates
-  // Returns k, the ratio of coordinate distance to distance on the ground
-  function getScaleFactorAtXY(x, y, crs) {
-    var dist = 1 / crs.to_meter;
-    var lp = mproj.pj_inv_deg({x: x, y: y}, crs);
-    var lp2 = mproj.pj_inv_deg({x: x + dist, y: y}, crs);
-    var k = 1 / geom.greatCircleDistance(lp.lam, lp.phi, lp2.lam, lp2.phi);
-    return k;
-  }
-
-  function isProjectedCRS(P) {
-    return !isLatLngCRS(P);
-  }
-
-  function isInvertibleCRS(P) {
-    if (!P || !P.inv) return false;
-    return true;
-  }
-
-  function isLatLngCRS(P) {
-    return P && P.is_latlong || false;
-  }
-
-  function isWGS84(P) {
-    if (!isLatLngCRS(P)) return false;
-    var proj4 = crsToProj4(P);
-    return proj4.toLowerCase().includes('84');
-  }
-
-  function isWebMercator(P) {
-    if (!P) return false;
-    var str = crsToProj4(P);
-    // e.g. +proj=merc +lat_ts=0.0 +lon_0=0.0 +x_0=0.0 +y_0=0 +k=1.0 +units=m +wktext +a=6378137 +b=6378137 +nadgrids=@null
-    // e.g. +proj=merc +a=6378137 +b=6378137
-    // TODO: support  https://proj.org/operations/projections/webmerc.html
-    return str.includes('+proj=merc') && str.includes('+a=6378137') && str.includes('+b=6378137');
-  }
-
-  function isLatLngDataset(dataset) {
-    return isLatLngCRS(getDatasetCRS(dataset));
-  }
-
-  function printProjections() {
-    var index = mproj.internal.pj_list;
-    var msg = 'Proj4 projections\n';
-    Object.keys(index).sort().forEach(function(id) {
-      msg += '  ' + utils.rpad(id, 7, ' ') + '  ' + index[id].name + '\n';
-    });
-    msg += '\nAliases';
-    Object.keys(projectionAliases).sort().forEach(function(n) {
-      msg += '\n  ' + n;
-    });
-    print(msg);
-  }
-
-  function wkt1ToProj(str) {
-    var proj4;
-    try {
-      proj4 = mproj.internal.wkt_to_proj4(str);
-    } catch(e) {
-      stop('Unusable .prj file (' + e.message + ')');
-    }
-    return proj4;
-  }
-
-  function wkt2ToProj(str) {
-    var proj4;
-    try {
-      proj4 = mproj.internal.wkt2_to_proj4(str);
-    } catch(e) {
-      stop('Unusable WKT2 CRS (' + e.message + ')');
-    }
-    return proj4;
-  }
-
-  function wktToProj(str) {
-    var proj4;
-    try {
-      proj4 = mproj.internal.wkt2_to_proj4(str);
-    } catch(e) {
-      try {
-        proj4 = mproj.internal.wkt_to_proj4(str);
-      } catch(e2) {
-        stop('Unusable WKT CRS (' + e2.message + ')');
-      }
-    }
-    return proj4;
-  }
-
-  // Convert contents of a .prj file to a projection object
-  function parsePrj(str) {
-    return parseCrsString(wkt1ToProj(str));
-  }
-
-  function parseWkt(str) {
-    return parseCrsString(wktToProj(str));
-  }
-
-  // Extract an EPSG (or other authority) code from a short string like
-  // "epsg:4326" or "ESRI:54030". Returns {org, code} or null.
-  function parseAuthorityCodeString(str) {
-    if (!str || typeof str != 'string') return null;
-    var match = str.match(/^([a-z]+):(\d+)$/i);
-    if (!match) return null;
-    var code = +match[2];
-    if (!code) return null;
-    return {
-      org: match[1].toUpperCase(),
-      code: code
-    };
-  }
-
-  // Extract the top-level AUTHORITY clause from a WKT1 .prj string.
-  // Returns {org, code} or null. Skips nested AUTHORITY clauses on inner
-  // elements like the datum or unit, which would otherwise produce the
-  // wrong code for projected CRSes.
-  function parseAuthorityCodeFromWkt(wkt) {
-    if (!wkt || typeof wkt != 'string') return null;
-    var depth = 0;
-    var inQuote = false;
-    for (var i = 0; i < wkt.length; i++) {
-      var c = wkt.charAt(i);
-      if (c == '"') {
-        inQuote = !inQuote;
-        continue;
-      }
-      if (inQuote) continue;
-      if (c == '[' || c == '(') {
-        depth++;
-        continue;
-      }
-      if (c == ']' || c == ')') {
-        depth--;
-        continue;
-      }
-      if (depth != 1) continue;
-      var slice = wkt.slice(i, i + 10).toUpperCase();
-      if (slice == 'AUTHORITY[' || slice.slice(0, 10) == 'AUTHORITY(') {
-        var match = wkt.slice(i).match(/^AUTHORITY\s*[[(]\s*"([^"]+)"\s*,\s*"?(\d+)"?\s*[\])]/i);
-        if (match) {
-          return {
-            org: String(match[1]).toUpperCase(),
-            code: +match[2]
-          };
-        }
-      }
-    }
-    return null;
-  }
-
-  // Returns undefined if not found
-  function lookupColorName(str) {
-    return colors[str.toLowerCase().replace(/[ -]+/g, '')];
-  }
-
-  var colors = {
-    aliceblue: '#f0f8ff',
-    antiquewhite: '#faebd7',
-    aqua: '#00ffff',
-    aquamarine: '#7fffd4',
-    azure: '#f0ffff',
-    beige: '#f5f5dc',
-    bisque: '#ffe4c4',
-    black: '#000000',
-    blanchedalmond: '#ffebcd',
-    blue: '#0000ff',
-    blueviolet: '#8a2be2',
-    brown: '#a52a2a',
-    burlywood: '#deb887',
-    cadetblue: '#5f9ea0',
-    chartreuse: '#7fff00',
-    chocolate: '#d2691e',
-    coral: '#ff7f50',
-    cornflowerblue: '#6495ed',
-    cornsilk: '#fff8dc',
-    crimson: '#dc143c',
-    cyan: '#00ffff',
-    darkblue: '#00008b',
-    darkcyan: '#008b8b',
-    darkgoldenrod: '#b8860b',
-    darkgray: '#a9a9a9',
-    darkgreen: '#006400',
-    darkgrey: '#a9a9a9',
-    darkkhaki: '#bdb76b',
-    darkmagenta: '#8b008b',
-    darkolivegreen: '#556b2f',
-    darkorange: '#ff8c00',
-    darkorchid: '#9932cc',
-    darkred: '#8b0000',
-    darksalmon: '#e9967a',
-    darkseagreen: '#8fbc8f',
-    darkslateblue: '#483d8b',
-    darkslategray: '#2f4f4f',
-    darkslategrey: '#2f4f4f',
-    darkturquoise: '#00ced1',
-    darkviolet: '#9400d3',
-    deeppink: '#ff1493',
-    deepskyblue: '#00bfff',
-    dimgray: '#696969',
-    dimgrey: '#696969',
-    dodgerblue: '#1e90ff',
-    firebrick: '#b22222',
-    floralwhite: '#fffaf0',
-    forestgreen: '#228b22',
-    fuchsia: '#ff00ff',
-    gainsboro: '#dcdcdc',
-    ghostwhite: '#f8f8ff',
-    gold: '#ffd700',
-    goldenrod: '#daa520',
-    gray: '#808080',
-    green: '#008000',
-    greenyellow: '#adff2f',
-    grey: '#808080',
-    honeydew: '#f0fff0',
-    hotpink: '#ff69b4',
-    indianred: '#cd5c5c',
-    indigo: '#4b0082',
-    ivory: '#fffff0',
-    khaki: '#f0e68c',
-    lavender: '#e6e6fa',
-    lavenderblush: '#fff0f5',
-    lawngreen: '#7cfc00',
-    lemonchiffon: '#fffacd',
-    lightblue: '#add8e6',
-    lightcoral: '#f08080',
-    lightcyan: '#e0ffff',
-    lightgoldenrodyellow: '#fafad2',
-    lightgray: '#d3d3d3',
-    lightgreen: '#90ee90',
-    lightgrey: '#d3d3d3',
-    lightpink: '#ffb6c1',
-    lightsalmon: '#ffa07a',
-    lightseagreen: '#20b2aa',
-    lightskyblue: '#87cefa',
-    lightslategray: '#778899',
-    lightslategrey: '#778899',
-    lightsteelblue: '#b0c4de',
-    lightyellow: '#ffffe0',
-    lime: '#00ff00',
-    limegreen: '#32cd32',
-    linen: '#faf0e6',
-    magenta: '#ff00ff',
-    maroon: '#800000',
-    mediumaquamarine: '#66cdaa',
-    mediumblue: '#0000cd',
-    mediumorchid: '#ba55d3',
-    mediumpurple: '#9370db',
-    mediumseagreen: '#3cb371',
-    mediumslateblue: '#7b68ee',
-    mediumspringgreen: '#00fa9a',
-    mediumturquoise: '#48d1cc',
-    mediumvioletred: '#c71585',
-    midnightblue: '#191970',
-    mintcream: '#f5fffa',
-    mistyrose: '#ffe4e1',
-    moccasin: '#ffe4b5',
-    navajowhite: '#ffdead',
-    navy: '#000080',
-    oldlace: '#fdf5e6',
-    olive: '#808000',
-    olivedrab: '#6b8e23',
-    orange: '#ffa500',
-    orangered: '#ff4500',
-    orchid: '#da70d6',
-    palegoldenrod: '#eee8aa',
-    palegreen: '#98fb98',
-    paleturquoise: '#afeeee',
-    palevioletred: '#db7093',
-    papayawhip: '#ffefd5',
-    peachpuff: '#ffdab9',
-    peru: '#cd853f',
-    pink: '#ffc0cb',
-    plum: '#dda0dd',
-    powderblue: '#b0e0e6',
-    purple: '#800080',
-    rebeccapurple: '#663399',
-    red: '#ff0000',
-    rosybrown: '#bc8f8f',
-    royalblue: '#4169e1',
-    saddlebrown: '#8b4513',
-    salmon: '#fa8072',
-    sandybrown: '#f4a460',
-    seagreen: '#2e8b57',
-    seashell: '#fff5ee',
-    sienna: '#a0522d',
-    silver: '#c0c0c0',
-    skyblue: '#87ceeb',
-    slateblue: '#6a5acd',
-    slategray: '#708090',
-    slategrey: '#708090',
-    snow: '#fffafa',
-    springgreen: '#00ff7f',
-    steelblue: '#4682b4',
-    tan: '#d2b48c',
-    teal: '#008080',
-    thistle: '#d8bfd8',
-    tomato: '#ff6347',
-    turquoise: '#40e0d0',
-    violet: '#ee82ee',
-    wheat: '#f5deb3',
-    white: '#ffffff',
-    whitesmoke: '#f5f5f5',
-    yellow: '#ffff00',
-    yellowgreen: '#9acd32'
-  };
-
-  var rgbaRxp = /^rgba?\(([^)]+)\)/;
-  var hexRxp = /^#([a-f0-9]{3,8})/i;
-
-  function parseColor(arg) {
-    arg = arg ? String(arg) : '';
-    var hexStr = hexRxp.test(arg) ? arg : lookupColorName(arg);
-    var rgb = null;
-    if (hexStr) {
-      rgb = parseHexColor(hexStr);
-    } else if (rgbaRxp.test(arg)) {
-      rgb = parseRGBA(arg);
-    }
-    if (rgb && !testRGB(rgb)) {
-      rgb = null;
-    }
-    return rgb;
-  }
-
-  function validateColor(arg) {
-    if (!parseColor(arg)) {
-      stop("Unsupported color:", arg);
-    }
-    return true;
-  }
-
-  function testRGB(o) {
-    return !!o && testChannel(o.r) && testChannel(o.g) && testChannel(o.b) &&
-      testAlpha(o.a);
-  }
-
-  function testAlpha(a) {
-    return a >= 0 && a <= 1;
-  }
-
-  function testChannel(c) {
-    return c >= 0 && c < 256; // allow fractional values
-  }
-
-  function parseRGBA(arg) {
-    var str = rgbaRxp.exec(arg)[1];
-    var parts = str.split(',').map(function(part) { return parseFloat(part); });
-    return {
-      r: parts[0],
-      g: parts[1],
-      b: parts[2],
-      a: parts[3] >= 0 ? parts[3] : 1
-    };
-  }
-
-  function formatColor(o) {
-    return o.a < 1 ? formatRGBA(o) : formatHexColor(o);
-  }
-
-  function formatHexColor(o) {
-    return "#" + formatHexChannel(o.r) + formatHexChannel(o.g) + formatHexChannel(o.b);
-
-  }
-
-  function formatRGBA(o) {
-    var rgb = snapHexChannel(o.r) + ',' + snapHexChannel(o.g) + ',' + snapHexChannel(o.b);
-    return o.a < 1 ?
-      'rgba(' + rgb + ',' + snapAlpha(o.a) + ')' :
-      'rgb(' + rgb + ')';
-  }
-
-  function snapAlpha(a) {
-    a = +a || 0;
-    a = Math.round(a * 1000) / 1000; // round to thousandths
-    return utils.clamp(a, 0, 1);
-  }
-
-  function snapHexChannel(arg) {
-    return Math.round(utils.clamp(+arg || 0, 0, 255));
-  }
-
-  // arg: should be number in 0-255 range
-  function formatHexChannel(arg) {
-    return snapHexChannel(arg).toString(16).padStart(2, '0');
-  }
-
-  // returns {r, g, b} object
-  function parseHexColor(str) {
-    var hex = hexRxp.exec(str)[1];
-    if (hex.length == 3 || hex.length == 4) {
-      hex = hex.split('').map(function(c) { return c + c; });
-    }
-    if (hex.length != 6 && hex.length != 8) return null;
-    return {
-      r: parseInt(hex.substr(0, 2), 16),
-      g: parseInt(hex.substr(2, 2), 16),
-      b: parseInt(hex.substr(4, 2), 16),
-      a: hex.length == 8 ? parseInt(hex.substr(7, 2), 16) / 255 : 1
-    };
-  }
-
-  function toHSV(rgb) {
-    var r = rgb.r,
-        g = rgb.g,
-        b = rgb.b,
-        max = Math.max(r, g, b),
-        min = Math.min(r, g, b),
-        diff = max - min,
-        h;
-    if (diff === 0) {
-      h = 0;
-    } else if (r == max) {
-      h = (g - b) / diff;
-    } else if (g == max) {
-      h = (b - r) / diff + 2;
-    } else {
-      h = (r - g) / diff + 4;
-    }
-    h *= 60;
-    if (h < 0) h += 360;
-    return {
-      h: h,
-      s: max == 0 ? 0 : 255 * (1 - min / max),
-      v: max,
-      a: rgb.a
-    };
-  }
-
-  function fromHSV(hsv) {
-    var h = hsv.h,
-        s = hsv.s / 255,
-        v = hsv.v,
-        hi = Math.floor(h / 60) % 6,
-        f = h / 60 - Math.floor(h / 60),
-        p = (v * (1 - s)),
-        q = (v * (1 - f * s)),
-        t = (v * (1 - (1 - f) * s)),
-        r, g, b;
-    if (hi === 0) {
-      r = v; g = t; b = p;
-    } else if (hi == 1) {
-      r = q; g = v; b = p;
-    } else if (hi == 2) {
-      r = p; g = v; b = t;
-    } else if (hi == 3) {
-      r = p; g = q; b = v;
-    } else if (hi == 4) {
-      r = t; g = p; b = v;
-    } else {
-      r = v; g = p; b = q;
-    }
-    return {
-      r: r,
-      g: g,
-      b: b,
-      a: hsv.a
-    };
-  }
-
-  var DEFAULT_MESH_INTERVAL = 32;
-  var DEFAULT_MAX_EDGE_FACTOR = 20;
-
-  function projectRasterGridForward(raster, srcCRS, destCRS, optsArg) {
-    var opts = optsArg || {};
-    var grid = getRasterGrid(raster);
-    var interval = opts.raster_mesh_interval || opts.rasterMeshInterval || DEFAULT_MESH_INTERVAL;
-    var transform = getProjTransform2(srcCRS, destCRS);
-    var timing = opts.timing;
-    var mesh, bbox, outSize, outGrid;
-    validateRasterGridForProjection(grid);
-    timeStart(timing, 'mesh');
-    mesh = buildProjectedRasterMesh(grid, transform, interval);
-    classifyProjectedMeshCells(mesh, opts);
-    timeEnd(timing, 'mesh');
-    bbox = opts.output_bbox || opts.outputBbox || getProjectedMeshBBox(mesh);
-    if (!bbox) stop('Unable to project raster layer');
-    outSize = getOutputGridSize(grid, bbox, opts);
-    outGrid = createProjectedRasterGrid(grid, bbox, outSize.width, outSize.height, opts);
-    timeStart(timing, 'rasterize');
-    rasterizeProjectedMesh(grid, outGrid, mesh, getRasterProjectionSampleMethod(raster, opts));
-    timeEnd(timing, 'rasterize');
-    if (timing) {
-      timing.outputWidth = outGrid.width;
-      timing.outputHeight = outGrid.height;
-      timing.meshVertices = mesh.vertices.length;
-      timing.meshCells = mesh.cells.length;
-      timing.meshSkippedCells = mesh.skippedCellCount;
-    }
-    return outGrid;
-  }
-
-  function getRasterProjectionSampleMethod(raster, opts) {
-    var method = opts.resampling || opts.sample_method || opts.sampleMethod || getDefaultRasterProjectionSampleMethod(raster);
-    if (method != 'nearest' && method != 'bilinear') {
-      stop('Unsupported resampling method:', method);
-    }
-    return method;
-  }
-
-  function getDefaultRasterProjectionSampleMethod(raster) {
-    return rasterAppearsCategorical(raster) ? 'nearest' : 'bilinear';
-  }
-
-  function rasterAppearsCategorical(raster) {
-    var grid = getRasterGrid(raster);
-    var recipe = raster && raster.view && raster.view.recipe || {};
-    var derivation = raster && raster.derivation || {};
-    return raster && raster.interpretation == 'categorical' ||
-      grid && grid.colorModel == 'palette' ||
-      recipe.type == 'palette' ||
-      recipe.type == 'categorical' ||
-      derivation.type == 'palette' ||
-      derivation.type == 'categorical';
-  }
-
-  function getProjectedRasterGridBBox(raster, srcCRS, destCRS, optsArg) {
-    var opts = optsArg || {};
-    var grid = getRasterGrid(raster);
-    var interval = opts.raster_mesh_interval || opts.rasterMeshInterval || DEFAULT_MESH_INTERVAL;
-    var transform = getProjTransform2(srcCRS, destCRS);
-    var mesh, bbox;
-    validateRasterGridForProjection(grid);
-    mesh = buildProjectedRasterMesh(grid, transform, interval);
-    classifyProjectedMeshCells(mesh, opts);
-    bbox = getProjectedMeshBBox(mesh);
-    return bbox;
-  }
-
-  function getProjectedRasterMeshBBox(mesh, optsArg) {
-    classifyProjectedMeshCells(mesh, optsArg || {});
-    return getProjectedMeshBBox(mesh);
-  }
-
-  function buildProjectedRasterMesh(grid, transform, interval) {
-    var xs = getMeshStops(grid.width, interval);
-    var ys = getMeshStops(grid.height, interval);
-    var vertices = [];
-    for (var y = 0; y < ys.length; y++) {
-      for (var x = 0; x < xs.length; x++) {
-        vertices.push(projectRasterMeshVertex(grid, xs[x], ys[y], transform));
-      }
-    }
-    return {
-      xs: xs,
-      ys: ys,
-      vertices: vertices
-    };
-  }
-
-  function classifyProjectedMeshCells(mesh, opts) {
-    var cols = mesh.xs.length;
-    var cells = [];
-    var lengths = [];
-    var maxEdge, skipped;
-    for (var y = 0; y < mesh.ys.length - 1; y++) {
-      for (var x = 0; x < mesh.xs.length - 1; x++) {
-        var cell = getMeshCell(mesh, cols, x, y);
-        cell.maxEdge = getCellMaxEdge(cell);
-        cells.push(cell);
-        if (cell.valid) lengths.push(cell.maxEdge);
-      }
-    }
-    maxEdge = getProjectedMeshMaxEdge(lengths, opts);
-    skipped = 0;
-    cells.forEach(function(cell) {
-      if (!cell.valid || cell.maxEdge > maxEdge) {
-        cell.valid = false;
-        skipped++;
-      }
-    });
-    if (opts.raster_component_filter || opts.rasterComponentFilter) {
-      skipped += keepLargestValidCellComponent(cells, mesh.xs.length - 1, mesh.ys.length - 1);
-    }
-    mesh.cells = cells;
-    mesh.maxEdge = maxEdge;
-    mesh.skippedCellCount = skipped;
-  }
-
-  function keepLargestValidCellComponent(cells, cols, rows) {
-    var componentIds = new Int32Array(cells.length);
-    var components = [];
-    var componentId = 0;
-    var largestId = -1;
-    var largestSize = 0;
-    var skipped = 0;
-    componentIds.fill(-1);
-    for (var i = 0; i < cells.length; i++) {
-      if (!cells[i].valid || componentIds[i] != -1) continue;
-      components[componentId] = floodFillCellComponent(cells, componentIds, cols, rows, i, componentId);
-      if (components[componentId].size > largestSize) {
-        largestSize = components[componentId].size;
-        largestId = componentId;
-      }
-      componentId++;
-    }
-    if (largestId == -1) return 0;
-    cells.forEach(function(cell, i) {
-      if (cell.valid && !componentShouldBeKept(components[componentIds[i]], components[largestId])) {
-        cell.valid = false;
-        skipped++;
-      }
-    });
-    return skipped;
-  }
-
-  function floodFillCellComponent(cells, componentIds, cols, rows, start, componentId) {
-    var stack = [start];
-    var component = {
-      size: 0,
-      bbox: [Infinity, Infinity, -Infinity, -Infinity]
-    };
-    while (stack.length > 0) {
-      var id = stack.pop();
-      var x, y;
-      if (!cells[id].valid || componentIds[id] != -1) continue;
-      componentIds[id] = componentId;
-      component.size++;
-      expandComponentBBox(component, cells[id]);
-      x = id % cols;
-      y = Math.floor(id / cols);
-      if (x > 0) stack.push(id - 1);
-      if (x < cols - 1) stack.push(id + 1);
-      if (y > 0) stack.push(id - cols);
-      if (y < rows - 1) stack.push(id + cols);
-    }
-    return component;
-  }
-
-  function componentShouldBeKept(component, mainComponent) {
-    if (component == mainComponent) return true;
-    // A valid antimeridian split can create multiple disconnected source-grid
-    // components whose projected bboxes overlap. Remote components are more
-    // likely to be projection discontinuities that would create spiky triangles.
-    return bboxesOverlap(component.bbox, mainComponent.bbox);
-  }
-
-  function expandComponentBBox(component, cell) {
-    [cell.v00, cell.v10, cell.v01, cell.v11].forEach(function(p) {
-      if (p.x < component.bbox[0]) component.bbox[0] = p.x;
-      if (p.y < component.bbox[1]) component.bbox[1] = p.y;
-      if (p.x > component.bbox[2]) component.bbox[2] = p.x;
-      if (p.y > component.bbox[3]) component.bbox[3] = p.y;
-    });
-  }
-
-  function bboxesOverlap(a, b) {
-    return a[0] <= b[2] && a[2] >= b[0] && a[1] <= b[3] && a[3] >= b[1];
-  }
-
-  function getMeshCell(mesh, cols, x, y) {
-    var v = y * cols + x;
-    var v00 = mesh.vertices[v];
-    var v10 = mesh.vertices[v + 1];
-    var v01 = mesh.vertices[v + cols];
-    var v11 = mesh.vertices[v + cols + 1];
-    return {
-      v00: v00,
-      v10: v10,
-      v01: v01,
-      v11: v11,
-      valid: vertexIsValid(v00) && vertexIsValid(v10) && vertexIsValid(v01) && vertexIsValid(v11)
-    };
-  }
-
-  function getCellMaxEdge(cell) {
-    if (!cell.valid) return Infinity;
-    return Math.max(
-      getProjectedEdgeLength(cell.v00, cell.v10),
-      getProjectedEdgeLength(cell.v10, cell.v11),
-      getProjectedEdgeLength(cell.v11, cell.v01),
-      getProjectedEdgeLength(cell.v01, cell.v00)
-    );
-  }
-
-  function getProjectedEdgeLength(a, b) {
-    var dx = a.x - b.x;
-    var dy = a.y - b.y;
-    return Math.sqrt(dx * dx + dy * dy);
-  }
-
-  function getProjectedMeshMaxEdge(lengths, opts) {
-    var factor = opts.raster_max_edge_factor || opts.rasterMaxEdgeFactor || DEFAULT_MAX_EDGE_FACTOR;
-    if (lengths.length === 0) return 0;
-    lengths.sort(function(a, b) { return a - b; });
-    return lengths[Math.floor(lengths.length / 2)] * factor;
-  }
-
-  function validateRasterGridForProjection(grid) {
-    var t = grid && grid.transform;
-    if (!grid || !grid.samples || !grid.bbox) stop('Raster layer is missing required projection data');
-    if (t && (t[1] !== 0 || t[3] !== 0)) {
-      stop('Raster reprojection does not support rotated or skewed rasters');
-    }
-  }
-
-  function getMeshStops(size, interval) {
-    var stops = [];
-    var i;
-    interval = Math.max(1, interval | 0);
-    for (i = 0; i < size; i += interval) {
-      stops.push(i);
-    }
-    if (stops[stops.length - 1] != size) stops.push(size);
-    return stops;
-  }
-
-  function projectRasterMeshVertex(grid, px, py, transform) {
-    var xy = rasterPixelToMapXY(grid, px, py);
-    var p = transform(xy[0], xy[1]);
-    return {
-      sx: px,
-      sy: py,
-      x: p && isFinite(p[0]) ? p[0] : NaN,
-      y: p && isFinite(p[1]) ? p[1] : NaN
-    };
-  }
-
-  function rasterPixelToMapXY(grid, px, py) {
-    var t = grid.transform;
-    var bbox = grid.bbox;
-    if (t) {
-      return [
-        t[0] * px + t[1] * py + t[2],
-        t[3] * px + t[4] * py + t[5]
-      ];
-    }
-    return [
-      bbox[0] + px / grid.width * (bbox[2] - bbox[0]),
-      bbox[3] - py / grid.height * (bbox[3] - bbox[1])
-    ];
-  }
-
-  function getProjectedMeshBBox(mesh) {
-    var xmin = Infinity, ymin = Infinity, xmax = -Infinity, ymax = -Infinity;
-    mesh.cells.forEach(function(cell) {
-      if (!cell.valid) return;
-      [cell.v00, cell.v10, cell.v01, cell.v11].forEach(function(p) {
-        if (p.x < xmin) xmin = p.x;
-        if (p.x > xmax) xmax = p.x;
-        if (p.y < ymin) ymin = p.y;
-        if (p.y > ymax) ymax = p.y;
-      });
-    });
-    return xmin < Infinity && xmax > xmin && ymax > ymin ? [xmin, ymin, xmax, ymax] : null;
-  }
-
-  function createProjectedRasterGrid(grid, bbox, widthArg, heightArg, opts) {
-    var width = widthArg || grid.width;
-    var height = heightArg || grid.height;
-    var bands = getOutputBandCount(grid, opts);
-    var samples = new grid.samples.constructor(width * height * bands);
-    var coverage = new Uint8Array(width * height);
-    fillProjectedRasterSamples(samples, bands, grid, opts || {});
-    return Object.assign({}, grid, {
-      width: width,
-      height: height,
-      bands: bands,
-      samples: samples,
-      coverage: coverage,
-      bbox: bbox,
-      transform: [
-        (bbox[2] - bbox[0]) / width,
-        0,
-        bbox[0],
-        0,
-        -(bbox[3] - bbox[1]) / height,
-        bbox[3]
-      ]
-    });
-  }
-
-  function getOutputGridSize(grid, bbox, opts) {
-    var width = opts.output_width || opts.outputWidth;
-    var height = opts.output_height || opts.outputHeight;
-    var pixels, aspect;
-    if (width || height) {
-      return {
-        width: width || Math.max(1, Math.round(grid.width * height / grid.height)),
-        height: height || Math.max(1, Math.round(grid.height * width / grid.width))
-      };
-    }
-    pixels = grid.width * grid.height;
-    aspect = (bbox[2] - bbox[0]) / (bbox[3] - bbox[1]);
-    if (!isFinite(aspect) || aspect <= 0) return {width: grid.width, height: grid.height};
-    width = Math.max(1, Math.round(Math.sqrt(pixels * aspect)));
-    height = Math.max(1, Math.round(pixels / width));
-    return {width: width, height: height};
-  }
-
-  function getOutputBandCount(grid, opts) {
-    var color = getNoDataColor(opts);
-    return color && color.a === 0 && grid.bands > 1 && grid.bands < 4 ? 4 : grid.bands;
-  }
-
-  function fillProjectedRasterSamples(samples, bands, grid, opts) {
-    var color = getNoDataColor(opts);
-    var noData = grid.nodata;
-    if (color) {
-      fillProjectedRasterColor(samples, bands, color);
-      return;
-    }
-    if (noData === null || noData === undefined || !isFinite(noData)) return;
-    samples.fill(noData);
-  }
-
-  function getNoDataColor(opts) {
-    var arg = opts.nodata_color || opts.nodataColor;
-    var color;
-    if (arg == null || arg === '') return null;
-    if (String(arg).toLowerCase() == 'transparent') {
-      return {r: 0, g: 0, b: 0, a: 0};
-    }
-    color = parseColor(arg);
-    if (!color) stop('Unsupported nodata-color:', arg);
-    return color;
-  }
-
-  function fillProjectedRasterColor(samples, bands, color) {
-    var gray = Math.round(0.299 * color.r + 0.587 * color.g + 0.114 * color.b);
-    var alpha = Math.round((color.a == null ? 1 : color.a) * 255);
-    for (var i = 0; i < samples.length; i += bands) {
-      if (bands == 1) {
-        samples[i] = gray;
-      } else {
-        samples[i] = color.r;
-        samples[i + 1] = color.g;
-        samples[i + 2] = color.b;
-        if (bands > 3) samples[i + 3] = alpha;
-      }
-    }
-  }
-
-  function rasterizeProjectedMesh(srcGrid, destGrid, mesh, sampleMethod) {
-    mesh.cells.forEach(function(cell) {
-      if (!cell.valid) return;
-      rasterizeProjectedTriangle(srcGrid, destGrid, cell.v00, cell.v10, cell.v11, sampleMethod);
-      rasterizeProjectedTriangle(srcGrid, destGrid, cell.v00, cell.v11, cell.v01, sampleMethod);
-    });
-  }
-
-  function rasterizeProjectedTriangle(srcGrid, destGrid, a, b, c, sampleMethod) {
-    var bbox, x0, x1, y0, y1, det, w1, w2, w3, sx, sy, ap, bp, cp;
-    if (!vertexIsValid(a) || !vertexIsValid(b) || !vertexIsValid(c)) return;
-    ap = vertexToDestPixel(destGrid, a);
-    bp = vertexToDestPixel(destGrid, b);
-    cp = vertexToDestPixel(destGrid, c);
-    det = triangleDet(ap, bp, cp);
-    if (det === 0) return;
-    bbox = getTrianglePixelBounds(destGrid, ap, bp, cp);
-    x0 = bbox[0]; y0 = bbox[1]; x1 = bbox[2]; y1 = bbox[3];
-    for (var y = y0; y <= y1; y++) {
-      for (var x = x0; x <= x1; x++) {
-        w1 = edgeFunction(bp, cp, x + 0.5, y + 0.5) / det;
-        w2 = edgeFunction(cp, ap, x + 0.5, y + 0.5) / det;
-        w3 = 1 - w1 - w2;
-        if (w1 < -1e-9 || w2 < -1e-9 || w3 < -1e-9) continue;
-        sx = w1 * a.sx + w2 * b.sx + w3 * c.sx;
-        sy = w1 * a.sy + w2 * b.sy + w3 * c.sy;
-        copyRasterSample(srcGrid, destGrid, sx, sy, x, y, sampleMethod);
-      }
-    }
-  }
-
-  function vertexToDestPixel(grid, vertex) {
-    var p = mapXYToRasterPixel(grid, vertex.x, vertex.y);
-    return {
-      x: p[0],
-      y: p[1],
-      sx: vertex.sx,
-      sy: vertex.sy
-    };
-  }
-
-  function getTrianglePixelBounds(grid, p1, p2, p3) {
-    return [
-      clamp(Math.floor(Math.min(p1.x, p2.x, p3.x)), 0, grid.width - 1),
-      clamp(Math.floor(Math.min(p1.y, p2.y, p3.y)), 0, grid.height - 1),
-      clamp(Math.ceil(Math.max(p1.x, p2.x, p3.x)), 0, grid.width - 1),
-      clamp(Math.ceil(Math.max(p1.y, p2.y, p3.y)), 0, grid.height - 1)
-    ];
-  }
-
-  function mapXYToRasterPixel(grid, x, y) {
-    var bbox = grid.bbox;
-    return [
-      (x - bbox[0]) / (bbox[2] - bbox[0]) * grid.width,
-      (bbox[3] - y) / (bbox[3] - bbox[1]) * grid.height
-    ];
-  }
-
-  function copyRasterSample(srcGrid, destGrid, sx, sy, dx, dy, sampleMethod) {
-    if (sampleMethod == 'bilinear') {
-      copyBilinearRasterSample(srcGrid, destGrid, sx, sy, dx, dy);
-    } else {
-      copyNearestRasterSample(srcGrid, destGrid, sx, sy, dx, dy);
-    }
-  }
-
-  function copyNearestRasterSample(srcGrid, destGrid, sx, sy, dx, dy) {
-    var srcX = clamp(Math.floor(sx), 0, srcGrid.width - 1);
-    var srcY = clamp(Math.floor(sy), 0, srcGrid.height - 1);
-    var src = (srcY * srcGrid.width + srcX) * srcGrid.bands;
-    var dest = (dy * destGrid.width + dx) * destGrid.bands;
-    if (!rasterSourcePixelIsCovered(srcGrid, srcX, srcY)) return;
-    for (var band = 0; band < srcGrid.bands; band++) {
-      destGrid.samples[dest + band] = srcGrid.samples[src + band];
-    }
-    if (destGrid.bands > srcGrid.bands) destGrid.samples[dest + 3] = 255;
-    if (destGrid.coverage) destGrid.coverage[dy * destGrid.width + dx] = 1;
-  }
-
-  function copyBilinearRasterSample(srcGrid, destGrid, sx, sy, dx, dy) {
-    var srcX = clamp(Math.floor(sx - 0.5), 0, srcGrid.width - 1);
-    var srcY = clamp(Math.floor(sy - 0.5), 0, srcGrid.height - 1);
-    var srcX2 = clamp(srcX + 1, 0, srcGrid.width - 1);
-    var srcY2 = clamp(srcY + 1, 0, srcGrid.height - 1);
-    var tx = clamp(sx - 0.5 - srcX, 0, 1);
-    var ty = clamp(sy - 0.5 - srcY, 0, 1);
-    var src00 = (srcY * srcGrid.width + srcX) * srcGrid.bands;
-    var src10 = (srcY * srcGrid.width + srcX2) * srcGrid.bands;
-    var src01 = (srcY2 * srcGrid.width + srcX) * srcGrid.bands;
-    var src11 = (srcY2 * srcGrid.width + srcX2) * srcGrid.bands;
-    var dest = (dy * destGrid.width + dx) * destGrid.bands;
-    if (!srcGrid.coverage) {
-      copyBilinearRasterSampleFast(srcGrid, destGrid, src00, src10, src01, src11, dest, tx, ty);
-      if (destGrid.coverage) destGrid.coverage[dy * destGrid.width + dx] = 1;
-      return;
-    }
-    if (copyBilinearRasterSampleWithCoverage(srcGrid, destGrid, srcX, srcY, srcX2, srcY2, src00, src10, src01, src11, dest, tx, ty)) {
-      if (destGrid.coverage) destGrid.coverage[dy * destGrid.width + dx] = 1;
-    }
-  }
-
-  function copyBilinearRasterSampleFast(srcGrid, destGrid, src00, src10, src01, src11, dest, tx, ty) {
-    if (srcGrid.bands == 3) {
-      copyBilinearRgbSample(srcGrid.samples, destGrid.samples, src00, src10, src01, src11, dest, tx, ty);
-    } else if (srcGrid.bands == 4) {
-      copyBilinearRgbaSample(srcGrid.samples, destGrid.samples, src00, src10, src01, src11, dest, tx, ty);
-    } else {
-      copyBilinearGenericSample(srcGrid.samples, destGrid.samples, srcGrid.bands, src00, src10, src01, src11, dest, tx, ty);
-    }
-    if (destGrid.bands > srcGrid.bands) destGrid.samples[dest + 3] = 255;
-  }
-
-  function copyBilinearRgbSample(src, destArr, src00, src10, src01, src11, dest, tx, ty) {
-    copyBilinearBand(src, destArr, src00, src10, src01, src11, dest, 0, tx, ty);
-    copyBilinearBand(src, destArr, src00, src10, src01, src11, dest, 1, tx, ty);
-    copyBilinearBand(src, destArr, src00, src10, src01, src11, dest, 2, tx, ty);
-  }
-
-  function copyBilinearRgbaSample(src, destArr, src00, src10, src01, src11, dest, tx, ty) {
-    copyBilinearRgbSample(src, destArr, src00, src10, src01, src11, dest, tx, ty);
-    copyBilinearBand(src, destArr, src00, src10, src01, src11, dest, 3, tx, ty);
-  }
-
-  function copyBilinearGenericSample(src, destArr, bands, src00, src10, src01, src11, dest, tx, ty) {
-    for (var band = 0; band < bands; band++) {
-      copyBilinearBand(src, destArr, src00, src10, src01, src11, dest, band, tx, ty);
-    }
-  }
-
-  function copyBilinearBand(src, destArr, src00, src10, src01, src11, dest, band, tx, ty) {
-    var a = src[src00 + band] * (1 - tx) + src[src10 + band] * tx;
-    var b = src[src01 + band] * (1 - tx) + src[src11 + band] * tx;
-    destArr[dest + band] = Math.round(a * (1 - ty) + b * ty);
-  }
-
-  function copyBilinearRasterSampleWithCoverage(srcGrid, destGrid, srcX, srcY, srcX2, srcY2, src00, src10, src01, src11, dest, tx, ty) {
-    var coords = [
-      [srcX, srcY, src00, (1 - tx) * (1 - ty)],
-      [srcX2, srcY, src10, tx * (1 - ty)],
-      [srcX, srcY2, src01, (1 - tx) * ty],
-      [srcX2, srcY2, src11, tx * ty]
-    ];
-    var total = 0;
-    var val, item;
-    for (var band = 0; band < srcGrid.bands; band++) {
-      val = 0;
-      total = 0;
-      for (var i = 0; i < coords.length; i++) {
-        item = coords[i];
-        if (item[3] <= 0 || !rasterSourcePixelIsCovered(srcGrid, item[0], item[1])) continue;
-        val += srcGrid.samples[item[2] + band] * item[3];
-        total += item[3];
-      }
-      if (total <= 0) return false;
-      destGrid.samples[dest + band] = Math.round(val / total);
-    }
-    if (destGrid.bands > srcGrid.bands) destGrid.samples[dest + 3] = 255;
-    return true;
-  }
-
-  function rasterSourcePixelIsCovered(grid, x, y) {
-    return !grid.coverage || grid.coverage[y * grid.width + x] > 0;
-  }
-
-  function timeStart(timing, name) {
-    if (!timing) return;
-    timing[name + 'Start'] = getTimer$2();
-  }
-
-  function timeEnd(timing, name) {
-    if (!timing) return;
-    timing[name + 'Ms'] = getTimer$2() - timing[name + 'Start'];
-  }
-
-  function getTimer$2() {
-    return typeof performance != 'undefined' && performance.now ? performance.now() : Date.now();
-  }
-
-  function vertexIsValid(p) {
-    return p && isFinite(p.x) && isFinite(p.y);
-  }
-
-  function triangleDet(a, b, c) {
-    return edgeFunction(a, b, c.x, c.y);
-  }
-
-  function edgeFunction(a, b, x, y) {
-    return (x - a.x) * (b.y - a.y) - (y - a.y) * (b.x - a.x);
-  }
-
-  function clamp(val, min, max) {
-    return val < min ? min : val > max ? max : val;
-  }
-
   // lyr: a map layer with gui property
   // displayCRS: CRS to use for display, or null (which clears any current display CRS)
   function projectLayerForDisplay(lyr, displayCRS) {
-    var crsInfo = getDatasetCrsInfo$1(lyr.gui.source.dataset);
+    var crsInfo = getDatasetCrsInfo(lyr.gui.source.dataset);
     var sourceCRS = crsInfo.crs || null; // let enhanceLayerForDisplay() handle null case
     if (!lyr.gui.geographic) {
       return;
@@ -15225,7 +8559,7 @@
     var emptyArcs;
 
     if (displayCRS && (layer.geometry_type || internal.layerHasRaster(layer))) {
-      var crsInfo = getDatasetCrsInfo$1(dataset);
+      var crsInfo = getDatasetCrsInfo(dataset);
       if (crsInfo.error) {
         // unprojectable dataset -- return empty layer
         gui.unprojectable = true;
@@ -15302,7 +8636,7 @@
   }
 
   function getProjectedRasterDisplayBounds(layer, sourceCRS, displayCRS) {
-    var bbox = getProjectedRasterGridBBox(layer.raster, sourceCRS, displayCRS, {raster_mesh_interval: 32});
+    var bbox = internal.getProjectedRasterGridBBox(layer.raster, sourceCRS, displayCRS, {raster_mesh_interval: 32});
     return bbox ? new Bounds$1(bbox) : new Bounds$1();
   }
 
@@ -15344,7 +8678,7 @@
     var p1 = points[0], p2, dist, angle;
     for (var i=1; i<points.length; i++) {
       p2 = points[i];
-      dist = Math.sqrt(geom$1.pointSegDistSq(p2[0], p2[1], p1[0], p1[1], p[0], p[1]));
+      dist = Math.sqrt(geom.pointSegDistSq(p2[0], p2[1], p1[0], p1[1], p[0], p[1]));
       if (dist > tolerance) return true;
     }
     return false;
@@ -15412,7 +8746,7 @@
       internal.appendEmptyArc(lyr.gui.source.dataset.arcs);
     }
     points.forEach(function(p) {
-      appendVertex(lyr, p);
+      appendVertex$1(lyr, p);
     });
     appendNewDataRecord(lyr);
   }
@@ -15472,25 +8806,25 @@
   }
 
   // p: point in source data CRS coords.
-  function insertVertex(lyr, id, p) {
+  function insertVertex$1(lyr, id, p) {
     internal.insertVertex(lyr.gui.source.dataset.arcs, id, p);
     if (isProjectedLayer(lyr)) {
       internal.insertVertex(lyr.gui.displayArcs, id, lyr.gui.projectPoint(p[0], p[1]));
     }
   }
 
-  function appendVertex(lyr, p) {
+  function appendVertex$1(lyr, p) {
     var n = lyr.gui.source.dataset.arcs.getPointCount();
-    insertVertex(lyr, n, p);
+    insertVertex$1(lyr, n, p);
   }
 
   // TODO: make sure we're not also removing an entire arc
   function deleteLastVertex(lyr) {
-    deleteVertex(lyr, lyr.gui.displayArcs.getPointCount() - 1);
+    deleteVertex$1(lyr, lyr.gui.displayArcs.getPointCount() - 1);
   }
 
 
-  function deleteVertex(lyr, id) {
+  function deleteVertex$1(lyr, id) {
     internal.deleteVertex(lyr.gui.displayArcs, id);
     if (isProjectedLayer(lyr)) {
       internal.deleteVertex(lyr.gui.source.dataset.arcs, id);
@@ -17454,8 +10788,8 @@
       if (e.deleteLayer) {
        addMenuItem('delete layer', e.deleteLayer, '');
       }
-      if (e.selectLayer) {
-       addMenuItem('select layer', e.selectLayer, '');
+      if (e.showLayerInfo) {
+       addMenuItem('show info', e.showLayerInfo, '');
       }
 
       if (lyr && lyr.gui.geographic) {
@@ -17563,7 +10897,7 @@
   function layerHasOpenPaths(layer, arcs) {
     var retn = false;
     internal.editShapes(layer.shapes, function(part) {
-      if (!geom$1.pathIsClosed(part, arcs)) retn = true;
+      if (!geom.pathIsClosed(part, arcs)) retn = true;
     });
     return retn;
   }
@@ -17882,6 +11216,15 @@
         }
       }
 
+      function showLayerInfo() {
+        var target = findLayerById(id);
+        var popup, content;
+        if (!target) return;
+        popup = showPopupAlert('', 'Layer info');
+        content = popup.container().addClass('layer-info-popup');
+        content.node().appendChild(renderLayerInfo(internal.getLayerInfo(target.layer, target.dataset)));
+      }
+
       function openLayerMenu(e) {
         var menuEvent = e;
         e.stopPropagation();
@@ -17893,7 +11236,7 @@
           };
         }
         menuEvent.deleteLayer = deleteLayer;
-        menuEvent.selectLayer = selectLayer;
+        menuEvent.showLayerInfo = showLayerInfo;
         menuEvent.contextMenuId = 'layer-' + id;
         openContextMenu(menuEvent, null, null);
       }
@@ -17972,13 +11315,106 @@
       if (isFrame) {
         str = 'map frame';
       } else if (internal.layerHasRaster(lyr)) {
-        str = utils$1.format('%,d x %,d %s', getRasterWidth(lyr.raster), getRasterHeight(lyr.raster), type);
+        str = utils$1.format('%,d x %,d %s', internal.getRasterWidth(lyr.raster), internal.getRasterHeight(lyr.raster), type);
       } else if (type) {
         str = utils$1.format('%,d %s%s', n, type, utils$1.pluralSuffix(n));
       } else {
         str = "[empty]";
       }
       return str;
+    }
+
+    function renderLayerInfo(info) {
+      var container = document.createElement('div');
+      var title = document.createElement('div');
+      container.className = 'console-info';
+      title.className = 'console-info-title';
+      title.textContent = 'Layer: ' + (info.layer_name || '[unnamed layer]');
+      container.appendChild(title);
+      container.appendChild(renderKeyValueTable(getInfoRows(info), 'console-info-table'));
+      if (!info.raster_type) {
+        container.appendChild(renderAttributeInfoTable(info.attribute_data));
+      }
+      return container;
+    }
+
+    function getInfoRows(info) {
+      var rows = [
+        ['Type', info.raster_type ? 'raster data' : info.geometry_type || 'tabular data']
+      ];
+      if (info.raster_type) {
+        rows.push(['Size', utils$1.format('%,d x %,d x %,d', info.raster_width, info.raster_height, info.raster_bands)]);
+        rows.push(['Data', info.raster_pixel_type || 'unknown']);
+      } else {
+        rows.push(['Records', utils$1.format('%,d', info.feature_count)]);
+      }
+      if (info.null_shape_count > 0) {
+        rows.push(['Nulls', utils$1.format("%'d", info.null_shape_count)]);
+      }
+      if (info.raster_type || info.geometry_type && info.feature_count > info.null_shape_count) {
+        rows.push(['Bounds', info.bbox.join(',')]);
+        rows.push(['CRS', info.proj4]);
+      }
+      rows.push(['Source', info.source_file || 'n/a']);
+      return rows;
+    }
+
+    function renderAttributeInfoTable(fields) {
+      var wrapper = document.createElement('div');
+      var title = document.createElement('div');
+      wrapper.className = 'console-attribute-info';
+      title.className = 'console-info-subtitle';
+      title.textContent = 'Attribute data';
+      wrapper.appendChild(title);
+      if (!fields) {
+        var none = document.createElement('div');
+        none.className = 'console-info-empty';
+        none.textContent = '[none]';
+        wrapper.appendChild(none);
+        return wrapper;
+      }
+      wrapper.appendChild(renderDataTable(
+        [['Field', 'First value']].concat(fields.map(function(o) {
+          var valKey = 'first_value' in o ? 'first_value' : 'value';
+          return [o.field, formatInfoValue(o[valKey])];
+        })),
+        'console-attribute-table'
+      ));
+      return wrapper;
+    }
+
+    function renderKeyValueTable(rows, className) {
+      return renderDataTable(rows, className + ' console-key-value-table');
+    }
+
+    function renderDataTable(rows, className) {
+      var table = document.createElement('table');
+      var tbody = document.createElement('tbody');
+      table.className = className;
+      rows.forEach(function(row, i) {
+        var tr = document.createElement('tr');
+        row.forEach(function(val) {
+          var cell = document.createElement(i === 0 && rows.length > 1 && className == 'console-attribute-table' ? 'th' : 'td');
+          cell.textContent = val == null ? '' : String(val);
+          tr.appendChild(cell);
+        });
+        tbody.appendChild(tr);
+      });
+      table.appendChild(tbody);
+      return table;
+    }
+
+    function formatInfoValue(val) {
+      if (val === null || val === undefined) return '';
+      if (utils$1.isString(val)) {
+        return "'" + val.replace(/[\r\t\n]/g, function(c) {
+          return c == '\n' ? '\\n' : c == '\r' ? '\\r' : '\\t';
+        }) + "'";
+      }
+      if (utils$1.isNumber(val) || val === true || val === false) {
+        return String(val);
+      }
+      return JSON.stringify(val);
     }
 
     function renameLayer(target, name) {
@@ -18081,6 +11517,8 @@
     var note = menu.findChild('.history-menu-note');
     var clearBtn = menu.findChild('.history-clear-btn');
     var commandLogBtn = menu.findChild('.history-command-log-btn');
+    var createSnapshotBtn = menu.findChild('.history-create-snapshot-btn');
+    var snapshotList = menu.findChild('.history-snapshot-list');
 
     gui.appUndoIsEnabled = isAppUndoEnabled;
 
@@ -18133,6 +11571,13 @@
       gui.clearMode();
     });
 
+    createSnapshotBtn.on('click', function(e) {
+      e.stopPropagation();
+      if (!createSnapshotBtn.hasClass('disabled') && gui.sessionSnapshots) {
+        gui.sessionSnapshots.saveSnapshot().then(renderSnapshotList);
+      }
+    });
+
     document.addEventListener('keydown', function(e) {
       if (gui.getMode() == 'history_menu' && e.key == 'Escape') {
         gui.clearMode();
@@ -18146,6 +11591,7 @@
     function turnOn() {
       btn.attr('aria-expanded', 'true');
       updateMenuState();
+      renderSnapshotList();
       menu.show();
     }
 
@@ -18158,6 +11604,7 @@
       // setItemEnabled(undoBtn, gui.undo.canUndo());
       // setItemEnabled(redoBtn, gui.undo.canRedo());
       setItemEnabled(clearBtn, gui.undo.canUndo() || gui.undo.canRedo());
+      setItemEnabled(createSnapshotBtn, !!(gui.sessionSnapshots && gui.sessionSnapshots.enabled));
       updateToggle();
     }
 
@@ -18179,6 +11626,14 @@
         return store.clear();
       }
       return Promise.resolve();
+    }
+
+    function renderSnapshotList() {
+      if (gui.sessionSnapshots && gui.sessionSnapshots.enabled && snapshotList) {
+        gui.sessionSnapshots.renderSnapshotList(snapshotList);
+      } else if (snapshotList) {
+        snapshotList.empty();
+      }
     }
   }
 
@@ -18576,14 +12031,14 @@
       var endPoint = getVertexCoords(target, e.ids[0]);
       var undo = function() {
         if (e.data.type == 'interpolated') {
-          deleteVertex(target, e.ids[0]);
+          deleteVertex$1(target, e.ids[0]);
         } else {
           setVertexCoords(target, e.ids, startPoint);
         }
       };
       var redo = function() {
         if (e.insertion) {
-          insertVertex(target, e.ids[0], endPoint);
+          insertVertex$1(target, e.ids[0], endPoint);
         }
         setVertexCoords(target, e.ids, endPoint);
       };
@@ -18594,10 +12049,10 @@
       // get vertex coords in data coordinates (not display coordinates);
       var p = getVertexCoords(e.data.target, e.vertex_id);
       var redo = function() {
-        deleteVertex(e.data.target, e.vertex_id);
+        deleteVertex$1(e.data.target, e.vertex_id);
       };
       var undo = function() {
-        insertVertex(e.data.target, e.vertex_id, p);
+        insertVertex$1(e.data.target, e.vertex_id, p);
       };
       addHistoryState(undo, redo);
     });
@@ -19116,6 +12571,7 @@
       info: 'inspect features',
       box: 'rectangle tool',
       data: 'edit attributes',
+      label_style: 'style labels',
       labels: 'position labels',
       edit_points: 'add/drag points',
       edit_lines: 'draw/edit polylines',
@@ -19150,6 +12606,7 @@
       });
 
       btn.on('mouseenter', function() {
+        if (gui.state.label_style_panel_open) return;
         btn.addClass('hover');
         if (_menuOpen) {
           clearTimeout(_menuTimeout); // prevent timed closing
@@ -19162,7 +12619,10 @@
       });
 
       btn.on('click', function(e) {
-        if (active()) {
+        if (_editMode == 'label_style') {
+          setMode('info');
+          closeMenu();
+        } else if (active()) {
           setMode('off');
           closeMenu();
         } else if (_menuOpen) {
@@ -19173,6 +12633,7 @@
         }
         e.stopPropagation();
       });
+
     }
 
     this.turnOff = function() {
@@ -19184,7 +12645,7 @@
     };
 
     this.modeUsesHitDetection = function(mode) {
-      return ['info', 'selection', 'data', 'labels', 'edit_points', 'vertices', 'rectangles', 'edit_lines', 'edit_polygons', 'snip_lines'].includes(mode);
+      return ['info', 'selection', 'data', 'label_style', 'labels', 'edit_points', 'vertices', 'rectangles', 'edit_lines', 'edit_polygons', 'snip_lines'].includes(mode);
     };
 
     this.modeUsesPopup = function(mode) {
@@ -19192,7 +12653,7 @@
     };
 
     this.modeSupportsUndo = function(mode) {
-      return ['data', 'labels', 'edit_points', 'edit_lines', 'edit_polygons', 'vertices', 'rectangles'].includes(mode);
+      return ['data', 'label_style', 'labels', 'edit_points', 'edit_lines', 'edit_polygons', 'vertices', 'rectangles'].includes(mode);
     };
 
     this.getMode = getInteractionMode;
@@ -19274,9 +12735,14 @@
     // if current editing mode is not available, turn off the tool
     function updateCurrentMode() {
       var modes = getAvailableModes();
-      if (modes.indexOf(_editMode) == -1) {
+      if (modes.indexOf(_editMode) == -1 && !labelStyleModeIsAvailable()) {
         setMode('off');
       }
+    }
+
+    function labelStyleModeIsAvailable() {
+      var o = gui.model.getActiveLayer();
+      return _editMode == 'label_style' && o && o.layer && internal.layerHasLabels(o.layer);
     }
 
     function openMenu() {
@@ -19329,7 +12795,7 @@
       }
       btn.classed('hover', _menuOpen);
       // btn.classed('selected', active() && !_menuOpen);
-      btn.classed('selected', active());
+      btn.classed('selected', active() && _editMode != 'label_style');
     }
 
     function updateSelectionHighlight() {
@@ -19548,6 +13014,1788 @@
     }
   }
 
+  var sans = [{
+    name: 'NYTFranklin'
+  }, {
+    name: 'Acumin Pro'
+  }, {
+    name: 'Akzidenz-Grotesk'
+  }, {
+    name: 'Arial'
+  }, {
+    name: 'Avenir',
+    alternates: ['Avenir Next']
+  }, {
+    name: 'Bahnschrift'
+  }, {
+    name: 'Brandon Grotesque'
+  }, {
+    name: 'Cabin'
+  }, {
+    name: 'Calibri'
+  }, {
+    name: 'Candara'
+  }, {
+    name: 'Cantarell'
+  }, {
+    name: 'Century Gothic'
+  }, {
+    name: 'Clearview'
+  }, {
+    name: 'Corbel'
+  }, {
+    name: 'DejaVu Sans'
+  }, {
+    name: 'DIN 1451',
+    alternates: ['DIN']
+  }, {
+    name: 'DM Sans'
+  }, {
+    name: 'FF Meta'
+  }, {
+    name: 'Fira Sans'
+  }, {
+    name: 'Frutiger',
+    alternates: ['Frutiger Next']
+  }, {
+    name: 'Futura'
+  }, {
+    name: 'Gill Sans',
+    alternates: ['Gill Sans MT']
+  }, {
+    name: 'Gotham'
+  }, {
+    name: 'Gudea'
+  }, {
+    name: 'Helvetica',
+    alternates: ['Helvetica Neue']
+  }, {
+    name: 'IBM Plex Sans'
+  }, {
+    name: 'Inter'
+  }, {
+    name: 'Interstate'
+  }, {
+    name: 'ITC Stone Sans'
+  }, {
+    name: 'Josefin Sans'
+  }, {
+    name: 'Karla'
+  }, {
+    name: 'Lato'
+  }, {
+    name: 'Liberation Sans'
+  }, {
+    name: 'Lucida Grande',
+    alternates: ['Lucida Sans', 'Lucida Sans Unicode']
+  }, {
+    name: 'Montserrat'
+  }, {
+    name: 'Museo Sans'
+  }, {
+    name: 'Myriad Pro'
+  }, {
+    name: 'Neue Haas Grotesk',
+    alternates: ['Neue Haas Grotesk Text Pro']
+  }, {
+    name: 'Nunito Sans',
+    alternates: ['Nunito']
+  }, {
+    name: 'Open Sans'
+  }, {
+    name: 'Optima'
+  }, {
+    name: 'Overpass'
+  }, {
+    name: 'Poppins'
+  }, {
+    name: 'Proxima Nova'
+  }, {
+    name: 'PT Sans'
+  }, {
+    name: 'Raleway'
+  }, {
+    name: 'Roboto',
+    alternates: ['Noto Sans']
+  }, {
+    name: 'Rotis Sans Serif'
+  }, {
+    name: 'Rubik'
+  }, {
+    name: 'San Francisco',
+    alternates: ['SF Pro']
+  }, {
+    name: 'Scala Sans'
+  }, {
+    name: 'Segoe UI'
+  }, {
+    name: 'Source Sans Pro',
+    alternates: ['Source Sans 3']
+  }, {
+    name: 'Tahoma'
+  }, {
+    name: 'Trebuchet MS'
+  }, {
+    name: 'Tw Cen MT'
+  }, {
+    name: 'Ubuntu'
+  }, {
+    name: 'Univers'
+  }, {
+    name: 'Verdana'
+  }, {
+    name: 'Work Sans'
+  }
+  ];
+
+  var condensed = [{
+    name: 'Arial Narrow'
+  }, {
+    name: 'Barlow Condensed'
+  }, {
+    name: 'Bebas Neue'
+  }, {
+    name: 'DIN Condensed'
+  }, {
+    name: 'Franklin Gothic',
+    alternates: ['Franklin Gothic Medium']
+  }, {
+    name: 'Fira Sans Condensed'
+  }, {
+    name: 'Helvetica Condensed'
+  }, {
+    name: 'Impact'
+  }, {
+    name: 'News Gothic MT'
+  }, {
+    name: 'Oswald'
+  }, {
+    name: 'PT Sans Narrow'
+  }, {
+    name: 'Roboto Condensed'
+  }, {
+    name: 'Trade Gothic',
+    alternates: ['Trade Gothic Next']
+  }, {
+    name: 'Univers Condensed'
+  }];
+
+  var mono = [{
+    name: 'Andale Mono'
+  }, {
+    name: 'Cascadia Code',
+    alternates: ['Cascadia Mono']
+  }, {
+    name: 'Consolas'
+  }, {
+    name: 'Courier New'
+  }, {
+    name: 'DejaVu Sans Mono'
+  }, {
+    name: 'Fira Mono',
+    alternates: ['Fira Code']
+  }, {
+    name: 'IBM Plex Mono'
+  }, {
+    name: 'Inconsolata'
+  }, {
+    name: 'JetBrains Mono'
+  }, {
+    name: 'Liberation Mono'
+  }, {
+    name: 'Lucida Console'
+  }, {
+    name: 'Menlo'
+  }, {
+    name: 'Monaco'
+  }, {
+    name: 'Roboto Mono'
+  }, {
+    name: 'SF Mono'
+  }, {
+    name: 'Source Code Pro'
+  }, {
+    name: 'Ubuntu Mono'
+  }];
+
+  var serif = [{
+    name: 'NYTCheltenham'
+  }, {
+    name: 'Adobe Caslon Pro',
+    alternates: ['Caslon']
+  }, {
+    name: 'Adobe Garamond Pro',
+    alternates: ['Garamond']
+  }, {
+    name: 'Baskerville'
+  }, {
+    name: 'Bodoni',
+    alternates: ['Bodoni MT', 'Bodoni 72']
+  }, {
+    name: 'Book Antiqua'
+  }, {
+    name: 'Bookman Old Style'
+  }, {
+    name: 'Cambria'
+  }, {
+    name: 'Century Schoolbook'
+  }, {
+    name: 'Clarendon'
+  }, {
+    name: 'Cochin'
+  }, {
+    name: 'Constantia'
+  }, {
+    name: 'Crimson Pro',
+    alternates: ['Crimson Text']
+  }, {
+    name: 'DejaVu Serif'
+  }, {
+    name: 'Didot'
+  }, {
+    name: 'EB Garamond'
+  }, {
+    name: 'Georgia'
+  }, {
+    name: 'Goudy Old Style'
+  }, {
+    name: 'Hoefler Text'
+  }, {
+    name: 'IBM Plex Serif'
+  }, {
+    name: 'IM Fell'
+  }, {
+    name: 'Liberation Serif'
+  }, {
+    name: 'Libre Baskerville'
+  }, {
+    name: 'Lora'
+  }, {
+    name: 'Merriweather'
+  }, {
+    name: 'Minion Pro'
+  }, {
+    name: 'Noto Serif'
+  }, {
+    name: 'Palatino',
+    alternates: ['Palatino Linotype']
+  }, {
+    name: 'Perpetua'
+  }, {
+    name: 'Playfair Display'
+  }, {
+    name: 'PT Serif'
+  }, {
+    name: 'Roboto Slab'
+  }, {
+    name: 'Rockwell'
+  }, {
+    name: 'Sabon',
+    alternates: ['Sabon Next']
+  }, {
+    name: 'Sitka'
+  }, {
+    name: 'Source Serif Pro',
+    alternates: ['Source Serif 4']
+  }, {
+    name: 'Times New Roman'
+  }, {
+    name: 'Zilla Slab'
+  }];
+
+  var fontCategories = [{
+    name: 'Sans serif',
+    fonts: sans
+  }, {
+    name: 'Condensed',
+    fonts: condensed
+  }, {
+    name: 'Serif',
+    fonts: serif
+  }, {
+    name: 'Monospace',
+    fonts: mono
+  }];
+
+  var cachedFonts = null;
+  var cachedFontStyles = {};
+  var fontWeights = [100, 200, 300, 400, 500, 600, 700, 800, 900];
+  var fontStyles = ['normal', 'italic'];
+  var preferredWeights = [400, 700, 900, 500, 300, 600, 800, 200, 100];
+  var weightNames = {
+    100: 'Thin',
+    200: 'Extra Light',
+    300: 'Light',
+    400: 'Regular',
+    500: 'Medium',
+    600: 'Semi Bold',
+    700: 'Bold',
+    800: 'Extra Bold',
+    900: 'Black'
+  };
+
+  // Return a list of the above fonts that are installed on the user's computer
+  // sorted by category, alphabetically within each category.
+  function getInstalledFonts() {
+    if (!cachedFonts) {
+      cachedFonts = detectInstalledFonts();
+    }
+    return cachedFonts;
+  }
+
+  function getFontStyleVariants(fontName) {
+    if (!fontName) return [];
+    if (!cachedFontStyles[fontName]) {
+      cachedFontStyles[fontName] = detectFontStyleVariants(fontName);
+    }
+    return cachedFontStyles[fontName];
+  }
+
+  function detectInstalledFonts() {
+    var detector = getCanvasFontDetector();
+    return fontCategories.map(function(category) {
+      var fonts = category.fonts.filter(function(font) {
+        return detector && fontIsInstalled(font, detector);
+      });
+      return {
+        name: category.name,
+        fonts: fonts.map(function(font) {
+          return font.name;
+        }).sort(sortNames)
+      };
+    }).filter(function(category) {
+      return category.fonts.length > 0;
+    });
+  }
+
+  function fontIsInstalled(font, detector) {
+    return getFontNames(font).some(function(name) {
+      return detector(name);
+    });
+  }
+
+  function getFontNames(font) {
+    var alternates = font.alternates || [];
+    if (!Array.isArray(alternates)) {
+      alternates = [alternates];
+    }
+    return [font.name].concat(alternates);
+  }
+
+  function sortNames(a, b) {
+    return a.toLowerCase() < b.toLowerCase() ? -1 :
+      a.toLowerCase() > b.toLowerCase() ? 1 : 0;
+  }
+
+  function getCanvasFontDetector() {
+    var canvas, ctx, baselines;
+    if (typeof document == 'undefined') return null;
+    canvas = document.createElement('canvas');
+    ctx = canvas && canvas.getContext && canvas.getContext('2d');
+    if (!ctx) return null;
+    baselines = getBaselineWidths(ctx);
+    return function(fontName) {
+      return fontIsDetectable(ctx, baselines, fontName);
+    };
+  }
+
+  function getBaselineWidths(ctx) {
+    return {
+      monospace: measureFont(ctx, 'monospace'),
+      'sans-serif': measureFont(ctx, 'sans-serif'),
+      serif: measureFont(ctx, 'serif')
+    };
+  }
+
+  function fontIsDetectable(ctx, baselines, fontName) {
+    return Object.keys(baselines).some(function(generic) {
+      return measureFont(ctx, quoteFontName(fontName) + ',' + generic) != baselines[generic];
+    });
+  }
+
+  function measureFont(ctx, fontFamily) {
+    ctx.font = '72px ' + fontFamily;
+    return ctx.measureText('mmmmmmmmmmlliMW@#0123456789').width;
+  }
+
+  function quoteFontName(name) {
+    return '"' + String(name).replace(/\\/g, '\\\\').replace(/"/g, '\\"') + '"';
+  }
+
+  function detectFontStyleVariants(fontName) {
+    var canvas, ctx, groups;
+    if (typeof document == 'undefined') return getDefaultFontStyleVariants();
+    canvas = document.createElement('canvas');
+    ctx = canvas && canvas.getContext && canvas.getContext('2d');
+    if (!ctx) return getDefaultFontStyleVariants();
+    groups = {};
+    fontStyles.forEach(function(style) {
+      fontWeights.forEach(function(weight) {
+        var sig = measureFontVariant(ctx, fontName, weight, style);
+        var key = style + '|' + sig;
+        if (!groups[key]) {
+          groups[key] = {
+            style: style,
+            weights: []
+          };
+        }
+        groups[key].weights.push(weight);
+      });
+    });
+    var variants = Object.keys(groups).map(function(key) {
+      var group = groups[key];
+      return getFontStyleVariant(getPreferredWeight(group.weights), group.style);
+    }).sort(sortFontStyleVariants);
+    return variants.length > 0 ? variants : getDefaultFontStyleVariants();
+  }
+
+  function getDefaultFontStyleVariants() {
+    return [getFontStyleVariant(400, 'normal')];
+  }
+
+  function getFontStyleVariant(weight, style) {
+    return {
+      label: getFontStyleLabel(weight, style),
+      value: style + '|' + weight,
+      style: style,
+      weight: String(weight)
+    };
+  }
+
+  function getPreferredWeight(weights) {
+    for (var i=0; i<preferredWeights.length; i++) {
+      if (weights.indexOf(preferredWeights[i]) > -1) {
+        return preferredWeights[i];
+      }
+    }
+    return weights[0];
+  }
+
+  function sortFontStyleVariants(a, b) {
+    if (a.style != b.style) {
+      return a.style == 'normal' ? -1 : 1;
+    }
+    return Number(a.weight) - Number(b.weight);
+  }
+
+  function getFontStyleLabel(weight, style) {
+    var name = weightNames[weight] || String(weight);
+    if (style == 'italic') {
+      return weight == 400 ? 'Italic' : name + ' Italic';
+    }
+    return name;
+  }
+
+  function measureFontVariant(ctx, fontName, weight, style) {
+    return [
+      measureFontSample(ctx, fontName, weight, style, 'Hamburgefonts 0123456789'),
+      measureFontSample(ctx, fontName, weight, style, 'mmmmmmmmmmlliMW@#'),
+      measureFontSample(ctx, fontName, weight, style, 'Quick brown fox')
+    ].join('|');
+  }
+
+  function measureFontSample(ctx, fontName, weight, style, text) {
+    var metrics;
+    ctx.font = style + ' ' + weight + ' 72px ' + quoteFontName(fontName) + ',sans-serif';
+    metrics = ctx.measureText(text);
+    return [
+      metrics.width,
+      metrics.actualBoundingBoxLeft || 0,
+      metrics.actualBoundingBoxRight || 0,
+      metrics.actualBoundingBoxAscent || 0,
+      metrics.actualBoundingBoxDescent || 0
+    ].map(roundMetric).join(',');
+  }
+
+  function roundMetric(val) {
+    return Math.round(val * 100) / 100;
+  }
+
+  var labelTextField = 'label-text';
+  var fontField = 'font-family';
+  var fontSizeField = 'font-size';
+  var fontStyleField = 'font-style';
+  var fontWeightField = 'font-weight';
+  var fillField = 'fill';
+  var cssField = 'css';
+  var iconField = 'icon';
+  var iconSizeField = 'icon-size';
+  var defaultFontSize = 12;
+  var defaultFontStyle = 'normal';
+  var defaultFontWeight = '400';
+  var defaultLabelColor = '#000000';
+  var defaultIconSize = 5;
+  var labelStyleMode = 'label_style';
+  var labelStylePanelMode = 'label_style_tool';
+  var savedStylesKey = 'label_styles';
+  var labelPositionFields = internal.labelPositionFields;
+  var savedStyleFields = [
+    fontField,
+    fontSizeField,
+    fontStyleField,
+    fontWeightField,
+    fillField,
+    cssField,
+    'label-pos',
+    iconField,
+    iconSizeField
+  ];
+  var labelPositions = ['nw', 'n', 'ne', 'w', 'c', 'e', 'sw', 's', 'se'];
+  var iconTypes = [{
+    name: ''
+  }, {
+    name: 'circle'
+  }, {
+    name: 'square'
+  }, {
+    name: 'ring'
+  }, {
+    name: 'star'
+  }];
+  var iconButtonSymbols = {
+    '': '<line x1="4.25" y1="4.25" x2="11.75" y2="11.75"></line><line x1="11.75" y1="4.25" x2="4.25" y2="11.75"></line>',
+    circle: '<circle cx="8" cy="8" r="4.25"></circle>',
+    square: '<rect x="4" y="4" width="8" height="8"></rect>',
+    ring: '<circle cx="8" cy="8" r="3.8"></circle>',
+    star: '<path d="M8 3.2l1.18 2.92 3.14.22-2.42 2 .76 3.06L8 9.75 5.34 11.4l.76-3.06-2.42-2 3.14-.22L8 3.2z"></path>'
+  };
+
+  function LabelTool(gui) {
+    // button is only visible when label editing is available
+    // clicking the button opens a panel for applying styles to labels
+    var textBtn = gui.buttons.addButton('#text-tool-icon').addClass('menu-btn pointer-btn');
+    var parent = gui.container.findChild('.mshp-main-map');
+    var panel = El('div').addClass('label-style-panel rollover').appendTo(parent).hide();
+    var createPanel = El('div').addClass('label-style-panel label-create-panel rollover').appendTo(parent).hide();
+    var createFieldSelect, createExprInput, createCopyCheckbox, createBtn;
+    var styleSelect, fontSelect, fontStyleSelect, fontSizeText, colorChit, colorInput, colorPicker, sbCanvas, hueCanvas, sbMarker, hueMarker, pickerHsbInputs, cssInput, posBtns, iconBtns, iconSizeText, hit;
+    var fontOptionsRendered = false;
+    var pickerColor = {h: 0, s: 0, b: 0};
+    var pendingStyleHistory = null;
+
+    initCreatePanel();
+    initPanel();
+    gui.addMode(labelStylePanelMode, turnOn, turnOff, textBtn);
+    gui.model.on('update', updateVisibility);
+    gui.model.on('update', function() {
+      setTimeout(updateSelectionDisplay, 0);
+    });
+    gui.on('interaction_mode_change', function(e) {
+      if (panel.visible() && e.mode != labelStyleMode && gui.getMode() == labelStylePanelMode) {
+        gui.clearMode();
+      }
+    });
+
+    hit = gui.map.getHitControl && gui.map.getHitControl();
+    if (hit) {
+      hit.on('change', function(e) {
+        if (e.mode == labelStyleMode) {
+          updateSelectionDisplay();
+          updateControls();
+        }
+      });
+    }
+
+    updateVisibility();
+
+    function initPanel() {
+      var header = El('div').addClass('label-style-panel-title').appendTo(panel).text('Label styles');
+      El('button').addClass('label-style-close').appendTo(header).text('×').on('click', function() {
+        gui.clearMode();
+      });
+
+      var selectRow = El('div').addClass('label-style-row label-style-selection-row').appendTo(panel);
+      El('button').appendTo(selectRow).text('Select all').on('click', selectAllLabels);
+      El('button').appendTo(selectRow).text('Clear').on('click', clearSelection);
+
+      var fontRow = El('label').addClass('label-style-row').appendTo(panel);
+      El('span').appendTo(fontRow).text('Font');
+      fontSelect = El('select').appendTo(fontRow).on('change', function() {
+        if (fontSelect.node().value) {
+          applyFont(fontSelect.node().value);
+        }
+      });
+
+      var fontStyleRow = El('label').addClass('label-style-row').appendTo(panel);
+      El('span').appendTo(fontStyleRow).text('Font style');
+      fontStyleSelect = El('select').appendTo(fontStyleRow).on('change', function() {
+        if (fontStyleSelect.node().value) {
+          applyFontStyleVariant(fontStyleSelect.node().value);
+        }
+      });
+
+      var colorSizeRow = El('div').addClass('label-style-row label-split-row').appendTo(panel);
+      var colorRow = El('div').addClass('label-split-cell label-color-row').appendTo(colorSizeRow);
+      El('span').appendTo(colorRow).text('Color');
+      colorChit = makePanelButton(colorRow, '', toggleColorPicker).addClass('label-color-chit');
+      colorInput = El('input').attr('type', 'text').appendTo(colorRow).on('change', function() {
+        var color = colorInput.node().value.trim();
+        if (color) {
+          if (isHexColor(color)) {
+            setPickerColor(hexToHsb(color));
+          }
+          applyLabelColor(color);
+        }
+      });
+      initColorPicker(colorRow);
+
+      var fontSizeRow = El('div').addClass('label-split-cell label-size-row').appendTo(colorSizeRow);
+      El('span').appendTo(fontSizeRow).text('Font size');
+      makePanelButton(fontSizeRow, '−', function() {
+        nudgeFontSize(-1);
+      });
+      fontSizeText = El('span').addClass('label-size-value').appendTo(fontSizeRow);
+      makePanelButton(fontSizeRow, '+', function() {
+        nudgeFontSize(1);
+      });
+
+      var cssRow = El('label').addClass('label-style-row label-css-row').appendTo(panel);
+      El('span').appendTo(cssRow).text('Inline CSS');
+      cssInput = El('input').attr('type', 'text').appendTo(cssRow).on('change', function() {
+        applyInlineCss(cssInput.node().value.trim());
+      });
+
+      var iconSizeRow = El('div').addClass('label-style-row label-split-row').appendTo(panel);
+      var iconRow = El('div').addClass('label-split-cell').appendTo(iconSizeRow);
+      El('div').addClass('label-style-row-label').appendTo(iconRow).text('Icon');
+      var iconGroup = El('div').addClass('label-icon-buttons').appendTo(iconRow);
+      iconBtns = {};
+      iconTypes.forEach(function(icon) {
+        var btn = makePanelButton(iconGroup, '', function() {
+            applyIcon(icon.name);
+          })
+          .attr('data-icon', icon.name || 'none')
+          .attr('title', icon.name || 'no icon');
+        iconBtns[icon.name] = btn;
+        appendIconButtonSymbol(btn, icon.name);
+      });
+
+      var sizeRow = El('div').addClass('label-split-cell label-icon-size-row').appendTo(iconSizeRow);
+      El('span').appendTo(sizeRow).text('Icon size');
+      makePanelButton(sizeRow, '−', function() {
+        nudgeIconSize(-1);
+      });
+      iconSizeText = El('span').addClass('label-icon-size-value').appendTo(sizeRow);
+      makePanelButton(sizeRow, '+', function() {
+        nudgeIconSize(1);
+      });
+
+      var posRow = El('div').addClass('label-style-row').appendTo(panel);
+      El('div').addClass('label-style-row-label').appendTo(posRow).text('Position');
+      var grid = El('div').addClass('label-position-grid').appendTo(posRow);
+      posBtns = {};
+      labelPositions.forEach(function(pos) {
+        posBtns[pos] = makePanelButton(grid, '', function() {
+            applyLabelPosition(pos);
+          })
+          .attr('data-position', pos)
+          .attr('title', pos);
+      });
+
+      var savedRow = El('div').addClass('label-style-row label-saved-style-row').appendTo(panel);
+      El('span').appendTo(savedRow).text('Presets');
+      styleSelect = El('select').appendTo(savedRow).on('change', function() {
+        if (styleSelect.node().value) {
+          applySavedStyle(styleSelect.node().value);
+        }
+        updateSavedStyleControls();
+      });
+      El('button').appendTo(savedRow).text('Save preset').on('click', saveCurrentStyle);
+      El('button').appendTo(savedRow).text('Delete').on('click', deleteSelectedStyle);
+      renderSavedStyles();
+    }
+
+    function initCreatePanel() {
+      var header = El('div').addClass('label-style-panel-title').appendTo(createPanel).text('Create labels');
+      El('button').addClass('label-style-close').appendTo(header).text('×').on('click', function() {
+        gui.clearMode();
+      });
+
+      var fieldRow = El('label').addClass('label-style-row').appendTo(createPanel);
+      El('span').appendTo(fieldRow).text('Label field');
+      createFieldSelect = El('select').appendTo(fieldRow).on('change', function() {
+        var field = createFieldSelect.node().value;
+        if (field) {
+          createExprInput.node().value = getFieldExpression(field);
+        }
+        updateCreateButton();
+      });
+
+      var exprRow = El('label').addClass('label-style-row label-create-expression-row').appendTo(createPanel);
+      El('span').appendTo(exprRow).text('or expression');
+      createExprInput = El('input')
+        .attr('type', 'text')
+        .appendTo(exprRow)
+        .on('input', updateCreateButton)
+        .on('change', updateCreateButton);
+
+      var copyRow = El('label').addClass('label-style-row label-create-copy-row').appendTo(createPanel);
+      createCopyCheckbox = El('input').attr('type', 'checkbox').appendTo(copyRow);
+      El('span').appendTo(copyRow).text('Create as new layer');
+
+      var btnRow = El('div').addClass('label-style-row').appendTo(createPanel);
+      createBtn = El('button').appendTo(btnRow).text('Create labels').on('click', createLabels);
+    }
+
+    function appendIconButtonSymbol(btn, iconName) {
+      var svg = '<svg class="label-icon-symbol" viewBox="0 0 16 16" aria-hidden="true">' +
+        iconButtonSymbols[iconName] + '</svg>';
+      El(svg).appendTo(btn);
+    }
+
+    function makePanelButton(parent, label, action) {
+      return El('div')
+        .addClass('label-panel-btn')
+        .attr('role', 'button')
+        .attr('tabindex', '0')
+        .appendTo(parent)
+        .text(label)
+        .on('click', function(e) {
+          if (this.classList.contains('disabled')) return;
+          action(e);
+        })
+        .on('keydown', function(e) {
+          if (e.key == 'Enter' || e.key == ' ') {
+            e.preventDefault();
+            if (!this.classList.contains('disabled')) action(e);
+          }
+        });
+    }
+
+    function setPanelButtonDisabled(el, disabled) {
+      el.classed('disabled', !!disabled)
+        .attr('aria-disabled', disabled ? 'true' : 'false')
+        .attr('tabindex', disabled ? '-1' : '0');
+    }
+
+    function turnOn() {
+      if (!activeLayerIsPointLayer()) {
+        gui.clearMode();
+        return;
+      }
+      if (!activeLayerHasLabels()) {
+        showCreatePanel();
+        return;
+      }
+      showStylePanel();
+    }
+
+    function showStylePanel() {
+      renderFontOptions();
+      createPanel.hide();
+      gui.interaction.setMode(labelStyleMode);
+      gui.state.label_style_panel_open = true;
+      panel.show();
+      textBtn.addClass('selected');
+      updateControls();
+      updateSelectionDisplay();
+    }
+
+    function showCreatePanel() {
+      panel.hide();
+      hideColorPicker();
+      if (gui.interaction.getMode() == labelStyleMode) {
+        gui.interaction.turnOff();
+      }
+      gui.state.label_style_panel_open = true;
+      createPanel.show();
+      textBtn.addClass('selected');
+      renderCreateFields();
+      updateCreateButton();
+    }
+
+    function turnOff() {
+      if (panel.visible()) {
+        flushPendingStyleHistory();
+      }
+      panel.hide();
+      createPanel.hide();
+      hideColorPicker();
+      gui.state.label_style_panel_open = false;
+      textBtn.removeClass('selected');
+      clearSelectionDisplay();
+      if (hit) hit.clearSelection();
+      if (gui.interaction.getMode() == labelStyleMode) {
+        gui.interaction.turnOff();
+      }
+    }
+
+    function updateVisibility() {
+      var enabled = activeLayerIsPointLayer();
+      textBtn.classed('disabled', !enabled);
+      textBtn[enabled ? 'show' : 'hide']();
+      if (!enabled && gui.getMode() == labelStylePanelMode) {
+        gui.clearMode();
+      }
+    }
+
+    function activeLayerHasLabels() {
+      var active = gui.model.getActiveLayer();
+      return !!(active && internal.layerHasLabels(active.layer));
+    }
+
+    function activeLayerIsPointLayer() {
+      var active = gui.model.getActiveLayer();
+      return !!(active && active.layer && active.layer.geometry_type == 'point');
+    }
+
+    function renderFontOptions() {
+      if (fontOptionsRendered) return;
+      fontOptionsRendered = true;
+      fontSelect.empty();
+      El('option').attr('value', '').appendTo(fontSelect).text('');
+      getInstalledFonts().forEach(function(group) {
+        var optgroup = El('optgroup').attr('label', group.name).appendTo(fontSelect);
+        group.fonts.forEach(function(fontName) {
+          El('option').attr('value', fontName).appendTo(optgroup).text(fontName);
+        });
+      });
+    }
+
+    function renderCreateFields() {
+      var lyr = getActiveLayer();
+      var records = lyr && lyr.data ? lyr.data.getRecords() : [];
+      var fields = lyr && lyr.data ? lyr.data.getFields().filter(function(field) {
+        return internal.getColumnType(field, records) == 'string';
+      }) : [];
+      var value = createFieldSelect.node().value;
+      createFieldSelect.empty();
+      El('option').attr('value', '').appendTo(createFieldSelect).text('');
+      fields.forEach(function(field) {
+        El('option').attr('value', field).appendTo(createFieldSelect).text(field);
+      });
+      createFieldSelect.node().disabled = fields.length === 0;
+      createFieldSelect.node().value = fields.indexOf(value) > -1 ? value : '';
+    }
+
+    function updateCreateButton() {
+      createBtn.node().disabled = createExprInput.node().value.trim() === '';
+    }
+
+    function getFieldExpression(field) {
+      return 'd[' + JSON.stringify(field) + ']';
+    }
+
+    function createLabels() {
+      var active = gui.model.getActiveLayer();
+      var srcLyr = active && active.layer;
+      var dataset = active && active.dataset;
+      var expr = createExprInput.node().value.trim();
+      var lyr;
+      if (!srcLyr || srcLyr.geometry_type != 'point' || !expr) return;
+      lyr = createCopyCheckbox.node().checked ? makeLabelLayerCopy(srcLyr, dataset) : srcLyr;
+      if (!applyLabelText(lyr, expr)) return;
+      if (lyr != srcLyr) {
+        addLabelLayerCopy(lyr, srcLyr, dataset);
+        recordCreateLabelsCommand(expr, lyr);
+        selectLabelLayerCopy(lyr, dataset);
+      } else {
+        gui.model.updated({style: true, same_table: true});
+        recordCreateLabelsCommand(expr);
+      }
+      showStylePanel();
+      setTimeout(function() {
+        selectAllLabels();
+      }, 0);
+    }
+
+    function makeLabelLayerCopy(srcLyr, dataset) {
+      var lyr = internal.copyLayer(srcLyr);
+      delete lyr.gui;
+      lyr.name = 'labels';
+      return lyr;
+    }
+
+    function addLabelLayerCopy(lyr, srcLyr, dataset) {
+      var i = dataset.layers.indexOf(srcLyr);
+      internal.noteDatasetWillChange(dataset, {operation: 'createLabelLayer', unit: 'layers'});
+      dataset.layers.splice(i + 1, 0, lyr);
+      internal.markDatasetChanged(dataset, {operation: 'createLabelLayer', unit: 'layers'});
+    }
+
+    function selectLabelLayerCopy(lyr, dataset) {
+      gui.model.setDefaultTarget([lyr], dataset);
+      gui.model.updated({select: true});
+    }
+
+    function applyLabelText(lyr, expr) {
+      var table = internal.getLayerDataTable(lyr);
+      var hasField = table.fieldExists(labelTextField);
+      var records = table.getRecords();
+      var accessor;
+      try {
+        accessor = internal.getSymbolPropertyAccessor(expr, labelTextField, lyr);
+      } catch(e) {
+        showPopupAlert(e.message || 'Invalid label expression', 'Create labels');
+        return false;
+      }
+      if (hasField) {
+        table.captureFieldsBefore([labelTextField], {operation: 'create-labels'});
+      } else {
+        table.captureSchemaBefore({operation: 'create-labels', fields: [labelTextField]});
+      }
+      records.forEach(function(rec, i) {
+        if (!rec) rec = records[i] = {};
+        rec[labelTextField] = accessor(i);
+      });
+      if (hasField) {
+        table.markFieldsChanged([labelTextField], {operation: 'create-labels'});
+      } else {
+        table.markSchemaChanged({operation: 'create-labels', fields: [labelTextField]});
+      }
+      return true;
+    }
+
+    function updatePendingStyleHistory(lyr, ids, fields) {
+      if (!gui.session || !lyr || ids.length === 0) return;
+      if (pendingStyleHistory && (pendingStyleHistory.layer != lyr ||
+          !sameIds(pendingStyleHistory.ids, ids))) {
+        flushPendingStyleHistory();
+      }
+      if (!pendingStyleHistory) {
+        pendingStyleHistory = {
+          layer: lyr,
+          ids: ids.concat(),
+          fields: []
+        };
+      }
+      getHistoryStyleFields(fields).forEach(function(field) {
+        if (pendingStyleHistory.fields.indexOf(field) == -1) {
+          pendingStyleHistory.fields.push(field);
+        }
+      });
+    }
+
+    function flushPendingStyleHistory() {
+      var cmd;
+      if (!pendingStyleHistory || !gui.session) return;
+      cmd = getStyleHistoryCommand(pendingStyleHistory);
+      pendingStyleHistory = null;
+      if (cmd) {
+        gui.session.consoleCommands(cmd);
+      }
+    }
+
+    function getStyleHistoryCommand(entry) {
+      var table = entry.layer.data;
+      var records = table && table.getRecords();
+      var fields = entry.fields.filter(function(field) {
+        return field != labelTextField;
+      });
+      var parts = ['-style'];
+      var values;
+      if (!records || fields.length === 0) return '';
+      values = getHistoryStyleValues(records, entry.ids, fields);
+      Object.keys(values).forEach(function(field) {
+        parts.push(field + '=' + quoteCommandValue(values[field]));
+      });
+      if (parts.length == 1) return '';
+      if (getActiveLayer() != entry.layer) {
+        parts.push('target=' + internal.formatOptionValue(internal.getLayerTargetId(gui.model, entry.layer)));
+      }
+      if (entry.ids.length < internal.getFeatureCount(entry.layer)) {
+        parts.push('where=' + quoteCommandValue(getIdsWhereExpression(entry.ids)));
+      }
+      return parts.join(' ');
+    }
+
+    function getHistoryStyleValues(records, ids, fields) {
+      return fields.reduce(function(memo, field) {
+        var value = getCommonRecordValue(records, ids, field);
+        if (value !== undefined && value !== null && value !== '') {
+          memo[field] = value;
+        }
+        return memo;
+      }, {});
+    }
+
+    function getCommonRecordValue(records, ids, field) {
+      var value, val;
+      for (var i=0; i<ids.length; i++) {
+        val = records[ids[i]] && records[ids[i]][field];
+        if (i === 0) {
+          value = val;
+        } else if (val != value) {
+          return undefined;
+        }
+      }
+      return value;
+    }
+
+    function getHistoryStyleFields(fields) {
+      var out = [];
+      fields.forEach(function(field) {
+        if (field == 'dx' || field == 'dy' || field == 'text-anchor') return;
+        if (out.indexOf(field) == -1) out.push(field);
+      });
+      return out;
+    }
+
+    function getIdsWhereExpression(ids) {
+      return '[' + ids.join(',') + '].indexOf($.id)>-1';
+    }
+
+    function sameIds(a, b) {
+      if (!a || !b || a.length != b.length) return false;
+      for (var i=0; i<a.length; i++) {
+        if (a[i] != b[i]) return false;
+      }
+      return true;
+    }
+
+    function recordCreateLabelsCommand(expr, copyLyr) {
+      var cmd = '';
+      if (!gui.session) return;
+      if (copyLyr) {
+        cmd += '-filter true + name=' + internal.formatOptionValue(copyLyr.name) + ' ';
+      }
+      cmd += '-style label-text=' + quoteCommandValue(expr);
+      gui.session.consoleCommands(cmd);
+    }
+
+    function quoteCommandValue(str) {
+      return "'" + String(str).replace(/'/g, "\\'") + "'";
+    }
+
+    function selectAllLabels() {
+      var lyr = getActiveLayer();
+      var ids = [];
+      if (!hit || !lyr) return;
+      for (var i=0, n=internal.getFeatureCount(lyr); i<n; i++) {
+        ids.push(i);
+      }
+      hit.clearSelection();
+      if (ids.length > 0) {
+        hit.addSelectionIds(ids);
+      }
+      updateSelectionDisplay();
+      updateControls();
+    }
+
+    function clearSelection() {
+      if (hit) hit.clearSelection();
+      updateSelectionDisplay();
+      updateControls();
+    }
+
+    function getActiveLayer() {
+      var active = gui.model.getActiveLayer();
+      return active && active.layer;
+    }
+
+    function getActiveTable() {
+      var lyr = getActiveLayer();
+      return lyr && lyr.data || null;
+    }
+
+    function getSelectionIds() {
+      return hit ? hit.getSelectionIds() : [];
+    }
+
+    function updateControls() {
+      var ids = getSelectionIds();
+      var fontVal = getCommonValue(ids, fontField);
+      var fontSizeVal = getCommonValue(ids, fontSizeField, {useDefault: true, defaultValue: defaultFontSize});
+      var fontStyleVal = getCommonValue(ids, fontStyleField, {useDefault: true, defaultValue: defaultFontStyle});
+      var fontWeightVal = getCommonValue(ids, fontWeightField, {useDefault: true, defaultValue: defaultFontWeight});
+      var fillVal = getCommonValue(ids, fillField, {useDefault: true, defaultValue: defaultLabelColor});
+      var cssVal = getCommonValue(ids, cssField);
+      var posVal = getCommonValue(ids, 'label-pos');
+      var iconVal = getCommonValue(ids, iconField);
+      var iconSizeVal = getCommonValue(ids, iconSizeField, {useDefault: true, defaultValue: defaultIconSize});
+      styleSelect.node().disabled = ids.length === 0;
+      updateSavedStyleControls();
+      fontSelect.node().disabled = ids.length === 0;
+      fontSelect.node().value = fontVal;
+      updateFontStyleControls(fontVal, fontStyleVal, fontWeightVal);
+      updateFontSizeControls(ids.length ? fontSizeVal : '');
+      updateColorControls(ids.length ? fillVal : '');
+      updateCssControl(ids.length ? cssVal : '');
+      updatePositionButtons(ids.length ? posVal : '');
+      updateIconButtons(ids.length ? iconVal : '');
+      updateIconSizeControls(ids.length ? iconSizeVal : '');
+    }
+
+    function updatePositionButtons(pos) {
+      var disabled = getSelectionIds().length === 0;
+      labelPositions.forEach(function(name) {
+        posBtns[name].classed('selected', name == pos);
+        setPanelButtonDisabled(posBtns[name], disabled);
+      });
+    }
+
+    function updateFontSizeControls(fontSizeVal) {
+      var disabled = getSelectionIds().length === 0;
+      fontSizeText.text(fontSizeVal || '');
+      panel.findChildren('.label-size-row .label-panel-btn').forEach(function(btn) {
+        setPanelButtonDisabled(btn, disabled);
+      });
+    }
+
+    function updateFontStyleControls(fontName, fontStyleVal, fontWeightVal) {
+      var disabled = getSelectionIds().length === 0 || !fontName;
+      fontStyleSelect.empty();
+      El('option').attr('value', '').appendTo(fontStyleSelect).text('');
+      if (fontName) {
+        getFontStyleVariants(fontName).forEach(function(variant) {
+          El('option').attr('value', variant.value).appendTo(fontStyleSelect).text(variant.label);
+        });
+      }
+      fontStyleSelect.node().disabled = disabled;
+      fontStyleSelect.node().value = fontStyleVal && fontWeightVal ?
+        fontStyleVal + '|' + fontWeightVal : '';
+    }
+
+    function updateColorControls(colorVal) {
+      var disabled = getSelectionIds().length === 0;
+      colorInput.node().disabled = disabled;
+      colorInput.node().value = colorVal || '';
+      setPanelButtonDisabled(colorChit, disabled || !isHexColor(colorVal));
+      colorChit.css('background-color', isHexColor(colorVal) ? colorVal : 'transparent');
+      if (colorPicker.visible()) {
+        return; // avoid HSB -> RGB -> HSB rounding jumps after picker commits
+      }
+      if (isHexColor(colorVal)) {
+        setPickerColor(hexToHsb(colorVal));
+      } else {
+        hideColorPicker();
+      }
+    }
+
+    function updateCssControl(cssVal) {
+      cssInput.node().disabled = getSelectionIds().length === 0;
+      cssInput.node().value = cssVal || '';
+    }
+
+    function updateIconButtons(iconVal) {
+      var disabled = getSelectionIds().length === 0;
+      iconTypes.forEach(function(icon) {
+        iconBtns[icon.name].classed('selected', !disabled && icon.name == iconVal);
+        setPanelButtonDisabled(iconBtns[icon.name], disabled);
+      });
+    }
+
+    function updateIconSizeControls(iconSizeVal) {
+      var disabled = getSelectionIds().length === 0;
+      iconSizeText.text(iconSizeVal || '');
+      panel.findChildren('.label-icon-size-row .label-panel-btn').forEach(function(btn) {
+        setPanelButtonDisabled(btn, disabled);
+      });
+    }
+
+    function updateSavedStyleControls() {
+      var disabled = getSelectionIds().length === 0;
+      var buttons = panel.findChildren('.label-saved-style-row button');
+      buttons.forEach(function(btn, i) {
+        btn.node().disabled = i === 0 ? disabled : disabled || !styleSelect.node().value;
+      });
+    }
+
+    function getCommonValue(ids, field, opts) {
+      var table = getActiveTable();
+      var records = table && table.getRecords();
+      var value, val, hasValue;
+      if (!records || ids.length === 0) return '';
+      for (var i=0; i<ids.length; i++) {
+        val = records[ids[i]] && records[ids[i]][field];
+        if (!val) {
+          if (opts && opts.useDefault) {
+            val = opts.defaultValue;
+          } else {
+            return '';
+          }
+        } else {
+          hasValue = true;
+        }
+        if (i === 0) {
+          value = val;
+        } else if (val != value) {
+          return '';
+        }
+      }
+      return hasValue || opts && opts.useDefault ? value : '';
+    }
+
+    function applyFont(fontName) {
+      applyStyleFields([fontField], function(rec) {
+        rec[fontField] = fontName;
+      });
+    }
+
+    function nudgeFontSize(delta) {
+      var ids = getSelectionIds();
+      var size = getNumericSize(ids, fontSizeField, defaultFontSize);
+      if (ids.length === 0) return;
+      size = Math.max(1, size + delta);
+      applyStyleFields([fontSizeField], function(rec) {
+        rec[fontSizeField] = size;
+      });
+    }
+
+    function applyFontStyleVariant(value) {
+      var variant = parseFontStyleVariant(value);
+      if (!variant) return;
+      applyStyleFields([fontStyleField, fontWeightField], function(rec) {
+        rec[fontStyleField] = variant.style;
+        rec[fontWeightField] = variant.weight;
+      });
+    }
+
+    function applyLabelColor(color) {
+      applyStyleFields([fillField], function(rec) {
+        rec[fillField] = color;
+      });
+    }
+
+    function applyInlineCss(css) {
+      applyStyleFields([cssField], function(rec) {
+        rec[cssField] = css || undefined;
+      });
+    }
+
+    function saveCurrentStyle() {
+      openSaveStylePopup();
+    }
+
+    function openSaveStylePopup() {
+      var popup = showPopupAlert('', 'Save label style');
+      var el = popup.container();
+      el.addClass('option-menu');
+      el.html(`<div><input type="text" class="style-name text-input" placeholder="style name"></div>
+      <div tabindex="0" class="btn dialog-btn">Save</div>`);
+      var input = el.findChild('.style-name');
+      var btn = el.findChild('.btn');
+      input.node().focus();
+      btn.on('click', function() {
+        var name = input.node().value.trim();
+        if (!name) return;
+        saveStyleWithName(name);
+        popup.close();
+      });
+      input.on('keydown', function(e) {
+        if (e.key == 'Enter') {
+          btn.node().click();
+        }
+      });
+    }
+
+    function saveStyleWithName(name) {
+      var styles = getSavedStyles().filter(function(item) {
+        return item.name != name;
+      });
+      var i;
+      styles.push({
+        name: name,
+        style: getCurrentStyle()
+      });
+      styles.sort(function(a, b) {
+        return a.name.toLowerCase() < b.name.toLowerCase() ? -1 :
+          a.name.toLowerCase() > b.name.toLowerCase() ? 1 : 0;
+      });
+      GUI.setSavedValue(savedStylesKey, styles);
+      renderSavedStyles();
+      for (i=0; i<styleSelect.node().options.length; i++) {
+        if (styleSelect.node().options[i].value == name) {
+          styleSelect.node().selectedIndex = i;
+          break;
+        }
+      }
+    }
+
+    async function deleteSelectedStyle() {
+      var name = styleSelect.node().value;
+      var styles;
+      if (!name) return;
+      if (!await showPrompt('Delete label style "' + name + '"?', 'Delete preset')) return;
+      styles = getSavedStyles().filter(function(item) {
+        return item.name != name;
+      });
+      GUI.setSavedValue(savedStylesKey, styles);
+      renderSavedStyles();
+      updateSavedStyleControls();
+    }
+
+    function applySavedStyle(name) {
+      var item = getSavedStyles().find(function(item) {
+        return item.name == name;
+      });
+      if (!item) return;
+      applyStyleObject(item.style);
+    }
+
+    function getSavedStyles() {
+      var styles = GUI.getSavedValue(savedStylesKey);
+      return Array.isArray(styles) ? styles : [];
+    }
+
+    function renderSavedStyles() {
+      var value = styleSelect && styleSelect.node().value;
+      if (!styleSelect) return;
+      styleSelect.empty();
+      El('option').attr('value', '').appendTo(styleSelect).text('Apply preset...');
+      getSavedStyles().forEach(function(item) {
+        El('option').attr('value', item.name).appendTo(styleSelect).text(item.name);
+      });
+      styleSelect.node().value = value || '';
+      updateSavedStyleControls();
+    }
+
+    function getCurrentStyle() {
+      var style = {};
+      var fontStyle = parseFontStyleVariant(fontStyleSelect.node().value);
+      var icon = getSelectedIcon();
+      addStyleValue(style, fontField, fontSelect.node().value);
+      if (fontStyle) {
+        style[fontStyleField] = fontStyle.style;
+        style[fontWeightField] = fontStyle.weight;
+      }
+      addStyleValue(style, fontSizeField, getNumericControlValue(fontSizeText));
+      addStyleValue(style, fillField, colorInput.node().value.trim());
+      addStyleValue(style, cssField, cssInput.node().value.trim());
+      addStyleValue(style, 'label-pos', getSelectedLabelPosition());
+      addStyleValue(style, iconField, icon);
+      if (icon) {
+        addStyleValue(style, iconSizeField, getNumericControlValue(iconSizeText));
+      }
+      return style;
+    }
+
+    function addStyleValue(style, field, value) {
+      if (value || value === 0) {
+        style[field] = value;
+      }
+    }
+
+    function getNumericControlValue(el) {
+      var value = Number(el.text());
+      return isFinite(value) && value > 0 ? value : null;
+    }
+
+    function getSelectedLabelPosition() {
+      var out = '';
+      labelPositions.forEach(function(pos) {
+        if (posBtns[pos].hasClass('selected')) out = pos;
+      });
+      return out;
+    }
+
+    function getSelectedIcon() {
+      var out = '';
+      iconTypes.forEach(function(icon) {
+        if (iconBtns[icon.name].hasClass('selected')) out = icon.name;
+      });
+      return out;
+    }
+
+    function applyStyleObject(style) {
+      var fields = Object.keys(style || {}).reduce(function(memo, field) {
+        if (field == 'label-pos') {
+          labelPositionFields.forEach(function(field) {
+            if (memo.indexOf(field) == -1) memo.push(field);
+          });
+        } else if (field != 'dx' && field != 'dy') {
+          memo.push(field);
+        }
+        return memo;
+      }, []);
+      applyStyleFields(fields, function(rec) {
+        savedStyleFields.forEach(function(field) {
+          if (field in style && field != 'label-pos') {
+            rec[field] = style[field];
+          }
+        });
+        if (style['label-pos']) {
+          internal.setLabelPositionStyle(rec, style['label-pos']);
+        }
+      });
+    }
+
+    function parseFontStyleVariant(value) {
+      var parts = String(value).split('|');
+      if (parts.length != 2) return null;
+      return {
+        style: parts[0],
+        weight: parts[1]
+      };
+    }
+
+    function applyLabelPosition(pos) {
+      applyStyleFields(labelPositionFields, function(rec) {
+        internal.setLabelPositionStyle(rec, pos);
+      });
+    }
+
+    function applyIcon(iconName) {
+      applyStyleFields([iconField, iconSizeField], function(rec) {
+        if (iconName) {
+          rec[iconField] = iconName;
+          if (!(rec[iconSizeField] > 0)) {
+            rec[iconSizeField] = defaultIconSize;
+          }
+        } else {
+          rec[iconField] = undefined;
+          rec[iconSizeField] = undefined;
+        }
+      });
+    }
+
+    function nudgeIconSize(delta) {
+      var ids = getSelectionIds();
+      var size = getNumericSize(ids, iconSizeField, defaultIconSize);
+      if (ids.length === 0) return;
+      size = Math.max(1, size + delta);
+      applyStyleFields([iconField, iconSizeField], function(rec) {
+        if (!rec[iconField]) {
+          rec[iconField] = 'circle';
+        }
+        rec[iconSizeField] = size;
+      });
+    }
+
+    function getNumericSize(ids, field, defaultValue) {
+      var val = getCommonValue(ids, field);
+      val = val ? Number(val) : defaultValue;
+      return isFinite(val) && val > 0 ? val : defaultValue;
+    }
+
+    function isHexColor(str) {
+      return /^#[0-9a-f]{6}$/i.test(str);
+    }
+
+    function initColorPicker(colorRow) {
+      colorPicker = El('div').addClass('label-color-picker').appendTo(colorRow).hide();
+      var sbWrap = El('div').addClass('label-color-canvas-wrap').appendTo(colorPicker);
+      sbCanvas = El('canvas').attr('width', '256').attr('height', '256').appendTo(sbWrap);
+      sbMarker = makePickerMarker().appendTo(sbWrap);
+      var hueWrap = El('div').addClass('label-color-canvas-wrap').appendTo(colorPicker);
+      hueCanvas = El('canvas').attr('width', '256').attr('height', '18').appendTo(hueWrap);
+      hueMarker = makePickerMarker().appendTo(hueWrap);
+      pickerHsbInputs = {};
+      var hsbRow = El('div').addClass('label-color-picker-fields').appendTo(colorPicker);
+      addPickerNumberInput(hsbRow, 'h', 'H');
+      addPickerNumberInput(hsbRow, 's', 'S');
+      addPickerNumberInput(hsbRow, 'b', 'B');
+      El('button').appendTo(hsbRow).text('Close').on('click', closePickerColor);
+      sbCanvas.on('mousedown', function(e) {
+        startCanvasDrag(e, updateSbFromEvent);
+      });
+      hueCanvas.on('mousedown', function(e) {
+        startCanvasDrag(e, updateHueFromEvent);
+      });
+      setPickerColor(pickerColor);
+    }
+
+    function addPickerNumberInput(row, name, label) {
+      var wrapper = El('label').appendTo(row);
+      El('span').appendTo(wrapper).text(label);
+      pickerHsbInputs[name] = El('input')
+        .attr('type', 'text')
+        .appendTo(wrapper)
+        .on('change', function() {
+          var h = parseNumberField(pickerHsbInputs.h.node().value);
+          var s = parseNumberField(pickerHsbInputs.s.node().value);
+          var b = parseNumberField(pickerHsbInputs.b.node().value);
+          if (!isFinite(h) || !isFinite(s) || !isFinite(b)) return;
+          setPickerColor({
+            h: degreesToByte(h),
+            s: pctToByte(s),
+            b: pctToByte(b)
+          });
+          commitPickerColor();
+        });
+    }
+
+    function toggleColorPicker() {
+      if (colorPicker.visible()) {
+        hideColorPicker();
+      } else {
+        colorPicker.show();
+        drawColorPicker();
+      }
+    }
+
+    function hideColorPicker() {
+      colorPicker.hide();
+    }
+
+    function startCanvasDrag(e, update) {
+      var evt = e.originalEvent || e;
+      colorPicker.addClass('dragging-color');
+      El('body').addClass('dragging-color-picker');
+      update(evt);
+      document.addEventListener('mousemove', onmove);
+      document.addEventListener('mouseup', onup);
+      evt.preventDefault();
+      function onmove(evt) {
+        update(evt);
+      }
+      function onup() {
+        document.removeEventListener('mousemove', onmove);
+        document.removeEventListener('mouseup', onup);
+        colorPicker.removeClass('dragging-color');
+        El('body').removeClass('dragging-color-picker');
+        commitPickerColor();
+      }
+    }
+
+    function updateSbFromEvent(evt) {
+      var p = getCanvasPoint(sbCanvas.node(), evt);
+      setPickerColor({
+        h: pickerColor.h,
+        s: p.x,
+        b: 255 - p.y
+      });
+    }
+
+    function updateHueFromEvent(evt) {
+      var p = getCanvasPoint(hueCanvas.node(), evt);
+      setPickerColor({
+        h: p.x,
+        s: pickerColor.s,
+        b: pickerColor.b
+      });
+    }
+
+    function getCanvasPoint(canvas, evt) {
+      var rect = canvas.getBoundingClientRect();
+      return {
+        x: clamp(Math.round((evt.clientX - rect.left) / rect.width * (canvas.width - 1)), 0, canvas.width - 1),
+        y: clamp(Math.round((evt.clientY - rect.top) / rect.height * (canvas.height - 1)), 0, canvas.height - 1)
+      };
+    }
+
+    function setPickerColor(hsb) {
+      pickerColor = {
+        h: clamp(Math.round(hsb.h), 0, 255),
+        s: clamp(Math.round(hsb.s), 0, 255),
+        b: clamp(Math.round(hsb.b), 0, 255)
+      };
+      drawColorPicker();
+      updatePickerFields();
+    }
+
+    function updatePickerFields() {
+      var hex = hsbToHex(pickerColor);
+      pickerHsbInputs.h.node().value = byteToDegrees(pickerColor.h) + '°';
+      pickerHsbInputs.s.node().value = byteToPct(pickerColor.s) + '%';
+      pickerHsbInputs.b.node().value = byteToPct(pickerColor.b) + '%';
+      colorInput.node().value = hex;
+      colorChit.css('background-color', hex);
+    }
+
+    function drawColorPicker() {
+      if (!sbCanvas) return;
+      drawSaturationBrightnessCanvas();
+      drawHueCanvas();
+    }
+
+    function drawSaturationBrightnessCanvas() {
+      var ctx = sbCanvas.node().getContext('2d');
+      var image = ctx.createImageData(256, 256);
+      var data = image.data;
+      var i = 0;
+      for (var y=0; y<256; y++) {
+        for (var x=0; x<256; x++) {
+          var rgb = hsbToRgb({
+            h: pickerColor.h,
+            s: x,
+            b: 255 - y
+          });
+          data[i++] = rgb.r;
+          data[i++] = rgb.g;
+          data[i++] = rgb.b;
+          data[i++] = 255;
+        }
+      }
+      ctx.putImageData(image, 0, 0);
+      positionMarker(sbMarker, pickerColor.s, 255 - pickerColor.b, pickerColor);
+    }
+
+    function drawHueCanvas() {
+      var ctx = hueCanvas.node().getContext('2d');
+      var image = ctx.createImageData(256, 18);
+      var data = image.data;
+      var i = 0;
+      for (var y=0; y<18; y++) {
+        for (var x=0; x<256; x++) {
+          var rgb = hsbToRgb({h: x, s: 255, b: 255});
+          data[i++] = rgb.r;
+          data[i++] = rgb.g;
+          data[i++] = rgb.b;
+          data[i++] = 255;
+        }
+      }
+      ctx.putImageData(image, 0, 0);
+      positionMarker(hueMarker, pickerColor.h, 9, {h: pickerColor.h, s: 255, b: 255});
+    }
+
+    function commitPickerColor() {
+      applyLabelColor(hsbToHex(pickerColor));
+    }
+
+    function closePickerColor() {
+      hideColorPicker();
+    }
+
+    function getMarkerColor(rgb) {
+      var luminance = rgb.r * 0.2126 + rgb.g * 0.7152 + rgb.b * 0.0722;
+      return luminance < 128 ? '#fff' : '#000';
+    }
+
+    function makePickerMarker() {
+      return El('<svg class="label-color-marker" width="16" height="16" viewBox="0 0 16 16"><circle cx="8" cy="8" r="6"></circle></svg>');
+    }
+
+    function positionMarker(marker, x, y, hsb) {
+      var rgb = hsbToRgb(hsb);
+      x = utils$1.clamp(x, 1, 254);
+      y = utils$1.clamp(y, 1, 254) + 0.5;
+      marker.css({
+        left: x - 8,
+        top: y - 8
+      });
+      marker.findChild('circle').attr('stroke', getMarkerColor(rgb));
+    }
+
+    function hexToHsb(hex) {
+      var r = parseInt(hex.substr(1, 2), 16);
+      var g = parseInt(hex.substr(3, 2), 16);
+      var b = parseInt(hex.substr(5, 2), 16);
+      var max = Math.max(r, g, b);
+      var min = Math.min(r, g, b);
+      var d = max - min;
+      var h = 0;
+      if (d) {
+        if (max == r) h = ((g - b) / d) % 6;
+        else if (max == g) h = (b - r) / d + 2;
+        else h = (r - g) / d + 4;
+        h *= 60;
+        if (h < 0) h += 360;
+      }
+      return {
+        h: Math.round(h / 360 * 255),
+        s: Math.round(max === 0 ? 0 : d / max * 255),
+        b: max
+      };
+    }
+
+    function hsbToHex(hsb) {
+      var rgb = hsbToRgb(hsb);
+      return '#' + [rgb.r, rgb.g, rgb.b].map(function(val) {
+        return val.toString(16).padStart(2, '0');
+      }).join('');
+    }
+
+    function hsbToRgb(hsb) {
+      var h = hsb.h / 255 * 360;
+      var s = hsb.s / 255;
+      var v = hsb.b / 255;
+      var c = v * s;
+      var x = c * (1 - Math.abs((h / 60) % 2 - 1));
+      var m = v - c;
+      var rgb = h < 60 ? [c, x, 0] :
+        h < 120 ? [x, c, 0] :
+        h < 180 ? [0, c, x] :
+        h < 240 ? [0, x, c] :
+        h < 300 ? [x, 0, c] : [c, 0, x];
+      return {
+        r: Math.round((rgb[0] + m) * 255),
+        g: Math.round((rgb[1] + m) * 255),
+        b: Math.round((rgb[2] + m) * 255)
+      };
+    }
+
+    function byteToPct(val) {
+      return Math.round(val / 255 * 100);
+    }
+
+    function pctToByte(val) {
+      return Math.round(clamp(val, 0, 100) / 100 * 255);
+    }
+
+    function byteToDegrees(val) {
+      return Math.round(val / 255 * 360);
+    }
+
+    function degreesToByte(val) {
+      return Math.round(clamp(val, 0, 360) / 360 * 255);
+    }
+
+    function parseNumberField(str) {
+      return Number(String(str).replace(/[°%]/g, '').trim());
+    }
+
+    function clamp(val, min, max) {
+      return isFinite(val) ? Math.max(min, Math.min(max, val)) : min;
+    }
+
+    function applyStyleFields(fields, updateRecord) {
+      var table = getActiveTable();
+      var ids = getSelectionIds();
+      var lyr = getActiveLayer();
+      var hasNewFields;
+      if (!table || ids.length === 0) return;
+      hasNewFields = fields.some(function(field) {
+        return !table.fieldExists(field);
+      });
+      gui.dispatchEvent('data_preupdate', {ids: ids});
+      if (hasNewFields) {
+        table.captureSchemaBefore({operation: 'label-style', fields: fields});
+      } else {
+        table.captureFieldsBefore(fields, {operation: 'label-style'});
+      }
+      updateRecords(ids, table, updateRecord);
+      if (hasNewFields) {
+        table.markSchemaChanged({operation: 'label-style'});
+      } else {
+        table.markFieldsChanged(fields, {operation: 'label-style'});
+      }
+      gui.dispatchEvent('data_postupdate', {ids: ids});
+      gui.model.updated({style: true, same_table: true});
+      updatePendingStyleHistory(lyr, ids, fields);
+      setTimeout(updateSelectionDisplay, 0);
+      updateControls();
+      updateSelectionDisplay();
+    }
+
+    function updateRecords(ids, table, updateRecord) {
+      var records = table.getRecords();
+      ids.forEach(function(id) {
+        var rec = records[id] || {};
+        updateRecord(rec);
+        records[id] = rec;
+      });
+    }
+
+    function updateSelectionDisplay() {
+      clearSelectionDisplay();
+      getSelectionIds().forEach(function(id) {
+        var textNode = getTextNodeById(id);
+        if (textNode) {
+          textNode.classList.add('label-style-selected');
+        }
+      });
+    }
+
+    function clearSelectionDisplay() {
+      var lyr = hit && hit.getHitTarget();
+      var container = lyr && lyr.gui && lyr.gui.svg_container;
+      if (!container) return;
+      container.querySelectorAll('.label-style-selected').forEach(function(node) {
+        node.classList.remove('label-style-selected');
+      });
+    }
+
+    function getTextNodeById(id) {
+      var lyr = hit && hit.getHitTarget();
+      var container = lyr && lyr.gui && lyr.gui.svg_container;
+      var symbol = container && container.querySelector('[data-id="' + id + '"]');
+      if (!symbol) return null;
+      return symbol.tagName == 'text' ? symbol : symbol.querySelector('text');
+    }
+
+  }
+
   function Model(gui) {
     var self = new internal.Catalog();
     var deleteLayer = self.deleteLayer;
@@ -19610,6 +14858,222 @@
     return self;
   }
 
+  function absArcId(arcId) {
+    return arcId >= 0 ? arcId : ~arcId;
+  }
+
+  function calcArcBounds(xx, yy, start, len) {
+    var i = start | 0,
+        n = isNaN(len) ? xx.length - i : len + i,
+        x, y, xmin, ymin, xmax, ymax;
+    if (n > 0) {
+      xmin = xmax = xx[i];
+      ymin = ymax = yy[i];
+    }
+    for (i++; i<n; i++) {
+      x = xx[i];
+      y = yy[i];
+      if (x < xmin) xmin = x;
+      if (x > xmax) xmax = x;
+      if (y < ymin) ymin = y;
+      if (y > ymax) ymax = y;
+    }
+    return [xmin, ymin, xmax, ymax];
+  }
+
+  function getUnfilteredArcLength(arcId, arcs) {
+    var data = arcs.getVertexData();
+    return data.nn[arcId];
+  }
+
+  function getUnfilteredArcCoords(arcId, arcs) {
+    var data = arcs.getVertexData();
+    var coords = [];
+    var start = data.ii[arcId];
+    var n = data.nn[arcId];
+    for (var i=0; i<n; i++) {
+      coords.push([data.xx[start + i], data.yy[start + i]]);
+    }
+    return coords;
+  }
+
+  function findArcIdFromVertexId(i, ii) {
+    // binary search
+    // possible optimization: use interpolation to find a better partition value.
+    var lower = 0, upper = ii.length - 1;
+    var middle;
+    while (lower < upper) {
+      middle = Math.ceil((lower + upper) / 2);
+      if (i < ii[middle]) {
+        upper = middle - 1;
+      } else {
+        lower = middle;
+      }
+    }
+    return lower; // assumes dataset is not empty
+  }
+
+  function deleteLastArc(arcs) {
+    var data = arcs.getVertexData();
+    var arcId = arcs.size() - 1;
+    var arcLen = data.nn[arcId];
+    var n = data.xx.length;
+    var z = arcs.getRetainedInterval();
+    var xx2 = new Float64Array(data.xx.buffer, 0, n-arcLen);
+    var yy2 = new Float64Array(data.yy.buffer, 0, n-arcLen);
+    var nn2 = new Int32Array(data.nn.buffer, 0, arcs.size() - 1);
+    var zz2 = arcs.isFlat() ?
+      null :
+      new Float64Array(data.zz.buffer, 0, n-arcLen);
+    arcs.updateVertexData(nn2, xx2, yy2, zz2);
+    arcs.setRetainedInterval(z);
+  }
+
+  function deleteVertex(arcs, i) {
+    var data = arcs.getVertexData();
+    var nn = data.nn;
+    var n = data.xx.length;
+    // avoid re-allocating memory
+    var xx2 = new Float64Array(data.xx.buffer, 0, n-1);
+    var yy2 = new Float64Array(data.yy.buffer, 0, n-1);
+    var zz2 = arcs.isFlat() ? null : new Float64Array(data.zz.buffer, 0, n-1);
+    var z = arcs.getRetainedInterval();
+    var count = 0;
+    var found = false;
+    for (var j=0; j<nn.length; j++) {
+      count += nn[j];
+      if (count >= i && !found) { // TODO: confirm this
+        nn[j] = nn[j] - 1;
+        found = true;
+      }
+    }
+    utils.copyElements(data.xx, 0, xx2, 0, i);
+    utils.copyElements(data.yy, 0, yy2, 0, i);
+    utils.copyElements(data.xx, i+1, xx2, i, n-i-1);
+    utils.copyElements(data.yy, i+1, yy2, i, n-i-1);
+    if (zz2) {
+      utils.copyElements(data.zz, 0, zz2, 0, i);
+      utils.copyElements(data.zz, i+1, zz2, i, n-i-1);
+    }
+    arcs.updateVertexData(nn, xx2, yy2, zz2);
+    arcs.setRetainedInterval(z);
+  }
+
+  function appendEmptyArc(arcs) {
+    var data = arcs.getVertexData();
+    var nn = utils.extendBuffer(data.nn, data.nn.length + 1, data.nn.length);
+    arcs.updateVertexData(nn, data.xx, data.yy, data.zz);
+  }
+
+  // adds vertex to last arc
+  // (used when adding lines in the GUI)
+  // p: [x, y] point in display coordinates
+  function appendVertex(arcs, p) {
+    var i = arcs.getPointCount(); // one past the last idx
+    insertVertex(arcs, i, p);
+  }
+
+  function insertVertex(arcs, i, p) {
+    var data = arcs.getVertexData();
+    var nn = data.nn;
+    var n = data.xx.length;
+    var count = 0;
+    var xx2, yy2, zz2;
+    // avoid re-allocating memory on each insertion
+    if (data.xx.buffer.byteLength >= data.xx.length * 8 + 8) {
+      xx2 = new Float64Array(data.xx.buffer, 0, n+1);
+      yy2 = new Float64Array(data.yy.buffer, 0, n+1);
+    } else {
+      xx2 = new Float64Array(new ArrayBuffer((n + 50) * 8), 0, n+1);
+      yy2 = new Float64Array(new ArrayBuffer((n + 50) * 8), 0, n+1);
+    }
+    if (!arcs.isFlat()) {
+      zz2 = new Float64Array(new ArrayBuffer((n + 1) * 8), 0, n+1);
+    }
+    if (i < 0 || i > n) {
+      error('Out-of-range vertex insertion index:', i);
+    } else if (i == n) {
+      // appending vertex to last arc
+      nn[nn.length - 1]++;
+    } else {
+      for (var j=0; j<nn.length; j++) {
+        count += nn[j];
+        if (count >= i) { // TODO: confirm this
+          nn[j] = nn[j] + 1;
+          break;
+        }
+      }
+    }
+
+    utils.copyElements(data.xx, 0, xx2, 0, i);
+    utils.copyElements(data.yy, 0, yy2, 0, i);
+    utils.copyElements(data.xx, i, xx2, i+1, n-i);
+    utils.copyElements(data.yy, i, yy2, i+1, n-i);
+    xx2[i] = p[0];
+    yy2[i] = p[1];
+    if (zz2) {
+      zz2[i] = Infinity;
+      utils.copyElements(data.zz, 0, zz2, 0, i);
+      utils.copyElements(data.zz, i, zz2, i+1, n-i);
+    }
+    arcs.updateVertexData(nn, xx2, yy2, zz2);
+  }
+
+  function countFilteredVertices(zz, zlimit) {
+    var count = 0;
+    for (var i=0, n = zz.length; i<n; i++) {
+      if (zz[i] >= zlimit) count++;
+    }
+    return count;
+  }
+
+  function filterVertexData(o, zlimit) {
+    if (!o.zz) error('Expected simplification data');
+    var xx = o.xx,
+        yy = o.yy,
+        zz = o.zz,
+        len2 = countFilteredVertices(zz, zlimit),
+        arcCount = o.nn.length,
+        xx2 = new Float64Array(len2),
+        yy2 = new Float64Array(len2),
+        zz2 = new Float64Array(len2),
+        nn2 = new Int32Array(arcCount),
+        i = 0, i2 = 0,
+        n, n2;
+
+    for (var arcId=0; arcId < arcCount; arcId++) {
+      n2 = 0;
+      n = o.nn[arcId];
+      for (var end = i+n; i < end; i++) {
+        if (zz[i] >= zlimit) {
+          xx2[i2] = xx[i];
+          yy2[i2] = yy[i];
+          zz2[i2] = zz[i];
+          i2++;
+          n2++;
+        }
+      }
+      if (n2 == 1) {
+        error("Collapsed arc");
+        // This should not happen (endpoints should be z == Infinity)
+        // Could handle like this, instead of throwing an error:
+        // n2 = 0;
+        // xx2.pop();
+        // yy2.pop();
+        // zz2.pop();
+      } else if (n2 === 0) {
+        // collapsed arc... ignoring
+      }
+      nn2[arcId] = n2;
+    }
+    return {
+      xx: xx2,
+      yy: yy2,
+      zz: zz2,
+      nn: nn2
+    };
+  }
+
   // featureFilter: optional test function, accepts feature id
   //
   function getShapeHitTest(layer, ext, interactionMode, featureFilter) {
@@ -19656,7 +15120,7 @@
           cand, hitId;
       for (var i=0; i<cands.length; i++) {
         cand = cands[i];
-        if (geom$1.testPointInPolygon(x, y, cand.shape, layer.gui.displayArcs)) {
+        if (geom.testPointInPolygon(x, y, cand.shape, layer.gui.displayArcs)) {
           hits.push(cand);
         }
       }
@@ -19715,7 +15179,7 @@
       var cand;
       for (var i=0; i<cands.length; i++) {
         cand = cands[i];
-        cand.info = geom$1.getPointToShapeInfo(x, y, cands[i].shape, arcs);
+        cand.info = geom.getPointToShapeInfo(x, y, cands[i].shape, arcs);
         cand.dist = cand.info.distance;
       }
       utils$1.sortOn(cands, 'dist');
@@ -19730,7 +15194,7 @@
 
       // inlining forEachPoint() does not not appreciably speed this up
       internal.forEachPoint(layer.gui.displayLayer.shapes, function(p, id) {
-        var dist = geom$1.distance2D(x, y, p[0], p[1]) * toPx;
+        var dist = geom.distance2D(x, y, p[0], p[1]) * toPx;
         if (dist > hitThreshold) return;
         if (dist < hitThreshold && hitThreshold > bullseyeDist) {
           hits = [];
@@ -19764,7 +15228,7 @@
             hitRadius = 0,
             hitDist;
         internal.forEachPoint(layer.gui.displayLayer.shapes, function(p, id) {
-          var distSq = geom$1.distanceSq(x, y, p[0], p[1]);
+          var distSq = geom.distanceSq(x, y, p[0], p[1]);
           var isHit = false;
           var isOver, isNear, r, d, rpix;
           if (distSq > limit * limit) return;
@@ -20049,7 +15513,8 @@
     }
 
     function selectable() {
-      return interactionMode() == 'selection';
+      var mode = interactionMode();
+      return mode == 'selection' || mode == 'label_style';
     }
 
     function pinnable() {
@@ -20067,7 +15532,7 @@
       var mode = interactionMode();
       // click used to pin popup and select features
       return mode == 'data' || mode == 'info' || mode == 'selection' ||
-      mode == 'rectangles' || mode == 'edit_points';
+      mode == 'label_style' || mode == 'rectangles' || mode == 'edit_points';
     }
 
     self.getHitId = function() {
@@ -21062,8 +16527,8 @@
       var p = gui.map.getExtent().pixCoordsToMapCoords(x, y);
       var cx = (boxCoords[0] + boxCoords[2])/2;
       var cy = (boxCoords[1] + boxCoords[3])/2;
-      var dist2 = geom$1.distance2D(cx, cy, p[0], p[1]);
-      var dist = geom$1.distance2D(cx, cy, boxCoords[0], boxCoords[1]);
+      var dist2 = geom.distance2D(cx, cy, p[0], p[1]);
+      var dist = geom.distance2D(cx, cy, boxCoords[0], boxCoords[1]);
       var k = dist2 / dist;
       var dx = (boxCoords[2] - cx) * k;
       var dy = (boxCoords[3] - cy) * k;
@@ -22629,9 +18094,9 @@
 
       if (pathDrawing() && prevHoverEvent) {
         updatePathEndpoint(e.p);
-        appendVertex(target, pixToDataCoords(prevHoverEvent.x, prevHoverEvent.y));
+        appendVertex$1(target, pixToDataCoords(prevHoverEvent.x, prevHoverEvent.y));
       } else {
-        appendVertex(target, e.p);
+        appendVertex$1(target, e.p);
       }
       if (e.shapes) {
         replaceDrawnShapes(e.shapes);
@@ -22708,7 +18173,7 @@
       // delete open paths
       for (var i=initialShapeCount; i<n; i++) {
         var shp = target.shapes[i];
-        if (!geom$1.pathIsClosed(shp[0], arcs)) { // assume open paths have one arc
+        if (!geom.pathIsClosed(shp[0], arcs)) { // assume open paths have one arc
           target.shapes[i] = null;
         }
       }
@@ -22757,7 +18222,7 @@
       _dragging = true;
       updateCursor();
       if (hoverVertexInfo.type == 'interpolated') {
-        insertVertex(hit.getHitTarget(), hoverVertexInfo.i, hoverVertexInfo.point);
+        insertVertex$1(hit.getHitTarget(), hoverVertexInfo.i, hoverVertexInfo.point);
         hoverVertexInfo.ids = [hoverVertexInfo.i];
       }
       hit.setHoverVertex(hoverVertexInfo.displayPoint, hoverVertexInfo.type);
@@ -22795,7 +18260,7 @@
       } else if (polygonMode() && hoverVertexInfo && pencilPoints.length > 2) {
         // close path
         p = hoverVertexInfo.point;
-        appendVertex(hit.getHitTarget(), p);
+        appendVertex$1(hit.getHitTarget(), p);
         extendCurrentPath(p);
         pencilPoints = null; // stop drawing
       } else if (pencilPoints.length >= 2 && pointExceedsTolerance(xy, pencilPoints, 1.2)) {
@@ -22951,7 +18416,7 @@
         target: target,
         vertex_id: vId
       });
-      deleteVertex(target, vId);
+      deleteVertex$1(target, vId);
       clearHoverVertex();
       gui.dispatchEvent('map-needs-refresh');
     }
@@ -22967,7 +18432,7 @@
       if (!prevEvt) return;
       var x0 = prevEvt.x;
       var y0 = prevEvt.y;
-      var dist = geom$1.distance2D(thisEvt.x, thisEvt.y, x0, y0);
+      var dist = geom.distance2D(thisEvt.x, thisEvt.y, x0, y0);
       if (dist < 1) return;
       var dist2 = dist / Math.sqrt(2);
       var minDist = Infinity;
@@ -22982,7 +18447,7 @@
         {dx: -dist2, dy: -dist2}
       ];
       var snapped = cands.reduce(function(memo, cand) {
-        var dist = geom$1.distance2D(thisEvt.x, thisEvt.y, x0 + cand.dx, y0 + cand.dy);
+        var dist = geom.distance2D(thisEvt.x, thisEvt.y, x0 + cand.dx, y0 + cand.dy);
         if (dist < minDist) {
           minDist = dist;
           return cand;
@@ -23044,7 +18509,7 @@
         clearDrawingInfo();
         fullRedraw();
       } else {
-        appendVertex(target, p);
+        appendVertex$1(target, p);
         gui.dispatchEvent('path_extend', {target, p});
         hit.triggerChangeEvent(); // trigger overlay redraw
       }
@@ -23083,7 +18548,7 @@
       var p1 = ext.pixCoordsToMapCoords(e.x, e.y); // mouse coords
       var p2 = internal.getArcStartCoords(arcId, target.gui.displayArcs); // vertex coords
       var p3 = internal.getArcStartCoords(arcId, target.gui.source.dataset.arcs);
-      var dist = geom$1.distance2D(p1[0], p1[1], p2[0], p2[1]);
+      var dist = geom.distance2D(p1[0], p1[1], p2[0], p2[1]);
       var data = target.gui.source.dataset.arcs.getVertexData();
       var i = data.ii[arcId];
       var pathLen = data.nn[arcId];
@@ -23105,7 +18570,7 @@
       var p = ext.pixCoordsToMapCoords(e.x, e.y);
       var ids = internal.findNearestVertices(p, shp, target.gui.displayArcs);
       var p2 = target.gui.displayArcs.getVertex2(ids[0]);
-      var dist = geom$1.distance2D(p[0], p[1], p2[0], p2[1]);
+      var dist = geom.distance2D(p[0], p[1], p2[0], p2[1]);
       var pixelDist = dist / ext.getPixelSize();
       if (pixelDist > HOVER_THRESHOLD$1) {
         return null;
@@ -23134,7 +18599,7 @@
             x2 = xx[j],
             y2 = yy[j],
             p2 = internal.findClosestPointOnSeg(p[0], p[1], x1, y1, x2, y2, 0),
-            dist = geom$1.distance2D(p2[0], p2[1], p[0], p[1]);
+            dist = geom.distance2D(p2[0], p2[1], p[0], p[1]);
         if (dist < minDist) {
           minDist = dist;
           closest = {
@@ -23254,7 +18719,7 @@
       }
 
       if (hoverVertexInfo.type == 'interpolated') {
-        insertVertex(target, hoverVertexInfo.i, hoverVertexInfo.point);
+        insertVertex$1(target, hoverVertexInfo.i, hoverVertexInfo.point);
         hoverVertexInfo.ids = [hoverVertexInfo.i];
       }
 
@@ -23273,7 +18738,7 @@
       var p = ext.pixCoordsToMapCoords(e.x, e.y);
       var ids = internal.findNearestVertices(p, shp, target.gui.displayArcs);
       var p2 = target.gui.displayArcs.getVertex2(ids[0]);
-      var dist = geom$1.distance2D(p[0], p[1], p2[0], p2[1]);
+      var dist = geom.distance2D(p[0], p[1], p2[0], p2[1]);
       var pixelDist = dist / ext.getPixelSize();
       if (pixelDist > HOVER_THRESHOLD) {
         return null;
@@ -23297,7 +18762,7 @@
             x2 = xx[j],
             y2 = yy[j],
             p2 = internal.findClosestPointOnSeg(p[0], p[1], x1, y1, x2, y2, 0),
-            dist = geom$1.distance2D(p2[0], p2[1], p[0], p[1]);
+            dist = geom.distance2D(p2[0], p2[1], p[0], p[1]);
         if (dist < minDist) {
           minDist = dist;
           closest = {
@@ -23400,6 +18865,8 @@
     var style;
     if (layerHasDrawableStyle(lyr) && !opts.outlineMode) {
       style = getCanvasDisplayStyle(lyr);
+    } else if (internal.layerHasLabels(lyr) && opts.interactionMode == 'label_style') {
+      style = {dotSize: 0};
     } else if (internal.layerHasLabels(lyr) && !opts.outlineMode) {
       style = copyBaseStyle(activeStyleForLabels);
     } else if (opts.darkMode) {
@@ -23778,7 +19245,7 @@
       timing = {};
       stats = getCachedRasterScalingStats(params, timing);
       timing.renderStart = getTimer$1();
-      preview = renderRasterViewportPreview(params.grid, params.recipe, params.bbox, params.width, params.height, stats);
+      preview = internal.renderRasterViewportPreview(params.grid, params.recipe, params.bbox, params.width, params.height, stats);
       timing.renderMs = getTimer$1() - timing.renderStart;
       logRasterPreviewTiming(params, timing);
       current = cache$1.get(layer);
@@ -23797,18 +19264,18 @@
 
   function getRasterViewportPreviewParams(layer, ext) {
     var raster = layer && layer.raster;
-    var grid = getRasterGrid(raster);
-    var rasterBbox = getRasterBBox(raster);
+    var grid = internal.getRasterGrid(raster);
+    var rasterBbox = internal.getRasterBBox(raster);
     var mapBbox = ext.getBounds().toArray();
-    var visibleBbox = rasterBbox && intersectBboxes(rasterBbox, mapBbox);
-    var preview = getRasterPreview(raster);
+    var visibleBbox = rasterBbox && internal.intersectBboxes(rasterBbox, mapBbox);
+    var preview = internal.getRasterPreview(raster);
     var recipe, pixelRatio, t, p1, p2, displayWidth, displayHeight, crop, width, height, scale, key, needed;
     if (!grid || !grid.samples || !visibleBbox || !grid.bbox) return null;
     if (!supportsNorthUpRaster(grid)) return null;
     crop = getRasterSourceWindow(grid, visibleBbox);
     if (!crop) return null;
     visibleBbox = crop.bbox;
-    recipe = getRasterViewRecipe(grid, raster.view && raster.view.recipe);
+    recipe = internal.getRasterViewRecipe(grid, raster.view && raster.view.recipe);
     pixelRatio = GUI.getPixelRatio();
     t = ext.getTransform(pixelRatio);
     p1 = t.transform(mapBbox[0], mapBbox[3]);
@@ -23856,7 +19323,7 @@
       timing.statsSource = 'none';
       return null;
     }
-    key = getRasterScalingStatsKey(params.grid, params.recipe);
+    key = internal.getRasterScalingStatsKey(params.grid, params.recipe);
     if (cached && cached.key == key) {
       timing.statsMs = 0;
       timing.statsSource = 'raster-view-cache';
@@ -23864,7 +19331,7 @@
     }
     timing.statsSource = 'computed';
     timing.statsStart = getTimer$1();
-    cached = getRasterViewScalingStats(params.raster, params.recipe);
+    cached = internal.getRasterViewScalingStats(params.raster, params.recipe);
     timing.statsMs = getTimer$1() - timing.statsStart;
     return cached;
   }
@@ -23971,7 +19438,7 @@
       if (!current || current.pending != id) return;
       timing = {};
       try {
-        grid = projectRasterGridForward({grid: params.grid}, params.sourceCRS, params.displayCRS, {
+        grid = internal.projectRasterGridForward({grid: params.grid}, params.sourceCRS, params.displayCRS, {
           raster_mesh_interval: params.meshInterval,
           output_bbox: params.bbox,
           output_width: params.width,
@@ -23987,7 +19454,7 @@
         return;
       }
       timing.renderStart = getTimer();
-      preview = renderRasterPreview(grid, params.recipe, grid.width, grid.height, params.stats);
+      preview = internal.renderRasterPreview(grid, params.recipe, grid.width, grid.height, params.stats);
       applyCoverageMask(preview, grid.coverage);
       timing.renderMs = getTimer() - timing.renderStart;
       logRasterReprojectionTiming(params, timing);
@@ -24006,15 +19473,15 @@
     var sourceInfo = sourceDataset && internal.getDatasetCrsInfo(sourceDataset);
     var sourceCRS = sourceInfo && sourceInfo.crs;
     var displayCRS = gui && gui.dynamic_crs;
-    var sourceGrid = getRasterGrid(raster);
+    var sourceGrid = internal.getRasterGrid(raster);
     var rasterBbox = gui && gui.bounds && gui.bounds.hasBounds() && gui.bounds.toArray();
     var viewBbox = ext && ext.getBounds().toArray();
-    var bbox = rasterBbox && viewBbox && intersectBboxes(rasterBbox, viewBbox);
+    var bbox = rasterBbox && viewBbox && internal.intersectBboxes(rasterBbox, viewBbox);
     var size = bbox && getPreviewSize(ext, sourceGrid);
     var recipe, stats;
     if (!sourceCRS || !displayCRS || !sourceGrid || !sourceGrid.samples || !bbox || !size) return null;
-    recipe = getRasterViewRecipe(sourceGrid, raster.view && raster.view.recipe);
-    stats = getRasterViewScalingStats(raster, recipe);
+    recipe = internal.getRasterViewRecipe(sourceGrid, raster.view && raster.view.recipe);
+    stats = internal.getRasterViewScalingStats(raster, recipe);
     return {
       key: getRasterReprojectedPreviewKey(layer, bbox, size, sourceCRS, displayCRS, recipe),
       grid: sourceGrid,
@@ -24380,8 +19847,8 @@
       preview = options.action == 'nav' ? null : getCachedRasterViewportPreview(layer, _ext);
       bbox = preview && preview.bbox;
       if (!preview) {
-        preview = raster && getRasterPreview(raster);
-        bbox = raster && getRasterBBox(raster);
+        preview = raster && internal.getRasterPreview(raster);
+        bbox = raster && internal.getRasterBBox(raster);
         if (options.action != 'nav' && options.onViewportPreviewReady) {
           scheduleRasterViewportPreview(layer, _ext, options.onViewportPreviewReady);
         }
@@ -25619,7 +21086,7 @@ GUI and setting the size and crop of SVG output.</p><div><input type="text" clas
 
     this.pixelCoordsToProjectedCoords = function(x, y) {
       if (!_activeLyr) return null;
-      var info = getDatasetCrsInfo$1(_activeLyr.gui.source.dataset);
+      var info = getDatasetCrsInfo(_activeLyr.gui.source.dataset);
       if (info && internal.isLatLngCRS(info.crs)) {
         return null; // latlon dataset
       }
@@ -25645,7 +21112,7 @@ GUI and setting the size and crop of SVG output.</p><div><input type="text" clas
       if (!_activeLyr || !_activeLyr.gui.geographic) {
         return null;
       }
-      var info = getDatasetCrsInfo$1(_activeLyr.gui.source.dataset);
+      var info = getDatasetCrsInfo(_activeLyr.gui.source.dataset);
       return info.crs || null;
     };
 
@@ -25654,6 +21121,7 @@ GUI and setting the size and crop of SVG output.</p><div><input type="text" clas
     this.isActiveLayer = isActiveLayer;
     this.isVisibleLayer = isVisibleLayer;
     this.getActiveLayer = function() { return _activeLyr; };
+    this.getHitControl = function() { return _hit; };
     // this.getViewData = function() {
     //   return {
     //     isPreview: isPreviewView(),
@@ -26046,7 +21514,7 @@ GUI and setting the size and crop of SVG output.</p><div><input type="text" clas
       _renderer.drawMainLayers(contentLayers, action);
 
       // draw hover & selection overlay
-      if (!_overlayLayers || action != 'nav') {
+      if (!_overlayLayers || action != 'nav' || getGlobalStyleOptions().interactionMode == 'label_style') {
         // cache layers to use when panning/zooming
         _overlayLayers = getOverlayLayers(_activeLyr, _hit.getHitState(), getGlobalStyleOptions());
       }
@@ -26360,7 +21828,7 @@ GUI and setting the size and crop of SVG output.</p><div><input type="text" clas
 
     function onUpdate() {
       var activeLyr = gui.model.getActiveLayer(); // may be null
-      var info = getDatasetCrsInfo$1(activeLyr?.dataset); // defaults to wgs84
+      var info = getDatasetCrsInfo(activeLyr?.dataset); // defaults to wgs84
       var dataCRS = info.crs || null;
       var displayCRS = gui.map.getDisplayCRS();
       var basemapsNotAvailable = !dataCRS || !displayCRS || !crsIsUsable(displayCRS) || !crsIsUsable(dataCRS);
@@ -26825,6 +22293,7 @@ GUI and setting the size and crop of SVG output.</p><div><input type="text" clas
     }
     gui.interaction = new InteractionMode(gui);
     gui.editToolbar = new EditToolbar(gui);
+    gui.labelTool = new LabelTool(gui);
 
     gui.showProgressMessage = function(msg) {
       if (!gui.progressMessage) {
