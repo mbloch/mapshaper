@@ -7,6 +7,8 @@ import { KeyboardEvents } from './gui-keyboard';
 import { InteractionMode } from './gui-interaction-mode-control';
 import { EditToolbar } from './gui-edit-toolbar';
 import { LabelTool } from './gui-label-tool';
+import { LayerStyleTool } from './gui-layer-style-tool';
+import { PointStyleTool } from './gui-point-style-tool';
 import { SessionSnapshots } from './gui-session-snapshot-control';
 import { Model } from './gui-model';
 import { MshpMap } from './gui-map';
@@ -70,6 +72,8 @@ export function GuiInstance(container, opts) {
   gui.interaction = new InteractionMode(gui);
   gui.editToolbar = new EditToolbar(gui);
   gui.labelTool = new LabelTool(gui);
+  gui.layerStyleTool = new LayerStyleTool(gui);
+  gui.pointStyleTool = new PointStyleTool(gui);
 
   gui.showProgressMessage = function(msg) {
     if (!gui.progressMessage) {

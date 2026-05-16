@@ -1,7 +1,7 @@
 {
   "name": "mapshaper",
   "version": "0.7.17",
-  "description": "A tool for editing vector datasets for mapping and GIS.",
+  "description": "A tool for editing geospatial data for mapping and GIS.",
   "keywords": [
     "shapefile",
     "topojson",

@@ -2201,6 +2201,142 @@ body.pan.panning .map-layers:not(.drawing) {
 	box-sizing: border-box;
 }
 
+.layer-style-panel .layer-color-row {
+	position: relative;
+}
+
+.point-style-section + .point-style-section {
+	margin-top: 10px;
+	padding-top: 8px;
+	border-top: 1px solid #ccc;
+}
+
+.point-create-labels-row {
+	display: flex;
+	align-items: center;
+	gap: 10px;
+}
+
+.point-create-copy-label {
+	display: inline-flex;
+	align-items: center;
+	gap: 4px;
+	margin: 0;
+	color: #555;
+}
+
+.point-create-copy-label span {
+	display: inline;
+	margin: 0;
+	color: #555;
+}
+
+.point-symbol-row {
+	display: flex;
+	align-items: flex-start;
+	gap: 12px;
+}
+
+.point-symbol-color-cell {
+	position: relative;
+	white-space: nowrap;
+	flex: 1;
+}
+
+.point-symbol-row .layer-number-control input[type="text"],
+.point-symbol-width-row input[type="text"] {
+	width: 45px;
+	height: 19px;
+	padding-top: 0;
+	padding-bottom: 0;
+	box-sizing: border-box;
+}
+
+.point-symbol-width-row input[type="text"] {
+	width: 55px;
+}
+
+.layer-style-control-line {
+	display: flex;
+	align-items: flex-start;
+	gap: 12px;
+}
+
+.layer-color-cell {
+	position: relative;
+	white-space: nowrap;
+}
+
+.layer-style-panel .layer-color-row input[type="text"] {
+	width: 79px;
+	height: 19px;
+	padding-top: 0;
+	padding-bottom: 0;
+	box-sizing: border-box;
+	vertical-align: top;
+}
+
+.layer-row-controls {
+	display: flex;
+	gap: 6px;
+	align-items: flex-start;
+	justify-content: flex-start;
+}
+
+.layer-number-control {
+	display: block;
+	margin: 0;
+}
+
+.layer-number-control > span {
+	display: block;
+	margin-bottom: 3px;
+	color: #555;
+}
+
+.layer-style-panel .layer-number-control input[type="text"] {
+	width: 45px;
+	height: 19px;
+	padding-top: 0;
+	padding-bottom: 0;
+	box-sizing: border-box;
+}
+
+.layer-stepper-control {
+	display: flex;
+	align-items: center;
+	gap: 2px;
+}
+
+.layer-stepper-control .label-panel-btn {
+	text-align: center;
+	line-height: 18px;
+}
+
+.layer-stroke-width-value {
+	display: inline-block;
+	width: 30px;
+	min-height: 17px;
+	line-height: 17px;
+	text-align: center;
+	border: 1px solid #999;
+	background: white;
+	cursor: pointer;
+	box-sizing: border-box;
+}
+
+.layer-stroke-width-value.editing {
+	cursor: text;
+}
+
+.layer-stroke-width-row .layer-number-control {
+	display: block;
+}
+
+.layer-style-panel .layer-color-row .label-color-picker input[type="text"] {
+	width: 45px;
+}
+
 .label-color-picker {
 	position: absolute;
 	z-index: 25;
@@ -2218,6 +2354,34 @@ body.pan.panning .map-layers:not(.drawing) {
 	width: 256px;
 	margin: 0 0 6px 0;
 	cursor: crosshair;
+}
+
+.label-color-presets {
+	margin: 0 0 6px 0;
+}
+
+.label-color-preset-row {
+	display: flex;
+	gap: 2px;
+	margin-bottom: 2px;
+}
+
+.label-color-preset {
+	box-sizing: border-box;
+	width: 14px;
+	height: 14px;
+	border: 1px solid rgba(0, 0, 0, 0.25);
+	cursor: pointer;
+}
+
+.label-color-preset:hover,
+.label-color-preset:focus {
+	outline: 1px solid #d3aa00;
+	outline-offset: 1px;
+}
+
+.label-color-preset-group-start {
+	margin-left: 2px;
 }
 
 .label-color-picker.dragging-color canvas {
@@ -2278,6 +2442,30 @@ body.dragging-color-picker * {
 
 .label-style-selection-row button {
 	margin-right: 5px;
+}
+
+.label-style-selection-row .label-editing-status,
+.label-style-selection-row .label-editing-clear {
+	display: inline;
+}
+
+.label-style-selection-row .label-editing-clear.hidden {
+	display: none;
+}
+
+.label-editing-status {
+	color: #555;
+}
+
+.label-style-selection-row .label-editing-clear {
+	margin-left: 8px;
+	color: var(--colored-text);
+	cursor: pointer;
+}
+
+.label-style-selection-row .label-editing-clear:hover {
+	color: black;
+	text-decoration: underline;
 }
 
 .label-position-grid {

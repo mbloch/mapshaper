@@ -102,6 +102,9 @@ export function ContextMenu(parentArg) {
     if (e.showLayerInfo) {
      addMenuItem('show info', e.showLayerInfo, '');
     }
+    if (e.styleLayer) {
+     addMenuItem('style layer', e.styleLayer, '');
+    }
 
     if (lyr && lyr.gui.geographic) {
       if (e.deleteVertex || e.deletePoint || copyable || e.deleteFeature) {
