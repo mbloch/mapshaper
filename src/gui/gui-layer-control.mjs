@@ -338,8 +338,19 @@ export function LayerControl(gui) {
       content.node().appendChild(renderLayerInfo(internal.getLayerInfo(target.layer, target.dataset)));
     }
 
+    function styleLayer() {
+      var target = findLayerById(id);
+      if (!target) return;
+      if (target.layer.geometry_type == 'point' && gui.pointStyleTool) {
+        gui.pointStyleTool.open(target.layer, target.dataset);
+      } else if (gui.layerStyleTool) {
+        gui.layerStyleTool.open(target.layer, target.dataset);
+      }
+    }
+
     function openLayerMenu(e) {
       var menuEvent = e;
+      var target = findLayerById(id);
       e.stopPropagation();
       if (!isFinite(e.pageX) || !isFinite(e.pageY)) {
         var rect = moreBtn.node().getBoundingClientRect();
@@ -350,6 +361,9 @@ export function LayerControl(gui) {
       }
       menuEvent.deleteLayer = deleteLayer;
       menuEvent.showLayerInfo = showLayerInfo;
+      if (target && layerCanBeStyled(target.layer)) {
+        menuEvent.styleLayer = styleLayer;
+      }
       menuEvent.contextMenuId = 'layer-' + id;
       openContextMenu(menuEvent, null, null);
     }
@@ -557,6 +571,10 @@ export function LayerControl(gui) {
 
   function isPinnable(lyr) {
     return internal.layerIsGeometric(lyr) || internal.layerHasRaster(lyr) || internal.layerHasFurniture(lyr);
+  }
+
+  function layerCanBeStyled(lyr) {
+    return !!(lyr && (lyr.geometry_type == 'point' || lyr.geometry_type == 'polyline' || lyr.geometry_type == 'polygon'));
   }
 
   function rowHTML(c1, c2, cname) {

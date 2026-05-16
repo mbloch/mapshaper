@@ -1,6 +1,8 @@
 import { getFontStyleVariants, getInstalledFonts } from './gui-label-fonts';
+import { ColorPicker, isHexColor } from './gui-color-picker';
+import { makeStylePresetId } from './gui-style-presets';
 import { El } from './gui-el';
-import { internal, utils } from './gui-core';
+import { internal } from './gui-core';
 import { GUI } from './gui-lib';
 import { showPopupAlert, showPrompt } from './gui-alert';
 
@@ -59,14 +61,10 @@ export function LabelTool(gui) {
   var textBtn = gui.buttons.addButton('#text-tool-icon').addClass('menu-btn pointer-btn');
   var parent = gui.container.findChild('.mshp-main-map');
   var panel = El('div').addClass('label-style-panel rollover').appendTo(parent).hide();
-  var createPanel = El('div').addClass('label-style-panel label-create-panel rollover').appendTo(parent).hide();
-  var createFieldSelect, createExprInput, createCopyCheckbox, createBtn;
-  var styleSelect, fontSelect, fontStyleSelect, fontSizeText, colorChit, colorInput, colorPicker, sbCanvas, hueCanvas, sbMarker, hueMarker, pickerHsbInputs, cssInput, posBtns, iconBtns, iconSizeText, hit;
+  var styleSelect, fontSelect, fontStyleSelect, fontSizeText, colorChit, colorInput, colorPicker, cssInput, posBtns, iconBtns, iconSizeText, editingStatus, clearLink, hit;
   var fontOptionsRendered = false;
-  var pickerColor = {h: 0, s: 0, b: 0};
   var pendingStyleHistory = null;
 
-  initCreatePanel();
   initPanel();
   gui.addMode(labelStylePanelMode, turnOn, turnOff, textBtn);
   gui.model.on('update', updateVisibility);
@@ -98,8 +96,8 @@ export function LabelTool(gui) {
     });
 
     var selectRow = El('div').addClass('label-style-row label-style-selection-row').appendTo(panel);
-    El('button').appendTo(selectRow).text('Select all').on('click', selectAllLabels);
-    El('button').appendTo(selectRow).text('Clear').on('click', clearSelection);
+    editingStatus = El('span').addClass('label-editing-status').appendTo(selectRow);
+    clearLink = El('span').addClass('label-editing-clear colored-text').appendTo(selectRow).text('clear').on('click', clearSelection);
 
     var fontRow = El('label').addClass('label-style-row').appendTo(panel);
     El('span').appendTo(fontRow).text('Font');
@@ -125,7 +123,7 @@ export function LabelTool(gui) {
       var color = colorInput.node().value.trim();
       if (color) {
         if (isHexColor(color)) {
-          setPickerColor(hexToHsb(color));
+          colorPicker.setColor(color);
         }
         applyLabelColor(color);
       }
@@ -198,38 +196,6 @@ export function LabelTool(gui) {
     renderSavedStyles();
   }
 
-  function initCreatePanel() {
-    var header = El('div').addClass('label-style-panel-title').appendTo(createPanel).text('Create labels');
-    El('button').addClass('label-style-close').appendTo(header).text('×').on('click', function() {
-      gui.clearMode();
-    });
-
-    var fieldRow = El('label').addClass('label-style-row').appendTo(createPanel);
-    El('span').appendTo(fieldRow).text('Label field');
-    createFieldSelect = El('select').appendTo(fieldRow).on('change', function() {
-      var field = createFieldSelect.node().value;
-      if (field) {
-        createExprInput.node().value = getFieldExpression(field);
-      }
-      updateCreateButton();
-    });
-
-    var exprRow = El('label').addClass('label-style-row label-create-expression-row').appendTo(createPanel);
-    El('span').appendTo(exprRow).text('or expression');
-    createExprInput = El('input')
-      .attr('type', 'text')
-      .appendTo(exprRow)
-      .on('input', updateCreateButton)
-      .on('change', updateCreateButton);
-
-    var copyRow = El('label').addClass('label-style-row label-create-copy-row').appendTo(createPanel);
-    createCopyCheckbox = El('input').attr('type', 'checkbox').appendTo(copyRow);
-    El('span').appendTo(copyRow).text('Create as new layer');
-
-    var btnRow = El('div').addClass('label-style-row').appendTo(createPanel);
-    createBtn = El('button').appendTo(btnRow).text('Create labels').on('click', createLabels);
-  }
-
   function appendIconButtonSymbol(btn, iconName) {
     var svg = '<svg class="label-icon-symbol" viewBox="0 0 16 16" aria-hidden="true">' +
       iconButtonSymbols[iconName] + '</svg>';
@@ -262,12 +228,8 @@ export function LabelTool(gui) {
   }
 
   function turnOn() {
-    if (!activeLayerIsPointLayer()) {
-      gui.clearMode();
-      return;
-    }
     if (!activeLayerHasLabels()) {
-      showCreatePanel();
+      gui.clearMode();
       return;
     }
     showStylePanel();
@@ -275,7 +237,6 @@ export function LabelTool(gui) {
 
   function showStylePanel() {
     renderFontOptions();
-    createPanel.hide();
     gui.interaction.setMode(labelStyleMode);
     gui.state.label_style_panel_open = true;
     panel.show();
@@ -284,25 +245,11 @@ export function LabelTool(gui) {
     updateSelectionDisplay();
   }
 
-  function showCreatePanel() {
-    panel.hide();
-    hideColorPicker();
-    if (gui.interaction.getMode() == labelStyleMode) {
-      gui.interaction.turnOff();
-    }
-    gui.state.label_style_panel_open = true;
-    createPanel.show();
-    textBtn.addClass('selected');
-    renderCreateFields();
-    updateCreateButton();
-  }
-
   function turnOff() {
     if (panel.visible()) {
       flushPendingStyleHistory();
     }
     panel.hide();
-    createPanel.hide();
     hideColorPicker();
     gui.state.label_style_panel_open = false;
     textBtn.removeClass('selected');
@@ -314,7 +261,7 @@ export function LabelTool(gui) {
   }
 
   function updateVisibility() {
-    var enabled = activeLayerIsPointLayer();
+    var enabled = activeLayerHasLabels();
     textBtn.classed('disabled', !enabled);
     textBtn[enabled ? 'show' : 'hide']();
     if (!enabled && gui.getMode() == labelStylePanelMode) {
@@ -343,100 +290,6 @@ export function LabelTool(gui) {
         El('option').attr('value', fontName).appendTo(optgroup).text(fontName);
       });
     });
-  }
-
-  function renderCreateFields() {
-    var lyr = getActiveLayer();
-    var records = lyr && lyr.data ? lyr.data.getRecords() : [];
-    var fields = lyr && lyr.data ? lyr.data.getFields().filter(function(field) {
-      return internal.getColumnType(field, records) == 'string';
-    }) : [];
-    var value = createFieldSelect.node().value;
-    createFieldSelect.empty();
-    El('option').attr('value', '').appendTo(createFieldSelect).text('');
-    fields.forEach(function(field) {
-      El('option').attr('value', field).appendTo(createFieldSelect).text(field);
-    });
-    createFieldSelect.node().disabled = fields.length === 0;
-    createFieldSelect.node().value = fields.indexOf(value) > -1 ? value : '';
-  }
-
-  function updateCreateButton() {
-    createBtn.node().disabled = createExprInput.node().value.trim() === '';
-  }
-
-  function getFieldExpression(field) {
-    return 'd[' + JSON.stringify(field) + ']';
-  }
-
-  function createLabels() {
-    var active = gui.model.getActiveLayer();
-    var srcLyr = active && active.layer;
-    var dataset = active && active.dataset;
-    var expr = createExprInput.node().value.trim();
-    var lyr;
-    if (!srcLyr || srcLyr.geometry_type != 'point' || !expr) return;
-    lyr = createCopyCheckbox.node().checked ? makeLabelLayerCopy(srcLyr, dataset) : srcLyr;
-    if (!applyLabelText(lyr, expr)) return;
-    if (lyr != srcLyr) {
-      addLabelLayerCopy(lyr, srcLyr, dataset);
-      recordCreateLabelsCommand(expr, lyr);
-      selectLabelLayerCopy(lyr, dataset);
-    } else {
-      gui.model.updated({style: true, same_table: true});
-      recordCreateLabelsCommand(expr);
-    }
-    showStylePanel();
-    setTimeout(function() {
-      selectAllLabels();
-    }, 0);
-  }
-
-  function makeLabelLayerCopy(srcLyr, dataset) {
-    var lyr = internal.copyLayer(srcLyr);
-    delete lyr.gui;
-    lyr.name = 'labels';
-    return lyr;
-  }
-
-  function addLabelLayerCopy(lyr, srcLyr, dataset) {
-    var i = dataset.layers.indexOf(srcLyr);
-    internal.noteDatasetWillChange(dataset, {operation: 'createLabelLayer', unit: 'layers'});
-    dataset.layers.splice(i + 1, 0, lyr);
-    internal.markDatasetChanged(dataset, {operation: 'createLabelLayer', unit: 'layers'});
-  }
-
-  function selectLabelLayerCopy(lyr, dataset) {
-    gui.model.setDefaultTarget([lyr], dataset);
-    gui.model.updated({select: true});
-  }
-
-  function applyLabelText(lyr, expr) {
-    var table = internal.getLayerDataTable(lyr);
-    var hasField = table.fieldExists(labelTextField);
-    var records = table.getRecords();
-    var accessor;
-    try {
-      accessor = internal.getSymbolPropertyAccessor(expr, labelTextField, lyr);
-    } catch(e) {
-      showPopupAlert(e.message || 'Invalid label expression', 'Create labels');
-      return false;
-    }
-    if (hasField) {
-      table.captureFieldsBefore([labelTextField], {operation: 'create-labels'});
-    } else {
-      table.captureSchemaBefore({operation: 'create-labels', fields: [labelTextField]});
-    }
-    records.forEach(function(rec, i) {
-      if (!rec) rec = records[i] = {};
-      rec[labelTextField] = accessor(i);
-    });
-    if (hasField) {
-      table.markFieldsChanged([labelTextField], {operation: 'create-labels'});
-    } else {
-      table.markSchemaChanged({operation: 'create-labels', fields: [labelTextField]});
-    }
-    return true;
   }
 
   function updatePendingStyleHistory(lyr, ids, fields) {
@@ -536,33 +389,8 @@ export function LabelTool(gui) {
     return true;
   }
 
-  function recordCreateLabelsCommand(expr, copyLyr) {
-    var cmd = '';
-    if (!gui.session) return;
-    if (copyLyr) {
-      cmd += '-filter true + name=' + internal.formatOptionValue(copyLyr.name) + ' ';
-    }
-    cmd += '-style label-text=' + quoteCommandValue(expr);
-    gui.session.consoleCommands(cmd);
-  }
-
   function quoteCommandValue(str) {
     return "'" + String(str).replace(/'/g, "\\'") + "'";
-  }
-
-  function selectAllLabels() {
-    var lyr = getActiveLayer();
-    var ids = [];
-    if (!hit || !lyr) return;
-    for (var i=0, n=internal.getFeatureCount(lyr); i<n; i++) {
-      ids.push(i);
-    }
-    hit.clearSelection();
-    if (ids.length > 0) {
-      hit.addSelectionIds(ids);
-    }
-    updateSelectionDisplay();
-    updateControls();
   }
 
   function clearSelection() {
@@ -585,8 +413,24 @@ export function LabelTool(gui) {
     return hit ? hit.getSelectionIds() : [];
   }
 
-  function updateControls() {
+  function getTargetIds() {
     var ids = getSelectionIds();
+    return ids.length > 0 ? ids : getAllLabelIds();
+  }
+
+  function getAllLabelIds() {
+    var lyr = getActiveLayer();
+    var ids = [];
+    if (!lyr) return ids;
+    for (var i=0, n=internal.getFeatureCount(lyr); i<n; i++) {
+      ids.push(i);
+    }
+    return ids;
+  }
+
+  function updateControls() {
+    var ids = getTargetIds();
+    var manualIds = getSelectionIds();
     var fontVal = getCommonValue(ids, fontField);
     var fontSizeVal = getCommonValue(ids, fontSizeField, {useDefault: true, defaultValue: defaultFontSize});
     var fontStyleVal = getCommonValue(ids, fontStyleField, {useDefault: true, defaultValue: defaultFontStyle});
@@ -597,6 +441,7 @@ export function LabelTool(gui) {
     var iconVal = getCommonValue(ids, iconField);
     var iconSizeVal = getCommonValue(ids, iconSizeField, {useDefault: true, defaultValue: defaultIconSize});
     styleSelect.node().disabled = ids.length === 0;
+    updateEditingStatus(manualIds.length);
     updateSavedStyleControls();
     fontSelect.node().disabled = ids.length === 0;
     fontSelect.node().value = fontVal;
@@ -610,15 +455,20 @@ export function LabelTool(gui) {
   }
 
   function updatePositionButtons(pos) {
-    var disabled = getSelectionIds().length === 0;
+    var disabled = getTargetIds().length === 0;
     labelPositions.forEach(function(name) {
       posBtns[name].classed('selected', name == pos);
       setPanelButtonDisabled(posBtns[name], disabled);
     });
   }
 
+  function updateEditingStatus(count) {
+    editingStatus.text(count > 0 ? 'Editing: ' + count + ' selected' : 'Editing: all');
+    clearLink.classed('hidden', count === 0);
+  }
+
   function updateFontSizeControls(fontSizeVal) {
-    var disabled = getSelectionIds().length === 0;
+    var disabled = getTargetIds().length === 0;
     fontSizeText.text(fontSizeVal || '');
     panel.findChildren('.label-size-row .label-panel-btn').forEach(function(btn) {
       setPanelButtonDisabled(btn, disabled);
@@ -626,7 +476,7 @@ export function LabelTool(gui) {
   }
 
   function updateFontStyleControls(fontName, fontStyleVal, fontWeightVal) {
-    var disabled = getSelectionIds().length === 0 || !fontName;
+    var disabled = getTargetIds().length === 0 || !fontName;
     fontStyleSelect.empty();
     El('option').attr('value', '').appendTo(fontStyleSelect).text('');
     if (fontName) {
@@ -640,28 +490,28 @@ export function LabelTool(gui) {
   }
 
   function updateColorControls(colorVal) {
-    var disabled = getSelectionIds().length === 0;
+    var disabled = getTargetIds().length === 0;
     colorInput.node().disabled = disabled;
     colorInput.node().value = colorVal || '';
-    setPanelButtonDisabled(colorChit, disabled || !isHexColor(colorVal));
+    setPanelButtonDisabled(colorChit, disabled);
     colorChit.css('background-color', isHexColor(colorVal) ? colorVal : 'transparent');
     if (colorPicker.visible()) {
       return; // avoid HSB -> RGB -> HSB rounding jumps after picker commits
     }
     if (isHexColor(colorVal)) {
-      setPickerColor(hexToHsb(colorVal));
+      colorPicker.setColor(colorVal);
     } else {
       hideColorPicker();
     }
   }
 
   function updateCssControl(cssVal) {
-    cssInput.node().disabled = getSelectionIds().length === 0;
+    cssInput.node().disabled = getTargetIds().length === 0;
     cssInput.node().value = cssVal || '';
   }
 
   function updateIconButtons(iconVal) {
-    var disabled = getSelectionIds().length === 0;
+    var disabled = getTargetIds().length === 0;
     iconTypes.forEach(function(icon) {
       iconBtns[icon.name].classed('selected', !disabled && icon.name == iconVal);
       setPanelButtonDisabled(iconBtns[icon.name], disabled);
@@ -669,7 +519,7 @@ export function LabelTool(gui) {
   }
 
   function updateIconSizeControls(iconSizeVal) {
-    var disabled = getSelectionIds().length === 0;
+    var disabled = getTargetIds().length === 0;
     iconSizeText.text(iconSizeVal || '');
     panel.findChildren('.label-icon-size-row .label-panel-btn').forEach(function(btn) {
       setPanelButtonDisabled(btn, disabled);
@@ -677,7 +527,7 @@ export function LabelTool(gui) {
   }
 
   function updateSavedStyleControls() {
-    var disabled = getSelectionIds().length === 0;
+    var disabled = getTargetIds().length === 0;
     var buttons = panel.findChildren('.label-saved-style-row button');
     buttons.forEach(function(btn, i) {
       btn.node().disabled = i === 0 ? disabled : disabled || !styleSelect.node().value;
@@ -716,7 +566,7 @@ export function LabelTool(gui) {
   }
 
   function nudgeFontSize(delta) {
-    var ids = getSelectionIds();
+    var ids = getTargetIds();
     var size = getNumericSize(ids, fontSizeField, defaultFontSize);
     if (ids.length === 0) return;
     size = Math.max(1, size + delta);
@@ -773,11 +623,11 @@ export function LabelTool(gui) {
   }
 
   function saveStyleWithName(name) {
-    var styles = getSavedStyles().filter(function(item) {
-      return item.name != name;
-    });
+    var styles = getSavedStyles();
+    var id = makeStylePresetId(styles, 'label', name);
     var i;
     styles.push({
+      id: id,
       name: name,
       style: getCurrentStyle()
     });
@@ -788,7 +638,7 @@ export function LabelTool(gui) {
     GUI.setSavedValue(savedStylesKey, styles);
     renderSavedStyles();
     for (i=0; i<styleSelect.node().options.length; i++) {
-      if (styleSelect.node().options[i].value == name) {
+      if (styleSelect.node().options[i].value == id) {
         styleSelect.node().selectedIndex = i;
         break;
       }
@@ -796,24 +646,33 @@ export function LabelTool(gui) {
   }
 
   async function deleteSelectedStyle() {
-    var name = styleSelect.node().value;
+    var id = styleSelect.node().value;
+    var item = findSavedStyle(id);
     var styles;
-    if (!name) return;
-    if (!await showPrompt('Delete label style "' + name + '"?', 'Delete preset')) return;
+    if (!item) return;
+    if (!await showPrompt('Delete label style "' + item.name + '"?', 'Delete preset')) return;
     styles = getSavedStyles().filter(function(item) {
-      return item.name != name;
+      return getStyleId(item) != id;
     });
     GUI.setSavedValue(savedStylesKey, styles);
     renderSavedStyles();
     updateSavedStyleControls();
   }
 
-  function applySavedStyle(name) {
-    var item = getSavedStyles().find(function(item) {
-      return item.name == name;
-    });
+  function applySavedStyle(id) {
+    var item = findSavedStyle(id);
     if (!item) return;
     applyStyleObject(item.style);
+  }
+
+  function findSavedStyle(id) {
+    return getSavedStyles().find(function(item) {
+      return getStyleId(item) == id;
+    });
+  }
+
+  function getStyleId(item) {
+    return item.id || 'label-' + item.name;
   }
 
   function getSavedStyles() {
@@ -827,7 +686,7 @@ export function LabelTool(gui) {
     styleSelect.empty();
     El('option').attr('value', '').appendTo(styleSelect).text('Apply preset...');
     getSavedStyles().forEach(function(item) {
-      El('option').attr('value', item.name).appendTo(styleSelect).text(item.name);
+      El('option').attr('value', getStyleId(item)).appendTo(styleSelect).text(item.name);
     });
     styleSelect.node().value = value || '';
     updateSavedStyleControls();
@@ -933,7 +792,7 @@ export function LabelTool(gui) {
   }
 
   function nudgeIconSize(delta) {
-    var ids = getSelectionIds();
+    var ids = getTargetIds();
     var size = getNumericSize(ids, iconSizeField, defaultIconSize);
     if (ids.length === 0) return;
     size = Math.max(1, size + delta);
@@ -951,280 +810,27 @@ export function LabelTool(gui) {
     return isFinite(val) && val > 0 ? val : defaultValue;
   }
 
-  function isHexColor(str) {
-    return /^#[0-9a-f]{6}$/i.test(str);
-  }
-
   function initColorPicker(colorRow) {
-    colorPicker = El('div').addClass('label-color-picker').appendTo(colorRow).hide();
-    var sbWrap = El('div').addClass('label-color-canvas-wrap').appendTo(colorPicker);
-    sbCanvas = El('canvas').attr('width', '256').attr('height', '256').appendTo(sbWrap);
-    sbMarker = makePickerMarker().appendTo(sbWrap);
-    var hueWrap = El('div').addClass('label-color-canvas-wrap').appendTo(colorPicker);
-    hueCanvas = El('canvas').attr('width', '256').attr('height', '18').appendTo(hueWrap);
-    hueMarker = makePickerMarker().appendTo(hueWrap);
-    pickerHsbInputs = {};
-    var hsbRow = El('div').addClass('label-color-picker-fields').appendTo(colorPicker);
-    addPickerNumberInput(hsbRow, 'h', 'H');
-    addPickerNumberInput(hsbRow, 's', 'S');
-    addPickerNumberInput(hsbRow, 'b', 'B');
-    El('button').appendTo(hsbRow).text('Close').on('click', closePickerColor);
-    sbCanvas.on('mousedown', function(e) {
-      startCanvasDrag(e, updateSbFromEvent);
+    colorPicker = new ColorPicker(colorRow, {
+      onPreview: function(hex) {
+        colorInput.node().value = hex;
+        colorChit.css('background-color', hex);
+      },
+      onChange: applyLabelColor
     });
-    hueCanvas.on('mousedown', function(e) {
-      startCanvasDrag(e, updateHueFromEvent);
-    });
-    setPickerColor(pickerColor);
-  }
-
-  function addPickerNumberInput(row, name, label) {
-    var wrapper = El('label').appendTo(row);
-    El('span').appendTo(wrapper).text(label);
-    pickerHsbInputs[name] = El('input')
-      .attr('type', 'text')
-      .appendTo(wrapper)
-      .on('change', function() {
-        var h = parseNumberField(pickerHsbInputs.h.node().value);
-        var s = parseNumberField(pickerHsbInputs.s.node().value);
-        var b = parseNumberField(pickerHsbInputs.b.node().value);
-        if (!isFinite(h) || !isFinite(s) || !isFinite(b)) return;
-        setPickerColor({
-          h: degreesToByte(h),
-          s: pctToByte(s),
-          b: pctToByte(b)
-        });
-        commitPickerColor();
-      });
   }
 
   function toggleColorPicker() {
-    if (colorPicker.visible()) {
-      hideColorPicker();
-    } else {
-      colorPicker.show();
-      drawColorPicker();
-    }
+    colorPicker.toggle();
   }
 
   function hideColorPicker() {
     colorPicker.hide();
   }
 
-  function startCanvasDrag(e, update) {
-    var evt = e.originalEvent || e;
-    colorPicker.addClass('dragging-color');
-    El('body').addClass('dragging-color-picker');
-    update(evt);
-    document.addEventListener('mousemove', onmove);
-    document.addEventListener('mouseup', onup);
-    evt.preventDefault();
-    function onmove(evt) {
-      update(evt);
-    }
-    function onup() {
-      document.removeEventListener('mousemove', onmove);
-      document.removeEventListener('mouseup', onup);
-      colorPicker.removeClass('dragging-color');
-      El('body').removeClass('dragging-color-picker');
-      commitPickerColor();
-    }
-  }
-
-  function updateSbFromEvent(evt) {
-    var p = getCanvasPoint(sbCanvas.node(), evt);
-    setPickerColor({
-      h: pickerColor.h,
-      s: p.x,
-      b: 255 - p.y
-    });
-  }
-
-  function updateHueFromEvent(evt) {
-    var p = getCanvasPoint(hueCanvas.node(), evt);
-    setPickerColor({
-      h: p.x,
-      s: pickerColor.s,
-      b: pickerColor.b
-    });
-  }
-
-  function getCanvasPoint(canvas, evt) {
-    var rect = canvas.getBoundingClientRect();
-    return {
-      x: clamp(Math.round((evt.clientX - rect.left) / rect.width * (canvas.width - 1)), 0, canvas.width - 1),
-      y: clamp(Math.round((evt.clientY - rect.top) / rect.height * (canvas.height - 1)), 0, canvas.height - 1)
-    };
-  }
-
-  function setPickerColor(hsb) {
-    pickerColor = {
-      h: clamp(Math.round(hsb.h), 0, 255),
-      s: clamp(Math.round(hsb.s), 0, 255),
-      b: clamp(Math.round(hsb.b), 0, 255)
-    };
-    drawColorPicker();
-    updatePickerFields();
-  }
-
-  function updatePickerFields() {
-    var hex = hsbToHex(pickerColor);
-    pickerHsbInputs.h.node().value = byteToDegrees(pickerColor.h) + '°';
-    pickerHsbInputs.s.node().value = byteToPct(pickerColor.s) + '%';
-    pickerHsbInputs.b.node().value = byteToPct(pickerColor.b) + '%';
-    colorInput.node().value = hex;
-    colorChit.css('background-color', hex);
-  }
-
-  function drawColorPicker() {
-    if (!sbCanvas) return;
-    drawSaturationBrightnessCanvas();
-    drawHueCanvas();
-  }
-
-  function drawSaturationBrightnessCanvas() {
-    var ctx = sbCanvas.node().getContext('2d');
-    var image = ctx.createImageData(256, 256);
-    var data = image.data;
-    var i = 0;
-    for (var y=0; y<256; y++) {
-      for (var x=0; x<256; x++) {
-        var rgb = hsbToRgb({
-          h: pickerColor.h,
-          s: x,
-          b: 255 - y
-        });
-        data[i++] = rgb.r;
-        data[i++] = rgb.g;
-        data[i++] = rgb.b;
-        data[i++] = 255;
-      }
-    }
-    ctx.putImageData(image, 0, 0);
-    positionMarker(sbMarker, pickerColor.s, 255 - pickerColor.b, pickerColor);
-  }
-
-  function drawHueCanvas() {
-    var ctx = hueCanvas.node().getContext('2d');
-    var image = ctx.createImageData(256, 18);
-    var data = image.data;
-    var i = 0;
-    for (var y=0; y<18; y++) {
-      for (var x=0; x<256; x++) {
-        var rgb = hsbToRgb({h: x, s: 255, b: 255});
-        data[i++] = rgb.r;
-        data[i++] = rgb.g;
-        data[i++] = rgb.b;
-        data[i++] = 255;
-      }
-    }
-    ctx.putImageData(image, 0, 0);
-    positionMarker(hueMarker, pickerColor.h, 9, {h: pickerColor.h, s: 255, b: 255});
-  }
-
-  function commitPickerColor() {
-    applyLabelColor(hsbToHex(pickerColor));
-  }
-
-  function closePickerColor() {
-    hideColorPicker();
-  }
-
-  function getMarkerColor(rgb) {
-    var luminance = rgb.r * 0.2126 + rgb.g * 0.7152 + rgb.b * 0.0722;
-    return luminance < 128 ? '#fff' : '#000';
-  }
-
-  function makePickerMarker() {
-    return El('<svg class="label-color-marker" width="16" height="16" viewBox="0 0 16 16"><circle cx="8" cy="8" r="6"></circle></svg>');
-  }
-
-  function positionMarker(marker, x, y, hsb) {
-    var rgb = hsbToRgb(hsb);
-    x = utils.clamp(x, 1, 254);
-    y = utils.clamp(y, 1, 254) + 0.5;
-    marker.css({
-      left: x - 8,
-      top: y - 8
-    });
-    marker.findChild('circle').attr('stroke', getMarkerColor(rgb));
-  }
-
-  function hexToHsb(hex) {
-    var r = parseInt(hex.substr(1, 2), 16);
-    var g = parseInt(hex.substr(3, 2), 16);
-    var b = parseInt(hex.substr(5, 2), 16);
-    var max = Math.max(r, g, b);
-    var min = Math.min(r, g, b);
-    var d = max - min;
-    var h = 0;
-    if (d) {
-      if (max == r) h = ((g - b) / d) % 6;
-      else if (max == g) h = (b - r) / d + 2;
-      else h = (r - g) / d + 4;
-      h *= 60;
-      if (h < 0) h += 360;
-    }
-    return {
-      h: Math.round(h / 360 * 255),
-      s: Math.round(max === 0 ? 0 : d / max * 255),
-      b: max
-    };
-  }
-
-  function hsbToHex(hsb) {
-    var rgb = hsbToRgb(hsb);
-    return '#' + [rgb.r, rgb.g, rgb.b].map(function(val) {
-      return val.toString(16).padStart(2, '0');
-    }).join('');
-  }
-
-  function hsbToRgb(hsb) {
-    var h = hsb.h / 255 * 360;
-    var s = hsb.s / 255;
-    var v = hsb.b / 255;
-    var c = v * s;
-    var x = c * (1 - Math.abs((h / 60) % 2 - 1));
-    var m = v - c;
-    var rgb = h < 60 ? [c, x, 0] :
-      h < 120 ? [x, c, 0] :
-      h < 180 ? [0, c, x] :
-      h < 240 ? [0, x, c] :
-      h < 300 ? [x, 0, c] : [c, 0, x];
-    return {
-      r: Math.round((rgb[0] + m) * 255),
-      g: Math.round((rgb[1] + m) * 255),
-      b: Math.round((rgb[2] + m) * 255)
-    };
-  }
-
-  function byteToPct(val) {
-    return Math.round(val / 255 * 100);
-  }
-
-  function pctToByte(val) {
-    return Math.round(clamp(val, 0, 100) / 100 * 255);
-  }
-
-  function byteToDegrees(val) {
-    return Math.round(val / 255 * 360);
-  }
-
-  function degreesToByte(val) {
-    return Math.round(clamp(val, 0, 360) / 360 * 255);
-  }
-
-  function parseNumberField(str) {
-    return Number(String(str).replace(/[°%]/g, '').trim());
-  }
-
-  function clamp(val, min, max) {
-    return isFinite(val) ? Math.max(min, Math.min(max, val)) : min;
-  }
-
   function applyStyleFields(fields, updateRecord) {
     var table = getActiveTable();
-    var ids = getSelectionIds();
+    var ids = getTargetIds();
     var lyr = getActiveLayer();
     var hasNewFields;
     if (!table || ids.length === 0) return;

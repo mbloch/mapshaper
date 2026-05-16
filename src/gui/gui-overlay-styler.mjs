@@ -47,6 +47,19 @@ var selectionFill = "rgba(237, 214, 0, 0.12)",
         strokeWidth: 2.5
       }
     },
+    styleSelectionStyles = {
+      polygon: {
+        fillColor: null,
+        strokeColor: 'rgba(255, 198, 0, 0.38)',
+        strokeWidth: 5,
+        strokeOverlay: true
+      }, polyline:  {
+        fillColor: null,
+        strokeColor: 'rgba(255, 198, 0, 0.38)',
+        strokeWidth: 5,
+        strokeOverlay: true
+      }
+    },
     // currently not used -- selection hover is not styled
     selectionHoverStyles = {
       polygon: {
@@ -101,7 +114,7 @@ export function getOverlayLayers(activeLyr, hitData, styleOpts) {
   ids = utils.difference(hitData.ids || [], [hitData.id]);
   if (ids.length > 0) {
     lyr = getOverlayLayer(activeLyr, ids);
-    outlineStyle = selectionStyles[displayLyr.geometry_type];
+    outlineStyle = getSelectionStyle(displayLyr.geometry_type, styleOpts);
     lyr.gui.style = getOverlayStyle(activeLyr, ids, outlineStyle);
     layers.push(lyr);
   }
@@ -145,7 +158,9 @@ function getOverlayStyle(baseLyr, ids, outlineStyle) {
     } else {
       style.strokeColor = outlineStyle.strokeColor;
       style.fillColor = outlineStyle.fillColor;
-      style.strokeWidth = Math.max(outlineStyle.strokeWidth, style.strokeWidth || 0);
+      style.strokeWidth = outlineStyle.strokeOverlay ?
+        (style.strokeWidth || 0) + outlineStyle.strokeWidth :
+        Math.max(outlineStyle.strokeWidth, style.strokeWidth || 0);
     }
     style.opacity = 1;
     style.fillOpacity = 1;
@@ -157,6 +172,13 @@ function getOverlayStyle(baseLyr, ids, outlineStyle) {
     style.dotSize = outlineStyle.dotSize;
   }
   return style;
+}
+
+function getSelectionStyle(geomType, styleOpts) {
+  if (styleOpts.interactionMode == 'line_style' || styleOpts.interactionMode == 'polygon_style') {
+    return styleSelectionStyles[geomType] || selectionStyles[geomType];
+  }
+  return selectionStyles[geomType];
 }
 
 // style for vertex edit mode

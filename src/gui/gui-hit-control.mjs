@@ -16,6 +16,7 @@ export function HitControl(gui, ext, mouse) {
   var targetLayer;
   var hitTest;
   var pinnedOn; // used in multi-edit mode (selection) for toggling pinning behavior
+  var suppressChangeEvent = false;
 
   // event priority is higher than navigation, so stopping propagation disables
   // pan navigation
@@ -92,7 +93,8 @@ export function HitControl(gui, ext, mouse) {
 
   function selectable() {
     var mode = interactionMode();
-    return mode == 'selection' || mode == 'label_style';
+    return mode == 'selection' || mode == 'label_style' ||
+      mode == 'line_style' || mode == 'polygon_style';
   }
 
   function pinnable() {
@@ -110,7 +112,8 @@ export function HitControl(gui, ext, mouse) {
     var mode = interactionMode();
     // click used to pin popup and select features
     return mode == 'data' || mode == 'info' || mode == 'selection' ||
-    mode == 'label_style' || mode == 'rectangles' || mode == 'edit_points';
+    mode == 'label_style' || mode == 'line_style' || mode == 'polygon_style' ||
+    mode == 'rectangles' || mode == 'edit_points';
   }
 
   self.getHitId = function() {
@@ -234,12 +237,13 @@ export function HitControl(gui, ext, mouse) {
   // make sure popup is unpinned and turned off when switching editing modes
   // (some modes do not support pinning)
   gui.on('interaction_mode_change', function(e) {
-    self.clearSelection();
+    clearSelectionSilently();
     if (gui.interaction.modeUsesHitDetection(e.mode)) {
       turnOn(e.mode);
     } else {
       turnOff();
     }
+    gui.dispatchEvent('map-needs-refresh');
   });
 
   gui.on('undo_redo_pre', function() {
@@ -384,9 +388,15 @@ export function HitControl(gui, ext, mouse) {
 
     storedData = newData;
     gui.container.findChild('.map-layers').classed('symbol-hit', nonEmpty);
-    if (active) {
+    if (active && !suppressChangeEvent) {
       triggerChangeEvent();
     }
+  }
+
+  function clearSelectionSilently() {
+    suppressChangeEvent = true;
+    self.clearSelection();
+    suppressChangeEvent = false;
   }
 
   // check if an event is used in the current interaction mode

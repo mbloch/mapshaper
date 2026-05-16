@@ -6,13 +6,13 @@ export function InteractionMode(gui) {
   var menus = {
     standard: ['info', 'selection', 'box'],
     empty: ['edit_polygons', 'edit_lines', 'edit_points', 'box'],
-    polygons: ['info', 'selection', 'box', 'edit_polygons'],
-    rectangles: ['info', 'selection', 'box', 'rectangles', 'edit_polygons'],
-    lines: ['info', 'selection', 'box', 'edit_lines'], // 'snip_lines'
+    polygons: ['info', 'selection', 'box', 'polygon_style', 'edit_polygons'],
+    rectangles: ['info', 'selection', 'box', 'polygon_style', 'rectangles', 'edit_polygons'],
+    lines: ['info', 'selection', 'box', 'line_style', 'edit_lines'], // 'snip_lines'
     table: ['info', 'selection'],
     raster: ['box'],
-    labels: ['info', 'selection', 'box', 'labels', 'edit_points'],
-    points: ['info', 'selection', 'box', 'edit_points'] // , 'add-points'
+    labels: ['info', 'selection', 'box', 'point_style', 'labels', 'edit_points'],
+    points: ['info', 'selection', 'box', 'point_style', 'edit_points'] // , 'add-points'
   };
 
   var prompts = {
@@ -27,6 +27,9 @@ export function InteractionMode(gui) {
     box: 'rectangle tool',
     data: 'edit attributes',
     label_style: 'style labels',
+    point_style: 'style points',
+    line_style: 'style lines',
+    polygon_style: 'style polygons',
     labels: 'position labels',
     edit_points: 'add/drag points',
     edit_lines: 'draw/edit polylines',
@@ -61,7 +64,7 @@ export function InteractionMode(gui) {
     });
 
     btn.on('mouseenter', function() {
-      if (gui.state.label_style_panel_open) return;
+      if (stylePanelIsActive()) return;
       btn.addClass('hover');
       if (_menuOpen) {
         clearTimeout(_menuTimeout); // prevent timed closing
@@ -100,7 +103,7 @@ export function InteractionMode(gui) {
   };
 
   this.modeUsesHitDetection = function(mode) {
-    return ['info', 'selection', 'data', 'label_style', 'labels', 'edit_points', 'vertices', 'rectangles', 'edit_lines', 'edit_polygons', 'snip_lines'].includes(mode);
+    return ['info', 'selection', 'data', 'label_style', 'line_style', 'polygon_style', 'labels', 'edit_points', 'vertices', 'rectangles', 'edit_lines', 'edit_polygons', 'snip_lines'].includes(mode);
   };
 
   this.modeUsesPopup = function(mode) {
@@ -108,7 +111,7 @@ export function InteractionMode(gui) {
   };
 
   this.modeSupportsUndo = function(mode) {
-    return ['data', 'label_style', 'labels', 'edit_points', 'edit_lines', 'edit_polygons', 'vertices', 'rectangles'].includes(mode);
+    return ['data', 'label_style', 'point_style', 'line_style', 'polygon_style', 'labels', 'edit_points', 'edit_lines', 'edit_polygons', 'vertices', 'rectangles'].includes(mode);
   };
 
   this.getMode = getInteractionMode;
@@ -130,6 +133,11 @@ export function InteractionMode(gui) {
 
   function active() {
     return _editMode && _editMode != 'off';
+  }
+
+  function stylePanelIsActive() {
+    return _editMode == 'label_style' || _editMode == 'point_style' ||
+      _editMode == 'line_style' || _editMode == 'polygon_style';
   }
 
   function getAvailableModes() {
@@ -190,7 +198,7 @@ export function InteractionMode(gui) {
   // if current editing mode is not available, turn off the tool
   function updateCurrentMode() {
     var modes = getAvailableModes();
-    if (modes.indexOf(_editMode) == -1 && !labelStyleModeIsAvailable()) {
+    if (modes.indexOf(_editMode) == -1 && !labelStyleModeIsAvailable() && !layerStyleModeIsAvailable() && !pointStyleModeIsAvailable()) {
       setMode('off');
     }
   }
@@ -198,6 +206,17 @@ export function InteractionMode(gui) {
   function labelStyleModeIsAvailable() {
     var o = gui.model.getActiveLayer();
     return _editMode == 'label_style' && o && o.layer && internal.layerHasLabels(o.layer);
+  }
+
+  function layerStyleModeIsAvailable() {
+    var o = gui.model.getActiveLayer();
+    return _editMode == 'line_style' && o && o.layer && o.layer.geometry_type == 'polyline' ||
+      _editMode == 'polygon_style' && o && o.layer && o.layer.geometry_type == 'polygon';
+  }
+
+  function pointStyleModeIsAvailable() {
+    var o = gui.model.getActiveLayer();
+    return _editMode == 'point_style' && o && o.layer && o.layer.geometry_type == 'point';
   }
 
   function openMenu() {
