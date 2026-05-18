@@ -94,7 +94,7 @@ export function HitControl(gui, ext, mouse) {
   function selectable() {
     var mode = interactionMode();
     return mode == 'selection' || mode == 'label_style' ||
-      mode == 'line_style' || mode == 'polygon_style';
+      mode == 'point_style' || mode == 'line_style' || mode == 'polygon_style';
   }
 
   function pinnable() {
@@ -112,7 +112,7 @@ export function HitControl(gui, ext, mouse) {
     var mode = interactionMode();
     // click used to pin popup and select features
     return mode == 'data' || mode == 'info' || mode == 'selection' ||
-    mode == 'label_style' || mode == 'line_style' || mode == 'polygon_style' ||
+    mode == 'label_style' || mode == 'point_style' || mode == 'line_style' || mode == 'polygon_style' ||
     mode == 'rectangles' || mode == 'edit_points';
   }
 
@@ -267,7 +267,7 @@ export function HitControl(gui, ext, mouse) {
 
     // TODO: move pinning to inspection control?
     if (clickable()) {
-      updateSelectionState(convertClickDataToSelectionData(hitTest(e)));
+      updateSelectionState(convertClickDataToSelectionData(hitTest(e), e));
     }
 
     if (pinned && interactionMode() == 'edit_points') {
@@ -309,7 +309,7 @@ export function HitControl(gui, ext, mouse) {
 
   // Translates feature hit data from a mouse click into feature selection data
   // hitData: hit data from a mouse click
-  function convertClickDataToSelectionData(hitData) {
+  function convertClickDataToSelectionData(hitData, e) {
     // mergeCurrentState(hitData);
     // TOGGLE pinned state under some conditions
     var id = hitData.ids.length > 0 ? hitData.ids[0] : -1;
@@ -326,11 +326,30 @@ export function HitControl(gui, ext, mouse) {
     }
     if (selectable()) {
       if (id > -1) {
-        selectionIds = toggleId(id, selectionIds);
+        selectionIds = styleSelectionMode() ?
+          selectStyleFeature(id, e) :
+          toggleId(id, selectionIds);
       }
       hitData.ids = selectionIds;
     }
     return hitData;
+  }
+
+  function styleSelectionMode() {
+    var mode = interactionMode();
+    return mode == 'label_style' || mode == 'point_style' ||
+      mode == 'line_style' || mode == 'polygon_style';
+  }
+
+  function selectStyleFeature(id, e) {
+    return eventUsesAdditiveSelection(e) ?
+      toggleId(id, selectionIds) :
+      [id];
+  }
+
+  function eventUsesAdditiveSelection(e) {
+    var original = e && e.originalEvent || e;
+    return !!(original && original.shiftKey);
   }
 
   function mergeSelectionModeHoverData(hitData) {

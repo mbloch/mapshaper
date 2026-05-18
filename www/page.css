@@ -2025,6 +2025,11 @@ body.pan.panning .map-layers:not(.drawing) {
 	font-size: 12.5px;
 }
 
+.label-style-panel button.label-style-close {
+	font-size: 16px; /* close button icon */
+}
+
+
 .label-style-panel select {
 	padding: 1px 0;
 }
@@ -2053,7 +2058,7 @@ body.pan.panning .map-layers:not(.drawing) {
 .label-style-row span,
 .label-style-row-label {
 	display: block;
-	margin-bottom: 3px;
+	/* margin-bottom: 3px; */
 	color: #555;
 }
 
@@ -2121,7 +2126,8 @@ body.pan.panning .map-layers:not(.drawing) {
 	border-top: 1px solid #ccc;
 }
 
-.label-saved-style-row button {
+.label-saved-style-row button,
+.label-style-row button {
 	margin-right: 5px;
 }
 
@@ -2211,10 +2217,34 @@ body.pan.panning .map-layers:not(.drawing) {
 	border-top: 1px solid #ccc;
 }
 
+.point-style-section.point-style-first-visible {
+	margin-top: 7px;
+	padding-top: 0;
+	border-top: 0;
+}
+
+.point-style-note {
+	color: #555;
+	line-height: 1.25;
+}
+
 .point-create-labels-row {
 	display: flex;
 	align-items: center;
 	gap: 10px;
+}
+
+.point-create-circles-row {
+	display: flex;
+	align-items: baseline;
+	gap: 2px;
+	color: #555;
+}
+
+.point-create-circles-row span {
+	display: inline;
+	margin: 0;
+	color: #555;
 }
 
 .point-create-copy-label {
@@ -2235,6 +2265,23 @@ body.pan.panning .map-layers:not(.drawing) {
 	display: flex;
 	align-items: flex-start;
 	gap: 12px;
+}
+
+.point-symbol-size-row {
+	display: flex;
+	align-items: flex-start;
+	gap: 12px;
+}
+
+.point-symbol-stepper-control {
+	display: flex;
+	flex-direction: column;
+	gap: 2px;
+}
+
+.point-symbol-stepper-control:last-child {
+	margin-left: auto;
+	align-items: flex-end;
 }
 
 .point-symbol-color-cell {
@@ -2288,7 +2335,9 @@ body.pan.panning .map-layers:not(.drawing) {
 	margin: 0;
 }
 
-.layer-number-control > span {
+.layer-number-control > span,
+.label-color-row > span,
+.layer-color-cell > span {
 	display: block;
 	margin-bottom: 3px;
 	color: #555;

@@ -246,21 +246,24 @@ export function DisplayCanvas() {
     var draw = getShapePencil(arcs, _ext);
     var key, item, shp;
     var styler = style.styler || null;
+    var drawStyle = styler ? utils.defaults({}, style) : style;
     for (var i=0; i<shapes.length; i++) {
       shp = shapes[i];
       if (!shp || filter && !filter(i)) continue;
       if (styler) {
-        styler(style, i);
+        styler(drawStyle, i);
       }
-      if (style.overlay || style.opacity < 1 || style.fillOpacity < 1 || style.strokeOpacity < 1 || style.fillEffect) {
+      if (!drawStyle.batchOverlay && (drawStyle.overlay ||
+        drawStyle.opacity < 1 || drawStyle.fillOpacity < 1 ||
+        drawStyle.strokeOpacity < 1 || drawStyle.fillEffect)) {
         // don't batch shapes with opacity, in case they overlap
-        drawPaths([shp], startPath, draw, style);
+        drawPaths([shp], startPath, draw, drawStyle);
         continue;
       }
-      key = getStyleKey(style);
+      key = getStyleKey(drawStyle);
       if (key in styleIndex === false) {
         styleIndex[key] = {
-          style: utils.defaults({}, style),
+          style: utils.defaults({}, drawStyle),
           shapes: []
         };
       }

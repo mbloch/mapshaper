@@ -78,7 +78,7 @@ export function InteractionMode(gui) {
 
     btn.on('click', function(e) {
       if (_editMode == 'label_style') {
-        setMode('info');
+        setMode('off');
         closeMenu();
       } else if (active()) {
         setMode('off');
@@ -103,7 +103,7 @@ export function InteractionMode(gui) {
   };
 
   this.modeUsesHitDetection = function(mode) {
-    return ['info', 'selection', 'data', 'label_style', 'line_style', 'polygon_style', 'labels', 'edit_points', 'vertices', 'rectangles', 'edit_lines', 'edit_polygons', 'snip_lines'].includes(mode);
+    return ['info', 'selection', 'data', 'label_style', 'point_style', 'line_style', 'polygon_style', 'labels', 'edit_points', 'vertices', 'rectangles', 'edit_lines', 'edit_polygons', 'snip_lines'].includes(mode);
   };
 
   this.modeUsesPopup = function(mode) {
@@ -179,7 +179,7 @@ export function InteractionMode(gui) {
     modes.forEach(function(mode) {
       // don't show "turn off" link if not currently editing
       if (_editMode == 'off' && mode == 'off') return;
-      var link = El('div').addClass('nav-menu-item').attr('data-name', mode).text(labels[mode]).appendTo(menu);
+      var link = El('div').addClass('nav-menu-item').attr('data-name', mode).text(getModeLabel(mode)).appendTo(menu);
       link.on('click', function(e) {
         if (_editMode == mode) {
           // closeMenu();
@@ -193,6 +193,14 @@ export function InteractionMode(gui) {
       });
     });
     updateSelectionHighlight();
+  }
+
+  function getModeLabel(mode) {
+    var o = gui.model.getActiveLayer();
+    if (mode == 'point_style' && o && o.layer && internal.layerHasLabels(o.layer)) {
+      return 'style labels';
+    }
+    return labels[mode];
   }
 
   // if current editing mode is not available, turn off the tool
@@ -269,7 +277,7 @@ export function InteractionMode(gui) {
     }
     btn.classed('hover', _menuOpen);
     // btn.classed('selected', active() && !_menuOpen);
-    btn.classed('selected', active() && _editMode != 'label_style');
+    btn.classed('selected', active());
   }
 
   function updateSelectionHighlight() {

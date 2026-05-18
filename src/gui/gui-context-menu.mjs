@@ -99,11 +99,11 @@ export function ContextMenu(parentArg) {
     if (e.deleteLayer) {
      addMenuItem('delete layer', e.deleteLayer, '');
     }
-    if (e.showLayerInfo) {
-     addMenuItem('show info', e.showLayerInfo, '');
-    }
     if (e.styleLayer) {
      addMenuItem('style layer', e.styleLayer, '');
+    }
+    if (e.showLayerInfo) {
+     addMenuItem('show info', e.showLayerInfo, '');
     }
 
     if (lyr && lyr.gui.geographic) {

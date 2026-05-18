@@ -27,6 +27,32 @@ describe('mapshaper-svg-style.js', function () {
       });
     })
 
+    it('-style ids= filters styled features', async function() {
+      var input = [{name: 'a'}, {name: 'b'}, {name: 'c'}];
+      var output = await api.applyCommands('-i data.json -style ids=1,2 fill=red -o', {
+        'data.json': input
+      });
+      var result = JSON.parse(output['data.json']);
+      assert.deepEqual(result, [
+        {name: 'a'},
+        {name: 'b', fill: 'red'},
+        {name: 'c', fill: 'red'}
+      ]);
+    });
+
+    it('-style ids= combines with where=', async function() {
+      var input = [{name: 'a', keep: true}, {name: 'b', keep: false}, {name: 'c', keep: true}];
+      var output = await api.applyCommands('-i data.json -style ids=1,2 where="keep" fill=red -o', {
+        'data.json': input
+      });
+      var result = JSON.parse(output['data.json']);
+      assert.deepEqual(result, [
+        {name: 'a', keep: true},
+        {name: 'b', keep: false},
+        {name: 'c', keep: true, fill: 'red'}
+      ]);
+    });
+
     it('-style clear clears all styles', async function() {
       var records = [{foo: 'a', stroke: 'white', fill: 'pink', opacity: 0.3}, {foo: 'b', stroke: 'black', fill: 'yellow', opacity: 1}]
       var lyr = {
@@ -77,7 +103,7 @@ describe('mapshaper-svg-style.js', function () {
       var cmd = '-i pts.geojson -style label-text=NAME label-pos=SW -o out.svg';
       var output = await api.applyCommands(cmd, {'pts.geojson': JSON.stringify(geojson)});
       var svg = output['out.svg'];
-      assert(svg.includes('<text y="0.7em" x="-0.35em" text-anchor="end"'));
+      assert(svg.includes('<text y="0.7em" x="-0.4em" text-anchor="end"'));
       assert(!svg.includes('dominant-baseline'));
     });
   })
@@ -189,6 +215,39 @@ describe('mapshaper-svg-style.js', function () {
       assert.deepEqual(lyr.data.getRecords(), target);
     })
 
+    it('ids= filters styled records', function() {
+      var records = [{foo: 'a'}, {foo: 'b'}, {foo: 'c'}];
+      var lyr = {
+        data: new api.internal.DataTable(records)
+      };
+      api.cmd.svgStyle(lyr, {}, {
+        ids: [1, 2],
+        fill: 'red'
+      });
+      assert.deepEqual(lyr.data.getRecords(), [
+        {foo: 'a', fill: undefined},
+        {foo: 'b', fill: 'red'},
+        {foo: 'c', fill: 'red'}
+      ]);
+    })
+
+    it('ids= combines with where=', function() {
+      var records = [{foo: 'a', keep: true}, {foo: 'b', keep: false}, {foo: 'c', keep: true}];
+      var lyr = {
+        data: new api.internal.DataTable(records)
+      };
+      api.cmd.svgStyle(lyr, {}, {
+        ids: [1, 2],
+        where: 'keep',
+        fill: 'red'
+      });
+      assert.deepEqual(lyr.data.getRecords(), [
+        {foo: 'a', keep: true, fill: undefined},
+        {foo: 'b', keep: false, fill: undefined},
+        {foo: 'c', keep: true, fill: 'red'}
+      ]);
+    })
+
     it('literals 2', function() {
       var records = [{}]
       var lyr = {
@@ -229,14 +288,14 @@ describe('mapshaper-svg-style.js', function () {
 
     it('label-pos literal is case-insensitive and sets offsets', function() {
       var cases = {
-        n: {dx: 0, dy: '-0.45em', 'text-anchor': 'middle'},
-        s: {dx: 0, dy: '1.05em', 'text-anchor': 'middle'},
-        e: {dx: '0.4em', dy: '0.25em', 'text-anchor': 'start'},
-        w: {dx: '-0.4em', dy: '0.25em', 'text-anchor': 'end'},
-        ne: {dx: '0.35em', dy: '-0.15em', 'text-anchor': 'start'},
-        se: {dx: '0.35em', dy: '0.7em', 'text-anchor': 'start'},
-        nw: {dx: '-0.35em', dy: '-0.15em', 'text-anchor': 'end'},
-        sw: {dx: '-0.35em', dy: '0.7em', 'text-anchor': 'end'},
+        n: {dx: 0, dy: '-0.5em', 'text-anchor': 'middle'},
+        s: {dx: 0, dy: '1.1em', 'text-anchor': 'middle'},
+        e: {dx: '0.45em', dy: '0.23em', 'text-anchor': 'start'},
+        w: {dx: '-0.45em', dy: '0.23em', 'text-anchor': 'end'},
+        ne: {dx: '0.4em', dy: '-0.15em', 'text-anchor': 'start'},
+        se: {dx: '0.4em', dy: '0.7em', 'text-anchor': 'start'},
+        nw: {dx: '-0.4em', dy: '-0.15em', 'text-anchor': 'end'},
+        sw: {dx: '-0.4em', dy: '0.7em', 'text-anchor': 'end'},
         c: {dx: 0, dy: '0.25em', 'text-anchor': 'middle'}
       };
       Object.keys(cases).forEach(function(pos) {

@@ -7,6 +7,7 @@ import {
 import { compileFeatureExpression } from '../expressions/mapshaper-feature-expressions';
 import { initDataTable } from '../dataset/mapshaper-layer-utils';
 import { isSupportedSvgStyleProperty } from '../svg/svg-properties';
+import { combineFilters, getIdFilter } from './mapshaper-filter';
 import { stop } from '../utils/mapshaper-logging';
 import cmd from '../mapshaper-cmd';
 
@@ -20,6 +21,9 @@ cmd.svgStyle = function(lyr, dataset, opts) {
   }
   if (opts.where) {
     filterFn = compileFeatureExpression(opts.where, lyr, dataset.arcs);
+  }
+  if (opts.ids) {
+    filterFn = combineFilters(filterFn, getIdFilter(opts.ids));
   }
   if (opts.clear) {
     lyr.data.getFields().filter(isSupportedSvgStyleProperty).forEach(lyr.data.deleteField, lyr.data);

@@ -50,14 +50,25 @@ var selectionFill = "rgba(237, 214, 0, 0.12)",
     styleSelectionStyles = {
       polygon: {
         fillColor: null,
-        strokeColor: 'rgba(255, 198, 0, 0.38)',
+        strokeColor: 'rgb(255, 198, 0)',
+        strokeOpacity: 0.38,
         strokeWidth: 5,
-        strokeOverlay: true
+        strokeOverlay: true,
+        batchOverlay: true
       }, polyline:  {
         fillColor: null,
-        strokeColor: 'rgba(255, 198, 0, 0.38)',
+        strokeColor: 'rgb(255, 198, 0)',
+        strokeOpacity: 0.38,
         strokeWidth: 5,
-        strokeOverlay: true
+        strokeOverlay: true,
+        batchOverlay: true
+      }, point:  {
+        fillColor: null,
+        strokeColor: 'rgb(255, 198, 0)',
+        strokeOpacity: 0.38,
+        strokeWidth: 5,
+        strokeOverlay: true,
+        batchOverlay: true
       }
     },
     // currently not used -- selection hover is not styled
@@ -110,6 +121,17 @@ export function getOverlayLayers(activeLyr, hitData, styleOpts) {
     return [lyr];
   }
   layers = [];
+  if (styleOpts.interactionMode == 'line_style' || styleOpts.interactionMode == 'polygon_style' ||
+    styleOpts.interactionMode == 'point_style') {
+    ids = hitData.ids || [];
+    if (ids.length > 0) {
+      lyr = getOverlayLayer(activeLyr, ids);
+      outlineStyle = getSelectionStyle(displayLyr.geometry_type, styleOpts);
+      lyr.gui.style = getOverlayStyle(activeLyr, ids, outlineStyle);
+      layers.push(lyr);
+    }
+    return layers;
+  }
   // layer containing selected features, not including hover or pinned feature
   ids = utils.difference(hitData.ids || [], [hitData.id]);
   if (ids.length > 0) {
@@ -146,15 +168,28 @@ function getOverlayStyle(baseLyr, ids, outlineStyle) {
       return;
     }
     var idx = ids[i];
+    if (outlineStyle.strokeOverlay) {
+      delete style.strokeWidth;
+      delete style.strokeColor;
+    }
     baseStyler(style, idx);
     if (geomType == 'point') {
-      if (style.radius > 0) {
-        style.radius += 0.8;
-        if (style.strokeWidth > 0) {
-          style.strokeColor = outlineStyle.dotColor;
+      if (outlineStyle.strokeOverlay) {
+        if (style.radius > 0) {
+          style.radius += (style.strokeWidth || 0) / 2 + outlineStyle.strokeWidth / 2;
         }
+        style.fillColor = null;
+        style.strokeColor = outlineStyle.strokeColor;
+        style.strokeWidth = outlineStyle.strokeWidth;
+      } else {
+        if (style.radius > 0) {
+          style.radius += 0.8;
+          if (style.strokeWidth > 0) {
+            style.strokeColor = outlineStyle.dotColor;
+          }
+        }
+        style.fillColor = outlineStyle.dotColor;
       }
-      style.fillColor = outlineStyle.dotColor;
     } else {
       style.strokeColor = outlineStyle.strokeColor;
       style.fillColor = outlineStyle.fillColor;
@@ -164,10 +199,13 @@ function getOverlayStyle(baseLyr, ids, outlineStyle) {
     }
     style.opacity = 1;
     style.fillOpacity = 1;
-    style.strokeOpacity = 1;
+    style.strokeOpacity = outlineStyle.strokeOpacity >= 0 ? outlineStyle.strokeOpacity : 1;
   };
   var style = Object.assign({}, baseStyle, {ids, overlay: true, type: 'styled', styler});
-  if (baseStyle.dotSize > 0) {
+  if (outlineStyle.batchOverlay) {
+    style.batchOverlay = true;
+  }
+  if (baseStyle.dotSize > 0 && outlineStyle.dotSize > 0) {
     // dot size must be a static property (not applied by styler function)
     style.dotSize = outlineStyle.dotSize;
   }
@@ -175,7 +213,8 @@ function getOverlayStyle(baseLyr, ids, outlineStyle) {
 }
 
 function getSelectionStyle(geomType, styleOpts) {
-  if (styleOpts.interactionMode == 'line_style' || styleOpts.interactionMode == 'polygon_style') {
+  if (styleOpts.interactionMode == 'line_style' || styleOpts.interactionMode == 'polygon_style' ||
+    styleOpts.interactionMode == 'point_style') {
     return styleSelectionStyles[geomType] || selectionStyles[geomType];
   }
   return selectionStyles[geomType];
