@@ -1,12 +1,10 @@
 import { getFontStyleVariants, getInstalledFonts } from './gui-label-fonts';
 import { ColorPicker, isHexColor } from './gui-color-picker';
-import { makeStylePresetId } from './gui-style-presets';
+import { StylePresetControl } from './gui-style-preset-control';
 import { El } from './gui-el';
 import { internal } from './gui-core';
-import { GUI } from './gui-lib';
-import { showPopupAlert, showPrompt } from './gui-alert';
+import { runGuiEditCommand } from './gui-edit-command';
 
-var labelTextField = 'label-text';
 var fontField = 'font-family';
 var fontSizeField = 'font-size';
 var fontStyleField = 'font-style';
@@ -23,7 +21,6 @@ var defaultIconSize = 5;
 var labelStyleMode = 'label_style';
 var labelStylePanelMode = 'label_style_tool';
 var savedStylesKey = 'label_styles';
-var labelPositionFields = internal.labelPositionFields;
 var savedStyleFields = [
   fontField,
   fontSizeField,
@@ -56,20 +53,24 @@ var iconButtonSymbols = {
 };
 
 export function LabelTool(gui) {
-  // button is only visible when label editing is available
-  // clicking the button opens a panel for applying styles to labels
-  var textBtn = gui.buttons.addButton('#text-tool-icon').addClass('menu-btn pointer-btn');
+  // Label styling is opened from the point styling entry point.
+  var textBtn = El('div').hide();
   var parent = gui.container.findChild('.mshp-main-map');
   var panel = El('div').addClass('label-style-panel rollover').appendTo(parent).hide();
-  var styleSelect, fontSelect, fontStyleSelect, fontSizeText, colorChit, colorInput, colorPicker, cssInput, posBtns, iconBtns, iconSizeText, editingStatus, clearLink, hit;
+  var presetControl, fontSelect, fontStyleSelect, fontSizeText, colorChit, colorInput, colorPicker, cssInput, posBtns, iconBtns, iconSizeText, editingStatus, clearLink, hit;
   var fontOptionsRendered = false;
-  var pendingStyleHistory = null;
 
   initPanel();
-  gui.addMode(labelStylePanelMode, turnOn, turnOff, textBtn);
+  gui.addMode(labelStylePanelMode, turnOn, turnOff);
   gui.model.on('update', updateVisibility);
   gui.model.on('update', function() {
     setTimeout(updateSelectionDisplay, 0);
+  });
+  gui.on('undo_redo_post', function() {
+    if (panel.visible()) {
+      updateControls();
+      updateSelectionDisplay();
+    }
   });
   gui.on('interaction_mode_change', function(e) {
     if (panel.visible() && e.mode != labelStyleMode && gui.getMode() == labelStylePanelMode) {
@@ -89,6 +90,18 @@ export function LabelTool(gui) {
 
   updateVisibility();
 
+  this.open = function(lyr, dataset) {
+    if (!lyr || !internal.layerHasLabels(lyr)) return;
+    if (!gui.map.isActiveLayer(lyr)) {
+      modelSelectLayer(lyr, dataset);
+    }
+    if (gui.getMode() == labelStylePanelMode) {
+      showStylePanel();
+    } else {
+      gui.enterMode(labelStylePanelMode);
+    }
+  };
+
   function initPanel() {
     var header = El('div').addClass('label-style-panel-title').appendTo(panel).text('Label styles');
     El('button').addClass('label-style-close').appendTo(header).text('×').on('click', function() {
@@ -97,7 +110,7 @@ export function LabelTool(gui) {
 
     var selectRow = El('div').addClass('label-style-row label-style-selection-row').appendTo(panel);
     editingStatus = El('span').addClass('label-editing-status').appendTo(selectRow);
-    clearLink = El('span').addClass('label-editing-clear colored-text').appendTo(selectRow).text('clear').on('click', clearSelection);
+    clearLink = El('span').addClass('label-editing-clear colored-text').appendTo(selectRow).text('deselect').on('click', clearSelection);
 
     var fontRow = El('label').addClass('label-style-row').appendTo(panel);
     El('span').appendTo(fontRow).text('Font');
@@ -183,17 +196,19 @@ export function LabelTool(gui) {
         .attr('title', pos);
     });
 
-    var savedRow = El('div').addClass('label-style-row label-saved-style-row').appendTo(panel);
-    El('span').appendTo(savedRow).text('Presets');
-    styleSelect = El('select').appendTo(savedRow).on('change', function() {
-      if (styleSelect.node().value) {
-        applySavedStyle(styleSelect.node().value);
+    presetControl = new StylePresetControl(panel, {
+      storageKey: savedStylesKey,
+      type: 'label',
+      useType: false,
+      saveTitle: 'Save label style',
+      styleLabel: 'label style',
+      getStyle: getCurrentStyle,
+      applyStyle: applyStyleObject,
+      getItemId: getStyleId,
+      disabled: function() {
+        return getTargetIds().length === 0;
       }
-      updateSavedStyleControls();
     });
-    El('button').appendTo(savedRow).text('Save preset').on('click', saveCurrentStyle);
-    El('button').appendTo(savedRow).text('Delete').on('click', deleteSelectedStyle);
-    renderSavedStyles();
   }
 
   function appendIconButtonSymbol(btn, iconName) {
@@ -246,9 +261,6 @@ export function LabelTool(gui) {
   }
 
   function turnOff() {
-    if (panel.visible()) {
-      flushPendingStyleHistory();
-    }
     panel.hide();
     hideColorPicker();
     gui.state.label_style_panel_open = false;
@@ -279,6 +291,11 @@ export function LabelTool(gui) {
     return !!(active && active.layer && active.layer.geometry_type == 'point');
   }
 
+  function modelSelectLayer(lyr, dataset) {
+    if (lyr) lyr.hidden = false;
+    gui.model.selectLayer(lyr, dataset);
+  }
+
   function renderFontOptions() {
     if (fontOptionsRendered) return;
     fontOptionsRendered = true;
@@ -290,103 +307,6 @@ export function LabelTool(gui) {
         El('option').attr('value', fontName).appendTo(optgroup).text(fontName);
       });
     });
-  }
-
-  function updatePendingStyleHistory(lyr, ids, fields) {
-    if (!gui.session || !lyr || ids.length === 0) return;
-    if (pendingStyleHistory && (pendingStyleHistory.layer != lyr ||
-        !sameIds(pendingStyleHistory.ids, ids))) {
-      flushPendingStyleHistory();
-    }
-    if (!pendingStyleHistory) {
-      pendingStyleHistory = {
-        layer: lyr,
-        ids: ids.concat(),
-        fields: []
-      };
-    }
-    getHistoryStyleFields(fields).forEach(function(field) {
-      if (pendingStyleHistory.fields.indexOf(field) == -1) {
-        pendingStyleHistory.fields.push(field);
-      }
-    });
-  }
-
-  function flushPendingStyleHistory() {
-    var cmd;
-    if (!pendingStyleHistory || !gui.session) return;
-    cmd = getStyleHistoryCommand(pendingStyleHistory);
-    pendingStyleHistory = null;
-    if (cmd) {
-      gui.session.consoleCommands(cmd);
-    }
-  }
-
-  function getStyleHistoryCommand(entry) {
-    var table = entry.layer.data;
-    var records = table && table.getRecords();
-    var fields = entry.fields.filter(function(field) {
-      return field != labelTextField;
-    });
-    var parts = ['-style'];
-    var values;
-    if (!records || fields.length === 0) return '';
-    values = getHistoryStyleValues(records, entry.ids, fields);
-    Object.keys(values).forEach(function(field) {
-      parts.push(field + '=' + quoteCommandValue(values[field]));
-    });
-    if (parts.length == 1) return '';
-    if (getActiveLayer() != entry.layer) {
-      parts.push('target=' + internal.formatOptionValue(internal.getLayerTargetId(gui.model, entry.layer)));
-    }
-    if (entry.ids.length < internal.getFeatureCount(entry.layer)) {
-      parts.push('where=' + quoteCommandValue(getIdsWhereExpression(entry.ids)));
-    }
-    return parts.join(' ');
-  }
-
-  function getHistoryStyleValues(records, ids, fields) {
-    return fields.reduce(function(memo, field) {
-      var value = getCommonRecordValue(records, ids, field);
-      if (value !== undefined && value !== null && value !== '') {
-        memo[field] = value;
-      }
-      return memo;
-    }, {});
-  }
-
-  function getCommonRecordValue(records, ids, field) {
-    var value, val;
-    for (var i=0; i<ids.length; i++) {
-      val = records[ids[i]] && records[ids[i]][field];
-      if (i === 0) {
-        value = val;
-      } else if (val != value) {
-        return undefined;
-      }
-    }
-    return value;
-  }
-
-  function getHistoryStyleFields(fields) {
-    var out = [];
-    fields.forEach(function(field) {
-      if (field == 'dx' || field == 'dy' || field == 'text-anchor') return;
-      if (out.indexOf(field) == -1) out.push(field);
-    });
-    return out;
-  }
-
-  function getIdsWhereExpression(ids) {
-    return '[' + ids.join(',') + '].indexOf($.id)>-1';
-  }
-
-  function sameIds(a, b) {
-    if (!a || !b || a.length != b.length) return false;
-    for (var i=0; i<a.length; i++) {
-      if (a[i] != b[i]) return false;
-    }
-    return true;
   }
 
   function quoteCommandValue(str) {
@@ -440,7 +360,6 @@ export function LabelTool(gui) {
     var posVal = getCommonValue(ids, 'label-pos');
     var iconVal = getCommonValue(ids, iconField);
     var iconSizeVal = getCommonValue(ids, iconSizeField, {useDefault: true, defaultValue: defaultIconSize});
-    styleSelect.node().disabled = ids.length === 0;
     updateEditingStatus(manualIds.length);
     updateSavedStyleControls();
     fontSelect.node().disabled = ids.length === 0;
@@ -527,11 +446,7 @@ export function LabelTool(gui) {
   }
 
   function updateSavedStyleControls() {
-    var disabled = getTargetIds().length === 0;
-    var buttons = panel.findChildren('.label-saved-style-row button');
-    buttons.forEach(function(btn, i) {
-      btn.node().disabled = i === 0 ? disabled : disabled || !styleSelect.node().value;
-    });
+    presetControl.update();
   }
 
   function getCommonValue(ids, field, opts) {
@@ -560,9 +475,7 @@ export function LabelTool(gui) {
   }
 
   function applyFont(fontName) {
-    applyStyleFields([fontField], function(rec) {
-      rec[fontField] = fontName;
-    });
+    applyStyleValues([[fontField, fontName]]);
   }
 
   function nudgeFontSize(delta) {
@@ -570,126 +483,25 @@ export function LabelTool(gui) {
     var size = getNumericSize(ids, fontSizeField, defaultFontSize);
     if (ids.length === 0) return;
     size = Math.max(1, size + delta);
-    applyStyleFields([fontSizeField], function(rec) {
-      rec[fontSizeField] = size;
-    });
+    applyStyleValues([[fontSizeField, size]]);
   }
 
   function applyFontStyleVariant(value) {
     var variant = parseFontStyleVariant(value);
     if (!variant) return;
-    applyStyleFields([fontStyleField, fontWeightField], function(rec) {
-      rec[fontStyleField] = variant.style;
-      rec[fontWeightField] = variant.weight;
-    });
+    applyStyleValues([[fontStyleField, variant.style], [fontWeightField, variant.weight]]);
   }
 
   function applyLabelColor(color) {
-    applyStyleFields([fillField], function(rec) {
-      rec[fillField] = color;
-    });
+    applyStyleValues([[fillField, color]]);
   }
 
   function applyInlineCss(css) {
-    applyStyleFields([cssField], function(rec) {
-      rec[cssField] = css || undefined;
-    });
-  }
-
-  function saveCurrentStyle() {
-    openSaveStylePopup();
-  }
-
-  function openSaveStylePopup() {
-    var popup = showPopupAlert('', 'Save label style');
-    var el = popup.container();
-    el.addClass('option-menu');
-    el.html(`<div><input type="text" class="style-name text-input" placeholder="style name"></div>
-      <div tabindex="0" class="btn dialog-btn">Save</div>`);
-    var input = el.findChild('.style-name');
-    var btn = el.findChild('.btn');
-    input.node().focus();
-    btn.on('click', function() {
-      var name = input.node().value.trim();
-      if (!name) return;
-      saveStyleWithName(name);
-      popup.close();
-    });
-    input.on('keydown', function(e) {
-      if (e.key == 'Enter') {
-        btn.node().click();
-      }
-    });
-  }
-
-  function saveStyleWithName(name) {
-    var styles = getSavedStyles();
-    var id = makeStylePresetId(styles, 'label', name);
-    var i;
-    styles.push({
-      id: id,
-      name: name,
-      style: getCurrentStyle()
-    });
-    styles.sort(function(a, b) {
-      return a.name.toLowerCase() < b.name.toLowerCase() ? -1 :
-        a.name.toLowerCase() > b.name.toLowerCase() ? 1 : 0;
-    });
-    GUI.setSavedValue(savedStylesKey, styles);
-    renderSavedStyles();
-    for (i=0; i<styleSelect.node().options.length; i++) {
-      if (styleSelect.node().options[i].value == id) {
-        styleSelect.node().selectedIndex = i;
-        break;
-      }
-    }
-  }
-
-  async function deleteSelectedStyle() {
-    var id = styleSelect.node().value;
-    var item = findSavedStyle(id);
-    var styles;
-    if (!item) return;
-    if (!await showPrompt('Delete label style "' + item.name + '"?', 'Delete preset')) return;
-    styles = getSavedStyles().filter(function(item) {
-      return getStyleId(item) != id;
-    });
-    GUI.setSavedValue(savedStylesKey, styles);
-    renderSavedStyles();
-    updateSavedStyleControls();
-  }
-
-  function applySavedStyle(id) {
-    var item = findSavedStyle(id);
-    if (!item) return;
-    applyStyleObject(item.style);
-  }
-
-  function findSavedStyle(id) {
-    return getSavedStyles().find(function(item) {
-      return getStyleId(item) == id;
-    });
+    applyStyleValues([[cssField, css || '']]);
   }
 
   function getStyleId(item) {
     return item.id || 'label-' + item.name;
-  }
-
-  function getSavedStyles() {
-    var styles = GUI.getSavedValue(savedStylesKey);
-    return Array.isArray(styles) ? styles : [];
-  }
-
-  function renderSavedStyles() {
-    var value = styleSelect && styleSelect.node().value;
-    if (!styleSelect) return;
-    styleSelect.empty();
-    El('option').attr('value', '').appendTo(styleSelect).text('Apply preset...');
-    getSavedStyles().forEach(function(item) {
-      El('option').attr('value', getStyleId(item)).appendTo(styleSelect).text(item.name);
-    });
-    styleSelect.node().value = value || '';
-    updateSavedStyleControls();
   }
 
   function getCurrentStyle() {
@@ -740,26 +552,13 @@ export function LabelTool(gui) {
   }
 
   function applyStyleObject(style) {
-    var fields = Object.keys(style || {}).reduce(function(memo, field) {
-      if (field == 'label-pos') {
-        labelPositionFields.forEach(function(field) {
-          if (memo.indexOf(field) == -1) memo.push(field);
-        });
-      } else if (field != 'dx' && field != 'dy') {
-        memo.push(field);
-      }
-      return memo;
-    }, []);
-    applyStyleFields(fields, function(rec) {
-      savedStyleFields.forEach(function(field) {
-        if (field in style && field != 'label-pos') {
-          rec[field] = style[field];
-        }
-      });
-      if (style['label-pos']) {
-        internal.setLabelPositionStyle(rec, style['label-pos']);
+    var styles = [];
+    savedStyleFields.forEach(function(field) {
+      if (field in style) {
+        styles.push([field, style[field]]);
       }
     });
+    applyStyleValues(styles, {preservePreset: true});
   }
 
   function parseFontStyleVariant(value) {
@@ -772,23 +571,17 @@ export function LabelTool(gui) {
   }
 
   function applyLabelPosition(pos) {
-    applyStyleFields(labelPositionFields, function(rec) {
-      internal.setLabelPositionStyle(rec, pos);
-    });
+    applyStyleValues([['label-pos', pos]]);
   }
 
   function applyIcon(iconName) {
-    applyStyleFields([iconField, iconSizeField], function(rec) {
-      if (iconName) {
-        rec[iconField] = iconName;
-        if (!(rec[iconSizeField] > 0)) {
-          rec[iconSizeField] = defaultIconSize;
-        }
-      } else {
-        rec[iconField] = undefined;
-        rec[iconSizeField] = undefined;
-      }
-    });
+    var styles = [[iconField, iconName || '']];
+    if (iconName) {
+      styles.push([iconSizeField, getNumericSize(getTargetIds(), iconSizeField, defaultIconSize)]);
+    } else {
+      styles.push([iconSizeField, 0]);
+    }
+    applyStyleValues(styles);
   }
 
   function nudgeIconSize(delta) {
@@ -796,12 +589,7 @@ export function LabelTool(gui) {
     var size = getNumericSize(ids, iconSizeField, defaultIconSize);
     if (ids.length === 0) return;
     size = Math.max(1, size + delta);
-    applyStyleFields([iconField, iconSizeField], function(rec) {
-      if (!rec[iconField]) {
-        rec[iconField] = 'circle';
-      }
-      rec[iconSizeField] = size;
-    });
+    applyStyleValues([[iconField, getCommonValue(ids, iconField) || 'circle'], [iconSizeField, size]]);
   }
 
   function getNumericSize(ids, field, defaultValue) {
@@ -828,41 +616,27 @@ export function LabelTool(gui) {
     colorPicker.hide();
   }
 
-  function applyStyleFields(fields, updateRecord) {
-    var table = getActiveTable();
-    var ids = getTargetIds();
+  function applyStyleValues(styles, opts) {
     var lyr = getActiveLayer();
-    var hasNewFields;
-    if (!table || ids.length === 0) return;
-    hasNewFields = fields.some(function(field) {
-      return !table.fieldExists(field);
+    var ids = getTargetIds();
+    var parts = ['-style'];
+    if (!gui.console || !lyr || ids.length === 0 || styles.length === 0) return;
+    if (!opts || !opts.preservePreset) {
+      presetControl.clearSelection();
+    }
+    styles.forEach(function(style) {
+      parts.push(style[0] + '=' + quoteCommandValue(style[1]));
     });
-    gui.dispatchEvent('data_preupdate', {ids: ids});
-    if (hasNewFields) {
-      table.captureSchemaBefore({operation: 'label-style', fields: fields});
-    } else {
-      table.captureFieldsBefore(fields, {operation: 'label-style'});
+    if (ids.length < internal.getFeatureCount(lyr)) {
+      parts.push('ids=' + ids.join(','));
     }
-    updateRecords(ids, table, updateRecord);
-    if (hasNewFields) {
-      table.markSchemaChanged({operation: 'label-style'});
-    } else {
-      table.markFieldsChanged(fields, {operation: 'label-style'});
-    }
-    gui.dispatchEvent('data_postupdate', {ids: ids});
-    gui.model.updated({style: true, same_table: true});
-    updatePendingStyleHistory(lyr, ids, fields);
-    setTimeout(updateSelectionDisplay, 0);
-    updateControls();
-    updateSelectionDisplay();
-  }
-
-  function updateRecords(ids, table, updateRecord) {
-    var records = table.getRecords();
-    ids.forEach(function(id) {
-      var rec = records[id] || {};
-      updateRecord(rec);
-      records[id] = rec;
+    runGuiEditCommand(gui, parts.join(' '), {
+      title: 'Label styles',
+      onDone: function() {
+        setTimeout(updateSelectionDisplay, 0);
+        updateControls();
+        updateSelectionDisplay();
+      }
     });
   }
 

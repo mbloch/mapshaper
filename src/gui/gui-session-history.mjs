@@ -1,4 +1,5 @@
 import { internal } from './gui-core';
+import { cullCommandHistory } from './gui-session-history-cull';
 
 export function SessionHistory(gui) {
   var commands = [];
@@ -138,7 +139,8 @@ export function SessionHistory(gui) {
   };
 
   this.toCommandLineString = function() {
-    var str = getActiveCommands().join(' \\\n  ');
+    var str = cullCommandHistory(getActiveCommands(), internal.parseCommands,
+      internal.isSupportedSvgStyleProperty).join(' \\\n  ');
     return 'mapshaper ' + str;
   };
 

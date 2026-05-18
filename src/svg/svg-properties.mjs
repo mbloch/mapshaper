@@ -78,14 +78,14 @@ var propertiesBySymbolType = {
 export var labelPositionFields = ['label-pos', 'dx', 'dy', 'text-anchor'];
 
 var labelPositionStyles = {
-  n: {dx: 0, dy: '-0.45em', 'text-anchor': 'middle'},
-  s: {dx: 0, dy: '1.05em', 'text-anchor': 'middle'},
-  e: {dx: '0.4em', dy: '0.25em', 'text-anchor': 'start'},
-  w: {dx: '-0.4em', dy: '0.25em', 'text-anchor': 'end'},
-  ne: {dx: '0.35em', dy: '-0.15em', 'text-anchor': 'start'},
-  se: {dx: '0.35em', dy: '0.7em', 'text-anchor': 'start'},
-  nw: {dx: '-0.35em', dy: '-0.15em', 'text-anchor': 'end'},
-  sw: {dx: '-0.35em', dy: '0.7em', 'text-anchor': 'end'},
+  n: {dx: 0, dy: '-0.5em', 'text-anchor': 'middle'},
+  s: {dx: 0, dy: '1.1em', 'text-anchor': 'middle'},
+  e: {dx: '0.45em', dy: '0.23em', 'text-anchor': 'start'},
+  w: {dx: '-0.45em', dy: '0.23em', 'text-anchor': 'end'},
+  ne: {dx: '0.4em', dy: '-0.15em', 'text-anchor': 'start'},
+  se: {dx: '0.4em', dy: '0.7em', 'text-anchor': 'start'},
+  nw: {dx: '-0.4em', dy: '-0.15em', 'text-anchor': 'end'},
+  sw: {dx: '-0.4em', dy: '0.7em', 'text-anchor': 'end'},
   c: {dx: 0, dy: '0.25em', 'text-anchor': 'middle'}
 };
 

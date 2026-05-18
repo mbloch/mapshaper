@@ -130,7 +130,9 @@ export function MapNav(gui, ext, mouse) {
 
   function useBoxZoom() {
     var mode = gui.getMode();
-    return !'selection_tool,box_tool,rectangle_tool,drawing_tool'.includes(mode);
+    var interactionMode = gui.interaction && gui.interaction.getMode();
+    return !'selection_tool,box_tool,rectangle_tool,drawing_tool'.includes(mode) &&
+      !'label_style,point_style,line_style,polygon_style'.includes(interactionMode);
   }
 
   function getBoxData(e1, e2) {

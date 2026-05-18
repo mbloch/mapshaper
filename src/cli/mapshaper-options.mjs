@@ -1673,6 +1673,10 @@ export function getOptionParser() {
       type: 'flag'
     })
     .option('where', whereOpt)
+    .option('ids', {
+      describe: 'comma-sep. list of feature ids to style',
+      type: 'numbers'
+    })
     .option('class', {
       describe: 'name of CSS class or classes (space-separated)'
     })
