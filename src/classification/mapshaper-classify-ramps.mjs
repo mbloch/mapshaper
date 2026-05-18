@@ -1,4 +1,12 @@
-import { isColorSchemeName, getColorRamp, getCategoricalColorScheme, isCategoricalColorScheme, pickRandomColorScheme, pickRandomCategoricalScheme } from '../color/color-schemes';
+import {
+  isColorSchemeName,
+  getColorRamp,
+  getCategoricalColorScheme,
+  getRandomizedCategoricalColorScheme,
+  isCategoricalColorScheme,
+  pickRandomColorScheme,
+  pickRandomCategoricalScheme
+} from '../color/color-schemes';
 import { getValueType } from '../datatable/mapshaper-data-utils';
 import { validateColor, parseColor } from '../color/color-utils';
 import { stop, message } from '../utils/mapshaper-logging';
@@ -41,7 +49,7 @@ export function getClassValues(method, n, opts) {
 
   if (colorArg == 'random') {
     if (categorical) {
-      colorScheme = pickRandomCategoricalScheme(n);
+      return getRandomizedCategoricalColorScheme(n);
     } else {
       colorScheme = pickRandomColorScheme('sequential');
     }

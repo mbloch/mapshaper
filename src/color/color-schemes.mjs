@@ -115,7 +115,17 @@ export function pickRandomCategoricalScheme(n) {
   return utils.pickOne(schemes) || 'Tableau20';
 }
 
-export function getCategoricalColorScheme(name, n) {
+function randomRotateArr(arr) {
+  var n = Math.floor(Math.random() * arr.length);
+  return arr.slice(-n).concat(arr.slice(0, -n));
+}
+
+export function getRandomizedCategoricalColorScheme(n) {
+  var name = pickRandomCategoricalScheme(n);
+  return getCategoricalColorScheme(name, n, true);
+}
+
+export function getCategoricalColorScheme(name, n, randomized) {
   var colors;
   initSchemes();
   name = standardName(name);
@@ -130,7 +140,11 @@ export function getCategoricalColorScheme(name, n) {
     // stop(name, 'does not contain', n, 'colors');
     message('Color scheme has', colors.length, 'colors. Using duplication to match', n, 'categories.');
     colors = wrapColors(colors, n);
-  } else {
+  }
+  if (randomized) {
+    colors = randomRotateArr(colors);
+  }
+  if (n < colors.length) {
     colors = colors.slice(0, n);
   }
   return colors;
