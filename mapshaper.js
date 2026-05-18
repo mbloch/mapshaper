@@ -18650,14 +18650,14 @@
   var labelPositionFields = ['label-pos', 'dx', 'dy', 'text-anchor'];
 
   var labelPositionStyles = {
-    n: {dx: 0, dy: '-0.45em', 'text-anchor': 'middle'},
-    s: {dx: 0, dy: '1.05em', 'text-anchor': 'middle'},
-    e: {dx: '0.4em', dy: '0.25em', 'text-anchor': 'start'},
-    w: {dx: '-0.4em', dy: '0.25em', 'text-anchor': 'end'},
-    ne: {dx: '0.35em', dy: '-0.15em', 'text-anchor': 'start'},
-    se: {dx: '0.35em', dy: '0.7em', 'text-anchor': 'start'},
-    nw: {dx: '-0.35em', dy: '-0.15em', 'text-anchor': 'end'},
-    sw: {dx: '-0.35em', dy: '0.7em', 'text-anchor': 'end'},
+    n: {dx: 0, dy: '-0.5em', 'text-anchor': 'middle'},
+    s: {dx: 0, dy: '1.1em', 'text-anchor': 'middle'},
+    e: {dx: '0.45em', dy: '0.23em', 'text-anchor': 'start'},
+    w: {dx: '-0.45em', dy: '0.23em', 'text-anchor': 'end'},
+    ne: {dx: '0.4em', dy: '-0.15em', 'text-anchor': 'start'},
+    se: {dx: '0.4em', dy: '0.7em', 'text-anchor': 'start'},
+    nw: {dx: '-0.4em', dy: '-0.15em', 'text-anchor': 'end'},
+    sw: {dx: '-0.4em', dy: '0.7em', 'text-anchor': 'end'},
     c: {dx: 0, dy: '0.25em', 'text-anchor': 'middle'}
   };
 
@@ -31667,6 +31667,10 @@ ${svg}
         type: 'flag'
       })
       .option('where', whereOpt)
+      .option('ids', {
+        describe: 'comma-sep. list of feature ids to style',
+        type: 'numbers'
+      })
       .option('class', {
         describe: 'name of CSS class or classes (space-separated)'
       })
@@ -44077,7 +44081,17 @@ ${svg}
     return utils.pickOne(schemes) || 'Tableau20';
   }
 
-  function getCategoricalColorScheme(name, n) {
+  function randomRotateArr(arr) {
+    var n = Math.floor(Math.random() * arr.length);
+    return arr.slice(-n).concat(arr.slice(0, -n));
+  }
+
+  function getRandomizedCategoricalColorScheme(n) {
+    var name = pickRandomCategoricalScheme(n);
+    return getCategoricalColorScheme(name, n, true);
+  }
+
+  function getCategoricalColorScheme(name, n, randomized) {
     var colors;
     initSchemes();
     name = standardName(name);
@@ -44092,7 +44106,11 @@ ${svg}
       // stop(name, 'does not contain', n, 'colors');
       message('Color scheme has', colors.length, 'colors. Using duplication to match', n, 'categories.');
       colors = wrapColors(colors, n);
-    } else {
+    }
+    if (randomized) {
+      colors = randomRotateArr(colors);
+    }
+    if (n < colors.length) {
       colors = colors.slice(0, n);
     }
     return colors;
@@ -44183,7 +44201,7 @@ ${svg}
 
     if (colorArg == 'random') {
       if (categorical) {
-        colorScheme = pickRandomCategoricalScheme(n);
+        return getRandomizedCategoricalColorScheme(n);
       } else {
         colorScheme = pickRandomColorScheme('sequential');
       }
@@ -56697,6 +56715,9 @@ ${svg}
     if (opts.where) {
       filterFn = compileFeatureExpression(opts.where, lyr, dataset.arcs);
     }
+    if (opts.ids) {
+      filterFn = combineFilters(filterFn, getIdFilter(opts.ids));
+    }
     if (opts.clear) {
       lyr.data.getFields().filter(isSupportedSvgStyleProperty).forEach(lyr.data.deleteField, lyr.data);
     }
@@ -58248,7 +58269,7 @@ ${svg}
     });
   }
 
-  var version = "0.7.17";
+  var version = "0.7.18";
 
   // Parse command line args into commands and run them
   // Function takes an optional Node-style callback. A Promise is returned if no callback is given.

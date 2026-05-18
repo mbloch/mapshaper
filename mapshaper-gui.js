@@ -2422,232 +2422,6 @@
     return bytes;
   }
 
-  var PAYLOAD_FIELDS = {
-    table: ['records'],
-    'table-records': ['records'],
-    'table-fields': ['columns'],
-    'table-schema': ['fields'],
-    arcs: ['nn', 'xx', 'yy', 'zz', 'zlimit'],
-    'arcs-simplification': ['zz'],
-    layer: ['shapes', 'raster']
-  };
-
-  async function storeUndoUnits(units, store, entryId, role) {
-    var stored = [];
-    try {
-      for (var i = 0; i < units.length; i++) {
-        stored.push(await storeUndoUnit(units[i], store, entryId, role));
-      }
-    } catch(e) {
-      await store.delMany(getStoredUndoPayloadRefs(stored));
-      throw e;
-    }
-    return stored;
-  }
-
-  async function restoreStoredUndoUnits(units, store) {
-    var hydrated = await hydrateStoredUndoUnits(units, store);
-    internal.restoreCapturedUnits(hydrated);
-  }
-
-  async function hydrateStoredUndoUnits(units, store) {
-    var hydrated = [];
-    for (var i = 0; i < units.length; i++) {
-      hydrated.push(await hydrateStoredUndoUnit(units[i], store));
-    }
-    return hydrated;
-  }
-
-  function getStoredUndoPayloadRefs(units) {
-    var refs = [];
-    units.forEach(function(unit) {
-      if (unit.payloadRef) refs.push(unit.payloadRef);
-    });
-    return refs;
-  }
-
-  function getUndoRestoreFlags(units, baseFlags) {
-    var flags = Object.assign({}, baseFlags || {}, {undo_restore: true});
-    units.forEach(function(unit) {
-      if (unit.type == 'changed') return;
-      if (unit.type == 'arcs') {
-        flags.arc_count = true;
-      } else if (unit.type == 'arcs-simplification') {
-        flags.simplify = true;
-      } else if (unit.type == 'table' ||
-          unit.type == 'table-records' ||
-          unit.type == 'table-fields' ||
-          unit.type == 'table-order' ||
-          unit.type == 'table-schema') {
-        flags.same_table = false;
-      } else if (unit.type == 'catalog' || unit.type == 'dataset') {
-        flags.select = true;
-        flags.arc_count = true;
-      } else if (unit.type == 'dataset-info') {
-        flags.info = true;
-      } else if (unit.type == 'layer' ||
-          unit.type == 'layer-metadata' ||
-          unit.type == 'layer-order') {
-        flags.select = true;
-      }
-    });
-    return flags;
-  }
-
-  async function storeUndoUnit(unit, store, entryId, role) {
-    var payload = await getUnitPayload(unit);
-    var stored = stripPayload(unit);
-    if (payload) {
-      stored.payloadRef = await store.put(payload, {
-        entryId: entryId,
-        role: role,
-        unitType: unit.type
-      });
-    }
-    return stored;
-  }
-
-  async function hydrateStoredUndoUnit(unit, store) {
-    var hydrated = Object.assign({}, unit);
-    var payload;
-    if (unit.payloadRef) {
-      payload = await store.get(unit.payloadRef);
-      if (!payload) {
-        throw new Error('Missing undo payload: ' + unit.payloadRef.key);
-      }
-      payload = unpackPayload(unit, payload);
-      Object.assign(hydrated, payload);
-    }
-    delete hydrated.payloadRef;
-    return hydrated;
-  }
-
-  async function getUnitPayload(unit) {
-    var fields = PAYLOAD_FIELDS[unit.type];
-    var payload, hasPayload;
-    if (!fields) return null;
-    payload = {};
-    fields.forEach(function(field) {
-      if (field in unit) {
-        payload[field] = unit[field];
-        hasPayload = true;
-      }
-    });
-    if (!hasPayload) return null;
-    if (unit.type == 'layer') return packLayerPayload(payload);
-    return unit.type == 'table' ? packTablePayload(payload) : payload;
-  }
-
-  async function packLayerPayload(payload) {
-    if (payload.raster) {
-      payload = Object.assign({}, payload, {
-        raster: packRasterUndoPayload(payload.raster)
-      });
-    }
-    return payload;
-  }
-
-  async function packTablePayload(payload) {
-    return {
-      packedRecords: packRecordsAsColumns(payload.records)
-    };
-  }
-
-  function unpackPayload(unit, payload) {
-    if (unit.type == 'table' && payload.packedRecords) {
-      return {
-        records: unpackRecordsFromColumns(payload.packedRecords)
-      };
-    }
-    if (unit.type == 'layer' && payload.raster) {
-      return Object.assign({}, payload, {
-        raster: unpackRasterUndoPayload(payload.raster)
-      });
-    }
-    return payload;
-  }
-
-  function packRasterUndoPayload(raster) {
-    var copy = Object.assign({}, raster);
-    if (raster.view) {
-      copy.view = Object.assign({}, raster.view);
-      if (raster.view.preview) {
-        copy.view.preview = stripPreviewPixels(raster.view.preview);
-      }
-    }
-    if (raster.preview) {
-      copy.preview = stripPreviewPixels(raster.preview);
-    }
-    return copy;
-  }
-
-  function unpackRasterUndoPayload(raster) {
-    var copy = Object.assign({}, raster);
-    if (raster.view) {
-      copy.view = Object.assign({}, raster.view);
-      if (raster.view.preview && !raster.view.preview.pixels && raster.grid && raster.grid.samples) {
-        copy.view.preview = internal.renderRasterPreview(raster.grid, raster.view.recipe, raster.view.preview.width, raster.view.preview.height);
-      }
-    }
-    return copy;
-  }
-
-  function stripPreviewPixels(preview) {
-    var copy = Object.assign({}, preview);
-    delete copy.canvas;
-    delete copy.pixels;
-    return copy;
-  }
-
-  function packRecordsAsColumns(records) {
-    var fields = getRecordFields(records);
-    return {
-      fields: fields,
-      types: fields.map(function() { return null; }),
-      data: fields.map(function(field) {
-        return records.map(function(rec) {
-          return rec ? rec[field] : undefined;
-        });
-      }),
-      size: records.length
-    };
-  }
-
-  function getRecordFields(records) {
-    var index = {};
-    records.forEach(function(rec) {
-      Object.keys(rec || {}).forEach(function(field) {
-        index[field] = true;
-      });
-    });
-    return Object.keys(index);
-  }
-
-  function unpackRecordsFromColumns(data) {
-    var records = [];
-    for (var i = 0; i < data.size; i++) {
-      records[i] = {};
-    }
-    data.fields.forEach(function(field, j) {
-      var values = data.data[j];
-      values.forEach(function(val, i) {
-        records[i][field] = val;
-      });
-    });
-    return records;
-  }
-
-  function stripPayload(unit) {
-    var fields = PAYLOAD_FIELDS[unit.type];
-    var stripped = Object.assign({}, unit);
-    if (fields) {
-      fields.forEach(function(field) {
-        delete stripped[field];
-      });
-    }
-    return stripped;
-  }
-
   // Fall back to browserify's Buffer polyfill
   var B = typeof Buffer != 'undefined' ? Buffer : require$1('buffer').Buffer;
 
@@ -2673,7 +2447,7 @@
     return obj === Object(obj); // via underscore
   }
 
-  function clamp(val, min, max) {
+  function clamp$1(val, min, max) {
     return val < min ? min : (val > max ? max : val);
   }
 
@@ -3354,7 +3128,7 @@
   function findValueByRank(arr, rank) {
     if (!arr.length || rank < 1 || rank > arr.length) error$1("[findValueByRank()] invalid input");
 
-    rank = clamp(rank | 0, 1, arr.length);
+    rank = clamp$1(rank | 0, 1, arr.length);
     var k = rank - 1, // conv. rank to array index
         n = arr.length,
         l = 0,
@@ -3728,7 +3502,7 @@
   // self-import and the resulting Rollup circular-dependency warning.
   var utils = {
     addThousandsSep, addslashes, arrayToIndex,
-    clamp, cleanNumericString, contains, copyElements, countValues, createBuffer,
+    clamp: clamp$1, cleanNumericString, contains, copyElements, countValues, createBuffer,
     defaults, difference,
     endsWith, every, expandoBuffer, extend, extendBuffer,
     find, findMedian, findQuantile, findRankByValue, findStringPrefix,
@@ -6502,6 +6276,232 @@
       index[field] = true;
     });
     return Object.keys(index);
+  }
+
+  var PAYLOAD_FIELDS = {
+    table: ['records'],
+    'table-records': ['records'],
+    'table-fields': ['columns'],
+    'table-schema': ['fields'],
+    arcs: ['nn', 'xx', 'yy', 'zz', 'zlimit'],
+    'arcs-simplification': ['zz'],
+    layer: ['shapes', 'raster']
+  };
+
+  async function storeUndoUnits(units, store, entryId, role) {
+    var stored = [];
+    try {
+      for (var i = 0; i < units.length; i++) {
+        stored.push(await storeUndoUnit(units[i], store, entryId, role));
+      }
+    } catch(e) {
+      await store.delMany(getStoredUndoPayloadRefs(stored));
+      throw e;
+    }
+    return stored;
+  }
+
+  async function restoreStoredUndoUnits(units, store) {
+    var hydrated = await hydrateStoredUndoUnits(units, store);
+    restoreCapturedUnits(hydrated);
+  }
+
+  async function hydrateStoredUndoUnits(units, store) {
+    var hydrated = [];
+    for (var i = 0; i < units.length; i++) {
+      hydrated.push(await hydrateStoredUndoUnit(units[i], store));
+    }
+    return hydrated;
+  }
+
+  function getStoredUndoPayloadRefs(units) {
+    var refs = [];
+    units.forEach(function(unit) {
+      if (unit.payloadRef) refs.push(unit.payloadRef);
+    });
+    return refs;
+  }
+
+  function getUndoRestoreFlags(units, baseFlags) {
+    var flags = Object.assign({}, baseFlags || {}, {undo_restore: true});
+    units.forEach(function(unit) {
+      if (unit.type == 'changed') return;
+      if (unit.type == 'arcs') {
+        flags.arc_count = true;
+      } else if (unit.type == 'arcs-simplification') {
+        flags.simplify = true;
+      } else if (unit.type == 'table' ||
+          unit.type == 'table-records' ||
+          unit.type == 'table-fields' ||
+          unit.type == 'table-order' ||
+          unit.type == 'table-schema') {
+        flags.same_table = false;
+      } else if (unit.type == 'catalog' || unit.type == 'dataset') {
+        flags.select = true;
+        flags.arc_count = true;
+      } else if (unit.type == 'dataset-info') {
+        flags.info = true;
+      } else if (unit.type == 'layer' ||
+          unit.type == 'layer-metadata' ||
+          unit.type == 'layer-order') {
+        flags.select = true;
+      }
+    });
+    return flags;
+  }
+
+  async function storeUndoUnit(unit, store, entryId, role) {
+    var payload = await getUnitPayload(unit);
+    var stored = stripPayload(unit);
+    if (payload) {
+      stored.payloadRef = await store.put(payload, {
+        entryId: entryId,
+        role: role,
+        unitType: unit.type
+      });
+    }
+    return stored;
+  }
+
+  async function hydrateStoredUndoUnit(unit, store) {
+    var hydrated = Object.assign({}, unit);
+    var payload;
+    if (unit.payloadRef) {
+      payload = await store.get(unit.payloadRef);
+      if (!payload) {
+        throw new Error('Missing undo payload: ' + unit.payloadRef.key);
+      }
+      payload = unpackPayload(unit, payload);
+      Object.assign(hydrated, payload);
+    }
+    delete hydrated.payloadRef;
+    return hydrated;
+  }
+
+  async function getUnitPayload(unit) {
+    var fields = PAYLOAD_FIELDS[unit.type];
+    var payload, hasPayload;
+    if (!fields) return null;
+    payload = {};
+    fields.forEach(function(field) {
+      if (field in unit) {
+        payload[field] = unit[field];
+        hasPayload = true;
+      }
+    });
+    if (!hasPayload) return null;
+    if (unit.type == 'layer') return packLayerPayload(payload);
+    return unit.type == 'table' ? packTablePayload(payload) : payload;
+  }
+
+  async function packLayerPayload(payload) {
+    if (payload.raster) {
+      payload = Object.assign({}, payload, {
+        raster: packRasterUndoPayload(payload.raster)
+      });
+    }
+    return payload;
+  }
+
+  async function packTablePayload(payload) {
+    return {
+      packedRecords: packRecordsAsColumns(payload.records)
+    };
+  }
+
+  function unpackPayload(unit, payload) {
+    if (unit.type == 'table' && payload.packedRecords) {
+      return {
+        records: unpackRecordsFromColumns(payload.packedRecords)
+      };
+    }
+    if (unit.type == 'layer' && payload.raster) {
+      return Object.assign({}, payload, {
+        raster: unpackRasterUndoPayload(payload.raster)
+      });
+    }
+    return payload;
+  }
+
+  function packRasterUndoPayload(raster) {
+    var copy = Object.assign({}, raster);
+    if (raster.view) {
+      copy.view = Object.assign({}, raster.view);
+      if (raster.view.preview) {
+        copy.view.preview = stripPreviewPixels(raster.view.preview);
+      }
+    }
+    if (raster.preview) {
+      copy.preview = stripPreviewPixels(raster.preview);
+    }
+    return copy;
+  }
+
+  function unpackRasterUndoPayload(raster) {
+    var copy = Object.assign({}, raster);
+    if (raster.view) {
+      copy.view = Object.assign({}, raster.view);
+      if (raster.view.preview && !raster.view.preview.pixels && raster.grid && raster.grid.samples) {
+        copy.view.preview = renderRasterPreview(raster.grid, raster.view.recipe, raster.view.preview.width, raster.view.preview.height);
+      }
+    }
+    return copy;
+  }
+
+  function stripPreviewPixels(preview) {
+    var copy = Object.assign({}, preview);
+    delete copy.canvas;
+    delete copy.pixels;
+    return copy;
+  }
+
+  function packRecordsAsColumns(records) {
+    var fields = getRecordFields(records);
+    return {
+      fields: fields,
+      types: fields.map(function() { return null; }),
+      data: fields.map(function(field) {
+        return records.map(function(rec) {
+          return rec ? rec[field] : undefined;
+        });
+      }),
+      size: records.length
+    };
+  }
+
+  function getRecordFields(records) {
+    var index = {};
+    records.forEach(function(rec) {
+      Object.keys(rec || {}).forEach(function(field) {
+        index[field] = true;
+      });
+    });
+    return Object.keys(index);
+  }
+
+  function unpackRecordsFromColumns(data) {
+    var records = [];
+    for (var i = 0; i < data.size; i++) {
+      records[i] = {};
+    }
+    data.fields.forEach(function(field, j) {
+      var values = data.data[j];
+      values.forEach(function(val, i) {
+        records[i][field] = val;
+      });
+    });
+    return records;
+  }
+
+  function stripPayload(unit) {
+    var fields = PAYLOAD_FIELDS[unit.type];
+    var stripped = Object.assign({}, unit);
+    if (fields) {
+      fields.forEach(function(field) {
+        delete stripped[field];
+      });
+    }
+    return stripped;
   }
 
   function createStoredUndoHistory(gui) {
@@ -10788,6 +10788,9 @@
       if (e.deleteLayer) {
        addMenuItem('delete layer', e.deleteLayer, '');
       }
+      if (e.styleLayer) {
+       addMenuItem('style layer', e.styleLayer, '');
+      }
       if (e.showLayerInfo) {
        addMenuItem('show info', e.showLayerInfo, '');
       }
@@ -11225,8 +11228,19 @@
         content.node().appendChild(renderLayerInfo(internal.getLayerInfo(target.layer, target.dataset)));
       }
 
+      function styleLayer() {
+        var target = findLayerById(id);
+        if (!target) return;
+        if (target.layer.geometry_type == 'point' && gui.pointStyleTool) {
+          gui.pointStyleTool.open(target.layer, target.dataset);
+        } else if (gui.layerStyleTool) {
+          gui.layerStyleTool.open(target.layer, target.dataset);
+        }
+      }
+
       function openLayerMenu(e) {
         var menuEvent = e;
+        var target = findLayerById(id);
         e.stopPropagation();
         if (!isFinite(e.pageX) || !isFinite(e.pageY)) {
           var rect = moreBtn.node().getBoundingClientRect();
@@ -11237,6 +11251,9 @@
         }
         menuEvent.deleteLayer = deleteLayer;
         menuEvent.showLayerInfo = showLayerInfo;
+        if (target && layerCanBeStyled(target.layer)) {
+          menuEvent.styleLayer = styleLayer;
+        }
         menuEvent.contextMenuId = 'layer-' + id;
         openContextMenu(menuEvent, null, null);
       }
@@ -11444,6 +11461,10 @@
 
     function isPinnable(lyr) {
       return internal.layerIsGeometric(lyr) || internal.layerHasRaster(lyr) || internal.layerHasFurniture(lyr);
+    }
+
+    function layerCanBeStyled(lyr) {
+      return !!(lyr && (lyr.geometry_type == 'point' || lyr.geometry_type == 'polyline' || lyr.geometry_type == 'polygon'));
     }
 
     function rowHTML(c1, c2, cname) {
@@ -11676,6 +11697,122 @@
     return value.toFixed(value < 10 && value >= 0.5 ? 1 : 0) + ' ' + units[i];
   }
 
+  function cullCommandHistory(commands, parseCommand, isStyleProperty) {
+    var out = [];
+    (commands || []).forEach(function(cmd) {
+      addCommand(out, cmd, parseCommand, isStyleProperty);
+    });
+    return out;
+  }
+
+  function addCommand(commands, cmd, parseCommand, isStyleProperty) {
+    var curr = getCullableCommand(cmd, parseCommand, isStyleProperty);
+    var prev;
+    if (!curr) {
+      commands.push(cmd);
+      return;
+    }
+    while (commands.length > 0) {
+      prev = getCullableCommand(commands[commands.length - 1], parseCommand, isStyleProperty);
+      if (!prev || !commandCanCull(curr, prev)) break;
+      commands.pop();
+    }
+    commands.push(cmd);
+  }
+
+  function commandCanCull(curr, prev) {
+    if (curr.type != prev.type || curr.target != prev.target || curr.ids != prev.ids) {
+      return false;
+    }
+    if (curr.type == 'style') {
+      return isSuperset(curr.fields, prev.fields);
+    }
+    return curr.key == prev.key;
+  }
+
+  function getCullableCommand(str, parseCommand, isStyleProperty) {
+    var parsed, cmd, opts;
+    if (!parseCommand || !isStyleProperty) return null;
+    try {
+      parsed = parseCommand(str);
+    } catch(e) {
+      return null;
+    }
+    if (!parsed || parsed.length != 1) return null;
+    cmd = parsed[0];
+    opts = cmd.options || {};
+    if (cmd.name == 'style' || cmd.name == 'svg-style') {
+      return getStyleCullInfo(opts, isStyleProperty);
+    }
+    if (cmd.name == 'classify') {
+      return getClassifyCullInfo(opts);
+    }
+    return null;
+  }
+
+  function getStyleCullInfo(opts, isStyleProperty) {
+    var fields;
+    if (opts.clear || opts.where) return null;
+    fields = getStyleFields$1(opts, isStyleProperty);
+    if (fields.length === 0) return null;
+    return {
+      type: 'style',
+      target: getTargetKey(opts),
+      ids: getIdsKey(opts),
+      fields: fields
+    };
+  }
+
+  function getStyleFields$1(opts, isStyleProperty) {
+    var fields = [];
+    Object.keys(opts).forEach(function(name) {
+      var field = name.replace(/_/g, '-');
+      if (isStyleProperty(field) && fields.indexOf(field) == -1) {
+        fields.push(field);
+      }
+    });
+    return fields.sort();
+  }
+
+  function getClassifyCullInfo(opts) {
+    if (opts.where || !classifyIsRandomFill(opts)) return null;
+    return {
+      type: 'classify',
+      target: getTargetKey(opts),
+      ids: getIdsKey(opts),
+      key: 'random-fill'
+    };
+  }
+
+  function classifyIsRandomFill(opts) {
+    return opts.colors == 'random' && opts.method == 'non-adjacent' &&
+      !opts.field && !opts.values && !opts['save-as'] && !opts.save_as;
+  }
+
+  function getTargetKey(opts) {
+    return opts.target ? String(opts.target) : '';
+  }
+
+  function getIdsKey(opts) {
+    var ids;
+    if (!opts.ids) return '';
+    if (Array.isArray(opts.ids)) {
+      return opts.ids.concat().sort(function(a, b) {return a - b;}).join(',');
+    }
+    ids = String(opts.ids).split(',').map(Number);
+    if (ids.every(isFinite)) {
+      return ids.sort(function(a, b) {return a - b;}).join(',');
+    }
+    return String(opts.ids);
+  }
+
+  function isSuperset(a, b) {
+    for (var i=0; i<b.length; i++) {
+      if (a.indexOf(b[i]) == -1) return false;
+    }
+    return true;
+  }
+
   function SessionHistory(gui) {
     var commands = [];
     var commandId = 0;
@@ -11814,7 +11951,8 @@
     };
 
     this.toCommandLineString = function() {
-      var str = getActiveCommands().join(' \\\n  ');
+      var str = cullCommandHistory(getActiveCommands(), internal.parseCommands,
+        internal.isSupportedSvgStyleProperty).join(' \\\n  ');
       return 'mapshaper ' + str;
     };
 
@@ -12551,13 +12689,13 @@
     var menus = {
       standard: ['info', 'selection', 'box'],
       empty: ['edit_polygons', 'edit_lines', 'edit_points', 'box'],
-      polygons: ['info', 'selection', 'box', 'edit_polygons'],
-      rectangles: ['info', 'selection', 'box', 'rectangles', 'edit_polygons'],
-      lines: ['info', 'selection', 'box', 'edit_lines'], // 'snip_lines'
+      polygons: ['info', 'selection', 'box', 'polygon_style', 'edit_polygons'],
+      rectangles: ['info', 'selection', 'box', 'polygon_style', 'rectangles', 'edit_polygons'],
+      lines: ['info', 'selection', 'box', 'line_style', 'edit_lines'], // 'snip_lines'
       table: ['info', 'selection'],
       raster: ['box'],
-      labels: ['info', 'selection', 'box', 'labels', 'edit_points'],
-      points: ['info', 'selection', 'box', 'edit_points'] // , 'add-points'
+      labels: ['info', 'selection', 'box', 'point_style', 'labels', 'edit_points'],
+      points: ['info', 'selection', 'box', 'point_style', 'edit_points'] // , 'add-points'
     };
 
     var prompts = {
@@ -12572,6 +12710,9 @@
       box: 'rectangle tool',
       data: 'edit attributes',
       label_style: 'style labels',
+      point_style: 'style points',
+      line_style: 'style lines',
+      polygon_style: 'style polygons',
       labels: 'position labels',
       edit_points: 'add/drag points',
       edit_lines: 'draw/edit polylines',
@@ -12606,7 +12747,7 @@
       });
 
       btn.on('mouseenter', function() {
-        if (gui.state.label_style_panel_open) return;
+        if (stylePanelIsActive()) return;
         btn.addClass('hover');
         if (_menuOpen) {
           clearTimeout(_menuTimeout); // prevent timed closing
@@ -12620,7 +12761,7 @@
 
       btn.on('click', function(e) {
         if (_editMode == 'label_style') {
-          setMode('info');
+          setMode('off');
           closeMenu();
         } else if (active()) {
           setMode('off');
@@ -12645,7 +12786,7 @@
     };
 
     this.modeUsesHitDetection = function(mode) {
-      return ['info', 'selection', 'data', 'label_style', 'labels', 'edit_points', 'vertices', 'rectangles', 'edit_lines', 'edit_polygons', 'snip_lines'].includes(mode);
+      return ['info', 'selection', 'data', 'label_style', 'point_style', 'line_style', 'polygon_style', 'labels', 'edit_points', 'vertices', 'rectangles', 'edit_lines', 'edit_polygons', 'snip_lines'].includes(mode);
     };
 
     this.modeUsesPopup = function(mode) {
@@ -12653,7 +12794,7 @@
     };
 
     this.modeSupportsUndo = function(mode) {
-      return ['data', 'label_style', 'labels', 'edit_points', 'edit_lines', 'edit_polygons', 'vertices', 'rectangles'].includes(mode);
+      return ['data', 'label_style', 'point_style', 'line_style', 'polygon_style', 'labels', 'edit_points', 'edit_lines', 'edit_polygons', 'vertices', 'rectangles'].includes(mode);
     };
 
     this.getMode = getInteractionMode;
@@ -12675,6 +12816,11 @@
 
     function active() {
       return _editMode && _editMode != 'off';
+    }
+
+    function stylePanelIsActive() {
+      return _editMode == 'label_style' || _editMode == 'point_style' ||
+        _editMode == 'line_style' || _editMode == 'polygon_style';
     }
 
     function getAvailableModes() {
@@ -12716,7 +12862,7 @@
       modes.forEach(function(mode) {
         // don't show "turn off" link if not currently editing
         if (_editMode == 'off' && mode == 'off') return;
-        var link = El('div').addClass('nav-menu-item').attr('data-name', mode).text(labels[mode]).appendTo(menu);
+        var link = El('div').addClass('nav-menu-item').attr('data-name', mode).text(getModeLabel(mode)).appendTo(menu);
         link.on('click', function(e) {
           if (_editMode == mode) {
             // closeMenu();
@@ -12732,10 +12878,18 @@
       updateSelectionHighlight();
     }
 
+    function getModeLabel(mode) {
+      var o = gui.model.getActiveLayer();
+      if (mode == 'point_style' && o && o.layer && internal.layerHasLabels(o.layer)) {
+        return 'style labels';
+      }
+      return labels[mode];
+    }
+
     // if current editing mode is not available, turn off the tool
     function updateCurrentMode() {
       var modes = getAvailableModes();
-      if (modes.indexOf(_editMode) == -1 && !labelStyleModeIsAvailable()) {
+      if (modes.indexOf(_editMode) == -1 && !labelStyleModeIsAvailable() && !layerStyleModeIsAvailable() && !pointStyleModeIsAvailable()) {
         setMode('off');
       }
     }
@@ -12743,6 +12897,17 @@
     function labelStyleModeIsAvailable() {
       var o = gui.model.getActiveLayer();
       return _editMode == 'label_style' && o && o.layer && internal.layerHasLabels(o.layer);
+    }
+
+    function layerStyleModeIsAvailable() {
+      var o = gui.model.getActiveLayer();
+      return _editMode == 'line_style' && o && o.layer && o.layer.geometry_type == 'polyline' ||
+        _editMode == 'polygon_style' && o && o.layer && o.layer.geometry_type == 'polygon';
+    }
+
+    function pointStyleModeIsAvailable() {
+      var o = gui.model.getActiveLayer();
+      return _editMode == 'point_style' && o && o.layer && o.layer.geometry_type == 'point';
     }
 
     function openMenu() {
@@ -12795,7 +12960,7 @@
       }
       btn.classed('hover', _menuOpen);
       // btn.classed('selected', active() && !_menuOpen);
-      btn.classed('selected', active() && _editMode != 'label_style');
+      btn.classed('selected', active());
     }
 
     function updateSelectionHighlight() {
@@ -13511,7 +13676,538 @@
     return Math.round(val * 100) / 100;
   }
 
-  var labelTextField = 'label-text';
+  var grayscaleColorPresets = [
+    '#000000', '#111111', '#222222', '#333333',
+    '#444444', '#555555', '#666666', '#777777',
+    '#888888', '#999999', '#aaaaaa', '#bbbbbb',
+    '#cccccc', '#dddddd', '#eeeeee', '#ffffff'
+  ];
+
+  // Sequential ramps generated in OKLCH for smooth lightness/chroma progression,
+  // then hue-normalized in the picker HSB space so every chip in a ramp reports
+  // the same hue in the color picker.
+  var redRamp = ['#600202', '#8a0303', '#b11b1b', '#cf3b3b', '#e26161', '#ef8b8b', '#f5b8b8', '#fbdede'];
+  var orangeRamp = ['#94551e', '#a85f1e', '#bd6d26', '#d17f36', '#e39652', '#f0b37d', '#f7cda8', '#fce1ca'];
+  var brownRamp = ['#442b03', '#634009', '#825a1b', '#9c763b', '#b39361', '#c8b08b', '#dcceb8', '#eee8df'];
+  var greenRamp = ['#013c06', '#03580b', '#00750b', '#2e9137', '#5daa64', '#8bc190', '#b8d8bb', '#dfebe0'];
+  var tealRamp = ['#023937', '#005350', '#036f6b', '#058d88', '#02aba5', '#65c4c1', '#a7d9d7', '#d7edec'];
+  var blueRamp = ['#013550', '#034d73', '#016599', '#0881bf', '#39a5dd', '#77c2e8', '#aed9ef', '#daedf7'];
+  var indigoRamp = ['#1d2964', '#2d3d8e', '#4053b5', '#596dd1', '#7889e1', '#9ba8eb', '#c0c8f1', '#e1e5f8'];
+  var purpleRamp = ['#431b54', '#612b78', '#7f3f9a', '#9b5cb5', '#b37dc9', '#c8a0d9', '#dcc4e6', '#eee2f3'];
+
+  var layerColorPresetRows = [
+    grayscaleColorPresets,
+    redRamp.concat(orangeRamp),
+    brownRamp.concat(greenRamp),
+    tealRamp.concat(blueRamp),
+    indigoRamp.concat(purpleRamp)
+  ];
+
+  function ColorPicker(parent, opts) {
+    opts = opts || {};
+    var colorPicker = El('div').addClass('label-color-picker').appendTo(parent).hide();
+    var sbCanvas, hueCanvas, sbMarker, hueMarker, pickerHsbInputs;
+    var pickerColor = {h: 0, s: 0, b: 0};
+    var presetRows = opts.presetRows || [grayscaleColorPresets];
+
+    init();
+
+    this.toggle = function() {
+      if (colorPicker.visible()) {
+        this.hide();
+      } else {
+        colorPicker.show();
+        drawColorPicker();
+      }
+    };
+
+    this.hide = function() {
+      colorPicker.hide();
+    };
+
+    this.visible = function() {
+      return colorPicker.visible();
+    };
+
+    this.setColor = function(color) {
+      if (isHexColor(color)) {
+        setPickerColor(hexToHsb(color));
+      }
+    };
+
+    this.getColor = function() {
+      return hsbToHex(pickerColor);
+    };
+
+    function init() {
+      var sbWrap = El('div').addClass('label-color-canvas-wrap').appendTo(colorPicker);
+      sbCanvas = El('canvas').attr('width', '256').attr('height', '256').appendTo(sbWrap);
+      sbMarker = makePickerMarker().appendTo(sbWrap);
+      var hueWrap = El('div').addClass('label-color-canvas-wrap').appendTo(colorPicker);
+      hueCanvas = El('canvas').attr('width', '256').attr('height', '18').appendTo(hueWrap);
+      hueMarker = makePickerMarker().appendTo(hueWrap);
+      renderPresetRows(colorPicker);
+      pickerHsbInputs = {};
+      var hsbRow = El('div').addClass('label-color-picker-fields').appendTo(colorPicker);
+      addPickerNumberInput(hsbRow, 'h', 'H');
+      addPickerNumberInput(hsbRow, 's', 'S');
+      addPickerNumberInput(hsbRow, 'b', 'B');
+      El('button').appendTo(hsbRow).text('Close').on('click', function() {
+        colorPicker.hide();
+      });
+      sbCanvas.on('mousedown', function(e) {
+        startCanvasDrag(e, updateSbFromEvent);
+      });
+      hueCanvas.on('mousedown', function(e) {
+        startCanvasDrag(e, updateHueFromEvent);
+      });
+      setPickerColor(pickerColor);
+    }
+
+    function renderPresetRows(parent) {
+      var container = El('div').addClass('label-color-presets').appendTo(parent);
+      presetRows.forEach(function(row) {
+        var rowEl = El('div').addClass('label-color-preset-row').appendTo(container);
+        row.forEach(function(color, i) {
+          var tile = El('div')
+            .addClass('label-color-preset')
+            .attr('role', 'button')
+            .attr('tabindex', '0')
+            .attr('title', color)
+            .appendTo(rowEl)
+            .css('background-color', color);
+          if (row.length == 16 && i == 8) tile.addClass('label-color-preset-group-start');
+          tile.on('click', function() {
+            applyPreset(color);
+          }).on('keydown', function(e) {
+            if (e.key == 'Enter' || e.key == ' ') {
+              e.preventDefault();
+              applyPreset(color);
+            }
+          });
+        });
+      });
+    }
+
+    function applyPreset(color) {
+      setPickerColor(hexToHsb(color));
+      commitPickerColor();
+    }
+
+    function addPickerNumberInput(row, name, label) {
+      var wrapper = El('label').appendTo(row);
+      El('span').appendTo(wrapper).text(label);
+      pickerHsbInputs[name] = El('input')
+        .attr('type', 'text')
+        .appendTo(wrapper)
+        .on('change', function() {
+          var h = parseNumberField(pickerHsbInputs.h.node().value);
+          var s = parseNumberField(pickerHsbInputs.s.node().value);
+          var b = parseNumberField(pickerHsbInputs.b.node().value);
+          if (!isFinite(h) || !isFinite(s) || !isFinite(b)) return;
+          setPickerColor({
+            h: degreesToByte(h),
+            s: pctToByte(s),
+            b: pctToByte(b)
+          });
+          commitPickerColor();
+        });
+    }
+
+    function startCanvasDrag(e, update) {
+      var evt = e.originalEvent || e;
+      colorPicker.addClass('dragging-color');
+      El('body').addClass('dragging-color-picker');
+      update(evt);
+      document.addEventListener('mousemove', onmove);
+      document.addEventListener('mouseup', onup);
+      evt.preventDefault();
+      function onmove(evt) {
+        update(evt);
+      }
+      function onup() {
+        document.removeEventListener('mousemove', onmove);
+        document.removeEventListener('mouseup', onup);
+        colorPicker.removeClass('dragging-color');
+        El('body').removeClass('dragging-color-picker');
+        commitPickerColor();
+      }
+    }
+
+    function updateSbFromEvent(evt) {
+      var p = getCanvasPoint(sbCanvas.node(), evt);
+      setPickerColor({
+        h: pickerColor.h,
+        s: p.x,
+        b: 255 - p.y
+      });
+    }
+
+    function updateHueFromEvent(evt) {
+      var p = getCanvasPoint(hueCanvas.node(), evt);
+      setPickerColor({
+        h: p.x,
+        s: pickerColor.s,
+        b: pickerColor.b
+      });
+    }
+
+    function getCanvasPoint(canvas, evt) {
+      var rect = canvas.getBoundingClientRect();
+      return {
+        x: clamp(Math.round((evt.clientX - rect.left) / rect.width * (canvas.width - 1)), 0, canvas.width - 1),
+        y: clamp(Math.round((evt.clientY - rect.top) / rect.height * (canvas.height - 1)), 0, canvas.height - 1)
+      };
+    }
+
+    function setPickerColor(hsb) {
+      pickerColor = {
+        h: clamp(Math.round(hsb.h), 0, 255),
+        s: clamp(Math.round(hsb.s), 0, 255),
+        b: clamp(Math.round(hsb.b), 0, 255)
+      };
+      drawColorPicker();
+      updatePickerFields();
+      if (opts.onPreview) opts.onPreview(hsbToHex(pickerColor));
+    }
+
+    function updatePickerFields() {
+      pickerHsbInputs.h.node().value = byteToDegrees(pickerColor.h) + '°';
+      pickerHsbInputs.s.node().value = byteToPct(pickerColor.s) + '%';
+      pickerHsbInputs.b.node().value = byteToPct(pickerColor.b) + '%';
+    }
+
+    function drawColorPicker() {
+      if (!sbCanvas) return;
+      drawSaturationBrightnessCanvas();
+      drawHueCanvas();
+    }
+
+    function drawSaturationBrightnessCanvas() {
+      var ctx = sbCanvas.node().getContext('2d');
+      var image = ctx.createImageData(256, 256);
+      var data = image.data;
+      var i = 0;
+      for (var y=0; y<256; y++) {
+        for (var x=0; x<256; x++) {
+          var rgb = hsbToRgb({
+            h: pickerColor.h,
+            s: x,
+            b: 255 - y
+          });
+          data[i++] = rgb.r;
+          data[i++] = rgb.g;
+          data[i++] = rgb.b;
+          data[i++] = 255;
+        }
+      }
+      ctx.putImageData(image, 0, 0);
+      positionMarker(sbMarker, pickerColor.s, 255 - pickerColor.b, pickerColor);
+    }
+
+    function drawHueCanvas() {
+      var ctx = hueCanvas.node().getContext('2d');
+      var image = ctx.createImageData(256, 18);
+      var data = image.data;
+      var i = 0;
+      for (var y=0; y<18; y++) {
+        for (var x=0; x<256; x++) {
+          var rgb = hsbToRgb({h: x, s: 255, b: 255});
+          data[i++] = rgb.r;
+          data[i++] = rgb.g;
+          data[i++] = rgb.b;
+          data[i++] = 255;
+        }
+      }
+      ctx.putImageData(image, 0, 0);
+      positionMarker(hueMarker, pickerColor.h, 9, {h: pickerColor.h, s: 255, b: 255});
+    }
+
+    function commitPickerColor() {
+      if (opts.onChange) opts.onChange(hsbToHex(pickerColor));
+    }
+
+    function getMarkerColor(rgb) {
+      var luminance = rgb.r * 0.2126 + rgb.g * 0.7152 + rgb.b * 0.0722;
+      return luminance < 128 ? '#fff' : '#000';
+    }
+
+    function makePickerMarker() {
+      return El('<svg class="label-color-marker" width="16" height="16" viewBox="0 0 16 16"><circle cx="8" cy="8" r="6"></circle></svg>');
+    }
+
+    function positionMarker(marker, x, y, hsb) {
+      var rgb = hsbToRgb(hsb);
+      x = utils$1.clamp(x, 1, 254);
+      y = utils$1.clamp(y, 1, 254) + 0.5;
+      marker.css({
+        left: x - 8,
+        top: y - 8
+      });
+      marker.findChild('circle').attr('stroke', getMarkerColor(rgb));
+    }
+  }
+
+  function isHexColor(str) {
+    return /^#[0-9a-f]{6}$/i.test(str);
+  }
+
+  function hexToHsb(hex) {
+    var r = parseInt(hex.substr(1, 2), 16);
+    var g = parseInt(hex.substr(3, 2), 16);
+    var b = parseInt(hex.substr(5, 2), 16);
+    var max = Math.max(r, g, b);
+    var min = Math.min(r, g, b);
+    var d = max - min;
+    var h = 0;
+    if (d) {
+      if (max == r) h = ((g - b) / d) % 6;
+      else if (max == g) h = (b - r) / d + 2;
+      else h = (r - g) / d + 4;
+      h *= 60;
+      if (h < 0) h += 360;
+    }
+    return {
+      h: Math.round(h / 360 * 255),
+      s: Math.round(max === 0 ? 0 : d / max * 255),
+      b: max
+    };
+  }
+
+  function hsbToHex(hsb) {
+    var rgb = hsbToRgb(hsb);
+    return '#' + [rgb.r, rgb.g, rgb.b].map(function(val) {
+      return val.toString(16).padStart(2, '0');
+    }).join('');
+  }
+
+  function hsbToRgb(hsb) {
+    var h = hsb.h / 255 * 360;
+    var s = hsb.s / 255;
+    var v = hsb.b / 255;
+    var c = v * s;
+    var x = c * (1 - Math.abs((h / 60) % 2 - 1));
+    var m = v - c;
+    var rgb = h < 60 ? [c, x, 0] :
+      h < 120 ? [x, c, 0] :
+      h < 180 ? [0, c, x] :
+      h < 240 ? [0, x, c] :
+      h < 300 ? [x, 0, c] : [c, 0, x];
+    return {
+      r: Math.round((rgb[0] + m) * 255),
+      g: Math.round((rgb[1] + m) * 255),
+      b: Math.round((rgb[2] + m) * 255)
+    };
+  }
+
+  function byteToPct(val) {
+    return Math.round(val / 255 * 100);
+  }
+
+  function pctToByte(val) {
+    return Math.round(clamp(val, 0, 100) / 100 * 255);
+  }
+
+  function byteToDegrees(val) {
+    return Math.round(val / 255 * 360);
+  }
+
+  function degreesToByte(val) {
+    return Math.round(clamp(val, 0, 360) / 360 * 255);
+  }
+
+  function parseNumberField(str) {
+    return Number(String(str).replace(/[°%]/g, '').trim());
+  }
+
+  function clamp(val, min, max) {
+    return isFinite(val) ? Math.max(min, Math.min(max, val)) : min;
+  }
+
+  function makeStylePresetId(styles, prefix, name) {
+    var base = prefix + '-' + makeSlug(name);
+    var ids = (styles || []).reduce(function(memo, item) {
+      if (item && item.id) memo[item.id] = true;
+      if (item && !item.id && item.name) memo[prefix + '-' + makeSlug(item.name)] = true;
+      return memo;
+    }, {});
+    var id = base;
+    var i = 2;
+    while (ids[id]) {
+      id = base + '-' + i++;
+    }
+    return id;
+  }
+
+  function makeSlug(str) {
+    var slug = String(str || '')
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, '-')
+      .replace(/^-+|-+$/g, '');
+    return slug || 'style';
+  }
+
+  function StylePresetControl(parent, opts) {
+    var row = El('div').addClass('label-style-row label-saved-style-row').appendTo(parent);
+    var select, saveBtn, deleteBtn;
+
+    El('span').appendTo(row).text('Presets');
+    select = El('select').appendTo(row).on('change', function() {
+      var item = findVisibleStyle(select.node().value);
+      if (item) {
+        opts.applyStyle(item.style);
+      }
+      updateControls();
+    });
+    saveBtn = El('button').appendTo(row).text('Save preset').on('click', openSaveStylePopup);
+    deleteBtn = El('button').appendTo(row).text('Delete').on('click', deleteSelectedStyle);
+    render();
+
+    this.render = render;
+    this.update = updateControls;
+    this.clearSelection = clearSelection;
+    this.select = function() {
+      return select;
+    };
+
+    function openSaveStylePopup() {
+      var popup = showPopupAlert('', opts.saveTitle);
+      var el = popup.container();
+      el.addClass('option-menu');
+      el.html(`<div><input type="text" class="style-name text-input" placeholder="style name"></div>
+      <div tabindex="0" class="btn dialog-btn">Save</div>`);
+      var input = el.findChild('.style-name');
+      var btn = el.findChild('.btn');
+      input.node().focus();
+      btn.on('click', function() {
+        var name = input.node().value.trim();
+        if (!name) return;
+        saveStyleWithName(name);
+        popup.close();
+      });
+      input.on('keydown', function(e) {
+        if (e.key == 'Enter') {
+          btn.node().click();
+        }
+      });
+    }
+
+    function saveStyleWithName(name) {
+      var styles = getSavedStyles();
+      var type = getType();
+      var id = makeStylePresetId(styles, type, name);
+      var item = {
+        id: id,
+        name: name,
+        style: opts.getStyle()
+      };
+      if (opts.useType !== false) {
+        item.type = type;
+      }
+      styles.push(item);
+      styles.sort(opts.sort || sortByName);
+      setSavedStyles(styles);
+      render();
+    }
+
+    async function deleteSelectedStyle() {
+      var id = select.node().value;
+      var item = findVisibleStyle(id);
+      var styles;
+      if (!item) return;
+      if (!await showPrompt('Delete ' + opts.styleLabel + ' "' + item.name + '"?', 'Delete preset')) return;
+      styles = getSavedStyles().filter(function(item) {
+        return getItemId(item) != id;
+      });
+      setSavedStyles(styles);
+      render();
+    }
+
+    function render(selectedId) {
+      var styles = getVisibleStyles();
+      var value = selectedId || select.node().value;
+      select.empty();
+      if (styles.length > 0) {
+        El('option').attr('value', '').appendTo(select).text('Apply preset...');
+        styles.forEach(function(item) {
+          El('option').attr('value', getItemId(item)).appendTo(select).text(item.name);
+        });
+        select.node().value = findVisibleStyle(value) ? value : '';
+      } else {
+        El('option').attr('value', '').appendTo(select).text('No presets');
+        select.node().value = '';
+      }
+      updateControls();
+    }
+
+    function updateControls() {
+      var disabled = opts.disabled ? opts.disabled() : false;
+      var hasPresets = getVisibleStyles().length > 0;
+      select.node().disabled = disabled || !hasPresets;
+      saveBtn.node().disabled = disabled;
+      deleteBtn.node().disabled = disabled || !select.node().value;
+    }
+
+    function clearSelection() {
+      if (select.node().value) {
+        select.node().value = '';
+        updateControls();
+      }
+    }
+
+    function getVisibleStyles() {
+      var type = getType();
+      return getSavedStyles().filter(function(item) {
+        return opts.filter ? opts.filter(item, type) : true;
+      });
+    }
+
+    function findVisibleStyle(id) {
+      return getVisibleStyles().find(function(item) {
+        return getItemId(item) == id;
+      });
+    }
+
+    function getSavedStyles() {
+      var styles = GUI.getSavedValue(opts.storageKey);
+      return Array.isArray(styles) ? styles : [];
+    }
+
+    function setSavedStyles(styles) {
+      GUI.setSavedValue(opts.storageKey, styles);
+    }
+
+    function getType() {
+      return typeof opts.type == 'function' ? opts.type() : opts.type;
+    }
+
+    function getItemId(item) {
+      return opts.getItemId ? opts.getItemId(item) : item.id;
+    }
+  }
+
+  function sortByName(a, b) {
+    var aName = String(a.name || '').toLowerCase();
+    var bName = String(b.name || '').toLowerCase();
+    return aName < bName ? -1 : aName > bName ? 1 : 0;
+  }
+
+  function runGuiEditCommand(gui, cmd, optsArg) {
+    var opts = optsArg || {};
+    if (!gui.console) return;
+    gui.console.runMapshaperCommands(cmd, function(err, flags) {
+      if (err) {
+        showPopupAlert(err.message || String(err), opts.title || 'Command error');
+        if (opts.onError) opts.onError(err);
+      } else if (opts.onSuccess) {
+        opts.onSuccess(flags);
+      }
+      if (opts.onDone) {
+        opts.onDone(err, flags);
+      }
+    });
+  }
+
   var fontField = 'font-family';
   var fontSizeField = 'font-size';
   var fontStyleField = 'font-style';
@@ -13527,8 +14223,7 @@
   var defaultIconSize = 5;
   var labelStyleMode = 'label_style';
   var labelStylePanelMode = 'label_style_tool';
-  var savedStylesKey = 'label_styles';
-  var labelPositionFields = internal.labelPositionFields;
+  var savedStylesKey$1 = 'label_styles';
   var savedStyleFields = [
     fontField,
     fontSizeField,
@@ -13561,24 +14256,24 @@
   };
 
   function LabelTool(gui) {
-    // button is only visible when label editing is available
-    // clicking the button opens a panel for applying styles to labels
-    var textBtn = gui.buttons.addButton('#text-tool-icon').addClass('menu-btn pointer-btn');
+    // Label styling is opened from the point styling entry point.
+    var textBtn = El('div').hide();
     var parent = gui.container.findChild('.mshp-main-map');
     var panel = El('div').addClass('label-style-panel rollover').appendTo(parent).hide();
-    var createPanel = El('div').addClass('label-style-panel label-create-panel rollover').appendTo(parent).hide();
-    var createFieldSelect, createExprInput, createCopyCheckbox, createBtn;
-    var styleSelect, fontSelect, fontStyleSelect, fontSizeText, colorChit, colorInput, colorPicker, sbCanvas, hueCanvas, sbMarker, hueMarker, pickerHsbInputs, cssInput, posBtns, iconBtns, iconSizeText, hit;
+    var presetControl, fontSelect, fontStyleSelect, fontSizeText, colorChit, colorInput, colorPicker, cssInput, posBtns, iconBtns, iconSizeText, editingStatus, clearLink, hit;
     var fontOptionsRendered = false;
-    var pickerColor = {h: 0, s: 0, b: 0};
-    var pendingStyleHistory = null;
 
-    initCreatePanel();
     initPanel();
-    gui.addMode(labelStylePanelMode, turnOn, turnOff, textBtn);
+    gui.addMode(labelStylePanelMode, turnOn, turnOff);
     gui.model.on('update', updateVisibility);
     gui.model.on('update', function() {
       setTimeout(updateSelectionDisplay, 0);
+    });
+    gui.on('undo_redo_post', function() {
+      if (panel.visible()) {
+        updateControls();
+        updateSelectionDisplay();
+      }
     });
     gui.on('interaction_mode_change', function(e) {
       if (panel.visible() && e.mode != labelStyleMode && gui.getMode() == labelStylePanelMode) {
@@ -13598,6 +14293,18 @@
 
     updateVisibility();
 
+    this.open = function(lyr, dataset) {
+      if (!lyr || !internal.layerHasLabels(lyr)) return;
+      if (!gui.map.isActiveLayer(lyr)) {
+        modelSelectLayer(lyr, dataset);
+      }
+      if (gui.getMode() == labelStylePanelMode) {
+        showStylePanel();
+      } else {
+        gui.enterMode(labelStylePanelMode);
+      }
+    };
+
     function initPanel() {
       var header = El('div').addClass('label-style-panel-title').appendTo(panel).text('Label styles');
       El('button').addClass('label-style-close').appendTo(header).text('×').on('click', function() {
@@ -13605,8 +14312,8 @@
       });
 
       var selectRow = El('div').addClass('label-style-row label-style-selection-row').appendTo(panel);
-      El('button').appendTo(selectRow).text('Select all').on('click', selectAllLabels);
-      El('button').appendTo(selectRow).text('Clear').on('click', clearSelection);
+      editingStatus = El('span').addClass('label-editing-status').appendTo(selectRow);
+      clearLink = El('span').addClass('label-editing-clear colored-text').appendTo(selectRow).text('deselect').on('click', clearSelection);
 
       var fontRow = El('label').addClass('label-style-row').appendTo(panel);
       El('span').appendTo(fontRow).text('Font');
@@ -13632,7 +14339,7 @@
         var color = colorInput.node().value.trim();
         if (color) {
           if (isHexColor(color)) {
-            setPickerColor(hexToHsb(color));
+            colorPicker.setColor(color);
           }
           applyLabelColor(color);
         }
@@ -13692,49 +14399,19 @@
           .attr('title', pos);
       });
 
-      var savedRow = El('div').addClass('label-style-row label-saved-style-row').appendTo(panel);
-      El('span').appendTo(savedRow).text('Presets');
-      styleSelect = El('select').appendTo(savedRow).on('change', function() {
-        if (styleSelect.node().value) {
-          applySavedStyle(styleSelect.node().value);
+      presetControl = new StylePresetControl(panel, {
+        storageKey: savedStylesKey$1,
+        type: 'label',
+        useType: false,
+        saveTitle: 'Save label style',
+        styleLabel: 'label style',
+        getStyle: getCurrentStyle,
+        applyStyle: applyStyleObject,
+        getItemId: getStyleId,
+        disabled: function() {
+          return getTargetIds().length === 0;
         }
-        updateSavedStyleControls();
       });
-      El('button').appendTo(savedRow).text('Save preset').on('click', saveCurrentStyle);
-      El('button').appendTo(savedRow).text('Delete').on('click', deleteSelectedStyle);
-      renderSavedStyles();
-    }
-
-    function initCreatePanel() {
-      var header = El('div').addClass('label-style-panel-title').appendTo(createPanel).text('Create labels');
-      El('button').addClass('label-style-close').appendTo(header).text('×').on('click', function() {
-        gui.clearMode();
-      });
-
-      var fieldRow = El('label').addClass('label-style-row').appendTo(createPanel);
-      El('span').appendTo(fieldRow).text('Label field');
-      createFieldSelect = El('select').appendTo(fieldRow).on('change', function() {
-        var field = createFieldSelect.node().value;
-        if (field) {
-          createExprInput.node().value = getFieldExpression(field);
-        }
-        updateCreateButton();
-      });
-
-      var exprRow = El('label').addClass('label-style-row label-create-expression-row').appendTo(createPanel);
-      El('span').appendTo(exprRow).text('or expression');
-      createExprInput = El('input')
-        .attr('type', 'text')
-        .appendTo(exprRow)
-        .on('input', updateCreateButton)
-        .on('change', updateCreateButton);
-
-      var copyRow = El('label').addClass('label-style-row label-create-copy-row').appendTo(createPanel);
-      createCopyCheckbox = El('input').attr('type', 'checkbox').appendTo(copyRow);
-      El('span').appendTo(copyRow).text('Create as new layer');
-
-      var btnRow = El('div').addClass('label-style-row').appendTo(createPanel);
-      createBtn = El('button').appendTo(btnRow).text('Create labels').on('click', createLabels);
     }
 
     function appendIconButtonSymbol(btn, iconName) {
@@ -13769,12 +14446,8 @@
     }
 
     function turnOn() {
-      if (!activeLayerIsPointLayer()) {
-        gui.clearMode();
-        return;
-      }
       if (!activeLayerHasLabels()) {
-        showCreatePanel();
+        gui.clearMode();
         return;
       }
       showStylePanel();
@@ -13782,7 +14455,6 @@
 
     function showStylePanel() {
       renderFontOptions();
-      createPanel.hide();
       gui.interaction.setMode(labelStyleMode);
       gui.state.label_style_panel_open = true;
       panel.show();
@@ -13791,25 +14463,8 @@
       updateSelectionDisplay();
     }
 
-    function showCreatePanel() {
-      panel.hide();
-      hideColorPicker();
-      if (gui.interaction.getMode() == labelStyleMode) {
-        gui.interaction.turnOff();
-      }
-      gui.state.label_style_panel_open = true;
-      createPanel.show();
-      textBtn.addClass('selected');
-      renderCreateFields();
-      updateCreateButton();
-    }
-
     function turnOff() {
-      if (panel.visible()) {
-        flushPendingStyleHistory();
-      }
       panel.hide();
-      createPanel.hide();
       hideColorPicker();
       gui.state.label_style_panel_open = false;
       textBtn.removeClass('selected');
@@ -13821,7 +14476,7 @@
     }
 
     function updateVisibility() {
-      var enabled = activeLayerIsPointLayer();
+      var enabled = activeLayerHasLabels();
       textBtn.classed('disabled', !enabled);
       textBtn[enabled ? 'show' : 'hide']();
       if (!enabled && gui.getMode() == labelStylePanelMode) {
@@ -13839,6 +14494,11 @@
       return !!(active && active.layer && active.layer.geometry_type == 'point');
     }
 
+    function modelSelectLayer(lyr, dataset) {
+      if (lyr) lyr.hidden = false;
+      gui.model.selectLayer(lyr, dataset);
+    }
+
     function renderFontOptions() {
       if (fontOptionsRendered) return;
       fontOptionsRendered = true;
@@ -13852,224 +14512,8 @@
       });
     }
 
-    function renderCreateFields() {
-      var lyr = getActiveLayer();
-      var records = lyr && lyr.data ? lyr.data.getRecords() : [];
-      var fields = lyr && lyr.data ? lyr.data.getFields().filter(function(field) {
-        return internal.getColumnType(field, records) == 'string';
-      }) : [];
-      var value = createFieldSelect.node().value;
-      createFieldSelect.empty();
-      El('option').attr('value', '').appendTo(createFieldSelect).text('');
-      fields.forEach(function(field) {
-        El('option').attr('value', field).appendTo(createFieldSelect).text(field);
-      });
-      createFieldSelect.node().disabled = fields.length === 0;
-      createFieldSelect.node().value = fields.indexOf(value) > -1 ? value : '';
-    }
-
-    function updateCreateButton() {
-      createBtn.node().disabled = createExprInput.node().value.trim() === '';
-    }
-
-    function getFieldExpression(field) {
-      return 'd[' + JSON.stringify(field) + ']';
-    }
-
-    function createLabels() {
-      var active = gui.model.getActiveLayer();
-      var srcLyr = active && active.layer;
-      var dataset = active && active.dataset;
-      var expr = createExprInput.node().value.trim();
-      var lyr;
-      if (!srcLyr || srcLyr.geometry_type != 'point' || !expr) return;
-      lyr = createCopyCheckbox.node().checked ? makeLabelLayerCopy(srcLyr, dataset) : srcLyr;
-      if (!applyLabelText(lyr, expr)) return;
-      if (lyr != srcLyr) {
-        addLabelLayerCopy(lyr, srcLyr, dataset);
-        recordCreateLabelsCommand(expr, lyr);
-        selectLabelLayerCopy(lyr, dataset);
-      } else {
-        gui.model.updated({style: true, same_table: true});
-        recordCreateLabelsCommand(expr);
-      }
-      showStylePanel();
-      setTimeout(function() {
-        selectAllLabels();
-      }, 0);
-    }
-
-    function makeLabelLayerCopy(srcLyr, dataset) {
-      var lyr = internal.copyLayer(srcLyr);
-      delete lyr.gui;
-      lyr.name = 'labels';
-      return lyr;
-    }
-
-    function addLabelLayerCopy(lyr, srcLyr, dataset) {
-      var i = dataset.layers.indexOf(srcLyr);
-      internal.noteDatasetWillChange(dataset, {operation: 'createLabelLayer', unit: 'layers'});
-      dataset.layers.splice(i + 1, 0, lyr);
-      internal.markDatasetChanged(dataset, {operation: 'createLabelLayer', unit: 'layers'});
-    }
-
-    function selectLabelLayerCopy(lyr, dataset) {
-      gui.model.setDefaultTarget([lyr], dataset);
-      gui.model.updated({select: true});
-    }
-
-    function applyLabelText(lyr, expr) {
-      var table = internal.getLayerDataTable(lyr);
-      var hasField = table.fieldExists(labelTextField);
-      var records = table.getRecords();
-      var accessor;
-      try {
-        accessor = internal.getSymbolPropertyAccessor(expr, labelTextField, lyr);
-      } catch(e) {
-        showPopupAlert(e.message || 'Invalid label expression', 'Create labels');
-        return false;
-      }
-      if (hasField) {
-        table.captureFieldsBefore([labelTextField], {operation: 'create-labels'});
-      } else {
-        table.captureSchemaBefore({operation: 'create-labels', fields: [labelTextField]});
-      }
-      records.forEach(function(rec, i) {
-        if (!rec) rec = records[i] = {};
-        rec[labelTextField] = accessor(i);
-      });
-      if (hasField) {
-        table.markFieldsChanged([labelTextField], {operation: 'create-labels'});
-      } else {
-        table.markSchemaChanged({operation: 'create-labels', fields: [labelTextField]});
-      }
-      return true;
-    }
-
-    function updatePendingStyleHistory(lyr, ids, fields) {
-      if (!gui.session || !lyr || ids.length === 0) return;
-      if (pendingStyleHistory && (pendingStyleHistory.layer != lyr ||
-          !sameIds(pendingStyleHistory.ids, ids))) {
-        flushPendingStyleHistory();
-      }
-      if (!pendingStyleHistory) {
-        pendingStyleHistory = {
-          layer: lyr,
-          ids: ids.concat(),
-          fields: []
-        };
-      }
-      getHistoryStyleFields(fields).forEach(function(field) {
-        if (pendingStyleHistory.fields.indexOf(field) == -1) {
-          pendingStyleHistory.fields.push(field);
-        }
-      });
-    }
-
-    function flushPendingStyleHistory() {
-      var cmd;
-      if (!pendingStyleHistory || !gui.session) return;
-      cmd = getStyleHistoryCommand(pendingStyleHistory);
-      pendingStyleHistory = null;
-      if (cmd) {
-        gui.session.consoleCommands(cmd);
-      }
-    }
-
-    function getStyleHistoryCommand(entry) {
-      var table = entry.layer.data;
-      var records = table && table.getRecords();
-      var fields = entry.fields.filter(function(field) {
-        return field != labelTextField;
-      });
-      var parts = ['-style'];
-      var values;
-      if (!records || fields.length === 0) return '';
-      values = getHistoryStyleValues(records, entry.ids, fields);
-      Object.keys(values).forEach(function(field) {
-        parts.push(field + '=' + quoteCommandValue(values[field]));
-      });
-      if (parts.length == 1) return '';
-      if (getActiveLayer() != entry.layer) {
-        parts.push('target=' + internal.formatOptionValue(internal.getLayerTargetId(gui.model, entry.layer)));
-      }
-      if (entry.ids.length < internal.getFeatureCount(entry.layer)) {
-        parts.push('where=' + quoteCommandValue(getIdsWhereExpression(entry.ids)));
-      }
-      return parts.join(' ');
-    }
-
-    function getHistoryStyleValues(records, ids, fields) {
-      return fields.reduce(function(memo, field) {
-        var value = getCommonRecordValue(records, ids, field);
-        if (value !== undefined && value !== null && value !== '') {
-          memo[field] = value;
-        }
-        return memo;
-      }, {});
-    }
-
-    function getCommonRecordValue(records, ids, field) {
-      var value, val;
-      for (var i=0; i<ids.length; i++) {
-        val = records[ids[i]] && records[ids[i]][field];
-        if (i === 0) {
-          value = val;
-        } else if (val != value) {
-          return undefined;
-        }
-      }
-      return value;
-    }
-
-    function getHistoryStyleFields(fields) {
-      var out = [];
-      fields.forEach(function(field) {
-        if (field == 'dx' || field == 'dy' || field == 'text-anchor') return;
-        if (out.indexOf(field) == -1) out.push(field);
-      });
-      return out;
-    }
-
-    function getIdsWhereExpression(ids) {
-      return '[' + ids.join(',') + '].indexOf($.id)>-1';
-    }
-
-    function sameIds(a, b) {
-      if (!a || !b || a.length != b.length) return false;
-      for (var i=0; i<a.length; i++) {
-        if (a[i] != b[i]) return false;
-      }
-      return true;
-    }
-
-    function recordCreateLabelsCommand(expr, copyLyr) {
-      var cmd = '';
-      if (!gui.session) return;
-      if (copyLyr) {
-        cmd += '-filter true + name=' + internal.formatOptionValue(copyLyr.name) + ' ';
-      }
-      cmd += '-style label-text=' + quoteCommandValue(expr);
-      gui.session.consoleCommands(cmd);
-    }
-
     function quoteCommandValue(str) {
       return "'" + String(str).replace(/'/g, "\\'") + "'";
-    }
-
-    function selectAllLabels() {
-      var lyr = getActiveLayer();
-      var ids = [];
-      if (!hit || !lyr) return;
-      for (var i=0, n=internal.getFeatureCount(lyr); i<n; i++) {
-        ids.push(i);
-      }
-      hit.clearSelection();
-      if (ids.length > 0) {
-        hit.addSelectionIds(ids);
-      }
-      updateSelectionDisplay();
-      updateControls();
     }
 
     function clearSelection() {
@@ -14092,8 +14536,24 @@
       return hit ? hit.getSelectionIds() : [];
     }
 
-    function updateControls() {
+    function getTargetIds() {
       var ids = getSelectionIds();
+      return ids.length > 0 ? ids : getAllLabelIds();
+    }
+
+    function getAllLabelIds() {
+      var lyr = getActiveLayer();
+      var ids = [];
+      if (!lyr) return ids;
+      for (var i=0, n=internal.getFeatureCount(lyr); i<n; i++) {
+        ids.push(i);
+      }
+      return ids;
+    }
+
+    function updateControls() {
+      var ids = getTargetIds();
+      var manualIds = getSelectionIds();
       var fontVal = getCommonValue(ids, fontField);
       var fontSizeVal = getCommonValue(ids, fontSizeField, {useDefault: true, defaultValue: defaultFontSize});
       var fontStyleVal = getCommonValue(ids, fontStyleField, {useDefault: true, defaultValue: defaultFontStyle});
@@ -14103,7 +14563,7 @@
       var posVal = getCommonValue(ids, 'label-pos');
       var iconVal = getCommonValue(ids, iconField);
       var iconSizeVal = getCommonValue(ids, iconSizeField, {useDefault: true, defaultValue: defaultIconSize});
-      styleSelect.node().disabled = ids.length === 0;
+      updateEditingStatus(manualIds.length);
       updateSavedStyleControls();
       fontSelect.node().disabled = ids.length === 0;
       fontSelect.node().value = fontVal;
@@ -14117,15 +14577,20 @@
     }
 
     function updatePositionButtons(pos) {
-      var disabled = getSelectionIds().length === 0;
+      var disabled = getTargetIds().length === 0;
       labelPositions.forEach(function(name) {
         posBtns[name].classed('selected', name == pos);
         setPanelButtonDisabled(posBtns[name], disabled);
       });
     }
 
+    function updateEditingStatus(count) {
+      editingStatus.text(count > 0 ? 'Editing: ' + count + ' selected' : 'Editing: all');
+      clearLink.classed('hidden', count === 0);
+    }
+
     function updateFontSizeControls(fontSizeVal) {
-      var disabled = getSelectionIds().length === 0;
+      var disabled = getTargetIds().length === 0;
       fontSizeText.text(fontSizeVal || '');
       panel.findChildren('.label-size-row .label-panel-btn').forEach(function(btn) {
         setPanelButtonDisabled(btn, disabled);
@@ -14133,7 +14598,7 @@
     }
 
     function updateFontStyleControls(fontName, fontStyleVal, fontWeightVal) {
-      var disabled = getSelectionIds().length === 0 || !fontName;
+      var disabled = getTargetIds().length === 0 || !fontName;
       fontStyleSelect.empty();
       El('option').attr('value', '').appendTo(fontStyleSelect).text('');
       if (fontName) {
@@ -14147,28 +14612,28 @@
     }
 
     function updateColorControls(colorVal) {
-      var disabled = getSelectionIds().length === 0;
+      var disabled = getTargetIds().length === 0;
       colorInput.node().disabled = disabled;
       colorInput.node().value = colorVal || '';
-      setPanelButtonDisabled(colorChit, disabled || !isHexColor(colorVal));
+      setPanelButtonDisabled(colorChit, disabled);
       colorChit.css('background-color', isHexColor(colorVal) ? colorVal : 'transparent');
       if (colorPicker.visible()) {
         return; // avoid HSB -> RGB -> HSB rounding jumps after picker commits
       }
       if (isHexColor(colorVal)) {
-        setPickerColor(hexToHsb(colorVal));
+        colorPicker.setColor(colorVal);
       } else {
         hideColorPicker();
       }
     }
 
     function updateCssControl(cssVal) {
-      cssInput.node().disabled = getSelectionIds().length === 0;
+      cssInput.node().disabled = getTargetIds().length === 0;
       cssInput.node().value = cssVal || '';
     }
 
     function updateIconButtons(iconVal) {
-      var disabled = getSelectionIds().length === 0;
+      var disabled = getTargetIds().length === 0;
       iconTypes.forEach(function(icon) {
         iconBtns[icon.name].classed('selected', !disabled && icon.name == iconVal);
         setPanelButtonDisabled(iconBtns[icon.name], disabled);
@@ -14176,7 +14641,7 @@
     }
 
     function updateIconSizeControls(iconSizeVal) {
-      var disabled = getSelectionIds().length === 0;
+      var disabled = getTargetIds().length === 0;
       iconSizeText.text(iconSizeVal || '');
       panel.findChildren('.label-icon-size-row .label-panel-btn').forEach(function(btn) {
         setPanelButtonDisabled(btn, disabled);
@@ -14184,11 +14649,7 @@
     }
 
     function updateSavedStyleControls() {
-      var disabled = getSelectionIds().length === 0;
-      var buttons = panel.findChildren('.label-saved-style-row button');
-      buttons.forEach(function(btn, i) {
-        btn.node().disabled = i === 0 ? disabled : disabled || !styleSelect.node().value;
-      });
+      presetControl.update();
     }
 
     function getCommonValue(ids, field, opts) {
@@ -14217,127 +14678,33 @@
     }
 
     function applyFont(fontName) {
-      applyStyleFields([fontField], function(rec) {
-        rec[fontField] = fontName;
-      });
+      applyStyleValues([[fontField, fontName]]);
     }
 
     function nudgeFontSize(delta) {
-      var ids = getSelectionIds();
+      var ids = getTargetIds();
       var size = getNumericSize(ids, fontSizeField, defaultFontSize);
       if (ids.length === 0) return;
       size = Math.max(1, size + delta);
-      applyStyleFields([fontSizeField], function(rec) {
-        rec[fontSizeField] = size;
-      });
+      applyStyleValues([[fontSizeField, size]]);
     }
 
     function applyFontStyleVariant(value) {
       var variant = parseFontStyleVariant(value);
       if (!variant) return;
-      applyStyleFields([fontStyleField, fontWeightField], function(rec) {
-        rec[fontStyleField] = variant.style;
-        rec[fontWeightField] = variant.weight;
-      });
+      applyStyleValues([[fontStyleField, variant.style], [fontWeightField, variant.weight]]);
     }
 
     function applyLabelColor(color) {
-      applyStyleFields([fillField], function(rec) {
-        rec[fillField] = color;
-      });
+      applyStyleValues([[fillField, color]]);
     }
 
     function applyInlineCss(css) {
-      applyStyleFields([cssField], function(rec) {
-        rec[cssField] = css || undefined;
-      });
+      applyStyleValues([[cssField, css || '']]);
     }
 
-    function saveCurrentStyle() {
-      openSaveStylePopup();
-    }
-
-    function openSaveStylePopup() {
-      var popup = showPopupAlert('', 'Save label style');
-      var el = popup.container();
-      el.addClass('option-menu');
-      el.html(`<div><input type="text" class="style-name text-input" placeholder="style name"></div>
-      <div tabindex="0" class="btn dialog-btn">Save</div>`);
-      var input = el.findChild('.style-name');
-      var btn = el.findChild('.btn');
-      input.node().focus();
-      btn.on('click', function() {
-        var name = input.node().value.trim();
-        if (!name) return;
-        saveStyleWithName(name);
-        popup.close();
-      });
-      input.on('keydown', function(e) {
-        if (e.key == 'Enter') {
-          btn.node().click();
-        }
-      });
-    }
-
-    function saveStyleWithName(name) {
-      var styles = getSavedStyles().filter(function(item) {
-        return item.name != name;
-      });
-      var i;
-      styles.push({
-        name: name,
-        style: getCurrentStyle()
-      });
-      styles.sort(function(a, b) {
-        return a.name.toLowerCase() < b.name.toLowerCase() ? -1 :
-          a.name.toLowerCase() > b.name.toLowerCase() ? 1 : 0;
-      });
-      GUI.setSavedValue(savedStylesKey, styles);
-      renderSavedStyles();
-      for (i=0; i<styleSelect.node().options.length; i++) {
-        if (styleSelect.node().options[i].value == name) {
-          styleSelect.node().selectedIndex = i;
-          break;
-        }
-      }
-    }
-
-    async function deleteSelectedStyle() {
-      var name = styleSelect.node().value;
-      var styles;
-      if (!name) return;
-      if (!await showPrompt('Delete label style "' + name + '"?', 'Delete preset')) return;
-      styles = getSavedStyles().filter(function(item) {
-        return item.name != name;
-      });
-      GUI.setSavedValue(savedStylesKey, styles);
-      renderSavedStyles();
-      updateSavedStyleControls();
-    }
-
-    function applySavedStyle(name) {
-      var item = getSavedStyles().find(function(item) {
-        return item.name == name;
-      });
-      if (!item) return;
-      applyStyleObject(item.style);
-    }
-
-    function getSavedStyles() {
-      var styles = GUI.getSavedValue(savedStylesKey);
-      return Array.isArray(styles) ? styles : [];
-    }
-
-    function renderSavedStyles() {
-      var value = styleSelect && styleSelect.node().value;
-      if (!styleSelect) return;
-      styleSelect.empty();
-      El('option').attr('value', '').appendTo(styleSelect).text('Apply preset...');
-      getSavedStyles().forEach(function(item) {
-        El('option').attr('value', item.name).appendTo(styleSelect).text(item.name);
-      });
-      styleSelect.node().value = value || '';
-      updateSavedStyleControls();
+    function getStyleId(item) {
+      return item.id || 'label-' + item.name;
     }
 
     function getCurrentStyle() {
@@ -14388,26 +14755,13 @@
     }
 
     function applyStyleObject(style) {
-      var fields = Object.keys(style || {}).reduce(function(memo, field) {
-        if (field == 'label-pos') {
-          labelPositionFields.forEach(function(field) {
-            if (memo.indexOf(field) == -1) memo.push(field);
-          });
-        } else if (field != 'dx' && field != 'dy') {
-          memo.push(field);
-        }
-        return memo;
-      }, []);
-      applyStyleFields(fields, function(rec) {
-        savedStyleFields.forEach(function(field) {
-          if (field in style && field != 'label-pos') {
-            rec[field] = style[field];
-          }
-        });
-        if (style['label-pos']) {
-          internal.setLabelPositionStyle(rec, style['label-pos']);
+      var styles = [];
+      savedStyleFields.forEach(function(field) {
+        if (field in style) {
+          styles.push([field, style[field]]);
         }
       });
+      applyStyleValues(styles, {preservePreset: true});
     }
 
     function parseFontStyleVariant(value) {
@@ -14420,36 +14774,25 @@
     }
 
     function applyLabelPosition(pos) {
-      applyStyleFields(labelPositionFields, function(rec) {
-        internal.setLabelPositionStyle(rec, pos);
-      });
+      applyStyleValues([['label-pos', pos]]);
     }
 
     function applyIcon(iconName) {
-      applyStyleFields([iconField, iconSizeField], function(rec) {
-        if (iconName) {
-          rec[iconField] = iconName;
-          if (!(rec[iconSizeField] > 0)) {
-            rec[iconSizeField] = defaultIconSize;
-          }
-        } else {
-          rec[iconField] = undefined;
-          rec[iconSizeField] = undefined;
-        }
-      });
+      var styles = [[iconField, iconName || '']];
+      if (iconName) {
+        styles.push([iconSizeField, getNumericSize(getTargetIds(), iconSizeField, defaultIconSize)]);
+      } else {
+        styles.push([iconSizeField, 0]);
+      }
+      applyStyleValues(styles);
     }
 
     function nudgeIconSize(delta) {
-      var ids = getSelectionIds();
+      var ids = getTargetIds();
       var size = getNumericSize(ids, iconSizeField, defaultIconSize);
       if (ids.length === 0) return;
       size = Math.max(1, size + delta);
-      applyStyleFields([iconField, iconSizeField], function(rec) {
-        if (!rec[iconField]) {
-          rec[iconField] = 'circle';
-        }
-        rec[iconSizeField] = size;
-      });
+      applyStyleValues([[iconField, getCommonValue(ids, iconField) || 'circle'], [iconSizeField, size]]);
     }
 
     function getNumericSize(ids, field, defaultValue) {
@@ -14458,312 +14801,45 @@
       return isFinite(val) && val > 0 ? val : defaultValue;
     }
 
-    function isHexColor(str) {
-      return /^#[0-9a-f]{6}$/i.test(str);
-    }
-
     function initColorPicker(colorRow) {
-      colorPicker = El('div').addClass('label-color-picker').appendTo(colorRow).hide();
-      var sbWrap = El('div').addClass('label-color-canvas-wrap').appendTo(colorPicker);
-      sbCanvas = El('canvas').attr('width', '256').attr('height', '256').appendTo(sbWrap);
-      sbMarker = makePickerMarker().appendTo(sbWrap);
-      var hueWrap = El('div').addClass('label-color-canvas-wrap').appendTo(colorPicker);
-      hueCanvas = El('canvas').attr('width', '256').attr('height', '18').appendTo(hueWrap);
-      hueMarker = makePickerMarker().appendTo(hueWrap);
-      pickerHsbInputs = {};
-      var hsbRow = El('div').addClass('label-color-picker-fields').appendTo(colorPicker);
-      addPickerNumberInput(hsbRow, 'h', 'H');
-      addPickerNumberInput(hsbRow, 's', 'S');
-      addPickerNumberInput(hsbRow, 'b', 'B');
-      El('button').appendTo(hsbRow).text('Close').on('click', closePickerColor);
-      sbCanvas.on('mousedown', function(e) {
-        startCanvasDrag(e, updateSbFromEvent);
+      colorPicker = new ColorPicker(colorRow, {
+        onPreview: function(hex) {
+          colorInput.node().value = hex;
+          colorChit.css('background-color', hex);
+        },
+        onChange: applyLabelColor
       });
-      hueCanvas.on('mousedown', function(e) {
-        startCanvasDrag(e, updateHueFromEvent);
-      });
-      setPickerColor(pickerColor);
-    }
-
-    function addPickerNumberInput(row, name, label) {
-      var wrapper = El('label').appendTo(row);
-      El('span').appendTo(wrapper).text(label);
-      pickerHsbInputs[name] = El('input')
-        .attr('type', 'text')
-        .appendTo(wrapper)
-        .on('change', function() {
-          var h = parseNumberField(pickerHsbInputs.h.node().value);
-          var s = parseNumberField(pickerHsbInputs.s.node().value);
-          var b = parseNumberField(pickerHsbInputs.b.node().value);
-          if (!isFinite(h) || !isFinite(s) || !isFinite(b)) return;
-          setPickerColor({
-            h: degreesToByte(h),
-            s: pctToByte(s),
-            b: pctToByte(b)
-          });
-          commitPickerColor();
-        });
     }
 
     function toggleColorPicker() {
-      if (colorPicker.visible()) {
-        hideColorPicker();
-      } else {
-        colorPicker.show();
-        drawColorPicker();
-      }
+      colorPicker.toggle();
     }
 
     function hideColorPicker() {
       colorPicker.hide();
     }
 
-    function startCanvasDrag(e, update) {
-      var evt = e.originalEvent || e;
-      colorPicker.addClass('dragging-color');
-      El('body').addClass('dragging-color-picker');
-      update(evt);
-      document.addEventListener('mousemove', onmove);
-      document.addEventListener('mouseup', onup);
-      evt.preventDefault();
-      function onmove(evt) {
-        update(evt);
-      }
-      function onup() {
-        document.removeEventListener('mousemove', onmove);
-        document.removeEventListener('mouseup', onup);
-        colorPicker.removeClass('dragging-color');
-        El('body').removeClass('dragging-color-picker');
-        commitPickerColor();
-      }
-    }
-
-    function updateSbFromEvent(evt) {
-      var p = getCanvasPoint(sbCanvas.node(), evt);
-      setPickerColor({
-        h: pickerColor.h,
-        s: p.x,
-        b: 255 - p.y
-      });
-    }
-
-    function updateHueFromEvent(evt) {
-      var p = getCanvasPoint(hueCanvas.node(), evt);
-      setPickerColor({
-        h: p.x,
-        s: pickerColor.s,
-        b: pickerColor.b
-      });
-    }
-
-    function getCanvasPoint(canvas, evt) {
-      var rect = canvas.getBoundingClientRect();
-      return {
-        x: clamp(Math.round((evt.clientX - rect.left) / rect.width * (canvas.width - 1)), 0, canvas.width - 1),
-        y: clamp(Math.round((evt.clientY - rect.top) / rect.height * (canvas.height - 1)), 0, canvas.height - 1)
-      };
-    }
-
-    function setPickerColor(hsb) {
-      pickerColor = {
-        h: clamp(Math.round(hsb.h), 0, 255),
-        s: clamp(Math.round(hsb.s), 0, 255),
-        b: clamp(Math.round(hsb.b), 0, 255)
-      };
-      drawColorPicker();
-      updatePickerFields();
-    }
-
-    function updatePickerFields() {
-      var hex = hsbToHex(pickerColor);
-      pickerHsbInputs.h.node().value = byteToDegrees(pickerColor.h) + '°';
-      pickerHsbInputs.s.node().value = byteToPct(pickerColor.s) + '%';
-      pickerHsbInputs.b.node().value = byteToPct(pickerColor.b) + '%';
-      colorInput.node().value = hex;
-      colorChit.css('background-color', hex);
-    }
-
-    function drawColorPicker() {
-      if (!sbCanvas) return;
-      drawSaturationBrightnessCanvas();
-      drawHueCanvas();
-    }
-
-    function drawSaturationBrightnessCanvas() {
-      var ctx = sbCanvas.node().getContext('2d');
-      var image = ctx.createImageData(256, 256);
-      var data = image.data;
-      var i = 0;
-      for (var y=0; y<256; y++) {
-        for (var x=0; x<256; x++) {
-          var rgb = hsbToRgb({
-            h: pickerColor.h,
-            s: x,
-            b: 255 - y
-          });
-          data[i++] = rgb.r;
-          data[i++] = rgb.g;
-          data[i++] = rgb.b;
-          data[i++] = 255;
-        }
-      }
-      ctx.putImageData(image, 0, 0);
-      positionMarker(sbMarker, pickerColor.s, 255 - pickerColor.b, pickerColor);
-    }
-
-    function drawHueCanvas() {
-      var ctx = hueCanvas.node().getContext('2d');
-      var image = ctx.createImageData(256, 18);
-      var data = image.data;
-      var i = 0;
-      for (var y=0; y<18; y++) {
-        for (var x=0; x<256; x++) {
-          var rgb = hsbToRgb({h: x, s: 255, b: 255});
-          data[i++] = rgb.r;
-          data[i++] = rgb.g;
-          data[i++] = rgb.b;
-          data[i++] = 255;
-        }
-      }
-      ctx.putImageData(image, 0, 0);
-      positionMarker(hueMarker, pickerColor.h, 9, {h: pickerColor.h, s: 255, b: 255});
-    }
-
-    function commitPickerColor() {
-      applyLabelColor(hsbToHex(pickerColor));
-    }
-
-    function closePickerColor() {
-      hideColorPicker();
-    }
-
-    function getMarkerColor(rgb) {
-      var luminance = rgb.r * 0.2126 + rgb.g * 0.7152 + rgb.b * 0.0722;
-      return luminance < 128 ? '#fff' : '#000';
-    }
-
-    function makePickerMarker() {
-      return El('<svg class="label-color-marker" width="16" height="16" viewBox="0 0 16 16"><circle cx="8" cy="8" r="6"></circle></svg>');
-    }
-
-    function positionMarker(marker, x, y, hsb) {
-      var rgb = hsbToRgb(hsb);
-      x = utils$1.clamp(x, 1, 254);
-      y = utils$1.clamp(y, 1, 254) + 0.5;
-      marker.css({
-        left: x - 8,
-        top: y - 8
-      });
-      marker.findChild('circle').attr('stroke', getMarkerColor(rgb));
-    }
-
-    function hexToHsb(hex) {
-      var r = parseInt(hex.substr(1, 2), 16);
-      var g = parseInt(hex.substr(3, 2), 16);
-      var b = parseInt(hex.substr(5, 2), 16);
-      var max = Math.max(r, g, b);
-      var min = Math.min(r, g, b);
-      var d = max - min;
-      var h = 0;
-      if (d) {
-        if (max == r) h = ((g - b) / d) % 6;
-        else if (max == g) h = (b - r) / d + 2;
-        else h = (r - g) / d + 4;
-        h *= 60;
-        if (h < 0) h += 360;
-      }
-      return {
-        h: Math.round(h / 360 * 255),
-        s: Math.round(max === 0 ? 0 : d / max * 255),
-        b: max
-      };
-    }
-
-    function hsbToHex(hsb) {
-      var rgb = hsbToRgb(hsb);
-      return '#' + [rgb.r, rgb.g, rgb.b].map(function(val) {
-        return val.toString(16).padStart(2, '0');
-      }).join('');
-    }
-
-    function hsbToRgb(hsb) {
-      var h = hsb.h / 255 * 360;
-      var s = hsb.s / 255;
-      var v = hsb.b / 255;
-      var c = v * s;
-      var x = c * (1 - Math.abs((h / 60) % 2 - 1));
-      var m = v - c;
-      var rgb = h < 60 ? [c, x, 0] :
-        h < 120 ? [x, c, 0] :
-        h < 180 ? [0, c, x] :
-        h < 240 ? [0, x, c] :
-        h < 300 ? [x, 0, c] : [c, 0, x];
-      return {
-        r: Math.round((rgb[0] + m) * 255),
-        g: Math.round((rgb[1] + m) * 255),
-        b: Math.round((rgb[2] + m) * 255)
-      };
-    }
-
-    function byteToPct(val) {
-      return Math.round(val / 255 * 100);
-    }
-
-    function pctToByte(val) {
-      return Math.round(clamp(val, 0, 100) / 100 * 255);
-    }
-
-    function byteToDegrees(val) {
-      return Math.round(val / 255 * 360);
-    }
-
-    function degreesToByte(val) {
-      return Math.round(clamp(val, 0, 360) / 360 * 255);
-    }
-
-    function parseNumberField(str) {
-      return Number(String(str).replace(/[°%]/g, '').trim());
-    }
-
-    function clamp(val, min, max) {
-      return isFinite(val) ? Math.max(min, Math.min(max, val)) : min;
-    }
-
-    function applyStyleFields(fields, updateRecord) {
-      var table = getActiveTable();
-      var ids = getSelectionIds();
+    function applyStyleValues(styles, opts) {
       var lyr = getActiveLayer();
-      var hasNewFields;
-      if (!table || ids.length === 0) return;
-      hasNewFields = fields.some(function(field) {
-        return !table.fieldExists(field);
+      var ids = getTargetIds();
+      var parts = ['-style'];
+      if (!gui.console || !lyr || ids.length === 0 || styles.length === 0) return;
+      if (!opts || !opts.preservePreset) {
+        presetControl.clearSelection();
+      }
+      styles.forEach(function(style) {
+        parts.push(style[0] + '=' + quoteCommandValue(style[1]));
       });
-      gui.dispatchEvent('data_preupdate', {ids: ids});
-      if (hasNewFields) {
-        table.captureSchemaBefore({operation: 'label-style', fields: fields});
-      } else {
-        table.captureFieldsBefore(fields, {operation: 'label-style'});
+      if (ids.length < internal.getFeatureCount(lyr)) {
+        parts.push('ids=' + ids.join(','));
       }
-      updateRecords(ids, table, updateRecord);
-      if (hasNewFields) {
-        table.markSchemaChanged({operation: 'label-style'});
-      } else {
-        table.markFieldsChanged(fields, {operation: 'label-style'});
-      }
-      gui.dispatchEvent('data_postupdate', {ids: ids});
-      gui.model.updated({style: true, same_table: true});
-      updatePendingStyleHistory(lyr, ids, fields);
-      setTimeout(updateSelectionDisplay, 0);
-      updateControls();
-      updateSelectionDisplay();
-    }
-
-    function updateRecords(ids, table, updateRecord) {
-      var records = table.getRecords();
-      ids.forEach(function(id) {
-        var rec = records[id] || {};
-        updateRecord(rec);
-        records[id] = rec;
+      runGuiEditCommand(gui, parts.join(' '), {
+        title: 'Label styles',
+        onDone: function() {
+          setTimeout(updateSelectionDisplay, 0);
+          updateControls();
+          updateSelectionDisplay();
+        }
       });
     }
 
@@ -14794,6 +14870,1154 @@
       return symbol.tagName == 'text' ? symbol : symbol.querySelector('text');
     }
 
+  }
+
+  var savedStylesKey = 'layer_style_presets';
+  var styleFields = ['stroke', 'stroke-width', 'stroke-opacity', 'fill', 'fill-opacity'];
+
+  function LayerStyleTool(gui) {
+    var parent = gui.container.findChild('.mshp-main-map');
+    var panel = El('div').addClass('label-style-panel layer-style-panel rollover').appendTo(parent).hide();
+    var title, editingStatus, clearLink, strokeControl, fillControl, strokeWidthText, strokeWidthClickText, strokeOpacityInput, fillOpacityInput, randomFillBtn, presetControl, hit;
+    var targetLayer = null;
+
+    initPanel();
+    hit = gui.map.getHitControl && gui.map.getHitControl();
+    if (hit) {
+      hit.on('change', function(e) {
+        if (targetLayer && (e.mode == 'line_style' || e.mode == 'polygon_style')) {
+          updateControls();
+        }
+      });
+    }
+
+    this.open = function(lyr, dataset) {
+      if (!layerCanBeStyled(lyr)) return;
+      if (!gui.map.isActiveLayer(lyr)) {
+        modelSelectLayer(lyr, dataset);
+      }
+      gui.interaction.setMode(lyr.geometry_type == 'polygon' ? 'polygon_style' : 'line_style');
+    };
+
+    gui.on('interaction_mode_change', function(e) {
+      if (modeMatchesActiveLayer(e.mode)) {
+        turnOn();
+      } else {
+        turnOff();
+      }
+    });
+
+    gui.model.on('update', function() {
+      if (panel.visible() && !modeMatchesActiveLayer(gui.interaction.getMode())) {
+        gui.interaction.turnOff();
+      } else if (panel.visible()) {
+        updateControls();
+      }
+    });
+
+    gui.on('undo_redo_post', function() {
+      if (panel.visible()) {
+        updateControls();
+      }
+    });
+
+    function turnOn() {
+      targetLayer = getActiveLayer();
+      applyDefaultLineStyle();
+      panel.show();
+      updateControls();
+    }
+
+    function turnOff() {
+      panel.hide();
+      strokeControl.picker.hide();
+      fillControl.picker.hide();
+      targetLayer = null;
+    }
+
+    function initPanel() {
+      var header = El('div').addClass('label-style-panel-title').appendTo(panel);
+      title = El('span').appendTo(header);
+      El('button').addClass('label-style-close').appendTo(header).text('×').on('click', closePanel);
+
+      var editRow = El('div').addClass('label-style-row label-style-selection-row layer-style-selection-row').appendTo(panel);
+      editingStatus = El('span').addClass('label-editing-status').appendTo(editRow);
+      clearLink = El('span').addClass('label-editing-clear colored-text').appendTo(editRow).text('deselect').on('click', clearSelection);
+
+      fillControl = addColorControl(panel, 'Fill', 'fill', '');
+      fillOpacityInput = addStyleNumberControl(fillControl, 'Opacity', 'fill-opacity', {
+        defaultValue: 1,
+        parser: parseOpacityValue,
+        formatter: formatOpacityPct
+      });
+      strokeControl = addColorControl(panel, 'Stroke', 'stroke', '#000000');
+      strokeOpacityInput = addStyleNumberControl(strokeControl, 'Opacity', 'stroke-opacity', {
+        defaultValue: 1,
+        parser: parseOpacityValue,
+        formatter: formatOpacityPct
+      });
+      strokeWidthText = addStrokeWidthControl(panel);
+
+      var buttonRow = El('div').addClass('label-style-row').appendTo(panel);
+      randomFillBtn = El('button').appendTo(buttonRow).text('Random fills').on('click', applyRandomFillColors);
+      El('button').appendTo(buttonRow).text('Clear style').on('click', clearLayerStyle);
+
+      presetControl = new StylePresetControl(panel, {
+        storageKey: savedStylesKey,
+        type: getStyleType,
+        saveTitle: 'Save layer style',
+        styleLabel: 'layer style',
+        getStyle: getCurrentStyle,
+        applyStyle: applyStyleObject,
+        filter: function(item, type) {
+          return item.type == type;
+        },
+        sort: function(a, b) {
+          return getSortKey(a) < getSortKey(b) ? -1 :
+            getSortKey(a) > getSortKey(b) ? 1 : 0;
+        }
+      });
+    }
+
+    function addColorControl(parent, label, field, defaultColor) {
+      var row = El('div').addClass('label-style-row label-color-row layer-color-row').appendTo(parent);
+      var control = {
+        field: field,
+        defaultColor: defaultColor,
+        row: row,
+        chit: null,
+        input: null,
+        controls: null,
+        picker: null
+      };
+      var controlLine = El('div').addClass('layer-style-control-line').appendTo(row);
+      var colorCell = El('div').addClass('layer-color-cell').appendTo(controlLine);
+      control.controls = El('div').addClass('layer-row-controls').appendTo(controlLine);
+      El('span').appendTo(colorCell).text(label);
+      control.chit = makePanelButton(colorCell, '', function() {
+        control.picker.toggle();
+      }).addClass('label-color-chit');
+      control.input = El('input').attr('type', 'text').appendTo(colorCell).on('change', function() {
+        var color = control.input.node().value.trim();
+        if (!color) return;
+        if (isHexColor(color)) {
+          control.picker.setColor(color);
+        }
+        applyColorControlStyle(control, color);
+      });
+      control.picker = new ColorPicker(row, {
+        presetRows: layerColorPresetRows,
+        onPreview: function(hex) {
+          setColorControlValue(control, hex);
+        },
+        onChange: function(hex) {
+          applyColorControlStyle(control, hex);
+        }
+      });
+      return control;
+    }
+
+    function addStrokeWidthControl(parent) {
+      var row = El('div').addClass('label-style-row layer-stroke-width-row').appendTo(parent);
+      var control = El('div').addClass('layer-number-control layer-stroke-width-control').appendTo(row);
+      var buttonRow;
+      El('span').appendTo(control).text('Stroke width');
+      buttonRow = El('div').addClass('layer-stepper-control').appendTo(control);
+      makePanelButton(buttonRow, '−', function() {
+        nudgeStrokeWidth(-1);
+      });
+      var text = El('span').addClass('layer-stroke-width-value').appendTo(buttonRow);
+      strokeWidthClickText = new ClickText2(text);
+      strokeWidthClickText.on('change', function() {
+        var value = parsePositiveNumber(strokeWidthClickText.value());
+        if (value === null) {
+          updateStrokeWidthControl();
+          return;
+        }
+        applyStrokeWidthStyle(value);
+      });
+      makePanelButton(buttonRow, '+', function() {
+        nudgeStrokeWidth(1);
+      });
+      return text;
+    }
+
+    function addStyleNumberControl(colorControl, label, field, opts) {
+      var control = El('label').addClass('layer-number-control').appendTo(colorControl.controls);
+      El('span').appendTo(control).text(label);
+      return El('input')
+        .attr('type', 'text')
+        .appendTo(control)
+        .on('change', function() {
+          var value = opts.parser(this.value);
+          if (value === null) return;
+          applyLayerStyle(field, value);
+        });
+    }
+
+    function makePanelButton(parent, label, action) {
+      return El('div')
+        .addClass('label-panel-btn')
+        .attr('role', 'button')
+        .attr('tabindex', '0')
+        .appendTo(parent)
+        .text(label)
+        .on('click', function(e) {
+          action(e);
+        })
+        .on('keydown', function(e) {
+          if (e.key == 'Enter' || e.key == ' ') {
+            e.preventDefault();
+            action(e);
+          }
+        });
+    }
+
+    function updateControls() {
+      var geom = targetLayer && targetLayer.geometry_type;
+      var manualIds = getSelectionIds();
+      if (!targetLayer) return;
+      title.text(geom == 'polygon' ? 'Polygon styles' : 'Line styles');
+      updateEditingStatus(manualIds.length);
+      strokeControl.row.show();
+      fillControl.row.classed('hidden', geom != 'polygon');
+      updateColorControl(strokeControl);
+      updateColorControl(fillControl);
+      updateStrokeWidthControl();
+      updateNumberControl(strokeOpacityInput, 'stroke-opacity', 1, formatOpacityPct);
+      updateNumberControl(fillOpacityInput, 'fill-opacity', 1, formatOpacityPct);
+      randomFillBtn.classed('hidden', geom != 'polygon');
+      presetControl.render();
+      updateSavedStyleControls();
+    }
+
+    function updateColorControl(control) {
+      var value = getCommonStyleValue(control.field);
+      setColorControlValue(control, value);
+      if (isHexColor(value)) {
+        control.picker.setColor(value);
+      } else {
+        control.picker.hide();
+      }
+    }
+
+    function setColorControlValue(control, value) {
+      control.input.node().value = value || '';
+      control.chit.css('background-color', isHexColor(value) ? value : 'transparent');
+    }
+
+    function updateNumberControl(input, field, defaultValue, formatter) {
+      var value = getCommonStyleValue(field);
+      input.node().value = formatter(value === '' || value === undefined || value === null ? defaultValue : value);
+    }
+
+    function updateStrokeWidthControl() {
+      var value = getCommonStyleValue('stroke-width');
+      strokeWidthClickText.value(formatNumberValue(value === '' || value === undefined || value === null ? getDefaultStrokeWidth() : value));
+    }
+
+    function nudgeStrokeWidth(direction) {
+      var value = Number(getCommonStyleValue('stroke-width'));
+      if (!isFinite(value)) value = getDefaultStrokeWidth();
+      applyStrokeWidthStyle(getNextStrokeWidth(value, direction));
+    }
+
+    function getNextStrokeWidth(value, direction) {
+      var baseSteps = [0, 0.25, 0.5, 0.75, 1, 1.25, 1.5, 2, 3, 4];
+      var i;
+      if (direction > 0) {
+        for (i=0; i<baseSteps.length; i++) {
+          if (value < baseSteps[i]) return baseSteps[i];
+        }
+        return Math.floor(value) + 1;
+      }
+      for (i=baseSteps.length - 1; i>=0; i--) {
+        if (value > baseSteps[i]) return baseSteps[i];
+      }
+      return baseSteps[0];
+    }
+
+    function applyLayerStyle(field, value) {
+      runStyleCommand([[field, value]]);
+    }
+
+    function applyColorControlStyle(control, color) {
+      var styles = [[control.field, color]];
+      if (control.field == 'stroke' && strokeWidthIsUnsetForTargets()) {
+        styles.push(['stroke-width', 1]);
+      }
+      runStyleCommand(styles);
+    }
+
+    function applyStrokeWidthStyle(value) {
+      var styles = [['stroke-width', value]];
+      if (value > 0 && styleFieldIsUnsetForTargets('stroke')) {
+        styles.push(['stroke', strokeControl.defaultColor]);
+      }
+      runStyleCommand(styles);
+    }
+
+    function runStyleCommand(styles, opts) {
+      var parts = ['-style'];
+      var ids = getTargetIds();
+      if (!gui.console || !targetLayer || ids.length === 0) return;
+      if (!opts || !opts.preservePreset) {
+        presetControl.clearSelection();
+      }
+      styles.forEach(function(style) {
+        parts.push(style[0] + '=' + quoteCommandValue(style[1]));
+      });
+      addTargetOption(parts);
+      if (ids.length < internal.getFeatureCount(targetLayer)) {
+        parts.push('ids=' + ids.join(','));
+      }
+      runCommand(parts.join(' '), 'Style layer');
+    }
+
+    function applyDefaultLineStyle() {
+      var styles = [];
+      if (!targetLayer || targetLayer.geometry_type != 'polyline') return;
+      if (styleFieldIsUnsetForTargets('stroke-width')) {
+        styles.push(['stroke-width', 1]);
+      }
+      if (styles.length > 0) {
+        runStyleCommand(styles);
+      }
+    }
+
+    function applyRandomFillColors() {
+      var cmd = '-classify colors=random non-adjacent';
+      if (!gui.console || !targetLayer || targetLayer.geometry_type != 'polygon') return;
+      if (getActiveLayer() != targetLayer) {
+        cmd += ' target=' + internal.formatOptionValue(internal.getLayerTargetId(gui.model, targetLayer));
+      }
+      presetControl.clearSelection();
+      runCommand(cmd, 'Random fill colors');
+    }
+
+    function runCommand(cmd, title) {
+      runGuiEditCommand(gui, cmd, {
+        title: title,
+        onDone: updateControls
+      });
+    }
+
+    function applyStyleObject(style) {
+      var styles = [];
+      styleFields.forEach(function(field) {
+        if (field in style) {
+          styles.push([field, style[field]]);
+        }
+      });
+      if (styles.length > 0) {
+        runStyleCommand(styles, {preservePreset: true});
+      }
+    }
+
+    function getCurrentStyle() {
+      var style = {};
+      addStyleValue(style, 'stroke', getControlValue(strokeControl.input));
+      addStyleValue(style, 'stroke-width', parsePositiveNumber(strokeWidthClickText.value()));
+      addStyleValue(style, 'stroke-opacity', parseOpacityValue(strokeOpacityInput.node().value));
+      if (targetLayer && targetLayer.geometry_type == 'polygon') {
+        addStyleValue(style, 'fill', getControlValue(fillControl.input));
+        addStyleValue(style, 'fill-opacity', parseOpacityValue(fillOpacityInput.node().value));
+      }
+      return style;
+    }
+
+    function addStyleValue(style, field, value) {
+      if (value || value === 0) {
+        style[field] = value;
+      }
+    }
+
+    function getControlValue(input) {
+      return input.node().value.trim();
+    }
+
+    function updateSavedStyleControls() {
+      presetControl.update();
+    }
+
+    function getStyleType() {
+      return targetLayer && targetLayer.geometry_type == 'polygon' ? 'polygon' : 'line';
+    }
+
+    function getSortKey(item) {
+      return (item.type || '') + '\t' + String(item.name || '').toLowerCase() + '\t' + (item.id || '');
+    }
+
+    function clearLayerStyle() {
+      var parts = ['-style clear'];
+      if (!gui.console || !targetLayer) return;
+      presetControl.clearSelection();
+      addTargetOption(parts);
+      runCommand(parts.join(' '), 'Clear style');
+    }
+
+    function addTargetOption(parts) {
+      if (getActiveLayer() != targetLayer) {
+        parts.push('target=' + internal.formatOptionValue(internal.getLayerTargetId(gui.model, targetLayer)));
+      }
+    }
+
+    function getCommonStyleValue(field, idsArg) {
+      var records = targetLayer && targetLayer.data && targetLayer.data.getRecords();
+      var ids;
+      var value, val;
+      if (!records) return '';
+      ids = idsArg || getTargetIds();
+      if (ids.length === 0) return '';
+      for (var i=0; i<ids.length; i++) {
+        val = records[ids[i]] && records[ids[i]][field];
+        if (i === 0) {
+          value = val;
+        } else if (val != value) {
+          return '';
+        }
+      }
+      return value;
+    }
+
+    function strokeWidthIsUnsetForTargets() {
+      return styleFieldIsUnsetForTargets('stroke-width');
+    }
+
+    function styleFieldIsUnsetForTargets(field) {
+      var records = targetLayer && targetLayer.data && targetLayer.data.getRecords();
+      var ids = getTargetIds();
+      var val;
+      if (!records) return true;
+      for (var i=0; i<ids.length; i++) {
+        val = records[ids[i]] && records[ids[i]][field];
+        if (val !== undefined && val !== null && val !== '') {
+          return false;
+        }
+      }
+      return ids.length > 0;
+    }
+
+    function getDefaultStrokeWidth() {
+      return targetLayer && targetLayer.geometry_type == 'polyline' ? 1 : 0;
+    }
+
+    function getAllFeatureIds(lyr) {
+      var ids = [];
+      for (var i=0, n=internal.getFeatureCount(lyr); i<n; i++) {
+        ids.push(i);
+      }
+      return ids;
+    }
+
+    function getSelectionIds() {
+      return hit ? hit.getSelectionIds() : [];
+    }
+
+    function getTargetIds() {
+      var ids = getSelectionIds();
+      if (!targetLayer) return [];
+      return ids.length > 0 ? ids : getAllFeatureIds(targetLayer);
+    }
+
+    function clearSelection() {
+      if (hit) hit.clearSelection();
+      updateControls();
+    }
+
+    function updateEditingStatus(count) {
+      editingStatus.text(count > 0 ? 'Editing: ' + count + ' selected' : 'Editing: all');
+      clearLink.classed('hidden', count === 0);
+    }
+
+    function getActiveLayer() {
+      var active = gui.model.getActiveLayer();
+      return active && active.layer;
+    }
+
+    function closePanel() {
+      turnOff();
+      if (gui.interaction.getMode() == 'line_style' || gui.interaction.getMode() == 'polygon_style') {
+        gui.interaction.turnOff();
+      }
+    }
+
+    function layerCanBeStyled(lyr) {
+      return !!(lyr && (lyr.geometry_type == 'polyline' || lyr.geometry_type == 'polygon'));
+    }
+
+    function modeMatchesActiveLayer(mode) {
+      var lyr = getActiveLayer();
+      return mode == 'line_style' && lyr && lyr.geometry_type == 'polyline' ||
+        mode == 'polygon_style' && lyr && lyr.geometry_type == 'polygon';
+    }
+
+    function modelSelectLayer(lyr, dataset) {
+      if (lyr) lyr.hidden = false;
+      gui.model.selectLayer(lyr, dataset);
+    }
+
+    function parseOpacityValue(str) {
+      var pct = Number(String(str).replace('%', '').trim());
+      if (!isFinite(pct)) return null;
+      return Math.max(0, Math.min(100, pct)) / 100;
+    }
+
+    function parsePositiveNumber(str) {
+      var val = Number(String(str).trim());
+      return isFinite(val) && val >= 0 ? val : null;
+    }
+
+    function formatOpacityPct(val) {
+      val = val === '' || val === undefined || val === null ? 1 : Number(val);
+      return isFinite(val) ? Math.round(Math.max(0, Math.min(1, val)) * 100) + '%' : '';
+    }
+
+    function formatNumberValue(val) {
+      val = Number(val);
+      return isFinite(val) ? String(val) : '';
+    }
+
+    function quoteCommandValue(str) {
+      return "'" + String(str).replace(/'/g, "\\'") + "'";
+    }
+  }
+
+  var defaultCircleRadius = 0;
+  var defaultCreatedCircleRadius = 3;
+  var defaultCircleFill = '#000000';
+
+  function PointStyleTool(gui) {
+    var parent = gui.container.findChild('.mshp-main-map');
+    var panel = El('div').addClass('label-style-panel point-style-panel rollover').appendTo(parent).hide();
+    var title, noteSection, labelsSection, circlesSection, symbolsSection, labelNoteSection;
+    var circleSectionLabel;
+    var symbolNote;
+    var createFieldSelect, createExprInput, createCopyCheckbox, createLabelsBtn;
+    var editingRow, editingStatus, clearLink;
+    var createCirclesRow;
+    var circleControlRows = [];
+    var circleRadiusClickText, circleFillControl, circleStrokeControl;
+    var circleFillOpacityInput, circleStrokeOpacityInput, circleStrokeWidthClickText;
+    var targetLayer = null;
+    var hit = null;
+
+    initPanel();
+
+    this.open = function(lyr, dataset) {
+      if (!layerCanBeStyled(lyr)) return;
+      if (!gui.map.isActiveLayer(lyr)) {
+        modelSelectLayer(lyr, dataset);
+      }
+      gui.interaction.setMode('point_style');
+    };
+
+    gui.on('interaction_mode_change', function(e) {
+      if (modeMatchesActiveLayer(e.mode)) {
+        turnOn();
+      } else {
+        turnOff();
+      }
+    });
+
+    gui.model.on('update', function() {
+      if (panel.visible() && !modeMatchesActiveLayer(gui.interaction.getMode())) {
+        gui.interaction.turnOff();
+      } else if (panel.visible()) {
+        updateControls();
+      }
+    });
+
+    hit = gui.map.getHitControl && gui.map.getHitControl();
+    if (hit) {
+      hit.on('change', function(e) {
+        if (e.mode == 'point_style') {
+          updateControls();
+        }
+      });
+    }
+
+    function initPanel() {
+      var header = El('div').addClass('label-style-panel-title').appendTo(panel);
+      title = El('span').appendTo(header).text('Point symbols');
+      El('button').addClass('label-style-close').appendTo(header).text('×').on('click', closePanel);
+
+      initNoteSections();
+      initCreateLabelsSection();
+      initCreateCirclesSection();
+      initSymbolsSection();
+    }
+
+    function initNoteSections() {
+      noteSection = El('div').addClass('point-style-section point-style-note-section').appendTo(panel);
+      El('div').addClass('point-style-note').appendTo(noteSection).text('This layer contains unstyled points.');
+
+      labelNoteSection = El('div').addClass('point-style-section point-label-note-section').appendTo(panel);
+      El('div').addClass('point-style-note').appendTo(labelNoteSection)
+        .text('This layer is rendered as labels. Use the label style tool to edit label styles.');
+    }
+
+    function initCreateLabelsSection() {
+      labelsSection = El('div').addClass('point-style-section').appendTo(panel);
+      El('div').addClass('label-style-row-label').appendTo(labelsSection).text('Labels');
+
+      var fieldRow = El('label').addClass('label-style-row').appendTo(labelsSection);
+      El('span').appendTo(fieldRow).text('Label field');
+      createFieldSelect = El('select').appendTo(fieldRow).on('change', function() {
+        var field = createFieldSelect.node().value;
+        if (field) {
+          createExprInput.node().value = getFieldExpression(field);
+        }
+        updateCreateLabelsButton();
+      });
+
+      var exprRow = El('label').addClass('label-style-row label-create-expression-row').appendTo(labelsSection);
+      El('span').appendTo(exprRow).text('or expression');
+      createExprInput = El('input')
+        .attr('type', 'text')
+        .appendTo(exprRow)
+        .on('input', updateCreateLabelsButton)
+        .on('change', updateCreateLabelsButton);
+
+      var btnRow = El('div').addClass('label-style-row point-create-labels-row').appendTo(labelsSection);
+      createLabelsBtn = El('button').appendTo(btnRow).text('Create').on('click', createLabels);
+      var copyLabel = El('label').addClass('point-create-copy-label').appendTo(btnRow);
+      createCopyCheckbox = El('input').attr('type', 'checkbox').appendTo(copyLabel);
+      El('span').appendTo(copyLabel).text('as new layer');
+    }
+
+    function initCreateCirclesSection() {
+      circlesSection = El('div').addClass('point-style-section point-circle-section').appendTo(panel);
+      circleSectionLabel = El('div').addClass('label-style-row-label').appendTo(circlesSection).text('Circles');
+      El('div').addClass('point-style-note point-circle-note').appendTo(circlesSection)
+        .text('Use the -style command in the console to create proportional circles.');
+
+      createCirclesRow = El('div').addClass('label-style-row point-create-circles-row').appendTo(circlesSection);
+      El('button').appendTo(createCirclesRow).text('Create').on('click', createSimpleCircles);
+      El('span').appendTo(createCirclesRow).text('simple circles');
+
+      editingRow = El('div').addClass('label-style-row label-style-selection-row point-style-selection-row').appendTo(circlesSection);
+      editingStatus = El('span').addClass('label-editing-status').appendTo(editingRow);
+      clearLink = El('span').addClass('label-editing-clear colored-text').appendTo(editingRow).text('deselect').on('click', clearSelection);
+
+      var fillRow = El('div').addClass('label-style-row point-symbol-row').appendTo(circlesSection);
+      circleFillControl = addCircleColorControl(fillRow, 'Fill');
+      circleFillOpacityInput = addCircleNumberControl(fillRow, 'Opacity', '100%');
+      circleControlRows.push(fillRow);
+
+      var strokeRow = El('div').addClass('label-style-row point-symbol-row').appendTo(circlesSection);
+      circleStrokeControl = addCircleColorControl(strokeRow, 'Stroke');
+      circleStrokeOpacityInput = addCircleNumberControl(strokeRow, 'Opacity', '100%');
+      circleControlRows.push(strokeRow);
+
+      var sizeRow = El('div').addClass('label-style-row point-symbol-size-row').appendTo(circlesSection);
+      addCircleStepperControl(sizeRow, 'Stroke width', function() {
+        return getCircleStrokeWidth();
+      }, function(direction) {
+        setCircleStrokeWidth(getNextStrokeWidth(getCircleStrokeWidth(), direction));
+        applyCircleStyles();
+      }, function(value) {
+        setCircleStrokeWidth(value);
+        applyCircleStyles();
+      }, function(clickText) {
+        circleStrokeWidthClickText = clickText;
+      });
+
+      addCircleStepperControl(sizeRow, 'Radius', function() {
+        return getCircleRadiusForNudge();
+      }, function(direction) {
+        setCircleRadius(getNextCircleRadius(getCircleRadiusForNudge(), direction));
+        applyCircleStyles();
+      }, function(value) {
+        setCircleRadius(value);
+        applyCircleStyles();
+      }, function(clickText, text) {
+        circleRadiusClickText = clickText;
+        text.addClass('label-icon-size-value');
+      });
+      circleControlRows.push(sizeRow);
+    }
+
+    function initSymbolsSection() {
+      symbolsSection = El('div').addClass('point-style-section point-symbol-info-section').appendTo(panel);
+      El('div').addClass('label-style-row-label').appendTo(symbolsSection).text('Symbols');
+      symbolNote = El('div').addClass('point-style-note').appendTo(symbolsSection)
+        .text('Use the -symbols command in the console to create arrows and other symbols.');
+    }
+
+    function addCircleColorControl(row, label) {
+      var colorCell = El('div').addClass('point-symbol-color-cell label-color-row').appendTo(row);
+      var control = {};
+      El('span').appendTo(colorCell).text(label);
+      control.chit = makePanelButton(colorCell, '', function() {
+        control.picker.toggle();
+      }).addClass('label-color-chit');
+      control.input = El('input').attr('type', 'text').appendTo(colorCell).on('change', function() {
+        var color = control.input.node().value.trim();
+        if (isHexColor(color)) {
+          control.picker.setColor(color);
+        }
+        applyCircleStyles();
+      });
+      control.picker = new ColorPicker(colorCell, {
+        presetRows: layerColorPresetRows,
+        onPreview: function(hex) {
+          setCircleColor(control, hex);
+        },
+        onChange: function(hex) {
+          setCircleColor(control, hex);
+          applyCircleStyles();
+        }
+      });
+      setCircleColor(control, '');
+      return control;
+    }
+
+    function addCircleStepperControl(row, label, getValue, nudgeValue, setValue, capture) {
+      var control;
+      var buttonRow;
+      var text;
+      var clickText;
+      control = El('div').addClass('point-symbol-stepper-control').appendTo(row);
+      El('span').appendTo(control).text(label);
+      buttonRow = El('div').addClass('layer-stepper-control').appendTo(control);
+      makePanelButton(buttonRow, '−', function() {
+        nudgeValue(-1);
+      });
+      text = El('span').addClass('layer-stroke-width-value').appendTo(buttonRow);
+      clickText = new ClickText2(text);
+      clickText.on('change', function() {
+        var value = parsePositiveNumber(clickText.value());
+        if (value === null) {
+          clickText.value(formatNumberValue(getValue()));
+          return;
+        }
+        setValue(value);
+      });
+      makePanelButton(buttonRow, '+', function() {
+        nudgeValue(1);
+      });
+      capture(clickText, text);
+    }
+
+    function addCircleNumberControl(row, label, value) {
+      var control = El('label').addClass('layer-number-control').appendTo(row);
+      var input;
+      El('span').appendTo(control).text(label);
+      input = El('input').attr('type', 'text').appendTo(control).on('change', applyCircleStyles);
+      input.node().value = value;
+      return input;
+    }
+
+    function makePanelButton(parent, label, action) {
+      return El('div')
+        .addClass('label-panel-btn')
+        .attr('role', 'button')
+        .attr('tabindex', '0')
+        .appendTo(parent)
+        .text(label)
+        .on('click', function(e) {
+          action(e);
+        })
+        .on('keydown', function(e) {
+          if (e.key == 'Enter' || e.key == ' ') {
+            e.preventDefault();
+            action(e);
+          }
+        });
+    }
+
+    function turnOn() {
+      targetLayer = getActiveLayer();
+      if (getPointRepresentation() == 'label' && gui.labelTool && gui.labelTool.open) {
+        gui.labelTool.open(targetLayer);
+        targetLayer = null;
+        return;
+      }
+      renderCreateFields();
+      updateControls();
+      panel.show();
+    }
+
+    function turnOff() {
+      panel.hide();
+      circleFillControl.picker.hide();
+      circleStrokeControl.picker.hide();
+      targetLayer = null;
+    }
+
+    function closePanel() {
+      turnOff();
+      if (gui.interaction.getMode() == 'point_style') {
+        gui.interaction.turnOff();
+      }
+    }
+
+    function updateControls() {
+      var representation = getPointRepresentation();
+      updateCreateLabelsButton();
+      title.text(representation == 'circle' ? 'Circle styles' : 'Point symbols');
+      updateEditingStatus(getSelectionIds().length);
+      toggleSection(noteSection, representation == 'unstyled');
+      toggleSection(labelsSection, representation == 'unstyled');
+      toggleSection(circlesSection, representation == 'unstyled' || representation == 'circle');
+      toggleSection(symbolsSection, representation == 'unstyled' || representation == 'svg-symbol');
+      toggleSection(labelNoteSection, representation == 'label');
+      updateSectionBorders([noteSection, labelNoteSection, labelsSection, circlesSection, symbolsSection]);
+      symbolNote.text(representation == 'svg-symbol' ?
+        'This layer uses SVG symbols. Use the -symbols command in the console to create arrows and other symbols.' :
+        'Use the -symbols command in the console to create arrows and other symbols.');
+      updateCircleSection(representation);
+      updateCircleControls(representation);
+    }
+
+    function toggleSection(section, visible) {
+      if (visible) {
+        section.show();
+      } else {
+        section.hide();
+      }
+    }
+
+    function updateSectionBorders(sections) {
+      var foundFirst = false;
+      sections.forEach(function(section) {
+        var visible = section.visible();
+        section.classed('point-style-first-visible', visible && !foundFirst);
+        if (visible) foundFirst = true;
+      });
+    }
+
+    function updateCircleSection(representation) {
+      var showCreate = representation == 'unstyled';
+      circleSectionLabel.classed('hidden', !showCreate);
+      createCirclesRow.classed('hidden', !showCreate);
+      editingRow.classed('hidden', representation != 'circle');
+      circlesSection.findChild('.point-circle-note').classed('hidden', !showCreate);
+      circleControlRows.forEach(function(row) {
+        row.classed('hidden', showCreate);
+      });
+    }
+
+    function updateCircleControls(representation) {
+      var radius = getCommonValue('r');
+      var fill = getCommonValue('fill');
+      var stroke = getCommonValue('stroke');
+      var fillOpacity = getCommonValue('fill-opacity');
+      var strokeOpacity = getCommonValue('stroke-opacity');
+      var strokeWidth = getCommonValue('stroke-width');
+      setCircleRadius(radius);
+      setCircleColor(circleFillControl, fill);
+      setCircleColor(circleStrokeControl, stroke);
+      circleFillOpacityInput.node().value = formatOpacityPct(fillOpacity === '' ? 1 : fillOpacity);
+      circleStrokeOpacityInput.node().value = formatOpacityPct(strokeOpacity === '' ? 1 : strokeOpacity);
+      setCircleStrokeWidth(strokeWidth === '' ? 0 : strokeWidth);
+      if (representation != 'circle' && representation != 'unstyled') {
+        setCircleRadius(defaultCircleRadius);
+        setCircleColor(circleFillControl, '');
+        setCircleColor(circleStrokeControl, '');
+        circleFillOpacityInput.node().value = '100%';
+        circleStrokeOpacityInput.node().value = '100%';
+        setCircleStrokeWidth(0);
+      }
+    }
+
+    function renderCreateFields() {
+      var lyr = getActiveLayer();
+      var records = lyr && lyr.data ? lyr.data.getRecords() : [];
+      var fields = lyr && lyr.data ? lyr.data.getFields().filter(function(field) {
+        return internal.getColumnType(field, records) == 'string';
+      }) : [];
+      var value = createFieldSelect.node().value;
+      createFieldSelect.empty();
+      El('option').attr('value', '').appendTo(createFieldSelect).text('');
+      fields.forEach(function(field) {
+        El('option').attr('value', field).appendTo(createFieldSelect).text(field);
+      });
+      createFieldSelect.node().disabled = fields.length === 0;
+      createFieldSelect.node().value = fields.indexOf(value) > -1 ? value : '';
+    }
+
+    function updateCreateLabelsButton() {
+      createLabelsBtn.node().disabled = createExprInput.node().value.trim() === '';
+    }
+
+    function createLabels() {
+      var expr = createExprInput.node().value.trim();
+      var cmd;
+      if (!expr || !gui.console) return;
+      cmd = createCopyCheckbox.node().checked ?
+        '-filter true + name=labels -style label-text=' + quoteCommandValue(expr) :
+        '-style label-text=' + quoteCommandValue(expr);
+      runGuiEditCommand(gui, cmd, {
+        title: 'Create labels',
+        onSuccess: openLabelStyles
+      });
+    }
+
+    function openLabelStyles() {
+      var active = gui.model.getActiveLayer();
+      if (active && active.layer && internal.layerHasLabels(active.layer) &&
+        gui.labelTool && gui.labelTool.open) {
+        gui.labelTool.open(active.layer, active.dataset);
+      } else {
+        updateControls();
+      }
+    }
+
+    function createSimpleCircles() {
+      runCommand('-style r=' + defaultCreatedCircleRadius +
+        ' fill=' + quoteCommandValue(defaultCircleFill) +
+        ' fill-opacity=1 stroke-opacity=1 stroke-width=0', 'Create circles');
+    }
+
+    function applyCircleStyles() {
+      var representation = getPointRepresentation();
+      var radius = getCircleRadius();
+      var fill = circleFillControl.input.node().value.trim();
+      var fillOpacity = parseOpacityValue(circleFillOpacityInput.node().value);
+      var stroke = circleStrokeControl.input.node().value.trim();
+      var strokeOpacity = parseOpacityValue(circleStrokeOpacityInput.node().value);
+      var strokeWidth = getCircleStrokeWidth();
+      var args;
+      if (!gui.console || !(representation == 'unstyled' || representation == 'circle') ||
+        (radius !== null && !(radius >= 0)) || fillOpacity === null || strokeOpacity === null || strokeWidth === null) return;
+      if (radius !== null && radius > 0 && !fill && !stroke && styleFieldIsUnset('fill') && styleFieldIsUnset('stroke')) {
+        fill = defaultCircleFill;
+        setCircleColor(circleFillControl, fill);
+      }
+      args = [
+        'fill-opacity=' + fillOpacity,
+        'stroke-opacity=' + strokeOpacity,
+        'stroke-width=' + strokeWidth
+      ];
+      if (radius !== null) args.unshift('r=' + radius);
+      if (fill) args.push('fill=' + quoteCommandValue(fill));
+      if (stroke) args.push('stroke=' + quoteCommandValue(stroke));
+      runStyleCommand(args, 'Create circles');
+    }
+
+    function runStyleCommand(args, title) {
+      var ids = getTargetIds();
+      var parts = ['-style'].concat(args);
+      if (!targetLayer || ids.length === 0) return;
+      addTargetOption(parts);
+      if (ids.length < internal.getFeatureCount(targetLayer)) {
+        parts.push('ids=' + ids.join(','));
+      }
+      runCommand(parts.join(' '), title);
+    }
+
+    function runCommand(cmd, title) {
+      runGuiEditCommand(gui, cmd, {
+        title: title,
+        onSuccess: updateControls
+      });
+    }
+
+    function getCircleRadius() {
+      var str = String(circleRadiusClickText.value()).trim();
+      var radius = Number(str);
+      if (str === '') return null;
+      return isFinite(radius) && radius >= 0 ? radius : defaultCircleRadius;
+    }
+
+    function getCircleRadiusForNudge() {
+      var radius = getCircleRadius();
+      return radius === null ? getMostCommonNumberValue('r', defaultCircleRadius) : radius;
+    }
+
+    function setCircleRadius(value) {
+      circleRadiusClickText.value(value === '' ? '' : formatNumberValue(value));
+    }
+
+    function getCircleStrokeWidth() {
+      var width = Number(circleStrokeWidthClickText.value());
+      return isFinite(width) && width >= 0 ? width : 0;
+    }
+
+    function setCircleStrokeWidth(value) {
+      circleStrokeWidthClickText.value(formatNumberValue(value));
+    }
+
+    function getNextStrokeWidth(value, direction) {
+      var baseSteps = [0, 0.25, 0.5, 0.75, 1, 1.25, 1.5, 2, 3, 4];
+      var i;
+      if (direction > 0) {
+        for (i=0; i<baseSteps.length; i++) {
+          if (value < baseSteps[i]) return baseSteps[i];
+        }
+        return Math.floor(value) + 1;
+      }
+      for (i=baseSteps.length - 1; i>=0; i--) {
+        if (value > baseSteps[i]) return baseSteps[i];
+      }
+      return baseSteps[0];
+    }
+
+    function getNextCircleRadius(value, direction) {
+      var baseSteps = [0, 0.5, 1, 1.5, 2, 2.5, 3, 4, 5];
+      var i;
+      if (direction > 0) {
+        for (i=0; i<baseSteps.length; i++) {
+          if (value < baseSteps[i]) return baseSteps[i];
+        }
+        return Math.floor(value) + 1;
+      }
+      for (i=baseSteps.length - 1; i>=0; i--) {
+        if (value > baseSteps[i]) return baseSteps[i];
+      }
+      return baseSteps[0];
+    }
+
+    function getPointRepresentation() {
+      var lyr = targetLayer || getActiveLayer();
+      var table = lyr && lyr.data;
+      if (table && table.fieldExists('svg-symbol')) return 'svg-symbol';
+      if (table && table.fieldExists('label-text')) return 'label';
+      if (table && table.fieldExists('r')) return 'circle';
+      return 'unstyled';
+    }
+
+    function getCommonValue(field) {
+      var table = targetLayer && targetLayer.data;
+      var records = table && table.getRecords();
+      var ids = getTargetIds();
+      var value, val;
+      if (!records || ids.length === 0) return '';
+      for (var i=0; i<ids.length; i++) {
+        val = records[ids[i]] && records[ids[i]][field];
+        if (i === 0) {
+          value = val;
+        } else if (val != value) {
+          return '';
+        }
+      }
+      return value === undefined || value === null ? '' : value;
+    }
+
+    function getMostCommonNumberValue(field, defaultValue) {
+      var table = targetLayer && targetLayer.data;
+      var records = table && table.getRecords();
+      var ids = getTargetIds();
+      var counts = {};
+      var bestValue = null;
+      var bestCount = 0;
+      var val, key;
+      if (!records || ids.length === 0) return defaultValue;
+      for (var i=0; i<ids.length; i++) {
+        val = Number(records[ids[i]] && records[ids[i]][field]);
+        if (!isFinite(val)) continue;
+        key = String(val);
+        counts[key] = (counts[key] || 0) + 1;
+        if (counts[key] > bestCount) {
+          bestCount = counts[key];
+          bestValue = val;
+        }
+      }
+      return bestValue === null ? defaultValue : bestValue;
+    }
+
+    function styleFieldIsUnset(field) {
+      var table = targetLayer && targetLayer.data;
+      var records = table && table.getRecords();
+      var ids = getTargetIds();
+      var val;
+      if (!records || ids.length === 0) return true;
+      for (var i=0; i<ids.length; i++) {
+        val = records[ids[i]] && records[ids[i]][field];
+        if (val !== undefined && val !== null && val !== '') return false;
+      }
+      return true;
+    }
+
+    function addTargetOption(parts) {
+      if (getActiveLayer() != targetLayer) {
+        parts.push('target=' + internal.formatOptionValue(internal.getLayerTargetId(gui.model, targetLayer)));
+      }
+    }
+
+    function getSelectionIds() {
+      return hit ? hit.getSelectionIds() : [];
+    }
+
+    function getTargetIds() {
+      var ids = getSelectionIds();
+      if (!targetLayer) return [];
+      return ids.length > 0 ? ids : getAllFeatureIds(targetLayer);
+    }
+
+    function getAllFeatureIds(lyr) {
+      var ids = [];
+      for (var i=0, n=internal.getFeatureCount(lyr); i<n; i++) {
+        ids.push(i);
+      }
+      return ids;
+    }
+
+    function clearSelection() {
+      if (hit) hit.clearSelection();
+      updateControls();
+    }
+
+    function updateEditingStatus(count) {
+      editingStatus.text(count > 0 ? 'Editing: ' + count + ' selected' : 'Editing: all');
+      clearLink.classed('hidden', count === 0);
+    }
+
+    function setCircleColor(control, color) {
+      control.input.node().value = color;
+      control.chit.css('background-color', isHexColor(color) ? color : 'transparent');
+    }
+
+    function parseOpacityValue(str) {
+      var pct = Number(String(str).replace('%', '').trim());
+      if (!isFinite(pct)) return null;
+      return Math.max(0, Math.min(100, pct)) / 100;
+    }
+
+    function parsePositiveNumber(str) {
+      if (String(str).trim() === '') return null;
+      var val = Number(String(str).trim());
+      return isFinite(val) && val >= 0 ? val : null;
+    }
+
+    function formatOpacityPct(val) {
+      val = Number(val);
+      return isFinite(val) ? Math.round(Math.max(0, Math.min(1, val)) * 100) + '%' : '';
+    }
+
+    function formatNumberValue(val) {
+      val = Number(val);
+      return isFinite(val) ? String(val) : '';
+    }
+
+    function getFieldExpression(field) {
+      return 'd[' + JSON.stringify(field) + ']';
+    }
+
+    function getActiveLayer() {
+      var active = gui.model.getActiveLayer();
+      return active && active.layer;
+    }
+
+    function modelSelectLayer(lyr, dataset) {
+      if (lyr) lyr.hidden = false;
+      gui.model.selectLayer(lyr, dataset);
+    }
+
+    function modeMatchesActiveLayer(mode) {
+      var lyr = getActiveLayer();
+      return mode == 'point_style' && layerCanBeStyled(lyr);
+    }
+
+    function layerCanBeStyled(lyr) {
+      return !!(lyr && lyr.geometry_type == 'point');
+    }
+
+    function quoteCommandValue(str) {
+      return "'" + String(str).replace(/'/g, "\\'") + "'";
+    }
   }
 
   function Model(gui) {
@@ -15438,6 +16662,7 @@
     var targetLayer;
     var hitTest;
     var pinnedOn; // used in multi-edit mode (selection) for toggling pinning behavior
+    var suppressChangeEvent = false;
 
     // event priority is higher than navigation, so stopping propagation disables
     // pan navigation
@@ -15514,7 +16739,8 @@
 
     function selectable() {
       var mode = interactionMode();
-      return mode == 'selection' || mode == 'label_style';
+      return mode == 'selection' || mode == 'label_style' ||
+        mode == 'point_style' || mode == 'line_style' || mode == 'polygon_style';
     }
 
     function pinnable() {
@@ -15532,7 +16758,8 @@
       var mode = interactionMode();
       // click used to pin popup and select features
       return mode == 'data' || mode == 'info' || mode == 'selection' ||
-      mode == 'label_style' || mode == 'rectangles' || mode == 'edit_points';
+      mode == 'label_style' || mode == 'point_style' || mode == 'line_style' || mode == 'polygon_style' ||
+      mode == 'rectangles' || mode == 'edit_points';
     }
 
     self.getHitId = function() {
@@ -15656,12 +16883,13 @@
     // make sure popup is unpinned and turned off when switching editing modes
     // (some modes do not support pinning)
     gui.on('interaction_mode_change', function(e) {
-      self.clearSelection();
+      clearSelectionSilently();
       if (gui.interaction.modeUsesHitDetection(e.mode)) {
         turnOn(e.mode);
       } else {
         turnOff();
       }
+      gui.dispatchEvent('map-needs-refresh');
     });
 
     gui.on('undo_redo_pre', function() {
@@ -15685,7 +16913,7 @@
 
       // TODO: move pinning to inspection control?
       if (clickable()) {
-        updateSelectionState(convertClickDataToSelectionData(hitTest(e)));
+        updateSelectionState(convertClickDataToSelectionData(hitTest(e), e));
       }
 
       if (pinned && interactionMode() == 'edit_points') {
@@ -15727,7 +16955,7 @@
 
     // Translates feature hit data from a mouse click into feature selection data
     // hitData: hit data from a mouse click
-    function convertClickDataToSelectionData(hitData) {
+    function convertClickDataToSelectionData(hitData, e) {
       // mergeCurrentState(hitData);
       // TOGGLE pinned state under some conditions
       var id = hitData.ids.length > 0 ? hitData.ids[0] : -1;
@@ -15744,11 +16972,30 @@
       }
       if (selectable()) {
         if (id > -1) {
-          selectionIds = toggleId(id, selectionIds);
+          selectionIds = styleSelectionMode() ?
+            selectStyleFeature(id, e) :
+            toggleId(id, selectionIds);
         }
         hitData.ids = selectionIds;
       }
       return hitData;
+    }
+
+    function styleSelectionMode() {
+      var mode = interactionMode();
+      return mode == 'label_style' || mode == 'point_style' ||
+        mode == 'line_style' || mode == 'polygon_style';
+    }
+
+    function selectStyleFeature(id, e) {
+      return eventUsesAdditiveSelection(e) ?
+        toggleId(id, selectionIds) :
+        [id];
+    }
+
+    function eventUsesAdditiveSelection(e) {
+      var original = e && e.originalEvent || e;
+      return !!(original && original.shiftKey);
     }
 
     function mergeSelectionModeHoverData(hitData) {
@@ -15806,9 +17053,15 @@
 
       storedData = newData;
       gui.container.findChild('.map-layers').classed('symbol-hit', nonEmpty);
-      if (active) {
+      if (active && !suppressChangeEvent) {
         triggerChangeEvent();
       }
+    }
+
+    function clearSelectionSilently() {
+      suppressChangeEvent = true;
+      self.clearSelection();
+      suppressChangeEvent = false;
     }
 
     // check if an event is used in the current interaction mode
@@ -16850,7 +18103,9 @@
 
     function useBoxZoom() {
       var mode = gui.getMode();
-      return !'selection_tool,box_tool,rectangle_tool,drawing_tool'.includes(mode);
+      var interactionMode = gui.interaction && gui.interaction.getMode();
+      return !'selection_tool,box_tool,rectangle_tool,drawing_tool'.includes(mode) &&
+        !'label_style,point_style,line_style,polygon_style'.includes(interactionMode);
     }
 
     function getBoxData(e1, e2) {
@@ -17472,6 +18727,30 @@
           strokeWidth: 2.5
         }
       },
+      styleSelectionStyles = {
+        polygon: {
+          fillColor: null,
+          strokeColor: 'rgb(255, 198, 0)',
+          strokeOpacity: 0.38,
+          strokeWidth: 5,
+          strokeOverlay: true,
+          batchOverlay: true
+        }, polyline:  {
+          fillColor: null,
+          strokeColor: 'rgb(255, 198, 0)',
+          strokeOpacity: 0.38,
+          strokeWidth: 5,
+          strokeOverlay: true,
+          batchOverlay: true
+        }, point:  {
+          fillColor: null,
+          strokeColor: 'rgb(255, 198, 0)',
+          strokeOpacity: 0.38,
+          strokeWidth: 5,
+          strokeOverlay: true,
+          batchOverlay: true
+        }
+      },
       // currently not used -- selection hover is not styled
       selectionHoverStyles = {
         polygon: {
@@ -17522,11 +18801,22 @@
       return [lyr];
     }
     layers = [];
+    if (styleOpts.interactionMode == 'line_style' || styleOpts.interactionMode == 'polygon_style' ||
+      styleOpts.interactionMode == 'point_style') {
+      ids = hitData.ids || [];
+      if (ids.length > 0) {
+        lyr = getOverlayLayer(activeLyr, ids);
+        outlineStyle = getSelectionStyle(displayLyr.geometry_type, styleOpts);
+        lyr.gui.style = getOverlayStyle(activeLyr, ids, outlineStyle);
+        layers.push(lyr);
+      }
+      return layers;
+    }
     // layer containing selected features, not including hover or pinned feature
     ids = utils$1.difference(hitData.ids || [], [hitData.id]);
     if (ids.length > 0) {
       lyr = getOverlayLayer(activeLyr, ids);
-      outlineStyle = selectionStyles[displayLyr.geometry_type];
+      outlineStyle = getSelectionStyle(displayLyr.geometry_type, styleOpts);
       lyr.gui.style = getOverlayStyle(activeLyr, ids, outlineStyle);
       layers.push(lyr);
     }
@@ -17558,30 +18848,56 @@
         return;
       }
       var idx = ids[i];
+      if (outlineStyle.strokeOverlay) {
+        delete style.strokeWidth;
+        delete style.strokeColor;
+      }
       baseStyler(style, idx);
       if (geomType == 'point') {
-        if (style.radius > 0) {
-          style.radius += 0.8;
-          if (style.strokeWidth > 0) {
-            style.strokeColor = outlineStyle.dotColor;
+        if (outlineStyle.strokeOverlay) {
+          if (style.radius > 0) {
+            style.radius += (style.strokeWidth || 0) / 2 + outlineStyle.strokeWidth / 2;
           }
+          style.fillColor = null;
+          style.strokeColor = outlineStyle.strokeColor;
+          style.strokeWidth = outlineStyle.strokeWidth;
+        } else {
+          if (style.radius > 0) {
+            style.radius += 0.8;
+            if (style.strokeWidth > 0) {
+              style.strokeColor = outlineStyle.dotColor;
+            }
+          }
+          style.fillColor = outlineStyle.dotColor;
         }
-        style.fillColor = outlineStyle.dotColor;
       } else {
         style.strokeColor = outlineStyle.strokeColor;
         style.fillColor = outlineStyle.fillColor;
-        style.strokeWidth = Math.max(outlineStyle.strokeWidth, style.strokeWidth || 0);
+        style.strokeWidth = outlineStyle.strokeOverlay ?
+          (style.strokeWidth || 0) + outlineStyle.strokeWidth :
+          Math.max(outlineStyle.strokeWidth, style.strokeWidth || 0);
       }
       style.opacity = 1;
       style.fillOpacity = 1;
-      style.strokeOpacity = 1;
+      style.strokeOpacity = outlineStyle.strokeOpacity >= 0 ? outlineStyle.strokeOpacity : 1;
     };
     var style = Object.assign({}, baseStyle, {ids, overlay: true, type: 'styled', styler});
-    if (baseStyle.dotSize > 0) {
+    if (outlineStyle.batchOverlay) {
+      style.batchOverlay = true;
+    }
+    if (baseStyle.dotSize > 0 && outlineStyle.dotSize > 0) {
       // dot size must be a static property (not applied by styler function)
       style.dotSize = outlineStyle.dotSize;
     }
     return style;
+  }
+
+  function getSelectionStyle(geomType, styleOpts) {
+    if (styleOpts.interactionMode == 'line_style' || styleOpts.interactionMode == 'polygon_style' ||
+      styleOpts.interactionMode == 'point_style') {
+      return styleSelectionStyles[geomType] || selectionStyles[geomType];
+    }
+    return selectionStyles[geomType];
   }
 
   // style for vertex edit mode
@@ -19914,21 +21230,24 @@
       var draw = getShapePencil(arcs, _ext);
       var key, item, shp;
       var styler = style.styler || null;
+      var drawStyle = styler ? utils$1.defaults({}, style) : style;
       for (var i=0; i<shapes.length; i++) {
         shp = shapes[i];
         if (!shp || filter && !filter(i)) continue;
         if (styler) {
-          styler(style, i);
+          styler(drawStyle, i);
         }
-        if (style.overlay || style.opacity < 1 || style.fillOpacity < 1 || style.strokeOpacity < 1 || style.fillEffect) {
+        if (!drawStyle.batchOverlay && (drawStyle.overlay ||
+          drawStyle.opacity < 1 || drawStyle.fillOpacity < 1 ||
+          drawStyle.strokeOpacity < 1 || drawStyle.fillEffect)) {
           // don't batch shapes with opacity, in case they overlap
-          drawPaths([shp], startPath, draw, style);
+          drawPaths([shp], startPath, draw, drawStyle);
           continue;
         }
-        key = getStyleKey(style);
+        key = getStyleKey(drawStyle);
         if (key in styleIndex === false) {
           styleIndex[key] = {
-            style: utils$1.defaults({}, style),
+            style: utils$1.defaults({}, drawStyle),
             shapes: []
           };
         }
@@ -22294,6 +23613,8 @@ GUI and setting the size and crop of SVG output.</p><div><input type="text" clas
     gui.interaction = new InteractionMode(gui);
     gui.editToolbar = new EditToolbar(gui);
     gui.labelTool = new LabelTool(gui);
+    gui.layerStyleTool = new LayerStyleTool(gui);
+    gui.pointStyleTool = new PointStyleTool(gui);
 
     gui.showProgressMessage = function(msg) {
       if (!gui.progressMessage) {
