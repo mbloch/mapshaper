@@ -9,7 +9,7 @@ import { isValidExternalCommand } from '../commands/mapshaper-external';
 
 cmd.require = async function(opts) {
   var globals = getStashedVar('defs');
-  var moduleFile, moduleName, mod;
+  var moduleFile, moduleName, moduleUrl, mod;
   if (!opts.module) {
     stop("Missing module name or path to module");
   }
@@ -17,12 +17,24 @@ cmd.require = async function(opts) {
     moduleFile = opts.module;
   } else if (cli.isFile(opts.module + '.js')) {
     moduleFile = opts.module + '.js';
+  } else if (/^https?:\/\//.test(opts.module)) {
+    moduleUrl = opts.module;
   } else {
     moduleName = opts.module;
   }
   try {
-    // import CJS and ES modules
-    mod = await import(moduleFile ? require('url').pathToFileURL(moduleFile) : moduleName);
+    if (moduleUrl) {
+      // load ES module from URL
+      var response = await fetch(moduleUrl);
+      if (!response.ok) {
+        throw new Error(`Failed to fetch module from URL: ${response.status} ${response.statusText}`);
+      }
+      var moduleBuffer = Buffer.from(await response.text()).toString("base64");
+      mod = await import(`data:text/javascript;base64,${moduleBuffer}`);
+    } else {
+      // import CJS and ES modules
+      mod = await import(moduleFile ? require('url').pathToFileURL(moduleFile) : moduleName);
+    }
     if (mod.default) {
       mod = mod.default;
     }
