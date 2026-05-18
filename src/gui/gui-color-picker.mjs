@@ -8,32 +8,24 @@ export var grayscaleColorPresets = [
   '#cccccc', '#dddddd', '#eeeeee', '#ffffff'
 ];
 
+// Sequential ramps generated in OKLCH for smooth lightness/chroma progression,
+// then hue-normalized in the picker HSB space so every chip in a ramp reports
+// the same hue in the color picker.
+var redRamp = ['#600202', '#8a0303', '#b11b1b', '#cf3b3b', '#e26161', '#ef8b8b', '#f5b8b8', '#fbdede'];
+var orangeRamp = ['#94551e', '#a85f1e', '#bd6d26', '#d17f36', '#e39652', '#f0b37d', '#f7cda8', '#fce1ca'];
+var brownRamp = ['#442b03', '#634009', '#825a1b', '#9c763b', '#b39361', '#c8b08b', '#dcceb8', '#eee8df'];
+var greenRamp = ['#013c06', '#03580b', '#00750b', '#2e9137', '#5daa64', '#8bc190', '#b8d8bb', '#dfebe0'];
+var tealRamp = ['#023937', '#005350', '#036f6b', '#058d88', '#02aba5', '#65c4c1', '#a7d9d7', '#d7edec'];
+var blueRamp = ['#013550', '#034d73', '#016599', '#0881bf', '#39a5dd', '#77c2e8', '#aed9ef', '#daedf7'];
+var indigoRamp = ['#1d2964', '#2d3d8e', '#4053b5', '#596dd1', '#7889e1', '#9ba8eb', '#c0c8f1', '#e1e5f8'];
+var purpleRamp = ['#431b54', '#612b78', '#7f3f9a', '#9b5cb5', '#b37dc9', '#c8a0d9', '#dcc4e6', '#eee2f3'];
+
 export var layerColorPresetRows = [
   grayscaleColorPresets,
-  [
-    '#00441b', '#006d2c', '#238b45', '#41ab5d',
-    '#74c476', '#a1d99b', '#c7e9c0', '#e5f5e0',
-    '#08306b', '#08519c', '#2171b5', '#4292c6',
-    '#6baed6', '#9ecae1', '#c6dbef', '#eff3ff'
-  ],
-  [
-    '#7f2704', '#a63603', '#d94801', '#f16913',
-    '#fd8d3c', '#fdae6b', '#fdd0a2', '#feedde',
-    '#3f007d', '#54278f', '#6a51a3', '#807dba',
-    '#9e9ac8', '#bcbddc', '#dadaeb', '#f2f0f7'
-  ],
-  [
-    '#3f1d0b', '#5f3216', '#7f4a21', '#9c642c',
-    '#b87d3a', '#d39a5b', '#e8bd88', '#f3dfc1',
-    '#67000d', '#a50f15', '#cb181d', '#ef3b2c',
-    '#fb6a4a', '#fc9272', '#fcbba1', '#fee0d2'
-  ],
-  [
-    '#004c4c', '#006d6d', '#008b8b', '#1f9e9e',
-    '#41b6b6', '#7bcccc', '#b2e2e2', '#e0f3f3',
-    '#252525', '#525252', '#737373', '#969696',
-    '#bdbdbd', '#d9d9d9', '#f0f0f0', '#ffffff'
-  ]
+  redRamp.concat(orangeRamp),
+  brownRamp.concat(greenRamp),
+  tealRamp.concat(blueRamp),
+  indigoRamp.concat(purpleRamp)
 ];
 
 export function ColorPicker(parent, opts) {
