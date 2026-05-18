@@ -1,3 +1,9 @@
+v0.7.18
+* Added styling panels for points, lines and polygons.
+* Improved the label style panel.
+* Added a "style layer" link to layers in the layers panel.
+* Made randomly picked categorical color schemes more varied and more random.
+
 v0.7.17
 * Added a new interface for creating and styling labels in the web UI.
 * Added a "show info" link to layer entries in the layers panel.
