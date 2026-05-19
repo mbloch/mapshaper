@@ -14,6 +14,7 @@ var defaultPort = 5555,
       .option('-n, --name <name(s)>', 'rename input layer or layers')
       .option('-c, --commands <string>', 'console commands to run initially')
       .option('-t, --target <name>', 'name of layer to select initially')
+      .option('-w, --watch', 'watch input files and reload the browser on change')
       .addOption(new commander.Option('-b, --blurb <text>',
         'replace the default blurb on the import screen').hideHelp())
       .argument('[file...]', 'data files to load')
@@ -30,8 +31,25 @@ var defaultPort = 5555,
     port = parseInt(opts.port, 10) || defaultPort,
     dataFiles = expandShapefiles(program.args),
     probeCount = 0,
-    sessionId = null;
+    sessionId = null,
+    sseClients = [],
+    reloadTimer = null;
 validateFiles(dataFiles);
+
+if (opts.watch && dataFiles.length > 0) {
+  dataFiles.forEach(function(file) {
+    if (isUrl(file)) return;
+    fs.watch(file, function() {
+      // debounce: editors often write files in multiple steps
+      clearTimeout(reloadTimer);
+      reloadTimer = setTimeout(function() {
+        sseClients.forEach(function(res) {
+          try { res.write('event: reload\ndata: changed\n\n'); } catch(e) {}
+        });
+      }, 150);
+    });
+  });
+}
 
 process.on('uncaughtException', function(err) {
   // added 'code' for Node.js v16
@@ -99,6 +117,18 @@ function startServer(port) {
       serveFile(getDataFilePath(uri), response);
     } else if (uri.indexOf('/save') === 0) {
       saveContent(request, response);
+    } else if (uri == '/sse' && opts.watch) {
+      // Server-Sent Events endpoint for file-watch reload notifications
+      response.writeHead(200, {
+        'Content-Type': 'text/event-stream',
+        'Cache-Control': 'no-cache',
+        'Connection': 'keep-alive'
+      });
+      response.write('data: connected\n\n');
+      sseClients.push(response);
+      request.on('close', function() {
+        sseClients = sseClients.filter(function(c) { return c !== response; });
+      });
     } else {
       // serve a file from the web root. Translate directory paths (any URI
       // ending in '/') to their index.html so that links like '/docs/' work
@@ -106,7 +136,21 @@ function startServer(port) {
       if (uri.endsWith('/')) {
         uri += 'index.html';
       }
-      serveFile(getAssetFilePath(uri), response);
+      if (opts.watch && uri == '/index.html') {
+        // inject SSE reload script into index.html
+        var htmlPath = getAssetFilePath('/index.html');
+        fs.readFile(htmlPath, 'utf8', function(err, content) {
+          if (err) return serve404(response);
+          var script = '<script>(function(){' +
+            'var es=new EventSource("/sse");' +
+            'es.addEventListener("reload",function(){location.reload();});' +
+            '})();</script>';
+          content = content.replace('</body>', script + '\n</body>');
+          serveContent(content, response, 'text/html');
+        });
+      } else {
+        serveFile(getAssetFilePath(uri), response);
+      }
     }
   }).listen(port, 'localhost', function() {
     if (process.env.MAPSHAPER_GUI_NO_OPEN) return;
