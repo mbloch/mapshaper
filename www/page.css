@@ -18,7 +18,7 @@
 	--xlt-theme-col: #f4f8f9;
 	--accent-col: #ffa; /* yellow logo text */
 	--theme-col: #1385B7; /* blue header / btn col */
-	--dk-theme-col: #1A6A96; /* btn hover col */
+	--dk-theme-col: #196d8e; /* #1A6A96;  btn hover col */
 	--lt-theme-col: #e6f7ff;
 	--colored-text: #10699b;
 	--normal-text: #333;
@@ -874,7 +874,7 @@ body.sidebar-resizing .sidebar-resize-handle::before,
 
 .sidebar-tabs {
 	position: absolute;
-	top: 85px; /* below line intersection repair link */
+	top: 66px; /* below line intersection repair link */
 	left: 0;
 	z-index: 40;
 	pointer-events: auto;
@@ -882,6 +882,7 @@ body.sidebar-resizing .sidebar-resize-handle::before,
 
 body.sidebar-open .sidebar-tabs {
 	left: var(--left-sidebar-width);
+	margin-left: -1.5px;
 }
 
 body.sidebar-tabs-over-popup .sidebar-tabs {
@@ -902,11 +903,16 @@ body.sidebar-tabs-over-popup .sidebar-tabs {
 	pointer-events: auto;
 }
 
-.sidebar-tab:hover,
+.sidebar-tab:hover {
+	background-color: var(--dk-theme-col);
+}
+
 body.layers-open .layer-tab,
 body.console-open .console-tab {
-	background-color: #1A6A96;
+	background-color: black;
 }
+
+
 
 .console-window {
 	pointer-events: auto;
@@ -1109,7 +1115,6 @@ body.simplify .layer-control-btn {
 .layer-control .info-box {
 	padding: 0;
 	pointer-events: none;
-	background-color: transparent;
 }
 
 .layer-control div.info-box-scrolled {
@@ -2512,8 +2517,8 @@ body.dragging-color-picker * {
 	cursor: pointer;
 }
 
-.label-style-selection-row .label-editing-clear:hover {
-	color: black;
+.label-style-selection-row .label-editing-clear:hover,
+.repair-btn:hover {
 	text-decoration: underline;
 }
 
