@@ -24,6 +24,57 @@ describe('raster layers', function () {
     assert(file.content.includes('preserveAspectRatio="none"'));
   });
 
+  it('exports SVG raster images as linked image files', function () {
+    var dataset = getRasterDataset();
+    var files = api.internal.exportSVG(dataset, {
+      format: 'svg',
+      margin: 0,
+      width: 20,
+      linked_images: true,
+      file: 'map.svg'
+    });
+    assert.equal(files.length, 2);
+    assert.equal(files[0].filename, 'map.svg');
+    assert.equal(files[1].filename, 'map-image-1.jpg');
+    assert(files[0].content.includes('href="map-image-1.jpg"'));
+    assert(!files[0].content.includes('data:image/jpeg;base64,'));
+    var image = jpeg.decode(Buffer.from(files[1].content));
+    assert.equal(image.width, 2);
+    assert.equal(image.height, 1);
+  });
+
+  it('sets JPEG quality for SVG raster images', function () {
+    var dataset = getRasterDataset();
+    var lowQuality = api.internal.exportSVG(dataset, {
+      format: 'svg',
+      margin: 0,
+      width: 20,
+      linked_images: true,
+      jpeg_quality: 10,
+      file: 'map.svg'
+    })[1].content;
+    var highQuality = api.internal.exportSVG(dataset, {
+      format: 'svg',
+      margin: 0,
+      width: 20,
+      linked_images: true,
+      jpeg_quality: 100,
+      file: 'map.svg'
+    })[1].content;
+    assert.notEqual(Buffer.from(lowQuality).toString('base64'), Buffer.from(highQuality).toString('base64'));
+  });
+
+  it('rejects invalid JPEG quality for SVG raster images', function () {
+    assert.throws(function() {
+      api.internal.exportSVG(getRasterDataset(), {
+        format: 'svg',
+        margin: 0,
+        width: 20,
+        jpeg_quality: 0
+      });
+    }, /jpeg-quality/);
+  });
+
   it('rejects raster export to vector and table formats', function () {
     assert.throws(function() {
       api.internal.exportFileContent(getRasterDataset(), {format: 'geojson'});
@@ -42,6 +93,29 @@ describe('raster layers', function () {
     var data = file.content.match(/data:image\/jpeg;base64,([^"]+)/)[1];
     var image = jpeg.decode(Buffer.from(data, 'base64'));
     assert.equal(image.width, 1);
+    assert.equal(image.height, 1);
+  });
+
+  it('exports linked PNG images when SVG rasters have transparency', function () {
+    var dataset = getFourPixelGrayRasterDataset();
+    dataset.layers[0].raster.grid.bands = 4;
+    dataset.layers[0].raster.grid.samples = new Uint8Array([
+      0, 0, 0, 255,
+      100, 100, 100, 128,
+      150, 150, 150, 255,
+      250, 250, 250, 255
+    ]);
+    var files = api.internal.exportSVG(dataset, {
+      format: 'svg',
+      margin: 0,
+      width: 4,
+      linked_images: true,
+      file: 'map.svg'
+    });
+    assert.equal(files[1].filename, 'map-image-1.png');
+    assert(files[0].content.includes('href="map-image-1.png"'));
+    var image = PNG.sync.read(Buffer.from(files[1].content));
+    assert.equal(image.width, 4);
     assert.equal(image.height, 1);
   });
 
@@ -468,10 +542,25 @@ describe('raster layers', function () {
     assert(raster.grid.bbox[2] > 200000);
   });
 
-  it('fills projected raster gaps with the original nodata value', function () {
+  it('fills projected image raster gaps with white by default', function () {
     var raster = getRasterDataset().layers[0].raster;
     var src = api.internal.parseCrsString('wgs84');
     var dest = api.internal.parseCrsString('webmercator');
+    raster.grid.nodata = 99;
+    var grid = api.internal.projectRasterGridForward(raster, src, dest, {
+      raster_mesh_interval: 1,
+      output_bbox: [-1e9, -1e9, -1e9 + 1000, -1e9 + 1000],
+      output_width: 1,
+      output_height: 1
+    });
+    assert.deepEqual(Array.from(grid.samples), [255, 255, 255]);
+  });
+
+  it('fills projected categorical raster gaps with the original nodata value', function () {
+    var raster = getRasterDataset().layers[0].raster;
+    var src = api.internal.parseCrsString('wgs84');
+    var dest = api.internal.parseCrsString('webmercator');
+    raster.interpretation = 'categorical';
     raster.grid.nodata = 99;
     var grid = api.internal.projectRasterGridForward(raster, src, dest, {
       raster_mesh_interval: 1,

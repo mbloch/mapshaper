@@ -148,4 +148,8 @@ export function validateOutputOpts(cmd) {
   if ('topojson_precision' in o && o.topojson_precision > 0 === false) {
     error('topojson-precision= option should be a positive number');
   }
+
+  if ('jpeg_quality' in o && (o.jpeg_quality >= 1 && o.jpeg_quality <= 100) === false) {
+    error('jpeg-quality= option should be a number from 1 to 100');
+  }
 }

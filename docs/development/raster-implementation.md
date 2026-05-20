@@ -253,7 +253,9 @@ the working grid.
 
 ## SVG Export
 
-SVG export embeds raster images using SVG `<image>` elements with data URIs.
+SVG export writes raster images using SVG `<image>` elements. By default, images
+are embedded as data URIs; `linked-images` writes separate JPEG/PNG files and
+uses relative file links in the SVG.
 
 Current behavior:
 
@@ -261,6 +263,10 @@ Current behavior:
   `raster.view.preview`.
 - Crop the rendered image to the SVG frame extent.
 - Use `raster-res=` to set raster pixels per SVG pixel; the default is `1`.
+- Use `linked-images` to output raster images as sibling files instead of data
+  URIs.
+- Use `jpeg-quality=` to set JPEG quality on a `1..100` scale; the default is
+  `85`.
 - Cap export raster dimensions at the available source grid resolution.
 - Use area averaging for downsampling, with bounded regular-grid averaging for
   very large downsampling footprints to avoid excessive export time.
@@ -276,8 +282,9 @@ Image encoding should support JPEG and PNG:
 - Treat WebP as a possible future option, not an initial default, because
   PNG/JPEG are more portable across SVG viewers and graphics editors.
 
-The SVG element should use a matching data URI, for example
-`data:image/jpeg;base64,...` or `data:image/png;base64,...`.
+The SVG element should use a matching href, either a data URI such as
+`data:image/jpeg;base64,...` or a relative filename such as `map-image-1.jpg`
+when `linked-images` is enabled.
 
 Browser export can use Canvas encoders. CLI export needs Node-capable JPEG and
 PNG encoding dependencies or a shared pure-JS encoder.
@@ -314,7 +321,9 @@ per-pixel inverse projection:
   bilinear for image-style rasters; use nearest-neighbor for categorical rasters
   or exact cell values. If raster metadata marks a layer as categorical or
   palette-based, reprojection defaults to nearest.
-- Fill uncovered output pixels with `grid.nodata` or `nodata-color=`.
+- Fill uncovered output pixels with `nodata-color=`. When the option is omitted,
+  image rasters default to white and categorical rasters use `grid.nodata` when
+  available.
 
 Projected output grids include a `coverage` mask. The mask records which output
 pixels received source content, independently of the nodata fill color. Later

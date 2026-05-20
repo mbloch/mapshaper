@@ -414,6 +414,14 @@ export function getOptionParser() {
       describe: '[SVG] raster pixels per SVG pixel (default is 1)',
       type: 'number'
     })
+    .option('linked-images', {
+      describe: '[SVG] link raster images as external files',
+      type: 'flag'
+    })
+    .option('jpeg-quality', {
+      describe: '[SVG] JPEG quality for raster images, 1-100 (default is 85)',
+      type: 'number'
+    })
     .option('fit-extent', {
       describe: '[SVG] layer to use for the map extent'
     })
@@ -1437,6 +1445,10 @@ export function getOptionParser() {
     })
     .option('nodata-color', {
       describe: '[raster] color for uncovered pixels after reprojection'
+    })
+    .option('background', {
+      describe: '[raster] alias for nodata-color',
+      alias_to: 'nodata-color'
     })
     .option('resampling', {
       describe: '[raster] nearest or bilinear (default is bilinear)'

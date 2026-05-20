@@ -207,6 +207,7 @@ export function LayerStyleTool(gui) {
   }
 
   function updateControls() {
+    syncTargetLayer();
     var geom = targetLayer && targetLayer.geometry_type;
     var manualIds = getSelectionIds();
     if (!targetLayer) return;
@@ -292,6 +293,7 @@ export function LayerStyleTool(gui) {
 
   function runStyleCommand(styles, opts) {
     var parts = ['-style'];
+    syncTargetLayer();
     var ids = getTargetIds();
     if (!gui.console || !targetLayer || ids.length === 0) return;
     if (!opts || !opts.preservePreset) {
@@ -320,6 +322,7 @@ export function LayerStyleTool(gui) {
 
   function applyRandomFillColors() {
     var cmd = '-classify colors=random non-adjacent';
+    syncTargetLayer();
     if (!gui.console || !targetLayer || targetLayer.geometry_type != 'polygon') return;
     if (getActiveLayer() != targetLayer) {
       cmd += ' target=' + internal.formatOptionValue(internal.getLayerTargetId(gui.model, targetLayer));
@@ -383,6 +386,7 @@ export function LayerStyleTool(gui) {
 
   function clearLayerStyle() {
     var parts = ['-style clear'];
+    syncTargetLayer();
     if (!gui.console || !targetLayer) return;
     presetControl.clearSelection();
     addTargetOption(parts);
@@ -466,6 +470,17 @@ export function LayerStyleTool(gui) {
   function getActiveLayer() {
     var active = gui.model.getActiveLayer();
     return active && active.layer;
+  }
+
+  function syncTargetLayer() {
+    var lyr = getActiveLayer();
+    if (lyr == targetLayer) return;
+    if (layerCanBeStyled(lyr)) {
+      targetLayer = lyr;
+      if (hit) hit.clearSelection();
+    } else {
+      targetLayer = null;
+    }
   }
 
   function closePanel() {
