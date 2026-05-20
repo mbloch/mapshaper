@@ -275,6 +275,7 @@ export function PointStyleTool(gui) {
   }
 
   function updateControls() {
+    syncTargetLayer();
     var representation = getPointRepresentation();
     updateCreateLabelsButton();
     title.text(representation == 'circle' ? 'Circle styles' : 'Point symbols');
@@ -419,6 +420,7 @@ export function PointStyleTool(gui) {
   }
 
   function runStyleCommand(args, title) {
+    syncTargetLayer();
     var ids = getTargetIds();
     var parts = ['-style'].concat(args);
     if (!targetLayer || ids.length === 0) return;
@@ -620,6 +622,17 @@ export function PointStyleTool(gui) {
   function getActiveLayer() {
     var active = gui.model.getActiveLayer();
     return active && active.layer;
+  }
+
+  function syncTargetLayer() {
+    var lyr = getActiveLayer();
+    if (lyr == targetLayer) return;
+    if (layerCanBeStyled(lyr)) {
+      targetLayer = lyr;
+      if (hit) hit.clearSelection();
+    } else {
+      targetLayer = null;
+    }
   }
 
   function modelSelectLayer(lyr, dataset) {

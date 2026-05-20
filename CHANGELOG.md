@@ -1,3 +1,9 @@
+v0.7.19
+* Added -proj background= option as an alias for nodata-color=.
+* Made white the default background color when reprojecting image rasters (for when the projected image is not rectangular).
+* Added -o jpeg-quality=<1..100> when generating JPEGs as image layers in SVG output files (default is 85).
+* Added -o linked-images, which saves embedded images as external files linked-to from an SVG file.
+
 v0.7.18
 * Added styling panels for points, lines and polygons.
 * Improved the label style panel.

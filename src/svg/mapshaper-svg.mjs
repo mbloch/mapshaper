@@ -23,7 +23,7 @@ var ILLUSTRATOR_PATH_VERTEX_LIMIT = 32000;
 export function exportSVG(dataset, opts) {
   var namespace = 'xmlns="http://www.w3.org/2000/svg"';
   var defs = [];
-  var frame, svg, layers, metadataJSON;
+  var frame, svg, layers, metadataJSON, files, svgFile;
   var style = '';
 
   // kludge for map keys
@@ -44,6 +44,8 @@ export function exportSVG(dataset, opts) {
   // use invert_y: 0 setting for screen coordinates and geojson polygon generation
   // use 1px default margin so typical strokes don't get cut off on the sides
   opts = Object.assign({invert_y: true, margin: "1"}, opts);
+  opts.svg_image_files = [];
+  opts.svg_file_base = getSvgFileBase(dataset, opts);
   frame = getFrameData(dataset, opts);
   fitDatasetToFrame(dataset, frame);
   setCoordinatePrecision(dataset, opts.precision || 0.01);
@@ -96,10 +98,17 @@ export function exportSVG(dataset, opts) {
 ${svg}
 </svg>`;
   svg = utils.format(template, frame.width, frame.height, 0, 0, frame.width, frame.height);
-  return [{
+  svgFile = {
     content: svg,
     filename: opts.file || getOutputFileBase(dataset) + '.svg'
-  }];
+  };
+  files = [svgFile].concat(opts.svg_image_files);
+  return files;
+}
+
+function getSvgFileBase(dataset, opts) {
+  var file = opts.file || getOutputFileBase(dataset) + '.svg';
+  return file.replace(/\.svg$/i, '');
 }
 
 function getMetadataBlock(metadataJSON, viewBox) {
@@ -190,7 +199,9 @@ export function exportRasterLayerForSVG(lyr, frame, opts) {
     layerObj.children = [];
     return layerObj;
   }
-  href = encodeRasterPreview(rendered.preview, opts);
+  href = opts.linked_images ?
+    exportLinkedRasterPreview(rendered.preview, opts) :
+    encodeRasterPreview(rendered.preview, opts);
   layerObj.children = [{
     tag: 'image',
     properties: {
@@ -264,6 +275,30 @@ function encodeRasterPreview(preview, opts) {
   return 'data:image/' + format + ';base64,' + data;
 }
 
+function exportLinkedRasterPreview(preview, opts) {
+  var format = getSvgRasterFormat(preview, opts);
+  var data = format == 'png' ? encodePng(preview) : encodeJpeg(preview, opts);
+  var ext = format == 'jpeg' ? 'jpg' : format;
+  var filename = opts.svg_file_base + '-image-' + (opts.svg_image_files.length + 1) + '.' + ext;
+  opts.svg_image_files.push({
+    filename: filename,
+    content: base64ToBytes(data)
+  });
+  return filename;
+}
+
+function base64ToBytes(str) {
+  if (typeof Buffer != 'undefined') {
+    return Buffer.from(str, 'base64');
+  }
+  var bin = atob(str);
+  var bytes = new Uint8Array(bin.length);
+  for (var i = 0; i < bin.length; i++) {
+    bytes[i] = bin.charCodeAt(i);
+  }
+  return bytes;
+}
+
 function getSvgRasterFormat(preview, opts) {
   var fmt = opts.svg_raster_format || opts.raster_format || null;
   if (fmt) return fmt == 'jpg' ? 'jpeg' : fmt;
@@ -279,16 +314,24 @@ function previewHasTransparency(preview) {
 }
 
 function encodeJpeg(preview, opts) {
+  var quality = getJpegQuality(opts);
   if (runningInBrowser() && typeof document != 'undefined') {
-    return encodeWithCanvas(preview, 'image/jpeg', opts.svg_raster_quality || 0.85);
+    return encodeWithCanvas(preview, 'image/jpeg', quality / 100);
   }
   var jpeg = require('jpeg-js');
-  var quality = Math.round((opts.svg_raster_quality || 0.85) * 100);
   return Buffer.from(jpeg.encode({
     data: Buffer.from(preview.pixels),
     width: preview.width,
     height: preview.height
   }, quality).data).toString('base64');
+}
+
+function getJpegQuality(opts) {
+  var quality = opts.jpeg_quality == null ? 85 : opts.jpeg_quality;
+  if ((quality >= 1 && quality <= 100) === false) {
+    stop('jpeg-quality= option should be a number from 1 to 100');
+  }
+  return Math.round(quality);
 }
 
 function encodePng(preview) {

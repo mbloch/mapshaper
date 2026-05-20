@@ -21,7 +21,7 @@ export function projectRasterGridForward(raster, srcCRS, destCRS, optsArg) {
   bbox = opts.output_bbox || opts.outputBbox || getProjectedMeshBBox(mesh);
   if (!bbox) stop('Unable to project raster layer');
   outSize = getOutputGridSize(grid, bbox, opts);
-  outGrid = createProjectedRasterGrid(grid, bbox, outSize.width, outSize.height, opts);
+  outGrid = createProjectedRasterGrid(grid, raster, bbox, outSize.width, outSize.height, opts);
   timeStart(timing, 'rasterize');
   rasterizeProjectedMesh(grid, outGrid, mesh, getRasterProjectionSampleMethod(raster, opts));
   timeEnd(timing, 'rasterize');
@@ -290,13 +290,13 @@ function getProjectedMeshBBox(mesh) {
   return xmin < Infinity && xmax > xmin && ymax > ymin ? [xmin, ymin, xmax, ymax] : null;
 }
 
-function createProjectedRasterGrid(grid, bbox, widthArg, heightArg, opts) {
+function createProjectedRasterGrid(grid, raster, bbox, widthArg, heightArg, opts) {
   var width = widthArg || grid.width;
   var height = heightArg || grid.height;
-  var bands = getOutputBandCount(grid, opts);
+  var bands = getOutputBandCount(grid, raster, opts);
   var samples = new grid.samples.constructor(width * height * bands);
   var coverage = new Uint8Array(width * height);
-  fillProjectedRasterSamples(samples, bands, grid, opts || {});
+  fillProjectedRasterSamples(samples, bands, grid, raster, opts || {});
   return Object.assign({}, grid, {
     width: width,
     height: height,
@@ -333,13 +333,13 @@ function getOutputGridSize(grid, bbox, opts) {
   return {width: width, height: height};
 }
 
-function getOutputBandCount(grid, opts) {
-  var color = getNoDataColor(opts);
+function getOutputBandCount(grid, raster, opts) {
+  var color = getNoDataColor(raster, opts);
   return color && color.a === 0 && grid.bands > 1 && grid.bands < 4 ? 4 : grid.bands;
 }
 
-function fillProjectedRasterSamples(samples, bands, grid, opts) {
-  var color = getNoDataColor(opts);
+function fillProjectedRasterSamples(samples, bands, grid, raster, opts) {
+  var color = getNoDataColor(raster, opts);
   var noData = grid.nodata;
   if (color) {
     fillProjectedRasterColor(samples, bands, color);
@@ -349,10 +349,12 @@ function fillProjectedRasterSamples(samples, bands, grid, opts) {
   samples.fill(noData);
 }
 
-function getNoDataColor(opts) {
+function getNoDataColor(raster, opts) {
   var arg = opts.nodata_color || opts.nodataColor;
   var color;
-  if (arg == null || arg === '') return null;
+  if (arg == null || arg === '') {
+    return rasterAppearsCategorical(raster) ? null : {r: 255, g: 255, b: 255, a: 1};
+  }
   if (String(arg).toLowerCase() == 'transparent') {
     return {r: 0, g: 0, b: 0, a: 0};
   }

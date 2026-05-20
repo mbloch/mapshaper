@@ -277,7 +277,9 @@ to the SVG frame. The original source file is not reopened during export.
 
 ## SVG Image Encoding
 
-SVG raster export should embed image data with `<image>` and a data URI.
+SVG raster export should write image data with `<image>`. By default the image
+is embedded as a data URI; `linked-images` writes separate JPEG/PNG files and
+uses relative file links in the SVG.
 
 Initial formats:
 
@@ -299,15 +301,18 @@ Current SVG raster options:
 
 ```text
 svg-raster-format=jpeg|png
-svg-raster-quality=0.85
+jpeg-quality=85
 raster-res=1
+linked-images
 ```
 
 `raster-res=` controls embedded raster pixels per SVG pixel. The default is `1`;
 larger values produce higher-resolution embedded images, capped at the available
-source grid resolution. WebP can be considered later after SVG compatibility has
-been tested in browsers, Illustrator, Inkscape, and common command-line
-renderers.
+source grid resolution. `jpeg-quality=` controls JPEG quality on a `1..100`
+scale. `linked-images` changes the `<image href>` from an embedded data URI to a
+relative image filename and returns the image files with the SVG export. WebP can
+be considered later after SVG compatibility has been tested in browsers,
+Illustrator, Inkscape, and common command-line renderers.
 
 ## Test Expectations
 
