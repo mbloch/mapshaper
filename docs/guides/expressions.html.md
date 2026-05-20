@@ -14,7 +14,7 @@ mapshaper counties.shp \
   -o out.shp
 ```
 
-Expressions are plain JavaScript. They can use any built-in language feature (arithmetic, string methods, conditionals, regex, etc.). Some commands also expect the expression to return a particular kind of value &mdash; `-filter` and `-inspect` expect `true` or `false`, `-sort` expects a sort key, `-split` expects a group identifier, and so on.
+Expressions are plain JavaScript. They can use any built-in language feature (arithmetic, string methods, regex, etc.). Some commands also expect the expression to return a particular kind of value &mdash; `-filter` and `-inspect` expect `true` or `false`, `-sort` expects a sort key, `-split` expects a group identifier, and so on.
 
 ## What is a JavaScript expression?
 

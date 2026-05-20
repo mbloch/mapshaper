@@ -297,6 +297,10 @@ Save content of the target layer(s) to a file or files.
 
 `raster-res=` (SVG) Resolution of embedded raster images, in raster pixels per SVG pixel. The default is `1`; larger values produce higher-resolution embedded images, up to the resolution of the source raster.
 
+`linked-images` (SVG) Output raster images as separate JPEG or PNG files and link to them from SVG `<image>` elements instead of embedding them as data URIs.
+
+`jpeg-quality=` (SVG) JPEG quality for embedded or linked raster images, from `1` to `100`. The default is `85`.
+
 `fit-extent=<layer id>` (SVG) Use a layer (typically a layer containing a single rectangle) to set the extent of the map. Paths that overflow this extent are retained in the SVG output.
 
 `point-symbol=square`  (SVG) Use squares instead of circles to symbolize point data.
@@ -997,7 +1001,9 @@ Project a dataset using a PROJ string, EPSG code or alias. This command affects 
 
 `init=` Define the pre-projected coordinate system, if unknown. This option is not needed if the source coordinate system is defined by a .prj file, or if the source CRS is WGS84. As with `crs`, you can pass a Proj4 string enclosed in quotes if the selected projection requires extra parameters, for example `init='+proj=utm +zone=33'`.
 
-`nodata-color=` (raster) Color for output pixels that do not receive source raster content after reprojection. Use `transparent` for transparent output.
+`nodata-color=` (raster) Color for output pixels that do not receive source raster content after reprojection. The default is white for image rasters and the source nodata value, when available, for categorical rasters. Use `transparent` for transparent output.
+
+`background=` (raster) Alias for `nodata-color=`.
 
 `resampling=nearest|bilinear` (raster) Resampling method for raster reprojection. Overrides the default set by `-i raster-type=`. Use `bilinear` for smooth continuous-tone imagery and `nearest` for categorical rasters or exact cell values.
 

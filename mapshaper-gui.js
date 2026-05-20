@@ -15074,6 +15074,7 @@
     }
 
     function updateControls() {
+      syncTargetLayer();
       var geom = targetLayer && targetLayer.geometry_type;
       var manualIds = getSelectionIds();
       if (!targetLayer) return;
@@ -15159,6 +15160,7 @@
 
     function runStyleCommand(styles, opts) {
       var parts = ['-style'];
+      syncTargetLayer();
       var ids = getTargetIds();
       if (!gui.console || !targetLayer || ids.length === 0) return;
       if (!opts || !opts.preservePreset) {
@@ -15187,6 +15189,7 @@
 
     function applyRandomFillColors() {
       var cmd = '-classify colors=random non-adjacent';
+      syncTargetLayer();
       if (!gui.console || !targetLayer || targetLayer.geometry_type != 'polygon') return;
       if (getActiveLayer() != targetLayer) {
         cmd += ' target=' + internal.formatOptionValue(internal.getLayerTargetId(gui.model, targetLayer));
@@ -15250,6 +15253,7 @@
 
     function clearLayerStyle() {
       var parts = ['-style clear'];
+      syncTargetLayer();
       if (!gui.console || !targetLayer) return;
       presetControl.clearSelection();
       addTargetOption(parts);
@@ -15333,6 +15337,17 @@
     function getActiveLayer() {
       var active = gui.model.getActiveLayer();
       return active && active.layer;
+    }
+
+    function syncTargetLayer() {
+      var lyr = getActiveLayer();
+      if (lyr == targetLayer) return;
+      if (layerCanBeStyled(lyr)) {
+        targetLayer = lyr;
+        if (hit) hit.clearSelection();
+      } else {
+        targetLayer = null;
+      }
     }
 
     function closePanel() {
@@ -15654,6 +15669,7 @@
     }
 
     function updateControls() {
+      syncTargetLayer();
       var representation = getPointRepresentation();
       updateCreateLabelsButton();
       title.text(representation == 'circle' ? 'Circle styles' : 'Point symbols');
@@ -15798,6 +15814,7 @@
     }
 
     function runStyleCommand(args, title) {
+      syncTargetLayer();
       var ids = getTargetIds();
       var parts = ['-style'].concat(args);
       if (!targetLayer || ids.length === 0) return;
@@ -15999,6 +16016,17 @@
     function getActiveLayer() {
       var active = gui.model.getActiveLayer();
       return active && active.layer;
+    }
+
+    function syncTargetLayer() {
+      var lyr = getActiveLayer();
+      if (lyr == targetLayer) return;
+      if (layerCanBeStyled(lyr)) {
+        targetLayer = lyr;
+        if (hit) hit.clearSelection();
+      } else {
+        targetLayer = null;
+      }
     }
 
     function modelSelectLayer(lyr, dataset) {

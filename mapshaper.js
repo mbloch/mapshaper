@@ -19880,7 +19880,7 @@
   function exportSVG(dataset, opts) {
     var namespace = 'xmlns="http://www.w3.org/2000/svg"';
     var defs = [];
-    var frame, svg, layers, metadataJSON;
+    var frame, svg, layers, metadataJSON, files, svgFile;
     var style = '';
 
     // kludge for map keys
@@ -19901,6 +19901,8 @@
     // use invert_y: 0 setting for screen coordinates and geojson polygon generation
     // use 1px default margin so typical strokes don't get cut off on the sides
     opts = Object.assign({invert_y: true, margin: "1"}, opts);
+    opts.svg_image_files = [];
+    opts.svg_file_base = getSvgFileBase(dataset, opts);
     frame = getFrameData(dataset, opts);
     fitDatasetToFrame(dataset, frame);
     setCoordinatePrecision(dataset, opts.precision || 0.01);
@@ -19953,10 +19955,17 @@
 ${svg}
 </svg>`;
     svg = utils.format(template, frame.width, frame.height, 0, 0, frame.width, frame.height);
-    return [{
+    svgFile = {
       content: svg,
       filename: opts.file || getOutputFileBase(dataset) + '.svg'
-    }];
+    };
+    files = [svgFile].concat(opts.svg_image_files);
+    return files;
+  }
+
+  function getSvgFileBase(dataset, opts) {
+    var file = opts.file || getOutputFileBase(dataset) + '.svg';
+    return file.replace(/\.svg$/i, '');
   }
 
   function getMetadataBlock(metadataJSON, viewBox) {
@@ -20047,7 +20056,9 @@ ${svg}
       layerObj.children = [];
       return layerObj;
     }
-    href = encodeRasterPreview(rendered.preview, opts);
+    href = opts.linked_images ?
+      exportLinkedRasterPreview(rendered.preview, opts) :
+      encodeRasterPreview(rendered.preview, opts);
     layerObj.children = [{
       tag: 'image',
       properties: {
@@ -20121,6 +20132,30 @@ ${svg}
     return 'data:image/' + format + ';base64,' + data;
   }
 
+  function exportLinkedRasterPreview(preview, opts) {
+    var format = getSvgRasterFormat(preview, opts);
+    var data = format == 'png' ? encodePng(preview) : encodeJpeg(preview, opts);
+    var ext = format == 'jpeg' ? 'jpg' : format;
+    var filename = opts.svg_file_base + '-image-' + (opts.svg_image_files.length + 1) + '.' + ext;
+    opts.svg_image_files.push({
+      filename: filename,
+      content: base64ToBytes(data)
+    });
+    return filename;
+  }
+
+  function base64ToBytes(str) {
+    if (typeof Buffer != 'undefined') {
+      return Buffer.from(str, 'base64');
+    }
+    var bin = atob(str);
+    var bytes = new Uint8Array(bin.length);
+    for (var i = 0; i < bin.length; i++) {
+      bytes[i] = bin.charCodeAt(i);
+    }
+    return bytes;
+  }
+
   function getSvgRasterFormat(preview, opts) {
     var fmt = opts.svg_raster_format || opts.raster_format || null;
     if (fmt) return fmt == 'jpg' ? 'jpeg' : fmt;
@@ -20136,16 +20171,24 @@ ${svg}
   }
 
   function encodeJpeg(preview, opts) {
+    var quality = getJpegQuality(opts);
     if (runningInBrowser() && typeof document != 'undefined') {
-      return encodeWithCanvas(preview, 'image/jpeg', opts.svg_raster_quality || 0.85);
+      return encodeWithCanvas(preview, 'image/jpeg', quality / 100);
     }
     var jpeg = require$1('jpeg-js');
-    var quality = Math.round((opts.svg_raster_quality || 0.85) * 100);
     return Buffer.from(jpeg.encode({
       data: Buffer.from(preview.pixels),
       width: preview.width,
       height: preview.height
     }, quality).data).toString('base64');
+  }
+
+  function getJpegQuality(opts) {
+    var quality = opts.jpeg_quality == null ? 85 : opts.jpeg_quality;
+    if ((quality >= 1 && quality <= 100) === false) {
+      stop$1('jpeg-quality= option should be a number from 1 to 100');
+    }
+    return Math.round(quality);
   }
 
   function encodePng(preview) {
@@ -29002,6 +29045,10 @@ ${svg}
     if ('topojson_precision' in o && o.topojson_precision > 0 === false) {
       error('topojson-precision= option should be a positive number');
     }
+
+    if ('jpeg_quality' in o && (o.jpeg_quality >= 1 && o.jpeg_quality <= 100) === false) {
+      error('jpeg-quality= option should be a number from 1 to 100');
+    }
   }
 
   var assignmentRxp = /^([a-z0-9_+-]+)=(?!=)(.*)$/i; // exclude ==
@@ -30408,6 +30455,14 @@ ${svg}
         describe: '[SVG] raster pixels per SVG pixel (default is 1)',
         type: 'number'
       })
+      .option('linked-images', {
+        describe: '[SVG] link raster images as external files',
+        type: 'flag'
+      })
+      .option('jpeg-quality', {
+        describe: '[SVG] JPEG quality for raster images, 1-100 (default is 85)',
+        type: 'number'
+      })
       .option('fit-extent', {
         describe: '[SVG] layer to use for the map extent'
       })
@@ -31431,6 +31486,10 @@ ${svg}
       })
       .option('nodata-color', {
         describe: '[raster] color for uncovered pixels after reprojection'
+      })
+      .option('background', {
+        describe: '[raster] alias for nodata-color',
+        alias_to: 'nodata-color'
       })
       .option('resampling', {
         describe: '[raster] nearest or bilinear (default is bilinear)'
@@ -51110,7 +51169,7 @@ ${svg}
     bbox = opts.output_bbox || opts.outputBbox || getProjectedMeshBBox(mesh);
     if (!bbox) stop$1('Unable to project raster layer');
     outSize = getOutputGridSize(grid, bbox, opts);
-    outGrid = createProjectedRasterGrid(grid, bbox, outSize.width, outSize.height, opts);
+    outGrid = createProjectedRasterGrid(grid, raster, bbox, outSize.width, outSize.height, opts);
     timeStart(timing, 'rasterize');
     rasterizeProjectedMesh(grid, outGrid, mesh, getRasterProjectionSampleMethod(raster, opts));
     timeEnd(timing, 'rasterize');
@@ -51379,13 +51438,13 @@ ${svg}
     return xmin < Infinity && xmax > xmin && ymax > ymin ? [xmin, ymin, xmax, ymax] : null;
   }
 
-  function createProjectedRasterGrid(grid, bbox, widthArg, heightArg, opts) {
+  function createProjectedRasterGrid(grid, raster, bbox, widthArg, heightArg, opts) {
     var width = widthArg || grid.width;
     var height = heightArg || grid.height;
-    var bands = getOutputBandCount(grid, opts);
+    var bands = getOutputBandCount(grid, raster, opts);
     var samples = new grid.samples.constructor(width * height * bands);
     var coverage = new Uint8Array(width * height);
-    fillProjectedRasterSamples(samples, bands, grid, opts || {});
+    fillProjectedRasterSamples(samples, bands, grid, raster, opts || {});
     return Object.assign({}, grid, {
       width: width,
       height: height,
@@ -51422,13 +51481,13 @@ ${svg}
     return {width: width, height: height};
   }
 
-  function getOutputBandCount(grid, opts) {
-    var color = getNoDataColor(opts);
+  function getOutputBandCount(grid, raster, opts) {
+    var color = getNoDataColor(raster, opts);
     return color && color.a === 0 && grid.bands > 1 && grid.bands < 4 ? 4 : grid.bands;
   }
 
-  function fillProjectedRasterSamples(samples, bands, grid, opts) {
-    var color = getNoDataColor(opts);
+  function fillProjectedRasterSamples(samples, bands, grid, raster, opts) {
+    var color = getNoDataColor(raster, opts);
     var noData = grid.nodata;
     if (color) {
       fillProjectedRasterColor(samples, bands, color);
@@ -51438,10 +51497,12 @@ ${svg}
     samples.fill(noData);
   }
 
-  function getNoDataColor(opts) {
+  function getNoDataColor(raster, opts) {
     var arg = opts.nodata_color || opts.nodataColor;
     var color;
-    if (arg == null || arg === '') return null;
+    if (arg == null || arg === '') {
+      return rasterAppearsCategorical(raster) ? null : {r: 255, g: 255, b: 255, a: 1};
+    }
     if (String(arg).toLowerCase() == 'transparent') {
       return {r: 0, g: 0, b: 0, a: 0};
     }
@@ -58269,7 +58330,7 @@ ${svg}
     });
   }
 
-  var version = "0.7.18";
+  var version = "0.7.19";
 
   // Parse command line args into commands and run them
   // Function takes an optional Node-style callback. A Promise is returned if no callback is given.

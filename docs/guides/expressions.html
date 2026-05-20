@@ -55,7 +55,7 @@
          AREA_KM2 = this.area / 1e6&#x27;</span> \
   -o out.shp
 </code></pre>
-<p>Expressions are plain JavaScript. They can use any built-in language feature (arithmetic, string methods, conditionals, regex, etc.). Some commands also expect the expression to return a particular kind of value &mdash; <code>-filter</code> and <code>-inspect</code> expect <code>true</code> or <code>false</code>, <code>-sort</code> expects a sort key, <code>-split</code> expects a group identifier, and so on.</p>
+<p>Expressions are plain JavaScript. They can use any built-in language feature (arithmetic, string methods, regex, etc.). Some commands also expect the expression to return a particular kind of value &mdash; <code>-filter</code> and <code>-inspect</code> expect <code>true</code> or <code>false</code>, <code>-sort</code> expects a sort key, <code>-split</code> expects a group identifier, and so on.</p>
 <h2 id="what-is-a-javascript-expression">What is a JavaScript expression?</h2>
 <p>An <strong>expression</strong> is any fragment of JavaScript code that produces a value. The key distinction is between an expression (which <em>evaluates to something</em>) and a statement (which <em>does something but produces no value</em>). Mapshaper always expects an expression — a piece of code that can be evaluated and whose result is used by the command.</p>
 <p>The simplest expressions are literals:</p>

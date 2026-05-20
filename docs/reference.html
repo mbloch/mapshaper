@@ -200,7 +200,7 @@ mapshaper states.geojson -filter <span class="hljs-string">&#x27;ST == &quot;AK&
 mapshaper countries_wgs84.shp encoding=latin1 -info
 </code></pre>
 </section>
-<section class="cmd-section" data-id="-o-output" data-name="-o (output)" data-options="format json target force gzip zip cut-table drop-table precision fix-geometry bbox-index encoding field-order id-field bbox extension prettify singles quantization no-quantization presimplify topojson-precision ndjson gj2008 reverse-winding combine-layers geojson-type no-null-props hoist metadata width height max-height margin pixels id-prefix svg-data svg-scale raster-res delimiter decimal-comma compression snappy zstd none level show-all"><h3 id="-o-output">-o (output)</h3>
+<section class="cmd-section" data-id="-o-output" data-name="-o (output)" data-options="format json target force gzip zip cut-table drop-table precision fix-geometry bbox-index encoding field-order id-field bbox extension prettify singles quantization no-quantization presimplify topojson-precision ndjson gj2008 reverse-winding combine-layers geojson-type no-null-props hoist metadata width height max-height margin pixels id-prefix svg-data svg-scale raster-res linked-images jpeg-quality delimiter decimal-comma compression snappy zstd none level show-all"><h3 id="-o-output">-o (output)</h3>
 <p>Save content of the target layer(s) to a file or files.</p>
 <p><strong>Options</strong></p>
 <p><code>&lt;file&gt;|&lt;directory&gt;|-</code>  Name of output file or directory. Use <code>-</code> to export text-based formats to <code>/dev/stdout</code>.</p>
@@ -243,6 +243,8 @@ mapshaper countries_wgs84.shp encoding=latin1 -info
 <p><code>svg-scale=</code>   (SVG) Scale SVG output using geographical units per pixel (an alternative to the <code>width=</code> option).</p>
 <p><code>svg-bbox=&lt;xmin,ymin,xmax,ymax&gt;</code> (SVG)  Bounding box of SVG map in projected map units. By default, the extent of SVG output fits the content; this option lets you provide a custom extent. This could be useful when aligning the SVG output with other content layers, such as images or videos.</p>
 <p><code>raster-res=</code> (SVG) Resolution of embedded raster images, in raster pixels per SVG pixel. The default is <code>1</code>; larger values produce higher-resolution embedded images, up to the resolution of the source raster.</p>
+<p><code>linked-images</code> (SVG) Output raster images as separate JPEG or PNG files and link to them from SVG <code>&lt;image&gt;</code> elements instead of embedding them as data URIs.</p>
+<p><code>jpeg-quality=</code> (SVG) JPEG quality for embedded or linked raster images, from <code>1</code> to <code>100</code>. The default is <code>85</code>.</p>
 <p><code>fit-extent=&lt;layer id&gt;</code> (SVG) Use a layer (typically a layer containing a single rectangle) to set the extent of the map. Paths that overflow this extent are retained in the SVG output.</p>
 <p><code>point-symbol=square</code>  (SVG) Use squares instead of circles to symbolize point data.</p>
 <p><code>delimiter=</code>  (CSV) Set the field delimiter for CSV/delimited text output; e.g. <code>delimiter=|</code>.</p>
@@ -649,13 +651,14 @@ mapshaper counties.shp \
 <p><code>from-rings</code>  Convert a layer of closed polyline rings into polygons. Nested rings in multipart features are converted into holes.</p>
 <p>Common options: <code>target=</code></p>
 </section>
-<section class="cmd-section" data-id="-proj" data-name="-proj" data-options="crs densify match init nodata-color transparent bilinear nearest target"><h3 id="-proj">-proj</h3>
+<section class="cmd-section" data-id="-proj" data-name="-proj" data-options="crs densify match init nodata-color transparent background bilinear nearest target"><h3 id="-proj">-proj</h3>
 <p>Project a dataset using a PROJ string, EPSG code or alias. This command affects all layers in the dataset(s) containing the targeted layer or layers. Information on PROJ string syntax can be found on the <a href="https://proj.org/usage/index.html">PROJ website</a>.</p>
 <p><code>&lt;crs&gt;</code> or <code>crs=</code>  Target CRS, given as a Proj.4 definition or an alias. Use the <a href="#-projections"><code>-projections</code></a> command to list available projections and aliases. In some projections that require additional parameters, Mapshaper can fit parameters automatically from the data extent, for example <code>crs=utm</code> selects a UTM zone. You can also pass a Proj4 string enclosed in quotes, for example <code>crs=&#39;+proj=utm +zone=27&#39;</code>.</p>
 <p><code>densify</code> Interpolate vertices along long line segments as needed to approximate curved lines.</p>
 <p><code>match=</code> Match the projection of the given layer or .prj file.</p>
 <p><code>init=</code> Define the pre-projected coordinate system, if unknown. This option is not needed if the source coordinate system is defined by a .prj file, or if the source CRS is WGS84. As with <code>crs</code>, you can pass a Proj4 string enclosed in quotes if the selected projection requires extra parameters, for example <code>init=&#39;+proj=utm +zone=33&#39;</code>.</p>
-<p><code>nodata-color=</code> (raster) Color for output pixels that do not receive source raster content after reprojection. Use <code>transparent</code> for transparent output.</p>
+<p><code>nodata-color=</code> (raster) Color for output pixels that do not receive source raster content after reprojection. The default is white for image rasters and the source nodata value, when available, for categorical rasters. Use <code>transparent</code> for transparent output.</p>
+<p><code>background=</code> (raster) Alias for <code>nodata-color=</code>.</p>
 <p><code>resampling=nearest|bilinear</code> (raster) Resampling method for raster reprojection. Overrides the default set by <code>-i raster-type=</code>. Use <code>bilinear</code> for smooth continuous-tone imagery and <code>nearest</code> for categorical rasters or exact cell values.</p>
 <p><code>target=</code> Layer(s) to target. All layers belonging to the same dataset as a targeted layer will be reprojected. To reproject all datasets, use <code>target=*</code>.</p>
 <p><strong>Examples</strong></p>
