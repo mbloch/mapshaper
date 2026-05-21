@@ -8,7 +8,7 @@ var requestId = 0;
 export function getCachedRasterViewportPreview(layer, ext) {
   var entry = cache.get(layer);
   var params = getRasterViewportPreviewParams(layer, ext);
-  if (!entry || !params || entry.key != params.key) return null;
+  if (!entry || !params || !rasterViewportCacheEntryMatches(entry, params)) return null;
   return entry.preview;
 }
 
@@ -17,9 +17,9 @@ export function scheduleRasterViewportPreview(layer, ext, onReady) {
   var entry = cache.get(layer);
   var id, stats, timing, preview;
   if (!params || !params.needed) return;
-  if (entry && entry.key == params.key) return;
+  if (entry && rasterViewportCacheEntryMatches(entry, params)) return;
   id = ++requestId;
-  cache.set(layer, {key: params.key, pending: id});
+  cache.set(layer, getRasterViewportCacheEntry(params, {pending: id}));
   setTimeout(function() {
     var current = cache.get(layer);
     if (!current || current.pending != id) return;
@@ -31,10 +31,7 @@ export function scheduleRasterViewportPreview(layer, ext, onReady) {
     logRasterPreviewTiming(params, timing);
     current = cache.get(layer);
     if (!preview || !current || current.pending != id) return;
-    cache.set(layer, {
-      key: params.key,
-      preview: preview
-    });
+    cache.set(layer, getRasterViewportCacheEntry(params, {preview: preview}));
     onReady();
   }, 0);
 }
@@ -94,6 +91,17 @@ export function getRasterViewportPreviewParams(layer, ext) {
     sourceWidth: crop.width,
     sourceHeight: crop.height
   };
+}
+
+function rasterViewportCacheEntryMatches(entry, params) {
+  return entry.key == params.key && entry.grid == params.grid && entry.samples == params.grid.samples;
+}
+
+function getRasterViewportCacheEntry(params, entry) {
+  entry.key = params.key;
+  entry.grid = params.grid;
+  entry.samples = params.grid.samples;
+  return entry;
 }
 
 function getCachedRasterScalingStats(params, timing) {

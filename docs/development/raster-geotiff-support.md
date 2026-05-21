@@ -309,7 +309,7 @@ linked-images
 `raster-res=` controls embedded raster pixels per SVG pixel. The default is `1`;
 larger values produce higher-resolution embedded images, capped at the available
 source grid resolution. `jpeg-quality=` controls JPEG quality on a `1..100`
-scale. `linked-images` changes the `<image href>` from an embedded data URI to a
+scale. `lined-images` changes the `<image href>` from an embedded data URI to a
 relative image filename and returns the image files with the SVG export. WebP can
 be considered later after SVG compatibility has been tested in browsers,
 Illustrator, Inkscape, and common command-line renderers.

@@ -12,18 +12,18 @@ export function ElementPosition(ref) {
       height = 0;
 
   el.on('mouseover', update);
-  if (window.onorientationchange) window.addEventListener('orientationchange', update);
+  if (window.onorientationchange) window.addEventListener('orientationchange', function() { update('window'); });
   window.addEventListener('scroll', update);
-  window.addEventListener('resize', update);
+  window.addEventListener('resize', function() { update('window'); });
 
   // trigger an update, e.g. when map container is resized
-  this.update = function() {
-    update();
+  this.update = function(source) {
+    update(source);
   };
 
-  this.resize = function(w, h) {
+  this.resize = function(w, h, source) {
     el.css('width', w).css('height', h);
-    update();
+    update(source);
   };
 
   this.width = function() { return width; };
@@ -38,7 +38,7 @@ export function ElementPosition(ref) {
     };
   };
 
-  function update() {
+  function update(source) {
     var div = el.node(),
         xy = getPageXY(div),
         w = div.clientWidth,
@@ -54,7 +54,7 @@ export function ElementPosition(ref) {
       height = h;
       self.dispatchEvent('change', self.position());
       if (resized) {
-        self.dispatchEvent('resize', self.position());
+        self.dispatchEvent('resize', Object.assign(self.position(), {source: source}));
       }
     }
   }

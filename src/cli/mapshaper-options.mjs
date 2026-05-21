@@ -560,6 +560,13 @@ export function getOptionParser() {
     .option('target', targetOpt)
     .option('no-replace', noReplaceOpt);
 
+  parser.command('blur')
+    .describe('apply a Gaussian-like blur to projected raster layers')
+    .option('radius', {
+      describe: '[raster] blur amount in pixels, corresponding to 2 * sigma (e.g. 10 or 10px)'
+    })
+    .option('target', targetOpt);
+
   parser.command('classify')
     // .describe('apply sequential or categorical classification')
     .describe('assign colors or values using one of several methods')

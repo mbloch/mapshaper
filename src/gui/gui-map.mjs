@@ -48,7 +48,10 @@ export function MshpMap(gui) {
       _visibleLayers = [], // cached visible map layers
       _hit, _nav,
       _intersectionLyr, _activeLyr, _overlayLayers,
-      _renderer, _dynamicCRS;
+      _renderer, _dynamicCRS,
+      _resizeRedrawTimer = null;
+
+  var RESIZE_REDRAW_DELAY = 200;
 
   _mouse.disable(); // wait for gui.focus() to activate mouse events
 
@@ -198,13 +201,43 @@ export function MshpMap(gui) {
 
     _ext.on('change', function(e) {
       gui?.basemap.refresh(); // keep basemap synced up (if enabled)
-      drawLayers(e.redraw ? '' : 'nav');
+      if (e.resize) {
+        drawLayersForResize(e.resizeSource);
+      } else {
+        cancelResizeRedraw();
+        drawLayers(e.redraw ? '' : 'nav');
+      }
     });
 
-    gui.on('resize', function() {
-      position.update(); // kludge to detect new map size after console toggle
+    gui.on('resize', function(e) {
+      position.update(e.source); // kludge to detect new map size after console toggle
     });
   };
+
+  function drawLayersForResize(source) {
+    if (source == 'sidebar') {
+      cancelResizeRedraw();
+      drawLayers();
+    } else {
+      drawLayers('nav');
+      scheduleResizeRedraw();
+    }
+  }
+
+  function scheduleResizeRedraw() {
+    cancelResizeRedraw();
+    _resizeRedrawTimer = setTimeout(function() {
+      _resizeRedrawTimer = null;
+      drawLayers();
+    }, RESIZE_REDRAW_DELAY);
+  }
+
+  function cancelResizeRedraw() {
+    if (_resizeRedrawTimer) {
+      clearTimeout(_resizeRedrawTimer);
+      _resizeRedrawTimer = null;
+    }
+  }
 
   function getGlobalStyleOptions(opts) {
     var mode = gui.state.interaction_mode;

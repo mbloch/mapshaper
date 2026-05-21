@@ -267,6 +267,51 @@ describe('raster layers', function () {
     assert.deepEqual(lyr.raster.grid.bbox, [100, 190, 120, 200]);
   });
 
+  it('blurs projected raster layers', function () {
+    var dataset = getProjectedBlurDataset();
+    var lyr = dataset.layers[0];
+    api.internal.blurRasterLayers([lyr], dataset, {radius: '4px'});
+    var samples = Array.from(lyr.raster.grid.samples);
+    assert(samples[0] > 0);
+    assert(samples[6] < 255);
+    assert(samples[0] == samples[1]);
+    assert(samples[1] == samples[2]);
+  });
+
+  it('uses alpha-weighted colors when blurring RGBA rasters', function () {
+    var dataset = getProjectedBlurDataset();
+    var lyr = dataset.layers[0];
+    lyr.raster.grid.width = 3;
+    lyr.raster.grid.bands = 4;
+    lyr.raster.grid.samples = new Uint8Array([
+      255, 0, 0, 255,
+      0, 255, 0, 0,
+      255, 0, 0, 255
+    ]);
+    lyr.raster.grid.sampleBands = [0, 1, 2, 3];
+    lyr.raster.grid.bbox = [0, 0, 3, 1];
+    lyr.raster.view.recipe = {type: 'rgba', bands: [0, 1, 2, 3]};
+    api.internal.blurRasterLayers([lyr], dataset, {radius: 2});
+    var samples = Array.from(lyr.raster.grid.samples);
+    assert(samples[4] > 240);
+    assert(samples[5] < 10);
+    assert(samples[7] > 0 && samples[7] < 255);
+  });
+
+  it('rejects blur on unprojected raster layers', function () {
+    var dataset = getRasterDataset();
+    assert.throws(function() {
+      api.internal.blurRasterLayers(dataset.layers, dataset, {radius: 4});
+    }, /projected coordinates/);
+  });
+
+  it('requires a positive blur radius', function () {
+    var dataset = getProjectedBlurDataset();
+    assert.throws(function() {
+      api.internal.blurRasterLayers(dataset.layers, dataset, {radius: 0});
+    }, /radius=/);
+  });
+
   it('clips raster samples and bbox to an intersecting rectangle', function () {
     var dataset = getRasterDataset();
     var lyr = dataset.layers[0];
@@ -822,6 +867,44 @@ function getFourPixelGrayRasterDataset() {
       }
     }]
   };
+}
+
+function getProjectedBlurDataset() {
+  var dataset = {
+    info: {crs: api.internal.parseCrsString('webmercator')},
+    layers: [{
+      name: 'raster',
+      raster_type: 'grid',
+      raster: {
+        sourceId: 'raster',
+        interpretation: 'image',
+        grid: {
+          width: 5,
+          height: 1,
+          bands: 3,
+          pixelType: 'uint8',
+          samples: new Uint8Array([
+            0, 0, 0,
+            0, 0, 0,
+            255, 255, 255,
+            0, 0, 0,
+            0, 0, 0
+          ]),
+          sampleBands: [0, 1, 2],
+          nodata: null,
+          bbox: [0, 0, 5, 1],
+          transform: [1, 0, 0, 0, -1, 1]
+        },
+        view: {
+          recipe: {
+            type: 'rgb',
+            bands: [0, 1, 2]
+          }
+        }
+      }
+    }]
+  };
+  return dataset;
 }
 
 function getFrameDataset() {
