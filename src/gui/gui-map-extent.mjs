@@ -12,7 +12,7 @@ export function MapExtent(_position) {
   _position.on('resize', function(e) {
     if (ready()) {
       // triggerChangeEvent({resize: true});
-      triggerChangeEvent();
+      triggerChangeEvent({resize: true, resizeSource: e.source});
     }
   });
 
@@ -183,8 +183,8 @@ export function MapExtent(_position) {
     _scale = scale;
   }
 
-  function triggerChangeEvent() {
-    _self.dispatchEvent('change');
+  function triggerChangeEvent(data) {
+    _self.dispatchEvent('change', data);
   }
 
   // stop zooming before rounding errors become too obvious

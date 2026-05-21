@@ -210,6 +210,9 @@ export async function runCommand(command, job) {
        outputLayers = applyCommandToEachLayer(cmd.buffer, targetLayers, targetDataset, opts);
       // outputLayers = cmd.buffer(targetLayers, targetDataset, opts);
 
+    } else if (name == 'blur') {
+      cmd.blur(targetLayers, targetDataset, opts);
+
     } else if (name == 'data-fill') {
       applyCommandToEachLayer(cmd.dataFill, targetLayers, arcs, opts);
 

@@ -74,6 +74,7 @@ import * as ArcDissolve from './paths/mapshaper-arc-dissolve';
 import * as ArcUtils from './paths/mapshaper-arc-utils';
 import * as Bbox2Clipping from './clipping/mapshaper-bbox2-clipping';
 import * as BinArray from './utils/mapshaper-binarray';
+import * as Blur from './commands/mapshaper-blur';
 // import * as BufferCommon from './buffer/mapshaper-buffer-common';
 import * as Calc from './commands/mapshaper-calc';
 import * as CalcUtils from './utils/mapshaper-calc-utils';
@@ -202,6 +203,7 @@ Object.assign(internal,
   ArcUtils,
   Bbox2Clipping,
   BinArray,
+  Blur,
   // BufferCommon,
   Calc,
   CalcUtils,

@@ -43,7 +43,6 @@ The first implementation supports:
 
 The first implementation does not attempt to support:
 
-- General cell/value editing beyond rectangle clipping.
 - Raster/vector analysis commands.
 - GUI source-band derivation or styling controls.
 - Full GeoTIFF metadata preservation beyond the fields currently used for CRS,
@@ -337,6 +336,19 @@ internal option (`raster_component_filter` / `rasterComponentFilter`) for
 experiments, but it is off by default because valid antimeridian wrapping can
 produce disconnected components.
 
+## Raster Blur
+
+`-blur radius=` applies a Gaussian-like blur to projected raster layers. The
+implementation uses three passes of separable box blur to approximate a Gaussian
+in linear time. `radius=` is measured in pixels and corresponds to `2 * sigma`;
+the parser currently accepts plain numbers and strings such as `10px`.
+
+The blur operates on interleaved `grid.samples` one band at a time, so it works
+with grayscale, RGB, RGBA, and non-8-bit GeoTIFF sample arrays without changing
+the internal raster model. It preserves raster metadata and `grid.coverage`.
+When coverage or nodata is present, invalid pixels are excluded from the blur
+window and weights are renormalized.
+
 ## Commands And Validation
 
 Most existing commands are vector commands and should reject raster targets
@@ -346,6 +358,7 @@ with clear errors. Early raster-aware commands should be limited to:
 - Layer listing and selection where safe.
 - `-info` reporting of raster dimensions, bounds, source, and CRS.
 - `-clip bbox=...` for raster clipping.
+- `-blur radius=` for projected raster blur.
 - `-proj` for raster reprojection, with `nodata-color=` and
   `resampling=nearest|bilinear` support.
 - SVG export.

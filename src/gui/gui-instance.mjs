@@ -125,7 +125,7 @@ export function GuiInstance(container, opts) {
       .classed('layers-open', sidebarPanel == 'layers')
       .classed('console-open', sidebarPanel == 'console');
     gui.dispatchEvent('sidebar', {name: sidebarPanel, prev: prev});
-    gui.dispatchEvent('resize');
+    gui.dispatchEvent('resize', {source: 'sidebar'});
   };
 
   gui.toggleSidebarPanel = function(name) {
@@ -228,7 +228,7 @@ export function GuiInstance(container, opts) {
     if (sidebarResizeFrame) return;
     sidebarResizeFrame = requestAnimationFrame(function() {
       sidebarResizeFrame = null;
-      gui.dispatchEvent('resize');
+      gui.dispatchEvent('resize', {source: 'sidebar-resize'});
     });
   }
 }

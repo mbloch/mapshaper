@@ -9,6 +9,7 @@ export function getCachedRasterReprojectedPreview(layer, ext) {
   var params = getRasterReprojectedPreviewParams(layer, ext);
   var entry = cache.get(layer);
   if (!entry || !entry.preview) return null;
+  if (params && !rasterReprojectedCacheSourceMatches(entry, params)) return null;
   if (!params || entry.key != params.key) return entry.preview;
   return entry.preview;
 }
@@ -18,9 +19,9 @@ export function scheduleRasterReprojectedPreview(layer, ext, onReady) {
   var entry = cache.get(layer);
   var id, timing;
   if (!params) return;
-  if (entry && entry.key == params.key) return;
+  if (entry && rasterReprojectedCacheEntryMatches(entry, params)) return;
   id = ++requestId;
-  cache.set(layer, {key: params.key, pending: id});
+  cache.set(layer, getRasterReprojectedCacheEntry(params, {pending: id}));
   setTimeout(function() {
     var current = cache.get(layer);
     var grid, preview;
@@ -50,7 +51,7 @@ export function scheduleRasterReprojectedPreview(layer, ext, onReady) {
     preview.bbox = grid.bbox;
     current = cache.get(layer);
     if (!current || current.pending != id) return;
-    cache.set(layer, {key: params.key, preview: preview});
+    cache.set(layer, getRasterReprojectedCacheEntry(params, {preview: preview}));
     onReady();
   }, 0);
 }
@@ -114,6 +115,21 @@ function getRasterReprojectedPreviewKey(layer, bbox, size, sourceCRS, displayCRS
     getRasterReprojectionSampleMethod(),
     layer.raster && layer.raster.grid && layer.raster.grid.samples && layer.raster.grid.samples.length
   ].join('|');
+}
+
+function rasterReprojectedCacheEntryMatches(entry, params) {
+  return entry.key == params.key && rasterReprojectedCacheSourceMatches(entry, params);
+}
+
+function rasterReprojectedCacheSourceMatches(entry, params) {
+  return entry.grid == params.grid && entry.samples == params.grid.samples;
+}
+
+function getRasterReprojectedCacheEntry(params, entry) {
+  entry.key = params.key;
+  entry.grid = params.grid;
+  entry.samples = params.grid.samples;
+  return entry;
 }
 
 function applyCoverageMask(preview, coverage) {
