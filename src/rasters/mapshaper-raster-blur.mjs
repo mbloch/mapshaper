@@ -10,8 +10,8 @@ export function blurRasterGrid(raster, optsArg) {
   var sigma = radius / 2;
   var boxes = getGaussianBoxWidths(sigma, BOX_BLUR_PASSES);
   var samples = new grid.samples.constructor(grid.samples.length);
-  var tmp = new Float64Array(grid.width * grid.height);
-  var channel = new Float64Array(grid.width * grid.height);
+  var tmp = new Float32Array(grid.width * grid.height);
+  var channel = new Float32Array(grid.width * grid.height);
   var weights = getRasterBlurWeights(grid);
   validateBlurGrid(grid);
   if (grid.bands == 4) {
@@ -66,7 +66,7 @@ function getGaussianBoxWidths(sigma, n) {
 }
 
 function blurRgbaGrid(grid, samples, channel, tmp, weights, boxes) {
-  var alpha = new Float64Array(grid.width * grid.height);
+  var alpha = new Float32Array(grid.width * grid.height);
   copyBandToChannel(grid, 3, alpha);
   blurChannel(alpha, tmp, weights, grid.width, grid.height, boxes);
   for (var band = 0; band < grid.bands; band++) {
@@ -216,7 +216,7 @@ function copyChannelToBand(channel, samples, grid, band) {
 
 function getRasterBlurWeights(grid) {
   if (!grid.coverage && grid.nodata == null) return null;
-  var weights = new Float64Array(grid.width * grid.height);
+  var weights = new Float32Array(grid.width * grid.height);
   for (var i = 0; i < weights.length; i++) {
     weights[i] = rasterBlurPixelIsValid(grid, i) ? 1 : 0;
   }

@@ -23,6 +23,7 @@ import { DisplayOptions } from './gui-display-options-menu';
 import { MessageControl } from './gui-messages';
 import { getRuntimeStateContext, stringifyRuntimeStateContext } from './gui-runtime-context';
 import { startRasterSourceStoreLifecycle } from './gui-raster-source-store';
+import { cleanupStaleUndoPayloads } from './gui-stored-undo-history';
 // import { ProjectOptions } from './gui-project-control';
 
 
@@ -64,6 +65,7 @@ export function GuiInstance(container, opts) {
 
   initModeRules(gui);
   startRasterSourceStoreLifecycle();
+  cleanupStaleUndoPayloads(gui).catch(function() {});
   gui.map.init();
 
   if (opts.saveControl) {

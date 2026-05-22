@@ -118,34 +118,42 @@ export function createStoredUndoHistory(gui) {
 
   function getPayloadStore() {
     if (!gui.undoPayloadStore) {
-      gui.undoPayloadStore = createUndoPayloadStore(getUndoPayloadStoreOptions());
-      gui.undoPayloadStore.startLifecycle();
-      gui.undoPayloadStore.cleanupStaleSessions().then(function(result) {
-        logStartupCleanup({
-          count: result.keys.length,
-          sessionCount: result.sessionCount,
-          singular: 'undo payload',
-          plural: 'undo payloads',
-          sizeBytes: result.sizeBytes
-        });
-      }).catch(function() {});
+      gui.undoPayloadStore = createUndoPayloadStore(getUndoPayloadStoreOptions(gui));
     }
+    gui.undoPayloadStore.startLifecycle();
     return gui.undoPayloadStore;
   }
+}
 
-  function getUndoPayloadStoreOptions() {
-    return {
-      maxBytes: getUndoStorageLimit('undoStorageMaxBytes', 1024 * 1024 * 1024),
-      maxPayloadBytes: getUndoStorageLimit('undoPayloadMaxBytes', 512 * 1024 * 1024)
-    };
+export function cleanupStaleUndoPayloads(gui) {
+  if (!gui.undoPayloadStore) {
+    gui.undoPayloadStore = createUndoPayloadStore(getUndoPayloadStoreOptions(gui));
   }
+  var store = gui.undoPayloadStore;
+  return store.cleanupStaleSessions().then(function(result) {
+    logStartupCleanup({
+      count: result.keys.length,
+      sessionCount: result.sessionCount,
+      singular: 'undo payload',
+      plural: 'undo payloads',
+      sizeBytes: result.sizeBytes
+    });
+    return result;
+  });
+}
 
-  function getUndoStorageLimit(name, defaultValue) {
-    var opt = gui.options && gui.options[name],
-        query = getQueryValue(name);
-    if (query !== null && +query >= 0) return +query;
-    return opt >= 0 ? opt : defaultValue;
-  }
+function getUndoPayloadStoreOptions(gui) {
+  return {
+    maxBytes: getUndoStorageLimit(gui, 'undoStorageMaxBytes', 1024 * 1024 * 1024),
+    maxPayloadBytes: getUndoStorageLimit(gui, 'undoPayloadMaxBytes', 512 * 1024 * 1024)
+  };
+}
+
+function getUndoStorageLimit(gui, name, defaultValue) {
+  var opt = gui && gui.options && gui.options[name],
+      query = getQueryValue(name);
+  if (query !== null && +query >= 0) return +query;
+  return opt >= 0 ? opt : defaultValue;
 }
 
 function getRedoCaptureUnits(units) {
