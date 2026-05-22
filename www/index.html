@@ -344,29 +344,31 @@ encoding=big5</span>. Click to see all options.</div></div></div>
 
 <!-- TODO: remove #mshp-main-page without causing the map to jitter when resized -->
 <div id="mshp-main-page">
-
-	<div class="layer-control main-area layer-area sidebar-panel">
-		<div class="info-box">
-			<div class="info-box-scrolled">
-			<div class="layer-menu">
-				<div class="layer-add-links">
-					<span id="add-file-btn" class="layer-menu-link">Add files</span><span class="layer-menu-link-separator">&nbsp;&nbsp;·&nbsp;&nbsp;</span><span id="add-empty-btn" class="layer-menu-link">Add empty layer</span>
-				</div>
-				<div class="layer-item">
-					<h3>Layers</h3>
-					<div class="pin-all pinnable">
-						<img class="eye-btn black-eye" src="images/eye.png" alt="">
-						<img class="eye-btn green-eye" src="images/eye2.png" alt="">
+	<div class="main-area sidebar-panels">
+		<div class="layer-control layer-area sidebar-panel">
+			<div class="info-box">
+				<div class="info-box-scrolled">
+				<div class="layer-menu">
+					<div class="layer-add-links">
+						<span id="add-file-btn" class="layer-menu-link">Add files</span><span class="layer-menu-link-separator">&nbsp;&nbsp;·&nbsp;&nbsp;</span><span id="add-empty-btn" class="layer-menu-link">Add empty layer</span>
 					</div>
+					<div class="layer-item">
+						<h3>Layers</h3>
+						<div class="pin-all pinnable">
+							<img class="eye-btn black-eye" src="images/eye.png" alt="">
+							<img class="eye-btn green-eye" src="images/eye2.png" alt="">
+						</div>
+					</div>
+					<div class="layer-list"></div>
+					<div class="no-layer-note">No data has been added</div>
 				</div>
-				<div class="layer-list"></div>
-				<div class="no-layer-note">No data has been added</div>
-			</div>
+				</div>
 			</div>
 		</div>
-	</div>
-	<div class="console main-area console-area sidebar-panel">
-		<div class="console-window"><div class="console-buffer selectable"></div></div>
+		<div class="console console-area sidebar-panel">
+			<div class="sidebar-panels-resize-handle" role="separator" aria-orientation="horizontal" aria-label="Resize panels"></div>
+			<div class="console-window"><div class="console-buffer selectable"></div></div>
+		</div>
 	</div>
 	<div class="sidebar-resize-handle" role="separator" aria-orientation="vertical" aria-label="Resize sidebar"></div>
 	<div class="sidebar-tabs">
