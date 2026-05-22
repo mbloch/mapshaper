@@ -51,7 +51,7 @@ export function Console(gui) {
   this.runCommand = function(str) {
     str = str.trim();
     if (!str) return;
-    gui.setSidebarPanel('console');
+    gui.toggleSidebarPanel('console');
     submit(str);
   };
 
@@ -73,9 +73,9 @@ export function Console(gui) {
   }
 
   gui.on('sidebar', function(e) {
-    if (e.name == 'console') {
+    if (e.panels.includes('console')) {
       turnOn();
-    } else if (e.prev == 'console') {
+    } else if (e.prev.includes('console')) {
       turnOff();
     }
   });
@@ -134,6 +134,7 @@ export function Console(gui) {
       // gui instances with the console open. E.g. console could close
       // when an instance loses focus.
       internal.setLoggingFunctions(consoleMessage, consoleError, consoleStop, consoleWarn);
+      el.addClass('open');
       el.show();
       input.node().focus();
       history = getHistory();
@@ -147,6 +148,7 @@ export function Console(gui) {
       if (GUI.isActiveInstance(gui)) {
         setLoggingForGUI(gui); // reset stop, message and error functions
       }
+      el.removeClass('open');
       el.hide();
       input.node().blur();
       saveHistory();
