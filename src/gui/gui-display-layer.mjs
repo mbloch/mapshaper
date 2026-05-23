@@ -13,7 +13,7 @@ export function projectLayerForDisplay(lyr, displayCRS) {
   if (!lyr.gui.geographic) {
     return;
   }
-  if (lyr.gui.dynamic_crs && internal.crsAreEqual(sourceCRS, lyr.gui.dynamic_crs)) {
+  if (lyr.gui.dynamic_crs && internal.crsHaveSameTransform(sourceCRS, lyr.gui.dynamic_crs)) {
     return;
   }
   var gui = lyr.gui;

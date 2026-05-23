@@ -10,6 +10,7 @@ var GEOTIFF_FIXTURE = '/Users/matthewbloch/Development/mapshaper/geotiff.js/test
 var BIG_ENDIAN_DEFLATE_FIXTURE = '/Users/matthewbloch/nytweb/2026/mapshaper/rasters/Sentinel-8bit.tiff';
 var LARGE_YCBCR_FIXTURE = '/Users/matthewbloch/nytweb/2026/mapshaper/rasters/f5a3e369-efa2-449d-aa74-6f164d6b9103.tif';
 var USER_DEFINED_CRS_FIXTURE = '/Users/matthewbloch/nytweb/2026/mapshaper/rasters/usa-relief.tif';
+var WGS84_GEOTIFF_FIXTURE = 'test/data/geotiff/wgs84-geographic-epsg4326.tif';
 
 describe('raster layers', function () {
   it('exports raster previews as embedded SVG images', function () {
@@ -215,6 +216,12 @@ describe('raster layers', function () {
     assert(dataset.info.crs_string.includes('+proj=aea'));
     assert(dataset.info.crs_string.includes('+lat_1=29.5'));
     assert(dataset.info.crs_string.includes('+lon_0=-96'));
+  });
+
+  it('imports geographic GeoTIFF EPSG:4326 CRS metadata', async function () {
+    var dataset = await api.internal.importFileAsync(WGS84_GEOTIFF_FIXTURE, {});
+    assert.equal(dataset.info.input_formats[0], 'geotiff');
+    assert(api.internal.crsHaveSameTransform(dataset.info.crs, api.internal.parseCrsString('wgs84')));
   });
 
   it('imports PNG rasters with world and projection sidecars', async function () {
