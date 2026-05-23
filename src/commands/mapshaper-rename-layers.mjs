@@ -3,17 +3,17 @@ import utils from '../utils/mapshaper-utils';
 import { stop } from '../utils/mapshaper-logging';
 import { markLayerMetadataChanged, noteLayerMetadataWillChange } from '../undo/mapshaper-undo-tracking';
 
-cmd.renameLayers = function(layers, names, catalog) {
+cmd.renameLayers = function(layers, names) {
   if (names && names.join('').indexOf('=') > -1) {
-    renameByAssignment(names, catalog);
+    renameByAssignment(names, layers);
   } else {
     renameTargetLayers(names, layers);
   }
 };
 
-function renameByAssignment(names, catalog) {
+function renameByAssignment(names, layers) {
   var index = mapLayerNames(names);
-  catalog.forEachLayer(function(lyr) {
+  layers.forEach(function(lyr) {
     if (index[lyr.name]) {
       noteLayerMetadataWillChange(lyr, {operation: 'rename-layers'});
       lyr.name = index[lyr.name];
@@ -24,17 +24,14 @@ function renameByAssignment(names, catalog) {
 
 function renameTargetLayers(names, layers) {
   var nameCount = names && names.length || 0;
-  var name = '';
-  var suffix = '';
+  if (nameCount != layers.length) {
+    stop("Expected one name for each target layer; received " + nameCount +
+        " name" + (nameCount == 1 ? "" : "s") + " for " + layers.length +
+        " target layer" + (layers.length == 1 ? "" : "s"));
+  }
   layers.forEach(function(lyr, i) {
-    if (i < nameCount) {
-      name = names[i];
-    }
-    if (name && nameCount < layers.length && (i >= nameCount - 1)) {
-      suffix = (suffix || 0) + 1;
-    }
     noteLayerMetadataWillChange(lyr, {operation: 'rename-layers'});
-    lyr.name = name + suffix;
+    lyr.name = names[i];
     markLayerMetadataChanged(lyr, {operation: 'rename-layers'});
   });
 }
