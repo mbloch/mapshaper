@@ -6611,34 +6611,42 @@
 
     function getPayloadStore() {
       if (!gui.undoPayloadStore) {
-        gui.undoPayloadStore = createUndoPayloadStore(getUndoPayloadStoreOptions());
-        gui.undoPayloadStore.startLifecycle();
-        gui.undoPayloadStore.cleanupStaleSessions().then(function(result) {
-          logStartupCleanup({
-            count: result.keys.length,
-            sessionCount: result.sessionCount,
-            singular: 'undo payload',
-            plural: 'undo payloads',
-            sizeBytes: result.sizeBytes
-          });
-        }).catch(function() {});
+        gui.undoPayloadStore = createUndoPayloadStore(getUndoPayloadStoreOptions(gui));
       }
+      gui.undoPayloadStore.startLifecycle();
       return gui.undoPayloadStore;
     }
+  }
 
-    function getUndoPayloadStoreOptions() {
-      return {
-        maxBytes: getUndoStorageLimit('undoStorageMaxBytes', 1024 * 1024 * 1024),
-        maxPayloadBytes: getUndoStorageLimit('undoPayloadMaxBytes', 512 * 1024 * 1024)
-      };
+  function cleanupStaleUndoPayloads(gui) {
+    if (!gui.undoPayloadStore) {
+      gui.undoPayloadStore = createUndoPayloadStore(getUndoPayloadStoreOptions(gui));
     }
+    var store = gui.undoPayloadStore;
+    return store.cleanupStaleSessions().then(function(result) {
+      logStartupCleanup({
+        count: result.keys.length,
+        sessionCount: result.sessionCount,
+        singular: 'undo payload',
+        plural: 'undo payloads',
+        sizeBytes: result.sizeBytes
+      });
+      return result;
+    });
+  }
 
-    function getUndoStorageLimit(name, defaultValue) {
-      var opt = gui.options && gui.options[name],
-          query = getQueryValue$2(name);
-      if (query !== null && +query >= 0) return +query;
-      return opt >= 0 ? opt : defaultValue;
-    }
+  function getUndoPayloadStoreOptions(gui) {
+    return {
+      maxBytes: getUndoStorageLimit(gui, 'undoStorageMaxBytes', 1024 * 1024 * 1024),
+      maxPayloadBytes: getUndoStorageLimit(gui, 'undoPayloadMaxBytes', 512 * 1024 * 1024)
+    };
+  }
+
+  function getUndoStorageLimit(gui, name, defaultValue) {
+    var opt = gui && gui.options && gui.options[name],
+        query = getQueryValue$2(name);
+    if (query !== null && +query >= 0) return +query;
+    return opt >= 0 ? opt : defaultValue;
   }
 
   function getRedoCaptureUnits(units) {
@@ -6872,7 +6880,7 @@
     var mapCRS = gui.map.getActiveLayerCRS();
     var dataCRS = internal.getDatasetCRS(dataset);
     var msg, reproject;
-    if (!dataCRS || !mapCRS || internal.crsAreEqual(mapCRS, dataCRS)) return;
+    if (!dataCRS || !mapCRS || internal.crsHaveSameTransform(mapCRS, dataCRS)) return;
     if (!datasetCanBeReprojected(dataset, dataCRS, mapCRS)) {
       notifyProjectionMismatch(gui, dataset);
       return;
@@ -8373,7 +8381,7 @@
     if (!sourceCRS || !displayCRS) {
       return false;
     }
-    if (internal.crsAreEqual(sourceCRS, displayCRS)) {
+    if (internal.crsHaveSameTransform(sourceCRS, displayCRS)) {
       return false;
     }
     return true;
@@ -8522,7 +8530,7 @@
     if (!lyr.gui.geographic) {
       return;
     }
-    if (lyr.gui.dynamic_crs && internal.crsAreEqual(sourceCRS, lyr.gui.dynamic_crs)) {
+    if (lyr.gui.dynamic_crs && internal.crsHaveSameTransform(sourceCRS, lyr.gui.dynamic_crs)) {
       return;
     }
     var gui = lyr.gui;
@@ -17302,18 +17310,18 @@
         height = 0;
 
     el.on('mouseover', update);
-    if (window.onorientationchange) window.addEventListener('orientationchange', update);
+    if (window.onorientationchange) window.addEventListener('orientationchange', function() { update('window'); });
     window.addEventListener('scroll', update);
-    window.addEventListener('resize', update);
+    window.addEventListener('resize', function() { update('window'); });
 
     // trigger an update, e.g. when map container is resized
-    this.update = function() {
-      update();
+    this.update = function(source) {
+      update(source);
     };
 
-    this.resize = function(w, h) {
+    this.resize = function(w, h, source) {
       el.css('width', w).css('height', h);
-      update();
+      update(source);
     };
 
     this.width = function() { return width; };
@@ -17328,7 +17336,7 @@
       };
     };
 
-    function update() {
+    function update(source) {
       var div = el.node(),
           xy = getPageXY(div),
           w = div.clientWidth,
@@ -17344,7 +17352,7 @@
         height = h;
         self.dispatchEvent('change', self.position());
         if (resized) {
-          self.dispatchEvent('resize', self.position());
+          self.dispatchEvent('resize', Object.assign(self.position(), {source: source}));
         }
       }
     }
@@ -20307,7 +20315,7 @@
     _position.on('resize', function(e) {
       if (ready()) {
         // triggerChangeEvent({resize: true});
-        triggerChangeEvent();
+        triggerChangeEvent({resize: true, resizeSource: e.source});
       }
     });
 
@@ -20478,8 +20486,8 @@
       _scale = scale;
     }
 
-    function triggerChangeEvent() {
-      _self.dispatchEvent('change');
+    function triggerChangeEvent(data) {
+      _self.dispatchEvent('change', data);
     }
 
     // stop zooming before rounding errors become too obvious
@@ -20571,7 +20579,7 @@
   function getCachedRasterViewportPreview(layer, ext) {
     var entry = cache$1.get(layer);
     var params = getRasterViewportPreviewParams(layer, ext);
-    if (!entry || !params || entry.key != params.key) return null;
+    if (!entry || !params || !rasterViewportCacheEntryMatches(entry, params)) return null;
     return entry.preview;
   }
 
@@ -20580,9 +20588,9 @@
     var entry = cache$1.get(layer);
     var id, stats, timing, preview;
     if (!params || !params.needed) return;
-    if (entry && entry.key == params.key) return;
+    if (entry && rasterViewportCacheEntryMatches(entry, params)) return;
     id = ++requestId$1;
-    cache$1.set(layer, {key: params.key, pending: id});
+    cache$1.set(layer, getRasterViewportCacheEntry(params, {pending: id}));
     setTimeout(function() {
       var current = cache$1.get(layer);
       if (!current || current.pending != id) return;
@@ -20594,10 +20602,7 @@
       logRasterPreviewTiming(params, timing);
       current = cache$1.get(layer);
       if (!preview || !current || current.pending != id) return;
-      cache$1.set(layer, {
-        key: params.key,
-        preview: preview
-      });
+      cache$1.set(layer, getRasterViewportCacheEntry(params, {preview: preview}));
       onReady();
     }, 0);
   }
@@ -20657,6 +20662,17 @@
       sourceWidth: crop.width,
       sourceHeight: crop.height
     };
+  }
+
+  function rasterViewportCacheEntryMatches(entry, params) {
+    return entry.key == params.key && entry.grid == params.grid && entry.samples == params.grid.samples;
+  }
+
+  function getRasterViewportCacheEntry(params, entry) {
+    entry.key = params.key;
+    entry.grid = params.grid;
+    entry.samples = params.grid.samples;
+    return entry;
   }
 
   function getCachedRasterScalingStats(params, timing) {
@@ -20764,6 +20780,7 @@
     var params = getRasterReprojectedPreviewParams(layer, ext);
     var entry = cache.get(layer);
     if (!entry || !entry.preview) return null;
+    if (params && !rasterReprojectedCacheSourceMatches(entry, params)) return null;
     if (!params || entry.key != params.key) return entry.preview;
     return entry.preview;
   }
@@ -20773,9 +20790,9 @@
     var entry = cache.get(layer);
     var id, timing;
     if (!params) return;
-    if (entry && entry.key == params.key) return;
+    if (entry && rasterReprojectedCacheEntryMatches(entry, params)) return;
     id = ++requestId;
-    cache.set(layer, {key: params.key, pending: id});
+    cache.set(layer, getRasterReprojectedCacheEntry(params, {pending: id}));
     setTimeout(function() {
       var current = cache.get(layer);
       var grid, preview;
@@ -20805,7 +20822,7 @@
       preview.bbox = grid.bbox;
       current = cache.get(layer);
       if (!current || current.pending != id) return;
-      cache.set(layer, {key: params.key, preview: preview});
+      cache.set(layer, getRasterReprojectedCacheEntry(params, {preview: preview}));
       onReady();
     }, 0);
   }
@@ -20869,6 +20886,21 @@
       getRasterReprojectionSampleMethod(),
       layer.raster && layer.raster.grid && layer.raster.grid.samples && layer.raster.grid.samples.length
     ].join('|');
+  }
+
+  function rasterReprojectedCacheEntryMatches(entry, params) {
+    return entry.key == params.key && rasterReprojectedCacheSourceMatches(entry, params);
+  }
+
+  function rasterReprojectedCacheSourceMatches(entry, params) {
+    return entry.grid == params.grid && entry.samples == params.grid.samples;
+  }
+
+  function getRasterReprojectedCacheEntry(params, entry) {
+    entry.key = params.key;
+    entry.grid = params.grid;
+    entry.samples = params.grid.samples;
+    return entry;
   }
 
   function applyCoverageMask(preview, coverage) {
@@ -22377,7 +22409,10 @@ GUI and setting the size and crop of SVG output.</p><div><input type="text" clas
         _visibleLayers = [], // cached visible map layers
         _hit, _nav,
         _intersectionLyr, _activeLyr, _overlayLayers,
-        _renderer, _dynamicCRS;
+        _renderer, _dynamicCRS,
+        _resizeRedrawTimer = null;
+
+    var RESIZE_REDRAW_DELAY = 200;
 
     _mouse.disable(); // wait for gui.focus() to activate mouse events
 
@@ -22527,13 +22562,43 @@ GUI and setting the size and crop of SVG output.</p><div><input type="text" clas
 
       _ext.on('change', function(e) {
         gui?.basemap.refresh(); // keep basemap synced up (if enabled)
-        drawLayers(e.redraw ? '' : 'nav');
+        if (e.resize) {
+          drawLayersForResize(e.resizeSource);
+        } else {
+          cancelResizeRedraw();
+          drawLayers(e.redraw ? '' : 'nav');
+        }
       });
 
-      gui.on('resize', function() {
-        position.update(); // kludge to detect new map size after console toggle
+      gui.on('resize', function(e) {
+        position.update(e.source); // kludge to detect new map size after console toggle
       });
     };
+
+    function drawLayersForResize(source) {
+      if (source == 'sidebar') {
+        cancelResizeRedraw();
+        drawLayers();
+      } else {
+        drawLayers('nav');
+        scheduleResizeRedraw();
+      }
+    }
+
+    function scheduleResizeRedraw() {
+      cancelResizeRedraw();
+      _resizeRedrawTimer = setTimeout(function() {
+        _resizeRedrawTimer = null;
+        drawLayers();
+      }, RESIZE_REDRAW_DELAY);
+    }
+
+    function cancelResizeRedraw() {
+      if (_resizeRedrawTimer) {
+        clearTimeout(_resizeRedrawTimer);
+        _resizeRedrawTimer = null;
+      }
+    }
 
     function getGlobalStyleOptions(opts) {
       var mode = gui.state.interaction_mode;
@@ -23633,6 +23698,7 @@ GUI and setting the size and crop of SVG output.</p><div><input type="text" clas
 
     initModeRules(gui);
     startRasterSourceStoreLifecycle();
+    cleanupStaleUndoPayloads(gui).catch(function() {});
     gui.map.init();
 
     if (opts.saveControl) {
@@ -23694,7 +23760,7 @@ GUI and setting the size and crop of SVG output.</p><div><input type="text" clas
         .classed('layers-open', sidebarPanel == 'layers')
         .classed('console-open', sidebarPanel == 'console');
       gui.dispatchEvent('sidebar', {name: sidebarPanel, prev: prev});
-      gui.dispatchEvent('resize');
+      gui.dispatchEvent('resize', {source: 'sidebar'});
     };
 
     gui.toggleSidebarPanel = function(name) {
@@ -23797,7 +23863,7 @@ GUI and setting the size and crop of SVG output.</p><div><input type="text" clas
       if (sidebarResizeFrame) return;
       sidebarResizeFrame = requestAnimationFrame(function() {
         sidebarResizeFrame = null;
-        gui.dispatchEvent('resize');
+        gui.dispatchEvent('resize', {source: 'sidebar-resize'});
       });
     }
   }

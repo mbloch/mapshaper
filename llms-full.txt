@@ -570,6 +570,17 @@ mapshaper covid_cases.geojson \
   -o out.geojson
 ```
 
+### -blur
+
+Apply a Gaussian-like blur to raster layers. The command only works on projected
+rasters; unprojected lat-long rasters should be reprojected first with `-proj`.
+
+`radius=` Blur amount in pixels. This value corresponds to `2 * sigma` of a
+Gaussian curve. Pixel values can be written as plain numbers or with a `px`
+suffix, for example `radius=10` or `radius=10px`.
+
+Common options: `target=`
+
 ### -clean
 
 This command attempts to repair various kinds of abnormal geometry that might cause problems when running other mapshaper commands or when using other software.

@@ -890,6 +890,8 @@ body.sidebar-tabs-over-popup .sidebar-tabs {
 }
 
 .sidebar-tab {
+	border: 1px solid rgba(255,255,255,0.8);
+	border-right: none;																										;
 	writing-mode: vertical-rl;
 	transform: rotate(180deg);
 	background-color: var(--theme-col);

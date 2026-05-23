@@ -78,7 +78,7 @@
     return obj === Object(obj); // via underscore
   }
 
-  function clamp$1(val, min, max) {
+  function clamp$2(val, min, max) {
     return val < min ? min : (val > max ? max : val);
   }
 
@@ -751,7 +751,7 @@
   function findValueByRank(arr, rank) {
     if (!arr.length || rank < 1 || rank > arr.length) error$1("[findValueByRank()] invalid input");
 
-    rank = clamp$1(rank | 0, 1, arr.length);
+    rank = clamp$2(rank | 0, 1, arr.length);
     var k = rank - 1, // conv. rank to array index
         n = arr.length,
         l = 0,
@@ -1125,7 +1125,7 @@
   // self-import and the resulting Rollup circular-dependency warning.
   var utils = {
     addThousandsSep, addslashes, arrayToIndex,
-    clamp: clamp$1, cleanNumericString, contains, copyElements, countValues, createBuffer,
+    clamp: clamp$2, cleanNumericString, contains, copyElements, countValues, createBuffer,
     defaults, difference,
     endsWith, every, expandoBuffer, extend: extend$1, extendBuffer,
     find: find$1, findMedian, findQuantile, findRankByValue, findStringPrefix,
@@ -6373,7 +6373,7 @@
   }
 
   function projectPoint(xy, crsFrom, crsTo) {
-    if (crsAreEqual(crsFrom, crsTo)) return xy.concat();
+    if (crsHaveSameTransform(crsFrom, crsTo)) return xy.concat();
     var proj = getProjTransform2(crsFrom, crsTo);
     return proj(xy[0], xy[1]);
   }
@@ -6416,6 +6416,16 @@
   function crsAreEqual(a, b) {
     var str = crsToProj4(a);
     return !!str && str == crsToProj4(b);
+  }
+
+  function crsHaveSameTransform(a, b) {
+    var str = crsToNormalizedProj4(a);
+    return !!str && str == crsToNormalizedProj4(b);
+  }
+
+  function crsToNormalizedProj4(P) {
+    var normalizer = mproj$1.internal && mproj$1.internal.get_normalized_proj_defn;
+    return P && normalizer ? normalizer(P) : null;
   }
 
   function isProjAlias(str) {
@@ -6690,6 +6700,7 @@
   var Projections = /*#__PURE__*/Object.freeze({
     __proto__: null,
     crsAreEqual: crsAreEqual,
+    crsHaveSameTransform: crsHaveSameTransform,
     crsToPrj: crsToPrj,
     crsToProj4: crsToProj4,
     crsToWkt2: crsToWkt2,
@@ -30601,6 +30612,13 @@ ${svg}
       .option('target', targetOpt)
       .option('no-replace', noReplaceOpt);
 
+    parser.command('blur')
+      // .describe('apply a Gaussian-like blur to projected raster layers')
+      .option('radius', {
+        describe: '[raster] blur amount in pixels, corresponding to 2 * sigma (e.g. 10 or 10px)'
+      })
+      .option('target', targetOpt);
+
     parser.command('classify')
       // .describe('apply sequential or categorical classification')
       .describe('assign colors or values using one of several methods')
@@ -51569,10 +51587,10 @@ ${svg}
 
   function getTrianglePixelBounds(grid, p1, p2, p3) {
     return [
-      clamp(Math.floor(Math.min(p1.x, p2.x, p3.x)), 0, grid.width - 1),
-      clamp(Math.floor(Math.min(p1.y, p2.y, p3.y)), 0, grid.height - 1),
-      clamp(Math.ceil(Math.max(p1.x, p2.x, p3.x)), 0, grid.width - 1),
-      clamp(Math.ceil(Math.max(p1.y, p2.y, p3.y)), 0, grid.height - 1)
+      clamp$1(Math.floor(Math.min(p1.x, p2.x, p3.x)), 0, grid.width - 1),
+      clamp$1(Math.floor(Math.min(p1.y, p2.y, p3.y)), 0, grid.height - 1),
+      clamp$1(Math.ceil(Math.max(p1.x, p2.x, p3.x)), 0, grid.width - 1),
+      clamp$1(Math.ceil(Math.max(p1.y, p2.y, p3.y)), 0, grid.height - 1)
     ];
   }
 
@@ -51593,8 +51611,8 @@ ${svg}
   }
 
   function copyNearestRasterSample(srcGrid, destGrid, sx, sy, dx, dy) {
-    var srcX = clamp(Math.floor(sx), 0, srcGrid.width - 1);
-    var srcY = clamp(Math.floor(sy), 0, srcGrid.height - 1);
+    var srcX = clamp$1(Math.floor(sx), 0, srcGrid.width - 1);
+    var srcY = clamp$1(Math.floor(sy), 0, srcGrid.height - 1);
     var src = (srcY * srcGrid.width + srcX) * srcGrid.bands;
     var dest = (dy * destGrid.width + dx) * destGrid.bands;
     if (!rasterSourcePixelIsCovered(srcGrid, srcX, srcY)) return;
@@ -51606,12 +51624,12 @@ ${svg}
   }
 
   function copyBilinearRasterSample(srcGrid, destGrid, sx, sy, dx, dy) {
-    var srcX = clamp(Math.floor(sx - 0.5), 0, srcGrid.width - 1);
-    var srcY = clamp(Math.floor(sy - 0.5), 0, srcGrid.height - 1);
-    var srcX2 = clamp(srcX + 1, 0, srcGrid.width - 1);
-    var srcY2 = clamp(srcY + 1, 0, srcGrid.height - 1);
-    var tx = clamp(sx - 0.5 - srcX, 0, 1);
-    var ty = clamp(sy - 0.5 - srcY, 0, 1);
+    var srcX = clamp$1(Math.floor(sx - 0.5), 0, srcGrid.width - 1);
+    var srcY = clamp$1(Math.floor(sy - 0.5), 0, srcGrid.height - 1);
+    var srcX2 = clamp$1(srcX + 1, 0, srcGrid.width - 1);
+    var srcY2 = clamp$1(srcY + 1, 0, srcGrid.height - 1);
+    var tx = clamp$1(sx - 0.5 - srcX, 0, 1);
+    var ty = clamp$1(sy - 0.5 - srcY, 0, 1);
     var src00 = (srcY * srcGrid.width + srcX) * srcGrid.bands;
     var src10 = (srcY * srcGrid.width + srcX2) * srcGrid.bands;
     var src01 = (srcY2 * srcGrid.width + srcX) * srcGrid.bands;
@@ -51716,7 +51734,7 @@ ${svg}
     return (x - a.x) * (b.y - a.y) - (y - a.y) * (b.x - a.x);
   }
 
-  function clamp(val, min, max) {
+  function clamp$1(val, min, max) {
     return val < min ? min : val > max ? max : val;
   }
 
@@ -54972,17 +54990,17 @@ ${svg}
     print(msgArg || '');
   };
 
-  cmd.renameLayers = function(layers, names, catalog) {
+  cmd.renameLayers = function(layers, names) {
     if (names && names.join('').indexOf('=') > -1) {
-      renameByAssignment(names, catalog);
+      renameByAssignment(names, layers);
     } else {
       renameTargetLayers(names, layers);
     }
   };
 
-  function renameByAssignment(names, catalog) {
+  function renameByAssignment(names, layers) {
     var index = mapLayerNames(names);
-    catalog.forEachLayer(function(lyr) {
+    layers.forEach(function(lyr) {
       if (index[lyr.name]) {
         noteLayerMetadataWillChange(lyr, {operation: 'rename-layers'});
         lyr.name = index[lyr.name];
@@ -54993,17 +55011,14 @@ ${svg}
 
   function renameTargetLayers(names, layers) {
     var nameCount = names && names.length || 0;
-    var name = '';
-    var suffix = '';
+    if (nameCount != layers.length) {
+      stop$1("Expected one name for each target layer; received " + nameCount +
+          " name" + (nameCount == 1 ? "" : "s") + " for " + layers.length +
+          " target layer" + (layers.length == 1 ? "" : "s"));
+    }
     layers.forEach(function(lyr, i) {
-      if (i < nameCount) {
-        name = names[i];
-      }
-      if (name && nameCount < layers.length && (i >= nameCount - 1)) {
-        suffix = (suffix || 0) + 1;
-      }
       noteLayerMetadataWillChange(lyr, {operation: 'rename-layers'});
-      lyr.name = name + suffix;
+      lyr.name = names[i];
       markLayerMetadataChanged(lyr, {operation: 'rename-layers'});
     });
   }
@@ -57859,7 +57874,7 @@ ${svg}
       name == 'require' || name == 'drop' || name == 'target' ||
       name == 'if' || name == 'elif' || name == 'else' || name == 'endif' ||
       name == 'run' || name == 'i' || name == 'snap' || name == 'frame' ||
-      name == 'comment';
+      name == 'comment' || name == 'rename-layers';
   }
 
   function commandAcceptsEmptyTarget(name) {
@@ -57900,8 +57915,7 @@ ${svg}
       T$1.start();
 
       if (name == 'rename-layers') {
-        // default target is all layers
-        targets = job.catalog.findCommandTargets(opts.target || '*');
+        targets = job.catalog.findCommandTargets(opts.target);
         targetLayers = targets.reduce(function(memo, obj) {
           return memo.concat(obj.layers);
         }, []);
@@ -57969,6 +57983,9 @@ ${svg}
       } else if (name == 'buffer') {
          outputLayers = applyCommandToEachLayer(cmd.buffer, targetLayers, targetDataset, opts);
         // outputLayers = cmd.buffer(targetLayers, targetDataset, opts);
+
+      } else if (name == 'blur') {
+        cmd.blur(targetLayers, targetDataset, opts);
 
       } else if (name == 'data-fill') {
         applyCommandToEachLayer(cmd.dataFill, targetLayers, arcs, opts);
@@ -58176,7 +58193,7 @@ ${svg}
         applyCommandToEachLayer(cmd.renameFields, targetLayers, opts.fields);
 
       } else if (name == 'rename-layers') {
-        cmd.renameLayers(targetLayers, opts.names, job.catalog);
+        cmd.renameLayers(targetLayers, opts.names);
 
       } else if (name == 'require') {
         await cmd.require(opts);
@@ -58330,7 +58347,7 @@ ${svg}
     });
   }
 
-  var version = "0.7.19";
+  var version = "0.7.20";
 
   // Parse command line args into commands and run them
   // Function takes an optional Node-style callback. A Promise is returned if no callback is given.
@@ -59018,6 +59035,291 @@ ${svg}
     }
     return false;
   }
+
+  var BOX_BLUR_PASSES = 3;
+
+  function blurRasterGrid(raster, optsArg) {
+    var opts = optsArg || {};
+    var grid = getRasterGrid(raster);
+    var radius = getBlurRadius(opts);
+    var sigma = radius / 2;
+    var boxes = getGaussianBoxWidths(sigma, BOX_BLUR_PASSES);
+    var samples = new grid.samples.constructor(grid.samples.length);
+    var tmp = new Float32Array(grid.width * grid.height);
+    var channel = new Float32Array(grid.width * grid.height);
+    var weights = getRasterBlurWeights(grid);
+    validateBlurGrid(grid);
+    if (grid.bands == 4) {
+      blurRgbaGrid(grid, samples, channel, tmp, weights, boxes);
+      return Object.assign({}, grid, {
+        samples: samples
+      });
+    }
+    for (var band = 0; band < grid.bands; band++) {
+      copyBandToChannel(grid, band, channel);
+      blurChannel(channel, tmp, weights, grid.width, grid.height, boxes);
+      copyChannelToBand(channel, samples, grid, band);
+    }
+    return Object.assign({}, grid, {
+      samples: samples
+    });
+  }
+
+  function getBlurRadius(opts) {
+    var arg = opts.radius;
+    var radius;
+    if (arg == null || arg === '') stop$1('Missing blur radius');
+    if (typeof arg == 'string') {
+      arg = arg.trim().replace(/px$/i, '');
+    }
+    radius = Number(arg);
+    if (!(radius > 0 && isFinite(radius))) {
+      stop$1('Expected radius= to be a positive pixel value');
+    }
+    return radius;
+  }
+
+  function validateBlurGrid(grid) {
+    if (!grid || !grid.samples || !grid.width || !grid.height || !grid.bands) {
+      stop$1('Expected a raster grid');
+    }
+  }
+
+  // Convert a Gaussian sigma to box widths using the method described by
+  // Ivan Kutskir / Peter Kovesi. Three box passes are a close, fast approximation.
+  function getGaussianBoxWidths(sigma, n) {
+    var ideal = Math.sqrt((12 * sigma * sigma / n) + 1);
+    var wl = Math.floor(ideal);
+    if (wl % 2 === 0) wl--;
+    var wu = wl + 2;
+    var m = Math.round((12 * sigma * sigma - n * wl * wl - 4 * n * wl - 3 * n) / (-4 * wl - 4));
+    var boxes = [];
+    for (var i = 0; i < n; i++) {
+      boxes.push(i < m ? wl : wu);
+    }
+    return boxes;
+  }
+
+  function blurRgbaGrid(grid, samples, channel, tmp, weights, boxes) {
+    var alpha = new Float32Array(grid.width * grid.height);
+    copyBandToChannel(grid, 3, alpha);
+    blurChannel(alpha, tmp, weights, grid.width, grid.height, boxes);
+    for (var band = 0; band < grid.bands; band++) {
+      if (band < 3) {
+        copyPremultipliedBandToChannel(grid, band, channel);
+        blurChannel(channel, tmp, weights, grid.width, grid.height, boxes);
+        copyUnpremultipliedChannelToBand(channel, alpha, samples, grid, band);
+      } else {
+        copyChannelToBand(alpha, samples, grid, 3);
+      }
+    }
+  }
+
+  function blurChannel(channel, tmp, weights, width, height, boxes) {
+    boxes.forEach(function(widthPx) {
+      var radius = Math.floor((widthPx - 1) / 2);
+      if (radius < 1) return;
+      if (weights) {
+        boxBlurWeighted(channel, tmp, weights, width, height, radius);
+      } else {
+        boxBlur(channel, tmp, width, height, radius);
+      }
+    });
+  }
+
+  function boxBlur(src, tmp, width, height, radius) {
+    boxBlurHorizontal(src, tmp, width, height, radius);
+    boxBlurVertical(tmp, src, width, height, radius);
+  }
+
+  function boxBlurHorizontal(src, dest, width, height, radius) {
+    var size = radius * 2 + 1;
+    var x, y, row, sum;
+    for (y = 0; y < height; y++) {
+      row = y * width;
+      sum = src[row] * (radius + 1);
+      for (x = 1; x <= radius; x++) sum += src[row + Math.min(width - 1, x)];
+      for (x = 0; x < width; x++) {
+        dest[row + x] = sum / size;
+        sum += src[row + Math.min(width - 1, x + radius + 1)] - src[row + Math.max(0, x - radius)];
+      }
+    }
+  }
+
+  function boxBlurVertical(src, dest, width, height, radius) {
+    var size = radius * 2 + 1;
+    var x, y, sum;
+    for (x = 0; x < width; x++) {
+      sum = src[x] * (radius + 1);
+      for (y = 1; y <= radius; y++) sum += src[Math.min(height - 1, y) * width + x];
+      for (y = 0; y < height; y++) {
+        dest[y * width + x] = sum / size;
+        sum += src[Math.min(height - 1, y + radius + 1) * width + x] - src[Math.max(0, y - radius) * width + x];
+      }
+    }
+  }
+
+  function boxBlurWeighted(src, tmp, weights, width, height, radius) {
+    boxBlurHorizontalWeighted(src, tmp, weights, width, height, radius);
+    boxBlurVerticalWeighted(tmp, src, weights, width, height, radius);
+  }
+
+  function boxBlurHorizontalWeighted(src, dest, weights, width, height, radius) {
+    var x, y, row, id, addId, subId, sum, weightSum;
+    for (y = 0; y < height; y++) {
+      row = y * width;
+      sum = src[row] * weights[row] * (radius + 1);
+      weightSum = weights[row] * (radius + 1);
+      for (x = 1; x <= radius; x++) {
+        id = row + Math.min(width - 1, x);
+        sum += src[id] * weights[id];
+        weightSum += weights[id];
+      }
+      for (x = 0; x < width; x++) {
+        id = row + x;
+        dest[id] = weightSum > 0 ? sum / weightSum : src[id];
+        addId = row + Math.min(width - 1, x + radius + 1);
+        subId = row + Math.max(0, x - radius);
+        sum += src[addId] * weights[addId] - src[subId] * weights[subId];
+        weightSum += weights[addId] - weights[subId];
+      }
+    }
+  }
+
+  function boxBlurVerticalWeighted(src, dest, weights, width, height, radius) {
+    var x, y, id, addId, subId, sum, weightSum;
+    for (x = 0; x < width; x++) {
+      sum = src[x] * weights[x] * (radius + 1);
+      weightSum = weights[x] * (radius + 1);
+      for (y = 1; y <= radius; y++) {
+        id = Math.min(height - 1, y) * width + x;
+        sum += src[id] * weights[id];
+        weightSum += weights[id];
+      }
+      for (y = 0; y < height; y++) {
+        id = y * width + x;
+        dest[id] = weightSum > 0 ? sum / weightSum : src[id];
+        addId = Math.min(height - 1, y + radius + 1) * width + x;
+        subId = Math.max(0, y - radius) * width + x;
+        sum += src[addId] * weights[addId] - src[subId] * weights[subId];
+        weightSum += weights[addId] - weights[subId];
+      }
+    }
+  }
+
+  function copyBandToChannel(grid, band, channel) {
+    var samples = grid.samples;
+    var bands = grid.bands;
+    for (var i = 0, j = band; i < channel.length; i++, j += bands) {
+      channel[i] = samples[j];
+    }
+  }
+
+  function copyPremultipliedBandToChannel(grid, band, channel) {
+    var samples = grid.samples;
+    var bands = grid.bands;
+    var alphaOffset = 3 - band;
+    var maxAlpha = getAlphaMaxValue(samples);
+    for (var i = 0, j = band; i < channel.length; i++, j += bands) {
+      channel[i] = samples[j] * samples[j + alphaOffset] / maxAlpha;
+    }
+  }
+
+  function copyUnpremultipliedChannelToBand(channel, alpha, samples, grid, band) {
+    var bands = grid.bands;
+    var isFloat = samples instanceof Float32Array || samples instanceof Float64Array;
+    var range = isFloat ? null : getTypedArrayRange(samples);
+    var maxAlpha = getAlphaMaxValue(samples);
+    var val, a;
+    for (var i = 0, j = band; i < channel.length; i++, j += bands) {
+      a = alpha[i];
+      val = a > 0 ? channel[i] * maxAlpha / a : 0;
+      samples[j] = isFloat ? val : clamp(Math.round(val), range.min, range.max);
+    }
+  }
+
+  function copyChannelToBand(channel, samples, grid, band) {
+    var bands = grid.bands;
+    var isFloat = samples instanceof Float32Array || samples instanceof Float64Array;
+    var range = isFloat ? null : getTypedArrayRange(samples);
+    var val;
+    for (var i = 0, j = band; i < channel.length; i++, j += bands) {
+      val = channel[i];
+      samples[j] = isFloat ? val : clamp(Math.round(val), range.min, range.max);
+    }
+  }
+
+  function getRasterBlurWeights(grid) {
+    if (!grid.coverage && grid.nodata == null) return null;
+    var weights = new Float32Array(grid.width * grid.height);
+    for (var i = 0; i < weights.length; i++) {
+      weights[i] = rasterBlurPixelIsValid(grid, i) ? 1 : 0;
+    }
+    return weights;
+  }
+
+  function rasterBlurPixelIsValid(grid, pixelId) {
+    var off, n;
+    if (grid.coverage && grid.coverage[pixelId] === 0) return false;
+    if (grid.nodata == null) return true;
+    off = pixelId * grid.bands;
+    n = Math.min(grid.bands, 3);
+    for (var i = 0; i < n; i++) {
+      if (grid.samples[off + i] != grid.nodata) return true;
+    }
+    return false;
+  }
+
+  function getAlphaMaxValue(samples) {
+    if (samples instanceof Float32Array || samples instanceof Float64Array) return 1;
+    return getTypedArrayRange(samples).max;
+  }
+
+  function getTypedArrayRange(arr) {
+    if (arr instanceof Uint8Array || arr instanceof Uint8ClampedArray) return {min: 0, max: 255};
+    if (arr instanceof Int8Array) return {min: -128, max: 127};
+    if (arr instanceof Uint16Array) return {min: 0, max: 65535};
+    if (arr instanceof Int16Array) return {min: -32768, max: 32767};
+    if (arr instanceof Uint32Array) return {min: 0, max: 4294967295};
+    if (arr instanceof Int32Array) return {min: -2147483648, max: 2147483647};
+    return {min: -Infinity, max: Infinity};
+  }
+
+  function clamp(val, min, max) {
+    return val < min ? min : val > max ? max : val;
+  }
+
+  cmd.blur = blurRasterLayers;
+
+  function blurRasterLayers(layers, dataset, optsArg) {
+    var opts = optsArg || {};
+    requireProjectedDataset(dataset);
+    layers.forEach(function(lyr) {
+      if (!layerHasRaster(lyr)) {
+        stop$1('Command requires a raster layer');
+      }
+      blurRasterLayer(lyr, opts);
+    });
+  }
+
+  function blurRasterLayer(lyr, opts) {
+    var raster = lyr.raster;
+    noteLayerWillChange(lyr, {operation: 'blurRasterLayer', unit: 'raster'});
+    raster.grid = blurRasterGrid(raster, opts);
+    raster.view = raster.view || {};
+    delete raster.view.scalingStats;
+    if (runningInBrowser()) {
+      raster.view.preview = createRasterPreview(raster, opts);
+    } else {
+      delete raster.view.preview;
+    }
+    markLayerChanged(lyr, {operation: 'blurRasterLayer', unit: 'raster'});
+  }
+
+  var Blur = /*#__PURE__*/Object.freeze({
+    __proto__: null,
+    blurRasterLayers: blurRasterLayers
+  });
 
   function UndoTransaction(label) {
     this.label = label || '';
@@ -59809,6 +60111,7 @@ ${svg}
     ArcUtils,
     Bbox2Clipping,
     BinArray$1,
+    Blur,
     // BufferCommon,
     Calc,
     CalcUtils,
