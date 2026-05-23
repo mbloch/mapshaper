@@ -87,7 +87,7 @@ export function toLngLat(xy, P) {
 }
 
 export function projectPoint(xy, crsFrom, crsTo) {
-  if (crsAreEqual(crsFrom, crsTo)) return xy.concat();
+  if (crsHaveSameTransform(crsFrom, crsTo)) return xy.concat();
   var proj = getProjTransform2(crsFrom, crsTo);
   return proj(xy[0], xy[1]);
 }
@@ -130,6 +130,16 @@ export function crsToWkt2(P) {
 export function crsAreEqual(a, b) {
   var str = crsToProj4(a);
   return !!str && str == crsToProj4(b);
+}
+
+export function crsHaveSameTransform(a, b) {
+  var str = crsToNormalizedProj4(a);
+  return !!str && str == crsToNormalizedProj4(b);
+}
+
+function crsToNormalizedProj4(P) {
+  var normalizer = mproj.internal && mproj.internal.get_normalized_proj_defn;
+  return P && normalizer ? normalizer(P) : null;
 }
 
 export function isProjAlias(str) {

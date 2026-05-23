@@ -10,7 +10,7 @@ export function needReprojectionForDisplay(sourceCRS, displayCRS) {
   if (!sourceCRS || !displayCRS) {
     return false;
   }
-  if (internal.crsAreEqual(sourceCRS, displayCRS)) {
+  if (internal.crsHaveSameTransform(sourceCRS, displayCRS)) {
     return false;
   }
   return true;

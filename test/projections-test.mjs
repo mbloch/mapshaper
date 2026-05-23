@@ -110,6 +110,28 @@ describe('mapshaper-projections.js', function() {
     })
   })
 
+  describe('crsHaveSameTransform()', function () {
+    it('matches WGS84 datum and equivalent WGS84 ellipsoid for geographic CRS', function () {
+      var a = api.internal.parseCrsString('+proj=longlat +datum=WGS84');
+      var b = api.internal.parseCrsString('+proj=longlat +ellps=WGS84 +pm=0');
+      assert(!api.internal.crsAreEqual(a, b));
+      assert(api.internal.crsHaveSameTransform(a, b));
+    });
+
+    it('matches WGS84 datum and equivalent WGS84 ellipsoid for projected CRS', function () {
+      var a = api.internal.parseCrsString('+proj=aea +lat_1=29.5 +lat_2=45.5 +lat_0=37.5 +lon_0=-96 +datum=WGS84 +units=m');
+      var b = api.internal.parseCrsString('+proj=aea +lat_1=29.5 +lat_2=45.5 +lat_0=37.5 +lon_0=-96 +ellps=WGS84 +units=m +pm=0');
+      assert(!api.internal.crsAreEqual(a, b));
+      assert(api.internal.crsHaveSameTransform(a, b));
+    });
+
+    it('rejects different projection parameters', function () {
+      var a = api.internal.parseCrsString('+proj=robin +lon_0=0 +datum=WGS84');
+      var b = api.internal.parseCrsString('+proj=robin +lon_0=90 +ellps=WGS84 +pm=0');
+      assert(!api.internal.crsHaveSameTransform(a, b));
+    });
+  })
+
   describe('parseAuthorityCodeString()', function () {
     var fn = api.internal.parseAuthorityCodeString;
     it('parses "epsg:4326"', function () {

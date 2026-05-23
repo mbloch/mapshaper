@@ -6,7 +6,7 @@ export async function considerReprojecting(gui, dataset, opts) {
   var mapCRS = gui.map.getActiveLayerCRS();
   var dataCRS = internal.getDatasetCRS(dataset);
   var msg, reproject;
-  if (!dataCRS || !mapCRS || internal.crsAreEqual(mapCRS, dataCRS)) return;
+  if (!dataCRS || !mapCRS || internal.crsHaveSameTransform(mapCRS, dataCRS)) return;
   if (!datasetCanBeReprojected(dataset, dataCRS, mapCRS)) {
     notifyProjectionMismatch(gui, dataset);
     return;
