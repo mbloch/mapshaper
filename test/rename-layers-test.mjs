@@ -21,7 +21,7 @@ describe('mapshaper-rename-layers.js', function () {
     });
   });
 
-  it ('All layers are targeted by default', function(done) {
+  it ('Uses the default target by default', function(done) {
     var a = {
       type: 'Polygon',
       coordinates: [[[0, 0], [0, 1], [1, 0], [0, 0]]]
@@ -30,7 +30,24 @@ describe('mapshaper-rename-layers.js', function () {
       type: 'Point',
       coordinates: [3, 3]
     };
-    api.applyCommands('-i a.json -i b.json -rename-layers c,d -o gj2008 target=*', {'a.json': a, 'b.json': b}, function(err, output) {
+    api.applyCommands('-i a.json -i b.json -rename-layers c -o gj2008 target=*', {'a.json': a, 'b.json': b}, function(err, output) {
+      assert.deepEqual(JSON.parse(output['a.json']).geometries[0], a);
+      assert.deepEqual(JSON.parse(output['c.json']).geometries[0], b);
+      assert(!('b.json' in output));
+      done();
+    })
+  })
+
+  it ('Targets all layers when target=* is set', function(done) {
+    var a = {
+      type: 'Polygon',
+      coordinates: [[[0, 0], [0, 1], [1, 0], [0, 0]]]
+    };
+    var b = {
+      type: 'Point',
+      coordinates: [3, 3]
+    };
+    api.applyCommands('-i a.json -i b.json -rename-layers c,d target=* -o gj2008 target=*', {'a.json': a, 'b.json': b}, function(err, output) {
       assert.deepEqual(JSON.parse(output['c.json']).geometries[0], a);
       assert.deepEqual(JSON.parse(output['d.json']).geometries[0], b);
       done();
@@ -46,9 +63,26 @@ describe('mapshaper-rename-layers.js', function () {
       type: 'Point',
       coordinates: [3, 3]
     };
-    api.applyCommands('-i a.json -i b.json -rename-layers c=a,d=b -o gj2008 target=*', {'a.json': a, 'b.json': b}, function(err, output) {
+    api.applyCommands('-i a.json -i b.json -rename-layers c=a,d=b target=* -o gj2008 target=*', {'a.json': a, 'b.json': b}, function(err, output) {
       assert.deepEqual(JSON.parse(output['c.json']).geometries[0], a);
       assert.deepEqual(JSON.parse(output['d.json']).geometries[0], b);
+      done();
+    })
+  })
+
+  it ('Assignment syntax is limited to the target layers', function(done) {
+    var a = {
+      type: 'Polygon',
+      coordinates: [[[0, 0], [0, 1], [1, 0], [0, 0]]]
+    };
+    var b = {
+      type: 'Point',
+      coordinates: [3, 3]
+    };
+    api.applyCommands('-i a.json -i b.json -rename-layers c=a,d=b -o gj2008 target=*', {'a.json': a, 'b.json': b}, function(err, output) {
+      assert.deepEqual(JSON.parse(output['a.json']).geometries[0], a);
+      assert.deepEqual(JSON.parse(output['d.json']).geometries[0], b);
+      assert(!('c.json' in output));
       done();
     })
   })
@@ -58,7 +92,7 @@ describe('mapshaper-rename-layers.js', function () {
       type: 'Polygon',
       coordinates: [[[0, 0], [0, 1], [1, 0], [0, 0]]]
     };
-    api.applyCommands('-i a.json -dissolve + -rename-layers c,d -o gj2008 target=*', {'a.json': a}, function(err, output) {
+    api.applyCommands('-i a.json -dissolve + -rename-layers c,d target=* -o gj2008 target=*', {'a.json': a}, function(err, output) {
       assert.deepEqual(JSON.parse(output['c.json']).geometries[0], a);
       assert.deepEqual(JSON.parse(output['d.json']).geometries[0], a);
       done();
@@ -72,40 +106,66 @@ describe('mapshaper-rename-layers.js', function () {
     assert.deepEqual(layers, [{name: 'a'}, {name: 'b'}]);
   })
 
-  it ('use last name + count if more layers than names', function() {
+  it ('throws if there are fewer names than target layers', function() {
     var layers = [{}, {}],
         names = ['layer'];
-    api.cmd.renameLayers(layers, names);
-    assert.deepEqual(layers, [{name: 'layer1'}, {name: 'layer2'}]);
+    assert.throws(function() {
+      api.cmd.renameLayers(layers, names);
+    }, /Expected one name for each target layer/);
   })
 
-  it ('use last name + count if more layers than names', function() {
+  it ('throws if there are fewer names than target layers (multiple names)', function() {
     var layers = [{}, {}, {}, {}],
         names = ['counties', 'outline', 'innerlines'];
-    api.cmd.renameLayers(layers, names);
-    assert.deepEqual(layers, [{name: 'counties'}, {name: 'outline'}, {name: 'innerlines1'}, {name: 'innerlines2'}]);
+    assert.throws(function() {
+      api.cmd.renameLayers(layers, names);
+    }, /received 3 names for 4 target layers/);
   })
 
-  it ('ignore excess names', function() {
+  it ('throws if there are more names than target layers', function() {
     var layers = [{}, {}],
         names = ['a', 'b', 'c'];
-    api.cmd.renameLayers(layers, names);
-    assert.deepEqual(layers, [{name: 'a'}, {name: 'b'}]);
+    assert.throws(function() {
+      api.cmd.renameLayers(layers, names);
+    }, /received 3 names for 2 target layers/);
   })
 
-  // it ('use layer1, layer2, ... if names are missing', function() {
-  it ('use empty strings if names argument is empty', function() {
+  it ('throws if names argument is empty', function() {
     var layers = [{}, {}],
         names = null;
-    api.cmd.renameLayers(layers, names);
-    assert.deepEqual(layers, [{name: ''}, {name: ''}]);
+    assert.throws(function() {
+      api.cmd.renameLayers(layers, names);
+    }, /received 0 names for 2 target layers/);
   })
 
-  // it ('use layer1 for a single layer if no names are given', function() {
-  it ('use empty string for a single layer if no names are given', function() {
+  it ('throws if a single target layer has no names', function() {
     var layers = [{}],
         names = [];
+    assert.throws(function() {
+      api.cmd.renameLayers(layers, names);
+    }, /received 0 names for 1 target layer/);
+  })
+
+  it ('can assign an empty name to a single target layer', function() {
+    var layers = [{}],
+        names = [''];
     api.cmd.renameLayers(layers, names);
     assert.deepEqual(layers, [{name: ''}]);
+  })
+
+  it ('returns a UserError when list names do not match target layers', function(done) {
+    var a = {
+      type: 'Polygon',
+      coordinates: [[[0, 0], [0, 1], [1, 0], [0, 0]]]
+    };
+    var b = {
+      type: 'Point',
+      coordinates: [3, 3]
+    };
+    api.applyCommands('-i a.json -i b.json -rename-layers c,d', {'a.json': a, 'b.json': b}, function(err) {
+      assert.equal(err.name, 'UserError');
+      assert(/received 2 names for 1 target layer/.test(err.message));
+      done();
+    })
   })
 });

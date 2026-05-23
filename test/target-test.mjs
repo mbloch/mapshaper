@@ -66,7 +66,7 @@ describe('mapshaper-target.js', function () {
 
   it('layers on separate datasets can be matched', function(done) {
     var cmd = "-i test/data/shapefile/three_points.shp -i test/data/shapefile/three_points.shp \
-      -rename-layers layer1,layer2 -target * -o format=geojson";
+      -rename-layers layer1,layer2 target=* -target * -o format=geojson";
     api.applyCommands(cmd, function(err, output) {
       assert('layer1.json' in output);
       assert('layer2.json' in output);

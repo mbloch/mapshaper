@@ -1,3 +1,7 @@
+v0.7.20
+* Breaking change to -rename-layers. When target= option is missing, the command now uses the target layer(s) inherited from previous commands instead of all of the available layers. This change makes -rename-layers behave like other commands. Another change: when the number of names and the number of layers do not match, the program halts.
+* Added (undocumented) -blur command.
+
 v0.7.19
 * Added -proj background= option as an alias for nodata-color=.
 * Made white the default background color when reprojecting image rasters (for when the projected image is not rectangular).

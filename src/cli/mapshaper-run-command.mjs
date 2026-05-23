@@ -99,7 +99,7 @@ function commandAcceptsMultipleTargetDatasets(name) {
     name == 'require' || name == 'drop' || name == 'target' ||
     name == 'if' || name == 'elif' || name == 'else' || name == 'endif' ||
     name == 'run' || name == 'i' || name == 'snap' || name == 'frame' ||
-    name == 'comment';
+    name == 'comment' || name == 'rename-layers';
 }
 
 function commandAcceptsEmptyTarget(name) {
@@ -140,8 +140,7 @@ export async function runCommand(command, job) {
     T.start();
 
     if (name == 'rename-layers') {
-      // default target is all layers
-      targets = job.catalog.findCommandTargets(opts.target || '*');
+      targets = job.catalog.findCommandTargets(opts.target);
       targetLayers = targets.reduce(function(memo, obj) {
         return memo.concat(obj.layers);
       }, []);
@@ -419,7 +418,7 @@ export async function runCommand(command, job) {
       applyCommandToEachLayer(cmd.renameFields, targetLayers, opts.fields);
 
     } else if (name == 'rename-layers') {
-      cmd.renameLayers(targetLayers, opts.names, job.catalog);
+      cmd.renameLayers(targetLayers, opts.names);
 
     } else if (name == 'require') {
       await cmd.require(opts);
