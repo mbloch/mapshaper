@@ -31,9 +31,14 @@ cmd.mergeLayers = function(layersArg, opts) {
   var layers = layersArg.filter(getFeatureCount); // ignore empty layers
   var merged = {};
   opts = opts || {};
+  if (!layers.length && layersArg.length > 1) {
+    layers = layersArg; // merge all-empty layer sets
+  }
   if (!layers.length) return null;
   if (layers.length == 1) {
-    message('Use the target= option to specify multiple layers for merging');
+    if (layersArg.length == 1) {
+      message('Use the target= option to specify multiple layers for merging');
+    }
     return layers.concat();
   }
   merged.data = mergeDataFromLayers(layers, opts);
