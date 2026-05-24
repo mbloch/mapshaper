@@ -93,6 +93,33 @@ describe('mapshaper-merge-layers.js', function () {
 
     });
 
+    it('merges multiple empty layers', async function() {
+      var empty = {type: 'FeatureCollection', features: []};
+      var cmd = '-i a.json b.json c.json combine-files -merge-layers -o format=geojson merged.json';
+      var out = await api.applyCommands(cmd, {'a.json': empty, 'b.json': empty, 'c.json': empty});
+      assert.deepEqual(Object.keys(out), ['merged.json']);
+      assert.deepEqual(JSON.parse(out['merged.json']), {
+        type: 'GeometryCollection',
+        geometries: []
+      });
+    });
+
+    it('drops empty layers when merging with a non-empty layer', async function() {
+      var empty = {type: 'FeatureCollection', features: []};
+      var point = {
+        type: 'FeatureCollection',
+        features: [{
+          type: 'Feature',
+          properties: {id: 1},
+          geometry: {type: 'Point', coordinates: [0, 0]}
+        }]
+      };
+      var cmd = '-i a.json b.json c.json combine-files -merge-layers -o format=geojson merged.json';
+      var out = await api.applyCommands(cmd, {'a.json': empty, 'b.json': empty, 'c.json': point});
+      assert.deepEqual(Object.keys(out), ['merged.json']);
+      assert.deepEqual(JSON.parse(out['merged.json']), point);
+    });
+
     it('force flag works', function(done) {
       var a = 'id\na';
       var b = 'ID\nb';
