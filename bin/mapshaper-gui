@@ -209,7 +209,7 @@ function serveContent(content, response, mimeType) {
   }
   response.setHeader('Cache-Control', 'no-cache');
   response.writeHead(200);
-  response.write(content, "binary");
+  response.write(content, Buffer.isBuffer(content) ? undefined : "utf8");
   response.end();
 }
 
