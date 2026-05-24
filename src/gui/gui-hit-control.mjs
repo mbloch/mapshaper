@@ -342,6 +342,9 @@ export function HitControl(gui, ext, mouse) {
   }
 
   function selectStyleFeature(id, e) {
+    if (selectionIds.includes(id)) {
+      return utils.difference(selectionIds, [id]);
+    }
     return eventUsesAdditiveSelection(e) ?
       toggleId(id, selectionIds) :
       [id];
