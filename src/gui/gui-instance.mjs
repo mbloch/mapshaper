@@ -57,6 +57,7 @@ export function GuiInstance(container, opts) {
   var sidebarPanels = [];
   var lastSidebarPanels = ['console'];
   var sidebarWidth = GUI.getSavedValue('sidebar_width') || 0;
+  var sidebarPanelsSeparatorPosition = GUI.getSavedValue('sidebar_panels_separator_position') || 0;
   var sidebarResizeFrame = null;
 
   var msgCount = 0;
@@ -104,6 +105,10 @@ export function GuiInstance(container, opts) {
 
   if (sidebarWidth) {
     setSidebarWidth(sidebarWidth);
+  }
+
+  if (sidebarPanelsSeparatorPosition) {
+    setSidebarPanelsSeparatorPosition(sidebarPanelsSeparatorPosition);
   }
 
   gui.getSidebarPanels = function() {
@@ -249,18 +254,19 @@ export function GuiInstance(container, opts) {
     });
 
     function onMove(e) {
-      setSidebarPanelsSeparatorPosition(e.pageY);
+      sidebarPanelsSeparatorPosition = clampSidebarPanelsSeparatorPosition(e.pageY);
+      setSidebarPanelsSeparatorPosition(sidebarPanelsSeparatorPosition);
     }
 
     function onRelease() {
       window.removeEventListener('mousemove', onMove);
       window.removeEventListener('mouseup', onRelease);
       gui.container.removeClass('sidebar-panels-resizing');
+      GUI.setSavedValue('sidebar_panels_separator_position', sidebarPanelsSeparatorPosition);
     }
   }
 
-  function setSidebarPanelsSeparatorPosition(pageY) {
-    var sidebarPanelsSeparatorPosition = clampSidebarPanelsSeparatorPosition(pageY);
+  function setSidebarPanelsSeparatorPosition(sidebarPanelsSeparatorPosition) {
     gui.container.node().style.setProperty('--sidebar-panels-separator-position', sidebarPanelsSeparatorPosition + '%');
   }
 
