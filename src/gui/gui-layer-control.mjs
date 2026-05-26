@@ -18,7 +18,7 @@ import {
 export function LayerControl(gui) {
   var model = gui.model;
   var map = gui.map;
-  var el = gui.container.findChild(".layer-control");
+  var el = gui.container.findChild(".layer-control").hide();
   var btn = gui.container.findChild('.layer-control-btn');
   var headerBtn = btn.findChild('.active-layer-label');
   var tab = gui.container.findChild('.layer-tab');
