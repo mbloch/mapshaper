@@ -7417,7 +7417,7 @@
           i = fw ? arcId : ~arcId,
           iter = _zz && _zlimit ? _filteredArcIter : _arcIter;
       if (i >= _nn.length) {
-        error("#getArcId() out-of-range arc id:", arcId);
+        error("#getArcId() out-of-range arc id:", arcId, `(max id: ${_nn.length - 1})`);
       }
       return iter.init(_ii[i], _nn[i], fw, _zlimit);
     };
@@ -17446,9 +17446,14 @@
     var layers = layersArg.filter(getFeatureCount); // ignore empty layers
     var merged = {};
     opts = opts || {};
+    if (!layers.length && layersArg.length > 1) {
+      layers = layersArg; // merge all-empty layer sets
+    }
     if (!layers.length) return null;
     if (layers.length == 1) {
-      message('Use the target= option to specify multiple layers for merging');
+      if (layersArg.length == 1) {
+        message('Use the target= option to specify multiple layers for merging');
+      }
       return layers.concat();
     }
     merged.data = mergeDataFromLayers(layers, opts);
@@ -45286,28 +45291,38 @@ ${svg}
       profileEnd('clipLayers');
       return result;
     }
+    if (!usingPathClip) {
+      result = clipLayersByClipDataset(targetLayers, clipDataset, type, opts);
+      profileEnd('clipLayers');
+      return result;
+    }
     profileStart('mergeLayersForOverlay');
     mergedDataset = mergeLayersForOverlay2(targetLayers, targetDataset, clipDataset);
     profileEnd('mergeLayersForOverlay');
     clipLyr = mergedDataset.layers[mergedDataset.layers.length-1];
-    if (usingPathClip) {
-      nodes = addIntersectionCuts(mergedDataset, opts);
-      noteDatasetWillChange(targetDataset, {operation: type, unit: 'arcs'});
-      targetDataset.arcs = mergedDataset.arcs;
-      markDatasetChanged(targetDataset, {operation: type, unit: 'arcs'});
-      profileStart('clipDissolvePolygonLayer2');
-      clipLyr = utils.defaults({data: null}, clipLyr);
-      clipLyr = dissolvePolygonLayer2(clipLyr, mergedDataset, {quiet: true, silent: true});
-      profileEnd('clipDissolvePolygonLayer2');
-
-    } else {
-      nodes = new NodeCollection(mergedDataset.arcs);
-    }
+    nodes = addIntersectionCuts(mergedDataset, opts);
+    noteDatasetWillChange(targetDataset, {operation: type, unit: 'arcs'});
+    targetDataset.arcs = mergedDataset.arcs;
+    markDatasetChanged(targetDataset, {operation: type, unit: 'arcs'});
+    profileStart('clipDissolvePolygonLayer2');
+    clipLyr = utils.defaults({data: null}, clipLyr);
+    clipLyr = dissolvePolygonLayer2(clipLyr, mergedDataset, {quiet: true, silent: true});
+    profileEnd('clipDissolvePolygonLayer2');
 
     profileStart('clipLayersByLayer');
     result = clipLayersByLayer(targetLayers, clipLyr, nodes, type, opts);
     profileEnd('clipLayersByLayer');
     profileEnd('clipLayers');
+    return result;
+  }
+
+  function clipLayersByClipDataset(targetLayers, clipDataset, type, opts) {
+    var clipLyr = clipDataset.layers[0];
+    var nodes = new NodeCollection(clipDataset.arcs);
+    var result;
+    profileStart('clipLayersByLayer');
+    result = clipLayersByLayer(targetLayers, clipLyr, nodes, type, opts);
+    profileEnd('clipLayersByLayer');
     return result;
   }
 
@@ -58299,8 +58314,7 @@ ${svg}
           // TODO: consider replacing old layers as they are generated, for gc
           replaceLayers(targetDataset, targetLayers, outputLayers);
           // some operations leave unreferenced arcs that should be cleaned up
-          if ((name == 'clip' || name == 'erase' || name == 'rectangle' ||
-              name == 'rectangles' || name == 'filter' && opts.cleanup) && !opts.no_cleanup) {
+          if (commandNeedsArcDissolve(name, targetLayers, opts)) {
             dissolveArcs(targetDataset);
           }
         }
@@ -58347,7 +58361,15 @@ ${svg}
     });
   }
 
-  var version = "0.7.20";
+  function commandNeedsArcDissolve(name, targetLayers, opts) {
+    if (opts.no_cleanup) return false;
+    if (name == 'clip' || name == 'erase') {
+      return utils.some(targetLayers || [], layerHasPaths);
+    }
+    return name == 'rectangle' || name == 'rectangles' || name == 'filter' && opts.cleanup;
+  }
+
+  var version = "0.7.21";
 
   // Parse command line args into commands and run them
   // Function takes an optional Node-style callback. A Promise is returned if no callback is given.
