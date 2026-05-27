@@ -1,3 +1,7 @@
+v0.7.21
+* Added mapshaper-gui --watch/-w flag, which refreshes the browser when a file imported from the command line changes on disk.
+* Bug fixes.
+
 v0.7.20
 * Breaking change to -rename-layers. When target= option is missing, the command now uses the target layer(s) inherited from previous commands instead of all of the available layers. This change makes -rename-layers behave like other commands. Another change: when the number of names and the number of layers do not match, the program halts.
 * Added (undocumented) -blur command.
