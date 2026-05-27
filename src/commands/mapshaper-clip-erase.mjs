@@ -81,28 +81,38 @@ export function clipLayers(targetLayers, clipSrc, targetDataset, type, opts) {
     profileEnd('clipLayers');
     return result;
   }
+  if (!usingPathClip) {
+    result = clipLayersByClipDataset(targetLayers, clipDataset, type, opts);
+    profileEnd('clipLayers');
+    return result;
+  }
   profileStart('mergeLayersForOverlay');
   mergedDataset = mergeLayersForOverlay2(targetLayers, targetDataset, clipDataset);
   profileEnd('mergeLayersForOverlay');
   clipLyr = mergedDataset.layers[mergedDataset.layers.length-1];
-  if (usingPathClip) {
-    nodes = addIntersectionCuts(mergedDataset, opts);
-    noteDatasetWillChange(targetDataset, {operation: type, unit: 'arcs'});
-    targetDataset.arcs = mergedDataset.arcs;
-    markDatasetChanged(targetDataset, {operation: type, unit: 'arcs'});
-    profileStart('clipDissolvePolygonLayer2');
-    clipLyr = utils.defaults({data: null}, clipLyr);
-    clipLyr = dissolvePolygonLayer2(clipLyr, mergedDataset, {quiet: true, silent: true});
-    profileEnd('clipDissolvePolygonLayer2');
-
-  } else {
-    nodes = new NodeCollection(mergedDataset.arcs);
-  }
+  nodes = addIntersectionCuts(mergedDataset, opts);
+  noteDatasetWillChange(targetDataset, {operation: type, unit: 'arcs'});
+  targetDataset.arcs = mergedDataset.arcs;
+  markDatasetChanged(targetDataset, {operation: type, unit: 'arcs'});
+  profileStart('clipDissolvePolygonLayer2');
+  clipLyr = utils.defaults({data: null}, clipLyr);
+  clipLyr = dissolvePolygonLayer2(clipLyr, mergedDataset, {quiet: true, silent: true});
+  profileEnd('clipDissolvePolygonLayer2');
 
   profileStart('clipLayersByLayer');
   result = clipLayersByLayer(targetLayers, clipLyr, nodes, type, opts);
   profileEnd('clipLayersByLayer');
   profileEnd('clipLayers');
+  return result;
+}
+
+function clipLayersByClipDataset(targetLayers, clipDataset, type, opts) {
+  var clipLyr = clipDataset.layers[0];
+  var nodes = new NodeCollection(clipDataset.arcs);
+  var result;
+  profileStart('clipLayersByLayer');
+  result = clipLayersByLayer(targetLayers, clipLyr, nodes, type, opts);
+  profileEnd('clipLayersByLayer');
   return result;
 }
 

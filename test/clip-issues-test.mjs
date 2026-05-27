@@ -60,6 +60,38 @@ describe('mapshaper-clip-erase.js', function () {
       });
     })
 
+    describe('Bug fix: clipping points with an external polygon', function() {
+      it('should not reindex unselected path layers in the target dataset', async function() {
+        var clipper = getPointClipper();
+        var target = getMixedPointPathTarget();
+        var cmd = '-i clipper.json -i target.json -target cities -clip clipper -o gj2008 target=*';
+        var output = await api.applyCommands(cmd, {'clipper.json': clipper, 'target.json': target});
+        var cities = JSON.parse(output['cities.json']);
+        var roads = JSON.parse(output['roads.json']);
+
+        assert.deepEqual(cities.geometries[0], {
+          type: 'Point',
+          coordinates: [1.5, 0.5]
+        });
+        assert.deepEqual(roads.geometries[0].coordinates, [[0, 0], [1, 0], [2, 0]]);
+      });
+
+      it('should still support mixed point and path targets', async function() {
+        var clipper = getPointClipper();
+        var target = getMixedPointPathTarget();
+        var cmd = '-i clipper.json -i target.json -target roads,cities -clip clipper -o gj2008 target=*';
+        var output = await api.applyCommands(cmd, {'clipper.json': clipper, 'target.json': target});
+        var cities = JSON.parse(output['cities.json']);
+        var roads = JSON.parse(output['roads.json']);
+
+        assert.deepEqual(cities.geometries[0], {
+          type: 'Point',
+          coordinates: [1.5, 0.5]
+        });
+        assert.deepEqual(roads.geometries[0].coordinates, [[1, 0], [2, 0]]);
+      });
+    })
+
     describe('inner2.json test', function () {
       it('polygon should not disappear after clipping', function (done) {
         // previously, inner2.json disappeared after clipping
@@ -182,3 +214,29 @@ describe('mapshaper-clip-erase.js', function () {
   })
 
 })
+
+function getPointClipper() {
+  return {
+    type: 'Polygon',
+    coordinates: [[[1, 0], [2, 0], [2, 1], [1, 1], [1, 0]]]
+  };
+}
+
+function getMixedPointPathTarget() {
+  return {
+    type: 'Topology',
+    arcs: [
+      [[0, 0], [1, 0], [2, 0]]
+    ],
+    objects: {
+      roads: {
+        type: 'LineString',
+        arcs: [0]
+      },
+      cities: {
+        type: 'MultiPoint',
+        coordinates: [[1.5, 0.5], [0, 0]]
+      }
+    }
+  };
+}
