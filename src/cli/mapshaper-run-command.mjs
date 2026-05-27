@@ -3,6 +3,7 @@ import { dissolveArcs } from '../paths/mapshaper-arc-dissolve';
 import { initProjLibrary } from '../crs/mapshaper-projections';
 import { writeFiles } from '../io/mapshaper-file-export';
 import { exportTargetLayers } from '../io/mapshaper-export';
+import { layerHasPaths } from '../dataset/mapshaper-layer-utils';
 import { getOptionParser } from '../cli/mapshaper-options';
 import { convertSourceName, findCommandSource } from '../dataset/mapshaper-source-utils';
 import { Catalog, getFormattedLayerList } from '../dataset/mapshaper-catalog';
@@ -524,8 +525,7 @@ export async function runCommand(command, job) {
         // TODO: consider replacing old layers as they are generated, for gc
         replaceLayers(targetDataset, targetLayers, outputLayers);
         // some operations leave unreferenced arcs that should be cleaned up
-        if ((name == 'clip' || name == 'erase' || name == 'rectangle' ||
-            name == 'rectangles' || name == 'filter' && opts.cleanup) && !opts.no_cleanup) {
+        if (commandNeedsArcDissolve(name, targetLayers, opts)) {
           dissolveArcs(targetDataset);
         }
       }
@@ -570,4 +570,12 @@ function outputLayersAreDifferent(output, input) {
   return !utils.some(input, function(lyr) {
     return output.indexOf(lyr) > -1;
   });
+}
+
+function commandNeedsArcDissolve(name, targetLayers, opts) {
+  if (opts.no_cleanup) return false;
+  if (name == 'clip' || name == 'erase') {
+    return utils.some(targetLayers || [], layerHasPaths);
+  }
+  return name == 'rectangle' || name == 'rectangles' || name == 'filter' && opts.cleanup;
 }
