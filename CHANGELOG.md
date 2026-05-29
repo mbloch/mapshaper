@@ -1,3 +1,6 @@
+v0.7.22
+* Fixed a regression (introduced in v0.7.10) that caused some large GeoJSON files to fail on import with an "Unexpected end of JSON input" error.
+
 v0.7.21
 * Added mapshaper-gui --watch/-w flag, which refreshes the browser when a file imported from the command line changes on disk.
 * Bug fixes.
