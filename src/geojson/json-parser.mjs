@@ -42,7 +42,7 @@ export function parseJSON(arg) {
   var val = readValue(src);
   skipWS(src);
   if (src.peek() != EOF) {
-    unexpectedCharAt(src.peek(), src.index());
+    unexpectedCharAt(src.peek(), src.getIndex());
   }
   return val;
 }
@@ -182,7 +182,7 @@ function readCollectionArray(src, cb) {
 // gives up to a 25% reduction in overall processing time when parsing
 // coordinate-heavy GeoJSON files.
 function readArrayElement(src) {
-  var i = src.index();
+  var i = src.getIndex();
   var x, y, a, b;
   if (src.getChar() == LBRACK && isFirstNumChar(src.peek())) {
     x = readNumber(src);
@@ -199,7 +199,7 @@ function readArrayElement(src) {
     }
   }
   // Fall back to general-purpose value reader
-  src.index(i);
+  src.setIndex(i);
   return readValue(src);
 }
 
@@ -222,7 +222,7 @@ function eatChars(src, str) {
 function eatChar(src, char) {
   var c = src.getChar();
   if (c != char) {
-    unexpectedCharAt(c, src.index() - 1);
+    unexpectedCharAt(c, src.getIndex() - 1);
   }
 }
 
@@ -251,7 +251,7 @@ function readValue(src) {
   else if (c == 110) val = readNull(src); // "n" -> null
   else if (c == 116) val = readTrue(src); // "t" -> true
   else if (c == 102) val = readFalse(src); // "f" -> false
-  else unexpectedCharAt(c, src.index());
+  else unexpectedCharAt(c, src.getIndex());
   return val;
 }
 
@@ -273,7 +273,7 @@ function readNull(src) {
 function scanForAorB(src, a, b) {
   skipWS(src);
   var c = src.getChar();
-  if (c != a && c != b) unexpectedCharAt(c, src.index() - 1);
+  if (c != a && c != b) unexpectedCharAt(c, src.getIndex() - 1);
   skipWS(src);
   return c;
 }
@@ -311,7 +311,7 @@ function readObject(src, cb) {
 // when parsing files consisting mostly of attribute data (e.g. typical Point features)
 function readKeywordString(src) {
   var MAXLEN = 2000; // must be less than RESERVE_DEFAULT
-  var i = src.index();
+  var i = src.getIndex();
   var cache = src.cache;
   var escapeNext = false;
   var n = 0;
@@ -336,7 +336,7 @@ function readKeywordString(src) {
   if (cache[0]) {
     return cache[0];
   }
-  src.index(i);
+  src.setIndex(i);
   cache[0] = readString(src);
   return cache[0];
 }
@@ -345,7 +345,7 @@ function readKeywordString(src) {
 // A slower fallback is used to read strings that are longer, non-ascii or
 // contain escaped chars
 function readString(src) {
-  var i = src.index();
+  var i = src.getIndex();
   eatChar(src, DQUOTE);
   var LIMIT = 256;
   var n = 0;
@@ -354,7 +354,7 @@ function readString(src) {
   while (c != DQUOTE) {
     n++;
     if (n > LIMIT || c == 92 || c < 32 || c > 126) {
-      src.index(i);
+      src.setIndex(i);
       return readString_slow(src);
     }
     // String concatenation is faster than Buffer#toString()
@@ -369,7 +369,7 @@ function readString(src) {
 function readString_slow(src) {
   src.refresh();
   var LIMIT = src.getReserve() - 2;
-  var i = src.index();
+  var i = src.getIndex();
   var n = 0;
   var escapeNext = false;
   eatChar(src, DQUOTE);
@@ -383,7 +383,7 @@ function readString_slow(src) {
       if (c == EOF || !src.growReserve()) {
         stringOverflow(i, c);
       }
-      src.index(i);
+      src.setIndex(i);
       return readString_slow(src);
     }
     if (escapeNext) {
@@ -418,7 +418,7 @@ function isNumChar(c) {
 // This function gives the correctly rounded result for numbers that are
 // incorrectly rounded using the fast method (a subset of numbers with >15 digits).
 function readNumber_slow(src) {
-  var i = src.index();
+  var i = src.getIndex();
   var n = 0;
   while (isNumChar(src.getChar())) {
     n++;
@@ -433,7 +433,7 @@ function readNumber_slow(src) {
 // Parses numbers quickly, falls back to a slower method when
 // correct fp rounding is not assured.
 function readNumber(src) {
-  var i = src.index();
+  var i = src.getIndex();
   var num = 0;
   var den = 1;
   var sign = 1;
@@ -487,7 +487,7 @@ function readNumber(src) {
   if (oflo || c == 69 || c == 101) { // e|E
     // Exponents are uncommon in GeoJSON... simpler to use slow function
     // than to parse manually and check for overflow and rounding errors
-    src.index(i);
+    src.setIndex(i);
     return readNumber_slow(src);
   }
   src.back();
@@ -501,7 +501,7 @@ function ByteReader(reader, start) {
   var reserve = RESERVE_DEFAULT; // per-instance reserve; may grow (see growReserve)
   var buf = reader.readSync(bufOffs, BUFLEN);
   var i = 0;
-  var obj = { peek, getChar, advance, back, toString, index, refresh, getReserve, growReserve };
+  var obj = { peek, getChar, advance, back, toString, getIndex, setIndex, refresh, getReserve, growReserve };
   obj.cache = []; // kludgy place to put the key cache
   refresh();
   return obj;
@@ -548,8 +548,10 @@ function ByteReader(reader, start) {
   function back() {
     i--;
   }
-  function index(idx) {
-    if (idx >= 0 === false) return i + bufOffs;
+  function getIndex() {
+    return i + bufOffs;
+  }
+  function setIndex(idx) {
     if (idx < bufOffs || idx > bufOffs + buf.length) {
       error('JSON parser seek out of buffer range');
     }
