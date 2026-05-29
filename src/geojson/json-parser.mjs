@@ -1,7 +1,6 @@
 import { BufferReader } from '../io/mapshaper-file-reader';
 import { isArrayLike } from '../utils/mapshaper-utils';
-import { stop } from '../utils/mapshaper-logging';
-import { T } from '../utils/mapshaper-timing';
+import { stop, error } from '../utils/mapshaper-logging';
 
 // This is a JSON parser optimized for GeoJSON files.
 //
@@ -30,7 +29,8 @@ var
 
 var EOF; // undefined is used as an EOF marker
 
-var RESERVE = 4096; // RESERVE is the number of bytes to keep in read buffer
+// Default number of bytes to keep in the read buffer.
+var RESERVE_DEFAULT = 4096;
 var BUFLEN = 1e7; // buffer chunk size
 var MAX_STRLEN = 5e6; // max byte len of a value string (object keys are shorter)
 
@@ -134,8 +134,9 @@ function stringOverflow(i, c) {
 
 function seekObjectStart(src) {
   var c = src.getChar();
+  var reserve = src.getReserve();
   var i = 0;
-  while (c != EOF && i < RESERVE) {
+  while (c != EOF && i < reserve) {
     i++;
     if (c == LBRACE) {
       src.back();
@@ -305,16 +306,11 @@ function readObject(src, cb) {
   return o;
 }
 
-function growReserve() {
-  RESERVE *= 2;
-  return RESERVE <= MAX_STRLEN;
-}
-
 // Uses caching to speed up parsing of repeated strings.
 // The caching scheme used here can give a 20% overall speed improvement
 // when parsing files consisting mostly of attribute data (e.g. typical Point features)
 function readKeywordString(src) {
-  var MAXLEN = 2000; // must be less than RESERVE
+  var MAXLEN = 2000; // must be less than RESERVE_DEFAULT
   var i = src.index();
   var cache = src.cache;
   var escapeNext = false;
@@ -372,7 +368,7 @@ function readString(src) {
 // Fallback for reading long strings, escaped strings, non-ascii strings, etc.
 function readString_slow(src) {
   src.refresh();
-  var LIMIT = RESERVE - 2;
+  var LIMIT = src.getReserve() - 2;
   var i = src.index();
   var n = 0;
   var escapeNext = false;
@@ -384,7 +380,7 @@ function readString_slow(src) {
     if (n > LIMIT) {
       // we've exceeded the number of reserved bytes
       // expand the limit and try reading this string again
-      if (c == EOF || !growReserve()) {
+      if (c == EOF || !src.growReserve()) {
         stringOverflow(i, c);
       }
       src.index(i);
@@ -502,9 +498,10 @@ function readNumber(src) {
 function ByteReader(reader, start) {
   var fileLen = reader.size();
   var bufOffs = start;
+  var reserve = RESERVE_DEFAULT; // per-instance reserve; may grow (see growReserve)
   var buf = reader.readSync(bufOffs, BUFLEN);
   var i = 0;
-  var obj = { peek, getChar, advance, back, toString, index, refresh };
+  var obj = { peek, getChar, advance, back, toString, index, refresh, getReserve, growReserve };
   obj.cache = []; // kludgy place to put the key cache
   refresh();
   return obj;
@@ -512,14 +509,14 @@ function ByteReader(reader, start) {
   // This function should be called to make sure that the buffer has enough
   // bytes remaining to read any reasonable JSON content.
   function refresh() {
-    // if RESERVE bytes are still available in the buffer, no update is required
-    if (buf.length - i >= RESERVE) return;
+    // if reserve bytes are still available in the buffer, no update is required
+    if (buf.length - i >= reserve) return;
 
     // CHANGE: now using undefined as an EOF marker, so a bounds check is unneeded
     // // if we're close to the end of the file, start checking for overflow
     // // (we don't do this all the time because the bounds check on every read
     // // causes a significant slowdown, as much as 20%)
-    // if (fileLen - (bufOffs + i) < RESERVE) {
+    // if (fileLen - (bufOffs + i) < reserve) {
     //   obj.peek = safePeek;
     //   obj.getChar = safeGetChar;
     // }
@@ -527,10 +524,17 @@ function ByteReader(reader, start) {
     // if buffer reaches the end of the file, no update is required
     if (bufOffs + buf.length >= fileLen) return;
 
-    // fewer than RESERVE bytes are unread in buffer -- update the buffer
+    // fewer than reserve bytes are unread in buffer -- update the buffer
     bufOffs += i;
     i = 0;
     buf = reader.readSync(bufOffs, BUFLEN);
+  }
+  function getReserve() {
+    return reserve;
+  }
+  function growReserve() {
+    reserve *= 2;
+    return reserve <= MAX_STRLEN;
   }
   function peek() {
     return buf[i];
@@ -546,6 +550,9 @@ function ByteReader(reader, start) {
   }
   function index(idx) {
     if (idx >= 0 === false) return i + bufOffs;
+    if (idx < bufOffs || idx > bufOffs + buf.length) {
+      error('JSON parser seek out of buffer range');
+    }
     i = idx - bufOffs;
   }
   function toString(idx, n) {
