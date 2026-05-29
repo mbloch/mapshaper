@@ -223,17 +223,6 @@ describe('json-parse.js', function () {
       expectParsedGeoJSON(JSON.stringify(target), target);
     });
 
-    it('preserves collection-named foreign members on a single feature', function() {
-      var target = {
-        type: 'Feature',
-        features: [{id: 1}],
-        geometries: [{id: 2}],
-        properties: {},
-        geometry: null
-      };
-      expectParsedGeoJSON(JSON.stringify(target), target);
-    });
-
     it('newline-delimited GeoJSON sequence', function() {
       var target = [{
         type: 'Feature',

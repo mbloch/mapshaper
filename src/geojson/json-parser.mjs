@@ -63,12 +63,10 @@ export function parseJSON(arg) {
 export function parseGeoJSON(reader, cb) {
   var src = ByteReader(reader, 0);
   var isObject = seekObjectStart(src);
-  var type;
   if (!isObject) {
     stop('File is not GeoJSON');
   }
-  type = readTopLevelType(src);
-  var obj = readObject(src, cb, type);
+  var obj = readObject(src, cb);
   if (obj.type == 'FeatureCollection' || obj.type == 'GeometryCollection') {
     return obj;
   }
@@ -168,17 +166,6 @@ function readArray(src) {
   return arr;
 }
 
-function skipArray(src) {
-  var c;
-  eatChar(src, LBRACK);
-  c = scanForSyntaxChar(src, RBRACK);
-  while (c != RBRACK) {
-    src.refresh();
-    skipValue(src);
-    c = scanForAorB(src, COMMA, RBRACK);
-  }
-}
-
 function readCollectionArray(src, cb) {
   var c;
   eatChar(src, LBRACK);
@@ -267,18 +254,6 @@ function readValue(src) {
   return val;
 }
 
-function skipValue(src) {
-  var c = src.peek();
-  if (isFirstNumChar(c)) readNumber(src);
-  else if (c == LBRACK) skipArray(src);
-  else if (c == DQUOTE) readString(src);
-  else if (c == LBRACE) skipObject(src);
-  else if (c == 110) readNull(src); // "n" -> null
-  else if (c == 116) readTrue(src); // "t" -> true
-  else if (c == 102) readFalse(src); // "f" -> false
-  else unexpectedCharAt(c, src.index());
-}
-
 function readTrue(src) {
   eatChars(src, 'true');
   return true;
@@ -305,7 +280,7 @@ function scanForAorB(src, a, b) {
 
 // cb: optional callback for returning GeoJSON features or geometries
 //
-function readObject(src, cb, type) {
+function readObject(src, cb) {
   var o = {};
   var key, c;
   eatChar(src, LBRACE);
@@ -316,8 +291,7 @@ function readObject(src, cb, type) {
     skipWS(src);
     eatChar(src, 58); // ":"
     skipWS(src);
-    if ((type == 'FeatureCollection' && key == 'features' ||
-        type == 'GeometryCollection' && key == 'geometries') &&
+    if ((key == 'features' || key == 'geometries') &&
         src.peek() == LBRACK && cb) {
       readCollectionArray(src, cb);
       o[key] = null;
@@ -329,43 +303,6 @@ function readObject(src, cb, type) {
     c = scanForAorB(src, COMMA, RBRACE);
   }
   return o;
-}
-
-function skipObject(src) {
-  var c;
-  eatChar(src, LBRACE);
-  c = scanForSyntaxChar(src, RBRACE);
-  while (c != RBRACE) {
-    src.refresh();
-    readKeywordString(src);
-    skipWS(src);
-    eatChar(src, 58); // ":"
-    skipWS(src);
-    skipValue(src);
-    c = scanForAorB(src, COMMA, RBRACE);
-  }
-}
-
-function readTopLevelType(src) {
-  var i = src.index();
-  var type, key, c;
-  eatChar(src, LBRACE);
-  c = scanForSyntaxChar(src, RBRACE);
-  while (c != RBRACE) {
-    src.refresh();
-    key = readKeywordString(src);
-    skipWS(src);
-    eatChar(src, 58); // ":"
-    skipWS(src);
-    if (key == 'type' && src.peek() == DQUOTE) {
-      type = readKeywordString(src);
-      break;
-    }
-    skipValue(src);
-    c = scanForAorB(src, COMMA, RBRACE);
-  }
-  src.index(i);
-  return type;
 }
 
 function growReserve() {
