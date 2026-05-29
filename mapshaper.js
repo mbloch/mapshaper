@@ -34267,7 +34267,8 @@ ${svg}
 
   var EOF; // undefined is used as an EOF marker
 
-  var RESERVE = 4096; // RESERVE is the number of bytes to keep in read buffer
+  // Default number of bytes to keep in the read buffer.
+  var RESERVE_DEFAULT = 4096;
   var BUFLEN = 1e7; // buffer chunk size
   var MAX_STRLEN = 5e6; // max byte len of a value string (object keys are shorter)
 
@@ -34300,12 +34301,10 @@ ${svg}
   function parseGeoJSON(reader, cb) {
     var src = ByteReader(reader, 0);
     var isObject = seekObjectStart(src);
-    var type;
     if (!isObject) {
       stop$1('File is not GeoJSON');
     }
-    type = readTopLevelType(src);
-    var obj = readObject(src, cb, type);
+    var obj = readObject(src, cb);
     if (obj.type == 'FeatureCollection' || obj.type == 'GeometryCollection') {
       return obj;
     }
@@ -34354,8 +34353,9 @@ ${svg}
 
   function seekObjectStart(src) {
     var c = src.getChar();
+    var reserve = src.getReserve();
     var i = 0;
-    while (c != EOF && i < RESERVE) {
+    while (c != EOF && i < reserve) {
       i++;
       if (c == LBRACE) {
         src.back();
@@ -34384,17 +34384,6 @@ ${svg}
       c = scanForAorB(src, COMMA, RBRACK);
     }
     return arr;
-  }
-
-  function skipArray(src) {
-    var c;
-    eatChar(src, LBRACK);
-    c = scanForSyntaxChar(src, RBRACK);
-    while (c != RBRACK) {
-      src.refresh();
-      skipValue(src);
-      c = scanForAorB(src, COMMA, RBRACK);
-    }
   }
 
   function readCollectionArray(src, cb) {
@@ -34485,18 +34474,6 @@ ${svg}
     return val;
   }
 
-  function skipValue(src) {
-    var c = src.peek();
-    if (isFirstNumChar(c)) readNumber(src);
-    else if (c == LBRACK) skipArray(src);
-    else if (c == DQUOTE) readString(src);
-    else if (c == LBRACE) skipObject(src);
-    else if (c == 110) readNull(src); // "n" -> null
-    else if (c == 116) readTrue(src); // "t" -> true
-    else if (c == 102) readFalse(src); // "f" -> false
-    else unexpectedCharAt(c, src.index());
-  }
-
   function readTrue(src) {
     eatChars(src, 'true');
     return true;
@@ -34523,7 +34500,7 @@ ${svg}
 
   // cb: optional callback for returning GeoJSON features or geometries
   //
-  function readObject(src, cb, type) {
+  function readObject(src, cb) {
     var o = {};
     var key, c;
     eatChar(src, LBRACE);
@@ -34534,8 +34511,7 @@ ${svg}
       skipWS(src);
       eatChar(src, 58); // ":"
       skipWS(src);
-      if ((type == 'FeatureCollection' && key == 'features' ||
-          type == 'GeometryCollection' && key == 'geometries') &&
+      if ((key == 'features' || key == 'geometries') &&
           src.peek() == LBRACK && cb) {
         readCollectionArray(src, cb);
         o[key] = null;
@@ -34549,53 +34525,11 @@ ${svg}
     return o;
   }
 
-  function skipObject(src) {
-    var c;
-    eatChar(src, LBRACE);
-    c = scanForSyntaxChar(src, RBRACE);
-    while (c != RBRACE) {
-      src.refresh();
-      readKeywordString(src);
-      skipWS(src);
-      eatChar(src, 58); // ":"
-      skipWS(src);
-      skipValue(src);
-      c = scanForAorB(src, COMMA, RBRACE);
-    }
-  }
-
-  function readTopLevelType(src) {
-    var i = src.index();
-    var type, key, c;
-    eatChar(src, LBRACE);
-    c = scanForSyntaxChar(src, RBRACE);
-    while (c != RBRACE) {
-      src.refresh();
-      key = readKeywordString(src);
-      skipWS(src);
-      eatChar(src, 58); // ":"
-      skipWS(src);
-      if (key == 'type' && src.peek() == DQUOTE) {
-        type = readKeywordString(src);
-        break;
-      }
-      skipValue(src);
-      c = scanForAorB(src, COMMA, RBRACE);
-    }
-    src.index(i);
-    return type;
-  }
-
-  function growReserve() {
-    RESERVE *= 2;
-    return RESERVE <= MAX_STRLEN;
-  }
-
   // Uses caching to speed up parsing of repeated strings.
   // The caching scheme used here can give a 20% overall speed improvement
   // when parsing files consisting mostly of attribute data (e.g. typical Point features)
   function readKeywordString(src) {
-    var MAXLEN = 2000; // must be less than RESERVE
+    var MAXLEN = 2000; // must be less than RESERVE_DEFAULT
     var i = src.index();
     var cache = src.cache;
     var escapeNext = false;
@@ -34653,7 +34587,7 @@ ${svg}
   // Fallback for reading long strings, escaped strings, non-ascii strings, etc.
   function readString_slow(src) {
     src.refresh();
-    var LIMIT = RESERVE - 2;
+    var LIMIT = src.getReserve() - 2;
     var i = src.index();
     var n = 0;
     var escapeNext = false;
@@ -34665,7 +34599,7 @@ ${svg}
       if (n > LIMIT) {
         // we've exceeded the number of reserved bytes
         // expand the limit and try reading this string again
-        if (c == EOF || !growReserve()) {
+        if (c == EOF || !src.growReserve()) {
           stringOverflow(i, c);
         }
         src.index(i);
@@ -34783,9 +34717,10 @@ ${svg}
   function ByteReader(reader, start) {
     var fileLen = reader.size();
     var bufOffs = start;
+    var reserve = RESERVE_DEFAULT; // per-instance reserve; may grow (see growReserve)
     var buf = reader.readSync(bufOffs, BUFLEN);
     var i = 0;
-    var obj = { peek, getChar, advance, back, toString, index, refresh };
+    var obj = { peek, getChar, advance, back, toString, index, refresh, getReserve, growReserve };
     obj.cache = []; // kludgy place to put the key cache
     refresh();
     return obj;
@@ -34793,14 +34728,14 @@ ${svg}
     // This function should be called to make sure that the buffer has enough
     // bytes remaining to read any reasonable JSON content.
     function refresh() {
-      // if RESERVE bytes are still available in the buffer, no update is required
-      if (buf.length - i >= RESERVE) return;
+      // if reserve bytes are still available in the buffer, no update is required
+      if (buf.length - i >= reserve) return;
 
       // CHANGE: now using undefined as an EOF marker, so a bounds check is unneeded
       // // if we're close to the end of the file, start checking for overflow
       // // (we don't do this all the time because the bounds check on every read
       // // causes a significant slowdown, as much as 20%)
-      // if (fileLen - (bufOffs + i) < RESERVE) {
+      // if (fileLen - (bufOffs + i) < reserve) {
       //   obj.peek = safePeek;
       //   obj.getChar = safeGetChar;
       // }
@@ -34808,10 +34743,17 @@ ${svg}
       // if buffer reaches the end of the file, no update is required
       if (bufOffs + buf.length >= fileLen) return;
 
-      // fewer than RESERVE bytes are unread in buffer -- update the buffer
+      // fewer than reserve bytes are unread in buffer -- update the buffer
       bufOffs += i;
       i = 0;
       buf = reader.readSync(bufOffs, BUFLEN);
+    }
+    function getReserve() {
+      return reserve;
+    }
+    function growReserve() {
+      reserve *= 2;
+      return reserve <= MAX_STRLEN;
     }
     function peek() {
       return buf[i];
@@ -34827,6 +34769,9 @@ ${svg}
     }
     function index(idx) {
       if (idx >= 0 === false) return i + bufOffs;
+      if (idx < bufOffs || idx > bufOffs + buf.length) {
+        error('JSON parser seek out of buffer range');
+      }
       i = idx - bufOffs;
     }
     function toString(idx, n) {
@@ -58369,7 +58314,7 @@ ${svg}
     return name == 'rectangle' || name == 'rectangles' || name == 'filter' && opts.cleanup;
   }
 
-  var version = "0.7.21";
+  var version = "0.7.22";
 
   // Parse command line args into commands and run them
   // Function takes an optional Node-style callback. A Promise is returned if no callback is given.
