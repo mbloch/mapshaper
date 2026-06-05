@@ -211,7 +211,7 @@ export function Console(gui) {
       if (gui.getMode()) {
         gui.clearMode(); // esc closes any open panels
       } else {
-        gui.setSidebarPanel(null);
+        gui.setSidebarPanels([]);
       }
       capture = true;
 
