@@ -817,7 +817,7 @@ input[type="checkbox"]
 	height: 100%;
 }
 
-.sidebar-panels:not(:has(> .sidebar-panel.open ~ .sidebar-panel.open)) > .sidebar-panels-resize-handle {
+.sidebar-panels:not(:has(> .sidebar-panel.open ~ .sidebar-panel.open)) .sidebar-panels-resize-handle {
 	display: none;
 }
 
