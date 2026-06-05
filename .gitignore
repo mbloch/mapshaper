@@ -5,9 +5,12 @@ npm-debug.log
 .npmignore
 .jshintrc
 /mapshaper.js
+/www/geopackage.js
+/www/geoparquet.js
+/www/geotiff.js
 /www/mapshaper-gui.js
 /www/mapshaper.js
-/www/node_modules.js
+/www/modules.js
 /www/docs/
 /www/llms.txt
 /www/llms-full.txt

@@ -18,7 +18,7 @@ import {
 export function LayerControl(gui) {
   var model = gui.model;
   var map = gui.map;
-  var el = gui.container.findChild(".layer-control");
+  var el = gui.container.findChild(".layer-control").hide();
   var btn = gui.container.findChild('.layer-control-btn');
   var headerBtn = btn.findChild('.active-layer-label');
   var tab = gui.container.findChild('.layer-tab');
@@ -61,9 +61,9 @@ export function LayerControl(gui) {
   }
 
   gui.on('sidebar', function(e) {
-    if (e.name == 'layers') {
+    if (e.panels.includes('layers')) {
       turnOn();
-    } else if (e.prev == 'layers') {
+    } else if (e.prev.includes('layers')) {
       turnOff();
     }
   });
@@ -156,6 +156,7 @@ export function LayerControl(gui) {
     isOpen = true;
     tab.addClass('active').attr('aria-expanded', 'true');
     render();
+    el.addClass('open');
     el.show();
   }
 
@@ -164,6 +165,7 @@ export function LayerControl(gui) {
     stopDragging();
     isOpen = false;
     tab.removeClass('active').attr('aria-expanded', 'false');
+    el.removeClass('open');
     el.hide();
   }
 
