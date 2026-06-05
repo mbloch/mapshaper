@@ -120,11 +120,11 @@ export function GuiInstance(container, opts) {
   gui.setSidebarPanels = function(panels) {
     var prev = sidebarPanels;
     sidebarPanels = panels || [];
-    if (sidebarPanels && gui.getMode()) {
+    if (sidebarPanels.length && gui.getMode()) {
       gui.clearMode();
     }
     if (sidebarPanels.join('|') === prev.join('|')) return;
-    if (sidebarPanels) {
+    if (sidebarPanels.length) {
       lastSidebarPanels = sidebarPanels;
     }
     gui.container
@@ -143,7 +143,7 @@ export function GuiInstance(container, opts) {
   };
 
   gui.toggleSidebar = function() {
-    gui.setSidebarPanels(sidebarPanels ? null : lastSidebarPanels);
+    gui.setSidebarPanels(sidebarPanels.length ? null : lastSidebarPanels);
   };
 
   gui.sidebarPanelIsOpen = function() {
