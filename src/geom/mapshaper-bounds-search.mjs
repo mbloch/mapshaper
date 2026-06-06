@@ -1,15 +1,14 @@
-import require from '../mapshaper-require';
+import Flatbush from 'flatbush';
 
 // Returns a search function
 // Receives array of objects to index; objects must have a 'bounds' member
 //    that is a Bounds object.
 export function getBoundsSearchFunction(boxes) {
-  var index, Flatbush;
+  var index;
   if (!boxes.length) {
     // Unlike rbush, flatbush doesn't allow size 0 indexes; workaround
     return function() {return [];};
   }
-  Flatbush = require('flatbush');
   index = new Flatbush(boxes.length);
   boxes.forEach(function(ring) {
     var b = ring.bounds;
