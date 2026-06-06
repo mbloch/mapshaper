@@ -1,12 +1,11 @@
+import Flatbush from 'flatbush';
 import { IdTestIndex } from '../indexing/mapshaper-id-test-index';
-import require from '../mapshaper-require';
 
 
 
 // Returns a function that receives a cell index and returns indices of points
 //   within a given distance of the cell.
 export function getGridToPointIndex(points, grid, radius) {
-  var Flatbush = require('flatbush');
   var gridIndex = new IdTestIndex(grid.cells());
   var bboxIndex = new Flatbush(points.length);
   var empty = [];
