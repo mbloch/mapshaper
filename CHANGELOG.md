@@ -1,3 +1,8 @@
+v0.7.23
+* Added a `-buffer` command for buffering points, lines and polygons.
+* The `-buffer topological` option is for buffering groups of adjacent polygons so the buffers extend into the empty space around the polygons without overlapping any of the original polygon rings.
+* The web UI sidebar can be split vertically to show both the layers menu and the console.
+
 v0.7.22
 * Fixed a regression (introduced in v0.7.10) that caused some large GeoJSON files to fail on import with an "Unexpected end of JSON input" error.
 
