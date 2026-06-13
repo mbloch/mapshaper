@@ -42,22 +42,28 @@ function cleanPath(path, arcs) {
 
 // Remove pairs of ids where id[n] == ~id[n+1] or id[0] == ~id[n-1];
 // (in place)
+// Iterative (was recursive): each pass removes at most one spike pair --
+// the wrap-around pair first, otherwise the first interior pair -- and repeats
+// until none remain. A path with many spikes used to recurse once per removal,
+// risking a stack overflow on degenerate input.
 export function removeSpikesInPath(ids) {
-  var n = ids.length;
-  if (n >= 2) {
+  var removed = true;
+  while (removed) {
+    removed = false;
+    var n = ids.length;
+    if (n < 2) break;
     if (ids[0] == ~ids[n-1]) {
       ids.pop();
       ids.shift();
+      removed = true;
     } else {
       for (var i=1; i<n; i++) {
         if (ids[i-1] == ~ids[i]) {
           ids.splice(i-1, 2);
+          removed = true;
           break;
         }
       }
-    }
-    if (ids.length < n) {
-      removeSpikesInPath(ids);
     }
   }
 }
@@ -86,22 +92,53 @@ export function getSelfIntersectionSplitter(nodes) {
     return paths;
   };
 
-  // Returns array of 0 or more divided paths
-  function dividePath(path) {
-    var subPaths = null;
+  // Returns an array of 0 or more indivisible (non-self-intersecting) sub-paths.
+  //
+  // Iterative work-stack version of what was a mutually-recursive descent
+  // (dividePath -> dividePathAtNode -> accumulatePaths -> dividePath ...). A
+  // ring with many chained self-intersections forced a recursion depth
+  // proportional to the number of splits and could overflow the call stack.
+  //
+  // The stack is processed depth-first, and each fork's sub-paths are pushed in
+  // reverse so they pop in their original left-to-right order. This reproduces
+  // the recursive version exactly, which matters because:
+  //   - output order is preserved (covered by self-intersection-test.mjs), and
+  //   - the shared `pathIndex` is mutated (clearId) as nodes are split, so a
+  //     later sibling's split can depend on an earlier sibling's clears; the
+  //     same depth-first order keeps those mutations in the same sequence.
+  function dividePath(rootPath) {
+    var results = [];
+    var stack = [rootPath];
+    while (stack.length > 0) {
+      var path = stack.pop();
+      var subPaths = splitPathAtFirstFork(path);
+      if (subPaths === null) {
+        // indivisible path -- clean it by removing any spikes
+        removeSpikesInPath(path);
+        if (path.length > 0) results.push(path);
+      } else {
+        for (var i = subPaths.length - 1; i >= 0; i--) {
+          stack.push(subPaths[i]);
+        }
+      }
+    }
+    return results;
+  }
+
+  // Find the first node where @path forks and split it there (one level only),
+  // returning the sub-paths; return null if the path does not fork.
+  function splitPathAtFirstFork(path) {
     for (var i=0, n=path.length; i < n - 1; i++) { // don't need to check last arc
-      subPaths = dividePathAtNode(path, path[i]);
+      var subPaths = dividePathAtNode(path, path[i]);
       if (subPaths !== null) {
         return subPaths;
       }
     }
-    // indivisible path -- clean it by removing any spikes
-    removeSpikesInPath(path);
-    return path.length > 0 ? [path] : [];
+    return null;
   }
 
-  // If arc @enterId enters a node with more than one open routes leading out:
-  //   return array of sub-paths
+  // If arc @enterId enters a node with more than one open route leading out:
+  //   return array of sub-paths (split at this node only)
   // else return null
   function dividePathAtNode(path, enterId) {
     var nodeIds = nodes.getConnectedArcs(enterId, filter),
@@ -123,18 +160,8 @@ export function getSelfIntersectionSplitter(nodes) {
     if (exitArcIndexes.length < 2) {
       return null;
     }
-    // path forks -- recursively subdivide
-    var subPaths = splitPathByIds(path, exitArcIndexes);
-    return subPaths.reduce(accumulatePaths, null);
-  }
-
-  function accumulatePaths(memo, path) {
-    var subPaths = dividePath(path);
-    if (memo === null) {
-      return subPaths;
-    }
-    memo.push.apply(memo, subPaths);
-    return memo;
+    // path forks -- the caller subdivides the returned sub-paths further
+    return splitPathByIds(path, exitArcIndexes);
   }
 
   // Added as an optimization -- faster than using Array#indexOf()

@@ -109,11 +109,6 @@ export function FilteredArcIter(xx, yy, zz) {
   };
 }
 
-export function MultiShapeIter(arcs) {
-  var iter = new ShapeIter(arcs);
-
-}
-
 // Iterate along a path made up of one or more arcs.
 //
 export function ShapeIter(arcs) {

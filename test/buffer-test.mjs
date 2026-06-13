@@ -5,6 +5,64 @@ import assert from 'assert';
 
 describe('mapshaper-buffer.js', function () {
 
+  describe('undo capture', function () {
+    // Buffering builds a throwaway dataset (offset geometry, intersection cuts,
+    // dissolve, topology rebuild) that never enters the catalog, then merges it
+    // into the target dataset. When a GUI undo transaction is active, those
+    // in-place mutations must not be captured -- doing so records large
+    // intermediate arc collections and makes undo of a buffer command
+    // pathologically slow. Only the target dataset + replaced layer should be
+    // captured (the dataset unit holds the previous arcs by reference).
+    function runBufferWithUndo(geojson, command) {
+      var I = api.internal;
+      var dataset = I.importGeoJSON(geojson, {});
+      I.buildTopology(dataset);
+      var catalog = new I.Catalog();
+      catalog.addDataset(dataset);
+      var job = new I.Job(catalog);
+      var origArcs = dataset.arcs;
+      var origShapes = JSON.stringify(dataset.layers[0].shapes);
+      var tx = new I.UndoTransaction(command);
+      I.setActiveUndoTransaction(tx);
+      return new Promise(function(resolve, reject) {
+        I.runParsedCommands(I.parseCommands(command), job, function(err) {
+          I.clearActiveUndoTransaction(tx);
+          if (err) return reject(err);
+          resolve({dataset: dataset, origArcs: origArcs, origShapes: origShapes, tx: tx});
+        });
+      });
+    }
+
+    it('does not capture intermediate buffer construction geometry', async function () {
+      var poly = {
+        type: 'Polygon',
+        coordinates: [[[0, 0], [10, 0], [10, 10], [0, 10], [0, 0]]]
+      };
+      var r = await runBufferWithUndo(poly, '-buffer 50000');
+      var units = r.tx.getCapturedUnits();
+      // a dataset-level unit must be captured to support undo
+      assert.ok(units.some(function(u) { return u.type == 'dataset'; }));
+      // ...but no fine-grained arc captures from throwaway construction, and no
+      // unit should carry copied coordinate arrays
+      assert.equal(units.some(function(u) {
+        return u.type == 'arcs' || u.type == 'arcs-simplification' || !!u.xx;
+      }), false);
+    });
+
+    it('restores the pre-buffer state on undo (arcs by reference)', async function () {
+      var poly = {
+        type: 'Polygon',
+        coordinates: [[[0, 0], [10, 0], [10, 10], [0, 10], [0, 0]]]
+      };
+      var r = await runBufferWithUndo(poly, '-buffer 50000');
+      assert.notStrictEqual(r.dataset.arcs, r.origArcs); // buffer ran
+      api.internal.restoreCapturedUnits(r.tx.getCapturedUnits());
+      assert.strictEqual(r.dataset.arcs, r.origArcs);
+      assert.equal(JSON.stringify(r.dataset.layers[0].shapes), r.origShapes);
+      assert.equal(r.dataset.layers[0].geometry_type, 'polygon');
+    });
+  });
+
   describe('-buffer command', function () {
     it('converts line to polygon', function (done) {
       var line = {
@@ -19,7 +77,822 @@ describe('mapshaper-buffer.js', function () {
         done();
       })
     })
+
+    it('offsets lat-long line buffers along great circles by default (round at large radius)', async function () {
+      // A tiny line buffered by a large radius is ~a circle. With the default
+      // great-circle offset every boundary point is the same geodesic distance
+      // from the center; the old rhumb offset produces an egg shape.
+      var line = {type: 'LineString', coordinates: [[0, 60], [0.0005, 60]]};
+      var center = [0.00025, 60];
+      async function ovality(cmd) {
+        var out = await api.applyCommands(
+          '-i line.json ' + cmd + ' -o format=geojson buffer.json',
+          {'line.json': line});
+        var geoms = getOutputGeometries(out);
+        var min = Infinity, max = -Infinity;
+        geoms.forEach(function(g) {
+          var rings = g.type == 'Polygon' ? g.coordinates :
+            g.coordinates.reduce(function(a, p) {return a.concat(p);}, []);
+          rings.forEach(function(ring) {
+            ring.forEach(function(p) {
+              var d = api.geom.greatCircleDistance(center[0], center[1], p[0], p[1]);
+              if (d < min) min = d;
+              if (d > max) max = d;
+            });
+          });
+        });
+        return (max - min) / 2e6; // fraction of the 2000km radius
+      }
+      var geodesic = await ovality('-buffer 2000km');
+      var rhumb = await ovality('-buffer 2000km rhumb');
+      assert(geodesic < 0.001, 'geodesic buffer should be round, got ' + geodesic);
+      assert(rhumb > 0.01, 'rhumb buffer should be distorted, got ' + rhumb);
+    })
+
+    it('buffers line features independently', async function () {
+      var lines = {
+        type: 'FeatureCollection',
+        features: [{
+          type: 'Feature',
+          properties: {id: 'a'},
+          geometry: {
+            type: 'LineString',
+            coordinates: [[0, 0], [2000, 0]]
+          }
+        }, {
+          type: 'Feature',
+          properties: {id: 'b'},
+          geometry: {
+            type: 'LineString',
+            coordinates: [[1000, -1000], [1000, 1000]]
+          }
+        }]
+      };
+      var out = await api.applyCommands(
+        '-i lines.json -buffer 200 -o format=geojson buffer.json',
+        {'lines.json': lines}
+      );
+      var geoms = getOutputGeometries(out);
+
+      assert.equal(geoms.length, 2);
+      assert.equal(pointInGeometry([1000, 0], geoms[0]), true);
+      assert.equal(pointInGeometry([1000, 0], geoms[1]), true);
+    })
+
+    it('treats numeric radius values as meters', async function () {
+      var out1 = await api.applyCommands(
+        '-i test/data/geojson/three_points.geojson ' +
+        '-buffer 200 -o format=geojson buffer.json'
+      );
+      var out2 = await api.applyCommands(
+        '-i test/data/geojson/three_points.geojson ' +
+        '-buffer 200m -o format=geojson buffer.json'
+      );
+
+      assert.deepEqual(JSON.parse(out1['buffer.json']), JSON.parse(out2['buffer.json']));
+    })
+
+    it('topological option requires a polygon layer', async function () {
+      await assert.rejects(function() {
+        return api.applyCommands(
+          '-i line.json -buffer 200 topological -o format=geojson buffer.json',
+          {'line.json': {type: 'LineString', coordinates: [[0, 0], [1000, 0]]}}
+        );
+      }, /topological buffer option requires a polygon layer/);
+    })
+
+    it('left and right flags together make an ordinary two-sided buffer', async function () {
+      var file = 'test/data/features/buffer/i_crossback2.json';
+      var out1 = await api.applyCommands(`-i ${file} -buffer 637 left right -o buffer.json`);
+      var out2 = await api.applyCommands(`-i ${file} -buffer 637 -o buffer.json`);
+      assert.deepEqual(JSON.parse(out1['buffer.json']), JSON.parse(out2['buffer.json']));
+    })
+
+    it('radius can be the name of a data field', async function () {
+      var input = {
+        type: 'FeatureCollection',
+        features: [{
+          type: 'Feature',
+          properties: {dist: 500},
+          geometry: {type: 'LineString', coordinates: [[0, 0], [0.02, 0]]}
+        }, {
+          type: 'Feature',
+          properties: {dist: 0},
+          geometry: {type: 'LineString', coordinates: [[0, 0.05], [0.02, 0.05]]}
+        }]
+      };
+      var out = await api.applyCommands(
+        '-i lines.json -buffer dist -o gj2008 buffer.json', {'lines.json': input});
+      var json = JSON.parse(out['buffer.json']);
+      var geoms = json.geometries || json.features.map(f => f.geometry);
+      assert.equal(geoms.filter(g => g && g.type.includes('Polygon')).length, 1);
+    })
+
+  })
+
+  // One-sided buffers approximate the union of the path's offset bands
+  // with swept outline rings; concave joins can cut parts of a band out of
+  // every emitted ring (e.g. when a segment is shorter than the join's
+  // corner-cut extent). A post-pass audits every band against the emitted
+  // rings and patches uncovered regions with explicit band rings.
+  describe('one-sided buffers cover every offset band', function () {
+    it('r_concave_join_dent.json (planar): band point is inside the buffer', async function () {
+      var out = await api.applyCommands(
+        '-i test/data/features/buffer/r_concave_join_dent.json ' +
+        '-buffer 1000 left tolerance=0 -o buffer.json');
+      var geoms = getOutputGeometries(out);
+      // perpendicular to segment 2 at t=0.49, 90% of the buffer distance
+      assert.equal(pointInGeometry([-140, 863], geoms[0]), true);
+    })
+
+    it('r_concave_join_dent_ll.json (lat-long): band point is inside the buffer', async function () {
+      var out = await api.applyCommands(
+        '-i test/data/features/buffer/r_concave_join_dent_ll.json ' +
+        '-buffer 1km left tolerance=0 -o buffer.json');
+      var geoms = getOutputGeometries(out);
+      assert.equal(pointInGeometry([-89.75968678916746, 30.5130578645664], geoms[0]), true);
+    })
+
+    it('band points are covered at default tolerance too', async function () {
+      var out = await api.applyCommands(
+        '-i test/data/features/buffer/r_concave_join_dent_ll.json ' +
+        '-buffer 1km left -o buffer.json');
+      var geoms = getOutputGeometries(out);
+      assert.equal(pointInGeometry([-89.75968678916746, 30.5130578645664], geoms[0]), true);
+    })
+  })
+
+  // The two-sided fast path emits one self-intersecting outline ring per
+  // path; dissolving it can leave spurious holes (winding artifacts of the
+  // outline's concave-join loops), which the artifact-hole filter should
+  // remove without touching real holes.
+  describe('outline fast path artifact holes', function () {
+    function countRings(geojson) {
+      var geom = geojson.geometries[0];
+      assert.equal(geom.type, 'Polygon');
+      return geom.coordinates.length;
+    }
+
+    it('k_bugfix.json 1km has no holes', async function () {
+      var out = await api.applyCommands(
+        '-i test/data/features/buffer/k_bugfix.json -buffer 1km -o buffer.json');
+      assert.equal(countRings(JSON.parse(out['buffer.json'])), 1);
+    })
+
+    it('k_bugfix.json 4km has no holes', async function () {
+      var out = await api.applyCommands(
+        '-i test/data/features/buffer/k_bugfix.json -buffer 4km -o buffer.json');
+      assert.equal(countRings(JSON.parse(out['buffer.json'])), 1);
+    })
+
+    it('i_crossback2.json 212 has no holes', async function () {
+      var out = await api.applyCommands(
+        '-i test/data/features/buffer/i_crossback2.json -buffer 212 -o buffer.json');
+      assert.equal(countRings(JSON.parse(out['buffer.json'])), 1);
+    })
+
+    it('m_loops.json 1km keeps its real holes', async function () {
+      var out = await api.applyCommands(
+        '-i test/data/features/buffer/m_loops.json -buffer 1km -o buffer.json');
+      assert.equal(countRings(JSON.parse(out['buffer.json'])), 3); // shell + 2 holes
+    })
+  })
+
+  // Count the number of holes in the buffered polygon at different buffer sizes
+  describe('m_loops.json', function () {
+    var file = 'test/data/features/buffer/m_loops.json';
+    function test(size, numLoops, flags) {
+      it(size + (flags ? ' ' + flags : ''), async function () {
+        var cmd = `-i ${file} -buffer ${size} ${flags || ''} -o buffer.json`;
+        var out = await api.applyCommands(cmd);
+        var geojson = JSON.parse(out['buffer.json']);
+        assert.equal(geojson.geometries?.length, 1);
+        assert.equal(geojson.geometries[0].type, 'Polygon');
+        assert.equal(geojson.geometries[0].coordinates.length, numLoops + 1);
+      })
+    }
+
+    test('500m', 0);
+    test('650m', 3);
+    test('1.1km', 3);
+    test('1.2km', 3);
+    test('1.7km', 4);
+    test('3.1km', 1);
+    test('5km', 0);
+
+  })
+
+  // Buffered paths are pre-simplified with Douglas-Peucker; the tolerance
+  // option sets the error budget (default: 1% of the buffer radius). The
+  // output should match an unsimplified buffer within the tolerance
+  // (here: same holes at ~1% of the buffer radius).
+  describe('tolerance option (pre-simplification)', function () {
+    var file = 'test/data/features/buffer/m_loops.json';
+    function test(size, tol, numLoops) {
+      it(size + ' tolerance=' + tol, async function () {
+        var cmd = `-i ${file} -buffer ${size} tolerance=${tol} -o buffer.json`;
+        var out = await api.applyCommands(cmd);
+        var geojson = JSON.parse(out['buffer.json']);
+        assert.equal(geojson.geometries?.length, 1);
+        assert.equal(geojson.geometries[0].type, 'Polygon');
+        assert.equal(geojson.geometries[0].coordinates.length, numLoops + 1);
+      })
+    }
+    test('650m', '6m', 3);
+    test('1.7km', '17m', 4);
+    test('5km', '50m', 0);
+
+    it('supports percentage tolerance values', async function () {
+      var cmd1 = `-i ${file} -buffer 2km tolerance=1% -o buffer.json`;
+      var cmd2 = `-i ${file} -buffer 2km tolerance=20m -o buffer.json`;
+      var geojson1 = JSON.parse((await api.applyCommands(cmd1))['buffer.json']);
+      var geojson2 = JSON.parse((await api.applyCommands(cmd2))['buffer.json']);
+
+      assert.deepEqual(geojson1, geojson2);
+    })
+
+    it('does not treat small percentage tolerance values as the default', async function () {
+      var cmd1 = `-i ${file} -buffer 2km tolerance=0.01% -o buffer.json`;
+      var cmd2 = `-i ${file} -buffer 2km tolerance=1% -o buffer.json`;
+      var geojson1 = JSON.parse((await api.applyCommands(cmd1))['buffer.json']);
+      var geojson2 = JSON.parse((await api.applyCommands(cmd2))['buffer.json']);
+      var vertices1 = getGeometryVertexCount(geojson1.geometries[0]);
+      var vertices2 = getGeometryVertexCount(geojson2.geometries[0]);
+
+      assert(vertices1 > vertices2);
+    })
+
+    it('keeps original path side in simplified one-sided buffers', async function () {
+      var line = {
+        type: 'LineString',
+        coordinates: [[0, 0], [100, 1], [200, 0]]
+      };
+      var cmd = '-i line.json -buffer 1000 left cap-style=flat debug-offset ' +
+        '-o format=geojson buffer.json';
+      var out = await api.applyCommands(cmd, {'line.json': line});
+      var geom = getOutputGeometries(out)[0];
+
+      assert(geometryHasVertex(geom, [100, 1]));
+    })
+  })
+
+  // One-sided buffers of paths with concave bends: the winding-number fill
+  // resolves the concave join (a dip back to the path vertex) directly as a
+  // union, so the bend's inner side is covered by the overlapping segment
+  // bands with no pinch, and no over-reaching join sector is added beyond the
+  // offset bands.
+  describe('concave bend coverage (winding fill)', function () {
+    it('inner side is covered without a pinch and without over-reach', async function () {
+      // planar coords; the bend at [1000, 0] is a 90-degree left turn and
+      // both segments are shorter than the buffer radius, so the offset
+      // segments do not intersect
+      var line = {
+        type: 'LineString',
+        coordinates: [[0, 0], [1000, 0], [1000, 1000]]
+      };
+      var cmd = '-i line.json -buffer 2000 left cap-style=flat -o buffer.json';
+      var out = await api.applyCommands(cmd, {'line.json': line});
+      var geojson = JSON.parse(out['buffer.json']);
+      assert.equal(geojson.geometries.length, 1);
+      assert.equal(geojson.geometries[0].type, 'Polygon');
+      assert.equal(geojson.geometries[0].coordinates.length, 1); // no pinch hole
+      // inner side near the bend, covered by the two offset bands
+      assert.equal(pointInPolygon([500, 1500], geojson.geometries[0]), true);
+      assert.equal(pointInPolygon([-500, 500], geojson.geometries[0]), true);
+      // beyond the flat cap at the path start, outside the true buffer
+      assert.equal(pointInPolygon([-343, 1343], geojson.geometries[0]), false);
+    })
+  })
+
+  // offset-left / offset-right emit the outside edge of the one-sided buffer
+  // polygon as a line layer (offset curve only: source-path edge dropped by an
+  // arc-id filter, round caps trimmed at the path endpoints' perpendiculars).
+  describe('offset-left / offset-right options', function () {
+    // planar L-shaped path: east then north (a 90-degree left turn)
+    var lLine = {
+      type: 'LineString',
+      coordinates: [[0, 0], [100, 0], [100, 100]]
+    };
+
+    function nearCoord(actual, expected, eps) {
+      assert.ok(Math.abs(actual[0] - expected[0]) <= (eps || 1e-6) &&
+        Math.abs(actual[1] - expected[1]) <= (eps || 1e-6),
+        'expected ' + JSON.stringify(actual) + ' near ' + JSON.stringify(expected));
+    }
+
+    it('offset-left outputs a line, not a polygon', async function () {
+      var out = await api.applyCommands(
+        '-i line.json -buffer 10 offset-left -o buffer.json', {'line.json': lLine});
+      var geom = getOutputGeometries(out)[0];
+      assert.equal(geom.type, 'LineString');
+    })
+
+    it('offset-left is the concave inner edge with square ends and no caps', async function () {
+      var out = await api.applyCommands(
+        '-i line.json -buffer 10 offset-left -o buffer.json', {'line.json': lLine});
+      var coords = getOutputGeometries(out)[0].coordinates;
+      // left of the east leg is +y (10); left of the north leg is -x (90);
+      // the concave corner meets at [90, 10]; ends are perpendicular offsets
+      // of the path endpoints (no round cap looping past them)
+      assert.equal(coords.length, 3);
+      nearCoord(coords[0], [0, 10]);
+      nearCoord(coords[1], [90, 10]);
+      nearCoord(coords[2], [90, 100]);
+    })
+
+    it('offset-right rounds the convex corner and squares the ends', async function () {
+      var out = await api.applyCommands(
+        '-i line.json -buffer 10 offset-right -o buffer.json', {'line.json': lLine});
+      var coords = getOutputGeometries(out)[0].coordinates;
+      // right of the east leg is -y (-10); right of the north leg is +x (110);
+      // the convex corner is a round join (an arc around the bend vertex)
+      nearCoord(coords[0], [110, 100]);
+      nearCoord(coords[coords.length - 1], [0, -10]);
+      assert.ok(coords.length > 3, 'convex corner should be rounded');
+      // the round join's arc quadrant (between the two legs) lies in x>100,
+      // y<0 and stays on the radius-10 circle around the bend [100, 0]
+      var arcPts = coords.filter(function(p) { return p[0] > 100 + 1e-6 && p[1] < 0 - 1e-6; });
+      assert.ok(arcPts.length > 0, 'round join should add arc vertices');
+      arcPts.forEach(function(p) {
+        assert.ok(Math.abs(Math.hypot(p[0] - 100, p[1]) - 10) < 1.5, 'join vertex near radius 10');
+      });
+    })
+
+    it('a straight path gives a parallel offset with square ends', async function () {
+      // y=200 keeps the path out of geographic range, so it is treated as
+      // planar (10 coordinate units) rather than lat-long
+      var line = {type: 'LineString', coordinates: [[0, 200], [100, 200]]};
+      var out = await api.applyCommands(
+        '-i line.json -buffer 10 offset-left -o buffer.json', {'line.json': line});
+      var coords = getOutputGeometries(out)[0].coordinates;
+      assert.equal(coords.length, 2);
+      nearCoord(coords[0], [0, 210]);
+      nearCoord(coords[1], [100, 210]);
+    })
+
+    it('rejects offset-left and offset-right together', async function () {
+      await assert.rejects(function() {
+        return api.applyCommands(
+          '-i line.json -buffer 10 offset-left offset-right -o buffer.json',
+          {'line.json': lLine});
+      });
+    })
+
+    it('rejects an offset on a non-line layer', async function () {
+      await assert.rejects(function() {
+        return api.applyCommands(
+          '-i polygons.json -buffer 10 offset-left -o buffer.json',
+          {'polygons.json': getAdjacentSquares()});
+      });
+    })
+  })
+
+  // One-sided line buffers default to flat caps (the open end of the offset
+  // band), while two-sided buffers keep round caps. An explicit cap-style
+  // overrides the default either way.
+  describe('one-sided buffer cap-style default', function () {
+    // planar (y=200 keeps it out of lat-long range); buffer 10 each side
+    var line = {type: 'LineString', coordinates: [[0, 200], [100, 200]]};
+    async function ring(flags) {
+      var out = await api.applyCommands(
+        '-i line.json -buffer 10 ' + flags + ' -o format=geojson o.json',
+        {'line.json': line});
+      var geom = JSON.parse(out['o.json']).geometries[0];
+      return geom.coordinates[0];
+    }
+    function xRange(r) {
+      var min = Infinity, max = -Infinity;
+      r.forEach(function(p) { min = Math.min(min, p[0]); max = Math.max(max, p[0]); });
+      return [min, max];
+    }
+
+    it('one-sided buffer uses flat caps by default (no bulge past path ends)', async function () {
+      var x = xRange(await ring('left'));
+      assert(x[0] >= -1e-6 && x[1] <= 100 + 1e-6, 'flat caps stay within the path ends, got ' + x);
+    })
+
+    it('explicit cap-style=round still rounds a one-sided buffer', async function () {
+      var x = xRange(await ring('left cap-style=round'));
+      assert(x[1] > 100 + 1, 'round cap should bulge past the path end, got ' + x);
+    })
+
+    it('two-sided buffers still default to round caps', async function () {
+      var x = xRange(await ring(''));
+      assert(x[0] < -1 && x[1] > 100 + 1, 'two-sided default should round both ends, got ' + x);
+    })
+  })
+
+  describe('polygon buffers', function () {
+    it('buffers adjacent polygons separately by default', async function () {
+      var out = await api.applyCommands(
+        '-i polygons.json -buffer 200 -o format=geojson buffer.json',
+        {'polygons.json': getAdjacentSquares()}
+      );
+      var geoms = getOutputGeometries(out);
+
+      assert.equal(geoms.length, 2);
+      assert.equal(pointInGeometry([2100, 1500], geoms[0]), true);
+      assert.equal(pointInGeometry([1900, 1500], geoms[1]), true);
+    })
+
+    it('topological buffers do not buffer shared polygon boundaries', async function () {
+      var out = await api.applyCommands(
+        '-i polygons.json -buffer 200 topological -o format=geojson buffer.json',
+        {'polygons.json': getAdjacentSquares()}
+      );
+      var geoms = getOutputGeometries(out);
+
+      assert.equal(geoms.length, 2);
+      assert.equal(pointInGeometry([2100, 1500], geoms[0]), false);
+      assert.equal(pointInGeometry([1900, 1500], geoms[1]), false);
+      assert.equal(pointInGeometry([900, 1500], geoms[0]), true);
+      assert.equal(pointInGeometry([3100, 1500], geoms[1]), true);
+    })
+
+    it('topological buffers do not cover source polygon areas', async function () {
+      var out = await api.applyCommands(
+        '-i polygons.json -buffer 250 topological -o format=geojson buffer.json',
+        {'polygons.json': getNearbySquares()}
+      );
+      var geoms = getOutputGeometries(out);
+
+      assert.equal(geoms.length, 2);
+      assert.equal(pointInGeometry([2200, 1500], geoms[0]), false);
+      assert.equal(pointInGeometry([1800, 1500], geoms[1]), false);
+    })
+
+    it('topological buffer overlaps are assigned to the larger source polygon', async function () {
+      var out = await api.applyCommands(
+        '-i polygons.json -buffer 250 topological -o format=geojson buffer.json',
+        {'polygons.json': getNearbyUnequalSquares()}
+      );
+      var geoms = getOutputGeometries(out);
+
+      assert.equal(pointInGeometry([2075, 1500], geoms[0]), false);
+      assert.equal(pointInGeometry([2075, 1500], geoms[1]), true);
+    })
+
+    it('topological buffers reject negative distances', async function () {
+      await assert.rejects(function() {
+        return api.applyCommands(
+          '-i polygon.json -buffer -200 topological -o format=geojson buffer.json',
+          {'polygon.json': getDonut()}
+        );
+      }, /topological buffer option does not support negative distances/);
+    })
+
+    it('topological buffers preserve holes', async function () {
+      var out = await api.applyCommands(
+        '-i polygon.json -buffer 200 topological -o format=geojson buffer.json',
+        {'polygon.json': getDonut()}
+      );
+      var geom = getOutputGeometries(out)[0];
+
+      assert.equal(pointInGeometry([900, 2000], geom), true);
+      assert.equal(pointInGeometry([1700, 2000], geom), true);
+      assert.equal(pointInGeometry([2000, 2000], geom), false);
+    })
+
+    it('topological buffers retain interior holes when buffering polygon with a hole and island', async function () {
+      var out = await api.applyCommands(
+        '-i test/data/features/buffer/o_polygon_with_hole_and_island.json ' +
+        '-buffer 10m topological -o format=geojson buffer.json'
+      );
+      var geom = getOutputGeometries(out)[0];
+
+      assert(geometryHasHole(geom));
+    })
+
+    it('topological buffers do not leave sliver holes along source margins', async function () {
+      var out = await api.applyCommands(
+        '-i test/data/shapefile/six_counties.shp ' +
+        '-buffer 100m topological -o format=geojson buffer.json'
+      );
+      var geoms = getOutputGeometries(out);
+
+      assert.equal(getSmallHoleCount(geoms, 1e-8), 0);
+    })
+
+    it('expands shells and shrinks holes', async function () {
+      var out = await api.applyCommands(
+        '-i polygon.json -buffer 200 -o format=geojson buffer.json',
+        {'polygon.json': getDonut()}
+      );
+      var geom = getOutputGeometries(out)[0];
+
+      assert.equal(pointInGeometry([900, 2000], geom), true);
+      assert.equal(pointInGeometry([1700, 2000], geom), true);
+      assert.equal(pointInGeometry([2000, 2000], geom), false);
+    })
+
+    it('retains source polygon body when buffering polygon with a hole and island', async function () {
+      var out = await api.applyCommands(
+        '-i test/data/features/buffer/o_polygon_with_hole_and_island.json ' +
+        '-buffer 500m -o format=geojson buffer.json'
+      );
+      var geom = getOutputGeometries(out)[0];
+      var areas = getSignedRingAreas(geom);
+      var maxShell = Math.max.apply(null, areas.filter(function(area) {
+        return area > 0;
+      }));
+      var maxHole = Math.max.apply(null, areas.filter(function(area) {
+        return area < 0;
+      }).map(Math.abs));
+
+      assert.equal(getPolygonCount(geom), 1);
+      assert(maxHole < maxShell * 0.1);
+    })
+
+    it('retains interior holes when buffering polygon with a hole and island', async function () {
+      var out = await api.applyCommands(
+        '-i test/data/features/buffer/o_polygon_with_hole_and_island.json ' +
+        '-buffer 10m -o format=geojson buffer.json'
+      );
+      var geom = getOutputGeometries(out)[0];
+
+      assert(geometryHasHole(geom));
+    })
+
+    it('negative buffers shrink shells and expand holes', async function () {
+      var out = await api.applyCommands(
+        '-i polygon.json -buffer radius=-200 -o format=geojson buffer.json',
+        {'polygon.json': getDonut()}
+      );
+      var geom = getOutputGeometries(out)[0];
+
+      assert.equal(pointInGeometry([1100, 2000], geom), false);
+      assert.equal(pointInGeometry([2000, 1500], geom), false);
+      assert.equal(pointInGeometry([2000, 1300], geom), true);
+    })
+
+    it('negative buffers shrink islands instead of turning them into holes', async function () {
+      var out1 = await api.applyCommands(
+        '-i test/data/features/buffer/o_polygon_with_hole_and_island.json ' +
+        '-buffer -500m -o format=geojson buffer.json'
+      );
+      var json1 = JSON.parse(out1['buffer.json']);
+      var geom1 = getOutputGeometries(out1)[0];
+      var out2 = await api.applyCommands(
+        '-i buffer.json -buffer -500m -o format=geojson buffer2.json',
+        {'buffer.json': json1}
+      );
+      var geom2 = getOutputGeometries(out2, 'buffer2.json')[0];
+
+      assert.equal(getPolygonCount(geom1), 1);
+      assert.equal(getRingCount(geom1), 2);
+      assert.equal(getPolygonCount(geom2), 1);
+      assert.equal(getRingCount(geom2), 2);
+    })
+
+    it('removes near-source artifact holes from Washington buffer', async function () {
+      var out = await api.applyCommands(
+        '-i test/data/features/buffer/p_washington_state.json ' +
+        '-buffer 10km -o format=geojson buffer.json'
+      );
+      var areas = getSignedRingAreas(getOutputGeometries(out)[0]);
+
+      assert.equal(areas.some(function(area) {
+        return area < 0;
+      }), false);
+    })
+
+    it('preserves legitimate holes formed by positive buffers', async function () {
+      var out = await api.applyCommands(
+        '-i c.json -buffer 1000 -o format=geojson buffer.json',
+        {'c.json': getAnnularCPolygon()}
+      );
+      var geom = getOutputGeometries(out)[0];
+      var areas = getSignedRingAreas(geom);
+
+      assert(areas.some(function(area) {
+        return area < 0;
+      }));
+      assert.equal(pointInGeometry([0, 0], geom), false);
+    })
   })
 
 })
+
+function ringArea(ring) {
+  var sum = 0;
+  for (var i=0; i<ring.length-1; i++) {
+    sum += ring[i][0] * ring[i+1][1] - ring[i+1][0] * ring[i][1];
+  }
+  return sum / 2;
+}
+
+// even-odd ray casting; poly is a GeoJSON Polygon geometry
+function pointInGeometry(p, geom) {
+  if (geom.type == 'Polygon') {
+    return pointInPolygonCoords(p, geom.coordinates);
+  }
+  if (geom.type == 'MultiPolygon') {
+    return geom.coordinates.some(function(coords) {
+      return pointInPolygonCoords(p, coords);
+    });
+  }
+  return false;
+}
+
+function pointInPolygon(p, poly) {
+  return pointInGeometry(p, poly);
+}
+
+function pointInPolygonCoords(p, coords) {
+  var inside = false;
+  coords.forEach(function(ring) {
+    for (var i=0, j=ring.length-1; i<ring.length; j=i++) {
+      var a = ring[i], b = ring[j];
+      if ((a[1] > p[1]) != (b[1] > p[1]) &&
+          p[0] < (b[0] - a[0]) * (p[1] - a[1]) / (b[1] - a[1]) + a[0]) {
+        inside = !inside;
+      }
+    }
+  });
+  return inside;
+}
+
+function getSignedRingAreas(geom) {
+  var polys = geom.type == 'Polygon' ? [geom.coordinates] : geom.coordinates;
+  return polys.reduce(function(memo, polygon) {
+    polygon.forEach(function(ring) {
+      memo.push(ringArea(ring));
+    });
+    return memo;
+  }, []);
+}
+
+function geometryHasHole(geom) {
+  return getSignedRingAreas(geom).some(function(area) {
+    return area < 0;
+  });
+}
+
+function getPolygonCount(geom) {
+  return geom.type == 'Polygon' ? 1 : geom.coordinates.length;
+}
+
+function getRingCount(geom) {
+  var polys = geom.type == 'Polygon' ? [geom.coordinates] : geom.coordinates;
+  return polys.reduce(function(memo, polygon) {
+    return memo + polygon.length;
+  }, 0);
+}
+
+function getGeometryVertexCount(geom) {
+  var polys = geom.type == 'Polygon' ? [geom.coordinates] : geom.coordinates;
+  return polys.reduce(function(memo, polygon) {
+    polygon.forEach(function(ring) {
+      memo += ring.length;
+    });
+    return memo;
+  }, 0);
+}
+
+function geometryHasVertex(geom, p) {
+  var polys = geom.type == 'Polygon' ? [geom.coordinates] : geom.coordinates;
+  return polys.some(function(polygon) {
+    return polygon.some(function(ring) {
+      return ring.some(function(p2) {
+        return p2[0] == p[0] && p2[1] == p[1];
+      });
+    });
+  });
+}
+
+function getSmallHoleCount(geoms, threshold) {
+  return geoms.reduce(function(memo, geom) {
+    var polys = geom.type == 'Polygon' ? [geom.coordinates] : geom.coordinates;
+    polys.forEach(function(polygon) {
+      polygon.slice(1).forEach(function(ring) {
+        if (Math.abs(ringArea(ring)) < threshold) memo++;
+      });
+    });
+    return memo;
+  }, 0);
+}
+
+function getOutputGeometries(out, filename) {
+  var json = JSON.parse(out[filename || 'buffer.json']);
+  return json.features ?
+    json.features.map(function(feat) { return feat.geometry; }) :
+    json.geometries;
+}
+
+function getAdjacentSquares() {
+  return {
+    type: 'FeatureCollection',
+    features: [{
+      type: 'Feature',
+      properties: {id: 1},
+      geometry: {
+        type: 'Polygon',
+        coordinates: [[[1000, 1000], [2000, 1000], [2000, 2000], [1000, 2000], [1000, 1000]]]
+      }
+    }, {
+      type: 'Feature',
+      properties: {id: 2},
+      geometry: {
+        type: 'Polygon',
+        coordinates: [[[2000, 1000], [3000, 1000], [3000, 2000], [2000, 2000], [2000, 1000]]]
+      }
+    }]
+  };
+}
+
+function getNearbySquares() {
+  return {
+    type: 'FeatureCollection',
+    features: [{
+      type: 'Feature',
+      properties: {id: 1},
+      geometry: {
+        type: 'Polygon',
+        coordinates: [[[1000, 1000], [2000, 1000], [2000, 2000], [1000, 2000], [1000, 1000]]]
+      }
+    }, {
+      type: 'Feature',
+      properties: {id: 2},
+      geometry: {
+        type: 'Polygon',
+        coordinates: [[[2150, 1000], [3150, 1000], [3150, 2000], [2150, 2000], [2150, 1000]]]
+      }
+    }]
+  };
+}
+
+function getNearbyUnequalSquares() {
+  return {
+    type: 'FeatureCollection',
+    features: [{
+      type: 'Feature',
+      properties: {id: 1},
+      geometry: {
+        type: 'Polygon',
+        coordinates: [[[1000, 1000], [2000, 1000], [2000, 2000], [1000, 2000], [1000, 1000]]]
+      }
+    }, {
+      type: 'Feature',
+      properties: {id: 2},
+      geometry: {
+        type: 'Polygon',
+        coordinates: [[[2150, 500], [4150, 500], [4150, 2500], [2150, 2500], [2150, 500]]]
+      }
+    }]
+  };
+}
+
+function getPointTouchingSquares() {
+  return {
+    type: 'FeatureCollection',
+    features: [{
+      type: 'Feature',
+      properties: {id: 1},
+      geometry: {
+        type: 'Polygon',
+        coordinates: [[[1000, 1000], [2000, 1000], [2000, 2000], [1000, 2000], [1000, 1000]]]
+      }
+    }, {
+      type: 'Feature',
+      properties: {id: 2},
+      geometry: {
+        type: 'Polygon',
+        coordinates: [[[2000, 2000], [3000, 2000], [3000, 3000], [2000, 3000], [2000, 2000]]]
+      }
+    }]
+  };
+}
+
+function getDonut() {
+  return {
+    type: 'Polygon',
+    coordinates: [
+      [[1000, 1000], [3000, 1000], [3000, 3000], [1000, 3000], [1000, 1000]],
+      [[1600, 1600], [1600, 2400], [2400, 2400], [2400, 1600], [1600, 1600]]
+    ]
+  };
+}
+
+function getAnnularCPolygon() {
+  var outer = 4000;
+  var inner = 3000;
+  var start = 15;
+  var end = 345;
+  var n = 80;
+  var coords = [];
+  var i, a;
+  for (i = 0; i <= n; i++) {
+    a = (start + (end - start) * i / n) * Math.PI / 180;
+    coords.push([Math.cos(a) * outer, Math.sin(a) * outer]);
+  }
+  for (i = n; i >= 0; i--) {
+    a = (start + (end - start) * i / n) * Math.PI / 180;
+    coords.push([Math.cos(a) * inner, Math.sin(a) * inner]);
+  }
+  coords.push(coords[0]);
+  return {
+    type: 'Polygon',
+    coordinates: [coords]
+  };
+}
 
