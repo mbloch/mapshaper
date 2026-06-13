@@ -58,7 +58,8 @@ function fastGeodeticSegmentFunction(lng, lat, bearing, meterDist) {
   return [lng2, lat2];
 }
 
-function wrap(deg) {
+
+export function wrap(deg) {
   while (deg < -180) deg += 360;
   while (deg > 180) deg -= 360;
   return deg;
@@ -100,14 +101,6 @@ export function getFastGeodeticSegmentFunction(P) {
 // return function to calculate bearing of a segment in degrees
 export function getBearingFunction(dataset) {
   var P = getDatasetCRS(dataset);
-  // var g = getGeodesic(P);
-  // if (isLatLngCRS) {
-  //   return function(lng1, lat1, lng2, lat2) {
-  //     var tmp = g.Inverse(lat1, lng1, lat2, lng2);
-  //     return tmp.azi1;
-  //     // return bearingDegrees(lng1, lat1, lng2, lat2);
-  //   };
-  // }
   // return isLatLngCRS(P) ? bearingDegrees : bearingDegrees2D;
   return isLatLngCRS(P) ? fastGeodeticBearingFunction : bearingDegrees2D;
 }

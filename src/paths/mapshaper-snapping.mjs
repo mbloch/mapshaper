@@ -63,9 +63,8 @@ function snapCoordsInternal(ids, arcs, snapDist) {
       n = ids.length,
       data = arcs.getVertexData();
 
-  quicksortIds(data.xx, ids, 0, n-1);
+  sortIds(data.xx, ids);
 
-  // Consider: speed up sorting -- try bucket sort as first pass.
   for (var i=0; i<n; i++) {
     snapCount += snapPoint(i, snapDist, ids, data.xx, data.yy);
   }
@@ -115,61 +114,55 @@ export function getEndpointIds(arcs) {
   return ids;
 }
 
-/*
-// Returns array of array ids, in ascending order.
-// @a array of numbers
-//
-utils.sortCoordinateIds = function(a) {
-  return utils.bucketSortIds(a);
-};
-
-// This speeds up sorting of large datasets (~2x faster for 1e7 values)
-// worth the additional code?
-utils.bucketSortIds = function(a, n) {
-  var len = a.length,
-      ids = new Uint32Array(len),
-      bounds = utils.getArrayBounds(a),
-      buckets = Math.ceil(n > 0 ? n : len / 10),
-      counts = new Uint32Array(buckets),
-      offsets = new Uint32Array(buckets),
-      i, j, offs, count;
-
-  // get bucket sizes
-  for (i=0; i<len; i++) {
-    j = bucketId(a[i], bounds.min, bounds.max, buckets);
-    counts[j]++;
+// Sort `ids` in place so that a[ids[k]] is ascending.
+// A linear-time bucket pass distributes ids by value, then each bucket is
+// finished with quicksortIds. For typical well-spread coordinate data this is
+// O(n) and several times faster than sorting by indirect comparison (which
+// chases random a[ids[i]] reads through the coordinate array); clustered values
+// or many ties just make individual buckets larger and degrade gracefully to
+// the O(n log n) quicksort, never worse. `ids` may be a typed or plain array.
+export function sortIds(a, ids) {
+  var len = ids.length;
+  if (len < 64) {
+    if (len > 1) quicksortIds(a, ids, 0, len - 1);
+    return ids;
   }
-
-  // convert counts to offsets
-  offs = 0;
-  for (i=0; i<buckets; i++) {
-    offsets[i] = offs;
-    offs += counts[i];
+  var min = Infinity, max = -Infinity, v, i, b;
+  for (i = 0; i < len; i++) {
+    v = a[ids[i]];
+    if (v < min) min = v;
+    if (v > max) max = v;
   }
-
-  // assign ids to buckets
-  for (i=0; i<len; i++) {
-    j = bucketId(a[i], bounds.min, bounds.max, buckets);
-    offs = offsets[j]++;
-    ids[offs] = i;
+  if (!(max > min)) return ids; // all equal or non-finite -- no order to impose
+  var buckets = len >> 3;
+  var scale = buckets / (max - min);
+  var counts = new Uint32Array(buckets);
+  for (i = 0; i < len; i++) {
+    b = (a[ids[i]] - min) * scale | 0;
+    if (b >= buckets) b = buckets - 1;
+    counts[b]++;
   }
-
-  // sort each bucket with quicksort
-  for (i = 0; i<buckets; i++) {
-    count = counts[i];
-    if (count > 1) {
-      offs = offsets[i] - count;
-      utils.quicksortIds(a, ids, offs, offs + count - 1);
+  var offsets = new Uint32Array(buckets);
+  var cursor = new Uint32Array(buckets);
+  for (b = 0, v = 0; b < buckets; b++) {
+    offsets[b] = v;
+    cursor[b] = v;
+    v += counts[b];
+  }
+  var out = new Uint32Array(len);
+  for (i = 0; i < len; i++) {
+    b = (a[ids[i]] - min) * scale | 0;
+    if (b >= buckets) b = buckets - 1;
+    out[cursor[b]++] = ids[i];
+  }
+  for (b = 0; b < buckets; b++) {
+    if (counts[b] > 1) {
+      quicksortIds(a, out, offsets[b], offsets[b] + counts[b] - 1);
     }
   }
+  for (i = 0; i < len; i++) ids[i] = out[i];
   return ids;
-
-  function bucketId(val, min, max, buckets) {
-    var id = (buckets * (val - min) / (max - min)) | 0;
-    return id < buckets ? id : buckets - 1;
-  }
-};
-*/
+}
 
 function quicksortIds(a, ids, lo, hi) {
   if (hi - lo > 24) {

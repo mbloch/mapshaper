@@ -4,6 +4,7 @@ import assert from 'assert';
 import fs from 'fs';
 import {
   parseMeasure,
+  parseMeasure2,
   getIntervalConversionFactor,
   convertAreaParam,
   convertDistanceParam,
@@ -41,6 +42,19 @@ describe('mapshaper-units.js', function () {
     bad('a');
     bad('');
     bad('30 hectares');
+  })
+
+  describe('parseMeasure2()', function () {
+    it('letters-only strings (e.g. field names) are non-parsable, not unit errors', function () {
+      var o = parseMeasure2('dist');
+      assert.strictEqual(isNaN(o.value), true);
+    })
+
+    it('a number with unknown units is still an error', function () {
+      assert.throws(function() {
+        parseMeasure2('10banana');
+      });
+    })
   })
 
   describe('getIntervalConversionFactor()', function () {

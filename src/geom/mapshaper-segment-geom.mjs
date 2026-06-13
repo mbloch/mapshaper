@@ -151,7 +151,7 @@ function useRobustCross(ax, ay, bx, by, cx, cy, dx, dy) {
   if (innerAngle(ax, ay, bx, by, cx, cy, dx, dy) < 0.1) return true;
   var len1 = distance2D(ax, ay, bx, by);
   var len2 = distance2D(cx, cy, dx, dy);
-  var ratio = len1 < len2 ? len1 / len2 : len2 / len1 || 0;
+  var ratio = (len1 < len2 ? len1 / len2 : len2 / len1) || 0;
   if (ratio < 0.001) return true;
   return false;
 }

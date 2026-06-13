@@ -490,71 +490,79 @@ export function getOptionParser() {
     .option('target', targetOpt);
 
   parser.command('buffer')
-    // .describe('')
+    .describe('buffer points, lines or polygons by a distance parameter')
     .option('radius', {
       describe: 'radius of buffer, as an expression or a constant',
       DEFAULT: true
     })
     .option('tolerance', {
-      // describe: 'acceptable deviation for approximating curves'
+      describe: 'acceptable error when buffering lines and polygons (default is 1%)'
     })
     .option('vertices', {
-      // describe: 'number of vertices to use when buffering points',
+      describe: 'number of vertices to use when buffering points (default is 72)',
       type: 'integer'
     })
-    .option('arc-quality', {
-      // segments per quarter-circle in joins and caps
+    .option('quad-segs', {
+    // .option('arc-quality', {
+      describe: 'segments per quarter-circle in joins and caps (default is 8)',
       type: 'integer'
     })
-    .option('slice-length', {
-      // max path segments per buffer section
-      type: 'integer'
-    })
-    .option('backtrack', {
-      // ...
-      type: 'integer'
-    })
+    // .option('circle-quality', {
+    //   // segments per circle in joins and caps
+    //   type: 'integer'
+    // })
     .option('cap-style', {
       describe: 'flat or round (default is round)'
     })
-    .option('type', {
-      // left, right, outer, inner (default is full buffer)
-    })
-    .option('planar', {
+    .option('rhumb', {
+      // undocumented: offset along rhumb lines instead of great circles
+      // (lat-long lines/polygons)
       type: 'flag'
     })
-    .option('v2', {
-      type: 'flag'
-    })
-    .option('v3', {
+    .option('topological', {
+      describe: '[polygons] buffer unshared boundaries without covering source polygon areas',
       type: 'flag'
     })
     .option('debug-offset', {
+      // generate initial buffer shapes but don't dissolve them
       type: 'flag'
     })
     .option('debug-winding', {
       type: 'flag'
     })
-    .option('debug-points', {
-      type: 'flag'
-    })
-    // .option('debug-division', {
-    //   type: 'flag'
-    // })
     .option('debug-mosaic', {
       type: 'flag'
     })
     .option('left', {
+      // undocumented: generate the left-side half of a line buffer
+      // (left is relative to the direction of the path). Undocumented because
+      // one-sided line buffers can leave spurious wrong-side lobes on
+      // self-approaching paths (see docs/development/buffer-line-notes.md).
       type: 'flag'
     })
     .option('right', {
+      // undocumented: generate the right-side half of a line buffer
+      // (see 'left' above)
+      type: 'flag'
+    })
+    .option('offset-left', {
+      // undocumented: output the left-side offset line instead of a buffer
+      // (lines). Built on the same one-sided machinery as 'left'/'right', so it
+      // shares their wrong-side-lobe artifacts.
+      type: 'flag'
+    })
+    .option('offset-right', {
+      // undocumented: output the right-side offset line instead of a buffer
+      // (see 'offset-left' above)
+      type: 'flag'
+    })
+    .option('loop-removal', {
+      // undocumented: drop self-overlap loops from two-sided line buffers
+      // before dissolving (lines). Off by default; limited measured benefit.
       type: 'flag'
     })
     .option('no-cleanup', {
       type: 'flag'
-    })
-    .option('units', {
-      describe: 'distance units (meters|miles|km|feet) (default is meters)'
     })
     .option('name', nameOpt)
     .option('target', targetOpt)

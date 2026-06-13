@@ -41,3 +41,6 @@ docs/troubleshooting.md
 TODO.md
 www/ai-config.js
 test-results/
+CLAUDE.md
+test/tools/
+buffer-inspect/

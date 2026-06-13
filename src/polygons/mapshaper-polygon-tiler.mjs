@@ -9,6 +9,16 @@ import { getHoleDivider } from '../polygons/mapshaper-polygon-holes';
 export function PolygonTiler(mosaic, arcTileIndex, nodes, opts) {
   var arcs = nodes.arcs;
   var visitedTileIndex = new IdTestIndex(mosaic.length, true);
+  // Membership index, cleared once per shape (not per ring like
+  // visitedTileIndex). It dedupes tilesInShape: overlapping rings of one shape
+  // re-traverse each other's tiles (visitedTileIndex is cleared between rings so
+  // a ring can flood across tiles an earlier ring already claimed), but a tile
+  // must be emitted to the shape only once. Without this, a feature with many
+  // heavily overlapping rings (e.g. a multi-part coastline buffered by a radius
+  // far larger than the gaps between parts) pushed the same tiles once per ring,
+  // growing tilesInShape without bound until Array#push threw "Invalid array
+  // length" (a ~4M-tile mosaic accumulated billions of duplicate entries).
+  var shapeTileIndex = new IdTestIndex(mosaic.length, true);
   var divide = getHoleDivider(nodes);
   // temp vars
   var currHoles; // arc ids of all holes in shape
@@ -22,12 +32,31 @@ export function PolygonTiler(mosaic, arcTileIndex, nodes, opts) {
   this.getTilesInShape = function(shp, shapeId) {
     var cw = [], ccw = [], retn;
     tilesInShape = [];
+    shapeTileIndex.clear();
     currHoles = [];
     currShapeId = shapeId;
-    if (opts.no_holes) {
+    if (opts.per_part_holes) {
+      // Treat each ring of the shape as an independent piece of a union
+      // (used by the buffer dissolve): holes extracted from a
+      // self-intersecting ring only block the tile traversal of that
+      // ring's own sub-rings. With shape-wide holes (below), one ring's
+      // reverse-wound pockets would block the traversal of every other
+      // ring, cutting tiles out of areas those rings legitimately cover.
+      (shp || []).forEach(function(part) {
+        cw = [];
+        ccw = [];
+        currHoles = [];
+        divide([part], cw, ccw);
+        ccw.forEach(procShapeHole);
+        holeIndex.setIds(currHoles);
+        cw.forEach(procShapeRing);
+        holeIndex.clear();
+      });
+    } else if (opts.no_holes) {
       divide(shp, cw, ccw);
       // ccw.forEach(internal.reversePath);
       // cw = cw.concat(ccw);
+      cw.forEach(procShapeRing);
     } else {
       // divide shape into rings and holes (splits self-intersecting rings)
       // TODO: rewrite divide() -- it is a performance bottleneck and can convert
@@ -35,8 +64,8 @@ export function PolygonTiler(mosaic, arcTileIndex, nodes, opts) {
       divide(shp, cw, ccw);
       ccw.forEach(procShapeHole);
       holeIndex.setIds(currHoles);
+      cw.forEach(procShapeRing);
     }
-    cw.forEach(procShapeRing);
     retn = tilesInShape;
     // reset tmp vars, etc
     tilesInShape = null;
@@ -100,7 +129,12 @@ export function PolygonTiler(mosaic, arcTileIndex, nodes, opts) {
       return -1;
     }
     visitedTileIndex.setId(tileId);
-    tilesInShape.push(tileId);
+    // Emit each tile to the shape at most once (see shapeTileIndex). The tile is
+    // still returned so traversal continues across it into not-yet-claimed tiles.
+    if (!shapeTileIndex.hasId(tileId)) {
+      shapeTileIndex.setId(tileId);
+      tilesInShape.push(tileId);
+    }
     return tileId;
   }
 }

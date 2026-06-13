@@ -100,9 +100,12 @@ export function parseMeasure2(m) {
   } else if (s === '') {
     o.value = NaN;
   } else if (match) {
+    var numStr = s.substring(0, s.length - match[0].length);
     o.units = UNITS_LOOKUP[match[2].toLowerCase()];
     o.areal = !!(match[1] || match[3]);
-    o.value = Number(s.substring(0, s.length - match[0].length));
+    // a string with no numeric prefix (e.g. a field name like "dist") is
+    // non-parsable, not a units error
+    o.value = numStr === '' && !o.units ? NaN : Number(numStr);
     if (!o.units && !isNaN(o.value)) {
       // throw error if string contains a number followed by unrecognized units string
       stop('Unknown units: ' + match[0]);

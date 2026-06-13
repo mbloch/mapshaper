@@ -1,6 +1,6 @@
 import api from '../mapshaper.js';
 import assert from 'assert';
-import { getHighPrecisionSnapInterval } from '../src/paths/mapshaper-snapping';
+import { getHighPrecisionSnapInterval, sortIds } from '../src/paths/mapshaper-snapping';
 
 
 
@@ -13,21 +13,61 @@ function testSortedIds(ids, arr) {
   return true;
 };
 
+function freshIds(n, typed) {
+  var ids = typed ? new Uint32Array(n) : [];
+  for (var i = 0; i < n; i++) ids[i] = i;
+  return ids;
+}
+
 
 describe('mapshaper-snapping.js', function () {
-  /*
-  describe('bucketSortIds()', function () {
-    it('test 1', function () {
-      var arr = [2, 0, 1, -1, -1, 0, 3];
 
-      assert(testSortedIds(api.utils.bucketSortIds(arr, 1), arr));
-      assert(testSortedIds(api.utils.bucketSortIds(arr, 2), arr));
-      assert(testSortedIds(api.utils.bucketSortIds(arr, 3), arr));
-      assert(testSortedIds(api.utils.bucketSortIds(arr, 4), arr));
-      assert(testSortedIds(api.utils.bucketSortIds(arr, 5), arr));
-    })
-  })
-  */
+  describe('sortIds()', function () {
+    it('sorts ids by their value in the key array (small input)', function () {
+      var arr = [2, 0, 1, -1, -1, 0, 3];
+      var ids = sortIds(arr, freshIds(arr.length, false));
+      assert(testSortedIds(ids, arr));
+    });
+
+    it('handles the large bucket-sort path on various distributions', function () {
+      var n = 5000;
+      var dists = {
+        uniform: function() { return Math.random() * 1e6; },
+        clustered: function() { return (Math.random() * 5 | 0) * 1e5 + Math.random() * 10; },
+        ties: function() { return (Math.random() * 20 | 0); },
+        negatives: function() { return (Math.random() - 0.5) * 1e6; }
+      };
+      Object.keys(dists).forEach(function(name) {
+        var arr = new Float64Array(n);
+        for (var i = 0; i < n; i++) arr[i] = dists[name]();
+        assert(testSortedIds(sortIds(arr, freshIds(n, true)), arr), name);
+      });
+    });
+
+    it('sorts in place and returns the same array', function () {
+      var arr = new Float64Array(200);
+      for (var i = 0; i < 200; i++) arr[i] = 200 - i;
+      var ids = freshIds(200, true);
+      var result = sortIds(arr, ids);
+      assert.strictEqual(result, ids);
+      assert(testSortedIds(ids, arr));
+    });
+
+    it('handles all-equal values, empty and singleton inputs', function () {
+      var equal = new Float64Array(100); // all zero
+      assert(testSortedIds(sortIds(equal, freshIds(100, true)), equal));
+      assert.deepEqual(sortIds([5], [0]), [0]);
+      assert.deepEqual(sortIds([], []), []);
+    });
+
+    it('works on a plain Array of arbitrary (endpoint-style) ids', function () {
+      var arr = new Float64Array(300);
+      for (var i = 0; i < 300; i++) arr[i] = Math.sin(i) * 1000;
+      var ids = []; // sparse, like getEndpointIds()
+      for (var k = 0; k < 300; k += 2) ids.push(k);
+      assert(testSortedIds(sortIds(arr, ids), arr));
+    });
+  });
 
   describe('getHighPrecisionSnappingInterval()', function() {
     it('latlong range', function() {

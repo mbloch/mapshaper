@@ -46,6 +46,7 @@ mapshaper states.geojson -filter 'ST == "AK"' + name=alaska -o output/ target=*
 **Editing**
 
 [-affine](#-affine)
+[-buffer](#-buffer)
 [-classify](#-classify)
 [-clean](#-clean)
 [-clip](#-clip)
@@ -424,6 +425,49 @@ Gaussian curve. Pixel values can be written as plain numbers or with a `px`
 suffix, for example `radius=10` or `radius=10px`.
 
 Common options: `target=`
+
+### -buffer
+
+Create buffer polygons around point, polyline or polygon features.
+
+The buffer distance is given by the `<radius>` parameter. For layers in
+longitude/latitude coordinates, distances such as `2km` or `500m` are measured
+over the earth, so a one-kilometer buffer is approximately one kilometer on the ground. For projected layers, distances are measured in the layer's flat,
+projected coordinate system, so be aware that results can be distorted if the layer is in a projection that does not preserve distances well across the data area.
+
+For point layers, `-buffer` creates circular polygons. For polyline layers, it
+creates rounded or flat-ended line buffers. For polygon layers, positive buffers expand polygons and shrink holes; negative buffers shrink polygons and expand holes. Negative buffers are only supported for polygon layers.
+
+`<radius>` or `radius=` Buffer distance, as a constant or JavaScript expression.
+Distance units may be included in the radius value, for example `500m`, `2km`,
+`1mi` or `1000ft`. If no units are given, meters are assumed when the dataset
+has a known CRS. For datasets without CRS information, unitless radius values
+are interpreted in source coordinate units.
+
+`tolerance=` Acceptable radius error for line and polygon buffers. Values may be distances, such as `20m`,
+or percentages of the buffer radius, such as `1%`. The default is `1%`. Buffer generation is faster using a small tolerance, but you can disable this optimization by setting `tolerance=0`.
+
+`vertices=` [points] Number of vertices used to approximate each point buffer
+circle. The default is 72.
+
+`quad-segs=` [lines, polygons] Number of segments per quarter-circle in joins
+and caps. The default is 8.
+
+`cap-style=flat|round` [lines] End cap style for line buffers. The default is
+`round`.
+
+`topological` [polygons] Buffer only unshared polygon boundaries, such as coastlines and empty holes. Buffer areas do not cover any
+original polygon areas, and overlapping buffer areas are assigned to the larger feature.
+
+Common options: `name=` `+` `target=`
+
+```bash
+# Buffer a line layer by 2 km
+mapshaper roads.shp -buffer 2km -o roads_buffer.geojson
+
+# Create a topological coastline-style buffer around polygons
+mapshaper counties.shp -buffer 100m topological -o counties_buffer.geojson
+```
 
 ### -clean
 
