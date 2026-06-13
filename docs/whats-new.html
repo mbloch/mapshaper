@@ -50,7 +50,10 @@
       
       <h1 id="whats-new">What&#39;s new</h1>
 <p>This is a curated list of recently added features. For the full list of changes, including bug fixes and internal work, see the <a href="https://github.com/mbloch/mapshaper/blob/master/CHANGELOG.md">changelog</a> on GitHub.</p>
-<h2 id="may-2026">May 2026</h2>
+<h2 id="june-2026">June 2026</h2>
+<div class="whats-new-entry"><p><strong>Buffer command.</strong> The <code>-buffer</code> command makes buffers around point, lines and polygons. The command uses geodesic distance on lat-long datasets and planar distance on projected datasets. Negative <code>radius</code> parameters shrink polygons instead of expanding them. The <code>topological</code> option prevents buffers from overlapping adjacent polygons (buffers fill the empty space around groups of polygons).
+→ See <a href="/docs/reference.html#-buffer"><code>-buffer</code></a>.</p>
+</div><h2 id="may-2026">May 2026</h2>
 <div class="whats-new-entry"><p><strong>Raster layer support.</strong> Mapshaper can now import GeoTIFF rasters, plus PNG and JPEG images with world-file georeferencing, preview them in the web UI, clip them with the rectangle tool, and export as images embedded in SVG. Mapshaper&#39;s default options for raster importing and projecting rasters should work well for typical image layers. When importing rasters containing data, you may need to set additional options, which are documented in the command reference.</p>
 <p>→ See <a href="/docs/reference.html#-i-input"><code>-i</code></a>.</p>
 </div><div class="whats-new-entry"><p><strong>Point icons with <code>-style</code>.</strong> The <code>-style</code> command has new <code>icon=</code>, <code>icon-size=</code> and <code>icon-color=</code> options for drawing simple point icons, including circles, squares, rings and stars. Icons can be combined with labels on the same point layer.</p>
@@ -85,7 +88,7 @@
   </main>
 
   <aside class="docs-toc">
-    <div class="docs-toc-title">On this page</div><ul><li class="lvl-2"><a href="#may-2026">May 2026</a></li><li class="lvl-2"><a href="#april-2026">April 2026</a></li></ul>
+    <div class="docs-toc-title">On this page</div><ul><li class="lvl-2"><a href="#june-2026">June 2026</a></li><li class="lvl-2"><a href="#may-2026">May 2026</a></li><li class="lvl-2"><a href="#april-2026">April 2026</a></li></ul>
   </aside>
 
 </div>

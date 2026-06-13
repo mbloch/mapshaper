@@ -7,6 +7,14 @@ description: A curated log of recently added user-visible features in Mapshaper,
 
 This is a curated list of recently added features. For the full list of changes, including bug fixes and internal work, see the [changelog](https://github.com/mbloch/mapshaper/blob/master/CHANGELOG.md) on GitHub.
 
+## June 2026
+
+<div class="whats-new-entry">
+
+**Buffer command.** The `-buffer` command makes buffers around point, lines and polygons. The command uses geodesic distance on lat-long datasets and planar distance on projected datasets. Negative `radius` parameters shrink polygons instead of expanding them. The `topological` option prevents buffers from overlapping adjacent polygons (buffers fill the empty space around groups of polygons).
+→ See [`-buffer`](/docs/reference.html.md#-buffer).
+</div>
+
 ## May 2026
 
 <div class="whats-new-entry">

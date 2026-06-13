@@ -3033,6 +3033,9 @@
 			before.run();
 			try {
 				const result = apply.call(fn, this, arguments);
+				if (result && typeof result.then === 'function') {
+					throw new TypeError('Transaction function cannot return a promise');
+				}
 				after.run();
 				return result;
 			} catch (ex) {
@@ -4276,7 +4279,7 @@
 			}
 
 			// Make sure the specified directory exists
-			if (!anonymous && !fs.existsSync(path.dirname(filename))) {
+			if (!anonymous && !filename.startsWith('file:') && !fs.existsSync(path.dirname(filename))) {
 				throw new TypeError('Cannot open database because the directory does not exist');
 			}
 

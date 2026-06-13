@@ -23,6 +23,7 @@
 	--colored-text: #10699b;
 	--normal-text: #333;
 	--left-sidebar-width: 420px;
+	--sidebar-panels-separator-position: 50%;
 	--sidebar-resize-col: #f2c65a; /* #d6a51d; */
 }
 
@@ -788,7 +789,7 @@ input[type="checkbox"]
 
 /* --- Sidebar panels ------------ */
 
-.sidebar-panel {
+.sidebar-panels {
 	right: auto;
 	width: var(--left-sidebar-width);
 	max-width: 100%;
@@ -798,6 +799,31 @@ input[type="checkbox"]
 	z-index: 30;
 	pointer-events: none;
 	display: none;
+}
+
+.sidebar-panel {
+	position: relative;
+}
+
+.sidebar-panel:first-child {
+	height: var(--sidebar-panels-separator-position);
+}
+
+.sidebar-panel:last-child {
+	height: calc(100% - var(--sidebar-panels-separator-position));
+}
+
+.sidebar-panels:not(:has(> .sidebar-panel.open ~ .sidebar-panel.open)) > .sidebar-panel.open {
+	height: 100%;
+}
+
+.sidebar-panels:not(:has(> .sidebar-panel.open ~ .sidebar-panel.open)) .sidebar-panels-resize-handle {
+	display: none;
+}
+
+body.sidebar-open .sidebar-panels {
+	display: flex;
+	flex-direction: column;
 }
 
 .console-area {
@@ -842,6 +868,39 @@ body.sidebar-resizing * {
 
 body.sidebar-resizing .sidebar-resize-handle::before,
 .sidebar-resize-handle:hover::before {
+	background-color: var(--sidebar-resize-col);
+}
+
+.sidebar-panels-resize-handle {
+	display: block;
+	position: absolute;
+	left: 0;
+	right: 0;
+	top: -4px;
+	height: 8px;
+	z-index: 35;
+	cursor: ns-resize;
+	pointer-events: auto;
+}
+
+.sidebar-panels-resize-handle::before {
+	content: "";
+	position: absolute;
+	left: 0;
+	right: 0;
+	top: 3px;
+	height: 2px;
+	background-color: transparent;
+}
+
+body.sidebar-panels-resizing,
+body.sidebar-panels-resizing * {
+	cursor: ns-resize !important;
+	user-select: none;
+}
+
+body.sidebar-panels-resizing .sidebar-panels-resize-handle::before,
+.sidebar-panels-resize-handle:hover::before {
 	background-color: var(--sidebar-resize-col);
 }
 

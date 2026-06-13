@@ -9348,7 +9348,7 @@
     this.runCommand = function(str) {
       str = str.trim();
       if (!str) return;
-      gui.setSidebarPanel('console');
+      gui.toggleSidebarPanel('console');
       submit(str);
     };
 
@@ -9370,9 +9370,9 @@
     }
 
     gui.on('sidebar', function(e) {
-      if (e.name == 'console') {
+      if (e.panels.includes('console')) {
         turnOn();
-      } else if (e.prev == 'console') {
+      } else if (e.prev.includes('console')) {
         turnOff();
       }
     });
@@ -9431,6 +9431,7 @@
         // gui instances with the console open. E.g. console could close
         // when an instance loses focus.
         internal.setLoggingFunctions(consoleMessage, consoleError, consoleStop, consoleWarn);
+        el.addClass('open');
         el.show();
         input.node().focus();
         history = getHistory();
@@ -9444,6 +9445,7 @@
         if (GUI.isActiveInstance(gui)) {
           setLoggingForGUI(gui); // reset stop, message and error functions
         }
+        el.removeClass('open');
         el.hide();
         input.node().blur();
         saveHistory();
@@ -9506,7 +9508,7 @@
         if (gui.getMode()) {
           gui.clearMode(); // esc closes any open panels
         } else {
-          gui.setSidebarPanel(null);
+          gui.setSidebarPanels([]);
         }
         capture = true;
 
@@ -10916,7 +10918,7 @@
   function LayerControl(gui) {
     var model = gui.model;
     var map = gui.map;
-    var el = gui.container.findChild(".layer-control");
+    var el = gui.container.findChild(".layer-control").hide();
     var btn = gui.container.findChild('.layer-control-btn');
     var headerBtn = btn.findChild('.active-layer-label');
     var tab = gui.container.findChild('.layer-tab');
@@ -10959,9 +10961,9 @@
     }
 
     gui.on('sidebar', function(e) {
-      if (e.name == 'layers') {
+      if (e.panels.includes('layers')) {
         turnOn();
-      } else if (e.prev == 'layers') {
+      } else if (e.prev.includes('layers')) {
         turnOff();
       }
     });
@@ -11054,6 +11056,7 @@
       isOpen = true;
       tab.addClass('active').attr('aria-expanded', 'true');
       render();
+      el.addClass('open');
       el.show();
     }
 
@@ -11062,6 +11065,7 @@
       stopDragging();
       isOpen = false;
       tab.removeClass('active').attr('aria-expanded', 'false');
+      el.removeClass('open');
       el.hide();
     }
 
@@ -23691,9 +23695,10 @@ GUI and setting the size and crop of SVG output.</p><div><input type="text" clas
 
 
     gui.state = {};
-    var sidebarPanel = null;
-    var lastSidebarPanel = 'console';
+    var sidebarPanels = [];
+    var lastSidebarPanels = ['console'];
     var sidebarWidth = GUI.getSavedValue('sidebar_width') || 0;
+    var sidebarPanelsSeparatorPosition = GUI.getSavedValue('sidebar_panels_separator_position') || 0;
     var sidebarResizeFrame = null;
 
     var msgCount = 0;
@@ -23744,45 +23749,53 @@ GUI and setting the size and crop of SVG output.</p><div><input type="text" clas
       setSidebarWidth(sidebarWidth);
     }
 
-    gui.getSidebarPanel = function() {
-      return sidebarPanel;
+    if (sidebarPanelsSeparatorPosition) {
+      setSidebarPanelsSeparatorPosition(sidebarPanelsSeparatorPosition);
+    }
+
+    gui.getSidebarPanels = function() {
+      return sidebarPanels;
     };
 
-    gui.setSidebarPanel = function(name) {
-      var prev = sidebarPanel;
-      sidebarPanel = name || null;
-      if (sidebarPanel && gui.getMode()) {
+    gui.setSidebarPanels = function(panels) {
+      var prev = sidebarPanels;
+      sidebarPanels = panels || [];
+      if (sidebarPanels.length && gui.getMode()) {
         gui.clearMode();
       }
-      if (sidebarPanel == prev) return;
-      if (sidebarPanel) {
-        lastSidebarPanel = sidebarPanel;
+      if (sidebarPanels.join('|') === prev.join('|')) return;
+      if (sidebarPanels.length) {
+        lastSidebarPanels = sidebarPanels;
       }
       gui.container
-        .classed('sidebar-open', !!sidebarPanel)
-        .classed('layers-open', sidebarPanel == 'layers')
-        .classed('console-open', sidebarPanel == 'console');
-      gui.dispatchEvent('sidebar', {name: sidebarPanel, prev: prev});
-      gui.dispatchEvent('resize', {source: 'sidebar'});
+        .classed('sidebar-open', sidebarPanels.length > 0)
+        .classed('layers-open', sidebarPanels.includes('layers'))
+        .classed('console-open', sidebarPanels.includes('console'));
+      gui.dispatchEvent('sidebar', {panels: sidebarPanels, prev: prev});
+      gui.dispatchEvent('resize');
     };
 
     gui.toggleSidebarPanel = function(name) {
-      gui.setSidebarPanel(sidebarPanel == name ? null : name);
+      gui.setSidebarPanels(sidebarPanels.includes(name)
+        ? sidebarPanels.filter((n) => n !== name)
+        : [...sidebarPanels, name].sort()
+      );
     };
 
     gui.toggleSidebar = function() {
-      gui.setSidebarPanel(sidebarPanel ? null : lastSidebarPanel);
+      gui.setSidebarPanels(sidebarPanels.length ? null : lastSidebarPanels);
     };
 
     gui.sidebarPanelIsOpen = function() {
-      return !!sidebarPanel;
+      return sidebarPanels.length > 0;
     };
 
     gui.consoleIsOpen = function() {
-      return sidebarPanel == 'console';
+      return sidebarPanels.includes('console');
     };
 
     initSidebarResizing();
+    initSidebarPanelsResizing();
 
     gui.getRuntimeStateContext = function() {
       return getRuntimeStateContext(gui);
@@ -23868,6 +23881,40 @@ GUI and setting the size and crop of SVG output.</p><div><input type="text" clas
         sidebarResizeFrame = null;
         gui.dispatchEvent('resize', {source: 'sidebar-resize'});
       });
+    }
+
+    function initSidebarPanelsResizing() {
+      var handle = gui.container.findChild('.sidebar-panels-resize-handle');
+      if (!handle) return;
+      handle.on('mousedown', function(e) {
+        if (!gui.sidebarPanelIsOpen()) return;
+        e.preventDefault();
+        e.stopPropagation();
+        gui.container.addClass('sidebar-panels-resizing');
+        window.addEventListener('mousemove', onMove);
+        window.addEventListener('mouseup', onRelease);
+      });
+
+      function onMove(e) {
+        sidebarPanelsSeparatorPosition = clampSidebarPanelsSeparatorPosition(e.pageY);
+        setSidebarPanelsSeparatorPosition(sidebarPanelsSeparatorPosition);
+      }
+
+      function onRelease() {
+        window.removeEventListener('mousemove', onMove);
+        window.removeEventListener('mouseup', onRelease);
+        gui.container.removeClass('sidebar-panels-resizing');
+        GUI.setSavedValue('sidebar_panels_separator_position', sidebarPanelsSeparatorPosition);
+      }
+    }
+
+    function setSidebarPanelsSeparatorPosition(sidebarPanelsSeparatorPosition) {
+      gui.container.node().style.setProperty('--sidebar-panels-separator-position', sidebarPanelsSeparatorPosition + '%');
+    }
+
+    function clampSidebarPanelsSeparatorPosition(pageY) {
+      var pct = 100 * (pageY - 29) / (window.innerHeight - 29);
+      return Math.max(15, Math.min(85, pct));
     }
   }
 
