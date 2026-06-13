@@ -24,7 +24,6 @@ var defaultPort = 5555,
     opts = program.opts(),
     http = require("http"),
     path = require("path"),
-    url = require("url"),
     fs = require("fs"),
     Cookies = require("cookies"),
     webRoot = path.join(__dirname, "../www"),
@@ -78,7 +77,7 @@ function startServer(port) {
   var timeout;
 
   http.createServer(function(request, response) {
-    var uri = url.parse(request.url).pathname;
+    var uri = new URL(request.url, 'http://localhost').pathname;
     clearTimeout(timeout);
     if (uri.includes('..')) {
       // block attempts to load files outside webroot
@@ -233,9 +232,8 @@ function findInputFile(ofile) {
 function saveContent(req, res) {
   var requestId = new Cookies(req, res).get('session_id'),
       ip = req.connection.remoteAddress,
-      urlData = url.parse(req.url),
-      query = require('querystring').parse(urlData.query),
-      file = query.file;
+      urlData = new URL(req.url, 'http://localhost'),
+      file = urlData.searchParams.get('file');
 
   if (opts.forceSave) {
     // match output file to input file (including original path to the input file)
