@@ -2,16 +2,12 @@ import { compileFeatureExpression } from '../expressions/mapshaper-feature-expre
 import { getDatasetCRS } from '../crs/mapshaper-projections';
 import { convertDistanceParam } from '../geom/mapshaper-units';
 import { parseMeasure2 } from '../geom/mapshaper-units';
-import { reversePath } from '../paths/mapshaper-path-utils';
-import { getHoleDivider } from '../polygons/mapshaper-polygon-holes';
 import { dissolveArcs } from '../paths/mapshaper-arc-dissolve';
 import { getRingIntersector } from '../paths/mapshaper-pathfinder';
 import { composeMosaicLayer } from '../dissolve/mapshaper-polygon-dissolve2';
 import { addIntersectionCuts } from '../paths/mapshaper-intersection-cuts';
 import { stop } from '../utils/mapshaper-logging';
-import { DataTable } from '../datatable/mapshaper-data-table';
 import { MosaicIndex } from '../polygons/mapshaper-mosaic-index';
-import { rewindPolygonParts } from '../polygons/mapshaper-polygon-repair';
 
 export function dissolveBufferDataset2(dataset, optsArg) {
   var opts = optsArg || {};
@@ -106,67 +102,6 @@ export function getPathArcsByShape(dataset, polyLyr) {
 // TODO: try geodesic option
 export function getIntersectionFunction(crs) {
   return bufferSegmentIntersection;
-}
-
-export function dissolveBufferDataset(dataset, optsArg) {
-  var opts = optsArg || {};
-  var lyr = dataset.layers[0];
-  var tmp;
-  if (opts.debug_offset) {
-    return; // raw offset path
-  }
-  var nodes = addIntersectionCuts(dataset, {rebuild_topology: true});
-  if (opts.debug_winding) {
-    rewindPolygonParts(lyr, nodes);
-    // debugRingsAndHoles(lyr, nodes);
-    return;
-  }
-  rewindPolygonParts(lyr, nodes);
-
-  var mosaicIndex = new MosaicIndex(lyr, nodes, {flat: false, no_holes: false});
-  if (opts.debug_mosaic) {
-    tmp = composeMosaicLayer(lyr, mosaicIndex.mosaic);
-    lyr.shapes = tmp.shapes;
-    lyr.data = tmp.data;
-    return;
-  }
-  var pathfind = getRingIntersector(mosaicIndex.nodes);
-  var shapes2 = lyr.shapes.map(function(shp, shapeId) {
-    var tiles = mosaicIndex.getTilesByShapeIds([shapeId]);
-    var rings = [];
-    for (var i=0; i<tiles.length; i++) {
-      rings.push(tiles[i][0]);
-    }
-    return pathfind(rings, 'dissolve');
-  });
-  lyr.shapes = shapes2;
-  if (!opts.no_dissolve) {
-    dissolveArcs(dataset);
-  }
-}
-
-
-function debugRingsAndHoles(lyr, nodes) {
-  var divide = getHoleDivider(nodes);
-  var shapes2 = [];
-  var records = [];
-  lyr.shapes.forEach(divideShape);
-  lyr.shapes = shapes2;
-  lyr.data = new DataTable(records);
-  return lyr;
-
-  function divideShape(shp) {
-    var cw = [], ccw = [];
-    divide(shp, cw, ccw);
-    cw.forEach(function(ring) {
-      shapes2.push([ring]);
-      records.push({type: 'ring'});
-    });
-    ccw.forEach(function(hole) {
-      shapes2.push([reversePath(hole)]);
-      records.push({type: 'hole'});
-    });
-  }
 }
 
 // n = number of segments used to approximate a circle

@@ -33,7 +33,13 @@ export function makePolylineBuffer(lyr, dataset, opts) {
   // without reintroducing those dents. Two-sided buffers keep the original
   // outline + boundary-flood dissolve + artifact-hole filter, which is faster
   // and has no wrong side to clean.
-  var useWinding = oneSided && !debug && opts.winding_fill !== false;
+  //
+  // The undocumented 'sector-band' option forces the older non-winding
+  // construction here too (the per-feature pipeline below handles one-sided
+  // buffers via its winding_fill:false coverage test), as a conservative
+  // fallback.
+  var useWinding = oneSided && !debug && opts.winding_fill !== false &&
+    !opts.sector_band;
   if (useWinding) {
     var result = makePolylineBufferPerFeature(lyr, dataset,
       Object.assign({}, opts, {winding_fill: true, remove_lobes: false}));
