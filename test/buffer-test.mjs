@@ -719,6 +719,20 @@ describe('mapshaper-buffer.js', function () {
       assert(countHoles(def) > 0);
       assert.equal(pointInGeometry([0, 0], def), false);
     })
+
+    // The topological pipeline pre-dissolves the winding-fill rings (with loop
+    // removal) into clean polygons before the shared mosaic; the result must
+    // match the un-optimized winding output within tolerance.
+    it('topological buffer area matches no-loop-removal within tolerance', async function () {
+      var file = 'test/data/shapefile/six_counties.shp';
+      var def = getTotalBufferArea(getOutputGeometries(await api.applyCommands(
+        '-i ' + file + ' -buffer 100m topological -o format=geojson buffer.json')));
+      var off = getTotalBufferArea(getOutputGeometries(await api.applyCommands(
+        '-i ' + file + ' -buffer 100m topological no-loop-removal -o format=geojson buffer.json')));
+
+      assert(off > 0);
+      assert(Math.abs(def - off) / off < 0.005);
+    })
   })
 
 })
