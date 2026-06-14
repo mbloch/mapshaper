@@ -132,8 +132,8 @@ export function getPolylineBufferMaker(dataset, opts) {
       // Fast path for ordinary two-sided line buffers: emit one closed
       // outline instead of many per-segment bands that must be dissolved.
       var built = makeTwoSidedOutlineRing(verts, dist);
-      if (!opts.loop_removal) return [built.ring];
-      // opt-in: strip self-overlap loops (the dissolve would fill them anyway)
+      if (opts.no_loop_removal) return [built.ring];
+      // Default: strip self-overlap loops (the dissolve would fill them anyway)
       // so it has fewer segments and self-intersections to resolve; only loops
       // spanning a small source-path turn are removed, so real holes are kept
       return [removeBufferRingLoops(built.ring, BUFFER_LOOP_WINDOW,
