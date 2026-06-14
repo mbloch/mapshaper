@@ -31726,15 +31726,6 @@ ${svg}
       .option('tolerance', {
         describe: 'acceptable error when buffering lines and polygons (default is 1%)'
       })
-      .option('vertices', {
-        describe: 'number of vertices to use when buffering points (default is 72)',
-        type: 'integer'
-      })
-      .option('quad-segs', {
-      // .option('arc-quality', {
-        describe: 'segments per quarter-circle in joins and caps (default is 8)',
-        type: 'integer'
-      })
       // .option('circle-quality', {
       //   // segments per circle in joins and caps
       //   type: 'integer'
@@ -31750,6 +31741,15 @@ ${svg}
       .option('topological', {
         describe: '[polygons] buffer unshared boundaries without covering source polygon areas',
         type: 'flag'
+      })
+      .option('vertices', {
+        describe: 'number of vertices to use when buffering points (default is 72)',
+        type: 'integer'
+      })
+      .option('quad-segs', {
+      // .option('arc-quality', {
+        describe: 'segments per quarter-circle in joins and caps (default is 8)',
+        type: 'integer'
       })
       .option('debug-offset', {
         // generate initial buffer shapes but don't dissolve them
@@ -31784,9 +31784,21 @@ ${svg}
         // (see 'offset-left' above)
         type: 'flag'
       })
-      .option('loop-removal', {
-        // undocumented: drop self-overlap loops from two-sided line buffers
-        // before dissolving (lines). Off by default; limited measured benefit.
+      .option('no-loop-removal', {
+        // Loop removal (collapsing self-overlap loops from two-sided line buffers
+        // before the dissolve) is on by default; this opts out. Undocumented: it
+        // is an internal construction optimization whose output matches the
+        // un-optimized buffer within the error tolerance.
+        type: 'flag'
+      })
+      .option('sector-band', {
+        // Undocumented escape hatch: build buffers with the older sector-band
+        // construction (per-segment offset bands + join-sector rings + a
+        // band-coverage audit, unioned by a boundary flood) instead of the
+        // default winding-fill construction. Applies to line buffers (one- and
+        // two-sided) and all polygon buffers (positive, negative, topological).
+        // Kept as a slower-but-conservative fallback and a debugging aid in case
+        // the winding-fill construction is found to mishandle some input.
         type: 'flag'
       })
       .option('no-cleanup', {
@@ -41056,97 +41068,6 @@ ${svg}
     return dataset;
   }
 
-  function getPolygonRewinder(nodes) {
-    var splitter = getSelfIntersectionSplitter(nodes);
-    return rewindPolygon;
-
-    function rewindPolygon(shp) {
-      var shp2 = [];
-      forEachShapePart(shp, function(ids) {
-        var rings = splitter(ids);
-        var path;
-        for (var i=0; i<rings.length; i++) {
-          path = rings[i];
-          if (geom.getPlanarPathArea(path, nodes.arcs) < 0) {
-            path = reversePath(path);
-          }
-          shp2.push(path);
-        }
-      });
-      return shp2.length > 0 ? shp2 : null;
-    }
-  }
-
-  function rewindPolygonParts(lyr, nodes) {
-    var rewind = getPolygonRewinder(nodes);
-    lyr.shapes = lyr.shapes.map(function(shp) {
-      return rewind(shp);
-    });
-  }
-
-  // TODO: Need to rethink polygon repair: these function can cause problems
-  // when part of a self-intersecting polygon is removed
-  //
-  function repairPolygonGeometry(layers, dataset, opts) {
-    var nodes = addIntersectionCuts(dataset);
-    layers.forEach(function(lyr) {
-      repairSelfIntersections(lyr, nodes);
-    });
-    return layers;
-  }
-
-  // Remove any small shapes formed by twists in each ring
-  // // OOPS, NO // Retain only the part with largest area
-  // // this causes problems when a cut-off hole has a matching ring in another polygon
-  // TODO: consider cases where cut-off parts should be retained
-  //
-  function repairSelfIntersections(lyr, nodes) {
-    var splitter = getSelfIntersectionSplitter(nodes);
-
-    lyr.shapes = lyr.shapes.map(function(shp, i) {
-      return cleanPolygon(shp);
-    });
-
-    function cleanPolygon(shp) {
-      var cleanedPolygon = [];
-      forEachShapePart(shp, function(ids) {
-        // TODO: consider returning null if path can't be split
-        var splitIds = splitter(ids);
-        if (splitIds.length === 0) {
-          error("[cleanPolygon()] Defective path:", ids);
-        } else if (splitIds.length == 1) {
-          cleanedPolygon.push(splitIds[0]);
-        } else {
-          var shapeArea = geom.getPlanarPathArea(ids, nodes.arcs),
-              sign = shapeArea > 0 ? 1 : -1,
-              mainRing;
-
-          splitIds.reduce(function(max, ringIds, i) {
-            var pathArea = geom.getPlanarPathArea(ringIds, nodes.arcs) * sign;
-            if (pathArea > max) {
-              mainRing = ringIds;
-              max = pathArea;
-            }
-            return max;
-          }, 0);
-
-          if (mainRing) {
-            cleanedPolygon.push(mainRing);
-          }
-        }
-      });
-      return cleanedPolygon.length > 0 ? cleanedPolygon : null;
-    }
-  }
-
-  var PolygonRepair = /*#__PURE__*/Object.freeze({
-    __proto__: null,
-    getPolygonRewinder: getPolygonRewinder,
-    repairPolygonGeometry: repairPolygonGeometry,
-    repairSelfIntersections: repairSelfIntersections,
-    rewindPolygonParts: rewindPolygonParts
-  });
-
   function dissolveBufferDataset2(dataset, optsArg) {
     var opts = optsArg || {};
     var lyr = dataset.layers.filter(function(l) { return l.geometry_type == 'polygon'; })[0] ||
@@ -41350,15 +41271,23 @@ ${svg}
   // Assembles buffer rings from path vertices and offset ("buffer") vertices.
   // A ring runs backwards along the original path, then forwards along the
   // offset polyline, enclosing the buffered area between them.
+  //
+  // Each vertex carries a source position (the index of the source-path segment
+  // it derives from), tracked parallel to the coordinates. Path-side vertices get
+  // NaN: loop removal uses these positions to gate which self-crossings it
+  // collapses, and a NaN position marks geometry (the source-path edge, caps)
+  // that a collapsible overshoot pocket must never span.
   function BufferBuilder() {
     var self = {};
-    var buffer, path;
+    var buffer, path, bufferPos, pathPos;
 
     init();
 
     function init() {
       buffer = [];
       path = [];
+      bufferPos = [];
+      pathPos = [];
     }
 
     self.size = function() {
@@ -41367,30 +41296,36 @@ ${svg}
 
     self.addPathVertex = function(p) {
       path.push(p);
+      pathPos.push(NaN);
     };
 
-    self.addBufferVertices = function(arr) {
+    self.addBufferVertices = function(arr, pos) {
       for (var i=0; i<arr.length; i++) {
-        self.addBufferVertex(arr[i]);
+        self.addBufferVertex(arr[i], pos);
       }
     };
 
-    self.addBufferVertex = function(p) {
+    self.addBufferVertex = function(p, pos) {
       var prevP = buffer[buffer.length - 1];
       if (prevP && pointsAreSame(prevP, p)) {
         return;
       }
       buffer.push(p);
+      bufferPos.push(pos === undefined ? NaN : pos);
     };
 
+    // Returns {ring, srcPos}: ring is the closed coordinate ring (first point
+    // repeated as last); srcPos is the parallel source-position array.
     self.done = function() {
-      var ring = path.reverse().concat(buffer);
+      var ring = path.slice().reverse().concat(buffer);
+      var srcPos = pathPos.slice().reverse().concat(bufferPos);
       if (ring.length < 3) {
         error('Defective buffer ring:', ring);
       }
       ring.push(ring[0].concat());
+      srcPos.push(srcPos[0]);
       init();
-      return ring;
+      return {ring: ring, srcPos: srcPos};
     };
 
     return self;
@@ -41412,15 +41347,20 @@ ${svg}
   // dissolve would otherwise have to process, with no change to the dissolved
   // area beyond the buffer's own error tolerance.
   //
-  // The hard part is telling an artifact loop apart from a real buffer hole: both
-  // appear as a self-crossing whose enclosed pocket winds opposite to the outer
-  // boundary, so orientation cannot distinguish them, and neither can the segment
-  // gap (a coarse self-crossing line can form a hole spanning few segments). The
-  // reliable signal is on the *source path*: a hole requires the path to wind far
-  // enough to enclose an uncovered region (large cumulative turn), whereas a
-  // shallow concavity that merely overshoots its own offset spans a small turn.
-  // So a crossing is collapsed only when the source span between the two crossing
-  // offsets turns by less than `maxTurn` degrees.
+  // The hard part is telling a pure self-overlap (safe to collapse) from a
+  // genuine buffer hole (a winding-0 pocket the dissolve must keep open). Pocket
+  // orientation looks tempting but is NOT a reliable signal: a real hole can wind
+  // either with or against the outer boundary depending on how the outline
+  // threads through the crossing, and overlaps occur in both orientations too.
+  // The segment gap is no help either -- a coarse self-crossing line can form a
+  // real hole spanning only a handful of segments.
+  //
+  // The reliable signal is on the *source path*. A hole exists only where the
+  // path winds far enough to enclose a region the offset cannot cover (a large
+  // cumulative turn between the two crossing offsets); a mere overshoot of a
+  // shallow concavity spans a small turn. So a crossing is collapsed only when
+  // the source span feeding it turns by less than `maxTurn` degrees, regardless
+  // of pocket orientation; otherwise it is left for the dissolve.
 
   // Look-ahead window: how many ring segments ahead to test for a crossing. The
   // turn gate (not the window) is the safety criterion, so this only bounds cost
@@ -41440,13 +41380,13 @@ ${svg}
   // srcPos (optional): source-vertex position parallel to ring; NaN for points
   //   (caps) with no single source segment.
   // turnPrefix (optional): cumulative absolute source turn indexed by vertex.
-  // When srcPos+turnPrefix are supplied the source-turn gate is applied; without
-  // them every inward pocket within the window is collapsed (used in unit tests).
+  // When srcPos+turnPrefix are supplied the source-turn gate is applied to every
+  // pocket; without them every self-crossing pocket within the window is
+  // collapsed (used in unit tests).
   function removeBufferRingLoops(ring, maxGap, srcPos, turnPrefix, maxTurn) {
     if (!ring || ring.length < 6) return ring;
     if (maxTurn === undefined) maxTurn = BUFFER_LOOP_MAX_TURN;
     var gated = !!(srcPos && turnPrefix);
-    var outerSign = ringOuterSign(ring);
     var pts = ring.slice(0, ring.length - 1); // drop closing duplicate
     var pos = gated ? srcPos.slice(0, ring.length - 1) : null;
     var i = 0;
@@ -41459,8 +41399,9 @@ ${svg}
         var hit = segHit(ax, ay, bx, by,
           pts[j][0], pts[j][1], pts[j + 1][0], pts[j + 1][1]);
         if (!hit) continue;
-        // only collapse a re-entrant pocket (winds opposite the outer boundary)
-        if (loopSign(hit, pts, i + 1, j) !== -outerSign) continue;
+        // Collapse only covered overshoots (small source turn). A larger source
+        // turn means the span may enclose a real buffer hole, which must be left
+        // for the dissolve -- whatever the pocket's winding orientation.
         if (gated && !spanIsCovered(pos, i, j, turnPrefix, maxTurn)) continue;
         pts.splice(i + 1, j - i, hit); // replace span i+1..j with the crossing
         if (gated) pos.splice(i + 1, j - i, pos[i]);
@@ -41486,35 +41427,6 @@ ${svg}
       if (p > hi) hi = p;
     }
     return (turnPrefix[hi] - turnPrefix[lo]) < maxTurn;
-  }
-
-  // Outer-boundary orientation, robust to self-overlap elsewhere: the lowest
-  // (then leftmost) original vertex is always on the outer hull, so the turn
-  // there reflects the true winding. +1 = CCW, -1 = CW.
-  function ringOuterSign(ring) {
-    var n = ring.length - 1;
-    var k = 0;
-    for (var i = 1; i < n; i++) {
-      if (ring[i][1] < ring[k][1] ||
-          (ring[i][1] === ring[k][1] && ring[i][0] < ring[k][0])) {
-        k = i;
-      }
-    }
-    var prev = ring[(k - 1 + n) % n], cur = ring[k], next = ring[(k + 1) % n];
-    var cross = (cur[0] - prev[0]) * (next[1] - cur[1]) -
-      (cur[1] - prev[1]) * (next[0] - cur[0]);
-    return cross < 0 ? -1 : 1;
-  }
-
-  // Signed area sign of the pocket polygon [hit, pts[lo..hi]] (closed back to
-  // hit). +1 = CCW, -1 = CW.
-  function loopSign(hit, pts, lo, hi) {
-    var a = hit[0] * pts[lo][1] - pts[lo][0] * hit[1];
-    for (var i = lo; i < hi; i++) {
-      a += pts[i][0] * pts[i + 1][1] - pts[i + 1][0] * pts[i][1];
-    }
-    a += pts[hi][0] * hit[1] - hit[0] * pts[hi][1];
-    return a >= 0 ? 1 : -1;
   }
 
   // Fast strict-interior segment crossing; returns [x, y] or null. Buffer join
@@ -42312,30 +42224,62 @@ ${svg}
       if (simplifyIntervalFn) {
         verts = presimplifyPathVerts(verts, simplifyIntervalFn(dist), dist);
       }
-      if (!opts.no_outline && !oneSidedBuffer && pathIsOpen(verts)) {
+      if (!opts.no_outline && !oneSidedBuffer && !opts.sector_band && pathIsOpen(verts)) {
         // Fast path for ordinary two-sided line buffers: emit one closed
         // outline instead of many per-segment bands that must be dissolved.
+        // The sector-band escape hatch skips it to fall through to the
+        // per-segment band construction (makeLeftBufferRings, no winding fill).
         var built = makeTwoSidedOutlineRing(verts, dist);
-        if (!opts.loop_removal) return [built.ring];
-        // opt-in: strip self-overlap loops (the dissolve would fill them anyway)
+        if (opts.no_loop_removal) return [built.ring];
+        // Default: strip self-overlap loops (the dissolve would fill them anyway)
         // so it has fewer segments and self-intersections to resolve; only loops
         // spanning a small source-path turn are removed, so real holes are kept
         return [removeBufferRingLoops(built.ring, BUFFER_LOOP_WINDOW,
           built.srcPos, getSourceTurnPrefix(verts))];
       }
       if (!opts.right || opts.left) {
-        rings = rings.concat(makeLeftBufferRings(verts, dist,
-          oneSidedBuffer ? pathSideVerts : null));
+        rings = rings.concat(buildOneSidedRings(verts));
       }
       if (!opts.left || opts.right) {
-        rings = rings.concat(makeLeftBufferRings(verts.slice().reverse(), dist,
-          oneSidedBuffer ? pathSideVerts : null));
+        rings = rings.concat(buildOneSidedRings(verts.slice().reverse()));
       }
       return rings;
+
+      // Build one offset side's rings, collapsing self-overlap overshoot loops in
+      // each single winding-fill ring before the dissolve. The winding dissolve
+      // (the dominant cost for polygon buffers) would fill these loops anyway, so
+      // removing them up front cuts its self-intersection load; the source-turn
+      // gate (via per-ring srcPos) keeps real buffer holes. Section-band mode
+      // (no winding_fill) and the source-path edge get no provenance and pass
+      // through unchanged.
+      //
+      // Restricted to closed source rings: a closed ring's offset overshoots are
+      // doubly-covered (safe to collapse), but an OPEN one-sided arc (e.g. a
+      // topological polygon's unbuffered-boundary remnant, buffered with caps)
+      // can have a concave-join dent that is its region's only coverage, which
+      // collapsing would cut away.
+      function buildOneSidedRings(sideVerts) {
+        var built = makeLeftBufferRings(sideVerts, dist,
+          oneSidedBuffer ? pathSideVerts : null);
+        if (opts.no_loop_removal || !opts.buffer_ring_loops || pathIsOpen(sideVerts)) {
+          return built.rings;
+        }
+        var turnPrefix = getSourceTurnPrefix(sideVerts);
+        return built.rings.map(function(ring, i) {
+          var srcPos = built.srcPositions[i];
+          return srcPos ?
+            removeBufferRingLoops(ring, BUFFER_LOOP_WINDOW, srcPos, turnPrefix) : ring;
+        });
+      }
     }
 
     function makeLeftBufferRings(verts, dist, pathSideVerts) {
       var rings = [];
+      // Parallel to rings[]: each entry is the source-position array for the
+      // corresponding ring (from builder.done()), or null for rings with no
+      // single-path provenance (join sectors, band patches). Used by the
+      // winding-fill caller to gate loop removal.
+      var ringsSrcPos = [];
       var openPath = pathIsOpen(verts);
       var x0, y0, x1, y1, x2, y2; // path traversal coords
       var p1, p2; // endpoints of new offset segment
@@ -42345,6 +42289,16 @@ ${svg}
       var firstBearing;
       var joinPoints;
       var segId;
+
+      function flushRing() {
+        var d = builder.done();
+        rings.push(d.ring);
+        ringsSrcPos.push(d.srcPos);
+      }
+      function pushAuxRing(ring) {
+        rings.push(ring);
+        ringsSrcPos.push(null);
+      }
 
       if (verts.length > 0) {
         x0 = x2 = verts[0][0];
@@ -42370,20 +42324,24 @@ ${svg}
           joinAngle = getJoinAngle(bearingPrev, bearing);
         }
 
-        // various connections between current offset segment and prev segment
+        // various connections between current offset segment and prev segment.
+        // Offset ("buffer") vertices are tagged with the source segment id
+        // (segId) so loop removal can gate self-crossings by source-path turn;
+        // the slight imprecision of tagging a previous-segment endpoint (p2Prev)
+        // with the current segId is harmless for the smooth turn gate.
         if (segId === 0) {
           // first extruded segment - no previous segment to join to - add
           // first endpoint to the buffer
-          builder.addBufferVertex(p1);
+          builder.addBufferVertex(p1, segId);
         } else if (opts.winding_fill && joinAngle < 0) {
           // Clipper2-style concave join: never cut the band and never split the
           // ring. Walk the full incoming offset (p2Prev), dip back to the
           // original path vertex, then walk out the full outgoing offset (p1).
           // The self-overlap is resolved by the winding-number union, so no
           // section splits, join-sector rings, or band-coverage audit are needed.
-          builder.addBufferVertex(p2Prev);
-          builder.addBufferVertex([x1, y1]);
-          builder.addBufferVertex(p1);
+          builder.addBufferVertex(p2Prev, segId);
+          builder.addBufferVertex([x1, y1], segId);
+          builder.addBufferVertex(p1, segId);
         } else if (joinAngle > roundJoinSegAngle * 1.5) {
           // large rightwards bend in path requiring a round join with at least
           // one interpolated segment
@@ -42391,7 +42349,7 @@ ${svg}
           // by extending the last segment to make an outside join
           // builder.addBufferVertex(p2Prev, false)
           joinPoints = makeOutsideRoundJoin(x1, y1, bearingPrev - 90, joinAngle, dist);
-          builder.addBufferVertices(joinPoints);
+          builder.addBufferVertices(joinPoints, segId);
           // don't add first endpoint of new offset segment to the buffer - we just
           // added an extended vertex to replace it.
           // builder.addBufferVertex(p1, false)
@@ -42399,18 +42357,18 @@ ${svg}
         } else if (joinAngle > -1e-10 && joinAngle < 1e-10) {
           // nearly collinear segments - add one point to the buffer
           // TODO: confirm that p1 and p2Prev are always very close
-          builder.addBufferVertex(p1);
+          builder.addBufferVertex(p1, segId);
         } else if (joinAngle > 0 && (hit = elbowJoin(p1Prev, p2Prev, p1, p2, bearingPrev, bearing, x1, y1, dist)) ||
           joinAngle < 0 && (hit = bufferSegmentIntersection(p1Prev, p2Prev, p1, p2))) {
           // shallow rightward bend in path, or leftward bend and segments
           // intersect: make an elbow join
-          builder.addBufferVertex(hit);
+          builder.addBufferVertex(hit, segId);
           p1 = hit;
         } else if (joinAngle > 0) {
           // Very shallow convex joins can fail to produce a useful elbow when
           // offset segments are nearly parallel or one segment is very short.
           // Treat them like nearly collinear segments instead of splitting.
-          builder.addBufferVertex(p1);
+          builder.addBufferVertex(p1, segId);
         } else if (joinAngle < 0 &&
             (hit = shallowAngleJoin(p2Prev, p1, x1, y1, dist))) {
           // Shallow leftward bend in path where segments do not intersect:
@@ -42420,20 +42378,20 @@ ${svg}
           // segments at very shallow negative angles sometimes do not intersect. This
           // caused spikes in the buffer boundary and errors in keeping track of
           // whether the last-added vertex was inside or outside of the buffered area
-          builder.addBufferVertex(hit);
+          builder.addBufferVertex(hit, segId);
           p1 = hit;
         } else {
           // start a new buffer section to avoid gaps in dissolved buffer shape
           // caused by a tangle of intersecting interior paths
-          builder.addBufferVertex(p2Prev);
-          rings.push(builder.done());
+          builder.addBufferVertex(p2Prev, segId);
+          flushRing();
           // Cover the wedge between the two offset directions with a round
           // join, emitted as a separate ring that shares its radial edges with
           // the two adjacent buffer sections; without it, the dissolved buffer
           // is pinched at the bend vertex.
-          rings.push(makeJoinSectorRing(x1, y1, bearing - 90, -joinAngle, dist, p1, p2Prev));
+          pushAuxRing(makeJoinSectorRing(x1, y1, bearing - 90, -joinAngle, dist, p1, p2Prev));
           addPathStart(verts[segId]);
-          builder.addBufferVertex(p1);
+          builder.addBufferVertex(p1, segId);
         }
 
         addPathSegment(verts[segId], verts[segId + 1], pathSideVerts);
@@ -42449,7 +42407,7 @@ ${svg}
       if (p2Prev) {
         // add final offset segment endpoint (the last path segment is never
         // suppressed, so the buffer section in progress ends normally)
-        builder.addBufferVertex(p2Prev);
+        builder.addBufferVertex(p2Prev, segId - 1);
       }
 
       if (x2 == x0 && y2 == y0) { // closed path
@@ -42457,21 +42415,22 @@ ${svg}
         // TODO - figure out which bearing to use
         joinAngle = getJoinAngle(bearing, firstBearing);
         if (joinAngle > 0) {
-          builder.addBufferVertices(makeFinalJoin(x2, y2, bearing - 90, joinAngle, dist));
+          builder.addBufferVertices(makeFinalJoin(x2, y2, bearing - 90, joinAngle, dist), segId - 1);
         } else if (joinAngle < 0 && segId > 1 &&
             !bufferSegmentIntersection(p1Prev, p2Prev, p1First, p2First)) {
           // Concave closure with non-intersecting first/last offset segments:
           // cover the wedge between the two offset directions with a separate
           // sector ring, like at section splits above (otherwise the dissolved
           // buffer is pinched at the closure vertex).
-          rings.push(makeJoinSectorRing(x2, y2, firstBearing - 90, -joinAngle, dist, p1First, p2Prev));
+          pushAuxRing(makeJoinSectorRing(x2, y2, firstBearing - 90, -joinAngle, dist, p1First, p2Prev));
         }
       } else if (capStyle == 'round') {
-        // open path, add a cap to finish
-        builder.addBufferVertices(makeRoundCap(x2, y2, bearing - 90, dist));
+        // open path, add a cap to finish. Cap vertices get a NaN source position
+        // so loop removal never collapses a pocket that spans the cap.
+        builder.addBufferVertices(makeRoundCap(x2, y2, bearing - 90, dist), NaN);
       }
 
-      rings.push(builder.done());
+      flushRing();
       if (openPath && !opts.no_audit && !opts.winding_fill) {
         // patch band regions that the join construction cut off without
         // replacement coverage (see addUncoveredCutBandRings); auditing the
@@ -42485,8 +42444,10 @@ ${svg}
             pathSideVerts.slice().reverse() : pathSideVerts;
         }
         addUncoveredCutBandRings(rings, auditVerts, dist);
+        // band patches have no single-path provenance; keep arrays aligned
+        while (ringsSrcPos.length < rings.length) ringsSrcPos.push(null);
       }
-      return rings;
+      return {rings: rings, srcPositions: ringsSrcPos};
     }
 
     // ---------------------------------------------------------------------
@@ -43309,7 +43270,13 @@ ${svg}
     // without reintroducing those dents. Two-sided buffers keep the original
     // outline + boundary-flood dissolve + artifact-hole filter, which is faster
     // and has no wrong side to clean.
-    var useWinding = oneSided && !debug && opts.winding_fill !== false;
+    //
+    // The undocumented 'sector-band' option forces the older non-winding
+    // construction here too (the per-feature pipeline below handles one-sided
+    // buffers via its winding_fill:false coverage test), as a conservative
+    // fallback.
+    var useWinding = oneSided && !debug && opts.winding_fill !== false &&
+      !opts.sector_band;
     if (useWinding) {
       var result = makePolylineBufferPerFeature(lyr, dataset,
         Object.assign({}, opts, {winding_fill: true, remove_lobes: false}));
@@ -44256,906 +44223,6 @@ ${svg}
     return lng;
   }
 
-  // Remove small-area polygon rings (very simple implementation of sliver removal)
-  // TODO: more sophisticated sliver detection (e.g. could consider ratio of area to perimeter)
-  // TODO: consider merging slivers into adjacent polygons to prevent gaps from forming
-  // TODO: consider separate gap removal function as an alternative to merging slivers
-  //
-  cmd.filterSlivers = function(lyr, dataset, opts) {
-    if (lyr.geometry_type != 'polygon') {
-      return 0;
-    }
-    return filterSlivers(lyr, dataset, opts);
-  };
-
-  function filterSlivers(lyr, dataset, optsArg) {
-    var opts = utils.extend({sliver_control: 1}, optsArg);
-    var filterData = getSliverFilter(lyr, dataset, opts);
-    var ringTest = filterData.filter;
-    var removed = 0;
-    var pathFilter = function(path, i, paths) {
-      if (ringTest(path, i, paths)) {
-        removed++;
-        return null;
-      }
-    };
-
-    noteLayerWillChange(lyr, {operation: 'filter-slivers', unit: 'shapes'});
-    editShapes(lyr.shapes, pathFilter);
-    markLayerChanged(lyr, {operation: 'filter-slivers', unit: 'shapes'});
-    message(utils.format("Removed %'d sliver%s using %s", removed, utils.pluralSuffix(removed), filterData.label));
-
-    // Remove null shapes (likely removed by clipping/erasing, although possibly already present)
-    if (opts.remove_empty) {
-      cmd.filterFeatures(lyr, dataset.arcs, {remove_empty: true, verbose: false});
-    }
-    return removed;
-  }
-
-  function filterClipSlivers(lyr, clipLyr, arcs) {
-    var threshold = getDefaultSliverThreshold(lyr, arcs);
-    // message('Using variable sliver threshold (based on ' + (threshold / 1e6) + ' sqkm)');
-    var ringTest = getSliverTest(arcs, threshold, 1);
-    var flags = new Uint8Array(arcs.size());
-    var removed = 0;
-    var pathFilter = function(path) {
-      var prevArcs = 0,
-          newArcs = 0;
-      for (var i=0, n=path && path.length || 0; i<n; i++) {
-        if (flags[absArcId(path[i])] > 0) {
-          newArcs++;
-        } else {
-          prevArcs++;
-        }
-      }
-      // filter paths that contain arcs from both original and clip/erase layers
-      //   and are small
-      if (newArcs > 0 && prevArcs > 0 && ringTest(path)) {
-        removed++;
-        return null;
-      }
-    };
-
-    countArcsInShapes(clipLyr.shapes, flags);
-    noteLayerWillChange(lyr, {operation: 'filter-clip-slivers', unit: 'shapes'});
-    editShapes(lyr.shapes, pathFilter);
-    markLayerChanged(lyr, {operation: 'filter-clip-slivers', unit: 'shapes'});
-    return removed;
-  }
-
-  // Assumes: Arcs have been divided
-  //
-  function clipPolylines(targetShapes, clipShapes, nodes, type) {
-    var index = new PathIndex(clipShapes, nodes.arcs);
-
-    return targetShapes.map(function(shp) {
-      return clipPolyline(shp);
-    });
-
-    function clipPolyline(shp) {
-      var clipped = null;
-      if (shp) clipped = shp.reduce(clipPath, []);
-      return clipped && clipped.length > 0 ? clipped : null;
-    }
-
-    function clipPath(memo, path) {
-      var clippedPath = null,
-          arcId, enclosed;
-      for (var i=0; i<path.length; i++) {
-        arcId = path[i];
-        enclosed = index.arcIsEnclosed(arcId);
-        if (enclosed && type == 'clip' || !enclosed && type == 'erase') {
-          if (!clippedPath) {
-            memo.push(clippedPath = []);
-          }
-          clippedPath.push(arcId);
-        } else {
-          clippedPath = null;
-        }
-      }
-      return memo;
-    }
-  }
-
-  var PolylineClipping = /*#__PURE__*/Object.freeze({
-    __proto__: null,
-    clipPolylines: clipPolylines
-  });
-
-  // TODO: to prevent invalid holes,
-  // could erase the holes from the space-enclosing rings.
-  function appendHolesToRings(cw, ccw) {
-    for (var i=0, n=ccw.length; i<n; i++) {
-      cw.push(ccw[i]);
-    }
-    return cw;
-  }
-
-  function getPolygonDissolver(nodes, spherical) {
-    spherical = spherical && !nodes.arcs.isPlanar();
-    var flags = new Uint8Array(nodes.arcs.size());
-    var divide = getHoleDivider(nodes, spherical);
-    var pathfind = getRingIntersector(nodes, flags);
-
-    return function(shp) {
-      if (!shp) return null;
-      var cw = [],
-          ccw = [];
-
-      divide(shp, cw, ccw);
-      cw = pathfind(cw, 'flatten');
-      ccw.forEach(reversePath);
-      ccw = pathfind(ccw, 'flatten');
-      ccw.forEach(reversePath);
-      var shp2 = appendHolesToRings(cw, ccw);
-      var dissolved = pathfind(shp2, 'dissolve');
-
-      if (dissolved.length > 1) {
-        dissolved = fixNestingErrors(dissolved, nodes.arcs);
-      }
-
-      return dissolved.length > 0 ? dissolved : null;
-    };
-  }
-
-  // TODO: remove dependency on old polygon dissolve function
-
-  // assumes layers and arcs have been prepared for clipping
-  function clipPolygons(targetShapes, clipShapes, nodes, type, optsArg) {
-    profileStart('clipPolygons');
-    var arcs = nodes.arcs;
-    var opts = optsArg || {};
-    var clipFlags = new Uint8Array(arcs.size());
-    var routeFlags = new Uint8Array(arcs.size());
-    var clipArcTouches = 0;
-    var clipArcUses = 0;
-    var usedClipArcs = [];
-    var findPath = getPathFinder(nodes, useRoute, routeIsActive);
-    var dissolvePolygon = getPolygonDissolver(nodes);
-
-    if (!opts.bbox2) {
-      profileStart('cp.dissolveTargetRings');
-      targetShapes = targetShapes.map(dissolvePolygon);
-      profileEnd('cp.dissolveTargetRings');
-    }
-
-    profileStart('cp.openClipRoutes');
-    openArcRoutes(clipShapes, arcs, clipFlags, type == 'clip', type == 'erase', true, 0x11);
-    profileEnd('cp.openClipRoutes');
-    profileStart('cp.PathIndex#1');
-    var index = new PathIndex(clipShapes, arcs);
-    profileEnd('cp.PathIndex#1');
-    profileStart('cp.clipShapes');
-    var clippedShapes = targetShapes.map(function(shape, i) {
-      if (shape) {
-        return clipPolygon(shape, type, index);
-      }
-      return null;
-    });
-    profileEnd('cp.clipShapes');
-
-    markPathsAsUsed(clippedShapes, routeFlags);
-
-    profileStart('cp.findUndividedClip');
-    var undividedClipShapes = findUndividedClipShapes(clipShapes);
-    profileEnd('cp.findUndividedClip');
-
-    closeArcRoutes(clipShapes, arcs, routeFlags, true, true);
-    profileStart('cp.PathIndex#2');
-    index = new PathIndex(undividedClipShapes, arcs);
-    profileEnd('cp.PathIndex#2');
-    profileStart('cp.findInteriorPaths');
-    targetShapes.forEach(function(shape, shapeId) {
-      var paths = shape ? findInteriorPaths(shape, type, index) : null;
-      if (paths) {
-        clippedShapes[shapeId] = (clippedShapes[shapeId] || []).concat(paths);
-      }
-    });
-    profileEnd('cp.findInteriorPaths');
-
-    profileEnd('clipPolygons');
-    return clippedShapes;
-
-    function clipPolygon(shape, type, index) {
-      var dividedShape = [],
-          clipping = type == 'clip',
-          erasing = type == 'erase';
-
-      // open pathways for entire polygon rather than one ring at a time --
-      // need to create polygons that connect positive-space rings and holes
-      openArcRoutes(shape, arcs, routeFlags, true, false, false);
-
-      forEachShapePart(shape, function(ids) {
-        var path;
-        for (var i=0, n=ids.length; i<n; i++) {
-          clipArcTouches = 0;
-          clipArcUses = 0;
-          path = findPath(ids[i]);
-          if (path) {
-            // if ring doesn't touch/intersect a clip/erase polygon, check if it is contained
-            // if (clipArcTouches === 0) {
-            // if ring doesn't incorporate an arc from the clip/erase polygon,
-            // check if it is contained (assumes clip shapes are dissolved)
-            if (clipArcTouches === 0 || clipArcUses === 0) { //
-              var contained = index.pathIsEnclosed(path);
-              if (clipping && contained || erasing && !contained) {
-                dividedShape.push(path);
-              }
-              // TODO: Consider breaking if polygon is unchanged
-            } else {
-              dividedShape.push(path);
-            }
-          }
-        }
-      });
-
-
-      // Clear pathways of current target shape to hidden/closed
-      closeArcRoutes(shape, arcs, routeFlags, true, true, true);
-      // Also clear pathways of any clip arcs that were used
-      if (usedClipArcs.length > 0) {
-        closeArcRoutes(usedClipArcs, arcs, routeFlags, true, true, true);
-        usedClipArcs = [];
-      }
-
-      return dividedShape.length === 0 ? null : dividedShape;
-    }
-
-    function routeIsActive(id) {
-      var fw = id >= 0,
-          abs = fw ? id : ~id,
-          visibleBit = fw ? 1 : 0x10,
-          targetBits = routeFlags[abs],
-          clipBits = clipFlags[abs];
-
-      if (clipBits > 0) clipArcTouches++;
-      return (targetBits & visibleBit) > 0 || (clipBits & visibleBit) > 0;
-    }
-
-    function useRoute(id) {
-      var fw = id >= 0,
-          abs = fw ? id : ~id,
-          targetBits = routeFlags[abs],
-          clipBits = clipFlags[abs],
-          targetRoute, clipRoute;
-
-      if (fw) {
-        targetRoute = targetBits;
-        clipRoute = clipBits;
-      } else {
-        targetRoute = targetBits >> 4;
-        clipRoute = clipBits >> 4;
-      }
-      targetRoute &= 3;
-      clipRoute &= 3;
-
-      var usable = false;
-      // var usable = targetRoute === 3 || targetRoute === 0 && clipRoute == 3;
-      if (targetRoute == 3) {
-        // special cases where clip route and target route both follow this arc
-        if (clipRoute == 1) ; else if (clipRoute == 2 && type == 'erase') ; else {
-          usable = true;
-        }
-
-      } else if (targetRoute === 0 && clipRoute == 3) {
-        usedClipArcs.push(id);
-        usable = true;
-      }
-
-      if (usable) {
-        if (clipRoute == 3) {
-          clipArcUses++;
-        }
-        // Need to close all arcs after visiting them -- or could cause a cycle
-        //   on layers with strange topology
-        if (fw) {
-          targetBits = setBits(targetBits, 1, 3);
-        } else {
-          targetBits = setBits(targetBits, 0x10, 0x30);
-        }
-      }
-
-      targetBits |= fw ? 4 : 0x40; // record as visited
-      routeFlags[abs] = targetBits;
-      return usable;
-    }
-
-
-    // Filter a collection of shapes to exclude paths that incorporate parts of
-    // clip/erase polygons and paths that are hidden (e.g. internal boundaries)
-    function findUndividedClipShapes(clipShapes) {
-      return clipShapes.map(function(shape) {
-        var usableParts = [];
-        forEachShapePart(shape, function(ids) {
-          var pathIsClean = true,
-              pathIsVisible = false;
-          for (var i=0; i<ids.length; i++) {
-            // check if arc was used in fw or rev direction
-            if (!arcIsUnused(ids[i], routeFlags)) {
-              pathIsClean = false;
-              break;
-            }
-            // check if clip arc is visible
-            if (!pathIsVisible && arcIsVisible(ids[i], clipFlags)) {
-              pathIsVisible = true;
-            }
-          }
-          if (pathIsClean && pathIsVisible) usableParts.push(ids);
-        });
-        return usableParts.length > 0 ? usableParts : null;
-      });
-    }
-
-
-    function arcIsUnused(id, flags) {
-      var abs = absArcId(id),
-          flag = flags[abs];
-          return (flag & 0x88) === 0;
-          // return id < 0 ? (flag & 0x80) === 0 : (flag & 0x8) === 0;
-    }
-
-    function arcIsVisible(id, flags) {
-      var flag = flags[absArcId(id)];
-      return (flag & 0x11) > 0;
-    }
-
-    // search for indexed clipping paths contained in a shape
-    // dissolve them if needed
-    function findInteriorPaths(shape, type, index) {
-      var enclosedPaths = index.findPathsInsideShape(shape),
-          dissolvedPaths = [];
-      if (!enclosedPaths) return null;
-      // ...
-      if (type == 'erase') enclosedPaths.forEach(reversePath);
-      if (enclosedPaths.length <= 1) {
-        dissolvedPaths = enclosedPaths; // no need to dissolve single-part paths
-      } else {
-        openArcRoutes(enclosedPaths, arcs, routeFlags, true, false, true);
-        enclosedPaths.forEach(function(ids) {
-          var path;
-          for (var j=0; j<ids.length; j++) {
-            path = findPath(ids[j]);
-            if (path) {
-              dissolvedPaths.push(path);
-            }
-          }
-        });
-      }
-
-      return dissolvedPaths.length > 0 ? dissolvedPaths : null;
-    }
-  } // end clipPolygons()
-
-  //
-  function clipPoints(points, clipShapes, arcs, type) {
-    var index = new PathIndex(clipShapes, arcs);
-
-    var points2 = points.reduce(function(memo, feat) {
-      var n = feat ? feat.length : 0,
-          feat2 = [],
-          enclosed;
-
-      for (var i=0; i<n; i++) {
-        enclosed = index.findEnclosingShape(feat[i]) > -1;
-        if (type == 'clip' && enclosed || type == 'erase' && !enclosed) {
-          feat2.push(feat[i].concat());
-        }
-      }
-
-      memo.push(feat2.length > 0 ? feat2 : null);
-      return memo;
-    }, []);
-
-    return points2;
-  }
-
-  var ClipPoints = /*#__PURE__*/Object.freeze({
-    __proto__: null,
-    clipPoints: clipPoints
-  });
-
-  // Convert a source parameter (which can take several forms) into
-  // a dataset with a single layer.
-  function normalizeOverlaySource(clipSrc, targetDataset, optsArg) {
-    var opts = optsArg || {};
-    var bbox = opts.bbox || opts.bbox2;
-    var clipDataset;
-    if (bbox) {
-      clipDataset = convertClipBounds(bbox);
-    } else if (!clipSrc) {
-      stop$1('Command requires a source file, layer id or bbox');
-    } else if (clipSrc.geometry_type) {
-      // clipSrc is a layer (assumed in targetDataset)
-      // TODO: update tests to remove this case (only used in tests)
-      // error('Unsupported source format');
-      clipDataset = utils.defaults({layers: [clipSrc], disposable: true}, targetDataset);
-    } else if (clipSrc.layer && clipSrc.dataset) {
-      clipDataset = utils.defaults({layers: [clipSrc.layer]}, clipSrc.dataset);
-    } else if (clipSrc.layers?.length == 1) {
-      clipDataset = clipSrc;
-    } else {
-      error('Invalid source format');
-    }
-    if (clipSrc?.disposable) {
-      clipDataset.disposable = true;
-    }
-    return clipDataset;
-  }
-
-  // Create a merged dataset by appending the overlay layer to the target dataset
-  // so it is last in the layers array.
-  // DOES NOT insert clipping points
-  function mergeLayersForOverlay(targetLayers, targetDataset, clipSrc, opts) {
-    var clipDataset = normalizeOverlaySource(clipSrc, targetDataset, opts);
-    return mergeLayersForOverlay2(targetLayers, targetDataset, clipDataset);
-  }
-
-  function mergeLayersForOverlay2(targetLayers, targetDataset, clipDataset) {
-    var mergedDataset;
-    var clipLyr = clipDataset.layers[0];
-    if (targetDataset.arcs != clipDataset.arcs) {
-      // using external dataset -- need to merge arcs
-      if (!clipDataset.disposable) {
-        // copy overlay layer shapes because arc ids will be reindexed during merging
-        clipDataset.layers[0] = copyLayerShapes(clipDataset.layers[0]);
-      }
-      // merge external dataset with target dataset,
-      // so arcs are shared between target layers and clipping lyr
-      // Assumes that layers in clipDataset can be modified (if necessary, a copy should be passed in)
-      mergedDataset = mergeDatasets([targetDataset, clipDataset]);
-      buildTopology(mergedDataset); // identify any shared arcs between clipping layer and target dataset
-    } else {
-      // overlay layer belongs to the same dataset as target layers... move it to the end
-      mergedDataset = utils.extend({}, targetDataset);
-      mergedDataset.layers = targetDataset.layers.filter(function(lyr) {return lyr != clipLyr;});
-      mergedDataset.layers.push(clipLyr);
-    }
-    return mergedDataset;
-  }
-
-  function convertClipBounds(bb) {
-    var x0 = bb[0], y0 = bb[1], x1 = bb[2], y1 = bb[3],
-        arc = [[x0, y0], [x0, y1], [x1, y1], [x1, y0], [x0, y0]];
-
-    if (!(y1 > y0 && x1 > x0)) {
-      stop$1("Invalid bbox (should be [xmin, ymin, xmax, ymax]):", bb);
-    }
-    return {
-      arcs: new ArcCollection([arc]),
-      layers: [{
-        name: 'bbox',
-        shapes: [[[0]]],
-        geometry_type: 'polygon'
-      }]
-    };
-  }
-
-  var OverlayUtils = /*#__PURE__*/Object.freeze({
-    __proto__: null,
-    mergeLayersForOverlay: mergeLayersForOverlay,
-    mergeLayersForOverlay2: mergeLayersForOverlay2,
-    normalizeOverlaySource: normalizeOverlaySource
-  });
-
-  // Insert cutting points in arcs, where bbox intersects other shapes
-  // Return a polygon layer containing the bounding box vectors, divided at cutting points.
-  function divideDatasetByBBox(dataset, bbox) {
-    var arcs = dataset.arcs;
-    var data = findBBoxCutPoints(arcs, bbox);
-    var map = insertCutPoints(data.cutPoints, arcs);
-    arcs.dedupCoords();
-    remapDividedArcs(dataset, map);
-    // merge bbox dataset with target dataset,
-    // so arcs are shared between target layers and bbox layer
-    var clipDataset = bboxPointsToClipDataset(data.bboxPoints);
-    var mergedDataset = mergeDatasets([dataset, clipDataset]);
-    // TODO: detect if we need to rebuild topology (unlikely), like with the full clip command
-    // buildTopology(mergedDataset);
-    var clipLyr = mergedDataset.layers.pop();
-    dataset.arcs = mergedDataset.arcs;
-    dataset.layers = mergedDataset.layers;
-    return clipLyr;
-  }
-
-  function bboxPointsToClipDataset(arr) {
-    var arcs = [];
-    var shape = [];
-    var layer = {geometry_type: 'polygon', shapes: [[shape]]};
-    var p1, p2;
-    for (var i=0, n=arr.length - 1; i<n; i++) {
-      p1 = arr[i];
-      p2 = arr[i+1];
-      arcs.push([[p1.x, p1.y], [p2.x, p2.y]]);
-      shape.push(i);
-    }
-    return {
-      arcs: new ArcCollection(arcs),
-      layers: [layer]
-    };
-  }
-
-  function findBBoxCutPoints(arcs, bbox) {
-    var left = bbox[0],
-        bottom = bbox[1],
-        right = bbox[2],
-        top = bbox[3];
-
-    // arrays of intersection points along each bbox edge
-    var tt = [],
-        rr = [],
-        bb = [],
-        ll = [];
-
-    arcs.forEachSegment(function(i, j, xx, yy) {
-      var ax = xx[i],
-          ay = yy[i],
-          bx = xx[j],
-          by = yy[j];
-      var hit;
-      if (segmentOutsideBBox(ax, ay, bx, by, left, bottom, right, top)) return;
-      if (segmentInsideBBox(ax, ay, bx, by, left, bottom, right, top)) return;
-
-      hit = geom.segmentIntersection(left, top, right, top, ax, ay, bx, by);
-      if (hit) addHit(tt, hit, i, j, xx, yy);
-
-      hit = geom.segmentIntersection(left, bottom, right, bottom, ax, ay, bx, by);
-      if (hit) addHit(bb, hit, i, j, xx, yy);
-
-      hit = geom.segmentIntersection(left, bottom, left, top, ax, ay, bx, by);
-      if (hit) addHit(ll, hit, i, j, xx, yy);
-
-      hit = geom.segmentIntersection(right, bottom, right, top, ax, ay, bx, by);
-      if (hit) addHit(rr, hit, i, j, xx, yy);
-    });
-
-    return {
-      cutPoints: ll.concat(bb, rr, tt),
-      bboxPoints: getDividedBBoxPoints(bbox, ll, tt, rr, bb)
-    };
-
-    function addHit(arr, hit, i, j, xx, yy) {
-      if (!hit) return;
-      arr.push(formatHit(hit[0], hit[1], i, j, xx, yy));
-      if (hit.length == 4) {
-        arr.push(formatHit(hit[2], hit[3], i, j, xx, yy));
-      }
-    }
-
-    function formatHit(x, y, i, j, xx, yy) {
-      var ids = formatIntersectingSegment(x, y, i, j, xx, yy);
-      return getCutPoint(x, y, ids[0], ids[1]);
-    }
-  }
-
-  function segmentOutsideBBox(ax, ay, bx, by, xmin, ymin, xmax, ymax) {
-    return ax < xmin && bx < xmin || ax > xmax && bx > xmax ||
-        ay < ymin && by < ymin || ay > ymax && by > ymax;
-  }
-
-  function segmentInsideBBox(ax, ay, bx, by, xmin, ymin, xmax, ymax) {
-    return ax > xmin && bx > xmin && ax < xmax && bx < xmax &&
-        ay > ymin && by > ymin && ay < ymax && by < ymax;
-  }
-
-  // Returns an array of points representing the vertices in
-  // the bbox with cutting points inserted.
-  function getDividedBBoxPoints(bbox, ll, tt, rr, bb) {
-    var bl = {x: bbox[0], y: bbox[1]},
-        tl = {x: bbox[0], y: bbox[3]},
-        tr = {x: bbox[2], y: bbox[3]},
-        br = {x: bbox[2], y: bbox[1]};
-    ll = utils.sortOn(ll.concat([bl, tl]), 'y', true);
-    tt = utils.sortOn(tt.concat([tl, tr]), 'x', true);
-    rr = utils.sortOn(rr.concat([tr, br]), 'y', false);
-    bb = utils.sortOn(bb.concat([br, bl]), 'x', false);
-    return ll.concat(tt, rr, bb).reduce(function(memo, p2) {
-      var p1 = memo.length > 0 ? memo[memo.length-1] : null;
-      if (p1 === null || p1.x != p2.x || p1.y != p2.y) memo.push(p2);
-      return memo;
-    }, []);
-  }
-
-  var Bbox2Clipping = /*#__PURE__*/Object.freeze({
-    __proto__: null,
-    divideDatasetByBBox: divideDatasetByBBox,
-    segmentInsideBBox: segmentInsideBBox,
-    segmentOutsideBBox: segmentOutsideBBox
-  });
-
-  cmd.clipLayers = function(target, src, dataset, opts) {
-    return clipLayers(target, src, dataset, "clip", opts);
-  };
-
-  cmd.eraseLayers = function(target, src, dataset, opts) {
-    return clipLayers(target, src, dataset, "erase", opts);
-  };
-
-  cmd.clipLayer = function(targetLyr, src, dataset, opts) {
-    return cmd.clipLayers([targetLyr], src, dataset, opts)[0];
-  };
-
-  cmd.eraseLayer = function(targetLyr, src, dataset, opts) {
-    return cmd.eraseLayers([targetLyr], src, dataset, opts)[0];
-  };
-
-  cmd.sliceLayers = function(target, src, dataset, opts) {
-    return clipLayers(target, src, dataset, "slice", opts);
-  };
-
-  cmd.sliceLayer = function(targetLyr, src, dataset, opts) {
-    return cmd.sliceLayers([targetLyr], src, dataset, opts);
-  };
-
-  function clipLayersInPlace(layers, clipSrc, dataset, type, opts) {
-    var outputLayers = clipLayers(layers, clipSrc, dataset, type, opts);
-    // remove arcs from the clipping dataset, if they are not used by any layer
-    layers.forEach(function(lyr, i) {
-      var lyr2 = outputLayers[i];
-      lyr.shapes = lyr2.shapes;
-      lyr.data = lyr2.data;
-      if (lyr2.raster) {
-        lyr.raster = lyr2.raster;
-        lyr.raster_type = lyr2.raster_type;
-      }
-    });
-    dissolveArcs(dataset);
-  }
-
-  // @clipSrc: layer in @dataset or filename
-  // @type: 'clip' or 'erase'
-  function clipLayers(targetLayers, clipSrc, targetDataset, type, opts) {
-    profileStart('clipLayers');
-    opts = opts || {no_cleanup: true}; // TODO: update testing functions
-    var usingPathClip = utils.some(targetLayers, layerHasPaths);
-    var usingRasterClip = utils.some(targetLayers, layerHasRaster);
-    var mergedDataset, clipLyr, nodes, result;
-    var clipDataset;
-    if (usingRasterClip) {
-      result = clipRasterLayers(targetLayers, clipSrc, targetDataset, type, opts);
-      profileEnd('clipLayers');
-      return result;
-    }
-    clipDataset = normalizeOverlaySource(clipSrc, targetDataset, opts);
-    if (!opts.no_warn) {
-      warnIfBoundsDontOverlap(targetLayers, targetDataset, clipDataset, type);
-    }
-    if (opts.bbox2 && usingPathClip) { // assumes target dataset has arcs
-      result = clipLayersByBBox(targetLayers, targetDataset, opts);
-      profileEnd('clipLayers');
-      return result;
-    }
-    if (!usingPathClip) {
-      result = clipLayersByClipDataset(targetLayers, clipDataset, type, opts);
-      profileEnd('clipLayers');
-      return result;
-    }
-    profileStart('mergeLayersForOverlay');
-    mergedDataset = mergeLayersForOverlay2(targetLayers, targetDataset, clipDataset);
-    profileEnd('mergeLayersForOverlay');
-    clipLyr = mergedDataset.layers[mergedDataset.layers.length-1];
-    nodes = addIntersectionCuts(mergedDataset, opts);
-    noteDatasetWillChange(targetDataset, {operation: type, unit: 'arcs'});
-    targetDataset.arcs = mergedDataset.arcs;
-    markDatasetChanged(targetDataset, {operation: type, unit: 'arcs'});
-    profileStart('clipDissolvePolygonLayer2');
-    clipLyr = utils.defaults({data: null}, clipLyr);
-    clipLyr = dissolvePolygonLayer2(clipLyr, mergedDataset, {quiet: true, silent: true});
-    profileEnd('clipDissolvePolygonLayer2');
-
-    profileStart('clipLayersByLayer');
-    result = clipLayersByLayer(targetLayers, clipLyr, nodes, type, opts);
-    profileEnd('clipLayersByLayer');
-    profileEnd('clipLayers');
-    return result;
-  }
-
-  function clipLayersByClipDataset(targetLayers, clipDataset, type, opts) {
-    var clipLyr = clipDataset.layers[0];
-    var nodes = new NodeCollection(clipDataset.arcs);
-    var result;
-    profileStart('clipLayersByLayer');
-    result = clipLayersByLayer(targetLayers, clipLyr, nodes, type, opts);
-    profileEnd('clipLayersByLayer');
-    return result;
-  }
-
-  function clipRasterLayers(targetLayers, clipSrc, targetDataset, type, opts) {
-    var clipDataset, clipBounds, bbox;
-    if (type != 'clip') {
-      stop$1('Raster layers only support clipping');
-    }
-    if (utils.some(targetLayers, function(lyr) {return !layerHasRaster(lyr);})) {
-      stop$1('Raster clipping cannot be mixed with vector target layers');
-    }
-    if (opts.bbox2) {
-      bbox = opts.bbox2;
-    } else {
-      clipDataset = normalizeOverlaySource(clipSrc, targetDataset, opts);
-      clipBounds = getLayerBounds(clipDataset.layers[0], clipDataset.arcs);
-      if (!clipBounds || !clipBounds.hasBounds()) {
-        stop$1('Missing raster clipping bounds');
-      }
-      bbox = clipBounds.toArray();
-    }
-    return targetLayers.map(function(lyr) {
-      clipRasterToBBox(lyr, bbox, opts);
-      return lyr;
-    });
-  }
-
-  function clipLayersByBBox(layers, dataset, opts) {
-    var bbox = opts.bbox2;
-    var clipLyr = divideDatasetByBBox(dataset, bbox);
-    var nodes = new NodeCollection(dataset.arcs);
-    var retn = clipLayersByLayer(layers, clipLyr, nodes, 'clip', opts);
-    return retn;
-  }
-
-  function clipLayersByLayer(targetLayers, clipLyr, nodes, type, opts) {
-    requirePolygonLayer(clipLyr, "Requires a polygon clipping layer");
-    return targetLayers.reduce(function(memo, targetLyr) {
-      if (type == 'slice') {
-        memo = memo.concat(sliceLayerByLayer(targetLyr, clipLyr, nodes, opts));
-      } else {
-        memo.push(clipLayerByLayer(targetLyr, clipLyr, nodes, type, opts));
-      }
-      return memo;
-    }, []);
-  }
-
-  function getSliceLayerName(clipLyr, field, i) {
-    var id = field ? clipLyr.data.getRecords()[0][field] : i + 1;
-    return 'slice-' + id;
-  }
-
-  function sliceLayerByLayer(targetLyr, clipLyr, nodes, opts) {
-    // may not need no_replace
-    var clipLayers = cmd.splitLayer(clipLyr, opts.id_field, {no_replace: true});
-    return clipLayers.map(function(clipLyr, i) {
-      var outputLyr = clipLayerByLayer(targetLyr, clipLyr, nodes, 'clip', opts);
-      outputLyr.name = getSliceLayerName(clipLyr, opts.id_field, i);
-      return outputLyr;
-    });
-  }
-
-  function clipLayerByLayer(targetLyr, clipLyr, nodes, type, opts) {
-    var arcs = nodes.arcs;
-    var shapeCount = targetLyr.shapes ? targetLyr.shapes.length : 0;
-    var nullCount = 0, sliverCount = 0;
-    var clippedShapes, outputLyr;
-    if (shapeCount === 0) {
-      return targetLyr; // ignore empty layer
-    }
-    if (targetLyr === clipLyr) {
-      stop$1('Can\'t clip a layer with itself');
-    }
-
-    // TODO: optimize some of these functions for bbox clipping
-    if (targetLyr.geometry_type == 'point') {
-      clippedShapes = clipPoints(targetLyr.shapes, clipLyr.shapes, arcs, type);
-    } else if (targetLyr.geometry_type == 'polygon') {
-      clippedShapes = clipPolygons(targetLyr.shapes, clipLyr.shapes, nodes, type, opts);
-    } else if (targetLyr.geometry_type == 'polyline') {
-      clippedShapes = clipPolylines(targetLyr.shapes, clipLyr.shapes, nodes, type);
-    } else {
-      stop$1('Invalid target layer:', targetLyr.name);
-    }
-
-    outputLyr = {
-      name: targetLyr.name,
-      geometry_type: targetLyr.geometry_type,
-      shapes: clippedShapes,
-      data: targetLyr.data // replaced post-filter
-    };
-
-    // Remove sliver polygons
-    if (opts.remove_slivers && outputLyr.geometry_type == 'polygon') {
-      sliverCount = filterClipSlivers(outputLyr, clipLyr, arcs);
-    }
-
-    // Remove null shapes (likely removed by clipping/erasing, although possibly already present)
-    cmd.filterFeatures(outputLyr, arcs, {remove_empty: true, verbose: false});
-
-    // clone data records (to avoid sharing records between layers)
-    // TODO: this is not needed when replacing target with a single layer
-    if (outputLyr.data) {
-      outputLyr.data = outputLyr.data.clone();
-    }
-
-    // TODO: redo messages, now that many layers may be clipped
-    nullCount = shapeCount - outputLyr.shapes.length;
-    if (nullCount && sliverCount) {
-      message(getClipMessage(nullCount, sliverCount));
-    }
-    return outputLyr;
-  }
-
-  function getClipMessage(nullCount, sliverCount) {
-    var nullMsg = nullCount ? utils.format('%,d null feature%s', nullCount, utils.pluralSuffix(nullCount)) : '';
-    var sliverMsg = sliverCount ? utils.format('%,d sliver%s', sliverCount, utils.pluralSuffix(sliverCount)) : '';
-    if (nullMsg || sliverMsg) {
-      return utils.format('Removed %s%s%s', nullMsg, (nullMsg && sliverMsg ? ' and ' : ''), sliverMsg);
-    }
-    return '';
-  }
-
-  // Warn (once per source/target pair) when a -clip / -erase / slice almost
-  // certainly won't do what the user wants. Two checks, in order of strength:
-  //
-  //   1. CRS mismatch -- one side is lat/lng and the other is projected. This
-  //      uses the same logic as requireDatasetsHaveCompatibleCRS() in
-  //      mapshaper-merging.mjs, but fires here as a friendlier, command-aware
-  //      warning before mergeDatasets() would otherwise stop() with a generic
-  //      message. It also catches a class of cases the bbox check misses: a
-  //      projected layer whose bbox straddles (0,0) often *does* overlap an
-  //      unprojected lat/lng bbox, even though the two are useless together.
-  //   2. Bbox-disjoint -- a fallback for the case where CRSes look compatible
-  //      (or are unknown on both sides) but the layers clearly aren't in the
-  //      same place. Usually a wrong-source-picker error.
-  //
-  // Empty target layers are ignored (separate failure mode; would just be
-  // noise). The CRS warning suppresses the bbox warning for the same target,
-  // so users see one warning per problem, not two.
-  // Skipped entirely if opts.no_warn is set.
-  function warnIfBoundsDontOverlap(targetLayers, targetDataset, clipDataset, type) {
-    var srcCRS = getDatasetCRS(clipDataset);
-    var targetCRS = getDatasetCRS(targetDataset);
-    var crsMismatch = srcCRS && targetCRS && isLatLngCRS(srcCRS) != isLatLngCRS(targetCRS);
-    var srcName = clipDataset.layers[0].name || '<unnamed>';
-    var srcBounds = getLayerBounds(clipDataset.layers[0], clipDataset.arcs);
-    targetLayers.forEach(function(targetLyr) {
-      var targetBounds = getLayerBounds(targetLyr, targetDataset.arcs);
-      if (!targetBounds || !targetBounds.hasBounds()) return;
-      if (crsMismatch) {
-        warnOnce(formatCRSMismatchMessage(type, srcName, targetLyr.name,
-          srcCRS, targetCRS));
-        return; // Don't also fire the (likely-misleading) bbox warning.
-      }
-      if (!srcBounds || !srcBounds.hasBounds()) return;
-      if (srcBounds.intersects(targetBounds)) return;
-      warnOnce(formatNoOverlapMessage(type, srcName, targetLyr.name,
-        srcBounds, targetBounds));
-    });
-  }
-
-  function formatCRSMismatchMessage(type, srcName, targetName, srcCRS, targetCRS) {
-    var verb = type === 'erase' ? 'erase' : 'clip';
-    var srcKind = isLatLngCRS(srcCRS) ? 'lng/lat (geographic)' : 'projected';
-    var targetKind = isLatLngCRS(targetCRS) ? 'lng/lat (geographic)' : 'projected';
-    return '-' + verb + ': source "' + srcName + '" uses ' + srcKind +
-      ' coordinates but target "' + (targetName || '<unnamed>') + '" uses ' +
-      targetKind + ' coordinates. The -' + verb +
-      ' will not produce a useful result; project one side to match the other first.';
-  }
-
-  function formatNoOverlapMessage(type, srcName, targetName, srcBounds, targetBounds) {
-    // 'slice' is a per-feature -clip variant; in user terms it has the same
-    // empty-output failure mode as clip, so we describe it under the same
-    // verb to keep the message simple.
-    var verb = type === 'erase' ? 'erase' : 'clip';
-    var consequence = type === 'erase'
-      ? 'will leave "' + (targetName || '<unnamed>') + '" unchanged'
-      : 'will produce empty output for "' + (targetName || '<unnamed>') + '"';
-    return '-' + verb + ': source "' + srcName + '" ' + bbToText(srcBounds) +
-      ' does not overlap target "' + (targetName || '<unnamed>') + '" ' +
-      bbToText(targetBounds) + '. The -' + verb + ' ' + consequence +
-      '. This usually indicates a coordinate system mismatch.';
-  }
-
-  function bbToText(b) {
-    return JSON.stringify(b.toArray());
-  }
-
-  var ClipErase = /*#__PURE__*/Object.freeze({
-    __proto__: null,
-    clipLayers: clipLayers,
-    clipLayersByBBox: clipLayersByBBox,
-    clipLayersByLayer: clipLayersByLayer,
-    clipLayersInPlace: clipLayersInPlace,
-    getClipMessage: getClipMessage,
-    warnIfBoundsDontOverlap: warnIfBoundsDontOverlap
-  });
-
   // Returns a function for constructing a query function that accepts an arc id and
   // returns information about the polygon or polygons that use the given arc.
   // TODO: explain this better.
@@ -45223,6 +44290,18 @@ ${svg}
 
   function makePolygonBuffer(lyr, dataset, opts) {
     var spherical = isLatLngCRS(getDatasetCRS(dataset));
+    // The debug-offset/debug-winding/debug-mosaic visualizations are implemented
+    // only for line buffers. They have no handling in the polygon pipeline; left
+    // unstripped they leak into the per-shape dissolve and produce malformed
+    // output, so drop them and warn rather than silently mislead.
+    if (opts.debug_offset || opts.debug_winding || opts.debug_mosaic) {
+      warn('debug-offset/debug-winding/debug-mosaic are not implemented for polygon buffers; ignoring');
+      opts = Object.assign({}, opts, {
+        debug_offset: false,
+        debug_winding: false,
+        debug_mosaic: false
+      });
+    }
     var output = makePolygonBufferGeoJSON(lyr, dataset, opts);
     var dataset2 = importGeoJSON(output.geojson, {type: 'polygon'});
     if (spherical) {
@@ -45238,25 +44317,37 @@ ${svg}
     var distanceFn = getBufferDistanceFunction(lyr, dataset, opts);
     var useTopologicalMode = !!opts.topological;
     var uniqueArcTest = useTopologicalMode ? getUniqueArcTest(lyr, dataset.arcs) : null;
-    var leftBufferMaker = getPolygonRingBufferMaker(dataset, opts, 'left');
-    var rightBufferMaker = getPolygonRingBufferMaker(dataset, opts, 'right');
     var hasPositiveDistance = false;
     var hasNegativeDistance = false;
     if (useTopologicalMode) {
+      // The topological pipeline selects mosaic tiles by source membership
+      // (boundary flood), which cannot resolve the self-overlapping winding-fill
+      // ring. So each feature's winding-fill offset rings are pre-dissolved into a
+      // clean (non-self-overlapping) polygon before they enter the shared mosaic;
+      // the construction speedup (loop removal cutting per-feature self-
+      // intersections) is preserved, and the mosaic is unchanged.
       return makeTopologicalPolygonBufferGeoJSON(lyr, dataset, opts, distanceFn,
-        uniqueArcTest, leftBufferMaker);
+        uniqueArcTest, getPolygonRingBufferMaker(dataset, opts, 'left'));
     }
+    // Closed source rings are offset with the winding-fill construction: one
+    // self-overlapping ring per source ring (its overshoot loops resolved by the
+    // winding-number dissolve in makeClosedRingBufferGeometry) instead of many
+    // overlapping per-segment section bands. The single ring carries far fewer
+    // rings and self-intersections into the dissolve, which dominates polygon-
+    // buffer runtime.
+    var leftBufferMaker = getPolygonRingBufferMaker(dataset, opts, 'left');
+    var rightBufferMaker = getPolygonRingBufferMaker(dataset, opts, 'right');
     var geometries = lyr.shapes.map(function(shape, i) {
       var distance = distanceFn(i);
       if (!distance || !shape) return null;
       if (distance < 0) {
         hasNegativeDistance = true;
         return makeNegativePolygonBufferGeometry(shape, -distance, dataset, opts,
-          uniqueArcTest, rightBufferMaker);
+          rightBufferMaker);
       }
       hasPositiveDistance = true;
       return makePositivePolygonBufferGeometry(shape, distance, dataset, opts,
-        uniqueArcTest, leftBufferMaker);
+        leftBufferMaker);
     });
     return {
       geojson: {
@@ -45267,31 +44358,30 @@ ${svg}
     };
   }
 
-  function getPolygonRingBufferMaker(dataset, opts, side) {
+  function getPolygonRingBufferMaker(dataset, opts, side, winding) {
+    // The sector-band escape hatch forces the older non-winding construction even
+    // for callers that request winding-fill (see the 'sector-band' option).
+    var useWinding = !opts.sector_band;
     var makerOpts = Object.assign({}, opts, {
       left: side == 'left',
-      right: side == 'right'
+      right: side == 'right',
+      winding_fill: useWinding,
+      // Enable overshoot-loop removal on the single winding-fill offset ring.
+      // Scoped to closed polygon rings: an open one-sided line buffer relies on
+      // the band-coverage audit (skipped under winding_fill) for concave-join
+      // dents, which loop removal would collapse.
+      buffer_ring_loops: useWinding
     });
     return getPolylineBufferMaker(dataset, makerOpts);
   }
 
   function makePositivePolygonBufferGeometry(shape, distance, dataset, opts,
-      uniqueArcTest, leftBufferMaker) {
-    var coords = getPolygonMultiPolygonCoords(shape, dataset.arcs);
-    var pathData = getPolygonBufferPathData(shape, uniqueArcTest);
-    var bufferCoords = getBufferMultiPolygonCoords(pathData.paths, distance, leftBufferMaker);
-    var offsetGeom;
-    var merged = coords.concat(bufferCoords);
-    var geom = merged.length > 0 ? {
-      type: 'MultiPolygon',
-      coordinates: merged
-    } : null;
-    if (!pathData.split) {
-      offsetGeom = makeClosedRingPositiveBufferGeometry(shape, dataset.arcs,
-        distance, opts, leftBufferMaker);
-      return offsetGeom;
-    }
-    return geom ? dissolvePolygonBufferGeometry(geom, opts) : null;
+      leftBufferMaker) {
+    // Non-topological positive buffers are never path-split (only the topological
+    // pipeline splits, and it has its own function), so each shape's ring groups
+    // are offset and dissolved directly.
+    return makeClosedRingPositiveBufferGeometry(shape, dataset.arcs,
+      distance, opts, leftBufferMaker);
   }
 
   function makeTopologicalPolygonBufferGeoJSON(lyr, dataset, opts, distanceFn,
@@ -45323,6 +44413,14 @@ ${svg}
       hasPositiveDistance = true;
       pathData = getPolygonBufferPathData(shape, uniqueArcTest);
       bufferCoords = getBufferMultiPolygonCoords(pathData.paths, distance, bufferMaker);
+      // Resolve the winding-fill rings' self-overlaps into a clean polygon (the
+      // mosaic's boundary-flood membership cannot), so this feature enters the
+      // shared mosaic as an ordinary polygon. The sector-band fallback emits
+      // boundary-flood-resolvable bands, so it feeds the mosaic directly (as the
+      // topological pipeline did before the winding-fill construction).
+      if (!opts.sector_band) {
+        bufferCoords = dissolveOffsetRingsToCoords(bufferCoords, opts);
+      }
       if (bufferCoords.length > 0) {
         bufferIds[i] = tmpGeometries.length;
         tmpGeometries.push({
@@ -45473,27 +44571,11 @@ ${svg}
   }
 
   function makeNegativePolygonBufferGeometry(shape, distance, dataset, opts,
-      uniqueArcTest, bufferMaker) {
-    var pathData = getPolygonBufferPathData(shape, uniqueArcTest);
-    var bufferCoords = getBufferMultiPolygonCoords(pathData.paths, distance, bufferMaker);
-    var targetDataset, outputLyr;
-    if (bufferCoords.length === 0) {
-      return getPolygonGeometry(shape, dataset.arcs);
-    }
-    if (!pathData.split) {
-      return makeClosedRingNegativeBufferGeometry(shape, dataset.arcs, distance,
-        opts, bufferMaker);
-    }
-    targetDataset = getSingleShapeDataset(shape, dataset);
-    outputLyr = clipLayers([targetDataset.layers[0]],
-      getBufferDataset(bufferCoords), targetDataset, 'erase', {
-        no_cleanup: true,
-        no_warn: true,
-        quiet: true,
-        silent: true
-      })[0];
-    return outputLyr.shapes && outputLyr.shapes.length > 0 ?
-      getPolygonGeometry(outputLyr.shapes[0], targetDataset.arcs) : null;
+      bufferMaker) {
+    // Non-topological negative buffers are never path-split, so each shape's ring
+    // groups are offset and eroded directly.
+    return makeClosedRingNegativeBufferGeometry(shape, dataset.arcs, distance,
+      opts, bufferMaker);
   }
 
   function makeClosedRingNegativeBufferGeometry(shape, arcs, distance, opts,
@@ -45603,7 +44685,12 @@ ${svg}
     var bufferLyr = bufferDataset.layers[0];
     var bufferShape, bufferData, erodedShape;
     if (!bufferDataset.arcs) return null;
-    dissolveBufferDataset2(bufferDataset, opts);
+    // The default offset rings come from the winding-fill maker (one self-
+    // overlapping ring per source ring) and must be unioned by winding number;
+    // the sector-band fallback emits overlapping bands that a boundary flood
+    // resolves instead (its maker leaves winding_fill off to match).
+    dissolveBufferDataset2(bufferDataset,
+      Object.assign({}, opts, {winding_fill: !opts.sector_band}));
     bufferShape = bufferLyr.shapes && bufferLyr.shapes[0];
     if (!bufferShape) return null;
     bufferData = exportPathData(bufferShape, bufferDataset.arcs, 'polygon');
@@ -45866,15 +44953,19 @@ ${svg}
     }, {type: 'polygon'});
   }
 
-  function getSingleShapeDataset(shape, dataset) {
-    return {
-      arcs: dataset.arcs.getFilteredCopy(),
-      info: Object.assign({}, dataset.info),
-      layers: [{
-        geometry_type: 'polygon',
-        shapes: [cloneShape(shape)]
-      }]
-    };
+  // Union a set of winding-fill offset rings (which self-overlap) into clean,
+  // non-self-overlapping MultiPolygon coordinates, via the winding-number
+  // dissolve. Used by the topological pipeline to feed an ordinary polygon into
+  // the shared mosaic (whose boundary-flood membership cannot resolve the
+  // self-overlapping construction ring directly).
+  function dissolveOffsetRingsToCoords(coords, opts) {
+    if (!coords || coords.length === 0) return [];
+    var dataset = getBufferDataset(coords);
+    if (!dataset.arcs) return [];
+    dissolveBufferDataset2(dataset, Object.assign({}, opts, {winding_fill: true}));
+    var lyr = dataset.layers[0];
+    var shape = lyr.shapes && lyr.shapes[0];
+    return shape ? getPolygonMultiPolygonCoords(shape, dataset.arcs) : [];
   }
 
   function getBufferMultiPolygonCoords(paths, distance, bufferMaker) {
@@ -49042,6 +48133,926 @@ ${svg}
       return o.formatHex();
     });
   }
+
+  // Remove small-area polygon rings (very simple implementation of sliver removal)
+  // TODO: more sophisticated sliver detection (e.g. could consider ratio of area to perimeter)
+  // TODO: consider merging slivers into adjacent polygons to prevent gaps from forming
+  // TODO: consider separate gap removal function as an alternative to merging slivers
+  //
+  cmd.filterSlivers = function(lyr, dataset, opts) {
+    if (lyr.geometry_type != 'polygon') {
+      return 0;
+    }
+    return filterSlivers(lyr, dataset, opts);
+  };
+
+  function filterSlivers(lyr, dataset, optsArg) {
+    var opts = utils.extend({sliver_control: 1}, optsArg);
+    var filterData = getSliverFilter(lyr, dataset, opts);
+    var ringTest = filterData.filter;
+    var removed = 0;
+    var pathFilter = function(path, i, paths) {
+      if (ringTest(path, i, paths)) {
+        removed++;
+        return null;
+      }
+    };
+
+    noteLayerWillChange(lyr, {operation: 'filter-slivers', unit: 'shapes'});
+    editShapes(lyr.shapes, pathFilter);
+    markLayerChanged(lyr, {operation: 'filter-slivers', unit: 'shapes'});
+    message(utils.format("Removed %'d sliver%s using %s", removed, utils.pluralSuffix(removed), filterData.label));
+
+    // Remove null shapes (likely removed by clipping/erasing, although possibly already present)
+    if (opts.remove_empty) {
+      cmd.filterFeatures(lyr, dataset.arcs, {remove_empty: true, verbose: false});
+    }
+    return removed;
+  }
+
+  function filterClipSlivers(lyr, clipLyr, arcs) {
+    var threshold = getDefaultSliverThreshold(lyr, arcs);
+    // message('Using variable sliver threshold (based on ' + (threshold / 1e6) + ' sqkm)');
+    var ringTest = getSliverTest(arcs, threshold, 1);
+    var flags = new Uint8Array(arcs.size());
+    var removed = 0;
+    var pathFilter = function(path) {
+      var prevArcs = 0,
+          newArcs = 0;
+      for (var i=0, n=path && path.length || 0; i<n; i++) {
+        if (flags[absArcId(path[i])] > 0) {
+          newArcs++;
+        } else {
+          prevArcs++;
+        }
+      }
+      // filter paths that contain arcs from both original and clip/erase layers
+      //   and are small
+      if (newArcs > 0 && prevArcs > 0 && ringTest(path)) {
+        removed++;
+        return null;
+      }
+    };
+
+    countArcsInShapes(clipLyr.shapes, flags);
+    noteLayerWillChange(lyr, {operation: 'filter-clip-slivers', unit: 'shapes'});
+    editShapes(lyr.shapes, pathFilter);
+    markLayerChanged(lyr, {operation: 'filter-clip-slivers', unit: 'shapes'});
+    return removed;
+  }
+
+  // Assumes: Arcs have been divided
+  //
+  function clipPolylines(targetShapes, clipShapes, nodes, type) {
+    var index = new PathIndex(clipShapes, nodes.arcs);
+
+    return targetShapes.map(function(shp) {
+      return clipPolyline(shp);
+    });
+
+    function clipPolyline(shp) {
+      var clipped = null;
+      if (shp) clipped = shp.reduce(clipPath, []);
+      return clipped && clipped.length > 0 ? clipped : null;
+    }
+
+    function clipPath(memo, path) {
+      var clippedPath = null,
+          arcId, enclosed;
+      for (var i=0; i<path.length; i++) {
+        arcId = path[i];
+        enclosed = index.arcIsEnclosed(arcId);
+        if (enclosed && type == 'clip' || !enclosed && type == 'erase') {
+          if (!clippedPath) {
+            memo.push(clippedPath = []);
+          }
+          clippedPath.push(arcId);
+        } else {
+          clippedPath = null;
+        }
+      }
+      return memo;
+    }
+  }
+
+  var PolylineClipping = /*#__PURE__*/Object.freeze({
+    __proto__: null,
+    clipPolylines: clipPolylines
+  });
+
+  // TODO: to prevent invalid holes,
+  // could erase the holes from the space-enclosing rings.
+  function appendHolesToRings(cw, ccw) {
+    for (var i=0, n=ccw.length; i<n; i++) {
+      cw.push(ccw[i]);
+    }
+    return cw;
+  }
+
+  function getPolygonDissolver(nodes, spherical) {
+    spherical = spherical && !nodes.arcs.isPlanar();
+    var flags = new Uint8Array(nodes.arcs.size());
+    var divide = getHoleDivider(nodes, spherical);
+    var pathfind = getRingIntersector(nodes, flags);
+
+    return function(shp) {
+      if (!shp) return null;
+      var cw = [],
+          ccw = [];
+
+      divide(shp, cw, ccw);
+      cw = pathfind(cw, 'flatten');
+      ccw.forEach(reversePath);
+      ccw = pathfind(ccw, 'flatten');
+      ccw.forEach(reversePath);
+      var shp2 = appendHolesToRings(cw, ccw);
+      var dissolved = pathfind(shp2, 'dissolve');
+
+      if (dissolved.length > 1) {
+        dissolved = fixNestingErrors(dissolved, nodes.arcs);
+      }
+
+      return dissolved.length > 0 ? dissolved : null;
+    };
+  }
+
+  // TODO: remove dependency on old polygon dissolve function
+
+  // assumes layers and arcs have been prepared for clipping
+  function clipPolygons(targetShapes, clipShapes, nodes, type, optsArg) {
+    profileStart('clipPolygons');
+    var arcs = nodes.arcs;
+    var opts = optsArg || {};
+    var clipFlags = new Uint8Array(arcs.size());
+    var routeFlags = new Uint8Array(arcs.size());
+    var clipArcTouches = 0;
+    var clipArcUses = 0;
+    var usedClipArcs = [];
+    var findPath = getPathFinder(nodes, useRoute, routeIsActive);
+    var dissolvePolygon = getPolygonDissolver(nodes);
+
+    if (!opts.bbox2) {
+      profileStart('cp.dissolveTargetRings');
+      targetShapes = targetShapes.map(dissolvePolygon);
+      profileEnd('cp.dissolveTargetRings');
+    }
+
+    profileStart('cp.openClipRoutes');
+    openArcRoutes(clipShapes, arcs, clipFlags, type == 'clip', type == 'erase', true, 0x11);
+    profileEnd('cp.openClipRoutes');
+    profileStart('cp.PathIndex#1');
+    var index = new PathIndex(clipShapes, arcs);
+    profileEnd('cp.PathIndex#1');
+    profileStart('cp.clipShapes');
+    var clippedShapes = targetShapes.map(function(shape, i) {
+      if (shape) {
+        return clipPolygon(shape, type, index);
+      }
+      return null;
+    });
+    profileEnd('cp.clipShapes');
+
+    markPathsAsUsed(clippedShapes, routeFlags);
+
+    profileStart('cp.findUndividedClip');
+    var undividedClipShapes = findUndividedClipShapes(clipShapes);
+    profileEnd('cp.findUndividedClip');
+
+    closeArcRoutes(clipShapes, arcs, routeFlags, true, true);
+    profileStart('cp.PathIndex#2');
+    index = new PathIndex(undividedClipShapes, arcs);
+    profileEnd('cp.PathIndex#2');
+    profileStart('cp.findInteriorPaths');
+    targetShapes.forEach(function(shape, shapeId) {
+      var paths = shape ? findInteriorPaths(shape, type, index) : null;
+      if (paths) {
+        clippedShapes[shapeId] = (clippedShapes[shapeId] || []).concat(paths);
+      }
+    });
+    profileEnd('cp.findInteriorPaths');
+
+    profileEnd('clipPolygons');
+    return clippedShapes;
+
+    function clipPolygon(shape, type, index) {
+      var dividedShape = [],
+          clipping = type == 'clip',
+          erasing = type == 'erase';
+
+      // open pathways for entire polygon rather than one ring at a time --
+      // need to create polygons that connect positive-space rings and holes
+      openArcRoutes(shape, arcs, routeFlags, true, false, false);
+
+      forEachShapePart(shape, function(ids) {
+        var path;
+        for (var i=0, n=ids.length; i<n; i++) {
+          clipArcTouches = 0;
+          clipArcUses = 0;
+          path = findPath(ids[i]);
+          if (path) {
+            // if ring doesn't touch/intersect a clip/erase polygon, check if it is contained
+            // if (clipArcTouches === 0) {
+            // if ring doesn't incorporate an arc from the clip/erase polygon,
+            // check if it is contained (assumes clip shapes are dissolved)
+            if (clipArcTouches === 0 || clipArcUses === 0) { //
+              var contained = index.pathIsEnclosed(path);
+              if (clipping && contained || erasing && !contained) {
+                dividedShape.push(path);
+              }
+              // TODO: Consider breaking if polygon is unchanged
+            } else {
+              dividedShape.push(path);
+            }
+          }
+        }
+      });
+
+
+      // Clear pathways of current target shape to hidden/closed
+      closeArcRoutes(shape, arcs, routeFlags, true, true, true);
+      // Also clear pathways of any clip arcs that were used
+      if (usedClipArcs.length > 0) {
+        closeArcRoutes(usedClipArcs, arcs, routeFlags, true, true, true);
+        usedClipArcs = [];
+      }
+
+      return dividedShape.length === 0 ? null : dividedShape;
+    }
+
+    function routeIsActive(id) {
+      var fw = id >= 0,
+          abs = fw ? id : ~id,
+          visibleBit = fw ? 1 : 0x10,
+          targetBits = routeFlags[abs],
+          clipBits = clipFlags[abs];
+
+      if (clipBits > 0) clipArcTouches++;
+      return (targetBits & visibleBit) > 0 || (clipBits & visibleBit) > 0;
+    }
+
+    function useRoute(id) {
+      var fw = id >= 0,
+          abs = fw ? id : ~id,
+          targetBits = routeFlags[abs],
+          clipBits = clipFlags[abs],
+          targetRoute, clipRoute;
+
+      if (fw) {
+        targetRoute = targetBits;
+        clipRoute = clipBits;
+      } else {
+        targetRoute = targetBits >> 4;
+        clipRoute = clipBits >> 4;
+      }
+      targetRoute &= 3;
+      clipRoute &= 3;
+
+      var usable = false;
+      // var usable = targetRoute === 3 || targetRoute === 0 && clipRoute == 3;
+      if (targetRoute == 3) {
+        // special cases where clip route and target route both follow this arc
+        if (clipRoute == 1) ; else if (clipRoute == 2 && type == 'erase') ; else {
+          usable = true;
+        }
+
+      } else if (targetRoute === 0 && clipRoute == 3) {
+        usedClipArcs.push(id);
+        usable = true;
+      }
+
+      if (usable) {
+        if (clipRoute == 3) {
+          clipArcUses++;
+        }
+        // Need to close all arcs after visiting them -- or could cause a cycle
+        //   on layers with strange topology
+        if (fw) {
+          targetBits = setBits(targetBits, 1, 3);
+        } else {
+          targetBits = setBits(targetBits, 0x10, 0x30);
+        }
+      }
+
+      targetBits |= fw ? 4 : 0x40; // record as visited
+      routeFlags[abs] = targetBits;
+      return usable;
+    }
+
+
+    // Filter a collection of shapes to exclude paths that incorporate parts of
+    // clip/erase polygons and paths that are hidden (e.g. internal boundaries)
+    function findUndividedClipShapes(clipShapes) {
+      return clipShapes.map(function(shape) {
+        var usableParts = [];
+        forEachShapePart(shape, function(ids) {
+          var pathIsClean = true,
+              pathIsVisible = false;
+          for (var i=0; i<ids.length; i++) {
+            // check if arc was used in fw or rev direction
+            if (!arcIsUnused(ids[i], routeFlags)) {
+              pathIsClean = false;
+              break;
+            }
+            // check if clip arc is visible
+            if (!pathIsVisible && arcIsVisible(ids[i], clipFlags)) {
+              pathIsVisible = true;
+            }
+          }
+          if (pathIsClean && pathIsVisible) usableParts.push(ids);
+        });
+        return usableParts.length > 0 ? usableParts : null;
+      });
+    }
+
+
+    function arcIsUnused(id, flags) {
+      var abs = absArcId(id),
+          flag = flags[abs];
+          return (flag & 0x88) === 0;
+          // return id < 0 ? (flag & 0x80) === 0 : (flag & 0x8) === 0;
+    }
+
+    function arcIsVisible(id, flags) {
+      var flag = flags[absArcId(id)];
+      return (flag & 0x11) > 0;
+    }
+
+    // search for indexed clipping paths contained in a shape
+    // dissolve them if needed
+    function findInteriorPaths(shape, type, index) {
+      var enclosedPaths = index.findPathsInsideShape(shape),
+          dissolvedPaths = [];
+      if (!enclosedPaths) return null;
+      // ...
+      if (type == 'erase') enclosedPaths.forEach(reversePath);
+      if (enclosedPaths.length <= 1) {
+        dissolvedPaths = enclosedPaths; // no need to dissolve single-part paths
+      } else {
+        openArcRoutes(enclosedPaths, arcs, routeFlags, true, false, true);
+        enclosedPaths.forEach(function(ids) {
+          var path;
+          for (var j=0; j<ids.length; j++) {
+            path = findPath(ids[j]);
+            if (path) {
+              dissolvedPaths.push(path);
+            }
+          }
+        });
+      }
+
+      return dissolvedPaths.length > 0 ? dissolvedPaths : null;
+    }
+  } // end clipPolygons()
+
+  //
+  function clipPoints(points, clipShapes, arcs, type) {
+    var index = new PathIndex(clipShapes, arcs);
+
+    var points2 = points.reduce(function(memo, feat) {
+      var n = feat ? feat.length : 0,
+          feat2 = [],
+          enclosed;
+
+      for (var i=0; i<n; i++) {
+        enclosed = index.findEnclosingShape(feat[i]) > -1;
+        if (type == 'clip' && enclosed || type == 'erase' && !enclosed) {
+          feat2.push(feat[i].concat());
+        }
+      }
+
+      memo.push(feat2.length > 0 ? feat2 : null);
+      return memo;
+    }, []);
+
+    return points2;
+  }
+
+  var ClipPoints = /*#__PURE__*/Object.freeze({
+    __proto__: null,
+    clipPoints: clipPoints
+  });
+
+  // Convert a source parameter (which can take several forms) into
+  // a dataset with a single layer.
+  function normalizeOverlaySource(clipSrc, targetDataset, optsArg) {
+    var opts = optsArg || {};
+    var bbox = opts.bbox || opts.bbox2;
+    var clipDataset;
+    if (bbox) {
+      clipDataset = convertClipBounds(bbox);
+    } else if (!clipSrc) {
+      stop$1('Command requires a source file, layer id or bbox');
+    } else if (clipSrc.geometry_type) {
+      // clipSrc is a layer (assumed in targetDataset)
+      // TODO: update tests to remove this case (only used in tests)
+      // error('Unsupported source format');
+      clipDataset = utils.defaults({layers: [clipSrc], disposable: true}, targetDataset);
+    } else if (clipSrc.layer && clipSrc.dataset) {
+      clipDataset = utils.defaults({layers: [clipSrc.layer]}, clipSrc.dataset);
+    } else if (clipSrc.layers?.length == 1) {
+      clipDataset = clipSrc;
+    } else {
+      error('Invalid source format');
+    }
+    if (clipSrc?.disposable) {
+      clipDataset.disposable = true;
+    }
+    return clipDataset;
+  }
+
+  // Create a merged dataset by appending the overlay layer to the target dataset
+  // so it is last in the layers array.
+  // DOES NOT insert clipping points
+  function mergeLayersForOverlay(targetLayers, targetDataset, clipSrc, opts) {
+    var clipDataset = normalizeOverlaySource(clipSrc, targetDataset, opts);
+    return mergeLayersForOverlay2(targetLayers, targetDataset, clipDataset);
+  }
+
+  function mergeLayersForOverlay2(targetLayers, targetDataset, clipDataset) {
+    var mergedDataset;
+    var clipLyr = clipDataset.layers[0];
+    if (targetDataset.arcs != clipDataset.arcs) {
+      // using external dataset -- need to merge arcs
+      if (!clipDataset.disposable) {
+        // copy overlay layer shapes because arc ids will be reindexed during merging
+        clipDataset.layers[0] = copyLayerShapes(clipDataset.layers[0]);
+      }
+      // merge external dataset with target dataset,
+      // so arcs are shared between target layers and clipping lyr
+      // Assumes that layers in clipDataset can be modified (if necessary, a copy should be passed in)
+      mergedDataset = mergeDatasets([targetDataset, clipDataset]);
+      buildTopology(mergedDataset); // identify any shared arcs between clipping layer and target dataset
+    } else {
+      // overlay layer belongs to the same dataset as target layers... move it to the end
+      mergedDataset = utils.extend({}, targetDataset);
+      mergedDataset.layers = targetDataset.layers.filter(function(lyr) {return lyr != clipLyr;});
+      mergedDataset.layers.push(clipLyr);
+    }
+    return mergedDataset;
+  }
+
+  function convertClipBounds(bb) {
+    var x0 = bb[0], y0 = bb[1], x1 = bb[2], y1 = bb[3],
+        arc = [[x0, y0], [x0, y1], [x1, y1], [x1, y0], [x0, y0]];
+
+    if (!(y1 > y0 && x1 > x0)) {
+      stop$1("Invalid bbox (should be [xmin, ymin, xmax, ymax]):", bb);
+    }
+    return {
+      arcs: new ArcCollection([arc]),
+      layers: [{
+        name: 'bbox',
+        shapes: [[[0]]],
+        geometry_type: 'polygon'
+      }]
+    };
+  }
+
+  var OverlayUtils = /*#__PURE__*/Object.freeze({
+    __proto__: null,
+    mergeLayersForOverlay: mergeLayersForOverlay,
+    mergeLayersForOverlay2: mergeLayersForOverlay2,
+    normalizeOverlaySource: normalizeOverlaySource
+  });
+
+  // Insert cutting points in arcs, where bbox intersects other shapes
+  // Return a polygon layer containing the bounding box vectors, divided at cutting points.
+  function divideDatasetByBBox(dataset, bbox) {
+    var arcs = dataset.arcs;
+    var data = findBBoxCutPoints(arcs, bbox);
+    var map = insertCutPoints(data.cutPoints, arcs);
+    arcs.dedupCoords();
+    remapDividedArcs(dataset, map);
+    // merge bbox dataset with target dataset,
+    // so arcs are shared between target layers and bbox layer
+    var clipDataset = bboxPointsToClipDataset(data.bboxPoints);
+    var mergedDataset = mergeDatasets([dataset, clipDataset]);
+    // TODO: detect if we need to rebuild topology (unlikely), like with the full clip command
+    // buildTopology(mergedDataset);
+    var clipLyr = mergedDataset.layers.pop();
+    dataset.arcs = mergedDataset.arcs;
+    dataset.layers = mergedDataset.layers;
+    return clipLyr;
+  }
+
+  function bboxPointsToClipDataset(arr) {
+    var arcs = [];
+    var shape = [];
+    var layer = {geometry_type: 'polygon', shapes: [[shape]]};
+    var p1, p2;
+    for (var i=0, n=arr.length - 1; i<n; i++) {
+      p1 = arr[i];
+      p2 = arr[i+1];
+      arcs.push([[p1.x, p1.y], [p2.x, p2.y]]);
+      shape.push(i);
+    }
+    return {
+      arcs: new ArcCollection(arcs),
+      layers: [layer]
+    };
+  }
+
+  function findBBoxCutPoints(arcs, bbox) {
+    var left = bbox[0],
+        bottom = bbox[1],
+        right = bbox[2],
+        top = bbox[3];
+
+    // arrays of intersection points along each bbox edge
+    var tt = [],
+        rr = [],
+        bb = [],
+        ll = [];
+
+    arcs.forEachSegment(function(i, j, xx, yy) {
+      var ax = xx[i],
+          ay = yy[i],
+          bx = xx[j],
+          by = yy[j];
+      var hit;
+      if (segmentOutsideBBox(ax, ay, bx, by, left, bottom, right, top)) return;
+      if (segmentInsideBBox(ax, ay, bx, by, left, bottom, right, top)) return;
+
+      hit = geom.segmentIntersection(left, top, right, top, ax, ay, bx, by);
+      if (hit) addHit(tt, hit, i, j, xx, yy);
+
+      hit = geom.segmentIntersection(left, bottom, right, bottom, ax, ay, bx, by);
+      if (hit) addHit(bb, hit, i, j, xx, yy);
+
+      hit = geom.segmentIntersection(left, bottom, left, top, ax, ay, bx, by);
+      if (hit) addHit(ll, hit, i, j, xx, yy);
+
+      hit = geom.segmentIntersection(right, bottom, right, top, ax, ay, bx, by);
+      if (hit) addHit(rr, hit, i, j, xx, yy);
+    });
+
+    return {
+      cutPoints: ll.concat(bb, rr, tt),
+      bboxPoints: getDividedBBoxPoints(bbox, ll, tt, rr, bb)
+    };
+
+    function addHit(arr, hit, i, j, xx, yy) {
+      if (!hit) return;
+      arr.push(formatHit(hit[0], hit[1], i, j, xx, yy));
+      if (hit.length == 4) {
+        arr.push(formatHit(hit[2], hit[3], i, j, xx, yy));
+      }
+    }
+
+    function formatHit(x, y, i, j, xx, yy) {
+      var ids = formatIntersectingSegment(x, y, i, j, xx, yy);
+      return getCutPoint(x, y, ids[0], ids[1]);
+    }
+  }
+
+  function segmentOutsideBBox(ax, ay, bx, by, xmin, ymin, xmax, ymax) {
+    return ax < xmin && bx < xmin || ax > xmax && bx > xmax ||
+        ay < ymin && by < ymin || ay > ymax && by > ymax;
+  }
+
+  function segmentInsideBBox(ax, ay, bx, by, xmin, ymin, xmax, ymax) {
+    return ax > xmin && bx > xmin && ax < xmax && bx < xmax &&
+        ay > ymin && by > ymin && ay < ymax && by < ymax;
+  }
+
+  // Returns an array of points representing the vertices in
+  // the bbox with cutting points inserted.
+  function getDividedBBoxPoints(bbox, ll, tt, rr, bb) {
+    var bl = {x: bbox[0], y: bbox[1]},
+        tl = {x: bbox[0], y: bbox[3]},
+        tr = {x: bbox[2], y: bbox[3]},
+        br = {x: bbox[2], y: bbox[1]};
+    ll = utils.sortOn(ll.concat([bl, tl]), 'y', true);
+    tt = utils.sortOn(tt.concat([tl, tr]), 'x', true);
+    rr = utils.sortOn(rr.concat([tr, br]), 'y', false);
+    bb = utils.sortOn(bb.concat([br, bl]), 'x', false);
+    return ll.concat(tt, rr, bb).reduce(function(memo, p2) {
+      var p1 = memo.length > 0 ? memo[memo.length-1] : null;
+      if (p1 === null || p1.x != p2.x || p1.y != p2.y) memo.push(p2);
+      return memo;
+    }, []);
+  }
+
+  var Bbox2Clipping = /*#__PURE__*/Object.freeze({
+    __proto__: null,
+    divideDatasetByBBox: divideDatasetByBBox,
+    segmentInsideBBox: segmentInsideBBox,
+    segmentOutsideBBox: segmentOutsideBBox
+  });
+
+  cmd.clipLayers = function(target, src, dataset, opts) {
+    return clipLayers(target, src, dataset, "clip", opts);
+  };
+
+  cmd.eraseLayers = function(target, src, dataset, opts) {
+    return clipLayers(target, src, dataset, "erase", opts);
+  };
+
+  cmd.clipLayer = function(targetLyr, src, dataset, opts) {
+    return cmd.clipLayers([targetLyr], src, dataset, opts)[0];
+  };
+
+  cmd.eraseLayer = function(targetLyr, src, dataset, opts) {
+    return cmd.eraseLayers([targetLyr], src, dataset, opts)[0];
+  };
+
+  cmd.sliceLayers = function(target, src, dataset, opts) {
+    return clipLayers(target, src, dataset, "slice", opts);
+  };
+
+  cmd.sliceLayer = function(targetLyr, src, dataset, opts) {
+    return cmd.sliceLayers([targetLyr], src, dataset, opts);
+  };
+
+  function clipLayersInPlace(layers, clipSrc, dataset, type, opts) {
+    var outputLayers = clipLayers(layers, clipSrc, dataset, type, opts);
+    // remove arcs from the clipping dataset, if they are not used by any layer
+    layers.forEach(function(lyr, i) {
+      var lyr2 = outputLayers[i];
+      lyr.shapes = lyr2.shapes;
+      lyr.data = lyr2.data;
+      if (lyr2.raster) {
+        lyr.raster = lyr2.raster;
+        lyr.raster_type = lyr2.raster_type;
+      }
+    });
+    dissolveArcs(dataset);
+  }
+
+  // @clipSrc: layer in @dataset or filename
+  // @type: 'clip' or 'erase'
+  function clipLayers(targetLayers, clipSrc, targetDataset, type, opts) {
+    profileStart('clipLayers');
+    opts = opts || {no_cleanup: true}; // TODO: update testing functions
+    var usingPathClip = utils.some(targetLayers, layerHasPaths);
+    var usingRasterClip = utils.some(targetLayers, layerHasRaster);
+    var mergedDataset, clipLyr, nodes, result;
+    var clipDataset;
+    if (usingRasterClip) {
+      result = clipRasterLayers(targetLayers, clipSrc, targetDataset, type, opts);
+      profileEnd('clipLayers');
+      return result;
+    }
+    clipDataset = normalizeOverlaySource(clipSrc, targetDataset, opts);
+    if (!opts.no_warn) {
+      warnIfBoundsDontOverlap(targetLayers, targetDataset, clipDataset, type);
+    }
+    if (opts.bbox2 && usingPathClip) { // assumes target dataset has arcs
+      result = clipLayersByBBox(targetLayers, targetDataset, opts);
+      profileEnd('clipLayers');
+      return result;
+    }
+    if (!usingPathClip) {
+      result = clipLayersByClipDataset(targetLayers, clipDataset, type, opts);
+      profileEnd('clipLayers');
+      return result;
+    }
+    // Merging the clip source into the target and cutting intersections builds a
+    // throwaway combined arc collection. With a GUI undo transaction active,
+    // addIntersectionCuts() would otherwise capture a full coordinate copy of the
+    // merged target+clip arcs -- redundant work, since undo is driven by the
+    // dataset-level reference swap below (the dataset unit records the original
+    // arcs by reference before targetDataset.arcs is replaced).
+    //
+    // addIntersectionCuts() also remaps every shared layer's shapes in place
+    // (rewriting arc ids for the split arcs), including the target layers. Those
+    // original shapes ARE needed for undo, so capture each target layer's baseline
+    // explicitly before suspending tracking for the throwaway construction.
+    noteDatasetWillChange(targetDataset, {operation: type, unit: 'arcs'});
+    targetLayers.forEach(function(lyr) {
+      noteLayerWillChange(lyr, {operation: type});
+    });
+    // Build the clipped output with undo tracking suspended: the merged arcs, the
+    // dissolved clip layer, and the per-layer clip results are all derived from
+    // the throwaway combined dataset and never need restoring. Undo is driven by
+    // the dataset reference swap plus the target-layer baseline captured above;
+    // run-command captures the integration of the returned output layers.
+    withActiveUndoTransaction(null, function() {
+      profileStart('mergeLayersForOverlay');
+      mergedDataset = mergeLayersForOverlay2(targetLayers, targetDataset, clipDataset);
+      profileEnd('mergeLayersForOverlay');
+      clipLyr = mergedDataset.layers[mergedDataset.layers.length-1];
+      nodes = addIntersectionCuts(mergedDataset, opts);
+      targetDataset.arcs = mergedDataset.arcs;
+      profileStart('clipDissolvePolygonLayer2');
+      clipLyr = utils.defaults({data: null}, clipLyr);
+      clipLyr = dissolvePolygonLayer2(clipLyr, mergedDataset, {quiet: true, silent: true});
+      profileEnd('clipDissolvePolygonLayer2');
+      profileStart('clipLayersByLayer');
+      result = clipLayersByLayer(targetLayers, clipLyr, nodes, type, opts);
+      profileEnd('clipLayersByLayer');
+    });
+    markDatasetChanged(targetDataset, {operation: type, unit: 'arcs'});
+    profileEnd('clipLayers');
+    return result;
+  }
+
+  function clipLayersByClipDataset(targetLayers, clipDataset, type, opts) {
+    var clipLyr = clipDataset.layers[0];
+    var nodes = new NodeCollection(clipDataset.arcs);
+    var result;
+    profileStart('clipLayersByLayer');
+    result = clipLayersByLayer(targetLayers, clipLyr, nodes, type, opts);
+    profileEnd('clipLayersByLayer');
+    return result;
+  }
+
+  function clipRasterLayers(targetLayers, clipSrc, targetDataset, type, opts) {
+    var clipDataset, clipBounds, bbox;
+    if (type != 'clip') {
+      stop$1('Raster layers only support clipping');
+    }
+    if (utils.some(targetLayers, function(lyr) {return !layerHasRaster(lyr);})) {
+      stop$1('Raster clipping cannot be mixed with vector target layers');
+    }
+    if (opts.bbox2) {
+      bbox = opts.bbox2;
+    } else {
+      clipDataset = normalizeOverlaySource(clipSrc, targetDataset, opts);
+      clipBounds = getLayerBounds(clipDataset.layers[0], clipDataset.arcs);
+      if (!clipBounds || !clipBounds.hasBounds()) {
+        stop$1('Missing raster clipping bounds');
+      }
+      bbox = clipBounds.toArray();
+    }
+    return targetLayers.map(function(lyr) {
+      clipRasterToBBox(lyr, bbox, opts);
+      return lyr;
+    });
+  }
+
+  function clipLayersByBBox(layers, dataset, opts) {
+    var bbox = opts.bbox2;
+    var clipLyr = divideDatasetByBBox(dataset, bbox);
+    var nodes = new NodeCollection(dataset.arcs);
+    var retn = clipLayersByLayer(layers, clipLyr, nodes, 'clip', opts);
+    return retn;
+  }
+
+  function clipLayersByLayer(targetLayers, clipLyr, nodes, type, opts) {
+    requirePolygonLayer(clipLyr, "Requires a polygon clipping layer");
+    return targetLayers.reduce(function(memo, targetLyr) {
+      if (type == 'slice') {
+        memo = memo.concat(sliceLayerByLayer(targetLyr, clipLyr, nodes, opts));
+      } else {
+        memo.push(clipLayerByLayer(targetLyr, clipLyr, nodes, type, opts));
+      }
+      return memo;
+    }, []);
+  }
+
+  function getSliceLayerName(clipLyr, field, i) {
+    var id = field ? clipLyr.data.getRecords()[0][field] : i + 1;
+    return 'slice-' + id;
+  }
+
+  function sliceLayerByLayer(targetLyr, clipLyr, nodes, opts) {
+    // may not need no_replace
+    var clipLayers = cmd.splitLayer(clipLyr, opts.id_field, {no_replace: true});
+    return clipLayers.map(function(clipLyr, i) {
+      var outputLyr = clipLayerByLayer(targetLyr, clipLyr, nodes, 'clip', opts);
+      outputLyr.name = getSliceLayerName(clipLyr, opts.id_field, i);
+      return outputLyr;
+    });
+  }
+
+  function clipLayerByLayer(targetLyr, clipLyr, nodes, type, opts) {
+    var arcs = nodes.arcs;
+    var shapeCount = targetLyr.shapes ? targetLyr.shapes.length : 0;
+    var nullCount = 0, sliverCount = 0;
+    var clippedShapes, outputLyr;
+    if (shapeCount === 0) {
+      return targetLyr; // ignore empty layer
+    }
+    if (targetLyr === clipLyr) {
+      stop$1('Can\'t clip a layer with itself');
+    }
+
+    // TODO: optimize some of these functions for bbox clipping
+    if (targetLyr.geometry_type == 'point') {
+      clippedShapes = clipPoints(targetLyr.shapes, clipLyr.shapes, arcs, type);
+    } else if (targetLyr.geometry_type == 'polygon') {
+      clippedShapes = clipPolygons(targetLyr.shapes, clipLyr.shapes, nodes, type, opts);
+    } else if (targetLyr.geometry_type == 'polyline') {
+      clippedShapes = clipPolylines(targetLyr.shapes, clipLyr.shapes, nodes, type);
+    } else {
+      stop$1('Invalid target layer:', targetLyr.name);
+    }
+
+    outputLyr = {
+      name: targetLyr.name,
+      geometry_type: targetLyr.geometry_type,
+      shapes: clippedShapes,
+      data: targetLyr.data // replaced post-filter
+    };
+
+    // Remove sliver polygons
+    if (opts.remove_slivers && outputLyr.geometry_type == 'polygon') {
+      sliverCount = filterClipSlivers(outputLyr, clipLyr, arcs);
+    }
+
+    // Remove null shapes (likely removed by clipping/erasing, although possibly already present)
+    cmd.filterFeatures(outputLyr, arcs, {remove_empty: true, verbose: false});
+
+    // clone data records (to avoid sharing records between layers)
+    // TODO: this is not needed when replacing target with a single layer
+    if (outputLyr.data) {
+      outputLyr.data = outputLyr.data.clone();
+    }
+
+    // TODO: redo messages, now that many layers may be clipped
+    nullCount = shapeCount - outputLyr.shapes.length;
+    if (nullCount && sliverCount) {
+      message(getClipMessage(nullCount, sliverCount));
+    }
+    return outputLyr;
+  }
+
+  function getClipMessage(nullCount, sliverCount) {
+    var nullMsg = nullCount ? utils.format('%,d null feature%s', nullCount, utils.pluralSuffix(nullCount)) : '';
+    var sliverMsg = sliverCount ? utils.format('%,d sliver%s', sliverCount, utils.pluralSuffix(sliverCount)) : '';
+    if (nullMsg || sliverMsg) {
+      return utils.format('Removed %s%s%s', nullMsg, (nullMsg && sliverMsg ? ' and ' : ''), sliverMsg);
+    }
+    return '';
+  }
+
+  // Warn (once per source/target pair) when a -clip / -erase / slice almost
+  // certainly won't do what the user wants. Two checks, in order of strength:
+  //
+  //   1. CRS mismatch -- one side is lat/lng and the other is projected. This
+  //      uses the same logic as requireDatasetsHaveCompatibleCRS() in
+  //      mapshaper-merging.mjs, but fires here as a friendlier, command-aware
+  //      warning before mergeDatasets() would otherwise stop() with a generic
+  //      message. It also catches a class of cases the bbox check misses: a
+  //      projected layer whose bbox straddles (0,0) often *does* overlap an
+  //      unprojected lat/lng bbox, even though the two are useless together.
+  //   2. Bbox-disjoint -- a fallback for the case where CRSes look compatible
+  //      (or are unknown on both sides) but the layers clearly aren't in the
+  //      same place. Usually a wrong-source-picker error.
+  //
+  // Empty target layers are ignored (separate failure mode; would just be
+  // noise). The CRS warning suppresses the bbox warning for the same target,
+  // so users see one warning per problem, not two.
+  // Skipped entirely if opts.no_warn is set.
+  function warnIfBoundsDontOverlap(targetLayers, targetDataset, clipDataset, type) {
+    var srcCRS = getDatasetCRS(clipDataset);
+    var targetCRS = getDatasetCRS(targetDataset);
+    var crsMismatch = srcCRS && targetCRS && isLatLngCRS(srcCRS) != isLatLngCRS(targetCRS);
+    var srcName = clipDataset.layers[0].name || '<unnamed>';
+    var srcBounds = getLayerBounds(clipDataset.layers[0], clipDataset.arcs);
+    targetLayers.forEach(function(targetLyr) {
+      var targetBounds = getLayerBounds(targetLyr, targetDataset.arcs);
+      if (!targetBounds || !targetBounds.hasBounds()) return;
+      if (crsMismatch) {
+        warnOnce(formatCRSMismatchMessage(type, srcName, targetLyr.name,
+          srcCRS, targetCRS));
+        return; // Don't also fire the (likely-misleading) bbox warning.
+      }
+      if (!srcBounds || !srcBounds.hasBounds()) return;
+      if (srcBounds.intersects(targetBounds)) return;
+      warnOnce(formatNoOverlapMessage(type, srcName, targetLyr.name,
+        srcBounds, targetBounds));
+    });
+  }
+
+  function formatCRSMismatchMessage(type, srcName, targetName, srcCRS, targetCRS) {
+    var verb = type === 'erase' ? 'erase' : 'clip';
+    var srcKind = isLatLngCRS(srcCRS) ? 'lng/lat (geographic)' : 'projected';
+    var targetKind = isLatLngCRS(targetCRS) ? 'lng/lat (geographic)' : 'projected';
+    return '-' + verb + ': source "' + srcName + '" uses ' + srcKind +
+      ' coordinates but target "' + (targetName || '<unnamed>') + '" uses ' +
+      targetKind + ' coordinates. The -' + verb +
+      ' will not produce a useful result; project one side to match the other first.';
+  }
+
+  function formatNoOverlapMessage(type, srcName, targetName, srcBounds, targetBounds) {
+    // 'slice' is a per-feature -clip variant; in user terms it has the same
+    // empty-output failure mode as clip, so we describe it under the same
+    // verb to keep the message simple.
+    var verb = type === 'erase' ? 'erase' : 'clip';
+    var consequence = type === 'erase'
+      ? 'will leave "' + (targetName || '<unnamed>') + '" unchanged'
+      : 'will produce empty output for "' + (targetName || '<unnamed>') + '"';
+    return '-' + verb + ': source "' + srcName + '" ' + bbToText(srcBounds) +
+      ' does not overlap target "' + (targetName || '<unnamed>') + '" ' +
+      bbToText(targetBounds) + '. The -' + verb + ' ' + consequence +
+      '. This usually indicates a coordinate system mismatch.';
+  }
+
+  function bbToText(b) {
+    return JSON.stringify(b.toArray());
+  }
+
+  var ClipErase = /*#__PURE__*/Object.freeze({
+    __proto__: null,
+    clipLayers: clipLayers,
+    clipLayersByBBox: clipLayersByBBox,
+    clipLayersByLayer: clipLayersByLayer,
+    clipLayersInPlace: clipLayersInPlace,
+    getClipMessage: getClipMessage,
+    warnIfBoundsDontOverlap: warnIfBoundsDontOverlap
+  });
 
   // Assign a cluster id to each polygon in a dataset, which can be used with
   //   one of the dissolve commands to dissolve the clusters
@@ -61751,7 +61762,7 @@ ${svg}
     return name == 'rectangle' || name == 'rectangles' || name == 'filter' && opts.cleanup;
   }
 
-  var version = "0.7.23";
+  var version = "0.7.24";
 
   // Parse command line args into commands and run them
   // Function takes an optional Node-style callback. A Promise is returned if no callback is given.
@@ -62723,6 +62734,97 @@ ${svg}
   var Blur = /*#__PURE__*/Object.freeze({
     __proto__: null,
     blurRasterLayers: blurRasterLayers
+  });
+
+  function getPolygonRewinder(nodes) {
+    var splitter = getSelfIntersectionSplitter(nodes);
+    return rewindPolygon;
+
+    function rewindPolygon(shp) {
+      var shp2 = [];
+      forEachShapePart(shp, function(ids) {
+        var rings = splitter(ids);
+        var path;
+        for (var i=0; i<rings.length; i++) {
+          path = rings[i];
+          if (geom.getPlanarPathArea(path, nodes.arcs) < 0) {
+            path = reversePath(path);
+          }
+          shp2.push(path);
+        }
+      });
+      return shp2.length > 0 ? shp2 : null;
+    }
+  }
+
+  function rewindPolygonParts(lyr, nodes) {
+    var rewind = getPolygonRewinder(nodes);
+    lyr.shapes = lyr.shapes.map(function(shp) {
+      return rewind(shp);
+    });
+  }
+
+  // TODO: Need to rethink polygon repair: these function can cause problems
+  // when part of a self-intersecting polygon is removed
+  //
+  function repairPolygonGeometry(layers, dataset, opts) {
+    var nodes = addIntersectionCuts(dataset);
+    layers.forEach(function(lyr) {
+      repairSelfIntersections(lyr, nodes);
+    });
+    return layers;
+  }
+
+  // Remove any small shapes formed by twists in each ring
+  // // OOPS, NO // Retain only the part with largest area
+  // // this causes problems when a cut-off hole has a matching ring in another polygon
+  // TODO: consider cases where cut-off parts should be retained
+  //
+  function repairSelfIntersections(lyr, nodes) {
+    var splitter = getSelfIntersectionSplitter(nodes);
+
+    lyr.shapes = lyr.shapes.map(function(shp, i) {
+      return cleanPolygon(shp);
+    });
+
+    function cleanPolygon(shp) {
+      var cleanedPolygon = [];
+      forEachShapePart(shp, function(ids) {
+        // TODO: consider returning null if path can't be split
+        var splitIds = splitter(ids);
+        if (splitIds.length === 0) {
+          error("[cleanPolygon()] Defective path:", ids);
+        } else if (splitIds.length == 1) {
+          cleanedPolygon.push(splitIds[0]);
+        } else {
+          var shapeArea = geom.getPlanarPathArea(ids, nodes.arcs),
+              sign = shapeArea > 0 ? 1 : -1,
+              mainRing;
+
+          splitIds.reduce(function(max, ringIds, i) {
+            var pathArea = geom.getPlanarPathArea(ringIds, nodes.arcs) * sign;
+            if (pathArea > max) {
+              mainRing = ringIds;
+              max = pathArea;
+            }
+            return max;
+          }, 0);
+
+          if (mainRing) {
+            cleanedPolygon.push(mainRing);
+          }
+        }
+      });
+      return cleanedPolygon.length > 0 ? cleanedPolygon : null;
+    }
+  }
+
+  var PolygonRepair = /*#__PURE__*/Object.freeze({
+    __proto__: null,
+    getPolygonRewinder: getPolygonRewinder,
+    repairPolygonGeometry: repairPolygonGeometry,
+    repairSelfIntersections: repairSelfIntersections,
+    rewindPolygonParts: rewindPolygonParts
   });
 
   function UndoTransaction(label) {
