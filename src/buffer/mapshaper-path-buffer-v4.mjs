@@ -154,10 +154,16 @@ export function getPolylineBufferMaker(dataset, opts) {
     // gate (via per-ring srcPos) keeps real buffer holes. Section-band mode
     // (no winding_fill) and the source-path edge get no provenance and pass
     // through unchanged.
+    //
+    // Restricted to closed source rings: a closed ring's offset overshoots are
+    // doubly-covered (safe to collapse), but an OPEN one-sided arc (e.g. a
+    // topological polygon's unbuffered-boundary remnant, buffered with caps)
+    // can have a concave-join dent that is its region's only coverage, which
+    // collapsing would cut away.
     function buildOneSidedRings(sideVerts) {
       var built = makeLeftBufferRings(sideVerts, dist,
         oneSidedBuffer ? pathSideVerts : null);
-      if (opts.no_loop_removal || !opts.buffer_ring_loops) {
+      if (opts.no_loop_removal || !opts.buffer_ring_loops || pathIsOpen(sideVerts)) {
         return built.rings;
       }
       var turnPrefix = getSourceTurnPrefix(sideVerts);

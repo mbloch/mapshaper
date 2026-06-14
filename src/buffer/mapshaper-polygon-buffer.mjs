@@ -41,11 +41,14 @@ function makePolygonBufferGeoJSON(lyr, dataset, opts) {
   var hasPositiveDistance = false;
   var hasNegativeDistance = false;
   if (useTopologicalMode) {
-    // The topological pipeline feeds the offset rings into a planar mosaic and
-    // selects tiles by source membership, not a winding-number union, so it
-    // keeps the section-band construction (plain maker).
+    // The topological pipeline selects mosaic tiles by source membership
+    // (boundary flood), which cannot resolve the self-overlapping winding-fill
+    // ring. So each feature's winding-fill offset rings are pre-dissolved into a
+    // clean (non-self-overlapping) polygon before they enter the shared mosaic;
+    // the construction speedup (loop removal cutting per-feature self-
+    // intersections) is preserved, and the mosaic is unchanged.
     return makeTopologicalPolygonBufferGeoJSON(lyr, dataset, opts, distanceFn,
-      uniqueArcTest, getPolygonRingBufferMaker(dataset, opts, 'left'));
+      uniqueArcTest, getPolygonRingBufferMaker(dataset, opts, 'left', true));
   }
   // Closed source rings are offset with the winding-fill construction: one
   // self-overlapping ring per source ring (its overshoot loops resolved by the
@@ -92,20 +95,24 @@ function getPolygonRingBufferMaker(dataset, opts, side, winding) {
 
 function makePositivePolygonBufferGeometry(shape, distance, dataset, opts,
     uniqueArcTest, leftBufferMaker) {
-  var coords = getPolygonMultiPolygonCoords(shape, dataset.arcs);
   var pathData = getPolygonBufferPathData(shape, uniqueArcTest);
+  if (!pathData.split) {
+    // A path is only split in the topological pipeline (via uniqueArcTest),
+    // which has its own function, so ordinary buffers always take this branch.
+    // The split branch below offsets the whole shape up front to merge with the
+    // source; doing that only when actually splitting avoids a full redundant
+    // offset pass, since makeClosedRingPositiveBufferGeometry re-offsets the
+    // rings per ring group.
+    return makeClosedRingPositiveBufferGeometry(shape, dataset.arcs,
+      distance, opts, leftBufferMaker);
+  }
+  var coords = getPolygonMultiPolygonCoords(shape, dataset.arcs);
   var bufferCoords = getBufferMultiPolygonCoords(pathData.paths, distance, leftBufferMaker);
-  var offsetGeom;
   var merged = coords.concat(bufferCoords);
   var geom = merged.length > 0 ? {
     type: 'MultiPolygon',
     coordinates: merged
   } : null;
-  if (!pathData.split) {
-    offsetGeom = makeClosedRingPositiveBufferGeometry(shape, dataset.arcs,
-      distance, opts, leftBufferMaker);
-    return offsetGeom;
-  }
   return geom ? dissolvePolygonBufferGeometry(geom, opts) : null;
 }
 
@@ -138,6 +145,10 @@ function makeTopologicalPolygonBufferGeoJSON(lyr, dataset, opts, distanceFn,
     hasPositiveDistance = true;
     pathData = getPolygonBufferPathData(shape, uniqueArcTest);
     bufferCoords = getBufferMultiPolygonCoords(pathData.paths, distance, bufferMaker);
+    // Resolve the winding-fill rings' self-overlaps into a clean polygon (the
+    // mosaic's boundary-flood membership cannot), so this feature enters the
+    // shared mosaic as an ordinary polygon.
+    bufferCoords = dissolveOffsetRingsToCoords(bufferCoords, opts);
     if (bufferCoords.length > 0) {
       bufferIds[i] = tmpGeometries.length;
       tmpGeometries.push({
@@ -290,17 +301,19 @@ function dissolvePolygonBufferGeometry(geom, opts) {
 function makeNegativePolygonBufferGeometry(shape, distance, dataset, opts,
     uniqueArcTest, bufferMaker) {
   var pathData = getPolygonBufferPathData(shape, uniqueArcTest);
-  var bufferCoords = getBufferMultiPolygonCoords(pathData.paths, distance, bufferMaker);
-  var targetDataset, outputLyr;
-  if (bufferCoords.length === 0) {
-    return getPolygonGeometry(shape, dataset.arcs);
-  }
   if (!pathData.split) {
+    // See makePositivePolygonBufferGeometry: ordinary buffers are never split,
+    // so this avoids the redundant full-shape offset that only the split
+    // (erase) branch below needs.
     return makeClosedRingNegativeBufferGeometry(shape, dataset.arcs, distance,
       opts, bufferMaker);
   }
-  targetDataset = getSingleShapeDataset(shape, dataset);
-  outputLyr = clipLayers([targetDataset.layers[0]],
+  var bufferCoords = getBufferMultiPolygonCoords(pathData.paths, distance, bufferMaker);
+  if (bufferCoords.length === 0) {
+    return getPolygonGeometry(shape, dataset.arcs);
+  }
+  var targetDataset = getSingleShapeDataset(shape, dataset);
+  var outputLyr = clipLayers([targetDataset.layers[0]],
     getBufferDataset(bufferCoords), targetDataset, 'erase', {
       no_cleanup: true,
       no_warn: true,
@@ -682,6 +695,21 @@ function getBufferDataset(coords) {
       coordinates: coords
     }]
   }, {type: 'polygon'});
+}
+
+// Union a set of winding-fill offset rings (which self-overlap) into clean,
+// non-self-overlapping MultiPolygon coordinates, via the winding-number
+// dissolve. Used by the topological pipeline to feed an ordinary polygon into
+// the shared mosaic (whose boundary-flood membership cannot resolve the
+// self-overlapping construction ring directly).
+function dissolveOffsetRingsToCoords(coords, opts) {
+  if (!coords || coords.length === 0) return [];
+  var dataset = getBufferDataset(coords);
+  if (!dataset.arcs) return [];
+  dissolveBufferDataset2(dataset, Object.assign({}, opts, {winding_fill: true}));
+  var lyr = dataset.layers[0];
+  var shape = lyr.shapes && lyr.shapes[0];
+  return shape ? getPolygonMultiPolygonCoords(shape, dataset.arcs) : [];
 }
 
 function getSingleShapeDataset(shape, dataset) {
