@@ -4,6 +4,75 @@ var ArcCollection = api.internal.ArcCollection;
 
 describe('mapshaper-clip-erase.js', function () {
 
+  describe('undo capture', function () {
+    // The path-clip branch merges the clip source into the target and cuts
+    // intersections on a throwaway combined arc collection. With a GUI undo
+    // transaction active, those in-place mutations must not be captured as a
+    // full coordinate copy of the merged arcs -- undo is driven by the
+    // dataset-level reference swap (the dataset unit holds the previous arcs by
+    // reference). Only the target dataset + replaced layer should be captured.
+    function runWithUndo(targetGeo, clipGeo, command) {
+      var I = api.internal;
+      var targetDs = I.importGeoJSON(targetGeo, {});
+      I.buildTopology(targetDs);
+      targetDs.layers[0].name = 'target';
+      var clipDs = I.importGeoJSON(clipGeo, {});
+      I.buildTopology(clipDs);
+      clipDs.layers[0].name = 'clipsrc';
+      var catalog = new I.Catalog();
+      catalog.addDataset(targetDs);
+      catalog.addDataset(clipDs);
+      catalog.setDefaultTarget([targetDs.layers[0]], targetDs);
+      var job = new I.Job(catalog);
+      var origArcs = targetDs.arcs;
+      var origShapes = JSON.stringify(targetDs.layers[0].shapes);
+      var tx = new I.UndoTransaction(command);
+      I.setActiveUndoTransaction(tx);
+      return new Promise(function(resolve, reject) {
+        I.runParsedCommands(I.parseCommands(command), job, function(err) {
+          I.clearActiveUndoTransaction(tx);
+          if (err) return reject(err);
+          resolve({dataset: targetDs, origArcs: origArcs, origShapes: origShapes, tx: tx});
+        });
+      });
+    }
+
+    // big circle so the redundant merged-arcs copy would be obvious if captured
+    function circle(n) {
+      var coords = [];
+      for (var i = 0; i <= n; i++) {
+        var a = 2 * Math.PI * i / n;
+        coords.push([10 * Math.cos(a), 10 * Math.sin(a)]);
+      }
+      return {type: 'Polygon', coordinates: [coords]};
+    }
+    var clipBox = {type: 'Polygon', coordinates: [[[0, -20], [20, -20], [20, 20], [0, 20], [0, -20]]]};
+
+    ['clip', 'erase'].forEach(function(op) {
+      it('-' + op + ' does not capture intermediate merged-arcs geometry', async function () {
+        var r = await runWithUndo(circle(500), clipBox, '-' + op + ' clipsrc');
+        var units = r.tx.getCapturedUnits();
+        // a dataset-level unit must be captured to support undo
+        assert.ok(units.some(function(u) { return u.type == 'dataset'; }));
+        // ...but the throwaway merged target+clip arcs must not be captured as a
+        // full coordinate copy (no 'arcs' unit, no copied vertex arrays). A
+        // zero-payload arcs-simplification unit from generic output integration
+        // (setThresholds with no simplification data) is fine.
+        assert.equal(units.some(function(u) {
+          return u.type == 'arcs' || !!u.xx;
+        }), false);
+      });
+
+      it('-' + op + ' restores the pre-clip state on undo (arcs by reference)', async function () {
+        var r = await runWithUndo(circle(500), clipBox, '-' + op + ' clipsrc');
+        assert.notStrictEqual(r.dataset.arcs, r.origArcs); // operation ran
+        api.internal.restoreCapturedUnits(r.tx.getCapturedUnits());
+        assert.strictEqual(r.dataset.arcs, r.origArcs);
+        assert.equal(JSON.stringify(r.dataset.layers[0].shapes), r.origShapes);
+      });
+    });
+  });
+
   describe('getClipMessage()', function () {
     it('test', function () {
       assert.equal(api.internal.getClipMessage(0, 1), 'Removed 1 sliver');

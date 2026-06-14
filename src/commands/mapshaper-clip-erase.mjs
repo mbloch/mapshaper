@@ -16,7 +16,7 @@ import { NodeCollection } from '../topology/mapshaper-nodes';
 import { dissolveArcs } from '../paths/mapshaper-arc-dissolve';
 import { dissolvePolygonLayer2 } from '../dissolve/mapshaper-polygon-dissolve2';
 import { profileStart, profileEnd } from '../utils/mapshaper-profile';
-import { markDatasetChanged, noteDatasetWillChange } from '../undo/mapshaper-undo-tracking';
+import { markDatasetChanged, noteDatasetWillChange, noteLayerWillChange, withActiveUndoTransaction } from '../undo/mapshaper-undo-tracking';
 import { clipRasterToBBox } from '../rasters/mapshaper-raster-utils';
 
 cmd.clipLayers = function(target, src, dataset, opts) {
@@ -86,22 +86,42 @@ export function clipLayers(targetLayers, clipSrc, targetDataset, type, opts) {
     profileEnd('clipLayers');
     return result;
   }
-  profileStart('mergeLayersForOverlay');
-  mergedDataset = mergeLayersForOverlay2(targetLayers, targetDataset, clipDataset);
-  profileEnd('mergeLayersForOverlay');
-  clipLyr = mergedDataset.layers[mergedDataset.layers.length-1];
-  nodes = addIntersectionCuts(mergedDataset, opts);
+  // Merging the clip source into the target and cutting intersections builds a
+  // throwaway combined arc collection. With a GUI undo transaction active,
+  // addIntersectionCuts() would otherwise capture a full coordinate copy of the
+  // merged target+clip arcs -- redundant work, since undo is driven by the
+  // dataset-level reference swap below (the dataset unit records the original
+  // arcs by reference before targetDataset.arcs is replaced).
+  //
+  // addIntersectionCuts() also remaps every shared layer's shapes in place
+  // (rewriting arc ids for the split arcs), including the target layers. Those
+  // original shapes ARE needed for undo, so capture each target layer's baseline
+  // explicitly before suspending tracking for the throwaway construction.
   noteDatasetWillChange(targetDataset, {operation: type, unit: 'arcs'});
-  targetDataset.arcs = mergedDataset.arcs;
+  targetLayers.forEach(function(lyr) {
+    noteLayerWillChange(lyr, {operation: type});
+  });
+  // Build the clipped output with undo tracking suspended: the merged arcs, the
+  // dissolved clip layer, and the per-layer clip results are all derived from
+  // the throwaway combined dataset and never need restoring. Undo is driven by
+  // the dataset reference swap plus the target-layer baseline captured above;
+  // run-command captures the integration of the returned output layers.
+  withActiveUndoTransaction(null, function() {
+    profileStart('mergeLayersForOverlay');
+    mergedDataset = mergeLayersForOverlay2(targetLayers, targetDataset, clipDataset);
+    profileEnd('mergeLayersForOverlay');
+    clipLyr = mergedDataset.layers[mergedDataset.layers.length-1];
+    nodes = addIntersectionCuts(mergedDataset, opts);
+    targetDataset.arcs = mergedDataset.arcs;
+    profileStart('clipDissolvePolygonLayer2');
+    clipLyr = utils.defaults({data: null}, clipLyr);
+    clipLyr = dissolvePolygonLayer2(clipLyr, mergedDataset, {quiet: true, silent: true});
+    profileEnd('clipDissolvePolygonLayer2');
+    profileStart('clipLayersByLayer');
+    result = clipLayersByLayer(targetLayers, clipLyr, nodes, type, opts);
+    profileEnd('clipLayersByLayer');
+  });
   markDatasetChanged(targetDataset, {operation: type, unit: 'arcs'});
-  profileStart('clipDissolvePolygonLayer2');
-  clipLyr = utils.defaults({data: null}, clipLyr);
-  clipLyr = dissolvePolygonLayer2(clipLyr, mergedDataset, {quiet: true, silent: true});
-  profileEnd('clipDissolvePolygonLayer2');
-
-  profileStart('clipLayersByLayer');
-  result = clipLayersByLayer(targetLayers, clipLyr, nodes, type, opts);
-  profileEnd('clipLayersByLayer');
   profileEnd('clipLayers');
   return result;
 }
