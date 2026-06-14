@@ -556,9 +556,11 @@ export function getOptionParser() {
       // (see 'offset-left' above)
       type: 'flag'
     })
-    .option('loop-removal', {
-      // undocumented: drop self-overlap loops from two-sided line buffers
-      // before dissolving (lines). Off by default; limited measured benefit.
+    .option('no-loop-removal', {
+      // Loop removal (collapsing self-overlap loops from two-sided line buffers
+      // before the dissolve) is on by default; this opts out. Undocumented: it
+      // is an internal construction optimization whose output matches the
+      // un-optimized buffer within the error tolerance.
       type: 'flag'
     })
     .option('no-cleanup', {

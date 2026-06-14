@@ -151,9 +151,9 @@ describe('mapshaper-buffer-loop-removal.js', function () {
       return polygonArea(JSON.parse(out['out.json']));
     }
 
-    it('preserves dissolved area within tolerance (opt-in flag)', async function () {
-      var on = await bufferArea('loop-removal');
-      var off = await bufferArea('');
+    it('preserves dissolved area within tolerance (on by default)', async function () {
+      var on = await bufferArea('');
+      var off = await bufferArea('no-loop-removal');
       var drift = Math.abs(on - off) / off;
       assert.ok(drift < 0.001,
         'area drift ' + (drift * 100).toFixed(4) + '% should be well under tolerance');
@@ -171,8 +171,8 @@ describe('mapshaper-buffer-loop-removal.js', function () {
 
     it('keeps holes of a self-crossing line that loop removal could fill',
       async function () {
-        var on = await holeCount('loop-removal');
-        var off = await holeCount('');
+        var on = await holeCount('');
+        var off = await holeCount('no-loop-removal');
         assert.equal(on, off, 'loop removal must not change hole count');
         assert.ok(on > 0, 'this fixture should produce holes');
       });
