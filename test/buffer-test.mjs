@@ -671,7 +671,67 @@ describe('mapshaper-buffer.js', function () {
     })
   })
 
+  // Ordinary (non-topological) polygon buffers offset each closed ring with the
+  // winding-fill construction and collapse self-overlap overshoot loops before
+  // the dissolve (default). The optimization must match the un-optimized
+  // (no-loop-removal) winding output within the buffer's error tolerance, and
+  // its source-turn gate must keep real buffer holes.
+  describe('winding-fill loop removal', function () {
+    function countHoles(geom) {
+      return getSignedRingAreas(geom).filter(function(area) {
+        return area < 0;
+      }).length;
+    }
+
+    it('positive buffer area matches no-loop-removal within tolerance', async function () {
+      var file = 'test/data/features/buffer/p_washington_state.json';
+      var def = getTotalBufferArea(getOutputGeometries(await api.applyCommands(
+        '-i ' + file + ' -buffer 10km -o format=geojson buffer.json')));
+      var off = getTotalBufferArea(getOutputGeometries(await api.applyCommands(
+        '-i ' + file + ' -buffer 10km no-loop-removal -o format=geojson buffer.json')));
+
+      assert(off > 0);
+      assert(Math.abs(def - off) / off < 0.005);
+    })
+
+    it('negative buffer area matches no-loop-removal within tolerance', async function () {
+      var def = getTotalBufferArea(getOutputGeometries(await api.applyCommands(
+        '-i p.json -buffer radius=-200 -o format=geojson buffer.json',
+        {'p.json': getDonut()})));
+      var off = getTotalBufferArea(getOutputGeometries(await api.applyCommands(
+        '-i p.json -buffer radius=-200 no-loop-removal -o format=geojson buffer.json',
+        {'p.json': getDonut()})));
+
+      assert(off > 0);
+      assert(Math.abs(def - off) / off < 0.005);
+    })
+
+    it('keeps a real positive-buffer hole that the gate must not collapse', async function () {
+      var def = getOutputGeometries(await api.applyCommands(
+        '-i c.json -buffer 1000 -o format=geojson buffer.json',
+        {'c.json': getAnnularCPolygon()}))[0];
+      var off = getOutputGeometries(await api.applyCommands(
+        '-i c.json -buffer 1000 no-loop-removal -o format=geojson buffer.json',
+        {'c.json': getAnnularCPolygon()}))[0];
+
+      // loop removal must not fill the central hole the un-optimized path keeps
+      assert.equal(countHoles(def), countHoles(off));
+      assert(countHoles(def) > 0);
+      assert.equal(pointInGeometry([0, 0], def), false);
+    })
+  })
+
 })
+
+function getTotalBufferArea(geoms) {
+  return geoms.reduce(function(sum, geom) {
+    if (!geom) return sum;
+    var net = getSignedRingAreas(geom).reduce(function(a, b) {
+      return a + b;
+    }, 0);
+    return sum + Math.abs(net);
+  }, 0);
+}
 
 function ringArea(ring) {
   var sum = 0;

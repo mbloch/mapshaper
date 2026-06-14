@@ -3,15 +3,23 @@ import { error } from '../utils/mapshaper-logging';
 // Assembles buffer rings from path vertices and offset ("buffer") vertices.
 // A ring runs backwards along the original path, then forwards along the
 // offset polyline, enclosing the buffered area between them.
+//
+// Each vertex carries a source position (the index of the source-path segment
+// it derives from), tracked parallel to the coordinates. Path-side vertices get
+// NaN: loop removal uses these positions to gate which self-crossings it
+// collapses, and a NaN position marks geometry (the source-path edge, caps)
+// that a collapsible overshoot pocket must never span.
 export function BufferBuilder() {
   var self = {};
-  var buffer, path;
+  var buffer, path, bufferPos, pathPos;
 
   init();
 
   function init() {
     buffer = [];
     path = [];
+    bufferPos = [];
+    pathPos = [];
   }
 
   self.size = function() {
@@ -20,30 +28,36 @@ export function BufferBuilder() {
 
   self.addPathVertex = function(p) {
     path.push(p);
+    pathPos.push(NaN);
   };
 
-  self.addBufferVertices = function(arr) {
+  self.addBufferVertices = function(arr, pos) {
     for (var i=0; i<arr.length; i++) {
-      self.addBufferVertex(arr[i]);
+      self.addBufferVertex(arr[i], pos);
     }
   };
 
-  self.addBufferVertex = function(p) {
+  self.addBufferVertex = function(p, pos) {
     var prevP = buffer[buffer.length - 1];
     if (prevP && pointsAreSame(prevP, p)) {
       return;
     }
     buffer.push(p);
+    bufferPos.push(pos === undefined ? NaN : pos);
   };
 
+  // Returns {ring, srcPos}: ring is the closed coordinate ring (first point
+  // repeated as last); srcPos is the parallel source-position array.
   self.done = function() {
-    var ring = path.reverse().concat(buffer);
+    var ring = path.slice().reverse().concat(buffer);
+    var srcPos = pathPos.slice().reverse().concat(bufferPos);
     if (ring.length < 3) {
       error('Defective buffer ring:', ring);
     }
     ring.push(ring[0].concat());
+    srcPos.push(srcPos[0]);
     init();
-    return ring;
+    return {ring: ring, srcPos: srcPos};
   };
 
   return self;
