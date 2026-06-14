@@ -498,15 +498,6 @@ export function getOptionParser() {
     .option('tolerance', {
       describe: 'acceptable error when buffering lines and polygons (default is 1%)'
     })
-    .option('vertices', {
-      describe: 'number of vertices to use when buffering points (default is 72)',
-      type: 'integer'
-    })
-    .option('quad-segs', {
-    // .option('arc-quality', {
-      describe: 'segments per quarter-circle in joins and caps (default is 8)',
-      type: 'integer'
-    })
     // .option('circle-quality', {
     //   // segments per circle in joins and caps
     //   type: 'integer'
@@ -522,6 +513,15 @@ export function getOptionParser() {
     .option('topological', {
       describe: '[polygons] buffer unshared boundaries without covering source polygon areas',
       type: 'flag'
+    })
+    .option('vertices', {
+      describe: 'number of vertices to use when buffering points (default is 72)',
+      type: 'integer'
+    })
+    .option('quad-segs', {
+    // .option('arc-quality', {
+      describe: 'segments per quarter-circle in joins and caps (default is 8)',
+      type: 'integer'
     })
     .option('debug-offset', {
       // generate initial buffer shapes but don't dissolve them
@@ -561,6 +561,16 @@ export function getOptionParser() {
       // before the dissolve) is on by default; this opts out. Undocumented: it
       // is an internal construction optimization whose output matches the
       // un-optimized buffer within the error tolerance.
+      type: 'flag'
+    })
+    .option('sector-band', {
+      // Undocumented escape hatch: build buffers with the older sector-band
+      // construction (per-segment offset bands + join-sector rings + a
+      // band-coverage audit, unioned by a boundary flood) instead of the
+      // default winding-fill construction. Applies to line buffers (one- and
+      // two-sided) and all polygon buffers (positive, negative, topological).
+      // Kept as a slower-but-conservative fallback and a debugging aid in case
+      // the winding-fill construction is found to mishandle some input.
       type: 'flag'
     })
     .option('no-cleanup', {

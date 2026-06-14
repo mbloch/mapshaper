@@ -735,6 +735,111 @@ describe('mapshaper-buffer.js', function () {
     })
   })
 
+  // The undocumented 'sector-band' option forces the older non-winding-fill
+  // construction (per-segment offset bands + join-sector rings + band-coverage
+  // audit, unioned by a boundary flood) as a conservative fallback. Its output
+  // must match the default winding-fill construction within the buffer's error
+  // tolerance for the supported use cases: two-sided line buffers and all
+  // polygon buffers (positive, negative, topological).
+  describe('sector-band fallback', function () {
+    function countHoles(geoms) {
+      return geoms.reduce(function(n, geom) {
+        return n + (geom ? getSignedRingAreas(geom).filter(function(a) {
+          return a < 0;
+        }).length : 0);
+      }, 0);
+    }
+
+    async function bufferGeoms(cmd, inputs) {
+      return getOutputGeometries(await api.applyCommands(
+        cmd + ' -o format=geojson buffer.json', inputs));
+    }
+
+    it('positive polygon buffer matches winding-fill within tolerance', async function () {
+      var file = 'test/data/features/buffer/p_washington_state.json';
+      var def = getTotalBufferArea(await bufferGeoms('-i ' + file + ' -buffer 10km'));
+      var sec = getTotalBufferArea(await bufferGeoms('-i ' + file + ' -buffer 10km sector-band'));
+      assert(sec > 0);
+      assert(Math.abs(def - sec) / sec < 0.005);
+    })
+
+    it('positive polygon with hole keeps the hole', async function () {
+      var file = 'test/data/features/buffer/o_polygon_with_hole_and_island.json';
+      var def = await bufferGeoms('-i ' + file + ' -buffer 500');
+      var sec = await bufferGeoms('-i ' + file + ' -buffer 500 sector-band');
+      assert.equal(countHoles(sec), countHoles(def));
+      assert(countHoles(sec) > 0);
+      assert(Math.abs(getTotalBufferArea(def) - getTotalBufferArea(sec)) /
+        getTotalBufferArea(sec) < 0.005);
+    })
+
+    it('negative polygon buffer matches winding-fill within tolerance', async function () {
+      var def = getTotalBufferArea(await bufferGeoms(
+        '-i p.json -buffer radius=-200', {'p.json': getDonut()}));
+      var sec = getTotalBufferArea(await bufferGeoms(
+        '-i p.json -buffer radius=-200 sector-band', {'p.json': getDonut()}));
+      assert(sec > 0);
+      assert(Math.abs(def - sec) / sec < 0.005);
+    })
+
+    it('topological polygon buffer matches winding-fill within tolerance', async function () {
+      var file = 'test/data/shapefile/six_counties.shp';
+      var def = await bufferGeoms('-i ' + file + ' -buffer 100m topological');
+      var sec = await bufferGeoms('-i ' + file + ' -buffer 100m topological sector-band');
+      assert(getTotalBufferArea(sec) > 0);
+      assert.equal(countHoles(sec), countHoles(def));
+      assert(Math.abs(getTotalBufferArea(def) - getTotalBufferArea(sec)) /
+        getTotalBufferArea(sec) < 0.005);
+    })
+
+    it('two-sided line buffer matches winding-fill within tolerance', async function () {
+      var line = {type: 'LineString',
+        coordinates: [[0, 0], [1000, 0], [1000, 1000], [2000, 1500], [1500, 2500]]};
+      var def = getTotalBufferArea(await bufferGeoms('-i l.json -buffer 200', {'l.json': line}));
+      var sec = getTotalBufferArea(await bufferGeoms('-i l.json -buffer 200 sector-band', {'l.json': line}));
+      assert(sec > 0);
+      assert(Math.abs(def - sec) / sec < 0.005);
+    })
+
+    it('one-sided line buffer matches winding-fill within tolerance', async function () {
+      var line = {type: 'LineString',
+        coordinates: [[0, 0], [1000, 0], [1000, 1000], [2000, 1500], [1500, 2500]]};
+      var def = getTotalBufferArea(await bufferGeoms('-i l.json -buffer 200 left', {'l.json': line}));
+      var sec = getTotalBufferArea(await bufferGeoms('-i l.json -buffer 200 left sector-band', {'l.json': line}));
+      assert(sec > 0);
+      assert(Math.abs(def - sec) / sec < 0.005);
+    })
+  })
+
+  // The debug-offset/debug-winding/debug-mosaic visualizations are only
+  // implemented for line buffers; for polygon buffers they must be ignored
+  // (a no-op that produces the ordinary buffer) rather than leaking into the
+  // per-shape dissolve and corrupting the output. Buffer output is
+  // deterministic, so the no-op contract is the exact ordinary-buffer output.
+  describe('debug flags are a no-op for polygon buffers', function () {
+    async function bufferJSON(cmd) {
+      // format=geojson output is returned as a Buffer; normalize to a string
+      // so identical content compares equal.
+      return String((await api.applyCommands(cmd + ' -o format=geojson buffer.json'))['buffer.json']);
+    }
+
+    ['debug-offset', 'debug-winding', 'debug-mosaic'].forEach(function(flag) {
+      it(flag + ' produces the ordinary polygon buffer', async function () {
+        var file = 'test/data/features/buffer/o_polygon_with_hole_and_island.json';
+        var def = await bufferJSON('-i ' + file + ' -buffer 500');
+        var dbg = await bufferJSON('-i ' + file + ' -buffer 500 ' + flag);
+        assert.strictEqual(dbg, def);
+      })
+
+      it(flag + ' produces the ordinary topological polygon buffer', async function () {
+        var file = 'test/data/shapefile/six_counties.shp';
+        var def = await bufferJSON('-i ' + file + ' -buffer 100m topological');
+        var dbg = await bufferJSON('-i ' + file + ' -buffer 100m topological ' + flag);
+        assert.strictEqual(dbg, def);
+      })
+    })
+  })
+
 })
 
 function getTotalBufferArea(geoms) {

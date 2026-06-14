@@ -128,9 +128,11 @@ export function getPolylineBufferMaker(dataset, opts) {
     if (simplifyIntervalFn) {
       verts = presimplifyPathVerts(verts, simplifyIntervalFn(dist), dist);
     }
-    if (!opts.no_outline && !oneSidedBuffer && pathIsOpen(verts)) {
+    if (!opts.no_outline && !oneSidedBuffer && !opts.sector_band && pathIsOpen(verts)) {
       // Fast path for ordinary two-sided line buffers: emit one closed
       // outline instead of many per-segment bands that must be dissolved.
+      // The sector-band escape hatch skips it to fall through to the
+      // per-segment band construction (makeLeftBufferRings, no winding fill).
       var built = makeTwoSidedOutlineRing(verts, dist);
       if (opts.no_loop_removal) return [built.ring];
       // Default: strip self-overlap loops (the dissolve would fill them anyway)

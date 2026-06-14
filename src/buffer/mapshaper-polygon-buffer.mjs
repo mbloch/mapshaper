@@ -6,7 +6,6 @@ import { getDatasetCRS, isLatLngCRS } from '../crs/mapshaper-projections';
 import { importGeoJSON } from '../geojson/geojson-import';
 import { getPolylineBufferMaker } from '../buffer/mapshaper-path-buffer-v4';
 import { splitAntimeridianBufferDataset } from '../buffer/mapshaper-polyline-buffer';
-import { clipLayers } from '../commands/mapshaper-clip-erase';
 import { R, R2D, pointSegDistSq2 } from '../geom/mapshaper-basic-geom';
 import { getPointToShapeDistance } from '../geom/mapshaper-path-geom';
 import { getShapeArea } from '../geom/mapshaper-polygon-geom';
@@ -17,12 +16,23 @@ import { addIntersectionCuts } from '../paths/mapshaper-intersection-cuts';
 import { fixNestingErrors, groupPolygonRings } from '../polygons/mapshaper-ring-nesting';
 import { PathIndex } from '../paths/mapshaper-path-index';
 import { MosaicIndex } from '../polygons/mapshaper-mosaic-index';
-import { cloneShape } from '../paths/mapshaper-shape-utils';
 import { getArcClassifier } from '../topology/mapshaper-arc-classifier';
-import { stop } from '../utils/mapshaper-logging';
+import { stop, warn } from '../utils/mapshaper-logging';
 
 export function makePolygonBuffer(lyr, dataset, opts) {
   var spherical = isLatLngCRS(getDatasetCRS(dataset));
+  // The debug-offset/debug-winding/debug-mosaic visualizations are implemented
+  // only for line buffers. They have no handling in the polygon pipeline; left
+  // unstripped they leak into the per-shape dissolve and produce malformed
+  // output, so drop them and warn rather than silently mislead.
+  if (opts.debug_offset || opts.debug_winding || opts.debug_mosaic) {
+    warn('debug-offset/debug-winding/debug-mosaic are not implemented for polygon buffers; ignoring');
+    opts = Object.assign({}, opts, {
+      debug_offset: false,
+      debug_winding: false,
+      debug_mosaic: false
+    });
+  }
   var output = makePolygonBufferGeoJSON(lyr, dataset, opts);
   var dataset2 = importGeoJSON(output.geojson, {type: 'polygon'});
   if (spherical) {
@@ -64,11 +74,11 @@ function makePolygonBufferGeoJSON(lyr, dataset, opts) {
     if (distance < 0) {
       hasNegativeDistance = true;
       return makeNegativePolygonBufferGeometry(shape, -distance, dataset, opts,
-        uniqueArcTest, rightBufferMaker);
+        rightBufferMaker);
     }
     hasPositiveDistance = true;
     return makePositivePolygonBufferGeometry(shape, distance, dataset, opts,
-      uniqueArcTest, leftBufferMaker);
+      leftBufferMaker);
   });
   return {
     geojson: {
@@ -80,40 +90,29 @@ function makePolygonBufferGeoJSON(lyr, dataset, opts) {
 }
 
 function getPolygonRingBufferMaker(dataset, opts, side, winding) {
+  // The sector-band escape hatch forces the older non-winding construction even
+  // for callers that request winding-fill (see the 'sector-band' option).
+  var useWinding = !!winding && !opts.sector_band;
   var makerOpts = Object.assign({}, opts, {
     left: side == 'left',
     right: side == 'right',
-    winding_fill: !!winding,
+    winding_fill: useWinding,
     // Enable overshoot-loop removal on the single winding-fill offset ring.
     // Scoped to closed polygon rings: an open one-sided line buffer relies on
     // the band-coverage audit (skipped under winding_fill) for concave-join
     // dents, which loop removal would collapse.
-    buffer_ring_loops: !!winding
+    buffer_ring_loops: useWinding
   });
   return getPolylineBufferMaker(dataset, makerOpts);
 }
 
 function makePositivePolygonBufferGeometry(shape, distance, dataset, opts,
-    uniqueArcTest, leftBufferMaker) {
-  var pathData = getPolygonBufferPathData(shape, uniqueArcTest);
-  if (!pathData.split) {
-    // A path is only split in the topological pipeline (via uniqueArcTest),
-    // which has its own function, so ordinary buffers always take this branch.
-    // The split branch below offsets the whole shape up front to merge with the
-    // source; doing that only when actually splitting avoids a full redundant
-    // offset pass, since makeClosedRingPositiveBufferGeometry re-offsets the
-    // rings per ring group.
-    return makeClosedRingPositiveBufferGeometry(shape, dataset.arcs,
-      distance, opts, leftBufferMaker);
-  }
-  var coords = getPolygonMultiPolygonCoords(shape, dataset.arcs);
-  var bufferCoords = getBufferMultiPolygonCoords(pathData.paths, distance, leftBufferMaker);
-  var merged = coords.concat(bufferCoords);
-  var geom = merged.length > 0 ? {
-    type: 'MultiPolygon',
-    coordinates: merged
-  } : null;
-  return geom ? dissolvePolygonBufferGeometry(geom, opts) : null;
+    leftBufferMaker) {
+  // Non-topological positive buffers are never path-split (only the topological
+  // pipeline splits, and it has its own function), so each shape's ring groups
+  // are offset and dissolved directly.
+  return makeClosedRingPositiveBufferGeometry(shape, dataset.arcs,
+    distance, opts, leftBufferMaker);
 }
 
 function makeTopologicalPolygonBufferGeoJSON(lyr, dataset, opts, distanceFn,
@@ -147,8 +146,12 @@ function makeTopologicalPolygonBufferGeoJSON(lyr, dataset, opts, distanceFn,
     bufferCoords = getBufferMultiPolygonCoords(pathData.paths, distance, bufferMaker);
     // Resolve the winding-fill rings' self-overlaps into a clean polygon (the
     // mosaic's boundary-flood membership cannot), so this feature enters the
-    // shared mosaic as an ordinary polygon.
-    bufferCoords = dissolveOffsetRingsToCoords(bufferCoords, opts);
+    // shared mosaic as an ordinary polygon. The sector-band fallback emits
+    // boundary-flood-resolvable bands, so it feeds the mosaic directly (as the
+    // topological pipeline did before the winding-fill construction).
+    if (!opts.sector_band) {
+      bufferCoords = dissolveOffsetRingsToCoords(bufferCoords, opts);
+    }
     if (bufferCoords.length > 0) {
       bufferIds[i] = tmpGeometries.length;
       tmpGeometries.push({
@@ -299,29 +302,11 @@ function dissolvePolygonBufferGeometry(geom, opts) {
 }
 
 function makeNegativePolygonBufferGeometry(shape, distance, dataset, opts,
-    uniqueArcTest, bufferMaker) {
-  var pathData = getPolygonBufferPathData(shape, uniqueArcTest);
-  if (!pathData.split) {
-    // See makePositivePolygonBufferGeometry: ordinary buffers are never split,
-    // so this avoids the redundant full-shape offset that only the split
-    // (erase) branch below needs.
-    return makeClosedRingNegativeBufferGeometry(shape, dataset.arcs, distance,
-      opts, bufferMaker);
-  }
-  var bufferCoords = getBufferMultiPolygonCoords(pathData.paths, distance, bufferMaker);
-  if (bufferCoords.length === 0) {
-    return getPolygonGeometry(shape, dataset.arcs);
-  }
-  var targetDataset = getSingleShapeDataset(shape, dataset);
-  var outputLyr = clipLayers([targetDataset.layers[0]],
-    getBufferDataset(bufferCoords), targetDataset, 'erase', {
-      no_cleanup: true,
-      no_warn: true,
-      quiet: true,
-      silent: true
-    })[0];
-  return outputLyr.shapes && outputLyr.shapes.length > 0 ?
-    getPolygonGeometry(outputLyr.shapes[0], targetDataset.arcs) : null;
+    bufferMaker) {
+  // Non-topological negative buffers are never path-split, so each shape's ring
+  // groups are offset and eroded directly.
+  return makeClosedRingNegativeBufferGeometry(shape, dataset.arcs, distance,
+    opts, bufferMaker);
 }
 
 function makeClosedRingNegativeBufferGeometry(shape, arcs, distance, opts,
@@ -431,9 +416,12 @@ function makeClosedRingBufferGeometry(shape, arcs, bufferDataset, opts, distance
   var bufferLyr = bufferDataset.layers[0];
   var bufferShape, bufferData, erodedShape;
   if (!bufferDataset.arcs) return null;
-  // The offset rings come from the winding-fill maker (one self-overlapping
-  // ring per source ring), so they must be unioned by winding number.
-  dissolveBufferDataset2(bufferDataset, Object.assign({}, opts, {winding_fill: true}));
+  // The default offset rings come from the winding-fill maker (one self-
+  // overlapping ring per source ring) and must be unioned by winding number;
+  // the sector-band fallback emits overlapping bands that a boundary flood
+  // resolves instead (its maker leaves winding_fill off to match).
+  dissolveBufferDataset2(bufferDataset,
+    Object.assign({}, opts, {winding_fill: !opts.sector_band}));
   bufferShape = bufferLyr.shapes && bufferLyr.shapes[0];
   if (!bufferShape) return null;
   bufferData = exportPathData(bufferShape, bufferDataset.arcs, 'polygon');
@@ -710,17 +698,6 @@ function dissolveOffsetRingsToCoords(coords, opts) {
   var lyr = dataset.layers[0];
   var shape = lyr.shapes && lyr.shapes[0];
   return shape ? getPolygonMultiPolygonCoords(shape, dataset.arcs) : [];
-}
-
-function getSingleShapeDataset(shape, dataset) {
-  return {
-    arcs: dataset.arcs.getFilteredCopy(),
-    info: Object.assign({}, dataset.info),
-    layers: [{
-      geometry_type: 'polygon',
-      shapes: [cloneShape(shape)]
-    }]
-  };
 }
 
 function getBufferMultiPolygonCoords(paths, distance, bufferMaker) {
