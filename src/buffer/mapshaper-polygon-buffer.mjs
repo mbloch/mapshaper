@@ -38,14 +38,23 @@ function makePolygonBufferGeoJSON(lyr, dataset, opts) {
   var distanceFn = getBufferDistanceFunction(lyr, dataset, opts);
   var useTopologicalMode = !!opts.topological;
   var uniqueArcTest = useTopologicalMode ? getUniqueArcTest(lyr, dataset.arcs) : null;
-  var leftBufferMaker = getPolygonRingBufferMaker(dataset, opts, 'left');
-  var rightBufferMaker = getPolygonRingBufferMaker(dataset, opts, 'right');
   var hasPositiveDistance = false;
   var hasNegativeDistance = false;
   if (useTopologicalMode) {
+    // The topological pipeline feeds the offset rings into a planar mosaic and
+    // selects tiles by source membership, not a winding-number union, so it
+    // keeps the section-band construction (plain maker).
     return makeTopologicalPolygonBufferGeoJSON(lyr, dataset, opts, distanceFn,
-      uniqueArcTest, leftBufferMaker);
+      uniqueArcTest, getPolygonRingBufferMaker(dataset, opts, 'left'));
   }
+  // Closed source rings are offset with the winding-fill construction: one
+  // self-overlapping ring per source ring (its overshoot loops resolved by the
+  // winding-number dissolve in makeClosedRingBufferGeometry) instead of many
+  // overlapping per-segment section bands. The single ring carries far fewer
+  // rings and self-intersections into the dissolve, which dominates polygon-
+  // buffer runtime.
+  var leftBufferMaker = getPolygonRingBufferMaker(dataset, opts, 'left', true);
+  var rightBufferMaker = getPolygonRingBufferMaker(dataset, opts, 'right', true);
   var geometries = lyr.shapes.map(function(shape, i) {
     var distance = distanceFn(i);
     if (!distance || !shape) return null;
@@ -67,10 +76,16 @@ function makePolygonBufferGeoJSON(lyr, dataset, opts) {
   };
 }
 
-function getPolygonRingBufferMaker(dataset, opts, side) {
+function getPolygonRingBufferMaker(dataset, opts, side, winding) {
   var makerOpts = Object.assign({}, opts, {
     left: side == 'left',
-    right: side == 'right'
+    right: side == 'right',
+    winding_fill: !!winding,
+    // Enable overshoot-loop removal on the single winding-fill offset ring.
+    // Scoped to closed polygon rings: an open one-sided line buffer relies on
+    // the band-coverage audit (skipped under winding_fill) for concave-join
+    // dents, which loop removal would collapse.
+    buffer_ring_loops: !!winding
   });
   return getPolylineBufferMaker(dataset, makerOpts);
 }
@@ -403,7 +418,9 @@ function makeClosedRingBufferGeometry(shape, arcs, bufferDataset, opts, distance
   var bufferLyr = bufferDataset.layers[0];
   var bufferShape, bufferData, erodedShape;
   if (!bufferDataset.arcs) return null;
-  dissolveBufferDataset2(bufferDataset, opts);
+  // The offset rings come from the winding-fill maker (one self-overlapping
+  // ring per source ring), so they must be unioned by winding number.
+  dissolveBufferDataset2(bufferDataset, Object.assign({}, opts, {winding_fill: true}));
   bufferShape = bufferLyr.shapes && bufferLyr.shapes[0];
   if (!bufferShape) return null;
   bufferData = exportPathData(bufferShape, bufferDataset.arcs, 'polygon');

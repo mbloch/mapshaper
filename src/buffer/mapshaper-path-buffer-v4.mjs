@@ -140,18 +140,42 @@ export function getPolylineBufferMaker(dataset, opts) {
         built.srcPos, getSourceTurnPrefix(verts))];
     }
     if (!opts.right || opts.left) {
-      rings = rings.concat(makeLeftBufferRings(verts, dist,
-        oneSidedBuffer ? pathSideVerts : null));
+      rings = rings.concat(buildOneSidedRings(verts));
     }
     if (!opts.left || opts.right) {
-      rings = rings.concat(makeLeftBufferRings(verts.slice().reverse(), dist,
-        oneSidedBuffer ? pathSideVerts : null));
+      rings = rings.concat(buildOneSidedRings(verts.slice().reverse()));
     }
     return rings;
+
+    // Build one offset side's rings, collapsing self-overlap overshoot loops in
+    // each single winding-fill ring before the dissolve. The winding dissolve
+    // (the dominant cost for polygon buffers) would fill these loops anyway, so
+    // removing them up front cuts its self-intersection load; the source-turn
+    // gate (via per-ring srcPos) keeps real buffer holes. Section-band mode
+    // (no winding_fill) and the source-path edge get no provenance and pass
+    // through unchanged.
+    function buildOneSidedRings(sideVerts) {
+      var built = makeLeftBufferRings(sideVerts, dist,
+        oneSidedBuffer ? pathSideVerts : null);
+      if (opts.no_loop_removal || !opts.buffer_ring_loops) {
+        return built.rings;
+      }
+      var turnPrefix = getSourceTurnPrefix(sideVerts);
+      return built.rings.map(function(ring, i) {
+        var srcPos = built.srcPositions[i];
+        return srcPos ?
+          removeBufferRingLoops(ring, BUFFER_LOOP_WINDOW, srcPos, turnPrefix) : ring;
+      });
+    }
   }
 
   function makeLeftBufferRings(verts, dist, pathSideVerts) {
     var rings = [];
+    // Parallel to rings[]: each entry is the source-position array for the
+    // corresponding ring (from builder.done()), or null for rings with no
+    // single-path provenance (join sectors, band patches). Used by the
+    // winding-fill caller to gate loop removal.
+    var ringsSrcPos = [];
     var openPath = pathIsOpen(verts);
     var x0, y0, x1, y1, x2, y2; // path traversal coords
     var p1, p2; // endpoints of new offset segment
@@ -161,6 +185,16 @@ export function getPolylineBufferMaker(dataset, opts) {
     var firstBearing;
     var joinPoints;
     var segId;
+
+    function flushRing() {
+      var d = builder.done();
+      rings.push(d.ring);
+      ringsSrcPos.push(d.srcPos);
+    }
+    function pushAuxRing(ring) {
+      rings.push(ring);
+      ringsSrcPos.push(null);
+    }
 
     if (verts.length > 0) {
       x0 = x2 = verts[0][0];
@@ -186,20 +220,24 @@ export function getPolylineBufferMaker(dataset, opts) {
         joinAngle = getJoinAngle(bearingPrev, bearing);
       }
 
-      // various connections between current offset segment and prev segment
+      // various connections between current offset segment and prev segment.
+      // Offset ("buffer") vertices are tagged with the source segment id
+      // (segId) so loop removal can gate self-crossings by source-path turn;
+      // the slight imprecision of tagging a previous-segment endpoint (p2Prev)
+      // with the current segId is harmless for the smooth turn gate.
       if (segId === 0) {
         // first extruded segment - no previous segment to join to - add
         // first endpoint to the buffer
-        builder.addBufferVertex(p1);
+        builder.addBufferVertex(p1, segId);
       } else if (opts.winding_fill && joinAngle < 0) {
         // Clipper2-style concave join: never cut the band and never split the
         // ring. Walk the full incoming offset (p2Prev), dip back to the
         // original path vertex, then walk out the full outgoing offset (p1).
         // The self-overlap is resolved by the winding-number union, so no
         // section splits, join-sector rings, or band-coverage audit are needed.
-        builder.addBufferVertex(p2Prev);
-        builder.addBufferVertex([x1, y1]);
-        builder.addBufferVertex(p1);
+        builder.addBufferVertex(p2Prev, segId);
+        builder.addBufferVertex([x1, y1], segId);
+        builder.addBufferVertex(p1, segId);
       } else if (joinAngle > roundJoinSegAngle * 1.5) {
         // large rightwards bend in path requiring a round join with at least
         // one interpolated segment
@@ -207,7 +245,7 @@ export function getPolylineBufferMaker(dataset, opts) {
         // by extending the last segment to make an outside join
         // builder.addBufferVertex(p2Prev, false)
         joinPoints = makeOutsideRoundJoin(x1, y1, bearingPrev - 90, joinAngle, dist);
-        builder.addBufferVertices(joinPoints);
+        builder.addBufferVertices(joinPoints, segId);
         // don't add first endpoint of new offset segment to the buffer - we just
         // added an extended vertex to replace it.
         // builder.addBufferVertex(p1, false)
@@ -215,18 +253,18 @@ export function getPolylineBufferMaker(dataset, opts) {
       } else if (joinAngle > -1e-10 && joinAngle < 1e-10) {
         // nearly collinear segments - add one point to the buffer
         // TODO: confirm that p1 and p2Prev are always very close
-        builder.addBufferVertex(p1);
+        builder.addBufferVertex(p1, segId);
       } else if (joinAngle > 0 && (hit = elbowJoin(p1Prev, p2Prev, p1, p2, bearingPrev, bearing, x1, y1, dist)) ||
         joinAngle < 0 && (hit = bufferSegmentIntersection(p1Prev, p2Prev, p1, p2))) {
         // shallow rightward bend in path, or leftward bend and segments
         // intersect: make an elbow join
-        builder.addBufferVertex(hit);
+        builder.addBufferVertex(hit, segId);
         p1 = hit;
       } else if (joinAngle > 0) {
         // Very shallow convex joins can fail to produce a useful elbow when
         // offset segments are nearly parallel or one segment is very short.
         // Treat them like nearly collinear segments instead of splitting.
-        builder.addBufferVertex(p1);
+        builder.addBufferVertex(p1, segId);
       } else if (joinAngle < 0 &&
           (hit = shallowAngleJoin(p2Prev, p1, x1, y1, dist))) {
         // Shallow leftward bend in path where segments do not intersect:
@@ -236,20 +274,20 @@ export function getPolylineBufferMaker(dataset, opts) {
         // segments at very shallow negative angles sometimes do not intersect. This
         // caused spikes in the buffer boundary and errors in keeping track of
         // whether the last-added vertex was inside or outside of the buffered area
-        builder.addBufferVertex(hit);
+        builder.addBufferVertex(hit, segId);
         p1 = hit;
       } else {
         // start a new buffer section to avoid gaps in dissolved buffer shape
         // caused by a tangle of intersecting interior paths
-        builder.addBufferVertex(p2Prev);
-        rings.push(builder.done());
+        builder.addBufferVertex(p2Prev, segId);
+        flushRing();
         // Cover the wedge between the two offset directions with a round
         // join, emitted as a separate ring that shares its radial edges with
         // the two adjacent buffer sections; without it, the dissolved buffer
         // is pinched at the bend vertex.
-        rings.push(makeJoinSectorRing(x1, y1, bearing - 90, -joinAngle, dist, p1, p2Prev));
+        pushAuxRing(makeJoinSectorRing(x1, y1, bearing - 90, -joinAngle, dist, p1, p2Prev));
         addPathStart(verts[segId]);
-        builder.addBufferVertex(p1);
+        builder.addBufferVertex(p1, segId);
       }
 
       addPathSegment(verts[segId], verts[segId + 1], pathSideVerts);
@@ -265,7 +303,7 @@ export function getPolylineBufferMaker(dataset, opts) {
     if (p2Prev) {
       // add final offset segment endpoint (the last path segment is never
       // suppressed, so the buffer section in progress ends normally)
-      builder.addBufferVertex(p2Prev);
+      builder.addBufferVertex(p2Prev, segId - 1);
     }
 
     if (x2 == x0 && y2 == y0) { // closed path
@@ -273,21 +311,22 @@ export function getPolylineBufferMaker(dataset, opts) {
       // TODO - figure out which bearing to use
       joinAngle = getJoinAngle(bearing, firstBearing);
       if (joinAngle > 0) {
-        builder.addBufferVertices(makeFinalJoin(x2, y2, bearing - 90, joinAngle, dist));
+        builder.addBufferVertices(makeFinalJoin(x2, y2, bearing - 90, joinAngle, dist), segId - 1);
       } else if (joinAngle < 0 && segId > 1 &&
           !bufferSegmentIntersection(p1Prev, p2Prev, p1First, p2First)) {
         // Concave closure with non-intersecting first/last offset segments:
         // cover the wedge between the two offset directions with a separate
         // sector ring, like at section splits above (otherwise the dissolved
         // buffer is pinched at the closure vertex).
-        rings.push(makeJoinSectorRing(x2, y2, firstBearing - 90, -joinAngle, dist, p1First, p2Prev));
+        pushAuxRing(makeJoinSectorRing(x2, y2, firstBearing - 90, -joinAngle, dist, p1First, p2Prev));
       }
     } else if (capStyle == 'round') {
-      // open path, add a cap to finish
-      builder.addBufferVertices(makeRoundCap(x2, y2, bearing - 90, dist));
+      // open path, add a cap to finish. Cap vertices get a NaN source position
+      // so loop removal never collapses a pocket that spans the cap.
+      builder.addBufferVertices(makeRoundCap(x2, y2, bearing - 90, dist), NaN);
     }
 
-    rings.push(builder.done());
+    flushRing();
     if (openPath && !opts.no_audit && !opts.winding_fill) {
       // patch band regions that the join construction cut off without
       // replacement coverage (see addUncoveredCutBandRings); auditing the
@@ -301,8 +340,10 @@ export function getPolylineBufferMaker(dataset, opts) {
           pathSideVerts.slice().reverse() : pathSideVerts;
       }
       addUncoveredCutBandRings(rings, auditVerts, dist);
+      // band patches have no single-path provenance; keep arrays aligned
+      while (ringsSrcPos.length < rings.length) ringsSrcPos.push(null);
     }
-    return rings;
+    return {rings: rings, srcPositions: ringsSrcPos};
   }
 
   // ---------------------------------------------------------------------
