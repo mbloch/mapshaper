@@ -1,3 +1,7 @@
+v0.7.24
+* `-buffer` performance improvements
+* Added undocumented `sector-band` option for slower but possibly more robust buffer creation.
+
 v0.7.23
 * Added a `-buffer` command for buffering points, lines and polygons.
 * The `-buffer topological` option is for buffering groups of adjacent polygons so the buffers extend into the empty space around the polygons without overlapping any of the original polygon rings.
