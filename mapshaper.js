@@ -42415,7 +42415,20 @@ ${svg}
         // TODO - figure out which bearing to use
         joinAngle = getJoinAngle(bearing, firstBearing);
         if (joinAngle > 0) {
-          builder.addBufferVertices(makeFinalJoin(x2, y2, bearing - 90, joinAngle, dist), segId - 1);
+          // Close the ring exactly onto its first offset vertex (p1First).
+          // makeFinalJoin's terminal point is recomputed via
+          // getOffsetPoint(seam, (bearing-90)+joinAngle) -- mathematically equal
+          // to p1First = getOffsetPoint(seam, firstBearing-90) but ~1 ULP away,
+          // because the closing angle is summed differently. That sub-ULP gap
+          // leaves a near-zero-width sliver at the seam that the winding-number
+          // dissolve cannot resolve consistently across JS engines (Math.sin/cos
+          // last-ULP values differ between V8 versions), intermittently splitting
+          // the filled buffer into a source-as-hole "band". Reusing p1First closes
+          // the seam exactly. Copy it: buffer[0] is the same p1First reference and
+          // unprojectFeatures() rewrites ring coordinates in place for lat-long
+          // datasets, so a shared reference would be mutated twice.
+          builder.addBufferVertices(makeRoundJoin(x2, y2, bearing - 90, joinAngle, dist), segId - 1);
+          if (p1First) builder.addBufferVertex(p1First.concat(), segId - 1);
         } else if (joinAngle < 0 && segId > 1 &&
             !bufferSegmentIntersection(p1Prev, p2Prev, p1First, p2First)) {
           // Concave closure with non-intersecting first/last offset segments:
@@ -43072,12 +43085,6 @@ ${svg}
         verts.push(p);
       }
       return verts;
-    }
-
-    function makeFinalJoin(x, y, direction, angle, dist) {
-      var points = makeRoundJoin(x, y, direction, angle, dist);
-      points.push(getOffsetPoint(x, y, direction + angle, dist));
-      return points;
     }
 
     function makeRoundCap(x, y, startDir, dist) {
@@ -61762,7 +61769,7 @@ ${svg}
     return name == 'rectangle' || name == 'rectangles' || name == 'filter' && opts.cleanup;
   }
 
-  var version = "0.7.24";
+  var version = "0.7.25";
 
   // Parse command line args into commands and run them
   // Function takes an optional Node-style callback. A Promise is returned if no callback is given.
