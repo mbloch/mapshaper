@@ -1,7 +1,6 @@
 import {
   getPlanarSegmentEndpoint,
-  bearingDegrees2D,
-  wrap
+  bearingDegrees2D
 } from '../geom/mapshaper-geodesic';
 import { isLatLngCRS } from '../crs/mapshaper-projections';
 import { ShapeIter } from '../paths/mapshaper-shape-iter';
@@ -71,23 +70,61 @@ export function getOffsetFunction(crs, opts) {
   if (!isLatLngCRS(crs)) {
     return getPlanarSegmentEndpoint;
   }
-  // Offset each point along a great circle (spherical geodesic) by default, or
-  // along a rhumb line if opts.rhumb is set. The rhumb offset holds a constant
-  // bearing, so the endpoint falls short of the target great-circle distance and
-  // drifts in direction as the radius grows -- large buffers come out distorted
-  // (egg-shaped caps/joins). The great-circle "direct" walk lands at the true
-  // geodesic distance in the true geodesic direction, so it corrects the radius
-  // and makes round caps/joins true geodesic circles, while the rest of the
-  // buffer construction stays in planar Mercator coords.
-  // TODO: rewrite to use Mercator coords directly
-  var destFn = opts && opts.rhumb ? getRhumbLineDestination : getGreatCircleDestination;
-  return function(x, y, bearing, meterDist) {
-    var p = fromWebMercator(x, y);
-    var p2 = destFn(p[0], p[1], bearing, meterDist);
-    var p3 = toWebMercator(p2[0], p2[1]);
-    p3[0] = unwrapX(p3[0], x);
-    return p3;
-  };
+  // Offset each point by a true geodesic distance, working directly in spherical
+  // Mercator coordinates (the rest of the buffer construction is planar Mercator),
+  // so we avoid the round-trip through lon/lat that the lat/long destination
+  // formulas would require. This relies on the Gudermannian / isometric-latitude
+  // identities, exact for web Mercator (y = R*psi, u = y/R):
+  //   sin(phi) = tanh(u),  cos(phi) = sech(u) = 1/cosh(u),
+  //   psi = atanh(sin phi)  =>  y = R*atanh(sin phi).
+  //
+  // The default great-circle walk lands at the true geodesic distance in the true
+  // geodesic direction, so it corrects the radius and makes round caps/joins true
+  // geodesic circles. The opts.rhumb walk holds a constant bearing (a straight
+  // line in Mercator), so the endpoint falls short of the great-circle distance
+  // and drifts in direction as the radius grows -- large buffers come out
+  // distorted (egg-shaped caps/joins) -- but it is occasionally useful.
+  return opts && opts.rhumb ? rhumbOffset : greatCircleOffset;
+}
+
+// Great-circle (spherical geodesic) offset, computed directly in Mercator coords.
+// bearing: compass degrees; meterDist: meters; x, y and the result: Mercator.
+function greatCircleOffset(x, y, bearing, meterDist) {
+  var theta = bearing * D2R;
+  var u = y / R;
+  var delta = meterDist / R; // angular distance traveled
+  var sinPhi1 = Math.tanh(u);
+  var cosPhi1 = 1 / Math.cosh(u);
+  var sinDelta = Math.sin(delta);
+  var cosDelta = Math.cos(delta);
+  var sinPhi2 = sinPhi1 * cosDelta + cosPhi1 * sinDelta * Math.cos(theta);
+  if (sinPhi2 > 1) sinPhi2 = 1;
+  else if (sinPhi2 < -1) sinPhi2 = -1;
+  var dLambda = Math.atan2(Math.sin(theta) * sinDelta * cosPhi1,
+    cosDelta - sinPhi1 * sinPhi2);
+  return [unwrapX(x + R * dLambda, x), R * Math.atanh(sinPhi2)];
+}
+
+// Rhumb-line (constant-bearing loxodrome) offset, computed directly in Mercator
+// coords. A loxodrome is a straight line in Mercator, so the east displacement is
+// dx = tan(theta) * dy; only the north-south advance (a constant *angular* step
+// in latitude, which Mercator stretches non-linearly) needs the Gudermannian.
+function rhumbOffset(x, y, bearing, meterDist) {
+  var theta = bearing * D2R;
+  var u = y / R;
+  var phi1 = 2 * Math.atan(Math.exp(u)) - Math.PI / 2; // gd(u)
+  var dPhi = (meterDist / R) * Math.cos(theta);
+  var phi2 = phi1 + dPhi;
+  // clamp latitude to the poles rather than letting it wrap past them
+  if (Math.abs(phi2) > Math.PI / 2) phi2 = phi2 > 0 ? Math.PI / 2 : -Math.PI / 2;
+  var y2 = R * Math.atanh(Math.sin(phi2));
+  // tan(theta) * dy is ill-conditioned for a due E-W line (dPhi -> 0, dy -> 0,
+  // tan(theta) -> infinity); fall back to the local Mercator scale factor
+  // sec(phi1) = cosh(u).
+  var x2 = Math.abs(dPhi) > 1e-12 ?
+    x + Math.tan(theta) * (y2 - y) :
+    x + meterDist * Math.sin(theta) * Math.cosh(u);
+  return [unwrapX(x2, x), y2];
 }
 
 export function getBearingFunction(crs) {
@@ -131,52 +168,4 @@ function getRhumbLineBearing(lng1, lat1, lng2, lat2) {
   return (theta / D2R + 360) % 360;
 }
 
-// Calculates the destination point traveling a given distance along a rhumb line
-// from a starting lat/long coordinate with a constant bearing.
-// Returns [lng, lat] in degrees. Reference:
-//   https://www.movable-type.co.uk/scripts/latlong.html#rhumb-destination
-export function getRhumbLineDestination(lng, lat, bearing, meterDist) {
-  var d = meterDist / R; // angular distance traveled
-  var phi1 = lat * D2R;
-  var lambda1 = lng * D2R;
-  var theta = bearing * D2R;
-  var dPhi = d * Math.cos(theta);
-  var phi2 = phi1 + dPhi;
-  // clamp latitude to the poles rather than letting it wrap past them
-  if (Math.abs(phi2) > Math.PI / 2) {
-    phi2 = phi2 > 0 ? Math.PI / 2 : -Math.PI / 2;
-  }
-  // dPsi is the difference in "stretched" (Mercator) latitudes
-  var dPsi = Math.log(Math.tan(phi2 / 2 + Math.PI / 4) / Math.tan(phi1 / 2 + Math.PI / 4));
-  // q is ill-conditioned for an E-W line (dPsi -> 0), so fall back to cos(phi1)
-  var q = Math.abs(dPsi) > 1e-12 ? dPhi / dPsi : Math.cos(phi1);
-  var dLambda = d * Math.sin(theta) / q;
-  var lambda2 = lambda1 + dLambda;
-  return [wrap(lambda2 / D2R), phi2 / D2R];
-}
-
-// Destination point a given great-circle (spherical geodesic) distance from a
-// start point along an initial compass bearing. Closed-form, no iteration.
-// Unlike the rhumb-line version, the endpoint is at great-circle distance
-// @meterDist from the start (not loxodrome distance), so it does not fall short
-// or drift in direction at large distances. Reference:
-//   https://www.movable-type.co.uk/scripts/latlong.html#dest-point
-export function getGreatCircleDestination(lng, lat, bearing, meterDist) {
-  var delta = meterDist / R; // angular distance traveled
-  var theta = bearing * D2R;
-  var phi1 = lat * D2R;
-  var lambda1 = lng * D2R;
-  var sinPhi1 = Math.sin(phi1);
-  var cosPhi1 = Math.cos(phi1);
-  var sinDelta = Math.sin(delta);
-  var cosDelta = Math.cos(delta);
-  var sinPhi2 = sinPhi1 * cosDelta + cosPhi1 * sinDelta * Math.cos(theta);
-  if (sinPhi2 > 1) sinPhi2 = 1;
-  else if (sinPhi2 < -1) sinPhi2 = -1;
-  var phi2 = Math.asin(sinPhi2);
-  var lambda2 = lambda1 + Math.atan2(
-    Math.sin(theta) * sinDelta * cosPhi1,
-    cosDelta - sinPhi1 * sinPhi2);
-  return [wrap(lambda2 / D2R), phi2 / D2R];
-}
 
