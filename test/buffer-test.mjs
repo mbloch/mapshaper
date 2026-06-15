@@ -573,6 +573,34 @@ describe('mapshaper-buffer.js', function () {
       assert.equal(getSmallHoleCount(geoms, 1e-8), 0);
     })
 
+    // Regression: a positive polygon buffer must fill the whole expanded
+    // footprint, not just band the perimeter (which leaves the source shape as
+    // a hole -- the signature of the interior failing to fill). The plain and
+    // topological results must agree, both larger than the source area.
+    it('s_nc_county.json: -buffer 1000 fills the interior (no perimeter band)', async function () {
+      var file = 'test/data/features/buffer/s_nc_county.json';
+      function netArea(geoms) {
+        return geoms.reduce(function(sum, g) {
+          return g ? sum + getSignedRingAreas(g).reduce(function(a, b) { return a + b; }, 0) : sum;
+        }, 0);
+      }
+      var src = netArea(getOutputGeometries(await api.applyCommands(
+        '-i ' + file + ' -o format=geojson buffer.json')));
+      var plain = getOutputGeometries(await api.applyCommands(
+        '-i ' + file + ' -buffer 1000 -o format=geojson buffer.json'));
+      var topo = getOutputGeometries(await api.applyCommands(
+        '-i ' + file + ' -buffer 1000 topological -o format=geojson buffer.json'));
+
+      assert(src > 0);
+      // a perimeter band would have net area well below the source area
+      assert(netArea(plain) > src, 'plain buffer should enlarge the polygon');
+      assert.equal(plain.reduce(function(n, g) {
+        return n + (g ? getSignedRingAreas(g).filter(function(a) { return a < 0; }).length : 0);
+      }, 0), 0, 'plain buffer should not punch a source-shaped hole');
+      assert(Math.abs(netArea(plain) - netArea(topo)) / netArea(topo) < 0.005,
+        'plain and topological buffers should agree');
+    })
+
     it('expands shells and shrinks holes', async function () {
       var out = await api.applyCommands(
         '-i polygon.json -buffer 200 -o format=geojson buffer.json',
