@@ -601,6 +601,54 @@ describe('mapshaper-buffer.js', function () {
         'plain and topological buffers should agree');
     })
 
+    // The "perimeter band" was a cross-engine numerical artifact: the convex
+    // seam of a closed buffer ring closed onto a recomputed offset vertex that
+    // differed from the ring's first offset vertex by ~1 ULP (the closing angle
+    // was summed differently), leaving a sub-ULP sliver the winding dissolve
+    // resolved inconsistently. It filled in Node but banded in some browsers
+    // (Chrome's V8), whose Math.sin/cos last-ULP values differ. The fix closes
+    // the seam onto an exact copy of the first offset vertex. This test
+    // simulates the cross-engine difference by perturbing the trig functions by
+    // +/-1 ULP and asserts the interior always fills (no source-shaped hole).
+    it('s_nc_county.json: -buffer 1000 stays filled under +/-1 ULP trig perturbation', async function () {
+      var file = 'test/data/features/buffer/s_nc_county.json';
+      var real = {cos: Math.cos, sin: Math.sin, atan2: Math.atan2,
+        sqrt: Math.sqrt, tan: Math.tan};
+      var ab = new ArrayBuffer(8), fa = new Float64Array(ab), ia = new BigInt64Array(ab);
+      function ulp(x, k) { if (!isFinite(x)) return x; fa[0] = x; ia[0] += BigInt(k); return fa[0]; }
+      // deterministic LCG so the test is reproducible (not flaky); use high
+      // bits (low LCG bits have short periods) for a 5-value +/-2 ULP spread
+      var seed = 0x9e3779b9 >>> 0;
+      function k() { seed = (seed * 1664525 + 1013904223) >>> 0; return ((seed >>> 27) % 5) - 2; }
+      function netArea(geoms) {
+        return geoms.reduce(function(sum, g) {
+          return g ? sum + getSignedRingAreas(g).reduce(function(a, b) { return a + b; }, 0) : sum;
+        }, 0);
+      }
+      var src = netArea(getOutputGeometries(await api.applyCommands(
+        '-i ' + file + ' -o format=geojson buffer.json')));
+      try {
+        for (var t = 0; t < 200; t++) {
+          Math.cos = function(x) { return ulp(real.cos(x), k()); };
+          Math.sin = function(x) { return ulp(real.sin(x), k()); };
+          Math.atan2 = function(y, x) { return ulp(real.atan2(y, x), k()); };
+          Math.sqrt = function(x) { return ulp(real.sqrt(x), k()); };
+          Math.tan = function(x) { return ulp(real.tan(x), k()); };
+          var net = netArea(getOutputGeometries(await api.applyCommands(
+            '-i ' + file + ' -buffer 1000 -o format=geojson buffer.json')));
+          Math.cos = real.cos; Math.sin = real.sin; Math.atan2 = real.atan2;
+          Math.sqrt = real.sqrt; Math.tan = real.tan;
+          // a "perimeter band" only covers the buffer annulus, so its net area
+          // drops well below the source area; a correct filled buffer exceeds it
+          assert(net > src, 'buffer should stay filled, not band ' +
+            '(perturbation trial ' + t + ': net ' + net + ' vs source ' + src + ')');
+        }
+      } finally {
+        Math.cos = real.cos; Math.sin = real.sin; Math.atan2 = real.atan2;
+        Math.sqrt = real.sqrt; Math.tan = real.tan;
+      }
+    })
+
     it('expands shells and shrinks holes', async function () {
       var out = await api.applyCommands(
         '-i polygon.json -buffer 200 -o format=geojson buffer.json',
