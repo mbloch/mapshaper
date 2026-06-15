@@ -1,3 +1,6 @@
+v0.7.25
+* Fixed a rare buffer construction error.
+
 v0.7.24
 * `-buffer` performance improvements
 * Added undocumented `sector-band` option for slower but possibly more robust buffer creation.
