@@ -1,3 +1,6 @@
+v0.7.26
+* Added `geodesic` option to `-buffer` command, for buffering projected data using geodesic distances rather than projected planar distances.
+
 v0.7.25
 * Fixed a rare buffer construction error.
 
