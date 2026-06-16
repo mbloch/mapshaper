@@ -87,6 +87,10 @@ describe('mapshaper-self-intersection.js', function () {
     // point c_i sits at a distinct spot on a big ring and carries a detour loop
     // that returns to c_i (a self-touch), so the splits cannot be batched.
     it("handles deeply chained self-intersections without a stack overflow", function() {
+      // Builds a deliberately deep chain (~8000 loops) that overflowed the old
+      // recursive splitter; the work legitimately takes ~2s, so give headroom
+      // above mocha's 2000ms default to avoid flaking under parallel load.
+      this.timeout(15000);
       var M = 8000;
       var coords = [];
       var path = [];

@@ -514,6 +514,10 @@ export function getOptionParser() {
       describe: '[polygons] buffer unshared boundaries without covering source polygon areas',
       type: 'flag'
     })
+    .option('geodesic', {
+      describe: '[projected data] buffer using geodesic distances',
+      type: 'flag'
+    })
     .option('vertices', {
       describe: 'number of vertices to use when buffering points (default is 72)',
       type: 'integer'

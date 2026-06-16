@@ -2,8 +2,20 @@ import { mergeDatasetsIntoDataset } from '../dataset/mapshaper-merging';
 import { makePolygonBuffer } from '../buffer/mapshaper-polygon-buffer';
 import { makePolylineBuffer, makeOffsetLines } from '../buffer/mapshaper-polyline-buffer';
 import { makePointBuffer } from '../buffer/mapshaper-point-buffer';
-import { setOutputLayerName } from '../dataset/mapshaper-layer-utils';
-import { mergeOutputLayersIntoDataset } from '../dataset/mapshaper-dataset-utils';
+import { setOutputLayerName, copyLayer } from '../dataset/mapshaper-layer-utils';
+import {
+  mergeOutputLayersIntoDataset,
+  copyDatasetInfo
+} from '../dataset/mapshaper-dataset-utils';
+import {
+  getDatasetCRS,
+  getDatasetCrsInfo,
+  setDatasetCrsInfo,
+  getCrsInfo,
+  isLatLngCRS,
+  isInvertibleCRS
+} from '../crs/mapshaper-projections';
+import { projectDataset } from './mapshaper-proj';
 import {
   withActiveUndoTransaction,
   noteDatasetWillChange,
@@ -80,16 +92,65 @@ function buildAndMergeBuffer(lyr, dataset, opts) {
   if (opts.topological && lyr.geometry_type != 'polygon') {
     stop('The topological buffer option requires a polygon layer');
   }
-  if (lyr.geometry_type == 'point') {
-    dataset2 = makePointBuffer(lyr, dataset, opts);
-  } else if (lyr.geometry_type == 'polyline') {
-    dataset2 = makePolylineBuffer(lyr, dataset, opts);
-  } else if (lyr.geometry_type == 'polygon') {
-    dataset2 = makePolygonBuffer(lyr, dataset, opts);
+  if (opts.geodesic && !isLatLngCRS(getDatasetCRS(dataset))) {
+    // Geodesic buffer of projected data: reproject the source paths through
+    // WGS84 lng/lat, run the ordinary (spherical) buffer pipeline, then
+    // reproject the result back to the source CRS (see buildGeodesicProjectedBufferDataset).
+    dataset2 = buildGeodesicProjectedBufferDataset(lyr, dataset, opts);
   } else {
-    stop("Unsupported geometry type");
+    dataset2 = buildBufferDataset(lyr, dataset, opts);
   }
 
   return mergeOutputLayersIntoDataset(lyr, dataset, dataset2, opts);
+}
+
+function buildBufferDataset(lyr, dataset, opts) {
+  if (lyr.geometry_type == 'point') {
+    return makePointBuffer(lyr, dataset, opts);
+  }
+  if (lyr.geometry_type == 'polyline') {
+    return makePolylineBuffer(lyr, dataset, opts);
+  }
+  if (lyr.geometry_type == 'polygon') {
+    return makePolygonBuffer(lyr, dataset, opts);
+  }
+  stop("Unsupported geometry type");
+}
+
+// Build a geodesic buffer for a projected dataset by reusing the spherical
+// (lat-long) buffer pipeline. The buffer construction already runs in web
+// Mercator internally and treats lng/lat input as geodesic, so we only need to
+// move the source coordinates into lng/lat and the result back:
+//   1. Clone the target layer + arcs and reproject the clone to WGS84 lng/lat.
+//      (Reprojecting projected -> lng/lat requires the source CRS to have an
+//      inverse; hence the isInvertibleCRS guard. The clone keeps the original
+//      dataset untouched and avoids reprojecting unrelated sibling layers.)
+//   2. Run the normal buffer on the lng/lat clone -- isLatLngCRS(clone) is true,
+//      so the construction selects geodesic offsets automatically.
+//   3. Reproject the buffer output back to the source CRS (lng/lat -> projected
+//      uses the always-present forward transform). projectDataset's
+//      pre-projection clip/clamp handles buffer geometry that exceeds the
+//      destination projection's valid extent; any remaining unprojectable
+//      vertices are dropped (and counted) by projectArcs2/projectPointLayer.
+function buildGeodesicProjectedBufferDataset(lyr, dataset, opts) {
+  var srcInfo = getDatasetCrsInfo(dataset);
+  if (!srcInfo.crs) {
+    stop('Unable to buffer -- source coordinate system is unknown');
+  }
+  if (!isInvertibleCRS(srcInfo.crs)) {
+    stop('The geodesic option requires a source projection with an inverse');
+  }
+  var wgs84 = getCrsInfo('wgs84');
+  var clone = {
+    info: copyDatasetInfo(dataset.info),
+    arcs: dataset.arcs ? dataset.arcs.getFilteredCopy() : null,
+    layers: [copyLayer(lyr)]
+  };
+  projectDataset(clone, srcInfo.crs, wgs84.crs, {});
+  setDatasetCrsInfo(clone, wgs84);
+  var dataset2 = buildBufferDataset(clone.layers[0], clone, opts);
+  projectDataset(dataset2, wgs84.crs, srcInfo.crs, {});
+  setDatasetCrsInfo(dataset2, srcInfo);
+  return dataset2;
 }
 
