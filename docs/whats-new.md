@@ -11,7 +11,7 @@ This is a curated list of recently added features. For the full list of changes,
 
 <div class="whats-new-entry">
 
-**Buffer command.** The `-buffer` command makes buffers around point, lines and polygons. The command uses geodesic distance on lat-long datasets and planar distance on projected datasets. Negative `radius` parameters shrink polygons instead of expanding them. The `topological` option prevents buffers from overlapping adjacent polygons (buffers fill the empty space around groups of polygons).
+**Buffer command.** The `-buffer` command makes buffers around point, lines and polygons. The command uses geodesic distance on lat-long datasets and on projected datasets with the `geodesic` option. Negative `radius` parameters shrink polygons (positive distances expand them). The `topological` option prevents buffers from overlapping nearby polygons.
 
 → See [`-buffer`](/docs/reference.html#-buffer).
 </div>
