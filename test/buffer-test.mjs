@@ -916,6 +916,82 @@ describe('mapshaper-buffer.js', function () {
     })
   })
 
+  describe('geodesic option for projected data', function () {
+    // A polygon and a line near 45N, where web-mercator scale distortion is
+    // large. The geodesic buffer of the projected data should match the
+    // geodesic buffer of the lat-long source.
+    var poly = {type: 'FeatureCollection', features: [{type: 'Feature',
+      properties: {}, geometry: {type: 'Polygon',
+        coordinates: [[[-100, 44], [-99, 44], [-99, 45], [-100, 45], [-100, 44]]]}}]};
+    var line = {type: 'FeatureCollection', features: [{type: 'Feature',
+      properties: {}, geometry: {type: 'LineString',
+        coordinates: [[-100, 44], [-99, 45], [-98, 44]]}}]};
+
+    // Sum of geodesic feature areas (m^2). The command must yield a wgs84
+    // lng/lat layer; this.area then returns spherical area.
+    function geodesicArea(cmd, geojson) {
+      return new Promise(function(resolve, reject) {
+        api.applyCommands(cmd + ' -each "_A=this.area" -o format=geojson out.json',
+          {'in.json': JSON.stringify(geojson)}, function(err, o) {
+            if (err) return reject(err);
+            var g = JSON.parse(String(o['out.json']));
+            resolve(g.features.reduce(function(s, f) {
+              return s + (f.properties._A || 0);
+            }, 0));
+          });
+      });
+    }
+
+    it('polygon: geodesic buffer of a UTM dataset matches the lat-long geodesic buffer', async function () {
+      var a = await geodesicArea('-i in.json -buffer 50km', poly);
+      var b = await geodesicArea(
+        '-i in.json -proj +proj=utm +zone=14 -buffer 50km geodesic -proj wgs84', poly);
+      assert(Math.abs(b - a) / a < 1e-9, 'rel diff ' + Math.abs(b - a) / a);
+    })
+
+    it('line: geodesic buffer of a UTM dataset matches the lat-long geodesic buffer', async function () {
+      var a = await geodesicArea('-i in.json -buffer 25km', line);
+      var b = await geodesicArea(
+        '-i in.json -proj +proj=utm +zone=14 -buffer 25km geodesic -proj wgs84', line);
+      assert(Math.abs(b - a) / a < 1e-9, 'rel diff ' + Math.abs(b - a) / a);
+    })
+
+    it('web-mercator input: geodesic buffer matches the lat-long geodesic buffer', async function () {
+      var a = await geodesicArea('-i in.json -buffer 50km', poly);
+      var b = await geodesicArea(
+        '-i in.json -proj webmercator -buffer 50km geodesic -proj wgs84', poly);
+      assert(Math.abs(b - a) / a < 1e-9, 'rel diff ' + Math.abs(b - a) / a);
+    })
+
+    it('geodesic differs substantially from a planar buffer in web-mercator units', async function () {
+      var geo = await geodesicArea(
+        '-i in.json -proj webmercator -buffer 50km geodesic -proj wgs84', poly);
+      var planar = await geodesicArea(
+        '-i in.json -proj webmercator -buffer 50km -proj wgs84', poly);
+      // a 50000-unit offset in web-mercator coords is much less than 50km on the
+      // ground at 45N (mercator inflates coordinates), so the planar buffer comes
+      // out substantially smaller than the geodesic one
+      assert(geo > planar * 1.1, 'geodesic ' + geo + ' should exceed planar ' + planar);
+    })
+
+    it('errors when the source projection has no inverse', async function () {
+      var err = null;
+      try {
+        await api.applyCommands(
+          '-i in.json -proj +proj=nicol -buffer 50km geodesic -o format=geojson out.json',
+          {'in.json': JSON.stringify(poly)});
+      } catch (e) { err = e; }
+      assert(err && /inverse/.test(err.message), err && err.message);
+    })
+
+    it('geodesic is a no-op for lat-long data (output unchanged)', async function () {
+      var input = {'in.json': JSON.stringify(poly)};
+      var def = await api.applyCommands('-i in.json -buffer 50km -o format=geojson out.json', input);
+      var geo = await api.applyCommands('-i in.json -buffer 50km geodesic -o format=geojson out.json', input);
+      assert.strictEqual(String(geo['out.json']), String(def['out.json']));
+    })
+  })
+
 })
 
 function getTotalBufferArea(geoms) {

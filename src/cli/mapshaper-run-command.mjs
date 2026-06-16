@@ -207,7 +207,14 @@ export async function runCommand(command, job) {
       // outputLayers = null;
 
     } else if (name == 'buffer') {
-       outputLayers = applyCommandToEachLayer(cmd.buffer, targetLayers, targetDataset, opts);
+      if (opts.geodesic) {
+        // A geodesic buffer of projected data reprojects through lng/lat, so
+        // make sure any required projection assets are loaded first (a no-op in
+        // the CLI and for already-resolved CRSs). Mirror -proj's stash restore.
+        await initProjLibrary(opts);
+        job.resumeCommand();
+      }
+      outputLayers = applyCommandToEachLayer(cmd.buffer, targetLayers, targetDataset, opts);
       // outputLayers = cmd.buffer(targetLayers, targetDataset, opts);
 
     } else if (name == 'blur') {
