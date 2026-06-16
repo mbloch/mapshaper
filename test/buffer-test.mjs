@@ -956,6 +956,15 @@ describe('mapshaper-buffer.js', function () {
       assert(Math.abs(b - a) / a < 1e-9, 'rel diff ' + Math.abs(b - a) / a);
     })
 
+    it('point: geodesic buffer of a UTM dataset matches the lat-long geodesic buffer', async function () {
+      var pt = {type: 'FeatureCollection', features: [{type: 'Feature',
+        properties: {}, geometry: {type: 'Point', coordinates: [-100, 45]}}]};
+      var a = await geodesicArea('-i in.json -buffer 50km', pt);
+      var b = await geodesicArea(
+        '-i in.json -proj +proj=utm +zone=14 -buffer 50km geodesic -proj wgs84', pt);
+      assert(Math.abs(b - a) / a < 1e-9, 'rel diff ' + Math.abs(b - a) / a);
+    })
+
     it('web-mercator input: geodesic buffer matches the lat-long geodesic buffer', async function () {
       var a = await geodesicArea('-i in.json -buffer 50km', poly);
       var b = await geodesicArea(
