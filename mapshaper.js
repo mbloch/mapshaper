@@ -31742,6 +31742,10 @@ ${svg}
         describe: '[polygons] buffer unshared boundaries without covering source polygon areas',
         type: 'flag'
       })
+      .option('geodesic', {
+        describe: '[projected data] buffer using geodesic distances',
+        type: 'flag'
+      })
       .option('vertices', {
         describe: 'number of vertices to use when buffering points (default is 72)',
         type: 'integer'
@@ -42029,23 +42033,61 @@ ${svg}
     if (!isLatLngCRS(crs)) {
       return getPlanarSegmentEndpoint;
     }
-    // Offset each point along a great circle (spherical geodesic) by default, or
-    // along a rhumb line if opts.rhumb is set. The rhumb offset holds a constant
-    // bearing, so the endpoint falls short of the target great-circle distance and
-    // drifts in direction as the radius grows -- large buffers come out distorted
-    // (egg-shaped caps/joins). The great-circle "direct" walk lands at the true
-    // geodesic distance in the true geodesic direction, so it corrects the radius
-    // and makes round caps/joins true geodesic circles, while the rest of the
-    // buffer construction stays in planar Mercator coords.
-    // TODO: rewrite to use Mercator coords directly
-    var destFn = opts && opts.rhumb ? getRhumbLineDestination : getGreatCircleDestination;
-    return function(x, y, bearing, meterDist) {
-      var p = fromWebMercator(x, y);
-      var p2 = destFn(p[0], p[1], bearing, meterDist);
-      var p3 = toWebMercator(p2[0], p2[1]);
-      p3[0] = unwrapX(p3[0], x);
-      return p3;
-    };
+    // Offset each point by a true geodesic distance, working directly in spherical
+    // Mercator coordinates (the rest of the buffer construction is planar Mercator),
+    // so we avoid the round-trip through lon/lat that the lat/long destination
+    // formulas would require. This relies on the Gudermannian / isometric-latitude
+    // identities, exact for web Mercator (y = R*psi, u = y/R):
+    //   sin(phi) = tanh(u),  cos(phi) = sech(u) = 1/cosh(u),
+    //   psi = atanh(sin phi)  =>  y = R*atanh(sin phi).
+    //
+    // The default great-circle walk lands at the true geodesic distance in the true
+    // geodesic direction, so it corrects the radius and makes round caps/joins true
+    // geodesic circles. The opts.rhumb walk holds a constant bearing (a straight
+    // line in Mercator), so the endpoint falls short of the great-circle distance
+    // and drifts in direction as the radius grows -- large buffers come out
+    // distorted (egg-shaped caps/joins) -- but it is occasionally useful.
+    return opts && opts.rhumb ? rhumbOffset : greatCircleOffset;
+  }
+
+  // Great-circle (spherical geodesic) offset, computed directly in Mercator coords.
+  // bearing: compass degrees; meterDist: meters; x, y and the result: Mercator.
+  function greatCircleOffset(x, y, bearing, meterDist) {
+    var theta = bearing * D2R;
+    var u = y / R;
+    var delta = meterDist / R; // angular distance traveled
+    var sinPhi1 = Math.tanh(u);
+    var cosPhi1 = 1 / Math.cosh(u);
+    var sinDelta = Math.sin(delta);
+    var cosDelta = Math.cos(delta);
+    var sinPhi2 = sinPhi1 * cosDelta + cosPhi1 * sinDelta * Math.cos(theta);
+    if (sinPhi2 > 1) sinPhi2 = 1;
+    else if (sinPhi2 < -1) sinPhi2 = -1;
+    var dLambda = Math.atan2(Math.sin(theta) * sinDelta * cosPhi1,
+      cosDelta - sinPhi1 * sinPhi2);
+    return [unwrapX(x + R * dLambda, x), R * Math.atanh(sinPhi2)];
+  }
+
+  // Rhumb-line (constant-bearing loxodrome) offset, computed directly in Mercator
+  // coords. A loxodrome is a straight line in Mercator, so the east displacement is
+  // dx = tan(theta) * dy; only the north-south advance (a constant *angular* step
+  // in latitude, which Mercator stretches non-linearly) needs the Gudermannian.
+  function rhumbOffset(x, y, bearing, meterDist) {
+    var theta = bearing * D2R;
+    var u = y / R;
+    var phi1 = 2 * Math.atan(Math.exp(u)) - Math.PI / 2; // gd(u)
+    var dPhi = (meterDist / R) * Math.cos(theta);
+    var phi2 = phi1 + dPhi;
+    // clamp latitude to the poles rather than letting it wrap past them
+    if (Math.abs(phi2) > Math.PI / 2) phi2 = phi2 > 0 ? Math.PI / 2 : -Math.PI / 2;
+    var y2 = R * Math.atanh(Math.sin(phi2));
+    // tan(theta) * dy is ill-conditioned for a due E-W line (dPhi -> 0, dy -> 0,
+    // tan(theta) -> infinity); fall back to the local Mercator scale factor
+    // sec(phi1) = cosh(u).
+    var x2 = Math.abs(dPhi) > 1e-12 ?
+      x + Math.tan(theta) * (y2 - y) :
+      x + meterDist * Math.sin(theta) * Math.cosh(u);
+    return [unwrapX(x2, x), y2];
   }
 
   function toWebMercator(lng, lat) {
@@ -42064,55 +42106,6 @@ ${svg}
     while (x - refX > WEBMERCATOR_WIDTH / 2) x -= WEBMERCATOR_WIDTH;
     while (x - refX < -WEBMERCATOR_WIDTH / 2) x += WEBMERCATOR_WIDTH;
     return x;
-  }
-
-  // Calculates the destination point traveling a given distance along a rhumb line
-  // from a starting lat/long coordinate with a constant bearing.
-  // Returns [lng, lat] in degrees. Reference:
-  //   https://www.movable-type.co.uk/scripts/latlong.html#rhumb-destination
-  function getRhumbLineDestination(lng, lat, bearing, meterDist) {
-    var d = meterDist / R; // angular distance traveled
-    var phi1 = lat * D2R;
-    var lambda1 = lng * D2R;
-    var theta = bearing * D2R;
-    var dPhi = d * Math.cos(theta);
-    var phi2 = phi1 + dPhi;
-    // clamp latitude to the poles rather than letting it wrap past them
-    if (Math.abs(phi2) > Math.PI / 2) {
-      phi2 = phi2 > 0 ? Math.PI / 2 : -Math.PI / 2;
-    }
-    // dPsi is the difference in "stretched" (Mercator) latitudes
-    var dPsi = Math.log(Math.tan(phi2 / 2 + Math.PI / 4) / Math.tan(phi1 / 2 + Math.PI / 4));
-    // q is ill-conditioned for an E-W line (dPsi -> 0), so fall back to cos(phi1)
-    var q = Math.abs(dPsi) > 1e-12 ? dPhi / dPsi : Math.cos(phi1);
-    var dLambda = d * Math.sin(theta) / q;
-    var lambda2 = lambda1 + dLambda;
-    return [wrap(lambda2 / D2R), phi2 / D2R];
-  }
-
-  // Destination point a given great-circle (spherical geodesic) distance from a
-  // start point along an initial compass bearing. Closed-form, no iteration.
-  // Unlike the rhumb-line version, the endpoint is at great-circle distance
-  // @meterDist from the start (not loxodrome distance), so it does not fall short
-  // or drift in direction at large distances. Reference:
-  //   https://www.movable-type.co.uk/scripts/latlong.html#dest-point
-  function getGreatCircleDestination(lng, lat, bearing, meterDist) {
-    var delta = meterDist / R; // angular distance traveled
-    var theta = bearing * D2R;
-    var phi1 = lat * D2R;
-    var lambda1 = lng * D2R;
-    var sinPhi1 = Math.sin(phi1);
-    var cosPhi1 = Math.cos(phi1);
-    var sinDelta = Math.sin(delta);
-    var cosDelta = Math.cos(delta);
-    var sinPhi2 = sinPhi1 * cosDelta + cosPhi1 * sinDelta * Math.cos(theta);
-    if (sinPhi2 > 1) sinPhi2 = 1;
-    else if (sinPhi2 < -1) sinPhi2 = -1;
-    var phi2 = Math.asin(sinPhi2);
-    var lambda2 = lambda1 + Math.atan2(
-      Math.sin(theta) * sinDelta * cosPhi1,
-      cosDelta - sinPhi1 * sinPhi2);
-    return [wrap(lambda2 / D2R), phi2 / D2R];
   }
 
   var POLAR_BUFFER_MARGIN_DEGREES = 1e-4;
@@ -45138,6 +45131,3080 @@ ${svg}
     return coords;
   }
 
+  // Returns number of arcs that were removed
+  function editArcs(arcs, onPoint) {
+    var nn2 = [],
+        xx2 = [],
+        yy2 = [],
+        errors = 0,
+        n;
+
+    arcs.forEach(function(arc, i) {
+      editArc(arc, onPoint);
+    });
+    arcs.updateVertexData(nn2, xx2, yy2);
+    return errors;
+
+    function append(p) {
+      if (p) {
+        xx2.push(p[0]);
+        yy2.push(p[1]);
+        n++;
+      }
+    }
+
+    function editArc(arc, cb) {
+      var x, y, xp, yp, retn;
+      var valid = true;
+      var i = 0;
+      n = 0;
+      while (arc.hasNext()) {
+        x = arc.x;
+        y = arc.y;
+        retn = cb(append, x, y, xp, yp, i++);
+        if (retn === false) {
+          valid = false;
+          // assumes that it's ok for the arc iterator to be interrupted.
+          break;
+        }
+        xp = x;
+        yp = y;
+      }
+      if (valid && n == 1) {
+        // only one valid point was added to this arc (invalid)
+        // e.g. this could happen during reprojection.
+        // making this arc empty
+        // error("An invalid arc was created");
+        message("An invalid arc was created");
+        valid = false;
+      }
+      if (valid) {
+        nn2.push(n);
+      } else {
+        // remove any points that were added for an invalid arc
+        while (n-- > 0) {
+          xx2.pop();
+          yy2.pop();
+        }
+        nn2.push(0); // add empty arc (to preserve mapping from paths to arcs)
+        errors++;
+      }
+    }
+  }
+
+  // Remove small-area polygon rings (very simple implementation of sliver removal)
+  // TODO: more sophisticated sliver detection (e.g. could consider ratio of area to perimeter)
+  // TODO: consider merging slivers into adjacent polygons to prevent gaps from forming
+  // TODO: consider separate gap removal function as an alternative to merging slivers
+  //
+  cmd.filterSlivers = function(lyr, dataset, opts) {
+    if (lyr.geometry_type != 'polygon') {
+      return 0;
+    }
+    return filterSlivers(lyr, dataset, opts);
+  };
+
+  function filterSlivers(lyr, dataset, optsArg) {
+    var opts = utils.extend({sliver_control: 1}, optsArg);
+    var filterData = getSliverFilter(lyr, dataset, opts);
+    var ringTest = filterData.filter;
+    var removed = 0;
+    var pathFilter = function(path, i, paths) {
+      if (ringTest(path, i, paths)) {
+        removed++;
+        return null;
+      }
+    };
+
+    noteLayerWillChange(lyr, {operation: 'filter-slivers', unit: 'shapes'});
+    editShapes(lyr.shapes, pathFilter);
+    markLayerChanged(lyr, {operation: 'filter-slivers', unit: 'shapes'});
+    message(utils.format("Removed %'d sliver%s using %s", removed, utils.pluralSuffix(removed), filterData.label));
+
+    // Remove null shapes (likely removed by clipping/erasing, although possibly already present)
+    if (opts.remove_empty) {
+      cmd.filterFeatures(lyr, dataset.arcs, {remove_empty: true, verbose: false});
+    }
+    return removed;
+  }
+
+  function filterClipSlivers(lyr, clipLyr, arcs) {
+    var threshold = getDefaultSliverThreshold(lyr, arcs);
+    // message('Using variable sliver threshold (based on ' + (threshold / 1e6) + ' sqkm)');
+    var ringTest = getSliverTest(arcs, threshold, 1);
+    var flags = new Uint8Array(arcs.size());
+    var removed = 0;
+    var pathFilter = function(path) {
+      var prevArcs = 0,
+          newArcs = 0;
+      for (var i=0, n=path && path.length || 0; i<n; i++) {
+        if (flags[absArcId(path[i])] > 0) {
+          newArcs++;
+        } else {
+          prevArcs++;
+        }
+      }
+      // filter paths that contain arcs from both original and clip/erase layers
+      //   and are small
+      if (newArcs > 0 && prevArcs > 0 && ringTest(path)) {
+        removed++;
+        return null;
+      }
+    };
+
+    countArcsInShapes(clipLyr.shapes, flags);
+    noteLayerWillChange(lyr, {operation: 'filter-clip-slivers', unit: 'shapes'});
+    editShapes(lyr.shapes, pathFilter);
+    markLayerChanged(lyr, {operation: 'filter-clip-slivers', unit: 'shapes'});
+    return removed;
+  }
+
+  // Assumes: Arcs have been divided
+  //
+  function clipPolylines(targetShapes, clipShapes, nodes, type) {
+    var index = new PathIndex(clipShapes, nodes.arcs);
+
+    return targetShapes.map(function(shp) {
+      return clipPolyline(shp);
+    });
+
+    function clipPolyline(shp) {
+      var clipped = null;
+      if (shp) clipped = shp.reduce(clipPath, []);
+      return clipped && clipped.length > 0 ? clipped : null;
+    }
+
+    function clipPath(memo, path) {
+      var clippedPath = null,
+          arcId, enclosed;
+      for (var i=0; i<path.length; i++) {
+        arcId = path[i];
+        enclosed = index.arcIsEnclosed(arcId);
+        if (enclosed && type == 'clip' || !enclosed && type == 'erase') {
+          if (!clippedPath) {
+            memo.push(clippedPath = []);
+          }
+          clippedPath.push(arcId);
+        } else {
+          clippedPath = null;
+        }
+      }
+      return memo;
+    }
+  }
+
+  var PolylineClipping = /*#__PURE__*/Object.freeze({
+    __proto__: null,
+    clipPolylines: clipPolylines
+  });
+
+  // TODO: to prevent invalid holes,
+  // could erase the holes from the space-enclosing rings.
+  function appendHolesToRings(cw, ccw) {
+    for (var i=0, n=ccw.length; i<n; i++) {
+      cw.push(ccw[i]);
+    }
+    return cw;
+  }
+
+  function getPolygonDissolver(nodes, spherical) {
+    spherical = spherical && !nodes.arcs.isPlanar();
+    var flags = new Uint8Array(nodes.arcs.size());
+    var divide = getHoleDivider(nodes, spherical);
+    var pathfind = getRingIntersector(nodes, flags);
+
+    return function(shp) {
+      if (!shp) return null;
+      var cw = [],
+          ccw = [];
+
+      divide(shp, cw, ccw);
+      cw = pathfind(cw, 'flatten');
+      ccw.forEach(reversePath);
+      ccw = pathfind(ccw, 'flatten');
+      ccw.forEach(reversePath);
+      var shp2 = appendHolesToRings(cw, ccw);
+      var dissolved = pathfind(shp2, 'dissolve');
+
+      if (dissolved.length > 1) {
+        dissolved = fixNestingErrors(dissolved, nodes.arcs);
+      }
+
+      return dissolved.length > 0 ? dissolved : null;
+    };
+  }
+
+  // TODO: remove dependency on old polygon dissolve function
+
+  // assumes layers and arcs have been prepared for clipping
+  function clipPolygons(targetShapes, clipShapes, nodes, type, optsArg) {
+    profileStart('clipPolygons');
+    var arcs = nodes.arcs;
+    var opts = optsArg || {};
+    var clipFlags = new Uint8Array(arcs.size());
+    var routeFlags = new Uint8Array(arcs.size());
+    var clipArcTouches = 0;
+    var clipArcUses = 0;
+    var usedClipArcs = [];
+    var findPath = getPathFinder(nodes, useRoute, routeIsActive);
+    var dissolvePolygon = getPolygonDissolver(nodes);
+
+    if (!opts.bbox2) {
+      profileStart('cp.dissolveTargetRings');
+      targetShapes = targetShapes.map(dissolvePolygon);
+      profileEnd('cp.dissolveTargetRings');
+    }
+
+    profileStart('cp.openClipRoutes');
+    openArcRoutes(clipShapes, arcs, clipFlags, type == 'clip', type == 'erase', true, 0x11);
+    profileEnd('cp.openClipRoutes');
+    profileStart('cp.PathIndex#1');
+    var index = new PathIndex(clipShapes, arcs);
+    profileEnd('cp.PathIndex#1');
+    profileStart('cp.clipShapes');
+    var clippedShapes = targetShapes.map(function(shape, i) {
+      if (shape) {
+        return clipPolygon(shape, type, index);
+      }
+      return null;
+    });
+    profileEnd('cp.clipShapes');
+
+    markPathsAsUsed(clippedShapes, routeFlags);
+
+    profileStart('cp.findUndividedClip');
+    var undividedClipShapes = findUndividedClipShapes(clipShapes);
+    profileEnd('cp.findUndividedClip');
+
+    closeArcRoutes(clipShapes, arcs, routeFlags, true, true);
+    profileStart('cp.PathIndex#2');
+    index = new PathIndex(undividedClipShapes, arcs);
+    profileEnd('cp.PathIndex#2');
+    profileStart('cp.findInteriorPaths');
+    targetShapes.forEach(function(shape, shapeId) {
+      var paths = shape ? findInteriorPaths(shape, type, index) : null;
+      if (paths) {
+        clippedShapes[shapeId] = (clippedShapes[shapeId] || []).concat(paths);
+      }
+    });
+    profileEnd('cp.findInteriorPaths');
+
+    profileEnd('clipPolygons');
+    return clippedShapes;
+
+    function clipPolygon(shape, type, index) {
+      var dividedShape = [],
+          clipping = type == 'clip',
+          erasing = type == 'erase';
+
+      // open pathways for entire polygon rather than one ring at a time --
+      // need to create polygons that connect positive-space rings and holes
+      openArcRoutes(shape, arcs, routeFlags, true, false, false);
+
+      forEachShapePart(shape, function(ids) {
+        var path;
+        for (var i=0, n=ids.length; i<n; i++) {
+          clipArcTouches = 0;
+          clipArcUses = 0;
+          path = findPath(ids[i]);
+          if (path) {
+            // if ring doesn't touch/intersect a clip/erase polygon, check if it is contained
+            // if (clipArcTouches === 0) {
+            // if ring doesn't incorporate an arc from the clip/erase polygon,
+            // check if it is contained (assumes clip shapes are dissolved)
+            if (clipArcTouches === 0 || clipArcUses === 0) { //
+              var contained = index.pathIsEnclosed(path);
+              if (clipping && contained || erasing && !contained) {
+                dividedShape.push(path);
+              }
+              // TODO: Consider breaking if polygon is unchanged
+            } else {
+              dividedShape.push(path);
+            }
+          }
+        }
+      });
+
+
+      // Clear pathways of current target shape to hidden/closed
+      closeArcRoutes(shape, arcs, routeFlags, true, true, true);
+      // Also clear pathways of any clip arcs that were used
+      if (usedClipArcs.length > 0) {
+        closeArcRoutes(usedClipArcs, arcs, routeFlags, true, true, true);
+        usedClipArcs = [];
+      }
+
+      return dividedShape.length === 0 ? null : dividedShape;
+    }
+
+    function routeIsActive(id) {
+      var fw = id >= 0,
+          abs = fw ? id : ~id,
+          visibleBit = fw ? 1 : 0x10,
+          targetBits = routeFlags[abs],
+          clipBits = clipFlags[abs];
+
+      if (clipBits > 0) clipArcTouches++;
+      return (targetBits & visibleBit) > 0 || (clipBits & visibleBit) > 0;
+    }
+
+    function useRoute(id) {
+      var fw = id >= 0,
+          abs = fw ? id : ~id,
+          targetBits = routeFlags[abs],
+          clipBits = clipFlags[abs],
+          targetRoute, clipRoute;
+
+      if (fw) {
+        targetRoute = targetBits;
+        clipRoute = clipBits;
+      } else {
+        targetRoute = targetBits >> 4;
+        clipRoute = clipBits >> 4;
+      }
+      targetRoute &= 3;
+      clipRoute &= 3;
+
+      var usable = false;
+      // var usable = targetRoute === 3 || targetRoute === 0 && clipRoute == 3;
+      if (targetRoute == 3) {
+        // special cases where clip route and target route both follow this arc
+        if (clipRoute == 1) ; else if (clipRoute == 2 && type == 'erase') ; else {
+          usable = true;
+        }
+
+      } else if (targetRoute === 0 && clipRoute == 3) {
+        usedClipArcs.push(id);
+        usable = true;
+      }
+
+      if (usable) {
+        if (clipRoute == 3) {
+          clipArcUses++;
+        }
+        // Need to close all arcs after visiting them -- or could cause a cycle
+        //   on layers with strange topology
+        if (fw) {
+          targetBits = setBits(targetBits, 1, 3);
+        } else {
+          targetBits = setBits(targetBits, 0x10, 0x30);
+        }
+      }
+
+      targetBits |= fw ? 4 : 0x40; // record as visited
+      routeFlags[abs] = targetBits;
+      return usable;
+    }
+
+
+    // Filter a collection of shapes to exclude paths that incorporate parts of
+    // clip/erase polygons and paths that are hidden (e.g. internal boundaries)
+    function findUndividedClipShapes(clipShapes) {
+      return clipShapes.map(function(shape) {
+        var usableParts = [];
+        forEachShapePart(shape, function(ids) {
+          var pathIsClean = true,
+              pathIsVisible = false;
+          for (var i=0; i<ids.length; i++) {
+            // check if arc was used in fw or rev direction
+            if (!arcIsUnused(ids[i], routeFlags)) {
+              pathIsClean = false;
+              break;
+            }
+            // check if clip arc is visible
+            if (!pathIsVisible && arcIsVisible(ids[i], clipFlags)) {
+              pathIsVisible = true;
+            }
+          }
+          if (pathIsClean && pathIsVisible) usableParts.push(ids);
+        });
+        return usableParts.length > 0 ? usableParts : null;
+      });
+    }
+
+
+    function arcIsUnused(id, flags) {
+      var abs = absArcId(id),
+          flag = flags[abs];
+          return (flag & 0x88) === 0;
+          // return id < 0 ? (flag & 0x80) === 0 : (flag & 0x8) === 0;
+    }
+
+    function arcIsVisible(id, flags) {
+      var flag = flags[absArcId(id)];
+      return (flag & 0x11) > 0;
+    }
+
+    // search for indexed clipping paths contained in a shape
+    // dissolve them if needed
+    function findInteriorPaths(shape, type, index) {
+      var enclosedPaths = index.findPathsInsideShape(shape),
+          dissolvedPaths = [];
+      if (!enclosedPaths) return null;
+      // ...
+      if (type == 'erase') enclosedPaths.forEach(reversePath);
+      if (enclosedPaths.length <= 1) {
+        dissolvedPaths = enclosedPaths; // no need to dissolve single-part paths
+      } else {
+        openArcRoutes(enclosedPaths, arcs, routeFlags, true, false, true);
+        enclosedPaths.forEach(function(ids) {
+          var path;
+          for (var j=0; j<ids.length; j++) {
+            path = findPath(ids[j]);
+            if (path) {
+              dissolvedPaths.push(path);
+            }
+          }
+        });
+      }
+
+      return dissolvedPaths.length > 0 ? dissolvedPaths : null;
+    }
+  } // end clipPolygons()
+
+  //
+  function clipPoints(points, clipShapes, arcs, type) {
+    var index = new PathIndex(clipShapes, arcs);
+
+    var points2 = points.reduce(function(memo, feat) {
+      var n = feat ? feat.length : 0,
+          feat2 = [],
+          enclosed;
+
+      for (var i=0; i<n; i++) {
+        enclosed = index.findEnclosingShape(feat[i]) > -1;
+        if (type == 'clip' && enclosed || type == 'erase' && !enclosed) {
+          feat2.push(feat[i].concat());
+        }
+      }
+
+      memo.push(feat2.length > 0 ? feat2 : null);
+      return memo;
+    }, []);
+
+    return points2;
+  }
+
+  var ClipPoints = /*#__PURE__*/Object.freeze({
+    __proto__: null,
+    clipPoints: clipPoints
+  });
+
+  // Convert a source parameter (which can take several forms) into
+  // a dataset with a single layer.
+  function normalizeOverlaySource(clipSrc, targetDataset, optsArg) {
+    var opts = optsArg || {};
+    var bbox = opts.bbox || opts.bbox2;
+    var clipDataset;
+    if (bbox) {
+      clipDataset = convertClipBounds(bbox);
+    } else if (!clipSrc) {
+      stop$1('Command requires a source file, layer id or bbox');
+    } else if (clipSrc.geometry_type) {
+      // clipSrc is a layer (assumed in targetDataset)
+      // TODO: update tests to remove this case (only used in tests)
+      // error('Unsupported source format');
+      clipDataset = utils.defaults({layers: [clipSrc], disposable: true}, targetDataset);
+    } else if (clipSrc.layer && clipSrc.dataset) {
+      clipDataset = utils.defaults({layers: [clipSrc.layer]}, clipSrc.dataset);
+    } else if (clipSrc.layers?.length == 1) {
+      clipDataset = clipSrc;
+    } else {
+      error('Invalid source format');
+    }
+    if (clipSrc?.disposable) {
+      clipDataset.disposable = true;
+    }
+    return clipDataset;
+  }
+
+  // Create a merged dataset by appending the overlay layer to the target dataset
+  // so it is last in the layers array.
+  // DOES NOT insert clipping points
+  function mergeLayersForOverlay(targetLayers, targetDataset, clipSrc, opts) {
+    var clipDataset = normalizeOverlaySource(clipSrc, targetDataset, opts);
+    return mergeLayersForOverlay2(targetLayers, targetDataset, clipDataset);
+  }
+
+  function mergeLayersForOverlay2(targetLayers, targetDataset, clipDataset) {
+    var mergedDataset;
+    var clipLyr = clipDataset.layers[0];
+    if (targetDataset.arcs != clipDataset.arcs) {
+      // using external dataset -- need to merge arcs
+      if (!clipDataset.disposable) {
+        // copy overlay layer shapes because arc ids will be reindexed during merging
+        clipDataset.layers[0] = copyLayerShapes(clipDataset.layers[0]);
+      }
+      // merge external dataset with target dataset,
+      // so arcs are shared between target layers and clipping lyr
+      // Assumes that layers in clipDataset can be modified (if necessary, a copy should be passed in)
+      mergedDataset = mergeDatasets([targetDataset, clipDataset]);
+      buildTopology(mergedDataset); // identify any shared arcs between clipping layer and target dataset
+    } else {
+      // overlay layer belongs to the same dataset as target layers... move it to the end
+      mergedDataset = utils.extend({}, targetDataset);
+      mergedDataset.layers = targetDataset.layers.filter(function(lyr) {return lyr != clipLyr;});
+      mergedDataset.layers.push(clipLyr);
+    }
+    return mergedDataset;
+  }
+
+  function convertClipBounds(bb) {
+    var x0 = bb[0], y0 = bb[1], x1 = bb[2], y1 = bb[3],
+        arc = [[x0, y0], [x0, y1], [x1, y1], [x1, y0], [x0, y0]];
+
+    if (!(y1 > y0 && x1 > x0)) {
+      stop$1("Invalid bbox (should be [xmin, ymin, xmax, ymax]):", bb);
+    }
+    return {
+      arcs: new ArcCollection([arc]),
+      layers: [{
+        name: 'bbox',
+        shapes: [[[0]]],
+        geometry_type: 'polygon'
+      }]
+    };
+  }
+
+  var OverlayUtils = /*#__PURE__*/Object.freeze({
+    __proto__: null,
+    mergeLayersForOverlay: mergeLayersForOverlay,
+    mergeLayersForOverlay2: mergeLayersForOverlay2,
+    normalizeOverlaySource: normalizeOverlaySource
+  });
+
+  // Insert cutting points in arcs, where bbox intersects other shapes
+  // Return a polygon layer containing the bounding box vectors, divided at cutting points.
+  function divideDatasetByBBox(dataset, bbox) {
+    var arcs = dataset.arcs;
+    var data = findBBoxCutPoints(arcs, bbox);
+    var map = insertCutPoints(data.cutPoints, arcs);
+    arcs.dedupCoords();
+    remapDividedArcs(dataset, map);
+    // merge bbox dataset with target dataset,
+    // so arcs are shared between target layers and bbox layer
+    var clipDataset = bboxPointsToClipDataset(data.bboxPoints);
+    var mergedDataset = mergeDatasets([dataset, clipDataset]);
+    // TODO: detect if we need to rebuild topology (unlikely), like with the full clip command
+    // buildTopology(mergedDataset);
+    var clipLyr = mergedDataset.layers.pop();
+    dataset.arcs = mergedDataset.arcs;
+    dataset.layers = mergedDataset.layers;
+    return clipLyr;
+  }
+
+  function bboxPointsToClipDataset(arr) {
+    var arcs = [];
+    var shape = [];
+    var layer = {geometry_type: 'polygon', shapes: [[shape]]};
+    var p1, p2;
+    for (var i=0, n=arr.length - 1; i<n; i++) {
+      p1 = arr[i];
+      p2 = arr[i+1];
+      arcs.push([[p1.x, p1.y], [p2.x, p2.y]]);
+      shape.push(i);
+    }
+    return {
+      arcs: new ArcCollection(arcs),
+      layers: [layer]
+    };
+  }
+
+  function findBBoxCutPoints(arcs, bbox) {
+    var left = bbox[0],
+        bottom = bbox[1],
+        right = bbox[2],
+        top = bbox[3];
+
+    // arrays of intersection points along each bbox edge
+    var tt = [],
+        rr = [],
+        bb = [],
+        ll = [];
+
+    arcs.forEachSegment(function(i, j, xx, yy) {
+      var ax = xx[i],
+          ay = yy[i],
+          bx = xx[j],
+          by = yy[j];
+      var hit;
+      if (segmentOutsideBBox(ax, ay, bx, by, left, bottom, right, top)) return;
+      if (segmentInsideBBox(ax, ay, bx, by, left, bottom, right, top)) return;
+
+      hit = geom.segmentIntersection(left, top, right, top, ax, ay, bx, by);
+      if (hit) addHit(tt, hit, i, j, xx, yy);
+
+      hit = geom.segmentIntersection(left, bottom, right, bottom, ax, ay, bx, by);
+      if (hit) addHit(bb, hit, i, j, xx, yy);
+
+      hit = geom.segmentIntersection(left, bottom, left, top, ax, ay, bx, by);
+      if (hit) addHit(ll, hit, i, j, xx, yy);
+
+      hit = geom.segmentIntersection(right, bottom, right, top, ax, ay, bx, by);
+      if (hit) addHit(rr, hit, i, j, xx, yy);
+    });
+
+    return {
+      cutPoints: ll.concat(bb, rr, tt),
+      bboxPoints: getDividedBBoxPoints(bbox, ll, tt, rr, bb)
+    };
+
+    function addHit(arr, hit, i, j, xx, yy) {
+      if (!hit) return;
+      arr.push(formatHit(hit[0], hit[1], i, j, xx, yy));
+      if (hit.length == 4) {
+        arr.push(formatHit(hit[2], hit[3], i, j, xx, yy));
+      }
+    }
+
+    function formatHit(x, y, i, j, xx, yy) {
+      var ids = formatIntersectingSegment(x, y, i, j, xx, yy);
+      return getCutPoint(x, y, ids[0], ids[1]);
+    }
+  }
+
+  function segmentOutsideBBox(ax, ay, bx, by, xmin, ymin, xmax, ymax) {
+    return ax < xmin && bx < xmin || ax > xmax && bx > xmax ||
+        ay < ymin && by < ymin || ay > ymax && by > ymax;
+  }
+
+  function segmentInsideBBox(ax, ay, bx, by, xmin, ymin, xmax, ymax) {
+    return ax > xmin && bx > xmin && ax < xmax && bx < xmax &&
+        ay > ymin && by > ymin && ay < ymax && by < ymax;
+  }
+
+  // Returns an array of points representing the vertices in
+  // the bbox with cutting points inserted.
+  function getDividedBBoxPoints(bbox, ll, tt, rr, bb) {
+    var bl = {x: bbox[0], y: bbox[1]},
+        tl = {x: bbox[0], y: bbox[3]},
+        tr = {x: bbox[2], y: bbox[3]},
+        br = {x: bbox[2], y: bbox[1]};
+    ll = utils.sortOn(ll.concat([bl, tl]), 'y', true);
+    tt = utils.sortOn(tt.concat([tl, tr]), 'x', true);
+    rr = utils.sortOn(rr.concat([tr, br]), 'y', false);
+    bb = utils.sortOn(bb.concat([br, bl]), 'x', false);
+    return ll.concat(tt, rr, bb).reduce(function(memo, p2) {
+      var p1 = memo.length > 0 ? memo[memo.length-1] : null;
+      if (p1 === null || p1.x != p2.x || p1.y != p2.y) memo.push(p2);
+      return memo;
+    }, []);
+  }
+
+  var Bbox2Clipping = /*#__PURE__*/Object.freeze({
+    __proto__: null,
+    divideDatasetByBBox: divideDatasetByBBox,
+    segmentInsideBBox: segmentInsideBBox,
+    segmentOutsideBBox: segmentOutsideBBox
+  });
+
+  cmd.clipLayers = function(target, src, dataset, opts) {
+    return clipLayers(target, src, dataset, "clip", opts);
+  };
+
+  cmd.eraseLayers = function(target, src, dataset, opts) {
+    return clipLayers(target, src, dataset, "erase", opts);
+  };
+
+  cmd.clipLayer = function(targetLyr, src, dataset, opts) {
+    return cmd.clipLayers([targetLyr], src, dataset, opts)[0];
+  };
+
+  cmd.eraseLayer = function(targetLyr, src, dataset, opts) {
+    return cmd.eraseLayers([targetLyr], src, dataset, opts)[0];
+  };
+
+  cmd.sliceLayers = function(target, src, dataset, opts) {
+    return clipLayers(target, src, dataset, "slice", opts);
+  };
+
+  cmd.sliceLayer = function(targetLyr, src, dataset, opts) {
+    return cmd.sliceLayers([targetLyr], src, dataset, opts);
+  };
+
+  function clipLayersInPlace(layers, clipSrc, dataset, type, opts) {
+    var outputLayers = clipLayers(layers, clipSrc, dataset, type, opts);
+    // remove arcs from the clipping dataset, if they are not used by any layer
+    layers.forEach(function(lyr, i) {
+      var lyr2 = outputLayers[i];
+      lyr.shapes = lyr2.shapes;
+      lyr.data = lyr2.data;
+      if (lyr2.raster) {
+        lyr.raster = lyr2.raster;
+        lyr.raster_type = lyr2.raster_type;
+      }
+    });
+    dissolveArcs(dataset);
+  }
+
+  // @clipSrc: layer in @dataset or filename
+  // @type: 'clip' or 'erase'
+  function clipLayers(targetLayers, clipSrc, targetDataset, type, opts) {
+    profileStart('clipLayers');
+    opts = opts || {no_cleanup: true}; // TODO: update testing functions
+    var usingPathClip = utils.some(targetLayers, layerHasPaths);
+    var usingRasterClip = utils.some(targetLayers, layerHasRaster);
+    var mergedDataset, clipLyr, nodes, result;
+    var clipDataset;
+    if (usingRasterClip) {
+      result = clipRasterLayers(targetLayers, clipSrc, targetDataset, type, opts);
+      profileEnd('clipLayers');
+      return result;
+    }
+    clipDataset = normalizeOverlaySource(clipSrc, targetDataset, opts);
+    if (!opts.no_warn) {
+      warnIfBoundsDontOverlap(targetLayers, targetDataset, clipDataset, type);
+    }
+    if (opts.bbox2 && usingPathClip) { // assumes target dataset has arcs
+      result = clipLayersByBBox(targetLayers, targetDataset, opts);
+      profileEnd('clipLayers');
+      return result;
+    }
+    if (!usingPathClip) {
+      result = clipLayersByClipDataset(targetLayers, clipDataset, type, opts);
+      profileEnd('clipLayers');
+      return result;
+    }
+    // Merging the clip source into the target and cutting intersections builds a
+    // throwaway combined arc collection. With a GUI undo transaction active,
+    // addIntersectionCuts() would otherwise capture a full coordinate copy of the
+    // merged target+clip arcs -- redundant work, since undo is driven by the
+    // dataset-level reference swap below (the dataset unit records the original
+    // arcs by reference before targetDataset.arcs is replaced).
+    //
+    // addIntersectionCuts() also remaps every shared layer's shapes in place
+    // (rewriting arc ids for the split arcs), including the target layers. Those
+    // original shapes ARE needed for undo, so capture each target layer's baseline
+    // explicitly before suspending tracking for the throwaway construction.
+    noteDatasetWillChange(targetDataset, {operation: type, unit: 'arcs'});
+    targetLayers.forEach(function(lyr) {
+      noteLayerWillChange(lyr, {operation: type});
+    });
+    // Build the clipped output with undo tracking suspended: the merged arcs, the
+    // dissolved clip layer, and the per-layer clip results are all derived from
+    // the throwaway combined dataset and never need restoring. Undo is driven by
+    // the dataset reference swap plus the target-layer baseline captured above;
+    // run-command captures the integration of the returned output layers.
+    withActiveUndoTransaction(null, function() {
+      profileStart('mergeLayersForOverlay');
+      mergedDataset = mergeLayersForOverlay2(targetLayers, targetDataset, clipDataset);
+      profileEnd('mergeLayersForOverlay');
+      clipLyr = mergedDataset.layers[mergedDataset.layers.length-1];
+      nodes = addIntersectionCuts(mergedDataset, opts);
+      targetDataset.arcs = mergedDataset.arcs;
+      profileStart('clipDissolvePolygonLayer2');
+      clipLyr = utils.defaults({data: null}, clipLyr);
+      clipLyr = dissolvePolygonLayer2(clipLyr, mergedDataset, {quiet: true, silent: true});
+      profileEnd('clipDissolvePolygonLayer2');
+      profileStart('clipLayersByLayer');
+      result = clipLayersByLayer(targetLayers, clipLyr, nodes, type, opts);
+      profileEnd('clipLayersByLayer');
+    });
+    markDatasetChanged(targetDataset, {operation: type, unit: 'arcs'});
+    profileEnd('clipLayers');
+    return result;
+  }
+
+  function clipLayersByClipDataset(targetLayers, clipDataset, type, opts) {
+    var clipLyr = clipDataset.layers[0];
+    var nodes = new NodeCollection(clipDataset.arcs);
+    var result;
+    profileStart('clipLayersByLayer');
+    result = clipLayersByLayer(targetLayers, clipLyr, nodes, type, opts);
+    profileEnd('clipLayersByLayer');
+    return result;
+  }
+
+  function clipRasterLayers(targetLayers, clipSrc, targetDataset, type, opts) {
+    var clipDataset, clipBounds, bbox;
+    if (type != 'clip') {
+      stop$1('Raster layers only support clipping');
+    }
+    if (utils.some(targetLayers, function(lyr) {return !layerHasRaster(lyr);})) {
+      stop$1('Raster clipping cannot be mixed with vector target layers');
+    }
+    if (opts.bbox2) {
+      bbox = opts.bbox2;
+    } else {
+      clipDataset = normalizeOverlaySource(clipSrc, targetDataset, opts);
+      clipBounds = getLayerBounds(clipDataset.layers[0], clipDataset.arcs);
+      if (!clipBounds || !clipBounds.hasBounds()) {
+        stop$1('Missing raster clipping bounds');
+      }
+      bbox = clipBounds.toArray();
+    }
+    return targetLayers.map(function(lyr) {
+      clipRasterToBBox(lyr, bbox, opts);
+      return lyr;
+    });
+  }
+
+  function clipLayersByBBox(layers, dataset, opts) {
+    var bbox = opts.bbox2;
+    var clipLyr = divideDatasetByBBox(dataset, bbox);
+    var nodes = new NodeCollection(dataset.arcs);
+    var retn = clipLayersByLayer(layers, clipLyr, nodes, 'clip', opts);
+    return retn;
+  }
+
+  function clipLayersByLayer(targetLayers, clipLyr, nodes, type, opts) {
+    requirePolygonLayer(clipLyr, "Requires a polygon clipping layer");
+    return targetLayers.reduce(function(memo, targetLyr) {
+      if (type == 'slice') {
+        memo = memo.concat(sliceLayerByLayer(targetLyr, clipLyr, nodes, opts));
+      } else {
+        memo.push(clipLayerByLayer(targetLyr, clipLyr, nodes, type, opts));
+      }
+      return memo;
+    }, []);
+  }
+
+  function getSliceLayerName(clipLyr, field, i) {
+    var id = field ? clipLyr.data.getRecords()[0][field] : i + 1;
+    return 'slice-' + id;
+  }
+
+  function sliceLayerByLayer(targetLyr, clipLyr, nodes, opts) {
+    // may not need no_replace
+    var clipLayers = cmd.splitLayer(clipLyr, opts.id_field, {no_replace: true});
+    return clipLayers.map(function(clipLyr, i) {
+      var outputLyr = clipLayerByLayer(targetLyr, clipLyr, nodes, 'clip', opts);
+      outputLyr.name = getSliceLayerName(clipLyr, opts.id_field, i);
+      return outputLyr;
+    });
+  }
+
+  function clipLayerByLayer(targetLyr, clipLyr, nodes, type, opts) {
+    var arcs = nodes.arcs;
+    var shapeCount = targetLyr.shapes ? targetLyr.shapes.length : 0;
+    var nullCount = 0, sliverCount = 0;
+    var clippedShapes, outputLyr;
+    if (shapeCount === 0) {
+      return targetLyr; // ignore empty layer
+    }
+    if (targetLyr === clipLyr) {
+      stop$1('Can\'t clip a layer with itself');
+    }
+
+    // TODO: optimize some of these functions for bbox clipping
+    if (targetLyr.geometry_type == 'point') {
+      clippedShapes = clipPoints(targetLyr.shapes, clipLyr.shapes, arcs, type);
+    } else if (targetLyr.geometry_type == 'polygon') {
+      clippedShapes = clipPolygons(targetLyr.shapes, clipLyr.shapes, nodes, type, opts);
+    } else if (targetLyr.geometry_type == 'polyline') {
+      clippedShapes = clipPolylines(targetLyr.shapes, clipLyr.shapes, nodes, type);
+    } else {
+      stop$1('Invalid target layer:', targetLyr.name);
+    }
+
+    outputLyr = {
+      name: targetLyr.name,
+      geometry_type: targetLyr.geometry_type,
+      shapes: clippedShapes,
+      data: targetLyr.data // replaced post-filter
+    };
+
+    // Remove sliver polygons
+    if (opts.remove_slivers && outputLyr.geometry_type == 'polygon') {
+      sliverCount = filterClipSlivers(outputLyr, clipLyr, arcs);
+    }
+
+    // Remove null shapes (likely removed by clipping/erasing, although possibly already present)
+    cmd.filterFeatures(outputLyr, arcs, {remove_empty: true, verbose: false});
+
+    // clone data records (to avoid sharing records between layers)
+    // TODO: this is not needed when replacing target with a single layer
+    if (outputLyr.data) {
+      outputLyr.data = outputLyr.data.clone();
+    }
+
+    // TODO: redo messages, now that many layers may be clipped
+    nullCount = shapeCount - outputLyr.shapes.length;
+    if (nullCount && sliverCount) {
+      message(getClipMessage(nullCount, sliverCount));
+    }
+    return outputLyr;
+  }
+
+  function getClipMessage(nullCount, sliverCount) {
+    var nullMsg = nullCount ? utils.format('%,d null feature%s', nullCount, utils.pluralSuffix(nullCount)) : '';
+    var sliverMsg = sliverCount ? utils.format('%,d sliver%s', sliverCount, utils.pluralSuffix(sliverCount)) : '';
+    if (nullMsg || sliverMsg) {
+      return utils.format('Removed %s%s%s', nullMsg, (nullMsg && sliverMsg ? ' and ' : ''), sliverMsg);
+    }
+    return '';
+  }
+
+  // Warn (once per source/target pair) when a -clip / -erase / slice almost
+  // certainly won't do what the user wants. Two checks, in order of strength:
+  //
+  //   1. CRS mismatch -- one side is lat/lng and the other is projected. This
+  //      uses the same logic as requireDatasetsHaveCompatibleCRS() in
+  //      mapshaper-merging.mjs, but fires here as a friendlier, command-aware
+  //      warning before mergeDatasets() would otherwise stop() with a generic
+  //      message. It also catches a class of cases the bbox check misses: a
+  //      projected layer whose bbox straddles (0,0) often *does* overlap an
+  //      unprojected lat/lng bbox, even though the two are useless together.
+  //   2. Bbox-disjoint -- a fallback for the case where CRSes look compatible
+  //      (or are unknown on both sides) but the layers clearly aren't in the
+  //      same place. Usually a wrong-source-picker error.
+  //
+  // Empty target layers are ignored (separate failure mode; would just be
+  // noise). The CRS warning suppresses the bbox warning for the same target,
+  // so users see one warning per problem, not two.
+  // Skipped entirely if opts.no_warn is set.
+  function warnIfBoundsDontOverlap(targetLayers, targetDataset, clipDataset, type) {
+    var srcCRS = getDatasetCRS(clipDataset);
+    var targetCRS = getDatasetCRS(targetDataset);
+    var crsMismatch = srcCRS && targetCRS && isLatLngCRS(srcCRS) != isLatLngCRS(targetCRS);
+    var srcName = clipDataset.layers[0].name || '<unnamed>';
+    var srcBounds = getLayerBounds(clipDataset.layers[0], clipDataset.arcs);
+    targetLayers.forEach(function(targetLyr) {
+      var targetBounds = getLayerBounds(targetLyr, targetDataset.arcs);
+      if (!targetBounds || !targetBounds.hasBounds()) return;
+      if (crsMismatch) {
+        warnOnce(formatCRSMismatchMessage(type, srcName, targetLyr.name,
+          srcCRS, targetCRS));
+        return; // Don't also fire the (likely-misleading) bbox warning.
+      }
+      if (!srcBounds || !srcBounds.hasBounds()) return;
+      if (srcBounds.intersects(targetBounds)) return;
+      warnOnce(formatNoOverlapMessage(type, srcName, targetLyr.name,
+        srcBounds, targetBounds));
+    });
+  }
+
+  function formatCRSMismatchMessage(type, srcName, targetName, srcCRS, targetCRS) {
+    var verb = type === 'erase' ? 'erase' : 'clip';
+    var srcKind = isLatLngCRS(srcCRS) ? 'lng/lat (geographic)' : 'projected';
+    var targetKind = isLatLngCRS(targetCRS) ? 'lng/lat (geographic)' : 'projected';
+    return '-' + verb + ': source "' + srcName + '" uses ' + srcKind +
+      ' coordinates but target "' + (targetName || '<unnamed>') + '" uses ' +
+      targetKind + ' coordinates. The -' + verb +
+      ' will not produce a useful result; project one side to match the other first.';
+  }
+
+  function formatNoOverlapMessage(type, srcName, targetName, srcBounds, targetBounds) {
+    // 'slice' is a per-feature -clip variant; in user terms it has the same
+    // empty-output failure mode as clip, so we describe it under the same
+    // verb to keep the message simple.
+    var verb = type === 'erase' ? 'erase' : 'clip';
+    var consequence = type === 'erase'
+      ? 'will leave "' + (targetName || '<unnamed>') + '" unchanged'
+      : 'will produce empty output for "' + (targetName || '<unnamed>') + '"';
+    return '-' + verb + ': source "' + srcName + '" ' + bbToText(srcBounds) +
+      ' does not overlap target "' + (targetName || '<unnamed>') + '" ' +
+      bbToText(targetBounds) + '. The -' + verb + ' ' + consequence +
+      '. This usually indicates a coordinate system mismatch.';
+  }
+
+  function bbToText(b) {
+    return JSON.stringify(b.toArray());
+  }
+
+  var ClipErase = /*#__PURE__*/Object.freeze({
+    __proto__: null,
+    clipLayers: clipLayers,
+    clipLayersByBBox: clipLayersByBBox,
+    clipLayersByLayer: clipLayersByLayer,
+    clipLayersInPlace: clipLayersInPlace,
+    getClipMessage: getClipMessage,
+    warnIfBoundsDontOverlap: warnIfBoundsDontOverlap
+  });
+
+  // Planar densification by an interval
+  function densifyPathByInterval(coords, interval, interpolate) {
+    if (findMaxPathInterval(coords) < interval) return coords;
+    if (!interpolate) {
+      interpolate = getIntervalInterpolator(interval);
+    }
+    var coords2 = [coords[0]], a, b;
+    for (var i=1, n=coords.length; i<n; i++) {
+      a = coords[i-1];
+      b = coords[i];
+      if (geom.distance2D(a[0], a[1], b[0], b[1]) > interval + 1e-4) {
+        appendArr(coords2, interpolate(a, b));
+      }
+      coords2.push(b);
+    }
+    return coords2;
+  }
+
+  function getIntervalInterpolator(interval) {
+    return function(a, b) {
+      var points = [];
+      // var rev = a[0] == b[0] ? a[1] > b[1] : a[0] > b[0];
+      var dist = geom.distance2D(a[0], a[1], b[0], b[1]);
+      var n = Math.round(dist / interval) - 1;
+      var dx = (b[0] - a[0]) / (n + 1),
+          dy = (b[1] - a[1]) / (n + 1);
+      for (var i=1; i<=n; i++) {
+        points.push([a[0] + dx * i, a[1] + dy * i]);
+      }
+      return points;
+    };
+  }
+
+
+  // Interpolate the same points regardless of segment direction
+  function densifyAntimeridianSegment(a, b, interval) {
+    var y1, y2;
+    var coords = [];
+    var ascending = a[1] < b[1];
+    if (a[0] != b[0]) error('Expected an edge segment');
+    if (ascending) {
+      y1 = a[1];
+      y2 = b[1];
+    } else {
+      y1 = b[1];
+      y2 = a[1];
+    }
+    var y = Math.floor(y1 / interval) * interval + interval;
+    while (y < y2) {
+      coords.push([a[0], y]);
+      y += interval;
+    }
+    if (!ascending) coords.reverse();
+    return coords;
+  }
+
+  function appendArr(dest, src) {
+    for (var i=0; i<src.length; i++) dest.push(src[i]);
+  }
+
+  function findMaxPathInterval(coords) {
+    var maxSq = 0, intSq, a, b;
+    for (var i=1, n=coords.length; i<n; i++) {
+      a = coords[i-1];
+      b = coords[i];
+      intSq = geom.distanceSq(a[0], a[1], b[0], b[1]);
+      if (intSq > maxSq) maxSq = intSq;
+    }
+    return Math.sqrt(maxSq);
+  }
+
+  function projectAndDensifyArcs(arcs, proj) {
+    var interval = getDefaultDensifyInterval(arcs, proj);
+    var minIntervalSq = interval * interval * 25;
+    var p;
+    return editArcs(arcs, onPoint);
+
+    function onPoint(append, lng, lat, prevLng, prevLat, i) {
+      var pp = p;
+      p = proj(lng, lat);
+      if (!p) return false; // signal that current arc contains an error
+
+      // Don't try to densify shorter segments (optimization)
+      if (i > 0 && geom.distanceSq(p[0], p[1], pp[0], pp[1]) > minIntervalSq) {
+        densifySegment(prevLng, prevLat,  pp[0],  pp[1], lng, lat, p[0], p[1], proj, interval)
+          .forEach(append);
+      }
+      append(p);
+    }
+  }
+
+  // Use the median of intervals computed by projecting segments.
+  // We're probing a number of points, because @proj might only be valid in
+  // a sub-region of the dataset bbox (e.g. +proj=tpers)
+  function findDensifyInterval(bounds, xy, proj) {
+    var steps = [0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9];
+    var points = [];
+    for (var i=0; i<steps.length; i++) {
+      for (var j=0; j<steps.length; j++) {
+        points.push([steps[i], steps[j]]);
+      }
+    }
+    var intervals = points.map(function(pos) {
+      var x = bounds.xmin + bounds.width() * pos[0];
+      var y = bounds.ymin + bounds.height() * pos[1];
+      var a = proj(x, y);
+      var b = proj(x + xy[0], y + xy[1]);
+      return a && b ? geom.distance2D(a[0], a[1], b[0], b[1]) : Infinity;
+    }).filter(function(int) {return int < Infinity;});
+    return intervals.length > 0 ? utils.findMedian(intervals) : Infinity;
+  }
+
+  // Kludgy way to get a useful interval for densifying a bounding box.
+  // Uses a fraction of average bbox side length)
+  // TODO: improve
+  function findDensifyInterval2(bb, proj) {
+    var a = proj(bb.centerX(), bb.centerY()),
+        c = proj(bb.centerX(), bb.ymin), // right center
+        d = proj(bb.xmax, bb.centerY()); // bottom center
+    var interval = a && c && d ? (geom.distance2D(a[0], a[1], c[0], c[1]) +
+          geom.distance2D(a[0], a[1], d[0], d[1])) / 5000 : Infinity;
+    return interval;
+  }
+
+  // Returns an interval in projected units
+  function getDefaultDensifyInterval(arcs, proj) {
+    var xy = getAvgSegment2(arcs),
+        bb = arcs.getBounds(),
+        intervalA = findDensifyInterval(bb, xy, proj),
+        intervalB = findDensifyInterval2(bb, proj),
+        interval = Math.min(intervalA, intervalB);
+    if (interval == Infinity) {
+      error('Densification error');
+    }
+    return interval;
+  }
+
+  // Interpolate points into a projected line segment if needed to prevent large
+  //   deviations from path of original unprojected segment.
+  // @points (optional) array of accumulated points
+  function densifySegment(lng0, lat0, x0, y0, lng2, lat2, x2, y2, proj, interval, points) {
+    // Find midpoint between two endpoints and project it (assumes longitude does
+    // not wrap). TODO Consider bisecting along great circle path -- although this
+    // would not be good for boundaries that follow line of constant latitude.
+    var lng1 = (lng0 + lng2) / 2,
+        lat1 = (lat0 + lat2) / 2,
+        p = proj(lng1, lat1),
+        distSq;
+    if (!p) return; // TODO: consider if this is adequate for handling proj. errors
+    distSq = geom.pointSegDistSq2(p[0], p[1], x0, y0, x2, y2); // sq displacement
+    points = points || [];
+    // Bisect current segment if the projected midpoint deviates from original
+    //   segment by more than the @interval parameter.
+    //   ... but don't bisect very small segments to prevent infinite recursion
+    //   (e.g. if projection function is discontinuous)
+    if (distSq > interval * interval * 0.25 && geom.distance2D(lng0, lat0, lng2, lat2) > 0.01) {
+      densifySegment(lng0, lat0, x0, y0, lng1, lat1, p[0], p[1], proj, interval, points);
+      points.push(p);
+      densifySegment(lng1, lat1, p[0], p[1], lng2, lat2, x2, y2, proj, interval, points);
+    }
+    return points;
+  }
+
+  // Create rectangles around each feature in a layer
+  cmd.rectangles = function(targetLyr, targetDataset, opts) {
+    var crsInfo = getDatasetCrsInfo(targetDataset);
+    var records = targetLyr.data ? targetLyr.data.getRecords() : null;
+    var geometries;
+
+    if (opts.bbox) {
+      geometries = bboxExpressionToGeometries(opts.bbox, targetLyr, targetDataset);
+
+    } else {
+      if (!layerHasGeometry(targetLyr)) {
+        stop$1("Layer is missing geometric shapes");
+      }
+      geometries = shapesToBoxGeometries(targetLyr, targetDataset, opts);
+    }
+
+    var geojson = {
+      type: 'FeatureCollection',
+      features: geometries.map(function(geom, i) {
+        var rec = records && records[i] || null;
+        if (rec && opts.no_replace) {
+          rec = utils.extend({}, rec); // make a copy
+        }
+        return {
+          type: 'Feature',
+          properties: rec,
+          geometry: geom
+        };
+      })
+    };
+    var dataset = importGeoJSON(geojson, {});
+    setDatasetCrsInfo(dataset, crsInfo);
+    var outputLayers = mergeDatasetsIntoDataset(targetDataset, [dataset]);
+    setOutputLayerName(outputLayers[0], targetLyr, null, opts);
+    return outputLayers;
+  };
+
+
+
+
+  function shapesToBoxGeometries(lyr, dataset, opts) {
+    var crsInfo = getDatasetCrsInfo(dataset);
+    return lyr.shapes.map(function(shp) {
+      var bounds = lyr.geometry_type == 'point' ?
+        getPointFeatureBounds(shp) : dataset.arcs.getMultiShapeBounds(shp);
+      bounds = applyRectangleOptions(bounds, crsInfo.crs, opts);
+      if (!bounds) return null;
+      return bboxToPolygon(bounds.toArray(), opts);
+    });
+  }
+
+  function bboxExpressionToGeometries(exp, lyr, dataset, opts) {
+    var compiled = compileFeatureExpression(exp, lyr, dataset.arcs, {});
+    var n = getFeatureCount(lyr);
+    var result;
+    var geometries = [];
+    for (var i=0; i<n; i++) {
+      result = compiled(i);
+      if (!looksLikeBbox(result)) {
+        stop$1('Invalid bbox value (expected a GeoJSON-type bbox):', result);
+      }
+      geometries.push(bboxToPolygon(result));
+    }
+    return geometries;
+  }
+
+  function looksLikeBbox(o) {
+    if (!o || o.length != 4) return false;
+    if (o.some(isNaN)) return false;
+    if (o[0] <= o[2] == false || o[1] <= o[3] == false) return false;
+    return true;
+  }
+
+  // Create rectangles around one or more target layers
+  //
+  cmd.rectangle2 = function(target, opts) {
+    // if target layer is a rectangle and we're applying frame properties,
+    // turn the target into a frame instead of creating a new rectangle
+    if (target.layers.length == 1 && opts.width &&
+      layerIsRectangle(target.layers[0], target.dataset.arcs)) {
+      applyFrameProperties(target.layers[0], opts);
+      return;
+    }
+    var datasets = target.layers.map(function(lyr) {
+      var dataset = cmd.rectangle({layer: lyr, dataset: target.dataset}, opts);
+      setOutputLayerName(dataset.layers[0], lyr, null, opts);
+      if (!opts.no_replace) {
+        dataset.layers[0].name = lyr.name || dataset.layers[0].name;
+      }
+      return dataset;
+    });
+    return mergeDatasetsIntoDataset(target.dataset, datasets);
+  };
+
+  cmd.rectangle = function(target, opts) {
+    var bounds, crsInfo;
+    if (opts.bbox) {
+      bounds = new Bounds(opts.bbox);
+      crsInfo = target && getDatasetCrsInfo(target.dataset) ||
+        probablyDecimalDegreeBounds(bounds) && getCrsInfo('wgs84') || {};
+    } else if (target) {
+      bounds = getLayerBounds(target.layer, target.dataset.arcs);
+      crsInfo = getDatasetCrsInfo(target.dataset);
+    }
+    bounds = bounds && applyRectangleOptions(bounds, crsInfo.crs, opts);
+    if (!bounds || !bounds.hasBounds()) {
+      stop$1('Missing rectangle extent');
+    }
+    var feature = {
+      type: 'Feature',
+      properties: {},
+      geometry: bboxToPolygon(bounds.toArray(), opts)
+    };
+    var dataset = importGeoJSON(feature, {});
+    applyFrameProperties(dataset.layers[0], opts);
+    dataset.layers[0].name = opts.name || 'rectangle';
+    setDatasetCrsInfo(dataset, crsInfo);
+    return dataset;
+  };
+
+  function applyFrameProperties(lyr, opts) {
+    if (!opts.width) return;
+    if (!lyr.data) initDataTable(lyr);
+    var d = lyr.data.getRecords()[0] || {};
+    d.width = parseSizeParam(opts.width);
+    d.type = 'frame';
+  }
+
+  function applyRectangleOptions(bounds, crs, opts) {
+    var isGeoBox = probablyDecimalDegreeBounds(bounds);
+    if (opts.offset) {
+      bounds = applyBoundsOffset(opts.offset, bounds, crs);
+    }
+    if (bounds.area() > 0 === false) return null;
+    if (opts.aspect_ratio) {
+      bounds = applyAspectRatio(opts.aspect_ratio, bounds);
+    }
+    if (isGeoBox) {
+      bounds = clampToWorldBounds(bounds);
+    }
+    return bounds;
+  }
+
+  // opt: aspect ratio as a single number or a range (e.g. "1,2");
+  function applyAspectRatio(opt, bounds) {
+    var range = String(opt).split(',').map(parseFloat),
+      aspectRatio = bounds.width() / bounds.height(),
+      min, max; // min is height limit, max is width limit
+    if (range.length == 1) {
+      range.push(range[0]);
+    } else if (range[0] > range[1]) {
+      range.reverse();
+    }
+    min = range[0];
+    max = range[1];
+    if (!min && !max) return bounds;
+    if (!min) min = -Infinity;
+    if (!max) max = Infinity;
+    if (aspectRatio < min) {
+      bounds.fillOut(min);
+    } else if (aspectRatio > max) {
+      bounds.fillOut(max);
+    }
+    return bounds;
+  }
+
+  function applyBoundsOffset(offsetOpt, bounds, crs) {
+    var offsets = convertFourSides(offsetOpt, crs, bounds);
+    bounds.padBounds(offsets[0], offsets[1], offsets[2], offsets[3]);
+    return bounds;
+  }
+
+  function bboxToPolygon(bbox, optsArg) {
+    var opts = optsArg || {};
+    var coords = bboxToCoords(bbox);
+    if (opts.interval > 0) {
+      coords = densifyPathByInterval(coords, opts.interval);
+    }
+    return {
+      type: 'Polygon',
+      coordinates: [coords]
+    };
+  }
+
+  var Rectangle = /*#__PURE__*/Object.freeze({
+    __proto__: null,
+    applyAspectRatio: applyAspectRatio,
+    bboxToPolygon: bboxToPolygon
+  });
+
+  function getSemiMinorAxis(P) {
+    return P.a * Math.sqrt(1 - (P.es || 0));
+  }
+
+  function getCircleRadiusFromAngle(P, angle) {
+    // Using semi-minor axis radius, to prevent overflowing projection bounds
+    // when clipping up to the edge of the projectable area
+    // TODO: improve (this just gives a safe minimum distance, not the best distance)
+    // TODO: modify point buffer function to use angle + ellipsoidal geometry
+    return angle * Math.PI / 180 * getSemiMinorAxis(P);
+  }
+
+  function getCrsSlug(P) {
+    return P.params.proj.param; // kludge
+  }
+
+  // 'normal' = the projection is aligned to the Earth's axis
+  // (i.e. it has a normal aspect)
+  function isRotatedNormalProjection(P) {
+    return isAxisAligned(P) && P.lam0 !== 0;
+  }
+
+  // Projection is vertically aligned to earth's axis
+  function isAxisAligned(P) {
+    // TODO: consider projections that may or may not be aligned,
+    // depending on parameters
+    if (inList(P, 'cassini,gnom,bertin1953,chamb,ob_tran,tpeqd,healpix,rhealpix,' +
+      'ocea,omerc,tmerc,etmerc,nicol')) {
+      return false;
+    }
+    if (isAzimuthal(P)) {
+      return false;
+    }
+    return true;
+  }
+
+  function getBoundingMeridian(P) {
+    if (P.lam0 === 0) return 180;
+    return getAntimeridian(P.lam0 * 180 / Math.PI);
+  }
+
+  // Are the projection's bounds meridians?
+  function isMeridianBounded(P) {
+    // TODO: add azimuthal projection with lat0 == 0
+    // if (inList(P, 'ortho') && P.lam0 === 0) return true;
+    return isAxisAligned(P); // TODO: look for exceptions to this
+  }
+
+  function isAzimuthal(P) {
+    return inList(P,
+      'aeqd,gnom,laea,mil_os,lee_os,gs48,alsk,gs50,nsper,tpers,ortho,qsc,stere,ups,sterea');
+  }
+
+  function inList(P, str) {
+    return str.split(',').includes(getCrsSlug(P));
+  }
+
+  // based on d3 implementation of Euler-angle rotation
+  // https://github.com/d3/d3-geo/blob/master/src/rotation.js
+  // license: https://github.com/d3/d3-geo/blob/master/LICENSE
+
+  function rotateDatasetCoords(dataset, rotation, inv) {
+    var proj = getRotationFunction(rotation, inv);
+    dataset.layers.filter(layerHasPoints).forEach(function(lyr) {
+      projectPointLayer(lyr, proj);
+    });
+    if (dataset.arcs) {
+      projectArcs(dataset.arcs, proj);
+    }
+  }
+
+  function getRotationFunction(rotation, inv) {
+    var f = getRotationFunction2(rotation, inv);
+    return function(lng, lat) {
+      return f([lng, lat]);
+    };
+  }
+
+  function getRotationFunction2(rotation, inv) {
+    var a = (rotation[0] || 0) * D2R$1,
+        b = (rotation[1] || 0) * D2R$1,
+        c = (rotation[2] || 0) * D2R$1;
+    return function(p) {
+      p[0] *= D2R$1;
+      p[1] *= D2R$1;
+      var rotate = inv ? rotatePointInv : rotatePoint;
+      rotate(p, a, b, c);
+      p[0] *= R2D$1;
+      p[1] *= R2D$1;
+      return p;
+    };
+  }
+
+  function rotatePoint(p, deltaLam, deltaPhi, deltaGam) {
+    if (deltaLam != 0) rotateLambda(p, deltaLam);
+    if (deltaPhi !== 0 || deltaGam !== 0) {
+      rotatePhiGamma(p, deltaPhi, deltaGam, false);
+    }
+    return p;
+  }
+
+  function rotatePointInv(p, deltaLam, deltaPhi, deltaGam) {
+    if (deltaPhi !== 0 || deltaGam !== 0) {
+      rotatePhiGamma(p, deltaPhi, deltaGam, true);
+    }
+    if (deltaLam != 0) rotateLambda(p, -deltaLam);
+    return p;
+  }
+
+  function rotateLambda(p, deltaLam) {
+    var lam = p[0] + deltaLam;
+    if (lam > Math.PI) lam -= 2 * Math.PI;
+    else if (lam < -Math.PI) lam += 2 * Math.PI;
+    p[0] = lam;
+  }
+
+  function rotatePhiGamma(p, deltaPhi, deltaGam, inv) {
+    var cosDeltaPhi = Math.cos(deltaPhi),
+        sinDeltaPhi = Math.sin(deltaPhi),
+        cosDeltaGam = Math.cos(deltaGam),
+        sinDeltaGam = Math.sin(deltaGam),
+        cosPhi = Math.cos(p[1]),
+        x = Math.cos(p[0]) * cosPhi,
+        y = Math.sin(p[0]) * cosPhi,
+        z = Math.sin(p[1]),
+        k;
+    if (inv) {
+      k = z * cosDeltaGam - y * sinDeltaGam;
+      p[0] = Math.atan2(y * cosDeltaGam + z * sinDeltaGam, x * cosDeltaPhi + k * sinDeltaPhi);
+      p[1] = Math.asin(k * cosDeltaPhi - x * sinDeltaPhi);
+    } else {
+      k = z * cosDeltaPhi + x * sinDeltaPhi;
+      p[0] = Math.atan2(y * cosDeltaGam - k * sinDeltaGam, x * cosDeltaPhi - z * sinDeltaPhi);
+      p[1] = Math.asin(k * cosDeltaGam + y * sinDeltaGam);
+    }
+  }
+
+  cmd.rotate = rotateDataset;
+
+  function rotateDataset(dataset, opts) {
+    if (!isLatLngCRS(getDatasetCRS(dataset))) {
+      stop$1('Command requires a lat-long dataset.');
+    }
+    if (!Array.isArray(opts.rotation) || !opts.rotation.length) {
+      stop$1('Invalid rotation parameter');
+    }
+    var rotatePoint = getRotationFunction2(opts.rotation, opts.invert);
+    var editor = new DatasetEditor(dataset);
+    if (dataset.arcs) {
+      dataset.arcs.flatten();
+    }
+
+    dataset.layers.forEach(function(lyr) {
+      var type = lyr.geometry_type;
+      editor.editLayer(lyr, getGeometryRotator(type, rotatePoint, opts));
+    });
+    editor.done();
+    if (!opts.debug) {
+      withActiveUndoTransaction(null, function() {
+        buildTopology(dataset);
+        cleanProjectedPathLayers(dataset);
+      });
+    }
+  }
+
+  function getGeometryRotator(layerType, rotatePoint, opts) {
+    var rings;
+    if (layerType == 'point') {
+      return function(coords) {
+        coords.forEach(rotatePoint);
+        return coords;
+      };
+    }
+    if (layerType == 'polyline') {
+      return function(coords) {
+        coords = densifyPathByInterval(coords, 0.5);
+        coords.forEach(rotatePoint);
+        return removePolylineCrosses(coords);
+      };
+    }
+    if (layerType == 'polygon') {
+      return function(coords, i, shape) {
+        if (isWholeWorld(coords)) {
+          coords = densifyPathByInterval(coords, 0.5);
+        } else {
+          coords.forEach(snapToEdge);
+          coords = removeCutSegments(coords);
+          coords = densifyPathByInterval(coords, 0.5, getInterpolator(0.5));
+          coords.forEach(rotatePoint);
+          // coords.forEach(snapToEdge);
+        }
+        if (i === 0) { // first part
+          rings = [];
+        }
+        if (coords.length < 4) {
+          debug('Short ring', coords);
+          return;
+        }
+        if (!samePoint(coords[0], lastEl(coords))) {
+          error('Open polygon ring');
+        }
+        rings.push(coords); // accumulate rings
+        if (i == shape.length - 1) { // last part
+          return opts.debug ? rings : removePolygonCrosses(rings);
+        }
+      };
+    }
+    return null; // assume layer has no geometry -- callback should not be called
+  }
+
+  function getInterpolator(interval) {
+    var interpolate = getIntervalInterpolator(interval);
+    return function(a, b) {
+      var points;
+      if (onPole(a) || onPole(b)) {
+        points = [];
+      } else if (isEdgeSegment(a, b)) {
+        points = densifyAntimeridianSegment(a, b, interval);
+      } else if (segmentCrossesAntimeridian(a, b)) {
+        // TODO: interpolate up to antimeridian?
+        points = [];
+      } else {
+        points = interpolate(a, b);
+      }
+      return points;
+    };
+  }
+
+  cmd.lines = function(lyr, dataset, opts) {
+    opts = opts || {};
+    if (opts.callouts) {
+      requirePointLayer(lyr);
+      return pointsToCallouts(lyr, dataset, opts);
+    } else if (lyr.geometry_type == 'point') {
+      return pointsToLines(lyr, dataset, opts);
+    } else if (opts.segments) {
+      return [convertShapesToSegments(lyr, dataset)];
+    } else if (opts.arcs) {
+      return [convertShapesToArcs(lyr, dataset)];
+    } else if (lyr.geometry_type == 'polygon') {
+      return polygonsToLines(lyr, dataset.arcs, opts);
+    } else {
+      requirePolygonLayer(lyr, "Command requires a polygon or point layer");
+    }
+  };
+
+  function convertShapesToArcs(lyr, dataset) {
+    var arcs = dataset.arcs;
+    var test = getArcPresenceTest(lyr.shapes, arcs);
+    var records = [];
+    var shapes = [];
+    for (var i=0, n=arcs.size(); i<n; i++) {
+      if (!test(i)) continue;
+      records.push({arcid: i});
+      shapes.push([[i]]);
+    }
+    return {
+      geometry_type: 'polyline',
+      data: new DataTable(records),
+      shapes: shapes
+    };
+  }
+
+  function convertShapesToSegments(lyr, dataset) {
+    var arcs = dataset.arcs;
+    var geojson = {type: 'FeatureCollection', features: []};
+    var test = getArcPresenceTest(lyr.shapes, arcs);
+    var arcId;
+    for (var i=0, n=arcs.size(); i<n; i++) {
+      arcId = i;
+      if (!test(arcId)) continue;
+      arcs.forEachArcSegment(arcId, onSeg);
+    }
+    function onSeg(i1, i2, xx, yy) {
+      var a = xx[i1],
+          b = yy[i1],
+          c = xx[i2],
+          d = yy[i2];
+      geojson.features.push({
+        type: 'Feature',
+        properties: {arc: arcId, i1: i1, i2: i2, x1: a, y1: b, x2: c, y2: d},
+        geometry: {type: 'LineString', coordinates: [[a, b], [c, d]]}
+      });
+    }
+    var merged = mergeDatasets([dataset, importGeoJSON(geojson, {})]);
+    noteDatasetWillChange(dataset, {operation: 'lines-segments', unit: 'arcs'});
+    dataset.arcs = merged.arcs;
+    markDatasetChanged(dataset, {operation: 'lines-segments', unit: 'arcs'});
+    // buildTopology(dataset);
+    return merged.layers.pop();
+  }
+
+  function pointsToLines(lyr, dataset, opts) {
+    var geojson = opts.groupby ?
+      groupedPointsToLineGeoJSON(lyr, opts.groupby, opts) :
+      pointShapesToLineGeometry(lyr.shapes); // no grouping: return single line with no attributes
+    var dataset2 = importGeoJSON(geojson);
+    var outputLayers = mergeDatasetsIntoDataset(dataset, [dataset2]);
+    // if (!opts.no_replace) {
+    //   outputLayers[0].name = lyr.name || outputLayers[0].name;
+    // }
+    setOutputLayerName(outputLayers[0], lyr, null, opts);
+    return outputLayers;
+  }
+
+  function pointsToCallouts(lyr, dataset, opts) {
+    var records = lyr.data ? lyr.data.getRecords() : null;
+    var calloutLen = getLayerBounds(lyr).width() / 50;
+    var pointToSegment = function(p) {
+      return [p, [p[0] + calloutLen, p[1]]];
+    };
+    var geojson = {
+      type: 'FeatureCollection',
+      features: lyr.shapes.map(function(shp, i) {
+        return {
+          type: 'Feature',
+          properties: records ? records[i] : null,
+          geometry: {
+            type: 'MultiLineString',
+            coordinates: shp.map(pointToSegment)
+          }
+        };
+      })
+    };
+    var dataset2 = importGeoJSON(geojson);
+    var outputLayers = mergeDatasetsIntoDataset(dataset, [dataset2]);
+    setOutputLayerName(outputLayers[0], lyr.name, null, opts);
+    return outputLayers;
+  }
+
+  function groupedPointsToLineGeoJSON(lyr, field, opts) {
+    var groups = [];
+    var getGroupId = getCategoryClassifier([field], lyr.data);
+    var dataOpts = utils.defaults({fields: [field]}, opts);
+    var records = aggregateDataRecords(lyr.data.getRecords(), getGroupId, dataOpts);
+    var features;
+    lyr.shapes.forEach(function(shape, i) {
+      var groupId = getGroupId(i);
+      if (groupId in groups === false) {
+        groups[groupId] = [];
+      }
+      groups[groupId].push(shape);
+    });
+    features = groups.map(function(shapes, i) {
+      return {
+        type: 'Feature',
+        properties: records[i],
+        geometry: shapes.length > 1 ? pointShapesToLineGeometry(shapes) : null
+      };
+    });
+    return {
+      type: 'FeatureCollection',
+      features: features
+    };
+  }
+
+  // TOOD: automatically convert rings into separate shape parts
+  function pointShapesToLineGeometry(shapes) {
+    var coords = [];
+    forEachPoint(shapes, function(p) {
+      coords.push(p.concat());
+    });
+    return {type: 'LineString', coordinates: coords};
+  }
+
+  function polygonsToLines(lyr, arcs, opts) {
+    opts = opts || {};
+    var decorateRecord = opts.each ? getLineRecordDecorator(opts.each, lyr, arcs) : null,
+        classifier = getArcClassifier(lyr, arcs, {where: opts.where}),
+        fields = utils.isArray(opts.fields) ? opts.fields : [],
+        rankId = 0,
+        shapes = [],
+        records = [],
+        outputLyr;
+
+    if (fields.length > 0 && !lyr.data) {
+      stop$1("Missing a data table");
+    }
+
+    addLines(extractOuterLines(lyr.shapes, classifier), 'outer');
+
+    fields.forEach(function(field) {
+      var data = lyr.data.getRecords();
+      var key = function(a, b) {
+        var arec = data[a];
+        var brec = data[b];
+        if (!arec || !brec || arec[field] === brec[field]) {
+          return null;
+        }
+        return a + '-' + b;
+      };
+      requireDataField(lyr, field);
+      addLines(extractLines(lyr.shapes, classifier(key)), field);
+    });
+
+    addLines(extractInnerLines(lyr.shapes, classifier), 'inner');
+    outputLyr = createLineLayer(shapes, records);
+    setOutputLayerName(outputLyr, lyr, null, opts);
+    return outputLyr;
+
+    function addLines(lines, typeName) {
+      var attr = lines.map(function(shp, i) {
+        var rec = {RANK: rankId, TYPE: typeName};
+        if (decorateRecord) decorateRecord(rec, shp);
+        return rec;
+      });
+      shapes = utils.merge(lines, shapes);
+      records = utils.merge(attr, records);
+      rankId++;
+    }
+  }
+
+
+  // kludgy way to implement each= option of -lines command
+  function getLineRecordDecorator(exp, lyr, arcs) {
+    // repurpose arc classifier function to convert arc ids to shape ids of original polygons
+    var procArcId = getArcClassifier(lyr, arcs)(procShapeIds);
+    var compiled = compileFeaturePairExpression(exp, lyr, arcs);
+    var tmp;
+
+    function procShapeIds(shpA, shpB) {
+      compiled(shpA, shpB, tmp);
+    }
+
+    return function(rec, shp) {
+      tmp = rec;
+      procArcId(shp[0][0]);
+      return rec;
+    };
+  }
+
+
+  function createLineLayer(lines, records) {
+    return {
+      geometry_type: 'polyline',
+      shapes: lines,
+      data: records ? new DataTable(records) : null
+    };
+  }
+
+  function extractOuterLines(shapes, classifier) {
+    var key = function(a, b) {return b == -1 ? String(a) : null;};
+    return extractLines(shapes, classifier(key));
+  }
+
+  function extractInnerLines(shapes, classifier) {
+    var key = function(a, b) {return b > -1 ? a + '-' + b : null;};
+    return extractLines(shapes, classifier(key));
+  }
+
+  function extractLines(shapes, classify) {
+    var lines = [],
+        index = {},
+        prev = null,
+        prevKey = null,
+        part;
+
+    traversePaths(shapes, onArc, onPart);
+
+    function onArc(o) {
+      var arcId = o.arcId,
+          key = classify(arcId),
+          isContinuation, line;
+      if (key) {
+        line = key in index ? index[key] : null;
+        isContinuation = key == prevKey && o.shapeId == prev.shapeId && o.partId == prev.partId;
+        if (!line) {
+          line = [[arcId]]; // new shape
+          index[key] = line;
+          lines.push(line);
+        } else if (isContinuation) {
+          line[line.length-1].push(arcId); // extending prev part
+        } else {
+          line.push([arcId]); // new part
+        }
+
+        // if extracted line is split across endpoint of original polygon ring, then merge
+        if (o.i == part.arcs.length - 1 &&  // this is last arc in ring
+            line.length > 1 &&              // extracted line has more than one part
+            line[0][0] == part.arcs[0]) {   // first arc of first extracted part is first arc in ring
+          line[0] = line.pop().concat(line[0]);
+        }
+      }
+      prev = o;
+      prevKey = key;
+    }
+
+    function onPart(o) {
+      part = o;
+    }
+
+    return lines;
+  }
+
+  var Lines = /*#__PURE__*/Object.freeze({
+    __proto__: null,
+    createLineLayer: createLineLayer,
+    extractInnerLines: extractInnerLines,
+    polygonsToLines: polygonsToLines
+  });
+
+  function getClippingDataset(src, dest, opts) {
+    return getUnprojectedBoundingPolygon(src, dest, opts);
+  }
+
+  function getUnprojectedBoundingPolygon(src, dest, opts) {
+    var dataset;
+    if (isCircleClippedProjection(dest) || opts.clip_angle || dest.clip_angle) {
+      dataset = getBoundingCircle(src, dest, opts);
+    } else if (isRectangleClippedProjection(dest) || opts.clip_bbox) {
+      dataset = getBoundingRectangle(dest, opts);
+    }
+    return dataset || null;
+  }
+
+  // If possible, return a lat-long bbox that can be used to
+  // test whether data exceeds the projection bounds ands needs to be clipped
+  // export function getInnerBoundingBBox(P, opts) {
+  //   var bbox = null;
+  //   if (opts.clip_bbox) {
+  //     bbox = opts.clip_bbox;
+  //   } else if (isRectangleClippedProjection(dest)) {
+  //     bbox
+  //   }
+  //   return bbox;
+  // }
+
+  // Return projected polygon extent of both clipped and unclipped projections
+  function getPolygonDataset$1(src, dest, opts) {
+    // use clipping area if projection is clipped
+    var dataset = getUnprojectedBoundingPolygon(src, dest, opts);
+    if (!dataset) {
+      // use entire world if projection is not clipped
+      dataset = getBoundingRectangle(dest, {clip_bbox: [-180,-90,180,90]});
+    }
+    projectDataset(dataset, src, dest, {no_clip: false, quiet: true});
+    return dataset;
+  }
+
+  // Return projected outline of clipped projections
+  function getOutlineDataset(src, dest, opts) {
+    var dataset = getUnprojectedBoundingPolygon(src, dest, opts);
+    if (dataset) {
+      // project, with cutting & cleanup
+      projectDataset(dataset, src, dest, {no_clip: false, quiet: true});
+      dataset.layers[0].geometry_type = 'polyline';
+    }
+    return dataset || null;
+  }
+
+  function getBoundingRectangle(dest, opts) {
+    var bbox = opts.clip_bbox || getDefaultClipBBox(dest);
+    var rotation = getRotationParams(dest);
+    if (!bbox) error('Missing expected clip bbox.');
+    opts = Object.assign({interval: 0.5}, opts); // make sure edges can curve
+    var dataset = importGeoJSON(bboxToPolygon(bbox, opts));
+    if (rotation) {
+      rotateDataset(dataset, {rotation: rotation, invert: true});
+    }
+    return dataset;
+  }
+
+  function getBoundingCircle(src, dest, opts) {
+    var angle = opts.clip_angle || dest.clip_angle || getDefaultClipAngle(dest);
+    if (!angle) return null;
+    verbose(`Using clip angle of ${ +angle.toFixed(2) } degrees`);
+    var dist = getClippingRadius(src, angle);
+    var cp = getProjCenter(dest);
+    // kludge: attach the clipping angle to the CRS, so subsequent commands
+    // (e.g. -graticule) can create an outline
+    dest.clip_angle = angle;
+    var geojson = getCircleGeoJSON(cp, dist, null, opts);
+    return importGeoJSON(geojson);
+  }
+
+  function isRectangleClippedProjection(P) {
+    // TODO: add tmerc, etmerc, ...
+    // return inList(P, 'tmerc,utm,etmerc,merc,bertin1953');
+    return inList(P, 'merc,bertin1953');
+  }
+
+  function getDefaultClipBBox(P) {
+    var e = 1e-3;
+    var slug = getCrsSlug(P);
+    var tmerc = [-179,-90,179,90];
+    var bbox = {
+      // longlat: [-180, -90, 180, 90],
+      tmerc: tmerc,
+      utm: tmerc,
+      etmerc: tmerc,
+      merc: [-180, -89, 180, 89],
+      lcc: [-180, -89, 180, 89],
+      bertin1953: [-180 + e, -90 + e, 180 - e, 90 - e]
+    }[slug];
+    return bbox;
+  }
+
+  function getClampBBox(P) {
+    var bbox;
+    if (inList(P, 'merc,lcc')) {
+      bbox = getDefaultClipBBox(P);
+    }
+    return bbox;
+  }
+
+  function isCircleClippedProjection(P) {
+    return inList(P, 'stere,sterea,ups,ortho,gnom,laea,nsper,tpers,geos,nicol');
+  }
+
+  function getPerspectiveClipAngle(P) {
+    var h = parseFloat(P.params.h.param);
+    if (!h || h < 0) {
+      return 0;
+    }
+    var theta = Math.acos(P.a / (P.a + h)) * 180 / Math.PI;
+    theta *= 0.995; // reducing a bit to avoid out-of-range errors
+    return theta;
+  }
+
+  function getDefaultClipAngle(P) {
+    var slug = getCrsSlug(P);
+    if (slug == 'nsper' || slug == 'geos') return getPerspectiveClipAngle(P);
+    if (slug == 'tpers') {
+      message('Automatic clipping is not supported for the Tilted Perspective projection');
+      return 0;
+    }
+    return {
+      gnom: 60,
+      laea: 179,
+      //ortho: 89.9, // projection errors betwen lat +/-35 to 55
+      ortho: 89.85, // TODO: investigate
+      nicol: 89.85,
+      stere: 142,
+      sterea: 142,
+      ups: 10.5 // TODO: should be 6.5 deg at north pole
+    }[slug] || 0;
+  }
+
+  function getRotationParams(P) {
+    var slug = getCrsSlug(P);
+    if (slug == 'bertin1953') return [-16.5,-42];
+    if (slug == 'tmerc' || slug == 'utm' || slug == 'etmerc') {
+      if (P.lam0 !== 0) return [P.lam0 * 180 / Math.PI];
+    }
+    return null;
+  }
+
+
+  function getProjCenter(P) {
+    var rtod = 180 / Math.PI;
+    return [P.lam0 * rtod, P.phi0 * rtod];
+  }
+
+  // Convert a clip angle to a distance in meters
+  function getClippingRadius(P, angle) {
+    return getCircleRadiusFromAngle(P, angle);
+  }
+
+  function preProjectionClip(dataset, src, dest, opts) {
+    if (!isLatLngCRS(src) || opts.no_clip) return false;
+    // rotated normal-aspect projections can generally have a thin slice removed
+    // from the rotated antimeridian, instead of clipping them
+    var cut = insertPreProjectionCuts(dataset, src, dest);
+    var clipped = false;
+    var clipData;
+    // experimental -- we can probably get away with just clamping some CRSs that
+    // have a slightly restricted coord range (e.g. Mercator), instead of doing
+    // a clip (more expensive)
+    var clampBox = getClampBBox(dest);
+    if (clampBox) {
+      clampDataset(dataset, clampBox);
+    } else {
+      clipData = getClippingDataset(src, dest, opts);
+    }
+    // clip data to projection limits (some projections), if content exceeds the limit
+    //
+    if (clipData) {
+      clipped = clipLayersIfNeeded(dataset, clipData);
+    }
+    return cut || clipped;
+  }
+
+  function clipLayersIfNeeded(dataset, clipData) {
+    // Avoid clipping layers that are fully enclosed within the projectable
+    // coordinate space (represented by a dataset containing a single
+    // polygon layer, @clipData). This avoids performing unnecessary intersection
+    // tests on each line segment.
+    var layers = dataset.layers.filter(function(lyr) {
+      return layerHasGeometry(lyr) && !layerIsFullyEnclosed(lyr, dataset, clipData);
+    });
+    if (layers.length > 0) {
+      clipLayersInPlace(layers, clipData, dataset, 'clip', getInternalClipOpts());
+      return true;
+    }
+    return false;
+  }
+
+  // @clipData: a dataset containing a polygon layer
+  function layerIsFullyEnclosed(lyr, dataset, clipData) {
+    // This test uses the layer's bounding box to represent the extent of the
+    // layer, and can produce false negatives.
+    var dataBounds = getLayerBounds(lyr, dataset.arcs);
+    var enclosed = false;
+    clipData.layers[0].shapes.forEach(function(shp, i) {
+      enclosed = enclosed || testBoundsInPolygon(dataBounds, shp, clipData.arcs);
+    });
+    return enclosed;
+  }
+
+
+  function insertPreProjectionCuts(dataset, src, dest) {
+    var antimeridian = getAntimeridian(dest.lam0 * 180 / Math.PI);
+    // currently only supports adding a single vertical cut to earth axis-aligned
+    // map projections centered on a non-zero longitude.
+    // TODO: need a more sophisticated kind of cutting to handle other cases
+    if (dataset.arcs && isRotatedNormalProjection(dest) && datasetCrossesLon(dataset, antimeridian)) {
+      insertVerticalCut(dataset, antimeridian);
+      dissolveArcs(dataset);
+      return true;
+    }
+    return false;
+  }
+
+  function clampDataset(dataset, bbox) {
+    transformPoints(dataset, function(x, y) {
+      return [utils.clamp(x, bbox[0], bbox[2]), utils.clamp(y, bbox[1], bbox[3])];
+    });
+  }
+
+  function datasetCrossesLon(dataset, lon) {
+    var crosses = false;
+    dataset.layers.filter(layerHasPaths).forEach(function(lyr) {
+      if (crosses) return;
+      lyr.shapes.forEach(function(shp) {
+        if (crosses || !shp) return;
+        forEachSegmentInShape(shp, dataset.arcs, function(i, j, xx, yy) {
+          var ax = xx[i],
+              bx = xx[j];
+          if (ax <= lon && bx >= lon || ax >= lon && bx <= lon) {
+            crosses = true;
+          }
+        });
+      });
+    });
+    return crosses;
+  }
+
+  function insertVerticalCut(dataset, lon) {
+    var pathLayers = dataset.layers.filter(layerHasPaths);
+    if (pathLayers.length === 0) return;
+    var e = 1e-8;
+    var bbox = [lon-e, -91, lon+e, 91];
+    // densify (so cut line can curve, e.g. Cupola projection)
+    var geojson = bboxToPolygon(bbox, {interval: 0.5});
+    var clip = importGeoJSON(geojson);
+    clipLayersInPlace(pathLayers, clip, dataset, 'erase', getInternalClipOpts());
+  }
+
+  function getInternalClipOpts() {
+    return {no_cleanup: true, no_warn: true};
+  }
+
+  // Converts a Proj.4 projection name (e.g. lcc, tmerc, utm) to a Proj.4 string
+  // by picking parameters that are appropriate to the extent of the dataset
+  // being projected (e.g. standard parallels, longitude of origin)
+  // Works for lcc, aea, tmerc, utm, etc.
+  // TODO: add more projections
+  //
+  function expandProjDefn(str, dataset, targetLayers) {
+    var mproj = require$1('mproj');
+    var proj4, params, bbox, isConic2SP, isCentered, isUtm, decimals;
+    if (str in mproj.internal.pj_list === false) {
+      // not a bare projection code -- assume valid projection string in other format
+      return str;
+    }
+    isConic2SP = ['lcc', 'aea'].includes(str);
+    isCentered = ['tmerc', 'etmerc'].includes(str);
+    isUtm = str == 'utm';
+    proj4 = '+proj=' + str;
+    if (isConic2SP || isCentered || isUtm) {
+      bbox = getBBox(dataset, targetLayers); // TODO: support projected datasets
+      decimals = getBoundsPrecisionForDisplay(bbox);
+      if (isUtm) {
+        params = getUtmParams(bbox);
+      } else {
+        params = isCentered ? getCenterParams(bbox, decimals) : getConicParams(bbox, decimals);
+      }
+      proj4 += ' ' + params;
+      message(`Converted "${str}" to "${proj4}"`);
+    }
+    return proj4;
+  }
+
+  function getBBox(dataset, targetLayers) {
+    var source = targetLayers && targetLayers.length > 0 ? {
+      arcs: dataset.arcs,
+      layers: targetLayers,
+      info: dataset.info
+    } : dataset;
+    if (!isLatLngCRS(getDatasetCRS(dataset))) {
+      stop$1('Expected unprojected data');
+    }
+    return getAutoFitBBox(source);
+  }
+
+  function getAutoFitBBox(dataset) {
+    var bbox = getDatasetBounds(dataset).toArray();
+    if (bbox[2] - bbox[0] > 180) {
+      bbox = getWrappedBBox(dataset, bbox) || bbox;
+    }
+    return bbox;
+  }
+
+  function getWrappedBBox(dataset, bbox) {
+    var xmaxW = -Infinity,
+        xminE = Infinity, xmaxE = -Infinity,
+        ymin = bbox[1], ymax = bbox[3],
+        gap;
+
+    // Detect dateline clustering with a streaming east/west split. The gap
+    // between the two boxes can only shrink as more coordinates are scanned.
+    forEachDatasetCoord(dataset, function(x) {
+      if (x < 0) {
+        if (x > xmaxW) xmaxW = x;
+      } else {
+        if (x < xminE) xminE = x;
+        if (x > xmaxE) xmaxE = x;
+      }
+      if (xmaxW > -Infinity && xmaxE > -Infinity) {
+        gap = xminE - xmaxW;
+        return gap > 180;
+      }
+    });
+
+    if (xmaxW == -Infinity || xmaxE == -Infinity) return null;
+    if (xminE - xmaxW <= 180) return null;
+    return [xminE, ymin, xmaxW + 360, ymax];
+  }
+
+  function forEachDatasetCoord(dataset, cb) {
+    var arcs = dataset.arcs;
+    var usedArcs = arcs ? new Uint8Array(arcs.size()) : null;
+    var keepGoing = true;
+    dataset.layers.forEach(function(lyr) {
+      if (!keepGoing) return;
+      if (lyr.geometry_type == 'point') {
+        keepGoing = scanPointCoords(lyr.shapes, cb);
+      } else if (arcs && (lyr.geometry_type == 'polygon' || lyr.geometry_type == 'polyline')) {
+        forEachArcId(lyr.shapes, function(id) {
+          var absId, iter;
+          if (!keepGoing) return;
+          absId = id < 0 ? ~id : id;
+          if (usedArcs[absId]) return;
+          usedArcs[absId] = 1;
+          iter = arcs.getArcIter(absId);
+          while (keepGoing && iter.hasNext()) {
+            keepGoing = cb(iter.x, iter.y) !== false;
+          }
+        });
+      }
+    });
+  }
+
+  function scanPointCoords(shapes, cb) {
+    var shp, p;
+    for (var i=0, n=shapes.length; i<n; i++) {
+      shp = shapes[i];
+      for (var j=0, m=shp ? shp.length : 0; j<m; j++) {
+        p = shp[j];
+        if (cb(p[0], p[1]) === false) return false;
+      }
+    }
+    return true;
+  }
+
+  // See: Savric & Jenny, "Automating the selection of standard parallels for conic map projections"
+  // Using one-sixth rule, not the more complicated formula proposed by the authors
+  function getConicParams(bbox, decimals) {
+    var cx = (bbox[0] + bbox[2]) / 2;
+    var h = bbox[3] - bbox[1];
+    var sp1 = bbox[1] + 1/6 * h;
+    var sp2 = bbox[1] + 5/6 * h;
+    return `+lon_0=${ cx.toFixed(decimals) } +lat_1=${ sp1.toFixed(decimals) } +lat_2=${ sp2.toFixed(decimals) }`;
+  }
+
+  function getCenterParams(bbox, decimals) {
+    var cx = (bbox[0] + bbox[2]) / 2;
+    var cy = (bbox[1] + bbox[3]) / 2;
+    return `+lon_0=${ cx.toFixed(decimals) } +lat_0=${ cy.toFixed(decimals) }`;
+  }
+
+  function getUtmParams(bbox) {
+    var cx = (bbox[0] + bbox[2]) / 2;
+    var cy = (bbox[1] + bbox[3]) / 2;
+    var zone = Math.floor((cx + 180) / 6) + 1;
+    zone = Math.max(1, Math.min(60, zone));
+    return `+zone=${ zone }` + (cy < 0 ? ' +south' : '');
+  }
+
+  var ProjectionParams = /*#__PURE__*/Object.freeze({
+    __proto__: null,
+    expandProjDefn: expandProjDefn,
+    getAutoFitBBox: getAutoFitBBox,
+    getCenterParams: getCenterParams,
+    getConicParams: getConicParams,
+    getUtmParams: getUtmParams
+  });
+
+  var DEFAULT_MESH_INTERVAL = 32;
+  var DEFAULT_MAX_EDGE_FACTOR = 20;
+
+  function projectRasterGridForward(raster, srcCRS, destCRS, optsArg) {
+    var opts = optsArg || {};
+    var grid = getRasterGrid(raster);
+    var interval = opts.raster_mesh_interval || opts.rasterMeshInterval || DEFAULT_MESH_INTERVAL;
+    var transform = getProjTransform2(srcCRS, destCRS);
+    var timing = opts.timing;
+    var mesh, bbox, outSize, outGrid;
+    validateRasterGridForProjection(grid);
+    timeStart(timing, 'mesh');
+    mesh = buildProjectedRasterMesh(grid, transform, interval);
+    classifyProjectedMeshCells(mesh, opts);
+    timeEnd(timing, 'mesh');
+    bbox = opts.output_bbox || opts.outputBbox || getProjectedMeshBBox(mesh);
+    if (!bbox) stop$1('Unable to project raster layer');
+    outSize = getOutputGridSize(grid, bbox, opts);
+    outGrid = createProjectedRasterGrid(grid, raster, bbox, outSize.width, outSize.height, opts);
+    timeStart(timing, 'rasterize');
+    rasterizeProjectedMesh(grid, outGrid, mesh, getRasterProjectionSampleMethod(raster, opts));
+    timeEnd(timing, 'rasterize');
+    if (timing) {
+      timing.outputWidth = outGrid.width;
+      timing.outputHeight = outGrid.height;
+      timing.meshVertices = mesh.vertices.length;
+      timing.meshCells = mesh.cells.length;
+      timing.meshSkippedCells = mesh.skippedCellCount;
+    }
+    return outGrid;
+  }
+
+  function getRasterProjectionSampleMethod(raster, opts) {
+    var method = opts.resampling || opts.sample_method || opts.sampleMethod || getDefaultRasterProjectionSampleMethod(raster);
+    if (method != 'nearest' && method != 'bilinear') {
+      stop$1('Unsupported resampling method:', method);
+    }
+    return method;
+  }
+
+  function getDefaultRasterProjectionSampleMethod(raster) {
+    return rasterAppearsCategorical(raster) ? 'nearest' : 'bilinear';
+  }
+
+  function rasterAppearsCategorical(raster) {
+    var grid = getRasterGrid(raster);
+    var recipe = raster && raster.view && raster.view.recipe || {};
+    var derivation = raster && raster.derivation || {};
+    return raster && raster.interpretation == 'categorical' ||
+      grid && grid.colorModel == 'palette' ||
+      recipe.type == 'palette' ||
+      recipe.type == 'categorical' ||
+      derivation.type == 'palette' ||
+      derivation.type == 'categorical';
+  }
+
+  function getProjectedRasterGridBBox(raster, srcCRS, destCRS, optsArg) {
+    var opts = optsArg || {};
+    var grid = getRasterGrid(raster);
+    var interval = opts.raster_mesh_interval || opts.rasterMeshInterval || DEFAULT_MESH_INTERVAL;
+    var transform = getProjTransform2(srcCRS, destCRS);
+    var mesh, bbox;
+    validateRasterGridForProjection(grid);
+    mesh = buildProjectedRasterMesh(grid, transform, interval);
+    classifyProjectedMeshCells(mesh, opts);
+    bbox = getProjectedMeshBBox(mesh);
+    return bbox;
+  }
+
+  function getProjectedRasterMeshBBox(mesh, optsArg) {
+    classifyProjectedMeshCells(mesh, optsArg || {});
+    return getProjectedMeshBBox(mesh);
+  }
+
+  function buildProjectedRasterMesh(grid, transform, interval) {
+    var xs = getMeshStops(grid.width, interval);
+    var ys = getMeshStops(grid.height, interval);
+    var vertices = [];
+    for (var y = 0; y < ys.length; y++) {
+      for (var x = 0; x < xs.length; x++) {
+        vertices.push(projectRasterMeshVertex(grid, xs[x], ys[y], transform));
+      }
+    }
+    return {
+      xs: xs,
+      ys: ys,
+      vertices: vertices
+    };
+  }
+
+  function classifyProjectedMeshCells(mesh, opts) {
+    var cols = mesh.xs.length;
+    var cells = [];
+    var lengths = [];
+    var maxEdge, skipped;
+    for (var y = 0; y < mesh.ys.length - 1; y++) {
+      for (var x = 0; x < mesh.xs.length - 1; x++) {
+        var cell = getMeshCell(mesh, cols, x, y);
+        cell.maxEdge = getCellMaxEdge(cell);
+        cells.push(cell);
+        if (cell.valid) lengths.push(cell.maxEdge);
+      }
+    }
+    maxEdge = getProjectedMeshMaxEdge(lengths, opts);
+    skipped = 0;
+    cells.forEach(function(cell) {
+      if (!cell.valid || cell.maxEdge > maxEdge) {
+        cell.valid = false;
+        skipped++;
+      }
+    });
+    if (opts.raster_component_filter || opts.rasterComponentFilter) {
+      skipped += keepLargestValidCellComponent(cells, mesh.xs.length - 1, mesh.ys.length - 1);
+    }
+    mesh.cells = cells;
+    mesh.maxEdge = maxEdge;
+    mesh.skippedCellCount = skipped;
+  }
+
+  function keepLargestValidCellComponent(cells, cols, rows) {
+    var componentIds = new Int32Array(cells.length);
+    var components = [];
+    var componentId = 0;
+    var largestId = -1;
+    var largestSize = 0;
+    var skipped = 0;
+    componentIds.fill(-1);
+    for (var i = 0; i < cells.length; i++) {
+      if (!cells[i].valid || componentIds[i] != -1) continue;
+      components[componentId] = floodFillCellComponent(cells, componentIds, cols, rows, i, componentId);
+      if (components[componentId].size > largestSize) {
+        largestSize = components[componentId].size;
+        largestId = componentId;
+      }
+      componentId++;
+    }
+    if (largestId == -1) return 0;
+    cells.forEach(function(cell, i) {
+      if (cell.valid && !componentShouldBeKept(components[componentIds[i]], components[largestId])) {
+        cell.valid = false;
+        skipped++;
+      }
+    });
+    return skipped;
+  }
+
+  function floodFillCellComponent(cells, componentIds, cols, rows, start, componentId) {
+    var stack = [start];
+    var component = {
+      size: 0,
+      bbox: [Infinity, Infinity, -Infinity, -Infinity]
+    };
+    while (stack.length > 0) {
+      var id = stack.pop();
+      var x, y;
+      if (!cells[id].valid || componentIds[id] != -1) continue;
+      componentIds[id] = componentId;
+      component.size++;
+      expandComponentBBox(component, cells[id]);
+      x = id % cols;
+      y = Math.floor(id / cols);
+      if (x > 0) stack.push(id - 1);
+      if (x < cols - 1) stack.push(id + 1);
+      if (y > 0) stack.push(id - cols);
+      if (y < rows - 1) stack.push(id + cols);
+    }
+    return component;
+  }
+
+  function componentShouldBeKept(component, mainComponent) {
+    if (component == mainComponent) return true;
+    // A valid antimeridian split can create multiple disconnected source-grid
+    // components whose projected bboxes overlap. Remote components are more
+    // likely to be projection discontinuities that would create spiky triangles.
+    return bboxesOverlap(component.bbox, mainComponent.bbox);
+  }
+
+  function expandComponentBBox(component, cell) {
+    [cell.v00, cell.v10, cell.v01, cell.v11].forEach(function(p) {
+      if (p.x < component.bbox[0]) component.bbox[0] = p.x;
+      if (p.y < component.bbox[1]) component.bbox[1] = p.y;
+      if (p.x > component.bbox[2]) component.bbox[2] = p.x;
+      if (p.y > component.bbox[3]) component.bbox[3] = p.y;
+    });
+  }
+
+  function bboxesOverlap(a, b) {
+    return a[0] <= b[2] && a[2] >= b[0] && a[1] <= b[3] && a[3] >= b[1];
+  }
+
+  function getMeshCell(mesh, cols, x, y) {
+    var v = y * cols + x;
+    var v00 = mesh.vertices[v];
+    var v10 = mesh.vertices[v + 1];
+    var v01 = mesh.vertices[v + cols];
+    var v11 = mesh.vertices[v + cols + 1];
+    return {
+      v00: v00,
+      v10: v10,
+      v01: v01,
+      v11: v11,
+      valid: vertexIsValid(v00) && vertexIsValid(v10) && vertexIsValid(v01) && vertexIsValid(v11)
+    };
+  }
+
+  function getCellMaxEdge(cell) {
+    if (!cell.valid) return Infinity;
+    return Math.max(
+      getProjectedEdgeLength(cell.v00, cell.v10),
+      getProjectedEdgeLength(cell.v10, cell.v11),
+      getProjectedEdgeLength(cell.v11, cell.v01),
+      getProjectedEdgeLength(cell.v01, cell.v00)
+    );
+  }
+
+  function getProjectedEdgeLength(a, b) {
+    var dx = a.x - b.x;
+    var dy = a.y - b.y;
+    return Math.sqrt(dx * dx + dy * dy);
+  }
+
+  function getProjectedMeshMaxEdge(lengths, opts) {
+    var factor = opts.raster_max_edge_factor || opts.rasterMaxEdgeFactor || DEFAULT_MAX_EDGE_FACTOR;
+    if (lengths.length === 0) return 0;
+    lengths.sort(function(a, b) { return a - b; });
+    return lengths[Math.floor(lengths.length / 2)] * factor;
+  }
+
+  function validateRasterGridForProjection(grid) {
+    var t = grid && grid.transform;
+    if (!grid || !grid.samples || !grid.bbox) stop$1('Raster layer is missing required projection data');
+    if (t && (t[1] !== 0 || t[3] !== 0)) {
+      stop$1('Raster reprojection does not support rotated or skewed rasters');
+    }
+  }
+
+  function getMeshStops(size, interval) {
+    var stops = [];
+    var i;
+    interval = Math.max(1, interval | 0);
+    for (i = 0; i < size; i += interval) {
+      stops.push(i);
+    }
+    if (stops[stops.length - 1] != size) stops.push(size);
+    return stops;
+  }
+
+  function projectRasterMeshVertex(grid, px, py, transform) {
+    var xy = rasterPixelToMapXY(grid, px, py);
+    var p = transform(xy[0], xy[1]);
+    return {
+      sx: px,
+      sy: py,
+      x: p && isFinite(p[0]) ? p[0] : NaN,
+      y: p && isFinite(p[1]) ? p[1] : NaN
+    };
+  }
+
+  function rasterPixelToMapXY(grid, px, py) {
+    var t = grid.transform;
+    var bbox = grid.bbox;
+    if (t) {
+      return [
+        t[0] * px + t[1] * py + t[2],
+        t[3] * px + t[4] * py + t[5]
+      ];
+    }
+    return [
+      bbox[0] + px / grid.width * (bbox[2] - bbox[0]),
+      bbox[3] - py / grid.height * (bbox[3] - bbox[1])
+    ];
+  }
+
+  function getProjectedMeshBBox(mesh) {
+    var xmin = Infinity, ymin = Infinity, xmax = -Infinity, ymax = -Infinity;
+    mesh.cells.forEach(function(cell) {
+      if (!cell.valid) return;
+      [cell.v00, cell.v10, cell.v01, cell.v11].forEach(function(p) {
+        if (p.x < xmin) xmin = p.x;
+        if (p.x > xmax) xmax = p.x;
+        if (p.y < ymin) ymin = p.y;
+        if (p.y > ymax) ymax = p.y;
+      });
+    });
+    return xmin < Infinity && xmax > xmin && ymax > ymin ? [xmin, ymin, xmax, ymax] : null;
+  }
+
+  function createProjectedRasterGrid(grid, raster, bbox, widthArg, heightArg, opts) {
+    var width = widthArg || grid.width;
+    var height = heightArg || grid.height;
+    var bands = getOutputBandCount(grid, raster, opts);
+    var samples = new grid.samples.constructor(width * height * bands);
+    var coverage = new Uint8Array(width * height);
+    fillProjectedRasterSamples(samples, bands, grid, raster, opts || {});
+    return Object.assign({}, grid, {
+      width: width,
+      height: height,
+      bands: bands,
+      samples: samples,
+      coverage: coverage,
+      bbox: bbox,
+      transform: [
+        (bbox[2] - bbox[0]) / width,
+        0,
+        bbox[0],
+        0,
+        -(bbox[3] - bbox[1]) / height,
+        bbox[3]
+      ]
+    });
+  }
+
+  function getOutputGridSize(grid, bbox, opts) {
+    var width = opts.output_width || opts.outputWidth;
+    var height = opts.output_height || opts.outputHeight;
+    var pixels, aspect;
+    if (width || height) {
+      return {
+        width: width || Math.max(1, Math.round(grid.width * height / grid.height)),
+        height: height || Math.max(1, Math.round(grid.height * width / grid.width))
+      };
+    }
+    pixels = grid.width * grid.height;
+    aspect = (bbox[2] - bbox[0]) / (bbox[3] - bbox[1]);
+    if (!isFinite(aspect) || aspect <= 0) return {width: grid.width, height: grid.height};
+    width = Math.max(1, Math.round(Math.sqrt(pixels * aspect)));
+    height = Math.max(1, Math.round(pixels / width));
+    return {width: width, height: height};
+  }
+
+  function getOutputBandCount(grid, raster, opts) {
+    var color = getNoDataColor(raster, opts);
+    return color && color.a === 0 && grid.bands > 1 && grid.bands < 4 ? 4 : grid.bands;
+  }
+
+  function fillProjectedRasterSamples(samples, bands, grid, raster, opts) {
+    var color = getNoDataColor(raster, opts);
+    var noData = grid.nodata;
+    if (color) {
+      fillProjectedRasterColor(samples, bands, color);
+      return;
+    }
+    if (noData === null || noData === undefined || !isFinite(noData)) return;
+    samples.fill(noData);
+  }
+
+  function getNoDataColor(raster, opts) {
+    var arg = opts.nodata_color || opts.nodataColor;
+    var color;
+    if (arg == null || arg === '') {
+      return rasterAppearsCategorical(raster) ? null : {r: 255, g: 255, b: 255, a: 1};
+    }
+    if (String(arg).toLowerCase() == 'transparent') {
+      return {r: 0, g: 0, b: 0, a: 0};
+    }
+    color = parseColor(arg);
+    if (!color) stop$1('Unsupported nodata-color:', arg);
+    return color;
+  }
+
+  function fillProjectedRasterColor(samples, bands, color) {
+    var gray = Math.round(0.299 * color.r + 0.587 * color.g + 0.114 * color.b);
+    var alpha = Math.round((color.a == null ? 1 : color.a) * 255);
+    for (var i = 0; i < samples.length; i += bands) {
+      if (bands == 1) {
+        samples[i] = gray;
+      } else {
+        samples[i] = color.r;
+        samples[i + 1] = color.g;
+        samples[i + 2] = color.b;
+        if (bands > 3) samples[i + 3] = alpha;
+      }
+    }
+  }
+
+  function rasterizeProjectedMesh(srcGrid, destGrid, mesh, sampleMethod) {
+    mesh.cells.forEach(function(cell) {
+      if (!cell.valid) return;
+      rasterizeProjectedTriangle(srcGrid, destGrid, cell.v00, cell.v10, cell.v11, sampleMethod);
+      rasterizeProjectedTriangle(srcGrid, destGrid, cell.v00, cell.v11, cell.v01, sampleMethod);
+    });
+  }
+
+  function rasterizeProjectedTriangle(srcGrid, destGrid, a, b, c, sampleMethod) {
+    var bbox, x0, x1, y0, y1, det, w1, w2, w3, sx, sy, ap, bp, cp;
+    if (!vertexIsValid(a) || !vertexIsValid(b) || !vertexIsValid(c)) return;
+    ap = vertexToDestPixel(destGrid, a);
+    bp = vertexToDestPixel(destGrid, b);
+    cp = vertexToDestPixel(destGrid, c);
+    det = triangleDet(ap, bp, cp);
+    if (det === 0) return;
+    bbox = getTrianglePixelBounds(destGrid, ap, bp, cp);
+    x0 = bbox[0]; y0 = bbox[1]; x1 = bbox[2]; y1 = bbox[3];
+    for (var y = y0; y <= y1; y++) {
+      for (var x = x0; x <= x1; x++) {
+        w1 = edgeFunction(bp, cp, x + 0.5, y + 0.5) / det;
+        w2 = edgeFunction(cp, ap, x + 0.5, y + 0.5) / det;
+        w3 = 1 - w1 - w2;
+        if (w1 < -1e-9 || w2 < -1e-9 || w3 < -1e-9) continue;
+        sx = w1 * a.sx + w2 * b.sx + w3 * c.sx;
+        sy = w1 * a.sy + w2 * b.sy + w3 * c.sy;
+        copyRasterSample(srcGrid, destGrid, sx, sy, x, y, sampleMethod);
+      }
+    }
+  }
+
+  function vertexToDestPixel(grid, vertex) {
+    var p = mapXYToRasterPixel(grid, vertex.x, vertex.y);
+    return {
+      x: p[0],
+      y: p[1],
+      sx: vertex.sx,
+      sy: vertex.sy
+    };
+  }
+
+  function getTrianglePixelBounds(grid, p1, p2, p3) {
+    return [
+      clamp$1(Math.floor(Math.min(p1.x, p2.x, p3.x)), 0, grid.width - 1),
+      clamp$1(Math.floor(Math.min(p1.y, p2.y, p3.y)), 0, grid.height - 1),
+      clamp$1(Math.ceil(Math.max(p1.x, p2.x, p3.x)), 0, grid.width - 1),
+      clamp$1(Math.ceil(Math.max(p1.y, p2.y, p3.y)), 0, grid.height - 1)
+    ];
+  }
+
+  function mapXYToRasterPixel(grid, x, y) {
+    var bbox = grid.bbox;
+    return [
+      (x - bbox[0]) / (bbox[2] - bbox[0]) * grid.width,
+      (bbox[3] - y) / (bbox[3] - bbox[1]) * grid.height
+    ];
+  }
+
+  function copyRasterSample(srcGrid, destGrid, sx, sy, dx, dy, sampleMethod) {
+    if (sampleMethod == 'bilinear') {
+      copyBilinearRasterSample(srcGrid, destGrid, sx, sy, dx, dy);
+    } else {
+      copyNearestRasterSample(srcGrid, destGrid, sx, sy, dx, dy);
+    }
+  }
+
+  function copyNearestRasterSample(srcGrid, destGrid, sx, sy, dx, dy) {
+    var srcX = clamp$1(Math.floor(sx), 0, srcGrid.width - 1);
+    var srcY = clamp$1(Math.floor(sy), 0, srcGrid.height - 1);
+    var src = (srcY * srcGrid.width + srcX) * srcGrid.bands;
+    var dest = (dy * destGrid.width + dx) * destGrid.bands;
+    if (!rasterSourcePixelIsCovered(srcGrid, srcX, srcY)) return;
+    for (var band = 0; band < srcGrid.bands; band++) {
+      destGrid.samples[dest + band] = srcGrid.samples[src + band];
+    }
+    if (destGrid.bands > srcGrid.bands) destGrid.samples[dest + 3] = 255;
+    if (destGrid.coverage) destGrid.coverage[dy * destGrid.width + dx] = 1;
+  }
+
+  function copyBilinearRasterSample(srcGrid, destGrid, sx, sy, dx, dy) {
+    var srcX = clamp$1(Math.floor(sx - 0.5), 0, srcGrid.width - 1);
+    var srcY = clamp$1(Math.floor(sy - 0.5), 0, srcGrid.height - 1);
+    var srcX2 = clamp$1(srcX + 1, 0, srcGrid.width - 1);
+    var srcY2 = clamp$1(srcY + 1, 0, srcGrid.height - 1);
+    var tx = clamp$1(sx - 0.5 - srcX, 0, 1);
+    var ty = clamp$1(sy - 0.5 - srcY, 0, 1);
+    var src00 = (srcY * srcGrid.width + srcX) * srcGrid.bands;
+    var src10 = (srcY * srcGrid.width + srcX2) * srcGrid.bands;
+    var src01 = (srcY2 * srcGrid.width + srcX) * srcGrid.bands;
+    var src11 = (srcY2 * srcGrid.width + srcX2) * srcGrid.bands;
+    var dest = (dy * destGrid.width + dx) * destGrid.bands;
+    if (!srcGrid.coverage) {
+      copyBilinearRasterSampleFast(srcGrid, destGrid, src00, src10, src01, src11, dest, tx, ty);
+      if (destGrid.coverage) destGrid.coverage[dy * destGrid.width + dx] = 1;
+      return;
+    }
+    if (copyBilinearRasterSampleWithCoverage(srcGrid, destGrid, srcX, srcY, srcX2, srcY2, src00, src10, src01, src11, dest, tx, ty)) {
+      if (destGrid.coverage) destGrid.coverage[dy * destGrid.width + dx] = 1;
+    }
+  }
+
+  function copyBilinearRasterSampleFast(srcGrid, destGrid, src00, src10, src01, src11, dest, tx, ty) {
+    if (srcGrid.bands == 3) {
+      copyBilinearRgbSample(srcGrid.samples, destGrid.samples, src00, src10, src01, src11, dest, tx, ty);
+    } else if (srcGrid.bands == 4) {
+      copyBilinearRgbaSample(srcGrid.samples, destGrid.samples, src00, src10, src01, src11, dest, tx, ty);
+    } else {
+      copyBilinearGenericSample(srcGrid.samples, destGrid.samples, srcGrid.bands, src00, src10, src01, src11, dest, tx, ty);
+    }
+    if (destGrid.bands > srcGrid.bands) destGrid.samples[dest + 3] = 255;
+  }
+
+  function copyBilinearRgbSample(src, destArr, src00, src10, src01, src11, dest, tx, ty) {
+    copyBilinearBand(src, destArr, src00, src10, src01, src11, dest, 0, tx, ty);
+    copyBilinearBand(src, destArr, src00, src10, src01, src11, dest, 1, tx, ty);
+    copyBilinearBand(src, destArr, src00, src10, src01, src11, dest, 2, tx, ty);
+  }
+
+  function copyBilinearRgbaSample(src, destArr, src00, src10, src01, src11, dest, tx, ty) {
+    copyBilinearRgbSample(src, destArr, src00, src10, src01, src11, dest, tx, ty);
+    copyBilinearBand(src, destArr, src00, src10, src01, src11, dest, 3, tx, ty);
+  }
+
+  function copyBilinearGenericSample(src, destArr, bands, src00, src10, src01, src11, dest, tx, ty) {
+    for (var band = 0; band < bands; band++) {
+      copyBilinearBand(src, destArr, src00, src10, src01, src11, dest, band, tx, ty);
+    }
+  }
+
+  function copyBilinearBand(src, destArr, src00, src10, src01, src11, dest, band, tx, ty) {
+    var a = src[src00 + band] * (1 - tx) + src[src10 + band] * tx;
+    var b = src[src01 + band] * (1 - tx) + src[src11 + band] * tx;
+    destArr[dest + band] = Math.round(a * (1 - ty) + b * ty);
+  }
+
+  function copyBilinearRasterSampleWithCoverage(srcGrid, destGrid, srcX, srcY, srcX2, srcY2, src00, src10, src01, src11, dest, tx, ty) {
+    var coords = [
+      [srcX, srcY, src00, (1 - tx) * (1 - ty)],
+      [srcX2, srcY, src10, tx * (1 - ty)],
+      [srcX, srcY2, src01, (1 - tx) * ty],
+      [srcX2, srcY2, src11, tx * ty]
+    ];
+    var total = 0;
+    var val, item;
+    for (var band = 0; band < srcGrid.bands; band++) {
+      val = 0;
+      total = 0;
+      for (var i = 0; i < coords.length; i++) {
+        item = coords[i];
+        if (item[3] <= 0 || !rasterSourcePixelIsCovered(srcGrid, item[0], item[1])) continue;
+        val += srcGrid.samples[item[2] + band] * item[3];
+        total += item[3];
+      }
+      if (total <= 0) return false;
+      destGrid.samples[dest + band] = Math.round(val / total);
+    }
+    if (destGrid.bands > srcGrid.bands) destGrid.samples[dest + 3] = 255;
+    return true;
+  }
+
+  function rasterSourcePixelIsCovered(grid, x, y) {
+    return !grid.coverage || grid.coverage[y * grid.width + x] > 0;
+  }
+
+  function timeStart(timing, name) {
+    if (!timing) return;
+    timing[name + 'Start'] = getTimer();
+  }
+
+  function timeEnd(timing, name) {
+    if (!timing) return;
+    timing[name + 'Ms'] = getTimer() - timing[name + 'Start'];
+  }
+
+  function getTimer() {
+    return typeof performance != 'undefined' && performance.now ? performance.now() : Date.now();
+  }
+
+  function vertexIsValid(p) {
+    return p && isFinite(p.x) && isFinite(p.y);
+  }
+
+  function triangleDet(a, b, c) {
+    return edgeFunction(a, b, c.x, c.y);
+  }
+
+  function edgeFunction(a, b, x, y) {
+    return (x - a.x) * (b.y - a.y) - (y - a.y) * (b.x - a.x);
+  }
+
+  function clamp$1(val, min, max) {
+    return val < min ? min : val > max ? max : val;
+  }
+
+  var RasterReprojection = /*#__PURE__*/Object.freeze({
+    __proto__: null,
+    buildProjectedRasterMesh: buildProjectedRasterMesh,
+    getProjectedRasterGridBBox: getProjectedRasterGridBBox,
+    getProjectedRasterMeshBBox: getProjectedRasterMeshBBox,
+    projectRasterGridForward: projectRasterGridForward
+  });
+
+  cmd.proj = function(dataset, catalog, opts, targetLayers) {
+    var srcInfo, destInfo, destStr;
+    var implicitlyProjectedNames = getImplicitlyTargetedLayerNames(dataset, targetLayers, layerHasGeometry);
+    if (opts.init) {
+      srcInfo = fetchCrsInfo(opts.init, catalog);
+      if (!srcInfo.crs) stop$1("Unknown projection source:", opts.init);
+      setDatasetCrsInfo(dataset, srcInfo);
+    }
+    if (opts.match) {
+      destInfo = fetchCrsInfo(opts.match, catalog);
+    } else if (opts.crs) {
+      destStr = expandProjDefn(opts.crs, dataset, targetLayers);
+      destInfo = getCrsInfo(destStr);
+    }
+    if (destInfo) {
+      var didProject = projCmd(dataset, destInfo, opts);
+      if (didProject && implicitlyProjectedNames.length > 0) {
+        message(
+          'Also projected non-target layer' + utils.pluralSuffix(implicitlyProjectedNames.length) +
+          ' from the same dataset: ' + implicitlyProjectedNames.join(', ')
+        );
+      }
+    }
+  };
+
+  function projCmd(dataset, destInfo, opts) {
+    // modify copy of coordinate data when running in web UI, so original shapes
+    // are preserved if an error occurs
+    var modifyCopy = runningInBrowser(),
+        originals = [],
+        target = {info: dataset.info || {}};
+
+    if (!destInfo.crs) {
+      stop$1("Missing projection data");
+    }
+
+    if (!datasetHasGeometry(dataset) && !datasetHasRaster(dataset)) {
+      // still set the crs of datasets that are missing geometry
+      setDatasetCrsInfo(dataset, destInfo);
+      return false;
+    }
+
+    var srcInfo = getDatasetCrsInfo(dataset);
+    if (!srcInfo.crs) {
+      stop$1("Unable to project -- source coordinate system is unknown");
+    }
+
+    if (crsAreEqual(srcInfo.crs, destInfo.crs)) {
+      message("Source and destination CRS are the same");
+      return false;
+    }
+
+    if (dataset.arcs) {
+      dataset.arcs.flatten(); // bake in any pending simplification
+      target.arcs = modifyCopy ? dataset.arcs.getCopy() : dataset.arcs;
+    }
+    noteDatasetWillChange(dataset, {operation: 'proj'});
+
+    target.layers = dataset.layers.map(function(lyr) {
+      if (modifyCopy) {
+        originals.push(lyr);
+        lyr = copyLayerShapes(lyr);
+      }
+      return lyr;
+    });
+
+    withActiveUndoTransaction(null, function() {
+      projectDataset(target, srcInfo.crs, destInfo.crs, opts || {});
+
+      // dataset.info.wkt1 = destInfo.wkt1; // may be undefined
+      setDatasetCrsInfo(target, destInfo);
+    });
+
+    dataset.arcs = target.arcs;
+    originals.forEach(function(lyr, i) {
+      // replace original layers with modified layers
+      if (layerWasChangedByProjection(lyr, target.layers[i])) {
+        noteLayerWillChange(lyr, {operation: 'proj'});
+        utils.extend(lyr, target.layers[i]);
+        markLayerChanged(lyr, {operation: 'proj'});
+      }
+    });
+    markDatasetChanged(dataset, {operation: 'proj'});
+    return true;
+  }
+
+  function layerWasChangedByProjection(a, b) {
+    return a.name != b.name ||
+      a.geometry_type != b.geometry_type ||
+      a.data !== b.data ||
+      a.raster !== b.raster ||
+      !arraysAreEqual(a.shapes, b.shapes);
+  }
+
+  function arraysAreEqual(a, b) {
+    var val;
+    if (a === b) return true;
+    if (!a || !b || a.length !== b.length) return false;
+    for (var i = 0; i < a.length; i++) {
+      val = a[i];
+      if (Array.isArray(val)) {
+        if (!arraysAreEqual(val, b[i])) return false;
+      } else if (val !== b[i]) {
+        return false;
+      }
+    }
+    return true;
+  }
+
+  // name: a layer identifier, .prj file or projection defn
+  // Converts layer ids and .prj files to CRS defn
+  // Returns projection defn
+  function fetchCrsInfo(name, catalog) {
+    var dataset, source, info = {};
+    if (/\.prj$/i.test(name)) {
+      dataset = importFile(name, {});
+      if (dataset) {
+        info.wkt1 = dataset.info.wkt1;
+        info.crs = parsePrj(info.wkt1);
+      }
+      return info;
+    }
+    if (catalog && (source = catalog.findSingleLayer(name))) {
+      dataset = source.dataset;
+      return getDatasetCrsInfo(dataset);
+    }
+    // assume name is a projection defn
+    return getCrsInfo(name);
+  }
+
+  function projectDataset(dataset, src, dest, opts) {
+    var proj = getProjTransform2(src, dest); // v2 returns null points instead of throwing an error
+    var badArcs = 0;
+    var badPoints = 0;
+    var clipped = preProjectionClip(dataset, src, dest, opts);
+    dataset.layers.forEach(function(lyr) {
+      if (layerHasPoints(lyr)) {
+        badPoints += projectPointLayer(lyr, proj); // v2 compatible (invalid points are removed)
+      } else if (layerHasRaster(lyr)) {
+        projectRasterLayer(lyr, src, dest, opts);
+      }
+    });
+    if (dataset.arcs) {
+      if (opts.densify) {
+        badArcs = projectAndDensifyArcs(dataset.arcs, proj);
+      } else {
+        badArcs = projectArcs2(dataset.arcs, proj);
+      }
+    }
+
+    if (clipped) {
+      // TODO: could more selective in cleaning clipped layers
+      // (probably only needed when clipped area crosses the antimeridian or includes a pole)
+      cleanProjectedPathLayers(dataset);
+    }
+
+    if (badArcs > 0 && !opts.quiet) {
+      message(`Removed ${badArcs} ${badArcs == 1 ? 'path' : 'paths'} containing unprojectable vertices.`);
+    }
+    if (badPoints > 0 && !opts.quiet) {
+      message(`Removed ${badPoints} unprojectable ${badPoints == 1 ? 'point' : 'points'}.`);
+    }
+    dataset.info.crs = dest;
+  }
+
+  function projectRasterLayer(lyr, src, dest, opts) {
+    var raster = lyr.raster;
+    raster.grid = projectRasterGridForward(raster, src, dest, opts || {});
+    raster.view = raster.view || {};
+    delete raster.view.scalingStats;
+    if (runningInBrowser()) {
+      raster.view.preview = createRasterPreview(raster, opts || {});
+    } else {
+      delete raster.view.preview;
+    }
+  }
+
+  // * Heals cuts in previously split-apart polygons
+  // * Removes line intersections
+  // * TODO: what if a layer contains polygons with desired overlaps? should
+  //   we ignore overlaps between different features?
+  function cleanProjectedPathLayers(dataset) {
+    // TODO: only clean affected polygons (cleaning all polygons can be slow)
+    var polygonLayers = dataset.layers.filter(lyr => lyr.geometry_type == 'polygon');
+    // clean options: force a topology update (by default, this only happens when
+    // vertices change during cleaning, but reprojection can require a topology update
+    // even if clean does not change vertices)
+    var cleanOpts = {
+      allow_overlaps: true,
+      rebuild_topology: true,
+      no_arc_dissolve: true,
+      quiet: true,
+      verbose: false};
+    cleanLayers(polygonLayers, dataset, cleanOpts);
+   // remove unused arcs from polygon and polyline layers
+    // TODO: fix bug that leaves uncut arcs in the arc table
+    //   (e.g. when projecting a graticule)
+    dissolveArcs(dataset);
+  }
+
+  // proj: function to project [x, y] point; should return null if projection fails
+  // TODO: fatal error if no points project?
+  function projectPointLayer(lyr, proj) {
+    var errors = 0;
+    editShapes(lyr.shapes, function(p) {
+      var p2 = proj(p[0], p[1]);
+      if (!p2) errors++;
+      return p2; // removes points that fail to project
+    });
+    return errors;
+  }
+
+  function projectArcs(arcs, proj) {
+    var data = arcs.getVertexData(),
+        xx = data.xx,
+        yy = data.yy,
+        // old simplification data  will not be optimal after reprojection;
+        // re-using for now to avoid error in web ui
+        zz = data.zz,
+        z = arcs.getRetainedInterval(),
+        p;
+
+    for (var i=0, n=xx.length; i<n; i++) {
+      p = proj(xx[i], yy[i]);
+      if (!p) error('Unprojectable point:', xx[i], yy[i]);
+      xx[i] = p[0];
+      yy[i] = p[1];
+    }
+    arcs.updateVertexData(data.nn, xx, yy, zz);
+    arcs.setRetainedInterval(z);
+  }
+
+  function projectArcs2(arcs, proj) {
+    return editArcs(arcs, onPoint);
+    function onPoint(append, x, y, prevX, prevY, i) {
+      var p = proj(x, y);
+      // TODO: prevent arcs with just one point
+      if (p) {
+        append(p);
+      } else {
+        return false; // signal that the arc is invalid (no more points will be projected in this arc)
+      }
+    }
+  }
+
+  var Proj = /*#__PURE__*/Object.freeze({
+    __proto__: null,
+    cleanProjectedPathLayers: cleanProjectedPathLayers,
+    fetchCrsInfo: fetchCrsInfo,
+    projectArcs: projectArcs,
+    projectArcs2: projectArcs2,
+    projectDataset: projectDataset,
+    projectPointLayer: projectPointLayer
+  });
+
   // TODO: consider if layers should be buffered together
   // cmd.buffer = function(layers, dataset, opts) {
   //   return makeBufferLayer(layers[0], dataset, opts);
@@ -45206,17 +48273,66 @@ ${svg}
     if (opts.topological && lyr.geometry_type != 'polygon') {
       stop$1('The topological buffer option requires a polygon layer');
     }
-    if (lyr.geometry_type == 'point') {
-      dataset2 = makePointBuffer(lyr, dataset, opts);
-    } else if (lyr.geometry_type == 'polyline') {
-      dataset2 = makePolylineBuffer(lyr, dataset, opts);
-    } else if (lyr.geometry_type == 'polygon') {
-      dataset2 = makePolygonBuffer(lyr, dataset, opts);
+    if (opts.geodesic && !isLatLngCRS(getDatasetCRS(dataset))) {
+      // Geodesic buffer of projected data: reproject the source paths through
+      // WGS84 lng/lat, run the ordinary (spherical) buffer pipeline, then
+      // reproject the result back to the source CRS (see buildGeodesicProjectedBufferDataset).
+      dataset2 = buildGeodesicProjectedBufferDataset(lyr, dataset, opts);
     } else {
-      stop$1("Unsupported geometry type");
+      dataset2 = buildBufferDataset(lyr, dataset, opts);
     }
 
     return mergeOutputLayersIntoDataset(lyr, dataset, dataset2, opts);
+  }
+
+  function buildBufferDataset(lyr, dataset, opts) {
+    if (lyr.geometry_type == 'point') {
+      return makePointBuffer(lyr, dataset, opts);
+    }
+    if (lyr.geometry_type == 'polyline') {
+      return makePolylineBuffer(lyr, dataset, opts);
+    }
+    if (lyr.geometry_type == 'polygon') {
+      return makePolygonBuffer(lyr, dataset, opts);
+    }
+    stop$1("Unsupported geometry type");
+  }
+
+  // Build a geodesic buffer for a projected dataset by reusing the spherical
+  // (lat-long) buffer pipeline. The buffer construction already runs in web
+  // Mercator internally and treats lng/lat input as geodesic, so we only need to
+  // move the source coordinates into lng/lat and the result back:
+  //   1. Clone the target layer + arcs and reproject the clone to WGS84 lng/lat.
+  //      (Reprojecting projected -> lng/lat requires the source CRS to have an
+  //      inverse; hence the isInvertibleCRS guard. The clone keeps the original
+  //      dataset untouched and avoids reprojecting unrelated sibling layers.)
+  //   2. Run the normal buffer on the lng/lat clone -- isLatLngCRS(clone) is true,
+  //      so the construction selects geodesic offsets automatically.
+  //   3. Reproject the buffer output back to the source CRS (lng/lat -> projected
+  //      uses the always-present forward transform). projectDataset's
+  //      pre-projection clip/clamp handles buffer geometry that exceeds the
+  //      destination projection's valid extent; any remaining unprojectable
+  //      vertices are dropped (and counted) by projectArcs2/projectPointLayer.
+  function buildGeodesicProjectedBufferDataset(lyr, dataset, opts) {
+    var srcInfo = getDatasetCrsInfo(dataset);
+    if (!srcInfo.crs) {
+      stop$1('Unable to buffer -- source coordinate system is unknown');
+    }
+    if (!isInvertibleCRS(srcInfo.crs)) {
+      stop$1('The geodesic option requires a source projection with an inverse');
+    }
+    var wgs84 = getCrsInfo('wgs84');
+    var clone = {
+      info: copyDatasetInfo(dataset.info),
+      arcs: dataset.arcs ? dataset.arcs.getFilteredCopy() : null,
+      layers: [copyLayer(lyr)]
+    };
+    projectDataset(clone, srcInfo.crs, wgs84.crs, {});
+    setDatasetCrsInfo(clone, wgs84);
+    var dataset2 = buildBufferDataset(clone.layers[0], clone, opts);
+    projectDataset(dataset2, wgs84.crs, srcInfo.crs, {});
+    setDatasetCrsInfo(dataset2, srcInfo);
+    return dataset2;
   }
 
   // currently undocumented, used in tests
@@ -48140,926 +51256,6 @@ ${svg}
       return o.formatHex();
     });
   }
-
-  // Remove small-area polygon rings (very simple implementation of sliver removal)
-  // TODO: more sophisticated sliver detection (e.g. could consider ratio of area to perimeter)
-  // TODO: consider merging slivers into adjacent polygons to prevent gaps from forming
-  // TODO: consider separate gap removal function as an alternative to merging slivers
-  //
-  cmd.filterSlivers = function(lyr, dataset, opts) {
-    if (lyr.geometry_type != 'polygon') {
-      return 0;
-    }
-    return filterSlivers(lyr, dataset, opts);
-  };
-
-  function filterSlivers(lyr, dataset, optsArg) {
-    var opts = utils.extend({sliver_control: 1}, optsArg);
-    var filterData = getSliverFilter(lyr, dataset, opts);
-    var ringTest = filterData.filter;
-    var removed = 0;
-    var pathFilter = function(path, i, paths) {
-      if (ringTest(path, i, paths)) {
-        removed++;
-        return null;
-      }
-    };
-
-    noteLayerWillChange(lyr, {operation: 'filter-slivers', unit: 'shapes'});
-    editShapes(lyr.shapes, pathFilter);
-    markLayerChanged(lyr, {operation: 'filter-slivers', unit: 'shapes'});
-    message(utils.format("Removed %'d sliver%s using %s", removed, utils.pluralSuffix(removed), filterData.label));
-
-    // Remove null shapes (likely removed by clipping/erasing, although possibly already present)
-    if (opts.remove_empty) {
-      cmd.filterFeatures(lyr, dataset.arcs, {remove_empty: true, verbose: false});
-    }
-    return removed;
-  }
-
-  function filterClipSlivers(lyr, clipLyr, arcs) {
-    var threshold = getDefaultSliverThreshold(lyr, arcs);
-    // message('Using variable sliver threshold (based on ' + (threshold / 1e6) + ' sqkm)');
-    var ringTest = getSliverTest(arcs, threshold, 1);
-    var flags = new Uint8Array(arcs.size());
-    var removed = 0;
-    var pathFilter = function(path) {
-      var prevArcs = 0,
-          newArcs = 0;
-      for (var i=0, n=path && path.length || 0; i<n; i++) {
-        if (flags[absArcId(path[i])] > 0) {
-          newArcs++;
-        } else {
-          prevArcs++;
-        }
-      }
-      // filter paths that contain arcs from both original and clip/erase layers
-      //   and are small
-      if (newArcs > 0 && prevArcs > 0 && ringTest(path)) {
-        removed++;
-        return null;
-      }
-    };
-
-    countArcsInShapes(clipLyr.shapes, flags);
-    noteLayerWillChange(lyr, {operation: 'filter-clip-slivers', unit: 'shapes'});
-    editShapes(lyr.shapes, pathFilter);
-    markLayerChanged(lyr, {operation: 'filter-clip-slivers', unit: 'shapes'});
-    return removed;
-  }
-
-  // Assumes: Arcs have been divided
-  //
-  function clipPolylines(targetShapes, clipShapes, nodes, type) {
-    var index = new PathIndex(clipShapes, nodes.arcs);
-
-    return targetShapes.map(function(shp) {
-      return clipPolyline(shp);
-    });
-
-    function clipPolyline(shp) {
-      var clipped = null;
-      if (shp) clipped = shp.reduce(clipPath, []);
-      return clipped && clipped.length > 0 ? clipped : null;
-    }
-
-    function clipPath(memo, path) {
-      var clippedPath = null,
-          arcId, enclosed;
-      for (var i=0; i<path.length; i++) {
-        arcId = path[i];
-        enclosed = index.arcIsEnclosed(arcId);
-        if (enclosed && type == 'clip' || !enclosed && type == 'erase') {
-          if (!clippedPath) {
-            memo.push(clippedPath = []);
-          }
-          clippedPath.push(arcId);
-        } else {
-          clippedPath = null;
-        }
-      }
-      return memo;
-    }
-  }
-
-  var PolylineClipping = /*#__PURE__*/Object.freeze({
-    __proto__: null,
-    clipPolylines: clipPolylines
-  });
-
-  // TODO: to prevent invalid holes,
-  // could erase the holes from the space-enclosing rings.
-  function appendHolesToRings(cw, ccw) {
-    for (var i=0, n=ccw.length; i<n; i++) {
-      cw.push(ccw[i]);
-    }
-    return cw;
-  }
-
-  function getPolygonDissolver(nodes, spherical) {
-    spherical = spherical && !nodes.arcs.isPlanar();
-    var flags = new Uint8Array(nodes.arcs.size());
-    var divide = getHoleDivider(nodes, spherical);
-    var pathfind = getRingIntersector(nodes, flags);
-
-    return function(shp) {
-      if (!shp) return null;
-      var cw = [],
-          ccw = [];
-
-      divide(shp, cw, ccw);
-      cw = pathfind(cw, 'flatten');
-      ccw.forEach(reversePath);
-      ccw = pathfind(ccw, 'flatten');
-      ccw.forEach(reversePath);
-      var shp2 = appendHolesToRings(cw, ccw);
-      var dissolved = pathfind(shp2, 'dissolve');
-
-      if (dissolved.length > 1) {
-        dissolved = fixNestingErrors(dissolved, nodes.arcs);
-      }
-
-      return dissolved.length > 0 ? dissolved : null;
-    };
-  }
-
-  // TODO: remove dependency on old polygon dissolve function
-
-  // assumes layers and arcs have been prepared for clipping
-  function clipPolygons(targetShapes, clipShapes, nodes, type, optsArg) {
-    profileStart('clipPolygons');
-    var arcs = nodes.arcs;
-    var opts = optsArg || {};
-    var clipFlags = new Uint8Array(arcs.size());
-    var routeFlags = new Uint8Array(arcs.size());
-    var clipArcTouches = 0;
-    var clipArcUses = 0;
-    var usedClipArcs = [];
-    var findPath = getPathFinder(nodes, useRoute, routeIsActive);
-    var dissolvePolygon = getPolygonDissolver(nodes);
-
-    if (!opts.bbox2) {
-      profileStart('cp.dissolveTargetRings');
-      targetShapes = targetShapes.map(dissolvePolygon);
-      profileEnd('cp.dissolveTargetRings');
-    }
-
-    profileStart('cp.openClipRoutes');
-    openArcRoutes(clipShapes, arcs, clipFlags, type == 'clip', type == 'erase', true, 0x11);
-    profileEnd('cp.openClipRoutes');
-    profileStart('cp.PathIndex#1');
-    var index = new PathIndex(clipShapes, arcs);
-    profileEnd('cp.PathIndex#1');
-    profileStart('cp.clipShapes');
-    var clippedShapes = targetShapes.map(function(shape, i) {
-      if (shape) {
-        return clipPolygon(shape, type, index);
-      }
-      return null;
-    });
-    profileEnd('cp.clipShapes');
-
-    markPathsAsUsed(clippedShapes, routeFlags);
-
-    profileStart('cp.findUndividedClip');
-    var undividedClipShapes = findUndividedClipShapes(clipShapes);
-    profileEnd('cp.findUndividedClip');
-
-    closeArcRoutes(clipShapes, arcs, routeFlags, true, true);
-    profileStart('cp.PathIndex#2');
-    index = new PathIndex(undividedClipShapes, arcs);
-    profileEnd('cp.PathIndex#2');
-    profileStart('cp.findInteriorPaths');
-    targetShapes.forEach(function(shape, shapeId) {
-      var paths = shape ? findInteriorPaths(shape, type, index) : null;
-      if (paths) {
-        clippedShapes[shapeId] = (clippedShapes[shapeId] || []).concat(paths);
-      }
-    });
-    profileEnd('cp.findInteriorPaths');
-
-    profileEnd('clipPolygons');
-    return clippedShapes;
-
-    function clipPolygon(shape, type, index) {
-      var dividedShape = [],
-          clipping = type == 'clip',
-          erasing = type == 'erase';
-
-      // open pathways for entire polygon rather than one ring at a time --
-      // need to create polygons that connect positive-space rings and holes
-      openArcRoutes(shape, arcs, routeFlags, true, false, false);
-
-      forEachShapePart(shape, function(ids) {
-        var path;
-        for (var i=0, n=ids.length; i<n; i++) {
-          clipArcTouches = 0;
-          clipArcUses = 0;
-          path = findPath(ids[i]);
-          if (path) {
-            // if ring doesn't touch/intersect a clip/erase polygon, check if it is contained
-            // if (clipArcTouches === 0) {
-            // if ring doesn't incorporate an arc from the clip/erase polygon,
-            // check if it is contained (assumes clip shapes are dissolved)
-            if (clipArcTouches === 0 || clipArcUses === 0) { //
-              var contained = index.pathIsEnclosed(path);
-              if (clipping && contained || erasing && !contained) {
-                dividedShape.push(path);
-              }
-              // TODO: Consider breaking if polygon is unchanged
-            } else {
-              dividedShape.push(path);
-            }
-          }
-        }
-      });
-
-
-      // Clear pathways of current target shape to hidden/closed
-      closeArcRoutes(shape, arcs, routeFlags, true, true, true);
-      // Also clear pathways of any clip arcs that were used
-      if (usedClipArcs.length > 0) {
-        closeArcRoutes(usedClipArcs, arcs, routeFlags, true, true, true);
-        usedClipArcs = [];
-      }
-
-      return dividedShape.length === 0 ? null : dividedShape;
-    }
-
-    function routeIsActive(id) {
-      var fw = id >= 0,
-          abs = fw ? id : ~id,
-          visibleBit = fw ? 1 : 0x10,
-          targetBits = routeFlags[abs],
-          clipBits = clipFlags[abs];
-
-      if (clipBits > 0) clipArcTouches++;
-      return (targetBits & visibleBit) > 0 || (clipBits & visibleBit) > 0;
-    }
-
-    function useRoute(id) {
-      var fw = id >= 0,
-          abs = fw ? id : ~id,
-          targetBits = routeFlags[abs],
-          clipBits = clipFlags[abs],
-          targetRoute, clipRoute;
-
-      if (fw) {
-        targetRoute = targetBits;
-        clipRoute = clipBits;
-      } else {
-        targetRoute = targetBits >> 4;
-        clipRoute = clipBits >> 4;
-      }
-      targetRoute &= 3;
-      clipRoute &= 3;
-
-      var usable = false;
-      // var usable = targetRoute === 3 || targetRoute === 0 && clipRoute == 3;
-      if (targetRoute == 3) {
-        // special cases where clip route and target route both follow this arc
-        if (clipRoute == 1) ; else if (clipRoute == 2 && type == 'erase') ; else {
-          usable = true;
-        }
-
-      } else if (targetRoute === 0 && clipRoute == 3) {
-        usedClipArcs.push(id);
-        usable = true;
-      }
-
-      if (usable) {
-        if (clipRoute == 3) {
-          clipArcUses++;
-        }
-        // Need to close all arcs after visiting them -- or could cause a cycle
-        //   on layers with strange topology
-        if (fw) {
-          targetBits = setBits(targetBits, 1, 3);
-        } else {
-          targetBits = setBits(targetBits, 0x10, 0x30);
-        }
-      }
-
-      targetBits |= fw ? 4 : 0x40; // record as visited
-      routeFlags[abs] = targetBits;
-      return usable;
-    }
-
-
-    // Filter a collection of shapes to exclude paths that incorporate parts of
-    // clip/erase polygons and paths that are hidden (e.g. internal boundaries)
-    function findUndividedClipShapes(clipShapes) {
-      return clipShapes.map(function(shape) {
-        var usableParts = [];
-        forEachShapePart(shape, function(ids) {
-          var pathIsClean = true,
-              pathIsVisible = false;
-          for (var i=0; i<ids.length; i++) {
-            // check if arc was used in fw or rev direction
-            if (!arcIsUnused(ids[i], routeFlags)) {
-              pathIsClean = false;
-              break;
-            }
-            // check if clip arc is visible
-            if (!pathIsVisible && arcIsVisible(ids[i], clipFlags)) {
-              pathIsVisible = true;
-            }
-          }
-          if (pathIsClean && pathIsVisible) usableParts.push(ids);
-        });
-        return usableParts.length > 0 ? usableParts : null;
-      });
-    }
-
-
-    function arcIsUnused(id, flags) {
-      var abs = absArcId(id),
-          flag = flags[abs];
-          return (flag & 0x88) === 0;
-          // return id < 0 ? (flag & 0x80) === 0 : (flag & 0x8) === 0;
-    }
-
-    function arcIsVisible(id, flags) {
-      var flag = flags[absArcId(id)];
-      return (flag & 0x11) > 0;
-    }
-
-    // search for indexed clipping paths contained in a shape
-    // dissolve them if needed
-    function findInteriorPaths(shape, type, index) {
-      var enclosedPaths = index.findPathsInsideShape(shape),
-          dissolvedPaths = [];
-      if (!enclosedPaths) return null;
-      // ...
-      if (type == 'erase') enclosedPaths.forEach(reversePath);
-      if (enclosedPaths.length <= 1) {
-        dissolvedPaths = enclosedPaths; // no need to dissolve single-part paths
-      } else {
-        openArcRoutes(enclosedPaths, arcs, routeFlags, true, false, true);
-        enclosedPaths.forEach(function(ids) {
-          var path;
-          for (var j=0; j<ids.length; j++) {
-            path = findPath(ids[j]);
-            if (path) {
-              dissolvedPaths.push(path);
-            }
-          }
-        });
-      }
-
-      return dissolvedPaths.length > 0 ? dissolvedPaths : null;
-    }
-  } // end clipPolygons()
-
-  //
-  function clipPoints(points, clipShapes, arcs, type) {
-    var index = new PathIndex(clipShapes, arcs);
-
-    var points2 = points.reduce(function(memo, feat) {
-      var n = feat ? feat.length : 0,
-          feat2 = [],
-          enclosed;
-
-      for (var i=0; i<n; i++) {
-        enclosed = index.findEnclosingShape(feat[i]) > -1;
-        if (type == 'clip' && enclosed || type == 'erase' && !enclosed) {
-          feat2.push(feat[i].concat());
-        }
-      }
-
-      memo.push(feat2.length > 0 ? feat2 : null);
-      return memo;
-    }, []);
-
-    return points2;
-  }
-
-  var ClipPoints = /*#__PURE__*/Object.freeze({
-    __proto__: null,
-    clipPoints: clipPoints
-  });
-
-  // Convert a source parameter (which can take several forms) into
-  // a dataset with a single layer.
-  function normalizeOverlaySource(clipSrc, targetDataset, optsArg) {
-    var opts = optsArg || {};
-    var bbox = opts.bbox || opts.bbox2;
-    var clipDataset;
-    if (bbox) {
-      clipDataset = convertClipBounds(bbox);
-    } else if (!clipSrc) {
-      stop$1('Command requires a source file, layer id or bbox');
-    } else if (clipSrc.geometry_type) {
-      // clipSrc is a layer (assumed in targetDataset)
-      // TODO: update tests to remove this case (only used in tests)
-      // error('Unsupported source format');
-      clipDataset = utils.defaults({layers: [clipSrc], disposable: true}, targetDataset);
-    } else if (clipSrc.layer && clipSrc.dataset) {
-      clipDataset = utils.defaults({layers: [clipSrc.layer]}, clipSrc.dataset);
-    } else if (clipSrc.layers?.length == 1) {
-      clipDataset = clipSrc;
-    } else {
-      error('Invalid source format');
-    }
-    if (clipSrc?.disposable) {
-      clipDataset.disposable = true;
-    }
-    return clipDataset;
-  }
-
-  // Create a merged dataset by appending the overlay layer to the target dataset
-  // so it is last in the layers array.
-  // DOES NOT insert clipping points
-  function mergeLayersForOverlay(targetLayers, targetDataset, clipSrc, opts) {
-    var clipDataset = normalizeOverlaySource(clipSrc, targetDataset, opts);
-    return mergeLayersForOverlay2(targetLayers, targetDataset, clipDataset);
-  }
-
-  function mergeLayersForOverlay2(targetLayers, targetDataset, clipDataset) {
-    var mergedDataset;
-    var clipLyr = clipDataset.layers[0];
-    if (targetDataset.arcs != clipDataset.arcs) {
-      // using external dataset -- need to merge arcs
-      if (!clipDataset.disposable) {
-        // copy overlay layer shapes because arc ids will be reindexed during merging
-        clipDataset.layers[0] = copyLayerShapes(clipDataset.layers[0]);
-      }
-      // merge external dataset with target dataset,
-      // so arcs are shared between target layers and clipping lyr
-      // Assumes that layers in clipDataset can be modified (if necessary, a copy should be passed in)
-      mergedDataset = mergeDatasets([targetDataset, clipDataset]);
-      buildTopology(mergedDataset); // identify any shared arcs between clipping layer and target dataset
-    } else {
-      // overlay layer belongs to the same dataset as target layers... move it to the end
-      mergedDataset = utils.extend({}, targetDataset);
-      mergedDataset.layers = targetDataset.layers.filter(function(lyr) {return lyr != clipLyr;});
-      mergedDataset.layers.push(clipLyr);
-    }
-    return mergedDataset;
-  }
-
-  function convertClipBounds(bb) {
-    var x0 = bb[0], y0 = bb[1], x1 = bb[2], y1 = bb[3],
-        arc = [[x0, y0], [x0, y1], [x1, y1], [x1, y0], [x0, y0]];
-
-    if (!(y1 > y0 && x1 > x0)) {
-      stop$1("Invalid bbox (should be [xmin, ymin, xmax, ymax]):", bb);
-    }
-    return {
-      arcs: new ArcCollection([arc]),
-      layers: [{
-        name: 'bbox',
-        shapes: [[[0]]],
-        geometry_type: 'polygon'
-      }]
-    };
-  }
-
-  var OverlayUtils = /*#__PURE__*/Object.freeze({
-    __proto__: null,
-    mergeLayersForOverlay: mergeLayersForOverlay,
-    mergeLayersForOverlay2: mergeLayersForOverlay2,
-    normalizeOverlaySource: normalizeOverlaySource
-  });
-
-  // Insert cutting points in arcs, where bbox intersects other shapes
-  // Return a polygon layer containing the bounding box vectors, divided at cutting points.
-  function divideDatasetByBBox(dataset, bbox) {
-    var arcs = dataset.arcs;
-    var data = findBBoxCutPoints(arcs, bbox);
-    var map = insertCutPoints(data.cutPoints, arcs);
-    arcs.dedupCoords();
-    remapDividedArcs(dataset, map);
-    // merge bbox dataset with target dataset,
-    // so arcs are shared between target layers and bbox layer
-    var clipDataset = bboxPointsToClipDataset(data.bboxPoints);
-    var mergedDataset = mergeDatasets([dataset, clipDataset]);
-    // TODO: detect if we need to rebuild topology (unlikely), like with the full clip command
-    // buildTopology(mergedDataset);
-    var clipLyr = mergedDataset.layers.pop();
-    dataset.arcs = mergedDataset.arcs;
-    dataset.layers = mergedDataset.layers;
-    return clipLyr;
-  }
-
-  function bboxPointsToClipDataset(arr) {
-    var arcs = [];
-    var shape = [];
-    var layer = {geometry_type: 'polygon', shapes: [[shape]]};
-    var p1, p2;
-    for (var i=0, n=arr.length - 1; i<n; i++) {
-      p1 = arr[i];
-      p2 = arr[i+1];
-      arcs.push([[p1.x, p1.y], [p2.x, p2.y]]);
-      shape.push(i);
-    }
-    return {
-      arcs: new ArcCollection(arcs),
-      layers: [layer]
-    };
-  }
-
-  function findBBoxCutPoints(arcs, bbox) {
-    var left = bbox[0],
-        bottom = bbox[1],
-        right = bbox[2],
-        top = bbox[3];
-
-    // arrays of intersection points along each bbox edge
-    var tt = [],
-        rr = [],
-        bb = [],
-        ll = [];
-
-    arcs.forEachSegment(function(i, j, xx, yy) {
-      var ax = xx[i],
-          ay = yy[i],
-          bx = xx[j],
-          by = yy[j];
-      var hit;
-      if (segmentOutsideBBox(ax, ay, bx, by, left, bottom, right, top)) return;
-      if (segmentInsideBBox(ax, ay, bx, by, left, bottom, right, top)) return;
-
-      hit = geom.segmentIntersection(left, top, right, top, ax, ay, bx, by);
-      if (hit) addHit(tt, hit, i, j, xx, yy);
-
-      hit = geom.segmentIntersection(left, bottom, right, bottom, ax, ay, bx, by);
-      if (hit) addHit(bb, hit, i, j, xx, yy);
-
-      hit = geom.segmentIntersection(left, bottom, left, top, ax, ay, bx, by);
-      if (hit) addHit(ll, hit, i, j, xx, yy);
-
-      hit = geom.segmentIntersection(right, bottom, right, top, ax, ay, bx, by);
-      if (hit) addHit(rr, hit, i, j, xx, yy);
-    });
-
-    return {
-      cutPoints: ll.concat(bb, rr, tt),
-      bboxPoints: getDividedBBoxPoints(bbox, ll, tt, rr, bb)
-    };
-
-    function addHit(arr, hit, i, j, xx, yy) {
-      if (!hit) return;
-      arr.push(formatHit(hit[0], hit[1], i, j, xx, yy));
-      if (hit.length == 4) {
-        arr.push(formatHit(hit[2], hit[3], i, j, xx, yy));
-      }
-    }
-
-    function formatHit(x, y, i, j, xx, yy) {
-      var ids = formatIntersectingSegment(x, y, i, j, xx, yy);
-      return getCutPoint(x, y, ids[0], ids[1]);
-    }
-  }
-
-  function segmentOutsideBBox(ax, ay, bx, by, xmin, ymin, xmax, ymax) {
-    return ax < xmin && bx < xmin || ax > xmax && bx > xmax ||
-        ay < ymin && by < ymin || ay > ymax && by > ymax;
-  }
-
-  function segmentInsideBBox(ax, ay, bx, by, xmin, ymin, xmax, ymax) {
-    return ax > xmin && bx > xmin && ax < xmax && bx < xmax &&
-        ay > ymin && by > ymin && ay < ymax && by < ymax;
-  }
-
-  // Returns an array of points representing the vertices in
-  // the bbox with cutting points inserted.
-  function getDividedBBoxPoints(bbox, ll, tt, rr, bb) {
-    var bl = {x: bbox[0], y: bbox[1]},
-        tl = {x: bbox[0], y: bbox[3]},
-        tr = {x: bbox[2], y: bbox[3]},
-        br = {x: bbox[2], y: bbox[1]};
-    ll = utils.sortOn(ll.concat([bl, tl]), 'y', true);
-    tt = utils.sortOn(tt.concat([tl, tr]), 'x', true);
-    rr = utils.sortOn(rr.concat([tr, br]), 'y', false);
-    bb = utils.sortOn(bb.concat([br, bl]), 'x', false);
-    return ll.concat(tt, rr, bb).reduce(function(memo, p2) {
-      var p1 = memo.length > 0 ? memo[memo.length-1] : null;
-      if (p1 === null || p1.x != p2.x || p1.y != p2.y) memo.push(p2);
-      return memo;
-    }, []);
-  }
-
-  var Bbox2Clipping = /*#__PURE__*/Object.freeze({
-    __proto__: null,
-    divideDatasetByBBox: divideDatasetByBBox,
-    segmentInsideBBox: segmentInsideBBox,
-    segmentOutsideBBox: segmentOutsideBBox
-  });
-
-  cmd.clipLayers = function(target, src, dataset, opts) {
-    return clipLayers(target, src, dataset, "clip", opts);
-  };
-
-  cmd.eraseLayers = function(target, src, dataset, opts) {
-    return clipLayers(target, src, dataset, "erase", opts);
-  };
-
-  cmd.clipLayer = function(targetLyr, src, dataset, opts) {
-    return cmd.clipLayers([targetLyr], src, dataset, opts)[0];
-  };
-
-  cmd.eraseLayer = function(targetLyr, src, dataset, opts) {
-    return cmd.eraseLayers([targetLyr], src, dataset, opts)[0];
-  };
-
-  cmd.sliceLayers = function(target, src, dataset, opts) {
-    return clipLayers(target, src, dataset, "slice", opts);
-  };
-
-  cmd.sliceLayer = function(targetLyr, src, dataset, opts) {
-    return cmd.sliceLayers([targetLyr], src, dataset, opts);
-  };
-
-  function clipLayersInPlace(layers, clipSrc, dataset, type, opts) {
-    var outputLayers = clipLayers(layers, clipSrc, dataset, type, opts);
-    // remove arcs from the clipping dataset, if they are not used by any layer
-    layers.forEach(function(lyr, i) {
-      var lyr2 = outputLayers[i];
-      lyr.shapes = lyr2.shapes;
-      lyr.data = lyr2.data;
-      if (lyr2.raster) {
-        lyr.raster = lyr2.raster;
-        lyr.raster_type = lyr2.raster_type;
-      }
-    });
-    dissolveArcs(dataset);
-  }
-
-  // @clipSrc: layer in @dataset or filename
-  // @type: 'clip' or 'erase'
-  function clipLayers(targetLayers, clipSrc, targetDataset, type, opts) {
-    profileStart('clipLayers');
-    opts = opts || {no_cleanup: true}; // TODO: update testing functions
-    var usingPathClip = utils.some(targetLayers, layerHasPaths);
-    var usingRasterClip = utils.some(targetLayers, layerHasRaster);
-    var mergedDataset, clipLyr, nodes, result;
-    var clipDataset;
-    if (usingRasterClip) {
-      result = clipRasterLayers(targetLayers, clipSrc, targetDataset, type, opts);
-      profileEnd('clipLayers');
-      return result;
-    }
-    clipDataset = normalizeOverlaySource(clipSrc, targetDataset, opts);
-    if (!opts.no_warn) {
-      warnIfBoundsDontOverlap(targetLayers, targetDataset, clipDataset, type);
-    }
-    if (opts.bbox2 && usingPathClip) { // assumes target dataset has arcs
-      result = clipLayersByBBox(targetLayers, targetDataset, opts);
-      profileEnd('clipLayers');
-      return result;
-    }
-    if (!usingPathClip) {
-      result = clipLayersByClipDataset(targetLayers, clipDataset, type, opts);
-      profileEnd('clipLayers');
-      return result;
-    }
-    // Merging the clip source into the target and cutting intersections builds a
-    // throwaway combined arc collection. With a GUI undo transaction active,
-    // addIntersectionCuts() would otherwise capture a full coordinate copy of the
-    // merged target+clip arcs -- redundant work, since undo is driven by the
-    // dataset-level reference swap below (the dataset unit records the original
-    // arcs by reference before targetDataset.arcs is replaced).
-    //
-    // addIntersectionCuts() also remaps every shared layer's shapes in place
-    // (rewriting arc ids for the split arcs), including the target layers. Those
-    // original shapes ARE needed for undo, so capture each target layer's baseline
-    // explicitly before suspending tracking for the throwaway construction.
-    noteDatasetWillChange(targetDataset, {operation: type, unit: 'arcs'});
-    targetLayers.forEach(function(lyr) {
-      noteLayerWillChange(lyr, {operation: type});
-    });
-    // Build the clipped output with undo tracking suspended: the merged arcs, the
-    // dissolved clip layer, and the per-layer clip results are all derived from
-    // the throwaway combined dataset and never need restoring. Undo is driven by
-    // the dataset reference swap plus the target-layer baseline captured above;
-    // run-command captures the integration of the returned output layers.
-    withActiveUndoTransaction(null, function() {
-      profileStart('mergeLayersForOverlay');
-      mergedDataset = mergeLayersForOverlay2(targetLayers, targetDataset, clipDataset);
-      profileEnd('mergeLayersForOverlay');
-      clipLyr = mergedDataset.layers[mergedDataset.layers.length-1];
-      nodes = addIntersectionCuts(mergedDataset, opts);
-      targetDataset.arcs = mergedDataset.arcs;
-      profileStart('clipDissolvePolygonLayer2');
-      clipLyr = utils.defaults({data: null}, clipLyr);
-      clipLyr = dissolvePolygonLayer2(clipLyr, mergedDataset, {quiet: true, silent: true});
-      profileEnd('clipDissolvePolygonLayer2');
-      profileStart('clipLayersByLayer');
-      result = clipLayersByLayer(targetLayers, clipLyr, nodes, type, opts);
-      profileEnd('clipLayersByLayer');
-    });
-    markDatasetChanged(targetDataset, {operation: type, unit: 'arcs'});
-    profileEnd('clipLayers');
-    return result;
-  }
-
-  function clipLayersByClipDataset(targetLayers, clipDataset, type, opts) {
-    var clipLyr = clipDataset.layers[0];
-    var nodes = new NodeCollection(clipDataset.arcs);
-    var result;
-    profileStart('clipLayersByLayer');
-    result = clipLayersByLayer(targetLayers, clipLyr, nodes, type, opts);
-    profileEnd('clipLayersByLayer');
-    return result;
-  }
-
-  function clipRasterLayers(targetLayers, clipSrc, targetDataset, type, opts) {
-    var clipDataset, clipBounds, bbox;
-    if (type != 'clip') {
-      stop$1('Raster layers only support clipping');
-    }
-    if (utils.some(targetLayers, function(lyr) {return !layerHasRaster(lyr);})) {
-      stop$1('Raster clipping cannot be mixed with vector target layers');
-    }
-    if (opts.bbox2) {
-      bbox = opts.bbox2;
-    } else {
-      clipDataset = normalizeOverlaySource(clipSrc, targetDataset, opts);
-      clipBounds = getLayerBounds(clipDataset.layers[0], clipDataset.arcs);
-      if (!clipBounds || !clipBounds.hasBounds()) {
-        stop$1('Missing raster clipping bounds');
-      }
-      bbox = clipBounds.toArray();
-    }
-    return targetLayers.map(function(lyr) {
-      clipRasterToBBox(lyr, bbox, opts);
-      return lyr;
-    });
-  }
-
-  function clipLayersByBBox(layers, dataset, opts) {
-    var bbox = opts.bbox2;
-    var clipLyr = divideDatasetByBBox(dataset, bbox);
-    var nodes = new NodeCollection(dataset.arcs);
-    var retn = clipLayersByLayer(layers, clipLyr, nodes, 'clip', opts);
-    return retn;
-  }
-
-  function clipLayersByLayer(targetLayers, clipLyr, nodes, type, opts) {
-    requirePolygonLayer(clipLyr, "Requires a polygon clipping layer");
-    return targetLayers.reduce(function(memo, targetLyr) {
-      if (type == 'slice') {
-        memo = memo.concat(sliceLayerByLayer(targetLyr, clipLyr, nodes, opts));
-      } else {
-        memo.push(clipLayerByLayer(targetLyr, clipLyr, nodes, type, opts));
-      }
-      return memo;
-    }, []);
-  }
-
-  function getSliceLayerName(clipLyr, field, i) {
-    var id = field ? clipLyr.data.getRecords()[0][field] : i + 1;
-    return 'slice-' + id;
-  }
-
-  function sliceLayerByLayer(targetLyr, clipLyr, nodes, opts) {
-    // may not need no_replace
-    var clipLayers = cmd.splitLayer(clipLyr, opts.id_field, {no_replace: true});
-    return clipLayers.map(function(clipLyr, i) {
-      var outputLyr = clipLayerByLayer(targetLyr, clipLyr, nodes, 'clip', opts);
-      outputLyr.name = getSliceLayerName(clipLyr, opts.id_field, i);
-      return outputLyr;
-    });
-  }
-
-  function clipLayerByLayer(targetLyr, clipLyr, nodes, type, opts) {
-    var arcs = nodes.arcs;
-    var shapeCount = targetLyr.shapes ? targetLyr.shapes.length : 0;
-    var nullCount = 0, sliverCount = 0;
-    var clippedShapes, outputLyr;
-    if (shapeCount === 0) {
-      return targetLyr; // ignore empty layer
-    }
-    if (targetLyr === clipLyr) {
-      stop$1('Can\'t clip a layer with itself');
-    }
-
-    // TODO: optimize some of these functions for bbox clipping
-    if (targetLyr.geometry_type == 'point') {
-      clippedShapes = clipPoints(targetLyr.shapes, clipLyr.shapes, arcs, type);
-    } else if (targetLyr.geometry_type == 'polygon') {
-      clippedShapes = clipPolygons(targetLyr.shapes, clipLyr.shapes, nodes, type, opts);
-    } else if (targetLyr.geometry_type == 'polyline') {
-      clippedShapes = clipPolylines(targetLyr.shapes, clipLyr.shapes, nodes, type);
-    } else {
-      stop$1('Invalid target layer:', targetLyr.name);
-    }
-
-    outputLyr = {
-      name: targetLyr.name,
-      geometry_type: targetLyr.geometry_type,
-      shapes: clippedShapes,
-      data: targetLyr.data // replaced post-filter
-    };
-
-    // Remove sliver polygons
-    if (opts.remove_slivers && outputLyr.geometry_type == 'polygon') {
-      sliverCount = filterClipSlivers(outputLyr, clipLyr, arcs);
-    }
-
-    // Remove null shapes (likely removed by clipping/erasing, although possibly already present)
-    cmd.filterFeatures(outputLyr, arcs, {remove_empty: true, verbose: false});
-
-    // clone data records (to avoid sharing records between layers)
-    // TODO: this is not needed when replacing target with a single layer
-    if (outputLyr.data) {
-      outputLyr.data = outputLyr.data.clone();
-    }
-
-    // TODO: redo messages, now that many layers may be clipped
-    nullCount = shapeCount - outputLyr.shapes.length;
-    if (nullCount && sliverCount) {
-      message(getClipMessage(nullCount, sliverCount));
-    }
-    return outputLyr;
-  }
-
-  function getClipMessage(nullCount, sliverCount) {
-    var nullMsg = nullCount ? utils.format('%,d null feature%s', nullCount, utils.pluralSuffix(nullCount)) : '';
-    var sliverMsg = sliverCount ? utils.format('%,d sliver%s', sliverCount, utils.pluralSuffix(sliverCount)) : '';
-    if (nullMsg || sliverMsg) {
-      return utils.format('Removed %s%s%s', nullMsg, (nullMsg && sliverMsg ? ' and ' : ''), sliverMsg);
-    }
-    return '';
-  }
-
-  // Warn (once per source/target pair) when a -clip / -erase / slice almost
-  // certainly won't do what the user wants. Two checks, in order of strength:
-  //
-  //   1. CRS mismatch -- one side is lat/lng and the other is projected. This
-  //      uses the same logic as requireDatasetsHaveCompatibleCRS() in
-  //      mapshaper-merging.mjs, but fires here as a friendlier, command-aware
-  //      warning before mergeDatasets() would otherwise stop() with a generic
-  //      message. It also catches a class of cases the bbox check misses: a
-  //      projected layer whose bbox straddles (0,0) often *does* overlap an
-  //      unprojected lat/lng bbox, even though the two are useless together.
-  //   2. Bbox-disjoint -- a fallback for the case where CRSes look compatible
-  //      (or are unknown on both sides) but the layers clearly aren't in the
-  //      same place. Usually a wrong-source-picker error.
-  //
-  // Empty target layers are ignored (separate failure mode; would just be
-  // noise). The CRS warning suppresses the bbox warning for the same target,
-  // so users see one warning per problem, not two.
-  // Skipped entirely if opts.no_warn is set.
-  function warnIfBoundsDontOverlap(targetLayers, targetDataset, clipDataset, type) {
-    var srcCRS = getDatasetCRS(clipDataset);
-    var targetCRS = getDatasetCRS(targetDataset);
-    var crsMismatch = srcCRS && targetCRS && isLatLngCRS(srcCRS) != isLatLngCRS(targetCRS);
-    var srcName = clipDataset.layers[0].name || '<unnamed>';
-    var srcBounds = getLayerBounds(clipDataset.layers[0], clipDataset.arcs);
-    targetLayers.forEach(function(targetLyr) {
-      var targetBounds = getLayerBounds(targetLyr, targetDataset.arcs);
-      if (!targetBounds || !targetBounds.hasBounds()) return;
-      if (crsMismatch) {
-        warnOnce(formatCRSMismatchMessage(type, srcName, targetLyr.name,
-          srcCRS, targetCRS));
-        return; // Don't also fire the (likely-misleading) bbox warning.
-      }
-      if (!srcBounds || !srcBounds.hasBounds()) return;
-      if (srcBounds.intersects(targetBounds)) return;
-      warnOnce(formatNoOverlapMessage(type, srcName, targetLyr.name,
-        srcBounds, targetBounds));
-    });
-  }
-
-  function formatCRSMismatchMessage(type, srcName, targetName, srcCRS, targetCRS) {
-    var verb = type === 'erase' ? 'erase' : 'clip';
-    var srcKind = isLatLngCRS(srcCRS) ? 'lng/lat (geographic)' : 'projected';
-    var targetKind = isLatLngCRS(targetCRS) ? 'lng/lat (geographic)' : 'projected';
-    return '-' + verb + ': source "' + srcName + '" uses ' + srcKind +
-      ' coordinates but target "' + (targetName || '<unnamed>') + '" uses ' +
-      targetKind + ' coordinates. The -' + verb +
-      ' will not produce a useful result; project one side to match the other first.';
-  }
-
-  function formatNoOverlapMessage(type, srcName, targetName, srcBounds, targetBounds) {
-    // 'slice' is a per-feature -clip variant; in user terms it has the same
-    // empty-output failure mode as clip, so we describe it under the same
-    // verb to keep the message simple.
-    var verb = type === 'erase' ? 'erase' : 'clip';
-    var consequence = type === 'erase'
-      ? 'will leave "' + (targetName || '<unnamed>') + '" unchanged'
-      : 'will produce empty output for "' + (targetName || '<unnamed>') + '"';
-    return '-' + verb + ': source "' + srcName + '" ' + bbToText(srcBounds) +
-      ' does not overlap target "' + (targetName || '<unnamed>') + '" ' +
-      bbToText(targetBounds) + '. The -' + verb + ' ' + consequence +
-      '. This usually indicates a coordinate system mismatch.';
-  }
-
-  function bbToText(b) {
-    return JSON.stringify(b.toArray());
-  }
-
-  var ClipErase = /*#__PURE__*/Object.freeze({
-    __proto__: null,
-    clipLayers: clipLayers,
-    clipLayersByBBox: clipLayersByBBox,
-    clipLayersByLayer: clipLayersByLayer,
-    clipLayersInPlace: clipLayersInPlace,
-    getClipMessage: getClipMessage,
-    warnIfBoundsDontOverlap: warnIfBoundsDontOverlap
-  });
 
   // Assign a cluster id to each polygon in a dataset, which can be used with
   //   one of the dissolve commands to dissolve the clusters
@@ -52694,420 +54890,6 @@ ${svg}
     return parsed[0];
   }
 
-  // Returns number of arcs that were removed
-  function editArcs(arcs, onPoint) {
-    var nn2 = [],
-        xx2 = [],
-        yy2 = [],
-        errors = 0,
-        n;
-
-    arcs.forEach(function(arc, i) {
-      editArc(arc, onPoint);
-    });
-    arcs.updateVertexData(nn2, xx2, yy2);
-    return errors;
-
-    function append(p) {
-      if (p) {
-        xx2.push(p[0]);
-        yy2.push(p[1]);
-        n++;
-      }
-    }
-
-    function editArc(arc, cb) {
-      var x, y, xp, yp, retn;
-      var valid = true;
-      var i = 0;
-      n = 0;
-      while (arc.hasNext()) {
-        x = arc.x;
-        y = arc.y;
-        retn = cb(append, x, y, xp, yp, i++);
-        if (retn === false) {
-          valid = false;
-          // assumes that it's ok for the arc iterator to be interrupted.
-          break;
-        }
-        xp = x;
-        yp = y;
-      }
-      if (valid && n == 1) {
-        // only one valid point was added to this arc (invalid)
-        // e.g. this could happen during reprojection.
-        // making this arc empty
-        // error("An invalid arc was created");
-        message("An invalid arc was created");
-        valid = false;
-      }
-      if (valid) {
-        nn2.push(n);
-      } else {
-        // remove any points that were added for an invalid arc
-        while (n-- > 0) {
-          xx2.pop();
-          yy2.pop();
-        }
-        nn2.push(0); // add empty arc (to preserve mapping from paths to arcs)
-        errors++;
-      }
-    }
-  }
-
-  // Planar densification by an interval
-  function densifyPathByInterval(coords, interval, interpolate) {
-    if (findMaxPathInterval(coords) < interval) return coords;
-    if (!interpolate) {
-      interpolate = getIntervalInterpolator(interval);
-    }
-    var coords2 = [coords[0]], a, b;
-    for (var i=1, n=coords.length; i<n; i++) {
-      a = coords[i-1];
-      b = coords[i];
-      if (geom.distance2D(a[0], a[1], b[0], b[1]) > interval + 1e-4) {
-        appendArr(coords2, interpolate(a, b));
-      }
-      coords2.push(b);
-    }
-    return coords2;
-  }
-
-  function getIntervalInterpolator(interval) {
-    return function(a, b) {
-      var points = [];
-      // var rev = a[0] == b[0] ? a[1] > b[1] : a[0] > b[0];
-      var dist = geom.distance2D(a[0], a[1], b[0], b[1]);
-      var n = Math.round(dist / interval) - 1;
-      var dx = (b[0] - a[0]) / (n + 1),
-          dy = (b[1] - a[1]) / (n + 1);
-      for (var i=1; i<=n; i++) {
-        points.push([a[0] + dx * i, a[1] + dy * i]);
-      }
-      return points;
-    };
-  }
-
-
-  // Interpolate the same points regardless of segment direction
-  function densifyAntimeridianSegment(a, b, interval) {
-    var y1, y2;
-    var coords = [];
-    var ascending = a[1] < b[1];
-    if (a[0] != b[0]) error('Expected an edge segment');
-    if (ascending) {
-      y1 = a[1];
-      y2 = b[1];
-    } else {
-      y1 = b[1];
-      y2 = a[1];
-    }
-    var y = Math.floor(y1 / interval) * interval + interval;
-    while (y < y2) {
-      coords.push([a[0], y]);
-      y += interval;
-    }
-    if (!ascending) coords.reverse();
-    return coords;
-  }
-
-  function appendArr(dest, src) {
-    for (var i=0; i<src.length; i++) dest.push(src[i]);
-  }
-
-  function findMaxPathInterval(coords) {
-    var maxSq = 0, intSq, a, b;
-    for (var i=1, n=coords.length; i<n; i++) {
-      a = coords[i-1];
-      b = coords[i];
-      intSq = geom.distanceSq(a[0], a[1], b[0], b[1]);
-      if (intSq > maxSq) maxSq = intSq;
-    }
-    return Math.sqrt(maxSq);
-  }
-
-  function projectAndDensifyArcs(arcs, proj) {
-    var interval = getDefaultDensifyInterval(arcs, proj);
-    var minIntervalSq = interval * interval * 25;
-    var p;
-    return editArcs(arcs, onPoint);
-
-    function onPoint(append, lng, lat, prevLng, prevLat, i) {
-      var pp = p;
-      p = proj(lng, lat);
-      if (!p) return false; // signal that current arc contains an error
-
-      // Don't try to densify shorter segments (optimization)
-      if (i > 0 && geom.distanceSq(p[0], p[1], pp[0], pp[1]) > minIntervalSq) {
-        densifySegment(prevLng, prevLat,  pp[0],  pp[1], lng, lat, p[0], p[1], proj, interval)
-          .forEach(append);
-      }
-      append(p);
-    }
-  }
-
-  // Use the median of intervals computed by projecting segments.
-  // We're probing a number of points, because @proj might only be valid in
-  // a sub-region of the dataset bbox (e.g. +proj=tpers)
-  function findDensifyInterval(bounds, xy, proj) {
-    var steps = [0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9];
-    var points = [];
-    for (var i=0; i<steps.length; i++) {
-      for (var j=0; j<steps.length; j++) {
-        points.push([steps[i], steps[j]]);
-      }
-    }
-    var intervals = points.map(function(pos) {
-      var x = bounds.xmin + bounds.width() * pos[0];
-      var y = bounds.ymin + bounds.height() * pos[1];
-      var a = proj(x, y);
-      var b = proj(x + xy[0], y + xy[1]);
-      return a && b ? geom.distance2D(a[0], a[1], b[0], b[1]) : Infinity;
-    }).filter(function(int) {return int < Infinity;});
-    return intervals.length > 0 ? utils.findMedian(intervals) : Infinity;
-  }
-
-  // Kludgy way to get a useful interval for densifying a bounding box.
-  // Uses a fraction of average bbox side length)
-  // TODO: improve
-  function findDensifyInterval2(bb, proj) {
-    var a = proj(bb.centerX(), bb.centerY()),
-        c = proj(bb.centerX(), bb.ymin), // right center
-        d = proj(bb.xmax, bb.centerY()); // bottom center
-    var interval = a && c && d ? (geom.distance2D(a[0], a[1], c[0], c[1]) +
-          geom.distance2D(a[0], a[1], d[0], d[1])) / 5000 : Infinity;
-    return interval;
-  }
-
-  // Returns an interval in projected units
-  function getDefaultDensifyInterval(arcs, proj) {
-    var xy = getAvgSegment2(arcs),
-        bb = arcs.getBounds(),
-        intervalA = findDensifyInterval(bb, xy, proj),
-        intervalB = findDensifyInterval2(bb, proj),
-        interval = Math.min(intervalA, intervalB);
-    if (interval == Infinity) {
-      error('Densification error');
-    }
-    return interval;
-  }
-
-  // Interpolate points into a projected line segment if needed to prevent large
-  //   deviations from path of original unprojected segment.
-  // @points (optional) array of accumulated points
-  function densifySegment(lng0, lat0, x0, y0, lng2, lat2, x2, y2, proj, interval, points) {
-    // Find midpoint between two endpoints and project it (assumes longitude does
-    // not wrap). TODO Consider bisecting along great circle path -- although this
-    // would not be good for boundaries that follow line of constant latitude.
-    var lng1 = (lng0 + lng2) / 2,
-        lat1 = (lat0 + lat2) / 2,
-        p = proj(lng1, lat1),
-        distSq;
-    if (!p) return; // TODO: consider if this is adequate for handling proj. errors
-    distSq = geom.pointSegDistSq2(p[0], p[1], x0, y0, x2, y2); // sq displacement
-    points = points || [];
-    // Bisect current segment if the projected midpoint deviates from original
-    //   segment by more than the @interval parameter.
-    //   ... but don't bisect very small segments to prevent infinite recursion
-    //   (e.g. if projection function is discontinuous)
-    if (distSq > interval * interval * 0.25 && geom.distance2D(lng0, lat0, lng2, lat2) > 0.01) {
-      densifySegment(lng0, lat0, x0, y0, lng1, lat1, p[0], p[1], proj, interval, points);
-      points.push(p);
-      densifySegment(lng1, lat1, p[0], p[1], lng2, lat2, x2, y2, proj, interval, points);
-    }
-    return points;
-  }
-
-  // Create rectangles around each feature in a layer
-  cmd.rectangles = function(targetLyr, targetDataset, opts) {
-    var crsInfo = getDatasetCrsInfo(targetDataset);
-    var records = targetLyr.data ? targetLyr.data.getRecords() : null;
-    var geometries;
-
-    if (opts.bbox) {
-      geometries = bboxExpressionToGeometries(opts.bbox, targetLyr, targetDataset);
-
-    } else {
-      if (!layerHasGeometry(targetLyr)) {
-        stop$1("Layer is missing geometric shapes");
-      }
-      geometries = shapesToBoxGeometries(targetLyr, targetDataset, opts);
-    }
-
-    var geojson = {
-      type: 'FeatureCollection',
-      features: geometries.map(function(geom, i) {
-        var rec = records && records[i] || null;
-        if (rec && opts.no_replace) {
-          rec = utils.extend({}, rec); // make a copy
-        }
-        return {
-          type: 'Feature',
-          properties: rec,
-          geometry: geom
-        };
-      })
-    };
-    var dataset = importGeoJSON(geojson, {});
-    setDatasetCrsInfo(dataset, crsInfo);
-    var outputLayers = mergeDatasetsIntoDataset(targetDataset, [dataset]);
-    setOutputLayerName(outputLayers[0], targetLyr, null, opts);
-    return outputLayers;
-  };
-
-
-
-
-  function shapesToBoxGeometries(lyr, dataset, opts) {
-    var crsInfo = getDatasetCrsInfo(dataset);
-    return lyr.shapes.map(function(shp) {
-      var bounds = lyr.geometry_type == 'point' ?
-        getPointFeatureBounds(shp) : dataset.arcs.getMultiShapeBounds(shp);
-      bounds = applyRectangleOptions(bounds, crsInfo.crs, opts);
-      if (!bounds) return null;
-      return bboxToPolygon(bounds.toArray(), opts);
-    });
-  }
-
-  function bboxExpressionToGeometries(exp, lyr, dataset, opts) {
-    var compiled = compileFeatureExpression(exp, lyr, dataset.arcs, {});
-    var n = getFeatureCount(lyr);
-    var result;
-    var geometries = [];
-    for (var i=0; i<n; i++) {
-      result = compiled(i);
-      if (!looksLikeBbox(result)) {
-        stop$1('Invalid bbox value (expected a GeoJSON-type bbox):', result);
-      }
-      geometries.push(bboxToPolygon(result));
-    }
-    return geometries;
-  }
-
-  function looksLikeBbox(o) {
-    if (!o || o.length != 4) return false;
-    if (o.some(isNaN)) return false;
-    if (o[0] <= o[2] == false || o[1] <= o[3] == false) return false;
-    return true;
-  }
-
-  // Create rectangles around one or more target layers
-  //
-  cmd.rectangle2 = function(target, opts) {
-    // if target layer is a rectangle and we're applying frame properties,
-    // turn the target into a frame instead of creating a new rectangle
-    if (target.layers.length == 1 && opts.width &&
-      layerIsRectangle(target.layers[0], target.dataset.arcs)) {
-      applyFrameProperties(target.layers[0], opts);
-      return;
-    }
-    var datasets = target.layers.map(function(lyr) {
-      var dataset = cmd.rectangle({layer: lyr, dataset: target.dataset}, opts);
-      setOutputLayerName(dataset.layers[0], lyr, null, opts);
-      if (!opts.no_replace) {
-        dataset.layers[0].name = lyr.name || dataset.layers[0].name;
-      }
-      return dataset;
-    });
-    return mergeDatasetsIntoDataset(target.dataset, datasets);
-  };
-
-  cmd.rectangle = function(target, opts) {
-    var bounds, crsInfo;
-    if (opts.bbox) {
-      bounds = new Bounds(opts.bbox);
-      crsInfo = target && getDatasetCrsInfo(target.dataset) ||
-        probablyDecimalDegreeBounds(bounds) && getCrsInfo('wgs84') || {};
-    } else if (target) {
-      bounds = getLayerBounds(target.layer, target.dataset.arcs);
-      crsInfo = getDatasetCrsInfo(target.dataset);
-    }
-    bounds = bounds && applyRectangleOptions(bounds, crsInfo.crs, opts);
-    if (!bounds || !bounds.hasBounds()) {
-      stop$1('Missing rectangle extent');
-    }
-    var feature = {
-      type: 'Feature',
-      properties: {},
-      geometry: bboxToPolygon(bounds.toArray(), opts)
-    };
-    var dataset = importGeoJSON(feature, {});
-    applyFrameProperties(dataset.layers[0], opts);
-    dataset.layers[0].name = opts.name || 'rectangle';
-    setDatasetCrsInfo(dataset, crsInfo);
-    return dataset;
-  };
-
-  function applyFrameProperties(lyr, opts) {
-    if (!opts.width) return;
-    if (!lyr.data) initDataTable(lyr);
-    var d = lyr.data.getRecords()[0] || {};
-    d.width = parseSizeParam(opts.width);
-    d.type = 'frame';
-  }
-
-  function applyRectangleOptions(bounds, crs, opts) {
-    var isGeoBox = probablyDecimalDegreeBounds(bounds);
-    if (opts.offset) {
-      bounds = applyBoundsOffset(opts.offset, bounds, crs);
-    }
-    if (bounds.area() > 0 === false) return null;
-    if (opts.aspect_ratio) {
-      bounds = applyAspectRatio(opts.aspect_ratio, bounds);
-    }
-    if (isGeoBox) {
-      bounds = clampToWorldBounds(bounds);
-    }
-    return bounds;
-  }
-
-  // opt: aspect ratio as a single number or a range (e.g. "1,2");
-  function applyAspectRatio(opt, bounds) {
-    var range = String(opt).split(',').map(parseFloat),
-      aspectRatio = bounds.width() / bounds.height(),
-      min, max; // min is height limit, max is width limit
-    if (range.length == 1) {
-      range.push(range[0]);
-    } else if (range[0] > range[1]) {
-      range.reverse();
-    }
-    min = range[0];
-    max = range[1];
-    if (!min && !max) return bounds;
-    if (!min) min = -Infinity;
-    if (!max) max = Infinity;
-    if (aspectRatio < min) {
-      bounds.fillOut(min);
-    } else if (aspectRatio > max) {
-      bounds.fillOut(max);
-    }
-    return bounds;
-  }
-
-  function applyBoundsOffset(offsetOpt, bounds, crs) {
-    var offsets = convertFourSides(offsetOpt, crs, bounds);
-    bounds.padBounds(offsets[0], offsets[1], offsets[2], offsets[3]);
-    return bounds;
-  }
-
-  function bboxToPolygon(bbox, optsArg) {
-    var opts = optsArg || {};
-    var coords = bboxToCoords(bbox);
-    if (opts.interval > 0) {
-      coords = densifyPathByInterval(coords, opts.interval);
-    }
-    return {
-      type: 'Polygon',
-      coordinates: [coords]
-    };
-  }
-
-  var Rectangle = /*#__PURE__*/Object.freeze({
-    __proto__: null,
-    applyAspectRatio: applyAspectRatio,
-    bboxToPolygon: bboxToPolygon
-  });
-
   cmd.frame = function(catalog, targets, opts) {
     var widthPx, heightPx, aspectRatio, bbox;
     if (opts.width) {
@@ -53752,1746 +55534,6 @@ ${svg}
     var maxValue = modeValues[weights.indexOf(maxWeight)];
     return maxValue;
   }
-
-  function getSemiMinorAxis(P) {
-    return P.a * Math.sqrt(1 - (P.es || 0));
-  }
-
-  function getCircleRadiusFromAngle(P, angle) {
-    // Using semi-minor axis radius, to prevent overflowing projection bounds
-    // when clipping up to the edge of the projectable area
-    // TODO: improve (this just gives a safe minimum distance, not the best distance)
-    // TODO: modify point buffer function to use angle + ellipsoidal geometry
-    return angle * Math.PI / 180 * getSemiMinorAxis(P);
-  }
-
-  function getCrsSlug(P) {
-    return P.params.proj.param; // kludge
-  }
-
-  // 'normal' = the projection is aligned to the Earth's axis
-  // (i.e. it has a normal aspect)
-  function isRotatedNormalProjection(P) {
-    return isAxisAligned(P) && P.lam0 !== 0;
-  }
-
-  // Projection is vertically aligned to earth's axis
-  function isAxisAligned(P) {
-    // TODO: consider projections that may or may not be aligned,
-    // depending on parameters
-    if (inList(P, 'cassini,gnom,bertin1953,chamb,ob_tran,tpeqd,healpix,rhealpix,' +
-      'ocea,omerc,tmerc,etmerc,nicol')) {
-      return false;
-    }
-    if (isAzimuthal(P)) {
-      return false;
-    }
-    return true;
-  }
-
-  function getBoundingMeridian(P) {
-    if (P.lam0 === 0) return 180;
-    return getAntimeridian(P.lam0 * 180 / Math.PI);
-  }
-
-  // Are the projection's bounds meridians?
-  function isMeridianBounded(P) {
-    // TODO: add azimuthal projection with lat0 == 0
-    // if (inList(P, 'ortho') && P.lam0 === 0) return true;
-    return isAxisAligned(P); // TODO: look for exceptions to this
-  }
-
-  function isAzimuthal(P) {
-    return inList(P,
-      'aeqd,gnom,laea,mil_os,lee_os,gs48,alsk,gs50,nsper,tpers,ortho,qsc,stere,ups,sterea');
-  }
-
-  function inList(P, str) {
-    return str.split(',').includes(getCrsSlug(P));
-  }
-
-  // based on d3 implementation of Euler-angle rotation
-  // https://github.com/d3/d3-geo/blob/master/src/rotation.js
-  // license: https://github.com/d3/d3-geo/blob/master/LICENSE
-
-  function rotateDatasetCoords(dataset, rotation, inv) {
-    var proj = getRotationFunction(rotation, inv);
-    dataset.layers.filter(layerHasPoints).forEach(function(lyr) {
-      projectPointLayer(lyr, proj);
-    });
-    if (dataset.arcs) {
-      projectArcs(dataset.arcs, proj);
-    }
-  }
-
-  function getRotationFunction(rotation, inv) {
-    var f = getRotationFunction2(rotation, inv);
-    return function(lng, lat) {
-      return f([lng, lat]);
-    };
-  }
-
-  function getRotationFunction2(rotation, inv) {
-    var a = (rotation[0] || 0) * D2R$1,
-        b = (rotation[1] || 0) * D2R$1,
-        c = (rotation[2] || 0) * D2R$1;
-    return function(p) {
-      p[0] *= D2R$1;
-      p[1] *= D2R$1;
-      var rotate = inv ? rotatePointInv : rotatePoint;
-      rotate(p, a, b, c);
-      p[0] *= R2D$1;
-      p[1] *= R2D$1;
-      return p;
-    };
-  }
-
-  function rotatePoint(p, deltaLam, deltaPhi, deltaGam) {
-    if (deltaLam != 0) rotateLambda(p, deltaLam);
-    if (deltaPhi !== 0 || deltaGam !== 0) {
-      rotatePhiGamma(p, deltaPhi, deltaGam, false);
-    }
-    return p;
-  }
-
-  function rotatePointInv(p, deltaLam, deltaPhi, deltaGam) {
-    if (deltaPhi !== 0 || deltaGam !== 0) {
-      rotatePhiGamma(p, deltaPhi, deltaGam, true);
-    }
-    if (deltaLam != 0) rotateLambda(p, -deltaLam);
-    return p;
-  }
-
-  function rotateLambda(p, deltaLam) {
-    var lam = p[0] + deltaLam;
-    if (lam > Math.PI) lam -= 2 * Math.PI;
-    else if (lam < -Math.PI) lam += 2 * Math.PI;
-    p[0] = lam;
-  }
-
-  function rotatePhiGamma(p, deltaPhi, deltaGam, inv) {
-    var cosDeltaPhi = Math.cos(deltaPhi),
-        sinDeltaPhi = Math.sin(deltaPhi),
-        cosDeltaGam = Math.cos(deltaGam),
-        sinDeltaGam = Math.sin(deltaGam),
-        cosPhi = Math.cos(p[1]),
-        x = Math.cos(p[0]) * cosPhi,
-        y = Math.sin(p[0]) * cosPhi,
-        z = Math.sin(p[1]),
-        k;
-    if (inv) {
-      k = z * cosDeltaGam - y * sinDeltaGam;
-      p[0] = Math.atan2(y * cosDeltaGam + z * sinDeltaGam, x * cosDeltaPhi + k * sinDeltaPhi);
-      p[1] = Math.asin(k * cosDeltaPhi - x * sinDeltaPhi);
-    } else {
-      k = z * cosDeltaPhi + x * sinDeltaPhi;
-      p[0] = Math.atan2(y * cosDeltaGam - k * sinDeltaGam, x * cosDeltaPhi - z * sinDeltaPhi);
-      p[1] = Math.asin(k * cosDeltaGam + y * sinDeltaGam);
-    }
-  }
-
-  cmd.rotate = rotateDataset;
-
-  function rotateDataset(dataset, opts) {
-    if (!isLatLngCRS(getDatasetCRS(dataset))) {
-      stop$1('Command requires a lat-long dataset.');
-    }
-    if (!Array.isArray(opts.rotation) || !opts.rotation.length) {
-      stop$1('Invalid rotation parameter');
-    }
-    var rotatePoint = getRotationFunction2(opts.rotation, opts.invert);
-    var editor = new DatasetEditor(dataset);
-    if (dataset.arcs) {
-      dataset.arcs.flatten();
-    }
-
-    dataset.layers.forEach(function(lyr) {
-      var type = lyr.geometry_type;
-      editor.editLayer(lyr, getGeometryRotator(type, rotatePoint, opts));
-    });
-    editor.done();
-    if (!opts.debug) {
-      withActiveUndoTransaction(null, function() {
-        buildTopology(dataset);
-        cleanProjectedPathLayers(dataset);
-      });
-    }
-  }
-
-  function getGeometryRotator(layerType, rotatePoint, opts) {
-    var rings;
-    if (layerType == 'point') {
-      return function(coords) {
-        coords.forEach(rotatePoint);
-        return coords;
-      };
-    }
-    if (layerType == 'polyline') {
-      return function(coords) {
-        coords = densifyPathByInterval(coords, 0.5);
-        coords.forEach(rotatePoint);
-        return removePolylineCrosses(coords);
-      };
-    }
-    if (layerType == 'polygon') {
-      return function(coords, i, shape) {
-        if (isWholeWorld(coords)) {
-          coords = densifyPathByInterval(coords, 0.5);
-        } else {
-          coords.forEach(snapToEdge);
-          coords = removeCutSegments(coords);
-          coords = densifyPathByInterval(coords, 0.5, getInterpolator(0.5));
-          coords.forEach(rotatePoint);
-          // coords.forEach(snapToEdge);
-        }
-        if (i === 0) { // first part
-          rings = [];
-        }
-        if (coords.length < 4) {
-          debug('Short ring', coords);
-          return;
-        }
-        if (!samePoint(coords[0], lastEl(coords))) {
-          error('Open polygon ring');
-        }
-        rings.push(coords); // accumulate rings
-        if (i == shape.length - 1) { // last part
-          return opts.debug ? rings : removePolygonCrosses(rings);
-        }
-      };
-    }
-    return null; // assume layer has no geometry -- callback should not be called
-  }
-
-  function getInterpolator(interval) {
-    var interpolate = getIntervalInterpolator(interval);
-    return function(a, b) {
-      var points;
-      if (onPole(a) || onPole(b)) {
-        points = [];
-      } else if (isEdgeSegment(a, b)) {
-        points = densifyAntimeridianSegment(a, b, interval);
-      } else if (segmentCrossesAntimeridian(a, b)) {
-        // TODO: interpolate up to antimeridian?
-        points = [];
-      } else {
-        points = interpolate(a, b);
-      }
-      return points;
-    };
-  }
-
-  cmd.lines = function(lyr, dataset, opts) {
-    opts = opts || {};
-    if (opts.callouts) {
-      requirePointLayer(lyr);
-      return pointsToCallouts(lyr, dataset, opts);
-    } else if (lyr.geometry_type == 'point') {
-      return pointsToLines(lyr, dataset, opts);
-    } else if (opts.segments) {
-      return [convertShapesToSegments(lyr, dataset)];
-    } else if (opts.arcs) {
-      return [convertShapesToArcs(lyr, dataset)];
-    } else if (lyr.geometry_type == 'polygon') {
-      return polygonsToLines(lyr, dataset.arcs, opts);
-    } else {
-      requirePolygonLayer(lyr, "Command requires a polygon or point layer");
-    }
-  };
-
-  function convertShapesToArcs(lyr, dataset) {
-    var arcs = dataset.arcs;
-    var test = getArcPresenceTest(lyr.shapes, arcs);
-    var records = [];
-    var shapes = [];
-    for (var i=0, n=arcs.size(); i<n; i++) {
-      if (!test(i)) continue;
-      records.push({arcid: i});
-      shapes.push([[i]]);
-    }
-    return {
-      geometry_type: 'polyline',
-      data: new DataTable(records),
-      shapes: shapes
-    };
-  }
-
-  function convertShapesToSegments(lyr, dataset) {
-    var arcs = dataset.arcs;
-    var geojson = {type: 'FeatureCollection', features: []};
-    var test = getArcPresenceTest(lyr.shapes, arcs);
-    var arcId;
-    for (var i=0, n=arcs.size(); i<n; i++) {
-      arcId = i;
-      if (!test(arcId)) continue;
-      arcs.forEachArcSegment(arcId, onSeg);
-    }
-    function onSeg(i1, i2, xx, yy) {
-      var a = xx[i1],
-          b = yy[i1],
-          c = xx[i2],
-          d = yy[i2];
-      geojson.features.push({
-        type: 'Feature',
-        properties: {arc: arcId, i1: i1, i2: i2, x1: a, y1: b, x2: c, y2: d},
-        geometry: {type: 'LineString', coordinates: [[a, b], [c, d]]}
-      });
-    }
-    var merged = mergeDatasets([dataset, importGeoJSON(geojson, {})]);
-    noteDatasetWillChange(dataset, {operation: 'lines-segments', unit: 'arcs'});
-    dataset.arcs = merged.arcs;
-    markDatasetChanged(dataset, {operation: 'lines-segments', unit: 'arcs'});
-    // buildTopology(dataset);
-    return merged.layers.pop();
-  }
-
-  function pointsToLines(lyr, dataset, opts) {
-    var geojson = opts.groupby ?
-      groupedPointsToLineGeoJSON(lyr, opts.groupby, opts) :
-      pointShapesToLineGeometry(lyr.shapes); // no grouping: return single line with no attributes
-    var dataset2 = importGeoJSON(geojson);
-    var outputLayers = mergeDatasetsIntoDataset(dataset, [dataset2]);
-    // if (!opts.no_replace) {
-    //   outputLayers[0].name = lyr.name || outputLayers[0].name;
-    // }
-    setOutputLayerName(outputLayers[0], lyr, null, opts);
-    return outputLayers;
-  }
-
-  function pointsToCallouts(lyr, dataset, opts) {
-    var records = lyr.data ? lyr.data.getRecords() : null;
-    var calloutLen = getLayerBounds(lyr).width() / 50;
-    var pointToSegment = function(p) {
-      return [p, [p[0] + calloutLen, p[1]]];
-    };
-    var geojson = {
-      type: 'FeatureCollection',
-      features: lyr.shapes.map(function(shp, i) {
-        return {
-          type: 'Feature',
-          properties: records ? records[i] : null,
-          geometry: {
-            type: 'MultiLineString',
-            coordinates: shp.map(pointToSegment)
-          }
-        };
-      })
-    };
-    var dataset2 = importGeoJSON(geojson);
-    var outputLayers = mergeDatasetsIntoDataset(dataset, [dataset2]);
-    setOutputLayerName(outputLayers[0], lyr.name, null, opts);
-    return outputLayers;
-  }
-
-  function groupedPointsToLineGeoJSON(lyr, field, opts) {
-    var groups = [];
-    var getGroupId = getCategoryClassifier([field], lyr.data);
-    var dataOpts = utils.defaults({fields: [field]}, opts);
-    var records = aggregateDataRecords(lyr.data.getRecords(), getGroupId, dataOpts);
-    var features;
-    lyr.shapes.forEach(function(shape, i) {
-      var groupId = getGroupId(i);
-      if (groupId in groups === false) {
-        groups[groupId] = [];
-      }
-      groups[groupId].push(shape);
-    });
-    features = groups.map(function(shapes, i) {
-      return {
-        type: 'Feature',
-        properties: records[i],
-        geometry: shapes.length > 1 ? pointShapesToLineGeometry(shapes) : null
-      };
-    });
-    return {
-      type: 'FeatureCollection',
-      features: features
-    };
-  }
-
-  // TOOD: automatically convert rings into separate shape parts
-  function pointShapesToLineGeometry(shapes) {
-    var coords = [];
-    forEachPoint(shapes, function(p) {
-      coords.push(p.concat());
-    });
-    return {type: 'LineString', coordinates: coords};
-  }
-
-  function polygonsToLines(lyr, arcs, opts) {
-    opts = opts || {};
-    var decorateRecord = opts.each ? getLineRecordDecorator(opts.each, lyr, arcs) : null,
-        classifier = getArcClassifier(lyr, arcs, {where: opts.where}),
-        fields = utils.isArray(opts.fields) ? opts.fields : [],
-        rankId = 0,
-        shapes = [],
-        records = [],
-        outputLyr;
-
-    if (fields.length > 0 && !lyr.data) {
-      stop$1("Missing a data table");
-    }
-
-    addLines(extractOuterLines(lyr.shapes, classifier), 'outer');
-
-    fields.forEach(function(field) {
-      var data = lyr.data.getRecords();
-      var key = function(a, b) {
-        var arec = data[a];
-        var brec = data[b];
-        if (!arec || !brec || arec[field] === brec[field]) {
-          return null;
-        }
-        return a + '-' + b;
-      };
-      requireDataField(lyr, field);
-      addLines(extractLines(lyr.shapes, classifier(key)), field);
-    });
-
-    addLines(extractInnerLines(lyr.shapes, classifier), 'inner');
-    outputLyr = createLineLayer(shapes, records);
-    setOutputLayerName(outputLyr, lyr, null, opts);
-    return outputLyr;
-
-    function addLines(lines, typeName) {
-      var attr = lines.map(function(shp, i) {
-        var rec = {RANK: rankId, TYPE: typeName};
-        if (decorateRecord) decorateRecord(rec, shp);
-        return rec;
-      });
-      shapes = utils.merge(lines, shapes);
-      records = utils.merge(attr, records);
-      rankId++;
-    }
-  }
-
-
-  // kludgy way to implement each= option of -lines command
-  function getLineRecordDecorator(exp, lyr, arcs) {
-    // repurpose arc classifier function to convert arc ids to shape ids of original polygons
-    var procArcId = getArcClassifier(lyr, arcs)(procShapeIds);
-    var compiled = compileFeaturePairExpression(exp, lyr, arcs);
-    var tmp;
-
-    function procShapeIds(shpA, shpB) {
-      compiled(shpA, shpB, tmp);
-    }
-
-    return function(rec, shp) {
-      tmp = rec;
-      procArcId(shp[0][0]);
-      return rec;
-    };
-  }
-
-
-  function createLineLayer(lines, records) {
-    return {
-      geometry_type: 'polyline',
-      shapes: lines,
-      data: records ? new DataTable(records) : null
-    };
-  }
-
-  function extractOuterLines(shapes, classifier) {
-    var key = function(a, b) {return b == -1 ? String(a) : null;};
-    return extractLines(shapes, classifier(key));
-  }
-
-  function extractInnerLines(shapes, classifier) {
-    var key = function(a, b) {return b > -1 ? a + '-' + b : null;};
-    return extractLines(shapes, classifier(key));
-  }
-
-  function extractLines(shapes, classify) {
-    var lines = [],
-        index = {},
-        prev = null,
-        prevKey = null,
-        part;
-
-    traversePaths(shapes, onArc, onPart);
-
-    function onArc(o) {
-      var arcId = o.arcId,
-          key = classify(arcId),
-          isContinuation, line;
-      if (key) {
-        line = key in index ? index[key] : null;
-        isContinuation = key == prevKey && o.shapeId == prev.shapeId && o.partId == prev.partId;
-        if (!line) {
-          line = [[arcId]]; // new shape
-          index[key] = line;
-          lines.push(line);
-        } else if (isContinuation) {
-          line[line.length-1].push(arcId); // extending prev part
-        } else {
-          line.push([arcId]); // new part
-        }
-
-        // if extracted line is split across endpoint of original polygon ring, then merge
-        if (o.i == part.arcs.length - 1 &&  // this is last arc in ring
-            line.length > 1 &&              // extracted line has more than one part
-            line[0][0] == part.arcs[0]) {   // first arc of first extracted part is first arc in ring
-          line[0] = line.pop().concat(line[0]);
-        }
-      }
-      prev = o;
-      prevKey = key;
-    }
-
-    function onPart(o) {
-      part = o;
-    }
-
-    return lines;
-  }
-
-  var Lines = /*#__PURE__*/Object.freeze({
-    __proto__: null,
-    createLineLayer: createLineLayer,
-    extractInnerLines: extractInnerLines,
-    polygonsToLines: polygonsToLines
-  });
-
-  function getClippingDataset(src, dest, opts) {
-    return getUnprojectedBoundingPolygon(src, dest, opts);
-  }
-
-  function getUnprojectedBoundingPolygon(src, dest, opts) {
-    var dataset;
-    if (isCircleClippedProjection(dest) || opts.clip_angle || dest.clip_angle) {
-      dataset = getBoundingCircle(src, dest, opts);
-    } else if (isRectangleClippedProjection(dest) || opts.clip_bbox) {
-      dataset = getBoundingRectangle(dest, opts);
-    }
-    return dataset || null;
-  }
-
-  // If possible, return a lat-long bbox that can be used to
-  // test whether data exceeds the projection bounds ands needs to be clipped
-  // export function getInnerBoundingBBox(P, opts) {
-  //   var bbox = null;
-  //   if (opts.clip_bbox) {
-  //     bbox = opts.clip_bbox;
-  //   } else if (isRectangleClippedProjection(dest)) {
-  //     bbox
-  //   }
-  //   return bbox;
-  // }
-
-  // Return projected polygon extent of both clipped and unclipped projections
-  function getPolygonDataset$1(src, dest, opts) {
-    // use clipping area if projection is clipped
-    var dataset = getUnprojectedBoundingPolygon(src, dest, opts);
-    if (!dataset) {
-      // use entire world if projection is not clipped
-      dataset = getBoundingRectangle(dest, {clip_bbox: [-180,-90,180,90]});
-    }
-    projectDataset(dataset, src, dest, {no_clip: false, quiet: true});
-    return dataset;
-  }
-
-  // Return projected outline of clipped projections
-  function getOutlineDataset(src, dest, opts) {
-    var dataset = getUnprojectedBoundingPolygon(src, dest, opts);
-    if (dataset) {
-      // project, with cutting & cleanup
-      projectDataset(dataset, src, dest, {no_clip: false, quiet: true});
-      dataset.layers[0].geometry_type = 'polyline';
-    }
-    return dataset || null;
-  }
-
-  function getBoundingRectangle(dest, opts) {
-    var bbox = opts.clip_bbox || getDefaultClipBBox(dest);
-    var rotation = getRotationParams(dest);
-    if (!bbox) error('Missing expected clip bbox.');
-    opts = Object.assign({interval: 0.5}, opts); // make sure edges can curve
-    var dataset = importGeoJSON(bboxToPolygon(bbox, opts));
-    if (rotation) {
-      rotateDataset(dataset, {rotation: rotation, invert: true});
-    }
-    return dataset;
-  }
-
-  function getBoundingCircle(src, dest, opts) {
-    var angle = opts.clip_angle || dest.clip_angle || getDefaultClipAngle(dest);
-    if (!angle) return null;
-    verbose(`Using clip angle of ${ +angle.toFixed(2) } degrees`);
-    var dist = getClippingRadius(src, angle);
-    var cp = getProjCenter(dest);
-    // kludge: attach the clipping angle to the CRS, so subsequent commands
-    // (e.g. -graticule) can create an outline
-    dest.clip_angle = angle;
-    var geojson = getCircleGeoJSON(cp, dist, null, opts);
-    return importGeoJSON(geojson);
-  }
-
-  function isRectangleClippedProjection(P) {
-    // TODO: add tmerc, etmerc, ...
-    // return inList(P, 'tmerc,utm,etmerc,merc,bertin1953');
-    return inList(P, 'merc,bertin1953');
-  }
-
-  function getDefaultClipBBox(P) {
-    var e = 1e-3;
-    var slug = getCrsSlug(P);
-    var tmerc = [-179,-90,179,90];
-    var bbox = {
-      // longlat: [-180, -90, 180, 90],
-      tmerc: tmerc,
-      utm: tmerc,
-      etmerc: tmerc,
-      merc: [-180, -89, 180, 89],
-      lcc: [-180, -89, 180, 89],
-      bertin1953: [-180 + e, -90 + e, 180 - e, 90 - e]
-    }[slug];
-    return bbox;
-  }
-
-  function getClampBBox(P) {
-    var bbox;
-    if (inList(P, 'merc,lcc')) {
-      bbox = getDefaultClipBBox(P);
-    }
-    return bbox;
-  }
-
-  function isCircleClippedProjection(P) {
-    return inList(P, 'stere,sterea,ups,ortho,gnom,laea,nsper,tpers,geos,nicol');
-  }
-
-  function getPerspectiveClipAngle(P) {
-    var h = parseFloat(P.params.h.param);
-    if (!h || h < 0) {
-      return 0;
-    }
-    var theta = Math.acos(P.a / (P.a + h)) * 180 / Math.PI;
-    theta *= 0.995; // reducing a bit to avoid out-of-range errors
-    return theta;
-  }
-
-  function getDefaultClipAngle(P) {
-    var slug = getCrsSlug(P);
-    if (slug == 'nsper' || slug == 'geos') return getPerspectiveClipAngle(P);
-    if (slug == 'tpers') {
-      message('Automatic clipping is not supported for the Tilted Perspective projection');
-      return 0;
-    }
-    return {
-      gnom: 60,
-      laea: 179,
-      //ortho: 89.9, // projection errors betwen lat +/-35 to 55
-      ortho: 89.85, // TODO: investigate
-      nicol: 89.85,
-      stere: 142,
-      sterea: 142,
-      ups: 10.5 // TODO: should be 6.5 deg at north pole
-    }[slug] || 0;
-  }
-
-  function getRotationParams(P) {
-    var slug = getCrsSlug(P);
-    if (slug == 'bertin1953') return [-16.5,-42];
-    if (slug == 'tmerc' || slug == 'utm' || slug == 'etmerc') {
-      if (P.lam0 !== 0) return [P.lam0 * 180 / Math.PI];
-    }
-    return null;
-  }
-
-
-  function getProjCenter(P) {
-    var rtod = 180 / Math.PI;
-    return [P.lam0 * rtod, P.phi0 * rtod];
-  }
-
-  // Convert a clip angle to a distance in meters
-  function getClippingRadius(P, angle) {
-    return getCircleRadiusFromAngle(P, angle);
-  }
-
-  function preProjectionClip(dataset, src, dest, opts) {
-    if (!isLatLngCRS(src) || opts.no_clip) return false;
-    // rotated normal-aspect projections can generally have a thin slice removed
-    // from the rotated antimeridian, instead of clipping them
-    var cut = insertPreProjectionCuts(dataset, src, dest);
-    var clipped = false;
-    var clipData;
-    // experimental -- we can probably get away with just clamping some CRSs that
-    // have a slightly restricted coord range (e.g. Mercator), instead of doing
-    // a clip (more expensive)
-    var clampBox = getClampBBox(dest);
-    if (clampBox) {
-      clampDataset(dataset, clampBox);
-    } else {
-      clipData = getClippingDataset(src, dest, opts);
-    }
-    // clip data to projection limits (some projections), if content exceeds the limit
-    //
-    if (clipData) {
-      clipped = clipLayersIfNeeded(dataset, clipData);
-    }
-    return cut || clipped;
-  }
-
-  function clipLayersIfNeeded(dataset, clipData) {
-    // Avoid clipping layers that are fully enclosed within the projectable
-    // coordinate space (represented by a dataset containing a single
-    // polygon layer, @clipData). This avoids performing unnecessary intersection
-    // tests on each line segment.
-    var layers = dataset.layers.filter(function(lyr) {
-      return layerHasGeometry(lyr) && !layerIsFullyEnclosed(lyr, dataset, clipData);
-    });
-    if (layers.length > 0) {
-      clipLayersInPlace(layers, clipData, dataset, 'clip', getInternalClipOpts());
-      return true;
-    }
-    return false;
-  }
-
-  // @clipData: a dataset containing a polygon layer
-  function layerIsFullyEnclosed(lyr, dataset, clipData) {
-    // This test uses the layer's bounding box to represent the extent of the
-    // layer, and can produce false negatives.
-    var dataBounds = getLayerBounds(lyr, dataset.arcs);
-    var enclosed = false;
-    clipData.layers[0].shapes.forEach(function(shp, i) {
-      enclosed = enclosed || testBoundsInPolygon(dataBounds, shp, clipData.arcs);
-    });
-    return enclosed;
-  }
-
-
-  function insertPreProjectionCuts(dataset, src, dest) {
-    var antimeridian = getAntimeridian(dest.lam0 * 180 / Math.PI);
-    // currently only supports adding a single vertical cut to earth axis-aligned
-    // map projections centered on a non-zero longitude.
-    // TODO: need a more sophisticated kind of cutting to handle other cases
-    if (dataset.arcs && isRotatedNormalProjection(dest) && datasetCrossesLon(dataset, antimeridian)) {
-      insertVerticalCut(dataset, antimeridian);
-      dissolveArcs(dataset);
-      return true;
-    }
-    return false;
-  }
-
-  function clampDataset(dataset, bbox) {
-    transformPoints(dataset, function(x, y) {
-      return [utils.clamp(x, bbox[0], bbox[2]), utils.clamp(y, bbox[1], bbox[3])];
-    });
-  }
-
-  function datasetCrossesLon(dataset, lon) {
-    var crosses = false;
-    dataset.layers.filter(layerHasPaths).forEach(function(lyr) {
-      if (crosses) return;
-      lyr.shapes.forEach(function(shp) {
-        if (crosses || !shp) return;
-        forEachSegmentInShape(shp, dataset.arcs, function(i, j, xx, yy) {
-          var ax = xx[i],
-              bx = xx[j];
-          if (ax <= lon && bx >= lon || ax >= lon && bx <= lon) {
-            crosses = true;
-          }
-        });
-      });
-    });
-    return crosses;
-  }
-
-  function insertVerticalCut(dataset, lon) {
-    var pathLayers = dataset.layers.filter(layerHasPaths);
-    if (pathLayers.length === 0) return;
-    var e = 1e-8;
-    var bbox = [lon-e, -91, lon+e, 91];
-    // densify (so cut line can curve, e.g. Cupola projection)
-    var geojson = bboxToPolygon(bbox, {interval: 0.5});
-    var clip = importGeoJSON(geojson);
-    clipLayersInPlace(pathLayers, clip, dataset, 'erase', getInternalClipOpts());
-  }
-
-  function getInternalClipOpts() {
-    return {no_cleanup: true, no_warn: true};
-  }
-
-  // Converts a Proj.4 projection name (e.g. lcc, tmerc, utm) to a Proj.4 string
-  // by picking parameters that are appropriate to the extent of the dataset
-  // being projected (e.g. standard parallels, longitude of origin)
-  // Works for lcc, aea, tmerc, utm, etc.
-  // TODO: add more projections
-  //
-  function expandProjDefn(str, dataset, targetLayers) {
-    var mproj = require$1('mproj');
-    var proj4, params, bbox, isConic2SP, isCentered, isUtm, decimals;
-    if (str in mproj.internal.pj_list === false) {
-      // not a bare projection code -- assume valid projection string in other format
-      return str;
-    }
-    isConic2SP = ['lcc', 'aea'].includes(str);
-    isCentered = ['tmerc', 'etmerc'].includes(str);
-    isUtm = str == 'utm';
-    proj4 = '+proj=' + str;
-    if (isConic2SP || isCentered || isUtm) {
-      bbox = getBBox(dataset, targetLayers); // TODO: support projected datasets
-      decimals = getBoundsPrecisionForDisplay(bbox);
-      if (isUtm) {
-        params = getUtmParams(bbox);
-      } else {
-        params = isCentered ? getCenterParams(bbox, decimals) : getConicParams(bbox, decimals);
-      }
-      proj4 += ' ' + params;
-      message(`Converted "${str}" to "${proj4}"`);
-    }
-    return proj4;
-  }
-
-  function getBBox(dataset, targetLayers) {
-    var source = targetLayers && targetLayers.length > 0 ? {
-      arcs: dataset.arcs,
-      layers: targetLayers,
-      info: dataset.info
-    } : dataset;
-    if (!isLatLngCRS(getDatasetCRS(dataset))) {
-      stop$1('Expected unprojected data');
-    }
-    return getAutoFitBBox(source);
-  }
-
-  function getAutoFitBBox(dataset) {
-    var bbox = getDatasetBounds(dataset).toArray();
-    if (bbox[2] - bbox[0] > 180) {
-      bbox = getWrappedBBox(dataset, bbox) || bbox;
-    }
-    return bbox;
-  }
-
-  function getWrappedBBox(dataset, bbox) {
-    var xmaxW = -Infinity,
-        xminE = Infinity, xmaxE = -Infinity,
-        ymin = bbox[1], ymax = bbox[3],
-        gap;
-
-    // Detect dateline clustering with a streaming east/west split. The gap
-    // between the two boxes can only shrink as more coordinates are scanned.
-    forEachDatasetCoord(dataset, function(x) {
-      if (x < 0) {
-        if (x > xmaxW) xmaxW = x;
-      } else {
-        if (x < xminE) xminE = x;
-        if (x > xmaxE) xmaxE = x;
-      }
-      if (xmaxW > -Infinity && xmaxE > -Infinity) {
-        gap = xminE - xmaxW;
-        return gap > 180;
-      }
-    });
-
-    if (xmaxW == -Infinity || xmaxE == -Infinity) return null;
-    if (xminE - xmaxW <= 180) return null;
-    return [xminE, ymin, xmaxW + 360, ymax];
-  }
-
-  function forEachDatasetCoord(dataset, cb) {
-    var arcs = dataset.arcs;
-    var usedArcs = arcs ? new Uint8Array(arcs.size()) : null;
-    var keepGoing = true;
-    dataset.layers.forEach(function(lyr) {
-      if (!keepGoing) return;
-      if (lyr.geometry_type == 'point') {
-        keepGoing = scanPointCoords(lyr.shapes, cb);
-      } else if (arcs && (lyr.geometry_type == 'polygon' || lyr.geometry_type == 'polyline')) {
-        forEachArcId(lyr.shapes, function(id) {
-          var absId, iter;
-          if (!keepGoing) return;
-          absId = id < 0 ? ~id : id;
-          if (usedArcs[absId]) return;
-          usedArcs[absId] = 1;
-          iter = arcs.getArcIter(absId);
-          while (keepGoing && iter.hasNext()) {
-            keepGoing = cb(iter.x, iter.y) !== false;
-          }
-        });
-      }
-    });
-  }
-
-  function scanPointCoords(shapes, cb) {
-    var shp, p;
-    for (var i=0, n=shapes.length; i<n; i++) {
-      shp = shapes[i];
-      for (var j=0, m=shp ? shp.length : 0; j<m; j++) {
-        p = shp[j];
-        if (cb(p[0], p[1]) === false) return false;
-      }
-    }
-    return true;
-  }
-
-  // See: Savric & Jenny, "Automating the selection of standard parallels for conic map projections"
-  // Using one-sixth rule, not the more complicated formula proposed by the authors
-  function getConicParams(bbox, decimals) {
-    var cx = (bbox[0] + bbox[2]) / 2;
-    var h = bbox[3] - bbox[1];
-    var sp1 = bbox[1] + 1/6 * h;
-    var sp2 = bbox[1] + 5/6 * h;
-    return `+lon_0=${ cx.toFixed(decimals) } +lat_1=${ sp1.toFixed(decimals) } +lat_2=${ sp2.toFixed(decimals) }`;
-  }
-
-  function getCenterParams(bbox, decimals) {
-    var cx = (bbox[0] + bbox[2]) / 2;
-    var cy = (bbox[1] + bbox[3]) / 2;
-    return `+lon_0=${ cx.toFixed(decimals) } +lat_0=${ cy.toFixed(decimals) }`;
-  }
-
-  function getUtmParams(bbox) {
-    var cx = (bbox[0] + bbox[2]) / 2;
-    var cy = (bbox[1] + bbox[3]) / 2;
-    var zone = Math.floor((cx + 180) / 6) + 1;
-    zone = Math.max(1, Math.min(60, zone));
-    return `+zone=${ zone }` + (cy < 0 ? ' +south' : '');
-  }
-
-  var ProjectionParams = /*#__PURE__*/Object.freeze({
-    __proto__: null,
-    expandProjDefn: expandProjDefn,
-    getAutoFitBBox: getAutoFitBBox,
-    getCenterParams: getCenterParams,
-    getConicParams: getConicParams,
-    getUtmParams: getUtmParams
-  });
-
-  var DEFAULT_MESH_INTERVAL = 32;
-  var DEFAULT_MAX_EDGE_FACTOR = 20;
-
-  function projectRasterGridForward(raster, srcCRS, destCRS, optsArg) {
-    var opts = optsArg || {};
-    var grid = getRasterGrid(raster);
-    var interval = opts.raster_mesh_interval || opts.rasterMeshInterval || DEFAULT_MESH_INTERVAL;
-    var transform = getProjTransform2(srcCRS, destCRS);
-    var timing = opts.timing;
-    var mesh, bbox, outSize, outGrid;
-    validateRasterGridForProjection(grid);
-    timeStart(timing, 'mesh');
-    mesh = buildProjectedRasterMesh(grid, transform, interval);
-    classifyProjectedMeshCells(mesh, opts);
-    timeEnd(timing, 'mesh');
-    bbox = opts.output_bbox || opts.outputBbox || getProjectedMeshBBox(mesh);
-    if (!bbox) stop$1('Unable to project raster layer');
-    outSize = getOutputGridSize(grid, bbox, opts);
-    outGrid = createProjectedRasterGrid(grid, raster, bbox, outSize.width, outSize.height, opts);
-    timeStart(timing, 'rasterize');
-    rasterizeProjectedMesh(grid, outGrid, mesh, getRasterProjectionSampleMethod(raster, opts));
-    timeEnd(timing, 'rasterize');
-    if (timing) {
-      timing.outputWidth = outGrid.width;
-      timing.outputHeight = outGrid.height;
-      timing.meshVertices = mesh.vertices.length;
-      timing.meshCells = mesh.cells.length;
-      timing.meshSkippedCells = mesh.skippedCellCount;
-    }
-    return outGrid;
-  }
-
-  function getRasterProjectionSampleMethod(raster, opts) {
-    var method = opts.resampling || opts.sample_method || opts.sampleMethod || getDefaultRasterProjectionSampleMethod(raster);
-    if (method != 'nearest' && method != 'bilinear') {
-      stop$1('Unsupported resampling method:', method);
-    }
-    return method;
-  }
-
-  function getDefaultRasterProjectionSampleMethod(raster) {
-    return rasterAppearsCategorical(raster) ? 'nearest' : 'bilinear';
-  }
-
-  function rasterAppearsCategorical(raster) {
-    var grid = getRasterGrid(raster);
-    var recipe = raster && raster.view && raster.view.recipe || {};
-    var derivation = raster && raster.derivation || {};
-    return raster && raster.interpretation == 'categorical' ||
-      grid && grid.colorModel == 'palette' ||
-      recipe.type == 'palette' ||
-      recipe.type == 'categorical' ||
-      derivation.type == 'palette' ||
-      derivation.type == 'categorical';
-  }
-
-  function getProjectedRasterGridBBox(raster, srcCRS, destCRS, optsArg) {
-    var opts = optsArg || {};
-    var grid = getRasterGrid(raster);
-    var interval = opts.raster_mesh_interval || opts.rasterMeshInterval || DEFAULT_MESH_INTERVAL;
-    var transform = getProjTransform2(srcCRS, destCRS);
-    var mesh, bbox;
-    validateRasterGridForProjection(grid);
-    mesh = buildProjectedRasterMesh(grid, transform, interval);
-    classifyProjectedMeshCells(mesh, opts);
-    bbox = getProjectedMeshBBox(mesh);
-    return bbox;
-  }
-
-  function getProjectedRasterMeshBBox(mesh, optsArg) {
-    classifyProjectedMeshCells(mesh, optsArg || {});
-    return getProjectedMeshBBox(mesh);
-  }
-
-  function buildProjectedRasterMesh(grid, transform, interval) {
-    var xs = getMeshStops(grid.width, interval);
-    var ys = getMeshStops(grid.height, interval);
-    var vertices = [];
-    for (var y = 0; y < ys.length; y++) {
-      for (var x = 0; x < xs.length; x++) {
-        vertices.push(projectRasterMeshVertex(grid, xs[x], ys[y], transform));
-      }
-    }
-    return {
-      xs: xs,
-      ys: ys,
-      vertices: vertices
-    };
-  }
-
-  function classifyProjectedMeshCells(mesh, opts) {
-    var cols = mesh.xs.length;
-    var cells = [];
-    var lengths = [];
-    var maxEdge, skipped;
-    for (var y = 0; y < mesh.ys.length - 1; y++) {
-      for (var x = 0; x < mesh.xs.length - 1; x++) {
-        var cell = getMeshCell(mesh, cols, x, y);
-        cell.maxEdge = getCellMaxEdge(cell);
-        cells.push(cell);
-        if (cell.valid) lengths.push(cell.maxEdge);
-      }
-    }
-    maxEdge = getProjectedMeshMaxEdge(lengths, opts);
-    skipped = 0;
-    cells.forEach(function(cell) {
-      if (!cell.valid || cell.maxEdge > maxEdge) {
-        cell.valid = false;
-        skipped++;
-      }
-    });
-    if (opts.raster_component_filter || opts.rasterComponentFilter) {
-      skipped += keepLargestValidCellComponent(cells, mesh.xs.length - 1, mesh.ys.length - 1);
-    }
-    mesh.cells = cells;
-    mesh.maxEdge = maxEdge;
-    mesh.skippedCellCount = skipped;
-  }
-
-  function keepLargestValidCellComponent(cells, cols, rows) {
-    var componentIds = new Int32Array(cells.length);
-    var components = [];
-    var componentId = 0;
-    var largestId = -1;
-    var largestSize = 0;
-    var skipped = 0;
-    componentIds.fill(-1);
-    for (var i = 0; i < cells.length; i++) {
-      if (!cells[i].valid || componentIds[i] != -1) continue;
-      components[componentId] = floodFillCellComponent(cells, componentIds, cols, rows, i, componentId);
-      if (components[componentId].size > largestSize) {
-        largestSize = components[componentId].size;
-        largestId = componentId;
-      }
-      componentId++;
-    }
-    if (largestId == -1) return 0;
-    cells.forEach(function(cell, i) {
-      if (cell.valid && !componentShouldBeKept(components[componentIds[i]], components[largestId])) {
-        cell.valid = false;
-        skipped++;
-      }
-    });
-    return skipped;
-  }
-
-  function floodFillCellComponent(cells, componentIds, cols, rows, start, componentId) {
-    var stack = [start];
-    var component = {
-      size: 0,
-      bbox: [Infinity, Infinity, -Infinity, -Infinity]
-    };
-    while (stack.length > 0) {
-      var id = stack.pop();
-      var x, y;
-      if (!cells[id].valid || componentIds[id] != -1) continue;
-      componentIds[id] = componentId;
-      component.size++;
-      expandComponentBBox(component, cells[id]);
-      x = id % cols;
-      y = Math.floor(id / cols);
-      if (x > 0) stack.push(id - 1);
-      if (x < cols - 1) stack.push(id + 1);
-      if (y > 0) stack.push(id - cols);
-      if (y < rows - 1) stack.push(id + cols);
-    }
-    return component;
-  }
-
-  function componentShouldBeKept(component, mainComponent) {
-    if (component == mainComponent) return true;
-    // A valid antimeridian split can create multiple disconnected source-grid
-    // components whose projected bboxes overlap. Remote components are more
-    // likely to be projection discontinuities that would create spiky triangles.
-    return bboxesOverlap(component.bbox, mainComponent.bbox);
-  }
-
-  function expandComponentBBox(component, cell) {
-    [cell.v00, cell.v10, cell.v01, cell.v11].forEach(function(p) {
-      if (p.x < component.bbox[0]) component.bbox[0] = p.x;
-      if (p.y < component.bbox[1]) component.bbox[1] = p.y;
-      if (p.x > component.bbox[2]) component.bbox[2] = p.x;
-      if (p.y > component.bbox[3]) component.bbox[3] = p.y;
-    });
-  }
-
-  function bboxesOverlap(a, b) {
-    return a[0] <= b[2] && a[2] >= b[0] && a[1] <= b[3] && a[3] >= b[1];
-  }
-
-  function getMeshCell(mesh, cols, x, y) {
-    var v = y * cols + x;
-    var v00 = mesh.vertices[v];
-    var v10 = mesh.vertices[v + 1];
-    var v01 = mesh.vertices[v + cols];
-    var v11 = mesh.vertices[v + cols + 1];
-    return {
-      v00: v00,
-      v10: v10,
-      v01: v01,
-      v11: v11,
-      valid: vertexIsValid(v00) && vertexIsValid(v10) && vertexIsValid(v01) && vertexIsValid(v11)
-    };
-  }
-
-  function getCellMaxEdge(cell) {
-    if (!cell.valid) return Infinity;
-    return Math.max(
-      getProjectedEdgeLength(cell.v00, cell.v10),
-      getProjectedEdgeLength(cell.v10, cell.v11),
-      getProjectedEdgeLength(cell.v11, cell.v01),
-      getProjectedEdgeLength(cell.v01, cell.v00)
-    );
-  }
-
-  function getProjectedEdgeLength(a, b) {
-    var dx = a.x - b.x;
-    var dy = a.y - b.y;
-    return Math.sqrt(dx * dx + dy * dy);
-  }
-
-  function getProjectedMeshMaxEdge(lengths, opts) {
-    var factor = opts.raster_max_edge_factor || opts.rasterMaxEdgeFactor || DEFAULT_MAX_EDGE_FACTOR;
-    if (lengths.length === 0) return 0;
-    lengths.sort(function(a, b) { return a - b; });
-    return lengths[Math.floor(lengths.length / 2)] * factor;
-  }
-
-  function validateRasterGridForProjection(grid) {
-    var t = grid && grid.transform;
-    if (!grid || !grid.samples || !grid.bbox) stop$1('Raster layer is missing required projection data');
-    if (t && (t[1] !== 0 || t[3] !== 0)) {
-      stop$1('Raster reprojection does not support rotated or skewed rasters');
-    }
-  }
-
-  function getMeshStops(size, interval) {
-    var stops = [];
-    var i;
-    interval = Math.max(1, interval | 0);
-    for (i = 0; i < size; i += interval) {
-      stops.push(i);
-    }
-    if (stops[stops.length - 1] != size) stops.push(size);
-    return stops;
-  }
-
-  function projectRasterMeshVertex(grid, px, py, transform) {
-    var xy = rasterPixelToMapXY(grid, px, py);
-    var p = transform(xy[0], xy[1]);
-    return {
-      sx: px,
-      sy: py,
-      x: p && isFinite(p[0]) ? p[0] : NaN,
-      y: p && isFinite(p[1]) ? p[1] : NaN
-    };
-  }
-
-  function rasterPixelToMapXY(grid, px, py) {
-    var t = grid.transform;
-    var bbox = grid.bbox;
-    if (t) {
-      return [
-        t[0] * px + t[1] * py + t[2],
-        t[3] * px + t[4] * py + t[5]
-      ];
-    }
-    return [
-      bbox[0] + px / grid.width * (bbox[2] - bbox[0]),
-      bbox[3] - py / grid.height * (bbox[3] - bbox[1])
-    ];
-  }
-
-  function getProjectedMeshBBox(mesh) {
-    var xmin = Infinity, ymin = Infinity, xmax = -Infinity, ymax = -Infinity;
-    mesh.cells.forEach(function(cell) {
-      if (!cell.valid) return;
-      [cell.v00, cell.v10, cell.v01, cell.v11].forEach(function(p) {
-        if (p.x < xmin) xmin = p.x;
-        if (p.x > xmax) xmax = p.x;
-        if (p.y < ymin) ymin = p.y;
-        if (p.y > ymax) ymax = p.y;
-      });
-    });
-    return xmin < Infinity && xmax > xmin && ymax > ymin ? [xmin, ymin, xmax, ymax] : null;
-  }
-
-  function createProjectedRasterGrid(grid, raster, bbox, widthArg, heightArg, opts) {
-    var width = widthArg || grid.width;
-    var height = heightArg || grid.height;
-    var bands = getOutputBandCount(grid, raster, opts);
-    var samples = new grid.samples.constructor(width * height * bands);
-    var coverage = new Uint8Array(width * height);
-    fillProjectedRasterSamples(samples, bands, grid, raster, opts || {});
-    return Object.assign({}, grid, {
-      width: width,
-      height: height,
-      bands: bands,
-      samples: samples,
-      coverage: coverage,
-      bbox: bbox,
-      transform: [
-        (bbox[2] - bbox[0]) / width,
-        0,
-        bbox[0],
-        0,
-        -(bbox[3] - bbox[1]) / height,
-        bbox[3]
-      ]
-    });
-  }
-
-  function getOutputGridSize(grid, bbox, opts) {
-    var width = opts.output_width || opts.outputWidth;
-    var height = opts.output_height || opts.outputHeight;
-    var pixels, aspect;
-    if (width || height) {
-      return {
-        width: width || Math.max(1, Math.round(grid.width * height / grid.height)),
-        height: height || Math.max(1, Math.round(grid.height * width / grid.width))
-      };
-    }
-    pixels = grid.width * grid.height;
-    aspect = (bbox[2] - bbox[0]) / (bbox[3] - bbox[1]);
-    if (!isFinite(aspect) || aspect <= 0) return {width: grid.width, height: grid.height};
-    width = Math.max(1, Math.round(Math.sqrt(pixels * aspect)));
-    height = Math.max(1, Math.round(pixels / width));
-    return {width: width, height: height};
-  }
-
-  function getOutputBandCount(grid, raster, opts) {
-    var color = getNoDataColor(raster, opts);
-    return color && color.a === 0 && grid.bands > 1 && grid.bands < 4 ? 4 : grid.bands;
-  }
-
-  function fillProjectedRasterSamples(samples, bands, grid, raster, opts) {
-    var color = getNoDataColor(raster, opts);
-    var noData = grid.nodata;
-    if (color) {
-      fillProjectedRasterColor(samples, bands, color);
-      return;
-    }
-    if (noData === null || noData === undefined || !isFinite(noData)) return;
-    samples.fill(noData);
-  }
-
-  function getNoDataColor(raster, opts) {
-    var arg = opts.nodata_color || opts.nodataColor;
-    var color;
-    if (arg == null || arg === '') {
-      return rasterAppearsCategorical(raster) ? null : {r: 255, g: 255, b: 255, a: 1};
-    }
-    if (String(arg).toLowerCase() == 'transparent') {
-      return {r: 0, g: 0, b: 0, a: 0};
-    }
-    color = parseColor(arg);
-    if (!color) stop$1('Unsupported nodata-color:', arg);
-    return color;
-  }
-
-  function fillProjectedRasterColor(samples, bands, color) {
-    var gray = Math.round(0.299 * color.r + 0.587 * color.g + 0.114 * color.b);
-    var alpha = Math.round((color.a == null ? 1 : color.a) * 255);
-    for (var i = 0; i < samples.length; i += bands) {
-      if (bands == 1) {
-        samples[i] = gray;
-      } else {
-        samples[i] = color.r;
-        samples[i + 1] = color.g;
-        samples[i + 2] = color.b;
-        if (bands > 3) samples[i + 3] = alpha;
-      }
-    }
-  }
-
-  function rasterizeProjectedMesh(srcGrid, destGrid, mesh, sampleMethod) {
-    mesh.cells.forEach(function(cell) {
-      if (!cell.valid) return;
-      rasterizeProjectedTriangle(srcGrid, destGrid, cell.v00, cell.v10, cell.v11, sampleMethod);
-      rasterizeProjectedTriangle(srcGrid, destGrid, cell.v00, cell.v11, cell.v01, sampleMethod);
-    });
-  }
-
-  function rasterizeProjectedTriangle(srcGrid, destGrid, a, b, c, sampleMethod) {
-    var bbox, x0, x1, y0, y1, det, w1, w2, w3, sx, sy, ap, bp, cp;
-    if (!vertexIsValid(a) || !vertexIsValid(b) || !vertexIsValid(c)) return;
-    ap = vertexToDestPixel(destGrid, a);
-    bp = vertexToDestPixel(destGrid, b);
-    cp = vertexToDestPixel(destGrid, c);
-    det = triangleDet(ap, bp, cp);
-    if (det === 0) return;
-    bbox = getTrianglePixelBounds(destGrid, ap, bp, cp);
-    x0 = bbox[0]; y0 = bbox[1]; x1 = bbox[2]; y1 = bbox[3];
-    for (var y = y0; y <= y1; y++) {
-      for (var x = x0; x <= x1; x++) {
-        w1 = edgeFunction(bp, cp, x + 0.5, y + 0.5) / det;
-        w2 = edgeFunction(cp, ap, x + 0.5, y + 0.5) / det;
-        w3 = 1 - w1 - w2;
-        if (w1 < -1e-9 || w2 < -1e-9 || w3 < -1e-9) continue;
-        sx = w1 * a.sx + w2 * b.sx + w3 * c.sx;
-        sy = w1 * a.sy + w2 * b.sy + w3 * c.sy;
-        copyRasterSample(srcGrid, destGrid, sx, sy, x, y, sampleMethod);
-      }
-    }
-  }
-
-  function vertexToDestPixel(grid, vertex) {
-    var p = mapXYToRasterPixel(grid, vertex.x, vertex.y);
-    return {
-      x: p[0],
-      y: p[1],
-      sx: vertex.sx,
-      sy: vertex.sy
-    };
-  }
-
-  function getTrianglePixelBounds(grid, p1, p2, p3) {
-    return [
-      clamp$1(Math.floor(Math.min(p1.x, p2.x, p3.x)), 0, grid.width - 1),
-      clamp$1(Math.floor(Math.min(p1.y, p2.y, p3.y)), 0, grid.height - 1),
-      clamp$1(Math.ceil(Math.max(p1.x, p2.x, p3.x)), 0, grid.width - 1),
-      clamp$1(Math.ceil(Math.max(p1.y, p2.y, p3.y)), 0, grid.height - 1)
-    ];
-  }
-
-  function mapXYToRasterPixel(grid, x, y) {
-    var bbox = grid.bbox;
-    return [
-      (x - bbox[0]) / (bbox[2] - bbox[0]) * grid.width,
-      (bbox[3] - y) / (bbox[3] - bbox[1]) * grid.height
-    ];
-  }
-
-  function copyRasterSample(srcGrid, destGrid, sx, sy, dx, dy, sampleMethod) {
-    if (sampleMethod == 'bilinear') {
-      copyBilinearRasterSample(srcGrid, destGrid, sx, sy, dx, dy);
-    } else {
-      copyNearestRasterSample(srcGrid, destGrid, sx, sy, dx, dy);
-    }
-  }
-
-  function copyNearestRasterSample(srcGrid, destGrid, sx, sy, dx, dy) {
-    var srcX = clamp$1(Math.floor(sx), 0, srcGrid.width - 1);
-    var srcY = clamp$1(Math.floor(sy), 0, srcGrid.height - 1);
-    var src = (srcY * srcGrid.width + srcX) * srcGrid.bands;
-    var dest = (dy * destGrid.width + dx) * destGrid.bands;
-    if (!rasterSourcePixelIsCovered(srcGrid, srcX, srcY)) return;
-    for (var band = 0; band < srcGrid.bands; band++) {
-      destGrid.samples[dest + band] = srcGrid.samples[src + band];
-    }
-    if (destGrid.bands > srcGrid.bands) destGrid.samples[dest + 3] = 255;
-    if (destGrid.coverage) destGrid.coverage[dy * destGrid.width + dx] = 1;
-  }
-
-  function copyBilinearRasterSample(srcGrid, destGrid, sx, sy, dx, dy) {
-    var srcX = clamp$1(Math.floor(sx - 0.5), 0, srcGrid.width - 1);
-    var srcY = clamp$1(Math.floor(sy - 0.5), 0, srcGrid.height - 1);
-    var srcX2 = clamp$1(srcX + 1, 0, srcGrid.width - 1);
-    var srcY2 = clamp$1(srcY + 1, 0, srcGrid.height - 1);
-    var tx = clamp$1(sx - 0.5 - srcX, 0, 1);
-    var ty = clamp$1(sy - 0.5 - srcY, 0, 1);
-    var src00 = (srcY * srcGrid.width + srcX) * srcGrid.bands;
-    var src10 = (srcY * srcGrid.width + srcX2) * srcGrid.bands;
-    var src01 = (srcY2 * srcGrid.width + srcX) * srcGrid.bands;
-    var src11 = (srcY2 * srcGrid.width + srcX2) * srcGrid.bands;
-    var dest = (dy * destGrid.width + dx) * destGrid.bands;
-    if (!srcGrid.coverage) {
-      copyBilinearRasterSampleFast(srcGrid, destGrid, src00, src10, src01, src11, dest, tx, ty);
-      if (destGrid.coverage) destGrid.coverage[dy * destGrid.width + dx] = 1;
-      return;
-    }
-    if (copyBilinearRasterSampleWithCoverage(srcGrid, destGrid, srcX, srcY, srcX2, srcY2, src00, src10, src01, src11, dest, tx, ty)) {
-      if (destGrid.coverage) destGrid.coverage[dy * destGrid.width + dx] = 1;
-    }
-  }
-
-  function copyBilinearRasterSampleFast(srcGrid, destGrid, src00, src10, src01, src11, dest, tx, ty) {
-    if (srcGrid.bands == 3) {
-      copyBilinearRgbSample(srcGrid.samples, destGrid.samples, src00, src10, src01, src11, dest, tx, ty);
-    } else if (srcGrid.bands == 4) {
-      copyBilinearRgbaSample(srcGrid.samples, destGrid.samples, src00, src10, src01, src11, dest, tx, ty);
-    } else {
-      copyBilinearGenericSample(srcGrid.samples, destGrid.samples, srcGrid.bands, src00, src10, src01, src11, dest, tx, ty);
-    }
-    if (destGrid.bands > srcGrid.bands) destGrid.samples[dest + 3] = 255;
-  }
-
-  function copyBilinearRgbSample(src, destArr, src00, src10, src01, src11, dest, tx, ty) {
-    copyBilinearBand(src, destArr, src00, src10, src01, src11, dest, 0, tx, ty);
-    copyBilinearBand(src, destArr, src00, src10, src01, src11, dest, 1, tx, ty);
-    copyBilinearBand(src, destArr, src00, src10, src01, src11, dest, 2, tx, ty);
-  }
-
-  function copyBilinearRgbaSample(src, destArr, src00, src10, src01, src11, dest, tx, ty) {
-    copyBilinearRgbSample(src, destArr, src00, src10, src01, src11, dest, tx, ty);
-    copyBilinearBand(src, destArr, src00, src10, src01, src11, dest, 3, tx, ty);
-  }
-
-  function copyBilinearGenericSample(src, destArr, bands, src00, src10, src01, src11, dest, tx, ty) {
-    for (var band = 0; band < bands; band++) {
-      copyBilinearBand(src, destArr, src00, src10, src01, src11, dest, band, tx, ty);
-    }
-  }
-
-  function copyBilinearBand(src, destArr, src00, src10, src01, src11, dest, band, tx, ty) {
-    var a = src[src00 + band] * (1 - tx) + src[src10 + band] * tx;
-    var b = src[src01 + band] * (1 - tx) + src[src11 + band] * tx;
-    destArr[dest + band] = Math.round(a * (1 - ty) + b * ty);
-  }
-
-  function copyBilinearRasterSampleWithCoverage(srcGrid, destGrid, srcX, srcY, srcX2, srcY2, src00, src10, src01, src11, dest, tx, ty) {
-    var coords = [
-      [srcX, srcY, src00, (1 - tx) * (1 - ty)],
-      [srcX2, srcY, src10, tx * (1 - ty)],
-      [srcX, srcY2, src01, (1 - tx) * ty],
-      [srcX2, srcY2, src11, tx * ty]
-    ];
-    var total = 0;
-    var val, item;
-    for (var band = 0; band < srcGrid.bands; band++) {
-      val = 0;
-      total = 0;
-      for (var i = 0; i < coords.length; i++) {
-        item = coords[i];
-        if (item[3] <= 0 || !rasterSourcePixelIsCovered(srcGrid, item[0], item[1])) continue;
-        val += srcGrid.samples[item[2] + band] * item[3];
-        total += item[3];
-      }
-      if (total <= 0) return false;
-      destGrid.samples[dest + band] = Math.round(val / total);
-    }
-    if (destGrid.bands > srcGrid.bands) destGrid.samples[dest + 3] = 255;
-    return true;
-  }
-
-  function rasterSourcePixelIsCovered(grid, x, y) {
-    return !grid.coverage || grid.coverage[y * grid.width + x] > 0;
-  }
-
-  function timeStart(timing, name) {
-    if (!timing) return;
-    timing[name + 'Start'] = getTimer();
-  }
-
-  function timeEnd(timing, name) {
-    if (!timing) return;
-    timing[name + 'Ms'] = getTimer() - timing[name + 'Start'];
-  }
-
-  function getTimer() {
-    return typeof performance != 'undefined' && performance.now ? performance.now() : Date.now();
-  }
-
-  function vertexIsValid(p) {
-    return p && isFinite(p.x) && isFinite(p.y);
-  }
-
-  function triangleDet(a, b, c) {
-    return edgeFunction(a, b, c.x, c.y);
-  }
-
-  function edgeFunction(a, b, x, y) {
-    return (x - a.x) * (b.y - a.y) - (y - a.y) * (b.x - a.x);
-  }
-
-  function clamp$1(val, min, max) {
-    return val < min ? min : val > max ? max : val;
-  }
-
-  var RasterReprojection = /*#__PURE__*/Object.freeze({
-    __proto__: null,
-    buildProjectedRasterMesh: buildProjectedRasterMesh,
-    getProjectedRasterGridBBox: getProjectedRasterGridBBox,
-    getProjectedRasterMeshBBox: getProjectedRasterMeshBBox,
-    projectRasterGridForward: projectRasterGridForward
-  });
-
-  cmd.proj = function(dataset, catalog, opts, targetLayers) {
-    var srcInfo, destInfo, destStr;
-    var implicitlyProjectedNames = getImplicitlyTargetedLayerNames(dataset, targetLayers, layerHasGeometry);
-    if (opts.init) {
-      srcInfo = fetchCrsInfo(opts.init, catalog);
-      if (!srcInfo.crs) stop$1("Unknown projection source:", opts.init);
-      setDatasetCrsInfo(dataset, srcInfo);
-    }
-    if (opts.match) {
-      destInfo = fetchCrsInfo(opts.match, catalog);
-    } else if (opts.crs) {
-      destStr = expandProjDefn(opts.crs, dataset, targetLayers);
-      destInfo = getCrsInfo(destStr);
-    }
-    if (destInfo) {
-      var didProject = projCmd(dataset, destInfo, opts);
-      if (didProject && implicitlyProjectedNames.length > 0) {
-        message(
-          'Also projected non-target layer' + utils.pluralSuffix(implicitlyProjectedNames.length) +
-          ' from the same dataset: ' + implicitlyProjectedNames.join(', ')
-        );
-      }
-    }
-  };
-
-  function projCmd(dataset, destInfo, opts) {
-    // modify copy of coordinate data when running in web UI, so original shapes
-    // are preserved if an error occurs
-    var modifyCopy = runningInBrowser(),
-        originals = [],
-        target = {info: dataset.info || {}};
-
-    if (!destInfo.crs) {
-      stop$1("Missing projection data");
-    }
-
-    if (!datasetHasGeometry(dataset) && !datasetHasRaster(dataset)) {
-      // still set the crs of datasets that are missing geometry
-      setDatasetCrsInfo(dataset, destInfo);
-      return false;
-    }
-
-    var srcInfo = getDatasetCrsInfo(dataset);
-    if (!srcInfo.crs) {
-      stop$1("Unable to project -- source coordinate system is unknown");
-    }
-
-    if (crsAreEqual(srcInfo.crs, destInfo.crs)) {
-      message("Source and destination CRS are the same");
-      return false;
-    }
-
-    if (dataset.arcs) {
-      dataset.arcs.flatten(); // bake in any pending simplification
-      target.arcs = modifyCopy ? dataset.arcs.getCopy() : dataset.arcs;
-    }
-    noteDatasetWillChange(dataset, {operation: 'proj'});
-
-    target.layers = dataset.layers.map(function(lyr) {
-      if (modifyCopy) {
-        originals.push(lyr);
-        lyr = copyLayerShapes(lyr);
-      }
-      return lyr;
-    });
-
-    withActiveUndoTransaction(null, function() {
-      projectDataset(target, srcInfo.crs, destInfo.crs, opts || {});
-
-      // dataset.info.wkt1 = destInfo.wkt1; // may be undefined
-      setDatasetCrsInfo(target, destInfo);
-    });
-
-    dataset.arcs = target.arcs;
-    originals.forEach(function(lyr, i) {
-      // replace original layers with modified layers
-      if (layerWasChangedByProjection(lyr, target.layers[i])) {
-        noteLayerWillChange(lyr, {operation: 'proj'});
-        utils.extend(lyr, target.layers[i]);
-        markLayerChanged(lyr, {operation: 'proj'});
-      }
-    });
-    markDatasetChanged(dataset, {operation: 'proj'});
-    return true;
-  }
-
-  function layerWasChangedByProjection(a, b) {
-    return a.name != b.name ||
-      a.geometry_type != b.geometry_type ||
-      a.data !== b.data ||
-      a.raster !== b.raster ||
-      !arraysAreEqual(a.shapes, b.shapes);
-  }
-
-  function arraysAreEqual(a, b) {
-    var val;
-    if (a === b) return true;
-    if (!a || !b || a.length !== b.length) return false;
-    for (var i = 0; i < a.length; i++) {
-      val = a[i];
-      if (Array.isArray(val)) {
-        if (!arraysAreEqual(val, b[i])) return false;
-      } else if (val !== b[i]) {
-        return false;
-      }
-    }
-    return true;
-  }
-
-  // name: a layer identifier, .prj file or projection defn
-  // Converts layer ids and .prj files to CRS defn
-  // Returns projection defn
-  function fetchCrsInfo(name, catalog) {
-    var dataset, source, info = {};
-    if (/\.prj$/i.test(name)) {
-      dataset = importFile(name, {});
-      if (dataset) {
-        info.wkt1 = dataset.info.wkt1;
-        info.crs = parsePrj(info.wkt1);
-      }
-      return info;
-    }
-    if (catalog && (source = catalog.findSingleLayer(name))) {
-      dataset = source.dataset;
-      return getDatasetCrsInfo(dataset);
-    }
-    // assume name is a projection defn
-    return getCrsInfo(name);
-  }
-
-  function projectDataset(dataset, src, dest, opts) {
-    var proj = getProjTransform2(src, dest); // v2 returns null points instead of throwing an error
-    var badArcs = 0;
-    var badPoints = 0;
-    var clipped = preProjectionClip(dataset, src, dest, opts);
-    dataset.layers.forEach(function(lyr) {
-      if (layerHasPoints(lyr)) {
-        badPoints += projectPointLayer(lyr, proj); // v2 compatible (invalid points are removed)
-      } else if (layerHasRaster(lyr)) {
-        projectRasterLayer(lyr, src, dest, opts);
-      }
-    });
-    if (dataset.arcs) {
-      if (opts.densify) {
-        badArcs = projectAndDensifyArcs(dataset.arcs, proj);
-      } else {
-        badArcs = projectArcs2(dataset.arcs, proj);
-      }
-    }
-
-    if (clipped) {
-      // TODO: could more selective in cleaning clipped layers
-      // (probably only needed when clipped area crosses the antimeridian or includes a pole)
-      cleanProjectedPathLayers(dataset);
-    }
-
-    if (badArcs > 0 && !opts.quiet) {
-      message(`Removed ${badArcs} ${badArcs == 1 ? 'path' : 'paths'} containing unprojectable vertices.`);
-    }
-    if (badPoints > 0 && !opts.quiet) {
-      message(`Removed ${badPoints} unprojectable ${badPoints == 1 ? 'point' : 'points'}.`);
-    }
-    dataset.info.crs = dest;
-  }
-
-  function projectRasterLayer(lyr, src, dest, opts) {
-    var raster = lyr.raster;
-    raster.grid = projectRasterGridForward(raster, src, dest, opts || {});
-    raster.view = raster.view || {};
-    delete raster.view.scalingStats;
-    if (runningInBrowser()) {
-      raster.view.preview = createRasterPreview(raster, opts || {});
-    } else {
-      delete raster.view.preview;
-    }
-  }
-
-  // * Heals cuts in previously split-apart polygons
-  // * Removes line intersections
-  // * TODO: what if a layer contains polygons with desired overlaps? should
-  //   we ignore overlaps between different features?
-  function cleanProjectedPathLayers(dataset) {
-    // TODO: only clean affected polygons (cleaning all polygons can be slow)
-    var polygonLayers = dataset.layers.filter(lyr => lyr.geometry_type == 'polygon');
-    // clean options: force a topology update (by default, this only happens when
-    // vertices change during cleaning, but reprojection can require a topology update
-    // even if clean does not change vertices)
-    var cleanOpts = {
-      allow_overlaps: true,
-      rebuild_topology: true,
-      no_arc_dissolve: true,
-      quiet: true,
-      verbose: false};
-    cleanLayers(polygonLayers, dataset, cleanOpts);
-   // remove unused arcs from polygon and polyline layers
-    // TODO: fix bug that leaves uncut arcs in the arc table
-    //   (e.g. when projecting a graticule)
-    dissolveArcs(dataset);
-  }
-
-  // proj: function to project [x, y] point; should return null if projection fails
-  // TODO: fatal error if no points project?
-  function projectPointLayer(lyr, proj) {
-    var errors = 0;
-    editShapes(lyr.shapes, function(p) {
-      var p2 = proj(p[0], p[1]);
-      if (!p2) errors++;
-      return p2; // removes points that fail to project
-    });
-    return errors;
-  }
-
-  function projectArcs(arcs, proj) {
-    var data = arcs.getVertexData(),
-        xx = data.xx,
-        yy = data.yy,
-        // old simplification data  will not be optimal after reprojection;
-        // re-using for now to avoid error in web ui
-        zz = data.zz,
-        z = arcs.getRetainedInterval(),
-        p;
-
-    for (var i=0, n=xx.length; i<n; i++) {
-      p = proj(xx[i], yy[i]);
-      if (!p) error('Unprojectable point:', xx[i], yy[i]);
-      xx[i] = p[0];
-      yy[i] = p[1];
-    }
-    arcs.updateVertexData(data.nn, xx, yy, zz);
-    arcs.setRetainedInterval(z);
-  }
-
-  function projectArcs2(arcs, proj) {
-    return editArcs(arcs, onPoint);
-    function onPoint(append, x, y, prevX, prevY, i) {
-      var p = proj(x, y);
-      // TODO: prevent arcs with just one point
-      if (p) {
-        append(p);
-      } else {
-        return false; // signal that the arc is invalid (no more points will be projected in this arc)
-      }
-    }
-  }
-
-  var Proj = /*#__PURE__*/Object.freeze({
-    __proto__: null,
-    cleanProjectedPathLayers: cleanProjectedPathLayers,
-    fetchCrsInfo: fetchCrsInfo,
-    projectArcs: projectArcs,
-    projectArcs2: projectArcs2,
-    projectDataset: projectDataset,
-    projectPointLayer: projectPointLayer
-  });
 
   cmd.graticule = function(dataset, opts) {
     var name = opts.name || opts.polygon && 'polygon' || 'graticule';
@@ -61396,7 +61438,14 @@ ${svg}
         // outputLayers = null;
 
       } else if (name == 'buffer') {
-         outputLayers = applyCommandToEachLayer(cmd.buffer, targetLayers, targetDataset, opts);
+        if (opts.geodesic) {
+          // A geodesic buffer of projected data reprojects through lng/lat, so
+          // make sure any required projection assets are loaded first (a no-op in
+          // the CLI and for already-resolved CRSs). Mirror -proj's stash restore.
+          await initProjLibrary(opts);
+          job.resumeCommand();
+        }
+        outputLayers = applyCommandToEachLayer(cmd.buffer, targetLayers, targetDataset, opts);
         // outputLayers = cmd.buffer(targetLayers, targetDataset, opts);
 
       } else if (name == 'blur') {
@@ -61769,7 +61818,7 @@ ${svg}
     return name == 'rectangle' || name == 'rectangles' || name == 'filter' && opts.cleanup;
   }
 
-  var version = "0.7.25";
+  var version = "0.7.26";
 
   // Parse command line args into commands and run them
   // Function takes an optional Node-style callback. A Promise is returned if no callback is given.

@@ -624,6 +624,8 @@ and caps. The default is 8.
 `topological` [polygons] Buffer only unshared polygon boundaries, such as coastlines and empty holes. Buffer areas do not cover any
 original polygon areas, and overlapping buffer areas are assigned to the larger feature.
 
+`geodesic` [projected data] Buffer using geodesic distances instead of projected planar distances.
+
 Common options: `name=` `+` `target=`
 
 ```bash

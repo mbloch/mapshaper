@@ -315,7 +315,7 @@ Gaussian curve. Pixel values can be written as plain numbers or with a <code>px<
 suffix, for example <code>radius=10</code> or <code>radius=10px</code>.</p>
 <p>Common options: <code>target=</code></p>
 </section>
-<section class="cmd-section" data-id="-buffer" data-name="-buffer" data-options="radius tolerance vertices quad-segs round topological name target"><h3 id="-buffer">-buffer</h3>
+<section class="cmd-section" data-id="-buffer" data-name="-buffer" data-options="radius tolerance vertices quad-segs round topological geodesic name target"><h3 id="-buffer">-buffer</h3>
 <p>Create buffer polygons around point, polyline or polygon features.</p>
 <p>The buffer distance is given by the <code>&lt;radius&gt;</code> parameter. For layers in
 longitude/latitude coordinates, distances such as <code>2km</code> or <code>500m</code> are measured
@@ -338,6 +338,7 @@ and caps. The default is 8.</p>
 <code>round</code>.</p>
 <p><code>topological</code> [polygons] Buffer only unshared polygon boundaries, such as coastlines and empty holes. Buffer areas do not cover any
 original polygon areas, and overlapping buffer areas are assigned to the larger feature.</p>
+<p><code>geodesic</code> [projected data] Buffer using geodesic distances instead of projected planar distances.</p>
 <p>Common options: <code>name=</code> <code>+</code> <code>target=</code></p>
 <pre><code class="hljs language-bash"><span class="hljs-comment"># Buffer a line layer by 2 km</span>
 mapshaper roads.shp -buffer 2km -o roads_buffer.geojson

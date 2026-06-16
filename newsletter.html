@@ -1,0 +1,105 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>The Mapshaper Newsletter</title>
+<meta name="description" content="In-depth coverage of new features and tips on getting the best results from mapshaper.">
+<link rel="icon" type="image/png" href="images/icon.png">
+<link rel="stylesheet" href="assets/static-page.css">
+<style>
+.newsletter-form {
+  margin: 28px 0 8px;
+}
+
+.newsletter-form label {
+  display: block;
+  font-weight: 600;
+  margin-bottom: 8px;
+}
+
+.newsletter-form input[type="email"] {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 10px 12px;
+  font-size: 16px;
+  font-family: inherit;
+  border: 1px solid #c0cdd4;
+  border-radius: 3px;
+  margin-bottom: 10px;
+  background: #fff;
+  color: #333;
+}
+
+.newsletter-form input[type="email"]:focus {
+  outline: none;
+  border-color: #1385B7;
+  box-shadow: 0 0 0 2px rgba(19, 133, 183, 0.18);
+}
+
+.newsletter-form input[type="submit"] {
+  padding: 10px 22px;
+  background-color: #1385B7;
+  color: white;
+  font-weight: 600;
+  font-size: 16px;
+  font-family: inherit;
+  border: none;
+  border-radius: 3px;
+  cursor: pointer;
+  transition: background-color 0.15s;
+}
+
+.newsletter-form input[type="submit"]:hover {
+  background-color: #1A6A96;
+}
+
+.buttondown-credit {
+  margin: 10px 0 0;
+  font-size: 13px;
+  color: #999;
+}
+
+.buttondown-credit a {
+  color: #999;
+}
+</style>
+</head>
+<body>
+
+<header class="page-header">
+  <a href="." class="mapshaper-logo">map<span class="logo-highlight">shaper</span></a>
+  <a href="." class="header-back">&larr; Back to mapshaper</a>
+</header>
+
+<main>
+
+<h1>The Mapshaper Newsletter</h1>
+
+<p class="tagline">In-depth coverage of new features and tips on getting the best results from mapshaper.</p>
+
+<p>Sign up to hear about new releases, techniques, and examples from the mapshaper project. Unsubscribe at any time &mdash; every email includes a one-click unsubscribe link.</p>
+
+<form
+  action="https://buttondown.com/api/emails/embed-subscribe/mapshaper"
+  method="post"
+  class="embeddable-buttondown-form newsletter-form"
+>
+  <label for="bd-email">Enter your email</label>
+  <input type="email" name="email" id="bd-email" placeholder="you@example.com" />
+  <input type="submit" value="Subscribe" />
+  <p class="buttondown-credit">
+    <a href="https://buttondown.com/refer/mapshaper" target="_blank">Powered by Buttondown.</a>
+  </p>
+</form>
+
+<div class="footer-note">
+  Mapshaper&rsquo;s basemap services are generously provided by <a href="https://www.mapbox.com">Mapbox</a>.
+  <br>
+  <a href="privacy.html">Privacy Policy</a> &middot; <a href="terms.html">Terms of Service</a>
+</div>
+
+</main>
+
+</body>
+</html>
