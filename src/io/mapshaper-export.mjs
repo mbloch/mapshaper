@@ -19,7 +19,7 @@ import utils from '../utils/mapshaper-utils';
 import { error, stop } from '../utils/mapshaper-logging';
 import { buildTopology } from '../topology/mapshaper-topology';
 import { runningInBrowser } from '../mapshaper-env';
-import { getFileBase } from '../utils/mapshaper-filename-utils';
+import { getFileBase, layerNameIsUnsafeFilename } from '../utils/mapshaper-filename-utils';
 import { gzipSync } from '../io/mapshaper-gzip';
 import { getRasterBBox, getRasterGrid, getRasterPreview } from '../rasters/mapshaper-raster-utils';
 
@@ -260,7 +260,13 @@ function validateFileNames(files) {
 
 export function assignUniqueLayerNames(layers) {
   var names = layers.map(function(lyr) {
-    return lyr.name || 'layer';
+    var name = lyr.name || 'layer';
+    if (layerNameIsUnsafeFilename(name)) {
+      // Block path-traversal via data-derived layer names (e.g. a malicious
+      // TopoJSON object key like "../owned") before they reach a file write.
+      stop('Layer name cannot be used as an output filename (path separator or drive prefix):', name);
+    }
+    return name;
   });
   var uniqueNames = utils.uniqifyNames(names);
   layers.forEach(function(lyr, i) {

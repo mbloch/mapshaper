@@ -5,6 +5,31 @@ var internal = api.internal;
 
 describe('mapshaper-export.js', function () {
 
+  describe('path-traversal via layer name (GHSA / CWE-22)', function() {
+    var evilTopoJSON = JSON.stringify({
+      type: 'Topology',
+      objects: {
+        '../owned': {
+          type: 'GeometryCollection',
+          geometries: [{type: 'Point', coordinates: [125.6, 10.1]}]
+        }
+      },
+      arcs: []
+    });
+
+    it('rejects exporting a layer whose name is a traversal path', async function() {
+      await assert.rejects(async function() {
+        await api.applyCommands('-i evil.json -o format=geojson', {'evil.json': evilTopoJSON});
+      }, /output filename/);
+    });
+
+    it('control: a benign layer name exports fine', async function() {
+      var benign = evilTopoJSON.replace('../owned', 'owned');
+      var out = await api.applyCommands('-i ok.json -o format=geojson', {'ok.json': benign});
+      assert(out['owned.json']);
+    });
+  });
+
   describe('-o fix-geometry tests', function() {
     var file = 'test/data/shapefile/six_counties.shp';
 
