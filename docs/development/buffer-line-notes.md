@@ -18,8 +18,7 @@ A polyline buffer is built in two stages (`src/buffer/`):
      ring per path (left side + cap + reversed right side + cap), with
      concave joins emitted inline as reversed arcs. This is 4-6x faster
      than per-section rings because the dissolve's cost is driven by the
-     number of overlapping rings it must mosaic (`no-outline` restores the
-     old construction).
+     number of overlapping rings it must mosaic.
    - **One-sided buffers** default to the **winding fill** with dip-to-vertex
      concave joins and no lobe-removal/audit pass (see "One-sided buffers"
      below); this supersedes the per-section + audit path for `left`/`right`.

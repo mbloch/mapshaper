@@ -32,7 +32,7 @@ export function getPolylineBufferMaker(dataset, opts) {
   var roundJoinSegAngle = 90 / roundJoinSegsPerQuadrant;
   var capStyle = opts.cap_style || 'round'; // expect 'round' or 'flat'
   var pathIter = useMercator ?
-    getProjectingPathIterator(dataset.arcs) : new ShapeIter(dataset.arcs);
+    getProjectingPathIterator(dataset.arcs, opts) : new ShapeIter(dataset.arcs);
   var latLngPathIter = useMercator ? new ShapeIter(dataset.arcs) : null;
   var builder = new BufferBuilder();
   var simplifyIntervalFn = getBufferSimplifyFunction(dataset, opts);
@@ -40,7 +40,9 @@ export function getPolylineBufferMaker(dataset, opts) {
 
   function makeBufferGeoJSON(shape, distance) {
     var rings = [];
-    if (useMercator) {
+    if (useMercator && !opts.polar) {
+      // With the polar option, the clamp pins offsets to the valid extent
+      // instead of erroring near a pole (see getOffsetFunction / clampPolar).
       stopIfBufferReachesPole(shape, distance);
     }
     (shape || []).forEach(function(path, i) {
@@ -58,7 +60,7 @@ export function getPolylineBufferMaker(dataset, opts) {
       }
     }];
     if (useMercator) {
-      unprojectFeatures(features);
+      unprojectFeatures(features, opts);
       if (opts.debug_offset) {
         splitAntimeridianCrosses(features);
       }
@@ -78,7 +80,8 @@ export function getPolylineBufferMaker(dataset, opts) {
       }
     });
     if (maxAbsLat + angularDist >= 90 - POLAR_BUFFER_MARGIN_DEGREES) {
-      stop('Buffering lat-long coordinates near the poles is not supported.');
+      stop('Buffering lat-long coordinates near the poles is not supported; ' +
+        'use the polar option for polygons sliced at the antimeridian/poles.');
     }
   }
 
@@ -128,7 +131,7 @@ export function getPolylineBufferMaker(dataset, opts) {
     if (simplifyIntervalFn) {
       verts = presimplifyPathVerts(verts, simplifyIntervalFn(dist), dist);
     }
-    if (!opts.no_outline && !oneSidedBuffer && !opts.sector_band && pathIsOpen(verts)) {
+    if (!oneSidedBuffer && !opts.sector_band && pathIsOpen(verts)) {
       // Fast path for ordinary two-sided line buffers: emit one closed
       // outline instead of many per-segment bands that must be dissolved.
       // The sector-band escape hatch skips it to fall through to the
@@ -157,15 +160,17 @@ export function getPolylineBufferMaker(dataset, opts) {
     // (no winding_fill) and the source-path edge get no provenance and pass
     // through unchanged.
     //
-    // Restricted to closed source rings: a closed ring's offset overshoots are
-    // doubly-covered (safe to collapse), but an OPEN one-sided arc (e.g. a
-    // topological polygon's unbuffered-boundary remnant, buffered with caps)
-    // can have a concave-join dent that is its region's only coverage, which
-    // collapsing would cut away.
+    // Restricted to the winding-fill construction on closed source rings: a
+    // closed ring's offset overshoots are doubly-covered (safe to collapse), but
+    // an OPEN one-sided arc (e.g. a topological polygon's unbuffered-boundary
+    // remnant, buffered with caps) can have a concave-join dent that is its
+    // region's only coverage, which collapsing would cut away. Callers whose
+    // winding construction is not safe to collapse this way (the one-sided line
+    // buffer) opt out by passing no_loop_removal.
     function buildOneSidedRings(sideVerts) {
       var built = makeLeftBufferRings(sideVerts, dist,
         oneSidedBuffer ? pathSideVerts : null);
-      if (opts.no_loop_removal || !opts.buffer_ring_loops || pathIsOpen(sideVerts)) {
+      if (opts.no_loop_removal || !opts.winding_fill || pathIsOpen(sideVerts)) {
         return built.rings;
       }
       var turnPrefix = getSourceTurnPrefix(sideVerts);
@@ -1028,7 +1033,15 @@ export function getPolylineBufferMaker(dataset, opts) {
       if (i > 0) {
         joinP = bufferSegmentIntersection(a, b, c, d);
         if (!joinP) {
-          throw Error(`no intersection on ${i} of ${pointCount}`);
+          if (opts.polar) {
+            // Near a clamped pole/antimeridian corner the swept offset tangents
+            // collapse onto the boundary and stop intersecting; hug the clamped
+            // tangent point so the round join degenerates to the pinned corner
+            // instead of throwing.
+            points.push(tanP);
+          } else {
+            throw Error(`no intersection on ${i} of ${pointCount}`);
+          }
         } else {
           points.push(joinP);
         }

@@ -6,6 +6,7 @@ import { getDatasetCRS, isLatLngCRS } from '../crs/mapshaper-projections';
 import { importGeoJSON } from '../geojson/geojson-import';
 import { getPolylineBufferMaker } from '../buffer/mapshaper-path-buffer-v4';
 import { splitAntimeridianBufferDataset } from '../buffer/mapshaper-polyline-buffer';
+import { clipLayersByBBox } from '../commands/mapshaper-clip-erase';
 import { R, R2D, pointSegDistSq2 } from '../geom/mapshaper-basic-geom';
 import { getPointToShapeDistance } from '../geom/mapshaper-path-geom';
 import { getShapeArea } from '../geom/mapshaper-polygon-geom';
@@ -33,6 +34,12 @@ export function makePolygonBuffer(lyr, dataset, opts) {
       debug_mosaic: false
     });
   }
+  if (spherical && opts.polar) {
+    // Pole/antimeridian-sliced polygons (grow only): keep the seam edges at the
+    // extent and clip to the world rectangle instead of wrapping at the
+    // antimeridian (see makePolarPolygonBuffer).
+    return makePolarPolygonBuffer(lyr, dataset, opts);
+  }
   var output = makePolygonBufferGeoJSON(lyr, dataset, opts);
   var dataset2 = importGeoJSON(output.geojson, {type: 'polygon'});
   if (spherical) {
@@ -42,6 +49,48 @@ export function makePolygonBuffer(lyr, dataset, opts) {
     }
   }
   return dataset2;
+}
+
+// World rectangle (lng/lat) the polar buffer is clipped to.
+var POLAR_WORLD_BBOX = [-180, -90, 180, 90];
+
+// Buffer a polygon sliced at the antimeridian (lng +/-180) and/or a pole
+// (lat +/-90): build the offset (the pole-touching source rings are added back,
+// see makePolygonBufferGeoJSON), dissolve, and clip to the world rectangle
+// instead of wrapping at the antimeridian.
+//
+// Only positive (grow) distances are supported. A negative (erode) buffer would
+// have to keep the artificial seam edges pinned to the extent while only the
+// coastline moves inward; the winding-fill construction can't do that without
+// producing self-intersecting geometry (the pinned seam coincides with the
+// source boundary, which the dissolve cannot resolve), so we reject it with a
+// clear message rather than emit a result whose seams have crept inward.
+function makePolarPolygonBuffer(lyr, dataset, opts) {
+  if (polarBufferHasNegativeDistance(lyr, dataset, opts)) {
+    stop('The polar option does not support negative (erode) buffers yet.');
+  }
+  var output = makePolygonBufferGeoJSON(lyr, dataset, opts);
+  var dataset2 = importGeoJSON(output.geojson, {type: 'polygon'});
+  if (dataset2.arcs) {
+    if (output.dissolveAfterSplit) {
+      dissolveBufferDataset2(dataset2, opts);
+    }
+    clipDatasetToWorldRect(dataset2);
+  }
+  return dataset2;
+}
+
+function polarBufferHasNegativeDistance(lyr, dataset, opts) {
+  var distanceFn = getBufferDistanceFunction(lyr, dataset, opts);
+  return (lyr.shapes || []).some(function(shape, i) {
+    return shape && distanceFn(i) < 0;
+  });
+}
+
+function clipDatasetToWorldRect(dataset) {
+  if (!dataset.arcs || !dataset.layers.length) return;
+  dataset.layers = clipLayersByBBox(dataset.layers, dataset,
+    {bbox2: POLAR_WORLD_BBOX, no_cleanup: true});
 }
 
 function makePolygonBufferGeoJSON(lyr, dataset, opts) {
@@ -77,8 +126,18 @@ function makePolygonBufferGeoJSON(lyr, dataset, opts) {
         rightBufferMaker);
     }
     hasPositiveDistance = true;
-    return makePositivePolygonBufferGeometry(shape, distance, dataset, opts,
+    var geom = makePositivePolygonBufferGeometry(shape, distance, dataset, opts,
       leftBufferMaker);
+    if (opts.polar && shapeReachesPole(shape, dataset.arcs)) {
+      // A pole-touching ring collapses onto the pole line (Mercator can't reach
+      // the pole) and the ring-filtering drops it, so the winding fill keeps only
+      // the coastline band. Append the source rings; the dataset-level dissolve
+      // unions them with the band into the full grown shape. (Shapes that don't
+      // reach a pole -- e.g. the complement ocean in the negative path -- fill
+      // correctly on their own, and the appended source would tangle them.)
+      geom = appendSourceRings(geom, shape, dataset.arcs);
+    }
+    return geom;
   });
   return {
     geojson: {
@@ -89,6 +148,26 @@ function makePolygonBufferGeoJSON(lyr, dataset, opts) {
   };
 }
 
+// True if any vertex of the shape sits at a pole (lat +/-90). Such a ring gets
+// pinched onto the pole line during Mercator offset construction.
+function shapeReachesPole(shape, arcs) {
+  var b = arcs.getMultiShapeBounds(shape);
+  return b.ymax >= 90 - 1e-3 || b.ymin <= -90 + 1e-3;
+}
+
+// Combine a buffer geometry with the source polygon's rings into one
+// MultiPolygon (overlapping); a later union dissolve merges them. Used by the
+// polar option to keep the polar interior that the pole-pinched ribbon drops.
+function appendSourceRings(geom, shape, arcs) {
+  var sourceCoords = getPolygonMultiPolygonCoords(shape, arcs);
+  var coords = [];
+  if (geom && geom.type == 'MultiPolygon') coords = coords.concat(geom.coordinates);
+  else if (geom && geom.type == 'Polygon') coords.push(geom.coordinates);
+  coords = coords.concat(sourceCoords);
+  if (coords.length === 0) return null;
+  return {type: 'MultiPolygon', coordinates: coords};
+}
+
 function getPolygonRingBufferMaker(dataset, opts, side, winding) {
   // The sector-band escape hatch forces the older non-winding construction even
   // for callers that request winding-fill (see the 'sector-band' option).
@@ -96,12 +175,10 @@ function getPolygonRingBufferMaker(dataset, opts, side, winding) {
   var makerOpts = Object.assign({}, opts, {
     left: side == 'left',
     right: side == 'right',
-    winding_fill: useWinding,
-    // Enable overshoot-loop removal on the single winding-fill offset ring.
-    // Scoped to closed polygon rings: an open one-sided line buffer relies on
-    // the band-coverage audit (skipped under winding_fill) for concave-join
-    // dents, which loop removal would collapse.
-    buffer_ring_loops: useWinding
+    // Winding-fill construction also enables overshoot-loop removal on the single
+    // offset ring (see buildOneSidedRings); both are safe here because polygon
+    // rings are closed and their offsets are doubly-covered.
+    winding_fill: useWinding
   });
   return getPolylineBufferMaker(dataset, makerOpts);
 }
