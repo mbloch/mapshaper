@@ -1,3 +1,6 @@
+v0.7.27
+* Security fix: prevent a malicious input file's layer names from causing output files to be written outside the intended directory (path traversal).
+
 v0.7.26
 * Added `geodesic` option to `-buffer` command, for buffering projected data using geodesic distances rather than projected planar distances.
 

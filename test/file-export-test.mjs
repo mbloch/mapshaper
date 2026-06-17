@@ -39,4 +39,33 @@ describe('mapshaper-file-export.js', function () {
     })
 
   })
+
+  describe('layerNameIsUnsafeFilename()', function () {
+    var f = api.internal.layerNameIsUnsafeFilename;
+
+    it('flags path separators and traversal', function () {
+      assert.strictEqual(f('../owned'), true);
+      assert.strictEqual(f('a/b'), true);
+      assert.strictEqual(f('a\\b'), true);
+      assert.strictEqual(f('/etc/passwd'), true);
+    });
+
+    it('flags a Windows drive prefix', function () {
+      assert.strictEqual(f('C:foo'), true);
+      assert.strictEqual(f('z:bar'), true);
+    });
+
+    it('flags a NUL byte', function () {
+      assert.strictEqual(f('a\u0000b'), true);
+    });
+
+    it('allows ordinary names, including a bare or mid-name colon', function () {
+      assert.strictEqual(f('owned'), false);
+      assert.strictEqual(f('..'), false);
+      assert.strictEqual(f('my.layer'), false);
+      assert.strictEqual(f('state-1'), false);
+      assert.strictEqual(f('ns:layer'), false);
+      assert.strictEqual(f('12:30'), false);
+    });
+  })
 })

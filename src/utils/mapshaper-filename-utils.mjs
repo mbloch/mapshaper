@@ -39,6 +39,21 @@ export function getFileBase(path) {
   return parseLocalPath(path).basename;
 }
 
+// True if a name would be unsafe to use directly as an output filename,
+// because it could escape the intended output directory. Used to reject
+// data-derived layer names (e.g. TopoJSON object keys) before they become
+// filenames. A bare or mid-name colon is allowed on purpose -- it is a valid
+// filename character on *nix and only addresses an NTFS stream (within the
+// same directory) on Windows; only a leading drive-letter prefix can escape.
+export function layerNameIsUnsafeFilename(name) {
+  name = String(name);
+  // path separators (directory traversal on any OS) or NUL
+  if (/[\/\\\0]/.test(name)) return true;
+  // Windows drive-relative prefix, e.g. "C:foo" can write to another drive
+  if (/^[A-Za-z]:/.test(name)) return true;
+  return false;
+}
+
 export function getFileExtension(path) {
   return parseLocalPath(path).extension;
 }
