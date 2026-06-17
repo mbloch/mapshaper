@@ -88,10 +88,10 @@
     "eslint": "^8.16.0",
     "highlight.js": "^11.11.1",
     "marked": "^18.0.2",
-    "mocha": "^11.7.5",
+    "mocha": "^11.7.6",
     "rollup": "^4.44.1",
     "rollup-plugin-polyfill-node": "^0.13.0",
-    "shell-quote": "^1.7.4",
+    "shell-quote": "^1.8.4",
     "underscore": "^1.13.1"
   },
   "mocha": {
