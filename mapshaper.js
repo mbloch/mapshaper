@@ -9248,6 +9248,21 @@
     return parseLocalPath(path).basename;
   }
 
+  // True if a name would be unsafe to use directly as an output filename,
+  // because it could escape the intended output directory. Used to reject
+  // data-derived layer names (e.g. TopoJSON object keys) before they become
+  // filenames. A bare or mid-name colon is allowed on purpose -- it is a valid
+  // filename character on *nix and only addresses an NTFS stream (within the
+  // same directory) on Windows; only a leading drive-letter prefix can escape.
+  function layerNameIsUnsafeFilename(name) {
+    name = String(name);
+    // path separators (directory traversal on any OS) or NUL
+    if (/[\/\\\0]/.test(name)) return true;
+    // Windows drive-relative prefix, e.g. "C:foo" can write to another drive
+    if (/^[A-Za-z]:/.test(name)) return true;
+    return false;
+  }
+
   function getFileExtension(path) {
     return parseLocalPath(path).extension;
   }
@@ -9291,6 +9306,7 @@
     getFileExtension: getFileExtension,
     getOutputFileBase: getOutputFileBase,
     getPathBase: getPathBase,
+    layerNameIsUnsafeFilename: layerNameIsUnsafeFilename,
     parseLocalPath: parseLocalPath,
     replaceFileExtension: replaceFileExtension,
     toLowerCaseExtension: toLowerCaseExtension
@@ -29134,7 +29150,13 @@ ${svg}
 
   function assignUniqueLayerNames(layers) {
     var names = layers.map(function(lyr) {
-      return lyr.name || 'layer';
+      var name = lyr.name || 'layer';
+      if (layerNameIsUnsafeFilename(name)) {
+        // Block path-traversal via data-derived layer names (e.g. a malicious
+        // TopoJSON object key like "../owned") before they reach a file write.
+        stop$1('Layer name cannot be used as an output filename (path separator or drive prefix):', name);
+      }
+      return name;
     });
     var uniqueNames = utils.uniqifyNames(names);
     layers.forEach(function(lyr, i) {
@@ -31744,6 +31766,10 @@ ${svg}
       })
       .option('geodesic', {
         describe: '[projected data] buffer using geodesic distances',
+        type: 'flag'
+      })
+      .option('polar', {
+        // describe: 'keep lat-long buffers within the valid extent (+/-180, +/-90); for growing polygons sliced at the antimeridian/poles (erode not yet supported)',
         type: 'flag'
       })
       .option('vertices', {
@@ -41391,46 +41417,77 @@ ${svg}
     if (!ring || ring.length < 6) return ring;
     if (maxTurn === undefined) maxTurn = BUFFER_LOOP_MAX_TURN;
     var gated = !!(srcPos && turnPrefix);
-    var pts = ring.slice(0, ring.length - 1); // drop closing duplicate
-    var pos = gated ? srcPos.slice(0, ring.length - 1) : null;
-    var i = 0;
-    while (i < pts.length - 1) {
-      var ax = pts[i][0], ay = pts[i][1];
-      var bx = pts[i + 1][0], by = pts[i + 1][1];
-      var maxJ = Math.min(i + maxGap, pts.length - 2);
-      var removed = false;
-      for (var j = i + 2; j <= maxJ; j++) {
-        var hit = segHit(ax, ay, bx, by,
-          pts[j][0], pts[j][1], pts[j + 1][0], pts[j + 1][1]);
+    var n = ring.length - 1; // distinct points (the last repeats the first)
+    // Compact retained points into `out` instead of splicing collapsed spans out
+    // of one array: every splice shifts the whole tail (O(tail) per collapse,
+    // O(n^2) over the ring), whereas the scan only ever commits a growing prefix
+    // and looks a bounded window forward, so it can append kept points and drop a
+    // collapsed span by advancing the read cursor -- O(1) per collapse.
+    //
+    // `a` is the current anchor (the last committed point, out[last]); `b` is the
+    // point after it (a ring vertex, or a synthetic crossing after a collapse);
+    // `r` indexes the ring vertex following `b`. This mirrors the in-place scan's
+    // anchor i with a = ring[i], b = ring[i+1], r = i+2.
+    var out = [ring[0]];
+    var outPos = gated ? [srcPos[0]] : null;
+    var b = ring[1];
+    var bpos = gated ? srcPos[1] : 0;
+    var r = 2;
+    while (true) {
+      var a = out[out.length - 1];
+      var ax = a[0], ay = a[1], bx = b[0], by = b[1];
+      var apos = gated ? outPos[outPos.length - 1] : 0;
+      // forward segment t maps to the in-place scan's j = (anchor index) + 2 + t
+      var maxT = Math.min(maxGap - 2, n - 2 - r);
+      var collapsed = false;
+      for (var t = 0; t <= maxT; t++) {
+        var c = ring[r + t], d = ring[r + t + 1];
+        var hit = segHit(ax, ay, bx, by, c[0], c[1], d[0], d[1]);
         if (!hit) continue;
         // Collapse only covered overshoots (small source turn). A larger source
         // turn means the span may enclose a real buffer hole, which must be left
         // for the dissolve -- whatever the pocket's winding orientation.
-        if (gated && !spanIsCovered(pos, i, j, turnPrefix, maxTurn)) continue;
-        pts.splice(i + 1, j - i, hit); // replace span i+1..j with the crossing
-        if (gated) pos.splice(i + 1, j - i, pos[i]);
-        removed = true;
+        if (gated &&
+          !spanIsCovered(apos, bpos, srcPos, r, r + t + 1, turnPrefix, maxTurn)) {
+          continue;
+        }
+        // Replace the span a..ring[r+t] with the crossing: the anchor stays and is
+        // re-scanned (its new segment may cross again), so keep `a`, set b = hit,
+        // and advance the cursor past the collapsed vertices.
+        b = hit;
+        if (gated) bpos = apos; // collapsed point inherits the anchor's source pos
+        r = r + t + 1;
+        collapsed = true;
         break;
       }
-      if (!removed) i++; // else re-scan from i: the new seg i may cross again
+      if (collapsed) continue;
+      out.push(b); // the anchor's successor can no longer collapse; commit it
+      if (gated) outPos.push(bpos);
+      if (r > n - 1) break; // no ring vertex left to become the next b
+      b = ring[r];
+      if (gated) bpos = srcPos[r];
+      r++;
     }
-    if (pts.length < 4) return ring; // collapsed away; keep original
-    pts.push(pts[0].concat());
-    return pts;
+    if (out.length < 4) return ring; // collapsed away; keep original
+    out.push(out[0].concat());
+    return out;
   }
 
-  // True when the source-path span feeding ring points i..j+1 turns by less than
-  // maxTurn (a covered overshoot, safe to collapse). A pocket touching a cap
-  // (NaN position) is never treated as a covered overshoot.
-  function spanIsCovered(pos, i, j, turnPrefix, maxTurn) {
-    var lo = Infinity, hi = -Infinity;
-    for (var k = i; k <= j + 1; k++) {
-      var p = pos[k];
+  // True when the source-path span feeding a collapsed pocket turns by less than
+  // maxTurn (a covered overshoot, safe to collapse). The span covers the anchor
+  // position `apos`, its successor `bpos`, and ring positions srcPos[lo..hi]. A
+  // pocket touching a cap (NaN position) is never treated as a covered overshoot.
+  function spanIsCovered(apos, bpos, srcPos, lo, hi, turnPrefix, maxTurn) {
+    if (apos !== apos || bpos !== bpos) return false; // NaN cap
+    var posLo = apos < bpos ? apos : bpos;
+    var posHi = apos > bpos ? apos : bpos;
+    for (var k = lo; k <= hi; k++) {
+      var p = srcPos[k];
       if (p !== p) return false; // NaN
-      if (p < lo) lo = p;
-      if (p > hi) hi = p;
+      if (p < posLo) posLo = p;
+      if (p > posHi) posHi = p;
     }
-    return (turnPrefix[hi] - turnPrefix[lo]) < maxTurn;
+    return (turnPrefix[posHi] - turnPrefix[posLo]) < maxTurn;
   }
 
   // Fast strict-interior segment crossing; returns [x, y] or null. Buffer join
@@ -41976,36 +42033,66 @@ ${svg}
   var R2D = 180 / Math.PI;
   var WEBMERCATOR_WIDTH = R * Math.PI * 2;
 
+  // Polar (clamp-to-extent) buffering bounds (see the 'polar' option). A polygon
+  // sliced for display at the antimeridian/poles has artificial seam edges at
+  // lng = +/-180 and lat = +/-90. The poles are unreachable in Mercator (y ->
+  // +/-Infinity), so clamp construction coordinates to a finite latitude just shy
+  // of the pole; output coords at the bound are snapped back to exactly +/-90.
+  var POLAR_HALF_WIDTH = WEBMERCATOR_WIDTH / 2;        // Mercator x at lng +/-180
+  var POLAR_LAT_LIMIT = 90 - 1e-3;                     // finite near-pole latitude
+  var POLAR_Y_LIMIT = R * Math.atanh(Math.sin(POLAR_LAT_LIMIT * D2R)); // Mercator y at the limit
+  var POLAR_LAT_SNAP = 90 - 2e-3;                      // snap |lat| >= this to 90
+  var POLAR_LNG_SNAP_EPS = 1e-6;                       // snap |lng| within this of 180 to exactly 180
+
   // arr: array of MultiPolygon and/or Point Features
-  function unprojectFeatures(arr) {
+  // opts.polar: snap near-boundary coords to exactly +/-180 / +/-90
+  function unprojectFeatures(arr, opts) {
+    var polar = !!(opts && opts.polar);
     arr.forEach(function(feat) {
       var coords = feat.geometry.coordinates;
       var type = feat.geometry.type;
       if (type == 'Point') {
-        unprojectPointCoords(coords);
+        unprojectPointCoords(coords, polar);
       } else if (type == 'MultiPolygon') {
-        coords.forEach(unprojectPolygonCoords);
+        coords.forEach(function(c) { unprojectPolygonCoords(c, polar); });
       } else {
         error('Unexpected geometry type:', type);
       }
     });
   }
 
-  function unprojectPolygonCoords(coords) {
+  function unprojectPolygonCoords(coords, polar) {
     forEachPoint(coords, function(p) {
-      unprojectPointCoords(p);
+      unprojectPointCoords(p, polar);
     });
   }
 
-  function unprojectPointCoords(p) {
+  function unprojectPointCoords(p, polar) {
     var p2 = fromWebMercator(p[0], p[1]);
+    if (polar) {
+      // The buffer is allowed to expand past the antimeridian during construction
+      // (walls run out to lng > 180 / < -180); it is clipped to the world
+      // rectangle afterwards, so DON'T fold the overshoot here -- folding would
+      // collapse it onto a spurious vertical edge at +/-180 instead of cutting it.
+      // Pin pole latitudes (Mercator can't represent the pole, so offsets are
+      // capped just shy of it) and snap values within rounding of +/-90 / +/-180
+      // to the exact bound for clean clip edges.
+      if (p2[1] >= POLAR_LAT_SNAP) p2[1] = 90;
+      else if (p2[1] <= -POLAR_LAT_SNAP) p2[1] = -90;
+      if (Math.abs(p2[0] - 180) < POLAR_LNG_SNAP_EPS) p2[0] = 180;
+      else if (Math.abs(p2[0] + 180) < POLAR_LNG_SNAP_EPS) p2[0] = -180;
+    }
     p[0] = p2[0];
     p[1] = p2[1];
   }
 
-  // Wrap a shape iterator to convert lng,lat coords to spherical Mercator coords
-  function getProjectingPathIterator(arcs) {
+  // Wrap a shape iterator to convert lng,lat coords to spherical Mercator coords.
+  // opts.polar: clamp an input latitude that sits exactly at a pole to a finite
+  // near-pole value so construction is well-defined (Mercator y is infinite at the
+  // pole). The antimeridian is left alone here (see getProjectingPathIterator body).
+  function getProjectingPathIterator(arcs, opts) {
     var iter = new ShapeIter(arcs);
+    var polar = !!(opts && opts.polar);
     var prevX;
     var iter2 = {
       x: 0,
@@ -42019,6 +42106,15 @@ ${svg}
         var p;
         if (val) {
           p = toWebMercator(iter.x, iter.y);
+          if (polar) {
+            // Pin a seam latitude that sits exactly at a pole (lat +/-90 -> y is
+            // infinite in Mercator) to a finite near-pole value so construction is
+            // well-defined; the result is snapped back to +/-90 on output. The
+            // antimeridian walls are left unclamped here (clamping x mid-path
+            // breaks the unwrap continuity and tangles corner joins).
+            if (p[1] > POLAR_Y_LIMIT) p[1] = POLAR_Y_LIMIT;
+            else if (p[1] < -POLAR_Y_LIMIT) p[1] = -POLAR_Y_LIMIT;
+          }
           iter2.x = prevX === null ? p[0] : unwrapX(p[0], prevX);
           iter2.y = p[1];
           prevX = iter2.x;
@@ -42027,6 +42123,29 @@ ${svg}
       }
     };
     return iter2;
+  }
+
+  // Stop a great-circle offset from crossing a pole (see the 'polar' option). When
+  // the offset would cross a pole it reappears at the opposite longitude (Mercator
+  // x jumps by ~half the world width) at a latitude back inside the valid range;
+  // detect that jump and pin the offset to the pole at the source longitude
+  // instead, so the floor edge of a pole-sliced polygon stays near the pole rather
+  // than folding to the far meridian. Latitudes are capped so a near-pole offset
+  // cannot exceed the finite construction bound.
+  function clampPolar(base) {
+    return function(x, y, bearing, dist) {
+      var p = base(x, y, bearing, dist);
+      if (Math.abs(p[0] - x) > POLAR_HALF_WIDTH * 0.5) {
+        // great-circle offset crossed a pole (reappears at the opposite longitude,
+        // i.e. Mercator x jumps by ~half the world width); pin it to the pole at the
+        // source longitude instead of folding across to the far meridian.
+        p[0] = x;
+        p[1] = p[1] < 0 ? -POLAR_Y_LIMIT : POLAR_Y_LIMIT;
+      }
+      if (p[1] < -POLAR_Y_LIMIT) p[1] = -POLAR_Y_LIMIT;
+      else if (p[1] > POLAR_Y_LIMIT) p[1] = POLAR_Y_LIMIT;
+      return p;
+    };
   }
 
   function getOffsetFunction(crs, opts) {
@@ -42047,7 +42166,8 @@ ${svg}
     // line in Mercator), so the endpoint falls short of the great-circle distance
     // and drifts in direction as the radius grows -- large buffers come out
     // distorted (egg-shaped caps/joins) -- but it is occasionally useful.
-    return opts && opts.rhumb ? rhumbOffset : greatCircleOffset;
+    var offset = opts && opts.rhumb ? rhumbOffset : greatCircleOffset;
+    return opts && opts.polar ? clampPolar(offset) : offset;
   }
 
   // Great-circle (spherical geodesic) offset, computed directly in Mercator coords.
@@ -42121,7 +42241,7 @@ ${svg}
     var roundJoinSegAngle = 90 / roundJoinSegsPerQuadrant;
     var capStyle = opts.cap_style || 'round'; // expect 'round' or 'flat'
     var pathIter = useMercator ?
-      getProjectingPathIterator(dataset.arcs) : new ShapeIter(dataset.arcs);
+      getProjectingPathIterator(dataset.arcs, opts) : new ShapeIter(dataset.arcs);
     var latLngPathIter = useMercator ? new ShapeIter(dataset.arcs) : null;
     var builder = new BufferBuilder();
     var simplifyIntervalFn = getBufferSimplifyFunction(dataset, opts);
@@ -42129,7 +42249,9 @@ ${svg}
 
     function makeBufferGeoJSON(shape, distance) {
       var rings = [];
-      if (useMercator) {
+      if (useMercator && !opts.polar) {
+        // With the polar option, the clamp pins offsets to the valid extent
+        // instead of erroring near a pole (see getOffsetFunction / clampPolar).
         stopIfBufferReachesPole(shape, distance);
       }
       (shape || []).forEach(function(path, i) {
@@ -42147,7 +42269,7 @@ ${svg}
         }
       }];
       if (useMercator) {
-        unprojectFeatures(features);
+        unprojectFeatures(features, opts);
         if (opts.debug_offset) {
           splitAntimeridianCrosses(features);
         }
@@ -42167,7 +42289,8 @@ ${svg}
         }
       });
       if (maxAbsLat + angularDist >= 90 - POLAR_BUFFER_MARGIN_DEGREES) {
-        stop$1('Buffering lat-long coordinates near the poles is not supported.');
+        stop$1('Buffering lat-long coordinates near the poles is not supported; ' +
+          'use the polar option for polygons sliced at the antimeridian/poles.');
       }
     }
 
@@ -42217,7 +42340,7 @@ ${svg}
       if (simplifyIntervalFn) {
         verts = presimplifyPathVerts(verts, simplifyIntervalFn(dist), dist);
       }
-      if (!opts.no_outline && !oneSidedBuffer && !opts.sector_band && pathIsOpen(verts)) {
+      if (!oneSidedBuffer && !opts.sector_band && pathIsOpen(verts)) {
         // Fast path for ordinary two-sided line buffers: emit one closed
         // outline instead of many per-segment bands that must be dissolved.
         // The sector-band escape hatch skips it to fall through to the
@@ -42246,15 +42369,17 @@ ${svg}
       // (no winding_fill) and the source-path edge get no provenance and pass
       // through unchanged.
       //
-      // Restricted to closed source rings: a closed ring's offset overshoots are
-      // doubly-covered (safe to collapse), but an OPEN one-sided arc (e.g. a
-      // topological polygon's unbuffered-boundary remnant, buffered with caps)
-      // can have a concave-join dent that is its region's only coverage, which
-      // collapsing would cut away.
+      // Restricted to the winding-fill construction on closed source rings: a
+      // closed ring's offset overshoots are doubly-covered (safe to collapse), but
+      // an OPEN one-sided arc (e.g. a topological polygon's unbuffered-boundary
+      // remnant, buffered with caps) can have a concave-join dent that is its
+      // region's only coverage, which collapsing would cut away. Callers whose
+      // winding construction is not safe to collapse this way (the one-sided line
+      // buffer) opt out by passing no_loop_removal.
       function buildOneSidedRings(sideVerts) {
         var built = makeLeftBufferRings(sideVerts, dist,
           oneSidedBuffer ? pathSideVerts : null);
-        if (opts.no_loop_removal || !opts.buffer_ring_loops || pathIsOpen(sideVerts)) {
+        if (opts.no_loop_removal || !opts.winding_fill || pathIsOpen(sideVerts)) {
           return built.rings;
         }
         var turnPrefix = getSourceTurnPrefix(sideVerts);
@@ -43111,7 +43236,15 @@ ${svg}
         if (i > 0) {
           joinP = bufferSegmentIntersection(a, b, c, d);
           if (!joinP) {
-            throw Error(`no intersection on ${i} of ${pointCount}`);
+            if (opts.polar) {
+              // Near a clamped pole/antimeridian corner the swept offset tangents
+              // collapse onto the boundary and stop intersecting; hug the clamped
+              // tangent point so the round join degenerates to the pinned corner
+              // instead of throwing.
+              points.push(tanP);
+            } else {
+              throw Error(`no intersection on ${i} of ${pointCount}`);
+            }
           } else {
             points.push(joinP);
           }
@@ -43278,8 +43411,13 @@ ${svg}
     var useWinding = oneSided && !debug && opts.winding_fill !== false &&
       !opts.sector_band;
     if (useWinding) {
+      // no_loop_removal: the one-sided construction's overshoot loops can be a
+      // concave bend's only band coverage, so collapsing them would cut holes in
+      // the buffer (see buildOneSidedRings); the winding dissolve fills the
+      // self-overlap instead.
       var result = makePolylineBufferPerFeature(lyr, dataset,
-        Object.assign({}, opts, {winding_fill: true, remove_lobes: false}));
+        Object.assign({}, opts, {winding_fill: true, remove_lobes: false,
+          no_loop_removal: true}));
       if (spherical) splitAntimeridianBufferDataset(result);
       timeEnd$1('buffer');
       return result;
@@ -43289,8 +43427,18 @@ ${svg}
       // Debug visualizations (raw offset rings, winding tiles, mosaic) want the
       // whole layer's geometry/topology in one dataset; keep the original global
       // dissolve for them (no artifact-hole filter runs in debug mode anyway).
-      dataset2 = importGeoJSON(makeShapeBufferGeoJSON(lyr, dataset, opts), {});
-      dissolveBufferDataset2(dataset2, Object.assign({}, opts, {per_part_holes: true}));
+      // Mirror the real pipeline's construction so the debug view reflects what
+      // the buffer actually builds: an all-closed-ring two-sided layer uses the
+      // winding-fill + loop-removal construction (and a winding-number dissolve),
+      // so debug-offset shows the loop-removed offset rings and the no-loop-removal
+      // flag has a visible effect. (See makePolylineBufferTwoSidedPerFeature.)
+      var debugWinding = !oneSided && layerIsAllClosed(lyr, dataset.arcs);
+      var debugMakerOpts = debugWinding ?
+        Object.assign({}, opts, {winding_fill: true}) : opts;
+      var debugDissolveOpts = Object.assign({}, opts, {per_part_holes: true},
+        debugWinding ? {winding_fill: true} : null);
+      dataset2 = importGeoJSON(makeShapeBufferGeoJSON(lyr, dataset, debugMakerOpts), {});
+      dissolveBufferDataset2(dataset2, debugDissolveOpts);
     } else {
       dataset2 = makePolylineBufferTwoSidedPerFeature(lyr, dataset, opts, spherical);
     }
@@ -43312,11 +43460,37 @@ ${svg}
   // the process out of memory; per-feature isolation bounds peak memory to the
   // most complex single feature. The dissolve collapses any internal cuts, so
   // each feature's output boundary is identical to the global pipeline's.
+  // True if every part of a polyline shape is a closed ring (first vertex ==
+  // last vertex), so its two-sided buffer is an annulus per ring.
+  function shapeIsAllClosed(shape, arcs) {
+    return !!shape && shape.length > 0 && shape.every(function(part) {
+      return pathIsClosed(part, arcs);
+    });
+  }
+
+  // True if every shape in the layer is made entirely of closed rings.
+  function layerIsAllClosed(lyr, arcs) {
+    var shapes = lyr.shapes || [];
+    return shapes.length > 0 && shapes.every(function(shape) {
+      return shapeIsAllClosed(shape, arcs);
+    });
+  }
+
   function makePolylineBufferTwoSidedPerFeature(lyr, dataset, opts, spherical) {
     var distanceFn = getBufferDistanceFunction(lyr, dataset, opts);
     var simplifyFn = getBufferSimplifyFunction(dataset, opts); // null if tolerance=0
     var makerOpts = Object.assign({geometry_type: lyr.geometry_type}, opts);
     var makeShapeBuffer = getPolylineBufferMaker(dataset, makerOpts);
+    // A shape whose parts are all closed rings buffers to an annulus per ring. The
+    // default (open-path) construction builds each side as many split sections plus
+    // join-sector rings (no loop removal), which floods the dissolve with raw rings
+    // (~8x more on a dense coastline). Instead route these shapes through the same
+    // winding-fill + loop-removal construction the polygon-ring buffer uses: one
+    // continuous offset ring per side, with self-overlap loops stripped, resolved
+    // by a winding-number dissolve. Open or mixed shapes keep the tuned outline +
+    // boundary-flood path unchanged.
+    var closedMaker = getPolylineBufferMaker(dataset,
+      Object.assign({}, makerOpts, {winding_fill: true}));
     var useFilter = useArtifactHoleFilter(opts);
     var quadSegs = opts.quad_segs >= 2 ? opts.quad_segs : 8;
     var sagPct = 1 - Math.cos(Math.PI / 4 / quadSegs);
@@ -43329,16 +43503,21 @@ ${svg}
       roundCaps: (opts.cap_style || 'round') == 'round'
     } : null;
     var dissolveOpts = Object.assign({}, opts, {per_part_holes: true});
+    var closedDissolveOpts = Object.assign({}, dissolveOpts, {winding_fill: true});
     var datasets = [];
     lyr.shapes.forEach(function(shape, i) {
       var distance = distanceFn(i);
       if (!distance || !shape) return;
-      var retn = makeShapeBuffer(shape, distance);
+      // Closed-ring fast path only for ordinary two-sided buffers (the one-sided
+      // construction reaches this function with winding_fill:false and needs its
+      // own coverage handling); mixed open/closed shapes fall back too.
+      var allClosed = !oneSided && shapeIsAllClosed(shape, dataset.arcs);
+      var retn = (allClosed ? closedMaker : makeShapeBuffer)(shape, distance);
       var feats = (Array.isArray(retn) ? retn : [retn]).filter(Boolean);
       if (!feats.length) return;
       var ds = importGeoJSON(getBufferGeoJSON(feats), {});
-      dissolveBufferDataset2(ds, dissolveOpts);
-      if (useFilter) {
+      dissolveBufferDataset2(ds, allClosed ? closedDissolveOpts : dissolveOpts);
+      if (useFilter && !allClosed) {
         var bufLyr = ds.layers[0];
         var intervalPct = simplifyFn ? simplifyFn(distance) / distance : 0;
         bufLyr.shapes = bufLyr.shapes.map(function(bufShape) {
@@ -44221,975 +44400,6 @@ ${svg}
     while (lng < -180) lng += 360;
     while (lng > 180) lng -= 360;
     return lng;
-  }
-
-  // Returns a function for constructing a query function that accepts an arc id and
-  // returns information about the polygon or polygons that use the given arc.
-  // TODO: explain this better.
-  //
-  // options:
-  //   filter: optional filter function; signature: function(idA, idB or -1) : boolean
-  //   reusable: flag that lets an arc be queried multiple times.
-  function getArcClassifier(lyr, arcs, optsArg) {
-    var opts = optsArg || {},
-        useOnce = !opts.reusable,
-        n = arcs.size(),
-        a = new Int32Array(n),
-        b = new Int32Array(n),
-        filter;
-    if (opts.where) {
-      filter = compileFeaturePairFilterExpression(opts.where, lyr, arcs);
-    }
-
-    utils.initializeArray(a, -1);
-    utils.initializeArray(b, -1);
-
-    traversePaths(lyr.shapes, function(o) {
-      var i = absArcId(o.arcId);
-      var shpId = o.shapeId;
-      var aval = a[i];
-      if (aval == -1) {
-        a[i] = shpId;
-      } else if (shpId < aval) {
-        b[i] = aval;
-        a[i] = shpId;
-      } else {
-        b[i] = shpId;
-      }
-    });
-
-    function classify(arcId, getKey) {
-      var i = absArcId(arcId);
-      var shpA = a[i];
-      var shpB = b[i];
-      var key;
-      if (shpA == -1) return null;
-      key = getKey(shpA, shpB);
-      if (key === null || key === false) return null;
-      if (useOnce) {
-        // arc can only be queried once
-        a[i] = -1;
-        b[i] = -1;
-      }
-      // use optional filter to exclude some arcs
-      if (filter && !filter(shpA, shpB)) return null;
-      return key;
-    }
-
-    return function(getKey) {
-      return function(arcId) {
-        return classify(arcId, getKey);
-      };
-    };
-  }
-
-  var ArcClassifier = /*#__PURE__*/Object.freeze({
-    __proto__: null,
-    getArcClassifier: getArcClassifier
-  });
-
-  function makePolygonBuffer(lyr, dataset, opts) {
-    var spherical = isLatLngCRS(getDatasetCRS(dataset));
-    // The debug-offset/debug-winding/debug-mosaic visualizations are implemented
-    // only for line buffers. They have no handling in the polygon pipeline; left
-    // unstripped they leak into the per-shape dissolve and produce malformed
-    // output, so drop them and warn rather than silently mislead.
-    if (opts.debug_offset || opts.debug_winding || opts.debug_mosaic) {
-      warn('debug-offset/debug-winding/debug-mosaic are not implemented for polygon buffers; ignoring');
-      opts = Object.assign({}, opts, {
-        debug_offset: false,
-        debug_winding: false,
-        debug_mosaic: false
-      });
-    }
-    var output = makePolygonBufferGeoJSON(lyr, dataset, opts);
-    var dataset2 = importGeoJSON(output.geojson, {type: 'polygon'});
-    if (spherical) {
-      splitAntimeridianBufferDataset(dataset2);
-      if (output.dissolveAfterSplit) {
-        dissolveBufferDataset2(dataset2, opts);
-      }
-    }
-    return dataset2;
-  }
-
-  function makePolygonBufferGeoJSON(lyr, dataset, opts) {
-    var distanceFn = getBufferDistanceFunction(lyr, dataset, opts);
-    var useTopologicalMode = !!opts.topological;
-    var uniqueArcTest = useTopologicalMode ? getUniqueArcTest(lyr, dataset.arcs) : null;
-    var hasPositiveDistance = false;
-    var hasNegativeDistance = false;
-    if (useTopologicalMode) {
-      // The topological pipeline selects mosaic tiles by source membership
-      // (boundary flood), which cannot resolve the self-overlapping winding-fill
-      // ring. So each feature's winding-fill offset rings are pre-dissolved into a
-      // clean (non-self-overlapping) polygon before they enter the shared mosaic;
-      // the construction speedup (loop removal cutting per-feature self-
-      // intersections) is preserved, and the mosaic is unchanged.
-      return makeTopologicalPolygonBufferGeoJSON(lyr, dataset, opts, distanceFn,
-        uniqueArcTest, getPolygonRingBufferMaker(dataset, opts, 'left'));
-    }
-    // Closed source rings are offset with the winding-fill construction: one
-    // self-overlapping ring per source ring (its overshoot loops resolved by the
-    // winding-number dissolve in makeClosedRingBufferGeometry) instead of many
-    // overlapping per-segment section bands. The single ring carries far fewer
-    // rings and self-intersections into the dissolve, which dominates polygon-
-    // buffer runtime.
-    var leftBufferMaker = getPolygonRingBufferMaker(dataset, opts, 'left');
-    var rightBufferMaker = getPolygonRingBufferMaker(dataset, opts, 'right');
-    var geometries = lyr.shapes.map(function(shape, i) {
-      var distance = distanceFn(i);
-      if (!distance || !shape) return null;
-      if (distance < 0) {
-        hasNegativeDistance = true;
-        return makeNegativePolygonBufferGeometry(shape, -distance, dataset, opts,
-          rightBufferMaker);
-      }
-      hasPositiveDistance = true;
-      return makePositivePolygonBufferGeometry(shape, distance, dataset, opts,
-        leftBufferMaker);
-    });
-    return {
-      geojson: {
-        type: 'GeometryCollection',
-        geometries: geometries
-      },
-      dissolveAfterSplit: hasPositiveDistance && !hasNegativeDistance
-    };
-  }
-
-  function getPolygonRingBufferMaker(dataset, opts, side, winding) {
-    // The sector-band escape hatch forces the older non-winding construction even
-    // for callers that request winding-fill (see the 'sector-band' option).
-    var useWinding = !opts.sector_band;
-    var makerOpts = Object.assign({}, opts, {
-      left: side == 'left',
-      right: side == 'right',
-      winding_fill: useWinding,
-      // Enable overshoot-loop removal on the single winding-fill offset ring.
-      // Scoped to closed polygon rings: an open one-sided line buffer relies on
-      // the band-coverage audit (skipped under winding_fill) for concave-join
-      // dents, which loop removal would collapse.
-      buffer_ring_loops: useWinding
-    });
-    return getPolylineBufferMaker(dataset, makerOpts);
-  }
-
-  function makePositivePolygonBufferGeometry(shape, distance, dataset, opts,
-      leftBufferMaker) {
-    // Non-topological positive buffers are never path-split (only the topological
-    // pipeline splits, and it has its own function), so each shape's ring groups
-    // are offset and dissolved directly.
-    return makeClosedRingPositiveBufferGeometry(shape, dataset.arcs,
-      distance, opts, leftBufferMaker);
-  }
-
-  function makeTopologicalPolygonBufferGeoJSON(lyr, dataset, opts, distanceFn,
-      uniqueArcTest, bufferMaker) {
-    var shapes = lyr.shapes || [];
-    var distances = [];
-    var sourceIds = [];
-    var bufferIds = [];
-    var tmpGeometries = [];
-    var hasPositiveDistance = false;
-    var geometries, tmpDataset;
-
-    shapes.forEach(function(shape, i) {
-      sourceIds[i] = -1;
-      bufferIds[i] = -1;
-      distances[i] = distanceFn(i);
-      if (distances[i] < 0) {
-        stop$1('The topological buffer option does not support negative distances');
-      }
-      if (!shape) return;
-      sourceIds[i] = tmpGeometries.length;
-      tmpGeometries.push(getPolygonGeometry(shape, dataset.arcs));
-    });
-
-    shapes.forEach(function(shape, i) {
-      var distance = distances[i];
-      var pathData, bufferCoords;
-      if (!distance || !shape) return;
-      hasPositiveDistance = true;
-      pathData = getPolygonBufferPathData(shape, uniqueArcTest);
-      bufferCoords = getBufferMultiPolygonCoords(pathData.paths, distance, bufferMaker);
-      // Resolve the winding-fill rings' self-overlaps into a clean polygon (the
-      // mosaic's boundary-flood membership cannot), so this feature enters the
-      // shared mosaic as an ordinary polygon. The sector-band fallback emits
-      // boundary-flood-resolvable bands, so it feeds the mosaic directly (as the
-      // topological pipeline did before the winding-fill construction).
-      if (!opts.sector_band) {
-        bufferCoords = dissolveOffsetRingsToCoords(bufferCoords, opts);
-      }
-      if (bufferCoords.length > 0) {
-        bufferIds[i] = tmpGeometries.length;
-        tmpGeometries.push({
-          type: 'MultiPolygon',
-          coordinates: bufferCoords
-        });
-      }
-    });
-
-    if (!hasPositiveDistance || tmpGeometries.length === 0) {
-      geometries = shapes.map(function() { return null; });
-    } else {
-      tmpDataset = importGeoJSON({
-        type: 'GeometryCollection',
-        geometries: tmpGeometries
-      }, {type: 'polygon'});
-      geometries = makeTopologicalPolygonBufferGeometries(shapes, distances,
-        sourceIds, bufferIds, tmpDataset, dataset.arcs);
-    }
-    return {
-      geojson: {
-        type: 'GeometryCollection',
-        geometries: geometries
-      },
-      dissolveAfterSplit: hasPositiveDistance
-    };
-  }
-
-  function makeTopologicalPolygonBufferGeometries(shapes, distances, sourceIds,
-      bufferIds, tmpDataset, sourceArcs) {
-    var tmpLyr = tmpDataset.layers[0];
-    var nodes = addIntersectionCuts(tmpDataset, {rebuild_topology: true});
-    var mosaicIndex = new MosaicIndex(tmpLyr, nodes, {flat: false, no_holes: false});
-    var pathfind = getRingIntersector(mosaicIndex.nodes);
-    var sourceIdIndex = getIdLookup(sourceIds);
-    var bufferIdIndex = getIdToFeatureIdLookup(bufferIds);
-    var sourceAreas = getSourceShapeAreas(shapes, sourceArcs);
-    return shapes.map(function(shape, i) {
-      var distance = distances[i];
-      var tileIds, geom;
-      if (!distance || !shape) return null;
-      tileIds = getTopologicalBufferTileIds(sourceIds[i], bufferIds[i],
-        i, mosaicIndex, sourceIdIndex, bufferIdIndex, sourceAreas);
-      geom = getTileIdsGeometry(tileIds, mosaicIndex, pathfind);
-      return removePositiveBufferArtifactHoles(geom, shape, sourceArcs, distance);
-    });
-  }
-
-  function getTopologicalBufferTileIds(sourceId, bufferId, featureId, mosaicIndex,
-      sourceIdIndex, bufferIdIndex, sourceAreas) {
-    var ids = [];
-    var index = [];
-    addTileIds(ids, index, mosaicIndex.getTileIdsByShapeId(sourceId));
-    if (bufferId >= 0) {
-      addTileIds(ids, index, mosaicIndex.getTileIdsByShapeId(bufferId).filter(function(tileId) {
-        return !tileHasSourcePolygon(tileId, mosaicIndex, sourceIdIndex) &&
-          getBufferTileOwnerId(tileId, mosaicIndex, bufferIdIndex, sourceAreas) == featureId;
-      }));
-    }
-    return ids;
-  }
-
-  function addTileIds(memo, index, ids) {
-    ids.forEach(function(id) {
-      if (index[id]) return;
-      index[id] = true;
-      memo.push(id);
-    });
-  }
-
-  function tileHasSourcePolygon(tileId, mosaicIndex, sourceIdIndex) {
-    return mosaicIndex.getSourceIdsByTileId(tileId).some(function(shapeId) {
-      return sourceIdIndex[shapeId];
-    });
-  }
-
-  function getBufferTileOwnerId(tileId, mosaicIndex, bufferIdIndex, sourceAreas) {
-    var ownerId = -1;
-    var ownerArea = -Infinity;
-    mosaicIndex.getSourceIdsByTileId(tileId).forEach(function(shapeId) {
-      var featureId = bufferIdIndex[shapeId];
-      var area;
-      if (featureId >= 0) {
-        area = sourceAreas[featureId];
-        if (area > ownerArea || area == ownerArea && featureId < ownerId) {
-          ownerId = featureId;
-          ownerArea = area;
-        }
-      }
-    });
-    return ownerId;
-  }
-
-  function getSourceShapeAreas(shapes, arcs) {
-    return shapes.map(function(shape) {
-      return Math.abs(getShapeArea(shape, arcs));
-    });
-  }
-
-  function getIdLookup(ids) {
-    var index = [];
-    ids.forEach(function(id) {
-      if (id >= 0) index[id] = true;
-    });
-    return index;
-  }
-
-  function getIdToFeatureIdLookup(ids) {
-    var index = [];
-    ids.forEach(function(id, i) {
-      if (id >= 0) index[id] = i;
-    });
-    return index;
-  }
-
-  function getTileIdsGeometry(tileIds, mosaicIndex, pathfind) {
-    var rings = [];
-    var holes = [];
-    var shp;
-    tileIds.forEach(function(tileId) {
-      var tile = mosaicIndex.mosaic[tileId];
-      rings.push(tile[0]);
-      if (tile.length > 1) {
-        holes = holes.concat(tile.slice(1));
-      }
-    });
-    shp = pathfind(rings.concat(holes), 'dissolve');
-    if (shp && shp.length > 0) {
-      shp = fixNestingErrors(shp, mosaicIndex.nodes.arcs);
-    }
-    return shp && shp.length > 0 ? getPolygonGeometry(shp, mosaicIndex.nodes.arcs) : null;
-  }
-
-  function dissolvePolygonBufferGeometry(geom, opts) {
-    var tmp = importGeoJSON({
-      type: 'GeometryCollection',
-      geometries: [geom]
-    }, {type: 'polygon'});
-    var lyr = tmp.layers[0];
-    if (tmp.arcs) {
-      dissolveBufferDataset2(tmp, opts);
-    }
-    if (lyr.shapes && lyr.shapes[0]) {
-      lyr.shapes[0] = fixNestingErrors(lyr.shapes[0], tmp.arcs);
-    }
-    return lyr.shapes && lyr.shapes[0] ?
-      getPolygonGeometry(lyr.shapes[0], tmp.arcs) : null;
-  }
-
-  function makeNegativePolygonBufferGeometry(shape, distance, dataset, opts,
-      bufferMaker) {
-    // Non-topological negative buffers are never path-split, so each shape's ring
-    // groups are offset and eroded directly.
-    return makeClosedRingNegativeBufferGeometry(shape, dataset.arcs, distance,
-      opts, bufferMaker);
-  }
-
-  function makeClosedRingNegativeBufferGeometry(shape, arcs, distance, opts,
-      bufferMaker) {
-    var coords = [];
-    getPolygonRingGroupShapes(shape, arcs).forEach(function(groupShape) {
-      var bufferCoords = getBufferMultiPolygonCoords(groupShape, distance, bufferMaker);
-      var geom = bufferCoords.length > 0 ?
-        makeClosedRingBufferGeometry(groupShape, arcs, getBufferDataset(bufferCoords),
-          opts, distance, true) : null;
-      if (geom) {
-        coords = coords.concat(geom.coordinates);
-      }
-    });
-    return coords.length > 0 ? {
-      type: 'MultiPolygon',
-      coordinates: coords
-    } : null;
-  }
-
-  function makeClosedRingPositiveBufferGeometry(shape, arcs, distance, opts,
-      bufferMaker) {
-    var coords = [];
-    var groupShapes = getPolygonRingGroupShapes(shape, arcs);
-    groupShapes.forEach(function(groupShape) {
-      var bufferCoords = getBufferMultiPolygonCoords(groupShape, distance, bufferMaker);
-      var geom = bufferCoords.length > 0 ?
-        makeClosedRingBufferGeometry(groupShape, arcs, getBufferDataset(bufferCoords),
-          opts, distance, false) : null;
-      if (geom) {
-        coords = coords.concat(geom.coordinates);
-      } else {
-        coords = coords.concat(getPolygonMultiPolygonCoords(groupShape, arcs));
-      }
-    });
-    if (coords.length === 0) return null;
-    var geom = {
-      type: 'MultiPolygon',
-      coordinates: coords
-    };
-    if (shouldDissolveBufferedRingGroups(groupShapes, arcs, distance)) {
-      geom = dissolvePolygonBufferGeometry(geom, opts);
-    }
-    return removePositiveBufferArtifactHoles(geom, shape, arcs, distance);
-  }
-
-  // True if any two of a feature's buffered ring groups are close enough that
-  // their buffers might merge (so the group buffers should be dissolved together
-  // rather than emitted as separate polygons).
-  function shouldDissolveBufferedRingGroups(groupShapes, arcs, distance) {
-    var threshold = getCoordinateDistance(distance, arcs) * 2;
-    var n = groupShapes.length;
-    if (n < 2) return false;
-    // Bounding-box prefilter + early exit. The old code computed the exact min
-    // distance over every group pair (O(groups^2 * verts * segs)) -- the dominant
-    // cost when a feature has many islands. Two groups can only be within
-    // @threshold if their bounding boxes are, so the box test skips the costly
-    // vertex-by-vertex distance for all far-apart pairs (the common case), and we
-    // return as soon as one near pair is found. Result is identical to
-    // (min inter-group distance <= threshold).
-    var bounds = groupShapes.map(function(shp) {
-      return arcs.getMultiShapeBounds(shp);
-    });
-    for (var i = 0; i < n - 1; i++) {
-      for (var j = i + 1; j < n; j++) {
-        if (boundsToBoundsDistance(bounds[i], bounds[j]) > threshold) continue;
-        if (getShapeToShapeDistance(groupShapes[i], groupShapes[j], arcs, threshold) <= threshold ||
-            getShapeToShapeDistance(groupShapes[j], groupShapes[i], arcs, threshold) <= threshold) {
-          return true;
-        }
-      }
-    }
-    return false;
-  }
-
-  // Minimum distance between two axis-aligned bounding boxes (0 if they overlap).
-  function boundsToBoundsDistance(a, b) {
-    var dx = Math.max(0, a.xmin - b.xmax, b.xmin - a.xmax);
-    var dy = Math.max(0, a.ymin - b.ymax, b.ymin - a.ymax);
-    return Math.sqrt(dx * dx + dy * dy);
-  }
-
-  // Min distance from the vertices of @shape1 to @shape2. Stops early once a
-  // vertex within @maxDist (optional) is found, since callers only compare the
-  // result against a threshold.
-  function getShapeToShapeDistance(shape1, shape2, arcs, maxDist) {
-    var data = exportPathData(shape1, arcs, 'polygon');
-    var minDist = Infinity;
-    var paths = data.pathData;
-    for (var i = 0; i < paths.length; i++) {
-      var points = paths[i].points;
-      for (var j = 0; j < points.length; j++) {
-        var d = getPointToShapeDistance(points[j][0], points[j][1], shape2, arcs);
-        if (d < minDist) minDist = d;
-        if (maxDist != null && minDist <= maxDist) return minDist;
-      }
-    }
-    return minDist;
-  }
-
-  function makeClosedRingBufferGeometry(shape, arcs, bufferDataset, opts, distance,
-      reverse) {
-    var sourceAreas = exportPathData(shape, arcs, 'polygon').pathData.map(function(path) {
-      return path.area;
-    });
-    var sourceBoundaryThreshold = getSourceBoundaryThreshold(distance, arcs);
-    var bufferLyr = bufferDataset.layers[0];
-    var bufferShape, bufferData, erodedShape;
-    if (!bufferDataset.arcs) return null;
-    // The default offset rings come from the winding-fill maker (one self-
-    // overlapping ring per source ring) and must be unioned by winding number;
-    // the sector-band fallback emits overlapping bands that a boundary flood
-    // resolves instead (its maker leaves winding_fill off to match).
-    dissolveBufferDataset2(bufferDataset,
-      Object.assign({}, opts, {winding_fill: !opts.sector_band}));
-    bufferShape = bufferLyr.shapes && bufferLyr.shapes[0];
-    if (!bufferShape) return null;
-    bufferData = exportPathData(bufferShape, bufferDataset.arcs, 'polygon');
-    // Build the source-shape segment index once: ringIsOnSourceBoundary probes
-    // ~20 points of every eroded buffer ring against the same source shape, and
-    // on large rings the unindexed per-point distance scan dominated runtime.
-    var sourceIndex = buildShapeSegmentIndex(shape, arcs);
-    erodedShape = bufferData.pathData.reduce(function(memo, path) {
-      if (!areaMatchesAny(path.area, sourceAreas) &&
-          !ringIsOnSourceBoundary(path.points, sourceIndex, sourceBoundaryThreshold)) {
-        memo.push(reverse ? reversePath(path.ids.concat()) : path.ids.concat());
-      }
-      return memo;
-    }, []);
-    return erodedShape.length > 0 ?
-      getPolygonGeometry(erodedShape, bufferDataset.arcs) : null;
-  }
-
-  function getPolygonRingGroupShapes(shape, arcs) {
-    var data = exportPathData(shape, arcs, 'polygon');
-    if (data.pointCount === 0) return [];
-    return groupPolygonRings(data.pathData, arcs, false).map(function(paths) {
-      return paths.map(function(path) {
-        return path.ids.concat();
-      });
-    });
-  }
-
-  function removePositiveBufferArtifactHoles(geom, shape, arcs, distance) {
-    if (!geom) return null;
-    var threshold = getPositiveHoleArtifactThreshold(distance, arcs);
-    var minHoleArea = getPositiveHoleArtifactAreaThreshold(distance, arcs);
-    var sourceHoles = getSourceHoleShapes(shape, arcs);
-    // Each candidate hole is classified by probing many points against the
-    // source shape. Both per-probe tests used to rescan the whole source shape:
-    //   - "is the probe inside the source shape?" (testPointInPolygon)
-    //   - "is the probe near a source hole boundary?" (point-to-shape distance)
-    // On large rings (e.g. a U.S. state buffer) this point-in-ring scan dominated
-    // runtime. Build the spatial indexes once per feature instead:
-    //   - PathIndex.pointIsEnclosed() runs point-in-polygon via a per-ring
-    //     scanline index (O(log n) per probe instead of O(n)).
-    //   - shapeIndex / holeIndex are chunk-bounds indexes that prune far segments
-    //     for the point-to-shape distance queries.
-    var ctx = {
-      threshold: threshold,
-      shapeIndex: buildShapeSegmentIndex(shape, arcs),
-      pathIndex: shape && shape.length > 0 ? new PathIndex([shape], arcs) : null,
-      holeIndex: sourceHoles.length > 0 ?
-        buildShapeSegmentIndex(sourceHoles.map(function(h) {return h[0];}), arcs) : null
-    };
-    if (geom.type == 'Polygon') {
-      geom.coordinates = filterArtifactHoles(geom.coordinates, minHoleArea, ctx);
-    } else if (geom.type == 'MultiPolygon') {
-      geom.coordinates = geom.coordinates.map(function(polygon) {
-        return filterArtifactHoles(polygon, minHoleArea, ctx);
-      }).filter(function(polygon) {
-        return polygon.length > 0;
-      });
-    }
-    return geom;
-  }
-
-  // Flatten a shape's path segments into fixed-size chunks (per path) with a
-  // bounding box each. A chunk's box distance is a lower bound on the distance to
-  // any of its segments, so a point-to-shape distance query can skip whole chunks
-  // whose box is already farther than the closest segment found so far. Source
-  // paths are spatially coherent, so each chunk's box is tight. Coords are stored
-  // flat ([ax, ay, bx, by, ...]) to avoid per-segment array allocation.
-  var SHAPE_SEGMENT_CHUNK_SIZE = 32;
-
-  function buildShapeSegmentIndex(shape, arcs) {
-    var coords = [];
-    var chunks = [];
-    (shape || []).forEach(function(ids) {
-      var iter = arcs.getShapeIter(ids);
-      if (!iter.hasNext()) return;
-      var ax = iter.x, ay = iter.y;
-      var inChunk = 0;
-      var xmin = 0, ymin = 0, xmax = 0, ymax = 0, start = 0;
-      while (iter.hasNext()) {
-        var bx = iter.x, by = iter.y;
-        if (inChunk === 0) {
-          start = coords.length / 4;
-          xmin = Math.min(ax, bx); xmax = Math.max(ax, bx);
-          ymin = Math.min(ay, by); ymax = Math.max(ay, by);
-        } else {
-          if (ax < xmin) xmin = ax; else if (ax > xmax) xmax = ax;
-          if (bx < xmin) xmin = bx; else if (bx > xmax) xmax = bx;
-          if (ay < ymin) ymin = ay; else if (ay > ymax) ymax = ay;
-          if (by < ymin) ymin = by; else if (by > ymax) ymax = by;
-        }
-        coords.push(ax, ay, bx, by);
-        inChunk++;
-        if (inChunk === SHAPE_SEGMENT_CHUNK_SIZE) {
-          chunks.push({start: start, end: coords.length / 4,
-            xmin: xmin, ymin: ymin, xmax: xmax, ymax: ymax});
-          inChunk = 0;
-        }
-        ax = bx; ay = by;
-      }
-      if (inChunk > 0) {
-        chunks.push({start: start, end: coords.length / 4,
-          xmin: xmin, ymin: ymin, xmax: xmax, ymax: ymax});
-      }
-    });
-    return {coords: coords, chunks: chunks};
-  }
-
-  // Same result as getPointToShapeDistance(px, py, shape, arcs), but using the
-  // chunk bounding boxes to prune. Scan the nearest-box chunk first to seed a
-  // tight bound, then skip any chunk whose box is farther than that bound. No
-  // per-query allocation or sorting.
-  function getPointToIndexedShapeDistance(px, py, index) {
-    var chunks = index.chunks, coords = index.coords;
-    var n = chunks.length;
-    if (n === 0) return Infinity;
-    var bestSq = Infinity;
-    var nearIdx = -1, nearBoxSq = Infinity, boxSq, c, k;
-    for (c = 0; c < n; c++) {
-      boxSq = shapeChunkBoxDistSq(px, py, chunks[c]);
-      if (boxSq < nearBoxSq) { nearBoxSq = boxSq; nearIdx = c; }
-    }
-    bestSq = scanShapeChunk(px, py, coords, chunks[nearIdx], bestSq);
-    for (k = 0; k < n; k++) {
-      if (k === nearIdx) continue;
-      if (shapeChunkBoxDistSq(px, py, chunks[k]) >= bestSq) continue;
-      bestSq = scanShapeChunk(px, py, coords, chunks[k], bestSq);
-    }
-    return Math.sqrt(bestSq);
-  }
-
-  function scanShapeChunk(px, py, coords, chunk, bestSq) {
-    for (var i = chunk.start; i < chunk.end; i++) {
-      var o = i * 4;
-      var d = pointSegDistSq2(px, py, coords[o], coords[o + 1], coords[o + 2], coords[o + 3]);
-      if (d < bestSq) bestSq = d;
-    }
-    return bestSq;
-  }
-
-  function shapeChunkBoxDistSq(px, py, chunk) {
-    var dx = px < chunk.xmin ? chunk.xmin - px : (px > chunk.xmax ? px - chunk.xmax : 0);
-    var dy = py < chunk.ymin ? chunk.ymin - py : (py > chunk.ymax ? py - chunk.ymax : 0);
-    return dx * dx + dy * dy;
-  }
-
-  function getSourceHoleShapes(shape, arcs) {
-    return exportPathData(shape, arcs, 'polygon').pathData.reduce(function(memo, path) {
-      if (path.area < 0) {
-        memo.push([path.ids]);
-      }
-      return memo;
-    }, []);
-  }
-
-  function filterArtifactHoles(polygon, minHoleArea, ctx) {
-    if (polygon.length < 2) return polygon;
-    return [polygon[0]].concat(polygon.slice(1).filter(function(ring) {
-      return Math.abs(getGeoJSONRingArea(ring)) > minHoleArea &&
-        !positiveBufferHoleIsArtifact(ring, ctx);
-    }));
-  }
-
-  function positiveBufferHoleIsArtifact(ring, ctx) {
-    var n = ring.length - 1; // skip duplicate endpoint
-    var step = Math.max(1, Math.floor(n / 20));
-    var p, p2;
-    for (var i = 0; i < n; i += step) {
-      p = ring[i];
-      if (pointIsDeepInsidePositiveBuffer(p, ctx)) return true;
-      p2 = ring[(i + 1) % n];
-      if (pointIsDeepInsidePositiveBuffer([(p[0] + p2[0]) / 2, (p[1] + p2[1]) / 2], ctx)) return true;
-    }
-    return false;
-  }
-
-  function pointIsDeepInsidePositiveBuffer(p, ctx) {
-    if (ctx.holeIndex &&
-        getPointToIndexedShapeDistance(p[0], p[1], ctx.holeIndex) < ctx.threshold) {
-      return false;
-    }
-    if (ctx.pathIndex && ctx.pathIndex.pointIsEnclosed(p)) return true;
-    // A positive buffer can shrink legitimate source holes, leaving their
-    // boundaries near the original rings. Don't classify those as artifacts.
-    return getPointToIndexedShapeDistance(p[0], p[1], ctx.shapeIndex) < ctx.threshold;
-  }
-
-  function getPositiveHoleArtifactThreshold(distance, arcs) {
-    return getCoordinateDistance(distance, arcs) * 0.5;
-  }
-
-  function getPositiveHoleArtifactAreaThreshold(distance, arcs) {
-    var d = getCoordinateDistance(distance, arcs);
-    return d * d;
-  }
-
-  function getGeoJSONRingArea(ring) {
-    var sum = 0;
-    for (var i = 0, n = ring.length - 1; i < n; i++) {
-      sum += ring[i][0] * ring[i + 1][1] - ring[i + 1][0] * ring[i][1];
-    }
-    return sum / 2;
-  }
-
-  function areaMatchesAny(area, arr) {
-    return arr.some(function(area2) {
-      var tol = Math.max(1e-8, Math.abs(area2) * 1e-9);
-      return Math.abs(Math.abs(area) - Math.abs(area2)) <= tol;
-    });
-  }
-
-  function getSourceBoundaryThreshold(distance, arcs) {
-    return getCoordinateDistance(distance, arcs) * 0.25;
-  }
-
-  function getCoordinateDistance(distance, arcs) {
-    return arcs.isPlanar() ? distance : distance / R$3 * R2D$1;
-  }
-
-  // @shapeIndex: chunk-bounds index of the source shape (see buildShapeSegmentIndex)
-  function ringIsOnSourceBoundary(points, shapeIndex, threshold) {
-    var n = points.length - 1; // skip duplicate endpoint
-    var step = Math.max(1, Math.floor(n / 20));
-    var sum = 0;
-    var count = 0;
-    for (var i = 0; i < n; i += step) {
-      sum += getPointToIndexedShapeDistance(points[i][0], points[i][1], shapeIndex);
-      count++;
-    }
-    return count > 0 && sum / count < threshold;
-  }
-
-  function getPolygonMultiPolygonCoords(shape, arcs) {
-    var data = exportPathData(shape, arcs, 'polygon');
-    if (data.pointCount === 0) return [];
-    return groupPolygonRings(data.pathData, arcs, false).map(function(paths) {
-      return paths.map(function(path) {
-        return path.points.map(function(p) {
-          return p.concat();
-        });
-      });
-    });
-  }
-
-  function getPolygonGeometry(shape, arcs) {
-    var coords = getPolygonMultiPolygonCoords(shape, arcs);
-    return coords.length > 0 ? {
-      type: 'MultiPolygon',
-      coordinates: coords
-    } : null;
-  }
-
-  function getBufferDataset(coords) {
-    return importGeoJSON({
-      type: 'GeometryCollection',
-      geometries: [{
-        type: 'MultiPolygon',
-        coordinates: coords
-      }]
-    }, {type: 'polygon'});
-  }
-
-  // Union a set of winding-fill offset rings (which self-overlap) into clean,
-  // non-self-overlapping MultiPolygon coordinates, via the winding-number
-  // dissolve. Used by the topological pipeline to feed an ordinary polygon into
-  // the shared mosaic (whose boundary-flood membership cannot resolve the
-  // self-overlapping construction ring directly).
-  function dissolveOffsetRingsToCoords(coords, opts) {
-    if (!coords || coords.length === 0) return [];
-    var dataset = getBufferDataset(coords);
-    if (!dataset.arcs) return [];
-    dissolveBufferDataset2(dataset, Object.assign({}, opts, {winding_fill: true}));
-    var lyr = dataset.layers[0];
-    var shape = lyr.shapes && lyr.shapes[0];
-    return shape ? getPolygonMultiPolygonCoords(shape, dataset.arcs) : [];
-  }
-
-  function getBufferMultiPolygonCoords(paths, distance, bufferMaker) {
-    var features, coords = [];
-    if (paths.length === 0) return coords;
-    features = bufferMaker(paths, distance) || [];
-    features.forEach(function(feat) {
-      var geom = feat && feat.geometry;
-      if (geom && geom.type == 'MultiPolygon') {
-        coords = coords.concat(geom.coordinates);
-      }
-    });
-    return coords;
-  }
-
-  function getPolygonBufferPathData(shape, uniqueArcTest) {
-    var data = {paths: [], split: false};
-    (shape || []).forEach(function(path) {
-      var paths = uniqueArcTest ? splitPathAtSharedArcs(path, uniqueArcTest) :
-        [path.concat()];
-      if (paths.length != 1 || paths[0].length != path.length ||
-          !paths[0].every(function(arcId, i) {
-        return arcId == path[i];
-      })) {
-        data.split = true;
-      }
-      data.paths = data.paths.concat(paths);
-    });
-    return data;
-  }
-
-  function splitPathAtSharedArcs(path, uniqueArcTest) {
-    var flags = path.map(uniqueArcTest);
-    var firstShared = flags.indexOf(false);
-    var chains = [];
-    var chain = [];
-    var start, i, arcId;
-    if (firstShared == -1) return [path.concat()];
-    start = (firstShared + 1) % path.length;
-    for (i = 0; i < path.length; i++) {
-      arcId = path[(start + i) % path.length];
-      if (uniqueArcTest(arcId)) {
-        chain.push(arcId);
-      } else if (chain.length > 0) {
-        chains.push(chain);
-        chain = [];
-      }
-    }
-    if (chain.length > 0) {
-      chains.push(chain);
-    }
-    return chains;
-  }
-
-  function getUniqueArcTest(lyr, arcs) {
-    var classify = getArcClassifier(lyr, arcs, {reusable: true})(function(a, b) {
-      return b == -1 ? 'unique' : null;
-    });
-    return function(arcId) {
-      return !!classify(arcId);
-    };
-  }
-
-  function ringArea(ring) {
-    var iter = new PointIter(ring);
-    return getSphericalPathArea2(iter);
-  }
-
-  function makePointBuffer(lyr, dataset, opts) {
-    var geojson = makePointBufferGeoJSON(lyr, dataset, opts);
-    return importGeoJSON(geojson, {});
-  }
-
-  // Make a single geodetic circle
-  function getCircleGeoJSON(center, radius, vertices, opts) {
-    var n = 360;
-    var geod = getGeodeticSegmentFunction(parseCrsString$1('wgs84')); // ?
-    if (opts.inset) {
-      radius -= opts.inset;
-    }
-    return opts.geometry_type == 'polyline' ?
-      getPointBufferLineString([center], radius, n, geod) :
-      getPointBufferPolygon([center], radius, n, geod, true);
-  }
-
-  // Convert a point layer to circles
-  function makePointBufferGeoJSON(lyr, dataset, opts) {
-    var vertices = opts.vertices || 72;
-    var distanceFn = getBufferDistanceFunction(lyr, dataset, opts);
-    var crs = getDatasetCRS(dataset);
-    var spherical = isLatLngCRS(crs);
-    var geod = getGeodeticSegmentFunction(crs);
-    var geometries = lyr.shapes.map(function(shape, i) {
-      var dist = distanceFn(i);
-      if (!dist || !shape) return null;
-      return getPointBufferPolygon(shape, dist, vertices, geod, spherical);
-    });
-    // TODO: make sure that importer supports null geometries (nonstandard GeoJSON);
-    return {
-      type: 'GeometryCollection',
-      geometries: geometries
-    };
-  }
-
-  function getPointBufferPolygon(points, distance, vertices, geod, spherical) {
-    var rings = [], coords, coords2;
-    if (!points || !points.length) return null;
-    for (var i=0; i<points.length; i++) {
-      coords = getPointBufferCoordinates(points[i], distance, vertices, geod);
-      if (!spherical) {
-        rings.push([coords]);
-      } else if (countCrosses(coords) > 0) {
-        coords2 = removePolygonCrosses([coords]);
-        while (coords2.length > 0) rings.push([coords2.pop()]); // geojson polygon coords, no hole
-      } else if (ringArea(coords) < 0) {
-        // negative spherical area: CCW ring, indicating a circle of >180 degrees
-        // that fully encloses both poles and the antimeridian.
-        // need to add an enclosure around the entire sphere
-        // TODO: compare to distance param as a sanity check
-        rings.push([
-          [[180, 90], [180, -90], [0, -90], [-180, -90], [-180, 90], [0, 90], [180, 90]],
-          coords
-        ]);
-      } else {
-        rings.push([coords]);
-      }
-    }
-    return {
-      type: 'MultiPolygon',
-      coordinates: rings
-    };
-  }
-
-  function getPointBufferLineString(points, distance, vertices, geod) {
-    var rings = [], coords;
-    if (!points || !points.length) return null;
-    for (var i=0; i<points.length; i++) {
-      coords = getPointBufferCoordinates(points[i], distance, vertices, geod);
-      coords = removePolylineCrosses(coords);
-      while (coords.length > 0) rings.push(coords.pop());
-    }
-    return rings.length == 1 ? {
-      type: 'LineString',
-      coordinates: rings[0]
-    } : {
-      type: 'MultiLineString',
-      coordinates: rings
-    };
-  }
-
-  // Returns array of [x, y] coordinates in a closed ring
-  function getPointBufferCoordinates(center, meterDist, vertices, geod) {
-    var coords = [],
-        angle = 360 / vertices,
-        theta;
-    for (var i=0; i<vertices; i++) {
-      // offsetting by half a step so 4 sides are flat, not pointy
-      // (looks better on low-vertex circles)
-      theta = (i + 0.5) * angle % 360;
-      coords.push(geod(center[0], center[1], theta, meterDist));
-    }
-    coords.push(coords[0].concat());
-    return coords;
-  }
-
-  // Returns number of arcs that were removed
-  function editArcs(arcs, onPoint) {
-    var nn2 = [],
-        xx2 = [],
-        yy2 = [],
-        errors = 0,
-        n;
-
-    arcs.forEach(function(arc, i) {
-      editArc(arc, onPoint);
-    });
-    arcs.updateVertexData(nn2, xx2, yy2);
-    return errors;
-
-    function append(p) {
-      if (p) {
-        xx2.push(p[0]);
-        yy2.push(p[1]);
-        n++;
-      }
-    }
-
-    function editArc(arc, cb) {
-      var x, y, xp, yp, retn;
-      var valid = true;
-      var i = 0;
-      n = 0;
-      while (arc.hasNext()) {
-        x = arc.x;
-        y = arc.y;
-        retn = cb(append, x, y, xp, yp, i++);
-        if (retn === false) {
-          valid = false;
-          // assumes that it's ok for the arc iterator to be interrupted.
-          break;
-        }
-        xp = x;
-        yp = y;
-      }
-      if (valid && n == 1) {
-        // only one valid point was added to this arc (invalid)
-        // e.g. this could happen during reprojection.
-        // making this arc empty
-        // error("An invalid arc was created");
-        message("An invalid arc was created");
-        valid = false;
-      }
-      if (valid) {
-        nn2.push(n);
-      } else {
-        // remove any points that were added for an invalid arc
-        while (n-- > 0) {
-          xx2.pop();
-          yy2.pop();
-        }
-        nn2.push(0); // add empty arc (to preserve mapping from paths to arcs)
-        errors++;
-      }
-    }
   }
 
   // Remove small-area polygon rings (very simple implementation of sliver removal)
@@ -46111,6 +45321,1051 @@ ${svg}
     getClipMessage: getClipMessage,
     warnIfBoundsDontOverlap: warnIfBoundsDontOverlap
   });
+
+  // Returns a function for constructing a query function that accepts an arc id and
+  // returns information about the polygon or polygons that use the given arc.
+  // TODO: explain this better.
+  //
+  // options:
+  //   filter: optional filter function; signature: function(idA, idB or -1) : boolean
+  //   reusable: flag that lets an arc be queried multiple times.
+  function getArcClassifier(lyr, arcs, optsArg) {
+    var opts = optsArg || {},
+        useOnce = !opts.reusable,
+        n = arcs.size(),
+        a = new Int32Array(n),
+        b = new Int32Array(n),
+        filter;
+    if (opts.where) {
+      filter = compileFeaturePairFilterExpression(opts.where, lyr, arcs);
+    }
+
+    utils.initializeArray(a, -1);
+    utils.initializeArray(b, -1);
+
+    traversePaths(lyr.shapes, function(o) {
+      var i = absArcId(o.arcId);
+      var shpId = o.shapeId;
+      var aval = a[i];
+      if (aval == -1) {
+        a[i] = shpId;
+      } else if (shpId < aval) {
+        b[i] = aval;
+        a[i] = shpId;
+      } else {
+        b[i] = shpId;
+      }
+    });
+
+    function classify(arcId, getKey) {
+      var i = absArcId(arcId);
+      var shpA = a[i];
+      var shpB = b[i];
+      var key;
+      if (shpA == -1) return null;
+      key = getKey(shpA, shpB);
+      if (key === null || key === false) return null;
+      if (useOnce) {
+        // arc can only be queried once
+        a[i] = -1;
+        b[i] = -1;
+      }
+      // use optional filter to exclude some arcs
+      if (filter && !filter(shpA, shpB)) return null;
+      return key;
+    }
+
+    return function(getKey) {
+      return function(arcId) {
+        return classify(arcId, getKey);
+      };
+    };
+  }
+
+  var ArcClassifier = /*#__PURE__*/Object.freeze({
+    __proto__: null,
+    getArcClassifier: getArcClassifier
+  });
+
+  function makePolygonBuffer(lyr, dataset, opts) {
+    var spherical = isLatLngCRS(getDatasetCRS(dataset));
+    // The debug-offset/debug-winding/debug-mosaic visualizations are implemented
+    // only for line buffers. They have no handling in the polygon pipeline; left
+    // unstripped they leak into the per-shape dissolve and produce malformed
+    // output, so drop them and warn rather than silently mislead.
+    if (opts.debug_offset || opts.debug_winding || opts.debug_mosaic) {
+      warn('debug-offset/debug-winding/debug-mosaic are not implemented for polygon buffers; ignoring');
+      opts = Object.assign({}, opts, {
+        debug_offset: false,
+        debug_winding: false,
+        debug_mosaic: false
+      });
+    }
+    if (spherical && opts.polar) {
+      // Pole/antimeridian-sliced polygons (grow only): keep the seam edges at the
+      // extent and clip to the world rectangle instead of wrapping at the
+      // antimeridian (see makePolarPolygonBuffer).
+      return makePolarPolygonBuffer(lyr, dataset, opts);
+    }
+    var output = makePolygonBufferGeoJSON(lyr, dataset, opts);
+    var dataset2 = importGeoJSON(output.geojson, {type: 'polygon'});
+    if (spherical) {
+      splitAntimeridianBufferDataset(dataset2);
+      if (output.dissolveAfterSplit) {
+        dissolveBufferDataset2(dataset2, opts);
+      }
+    }
+    return dataset2;
+  }
+
+  // World rectangle (lng/lat) the polar buffer is clipped to.
+  var POLAR_WORLD_BBOX = [-180, -90, 180, 90];
+
+  // Buffer a polygon sliced at the antimeridian (lng +/-180) and/or a pole
+  // (lat +/-90): build the offset (the pole-touching source rings are added back,
+  // see makePolygonBufferGeoJSON), dissolve, and clip to the world rectangle
+  // instead of wrapping at the antimeridian.
+  //
+  // Only positive (grow) distances are supported. A negative (erode) buffer would
+  // have to keep the artificial seam edges pinned to the extent while only the
+  // coastline moves inward; the winding-fill construction can't do that without
+  // producing self-intersecting geometry (the pinned seam coincides with the
+  // source boundary, which the dissolve cannot resolve), so we reject it with a
+  // clear message rather than emit a result whose seams have crept inward.
+  function makePolarPolygonBuffer(lyr, dataset, opts) {
+    if (polarBufferHasNegativeDistance(lyr, dataset, opts)) {
+      stop$1('The polar option does not support negative (erode) buffers yet.');
+    }
+    var output = makePolygonBufferGeoJSON(lyr, dataset, opts);
+    var dataset2 = importGeoJSON(output.geojson, {type: 'polygon'});
+    if (dataset2.arcs) {
+      if (output.dissolveAfterSplit) {
+        dissolveBufferDataset2(dataset2, opts);
+      }
+      clipDatasetToWorldRect(dataset2);
+    }
+    return dataset2;
+  }
+
+  function polarBufferHasNegativeDistance(lyr, dataset, opts) {
+    var distanceFn = getBufferDistanceFunction(lyr, dataset, opts);
+    return (lyr.shapes || []).some(function(shape, i) {
+      return shape && distanceFn(i) < 0;
+    });
+  }
+
+  function clipDatasetToWorldRect(dataset) {
+    if (!dataset.arcs || !dataset.layers.length) return;
+    dataset.layers = clipLayersByBBox(dataset.layers, dataset,
+      {bbox2: POLAR_WORLD_BBOX});
+  }
+
+  function makePolygonBufferGeoJSON(lyr, dataset, opts) {
+    var distanceFn = getBufferDistanceFunction(lyr, dataset, opts);
+    var useTopologicalMode = !!opts.topological;
+    var uniqueArcTest = useTopologicalMode ? getUniqueArcTest(lyr, dataset.arcs) : null;
+    var hasPositiveDistance = false;
+    var hasNegativeDistance = false;
+    if (useTopologicalMode) {
+      // The topological pipeline selects mosaic tiles by source membership
+      // (boundary flood), which cannot resolve the self-overlapping winding-fill
+      // ring. So each feature's winding-fill offset rings are pre-dissolved into a
+      // clean (non-self-overlapping) polygon before they enter the shared mosaic;
+      // the construction speedup (loop removal cutting per-feature self-
+      // intersections) is preserved, and the mosaic is unchanged.
+      return makeTopologicalPolygonBufferGeoJSON(lyr, dataset, opts, distanceFn,
+        uniqueArcTest, getPolygonRingBufferMaker(dataset, opts, 'left'));
+    }
+    // Closed source rings are offset with the winding-fill construction: one
+    // self-overlapping ring per source ring (its overshoot loops resolved by the
+    // winding-number dissolve in makeClosedRingBufferGeometry) instead of many
+    // overlapping per-segment section bands. The single ring carries far fewer
+    // rings and self-intersections into the dissolve, which dominates polygon-
+    // buffer runtime.
+    var leftBufferMaker = getPolygonRingBufferMaker(dataset, opts, 'left');
+    var rightBufferMaker = getPolygonRingBufferMaker(dataset, opts, 'right');
+    var geometries = lyr.shapes.map(function(shape, i) {
+      var distance = distanceFn(i);
+      if (!distance || !shape) return null;
+      if (distance < 0) {
+        hasNegativeDistance = true;
+        return makeNegativePolygonBufferGeometry(shape, -distance, dataset, opts,
+          rightBufferMaker);
+      }
+      hasPositiveDistance = true;
+      var geom = makePositivePolygonBufferGeometry(shape, distance, dataset, opts,
+        leftBufferMaker);
+      if (opts.polar && shapeReachesPole(shape, dataset.arcs)) {
+        // A pole-touching ring collapses onto the pole line (Mercator can't reach
+        // the pole) and the ring-filtering drops it, so the winding fill keeps only
+        // the coastline band. Append the source rings; the dataset-level dissolve
+        // unions them with the band into the full grown shape. (Shapes that don't
+        // reach a pole -- e.g. the complement ocean in the negative path -- fill
+        // correctly on their own, and the appended source would tangle them.)
+        geom = appendSourceRings(geom, shape, dataset.arcs);
+      }
+      return geom;
+    });
+    return {
+      geojson: {
+        type: 'GeometryCollection',
+        geometries: geometries
+      },
+      dissolveAfterSplit: hasPositiveDistance && !hasNegativeDistance
+    };
+  }
+
+  // True if any vertex of the shape sits at a pole (lat +/-90). Such a ring gets
+  // pinched onto the pole line during Mercator offset construction.
+  function shapeReachesPole(shape, arcs) {
+    var b = arcs.getMultiShapeBounds(shape);
+    return b.ymax >= 90 - 1e-3 || b.ymin <= -90 + 1e-3;
+  }
+
+  // Combine a buffer geometry with the source polygon's rings into one
+  // MultiPolygon (overlapping); a later union dissolve merges them. Used by the
+  // polar option to keep the polar interior that the pole-pinched ribbon drops.
+  function appendSourceRings(geom, shape, arcs) {
+    var sourceCoords = getPolygonMultiPolygonCoords(shape, arcs);
+    var coords = [];
+    if (geom && geom.type == 'MultiPolygon') coords = coords.concat(geom.coordinates);
+    else if (geom && geom.type == 'Polygon') coords.push(geom.coordinates);
+    coords = coords.concat(sourceCoords);
+    if (coords.length === 0) return null;
+    return {type: 'MultiPolygon', coordinates: coords};
+  }
+
+  function getPolygonRingBufferMaker(dataset, opts, side, winding) {
+    // The sector-band escape hatch forces the older non-winding construction even
+    // for callers that request winding-fill (see the 'sector-band' option).
+    var useWinding = !opts.sector_band;
+    var makerOpts = Object.assign({}, opts, {
+      left: side == 'left',
+      right: side == 'right',
+      // Winding-fill construction also enables overshoot-loop removal on the single
+      // offset ring (see buildOneSidedRings); both are safe here because polygon
+      // rings are closed and their offsets are doubly-covered.
+      winding_fill: useWinding
+    });
+    return getPolylineBufferMaker(dataset, makerOpts);
+  }
+
+  function makePositivePolygonBufferGeometry(shape, distance, dataset, opts,
+      leftBufferMaker) {
+    // Non-topological positive buffers are never path-split (only the topological
+    // pipeline splits, and it has its own function), so each shape's ring groups
+    // are offset and dissolved directly.
+    return makeClosedRingPositiveBufferGeometry(shape, dataset.arcs,
+      distance, opts, leftBufferMaker);
+  }
+
+  function makeTopologicalPolygonBufferGeoJSON(lyr, dataset, opts, distanceFn,
+      uniqueArcTest, bufferMaker) {
+    var shapes = lyr.shapes || [];
+    var distances = [];
+    var sourceIds = [];
+    var bufferIds = [];
+    var tmpGeometries = [];
+    var hasPositiveDistance = false;
+    var geometries, tmpDataset;
+
+    shapes.forEach(function(shape, i) {
+      sourceIds[i] = -1;
+      bufferIds[i] = -1;
+      distances[i] = distanceFn(i);
+      if (distances[i] < 0) {
+        stop$1('The topological buffer option does not support negative distances');
+      }
+      if (!shape) return;
+      sourceIds[i] = tmpGeometries.length;
+      tmpGeometries.push(getPolygonGeometry(shape, dataset.arcs));
+    });
+
+    shapes.forEach(function(shape, i) {
+      var distance = distances[i];
+      var pathData, bufferCoords;
+      if (!distance || !shape) return;
+      hasPositiveDistance = true;
+      pathData = getPolygonBufferPathData(shape, uniqueArcTest);
+      bufferCoords = getBufferMultiPolygonCoords(pathData.paths, distance, bufferMaker);
+      // Resolve the winding-fill rings' self-overlaps into a clean polygon (the
+      // mosaic's boundary-flood membership cannot), so this feature enters the
+      // shared mosaic as an ordinary polygon. The sector-band fallback emits
+      // boundary-flood-resolvable bands, so it feeds the mosaic directly (as the
+      // topological pipeline did before the winding-fill construction).
+      if (!opts.sector_band) {
+        bufferCoords = dissolveOffsetRingsToCoords(bufferCoords, opts);
+      }
+      if (bufferCoords.length > 0) {
+        bufferIds[i] = tmpGeometries.length;
+        tmpGeometries.push({
+          type: 'MultiPolygon',
+          coordinates: bufferCoords
+        });
+      }
+    });
+
+    if (!hasPositiveDistance || tmpGeometries.length === 0) {
+      geometries = shapes.map(function() { return null; });
+    } else {
+      tmpDataset = importGeoJSON({
+        type: 'GeometryCollection',
+        geometries: tmpGeometries
+      }, {type: 'polygon'});
+      geometries = makeTopologicalPolygonBufferGeometries(shapes, distances,
+        sourceIds, bufferIds, tmpDataset, dataset.arcs);
+    }
+    return {
+      geojson: {
+        type: 'GeometryCollection',
+        geometries: geometries
+      },
+      dissolveAfterSplit: hasPositiveDistance
+    };
+  }
+
+  function makeTopologicalPolygonBufferGeometries(shapes, distances, sourceIds,
+      bufferIds, tmpDataset, sourceArcs) {
+    var tmpLyr = tmpDataset.layers[0];
+    var nodes = addIntersectionCuts(tmpDataset, {rebuild_topology: true});
+    var mosaicIndex = new MosaicIndex(tmpLyr, nodes, {flat: false, no_holes: false});
+    var pathfind = getRingIntersector(mosaicIndex.nodes);
+    var sourceIdIndex = getIdLookup(sourceIds);
+    var bufferIdIndex = getIdToFeatureIdLookup(bufferIds);
+    var sourceAreas = getSourceShapeAreas(shapes, sourceArcs);
+    return shapes.map(function(shape, i) {
+      var distance = distances[i];
+      var tileIds, geom;
+      if (!distance || !shape) return null;
+      tileIds = getTopologicalBufferTileIds(sourceIds[i], bufferIds[i],
+        i, mosaicIndex, sourceIdIndex, bufferIdIndex, sourceAreas);
+      geom = getTileIdsGeometry(tileIds, mosaicIndex, pathfind);
+      return removePositiveBufferArtifactHoles(geom, shape, sourceArcs, distance);
+    });
+  }
+
+  function getTopologicalBufferTileIds(sourceId, bufferId, featureId, mosaicIndex,
+      sourceIdIndex, bufferIdIndex, sourceAreas) {
+    var ids = [];
+    var index = [];
+    addTileIds(ids, index, mosaicIndex.getTileIdsByShapeId(sourceId));
+    if (bufferId >= 0) {
+      addTileIds(ids, index, mosaicIndex.getTileIdsByShapeId(bufferId).filter(function(tileId) {
+        return !tileHasSourcePolygon(tileId, mosaicIndex, sourceIdIndex) &&
+          getBufferTileOwnerId(tileId, mosaicIndex, bufferIdIndex, sourceAreas) == featureId;
+      }));
+    }
+    return ids;
+  }
+
+  function addTileIds(memo, index, ids) {
+    ids.forEach(function(id) {
+      if (index[id]) return;
+      index[id] = true;
+      memo.push(id);
+    });
+  }
+
+  function tileHasSourcePolygon(tileId, mosaicIndex, sourceIdIndex) {
+    return mosaicIndex.getSourceIdsByTileId(tileId).some(function(shapeId) {
+      return sourceIdIndex[shapeId];
+    });
+  }
+
+  function getBufferTileOwnerId(tileId, mosaicIndex, bufferIdIndex, sourceAreas) {
+    var ownerId = -1;
+    var ownerArea = -Infinity;
+    mosaicIndex.getSourceIdsByTileId(tileId).forEach(function(shapeId) {
+      var featureId = bufferIdIndex[shapeId];
+      var area;
+      if (featureId >= 0) {
+        area = sourceAreas[featureId];
+        if (area > ownerArea || area == ownerArea && featureId < ownerId) {
+          ownerId = featureId;
+          ownerArea = area;
+        }
+      }
+    });
+    return ownerId;
+  }
+
+  function getSourceShapeAreas(shapes, arcs) {
+    return shapes.map(function(shape) {
+      return Math.abs(getShapeArea(shape, arcs));
+    });
+  }
+
+  function getIdLookup(ids) {
+    var index = [];
+    ids.forEach(function(id) {
+      if (id >= 0) index[id] = true;
+    });
+    return index;
+  }
+
+  function getIdToFeatureIdLookup(ids) {
+    var index = [];
+    ids.forEach(function(id, i) {
+      if (id >= 0) index[id] = i;
+    });
+    return index;
+  }
+
+  function getTileIdsGeometry(tileIds, mosaicIndex, pathfind) {
+    var rings = [];
+    var holes = [];
+    var shp;
+    tileIds.forEach(function(tileId) {
+      var tile = mosaicIndex.mosaic[tileId];
+      rings.push(tile[0]);
+      if (tile.length > 1) {
+        holes = holes.concat(tile.slice(1));
+      }
+    });
+    shp = pathfind(rings.concat(holes), 'dissolve');
+    if (shp && shp.length > 0) {
+      shp = fixNestingErrors(shp, mosaicIndex.nodes.arcs);
+    }
+    return shp && shp.length > 0 ? getPolygonGeometry(shp, mosaicIndex.nodes.arcs) : null;
+  }
+
+  function dissolvePolygonBufferGeometry(geom, opts) {
+    var tmp = importGeoJSON({
+      type: 'GeometryCollection',
+      geometries: [geom]
+    }, {type: 'polygon'});
+    var lyr = tmp.layers[0];
+    if (tmp.arcs) {
+      dissolveBufferDataset2(tmp, opts);
+    }
+    if (lyr.shapes && lyr.shapes[0]) {
+      lyr.shapes[0] = fixNestingErrors(lyr.shapes[0], tmp.arcs);
+    }
+    return lyr.shapes && lyr.shapes[0] ?
+      getPolygonGeometry(lyr.shapes[0], tmp.arcs) : null;
+  }
+
+  function makeNegativePolygonBufferGeometry(shape, distance, dataset, opts,
+      bufferMaker) {
+    // Non-topological negative buffers are never path-split, so each shape's ring
+    // groups are offset and eroded directly.
+    return makeClosedRingNegativeBufferGeometry(shape, dataset.arcs, distance,
+      opts, bufferMaker);
+  }
+
+  function makeClosedRingNegativeBufferGeometry(shape, arcs, distance, opts,
+      bufferMaker) {
+    var coords = [];
+    getPolygonRingGroupShapes(shape, arcs).forEach(function(groupShape) {
+      var bufferCoords = getBufferMultiPolygonCoords(groupShape, distance, bufferMaker);
+      var geom = bufferCoords.length > 0 ?
+        makeClosedRingBufferGeometry(groupShape, arcs, getBufferDataset(bufferCoords),
+          opts, distance, true) : null;
+      if (geom) {
+        coords = coords.concat(geom.coordinates);
+      }
+    });
+    return coords.length > 0 ? {
+      type: 'MultiPolygon',
+      coordinates: coords
+    } : null;
+  }
+
+  function makeClosedRingPositiveBufferGeometry(shape, arcs, distance, opts,
+      bufferMaker) {
+    var coords = [];
+    var groupShapes = getPolygonRingGroupShapes(shape, arcs);
+    groupShapes.forEach(function(groupShape) {
+      var bufferCoords = getBufferMultiPolygonCoords(groupShape, distance, bufferMaker);
+      var geom = bufferCoords.length > 0 ?
+        makeClosedRingBufferGeometry(groupShape, arcs, getBufferDataset(bufferCoords),
+          opts, distance, false) : null;
+      if (geom) {
+        coords = coords.concat(geom.coordinates);
+      } else {
+        coords = coords.concat(getPolygonMultiPolygonCoords(groupShape, arcs));
+      }
+    });
+    if (coords.length === 0) return null;
+    var geom = {
+      type: 'MultiPolygon',
+      coordinates: coords
+    };
+    if (shouldDissolveBufferedRingGroups(groupShapes, arcs, distance)) {
+      geom = dissolvePolygonBufferGeometry(geom, opts);
+    }
+    return removePositiveBufferArtifactHoles(geom, shape, arcs, distance);
+  }
+
+  // True if any two of a feature's buffered ring groups are close enough that
+  // their buffers might merge (so the group buffers should be dissolved together
+  // rather than emitted as separate polygons).
+  function shouldDissolveBufferedRingGroups(groupShapes, arcs, distance) {
+    var threshold = getCoordinateDistance(distance, arcs) * 2;
+    var n = groupShapes.length;
+    if (n < 2) return false;
+    // Bounding-box prefilter + early exit. The old code computed the exact min
+    // distance over every group pair (O(groups^2 * verts * segs)) -- the dominant
+    // cost when a feature has many islands. Two groups can only be within
+    // @threshold if their bounding boxes are, so the box test skips the costly
+    // vertex-by-vertex distance for all far-apart pairs (the common case), and we
+    // return as soon as one near pair is found. Result is identical to
+    // (min inter-group distance <= threshold).
+    var bounds = groupShapes.map(function(shp) {
+      return arcs.getMultiShapeBounds(shp);
+    });
+    for (var i = 0; i < n - 1; i++) {
+      for (var j = i + 1; j < n; j++) {
+        if (boundsToBoundsDistance(bounds[i], bounds[j]) > threshold) continue;
+        if (getShapeToShapeDistance(groupShapes[i], groupShapes[j], arcs, threshold) <= threshold ||
+            getShapeToShapeDistance(groupShapes[j], groupShapes[i], arcs, threshold) <= threshold) {
+          return true;
+        }
+      }
+    }
+    return false;
+  }
+
+  // Minimum distance between two axis-aligned bounding boxes (0 if they overlap).
+  function boundsToBoundsDistance(a, b) {
+    var dx = Math.max(0, a.xmin - b.xmax, b.xmin - a.xmax);
+    var dy = Math.max(0, a.ymin - b.ymax, b.ymin - a.ymax);
+    return Math.sqrt(dx * dx + dy * dy);
+  }
+
+  // Min distance from the vertices of @shape1 to @shape2. Stops early once a
+  // vertex within @maxDist (optional) is found, since callers only compare the
+  // result against a threshold.
+  function getShapeToShapeDistance(shape1, shape2, arcs, maxDist) {
+    var data = exportPathData(shape1, arcs, 'polygon');
+    var minDist = Infinity;
+    var paths = data.pathData;
+    for (var i = 0; i < paths.length; i++) {
+      var points = paths[i].points;
+      for (var j = 0; j < points.length; j++) {
+        var d = getPointToShapeDistance(points[j][0], points[j][1], shape2, arcs);
+        if (d < minDist) minDist = d;
+        if (maxDist != null && minDist <= maxDist) return minDist;
+      }
+    }
+    return minDist;
+  }
+
+  function makeClosedRingBufferGeometry(shape, arcs, bufferDataset, opts, distance,
+      reverse) {
+    var sourceAreas = exportPathData(shape, arcs, 'polygon').pathData.map(function(path) {
+      return path.area;
+    });
+    var sourceBoundaryThreshold = getSourceBoundaryThreshold(distance, arcs);
+    var bufferLyr = bufferDataset.layers[0];
+    var bufferShape, bufferData, erodedShape;
+    if (!bufferDataset.arcs) return null;
+    // The default offset rings come from the winding-fill maker (one self-
+    // overlapping ring per source ring) and must be unioned by winding number;
+    // the sector-band fallback emits overlapping bands that a boundary flood
+    // resolves instead (its maker leaves winding_fill off to match).
+    dissolveBufferDataset2(bufferDataset,
+      Object.assign({}, opts, {winding_fill: !opts.sector_band}));
+    bufferShape = bufferLyr.shapes && bufferLyr.shapes[0];
+    if (!bufferShape) return null;
+    bufferData = exportPathData(bufferShape, bufferDataset.arcs, 'polygon');
+    // Build the source-shape segment index once: ringIsOnSourceBoundary probes
+    // ~20 points of every eroded buffer ring against the same source shape, and
+    // on large rings the unindexed per-point distance scan dominated runtime.
+    var sourceIndex = buildShapeSegmentIndex(shape, arcs);
+    erodedShape = bufferData.pathData.reduce(function(memo, path) {
+      if (!areaMatchesAny(path.area, sourceAreas) &&
+          !ringIsOnSourceBoundary(path.points, sourceIndex, sourceBoundaryThreshold)) {
+        memo.push(reverse ? reversePath(path.ids.concat()) : path.ids.concat());
+      }
+      return memo;
+    }, []);
+    return erodedShape.length > 0 ?
+      getPolygonGeometry(erodedShape, bufferDataset.arcs) : null;
+  }
+
+  function getPolygonRingGroupShapes(shape, arcs) {
+    var data = exportPathData(shape, arcs, 'polygon');
+    if (data.pointCount === 0) return [];
+    return groupPolygonRings(data.pathData, arcs, false).map(function(paths) {
+      return paths.map(function(path) {
+        return path.ids.concat();
+      });
+    });
+  }
+
+  function removePositiveBufferArtifactHoles(geom, shape, arcs, distance) {
+    if (!geom) return null;
+    var threshold = getPositiveHoleArtifactThreshold(distance, arcs);
+    var minHoleArea = getPositiveHoleArtifactAreaThreshold(distance, arcs);
+    var sourceHoles = getSourceHoleShapes(shape, arcs);
+    // Each candidate hole is classified by probing many points against the
+    // source shape. Both per-probe tests used to rescan the whole source shape:
+    //   - "is the probe inside the source shape?" (testPointInPolygon)
+    //   - "is the probe near a source hole boundary?" (point-to-shape distance)
+    // On large rings (e.g. a U.S. state buffer) this point-in-ring scan dominated
+    // runtime. Build the spatial indexes once per feature instead:
+    //   - PathIndex.pointIsEnclosed() runs point-in-polygon via a per-ring
+    //     scanline index (O(log n) per probe instead of O(n)).
+    //   - shapeIndex / holeIndex are chunk-bounds indexes that prune far segments
+    //     for the point-to-shape distance queries.
+    var ctx = {
+      threshold: threshold,
+      shapeIndex: buildShapeSegmentIndex(shape, arcs),
+      pathIndex: shape && shape.length > 0 ? new PathIndex([shape], arcs) : null,
+      holeIndex: sourceHoles.length > 0 ?
+        buildShapeSegmentIndex(sourceHoles.map(function(h) {return h[0];}), arcs) : null
+    };
+    if (geom.type == 'Polygon') {
+      geom.coordinates = filterArtifactHoles(geom.coordinates, minHoleArea, ctx);
+    } else if (geom.type == 'MultiPolygon') {
+      geom.coordinates = geom.coordinates.map(function(polygon) {
+        return filterArtifactHoles(polygon, minHoleArea, ctx);
+      }).filter(function(polygon) {
+        return polygon.length > 0;
+      });
+    }
+    return geom;
+  }
+
+  // Flatten a shape's path segments into fixed-size chunks (per path) with a
+  // bounding box each. A chunk's box distance is a lower bound on the distance to
+  // any of its segments, so a point-to-shape distance query can skip whole chunks
+  // whose box is already farther than the closest segment found so far. Source
+  // paths are spatially coherent, so each chunk's box is tight. Coords are stored
+  // flat ([ax, ay, bx, by, ...]) to avoid per-segment array allocation.
+  var SHAPE_SEGMENT_CHUNK_SIZE = 32;
+
+  function buildShapeSegmentIndex(shape, arcs) {
+    var coords = [];
+    var chunks = [];
+    (shape || []).forEach(function(ids) {
+      var iter = arcs.getShapeIter(ids);
+      if (!iter.hasNext()) return;
+      var ax = iter.x, ay = iter.y;
+      var inChunk = 0;
+      var xmin = 0, ymin = 0, xmax = 0, ymax = 0, start = 0;
+      while (iter.hasNext()) {
+        var bx = iter.x, by = iter.y;
+        if (inChunk === 0) {
+          start = coords.length / 4;
+          xmin = Math.min(ax, bx); xmax = Math.max(ax, bx);
+          ymin = Math.min(ay, by); ymax = Math.max(ay, by);
+        } else {
+          if (ax < xmin) xmin = ax; else if (ax > xmax) xmax = ax;
+          if (bx < xmin) xmin = bx; else if (bx > xmax) xmax = bx;
+          if (ay < ymin) ymin = ay; else if (ay > ymax) ymax = ay;
+          if (by < ymin) ymin = by; else if (by > ymax) ymax = by;
+        }
+        coords.push(ax, ay, bx, by);
+        inChunk++;
+        if (inChunk === SHAPE_SEGMENT_CHUNK_SIZE) {
+          chunks.push({start: start, end: coords.length / 4,
+            xmin: xmin, ymin: ymin, xmax: xmax, ymax: ymax});
+          inChunk = 0;
+        }
+        ax = bx; ay = by;
+      }
+      if (inChunk > 0) {
+        chunks.push({start: start, end: coords.length / 4,
+          xmin: xmin, ymin: ymin, xmax: xmax, ymax: ymax});
+      }
+    });
+    return {coords: coords, chunks: chunks};
+  }
+
+  // Same result as getPointToShapeDistance(px, py, shape, arcs), but using the
+  // chunk bounding boxes to prune. Scan the nearest-box chunk first to seed a
+  // tight bound, then skip any chunk whose box is farther than that bound. No
+  // per-query allocation or sorting.
+  function getPointToIndexedShapeDistance(px, py, index) {
+    var chunks = index.chunks, coords = index.coords;
+    var n = chunks.length;
+    if (n === 0) return Infinity;
+    var bestSq = Infinity;
+    var nearIdx = -1, nearBoxSq = Infinity, boxSq, c, k;
+    for (c = 0; c < n; c++) {
+      boxSq = shapeChunkBoxDistSq(px, py, chunks[c]);
+      if (boxSq < nearBoxSq) { nearBoxSq = boxSq; nearIdx = c; }
+    }
+    bestSq = scanShapeChunk(px, py, coords, chunks[nearIdx], bestSq);
+    for (k = 0; k < n; k++) {
+      if (k === nearIdx) continue;
+      if (shapeChunkBoxDistSq(px, py, chunks[k]) >= bestSq) continue;
+      bestSq = scanShapeChunk(px, py, coords, chunks[k], bestSq);
+    }
+    return Math.sqrt(bestSq);
+  }
+
+  function scanShapeChunk(px, py, coords, chunk, bestSq) {
+    for (var i = chunk.start; i < chunk.end; i++) {
+      var o = i * 4;
+      var d = pointSegDistSq2(px, py, coords[o], coords[o + 1], coords[o + 2], coords[o + 3]);
+      if (d < bestSq) bestSq = d;
+    }
+    return bestSq;
+  }
+
+  function shapeChunkBoxDistSq(px, py, chunk) {
+    var dx = px < chunk.xmin ? chunk.xmin - px : (px > chunk.xmax ? px - chunk.xmax : 0);
+    var dy = py < chunk.ymin ? chunk.ymin - py : (py > chunk.ymax ? py - chunk.ymax : 0);
+    return dx * dx + dy * dy;
+  }
+
+  function getSourceHoleShapes(shape, arcs) {
+    return exportPathData(shape, arcs, 'polygon').pathData.reduce(function(memo, path) {
+      if (path.area < 0) {
+        memo.push([path.ids]);
+      }
+      return memo;
+    }, []);
+  }
+
+  function filterArtifactHoles(polygon, minHoleArea, ctx) {
+    if (polygon.length < 2) return polygon;
+    return [polygon[0]].concat(polygon.slice(1).filter(function(ring) {
+      return Math.abs(getGeoJSONRingArea(ring)) > minHoleArea &&
+        !positiveBufferHoleIsArtifact(ring, ctx);
+    }));
+  }
+
+  function positiveBufferHoleIsArtifact(ring, ctx) {
+    var n = ring.length - 1; // skip duplicate endpoint
+    var step = Math.max(1, Math.floor(n / 20));
+    var p, p2;
+    for (var i = 0; i < n; i += step) {
+      p = ring[i];
+      if (pointIsDeepInsidePositiveBuffer(p, ctx)) return true;
+      p2 = ring[(i + 1) % n];
+      if (pointIsDeepInsidePositiveBuffer([(p[0] + p2[0]) / 2, (p[1] + p2[1]) / 2], ctx)) return true;
+    }
+    return false;
+  }
+
+  function pointIsDeepInsidePositiveBuffer(p, ctx) {
+    if (ctx.holeIndex &&
+        getPointToIndexedShapeDistance(p[0], p[1], ctx.holeIndex) < ctx.threshold) {
+      return false;
+    }
+    if (ctx.pathIndex && ctx.pathIndex.pointIsEnclosed(p)) return true;
+    // A positive buffer can shrink legitimate source holes, leaving their
+    // boundaries near the original rings. Don't classify those as artifacts.
+    return getPointToIndexedShapeDistance(p[0], p[1], ctx.shapeIndex) < ctx.threshold;
+  }
+
+  function getPositiveHoleArtifactThreshold(distance, arcs) {
+    return getCoordinateDistance(distance, arcs) * 0.5;
+  }
+
+  function getPositiveHoleArtifactAreaThreshold(distance, arcs) {
+    var d = getCoordinateDistance(distance, arcs);
+    return d * d;
+  }
+
+  function getGeoJSONRingArea(ring) {
+    var sum = 0;
+    for (var i = 0, n = ring.length - 1; i < n; i++) {
+      sum += ring[i][0] * ring[i + 1][1] - ring[i + 1][0] * ring[i][1];
+    }
+    return sum / 2;
+  }
+
+  function areaMatchesAny(area, arr) {
+    return arr.some(function(area2) {
+      var tol = Math.max(1e-8, Math.abs(area2) * 1e-9);
+      return Math.abs(Math.abs(area) - Math.abs(area2)) <= tol;
+    });
+  }
+
+  function getSourceBoundaryThreshold(distance, arcs) {
+    return getCoordinateDistance(distance, arcs) * 0.25;
+  }
+
+  function getCoordinateDistance(distance, arcs) {
+    return arcs.isPlanar() ? distance : distance / R$3 * R2D$1;
+  }
+
+  // @shapeIndex: chunk-bounds index of the source shape (see buildShapeSegmentIndex)
+  function ringIsOnSourceBoundary(points, shapeIndex, threshold) {
+    var n = points.length - 1; // skip duplicate endpoint
+    var step = Math.max(1, Math.floor(n / 20));
+    var sum = 0;
+    var count = 0;
+    for (var i = 0; i < n; i += step) {
+      sum += getPointToIndexedShapeDistance(points[i][0], points[i][1], shapeIndex);
+      count++;
+    }
+    return count > 0 && sum / count < threshold;
+  }
+
+  function getPolygonMultiPolygonCoords(shape, arcs) {
+    var data = exportPathData(shape, arcs, 'polygon');
+    if (data.pointCount === 0) return [];
+    return groupPolygonRings(data.pathData, arcs, false).map(function(paths) {
+      return paths.map(function(path) {
+        return path.points.map(function(p) {
+          return p.concat();
+        });
+      });
+    });
+  }
+
+  function getPolygonGeometry(shape, arcs) {
+    var coords = getPolygonMultiPolygonCoords(shape, arcs);
+    return coords.length > 0 ? {
+      type: 'MultiPolygon',
+      coordinates: coords
+    } : null;
+  }
+
+  function getBufferDataset(coords) {
+    return importGeoJSON({
+      type: 'GeometryCollection',
+      geometries: [{
+        type: 'MultiPolygon',
+        coordinates: coords
+      }]
+    }, {type: 'polygon'});
+  }
+
+  // Union a set of winding-fill offset rings (which self-overlap) into clean,
+  // non-self-overlapping MultiPolygon coordinates, via the winding-number
+  // dissolve. Used by the topological pipeline to feed an ordinary polygon into
+  // the shared mosaic (whose boundary-flood membership cannot resolve the
+  // self-overlapping construction ring directly).
+  function dissolveOffsetRingsToCoords(coords, opts) {
+    if (!coords || coords.length === 0) return [];
+    var dataset = getBufferDataset(coords);
+    if (!dataset.arcs) return [];
+    dissolveBufferDataset2(dataset, Object.assign({}, opts, {winding_fill: true}));
+    var lyr = dataset.layers[0];
+    var shape = lyr.shapes && lyr.shapes[0];
+    return shape ? getPolygonMultiPolygonCoords(shape, dataset.arcs) : [];
+  }
+
+  function getBufferMultiPolygonCoords(paths, distance, bufferMaker) {
+    var features, coords = [];
+    if (paths.length === 0) return coords;
+    features = bufferMaker(paths, distance) || [];
+    features.forEach(function(feat) {
+      var geom = feat && feat.geometry;
+      if (geom && geom.type == 'MultiPolygon') {
+        coords = coords.concat(geom.coordinates);
+      }
+    });
+    return coords;
+  }
+
+  function getPolygonBufferPathData(shape, uniqueArcTest) {
+    var data = {paths: [], split: false};
+    (shape || []).forEach(function(path) {
+      var paths = uniqueArcTest ? splitPathAtSharedArcs(path, uniqueArcTest) :
+        [path.concat()];
+      if (paths.length != 1 || paths[0].length != path.length ||
+          !paths[0].every(function(arcId, i) {
+        return arcId == path[i];
+      })) {
+        data.split = true;
+      }
+      data.paths = data.paths.concat(paths);
+    });
+    return data;
+  }
+
+  function splitPathAtSharedArcs(path, uniqueArcTest) {
+    var flags = path.map(uniqueArcTest);
+    var firstShared = flags.indexOf(false);
+    var chains = [];
+    var chain = [];
+    var start, i, arcId;
+    if (firstShared == -1) return [path.concat()];
+    start = (firstShared + 1) % path.length;
+    for (i = 0; i < path.length; i++) {
+      arcId = path[(start + i) % path.length];
+      if (uniqueArcTest(arcId)) {
+        chain.push(arcId);
+      } else if (chain.length > 0) {
+        chains.push(chain);
+        chain = [];
+      }
+    }
+    if (chain.length > 0) {
+      chains.push(chain);
+    }
+    return chains;
+  }
+
+  function getUniqueArcTest(lyr, arcs) {
+    var classify = getArcClassifier(lyr, arcs, {reusable: true})(function(a, b) {
+      return b == -1 ? 'unique' : null;
+    });
+    return function(arcId) {
+      return !!classify(arcId);
+    };
+  }
+
+  function ringArea(ring) {
+    var iter = new PointIter(ring);
+    return getSphericalPathArea2(iter);
+  }
+
+  function makePointBuffer(lyr, dataset, opts) {
+    var geojson = makePointBufferGeoJSON(lyr, dataset, opts);
+    return importGeoJSON(geojson, {});
+  }
+
+  // Make a single geodetic circle
+  function getCircleGeoJSON(center, radius, vertices, opts) {
+    var n = 360;
+    var geod = getGeodeticSegmentFunction(parseCrsString$1('wgs84')); // ?
+    if (opts.inset) {
+      radius -= opts.inset;
+    }
+    return opts.geometry_type == 'polyline' ?
+      getPointBufferLineString([center], radius, n, geod) :
+      getPointBufferPolygon([center], radius, n, geod, true);
+  }
+
+  // Convert a point layer to circles
+  function makePointBufferGeoJSON(lyr, dataset, opts) {
+    var vertices = opts.vertices || 72;
+    var distanceFn = getBufferDistanceFunction(lyr, dataset, opts);
+    var crs = getDatasetCRS(dataset);
+    var spherical = isLatLngCRS(crs);
+    var geod = getGeodeticSegmentFunction(crs);
+    var geometries = lyr.shapes.map(function(shape, i) {
+      var dist = distanceFn(i);
+      if (!dist || !shape) return null;
+      return getPointBufferPolygon(shape, dist, vertices, geod, spherical);
+    });
+    // TODO: make sure that importer supports null geometries (nonstandard GeoJSON);
+    return {
+      type: 'GeometryCollection',
+      geometries: geometries
+    };
+  }
+
+  function getPointBufferPolygon(points, distance, vertices, geod, spherical) {
+    var rings = [], coords, coords2;
+    if (!points || !points.length) return null;
+    for (var i=0; i<points.length; i++) {
+      coords = getPointBufferCoordinates(points[i], distance, vertices, geod);
+      if (!spherical) {
+        rings.push([coords]);
+      } else if (countCrosses(coords) > 0) {
+        coords2 = removePolygonCrosses([coords]);
+        while (coords2.length > 0) rings.push([coords2.pop()]); // geojson polygon coords, no hole
+      } else if (ringArea(coords) < 0) {
+        // negative spherical area: CCW ring, indicating a circle of >180 degrees
+        // that fully encloses both poles and the antimeridian.
+        // need to add an enclosure around the entire sphere
+        // TODO: compare to distance param as a sanity check
+        rings.push([
+          [[180, 90], [180, -90], [0, -90], [-180, -90], [-180, 90], [0, 90], [180, 90]],
+          coords
+        ]);
+      } else {
+        rings.push([coords]);
+      }
+    }
+    return {
+      type: 'MultiPolygon',
+      coordinates: rings
+    };
+  }
+
+  function getPointBufferLineString(points, distance, vertices, geod) {
+    var rings = [], coords;
+    if (!points || !points.length) return null;
+    for (var i=0; i<points.length; i++) {
+      coords = getPointBufferCoordinates(points[i], distance, vertices, geod);
+      coords = removePolylineCrosses(coords);
+      while (coords.length > 0) rings.push(coords.pop());
+    }
+    return rings.length == 1 ? {
+      type: 'LineString',
+      coordinates: rings[0]
+    } : {
+      type: 'MultiLineString',
+      coordinates: rings
+    };
+  }
+
+  // Returns array of [x, y] coordinates in a closed ring
+  function getPointBufferCoordinates(center, meterDist, vertices, geod) {
+    var coords = [],
+        angle = 360 / vertices,
+        theta;
+    for (var i=0; i<vertices; i++) {
+      // offsetting by half a step so 4 sides are flat, not pointy
+      // (looks better on low-vertex circles)
+      theta = (i + 0.5) * angle % 360;
+      coords.push(geod(center[0], center[1], theta, meterDist));
+    }
+    coords.push(coords[0].concat());
+    return coords;
+  }
+
+  // Returns number of arcs that were removed
+  function editArcs(arcs, onPoint) {
+    var nn2 = [],
+        xx2 = [],
+        yy2 = [],
+        errors = 0,
+        n;
+
+    arcs.forEach(function(arc, i) {
+      editArc(arc, onPoint);
+    });
+    arcs.updateVertexData(nn2, xx2, yy2);
+    return errors;
+
+    function append(p) {
+      if (p) {
+        xx2.push(p[0]);
+        yy2.push(p[1]);
+        n++;
+      }
+    }
+
+    function editArc(arc, cb) {
+      var x, y, xp, yp, retn;
+      var valid = true;
+      var i = 0;
+      n = 0;
+      while (arc.hasNext()) {
+        x = arc.x;
+        y = arc.y;
+        retn = cb(append, x, y, xp, yp, i++);
+        if (retn === false) {
+          valid = false;
+          // assumes that it's ok for the arc iterator to be interrupted.
+          break;
+        }
+        xp = x;
+        yp = y;
+      }
+      if (valid && n == 1) {
+        // only one valid point was added to this arc (invalid)
+        // e.g. this could happen during reprojection.
+        // making this arc empty
+        // error("An invalid arc was created");
+        message("An invalid arc was created");
+        valid = false;
+      }
+      if (valid) {
+        nn2.push(n);
+      } else {
+        // remove any points that were added for an invalid arc
+        while (n-- > 0) {
+          xx2.pop();
+          yy2.pop();
+        }
+        nn2.push(0); // add empty arc (to preserve mapping from paths to arcs)
+        errors++;
+      }
+    }
+  }
 
   // Planar densification by an interval
   function densifyPathByInterval(coords, interval, interpolate) {
@@ -61818,7 +62073,7 @@ ${svg}
     return name == 'rectangle' || name == 'rectangles' || name == 'filter' && opts.cleanup;
   }
 
-  var version = "0.7.26";
+  var version = "0.7.27";
 
   // Parse command line args into commands and run them
   // Function takes an optional Node-style callback. A Promise is returned if no callback is given.
