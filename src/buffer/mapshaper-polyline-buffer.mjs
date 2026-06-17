@@ -10,6 +10,7 @@ import { DatasetEditor } from '../dataset/mapshaper-dataset-editor';
 import { importGeoJSON } from '../geojson/geojson-import';
 import { countCrosses, removePolygonCrosses } from '../geom/mapshaper-antimeridian-cuts';
 import { getPlanarPathArea } from '../geom/mapshaper-polygon-geom';
+import { pathIsClosed } from '../geom/mapshaper-path-geom';
 import { R, D2R } from '../geom/mapshaper-basic-geom';
 import { ShapeIter } from '../paths/mapshaper-shape-iter';
 import { DataTable } from '../datatable/mapshaper-data-table';
@@ -41,8 +42,13 @@ export function makePolylineBuffer(lyr, dataset, opts) {
   var useWinding = oneSided && !debug && opts.winding_fill !== false &&
     !opts.sector_band;
   if (useWinding) {
+    // no_loop_removal: the one-sided construction's overshoot loops can be a
+    // concave bend's only band coverage, so collapsing them would cut holes in
+    // the buffer (see buildOneSidedRings); the winding dissolve fills the
+    // self-overlap instead.
     var result = makePolylineBufferPerFeature(lyr, dataset,
-      Object.assign({}, opts, {winding_fill: true, remove_lobes: false}));
+      Object.assign({}, opts, {winding_fill: true, remove_lobes: false,
+        no_loop_removal: true}));
     if (spherical) splitAntimeridianBufferDataset(result);
     timeEnd('buffer');
     return result;
@@ -52,8 +58,18 @@ export function makePolylineBuffer(lyr, dataset, opts) {
     // Debug visualizations (raw offset rings, winding tiles, mosaic) want the
     // whole layer's geometry/topology in one dataset; keep the original global
     // dissolve for them (no artifact-hole filter runs in debug mode anyway).
-    dataset2 = importGeoJSON(makeShapeBufferGeoJSON(lyr, dataset, opts), {});
-    dissolveBufferDataset2(dataset2, Object.assign({}, opts, {per_part_holes: true}));
+    // Mirror the real pipeline's construction so the debug view reflects what
+    // the buffer actually builds: an all-closed-ring two-sided layer uses the
+    // winding-fill + loop-removal construction (and a winding-number dissolve),
+    // so debug-offset shows the loop-removed offset rings and the no-loop-removal
+    // flag has a visible effect. (See makePolylineBufferTwoSidedPerFeature.)
+    var debugWinding = !oneSided && layerIsAllClosed(lyr, dataset.arcs);
+    var debugMakerOpts = debugWinding ?
+      Object.assign({}, opts, {winding_fill: true}) : opts;
+    var debugDissolveOpts = Object.assign({}, opts, {per_part_holes: true},
+      debugWinding ? {winding_fill: true} : null);
+    dataset2 = importGeoJSON(makeShapeBufferGeoJSON(lyr, dataset, debugMakerOpts), {});
+    dissolveBufferDataset2(dataset2, debugDissolveOpts);
   } else {
     dataset2 = makePolylineBufferTwoSidedPerFeature(lyr, dataset, opts, spherical);
   }
@@ -75,11 +91,37 @@ export function makePolylineBuffer(lyr, dataset, opts) {
 // the process out of memory; per-feature isolation bounds peak memory to the
 // most complex single feature. The dissolve collapses any internal cuts, so
 // each feature's output boundary is identical to the global pipeline's.
+// True if every part of a polyline shape is a closed ring (first vertex ==
+// last vertex), so its two-sided buffer is an annulus per ring.
+function shapeIsAllClosed(shape, arcs) {
+  return !!shape && shape.length > 0 && shape.every(function(part) {
+    return pathIsClosed(part, arcs);
+  });
+}
+
+// True if every shape in the layer is made entirely of closed rings.
+function layerIsAllClosed(lyr, arcs) {
+  var shapes = lyr.shapes || [];
+  return shapes.length > 0 && shapes.every(function(shape) {
+    return shapeIsAllClosed(shape, arcs);
+  });
+}
+
 function makePolylineBufferTwoSidedPerFeature(lyr, dataset, opts, spherical) {
   var distanceFn = getBufferDistanceFunction(lyr, dataset, opts);
   var simplifyFn = getBufferSimplifyFunction(dataset, opts); // null if tolerance=0
   var makerOpts = Object.assign({geometry_type: lyr.geometry_type}, opts);
   var makeShapeBuffer = getPolylineBufferMaker(dataset, makerOpts);
+  // A shape whose parts are all closed rings buffers to an annulus per ring. The
+  // default (open-path) construction builds each side as many split sections plus
+  // join-sector rings (no loop removal), which floods the dissolve with raw rings
+  // (~8x more on a dense coastline). Instead route these shapes through the same
+  // winding-fill + loop-removal construction the polygon-ring buffer uses: one
+  // continuous offset ring per side, with self-overlap loops stripped, resolved
+  // by a winding-number dissolve. Open or mixed shapes keep the tuned outline +
+  // boundary-flood path unchanged.
+  var closedMaker = getPolylineBufferMaker(dataset,
+    Object.assign({}, makerOpts, {winding_fill: true}));
   var useFilter = useArtifactHoleFilter(opts);
   var quadSegs = opts.quad_segs >= 2 ? opts.quad_segs : 8;
   var sagPct = 1 - Math.cos(Math.PI / 4 / quadSegs);
@@ -92,16 +134,21 @@ function makePolylineBufferTwoSidedPerFeature(lyr, dataset, opts, spherical) {
     roundCaps: (opts.cap_style || 'round') == 'round'
   } : null;
   var dissolveOpts = Object.assign({}, opts, {per_part_holes: true});
+  var closedDissolveOpts = Object.assign({}, dissolveOpts, {winding_fill: true});
   var datasets = [];
   lyr.shapes.forEach(function(shape, i) {
     var distance = distanceFn(i);
     if (!distance || !shape) return;
-    var retn = makeShapeBuffer(shape, distance);
+    // Closed-ring fast path only for ordinary two-sided buffers (the one-sided
+    // construction reaches this function with winding_fill:false and needs its
+    // own coverage handling); mixed open/closed shapes fall back too.
+    var allClosed = !oneSided && shapeIsAllClosed(shape, dataset.arcs);
+    var retn = (allClosed ? closedMaker : makeShapeBuffer)(shape, distance);
     var feats = (Array.isArray(retn) ? retn : [retn]).filter(Boolean);
     if (!feats.length) return;
     var ds = importGeoJSON(getBufferGeoJSON(feats), {});
-    dissolveBufferDataset2(ds, dissolveOpts);
-    if (useFilter) {
+    dissolveBufferDataset2(ds, allClosed ? closedDissolveOpts : dissolveOpts);
+    if (useFilter && !allClosed) {
       var bufLyr = ds.layers[0];
       var intervalPct = simplifyFn ? simplifyFn(distance) / distance : 0;
       bufLyr.shapes = bufLyr.shapes.map(function(bufShape) {

@@ -1,6 +1,7 @@
 
 import api from '../mapshaper.js';
 import assert from 'assert';
+import fs from 'fs';
 
 
 describe('mapshaper-buffer.js', function () {
@@ -1001,7 +1002,173 @@ describe('mapshaper-buffer.js', function () {
     })
   })
 
+  describe('polar option (pole/antimeridian-sliced polygons)', function () {
+    // t_antarctica.json is sliced for Cartesian display: artificial seam edges at
+    // the antimeridian (lng +/-180) and the south pole (lat -90). Without the
+    // polar option buffering it errors near the pole; with it the buffer stays in
+    // the valid extent, pins the seam, and only the real coastline moves.
+    var antarctica = JSON.parse(fs.readFileSync('test/data/features/buffer/t_antarctica.json', 'utf8'));
+    // a north-pole synthetic: the same shape mirrored to lat +90 / +/-180
+    var arctica = {type: 'Feature', properties: {}, geometry: {type: 'MultiPolygon',
+      coordinates: antarctica.features[0].geometry.coordinates.map(function (poly) {
+        return poly.map(function (ring) {
+          return ring.map(function (p) { return [p[0], -p[1]]; });
+        });
+      })}};
+
+    // Sum of spherical feature areas (m^2) of a command's lng/lat output.
+    function sphericalArea(cmd, files) {
+      return new Promise(function (resolve, reject) {
+        api.applyCommands(cmd + ' -each "_A=this.area" -o format=geojson out.json', files,
+          function (err, o) {
+            if (err) return reject(err);
+            var g = JSON.parse(String(o['out.json']));
+            resolve(g.features.reduce(function (s, f) { return s + (f.properties._A || 0); }, 0));
+          });
+      });
+    }
+
+    function bufferBounds(cmd, files) {
+      return new Promise(function (resolve, reject) {
+        api.applyCommands(cmd + ' -o format=geojson out.json', files, function (err, o) {
+          if (err) return reject(err);
+          var g = JSON.parse(String(o['out.json']));
+          var b = [Infinity, Infinity, -Infinity, -Infinity];
+          eachCoord(g, function (p) {
+            if (p[0] < b[0]) b[0] = p[0];
+            if (p[1] < b[1]) b[1] = p[1];
+            if (p[0] > b[2]) b[2] = p[0];
+            if (p[1] > b[3]) b[3] = p[1];
+          });
+          resolve(b);
+        });
+      });
+    }
+
+    function eachCoord(geojson, cb) {
+      collect(geojson);
+      function collect(o) {
+        if (!o) return;
+        if (o.type == 'FeatureCollection') o.features.forEach(collect);
+        else if (o.type == 'GeometryCollection') o.geometries.forEach(collect);
+        else if (o.type == 'Feature') collect(o.geometry);
+        else if (o.coordinates) walk(o.coordinates);
+      }
+      function walk(a) {
+        if (!a) return;
+        if (typeof a[0] == 'number') { cb(a); return; }
+        a.forEach(walk);
+      }
+    }
+
+    it('positive: t_antarctica buffer succeeds, stays in extent and grows', async function () {
+      var files = {'a.json': JSON.stringify(antarctica)};
+      var src = await sphericalArea('-i a.json', files);
+      var buf = await sphericalArea('-i a.json -buffer 50km polar', files);
+      assert(buf > src, 'buffer area ' + buf + ' should exceed source ' + src);
+      var b = await bufferBounds('-i a.json -buffer 50km polar', files);
+      assert(b[0] >= -180 - 1e-6 && b[2] <= 180 + 1e-6, 'lng in [-180,180]: ' + b);
+      assert(b[1] >= -90 - 1e-6 && b[3] <= 90 + 1e-6, 'lat in [-90,90]: ' + b);
+      assert(b[1] < -89.9, 'south edge should reach the pole: ' + b[1]);
+    })
+
+    it('negative: erode is not supported yet and errors clearly', async function () {
+      // A negative polar buffer would have to keep the seam edges pinned while
+      // only the coastline erodes; the construction can't do that yet, so it is
+      // rejected rather than returning a result with inward-crept seams.
+      var err = null;
+      try {
+        await api.applyCommands('-i a.json -buffer -50km polar -o format=geojson out.json',
+          {'a.json': JSON.stringify(antarctica)});
+      } catch (e) { err = e; }
+      assert(err && /negative|erode/i.test(err.message), err && err.message);
+    })
+
+    it('north pole: a +90/+-180-sliced polygon stays in extent and grows', async function () {
+      var files = {'a.json': JSON.stringify(arctica)};
+      var src = await sphericalArea('-i a.json', files);
+      var buf = await sphericalArea('-i a.json -buffer 50km polar', files);
+      assert(buf > src, 'buffer area ' + buf + ' should exceed source ' + src);
+      var b = await bufferBounds('-i a.json -buffer 50km polar', files);
+      assert(b[0] >= -180 - 1e-6 && b[2] <= 180 + 1e-6, 'lng in [-180,180]: ' + b);
+      assert(b[3] <= 90 + 1e-6 && b[3] > 89.9, 'north edge should reach the pole: ' + b);
+    })
+
+    it('without polar, a pole-touching buffer still errors', async function () {
+      var err = null;
+      try {
+        await api.applyCommands('-i a.json -buffer 50km -o format=geojson out.json',
+          {'a.json': JSON.stringify(antarctica)});
+      } catch (e) { err = e; }
+      assert(err && /pole/i.test(err.message), err && err.message);
+    })
+
+    it('no-op: polar matches the plain buffer for a mid-latitude polygon', async function () {
+      var poly = {type: 'Feature', properties: {}, geometry: {type: 'Polygon',
+        coordinates: [[[0, 40], [20, 40], [20, 50], [0, 50], [0, 40]]]}};
+      var files = {'m.json': JSON.stringify(poly)};
+      var def = await sphericalArea('-i m.json -buffer 100km', files);
+      var pol = await sphericalArea('-i m.json -buffer 100km polar', files);
+      assert(Math.abs(pol - def) / def < 1e-9, 'polar ' + pol + ' vs plain ' + def);
+    })
+  })
+
+  describe('two-sided buffer of closed-ring polylines', function () {
+    // A polyline whose parts are closed rings buffers to an annulus per ring
+    // (outer offset + inner-offset hole). These shapes are routed through the
+    // winding-fill + loop-removal construction rather than the open-path outline.
+    it('a closed square ring buffers to a clean annulus', function (done) {
+      var sq = {type: 'Feature', properties: {}, geometry: {type: 'LineString',
+        coordinates: [[0, 0], [100, 0], [100, 100], [0, 100], [0, 0]]}};
+      api.applyCommands('-i sq.json -buffer 10 -o format=geojson out.json',
+        {'sq.json': JSON.stringify(sq)}, function (err, out) {
+          assert(!err, err && err.message);
+          var o = JSON.parse(out['out.json']);
+          var geom = o.geometries ? o.geometries[0] :
+            (o.features ? o.features[0].geometry : o.geometry || o);
+          var rings = geom.type == 'Polygon' ? [geom.coordinates] : geom.coordinates;
+          assert.equal(rings.length, 1, 'one polygon');
+          assert.equal(rings[0].length, 2, 'outer ring + one hole (annulus)');
+          var b = bufferBounds2(geom);
+          assert(Math.abs(b[0] + 10) < 1 && Math.abs(b[1] + 10) < 1 &&
+            Math.abs(b[2] - 110) < 1 && Math.abs(b[3] - 110) < 1, 'bounds ' + b);
+          done();
+        });
+    })
+
+    it('matches the section-construction area (open-path equivalent disabled)', function (done) {
+      // Buffer area is invariant to construction: a closed ring's two-sided
+      // buffer area must match whether built as an annulus here or otherwise.
+      var ring = {type: 'Feature', properties: {}, geometry: {type: 'LineString',
+        coordinates: [[0, 0], [60, 0], [60, 40], [30, 70], [0, 40], [0, 0]]}};
+      api.applyCommands('-i r.json -buffer 5 -o format=geojson out.json',
+        {'r.json': JSON.stringify(ring)}, function (err, out) {
+          assert(!err, err && err.message);
+          var o = JSON.parse(out['out.json']);
+          var geom = o.geometries ? o.geometries[0] :
+            (o.features ? o.features[0].geometry : o.geometry || o);
+          var rings = geom.type == 'Polygon' ? [geom.coordinates] : geom.coordinates;
+          assert.equal(rings.length, 1);
+          assert.equal(rings[0].length, 2, 'annulus (outer + hole)');
+          done();
+        });
+    })
+  })
+
 })
+
+function bufferBounds2(geom) {
+  var b = [Infinity, Infinity, -Infinity, -Infinity];
+  (function walk(a) {
+    if (typeof a[0] == 'number') {
+      if (a[0] < b[0]) b[0] = a[0];
+      if (a[1] < b[1]) b[1] = a[1];
+      if (a[0] > b[2]) b[2] = a[0];
+      if (a[1] > b[3]) b[3] = a[1];
+    } else a.forEach(walk);
+  })(geom.coordinates);
+  return b;
+}
 
 function getTotalBufferArea(geoms) {
   return geoms.reduce(function(sum, geom) {

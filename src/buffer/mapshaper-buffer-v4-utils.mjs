@@ -13,36 +13,66 @@ var D2R = Math.PI / 180;
 var R2D = 180 / Math.PI;
 var WEBMERCATOR_WIDTH = R * Math.PI * 2;
 
+// Polar (clamp-to-extent) buffering bounds (see the 'polar' option). A polygon
+// sliced for display at the antimeridian/poles has artificial seam edges at
+// lng = +/-180 and lat = +/-90. The poles are unreachable in Mercator (y ->
+// +/-Infinity), so clamp construction coordinates to a finite latitude just shy
+// of the pole; output coords at the bound are snapped back to exactly +/-90.
+var POLAR_HALF_WIDTH = WEBMERCATOR_WIDTH / 2;        // Mercator x at lng +/-180
+var POLAR_LAT_LIMIT = 90 - 1e-3;                     // finite near-pole latitude
+var POLAR_Y_LIMIT = R * Math.atanh(Math.sin(POLAR_LAT_LIMIT * D2R)); // Mercator y at the limit
+var POLAR_LAT_SNAP = 90 - 2e-3;                      // snap |lat| >= this to 90
+var POLAR_LNG_SNAP_EPS = 1e-6;                       // snap |lng| within this of 180 to exactly 180
+
 // arr: array of MultiPolygon and/or Point Features
-export function unprojectFeatures(arr) {
+// opts.polar: snap near-boundary coords to exactly +/-180 / +/-90
+export function unprojectFeatures(arr, opts) {
+  var polar = !!(opts && opts.polar);
   arr.forEach(function(feat) {
     var coords = feat.geometry.coordinates;
     var type = feat.geometry.type;
     if (type == 'Point') {
-      unprojectPointCoords(coords);
+      unprojectPointCoords(coords, polar);
     } else if (type == 'MultiPolygon') {
-      coords.forEach(unprojectPolygonCoords);
+      coords.forEach(function(c) { unprojectPolygonCoords(c, polar); });
     } else {
       error('Unexpected geometry type:', type);
     }
   });
 }
 
-function unprojectPolygonCoords(coords) {
+function unprojectPolygonCoords(coords, polar) {
   forEachPoint(coords, function(p) {
-    unprojectPointCoords(p);
+    unprojectPointCoords(p, polar);
   });
 }
 
-function unprojectPointCoords(p) {
+function unprojectPointCoords(p, polar) {
   var p2 = fromWebMercator(p[0], p[1]);
+  if (polar) {
+    // The buffer is allowed to expand past the antimeridian during construction
+    // (walls run out to lng > 180 / < -180); it is clipped to the world
+    // rectangle afterwards, so DON'T fold the overshoot here -- folding would
+    // collapse it onto a spurious vertical edge at +/-180 instead of cutting it.
+    // Pin pole latitudes (Mercator can't represent the pole, so offsets are
+    // capped just shy of it) and snap values within rounding of +/-90 / +/-180
+    // to the exact bound for clean clip edges.
+    if (p2[1] >= POLAR_LAT_SNAP) p2[1] = 90;
+    else if (p2[1] <= -POLAR_LAT_SNAP) p2[1] = -90;
+    if (Math.abs(p2[0] - 180) < POLAR_LNG_SNAP_EPS) p2[0] = 180;
+    else if (Math.abs(p2[0] + 180) < POLAR_LNG_SNAP_EPS) p2[0] = -180;
+  }
   p[0] = p2[0];
   p[1] = p2[1];
 }
 
-// Wrap a shape iterator to convert lng,lat coords to spherical Mercator coords
-export function getProjectingPathIterator(arcs) {
+// Wrap a shape iterator to convert lng,lat coords to spherical Mercator coords.
+// opts.polar: clamp an input latitude that sits exactly at a pole to a finite
+// near-pole value so construction is well-defined (Mercator y is infinite at the
+// pole). The antimeridian is left alone here (see getProjectingPathIterator body).
+export function getProjectingPathIterator(arcs, opts) {
   var iter = new ShapeIter(arcs);
+  var polar = !!(opts && opts.polar);
   var prevX;
   var iter2 = {
     x: 0,
@@ -56,6 +86,15 @@ export function getProjectingPathIterator(arcs) {
       var p;
       if (val) {
         p = toWebMercator(iter.x, iter.y);
+        if (polar) {
+          // Pin a seam latitude that sits exactly at a pole (lat +/-90 -> y is
+          // infinite in Mercator) to a finite near-pole value so construction is
+          // well-defined; the result is snapped back to +/-90 on output. The
+          // antimeridian walls are left unclamped here (clamping x mid-path
+          // breaks the unwrap continuity and tangles corner joins).
+          if (p[1] > POLAR_Y_LIMIT) p[1] = POLAR_Y_LIMIT;
+          else if (p[1] < -POLAR_Y_LIMIT) p[1] = -POLAR_Y_LIMIT;
+        }
         iter2.x = prevX === null ? p[0] : unwrapX(p[0], prevX);
         iter2.y = p[1];
         prevX = iter2.x;
@@ -64,6 +103,29 @@ export function getProjectingPathIterator(arcs) {
     }
   };
   return iter2;
+}
+
+// Stop a great-circle offset from crossing a pole (see the 'polar' option). When
+// the offset would cross a pole it reappears at the opposite longitude (Mercator
+// x jumps by ~half the world width) at a latitude back inside the valid range;
+// detect that jump and pin the offset to the pole at the source longitude
+// instead, so the floor edge of a pole-sliced polygon stays near the pole rather
+// than folding to the far meridian. Latitudes are capped so a near-pole offset
+// cannot exceed the finite construction bound.
+function clampPolar(base) {
+  return function(x, y, bearing, dist) {
+    var p = base(x, y, bearing, dist);
+    if (Math.abs(p[0] - x) > POLAR_HALF_WIDTH * 0.5) {
+      // great-circle offset crossed a pole (reappears at the opposite longitude,
+      // i.e. Mercator x jumps by ~half the world width); pin it to the pole at the
+      // source longitude instead of folding across to the far meridian.
+      p[0] = x;
+      p[1] = p[1] < 0 ? -POLAR_Y_LIMIT : POLAR_Y_LIMIT;
+    }
+    if (p[1] < -POLAR_Y_LIMIT) p[1] = -POLAR_Y_LIMIT;
+    else if (p[1] > POLAR_Y_LIMIT) p[1] = POLAR_Y_LIMIT;
+    return p;
+  };
 }
 
 export function getOffsetFunction(crs, opts) {
@@ -84,7 +146,8 @@ export function getOffsetFunction(crs, opts) {
   // line in Mercator), so the endpoint falls short of the great-circle distance
   // and drifts in direction as the radius grows -- large buffers come out
   // distorted (egg-shaped caps/joins) -- but it is occasionally useful.
-  return opts && opts.rhumb ? rhumbOffset : greatCircleOffset;
+  var offset = opts && opts.rhumb ? rhumbOffset : greatCircleOffset;
+  return opts && opts.polar ? clampPolar(offset) : offset;
 }
 
 // Great-circle (spherical geodesic) offset, computed directly in Mercator coords.

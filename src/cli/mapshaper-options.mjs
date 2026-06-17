@@ -518,6 +518,10 @@ export function getOptionParser() {
       describe: '[projected data] buffer using geodesic distances',
       type: 'flag'
     })
+    .option('polar', {
+      // describe: 'keep lat-long buffers within the valid extent (+/-180, +/-90); for growing polygons sliced at the antimeridian/poles (erode not yet supported)',
+      type: 'flag'
+    })
     .option('vertices', {
       describe: 'number of vertices to use when buffering points (default is 72)',
       type: 'integer'
