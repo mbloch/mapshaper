@@ -51,46 +51,77 @@ export function removeBufferRingLoops(ring, maxGap, srcPos, turnPrefix, maxTurn)
   if (!(maxGap >= 2)) maxGap = BUFFER_LOOP_WINDOW;
   if (maxTurn === undefined) maxTurn = BUFFER_LOOP_MAX_TURN;
   var gated = !!(srcPos && turnPrefix);
-  var pts = ring.slice(0, ring.length - 1); // drop closing duplicate
-  var pos = gated ? srcPos.slice(0, ring.length - 1) : null;
-  var i = 0;
-  while (i < pts.length - 1) {
-    var ax = pts[i][0], ay = pts[i][1];
-    var bx = pts[i + 1][0], by = pts[i + 1][1];
-    var maxJ = Math.min(i + maxGap, pts.length - 2);
-    var removed = false;
-    for (var j = i + 2; j <= maxJ; j++) {
-      var hit = segHit(ax, ay, bx, by,
-        pts[j][0], pts[j][1], pts[j + 1][0], pts[j + 1][1]);
+  var n = ring.length - 1; // distinct points (the last repeats the first)
+  // Compact retained points into `out` instead of splicing collapsed spans out
+  // of one array: every splice shifts the whole tail (O(tail) per collapse,
+  // O(n^2) over the ring), whereas the scan only ever commits a growing prefix
+  // and looks a bounded window forward, so it can append kept points and drop a
+  // collapsed span by advancing the read cursor -- O(1) per collapse.
+  //
+  // `a` is the current anchor (the last committed point, out[last]); `b` is the
+  // point after it (a ring vertex, or a synthetic crossing after a collapse);
+  // `r` indexes the ring vertex following `b`. This mirrors the in-place scan's
+  // anchor i with a = ring[i], b = ring[i+1], r = i+2.
+  var out = [ring[0]];
+  var outPos = gated ? [srcPos[0]] : null;
+  var b = ring[1];
+  var bpos = gated ? srcPos[1] : 0;
+  var r = 2;
+  while (true) {
+    var a = out[out.length - 1];
+    var ax = a[0], ay = a[1], bx = b[0], by = b[1];
+    var apos = gated ? outPos[outPos.length - 1] : 0;
+    // forward segment t maps to the in-place scan's j = (anchor index) + 2 + t
+    var maxT = Math.min(maxGap - 2, n - 2 - r);
+    var collapsed = false;
+    for (var t = 0; t <= maxT; t++) {
+      var c = ring[r + t], d = ring[r + t + 1];
+      var hit = segHit(ax, ay, bx, by, c[0], c[1], d[0], d[1]);
       if (!hit) continue;
       // Collapse only covered overshoots (small source turn). A larger source
       // turn means the span may enclose a real buffer hole, which must be left
       // for the dissolve -- whatever the pocket's winding orientation.
-      if (gated && !spanIsCovered(pos, i, j, turnPrefix, maxTurn)) continue;
-      pts.splice(i + 1, j - i, hit); // replace span i+1..j with the crossing
-      if (gated) pos.splice(i + 1, j - i, pos[i]);
-      removed = true;
+      if (gated &&
+        !spanIsCovered(apos, bpos, srcPos, r, r + t + 1, turnPrefix, maxTurn)) {
+        continue;
+      }
+      // Replace the span a..ring[r+t] with the crossing: the anchor stays and is
+      // re-scanned (its new segment may cross again), so keep `a`, set b = hit,
+      // and advance the cursor past the collapsed vertices.
+      b = hit;
+      if (gated) bpos = apos; // collapsed point inherits the anchor's source pos
+      r = r + t + 1;
+      collapsed = true;
       break;
     }
-    if (!removed) i++; // else re-scan from i: the new seg i may cross again
+    if (collapsed) continue;
+    out.push(b); // the anchor's successor can no longer collapse; commit it
+    if (gated) outPos.push(bpos);
+    if (r > n - 1) break; // no ring vertex left to become the next b
+    b = ring[r];
+    if (gated) bpos = srcPos[r];
+    r++;
   }
-  if (pts.length < 4) return ring; // collapsed away; keep original
-  pts.push(pts[0].concat());
-  return pts;
+  if (out.length < 4) return ring; // collapsed away; keep original
+  out.push(out[0].concat());
+  return out;
 }
 
-// True when the source-path span feeding ring points i..j+1 turns by less than
-// maxTurn (a covered overshoot, safe to collapse). A pocket touching a cap
-// (NaN position) is never treated as a covered overshoot.
-function spanIsCovered(pos, i, j, turnPrefix, maxTurn) {
-  var lo = Infinity, hi = -Infinity;
-  for (var k = i; k <= j + 1; k++) {
-    var p = pos[k];
+// True when the source-path span feeding a collapsed pocket turns by less than
+// maxTurn (a covered overshoot, safe to collapse). The span covers the anchor
+// position `apos`, its successor `bpos`, and ring positions srcPos[lo..hi]. A
+// pocket touching a cap (NaN position) is never treated as a covered overshoot.
+function spanIsCovered(apos, bpos, srcPos, lo, hi, turnPrefix, maxTurn) {
+  if (apos !== apos || bpos !== bpos) return false; // NaN cap
+  var posLo = apos < bpos ? apos : bpos;
+  var posHi = apos > bpos ? apos : bpos;
+  for (var k = lo; k <= hi; k++) {
+    var p = srcPos[k];
     if (p !== p) return false; // NaN
-    if (p < lo) lo = p;
-    if (p > hi) hi = p;
+    if (p < posLo) posLo = p;
+    if (p > posHi) posHi = p;
   }
-  return (turnPrefix[hi] - turnPrefix[lo]) < maxTurn;
+  return (turnPrefix[posHi] - turnPrefix[posLo]) < maxTurn;
 }
 
 // Fast strict-interior segment crossing; returns [x, y] or null. Buffer join
