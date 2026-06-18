@@ -49,6 +49,36 @@ describe('zip i/o', function () {
     } catch(e) {
       assert.equal(e.name, 'UserError');
     }
-  })
+  });
+
+  it('zipped shapefile from stdin', async function() {
+    var zipBuffer = fs.readFileSync('test/data/features/zip/points.zip');
+    var cmd = '-i - -o';
+    var out = await api.applyCommands(cmd, {'/dev/stdin': zipBuffer});
+    assert(out['points.shp']);
+    assert(out['points.dbf']);
+    assert(out['points.shx']);
+    assert(typeof out['points.prj'] == 'string');
+  });
+
+  it('zipped GeoJSON from stdin', async function() {
+    var file = 'test/data/geojson/three_points.geojson';
+    var cmd = `-i ${file} -o data.zip`;
+    var out = await api.applyCommands(cmd);
+    
+    var cmd2 = '-i - -o data.geojson';
+    var out2 = await api.applyCommands(cmd2, {'/dev/stdin': out['data.zip']});
+    var data = JSON.parse(out2['data.geojson']);
+    var target = JSON.parse(fs.readFileSync(file));
+    assert.deepEqual(data, target);
+  });
+
+  it('synchronous zipped shapefile import', function() {
+    var zipBuffer = fs.readFileSync('test/data/features/zip/points.zip');
+    var dataset = api.internal.importFile('points.zip', {input: {'points.zip': zipBuffer}});
+    assert(dataset.layers);
+    assert.equal(dataset.layers.length, 1);
+    assert.equal(dataset.layers[0].name, 'points');
+  });
 
 });
