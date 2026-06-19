@@ -1,6 +1,6 @@
 import assert from 'assert';
 import api from '../mapshaper.js';
-import { removeBufferRingLoops } from '../src/buffer/mapshaper-buffer-loop-removal';
+import { removeBufferRingLoops, removeBufferRingLoopsByDirection } from '../src/buffer/mapshaper-buffer-loop-removal';
 
 // signed-area-free crossing check used to assert results are loop-free
 function ringHasCrossing(ring) {
@@ -134,6 +134,52 @@ describe('mapshaper-buffer-loop-removal.js', function () {
     });
   });
 
+  describe('removeBufferRingLoopsByDirection()', function () {
+    it('leaves a clean convex ring unchanged', function () {
+      var ring = [[0, 0], [10, 0], [10, 10], [0, 10], [0, 0]];
+      assert.deepEqual(removeBufferRingLoopsByDirection(ring, 20), ring);
+    });
+
+    it('returns short rings unchanged', function () {
+      var ring = [[0, 0], [1, 0], [0, 0]];
+      assert.strictEqual(removeBufferRingLoopsByDirection(ring, 20), ring);
+    });
+
+    it('collapses a same-wound (covered) self-overlap loop', function () {
+      // CCW boundary that folds back on itself, doubly covering a small loop
+      // wound the same way as the parent ring (winding 2, safe to collapse).
+      var ring = [
+        [0, 0], [6, 0], [6, 4], [4, 4], [5, 2], [5, 6], [6, 4],
+        [6, 10], [0, 10], [0, 0]
+      ];
+      assert.ok(ringHasCrossing(ring), 'fixture should self-cross');
+      var out = removeBufferRingLoopsByDirection(ring, 20);
+      assert.ok(!ringHasCrossing(out), 'overlap should be collapsed away');
+      assert.ok(out.length < ring.length);
+    });
+
+    it('keeps an opposite-wound (winding-0) pocket as a real hole', function () {
+      // The bowtie pocket encloses a winding-0 region: a real hole the dissolve
+      // must keep. Unlike the ungated turn gate, the direction method does not
+      // collapse it.
+      var ring = [
+        [0, 0], [6, 0], [3, 3], [7, 3], [4, 0],
+        [10, 0], [10, 10], [0, 10], [0, 0]
+      ];
+      assert.deepEqual(removeBufferRingLoopsByDirection(ring, 20), ring);
+    });
+
+    it('classifies independently of ring orientation', function () {
+      // Same geometry wound CW: the hole must still be kept (the signal is
+      // sub-loop-vs-parent winding, not an absolute orientation).
+      var cw = [
+        [0, 0], [6, 0], [3, 3], [7, 3], [4, 0],
+        [10, 0], [10, 10], [0, 10], [0, 0]
+      ].slice().reverse();
+      assert.deepEqual(removeBufferRingLoopsByDirection(cw, 20), cw);
+    });
+  });
+
   describe('-buffer loop removal integration', function () {
     // a tight sawtooth buffered well past its tooth spacing folds heavily
     function sawtooth() {
@@ -151,12 +197,28 @@ describe('mapshaper-buffer-loop-removal.js', function () {
       return polygonArea(JSON.parse(out['out.json']));
     }
 
+    async function mLoopsDebugPointCount(extra) {
+      var out = await api.applyCommands(
+        '-i test/data/features/buffer/m_loops.json ' +
+        '-buffer 1.5km tolerance=0 debug-offset ' + extra +
+        ' -o format=geojson out.json', {});
+      return JSON.parse(out['out.json']).geometries[0].coordinates[0].length;
+    }
+
     it('preserves dissolved area within tolerance (on by default)', async function () {
       var on = await bufferArea('');
       var off = await bufferArea('no-loop-removal');
       var drift = Math.abs(on - off) / off;
       assert.ok(drift < 0.001,
         'area drift ' + (drift * 100).toFixed(4) + '% should be well under tolerance');
+    });
+
+    it('removes conservative-turn loops before the m_loops dissolve', async function () {
+      var raw = await mLoopsDebugPointCount('no-loop-removal');
+      var optimized = await mLoopsDebugPointCount('');
+      assert.ok(raw - optimized > 350,
+        'loop removal should cut many raw offset vertices, got ' +
+        raw + ' -> ' + optimized);
     });
 
     // The turn gate must not let loop removal fill real buffer holes: a
@@ -175,6 +237,24 @@ describe('mapshaper-buffer-loop-removal.js', function () {
         var off = await holeCount('no-loop-removal');
         assert.equal(on, off, 'loop removal must not change hole count');
         assert.ok(on > 0, 'this fixture should produce holes');
+      });
+
+    it('turn-gate alternative yields an equivalent two-sided line buffer',
+      async function () {
+        var dir = await holeCount('');
+        var gate = await holeCount('loop-removal-turn-gate');
+        var off = await holeCount('no-loop-removal');
+        assert.equal(gate, off, 'turn-gate must keep the same holes');
+        assert.equal(dir, gate, 'both methods keep the same holes');
+      });
+
+    it('direction method removes at least as many loops as the turn gate',
+      async function () {
+        var dir = await mLoopsDebugPointCount('');
+        var gate = await mLoopsDebugPointCount('loop-removal-turn-gate');
+        assert.ok(dir <= gate,
+          'direction method should not leave more loops than the turn gate (' +
+          dir + ' vs ' + gate + ')');
       });
   });
 });

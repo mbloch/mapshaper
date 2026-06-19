@@ -34,19 +34,6 @@ export function dissolveBufferDataset2(dataset, optsArg) {
     {flat: false, no_holes: false, per_part_holes: !!opts.per_part_holes});
 
   // rewindPolygonParts(lyr, nodes);
-  if (opts.debug_winding) {
-    lyr.shapes = lyr.shapes.map(function(shp, i) {
-      var tiles = mosaicIndex.getTilesByShapeIds([i]);
-      if (!tiles.length) return null;
-      var parts = [];
-      tiles.forEach(function(tile) {
-        parts.push.apply(parts, tile);
-      });
-      return parts;
-    });
-    return;
-  }
-
   if (opts.debug_mosaic) {
     tmp = composeMosaicLayer(lyr, mosaicIndex.mosaic);
     lyr.shapes = tmp.shapes;

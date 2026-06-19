@@ -20,7 +20,7 @@ export function makePolylineBuffer(lyr, dataset, opts) {
   time('buffer');
   var spherical = isLatLngCRS(getDatasetCRS(dataset));
   var oneSided = !!opts.left !== !!opts.right;
-  var debug = opts.debug_offset || opts.debug_winding || opts.debug_mosaic;
+  var debug = opts.debug_offset || opts.debug_mosaic;
   // One-sided buffers use a winding-number fill, run per-feature so each source
   // path's mosaic stays small. The construction is one-sided by design (offset
   // curve + end caps + the source path as the inner edge), so the winding fill
@@ -35,12 +35,12 @@ export function makePolylineBuffer(lyr, dataset, opts) {
   // outline + boundary-flood dissolve + artifact-hole filter, which is faster
   // and has no wrong side to clean.
   //
-  // The undocumented 'sector-band' option forces the older non-winding
+  // The undocumented 'band-method' option forces the older non-winding
   // construction here too (the per-feature pipeline below handles one-sided
   // buffers via its winding_fill:false coverage test), as a conservative
   // fallback.
   var useWinding = oneSided && !debug && opts.winding_fill !== false &&
-    !opts.sector_band;
+    !opts.band_method;
   if (useWinding) {
     // no_loop_removal: the one-sided construction's overshoot loops can be a
     // concave bend's only band coverage, so collapsing them would cut holes in
@@ -55,19 +55,19 @@ export function makePolylineBuffer(lyr, dataset, opts) {
   }
   var dataset2;
   if (debug) {
-    // Debug visualizations (raw offset rings, winding tiles, mosaic) want the
-    // whole layer's geometry/topology in one dataset; keep the original global
-    // dissolve for them (no artifact-hole filter runs in debug mode anyway).
-    // Mirror the real pipeline's construction so the debug view reflects what
-    // the buffer actually builds: an all-closed-ring two-sided layer uses the
-    // winding-fill + loop-removal construction (and a winding-number dissolve),
-    // so debug-offset shows the loop-removed offset rings and the no-loop-removal
+    // Debug visualizations (raw offset rings, mosaic) want the whole layer's
+    // geometry/topology in one dataset; keep the original global dissolve for
+    // them (no artifact-hole filter runs in debug mode anyway). Mirror the real
+    // pipeline's construction so the debug view reflects what the buffer
+    // actually builds: an all-closed-ring two-sided layer uses the winding-fill
+    // + loop-removal construction (and a winding-number dissolve), so
+    // debug-offset shows the loop-removed offset rings and the no-loop-removal
     // flag has a visible effect. (See makePolylineBufferTwoSidedPerFeature.)
-    var debugWinding = !oneSided && layerIsAllClosed(lyr, dataset.arcs);
-    var debugMakerOpts = debugWinding ?
+    var useWindingConstruction = !oneSided && layerIsAllClosed(lyr, dataset.arcs);
+    var debugMakerOpts = useWindingConstruction ?
       Object.assign({}, opts, {winding_fill: true}) : opts;
     var debugDissolveOpts = Object.assign({}, opts, {per_part_holes: true},
-      debugWinding ? {winding_fill: true} : null);
+      useWindingConstruction ? {winding_fill: true} : null);
     dataset2 = importGeoJSON(makeShapeBufferGeoJSON(lyr, dataset, debugMakerOpts), {});
     dissolveBufferDataset2(dataset2, debugDissolveOpts);
   } else {
@@ -474,7 +474,7 @@ function extendToExitBuffer(endProj, innerProj, segs, distance, spherical) {
 }
 
 function useArtifactHoleFilter(opts) {
-  return !opts.debug_offset && !opts.debug_winding && !opts.debug_mosaic;
+  return !opts.debug_offset && !opts.debug_mosaic;
 }
 
 // Remove artifact rings left by dissolving the self-intersecting outline rings

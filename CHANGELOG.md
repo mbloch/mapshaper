@@ -1,3 +1,8 @@
+v0.7.28 (unreleased)
+* The `-buffer topological` option now partitions overlapping buffer space by proximity to the source polygons (the nearest polygon wins), instead of assigning each overlap to the largest-area polygon.
+* The new `-buffer fill-gaps` mode fills gaps that are narrower than the given distance parameter, including both interior holes and gaps along the outside of a polygon mosaic (such as coastal inlets and rivers).
+* Added the `-buffer fill-gaps max-widening=` option (see docs).
+
 v0.7.27
 * Security fix: prevent a malicious input file's layer names from causing output files to be written outside the intended directory (path traversal).
 
@@ -9,7 +14,7 @@ v0.7.25
 
 v0.7.24
 * `-buffer` performance improvements
-* Added undocumented `sector-band` option for slower but possibly more robust buffer creation.
+* Added undocumented `band-method` option for slower but possibly more robust buffer creation.
 
 v0.7.23
 * Added a `-buffer` command for buffering points, lines and polygons.
