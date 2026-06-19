@@ -1,4 +1,4 @@
-v0.7.28 (unreleased)
+v0.7.28
 * The `-buffer topological` option now partitions overlapping buffer space by proximity to the source polygons (the nearest polygon wins), instead of assigning each overlap to the largest-area polygon.
 * The new `-buffer fill-gaps` mode fills gaps that are narrower than the given distance parameter, including both interior holes and gaps along the outside of a polygon mosaic (such as coastal inlets and rivers).
 * Added the `-buffer fill-gaps max-widening=` option (see docs).
