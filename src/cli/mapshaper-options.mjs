@@ -498,10 +498,6 @@ export function getOptionParser() {
     .option('tolerance', {
       describe: 'acceptable error when buffering lines and polygons (default is 1%)'
     })
-    // .option('circle-quality', {
-    //   // segments per circle in joins and caps
-    //   type: 'integer'
-    // })
     .option('cap-style', {
       describe: 'flat or round (default is round)'
     })
@@ -513,6 +509,14 @@ export function getOptionParser() {
     .option('topological', {
       describe: '[polygons] buffer unshared boundaries without covering source polygon areas',
       type: 'flag'
+    })
+    .option('fill-gaps', {
+      describe: '[polygons] fill enclosed holes and inlets whose opening is narrower than the buffer distance, without growing the outer boundary',
+      type: 'flag'
+    })
+    .option('max-widening', {
+      describe: '[with fill-gaps] fill interior gaps up to this multiple of the buffer distance wide (default 5); wider gaps are kept open',
+      type: 'number'
     })
     .option('geodesic', {
       describe: '[projected data] buffer using geodesic distances',
@@ -527,7 +531,6 @@ export function getOptionParser() {
       type: 'integer'
     })
     .option('quad-segs', {
-    // .option('arc-quality', {
       describe: 'segments per quarter-circle in joins and caps (default is 8)',
       type: 'integer'
     })
@@ -535,10 +538,18 @@ export function getOptionParser() {
       // generate initial buffer shapes but don't dissolve them
       type: 'flag'
     })
-    .option('debug-winding', {
+    .option('debug-mosaic', {
       type: 'flag'
     })
-    .option('debug-mosaic', {
+    .option('debug-voronoi', {
+      // output the inter-feature medial-axis (Voronoi) cut-lines used to
+      // partition contested space in a topological polygon buffer
+      type: 'flag'
+    })
+    .option('debug-delaunay', {
+      // output the medial-construction triangles (Delaunay triangles bridging
+      // two features within buffer reach) used to build the medial axis in a
+      // topological polygon buffer
       type: 'flag'
     })
     .option('left', {
@@ -566,19 +577,25 @@ export function getOptionParser() {
     })
     .option('no-loop-removal', {
       // Loop removal (collapsing self-overlap loops from two-sided line buffers
-      // before the dissolve) is on by default; this opts out. Undocumented: it
-      // is an internal construction optimization whose output matches the
-      // un-optimized buffer within the error tolerance.
+      // before the dissolve) is on by default; this opts out.
       type: 'flag'
     })
-    .option('sector-band', {
-      // Undocumented escape hatch: build buffers with the older sector-band
-      // construction (per-segment offset bands + join-sector rings + a
-      // band-coverage audit, unioned by a boundary flood) instead of the
-      // default winding-fill construction. Applies to line buffers (one- and
-      // two-sided) and all polygon buffers (positive, negative, topological).
-      // Kept as a slower-but-conservative fallback and a debugging aid in case
-      // the winding-fill construction is found to mishandle some input.
+    .option('loop-removal-turn-gate', {
+      // Undocumented: for two-sided open-path buffers, use the source-turn-gate
+      // loop-removal method instead of the default crossing-direction method.
+      // Kept as an alternative for A/B comparison and as a conservative fallback.
+      type: 'flag'
+    })
+    .option('band-method', {
+      // Undocumented escape hatch: build buffers with the older band (sector-
+      // band) construction -- per-segment offset bands + join-sector rings + a
+      // band-coverage audit, unioned by a boundary flood -- instead of the
+      // default construction (the clean-outline construction for polygon grow,
+      // the winding-fill construction otherwise). Applies to line buffers (one-
+      // and two-sided) and all polygon buffers (positive, negative,
+      // topological); where a path's default already is the band construction,
+      // this is a no-op. Kept as a slower-but-conservative fallback and a
+      // debugging aid in case the default construction mishandles some input.
       type: 'flag'
     })
     .option('no-cleanup', {

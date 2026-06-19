@@ -48,10 +48,17 @@ export function BufferBuilder() {
 
   // Returns {ring, srcPos}: ring is the closed coordinate ring (first point
   // repeated as last); srcPos is the parallel source-position array.
-  self.done = function() {
+  // @allowDegenerate: return null instead of erroring when the ring collapsed
+  // to fewer than 3 points (an offset loop whose source ring shrank away, e.g.
+  // a hole smaller than the buffer radius) -- a normal outcome, not a bug.
+  self.done = function(allowDegenerate) {
     var ring = path.slice().reverse().concat(buffer);
     var srcPos = pathPos.slice().reverse().concat(bufferPos);
     if (ring.length < 3) {
+      if (allowDegenerate) {
+        init();
+        return null;
+      }
       error('Defective buffer ring:', ring);
     }
     ring.push(ring[0].concat());

@@ -457,7 +457,17 @@ and caps. The default is 8.
 `round`.
 
 `topological` [polygons] Buffer only unshared polygon boundaries, such as coastlines and empty holes. Buffer areas do not cover any
-original polygon areas, and overlapping buffer areas are assigned to the larger feature.
+original polygon areas, and overlapping buffer areas are partitioned between features by proximity, so each point in a contested area is assigned to the nearest source polygon.
+
+`fill-gaps` [polygons] Fill enclosed holes and narrow-mouthed inlets — gaps whose
+opening is narrower than the buffer distance — without growing the outer
+boundary (a river is filled up to its mouth, but the open coastline is left in
+place). The filled area is partitioned among the adjacent features by proximity.
+
+`max-widening=` [polygons, with `fill-gaps`] Fill interior gaps up to this
+multiple of the buffer distance wide; wider gaps are kept open. The default is 5.
+For example, with a 1km buffer distance and the default `max-widening` value, an interior gap is
+filled if it is narrower than 5km and left open otherwise.
 
 `geodesic` [projected data] Buffer using geodesic distances instead of projected planar distances.
 
@@ -469,6 +479,9 @@ mapshaper roads.shp -buffer 2km -o roads_buffer.geojson
 
 # Create a topological coastline-style buffer around polygons
 mapshaper counties.shp -buffer 100m topological -o counties_buffer.geojson
+
+# Fill inlets and enclosed holes up to 500m wide without growing the coastline
+mapshaper land.shp -buffer 500m fill-gaps -o land_filled.geojson
 ```
 
 ### -clean

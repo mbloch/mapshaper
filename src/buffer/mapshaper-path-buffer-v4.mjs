@@ -3,7 +3,7 @@ import geom from '../geom/mapshaper-geom';
 import { ShapeIter } from '../paths/mapshaper-shape-iter';
 import { BufferBuilder } from './mapshaper-buffer-builder';
 import { bufferSegmentIntersection, getBufferSimplifyFunction } from './mapshaper-buffer-common';
-import { removeBufferRingLoops, BUFFER_LOOP_WINDOW } from './mapshaper-buffer-loop-removal';
+import { removeBufferRingLoops, removeBufferRingLoopsByDirection, BUFFER_LOOP_WINDOW } from './mapshaper-buffer-loop-removal';
 import DouglasPeucker from '../simplify/mapshaper-dp';
 import { getDatasetCRS, isLatLngCRS } from '../crs/mapshaper-projections';
 import { countCrosses, removePolygonCrosses } from '../geom/mapshaper-antimeridian-cuts';
@@ -124,6 +124,18 @@ export function getPolylineBufferMaker(dataset, opts) {
 
   // each path may be converted into multiple buffer rings, which later
   // need to be dissolved
+  // Re-anchor a closed ring [v0, v1, ..., v0] to the midpoint of its first edge:
+  // returns [m, v1, ..., v0, m] where m = midpoint(v0, v1). The offset then
+  // starts/ends mid-edge (a collinear seam) and v0 becomes an interior join.
+  function startRingAtEdgeMidpoint(verts) {
+    var a = verts[0], b = verts[1];
+    var m = [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2];
+    var out = [m];
+    for (var i = 1; i < verts.length; i++) out.push(verts[i]);
+    out.push(m.concat());
+    return out;
+  }
+
   function makeSinglePathRings(pathArcs, dist) {
     var rings = [];
     var pathSideVerts = collectPathVertices(pathArcs);
@@ -131,18 +143,23 @@ export function getPolylineBufferMaker(dataset, opts) {
     if (simplifyIntervalFn) {
       verts = presimplifyPathVerts(verts, simplifyIntervalFn(dist), dist);
     }
-    if (!oneSidedBuffer && !opts.sector_band && pathIsOpen(verts)) {
+    if (!oneSidedBuffer && !opts.band_method && pathIsOpen(verts)) {
       // Fast path for ordinary two-sided line buffers: emit one closed
       // outline instead of many per-segment bands that must be dissolved.
-      // The sector-band escape hatch skips it to fall through to the
+      // The band-method escape hatch skips it to fall through to the
       // per-segment band construction (makeLeftBufferRings, no winding fill).
       var built = makeTwoSidedOutlineRing(verts, dist);
       if (opts.no_loop_removal) return [built.ring];
-      // Default: strip self-overlap loops (the dissolve would fill them anyway)
-      // so it has fewer segments and self-intersections to resolve; only loops
-      // spanning a small source-path turn are removed, so real holes are kept
-      return [removeBufferRingLoops(built.ring, BUFFER_LOOP_WINDOW,
-        built.srcPos, getSourceTurnPrefix(verts))];
+      // Strip self-overlap loops (the dissolve would fill them anyway) so it has
+      // fewer segments and self-intersections to resolve, while keeping real
+      // holes. The two-sided outline of an open path has a consistent +/-1 base
+      // winding, so the crossing-direction method classifies loops exactly from
+      // the ring geometry alone; the source-turn gate is kept as an alternative.
+      if (opts.loop_removal_turn_gate) {
+        return [removeBufferRingLoops(built.ring, BUFFER_LOOP_WINDOW,
+          built.srcPos, getSourceTurnPrefix(verts))];
+      }
+      return [removeBufferRingLoopsByDirection(built.ring, BUFFER_LOOP_WINDOW)];
     }
     if (!opts.right || opts.left) {
       rings = rings.concat(buildOneSidedRings(verts));
@@ -160,18 +177,42 @@ export function getPolylineBufferMaker(dataset, opts) {
     // (no winding_fill) and the source-path edge get no provenance and pass
     // through unchanged.
     //
-    // Restricted to the winding-fill construction on closed source rings: a
-    // closed ring's offset overshoots are doubly-covered (safe to collapse), but
-    // an OPEN one-sided arc (e.g. a topological polygon's unbuffered-boundary
-    // remnant, buffered with caps) can have a concave-join dent that is its
-    // region's only coverage, which collapsing would cut away. Callers whose
-    // winding construction is not safe to collapse this way (the one-sided line
-    // buffer) opt out by passing no_loop_removal.
+    // The source-turn gate is applied to both closed source rings AND open
+    // one-sided arcs (e.g. a topological polygon's unbuffered-boundary remnant,
+    // buffered with caps). An open arc can have a concave-join dent that is its
+    // region's only coverage, which a purely geometric remover would cut away --
+    // but the source-turn gate keeps such coverage via per-ring source-position
+    // provenance, so it is safe here and lets the topological pipeline's
+    // per-feature dissolve start from far cleaner rings (its dominant cost).
+    // Callers whose winding construction is not safe to collapse this way (the
+    // one-sided line buffer) opt out by passing no_loop_removal.
     function buildOneSidedRings(sideVerts) {
+      // Outline mode offsets a closed source ring to a single self-contained
+      // loop with no source-path edge to close it, so the loop must close on
+      // itself at the start vertex. Starting at a corner leaves that seam
+      // unjoined (the raw first/last offset endpoints sit off the boundary,
+      // breaking inward elbow closures and the loop remover's first-vertex
+      // assumption). Restart at the midpoint of the first edge: the seam then
+      // falls mid-edge (collinear -- no join needed) and the original start
+      // corner becomes an ordinary interior join.
+      if (opts.outline && sideVerts.length > 2 && !pathIsOpen(sideVerts)) {
+        sideVerts = startRingAtEdgeMidpoint(sideVerts);
+      }
       var built = makeLeftBufferRings(sideVerts, dist,
         oneSidedBuffer ? pathSideVerts : null);
-      if (opts.no_loop_removal || !opts.winding_fill || pathIsOpen(sideVerts)) {
+      if (opts.no_loop_removal || !opts.winding_fill) {
         return built.rings;
+      }
+      if (opts.outline) {
+        // Outline mode rings are clean offset-only loops (no source-path edge),
+        // so each has a consistent +/-1 base winding and the crossing-direction
+        // remover classifies overshoot loops exactly from the ring geometry --
+        // the same condition that makes it safe for the open-path two-sided
+        // outline. (The band-ribbon rings of the default construction do not,
+        // which is why they use the source-turn gate below.)
+        return built.rings.map(function(ring) {
+          return removeBufferRingLoopsByDirection(ring, BUFFER_LOOP_WINDOW);
+        });
       }
       var turnPrefix = getSourceTurnPrefix(sideVerts);
       return built.rings.map(function(ring, i) {
@@ -186,8 +227,7 @@ export function getPolylineBufferMaker(dataset, opts) {
     var rings = [];
     // Parallel to rings[]: each entry is the source-position array for the
     // corresponding ring (from builder.done()), or null for rings with no
-    // single-path provenance (join sectors, band patches). Used by the
-    // winding-fill caller to gate loop removal.
+    // single-path provenance (join sectors, band patches).
     var ringsSrcPos = [];
     var openPath = pathIsOpen(verts);
     var x0, y0, x1, y1, x2, y2; // path traversal coords
@@ -200,7 +240,8 @@ export function getPolylineBufferMaker(dataset, opts) {
     var segId;
 
     function flushRing() {
-      var d = builder.done();
+      var d = builder.done(!!opts.outline);
+      if (!d) return; // outline loop collapsed (e.g. hole smaller than radius)
       rings.push(d.ring);
       ringsSrcPos.push(d.srcPos);
     }
@@ -212,7 +253,9 @@ export function getPolylineBufferMaker(dataset, opts) {
     if (verts.length > 0) {
       x0 = x2 = verts[0][0];
       y0 = y2 = verts[0][1];
-      addPathStart(verts[0]);
+      // Outline mode emits the offset polyline only (no source-path band edge),
+      // so the ring is a single self-contained offset loop (see buildOneSidedRings).
+      if (!opts.outline) addPathStart(verts[0]);
     }
 
     for (segId = 0; segId < verts.length - 1; segId++) {
@@ -235,9 +278,8 @@ export function getPolylineBufferMaker(dataset, opts) {
 
       // various connections between current offset segment and prev segment.
       // Offset ("buffer") vertices are tagged with the source segment id
-      // (segId) so loop removal can gate self-crossings by source-path turn;
-      // the slight imprecision of tagging a previous-segment endpoint (p2Prev)
-      // with the current segId is harmless for the smooth turn gate.
+      // (segId); the slight imprecision of tagging a previous-segment endpoint
+      // (p2Prev) with the current segId is harmless for provenance tracking.
       if (segId === 0) {
         // first extruded segment - no previous segment to join to - add
         // first endpoint to the buffer
@@ -299,11 +341,11 @@ export function getPolylineBufferMaker(dataset, opts) {
         // the two adjacent buffer sections; without it, the dissolved buffer
         // is pinched at the bend vertex.
         pushAuxRing(makeJoinSectorRing(x1, y1, bearing - 90, -joinAngle, dist, p1, p2Prev));
-        addPathStart(verts[segId]);
+        if (!opts.outline) addPathStart(verts[segId]);
         builder.addBufferVertex(p1, segId);
       }
 
-      addPathSegment(verts[segId], verts[segId + 1], pathSideVerts);
+      if (!opts.outline) addPathSegment(verts[segId], verts[segId + 1], pathSideVerts);
       // in v4, offset direction (bearing) is the same for both segment
       // endpoints, because we are projecting lat/lon coords to Mercator and
       // using planar geometry for all datasets
@@ -312,14 +354,26 @@ export function getPolylineBufferMaker(dataset, opts) {
       p2Prev = p2;
     }
 
+    var closedPath = (x2 == x0 && y2 == y0);
+
     // TODO: add this to cap and join code below
-    if (p2Prev) {
+    if (p2Prev && !(opts.outline && closedPath)) {
       // add final offset segment endpoint (the last path segment is never
-      // suppressed, so the buffer section in progress ends normally)
+      // suppressed, so the buffer section in progress ends normally).
+      // Outline closed rings skip it: the midpoint-restart seam is collinear,
+      // so p2Prev (the last segment's recomputed endpoint offset) is a ~1 ULP
+      // duplicate of the first offset vertex p1First. The ring must close by
+      // duplicating p1First exactly (done() below), not on a recalculated
+      // final point -- the sub-ULP gap leaves a sliver the winding dissolve
+      // cannot resolve, collapsing the whole buffer in some JS engines.
       builder.addBufferVertex(p2Prev, segId - 1);
     }
 
-    if (x2 == x0 && y2 == y0) { // closed path
+    if (opts.outline && closedPath) {
+      // Collinear seam: builder.done() closes the offset loop by duplicating
+      // its first vertex (p1First), the exact and correct closure. No join is
+      // added here (the seam falls mid-edge, so there is no corner to join).
+    } else if (closedPath) { // closed path
       // add join to finish closed path
       // TODO - figure out which bearing to use
       joinAngle = getJoinAngle(bearing, firstBearing);

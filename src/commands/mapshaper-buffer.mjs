@@ -92,6 +92,9 @@ function buildAndMergeBuffer(lyr, dataset, opts) {
   if (opts.topological && lyr.geometry_type != 'polygon') {
     stop('The topological buffer option requires a polygon layer');
   }
+  if (opts.fill_gaps && lyr.geometry_type != 'polygon') {
+    stop('The fill-gaps option requires a polygon layer');
+  }
   if (opts.geodesic && !isLatLngCRS(getDatasetCRS(dataset))) {
     // Geodesic buffer of projected data: reproject the source paths through
     // WGS84 lng/lat, run the ordinary (spherical) buffer pipeline, then
