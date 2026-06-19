@@ -315,7 +315,7 @@ Gaussian curve. Pixel values can be written as plain numbers or with a <code>px<
 suffix, for example <code>radius=10</code> or <code>radius=10px</code>.</p>
 <p>Common options: <code>target=</code></p>
 </section>
-<section class="cmd-section" data-id="-buffer" data-name="-buffer" data-options="radius tolerance vertices quad-segs round topological geodesic name target"><h3 id="-buffer">-buffer</h3>
+<section class="cmd-section" data-id="-buffer" data-name="-buffer" data-options="radius tolerance vertices quad-segs round topological fill-gaps max-widening geodesic name target"><h3 id="-buffer">-buffer</h3>
 <p>Create buffer polygons around point, polyline or polygon features.</p>
 <p>The buffer distance is given by the <code>&lt;radius&gt;</code> parameter. For layers in
 longitude/latitude coordinates, distances such as <code>2km</code> or <code>500m</code> are measured
@@ -337,7 +337,15 @@ and caps. The default is 8.</p>
 <p><code>cap-style=flat|round</code> [lines] End cap style for line buffers. The default is
 <code>round</code>.</p>
 <p><code>topological</code> [polygons] Buffer only unshared polygon boundaries, such as coastlines and empty holes. Buffer areas do not cover any
-original polygon areas, and overlapping buffer areas are assigned to the larger feature.</p>
+original polygon areas, and overlapping buffer areas are partitioned between features by proximity, so each point in a contested area is assigned to the nearest source polygon.</p>
+<p><code>fill-gaps</code> [polygons] Fill enclosed holes and narrow-mouthed inlets — gaps whose
+opening is narrower than the buffer distance — without growing the outer
+boundary (a river is filled up to its mouth, but the open coastline is left in
+place). The filled area is partitioned among the adjacent features by proximity.</p>
+<p><code>max-widening=</code> [polygons, with <code>fill-gaps</code>] Fill interior gaps up to this
+multiple of the buffer distance wide; wider gaps are kept open. The default is 5.
+For example, with a 1km buffer distance and the default <code>max-widening</code> value, an interior gap is
+filled if it is narrower than 5km and left open otherwise.</p>
 <p><code>geodesic</code> [projected data] Buffer using geodesic distances instead of projected planar distances.</p>
 <p>Common options: <code>name=</code> <code>+</code> <code>target=</code></p>
 <pre><code class="hljs language-bash"><span class="hljs-comment"># Buffer a line layer by 2 km</span>
@@ -345,6 +353,9 @@ mapshaper roads.shp -buffer 2km -o roads_buffer.geojson
 
 <span class="hljs-comment"># Create a topological coastline-style buffer around polygons</span>
 mapshaper counties.shp -buffer 100m topological -o counties_buffer.geojson
+
+<span class="hljs-comment"># Fill inlets and enclosed holes up to 500m wide without growing the coastline</span>
+mapshaper land.shp -buffer 500m fill-gaps -o land_filled.geojson
 </code></pre>
 </section>
 <section class="cmd-section" data-id="-clean" data-name="-clean" data-options="allow-empty gap-fill-area sliver-control overlap-rule allow-overlaps snap-interval rewind target"><h3 id="-clean">-clean</h3>
