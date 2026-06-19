@@ -54,7 +54,7 @@ export function buildInterFeatureMedialLines(shapes, coordDistances, arcs, opts)
     message('[medial] sample sites: ' + sites.coords.length);
   }
   profileStart('medial:computeSegments');
-  var medial = computeMedialSegments(sites, coordDistances);
+  var medial = computeMedialSegments(sites, coordDistances, sites.grid);
   profileEnd('medial:computeSegments');
   if (medial.segments.length === 0) return null;
   // Stitch the individual Voronoi edges (2-point segments that meet at shared
@@ -319,7 +319,11 @@ function collectSites(shapes, coordDistances, arcs) {
   // extrapolated as an outward ray). Dropping the touching interior borders and
   // the no-feature coastline shrinks the one remaining Delaunay and avoids
   // building a redundant medial where the source boundary already partitions.
-  return keptSites(sites, grid, coordDistances);
+  var kept = keptSites(sites, grid, coordDistances);
+  // Keep the segment grid with the sites so computeMedialSegments can re-measure
+  // the true source gap when the sample-pair proximity test is too coarse.
+  kept.grid = grid;
+  return kept;
 }
 
 // Bucket every boundary segment into a uniform grid so the nearest cross-feature
@@ -428,6 +432,50 @@ function nearestCrossFeatureSegmentDist(vx, vy, feat, reachF, seg, grid, cellKey
           var dist = Math.sqrt(dsq);
           if (dist < best) best = dist;
         }
+      }
+    }
+  }
+  return best;
+}
+
+// True when medial vertex c lies in the buffer overlap of features fp and fq:
+// within fp's radius of an fp-owned source segment AND within fq's radius of an
+// fq-owned source segment. Measured against the actual source segments via the
+// grid, so it is correct regardless of how coarsely the banks were sampled --
+// unlike the sample-pair distance, which overestimates the gap when the nearest
+// samples on opposite banks are staggered or far from the true closest approach.
+// Slack on each reach when rescuing a cross-feature edge whose sample endpoints
+// fell outside the cheap proximity test. It absorbs the discretization of the
+// medial graph near a pinch point: the connecting Voronoi edge is bounded by the
+// site spacing (capped at the buffer distance), so a genuinely contested edge can
+// run up to ~1.5x reach and its medial vertices can land a similar fraction
+// outside the overlap. 1.3 covers the worst real case observed (~1.18) with
+// headroom, while spurious edges between sites contested with *other* features
+// miss by far more (>=1.5 or have no nearby source segment) and stay pruned.
+var MEDIAL_OVERLAP_SLACK = 1.3;
+
+function medialVertexInOverlap(ctx, c, fp, fq, rp, rq) {
+  var sp = rp * MEDIAL_OVERLAP_SLACK, sq = rq * MEDIAL_OVERLAP_SLACK;
+  return pointFeatureDistSq(ctx, c[0], c[1], fp) <= sp * sp &&
+    pointFeatureDistSq(ctx, c[0], c[1], fq) <= sq * sq;
+}
+
+// Squared distance from (x, y) to the nearest segment owned by feature @feat,
+// probing the 3x3 grid-cell neighborhood (cell == max reach, so any segment
+// within a single feature's radius is in the window). Infinity if none.
+function pointFeatureDistSq(ctx, x, y, feat) {
+  var seg = ctx.seg, grid = ctx.grid;
+  var cx = ctx.colOf(x), cy = ctx.rowOf(y);
+  var best = Infinity;
+  for (var gx = cx - 1; gx <= cx + 1; gx++) {
+    for (var gy = cy - 1; gy <= cy + 1; gy++) {
+      var bucket = grid.get(ctx.cellKey(gx, gy));
+      if (!bucket) continue;
+      for (var b = 0; b < bucket.length; b++) {
+        var s = bucket[b];
+        if (seg.feat[s] !== feat) continue;
+        var d2 = pointSegDistSq2(x, y, seg.x0[s], seg.y0[s], seg.x1[s], seg.y1[s]);
+        if (d2 < best) best = d2;
       }
     }
   }
@@ -614,7 +662,7 @@ function triangleOfEdge(e) {
   return Math.floor(e / 3);
 }
 
-function computeMedialSegments(sites, coordDistances) {
+function computeMedialSegments(sites, coordDistances, ctx) {
   var coords = sites.coords;
   var owner = sites.owner;
   profileStart('medial:delaunay');
@@ -639,18 +687,28 @@ function computeMedialSegments(sites, coordDistances) {
     var opp = halfedges[e];
     var p = triangles[e];
     var q = triangles[nextHalfedge(e)];
-    if (owner[p] === owner[q]) continue;
+    var fp = owner[p], fq = owner[q];
+    if (fp === fq) continue;
     var dx = coords[p][0] - coords[q][0];
     var dy = coords[p][1] - coords[q][1];
     var siteDist = Math.sqrt(dx * dx + dy * dy);
-    var reach = coordDistances[owner[p]] + coordDistances[owner[q]];
-    // sites whose sources are farther apart than the sum of their radii can
-    // never have overlapping buffers, so their bisector is not a contested edge
-    if (siteDist > reach) continue;
+    var rp = coordDistances[fp], rq = coordDistances[fq];
+    var reach = rp + rq;
     var t1 = triangleOfEdge(e);
     var c1 = verts[t1];
     if (!c1) continue; // degenerate (near-collinear) triangle
+    // Sites within the sum of their radii are accepted directly; this is the
+    // common, cheap case. When they are farther apart, the bisector might still
+    // be contested -- the nearest sample pair overestimates the true source gap
+    // where banks are sampled coarsely or staggered. Re-measure the actual gap
+    // at the medial vertex against the source segments (the grid) and rescue the
+    // edge if it really lies in the buffer overlap. Without the rescue the medial
+    // axis fragments at such spots, leaving the equidistant cut wall open so the
+    // overlap face is never subdivided and a whole contested corridor is assigned
+    // to one feature (a feature wrapping a neighbor's enclosed island).
+    var near = siteDist <= reach;
     if (opp === -1) {
+      if (!near && !(ctx && medialVertexInOverlap(ctx, c1, fp, fq, rp, rq))) continue;
       // Hull edge: the Voronoi edge here is an unbounded ray (the bisector of
       // two sites on the convex hull). Emit it as an outward ray from the
       // circumcenter so the medial line reaches and crosses the buffer
@@ -671,6 +729,9 @@ function computeMedialSegments(sites, coordDistances) {
     var t2 = triangleOfEdge(opp);
     var c2 = verts[t2];
     if (!c2) continue;
+    if (!near && !(ctx &&
+        (medialVertexInOverlap(ctx, c1, fp, fq, rp, rq) ||
+         medialVertexInOverlap(ctx, c2, fp, fq, rp, rq)))) continue;
     var sx = c1[0] - c2[0], sy = c1[1] - c2[1];
     var segLen = Math.sqrt(sx * sx + sy * sy);
     // a real medial edge inside the overlap is short (on the order of the site

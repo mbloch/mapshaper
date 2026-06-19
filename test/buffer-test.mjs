@@ -1029,6 +1029,38 @@ describe('mapshaper-buffer.js', function () {
         });
       })
 
+      // Regression: at scattered buffer distances the inter-feature medial axis
+      // broke into separate chains where a connecting Voronoi edge was pruned --
+      // its sample endpoints sat just past the sum of the two radii, even though
+      // the bisector still ran through the buffer overlap (coarse/staggered
+      // sampling makes the sample-pair distance overestimate the true gap). The
+      // injected cut wall was then open, the buffer-overlap face was never
+      // subdivided, and the whole contested corridor was assigned to one feature
+      // by a single representative point: Oregon's buffer wrapped a Washington
+      // island in the Columbia, gaining an enclosing hole while the island
+      // detached as its own Washington part. The fix re-measures the true source
+      // gap at such an edge's medial vertices and keeps it when it really lies in
+      // the overlap. Sampled across the failing band (was broken at ~2.4, 4.2-4.6
+      // and 5.4-6.25 km) to lock in the whole class, not one distance.
+      it('keeps an enclosed island attached to its feature across the distance band', async function () {
+        var file = 'test/data/features/buffer/v_columbia_river.json';
+        var band = ['2.4km', '4.4km', '5.5km', '6km', '6.25km'];
+        for (var i = 0; i < band.length; i++) {
+          var out = await api.applyCommands(
+            '-i ' + file + ' -buffer ' + band[i] + ' topological -o format=geojson buffer.json');
+          var fc = JSON.parse(out['buffer.json']);
+          fc.features.forEach(function(f) {
+            assert(!geometryHasHole(f.geometry),
+              band[i] + ': ' + f.properties.NAME + ' should not enclose a neighbor');
+          });
+          var wa = fc.features.filter(function(f) {
+            return f.properties.NAME == 'Washington';
+          })[0];
+          assert.equal(getPolygonCount(wa.geometry), 1,
+            band[i] + ': the Washington island should stay attached to Washington');
+        }
+      })
+
       it('rejects fill-gaps on a non-polygon layer', async function () {
         await assert.rejects(function () {
           return api.applyCommands(
