@@ -80,6 +80,41 @@ describe('mapshaper-filter-detail.js', function () {
       assert(out.some(function(p) { return p[0] === 210 && p[1] === 0; }), 'spike base kept');
     });
 
+    it('collapses a needle spike whose base vertices are non-adjacent survivors', function () {
+      // a spike with long bare flanks (each flank chord > distance) parks its base
+      // vertices as survivors, so the short chord that closes the excursion sits
+      // between NON-adjacent survivors. The per-run cut can't see across them; the
+      // survivor-merge pass widens the run so the spike is sliced off.
+      var coords = [
+        [0, 0], [300, 0],         // baseline survivors (chord 300 > distance)
+        [305, 290],               // out: flank chord ~290 > distance
+        [310, 300], [315, 290],   // hook at the tip
+        [306, 1],                 // return near base: chord to [300,0] ~6
+        [600, 0], [900, 0]
+      ];
+      var out = collapse(coords, {distance: 200});
+      assert(!out.some(function(p) { return p[1] > 100; }), 'spike tip removed');
+      assert.deepEqual(out[0], [0, 0]);
+      assert.deepEqual(out[out.length - 1], [900, 0]);
+      // baseline survivors on either side of the spike are kept
+      assert(out.some(function(p) { return p[0] === 300 && p[1] === 0; }), 'left base kept');
+      assert(out.some(function(p) { return p[0] === 600 && p[1] === 0; }), 'right base kept');
+    });
+
+    it('does not merge a wide excursion (closing chord near the distance)', function () {
+      // same shape but the return lands far from the base (chord ~150 > 0.5*200):
+      // collapsing this would sweep a long span across the line, so the merge pass
+      // leaves it for -smooth/-simplify rather than risk a crossing.
+      var coords = [
+        [0, 0], [300, 0],
+        [305, 290], [310, 300], [315, 290],
+        [450, 5],                 // return: chord to [300,0] ~150 (> 0.5*200=100)
+        [600, 0], [900, 0]
+      ];
+      var out = collapse(coords, {distance: 200});
+      assert(out.some(function(p) { return p[1] > 100; }), 'wide excursion preserved');
+    });
+
     it('keeps a feature wider than the detail distance', function () {
       // apex sits between two baseline points 100 apart -> skip chord 100 > distance 50
       var coords = [[0, 0], [100, 0], [150, 80], [200, 0], [300, 0]];
