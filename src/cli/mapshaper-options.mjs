@@ -1681,6 +1681,10 @@ export function getOptionParser() {
       describe: 'shrinkage-correction (default 1; 0 = none, >1 exaggerates bends)',
       type: 'number'
     })
+    .option('max-bend-angle', {
+      describe: 'max bend between output segments in degrees (default is 8)',
+      type: 'number'
+    })
     .option('planar', {
       // describe: 'smooth decimal degree coords in 2D space (default is spherical)',
       type: 'flag'

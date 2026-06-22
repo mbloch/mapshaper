@@ -64,20 +64,25 @@ var MIN_CLOSED_SEGMENTS = 16;     // floor on segments for closed rings (so they
 // chord * accumulatedTurn / 8 estimates the bow of a circular arc, and we also
 // cut when it exceeds a fraction of the tolerance. Both tests are O(1) per dense
 // vertex, so the pass stays O(n).
-var DENSE_STEP_FACTOR = 0.033;      // dense sampling step = tolerance * this. Must
-                                    // resolve the sharpest smoothed feature (radius
-                                    // ~ the kernel scale) finely enough that the
-                                    // angle filter can reach BEND_ANGLE joins: one
-                                    // dense segment turns ~ this/0.4 radians there,
-                                    // kept well under BEND_ANGLE so the discrete
-                                    // accumulation barely overshoots the threshold.
-var BEND_ANGLE = 8 * Math.PI / 180; // keep a vertex after this much accumulated turn
+var DENSE_STEP_FACTOR = 0.033;      // dense sampling step = tolerance * this at the
+                                    // default bend angle. Must resolve the sharpest
+                                    // smoothed feature (radius ~ the kernel scale)
+                                    // finely enough that the angle filter can reach
+                                    // the bend-angle joins: one dense segment turns
+                                    // ~ this/0.4 radians there, kept well under the
+                                    // bend angle so the discrete accumulation barely
+                                    // overshoots the threshold. For a smaller-than-
+                                    // default bend angle the step is refined in
+                                    // proportion so the threshold stays reachable.
+var DEFAULT_BEND_ANGLE = 8 * Math.PI / 180; // keep a vertex after this much accumulated
+                                    // turn (max turn between consecutive output
+                                    // segments); user-overridable via max-bend-angle
 var DEVIATION_FACTOR = 0.1;         // sagitta guard: also cut a gentle bend that bows
                                     // more than tolerance * this from its chord
 
 // Smooth a single arc's coordinates.
 // @xx, @yy: coordinate arrays (may be typed-array subarrays) for one arc.
-// @opts: {tolerance, method, spherical, closed, keepCorners}
+// @opts: {tolerance, method, spherical, closed, keepCorners, gain, maxBendAngle}
 // Returns {xx: [], yy: []} with the smoothed coordinates. Endpoints of open
 // arcs are preserved exactly (so shared topology nodes stay put); closed arcs
 // are smoothed cyclically and returned closed (first point repeated at the end).
@@ -92,6 +97,16 @@ function resolveGain(opts) {
   return g >= 0 ? g : 0;
 }
 
+// Resolve the output bend-angle threshold from the user option (in degrees) to
+// radians. It caps the turn between consecutive output segments: a larger angle
+// keeps fewer vertices (coarser joins), a smaller one keeps more (smoother joins).
+// Non-positive or missing values fall back to the default.
+function resolveBendAngle(opts) {
+  var deg = opts.maxBendAngle;
+  if (deg === undefined || deg === null || !(deg > 0)) return DEFAULT_BEND_ANGLE;
+  return deg * Math.PI / 180;
+}
+
 export function smoothArcCoords(xx, yy, opts) {
   var n = xx.length;
   var origX = toArray(xx);
@@ -104,12 +119,18 @@ export function smoothArcCoords(xx, yy, opts) {
   var closed = !!opts.closed;
   var spherical = !!opts.spherical;
   var keepCorners = !!opts.keepCorners;
+  var bendAngle = resolveBendAngle(opts);
   var ctx = {
     tol: tol,
     method: method,
     spherical: spherical,
     keepCorners: keepCorners,
     gain: resolveGain(opts),
+    bendAngle: bendAngle,
+    // Refine the dense step for a smaller-than-default bend angle so one dense
+    // segment still turns well under the threshold; never coarsen it beyond the
+    // default (the angle filter alone thins the output for larger angles).
+    denseStep: tol * DENSE_STEP_FACTOR * Math.min(1, bendAngle / DEFAULT_BEND_ANGLE),
     radius: tol * WINDOW_RADIUS_FACTOR,
     scale: (method == 'gaussian' ? GAUSSIAN_SIGMA_FACTOR : PAEK_SCALE_FACTOR) * tol
   };
@@ -341,7 +362,7 @@ function densifyChannels(t, channels, maxSpacing) {
 // "Output resampling" note above). Step 1 evaluates the smoother at a uniform
 // dense step; step 2 makes one forward pass keeping the endpoints plus every
 // interior vertex where the accumulated turn since the last kept vertex reaches
-// BEND_ANGLE, or where the sagitta guard trips. @inputCount bounds the dense
+// the bend-angle threshold, or where the sagitta guard trips. @inputCount bounds the dense
 // sampling (and thus the output). Returns one array per channel, ordered by
 // increasing arc length, including both endpoints.
 function sampleSmoothedCurve(src, a, b, closed, ctx, inputCount) {
@@ -350,7 +371,7 @@ function sampleSmoothedCurve(src, a, b, closed, ctx, inputCount) {
   var maxPoints = Math.max(inputCount, MIN_CLOSED_SEGMENTS) * MAX_OUTPUT_FACTOR;
 
   // 1. dense uniform sampling of the smoothed curve
-  var nDense = Math.ceil(span / (ctx.tol * DENSE_STEP_FACTOR)) + 1;
+  var nDense = Math.ceil(span / ctx.denseStep) + 1;
   if (nDense < MIN_CLOSED_SEGMENTS + 1) nDense = MIN_CLOSED_SEGMENTS + 1;
   if (nDense > maxPoints) nDense = maxPoints;
   if (nDense < 2) nDense = 2;
@@ -360,7 +381,7 @@ function sampleSmoothedCurve(src, a, b, closed, ctx, inputCount) {
   }
 
   // 2. one-pass bend-angle filter
-  var theta = BEND_ANGLE;
+  var theta = ctx.bendAngle;
   var epsDev = ctx.tol * DEVIATION_FACTOR;
   var out = [];
   for (var c = 0; c < K; c++) out.push([]);

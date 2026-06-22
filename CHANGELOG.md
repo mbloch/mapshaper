@@ -1,3 +1,6 @@
+v0.7.32
+* Added the `-smooth max-bend-angle=` option to control the output vertex density (max bend between output segments in degrees; default is 8, higher values keep fewer vertices).
+
 v0.7.31
 * Improvements to the `-smooth` prefilter.
 

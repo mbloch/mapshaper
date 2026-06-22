@@ -23,6 +23,10 @@ cmd.smooth = function(dataset, opts, targetLayers) {
   if (opts.gain !== undefined && opts.gain !== null && !(opts.gain >= 0)) {
     stop('Expected gain to be a number >= 0');
   }
+  if (opts.max_bend_angle !== undefined && opts.max_bend_angle !== null &&
+      !(opts.max_bend_angle > 0)) {
+    stop('Expected max-bend-angle to be a number > 0 (degrees)');
+  }
   var implicitlySmoothedNames = getImplicitlyTargetedLayerNames(dataset, targetLayers, layerHasPaths);
 
   // Smoothing rewrites coordinates, so lock in any pending (non-destructive)
@@ -53,7 +57,8 @@ cmd.smooth = function(dataset, opts, targetLayers) {
     method: method,
     spherical: spherical,
     keepCorners: !!opts.keep_corners,
-    gain: opts.gain
+    gain: opts.gain,
+    maxBendAngle: opts.max_bend_angle
   });
 
   if (implicitlySmoothedNames.length > 0) {
@@ -80,6 +85,7 @@ export function smoothPaths(arcs, opts) {
       spherical: opts.spherical,
       keepCorners: opts.keepCorners,
       gain: opts.gain,
+      maxBendAngle: opts.maxBendAngle,
       closed: arcs.arcIsClosed(arcId)
     });
     nn.push(res.xx.length);
