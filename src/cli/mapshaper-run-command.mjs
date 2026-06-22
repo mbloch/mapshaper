@@ -46,6 +46,7 @@ import '../io/mapshaper-export';
 import '../commands/mapshaper-external';
 import '../commands/mapshaper-frame';
 import '../commands/mapshaper-filter';
+import '../commands/mapshaper-filter-detail';
 import '../commands/mapshaper-filter-geom';
 import '../commands/mapshaper-filter-islands';
 import '../commands/mapshaper-filter-islands2';
@@ -80,6 +81,7 @@ import '../commands/mapshaper-run';
 import '../commands/mapshaper-scalebar';
 import '../commands/mapshaper-shape';
 import '../commands/mapshaper-simplify';
+import '../commands/mapshaper-smooth';
 import '../commands/mapshaper-sort';
 import '../commands/mapshaper-snap';
 import '../commands/mapshaper-split';
@@ -297,6 +299,9 @@ export async function runCommand(command, job) {
     } else if (name == 'filter-geom') {
       applyCommandToEachLayer(cmd.filterGeom, targetLayers, arcs, opts);
 
+    } else if (name == 'filter-detail') {
+      cmd.filterDetail(targetDataset, opts, targetLayers);
+
     } else if (name == 'filter-islands') {
       applyCommandToEachLayer(cmd.filterIslands, targetLayers, targetDataset, opts);
 
@@ -454,6 +459,9 @@ export async function runCommand(command, job) {
       } else {
         cmd.simplify(targetDataset, opts, targetLayers);
       }
+
+    } else if (name == 'smooth') {
+      cmd.smooth(targetDataset, opts, targetLayers);
 
     } else if (name == 'slice') {
       outputLayers = cmd.sliceLayers(targetLayers, source, targetDataset, opts);
