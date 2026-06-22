@@ -11,12 +11,23 @@ This is a curated list of recently added features. For the full list of changes,
 
 <div class="whats-new-entry">
 
+**Smooth command.** The `-smooth` command smooths the geometry of polygon and polyline features to a given resolution.
+
+- The `keep-corners` option preserves sharp corners where straight-line segments meet instead of rounding them.
+- By default, a pre-filter is applied to remove intricate sub-scale detail (jetties, narrow inlets, spikes); disable it with `no-prefilter`.
+- The `gain` option controls the amplitude of output curves.
+
+→ See [`-smooth`](/docs/reference.html#-smooth).
+</div>
+
+<div class="whats-new-entry">
+
 **Buffer command.** The `-buffer` command makes buffers around points, lines and polygons.
 
 - The command uses geodesic distance on lat-long datasets and on projected datasets with the `geodesic` option.
 - Negative `radius` parameters shrink polygons (positive distances expand them).
 - The `topological` option prevents buffers from overlapping nearby polygons.
-- The `fill-gaps` option fills enclosed holes and narrow-mouthed inlets (like a river up to its mouth) without growing the outer boundary. Use `max-widening=` to control how wide a gap can be before it is left open.
+- The `fill-gaps` option fills enclosed holes and narrow-mouthed inlets (like a river up to its mouth) without growing the outer boundary.
 
 → See [`-buffer`](/docs/reference.html#-buffer).
 </div>

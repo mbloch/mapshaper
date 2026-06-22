@@ -39,6 +39,13 @@ export function validateSimplifyOpts(cmd) {
   }
 }
 
+export function validateSmoothOpts(cmd) {
+  var o = cmd.options;
+  if (o.distance === undefined || o.distance === null || o.distance === '') {
+    error('Command requires a distance parameter');
+  }
+}
+
 export function validateProjOpts(cmd) {
   var resampling = cmd.options.resampling;
   if (!(cmd.options.crs || cmd.options.match || cmd.options.init)) {

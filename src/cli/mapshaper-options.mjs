@@ -1128,6 +1128,28 @@ export function getOptionParser() {
     })
     .option('target', targetOpt);
 
+  parser.command('filter-detail')
+    // undocumented feature
+    // .describe('remove intricate sub-scale detail that smoothing cannot generalize')
+    .option('distance', {
+      DEFAULT: true,
+      type: 'distance',
+      describe: 'detail size threshold as a distance (e.g. 1km)'
+    })
+    .option('tortuosity', {
+      type: 'number',
+      describe: 'min original-length / chord ratio for a run to be cut (default 2); higher only cuts more convoluted detail'
+    })
+    .option('weighting', {
+      type: 'number',
+      describe: 'Visvalingam angle-weight coefficient (default 0.7); higher removes spiky detail more eagerly'
+    })
+    .option('planar', {
+      describe: 'treat decimal degree coords as planar x,y (default is spherical)',
+      type: 'flag'
+    })
+    .option('target', targetOpt);
+
   parser.command('filter-slivers')
     .describe('remove small polygon rings')
     .option('min-area', {
@@ -1627,6 +1649,44 @@ export function getOptionParser() {
     })
     .option('stats', {
       describe: 'display simplification statistics',
+      type: 'flag'
+    })
+    .option('target', targetOpt);
+
+  parser.command('smooth')
+    .validate(V.validateSmoothOpts)
+    .describe('scale-aware smoothing of polygon and polyline features')
+    .option('distance', {
+      DEFAULT: true,
+      type: 'distance',
+      describe: 'smoothing tolerance as a distance (e.g. 2km)'
+    })
+    // Gaussian (Savitzky-Golay) is the default and only documented smoother.
+    // 'paek' (exponential kernel) is kept as an undocumented alternative, so
+    // neither flag is given a describe (they stay out of the command help).
+    .option('paek', {
+      assign_to: 'method'
+    })
+    .option('gaussian', {
+      assign_to: 'method'
+    })
+    .option('method', {
+      // hidden option (set by the paek/gaussian flags)
+    })
+    .option('keep-corners', {
+      describe: 'preserve sharp corners where straight-line segments meet',
+      type: 'flag'
+    })
+    .option('gain', {
+      describe: 'shrinkage-correction (default 1; 0 = none, >1 exaggerates bends)',
+      type: 'number'
+    })
+    .option('planar', {
+      // describe: 'smooth decimal degree coords in 2D space (default is spherical)',
+      type: 'flag'
+    })
+    .option('no-prefilter', {
+      describe: 'skip the detail-filtering preprocessing step',
       type: 'flag'
     })
     .option('target', targetOpt);
