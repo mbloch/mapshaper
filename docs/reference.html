@@ -121,6 +121,7 @@ mapshaper states.geojson -filter <span class="hljs-string">&#x27;ST == &quot;AK&
 <a href="#-scalebar">-scalebar</a>
 <a href="#-shape">-shape</a>
 <a href="#-simplify">-simplify</a>
+<a href="#-smooth">-smooth</a>
 <a href="#-snap">-snap</a>
 <a href="#-sort">-sort</a>
 <a href="#-split">-split</a>
@@ -269,44 +270,6 @@ mapshaper -i shapefiles/*.shp batch-mode -o geojson/ format=geojson
 <p><code>where=</code>  Use a JS expression to select a subset of features.</p>
 <p>Common options: <code>target=</code></p>
 </section>
-<section class="cmd-section" data-id="-classify" data-name="-classify" data-options="quantile equal-interval hybrid nice field save-as fill stroke class values classes breaks colors random non-adjacent stops null-value outer-breaks continuous method categorical indexed index-field categories invert precision other key-style key-width key-font-size key-tile-height key-tic-length key-label-suffix key-last-suffix"><h3 id="-classify">-classify</h3>
-<p>Assign colors or data values to each feature using one of several classification methods. Methods for sequential data include <code>quantile</code>, <code>equal-interval</code>, <code>hybrid</code> and <code>nice</code> or categorical classification to a data field.</p>
-<p><code>&lt;field&gt;</code> or <code>field=</code> Name of the data field to classify.</p>
-<p><code>save-as=</code>     	Name of a (new or existing) field to receive the output of classification. The default output field for colors is <code>fill</code> or <code>stroke</code> (depending on geometry type) and <code>class</code> for non-color output.</p>
-<p><code>values=</code>       List of values to assign to data classes. If the number of values differs from the number of classes given by the (optional) <code>classes</code> or <code>breaks</code> option, then interpolated values will be calculated. Mapshaper uses d3 for interpolation.</p>
-<p><code>colors=</code> Takes a list of CSS colors, the name of a predefined color scheme, or <code>random</code>. Run the <a href="#-colors">-colors</a> command to list all of the built-in color schemes. Similar to the <code>values=</code> option, if the number of listed colors is different from the number of requested classes, interpolated colors are calculated.</p>
-<p><code>non-adjacent</code>  Assign colors to a polygon layer in a randomish pattern, trying not to assign the same color to adjacent polygons. Mapshaper&#39;s algorithm balances performance and quality. Usually it can find a solution with four or five colors. If mapshaper is unable to avoid giving the same color to neighboring polygons, it will print a warning. You can resolve the problem by increasing the number of colors.</p>
-<p><code>stops=</code> A pair of comma-separated numbers (0-100) for limiting the output range of a color ramp.</p>
-<p><code>null-value=</code>   Value (or color) to use for invalid or missing data.</p>
-<p><code>classes=</code>      Number of data classes. This number can also be inferred from the <code>breaks=</code> or <code>values=</code> options.</p>
-<p><code>breaks=</code>       Specify user-defined sequential class breaks (an alternative to automatic classification using <code>quantile</code>, <code>equal-interval</code>, etc.).</p>
-<p><code>outer-breaks=</code>  A pair of comma-separated numbers setting min and max breakpoints to use when computing class breaks. This setting overrides the default behavior, which is to use the min and max values of the data field being classified. This setting can be used to prevent extreme data values (outliers) from affecting equal-interval classification. Also useful for setting outside breakpoints for continuous color ramps (when using the <code>continuous</code> option).</p>
-<p><code>method=</code>       Classification method. One of: <code>quantile</code>, <code>equal-interval</code>, <code>nice</code>, <code>hybrid</code> (sequential data), <code>categorical</code>, <code>non-adjacent</code> and <code>indexed</code>. This parameter is not required if the classification method can be inferred from other options. For example, the <code>index-field=</code> parameter implies indexed classification, the <code>categories=</code> parameter implies categorical classification.</p>
-<p><code>quantile</code>      Use quantile classification. Shortcut for <code>method=quantile</code>.</p>
-<p><code>equal-interval</code> Use equal interval classification. Shortcut for <code>method=equal-interval</code>.</p>
-<p><code>nice</code>          Same as <code>method=nice</code>. This scheme finds equally spaced, round breakpoints that roughly divide the dataset into equal parts (similar to quantile classification).</p>
-<p><code>invert</code>        Reverse the order of colors/values.</p>
-<p><code>continuous</code>    Output continuously interpolated values (experimental). Uses linear interpolation between class breaks, which may give poor results with some distributions of data. This option is for creating unclassed/continuous-color maps.</p>
-<p><code>index-field=</code>  Use class ids that have been precalculated and assigned to this field. Values should be integers from <code>0 ... n-1</code> (where n is the number of classes). <code>-1</code> is the null value.</p>
-<p><code>precision=</code>    Round data values before classification (e.g. <code>precision=0.1</code>).</p>
-<p><code>categories=</code>   List of values in the source data field. Using this option triggers categorical classification.</p>
-<p><code>other=</code>  Default value for categorical classification. This value is used when the value of the source data field is not present in the list of values given by <code>categories=</code>. Defaults to <code>null-value=</code> or null.</p>
-<p><strong>Options for generating SVG keys</strong></p>
-<p><code>key-style=</code>         One of: simple, gradient, dataviz</p>
-<p><code>key-name= </code>         Name of output SVG file</p>
-<p><code>key-width=</code>         Width of key in pixels</p>
-<p><code>key-font-size=</code>     Font size of tic labels in pixels</p>
-<p><code>key-tile-height=</code>   Height of color tiles in pixels</p>
-<p><code>key-tic-length=</code>    Length of tic mark in pixels</p>
-<p><code>key-label-suffix=</code>  String to append to each label</p>
-<p><code>key-last-suffix=</code>   String to append to the last label</p>
-<p><strong>Examples</strong></p>
-<pre><code class="hljs language-bash"><span class="hljs-comment"># Apply a sequential color ramp to a polygon dataset using quantiles.</span>
-mapshaper covid_cases.geojson \
-  -classify save-as=fill quantile color-scheme=Oranges classes=6 \
-  -o out.geojson
-</code></pre>
-</section>
 <section class="cmd-section" data-id="-blur" data-name="-blur" data-options="radius px target"><h3 id="-blur">-blur</h3>
 <p>Apply a Gaussian-like blur to raster layers. The command only works on projected
 rasters; unprojected lat-long rasters should be reprojected first with <code>-proj</code>.</p>
@@ -356,6 +319,44 @@ mapshaper counties.shp -buffer 100m topological -o counties_buffer.geojson
 
 <span class="hljs-comment"># Fill inlets and enclosed holes up to 500m wide without growing the coastline</span>
 mapshaper land.shp -buffer 500m fill-gaps -o land_filled.geojson
+</code></pre>
+</section>
+<section class="cmd-section" data-id="-classify" data-name="-classify" data-options="quantile equal-interval hybrid nice field save-as fill stroke class values classes breaks colors random non-adjacent stops null-value outer-breaks continuous method categorical indexed index-field categories invert precision other key-style key-width key-font-size key-tile-height key-tic-length key-label-suffix key-last-suffix"><h3 id="-classify">-classify</h3>
+<p>Assign colors or data values to each feature using one of several classification methods. Methods for sequential data include <code>quantile</code>, <code>equal-interval</code>, <code>hybrid</code> and <code>nice</code> or categorical classification to a data field.</p>
+<p><code>&lt;field&gt;</code> or <code>field=</code> Name of the data field to classify.</p>
+<p><code>save-as=</code>      Name of a (new or existing) field to receive the output of classification. The default output field for colors is <code>fill</code> or <code>stroke</code> (depending on geometry type) and <code>class</code> for non-color output.</p>
+<p><code>values=</code>       List of values to assign to data classes. If the number of values differs from the number of classes given by the (optional) <code>classes</code> or <code>breaks</code> option, then interpolated values will be calculated. Mapshaper uses d3 for interpolation.</p>
+<p><code>colors=</code> Takes a list of CSS colors, the name of a predefined color scheme, or <code>random</code>. Run the <a href="#-colors">-colors</a> command to list all of the built-in color schemes. Similar to the <code>values=</code> option, if the number of listed colors is different from the number of requested classes, interpolated colors are calculated.</p>
+<p><code>non-adjacent</code>  Assign colors to a polygon layer in a randomish pattern, trying not to assign the same color to adjacent polygons. Mapshaper&#39;s algorithm balances performance and quality. Usually it can find a solution with four or five colors. If mapshaper is unable to avoid giving the same color to neighboring polygons, it will print a warning. You can resolve the problem by increasing the number of colors.</p>
+<p><code>stops=</code> A pair of comma-separated numbers (0-100) for limiting the output range of a color ramp.</p>
+<p><code>null-value=</code>   Value (or color) to use for invalid or missing data.</p>
+<p><code>classes=</code>      Number of data classes. This number can also be inferred from the <code>breaks=</code> or <code>values=</code> options.</p>
+<p><code>breaks=</code>       Specify user-defined sequential class breaks (an alternative to automatic classification using <code>quantile</code>, <code>equal-interval</code>, etc.).</p>
+<p><code>outer-breaks=</code>  A pair of comma-separated numbers setting min and max breakpoints to use when computing class breaks. This setting overrides the default behavior, which is to use the min and max values of the data field being classified. This setting can be used to prevent extreme data values (outliers) from affecting equal-interval classification. Also useful for setting outside breakpoints for continuous color ramps (when using the <code>continuous</code> option).</p>
+<p><code>method=</code>       Classification method. One of: <code>quantile</code>, <code>equal-interval</code>, <code>nice</code>, <code>hybrid</code> (sequential data), <code>categorical</code>, <code>non-adjacent</code> and <code>indexed</code>. This parameter is not required if the classification method can be inferred from other options. For example, the <code>index-field=</code> parameter implies indexed classification, the <code>categories=</code> parameter implies categorical classification.</p>
+<p><code>quantile</code>      Use quantile classification. Shortcut for <code>method=quantile</code>.</p>
+<p><code>equal-interval</code> Use equal interval classification. Shortcut for <code>method=equal-interval</code>.</p>
+<p><code>nice</code>          Same as <code>method=nice</code>. This scheme finds equally spaced, round breakpoints that roughly divide the dataset into equal parts (similar to quantile classification).</p>
+<p><code>invert</code>        Reverse the order of colors/values.</p>
+<p><code>continuous</code>    Output continuously interpolated values (experimental). Uses linear interpolation between class breaks, which may give poor results with some distributions of data. This option is for creating unclassed/continuous-color maps.</p>
+<p><code>index-field=</code>  Use class ids that have been precalculated and assigned to this field. Values should be integers from <code>0 ... n-1</code> (where n is the number of classes). <code>-1</code> is the null value.</p>
+<p><code>precision=</code>    Round data values before classification (e.g. <code>precision=0.1</code>).</p>
+<p><code>categories=</code>   List of values in the source data field. Using this option triggers categorical classification.</p>
+<p><code>other=</code>  Default value for categorical classification. This value is used when the value of the source data field is not present in the list of values given by <code>categories=</code>. Defaults to <code>null-value=</code> or null.</p>
+<p><strong>Options for generating SVG keys</strong></p>
+<p><code>key-style=</code>         One of: simple, gradient, dataviz</p>
+<p><code>key-name= </code>         Name of output SVG file</p>
+<p><code>key-width=</code>         Width of key in pixels</p>
+<p><code>key-font-size=</code>     Font size of tic labels in pixels</p>
+<p><code>key-tile-height=</code>   Height of color tiles in pixels</p>
+<p><code>key-tic-length=</code>    Length of tic mark in pixels</p>
+<p><code>key-label-suffix=</code>  String to append to each label</p>
+<p><code>key-last-suffix=</code>   String to append to the last label</p>
+<p><strong>Examples</strong></p>
+<pre><code class="hljs language-bash"><span class="hljs-comment"># Apply a sequential color ramp to a polygon dataset using quantiles.</span>
+mapshaper covid_cases.geojson \
+  -classify save-as=fill quantile color-scheme=Oranges classes=6 \
+  -o out.geojson
 </code></pre>
 </section>
 <section class="cmd-section" data-id="-clean" data-name="-clean" data-options="allow-empty gap-fill-area sliver-control overlap-rule allow-overlaps snap-interval rewind target"><h3 id="-clean">-clean</h3>
@@ -531,7 +532,43 @@ mapshaper usa_counties.shp \
   -filter <span class="hljs-string">&#x27;&quot;ME,VT,NH,MA,CT,RI&quot;.indexOf(STATE) &gt; -1&#x27;</span> \
   -o ne_counties.shp
 </code></pre>
-</section>
+<!--
+### -filter-detail
+
+Remove intricate, sub-scale detail that `-smooth` cannot generalize cleanly. This is an optional preprocessing step before smoothing: features such as jetties, breakwaters, narrow inlets and fjords are too thin and too convoluted for a low-pass filter to average away, and smoothing them tends to leave kinks or even self-intersections. `-filter-detail` cuts those features out first, so the subsequent `-smooth` sees a cleaner line.
+
+Unlike `-simplify`, it does not thin the whole line — that would starve `-smooth`, which makes a better approximation of the original when it has more vertices to work with. Instead it cuts only where there is genuine convoluted detail and leaves everything else at full resolution. It works in two phases:
+
+1. **Find candidate chords** with a chord-length-gated weighted Visvalingam peel — the same vertex ranking `-simplify`'s default method uses. Vertices are removed least-significant first (smallest angle-weighted triangle area), so a thin feature is peeled from its tip inward and each removal sweeps the smallest possible triangle, finding the shortest chord that would slice the feature off. A vertex is only eligible when the chord that would replace it is no longer than the detail distance, which segments the line into runs that each fit within the detail scale and bounds every candidate chord.
+
+2. **Cut selectively, span by span.** Within each run, find the span whose chord is shortest relative to the original path across it — the most convoluted *tortuosity* — and cut it to its chord when that ratio is above the threshold, then continue. Everything not cut keeps its original vertices, so gentle stretches stay at full detail. Because the decision is per span rather than per run, a small spike is removed whether it sits alone or is embedded in a long gentle stretch; removal depends on how convoluted a feature is, not on how small it is relative to the distance.
+
+Like `-simplify` and `-smooth`, this rewrites shared arc vertices in place and always preserves arc endpoints (topology nodes), so polygon boundaries stay coincident and topology is preserved. It applies to all polygon and polyline layers in a dataset, and any pending simplification is locked in first.
+
+**Options**
+
+`<distance>` or `distance=`  Detail size threshold as a distance (e.g. `1km`), and the longest chord the filter is allowed to create. Convoluted features narrower than this are cut; wider features are left alone. A good starting point is the same distance you pass to `-smooth`. If the unit is omitted, uses meters for unprojected data in spherical mode, otherwise the source units.
+
+`tortuosity=`  How convoluted a span must be before it is cut, measured as original sub-path length divided by chord length (default `2`). Higher values keep more detail (only very convoluted features are removed); values near `1` cut almost every sub-distance span.
+
+`weighting=`  Visvalingam angle-weight coefficient (default `0.7`, matching `-simplify weighted`). Higher values rank sharply-angled (spiky) vertices as less significant; `weighting=0` ranks purely by triangle area.
+
+`planar`  Treat lng,lat coordinates as planar x,y instead of measuring distances and areas on the sphere (the default for unprojected data). Projected data is always measured planar.
+
+Common options: `target=`
+
+**Examples**
+```bash
+# Strip convoluted coastal detail, then smooth.
+mapshaper coast.shp -filter-detail 1km -smooth 1km -o out.shp
+
+# Remove detail finer than 200m before a 1km smooth.
+mapshaper coast.shp -filter-detail 200m -smooth 1km -o out.shp
+
+# Keep more detail by only cutting the most convoluted features.
+mapshaper coast.shp -filter-detail 1km tortuosity=3 -smooth 1km -o out.shp
+```
+--></section>
 <section class="cmd-section" data-id="-filter-fields" data-name="-filter-fields" data-options="fields invert target"><h3 id="-filter-fields">-filter-fields</h3>
 <p>Delete fields in an attribute table, by listing the fields to retain. If no files are given, then all attributes are removed.</p>
 <p><code>&lt;fields&gt;</code> or <code>fields=</code>   Comma-separated list of data fields to retain.</p>
@@ -912,6 +949,24 @@ mapshaper counties.shp -simplify 10% -o simplified.shp
 
 <span class="hljs-comment"># Use Douglas-Peucker simplification with a 100 meter threshold.</span>
 mapshaper states.shp -simplify dp interval=100 -o simplified/
+</code></pre>
+</section>
+<section class="cmd-section" data-id="-smooth" data-name="-smooth" data-options="no-prefilter distance keep-corners gain planar"><h3 id="-smooth">-smooth</h3>
+<p>Smooth the geometry of polygon and polyline features. Unlike <code>-simplify</code>, which removes vertices, <code>-smooth</code> repositions and resamples vertices to remove fine detail. It applies a Gaussian (Savitzky&ndash;Golay) low-pass filter along each path, controlled by a <code>&lt;distance&gt;</code> parameter that sets the approximate resolution of the result.</p>
+<p>Output vertices are distributed adaptively along the smoothed line: vertices are denser along sharp bends and sparser along straight and gently-curving stretches.</p>
+<p>By default, <code>-smooth</code> first runs a prefilter to remove intricate details that smoothing cannot generalize cleanly. Use <code>no-prefilter</code> to turn this off.</p>
+<p><strong>Options</strong></p>
+<p><code>&lt;distance&gt;</code> or <code>distance=</code>  Smoothing resolution as a distance (e.g. <code>2km</code>): detail finer than this is removed.</p>
+<p><code>keep-corners</code>  Preserve sharp corners where straight-line segments meet, instead of rounding them. Detection is scale-relative to the smoothing distance.</p>
+<p><code>gain=</code>  Strength of the polynomial (Savitzky&ndash;Golay) curvature correction that counteracts the amplitude shrinkage of a plain weighted average. The default is <code>1</code> (fully corrected, so bends keep their amplitude). <code>gain=0</code> disables the correction, leaving the plain weighted moving average, which shrinks curved features — more so at shorter wavelengths. Values above <code>1</code> over-correct, exaggerating the curvature of bends; values greater than <code>2</code> are allowed.</p>
+<p><code>no-prefilter</code>  By default, <code>-smooth</code> runs a detail filter pass before smoothing to remove intricate sub-scale detail — jetties, narrow inlets, spikes — that the low-pass smoother cannot generalize cleanly and that otherwise tends to leave kinks or self-intersections. This option skips that step and smooths the input as-is.</p>
+<p><code>planar</code>  By default, mapshaper smooths unprojected (lng,lat) data in 3D space, by converting coordinates to geocentric x,y,z on a sphere. The <code>planar</code> option treats lng,lat coordinates as x,y coordinates on a Cartesian plane. Smoothing of projected data is always planar.</p>
+<p><strong>Examples</strong></p>
+<pre><code class="hljs language-bash"><span class="hljs-comment"># Smooth a coastline, removing detail finer than 500 meters.</span>
+mapshaper coast.geojson -smooth 1km -o smoothed.geojson
+
+<span class="hljs-comment"># Smooth county boundaries but keep the sharp corners of straight-line borders.</span>
+mapshaper counties.shp -smooth 500m keep-corners -o smoothed.json
 </code></pre>
 </section>
 <section class="cmd-section" data-id="-snap" data-name="-snap" data-options="interval endpoints precision fix-geometry target"><h3 id="-snap">-snap</h3>
@@ -1317,7 +1372,7 @@ mapshaper -vars YEAR=2030 -run build.txt
   </main>
 
   <aside class="docs-toc">
-    <div class="docs-toc-title">On this page</div><ul><li class="lvl-2"><a href="#command-line-syntax">Command line syntax</a></li><li class="lvl-3"><a href="#command-options-can-take-three-forms">Command options can take three forms:</a></li><li class="lvl-3"><a href="#common-options">Common options</a></li><li class="lvl-2"><a href="#index-of-commands">Index of commands</a></li><li class="lvl-2"><a href="#i-o-commands">I/O Commands</a></li><li class="lvl-3"><a href="#-i-input">-i (input)</a></li><li class="lvl-3"><a href="#-o-output">-o (output)</a></li><li class="lvl-2"><a href="#editing-commands">Editing Commands</a></li><li class="lvl-3"><a href="#-affine">-affine</a></li><li class="lvl-3"><a href="#-classify">-classify</a></li><li class="lvl-3"><a href="#-blur">-blur</a></li><li class="lvl-3"><a href="#-buffer">-buffer</a></li><li class="lvl-3"><a href="#-clean">-clean</a></li><li class="lvl-3"><a href="#-clip">-clip</a></li><li class="lvl-3"><a href="#-colorizer">-colorizer</a></li><li class="lvl-3"><a href="#-dashlines">-dashlines</a></li><li class="lvl-3"><a href="#-dissolve">-dissolve</a></li><li class="lvl-3"><a href="#-dissolve2">-dissolve2</a></li><li class="lvl-3"><a href="#-divide">-divide</a></li><li class="lvl-3"><a href="#-dots">-dots</a></li><li class="lvl-3"><a href="#-drop">-drop</a></li><li class="lvl-3"><a href="#-each">-each</a></li><li class="lvl-3"><a href="#-erase">-erase</a></li><li class="lvl-3"><a href="#-explode">-explode</a></li><li class="lvl-3"><a href="#-filter">-filter</a></li><li class="lvl-3"><a href="#-filter-fields">-filter-fields</a></li><li class="lvl-3"><a href="#-filter-islands">-filter-islands</a></li><li class="lvl-3"><a href="#-filter-slivers">-filter-slivers</a></li><li class="lvl-3"><a href="#-frame">-frame</a></li><li class="lvl-3"><a href="#-graticule">-graticule</a></li><li class="lvl-3"><a href="#-grid">-grid</a></li><li class="lvl-3"><a href="#-include">-include</a></li><li class="lvl-3"><a href="#-inlay">-inlay</a></li><li class="lvl-3"><a href="#-innerlines">-innerlines</a></li><li class="lvl-3"><a href="#-join">-join</a></li><li class="lvl-3"><a href="#-lines">-lines</a></li><li class="lvl-3"><a href="#-merge-layers">-merge-layers</a></li><li class="lvl-3"><a href="#-mosaic">-mosaic</a></li><li class="lvl-3"><a href="#-point-grid">-point-grid</a></li><li class="lvl-3"><a href="#-points">-points</a></li><li class="lvl-3"><a href="#-polygons">-polygons</a></li><li class="lvl-3"><a href="#-proj">-proj</a></li><li class="lvl-3"><a href="#-rectangle">-rectangle</a></li><li class="lvl-3"><a href="#-rectangles">-rectangles</a></li><li class="lvl-3"><a href="#-rename-fields">-rename-fields</a></li><li class="lvl-3"><a href="#-rename-layers">-rename-layers</a></li><li class="lvl-3"><a href="#-require">-require</a></li><li class="lvl-3"><a href="#-run">-run</a></li><li class="lvl-3"><a href="#-scalebar">-scalebar</a></li><li class="lvl-3"><a href="#-shape">-shape</a></li><li class="lvl-3"><a href="#-simplify">-simplify</a></li><li class="lvl-3"><a href="#-snap">-snap</a></li><li class="lvl-3"><a href="#-sort">-sort</a></li><li class="lvl-3"><a href="#-split">-split</a></li><li class="lvl-3"><a href="#-split-on-grid">-split-on-grid</a></li><li class="lvl-3"><a href="#-subdivide">-subdivide</a></li><li class="lvl-3"><a href="#-style">-style</a></li><li class="lvl-3"><a href="#-symbols">-symbols</a></li><li class="lvl-3"><a href="#-union">-union</a></li><li class="lvl-3"><a href="#-uniq">-uniq</a></li><li class="lvl-2"><a href="#control-flow-commands">Control Flow Commands</a></li><li class="lvl-3"><a href="#-if">-if</a></li><li class="lvl-3"><a href="#-elif">-elif</a></li><li class="lvl-3"><a href="#-else">-else</a></li><li class="lvl-3"><a href="#-endif">-endif</a></li><li class="lvl-3"><a href="#-stop">-stop</a></li><li class="lvl-3"><a href="#-target">-target</a></li><li class="lvl-2"><a href="#informational-commands">Informational Commands</a></li><li class="lvl-3"><a href="#-calc">-calc</a></li><li class="lvl-3"><a href="#-colors">-colors</a></li><li class="lvl-3"><a href="#-comment">-comment</a></li><li class="lvl-3"><a href="#-encodings">-encodings</a></li><li class="lvl-3"><a href="#-help">-help</a></li><li class="lvl-3"><a href="#-info">-info</a></li><li class="lvl-3"><a href="#-inspect">-inspect</a></li><li class="lvl-3"><a href="#-print">-print</a></li><li class="lvl-3"><a href="#-projections">-projections</a></li><li class="lvl-3"><a href="#-quiet">-quiet</a></li><li class="lvl-3"><a href="#-vars">-vars</a></li><li class="lvl-3"><a href="#-defaults">-defaults</a></li><li class="lvl-3"><a href="#-verbose">-verbose</a></li><li class="lvl-3"><a href="#-version">-version</a></li></ul>
+    <div class="docs-toc-title">On this page</div><ul><li class="lvl-2"><a href="#command-line-syntax">Command line syntax</a></li><li class="lvl-3"><a href="#command-options-can-take-three-forms">Command options can take three forms:</a></li><li class="lvl-3"><a href="#common-options">Common options</a></li><li class="lvl-2"><a href="#index-of-commands">Index of commands</a></li><li class="lvl-2"><a href="#i-o-commands">I/O Commands</a></li><li class="lvl-3"><a href="#-i-input">-i (input)</a></li><li class="lvl-3"><a href="#-o-output">-o (output)</a></li><li class="lvl-2"><a href="#editing-commands">Editing Commands</a></li><li class="lvl-3"><a href="#-affine">-affine</a></li><li class="lvl-3"><a href="#-blur">-blur</a></li><li class="lvl-3"><a href="#-buffer">-buffer</a></li><li class="lvl-3"><a href="#-classify">-classify</a></li><li class="lvl-3"><a href="#-clean">-clean</a></li><li class="lvl-3"><a href="#-clip">-clip</a></li><li class="lvl-3"><a href="#-colorizer">-colorizer</a></li><li class="lvl-3"><a href="#-dashlines">-dashlines</a></li><li class="lvl-3"><a href="#-dissolve">-dissolve</a></li><li class="lvl-3"><a href="#-dissolve2">-dissolve2</a></li><li class="lvl-3"><a href="#-divide">-divide</a></li><li class="lvl-3"><a href="#-dots">-dots</a></li><li class="lvl-3"><a href="#-drop">-drop</a></li><li class="lvl-3"><a href="#-each">-each</a></li><li class="lvl-3"><a href="#-erase">-erase</a></li><li class="lvl-3"><a href="#-explode">-explode</a></li><li class="lvl-3"><a href="#-filter">-filter</a></li><li class="lvl-3"><a href="#-filter-fields">-filter-fields</a></li><li class="lvl-3"><a href="#-filter-islands">-filter-islands</a></li><li class="lvl-3"><a href="#-filter-slivers">-filter-slivers</a></li><li class="lvl-3"><a href="#-frame">-frame</a></li><li class="lvl-3"><a href="#-graticule">-graticule</a></li><li class="lvl-3"><a href="#-grid">-grid</a></li><li class="lvl-3"><a href="#-include">-include</a></li><li class="lvl-3"><a href="#-inlay">-inlay</a></li><li class="lvl-3"><a href="#-innerlines">-innerlines</a></li><li class="lvl-3"><a href="#-join">-join</a></li><li class="lvl-3"><a href="#-lines">-lines</a></li><li class="lvl-3"><a href="#-merge-layers">-merge-layers</a></li><li class="lvl-3"><a href="#-mosaic">-mosaic</a></li><li class="lvl-3"><a href="#-point-grid">-point-grid</a></li><li class="lvl-3"><a href="#-points">-points</a></li><li class="lvl-3"><a href="#-polygons">-polygons</a></li><li class="lvl-3"><a href="#-proj">-proj</a></li><li class="lvl-3"><a href="#-rectangle">-rectangle</a></li><li class="lvl-3"><a href="#-rectangles">-rectangles</a></li><li class="lvl-3"><a href="#-rename-fields">-rename-fields</a></li><li class="lvl-3"><a href="#-rename-layers">-rename-layers</a></li><li class="lvl-3"><a href="#-require">-require</a></li><li class="lvl-3"><a href="#-run">-run</a></li><li class="lvl-3"><a href="#-scalebar">-scalebar</a></li><li class="lvl-3"><a href="#-shape">-shape</a></li><li class="lvl-3"><a href="#-simplify">-simplify</a></li><li class="lvl-3"><a href="#-smooth">-smooth</a></li><li class="lvl-3"><a href="#-snap">-snap</a></li><li class="lvl-3"><a href="#-sort">-sort</a></li><li class="lvl-3"><a href="#-split">-split</a></li><li class="lvl-3"><a href="#-split-on-grid">-split-on-grid</a></li><li class="lvl-3"><a href="#-subdivide">-subdivide</a></li><li class="lvl-3"><a href="#-style">-style</a></li><li class="lvl-3"><a href="#-symbols">-symbols</a></li><li class="lvl-3"><a href="#-union">-union</a></li><li class="lvl-3"><a href="#-uniq">-uniq</a></li><li class="lvl-2"><a href="#control-flow-commands">Control Flow Commands</a></li><li class="lvl-3"><a href="#-if">-if</a></li><li class="lvl-3"><a href="#-elif">-elif</a></li><li class="lvl-3"><a href="#-else">-else</a></li><li class="lvl-3"><a href="#-endif">-endif</a></li><li class="lvl-3"><a href="#-stop">-stop</a></li><li class="lvl-3"><a href="#-target">-target</a></li><li class="lvl-2"><a href="#informational-commands">Informational Commands</a></li><li class="lvl-3"><a href="#-calc">-calc</a></li><li class="lvl-3"><a href="#-colors">-colors</a></li><li class="lvl-3"><a href="#-comment">-comment</a></li><li class="lvl-3"><a href="#-encodings">-encodings</a></li><li class="lvl-3"><a href="#-help">-help</a></li><li class="lvl-3"><a href="#-info">-info</a></li><li class="lvl-3"><a href="#-inspect">-inspect</a></li><li class="lvl-3"><a href="#-print">-print</a></li><li class="lvl-3"><a href="#-projections">-projections</a></li><li class="lvl-3"><a href="#-quiet">-quiet</a></li><li class="lvl-3"><a href="#-vars">-vars</a></li><li class="lvl-3"><a href="#-defaults">-defaults</a></li><li class="lvl-3"><a href="#-verbose">-verbose</a></li><li class="lvl-3"><a href="#-version">-version</a></li></ul>
   </aside>
 
 </div>

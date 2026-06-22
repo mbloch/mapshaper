@@ -140,7 +140,7 @@
   }
 
   // Convert an array-like object to an Array, or make a copy if @obj is an Array
-  function toArray(obj) {
+  function toArray$1(obj) {
     var arr;
     if (!isArrayLike(obj)) error$1("toArray() requires an array-like object");
     try {
@@ -249,7 +249,7 @@
 
   function promisify(asyncFn) {
     return function() {
-      var args = toArray(arguments);
+      var args = toArray$1(arguments);
       return new Promise((resolve, reject) => {
         var cb = function(err, data) {
           if (err) reject(err);
@@ -1148,7 +1148,7 @@
     range, reduceAsync, regexEscape, reorderArray: reorderArray$1, repeat, repeatString,
     replaceArray, rpad, rtrim,
     shuffle, some, sortArrayIndex, sortOn, splitLines, sum: sum$1,
-    toArray, toBuffer, trim, trimQuotes,
+    toArray: toArray$1, toBuffer, trim, trimQuotes,
     uniq, uniqifyNames,
     wildcardToRegExp
   };
@@ -11825,7 +11825,7 @@
               q.pop();
               const nodeIndex = top >> 1;
               const isLeafLevel = nodeIndex < numItems4;
-              const end = Math.min(nodeIndex + nodeSize4, upperBound(nodeIndex, levelBounds));
+              const end = Math.min(nodeIndex + nodeSize4, upperBound$1(nodeIndex, levelBounds));
 
               for (let pos = nodeIndex; pos < end; pos += 4) {
                   const childIndex = indices[pos >> 2] | 0;
@@ -11856,7 +11856,7 @@
    * @param {number} value
    * @param {number[]} arr
    */
-  function upperBound(value, arr) {
+  function upperBound$1(value, arr) {
       let i = 0;
       let j = arr.length - 1;
       while (i < j) {
@@ -30145,6 +30145,13 @@ ${svg}
     }
   }
 
+  function validateSmoothOpts(cmd) {
+    var o = cmd.options;
+    if (o.distance === undefined || o.distance === null || o.distance === '') {
+      error('Command requires a distance parameter');
+    }
+  }
+
   function validateProjOpts(cmd) {
     var resampling = cmd.options.resampling;
     if (!(cmd.options.crs || cmd.options.match || cmd.options.init)) {
@@ -32378,6 +32385,28 @@ ${svg}
       })
       .option('target', targetOpt);
 
+    parser.command('filter-detail')
+      // undocumented feature
+      // .describe('remove intricate sub-scale detail that smoothing cannot generalize')
+      .option('distance', {
+        DEFAULT: true,
+        type: 'distance',
+        describe: 'detail size threshold as a distance (e.g. 1km)'
+      })
+      .option('tortuosity', {
+        type: 'number',
+        describe: 'min original-length / chord ratio for a run to be cut (default 2); higher only cuts more convoluted detail'
+      })
+      .option('weighting', {
+        type: 'number',
+        describe: 'Visvalingam angle-weight coefficient (default 0.7); higher removes spiky detail more eagerly'
+      })
+      .option('planar', {
+        describe: 'treat decimal degree coords as planar x,y (default is spherical)',
+        type: 'flag'
+      })
+      .option('target', targetOpt);
+
     parser.command('filter-slivers')
       .describe('remove small polygon rings')
       .option('min-area', {
@@ -32877,6 +32906,44 @@ ${svg}
       })
       .option('stats', {
         describe: 'display simplification statistics',
+        type: 'flag'
+      })
+      .option('target', targetOpt);
+
+    parser.command('smooth')
+      .validate(validateSmoothOpts)
+      .describe('scale-aware smoothing of polygon and polyline features')
+      .option('distance', {
+        DEFAULT: true,
+        type: 'distance',
+        describe: 'smoothing tolerance as a distance (e.g. 2km)'
+      })
+      // Gaussian (Savitzky-Golay) is the default and only documented smoother.
+      // 'paek' (exponential kernel) is kept as an undocumented alternative, so
+      // neither flag is given a describe (they stay out of the command help).
+      .option('paek', {
+        assign_to: 'method'
+      })
+      .option('gaussian', {
+        assign_to: 'method'
+      })
+      .option('method', {
+        // hidden option (set by the paek/gaussian flags)
+      })
+      .option('keep-corners', {
+        describe: 'preserve sharp corners where straight-line segments meet',
+        type: 'flag'
+      })
+      .option('gain', {
+        describe: 'shrinkage-correction (default 1; 0 = none, >1 exaggerates bends)',
+        type: 'number'
+      })
+      .option('planar', {
+        // describe: 'smooth decimal degree coords in 2D space (default is spherical)',
+        type: 'flag'
+      })
+      .option('no-prefilter', {
+        describe: 'skip the detail-filtering preprocessing step',
         type: 'flag'
       })
       .option('target', targetOpt);
@@ -57154,6 +57221,241 @@ ${svg}
     getAspectRatioArg: getAspectRatioArg
   });
 
+  // Remove intricate sub-scale detail from a single arc so that -smooth has a
+  // clean line to work with, WITHOUT thinning the rest of the line: smooth makes a
+  // better approximation of the original when it has more detail to work with, so
+  // we only cut where there is genuine intricate detail and leave everything else
+  // at full resolution.
+  //
+  // Two phases:
+  //
+  //  1. IDENTIFY candidate chords with a chord-length-gated weighted Visvalingam
+  //     peel. Weighted Visvalingam removes the least-significant vertex first
+  //     (smallest angle-weighted triangle area), so a thin feature is peeled from
+  //     its tip inward and each removal sweeps the smallest possible triangle --
+  //     this finds the minimal chord that slices a feature off. The gate (a vertex
+  //     is only removable when the chord that would replace it is <= the detail
+  //     distance D) segments the line into runs that each fit within the detail
+  //     scale and bounds every candidate chord to <= D, so cuts stay local.
+  //
+  //  2. COMMIT selectively. For each run of removed vertices between two survivors,
+  //     compare the original sub-path length to the chord across it (tortuosity).
+  //     Collapse the run to its chord only when it is convoluted (tortuosity >=
+  //     threshold) -- a jetty, fjord or crinkle. Otherwise restore the run's
+  //     original vertices, so gentle stretches keep full detail for -smooth.
+  //
+  // @xx, @yy  coordinate arrays for one arc (may be typed-array subarrays).
+  // @opts: {distance, tortuosity, spherical, weighting}
+  //   distance   detail size threshold in ground units (meters when spherical): the
+  //              longest chord the filter is allowed to create.
+  //   tortuosity min original-length / chord ratio for a run to be cut (default 2).
+  //   spherical  measure area/length on the sphere (lng/lat -> geocentric x,y,z).
+  //   weighting  Visvalingam angle-weight coefficient (default 0.7), matching
+  //              -simplify's weighted_visvalingam.
+  // Returns {xx: [], yy: []}. Arc endpoints are always preserved, so shared
+  // topology nodes stay put and the operation is topology-safe like -simplify.
+  var DEFAULT_WEIGHTING = 0.7;
+  var DEFAULT_TORTUOSITY = 2;
+
+  function collapseArcDetail(xx, yy, opts) {
+    var n = xx.length;
+    var outX = [], outY = [];
+    var D = opts.distance;
+    if (n < 3 || !(D > 0)) {
+      for (var p = 0; p < n; p++) { outX.push(xx[p]); outY.push(yy[p]); }
+      return {xx: outX, yy: outY};
+    }
+    var spherical = !!opts.spherical;
+    var k = opts.weighting >= 0 ? opts.weighting : DEFAULT_WEIGHTING;
+    var T = opts.tortuosity > 0 ? opts.tortuosity : DEFAULT_TORTUOSITY;
+    var Dsq = D * D;
+
+    // Metric coordinates: geocentric x,y,z on a sphere for lng/lat input, plain
+    // x,y otherwise. Area and chord length are both measured in this space.
+    var mx, my, mz;
+    if (spherical) {
+      mx = new Float64Array(n);
+      my = new Float64Array(n);
+      mz = new Float64Array(n);
+      geom.convLngLatToSph(xx, yy, mx, my, mz);
+    } else {
+      mx = xx;
+      my = yy;
+    }
+
+    function chordSq(a, e) {
+      var dx = mx[a] - mx[e], dy = my[a] - my[e];
+      if (spherical) {
+        var dz = mz[a] - mz[e];
+        return dx * dx + dy * dy + dz * dz;
+      }
+      return dx * dx + dy * dy;
+    }
+
+    function dist(a, e) { return Math.sqrt(chordSq(a, e)); }
+
+    // Weighted effective area of vertex m between a and e, or Infinity ("parked")
+    // when removing m would create a chord longer than the detail distance.
+    function vertexValue(a, m, e) {
+      if (chordSq(a, e) > Dsq) return Infinity;
+      var area, cos;
+      if (spherical) {
+        area = geom.triangleArea3D(mx[a], my[a], mz[a], mx[m], my[m], mz[m], mx[e], my[e], mz[e]);
+        cos = geom.cosine3D(mx[a], my[a], mz[a], mx[m], my[m], mz[m], mx[e], my[e], mz[e]);
+      } else {
+        area = geom.triangleArea(mx[a], my[a], mx[m], my[m], mx[e], my[e]);
+        cos = geom.cosine(mx[a], my[a], mx[m], my[m], mx[e], my[e]);
+      }
+      return (1 - k * cos) * area;
+    }
+
+    var prev = new Int32Array(n);
+    var next = new Int32Array(n);
+    var removed = new Uint8Array(n);
+    var vals = new Float64Array(n);
+    for (var i = 0; i < n; i++) {
+      prev[i] = i - 1;
+      next[i] = i + 1;
+      vals[i] = (i === 0 || i === n - 1) ? Infinity : vertexValue(i - 1, i, i + 1);
+    }
+
+    var heap = new Heap();
+    heap.init(vals);
+    while (heap.size() > 0) {
+      if (heap.peekValue() === Infinity) break; // no eligible vertices remain
+      var c = heap.pop();
+      var b = prev[c], d = next[c];
+      removed[c] = 1;
+      next[b] = d;
+      prev[d] = b;
+      // Only b and d change neighbours, so only their values (and eligibility)
+      // can change; a previously parked neighbour may become removable here.
+      if (b !== 0) heap.updateValue(b, vertexValue(prev[b], b, d));
+      if (d !== n - 1) heap.updateValue(d, vertexValue(b, d, next[d]));
+    }
+
+    // Phase 2: within each run between survivors, cut convoluted spans locally
+    // rather than judging the whole run at once. The peel bounds each run to a
+    // chord <= D (which keeps this search cheap); the cut decision itself is
+    // tortuosity-driven and independent of the run's size, so a small spike is
+    // removed whether it sits alone or embedded in a long gentle stretch.
+    //
+    // Cumulative arc length (metric space) lets us read off the original path
+    // length between any two vertices in O(1).
+    var cumLen = new Float64Array(n);
+    for (var q = 1; q < n; q++) cumLen[q] = cumLen[q - 1] + dist(q - 1, q);
+
+    function cutRun(a, e) {
+      // Emit the kept vertices in (a, e]; a has already been emitted. Walk from a
+      // and, at each step, find the span [i, j] (chord <= D) with the highest
+      // tortuosity and, if it exceeds the threshold, cut it to its chord; otherwise
+      // keep one vertex and advance. Picking the maximum-tortuosity j gives the
+      // tightest return point -- the shortest chord that slices the spike off --
+      // and the test is per span, so a small spike is cut whether it stands alone
+      // or is embedded in a long gentle stretch (no run-size dilution).
+      var i = a;
+      while (i < e) {
+        var bestJ = -1;
+        var bestTort = T;
+        for (var j = i + 2; j <= e; j++) {
+          var c = dist(i, j);
+          if (c > D) continue; // never create a chord longer than the detail scale
+          var tort = c > 0 ? (cumLen[j] - cumLen[i]) / c : Infinity;
+          if (tort > bestTort) {
+            bestTort = tort;
+            bestJ = j;
+          }
+        }
+        if (bestJ >= 0) {
+          outX.push(xx[bestJ]);
+          outY.push(yy[bestJ]);
+          i = bestJ;
+        } else {
+          outX.push(xx[i + 1]);
+          outY.push(yy[i + 1]);
+          i++;
+        }
+      }
+    }
+
+    outX.push(xx[0]);
+    outY.push(yy[0]);
+    var a = 0;
+    while (a !== n - 1) {
+      var e = next[a];
+      cutRun(a, e);
+      a = e;
+    }
+    return {xx: outX, yy: outY};
+  }
+
+  // Optional preprocessing step before -smooth: collapse intricate sub-scale
+  // detail (jetties, narrow inlets, spikes) that smoothing cannot generalize. Like
+  // -smooth and -simplify this rewrites shared arc vertices in place and preserves
+  // arc endpoints, so polygon topology is left intact.
+  cmd.filterDetail = function(dataset, opts, targetLayers) {
+    var arcs = dataset.arcs;
+    if (!arcs || arcs.size() === 0) return;
+    opts = opts || {};
+    if (opts.distance === undefined || opts.distance === null || opts.distance === '') {
+      stop$1('Missing a detail distance');
+    }
+    var spherical = !opts.planar && !arcs.isPlanar();
+    var distance = convertDetailDistance(opts.distance, dataset, spherical);
+    if (!(distance > 0)) {
+      stop$1('Expected a positive detail distance');
+    }
+    var implicitNames = getImplicitlyTargetedLayerNames(dataset, targetLayers, layerHasPaths);
+
+    // Rewrites coordinates, so lock in any pending simplification first (see -smooth).
+    if (!arcs.isFlat()) {
+      arcs.flatten();
+    }
+
+    var before = arcs.getPointCount();
+    filterDetailPaths(arcs, {
+      distance: distance,
+      tortuosity: opts.tortuosity,
+      weighting: opts.weighting,
+      spherical: spherical
+    });
+    var removed = before - arcs.getPointCount();
+    message('Removed ' + removed + ' of ' + before + ' vertices');
+
+    if (implicitNames.length > 0) {
+      message(
+        'Also filtered non-target layer' + utils.pluralSuffix(implicitNames.length) +
+        ' from the same dataset: ' + implicitNames.join(', ')
+      );
+    }
+  };
+
+  function filterDetailPaths(arcs, opts) {
+    var nn = [];
+    var xx = [];
+    var yy = [];
+    var i, k, res;
+    arcs.forEach3(function(axx, ayy, azz) {
+      res = collapseArcDetail(axx, ayy, {
+        distance: opts.distance,
+        tortuosity: opts.tortuosity,
+        weighting: opts.weighting,
+        spherical: opts.spherical
+      });
+      nn.push(res.xx.length);
+      for (i = 0, k = res.xx.length; i < k; i++) {
+        xx.push(res.xx[i]);
+        yy.push(res.yy[i]);
+      }
+    });
+    arcs.updateVertexData(nn, xx, yy);
+  }
+
+  function convertDetailDistance(param, dataset, spherical) {
+    var crs = getDatasetCRS(dataset);
+    return spherical ? convertDistanceParam(param, crs) : convertIntervalParam(param, crs);
+  }
+
   cmd.filterIslands = function(lyr, dataset, optsArg) {
     var opts = utils.extend({sliver_control: 0}, optsArg); // no sliver control
     var arcs = dataset.arcs;
@@ -61979,6 +62281,933 @@ ${svg}
     useSphericalSimplify: useSphericalSimplify
   });
 
+  // Structural-corner detection for -smooth's "keep-corners" option.
+  //
+  // Many boundaries alternate between natural, freely-curving stretches (coast,
+  // river centerline) and artificial straight-line segments (state/county
+  // borders). Plain low-pass smoothing rounds the sharp corners where artificial
+  // segments meet. This module finds those corners so the caller can pin them and
+  // smooth each span between them independently, leaving straight runs intact.
+  //
+  // The approach reduces "preserve straight segments and their corners" to
+  // detecting the corners that bound long, low-curvature (straight or gently
+  // curving) runs:
+  //   1. Flag vertices whose direction changes sharply over a tolerance-scaled
+  //      window AND where that turn is concentrated near the vertex rather than
+  //      spread out. The concentration test compares the turn over a small inner
+  //      window to the turn over the full window: for a uniform curve the ratio is
+  //      a fixed fraction (the window-length ratio), so a steadily-curving stretch
+  //      -- whether a tight coastline or a gentle, hundreds-of-km graticule arc --
+  //      never qualifies; only a localized kink, where the inner turn approaches
+  //      the full turn, is a corner.
+  //   2. Between flagged corners, classify each span as "structural" if it is long
+  //      relative to the tolerance and its curvature stays low (so a straight or
+  //      slowly-curving graticule line counts, but sub-tolerance wiggle does not).
+  //   3. Drop corners that don't border any structural span (e.g. spikes inside a
+  //      wiggly coastline), merging their spans, until the partition is stable.
+  //
+  // All geometry is done in the caller's smoothing channels (planar x,y or
+  // geocentric x,y,z), so detection is isotropic and matches the smoothing space.
+  // Angles are computed with plain dot products, which work in any dimension.
+
+  var CORNER_ANGLE = 35 * Math.PI / 180; // min concentrated turn to call a corner
+  var TANGENT_WINDOW_FACTOR = 0.25;      // tangent-estimation half-window = tol * this
+  var INNER_WINDOW_FACTOR = 0.4;         // concentration probe window = tangentWindow * this
+  var CORNER_CONCENTRATION = 0.6;        // min ratio of inner-window turn to full-window turn
+  var MIN_RUN_LEN_FACTOR = 1.0;          // a structural run must be at least tol * this long
+  var MIN_RUN_RADIUS_FACTOR = 1.0;       // and bend no tighter than radius tol * this
+
+  function getCornerParams(tol) {
+    return {
+      tol: tol,
+      cornerAngle: CORNER_ANGLE,
+      tangentWindow: TANGENT_WINDOW_FACTOR * tol,
+      innerWindow: INNER_WINDOW_FACTOR * TANGENT_WINDOW_FACTOR * tol,
+      concentration: CORNER_CONCENTRATION,
+      minRunLen: MIN_RUN_LEN_FACTOR * tol,
+      maxTurnRate: 1 / (MIN_RUN_RADIUS_FACTOR * tol) // radians of turning per ground unit
+    };
+  }
+
+  // Find the interior corner vertices of an arc.
+  // @t: cumulative arc length (length n). @channels: K coordinate arrays.
+  // @cyclic: true for a closed ring (n includes the repeated closing vertex; the
+  //   m = n-1 unique vertices are treated cyclically). @params: getCornerParams().
+  // Returns sorted vertex indices: for open arcs in [1, n-2]; for rings in [0, m).
+  function findInteriorCorners(t, channels, n, cyclic, params) {
+    if (n < 3) return [];
+    var K = channels.length;
+    var L = t[n - 1];
+    var m = cyclic ? n - 1 : n;
+    if (cyclic && m < 3) return [];
+    var segLen = cyclic ? ringSegLengths(t, m) : null;
+    var W = params.tangentWindow;
+    var Wi = params.innerWindow;
+    var turns = new Float64Array(m);
+    var inner = new Float64Array(m);
+    var lo = cyclic ? 0 : 1;
+    var hi = cyclic ? m : n - 1; // exclusive
+    for (var i = lo; i < hi; i++) {
+      turns[i] = windowedTurn(t, channels, K, n, L, m, segLen, i, W, cyclic);
+      inner[i] = windowedTurn(t, channels, K, n, L, m, segLen, i, Wi, cyclic);
+    }
+    // candidates above the angle threshold, that are concentrated (a localized
+    // turn, not gradual bending -- see isConcentratedTurn), and that are the
+    // sharpest turn within a tangent-window neighborhood (non-maximum suppression)
+    var corners = [];
+    for (var j = lo; j < hi; j++) {
+      if (turns[j] < params.cornerAngle) continue;
+      if (inner[j] < params.concentration * turns[j]) continue;
+      if (isLocalMaxTurn(t, turns, j, W, L, m, lo, hi, cyclic)) corners.push(j);
+    }
+    return corners;
+  }
+
+  // Is span [a, b] (inclusive vertex indices, a < b, open frame) a structural run:
+  // long relative to the tolerance and low-curvature throughout?
+  function isStructuralRun(t, channels, a, b, params) {
+    var len = t[b] - t[a];
+    if (!(len >= params.minRunLen)) return false;
+    var K = channels.length;
+    var totalTurn = 0;
+    for (var i = a + 1; i < b; i++) {
+      totalTurn += vertexTurn(channels, K, i);
+      if (totalTurn / len > params.maxTurnRate) return false;
+    }
+    return totalTurn / len <= params.maxTurnRate;
+  }
+
+  // --- internals ---
+
+  function ringSegLengths(t, m) {
+    var segLen = new Float64Array(m);
+    for (var i = 0; i < m; i++) segLen[i] = t[i + 1] - t[i];
+    return segLen;
+  }
+
+  // Turn angle at vertex i between the incoming and outgoing directions, each
+  // estimated over an arc-length window W (so the measure is scale-aware and not
+  // dominated by a single short segment).
+  function windowedTurn(t, channels, K, n, L, m, segLen, i, W, cyclic) {
+    var back = reach(t, segLen, n, m, L, i, -1, W, cyclic);
+    var fwd = reach(t, segLen, n, m, L, i, 1, W, cyclic);
+    var pi = getPt(channels, K, i);
+    var pb = getPt(channels, K, back);
+    var pf = getPt(channels, K, fwd);
+    return angleBetween(subv(pi, pb, K), subv(pf, pi, K), K);
+  }
+
+  // Local turn at vertex i using just the adjacent segments.
+  function vertexTurn(channels, K, i) {
+    var pi = getPt(channels, K, i);
+    var pp = getPt(channels, K, i - 1);
+    var pn = getPt(channels, K, i + 1);
+    return angleBetween(subv(pi, pp, K), subv(pn, pi, K), K);
+  }
+
+  // Walk from vertex i in direction dir (+1/-1) until accumulated arc length
+  // reaches W (or a boundary, for open arcs), returning the reached vertex index.
+  function reach(t, segLen, n, m, L, i, dir, W, cyclic) {
+    var j = i, acc = 0;
+    while (acc < W) {
+      if (cyclic) {
+        var k = dir > 0 ? (j + 1) % m : (j - 1 + m) % m;
+        acc += dir > 0 ? segLen[j] : segLen[k];
+        j = k;
+        if (j === i) break; // wrapped the whole ring
+      } else {
+        var nk = j + dir;
+        if (nk < 0 || nk > n - 1) break;
+        acc += Math.abs(t[nk] - t[j]);
+        j = nk;
+      }
+    }
+    return j;
+  }
+
+  function isLocalMaxTurn(t, turns, j, W, L, m, lo, hi, cyclic) {
+    for (var k = lo; k < hi; k++) {
+      if (k === j) continue;
+      var d = Math.abs(t[k] - t[j]);
+      if (cyclic && d > L - d) d = L - d;
+      if (d < W && (turns[k] > turns[j] || (turns[k] === turns[j] && k < j))) {
+        return false;
+      }
+    }
+    return true;
+  }
+
+  function getPt(channels, K, i) {
+    var p = new Array(K);
+    for (var c = 0; c < K; c++) p[c] = channels[c][i];
+    return p;
+  }
+
+  function subv(a, b, K) {
+    var o = new Array(K);
+    for (var c = 0; c < K; c++) o[c] = a[c] - b[c];
+    return o;
+  }
+
+  function angleBetween(u, v, K) {
+    var d = 0, nu = 0, nv = 0;
+    for (var c = 0; c < K; c++) {
+      d += u[c] * v[c];
+      nu += u[c] * u[c];
+      nv += v[c] * v[c];
+    }
+    var den = Math.sqrt(nu * nv);
+    if (!(den > 0)) return 0;
+    var x = d / den;
+    if (x > 1) x = 1;
+    else if (x < -1) x = -1;
+    return Math.acos(x);
+  }
+
+  // Scale-aware line smoothing primitives, shared by the -smooth command.
+  //
+  // The smoother treats a path as coordinate signals parameterized by arc length s
+  // and applies a length-scaled low-pass filter. The user-facing distance is a
+  // resolution: detail with a wavelength around the distance is reduced to roughly
+  // half amplitude (the -6 dB cutoff), finer detail is removed, and features much
+  // larger than the distance pass through nearly unchanged. The distance is not a
+  // deviation bound -- a tall, narrow sub-resolution spike can still be displaced
+  // by an amount comparable to its own amplitude (inherent to convolution
+  // smoothers).
+  //
+  // The filter is a local second-degree polynomial fit whose quadratic term
+  // corrects the inward shrinkage that plain weighted averaging causes on curved
+  // features. The weight kernel selects the method (see smoothPoint):
+  //  - 'gaussian' (default, the only documented method): Gaussian kernel
+  //    e^(-t^2/2sigma^2), i.e. a Savitzky-Golay smoother.
+  //  - 'paek': exponential kernel e^(-|t|/d) (Bodansky et al. 2002, the kernel
+  //    ArcGIS's PAEK uses). Kept as an undocumented alternative; with the quadratic
+  //    correction it differs only slightly from the gaussian method.
+  //
+  // The smoother works on a list of coordinate "channels": planar data is
+  // smoothed in 2D (x, y); unprojected lng/lat data is converted to geocentric
+  // x, y, z and smoothed in 3D Cartesian on the sphere (then converted back).
+  // Averaging lng/lat directly would shear shapes toward the poles (a degree of
+  // longitude shrinks with cos(lat)); the geocentric representation is isotropic
+  // and handles the antimeridian and poles without special cases, mirroring how
+  // -simplify treats spherical coordinates. The kernel scale stays in true ground
+  // distance because arc length is measured with great-circle distance.
+  //
+  // The user-facing distance is a *resolution*: detail finer than it is removed, a
+  // feature about its size is reduced to roughly half amplitude, and larger
+  // features are largely preserved. KERNEL_FROM_DISTANCE maps that resolution onto
+  // the internal kernel scale, calibrated empirically so the half-amplitude
+  // (-6 dB) wavelength ~= the distance. The remaining calibration constants are
+  // expressed relative to that internal scale and map it onto kernel widths and
+  // output sampling; they are collected here so the mapping can be retuned in one
+  // place. See docs/reference.md.
+  var KERNEL_FROM_DISTANCE = 1.2;   // internal kernel scale = distance * this
+  var GAUSSIAN_SIGMA_FACTOR = 0.4;  // gaussian sigma = internal scale * this
+  var PAEK_SCALE_FACTOR = 0.4;      // exponential kernel scale d = internal scale * this
+  var WINDOW_RADIUS_FACTOR = 1.2;   // window half-length = internal scale * this
+  var SOURCE_SPACING_FACTOR = 0.25; // densify source to <= tolerance * this before smoothing
+  var MAX_OUTPUT_FACTOR = 8;        // cap output (and source) vertices at inputCount * this
+  var MIN_CLOSED_SEGMENTS = 16;     // floor on segments for closed rings (so they resolve)
+
+  // Output resampling. The smoothed curve is a continuous function of arc length;
+  // we sample it densely at a uniform step and then thin that dense polyline with a
+  // single O(n) forward pass that keeps a vertex only where the curve has bent
+  // enough since the last kept vertex. Filtering on accumulated bend angle (rather
+  // than chord deviation, as Douglas-Peucker does) bounds the angle between
+  // consecutive output segments *by construction*, so joins stay smooth with no
+  // separate tangent test. This works cleanly because the filter consumes the
+  // already-smoothed (denoised) curve, where per-vertex turning is small and
+  // well-behaved. Density follows curvature for free: bends accumulate angle
+  // quickly and keep many vertices; straight or gently-curving runs accumulate
+  // slowly and collapse to long segments.
+  //
+  // Accumulated angle alone does not bound *absolute* deviation: a very gentle but
+  // very long bend accumulates angle so slowly that its chord can bow far from the
+  // curve before reaching the angle threshold. A sagitta guard handles that --
+  // chord * accumulatedTurn / 8 estimates the bow of a circular arc, and we also
+  // cut when it exceeds a fraction of the tolerance. Both tests are O(1) per dense
+  // vertex, so the pass stays O(n).
+  var DENSE_STEP_FACTOR = 0.033;      // dense sampling step = tolerance * this. Must
+                                      // resolve the sharpest smoothed feature (radius
+                                      // ~ the kernel scale) finely enough that the
+                                      // angle filter can reach BEND_ANGLE joins: one
+                                      // dense segment turns ~ this/0.4 radians there,
+                                      // kept well under BEND_ANGLE so the discrete
+                                      // accumulation barely overshoots the threshold.
+  var BEND_ANGLE = 8 * Math.PI / 180; // keep a vertex after this much accumulated turn
+  var DEVIATION_FACTOR = 0.1;         // sagitta guard: also cut a gentle bend that bows
+                                      // more than tolerance * this from its chord
+
+  // Smooth a single arc's coordinates.
+  // @xx, @yy: coordinate arrays (may be typed-array subarrays) for one arc.
+  // @opts: {tolerance, method, spherical, closed, keepCorners}
+  // Returns {xx: [], yy: []} with the smoothed coordinates. Endpoints of open
+  // arcs are preserved exactly (so shared topology nodes stay put); closed arcs
+  // are smoothed cyclically and returned closed (first point repeated at the end).
+  // With keepCorners, structural corners (where long straight/low-curvature runs
+  // meet) are detected and pinned, and the runs themselves are kept verbatim;
+  // only the spans between corners are smoothed.
+  // Resolve the curvature-correction gain (default 1 = fully corrected). gain=0
+  // leaves the plain weighted moving average; negative values are clamped to 0.
+  function resolveGain(opts) {
+    var g = opts.gain;
+    if (g === undefined || g === null) return 1;
+    return g >= 0 ? g : 0;
+  }
+
+  function smoothArcCoords(xx, yy, opts) {
+    var n = xx.length;
+    var origX = toArray(xx);
+    var origY = toArray(yy);
+    var tol = opts.tolerance * KERNEL_FROM_DISTANCE;
+    if (n < 3 || !(opts.tolerance > 0)) {
+      return {xx: origX, yy: origY};
+    }
+    var method = opts.method == 'gaussian' ? 'gaussian' : 'paek';
+    var closed = !!opts.closed;
+    var spherical = !!opts.spherical;
+    var keepCorners = !!opts.keepCorners;
+    var ctx = {
+      tol: tol,
+      method: method,
+      spherical: spherical,
+      keepCorners: keepCorners,
+      gain: resolveGain(opts),
+      radius: tol * WINDOW_RADIUS_FACTOR,
+      scale: (method == 'gaussian' ? GAUSSIAN_SIGMA_FACTOR : PAEK_SCALE_FACTOR) * tol
+    };
+
+    // Cumulative arc length in ground units (meters for spherical data), so the
+    // kernel scale stays in true distance regardless of coordinate representation.
+    var t = arcLengths(origX, origY, n, spherical);
+    if (!(t[n - 1] > 0)) {
+      return {xx: origX, yy: origY}; // degenerate (coincident points)
+    }
+    var channels = spherical ? lngLatToXYZChannels(origX, origY, n) : [origX, origY];
+
+    if (closed) {
+      var corners = keepCorners ?
+        findInteriorCorners(t, channels, n, true, getCornerParams(tol)) : [];
+      if (corners.length === 0) {
+        return smoothClosedCyclic(t, channels, n, ctx);
+      }
+      // A ring with corners is processed as an open path: rotate it to start (and
+      // end) at one corner, with the remaining corners as interior breakpoints.
+      var rot = rotateRing(origX, origY, n, corners[0]);
+      origX = rot.xx;
+      origY = rot.yy;
+      n = origX.length;
+      t = arcLengths(origX, origY, n, spherical);
+      channels = spherical ? lngLatToXYZChannels(origX, origY, n) : [origX, origY];
+      var breaks = mapRotatedCorners(corners, rot.shift, rot.m);
+      return smoothOpenSpans(origX, origY, t, channels, n, breaks, ctx);
+    }
+
+    var openBreaks = keepCorners ?
+      findInteriorCorners(t, channels, n, false, getCornerParams(tol)) : [];
+    return smoothOpenSpans(origX, origY, t, channels, n, openBreaks, ctx);
+  }
+
+  // Smooth an open path partitioned at @interiorBreaks (sorted interior vertex
+  // indices). Structural runs are copied verbatim; other spans are smoothed with
+  // their endpoints pinned, so every breakpoint (and the two arc endpoints) keeps
+  // its exact original position. Shared breakpoint vertices are emitted once.
+  function smoothOpenSpans(origX, origY, t, channels, n, interiorBreaks, ctx) {
+    var bounds = [0].concat(interiorBreaks);
+    bounds.push(n - 1);
+    if (ctx.keepCorners && bounds.length > 2) {
+      bounds = refineBounds(t, channels, bounds, getCornerParams(ctx.tol));
+    }
+    var params = ctx.keepCorners ? getCornerParams(ctx.tol) : null;
+    var xx = [], yy = [];
+    for (var s = 0; s < bounds.length - 1; s++) {
+      var lo = bounds[s], hi = bounds[s + 1];
+      var preserve = !!params && isStructuralRun(t, channels, lo, hi, params);
+      var span = preserve ?
+        copySpan(origX, origY, lo, hi) :
+        smoothSpanOpen(origX, origY, t, channels, lo, hi, ctx);
+      appendSpan(xx, yy, span, s === 0);
+    }
+    return {xx: xx, yy: yy};
+  }
+
+  // Drop interior breakpoints that don't border any structural run (e.g. spikes
+  // inside a wiggly stretch), merging their spans, until the partition is stable.
+  // Merging can turn two short straight pieces back into one structural run, so
+  // structurality is re-tested each pass.
+  function refineBounds(t, channels, bounds, params) {
+    var changed = true;
+    while (changed && bounds.length > 2) {
+      changed = false;
+      for (var i = 1; i < bounds.length - 1; i++) {
+        var leftStruct = isStructuralRun(t, channels, bounds[i - 1], bounds[i], params);
+        var rightStruct = isStructuralRun(t, channels, bounds[i], bounds[i + 1], params);
+        if (!leftStruct && !rightStruct) {
+          bounds.splice(i, 1);
+          changed = true;
+          break;
+        }
+      }
+    }
+    return bounds;
+  }
+
+  // Smooth a single open span [lo, hi] (inclusive) and pin both ends to their
+  // original coordinates. Reuses the whole-arc smoothing pipeline on the sub-arc.
+  function smoothSpanOpen(origX, origY, t, channels, lo, hi, ctx) {
+    var nSub = hi - lo + 1;
+    if (nSub < 3) return copySpan(origX, origY, lo, hi);
+    var subT = new Float64Array(nSub);
+    for (var k = 0; k < nSub; k++) subT[k] = t[lo + k] - t[lo];
+    var subL = subT[nSub - 1];
+    if (!(subL > 0)) return copySpan(origX, origY, lo, hi);
+    var subCh = [];
+    for (var c = 0; c < channels.length; c++) subCh.push(channels[c].slice(lo, hi + 1));
+    var maxSourcePts = Math.max(nSub, MIN_CLOSED_SEGMENTS) * MAX_OUTPUT_FACTOR + nSub;
+    var maxSpacing = Math.max(ctx.tol * SOURCE_SPACING_FACTOR, subL / maxSourcePts);
+    var dense = densifyChannels(subT, subCh, maxSpacing);
+    var src = buildSource(dense.t, dense.channels, false, ctx.radius, subL);
+    var sm = sampleSmoothedCurve(src, 0, subL, false, ctx, nSub);
+    var out = ctx.spherical ? xyzChannelsToLngLat(sm) : {xx: sm[0], yy: sm[1]};
+    out.xx[0] = origX[lo];
+    out.yy[0] = origY[lo];
+    out.xx[out.xx.length - 1] = origX[hi];
+    out.yy[out.yy.length - 1] = origY[hi];
+    return out;
+  }
+
+  function smoothClosedCyclic(t, channels, n, ctx) {
+    var L = t[n - 1];
+    var maxSourcePts = Math.max(n, MIN_CLOSED_SEGMENTS) * MAX_OUTPUT_FACTOR + n;
+    var maxSpacing = Math.max(ctx.tol * SOURCE_SPACING_FACTOR, L / maxSourcePts);
+    var dense = densifyChannels(t, channels, maxSpacing);
+    var src = buildSource(dense.t, dense.channels, true, ctx.radius, L);
+    var sm = sampleSmoothedCurve(src, 0, L, true, ctx, n);
+    var out = ctx.spherical ? xyzChannelsToLngLat(sm) : {xx: sm[0], yy: sm[1]};
+    // force an exactly closed ring (the periodic endpoints are equal up to fp)
+    out.xx[out.xx.length - 1] = out.xx[0];
+    out.yy[out.yy.length - 1] = out.yy[0];
+    return out;
+  }
+
+  function copySpan(origX, origY, lo, hi) {
+    var xx = [], yy = [];
+    for (var i = lo; i <= hi; i++) {
+      xx.push(origX[i]);
+      yy.push(origY[i]);
+    }
+    return {xx: xx, yy: yy};
+  }
+
+  function appendSpan(xx, yy, span, isFirst) {
+    for (var i = isFirst ? 0 : 1; i < span.xx.length; i++) {
+      xx.push(span.xx[i]);
+      yy.push(span.yy[i]);
+    }
+  }
+
+  // Reorder a closed ring's unique vertices to begin at index @c, re-appending the
+  // start vertex so the result is a closed open-path (first point repeated).
+  function rotateRing(xx, yy, n, c) {
+    var m = n - 1;
+    var ox = [], oy = [];
+    for (var k = 0; k < m; k++) {
+      var idx = (c + k) % m;
+      ox.push(xx[idx]);
+      oy.push(yy[idx]);
+    }
+    ox.push(xx[c]);
+    oy.push(yy[c]);
+    return {xx: ox, yy: oy, shift: c, m: m};
+  }
+
+  // Map ring-frame corner indices to interior positions in the rotated open frame.
+  // The corner the ring was rotated to becomes the (pinned) endpoint, so it is
+  // dropped from the interior list.
+  function mapRotatedCorners(corners, shift, m) {
+    var out = [];
+    for (var i = 0; i < corners.length; i++) {
+      var pos = (corners[i] - shift + m) % m;
+      if (pos > 0) out.push(pos);
+    }
+    out.sort(function(a, b) { return a - b; });
+    return out;
+  }
+
+  function arcLengths(xx, yy, n, spherical) {
+    var t = new Float64Array(n);
+    var distFn = spherical ? geom.greatCircleDistance : geom.distance2D;
+    for (var i = 1; i < n; i++) {
+      t[i] = t[i - 1] + distFn(xx[i - 1], yy[i - 1], xx[i], yy[i]);
+    }
+    return t;
+  }
+
+  function lngLatToXYZChannels(lng, lat, n) {
+    var X = new Float64Array(n), Y = new Float64Array(n), Z = new Float64Array(n), p = [];
+    for (var i = 0; i < n; i++) {
+      geom.lngLatToXYZ(lng[i], lat[i], p);
+      X[i] = p[0];
+      Y[i] = p[1];
+      Z[i] = p[2];
+    }
+    return [X, Y, Z];
+  }
+
+  // Convert smoothed geocentric channels back to lng/lat. xyzToLngLat() projects
+  // each point radially onto the sphere, so the slightly-inside-the-sphere point
+  // produced by averaging maps back to a valid surface coordinate.
+  function xyzChannelsToLngLat(channels) {
+    var X = channels[0], Y = channels[1], Z = channels[2], n = X.length;
+    var xx = [], yy = [], p = [];
+    for (var i = 0; i < n; i++) {
+      geom.xyzToLngLat(X[i], Y[i], Z[i], p);
+      xx.push(p[0]);
+      yy.push(p[1]);
+    }
+    return {xx: xx, yy: yy};
+  }
+
+  // Insert linearly-interpolated samples so no gap between consecutive source
+  // points exceeds @maxSpacing. Interpolating in the smoothing channels keeps
+  // this representation-agnostic (for geocentric input the inserted points sit on
+  // the chord, negligibly below the surface at these spacings, and are
+  // renormalized on the way out). Endpoints (and the closing vertex of a ring)
+  // are preserved exactly.
+  function densifyChannels(t, channels, maxSpacing) {
+    var n = t.length;
+    var K = channels.length;
+    var t2 = [];
+    var c2 = [];
+    for (var c = 0; c < K; c++) c2.push([]);
+    for (var i = 0; i < n - 1; i++) {
+      t2.push(t[i]);
+      for (var a = 0; a < K; a++) c2[a].push(channels[a][i]);
+      var seg = t[i + 1] - t[i];
+      if (seg > maxSpacing) {
+        var steps = Math.ceil(seg / maxSpacing);
+        for (var s = 1; s < steps; s++) {
+          var f = s / steps;
+          t2.push(t[i] + seg * f);
+          for (var b = 0; b < K; b++) {
+            c2[b].push(channels[b][i] + (channels[b][i + 1] - channels[b][i]) * f);
+          }
+        }
+      }
+    }
+    t2.push(t[n - 1]);
+    for (var d = 0; d < K; d++) c2[d].push(channels[d][n - 1]);
+    return {t: new Float64Array(t2), channels: c2, count: t2.length};
+  }
+
+  // Sample the smoothed curve over arc-length [a, b] and thin it (see the
+  // "Output resampling" note above). Step 1 evaluates the smoother at a uniform
+  // dense step; step 2 makes one forward pass keeping the endpoints plus every
+  // interior vertex where the accumulated turn since the last kept vertex reaches
+  // BEND_ANGLE, or where the sagitta guard trips. @inputCount bounds the dense
+  // sampling (and thus the output). Returns one array per channel, ordered by
+  // increasing arc length, including both endpoints.
+  function sampleSmoothedCurve(src, a, b, closed, ctx, inputCount) {
+    var K = src.channels.length;
+    var span = b - a;
+    var maxPoints = Math.max(inputCount, MIN_CLOSED_SEGMENTS) * MAX_OUTPUT_FACTOR;
+
+    // 1. dense uniform sampling of the smoothed curve
+    var nDense = Math.ceil(span / (ctx.tol * DENSE_STEP_FACTOR)) + 1;
+    if (nDense < MIN_CLOSED_SEGMENTS + 1) nDense = MIN_CLOSED_SEGMENTS + 1;
+    if (nDense > maxPoints) nDense = maxPoints;
+    if (nDense < 2) nDense = 2;
+    var P = new Array(nDense);
+    for (var i = 0; i < nDense; i++) {
+      P[i] = smoothAt(src, a + span * (i / (nDense - 1)), ctx);
+    }
+
+    // 2. one-pass bend-angle filter
+    var theta = BEND_ANGLE;
+    var epsDev = ctx.tol * DEVIATION_FACTOR;
+    var out = [];
+    for (var c = 0; c < K; c++) out.push([]);
+    appendPoint(out, P[0], K);
+    var anchor = 0;     // last kept vertex
+    var accTurn = 0;    // absolute turning accumulated since the anchor
+    for (var j = 1; j < nDense - 1; j++) {
+      accTurn += vecAngle(P[j - 1], P[j], P[j], P[j + 1], K);
+      // sagitta of a circular arc of chord c and total turn a is ~ c*a/8; cut a
+      // long gentle bend before it bows more than epsDev from its chord
+      var sagitta = chordLen(P[anchor], P[j + 1], K) * accTurn * 0.125;
+      if (accTurn >= theta || sagitta >= epsDev) {
+        appendPoint(out, P[j], K);
+        anchor = j;
+        accTurn = 0;
+      }
+    }
+    appendPoint(out, P[nDense - 1], K);
+    return out;
+  }
+
+  // Angle (radians) between vectors (b - a) and (d - c) over K channels.
+  function vecAngle(a, b, c, d, K) {
+    var dot = 0, n1 = 0, n2 = 0;
+    for (var i = 0; i < K; i++) {
+      var u = b[i] - a[i];
+      var v = d[i] - c[i];
+      dot += u * v;
+      n1 += u * u;
+      n2 += v * v;
+    }
+    if (n1 <= 0 || n2 <= 0) return 0;
+    var k = dot / Math.sqrt(n1 * n2);
+    if (k > 1) k = 1;
+    else if (k < -1) k = -1;
+    return Math.acos(k);
+  }
+
+  function chordLen(a, b, K) {
+    var s = 0;
+    for (var c = 0; c < K; c++) {
+      var d = b[c] - a[c];
+      s += d * d;
+    }
+    return Math.sqrt(s);
+  }
+
+  // Evaluate the smoother at a single arc-length position by binary-searching the
+  // window of source samples within +/- radius of phi. Open sources are padded
+  // with odd reflections at each end (see buildSource), so the window is always
+  // full and symmetric -- no special boundary handling is needed here.
+  function smoothAt(src, phi, ctx) {
+    var t = src.t, m = src.count;
+    var lo = lowerBound(t, m, phi - ctx.radius);
+    var hi = upperBound(t, m, phi + ctx.radius);
+    return smoothPoint(t, src.channels, lo, hi, phi, ctx.method, ctx.scale, ctx.radius, ctx.gain);
+  }
+
+  // first index with t[i] >= x
+  function lowerBound(t, n, x) {
+    var lo = 0, hi = n;
+    while (lo < hi) {
+      var mid = (lo + hi) >> 1;
+      if (t[mid] < x) lo = mid + 1;
+      else hi = mid;
+    }
+    return lo;
+  }
+
+  // first index with t[i] > x
+  function upperBound(t, n, x) {
+    var lo = 0, hi = n;
+    while (lo < hi) {
+      var mid = (lo + hi) >> 1;
+      if (t[mid] <= x) lo = mid + 1;
+      else hi = mid;
+    }
+    return lo;
+  }
+
+  function appendPoint(out, p, K) {
+    for (var c = 0; c < K; c++) out[c].push(p[c]);
+  }
+
+  // Assemble the weighting samples for an arc, tagged with cumulative arc length.
+  //
+  // Open arcs are padded with odd (point) reflections of the samples within
+  // `radius` of each end: a sample at offset tau inside the end is mirrored to
+  // -tau with position 2*endpoint - sample. This keeps the smoothing window full
+  // and symmetric at the ends instead of one-sided. A one-sided window biases the
+  // result inward (it averages only interior neighbors), dragging the smoothed
+  // endpoint off a curving end; pinning it back then leaves a long, kinked final
+  // segment. With odd reflection each mirror pair averages back to the endpoint,
+  // so the endpoint is preserved *exactly* while detail right up to it is still
+  // fully smoothed, and the curve leaves the endpoint along a smooth tangent.
+  // (A straight run reflects to its own continuation, so straights stay straight.)
+  //
+  // Closed arcs are instead replicated across enough periods (each shifted by the
+  // perimeter length) that any query window wraps correctly around the ring.
+  function buildSource(t, channels, closed, radius, L) {
+    var n = t.length;
+    var K = channels.length;
+    if (!closed) {
+      return buildOpenSource(t, channels, n, K, radius, L);
+    }
+    var m = n - 1; // drop duplicated closing vertex; period is L
+    var reps = Math.max(1, Math.ceil(radius / L));
+    var et = [];
+    var ec = [];
+    for (var c = 0; c < K; c++) ec.push([]);
+    for (var k = -reps; k <= reps; k++) {
+      var off = k * L;
+      for (var j = 0; j < m; j++) {
+        et.push(t[j] + off);
+        for (var c2 = 0; c2 < K; c2++) ec[c2].push(channels[c2][j]);
+      }
+    }
+    return {t: et, channels: ec, count: et.length, totalLength: L, closed: true};
+  }
+
+  function buildOpenSource(t, channels, n, K, radius, L) {
+    var et = [];
+    var ec = [];
+    for (var c = 0; c < K; c++) ec.push([]);
+    // left odd-reflections (ascending t from ~-radius up to 0): walk interior
+    // samples with t <= radius from the outermost inward so output stays sorted
+    var leftEnd = upperBound(t, n, radius) - 1; // last index with t[i] <= radius
+    for (var i = leftEnd; i >= 1; i--) {
+      et.push(-t[i]);
+      for (var c0 = 0; c0 < K; c0++) ec[c0].push(2 * channels[c0][0] - channels[c0][i]);
+    }
+    // originals
+    for (var j = 0; j < n; j++) {
+      et.push(t[j]);
+      for (var c1 = 0; c1 < K; c1++) ec[c1].push(channels[c1][j]);
+    }
+    // right odd-reflections (ascending t just above L): nearest-to-L first
+    for (var k = n - 2; k >= 0 && t[k] >= L - radius; k--) {
+      et.push(2 * L - t[k]);
+      for (var c2 = 0; c2 < K; c2++) ec[c2].push(2 * channels[c2][n - 1] - channels[c2][k]);
+    }
+    return {t: et, channels: ec, count: et.length, totalLength: L, closed: false};
+  }
+
+  // Both smoothing methods compute the smoothed coordinate as a local weighted
+  // least-squares fit of a second-degree polynomial in the normalized arc-length
+  // offset u = (t - phi)/scale, evaluated at u = 0 (the polynomial's constant
+  // term). The quadratic term lets the fit follow curvature, so the smoothed point
+  // is not pulled toward the chord on a bend the way a plain weighted average is.
+  // That is what keeps either method from shrinking the amplitude of supra-
+  // tolerance features. The methods differ only in the weight kernel (see
+  // kernelWeight): 'paek' is Bodansky et al.'s exponential-weighted quadratic (the
+  // algorithm ArcGIS uses); 'gaussian' is the Gaussian-weighted quadratic, i.e. a
+  // Savitzky-Golay smoother (a sharper frequency cutoff than paek, now with the
+  // same shrinkage correction). Normalizing by `scale` keeps the normal-equation
+  // matrix well-scaled regardless of the absolute tolerance. The fit is linear in
+  // the channel values, so for geocentric input the smoothed point stays in the
+  // plane of nearby vertices (a great-circle arc is preserved up to discretization).
+  // With too few points, or near-singular normal equations, falls back to the
+  // plain weighted average using the same kernel.
+  //
+  // Weights are tapered to reach zero at the window edge (|u| = radius/scale) by
+  // subtracting the edge weight: w = max(0, kernel(u) - kernel(uEdge)). Without
+  // this taper a source sample enters/leaves the moving window carrying a small
+  // but nonzero weight, and that discrete jump -- amplified by the quadratic fit --
+  // shows up as fine-scale jitter rendered as visible kinks. The taper is symmetric
+  // in |u|, so odd-reflection endpoint preservation is unaffected.
+  function smoothPoint(t, channels, lo, hi, phi, method, scale, radius, gain) {
+    var gaussian = method == 'gaussian';
+    // gain scales the quadratic (Savitzky-Golay) curvature correction relative to
+    // the plain weighted moving average m: out = m + gain*(a0 - m). gain=0 leaves
+    // the shrinking moving average, gain=1 is the fully corrected fit, and gain>1
+    // exaggerates the curvature of bends.
+    if (gain === 0 || hi - lo < 3) return weightedAverage(t, channels, lo, hi, phi, scale, radius, gaussian);
+    var edgeW = kernelWeight(radius / scale, gaussian);
+    var s0 = 0, s1 = 0, s2 = 0, s3 = 0, s4 = 0;
+    var K = channels.length;
+    var b0 = new Float64Array(K), b1 = new Float64Array(K), b2 = new Float64Array(K);
+    for (var i = lo; i < hi; i++) {
+      var u = (t[i] - phi) / scale;
+      var w = kernelWeight(u, gaussian) - edgeW;
+      if (w <= 0) continue;
+      var wu = w * u;
+      var wu2 = wu * u;
+      s0 += w;
+      s1 += wu;
+      s2 += wu2;
+      s3 += wu2 * u;
+      s4 += wu2 * u * u;
+      for (var c = 0; c < K; c++) {
+        var v = channels[c][i];
+        b0[c] += w * v;
+        b1[c] += wu * v;
+        b2[c] += wu2 * v;
+      }
+    }
+    // det of the symmetric normal-equation matrix [[s0,s1,s2],[s1,s2,s3],[s2,s3,s4]]
+    var c0 = s2 * s4 - s3 * s3;
+    var c1 = s1 * s4 - s3 * s2;
+    var c2 = s1 * s3 - s2 * s2;
+    var det = s0 * c0 - s1 * c1 + s2 * c2;
+    if (!(Math.abs(det) > 1e-9 * (s0 * s0 * s0 + 1))) {
+      return weightedAverage(t, channels, lo, hi, phi, scale, radius, gaussian);
+    }
+    var out = new Array(K);
+    for (var ch = 0; ch < K; ch++) {
+      var a0 = solveConstantTerm(b0[ch], b1[ch], b2[ch], s1, s2, s3, s4, c0, det);
+      var mean = b0[ch] / s0; // plain weighted moving average for this channel
+      out[ch] = mean + gain * (a0 - mean);
+    }
+    return out;
+  }
+
+  // Smoothing kernel weight at normalized offset u: exponential e^(-|u|) for paek,
+  // Gaussian e^(-u^2/2) for the Savitzky-Golay gaussian method.
+  function kernelWeight(u, gaussian) {
+    return gaussian ? Math.exp(-0.5 * u * u) : Math.exp(-Math.abs(u));
+  }
+
+  // Solve for the constant term a0 of the fitted quadratic via Cramer's rule
+  // (replace the first column of the normal matrix with the RHS [b0,b1,b2]).
+  function solveConstantTerm(b0, b1, b2, s1, s2, s3, s4, c0, det) {
+    var detA = b0 * c0 - s1 * (b1 * s4 - s3 * b2) + s2 * (b1 * s3 - s2 * b2);
+    return detA / det;
+  }
+
+  function weightedAverage(t, channels, lo, hi, phi, scale, radius, gaussian) {
+    var K = channels.length;
+    var edgeW = kernelWeight(radius / scale, gaussian);
+    var wsum = 0;
+    var sums = new Float64Array(K);
+    for (var i = lo; i < hi; i++) {
+      var w = kernelWeight((t[i] - phi) / scale, gaussian) - edgeW;
+      if (w <= 0) continue;
+      wsum += w;
+      for (var c = 0; c < K; c++) sums[c] += w * channels[c][i];
+    }
+    if (!(wsum > 0)) return interpAlongSource(t, channels, lo, hi, phi);
+    return scaleSums(sums, 1 / wsum, K);
+  }
+
+  // Fallback used when a window is empty or weights underflow: linearly
+  // interpolate the position on the source line at arc-length phi (using the
+  // samples bracketing the window). This keeps the output point on the line
+  // instead of snapping to a vertex, so sparse regions degrade gracefully to the
+  // original geometry without staircase artifacts.
+  function interpAlongSource(t, channels, lo, hi, phi) {
+    var K = channels.length;
+    var m = t.length;
+    var i0 = (hi > lo ? lo : lo - 1);
+    if (i0 < 0) i0 = 0;
+    if (i0 > m - 1) i0 = m - 1;
+    var i1 = i0 + 1;
+    if (i1 > m - 1) i1 = m - 1;
+    var out = new Array(K);
+    if (i0 === i1 || t[i1] === t[i0]) {
+      for (var c = 0; c < K; c++) out[c] = channels[c][i0];
+      return out;
+    }
+    var f = (phi - t[i0]) / (t[i1] - t[i0]);
+    if (f < 0) f = 0;
+    else if (f > 1) f = 1;
+    for (var ch = 0; ch < K; ch++) {
+      out[ch] = channels[ch][i0] + (channels[ch][i1] - channels[ch][i0]) * f;
+    }
+    return out;
+  }
+
+  function scaleSums(sums, k, K) {
+    var out = new Array(K);
+    for (var c = 0; c < K; c++) out[c] = sums[c] * k;
+    return out;
+  }
+
+  function toArray(arr) {
+    var out = [];
+    for (var i = 0, n = arr.length; i < n; i++) out.push(arr[i]);
+    return out;
+  }
+
+  cmd.smooth = function(dataset, opts, targetLayers) {
+    var arcs = dataset.arcs;
+    if (!arcs || arcs.size() === 0) return;
+    opts = opts || {};
+    if (opts.distance === undefined || opts.distance === null || opts.distance === '') {
+      stop$1('Missing a smoothing distance');
+    }
+    var spherical = useSphericalSmooth(arcs, opts);
+    var tolerance = convertSmoothTolerance(opts.distance, dataset, spherical);
+    if (!(tolerance > 0)) {
+      stop$1('Expected a positive smoothing distance');
+    }
+    var method = getSmoothMethod(opts);
+    if (opts.gain !== undefined && opts.gain !== null && !(opts.gain >= 0)) {
+      stop$1('Expected gain to be a number >= 0');
+    }
+    var implicitlySmoothedNames = getImplicitlyTargetedLayerNames(dataset, targetLayers, layerHasPaths);
+
+    // Smoothing rewrites coordinates, so lock in any pending (non-destructive)
+    // simplification first -- otherwise we would smooth the original
+    // full-resolution geometry and silently discard the simplification.
+    if (!arcs.isFlat()) {
+      arcs.flatten();
+    }
+
+    // By default, cut intricate sub-scale detail (jetties, narrow inlets, spikes)
+    // that the low-pass smoother cannot generalize cleanly -- left in, these tend
+    // to produce kinks or self-intersections. The detail scale matches the
+    // smoothing distance. Disable with no-prefilter.
+    if (!opts.no_prefilter) {
+      var before = arcs.getPointCount();
+      filterDetailPaths(arcs, {
+        distance: tolerance,
+        spherical: spherical
+      });
+      var removed = before - arcs.getPointCount();
+      if (removed > 0) {
+        message('Prefilter removed ' + removed + ' of ' + before + ' vertices');
+      }
+    }
+
+    smoothPaths(arcs, {
+      tolerance: tolerance,
+      method: method,
+      spherical: spherical,
+      keepCorners: !!opts.keep_corners,
+      gain: opts.gain
+    });
+
+    if (implicitlySmoothedNames.length > 0) {
+      message(
+        'Also smoothed non-target layer' + utils.pluralSuffix(implicitlySmoothedNames.length) +
+        ' from the same dataset: ' + implicitlySmoothedNames.join(', ')
+      );
+    }
+  };
+
+  // Rewrite every arc's vertices in place. Because the arc-to-shape references are
+  // untouched, shared polygon boundaries stay coincident and topology is
+  // preserved; updateVertexData() also handles undo capture and resets stale
+  // simplification thresholds.
+  function smoothPaths(arcs, opts) {
+    var nn = [];
+    var xx = [];
+    var yy = [];
+    var i, k, res;
+    arcs.forEach3(function(axx, ayy, azz, arcId) {
+      res = smoothArcCoords(axx, ayy, {
+        tolerance: opts.tolerance,
+        method: opts.method,
+        spherical: opts.spherical,
+        keepCorners: opts.keepCorners,
+        gain: opts.gain,
+        closed: arcs.arcIsClosed(arcId)
+      });
+      nn.push(res.xx.length);
+      for (i = 0, k = res.xx.length; i < k; i++) {
+        xx.push(res.xx[i]);
+        yy.push(res.yy[i]);
+      }
+    });
+    arcs.updateVertexData(nn, xx, yy);
+  }
+
+  function getSmoothMethod(opts) {
+    // Gaussian (Savitzky-Golay) is the documented smoother. 'paek' (an exponential
+    // kernel) is kept as an undocumented alternative for backward compatibility.
+    var m = opts.method;
+    if (!m) return 'gaussian';
+    if (m != 'paek' && m != 'gaussian') {
+      stop$1('Unsupported smooth method:', m);
+    }
+    return m;
+  }
+
+  function useSphericalSmooth(arcs, opts) {
+    return !opts.planar && !arcs.isPlanar();
+  }
+
+  function convertSmoothTolerance(param, dataset, spherical) {
+    var crs = getDatasetCRS(dataset);
+    return spherical ? convertDistanceParam(param, crs) : convertIntervalParam(param, crs);
+  }
+
   cmd.sortFeatures = function(lyr, arcs, opts) {
     var n = getFeatureCount(lyr),
         ascending = !opts.descending,
@@ -63468,6 +64697,9 @@ ${svg}
       } else if (name == 'filter-geom') {
         applyCommandToEachLayer(cmd.filterGeom, targetLayers, arcs, opts);
 
+      } else if (name == 'filter-detail') {
+        cmd.filterDetail(targetDataset, opts, targetLayers);
+
       } else if (name == 'filter-islands') {
         applyCommandToEachLayer(cmd.filterIslands, targetLayers, targetDataset, opts);
 
@@ -63626,6 +64858,9 @@ ${svg}
           cmd.simplify(targetDataset, opts, targetLayers);
         }
 
+      } else if (name == 'smooth') {
+        cmd.smooth(targetDataset, opts, targetLayers);
+
       } else if (name == 'slice') {
         outputLayers = cmd.sliceLayers(targetLayers, source, targetDataset, opts);
 
@@ -63758,7 +64993,7 @@ ${svg}
     return name == 'rectangle' || name == 'rectangles' || name == 'filter' && opts.cleanup;
   }
 
-  var version = "0.7.29";
+  var version = "0.7.30";
 
   // Parse command line args into commands and run them
   // Function takes an optional Node-style callback. A Promise is returned if no callback is given.

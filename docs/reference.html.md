@@ -87,6 +87,7 @@ mapshaper states.geojson -filter 'ST == "AK"' + name=alaska -o output/ target=*
 [-scalebar](#-scalebar)
 [-shape](#-shape)
 [-simplify](#-simplify)
+[-smooth](#-smooth)
 [-snap](#-snap)
 [-sort](#-sort)
 [-split](#-split)
@@ -342,79 +343,6 @@ Transform coordinates by shifting, scaling and rotating. Not recommended for unp
 
 Common options: `target=`
 
-### -classify
-
-Assign colors or data values to each feature using one of several classification methods. Methods for sequential data include `quantile`, `equal-interval`, `hybrid` and `nice` or categorical classification to a data field.
-
-`<field>` or `field=` Name of the data field to classify.
-
-`save-as=`     	Name of a (new or existing) field to receive the output of classification. The default output field for colors is `fill` or `stroke` (depending on geometry type) and `class` for non-color output.
-
-`values=`       List of values to assign to data classes. If the number of values differs from the number of classes given by the (optional) `classes` or `breaks` option, then interpolated values will be calculated. Mapshaper uses d3 for interpolation.
-
-`colors=` Takes a list of CSS colors, the name of a predefined color scheme, or `random`. Run the [-colors](#-colors) command to list all of the built-in color schemes. Similar to the `values=` option, if the number of listed colors is different from the number of requested classes, interpolated colors are calculated.
-
-`non-adjacent`  Assign colors to a polygon layer in a randomish pattern, trying not to assign the same color to adjacent polygons. Mapshaper's algorithm balances performance and quality. Usually it can find a solution with four or five colors. If mapshaper is unable to avoid giving the same color to neighboring polygons, it will print a warning. You can resolve the problem by increasing the number of colors.
-
-`stops=` A pair of comma-separated numbers (0-100) for limiting the output range of a color ramp.
-
-
-`null-value=`   Value (or color) to use for invalid or missing data.
-
-`classes=`      Number of data classes. This number can also be inferred from the `breaks=` or `values=` options.
-
-`breaks=`       Specify user-defined sequential class breaks (an alternative to automatic classification using `quantile`, `equal-interval`, etc.).
-
-`outer-breaks=`  A pair of comma-separated numbers setting min and max breakpoints to use when computing class breaks. This setting overrides the default behavior, which is to use the min and max values of the data field being classified. This setting can be used to prevent extreme data values (outliers) from affecting equal-interval classification. Also useful for setting outside breakpoints for continuous color ramps (when using the `continuous` option).
-
-`method=`       Classification method. One of: `quantile`, `equal-interval`, `nice`, `hybrid` (sequential data), `categorical`, `non-adjacent` and `indexed`. This parameter is not required if the classification method can be inferred from other options. For example, the `index-field=` parameter implies indexed classification, the `categories=` parameter implies categorical classification.
-
-`quantile`      Use quantile classification. Shortcut for `method=quantile`.
-
-`equal-interval` Use equal interval classification. Shortcut for `method=equal-interval`.
-
-`nice`          Same as `method=nice`. This scheme finds equally spaced, round breakpoints that roughly divide the dataset into equal parts (similar to quantile classification).
-
-`invert`        Reverse the order of colors/values.
-
-`continuous`    Output continuously interpolated values (experimental). Uses linear interpolation between class breaks, which may give poor results with some distributions of data. This option is for creating unclassed/continuous-color maps.
-
-`index-field=`  Use class ids that have been precalculated and assigned to this field. Values should be integers from `0 ... n-1` (where n is the number of classes). `-1` is the null value.
-
-`precision=`    Round data values before classification (e.g. `precision=0.1`).
-
-`categories=`   List of values in the source data field. Using this option triggers categorical classification.
-
-`other=`  Default value for categorical classification. This value is used when the value of the source data field is not present in the list of values given by `categories=`. Defaults to `null-value=` or null.
-
-**Options for generating SVG keys**
-
-`key-style=`         One of: simple, gradient, dataviz
-
-`key-name= `         Name of output SVG file
-
-`key-width=`         Width of key in pixels
-
-`key-font-size=`     Font size of tic labels in pixels
-
-`key-tile-height=`   Height of color tiles in pixels
-
-`key-tic-length=`    Length of tic mark in pixels
-
-`key-label-suffix=`  String to append to each label
-
-`key-last-suffix=`   String to append to the last label
-
-
-**Examples**
-
-```bash
-# Apply a sequential color ramp to a polygon dataset using quantiles.
-mapshaper covid_cases.geojson \
-  -classify save-as=fill quantile color-scheme=Oranges classes=6 \
-  -o out.geojson
-```
-
 ### -blur
 
 Apply a Gaussian-like blur to raster layers. The command only works on projected
@@ -482,6 +410,79 @@ mapshaper counties.shp -buffer 100m topological -o counties_buffer.geojson
 
 # Fill inlets and enclosed holes up to 500m wide without growing the coastline
 mapshaper land.shp -buffer 500m fill-gaps -o land_filled.geojson
+```
+
+### -classify
+
+Assign colors or data values to each feature using one of several classification methods. Methods for sequential data include `quantile`, `equal-interval`, `hybrid` and `nice` or categorical classification to a data field.
+
+`<field>` or `field=` Name of the data field to classify.
+
+`save-as=`      Name of a (new or existing) field to receive the output of classification. The default output field for colors is `fill` or `stroke` (depending on geometry type) and `class` for non-color output.
+
+`values=`       List of values to assign to data classes. If the number of values differs from the number of classes given by the (optional) `classes` or `breaks` option, then interpolated values will be calculated. Mapshaper uses d3 for interpolation.
+
+`colors=` Takes a list of CSS colors, the name of a predefined color scheme, or `random`. Run the [-colors](#-colors) command to list all of the built-in color schemes. Similar to the `values=` option, if the number of listed colors is different from the number of requested classes, interpolated colors are calculated.
+
+`non-adjacent`  Assign colors to a polygon layer in a randomish pattern, trying not to assign the same color to adjacent polygons. Mapshaper's algorithm balances performance and quality. Usually it can find a solution with four or five colors. If mapshaper is unable to avoid giving the same color to neighboring polygons, it will print a warning. You can resolve the problem by increasing the number of colors.
+
+`stops=` A pair of comma-separated numbers (0-100) for limiting the output range of a color ramp.
+
+
+`null-value=`   Value (or color) to use for invalid or missing data.
+
+`classes=`      Number of data classes. This number can also be inferred from the `breaks=` or `values=` options.
+
+`breaks=`       Specify user-defined sequential class breaks (an alternative to automatic classification using `quantile`, `equal-interval`, etc.).
+
+`outer-breaks=`  A pair of comma-separated numbers setting min and max breakpoints to use when computing class breaks. This setting overrides the default behavior, which is to use the min and max values of the data field being classified. This setting can be used to prevent extreme data values (outliers) from affecting equal-interval classification. Also useful for setting outside breakpoints for continuous color ramps (when using the `continuous` option).
+
+`method=`       Classification method. One of: `quantile`, `equal-interval`, `nice`, `hybrid` (sequential data), `categorical`, `non-adjacent` and `indexed`. This parameter is not required if the classification method can be inferred from other options. For example, the `index-field=` parameter implies indexed classification, the `categories=` parameter implies categorical classification.
+
+`quantile`      Use quantile classification. Shortcut for `method=quantile`.
+
+`equal-interval` Use equal interval classification. Shortcut for `method=equal-interval`.
+
+`nice`          Same as `method=nice`. This scheme finds equally spaced, round breakpoints that roughly divide the dataset into equal parts (similar to quantile classification).
+
+`invert`        Reverse the order of colors/values.
+
+`continuous`    Output continuously interpolated values (experimental). Uses linear interpolation between class breaks, which may give poor results with some distributions of data. This option is for creating unclassed/continuous-color maps.
+
+`index-field=`  Use class ids that have been precalculated and assigned to this field. Values should be integers from `0 ... n-1` (where n is the number of classes). `-1` is the null value.
+
+`precision=`    Round data values before classification (e.g. `precision=0.1`).
+
+`categories=`   List of values in the source data field. Using this option triggers categorical classification.
+
+`other=`  Default value for categorical classification. This value is used when the value of the source data field is not present in the list of values given by `categories=`. Defaults to `null-value=` or null.
+
+**Options for generating SVG keys**
+
+`key-style=`         One of: simple, gradient, dataviz
+
+`key-name= `         Name of output SVG file
+
+`key-width=`         Width of key in pixels
+
+`key-font-size=`     Font size of tic labels in pixels
+
+`key-tile-height=`   Height of color tiles in pixels
+
+`key-tic-length=`    Length of tic mark in pixels
+
+`key-label-suffix=`  String to append to each label
+
+`key-last-suffix=`   String to append to the last label
+
+
+**Examples**
+
+```bash
+# Apply a sequential color ramp to a polygon dataset using quantiles.
+mapshaper covid_cases.geojson \
+  -classify save-as=fill quantile color-scheme=Oranges classes=6 \
+  -o out.geojson
 ```
 
 ### -clean
@@ -766,6 +767,43 @@ mapshaper usa_counties.shp \
   -o ne_counties.shp
 ```
 
+<!--
+### -filter-detail
+
+Remove intricate, sub-scale detail that `-smooth` cannot generalize cleanly. This is an optional preprocessing step before smoothing: features such as jetties, breakwaters, narrow inlets and fjords are too thin and too convoluted for a low-pass filter to average away, and smoothing them tends to leave kinks or even self-intersections. `-filter-detail` cuts those features out first, so the subsequent `-smooth` sees a cleaner line.
+
+Unlike `-simplify`, it does not thin the whole line — that would starve `-smooth`, which makes a better approximation of the original when it has more vertices to work with. Instead it cuts only where there is genuine convoluted detail and leaves everything else at full resolution. It works in two phases:
+
+1. **Find candidate chords** with a chord-length-gated weighted Visvalingam peel — the same vertex ranking `-simplify`'s default method uses. Vertices are removed least-significant first (smallest angle-weighted triangle area), so a thin feature is peeled from its tip inward and each removal sweeps the smallest possible triangle, finding the shortest chord that would slice the feature off. A vertex is only eligible when the chord that would replace it is no longer than the detail distance, which segments the line into runs that each fit within the detail scale and bounds every candidate chord.
+
+2. **Cut selectively, span by span.** Within each run, find the span whose chord is shortest relative to the original path across it — the most convoluted *tortuosity* — and cut it to its chord when that ratio is above the threshold, then continue. Everything not cut keeps its original vertices, so gentle stretches stay at full detail. Because the decision is per span rather than per run, a small spike is removed whether it sits alone or is embedded in a long gentle stretch; removal depends on how convoluted a feature is, not on how small it is relative to the distance.
+
+Like `-simplify` and `-smooth`, this rewrites shared arc vertices in place and always preserves arc endpoints (topology nodes), so polygon boundaries stay coincident and topology is preserved. It applies to all polygon and polyline layers in a dataset, and any pending simplification is locked in first.
+
+**Options**
+
+`<distance>` or `distance=`  Detail size threshold as a distance (e.g. `1km`), and the longest chord the filter is allowed to create. Convoluted features narrower than this are cut; wider features are left alone. A good starting point is the same distance you pass to `-smooth`. If the unit is omitted, uses meters for unprojected data in spherical mode, otherwise the source units.
+
+`tortuosity=`  How convoluted a span must be before it is cut, measured as original sub-path length divided by chord length (default `2`). Higher values keep more detail (only very convoluted features are removed); values near `1` cut almost every sub-distance span.
+
+`weighting=`  Visvalingam angle-weight coefficient (default `0.7`, matching `-simplify weighted`). Higher values rank sharply-angled (spiky) vertices as less significant; `weighting=0` ranks purely by triangle area.
+
+`planar`  Treat lng,lat coordinates as planar x,y instead of measuring distances and areas on the sphere (the default for unprojected data). Projected data is always measured planar.
+
+Common options: `target=`
+
+**Examples**
+```bash
+# Strip convoluted coastal detail, then smooth.
+mapshaper coast.shp -filter-detail 1km -smooth 1km -o out.shp
+
+# Remove detail finer than 200m before a 1km smooth.
+mapshaper coast.shp -filter-detail 200m -smooth 1km -o out.shp
+
+# Keep more detail by only cutting the most convoluted features.
+mapshaper coast.shp -filter-detail 1km tortuosity=3 -smooth 1km -o out.shp
+```
+-->
 
 ### -filter-fields
 
@@ -1351,6 +1389,35 @@ mapshaper counties.shp -simplify 10% -o simplified.shp
 
 # Use Douglas-Peucker simplification with a 100 meter threshold.
 mapshaper states.shp -simplify dp interval=100 -o simplified/
+```
+
+### -smooth
+
+Smooth the geometry of polygon and polyline features. Unlike `-simplify`, which removes vertices, `-smooth` repositions and resamples vertices to remove fine detail. It applies a Gaussian (Savitzky&ndash;Golay) low-pass filter along each path, controlled by a `<distance>` parameter that sets the approximate resolution of the result.
+
+Output vertices are distributed adaptively along the smoothed line: vertices are denser along sharp bends and sparser along straight and gently-curving stretches.
+
+By default, `-smooth` first runs a prefilter to remove intricate details that smoothing cannot generalize cleanly. Use `no-prefilter` to turn this off.
+
+**Options**
+
+`<distance>` or `distance=`  Smoothing resolution as a distance (e.g. `2km`): detail finer than this is removed.
+
+`keep-corners`  Preserve sharp corners where straight-line segments meet, instead of rounding them. Detection is scale-relative to the smoothing distance.
+
+`gain=`  Strength of the polynomial (Savitzky&ndash;Golay) curvature correction that counteracts the amplitude shrinkage of a plain weighted average. The default is `1` (fully corrected, so bends keep their amplitude). `gain=0` disables the correction, leaving the plain weighted moving average, which shrinks curved features — more so at shorter wavelengths. Values above `1` over-correct, exaggerating the curvature of bends; values greater than `2` are allowed.
+
+`no-prefilter`  By default, `-smooth` runs a detail filter pass before smoothing to remove intricate sub-scale detail — jetties, narrow inlets, spikes — that the low-pass smoother cannot generalize cleanly and that otherwise tends to leave kinks or self-intersections. This option skips that step and smooths the input as-is.
+
+`planar`  By default, mapshaper smooths unprojected (lng,lat) data in 3D space, by converting coordinates to geocentric x,y,z on a sphere. The `planar` option treats lng,lat coordinates as x,y coordinates on a Cartesian plane. Smoothing of projected data is always planar.
+
+**Examples**
+```bash
+# Smooth a coastline, removing detail finer than 500 meters.
+mapshaper coast.geojson -smooth 1km -o smoothed.geojson
+
+# Smooth county boundaries but keep the sharp corners of straight-line borders.
+mapshaper counties.shp -smooth 500m keep-corners -o smoothed.json
 ```
 
 ### -snap

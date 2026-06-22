@@ -51,12 +51,19 @@
       <h1 id="whats-new">What&#39;s new</h1>
 <p>This is a curated list of recently added features. For the full list of changes, including bug fixes and internal work, see the <a href="https://github.com/mbloch/mapshaper/blob/master/CHANGELOG.md">changelog</a> on GitHub.</p>
 <h2 id="june-2026">June 2026</h2>
-<div class="whats-new-entry"><p><strong>Buffer command.</strong> The <code>-buffer</code> command makes buffers around points, lines and polygons.</p>
+<div class="whats-new-entry"><p><strong>Smooth command.</strong> The <code>-smooth</code> command smooths the geometry of polygon and polyline features to a given resolution.</p>
+<ul>
+<li>The <code>keep-corners</code> option preserves sharp corners where straight-line segments meet instead of rounding them.</li>
+<li>By default, a pre-filter is applied to remove intricate sub-scale detail (jetties, narrow inlets, spikes); disable it with <code>no-prefilter</code>.</li>
+<li>The <code>gain</code> option controls the amplitude of output curves.</li>
+</ul>
+<p>→ See <a href="/docs/reference.html#-smooth"><code>-smooth</code></a>.</p>
+</div><div class="whats-new-entry"><p><strong>Buffer command.</strong> The <code>-buffer</code> command makes buffers around points, lines and polygons.</p>
 <ul>
 <li>The command uses geodesic distance on lat-long datasets and on projected datasets with the <code>geodesic</code> option.</li>
 <li>Negative <code>radius</code> parameters shrink polygons (positive distances expand them).</li>
 <li>The <code>topological</code> option prevents buffers from overlapping nearby polygons.</li>
-<li>The <code>fill-gaps</code> option fills enclosed holes and narrow-mouthed inlets (like a river up to its mouth) without growing the outer boundary. Use <code>max-widening=</code> to control how wide a gap can be before it is left open.</li>
+<li>The <code>fill-gaps</code> option fills enclosed holes and narrow-mouthed inlets (like a river up to its mouth) without growing the outer boundary.</li>
 </ul>
 <p>→ See <a href="/docs/reference.html#-buffer"><code>-buffer</code></a>.</p>
 </div><h2 id="may-2026">May 2026</h2>
