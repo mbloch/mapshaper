@@ -258,6 +258,27 @@ describe('mapshaper-smooth.js', function () {
       }
     });
 
+    it('max-bend-angle trades vertex count for join smoothness', async function () {
+      // a sine wave with plenty of curvature for the output thinner to work on
+      var orig = sampleLine(function(x){ return 4 * Math.sin(2 * Math.PI * x / 20); }, 400, 0, 80);
+      var n4 = (await smoothLine(orig, 'distance=5 planar max-bend-angle=4')).length;
+      var n8 = (await smoothLine(orig, 'distance=5 planar max-bend-angle=8')).length;
+      var n16 = (await smoothLine(orig, 'distance=5 planar max-bend-angle=16')).length;
+      var dflt = (await smoothLine(orig, 'distance=5 planar')).length;
+      // a larger angle keeps fewer vertices
+      assert(n4 > n8 && n8 > n16,
+        'vertex count should drop as the angle grows: ' + [n4, n8, n16].join(' > '));
+      // the default is 8 degrees
+      assert.equal(n8, dflt, 'max-bend-angle=8 should match the default (' + n8 + ' vs ' + dflt + ')');
+    });
+
+    it('rejects a non-positive max-bend-angle', async function () {
+      var orig = sampleLine(function(x){ return Math.sin(x); }, 50, 0, 10);
+      await assert.rejects(async function () {
+        await smoothLine(orig, 'distance=5 planar max-bend-angle=0');
+      });
+    });
+
     it('prefilters intricate detail by default; no-prefilter keeps it', async function () {
       // a long thin spike (a "jetty") on an otherwise straight line: too convoluted
       // for the low-pass smoother to generalize, so the default detail prefilter
