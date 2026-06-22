@@ -16,6 +16,7 @@ This is a curated list of recently added features. For the full list of changes,
 - The `keep-corners` option preserves sharp corners where straight-line segments meet instead of rounding them.
 - By default, a pre-filter is applied to remove intricate sub-scale detail (jetties, narrow inlets, spikes); disable it with `no-prefilter`.
 - The `gain` option controls the amplitude of output curves.
+- The `max-bend-angle` option trades output vertex count against join smoothness.
 
 → See [`-smooth`](/docs/reference.html.md#-smooth).
 </div>

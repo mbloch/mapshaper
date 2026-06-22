@@ -1407,6 +1407,8 @@ By default, `-smooth` first runs a prefilter to remove intricate details that sm
 
 `gain=`  Strength of the polynomial (Savitzky&ndash;Golay) curvature correction that counteracts the amplitude shrinkage of a plain weighted average. The default is `1` (fully corrected, so bends keep their amplitude). `gain=0` disables the correction, leaving the plain weighted moving average, which shrinks curved features — more so at shorter wavelengths. Values above `1` over-correct, exaggerating the curvature of bends; values greater than `2` are allowed.
 
+`max-bend-angle=`  Maximum bend (in degrees) between consecutive output segments. The default is `8`. A larger value (e.g. `15`) keeps fewer vertices at the cost of slightly more angular joins; a smaller value keeps more vertices for smoother joins.
+
 `no-prefilter`  By default, `-smooth` runs a detail filter pass before smoothing to remove intricate sub-scale detail — jetties, narrow inlets, spikes — that the low-pass smoother cannot generalize cleanly and that otherwise tends to leave kinks or self-intersections. This option skips that step and smooths the input as-is.
 
 `planar`  By default, mapshaper smooths unprojected (lng,lat) data in 3D space, by converting coordinates to geocentric x,y,z on a sphere. The `planar` option treats lng,lat coordinates as x,y coordinates on a Cartesian plane. Smoothing of projected data is always planar.
