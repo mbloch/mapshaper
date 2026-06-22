@@ -57238,7 +57238,16 @@ ${svg}
   //     distance D) segments the line into runs that each fit within the detail
   //     scale and bounds every candidate chord to <= D, so cuts stay local.
   //
-  //  2. COMMIT selectively. For each run of removed vertices between two survivors,
+  //  2. MERGE survivors that hide a slicing chord. A spike with long bare flanks
+  //     parks its base vertices as survivors (each flank chord alone exceeds D), so
+  //     the short chord that closes the excursion sits between non-adjacent
+  //     survivors. Where a near-degenerate closing chord (a needle returning close
+  //     to its base: chord <= MERGE_CHORD_FRACTION * D, tortuosity >= threshold)
+  //     exists within an arc-length window, widen the run so the next phase can
+  //     slice it. Restricting to short closing chords keeps the merge from sweeping
+  //     a wide excursion across neighbouring geometry and introducing a crossing.
+  //
+  //  3. COMMIT selectively. For each run of removed vertices between two survivors,
   //     compare the original sub-path length to the chord across it (tortuosity).
   //     Collapse the run to its chord only when it is convoluted (tortuosity >=
   //     threshold) -- a jetty, fjord or crinkle. Otherwise restore the run's
@@ -57256,6 +57265,16 @@ ${svg}
   // topology nodes stay put and the operation is topology-safe like -simplify.
   var DEFAULT_WEIGHTING = 0.7;
   var DEFAULT_TORTUOSITY = 2;
+  // How far (in detail-distances of arc length) the survivor-merge pass looks ahead
+  // for a chord that closes a convoluted excursion. Bounds the pass to O(n) and
+  // caps how long a thin spike it can slice in one merge.
+  var MERGE_WINDOW_FACTOR = 12;
+  // The survivor-merge pass only fires when the closing chord is this fraction of D
+  // or shorter: a near-degenerate needle that returns close to its base can be
+  // sliced safely, but collapsing a wider excursion (chord approaching D) sweeps a
+  // long span across neighbouring geometry and can introduce a crossing. cutRun,
+  // which spans only adjacent survivors, is not constrained this way.
+  var MERGE_CHORD_FRACTION = 0.5;
 
   function collapseArcDetail(xx, yy, opts) {
     var n = xx.length;
@@ -57375,6 +57394,47 @@ ${svg}
           outY.push(yy[i + 1]);
           i++;
         }
+      }
+    }
+
+    // Survivor-merge pass. A thin spike with long bare flanks (e.g. a fjord wall or
+    // a dredged channel) forces its base vertices to be parked as survivors -- each
+    // flank chord on its own exceeds D -- so the short chord that actually closes
+    // the excursion is hidden between *non-adjacent* survivors and the per-run
+    // cutRun above never sees it. Walk the survivor chain and, where a later
+    // survivor closes a convoluted excursion with a short chord (<=
+    // MERGE_CHORD_FRACTION * D, tortuosity >= T) within an arc-length window,
+    // splice out the spanned survivors so the run boundary widens and cutRun slices
+    // the spike off. Restricting to short closing chords keeps the merge from
+    // sweeping a wide excursion across neighbouring geometry. This reuses cumLen and the
+    // peel's linked list; it does not re-run the Visvalingam peel. Only non-adjacent
+    // convoluted survivors are merged, so gentle runs (and all existing behaviour)
+    // are untouched.
+    var window = MERGE_WINDOW_FACTOR * D;
+    var mergeChordSq = Dsq * MERGE_CHORD_FRACTION * MERGE_CHORD_FRACTION;
+    var s = 0;
+    while (s !== n - 1) {
+      var mergeJ = -1;
+      var mergeTort = T;
+      var u = next[s];
+      while (cumLen[u] - cumLen[s] <= window) {
+        if (chordSq(s, u) <= mergeChordSq) {
+          var ud = dist(s, u);
+          var utort = ud > 0 ? (cumLen[u] - cumLen[s]) / ud : Infinity;
+          if (utort > mergeTort) {
+            mergeTort = utort;
+            mergeJ = u;
+          }
+        }
+        if (u === n - 1) break;
+        u = next[u];
+      }
+      if (mergeJ > next[s]) {
+        next[s] = mergeJ;
+        prev[mergeJ] = s;
+        s = mergeJ;
+      } else {
+        s = next[s];
       }
     }
 
@@ -64993,7 +65053,7 @@ ${svg}
     return name == 'rectangle' || name == 'rectangles' || name == 'filter' && opts.cleanup;
   }
 
-  var version = "0.7.30";
+  var version = "0.7.31";
 
   // Parse command line args into commands and run them
   // Function takes an optional Node-style callback. A Promise is returned if no callback is given.
