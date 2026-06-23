@@ -1403,23 +1403,22 @@ By default, `-smooth` first runs a prefilter to remove intricate details that sm
 
 `<distance>` or `distance=`  Smoothing resolution as a distance (e.g. `2km`): detail finer than this is removed.
 
-`keep-corners`  Preserve sharp corners where straight-line segments meet, instead of rounding them. Detection is scale-relative to the smoothing distance.
-
-`gain=`  Strength of the polynomial (Savitzky&ndash;Golay) curvature correction that counteracts the amplitude shrinkage of a plain weighted average. The default is `1` (fully corrected, so bends keep their amplitude). `gain=0` disables the correction, leaving the plain weighted moving average, which shrinks curved features — more so at shorter wavelengths. Values above `1` over-correct, exaggerating the curvature of bends; values greater than `2` are allowed.
+`gain=`  Strength of the polynomial (Savitzky&ndash;Golay) curvature correction that counteracts the amplitude shrinkage that would otherwise result from Mapshaper's gaussian smoothing kernel. The default is `1` (fully corrected, so bends keep their amplitude). `gain=0` disables the correction. Values above `1` over-correct, exaggerating the curvature of bends.
 
 `max-bend-angle=`  Maximum bend (in degrees) between consecutive output segments. The default is `8`. A larger value (e.g. `15`) keeps fewer vertices at the cost of slightly more angular joins; a smaller value keeps more vertices for smoother joins.
 
-`no-prefilter`  By default, `-smooth` runs a detail filter pass before smoothing to remove intricate sub-scale detail — jetties, narrow inlets, spikes — that the low-pass smoother cannot generalize cleanly and that otherwise tends to leave kinks or self-intersections. This option skips that step and smooths the input as-is.
+`no-corners`  By default, `-smooth` preserves sharp corners where straight-line segments meet (e.g. artificial borders) instead of rounding them. This option turns corner detection off and smooths the whole line.
 
-`planar`  By default, mapshaper smooths unprojected (lng,lat) data in 3D space, by converting coordinates to geocentric x,y,z on a sphere. The `planar` option treats lng,lat coordinates as x,y coordinates on a Cartesian plane. Smoothing of projected data is always planar.
+`no-prefilter`  By default, `-smooth` runs a detail filter pass before smoothing to remove intricate sub-scale detail — jetties, narrow inlets, spikes — that the low-pass smoother cannot generalize cleanly and that otherwise tends to leave kinks or self-intersections. This option skips that step and smooths the input as-is.
 
 **Examples**
 ```bash
 # Smooth a coastline, removing detail finer than 500 meters.
 mapshaper coast.geojson -smooth 1km -o smoothed.geojson
 
-# Smooth county boundaries but keep the sharp corners of straight-line borders.
-mapshaper counties.shp -smooth 500m keep-corners -o smoothed.json
+# Smooth county boundaries, rounding the sharp corners of straight-line borders
+# instead of preserving them (corner preservation is on by default).
+mapshaper counties.shp -smooth 500m no-corners -o smoothed.json
 ```
 
 ### -snap

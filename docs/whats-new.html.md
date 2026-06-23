@@ -13,7 +13,7 @@ This is a curated list of recently added features. For the full list of changes,
 
 **Smooth command.** The `-smooth` command smooths the geometry of polygon and polyline features to a given resolution.
 
-- The `keep-corners` option preserves sharp corners where straight-line segments meet instead of rounding them.
+- Sharp corners where straight-line segments meet are preserved by default instead of being rounded; use `no-corners` to round them.
 - By default, a pre-filter is applied to remove intricate sub-scale detail (jetties, narrow inlets, spikes); disable it with `no-prefilter`.
 - The `gain` option controls the amplitude of output curves.
 - The `max-bend-angle` option trades output vertex count against join smoothness.

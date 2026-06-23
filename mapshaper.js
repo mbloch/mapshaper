@@ -32930,16 +32930,28 @@ ${svg}
       .option('method', {
         // hidden option (set by the paek/gaussian flags)
       })
-      .option('keep-corners', {
-        describe: 'preserve sharp corners where straight-line segments meet',
-        type: 'flag'
-      })
       .option('gain', {
         describe: 'shrinkage-correction (default 1; 0 = none, >1 exaggerates bends)',
         type: 'number'
       })
       .option('max-bend-angle', {
         describe: 'max bend between output segments in degrees (default is 8)',
+        type: 'number'
+      })
+      .option('no-corners', {
+        describe: 'round sharp corners instead of preserving them (on by default)',
+        type: 'flag'
+      })
+      .option('corner-bias', {
+        // undocumented: corner-preservation sensitivity (default 1). Its inverse
+        // scales the min structural-run length, so corner-bias=0.5 doubles it (fewer
+        // corners kept) and corner-bias=2 halves it (more corners kept).
+        // corner-bias=0 turns corner preservation off entirely.
+        type: 'number'
+      })
+      .option('prefilter-gate', {
+        // undocumented: prefilter sinuosity (path/chord) threshold for cutting
+        // intricate detail (default 4; higher removes less)
         type: 'number'
       })
       .option('planar', {
@@ -57268,7 +57280,7 @@ ${svg}
   // Returns {xx: [], yy: []}. Arc endpoints are always preserved, so shared
   // topology nodes stay put and the operation is topology-safe like -simplify.
   var DEFAULT_WEIGHTING = 0.7;
-  var DEFAULT_TORTUOSITY = 2;
+  var DEFAULT_TORTUOSITY = 4;
   // How far (in detail-distances of arc length) the survivor-merge pass looks ahead
   // for a chord that closes a convoluted excursion. Bounds the pass to O(n) and
   // caps how long a thin spike it can slice in one merge.
@@ -62345,7 +62357,8 @@ ${svg}
     useSphericalSimplify: useSphericalSimplify
   });
 
-  // Structural-corner detection for -smooth's "keep-corners" option.
+  // Structural-corner detection for -smooth's corner preservation (on by default;
+  // disabled with no-corners or corner-bias=0).
   //
   // Many boundaries alternate between natural, freely-curving stretches (coast,
   // river centerline) and artificial straight-line segments (state/county
@@ -62381,14 +62394,18 @@ ${svg}
   var MIN_RUN_LEN_FACTOR = 1.0;          // a structural run must be at least tol * this long
   var MIN_RUN_RADIUS_FACTOR = 1.0;       // and bend no tighter than radius tol * this
 
-  function getCornerParams(tol) {
+  // @cornerBias (optional, default 1) divides the min structural-run length, so a
+  // value < 1 lengthens the run a corner must border to be preserved (fewer, only
+  // well-supported corners), and a value > 1 shortens it (more corners kept).
+  function getCornerParams(tol, cornerBias) {
+    var bias = cornerBias > 0 ? cornerBias : 1;
     return {
       tol: tol,
       cornerAngle: CORNER_ANGLE,
       tangentWindow: TANGENT_WINDOW_FACTOR * tol,
       innerWindow: INNER_WINDOW_FACTOR * TANGENT_WINDOW_FACTOR * tol,
       concentration: CORNER_CONCENTRATION,
-      minRunLen: MIN_RUN_LEN_FACTOR * tol,
+      minRunLen: MIN_RUN_LEN_FACTOR * tol / bias,
       maxTurnRate: 1 / (MIN_RUN_RADIUS_FACTOR * tol) // radians of turning per ground unit
     };
   }
@@ -62634,6 +62651,14 @@ ${svg}
     return deg * Math.PI / 180;
   }
 
+  // Resolve the keep-corners run-length bias (default 1). Its inverse scales the
+  // min structural-run length, so a value < 1 protects only longer straight runs
+  // (fewer corners kept) and a value > 1 protects shorter runs (more corners kept).
+  function resolveCornerBias(opts) {
+    var b = opts.cornerBias;
+    return b > 0 ? b : 1;
+  }
+
   function smoothArcCoords(xx, yy, opts) {
     var n = xx.length;
     var origX = toArray(xx);
@@ -62652,6 +62677,7 @@ ${svg}
       method: method,
       spherical: spherical,
       keepCorners: keepCorners,
+      cornerBias: resolveCornerBias(opts),
       gain: resolveGain(opts),
       bendAngle: bendAngle,
       // Refine the dense step for a smaller-than-default bend angle so one dense
@@ -62672,7 +62698,7 @@ ${svg}
 
     if (closed) {
       var corners = keepCorners ?
-        findInteriorCorners(t, channels, n, true, getCornerParams(tol)) : [];
+        findInteriorCorners(t, channels, n, true, getCornerParams(tol, ctx.cornerBias)) : [];
       if (corners.length === 0) {
         return smoothClosedCyclic(t, channels, n, ctx);
       }
@@ -62689,7 +62715,7 @@ ${svg}
     }
 
     var openBreaks = keepCorners ?
-      findInteriorCorners(t, channels, n, false, getCornerParams(tol)) : [];
+      findInteriorCorners(t, channels, n, false, getCornerParams(tol, ctx.cornerBias)) : [];
     return smoothOpenSpans(origX, origY, t, channels, n, openBreaks, ctx);
   }
 
@@ -62701,9 +62727,9 @@ ${svg}
     var bounds = [0].concat(interiorBreaks);
     bounds.push(n - 1);
     if (ctx.keepCorners && bounds.length > 2) {
-      bounds = refineBounds(t, channels, bounds, getCornerParams(ctx.tol));
+      bounds = refineBounds(t, channels, bounds, getCornerParams(ctx.tol, ctx.cornerBias));
     }
-    var params = ctx.keepCorners ? getCornerParams(ctx.tol) : null;
+    var params = ctx.keepCorners ? getCornerParams(ctx.tol, ctx.cornerBias) : null;
     var xx = [], yy = [];
     for (var s = 0; s < bounds.length - 1; s++) {
       var lo = bounds[s], hi = bounds[s + 1];
@@ -63209,6 +63235,16 @@ ${svg}
         !(opts.max_bend_angle > 0)) {
       stop$1('Expected max-bend-angle to be a number > 0 (degrees)');
     }
+    if (opts.prefilter_gate !== undefined && opts.prefilter_gate !== null &&
+        !(opts.prefilter_gate > 0)) {
+      stop$1('Expected prefilter-gate to be a number > 0');
+    }
+    if (opts.corner_bias !== undefined && opts.corner_bias !== null &&
+        !(opts.corner_bias >= 0)) {
+      stop$1('Expected corner-bias to be a number >= 0');
+    }
+    // Corner preservation is on by default; no-corners or corner-bias=0 turns it off.
+    var keepCorners = !opts.no_corners && opts.corner_bias !== 0;
     var implicitlySmoothedNames = getImplicitlyTargetedLayerNames(dataset, targetLayers, layerHasPaths);
 
     // Smoothing rewrites coordinates, so lock in any pending (non-destructive)
@@ -63226,6 +63262,7 @@ ${svg}
       var before = arcs.getPointCount();
       filterDetailPaths(arcs, {
         distance: tolerance,
+        tortuosity: opts.prefilter_gate,
         spherical: spherical
       });
       var removed = before - arcs.getPointCount();
@@ -63238,7 +63275,8 @@ ${svg}
       tolerance: tolerance,
       method: method,
       spherical: spherical,
-      keepCorners: !!opts.keep_corners,
+      keepCorners: keepCorners,
+      cornerBias: opts.corner_bias,
       gain: opts.gain,
       maxBendAngle: opts.max_bend_angle
     });
@@ -63266,6 +63304,7 @@ ${svg}
         method: opts.method,
         spherical: opts.spherical,
         keepCorners: opts.keepCorners,
+        cornerBias: opts.cornerBias,
         gain: opts.gain,
         maxBendAngle: opts.maxBendAngle,
         closed: arcs.arcIsClosed(arcId)
@@ -65084,7 +65123,7 @@ ${svg}
     return name == 'rectangle' || name == 'rectangles' || name == 'filter' && opts.cleanup;
   }
 
-  var version = "0.7.32";
+  var version = "0.7.33";
 
   // Parse command line args into commands and run them
   // Function takes an optional Node-style callback. A Promise is returned if no callback is given.
