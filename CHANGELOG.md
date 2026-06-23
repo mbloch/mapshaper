@@ -5,7 +5,7 @@ v0.7.31
 * Improvements to the `-smooth` prefilter.
 
 v0.7.30
-* Added the `-smooth` command for scale-aware smoothing of polygon and polyline features, using a Gaussian (Savitzky–Golay) low-pass filter. The `<distance>` parameter sets the resolution of the result (detail finer than this is removed; larger features are preserved). Options include `keep-corners` (preserve sharp corners where straight-line segments meet), `gain=` (strength of the curvature-shrinkage correction; 0 disables it, >1 exaggerates bends), `no-prefilter` (skip the default detail-removal preprocessing step), and `planar`.
+* Added the `-smooth` command for scale-aware smoothing of polygon and polyline features, using a Gaussian (Savitzky–Golay) low-pass filter. The `<distance>` parameter sets the resolution of the result (detail finer than this is removed; larger features are preserved). Options include `no-corners` (round sharp corners where straight-line segments meet, which are otherwise preserved by default), `gain=` (strength of the curvature-shrinkage correction; 0 disables it, >1 exaggerates bends), `no-prefilter` (skip the default detail-removal preprocessing step), and `planar`.
 
 v0.7.29
 * Fixed a `-buffer topological`/`fill-gaps` bug.

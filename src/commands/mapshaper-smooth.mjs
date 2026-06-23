@@ -31,6 +31,12 @@ cmd.smooth = function(dataset, opts, targetLayers) {
       !(opts.prefilter_gate > 0)) {
     stop('Expected prefilter-gate to be a number > 0');
   }
+  if (opts.corner_bias !== undefined && opts.corner_bias !== null &&
+      !(opts.corner_bias >= 0)) {
+    stop('Expected corner-bias to be a number >= 0');
+  }
+  // Corner preservation is on by default; no-corners or corner-bias=0 turns it off.
+  var keepCorners = !opts.no_corners && opts.corner_bias !== 0;
   var implicitlySmoothedNames = getImplicitlyTargetedLayerNames(dataset, targetLayers, layerHasPaths);
 
   // Smoothing rewrites coordinates, so lock in any pending (non-destructive)
@@ -61,7 +67,8 @@ cmd.smooth = function(dataset, opts, targetLayers) {
     tolerance: tolerance,
     method: method,
     spherical: spherical,
-    keepCorners: !!opts.keep_corners,
+    keepCorners: keepCorners,
+    cornerBias: opts.corner_bias,
     gain: opts.gain,
     maxBendAngle: opts.max_bend_angle
   });
@@ -89,6 +96,7 @@ export function smoothPaths(arcs, opts) {
       method: opts.method,
       spherical: opts.spherical,
       keepCorners: opts.keepCorners,
+      cornerBias: opts.cornerBias,
       gain: opts.gain,
       maxBendAngle: opts.maxBendAngle,
       closed: arcs.arcIsClosed(arcId)

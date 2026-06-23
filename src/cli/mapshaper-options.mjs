@@ -1673,16 +1673,23 @@ export function getOptionParser() {
     .option('method', {
       // hidden option (set by the paek/gaussian flags)
     })
-    .option('keep-corners', {
-      describe: 'preserve sharp corners where straight-line segments meet',
-      type: 'flag'
-    })
     .option('gain', {
       describe: 'shrinkage-correction (default 1; 0 = none, >1 exaggerates bends)',
       type: 'number'
     })
     .option('max-bend-angle', {
       describe: 'max bend between output segments in degrees (default is 8)',
+      type: 'number'
+    })
+    .option('no-corners', {
+      describe: 'round sharp corners instead of preserving them (on by default)',
+      type: 'flag'
+    })
+    .option('corner-bias', {
+      // undocumented: corner-preservation sensitivity (default 1). Its inverse
+      // scales the min structural-run length, so corner-bias=0.5 doubles it (fewer
+      // corners kept) and corner-bias=2 halves it (more corners kept).
+      // corner-bias=0 turns corner preservation off entirely.
       type: 'number'
     })
     .option('prefilter-gate', {

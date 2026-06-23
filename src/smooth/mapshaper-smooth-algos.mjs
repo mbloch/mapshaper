@@ -107,6 +107,14 @@ function resolveBendAngle(opts) {
   return deg * Math.PI / 180;
 }
 
+// Resolve the keep-corners run-length bias (default 1). Its inverse scales the
+// min structural-run length, so a value < 1 protects only longer straight runs
+// (fewer corners kept) and a value > 1 protects shorter runs (more corners kept).
+function resolveCornerBias(opts) {
+  var b = opts.cornerBias;
+  return b > 0 ? b : 1;
+}
+
 export function smoothArcCoords(xx, yy, opts) {
   var n = xx.length;
   var origX = toArray(xx);
@@ -125,6 +133,7 @@ export function smoothArcCoords(xx, yy, opts) {
     method: method,
     spherical: spherical,
     keepCorners: keepCorners,
+    cornerBias: resolveCornerBias(opts),
     gain: resolveGain(opts),
     bendAngle: bendAngle,
     // Refine the dense step for a smaller-than-default bend angle so one dense
@@ -145,7 +154,7 @@ export function smoothArcCoords(xx, yy, opts) {
 
   if (closed) {
     var corners = keepCorners ?
-      findInteriorCorners(t, channels, n, true, getCornerParams(tol)) : [];
+      findInteriorCorners(t, channels, n, true, getCornerParams(tol, ctx.cornerBias)) : [];
     if (corners.length === 0) {
       return smoothClosedCyclic(t, channels, n, ctx);
     }
@@ -162,7 +171,7 @@ export function smoothArcCoords(xx, yy, opts) {
   }
 
   var openBreaks = keepCorners ?
-    findInteriorCorners(t, channels, n, false, getCornerParams(tol)) : [];
+    findInteriorCorners(t, channels, n, false, getCornerParams(tol, ctx.cornerBias)) : [];
   return smoothOpenSpans(origX, origY, t, channels, n, openBreaks, ctx);
 }
 
@@ -174,9 +183,9 @@ function smoothOpenSpans(origX, origY, t, channels, n, interiorBreaks, ctx) {
   var bounds = [0].concat(interiorBreaks);
   bounds.push(n - 1);
   if (ctx.keepCorners && bounds.length > 2) {
-    bounds = refineBounds(t, channels, bounds, getCornerParams(ctx.tol));
+    bounds = refineBounds(t, channels, bounds, getCornerParams(ctx.tol, ctx.cornerBias));
   }
-  var params = ctx.keepCorners ? getCornerParams(ctx.tol) : null;
+  var params = ctx.keepCorners ? getCornerParams(ctx.tol, ctx.cornerBias) : null;
   var xx = [], yy = [];
   for (var s = 0; s < bounds.length - 1; s++) {
     var lo = bounds[s], hi = bounds[s + 1];
