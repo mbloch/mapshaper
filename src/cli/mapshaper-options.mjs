@@ -1685,6 +1685,11 @@ export function getOptionParser() {
       describe: 'max bend between output segments in degrees (default is 8)',
       type: 'number'
     })
+    .option('prefilter-gate', {
+      // undocumented: prefilter sinuosity (path/chord) threshold for cutting
+      // intricate detail (default 4; higher removes less)
+      type: 'number'
+    })
     .option('planar', {
       // describe: 'smooth decimal degree coords in 2D space (default is spherical)',
       type: 'flag'

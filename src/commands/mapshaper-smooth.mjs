@@ -27,6 +27,10 @@ cmd.smooth = function(dataset, opts, targetLayers) {
       !(opts.max_bend_angle > 0)) {
     stop('Expected max-bend-angle to be a number > 0 (degrees)');
   }
+  if (opts.prefilter_gate !== undefined && opts.prefilter_gate !== null &&
+      !(opts.prefilter_gate > 0)) {
+    stop('Expected prefilter-gate to be a number > 0');
+  }
   var implicitlySmoothedNames = getImplicitlyTargetedLayerNames(dataset, targetLayers, layerHasPaths);
 
   // Smoothing rewrites coordinates, so lock in any pending (non-destructive)
@@ -44,6 +48,7 @@ cmd.smooth = function(dataset, opts, targetLayers) {
     var before = arcs.getPointCount();
     filterDetailPaths(arcs, {
       distance: tolerance,
+      tortuosity: opts.prefilter_gate,
       spherical: spherical
     });
     var removed = before - arcs.getPointCount();

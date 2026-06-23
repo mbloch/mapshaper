@@ -44,7 +44,7 @@ import geom from '../geom/mapshaper-geom';
 // Returns {xx: [], yy: []}. Arc endpoints are always preserved, so shared
 // topology nodes stay put and the operation is topology-safe like -simplify.
 var DEFAULT_WEIGHTING = 0.7;
-var DEFAULT_TORTUOSITY = 2;
+var DEFAULT_TORTUOSITY = 4;
 // How far (in detail-distances of arc length) the survivor-merge pass looks ahead
 // for a chord that closes a convoluted excursion. Bounds the pass to O(n) and
 // caps how long a thin spike it can slice in one merge.
