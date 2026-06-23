@@ -261,10 +261,10 @@ describe('mapshaper-smooth.js', function () {
     it('max-bend-angle trades vertex count for join smoothness', async function () {
       // a sine wave with plenty of curvature for the output thinner to work on
       var orig = sampleLine(function(x){ return 4 * Math.sin(2 * Math.PI * x / 20); }, 400, 0, 80);
-      var n4 = (await smoothLine(orig, 'distance=5 planar max-bend-angle=4')).length;
-      var n8 = (await smoothLine(orig, 'distance=5 planar max-bend-angle=8')).length;
-      var n16 = (await smoothLine(orig, 'distance=5 planar max-bend-angle=16')).length;
-      var dflt = (await smoothLine(orig, 'distance=5 planar')).length;
+      var n4 = (await smoothLine(orig, 'distance=5 planar no-corners max-bend-angle=4')).length;
+      var n8 = (await smoothLine(orig, 'distance=5 planar no-corners max-bend-angle=8')).length;
+      var n16 = (await smoothLine(orig, 'distance=5 planar no-corners max-bend-angle=16')).length;
+      var dflt = (await smoothLine(orig, 'distance=5 planar no-corners')).length;
       // a larger angle keeps fewer vertices
       assert(n4 > n8 && n8 > n16,
         'vertex count should drop as the angle grows: ' + [n4, n8, n16].join(' > '));
@@ -482,7 +482,9 @@ describe('mapshaper-smooth.js', function () {
     }
 
     it('places vertices in the bend and collapses straight runs to long segments', async function () {
-      var sm = await smoothLine(straightBendStraight(), '30 planar');
+      // no-corners isolates the adaptive sampler (corner preservation would copy
+      // the straight runs verbatim instead of collapsing them)
+      var sm = await smoothLine(straightBendStraight(), '30 planar no-corners');
       // the long lower straight run (300 units) carries almost no interior
       // vertices, while the much shorter bend carries several
       var straight = sm.filter(function(p) { return p[0] < 290 && Math.abs(p[1]) < 2; });
@@ -495,7 +497,7 @@ describe('mapshaper-smooth.js', function () {
 
     it('emits far fewer vertices than a mostly-straight input', async function () {
       var orig = straightBendStraight();
-      var sm = await smoothLine(orig, '30 planar');
+      var sm = await smoothLine(orig, '30 planar no-corners');
       assert(sm.length < orig.length / 2, 'expected sparse output, got ' + sm.length + ' of ' + orig.length);
     });
 
@@ -503,8 +505,8 @@ describe('mapshaper-smooth.js', function () {
       // a fixed-shape feature should get a similar vertex count at different
       // tolerances (relative/angle flatness), not ~N times more at smaller tol
       var orig = straightBendStraight();
-      var coarse = (await smoothLine(orig, '40 planar')).length;
-      var fine = (await smoothLine(orig, '10 planar')).length;
+      var coarse = (await smoothLine(orig, '40 planar no-corners')).length;
+      var fine = (await smoothLine(orig, '10 planar no-corners')).length;
       // 4x finer tolerance must not give ~4x the vertices; a modest increase is
       // expected because a smaller tolerance smooths the bend less, so its
       // smoothed form is genuinely sharper and needs a few more vertices.
@@ -671,7 +673,7 @@ describe('mapshaper-smooth.js', function () {
     });
   });
 
-  describe('keep-corners', function () {
+  describe('corner preservation', function () {
     function minDistTo(pt, pts) {
       var best = Infinity;
       pts.forEach(function(p) {
@@ -694,16 +696,22 @@ describe('mapshaper-smooth.js', function () {
       return c;
     }
 
-    it('preserves a sharp corner that plain smoothing rounds', async function () {
+    it('preserves a sharp corner by default; no-corners rounds it', async function () {
       var orig = lShape();
-      var rounded = await smoothLine(orig, '20 planar');
-      var kept = await smoothLine(orig, '20 planar keep-corners');
-      assert(minDistTo([100, 0], rounded) > 1, 'plain smoothing should round the corner');
-      assert(minDistTo([100, 0], kept) < 1e-9, 'keep-corners should preserve the corner exactly');
+      var rounded = await smoothLine(orig, '20 planar no-corners');
+      var kept = await smoothLine(orig, '20 planar');
+      assert(minDistTo([100, 0], rounded) > 1, 'no-corners should round the corner');
+      assert(minDistTo([100, 0], kept) < 1e-9, 'corner should be preserved by default');
+    });
+
+    it('corner-bias=0 also turns off corner preservation', async function () {
+      var orig = lShape();
+      var off = await smoothLine(orig, '20 planar corner-bias=0');
+      assert(minDistTo([100, 0], off) > 1, 'corner-bias=0 should round the corner');
     });
 
     it('keeps straight runs straight up to the corner', async function () {
-      var kept = await smoothLine(lShape(), '20 planar keep-corners');
+      var kept = await smoothLine(lShape(), '20 planar');
       // horizontal arm (x strictly < corner) should stay on y = 0
       var armDev = 0;
       kept.forEach(function(p) { if (p[0] < 99.9) armDev = Math.max(armDev, Math.abs(p[1])); });
@@ -717,7 +725,7 @@ describe('mapshaper-smooth.js', function () {
       for (var x2 = 95; x2 >= 0; x2 -= 5) ring.push([x2, 100]);
       for (var y2 = 95; y2 >= 0; y2 -= 5) ring.push([0, y2]);
       ring.push([0, 0]);
-      var kept = await smoothPolygon(ring, '20 planar keep-corners');
+      var kept = await smoothPolygon(ring, '20 planar');
       [[0, 0], [100, 0], [100, 100], [0, 100]].forEach(function(corner) {
         assert(minDistTo(corner, kept) < 1e-9, 'corner ' + corner + ' not preserved');
       });
@@ -731,9 +739,9 @@ describe('mapshaper-smooth.js', function () {
       // sub-tolerance wiggle: wavelength ~9.4 << tolerance 15, amplitude 4
       for (var x2 = 102; x2 <= 148; x2 += 2) c.push([x2, 4 * Math.sin((x2 - 100) / 1.5)]);
       for (var k = 0; k <= 20; k++) c.push([150 + k * 3, k * 3]); // straight arm
-      // no-prefilter so this exercises the smoother + keep-corners in isolation
-      // (the default detail prefilter would reshape the wiggle first)
-      var kept = await smoothLine(c, '15 planar keep-corners no-prefilter');
+      // no-prefilter so this exercises the smoother + corner preservation in
+      // isolation (the default detail prefilter would reshape the wiggle first)
+      var kept = await smoothLine(c, '15 planar no-prefilter');
       // corner at the start of the wiggle is preserved...
       assert(minDistTo([100, 0], kept) < 1e-9, 'corner at start of wiggle not preserved');
       // ...but the body of the sub-tolerance wiggle (amplitude 4) is strongly
@@ -750,7 +758,7 @@ describe('mapshaper-smooth.js', function () {
       // large-radius arc: low curvature everywhere, no sharp corners
       var arc = [];
       for (var a = -0.6; a <= 0.6 + 1e-9; a += 0.02) arc.push([200 * Math.sin(a), 200 * Math.cos(a)]);
-      var kept = await smoothLine(arc, '15 planar keep-corners');
+      var kept = await smoothLine(arc, '15 planar');
       // treated as one structural run -> preserved verbatim (no spurious kinks)
       assert.deepEqual(kept, arc);
     });
@@ -759,7 +767,7 @@ describe('mapshaper-smooth.js', function () {
       var c = [];
       for (var lng = 0; lng <= 20; lng += 1) c.push([lng, 10]);        // parallel (curved in 3D)
       for (var lat = 11; lat <= 30; lat += 1) c.push([20, lat]);       // meridian
-      var kept = await smoothLine(c, '100km keep-corners');            // default spherical
+      var kept = await smoothLine(c, '100km');            // default spherical
       assert(minDistTo([20, 10], kept) < 1e-9, 'spherical corner not preserved');
       assert.deepEqual(kept[0], c[0]);
       assert.deepEqual(kept[kept.length - 1], c[c.length - 1]);
@@ -778,7 +786,7 @@ describe('mapshaper-smooth.js', function () {
       var ds0 = I.importGeoJSON(input, {});
       I.buildTopology(ds0);
       var arcCount0 = ds0.arcs.size();
-      var out = await api.applyCommands('-i in.json -smooth distance=2 planar keep-corners -o out.json',
+      var out = await api.applyCommands('-i in.json -smooth distance=2 planar -o out.json',
         {'in.json': JSON.stringify(input)});
       var ds1 = I.importGeoJSON(JSON.parse(out['out.json']), {});
       I.buildTopology(ds1);

@@ -1,4 +1,5 @@
-// Structural-corner detection for -smooth's "keep-corners" option.
+// Structural-corner detection for -smooth's corner preservation (on by default;
+// disabled with no-corners or corner-bias=0).
 //
 // Many boundaries alternate between natural, freely-curving stretches (coast,
 // river centerline) and artificial straight-line segments (state/county
@@ -34,14 +35,18 @@ var CORNER_CONCENTRATION = 0.6;        // min ratio of inner-window turn to full
 var MIN_RUN_LEN_FACTOR = 1.0;          // a structural run must be at least tol * this long
 var MIN_RUN_RADIUS_FACTOR = 1.0;       // and bend no tighter than radius tol * this
 
-export function getCornerParams(tol) {
+// @cornerBias (optional, default 1) divides the min structural-run length, so a
+// value < 1 lengthens the run a corner must border to be preserved (fewer, only
+// well-supported corners), and a value > 1 shortens it (more corners kept).
+export function getCornerParams(tol, cornerBias) {
+  var bias = cornerBias > 0 ? cornerBias : 1;
   return {
     tol: tol,
     cornerAngle: CORNER_ANGLE,
     tangentWindow: TANGENT_WINDOW_FACTOR * tol,
     innerWindow: INNER_WINDOW_FACTOR * TANGENT_WINDOW_FACTOR * tol,
     concentration: CORNER_CONCENTRATION,
-    minRunLen: MIN_RUN_LEN_FACTOR * tol,
+    minRunLen: MIN_RUN_LEN_FACTOR * tol / bias,
     maxTurnRate: 1 / (MIN_RUN_RADIUS_FACTOR * tol) // radians of turning per ground unit
   };
 }
