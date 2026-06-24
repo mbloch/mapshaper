@@ -191,6 +191,33 @@ function findPrimaryFiles(cache) {
   });
 }
 
+function tryUnzipContent(content, opts) {
+  var bytes = content;
+  if (bytes && bytes.constructor && bytes.constructor.name === 'ArrayBuffer') {
+    bytes = new Uint8Array(bytes);
+  }
+  var isZip = bytes && typeof bytes !== 'string' && bytes.length >= 4 &&
+              bytes[0] === 0x50 && bytes[1] === 0x4B &&
+              bytes[2] === 0x03 && bytes[3] === 0x04;
+  if (!isZip) return null;
+
+  var index = unzipSync(content);
+  var cache = opts && opts.input;
+  if (!cache) {
+    cache = {};
+    opts = Object.assign({}, opts, {input: cache});
+  }
+  Object.assign(cache, index);
+  var primaryFiles = findPrimaryFiles(index);
+  if (primaryFiles.length === 0) {
+    stop('No importable files found in the zip archive');
+  }
+  return {
+    primaryFiles: primaryFiles,
+    opts: opts
+  };
+}
+
 // Let the web UI replace importFile() with a browser-friendly version
 export function replaceImportFile(func) {
   _importFile = func;
@@ -238,12 +265,25 @@ var _importFile = function(path, opts) {
     }
     content = gunzipSync(cli.readFile(pathgz, null, cache), path);
 
-  } else { // type can't be inferred from filename -- try reading as text
-    content = cli.readFile(path, encoding || 'utf-8', cache);
-    fileType = guessInputContentType(content);
-    if (fileType == 'text' && content.indexOf('\ufffd') > -1) {
-      // invalidate string data that contains the 'replacement character'
-      fileType = null;
+  } else { // type can't be inferred from filename -- try reading as text/zip
+    content = cli.readFile(path, null, cache);
+    var unzipResult = tryUnzipContent(content, opts);
+    if (unzipResult) {
+      var primaryFiles = unzipResult.primaryFiles;
+      var newOpts = unzipResult.opts;
+      if (primaryFiles.length === 1) {
+        return _importFile(primaryFiles[0], newOpts);
+      } else {
+        return importFilesTogether(primaryFiles, newOpts);
+      }
+    } else {
+      if (typeof Buffer !== 'undefined' && Buffer.isBuffer(content)) {
+        content = trimBOM(decodeString(content, encoding || 'utf-8'));
+      }
+      fileType = guessInputContentType(content);
+      if (fileType == 'text' && content.indexOf('\ufffd') > -1) {
+        fileType = null;
+      }
     }
   }
 
@@ -296,10 +336,24 @@ async function _importFileAsync(path, opts) {
     content = gunzipSync(cli.readFile(pathgz, null, cache), path);
 
   } else {
-    content = cli.readFile(path, encoding || 'utf-8', cache);
-    fileType = guessInputContentType(content);
-    if (fileType == 'text' && content.indexOf('\ufffd') > -1) {
-      fileType = null;
+    content = cli.readFile(path, null, cache);
+    var unzipResult = tryUnzipContent(content, opts);
+    if (unzipResult) {
+      var primaryFiles = unzipResult.primaryFiles;
+      var newOpts = unzipResult.opts;
+      if (primaryFiles.length === 1) {
+        return await _importFileAsync(primaryFiles[0], newOpts);
+      } else {
+        return await importFilesTogetherAsync(primaryFiles, newOpts);
+      }
+    } else {
+      if (typeof Buffer !== 'undefined' && Buffer.isBuffer(content)) {
+        content = trimBOM(decodeString(content, encoding || 'utf-8'));
+      }
+      fileType = guessInputContentType(content);
+      if (fileType == 'text' && content.indexOf('\ufffd') > -1) {
+        fileType = null;
+      }
     }
   }
 
