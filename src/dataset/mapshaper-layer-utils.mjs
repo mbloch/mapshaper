@@ -107,9 +107,12 @@ export function transformPointsInLayer(lyr, f) {
   if (layerHasPoints(lyr)) {
     noteLayerWillChange(lyr, {operation: 'transformPointsInLayer', unit: 'shapes'});
     forEachPoint(lyr.shapes, function(p) {
-      var p2 = f(p[0], p[1]);
+      var p2 = f(p[0], p[1], p[2]);
       p[0] = p2[0];
       p[1] = p2[1];
+      if (p[2] !== undefined) {
+        p[2] = p2[2];
+      }
     });
     markLayerChanged(lyr, {operation: 'transformPointsInLayer', unit: 'shapes'});
   }
