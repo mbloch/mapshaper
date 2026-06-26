@@ -1393,17 +1393,19 @@ mapshaper states.shp -simplify dp interval=100 -o simplified/
 
 ### -smooth
 
-Smooth the geometry of polygon and polyline features. Unlike `-simplify`, which removes vertices, `-smooth` repositions and resamples vertices to remove fine detail. It applies a Gaussian (Savitzky&ndash;Golay) low-pass filter along each path, controlled by a `<distance>` parameter that sets the approximate resolution of the result.
+Smooth the geometry of polygon and polyline features. Unlike `-simplify`, which removes vertices, `-smooth` replaces the original vertices to create fluid, generalized curves. The `<distance>` parameter controls how much smoothing is applied: larger values produce smoother output with less fine detail.
 
 Output vertices are distributed adaptively along the smoothed line: vertices are denser along sharp bends and sparser along straight and gently-curving stretches.
 
 By default, `-smooth` first runs a prefilter to remove intricate details that smoothing cannot generalize cleanly. Use `no-prefilter` to turn this off.
 
+Also by default, corners between straight-line segments are detected and preserved. The `no-corners` option turns this off.
+
 **Options**
 
 `<distance>` or `distance=`  Smoothing resolution as a distance (e.g. `2km`): detail finer than this is removed.
 
-`gain=`  Strength of the polynomial (Savitzky&ndash;Golay) curvature correction that counteracts the amplitude shrinkage that would otherwise result from Mapshaper's gaussian smoothing kernel. The default is `1` (fully corrected, so bends keep their amplitude). `gain=0` disables the correction. Values above `1` over-correct, exaggerating the curvature of bends.
+`gain=`  Controls a curvature correction that counteracts the tendency of smoothing to flatten bends. The default is `1` (fully corrected, so bends keep their amplitude). `gain=0` disables the correction. Values above `1` over-correct, exaggerating the curvature of bends.
 
 `max-bend-angle=`  Maximum bend (in degrees) between consecutive output segments. The default is `8`. A larger value (e.g. `15`) keeps fewer vertices at the cost of slightly more angular joins; a smaller value keeps more vertices for smoother joins.
 
