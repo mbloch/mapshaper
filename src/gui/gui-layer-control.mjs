@@ -9,6 +9,7 @@ import { El } from './gui-el';
 import { ClickText2 } from './gui-elements';
 import { GUI } from './gui-lib';
 import { openContextMenu } from './gui-context-menu';
+import { runGuiEditCommand } from './gui-edit-command';
 import { showPopupAlert } from './gui-alert';
 import {
   addUndoTransactionToHistory,
@@ -320,6 +321,28 @@ export function LayerControl(gui) {
       }
     }
 
+    // Duplicate a layer by running an equivalent command, so the copy is
+    // recorded in session history and can be undone. Uses '-filter true +'
+    // to append a copy without replacing the source, keeps the same name
+    // (if any), and targets the source layer explicitly so the menu works on
+    // layers that aren't currently active. The '+' output becomes the new
+    // default target, which selects the copy as the active layer.
+    function duplicateLayer() {
+      var target = findLayerById(id);
+      var parts = ['-filter true +'];
+      if (!target) return;
+      if (target.layer.name) {
+        parts.push('name=' + internal.formatOptionValue(target.layer.name));
+      }
+      if (!map.isActiveLayer(target.layer)) {
+        parts.push('target=' +
+          internal.formatOptionValue(internal.getLayerTargetId(model, target.layer)));
+      }
+      runGuiEditCommand(gui, parts.join(' '), {
+        title: 'Duplicate layer'
+      });
+    }
+
     function selectLayer() {
       var target = findLayerById(id);
       // don't select if user is typing or dragging
@@ -362,6 +385,7 @@ export function LayerControl(gui) {
         };
       }
       menuEvent.deleteLayer = deleteLayer;
+      menuEvent.duplicateLayer = duplicateLayer;
       menuEvent.showLayerInfo = showLayerInfo;
       if (target && layerCanBeStyled(target.layer)) {
         menuEvent.styleLayer = styleLayer;
