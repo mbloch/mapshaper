@@ -17694,7 +17694,7 @@
     // construction and are left in place -- removing them at the tile level
     // (topological flood or per-tile geometric vote) was measured to add more
     // artifacts (coverage dents) than it removed.
-    this.getWindingTilesByShapeId = function(shapeId) {
+    this.getWindingTilesByShapeId = function(shapeId, fillGaps) {
       var shp = shapes[shapeId];
       if (!shp || !shp.length) return [];
       var i, r, ring, d, fwd;
@@ -17720,7 +17720,7 @@
         if (!shp[r].length) continue;
         var seedTile = arcTileIndex.getShapeIdByArcId(shp[r][0]);
         if (seedTile < 0 || windStamp[seedTile] === stamp) continue;
-        floodComponent(seedTile, flux, sb, stamp, ids);
+        floodComponent(seedTile, flux, sb, stamp, ids, fillGaps);
       }
       return ids.map(tileIdToTile);
     };
@@ -17933,12 +17933,16 @@
     // any neighbor known to be outside the buffer (the true exterior, or a tile
     // entirely outside the shape bbox) at winding 0. Nonzero tiles are pushed to
     // @ids. The flood is bounded to the shape bbox for speed.
-    function floodComponent(seedTile, flux, sb, stamp, ids) {
+    function floodComponent(seedTile, flux, sb, stamp, ids, fillGaps) {
       windVal[seedTile] = 0;
       windStamp[seedTile] = stamp;
       var stack = [seedTile];
       var visited = [seedTile];
       var C = null;
+      // Node keys of arcs on the buffer's true outer edge (nb < 0). The exterior
+      // is not a mosaic tile, so a pinched fold-back wedge is detected by sharing
+      // one of these nodes (see fillPinchedGaps).
+      var outerKeys = fillGaps ? {} : null;
       var cur, ctile, cw, pp, ring2, kk, d2, nb, fwd2, nbb, delta, i;
       while (stack.length) {
         cur = stack.pop();
@@ -17956,6 +17960,10 @@
             if (nb < 0 || nbb.xmax < sb.xmin || nbb.xmin > sb.xmax ||
                 nbb.ymax < sb.ymin || nbb.ymin > sb.ymax) {
               if (C === null) C = -(cw + delta); // anchor: this neighbor is winding 0
+              if (outerKeys && nb < 0) {
+                outerKeys[arcEndpointKey(d2, 0)] = true;
+                outerKeys[arcEndpointKey(d2, -1)] = true;
+              }
               continue;
             }
             windVal[nb] = cw + delta;
@@ -17969,6 +17977,93 @@
       for (i = 0; i < visited.length; i++) {
         if (windVal[visited[i]] + C !== 0) ids.push(visited[i]);
       }
+      if (fillGaps) {
+        fillPinchedGaps(visited, stamp, C, outerKeys, ids);
+      }
+    }
+
+    // Reclaim winding-zero gaps that the winding rule dropped but that are not
+    // really open. Where variable geodesic offset distance breaks the planar
+    // self-crossing assumption, a fold-back leaves a thin winding-zero wedge that
+    // is pinched to the open exterior at a single point: a shared node (arc
+    // endpoint on the buffer's outer edge), NOT a shared arc. So a wedge is
+    // absorbed when its winding-zero component:
+    //   - borders the outer edge nowhere across an arc (it is not the open
+    //     exterior or an open concavity, which the winding rule legitimately
+    //     leaves out), and
+    //   - shares a boundary node with the outer edge (the pinch point).
+    // This is purely topological (the analogue of -clean/removeGaps); unlike an
+    // area threshold it cannot fill a genuine interior hole, whose boundary nodes
+    // are all interior and never coincide with the buffer's outer edge.
+    function fillPinchedGaps(visited, stamp, C, outerKeys, ids) {
+      if (!outerKeys) return;
+      var candidates = [];
+      for (var i = 0; i < visited.length; i++) {
+        if (windVal[visited[i]] + C === 0) candidates.push(visited[i]);
+      }
+      var isGap = function(tileId) {
+        return windStamp[tileId] === stamp && windVal[tileId] + C === 0;
+      };
+      var pinched = collectPinchedGapTiles(candidates, isGap, outerKeys);
+      for (i = 0; i < pinched.length; i++) ids.push(pinched[i]);
+    }
+
+    // Group @candidates (gap-region tile ids) into arc-connected components, then
+    // return the ids of components that are pinched to the buffer's outer edge: a
+    // component that borders the exterior (nb < 0) nowhere across an arc, yet
+    // shares a boundary node with @outerKeys (the outer-edge nodes). @isGap tells
+    // whether a neighbor tile belongs to the gap region (grows the component).
+    // Purely topological, so it never reclaims a genuine interior hole (whose
+    // boundary nodes are all interior).
+    function collectPinchedGapTiles(candidates, isGap, outerKeys) {
+      var comp = {}, out = [];
+      var i, t, tile, p, ring, k, d, nb, tiles, keys, arcOpen, stack;
+      for (i = 0; i < candidates.length; i++) {
+        if (comp[candidates[i]] !== undefined) continue;
+        tiles = [candidates[i]];
+        keys = [];
+        arcOpen = false;
+        comp[candidates[i]] = true;
+        stack = [candidates[i]];
+        while (stack.length) {
+          t = stack.pop();
+          tile = mosaic[t];
+          for (p = 0; p < tile.length; p++) {
+            ring = tile[p];
+            for (k = 0; k < ring.length; k++) {
+              d = ring[k];
+              keys.push(arcEndpointKey(d, 0), arcEndpointKey(d, -1));
+              nb = arcTileIndex.getShapeIdByArcId(~d);
+              if (nb < 0) {
+                arcOpen = true; // borders the outer edge across an arc
+                continue;
+              }
+              if (!isGap(nb)) continue; // selected boundary of the gap
+              if (comp[nb] === undefined) {
+                comp[nb] = true;
+                tiles.push(nb);
+                stack.push(nb);
+              }
+            }
+          }
+        }
+        if (!arcOpen && sharesKey(keys, outerKeys)) {
+          for (k = 0; k < tiles.length; k++) out.push(tiles[k]);
+        }
+      }
+      return out;
+    }
+
+    function arcEndpointKey(arcId, nth) {
+      var v = nodes.arcs.getVertex(arcId, nth);
+      return v.x + ',' + v.y;
+    }
+
+    function sharesKey(keys, set) {
+      for (var i = 0; i < keys.length; i++) {
+        if (set[keys[i]]) return true;
+      }
+      return false;
     }
 
     function getOverlapPriorityFunction(shapes, arcs, rule) {
@@ -31779,6 +31874,13 @@ ${svg}
         describe: '[projected data] buffer using geodesic distances',
         type: 'flag'
       })
+      .option('geodesic2', {
+        // undocumented/experimental: geodesic buffering for projected data done
+        // in-place in the projected plane via per-point scale correction (no
+        // web-Mercator round-trip; avoids pole/antimeridian edge cases). Compare
+        // with the 'geodesic' flag, which reprojects through lng/lat instead.
+        type: 'flag'
+      })
       .option('polar', {
         // describe: 'keep lat-long buffers within the valid extent (+/-180, +/-90); for growing polygons sliced at the antimeridian/poles (erode not yet supported)',
         type: 'flag'
@@ -31837,12 +31939,6 @@ ${svg}
         // before the dissolve) is on by default; this opts out.
         type: 'flag'
       })
-      .option('loop-removal-turn-gate', {
-        // Undocumented: for two-sided open-path buffers, use the source-turn-gate
-        // loop-removal method instead of the default crossing-direction method.
-        // Kept as an alternative for A/B comparison and as a conservative fallback.
-        type: 'flag'
-      })
       .option('band-method', {
         // Undocumented escape hatch: build buffers with the older band (sector-
         // band) construction -- per-segment offset bands + join-sector rings + a
@@ -31853,6 +31949,28 @@ ${svg}
         // topological); where a path's default already is the band construction,
         // this is a no-op. Kept as a slower-but-conservative fallback and a
         // debugging aid in case the default construction mishandles some input.
+        type: 'flag'
+      })
+      .option('clean-outline-winding', {
+        // Undocumented: build the polygon-grow outer ring with the constant-winding
+        // concave-join construction used by the open-path two-sided outline (a
+        // reversed arc at the offset radius). This is now the DEFAULT polygon-grow
+        // construction; the flag is retained as an explicit/no-op selector.
+        type: 'flag'
+      })
+      .option('coarse-bridge', {
+        // Undocumented: in the clean-outline-winding construction, bridge concave
+        // bends with the low-resolution makeCoarseConcaveJoin (as few as one
+        // reversed arc vertex) instead of the full-resolution makeConcaveJoin.
+        // The reversed bridge only bounds a self-overlap loop the direction remover
+        // collapses, so this leaves the final boundary unchanged while producing a
+        // smaller ring for the winding dissolve -- a construction-speed tradeoff.
+        type: 'flag'
+      })
+      .option('no-gap-patch', {
+        // Undocumented: disable the default geodesic gap-patch stadium union
+        // (see useGapPatch in mapshaper-buffer-common.mjs). Useful for comparing
+        // raw dissolve behavior against the patched outline construction.
         type: 'flag'
       })
       .option('no-cleanup', {
@@ -41198,6 +41316,24 @@ ${svg}
     return dataset;
   }
 
+  // Dissolve options shared by clean-outline polygon grow and two-sided line
+  // outline buffers. per_part_holes treats each input ring as an independent
+  // overlapping union part (not shape-wide hole nesting). Boundary-flood
+  // membership (no winding_fill) matches the line buffer dissolve; spurious
+  // interior rings are removed afterward by applyOutlineArtifactHoleFilter.
+  function getOutlineBufferDissolveOpts(opts) {
+    return Object.assign({}, opts, {per_part_holes: true});
+  }
+
+  // True when geodesic gap-patch stadiums should be unioned into the dissolve.
+  // Disabled in line debug-offset (patch rings broke the m_loops debug view) but
+  // kept on for polygon debug-offset so the extra stadium rings are visible.
+  function useGapPatch(opts, geodesic) {
+    if (!geodesic || opts.no_gap_patch) return false;
+    if (opts.debug_offset) return opts.geometry_type == 'polygon';
+    return true;
+  }
+
   function dissolveBufferDataset2(dataset, optsArg) {
     var opts = optsArg || {};
     var lyr = dataset.layers.filter(function(l) { return l.geometry_type == 'polygon'; })[0] ||
@@ -41232,7 +41368,7 @@ ${svg}
     var pathfind = getRingIntersector(mosaicIndex.nodes);
     var shapes2 = lyr.shapes.map(function(shp, shapeId) {
       var tiles = opts.winding_fill ?
-        mosaicIndex.getWindingTilesByShapeId(shapeId) :
+        mosaicIndex.getWindingTilesByShapeId(shapeId, false) :
         mosaicIndex.getTilesByShapeIds([shapeId]);
       var rings = [];
       var holes = [];
@@ -41321,12 +41457,10 @@ ${svg}
   // pre-simplification is disabled. Enabled by default with a tolerance of
   // 1% of the buffer radius; pass an explicit tolerance to change the error
   // budget, or tolerance=0 to disable pre-simplification.
-  // For a two-sided buffer (the set of points within the buffer distance of
-  // the path), the error is bounded by the path's positional deviation. Cap
-  // geometry and one-sided buffers also depend on segment bearings; the
-  // simplification stage preserves them by pinning the paths' end segments
-  // and capping the turning concentrated by removed sub-paths (see
-  // presimplifyPathVerts in mapshaper-path-buffer-v4.mjs).
+  // The error budget is expressed as a positional Douglas-Peucker interval
+  // (see presimplifyPathVerts in mapshaper-path-buffer-v4.mjs). End-segment
+  // bearings are pinned so cap geometry stays exact; pass tolerance=0 to
+  // disable pre-simplification entirely.
   function getBufferSimplifyFunction(dataset, opts) {
     if (opts.tolerance === 0 || opts.tolerance == '0' || opts.tolerance == '0%') return null;
     var tolFn = getBufferToleranceFunction(dataset, opts);
@@ -41396,7 +41530,7 @@ ${svg}
   // that a collapsible overshoot pocket must never span.
   function BufferBuilder() {
     var self = {};
-    var buffer, path, bufferPos, pathPos;
+    var buffer, path, bufferPos, pathPos, bufferTags, pathTags;
 
     init();
 
@@ -41405,6 +41539,12 @@ ${svg}
       path = [];
       bufferPos = [];
       pathPos = [];
+      // Parallel reversed-arc ("dip") tags: 1 marks a vertex emitted as part of a
+      // reversed concave-join arc (a pure self-overlap construction artifact) so
+      // the coverage-based loop remover can key on provenance. Path-side vertices
+      // (the source-path edge) and untagged callers default to 0.
+      bufferTags = [];
+      pathTags = [];
     }
 
     self.size = function() {
@@ -41414,31 +41554,35 @@ ${svg}
     self.addPathVertex = function(p) {
       path.push(p);
       pathPos.push(NaN);
+      pathTags.push(0);
     };
 
-    self.addBufferVertices = function(arr, pos) {
+    self.addBufferVertices = function(arr, pos, tag) {
       for (var i=0; i<arr.length; i++) {
-        self.addBufferVertex(arr[i], pos);
+        self.addBufferVertex(arr[i], pos, tag);
       }
     };
 
-    self.addBufferVertex = function(p, pos) {
+    self.addBufferVertex = function(p, pos, tag) {
       var prevP = buffer[buffer.length - 1];
       if (prevP && pointsAreSame(prevP, p)) {
         return;
       }
       buffer.push(p);
       bufferPos.push(pos === undefined ? NaN : pos);
+      bufferTags.push(tag ? 1 : 0);
     };
 
-    // Returns {ring, srcPos}: ring is the closed coordinate ring (first point
-    // repeated as last); srcPos is the parallel source-position array.
+    // Returns {ring, srcPos, dipTags}: ring is the closed coordinate ring (first
+    // point repeated as last); srcPos and dipTags are parallel arrays (source
+    // position and reversed-arc tag).
     // @allowDegenerate: return null instead of erroring when the ring collapsed
     // to fewer than 3 points (an offset loop whose source ring shrank away, e.g.
     // a hole smaller than the buffer radius) -- a normal outcome, not a bug.
     self.done = function(allowDegenerate) {
       var ring = path.slice().reverse().concat(buffer);
       var srcPos = pathPos.slice().reverse().concat(bufferPos);
+      var dipTags = pathTags.slice().reverse().concat(bufferTags);
       if (ring.length < 3) {
         if (allowDegenerate) {
           init();
@@ -41448,8 +41592,9 @@ ${svg}
       }
       ring.push(ring[0].concat());
       srcPos.push(srcPos[0]);
+      dipTags.push(dipTags[0]);
       init();
-      return {ring: ring, srcPos: srcPos};
+      return {ring: ring, srcPos: srcPos, dipTags: dipTags};
     };
 
     return self;
@@ -41457,6 +41602,298 @@ ${svg}
 
   function pointsAreSame(a, b) {
     return a[0] === b[0] && a[1] === b[1];
+  }
+
+  // Chunk size for the per-ring source segment index used by wedgeIsExposed().
+  var WEDGE_SEGMENT_CHUNK_SIZE = 48;
+
+  // Build a flat segment index for a source path vertex list (one ring). Each chunk
+  // stores up to WEDGE_SEGMENT_CHUNK_SIZE consecutive segments with a bounding box
+  // so probeIsExposed() can skip segments far from the probe.
+  function buildVertsSegmentIndex(verts, chunkSize) {
+    chunkSize = chunkSize || WEDGE_SEGMENT_CHUNK_SIZE;
+    var coords = [];
+    var chunks = [];
+    var n = verts.length;
+    if (n < 2) return {coords: coords, chunks: chunks};
+    var inChunk = 0;
+    var chunkSegStart = 0;
+    var start = 0;
+    var xmin = 0, ymin = 0, xmax = 0, ymax = 0;
+    var ax, ay, bx, by, i;
+    for (i = 0; i < n - 1; i++) {
+      ax = verts[i][0];
+      ay = verts[i][1];
+      bx = verts[i + 1][0];
+      by = verts[i + 1][1];
+      if (inChunk === 0) {
+        chunkSegStart = i;
+        start = coords.length / 4;
+        xmin = Math.min(ax, bx);
+        xmax = Math.max(ax, bx);
+        ymin = Math.min(ay, by);
+        ymax = Math.max(ay, by);
+      } else {
+        if (ax < xmin) xmin = ax; else if (ax > xmax) xmax = ax;
+        if (bx < xmin) xmin = bx; else if (bx > xmax) xmax = bx;
+        if (ay < ymin) ymin = ay; else if (ay > ymax) ymax = ay;
+        if (by < ymin) ymin = by; else if (by > ymax) ymax = by;
+      }
+      coords.push(ax, ay, bx, by);
+      inChunk++;
+      if (inChunk === chunkSize) {
+        chunks.push({
+          start: start,
+          end: coords.length / 4,
+          segStart: chunkSegStart,
+          segEnd: i + 1,
+          xmin: xmin, ymin: ymin, xmax: xmax, ymax: ymax
+        });
+        inChunk = 0;
+      }
+    }
+    if (inChunk > 0) {
+      chunks.push({
+        start: start,
+        end: coords.length / 4,
+        segStart: chunkSegStart,
+        segEnd: n - 1,
+        xmin: xmin, ymin: ymin, xmax: xmax, ymax: ymax
+      });
+    }
+    return {coords: coords, chunks: chunks};
+  }
+
+  // True if any point of the round-join wedge at a fan-apart concave bend is NOT
+  // covered by another source segment. Probes the concave-bridge arc plus the two
+  // offset tips; tips alone miss bends whose tips are covered but whose arc flank
+  // is still exposed (see idaho 150km regression).
+  function wedgeIsExposed(index, skipA, skipB, vx, vy, arc, tipA, tipB) {
+    var i;
+    if (probeIsExposed(index, skipA, skipB, vx, vy, tipA) ||
+        probeIsExposed(index, skipA, skipB, vx, vy, tipB)) {
+      return true;
+    }
+    for (i = 0; i < arc.length; i++) {
+      if (probeIsExposed(index, skipA, skipB, vx, vy, arc[i])) return true;
+    }
+    return false;
+  }
+
+  function probeIsExposed(index, skipA, skipB, vx, vy, p) {
+    var r = distance2D(vx, vy, p[0], p[1]);
+    if (!(r > 0)) return false;
+    var r2 = r * r * 0.98 * 0.98;
+    var px = p[0], py = p[1];
+    var chunks = index.chunks;
+    var coords = index.coords;
+    var c, chunk, s, o, d;
+    for (c = 0; c < chunks.length; c++) {
+      chunk = chunks[c];
+      if (chunkBoxDistSq(px, py, chunk) >= r2) continue;
+      for (s = chunk.segStart; s < chunk.segEnd; s++) {
+        if (s === skipA || s === skipB) continue;
+        o = (chunk.start + (s - chunk.segStart)) * 4;
+        d = pointSegDistSq2(px, py, coords[o], coords[o + 1], coords[o + 2], coords[o + 3]);
+        if (d < r2) return false;
+      }
+    }
+    return true;
+  }
+
+  function chunkBoxDistSq(px, py, chunk) {
+    var dx = px < chunk.xmin ? chunk.xmin - px : (px > chunk.xmax ? px - chunk.xmax : 0);
+    var dy = py < chunk.ymin ? chunk.ymin - py : (py > chunk.ymax ? py - chunk.ymax : 0);
+    return dx * dx + dy * dy;
+  }
+
+  var R$2 = WGS84.SEMIMAJOR_AXIS;
+
+  // GeographicLib docs: https://geographiclib.sourceforge.io/html/js/
+  //   https://geographiclib.sourceforge.io/html/js/module-GeographicLib_Geodesic.Geodesic.html
+  //   https://geographiclib.sourceforge.io/html/js/tutorial-2-interface.html
+  function getGeodesic(P) {
+    if (!isLatLngCRS(P)) error('Expected an unprojected CRS');
+    var f = P.es / (1 + Math.sqrt(P.one_es));
+    // var GeographicLib = require('mproj').internal.GeographicLib;
+    var GeographicLib = require$1('geographiclib-geodesic');
+    // return new GeographicLib.Geodesic.Geodesic(P.a, 0)
+    return new GeographicLib.Geodesic.Geodesic(P.a, f);
+  }
+
+  function interpolatePoint2D(ax, ay, bx, by, k) {
+    var j = 1 - k;
+    return [ax * j + bx * k, ay * j + by * k];
+  }
+
+  function getInterpolationFunction(P) {
+    var spherical = P && isLatLngCRS(P);
+    if (!spherical) return interpolatePoint2D;
+    var geod = getGeodesic(P);
+    return function(lng, lat, lng2, lat2, k) {
+      var r = geod.Inverse(lat, lng, lat2, lng2);
+      var dist = r.s12 * k;
+      var r2 = geod.Direct(lat, lng, r.azi1, dist);
+      return [r2.lon2, r2.lat2];
+    };
+  }
+
+  function getPlanarSegmentEndpoint(x, y, bearing, meterDist) {
+    var rad = bearing / 180 * Math.PI;
+    var dx = Math.sin(rad) * meterDist;
+    var dy = Math.cos(rad) * meterDist;
+    return [x + dx, y + dy];
+  }
+
+  // source: https://github.com/mapbox/cheap-ruler/blob/master/index.js
+  function fastGeodeticSegmentFunction(lng, lat, bearing, meterDist) {
+    var D2R = Math.PI / 180;
+    var cos = Math.cos(lat * D2R);
+    var cos2 = 2 * cos * cos - 1;
+    var cos3 = 2 * cos * cos2 - cos;
+    var cos4 = 2 * cos * cos3 - cos2;
+    var cos5 = 2 * cos * cos4 - cos3;
+    var kx = (111.41513 * cos - 0.09455 * cos3 + 0.00012 * cos5) * 1000;
+    var ky = (111.13209 - 0.56605 * cos2 + 0.0012 * cos4) * 1000;
+    var bearingRad = bearing * D2R;
+    var lat2 = lat + Math.cos(bearingRad) * meterDist / ky;
+    var lng2 = lng + Math.sin(bearingRad) * meterDist / kx;
+    return [lng2, lat2];
+  }
+
+
+  function wrap(deg) {
+    while (deg < -180) deg += 360;
+    while (deg > 180) deg -= 360;
+    return deg;
+  }
+
+  function fastGeodeticBearingFunction(lng1, lat1, lng2, lat2) {
+    var D2R = Math.PI / 180;
+    var f = 1 / 298.257223563;
+    var e2 = f * (2 - f);
+    var m = R$2 * D2R;
+    var coslat = Math.cos(lat1 * D2R);
+    var w2 = 1 / (1 - e2 * (1 - coslat * coslat));
+    var w = Math.sqrt(w2);
+    var kx = m * w * coslat;
+    var ky = m * w * w2 * (1 - e2);
+    var dx = wrap(lng2 - lng1) * kx;
+    var dy = (lat2 - lat1) * ky;
+    return Math.atan2(dx, dy) / D2R;
+  }
+
+  function getGeodeticSegmentFunction(P) {
+    if (!isLatLngCRS(P)) {
+      return getPlanarSegmentEndpoint;
+    }
+    var g = getGeodesic(P);
+    return function(lng, lat, bearing, meterDist) {
+      var o = g.Direct(lat, lng, bearing, meterDist);
+      var p = [o.lon2, o.lat2];
+      return p;
+    };
+  }
+
+  function getFastGeodeticSegmentFunction(P) {
+    // CAREFUL: this function has higher error at very large distances and at the poles
+    // also, it wouldn't work for other planets than Earth
+    return isLatLngCRS(P) ? fastGeodeticSegmentFunction : getPlanarSegmentEndpoint;
+  }
+
+  // return function to calculate bearing of a segment in degrees
+  function getBearingFunction(dataset) {
+    var P = getDatasetCRS(dataset);
+    // return isLatLngCRS(P) ? bearingDegrees : bearingDegrees2D;
+    return isLatLngCRS(P) ? fastGeodeticBearingFunction : bearingDegrees2D;
+  }
+
+  // get bearing in degrees from point ab to point cd
+  function bearingDegrees(a, b, c, d) {
+    return geom.bearing(a, b, c, d) * 180 / Math.PI;
+  }
+
+  function bearingDegrees2D(a, b, c, d) {
+    return geom.bearing2D(a, b, c, d) * 180 / Math.PI;
+  }
+
+  var Geodesic = /*#__PURE__*/Object.freeze({
+    __proto__: null,
+    bearingDegrees: bearingDegrees,
+    bearingDegrees2D: bearingDegrees2D,
+    getBearingFunction: getBearingFunction,
+    getFastGeodeticSegmentFunction: getFastGeodeticSegmentFunction,
+    getGeodeticSegmentFunction: getGeodeticSegmentFunction,
+    getInterpolationFunction: getInterpolationFunction,
+    getPlanarSegmentEndpoint: getPlanarSegmentEndpoint,
+    interpolatePoint2D: interpolatePoint2D,
+    wrap: wrap
+  });
+
+  function getJoinAngle(direction1, direction2) {
+    var delta = direction2 - direction1;
+    if (delta > 180) delta -= 360;
+    if (delta < -180) delta += 360;
+    return delta;
+  }
+
+  // Ring-step distance from each vertex to the nearest concave vertex, in O(n).
+  function minDistToConcaveOnRing(concave, n) {
+    var dist = new Array(n);
+    var d, i, j;
+    for (j = 0; j < n; j++) dist[j] = n;
+    d = n;
+    for (i = 0; i < 2 * n; i++) {
+      j = i % n;
+      if (concave[j]) d = 0;
+      else d++;
+      if (d < dist[j]) dist[j] = d;
+    }
+    d = n;
+    for (i = 2 * n - 1; i >= 0; i--) {
+      j = i % n;
+      if (concave[j]) d = 0;
+      else d++;
+      if (d < dist[j]) dist[j] = d;
+    }
+    return dist;
+  }
+
+  // Pick the index of the edge (vk -> vk+1) whose midpoint makes the best offset
+  // seam: an edge with two convex endpoints that lies as far as possible (in ring
+  // steps) from any concave corner, breaking ties toward the longest such edge.
+  function chooseSeamEdge(verts) {
+    var n = verts.length - 1; // distinct vertices
+    if (n < 3) return 0;
+    var concave = [];
+    var anyConcave = false;
+    var bPrev = bearingDegrees2D(verts[n - 1][0], verts[n - 1][1], verts[0][0], verts[0][1]);
+    var i, ni, b, ja;
+    for (i = 0; i < n; i++) {
+      ni = (i + 1) % n;
+      b = bearingDegrees2D(verts[i][0], verts[i][1], verts[ni][0], verts[ni][1]);
+      ja = getJoinAngle(bPrev, b);
+      concave[i] = ja < 0;
+      if (concave[i]) anyConcave = true;
+      bPrev = b;
+    }
+    if (!anyConcave) return 0;
+    var minDist = minDistToConcaveOnRing(concave, n);
+    var bestK = -1, bestScore = -1, bestLen = -1;
+    var fallbackK = 0, fallbackLen = -1;
+    var k, len, score, a, c;
+    for (k = 0; k < n; k++) {
+      a = verts[k];
+      c = verts[(k + 1) % n];
+      len = Math.abs(a[0] - c[0]) + Math.abs(a[1] - c[1]);
+      if (len > fallbackLen) { fallbackLen = len; fallbackK = k; }
+      if (concave[k] || concave[(k + 1) % n]) continue;
+      score = Math.min(minDist[k], minDist[(k + 1) % n]);
+      if (score > bestScore || (score === bestScore && len > bestLen)) {
+        bestScore = score; bestLen = len; bestK = k;
+      }
+    }
+    return bestK >= 0 ? bestK : fallbackK;
   }
 
   // Removes small self-overlap "fold-back" loops from a constructed two-sided
@@ -41487,9 +41924,8 @@ ${svg}
   // of pocket orientation; otherwise it is left for the dissolve.
 
   // Look-ahead window: how many ring segments ahead to test for a crossing. The
-  // turn gate (not the window) is the safety criterion, so this only bounds cost
-  // (O(n * window)); it must still be wide enough to reach the far side of an
-  // overshoot loop, which can include many round-join vertices at large radii.
+  // turn gate (not the window) is the safety criterion in removeBufferRingLoops;
+  // in the dip+coverage iterative path it only bounds cost (O(n * window)).
   var BUFFER_LOOP_WINDOW = 30;
 
   // Max source-path turn (degrees) a collapsible loop may span. Below this the
@@ -41497,6 +41933,27 @@ ${svg}
   // a covered overshoot; above it the loop may be a real buffer hole and is left
   // for the dissolve.
   var BUFFER_LOOP_MAX_TURN = 150;
+
+  // Dip-tag iterative remover: a candidate collapse is allowed only if the region
+  // it drops stays covered by the rest of the outline (collapseKeepsAreaCovered).
+  // That per-collapse winding sweep is O(spanLen * ringLen), so it is skipped when
+  // the dropped loop's own area is below this threshold -- such a loop cannot
+  // create a clip larger than the threshold, so nothing "big" is missed. In ring
+  // units (m^2 for planar; web-Mercator m^2 for lat/lng, whose scale factor >= 1
+  // keeps this an upper bound on the real area, so latitude never hides a big clip).
+  var BUFFER_LOOP_CHECK_MIN_AREA = 3e4;
+
+  // Hole-fill guard (dip+coverage path). A collapse is also refused if it would
+  // swallow a winding-0 region (a real buffer hole or an open outer-wall notch)
+  // larger than this fraction of the buffer disk (pi*dist^2, passed as fillFloor =
+  // dist^2 * this). A genuine hole is a fixed fraction of the disk (the line wound
+  // far enough to leave a region the radius can't reach), while a self-overlap fold
+  // only pinches off a sliver orders of magnitude smaller relative to the radius --
+  // so a disk-relative floor separates them with a wide margin where an absolute
+  // area threshold does not (a 10km fold sliver and a 650m real hole have similar
+  // absolute areas). Leans low (toward preserving holes): a false veto only leaves
+  // a self-overlap for the dissolve, while a false pass deletes a real hole.
+  var BUFFER_LOOP_FILL_AREA_FRAC = 5e-4;
 
   // ring: closed ring (first point repeated as last) of [x, y] points.
   // srcPos (optional): source-vertex position parallel to ring; NaN for points
@@ -41586,84 +42043,6 @@ ${svg}
     return s;
   }
 
-  // Collapse self-overlap loops using the crossing-direction signal instead of the
-  // source-turn gate (removeBufferRingLoops). Where a constructed offset ring has a
-  // consistent +/-1 base winding -- the two-sided outline of an OPEN path -- the
-  // winding sense of each minimal self-crossing loop classifies it exactly: a
-  // sub-loop wound the SAME way as its parent ring is a covered fold-back overlap
-  // (collapse it; the dissolve would only fill it), while a sub-loop wound the
-  // OPPOSITE way bounds a winding-0 pocket the dissolve must keep as a hole.
-  //
-  // This is more precise than the turn-gate's source-turn heuristic and needs no
-  // source-path provenance (srcPos/turnPrefix), only the ring geometry. It does
-  // NOT apply to the winding-fill construction used for closed rings / polygons,
-  // where the base winding is not a constant +/-1, so a local loop's winding sense
-  // does not determine the absolute (hole vs covered) winding of its interior.
-  //
-  // Pass 1 marks every vertex inside an opposite-wound (hole) loop so the collapse
-  // pass never eats a hole, including an overlap loop that happens to wrap one.
-  function removeBufferRingLoopsByDirection(ring, maxGap) {
-    if (!ring || ring.length < 6) return ring;
-    var n = ring.length - 1;
-    var parentCCW = (ringSignedArea(ring) >= 0);
-    // Pass 1: a sub-loop wound OPPOSITE to its parent ring encloses a winding-0
-    // hole the dissolve must keep; mark its vertices so the collapse pass never
-    // eats it (covers an overlap loop that happens to wrap a hole).
-    var holeVertex = new Uint8Array(n);
-    for (var i = 0; i < n - 1; i++) {
-      var a = ring[i], b = ring[i + 1];
-      var jMax = Math.min(i + maxGap, n - 1);
-      for (var j = i + 2; j <= jMax; j++) {
-        if (i === 0 && j === n - 1) continue;
-        var c = ring[j], d = ring[j + 1];
-        var hit = segHit(a[0], a[1], b[0], b[1], c[0], c[1], d[0], d[1]);
-        if (!hit) continue;
-        var loopCCW = loopAreaSign(hit[0], hit[1], b[0], b[1], ring, i + 2, j) >= 0;
-        if (loopCCW !== parentCCW) {
-          for (var k = i + 1; k <= j; k++) holeVertex[k] = 1;
-        }
-      }
-    }
-    // Pass 2: collapse sub-loops wound the SAME way as the parent (covered
-    // fold-back overlaps) unless they would eat a hole vertex.
-    var out = [ring[0]];
-    var segmentEnd = ring[1];
-    var nextRingIndex = 2;
-    while (true) {
-      var anchor = out[out.length - 1];
-      var ax = anchor[0], ay = anchor[1], bx = segmentEnd[0], by = segmentEnd[1];
-      var lastScanIndex = Math.min(nextRingIndex + maxGap - 2, n - 2);
-      var crossing = null, crossingEndIndex = 0;
-      for (var s = nextRingIndex; s <= lastScanIndex; s++) {
-        var cc = ring[s], dd = ring[s + 1];
-        var hit2 = segHit(ax, ay, bx, by, cc[0], cc[1], dd[0], dd[1]);
-        if (!hit2) continue;
-        var ovCCW = loopAreaSign(hit2[0], hit2[1], bx, by, ring, nextRingIndex, s) >= 0;
-        if (ovCCW !== parentCCW) continue; // opposite-wound loop is a hole: keep
-        var wrapsHole = false;
-        for (var k2 = nextRingIndex; k2 <= s; k2++) {
-          if (holeVertex[k2]) { wrapsHole = true; break; }
-        }
-        if (wrapsHole) continue;
-        crossing = hit2;
-        crossingEndIndex = s + 1;
-        break;
-      }
-      if (crossing) {
-        segmentEnd = crossing;
-        nextRingIndex = crossingEndIndex;
-        continue;
-      }
-      out.push(segmentEnd);
-      if (nextRingIndex > n - 1) break;
-      segmentEnd = ring[nextRingIndex];
-      nextRingIndex++;
-    }
-    if (out.length < 4) return ring;
-    out.push(out[0].concat());
-    return out;
-  }
-
   // Absolute source turn spanned by a crossing candidate. The span covers the
   // anchor position `apos`, its successor `bpos`, and ring positions srcPos[lo..hi].
   // A pocket touching a cap (NaN position) is never treated as a covered overshoot.
@@ -41678,6 +42057,166 @@ ${svg}
       if (p > posHi) posHi = p;
     }
     return turnPrefix[posHi] - turnPrefix[posLo];
+  }
+
+  // Multi-pass collapse gated by the offset ring's own cumulative absolute turn over the collapsed span, a
+  // provenance-free proxy for the source-path turn gate (each offset join's turn
+  // angle equals the source bend angle it derives from, and straight offset
+  // segments contribute zero turn, so summing |turn| over a ring span with no cap
+  // reconstructs the source stretch's cumulative turn). Iterating lets the
+  // collapse of tight inner overshoot loops shorten the spans of the loops that
+  // wrap them, so a wrapper that was too-large-turn on one pass can become a
+  // single-bend covered overshoot on the next -- the multi-pass "peel simple
+  // interior loops first" idea. maxTurn is the same gate constant as the source
+  // turn gate; caps (180-degree arcs) exceed it and so are never collapsed.
+  // @fillFloor (dip+coverage path): max winding-0 area a collapse may swallow; a
+  // collapse filling a larger hole/notch is refused (see BUFFER_LOOP_FILL_AREA_FRAC).
+  // Callers pass dist^2 * BUFFER_LOOP_FILL_AREA_FRAC; defaults to the uncovered
+  // floor when omitted (unit tests without a buffer distance).
+  function removeBufferRingLoopsIterative(ring, maxGap, srcPos, turnPrefix, maxTurn, dipTags, maxPasses, fillFloor) {
+    if (!ring || ring.length < 6) return ring;
+    if (maxTurn === undefined) maxTurn = BUFFER_LOOP_MAX_TURN;
+    if (!(maxPasses >= 1)) maxPasses = 12;
+    if (!(fillFloor >= 0)) fillFloor = BUFFER_LOOP_CHECK_MIN_AREA;
+    var work = ring, workPos = null, workTags = dipTags || null;
+    for (var pass = 0; pass < maxPasses; pass++) {
+      var res = collapseRingLoopsPass(work, maxGap, workPos, turnPrefix, maxTurn, workTags, fillFloor);
+      if (res.ring.length === work.length) return res.ring; // stable
+      work = res.ring; workPos = res.srcPos; workTags = res.dipTags;
+    }
+    return work;
+  }
+
+  // One greedy forward-collapse pass (mirrors removeBufferRingLoops' compaction).
+  // The span gate is, in order of preference:
+  //   - the reliable source-path turn (getSpanTurn) when srcPos+turnPrefix given;
+  //   - else the ring's cumulative turn with tagged fold cusps excluded, when
+  //     dipTags (construction-tagged reversed concave-join arcs) are supplied;
+  //   - else the same but with a geometric cusp threshold (no provenance).
+  // Returns {ring, srcPos, dipTags} so the caller can iterate.
+  function collapseRingLoopsPass(ring, maxGap, srcPos, turnPrefix, maxTurn, dipTags, fillFloor) {
+    var gated = !!(srcPos && turnPrefix);
+    var n = ring.length - 1;
+    // The dip path defers entirely to the exact coverage check, so it needs neither
+    // the tag-excluded turn gate nor its cumulative-turn prefix; the other two paths
+    // (source-turn, geometric) have no coverage check and keep the turn gate.
+    var coveragePath = !gated && !!dipTags;
+    var ringTurn = (!gated && !dipTags) ? ringAbsTurnPrefix(ring, dipTags) : null;
+    // Build the ring's y-band edge index once per pass so the coverage check's
+    // per-loop edge lookup is local rather than O(ring length).
+    var covIndex = coveragePath ? buildEdgeYIndex(ring, n) : null;
+    // Opposite-wound hole protection. The coverage check only guards against
+    // UNCOVERING area, so it cannot catch a collapse that FILLS a real winding-0
+    // hole (filling adds coverage), and its area pre-filter treats any sub-floor
+    // loop as safe to drop. A dropped sub-loop wound OPPOSITE to the parent ring
+    // bounds such a hole, so refuse the collapse outright -- this keeps real holes
+    // (annulus interiors, self-crossing-line pockets) the coverage check alone
+    // misses, at the cost of only an O(span) signed-area test on the crossings the
+    // collapse actually evaluates (far cheaper than the old O(n*maxGap) per-pass
+    // pre-scan). A same-wound overshoot fold that happens to WRAP a hole is caught
+    // instead by the fill guard in the coverage check (it measures filled area).
+    var parentCCW = coveragePath ? (ringSignedArea(ring) >= 0) : false;
+    var out = [ring[0]];
+    var outPos = gated ? [srcPos[0]] : null;
+    var outTags = dipTags ? [dipTags[0]] : null;
+    var segmentEnd = ring[1];
+    var segmentEndPos = gated ? srcPos[1] : 0;
+    var segmentEndTag = dipTags ? dipTags[1] : 0;
+    var nextRingIndex = 2;
+    while (true) {
+      var anchor = out[out.length - 1];
+      var anchorPos = gated ? outPos[outPos.length - 1] : 0;
+      var ax = anchor[0], ay = anchor[1], bx = segmentEnd[0], by = segmentEnd[1];
+      var lastScanIndex = Math.min(nextRingIndex + maxGap - 2, n - 2);
+      var crossing = null, crossingEndIndex = 0;
+      for (var s = nextRingIndex; s <= lastScanIndex; s++) {
+        var c = ring[s], d = ring[s + 1];
+        var hit = segHit(ax, ay, bx, by, c[0], c[1], d[0], d[1]);
+        if (!hit) continue;
+        if (coveragePath) {
+          // Never collapse a sub-loop wound opposite to the parent: it bounds a
+          // real winding-0 hole the coverage check cannot see being filled (see the
+          // hole-protection note above).
+          if ((loopAreaSign(hit[0], hit[1], bx, by, ring, nextRingIndex, s) >= 0) !== parentCCW) {
+            continue;
+          }
+          // No turn gate on the dip path: the exact coverage check is the arbiter.
+          // It measures how much of the dropped region would become uncovered and
+          // refuses collapses that would clip a significant lobe (see
+          // docs/development/buffer-line-notes.md), catching real lobes and end caps
+          // that a cheap turn/area/winding signal cannot separate from safe folds.
+          // The turn gate was both leaving valid interior loops uncollapsed (tight
+          // hairpins whose source turn exceeds the cap) and slowing the pipeline by
+          // deferring their removal to the dissolve.
+          if (!collapseKeepsAreaCovered(ring, n, hit, segmentEnd, nextRingIndex, s, covIndex, fillFloor)) {
+            continue; // dropping this loop would uncover or fill real area -- leave it
+          }
+        } else {
+          // Source-turn / geometric paths: no coverage check, so gate on cumulative
+          // turn (caps and large real bends exceed maxTurn and are never collapsed).
+          var spanTurn = gated ?
+            getSpanTurn(anchorPos, segmentEndPos, srcPos, nextRingIndex, s + 1, turnPrefix) :
+            (ringTurn[s] - ringTurn[nextRingIndex - 1]);
+          if (spanTurn >= maxTurn) continue;
+        }
+        crossing = hit;
+        crossingEndIndex = s + 1;
+        break;
+      }
+      if (crossing) {
+        segmentEnd = crossing;
+        if (gated) segmentEndPos = anchorPos;
+        segmentEndTag = 0; // an offset crossing is not a dip vertex
+        nextRingIndex = crossingEndIndex;
+        continue;
+      }
+      out.push(segmentEnd);
+      if (gated) outPos.push(segmentEndPos);
+      if (dipTags) outTags.push(segmentEndTag);
+      if (nextRingIndex > n - 1) break;
+      segmentEnd = ring[nextRingIndex];
+      if (gated) segmentEndPos = srcPos[nextRingIndex];
+      if (dipTags) segmentEndTag = dipTags[nextRingIndex];
+      nextRingIndex++;
+    }
+    if (out.length < 4) return {ring: ring, srcPos: srcPos, dipTags: dipTags};
+    out.push(out[0].concat());
+    if (gated) outPos.push(outPos[0]);
+    if (dipTags) outTags.push(outTags[0]);
+    return {ring: out, srcPos: gated ? outPos : null, dipTags: dipTags ? outTags : null};
+  }
+
+  // Cumulative absolute turn (degrees) indexed by ring vertex, EXCLUDING fold
+  // cusps. prefix[k] = sum of |turn| at ring vertices 1..k-1, skipping the
+  // near-180-degree cusps where the offset doubles back on itself (an artifact of
+  // the self-crossing offset, with no corresponding source bend). A normal offset
+  // join's turn equals its source bend angle, so the remaining sum reconstructs
+  // the source stretch's cumulative turn -- the reliable loop-removal signal --
+  // without source provenance.
+  //
+  // A cusp is identified by construction tag when dipTags are supplied (a vertex
+  // on a reversed concave-join arc AND turning sharply); otherwise by a purely
+  // geometric turn threshold. Tag-gating is the point: a real sharp bend (e.g. a
+  // fjord mouth, emitted as a miter, never tagged) keeps its turn and so is never
+  // mistaken for a fold, which is what makes the geometric-only threshold
+  // over-collapse sharp coastlines.
+  var CUSP_TURN = 135;
+  function ringAbsTurnPrefix(ring, dipTags) {
+    var n = ring.length - 1;
+    var prefix = new Float64Array(n + 1);
+    var RAD = 180 / Math.PI;
+    for (var k = 1; k < n; k++) {
+      var a = ring[k - 1], b = ring[k], c = ring[k + 1];
+      var e1x = b[0] - a[0], e1y = b[1] - a[1];
+      var e2x = c[0] - b[0], e2y = c[1] - b[1];
+      var cross = e1x * e2y - e1y * e2x;
+      var dot = e1x * e2x + e1y * e2y;
+      var ang = Math.abs(Math.atan2(cross, dot)) * RAD;
+      var isCusp = ang > CUSP_TURN && (dipTags ? dipTags[k] : true);
+      prefix[k] = prefix[k - 1] + (isCusp ? 0 : ang);
+    }
+    prefix[n] = prefix[n - 1];
+    return prefix;
   }
 
   // Fast strict-interior segment crossing; returns [x, y] or null. Buffer join
@@ -41697,6 +42236,213 @@ ${svg}
     var u = (acx * aby - acy * abx) / den;
     if (t <= 1e-9 || t >= 1 - 1e-9 || u <= 1e-9 || u >= 1 - 1e-9) return null;
     return [ax + t * abx, ay + t * aby];
+  }
+
+  // Exact per-collapse coverage test. A collapse drops the loop
+  // L = [X, b, ring[nextRingIndex..s], X] and replaces anchor->b..c->d with
+  // anchor->X->d; it is area-neutral iff the dropped region stays covered by the
+  // rest of the outline. The dropped span is mostly reversed-arc "dip" folds
+  // (double-covered self-overlap, safe to drop), but it may also swallow a genuine
+  // offset lobe (single-covered real boundary). We measure exactly how much of the
+  // dropped region would become UNCOVERED and refuse the collapse when that exceeds
+  // a "big clip" threshold; small residual clips are left for the dissolve.
+  //
+  // Coverage is decided by winding against the stable pass-input ring (not the
+  // mid-pass output), so it is independent of collapse order: a point in the loop
+  // is still covered afterward iff windingFullRing(point) - windingLoop(point) != 0.
+  // For a two-sided line outline the main body always covers the buffer interior,
+  // so a fold has |winding| >= 2 (body + fold) and survives losing one layer, while
+  // real boundary has |winding| == 1 and drops to 0. The uncovered area is
+  // integrated with a horizontal scanline (below) rather than point-sampled, so an
+  // interior uncovered pocket cannot be missed.
+  //
+  // An area pre-filter keeps this off the hot path: a loop whose own area is below
+  // the threshold cannot produce a clip above it, so only large loops are swept.
+  // The threshold is in ring units; under web Mercator the scale factor is >= 1
+  // everywhere, so it is an upper bound on the real m^2 area and no genuinely large
+  // clip is skipped regardless of latitude.
+  function collapseKeepsAreaCovered(ring, n, X, b, nextRingIndex, s, index, fillFloor) {
+    // Area pre-filter keeps the scanline off the hot path: a loop can neither clip
+    // nor fill more than its own area, so it is safe to skip whenever the loop is
+    // below BOTH thresholds. (Filling a winding-0 region never reaches the uncovered
+    // floor, so the fill floor must join the skip test -- otherwise small folds that
+    // could fill a small hole would be skipped, or every collapse would be scanned.)
+    var floor = fillFloor < BUFFER_LOOP_CHECK_MIN_AREA ? fillFloor : BUFFER_LOOP_CHECK_MIN_AREA;
+    var u = collapseUncoveredArea(ring, n, X, b, nextRingIndex, s, index, floor);
+    if (u < 0) return true; // loop below both floors -- too small to clip or fill
+    // Reject if the collapse would clip a real lobe (uncovered) OR swallow a real
+    // hole/notch (filled). The uncovered floor is an absolute "big clip" bound; the
+    // fill floor scales with the buffer disk (dist^2) because a real hole's area is
+    // a fixed fraction of the disk while a fold sliver is orders of magnitude
+    // smaller relative to the radius (see BUFFER_LOOP_FILL_AREA_FRAC).
+    return u < BUFFER_LOOP_CHECK_MIN_AREA && _lastFillArea < fillFloor;
+  }
+
+  // Returns the area of the dropped region a collapse would leave uncovered, or -1
+  // when the loop's own area is below `floor` (too small to matter -- scanline
+  // skipped). See collapseKeepsAreaCovered for the winding rationale.
+  function collapseUncoveredArea(ring, n, X, b, nextRingIndex, s, index, floor) {
+    var i, loopLen = s - nextRingIndex + 3; // X, b, ring[next..s]
+    // Loop area (shoelace over X, b, ring[next..s]) and bounding box.
+    var area2 = 0, px = X[0], py = X[1];
+    var minx = X[0], maxx = X[0], miny = X[1], maxy = X[1];
+    function bbox(qx, qy) {
+      if (qx < minx) minx = qx; else if (qx > maxx) maxx = qx;
+      if (qy < miny) miny = qy; else if (qy > maxy) maxy = qy;
+    }
+    bbox(b[0], b[1]);
+    area2 += px * b[1] - b[0] * py; px = b[0]; py = b[1];
+    for (i = nextRingIndex; i <= s; i++) {
+      area2 += px * ring[i][1] - ring[i][0] * py; px = ring[i][0]; py = ring[i][1];
+      bbox(ring[i][0], ring[i][1]);
+    }
+    area2 += px * X[1] - X[0] * py;
+    if (Math.abs(area2) / 2 < floor) return -1; // too small to matter
+    // Collect the ring edges whose y-range meets the loop's band (the only ones
+    // that can cross any scanline); reuse module scratch to avoid per-call garbage.
+    var scr = coverageScratch(n + loopLen);
+    var lx0 = scr.lx0, ly0 = scr.ly0, lx1 = scr.lx1, ly1 = scr.ly1;
+    var band = scr.band, le = 0;
+    var gen = ++index.gen, stamp = index.stamp, start = index.start, edges = index.edges;
+    var kb, klo = index.binOf(miny), khi = index.binOf(maxy);
+    for (kb = klo; kb <= khi; kb++) {
+      for (var p = start[kb]; p < start[kb + 1]; p++) {
+        var ei = edges[p];
+        if (stamp[ei] === gen) continue;
+        stamp[ei] = gen;
+        var ay = ring[ei][1], by = ring[ei + 1][1];
+        if (ay < miny && by < miny || ay > maxy && by > maxy) continue;
+        if (ring[ei][0] > maxx && ring[ei + 1][0] > maxx) continue; // entirely right of loop
+        band[le++] = ei;
+      }
+    }
+    // Loop edges (X->b, b->ring[next..s], ring[s]->X).
+    var lc = 0;
+    lx0[lc] = X[0]; ly0[lc] = X[1]; lx1[lc] = b[0]; ly1[lc] = b[1]; lc++;
+    lx0[lc] = b[0]; ly0[lc] = b[1]; lx1[lc] = ring[nextRingIndex][0]; ly1[lc] = ring[nextRingIndex][1]; lc++;
+    for (i = nextRingIndex; i < s; i++) {
+      lx0[lc] = ring[i][0]; ly0[lc] = ring[i][1]; lx1[lc] = ring[i + 1][0]; ly1[lc] = ring[i + 1][1]; lc++;
+    }
+    lx0[lc] = ring[s][0]; ly0[lc] = ring[s][1]; lx1[lc] = X[0]; ly1[lc] = X[1]; lc++;
+    return loopUncoveredArea(ring, band, le, lx0, ly0, lx1, ly1, lc, minx, maxx, miny, maxy, scr);
+  }
+
+  // y-band index of ring edges: bins the ring's y-range so a scanline query at
+  // [miny, maxy] returns only edges reaching that band instead of scanning all n.
+  // start[k]..start[k+1] are indices into `edges` for bin k; `stamp`/`gen` dedup an
+  // edge that spans several bins during a single query.
+  function buildEdgeYIndex(ring, n) {
+    var yMin = Infinity, yMax = -Infinity, i;
+    for (i = 0; i < n; i++) { var y = ring[i][1]; if (y < yMin) yMin = y; if (y > yMax) yMax = y; }
+    var B = n < 32 ? 1 : Math.min(4096, Math.max(16, n >> 2));
+    var binH = (yMax - yMin) / B || 1;
+    var binOf = function (y) { var k = ((y - yMin) / binH) | 0; return k < 0 ? 0 : (k >= B ? B - 1 : k); };
+    var start = new Int32Array(B + 1);
+    for (i = 0; i < n; i++) {
+      var ya = ring[i][1], yb = ring[i + 1][1];
+      var lo = binOf(ya < yb ? ya : yb), hi = binOf(ya < yb ? yb : ya);
+      for (var k = lo; k <= hi; k++) start[k + 1]++;
+    }
+    for (i = 0; i < B; i++) start[i + 1] += start[i];
+    var edges = new Int32Array(start[B]);
+    var cur = start.slice(0, B);
+    for (i = 0; i < n; i++) {
+      var a2 = ring[i][1], b2 = ring[i + 1][1];
+      var lo2 = binOf(a2 < b2 ? a2 : b2), hi2 = binOf(a2 < b2 ? b2 : a2);
+      for (var k2 = lo2; k2 <= hi2; k2++) edges[cur[k2]++] = i;
+    }
+    return { binOf: binOf, start: start, edges: edges, stamp: new Int32Array(n), gen: 0 };
+  }
+
+  var _covScratch = null;
+  function coverageScratch(cap) {
+    if (!_covScratch || _covScratch.cap < cap) {
+      _covScratch = {
+        cap: cap,
+        lx0: new Float64Array(cap), ly0: new Float64Array(cap),
+        lx1: new Float64Array(cap), ly1: new Float64Array(cap),
+        band: new Int32Array(cap),
+        xs: new Float64Array(cap), df: new Int8Array(cap),
+        dl: new Int8Array(cap), order: new Int32Array(cap)
+      };
+    }
+    return _covScratch;
+  }
+
+  // Sweep the removed loop L and measure two area quantities the collapse would
+  // change, both integrated with horizontal scanlines across L's bounding box (at
+  // each scanline the winding of the full ring and of the loop are step functions
+  // of x, reconstructed from the sorted edge crossings). For a point inside L
+  // (windingLoop != 0), the winding after the collapse is windingFull - windingLoop:
+  //   - UNCOVERED: was covered (windingFull == windingLoop, so it drops to 0). This
+  //     is the "big clip" a collapse of a real single-covered lobe would make.
+  //   - FILLED: was a winding-0 hole/exterior (windingFull == 0, so it flips to
+  //     covered). This is a real buffer hole (or an open outer-wall notch) the
+  //     collapse would swallow -- undetectable by the uncovered measure alone,
+  //     since filling adds coverage rather than removing it.
+  // Returns the uncovered area and writes the filled area to _lastFillArea.
+  // `band` lists the indices of ring edges that can reach the loop's y-band.
+  var _lastFillArea = 0;
+  function loopUncoveredArea(ring, band, be, lx0, ly0, lx1, ly1, le, minx, maxx, miny, maxy, scr) {
+    var h = maxy - miny;
+    _lastFillArea = 0;
+    if (h <= 0 || maxx <= minx) return 0;
+    var target = Math.sqrt(BUFFER_LOOP_CHECK_MIN_AREA) / 4;
+    var rows = Math.round(h / (target > 0 ? target : h));
+    if (rows < 8) rows = 8; else if (rows > 40) rows = 40;
+    var dy = h / rows;
+    var xs = scr.xs, df = scr.df, dl = scr.dl, order = scr.order;
+    var total = 0, fill = 0, r, k, i;
+    for (r = 0; r < rows; r++) {
+      var y = miny + (r + 0.5) * dy;
+      // Winding just left of the loop's x-range (base), plus the crossings that
+      // fall inside [minx, maxx] (only these need sorting). Crossings right of the
+      // loop are irrelevant to intervals within the range and are dropped.
+      var baseWf = 0, baseWl = 0, m = 0;
+      for (k = 0; k < be; k++) {
+        i = band[k];
+        var y1 = ring[i][1], y2 = ring[i + 1][1];
+        if ((y1 <= y) === (y2 <= y)) continue;
+        var x = ring[i][0] + (y - y1) / (y2 - y1) * (ring[i + 1][0] - ring[i][0]);
+        var sgnF = y2 > y1 ? 1 : -1;
+        if (x <= minx) baseWf += sgnF;
+        else if (x < maxx) { xs[m] = x; df[m] = sgnF; dl[m] = 0; order[m] = m; m++; }
+      }
+      for (i = 0; i < le; i++) {
+        var ya = ly0[i], yb = ly1[i];
+        if ((ya <= y) === (yb <= y)) continue;
+        var xl = lx0[i] + (y - ya) / (yb - ya) * (lx1[i] - lx0[i]);
+        var sl = yb > ya ? 1 : -1;
+        if (xl <= minx) { baseWl += sl; }
+        else if (xl < maxx) { xs[m] = xl; df[m] = 0; dl[m] = sl; order[m] = m; m++; }
+      }
+      sortByX(order, xs, m);
+      var wf = baseWf, wl = baseWl, prevx = minx;
+      for (i = 0; i < m; i++) {
+        var o = order[i], xk = xs[o];
+        if (wl !== 0 && xk > prevx) {
+          if (wf - wl === 0) total += xk - prevx;
+          else if (wf === 0) fill += xk - prevx;
+        }
+        wf += df[o]; wl += dl[o]; prevx = xk;
+      }
+      if (wl !== 0 && maxx > prevx) {
+        if (wf - wl === 0) total += maxx - prevx;
+        else if (wf === 0) fill += maxx - prevx;
+      }
+    }
+    _lastFillArea = fill * dy;
+    return total * dy;
+  }
+
+  // Insertion sort of index array `order[0..m)` by xs[order[k]] ascending. m is
+  // small per scanline (edges straddling the row), so this beats a comparator sort.
+  function sortByX(order, xs, m) {
+    for (var i = 1; i < m; i++) {
+      var oi = order[i], xi = xs[oi], j = i - 1;
+      while (j >= 0 && xs[order[j]] > xi) { order[j + 1] = order[j]; j--; }
+      order[j + 1] = oi;
+    }
   }
 
   var DouglasPeucker = {};
@@ -41781,7 +42527,7 @@ ${svg}
   var T = 90 - e;
   var L = -180 + e;
   var B$1 = -90 + e;
-  var R$2 = 180 - e;
+  var R$1 = 180 - e;
 
   function lastEl(arr) {
     return arr[arr.length - 1];
@@ -41798,7 +42544,7 @@ ${svg}
   // remove likely rounding errors
   function snapToEdge(p) {
     if (p[0] <= L) p[0] = -180;
-    if (p[0] >= R$2) p[0] = 180;
+    if (p[0] >= R$1) p[0] = 180;
     if (p[1] <= B$1) p[1] = -90;
     if (p[1] >= T) p[1] = 90;
   }
@@ -41826,11 +42572,11 @@ ${svg}
     // TODO: handle segments between pole and non-edge point
     // (these shoudn't exist in a properly clipped path)
     return (onPole(a) || onPole(b)) ||
-      a[0] <= L && b[0] <= L || a[0] >= R$2 && b[0] >= R$2;
+      a[0] <= L && b[0] <= L || a[0] >= R$1 && b[0] >= R$1;
   }
 
   function isEdgePoint(p) {
-    return p[1] <= B$1 || p[1] >= T || p[0] <= L || p[0] >= R$2;
+    return p[1] <= B$1 || p[1] >= T || p[0] <= L || p[0] >= R$1;
   }
 
   // Remove segments that belong solely to cut points
@@ -42095,129 +42841,6 @@ ${svg}
     return (dx2 * p1[1] + dx1 * p2[1]) / (dx1 + dx2);
   }
 
-  var R$1 = WGS84.SEMIMAJOR_AXIS;
-
-  // GeographicLib docs: https://geographiclib.sourceforge.io/html/js/
-  //   https://geographiclib.sourceforge.io/html/js/module-GeographicLib_Geodesic.Geodesic.html
-  //   https://geographiclib.sourceforge.io/html/js/tutorial-2-interface.html
-  function getGeodesic(P) {
-    if (!isLatLngCRS(P)) error('Expected an unprojected CRS');
-    var f = P.es / (1 + Math.sqrt(P.one_es));
-    // var GeographicLib = require('mproj').internal.GeographicLib;
-    var GeographicLib = require$1('geographiclib-geodesic');
-    // return new GeographicLib.Geodesic.Geodesic(P.a, 0)
-    return new GeographicLib.Geodesic.Geodesic(P.a, f);
-  }
-
-  function interpolatePoint2D(ax, ay, bx, by, k) {
-    var j = 1 - k;
-    return [ax * j + bx * k, ay * j + by * k];
-  }
-
-  function getInterpolationFunction(P) {
-    var spherical = P && isLatLngCRS(P);
-    if (!spherical) return interpolatePoint2D;
-    var geod = getGeodesic(P);
-    return function(lng, lat, lng2, lat2, k) {
-      var r = geod.Inverse(lat, lng, lat2, lng2);
-      var dist = r.s12 * k;
-      var r2 = geod.Direct(lat, lng, r.azi1, dist);
-      return [r2.lon2, r2.lat2];
-    };
-  }
-
-  function getPlanarSegmentEndpoint(x, y, bearing, meterDist) {
-    var rad = bearing / 180 * Math.PI;
-    var dx = Math.sin(rad) * meterDist;
-    var dy = Math.cos(rad) * meterDist;
-    return [x + dx, y + dy];
-  }
-
-  // source: https://github.com/mapbox/cheap-ruler/blob/master/index.js
-  function fastGeodeticSegmentFunction(lng, lat, bearing, meterDist) {
-    var D2R = Math.PI / 180;
-    var cos = Math.cos(lat * D2R);
-    var cos2 = 2 * cos * cos - 1;
-    var cos3 = 2 * cos * cos2 - cos;
-    var cos4 = 2 * cos * cos3 - cos2;
-    var cos5 = 2 * cos * cos4 - cos3;
-    var kx = (111.41513 * cos - 0.09455 * cos3 + 0.00012 * cos5) * 1000;
-    var ky = (111.13209 - 0.56605 * cos2 + 0.0012 * cos4) * 1000;
-    var bearingRad = bearing * D2R;
-    var lat2 = lat + Math.cos(bearingRad) * meterDist / ky;
-    var lng2 = lng + Math.sin(bearingRad) * meterDist / kx;
-    return [lng2, lat2];
-  }
-
-
-  function wrap(deg) {
-    while (deg < -180) deg += 360;
-    while (deg > 180) deg -= 360;
-    return deg;
-  }
-
-  function fastGeodeticBearingFunction(lng1, lat1, lng2, lat2) {
-    var D2R = Math.PI / 180;
-    var f = 1 / 298.257223563;
-    var e2 = f * (2 - f);
-    var m = R$1 * D2R;
-    var coslat = Math.cos(lat1 * D2R);
-    var w2 = 1 / (1 - e2 * (1 - coslat * coslat));
-    var w = Math.sqrt(w2);
-    var kx = m * w * coslat;
-    var ky = m * w * w2 * (1 - e2);
-    var dx = wrap(lng2 - lng1) * kx;
-    var dy = (lat2 - lat1) * ky;
-    return Math.atan2(dx, dy) / D2R;
-  }
-
-  function getGeodeticSegmentFunction(P) {
-    if (!isLatLngCRS(P)) {
-      return getPlanarSegmentEndpoint;
-    }
-    var g = getGeodesic(P);
-    return function(lng, lat, bearing, meterDist) {
-      var o = g.Direct(lat, lng, bearing, meterDist);
-      var p = [o.lon2, o.lat2];
-      return p;
-    };
-  }
-
-  function getFastGeodeticSegmentFunction(P) {
-    // CAREFUL: this function has higher error at very large distances and at the poles
-    // also, it wouldn't work for other planets than Earth
-    return isLatLngCRS(P) ? fastGeodeticSegmentFunction : getPlanarSegmentEndpoint;
-  }
-
-  // return function to calculate bearing of a segment in degrees
-  function getBearingFunction(dataset) {
-    var P = getDatasetCRS(dataset);
-    // return isLatLngCRS(P) ? bearingDegrees : bearingDegrees2D;
-    return isLatLngCRS(P) ? fastGeodeticBearingFunction : bearingDegrees2D;
-  }
-
-  // get bearing in degrees from point ab to point cd
-  function bearingDegrees(a, b, c, d) {
-    return geom.bearing(a, b, c, d) * 180 / Math.PI;
-  }
-
-  function bearingDegrees2D(a, b, c, d) {
-    return geom.bearing2D(a, b, c, d) * 180 / Math.PI;
-  }
-
-  var Geodesic = /*#__PURE__*/Object.freeze({
-    __proto__: null,
-    bearingDegrees: bearingDegrees,
-    bearingDegrees2D: bearingDegrees2D,
-    getBearingFunction: getBearingFunction,
-    getFastGeodeticSegmentFunction: getFastGeodeticSegmentFunction,
-    getGeodeticSegmentFunction: getGeodeticSegmentFunction,
-    getInterpolationFunction: getInterpolationFunction,
-    getPlanarSegmentEndpoint: getPlanarSegmentEndpoint,
-    interpolatePoint2D: interpolatePoint2D,
-    wrap: wrap
-  });
-
   var R = WGS84.SEMIMAJOR_AXIS;
   var D2R = Math.PI / 180;
   var R2D = 180 / Math.PI;
@@ -42340,6 +42963,19 @@ ${svg}
 
   function getOffsetFunction(crs, opts) {
     if (!isLatLngCRS(crs)) {
+      if (opts && opts.geodesic2) {
+        // Experimental geodesic buffering for projected data that stays entirely
+        // in the source projected plane (no web-Mercator round-trip), so it has no
+        // pole singularity or antimeridian wrap. Each offset is taken in the
+        // ordinary projected (cartesian) direction, but its magnitude is corrected
+        // so the endpoint lands at a true ground distance, measured with a
+        // first-party spherical great-circle formula (the same sphere model the
+        // lat-long buffer already uses). Falls back to planar if the CRS can't be
+        // inverted to measure ground distance.
+        var fn = makeScaleCorrectedOffset(crs);
+        if (fn) return fn;
+        message('[buffer] Ignoring "geodesic2": the dataset CRS is unknown or not invertible; using planar offsets.');
+      }
       return getPlanarSegmentEndpoint;
     }
     // Offset each point by a true geodesic distance, working directly in spherical
@@ -42358,6 +42994,90 @@ ${svg}
     // distorted (egg-shaped caps/joins) -- but it is occasionally useful.
     var offset = opts && opts.rhumb ? rhumbOffset : greatCircleOffset;
     return opts && opts.polar ? clampPolar(offset) : offset;
+  }
+
+  // Convergence target for the scale-corrected offset: stop when the great-circle
+  // distance reached is within SCALE_OFFSET_TOL (relative) or SCALE_OFFSET_ABS
+  // (absolute, meters) of the requested ground distance.
+  //
+  // The iteration is a linear fixed point (m *= d/g), so the residual shrinks by a
+  // roughly constant factor per step: a tighter tolerance costs extra tail
+  // iterations no matter how good the warm-start guess is, and below ~1e-10 the
+  // projection round-trip + haversine noise floor makes the test unreachable for
+  // small d (it never converges and burns the iteration cap). 1e-8 relative is
+  // 0.25 mm at a 25 km radius -- far below cartographic relevance -- and a sweep
+  // over real data showed it sits just before the cost curve and the noise floor
+  // bite (1e-7 and 1e-8 cost the same; 1e-9 adds ~5%; 1e-12 roughly doubles the
+  // inverse-projection count and caps out on ~11% of points at 1 km).
+  //
+  // The tolerance does NOT need to guarantee bit-identical results for the same
+  // (x, y, bearing, dist) across call paths: the only place two independent offset
+  // computations must coincide -- a closed ring's seam -- closes by reusing the
+  // first offset vertex's reference exactly (see makeFinalJoin in
+  // mapshaper-path-buffer-v4), not by recomputing and comparing. Within a single
+  // run the call order is fixed, so the warm-started result is deterministic.
+  //
+  // The absolute floor keeps tiny-distance helper calls (inset/probe offsets at
+  // dist*1e-4 etc.) from chasing a sub-noise relative target; it is well below the
+  // relative target for any d above ~100 m, so it never loosens normal offsets.
+  var SCALE_OFFSET_TOL = 1e-8;
+  var SCALE_OFFSET_ABS = 1e-6;
+  var SCALE_OFFSET_MAX_ITER = 16;
+
+  // Build a deterministic offset function for projected data that corrects the
+  // offset magnitude so the endpoint sits at a true ground distance. The cartesian
+  // offset direction is kept (so all the builder's planar constructions still hold)
+  // and only the distance is solved: starting from the cartesian magnitude, measure
+  // the great-circle distance actually reached, scale by the error ratio, and
+  // iterate to convergence. The converged scale (projected units per ground meter)
+  // is remembered to warm-start the next point -- adjacent points share nearly the
+  // same projection scale, so the seeded guess is close and the loop converges in
+  // ~2-3 iterations. The warm-start only seeds the initial guess and the loop is
+  // driven to a tolerance (see SCALE_OFFSET_TOL), so within a run the result is
+  // deterministic.
+  // Returns null if the CRS cannot be inverted (no way to measure ground distance).
+  function makeScaleCorrectedOffset(crs) {
+    if (!isInvertibleCRS(crs)) return null;
+    var toLngLat = getProjTransform2(crs, parseCrsString$1('wgs84')); // projected -> lng,lat
+    var warmScale = 1;
+    // Small LRU of inverted source coordinates. Every path vertex is unprojected at
+    // least twice (it is the shared endpoint of two consecutive segment offsets) and
+    // again for each round-join/cap arc point centered on it; a single slot is
+    // clobbered by the join construction between segments. A few slots capture that
+    // reuse and are dropped as construction moves along the path. Returns the exact
+    // toLngLat value (possibly null, out of domain), so caching changes nothing but speed.
+    var SCALE_LL_CACHE = 8;
+    var ckx = [], cky = [], cll = [];
+    function invert(x, y) {
+      for (var j = cll.length - 1; j >= 0; j--) {
+        if (ckx[j] === x && cky[j] === y) return cll[j];
+      }
+      var ll = toLngLat(x, y);
+      ckx.push(x); cky.push(y); cll.push(ll);
+      if (cll.length > SCALE_LL_CACHE) { ckx.shift(); cky.shift(); cll.shift(); }
+      return ll;
+    }
+    return function(x, y, bearing, meterDist) {
+      if (!meterDist) return [x, y];
+      var rad = bearing * D2R;
+      var sign = meterDist < 0 ? -1 : 1;
+      var d = meterDist * sign; // positive ground distance to reach
+      var ux = Math.sin(rad) * sign, uy = Math.cos(rad) * sign;
+      var ll0 = invert(x, y);
+      if (!ll0) return getPlanarSegmentEndpoint(x, y, bearing, meterDist);
+      var m = d * warmScale, qx = x, qy = y;
+      for (var i = 0; i < SCALE_OFFSET_MAX_ITER; i++) {
+        qx = x + ux * m; qy = y + uy * m;
+        var ll1 = toLngLat(qx, qy);
+        if (!ll1) break; // offset left the projection's domain; keep current estimate
+        var g = greatCircleDistance(ll0[0], ll0[1], ll1[0], ll1[1]);
+        if (!(g > 0)) { m *= 2; continue; }
+        if (Math.abs(g - d) <= SCALE_OFFSET_TOL * d + SCALE_OFFSET_ABS) break;
+        m *= d / g;
+      }
+      warmScale = m / d;
+      return [qx, qy];
+    };
   }
 
   // Great-circle (spherical geodesic) offset, computed directly in Mercator coords.
@@ -42429,6 +43149,12 @@ ${svg}
     var getOffsetPoint = getOffsetFunction(crs, opts);
     var roundJoinSegsPerQuadrant = opts.quad_segs >= 2 ? opts.quad_segs : 8;
     var roundJoinSegAngle = 90 / roundJoinSegsPerQuadrant;
+    // Max arc step (degrees) for the coarse concave bridge (makeCoarseConcaveJoin),
+    // the optional low-resolution alternative to makeConcaveJoin in
+    // traceCleanOffsetSide. Larger = fewer points = faster dissolve. The reversed
+    // bridge only bounds a self-overlap loop that the direction remover collapses,
+    // so its resolution does not affect the final boundary.
+    var CLEAN_OUTLINE_BRIDGE_STEP = 90;
     var capStyle = opts.cap_style || 'round'; // expect 'round' or 'flat'
     var pathIter = useMercator ?
       getProjectingPathIterator(dataset.arcs, opts) : new ShapeIter(dataset.arcs);
@@ -42454,8 +43180,7 @@ ${svg}
         properties: null,
         geometry: {
         type: 'MultiPolygon',
-          // convert rings to MultiPolygon format
-          coordinates: rings.map(ring => [ring])
+          coordinates: rings.map(function(ring) { return [ring]; })
         }
       }];
       if (useMercator) {
@@ -42523,14 +43248,26 @@ ${svg}
 
     // each path may be converted into multiple buffer rings, which later
     // need to be dissolved
-    // Re-anchor a closed ring [v0, v1, ..., v0] to the midpoint of its first edge:
-    // returns [m, v1, ..., v0, m] where m = midpoint(v0, v1). The offset then
-    // starts/ends mid-edge (a collinear seam) and v0 becomes an interior join.
+    // Re-anchor a closed ring [v0, v1, ..., v0] so its offset seam falls at the
+    // midpoint of a chosen edge (vk -> vk+1): returns [m, vk+1, ..., vk, m] where
+    // m = midpoint(vk, vk+1). The offset then starts/ends mid-edge (a collinear
+    // seam) and every original vertex becomes an interior join.
+    //
+    // The seam edge is chosen by chooseSeamEdge() to sit away from concave (reflex)
+    // corners. In winding-fill mode a concave corner dips the offset back to its
+    // source vertex (resolved later by the dissolve); a seam landing next to such a
+    // dip leaves the pre-dissolve overshoot-loop remover (removeBufferRingLoops*)
+    // starting from an anchor buried inside that tangle, where it can collapse the
+    // true outer boundary instead of the self-overlap (an inward notch). Putting the
+    // seam in a clean convex stretch keeps the remover's first-vertex anchor on the
+    // real boundary.
     function startRingAtEdgeMidpoint(verts) {
-      var a = verts[0], b = verts[1];
+      var k = chooseSeamEdge(verts);
+      var n = verts.length - 1; // distinct vertices (verts[0] == verts[n])
+      var a = verts[k], b = verts[(k + 1) % n];
       var m = [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2];
       var out = [m];
-      for (var i = 1; i < verts.length; i++) out.push(verts[i]);
+      for (var t = 1; t <= n; t++) out.push(verts[(k + t) % n]);
       out.push(m.concat());
       return out;
     }
@@ -42540,25 +43277,49 @@ ${svg}
       var pathSideVerts = collectPathVertices(pathArcs);
       var verts = pathSideVerts;
       if (simplifyIntervalFn) {
-        verts = presimplifyPathVerts(verts, simplifyIntervalFn(dist), dist);
+        verts = presimplifyPathVerts(verts, simplifyIntervalFn(dist));
       }
-      if (!oneSidedBuffer && !opts.band_method && pathIsOpen(verts)) {
+      // Closed two-sided line rings: open with a sub-tolerance gap at the first
+      // vertex so the open-path outline builder applies (round caps close the
+      // seam). Gap size is in the same coordinate units as verts.
+      if (!oneSidedBuffer && !opts.band_method && !pathIsOpen(verts)) {
+        verts = openClosedRingWithMicroGap(verts);
+      }
+      if (!opts.band_method && pathIsOpen(verts) && (!oneSidedBuffer || opts.outline)) {
         // Fast path for ordinary two-sided line buffers: emit one closed
         // outline instead of many per-segment bands that must be dissolved.
         // The band-method escape hatch skips it to fall through to the
         // per-segment band construction (makeLeftBufferRings, no winding fill).
+        //
+        // Also used for the topological polygon grow's OPEN boundary chains
+        // (outline mode, one-sided 'left'): an open unshared-boundary chain must
+        // be capped on BOTH ends. The one-sided outline (buildCleanOutlineRings)
+        // offsets a single side and self-closes with a straight chord between the
+        // chain's endpoints -- harmless when they nearly coincide, but for a chain
+        // spanning a whole border (e.g. a state's Canada boundary) that chord is a
+        // multi-degree spike. The two-sided stadium caps both ends instead; the
+        // mosaic union with the source polygon absorbs the inner (interior) half.
         var built = makeTwoSidedOutlineRing(verts, dist);
-        if (opts.no_loop_removal) return [built.ring];
-        // Strip self-overlap loops (the dissolve would fill them anyway) so it has
-        // fewer segments and self-intersections to resolve, while keeping real
-        // holes. The two-sided outline of an open path has a consistent +/-1 base
-        // winding, so the crossing-direction method classifies loops exactly from
-        // the ring geometry alone; the source-turn gate is kept as an alternative.
-        if (opts.loop_removal_turn_gate) {
-          return [removeBufferRingLoops(built.ring, BUFFER_LOOP_WINDOW,
-            built.srcPos, getSourceTurnPrefix(verts))];
+        var out;
+        if (opts.no_loop_removal) {
+          out = [built.ring];
+        } else {
+          // Multi-pass dip+coverage remover: construction-tagged reversed concave-join
+          // ("dip") cusps mark self-overlap folds, and an exact scanline coverage
+          // check refuses any collapse that would uncover a real boundary lobe OR
+          // swallow a real hole/notch.
+          out = [removeBufferRingLoopsIterative(built.ring, BUFFER_LOOP_WINDOW,
+            null, null, undefined, built.dipTags, undefined,
+            dist * dist * BUFFER_LOOP_FILL_AREA_FRAC)];
         }
-        return [removeBufferRingLoopsByDirection(built.ring, BUFFER_LOOP_WINDOW)];
+        // Geodesic fan-apart gap patches (same mechanism as the polygon outline):
+        // union a single-segment round-cap stadium for the source segments at each
+        // exposed fan-apart bend so the winding dissolve fills the sliver gap.
+        if (built.fanApartBends.length) {
+          addFanApartGapPatches(out, verts, built.fanApartBends, dist,
+            ringSignedArea(out[0]) >= 0);
+        }
+        return out;
       }
       if (!opts.right || opts.left) {
         rings = rings.concat(buildOneSidedRings(verts));
@@ -42597,21 +43358,16 @@ ${svg}
         if (opts.outline && sideVerts.length > 2 && !pathIsOpen(sideVerts)) {
           sideVerts = startRingAtEdgeMidpoint(sideVerts);
         }
+        // Polygon-grow outline: the shared constant-radius construction used by
+        // two-sided line outlines (traceCleanOffsetSide + dip+coverage loop
+        // removal inside buildCleanOutlineRings).
+        if (opts.outline) {
+          return buildCleanOutlineRings(sideVerts, dist);
+        }
         var built = makeLeftBufferRings(sideVerts, dist,
           oneSidedBuffer ? pathSideVerts : null);
         if (opts.no_loop_removal || !opts.winding_fill) {
           return built.rings;
-        }
-        if (opts.outline) {
-          // Outline mode rings are clean offset-only loops (no source-path edge),
-          // so each has a consistent +/-1 base winding and the crossing-direction
-          // remover classifies overshoot loops exactly from the ring geometry --
-          // the same condition that makes it safe for the open-path two-sided
-          // outline. (The band-ribbon rings of the default construction do not,
-          // which is why they use the source-turn gate below.)
-          return built.rings.map(function(ring) {
-            return removeBufferRingLoopsByDirection(ring, BUFFER_LOOP_WINDOW);
-          });
         }
         var turnPrefix = getSourceTurnPrefix(sideVerts);
         return built.rings.map(function(ring, i) {
@@ -42620,6 +43376,86 @@ ${svg}
             removeBufferRingLoops(ring, BUFFER_LOOP_WINDOW, srcPos, turnPrefix) : ring;
         });
       }
+    }
+
+    // Build the clean-outline-winding ring for one offset side from the shared
+    // traceCleanOffsetSide construction (the same construction the open two-sided
+    // line outline uses), then strip self-overlap loops before the dissolve.
+    //
+    // A closed source ring closes on its first offset vertex: the midpoint seam is
+    // collinear (see startRingAtEdgeMidpoint), so the recomputed final offset point
+    // is a sub-ULP duplicate of the first and is dropped (done() repeats the first
+    // vertex exactly). An open arc appends the final offset endpoint and an end cap.
+    //
+    // Loop removal: multi-pass dip+coverage (removeBufferRingLoopsIterative with
+    // construction dip tags), the same method used for two-sided line outlines.
+    function removePolygonOutlineLoops(ring, dipTags, dist) {
+      return removeBufferRingLoopsIterative(ring, BUFFER_LOOP_WINDOW,
+        null, null, undefined, dipTags, undefined,
+        dist * dist * BUFFER_LOOP_FILL_AREA_FRAC);
+    }
+
+    function buildCleanOutlineRings(sideVerts, dist) {
+      if (sideVerts.length < 2) return [];
+      var closed = !pathIsOpen(sideVerts);
+      var info = traceCleanOffsetSide(sideVerts, dist);
+      var pts = info.points, segs = info.segs, tags = info.dipTags;
+      for (var i = 0; i < pts.length; i++) builder.addBufferVertex(pts[i], segs[i], tags[i]);
+      if (!closed) {
+        if (info.lastPoint) builder.addBufferVertex(info.lastPoint, info.lastSeg);
+        if (capStyle == 'round') {
+          var end = sideVerts[sideVerts.length - 1];
+          builder.addBufferVertices(
+            makeRoundCap(end[0], end[1], info.lastBearing - 90, dist), NaN);
+        }
+      }
+      var d = builder.done(true);
+      if (!d) return [];
+      var mainRing;
+      if (opts.no_loop_removal) {
+        mainRing = d.ring;
+      } else {
+        mainRing = removePolygonOutlineLoops(d.ring, d.dipTags, dist);
+      }
+      var out = [mainRing];
+      // Union in a single-segment round-cap patch for every fan-apart concave bend
+      // (offsetEdgesFanApart). Each patch is the exact buffer of one source
+      // segment, hence a subset of the true buffer, so it can only fill the
+      // winding-0 sliver the pinched bridge leaves -- it can never push geometry
+      // through the outer wall. Oriented to match the main ring so the winding fill
+      // adds (not subtracts) its area.
+      if (info.fanApartBends.length) {
+        addFanApartGapPatches(out, sideVerts, info.fanApartBends, dist,
+          ringSignedArea(mainRing) >= 0);
+      }
+      return out;
+    }
+
+    // Append a round-cap stadium patch for the two source segments meeting at each
+    // recorded fan-apart bend vertex. A single segment has no bend (so its buffer
+    // is the exact, gap-free stadium); the two patches' caps at the shared vertex
+    // cover the sliver wedge the pinched bridge failed to fill.
+    function addFanApartGapPatches(out, sideVerts, bends, dist, parentCCW) {
+      for (var b = 0; b < bends.length; b++) {
+        var k = bends[b];
+        if (k - 1 >= 0) pushPatch(out, [sideVerts[k - 1], sideVerts[k]], dist, parentCCW);
+        if (k + 1 < sideVerts.length) pushPatch(out, [sideVerts[k], sideVerts[k + 1]], dist, parentCCW);
+      }
+    }
+
+    function pushPatch(out, seg, dist, parentCCW) {
+      if (seg[0][0] === seg[1][0] && seg[0][1] === seg[1][1]) return;
+      var ring = makeTwoSidedOutlineRing(seg, dist).ring;
+      if ((ringSignedArea(ring) >= 0) !== parentCCW) ring.reverse();
+      out.push(ring);
+    }
+
+    function ringSignedArea(ring) {
+      var s = 0;
+      for (var i = 0; i < ring.length - 1; i++) {
+        s += ring[i][0] * ring[i + 1][1] - ring[i + 1][0] * ring[i][1];
+      }
+      return s;
     }
 
     function makeLeftBufferRings(verts, dist, pathSideVerts) {
@@ -42689,21 +43525,18 @@ ${svg}
           // original path vertex, then walk out the full outgoing offset (p1).
           // The self-overlap is resolved by the winding-number union, so no
           // section splits, join-sector rings, or band-coverage audit are needed.
+          // (The clean-outline-winding grow does NOT reach here -- it is routed to
+          // buildCleanOutlineRings, which bridges concave corners with
+          // makeConcaveJoin to keep a constant +/-1 winding.)
           builder.addBufferVertex(p2Prev, segId);
           builder.addBufferVertex([x1, y1], segId);
           builder.addBufferVertex(p1, segId);
         } else if (joinAngle > roundJoinSegAngle * 1.5) {
-          // large rightwards bend in path requiring a round join with at least
-          // one interpolated segment
-          // don't add endpoint of last offset segment to the buffer - we start
-          // by extending the last segment to make an outside join
-          // builder.addBufferVertex(p2Prev, false)
-          joinPoints = makeOutsideRoundJoin(x1, y1, bearingPrev - 90, joinAngle, dist);
+          // Large convex bend: arc vertices on the offset circle replace the
+          // previous segment end (p2Prev) and current segment start (p1).
+          joinPoints = makeInscribedRoundJoin(x1, y1, bearingPrev - 90, joinAngle, dist);
           builder.addBufferVertices(joinPoints, segId);
-          // don't add first endpoint of new offset segment to the buffer - we just
-          // added an extended vertex to replace it.
-          // builder.addBufferVertex(p1, false)
-          p1 = joinPoints.pop();
+          p1 = joinPoints.pop(); // track outgoing segment start (already added)
         } else if (joinAngle > -1e-10 && joinAngle < 1e-10) {
           // nearly collinear segments - add one point to the buffer
           // TODO: confirm that p1 and p2Prev are always very close
@@ -43160,6 +43993,31 @@ ${svg}
       return verts[0][0] !== verts[n-1][0] || verts[0][1] !== verts[n-1][1];
     }
 
+    // Open a closed ring at its first vertex: nudge the corner into two points
+    // straddling it along the incoming and outgoing edges (sub-tolerance gap).
+    function openClosedRingWithMicroGap(verts) {
+      var gap = 1e-6;
+      var n = verts.length;
+      if (n < 4 || pathIsOpen(verts)) return verts;
+      var ring = [], i;
+      for (i = 0; i < n; i++) ring.push(verts[i].concat());
+      if (ring[0][0] === ring[n - 1][0] && ring[0][1] === ring[n - 1][1]) ring.pop();
+      if (ring.length < 3) return verts;
+      var p0 = ring[0], p1 = ring[1], pPrev = ring[ring.length - 1];
+      ring[0] = nudgeVertexFrom(p0, p1, gap);
+      ring.push(nudgeVertexFrom(p0, pPrev, gap));
+      return ring;
+    }
+
+    function nudgeVertexFrom(origin, toward, dist) {
+      var dx = toward[0] - origin[0], dy = toward[1] - origin[1];
+      var len = Math.hypot(dx, dy);
+      if (len > 0) {
+        return [origin[0] + dx / len * dist, origin[1] + dy / len * dist];
+      }
+      return [origin[0] + dist, origin[1]];
+    }
+
     // get angle between two extruded segments in degrees
     // positive angle means join is convex; negative angle means join is concave
     function getJoinAngle(direction1, direction2) {
@@ -43193,10 +44051,22 @@ ${svg}
       // reverse, so its positions map back to source order; cap points get NaN so
       // a pocket spanning a cap is never treated as a single-bend overshoot.
       var nan = function(arr) { return arr.map(function() { return NaN; }); };
+      var zeros = function(arr) { return arr.map(function() { return 0; }); };
       var rightPos = right.srcPos.map(function(p) { return (n - 1) - p; });
       var srcPos = left.srcPos.concat(nan(endCap), rightPos, nan(startCap));
       srcPos.push(srcPos[0]);
-      return {ring: ring, srcPos: srcPos};
+      // Parallel reversed-arc ("dip") tags: caps are never dips.
+      var dipTags = left.dipTags.concat(zeros(endCap), right.dipTags, zeros(startCap));
+      dipTags.push(dipTags[0]);
+      // Fan-apart gap-patch bends from both offset sides, as source-vertex indices.
+      // A bend is concave from only one side, so the two sides flag disjoint
+      // vertices; the right side was traced in reverse, so map its indices back to
+      // source order ((n-1) - r).
+      var bendSet = {};
+      (left.fanApartBends || []).forEach(function(j) { bendSet[j] = 1; });
+      (right.fanApartBends || []).forEach(function(j) { bendSet[(n - 1) - j] = 1; });
+      var bends = Object.keys(bendSet).map(Number);
+      return {ring: ring, srcPos: srcPos, dipTags: dipTags, fanApartBends: bends};
     }
 
     // Cumulative absolute turn of the source path, indexed by vertex. The turn
@@ -43218,26 +44088,45 @@ ${svg}
       return prefix;
     }
 
-    function makeOffsetSide(verts, dist) {
-      // Trace a single left-offset side of the source path, including joins
-      // between adjacent offset segments but not endpoint caps. srcPos[] records,
-      // per emitted point, the source-path vertex it derives from, so loop
-      // removal can judge a self-crossing by the turn of the originating path
-      // span rather than by the (unreliable) geometry of the offset itself.
-      var points = [];
-      var srcPos = [];
+    // Shared per-segment offset construction for the constant-radius "clean"
+    // buffer outline. Walks the left offset of `verts`, joining adjacent offset
+    // segments with inscribed round joins (convex bends), elbow/shallow joins, and
+    // reversed makeConcaveJoin arcs (concave bends) -- every emitted vertex stays
+    // at distance `dist`, so the traced side keeps a true +/-1 winding. This is
+    // the single construction used by BOTH the open two-sided line outline
+    // (makeOffsetSide) and the clean-outline-winding polygon grow
+    // (buildCleanOutlineRings), so a construction fix lands in one place for both.
+    //
+    // Returns parallel arrays { points, segs }: each offset vertex (consecutive
+    // duplicates dropped) and the source segment it derives from, in trace order.
+    // Returning the finished arrays rather than taking a per-vertex `emit` callback
+    // keeps the tracer a pure (verts, dist) -> data function (easy to unit-test in
+    // isolation) and puts the consecutive-duplicate dedup in one place, so the line
+    // and polygon callers can't drift apart on it. (Both styles measure the same;
+    // the line caller reuses `points`/`segs` in place, so construction is still a
+    // single pass.) The final segment endpoint is NOT pushed; it is returned as
+    // `lastPoint` so the caller can either append it (open side) or close the ring
+    // on its first
+    // vertex (closed outline -- its collinear midpoint seam makes the recomputed
+    // final point a sub-ULP duplicate of the first offset vertex, which must be
+    // dropped rather than emitted, see makeLeftBufferRings closure notes).
+    function traceCleanOffsetSide(verts, dist) {
       var x1, y1, x2, y2, bearing, bearingPrev, joinAngle, hit;
-      var p1, p2, p1Prev, p2Prev;
-      var firstBearing, lastBearing, joinPoints;
-      var pos = 0;
-      function pushPt(p) {
-        var before = points.length;
-        addPoint(points, p);
-        if (points.length > before) srcPos.push(pos);
+      var p1, p2, p1Prev, p2Prev, firstBearing, lastBearing, joinPoints, i;
+      var points = [], segs = [], dipTags = [], fanApartBends = [];
+      var vertsSegIndex = null;
+      // tag: 1 marks a vertex emitted as part of a reversed concave-join arc
+      // (the "dip" the construction inserts when adjacent offset segments do not
+      // meet locally). These runs are pure self-overlap artifacts, so loop
+      // removal can key on them directly instead of guessing from ring geometry.
+      function add(p, segId, tag) {
+        var prev = points[points.length - 1];
+        if (prev && prev[0] === p[0] && prev[1] === p[1]) return;
+        points.push(p);
+        segs.push(segId);
+        dipTags.push(tag ? 1 : 0);
       }
-      function pushPts(pts) {
-        for (var i = 0; i < pts.length; i++) pushPt(pts[i]);
-      }
+      var concaveJoin = opts.coarse_bridge ? makeCoarseConcaveJoin : makeConcaveJoin;
       for (var segId = 0; segId < verts.length - 1; segId++) {
         x1 = verts[segId][0];
         y1 = verts[segId][1];
@@ -43246,42 +44135,40 @@ ${svg}
         bearing = bearingDegrees2D(x1, y1, x2, y2);
         p1 = getOffsetPoint(x1, y1, bearing - 90, dist);
         p2 = getOffsetPoint(x2, y2, bearing - 90, dist);
-        pos = segId;
         if (segId === 0) {
-          pushPt(p1);
+          add(p1, segId);
           firstBearing = bearing;
         } else {
           joinAngle = getJoinAngle(bearingPrev, bearing);
-          if (opts.winding_fill && joinAngle < 0) {
-            // Clipper2-style concave join: never cut the band. Walk the full
-            // incoming offset (p2Prev), dip back to the original vertex, then
-            // walk out the full outgoing offset (p1). The self-overlapping
-            // pocket this creates is resolved by the winding-number union
-            // (it cancels where another band covers it, survives where the
-            // concavity is real), so no band-coverage audit is needed.
-            pushPt(p2Prev);
-            pushPt([x1, y1]);
-            pushPt(p1);
-          } else if (joinAngle > roundJoinSegAngle * 1.5) {
-            joinPoints = makeOutsideRoundJoin(x1, y1, bearingPrev - 90, joinAngle, dist);
-            pushPts(joinPoints);
+          if (joinAngle > roundJoinSegAngle * 1.5) {
+            joinPoints = makeInscribedRoundJoin(x1, y1, bearingPrev - 90, joinAngle, dist);
+            for (i = 0; i < joinPoints.length; i++) add(joinPoints[i], segId);
             p1 = joinPoints[joinPoints.length - 1];
           } else if (joinAngle > -1e-10 && joinAngle < 1e-10) {
-            pushPt(p1);
+            add(p1, segId);
           } else if (joinAngle > 0 && (hit = elbowJoin(p1Prev, p2Prev, p1, p2,
               bearingPrev, bearing, x1, y1, dist)) ||
               joinAngle < 0 && (hit = bufferSegmentIntersection(p1Prev, p2Prev, p1, p2))) {
-            pushPt(hit);
+            add(hit, segId);
             p1 = hit;
           } else if (joinAngle > 0) {
-            pushPt(p1);
+            add(p1, segId);
           } else if (joinAngle < 0 && (hit = shallowAngleJoin(p2Prev, p1, x1, y1, dist))) {
-            pushPt(hit);
+            add(hit, segId);
             p1 = hit;
           } else {
-            pushPt(p2Prev);
-            pushPts(makeConcaveJoin(x1, y1, bearing - 90, -joinAngle, dist));
-            pushPt(p1);
+            add(p2Prev, segId, 1);
+            joinPoints = concaveJoin(x1, y1, bearing - 90, -joinAngle, dist);
+            if (useGapPatch(opts, useMercator) &&
+                offsetEdgesFanApart(p1Prev, p2Prev, p1, p2)) {
+              if (!vertsSegIndex) vertsSegIndex = buildVertsSegmentIndex(verts);
+              if (wedgeIsExposed(vertsSegIndex, segId - 1, segId, x1, y1,
+                  joinPoints, p2Prev, p1)) {
+                fanApartBends.push(segId);
+              }
+            }
+            for (i = 0; i < joinPoints.length; i++) add(joinPoints[i], segId, 1);
+            add(p1, segId, 1);
           }
         }
         bearingPrev = bearing;
@@ -43289,29 +44176,57 @@ ${svg}
         p2Prev = p2;
         lastBearing = bearing;
       }
-      pos = verts.length - 1;
-      pushPt(p2Prev);
       return {
         points: points,
-        srcPos: srcPos,
+        segs: segs,
+        dipTags: dipTags,
+        fanApartBends: fanApartBends,
         firstBearing: firstBearing,
-        lastBearing: lastBearing
+        lastBearing: lastBearing,
+        lastPoint: p2Prev,
+        lastSeg: verts.length - 1
       };
     }
 
-    function addPoint(arr, p) {
-      var prev = arr[arr.length - 1];
-      if (!prev || prev[0] !== p[0] || prev[1] !== p[1]) {
-        arr.push(p);
+    function makeOffsetSide(verts, dist) {
+      // Thin wrapper over the shared traceCleanOffsetSide construction. The tracer
+      // already returns the deduped offset polyline (points[]) and a parallel
+      // srcPos[] of each point's source segment (so loop removal can judge a
+      // self-crossing by the turn of the originating path span rather than by the
+      // unreliable geometry of the offset itself), so we reuse those arrays in
+      // place and only append the final segment endpoint here (with the same
+      // consecutive-duplicate guard); endpoint caps are added by the caller.
+      var info = traceCleanOffsetSide(verts, dist);
+      var points = info.points;
+      var srcPos = info.segs;
+      var dipTags = info.dipTags;
+      var last = info.lastPoint;
+      if (last) {
+        var prev = points[points.length - 1];
+        if (!prev || prev[0] !== last[0] || prev[1] !== last[1]) {
+          points.push(last);
+          srcPos.push(info.lastSeg);
+          dipTags.push(0);
+        }
       }
+      return {
+        points: points,
+        srcPos: srcPos,
+        dipTags: dipTags,
+        fanApartBends: info.fanApartBends,
+        firstBearing: info.firstBearing,
+        lastBearing: info.lastBearing
+      };
     }
 
     // Reduce a path's vertex count with Douglas-Peucker simplification
     // before buffering. Removed vertices lie within the interval of the
     // simplified path, so the buffer outline deviates from the unsimplified
-    // buffer by at most the interval; D.P. retains locally extreme vertices
-    // (the ones that determine the outline), so the typical deviation is
-    // much smaller. Collapsed paths fall back to their original vertices: a
+    // buffer by at most the interval (see getBufferSimplifyFunction for the
+    // empirical calibration). D.P. retains locally extreme vertices (the ones
+    // that determine the outline), so the typical deviation is much smaller.
+    // End-segment bearings are pinned (kk[1] and kk[n-2]) so cap geometry
+    // stays exact. Collapsed paths fall back to their original vertices: a
     // small ring is below the error budget, but its buffer is a whole disk.
     function presimplifyPathVerts(verts, interval, dist) {
       var n = verts.length;
@@ -43340,88 +44255,12 @@ ${svg}
       // segments are preserved exactly: cap geometry at path endpoints
       // (flat caps especially) depends on them.
       kk[1] = kk[n-2] = Infinity;
-      if (oneSidedBuffer) {
-        // One-sided coverage is directional, so the turning that
-        // simplification concentrates into single bends must stay below the
-        // angle whose corner cut at the buffer radius would exceed the
-        // simplification interval (see limitGapTurning).
-        limitGapTurning(verts, kk, interval,
-          2 * Math.acos(1 / (1 + interval / (dist * mercScale))));
-      }
       var verts2 = [];
       for (i = 0; i < n; i++) {
         if (kk[i] >= interval) verts2.push(verts[i]);
       }
       var closed = verts[0][0] === verts[n-1][0] && verts[0][1] === verts[n-1][1];
       return verts2.length >= (closed ? 4 : 2) ? verts2 : verts;
-    }
-
-    // One-sided buffer coverage is directional: each segment's band lies on
-    // one side of its own bearing, so the angular structure of the path
-    // matters with weight proportional to the buffer radius, not just its
-    // positional structure. Replacing a sub-path with a chord concentrates
-    // the sub-path's turning into the chord's two end joints: convex
-    // turning is harmless (round joins reproduce the full fan of coverage
-    // around a retained vertex), but concentrated concave turning B deepens
-    // the corner cut at the joint from gradual elbow cuts to a single cut
-    // ~ r * (1/cos(B/2) - 1) deeper, and a removed self-loop's 360 degrees
-    // of turning would cost a whole swept disk. Capping each gap's total
-    // absolute turning (interior bends plus the bearing mismatch between
-    // the chord and the gap's end segments) at the angle whose corner cut
-    // equals the simplification interval keeps the one-sided buffer's error
-    // within the interval; where a gap exceeds the cap, re-retain its most
-    // prominent vertex (the D.P. split point) and re-check the halves. A
-    // self-loop subdivides into a coarse polygon with the same total
-    // turning, which sweeps the same disk.
-    function limitGapTurning(verts, kk, interval, maxTurn) {
-      var stack = [];
-      var prev = 0;
-      var i, a, b, gap;
-      for (i = 1; i < verts.length; i++) {
-        if (kk[i] >= interval) {
-          if (i - prev > 1) stack.push([prev, i]);
-          prev = i;
-        }
-      }
-      while (stack.length > 0) {
-        gap = stack.pop();
-        a = gap[0];
-        b = gap[1];
-        if (b - a < 2 || gapTurning(verts, a, b) <= maxTurn) continue;
-        var maxI = a + 1;
-        for (i = a + 2; i < b; i++) {
-          if (kk[i] > kk[maxI]) maxI = i;
-        }
-        kk[maxI] = Infinity;
-        stack.push([a, maxI], [maxI, b]);
-      }
-    }
-
-    // Total absolute turning (in radians) concentrated by replacing the
-    // sub-path verts[a..b] with a single chord: bends interior to the gap,
-    // plus the mismatch between the chord bearing and the bearings of the
-    // gap's first and last segments.
-    function gapTurning(verts, a, b) {
-      var chord = Math.atan2(verts[b][0] - verts[a][0], verts[b][1] - verts[a][1]);
-      if (verts[b][0] === verts[a][0] && verts[b][1] === verts[a][1]) {
-        return Infinity; // gap closes on itself (a loop)
-      }
-      var total = 0;
-      var prev = chord;
-      for (var i = a; i < b; i++) {
-        var bearing = Math.atan2(verts[i+1][0] - verts[i][0], verts[i+1][1] - verts[i][1]);
-        total += Math.abs(angleDelta(prev, bearing));
-        prev = bearing;
-      }
-      total += Math.abs(angleDelta(prev, chord));
-      return total;
-    }
-
-    function angleDelta(a, b) {
-      var d = b - a;
-      if (d > Math.PI) d -= 2 * Math.PI;
-      if (d < -Math.PI) d += 2 * Math.PI;
-      return d;
     }
 
     // Traverse a path with the (possibly projecting) path iterator,
@@ -43456,44 +44295,35 @@ ${svg}
         [getOffsetPoint(x, y, startDir + 180, dist)];
     }
 
-    // The vertices of this join are outside of the arc that it approximates and
-    // the segments of the join touch the arc at their midpoints.
-    // The first and last of the returned vertices extend the segments on either
-    // side of the join.
-    function makeOutsideRoundJoin(cx, cy, startBearing, arcAngle, dist) {
-      // point count of 1 would be an elbow joint
-      // (elbow joins should be created elsewhere)
+    // Inscribed round join: vertices on the offset arc at equal angle steps,
+    // each at the true offset distance (geodesic or planar).
+    function makeInscribedRoundJoin(cx, cy, startBearing, arcAngle, dist) {
       var pointCount = Math.max(1, Math.round(arcAngle / roundJoinSegAngle));
       var stepAngle = arcAngle / pointCount;
       var points = [];
-      var i = 0;
-      var a, b, c, d, joinP, tanP, bearing;
-      while (i <= pointCount) {
-        bearing = startBearing + stepAngle * i;
-        tanP = getOffsetPoint(cx, cy, bearing, dist);
-        c = getOffsetPoint(tanP[0], tanP[1], bearing - 90, dist * 2);
-        d = getOffsetPoint(tanP[0], tanP[1], bearing + 90, dist * 2);
-        if (i > 0) {
-          joinP = bufferSegmentIntersection(a, b, c, d);
-          if (!joinP) {
-            if (opts.polar) {
-              // Near a clamped pole/antimeridian corner the swept offset tangents
-              // collapse onto the boundary and stop intersecting; hug the clamped
-              // tangent point so the round join degenerates to the pinned corner
-              // instead of throwing.
-              points.push(tanP);
-            } else {
-              throw Error(`no intersection on ${i} of ${pointCount}`);
-            }
-          } else {
-            points.push(joinP);
-          }
-        }
-        a = c;
-        b = d;
-        i++;
+      for (var i = 1; i <= pointCount; i++) {
+        points.push(getOffsetPoint(cx, cy, startBearing + stepAngle * i, dist));
       }
       return points;
+    }
+
+    // True when the two consecutive offset edges of a negative-angle (concave)
+    // bend do not overlap but instead diverge: the infinite-line intersection of
+    // the incoming edge (a->b) and outgoing edge (c->d) lies behind the incoming
+    // edge (t < 0) and beyond the outgoing edge (u > 1). A planar concave bend
+    // always overlaps (the crossing is in front: t > 1, u < 0); this fan-apart
+    // configuration only arises when a variable geodesic offset distance stretches
+    // the two edges past each other, leaving the outer-edge gap we want to bridge
+    // with a forward round join instead of a reversed (doubling-back) arc.
+    function offsetEdgesFanApart(a, b, c, d) {
+      var rx = b[0] - a[0], ry = b[1] - a[1];
+      var sx = d[0] - c[0], sy = d[1] - c[1];
+      var den = rx * sy - ry * sx;
+      if (den === 0) return false; // parallel: keep the reversed bridge
+      var wx = c[0] - a[0], wy = c[1] - a[1];
+      var t = (wx * sy - wy * sx) / den;
+      var u = (wx * ry - wy * rx) / den;
+      return t < 0 && u > 1;
     }
 
     function shallowAngleJoin(a, b, cx, cy, dist) {
@@ -43535,6 +44365,24 @@ ${svg}
 
     function makeConcaveJoin(cx, cy, startBearing, arcAngle, dist) {
       return makeRoundJoin(cx, cy, startBearing, arcAngle, dist).reverse();
+    }
+
+    // Coarse alternative to makeConcaveJoin (selected by opts.coarse_bridge in
+    // traceCleanOffsetSide): bridges a concave bend with as few as one reversed
+    // arc vertex (CLEAN_OUTLINE_BRIDGE_STEP), producing a smaller ring for the
+    // winding dissolve to chew through. The reversed bridge only bounds a self-
+    // overlap loop the direction remover collapses, so the coarser resolution
+    // does not change the final boundary -- it just trades a little construction
+    // fidelity for dissolve speed.
+    function makeCoarseConcaveJoin(cx, cy, startBearing, arcAngle, dist) {
+      var segs = Math.min(roundJoinSegsPerQuadrant,
+        Math.max(1, Math.ceil(arcAngle / CLEAN_OUTLINE_BRIDGE_STEP)));
+      var points = [];
+      var increment = arcAngle / (segs + 1);
+      for (var i = 1; i <= segs; i++) {
+        points.push(getOffsetPoint(cx, cy, startBearing + increment * i, dist));
+      }
+      return points.reverse();
     }
 
     // get interior vertices of an interpolated CW arc
@@ -43666,18 +44514,9 @@ ${svg}
     if (debug) {
       // Debug visualizations (raw offset rings, mosaic) want the whole layer's
       // geometry/topology in one dataset; keep the original global dissolve for
-      // them (no artifact-hole filter runs in debug mode anyway). Mirror the real
-      // pipeline's construction so the debug view reflects what the buffer
-      // actually builds: an all-closed-ring two-sided layer uses the winding-fill
-      // + loop-removal construction (and a winding-number dissolve), so
-      // debug-offset shows the loop-removed offset rings and the no-loop-removal
-      // flag has a visible effect. (See makePolylineBufferTwoSidedPerFeature.)
-      var useWindingConstruction = !oneSided && layerIsAllClosed(lyr, dataset.arcs);
-      var debugMakerOpts = useWindingConstruction ?
-        Object.assign({}, opts, {winding_fill: true}) : opts;
-      var debugDissolveOpts = Object.assign({}, opts, {per_part_holes: true},
-        useWindingConstruction ? {winding_fill: true} : null);
-      dataset2 = importGeoJSON(makeShapeBufferGeoJSON(lyr, dataset, debugMakerOpts), {});
+      // them (no artifact-hole filter runs in debug mode anyway).
+      var debugDissolveOpts = getOutlineBufferDissolveOpts(opts);
+      dataset2 = importGeoJSON(makeShapeBufferGeoJSON(lyr, dataset, opts), {});
       dissolveBufferDataset2(dataset2, debugDissolveOpts);
     } else {
       dataset2 = makePolylineBufferTwoSidedPerFeature(lyr, dataset, opts, spherical);
@@ -43692,48 +44531,13 @@ ${svg}
   // Two-sided buffer pipeline, run per source feature. Each feature's outline
   // rings are dissolved (and artifact-hole filtered) in isolation, then the
   // per-feature results are merged into one polygon layer (one shape per buffered
-  // source feature, in input order). Buffering does not union across features --
-  // 560 input features yield 560 output shapes -- so a single global dissolve of
-  // every feature's rings pays to intersect overlapping buffers of distinct
-  // features whose tiles are then selected per shape anyway. On a world-scale
-  // line layer that global planar arrangement exploded the arc count ~20x and ran
-  // the process out of memory; per-feature isolation bounds peak memory to the
-  // most complex single feature. The dissolve collapses any internal cuts, so
-  // each feature's output boundary is identical to the global pipeline's.
-  // True if every part of a polyline shape is a closed ring (first vertex ==
-  // last vertex), so its two-sided buffer is an annulus per ring.
-  function shapeIsAllClosed(shape, arcs) {
-    return !!shape && shape.length > 0 && shape.every(function(part) {
-      return pathIsClosed(part, arcs);
-    });
-  }
-
-  // True if every shape in the layer is made entirely of closed rings.
-  function layerIsAllClosed(lyr, arcs) {
-    var shapes = lyr.shapes || [];
-    return shapes.length > 0 && shapes.every(function(shape) {
-      return shapeIsAllClosed(shape, arcs);
-    });
-  }
-
+  // source feature, in input order).
   function makePolylineBufferTwoSidedPerFeature(lyr, dataset, opts, spherical) {
     var distanceFn = getBufferDistanceFunction(lyr, dataset, opts);
-    var simplifyFn = getBufferSimplifyFunction(dataset, opts); // null if tolerance=0
     var makerOpts = Object.assign({geometry_type: lyr.geometry_type}, opts);
     var makeShapeBuffer = getPolylineBufferMaker(dataset, makerOpts);
-    // A shape whose parts are all closed rings buffers to an annulus per ring. The
-    // default (open-path) construction builds each side as many split sections plus
-    // join-sector rings (no loop removal), which floods the dissolve with raw rings
-    // (~8x more on a dense coastline). Instead route these shapes through the same
-    // winding-fill + loop-removal construction the polygon-ring buffer uses: one
-    // continuous offset ring per side, with self-overlap loops stripped, resolved
-    // by a winding-number dissolve. Open or mixed shapes keep the tuned outline +
-    // boundary-flood path unchanged.
-    var closedMaker = getPolylineBufferMaker(dataset,
-      Object.assign({}, makerOpts, {winding_fill: true}));
     var useFilter = useArtifactHoleFilter(opts);
-    var quadSegs = opts.quad_segs >= 2 ? opts.quad_segs : 8;
-    var sagPct = 1 - Math.cos(Math.PI / 4 / quadSegs);
+    var outlineDissolveOpts = getOutlineBufferDissolveOpts(opts);
     // The two-sided pipeline is also reached by a one-sided buffer when the
     // winding fill is explicitly disabled (winding_fill: false); the hole filter
     // must then use its one-sided coverage test (see filterOutlineArtifactHolesFromShape).
@@ -43742,28 +44546,18 @@ ${svg}
       side: opts.right ? -1 : 1,
       roundCaps: (opts.cap_style || 'round') == 'round'
     } : null;
-    var dissolveOpts = Object.assign({}, opts, {per_part_holes: true});
-    var closedDissolveOpts = Object.assign({}, dissolveOpts, {winding_fill: true});
     var datasets = [];
     lyr.shapes.forEach(function(shape, i) {
       var distance = distanceFn(i);
       if (!distance || !shape) return;
-      // Closed-ring fast path only for ordinary two-sided buffers (the one-sided
-      // construction reaches this function with winding_fill:false and needs its
-      // own coverage handling); mixed open/closed shapes fall back too.
-      var allClosed = !oneSided && shapeIsAllClosed(shape, dataset.arcs);
-      var retn = (allClosed ? closedMaker : makeShapeBuffer)(shape, distance);
+      var retn = makeShapeBuffer(shape, distance);
       var feats = (Array.isArray(retn) ? retn : [retn]).filter(Boolean);
       if (!feats.length) return;
       var ds = importGeoJSON(getBufferGeoJSON(feats), {});
-      dissolveBufferDataset2(ds, allClosed ? closedDissolveOpts : dissolveOpts);
-      if (useFilter && !allClosed) {
-        var bufLyr = ds.layers[0];
-        var intervalPct = simplifyFn ? simplifyFn(distance) / distance : 0;
-        bufLyr.shapes = bufLyr.shapes.map(function(bufShape) {
-          return filterOutlineArtifactHolesFromShape(bufShape, ds.arcs, shape,
-            dataset.arcs, distance, intervalPct, sagPct, oneSided, sideOpts, spherical);
-        });
+      dissolveBufferDataset2(ds, outlineDissolveOpts);
+      if (useFilter) {
+        applyOutlineArtifactHoleFilter(ds.layers[0], ds.arcs, lyr, dataset, opts,
+          spherical, {oneSided: oneSided, sideOpts: sideOpts, srcIndex: i});
       }
       datasets.push(ds);
     });
@@ -44084,6 +44878,32 @@ ${svg}
 
   function useArtifactHoleFilter(opts) {
     return !opts.debug_offset && !opts.debug_mosaic;
+  }
+
+  // Apply the outline artifact-hole filter to every shape in a buffer layer,
+  // using the parallel source layer for distance-to-path tests. Shared by the
+  // two-sided line buffer (per feature) and the clean-outline polygon grow.
+  function applyOutlineArtifactHoleFilter(bufLyr, bufArcs, srcLyr, srcDataset,
+      opts, spherical, filterOpts) {
+    filterOpts = filterOpts || {};
+    if (!useArtifactHoleFilter(opts)) return;
+    var distanceFn = getBufferDistanceFunction(srcLyr, srcDataset, opts);
+    var simplifyFn = getBufferSimplifyFunction(srcDataset, opts);
+    var quadSegs = opts.quad_segs >= 2 ? opts.quad_segs : 8;
+    var sagPct = 1 - Math.cos(Math.PI / 4 / quadSegs);
+    var oneSided = !!filterOpts.oneSided;
+    var sideOpts = filterOpts.sideOpts || null;
+    var srcArcs = srcDataset.arcs;
+    bufLyr.shapes = bufLyr.shapes.map(function(bufShape, i) {
+      var srcIdx = filterOpts.srcIndex != null ? filterOpts.srcIndex : i;
+      var srcShape = srcLyr.shapes[srcIdx];
+      var distance = distanceFn(srcIdx);
+      if (!bufShape || !srcShape || !(distance > 0)) return bufShape;
+      if (filterOpts.skipShape && filterOpts.skipShape(srcShape, srcArcs)) return bufShape;
+      var intervalPct = simplifyFn ? simplifyFn(distance) / distance : 0;
+      return filterOutlineArtifactHolesFromShape(bufShape, bufArcs, srcShape,
+        srcArcs, distance, intervalPct, sagPct, oneSided, sideOpts, spherical);
+    });
   }
 
   // Remove artifact rings left by dissolving the self-intersecting outline rings
@@ -44999,10 +45819,55 @@ ${svg}
       });
       profileEnd('medial:simplify');
     }
+    // Extend each chain's endpoints outward along their terminal tangent. A medial
+    // chain is a cut-line: it only subdivides a contested buffer tile if it spans
+    // from boundary to boundary, so the mosaic builder keeps it (an end that
+    // terminates in a tile's interior is acyclic and detachAcyclicArcs prunes the
+    // whole path). The sampled-site Voronoi stops a fraction of the site spacing
+    // short of where two source rings meet (the gap pinches shut), leaving that end
+    // dangling INSIDE the buffer. Extending past the source boundary lets the cut
+    // node against it; the overshoot lands outside the contested region and is
+    // self-pruned. Without this, a whole river-gap tile is left uncut and assigned
+    // wholesale to one feature (e.g. the Columbia between Oregon and Washington).
+    var extendDist = 0;
+    for (var di = 0; di < coordDistances.length; di++) {
+      if (coordDistances[di] > extendDist) extendDist = coordDistances[di];
+    }
+    if (extendDist > 0) {
+      chains = chains.map(function(chain) {
+        return extendChainEndpoints(chain, extendDist);
+      });
+    }
     return {
       type: 'MultiLineString',
       coordinates: chains
     };
+  }
+
+  // Extend an open chain past both endpoints by @len along the direction of the
+  // terminal segment (so the cut-line pokes out of the contested tile at each end
+  // and nodes against the enclosing boundary). Zero-length terminal segments and
+  // chains shorter than 2 points are left unchanged.
+  function extendChainEndpoints(chain, len) {
+    if (!chain || chain.length < 2) return chain;
+    var out = chain.concat();
+    var head = projectPast(out[0], out[1], len);
+    if (head) out.unshift(head);
+    var n = out.length;
+    var tail = projectPast(out[n - 1], out[n - 2], len);
+    if (tail) out.push(tail);
+    return out;
+  }
+
+  // Point at distance @len beyond @from, going away from @toward (i.e. continuing
+  // the from->beyond ray that the toward->from segment defines). Returns null for a
+  // degenerate (coincident) segment.
+  function projectPast(from, toward, len) {
+    var dx = from[0] - toward[0];
+    var dy = from[1] - toward[1];
+    var d = Math.sqrt(dx * dx + dy * dy);
+    if (d === 0) return null;
+    return [from[0] + dx / d * len, from[1] + dy / d * len];
   }
 
   // Build the medial-construction triangles for the -buffer debug-delaunay option
@@ -46698,6 +47563,14 @@ ${svg}
       warn('debug-mosaic is not implemented for polygon buffers; ignoring');
       opts = Object.assign({}, opts, {debug_mosaic: false});
     }
+    // The clean-outline-winding construction is the default polygon-grow outline
+    // and the topological per-feature offset (band-method restores the older band
+    // ribbon). Spurious dissolve holes on the default grow are removed by the
+    // shared outline artifact-hole filter; gap-patch handles geodesic fan-apart
+    // outer-wall gaps at construction time.
+    if (!opts.band_method) {
+      opts = Object.assign({}, opts, {clean_outline_winding: true});
+    }
     if (opts.fill_gaps) {
       // Fill enclosed holes and narrow-mouthed inlets without growing the outer
       // boundary -- a topology-aware morphological closing (see
@@ -46756,8 +47629,21 @@ ${svg}
         dissolveBufferDataset2(dataset2, opts);
       }
     }
+    if (useOutlineGrowArtifactFilter(opts)) {
+      applyOutlineArtifactHoleFilter(dataset2.layers[0], dataset2.arcs,
+        lyr, dataset, opts, spherical, {
+          skipShape: function(shape, arcs) {
+            return shapeHasFillInsideHole(shape, arcs);
+          }
+        });
+    }
     cullSubTolerancePolygonArtifacts(dataset2, lyr, dataset, opts);
     return dataset2;
+  }
+
+  // True for clean-outline polygon grow and topological (not band-method or debug).
+  function useOutlineGrowArtifactFilter(opts) {
+    return !opts.band_method && !bufferOutputIsDebug(opts);
   }
 
   // True when the buffer is producing a debug view (raw offsets or medial
@@ -46775,10 +47661,9 @@ ${svg}
   // is dropped. The smallest legitimate buffer part (the grow of a point-like
   // feature, ~pi*d^2) is ~4 orders of magnitude larger, so the threshold never
   // touches real geometry, and a genuinely thin-but-long fill (area =
-  // tol*length >> tol^2) is kept. Holes are intentionally left alone: a small hole
-  // can be a neighbor's preserved territory (see removePositiveBufferArtifactHoles,
-  // which is territory-aware) and must not be filled here. Disabled when tolerance
-  // is turned off (tolerance=0), matching the medial-simplify contract.
+  // tol*length >> tol^2) is kept. Holes are intentionally left alone; the outline
+  // artifact-hole filter runs after dissolve and keeps legitimate carved holes.
+  // Disabled when tolerance is turned off (tolerance=0), matching the medial-simplify contract.
   function cullSubTolerancePolygonArtifacts(outDataset, srcLyr, srcDataset, opts) {
     if (opts.tolerance === 0 || opts.tolerance == '0' || opts.tolerance == '0%') return;
     if (!outDataset || !outDataset.arcs) return;
@@ -46810,8 +47695,9 @@ ${svg}
   // - The clean-outline construction is the default for ordinary polygon grow
   //   (outer rings offset to a single self-contained loop; far fewer rings and
   //   self-intersections into the winding dissolve than the band ribbon).
-  // - The topological pipeline (which pre-dissolves per feature into a shared
-  //   mosaic) and the band-method escape hatch keep the band-ribbon construction.
+  // - The band-method escape hatch keeps the band-ribbon construction; the
+  //   topological pipeline uses the same clean-outline grow (with shared-arc path
+  //   splitting) unless band-method is set.
   // - Negative buffers and hole shrink fall back to the band erode inside the
   //   outline path itself.
   // Shared by makePolygonBuffer and makePolarPolygonBuffer so the polar option is
@@ -47006,13 +47892,13 @@ ${svg}
   // Drives the same per-ring makers the real construction uses, so the view shows
   // exactly what is built and 'no-loop-removal' has a visible effect (loop removal
   // runs inside the maker -- see buildOneSidedRings). Positive grow uses the
-  // clean-outline maker by default (the band maker under band-method/topological);
-  // holes are eroded with the band maker reversed to outer orientation (matching
+  // clean-outline maker by default (the band maker under band-method); holes are
+  // eroded with the band maker reversed to outer orientation (matching
   // makeOutlineBufferGeometry); negative (erode) buffers offset every ring inward
   // with the band maker.
   function makePolygonDebugOffsetGeoJSON(lyr, dataset, opts) {
     var distanceFn = getBufferDistanceFunction(lyr, dataset, opts);
-    var useOutline = !opts.band_method && !opts.topological;
+    var useOutline = !opts.band_method;
     var leftOpts = useOutline ? Object.assign({}, opts, {outline: true}) : opts;
     var leftMaker = getPolygonRingBufferMaker(dataset, leftOpts, 'left');
     var rightMaker = getPolygonRingBufferMaker(dataset,
@@ -47158,17 +48044,7 @@ ${svg}
       getBufferMultiPolygonCoords(rings.outer, distance, outerMaker) : [];
     if (outerLoops.length === 0) return null;
     // Resolve the outer offset loops' self-overlaps into clean grown polygons.
-    var coords = dissolveOffsetRingsToCoords(outerLoops, opts);
-    if (coords.length === 0) return null;
-    // Strip artifact holes left by the outer grow (the offset loops dissolve into
-    // a clean fill, so any interior ring is a self-overlap artifact) BEFORE
-    // carving the real holes. The artifact filter's heuristic can otherwise
-    // delete a legitimately-shrunk hole whose eroded boundary happens to run near
-    // the source outline; the carved holes below are explicit and known-good, so
-    // they must not pass through it.
-    var grown = removePositiveBufferArtifactHoles(
-      {type: 'MultiPolygon', coordinates: coords}, shape, arcs, distance);
-    coords = grown ? grown.coordinates : [];
+    var coords = dissolveOffsetRingsToCoords(outerLoops, opts, true);
     if (coords.length === 0) return null;
     if (rings.holes.length > 0) {
       // Shrink the holes (an inward offset) with the band erode: treat each hole
@@ -47182,6 +48058,42 @@ ${svg}
     }
     if (coords.length === 0) return null;
     return {type: 'MultiPolygon', coordinates: coords};
+  }
+
+  // Clean-outline grow for one topological feature: offset each shared-arc path
+  // chain (see getPolygonBufferPathData), grow outers with the outline maker,
+  // shrink holes with the band erode, then union -- same hole semantics as
+  // makeOutlineBufferGeometry but with inter-feature path splitting preserved.
+  //
+  // A chain is classified as outer (grow) vs hole (shrink) by the signed area of
+  // the CLOSED SOURCE RING it was split from, not by the chain's own area: an
+  // unshared-boundary chain is an OPEN fragment (e.g. a state's international or
+  // coastline segment between two shared interior borders), whose planar signed
+  // area has an arbitrary sign and would misclassify a real outer boundary as a
+  // hole -- eroding it inward instead of growing it (Ohio's Lake Erie coast, New
+  // Mexico's Mexico border).
+  function makeTopologicalOutlineBufferCoords(shape, arcs, distance, uniqueArcTest,
+      opts, outerMaker, holeEroder) {
+    var outer = [];
+    var holes = [];
+    (shape || []).forEach(function(ring) {
+      var target = getPlanarPathArea(ring, arcs) < 0 ? holes : outer;
+      var chains = uniqueArcTest ? splitPathAtSharedArcs(ring, uniqueArcTest) :
+        [ring.concat()];
+      chains.forEach(function(chain) { target.push(chain); });
+    });
+    var outerLoops = outer.length > 0 ?
+      getBufferMultiPolygonCoords(outer, distance, outerMaker) : [];
+    if (outerLoops.length === 0) return [];
+    var coords = dissolveOffsetRingsToCoords(outerLoops, opts, true);
+    if (coords.length === 0) return [];
+    if (holes.length > 0) {
+      var holeGeom = holeEroder(holes.map(reversePath), distance);
+      if (holeGeom && holeGeom.coordinates.length > 0) {
+        coords = subtractHolesFromOuter(coords, holeGeom.coordinates);
+      }
+    }
+    return coords;
   }
 
   // Carve clean shrunk-hole regions out of clean grown-outer polygons. Both arrive
@@ -47260,13 +48172,23 @@ ${svg}
     var hasNegativeDistance = false;
     if (useTopologicalMode) {
       // The topological pipeline selects mosaic tiles by source membership
-      // (boundary flood), which cannot resolve the self-overlapping winding-fill
-      // ring. So each feature's winding-fill offset rings are pre-dissolved into a
-      // clean (non-self-overlapping) polygon before they enter the shared mosaic;
-      // the construction speedup (loop removal cutting per-feature self-
-      // intersections) is preserved, and the mosaic is unchanged.
+      // (boundary flood), which cannot resolve self-overlapping offset rings.
+      // Each feature's offset is pre-dissolved into a clean polygon before it
+      // enters the shared mosaic. By default this uses the same clean-outline grow
+      // as ordinary polygon buffers (gap-patch, loop removal); band-method keeps
+      // the older band ribbon.
+      var topoLeftOpts = opts.band_method ? opts :
+        Object.assign({}, opts, {outline: true});
+      var outerMaker = getPolygonRingBufferMaker(dataset, topoLeftOpts, 'left');
+      var bandOpts = Object.assign({}, opts, {outline: false});
+      var bandLeftMaker = getPolygonRingBufferMaker(dataset, bandOpts, 'left');
+      var bandRightMaker = getPolygonRingBufferMaker(dataset, bandOpts, 'right');
+      var holeEroder = function(holeShape, dist) {
+        return makeNegativePolygonBufferGeometry(holeShape, dist, dataset, bandOpts,
+          bandRightMaker);
+      };
       return makeTopologicalPolygonBufferGeoJSON(lyr, dataset, opts, distanceFn,
-        uniqueArcTest, getPolygonRingBufferMaker(dataset, opts, 'left'));
+        uniqueArcTest, outerMaker, holeEroder, bandLeftMaker);
     }
     // Closed source rings are offset with the winding-fill construction: one
     // self-overlapping ring per source ring (its overshoot loops resolved by the
@@ -47332,6 +48254,7 @@ ${svg}
     // for callers that request winding-fill (see the 'band-method' option).
     var useWinding = !opts.band_method;
     var makerOpts = Object.assign({}, opts, {
+      geometry_type: 'polygon',
       left: side == 'left',
       right: side == 'right',
       // Winding-fill construction also enables overshoot-loop removal on the single
@@ -47352,7 +48275,7 @@ ${svg}
   }
 
   function makeTopologicalPolygonBufferGeoJSON(lyr, dataset, opts, distanceFn,
-      uniqueArcTest, bufferMaker) {
+      uniqueArcTest, outerMaker, holeEroder, bandFallbackMaker) {
     var shapes = lyr.shapes || [];
     var distances = [];
     var sourceIds = [];
@@ -47376,18 +48299,22 @@ ${svg}
     profileStart('topo:offsets');
     shapes.forEach(function(shape, i) {
       var distance = distances[i];
-      var pathData, bufferCoords;
+      var bufferCoords;
       if (!distance || !shape) return;
       hasPositiveDistance = true;
-      pathData = getPolygonBufferPathData(shape, uniqueArcTest);
-      bufferCoords = getBufferMultiPolygonCoords(pathData.paths, distance, bufferMaker);
-      // Resolve the winding-fill rings' self-overlaps into a clean polygon (the
-      // mosaic's boundary-flood membership cannot), so this feature enters the
-      // shared mosaic as an ordinary polygon. The band-method fallback emits
-      // boundary-flood-resolvable bands, so it feeds the mosaic directly (as the
-      // topological pipeline did before the winding-fill construction).
-      if (!opts.band_method) {
-        bufferCoords = dissolveOffsetRingsToCoords(bufferCoords, opts);
+      if (!opts.band_method && opts.clean_outline_winding &&
+          !shapeHasFillInsideHole(shape, dataset.arcs)) {
+        bufferCoords = makeTopologicalOutlineBufferCoords(shape, dataset.arcs,
+          distance, uniqueArcTest, opts, outerMaker, holeEroder);
+      } else {
+        var pathData = getPolygonBufferPathData(shape, uniqueArcTest);
+        var maker = bandFallbackMaker || outerMaker;
+        bufferCoords = getBufferMultiPolygonCoords(pathData.paths, distance, maker);
+        // Resolve winding-fill band rings' self-overlaps (the mosaic's boundary-
+        // flood membership cannot). band-method feeds bands directly.
+        if (!opts.band_method) {
+          bufferCoords = dissolveOffsetRingsToCoords(bufferCoords, opts);
+        }
       }
       if (bufferCoords.length > 0) {
         bufferIds[i] = tmpGeometries.length;
@@ -48062,11 +48989,34 @@ ${svg}
   function ringEnclosesOtherTerritory(ring, ctx) {
     var points = ctx.territoryPoints;
     if (!points) return false;
+    var bounds = getGeoJSONRingBounds(ring);
     for (var i = 0; i < points.length; i++) {
       if (points[i].featureId === ctx.featureId) continue;
+      if (!pointInGeoJSONRingBounds(points[i].x, points[i].y, bounds)) continue;
       if (pointInGeoJSONRing(points[i].x, points[i].y, ring)) return true;
     }
     return false;
+  }
+
+  function getGeoJSONRingBounds(ring) {
+    var n = ring.length - 1; // skip duplicate closing vertex
+    if (n <= 0) n = ring.length;
+    var xmin = Infinity, ymin = Infinity, xmax = -Infinity, ymax = -Infinity;
+    var i, x, y;
+    for (i = 0; i < n; i++) {
+      x = ring[i][0];
+      y = ring[i][1];
+      if (x < xmin) xmin = x;
+      if (x > xmax) xmax = x;
+      if (y < ymin) ymin = y;
+      if (y > ymax) ymax = y;
+    }
+    return {xmin: xmin, ymin: ymin, xmax: xmax, ymax: ymax};
+  }
+
+  function pointInGeoJSONRingBounds(x, y, bounds) {
+    return x >= bounds.xmin && x <= bounds.xmax &&
+      y >= bounds.ymin && y <= bounds.ymax;
   }
 
   // Ray-casting point-in-ring test for a closed GeoJSON ring (array of [x, y],
@@ -48113,9 +49063,18 @@ ${svg}
     return getCoordinateDistance(distance, arcs) * 0.5;
   }
 
+  // Minimum area for a grow-generated interior ring to be treated as a real hole
+  // rather than numerical noise. A positive buffer can legitimately enclose a hole
+  // far smaller than the buffer disk (a pocket between source arms whose mouth just
+  // closed leaves an arbitrarily small gap), so this is only a degenerate-sliver
+  // floor -- a tiny fraction of the buffer-disk area -- NOT a "holes smaller than
+  // the radius are artifacts" rule. (It used to be the full disk area d*d, which
+  // silently deleted real holes whose area was less than the radius squared; the
+  // near-source boundary classifier in positiveBufferHoleIsArtifact is what
+  // actually distinguishes self-overlap artifacts from real holes.)
   function getPositiveHoleArtifactAreaThreshold(distance, arcs) {
     var d = getCoordinateDistance(distance, arcs);
-    return d * d;
+    return d * d * 0.01;
   }
 
   function getGeoJSONRingArea(ring) {
@@ -48189,11 +49148,14 @@ ${svg}
   // dissolve. Used by the topological pipeline to feed an ordinary polygon into
   // the shared mosaic (whose boundary-flood membership cannot resolve the
   // self-overlapping construction ring directly).
-  function dissolveOffsetRingsToCoords(coords, opts) {
+  function dissolveOffsetRingsToCoords(coords, opts, outlineDissolve) {
     if (!coords || coords.length === 0) return [];
     var dataset = getBufferDataset(coords);
     if (!dataset.arcs) return [];
-    dissolveBufferDataset2(dataset, Object.assign({}, opts, {winding_fill: true}));
+    var dissolveOpts = outlineDissolve ?
+      getOutlineBufferDissolveOpts(opts) :
+      Object.assign({}, opts, {winding_fill: true});
+    dissolveBufferDataset2(dataset, dissolveOpts);
     var lyr = dataset.layers[0];
     var shape = lyr.shapes && lyr.shapes[0];
     return shape ? getPolygonMultiPolygonCoords(shape, dataset.arcs) : [];
@@ -65123,7 +66085,7 @@ ${svg}
     return name == 'rectangle' || name == 'rectangles' || name == 'filter' && opts.cleanup;
   }
 
-  var version = "0.7.33";
+  var version = "0.7.34";
 
   // Parse command line args into commands and run them
   // Function takes an optional Node-style callback. A Promise is returned if no callback is given.
