@@ -1,6 +1,8 @@
 import assert from 'assert';
 import api from '../mapshaper.js';
-import { removeBufferRingLoops } from '../src/buffer/mapshaper-buffer-loop-removal';
+import {
+  removeBufferRingLoops, removeBufferRingLoopsIterative
+} from '../src/buffer/mapshaper-buffer-loop-removal';
 
 // signed-area-free crossing check used to assert results are loop-free
 function ringHasCrossing(ring) {
@@ -132,6 +134,68 @@ describe('mapshaper-buffer-loop-removal.js', function () {
       assert.ok(!ringHasCrossing(removed));
       assert.ok(removed.length < ring.length);
     });
+  });
+
+  // Direct tests of the coverage-path accept/refuse decision. All rings: CCW
+  // square (0,0)-(1000,1000) with a self-crossing excursion spliced into the
+  // bottom edge, arranged so the dropped sub-loop is same-wound (CCW) as the
+  // parent ring: anchor segment (600,0)->(300,-300) crosses the later segment
+  // (700,-300)->(400,0) at (500,-100), and the dropped loop's below-edge lobe
+  // (~4e4 units^2) is single-covered real boundary that must not be clipped.
+  // An all-zeros dipTags array enables the coverage path (tags act as a flag).
+  describe('removeBufferRingLoopsIterative() coverage-path guards', function () {
+    function makeRing(spanExtra) {
+      var pts = [
+        [0, 0], [600, 0], [300, -300]
+      ].concat(spanExtra, [
+        [700, -300], [400, 0], [1000, 0], [1000, 1000], [0, 1000]
+      ]);
+      pts.push(pts[0].concat());
+      return pts;
+    }
+    function run(ring) {
+      var tags = ring.map(function () { return 0; });
+      return removeBufferRingLoopsIterative(
+        ring, 30, null, null, undefined, tags, undefined, 3e4);
+    }
+
+    it('collapses a covered same-wound pocket (sanity)', function () {
+      var ring = [
+        [0, 0], [400, 0], [700, 300], [300, 300], [600, 0],
+        [1000, 0], [1000, 1000], [0, 1000], [0, 0]
+      ];
+      var out = run(ring);
+      assert.ok(out.length < ring.length, 'double-covered pocket should collapse');
+    });
+
+    it('refuses to collapse a single-covered outside lobe (control)', function () {
+      var ring = makeRing([]);
+      assert.equal(run(ring).length, ring.length);
+    });
+
+    it('refuses a figure-eight span whose net signed area cancels below the floor',
+      function () {
+        // a CW inner lobe (x > 600, so it cannot touch the anchor segment)
+        // cancels the net shoelace to ~1.7e4 < the 3e4 floor while the real
+        // outside lobe is identical to the control; before the self-crossing
+        // guard the area pre-filter skipped the scanline and clipped the lobe
+        var ring = makeRing([[700, -250], [660, 50], [740, 50], [705, -250]]);
+        assert.equal(run(ring).length, ring.length);
+      });
+
+    it('refuses when a tall thin spike inflates the loop bbox past the row grid',
+      function () {
+        // the spike makes the loop bbox ~100km tall, so the uniform scanline
+        // rows all land far above the real outside lobe and measure it as
+        // zero uncovered. The direct fix (vertex-guided rows) was reverted
+        // for its cost (see "Scanline row starvation" in
+        // docs/development/buffer-line-notes.md); this case is currently kept
+        // because the self-crossing pre-filter guard changes an earlier
+        // in-span collapse decision. If this test starts failing, the row
+        // starvation hole is exposed again -- consider re-adding vertex rows.
+        var ring = makeRing([[652.4, -250], [652, 100000], [651.6, -250]]);
+        assert.equal(run(ring).length, ring.length);
+      });
   });
 
   describe('-buffer loop removal integration', function () {

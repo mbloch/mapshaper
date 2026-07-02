@@ -308,6 +308,221 @@ loops); `no-gap-patch` therefore fills some gaps the loop remover reaches
 *required*, not that it is the sole filler). Regression: `test/buffer-loop-
 removal-test.mjs` "default remover: strips self-overlaps, keeps holes".
 
+### Accept-side hardening (2026-07-02)
+
+An evaluation with adversarial synthetic rings (drive the module directly -- it
+has no imports; enable the coverage path with an all-zeros dipTags array; see
+`test/buffer-loop-removal-test.mjs` "coverage-path guards") found two
+ACCEPT-side holes. One is fixed; the other is documented below for future work.
+
+**Net-signed-area cancellation (FIXED).** The scanline pre-filter used the net
+shoelace area of the dropped loop, but a SELF-CROSSING span (figure-eight) has
+opposite-wound lobes whose signed areas cancel: a loop hiding a 4e4 real lobe
+measured a net of 1.7e4, skipped the scanline, and clipped the lobe the
+non-cancelling control refuses. |net| bounds the winding regions only for a
+simple loop; the bbox bounds them always. The skip in `collapseUncoveredArea`
+is now: bbox area < floor, OR net < floor AND the loop has no self-crossing
+(`loopEdgesCross`, O(span^2) with span <= window+2 edges, run only in the
+suspicious small-net/large-bbox band). The opposite-wound guard shares the
+net-sign weakness, but a wrong-way pass there falls through to the (now
+always-run) scanline, whose fill guard measures the true winding regions.
+Cost: ~1.5-4% of end-to-end build in isolation, fully offset by the kept
+housekeeping changes below (final module times at or below the pre-fix
+baseline on innerlines 2km/10km and greenland_merc 30km).
+
+**Scanline row starvation (KNOWN LIMITATION -- fix designed, implemented,
+measured, and REVERTED for cost).** `loopUncoveredArea`'s rows are uniform
+with a hard cap of 40, so dy scales with the loop bbox height; a real region
+thinner than dy in y (bbox inflated by a construction spike, or by km-long
+offset edges from straight source runs) can fall entirely between row
+midpoints and measure as zero, wrongly allowing the collapse. Synthetic repro:
+the "tall thin spike" case in the coverage-path guard tests (which currently
+passes only via the self-cross guard's effect on an earlier in-span collapse
+-- if it starts failing, this hole is exposed again). The reverted fix, should
+it ever be needed (recoverable from git history, 2026-07-02):
+
+- In addition to the uniform rows, sample a row through the midpoint of every
+  gap between consecutive distinct loop-vertex ys wider than dy (<= span extra
+  rows; collect ly0[0..le), insertion-sort, emit gap midpoints, re-sort).
+- Weight each row by the y-interval it represents (cell boundaries halfway to
+  neighboring rows, ends clamped to the bbox): weights sum to bbox height and
+  reduce to the plain midpoint rule when rows are uniform; accumulate
+  `total/fill += rowSum * rowWeight` instead of multiplying by dy at the end.
+- Any region bounded in y by loop vertices then always gets a row. Residual: a
+  region bounded purely by band-edge crossings with no loop vertex in its
+  y-range can still fall between rows.
+- Measured cost: +4-8% of end-to-end build (innerlines 2km/10km, greenland
+  30km) -- the vertYs sort runs on every sweep, and extra rows on tall loops
+  each pay O(band edges). Gating the vertex rows on the cap actually biting
+  (`h > rows * target`) recovers only about half of that. Real-world effect on
+  those datasets: sub-tolerance only (one innerlines 2km feature's deviation
+  vs no-loop-removal went 27.7k -> 12.3k m^2, both under the 3e4 floor), which
+  is why it was judged not worth the cost.
+
+**Real-data validation of the accept-side risk (2026-07-02).** Variant A/B
+timing + output comparison on innerlines 2km/10km and greenland_merc 30km
+found NO out-of-spec accept on any of them: the fixes' only output effects
+were sub-tolerance boundary wobble (greenland 30km: net area vs the oracle
+went +945k -> +295k m^2 out of 6.4e12, spread in slivers all < 100 m^2 -- no
+discrete filled hole anywhere near the 450k disk-relative fill floor).
+Diff-procedure caveat recorded the hard way: per-feature buffer outputs
+OVERLAP each other, so a raw `-erase` symmetric difference reports giant
+mirror artifacts (the same tile as both missing and extra); compare
+per-feature areas (`-each 'A=$.area'` -> csv) or dissolve per feature first.
+
+**Housekeeping kept from the same evaluation** (behavior-identical; suite +
+x_ne_sd 10km area oracle drift 3.6e-9):
+
+- **Lazy per-pass setup**: the y-band edge index and parent orientation are
+  built on the first candidate that reaches the coverage check, not per pass
+  (most rings and most passes never get that far).
+- **dipTags demoted to a flag**: the per-vertex tag values were dead since the
+  turn gate left the coverage path, so tags are no longer threaded through
+  passes (`ringAbsTurnPrefix` lost its dead tag branch).
+
+**Rejected pass restructurings (2026-07-02 -- measured, then removed for code
+complexity; do not re-tread without a real-data workload that needs them).**
+Copy-on-write pass output (collapse-free pass returns the input ring uncopied)
+and dirty-region rescanning for passes >= 2 (record collapse sites, rescan
+only [site-window, site+window+2] plus a forced window after new collapses;
+skipping only forgoes refuse->accept flips that the per-collapse coverage
+argument doesn't soundly license anyway). Both were behavior-identical and
+large wins on the remover in isolation (200k-vertex microbench: calm ring
+-33%, sparse-folds -44%, dense-folds -4%), but the remover is a small share of
+real pipelines: end-to-end effect on innerlines/greenland was within noise, so
+neither justified the extra state threading in `collapseRingLoopsPass`.
+
+Known theoretical gap (not reproduced, unchanged): coverage is judged
+per-collapse against the stable pass-input ring; two same-pass collapses whose
+dropped regions overlap geometrically could jointly uncover a region each
+individually leaves covered (winding 2 contributed entirely by the two folds,
+no body coverage). "Independent of collapse order" holds per decision, not
+jointly.
+
+**Where the time actually goes (2026-07-02 profile; innerlines via phases.mjs
+with a no-loop-removal flag added).** Core pipeline at 2km: base construction
+~112ms, loop removal ~220ms, dissolve ~177ms (vs 892ms with no-loop-removal);
+at 10km: ~87 / ~322 / ~238ms (vs 1263ms raw). The remover cuts
+self-intersections 75,414 -> 4,687 (-94%) and halves vertices; fitting
+dissolve cost = a*verts + b*crossings across the two configurations gives
+~1.1ms per 1k verts + ~8ms per 1k crossings, so the residual 4,687 crossings
+cost only ~38ms of the remaining dissolve -- "remove more loops" has a ~6%
+end-to-end ceiling on this data. The remover's own cost is dominated by the
+coverage sweep: `loopUncoveredArea` self-time is ~21% of TOTAL pipeline CPU
+(12,129 sweeps at 2km; 65-90% of remover time), the largest single function.
+Measured dead ends for reducing it (do not re-tread without a new idea):
+- flat typed-array copies of band-edge coords (avoid ring[i][j] pointer
+  chasing in the row loop): +-0 at 2km, -18% sweep time at 10km -- the only
+  attempt that helped at all, and only marginally;
+- per-row counting-sort bucketing of band edges: WORSE (per-sweep allocation
+  overhead exceeds the savings; per-sweep bands are small);
+- raising the skip floor to a flat 3e4 (disabling the fill-guard-only sweep
+  band below it): ~15ms at 2km -- the cheap sub-3e4 sweeps are not the cost;
+  the big-loop sweeps that remain under any floor are.
+An incremental cross-row base-winding cursor could in principle beat the
+per-row rescans, but the same pattern caused winding-state drift bugs in the
+band-audit stabber (see "FAILED OPTIMIZATION: incremental-winding stabber")
+-- high risk, moderate reward. Conclusion: the stage split is now roughly
+balanced (2km CLI: ~21% I/O, ~17% construction, ~34% remover, ~27% dissolve)
+with no >10% single win visible at acceptable complexity.
+
+### coarse-bridge evaluated as a default: REJECTED -- coarse joins CAN become output boundary (2026-07-02)
+
+The undocumented `coarse-bridge` flag swaps `makeConcaveJoin` (full-resolution
+reversed dip arc) for `makeCoarseConcaveJoin` (as few as one vertex,
+90-degree `CLEAN_OUTLINE_BRIDGE_STEP`). It is a real ~10-17% win (innerlines
+2km core 505 -> 429ms, 10km 644 -> 532ms; dissolve alone -29%/-45%), but its
+premise -- "the reversed bridge only bounds a self-overlap loop, so
+resolution cannot affect the boundary" -- is FALSE, and the win comes
+precisely from the unsound part:
+
+- **Post-removal vertex counts differ 18-31%** (2km: 125.0k fine vs 102.2k
+  coarse; 10km: 85.4k vs 58.8k). Collapsed dips vanish either way; the
+  savings are the dips the remover REFUSED to collapse -- i.e. exactly the
+  ones the coverage check judged potentially real boundary.
+- **Geometry, one safe direction only**: coarse vertices sit ON the
+  radius-dist circle around the bend vertex, and chords of that circle stay
+  inside the closed disk, which is inside the true buffer -- so coarse joins
+  can never ADD area outside the true buffer. All failures are inward: dents
+  and holes, with per-chord sagitta up to (1-cos45)*r ~ 0.29r at step 90.
+- **When a dip is real boundary**: dips are emitted only where consecutive
+  offset segments fail to intersect even extended (near-U-turn bends; the
+  corner-cut extent exceeds the arm length). Where nothing else covers the
+  wedge, the true boundary IS the arc around the bend vertex, the remover
+  rightly refuses the collapse (uncovering guard), and the bridge is output.
+  On two-sided lines the OTHER side's convex round fan traces the same circle
+  and usually masks the wedge, but not always.
+- **Demonstrated failures** (oracle = fine no-loop-removal):
+  1. Planar line U-turn `[[0,0],[100,0],[0,2]]` (bearing turn ~178.9deg),
+     dist=1000, tolerance=0: coarse clips 2,118 m^2 -- an ~11m boundary dent,
+     over the 10m default tolerance at that radius.
+  2. `__greenland_500k_polygon.json -buffer 15km` (polygon grow = SINGLE-sided
+     trace, no masking fan): coarse output has **two spurious km-scale holes**
+     (4-vertex chord-triangle slivers, at 80.1N and 70.2N) at default
+     tolerance. Their at-radius vertices defeat the artifact-hole filter's
+     distance classification (boundary max ~ r reads as "real hole").
+  3. Construction emits ~130-146 fewer rings under coarse (gap-patch /
+     exposure behavior changes downstream of the coarser joinPoints).
+  Line fixtures otherwise show only aggregate drifts of ~1e-6 relative
+  (m_loops hole counts stable), vs ~1e-8 for fine -- the damage is local and
+  data-dependent, which is worse than uniformly visible.
+- **If the ~10-17% is ever wanted as default**: the sound shape is
+  exposure-gated coarsening -- emit the coarse bridge only when the wedge is
+  provably interior, else the full arc. Shrinking
+  `CLEAN_OUTLINE_BRIDGE_STEP` instead does not work: matching the
+  1%-tolerance sagitta budget needs ~16deg steps, barely coarser than the
+  default 11.25deg arc resolution, so the gain evaporates.
+
+### Exposure-gated coarse bridges + remover clip budget (2026-07-02, prototyped and SHIPPED as default)
+
+The gated form was prototyped the same day and holds up; it is now the
+default construction. Two cooperating guards:
+
+1. **Exposure gate** (`traceCleanOffsetSide` dip branch): at every dip, probe
+   the full-resolution arc + tips against the source path (`wedgeIsExposed`;
+   each probe uses its own radius with a 0.98 margin, erring toward
+   "exposed"). Covered wedge -> emit `makeCoarseConcaveJoin`; exposed wedge
+   -> keep the full arc (it is potential true output boundary -- only arc
+   points can be, since every interior wedge point is within dist of the
+   bend vertex). Probing with the FINE arc also keeps fan-apart gap-patch
+   detection byte-identical to the old default. This alone fixes both
+   demonstrated coarse-bridge failures (U-turn dent, greenland polygon
+   spurious holes).
+2. **Neighborhood clip budget** (`removeBufferRingLoopsIterative`): the gate
+   is not sufficient -- collapsed coarse dips each legally clip up to the
+   remover's per-collapse floor (the chord-to-arc lens is single-covered
+   where only the fold's own winding spans it), and fold CLUSTERS (river
+   bends) compound several near-floor accepts into one visible dent (102k
+   m^2 on the innerlines 2km Sabine River cluster: accepts of 28k+20k+3k+1k
+   at one spot, each individually legal). The remover now tracks accepted
+   clip area in a radius-scaled grid (cell = max(1km, dist), dist recovered
+   from the disk-relative fillFloor), keyed by the CLIP's own
+   area-centroid (accumulated in the scanline sweep -- loop-bbox centers do
+   NOT work: overlapping clips' loops can center kilometers apart), and
+   refuses an accept that would push its cell past the floor. Worst-case
+   neighborhood dent: 2x the floor (clips straddling a cell edge). Zero-clip
+   collapses (the common case) skip the budget entirely. This also hardens
+   the fine path's previously-theoretical same-neighborhood compounding gap.
+
+Failed intermediate designs (do not re-tread): probing the coarse chords'
+midpoints for lens coverage (never fires -- the fold's own winding covers the
+lens pre-collapse; what matters is the remover's post-collapse accounting);
+"one coarse dip per scan window" cluster rule (correct -- byte-identical
+output at 2km -- but the win lives exactly in the clusters, so it kept none
+of it); budget cells keyed by loop-bbox center (misses overlapping clips);
+fixed 1km budget cells (polar-Mercator loop bboxes span millions of units ->
+the old all-touched-cells accounting timed out the t_antarctica tests, and
+harmless big-radius accepts exhausted budgets everywhere).
+
+Results (vs the fine default; suite 3150 green): innerlines 2km 646 -> 581ms
+(-10%), 10km 776 -> 682ms (-12%), greenland line 30km 1701 -> 1355ms (-20%).
+Repro checks: U-turn exact, greenland polygon 15km keeps exactly 1 hole,
+m_loops hole counts + drifts at fine level (~1e-8..1e-9), x_ne_sd 0
+crossings. Innerlines 2km per-feature |area - oracle|: fine 267.8k m^2 total
+/ worst feature -13.4k; gated+budget 271.6k / worst -34.5k (= the budgeted
+floor, by design; was -118k with the gate alone). `coarse-bridge` remains as
+the unguarded force-everywhere escape hatch.
+
 ## One-sided buffers: winding-fill construction, no lobe-removal pass (current default)
 
 One-sided line buffers (`left`/`right`, and the `offset-*` lines that build on

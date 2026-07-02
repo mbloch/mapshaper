@@ -34,9 +34,9 @@ export function getPolylineBufferMaker(dataset, opts) {
   var roundJoinSegAngle = 90 / roundJoinSegsPerQuadrant;
   // Max arc step (degrees) for the coarse concave bridge (makeCoarseConcaveJoin),
   // the optional low-resolution alternative to makeConcaveJoin in
-  // traceCleanOffsetSide. Larger = fewer points = faster dissolve. The reversed
-  // bridge only bounds a self-overlap loop that the direction remover collapses,
-  // so its resolution does not affect the final boundary.
+  // traceCleanOffsetSide. Larger = fewer points = faster dissolve. NOTE: a
+  // surviving (uncollapsed) bridge CAN become output boundary, where this step
+  // sets the dent depth -- see the caution at makeCoarseConcaveJoin.
   var CLEAN_OUTLINE_BRIDGE_STEP = 90;
   var capStyle = opts.cap_style || 'round'; // expect 'round' or 'flat'
   var pathIter = useMercator ?
@@ -1046,11 +1046,38 @@ export function getPolylineBufferMaker(dataset, opts) {
         } else {
           add(p2Prev, segId, 1);
           joinPoints = concaveJoin(x1, y1, bearing - 90, -joinAngle, dist);
+          var exposedWedge = false;
+          if (!opts.coarse_bridge) {
+            // Exposure-gated coarse bridge (default): a dip may be emitted
+            // coarsely only when it cannot affect the output.
+            // 1. Exposure gate: probe the full-resolution arc + tips against
+            //    the source path (wedgeIsExposed; each probe uses its own
+            //    radius with a 0.98 margin, erring toward "exposed" = the
+            //    full arc). An uncovered arc point is potential true output
+            //    boundary -- an exposed dip that the loop remover refuses to
+            //    collapse IS the boundary there, so it must stay at full
+            //    resolution (see the caution at makeCoarseConcaveJoin).
+            //    Collapsed coarse dips legally clip up to the remover's
+            //    per-collapse floor (the chord-to-arc lens is single-covered
+            //    where only the fold's own winding spans it); the remover's
+            //    neighborhood clip budget keeps clustered dips from
+            //    compounding several such clips into one visible dent (a
+            //    102k m^2 dent on the innerlines 2km Sabine River fold
+            //    cluster before the budget existed).
+            if (!vertsSegIndex) vertsSegIndex = buildVertsSegmentIndex(verts);
+            exposedWedge = wedgeIsExposed(vertsSegIndex, segId - 1, segId,
+              x1, y1, joinPoints, p2Prev, p1);
+            if (!exposedWedge) {
+              joinPoints = makeCoarseConcaveJoin(x1, y1, bearing - 90, -joinAngle, dist);
+            }
+          }
           if (useGapPatch(opts, useMercator) &&
               offsetEdgesFanApart(p1Prev, p2Prev, p1, p2)) {
             if (!vertsSegIndex) vertsSegIndex = buildVertsSegmentIndex(verts);
-            if (wedgeIsExposed(vertsSegIndex, segId - 1, segId, x1, y1,
-                joinPoints, p2Prev, p1)) {
+            if (opts.coarse_bridge ?
+                wedgeIsExposed(vertsSegIndex, segId - 1, segId, x1, y1,
+                  joinPoints, p2Prev, p1) :
+                exposedWedge) {
               fanApartBends.push(segId);
             }
           }
@@ -1267,13 +1294,21 @@ export function getPolylineBufferMaker(dataset, opts) {
     return makeRoundJoin(cx, cy, startBearing, arcAngle, dist).reverse();
   }
 
-  // Coarse alternative to makeConcaveJoin (selected by opts.coarse_bridge in
-  // traceCleanOffsetSide): bridges a concave bend with as few as one reversed
-  // arc vertex (CLEAN_OUTLINE_BRIDGE_STEP), producing a smaller ring for the
-  // winding dissolve to chew through. The reversed bridge only bounds a self-
-  // overlap loop the direction remover collapses, so the coarser resolution
-  // does not change the final boundary -- it just trades a little construction
-  // fidelity for dissolve speed.
+  // Coarse alternative to makeConcaveJoin: bridges a concave bend with as few
+  // as one reversed arc vertex (CLEAN_OUTLINE_BRIDGE_STEP), producing a
+  // smaller ring for the winding dissolve to chew through. Used by default
+  // only behind the exposure gate above (plus the loop remover's neighborhood
+  // clip budget); opts.coarse_bridge forces it everywhere, unguarded.
+  // CAUTION -- unsound WITHOUT those guards (2026-07-02 eval, see
+  // "coarse-bridge" in docs/development/buffer-line-notes.md): a dip that the
+  // loop remover refuses to collapse can be real output boundary (near-U-turn
+  // bends whose wedge nothing else covers; single-sided polygon grows; hole
+  // boundaries), and there the coarse chords replace the true arc. Chord
+  // vertices stay on the radius-dist circle, so coarse geometry never falls
+  // OUTSIDE the true buffer -- the failures are inward dents (sagitta up to
+  // (1-cos45)*dist ~ 0.29*dist at the 90-degree step) and spurious holes
+  // (chord-triangle slivers whose at-radius vertices defeat the artifact-hole
+  // filter's distance classification).
   function makeCoarseConcaveJoin(cx, cy, startBearing, arcAngle, dist) {
     var segs = Math.min(roundJoinSegsPerQuadrant,
       Math.max(1, Math.ceil(arcAngle / CLEAN_OUTLINE_BRIDGE_STEP)));
@@ -1284,6 +1319,7 @@ export function getPolylineBufferMaker(dataset, opts) {
     }
     return points.reverse();
   }
+
 
   // get interior vertices of an interpolated CW arc
   function makeRoundJoin(cx, cy, startBearing, arcAngle, dist) {
