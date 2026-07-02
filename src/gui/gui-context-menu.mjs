@@ -99,6 +99,9 @@ export function ContextMenu(parentArg) {
     if (e.deleteLayer) {
      addMenuItem('delete layer', e.deleteLayer, '');
     }
+    if (e.duplicateLayer) {
+     addMenuItem('duplicate layer', e.duplicateLayer, '');
+    }
     if (e.styleLayer) {
      addMenuItem('style layer', e.styleLayer, '');
     }
