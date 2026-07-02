@@ -1,6 +1,6 @@
 import assert from 'assert';
 import api from '../mapshaper.js';
-import { removeBufferRingLoops, removeBufferRingLoopsByDirection } from '../src/buffer/mapshaper-buffer-loop-removal';
+import { removeBufferRingLoops } from '../src/buffer/mapshaper-buffer-loop-removal';
 
 // signed-area-free crossing check used to assert results are loop-free
 function ringHasCrossing(ring) {
@@ -134,52 +134,6 @@ describe('mapshaper-buffer-loop-removal.js', function () {
     });
   });
 
-  describe('removeBufferRingLoopsByDirection()', function () {
-    it('leaves a clean convex ring unchanged', function () {
-      var ring = [[0, 0], [10, 0], [10, 10], [0, 10], [0, 0]];
-      assert.deepEqual(removeBufferRingLoopsByDirection(ring, 20), ring);
-    });
-
-    it('returns short rings unchanged', function () {
-      var ring = [[0, 0], [1, 0], [0, 0]];
-      assert.strictEqual(removeBufferRingLoopsByDirection(ring, 20), ring);
-    });
-
-    it('collapses a same-wound (covered) self-overlap loop', function () {
-      // CCW boundary that folds back on itself, doubly covering a small loop
-      // wound the same way as the parent ring (winding 2, safe to collapse).
-      var ring = [
-        [0, 0], [6, 0], [6, 4], [4, 4], [5, 2], [5, 6], [6, 4],
-        [6, 10], [0, 10], [0, 0]
-      ];
-      assert.ok(ringHasCrossing(ring), 'fixture should self-cross');
-      var out = removeBufferRingLoopsByDirection(ring, 20);
-      assert.ok(!ringHasCrossing(out), 'overlap should be collapsed away');
-      assert.ok(out.length < ring.length);
-    });
-
-    it('keeps an opposite-wound (winding-0) pocket as a real hole', function () {
-      // The bowtie pocket encloses a winding-0 region: a real hole the dissolve
-      // must keep. Unlike the ungated turn gate, the direction method does not
-      // collapse it.
-      var ring = [
-        [0, 0], [6, 0], [3, 3], [7, 3], [4, 0],
-        [10, 0], [10, 10], [0, 10], [0, 0]
-      ];
-      assert.deepEqual(removeBufferRingLoopsByDirection(ring, 20), ring);
-    });
-
-    it('classifies independently of ring orientation', function () {
-      // Same geometry wound CW: the hole must still be kept (the signal is
-      // sub-loop-vs-parent winding, not an absolute orientation).
-      var cw = [
-        [0, 0], [6, 0], [3, 3], [7, 3], [4, 0],
-        [10, 0], [10, 10], [0, 10], [0, 0]
-      ].slice().reverse();
-      assert.deepEqual(removeBufferRingLoopsByDirection(cw, 20), cw);
-    });
-  });
-
   describe('-buffer loop removal integration', function () {
     // a tight sawtooth buffered well past its tooth spacing folds heavily
     function sawtooth() {
@@ -238,23 +192,91 @@ describe('mapshaper-buffer-loop-removal.js', function () {
         assert.equal(on, off, 'loop removal must not change hole count');
         assert.ok(on > 0, 'this fixture should produce holes');
       });
+  });
 
-    it('turn-gate alternative yields an equivalent two-sided line buffer',
-      async function () {
-        var dir = await holeCount('');
-        var gate = await holeCount('loop-removal-turn-gate');
-        var off = await holeCount('no-loop-removal');
-        assert.equal(gate, off, 'turn-gate must keep the same holes');
-        assert.equal(dir, gate, 'both methods keep the same holes');
-      });
+  // Regression: at large radius the two-sided outline can self-cross with an
+  // overshoot loop wider than BUFFER_LOOP_WINDOW. The removed crossing-direction
+  // remover collapsed a nearer same-wound crossing that was actually exterior
+  // boundary (~1.7% area loss vs QGIS); the default dip+coverage remover keeps
+  // the lobe.
+  describe('Greenland Mercator line (exterior lobe regression)', function () {
+    var file = 'test/data/features/buffer/greenland_merc_line_error.fgb';
+    var refFile =
+      'test/data/features/buffer/greenland_merc_line_error_correct_buffer.fgb';
 
-    it('direction method removes at least as many loops as the turn gate',
-      async function () {
-        var dir = await mLoopsDebugPointCount('');
-        var gate = await mLoopsDebugPointCount('loop-removal-turn-gate');
-        assert.ok(dir <= gate,
-          'direction method should not leave more loops than the turn gate (' +
-          dir + ' vs ' + gate + ')');
+    it('30km dissolved buffer matches reference area', async function () {
+      var out = await api.applyCommands(
+        '-i ' + file + ' -buffer 30000 -o format=geojson out.json');
+      var refOut = await api.applyCommands(
+        '-i ' + refFile + ' -o format=geojson ref.json');
+      var area = polygonArea(JSON.parse(String(out['out.json'])));
+      var refArea = polygonArea(JSON.parse(String(refOut['ref.json'])));
+      var drift = Math.abs(area - refArea) / refArea;
+      assert.ok(drift < 1e-9,
+        'buffer area should match reference (drift ' + drift + ')');
+    });
+  });
+
+  // Regression for the default multi-pass dip+coverage remover (now the default
+  // for two-sided line/ring buffers and clean-outline polygon grows). Two
+  // properties it must uphold together:
+  //  1. Strip every self-overlap loop from a real border line. Removing the
+  //     source-turn cap on the coverage path lets it collapse tight interior
+  //     hairpins whose source turn exceeded the cap (~11 were left as
+  //     self-intersections on this NE/SD segment before the fix).
+  //  2. Keep real buffer holes. The coverage check only guards against
+  //     UNCOVERING area, so it is blind to a collapse that FILLS a winding-0 hole;
+  //     the opposite-wound hole protection and the disk-relative hole-fill guard
+  //     keep holes a naive coverage collapse would swallow.
+  describe('default remover: strips self-overlaps, keeps holes', function () {
+    function countCrossings(gj) {
+      var geoms = gj.geometries ||
+        (gj.features ? gj.features.map(function (f) { return f.geometry; }) : [gj]);
+      var count = 0;
+      geoms.forEach(function (g) {
+        if (!g) return;
+        var polys = g.type === 'MultiPolygon' ? g.coordinates :
+          g.type === 'Polygon' ? [g.coordinates] : [];
+        polys.forEach(function (poly) {
+          poly.forEach(function (ring) {
+            var n = ring.length - 1;
+            for (var i = 0; i < n; i++) {
+              for (var j = i + 2; j < n; j++) {
+                if (i === 0 && j === n - 1) continue;
+                if (segCross(ring[i], ring[i + 1], ring[j], ring[j + 1])) count++;
+              }
+            }
+          });
+        });
       });
+      return count;
+    }
+    async function debugOffset(file, flag) {
+      var out = await api.applyCommands('-i ' + file + ' -buffer 10km debug-offset ' +
+        (flag || '') + ' -o format=geojson out.json');
+      return JSON.parse(String(out['out.json']));
+    }
+
+    it('leaves no self-intersections in the border debug-offset', async function () {
+      var file = 'test/data/features/buffer/x_ne_sd_border.json';
+      var raw = countCrossings(await debugOffset(file, 'no-loop-removal'));
+      var def = countCrossings(await debugOffset(file));
+      assert.ok(raw > 100,
+        'raw construction should have many self-overlaps (got ' + raw + ')');
+      assert.equal(def, 0,
+        'default remover should strip every self-overlap loop (' + def + ' left)');
+    });
+
+    it('keeps a real hole a small collapse would fill (m_loops 650m)', async function () {
+      function holes(gj) { return gj.geometries[0].coordinates.length - 1; }
+      var f = 'test/data/features/buffer/m_loops.json';
+      var def = JSON.parse(String((await api.applyCommands(
+        '-i ' + f + ' -buffer 650m -o format=geojson out.json'))['out.json']));
+      var nlr = JSON.parse(String((await api.applyCommands(
+        '-i ' + f + ' -buffer 650m no-loop-removal -o format=geojson out.json'))['out.json']));
+      assert.ok(holes(nlr) >= 3, 'fixture should have real holes');
+      assert.equal(holes(def), holes(nlr),
+        'default must keep every real hole (' + holes(def) + ' vs ' + holes(nlr) + ')');
+    });
   });
 });

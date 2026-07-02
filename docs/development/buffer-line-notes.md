@@ -1,6 +1,6 @@
 # Line buffering (buffer-v4): architecture, failure modes, validation
 
-Working notes from the 2026-06 correctness/performance work on `-buffer`
+Working notes from the 2026-06/07 correctness/performance work on `-buffer`
 for polyline inputs. Audience: developers (or agents) continuing this
 work. Tools referenced here live in `test/tools/buffer/` (see its README).
 
@@ -10,22 +10,30 @@ A polyline buffer is built in two stages (`src/buffer/`):
 
 1. **Construction** (`mapshaper-path-buffer-v4.mjs`): paths are
    pre-simplified (Douglas-Peucker at an interval equal to the error
-   budget; `tolerance=`, default 1% of the radius; one-sided buffers also
-   cap the turning that simplification concentrates into single bends),
+   budget; `tolerance=`, default 1% of the radius; end-segment bearings
+   are pinned so cap geometry stays exact; `tolerance=0` disables it),
    then swept into offset rings.
-   - **Two-sided buffers of open paths** use the outline fast path
+   - **Two-sided buffers** use the outline fast path
      (`makeTwoSidedOutlineRing`): ONE closed, possibly self-intersecting
      ring per path (left side + cap + reversed right side + cap), with
      concave joins emitted inline as reversed arcs. This is 4-6x faster
      than per-section rings because the dissolve's cost is driven by the
-     number of overlapping rings it must mosaic.
+     number of overlapping rings it must mosaic. **Closed** source rings are
+     opened with a sub-tolerance micro-gap (`openClosedRingWithMicroGap`) so
+     the same open-path builder applies (round caps close the seam) -- the
+     "Unify buffer construction" change; two-sided closed rings no longer use
+     per-section rings. Self-overlap loops in the outline are collapsed before
+     the dissolve -- see "Two-sided outline: self-overlap loop removal" below.
    - **One-sided buffers** default to the **winding fill** with dip-to-vertex
      concave joins and no lobe-removal/audit pass (see "One-sided buffers"
      below); this supersedes the per-section + audit path for `left`/`right`.
-   - **Closed paths** (and the legacy non-winding one-sided path) use
-     per-section rings (`makeLeftBufferRings`): ring = reversed path side +
-     offset side; ring splits at concave bends whose offset segments do not
-     intersect, with a sector ring covering the wedge at the split.
+   - **Per-section rings** (`makeLeftBufferRings`: reversed path side + offset
+     side, split at concave bends whose offset segments do not intersect, with
+     a sector ring covering the wedge at the split) underlie the one-sided
+     builds and the `band-method` two-sided escape hatch. The
+     clean-outline-winding grow (polygon buffers) and the open two-sided line
+     outline share ONE constant-radius tracer (`traceCleanOffsetSide`), so a
+     construction fix lands in both.
 2. **Dissolve** (`dissolveBufferDataset2` in `mapshaper-buffer-common.mjs`):
    `addIntersectionCuts` + `MosaicIndex` + per-shape pathfinding. For
    polyline buffers it runs with `per_part_holes` (see below).
@@ -93,6 +101,212 @@ divider extracts from one self-intersecting ring must not block the tile
 flood of every OTHER ring (they used to, stranding covered tiles). The
 polygon-buffer pipeline keeps shape-wide hole semantics: its shapes mix
 buffer rings with REAL polygon holes.
+
+## Two-sided outline: self-overlap loop removal (pre-dissolve)
+
+Where the radius exceeds the local radius of curvature, the concave-side offset
+folds back and crosses itself, leaving small "overshoot" loops in the outline
+ring. These are pure self-overlap -- the region they enclose is already inside
+the buffer, so the dissolve fills them anyway. Collapsing each loop to its
+crossing point *before* the dissolve is a **speed optimization**: dissolve cost
+scales with the number of overlapping rings / self-crossings it must mosaic
+(measured on innerlines 1km: aggressive removal ~420 ms vs ~500 ms baseline vs
+~1300 ms with removal effectively off). It must be **area-neutral** -- a collapse
+may only drop double-covered area, never real boundary.
+
+Code: `src/buffer/mapshaper-buffer-loop-removal.mjs`.
+- **Default** (open two-sided line, closed ring line via micro-gap, AND the
+  clean-outline polygon grow -- expanding + topological): the multi-pass
+  **dip+coverage** remover, `removeBufferRingLoopsIterative` with construction dip
+  tags and the exact scanline coverage check (full design below, "Dip-tag
+  iterative remover"). Collapses far more self-overlap than the older methods
+  (0 self-intersections on the NE/SD border fixture vs 4 for the removed
+  crossing-direction method, 98 for the source-turn gate) while staying
+  area-exact on dense meshes and keeping real holes.
+- **Band-method winding-fill** (negative / one-sided polygon grow only): still
+  uses `removeBufferRingLoops` with the source-turn gate (`srcPos`/`turnPrefix`).
+  That path is separate from clean-outline loop removal.
+- **Opt out:** `-no-loop-removal` skips pre-dissolve collapse entirely.
+
+**Correctness oracle.** The dissolve of the *un-removed* offset
+(`no-loop-removal`) is the exact buffer, so loop removal is correct iff its
+dissolved area equals the `no-loop-removal` area. To *localize* errors,
+symmetric-difference the two dissolved polygons (`-erase snap-interval=0`, tag
+each sliver with its area): the clips cluster into a few dozen discrete lobes,
+not diffuse noise. Note `snap-interval=0` -- the default import snap hides the
+sub-tolerance slivers.
+
+**Dense-mesh over-collapse (removed crossing-direction method; SOLVED by dip+coverage).**
+The old crossing-direction remover (`removeBufferRingLoopsByDirection`, removed
+2026-07) clipped real area wherever overshoot loops overlapped densely
+(`__state_innerlines.geojson`: ~36-43 discrete lobe-clips at 10-50km, ~500x more
+clip area than spurious-bulge area -- a real bias, not noise). Root cause: the
+winding *sign* of a self-crossing loop classifies covered-overlap-vs-real-boundary
+correctly only for a **minimal** loop; the greedy forward scan collapses
+non-minimal spans whose *net* winding sign is unreliable -- a **local-information
+ceiling**. The dip+coverage default breaks the ceiling with a *nonlocal*
+per-collapse decision (an exact winding-number coverage integral against the whole
+ring, below): on innerlines 10km its symmetric difference vs `no-loop-removal` has
+**no clip above the 3e4 m^2 floor** (largest residual 26k, left for the dissolve),
+zero spurious additions, and it preserves every hole.
+
+### Rejected loop-removal experiments (2026-07 -- do not re-tread without new ideas)
+
+Oracle for all: area-neutrality vs `no-loop-removal` on `__greenland_merc.fgb`
+and `__state_innerlines.geojson` at 10/50km.
+
+- **Crossing-direction collapse** (`removeBufferRingLoopsByDirection`): classified
+  each minimal self-crossing sub-loop by winding *sign* (same as parent = collapse,
+  opposite = hole). Area-neutral on simple cases but clipped real lobes in dense
+  meshes and on Greenland at 30km (~1.7% area). Removed with the A/B CLI flags.
+- **Widen the scan window.** Counterproductive: bigger window = *worse* drift
+  (innerlines 10km: win30 2.4e-4 -> win120 1.3e-3 -> win300 2.1e-3). A wider
+  look-ahead lets the greedy scan reach farther same-wound crossings and chord
+  across *more* real area. Window=30 limits the damage; it is not the cause.
+- **Innermost-first stack walk** (collapse the tightest minimal loop first,
+  classifying as it forms, instead of forward-from-anchor greedy). More
+  aggressive -> fewer vertices -> faster, and exact on Greenland + the error
+  fixture. But drift on innerlines was NOT better (often worse): collapsing
+  *more* minimal loops just clips more, because the winding *sign* itself is
+  unreliable in dense overlaps. Restructuring the walk cannot fix a signal
+  problem.
+- **Minimality / simplicity gate** (refuse to collapse a span containing another
+  self-crossing). Cut drift ~4x, but raised vertex count to source-turn-gate
+  levels (innerlines 10km 69k -> 108k -- as slow as the gate downstream) and adds
+  an O(span^2) check. No net win.
+- **Area cap on the dropped loop** (refuse collapses whose removed area exceeds
+  ~0.05-0.1*dist^2, latitude-corrected via `cosh(y/R)` under web Mercator; O(1),
+  no provenance). Cut *aggregate* drift 3-4x for far fewer extra vertices than
+  the gate, and cleanly **subsumes the `turn==1` guard** (fixes
+  `greenland_merc_line_error` on its own, monotonically safe -- only ever refuses
+  a collapse). But it only *shrinks* the errors: a genuine fold-back overshoot
+  and a small real lobe can have the same area, so it still leaves hundreds of
+  local clips. Rejected -- reduced error is not error-free.
+
+The through-line: loop removal is a **speed-vs-correctness trade**. Aggressive
+local collapse is fast but clips real area in dense overlaps; dip+coverage is
+(near-)area-neutral on the clean-outline paths, while `no-loop-removal` is exact
+but slowest.
+
+### Dip-tag iterative remover + exact scanline coverage check (2026-07)
+
+`removeBufferRingLoopsIterative` is the sole clean-outline loop remover for
+two-sided line/ring buffers and the clean-outline polygon grow. It is a
+multi-pass forward-collapse whose span gate is the offset
+ring's cumulative turn with **construction-tagged reversed concave-join ("dip")
+cusps excluded** (`dipTags` from `makeTwoSidedOutlineRing`; see
+`ringAbsTurnPrefix`). Excluding the fold cusps reconstructs the source stretch's
+real turn without needing source provenance, so the turn gate can classify
+overshoot-vs-hole from ring geometry alone. On `__state_innerlines` 10km the raw
+dip-tag remover (accept every gated collapse) cut loop-removal error area ~6x vs
+the removed crossing-direction default but still left ~34 discrete clips > 1e5 m^2.
+
+**Why cheap local signals can't finish the job.** Labelling every collapse
+good/bad against the known error lobes showed `segmentTurn2` (crossing
+handedness), the loop's winding **sign**, dropped-loop **area**, real-vertex
+count, chord "detour", and source-index gap all *correlate* with badness but
+**overlap** the good tail -- a big safe fold and a small real lobe coincide in
+every one. These errors are single-covered **real lobes**, not opposite-wound
+holes, so they share the local orientation of a genuine overlap. A tuned veto
+(refuse any suspect: `real turn >= 60` AND `>= 2` real verts) got the big clips
+to ~8 but was expensive -- it refuses ~15% of collapses, most of them *valid*
+folds, so far more loops fall through to the dissolve.
+
+**The fix: an exact per-collapse coverage decision, cheap enough to run.**
+`collapseKeepsAreaCovered` measures how much of the region a collapse would drop
+becomes **uncovered** and refuses only when that exceeds `BUFFER_LOOP_CHECK_MIN_AREA`
+(3e4). Coverage is a winding-*number* test against the **stable pass-input ring**
+(not the mid-pass output), so it is independent of collapse order: a point in the
+dropped loop `L` stays covered iff `windingFullRing(p) - windingLoop(p) != 0`. For
+a two-sided outline the main body always covers the interior, so a fold has
+`|winding| >= 2` (body + fold) and survives, while real boundary has `|winding|
+== 1` and drops to 0. The uncovered area is **integrated with a horizontal
+scanline** rather than point-sampled -- point sampling was tried first and missed
+interior uncovered pockets that sit away from the sampled boundary (an audit
+found ~11 such accepted loops), so it is not reliable for zero clips.
+
+Made affordable by: (1) an **area pre-filter** -- a loop whose own area is below
+the threshold cannot clip more than the threshold, so only large loops are swept;
+the threshold is in ring units and, since the web-Mercator scale factor is `>= 1`
+everywhere, is an upper bound on real m^2 so no big clip is skipped at any
+latitude. (2) A per-pass **y-band edge index** (`buildEdgeYIndex`) so each
+scanline touches only local edges, not the whole ring. (3) A **base-winding**
+split so only crossings inside the loop's narrow x-range are sorted. Result on
+innerlines 10km: **0 clips > 1e5 m^2** (total missing 3e4 m^2, a single sliver),
+build ~0.5s default -> ~0.85s, i.e. faster than the veto it replaces; exact on
+`greenland_merc_line_error` (30km buffer matches the reference to 6e-13) with no
+Greenland regression.
+
+**No turn gate on the dip path -- coverage is the sole arbiter.** Once the
+scanline coverage check exists, the tag-excluded turn gate is not just redundant
+but harmful. A tight hairpin (source path turning more than a semicircle over a
+short span) produces an *interior, fully-covered* self-overlap whose tag-excluded
+turn still exceeds `BUFFER_LOOP_MAX_TURN` (150 deg), so the turn gate refuses it
+*before* coverage runs and the loop survives into the output. On the NE/SD state
+border at 10km (`test/data/features/buffer/x_ne_sd_border.json`) this left 11
+such interior loops uncollapsed, all with source turn 160-225 deg and coverage
+uncovered-area 0 (`x_ne_sd_unremoved_loop*.json`). `collapseRingLoopsPass` now
+skips the turn gate entirely on the coverage path (`coveragePath = !gated &&
+dipTags`); the source-turn and geometric paths, which have no coverage check,
+keep it. Effect: the border's 19 self-intersections drop to 0, **no new clips**
+on innerlines or any Greenland line dataset (missing *and* extra big-clip counts
+stay 0), and the build is **~20-30% faster** (10km innerlines ~0.85s -> ~0.65s,
+30km Greenland ~2.2s -> ~1.5s) because collapsed loops no longer fall through to
+the more expensive dissolve. End caps are preserved: collapsing a cap uncovers
+real boundary, which coverage refuses (verified on `__greenland_merc_open`). This
+is why the turn gate's old rationale ("caps exceed maxTurn so are never
+collapsed") is now handled correctly by coverage instead of a blunt threshold.
+
+### Making dip+coverage the default: hole-safety hardening (2026-07)
+
+Promoting the dip+coverage remover from opt-in to the default (for two-sided
+line/ring buffers *and* the clean-outline polygon grow -- expanding + topological)
+surfaced two correctness gaps the "0 big clips" metric never exercised, because
+that metric only measured **uncovering**. Both are about the remover **filling a
+real winding-0 region** (a buffer hole, or an open outer-wall notch), which *adds*
+coverage and so is invisible to the uncovered-area check. The suite caught them
+(annulus of a closed ring, `m_loops` real holes, self-crossing-line holes):
+
+1. **Opposite-wound hole protection** (per-candidate signed-area test in
+   `collapseRingLoopsPass`). A dropped sub-loop wound opposite to the parent ring
+   bounds a real hole; the collapse is refused outright, regardless of area. This
+   is the cheap catch for holes that are cleanly opposite-wound within the window
+   (e.g. an annulus interior). The area pre-filter alone would have filled any
+   hole below `3e4` m^2. The test is an `O(span)` `loopAreaSign` run only on the
+   crossings the collapse actually evaluates -- an earlier version pre-scanned the
+   whole ring each pass (`markOppositeWoundHoleVertices`, `O(n*maxGap)` + a
+   per-pass `Uint8Array`), which added ~15% to a dense line buffer for no extra
+   safety; the per-candidate form is as fast as doing no hole work at all. A
+   same-wound overshoot fold that happens to *wrap* a hole is not caught here but
+   by the fill guard below (the wrapping loop's area is >= the wrapped hole's, so
+   any hole big enough to matter clears the pre-filter and is measured as filled).
+
+2. **Disk-relative hole-fill guard.** Some collapses reconnect/fill a hole whose
+   boundary is *not* an opposite-wound sub-loop in the window (a topological
+   change with no area delta -- `m_loops 650m` dropped a hole 3->2 that every
+   source-provenance method keeps). The same scanline that integrates uncovered
+   area now also integrates **filled** area (`_lastFillArea`: `wl != 0 && wf ==
+   0`), and a collapse is refused if it would fill more than `dist^2 *
+   BUFFER_LOOP_FILL_AREA_FRAC` (5e-4). The floor is **disk-relative** because an
+   absolute area cannot separate the two populations: a 10km fold sliver
+   (~8.6e-5 of the disk) and a 650m real hole (~1e-2 of the disk) have similar
+   *absolute* areas, but differ ~100x relative to the radius. The guard leans low
+   (toward preserving holes -- a false veto only leaves a self-overlap for the
+   dissolve). The area pre-filter skip is `min(uncoveredFloor, fillFloor)` so a
+   loop too small to *either* clip or fill still skips the scanline (perf: large
+   buffers keep the same `3e4` budget as before; small buffers scan more but are
+   cheap).
+
+Result: the border fixture still cleans to 0 self-intersections, `m_loops` and
+the annulus keep every hole, innerlines 10km has no clip above the floor, and the
+polygon-grow default routes dip tags through `BufferBuilder` +
+`buildCleanOutlineRings` (previously discarded). The fan-apart outer-wall notches
+that gap-patch fills are *also* filled by the remover when their inward dip
+self-crosses (a valid subset-of-buffer fill, same fold class as the border
+loops); `no-gap-patch` therefore fills some gaps the loop remover reaches
+(`test/buffer-test.mjs` "gap-patch" tests updated to assert gap-patch is still
+*required*, not that it is the sole filler). Regression: `test/buffer-loop-
+removal-test.mjs` "default remover: strips self-overlaps, keeps holes".
 
 ## One-sided buffers: winding-fill construction, no lobe-removal pass (current default)
 
@@ -283,6 +497,13 @@ classifying each tile by its own nearest-foot side rather than by connectivity.
    one-sided changes; on innerlines at 1km the audit adds roughly +45%
    (the data is genuinely at-risk almost everywhere at that radius),
    ~+25% at 100m, ~0 on smooth data.
+6. **Two-sided loop removal** (area-neutrality): compare `-buffer <r>`
+   dissolved area against `-buffer <r> no-loop-removal` on
+   `__greenland_merc.fgb` and `__state_innerlines.geojson` at 10/50km. Any
+   drift is a loop-removal error; the current default is near-exact on
+   Greenland but leaves ~1e-4 net drift (discrete lobe-clips) on innerlines
+   -- see "Two-sided outline: self-overlap loop removal". Small fixtures pass
+   trivially; the innerlines mesh is the discriminating case.
 
 ## Offset lines (`offset-left` / `offset-right`)
 

@@ -522,6 +522,13 @@ export function getOptionParser() {
       describe: '[projected data] buffer using geodesic distances',
       type: 'flag'
     })
+    .option('geodesic2', {
+      // undocumented/experimental: geodesic buffering for projected data done
+      // in-place in the projected plane via per-point scale correction (no
+      // web-Mercator round-trip; avoids pole/antimeridian edge cases). Compare
+      // with the 'geodesic' flag, which reprojects through lng/lat instead.
+      type: 'flag'
+    })
     .option('polar', {
       // describe: 'keep lat-long buffers within the valid extent (+/-180, +/-90); for growing polygons sliced at the antimeridian/poles (erode not yet supported)',
       type: 'flag'
@@ -580,12 +587,6 @@ export function getOptionParser() {
       // before the dissolve) is on by default; this opts out.
       type: 'flag'
     })
-    .option('loop-removal-turn-gate', {
-      // Undocumented: for two-sided open-path buffers, use the source-turn-gate
-      // loop-removal method instead of the default crossing-direction method.
-      // Kept as an alternative for A/B comparison and as a conservative fallback.
-      type: 'flag'
-    })
     .option('band-method', {
       // Undocumented escape hatch: build buffers with the older band (sector-
       // band) construction -- per-segment offset bands + join-sector rings + a
@@ -596,6 +597,33 @@ export function getOptionParser() {
       // topological); where a path's default already is the band construction,
       // this is a no-op. Kept as a slower-but-conservative fallback and a
       // debugging aid in case the default construction mishandles some input.
+      type: 'flag'
+    })
+    .option('clean-outline-winding', {
+      // Undocumented: build the polygon-grow outer ring with the constant-winding
+      // concave-join construction used by the open-path two-sided outline (a
+      // reversed arc at the offset radius). This is now the DEFAULT polygon-grow
+      // construction; the flag is retained as an explicit/no-op selector.
+      type: 'flag'
+    })
+    .option('coarse-bridge', {
+      // Undocumented: in the clean-outline-winding construction, bridge concave
+      // bends with the low-resolution makeCoarseConcaveJoin (as few as one
+      // reversed arc vertex) instead of the full-resolution makeConcaveJoin.
+      // The reversed bridge only bounds a self-overlap loop the direction remover
+      // collapses, so this leaves the final boundary unchanged while producing a
+      // smaller ring for the winding dissolve -- a construction-speed tradeoff.
+      type: 'flag'
+    })
+    .option('gap-patch', {
+      // Undocumented: no-op on geodesic buffers (gap-patch is the default there).
+      // Kept for backward compatibility with scripts that pass it explicitly.
+      type: 'flag'
+    })
+    .option('no-gap-patch', {
+      // Undocumented: disable the default geodesic gap-patch stadium union
+      // (see useGapPatch in mapshaper-buffer-common.mjs). Useful for comparing
+      // raw dissolve behavior against the patched outline construction.
       type: 'flag'
     })
     .option('no-cleanup', {

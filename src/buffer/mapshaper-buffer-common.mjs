@@ -8,6 +8,25 @@ import { composeMosaicLayer } from '../dissolve/mapshaper-polygon-dissolve2';
 import { addIntersectionCuts } from '../paths/mapshaper-intersection-cuts';
 import { stop } from '../utils/mapshaper-logging';
 import { MosaicIndex } from '../polygons/mapshaper-mosaic-index';
+import { segmentIntersection } from '../geom/mapshaper-segment-geom';
+
+// Dissolve options shared by clean-outline polygon grow and two-sided line
+// outline buffers. per_part_holes treats each input ring as an independent
+// overlapping union part (not shape-wide hole nesting). Boundary-flood
+// membership (no winding_fill) matches the line buffer dissolve; spurious
+// interior rings are removed afterward by applyOutlineArtifactHoleFilter.
+export function getOutlineBufferDissolveOpts(opts) {
+  return Object.assign({}, opts, {per_part_holes: true});
+}
+
+// True when geodesic gap-patch stadiums should be unioned into the dissolve.
+// Disabled in line debug-offset (patch rings broke the m_loops debug view) but
+// kept on for polygon debug-offset so the extra stadium rings are visible.
+export function useGapPatch(opts, geodesic) {
+  if (!geodesic || opts.no_gap_patch) return false;
+  if (opts.debug_offset) return opts.geometry_type == 'polygon';
+  return true;
+}
 
 export function dissolveBufferDataset2(dataset, optsArg) {
   var opts = optsArg || {};
@@ -43,7 +62,7 @@ export function dissolveBufferDataset2(dataset, optsArg) {
   var pathfind = getRingIntersector(mosaicIndex.nodes);
   var shapes2 = lyr.shapes.map(function(shp, shapeId) {
     var tiles = opts.winding_fill ?
-      mosaicIndex.getWindingTilesByShapeId(shapeId) :
+      mosaicIndex.getWindingTilesByShapeId(shapeId, false) :
       mosaicIndex.getTilesByShapeIds([shapeId]);
     var rings = [];
     var holes = [];
@@ -157,12 +176,10 @@ var BUFFER_SIMPLIFY_FACTOR = 1;
 // pre-simplification is disabled. Enabled by default with a tolerance of
 // 1% of the buffer radius; pass an explicit tolerance to change the error
 // budget, or tolerance=0 to disable pre-simplification.
-// For a two-sided buffer (the set of points within the buffer distance of
-// the path), the error is bounded by the path's positional deviation. Cap
-// geometry and one-sided buffers also depend on segment bearings; the
-// simplification stage preserves them by pinning the paths' end segments
-// and capping the turning concentrated by removed sub-paths (see
-// presimplifyPathVerts in mapshaper-path-buffer-v4.mjs).
+// The error budget is expressed as a positional Douglas-Peucker interval
+// (see presimplifyPathVerts in mapshaper-path-buffer-v4.mjs). End-segment
+// bearings are pinned so cap geometry stays exact; pass tolerance=0 to
+// disable pre-simplification entirely.
 export function getBufferSimplifyFunction(dataset, opts) {
   if (opts.tolerance === 0 || opts.tolerance == '0' || opts.tolerance == '0%') return null;
   var tolFn = getBufferToleranceFunction(dataset, opts);
@@ -191,6 +208,18 @@ export function getBufferDistanceFunction(lyr, dataset, opts) {
 
 export function bufferSegmentIntersection(a, b, c, d) {
   return bufferIntersection2(a[0], a[1], b[0], b[1], c[0], c[1], d[0], d[1]);
+}
+
+// Exclude segments with non-intersecting bounding boxes before
+// calling intersection function
+// Possibly slightly faster than direct call... not worth it?
+export function bufferIntersection3(ax, ay, bx, by, cx, cy, dx, dy) {
+  if (ax < cx && ax < dx && bx < cx && bx < dx ||
+      ax > cx && ax > dx && bx > cx && bx > dx ||
+      ay < cy && ay < dy && by < cy && by < dy ||
+      ay > cy && ay > dy && by > cy && by > dy) return null;
+  var hits = segmentIntersection(ax, ay, bx, by, cx, cy, dx, dy);
+  return hits;
 }
 
 // Fast segment intersection for buffer construction geometry (joins,
