@@ -9773,6 +9773,9 @@
       if (undoTransaction) {
         setActiveUndoTransaction(undoTransaction);
       }
+      // Notify listeners (e.g. comparison overlay) before the model is mutated,
+      // so they can snapshot the pre-command state of the active layer.
+      gui.dispatchEvent('command_start', {commands: commands});
       try {
         internal.runParsedCommands(commands, job, onCommandsDone);
       } catch(e) {
@@ -10337,6 +10340,116 @@
     }
   }
 
+  // GUI-only "compare with original" feature.
+  //
+  // When the Display option is enabled, an eligible edit (a -buffer/-smooth/
+  // -simplify console command, or entering the simplify slider) snapshots
+  // the pre-edit shapes of the active polygon/polyline layer into a throwaway
+  // dataset and draws them on top of the map as an outline. The overlay
+  // survives panning/zooming but is torn down as soon as the next edit occurs
+  // (or the option is disabled).
+  function CompareControl(gui) {
+    var map = gui.map,
+        model = gui.model,
+        eligibleCommands = {buffer: true, smooth: true, simplify: true},
+        pendingSnapshot = null,
+        simplifyModeActive = false;
+
+    // Snapshot the pre-command state before an eligible console command mutates
+    // the model (dispatched by the console just before running commands).
+    gui.on('command_start', function(e) {
+      if (!compareEnabled()) return;
+      var commands = (e && e.commands) || [];
+      var hasEligible = commands.some(function(cmd) {
+        return !!eligibleCommands[cmd.name];
+      });
+      if (!hasEligible) return;
+      pendingSnapshot = captureSnapshot();
+    });
+
+    // After the model is mutated, promote a pending snapshot to the overlay, or
+    // clear the overlay when a subsequent (non-comparison) edit occurs.
+    model.on('update', function(e) {
+      var flags = (e && e.flags) || {};
+      // The simplify slider drives its own lifecycle (see the 'mode' handler);
+      // ignore its live redraws so the overlay stays visible during dragging.
+      if (simplifyModeActive) return;
+      if (flags.simplify_amount || flags.redraw_only) return;
+      if (pendingSnapshot) {
+        showSnapshot(pendingSnapshot);
+        pendingSnapshot = null;
+      } else {
+        map.setCompareLayer(null);
+      }
+    });
+
+    // Simplify slider: snapshot on entering simplify mode, keep the overlay alive
+    // through slider drags, and clear it on leaving the mode.
+    gui.on('mode', function(e) {
+      if (e.name == 'simplify' && compareEnabled() && isComparableLayer(getActiveLayer())) {
+        simplifyModeActive = true;
+        showSnapshot(captureSnapshot());
+      } else if (e.prev == 'simplify' && simplifyModeActive) {
+        simplifyModeActive = false;
+        clearOverlay();
+      }
+    });
+
+    // Disabling the Display option removes any live overlay immediately.
+    gui.on('compare-clear', function() {
+      simplifyModeActive = false;
+      clearOverlay();
+    });
+
+    function compareEnabled() {
+      return !!(gui.display && gui.display.getOptions().compareOn);
+    }
+
+    function getActiveLayer() {
+      var o = model.getActiveLayer();
+      return o ? o.layer : null;
+    }
+
+    function isComparableLayer(lyr) {
+      return !!lyr && (lyr.geometry_type == 'polygon' || lyr.geometry_type == 'polyline');
+    }
+
+    // Build a standalone, throwaway dataset holding a geometry-only copy of the
+    // active layer (no attribute data, and therefore no style fields). The arcs
+    // are deep-copied so later edits to the source don't alter the overlay.
+    function captureSnapshot() {
+      var active = model.getActiveLayer();
+      if (!active || !isComparableLayer(active.layer)) return null;
+      var src = active.dataset;
+      var dataset = internal.copyDataset({
+        layers: [active.layer],
+        arcs: src.arcs,
+        info: src.info
+      });
+      var lyr = dataset.layers[0];
+      lyr.data = null; // drop attributes (and any style fields)
+      lyr.name = 'before';
+      delete lyr.gui; // force fresh display enhancement
+      // Preserve the source's current simplification level in the copy, so the
+      // overlay reflects the geometry as it was when the edit began.
+      if (dataset.arcs && src.arcs) {
+        dataset.arcs.setRetainedInterval(src.arcs.getRetainedInterval());
+      }
+      return {layer: lyr, dataset: dataset};
+    }
+
+    function showSnapshot(snapshot) {
+      if (snapshot) {
+        map.setCompareLayer(snapshot.layer, snapshot.dataset);
+      }
+    }
+
+    function clearOverlay() {
+      pendingSnapshot = null;
+      map.setCompareLayer(null);
+    }
+  }
+
   async function saveFileContentToClipboard(content) {
     var str = utils$1.isString(content) ? content : content.toString();
     await navigator.clipboard.writeText(str);
@@ -10798,6 +10911,9 @@
       if (e.deleteLayer) {
        addMenuItem('delete layer', e.deleteLayer, '');
       }
+      if (e.duplicateLayer) {
+       addMenuItem('duplicate layer', e.duplicateLayer, '');
+      }
       if (e.styleLayer) {
        addMenuItem('style layer', e.styleLayer, '');
       }
@@ -10915,6 +11031,22 @@
     return retn;
   }
 
+  function runGuiEditCommand(gui, cmd, optsArg) {
+    var opts = optsArg || {};
+    if (!gui.console) return;
+    gui.console.runMapshaperCommands(cmd, function(err, flags) {
+      if (err) {
+        showPopupAlert(err.message || String(err), opts.title || 'Command error');
+        if (opts.onError) opts.onError(err);
+      } else if (opts.onSuccess) {
+        opts.onSuccess(flags);
+      }
+      if (opts.onDone) {
+        opts.onDone(err, flags);
+      }
+    });
+  }
+
   function LayerControl(gui) {
     var model = gui.model;
     var map = gui.map;
@@ -10977,6 +11109,12 @@
 
     model.on('update', function(e) {
       updateMenuBtn();
+      // Skip re-rendering the layer list for display-only updates. The simplify
+      // slider fires 'simplify_amount' continuously while dragging; these updates
+      // don't change layer names, counts, geometry types or icons, so a full
+      // re-render is wasteful and makes the panel's icons flicker.
+      var flags = e.flags || {};
+      if (flags.simplify_amount || flags.redraw_only) return;
       if (isOpen) render();
     });
 
@@ -11220,6 +11358,28 @@
         }
       }
 
+      // Duplicate a layer by running an equivalent command, so the copy is
+      // recorded in session history and can be undone. Uses '-filter true +'
+      // to append a copy without replacing the source, keeps the same name
+      // (if any), and targets the source layer explicitly so the menu works on
+      // layers that aren't currently active. The '+' output becomes the new
+      // default target, which selects the copy as the active layer.
+      function duplicateLayer() {
+        var target = findLayerById(id);
+        var parts = ['-filter true +'];
+        if (!target) return;
+        if (target.layer.name) {
+          parts.push('name=' + internal.formatOptionValue(target.layer.name));
+        }
+        if (!map.isActiveLayer(target.layer)) {
+          parts.push('target=' +
+            internal.formatOptionValue(internal.getLayerTargetId(model, target.layer)));
+        }
+        runGuiEditCommand(gui, parts.join(' '), {
+          title: 'Duplicate layer'
+        });
+      }
+
       function selectLayer() {
         var target = findLayerById(id);
         // don't select if user is typing or dragging
@@ -11262,6 +11422,7 @@
           };
         }
         menuEvent.deleteLayer = deleteLayer;
+        menuEvent.duplicateLayer = duplicateLayer;
         menuEvent.showLayerInfo = showLayerInfo;
         if (target && layerCanBeStyled(target.layer)) {
           menuEvent.styleLayer = styleLayer;
@@ -14202,22 +14363,6 @@
     var aName = String(a.name || '').toLowerCase();
     var bName = String(b.name || '').toLowerCase();
     return aName < bName ? -1 : aName > bName ? 1 : 0;
-  }
-
-  function runGuiEditCommand(gui, cmd, optsArg) {
-    var opts = optsArg || {};
-    if (!gui.console) return;
-    gui.console.runMapshaperCommands(cmd, function(err, flags) {
-      if (err) {
-        showPopupAlert(err.message || String(err), opts.title || 'Command error');
-        if (opts.onError) opts.onError(err);
-      } else if (opts.onSuccess) {
-        opts.onSuccess(flags);
-      }
-      if (opts.onDone) {
-        opts.onDone(err, flags);
-      }
-    });
   }
 
   var fontField = 'font-family';
@@ -20170,17 +20315,16 @@
   }
 
   var darkStroke = "#334",
-      lightStroke = "#b7d9ea",
       activeStyle = { // outline style for the active layer
         type: 'outline',
-        strokeColors: [lightStroke, darkStroke],
+        strokeColors: [null, darkStroke],
         strokeWidth: 0.8,
         dotColor: "#223",
         dotSize: 1
       },
       activeStyleDarkMode = {
         type: 'outline',
-        strokeColors: [lightStroke, 'white'],
+        strokeColors: [null, 'white'],
         strokeWidth: 0.9,
         dotColor: 'white',
         dotSize: 1
@@ -20199,10 +20343,22 @@
       intersectionStyle = {
         dotColor: "#FF421D",
         dotSize: 1.3
+      },
+      compareStyle = { // "before" overlay for the comparison feature
+        type: 'outline',
+        strokeColors: [null, 'rgba(185, 0, 178, 0.45)'],
+        strokeWidth: 1.1,
+        dotColor: 'rgba(185, 0, 178, 0.45)',
+        dotSize: 1
       };
 
   function getIntersectionStyle(lyr, opts) {
     return copyBaseStyle(intersectionStyle);
+  }
+
+  // Style for the temporary "before" comparison overlay (original shapes).
+  function getCompareLayerStyle(lyr, opts) {
+    return copyBaseStyle(compareStyle);
   }
 
   // Display style for unselected layers with visibility turned on
@@ -20233,11 +20389,6 @@
     } else {
       style = copyBaseStyle(activeStyle);
     }
-    // kludge: no ghosted lines if not enabled
-    if (style.strokeColors && !opts.ghostingOn) {
-      style.strokeColors = [null, style.strokeColors[1]];
-    }
-
     return style;
   }
 
@@ -22415,7 +22566,7 @@ GUI and setting the size and crop of SVG output.</p><div><input type="text" clas
         _ext = new MapExtent(position),
         _visibleLayers = [], // cached visible map layers
         _hit, _nav,
-        _intersectionLyr, _activeLyr, _overlayLayers,
+        _intersectionLyr, _compareLyr, _activeLyr, _overlayLayers,
         _renderer, _dynamicCRS,
         _resizeRedrawTimer = null;
 
@@ -22459,6 +22610,22 @@ GUI and setting the size and crop of SVG output.</p><div><input type="text" clas
         _intersectionLyr = null;
       }
       // TODO: try to avoid redrawing layers twice (in some situations)
+      if (redraw !== false) {
+        drawLayers();
+      }
+    };
+
+    // Display a temporary "before" overlay of pre-edit shapes (comparison feature).
+    // lyr, dataset: a standalone (non-catalog) layer + dataset, or null to clear.
+    this.setCompareLayer = function(lyr, dataset, redraw) {
+      if (lyr == _compareLyr) return; // no change
+      if (lyr) {
+        enhanceLayerForDisplay(lyr, dataset, getDisplayOptions());
+        lyr.gui.style = getCompareLayerStyle(lyr.gui.displayLayer, getGlobalStyleOptions());
+        _compareLyr = lyr;
+      } else {
+        _compareLyr = null;
+      }
       if (redraw !== false) {
         drawLayers();
       }
@@ -22540,7 +22707,7 @@ GUI and setting the size and crop of SVG output.</p><div><input type="text" clas
       clearAllDisplayArcs();
 
       // Reproject all visible map layers
-      getContentLayers().concat(_intersectionLyr || []).forEach(function(lyr) {
+      getContentLayers().concat(_intersectionLyr || []).concat(_compareLyr || []).forEach(function(lyr) {
         projectLayerForDisplay(lyr, newCRS);
       });
 
@@ -22613,7 +22780,7 @@ GUI and setting the size and crop of SVG output.</p><div><input type="text" clas
         darkMode: !!gui.state.dark_basemap,
         outlineMode: mode == 'vertices',
         interactionMode: mode
-      }, opts, gui.display.getOptions()); // intersectionsOn, ghostingOn
+      }, opts, gui.display.getOptions()); // intersectionsOn, compareOn
     }
 
     // Refresh map display in response to data changes, layer selection, etc.
@@ -22853,13 +23020,6 @@ GUI and setting the size and crop of SVG output.</p><div><input type="text" clas
           // regenerating active style everytime, to support style change when
           // switching between outline and preview modes.
           style = getActiveLayerStyle(mapLayer.gui.displayLayer, getGlobalStyleOptions());
-          // changed: ghosting is set in gui-layer-styler.mjs
-          // if (style.type != 'styled' && layers.length > 1 && style.strokeColors) {
-          //   // kludge to hide ghosted layers when reference layers are present
-          //   style = utils.defaults({
-          //     strokeColors: [null, style.strokeColors[1]]
-          //   }, style);
-          // }
         } else {
           if (mapLayer == _activeLyr) {
             console.error("Error: shared map layer");
@@ -22918,6 +23078,10 @@ GUI and setting the size and crop of SVG output.</p><div><input type="text" clas
       sortMapLayers(contentLayers);
       if (_intersectionLyr) {
         contentLayers = contentLayers.concat(_intersectionLyr);
+      }
+      if (_compareLyr) {
+        // draw the comparison overlay on top of everything else
+        contentLayers = contentLayers.concat(_compareLyr);
       }
       // moved this below intersection layer addition, so intersection dots get scaled
 
@@ -23405,11 +23569,11 @@ GUI and setting the size and crop of SVG output.</p><div><input type="text" clas
     var menu = gui.container.findChild('.display-options');
     var closeBtn = new SimpleButton(menu.findChild('.close2-btn'));
     var xxBox = menu.findChild('.intersections-opt');
-    var ghostBox = menu.findChild('.ghost-opt');
+    var compareBox = menu.findChild('.compare-opt');
 
     var savedOpts = GUI.getSavedValue('display_options') || {};
     xxBox.node().checked = savedOpts.intersectionsOn;
-    ghostBox.node().checked = savedOpts.ghostingOn;
+    compareBox.node().checked = savedOpts.compareOn;
 
 
     gui.addMode('display_options', turnOn, turnOff, menuBtn);
@@ -23430,18 +23594,22 @@ GUI and setting the size and crop of SVG output.</p><div><input type="text" clas
       });
     });
 
-    ghostBox.on('change', function() {
+    compareBox.on('change', function() {
+      var on = getOptions().compareOn;
       gui.dispatchEvent('display_option_change', {
-        option: 'ghostingOn',
-        value: getOptions().ghostingOn
+        option: 'compareOn',
+        value: on
       });
-      gui.dispatchEvent('map-needs-refresh');
+      if (!on) {
+        // tear down any live comparison overlay when the option is disabled
+        gui.dispatchEvent('compare-clear');
+      }
     });
 
     function getOptions() {
       return {
         intersectionsOn: xxBox.node().checked,
-        ghostingOn: ghostBox.node().checked
+        compareOn: compareBox.node().checked
       };
     }
 
@@ -24206,6 +24374,7 @@ GUI and setting the size and crop of SVG output.</p><div><input type="text" clas
     new LayerControl(gui);
     HeaderMenu();
     gui.console = new Console(gui);
+    new CompareControl(gui);
     HistoryMenu(gui);
     window.mapshaper.getRuntimeStateContext = gui.getRuntimeStateContext;
     window.mapshaper.stringifyRuntimeStateContext = gui.stringifyRuntimeStateContext;
