@@ -607,12 +607,12 @@ export function getOptionParser() {
       type: 'flag'
     })
     .option('coarse-bridge', {
-      // Undocumented: in the clean-outline-winding construction, bridge concave
-      // bends with the low-resolution makeCoarseConcaveJoin (as few as one
-      // reversed arc vertex) instead of the full-resolution makeConcaveJoin.
-      // The reversed bridge only bounds a self-overlap loop the direction remover
-      // collapses, so this leaves the final boundary unchanged while producing a
-      // smaller ring for the winding dissolve -- a construction-speed tradeoff.
+      // Undocumented: force the low-resolution concave bridge at EVERY deep
+      // concave bend, bypassing the default's exposure gate and the loop
+      // remover's clip budget. The guarded form is the default (2026-07-02);
+      // this unguarded form is faster still but NOT area-safe: an exposed
+      // bridge can dent the buffer or create spurious holes (see the caution
+      // at makeCoarseConcaveJoin and "coarse-bridge" in buffer-line-notes.md).
       type: 'flag'
     })
     .option('no-gap-patch', {
