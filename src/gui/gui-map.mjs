@@ -12,6 +12,7 @@ import { mapNeedsReset,
 import { initInteractiveEditing } from './gui-edit-modes';
 import {
   getIntersectionStyle,
+  getCompareLayerStyle,
   getReferenceLayerStyle,
   getActiveLayerStyle } from './gui-layer-styler';
 import { MapExtent } from './gui-map-extent';
@@ -47,7 +48,7 @@ export function MshpMap(gui) {
       _ext = new MapExtent(position),
       _visibleLayers = [], // cached visible map layers
       _hit, _nav,
-      _intersectionLyr, _activeLyr, _overlayLayers,
+      _intersectionLyr, _compareLyr, _activeLyr, _overlayLayers,
       _renderer, _dynamicCRS,
       _resizeRedrawTimer = null;
 
@@ -91,6 +92,22 @@ export function MshpMap(gui) {
       _intersectionLyr = null;
     }
     // TODO: try to avoid redrawing layers twice (in some situations)
+    if (redraw !== false) {
+      drawLayers();
+    }
+  };
+
+  // Display a temporary "before" overlay of pre-edit shapes (comparison feature).
+  // lyr, dataset: a standalone (non-catalog) layer + dataset, or null to clear.
+  this.setCompareLayer = function(lyr, dataset, redraw) {
+    if (lyr == _compareLyr) return; // no change
+    if (lyr) {
+      enhanceLayerForDisplay(lyr, dataset, getDisplayOptions());
+      lyr.gui.style = getCompareLayerStyle(lyr.gui.displayLayer, getGlobalStyleOptions());
+      _compareLyr = lyr;
+    } else {
+      _compareLyr = null;
+    }
     if (redraw !== false) {
       drawLayers();
     }
@@ -172,7 +189,7 @@ export function MshpMap(gui) {
     clearAllDisplayArcs();
 
     // Reproject all visible map layers
-    getContentLayers().concat(_intersectionLyr || []).forEach(function(lyr) {
+    getContentLayers().concat(_intersectionLyr || []).concat(_compareLyr || []).forEach(function(lyr) {
       projectLayerForDisplay(lyr, newCRS);
     });
 
@@ -245,7 +262,7 @@ export function MshpMap(gui) {
       darkMode: !!gui.state.dark_basemap,
       outlineMode: mode == 'vertices',
       interactionMode: mode
-    }, opts, gui.display.getOptions()); // intersectionsOn, ghostingOn
+    }, opts, gui.display.getOptions()); // intersectionsOn, compareOn
   }
 
   // Refresh map display in response to data changes, layer selection, etc.
@@ -485,13 +502,6 @@ export function MshpMap(gui) {
         // regenerating active style everytime, to support style change when
         // switching between outline and preview modes.
         style = getActiveLayerStyle(mapLayer.gui.displayLayer, getGlobalStyleOptions());
-        // changed: ghosting is set in gui-layer-styler.mjs
-        // if (style.type != 'styled' && layers.length > 1 && style.strokeColors) {
-        //   // kludge to hide ghosted layers when reference layers are present
-        //   style = utils.defaults({
-        //     strokeColors: [null, style.strokeColors[1]]
-        //   }, style);
-        // }
       } else {
         if (mapLayer == _activeLyr) {
           console.error("Error: shared map layer");
@@ -550,6 +560,10 @@ export function MshpMap(gui) {
     sortMapLayers(contentLayers);
     if (_intersectionLyr) {
       contentLayers = contentLayers.concat(_intersectionLyr);
+    }
+    if (_compareLyr) {
+      // draw the comparison overlay on top of everything else
+      contentLayers = contentLayers.concat(_compareLyr);
     }
     // moved this below intersection layer addition, so intersection dots get scaled
 
