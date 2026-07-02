@@ -1,3 +1,6 @@
+v0.7.34
+* Improved `-buffer` command robustness.
+
 v0.7.33
 * Fixed `-buffer` bugs that could leave an inward notch in a buffered polygon near clusters of concave corners (both at the ring-closure seam and across deeply serrated boundaries at larger buffer distances).
 * Made corner preservation the default in the `-smooth` command.

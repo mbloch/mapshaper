@@ -615,11 +615,6 @@ export function getOptionParser() {
       // smaller ring for the winding dissolve -- a construction-speed tradeoff.
       type: 'flag'
     })
-    .option('gap-patch', {
-      // Undocumented: no-op on geodesic buffers (gap-patch is the default there).
-      // Kept for backward compatibility with scripts that pass it explicitly.
-      type: 'flag'
-    })
     .option('no-gap-patch', {
       // Undocumented: disable the default geodesic gap-patch stadium union
       // (see useGapPatch in mapshaper-buffer-common.mjs). Useful for comparing
