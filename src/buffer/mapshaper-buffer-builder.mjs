@@ -11,7 +11,7 @@ import { error } from '../utils/mapshaper-logging';
 // that a collapsible overshoot pocket must never span.
 export function BufferBuilder() {
   var self = {};
-  var buffer, path, bufferPos, pathPos;
+  var buffer, path, bufferPos, pathPos, bufferTags, pathTags;
 
   init();
 
@@ -20,6 +20,12 @@ export function BufferBuilder() {
     path = [];
     bufferPos = [];
     pathPos = [];
+    // Parallel reversed-arc ("dip") tags: 1 marks a vertex emitted as part of a
+    // reversed concave-join arc (a pure self-overlap construction artifact) so
+    // the coverage-based loop remover can key on provenance. Path-side vertices
+    // (the source-path edge) and untagged callers default to 0.
+    bufferTags = [];
+    pathTags = [];
   }
 
   self.size = function() {
@@ -29,31 +35,35 @@ export function BufferBuilder() {
   self.addPathVertex = function(p) {
     path.push(p);
     pathPos.push(NaN);
+    pathTags.push(0);
   };
 
-  self.addBufferVertices = function(arr, pos) {
+  self.addBufferVertices = function(arr, pos, tag) {
     for (var i=0; i<arr.length; i++) {
-      self.addBufferVertex(arr[i], pos);
+      self.addBufferVertex(arr[i], pos, tag);
     }
   };
 
-  self.addBufferVertex = function(p, pos) {
+  self.addBufferVertex = function(p, pos, tag) {
     var prevP = buffer[buffer.length - 1];
     if (prevP && pointsAreSame(prevP, p)) {
       return;
     }
     buffer.push(p);
     bufferPos.push(pos === undefined ? NaN : pos);
+    bufferTags.push(tag ? 1 : 0);
   };
 
-  // Returns {ring, srcPos}: ring is the closed coordinate ring (first point
-  // repeated as last); srcPos is the parallel source-position array.
+  // Returns {ring, srcPos, dipTags}: ring is the closed coordinate ring (first
+  // point repeated as last); srcPos and dipTags are parallel arrays (source
+  // position and reversed-arc tag).
   // @allowDegenerate: return null instead of erroring when the ring collapsed
   // to fewer than 3 points (an offset loop whose source ring shrank away, e.g.
   // a hole smaller than the buffer radius) -- a normal outcome, not a bug.
   self.done = function(allowDegenerate) {
     var ring = path.slice().reverse().concat(buffer);
     var srcPos = pathPos.slice().reverse().concat(bufferPos);
+    var dipTags = pathTags.slice().reverse().concat(bufferTags);
     if (ring.length < 3) {
       if (allowDegenerate) {
         init();
@@ -63,8 +73,9 @@ export function BufferBuilder() {
     }
     ring.push(ring[0].concat());
     srcPos.push(srcPos[0]);
+    dipTags.push(dipTags[0]);
     init();
-    return {ring: ring, srcPos: srcPos};
+    return {ring: ring, srcPos: srcPos, dipTags: dipTags};
   };
 
   return self;

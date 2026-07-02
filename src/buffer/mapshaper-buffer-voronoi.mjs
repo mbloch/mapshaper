@@ -70,10 +70,55 @@ export function buildInterFeatureMedialLines(shapes, coordDistances, arcs, opts)
     });
     profileEnd('medial:simplify');
   }
+  // Extend each chain's endpoints outward along their terminal tangent. A medial
+  // chain is a cut-line: it only subdivides a contested buffer tile if it spans
+  // from boundary to boundary, so the mosaic builder keeps it (an end that
+  // terminates in a tile's interior is acyclic and detachAcyclicArcs prunes the
+  // whole path). The sampled-site Voronoi stops a fraction of the site spacing
+  // short of where two source rings meet (the gap pinches shut), leaving that end
+  // dangling INSIDE the buffer. Extending past the source boundary lets the cut
+  // node against it; the overshoot lands outside the contested region and is
+  // self-pruned. Without this, a whole river-gap tile is left uncut and assigned
+  // wholesale to one feature (e.g. the Columbia between Oregon and Washington).
+  var extendDist = 0;
+  for (var di = 0; di < coordDistances.length; di++) {
+    if (coordDistances[di] > extendDist) extendDist = coordDistances[di];
+  }
+  if (extendDist > 0) {
+    chains = chains.map(function(chain) {
+      return extendChainEndpoints(chain, extendDist);
+    });
+  }
   return {
     type: 'MultiLineString',
     coordinates: chains
   };
+}
+
+// Extend an open chain past both endpoints by @len along the direction of the
+// terminal segment (so the cut-line pokes out of the contested tile at each end
+// and nodes against the enclosing boundary). Zero-length terminal segments and
+// chains shorter than 2 points are left unchanged.
+function extendChainEndpoints(chain, len) {
+  if (!chain || chain.length < 2) return chain;
+  var out = chain.concat();
+  var head = projectPast(out[0], out[1], len);
+  if (head) out.unshift(head);
+  var n = out.length;
+  var tail = projectPast(out[n - 1], out[n - 2], len);
+  if (tail) out.push(tail);
+  return out;
+}
+
+// Point at distance @len beyond @from, going away from @toward (i.e. continuing
+// the from->beyond ray that the toward->from segment defines). Returns null for a
+// degenerate (coincident) segment.
+function projectPast(from, toward, len) {
+  var dx = from[0] - toward[0];
+  var dy = from[1] - toward[1];
+  var d = Math.sqrt(dx * dx + dy * dy);
+  if (d === 0) return null;
+  return [from[0] + dx / d * len, from[1] + dy / d * len];
 }
 
 // Build the medial-construction triangles for the -buffer debug-delaunay option

@@ -2,8 +2,10 @@ import { debug, stop } from '../utils/mapshaper-logging';
 import geom from '../geom/mapshaper-geom';
 import { ShapeIter } from '../paths/mapshaper-shape-iter';
 import { BufferBuilder } from './mapshaper-buffer-builder';
-import { bufferSegmentIntersection, getBufferSimplifyFunction } from './mapshaper-buffer-common';
-import { removeBufferRingLoops, removeBufferRingLoopsByDirection, BUFFER_LOOP_WINDOW } from './mapshaper-buffer-loop-removal';
+import { bufferSegmentIntersection, getBufferSimplifyFunction, useGapPatch } from './mapshaper-buffer-common';
+import { buildVertsSegmentIndex, wedgeIsExposed } from './mapshaper-wedge-exposure';
+import { chooseSeamEdge } from './mapshaper-buffer-seam-edge';
+import { removeBufferRingLoops, removeBufferRingLoopsIterative, BUFFER_LOOP_WINDOW, BUFFER_LOOP_FILL_AREA_FRAC } from './mapshaper-buffer-loop-removal';
 import DouglasPeucker from '../simplify/mapshaper-dp';
 import { getDatasetCRS, isLatLngCRS } from '../crs/mapshaper-projections';
 import { countCrosses, removePolygonCrosses } from '../geom/mapshaper-antimeridian-cuts';
@@ -30,6 +32,12 @@ export function getPolylineBufferMaker(dataset, opts) {
   var getOffsetPoint = getOffsetFunction(crs, opts);
   var roundJoinSegsPerQuadrant = opts.quad_segs >= 2 ? opts.quad_segs : 8;
   var roundJoinSegAngle = 90 / roundJoinSegsPerQuadrant;
+  // Max arc step (degrees) for the coarse concave bridge (makeCoarseConcaveJoin),
+  // the optional low-resolution alternative to makeConcaveJoin in
+  // traceCleanOffsetSide. Larger = fewer points = faster dissolve. The reversed
+  // bridge only bounds a self-overlap loop that the direction remover collapses,
+  // so its resolution does not affect the final boundary.
+  var CLEAN_OUTLINE_BRIDGE_STEP = 90;
   var capStyle = opts.cap_style || 'round'; // expect 'round' or 'flat'
   var pathIter = useMercator ?
     getProjectingPathIterator(dataset.arcs, opts) : new ShapeIter(dataset.arcs);
@@ -55,8 +63,7 @@ export function getPolylineBufferMaker(dataset, opts) {
       properties: null,
       geometry: {
       type: 'MultiPolygon',
-        // convert rings to MultiPolygon format
-        coordinates: rings.map(ring => [ring])
+        coordinates: rings.map(function(ring) { return [ring]; })
       }
     }];
     if (useMercator) {
@@ -124,14 +131,26 @@ export function getPolylineBufferMaker(dataset, opts) {
 
   // each path may be converted into multiple buffer rings, which later
   // need to be dissolved
-  // Re-anchor a closed ring [v0, v1, ..., v0] to the midpoint of its first edge:
-  // returns [m, v1, ..., v0, m] where m = midpoint(v0, v1). The offset then
-  // starts/ends mid-edge (a collinear seam) and v0 becomes an interior join.
+  // Re-anchor a closed ring [v0, v1, ..., v0] so its offset seam falls at the
+  // midpoint of a chosen edge (vk -> vk+1): returns [m, vk+1, ..., vk, m] where
+  // m = midpoint(vk, vk+1). The offset then starts/ends mid-edge (a collinear
+  // seam) and every original vertex becomes an interior join.
+  //
+  // The seam edge is chosen by chooseSeamEdge() to sit away from concave (reflex)
+  // corners. In winding-fill mode a concave corner dips the offset back to its
+  // source vertex (resolved later by the dissolve); a seam landing next to such a
+  // dip leaves the pre-dissolve overshoot-loop remover (removeBufferRingLoops*)
+  // starting from an anchor buried inside that tangle, where it can collapse the
+  // true outer boundary instead of the self-overlap (an inward notch). Putting the
+  // seam in a clean convex stretch keeps the remover's first-vertex anchor on the
+  // real boundary.
   function startRingAtEdgeMidpoint(verts) {
-    var a = verts[0], b = verts[1];
+    var k = chooseSeamEdge(verts);
+    var n = verts.length - 1; // distinct vertices (verts[0] == verts[n])
+    var a = verts[k], b = verts[(k + 1) % n];
     var m = [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2];
     var out = [m];
-    for (var i = 1; i < verts.length; i++) out.push(verts[i]);
+    for (var t = 1; t <= n; t++) out.push(verts[(k + t) % n]);
     out.push(m.concat());
     return out;
   }
@@ -143,23 +162,47 @@ export function getPolylineBufferMaker(dataset, opts) {
     if (simplifyIntervalFn) {
       verts = presimplifyPathVerts(verts, simplifyIntervalFn(dist), dist);
     }
-    if (!oneSidedBuffer && !opts.band_method && pathIsOpen(verts)) {
+    // Closed two-sided line rings: open with a sub-tolerance gap at the first
+    // vertex so the open-path outline builder applies (round caps close the
+    // seam). Gap size is in the same coordinate units as verts.
+    if (!oneSidedBuffer && !opts.band_method && !pathIsOpen(verts)) {
+      verts = openClosedRingWithMicroGap(verts);
+    }
+    if (!opts.band_method && pathIsOpen(verts) && (!oneSidedBuffer || opts.outline)) {
       // Fast path for ordinary two-sided line buffers: emit one closed
       // outline instead of many per-segment bands that must be dissolved.
       // The band-method escape hatch skips it to fall through to the
       // per-segment band construction (makeLeftBufferRings, no winding fill).
+      //
+      // Also used for the topological polygon grow's OPEN boundary chains
+      // (outline mode, one-sided 'left'): an open unshared-boundary chain must
+      // be capped on BOTH ends. The one-sided outline (buildCleanOutlineRings)
+      // offsets a single side and self-closes with a straight chord between the
+      // chain's endpoints -- harmless when they nearly coincide, but for a chain
+      // spanning a whole border (e.g. a state's Canada boundary) that chord is a
+      // multi-degree spike. The two-sided stadium caps both ends instead; the
+      // mosaic union with the source polygon absorbs the inner (interior) half.
       var built = makeTwoSidedOutlineRing(verts, dist);
-      if (opts.no_loop_removal) return [built.ring];
-      // Strip self-overlap loops (the dissolve would fill them anyway) so it has
-      // fewer segments and self-intersections to resolve, while keeping real
-      // holes. The two-sided outline of an open path has a consistent +/-1 base
-      // winding, so the crossing-direction method classifies loops exactly from
-      // the ring geometry alone; the source-turn gate is kept as an alternative.
-      if (opts.loop_removal_turn_gate) {
-        return [removeBufferRingLoops(built.ring, BUFFER_LOOP_WINDOW,
-          built.srcPos, getSourceTurnPrefix(verts))];
+      var out;
+      if (opts.no_loop_removal) {
+        out = [built.ring];
+      } else {
+        // Multi-pass dip+coverage remover: construction-tagged reversed concave-join
+        // ("dip") cusps mark self-overlap folds, and an exact scanline coverage
+        // check refuses any collapse that would uncover a real boundary lobe OR
+        // swallow a real hole/notch.
+        out = [removeBufferRingLoopsIterative(built.ring, BUFFER_LOOP_WINDOW,
+          null, null, undefined, built.dipTags, undefined,
+          dist * dist * BUFFER_LOOP_FILL_AREA_FRAC)];
       }
-      return [removeBufferRingLoopsByDirection(built.ring, BUFFER_LOOP_WINDOW)];
+      // Geodesic fan-apart gap patches (same mechanism as the polygon outline):
+      // union a single-segment round-cap stadium for the source segments at each
+      // exposed fan-apart bend so the winding dissolve fills the sliver gap.
+      if (built.fanApartBends.length) {
+        addFanApartGapPatches(out, verts, built.fanApartBends, dist,
+          ringSignedArea(out[0]) >= 0);
+      }
+      return out;
     }
     if (!opts.right || opts.left) {
       rings = rings.concat(buildOneSidedRings(verts));
@@ -198,21 +241,16 @@ export function getPolylineBufferMaker(dataset, opts) {
       if (opts.outline && sideVerts.length > 2 && !pathIsOpen(sideVerts)) {
         sideVerts = startRingAtEdgeMidpoint(sideVerts);
       }
+      // Polygon-grow outline: the shared constant-radius construction used by
+      // two-sided line outlines (traceCleanOffsetSide + dip+coverage loop
+      // removal inside buildCleanOutlineRings).
+      if (opts.outline) {
+        return buildCleanOutlineRings(sideVerts, dist);
+      }
       var built = makeLeftBufferRings(sideVerts, dist,
         oneSidedBuffer ? pathSideVerts : null);
       if (opts.no_loop_removal || !opts.winding_fill) {
         return built.rings;
-      }
-      if (opts.outline) {
-        // Outline mode rings are clean offset-only loops (no source-path edge),
-        // so each has a consistent +/-1 base winding and the crossing-direction
-        // remover classifies overshoot loops exactly from the ring geometry --
-        // the same condition that makes it safe for the open-path two-sided
-        // outline. (The band-ribbon rings of the default construction do not,
-        // which is why they use the source-turn gate below.)
-        return built.rings.map(function(ring) {
-          return removeBufferRingLoopsByDirection(ring, BUFFER_LOOP_WINDOW);
-        });
       }
       var turnPrefix = getSourceTurnPrefix(sideVerts);
       return built.rings.map(function(ring, i) {
@@ -221,6 +259,86 @@ export function getPolylineBufferMaker(dataset, opts) {
           removeBufferRingLoops(ring, BUFFER_LOOP_WINDOW, srcPos, turnPrefix) : ring;
       });
     }
+  }
+
+  // Build the clean-outline-winding ring for one offset side from the shared
+  // traceCleanOffsetSide construction (the same construction the open two-sided
+  // line outline uses), then strip self-overlap loops before the dissolve.
+  //
+  // A closed source ring closes on its first offset vertex: the midpoint seam is
+  // collinear (see startRingAtEdgeMidpoint), so the recomputed final offset point
+  // is a sub-ULP duplicate of the first and is dropped (done() repeats the first
+  // vertex exactly). An open arc appends the final offset endpoint and an end cap.
+  //
+  // Loop removal: multi-pass dip+coverage (removeBufferRingLoopsIterative with
+  // construction dip tags), the same method used for two-sided line outlines.
+  function removePolygonOutlineLoops(ring, dipTags, dist) {
+    return removeBufferRingLoopsIterative(ring, BUFFER_LOOP_WINDOW,
+      null, null, undefined, dipTags, undefined,
+      dist * dist * BUFFER_LOOP_FILL_AREA_FRAC);
+  }
+
+  function buildCleanOutlineRings(sideVerts, dist) {
+    if (sideVerts.length < 2) return [];
+    var closed = !pathIsOpen(sideVerts);
+    var info = traceCleanOffsetSide(sideVerts, dist);
+    var pts = info.points, segs = info.segs, tags = info.dipTags;
+    for (var i = 0; i < pts.length; i++) builder.addBufferVertex(pts[i], segs[i], tags[i]);
+    if (!closed) {
+      if (info.lastPoint) builder.addBufferVertex(info.lastPoint, info.lastSeg);
+      if (capStyle == 'round') {
+        var end = sideVerts[sideVerts.length - 1];
+        builder.addBufferVertices(
+          makeRoundCap(end[0], end[1], info.lastBearing - 90, dist), NaN);
+      }
+    }
+    var d = builder.done(true);
+    if (!d) return [];
+    var mainRing;
+    if (opts.no_loop_removal) {
+      mainRing = d.ring;
+    } else {
+      mainRing = removePolygonOutlineLoops(d.ring, d.dipTags, dist);
+    }
+    var out = [mainRing];
+    // Union in a single-segment round-cap patch for every fan-apart concave bend
+    // (offsetEdgesFanApart). Each patch is the exact buffer of one source
+    // segment, hence a subset of the true buffer, so it can only fill the
+    // winding-0 sliver the pinched bridge leaves -- it can never push geometry
+    // through the outer wall. Oriented to match the main ring so the winding fill
+    // adds (not subtracts) its area.
+    if (info.fanApartBends.length) {
+      addFanApartGapPatches(out, sideVerts, info.fanApartBends, dist,
+        ringSignedArea(mainRing) >= 0);
+    }
+    return out;
+  }
+
+  // Append a round-cap stadium patch for the two source segments meeting at each
+  // recorded fan-apart bend vertex. A single segment has no bend (so its buffer
+  // is the exact, gap-free stadium); the two patches' caps at the shared vertex
+  // cover the sliver wedge the pinched bridge failed to fill.
+  function addFanApartGapPatches(out, sideVerts, bends, dist, parentCCW) {
+    for (var b = 0; b < bends.length; b++) {
+      var k = bends[b];
+      if (k - 1 >= 0) pushPatch(out, [sideVerts[k - 1], sideVerts[k]], dist, parentCCW);
+      if (k + 1 < sideVerts.length) pushPatch(out, [sideVerts[k], sideVerts[k + 1]], dist, parentCCW);
+    }
+  }
+
+  function pushPatch(out, seg, dist, parentCCW) {
+    if (seg[0][0] === seg[1][0] && seg[0][1] === seg[1][1]) return;
+    var ring = makeTwoSidedOutlineRing(seg, dist).ring;
+    if ((ringSignedArea(ring) >= 0) !== parentCCW) ring.reverse();
+    out.push(ring);
+  }
+
+  function ringSignedArea(ring) {
+    var s = 0;
+    for (var i = 0; i < ring.length - 1; i++) {
+      s += ring[i][0] * ring[i + 1][1] - ring[i + 1][0] * ring[i][1];
+    }
+    return s;
   }
 
   function makeLeftBufferRings(verts, dist, pathSideVerts) {
@@ -290,21 +408,18 @@ export function getPolylineBufferMaker(dataset, opts) {
         // original path vertex, then walk out the full outgoing offset (p1).
         // The self-overlap is resolved by the winding-number union, so no
         // section splits, join-sector rings, or band-coverage audit are needed.
+        // (The clean-outline-winding grow does NOT reach here -- it is routed to
+        // buildCleanOutlineRings, which bridges concave corners with
+        // makeConcaveJoin to keep a constant +/-1 winding.)
         builder.addBufferVertex(p2Prev, segId);
         builder.addBufferVertex([x1, y1], segId);
         builder.addBufferVertex(p1, segId);
       } else if (joinAngle > roundJoinSegAngle * 1.5) {
-        // large rightwards bend in path requiring a round join with at least
-        // one interpolated segment
-        // don't add endpoint of last offset segment to the buffer - we start
-        // by extending the last segment to make an outside join
-        // builder.addBufferVertex(p2Prev, false)
-        joinPoints = makeOutsideRoundJoin(x1, y1, bearingPrev - 90, joinAngle, dist);
+        // Large convex bend: arc vertices on the offset circle replace the
+        // previous segment end (p2Prev) and current segment start (p1).
+        joinPoints = makeInscribedRoundJoin(x1, y1, bearingPrev - 90, joinAngle, dist);
         builder.addBufferVertices(joinPoints, segId);
-        // don't add first endpoint of new offset segment to the buffer - we just
-        // added an extended vertex to replace it.
-        // builder.addBufferVertex(p1, false)
-        p1 = joinPoints.pop();
+        p1 = joinPoints.pop(); // track outgoing segment start (already added)
       } else if (joinAngle > -1e-10 && joinAngle < 1e-10) {
         // nearly collinear segments - add one point to the buffer
         // TODO: confirm that p1 and p2Prev are always very close
@@ -765,6 +880,31 @@ export function getPolylineBufferMaker(dataset, opts) {
     return verts[0][0] !== verts[n-1][0] || verts[0][1] !== verts[n-1][1];
   }
 
+  // Open a closed ring at its first vertex: nudge the corner into two points
+  // straddling it along the incoming and outgoing edges (sub-tolerance gap).
+  function openClosedRingWithMicroGap(verts) {
+    var gap = 1e-6;
+    var n = verts.length;
+    if (n < 4 || pathIsOpen(verts)) return verts;
+    var ring = [], i;
+    for (i = 0; i < n; i++) ring.push(verts[i].concat());
+    if (ring[0][0] === ring[n - 1][0] && ring[0][1] === ring[n - 1][1]) ring.pop();
+    if (ring.length < 3) return verts;
+    var p0 = ring[0], p1 = ring[1], pPrev = ring[ring.length - 1];
+    ring[0] = nudgeVertexFrom(p0, p1, gap);
+    ring.push(nudgeVertexFrom(p0, pPrev, gap));
+    return ring;
+  }
+
+  function nudgeVertexFrom(origin, toward, dist) {
+    var dx = toward[0] - origin[0], dy = toward[1] - origin[1];
+    var len = Math.hypot(dx, dy);
+    if (len > 0) {
+      return [origin[0] + dx / len * dist, origin[1] + dy / len * dist];
+    }
+    return [origin[0] + dist, origin[1]];
+  }
+
   // get angle between two extruded segments in degrees
   // positive angle means join is convex; negative angle means join is concave
   function getJoinAngle(direction1, direction2) {
@@ -798,10 +938,22 @@ export function getPolylineBufferMaker(dataset, opts) {
     // reverse, so its positions map back to source order; cap points get NaN so
     // a pocket spanning a cap is never treated as a single-bend overshoot.
     var nan = function(arr) { return arr.map(function() { return NaN; }); };
+    var zeros = function(arr) { return arr.map(function() { return 0; }); };
     var rightPos = right.srcPos.map(function(p) { return (n - 1) - p; });
     var srcPos = left.srcPos.concat(nan(endCap), rightPos, nan(startCap));
     srcPos.push(srcPos[0]);
-    return {ring: ring, srcPos: srcPos};
+    // Parallel reversed-arc ("dip") tags: caps are never dips.
+    var dipTags = left.dipTags.concat(zeros(endCap), right.dipTags, zeros(startCap));
+    dipTags.push(dipTags[0]);
+    // Fan-apart gap-patch bends from both offset sides, as source-vertex indices.
+    // A bend is concave from only one side, so the two sides flag disjoint
+    // vertices; the right side was traced in reverse, so map its indices back to
+    // source order ((n-1) - r).
+    var bendSet = {};
+    (left.fanApartBends || []).forEach(function(j) { bendSet[j] = 1; });
+    (right.fanApartBends || []).forEach(function(j) { bendSet[(n - 1) - j] = 1; });
+    var bends = Object.keys(bendSet).map(Number);
+    return {ring: ring, srcPos: srcPos, dipTags: dipTags, fanApartBends: bends};
   }
 
   // Cumulative absolute turn of the source path, indexed by vertex. The turn
@@ -823,26 +975,45 @@ export function getPolylineBufferMaker(dataset, opts) {
     return prefix;
   }
 
-  function makeOffsetSide(verts, dist) {
-    // Trace a single left-offset side of the source path, including joins
-    // between adjacent offset segments but not endpoint caps. srcPos[] records,
-    // per emitted point, the source-path vertex it derives from, so loop
-    // removal can judge a self-crossing by the turn of the originating path
-    // span rather than by the (unreliable) geometry of the offset itself.
-    var points = [];
-    var srcPos = [];
+  // Shared per-segment offset construction for the constant-radius "clean"
+  // buffer outline. Walks the left offset of `verts`, joining adjacent offset
+  // segments with inscribed round joins (convex bends), elbow/shallow joins, and
+  // reversed makeConcaveJoin arcs (concave bends) -- every emitted vertex stays
+  // at distance `dist`, so the traced side keeps a true +/-1 winding. This is
+  // the single construction used by BOTH the open two-sided line outline
+  // (makeOffsetSide) and the clean-outline-winding polygon grow
+  // (buildCleanOutlineRings), so a construction fix lands in one place for both.
+  //
+  // Returns parallel arrays { points, segs }: each offset vertex (consecutive
+  // duplicates dropped) and the source segment it derives from, in trace order.
+  // Returning the finished arrays rather than taking a per-vertex `emit` callback
+  // keeps the tracer a pure (verts, dist) -> data function (easy to unit-test in
+  // isolation) and puts the consecutive-duplicate dedup in one place, so the line
+  // and polygon callers can't drift apart on it. (Both styles measure the same;
+  // the line caller reuses `points`/`segs` in place, so construction is still a
+  // single pass.) The final segment endpoint is NOT pushed; it is returned as
+  // `lastPoint` so the caller can either append it (open side) or close the ring
+  // on its first
+  // vertex (closed outline -- its collinear midpoint seam makes the recomputed
+  // final point a sub-ULP duplicate of the first offset vertex, which must be
+  // dropped rather than emitted, see makeLeftBufferRings closure notes).
+  function traceCleanOffsetSide(verts, dist) {
     var x1, y1, x2, y2, bearing, bearingPrev, joinAngle, hit;
-    var p1, p2, p1Prev, p2Prev;
-    var firstBearing, lastBearing, joinPoints;
-    var pos = 0;
-    function pushPt(p) {
-      var before = points.length;
-      addPoint(points, p);
-      if (points.length > before) srcPos.push(pos);
+    var p1, p2, p1Prev, p2Prev, firstBearing, lastBearing, joinPoints, i;
+    var points = [], segs = [], dipTags = [], fanApartBends = [];
+    var vertsSegIndex = null;
+    // tag: 1 marks a vertex emitted as part of a reversed concave-join arc
+    // (the "dip" the construction inserts when adjacent offset segments do not
+    // meet locally). These runs are pure self-overlap artifacts, so loop
+    // removal can key on them directly instead of guessing from ring geometry.
+    function add(p, segId, tag) {
+      var prev = points[points.length - 1];
+      if (prev && prev[0] === p[0] && prev[1] === p[1]) return;
+      points.push(p);
+      segs.push(segId);
+      dipTags.push(tag ? 1 : 0);
     }
-    function pushPts(pts) {
-      for (var i = 0; i < pts.length; i++) pushPt(pts[i]);
-    }
+    var concaveJoin = opts.coarse_bridge ? makeCoarseConcaveJoin : makeConcaveJoin;
     for (var segId = 0; segId < verts.length - 1; segId++) {
       x1 = verts[segId][0];
       y1 = verts[segId][1];
@@ -851,42 +1022,40 @@ export function getPolylineBufferMaker(dataset, opts) {
       bearing = bearingDegrees2D(x1, y1, x2, y2);
       p1 = getOffsetPoint(x1, y1, bearing - 90, dist);
       p2 = getOffsetPoint(x2, y2, bearing - 90, dist);
-      pos = segId;
       if (segId === 0) {
-        pushPt(p1);
+        add(p1, segId);
         firstBearing = bearing;
       } else {
         joinAngle = getJoinAngle(bearingPrev, bearing);
-        if (opts.winding_fill && joinAngle < 0) {
-          // Clipper2-style concave join: never cut the band. Walk the full
-          // incoming offset (p2Prev), dip back to the original vertex, then
-          // walk out the full outgoing offset (p1). The self-overlapping
-          // pocket this creates is resolved by the winding-number union
-          // (it cancels where another band covers it, survives where the
-          // concavity is real), so no band-coverage audit is needed.
-          pushPt(p2Prev);
-          pushPt([x1, y1]);
-          pushPt(p1);
-        } else if (joinAngle > roundJoinSegAngle * 1.5) {
-          joinPoints = makeOutsideRoundJoin(x1, y1, bearingPrev - 90, joinAngle, dist);
-          pushPts(joinPoints);
+        if (joinAngle > roundJoinSegAngle * 1.5) {
+          joinPoints = makeInscribedRoundJoin(x1, y1, bearingPrev - 90, joinAngle, dist);
+          for (i = 0; i < joinPoints.length; i++) add(joinPoints[i], segId);
           p1 = joinPoints[joinPoints.length - 1];
         } else if (joinAngle > -1e-10 && joinAngle < 1e-10) {
-          pushPt(p1);
+          add(p1, segId);
         } else if (joinAngle > 0 && (hit = elbowJoin(p1Prev, p2Prev, p1, p2,
             bearingPrev, bearing, x1, y1, dist)) ||
             joinAngle < 0 && (hit = bufferSegmentIntersection(p1Prev, p2Prev, p1, p2))) {
-          pushPt(hit);
+          add(hit, segId);
           p1 = hit;
         } else if (joinAngle > 0) {
-          pushPt(p1);
+          add(p1, segId);
         } else if (joinAngle < 0 && (hit = shallowAngleJoin(p2Prev, p1, x1, y1, dist))) {
-          pushPt(hit);
+          add(hit, segId);
           p1 = hit;
         } else {
-          pushPt(p2Prev);
-          pushPts(makeConcaveJoin(x1, y1, bearing - 90, -joinAngle, dist));
-          pushPt(p1);
+          add(p2Prev, segId, 1);
+          joinPoints = concaveJoin(x1, y1, bearing - 90, -joinAngle, dist);
+          if (useGapPatch(opts, useMercator) &&
+              offsetEdgesFanApart(p1Prev, p2Prev, p1, p2)) {
+            if (!vertsSegIndex) vertsSegIndex = buildVertsSegmentIndex(verts);
+            if (wedgeIsExposed(vertsSegIndex, segId - 1, segId, x1, y1,
+                joinPoints, p2Prev, p1)) {
+              fanApartBends.push(segId);
+            }
+          }
+          for (i = 0; i < joinPoints.length; i++) add(joinPoints[i], segId, 1);
+          add(p1, segId, 1);
         }
       }
       bearingPrev = bearing;
@@ -894,13 +1063,46 @@ export function getPolylineBufferMaker(dataset, opts) {
       p2Prev = p2;
       lastBearing = bearing;
     }
-    pos = verts.length - 1;
-    pushPt(p2Prev);
+    return {
+      points: points,
+      segs: segs,
+      dipTags: dipTags,
+      fanApartBends: fanApartBends,
+      firstBearing: firstBearing,
+      lastBearing: lastBearing,
+      lastPoint: p2Prev,
+      lastSeg: verts.length - 1
+    };
+  }
+
+  function makeOffsetSide(verts, dist) {
+    // Thin wrapper over the shared traceCleanOffsetSide construction. The tracer
+    // already returns the deduped offset polyline (points[]) and a parallel
+    // srcPos[] of each point's source segment (so loop removal can judge a
+    // self-crossing by the turn of the originating path span rather than by the
+    // unreliable geometry of the offset itself), so we reuse those arrays in
+    // place and only append the final segment endpoint here (with the same
+    // consecutive-duplicate guard); endpoint caps are added by the caller.
+    var info = traceCleanOffsetSide(verts, dist);
+    var points = info.points;
+    var srcPos = info.segs;
+    var dipTags = info.dipTags;
+    var last = info.lastPoint;
+    if (last) {
+      var prev = points[points.length - 1];
+      if (!prev || prev[0] !== last[0] || prev[1] !== last[1]) {
+        points.push(last);
+        srcPos.push(info.lastSeg);
+        dipTags.push(0);
+      }
+    }
     return {
       points: points,
       srcPos: srcPos,
-      firstBearing: firstBearing,
-      lastBearing: lastBearing
+      dipTags: dipTags,
+      fanApartBends: info.fanApartBends,
+      firstBearing: info.firstBearing,
+      lastBearing: info.lastBearing
     };
   }
 
@@ -920,9 +1122,11 @@ export function getPolylineBufferMaker(dataset, opts) {
   // Reduce a path's vertex count with Douglas-Peucker simplification
   // before buffering. Removed vertices lie within the interval of the
   // simplified path, so the buffer outline deviates from the unsimplified
-  // buffer by at most the interval; D.P. retains locally extreme vertices
-  // (the ones that determine the outline), so the typical deviation is
-  // much smaller. Collapsed paths fall back to their original vertices: a
+  // buffer by at most the interval (see getBufferSimplifyFunction for the
+  // empirical calibration). D.P. retains locally extreme vertices (the ones
+  // that determine the outline), so the typical deviation is much smaller.
+  // End-segment bearings are pinned (kk[1] and kk[n-2]) so cap geometry
+  // stays exact. Collapsed paths fall back to their original vertices: a
   // small ring is below the error budget, but its buffer is a whole disk.
   function presimplifyPathVerts(verts, interval, dist) {
     var n = verts.length;
@@ -951,88 +1155,12 @@ export function getPolylineBufferMaker(dataset, opts) {
     // segments are preserved exactly: cap geometry at path endpoints
     // (flat caps especially) depends on them.
     kk[1] = kk[n-2] = Infinity;
-    if (oneSidedBuffer) {
-      // One-sided coverage is directional, so the turning that
-      // simplification concentrates into single bends must stay below the
-      // angle whose corner cut at the buffer radius would exceed the
-      // simplification interval (see limitGapTurning).
-      limitGapTurning(verts, kk, interval,
-        2 * Math.acos(1 / (1 + interval / (dist * mercScale))));
-    }
     var verts2 = [];
     for (i = 0; i < n; i++) {
       if (kk[i] >= interval) verts2.push(verts[i]);
     }
     var closed = verts[0][0] === verts[n-1][0] && verts[0][1] === verts[n-1][1];
     return verts2.length >= (closed ? 4 : 2) ? verts2 : verts;
-  }
-
-  // One-sided buffer coverage is directional: each segment's band lies on
-  // one side of its own bearing, so the angular structure of the path
-  // matters with weight proportional to the buffer radius, not just its
-  // positional structure. Replacing a sub-path with a chord concentrates
-  // the sub-path's turning into the chord's two end joints: convex
-  // turning is harmless (round joins reproduce the full fan of coverage
-  // around a retained vertex), but concentrated concave turning B deepens
-  // the corner cut at the joint from gradual elbow cuts to a single cut
-  // ~ r * (1/cos(B/2) - 1) deeper, and a removed self-loop's 360 degrees
-  // of turning would cost a whole swept disk. Capping each gap's total
-  // absolute turning (interior bends plus the bearing mismatch between
-  // the chord and the gap's end segments) at the angle whose corner cut
-  // equals the simplification interval keeps the one-sided buffer's error
-  // within the interval; where a gap exceeds the cap, re-retain its most
-  // prominent vertex (the D.P. split point) and re-check the halves. A
-  // self-loop subdivides into a coarse polygon with the same total
-  // turning, which sweeps the same disk.
-  function limitGapTurning(verts, kk, interval, maxTurn) {
-    var stack = [];
-    var prev = 0;
-    var i, a, b, gap;
-    for (i = 1; i < verts.length; i++) {
-      if (kk[i] >= interval) {
-        if (i - prev > 1) stack.push([prev, i]);
-        prev = i;
-      }
-    }
-    while (stack.length > 0) {
-      gap = stack.pop();
-      a = gap[0];
-      b = gap[1];
-      if (b - a < 2 || gapTurning(verts, a, b) <= maxTurn) continue;
-      var maxI = a + 1;
-      for (i = a + 2; i < b; i++) {
-        if (kk[i] > kk[maxI]) maxI = i;
-      }
-      kk[maxI] = Infinity;
-      stack.push([a, maxI], [maxI, b]);
-    }
-  }
-
-  // Total absolute turning (in radians) concentrated by replacing the
-  // sub-path verts[a..b] with a single chord: bends interior to the gap,
-  // plus the mismatch between the chord bearing and the bearings of the
-  // gap's first and last segments.
-  function gapTurning(verts, a, b) {
-    var chord = Math.atan2(verts[b][0] - verts[a][0], verts[b][1] - verts[a][1]);
-    if (verts[b][0] === verts[a][0] && verts[b][1] === verts[a][1]) {
-      return Infinity; // gap closes on itself (a loop)
-    }
-    var total = 0;
-    var prev = chord;
-    for (var i = a; i < b; i++) {
-      var bearing = Math.atan2(verts[i+1][0] - verts[i][0], verts[i+1][1] - verts[i][1]);
-      total += Math.abs(angleDelta(prev, bearing));
-      prev = bearing;
-    }
-    total += Math.abs(angleDelta(prev, chord));
-    return total;
-  }
-
-  function angleDelta(a, b) {
-    var d = b - a;
-    if (d > Math.PI) d -= 2 * Math.PI;
-    if (d < -Math.PI) d += 2 * Math.PI;
-    return d;
   }
 
   // Traverse a path with the (possibly projecting) path iterator,
@@ -1067,44 +1195,35 @@ export function getPolylineBufferMaker(dataset, opts) {
       [getOffsetPoint(x, y, startDir + 180, dist)];
   }
 
-  // The vertices of this join are outside of the arc that it approximates and
-  // the segments of the join touch the arc at their midpoints.
-  // The first and last of the returned vertices extend the segments on either
-  // side of the join.
-  function makeOutsideRoundJoin(cx, cy, startBearing, arcAngle, dist) {
-    // point count of 1 would be an elbow joint
-    // (elbow joins should be created elsewhere)
+  // Inscribed round join: vertices on the offset arc at equal angle steps,
+  // each at the true offset distance (geodesic or planar).
+  function makeInscribedRoundJoin(cx, cy, startBearing, arcAngle, dist) {
     var pointCount = Math.max(1, Math.round(arcAngle / roundJoinSegAngle));
     var stepAngle = arcAngle / pointCount;
     var points = [];
-    var i = 0;
-    var a, b, c, d, joinP, tanP, bearing;
-    while (i <= pointCount) {
-      bearing = startBearing + stepAngle * i;
-      tanP = getOffsetPoint(cx, cy, bearing, dist);
-      c = getOffsetPoint(tanP[0], tanP[1], bearing - 90, dist * 2);
-      d = getOffsetPoint(tanP[0], tanP[1], bearing + 90, dist * 2);
-      if (i > 0) {
-        joinP = bufferSegmentIntersection(a, b, c, d);
-        if (!joinP) {
-          if (opts.polar) {
-            // Near a clamped pole/antimeridian corner the swept offset tangents
-            // collapse onto the boundary and stop intersecting; hug the clamped
-            // tangent point so the round join degenerates to the pinned corner
-            // instead of throwing.
-            points.push(tanP);
-          } else {
-            throw Error(`no intersection on ${i} of ${pointCount}`);
-          }
-        } else {
-          points.push(joinP);
-        }
-      }
-      a = c;
-      b = d;
-      i++;
+    for (var i = 1; i <= pointCount; i++) {
+      points.push(getOffsetPoint(cx, cy, startBearing + stepAngle * i, dist));
     }
     return points;
+  }
+
+  // True when the two consecutive offset edges of a negative-angle (concave)
+  // bend do not overlap but instead diverge: the infinite-line intersection of
+  // the incoming edge (a->b) and outgoing edge (c->d) lies behind the incoming
+  // edge (t < 0) and beyond the outgoing edge (u > 1). A planar concave bend
+  // always overlaps (the crossing is in front: t > 1, u < 0); this fan-apart
+  // configuration only arises when a variable geodesic offset distance stretches
+  // the two edges past each other, leaving the outer-edge gap we want to bridge
+  // with a forward round join instead of a reversed (doubling-back) arc.
+  function offsetEdgesFanApart(a, b, c, d) {
+    var rx = b[0] - a[0], ry = b[1] - a[1];
+    var sx = d[0] - c[0], sy = d[1] - c[1];
+    var den = rx * sy - ry * sx;
+    if (den === 0) return false; // parallel: keep the reversed bridge
+    var wx = c[0] - a[0], wy = c[1] - a[1];
+    var t = (wx * sy - wy * sx) / den;
+    var u = (wx * ry - wy * rx) / den;
+    return t < 0 && u > 1;
   }
 
   function shallowAngleJoin(a, b, cx, cy, dist) {
@@ -1146,6 +1265,24 @@ export function getPolylineBufferMaker(dataset, opts) {
 
   function makeConcaveJoin(cx, cy, startBearing, arcAngle, dist) {
     return makeRoundJoin(cx, cy, startBearing, arcAngle, dist).reverse();
+  }
+
+  // Coarse alternative to makeConcaveJoin (selected by opts.coarse_bridge in
+  // traceCleanOffsetSide): bridges a concave bend with as few as one reversed
+  // arc vertex (CLEAN_OUTLINE_BRIDGE_STEP), producing a smaller ring for the
+  // winding dissolve to chew through. The reversed bridge only bounds a self-
+  // overlap loop the direction remover collapses, so the coarser resolution
+  // does not change the final boundary -- it just trades a little construction
+  // fidelity for dissolve speed.
+  function makeCoarseConcaveJoin(cx, cy, startBearing, arcAngle, dist) {
+    var segs = Math.min(roundJoinSegsPerQuadrant,
+      Math.max(1, Math.ceil(arcAngle / CLEAN_OUTLINE_BRIDGE_STEP)));
+    var points = [];
+    var increment = arcAngle / (segs + 1);
+    for (var i = 1; i <= segs; i++) {
+      points.push(getOffsetPoint(cx, cy, startBearing + increment * i, dist));
+    }
+    return points.reverse();
   }
 
   // get interior vertices of an interpolated CW arc

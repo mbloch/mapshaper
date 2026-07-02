@@ -1,5 +1,5 @@
 import { getPolylineBufferMaker } from '../buffer/mapshaper-path-buffer-v4';
-import { getBufferDistanceFunction, getBufferSimplifyFunction, dissolveBufferDataset2, getPathArcsByShape } from '../buffer/mapshaper-buffer-common';
+import { getBufferDistanceFunction, getBufferSimplifyFunction, dissolveBufferDataset2, getPathArcsByShape, getOutlineBufferDissolveOpts } from '../buffer/mapshaper-buffer-common';
 import { addIntersectionCuts } from '../paths/mapshaper-intersection-cuts';
 import { getRingIntersector } from '../paths/mapshaper-pathfinder';
 import { MosaicIndex } from '../polygons/mapshaper-mosaic-index';
@@ -10,7 +10,6 @@ import { DatasetEditor } from '../dataset/mapshaper-dataset-editor';
 import { importGeoJSON } from '../geojson/geojson-import';
 import { countCrosses, removePolygonCrosses } from '../geom/mapshaper-antimeridian-cuts';
 import { getPlanarPathArea } from '../geom/mapshaper-polygon-geom';
-import { pathIsClosed } from '../geom/mapshaper-path-geom';
 import { R, D2R } from '../geom/mapshaper-basic-geom';
 import { ShapeIter } from '../paths/mapshaper-shape-iter';
 import { DataTable } from '../datatable/mapshaper-data-table';
@@ -57,18 +56,9 @@ export function makePolylineBuffer(lyr, dataset, opts) {
   if (debug) {
     // Debug visualizations (raw offset rings, mosaic) want the whole layer's
     // geometry/topology in one dataset; keep the original global dissolve for
-    // them (no artifact-hole filter runs in debug mode anyway). Mirror the real
-    // pipeline's construction so the debug view reflects what the buffer
-    // actually builds: an all-closed-ring two-sided layer uses the winding-fill
-    // + loop-removal construction (and a winding-number dissolve), so
-    // debug-offset shows the loop-removed offset rings and the no-loop-removal
-    // flag has a visible effect. (See makePolylineBufferTwoSidedPerFeature.)
-    var useWindingConstruction = !oneSided && layerIsAllClosed(lyr, dataset.arcs);
-    var debugMakerOpts = useWindingConstruction ?
-      Object.assign({}, opts, {winding_fill: true}) : opts;
-    var debugDissolveOpts = Object.assign({}, opts, {per_part_holes: true},
-      useWindingConstruction ? {winding_fill: true} : null);
-    dataset2 = importGeoJSON(makeShapeBufferGeoJSON(lyr, dataset, debugMakerOpts), {});
+    // them (no artifact-hole filter runs in debug mode anyway).
+    var debugDissolveOpts = getOutlineBufferDissolveOpts(opts);
+    dataset2 = importGeoJSON(makeShapeBufferGeoJSON(lyr, dataset, opts), {});
     dissolveBufferDataset2(dataset2, debugDissolveOpts);
   } else {
     dataset2 = makePolylineBufferTwoSidedPerFeature(lyr, dataset, opts, spherical);
@@ -83,48 +73,13 @@ export function makePolylineBuffer(lyr, dataset, opts) {
 // Two-sided buffer pipeline, run per source feature. Each feature's outline
 // rings are dissolved (and artifact-hole filtered) in isolation, then the
 // per-feature results are merged into one polygon layer (one shape per buffered
-// source feature, in input order). Buffering does not union across features --
-// 560 input features yield 560 output shapes -- so a single global dissolve of
-// every feature's rings pays to intersect overlapping buffers of distinct
-// features whose tiles are then selected per shape anyway. On a world-scale
-// line layer that global planar arrangement exploded the arc count ~20x and ran
-// the process out of memory; per-feature isolation bounds peak memory to the
-// most complex single feature. The dissolve collapses any internal cuts, so
-// each feature's output boundary is identical to the global pipeline's.
-// True if every part of a polyline shape is a closed ring (first vertex ==
-// last vertex), so its two-sided buffer is an annulus per ring.
-function shapeIsAllClosed(shape, arcs) {
-  return !!shape && shape.length > 0 && shape.every(function(part) {
-    return pathIsClosed(part, arcs);
-  });
-}
-
-// True if every shape in the layer is made entirely of closed rings.
-function layerIsAllClosed(lyr, arcs) {
-  var shapes = lyr.shapes || [];
-  return shapes.length > 0 && shapes.every(function(shape) {
-    return shapeIsAllClosed(shape, arcs);
-  });
-}
-
+// source feature, in input order).
 function makePolylineBufferTwoSidedPerFeature(lyr, dataset, opts, spherical) {
   var distanceFn = getBufferDistanceFunction(lyr, dataset, opts);
-  var simplifyFn = getBufferSimplifyFunction(dataset, opts); // null if tolerance=0
   var makerOpts = Object.assign({geometry_type: lyr.geometry_type}, opts);
   var makeShapeBuffer = getPolylineBufferMaker(dataset, makerOpts);
-  // A shape whose parts are all closed rings buffers to an annulus per ring. The
-  // default (open-path) construction builds each side as many split sections plus
-  // join-sector rings (no loop removal), which floods the dissolve with raw rings
-  // (~8x more on a dense coastline). Instead route these shapes through the same
-  // winding-fill + loop-removal construction the polygon-ring buffer uses: one
-  // continuous offset ring per side, with self-overlap loops stripped, resolved
-  // by a winding-number dissolve. Open or mixed shapes keep the tuned outline +
-  // boundary-flood path unchanged.
-  var closedMaker = getPolylineBufferMaker(dataset,
-    Object.assign({}, makerOpts, {winding_fill: true}));
   var useFilter = useArtifactHoleFilter(opts);
-  var quadSegs = opts.quad_segs >= 2 ? opts.quad_segs : 8;
-  var sagPct = 1 - Math.cos(Math.PI / 4 / quadSegs);
+  var outlineDissolveOpts = getOutlineBufferDissolveOpts(opts);
   // The two-sided pipeline is also reached by a one-sided buffer when the
   // winding fill is explicitly disabled (winding_fill: false); the hole filter
   // must then use its one-sided coverage test (see filterOutlineArtifactHolesFromShape).
@@ -133,28 +88,18 @@ function makePolylineBufferTwoSidedPerFeature(lyr, dataset, opts, spherical) {
     side: opts.right ? -1 : 1,
     roundCaps: (opts.cap_style || 'round') == 'round'
   } : null;
-  var dissolveOpts = Object.assign({}, opts, {per_part_holes: true});
-  var closedDissolveOpts = Object.assign({}, dissolveOpts, {winding_fill: true});
   var datasets = [];
   lyr.shapes.forEach(function(shape, i) {
     var distance = distanceFn(i);
     if (!distance || !shape) return;
-    // Closed-ring fast path only for ordinary two-sided buffers (the one-sided
-    // construction reaches this function with winding_fill:false and needs its
-    // own coverage handling); mixed open/closed shapes fall back too.
-    var allClosed = !oneSided && shapeIsAllClosed(shape, dataset.arcs);
-    var retn = (allClosed ? closedMaker : makeShapeBuffer)(shape, distance);
+    var retn = makeShapeBuffer(shape, distance);
     var feats = (Array.isArray(retn) ? retn : [retn]).filter(Boolean);
     if (!feats.length) return;
     var ds = importGeoJSON(getBufferGeoJSON(feats), {});
-    dissolveBufferDataset2(ds, allClosed ? closedDissolveOpts : dissolveOpts);
-    if (useFilter && !allClosed) {
-      var bufLyr = ds.layers[0];
-      var intervalPct = simplifyFn ? simplifyFn(distance) / distance : 0;
-      bufLyr.shapes = bufLyr.shapes.map(function(bufShape) {
-        return filterOutlineArtifactHolesFromShape(bufShape, ds.arcs, shape,
-          dataset.arcs, distance, intervalPct, sagPct, oneSided, sideOpts, spherical);
-      });
+    dissolveBufferDataset2(ds, outlineDissolveOpts);
+    if (useFilter) {
+      applyOutlineArtifactHoleFilter(ds.layers[0], ds.arcs, lyr, dataset, opts,
+        spherical, {oneSided: oneSided, sideOpts: sideOpts, srcIndex: i});
     }
     datasets.push(ds);
   });
@@ -477,6 +422,32 @@ function useArtifactHoleFilter(opts) {
   return !opts.debug_offset && !opts.debug_mosaic;
 }
 
+// Apply the outline artifact-hole filter to every shape in a buffer layer,
+// using the parallel source layer for distance-to-path tests. Shared by the
+// two-sided line buffer (per feature) and the clean-outline polygon grow.
+export function applyOutlineArtifactHoleFilter(bufLyr, bufArcs, srcLyr, srcDataset,
+    opts, spherical, filterOpts) {
+  filterOpts = filterOpts || {};
+  if (!useArtifactHoleFilter(opts)) return;
+  var distanceFn = getBufferDistanceFunction(srcLyr, srcDataset, opts);
+  var simplifyFn = getBufferSimplifyFunction(srcDataset, opts);
+  var quadSegs = opts.quad_segs >= 2 ? opts.quad_segs : 8;
+  var sagPct = 1 - Math.cos(Math.PI / 4 / quadSegs);
+  var oneSided = !!filterOpts.oneSided;
+  var sideOpts = filterOpts.sideOpts || null;
+  var srcArcs = srcDataset.arcs;
+  bufLyr.shapes = bufLyr.shapes.map(function(bufShape, i) {
+    var srcIdx = filterOpts.srcIndex != null ? filterOpts.srcIndex : i;
+    var srcShape = srcLyr.shapes[srcIdx];
+    var distance = distanceFn(srcIdx);
+    if (!bufShape || !srcShape || !(distance > 0)) return bufShape;
+    if (filterOpts.skipShape && filterOpts.skipShape(srcShape, srcArcs)) return bufShape;
+    var intervalPct = simplifyFn ? simplifyFn(distance) / distance : 0;
+    return filterOutlineArtifactHolesFromShape(bufShape, bufArcs, srcShape,
+      srcArcs, distance, intervalPct, sagPct, oneSided, sideOpts, spherical);
+  });
+}
+
 // Remove artifact rings left by dissolving the self-intersecting outline rings
 // made by the two-sided buffer fast path. The outline's concave-join loops can
 // survive the dissolve as spurious holes (and, degenerately, as zero-area rings
@@ -486,7 +457,7 @@ function useArtifactHoleFilter(opts) {
 // that its entire region lies inside the true buffer, and kept otherwise.
 // Filters one buffer shape (one source feature's dissolved outline); returns
 // the filtered shape, or null if nothing survives.
-function filterOutlineArtifactHolesFromShape(bufShape, bufArcs, srcShape,
+export function filterOutlineArtifactHolesFromShape(bufShape, bufArcs, srcShape,
     srcArcs, distance, intervalPct, sagPct, oneSided, sideOpts, spherical) {
   var sourceSegments = null;
   var sourceParts = null;

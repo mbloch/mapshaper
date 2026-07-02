@@ -26,9 +26,8 @@
 // of pocket orientation; otherwise it is left for the dissolve.
 
 // Look-ahead window: how many ring segments ahead to test for a crossing. The
-// turn gate (not the window) is the safety criterion, so this only bounds cost
-// (O(n * window)); it must still be wide enough to reach the far side of an
-// overshoot loop, which can include many round-join vertices at large radii.
+// turn gate (not the window) is the safety criterion in removeBufferRingLoops;
+// in the dip+coverage iterative path it only bounds cost (O(n * window)).
 export var BUFFER_LOOP_WINDOW = 30;
 
 // Max source-path turn (degrees) a collapsible loop may span. Below this the
@@ -36,6 +35,27 @@ export var BUFFER_LOOP_WINDOW = 30;
 // a covered overshoot; above it the loop may be a real buffer hole and is left
 // for the dissolve.
 export var BUFFER_LOOP_MAX_TURN = 150;
+
+// Dip-tag iterative remover: a candidate collapse is allowed only if the region
+// it drops stays covered by the rest of the outline (collapseKeepsAreaCovered).
+// That per-collapse winding sweep is O(spanLen * ringLen), so it is skipped when
+// the dropped loop's own area is below this threshold -- such a loop cannot
+// create a clip larger than the threshold, so nothing "big" is missed. In ring
+// units (m^2 for planar; web-Mercator m^2 for lat/lng, whose scale factor >= 1
+// keeps this an upper bound on the real area, so latitude never hides a big clip).
+export var BUFFER_LOOP_CHECK_MIN_AREA = 3e4;
+
+// Hole-fill guard (dip+coverage path). A collapse is also refused if it would
+// swallow a winding-0 region (a real buffer hole or an open outer-wall notch)
+// larger than this fraction of the buffer disk (pi*dist^2, passed as fillFloor =
+// dist^2 * this). A genuine hole is a fixed fraction of the disk (the line wound
+// far enough to leave a region the radius can't reach), while a self-overlap fold
+// only pinches off a sliver orders of magnitude smaller relative to the radius --
+// so a disk-relative floor separates them with a wide margin where an absolute
+// area threshold does not (a 10km fold sliver and a 650m real hole have similar
+// absolute areas). Leans low (toward preserving holes): a false veto only leaves
+// a self-overlap for the dissolve, while a false pass deletes a real hole.
+export var BUFFER_LOOP_FILL_AREA_FRAC = 5e-4;
 
 // ring: closed ring (first point repeated as last) of [x, y] points.
 // srcPos (optional): source-vertex position parallel to ring; NaN for points
@@ -126,85 +146,6 @@ function ringSignedArea(ring) {
   return s;
 }
 
-// Collapse self-overlap loops using the crossing-direction signal instead of the
-// source-turn gate (removeBufferRingLoops). Where a constructed offset ring has a
-// consistent +/-1 base winding -- the two-sided outline of an OPEN path -- the
-// winding sense of each minimal self-crossing loop classifies it exactly: a
-// sub-loop wound the SAME way as its parent ring is a covered fold-back overlap
-// (collapse it; the dissolve would only fill it), while a sub-loop wound the
-// OPPOSITE way bounds a winding-0 pocket the dissolve must keep as a hole.
-//
-// This is more precise than the turn-gate's source-turn heuristic and needs no
-// source-path provenance (srcPos/turnPrefix), only the ring geometry. It does
-// NOT apply to the winding-fill construction used for closed rings / polygons,
-// where the base winding is not a constant +/-1, so a local loop's winding sense
-// does not determine the absolute (hole vs covered) winding of its interior.
-//
-// Pass 1 marks every vertex inside an opposite-wound (hole) loop so the collapse
-// pass never eats a hole, including an overlap loop that happens to wrap one.
-export function removeBufferRingLoopsByDirection(ring, maxGap) {
-  if (!ring || ring.length < 6) return ring;
-  if (!(maxGap >= 2)) maxGap = BUFFER_LOOP_WINDOW;
-  var n = ring.length - 1;
-  var parentCCW = (ringSignedArea(ring) >= 0);
-  // Pass 1: a sub-loop wound OPPOSITE to its parent ring encloses a winding-0
-  // hole the dissolve must keep; mark its vertices so the collapse pass never
-  // eats it (covers an overlap loop that happens to wrap a hole).
-  var holeVertex = new Uint8Array(n);
-  for (var i = 0; i < n - 1; i++) {
-    var a = ring[i], b = ring[i + 1];
-    var jMax = Math.min(i + maxGap, n - 1);
-    for (var j = i + 2; j <= jMax; j++) {
-      if (i === 0 && j === n - 1) continue;
-      var c = ring[j], d = ring[j + 1];
-      var hit = segHit(a[0], a[1], b[0], b[1], c[0], c[1], d[0], d[1]);
-      if (!hit) continue;
-      var loopCCW = loopAreaSign(hit[0], hit[1], b[0], b[1], ring, i + 2, j) >= 0;
-      if (loopCCW !== parentCCW) {
-        for (var k = i + 1; k <= j; k++) holeVertex[k] = 1;
-      }
-    }
-  }
-  // Pass 2: collapse sub-loops wound the SAME way as the parent (covered
-  // fold-back overlaps) unless they would eat a hole vertex.
-  var out = [ring[0]];
-  var segmentEnd = ring[1];
-  var nextRingIndex = 2;
-  while (true) {
-    var anchor = out[out.length - 1];
-    var ax = anchor[0], ay = anchor[1], bx = segmentEnd[0], by = segmentEnd[1];
-    var lastScanIndex = Math.min(nextRingIndex + maxGap - 2, n - 2);
-    var crossing = null, crossingEndIndex = 0;
-    for (var s = nextRingIndex; s <= lastScanIndex; s++) {
-      var cc = ring[s], dd = ring[s + 1];
-      var hit2 = segHit(ax, ay, bx, by, cc[0], cc[1], dd[0], dd[1]);
-      if (!hit2) continue;
-      var ovCCW = loopAreaSign(hit2[0], hit2[1], bx, by, ring, nextRingIndex, s) >= 0;
-      if (ovCCW !== parentCCW) continue; // opposite-wound loop is a hole: keep
-      var wrapsHole = false;
-      for (var k2 = nextRingIndex; k2 <= s; k2++) {
-        if (holeVertex[k2]) { wrapsHole = true; break; }
-      }
-      if (wrapsHole) continue;
-      crossing = hit2;
-      crossingEndIndex = s + 1;
-      break;
-    }
-    if (crossing) {
-      segmentEnd = crossing;
-      nextRingIndex = crossingEndIndex;
-      continue;
-    }
-    out.push(segmentEnd);
-    if (nextRingIndex > n - 1) break;
-    segmentEnd = ring[nextRingIndex];
-    nextRingIndex++;
-  }
-  if (out.length < 4) return ring;
-  out.push(out[0].concat());
-  return out;
-}
-
 // Absolute source turn spanned by a crossing candidate. The span covers the
 // anchor position `apos`, its successor `bpos`, and ring positions srcPos[lo..hi].
 // A pocket touching a cap (NaN position) is never treated as a covered overshoot.
@@ -219,6 +160,168 @@ function getSpanTurn(apos, bpos, srcPos, lo, hi, turnPrefix) {
     if (p > posHi) posHi = p;
   }
   return turnPrefix[posHi] - turnPrefix[posLo];
+}
+
+// Multi-pass collapse gated by the offset ring's own cumulative absolute turn over the collapsed span, a
+// provenance-free proxy for the source-path turn gate (each offset join's turn
+// angle equals the source bend angle it derives from, and straight offset
+// segments contribute zero turn, so summing |turn| over a ring span with no cap
+// reconstructs the source stretch's cumulative turn). Iterating lets the
+// collapse of tight inner overshoot loops shorten the spans of the loops that
+// wrap them, so a wrapper that was too-large-turn on one pass can become a
+// single-bend covered overshoot on the next -- the multi-pass "peel simple
+// interior loops first" idea. maxTurn is the same gate constant as the source
+// turn gate; caps (180-degree arcs) exceed it and so are never collapsed.
+// @fillFloor (dip+coverage path): max winding-0 area a collapse may swallow; a
+// collapse filling a larger hole/notch is refused (see BUFFER_LOOP_FILL_AREA_FRAC).
+// Callers pass dist^2 * BUFFER_LOOP_FILL_AREA_FRAC; defaults to the uncovered
+// floor when omitted (unit tests without a buffer distance).
+export function removeBufferRingLoopsIterative(ring, maxGap, srcPos, turnPrefix, maxTurn, dipTags, maxPasses, fillFloor) {
+  if (!ring || ring.length < 6) return ring;
+  if (!(maxGap >= 2)) maxGap = BUFFER_LOOP_WINDOW;
+  if (maxTurn === undefined) maxTurn = BUFFER_LOOP_MAX_TURN;
+  if (!(maxPasses >= 1)) maxPasses = 12;
+  if (!(fillFloor >= 0)) fillFloor = BUFFER_LOOP_CHECK_MIN_AREA;
+  var gated = !!(srcPos && turnPrefix);
+  var work = ring, workPos = gated ? srcPos : null, workTags = dipTags || null;
+  for (var pass = 0; pass < maxPasses; pass++) {
+    var res = collapseRingLoopsPass(work, maxGap, workPos, turnPrefix, maxTurn, workTags, fillFloor);
+    if (res.ring.length === work.length) return res.ring; // stable
+    work = res.ring; workPos = res.srcPos; workTags = res.dipTags;
+  }
+  return work;
+}
+
+// One greedy forward-collapse pass (mirrors removeBufferRingLoops' compaction).
+// The span gate is, in order of preference:
+//   - the reliable source-path turn (getSpanTurn) when srcPos+turnPrefix given;
+//   - else the ring's cumulative turn with tagged fold cusps excluded, when
+//     dipTags (construction-tagged reversed concave-join arcs) are supplied;
+//   - else the same but with a geometric cusp threshold (no provenance).
+// Returns {ring, srcPos, dipTags} so the caller can iterate.
+function collapseRingLoopsPass(ring, maxGap, srcPos, turnPrefix, maxTurn, dipTags, fillFloor) {
+  var gated = !!(srcPos && turnPrefix);
+  var n = ring.length - 1;
+  // The dip path defers entirely to the exact coverage check, so it needs neither
+  // the tag-excluded turn gate nor its cumulative-turn prefix; the other two paths
+  // (source-turn, geometric) have no coverage check and keep the turn gate.
+  var coveragePath = !gated && !!dipTags;
+  var ringTurn = (!gated && !dipTags) ? ringAbsTurnPrefix(ring, dipTags) : null;
+  // Build the ring's y-band edge index once per pass so the coverage check's
+  // per-loop edge lookup is local rather than O(ring length).
+  var covIndex = coveragePath ? buildEdgeYIndex(ring, n) : null;
+  // Opposite-wound hole protection. The coverage check only guards against
+  // UNCOVERING area, so it cannot catch a collapse that FILLS a real winding-0
+  // hole (filling adds coverage), and its area pre-filter treats any sub-floor
+  // loop as safe to drop. A dropped sub-loop wound OPPOSITE to the parent ring
+  // bounds such a hole, so refuse the collapse outright -- this keeps real holes
+  // (annulus interiors, self-crossing-line pockets) the coverage check alone
+  // misses, at the cost of only an O(span) signed-area test on the crossings the
+  // collapse actually evaluates (far cheaper than the old O(n*maxGap) per-pass
+  // pre-scan). A same-wound overshoot fold that happens to WRAP a hole is caught
+  // instead by the fill guard in the coverage check (it measures filled area).
+  var parentCCW = coveragePath ? (ringSignedArea(ring) >= 0) : false;
+  var out = [ring[0]];
+  var outPos = gated ? [srcPos[0]] : null;
+  var outTags = dipTags ? [dipTags[0]] : null;
+  var segmentEnd = ring[1];
+  var segmentEndPos = gated ? srcPos[1] : 0;
+  var segmentEndTag = dipTags ? dipTags[1] : 0;
+  var nextRingIndex = 2;
+  while (true) {
+    var anchor = out[out.length - 1];
+    var anchorPos = gated ? outPos[outPos.length - 1] : 0;
+    var ax = anchor[0], ay = anchor[1], bx = segmentEnd[0], by = segmentEnd[1];
+    var lastScanIndex = Math.min(nextRingIndex + maxGap - 2, n - 2);
+    var crossing = null, crossingEndIndex = 0;
+    for (var s = nextRingIndex; s <= lastScanIndex; s++) {
+      var c = ring[s], d = ring[s + 1];
+      var hit = segHit(ax, ay, bx, by, c[0], c[1], d[0], d[1]);
+      if (!hit) continue;
+      if (coveragePath) {
+        // Never collapse a sub-loop wound opposite to the parent: it bounds a
+        // real winding-0 hole the coverage check cannot see being filled (see the
+        // hole-protection note above).
+        if ((loopAreaSign(hit[0], hit[1], bx, by, ring, nextRingIndex, s) >= 0) !== parentCCW) {
+          continue;
+        }
+        // No turn gate on the dip path: the exact coverage check is the arbiter.
+        // It measures how much of the dropped region would become uncovered and
+        // refuses collapses that would clip a significant lobe (see
+        // docs/development/buffer-line-notes.md), catching real lobes and end caps
+        // that a cheap turn/area/winding signal cannot separate from safe folds.
+        // The turn gate was both leaving valid interior loops uncollapsed (tight
+        // hairpins whose source turn exceeds the cap) and slowing the pipeline by
+        // deferring their removal to the dissolve.
+        if (!collapseKeepsAreaCovered(ring, n, hit, segmentEnd, nextRingIndex, s, covIndex, fillFloor)) {
+          continue; // dropping this loop would uncover or fill real area -- leave it
+        }
+      } else {
+        // Source-turn / geometric paths: no coverage check, so gate on cumulative
+        // turn (caps and large real bends exceed maxTurn and are never collapsed).
+        var spanTurn = gated ?
+          getSpanTurn(anchorPos, segmentEndPos, srcPos, nextRingIndex, s + 1, turnPrefix) :
+          (ringTurn[s] - ringTurn[nextRingIndex - 1]);
+        if (spanTurn >= maxTurn) continue;
+      }
+      crossing = hit;
+      crossingEndIndex = s + 1;
+      break;
+    }
+    if (crossing) {
+      segmentEnd = crossing;
+      if (gated) segmentEndPos = anchorPos;
+      segmentEndTag = 0; // an offset crossing is not a dip vertex
+      nextRingIndex = crossingEndIndex;
+      continue;
+    }
+    out.push(segmentEnd);
+    if (gated) outPos.push(segmentEndPos);
+    if (dipTags) outTags.push(segmentEndTag);
+    if (nextRingIndex > n - 1) break;
+    segmentEnd = ring[nextRingIndex];
+    if (gated) segmentEndPos = srcPos[nextRingIndex];
+    if (dipTags) segmentEndTag = dipTags[nextRingIndex];
+    nextRingIndex++;
+  }
+  if (out.length < 4) return {ring: ring, srcPos: srcPos, dipTags: dipTags};
+  out.push(out[0].concat());
+  if (gated) outPos.push(outPos[0]);
+  if (dipTags) outTags.push(outTags[0]);
+  return {ring: out, srcPos: gated ? outPos : null, dipTags: dipTags ? outTags : null};
+}
+
+// Cumulative absolute turn (degrees) indexed by ring vertex, EXCLUDING fold
+// cusps. prefix[k] = sum of |turn| at ring vertices 1..k-1, skipping the
+// near-180-degree cusps where the offset doubles back on itself (an artifact of
+// the self-crossing offset, with no corresponding source bend). A normal offset
+// join's turn equals its source bend angle, so the remaining sum reconstructs
+// the source stretch's cumulative turn -- the reliable loop-removal signal --
+// without source provenance.
+//
+// A cusp is identified by construction tag when dipTags are supplied (a vertex
+// on a reversed concave-join arc AND turning sharply); otherwise by a purely
+// geometric turn threshold. Tag-gating is the point: a real sharp bend (e.g. a
+// fjord mouth, emitted as a miter, never tagged) keeps its turn and so is never
+// mistaken for a fold, which is what makes the geometric-only threshold
+// over-collapse sharp coastlines.
+var CUSP_TURN = 135;
+function ringAbsTurnPrefix(ring, dipTags) {
+  var n = ring.length - 1;
+  var prefix = new Float64Array(n + 1);
+  var RAD = 180 / Math.PI;
+  for (var k = 1; k < n; k++) {
+    var a = ring[k - 1], b = ring[k], c = ring[k + 1];
+    var e1x = b[0] - a[0], e1y = b[1] - a[1];
+    var e2x = c[0] - b[0], e2y = c[1] - b[1];
+    var cross = e1x * e2y - e1y * e2x;
+    var dot = e1x * e2x + e1y * e2y;
+    var ang = Math.abs(Math.atan2(cross, dot)) * RAD;
+    var isCusp = ang > CUSP_TURN && (dipTags ? dipTags[k] : true);
+    prefix[k] = prefix[k - 1] + (isCusp ? 0 : ang);
+  }
+  prefix[n] = prefix[n - 1];
+  return prefix;
 }
 
 // Fast strict-interior segment crossing; returns [x, y] or null. Buffer join
@@ -238,4 +341,211 @@ function segHit(ax, ay, bx, by, cx, cy, dx, dy) {
   var u = (acx * aby - acy * abx) / den;
   if (t <= 1e-9 || t >= 1 - 1e-9 || u <= 1e-9 || u >= 1 - 1e-9) return null;
   return [ax + t * abx, ay + t * aby];
+}
+
+// Exact per-collapse coverage test. A collapse drops the loop
+// L = [X, b, ring[nextRingIndex..s], X] and replaces anchor->b..c->d with
+// anchor->X->d; it is area-neutral iff the dropped region stays covered by the
+// rest of the outline. The dropped span is mostly reversed-arc "dip" folds
+// (double-covered self-overlap, safe to drop), but it may also swallow a genuine
+// offset lobe (single-covered real boundary). We measure exactly how much of the
+// dropped region would become UNCOVERED and refuse the collapse when that exceeds
+// a "big clip" threshold; small residual clips are left for the dissolve.
+//
+// Coverage is decided by winding against the stable pass-input ring (not the
+// mid-pass output), so it is independent of collapse order: a point in the loop
+// is still covered afterward iff windingFullRing(point) - windingLoop(point) != 0.
+// For a two-sided line outline the main body always covers the buffer interior,
+// so a fold has |winding| >= 2 (body + fold) and survives losing one layer, while
+// real boundary has |winding| == 1 and drops to 0. The uncovered area is
+// integrated with a horizontal scanline (below) rather than point-sampled, so an
+// interior uncovered pocket cannot be missed.
+//
+// An area pre-filter keeps this off the hot path: a loop whose own area is below
+// the threshold cannot produce a clip above it, so only large loops are swept.
+// The threshold is in ring units; under web Mercator the scale factor is >= 1
+// everywhere, so it is an upper bound on the real m^2 area and no genuinely large
+// clip is skipped regardless of latitude.
+function collapseKeepsAreaCovered(ring, n, X, b, nextRingIndex, s, index, fillFloor) {
+  // Area pre-filter keeps the scanline off the hot path: a loop can neither clip
+  // nor fill more than its own area, so it is safe to skip whenever the loop is
+  // below BOTH thresholds. (Filling a winding-0 region never reaches the uncovered
+  // floor, so the fill floor must join the skip test -- otherwise small folds that
+  // could fill a small hole would be skipped, or every collapse would be scanned.)
+  var floor = fillFloor < BUFFER_LOOP_CHECK_MIN_AREA ? fillFloor : BUFFER_LOOP_CHECK_MIN_AREA;
+  var u = collapseUncoveredArea(ring, n, X, b, nextRingIndex, s, index, floor);
+  if (u < 0) return true; // loop below both floors -- too small to clip or fill
+  // Reject if the collapse would clip a real lobe (uncovered) OR swallow a real
+  // hole/notch (filled). The uncovered floor is an absolute "big clip" bound; the
+  // fill floor scales with the buffer disk (dist^2) because a real hole's area is
+  // a fixed fraction of the disk while a fold sliver is orders of magnitude
+  // smaller relative to the radius (see BUFFER_LOOP_FILL_AREA_FRAC).
+  return u < BUFFER_LOOP_CHECK_MIN_AREA && _lastFillArea < fillFloor;
+}
+
+// Returns the area of the dropped region a collapse would leave uncovered, or -1
+// when the loop's own area is below `floor` (too small to matter -- scanline
+// skipped). See collapseKeepsAreaCovered for the winding rationale.
+function collapseUncoveredArea(ring, n, X, b, nextRingIndex, s, index, floor) {
+  var i, loopLen = s - nextRingIndex + 3; // X, b, ring[next..s]
+  // Loop area (shoelace over X, b, ring[next..s]) and bounding box.
+  var area2 = 0, px = X[0], py = X[1];
+  var minx = X[0], maxx = X[0], miny = X[1], maxy = X[1];
+  function bbox(qx, qy) {
+    if (qx < minx) minx = qx; else if (qx > maxx) maxx = qx;
+    if (qy < miny) miny = qy; else if (qy > maxy) maxy = qy;
+  }
+  bbox(b[0], b[1]);
+  area2 += px * b[1] - b[0] * py; px = b[0]; py = b[1];
+  for (i = nextRingIndex; i <= s; i++) {
+    area2 += px * ring[i][1] - ring[i][0] * py; px = ring[i][0]; py = ring[i][1];
+    bbox(ring[i][0], ring[i][1]);
+  }
+  area2 += px * X[1] - X[0] * py;
+  if (Math.abs(area2) / 2 < floor) return -1; // too small to matter
+  // Collect the ring edges whose y-range meets the loop's band (the only ones
+  // that can cross any scanline); reuse module scratch to avoid per-call garbage.
+  var scr = coverageScratch(n + loopLen);
+  var lx0 = scr.lx0, ly0 = scr.ly0, lx1 = scr.lx1, ly1 = scr.ly1;
+  var band = scr.band, le = 0;
+  var gen = ++index.gen, stamp = index.stamp, start = index.start, edges = index.edges;
+  var kb, klo = index.binOf(miny), khi = index.binOf(maxy);
+  for (kb = klo; kb <= khi; kb++) {
+    for (var p = start[kb]; p < start[kb + 1]; p++) {
+      var ei = edges[p];
+      if (stamp[ei] === gen) continue;
+      stamp[ei] = gen;
+      var ay = ring[ei][1], by = ring[ei + 1][1];
+      if (ay < miny && by < miny || ay > maxy && by > maxy) continue;
+      if (ring[ei][0] > maxx && ring[ei + 1][0] > maxx) continue; // entirely right of loop
+      band[le++] = ei;
+    }
+  }
+  // Loop edges (X->b, b->ring[next..s], ring[s]->X).
+  var lc = 0;
+  lx0[lc] = X[0]; ly0[lc] = X[1]; lx1[lc] = b[0]; ly1[lc] = b[1]; lc++;
+  lx0[lc] = b[0]; ly0[lc] = b[1]; lx1[lc] = ring[nextRingIndex][0]; ly1[lc] = ring[nextRingIndex][1]; lc++;
+  for (i = nextRingIndex; i < s; i++) {
+    lx0[lc] = ring[i][0]; ly0[lc] = ring[i][1]; lx1[lc] = ring[i + 1][0]; ly1[lc] = ring[i + 1][1]; lc++;
+  }
+  lx0[lc] = ring[s][0]; ly0[lc] = ring[s][1]; lx1[lc] = X[0]; ly1[lc] = X[1]; lc++;
+  return loopUncoveredArea(ring, band, le, lx0, ly0, lx1, ly1, lc, minx, maxx, miny, maxy, scr);
+}
+
+// y-band index of ring edges: bins the ring's y-range so a scanline query at
+// [miny, maxy] returns only edges reaching that band instead of scanning all n.
+// start[k]..start[k+1] are indices into `edges` for bin k; `stamp`/`gen` dedup an
+// edge that spans several bins during a single query.
+function buildEdgeYIndex(ring, n) {
+  var yMin = Infinity, yMax = -Infinity, i;
+  for (i = 0; i < n; i++) { var y = ring[i][1]; if (y < yMin) yMin = y; if (y > yMax) yMax = y; }
+  var B = n < 32 ? 1 : Math.min(4096, Math.max(16, n >> 2));
+  var binH = (yMax - yMin) / B || 1;
+  var binOf = function (y) { var k = ((y - yMin) / binH) | 0; return k < 0 ? 0 : (k >= B ? B - 1 : k); };
+  var start = new Int32Array(B + 1);
+  for (i = 0; i < n; i++) {
+    var ya = ring[i][1], yb = ring[i + 1][1];
+    var lo = binOf(ya < yb ? ya : yb), hi = binOf(ya < yb ? yb : ya);
+    for (var k = lo; k <= hi; k++) start[k + 1]++;
+  }
+  for (i = 0; i < B; i++) start[i + 1] += start[i];
+  var edges = new Int32Array(start[B]);
+  var cur = start.slice(0, B);
+  for (i = 0; i < n; i++) {
+    var a2 = ring[i][1], b2 = ring[i + 1][1];
+    var lo2 = binOf(a2 < b2 ? a2 : b2), hi2 = binOf(a2 < b2 ? b2 : a2);
+    for (var k2 = lo2; k2 <= hi2; k2++) edges[cur[k2]++] = i;
+  }
+  return { binOf: binOf, start: start, edges: edges, stamp: new Int32Array(n), gen: 0 };
+}
+
+var _covScratch = null;
+function coverageScratch(cap) {
+  if (!_covScratch || _covScratch.cap < cap) {
+    _covScratch = {
+      cap: cap,
+      lx0: new Float64Array(cap), ly0: new Float64Array(cap),
+      lx1: new Float64Array(cap), ly1: new Float64Array(cap),
+      band: new Int32Array(cap),
+      xs: new Float64Array(cap), df: new Int8Array(cap),
+      dl: new Int8Array(cap), order: new Int32Array(cap)
+    };
+  }
+  return _covScratch;
+}
+
+// Sweep the removed loop L and measure two area quantities the collapse would
+// change, both integrated with horizontal scanlines across L's bounding box (at
+// each scanline the winding of the full ring and of the loop are step functions
+// of x, reconstructed from the sorted edge crossings). For a point inside L
+// (windingLoop != 0), the winding after the collapse is windingFull - windingLoop:
+//   - UNCOVERED: was covered (windingFull == windingLoop, so it drops to 0). This
+//     is the "big clip" a collapse of a real single-covered lobe would make.
+//   - FILLED: was a winding-0 hole/exterior (windingFull == 0, so it flips to
+//     covered). This is a real buffer hole (or an open outer-wall notch) the
+//     collapse would swallow -- undetectable by the uncovered measure alone,
+//     since filling adds coverage rather than removing it.
+// Returns the uncovered area and writes the filled area to _lastFillArea.
+// `band` lists the indices of ring edges that can reach the loop's y-band.
+var _lastFillArea = 0;
+function loopUncoveredArea(ring, band, be, lx0, ly0, lx1, ly1, le, minx, maxx, miny, maxy, scr) {
+  var h = maxy - miny;
+  _lastFillArea = 0;
+  if (h <= 0 || maxx <= minx) return 0;
+  var target = Math.sqrt(BUFFER_LOOP_CHECK_MIN_AREA) / 4;
+  var rows = Math.round(h / (target > 0 ? target : h));
+  if (rows < 8) rows = 8; else if (rows > 40) rows = 40;
+  var dy = h / rows;
+  var xs = scr.xs, df = scr.df, dl = scr.dl, order = scr.order;
+  var total = 0, fill = 0, r, k, i;
+  for (r = 0; r < rows; r++) {
+    var y = miny + (r + 0.5) * dy;
+    // Winding just left of the loop's x-range (base), plus the crossings that
+    // fall inside [minx, maxx] (only these need sorting). Crossings right of the
+    // loop are irrelevant to intervals within the range and are dropped.
+    var baseWf = 0, baseWl = 0, m = 0;
+    for (k = 0; k < be; k++) {
+      i = band[k];
+      var y1 = ring[i][1], y2 = ring[i + 1][1];
+      if ((y1 <= y) === (y2 <= y)) continue;
+      var x = ring[i][0] + (y - y1) / (y2 - y1) * (ring[i + 1][0] - ring[i][0]);
+      var sgnF = y2 > y1 ? 1 : -1;
+      if (x <= minx) baseWf += sgnF;
+      else if (x < maxx) { xs[m] = x; df[m] = sgnF; dl[m] = 0; order[m] = m; m++; }
+    }
+    for (i = 0; i < le; i++) {
+      var ya = ly0[i], yb = ly1[i];
+      if ((ya <= y) === (yb <= y)) continue;
+      var xl = lx0[i] + (y - ya) / (yb - ya) * (lx1[i] - lx0[i]);
+      var sl = yb > ya ? 1 : -1;
+      if (xl <= minx) { baseWl += sl; }
+      else if (xl < maxx) { xs[m] = xl; df[m] = 0; dl[m] = sl; order[m] = m; m++; }
+    }
+    sortByX(order, xs, m);
+    var wf = baseWf, wl = baseWl, prevx = minx;
+    for (i = 0; i < m; i++) {
+      var o = order[i], xk = xs[o];
+      if (wl !== 0 && xk > prevx) {
+        if (wf - wl === 0) total += xk - prevx;
+        else if (wf === 0) fill += xk - prevx;
+      }
+      wf += df[o]; wl += dl[o]; prevx = xk;
+    }
+    if (wl !== 0 && maxx > prevx) {
+      if (wf - wl === 0) total += maxx - prevx;
+      else if (wf === 0) fill += maxx - prevx;
+    }
+  }
+  _lastFillArea = fill * dy;
+  return total * dy;
+}
+
+// Insertion sort of index array `order[0..m)` by xs[order[k]] ascending. m is
+// small per scanline (edges straddling the row), so this beats a comparator sort.
+function sortByX(order, xs, m) {
+  for (var i = 1; i < m; i++) {
+    var oi = order[i], xi = xs[oi], j = i - 1;
+    while (j >= 0 && xs[order[j]] > xi) { order[j + 1] = order[j]; j--; }
+    order[j + 1] = oi;
+  }
 }

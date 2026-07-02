@@ -208,6 +208,20 @@ describe('mapshaper-buffer.js', function () {
       assert(rhumb > 0.01, 'rhumb buffer should be distorted, got ' + rhumb);
     })
 
+    // At large radius on a short rectangular edge, round joins from opposite
+    // corners meet along the top; expect a smooth arc, not a single-spike nipple.
+    it('geodesic buffer of Idaho rectangle has smooth outer top at 300km', async function () {
+      var file = 'repro-clean-outline-winding/02_idaho_rectangle.json';
+      var out = await api.applyCommands(
+        '-i ' + file + ' -buffer 300km -o format=geojson buffer.json');
+      var geom = getOutputGeometries(out)[0];
+      var ring = geom.type == 'Polygon' ? geom.coordinates[0] : geom.coordinates[0][0];
+      var maxLat = Math.max.apply(null, ring.map(function(p) { return p[1]; }));
+      var north = ring.filter(function(p) { return p[1] > maxLat - 0.05; });
+      assert(north.length >= 3,
+        'expected a smooth top arc, got ' + north.length + ' northern vertices');
+    })
+
     it('buffers line features independently', async function () {
       var lines = {
         type: 'FeatureCollection',
@@ -364,6 +378,95 @@ describe('mapshaper-buffer.js', function () {
   // path; dissolving it can leave spurious holes (winding artifacts of the
   // outline's concave-join loops), which the artifact-hole filter should
   // remove without touching real holes.
+  // ringEnclosesOtherTerritory skips ray casts when a probe point falls outside
+  // the hole ring's bbox. The prefilter must agree with ray-casting every point.
+  describe('ringEnclosesOtherTerritory bbox prefilter', function () {
+    function pointInGeoJSONRing(x, y, ring) {
+      var inside = false;
+      for (var i = 0, j = ring.length - 1; i < ring.length; j = i++) {
+        var xi = ring[i][0], yi = ring[i][1];
+        var xj = ring[j][0], yj = ring[j][1];
+        if ((yi > y) !== (yj > y) &&
+            x < (xj - xi) * (y - yi) / (yj - yi) + xi) {
+          inside = !inside;
+        }
+      }
+      return inside;
+    }
+
+    function getGeoJSONRingBounds(ring) {
+      var n = ring.length - 1;
+      if (n <= 0) n = ring.length;
+      var xmin = Infinity, ymin = Infinity, xmax = -Infinity, ymax = -Infinity;
+      for (var i = 0; i < n; i++) {
+        var x = ring[i][0], y = ring[i][1];
+        if (x < xmin) xmin = x;
+        if (x > xmax) xmax = x;
+        if (y < ymin) ymin = y;
+        if (y > ymax) ymax = y;
+      }
+      return {xmin: xmin, ymin: ymin, xmax: xmax, ymax: ymax};
+    }
+
+    function pointInGeoJSONRingBounds(x, y, bounds) {
+      return x >= bounds.xmin && x <= bounds.xmax &&
+        y >= bounds.ymin && y <= bounds.ymax;
+    }
+
+    function ringEnclosesOtherTerritoryBaseline(ring, ctx) {
+      var points = ctx.territoryPoints;
+      if (!points) return false;
+      for (var i = 0; i < points.length; i++) {
+        if (points[i].featureId === ctx.featureId) continue;
+        if (pointInGeoJSONRing(points[i].x, points[i].y, ring)) return true;
+      }
+      return false;
+    }
+
+    function ringEnclosesOtherTerritoryPrefilter(ring, ctx) {
+      var points = ctx.territoryPoints;
+      if (!points) return false;
+      var bounds = getGeoJSONRingBounds(ring);
+      for (var i = 0; i < points.length; i++) {
+        if (points[i].featureId === ctx.featureId) continue;
+        if (!pointInGeoJSONRingBounds(points[i].x, points[i].y, bounds)) continue;
+        if (pointInGeoJSONRing(points[i].x, points[i].y, ring)) return true;
+      }
+      return false;
+    }
+
+    function assertPrefilterMatchesBaseline(ring, territoryPoints, featureCount) {
+      for (var f = 0; f < featureCount; f++) {
+        var ctx = {territoryPoints: territoryPoints, featureId: f};
+        assert.equal(ringEnclosesOtherTerritoryPrefilter(ring, ctx),
+          ringEnclosesOtherTerritoryBaseline(ring, ctx));
+      }
+    }
+
+    it('matches ray-cast-only results on synthetic rings', function () {
+      var square = [[0, 0], [4, 0], [4, 4], [0, 4], [0, 0]];
+      var lShape = [[0, 0], [4, 0], [4, 1], [1, 1], [1, 4], [0, 4], [0, 0]];
+      var territoryPoints = [
+        {x: 2, y: 2, featureId: 1},
+        {x: 8, y: 8, featureId: 1},
+        {x: 3, y: 3, featureId: 2}
+      ];
+      assertPrefilterMatchesBaseline(square, territoryPoints, 3);
+      assertPrefilterMatchesBaseline(lShape, territoryPoints, 3);
+      // duplicate closing vertex (GeoJSON style)
+      assertPrefilterMatchesBaseline(square.concat(), territoryPoints, 3);
+
+      // bbox prefilter must skip far probes without changing the result
+      var farPoints = [];
+      for (var x = -20; x <= 20; x += 5) {
+        for (var y = -20; y <= 20; y += 5) {
+          farPoints.push({x: x, y: y, featureId: 1});
+        }
+      }
+      assertPrefilterMatchesBaseline(square, farPoints, 2);
+    });
+  })
+
   describe('outline fast path artifact holes', function () {
     function countRings(geojson) {
       var geom = geojson.geometries[0];
@@ -394,6 +497,229 @@ describe('mapshaper-buffer.js', function () {
         '-i test/data/features/buffer/m_loops.json -buffer 1km -o buffer.json');
       assert.equal(countRings(JSON.parse(out['buffer.json'])), 3); // shell + 2 holes
     })
+  })
+
+  // A closed-ring buffer closes its offset loop at a seam. The seam used to be
+  // pinned to the first source edge; when that edge sat next to a cluster of
+  // concave (reflex) corners, the winding-fill dips back to the source vertices
+  // there formed a tangle, and the pre-dissolve overshoot-loop remover -- which
+  // starts non-cyclically at the seam vertex -- collapsed the true outer boundary
+  // along with the self-overlap, leaving an inward notch. The seam is now placed
+  // on a clean convex stretch, away from concave corners. (Greenland Mercator
+  // polygon; an open polyline of the same coords always buffered cleanly.)
+  describe('closed-ring buffer seam avoids concave corners (notch regression)', function () {
+    var file = 'test/data/features/buffer/greenland_merc_polygon_error5b.fgb';
+    function test(cmd, dist) {
+      it(cmd, async function () {
+        var src = getOutputGeometries(
+          await api.applyCommands('-i ' + file + ' -o buffer.json'))[0];
+        var geom = getOutputGeometries(
+          await api.applyCommands('-i ' + file + ' ' + cmd + ' -o buffer.json'))[0];
+        // no buffer vertex should dip nearer than 95% of the offset distance
+        assert(minRingVertexDistToSource(geom, src) >= dist * 0.95,
+          'inward notch: closest buffer vertex is ' +
+          minRingVertexDistToSource(geom, src).toFixed(0) + ' from source (expected ~' + dist + ')');
+      });
+    }
+    test('-buffer 30km', 30000);
+    test('-buffer 10km geodesic', 23000); // geodesic dist is mercator-scaled (>10km here)
+    test('-buffer 5km', 5000);
+    test('-buffer 50km', 50000);
+    // The clean-outline-winding grow (constant-winding concave bridge + ungated
+    // crossing-direction remover) must be notch-free on the same seam case.
+    test('-buffer 30km clean-outline-winding', 30000);
+    test('-buffer 50km clean-outline-winding', 50000);
+  })
+
+  // A second notch class, mid-ring rather than at the seam: the pre-dissolve
+  // overshoot-loop remover used the crossing-direction signal directly on closed
+  // winding-fill rings. That signal assumes a constant +/-1 base winding, which
+  // overlapping concave-corner dips break (a deeply serrated coast at a large
+  // radius); it then collapsed a whole boundary bulge to one inward crossing. The
+  // remover now applies the source-turn safety veto on these rings, so large-turn
+  // tangles are left for the dissolve. (Different Greenland Mercator clip; the
+  // notch appeared across a band of buffer sizes.)
+  describe('closed-ring overshoot remover keeps serrated boundary (notch regression)', function () {
+    var file = 'test/data/features/buffer/greenland_merc_polygon_error.fgb';
+    function test(km, flags) {
+      it('-buffer ' + km + 'km' + (flags ? ' ' + flags : ''), async function () {
+        var dist = km * 1000;
+        var src = getOutputGeometries(
+          await api.applyCommands('-i ' + file + ' -o buffer.json'))[0];
+        var geom = getOutputGeometries(
+          await api.applyCommands('-i ' + file + ' -buffer ' + km + 'km ' +
+            (flags || '') + ' -o buffer.json'))[0];
+        assert(minRingVertexDistToSource(geom, src) >= dist * 0.95,
+          'inward notch at ' + km + 'km: closest buffer vertex is ' +
+          minRingVertexDistToSource(geom, src).toFixed(0) + ' from source (expected ~' + dist + ')');
+      });
+    }
+    [30, 40, 45, 50, 55, 60].forEach(function(km) { test(km); });
+    // Same serrated-coast notch case must stay clean under the clean-outline-winding
+    // grow, across the full band of buffer sizes (the prototype's target regime).
+    [40, 50, 60, 100].forEach(function(km) { test(km, 'clean-outline-winding'); });
+  })
+
+  // Geodesic fold-back and loop removal: gap-patch is on by default for geodesic
+  // buffers; no-gap-patch disables it for debugging. Without gap-patch the
+  // default dip+coverage loop remover can carve a small fold-back notch.
+  describe('geodesic polygon loop removal and gap-patch (fold-back regression)', function () {
+    var file = 'test/data/features/buffer/idaho_geodesic_gap.json';
+    function totalArea(geoms) {
+      return geoms.reduce(function(sum, g) {
+        var polys = g.type == 'Polygon' ? [g.coordinates] : g.coordinates;
+        polys.forEach(function(rings) {
+          rings.forEach(function(ring, i) {
+            sum += Math.abs(ringArea(ring)) * (i === 0 ? 1 : -1);
+          });
+        });
+        return sum;
+      }, 0);
+    }
+    it('default geodesic buffer preserves area (gap-patch on)', async function () {
+      var raw = totalArea(getOutputGeometries(await api.applyCommands(
+        '-i ' + file + ' -buffer 50km no-loop-removal -o buffer.json')));
+      var def = totalArea(getOutputGeometries(await api.applyCommands(
+        '-i ' + file + ' -buffer 50km -o buffer.json')));
+      assert(Math.abs(def - raw) / raw < 1.5e-4,
+        'default area delta ' + (Math.abs(def - raw) / raw).toExponential(2));
+    });
+    it('no-gap-patch allows a small fold-back notch from loop removal', async function () {
+      var raw = totalArea(getOutputGeometries(await api.applyCommands(
+        '-i ' + file + ' -buffer 50km no-loop-removal -o buffer.json')));
+      var unpatch = totalArea(getOutputGeometries(await api.applyCommands(
+        '-i ' + file + ' -buffer 50km no-gap-patch -o buffer.json')));
+      var rel = Math.abs(unpatch - raw) / raw;
+      assert(rel > 5e-5 && rel < 3e-4,
+        'expected a small fold-back notch, got ' + rel.toExponential(2));
+    });
+  })
+
+  // Geodesic fold-back artifacts (notches and positive sliver parts) are handled
+  // by default gap-patch at construction time; the outline artifact-hole filter
+  // and unified boundary-flood dissolve clean up the dissolved result.
+  describe('geodesic clean-outline-winding removes fold-back sliver/notch artifacts (winding regression)', function () {
+    var file = 'test/data/features/buffer/idaho_geodesic_gap.json';
+    function partAreas(geoms) {
+      var areas = [];
+      geoms.forEach(function(g) {
+        var polys = g.type == 'Polygon' ? [g.coordinates] : g.coordinates;
+        polys.forEach(function(rings) { areas.push(Math.abs(ringArea(rings[0]))); });
+      });
+      return areas;
+    }
+    it('drops sliver parts and the notch by default, matching -clean part count', async function () {
+      var fix = partAreas(getOutputGeometries(await api.applyCommands(
+        '-i ' + file + ' -buffer 50km tolerance=0 -o buffer.json')));
+      var cleaned = partAreas(getOutputGeometries(await api.applyCommands(
+        '-i ' + file +
+        ' -buffer 50km tolerance=0 -clean -o buffer.json')));
+      // Every surviving positive part is a large fraction of the main part; the
+      // fold-back wedge/sliver was ~6 orders of magnitude smaller.
+      var main = Math.max.apply(null, fix);
+      fix.forEach(function (a) {
+        assert(a / main > 1e-3,
+          'degenerate sliver part survived (ratio ' + (a / main).toExponential(2) + ')');
+      });
+      assert.equal(fix.length, cleaned.length,
+        'part count should match a follow-up -clean (' + fix.length + ' vs ' +
+        cleaned.length + ')');
+    });
+  })
+
+  // Large geodesic buffers open outer-wall gaps at fan-apart concave bends.
+  // gap-patch is on by default for geodesic buffers (single-segment stadium
+  // union); no-gap-patch disables it for debugging.
+  describe('geodesic gap-patch fills fan-apart outer-wall gaps (gap-patch regression)', function () {
+    // Closest path vertex to each is an acute tip in the raw offset path where the
+    // wall should bulge out in a round join but instead doubles back inward.
+    var gapPoints = [
+      [-119.07623879952284, 44.13243858508283],
+      [-110.58623879953056, 45.977438585083775],
+      [-113.54623879952787, 47.89743858508476]
+    ];
+    function inAnyGeom(p, geoms) {
+      return geoms.some(function(g) { return pointInGeometry(p, g); });
+    }
+    async function buffer(file, cmd) {
+      return getOutputGeometries(await api.applyCommands(
+        '-i ' + file + ' -buffer ' + cmd + ' -o buffer.json'));
+    }
+    // Default (gap-patch on) must fill every outer-wall gap point. Without
+    // gap-patch the buffer must still leave at least one of them an open notch --
+    // i.e. gap-patch is required. (The default dip+coverage loop remover now
+    // collapses and fills the fan-apart bends whose inward dip self-crosses, a
+    // valid subset-of-buffer fill, so not every gap point remains a notch under
+    // no-gap-patch, but the pure fan-apart gaps that only gap-patch reaches do.)
+    function assertGapPatchFillsNotches(patched, base, label) {
+      var patchedCount = gapPoints.filter(function(p) { return inAnyGeom(p, patched); }).length;
+      var baseCount = gapPoints.filter(function(p) { return inAnyGeom(p, base); }).length;
+      assert.equal(patchedCount, gapPoints.length,
+        label + ': default should fill all ' + gapPoints.length + ' outer-wall gaps');
+      assert(baseCount < gapPoints.length,
+        label + ': no-gap-patch should leave at least one outer-wall notch (' +
+        baseCount + '/' + gapPoints.length + ' filled)');
+    }
+    it('polygon buffer: default fills outer-wall gaps; no-gap-patch leaves notches', async function () {
+      var file = 'test/data/features/buffer/idaho_gap_patch.json';
+      var patched = await buffer(file, '150km tolerance=0');
+      var base = await buffer(file, '150km no-gap-patch tolerance=0');
+      assertGapPatchFillsNotches(patched, base, 'polygon');
+    });
+    it('full idaho 150km buffer stays one part (gap-patch arc probes)', async function () {
+      var out = await api.applyCommands(
+        '-i repro-clean-outline-winding/02_idaho.geojson -buffer 150km -o buffer.json');
+      var g = getOutputGeometries(out)[0];
+      var polys = g.type == 'Polygon' ? [g.coordinates] : g.coordinates;
+      assert.equal(polys.length, 1, 'missing arc probes splits the buffer into extra parts');
+    });
+    it('two-sided open-line buffer: same gaps filled by default', async function () {
+      var file = 'test/data/features/buffer/idaho_gap_patch_open.json';
+      var patched = await buffer(file, '150km tolerance=0');
+      var base = await buffer(file, '150km tolerance=0 no-gap-patch');
+      assertGapPatchFillsNotches(patched, base, 'two-sided line');
+    });
+    it('topological buffer: default fills outer-wall gaps; no-gap-patch leaves notches', async function () {
+      var file = 'test/data/features/buffer/idaho_gap_patch.json';
+      var patched = await buffer(file, '150km topological tolerance=0');
+      var base = await buffer(file, '150km topological no-gap-patch tolerance=0');
+      assertGapPatchFillsNotches(patched, base, 'topological');
+    });
+    it('gap-patch is a no-op for planar (projected) buffers', async function () {
+      var file = 'test/data/features/buffer/greenland_merc_polygon_error5b.fgb';
+      var out = await api.applyCommands('-i ' + file + ' -buffer 30km -o a.json');
+      var outNoPatch = await api.applyCommands('-i ' + file + ' -buffer 30km no-gap-patch -o a.json');
+      assert.equal(String(out['a.json']), String(outNoPatch['a.json']));
+    });
+  })
+
+  // A real hole forms where three arms of a deeply concave coastline close around
+  // a pocket. The hole was silently deleted by the positive-buffer artifact-hole
+  // filter, whose area floor was the full buffer-disk area (radius^2): a real
+  // pocket-hole far smaller than the disk failed the floor. The floor only had to
+  // reject numerical-noise slivers (a real grow-hole can be arbitrarily small), so
+  // it is now a tiny fraction of the disk. The bug also presented as an
+  // inconsistency: an equivalent buffer expressed as a smaller nominal distance
+  // (geodesic2 10km, internally ~38km in the Mercator plane) kept the hole because
+  // the floor scaled with the nominal radius, while 37-39km / geodesic 10km did not.
+  describe('positive buffer keeps a real pocket hole (missing-hole regression)', function () {
+    var file = 'test/data/features/buffer/greenland_merc_polygon_error2.fgb';
+    function holeCount(cmd) {
+      return api.applyCommands('-i ' + file + ' -buffer ' + cmd + ' -o buffer.json')
+        .then(function(out) {
+          return getSignedRingAreas(getOutputGeometries(out)[0]).filter(function(a) {
+            return a < 0;
+          }).length;
+        });
+    }
+    ['37km', '38km', '39km', 'geodesic 10km', 'geodesic2 10km'].forEach(function(cmd) {
+      it(cmd + ' keeps the hole', async function () {
+        assert.equal(await holeCount(cmd), 1);
+      });
+    });
+    it('100km closes the hole (arms merge)', async function () {
+      assert.equal(await holeCount('100km'), 0);
+    });
   })
 
   // Count the number of holes in the buffered polygon at different buffer sizes
@@ -659,6 +985,45 @@ describe('mapshaper-buffer.js', function () {
       assert.equal(pointInGeometry([1800, 1500], geoms[1]), false);
     })
 
+    // Regression: a feature whose boundary is split into more than one unshared
+    // chain (the middle square shares its left edge with A and its right edge
+    // with C, leaving its top and bottom edges as two separate open chains that
+    // each span the full 3000-wide width). The open-chain grow must cap both
+    // ends of each chain; the earlier one-sided outline self-closed each chain
+    // with a straight chord between its far-apart endpoints, leaving a
+    // triangular notch (uncovered wedge) near one corner of every band -- the
+    // "spike" artifact. Probing both ends of the top and bottom bands catches it.
+    it('topological grow caps both ends of a multi-chain boundary (no notch)', async function () {
+      var threeInARow = {
+        type: 'FeatureCollection',
+        features: [
+          {type: 'Feature', properties: {id: 1}, geometry: {type: 'Polygon',
+            coordinates: [[[0, 0], [1000, 0], [1000, 1000], [0, 1000], [0, 0]]]}},
+          {type: 'Feature', properties: {id: 2}, geometry: {type: 'Polygon',
+            coordinates: [[[1000, 0], [4000, 0], [4000, 1000], [1000, 1000], [1000, 0]]]}},
+          {type: 'Feature', properties: {id: 3}, geometry: {type: 'Polygon',
+            coordinates: [[[4000, 0], [5000, 0], [5000, 1000], [4000, 1000], [4000, 0]]]}}
+        ]
+      };
+      var out = await api.applyCommands(
+        '-i polygons.json -buffer 200 topological -o format=geojson buffer.json',
+        {'polygons.json': threeInARow}
+      );
+      var B = getOutputGeometries(out)[1];
+      // full top band (y just above the unshared top edge) is covered end to end
+      [1100, 2500, 3900].forEach(function(x) {
+        assert.equal(pointInGeometry([x, 1100], B), true, 'top band at x=' + x);
+      });
+      // full bottom band (y just below the unshared bottom edge)
+      [1100, 2500, 3900].forEach(function(x) {
+        assert.equal(pointInGeometry([x, -100], B), true, 'bottom band at x=' + x);
+      });
+      // shared left/right edges are not grown outward, and nothing spikes out
+      assert.equal(pointInGeometry([900, 500], B), false);
+      assert.equal(pointInGeometry([4100, 500], B), false);
+      assert.equal(pointInGeometry([2500, 1300], B), false);
+    })
+
     // Overlap space is partitioned by proximity to the source rings (nearest
     // polygon wins), not handed wholesale to the larger feature. The two squares
     // face each other across a gap (square 0 right edge x=2000, square 1 left
@@ -799,6 +1164,42 @@ describe('mapshaper-buffer.js', function () {
         assert(significant / contested < 0.005,
           'too many points misassigned beyond the centerline: ' + significant);
       });
+    })
+
+    // Regression: the Columbia gap between the real Oregon and Washington polygons
+    // closes into a shared border at its east end (the states become adjacent).
+    // The sampled-site medial stops a little short of that junction, leaving its
+    // cut-line dangling inside the buffer; detachAcyclicArcs then pruned the whole
+    // medial, so the contested gap tile was never subdivided and was assigned
+    // wholesale to Washington -- Oregon's bank did not move while Washington filled
+    // the entire river. Extending the medial endpoints past the boundary fixes it;
+    // here Oregon must expand north into the gap along the western river.
+    it('topological buffer grows both banks of a river gap that closes into a shared border (Oregon/Washington)', async function () {
+      var file = 'test/data/features/buffer/__usa_adm1_polygon.json';
+      var srcFC = JSON.parse(fs.readFileSync(file));
+      var orSrc = srcFC.features.find(function(f) { return f.properties.NAME == 'Oregon'; }).geometry;
+      var out = await api.applyCommands('-i ' + file +
+        ' -filter "NAME==\'Oregon\' || NAME==\'Washington\'"' +
+        ' -buffer 10km topological -o format=geojson buffer.json');
+      var bufFC = JSON.parse(out['buffer.json']);
+      var orBuf = bufFC.features.find(function(f) { return f.properties.NAME == 'Oregon'; }).geometry;
+      function northEdge(geom, lng) {
+        var hi = null;
+        for (var lat = 44.0; lat <= 47.5; lat += 0.004) {
+          if (pointInGeometry([lng, lat], geom)) hi = lat;
+        }
+        return hi;
+      }
+      var lngs = [-124.0, -123.8, -123.6, -123.4, -123.2, -123.0, -122.8, -122.6];
+      var grew = 0;
+      lngs.forEach(function(lng) {
+        var s = northEdge(orSrc, lng);
+        var b = northEdge(orBuf, lng);
+        if (s != null && b != null && b > s + 0.005) grew++;
+      });
+      assert(grew >= lngs.length - 1,
+        'Oregon should expand north into the Columbia gap at nearly all sampled longitudes; grew at ' +
+        grew + '/' + lngs.length);
     })
 
     // The undocumented debug-voronoi flag emits the inter-feature medial-axis
@@ -1422,6 +1823,15 @@ describe('mapshaper-buffer.js', function () {
       }), false);
     })
 
+    it('removes outline artifact holes from large geodesic topological buffer', async function () {
+      var out = await api.applyCommands(
+        '-i repro-clean-outline-winding/02_idaho.geojson ' +
+        '-buffer 150km topological -o format=geojson buffer.json'
+      );
+      var areas = getSignedRingAreas(getOutputGeometries(out)[0]);
+      assert.equal(areas.some(function(area) { return area < 0; }), false);
+    })
+
     it('preserves legitimate holes formed by positive buffers', async function () {
       var out = await api.applyCommands(
         '-i c.json -buffer 1000 -o format=geojson buffer.json',
@@ -1553,7 +1963,8 @@ describe('mapshaper-buffer.js', function () {
       var def = await bufferGeoms('-i ' + file + ' -buffer 100m topological');
       var sec = await bufferGeoms('-i ' + file + ' -buffer 100m topological band-method');
       assert(getTotalBufferArea(sec) > 0);
-      assert.equal(countHoles(sec), countHoles(def));
+      // Clean-outline topological may drop spurious holes the band path keeps.
+      assert(countHoles(def) <= countHoles(sec));
       assert(Math.abs(getTotalBufferArea(def) - getTotalBufferArea(sec)) /
         getTotalBufferArea(sec) < 0.005);
     })
@@ -1975,8 +2386,8 @@ describe('mapshaper-buffer.js', function () {
 
   describe('two-sided buffer of closed-ring polylines', function () {
     // A polyline whose parts are closed rings buffers to an annulus per ring
-    // (outer offset + inner-offset hole). These shapes are routed through the
-    // winding-fill + loop-removal construction rather than the open-path outline.
+    // (outer offset + inner-offset hole). A sub-tolerance gap opens the ring so
+    // the open-path outline builder (round caps at the seam) applies.
     it('a closed square ring buffers to a clean annulus', function (done) {
       var sq = {type: 'Feature', properties: {}, geometry: {type: 'LineString',
         coordinates: [[0, 0], [100, 0], [100, 100], [0, 100], [0, 0]]}};
@@ -2012,6 +2423,28 @@ describe('mapshaper-buffer.js', function () {
           assert.equal(rings[0].length, 2, 'annulus (outer + hole)');
           done();
         });
+    })
+
+    // Micro-gap at the seam must be tiny in path coordinate units (1e-6).
+    it('closed jagged ring matches open-line buffer along shared path', async function () {
+      var ringFile = 'repro-clean-outline-winding/01_line_ring.json';
+      var openFile = 'repro-clean-outline-winding/01_line_open.json';
+      var ring = getOutputGeometries(await api.applyCommands(
+        '-i ' + ringFile + ' -buffer 200km -o buffer.json'))[0];
+      var open = getOutputGeometries(await api.applyCommands(
+        '-i ' + openFile + ' -buffer 200km -o buffer.json'))[0];
+      function maxLonInBox(geom, lonMin, latMin, latMax) {
+        var rings = geom.type == 'Polygon' ? [geom.coordinates[0]] :
+          geom.coordinates.map(function(c) { return c[0]; });
+        var pts = rings.flat().filter(function(p) {
+          return p[0] > lonMin && p[1] > latMin && p[1] < latMax;
+        });
+        return Math.max.apply(null, pts.map(function(p) { return p[0]; }));
+      }
+      var ringMax = maxLonInBox(ring, -115, 44, 47);
+      var openMax = maxLonInBox(open, -115, 44, 47);
+      assert(Math.abs(ringMax - openMax) < 1e-6,
+        'right-side lobe: ring max lon ' + ringMax + ' vs open ' + openMax);
     })
   })
 
@@ -2144,6 +2577,35 @@ function getOutputGeometries(out, filename) {
   return json.features ?
     json.features.map(function(feat) { return feat.geometry; }) :
     json.geometries;
+}
+
+// Smallest distance from any buffer-ring vertex to the source ring. An inward
+// notch shows up as a vertex much closer to the source than the buffer distance.
+function minRingVertexDistToSource(geom, src) {
+  function rings(g) {
+    if (g.type == 'Polygon') return g.coordinates;
+    if (g.type == 'MultiPolygon') return [].concat.apply([], g.coordinates);
+    return [];
+  }
+  function segDist2(px, py, x0, y0, x1, y1) {
+    var dx = x1 - x0, dy = y1 - y0, L = dx * dx + dy * dy;
+    var t = L > 0 ? ((px - x0) * dx + (py - y0) * dy) / L : 0;
+    t = Math.max(0, Math.min(1, t));
+    var qx = x0 + t * dx, qy = y0 + t * dy;
+    return (px - qx) * (px - qx) + (py - qy) * (py - qy);
+  }
+  var srcRings = rings(src), best = Infinity;
+  rings(geom).forEach(function(r) {
+    r.forEach(function(p) {
+      srcRings.forEach(function(s) {
+        for (var i = 0; i < s.length - 1; i++) {
+          var d = segDist2(p[0], p[1], s[i][0], s[i][1], s[i + 1][0], s[i + 1][1]);
+          if (d < best) best = d;
+        }
+      });
+    });
+  });
+  return Math.sqrt(best);
 }
 
 function getAdjacentSquares() {

@@ -2,11 +2,17 @@ import {
   getPlanarSegmentEndpoint,
   bearingDegrees2D
 } from '../geom/mapshaper-geodesic';
-import { isLatLngCRS } from '../crs/mapshaper-projections';
+import {
+  isLatLngCRS,
+  isInvertibleCRS,
+  getProjTransform2,
+  parseCrsString
+} from '../crs/mapshaper-projections';
+import { greatCircleDistance } from '../geom/mapshaper-basic-geom';
 import { ShapeIter } from '../paths/mapshaper-shape-iter';
 import { forEachPoint } from '../points/mapshaper-point-utils';
 import { WGS84 } from '../geom/mapshaper-geom-constants';
-import { error } from '../utils/mapshaper-logging';
+import { error, message } from '../utils/mapshaper-logging';
 
 var R = WGS84.SEMIMAJOR_AXIS;
 var D2R = Math.PI / 180;
@@ -130,6 +136,19 @@ function clampPolar(base) {
 
 export function getOffsetFunction(crs, opts) {
   if (!isLatLngCRS(crs)) {
+    if (opts && opts.geodesic2) {
+      // Experimental geodesic buffering for projected data that stays entirely
+      // in the source projected plane (no web-Mercator round-trip), so it has no
+      // pole singularity or antimeridian wrap. Each offset is taken in the
+      // ordinary projected (cartesian) direction, but its magnitude is corrected
+      // so the endpoint lands at a true ground distance, measured with a
+      // first-party spherical great-circle formula (the same sphere model the
+      // lat-long buffer already uses). Falls back to planar if the CRS can't be
+      // inverted to measure ground distance.
+      var fn = makeScaleCorrectedOffset(crs);
+      if (fn) return fn;
+      message('[buffer] Ignoring "geodesic2": the dataset CRS is unknown or not invertible; using planar offsets.');
+    }
     return getPlanarSegmentEndpoint;
   }
   // Offset each point by a true geodesic distance, working directly in spherical
@@ -148,6 +167,90 @@ export function getOffsetFunction(crs, opts) {
   // distorted (egg-shaped caps/joins) -- but it is occasionally useful.
   var offset = opts && opts.rhumb ? rhumbOffset : greatCircleOffset;
   return opts && opts.polar ? clampPolar(offset) : offset;
+}
+
+// Convergence target for the scale-corrected offset: stop when the great-circle
+// distance reached is within SCALE_OFFSET_TOL (relative) or SCALE_OFFSET_ABS
+// (absolute, meters) of the requested ground distance.
+//
+// The iteration is a linear fixed point (m *= d/g), so the residual shrinks by a
+// roughly constant factor per step: a tighter tolerance costs extra tail
+// iterations no matter how good the warm-start guess is, and below ~1e-10 the
+// projection round-trip + haversine noise floor makes the test unreachable for
+// small d (it never converges and burns the iteration cap). 1e-8 relative is
+// 0.25 mm at a 25 km radius -- far below cartographic relevance -- and a sweep
+// over real data showed it sits just before the cost curve and the noise floor
+// bite (1e-7 and 1e-8 cost the same; 1e-9 adds ~5%; 1e-12 roughly doubles the
+// inverse-projection count and caps out on ~11% of points at 1 km).
+//
+// The tolerance does NOT need to guarantee bit-identical results for the same
+// (x, y, bearing, dist) across call paths: the only place two independent offset
+// computations must coincide -- a closed ring's seam -- closes by reusing the
+// first offset vertex's reference exactly (see makeFinalJoin in
+// mapshaper-path-buffer-v4), not by recomputing and comparing. Within a single
+// run the call order is fixed, so the warm-started result is deterministic.
+//
+// The absolute floor keeps tiny-distance helper calls (inset/probe offsets at
+// dist*1e-4 etc.) from chasing a sub-noise relative target; it is well below the
+// relative target for any d above ~100 m, so it never loosens normal offsets.
+var SCALE_OFFSET_TOL = 1e-8;
+var SCALE_OFFSET_ABS = 1e-6;
+var SCALE_OFFSET_MAX_ITER = 16;
+
+// Build a deterministic offset function for projected data that corrects the
+// offset magnitude so the endpoint sits at a true ground distance. The cartesian
+// offset direction is kept (so all the builder's planar constructions still hold)
+// and only the distance is solved: starting from the cartesian magnitude, measure
+// the great-circle distance actually reached, scale by the error ratio, and
+// iterate to convergence. The converged scale (projected units per ground meter)
+// is remembered to warm-start the next point -- adjacent points share nearly the
+// same projection scale, so the seeded guess is close and the loop converges in
+// ~2-3 iterations. The warm-start only seeds the initial guess and the loop is
+// driven to a tolerance (see SCALE_OFFSET_TOL), so within a run the result is
+// deterministic.
+// Returns null if the CRS cannot be inverted (no way to measure ground distance).
+function makeScaleCorrectedOffset(crs) {
+  if (!isInvertibleCRS(crs)) return null;
+  var toLngLat = getProjTransform2(crs, parseCrsString('wgs84')); // projected -> lng,lat
+  var warmScale = 1;
+  // Small LRU of inverted source coordinates. Every path vertex is unprojected at
+  // least twice (it is the shared endpoint of two consecutive segment offsets) and
+  // again for each round-join/cap arc point centered on it; a single slot is
+  // clobbered by the join construction between segments. A few slots capture that
+  // reuse and are dropped as construction moves along the path. Returns the exact
+  // toLngLat value (possibly null, out of domain), so caching changes nothing but speed.
+  var SCALE_LL_CACHE = 8;
+  var ckx = [], cky = [], cll = [];
+  function invert(x, y) {
+    for (var j = cll.length - 1; j >= 0; j--) {
+      if (ckx[j] === x && cky[j] === y) return cll[j];
+    }
+    var ll = toLngLat(x, y);
+    ckx.push(x); cky.push(y); cll.push(ll);
+    if (cll.length > SCALE_LL_CACHE) { ckx.shift(); cky.shift(); cll.shift(); }
+    return ll;
+  }
+  return function(x, y, bearing, meterDist) {
+    if (!meterDist) return [x, y];
+    var rad = bearing * D2R;
+    var sign = meterDist < 0 ? -1 : 1;
+    var d = meterDist * sign; // positive ground distance to reach
+    var ux = Math.sin(rad) * sign, uy = Math.cos(rad) * sign;
+    var ll0 = invert(x, y);
+    if (!ll0) return getPlanarSegmentEndpoint(x, y, bearing, meterDist);
+    var m = d * warmScale, qx = x, qy = y;
+    for (var i = 0; i < SCALE_OFFSET_MAX_ITER; i++) {
+      qx = x + ux * m; qy = y + uy * m;
+      var ll1 = toLngLat(qx, qy);
+      if (!ll1) break; // offset left the projection's domain; keep current estimate
+      var g = greatCircleDistance(ll0[0], ll0[1], ll1[0], ll1[1]);
+      if (!(g > 0)) { m *= 2; continue; }
+      if (Math.abs(g - d) <= SCALE_OFFSET_TOL * d + SCALE_OFFSET_ABS) break;
+      m *= d / g;
+    }
+    warmScale = m / d;
+    return [qx, qy];
+  };
 }
 
 // Great-circle (spherical geodesic) offset, computed directly in Mercator coords.

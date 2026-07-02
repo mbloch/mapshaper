@@ -2,12 +2,13 @@ import {
   dissolveBufferDataset2,
   getBufferDistanceFunction,
   getBufferToleranceFunction,
+  getOutlineBufferDissolveOpts,
   parseConstantBufferDistance
 } from '../buffer/mapshaper-buffer-common';
 import { getDatasetCRS, isLatLngCRS } from '../crs/mapshaper-projections';
 import { importGeoJSON } from '../geojson/geojson-import';
 import { getPolylineBufferMaker } from '../buffer/mapshaper-path-buffer-v4';
-import { splitAntimeridianBufferDataset } from '../buffer/mapshaper-polyline-buffer';
+import { splitAntimeridianBufferDataset, applyOutlineArtifactHoleFilter } from '../buffer/mapshaper-polyline-buffer';
 import {
   buildInterFeatureMedialLines,
   buildInterFeatureDelaunay
@@ -39,6 +40,14 @@ export function makePolygonBuffer(lyr, dataset, opts) {
   if (opts.debug_mosaic) {
     warn('debug-mosaic is not implemented for polygon buffers; ignoring');
     opts = Object.assign({}, opts, {debug_mosaic: false});
+  }
+  // The clean-outline-winding construction is the default polygon-grow outline
+  // and the topological per-feature offset (band-method restores the older band
+  // ribbon). Spurious dissolve holes on the default grow are removed by the
+  // shared outline artifact-hole filter; gap-patch handles geodesic fan-apart
+  // outer-wall gaps at construction time.
+  if (!opts.band_method) {
+    opts = Object.assign({}, opts, {clean_outline_winding: true});
   }
   if (opts.fill_gaps) {
     // Fill enclosed holes and narrow-mouthed inlets without growing the outer
@@ -98,8 +107,21 @@ export function makePolygonBuffer(lyr, dataset, opts) {
       dissolveBufferDataset2(dataset2, opts);
     }
   }
+  if (useOutlineGrowArtifactFilter(opts)) {
+    applyOutlineArtifactHoleFilter(dataset2.layers[0], dataset2.arcs,
+      lyr, dataset, opts, spherical, {
+        skipShape: function(shape, arcs) {
+          return shapeHasFillInsideHole(shape, arcs);
+        }
+      });
+  }
   cullSubTolerancePolygonArtifacts(dataset2, lyr, dataset, opts);
   return dataset2;
+}
+
+// True for clean-outline polygon grow and topological (not band-method or debug).
+function useOutlineGrowArtifactFilter(opts) {
+  return !opts.band_method && !bufferOutputIsDebug(opts);
 }
 
 // True when the buffer is producing a debug view (raw offsets or medial
@@ -117,10 +139,9 @@ function bufferOutputIsDebug(opts) {
 // is dropped. The smallest legitimate buffer part (the grow of a point-like
 // feature, ~pi*d^2) is ~4 orders of magnitude larger, so the threshold never
 // touches real geometry, and a genuinely thin-but-long fill (area =
-// tol*length >> tol^2) is kept. Holes are intentionally left alone: a small hole
-// can be a neighbor's preserved territory (see removePositiveBufferArtifactHoles,
-// which is territory-aware) and must not be filled here. Disabled when tolerance
-// is turned off (tolerance=0), matching the medial-simplify contract.
+// tol*length >> tol^2) is kept. Holes are intentionally left alone; the outline
+// artifact-hole filter runs after dissolve and keeps legitimate carved holes.
+// Disabled when tolerance is turned off (tolerance=0), matching the medial-simplify contract.
 export function cullSubTolerancePolygonArtifacts(outDataset, srcLyr, srcDataset, opts) {
   if (opts.tolerance === 0 || opts.tolerance == '0' || opts.tolerance == '0%') return;
   if (!outDataset || !outDataset.arcs) return;
@@ -152,8 +173,9 @@ export function cullSubTolerancePolygonArtifacts(outDataset, srcLyr, srcDataset,
 // - The clean-outline construction is the default for ordinary polygon grow
 //   (outer rings offset to a single self-contained loop; far fewer rings and
 //   self-intersections into the winding dissolve than the band ribbon).
-// - The topological pipeline (which pre-dissolves per feature into a shared
-//   mosaic) and the band-method escape hatch keep the band-ribbon construction.
+// - The band-method escape hatch keeps the band-ribbon construction; the
+//   topological pipeline uses the same clean-outline grow (with shared-arc path
+//   splitting) unless band-method is set.
 // - Negative buffers and hole shrink fall back to the band erode inside the
 //   outline path itself.
 // Shared by makePolygonBuffer and makePolarPolygonBuffer so the polar option is
@@ -348,13 +370,13 @@ function unionBufferDataset(dataset, opts) {
 // Drives the same per-ring makers the real construction uses, so the view shows
 // exactly what is built and 'no-loop-removal' has a visible effect (loop removal
 // runs inside the maker -- see buildOneSidedRings). Positive grow uses the
-// clean-outline maker by default (the band maker under band-method/topological);
-// holes are eroded with the band maker reversed to outer orientation (matching
+// clean-outline maker by default (the band maker under band-method); holes are
+// eroded with the band maker reversed to outer orientation (matching
 // makeOutlineBufferGeometry); negative (erode) buffers offset every ring inward
 // with the band maker.
 function makePolygonDebugOffsetGeoJSON(lyr, dataset, opts) {
   var distanceFn = getBufferDistanceFunction(lyr, dataset, opts);
-  var useOutline = !opts.band_method && !opts.topological;
+  var useOutline = !opts.band_method;
   var leftOpts = useOutline ? Object.assign({}, opts, {outline: true}) : opts;
   var leftMaker = getPolygonRingBufferMaker(dataset, leftOpts, 'left', true);
   var rightMaker = getPolygonRingBufferMaker(dataset,
@@ -500,17 +522,7 @@ function makeOutlineBufferGeometry(shape, arcs, distance, opts, outerMaker,
     getBufferMultiPolygonCoords(rings.outer, distance, outerMaker) : [];
   if (outerLoops.length === 0) return null;
   // Resolve the outer offset loops' self-overlaps into clean grown polygons.
-  var coords = dissolveOffsetRingsToCoords(outerLoops, opts);
-  if (coords.length === 0) return null;
-  // Strip artifact holes left by the outer grow (the offset loops dissolve into
-  // a clean fill, so any interior ring is a self-overlap artifact) BEFORE
-  // carving the real holes. The artifact filter's heuristic can otherwise
-  // delete a legitimately-shrunk hole whose eroded boundary happens to run near
-  // the source outline; the carved holes below are explicit and known-good, so
-  // they must not pass through it.
-  var grown = removePositiveBufferArtifactHoles(
-    {type: 'MultiPolygon', coordinates: coords}, shape, arcs, distance);
-  coords = grown ? grown.coordinates : [];
+  var coords = dissolveOffsetRingsToCoords(outerLoops, opts, true);
   if (coords.length === 0) return null;
   if (rings.holes.length > 0) {
     // Shrink the holes (an inward offset) with the band erode: treat each hole
@@ -524,6 +536,42 @@ function makeOutlineBufferGeometry(shape, arcs, distance, opts, outerMaker,
   }
   if (coords.length === 0) return null;
   return {type: 'MultiPolygon', coordinates: coords};
+}
+
+// Clean-outline grow for one topological feature: offset each shared-arc path
+// chain (see getPolygonBufferPathData), grow outers with the outline maker,
+// shrink holes with the band erode, then union -- same hole semantics as
+// makeOutlineBufferGeometry but with inter-feature path splitting preserved.
+//
+// A chain is classified as outer (grow) vs hole (shrink) by the signed area of
+// the CLOSED SOURCE RING it was split from, not by the chain's own area: an
+// unshared-boundary chain is an OPEN fragment (e.g. a state's international or
+// coastline segment between two shared interior borders), whose planar signed
+// area has an arbitrary sign and would misclassify a real outer boundary as a
+// hole -- eroding it inward instead of growing it (Ohio's Lake Erie coast, New
+// Mexico's Mexico border).
+function makeTopologicalOutlineBufferCoords(shape, arcs, distance, uniqueArcTest,
+    opts, outerMaker, holeEroder) {
+  var outer = [];
+  var holes = [];
+  (shape || []).forEach(function(ring) {
+    var target = getPlanarPathArea(ring, arcs) < 0 ? holes : outer;
+    var chains = uniqueArcTest ? splitPathAtSharedArcs(ring, uniqueArcTest) :
+      [ring.concat()];
+    chains.forEach(function(chain) { target.push(chain); });
+  });
+  var outerLoops = outer.length > 0 ?
+    getBufferMultiPolygonCoords(outer, distance, outerMaker) : [];
+  if (outerLoops.length === 0) return [];
+  var coords = dissolveOffsetRingsToCoords(outerLoops, opts, true);
+  if (coords.length === 0) return [];
+  if (holes.length > 0) {
+    var holeGeom = holeEroder(holes.map(reversePath), distance);
+    if (holeGeom && holeGeom.coordinates.length > 0) {
+      coords = subtractHolesFromOuter(coords, holeGeom.coordinates);
+    }
+  }
+  return coords;
 }
 
 // Carve clean shrunk-hole regions out of clean grown-outer polygons. Both arrive
@@ -602,13 +650,23 @@ function makePolygonBufferGeoJSON(lyr, dataset, opts) {
   var hasNegativeDistance = false;
   if (useTopologicalMode) {
     // The topological pipeline selects mosaic tiles by source membership
-    // (boundary flood), which cannot resolve the self-overlapping winding-fill
-    // ring. So each feature's winding-fill offset rings are pre-dissolved into a
-    // clean (non-self-overlapping) polygon before they enter the shared mosaic;
-    // the construction speedup (loop removal cutting per-feature self-
-    // intersections) is preserved, and the mosaic is unchanged.
+    // (boundary flood), which cannot resolve self-overlapping offset rings.
+    // Each feature's offset is pre-dissolved into a clean polygon before it
+    // enters the shared mosaic. By default this uses the same clean-outline grow
+    // as ordinary polygon buffers (gap-patch, loop removal); band-method keeps
+    // the older band ribbon.
+    var topoLeftOpts = opts.band_method ? opts :
+      Object.assign({}, opts, {outline: true});
+    var outerMaker = getPolygonRingBufferMaker(dataset, topoLeftOpts, 'left', true);
+    var bandOpts = Object.assign({}, opts, {outline: false});
+    var bandLeftMaker = getPolygonRingBufferMaker(dataset, bandOpts, 'left', true);
+    var bandRightMaker = getPolygonRingBufferMaker(dataset, bandOpts, 'right', true);
+    var holeEroder = function(holeShape, dist) {
+      return makeNegativePolygonBufferGeometry(holeShape, dist, dataset, bandOpts,
+        bandRightMaker);
+    };
     return makeTopologicalPolygonBufferGeoJSON(lyr, dataset, opts, distanceFn,
-      uniqueArcTest, getPolygonRingBufferMaker(dataset, opts, 'left', true));
+      uniqueArcTest, outerMaker, holeEroder, bandLeftMaker);
   }
   // Closed source rings are offset with the winding-fill construction: one
   // self-overlapping ring per source ring (its overshoot loops resolved by the
@@ -674,6 +732,7 @@ function getPolygonRingBufferMaker(dataset, opts, side, winding) {
   // for callers that request winding-fill (see the 'band-method' option).
   var useWinding = !!winding && !opts.band_method;
   var makerOpts = Object.assign({}, opts, {
+    geometry_type: 'polygon',
     left: side == 'left',
     right: side == 'right',
     // Winding-fill construction also enables overshoot-loop removal on the single
@@ -694,7 +753,7 @@ function makePositivePolygonBufferGeometry(shape, distance, dataset, opts,
 }
 
 function makeTopologicalPolygonBufferGeoJSON(lyr, dataset, opts, distanceFn,
-    uniqueArcTest, bufferMaker) {
+    uniqueArcTest, outerMaker, holeEroder, bandFallbackMaker) {
   var shapes = lyr.shapes || [];
   var distances = [];
   var sourceIds = [];
@@ -718,18 +777,22 @@ function makeTopologicalPolygonBufferGeoJSON(lyr, dataset, opts, distanceFn,
   profileStart('topo:offsets');
   shapes.forEach(function(shape, i) {
     var distance = distances[i];
-    var pathData, bufferCoords;
+    var bufferCoords;
     if (!distance || !shape) return;
     hasPositiveDistance = true;
-    pathData = getPolygonBufferPathData(shape, uniqueArcTest);
-    bufferCoords = getBufferMultiPolygonCoords(pathData.paths, distance, bufferMaker);
-    // Resolve the winding-fill rings' self-overlaps into a clean polygon (the
-    // mosaic's boundary-flood membership cannot), so this feature enters the
-    // shared mosaic as an ordinary polygon. The band-method fallback emits
-    // boundary-flood-resolvable bands, so it feeds the mosaic directly (as the
-    // topological pipeline did before the winding-fill construction).
-    if (!opts.band_method) {
-      bufferCoords = dissolveOffsetRingsToCoords(bufferCoords, opts);
+    if (!opts.band_method && opts.clean_outline_winding &&
+        !shapeHasFillInsideHole(shape, dataset.arcs)) {
+      bufferCoords = makeTopologicalOutlineBufferCoords(shape, dataset.arcs,
+        distance, uniqueArcTest, opts, outerMaker, holeEroder);
+    } else {
+      var pathData = getPolygonBufferPathData(shape, uniqueArcTest);
+      var maker = bandFallbackMaker || outerMaker;
+      bufferCoords = getBufferMultiPolygonCoords(pathData.paths, distance, maker);
+      // Resolve winding-fill band rings' self-overlaps (the mosaic's boundary-
+      // flood membership cannot). band-method feeds bands directly.
+      if (!opts.band_method) {
+        bufferCoords = dissolveOffsetRingsToCoords(bufferCoords, opts);
+      }
     }
     if (bufferCoords.length > 0) {
       bufferIds[i] = tmpGeometries.length;
@@ -1405,11 +1468,34 @@ function filterArtifactHoles(polygon, minHoleArea, ctx) {
 function ringEnclosesOtherTerritory(ring, ctx) {
   var points = ctx.territoryPoints;
   if (!points) return false;
+  var bounds = getGeoJSONRingBounds(ring);
   for (var i = 0; i < points.length; i++) {
     if (points[i].featureId === ctx.featureId) continue;
+    if (!pointInGeoJSONRingBounds(points[i].x, points[i].y, bounds)) continue;
     if (pointInGeoJSONRing(points[i].x, points[i].y, ring)) return true;
   }
   return false;
+}
+
+function getGeoJSONRingBounds(ring) {
+  var n = ring.length - 1; // skip duplicate closing vertex
+  if (n <= 0) n = ring.length;
+  var xmin = Infinity, ymin = Infinity, xmax = -Infinity, ymax = -Infinity;
+  var i, x, y;
+  for (i = 0; i < n; i++) {
+    x = ring[i][0];
+    y = ring[i][1];
+    if (x < xmin) xmin = x;
+    if (x > xmax) xmax = x;
+    if (y < ymin) ymin = y;
+    if (y > ymax) ymax = y;
+  }
+  return {xmin: xmin, ymin: ymin, xmax: xmax, ymax: ymax};
+}
+
+function pointInGeoJSONRingBounds(x, y, bounds) {
+  return x >= bounds.xmin && x <= bounds.xmax &&
+    y >= bounds.ymin && y <= bounds.ymax;
 }
 
 // Ray-casting point-in-ring test for a closed GeoJSON ring (array of [x, y],
@@ -1456,9 +1542,18 @@ function getPositiveHoleArtifactThreshold(distance, arcs) {
   return getCoordinateDistance(distance, arcs) * 0.5;
 }
 
+// Minimum area for a grow-generated interior ring to be treated as a real hole
+// rather than numerical noise. A positive buffer can legitimately enclose a hole
+// far smaller than the buffer disk (a pocket between source arms whose mouth just
+// closed leaves an arbitrarily small gap), so this is only a degenerate-sliver
+// floor -- a tiny fraction of the buffer-disk area -- NOT a "holes smaller than
+// the radius are artifacts" rule. (It used to be the full disk area d*d, which
+// silently deleted real holes whose area was less than the radius squared; the
+// near-source boundary classifier in positiveBufferHoleIsArtifact is what
+// actually distinguishes self-overlap artifacts from real holes.)
 function getPositiveHoleArtifactAreaThreshold(distance, arcs) {
   var d = getCoordinateDistance(distance, arcs);
-  return d * d;
+  return d * d * 0.01;
 }
 
 function getGeoJSONRingArea(ring) {
@@ -1532,11 +1627,14 @@ function getBufferDataset(coords) {
 // dissolve. Used by the topological pipeline to feed an ordinary polygon into
 // the shared mosaic (whose boundary-flood membership cannot resolve the
 // self-overlapping construction ring directly).
-function dissolveOffsetRingsToCoords(coords, opts) {
+function dissolveOffsetRingsToCoords(coords, opts, outlineDissolve) {
   if (!coords || coords.length === 0) return [];
   var dataset = getBufferDataset(coords);
   if (!dataset.arcs) return [];
-  dissolveBufferDataset2(dataset, Object.assign({}, opts, {winding_fill: true}));
+  var dissolveOpts = outlineDissolve ?
+    getOutlineBufferDissolveOpts(opts) :
+    Object.assign({}, opts, {winding_fill: true});
+  dissolveBufferDataset2(dataset, dissolveOpts);
   var lyr = dataset.layers[0];
   var shape = lyr.shapes && lyr.shapes[0];
   return shape ? getPolygonMultiPolygonCoords(shape, dataset.arcs) : [];

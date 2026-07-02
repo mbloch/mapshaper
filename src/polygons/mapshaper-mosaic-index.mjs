@@ -110,7 +110,7 @@ export function MosaicIndex(lyr, nodes, optsArg) {
   // construction and are left in place -- removing them at the tile level
   // (topological flood or per-tile geometric vote) was measured to add more
   // artifacts (coverage dents) than it removed.
-  this.getWindingTilesByShapeId = function(shapeId) {
+  this.getWindingTilesByShapeId = function(shapeId, fillGaps) {
     var shp = shapes[shapeId];
     if (!shp || !shp.length) return [];
     var i, r, ring, d, fwd;
@@ -136,7 +136,7 @@ export function MosaicIndex(lyr, nodes, optsArg) {
       if (!shp[r].length) continue;
       var seedTile = arcTileIndex.getShapeIdByArcId(shp[r][0]);
       if (seedTile < 0 || windStamp[seedTile] === stamp) continue;
-      floodComponent(seedTile, flux, sb, stamp, ids);
+      floodComponent(seedTile, flux, sb, stamp, ids, fillGaps);
     }
     return ids.map(tileIdToTile);
   };
@@ -349,12 +349,16 @@ export function MosaicIndex(lyr, nodes, optsArg) {
   // any neighbor known to be outside the buffer (the true exterior, or a tile
   // entirely outside the shape bbox) at winding 0. Nonzero tiles are pushed to
   // @ids. The flood is bounded to the shape bbox for speed.
-  function floodComponent(seedTile, flux, sb, stamp, ids) {
+  function floodComponent(seedTile, flux, sb, stamp, ids, fillGaps) {
     windVal[seedTile] = 0;
     windStamp[seedTile] = stamp;
     var stack = [seedTile];
     var visited = [seedTile];
     var C = null;
+    // Node keys of arcs on the buffer's true outer edge (nb < 0). The exterior
+    // is not a mosaic tile, so a pinched fold-back wedge is detected by sharing
+    // one of these nodes (see fillPinchedGaps).
+    var outerKeys = fillGaps ? {} : null;
     var cur, ctile, cw, pp, ring2, kk, d2, nb, fwd2, nbb, delta, i;
     while (stack.length) {
       cur = stack.pop();
@@ -372,6 +376,10 @@ export function MosaicIndex(lyr, nodes, optsArg) {
           if (nb < 0 || nbb.xmax < sb.xmin || nbb.xmin > sb.xmax ||
               nbb.ymax < sb.ymin || nbb.ymin > sb.ymax) {
             if (C === null) C = -(cw + delta); // anchor: this neighbor is winding 0
+            if (outerKeys && nb < 0) {
+              outerKeys[arcEndpointKey(d2, 0)] = true;
+              outerKeys[arcEndpointKey(d2, -1)] = true;
+            }
             continue;
           }
           windVal[nb] = cw + delta;
@@ -385,6 +393,93 @@ export function MosaicIndex(lyr, nodes, optsArg) {
     for (i = 0; i < visited.length; i++) {
       if (windVal[visited[i]] + C !== 0) ids.push(visited[i]);
     }
+    if (fillGaps) {
+      fillPinchedGaps(visited, stamp, C, outerKeys, ids);
+    }
+  }
+
+  // Reclaim winding-zero gaps that the winding rule dropped but that are not
+  // really open. Where variable geodesic offset distance breaks the planar
+  // self-crossing assumption, a fold-back leaves a thin winding-zero wedge that
+  // is pinched to the open exterior at a single point: a shared node (arc
+  // endpoint on the buffer's outer edge), NOT a shared arc. So a wedge is
+  // absorbed when its winding-zero component:
+  //   - borders the outer edge nowhere across an arc (it is not the open
+  //     exterior or an open concavity, which the winding rule legitimately
+  //     leaves out), and
+  //   - shares a boundary node with the outer edge (the pinch point).
+  // This is purely topological (the analogue of -clean/removeGaps); unlike an
+  // area threshold it cannot fill a genuine interior hole, whose boundary nodes
+  // are all interior and never coincide with the buffer's outer edge.
+  function fillPinchedGaps(visited, stamp, C, outerKeys, ids) {
+    if (!outerKeys) return;
+    var candidates = [];
+    for (var i = 0; i < visited.length; i++) {
+      if (windVal[visited[i]] + C === 0) candidates.push(visited[i]);
+    }
+    var isGap = function(tileId) {
+      return windStamp[tileId] === stamp && windVal[tileId] + C === 0;
+    };
+    var pinched = collectPinchedGapTiles(candidates, isGap, outerKeys);
+    for (i = 0; i < pinched.length; i++) ids.push(pinched[i]);
+  }
+
+  // Group @candidates (gap-region tile ids) into arc-connected components, then
+  // return the ids of components that are pinched to the buffer's outer edge: a
+  // component that borders the exterior (nb < 0) nowhere across an arc, yet
+  // shares a boundary node with @outerKeys (the outer-edge nodes). @isGap tells
+  // whether a neighbor tile belongs to the gap region (grows the component).
+  // Purely topological, so it never reclaims a genuine interior hole (whose
+  // boundary nodes are all interior).
+  function collectPinchedGapTiles(candidates, isGap, outerKeys) {
+    var comp = {}, out = [];
+    var i, t, tile, p, ring, k, d, nb, tiles, keys, arcOpen, stack;
+    for (i = 0; i < candidates.length; i++) {
+      if (comp[candidates[i]] !== undefined) continue;
+      tiles = [candidates[i]];
+      keys = [];
+      arcOpen = false;
+      comp[candidates[i]] = true;
+      stack = [candidates[i]];
+      while (stack.length) {
+        t = stack.pop();
+        tile = mosaic[t];
+        for (p = 0; p < tile.length; p++) {
+          ring = tile[p];
+          for (k = 0; k < ring.length; k++) {
+            d = ring[k];
+            keys.push(arcEndpointKey(d, 0), arcEndpointKey(d, -1));
+            nb = arcTileIndex.getShapeIdByArcId(~d);
+            if (nb < 0) {
+              arcOpen = true; // borders the outer edge across an arc
+              continue;
+            }
+            if (!isGap(nb)) continue; // selected boundary of the gap
+            if (comp[nb] === undefined) {
+              comp[nb] = true;
+              tiles.push(nb);
+              stack.push(nb);
+            }
+          }
+        }
+      }
+      if (!arcOpen && sharesKey(keys, outerKeys)) {
+        for (k = 0; k < tiles.length; k++) out.push(tiles[k]);
+      }
+    }
+    return out;
+  }
+
+  function arcEndpointKey(arcId, nth) {
+    var v = nodes.arcs.getVertex(arcId, nth);
+    return v.x + ',' + v.y;
+  }
+
+  function sharesKey(keys, set) {
+    for (var i = 0; i < keys.length; i++) {
+      if (set[keys[i]]) return true;
+    }
+    return false;
   }
 
   function getOverlapPriorityFunction(shapes, arcs, rule) {
