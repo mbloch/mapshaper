@@ -1,3 +1,8 @@
+v0.7.35
+* Added `compare with original` to the GUI Display menu, for comparing the output of simplify, buffer and smooth with the original lines.
+* Removed `show reference lines` from the Display menu.
+* Improved performance for `-buffer`.
+
 v0.7.34
 * Improved `-buffer` command robustness.
 
