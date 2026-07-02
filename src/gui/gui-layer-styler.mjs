@@ -1,17 +1,16 @@
 import { internal, utils } from './gui-core';
 
 var darkStroke = "#334",
-    lightStroke = "#b7d9ea",
     activeStyle = { // outline style for the active layer
       type: 'outline',
-      strokeColors: [lightStroke, darkStroke],
+      strokeColors: [null, darkStroke],
       strokeWidth: 0.8,
       dotColor: "#223",
       dotSize: 1
     },
     activeStyleDarkMode = {
       type: 'outline',
-      strokeColors: [lightStroke, 'white'],
+      strokeColors: [null, 'white'],
       strokeWidth: 0.9,
       dotColor: 'white',
       dotSize: 1
@@ -30,10 +29,22 @@ var darkStroke = "#334",
     intersectionStyle = {
       dotColor: "#FF421D",
       dotSize: 1.3
+    },
+    compareStyle = { // "before" overlay for the comparison feature
+      type: 'outline',
+      strokeColors: [null, 'rgba(185, 0, 178, 0.45)'],
+      strokeWidth: 1.1,
+      dotColor: 'rgba(185, 0, 178, 0.45)',
+      dotSize: 1
     };
 
 export function getIntersectionStyle(lyr, opts) {
   return copyBaseStyle(intersectionStyle);
+}
+
+// Style for the temporary "before" comparison overlay (original shapes).
+export function getCompareLayerStyle(lyr, opts) {
+  return copyBaseStyle(compareStyle);
 }
 
 // Display style for unselected layers with visibility turned on
@@ -64,11 +75,6 @@ export function getActiveLayerStyle(lyr, opts) {
   } else {
     style = copyBaseStyle(activeStyle);
   }
-  // kludge: no ghosted lines if not enabled
-  if (style.strokeColors && !opts.ghostingOn) {
-    style.strokeColors = [null, style.strokeColors[1]];
-  }
-
   return style;
 }
 

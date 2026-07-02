@@ -6,11 +6,11 @@ export function DisplayOptions(gui) {
   var menu = gui.container.findChild('.display-options');
   var closeBtn = new SimpleButton(menu.findChild('.close2-btn'));
   var xxBox = menu.findChild('.intersections-opt');
-  var ghostBox = menu.findChild('.ghost-opt');
+  var compareBox = menu.findChild('.compare-opt');
 
   var savedOpts = GUI.getSavedValue('display_options') || {};
   xxBox.node().checked = savedOpts.intersectionsOn;
-  ghostBox.node().checked = savedOpts.ghostingOn;
+  compareBox.node().checked = savedOpts.compareOn;
 
 
   gui.addMode('display_options', turnOn, turnOff, menuBtn);
@@ -31,18 +31,22 @@ export function DisplayOptions(gui) {
     });
   });
 
-  ghostBox.on('change', function() {
+  compareBox.on('change', function() {
+    var on = getOptions().compareOn;
     gui.dispatchEvent('display_option_change', {
-      option: 'ghostingOn',
-      value: getOptions().ghostingOn
+      option: 'compareOn',
+      value: on
     });
-    gui.dispatchEvent('map-needs-refresh');
+    if (!on) {
+      // tear down any live comparison overlay when the option is disabled
+      gui.dispatchEvent('compare-clear');
+    }
   });
 
   function getOptions() {
     return {
       intersectionsOn: xxBox.node().checked,
-      ghostingOn: ghostBox.node().checked
+      compareOn: compareBox.node().checked
     };
   }
 

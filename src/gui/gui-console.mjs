@@ -476,6 +476,9 @@ export function Console(gui) {
     if (undoTransaction) {
       setActiveUndoTransaction(undoTransaction);
     }
+    // Notify listeners (e.g. comparison overlay) before the model is mutated,
+    // so they can snapshot the pre-command state of the active layer.
+    gui.dispatchEvent('command_start', {commands: commands});
     try {
       internal.runParsedCommands(commands, job, onCommandsDone);
     } catch(e) {

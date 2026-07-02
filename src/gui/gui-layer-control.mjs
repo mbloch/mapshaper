@@ -78,6 +78,12 @@ export function LayerControl(gui) {
 
   model.on('update', function(e) {
     updateMenuBtn();
+    // Skip re-rendering the layer list for display-only updates. The simplify
+    // slider fires 'simplify_amount' continuously while dragging; these updates
+    // don't change layer names, counts, geometry types or icons, so a full
+    // re-render is wasteful and makes the panel's icons flicker.
+    var flags = e.flags || {};
+    if (flags.simplify_amount || flags.redraw_only) return;
     if (isOpen) render();
   });
 

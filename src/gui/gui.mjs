@@ -5,6 +5,7 @@ import { SimplifyControl } from './gui-simplify-control';
 import { Console } from './gui-console';
 import { AlertControl } from './gui-alert';
 import { IntersectionControl } from './gui-intersection-control';
+import { CompareControl } from './gui-compare-control';
 import { ExportControl } from './gui-export-control';
 import { LayerControl } from './gui-layer-control';
 import { HeaderMenu } from './gui-header-menu';
@@ -90,6 +91,7 @@ var startEditing = function() {
   new LayerControl(gui);
   HeaderMenu();
   gui.console = new Console(gui);
+  new CompareControl(gui);
   HistoryMenu(gui);
   window.mapshaper.getRuntimeStateContext = gui.getRuntimeStateContext;
   window.mapshaper.stringifyRuntimeStateContext = gui.stringifyRuntimeStateContext;
