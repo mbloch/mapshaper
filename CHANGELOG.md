@@ -1,3 +1,6 @@
+v0.7.37
+* Removed a performance bottleneck in -smooth.
+
 v0.7.36
 * Improved `-smooth` corner detection.
 * Added the `-smooth corner-bias=` option, for adjusting the senstitivity of corner detection.
