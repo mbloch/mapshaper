@@ -1,6 +1,7 @@
 v0.7.36
 * Improved `-smooth` corner detection.
 * Added the `-smooth corner-bias=` option, for adjusting the senstitivity of corner detection.
+* Fixed a `-smooth` hang on very large rings, by making corner detection and culling scale linearly (three O(n^2) hot spots were removed).
 * Fixed several `-smooth` bugs.
 * Recalibrated `-smooth` so the default effect is ~5x stronger: the distance now roughly corresponds to the maximum displacement of the smoothed line from the original at sharp bends.
 * Added an undocumented `-smooth strength=` option: a multiplier on the smoothing kernel relative to the distance (default 1).
