@@ -55,6 +55,8 @@ cmd.smooth = function(dataset, opts, targetLayers) {
     filterDetailPaths(arcs, {
       distance: tolerance,
       tortuosity: opts.prefilter_gate,
+      roundness: opts.prefilter_roundness,
+      minRingArea: opts.prefilter_min_area,
       spherical: spherical
     });
     var removed = before - arcs.getPointCount();
@@ -70,6 +72,7 @@ cmd.smooth = function(dataset, opts, targetLayers) {
     keepCorners: keepCorners,
     cornerBias: opts.corner_bias,
     gain: opts.gain,
+    strength: opts.strength,
     maxBendAngle: opts.max_bend_angle
   });
 
@@ -98,6 +101,7 @@ export function smoothPaths(arcs, opts) {
       keepCorners: opts.keepCorners,
       cornerBias: opts.cornerBias,
       gain: opts.gain,
+      strength: opts.strength,
       maxBendAngle: opts.maxBendAngle,
       closed: arcs.arcIsClosed(arcId)
     });

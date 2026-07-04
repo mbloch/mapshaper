@@ -45,9 +45,9 @@ describe('mapshaper-buffer.js', function () {
         I.setActiveUndoTransaction(tx);
         return run(command).then(function() {
           I.clearActiveUndoTransaction(tx);
-          return {dataset: dataset, origArcs: origArcs, origShapes: origShapes,
-            origGeometryType: origGeometryType, origLayerCount: origLayerCount,
-            tx: tx};
+          return {dataset: dataset, catalog: catalog, origArcs: origArcs,
+            origShapes: origShapes, origGeometryType: origGeometryType,
+            origLayerCount: origLayerCount, tx: tx};
         }, function(err) {
           I.clearActiveUndoTransaction(tx);
           throw err;
@@ -130,6 +130,28 @@ describe('mapshaper-buffer.js', function () {
       assert.strictEqual(r.dataset.arcs, r.origArcs);
       assert.equal(JSON.stringify(r.dataset.layers[0].shapes), r.origShapes);
       assert.equal(r.dataset.layers[0].geometry_type, 'polygon');
+    });
+
+    it('supports redo after undo when buffer adds a layer (no-replace)', async function () {
+      var I = api.internal;
+      var r = await runBufferWithUndo(square, '-buffer 50000 no-replace');
+      var srcLayer = r.dataset.layers[0];
+      var bufferLayer = r.dataset.layers[1];
+      // no-replace makes the added buffer layer the active target
+      assert.strictEqual(r.catalog.getActiveLayer().layer, bufferLayer);
+      // Mirror the GUI redo path: capture the post-command state before undoing,
+      // then restore it to redo (see captureAndStoreRedoUnits in
+      // gui-stored-undo-history.mjs).
+      var redoUnits = I.captureCurrentUnits(r.tx.getCapturedUnits());
+      I.restoreCapturedUnits(r.tx.getCapturedUnits()); // undo
+      assert.equal(r.dataset.layers.length, 1);
+      assert.strictEqual(r.dataset.layers[0], srcLayer);
+      assert.strictEqual(r.catalog.getActiveLayer().layer, srcLayer); // target restored
+      I.restoreCapturedUnits(redoUnits); // redo
+      assert.equal(r.dataset.layers.length, 2); // buffer layer re-added
+      assert.notStrictEqual(r.dataset.arcs, r.origArcs); // buffered arcs reinstated
+      assert.strictEqual(r.catalog.getActiveLayer().layer, bufferLayer); // target re-applied
+      assert.equal(r.dataset.layers[1].geometry_type, 'polygon');
     });
 
     it('does not capture intermediate buffer construction geometry', async function () {

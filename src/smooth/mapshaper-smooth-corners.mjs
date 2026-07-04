@@ -33,7 +33,35 @@ var TANGENT_WINDOW_FACTOR = 0.25;      // tangent-estimation half-window = tol *
 var INNER_WINDOW_FACTOR = 0.4;         // concentration probe window = tangentWindow * this
 var CORNER_CONCENTRATION = 0.6;        // min ratio of inner-window turn to full-window turn
 var MIN_RUN_LEN_FACTOR = 1.0;          // a structural run must be at least tol * this long
-var MIN_RUN_RADIUS_FACTOR = 1.0;       // and bend no tighter than radius tol * this
+// ...and bend no tighter than radius tol * this. This is the curvature gate for
+// "structural" (straight or slowly-curving, e.g. a surveyed border or graticule
+// arc). It must be well above 1: at factor 1 a minimal run may turn a full
+// radian (~57 deg) over its own length, so ordinary coastal arcs qualify and
+// their end bends get pinned as spurious corners (radius ~1-1.6*tol). At 3 a
+// minimal run turns <= ~19 deg, excluding natural coastal curvature while still
+// admitting genuinely straight borders (radius ~infinite) and graticule arcs
+// (radius >> tol).
+var MIN_RUN_RADIUS_FACTOR = 3.0;
+
+// Straightness gate used to decide corner *retention* (whether a detected corner
+// borders a run worth pinning), as distinct from isStructuralRun's per-vertex
+// gate that decides whether a span is copied verbatim. A run is "straight at the
+// smoothing scale" if every vertex stays within a thin corridor around the
+// straight chord joining the run's endpoints: max perpendicular deviation <=
+// STRAIGHT_DEV_FACTOR * chord length. Because this measures deviation from the
+// chord rather than summing raw per-segment turning, it is robust to
+// sub-tolerance digitizing wiggle: a finely ragged but geometrically straight
+// border (huge total per-vertex turning, tiny deviation) qualifies, so its
+// bounding corners are kept -- while isStructuralRun would (correctly, for its
+// own purpose) reject it as too wiggly to copy verbatim. The ratio behaves like
+// a minimum-radius-over-length gate: a run bending with radius R over length L
+// deviates from its chord by ~L/(8R), so the threshold corresponds to
+// R >~ L/(8*STRAIGHT_DEV_FACTOR) -- longer runs must be proportionally straighter
+// to count, which matches intuition (a 28 km stretch bending at radius 4 km is
+// obviously not straight). Genuinely curving coastline bows far from its chord
+// and is still rejected, so spurious corners inside wiggly stretches keep getting
+// culled.
+var STRAIGHT_DEV_FACTOR = 0.03;
 
 // @cornerBias (optional, default 1) divides the min structural-run length, so a
 // value < 1 lengthens the run a corner must border to be preserved (fewer, only
@@ -99,6 +127,79 @@ export function isStructuralRun(t, channels, a, b, params) {
   return totalTurn / len <= params.maxTurnRate;
 }
 
+// Cyclic form of isStructuralRun for a closed ring: the span runs forward from
+// ring vertex @a to ring vertex @b over the m = n-1 unique vertices, wrapping
+// when b <= a (a == b means the whole ring). Length and turning are measured
+// cyclically. Used to decide whether a detected ring corner borders a genuine
+// straight/low-curvature run before it is pinned (see smoothArcCoords).
+export function isStructuralRingSpan(t, channels, n, a, b, params) {
+  var m = n - 1;
+  if (m < 2) return false;
+  var L = t[n - 1];
+  var len = b > a ? t[b] - t[a] : (L - t[a]) + t[b];
+  if (!(len >= params.minRunLen)) return false;
+  var K = channels.length;
+  var totalTurn = 0;
+  var i = a;
+  while (true) {
+    i = (i + 1) % m;
+    if (i === b) break;
+    totalTurn += ringVertexTurn(channels, K, m, i);
+    if (totalTurn / len > params.maxTurnRate) return false;
+  }
+  return totalTurn / len <= params.maxTurnRate;
+}
+
+// Is span [a, b] (inclusive vertex indices, a < b, open frame) "straight at the
+// smoothing scale": long enough AND confined to a thin corridor around its
+// endpoint chord (see STRAIGHT_DEV_FACTOR)? Used to decide whether a detected
+// corner borders a straight run worth pinning. Unlike isStructuralRun -- which
+// sums raw per-segment turning and is therefore defeated by sub-tolerance
+// digitizing noise -- this measures perpendicular deviation from the chord, so a
+// finely ragged but geometrically straight border still qualifies.
+export function isStraightRun(t, channels, a, b, params) {
+  var len = t[b] - t[a];
+  if (!(len >= params.minRunLen)) return false;
+  var K = channels.length;
+  var A = getPt(channels, K, a);
+  var AB = subv(getPt(channels, K, b), A, K);
+  var abDot = dot(AB, AB, K);
+  if (!(abDot > 0)) return false;
+  var limit2 = STRAIGHT_DEV_FACTOR * STRAIGHT_DEV_FACTOR * abDot;
+  for (var i = a + 1; i < b; i++) {
+    if (perpDistSq(channels, K, i, A, AB, abDot) > limit2) return false;
+  }
+  return true;
+}
+
+// Cyclic form of isStraightRun for a closed ring: the span runs forward from ring
+// vertex @a to ring vertex @b over the m = n-1 unique vertices, wrapping when
+// b <= a. A whole-ring span (a == b, the single-corner case) has no meaningful
+// chord, so it falls back to the turning-rate test (a large low-curvature ring
+// keeps its one corner). Used by the closed-ring corner cull (see
+// filterRingCornersByStructure in mapshaper-smooth-algos).
+export function isStraightRingSpan(t, channels, n, a, b, params) {
+  var m = n - 1;
+  if (m < 2) return false;
+  if (a === b) return isStructuralRingSpan(t, channels, n, a, b, params);
+  var L = t[n - 1];
+  var len = b > a ? t[b] - t[a] : (L - t[a]) + t[b];
+  if (!(len >= params.minRunLen)) return false;
+  var K = channels.length;
+  var A = getPt(channels, K, a);
+  var AB = subv(getPt(channels, K, b), A, K);
+  var abDot = dot(AB, AB, K);
+  if (!(abDot > 0)) return false;
+  var limit2 = STRAIGHT_DEV_FACTOR * STRAIGHT_DEV_FACTOR * abDot;
+  var i = a;
+  while (true) {
+    i = (i + 1) % m;
+    if (i === b) break;
+    if (perpDistSq(channels, K, i, A, AB, abDot) > limit2) return false;
+  }
+  return true;
+}
+
 // --- internals ---
 
 function ringSegLengths(t, m) {
@@ -124,6 +225,14 @@ function vertexTurn(channels, K, i) {
   var pi = getPt(channels, K, i);
   var pp = getPt(channels, K, i - 1);
   var pn = getPt(channels, K, i + 1);
+  return angleBetween(subv(pi, pp, K), subv(pn, pi, K), K);
+}
+
+// Local turn at ring vertex i using cyclic neighbours over m unique vertices.
+function ringVertexTurn(channels, K, m, i) {
+  var pi = getPt(channels, K, i);
+  var pp = getPt(channels, K, (i - 1 + m) % m);
+  var pn = getPt(channels, K, (i + 1) % m);
   return angleBetween(subv(pi, pp, K), subv(pn, pi, K), K);
 }
 
@@ -169,6 +278,25 @@ function subv(a, b, K) {
   var o = new Array(K);
   for (var c = 0; c < K; c++) o[c] = a[c] - b[c];
   return o;
+}
+
+function dot(a, b, K) {
+  var d = 0;
+  for (var c = 0; c < K; c++) d += a[c] * b[c];
+  return d;
+}
+
+// Squared perpendicular distance of vertex @i from the line through point @A
+// with direction @AB (abDot = AB.AB). = |AP|^2 - (AP.AB)^2 / |AB|^2.
+function perpDistSq(channels, K, i, A, AB, abDot) {
+  var apAp = 0, apAb = 0, d;
+  for (var c = 0; c < K; c++) {
+    d = channels[c][i] - A[c];
+    apAp += d * d;
+    apAb += d * AB[c];
+  }
+  var perp = apAp - apAb * apAb / abDot;
+  return perp > 0 ? perp : 0;
 }
 
 function angleBetween(u, v, K) {

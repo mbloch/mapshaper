@@ -1,7 +1,13 @@
+v0.7.36 (unreleased)
+* Improved `-smooth` corner detection.
+* Fixed several `-smooth` bugs.
+* Recalibrated `-smooth` so the default effect is ~5x stronger: the distance now roughly corresponds to the maximum displacement of the smoothed line from the original at sharp bends.
+* Added an undocumented `-smooth strength=` option: a multiplier on the smoothing kernel relative to the distance (default 1).
+
 v0.7.35
 * Added `compare with original` to the GUI Display menu, for comparing the output of simplify, buffer and smooth with the original lines.
 * Removed `show reference lines` from the Display menu.
-* Improved performance for `-buffer`.
+* Improved performance of `-buffer`.
 
 v0.7.34
 * Improved `-buffer` command robustness.

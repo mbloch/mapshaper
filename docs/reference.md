@@ -1403,7 +1403,7 @@ Also by default, corners between straight-line segments are detected and preserv
 
 **Options**
 
-`<distance>` or `distance=`  Smoothing resolution as a distance (e.g. `2km`): detail finer than this is removed.
+`<distance>` or `distance=`  Smoothing resolution as a distance (e.g. `2km`): detail finer than this is removed. The value of `distance` is approximately how far the smoothed line can deviate from the original at sharp bends, where displacement is greatest.
 
 `gain=`  Controls a curvature correction that counteracts the tendency of smoothing to flatten bends. The default is `1` (fully corrected, so bends keep their amplitude). `gain=0` disables the correction. Values above `1` over-correct, exaggerating the curvature of bends.
 

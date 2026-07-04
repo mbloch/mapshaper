@@ -1,7 +1,8 @@
 import api from '../mapshaper.js';
 import assert from 'assert';
+import fs from 'fs';
 import { smoothArcCoords } from '../src/smooth/mapshaper-smooth-algos.mjs';
-import { getCornerParams, findInteriorCorners, isStructuralRun } from '../src/smooth/mapshaper-smooth-corners.mjs';
+import { getCornerParams, findInteriorCorners, isStructuralRun, isStraightRun } from '../src/smooth/mapshaper-smooth-corners.mjs';
 
 // Build (t, channels) in planar x,y from a coordinate list, for testing the
 // corner-detection helpers directly.
@@ -125,7 +126,7 @@ describe('mapshaper-smooth.js', function () {
       var ideal = sampleLine(big, 401, 0, 200);
       var noiseBefore = maxDeviation(ideal, orig); // ~1 (noise amplitude)
       for (var method of ['paek', 'gaussian']) {
-        var sm = await smoothLine(orig, method + ' distance=16 planar');
+        var sm = await smoothLine(orig, method + ' distance=4 planar');
         var noiseAfter = maxDeviation(ideal, sm);
         assert(noiseAfter < noiseBefore * 0.6,
           method + ': expected noise reduction, before=' + noiseBefore.toFixed(3) + ' after=' + noiseAfter.toFixed(3));
@@ -134,16 +135,16 @@ describe('mapshaper-smooth.js', function () {
 
     it('keeps large features within the tolerance', async function () {
       var orig = sampleLine(noisy, 401, 0, 200);
-      var sm = await smoothLine(orig, 'distance=16 planar');
+      var sm = await smoothLine(orig, 'distance=4 planar');
       var dev = maxDeviation(orig, sm);
-      assert(dev < 16, 'deviation from original (' + dev.toFixed(3) + ') should stay under tolerance');
+      assert(dev < 4, 'deviation from original (' + dev.toFixed(3) + ') should stay under tolerance');
     });
 
     it('a smaller tolerance preserves more detail than a larger one', async function () {
       var orig = sampleLine(noisy, 401, 0, 200);
       var ideal = sampleLine(big, 401, 0, 200);
-      var small = maxDeviation(ideal, await smoothLine(orig, 'distance=4 planar'));
-      var large = maxDeviation(ideal, await smoothLine(orig, 'distance=16 planar'));
+      var small = maxDeviation(ideal, await smoothLine(orig, 'distance=1 planar'));
+      var large = maxDeviation(ideal, await smoothLine(orig, 'distance=4 planar'));
       assert(small > large, 'smaller tolerance should leave more residual detail');
     });
 
@@ -203,18 +204,19 @@ describe('mapshaper-smooth.js', function () {
     });
 
     it('gaussian preserves supra-tolerance amplitude (Savitzky-Golay, no shrinkage)', async function () {
-      // a sine whose wavelength is 2x the tolerance should pass through with most
-      // of its amplitude intact. A plain Gaussian-weighted average (degree-0)
-      // pulls the peaks toward the local mean (here to ~0.84); the Savitzky-Golay
-      // quadratic fit corrects that, matching paek to within a couple percent.
+      // a sine near the kernel's cutoff wavelength (here ~1.5x the widened kernel)
+      // should pass through with most of its amplitude intact. A plain
+      // Gaussian-weighted average (degree-0) pulls the peaks toward the local mean;
+      // the Savitzky-Golay quadratic fit corrects that, matching paek to within a
+      // couple percent. no-corners isolates the kernel from corner pinning.
       function peakAmp(pts) {
         var m = 0;
         pts.forEach(function(p){ m = Math.max(m, Math.abs(p[1])); });
         return m;
       }
-      var orig = sampleLine(function(x){ return Math.sin(2 * Math.PI * x / 10); }, 240, 0, 30);
-      var gaussian = peakAmp(await smoothLine(orig, 'gaussian distance=5 planar'));
-      var paek = peakAmp(await smoothLine(orig, 'paek distance=5 planar'));
+      var orig = sampleLine(function(x){ return Math.sin(2 * Math.PI * x / 40); }, 240, 0, 120);
+      var gaussian = peakAmp(await smoothLine(orig, 'gaussian distance=5 planar no-corners'));
+      var paek = peakAmp(await smoothLine(orig, 'paek distance=5 planar no-corners'));
       // compared on the same line (so resampling/boundary effects cancel): the
       // old degree-0 gaussian sat ~0.1 below paek here; the SG fit tracks it.
       assert(gaussian >= paek - 0.03,
@@ -227,9 +229,9 @@ describe('mapshaper-smooth.js', function () {
         pts.forEach(function(p){ m = Math.max(m, Math.abs(p[1])); });
         return m;
       }
-      var orig = sampleLine(function(x){ return Math.sin(2 * Math.PI * x / 10); }, 240, 0, 30);
-      var corrected = peakAmp(await smoothLine(orig, 'gaussian distance=5 planar'));
-      var plain = peakAmp(await smoothLine(orig, 'gaussian distance=5 planar gain=0'));
+      var orig = sampleLine(function(x){ return Math.sin(2 * Math.PI * x / 40); }, 240, 0, 120);
+      var corrected = peakAmp(await smoothLine(orig, 'gaussian distance=5 planar no-corners'));
+      var plain = peakAmp(await smoothLine(orig, 'gaussian distance=5 planar no-corners gain=0'));
       assert(plain < corrected - 0.1,
         'gain=0 (' + plain.toFixed(3) + ') should shrink more than corrected (' + corrected.toFixed(3) + ')');
     });
@@ -240,9 +242,9 @@ describe('mapshaper-smooth.js', function () {
         pts.forEach(function(p){ m = Math.max(m, Math.abs(p[1])); });
         return m;
       }
-      var orig = sampleLine(function(x){ return Math.sin(2 * Math.PI * x / 10); }, 240, 0, 30);
+      var orig = sampleLine(function(x){ return Math.sin(2 * Math.PI * x / 40); }, 240, 0, 120);
       for (var method of ['paek', 'gaussian']) {
-        var stub = method + ' distance=5 planar';
+        var stub = method + ' distance=5 planar no-corners';
         var g0 = peakAmp(await smoothLine(orig, stub + ' gain=0'));
         var g1 = peakAmp(await smoothLine(orig, stub + ' gain=1'));
         var g2 = peakAmp(await smoothLine(orig, stub + ' gain=2'));
@@ -300,9 +302,11 @@ describe('mapshaper-smooth.js', function () {
         'no-prefilter should retain more of the spike (amp ' + withoutPrefilter.toFixed(2) + ')');
     });
 
-    it('distance is a resolution: a feature ~D across is ~halved, finer removed, coarser kept', async function () {
-      // sine of wavelength W, amplitude W/4; measure how much amplitude survives
-      // when the smoothing distance is set relative to the feature wavelength.
+    it('distance sets a resolution: the -6 dB cutoff sits near ~5x the distance', async function () {
+      // The kernel is widened by KERNEL_STRENGTH (=5) so the distance approximates
+      // the max displacement at sharp features; the frequency cutoff therefore
+      // sits near a wavelength of 5*distance. Sine of wavelength W, amplitude W/4;
+      // measure how much amplitude survives at distances set relative to W.
       var W = 40, A = W / 4;
       var sine = sampleLine(function(x){ return A * Math.sin(2 * Math.PI * x / W); }, 401, 0, 10 * W);
       function keptFrac(pts) {
@@ -311,17 +315,41 @@ describe('mapshaper-smooth.js', function () {
         return m / A;
       }
       for (var method of ['paek', 'gaussian']) {
-        var stub = ' planar no-prefilter ' + method;
-        var fine = keptFrac(await smoothLine(sine, (W / 2) + stub));   // feature = 2*D
-        var atRes = keptFrac(await smoothLine(sine, W + stub));        // feature = D
-        var coarse = keptFrac(await smoothLine(sine, (2 * W) + stub)); // feature = 0.5*D
-        // feature much larger than the distance: mostly preserved
-        assert(fine > 0.75, method + ' feature=2*D should be largely kept (' + fine.toFixed(2) + ')');
-        // feature about the size of the distance: roughly halved (-6 dB cutoff)
-        assert(atRes > 0.3 && atRes < 0.6, method + ' feature=D should be ~halved (' + atRes.toFixed(2) + ')');
-        // feature finer than the distance: removed
-        assert(coarse < 0.2, method + ' feature=0.5*D should be removed (' + coarse.toFixed(2) + ')');
+        var stub = ' planar no-prefilter no-corners ' + method;
+        var fine = keptFrac(await smoothLine(sine, (W / 10) + stub));   // wavelength = 10*D
+        var atRes = keptFrac(await smoothLine(sine, (W / 5) + stub));    // wavelength = 5*D
+        var coarse = keptFrac(await smoothLine(sine, (2 * W / 5) + stub)); // wavelength = 2.5*D
+        // wavelength well above the cutoff (10*D): mostly preserved
+        assert(fine > 0.75, method + ' wavelength=10*D should be largely kept (' + fine.toFixed(2) + ')');
+        // wavelength ~ the cutoff (5*D): roughly halved (-6 dB)
+        assert(atRes > 0.3 && atRes < 0.6, method + ' wavelength=5*D should be ~halved (' + atRes.toFixed(2) + ')');
+        // wavelength below the cutoff (2.5*D): removed
+        assert(coarse < 0.2, method + ' wavelength=2.5*D should be removed (' + coarse.toFixed(2) + ')');
       }
+    });
+
+    // Regression: the detail prefilter used to destroy every closed ring whose
+    // perimeter fit inside the survivor-merge window, because a ring's seam chord
+    // (coincident first/last vertex) has length 0 and infinite tortuosity. The
+    // roundness gate keeps substantial, rounded islands.
+    it('retains rounded islands through the smooth prefilter (q_line)', async function () {
+      var input = fs.readFileSync('test/data/features/smooth/q_line.json', 'utf8');
+      function countClosedRings(geojson) {
+        var parts = geojson.features[0].geometry.coordinates;
+        return parts.filter(function(p) {
+          var a = p[0], b = p[p.length - 1];
+          return a[0] === b[0] && a[1] === b[1];
+        }).length;
+      }
+      var before = countClosedRings(JSON.parse(input));
+      var kept = await api.applyCommands('-i in.json -smooth 500m -o out.json', {'in.json': input});
+      var after = countClosedRings(JSON.parse(kept['out.json']));
+      // before the fix only 4 of 149 survived; the gate keeps far more
+      assert(after >= 25, 'expected many islands retained, got ' + after + ' of ' + before);
+      // prefilter-roundness=0 restores the legacy (aggressive) removal
+      var off = await api.applyCommands('-i in.json -smooth 500m prefilter-roundness=0 -o out.json', {'in.json': input});
+      var afterOff = countClosedRings(JSON.parse(off['out.json']));
+      assert(afterOff < after, 'roundness=0 should remove more islands (' + afterOff + ' vs ' + after + ')');
     });
 
     it('errors when the distance parameter is missing', async function () {
@@ -733,25 +761,161 @@ describe('mapshaper-smooth.js', function () {
       assert.deepEqual(kept[0], kept[kept.length - 1]);
     });
 
-    it('still smooths a wiggle between two straight arms', async function () {
+    // Regression: on a natural ring with no straight segments, corner detection
+    // used to flag a bend and pin it via the ring-to-open rotation, producing a
+    // spurious cusp whose location jumped with the smoothing distance (the
+    // tolerance-scaled detection window). Corners must only be pinned when they
+    // border a genuine structural run, so a structure-free ring smooths exactly
+    // like no-corners at every distance.
+    it('does not pin spurious corners on a structure-free wiggly ring', function () {
+      var ring = [];
+      for (var i = 0; i < 72; i++) {
+        var a = 2 * Math.PI * i / 72;
+        var r = 100 + 6 * Math.sin(5 * a); // gently lumpy circle, no straight edges
+        ring.push([r * Math.cos(a), r * Math.sin(a)]);
+      }
+      ring.push(ring[0].slice());
+      var xx = ring.map(function(p) { return p[0]; });
+      var yy = ring.map(function(p) { return p[1]; });
+      [20, 30, 40, 50].forEach(function(tol) {
+        var kept = smoothArcCoords(xx, yy, {tolerance: tol, method: 'gaussian', planar: true, closed: true, keepCorners: true});
+        var off = smoothArcCoords(xx, yy, {tolerance: tol, method: 'gaussian', planar: true, closed: true, keepCorners: false});
+        assert.deepEqual(kept.xx, off.xx, 'tol=' + tol + ' pinned a spurious corner (x)');
+        assert.deepEqual(kept.yy, off.yy, 'tol=' + tol + ' pinned a spurious corner (y)');
+      });
+    });
+
+    it('retains genuine corners of a rounded-rectangle (long straight sides)', async function () {
+      // straight edges (structural runs) meeting at sharp corners: corner
+      // preservation MUST still fire here (contrast with the wiggly ring above).
+      var ring = [];
+      for (var x = 0; x <= 200; x += 5) ring.push([x, 0]);
+      for (var y = 5; y <= 100; y += 5) ring.push([200, y]);
+      for (var x2 = 195; x2 >= 0; x2 -= 5) ring.push([x2, 100]);
+      for (var y2 = 95; y2 >= 0; y2 -= 5) ring.push([0, y2]);
+      ring.push([0, 0]);
+      var kept = await smoothPolygon(ring, '20 planar');
+      [[0, 0], [200, 0], [200, 100], [0, 100]].forEach(function(corner) {
+        assert(minDistTo(corner, kept) < 1e-9, 'structural corner ' + corner + ' not preserved');
+      });
+    });
+
+    // The reported case: q_detail1 is a natural island. At every distance the
+    // default output must match no-corners (no pinned cusp at the bottom/upper-right).
+    it('smooths the q_detail1 island with no spurious corners at any distance', async function () {
+      var input = fs.readFileSync('test/data/features/smooth/q_detail1.json', 'utf8');
+      for (var d of [300, 400, 500, 600, 700]) {
+        var def = await api.applyCommands('-i in.json -smooth ' + d + 'm -o out.json', {'in.json': input});
+        var nc = await api.applyCommands('-i in.json -smooth ' + d + 'm no-corners -o out.json', {'in.json': input});
+        assert.deepEqual(JSON.parse(def['out.json']), JSON.parse(nc['out.json']),
+          'distance ' + d + 'm pinned a spurious corner');
+      }
+    });
+
+    // Reported case: at 600m the prefilter shredded the q_detail3 island down to
+    // a ~28%-area distorted remnant. It should instead be dropped cleanly (the
+    // island is near-scale at that distance), while at 500m it is still retained.
+    // The drop is the prefilter's min-area gate; disabling it restores the remnant.
+    it('drops (not mangles) a near-scale island the prefilter shreds', async function () {
+      var input = fs.readFileSync('test/data/features/smooth/q_detail3.json', 'utf8');
+      function vertsAt(out) {
+        var gj = JSON.parse(out['out.json']);
+        var g = gj.features ? gj.features[0].geometry : gj.geometries[0];
+        if (!g) return 0;
+        var c = g.coordinates;
+        var ring = g.type === 'Polygon' ? c[0] : (g.type === 'LineString' ? c : c[0][0]);
+        return ring ? ring.length : 0;
+      }
+      var d500 = await api.applyCommands('-i in.json -smooth 500m -o out.json', {'in.json': input});
+      assert(vertsAt(d500) > 20, '500m island should be retained');
+      var d600 = await api.applyCommands('-i in.json -smooth 600m -o out.json', {'in.json': input});
+      assert.equal(vertsAt(d600), 0, '600m island should be dropped, not left as a remnant');
+      var off = await api.applyCommands('-i in.json -smooth 600m prefilter-min-area=0 -o out.json', {'in.json': input});
+      // disabling the gate keeps the shredded remnant as a (rounded) ring rather
+      // than dropping it; the exact vertex count depends on the ring-scale cap.
+      assert(vertsAt(off) > 8, 'prefilter-min-area=0 should restore the remnant');
+    });
+
+    it('smooths a wiggle away while keeping the real direction change', async function () {
       var c = [];
-      for (var x = 0; x <= 100; x += 5) c.push([x, 0]);          // straight arm
-      // sub-tolerance wiggle: wavelength ~9.4 << tolerance 15, amplitude 4
+      for (var x = 0; x <= 100; x += 5) c.push([x, 0]);          // horizontal arm
+      // sub-tolerance wiggle: wavelength ~9.4 << tolerance 15, amplitude 4.
+      // Its centerline stays horizontal, so it is detail on the horizontal run,
+      // not a corner: the genuine direction change is where the 45-deg arm starts.
       for (var x2 = 102; x2 <= 148; x2 += 2) c.push([x2, 4 * Math.sin((x2 - 100) / 1.5)]);
-      for (var k = 0; k <= 20; k++) c.push([150 + k * 3, k * 3]); // straight arm
+      for (var k = 0; k <= 20; k++) c.push([150 + k * 3, k * 3]); // 45-deg arm
       // no-prefilter so this exercises the smoother + corner preservation in
       // isolation (the default detail prefilter would reshape the wiggle first)
       var kept = await smoothLine(c, '15 planar no-prefilter');
-      // corner at the start of the wiggle is preserved...
-      assert(minDistTo([100, 0], kept) < 1e-9, 'corner at start of wiggle not preserved');
-      // ...but the body of the sub-tolerance wiggle (amplitude 4) is strongly
-      // attenuated. The first/last wiggle vertices sit right at the pinned
-      // corners and keep-corners deliberately preserves geometry there, so we
-      // check the interior (away from the corner shadow), which is the intent.
+      // The body of the sub-tolerance wiggle (amplitude 4) is strongly attenuated.
       var wig = kept.filter(function(p) { return p[0] > 110 && p[0] < 140; });
       var maxAmp = 0;
       wig.forEach(function(p) { maxAmp = Math.max(maxAmp, Math.abs(p[1])); });
       assert(maxAmp < 2.5, 'wiggle was not smoothed (max amplitude ' + maxAmp.toFixed(2) + ')');
+      // The horizontal arm proper (away from the wiggle) stays flat.
+      var arm = kept.filter(function(p) { return p[0] <= 80; });
+      var armAmp = 0;
+      arm.forEach(function(p) { armAmp = Math.max(armAmp, Math.abs(p[1])); });
+      assert(armAmp < 1e-6, 'horizontal arm was distorted (max |y| ' + armAmp.toFixed(3) + ')');
+      // The genuine corner -- start of the straight 45-deg arm -- is pinned,
+      // because that arm is a structural run. The wiggle/horizontal junction is
+      // NOT pinned: it flows into detail, not into another straight run.
+      assert(minDistTo([150, 0], kept) < 1e-9, 'real corner at start of 45-deg arm not preserved');
+      assert(minDistTo([100, 0], kept) > 0.1, 'wiggle/arm junction should not be pinned as a corner');
+    });
+
+    // isStraightRun measures deviation from the endpoint chord, so it is robust
+    // to sub-tolerance digitizing wiggle; isStructuralRun sums raw per-segment
+    // turning and so rejects a finely ragged (but geometrically straight) run.
+    // Corner retention keys off the former, verbatim-copy off the latter.
+    it('distinguishes a chord-straight-but-noisy run from a curving one', function () {
+      var params = getCornerParams(15 * 1.2, 1);
+      // A geometrically straight border (along y=0) with fine sub-tolerance
+      // zig-zag: large total per-vertex turning, tiny deviation from the chord.
+      var noisy = [];
+      for (var x = 0; x <= 120; x += 2) noisy.push([x, (x / 2) % 2 ? 0.4 : -0.4]);
+      var a = planarChannels(noisy);
+      assert(isStraightRun(a.t, a.channels, 0, a.n - 1, params),
+        'noisy-but-straight run should read as straight');
+      assert(!isStructuralRun(a.t, a.channels, 0, a.n - 1, params),
+        'the per-vertex turning of the zig-zag should fail the structural test');
+      // A gently curving arc of comparable length bows far from its chord.
+      var arc = [];
+      for (var i = 0; i <= 60; i++) {
+        var ang = -0.6 + 1.2 * i / 60;
+        arc.push([100 * Math.sin(ang), 100 * Math.cos(ang)]);
+      }
+      var b = planarChannels(arc);
+      assert(!isStraightRun(b.t, b.channels, 0, b.n - 1, params),
+        'a curving arc should not read as straight');
+    });
+
+    // Reported case (j_detail1): a long straight border that is finely ragged
+    // used to have its bounding corners dropped (its high per-vertex turning
+    // failed the old structural gate), so smoothing curved both ends into the
+    // adjacent bendy stretches. It must now keep the corner at the straight
+    // border's end and stay straight, without pinning the bendy junctions.
+    it('keeps the corner of a finely ragged straight border and stays straight', async function () {
+      var c = [];
+      // bendy lead-in: quarter arc (radius 30, high curvature -> not a straight
+      // run) from (30,30) down to (0,0), arriving with a vertical tangent so the
+      // junction with the horizontal border is a genuine ~90-deg corner.
+      for (var i = 24; i >= 0; i--) {
+        var ang = Math.PI / 2 * i / 24;
+        c.push([30 - 30 * Math.cos(ang), 30 * Math.sin(ang)]);
+      }
+      // long straight border along y=0 with fine sub-tolerance zig-zag noise
+      for (var x = 2; x <= 200; x += 2) c.push([x, (x / 2) % 2 ? 0.4 : -0.4]);
+      c[c.length - 1][1] = 0; // clean terminus (the pinned endpoint isn't at a noise extreme)
+      var kept = await smoothLine(c, '15 planar no-prefilter');
+      // the corner at the start of the straight border (~[0,0]) is pinned
+      assert(minDistTo([0, 0], kept) < 1e-6, 'straight-border corner was not preserved');
+      // the far half of the straight border stays flat (not curved), and the
+      // fine noise is smoothed away rather than pinned
+      var farHalf = kept.filter(function(p) { return p[0] > 120; });
+      var amp = 0;
+      farHalf.forEach(function(p) { amp = Math.max(amp, Math.abs(p[1])); });
+      assert(amp < 0.3, 'straight border did not stay straight (max |y| ' + amp.toFixed(3) + ')');
     });
 
     it('does not invent corners on a gently curving line', async function () {
@@ -792,6 +956,173 @@ describe('mapshaper-smooth.js', function () {
       I.buildTopology(ds1);
       assert.equal(ds1.arcs.size(), arcCount0, 'shared boundary should stay coincident');
       assert(!isNaN(sharedFwd[0][0]));
+    });
+  });
+
+  // A closed ring smaller than the smoothing distance used to collapse toward its
+  // centroid (the kernel window spanned the whole loop). Two things prevent that
+  // now: the scale cap holds the window just below the ring's size (so the shape
+  // survives), and the ring is rescaled about its centroid afterward to restore
+  // the enclosed area the smoothing shed -- so a small island is rounded at close
+  // to the full requested scale without shrinking.
+  describe('small closed rings (resolution cap + area restore)', function () {
+    function planarArea(ring) {
+      var a = 0;
+      for (var i = 0; i < ring.length - 1; i++) a += ring[i][0] * ring[i + 1][1] - ring[i + 1][0] * ring[i][1];
+      return Math.abs(a / 2);
+    }
+    function squareRing(side) {
+      return [[0, 0], [side, 0], [side, side], [0, side], [0, 0]];
+    }
+    function ptsFrom(out) {
+      return out.xx.map(function(x, i) { return [x, out.yy[i]]; });
+    }
+
+    it('preserves the area of a closed ring smaller than the smoothing distance', function () {
+      // small square, perimeter 400: at tol >> perimeter the kernel window would
+      // otherwise span the whole loop and pull it toward the centroid. The cap
+      // plus the area restore should hold the enclosed area at ~100%.
+      var ring = squareRing(100);
+      var xx = ring.map(function(p) { return p[0]; }), yy = ring.map(function(p) { return p[1]; });
+      var orig = planarArea(ring);
+      [200, 500, 1000, 5000].forEach(function(tol) {
+        var out = smoothArcCoords(xx, yy, {tolerance: tol, method: 'gaussian', planar: true, closed: true, keepCorners: false});
+        var frac = planarArea(ptsFrom(out)) / orig;
+        assert(Math.abs(frac - 1) < 0.02, 'tol=' + tol + ' changed the ring area to ' + (100 * frac).toFixed(1) + '%');
+      });
+    });
+
+    it('restores area by a similarity transform (an elongated ring stays elongated)', function () {
+      // 200x40 rectangle (aspect 5:1): smoothing at a capped distance rounds the
+      // corners and would shrink it; the area restore rescales it about its
+      // centroid, which is uniform, so it must not turn into a fat blob -- the
+      // bounding-box aspect ratio should stay well above 1.
+      var ring = [[0, 0], [200, 0], [200, 40], [0, 40], [0, 0]];
+      var xx = ring.map(function(p) { return p[0]; }), yy = ring.map(function(p) { return p[1]; });
+      var out = smoothArcCoords(xx, yy, {tolerance: 2000, method: 'gaussian', planar: true, closed: true, keepCorners: false});
+      var pts = ptsFrom(out);
+      var frac = planarArea(pts) / planarArea(ring);
+      assert(Math.abs(frac - 1) < 0.02, 'area not preserved (' + (100 * frac).toFixed(1) + '%)');
+      var xs = pts.map(function(p) { return p[0]; }), ys = pts.map(function(p) { return p[1]; });
+      var aspect = (Math.max.apply(null, xs) - Math.min.apply(null, xs)) /
+                   (Math.max.apply(null, ys) - Math.min.apply(null, ys));
+      assert(aspect > 3, 'elongated ring was over-rounded into a blob (aspect ' + aspect.toFixed(1) + ')');
+    });
+
+    it('still rounds the ring even when the scale is capped', function () {
+      var ring = squareRing(100);
+      var xx = ring.map(function(p) { return p[0]; }), yy = ring.map(function(p) { return p[1]; });
+      var out = smoothArcCoords(xx, yy, {tolerance: 5000, method: 'gaussian', planar: true, closed: true, keepCorners: false});
+      // rounding the four 90-degree corners adds vertices; a left-unsmoothed ring
+      // would still have ~4.
+      assert(out.xx.length > 8, 'ring was left unsmoothed (' + out.xx.length + ' verts)');
+    });
+
+    it('does not clamp a large ring (cap is a no-op when perimeter >> distance)', function () {
+      // big square (perimeter 40000): tol=100 is far below the cap (0.3*40000),
+      // so only the corners round and the area barely changes -- normal smoothing.
+      var ring = squareRing(10000);
+      var xx = ring.map(function(p) { return p[0]; }), yy = ring.map(function(p) { return p[1]; });
+      var out = smoothArcCoords(xx, yy, {tolerance: 100, method: 'gaussian', planar: true, closed: true, keepCorners: false});
+      var frac = planarArea(ptsFrom(out)) / planarArea(ring);
+      assert(frac > 0.99, 'large ring should be nearly unchanged (' + (100 * frac).toFixed(1) + '%)');
+    });
+
+    it('keeps the x_detail1 islands from shrinking at large distances', async function () {
+      var input = fs.readFileSync('test/data/features/smooth/x_detail1.json', 'utf8');
+      function ringsOf(str) {
+        var gj = JSON.parse(str);
+        return (gj.features || gj.geometries).map(function(f) { return (f.geometry || f).coordinates; });
+      }
+      function sphArea(ring) {
+        var lat = ring[0][1] * Math.PI / 180, mx = 111320 * Math.cos(lat), my = 110540, a = 0;
+        for (var i = 0; i < ring.length - 1; i++) a += ring[i][0] * mx * ring[i + 1][1] * my - ring[i + 1][0] * mx * ring[i][1] * my;
+        return Math.abs(a / 2);
+      }
+      var orig = ringsOf(input);
+      for (var d of ['10km', '20km']) {
+        var out = await api.applyCommands('-i in.json -smooth ' + d + ' no-corners no-prefilter -o out.json', {'in.json': input});
+        var rings = ringsOf(out['out.json']);
+        assert.equal(rings.length, orig.length, d + ' dropped an island');
+        for (var i = 0; i < rings.length; i++) {
+          var frac = sphArea(rings[i]) / sphArea(orig[i]);
+          assert(frac > 0.9, d + ' island ' + i + ' shrank to ' + (100 * frac).toFixed(0) + '%');
+        }
+      }
+    });
+  });
+
+  // Undocumented `strength` multiplier: scales only the low-pass kernel relative
+  // to the distance, so users can dial the smoothing effect up or down without
+  // touching the other distance-keyed behaviours (corner detection, prefilter).
+  describe('smoothing strength option', function () {
+    function wigglyLine() {
+      var c = [];
+      for (var x = 0; x <= 2000; x += 10) c.push([x, 40 * Math.sin(2 * Math.PI * x / 200)]);
+      return c;
+    }
+
+    it('defaults to 1 (omitting it matches strength=1)', async function () {
+      var line = wigglyLine();
+      var base = await smoothLine(line, '25 planar no-corners no-prefilter');
+      var explicit = await smoothLine(line, '25 planar no-corners no-prefilter strength=1');
+      assert.deepEqual(explicit, base);
+    });
+
+    it('strength>1 smooths more strongly (larger divergence from the original)', async function () {
+      var line = wigglyLine();
+      var weak = await smoothLine(line, '25 planar no-corners no-prefilter strength=1');
+      var strong = await smoothLine(line, '25 planar no-corners no-prefilter strength=3');
+      assert(maxDeviation(line, strong) > maxDeviation(line, weak) * 1.3,
+        'strength=3 should diverge more (weak ' + maxDeviation(line, weak).toFixed(0) +
+        ', strong ' + maxDeviation(line, strong).toFixed(0) + ')');
+    });
+
+    it('strength<1 smooths more gently (smaller divergence)', async function () {
+      var line = wigglyLine();
+      var base = await smoothLine(line, '25 planar no-corners no-prefilter strength=1');
+      var gentle = await smoothLine(line, '25 planar no-corners no-prefilter strength=0.5');
+      assert(maxDeviation(line, gentle) < maxDeviation(line, base),
+        'strength=0.5 should diverge less');
+    });
+
+    it('does not change corner detection (structural corners stay pinned)', async function () {
+      // rounded-rectangle: the four corners are pinned by corner detection, which
+      // keys off the distance, not strength -- so they survive at any strength.
+      var ring = [];
+      for (var x = 0; x <= 200; x += 5) ring.push([x, 0]);
+      for (var y = 5; y <= 100; y += 5) ring.push([200, y]);
+      for (var x2 = 195; x2 >= 0; x2 -= 5) ring.push([x2, 100]);
+      for (var y2 = 95; y2 >= 0; y2 -= 5) ring.push([0, y2]);
+      ring.push([0, 0]);
+      var gj = {type: 'FeatureCollection', features: [{type: 'Feature', properties: {},
+        geometry: {type: 'Polygon', coordinates: [ring]}}]};
+      function nearest(pt, pts) {
+        var best = Infinity;
+        pts.forEach(function(p) { best = Math.min(best, Math.hypot(p[0] - pt[0], p[1] - pt[1])); });
+        return best;
+      }
+      for (var s of [1, 3]) {
+        var out = await api.applyCommands('-i in.json -smooth 20 planar strength=' + s + ' -o out.json',
+          {'in.json': JSON.stringify(gj)});
+        var kept = getCoords(JSON.parse(out['out.json']))[0];
+        [[0, 0], [200, 0], [200, 100], [0, 100]].forEach(function(corner) {
+          assert(nearest(corner, kept) < 1e-9, 'strength=' + s + ' dropped corner ' + corner);
+        });
+      }
+    });
+
+    it('cannot collapse a small ring even at high strength (cap still applies)', function () {
+      var ring = [[0, 0], [100, 0], [100, 100], [0, 100], [0, 0]];
+      var xx = ring.map(function(p) { return p[0]; }), yy = ring.map(function(p) { return p[1]; });
+      function area(pts) {
+        var a = 0;
+        for (var i = 0; i < pts.length - 1; i++) a += pts[i][0] * pts[i + 1][1] - pts[i + 1][0] * pts[i][1];
+        return Math.abs(a / 2);
+      }
+      var out = smoothArcCoords(xx, yy, {tolerance: 1000, method: 'gaussian', planar: true, closed: true, keepCorners: false, strength: 10});
+      var frac = area(out.xx.map(function(x, i) { return [x, out.yy[i]]; })) / area(ring);
+      assert(Math.abs(frac - 1) < 0.02, 'strength=10 changed the small ring area to ' + (100 * frac).toFixed(1) + '%');
     });
   });
 });

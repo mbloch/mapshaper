@@ -1167,6 +1167,14 @@ export function getOptionParser() {
       type: 'number',
       describe: 'Visvalingam angle-weight coefficient (default 0.7); higher removes spiky detail more eagerly'
     })
+    .option('roundness', {
+      type: 'number',
+      describe: 'protect rounded loops: min enclosed-area / loop-perimeter as a fraction of the distance (default 0.2); higher removes more, 0 disables'
+    })
+    .option('min-area', {
+      type: 'number',
+      describe: 'drop a closed ring (island/hole) when the filter leaves less than this fraction of its original area (default 0.6); 0 disables'
+    })
     .option('planar', {
       describe: 'treat decimal degree coords as planar x,y (default is spherical)',
       type: 'flag'
@@ -1700,6 +1708,13 @@ export function getOptionParser() {
       describe: 'shrinkage-correction (default 1; 0 = none, >1 exaggerates bends)',
       type: 'number'
     })
+    .option('strength', {
+      // undocumented: multiplier on the smoothing kernel scale relative to the
+      // distance (default 1; >1 smooths more strongly with larger divergence from
+      // the original, <1 more gently). Scales only the low-pass kernel -- corner
+      // detection, prefiltering and island dropping stay keyed to the raw distance.
+      type: 'number'
+    })
     .option('max-bend-angle', {
       describe: 'max bend between output segments in degrees (default is 8)',
       type: 'number'
@@ -1718,6 +1733,19 @@ export function getOptionParser() {
     .option('prefilter-gate', {
       // undocumented: prefilter sinuosity (path/chord) threshold for cutting
       // intricate detail (default 4; higher removes less)
+      type: 'number'
+    })
+    .option('prefilter-roundness', {
+      // undocumented: prefilter roundness protection -- min enclosed-area /
+      // loop-perimeter (as a fraction of the smoothing distance) for a loop
+      // (e.g. an island) to be protected from the prefilter (default 0.2;
+      // higher removes more, 0 disables and lets rounded islands collapse)
+      type: 'number'
+    })
+    .option('prefilter-min-area', {
+      // undocumented: drop a closed ring (island/hole) when the prefilter would
+      // leave less than this fraction of its original area (default 0.6), rather
+      // than smoothing a distorted remnant; 0 disables the drop
       type: 'number'
     })
     .option('planar', {
