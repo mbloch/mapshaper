@@ -951,15 +951,16 @@ mapshaper counties.shp -simplify 10% -o simplified.shp
 mapshaper states.shp -simplify dp interval=100 -o simplified/
 </code></pre>
 </section>
-<section class="cmd-section" data-id="-smooth" data-name="-smooth" data-options="no-prefilter no-corners distance gain max-bend-angle"><h3 id="-smooth">-smooth</h3>
+<section class="cmd-section" data-id="-smooth" data-name="-smooth" data-options="no-prefilter corner-bias no-corners distance gain max-bend-angle"><h3 id="-smooth">-smooth</h3>
 <p>Smooth the geometry of polygon and polyline features. Unlike <code>-simplify</code>, which removes vertices, <code>-smooth</code> replaces the original vertices to create fluid, generalized curves. The <code>&lt;distance&gt;</code> parameter controls how much smoothing is applied: larger values produce smoother output with less fine detail.</p>
 <p>Output vertices are distributed adaptively along the smoothed line: vertices are denser along sharp bends and sparser along straight and gently-curving stretches.</p>
 <p>By default, <code>-smooth</code> first runs a prefilter to remove intricate details that smoothing cannot generalize cleanly. Use <code>no-prefilter</code> to turn this off.</p>
-<p>Also by default, corners between straight-line segments are detected and preserved. The <code>no-corners</code> option turns this off.</p>
+<p>Also by default, corners between straight-line segments are detected and preserved. Use <code>corner-bias=</code> to tune how readily corners are detected, or <code>no-corners</code> to turn this off.</p>
 <p><strong>Options</strong></p>
-<p><code>&lt;distance&gt;</code> or <code>distance=</code>  Smoothing resolution as a distance (e.g. <code>2km</code>): detail finer than this is removed.</p>
+<p><code>&lt;distance&gt;</code> or <code>distance=</code>  Smoothing resolution as a distance (e.g. <code>2km</code>): detail finer than this is removed. The value of <code>distance</code> is approximately how far the smoothed line can deviate from the original at sharp bends, where displacement is greatest.</p>
 <p><code>gain=</code>  Controls a curvature correction that counteracts the tendency of smoothing to flatten bends. The default is <code>1</code> (fully corrected, so bends keep their amplitude). <code>gain=0</code> disables the correction. Values above <code>1</code> over-correct, exaggerating the curvature of bends.</p>
 <p><code>max-bend-angle=</code>  Maximum bend (in degrees) between consecutive output segments. The default is <code>8</code>. A larger value (e.g. <code>15</code>) keeps fewer vertices at the cost of slightly more angular joins; a smaller value keeps more vertices for smoother joins.</p>
+<p><code>corner-bias=</code>  Adjusts how readily corners are detected (default <code>0</code>, neutral). Positive values preserve more corners; negative values preserve fewer. Equal positive and negative values are inverses of each other.</p>
 <p><code>no-corners</code>  By default, <code>-smooth</code> preserves sharp corners where straight-line segments meet (e.g. artificial borders) instead of rounding them. This option turns corner detection off and smooths the whole line.</p>
 <p><code>no-prefilter</code>  By default, <code>-smooth</code> runs a detail filter pass before smoothing to remove intricate sub-scale detail — jetties, narrow inlets, spikes — that the low-pass smoother cannot generalize cleanly and that otherwise tends to leave kinks or self-intersections. This option skips that step and smooths the input as-is.</p>
 <p><strong>Examples</strong></p>
