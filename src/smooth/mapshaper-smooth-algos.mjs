@@ -1,5 +1,5 @@
 import geom from '../geom/mapshaper-geom';
-import { getCornerParams, findInteriorCorners, isStructuralRun, isStructuralRingSpan, isStraightRun, isStraightRingSpan } from './mapshaper-smooth-corners';
+import { getCornerParams, findInteriorCorners, isStructuralRun, bordersStraightRun, bordersStraightRingSpan } from './mapshaper-smooth-corners';
 
 // Scale-aware line smoothing primitives, shared by the -smooth command.
 //
@@ -245,11 +245,11 @@ export function smoothArcCoords(xx, yy, opts) {
 
 // Smooth an open path partitioned at @interiorBreaks (sorted interior vertex
 // indices). Corner retention and verbatim-copy are two separate decisions:
-//   - A breakpoint is kept if it borders a run worth pinning -- straight at the
-//     smoothing scale (isStraightRun, robust to sub-tolerance wiggle) or clean
-//     per-vertex (isStructuralRun); otherwise refineBounds drops it. The straight
-//     test pins the corner at the end of a finely ragged straight border that the
-//     per-vertex test would miss.
+//   - A breakpoint is kept only if it borders a straight run that is straight
+//     enough for its turn angle (bordersStraightRun -- deviation from the endpoint
+//     chord, robust to sub-tolerance wiggle, and tightened for gentle bends so a
+//     soft bend on a borderline-straight run is not pinned); otherwise
+//     refineBounds drops it.
 //   - A kept span is copied verbatim only if it is clean per-vertex
 //     (isStructuralRun); otherwise it is smoothed with its endpoints pinned. So a
 //     straight-but-noisy border is smoothed into a clean straight line between
@@ -275,28 +275,28 @@ function smoothOpenSpans(origX, origY, t, channels, n, interiorBreaks, ctx) {
   return {xx: xx, yy: yy};
 }
 
-// Drop interior breakpoints that don't border any run worth pinning (e.g. spikes
-// inside a wiggly stretch), merging their spans, until the partition is stable.
-// Merging can turn two short pieces back into one qualifying run, so the test is
-// repeated each pass. A breakpoint is kept if an adjacent span is either
-// straight at the smoothing scale (isStraightRun -- robust to sub-tolerance
-// wiggle, so a corner at the end of a finely ragged but geometrically straight
-// border is retained; that span is then smoothed, not copied verbatim) OR clean
-// per-vertex (isStructuralRun -- the verbatim-copy criterion, which also covers
-// the borderline case where a straight run abuts the corner through a short jog
-// that offsets the span's endpoint chord).
-function bordersPinnableRun(t, channels, a, b, params) {
-  return isStraightRun(t, channels, a, b, params) ||
-    isStructuralRun(t, channels, a, b, params);
-}
-
+// Drop interior breakpoints that don't border any pinnable straight run (e.g.
+// spikes inside a wiggly stretch, or -- crucially on sparse/simplified data --
+// points sampled along a gentle curve), merging their spans, until the partition
+// is stable. Merging can turn two short pieces back into one straight run, so the
+// test is repeated each pass. A breakpoint is kept only if an adjacent span is
+// straight at the smoothing scale AND straight enough for the breakpoint's own
+// turn angle (bordersStraightRun): deviation from the endpoint chord, tightened
+// for gentle corners so a soft bend on a borderline-straight run is not pinned.
+// The older per-vertex turning gate (isStructuralRun) is deliberately NOT used
+// for retention -- it admits any run bending no tighter than radius
+// MIN_RUN_RADIUS_FACTOR*tol, i.e. gentle curves, which on coarsely-sampled data
+// produces spurious corners along smooth bends. (isStructuralRun still governs
+// verbatim-copy of a kept span; see smoothOpenSpans.) The corner for both
+// adjacent spans is the breakpoint itself, so its turn angle gates each side.
 function refineBounds(t, channels, bounds, params) {
+  var n = channels[0].length;
   var changed = true;
   while (changed && bounds.length > 2) {
     changed = false;
     for (var i = 1; i < bounds.length - 1; i++) {
-      var leftStruct = bordersPinnableRun(t, channels, bounds[i - 1], bounds[i], params);
-      var rightStruct = bordersPinnableRun(t, channels, bounds[i], bounds[i + 1], params);
+      var leftStruct = bordersStraightRun(t, channels, n, bounds[i], bounds[i - 1], bounds[i], params);
+      var rightStruct = bordersStraightRun(t, channels, n, bounds[i], bounds[i], bounds[i + 1], params);
       if (!leftStruct && !rightStruct) {
         bounds.splice(i, 1);
         changed = true;
@@ -310,15 +310,10 @@ function refineBounds(t, channels, bounds, params) {
 // Drop closed-ring corners that don't border a run worth pinning on either side,
 // merging their (cyclic) spans, until the set is stable -- the cyclic analogue
 // of refineBounds, applied before the ring is rotated/pinned. A single corner
-// is tested against the whole-ring span. Uses the same straight-OR-structural
-// criterion as refineBounds (see bordersPinnableRingSpan). Returns the surviving
-// corners (a subset of @corners, order preserved); an empty result means the
-// ring has no qualifying corner and should smooth cyclically.
-function bordersPinnableRingSpan(t, channels, n, a, b, params) {
-  return isStraightRingSpan(t, channels, n, a, b, params) ||
-    isStructuralRingSpan(t, channels, n, a, b, params);
-}
-
+// is tested against the whole-ring span. Uses the same angle-coupled
+// chord-straightness criterion as refineBounds (see bordersStraightRingSpan).
+// Returns the surviving corners (a subset of @corners, order preserved); an empty
+// result means the ring has no qualifying corner and should smooth cyclically.
 function filterRingCornersByStructure(t, channels, n, corners, params) {
   var list = corners.slice();
   var changed = true;
@@ -328,12 +323,12 @@ function filterRingCornersByStructure(t, channels, n, corners, params) {
       var cur = list[i];
       var leftStruct, rightStruct;
       if (list.length === 1) {
-        leftStruct = rightStruct = bordersPinnableRingSpan(t, channels, n, cur, cur, params);
+        leftStruct = rightStruct = bordersStraightRingSpan(t, channels, n, cur, cur, cur, params);
       } else {
         var prev = list[(i - 1 + list.length) % list.length];
         var next = list[(i + 1) % list.length];
-        leftStruct = bordersPinnableRingSpan(t, channels, n, prev, cur, params);
-        rightStruct = bordersPinnableRingSpan(t, channels, n, cur, next, params);
+        leftStruct = bordersStraightRingSpan(t, channels, n, cur, prev, cur, params);
+        rightStruct = bordersStraightRingSpan(t, channels, n, cur, cur, next, params);
       }
       if (!leftStruct && !rightStruct) {
         list.splice(i, 1);

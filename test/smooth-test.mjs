@@ -2,7 +2,7 @@ import api from '../mapshaper.js';
 import assert from 'assert';
 import fs from 'fs';
 import { smoothArcCoords } from '../src/smooth/mapshaper-smooth-algos.mjs';
-import { getCornerParams, findInteriorCorners, isStructuralRun, isStraightRun } from '../src/smooth/mapshaper-smooth-corners.mjs';
+import { getCornerParams, findInteriorCorners, isStructuralRun, isStraightRun, cornerTurn } from '../src/smooth/mapshaper-smooth-corners.mjs';
 
 // Build (t, channels) in planar x,y from a coordinate list, for testing the
 // corner-detection helpers directly.
@@ -857,11 +857,18 @@ describe('mapshaper-smooth.js', function () {
       var armAmp = 0;
       arm.forEach(function(p) { armAmp = Math.max(armAmp, Math.abs(p[1])); });
       assert(armAmp < 1e-6, 'horizontal arm was distorted (max |y| ' + armAmp.toFixed(3) + ')');
-      // The genuine corner -- start of the straight 45-deg arm -- is pinned,
-      // because that arm is a structural run. The wiggle/horizontal junction is
-      // NOT pinned: it flows into detail, not into another straight run.
-      assert(minDistTo([150, 0], kept) < 1e-9, 'real corner at start of 45-deg arm not preserved');
-      assert(minDistTo([100, 0], kept) > 0.1, 'wiggle/arm junction should not be pinned as a corner');
+      // The real direction change is preserved as a clean bend: the 45-deg arm
+      // stays straight. Corner retention requires a chord-straight bordering
+      // span, and here the corner candidates all sit on wiggle peaks whose spans
+      // are not chord-straight, so nothing is pinned to a point -- the junction
+      // apex is rounded over ~tol rather than kept as a hard corner. That is the
+      // intended behaviour: the arms are preserved, only the vertex is softened.
+      var farArm = kept.filter(function(p) { return p[0] > 175; });
+      var armResid = 0;
+      farArm.forEach(function(p) { armResid = Math.max(armResid, Math.abs(p[1] - (p[0] - 150)) / Math.SQRT2); });
+      assert(armResid < 0.5, 'the 45-deg arm was not kept straight (max residual ' + armResid.toFixed(2) + ')');
+      // the junction is rounded, not pinned to the original vertex
+      assert(minDistTo([150, 0], kept) > 1, 'junction should be rounded, not pinned as a hard corner');
     });
 
     // isStraightRun measures deviation from the endpoint chord, so it is robust
@@ -888,6 +895,100 @@ describe('mapshaper-smooth.js', function () {
       var b = planarChannels(arc);
       assert(!isStraightRun(b.t, b.channels, 0, b.n - 1, params),
         'a curving arc should not read as straight');
+    });
+
+    // Reported case (u_detail2): on sparse / already-simplified data a gently
+    // curving coast is sampled as a few long segments, and a short near-collinear
+    // stub only ~1*tol long (1-2 segments) used to pass the chord test and pin a
+    // spurious corner, kinking the curve. Pinning now requires a run clearly
+    // longer than the smoothing distance (minPinRunLen ~ 2*tol).
+    it('does not pin a corner on a short near-collinear stub, but does on a long run', function () {
+      var params = getCornerParams(15 * 1.2, 1); // tol 18: minRunLen 18, minPinRunLen 36
+      // three nearly collinear points ~24 units long: over minRunLen, under
+      // minPinRunLen, and geometrically straight (deviation 0.1/24 << 0.03)
+      var stub = planarChannels([[0, 0], [12, 0.1], [24, 0]]);
+      assert(!isStraightRun(stub.t, stub.channels, 0, stub.n - 1, params),
+        'a ~1*tol stub should be too short to anchor a corner');
+      // the same near-straight run extended past 2*tol qualifies
+      var longRun = planarChannels([[0, 0], [12, 0.1], [24, 0], [36, 0.1], [48, 0]]);
+      assert(isStraightRun(longRun.t, longRun.channels, 0, longRun.n - 1, params),
+        'a run clearly longer than the smoothing distance should be pinnable');
+      // corner-bias=2 halves minPinRunLen back to 1*tol, re-admitting the stub
+      var biased = getCornerParams(15 * 1.2, 2);
+      assert(isStraightRun(stub.t, stub.channels, 0, stub.n - 1, biased),
+        'corner-bias=2 should re-admit the short run');
+    });
+
+    // Reported case (u_detail1): on a borderline-straight run (a coastline
+    // sampled as a few long segments, deviation just under the base limit) a
+    // *gentle* bend used to be pinned, kinking the smooth curve. Retention now
+    // tightens the straightness a run must have in proportion to the bend it
+    // anchors (isStraightRun's devLimit param, fed by retentionDevLimit): a run
+    // that itself curves near the base limit only pins a sharp corner.
+    it('needs a straighter run to pin a gentle bend than a sharp one', function () {
+      var params = getCornerParams(15 * 1.2, 1); // tol 18, minPinRunLen 36
+      // shallow arc, length ~120 (> minPinRunLen), chord deviation ratio ~0.025:
+      // straight at the base tolerance (0.03) but only borderline so.
+      var arc = [], R = 600, half = 60, ang0 = Math.asin(half / R), N = 40;
+      for (var i = 0; i <= N; i++) {
+        var a = -ang0 + 2 * ang0 * i / N;
+        arc.push([R * Math.sin(a) + half, R * Math.cos(a) - R * Math.cos(ang0)]);
+      }
+      var d = planarChannels(arc);
+      // passes at the base straightness tolerance...
+      assert(isStraightRun(d.t, d.channels, 0, d.n - 1, params),
+        'a ~0.025-deviation run should be straight at the base tolerance');
+      // ...but a gentle corner (retentionDevLimit(~45 deg) ~ 0.020) rejects it,
+      // while a sharp corner (limit capped at 0.03) still accepts it.
+      var gentleLimit = (45 * Math.PI / 180) / 40;   // ~0.0196
+      var sharpLimit = (90 * Math.PI / 180) / 40;    // capped at 0.03 in practice
+      assert(!isStraightRun(d.t, d.channels, 0, d.n - 1, params, gentleLimit),
+        'a gentle bend must not be pinned to a borderline-straight run');
+      assert(isStraightRun(d.t, d.channels, 0, d.n - 1, params, Math.min(0.03, sharpLimit)),
+        'a sharp bend may still be pinned to the same run');
+    });
+
+    // corner-bias scales only the distance-proportional detection parameters
+    // (by keying them off tol/bias), leaving angles/ratios fixed. So
+    // `corner-bias=0.5 1km` must detect exactly the corners `2km` would.
+    it('corner-bias scales distance params only: bias=0.5 at 1km == 2km', function () {
+      var a = getCornerParams(1000 * 1.2, 0.5);
+      var b = getCornerParams(2000 * 1.2, 1);
+      ['cornerAngle', 'tangentWindow', 'innerWindow', 'concentration',
+       'minRunLen', 'minPinRunLen', 'maxTurnRate'].forEach(function (k) {
+        assert(Math.abs(a[k] - b[k]) < 1e-9, k + ' should match (' + a[k] + ' vs ' + b[k] + ')');
+      });
+      // the dimensionless thresholds are unchanged by bias
+      var base = getCornerParams(1000 * 1.2, 1);
+      assert.equal(a.cornerAngle, base.cornerAngle);
+      assert.equal(a.concentration, base.concentration);
+      // and detection itself agrees on a mixed straight/curved line
+      var c = [];
+      for (var x = 0; x <= 6000; x += 200) c.push([x, 0]);                 // straight
+      for (var k = 1; k <= 30; k++) c.push([6000 + 200 * k, 200 * k]);     // 45-deg arm
+      for (var j = 1; j <= 30; j++) c.push([6000 + 200 * (30 + j), 6000]); // flat again
+      var d = planarChannels(c);
+      assert.deepEqual(
+        findInteriorCorners(d.t, d.channels, d.n, false, a),
+        findInteriorCorners(d.t, d.channels, d.n, false, b),
+        'corner-bias=0.5 at 1km should detect the same corners as 2km');
+    });
+
+    it('cornerTurn measures the windowed bend at a vertex', function () {
+      var params = getCornerParams(40); // tangentWindow 10
+      function elbow(deg) {
+        var c = [], rad = deg * Math.PI / 180;
+        for (var x = 0; x <= 40; x += 2) c.push([x, 0]);            // straight in
+        for (var k = 1; k <= 20; k++) c.push([40 + 2 * k * Math.cos(rad), 2 * k * Math.sin(rad)]);
+        return planarChannels(c);
+      }
+      var g45 = elbow(45), g90 = elbow(90);
+      var i45 = 20, i90 = 20; // junction vertex index (x=40)
+      var deg = function (r) { return r * 180 / Math.PI; };
+      assert(Math.abs(deg(cornerTurn(g45.t, g45.channels, g45.n, i45, false, params)) - 45) < 3,
+        '45-deg elbow should read ~45 deg');
+      assert(Math.abs(deg(cornerTurn(g90.t, g90.channels, g90.n, i90, false, params)) - 90) < 3,
+        '90-deg elbow should read ~90 deg');
     });
 
     // Reported case (j_detail1): a long straight border that is finely ragged

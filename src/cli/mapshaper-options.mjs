@@ -1724,10 +1724,12 @@ export function getOptionParser() {
       type: 'flag'
     })
     .option('corner-bias', {
-      // undocumented: corner-preservation sensitivity (default 1). Its inverse
-      // scales the min structural-run length, so corner-bias=0.5 doubles it (fewer
-      // corners kept) and corner-bias=2 halves it (more corners kept).
-      // corner-bias=0 turns corner preservation off entirely.
+      // undocumented: corner-preservation sensitivity (default 1). Scales the
+      // distance-proportional corner-detection parameters only (not angles), by
+      // detecting corners as if the distance were distance/bias: corner-bias=0.5
+      // finds fewer, only well-supported corners (as if the distance were 2x) and
+      // corner-bias=2 finds more (as if 0.5x), while the smoothing kernel still
+      // uses the real distance. corner-bias=0 turns corner preservation off.
       type: 'number'
     })
     .option('prefilter-gate', {
