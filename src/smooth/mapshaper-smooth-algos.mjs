@@ -301,7 +301,14 @@ function refineBounds(t, channels, bounds, params) {
       if (!leftStruct && !rightStruct) {
         bounds.splice(i, 1);
         changed = true;
-        break;
+        // Removing bounds[i] only changes the spans of its two neighbours; the
+        // breakpoints before them stay stable, so resume the scan just before the
+        // removal (rechecking the left neighbour) instead of restarting from the
+        // start. Restarting made this O(breaks^2) -- a hang on a large ring where
+        // the smoothing distance is finer than the vertex spacing and nearly
+        // every vertex reads as a breakpoint. The removal sequence is identical to
+        // a from-scratch rescan (the stable prefix is never revisited).
+        i = i < 2 ? 0 : i - 2;
       }
     }
   }
@@ -334,7 +341,15 @@ function filterRingCornersByStructure(t, channels, n, corners, params) {
       if (!leftStruct && !rightStruct) {
         list.splice(i, 1);
         changed = true;
-        break;
+        // As in refineBounds, only the removed corner's neighbours change, so
+        // resume just before the removal (i-- via i-2) rather than restarting the
+        // scan -- restarting is what made this O(corners^2) and hung on large
+        // rings smoothed below their vertex spacing (~half the vertices read as
+        // corners, nearly all culled). Cross-seam effects (the wrap between the
+        // last and first corner) are picked up by the outer while(changed) pass.
+        // The stable prefix is never revisited, so the surviving set matches a
+        // from-scratch rescan exactly.
+        i = i < 2 ? -1 : i - 2;
       }
     }
   }

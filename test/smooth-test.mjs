@@ -785,6 +785,33 @@ describe('mapshaper-smooth.js', function () {
       });
     });
 
+    // Performance regression: a large closed ring smoothed below its vertex
+    // spacing (so nearly every one of its N vertices reads as a corner) used to
+    // hang. Three O(N^2) hot spots were involved: the corner cull restarted its
+    // scan after every removal; the non-maximum-suppression test scanned every
+    // vertex per candidate; and cornerTurn rebuilt the ring's segment-length
+    // array on every call. All are now O(N), so a 30k-vertex ring smooths in a
+    // few ms -- any of the quadratics returning would blow the time budget below
+    // (each would take seconds at this size) or trip the mocha timeout.
+    it('smooths a large jagged ring below its vertex spacing without hanging', function () {
+      this.timeout(15000);
+      var N = 30000, R = 1e6, xx = [], yy = [];
+      for (var i = 0; i < N; i++) {
+        var a = 2 * Math.PI * i / N;
+        // alternate the radius so every vertex is a sharp, unstructured corner;
+        // segment length is far larger than the smoothing distance (100)
+        var r = R + (i % 2 ? 4e5 : -4e5);
+        xx.push(r * Math.cos(a));
+        yy.push(r * Math.sin(a));
+      }
+      xx.push(xx[0]); yy.push(yy[0]);
+      var t0 = Date.now();
+      var res = smoothArcCoords(xx, yy, {tolerance: 100, method: 'gaussian', planar: true, closed: true, keepCorners: true});
+      assert(Date.now() - t0 < 3000, 'took ' + (Date.now() - t0) + 'ms (quadratic smoothing regression)');
+      assert(res.xx.length > 0);
+      assert.deepEqual([res.xx[0], res.yy[0]], [res.xx[res.xx.length - 1], res.yy[res.yy.length - 1]]);
+    });
+
     it('retains genuine corners of a rounded-rectangle (long straight sides)', async function () {
       // straight edges (structural runs) meeting at sharp corners: corner
       // preservation MUST still fire here (contrast with the wiggly ring above).
