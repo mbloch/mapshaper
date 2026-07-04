@@ -1399,7 +1399,7 @@ Output vertices are distributed adaptively along the smoothed line: vertices are
 
 By default, `-smooth` first runs a prefilter to remove intricate details that smoothing cannot generalize cleanly. Use `no-prefilter` to turn this off.
 
-Also by default, corners between straight-line segments are detected and preserved. The `no-corners` option turns this off.
+Also by default, corners between straight-line segments are detected and preserved. Use `corner-bias=` to tune how readily corners are detected, or `no-corners` to turn this off.
 
 **Options**
 
@@ -1408,6 +1408,8 @@ Also by default, corners between straight-line segments are detected and preserv
 `gain=`  Controls a curvature correction that counteracts the tendency of smoothing to flatten bends. The default is `1` (fully corrected, so bends keep their amplitude). `gain=0` disables the correction. Values above `1` over-correct, exaggerating the curvature of bends.
 
 `max-bend-angle=`  Maximum bend (in degrees) between consecutive output segments. The default is `8`. A larger value (e.g. `15`) keeps fewer vertices at the cost of slightly more angular joins; a smaller value keeps more vertices for smoother joins.
+
+`corner-bias=`  Adjusts how readily corners are detected (default `0`, neutral). Positive values preserve more corners; negative values preserve fewer. Equal positive and negative values are inverses of each other.
 
 `no-corners`  By default, `-smooth` preserves sharp corners where straight-line segments meet (e.g. artificial borders) instead of rounding them. This option turns corner detection off and smooths the whole line.
 

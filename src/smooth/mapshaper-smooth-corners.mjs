@@ -1,5 +1,5 @@
 // Structural-corner detection for -smooth's corner preservation (on by default;
-// disabled with no-corners or corner-bias=0).
+// disabled with no-corners).
 //
 // Many boundaries alternate between natural, freely-curving stretches (coast,
 // river centerline) and artificial straight-line segments (state/county
@@ -98,24 +98,38 @@ var PIN_TURN_RATIO = 5;
 // clearly longer than the smoothing distance (factor 2) drops these stubs while
 // keeping genuine straight borders (which run many times the distance) and even
 // coarsely sampled but truly long straight segments (e.g. a 2-3*tol contour
-// edge). Scales inversely with corner-bias, so corner-bias=2 restores the old
-// 1*tol behaviour for users who want shorter runs pinned.
+// edge). Scales with corner-bias (via ctol), so a positive bias restores the
+// old 1*tol behaviour for users who want shorter runs pinned.
 var MIN_PIN_RUN_LEN_FACTOR = 2.0;
 
-// @cornerBias (optional, default 1) scales only the distance-proportional corner
-// parameters, by dividing the tolerance they key off (ctol = tol / bias). The
-// dimensionless thresholds are left untouched: the corner angle, the
-// concentration ratio, and -- downstream, inside isStraightRun / retentionDevLimit
-// -- STRAIGHT_DEV_FACTOR and PIN_TURN_RATIO. So corner-bias=b detects (and
-// retains) corners exactly as if the smoothing distance were tol/b, while the
-// smoothing kernel keeps using the real distance. In particular
-// `-smooth corner-bias=0.5 1km` gives the same corner results as `-smooth 2km`
-// (a value < 1 finds fewer, only well-supported corners; > 1 finds more), but
-// smooths at 1km. All lengths below are derived from ctol; only cornerAngle and
-// concentration (both dimensionless) stay fixed.
+// Convert the user-facing corner-bias (0 = neutral) into the positive multiplier
+// k applied to corner-detection resolution (ctol = tol / k). The mapping is
+// symmetric about zero -- k(+b) * k(-b) = 1 -- and smooth there (both branches
+// have slope 1 at b = 0), so opposite biases of equal magnitude are exact
+// inverses. A positive bias makes detection finer (k > 1, ctol < tol: more, more
+// finely supported corners); a negative bias makes it coarser (k < 1, ctol > tol:
+// fewer corners), each as if the smoothing distance were tol/k. Examples: +1
+// doubles the resolution (k=2, "as if distance were halved"), -1 halves it
+// (k=1/2, "as if doubled"); +2 -> k=3, -2 -> k=1/3.
+export function cornerBiasScale(cornerBias) {
+  var b = cornerBias || 0;
+  return b >= 0 ? b + 1 : 1 / (1 - b);
+}
+
+// @cornerBias (optional, default 0 = neutral) scales only the distance-
+// proportional corner parameters, by dividing the tolerance they key off
+// (ctol = tol / k, k = cornerBiasScale(bias)). The dimensionless thresholds are
+// left untouched: the corner angle, the concentration ratio, and -- downstream,
+// inside isStraightRun / retentionDevLimit -- STRAIGHT_DEV_FACTOR and
+// PIN_TURN_RATIO. So corner-bias detects (and retains) corners exactly as if the
+// smoothing distance were tol/k, while the smoothing kernel keeps using the real
+// distance. In particular `-smooth corner-bias=-1 1km` gives the same corner
+// results as `-smooth 2km` (a negative bias finds fewer, only well-supported
+// corners; a positive bias finds more), but smooths at 1km. All lengths below are
+// derived from ctol; only cornerAngle and concentration (both dimensionless) stay
+// fixed.
 export function getCornerParams(tol, cornerBias) {
-  var bias = cornerBias > 0 ? cornerBias : 1;
-  var ctol = tol / bias;
+  var ctol = tol / cornerBiasScale(cornerBias);
   return {
     tol: tol,
     cornerAngle: CORNER_ANGLE,
