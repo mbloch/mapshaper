@@ -32,11 +32,12 @@ cmd.smooth = function(dataset, opts, targetLayers) {
     stop('Expected prefilter-gate to be a number > 0');
   }
   if (opts.corner_bias !== undefined && opts.corner_bias !== null &&
-      !(opts.corner_bias >= 0)) {
-    stop('Expected corner-bias to be a number >= 0');
+      typeof opts.corner_bias != 'number') {
+    stop('Expected corner-bias to be a number');
   }
-  // Corner preservation is on by default; no-corners or corner-bias=0 turns it off.
-  var keepCorners = !opts.no_corners && opts.corner_bias !== 0;
+  // Corner preservation is on by default; no-corners turns it off. (corner-bias
+  // only tunes sensitivity: 0 is neutral, not off.)
+  var keepCorners = !opts.no_corners;
   var implicitlySmoothedNames = getImplicitlyTargetedLayerNames(dataset, targetLayers, layerHasPaths);
 
   // Smoothing rewrites coordinates, so lock in any pending (non-destructive)

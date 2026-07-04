@@ -2,7 +2,7 @@ import api from '../mapshaper.js';
 import assert from 'assert';
 import fs from 'fs';
 import { smoothArcCoords } from '../src/smooth/mapshaper-smooth-algos.mjs';
-import { getCornerParams, findInteriorCorners, isStructuralRun, isStraightRun, cornerTurn } from '../src/smooth/mapshaper-smooth-corners.mjs';
+import { getCornerParams, findInteriorCorners, isStructuralRun, isStraightRun, cornerTurn, cornerBiasScale } from '../src/smooth/mapshaper-smooth-corners.mjs';
 
 // Build (t, channels) in planar x,y from a coordinate list, for testing the
 // corner-detection helpers directly.
@@ -732,10 +732,10 @@ describe('mapshaper-smooth.js', function () {
       assert(minDistTo([100, 0], kept) < 1e-9, 'corner should be preserved by default');
     });
 
-    it('corner-bias=0 also turns off corner preservation', async function () {
+    it('corner-bias=0 is neutral (keeps the corner, same as default)', async function () {
       var orig = lShape();
-      var off = await smoothLine(orig, '20 planar corner-bias=0');
-      assert(minDistTo([100, 0], off) > 1, 'corner-bias=0 should round the corner');
+      var kept = await smoothLine(orig, '20 planar corner-bias=0');
+      assert(minDistTo([100, 0], kept) < 1e-9, 'corner-bias=0 should preserve the corner');
     });
 
     it('keeps straight runs straight up to the corner', async function () {
@@ -876,7 +876,7 @@ describe('mapshaper-smooth.js', function () {
     // turning and so rejects a finely ragged (but geometrically straight) run.
     // Corner retention keys off the former, verbatim-copy off the latter.
     it('distinguishes a chord-straight-but-noisy run from a curving one', function () {
-      var params = getCornerParams(15 * 1.2, 1);
+      var params = getCornerParams(15 * 1.2, 0);
       // A geometrically straight border (along y=0) with fine sub-tolerance
       // zig-zag: large total per-vertex turning, tiny deviation from the chord.
       var noisy = [];
@@ -903,7 +903,7 @@ describe('mapshaper-smooth.js', function () {
     // spurious corner, kinking the curve. Pinning now requires a run clearly
     // longer than the smoothing distance (minPinRunLen ~ 2*tol).
     it('does not pin a corner on a short near-collinear stub, but does on a long run', function () {
-      var params = getCornerParams(15 * 1.2, 1); // tol 18: minRunLen 18, minPinRunLen 36
+      var params = getCornerParams(15 * 1.2, 0); // tol 18: minRunLen 18, minPinRunLen 36
       // three nearly collinear points ~24 units long: over minRunLen, under
       // minPinRunLen, and geometrically straight (deviation 0.1/24 << 0.03)
       var stub = planarChannels([[0, 0], [12, 0.1], [24, 0]]);
@@ -913,10 +913,10 @@ describe('mapshaper-smooth.js', function () {
       var longRun = planarChannels([[0, 0], [12, 0.1], [24, 0], [36, 0.1], [48, 0]]);
       assert(isStraightRun(longRun.t, longRun.channels, 0, longRun.n - 1, params),
         'a run clearly longer than the smoothing distance should be pinnable');
-      // corner-bias=2 halves minPinRunLen back to 1*tol, re-admitting the stub
-      var biased = getCornerParams(15 * 1.2, 2);
+      // corner-bias=1 (k=2) halves minPinRunLen back to 1*tol, re-admitting the stub
+      var biased = getCornerParams(15 * 1.2, 1);
       assert(isStraightRun(stub.t, stub.channels, 0, stub.n - 1, biased),
-        'corner-bias=2 should re-admit the short run');
+        'corner-bias=1 should re-admit the short run');
     });
 
     // Reported case (u_detail1): on a borderline-straight run (a coastline
@@ -926,7 +926,7 @@ describe('mapshaper-smooth.js', function () {
     // anchors (isStraightRun's devLimit param, fed by retentionDevLimit): a run
     // that itself curves near the base limit only pins a sharp corner.
     it('needs a straighter run to pin a gentle bend than a sharp one', function () {
-      var params = getCornerParams(15 * 1.2, 1); // tol 18, minPinRunLen 36
+      var params = getCornerParams(15 * 1.2, 0); // tol 18, minPinRunLen 36
       // shallow arc, length ~120 (> minPinRunLen), chord deviation ratio ~0.025:
       // straight at the base tolerance (0.03) but only borderline so.
       var arc = [], R = 600, half = 60, ang0 = Math.asin(half / R), N = 40;
@@ -949,17 +949,18 @@ describe('mapshaper-smooth.js', function () {
     });
 
     // corner-bias scales only the distance-proportional detection parameters
-    // (by keying them off tol/bias), leaving angles/ratios fixed. So
-    // `corner-bias=0.5 1km` must detect exactly the corners `2km` would.
-    it('corner-bias scales distance params only: bias=0.5 at 1km == 2km', function () {
-      var a = getCornerParams(1000 * 1.2, 0.5);
-      var b = getCornerParams(2000 * 1.2, 1);
+    // (by keying them off tol/k, k = cornerBiasScale(bias)), leaving angles/ratios
+    // fixed. bias=-1 gives k=1/2, so `corner-bias=-1 1km` must detect exactly the
+    // corners `2km` (neutral) would.
+    it('corner-bias scales distance params only: bias=-1 at 1km == 2km', function () {
+      var a = getCornerParams(1000 * 1.2, -1);
+      var b = getCornerParams(2000 * 1.2, 0);
       ['cornerAngle', 'tangentWindow', 'innerWindow', 'concentration',
        'minRunLen', 'minPinRunLen', 'maxTurnRate'].forEach(function (k) {
         assert(Math.abs(a[k] - b[k]) < 1e-9, k + ' should match (' + a[k] + ' vs ' + b[k] + ')');
       });
       // the dimensionless thresholds are unchanged by bias
-      var base = getCornerParams(1000 * 1.2, 1);
+      var base = getCornerParams(1000 * 1.2, 0);
       assert.equal(a.cornerAngle, base.cornerAngle);
       assert.equal(a.concentration, base.concentration);
       // and detection itself agrees on a mixed straight/curved line
@@ -971,7 +972,24 @@ describe('mapshaper-smooth.js', function () {
       assert.deepEqual(
         findInteriorCorners(d.t, d.channels, d.n, false, a),
         findInteriorCorners(d.t, d.channels, d.n, false, b),
-        'corner-bias=0.5 at 1km should detect the same corners as 2km');
+        'corner-bias=-1 at 1km should detect the same corners as 2km');
+    });
+
+    it('cornerBiasScale is neutral at 0 and symmetric about it', function () {
+      // 0 is neutral, undefined/null fall back to neutral
+      assert.equal(cornerBiasScale(0), 1);
+      assert.equal(cornerBiasScale(undefined), 1);
+      assert.equal(cornerBiasScale(null), 1);
+      // positive doubles/triples, negative halves/thirds
+      assert.equal(cornerBiasScale(1), 2);
+      assert.equal(cornerBiasScale(2), 3);
+      assert(Math.abs(cornerBiasScale(-1) - 0.5) < 1e-12);
+      assert(Math.abs(cornerBiasScale(-2) - 1 / 3) < 1e-12);
+      // reciprocal symmetry: k(+b) * k(-b) == 1
+      [0.5, 1, 2, 3.7].forEach(function (b) {
+        assert(Math.abs(cornerBiasScale(b) * cornerBiasScale(-b) - 1) < 1e-12,
+          'k(' + b + ') * k(' + -b + ') should be 1');
+      });
     });
 
     it('cornerTurn measures the windowed bend at a vertex', function () {

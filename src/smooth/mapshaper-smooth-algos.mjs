@@ -132,12 +132,13 @@ function resolveBendAngle(opts) {
   return deg * Math.PI / 180;
 }
 
-// Resolve the keep-corners run-length bias (default 1). Its inverse scales the
-// min structural-run length, so a value < 1 protects only longer straight runs
-// (fewer corners kept) and a value > 1 protects shorter runs (more corners kept).
+// Resolve the corner-detection bias (default 0 = neutral). This is the raw
+// user-facing value; getCornerParams / cornerBiasScale convert it into the
+// multiplier on detection resolution. A positive bias keeps more corners, a
+// negative bias fewer. Missing/null falls back to neutral.
 function resolveCornerBias(opts) {
   var b = opts.cornerBias;
-  return b > 0 ? b : 1;
+  return (b === undefined || b === null) ? 0 : b;
 }
 
 // Resolve the smoothing-strength multiplier (default 1). It scales only the
