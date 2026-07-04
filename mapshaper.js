@@ -63744,7 +63744,6 @@ ${svg}
     var L = t[n - 1];
     var m = cyclic ? n - 1 : n;
     if (cyclic && m < 3) return [];
-    var segLen = cyclic ? ringSegLengths(t, m) : null;
     var W = params.tangentWindow;
     var Wi = params.innerWindow;
     var turns = new Float64Array(m);
@@ -63752,8 +63751,8 @@ ${svg}
     var lo = cyclic ? 0 : 1;
     var hi = cyclic ? m : n - 1; // exclusive
     for (var i = lo; i < hi; i++) {
-      turns[i] = windowedTurn(t, channels, K, n, L, m, segLen, i, W, cyclic);
-      inner[i] = windowedTurn(t, channels, K, n, L, m, segLen, i, Wi, cyclic);
+      turns[i] = windowedTurn(t, channels, K, n, L, m, i, W, cyclic);
+      inner[i] = windowedTurn(t, channels, K, n, L, m, i, Wi, cyclic);
     }
     // candidates above the angle threshold, that are concentrated (a localized
     // turn, not gradual bending -- see isConcentratedTurn), and that are the
@@ -63876,8 +63875,7 @@ ${svg}
     var K = channels.length;
     var L = t[n - 1];
     var m = cyclic ? n - 1 : n;
-    var segLen = cyclic ? ringSegLengths(t, m) : null;
-    return windowedTurn(t, channels, K, n, L, m, segLen, i, params.tangentWindow, cyclic);
+    return windowedTurn(t, channels, K, n, L, m, i, params.tangentWindow, cyclic);
   }
 
   // Does the open span [a, b] justify pinning the corner at vertex @corner: is it a
@@ -63899,18 +63897,12 @@ ${svg}
 
   // --- internals ---
 
-  function ringSegLengths(t, m) {
-    var segLen = new Float64Array(m);
-    for (var i = 0; i < m; i++) segLen[i] = t[i + 1] - t[i];
-    return segLen;
-  }
-
   // Turn angle at vertex i between the incoming and outgoing directions, each
   // estimated over an arc-length window W (so the measure is scale-aware and not
   // dominated by a single short segment).
-  function windowedTurn(t, channels, K, n, L, m, segLen, i, W, cyclic) {
-    var back = reach(t, segLen, n, m, L, i, -1, W, cyclic);
-    var fwd = reach(t, segLen, n, m, L, i, 1, W, cyclic);
+  function windowedTurn(t, channels, K, n, L, m, i, W, cyclic) {
+    var back = reach(t, n, m, L, i, -1, W, cyclic);
+    var fwd = reach(t, n, m, L, i, 1, W, cyclic);
     var pi = getPt(channels, K, i);
     var pb = getPt(channels, K, back);
     var pf = getPt(channels, K, fwd);
@@ -63935,13 +63927,21 @@ ${svg}
 
   // Walk from vertex i in direction dir (+1/-1) until accumulated arc length
   // reaches W (or a boundary, for open arcs), returning the reached vertex index.
-  function reach(t, segLen, n, m, L, i, dir, W, cyclic) {
+  // Segment lengths are read straight from the cumulative-length array t (t has
+  // n = m+1 entries with t[m] = L, so t[j+1]-t[j] is valid for every ring vertex
+  // j in 0..m-1, including the closing segment); this avoids allocating a per-ring
+  // segment-length array on every call (cornerTurn is hit ~twice per corner).
+  function reach(t, n, m, L, i, dir, W, cyclic) {
     var j = i, acc = 0;
     while (acc < W) {
       if (cyclic) {
-        var k = dir > 0 ? (j + 1) % m : (j - 1 + m) % m;
-        acc += dir > 0 ? segLen[j] : segLen[k];
-        j = k;
+        if (dir > 0) {
+          acc += t[j + 1] - t[j];      // vertex j -> j+1 (t[m] == L handles the seam)
+          j = j + 1 === m ? 0 : j + 1;
+        } else {
+          acc += j > 0 ? t[j] - t[j - 1] : L - t[m - 1]; // vertex j -> j-1
+          j = (j - 1 + m) % m;
+        }
         if (j === i) break; // wrapped the whole ring
       } else {
         var nk = j + dir;
@@ -63953,14 +63953,39 @@ ${svg}
     return j;
   }
 
+  // Non-maximum suppression: is vertex j the sharpest turn within an arc-length
+  // window W (ties broken toward the lower index)? Only the vertices within W of j
+  // are examined -- walking outward from j in each direction and stopping once the
+  // arc-length gap reaches W -- rather than scanning the whole arc for every
+  // candidate, which was O(vertices^2) when many vertices are candidates (e.g. a
+  // large ring smoothed below its vertex spacing). Cumulative arc length is
+  // monotone, so the outward gap only grows and the early break is safe; a vertex
+  // within the cyclic window is reached going forward or backward (or both on a
+  // tiny ring, which is harmless for an all-or-nothing test).
   function isLocalMaxTurn(t, turns, j, W, L, m, lo, hi, cyclic) {
-    for (var k = lo; k < hi; k++) {
-      if (k === j) continue;
-      var d = Math.abs(t[k] - t[j]);
-      if (cyclic && d > L - d) d = L - d;
-      if (d < W && (turns[k] > turns[j] || (turns[k] === turns[j] && k < j))) {
-        return false;
+    var k, d;
+    if (cyclic) {
+      for (k = (j + 1) % m; k !== j; k = (k + 1) % m) {
+        d = t[k] - t[j];
+        if (d < 0) d += L; // forward arc distance
+        if (d >= W) break;
+        if (turns[k] > turns[j] || (turns[k] === turns[j] && k < j)) return false;
       }
+      for (k = (j - 1 + m) % m; k !== j; k = (k - 1 + m) % m) {
+        d = t[j] - t[k];
+        if (d < 0) d += L; // backward arc distance
+        if (d >= W) break;
+        if (turns[k] > turns[j] || (turns[k] === turns[j] && k < j)) return false;
+      }
+      return true;
+    }
+    for (k = j + 1; k < hi; k++) {
+      if (t[k] - t[j] >= W) break;
+      if (turns[k] > turns[j] || (turns[k] === turns[j] && k < j)) return false;
+    }
+    for (k = j - 1; k >= lo; k--) {
+      if (t[j] - t[k] >= W) break;
+      if (turns[k] > turns[j] || (turns[k] === turns[j] && k < j)) return false;
     }
     return true;
   }
@@ -64311,7 +64336,14 @@ ${svg}
         if (!leftStruct && !rightStruct) {
           bounds.splice(i, 1);
           changed = true;
-          break;
+          // Removing bounds[i] only changes the spans of its two neighbours; the
+          // breakpoints before them stay stable, so resume the scan just before the
+          // removal (rechecking the left neighbour) instead of restarting from the
+          // start. Restarting made this O(breaks^2) -- a hang on a large ring where
+          // the smoothing distance is finer than the vertex spacing and nearly
+          // every vertex reads as a breakpoint. The removal sequence is identical to
+          // a from-scratch rescan (the stable prefix is never revisited).
+          i = i < 2 ? 0 : i - 2;
         }
       }
     }
@@ -64344,7 +64376,15 @@ ${svg}
         if (!leftStruct && !rightStruct) {
           list.splice(i, 1);
           changed = true;
-          break;
+          // As in refineBounds, only the removed corner's neighbours change, so
+          // resume just before the removal (i-- via i-2) rather than restarting the
+          // scan -- restarting is what made this O(corners^2) and hung on large
+          // rings smoothed below their vertex spacing (~half the vertices read as
+          // corners, nearly all culled). Cross-seam effects (the wrap between the
+          // last and first corner) are picked up by the outer while(changed) pass.
+          // The stable prefix is never revisited, so the surviving set matches a
+          // from-scratch rescan exactly.
+          i = i < 2 ? -1 : i - 2;
         }
       }
     }
@@ -66812,7 +66852,7 @@ ${svg}
     return name == 'rectangle' || name == 'rectangles' || name == 'filter' && opts.cleanup;
   }
 
-  var version = "0.7.36";
+  var version = "0.7.37";
 
   // Parse command line args into commands and run them
   // Function takes an optional Node-style callback. A Promise is returned if no callback is given.
