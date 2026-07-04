@@ -1,0 +1,6 @@
+{"type":"FeatureCollection", "features": [
+{"type":"Feature","geometry":{"type":"LineString","coordinates":[[-82.245,48.6488],[-82.1925,48.6913],[-82.2466,48.7119],[-82.3125,48.69],[-82.245,48.6488]]},"properties":{"ID":636,"sum":100}},
+{"type":"Feature","geometry":{"type":"LineString","coordinates":[[-82.046,48.6028],[-82.1071,48.548],[-82.1511,48.6018],[-82.109,48.6358],[-82.046,48.6028]]},"properties":{"ID":659,"sum":300}},
+{"type":"Feature","geometry":{"type":"LineString","coordinates":[[-82.6465,48.4695],[-82.5945,48.5065],[-82.6497,48.568],[-82.7238,48.5047],[-82.6465,48.4695]]},"properties":{"ID":669,"sum":100}},
+{"type":"Feature","geometry":{"type":"LineString","coordinates":[[-82.4759,48.4181],[-82.5091,48.3971],[-82.5474,48.4172],[-82.5105,48.444],[-82.4759,48.4181]]},"properties":{"ID":688,"sum":300}}
+]}

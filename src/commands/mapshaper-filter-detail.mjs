@@ -34,6 +34,8 @@ cmd.filterDetail = function(dataset, opts, targetLayers) {
     distance: distance,
     tortuosity: opts.tortuosity,
     weighting: opts.weighting,
+    roundness: opts.roundness,
+    minRingArea: opts.min_area,
     spherical: spherical
   });
   var removed = before - arcs.getPointCount();
@@ -57,6 +59,8 @@ export function filterDetailPaths(arcs, opts) {
       distance: opts.distance,
       tortuosity: opts.tortuosity,
       weighting: opts.weighting,
+      roundness: opts.roundness,
+      minRingArea: opts.minRingArea,
       spherical: opts.spherical
     });
     nn.push(res.xx.length);

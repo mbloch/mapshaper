@@ -1,16 +1,18 @@
 import geom from '../geom/mapshaper-geom';
-import { getCornerParams, findInteriorCorners, isStructuralRun } from './mapshaper-smooth-corners';
+import { getCornerParams, findInteriorCorners, isStructuralRun, isStructuralRingSpan, isStraightRun, isStraightRingSpan } from './mapshaper-smooth-corners';
 
 // Scale-aware line smoothing primitives, shared by the -smooth command.
 //
 // The smoother treats a path as coordinate signals parameterized by arc length s
-// and applies a length-scaled low-pass filter. The user-facing distance is a
-// resolution: detail with a wavelength around the distance is reduced to roughly
-// half amplitude (the -6 dB cutoff), finer detail is removed, and features much
-// larger than the distance pass through nearly unchanged. The distance is not a
-// deviation bound -- a tall, narrow sub-resolution spike can still be displaced
-// by an amount comparable to its own amplitude (inherent to convolution
-// smoothers).
+// and applies a length-scaled low-pass filter. The user-facing distance is
+// calibrated so that it approximates the maximum displacement of the smoothed
+// line from the original at high-displacement features (e.g. acute bends): finer
+// detail is removed and larger features pass through progressively less changed.
+// In frequency terms the kernel's half-amplitude (-6 dB) wavelength sits at
+// roughly KERNEL_STRENGTH * distance, so detail a few times finer than the
+// distance is strongly attenuated. The distance is not a strict deviation
+// bound -- a tall, narrow sub-resolution spike can still be displaced by an
+// amount comparable to its own amplitude (inherent to convolution smoothers).
 //
 // The filter is a local second-degree polynomial fit whose quadratic term
 // corrects the inward shrinkage that plain weighted averaging causes on curved
@@ -30,21 +32,44 @@ import { getCornerParams, findInteriorCorners, isStructuralRun } from './mapshap
 // -simplify treats spherical coordinates. The kernel scale stays in true ground
 // distance because arc length is measured with great-circle distance.
 //
-// The user-facing distance is a *resolution*: detail finer than it is removed, a
-// feature about its size is reduced to roughly half amplitude, and larger
-// features are largely preserved. KERNEL_FROM_DISTANCE maps that resolution onto
-// the internal kernel scale, calibrated empirically so the half-amplitude
-// (-6 dB) wavelength ~= the distance. The remaining calibration constants are
-// expressed relative to that internal scale and map it onto kernel widths and
-// output sampling; they are collected here so the mapping can be retuned in one
-// place. See docs/reference.md.
+// KERNEL_FROM_DISTANCE maps the user distance onto the internal reference scale
+// (tol) that keys corner detection, output sampling and densification. The kernel
+// itself is then widened by KERNEL_STRENGTH (below), so the distance approximates
+// the maximum displacement at sharp features and the -6 dB wavelength sits near
+// KERNEL_STRENGTH * distance. The remaining calibration constants are expressed
+// relative to the internal scale and map it onto kernel widths and output
+// sampling; they are collected here so the mapping can be retuned in one place.
+// See docs/reference.md.
 var KERNEL_FROM_DISTANCE = 1.2;   // internal kernel scale = distance * this
+// Base smoothing strength baked into the default: the low-pass kernel scale is
+// this * tol (before the user's `strength` multiplier and the ring cap). It is
+// calibrated so the distance parameter approximates the maximum displacement of
+// the smoothed line from the original at high-displacement features (e.g. acute
+// bends) -- a markedly stronger, more intuitive effect than the raw -6 dB
+// mapping (which displaced the line far less than the distance). ONLY the kernel
+// scale is affected; tol -- and therefore corner detection, output sampling, the
+// prefilter and island dropping -- stays keyed to the raw distance.
+var KERNEL_STRENGTH = 5;
 var GAUSSIAN_SIGMA_FACTOR = 0.4;  // gaussian sigma = internal scale * this
 var PAEK_SCALE_FACTOR = 0.4;      // exponential kernel scale d = internal scale * this
 var WINDOW_RADIUS_FACTOR = 1.2;   // window half-length = internal scale * this
 var SOURCE_SPACING_FACTOR = 0.25; // densify source to <= tolerance * this before smoothing
 var MAX_OUTPUT_FACTOR = 8;        // cap output (and source) vertices at inputCount * this
 var MIN_CLOSED_SEGMENTS = 16;     // floor on segments for closed rings (so they resolve)
+// A closed ring cannot be smoothed at a resolution coarser than the ring itself:
+// once the kernel window (radius = internal scale * WINDOW_RADIUS_FACTOR)
+// reaches half the ring's perimeter, every output point averages over the whole
+// loop and the ring degenerates toward a point (a circle once re-inflated). So
+// for a closed ring the internal scale is capped just below that threshold,
+// which is factor 1/(2*WINDOW_RADIUS_FACTOR) ~ 0.42. Up to the threshold the
+// ring keeps its shape (elongated stays elongated, and detail is rounded as much
+// as the ring's own size allows); the enclosed area it loses to curve-shortening
+// on the way is restored afterward by restoreRingArea() (a similarity rescale
+// about the centroid), so a small island is rounded at close to the full
+// requested scale without shrinking. The cap only binds when the requested
+// distance nears the ring's own size; large rings (perimeter >> distance) smooth
+// gently, lose negligible area and are effectively unaffected by either step.
+var MAX_RING_SCALE_FACTOR = 0.42;
 
 // Output resampling. The smoothed curve is a continuous function of arc length;
 // we sample it densely at a uniform step and then thin that dense polyline with a
@@ -115,6 +140,22 @@ function resolveCornerBias(opts) {
   return b > 0 ? b : 1;
 }
 
+// Resolve the smoothing-strength multiplier (default 1). It scales only the
+// low-pass kernel (window radius and sigma) relative to the distance, so a value
+// > 1 smooths more strongly (wider kernel, larger divergence from the original)
+// and < 1 more gently. Everything else keyed to the distance -- corner detection,
+// output sampling, the prefilter and island dropping -- is left unchanged.
+// Non-positive or missing values fall back to 1.
+//
+// By design, curve exaggeration (gain > 1) scales WITH strength: gain multiplies
+// the quadratic curvature correction (a0 - mean) in smoothPoint, and that term is
+// measured over the strength-scaled kernel window, so a wider kernel amplifies a
+// given gain. This coupling is intentional -- do not normalize it out.
+function resolveStrength(opts) {
+  var s = opts.strength;
+  return s > 0 ? s : 1;
+}
+
 export function smoothArcCoords(xx, yy, opts) {
   var n = xx.length;
   var origX = toArray(xx);
@@ -128,6 +169,29 @@ export function smoothArcCoords(xx, yy, opts) {
   var spherical = !!opts.spherical;
   var keepCorners = !!opts.keepCorners;
   var bendAngle = resolveBendAngle(opts);
+
+  // Cumulative arc length in ground units (meters for spherical data), so the
+  // kernel scale stays in true distance regardless of coordinate representation.
+  var t = arcLengths(origX, origY, n, spherical);
+  if (!(t[n - 1] > 0)) {
+    return {xx: origX, yy: origY}; // degenerate (coincident points)
+  }
+  // The low-pass kernel scale is the raw distance scale (tol) times the baked-in
+  // KERNEL_STRENGTH calibration and the user's `strength` multiplier (default 1).
+  // Only the kernel (radius, sigma) uses this scale; tol -- which drives corner
+  // detection, output sampling and densification -- stays keyed to the raw
+  // distance, so those effects are unaffected by either strength factor.
+  var kernelScale = tol * KERNEL_STRENGTH * resolveStrength(opts);
+  // A closed ring smaller than the smoothing resolution would collapse toward its
+  // centroid, so cap both scales at a fraction of the ring's perimeter (see
+  // MAX_RING_SCALE_FACTOR). This only binds when the requested distance (or the
+  // boosted kernel) approaches the ring's own size; otherwise it is a no-op. The
+  // cap on kernelScale also stops a large `strength` from collapsing a ring.
+  if (closed) {
+    var ringCap = MAX_RING_SCALE_FACTOR * t[n - 1];
+    tol = Math.min(tol, ringCap);
+    kernelScale = Math.min(kernelScale, ringCap);
+  }
   var ctx = {
     tol: tol,
     method: method,
@@ -140,21 +204,25 @@ export function smoothArcCoords(xx, yy, opts) {
     // segment still turns well under the threshold; never coarsen it beyond the
     // default (the angle filter alone thins the output for larger angles).
     denseStep: tol * DENSE_STEP_FACTOR * Math.min(1, bendAngle / DEFAULT_BEND_ANGLE),
-    radius: tol * WINDOW_RADIUS_FACTOR,
-    scale: (method == 'gaussian' ? GAUSSIAN_SIGMA_FACTOR : PAEK_SCALE_FACTOR) * tol
+    radius: kernelScale * WINDOW_RADIUS_FACTOR,
+    scale: (method == 'gaussian' ? GAUSSIAN_SIGMA_FACTOR : PAEK_SCALE_FACTOR) * kernelScale
   };
-
-  // Cumulative arc length in ground units (meters for spherical data), so the
-  // kernel scale stays in true distance regardless of coordinate representation.
-  var t = arcLengths(origX, origY, n, spherical);
-  if (!(t[n - 1] > 0)) {
-    return {xx: origX, yy: origY}; // degenerate (coincident points)
-  }
   var channels = spherical ? lngLatToXYZChannels(origX, origY, n) : [origX, origY];
 
   if (closed) {
+    var ringParams = getCornerParams(tol, ctx.cornerBias);
     var corners = keepCorners ?
-      findInteriorCorners(t, channels, n, true, getCornerParams(tol, ctx.cornerBias)) : [];
+      findInteriorCorners(t, channels, n, true, ringParams) : [];
+    // findInteriorCorners flags localized bends by angle alone; it does not check
+    // whether a candidate borders a structural (long, low-curvature) run. Keep
+    // only the corners that do -- a natural ring with no straight segments has
+    // none and must smooth cyclically. Otherwise the ring would be rotated to
+    // corners[0] and smoothed as an open path with that vertex pinned as a
+    // spurious cusp (whose location shifts with the tolerance-scaled detection
+    // window), even though refineBounds later drops every interior breakpoint.
+    if (corners.length > 0) {
+      corners = filterRingCornersByStructure(t, channels, n, corners, ringParams);
+    }
     if (corners.length === 0) {
       return smoothClosedCyclic(t, channels, n, ctx);
     }
@@ -176,9 +244,18 @@ export function smoothArcCoords(xx, yy, opts) {
 }
 
 // Smooth an open path partitioned at @interiorBreaks (sorted interior vertex
-// indices). Structural runs are copied verbatim; other spans are smoothed with
-// their endpoints pinned, so every breakpoint (and the two arc endpoints) keeps
-// its exact original position. Shared breakpoint vertices are emitted once.
+// indices). Corner retention and verbatim-copy are two separate decisions:
+//   - A breakpoint is kept if it borders a run worth pinning -- straight at the
+//     smoothing scale (isStraightRun, robust to sub-tolerance wiggle) or clean
+//     per-vertex (isStructuralRun); otherwise refineBounds drops it. The straight
+//     test pins the corner at the end of a finely ragged straight border that the
+//     per-vertex test would miss.
+//   - A kept span is copied verbatim only if it is clean per-vertex
+//     (isStructuralRun); otherwise it is smoothed with its endpoints pinned. So a
+//     straight-but-noisy border is smoothed into a clean straight line between
+//     its pinned corners, rather than curving into its neighbours.
+// Every breakpoint (and the two arc endpoints) keeps its exact original position;
+// shared breakpoint vertices are emitted once.
 function smoothOpenSpans(origX, origY, t, channels, n, interiorBreaks, ctx) {
   var bounds = [0].concat(interiorBreaks);
   bounds.push(n - 1);
@@ -198,17 +275,28 @@ function smoothOpenSpans(origX, origY, t, channels, n, interiorBreaks, ctx) {
   return {xx: xx, yy: yy};
 }
 
-// Drop interior breakpoints that don't border any structural run (e.g. spikes
+// Drop interior breakpoints that don't border any run worth pinning (e.g. spikes
 // inside a wiggly stretch), merging their spans, until the partition is stable.
-// Merging can turn two short straight pieces back into one structural run, so
-// structurality is re-tested each pass.
+// Merging can turn two short pieces back into one qualifying run, so the test is
+// repeated each pass. A breakpoint is kept if an adjacent span is either
+// straight at the smoothing scale (isStraightRun -- robust to sub-tolerance
+// wiggle, so a corner at the end of a finely ragged but geometrically straight
+// border is retained; that span is then smoothed, not copied verbatim) OR clean
+// per-vertex (isStructuralRun -- the verbatim-copy criterion, which also covers
+// the borderline case where a straight run abuts the corner through a short jog
+// that offsets the span's endpoint chord).
+function bordersPinnableRun(t, channels, a, b, params) {
+  return isStraightRun(t, channels, a, b, params) ||
+    isStructuralRun(t, channels, a, b, params);
+}
+
 function refineBounds(t, channels, bounds, params) {
   var changed = true;
   while (changed && bounds.length > 2) {
     changed = false;
     for (var i = 1; i < bounds.length - 1; i++) {
-      var leftStruct = isStructuralRun(t, channels, bounds[i - 1], bounds[i], params);
-      var rightStruct = isStructuralRun(t, channels, bounds[i], bounds[i + 1], params);
+      var leftStruct = bordersPinnableRun(t, channels, bounds[i - 1], bounds[i], params);
+      var rightStruct = bordersPinnableRun(t, channels, bounds[i], bounds[i + 1], params);
       if (!leftStruct && !rightStruct) {
         bounds.splice(i, 1);
         changed = true;
@@ -217,6 +305,44 @@ function refineBounds(t, channels, bounds, params) {
     }
   }
   return bounds;
+}
+
+// Drop closed-ring corners that don't border a run worth pinning on either side,
+// merging their (cyclic) spans, until the set is stable -- the cyclic analogue
+// of refineBounds, applied before the ring is rotated/pinned. A single corner
+// is tested against the whole-ring span. Uses the same straight-OR-structural
+// criterion as refineBounds (see bordersPinnableRingSpan). Returns the surviving
+// corners (a subset of @corners, order preserved); an empty result means the
+// ring has no qualifying corner and should smooth cyclically.
+function bordersPinnableRingSpan(t, channels, n, a, b, params) {
+  return isStraightRingSpan(t, channels, n, a, b, params) ||
+    isStructuralRingSpan(t, channels, n, a, b, params);
+}
+
+function filterRingCornersByStructure(t, channels, n, corners, params) {
+  var list = corners.slice();
+  var changed = true;
+  while (changed && list.length > 0) {
+    changed = false;
+    for (var i = 0; i < list.length; i++) {
+      var cur = list[i];
+      var leftStruct, rightStruct;
+      if (list.length === 1) {
+        leftStruct = rightStruct = bordersPinnableRingSpan(t, channels, n, cur, cur, params);
+      } else {
+        var prev = list[(i - 1 + list.length) % list.length];
+        var next = list[(i + 1) % list.length];
+        leftStruct = bordersPinnableRingSpan(t, channels, n, prev, cur, params);
+        rightStruct = bordersPinnableRingSpan(t, channels, n, cur, next, params);
+      }
+      if (!leftStruct && !rightStruct) {
+        list.splice(i, 1);
+        changed = true;
+        break;
+      }
+    }
+  }
+  return list;
 }
 
 // Smooth a single open span [lo, hi] (inclusive) and pin both ends to their
@@ -250,11 +376,107 @@ function smoothClosedCyclic(t, channels, n, ctx) {
   var dense = densifyChannels(t, channels, maxSpacing);
   var src = buildSource(dense.t, dense.channels, true, ctx.radius, L);
   var sm = sampleSmoothedCurve(src, 0, L, true, ctx, n);
+  // Smoothing shrinks a closed loop (curve-shortening); restore its original
+  // enclosed area so small rings can be rounded at the full scale without
+  // shrinking. A no-op for large rings (they lose negligible area).
+  restoreRingArea(sm, channels, n, ctx.spherical);
   var out = ctx.spherical ? xyzChannelsToLngLat(sm) : {xx: sm[0], yy: sm[1]};
   // force an exactly closed ring (the periodic endpoints are equal up to fp)
   out.xx[out.xx.length - 1] = out.xx[0];
   out.yy[out.yy.length - 1] = out.yy[0];
   return out;
+}
+
+// Rescale a smoothed closed ring about its centroid so it re-encloses the
+// original ring's area. Because it is a uniform similarity transform, the
+// smoothed *shape* is unchanged -- only its size -- so the rounding introduced by
+// smoothing is preserved while the curve-shortening shrinkage is undone.
+// @sm are the smoothed smoothing channels (plain arrays; [x,y] planar or unit-
+// sphere [X,Y,Z] spherical, last point == first). @orig are the original channels
+// (length @n, closed). Silent no-op if either area is non-positive.
+function restoreRingArea(sm, orig, n, spherical) {
+  var origArea = ringChannelArea(orig, n, spherical);
+  var m = sm[0].length;
+  var smArea = ringChannelArea(sm, m, spherical);
+  if (!(origArea > 0) || !(smArea > 0)) return;
+  var f = Math.sqrt(origArea / smArea);
+  if (spherical) {
+    scaleRingSpherical(sm, m, f);
+  } else {
+    scaleRingPlanar(sm, m, f);
+  }
+}
+
+// Enclosed-area proxy of a closed ring (@count points, last == first). Planar:
+// the shoelace area on (x,y). Spherical: the shoelace area of the ring projected
+// into the tangent plane at its centroid direction. Only ratios of two such
+// areas are used, so the (unit-sphere) scale is irrelevant, and the tangent-plane
+// error is second order in the ring's size -- negligible for the small rings
+// where this is needed.
+function ringChannelArea(ch, count, spherical) {
+  if (!spherical) {
+    var x = ch[0], y = ch[1], a = 0;
+    for (var i = 0; i < count - 1; i++) a += x[i] * y[i + 1] - x[i + 1] * y[i];
+    return Math.abs(a / 2);
+  }
+  var basis = tangentBasis(ringCentroidDir(ch, count - 1));
+  var c = basis.c, ex = basis.ex, ey = basis.ey;
+  var X = ch[0], Y = ch[1], Z = ch[2], area = 0, px, py, qx, qy;
+  for (var j = 0; j < count - 1; j++) {
+    px = X[j] * ex[0] + Y[j] * ex[1] + Z[j] * ex[2];
+    py = X[j] * ey[0] + Y[j] * ey[1] + Z[j] * ey[2];
+    qx = X[j + 1] * ex[0] + Y[j + 1] * ex[1] + Z[j + 1] * ex[2];
+    qy = X[j + 1] * ey[0] + Y[j + 1] * ey[1] + Z[j + 1] * ey[2];
+    area += px * qy - qx * py;
+  }
+  return Math.abs(area / 2);
+}
+
+function scaleRingPlanar(sm, count, f) {
+  var x = sm[0], y = sm[1], cx = 0, cy = 0, i;
+  for (i = 0; i < count - 1; i++) { cx += x[i]; cy += y[i]; }
+  cx /= (count - 1); cy /= (count - 1);
+  for (i = 0; i < count; i++) {
+    x[i] = cx + (x[i] - cx) * f;
+    y[i] = cy + (y[i] - cy) * f;
+  }
+}
+
+// Scale each unit-sphere point's angular offset from the centroid direction by
+// ~f (keeping the radial component, then renormalizing), which scales the
+// enclosed area by ~f^2 for the small caps where this runs.
+function scaleRingSpherical(sm, count, f) {
+  var X = sm[0], Y = sm[1], Z = sm[2];
+  var c = ringCentroidDir(sm, count - 1);
+  for (var i = 0; i < count; i++) {
+    var dot = X[i] * c[0] + Y[i] * c[1] + Z[i] * c[2];
+    var tx = X[i] - dot * c[0], ty = Y[i] - dot * c[1], tz = Z[i] - dot * c[2];
+    var vx = dot * c[0] + f * tx, vy = dot * c[1] + f * ty, vz = dot * c[2] + f * tz;
+    var nrm = Math.sqrt(vx * vx + vy * vy + vz * vz) || 1;
+    X[i] = vx / nrm; Y[i] = vy / nrm; Z[i] = vz / nrm;
+  }
+}
+
+function ringCentroidDir(ch, m) {
+  var X = ch[0], Y = ch[1], Z = ch[2], cx = 0, cy = 0, cz = 0;
+  for (var i = 0; i < m; i++) { cx += X[i]; cy += Y[i]; cz += Z[i]; }
+  var nrm = Math.sqrt(cx * cx + cy * cy + cz * cz) || 1;
+  return [cx / nrm, cy / nrm, cz / nrm];
+}
+
+// Orthonormal tangent basis (ex, ey) at unit direction c on the sphere.
+function tangentBasis(c) {
+  // pick the world axis least aligned with c to avoid a degenerate cross product
+  var ax = Math.abs(c[0]) < 0.9 ? [1, 0, 0] : [0, 1, 0];
+  var ex = cross(c, ax);
+  var en = Math.sqrt(ex[0] * ex[0] + ex[1] * ex[1] + ex[2] * ex[2]) || 1;
+  ex = [ex[0] / en, ex[1] / en, ex[2] / en];
+  var ey = cross(c, ex);
+  return {c: c, ex: ex, ey: ey};
+}
+
+function cross(a, b) {
+  return [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]];
 }
 
 function copySpan(origX, origY, lo, hi) {
