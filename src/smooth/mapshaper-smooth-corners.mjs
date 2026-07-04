@@ -63,19 +63,68 @@ var MIN_RUN_RADIUS_FACTOR = 3.0;
 // culled.
 var STRAIGHT_DEV_FACTOR = 0.03;
 
-// @cornerBias (optional, default 1) divides the min structural-run length, so a
-// value < 1 lengthens the run a corner must border to be preserved (fewer, only
-// well-supported corners), and a value > 1 shortens it (more corners kept).
+// Angle coupling for corner retention: how much sharper the corner must turn than
+// the run it borders already curves. A run that passes the chord test may still
+// bend gently within the STRAIGHT_DEV_FACTOR corridor -- for a circular arc the
+// chord-deviation ratio is ~ (the run's total turn)/8, so the base 0.03 admits a
+// run that curves ~14 deg over its length. Pinning a *gentle* bend at the end of
+// such a run is unsafe: the "corner" is barely sharper than the run's own
+// curving, so it is really a point on a smooth bend, not a junction. (This is the
+// failure mode on coarsely sampled / already-simplified coastlines, where a
+// gently curving stretch is sampled as a few long segments that read as a
+// borderline-straight run with soft bends at each end.) So the straightness limit
+// for retention is tightened for gentle corners: a corner is pinnable only if its
+// turn is at least PIN_TURN_RATIO times the run's own bend, i.e.
+//   turn >= PIN_TURN_RATIO * (8 * dev)  <=>  dev <= turn / (8 * PIN_TURN_RATIO).
+// retentionDevLimit() returns the smaller of STRAIGHT_DEV_FACTOR and
+// turn/(8*PIN_TURN_RATIO), so the coupling only bites for gentle corners (below
+// ~2*STRAIGHT_DEV_FACTOR*PIN_TURN_RATIO ~ 69 deg); sharp corners (surveyed-border
+// right angles, spits, hairpins) keep the full base tolerance, unchanged.
+var PIN_TURN_RATIO = 5;
+
+// Minimum length (in tol units) a straight run must have to justify *pinning* a
+// bordering corner. This is deliberately larger than MIN_RUN_LEN_FACTOR (the
+// floor for calling a span "structural" at all): pinning a corner is a stronger
+// commitment than copying a clean span, so it demands stronger evidence that the
+// run is a deliberate straight feature rather than incidental collinearity.
+//
+// The failure mode this guards against appears on sparse / already-simplified
+// data, where a gently curving coastline is sampled as a few long segments. A
+// short near-collinear stretch only ~1*tol long (often just 1-2 segments) then
+// passes the chord-deviation test -- with so few interior points there is almost
+// nothing to deviate -- and gets pinned, kinking an otherwise smooth curve. At
+// the smoothing scale such a stretch is indistinguishable from a coarsely
+// sampled bend, so it should not anchor a corner. Requiring the run to be
+// clearly longer than the smoothing distance (factor 2) drops these stubs while
+// keeping genuine straight borders (which run many times the distance) and even
+// coarsely sampled but truly long straight segments (e.g. a 2-3*tol contour
+// edge). Scales inversely with corner-bias, so corner-bias=2 restores the old
+// 1*tol behaviour for users who want shorter runs pinned.
+var MIN_PIN_RUN_LEN_FACTOR = 2.0;
+
+// @cornerBias (optional, default 1) scales only the distance-proportional corner
+// parameters, by dividing the tolerance they key off (ctol = tol / bias). The
+// dimensionless thresholds are left untouched: the corner angle, the
+// concentration ratio, and -- downstream, inside isStraightRun / retentionDevLimit
+// -- STRAIGHT_DEV_FACTOR and PIN_TURN_RATIO. So corner-bias=b detects (and
+// retains) corners exactly as if the smoothing distance were tol/b, while the
+// smoothing kernel keeps using the real distance. In particular
+// `-smooth corner-bias=0.5 1km` gives the same corner results as `-smooth 2km`
+// (a value < 1 finds fewer, only well-supported corners; > 1 finds more), but
+// smooths at 1km. All lengths below are derived from ctol; only cornerAngle and
+// concentration (both dimensionless) stay fixed.
 export function getCornerParams(tol, cornerBias) {
   var bias = cornerBias > 0 ? cornerBias : 1;
+  var ctol = tol / bias;
   return {
     tol: tol,
     cornerAngle: CORNER_ANGLE,
-    tangentWindow: TANGENT_WINDOW_FACTOR * tol,
-    innerWindow: INNER_WINDOW_FACTOR * TANGENT_WINDOW_FACTOR * tol,
+    tangentWindow: TANGENT_WINDOW_FACTOR * ctol,
+    innerWindow: INNER_WINDOW_FACTOR * TANGENT_WINDOW_FACTOR * ctol,
     concentration: CORNER_CONCENTRATION,
-    minRunLen: MIN_RUN_LEN_FACTOR * tol / bias,
-    maxTurnRate: 1 / (MIN_RUN_RADIUS_FACTOR * tol) // radians of turning per ground unit
+    minRunLen: MIN_RUN_LEN_FACTOR * ctol,
+    minPinRunLen: MIN_PIN_RUN_LEN_FACTOR * ctol,
+    maxTurnRate: 1 / (MIN_RUN_RADIUS_FACTOR * ctol) // radians of turning per ground unit
   };
 }
 
@@ -151,21 +200,28 @@ export function isStructuralRingSpan(t, channels, n, a, b, params) {
 }
 
 // Is span [a, b] (inclusive vertex indices, a < b, open frame) "straight at the
-// smoothing scale": long enough AND confined to a thin corridor around its
-// endpoint chord (see STRAIGHT_DEV_FACTOR)? Used to decide whether a detected
-// corner borders a straight run worth pinning. Unlike isStructuralRun -- which
-// sums raw per-segment turning and is therefore defeated by sub-tolerance
-// digitizing noise -- this measures perpendicular deviation from the chord, so a
-// finely ragged but geometrically straight border still qualifies.
-export function isStraightRun(t, channels, a, b, params) {
+// smoothing scale": clearly longer than the smoothing distance (>= minPinRunLen,
+// see MIN_PIN_RUN_LEN_FACTOR) AND confined to a thin corridor around its endpoint
+// chord (see STRAIGHT_DEV_FACTOR)? Used to decide whether a detected corner
+// borders a straight run worth pinning. Unlike isStructuralRun -- which sums raw
+// per-segment turning and is therefore defeated by sub-tolerance digitizing
+// noise -- this measures perpendicular deviation from the chord, so a finely
+// ragged but geometrically straight border still qualifies. The length floor is
+// the pinning-specific minPinRunLen (not minRunLen): a run only ~1*tol long has
+// too few interior points for the chord test to distinguish a true straight
+// border from a coarsely sampled bend, so it must not anchor a corner. @devLimit
+// overrides the corridor half-width (default STRAIGHT_DEV_FACTOR); retention
+// passes a per-corner value tightened for gentle bends (see retentionDevLimit).
+export function isStraightRun(t, channels, a, b, params, devLimit) {
+  var lim = devLimit === undefined ? STRAIGHT_DEV_FACTOR : devLimit;
   var len = t[b] - t[a];
-  if (!(len >= params.minRunLen)) return false;
+  if (!(len >= params.minPinRunLen)) return false;
   var K = channels.length;
   var A = getPt(channels, K, a);
   var AB = subv(getPt(channels, K, b), A, K);
   var abDot = dot(AB, AB, K);
   if (!(abDot > 0)) return false;
-  var limit2 = STRAIGHT_DEV_FACTOR * STRAIGHT_DEV_FACTOR * abDot;
+  var limit2 = lim * lim * abDot;
   for (var i = a + 1; i < b; i++) {
     if (perpDistSq(channels, K, i, A, AB, abDot) > limit2) return false;
   }
@@ -178,19 +234,20 @@ export function isStraightRun(t, channels, a, b, params) {
 // chord, so it falls back to the turning-rate test (a large low-curvature ring
 // keeps its one corner). Used by the closed-ring corner cull (see
 // filterRingCornersByStructure in mapshaper-smooth-algos).
-export function isStraightRingSpan(t, channels, n, a, b, params) {
+export function isStraightRingSpan(t, channels, n, a, b, params, devLimit) {
+  var lim = devLimit === undefined ? STRAIGHT_DEV_FACTOR : devLimit;
   var m = n - 1;
   if (m < 2) return false;
   if (a === b) return isStructuralRingSpan(t, channels, n, a, b, params);
   var L = t[n - 1];
   var len = b > a ? t[b] - t[a] : (L - t[a]) + t[b];
-  if (!(len >= params.minRunLen)) return false;
+  if (!(len >= params.minPinRunLen)) return false;
   var K = channels.length;
   var A = getPt(channels, K, a);
   var AB = subv(getPt(channels, K, b), A, K);
   var abDot = dot(AB, AB, K);
   if (!(abDot > 0)) return false;
-  var limit2 = STRAIGHT_DEV_FACTOR * STRAIGHT_DEV_FACTOR * abDot;
+  var limit2 = lim * lim * abDot;
   var i = a;
   while (true) {
     i = (i + 1) % m;
@@ -198,6 +255,41 @@ export function isStraightRingSpan(t, channels, n, a, b, params) {
     if (perpDistSq(channels, K, i, A, AB, abDot) > limit2) return false;
   }
   return true;
+}
+
+// Straightness limit for pinning a corner whose windowed turn is @turnRad (see
+// PIN_TURN_RATIO): min(STRAIGHT_DEV_FACTOR, turnRad / (8 * PIN_TURN_RATIO)).
+function retentionDevLimit(turnRad) {
+  var lim = turnRad / (8 * PIN_TURN_RATIO);
+  return lim < STRAIGHT_DEV_FACTOR ? lim : STRAIGHT_DEV_FACTOR;
+}
+
+// Windowed turn (radians) at vertex @i, over params.tangentWindow each side --
+// the same measure findInteriorCorners uses to flag the corner. @cyclic selects
+// the open or ring frame.
+export function cornerTurn(t, channels, n, i, cyclic, params) {
+  var K = channels.length;
+  var L = t[n - 1];
+  var m = cyclic ? n - 1 : n;
+  var segLen = cyclic ? ringSegLengths(t, m) : null;
+  return windowedTurn(t, channels, K, n, L, m, segLen, i, params.tangentWindow, cyclic);
+}
+
+// Does the open span [a, b] justify pinning the corner at vertex @corner: is it a
+// straight run (isStraightRun) whose straightness is enough for the corner's turn
+// angle (retentionDevLimit)? A gentle bend needs a straighter run than a sharp
+// one. Used by refineBounds.
+export function bordersStraightRun(t, channels, n, corner, a, b, params) {
+  var lim = retentionDevLimit(cornerTurn(t, channels, n, corner, false, params));
+  return isStraightRun(t, channels, a, b, params, lim);
+}
+
+// Ring analogue of bordersStraightRun, for the closed-ring corner cull
+// (filterRingCornersByStructure). @corner is a ring vertex; the span runs from
+// ring vertex @a to @b (cyclic when b <= a).
+export function bordersStraightRingSpan(t, channels, n, corner, a, b, params) {
+  var lim = retentionDevLimit(cornerTurn(t, channels, n, corner, true, params));
+  return isStraightRingSpan(t, channels, n, a, b, params, lim);
 }
 
 // --- internals ---
