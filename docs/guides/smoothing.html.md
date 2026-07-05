@@ -26,7 +26,7 @@ Use `no-prefilter` to skip this step and smooth the input as-is.
 
 ## Corner preservation
 
-Some corners should stay sharp. By default, `-smooth` preserves corners where straight runs meet, such as surveyed borders.
+By default, `-smooth` preserves corners where straight runs meet, such as surveyed borders.
 
 Here, the straight surveyed border is preserved while the riverine border it meets is smoothed:
 
