@@ -2,7 +2,7 @@ import api from '../mapshaper.js';
 import assert from 'assert';
 import fs from 'fs';
 import { smoothArcCoords } from '../src/smooth/mapshaper-smooth-algos.mjs';
-import { getCornerParams, findInteriorCorners, isStructuralRun, isStraightRun, cornerTurn, cornerBiasScale } from '../src/smooth/mapshaper-smooth-corners.mjs';
+import { getCornerParams, findInteriorCorners, isStructuralRun, isStraightRun, cornerTurn, cornerBiasScale, autoCornerBias } from '../src/smooth/mapshaper-smooth-corners.mjs';
 
 // Build (t, channels) in planar x,y from a coordinate list, for testing the
 // corner-detection helpers directly.
@@ -114,6 +114,23 @@ describe('mapshaper-smooth.js', function () {
       var res = smoothArcCoords([0, 5], [0, 5], {tolerance: 3, method: 'paek', closed: false});
       assert.deepEqual(res.xx, [0, 5]);
       assert.deepEqual(res.yy, [0, 5]);
+      assert.equal(res.corners, 0);
+    });
+
+    it('reports the number of preserved corners', function () {
+      // L-shape: two long straight arms meeting at one sharp corner
+      var xx = [], yy = [];
+      for (var x = 0; x <= 200; x += 2) { xx.push(x); yy.push(0); }
+      for (var y = 2; y <= 200; y += 2) { xx.push(200); yy.push(y); }
+      var withCorners = smoothArcCoords(xx, yy, {tolerance: 15, planar: true, method: 'gaussian', closed: false, keepCorners: true});
+      assert.equal(withCorners.corners, 1, 'the single elbow should be reported');
+      var off = smoothArcCoords(xx, yy, {tolerance: 15, planar: true, method: 'gaussian', closed: false, keepCorners: false});
+      assert.equal(off.corners, 0, 'no corners reported with keepCorners off');
+      // a gently curving arc has no structural corners
+      var ax = [], ay = [];
+      for (var a = -0.6; a <= 0.6 + 1e-9; a += 0.02) { ax.push(200 * Math.sin(a)); ay.push(200 * Math.cos(a)); }
+      var arc = smoothArcCoords(ax, ay, {tolerance: 15, planar: true, method: 'gaussian', closed: false, keepCorners: true});
+      assert.equal(arc.corners, 0, 'a gentle arc should report no corners');
     });
   });
 
@@ -885,17 +902,16 @@ describe('mapshaper-smooth.js', function () {
       arm.forEach(function(p) { armAmp = Math.max(armAmp, Math.abs(p[1])); });
       assert(armAmp < 1e-6, 'horizontal arm was distorted (max |y| ' + armAmp.toFixed(3) + ')');
       // The real direction change is preserved as a clean bend: the 45-deg arm
-      // stays straight. Corner retention requires a chord-straight bordering
-      // span, and here the corner candidates all sit on wiggle peaks whose spans
-      // are not chord-straight, so nothing is pinned to a point -- the junction
-      // apex is rounded over ~tol rather than kept as a hard corner. That is the
-      // intended behaviour: the arms are preserved, only the vertex is softened.
+      // stays straight.
       var farArm = kept.filter(function(p) { return p[0] > 175; });
       var armResid = 0;
       farArm.forEach(function(p) { armResid = Math.max(armResid, Math.abs(p[1] - (p[0] - 150)) / Math.SQRT2); });
       assert(armResid < 0.5, 'the 45-deg arm was not kept straight (max residual ' + armResid.toFixed(2) + ')');
-      // the junction is rounded, not pinned to the original vertex
-      assert(minDistTo([150, 0], kept) > 1, 'junction should be rounded, not pinned as a hard corner');
+      // The 45-deg arm is a long straight run, so its start -- the genuine
+      // direction change -- is pinned as a corner (the straight-run-end detector),
+      // keeping the arm straight right to its base rather than rounding it into
+      // the wiggle. The sub-tolerance wiggle on the other side is smoothed away.
+      assert(minDistTo([150, 0], kept) < 1e-6, 'the start of the straight 45-deg arm should be pinned');
     });
 
     // isStraightRun measures deviation from the endpoint chord, so it is robust
@@ -954,9 +970,9 @@ describe('mapshaper-smooth.js', function () {
     // that itself curves near the base limit only pins a sharp corner.
     it('needs a straighter run to pin a gentle bend than a sharp one', function () {
       var params = getCornerParams(15 * 1.2, 0); // tol 18, minPinRunLen 36
-      // shallow arc, length ~120 (> minPinRunLen), chord deviation ratio ~0.025:
-      // straight at the base tolerance (0.03) but only borderline so.
-      var arc = [], R = 600, half = 60, ang0 = Math.asin(half / R), N = 40;
+      // shallow arc, length ~80 (> minPinRunLen), chord deviation ratio ~0.017:
+      // straight at the base tolerance (0.02) but only borderline so.
+      var arc = [], R = 600, half = 40, ang0 = Math.asin(half / R), N = 40;
       for (var i = 0; i <= N; i++) {
         var a = -ang0 + 2 * ang0 * i / N;
         arc.push([R * Math.sin(a) + half, R * Math.cos(a) - R * Math.cos(ang0)]);
@@ -964,14 +980,14 @@ describe('mapshaper-smooth.js', function () {
       var d = planarChannels(arc);
       // passes at the base straightness tolerance...
       assert(isStraightRun(d.t, d.channels, 0, d.n - 1, params),
-        'a ~0.025-deviation run should be straight at the base tolerance');
-      // ...but a gentle corner (retentionDevLimit(~45 deg) ~ 0.020) rejects it,
-      // while a sharp corner (limit capped at 0.03) still accepts it.
-      var gentleLimit = (45 * Math.PI / 180) / 40;   // ~0.0196
-      var sharpLimit = (90 * Math.PI / 180) / 40;    // capped at 0.03 in practice
+        'a ~0.017-deviation run should be straight at the base tolerance');
+      // ...but a gentle corner (retentionDevLimit(~35 deg) ~ 0.0153) rejects it,
+      // while a sharp corner (limit capped at the base 0.02) still accepts it.
+      var gentleLimit = (35 * Math.PI / 180) / 40;   // ~0.0153
+      var sharpLimit = (90 * Math.PI / 180) / 40;    // capped at 0.02 in practice
       assert(!isStraightRun(d.t, d.channels, 0, d.n - 1, params, gentleLimit),
         'a gentle bend must not be pinned to a borderline-straight run');
-      assert(isStraightRun(d.t, d.channels, 0, d.n - 1, params, Math.min(0.03, sharpLimit)),
+      assert(isStraightRun(d.t, d.channels, 0, d.n - 1, params, Math.min(0.02, sharpLimit)),
         'a sharp bend may still be pinned to the same run');
     });
 
@@ -1019,6 +1035,22 @@ describe('mapshaper-smooth.js', function () {
       });
     });
 
+    it('autoCornerBias coarsens detection only when geometry is coarse', function () {
+      // fine geometry relative to the distance -> no adjustment
+      assert.equal(autoCornerBias(100, 3000), 0, 'fine data should not be adjusted');
+      assert.equal(autoCornerBias(0.15 * 1000, 1000), 0, 'ratio at the threshold is neutral');
+      // degenerate inputs are neutral
+      assert.equal(autoCornerBias(0, 1000), 0);
+      assert.equal(autoCornerBias(100, 0), 0);
+      // coarse geometry -> negative (coarsening) bias, monotonic in the ratio
+      var b1 = autoCornerBias(0.30 * 1000, 1000); // ratio 0.30 -> ~ -1
+      var b2 = autoCornerBias(0.60 * 1000, 1000); // ratio 0.60 -> ~ -2
+      assert(b1 < 0 && b2 < b1, 'coarser geometry should give a more negative bias');
+      assert(Math.abs(b1 - -1) < 0.05 && Math.abs(b2 - -2) < 0.05, 'each doubling of the ratio is one bias step');
+      // very coarse geometry is clamped at the floor (never runs away)
+      assert.equal(autoCornerBias(50 * 1000, 1000), -4, 'extreme ratio should hit the floor');
+    });
+
     it('cornerTurn measures the windowed bend at a vertex', function () {
       var params = getCornerParams(40); // tangentWindow 10
       function elbow(deg) {
@@ -1062,6 +1094,113 @@ describe('mapshaper-smooth.js', function () {
       var amp = 0;
       farHalf.forEach(function(p) { amp = Math.max(amp, Math.abs(p[1])); });
       assert(amp < 0.3, 'straight border did not stay straight (max |y| ' + amp.toFixed(3) + ')');
+    });
+
+    // Reported case (e_detail1): a ~1.8km straight run ends by turning sharply
+    // over one segment but only gently over the tangent window (a small jog into
+    // a curve). The windowed detector dilutes that turn below the corner angle, so
+    // the run's end used to be rounded into the curve. It must now be pinned (the
+    // straight-run termination detector keys off the raw segment turn), keeping
+    // the top of the vertical straight.
+    // e_detail2 is e_detail1 with vertex 36 nudged slightly, which moves the
+    // sharpest single-segment turn from the run's last vertex (35) a step into the
+    // jog. Detection must snap to the straight run's stable end (vertex 35) in both
+    // files, so a sub-tolerance vertex move doesn't flip the corner on/off.
+    ['e_detail1', 'e_detail2'].forEach(function (name) {
+      it('pins the end of a long straight run that meets a curve with a jog (' + name + ')', async function () {
+        var gj = JSON.parse(fs.readFileSync('test/data/features/smooth/' + name + '.json', 'utf8'));
+        var kept = await smoothLine(gj.features[0].geometry.coordinates, '0.5km');
+        var top = [-111.55877597468988, 43.90105196968573]; // last vertex of the vertical run
+        assert(minDistTo(top, kept) < 1e-6, 'top of the straight vertical run was not pinned');
+      });
+    });
+
+    // The straight-run end must be pinned across distances, not just where the
+    // distance happens to be large enough for the detection window to span the
+    // jog: a smaller distance (relative to a fixed-length run) should be at least
+    // as conducive to pinning the run's end, never less.
+    it('pins a straight-run end consistently across smoothing distances', async function () {
+      var gj = JSON.parse(fs.readFileSync('test/data/features/smooth/e_detail2.json', 'utf8'));
+      var coords = gj.features[0].geometry.coordinates;
+      var top = [-111.55877597468988, 43.90105196968573];
+      for (var km = 2; km <= 7; km++) {
+        var kept = await smoothLine(coords, (km / 10) + 'km');
+        assert(minDistTo(top, kept) < 1e-6, 'run end not pinned at 0.' + km + 'km');
+      }
+    });
+
+    // The raw-turn straight-run-end rescue (added for e_detail) must not fire on a
+    // steadily-curving coastline, where every vertex turns and no straight run
+    // exists. u_detail8/9 are excerpts of the u_china.json coastline that gained
+    // two spurious corners each when the rescue was first added. The rescue is now
+    // gated on the turn being fully concentrated in the inner window (a localized
+    // spike flanked by straight approaches), which a distributed coastline curve
+    // fails. A pinned corner splits the line into separately-smoothed spans, so the
+    // corner-detection output must be byte-identical to `no-corners` when nothing
+    // is pinned (and would differ if a spurious corner slipped through).
+    ['u_detail8', 'u_detail9'].forEach(function (name) {
+      it('does not pin spurious corners on a curving coastline (' + name + ')', async function () {
+        var coords = JSON.parse(
+          fs.readFileSync('test/data/features/smooth/' + name + '.json', 'utf8')
+        ).features[0].geometry.coordinates;
+        var withCorners = await smoothLine(coords, '5km');
+        var noCorners = await smoothLine(coords, '5km no-corners');
+        assert.deepEqual(withCorners, noCorners,
+          'corner detection changed the output -> a spurious corner was pinned');
+      });
+    });
+
+    // u_detail10 is a coastline island (closed ring) whose corner cull kept two
+    // corners at the ends of a ~22km stretch that curves ~10 deg -- inside the old
+    // 0.03 straightness corridor but not actually straight. An acute corner takes
+    // the full corridor regardless of the angle coupling, so tightening the base
+    // corridor to 0.02 (a run may curve only ~9 deg) is what drops it. As above, a
+    // pinned corner changes the smoothed output, so equality with `no-corners`
+    // means nothing was pinned.
+    it('does not pin corners on a gently-curving island run (u_detail10)', async function () {
+      var coords = JSON.parse(
+        fs.readFileSync('test/data/features/smooth/u_detail10.json', 'utf8')
+      ).features[0].geometry.coordinates;
+      var withCorners = await smoothLine(coords, '5km');
+      var noCorners = await smoothLine(coords, '5km no-corners');
+      assert.deepEqual(withCorners, noCorners,
+        'corner detection changed the output -> a spurious corner was pinned');
+    });
+
+    // Automatic corner-bias: u_china is a coarsely-sampled coastline (median
+    // segment ~0.9km) that at 3km smoothing used to pin a handful of spurious
+    // corners. Detection is now auto-coarsened for such sparse geometry, so by
+    // default nothing is pinned (output equals no-corners). corner-bias is applied
+    // ON TOP of that automatic base, so a large positive value overrides the
+    // coarsening and brings the spurious corners back -- proving the option is
+    // relative to the auto baseline rather than an absolute setting.
+    it('auto-coarsens corner detection on sparse geometry; corner-bias is relative', async function () {
+      var inp = fs.readFileSync('test/data/features/smooth/u_china.json', 'utf8');
+      async function coords(opts) {
+        var out = await api.applyCommands('-i in.json -smooth ' + opts + ' -o out.json', {'in.json': inp});
+        return getCoords(JSON.parse(out['out.json']));
+      }
+      var auto = await coords('3km no-prefilter');
+      var off = await coords('3km no-prefilter no-corners');
+      assert.deepEqual(auto, off, 'auto default pinned a spurious corner on a coarse coastline');
+      // a positive bias more than cancels the (~ -0.9) auto coarsening -> corners reappear
+      var raised = await coords('3km no-prefilter corner-bias=2');
+      assert.notDeepEqual(raised, off, 'corner-bias should be additive on top of the auto base');
+    });
+
+    // The jog guard: a sharp single-segment turn where the run RESUMES on the same
+    // line afterwards (an incidental notch on a continuing straight border) must
+    // NOT be pinned -- only a run end whose continuation leaves the run's line is.
+    it('does not pin a jog after which the straight run continues', function () {
+      var pts = [];
+      for (var x = 0; x <= 300; x += 10) pts.push([x, 0]); // straight run in
+      pts.push([310, 15]); pts.push([320, 0]);             // excursion off the line and back
+      for (x = 330; x <= 600; x += 10) pts.push([x, 0]);   // run continues on the same line
+      var d = planarChannels(pts);
+      // tol 200 makes the tangent window (~50) span the jog, so the windowed turn
+      // is diluted and only the raw-turn path could flag it -- which the guard rejects
+      var corners = findInteriorCorners(d.t, d.channels, d.n, false, getCornerParams(200));
+      assert.deepEqual(corners, [], 'a jog on a continuing straight run was pinned: ' + JSON.stringify(corners));
     });
 
     it('does not invent corners on a gently curving line', async function () {

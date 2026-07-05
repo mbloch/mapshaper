@@ -178,7 +178,7 @@ export function smoothArcCoords(xx, yy, opts) {
   var origY = toArray(yy);
   var tol = opts.tolerance * KERNEL_FROM_DISTANCE;
   if (n < 3 || !(opts.tolerance > 0)) {
-    return {xx: origX, yy: origY};
+    return {xx: origX, yy: origY, corners: 0};
   }
   var method = opts.method == 'gaussian' ? 'gaussian' : 'paek';
   var closed = !!opts.closed;
@@ -190,7 +190,7 @@ export function smoothArcCoords(xx, yy, opts) {
   // kernel scale stays in true distance regardless of coordinate representation.
   var t = arcLengths(origX, origY, n, spherical);
   if (!(t[n - 1] > 0)) {
-    return {xx: origX, yy: origY}; // degenerate (coincident points)
+    return {xx: origX, yy: origY, corners: 0}; // degenerate (coincident points)
   }
   // The low-pass kernel scale is the raw distance scale (tol) times the baked-in
   // KERNEL_STRENGTH calibration and the user's `strength` multiplier (default 1).
@@ -240,7 +240,9 @@ export function smoothArcCoords(xx, yy, opts) {
       corners = filterRingCornersByStructure(t, channels, n, corners, ringParams);
     }
     if (corners.length === 0) {
-      return smoothClosedCyclic(t, channels, n, ctx);
+      var cyc = smoothClosedCyclic(t, channels, n, ctx);
+      cyc.corners = 0;
+      return cyc;
     }
     // A ring with corners is processed as an open path: rotate it to start (and
     // end) at one corner, with the remaining corners as interior breakpoints.
@@ -251,7 +253,11 @@ export function smoothArcCoords(xx, yy, opts) {
     t = arcLengths(origX, origY, n, spherical);
     channels = spherical ? lngLatToXYZChannels(origX, origY, n) : [origX, origY];
     var breaks = mapRotatedCorners(corners, rot.shift, rot.m);
-    return smoothOpenSpans(origX, origY, t, channels, n, breaks, ctx);
+    var ring = smoothOpenSpans(origX, origY, t, channels, n, breaks, ctx);
+    // The ring seam (corners[0], pinned as the rotated start/end) is itself a
+    // preserved corner, on top of the interior breakpoints smoothOpenSpans kept.
+    ring.corners += 1;
+    return ring;
   }
 
   var openBreaks = keepCorners ?
@@ -288,7 +294,8 @@ function smoothOpenSpans(origX, origY, t, channels, n, interiorBreaks, ctx) {
       smoothSpanOpen(origX, origY, t, channels, lo, hi, ctx);
     appendSpan(xx, yy, span, s === 0);
   }
-  return {xx: xx, yy: yy};
+  // Interior breakpoints that survived refinement are the pinned corners.
+  return {xx: xx, yy: yy, corners: bounds.length - 2};
 }
 
 // Drop interior breakpoints that don't border any pinnable straight run (e.g.

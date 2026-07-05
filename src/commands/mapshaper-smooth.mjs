@@ -1,5 +1,7 @@
 import { convertIntervalParam, convertDistanceParam } from '../geom/mapshaper-units';
 import { getDatasetCRS } from '../crs/mapshaper-projections';
+import { greatCircleDistance, distance2D } from '../geom/mapshaper-basic-geom';
+import { autoCornerBias } from '../smooth/mapshaper-smooth-corners';
 import { smoothArcCoords } from '../smooth/mapshaper-smooth-algos';
 import { filterDetailPaths } from '../commands/mapshaper-filter-detail';
 import { layerHasPaths, getImplicitlyTargetedLayerNames } from '../dataset/mapshaper-layer-utils';
@@ -66,16 +68,35 @@ cmd.smooth = function(dataset, opts, targetLayers) {
     }
   }
 
-  smoothPaths(arcs, {
+  // Corner detection is automatically coarsened on geometry that is sparse
+  // relative to the smoothing distance (long segments -> few segments per
+  // detection window -> ordinary coarse bends misread as corners; see
+  // autoCornerBias). The user's corner-bias is relative to this automatic base:
+  // it is added on top, so corner-bias=0 (the default) is "whatever the geometry
+  // warrants", a positive value finds more corners than the auto baseline, a
+  // negative value fewer.
+  var autoBias = 0;
+  if (keepCorners) {
+    autoBias = autoCornerBias(medianSegmentLength(arcs, spherical), tolerance);
+    if (autoBias <= -0.5) {
+      // message('Auto corner-bias ' + autoBias.toFixed(1) + ' (geometry is coarse relative to the smoothing distance)');
+    }
+  }
+  var effectiveCornerBias = autoBias + (opts.corner_bias || 0);
+
+  var corners = smoothPaths(arcs, {
     tolerance: tolerance,
     method: method,
     spherical: spherical,
     keepCorners: keepCorners,
-    cornerBias: opts.corner_bias,
+    cornerBias: effectiveCornerBias,
     gain: opts.gain,
     strength: opts.strength,
     maxBendAngle: opts.max_bend_angle
   });
+  if (keepCorners && corners > 0) {
+    message('Pinned ' + corners + ' corner' + utils.pluralSuffix(corners));
+  }
 
   if (implicitlySmoothedNames.length > 0) {
     message(
@@ -89,10 +110,12 @@ cmd.smooth = function(dataset, opts, targetLayers) {
 // untouched, shared polygon boundaries stay coincident and topology is
 // preserved; updateVertexData() also handles undo capture and resets stale
 // simplification thresholds.
+// Returns the total number of structural corners preserved across all arcs.
 export function smoothPaths(arcs, opts) {
   var nn = [];
   var xx = [];
   var yy = [];
+  var corners = 0;
   var i, k, res;
   arcs.forEach3(function(axx, ayy, azz, arcId) {
     res = smoothArcCoords(axx, ayy, {
@@ -106,6 +129,7 @@ export function smoothPaths(arcs, opts) {
       maxBendAngle: opts.maxBendAngle,
       closed: arcs.arcIsClosed(arcId)
     });
+    corners += res.corners || 0;
     nn.push(res.xx.length);
     for (i = 0, k = res.xx.length; i < k; i++) {
       xx.push(res.xx[i]);
@@ -113,6 +137,31 @@ export function smoothPaths(arcs, opts) {
     }
   });
   arcs.updateVertexData(nn, xx, yy);
+  return corners;
+}
+
+// Median segment length across all arcs, in ground units (meters for spherical
+// data), used to gauge how coarse the geometry is relative to the smoothing
+// distance (see autoCornerBias). The median is robust to a few very long straight
+// segments (which are not a spurious-corner risk) and to dense sub-scale detail.
+// Very large datasets are sampled with a stride so the cost stays bounded.
+export function medianSegmentLength(arcs, spherical) {
+  var totalSegs = arcs.getPointCount() - arcs.size();
+  if (totalSegs < 1) return 0;
+  var MAX_SAMPLES = 100000;
+  var stride = Math.ceil(totalSegs / MAX_SAMPLES);
+  var distFn = spherical ? greatCircleDistance : distance2D;
+  var lens = [];
+  var counter = 0;
+  arcs.forEach3(function(xx, yy) {
+    for (var i = 1, n = xx.length; i < n; i++) {
+      if (counter++ % stride === 0) {
+        lens.push(distFn(xx[i - 1], yy[i - 1], xx[i], yy[i]));
+      }
+    }
+  });
+  if (lens.length === 0) return 0;
+  return utils.findMedian(lens);
 }
 
 export function getSmoothMethod(opts) {
