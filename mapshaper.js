@@ -33076,15 +33076,18 @@ ${svg}
         type: 'flag'
       })
       .option('corner-bias', {
-        // Sensitivity of corner detection (default 0 = neutral). Positive keeps
-        // more corners, negative fewer; +/- values of equal size are inverses.
-        // Under the hood it scales only the distance-proportional detection
-        // parameters (not angles), detecting corners as if the distance were
-        // divided by k, where k = bias+1 for bias >= 0 and 1/(1-bias) for bias < 0;
-        // the smoothing kernel keeps using the real distance. So corner-bias=-1
-        // finds the corners a 2x distance would, corner-bias=1 those of a 0.5x
-        // distance. Use no-corners to turn corner preservation off entirely.
-        describe: 'corner-detection sensitivity (default 0; + is more sensitive, - is less)',
+        // Sensitivity of corner detection, RELATIVE to an automatic baseline
+        // (default 0 = the automatic setting). Detection is auto-coarsened on
+        // geometry that is sparse relative to the smoothing distance (long segments
+        // read ordinary coarse bends as corners); this option adds to that base.
+        // Positive keeps more corners, negative fewer; it scales only the distance-
+        // proportional detection parameters (not angles), detecting corners as if
+        // the distance were divided by k, where k = bias+1 for bias >= 0 and
+        // 1/(1-bias) for bias < 0, and the smoothing kernel keeps using the real
+        // distance. So on fine data (no auto adjustment) corner-bias=-1 finds the
+        // corners a 2x distance would; on coarse data a positive value counteracts
+        // the automatic coarsening. Use no-corners to turn preservation off entirely.
+        describe: 'corner-detection sensitivity relative to auto (default 0; + more, - fewer)',
         type: 'number'
       })
       .option('prefilter-gate', {
@@ -63609,6 +63612,14 @@ ${svg}
   //      -- whether a tight coastline or a gentle, hundreds-of-km graticule arc --
   //      never qualifies; only a localized kink, where the inner turn approaches
   //      the full turn, is a corner.
+  //   1b. (open paths) Also flag the end of a long straight run that turns sharply
+  //      over a single segment but only gently over the window -- a small jog where
+  //      a surveyed border meets a curve, which step 1's window would dilute below
+  //      the corner angle. Keyed off the raw segment turn, but the pinned vertex is
+  //      snapped to the nearby end of the straight run (stable under tiny vertex
+  //      moves) and only where that run's line is actually left (so an incidental
+  //      notch after which the run resumes on the same line is not flagged). See
+  //      straightRunEndNear.
   //   2. Between flagged corners, classify each span as "structural" if it is long
   //      relative to the tolerance and its curvature stays low (so a straight or
   //      slowly-curving graticule line counts, but sub-tolerance wiggle does not).
@@ -63651,14 +63662,18 @@ ${svg}
   // to count, which matches intuition (a 28 km stretch bending at radius 4 km is
   // obviously not straight). Genuinely curving coastline bows far from its chord
   // and is still rejected, so spurious corners inside wiggly stretches keep getting
-  // culled.
-  var STRAIGHT_DEV_FACTOR = 0.03;
+  // culled. Tightened from 0.03 to 0.02 (a run may curve ~9 deg over its length, not
+  // ~14) after a coastline island pinned corners at both ends of a ~10 deg-curving
+  // stretch that read as "straight" only under the looser corridor: an acute corner
+  // takes the full corridor regardless of the angle coupling below, so only the base
+  // factor governs whether such a run can anchor a sharp corner.
+  var STRAIGHT_DEV_FACTOR = 0.02;
 
   // Angle coupling for corner retention: how much sharper the corner must turn than
   // the run it borders already curves. A run that passes the chord test may still
   // bend gently within the STRAIGHT_DEV_FACTOR corridor -- for a circular arc the
-  // chord-deviation ratio is ~ (the run's total turn)/8, so the base 0.03 admits a
-  // run that curves ~14 deg over its length. Pinning a *gentle* bend at the end of
+  // chord-deviation ratio is ~ (the run's total turn)/8, so the base 0.02 admits a
+  // run that curves ~9 deg over its length. Pinning a *gentle* bend at the end of
   // such a run is unsafe: the "corner" is barely sharper than the run's own
   // curving, so it is really a point on a smooth bend, not a junction. (This is the
   // failure mode on coarsely sampled / already-simplified coastlines, where a
@@ -63669,7 +63684,7 @@ ${svg}
   //   turn >= PIN_TURN_RATIO * (8 * dev)  <=>  dev <= turn / (8 * PIN_TURN_RATIO).
   // retentionDevLimit() returns the smaller of STRAIGHT_DEV_FACTOR and
   // turn/(8*PIN_TURN_RATIO), so the coupling only bites for gentle corners (below
-  // ~2*STRAIGHT_DEV_FACTOR*PIN_TURN_RATIO ~ 69 deg); sharp corners (surveyed-border
+  // ~2*STRAIGHT_DEV_FACTOR*PIN_TURN_RATIO ~ 46 deg); sharp corners (surveyed-border
   // right angles, spits, hairpins) keep the full base tolerance, unchanged.
   var PIN_TURN_RATIO = 5;
 
@@ -63693,6 +63708,15 @@ ${svg}
   // old 1*tol behaviour for users who want shorter runs pinned.
   var MIN_PIN_RUN_LEN_FACTOR = 2.0;
 
+  // When a long straight run's end turns sharply into a curve with a small jog, the
+  // sharpest single-segment turn can land a few vertices past the run's actual end.
+  // straightRunEndNear searches back this many source vertices (in addition to the
+  // distance-scaled tangent window) to snap to the stable run end, so detection
+  // does not depend on the smoothing distance being large enough for the window to
+  // span the jog. A jog is a handful of vertices; this is deliberately generous
+  // because the search returns the nearest genuine run end (or nothing).
+  var MAX_JOG_VERTICES = 6;
+
   // Convert the user-facing corner-bias (0 = neutral) into the positive multiplier
   // k applied to corner-detection resolution (ctol = tol / k). The mapping is
   // symmetric about zero -- k(+b) * k(-b) = 1 -- and smooth there (both branches
@@ -63705,6 +63729,39 @@ ${svg}
   function cornerBiasScale(cornerBias) {
     var b = cornerBias || 0;
     return b >= 0 ? b + 1 : 1 / (1 - b);
+  }
+
+  // Ratio of (typical segment length / smoothing distance) at or below which corner
+  // detection sees several segments per tangent window and behaves normally, so no
+  // automatic coarsening is applied. Above it the window shrinks toward a single
+  // segment and ordinary coarse-data bends start reading as corners.
+  var AUTO_BIAS_RATIO = 0.15;
+  // Most-negative automatic bias. Caps how far detection is coarsened on very sparse
+  // geometry (e.g. lo-res contours), where the ratio can be many times AUTO_BIAS_RATIO
+  // but a handful of doublings already merges the whole neighbourhood.
+  var AUTO_BIAS_FLOOR = -4;
+
+  // Automatic corner-bias from the geometry's coarseness relative to the smoothing
+  // distance. @medianSeg is a robust (median) segment length; @dist is the raw
+  // smoothing distance, both in the same ground units. Corner detection keys off a
+  // tangent window ~0.3*dist wide; when the typical segment is an appreciable
+  // fraction of the distance (ratio r = medianSeg/dist above AUTO_BIAS_RATIO) that
+  // window spans too few segments and gentle-but-coarse bends read as corners. We
+  // return a negative bias that coarsens detection (as if the distance were larger)
+  // enough to push the effective ratio back down: each halving of the effective
+  // resolution costs one bias step, so bias = -log2(r / AUTO_BIAS_RATIO), floored.
+  // Returns 0 (no adjustment) when the geometry is fine relative to the distance,
+  // which is the normal case for detailed datasets smoothed at a real distance.
+  // Note it only ever coarsens: a straight run that genuinely anchors a sharp corner
+  // survives this (the corner is retained by bordering a long straight run, which
+  // coarsening does not remove until it exceeds the run's length), while weakly
+  // supported bends on coarse coastlines/contours fall below the corner threshold.
+  function autoCornerBias(medianSeg, dist) {
+    if (!(medianSeg > 0) || !(dist > 0)) return 0;
+    var r = medianSeg / dist;
+    if (r <= AUTO_BIAS_RATIO) return 0;
+    var b = -Math.log2(r / AUTO_BIAS_RATIO);
+    return b < AUTO_BIAS_FLOOR ? AUTO_BIAS_FLOOR : b;
   }
 
   // @cornerBias (optional, default 0 = neutral) scales only the distance-
@@ -63763,7 +63820,105 @@ ${svg}
       if (inner[j] < params.concentration * turns[j]) continue;
       if (isLocalMaxTurn(t, turns, j, W, L, m, lo, hi, cyclic)) corners.push(j);
     }
+    // Open paths: also flag the terminal vertex of a long straight run that bends
+    // sharply over a single segment but only gently over the tangent window -- e.g.
+    // where a surveyed border meets a coastline with a small jog. The windowed test
+    // above misses these because the wide window dilutes the sharp segment turn into
+    // a sub-threshold bend, so the straight run's end gets rounded into the adjacent
+    // curve. Here we key off the raw segment turn instead, but confine this rescue
+    // to a genuine straight-run end with two gates (plus straightRunEndNear):
+    //   1. the turn is fully concentrated in the inner window: inner-window turn >=
+    //      full-window turn. This is a stricter form of the windowed path's
+    //      concentration test (>= concentration * full) and is the crux of the
+    //      distinction. At a straight-run end the approaches carry ~no turning, so
+    //      the whole window's turn sits in the inner window (ratio >= 1); on a
+    //      steadily-curving coastline the turning is spread across the window (inner
+    //      < full), so a lone sharp segment there is rejected. The wide window
+    //      dilutes the end's departure below the corner threshold (which is why the
+    //      windowed path misses it), but the concentration ratio stays high.
+    //   2. (via straightRunEndNear) a bordering straight run's line is actually left,
+    //      so an incidental notch on an otherwise-continuing run is not pinned.
+    // Rings keep the windowed-only detection for now.
+    if (!cyclic) {
+      var raw = new Float64Array(m);
+      for (i = lo; i < hi; i++) raw[i] = vertexTurn(channels, K, i);
+      for (j = lo; j < hi; j++) {
+        if (raw[j] < params.cornerAngle) continue;
+        if (inner[j] < turns[j]) continue;
+        if (!isLocalMaxTurn(t, raw, j, W, L, m, lo, hi, cyclic)) continue;
+        var e = straightRunEndNear(t, channels, n, j, W, params);
+        if (e >= 0 && corners.indexOf(e) === -1) corners.push(e);
+      }
+      corners.sort(function (a, b) { return a - b; });
+    }
     return corners;
+  }
+
+  // Given a sharp single-segment turn at open-path vertex @j, find the end of a
+  // long straight run that the path leaves, within arc length @W of @j, and return
+  // that run-end vertex to pin (or -1). We search a neighbourhood rather than
+  // requiring the run's last vertex to be exactly where the segment turn peaks: a
+  // jog into a curve can place its sharpest vertex a step or two past the run's
+  // end, and exactly which vertex is sharpest is sensitive to tiny differences in
+  // vertex placement -- but the straight run's end itself is stable. Snapping to it
+  // keeps detection from flickering on and off with sub-tolerance vertex moves. The
+  // straightRunLeaves test only succeeds at a genuine run end whose continuation
+  // departs, so an incidental jog after which the run resumes is still not pinned.
+  function straightRunEndNear(t, channels, n, j, W, params) {
+    var e, k;
+    // The jog between the sharp turn and the run's end is a fixed handful of source
+    // vertices, independent of the smoothing distance -- so the search extends by a
+    // vertex count as well as the distance-scaled window W. Without the vertex floor
+    // the window shrinks with the distance and, at small distances, can no longer
+    // reach back across the jog to the run end (fewer, not more, corners pinned as
+    // the distance drops -- the opposite of what a long run warrants). We return the
+    // first (nearest) run end found, so a generous reach only costs a few extra
+    // straightRunLeaves checks when there is nothing to pin.
+    for (e = j, k = 0; e >= 1; e--, k++) {
+      if (t[j] - t[e] > W && k > MAX_JOG_VERTICES) break;
+      if (straightRunLeaves(t, channels, n, e, -1, params) ||
+          straightRunLeaves(t, channels, n, e, 1, params)) return e;
+    }
+    for (e = j + 1, k = 1; e < n - 1; e++, k++) {
+      if (t[e] - t[j] > W && k > MAX_JOG_VERTICES) break;
+      if (straightRunLeaves(t, channels, n, e, -1, params) ||
+          straightRunLeaves(t, channels, n, e, 1, params)) return e;
+    }
+    return -1;
+  }
+
+  // Is the near side of @e (walking direction @dir: -1 = run precedes e, +1 = run
+  // follows e) a long straight run, AND does the far side leave that run's line --
+  // i.e. a point a full run-length along the far side sits outside the run's
+  // straightness corridor? A jog that rejoins the run returns to ~0 perpendicular
+  // offset and fails this, so it is not flagged. (This also implies @e is the run's
+  // end: if the run continued straight past @e, the far point would stay on its
+  // line.)
+  function straightRunLeaves(t, channels, n, e, dir, params) {
+    var K = channels.length, L = t[n - 1];
+    var nearEnd = reach(t, n, n, L, e, dir, params.minPinRunLen, false);
+    if (nearEnd === e) return false;
+    var a = dir < 0 ? nearEnd : e;
+    var b = dir < 0 ? e : nearEnd;
+    // Require the near run to be straight to the SAME angle-coupled tolerance
+    // retention will demand of a pin at @e (retentionDevLimit of the turn at @e),
+    // not the looser default corridor. This makes straightRunEndNear's backward
+    // scan stop at the run's true end -- the last vertex actually on the run's line
+    // -- rather than a vertex a little past it that squeaks inside the loose 3%
+    // corridor but would then be culled by retention (leaving nothing pinned).
+    var devLim = retentionDevLimit(cornerTurn(t, channels, n, e, false, params));
+    if (!isStraightRun(t, channels, a, b, params, devLim)) return false;
+    var farEnd = reach(t, n, n, L, e, -dir, params.minPinRunLen, false);
+    if (farEnd === e) return false;
+    var pe = getPt(channels, K, e);
+    var u = subv(getPt(channels, K, nearEnd), pe, K); // direction along the near run
+    var uu = dot(u, u, K);
+    if (!(uu > 0)) return false;
+    var af = subv(getPt(channels, K, farEnd), pe, K);
+    var along = Math.abs(dot(af, u, K)) / Math.sqrt(uu);
+    var perp = Math.sqrt(perpDistSq(channels, K, farEnd, pe, u, uu));
+    // outside the straight corridor extended from the run -> the path has left it
+    return perp > STRAIGHT_DEV_FACTOR * along;
   }
 
   // Is span [a, b] (inclusive vertex indices, a < b, open frame) a structural run:
@@ -64139,6 +64294,20 @@ ${svg}
                                       // segments); user-overridable via max-bend-angle
   var DEVIATION_FACTOR = 0.1;         // sagitta guard: also cut a gentle bend that bows
                                       // more than tolerance * this from its chord
+  // Preserved structural runs (long straight / low-curvature spans between pinned
+  // corners) are not smoothed, but their ORIGINAL vertices are resampled with the
+  // same bend-angle decimation so the whole output has adaptive vertex spacing
+  // (no abrupt density seam at a run boundary). The decimation runs in the
+  // smoothing channels, so for unprojected data a long line -- which curves in the
+  // geocentric x,y,z space even when it is "straight" in lng/lat -- keeps enough
+  // interior vertices to approximate that curve on reprojection, scaling with the
+  // line's length automatically. Because it only ever keeps a SUBSET of the
+  // original vertices (never interpolates new ones), it can't distort a rhumb or
+  // geodesic edge -- every output vertex still lies exactly where the source drew
+  // it. Structural runs use a fraction of the bend angle (sampled finer than
+  // smoothed spans) as a conservative bias toward preservation / reprojection
+  // headroom.
+  var STRUCTURAL_BEND_FACTOR = 0.5;   // structural-run bend angle = max-bend-angle * this
 
   // Smooth a single arc's coordinates.
   // @xx, @yy: coordinate arrays (may be typed-array subarrays) for one arc.
@@ -64147,8 +64316,9 @@ ${svg}
   // arcs are preserved exactly (so shared topology nodes stay put); closed arcs
   // are smoothed cyclically and returned closed (first point repeated at the end).
   // With keepCorners, structural corners (where long straight/low-curvature runs
-  // meet) are detected and pinned, and the runs themselves are kept verbatim;
-  // only the spans between corners are smoothed.
+  // meet) are detected and pinned; the runs themselves are not smoothed but are
+  // resampled (a subset of their original vertices, at adaptive spacing), and only
+  // the spans between corners are smoothed.
   // Resolve the curvature-correction gain (default 1 = fully corrected). gain=0
   // leaves the plain weighted moving average; negative values are clamped to 0.
   function resolveGain(opts) {
@@ -64198,7 +64368,7 @@ ${svg}
     var origY = toArray(yy);
     var tol = opts.tolerance * KERNEL_FROM_DISTANCE;
     if (n < 3 || !(opts.tolerance > 0)) {
-      return {xx: origX, yy: origY};
+      return {xx: origX, yy: origY, corners: 0};
     }
     var method = opts.method == 'gaussian' ? 'gaussian' : 'paek';
     var closed = !!opts.closed;
@@ -64210,7 +64380,7 @@ ${svg}
     // kernel scale stays in true distance regardless of coordinate representation.
     var t = arcLengths(origX, origY, n, spherical);
     if (!(t[n - 1] > 0)) {
-      return {xx: origX, yy: origY}; // degenerate (coincident points)
+      return {xx: origX, yy: origY, corners: 0}; // degenerate (coincident points)
     }
     // The low-pass kernel scale is the raw distance scale (tol) times the baked-in
     // KERNEL_STRENGTH calibration and the user's `strength` multiplier (default 1).
@@ -64260,7 +64430,9 @@ ${svg}
         corners = filterRingCornersByStructure(t, channels, n, corners, ringParams);
       }
       if (corners.length === 0) {
-        return smoothClosedCyclic(t, channels, n, ctx);
+        var cyc = smoothClosedCyclic(t, channels, n, ctx);
+        cyc.corners = 0;
+        return cyc;
       }
       // A ring with corners is processed as an open path: rotate it to start (and
       // end) at one corner, with the remaining corners as interior breakpoints.
@@ -64271,7 +64443,11 @@ ${svg}
       t = arcLengths(origX, origY, n, spherical);
       channels = spherical ? lngLatToXYZChannels(origX, origY, n) : [origX, origY];
       var breaks = mapRotatedCorners(corners, rot.shift, rot.m);
-      return smoothOpenSpans(origX, origY, t, channels, n, breaks, ctx);
+      var ring = smoothOpenSpans(origX, origY, t, channels, n, breaks, ctx);
+      // The ring seam (corners[0], pinned as the rotated start/end) is itself a
+      // preserved corner, on top of the interior breakpoints smoothOpenSpans kept.
+      ring.corners += 1;
+      return ring;
     }
 
     var openBreaks = keepCorners ?
@@ -64304,11 +64480,12 @@ ${svg}
       var lo = bounds[s], hi = bounds[s + 1];
       var preserve = !!params && isStructuralRun(t, channels, lo, hi, params);
       var span = preserve ?
-        copySpan(origX, origY, lo, hi) :
+        resampleStructuralRun(origX, origY, channels, lo, hi, ctx) :
         smoothSpanOpen(origX, origY, t, channels, lo, hi, ctx);
       appendSpan(xx, yy, span, s === 0);
     }
-    return {xx: xx, yy: yy};
+    // Interior breakpoints that survived refinement are the pinned corners.
+    return {xx: xx, yy: yy, corners: bounds.length - 2};
   }
 
   // Drop interior breakpoints that don't border any pinnable straight run (e.g.
@@ -64534,6 +64711,34 @@ ${svg}
     return {xx: xx, yy: yy};
   }
 
+  // Resample a preserved structural run [lo, hi] (a long straight / low-curvature
+  // span between pinned corners). The run is NOT smoothed: its shape is kept by
+  // emitting a SUBSET of its original vertices, decimated with the shared
+  // bend-angle filter in the smoothing channels (so a long line that curves in the
+  // geocentric space keeps interior vertices scaling with its length -- see
+  // STRUCTURAL_BEND_FACTOR). Both endpoints are always kept, at their exact
+  // original coordinates, so pinned corners and shared topology nodes are
+  // unchanged. A run too short to decimate is copied verbatim.
+  function resampleStructuralRun(origX, origY, channels, lo, hi, ctx) {
+    var nSub = hi - lo + 1;
+    if (nSub < 3) return copySpan(origX, origY, lo, hi);
+    var K = channels.length;
+    var P = new Array(nSub);
+    for (var i = 0; i < nSub; i++) {
+      var p = new Array(K);
+      for (var c = 0; c < K; c++) p[c] = channels[c][lo + i];
+      P[i] = p;
+    }
+    var keep = decimateByBend(P, K, ctx.bendAngle * STRUCTURAL_BEND_FACTOR, ctx.tol * DEVIATION_FACTOR);
+    var xx = [], yy = [];
+    for (var ki = 0; ki < keep.length; ki++) {
+      var idx = lo + keep[ki];
+      xx.push(origX[idx]); // exact original coordinate, never interpolated
+      yy.push(origY[idx]);
+    }
+    return {xx: xx, yy: yy};
+  }
+
   function appendSpan(xx, yy, span, isFirst) {
     for (var i = isFirst ? 0 : 1; i < span.xx.length; i++) {
       xx.push(span.xx[i]);
@@ -64658,26 +64863,38 @@ ${svg}
     }
 
     // 2. one-pass bend-angle filter
-    var theta = ctx.bendAngle;
-    var epsDev = ctx.tol * DEVIATION_FACTOR;
+    var keep = decimateByBend(P, K, ctx.bendAngle, ctx.tol * DEVIATION_FACTOR);
     var out = [];
     for (var c = 0; c < K; c++) out.push([]);
-    appendPoint(out, P[0], K);
+    for (var ki = 0; ki < keep.length; ki++) appendPoint(out, P[keep[ki]], K);
+    return out;
+  }
+
+  // One-pass forward decimation of a K-channel point list @P: keep the two
+  // endpoints plus every interior point where the turn accumulated since the last
+  // kept point reaches @theta, or where the estimated sagitta of the skipped
+  // stretch (chord * accumulated turn / 8, the bow of a circular arc) reaches
+  // @epsDev. Bounds the angle between consecutive kept segments by construction, so
+  // joins stay smooth. Returns the kept indices into @P (always including 0 and the
+  // last index). Shared by the smoothed-curve resampler and the structural-run
+  // resampler (see resampleStructuralRun).
+  function decimateByBend(P, K, theta, epsDev) {
+    var n = P.length;
+    var keep = [0];
+    if (n < 2) return keep;
     var anchor = 0;     // last kept vertex
     var accTurn = 0;    // absolute turning accumulated since the anchor
-    for (var j = 1; j < nDense - 1; j++) {
+    for (var j = 1; j < n - 1; j++) {
       accTurn += vecAngle(P[j - 1], P[j], P[j], P[j + 1], K);
-      // sagitta of a circular arc of chord c and total turn a is ~ c*a/8; cut a
-      // long gentle bend before it bows more than epsDev from its chord
       var sagitta = chordLen(P[anchor], P[j + 1], K) * accTurn * 0.125;
       if (accTurn >= theta || sagitta >= epsDev) {
-        appendPoint(out, P[j], K);
+        keep.push(j);
         anchor = j;
         accTurn = 0;
       }
     }
-    appendPoint(out, P[nDense - 1], K);
-    return out;
+    keep.push(n - 1);
+    return keep;
   }
 
   // Angle (radians) between vectors (b - a) and (d - c) over K channels.
@@ -64998,16 +65215,32 @@ ${svg}
       }
     }
 
-    smoothPaths(arcs, {
+    // Corner detection is automatically coarsened on geometry that is sparse
+    // relative to the smoothing distance (long segments -> few segments per
+    // detection window -> ordinary coarse bends misread as corners; see
+    // autoCornerBias). The user's corner-bias is relative to this automatic base:
+    // it is added on top, so corner-bias=0 (the default) is "whatever the geometry
+    // warrants", a positive value finds more corners than the auto baseline, a
+    // negative value fewer.
+    var autoBias = 0;
+    if (keepCorners) {
+      autoBias = autoCornerBias(medianSegmentLength(arcs, spherical), tolerance);
+    }
+    var effectiveCornerBias = autoBias + (opts.corner_bias || 0);
+
+    var corners = smoothPaths(arcs, {
       tolerance: tolerance,
       method: method,
       spherical: spherical,
       keepCorners: keepCorners,
-      cornerBias: opts.corner_bias,
+      cornerBias: effectiveCornerBias,
       gain: opts.gain,
       strength: opts.strength,
       maxBendAngle: opts.max_bend_angle
     });
+    if (keepCorners && corners > 0) {
+      message('Pinned ' + corners + ' corner' + utils.pluralSuffix(corners));
+    }
 
     if (implicitlySmoothedNames.length > 0) {
       message(
@@ -65021,10 +65254,12 @@ ${svg}
   // untouched, shared polygon boundaries stay coincident and topology is
   // preserved; updateVertexData() also handles undo capture and resets stale
   // simplification thresholds.
+  // Returns the total number of structural corners preserved across all arcs.
   function smoothPaths(arcs, opts) {
     var nn = [];
     var xx = [];
     var yy = [];
+    var corners = 0;
     var i, k, res;
     arcs.forEach3(function(axx, ayy, azz, arcId) {
       res = smoothArcCoords(axx, ayy, {
@@ -65038,6 +65273,7 @@ ${svg}
         maxBendAngle: opts.maxBendAngle,
         closed: arcs.arcIsClosed(arcId)
       });
+      corners += res.corners || 0;
       nn.push(res.xx.length);
       for (i = 0, k = res.xx.length; i < k; i++) {
         xx.push(res.xx[i]);
@@ -65045,6 +65281,31 @@ ${svg}
       }
     });
     arcs.updateVertexData(nn, xx, yy);
+    return corners;
+  }
+
+  // Median segment length across all arcs, in ground units (meters for spherical
+  // data), used to gauge how coarse the geometry is relative to the smoothing
+  // distance (see autoCornerBias). The median is robust to a few very long straight
+  // segments (which are not a spurious-corner risk) and to dense sub-scale detail.
+  // Very large datasets are sampled with a stride so the cost stays bounded.
+  function medianSegmentLength(arcs, spherical) {
+    var totalSegs = arcs.getPointCount() - arcs.size();
+    if (totalSegs < 1) return 0;
+    var MAX_SAMPLES = 100000;
+    var stride = Math.ceil(totalSegs / MAX_SAMPLES);
+    var distFn = spherical ? greatCircleDistance : distance2D;
+    var lens = [];
+    var counter = 0;
+    arcs.forEach3(function(xx, yy) {
+      for (var i = 1, n = xx.length; i < n; i++) {
+        if (counter++ % stride === 0) {
+          lens.push(distFn(xx[i - 1], yy[i - 1], xx[i], yy[i]));
+        }
+      }
+    });
+    if (lens.length === 0) return 0;
+    return utils.findMedian(lens);
   }
 
   function getSmoothMethod(opts) {
@@ -66852,7 +67113,7 @@ ${svg}
     return name == 'rectangle' || name == 'rectangles' || name == 'filter' && opts.cleanup;
   }
 
-  var version = "0.7.37";
+  var version = "0.7.38";
 
   // Parse command line args into commands and run them
   // Function takes an optional Node-style callback. A Promise is returned if no callback is given.
