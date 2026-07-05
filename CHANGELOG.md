@@ -1,4 +1,4 @@
-v0.7.38 (unreleased)
+v0.7.38
 * `-smooth` now thins vertices along straight/low-curvature runs, giving the whole output more consistent vertex density.
 * Improvements to `-smooth` corner detection, including automatic adjustment of corner-detection sensitivity for geometry that is sparse relative to the smoothing distance, which previously produced spurious corners.
 
