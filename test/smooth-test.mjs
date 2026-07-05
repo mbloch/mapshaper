@@ -1069,8 +1069,57 @@ describe('mapshaper-smooth.js', function () {
       var arc = [];
       for (var a = -0.6; a <= 0.6 + 1e-9; a += 0.02) arc.push([200 * Math.sin(a), 200 * Math.cos(a)]);
       var kept = await smoothLine(arc, '15 planar');
-      // treated as one structural run -> preserved verbatim (no spurious kinks)
-      assert.deepEqual(kept, arc);
+      // treated as one structural run -> not smoothed, but resampled to a SUBSET
+      // of the original vertices (adaptive spacing), so every output point lies
+      // exactly on an original vertex, in order, and no kink is invented.
+      var j = 0;
+      kept.forEach(function(p) {
+        while (j < arc.length && !(arc[j][0] === p[0] && arc[j][1] === p[1])) j++;
+        assert(j < arc.length, 'output point ' + p + ' is not an original vertex (in order)');
+        j++;
+      });
+      assert.deepEqual(kept[0], arc[0], 'first vertex preserved');
+      assert.deepEqual(kept[kept.length - 1], arc[arc.length - 1], 'last vertex preserved');
+      assert(kept.length >= 2 && kept.length <= arc.length);
+    });
+
+    it('resamples (thins) a straight structural run instead of copying it verbatim', async function () {
+      // L-shape with densely digitized straight arms meeting at a sharp corner.
+      // Each arm is a structural run: not smoothed, but decimated to a subset of
+      // its original vertices (a straight run collapses toward its endpoints), so
+      // the output is far smaller while corner/endpoints are exact.
+      var pts = [];
+      for (var x = 0; x <= 200; x += 1) pts.push([x, 0]);     // horizontal arm
+      for (var y = 1; y <= 200; y += 1) pts.push([200, y]);   // vertical arm
+      var kept = await smoothLine(pts, '15 planar no-prefilter');
+      assert(kept.length < pts.length / 4, 'straight arms not thinned (' + kept.length + ' of ' + pts.length + ')');
+      assert(minDistTo([200, 0], kept) < 1e-9, 'corner not preserved');
+      assert.deepEqual(kept[0], [0, 0], 'start endpoint preserved');
+      assert.deepEqual(kept[kept.length - 1], [200, 200], 'end endpoint preserved');
+      // every output vertex is an original vertex (subset, never interpolated),
+      // lying exactly on one of the straight arms
+      kept.forEach(function (p) {
+        assert(pts.some(function (q) { return q[0] === p[0] && q[1] === p[1]; }),
+          'invented vertex ' + p);
+        assert(p[1] === 0 || p[0] === 200, 'vertex off the straight arms: ' + p);
+      });
+    });
+
+    // The reprojection safeguard: a long line that is straight in lng/lat still
+    // curves in the geocentric smoothing space, so resampling a structural run in
+    // that space retains interior vertices (scaling with length) rather than
+    // collapsing to its two endpoints -- keeping it approximable after reprojection
+    // -- while only ever keeping a subset of the original vertices (no rhumb/
+    // geodesic distortion from interpolation).
+    it('keeps interior vertices along a long lat-long structural run', async function () {
+      var line = [];
+      for (var lng = -80; lng <= 80 + 1e-9; lng += 0.5) line.push([lng, 45]); // parallel
+      var kept = await smoothLine(line, '50km no-prefilter');
+      assert(kept.length > 2, 'long lat-long line collapsed to its endpoints (' + kept.length + ')');
+      kept.forEach(function (p) {
+        assert(line.some(function (q) { return q[0] === p[0] && q[1] === p[1]; }),
+          'invented vertex ' + p + ' (should be a subset of the original)');
+      });
     });
 
     it('preserves a corner where a parallel meets a meridian (spherical)', async function () {
