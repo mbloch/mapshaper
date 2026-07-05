@@ -1,0 +1,105 @@
+<!DOCTYPE html>
+<html lang="en">
+<head><!-- Google tag (gtag.js) -->
+<script async src="https://www.googletagmanager.com/gtag/js?id=G-QYR8W1YHEF"></script>
+<script>
+  window.dataLayer = window.dataLayer || [];
+  function gtag(){dataLayer.push(arguments);}
+  gtag('js', new Date());
+  gtag('config', 'G-QYR8W1YHEF');
+</script>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Smoothing &middot; mapshaper docs</title>
+<meta name="description" content="How Mapshaper&#39;s -smooth command generalizes lines while filtering fine detail and preserving corners.">
+<link rel="icon" type="image/png" href="/images/icon.png">
+<link rel="stylesheet" href="/docs/_assets/highlight.css">
+<link rel="stylesheet" href="/docs/_assets/docs.css">
+</head>
+<body class="">
+
+<header class="page-header">
+  <a href="/" class="mapshaper-logo">map<span class="logo-highlight">shaper</span></a>
+  <span class="header-section-label">Docs</span>
+  <nav class="header-nav">
+    <a href="/">Web app</a>
+    <a href="https://github.com/mbloch/mapshaper">GitHub</a>
+    <a href="/sponsor.html" class="sponsor-link"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z"/></svg> Become a sponsor</a>
+  </nav>
+</header>
+
+<div class="docs-layout">
+
+  <button type="button" class="docs-nav-toggle" aria-expanded="false" aria-controls="docs-sidebar">
+    <span class="docs-nav-toggle-icon" aria-hidden="true">
+      <svg viewBox="0 0 24 24" focusable="false">
+        <path d="M4 7h16v2H4zm0 5h16v2H4zm0 5h16v2H4z"/>
+      </svg>
+    </span>
+    <span class="docs-nav-toggle-label">Menu</span>
+  </button>
+
+  <aside class="docs-sidebar" id="docs-sidebar">
+    <div class="sidebar-inner">
+      <nav class="docs-nav"><ul class="top-links"><li><a href="/docs/">Home</a></li><li><a href="/docs/whats-new.html">What&#39;s new</a></li><li><a href="/docs/reference.html">Command reference</a></li><li><a href="/docs/gallery/">Gallery</a></li></ul><h2>Getting started</h2><ul><li><a href="/docs/essentials/command-line.html">The command-line tool</a></li><li><a href="/docs/essentials/web-app.html">The web app</a></li></ul><h2>Examples</h2><ul><li><a href="/docs/examples/basics.html">Basics</a></li><li><a href="/docs/examples/globe.html">Globe locator map</a></li><li><a href="/docs/examples/us-states.html">U.S. state map</a></li><li><a href="/docs/examples/ny-state.html">New York map</a></li></ul><h2>Guides</h2><ul><li><a href="/docs/guides/simplification.html">Simplification</a></li><li><a href="/docs/guides/smoothing.html" class="is-active">Smoothing</a></li><li><a href="/docs/guides/styles-and-symbols.html">Styles and symbols</a></li><li><a href="/docs/guides/expressions.html">JavaScript expressions</a></li><li><a href="/docs/guides/projections.html">Map projections</a></li><li><a href="/docs/guides/topology.html">Topology and cleaning</a></li><li><a href="/docs/guides/combining-layers.html">Combining two layers</a></li><li><a href="/docs/guides/geojson-for-web-maps.html">Preparing data for web maps</a></li><li><a href="/docs/guides/programmatic.html">Using Mapshaper from Node.js</a></li></ul><h2>Formats</h2><ul><li><a href="/docs/formats/overview.html">Overview</a></li><li><a href="/docs/formats/shapefile.html">Shapefile</a></li><li><a href="/docs/formats/geojson.html">GeoJSON</a></li><li><a href="/docs/formats/topojson.html">TopoJSON</a></li><li><a href="/docs/formats/geopackage.html">GeoPackage</a></li><li><a href="/docs/formats/geoparquet.html">GeoParquet</a></li><li><a href="/docs/formats/flatgeobuf.html">FlatGeobuf</a></li><li><a href="/docs/formats/kml.html">KML / KMZ</a></li><li><a href="/docs/formats/csv.html">CSV / TSV</a></li><li><a href="/docs/formats/json.html">JSON records</a></li><li><a href="/docs/formats/dbf.html">DBF</a></li><li><a href="/docs/formats/svg.html">SVG</a></li><li><a href="/docs/formats/snapshot.html">Mapshaper snapshot</a></li></ul></nav>
+    </div>
+  </aside>
+
+  <main class="docs-main">
+    <article class="docs-article">
+      <div class="docs-breadcrumbs"><a href="/docs/">Docs</a> &rsaquo; Guides &rsaquo; Smoothing</div>
+      <h1 id="smoothing">Smoothing</h1>
+<p><code>-smooth</code> generalizes polygon and polyline geometry by replacing the original vertices with smooth curves. Unlike <a href="/docs/guides/simplification.html"><code>-simplify</code></a>, which thins existing vertices, <code>-smooth</code> recomputes the line&#39;s shape. It also filters out small intricate details and preserves sharp corners, such as surveyed borders.</p>
+<pre><code class="hljs language-bash">mapshaper coastline.shp -smooth 5km -o smoothed.shp
+</code></pre>
+<p>The <code>&lt;distance&gt;</code> parameter sets the smoothing resolution: detail finer than this scale is removed.</p>
+<h2 id="prefiltering-intricate-detail">Prefiltering intricate detail</h2>
+<p>Small, intricate features — jetties, narrow inlets, docks, spikes — often produce kinks or self-intersections after smoothing. By default, <code>-smooth</code> first removes detail below the smoothing scale.</p>
+<p>In the example below, the small basin, dock outline, and other fine detail are dropped before smoothing.</p>
+<p><img src="/docs/images/smooth-prefilter.png" alt="image"></p>
+<p>Use <code>no-prefilter</code> to skip this step and smooth the input as-is.</p>
+<h2 id="corner-preservation">Corner preservation</h2>
+<p>Some corners should stay sharp. By default, <code>-smooth</code> preserves corners where straight runs meet, such as surveyed borders.</p>
+<p>Here, the straight surveyed border is preserved while the riverine border it meets is smoothed:</p>
+<p><img src="/docs/images/smooth-corners.png" alt="image"></p>
+<p>Corner detection is scale-aware: it looks for changes of direction that are abrupt relative to the smoothing distance. It also becomes less sensitive on coarsely-sampled data, where ordinary bends often have larger angles between vertices.</p>
+<p>Use <code>corner-bias=</code> to tune corner sensitivity relative to this automatic baseline, or <code>no-corners</code> to smooth the whole line uniformly.</p>
+<pre><code class="hljs language-bash"><span class="hljs-comment"># Round off corners instead of preserving them.</span>
+mapshaper borders.shp -smooth 5km no-corners -o smoothed.shp
+</code></pre>
+<h2 id="adaptive-vertex-density">Adaptive vertex density</h2>
+<p>Output vertices are placed adaptively: more on tight bends, fewer on straight or gently curving runs.</p>
+<p>The dots below mark output vertices along a smoothed line.</p>
+<p><img src="/docs/images/smooth-vertex-density.png" alt="image"></p>
+<p>The <code>max-bend-angle=</code> option (default <code>8</code> degrees) controls output density. A larger value keeps fewer vertices; a smaller value keeps more.</p>
+<h2 id="technical-notes">Technical notes</h2>
+<ul>
+<li>The <code>-smooth</code> command uses a Gaussian smoothing kernel.</li>
+<li>Curve compensation reduces the shrinkage that smoothing causes around bends. The <code>gain=</code> option controls this correction.</li>
+<li>Lat-long data is smoothed on a sphere: coordinates are converted to 3D geocentric coordinates, distances are measured along great circles, and the result is converted back to longitude and latitude.</li>
+</ul>
+<p>See the <a href="/docs/reference.html#-smooth"><code>-smooth</code> reference</a> for the full set of options.</p>
+
+      <div class="edit-link">
+        <a href="https://github.com/mbloch/mapshaper/edit/master/docs/guides/smoothing.md">Edit this page on GitHub</a>
+      </div>
+    </article>
+  </main>
+
+  <aside class="docs-toc">
+    <div class="docs-toc-title">On this page</div><ul><li class="lvl-2"><a href="#prefiltering-intricate-detail">Prefiltering intricate detail</a></li><li class="lvl-2"><a href="#corner-preservation">Corner preservation</a></li><li class="lvl-2"><a href="#adaptive-vertex-density">Adaptive vertex density</a></li><li class="lvl-2"><a href="#technical-notes">Technical notes</a></li></ul>
+  </aside>
+
+</div>
+
+<script src="/docs/_assets/docs.js" defer></script>
+
+<footer class="docs-footer">
+  <div class="docs-footer-inner">
+    <span>mapshaper is free software, licensed under <a href="https://www.mozilla.org/MPL/2.0/">MPL 2.0</a>.</span>
+    <span><a href="/privacy.html">Privacy</a> &middot; <a href="/terms.html">Terms</a> &middot; <a href="/sponsor.html">Support mapshaper</a></span>
+  </div>
+</footer>
+
+</body>
+</html>

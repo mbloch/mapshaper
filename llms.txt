@@ -24,6 +24,7 @@ When in doubt about a command's behavior, the [command reference](https://mapsha
 ## Guides
 
 - [Simplification](https://mapshaper.org/docs/guides/simplification.html.md): How to choose between Visvalingam and Douglas-Peucker, and tips for getting good-looking results from polygon and polyline simplification.
+- [Smoothing](https://mapshaper.org/docs/guides/smoothing.html.md): How Mapshaper's -smooth command generalizes lines while filtering fine detail and preserving corners.
 - [Styles and symbols](https://mapshaper.org/docs/guides/styles-and-symbols.html.md): How to use -style and -classify to style base layers, data layers and labels for SVG export and web UI previews.
 - [JavaScript expressions](https://mapshaper.org/docs/guides/expressions.html.md): Reference for the JS expressions used in -each, -filter, -calc, -where, -sort, -if, -run and other Mapshaper commands.
 - [Map projections](https://mapshaper.org/docs/guides/projections.html.md): How to reproject geographic data with Mapshaper, including CRS notation, built-in aliases, and the albersusa composite projection.
