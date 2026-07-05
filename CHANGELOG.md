@@ -1,3 +1,6 @@
+v0.7.38 (unreleased)
+* `-smooth` now thins vertices along straight/low-curvature runs, giving the whole output more consistent vertex density.
+
 v0.7.37
 * Removed a performance bottleneck in -smooth.
 

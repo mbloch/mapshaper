@@ -104,6 +104,20 @@ var DEFAULT_BEND_ANGLE = 8 * Math.PI / 180; // keep a vertex after this much acc
                                     // segments); user-overridable via max-bend-angle
 var DEVIATION_FACTOR = 0.1;         // sagitta guard: also cut a gentle bend that bows
                                     // more than tolerance * this from its chord
+// Preserved structural runs (long straight / low-curvature spans between pinned
+// corners) are not smoothed, but their ORIGINAL vertices are resampled with the
+// same bend-angle decimation so the whole output has adaptive vertex spacing
+// (no abrupt density seam at a run boundary). The decimation runs in the
+// smoothing channels, so for unprojected data a long line -- which curves in the
+// geocentric x,y,z space even when it is "straight" in lng/lat -- keeps enough
+// interior vertices to approximate that curve on reprojection, scaling with the
+// line's length automatically. Because it only ever keeps a SUBSET of the
+// original vertices (never interpolates new ones), it can't distort a rhumb or
+// geodesic edge -- every output vertex still lies exactly where the source drew
+// it. Structural runs use a fraction of the bend angle (sampled finer than
+// smoothed spans) as a conservative bias toward preservation / reprojection
+// headroom.
+var STRUCTURAL_BEND_FACTOR = 0.5;   // structural-run bend angle = max-bend-angle * this
 
 // Smooth a single arc's coordinates.
 // @xx, @yy: coordinate arrays (may be typed-array subarrays) for one arc.
@@ -112,8 +126,9 @@ var DEVIATION_FACTOR = 0.1;         // sagitta guard: also cut a gentle bend tha
 // arcs are preserved exactly (so shared topology nodes stay put); closed arcs
 // are smoothed cyclically and returned closed (first point repeated at the end).
 // With keepCorners, structural corners (where long straight/low-curvature runs
-// meet) are detected and pinned, and the runs themselves are kept verbatim;
-// only the spans between corners are smoothed.
+// meet) are detected and pinned; the runs themselves are not smoothed but are
+// resampled (a subset of their original vertices, at adaptive spacing), and only
+// the spans between corners are smoothed.
 // Resolve the curvature-correction gain (default 1 = fully corrected). gain=0
 // leaves the plain weighted moving average; negative values are clamped to 0.
 function resolveGain(opts) {
@@ -269,7 +284,7 @@ function smoothOpenSpans(origX, origY, t, channels, n, interiorBreaks, ctx) {
     var lo = bounds[s], hi = bounds[s + 1];
     var preserve = !!params && isStructuralRun(t, channels, lo, hi, params);
     var span = preserve ?
-      copySpan(origX, origY, lo, hi) :
+      resampleStructuralRun(origX, origY, channels, lo, hi, ctx) :
       smoothSpanOpen(origX, origY, t, channels, lo, hi, ctx);
     appendSpan(xx, yy, span, s === 0);
   }
@@ -499,6 +514,34 @@ function copySpan(origX, origY, lo, hi) {
   return {xx: xx, yy: yy};
 }
 
+// Resample a preserved structural run [lo, hi] (a long straight / low-curvature
+// span between pinned corners). The run is NOT smoothed: its shape is kept by
+// emitting a SUBSET of its original vertices, decimated with the shared
+// bend-angle filter in the smoothing channels (so a long line that curves in the
+// geocentric space keeps interior vertices scaling with its length -- see
+// STRUCTURAL_BEND_FACTOR). Both endpoints are always kept, at their exact
+// original coordinates, so pinned corners and shared topology nodes are
+// unchanged. A run too short to decimate is copied verbatim.
+function resampleStructuralRun(origX, origY, channels, lo, hi, ctx) {
+  var nSub = hi - lo + 1;
+  if (nSub < 3) return copySpan(origX, origY, lo, hi);
+  var K = channels.length;
+  var P = new Array(nSub);
+  for (var i = 0; i < nSub; i++) {
+    var p = new Array(K);
+    for (var c = 0; c < K; c++) p[c] = channels[c][lo + i];
+    P[i] = p;
+  }
+  var keep = decimateByBend(P, K, ctx.bendAngle * STRUCTURAL_BEND_FACTOR, ctx.tol * DEVIATION_FACTOR);
+  var xx = [], yy = [];
+  for (var ki = 0; ki < keep.length; ki++) {
+    var idx = lo + keep[ki];
+    xx.push(origX[idx]); // exact original coordinate, never interpolated
+    yy.push(origY[idx]);
+  }
+  return {xx: xx, yy: yy};
+}
+
 function appendSpan(xx, yy, span, isFirst) {
   for (var i = isFirst ? 0 : 1; i < span.xx.length; i++) {
     xx.push(span.xx[i]);
@@ -623,26 +666,38 @@ function sampleSmoothedCurve(src, a, b, closed, ctx, inputCount) {
   }
 
   // 2. one-pass bend-angle filter
-  var theta = ctx.bendAngle;
-  var epsDev = ctx.tol * DEVIATION_FACTOR;
+  var keep = decimateByBend(P, K, ctx.bendAngle, ctx.tol * DEVIATION_FACTOR);
   var out = [];
   for (var c = 0; c < K; c++) out.push([]);
-  appendPoint(out, P[0], K);
+  for (var ki = 0; ki < keep.length; ki++) appendPoint(out, P[keep[ki]], K);
+  return out;
+}
+
+// One-pass forward decimation of a K-channel point list @P: keep the two
+// endpoints plus every interior point where the turn accumulated since the last
+// kept point reaches @theta, or where the estimated sagitta of the skipped
+// stretch (chord * accumulated turn / 8, the bow of a circular arc) reaches
+// @epsDev. Bounds the angle between consecutive kept segments by construction, so
+// joins stay smooth. Returns the kept indices into @P (always including 0 and the
+// last index). Shared by the smoothed-curve resampler and the structural-run
+// resampler (see resampleStructuralRun).
+function decimateByBend(P, K, theta, epsDev) {
+  var n = P.length;
+  var keep = [0];
+  if (n < 2) return keep;
   var anchor = 0;     // last kept vertex
   var accTurn = 0;    // absolute turning accumulated since the anchor
-  for (var j = 1; j < nDense - 1; j++) {
+  for (var j = 1; j < n - 1; j++) {
     accTurn += vecAngle(P[j - 1], P[j], P[j], P[j + 1], K);
-    // sagitta of a circular arc of chord c and total turn a is ~ c*a/8; cut a
-    // long gentle bend before it bows more than epsDev from its chord
     var sagitta = chordLen(P[anchor], P[j + 1], K) * accTurn * 0.125;
     if (accTurn >= theta || sagitta >= epsDev) {
-      appendPoint(out, P[j], K);
+      keep.push(j);
       anchor = j;
       accTurn = 0;
     }
   }
-  appendPoint(out, P[nDense - 1], K);
-  return out;
+  keep.push(n - 1);
+  return keep;
 }
 
 // Angle (radians) between vectors (b - a) and (d - c) over K channels.
