@@ -1724,15 +1724,18 @@ export function getOptionParser() {
       type: 'flag'
     })
     .option('corner-bias', {
-      // Sensitivity of corner detection (default 0 = neutral). Positive keeps
-      // more corners, negative fewer; +/- values of equal size are inverses.
-      // Under the hood it scales only the distance-proportional detection
-      // parameters (not angles), detecting corners as if the distance were
-      // divided by k, where k = bias+1 for bias >= 0 and 1/(1-bias) for bias < 0;
-      // the smoothing kernel keeps using the real distance. So corner-bias=-1
-      // finds the corners a 2x distance would, corner-bias=1 those of a 0.5x
-      // distance. Use no-corners to turn corner preservation off entirely.
-      describe: 'corner-detection sensitivity (default 0; + is more sensitive, - is less)',
+      // Sensitivity of corner detection, RELATIVE to an automatic baseline
+      // (default 0 = the automatic setting). Detection is auto-coarsened on
+      // geometry that is sparse relative to the smoothing distance (long segments
+      // read ordinary coarse bends as corners); this option adds to that base.
+      // Positive keeps more corners, negative fewer; it scales only the distance-
+      // proportional detection parameters (not angles), detecting corners as if
+      // the distance were divided by k, where k = bias+1 for bias >= 0 and
+      // 1/(1-bias) for bias < 0, and the smoothing kernel keeps using the real
+      // distance. So on fine data (no auto adjustment) corner-bias=-1 finds the
+      // corners a 2x distance would; on coarse data a positive value counteracts
+      // the automatic coarsening. Use no-corners to turn preservation off entirely.
+      describe: 'corner-detection sensitivity relative to auto (default 0; + more, - fewer)',
       type: 'number'
     })
     .option('prefilter-gate', {

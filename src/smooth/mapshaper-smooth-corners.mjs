@@ -18,6 +18,14 @@
 //      -- whether a tight coastline or a gentle, hundreds-of-km graticule arc --
 //      never qualifies; only a localized kink, where the inner turn approaches
 //      the full turn, is a corner.
+//   1b. (open paths) Also flag the end of a long straight run that turns sharply
+//      over a single segment but only gently over the window -- a small jog where
+//      a surveyed border meets a curve, which step 1's window would dilute below
+//      the corner angle. Keyed off the raw segment turn, but the pinned vertex is
+//      snapped to the nearby end of the straight run (stable under tiny vertex
+//      moves) and only where that run's line is actually left (so an incidental
+//      notch after which the run resumes on the same line is not flagged). See
+//      straightRunEndNear.
 //   2. Between flagged corners, classify each span as "structural" if it is long
 //      relative to the tolerance and its curvature stays low (so a straight or
 //      slowly-curving graticule line counts, but sub-tolerance wiggle does not).
@@ -60,14 +68,18 @@ var MIN_RUN_RADIUS_FACTOR = 3.0;
 // to count, which matches intuition (a 28 km stretch bending at radius 4 km is
 // obviously not straight). Genuinely curving coastline bows far from its chord
 // and is still rejected, so spurious corners inside wiggly stretches keep getting
-// culled.
-var STRAIGHT_DEV_FACTOR = 0.03;
+// culled. Tightened from 0.03 to 0.02 (a run may curve ~9 deg over its length, not
+// ~14) after a coastline island pinned corners at both ends of a ~10 deg-curving
+// stretch that read as "straight" only under the looser corridor: an acute corner
+// takes the full corridor regardless of the angle coupling below, so only the base
+// factor governs whether such a run can anchor a sharp corner.
+var STRAIGHT_DEV_FACTOR = 0.02;
 
 // Angle coupling for corner retention: how much sharper the corner must turn than
 // the run it borders already curves. A run that passes the chord test may still
 // bend gently within the STRAIGHT_DEV_FACTOR corridor -- for a circular arc the
-// chord-deviation ratio is ~ (the run's total turn)/8, so the base 0.03 admits a
-// run that curves ~14 deg over its length. Pinning a *gentle* bend at the end of
+// chord-deviation ratio is ~ (the run's total turn)/8, so the base 0.02 admits a
+// run that curves ~9 deg over its length. Pinning a *gentle* bend at the end of
 // such a run is unsafe: the "corner" is barely sharper than the run's own
 // curving, so it is really a point on a smooth bend, not a junction. (This is the
 // failure mode on coarsely sampled / already-simplified coastlines, where a
@@ -78,7 +90,7 @@ var STRAIGHT_DEV_FACTOR = 0.03;
 //   turn >= PIN_TURN_RATIO * (8 * dev)  <=>  dev <= turn / (8 * PIN_TURN_RATIO).
 // retentionDevLimit() returns the smaller of STRAIGHT_DEV_FACTOR and
 // turn/(8*PIN_TURN_RATIO), so the coupling only bites for gentle corners (below
-// ~2*STRAIGHT_DEV_FACTOR*PIN_TURN_RATIO ~ 69 deg); sharp corners (surveyed-border
+// ~2*STRAIGHT_DEV_FACTOR*PIN_TURN_RATIO ~ 46 deg); sharp corners (surveyed-border
 // right angles, spits, hairpins) keep the full base tolerance, unchanged.
 var PIN_TURN_RATIO = 5;
 
@@ -102,6 +114,15 @@ var PIN_TURN_RATIO = 5;
 // old 1*tol behaviour for users who want shorter runs pinned.
 var MIN_PIN_RUN_LEN_FACTOR = 2.0;
 
+// When a long straight run's end turns sharply into a curve with a small jog, the
+// sharpest single-segment turn can land a few vertices past the run's actual end.
+// straightRunEndNear searches back this many source vertices (in addition to the
+// distance-scaled tangent window) to snap to the stable run end, so detection
+// does not depend on the smoothing distance being large enough for the window to
+// span the jog. A jog is a handful of vertices; this is deliberately generous
+// because the search returns the nearest genuine run end (or nothing).
+var MAX_JOG_VERTICES = 6;
+
 // Convert the user-facing corner-bias (0 = neutral) into the positive multiplier
 // k applied to corner-detection resolution (ctol = tol / k). The mapping is
 // symmetric about zero -- k(+b) * k(-b) = 1 -- and smooth there (both branches
@@ -114,6 +135,39 @@ var MIN_PIN_RUN_LEN_FACTOR = 2.0;
 export function cornerBiasScale(cornerBias) {
   var b = cornerBias || 0;
   return b >= 0 ? b + 1 : 1 / (1 - b);
+}
+
+// Ratio of (typical segment length / smoothing distance) at or below which corner
+// detection sees several segments per tangent window and behaves normally, so no
+// automatic coarsening is applied. Above it the window shrinks toward a single
+// segment and ordinary coarse-data bends start reading as corners.
+var AUTO_BIAS_RATIO = 0.15;
+// Most-negative automatic bias. Caps how far detection is coarsened on very sparse
+// geometry (e.g. lo-res contours), where the ratio can be many times AUTO_BIAS_RATIO
+// but a handful of doublings already merges the whole neighbourhood.
+var AUTO_BIAS_FLOOR = -4;
+
+// Automatic corner-bias from the geometry's coarseness relative to the smoothing
+// distance. @medianSeg is a robust (median) segment length; @dist is the raw
+// smoothing distance, both in the same ground units. Corner detection keys off a
+// tangent window ~0.3*dist wide; when the typical segment is an appreciable
+// fraction of the distance (ratio r = medianSeg/dist above AUTO_BIAS_RATIO) that
+// window spans too few segments and gentle-but-coarse bends read as corners. We
+// return a negative bias that coarsens detection (as if the distance were larger)
+// enough to push the effective ratio back down: each halving of the effective
+// resolution costs one bias step, so bias = -log2(r / AUTO_BIAS_RATIO), floored.
+// Returns 0 (no adjustment) when the geometry is fine relative to the distance,
+// which is the normal case for detailed datasets smoothed at a real distance.
+// Note it only ever coarsens: a straight run that genuinely anchors a sharp corner
+// survives this (the corner is retained by bordering a long straight run, which
+// coarsening does not remove until it exceeds the run's length), while weakly
+// supported bends on coarse coastlines/contours fall below the corner threshold.
+export function autoCornerBias(medianSeg, dist) {
+  if (!(medianSeg > 0) || !(dist > 0)) return 0;
+  var r = medianSeg / dist;
+  if (r <= AUTO_BIAS_RATIO) return 0;
+  var b = -Math.log2(r / AUTO_BIAS_RATIO);
+  return b < AUTO_BIAS_FLOOR ? AUTO_BIAS_FLOOR : b;
 }
 
 // @cornerBias (optional, default 0 = neutral) scales only the distance-
@@ -172,7 +226,105 @@ export function findInteriorCorners(t, channels, n, cyclic, params) {
     if (inner[j] < params.concentration * turns[j]) continue;
     if (isLocalMaxTurn(t, turns, j, W, L, m, lo, hi, cyclic)) corners.push(j);
   }
+  // Open paths: also flag the terminal vertex of a long straight run that bends
+  // sharply over a single segment but only gently over the tangent window -- e.g.
+  // where a surveyed border meets a coastline with a small jog. The windowed test
+  // above misses these because the wide window dilutes the sharp segment turn into
+  // a sub-threshold bend, so the straight run's end gets rounded into the adjacent
+  // curve. Here we key off the raw segment turn instead, but confine this rescue
+  // to a genuine straight-run end with two gates (plus straightRunEndNear):
+  //   1. the turn is fully concentrated in the inner window: inner-window turn >=
+  //      full-window turn. This is a stricter form of the windowed path's
+  //      concentration test (>= concentration * full) and is the crux of the
+  //      distinction. At a straight-run end the approaches carry ~no turning, so
+  //      the whole window's turn sits in the inner window (ratio >= 1); on a
+  //      steadily-curving coastline the turning is spread across the window (inner
+  //      < full), so a lone sharp segment there is rejected. The wide window
+  //      dilutes the end's departure below the corner threshold (which is why the
+  //      windowed path misses it), but the concentration ratio stays high.
+  //   2. (via straightRunEndNear) a bordering straight run's line is actually left,
+  //      so an incidental notch on an otherwise-continuing run is not pinned.
+  // Rings keep the windowed-only detection for now.
+  if (!cyclic) {
+    var raw = new Float64Array(m);
+    for (i = lo; i < hi; i++) raw[i] = vertexTurn(channels, K, i);
+    for (j = lo; j < hi; j++) {
+      if (raw[j] < params.cornerAngle) continue;
+      if (inner[j] < turns[j]) continue;
+      if (!isLocalMaxTurn(t, raw, j, W, L, m, lo, hi, cyclic)) continue;
+      var e = straightRunEndNear(t, channels, n, j, W, params);
+      if (e >= 0 && corners.indexOf(e) === -1) corners.push(e);
+    }
+    corners.sort(function (a, b) { return a - b; });
+  }
   return corners;
+}
+
+// Given a sharp single-segment turn at open-path vertex @j, find the end of a
+// long straight run that the path leaves, within arc length @W of @j, and return
+// that run-end vertex to pin (or -1). We search a neighbourhood rather than
+// requiring the run's last vertex to be exactly where the segment turn peaks: a
+// jog into a curve can place its sharpest vertex a step or two past the run's
+// end, and exactly which vertex is sharpest is sensitive to tiny differences in
+// vertex placement -- but the straight run's end itself is stable. Snapping to it
+// keeps detection from flickering on and off with sub-tolerance vertex moves. The
+// straightRunLeaves test only succeeds at a genuine run end whose continuation
+// departs, so an incidental jog after which the run resumes is still not pinned.
+function straightRunEndNear(t, channels, n, j, W, params) {
+  var e, k;
+  // The jog between the sharp turn and the run's end is a fixed handful of source
+  // vertices, independent of the smoothing distance -- so the search extends by a
+  // vertex count as well as the distance-scaled window W. Without the vertex floor
+  // the window shrinks with the distance and, at small distances, can no longer
+  // reach back across the jog to the run end (fewer, not more, corners pinned as
+  // the distance drops -- the opposite of what a long run warrants). We return the
+  // first (nearest) run end found, so a generous reach only costs a few extra
+  // straightRunLeaves checks when there is nothing to pin.
+  for (e = j, k = 0; e >= 1; e--, k++) {
+    if (t[j] - t[e] > W && k > MAX_JOG_VERTICES) break;
+    if (straightRunLeaves(t, channels, n, e, -1, params) ||
+        straightRunLeaves(t, channels, n, e, 1, params)) return e;
+  }
+  for (e = j + 1, k = 1; e < n - 1; e++, k++) {
+    if (t[e] - t[j] > W && k > MAX_JOG_VERTICES) break;
+    if (straightRunLeaves(t, channels, n, e, -1, params) ||
+        straightRunLeaves(t, channels, n, e, 1, params)) return e;
+  }
+  return -1;
+}
+
+// Is the near side of @e (walking direction @dir: -1 = run precedes e, +1 = run
+// follows e) a long straight run, AND does the far side leave that run's line --
+// i.e. a point a full run-length along the far side sits outside the run's
+// straightness corridor? A jog that rejoins the run returns to ~0 perpendicular
+// offset and fails this, so it is not flagged. (This also implies @e is the run's
+// end: if the run continued straight past @e, the far point would stay on its
+// line.)
+function straightRunLeaves(t, channels, n, e, dir, params) {
+  var K = channels.length, L = t[n - 1];
+  var nearEnd = reach(t, n, n, L, e, dir, params.minPinRunLen, false);
+  if (nearEnd === e) return false;
+  var a = dir < 0 ? nearEnd : e;
+  var b = dir < 0 ? e : nearEnd;
+  // Require the near run to be straight to the SAME angle-coupled tolerance
+  // retention will demand of a pin at @e (retentionDevLimit of the turn at @e),
+  // not the looser default corridor. This makes straightRunEndNear's backward
+  // scan stop at the run's true end -- the last vertex actually on the run's line
+  // -- rather than a vertex a little past it that squeaks inside the loose 3%
+  // corridor but would then be culled by retention (leaving nothing pinned).
+  var devLim = retentionDevLimit(cornerTurn(t, channels, n, e, false, params));
+  if (!isStraightRun(t, channels, a, b, params, devLim)) return false;
+  var farEnd = reach(t, n, n, L, e, -dir, params.minPinRunLen, false);
+  if (farEnd === e) return false;
+  var pe = getPt(channels, K, e);
+  var u = subv(getPt(channels, K, nearEnd), pe, K); // direction along the near run
+  var uu = dot(u, u, K);
+  if (!(uu > 0)) return false;
+  var af = subv(getPt(channels, K, farEnd), pe, K);
+  var along = Math.abs(dot(af, u, K)) / Math.sqrt(uu);
+  var perp = Math.sqrt(perpDistSq(channels, K, farEnd, pe, u, uu));
+  // outside the straight corridor extended from the run -> the path has left it
+  return perp > STRAIGHT_DEV_FACTOR * along;
 }
 
 // Is span [a, b] (inclusive vertex indices, a < b, open frame) a structural run:
