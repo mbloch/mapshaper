@@ -3068,7 +3068,7 @@ The dots below mark output vertices along a smoothed line.
 
 ![image](/docs/images/smooth-vertex-density.png)
 
-The `max-bend-angle=` option (default `8` degrees) controls output density. A larger value keeps fewer vertices; a smaller value keeps more.
+The `max-bend-angle=` option (default `8` degrees) controls output density. A larger value uses fewer vertices; a smaller value uses more.
 
 ## Technical notes
 

@@ -71,7 +71,7 @@ mapshaper borders.shp -smooth 5km no-corners -o smoothed.shp
 <p>Output vertices are placed adaptively: more on tight bends, fewer on straight or gently curving runs.</p>
 <p>The dots below mark output vertices along a smoothed line.</p>
 <p><img src="/docs/images/smooth-vertex-density.png" alt="image"></p>
-<p>The <code>max-bend-angle=</code> option (default <code>8</code> degrees) controls output density. A larger value keeps fewer vertices; a smaller value keeps more.</p>
+<p>The <code>max-bend-angle=</code> option (default <code>8</code> degrees) controls output density. A larger value uses fewer vertices; a smaller value uses more.</p>
 <h2 id="technical-notes">Technical notes</h2>
 <ul>
 <li>The <code>-smooth</code> command uses a Gaussian smoothing kernel.</li>
