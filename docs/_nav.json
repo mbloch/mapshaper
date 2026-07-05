@@ -30,6 +30,7 @@
       "pages": [
         { "label": "Simplification", "file": "simplification.md" },
         { "label": "Smoothing", "file": "smoothing.md" },
+        { "label": "Buffering", "file": "buffering.md" },
         { "label": "Styles and symbols", "file": "styles-and-symbols.md" },
         { "label": "JavaScript expressions", "file": "expressions.md" },
         { "label": "Map projections", "file": "projections.md" },
