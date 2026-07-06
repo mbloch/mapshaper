@@ -13,6 +13,14 @@ mapshaper coastline.shp -smooth 5km -o smoothed.shp
 
 The `<distance>` parameter sets the smoothing resolution: detail finer than this scale is removed.
 
+## Usage tip
+
+For best geographical fidelity, apply `-smooth` to unsimplified linework. Smoothing can also be applied to simplified paths, but low-resolution inputs give the smoother less information to work with.
+
+Smoothed low-resolution contour lines:
+
+![image](/docs/images/smooth-lowres-contours.png)
+
 
 ## Prefiltering intricate detail
 
