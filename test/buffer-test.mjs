@@ -2297,9 +2297,10 @@ describe('mapshaper-buffer.js', function () {
 
   describe('polar option (pole/antimeridian-sliced polygons)', function () {
     // t_antarctica.json is sliced for Cartesian display: artificial seam edges at
-    // the antimeridian (lng +/-180) and the south pole (lat -90). Without the
-    // polar option buffering it errors near the pole; with it the buffer stays in
-    // the valid extent, pins the seam, and only the real coastline moves.
+    // the antimeridian (lng +/-180) and the south pole (lat -90). Buffering it
+    // uses the polar path (automatically, or explicitly with the hidden polar
+    // option), so the buffer stays in the valid extent, pins the seam, and only
+    // the real coastline moves.
     var antarctica = JSON.parse(fs.readFileSync('test/data/features/buffer/t_antarctica.json', 'utf8'));
     // a north-pole synthetic: the same shape mirrored to lat +90 / +/-180
     var arctica = {type: 'Feature', properties: {}, geometry: {type: 'MultiPolygon',
@@ -2387,13 +2388,32 @@ describe('mapshaper-buffer.js', function () {
       assert(b[3] <= 90 + 1e-6 && b[3] > 89.9, 'north edge should reach the pole: ' + b);
     })
 
-    it('without polar, a pole-touching buffer still errors', async function () {
-      var err = null;
-      try {
-        await api.applyCommands('-i a.json -buffer 50km -o format=geojson out.json',
-          {'a.json': JSON.stringify(antarctica)});
-      } catch (e) { err = e; }
-      assert(err && /pole/i.test(err.message), err && err.message);
+    it('auto-polar: a pole-touching buffer succeeds without the polar option', async function () {
+      var files = {'a.json': JSON.stringify(antarctica)};
+      var src = await sphericalArea('-i a.json', files);
+      var buf = await sphericalArea('-i a.json -buffer 50km', files);
+      assert(buf > src, 'buffer area ' + buf + ' should exceed source ' + src);
+      var b = await bufferBounds('-i a.json -buffer 50km', files);
+      assert(b[0] >= -180 - 1e-6 && b[2] <= 180 + 1e-6, 'lng in [-180,180]: ' + b);
+      assert(b[1] >= -90 - 1e-6 && b[3] <= 90 + 1e-6, 'lat in [-90,90]: ' + b);
+    })
+
+    it('pole-encircling ring (t_antarctica_clipped) grows, not a ribbon', async function () {
+      // A coastline that encircles the pole but does not reach it (the pole floor
+      // is absent) is a genuine pole-encircling ring: projected to Mercator and
+      // unwrapped, its endpoints land a world-width apart, so the offset used to
+      // read it as an open line and return a thin two-sided ribbon (buffer area
+      // far SMALLER than the source). The fix inserts a pole floor and grows it
+      // through the polar path, so the buffer must exceed the source area and
+      // reach the pole.
+      var cmd = '-i test/data/features/buffer/t_antarctica_clipped.json -buffer 30km';
+      var src = await sphericalArea('-i test/data/features/buffer/t_antarctica_clipped.json', {});
+      var buf = await sphericalArea(cmd, {});
+      assert(buf > src, 'buffer area ' + buf + ' should exceed source ' + src);
+      var b = await bufferBounds(cmd, {});
+      assert(b[0] >= -180 - 1e-6 && b[2] <= 180 + 1e-6, 'lng in [-180,180]: ' + b);
+      assert(b[1] >= -90 - 1e-6 && b[3] <= 90 + 1e-6, 'lat in [-90,90]: ' + b);
+      assert(b[1] < -89.9, 'south edge should reach the pole: ' + b[1]);
     })
 
     it('no-op: polar matches the plain buffer for a mid-latitude polygon', async function () {

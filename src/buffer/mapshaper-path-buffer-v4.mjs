@@ -88,7 +88,7 @@ export function getPolylineBufferMaker(dataset, opts) {
     });
     if (maxAbsLat + angularDist >= 90 - POLAR_BUFFER_MARGIN_DEGREES) {
       stop('Buffering lat-long coordinates near the poles is not supported; ' +
-        'use the polar option for polygons sliced at the antimeridian/poles.');
+        'positive polygon buffers that reach a pole use experimental polar handling.');
     }
   }
 
