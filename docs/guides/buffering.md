@@ -45,6 +45,6 @@ In the example below, buffers are created along coastlines, while internal borde
 
 - Geodesic buffers that cross the antimeridian are split and wrapped automatically. This support is still experimental.
 - Geodesic buffer size is calculated using a spherical, not ellipsoidal, earth model, so it may not be accurate enough for GIS analysis.
-- Geodesic buffers of lines and polygons cannot extend to the poles. There is an experimental `polar` option with partial support for growing polygon buffers that reach the poles.
+- Polygon buffers that reach a pole use experimental polar handling. Geodesic line buffers cannot extend to the poles. 
 
 See the [`-buffer` reference](/docs/reference.html#-buffer) for the full set of options.
