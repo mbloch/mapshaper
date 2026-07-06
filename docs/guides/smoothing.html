@@ -53,6 +53,10 @@
 <pre><code class="hljs language-bash">mapshaper coastline.shp -smooth 5km -o smoothed.shp
 </code></pre>
 <p>The <code>&lt;distance&gt;</code> parameter sets the smoothing resolution: detail finer than this scale is removed.</p>
+<h2 id="usage-tip">Usage tip</h2>
+<p>For best geographical fidelity, apply <code>-smooth</code> to unsimplified linework. Smoothing can also be applied to simplified paths, but low-resolution inputs give the smoother less information to work with.</p>
+<p>Smoothed low-resolution contour lines:</p>
+<p><img src="/docs/images/smooth-lowres-contours.png" alt="image"></p>
 <h2 id="prefiltering-intricate-detail">Prefiltering intricate detail</h2>
 <p>Small, intricate features — jetties, narrow inlets, docks, spikes — often produce kinks or self-intersections after smoothing. By default, <code>-smooth</code> first removes detail below the smoothing scale.</p>
 <p>In the example below, the small basin, dock outline, and other fine detail are dropped before smoothing.</p>
@@ -87,7 +91,7 @@ mapshaper borders.shp -smooth 5km no-corners -o smoothed.shp
   </main>
 
   <aside class="docs-toc">
-    <div class="docs-toc-title">On this page</div><ul><li class="lvl-2"><a href="#prefiltering-intricate-detail">Prefiltering intricate detail</a></li><li class="lvl-2"><a href="#corner-preservation">Corner preservation</a></li><li class="lvl-2"><a href="#adaptive-vertex-density">Adaptive vertex density</a></li><li class="lvl-2"><a href="#technical-notes">Technical notes</a></li></ul>
+    <div class="docs-toc-title">On this page</div><ul><li class="lvl-2"><a href="#usage-tip">Usage tip</a></li><li class="lvl-2"><a href="#prefiltering-intricate-detail">Prefiltering intricate detail</a></li><li class="lvl-2"><a href="#corner-preservation">Corner preservation</a></li><li class="lvl-2"><a href="#adaptive-vertex-density">Adaptive vertex density</a></li><li class="lvl-2"><a href="#technical-notes">Technical notes</a></li></ul>
   </aside>
 
 </div>
