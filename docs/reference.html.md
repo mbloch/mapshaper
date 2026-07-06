@@ -52,6 +52,7 @@ mapshaper states.geojson -filter 'ST == "AK"' + name=alaska -o output/ target=*
 [-clip](#-clip)
 [-colorizer](#-colorizer)
 [-dashlines](#-dashlines)
+[-densify](#-densify)
 [-dissolve](#-dissolve)
 [-dissolve2](#-dissolve2)
 [-divide](#-divide)
@@ -580,6 +581,30 @@ Split lines into sections, with or without a gap.
 `scaled`        Scale dashes and gaps to prevent partial dashes
 `planar`        Use planar geometry
 `where=`        Use a JS expression to select a subset of features.
+
+### -densify
+
+Add vertices along the segments of polyline and polygon features, so that no
+segment is longer than a given interval. Densifying before reprojecting allows long straight segments to follow a curved path. Densifying can also improve the quality of geodesic buffers.
+
+New vertices are interpolated along one of three paths. For lat-long datasets the
+default is `geodesic`; for projected datasets the only supported mode is `planar`.
+
+`<interval>` or `interval=` Maximum segment length. For `geodesic` and `rhumb`
+interpolation this is a ground distance and may include units, for example
+`100km`, `500m`, `50mi` or `1000ft` (a value without units is interpreted as
+meters). For `planar` interpolation of a lat-long dataset the interval is in
+decimal degrees (for example `2` or `0.5deg`); for `planar` interpolation of a
+projected dataset it is in the layer's coordinate units.
+
+`geodesic` [lat-long, default] Interpolate along the ellipsoidal shortest path
+between two vertices.
+
+`rhumb` [lat-long] Interpolate along a rhumb line (a line of constant compass
+bearing).
+
+`planar` [default for projected data] Interpolate along a straight line in the
+layer's coordinate space.
 
 ### -dissolve
 

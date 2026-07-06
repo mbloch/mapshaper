@@ -24,11 +24,15 @@ Smoothed low-resolution contour lines:
 
 ## Prefiltering intricate detail
 
-Applying line smoothing to small, intricate features — jetties, narrow inlets, docks, spikes — can produce kinks or self-intersections. To prevent this, `-smooth` first removes detail below the smoothing scale.
+When line smoothing is applied to small, intricate features — jetties, narrow inlets, docks, spikes — the output can include kinks or self-intersections. To prevent this, `-smooth` first removes detail below the smoothing scale.
 
-In the example below, the small basin, dock outline, and other fine detail are dropped before smoothing.
+With the prefilter, the small basin, dock outline, and other fine detail are dropped before smoothing.
 
-![image](/docs/images/smooth-prefilter.png)
+![image](/docs/images/smooth-prefilter-on.png)
+
+Without the prefilter, the same details pull the smoothed line into unwanted bends and loops.
+
+![image](/docs/images/smooth-prefilter-off.png)
 
 Use `no-prefilter` to skip this step and smooth the input as-is.
 
@@ -36,13 +40,11 @@ Use `no-prefilter` to skip this step and smooth the input as-is.
 
 By default, `-smooth` protects long straight sections from being reshaped by smoothing.
 
-Here, the straight surveyed border is preserved while the riverine border it meets is smoothed:
+Here, the straight lines are preserved and the riverine section is smoothed:
 
 ![image](/docs/images/smooth-corners.png)
 
-Corner detection is scale-aware: it looks for changes of direction that are abrupt relative to the smoothing distance. It also becomes less sensitive on coarsely-sampled data, where curves are represented by fewer, longer segments.
-
-Use `corner-bias=` to tune corner sensitivity relative to this automatic baseline, or `no-corners` to smooth the whole line uniformly.
+Use `corner-bias=` to adjust the sensitivity of corner detection, or `no-corners` to smooth the entire line uniformly.
 
 ```bash
 # Round off corners instead of preserving them.

@@ -71,7 +71,7 @@
 <ul>
 <li>Geodesic buffers that cross the antimeridian are split and wrapped automatically. This support is still experimental.</li>
 <li>Geodesic buffer size is calculated using a spherical, not ellipsoidal, earth model, so it may not be accurate enough for GIS analysis.</li>
-<li>Geodesic buffers of lines and polygons cannot extend to the poles. There is an experimental <code>polar</code> option with partial support for growing polygon buffers that reach the poles.</li>
+<li>Polygon buffers that reach a pole use experimental polar handling. Geodesic line buffers cannot extend to the poles.</li>
 </ul>
 <p>See the <a href="/docs/reference.html#-buffer"><code>-buffer</code> reference</a> for the full set of options.</p>
 

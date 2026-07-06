@@ -31882,6 +31882,7 @@ ${svg}
         type: 'flag'
       })
       .option('polar', {
+        // special polar handling is activated automatically now, so I'm making this an undocumented option.
         // describe: 'keep lat-long buffers within the valid extent (+/-180, +/-90); for growing polygons sliced at the antimeridian/poles (erode not yet supported)',
         type: 'flag'
       })
@@ -32232,6 +32233,26 @@ ${svg}
         DEFAULT: true,
         describe: 'one or more assignment expressions (comma-sep.)'
       });
+
+    parser.command('densify')
+      .describe('add vertices along path segments so no segment exceeds an interval')
+      .option('interval', {
+        DEFAULT: true,
+        describe: 'max segment length in distance units or degrees for lat-long data in planar mode'
+      })
+      .option('geodesic', {
+        describe: '[lat-long, default] interpolate along the ellipsoidal shortest path',
+        type: 'flag'
+      })
+      .option('rhumb', {
+        describe: '[lat-long] interpolate along a rhumb line (constant bearing)',
+        type: 'flag'
+      })
+      .option('planar', {
+        describe: '[default for projected data] interpolate along a straight line in coordinate space',
+        type: 'flag'
+      })
+      .option('target', targetOpt);
 
     parser.command('dissolve')
       .describe('merge features within a layer (repairs polygon topology)')
@@ -43241,7 +43262,7 @@ ${svg}
     return x;
   }
 
-  var POLAR_BUFFER_MARGIN_DEGREES = 1e-4;
+  var POLAR_BUFFER_MARGIN_DEGREES$1 = 1e-4;
 
 
   // Returns a function for generating GeoJSON MultiPolygon geometries
@@ -43306,9 +43327,9 @@ ${svg}
           maxAbsLat = Math.max(maxAbsLat, Math.abs(latLngPathIter.y));
         }
       });
-      if (maxAbsLat + angularDist >= 90 - POLAR_BUFFER_MARGIN_DEGREES) {
+      if (maxAbsLat + angularDist >= 90 - POLAR_BUFFER_MARGIN_DEGREES$1) {
         stop$1('Buffering lat-long coordinates near the poles is not supported; ' +
-          'use the polar option for polygons sliced at the antimeridian/poles.');
+          'positive polygon buffers that reach a pole use experimental polar handling.');
       }
     }
 
@@ -47695,6 +47716,32 @@ ${svg}
 
   function makePolygonBuffer(lyr, dataset, opts) {
     var spherical = isLatLngCRS(getDatasetCRS(dataset));
+    if (spherical && sourceHasCollapsingBandEdge(lyr, dataset)) {
+      // A ring edge that jumps a full 360 degrees of longitude (e.g. -180 -> 180)
+      // with no intermediate vertices is ambiguous: the antimeridian unwrap reads
+      // its delta as 0, collapsing the edge's endpoints onto one meridian in
+      // Mercator, so the offset returns a sliver. (Pole-encircling rings and
+      // pole floors are exempt -- see sourceHasCollapsingBandEdge.) Warn rather
+      // than silently collapse; densifying the edge fixes it.
+      warn('A polygon edge spans the full longitude range with no intermediate vertices and will collapse when buffered. Add vertices along the edge (e.g. densify it) before buffering.');
+    }
+    if (spherical && !opts.polar && sourceHasPoleEnclosingRing(lyr, dataset)) {
+      // A lat-long polygon whose ring encircles a pole (e.g. an Antarctica shell)
+      // has no closed planar representation: projected to Mercator and unwrapped
+      // across the antimeridian, its endpoints land a full world-width apart, so
+      // the offset construction reads the ring as an open line and returns a
+      // two-sided ribbon instead of a grown polygon. Insert a floor along the
+      // enclosed pole line so the ring becomes an ordinary closed polygon (the same
+      // representation as a pole-touching shell) and route it through polar
+      // handling, which grows it correctly and clips the result to the world rect.
+      var normalized = buildPoleEnclosingNormalizedSource(lyr, dataset);
+      if (normalized) {
+        message('Buffering a polygon that encircles a pole; using experimental polar handling.');
+        lyr = normalized.layer;
+        dataset = normalized.dataset;
+        opts = Object.assign({}, opts, {polar: true});
+      }
+    }
     // debug-mosaic is implemented only for line buffers; for polygons it has no
     // handling and would leak into the per-shape dissolve and corrupt output, so
     // drop it and warn rather than silently mislead.
@@ -47751,6 +47798,17 @@ ${svg}
         splitAntimeridianBufferDataset(debugDataset);
       }
       return debugDataset;
+    }
+    if (spherical && !opts.polar && polygonBufferNeedsPolarMode(lyr, dataset, opts)) {
+      message('Using experimental polar buffer mode because the buffer reaches a pole.');
+      opts = Object.assign({}, opts, {polar: true});
+    } else if (spherical && !opts.polar && polygonBufferWrapsAntimeridian(lyr, dataset, opts)) {
+      // A ring that wraps the full longitude range (e.g. a band around the globe)
+      // becomes a world-wide rectangle in Mercator whose long straight edges the
+      // default offset construction collapses to thin seam caps. Route it through
+      // polar handling, which pins the seam edges and clips to the world rect.
+      message('Using experimental polar buffer mode because the geometry wraps around the antimeridian.');
+      opts = Object.assign({}, opts, {polar: true});
     }
     if (spherical && opts.polar) {
       // Pole/antimeridian-sliced polygons (grow only): keep the seam edges at the
@@ -48263,6 +48321,254 @@ ${svg}
 
   // World rectangle (lng/lat) the polar buffer is clipped to.
   var POLAR_WORLD_BBOX = [-180, -90, 180, 90];
+  var POLAR_BUFFER_MARGIN_DEGREES = 1e-4;
+
+  function polygonBufferNeedsPolarMode(lyr, dataset, opts) {
+    if (!dataset.arcs) return false;
+    var bounds = dataset.arcs.getBounds();
+    var maxAbsLat = Math.max(Math.abs(bounds.ymin), Math.abs(bounds.ymax));
+    var maxPositiveDistance = getMaxPositiveBufferDistance(lyr, dataset, opts);
+    if (!(maxPositiveDistance > 0)) return false;
+    return maxAbsLat + maxPositiveDistance / R$3 * R2D$1 >= 90 - POLAR_BUFFER_MARGIN_DEGREES;
+  }
+
+  function getMaxPositiveBufferDistance(lyr, dataset, opts) {
+    var distanceFn = getBufferDistanceFunction(lyr, dataset, opts);
+    var max = 0, hasNegative = false;
+    (lyr.shapes || []).forEach(function(shape, i) {
+      if (!shape) return;
+      var distance = distanceFn(i);
+      if (distance < 0) hasNegative = true;
+      if (distance > max) max = distance;
+    });
+    // Don't auto-enable polar mode for mixed or negative erode buffers: the polar
+    // construction keeps pole seams pinned and currently supports grow buffers only.
+    return hasNegative ? 0 : max;
+  }
+
+  // True for a positive (grow) buffer whose source has a ring that wraps the full
+  // longitude range (e.g. a band circling the globe). Such a ring is closed in
+  // unwrapped Mercator (net winding 0, unlike a pole-encircling ring) but its
+  // world-wide straight edges collapse in the default construction, so it needs
+  // the seam-pinning polar path.
+  function polygonBufferWrapsAntimeridian(lyr, dataset, opts) {
+    if (!(getMaxPositiveBufferDistance(lyr, dataset, opts) > 0)) return false;
+    return sourceHasFullLongitudeRing(lyr, dataset);
+  }
+
+  // Minimum unwrapped longitude span (of 360) for a ring to count as wrapping the
+  // full globe.
+  var FULL_LONGITUDE_MIN_SPAN = 350;
+
+  // Raw (not unwrapped) longitude delta, in degrees, above which an edge is treated
+  // as a full-turn "sweep" edge (endpoints on opposite antimeridian reps, e.g.
+  // -180 -> 180). A genuine antimeridian crossing has a much smaller raw delta.
+  var SWEEP_EDGE_MIN_RAW_DELTA = 359;
+  // A vertex within this many degrees of +/-90 counts as sitting on a pole.
+  var POLE_LATITUDE_EPS = 1e-3;
+  // A ring is pole-encircling (handled by normalization, not a collapsing band)
+  // when |net longitude winding| is near 360; treat anything below this as a band.
+  var NON_ENCIRCLING_WINDING_MAX = 180;
+
+  // True if a ring has a full-longitude "sweep" edge that will collapse when
+  // buffered: an edge whose raw longitude delta is ~360 and that does NOT sit on a
+  // pole (a sweep edge along a pole line is a single point, so it is harmless).
+  function ringHasCollapsingSweepEdge(ring) {
+    if (!ring) return false;
+    for (var i = 1; i < ring.length; i++) {
+      var a = ring[i - 1], b = ring[i];
+      if (Math.abs(b[0] - a[0]) < SWEEP_EDGE_MIN_RAW_DELTA) continue;
+      if (Math.abs(a[1]) < 90 - POLE_LATITUDE_EPS ||
+          Math.abs(b[1]) < 90 - POLE_LATITUDE_EPS) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  // True if the source has a ring that will collapse when buffered because a
+  // full-longitude edge has no intermediate vertices. Excludes pole-encircling
+  // rings (|net winding| ~ 360), which are normalized and buffer correctly, and
+  // sweep edges that lie on a pole line (harmless). Cheap O(1) gates first: the
+  // dataset must reach both antimeridian extremes; only full-width shapes are
+  // exported and scanned.
+  function sourceHasCollapsingBandEdge(lyr, dataset) {
+    if (!dataset.arcs) return false;
+    var b = dataset.arcs.getBounds();
+    if (b.xmin > -180 + 1e-6 || b.xmax < 180 - 1e-6) return false;
+    return (lyr.shapes || []).some(function(shape) {
+      if (!shape) return false;
+      var sb = dataset.arcs.getMultiShapeBounds(shape);
+      if (!sb || (sb.xmax - sb.xmin) < FULL_LONGITUDE_MIN_SPAN) return false;
+      return getPolygonMultiPolygonCoords(shape, dataset.arcs).some(function(rings) {
+        return rings.some(function(ring) {
+          return Math.abs(ringLngWinding(ring)) < NON_ENCIRCLING_WINDING_MAX &&
+            ringHasCollapsingSweepEdge(ring);
+        });
+      });
+    });
+  }
+
+  // True if any source ring spans (nearly) the full longitude range once its
+  // longitudes are unwrapped across the antimeridian. Uses the same cheap gates as
+  // sourceHasPoleEnclosingRing (dataset reaches the antimeridian; only wide shapes
+  // are exported and scanned). A small polygon that merely crosses the antimeridian
+  // unwraps to a narrow span and is correctly excluded.
+  function sourceHasFullLongitudeRing(lyr, dataset) {
+    if (!dataset.arcs) return false;
+    var b = dataset.arcs.getBounds();
+    if (b.xmin > -180 + 1e-6 && b.xmax < 180 - 1e-6) return false;
+    return (lyr.shapes || []).some(function(shape) {
+      if (!shape) return false;
+      var sb = dataset.arcs.getMultiShapeBounds(shape);
+      if (!sb || (sb.xmax - sb.xmin) < FULL_LONGITUDE_MIN_SPAN) return false;
+      return getPolygonMultiPolygonCoords(shape, dataset.arcs).some(function(rings) {
+        return rings.some(function(ring) {
+          return ringUnwrappedLngSpan(ring) >= FULL_LONGITUDE_MIN_SPAN;
+        });
+      });
+    });
+  }
+
+  // Longitude extent of a ring after unwrapping across the antimeridian (each edge's
+  // longitude delta reduced to (-180, 180], accumulated). A globe-wrapping ring
+  // spans ~360; a small antimeridian-crossing polygon spans only its true width.
+  function ringUnwrappedLngSpan(ring) {
+    if (!ring || ring.length < 2) return 0;
+    var x = 0, min = 0, max = 0;
+    for (var i = 1; i < ring.length; i++) {
+      var d = ring[i][0] - ring[i - 1][0];
+      if (d > 180) d -= 360;
+      else if (d < -180) d += 360;
+      x += d;
+      if (x < min) min = x;
+      if (x > max) max = x;
+    }
+    return max - min;
+  }
+
+  // A ring is at least this many degrees wide (full longitude range is 360) to be
+  // considered a possible pole-encircling ring; skips the coordinate export and
+  // winding scan for ordinary shapes.
+  var POLE_ENCLOSING_MIN_WIDTH = 350;
+  // A ring encircles a pole when its longitudes wind a full turn; accept a wide
+  // band around 360 so a jagged coastline that overshoots/undershoots still counts.
+  var POLE_WINDING_TOLERANCE = 90;
+
+  // True if any source ring encircles a pole (spans the full longitude range and
+  // its longitudes wind a full turn). Cheap O(1) guards first: the dataset must
+  // reach the antimeridian, and only shapes spanning nearly the whole longitude
+  // range are exported to coordinates and winding-tested.
+  function sourceHasPoleEnclosingRing(lyr, dataset) {
+    if (!dataset.arcs) return false;
+    var b = dataset.arcs.getBounds();
+    if (b.xmin > -180 + 1e-6 && b.xmax < 180 - 1e-6) return false;
+    return (lyr.shapes || []).some(function(shape) {
+      if (!shape) return false;
+      var sb = dataset.arcs.getMultiShapeBounds(shape);
+      if (!sb || (sb.xmax - sb.xmin) < POLE_ENCLOSING_MIN_WIDTH) return false;
+      return getPolygonMultiPolygonCoords(shape, dataset.arcs).some(function(rings) {
+        return rings.some(function(ring) { return ringEnclosedPole(ring) !== 0; });
+      });
+    });
+  }
+
+  // Net signed longitude winding of a lng/lat ring (sum of per-edge longitude
+  // deltas, each unwrapped to (-180, 180]). A ring that encircles a pole winds
+  // +/-360; an ordinary ring (including one that merely straddles the antimeridian)
+  // winds 0.
+  function ringLngWinding(ring) {
+    var net = 0;
+    for (var i = 1; i < ring.length; i++) {
+      var d = ring[i][0] - ring[i - 1][0];
+      if (d > 180) d -= 360;
+      else if (d < -180) d += 360;
+      net += d;
+    }
+    return net;
+  }
+
+  // Returns the pole latitude (+90 or -90) a ring encircles, or 0 if it does not.
+  // The enclosed pole is the one in the ring's hemisphere: a pole-hugging coastline
+  // lies entirely to one side of the equator, so the mean vertex latitude picks the
+  // correct pole (and is robust to the ambiguous which-pole guess in
+  // removePolygonCrosses).
+  function ringEnclosedPole(ring) {
+    if (!ring || ring.length < 4) return 0;
+    if (Math.abs(Math.abs(ringLngWinding(ring)) - 360) > POLE_WINDING_TOLERANCE) return 0;
+    var sum = 0;
+    for (var i = 0; i < ring.length; i++) sum += ring[i][1];
+    return sum / ring.length < 0 ? -90 : 90;
+  }
+
+  // Close a pole-encircling ring by walking a floor along the enclosed pole line
+  // from the ring's antimeridian exit meridian back to its entry meridian, turning
+  // it into an ordinary closed polygon (the pole-touching-shell representation).
+  // Handles the common single-antimeridian-crossing case; returns null otherwise so
+  // the caller leaves the ring unchanged.
+  function closeRingThroughPole(ring, poleLat) {
+    if (countCrosses(ring) === 0) return null;
+    var parts = splitPathAtAntimeridian(ring);
+    if (parts.length !== 1) return null; // only the single-crossing case
+    var part = parts[0];
+    var startX = part[0][0];
+    var endX = part[part.length - 1][0];
+    if (Math.abs(startX) !== 180 || Math.abs(endX) !== 180 || startX === endX) {
+      return null;
+    }
+    var out = part.map(function(p) { return p.concat(); });
+    poleLineVertices(endX, startX, poleLat).forEach(function(p) { out.push(p); });
+    out.push(part[0].concat()); // close the ring
+    return out;
+  }
+
+  // Vertices tracing the pole line from fromX to toX (both +/-180) at poleLat, with
+  // an intermediate point at least every 45 degrees so no segment spans more than a
+  // quarter turn (long near-pole segments confuse the Mercator offset joins).
+  function poleLineVertices(fromX, toX, poleLat) {
+    var step = fromX > toX ? -45 : 45;
+    var pts = [[fromX, poleLat]];
+    var x = fromX;
+    while (Math.abs(x - toX) > 45 + 1e-9) {
+      x += step;
+      pts.push([x, poleLat]);
+    }
+    pts.push([toX, poleLat]);
+    return pts;
+  }
+
+  // Rebuild the target layer with pole floors inserted into pole-encircling rings,
+  // so the buffer's polar path can grow them. Preserves shape order/count (so the
+  // per-shape distance function and data table stay aligned) and the source CRS.
+  // Returns {layer, dataset} or null if no ring was actually normalized.
+  function buildPoleEnclosingNormalizedSource(lyr, dataset) {
+    var changed = false;
+    var features = (lyr.shapes || []).map(function(shape) {
+      var geom = null;
+      if (shape) {
+        var polys = getPolygonMultiPolygonCoords(shape, dataset.arcs).map(function(rings) {
+          return rings.map(function(ring) {
+            var poleLat = ringEnclosedPole(ring);
+            if (!poleLat) return ring;
+            var closed = closeRingThroughPole(ring, poleLat);
+            if (closed) { changed = true; return closed; }
+            return ring;
+          });
+        });
+        if (polys.length > 0) geom = {type: 'MultiPolygon', coordinates: polys};
+      }
+      return {type: 'Feature', properties: null, geometry: geom};
+    });
+    if (!changed) return null;
+    var normDataset = importGeoJSON({type: 'FeatureCollection', features: features},
+      {type: 'polygon'});
+    if (!normDataset.arcs) return null;
+    normDataset.info = Object.assign({}, dataset.info);
+    var normLyr = normDataset.layers[0];
+    normLyr.name = lyr.name;
+    if (lyr.data) normLyr.data = lyr.data.clone();
+    return {layer: normLyr, dataset: normDataset};
+  }
 
   // Buffer a polygon sliced at the antimeridian (lng +/-180) and/or a pole
   // (lat +/-90): build the offset (the pole-touching source rings are added back,
@@ -55778,6 +56084,185 @@ ${svg}
       {no_warn: true, no_return: true});
     compiled(null, defs);
   };
+
+  cmd.densify = densifyCommandDataset;
+
+  // Add vertices along path segments so no segment is longer than an interval,
+  // interpolating along one of three paths:
+  //   geodesic (default for lat-long) - ellipsoidal shortest path
+  //   rhumb                           - constant bearing (loxodrome)
+  //   planar (default for projected)  - straight line in coordinate space
+  //
+  // interval= is a ground distance (with units, e.g. 100km) for geodesic/rhumb; for
+  // planar it is decimal degrees for lat-long data and coordinate units for
+  // projected data.
+  function densifyCommandDataset(dataset, opts, targetLayers) {
+    var crs = getDatasetCRS(dataset);
+    var spherical = isLatLngCRS(crs);
+    var mode = getDensifyMode(opts, spherical);
+    var interval = getDensifyInterval(opts, crs, mode, spherical);
+    var interpolate = getDensifyInterpolator(mode, crs);
+    var segmentLength = getSegmentLengthFunction(mode);
+    var targetSet = getTargetLayerSet(dataset, targetLayers);
+    // full-longitude edge detection only applies to lat-long data (projected
+    // coordinates routinely differ by more than 180 units)
+    var stats = spherical ? {undividedWideSegments: 0} : null;
+    var editor = new DatasetEditor(dataset);
+    dataset.layers.forEach(function(lyr) {
+      var densify = targetSet.indexOf(lyr) > -1 &&
+        (lyr.geometry_type == 'polygon' || lyr.geometry_type == 'polyline');
+      editor.editLayer(lyr, function(coords) {
+        if (lyr.geometry_type == 'point') return coords; // pass points through
+        return [densify ?
+          densifyPath(coords, interval, interpolate, segmentLength, stats) : coords];
+      });
+    });
+    editor.done();
+    if (stats && stats.undividedWideSegments > 0) {
+      message('Left ' + stats.undividedWideSegments + ' full-longitude edge(s) undivided; ' +
+        (mode == 'geodesic' ?
+          'geodesic interpolation can\'t subdivide an edge whose endpoints coincide on the globe -- use the rhumb or planar option.' :
+          'the endpoints coincide, so there is no path to interpolate along.'));
+    }
+  }
+
+  function getTargetLayerSet(dataset, targetLayers) {
+    return targetLayers && targetLayers.length ? targetLayers : dataset.layers;
+  }
+
+  function getDensifyMode(opts, spherical) {
+    var modes = ['geodesic', 'rhumb', 'planar'].filter(function(m) { return opts[m]; });
+    if (modes.length > 1) {
+      stop$1('Use only one of geodesic, rhumb or planar');
+    }
+    var mode = modes[0] || (spherical ? 'geodesic' : 'planar');
+    if (!spherical && mode != 'planar') {
+      stop$1('The ' + mode + ' option requires a lat-long dataset; use planar for projected data');
+    }
+    return mode;
+  }
+
+  function getDensifyInterval(opts, crs, mode, spherical) {
+    if (opts.interval === undefined) {
+      stop$1('Expected an interval= parameter');
+    }
+    var interval;
+    if (mode == 'planar' && spherical) {
+      // planar densification of lat-long data works in coordinate space, so the
+      // interval is in decimal degrees
+      interval = parseDegreeInterval(opts.interval);
+    } else if (mode == 'planar') {
+      // planar densification of projected data uses coordinate units
+      interval = convertIntervalParam(opts.interval, crs);
+    } else {
+      // geodesic/rhumb measure the interval as a ground distance in meters
+      interval = convertDistanceParam(opts.interval, crs);
+    }
+    if (interval > 0 === false) {
+      stop$1('Expected a positive interval, received:', opts.interval);
+    }
+    return interval;
+  }
+
+  // Parse a decimal-degrees interval: a bare number, or a number with an explicit
+  // degree unit (e.g. 5deg or 5°). Distance units (km, mi, ...) are rejected
+  // because planar interpolation of lat-long data measures the interval in
+  // coordinate (degree) space.
+  function parseDegreeInterval(opt) {
+    var str = String(opt).trim();
+    var match = /^(-?\d*\.?\d+)\s*(?:d|deg|degs|degree|degrees|°)?$/i.exec(str);
+    if (match) {
+      return Number(match[1]);
+    }
+    if (parseMeasure2(str).units) {
+      stop$1('Planar densification of a lat-long dataset uses decimal degrees; "' + opt +
+        '" has distance units -- use the geodesic or rhumb option for a ground distance.');
+    }
+    stop$1('Invalid interval:', opt);
+  }
+
+  function getDensifyInterpolator(mode, crs) {
+    if (mode == 'planar') {
+      return function(a, b, k) { return interpolatePoint2D(a[0], a[1], b[0], b[1], k); };
+    }
+    if (mode == 'rhumb') {
+      return interpolateRhumbPoint;
+    }
+    var geodesic = getInterpolationFunction(crs);
+    return function(a, b, k) { return geodesic(a[0], a[1], b[0], b[1], k); };
+  }
+
+  function getSegmentLengthFunction(mode) {
+    if (mode == 'planar') {
+      return function(a, b) {
+        return Math.sqrt((b[0] - a[0]) * (b[0] - a[0]) + (b[1] - a[1]) * (b[1] - a[1]));
+      };
+    }
+    if (mode == 'rhumb') {
+      return rhumbDistance;
+    }
+    return function(a, b) { return greatCircleDistance(a[0], a[1], b[0], b[1]); };
+  }
+
+  // Insert vertices so no segment exceeds the interval; endpoints are computed
+  // independently at even fractions so they land exactly on the interpolated path
+  // and no rounding drift accumulates.
+  function densifyPath(coords, interval, interpolate, segmentLength, stats) {
+    if (!coords || coords.length < 2) return coords;
+    var out = [coords[0]];
+    for (var i = 1; i < coords.length; i++) {
+      var a = coords[i - 1], b = coords[i];
+      var n = Math.ceil(segmentLength(a, b) / interval);
+      // A segment that spans a large longitude range but has ~zero length can't be
+      // subdivided by this mode (e.g. a -180 -> 180 edge has zero great-circle
+      // distance -- the endpoints are the same point on the globe).
+      if (n < 2 && stats && Math.abs(b[0] - a[0]) > 180) {
+        stats.undividedWideSegments++;
+      }
+      for (var j = 1; j < n; j++) {
+        var p = interpolate(a, b, j / n);
+        if (isFinite(p[0]) && isFinite(p[1])) out.push(p); // guard against degenerate math
+      }
+      out.push(b);
+    }
+    return out;
+  }
+
+  // Isometric ("Mercator-stretched") latitude in degrees-in; returns +/-Infinity at
+  // the poles.
+  function isometricLatitude(latDeg) {
+    return Math.log(Math.tan(Math.PI / 4 + latDeg * D2R$1 / 2));
+  }
+
+  // Rhumb-line (loxodrome) interpolation, fraction k of the way from A to B.
+  // Uses the RAW longitude delta so a -180 -> 180 edge fills the whole parallel
+  // (the constant-latitude case), rather than collapsing across the antimeridian.
+  function interpolateRhumbPoint(a, b, k) {
+    var lat1 = a[1], lat2 = b[1];
+    var dLng = b[0] - a[0]; // raw: preserves a full-longitude sweep
+    var lat = lat1 + (lat2 - lat1) * k; // rhumb distance is linear in latitude
+    var psi1 = isometricLatitude(lat1);
+    var psi2 = isometricLatitude(lat2);
+    // Longitude advances linearly with isometric latitude, except along a meridian
+    // (dLng == 0), a parallel (lat1 == lat2), or when an endpoint is at a pole
+    // (isometric latitude is infinite) -- in those cases longitude is linear in k
+    // (and the 0 * Infinity / Infinity would otherwise be NaN).
+    var lng = dLng !== 0 && isFinite(psi1) && isFinite(psi2) && psi2 !== psi1 ?
+      a[0] + dLng * (isometricLatitude(lat) - psi1) / (psi2 - psi1) :
+      a[0] + dLng * k;
+    return [lng, lat];
+  }
+
+  // Rhumb-line distance in meters, using the raw longitude delta (so a full-parallel
+  // sweep returns the parallel's length rather than 0).
+  function rhumbDistance(a, b) {
+    var phi1 = a[1] * D2R$1, phi2 = b[1] * D2R$1;
+    var dPhi = phi2 - phi1;
+    var dLambda = (b[0] - a[0]) * D2R$1; // raw
+    var dPsi = Math.log(Math.tan(Math.PI / 4 + phi2 / 2) / Math.tan(Math.PI / 4 + phi1 / 2));
+    var q = Math.abs(dPsi) > 1e-12 ? dPhi / dPsi : Math.cos(phi1);
+    return Math.sqrt(dPhi * dPhi + q * q * dLambda * dLambda) * R$3;
+  }
 
   // Variable name pattern. Matches simple identifiers: must start with a letter
   // or underscore, followed by letters, digits or underscores.
@@ -66821,6 +67306,9 @@ ${svg}
       } else if (name == 'define') {
         cmd.define(job.catalog, opts);
 
+      } else if (name == 'densify') {
+        cmd.densify(targetDataset, opts, targetLayers);
+
       } else if (name == 'vars') {
         cmd.vars(job, opts);
 
@@ -67161,7 +67649,7 @@ ${svg}
     return name == 'rectangle' || name == 'rectangles' || name == 'filter' && opts.cleanup;
   }
 
-  var version = "0.7.38";
+  var version = "0.7.39";
 
   // Parse command line args into commands and run them
   // Function takes an optional Node-style callback. A Promise is returned if no callback is given.
