@@ -2,7 +2,7 @@
 import api from '../mapshaper.js';
 import assert from 'assert';
 import fs from 'fs';
-import { cullSubTolerancePolygonArtifacts } from '../src/buffer/mapshaper-polygon-buffer.mjs';
+import { cullSubTolerancePolygonArtifacts, ringHasCollapsingSweepEdge } from '../src/buffer/mapshaper-polygon-buffer.mjs';
 import { importGeoJSON } from '../src/geojson/geojson-import.mjs';
 
 
@@ -2416,6 +2416,27 @@ describe('mapshaper-buffer.js', function () {
       assert(b[1] < -89.9, 'south edge should reach the pole: ' + b[1]);
     })
 
+    it('full-longitude band grows without the polar option', async function () {
+      // A band that wraps the whole globe (net winding 0, so not pole-encircling)
+      // used to collapse to thin seam caps in the default construction (its
+      // world-wide Mercator edges vanish). It must now auto-route to polar and
+      // grow, staying within the world rectangle.
+      var top = [], bot = [];
+      for (var x = -180; x <= 180; x += 10) top.push([x, 5]);
+      for (var x2 = 180; x2 >= -180; x2 -= 10) bot.push([x2, -5]);
+      var ring = top.concat(bot);
+      ring.push(ring[0].concat());
+      var band = {type: 'Feature', properties: {},
+        geometry: {type: 'Polygon', coordinates: [ring]}};
+      var files = {'a.json': JSON.stringify(band)};
+      var src = await sphericalArea('-i a.json', files);
+      var buf = await sphericalArea('-i a.json -buffer 100km', files);
+      assert(buf > src, 'buffer area ' + buf + ' should exceed source ' + src);
+      var b = await bufferBounds('-i a.json -buffer 100km', files);
+      assert(b[0] >= -180 - 1e-6 && b[2] <= 180 + 1e-6, 'lng in [-180,180]: ' + b);
+      assert(b[1] > -10 && b[3] < 10, 'band should not blow up to the poles: ' + b);
+    })
+
     it('no-op: polar matches the plain buffer for a mid-latitude polygon', async function () {
       var poly = {type: 'Feature', properties: {}, geometry: {type: 'Polygon',
         coordinates: [[[0, 40], [20, 40], [20, 50], [0, 50], [0, 40]]]}};
@@ -2555,6 +2576,32 @@ describe('mapshaper-buffer.js', function () {
     })
   })
 
+})
+
+describe('ringHasCollapsingSweepEdge()', function () {
+  it('flags a full-longitude sweep edge at a non-pole latitude', function () {
+    var band = [[-180, -40], [180, -40], [180, -30], [-180, -30], [-180, -40]];
+    assert.strictEqual(ringHasCollapsingSweepEdge(band), true);
+  })
+  it('does not flag a sweep edge that sits on a pole line', function () {
+    // Down one seam, along the pole (a single -180 -> 180 sweep edge at lat -90,
+    // harmless because the pole is a point), up the other seam, back via ordinary
+    // <90-degree steps (not sweep edges).
+    var poleFloor = [[-180, -85], [-180, -90], [180, -90], [180, -85],
+      [90, -85], [0, -85], [-90, -85], [-180, -85]];
+    assert.strictEqual(ringHasCollapsingSweepEdge(poleFloor), false);
+  })
+  it('does not flag an ordinary antimeridian crossing (small raw delta)', function () {
+    var cross = [[170, -10], [-170, -10], [-170, 10], [170, 10], [170, -10]];
+    assert.strictEqual(ringHasCollapsingSweepEdge(cross), false);
+  })
+  it('does not flag a densified full-longitude band (no single sweep edge)', function () {
+    var ring = [];
+    for (var x = -180; x <= 180; x += 10) ring.push([x, -30]);
+    for (var x2 = 180; x2 >= -180; x2 -= 10) ring.push([x2, -40]);
+    ring.push(ring[0].concat());
+    assert.strictEqual(ringHasCollapsingSweepEdge(ring), false);
+  })
 })
 
 function bufferBounds2(geom) {
