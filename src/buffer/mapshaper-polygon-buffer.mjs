@@ -35,6 +35,15 @@ import { message, stop, warn } from '../utils/mapshaper-logging';
 
 export function makePolygonBuffer(lyr, dataset, opts) {
   var spherical = isLatLngCRS(getDatasetCRS(dataset));
+  if (spherical && sourceHasCollapsingBandEdge(lyr, dataset)) {
+    // A ring edge that jumps a full 360 degrees of longitude (e.g. -180 -> 180)
+    // with no intermediate vertices is ambiguous: the antimeridian unwrap reads
+    // its delta as 0, collapsing the edge's endpoints onto one meridian in
+    // Mercator, so the offset returns a sliver. (Pole-encircling rings and
+    // pole floors are exempt -- see sourceHasCollapsingBandEdge.) Warn rather
+    // than silently collapse; densifying the edge fixes it.
+    warn('A polygon edge spans the full longitude range with no intermediate vertices and will collapse when buffered. Add vertices along the edge (e.g. densify it) before buffering.');
+  }
   if (spherical && !opts.polar && sourceHasPoleEnclosingRing(lyr, dataset)) {
     // A lat-long polygon whose ring encircles a pole (e.g. an Antarctica shell)
     // has no closed planar representation: projected to Mercator and unwrapped
@@ -111,6 +120,13 @@ export function makePolygonBuffer(lyr, dataset, opts) {
   }
   if (spherical && !opts.polar && polygonBufferNeedsPolarMode(lyr, dataset, opts)) {
     message('Using experimental polar buffer mode because the buffer reaches a pole.');
+    opts = Object.assign({}, opts, {polar: true});
+  } else if (spherical && !opts.polar && polygonBufferWrapsAntimeridian(lyr, dataset, opts)) {
+    // A ring that wraps the full longitude range (e.g. a band around the globe)
+    // becomes a world-wide rectangle in Mercator whose long straight edges the
+    // default offset construction collapses to thin seam caps. Route it through
+    // polar handling, which pins the seam edges and clips to the world rect.
+    message('Using experimental polar buffer mode because the geometry wraps around the antimeridian.');
     opts = Object.assign({}, opts, {polar: true});
   }
   if (spherical && opts.polar) {
@@ -647,6 +663,107 @@ function getMaxPositiveBufferDistance(lyr, dataset, opts) {
   // Don't auto-enable polar mode for mixed or negative erode buffers: the polar
   // construction keeps pole seams pinned and currently supports grow buffers only.
   return hasNegative ? 0 : max;
+}
+
+// True for a positive (grow) buffer whose source has a ring that wraps the full
+// longitude range (e.g. a band circling the globe). Such a ring is closed in
+// unwrapped Mercator (net winding 0, unlike a pole-encircling ring) but its
+// world-wide straight edges collapse in the default construction, so it needs
+// the seam-pinning polar path.
+function polygonBufferWrapsAntimeridian(lyr, dataset, opts) {
+  if (!(getMaxPositiveBufferDistance(lyr, dataset, opts) > 0)) return false;
+  return sourceHasFullLongitudeRing(lyr, dataset);
+}
+
+// Minimum unwrapped longitude span (of 360) for a ring to count as wrapping the
+// full globe.
+var FULL_LONGITUDE_MIN_SPAN = 350;
+
+// Raw (not unwrapped) longitude delta, in degrees, above which an edge is treated
+// as a full-turn "sweep" edge (endpoints on opposite antimeridian reps, e.g.
+// -180 -> 180). A genuine antimeridian crossing has a much smaller raw delta.
+var SWEEP_EDGE_MIN_RAW_DELTA = 359;
+// A vertex within this many degrees of +/-90 counts as sitting on a pole.
+var POLE_LATITUDE_EPS = 1e-3;
+// A ring is pole-encircling (handled by normalization, not a collapsing band)
+// when |net longitude winding| is near 360; treat anything below this as a band.
+var NON_ENCIRCLING_WINDING_MAX = 180;
+
+// True if a ring has a full-longitude "sweep" edge that will collapse when
+// buffered: an edge whose raw longitude delta is ~360 and that does NOT sit on a
+// pole (a sweep edge along a pole line is a single point, so it is harmless).
+export function ringHasCollapsingSweepEdge(ring) {
+  if (!ring) return false;
+  for (var i = 1; i < ring.length; i++) {
+    var a = ring[i - 1], b = ring[i];
+    if (Math.abs(b[0] - a[0]) < SWEEP_EDGE_MIN_RAW_DELTA) continue;
+    if (Math.abs(a[1]) < 90 - POLE_LATITUDE_EPS ||
+        Math.abs(b[1]) < 90 - POLE_LATITUDE_EPS) {
+      return true;
+    }
+  }
+  return false;
+}
+
+// True if the source has a ring that will collapse when buffered because a
+// full-longitude edge has no intermediate vertices. Excludes pole-encircling
+// rings (|net winding| ~ 360), which are normalized and buffer correctly, and
+// sweep edges that lie on a pole line (harmless). Cheap O(1) gates first: the
+// dataset must reach both antimeridian extremes; only full-width shapes are
+// exported and scanned.
+function sourceHasCollapsingBandEdge(lyr, dataset) {
+  if (!dataset.arcs) return false;
+  var b = dataset.arcs.getBounds();
+  if (b.xmin > -180 + 1e-6 || b.xmax < 180 - 1e-6) return false;
+  return (lyr.shapes || []).some(function(shape) {
+    if (!shape) return false;
+    var sb = dataset.arcs.getMultiShapeBounds(shape);
+    if (!sb || (sb.xmax - sb.xmin) < FULL_LONGITUDE_MIN_SPAN) return false;
+    return getPolygonMultiPolygonCoords(shape, dataset.arcs).some(function(rings) {
+      return rings.some(function(ring) {
+        return Math.abs(ringLngWinding(ring)) < NON_ENCIRCLING_WINDING_MAX &&
+          ringHasCollapsingSweepEdge(ring);
+      });
+    });
+  });
+}
+
+// True if any source ring spans (nearly) the full longitude range once its
+// longitudes are unwrapped across the antimeridian. Uses the same cheap gates as
+// sourceHasPoleEnclosingRing (dataset reaches the antimeridian; only wide shapes
+// are exported and scanned). A small polygon that merely crosses the antimeridian
+// unwraps to a narrow span and is correctly excluded.
+function sourceHasFullLongitudeRing(lyr, dataset) {
+  if (!dataset.arcs) return false;
+  var b = dataset.arcs.getBounds();
+  if (b.xmin > -180 + 1e-6 && b.xmax < 180 - 1e-6) return false;
+  return (lyr.shapes || []).some(function(shape) {
+    if (!shape) return false;
+    var sb = dataset.arcs.getMultiShapeBounds(shape);
+    if (!sb || (sb.xmax - sb.xmin) < FULL_LONGITUDE_MIN_SPAN) return false;
+    return getPolygonMultiPolygonCoords(shape, dataset.arcs).some(function(rings) {
+      return rings.some(function(ring) {
+        return ringUnwrappedLngSpan(ring) >= FULL_LONGITUDE_MIN_SPAN;
+      });
+    });
+  });
+}
+
+// Longitude extent of a ring after unwrapping across the antimeridian (each edge's
+// longitude delta reduced to (-180, 180], accumulated). A globe-wrapping ring
+// spans ~360; a small antimeridian-crossing polygon spans only its true width.
+function ringUnwrappedLngSpan(ring) {
+  if (!ring || ring.length < 2) return 0;
+  var x = 0, min = 0, max = 0;
+  for (var i = 1; i < ring.length; i++) {
+    var d = ring[i][0] - ring[i - 1][0];
+    if (d > 180) d -= 360;
+    else if (d < -180) d += 360;
+    x += d;
+    if (x < min) min = x;
+    if (x > max) max = x;
+  }
+  return max - min;
 }
 
 // A ring is at least this many degrees wide (full longitude range is 360) to be
