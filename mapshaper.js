@@ -48266,8 +48266,25 @@ ${svg}
 
   // Buffer a polygon sliced at the antimeridian (lng +/-180) and/or a pole
   // (lat +/-90): build the offset (the pole-touching source rings are added back,
-  // see makePolygonBufferGeoJSON), dissolve, and clip to the world rectangle
-  // instead of wrapping at the antimeridian.
+  // see makePolygonBufferGeoJSON), dissolve, and constrain the result to the world
+  // rectangle. The overshoot past the antimeridian is handled one of two ways,
+  // depending on the source:
+  //
+  //  - A pole-abutting shape that does NOT span the antimeridian (e.g. a cap slice
+  //    reaching the pole from a limited range of longitudes) genuinely wraps when
+  //    grown: a fixed ground distance spans an unbounded longitude range as
+  //    latitude approaches +/-90, so the offset ring's near-pole corners swing all
+  //    the way across the antimeridian. That wrapped part is real coverage, so it
+  //    is folded back into [-180,180] by an antimeridian split; a plain world-rect
+  //    clip would discard it and drop the whole shape.
+  //
+  //  - A shape whose source already sits on the antimeridian seam (an
+  //    Antarctica-style shell spanning +/-180) only spills a thin band past the
+  //    seam, and that band is redundant -- the shell already covers those
+  //    longitudes -- so it is clipped off to keep the seam pinned to the extent.
+  //    Wrapping such a full-width ring instead mangles it (the near-global ring
+  //    reads as an antimeridian crossing and gets cut apart), so the split is
+  //    skipped for these.
   //
   // Only positive (grow) distances are supported. A negative (erode) buffer would
   // have to keep the artificial seam edges pinned to the extent while only the
@@ -48285,9 +48302,21 @@ ${svg}
       if (output.dissolveAfterSplit) {
         dissolveBufferDataset2(dataset2, opts);
       }
+      if (!sourceReachesAntimeridian(dataset)) {
+        splitAntimeridianBufferDataset(dataset2);
+      }
       clipDatasetToWorldRect(dataset2);
     }
     return dataset2;
+  }
+
+  // True if the source geometry reaches the antimeridian (lng +/-180), i.e. it is
+  // an antimeridian-sliced shell whose seam edges the polar buffer should pin to
+  // the extent rather than wrap (see makePolarPolygonBuffer).
+  function sourceReachesAntimeridian(dataset) {
+    if (!dataset.arcs) return false;
+    var b = dataset.arcs.getBounds();
+    return b.xmin <= -180 + 1e-3 || b.xmax >= 180 - 1e-3;
   }
 
   function polarBufferHasNegativeDistance(lyr, dataset, opts) {
@@ -48378,14 +48407,33 @@ ${svg}
   // Combine a buffer geometry with the source polygon's rings into one
   // MultiPolygon (overlapping); a later union dissolve merges them. Used by the
   // polar option to keep the polar interior that the pole-pinched ribbon drops.
+  //
+  // Only the source parts that actually reach a pole are appended. A multipolygon
+  // feature can mix a pole-touching part with mid-latitude parts (e.g. a lake-
+  // holed rectangle far from the pole in the same feature); those mid-latitude
+  // parts buffer correctly on their own, and re-injecting their source rings would
+  // override the eroded holes the offset construction already produced (the source
+  // holes come in at full, un-eroded size and win the union), leaving the holes
+  // unbuffered.
   function appendSourceRings(geom, shape, arcs) {
-    var sourceCoords = getPolygonMultiPolygonCoords(shape, arcs);
+    var sourceCoords = getPolygonMultiPolygonCoords(shape, arcs)
+      .filter(polyReachesPole);
     var coords = [];
     if (geom && geom.type == 'MultiPolygon') coords = coords.concat(geom.coordinates);
     else if (geom && geom.type == 'Polygon') coords.push(geom.coordinates);
     coords = coords.concat(sourceCoords);
     if (coords.length === 0) return null;
     return {type: 'MultiPolygon', coordinates: coords};
+  }
+
+  // True if any vertex of a MultiPolygon part (an array of [x,y] rings) sits at a
+  // pole (lat +/-90).
+  function polyReachesPole(poly) {
+    return poly.some(function(ring) {
+      return ring.some(function(p) {
+        return p[1] >= 90 - 1e-3 || p[1] <= -90 + 1e-3;
+      });
+    });
   }
 
   function getPolygonRingBufferMaker(dataset, opts, side, winding) {
