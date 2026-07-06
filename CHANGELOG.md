@@ -1,5 +1,8 @@
+v0.7.39
+* Added the `-densify` command, for adding vertices along path segments using geodesic, rhumb or planar interpolation.
+* Improved support for polar and antimeridian-spanning buffers.
+
 v0.7.38
-* Fixed `-buffer` returning a thin ribbon instead of a grown polygon for a lat-long polygon whose ring encircles a pole (e.g. an Antarctica shell that stops short of the pole).
 * `-smooth` now thins vertices along straight/low-curvature runs, giving the whole output more consistent vertex density.
 * Improvements to `-smooth` corner detection, including automatic adjustment of corner-detection sensitivity for geometry that is sparse relative to the smoothing distance, which previously produced spurious corners.
 
