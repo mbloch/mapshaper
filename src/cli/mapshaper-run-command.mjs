@@ -34,6 +34,7 @@ import '../commands/mapshaper-comment';
 import '../commands/mapshaper-dashlines';
 import '../commands/mapshaper-data-fill';
 import '../commands/mapshaper-define';
+import '../commands/mapshaper-densify-command';
 import '../commands/mapshaper-vars';
 import '../commands/mapshaper-dissolve';
 import '../commands/mapshaper-dissolve2';
@@ -254,6 +255,9 @@ export async function runCommand(command, job) {
 
     } else if (name == 'define') {
       cmd.define(job.catalog, opts);
+
+    } else if (name == 'densify') {
+      cmd.densify(targetDataset, opts, targetLayers);
 
     } else if (name == 'vars') {
       cmd.vars(job, opts);

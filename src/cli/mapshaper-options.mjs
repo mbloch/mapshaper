@@ -882,6 +882,26 @@ export function getOptionParser() {
       describe: 'one or more assignment expressions (comma-sep.)'
     });
 
+  parser.command('densify')
+    .describe('add vertices along path segments so no segment exceeds an interval')
+    .option('interval', {
+      DEFAULT: true,
+      describe: 'max segment length in distance units or degrees for lat-long data in planar mode'
+    })
+    .option('geodesic', {
+      describe: '[lat-long, default] interpolate along the ellipsoidal shortest path',
+      type: 'flag'
+    })
+    .option('rhumb', {
+      describe: '[lat-long] interpolate along a rhumb line (constant bearing)',
+      type: 'flag'
+    })
+    .option('planar', {
+      describe: '[default for projected data] interpolate along a straight line in coordinate space',
+      type: 'flag'
+    })
+    .option('target', targetOpt);
+
   parser.command('dissolve')
     .describe('merge features within a layer (repairs polygon topology)')
     .option('field', {}) // old arg handled by dissolve function
