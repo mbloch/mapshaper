@@ -2404,6 +2404,71 @@ describe('mapshaper-buffer.js', function () {
       var pol = await sphericalArea('-i m.json -buffer 100km polar', files);
       assert(Math.abs(pol - def) / def < 1e-9, 'polar ' + pol + ' vs plain ' + def);
     })
+
+    // Regression: one multipolygon feature that mixes a pole-abutting part (a
+    // rectangle whose south edge sits on the pole, spanning only part of the
+    // longitude range) with a holed mid-latitude part (a rectangle enclosing the
+    // Great Lakes). Two bugs used to appear together:
+    //  - the pole-abutting part vanished: growing it swings its near-pole corners
+    //    past the antimeridian, and the world-rect clip discarded the wrapped
+    //    part instead of folding it back into [-180,180];
+    //  - the mid-latitude holes came out unbuffered: the whole feature was
+    //    treated as pole-touching, so ALL its source rings (holes included) were
+    //    re-injected at full size and overrode the eroded holes.
+    var polarMixed = JSON.parse(
+      fs.readFileSync('test/data/features/buffer/y_polar_error.json', 'utf8'));
+
+    function geojsonOut(cmd, files) {
+      return new Promise(function (resolve, reject) {
+        api.applyCommands(cmd + ' -o format=geojson out.json', files, function (err, o) {
+          if (err) return reject(err);
+          resolve(JSON.parse(String(o['out.json'])));
+        });
+      });
+    }
+
+    function ringArea(r) {
+      var s = 0;
+      for (var i = 0, j = r.length - 1; i < r.length; j = i++) {
+        s += (r[j][0] + r[i][0]) * (r[j][1] - r[i][1]);
+      }
+      return s / 2;
+    }
+
+    // Total absolute area (deg^2) of every interior (hole) ring in a GeoJSON.
+    function interiorRingArea(geojson) {
+      var total = 0;
+      collect(geojson);
+      return total;
+      function collect(o) {
+        if (!o) return;
+        if (o.type == 'FeatureCollection') o.features.forEach(collect);
+        else if (o.type == 'GeometryCollection') o.geometries.forEach(collect);
+        else if (o.type == 'Feature') collect(o.geometry);
+        else if (o.type == 'Polygon') eachPoly(o.coordinates);
+        else if (o.type == 'MultiPolygon') o.coordinates.forEach(eachPoly);
+      }
+      function eachPoly(poly) {
+        poly.forEach(function (ring, i) { if (i > 0) total += Math.abs(ringArea(ring)); });
+      }
+    }
+
+    it('mixed pole + holed feature: pole part survives (wrapped) and holes buffer', async function () {
+      var files = {'m.json': JSON.stringify(polarMixed)};
+      var b = await bufferBounds('-i m.json -buffer 5km polar', files);
+      // the pole-abutting part is present (reaches the south pole) ...
+      assert(b[1] < -89.9, 'south edge should reach the pole: ' + b);
+      // ... folded back into the valid extent rather than discarded by the clip
+      assert(b[0] >= -180 - 1e-6 && b[2] <= 180 + 1e-6, 'lng in [-180,180]: ' + b);
+      assert(b[3] <= 90 + 1e-6, 'lat <= 90: ' + b);
+      // the Great Lakes holes are eroded by the grow, so total hole area shrinks
+      var out = await geojsonOut('-i m.json -buffer 5km polar', files);
+      var srcHoles = interiorRingArea(polarMixed);
+      var bufHoles = interiorRingArea(out);
+      assert(bufHoles > 0, 'holes should survive: ' + bufHoles);
+      assert(bufHoles < srcHoles,
+        'hole area should shrink (eroded): buffered ' + bufHoles + ' vs source ' + srcHoles);
+    })
   })
 
   describe('two-sided buffer of closed-ring polylines', function () {
