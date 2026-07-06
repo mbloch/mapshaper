@@ -530,6 +530,7 @@ export function getOptionParser() {
       type: 'flag'
     })
     .option('polar', {
+      // special polar handling is activated automatically now, so I'm making this an undocumented option.
       // describe: 'keep lat-long buffers within the valid extent (+/-180, +/-90); for growing polygons sliced at the antimeridian/poles (erode not yet supported)',
       type: 'flag'
     })

@@ -20,6 +20,7 @@ import { getPathCentroid } from '../points/mapshaper-polygon-centroid';
 import { R, R2D, pointSegDistSq2 } from '../geom/mapshaper-basic-geom';
 import { getPointToShapeDistance } from '../geom/mapshaper-path-geom';
 import { getShapeArea, getPlanarPathArea } from '../geom/mapshaper-polygon-geom';
+import { countCrosses, splitPathAtAntimeridian } from '../geom/mapshaper-antimeridian-cuts';
 import { exportPathData } from '../paths/mapshaper-path-export';
 import { reversePath } from '../paths/mapshaper-path-utils';
 import { getRingIntersector } from '../paths/mapshaper-pathfinder';
@@ -30,10 +31,27 @@ import { MosaicIndex } from '../polygons/mapshaper-mosaic-index';
 import { getArcClassifier } from '../topology/mapshaper-arc-classifier';
 import { findAnchorPoint } from '../points/mapshaper-anchor-points';
 import { profileStart, profileEnd } from '../utils/mapshaper-profile';
-import { stop, warn } from '../utils/mapshaper-logging';
+import { message, stop, warn } from '../utils/mapshaper-logging';
 
 export function makePolygonBuffer(lyr, dataset, opts) {
   var spherical = isLatLngCRS(getDatasetCRS(dataset));
+  if (spherical && !opts.polar && sourceHasPoleEnclosingRing(lyr, dataset)) {
+    // A lat-long polygon whose ring encircles a pole (e.g. an Antarctica shell)
+    // has no closed planar representation: projected to Mercator and unwrapped
+    // across the antimeridian, its endpoints land a full world-width apart, so
+    // the offset construction reads the ring as an open line and returns a
+    // two-sided ribbon instead of a grown polygon. Insert a floor along the
+    // enclosed pole line so the ring becomes an ordinary closed polygon (the same
+    // representation as a pole-touching shell) and route it through polar
+    // handling, which grows it correctly and clips the result to the world rect.
+    var normalized = buildPoleEnclosingNormalizedSource(lyr, dataset);
+    if (normalized) {
+      message('Buffering a polygon that encircles a pole; using experimental polar handling.');
+      lyr = normalized.layer;
+      dataset = normalized.dataset;
+      opts = Object.assign({}, opts, {polar: true});
+    }
+  }
   // debug-mosaic is implemented only for line buffers; for polygons it has no
   // handling and would leak into the per-shape dissolve and corrupt output, so
   // drop it and warn rather than silently mislead.
@@ -90,6 +108,10 @@ export function makePolygonBuffer(lyr, dataset, opts) {
       splitAntimeridianBufferDataset(debugDataset);
     }
     return debugDataset;
+  }
+  if (spherical && !opts.polar && polygonBufferNeedsPolarMode(lyr, dataset, opts)) {
+    message('Using experimental polar buffer mode because the buffer reaches a pole.');
+    opts = Object.assign({}, opts, {polar: true});
   }
   if (spherical && opts.polar) {
     // Pole/antimeridian-sliced polygons (grow only): keep the seam edges at the
@@ -602,6 +624,153 @@ function subtractHolesFromOuter(outerCoords, holeCoords) {
 
 // World rectangle (lng/lat) the polar buffer is clipped to.
 var POLAR_WORLD_BBOX = [-180, -90, 180, 90];
+var POLAR_BUFFER_MARGIN_DEGREES = 1e-4;
+
+function polygonBufferNeedsPolarMode(lyr, dataset, opts) {
+  if (!dataset.arcs) return false;
+  var bounds = dataset.arcs.getBounds();
+  var maxAbsLat = Math.max(Math.abs(bounds.ymin), Math.abs(bounds.ymax));
+  var maxPositiveDistance = getMaxPositiveBufferDistance(lyr, dataset, opts);
+  if (!(maxPositiveDistance > 0)) return false;
+  return maxAbsLat + maxPositiveDistance / R * R2D >= 90 - POLAR_BUFFER_MARGIN_DEGREES;
+}
+
+function getMaxPositiveBufferDistance(lyr, dataset, opts) {
+  var distanceFn = getBufferDistanceFunction(lyr, dataset, opts);
+  var max = 0, hasNegative = false;
+  (lyr.shapes || []).forEach(function(shape, i) {
+    if (!shape) return;
+    var distance = distanceFn(i);
+    if (distance < 0) hasNegative = true;
+    if (distance > max) max = distance;
+  });
+  // Don't auto-enable polar mode for mixed or negative erode buffers: the polar
+  // construction keeps pole seams pinned and currently supports grow buffers only.
+  return hasNegative ? 0 : max;
+}
+
+// A ring is at least this many degrees wide (full longitude range is 360) to be
+// considered a possible pole-encircling ring; skips the coordinate export and
+// winding scan for ordinary shapes.
+var POLE_ENCLOSING_MIN_WIDTH = 350;
+// A ring encircles a pole when its longitudes wind a full turn; accept a wide
+// band around 360 so a jagged coastline that overshoots/undershoots still counts.
+var POLE_WINDING_TOLERANCE = 90;
+
+// True if any source ring encircles a pole (spans the full longitude range and
+// its longitudes wind a full turn). Cheap O(1) guards first: the dataset must
+// reach the antimeridian, and only shapes spanning nearly the whole longitude
+// range are exported to coordinates and winding-tested.
+function sourceHasPoleEnclosingRing(lyr, dataset) {
+  if (!dataset.arcs) return false;
+  var b = dataset.arcs.getBounds();
+  if (b.xmin > -180 + 1e-6 && b.xmax < 180 - 1e-6) return false;
+  return (lyr.shapes || []).some(function(shape) {
+    if (!shape) return false;
+    var sb = dataset.arcs.getMultiShapeBounds(shape);
+    if (!sb || (sb.xmax - sb.xmin) < POLE_ENCLOSING_MIN_WIDTH) return false;
+    return getPolygonMultiPolygonCoords(shape, dataset.arcs).some(function(rings) {
+      return rings.some(function(ring) { return ringEnclosedPole(ring) !== 0; });
+    });
+  });
+}
+
+// Net signed longitude winding of a lng/lat ring (sum of per-edge longitude
+// deltas, each unwrapped to (-180, 180]). A ring that encircles a pole winds
+// +/-360; an ordinary ring (including one that merely straddles the antimeridian)
+// winds 0.
+function ringLngWinding(ring) {
+  var net = 0;
+  for (var i = 1; i < ring.length; i++) {
+    var d = ring[i][0] - ring[i - 1][0];
+    if (d > 180) d -= 360;
+    else if (d < -180) d += 360;
+    net += d;
+  }
+  return net;
+}
+
+// Returns the pole latitude (+90 or -90) a ring encircles, or 0 if it does not.
+// The enclosed pole is the one in the ring's hemisphere: a pole-hugging coastline
+// lies entirely to one side of the equator, so the mean vertex latitude picks the
+// correct pole (and is robust to the ambiguous which-pole guess in
+// removePolygonCrosses).
+function ringEnclosedPole(ring) {
+  if (!ring || ring.length < 4) return 0;
+  if (Math.abs(Math.abs(ringLngWinding(ring)) - 360) > POLE_WINDING_TOLERANCE) return 0;
+  var sum = 0;
+  for (var i = 0; i < ring.length; i++) sum += ring[i][1];
+  return sum / ring.length < 0 ? -90 : 90;
+}
+
+// Close a pole-encircling ring by walking a floor along the enclosed pole line
+// from the ring's antimeridian exit meridian back to its entry meridian, turning
+// it into an ordinary closed polygon (the pole-touching-shell representation).
+// Handles the common single-antimeridian-crossing case; returns null otherwise so
+// the caller leaves the ring unchanged.
+function closeRingThroughPole(ring, poleLat) {
+  if (countCrosses(ring) === 0) return null;
+  var parts = splitPathAtAntimeridian(ring);
+  if (parts.length !== 1) return null; // only the single-crossing case
+  var part = parts[0];
+  var startX = part[0][0];
+  var endX = part[part.length - 1][0];
+  if (Math.abs(startX) !== 180 || Math.abs(endX) !== 180 || startX === endX) {
+    return null;
+  }
+  var out = part.map(function(p) { return p.concat(); });
+  poleLineVertices(endX, startX, poleLat).forEach(function(p) { out.push(p); });
+  out.push(part[0].concat()); // close the ring
+  return out;
+}
+
+// Vertices tracing the pole line from fromX to toX (both +/-180) at poleLat, with
+// an intermediate point at least every 45 degrees so no segment spans more than a
+// quarter turn (long near-pole segments confuse the Mercator offset joins).
+function poleLineVertices(fromX, toX, poleLat) {
+  var step = fromX > toX ? -45 : 45;
+  var pts = [[fromX, poleLat]];
+  var x = fromX;
+  while (Math.abs(x - toX) > 45 + 1e-9) {
+    x += step;
+    pts.push([x, poleLat]);
+  }
+  pts.push([toX, poleLat]);
+  return pts;
+}
+
+// Rebuild the target layer with pole floors inserted into pole-encircling rings,
+// so the buffer's polar path can grow them. Preserves shape order/count (so the
+// per-shape distance function and data table stay aligned) and the source CRS.
+// Returns {layer, dataset} or null if no ring was actually normalized.
+function buildPoleEnclosingNormalizedSource(lyr, dataset) {
+  var changed = false;
+  var features = (lyr.shapes || []).map(function(shape) {
+    var geom = null;
+    if (shape) {
+      var polys = getPolygonMultiPolygonCoords(shape, dataset.arcs).map(function(rings) {
+        return rings.map(function(ring) {
+          var poleLat = ringEnclosedPole(ring);
+          if (!poleLat) return ring;
+          var closed = closeRingThroughPole(ring, poleLat);
+          if (closed) { changed = true; return closed; }
+          return ring;
+        });
+      });
+      if (polys.length > 0) geom = {type: 'MultiPolygon', coordinates: polys};
+    }
+    return {type: 'Feature', properties: null, geometry: geom};
+  });
+  if (!changed) return null;
+  var normDataset = importGeoJSON({type: 'FeatureCollection', features: features},
+    {type: 'polygon'});
+  if (!normDataset.arcs) return null;
+  normDataset.info = Object.assign({}, dataset.info);
+  var normLyr = normDataset.layers[0];
+  normLyr.name = lyr.name;
+  if (lyr.data) normLyr.data = lyr.data.clone();
+  return {layer: normLyr, dataset: normDataset};
+}
 
 // Buffer a polygon sliced at the antimeridian (lng +/-180) and/or a pole
 // (lat +/-90): build the offset (the pole-touching source rings are added back,
