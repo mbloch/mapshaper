@@ -1132,6 +1132,66 @@ describe('mapshaper-geojson.js', function () {
     })
     /* */
   })
+
+  describe('top-level metadata preservation (issue #693)', function () {
+    var input = {
+      type: 'FeatureCollection',
+      crs: {type: 'name', properties: {name: 'urn:ogc:def:crs:EPSG::4326'}},
+      metadata: {errata: [], totalFeatures: 1, timeStamp: '2026-05-15T10:27:03.221Z'},
+      bbox: [0, 0, 1, 1],
+      name: 'mylayer',
+      id: 'collection-1',
+      features: [{
+        type: 'Feature',
+        properties: {a: 1},
+        geometry: {type: 'Polygon', coordinates: [[[0, 0], [1, 0], [1, 1], [0, 1], [0, 0]]]}
+      }]
+    };
+
+    it('metadata is dropped by default (no metadata flag)', async function () {
+      var out = await api.applyCommands('-i in.json -o out.json', {'in.json': JSON.stringify(input)});
+      var o = JSON.parse(out['out.json']);
+      assert(!('metadata' in o));
+      assert(!('crs' in o));
+      assert(!('name' in o));
+      assert(!('id' in o));
+    })
+
+    it('metadata flag preserves non-structural members', async function () {
+      var out = await api.applyCommands('-i in.json -clean -o out.json metadata', {'in.json': JSON.stringify(input)});
+      var o = JSON.parse(out['out.json']);
+      assert.deepEqual(o.metadata, input.metadata);
+      assert.deepEqual(o.crs, input.crs);
+      assert.equal(o.name, 'mylayer');
+      assert.equal(o.id, 'collection-1');
+    })
+
+    it('bbox is not carried over as metadata (regenerated instead)', async function () {
+      // no -o bbox flag, so a preserved bbox must not appear in output
+      var out = await api.applyCommands('-i in.json -o out.json metadata', {'in.json': JSON.stringify(input)});
+      var o = JSON.parse(out['out.json']);
+      assert(!('bbox' in o));
+    })
+
+    it('crs member is dropped after -proj, other metadata retained', async function () {
+      var out = await api.applyCommands('-i in.json -proj webmercator -o out.json metadata', {'in.json': JSON.stringify(input)});
+      var o = JSON.parse(out['out.json']);
+      assert(!('crs' in o));
+      assert.deepEqual(o.metadata, input.metadata);
+      assert.equal(o.name, 'mylayer');
+    })
+
+    it('metadata from a -join source is not transferred to the target', async function () {
+      var target = {type: 'FeatureCollection', features: [
+        {type: 'Feature', properties: {id: 1}, geometry: {type: 'Point', coordinates: [0, 0]}}]};
+      var source = {type: 'FeatureCollection', metadata: {secret: 'fromsource'}, features: [
+        {type: 'Feature', properties: {id: 1, val: 'x'}, geometry: {type: 'Point', coordinates: [0, 0]}}]};
+      var out = await api.applyCommands('-i target.json -join source.json keys=id,id -o out.json metadata',
+        {'target.json': JSON.stringify(target), 'source.json': JSON.stringify(source)});
+      var o = JSON.parse(out['out.json']);
+      assert(!('metadata' in o));
+    })
+  })
 })
 
 function geoJSONRoundTrip(fname) {

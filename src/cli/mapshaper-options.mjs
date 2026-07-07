@@ -376,7 +376,7 @@ export function getOptionParser() {
       type: 'flag'
     })
     .option('metadata', {
-      describe: '[SVG/TopoJSON] include metadata in output',
+      describe: '[SVG/TopoJSON/GeoJSON] include metadata in output',
       type: 'flag'
     })
     .option('width', {

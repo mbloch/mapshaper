@@ -38,6 +38,8 @@ import geom from '../geom/mapshaper-geom';
 cmd.proj = function(dataset, catalog, opts, targetLayers) {
   var srcInfo, destInfo, destStr;
   var implicitlyProjectedNames = getImplicitlyTargetedLayerNames(dataset, targetLayers, layerHasGeometry);
+  // A preserved GeoJSON "crs" member becomes invalid once the CRS changes.
+  deleteGeoJSONMetadataCRS(dataset);
   if (opts.init) {
     srcInfo = fetchCrsInfo(opts.init, catalog);
     if (!srcInfo.crs) stop("Unknown projection source:", opts.init);
@@ -119,6 +121,15 @@ function projCmd(dataset, destInfo, opts) {
   });
   markDatasetChanged(dataset, {operation: 'proj'});
   return true;
+}
+
+// Drop the "crs" member from preserved GeoJSON metadata, so a stale CRS is not
+// re-emitted after the dataset has been reprojected. Other metadata is retained.
+function deleteGeoJSONMetadataCRS(dataset) {
+  var meta = dataset.info && dataset.info.input_geojson_metadata;
+  if (meta && 'crs' in meta) {
+    delete meta.crs;
+  }
 }
 
 function layerWasChangedByProjection(a, b) {

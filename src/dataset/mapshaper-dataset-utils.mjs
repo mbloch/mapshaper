@@ -49,8 +49,17 @@ export function mergeDatasetInfo(dest, src) {
   noteDatasetInfoWillChange(dest, {operation: 'mergeDatasetInfo'});
   destInfo.input_files = utils.uniq((destInfo.input_files || []).concat(srcInfo.input_files || []));
   destInfo.input_formats = utils.uniq((destInfo.input_formats || []).concat(srcInfo.input_formats || []));
+  // Preserved GeoJSON metadata stays with the dataset it was imported into; it
+  // is never inherited from a merged-in source (e.g. a -join / clip / erase
+  // source), which would otherwise leak that source's metadata into the output.
+  var destMetadata = destInfo.input_geojson_metadata;
   // merge other info properties (e.g. input_geojson_crs, input_delimiter, prj, crs)
   utils.defaults(destInfo, srcInfo);
+  if (destMetadata) {
+    destInfo.input_geojson_metadata = destMetadata;
+  } else {
+    delete destInfo.input_geojson_metadata;
+  }
   markDatasetInfoChanged(dest, {operation: 'mergeDatasetInfo'});
 }
 
