@@ -175,6 +175,10 @@ export function exportDatasetAsGeoJSON(dataset, opts, ofmt) {
     preserveOriginalCRS(dataset, geojson);
   }
 
+  if (opts.metadata) {
+    applyGeoJSONMetadata(dataset, geojson);
+  }
+
   if (opts.bbox) {
     bbox = getDatasetBbox(dataset, opts.rfc7946);
     if (bbox) {
@@ -320,6 +324,22 @@ export function preserveOriginalCRS(dataset, jsonObj) {
   //   // source: http://geojson.org/geojson-spec.html#coordinate-reference-system-objects
   //   jsonObj.crs = null;
   // }
+}
+
+// Re-emit non-structural top-level members captured on import (e.g. a legacy
+// "crs" object, a top-level "id", or non-standard members such as "metadata").
+// Only called when the "metadata" output option is set.
+// jsonObj: a top-level GeoJSON object
+export function applyGeoJSONMetadata(dataset, jsonObj) {
+  var info = dataset.info || {};
+  var meta = info.input_geojson_metadata;
+  if (!meta) return;
+  Object.keys(meta).forEach(function(key) {
+    // guard against clobbering members that mapshaper generates itself
+    if (key == 'type' || key == 'bbox' || key == 'features' ||
+        key == 'geometries') return;
+    jsonObj[key] = meta[key];
+  });
 }
 
 export function useFeatureCollection(layers, opts) {

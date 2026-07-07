@@ -30,6 +30,7 @@ export function importGeoJSON(src, optsArg) {
   (srcCollection.features || srcCollection.geometries || []).forEach(importer.parseObject);
   dataset = importer.done();
   importCRS(dataset, srcObj); // TODO: remove this
+  captureGeoJSONMetadata(dataset, srcObj);
   warnIfProjectedCoords(dataset, srcObj, opts);
   return dataset;
 }
@@ -206,5 +207,29 @@ GeoJSON.pathImporters = {
 export function importCRS(dataset, jsonObj) {
   if ('crs' in jsonObj) {
     dataset.info.input_geojson_crs = jsonObj.crs;
+  }
+}
+
+// Structural GeoJSON members that describe geometry/collection shape.
+// These are reconstructed on export, so they are not preserved as metadata.
+// Note: "bbox" is intentionally excluded from the metadata (mapshaper
+// regenerates it), but "crs" and "id" and any non-standard members are kept.
+var GEOJSON_STRUCTURAL_MEMBERS = ['type', 'bbox', 'features', 'geometries',
+  'geometry', 'coordinates', 'properties'];
+
+// Preserve non-structural top-level members of a GeoJSON object (e.g. a legacy
+// "crs" object, a top-level "id", or non-standard members such as "metadata"
+// or "name") so they can be re-emitted when the "metadata" output option is set.
+export function captureGeoJSONMetadata(dataset, jsonObj) {
+  if (!jsonObj || typeof jsonObj != 'object') return;
+  var meta = {};
+  var found = false;
+  Object.keys(jsonObj).forEach(function(key) {
+    if (GEOJSON_STRUCTURAL_MEMBERS.indexOf(key) > -1) return;
+    meta[key] = jsonObj[key];
+    found = true;
+  });
+  if (found) {
+    dataset.info.input_geojson_metadata = meta;
   }
 }

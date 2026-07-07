@@ -1,5 +1,5 @@
 
-import { GeoJSONParser, importGeoJSON } from '../geojson/geojson-import';
+import { GeoJSONParser, importGeoJSON, importCRS, captureGeoJSONMetadata } from '../geojson/geojson-import';
 import { BufferReader, FileReader, readFirstChars } from '../io/mapshaper-file-reader';
 import utils from '../utils/mapshaper-utils';
 import { importTopoJSON } from '../topojson/topojson-import';
@@ -44,9 +44,15 @@ export function identifyJSONObject(o) {
 
 export function importGeoJSONFile(fileReader, opts) {
   var importer = new GeoJSONParser(opts);
+  // For collections, parseGeoJSON() returns the top-level object with its
+  // features/geometries array nulled out but all other members intact.
   var obj = parseGeoJSON(fileReader, importer.parseObject);
-  // TODO: examine top-level objects, like crs
-  return importer.done();
+  var dataset = importer.done();
+  if (obj) {
+    importCRS(dataset, obj);
+    captureGeoJSONMetadata(dataset, obj);
+  }
+  return dataset;
 }
 
 // Parse GeoJSON directly from a binary data source (supports parsing larger files
