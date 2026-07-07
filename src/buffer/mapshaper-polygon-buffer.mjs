@@ -1147,7 +1147,7 @@ function makeTopologicalPolygonBufferGeoJSON(lyr, dataset, opts, distanceFn,
     }, {type: 'polygon'});
     geometries = makeTopologicalPolygonBufferGeometries(shapes, distances,
       sourceIds, bufferIds, tmpDataset, dataset.arcs,
-      getMedialSimplifyInterval(dataset, opts, distances));
+      medialSmoothingEnabled(opts, distances));
   }
   return {
     geojson: {
@@ -1159,13 +1159,13 @@ function makeTopologicalPolygonBufferGeoJSON(lyr, dataset, opts, distanceFn,
 }
 
 function makeTopologicalPolygonBufferGeometries(shapes, distances, sourceIds,
-    bufferIds, tmpDataset, sourceArcs, medialSimplifyInterval) {
+    bufferIds, tmpDataset, sourceArcs, medialSmooth) {
   // Inject inter-feature Voronoi (medial-axis) cut lines so the buffer mosaic's
   // contested tiles are subdivided along the equidistant boundary before the
   // tiles are assigned (see assignment by nearest source below).
   profileStart('topo:medial');
   var dataset = injectMedialCutLines(tmpDataset, shapes, distances, sourceArcs,
-    medialSimplifyInterval);
+    medialSmooth);
   profileEnd('topo:medial');
   var tmpLyr = dataset.layers.filter(function(l) {
     return l.geometry_type == 'polygon';
@@ -1205,12 +1205,12 @@ function makeTopologicalPolygonBufferGeometries(shapes, distances, sourceIds,
 // polygons plus a polyline layer of inter-feature Voronoi cut-lines (so the
 // contested tiles split along the equidistant boundary). Returns @tmpDataset
 // unchanged when there are no contested edges (no overlap between features).
-function injectMedialCutLines(tmpDataset, shapes, distances, arcs, simplifyInterval) {
+function injectMedialCutLines(tmpDataset, shapes, distances, arcs, medialSmooth) {
   var coordDistances = distances.map(function(d) {
     return d > 0 ? getCoordinateDistance(d, arcs) : 0;
   });
   var medial = buildInterFeatureMedialLines(shapes, coordDistances, arcs,
-    {simplifyInterval: simplifyInterval || 0});
+    {smooth: !!medialSmooth});
   if (!medial) return tmpDataset;
   var lineDataset = importGeoJSON({
     type: 'GeometryCollection',
@@ -1220,30 +1220,21 @@ function injectMedialCutLines(tmpDataset, shapes, distances, arcs, simplifyInter
   return mergeDatasets([tmpDataset, lineDataset]);
 }
 
-// Smoothing scale for the constructed medial lines, as a multiple of the
-// buffer's own positional tolerance. Weighted Visvalingam removes sub-tolerance
-// wiggles (the residual zigzag of the discrete medial sampling) and thins the
-// uneven vertex density without pulling the partition off the centerline:
-// keeping the interval near the buffer's accuracy budget bounds any deviation to
-// what the buffer geometry already tolerates.
-var MEDIAL_SIMPLIFY_FACTOR = 3; // 2
-
-// Simplification interval (in source-coordinate units) for the medial cut-lines.
-// Tied to the buffer tolerance at the largest buffer distance present, so the
-// medial axis is smoothed at the same scale the buffer outline is approximated.
-// Returns 0 (no simplification) when tolerance is disabled or all distances are
-// non-positive.
-function getMedialSimplifyInterval(dataset, opts, distances) {
+// Whether to smooth the constructed medial cut-lines (Gaussian low-pass, see
+// smoothMedialChain in mapshaper-buffer-voronoi). Smoothing replaces the discrete
+// medial sampling's zigzag with a clean centerline; its scale is keyed per-chain
+// to the local channel width, not to any distance computed here, so this is only
+// an on/off gate. Off when the buffer's tolerance is explicitly disabled
+// (tolerance=0, the "give me the raw medial" escape hatch) or when there is no
+// positive buffer distance.
+function medialSmoothingEnabled(opts, distances) {
   if (opts.tolerance === 0 || opts.tolerance == '0' || opts.tolerance == '0%') {
-    return 0;
+    return false;
   }
-  var repDist = 0;
   for (var i = 0; i < distances.length; i++) {
-    if (distances[i] > repDist) repDist = distances[i];
+    if (distances[i] > 0) return true;
   }
-  if (repDist <= 0) return 0;
-  var tolMeters = getBufferToleranceFunction(dataset, opts)(repDist);
-  return getCoordinateDistance(tolMeters, dataset.arcs) * MEDIAL_SIMPLIFY_FACTOR;
+  return false;
 }
 
 // Per-feature buffer distances for the debug builders below, in meters and in
@@ -1264,7 +1255,7 @@ function getMedialDebugDistances(lyr, dataset, opts) {
 // Build a polyline dataset of the inter-feature medial-axis (Voronoi) cut-lines
 // for the -buffer debug-voronoi option (topological only). These are the same
 // lines injected into the mosaic to partition contested space, after the
-// post-construction smoothing simplification.
+// post-construction Gaussian smoothing.
 function makeVoronoiDebugDataset(lyr, dataset, opts) {
   if (!opts.topological) {
     warn('debug-voronoi has no effect without the topological option; ignoring');
@@ -1272,7 +1263,7 @@ function makeVoronoiDebugDataset(lyr, dataset, opts) {
   }
   var d = getMedialDebugDistances(lyr, dataset, opts);
   var medial = buildInterFeatureMedialLines(d.shapes, d.coordDistances, dataset.arcs,
-    {simplifyInterval: getMedialSimplifyInterval(dataset, opts, d.distances)});
+    {smooth: medialSmoothingEnabled(opts, d.distances)});
   var geometries = medial ? [medial] : [];
   return importGeoJSON({type: 'GeometryCollection', geometries: geometries}, {});
 }

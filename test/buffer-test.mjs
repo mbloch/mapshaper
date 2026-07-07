@@ -1227,8 +1227,8 @@ describe('mapshaper-buffer.js', function () {
     // The undocumented debug-voronoi flag emits the inter-feature medial-axis
     // (Voronoi) cut-lines used to partition contested space, so they can be
     // inspected. They are only meaningful for the topological option, and the
-    // weighted-Visvalingam smoothing pass should leave them substantially
-    // lighter than the raw construction without emptying them.
+    // Gaussian smoothing pass should leave them substantially lighter than the
+    // raw construction without emptying them.
     it('topological buffer debug-voronoi emits smoothed medial lines', function () {
       function medialVertexCount(opts) {
         return api.applyCommands(
@@ -1259,6 +1259,51 @@ describe('mapshaper-buffer.js', function () {
           assert(smoothed.verts < raw.verts * 0.6,
             'smoothing should thin the medial axis: ' + smoothed.verts + ' vs ' + raw.verts);
         });
+    })
+
+    // The medial smoothing distance is keyed to the local channel width, not to
+    // the buffer distance, so that an over-large buffer radius (a user filling
+    // gaps of uncertain size) cannot widen the smoothing kernel enough to bow the
+    // medial line off its channel. Guards against re-keying the smoothing scale to
+    // the buffer distance: measure how far off the channel centerline each medial
+    // vertex sits (|dOR - dWA| / (dOR + dWA), 0 == perfectly centered) at a buffer
+    // distance many times the river width. A distance-keyed kernel migrated the
+    // medial onto one bank here (p95 offset ~0.78); the channel-keyed kernel stays
+    // centered (~0.13) regardless of how large the buffer is.
+    it('medial smoothing stays centered when the buffer distance dwarfs the gap', function () {
+      return api.applyCommands(
+        '-i test/data/features/buffer/v_columbia_river.json ' +
+        '-buffer 40km topological debug-voronoi -o format=geojson medial.json'
+      ).then(function(out) {
+        var fc = JSON.parse(out['medial.json']);
+        var geoms = (fc.geometries || (fc.features || []).map(function(f) {
+          return f.geometry;
+        })).filter(Boolean);
+        var src = JSON.parse(fs.readFileSync(
+          'test/data/features/buffer/v_columbia_river.json'));
+        var OR = featureRings(src.features[0]);
+        var WA = featureRings(src.features[1]);
+        var reach = 40000 / 6378137 * 180 / Math.PI; // 40km in degrees
+        var offsets = [];
+        geoms.forEach(function(g) {
+          var parts = g.type === 'LineString' ? [g.coordinates] : g.coordinates;
+          parts.forEach(function(p) {
+            p.forEach(function(pt) {
+              var dOR = distToRings(pt[0], pt[1], OR);
+              var dWA = distToRings(pt[0], pt[1], WA);
+              // in-corridor points only (both banks within reach); the endpoint
+              // extensions poke outside the overlap and are excluded here
+              if (dOR > reach || dWA > reach || dOR + dWA === 0) return;
+              offsets.push(Math.abs(dOR - dWA) / (dOR + dWA));
+            });
+          });
+        });
+        offsets.sort(function(a, b) { return a - b; });
+        assert(offsets.length > 50, 'expected a populated medial corridor');
+        var p95 = offsets[Math.floor(offsets.length * 0.95)];
+        assert(p95 < 0.35,
+          'medial line bowed off the channel centerline: p95 offset ' + p95.toFixed(3));
+      });
     })
 
     // The undocumented debug-delaunay flag emits the Delaunay triangulation of
