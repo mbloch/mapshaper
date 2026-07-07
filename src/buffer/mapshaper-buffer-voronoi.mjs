@@ -1,6 +1,7 @@
 import Delaunator from 'delaunator';
-import Visvalingam from '../simplify/mapshaper-visvalingam';
+import { smoothArcCoords } from '../smooth/mapshaper-smooth-algos';
 import { pointSegDistSq2 } from '../geom/mapshaper-basic-geom';
+import { findMedian } from '../utils/mapshaper-utils';
 import { profileStart, profileEnd, profileEnabled } from '../utils/mapshaper-profile';
 import { message } from '../utils/mapshaper-logging';
 
@@ -63,12 +64,12 @@ export function buildInterFeatureMedialLines(shapes, coordDistances, arcs, opts)
   profileStart('medial:assembleChains');
   var chains = assembleChains(medial.segments, medial.coords);
   profileEnd('medial:assembleChains');
-  if (opts.simplifyInterval > 0) {
-    profileStart('medial:simplify');
+  if (opts.smooth) {
+    profileStart('medial:smooth');
     chains = chains.map(function(chain) {
-      return simplifyChain(chain, opts.simplifyInterval);
+      return smoothMedialChain(chain, sites.grid);
     });
-    profileEnd('medial:simplify');
+    profileEnd('medial:smooth');
   }
   // Extend each chain's endpoints outward along their terminal tangent. A medial
   // chain is a cut-line: it only subdivides a contested buffer tile if it spans
@@ -229,30 +230,81 @@ function assembleChains(segments, coords) {
   return chains;
 }
 
-// Weighted-Visvalingam simplifier shared across chains. Its internal heap and
-// scratch buffers are reused per call, so a single instance is safe for the
-// sequential per-chain calls below.
-var medialSimplifier = Visvalingam.getWeightedSimplifier({}, false);
+// Gaussian smoothing distance for a medial chain, as a fraction of the local
+// channel half-width (see smoothMedialChain). The shared smoother widens this
+// distance into its kernel (window several times wider), so a small fraction
+// keeps the smoothed centerline well inside the channel -- the smoothed line
+// deviates from the raw medial by roughly this fraction of the half-width --
+// while still averaging out the discrete-sampling zigzag. 0.4 measured a worst-
+// case deviation of ~0.3 of the half-width across buffer distances from 8 to
+// 80 km on the Columbia gap.
+var MEDIAL_SMOOTH_CLEARANCE_FACTOR = 0.4;
 
-// Smooth a medial polyline with weighted Visvalingam, dropping vertices whose
-// effective area (expressed as a linear-equivalent by scaledSimplify) falls
-// below @interval. Endpoints carry an Infinity threshold and are always kept.
-function simplifyChain(points, interval) {
+// Replace the discrete-sampling zigzag of a raw medial polyline with a smooth
+// centerline using the shared scale-aware Gaussian low-pass filter.
+//
+// The smoothing distance is keyed to the medial's own local clearance (its
+// distance to the nearest source = the channel half-width, read from the segment
+// grid), NOT to the buffer distance. This decoupling is deliberate: in fill-gaps
+// a user may pick a buffer distance far larger than the actual gaps (to be sure
+// the gaps close), and a distance-keyed kernel would then be wide enough to bow
+// the medial clean out of a narrow channel and mispartition it. Keyed to the
+// channel width, the kernel is always proportional to the channel it smooths.
+//
+// Planar (the medial is constructed in planar coordinate space), no corner
+// preservation (a medial axis between two features has no structural corners,
+// and the zigzag we want gone would read as corners), and gain=0 -- the
+// curvature-correction term (gain>0) has a transition-band overshoot that would
+// re-amplify the very zigzag we are removing. Open-path endpoints are preserved
+// exactly, so extendChainEndpoints' terminal-tangent extension still works.
+function smoothMedialChain(points, grid) {
   var n = points.length;
   if (n < 3) return points;
   var xx = new Float64Array(n);
   var yy = new Float64Array(n);
-  var kk = new Float64Array(n);
+  var clearances = [];
   for (var i = 0; i < n; i++) {
     xx[i] = points[i][0];
     yy[i] = points[i][1];
+    var c = clearanceAt(grid, points[i][0], points[i][1]);
+    if (isFinite(c)) clearances.push(c);
   }
-  medialSimplifier(kk, xx, yy);
+  var halfWidth = findMedian(clearances); // NaN when no clearance was measured
+  var dist = halfWidth * MEDIAL_SMOOTH_CLEARANCE_FACTOR;
+  if (!(dist > 0)) return points; // no measurable channel -- leave raw
+  var res = smoothArcCoords(xx, yy, {
+    tolerance: dist,
+    method: 'gaussian',
+    spherical: false,
+    closed: false,
+    keepCorners: false,
+    gain: 0
+  });
   var out = [];
-  for (i = 0; i < n; i++) {
-    if (kk[i] >= interval) out.push(points[i]);
-  }
+  for (i = 0; i < res.xx.length; i++) out.push([res.xx[i], res.yy[i]]);
   return out.length >= 2 ? out : [points[0], points[n - 1]];
+}
+
+// Distance from (x, y) to the nearest source segment of any feature -- the
+// medial clearance, i.e. the local channel half-width -- probing the 3x3
+// grid-cell neighborhood (cell == max reach). Infinity if no segment is near or
+// the grid is absent.
+function clearanceAt(grid, x, y) {
+  if (!grid) return Infinity;
+  var seg = grid.seg;
+  var cx = grid.colOf(x), cy = grid.rowOf(y), best = Infinity;
+  for (var gx = cx - 1; gx <= cx + 1; gx++) {
+    for (var gy = cy - 1; gy <= cy + 1; gy++) {
+      var bucket = grid.grid.get(grid.cellKey(gx, gy));
+      if (!bucket) continue;
+      for (var b = 0; b < bucket.length; b++) {
+        var s = bucket[b];
+        var d2 = pointSegDistSq2(x, y, seg.x0[s], seg.y0[s], seg.x1[s], seg.y1[s]);
+        if (d2 < best) best = d2;
+      }
+    }
+  }
+  return Math.sqrt(best);
 }
 
 // Boundary sample spacing as a fraction of the local gap width: smaller gives a
