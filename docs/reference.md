@@ -398,6 +398,12 @@ multiple of the buffer distance wide; wider gaps are kept open. The default is 5
 For example, with a 1km buffer distance and the default `max-widening` value, an interior gap is
 filled if it is narrower than 5km and left open otherwise.
 
+`merge-islands` [polygons, with `fill-gaps`] Also bridge a small isolated island
+to a neighboring landmass when the gap between them is narrower than the buffer
+distance. By default such islands are left separate (only a landmass smaller than
+a disk of the mouth radius is treated as an island; gaps between larger landmasses,
+such as a river between two states, are filled either way).
+
 `geodesic` [projected data] Buffer using geodesic distances instead of projected planar distances.
 
 Common options: `name=` `+` `target=`

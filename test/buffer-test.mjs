@@ -1410,6 +1410,276 @@ describe('mapshaper-buffer.js', function () {
           'sanity: the outward buffer should expand the extent');
       })
 
+      // The clip mask is (source land) UNION (genuine gap fills), so the outer
+      // boundary comes from the source's own arcs: the open coast is preserved
+      // exactly (not reshaped by the closing's round joins). The land and fills are
+      // noded together in one topology and any residual pinch-point sliver is
+      // removed by the narrow-hole fill, so no gap opens between a fill and source.
+      it('preserves the source outline exactly and adds no micro-gaps', async function () {
+        var file = 'test/data/features/buffer/v_columbia_river.json';
+        var out = await api.applyCommands(
+          '-i ' + file + ' -buffer 5km fill-gaps -dissolve2 -o format=geojson fill.json ' +
+          '-i ' + file + ' -dissolve2 -o format=geojson src.json');
+        var fill = getOutputGeometries(out, 'fill.json');
+        var src = getOutputGeometries(out, 'src.json');
+        var segs = [];
+        fill.forEach(function(g) {
+          featureRings({geometry: g}).forEach(function(r) {
+            for (var i = 1; i < r.length; i++) segs.push([r[i - 1], r[i]]);
+          });
+        });
+        function distToFill(p) {
+          var m = Infinity;
+          for (var i = 0; i < segs.length; i++) {
+            var d = pointToSegmentDistance(p[0], p[1],
+              segs[i][0][0], segs[i][0][1], segs[i][1][0], segs[i][1][1]);
+            if (d < m) m = d;
+          }
+          return m;
+        }
+        // Densely sample the source outline; open-coast samples (those near the
+        // output boundary, i.e. not buried inside a filled gap) must land on it
+        // exactly. Densify because the fixture is coarse (~280 vertices).
+        var near = [];
+        src.forEach(function(g) {
+          featureRings({geometry: g}).forEach(function(r) {
+            for (var i = 1; i < r.length; i++) {
+              var a = r[i - 1], b = r[i];
+              var steps = Math.max(1, Math.round(Math.hypot(b[0] - a[0], b[1] - a[1]) / 0.0005));
+              for (var s = 0; s < steps; s++) {
+                var f = s / steps;
+                var d = distToFill([a[0] + (b[0] - a[0]) * f, a[1] + (b[1] - a[1]) * f]);
+                if (d < 0.005) near.push(d); // within ~500m of the output boundary
+              }
+            }
+          });
+        });
+        near.sort(function(a, b) { return a - b; });
+        assert(near.length > 100, 'sanity: sampled many open-coast points');
+        var median = near[Math.floor(near.length / 2)];
+        assert(median < 1e-7, 'open coast must be preserved exactly (median dev=' +
+          median + ' deg)'); // the old closing clip reshaped it by ~2e-4 deg
+        // No micro-gap slivers: the dissolved fill has no tiny holes (a genuine
+        // open lake would be orders of magnitude larger; ~1e-6 deg^2 ~= 8500 m^2).
+        var tinyHoles = 0;
+        fill.forEach(function(g) {
+          getSignedRingAreas(g).forEach(function(a) {
+            if (a < 0 && Math.abs(a) < 1e-6) tinyHoles++;
+          });
+        });
+        assert.equal(tinyHoles, 0, 'no micro-gap holes between patches and source');
+      })
+
+      // Regression for a whole-country coastline as ONE dense multipolygon. Two
+      // things used to break at this scale:
+      //  1. The mouth-gating closing erodes the dilated union by the mouth radius.
+      //     Pre-simplifying (default 1% of the radius) before that inward offset
+      //     self-intersected the ~30k-vertex continental ring, the dissolve kept
+      //     the wrong side, and the ring collapsed -- so (closing - land) yielded
+      //     almost no gap fills. The closing erode now disables pre-simplification.
+      //  2. The coast/bridge classification scanned every source segment per fill
+      //     edge (O(fill edges * source segments)); on 100k+ of each this took
+      //     ~50s. It now uses a segment grid.
+      // Assert real fill happens (a collapsed closing fills only a fraction of
+      // this), the extent is preserved, and no seam slivers form where the coast
+      // pinches to a point.
+      it('fills a large dense single-multipolygon coastline without collapsing or leaving seams', async function () {
+        this.timeout(30000);
+        var file = 'test/data/features/buffer/__usa_polygon.json';
+        var out = await api.applyCommands(
+          '-i ' + file + ' -buffer 4km fill-gaps -dissolve2 -o format=geojson fill.json ' +
+          '-i ' + file + ' -o format=geojson src.json');
+        var fill = getOutputGeometries(out, 'fill.json');
+        var src = getOutputGeometries(out, 'src.json');
+        function netArea(geoms) {
+          var s = 0;
+          geoms.forEach(function(g) {
+            getSignedRingAreas(g).forEach(function(a) { s += a; });
+          });
+          return Math.abs(s);
+        }
+        var srcArea = netArea(src), fillArea = netArea(fill);
+        // Fill must be substantial: the fix adds ~5.3 sq-deg, a collapsed closing
+        // added under ~3. Island suppression only drops true island bridges (a
+        // small landmass forming much of a fill's shore), not deep inlets that
+        // merely graze a mid-channel island, so nearly all of the ~5.6 sq-deg of
+        // genuine gap fill is retained.
+        assert(fillArea - srcArea > 3.3,
+          'expected substantial gap fill (added=' + (fillArea - srcArea).toFixed(2) + ' sq-deg)');
+        assert(fillArea / srcArea < 1.02,
+          'fill should not grossly inflate the area (ratio=' + (fillArea / srcArea).toFixed(3) + ')');
+        // No seam slivers between the source land and the gap fills, even where the
+        // coastline pinches to a coincident vertex. A genuine open lake is orders of
+        // magnitude larger than this (~1e-6 sq-deg ~= 8500 m^2).
+        var tinyHoles = 0;
+        fill.forEach(function(g) {
+          getSignedRingAreas(g).forEach(function(a) {
+            if (a < 0 && Math.abs(a) < 1e-6) tinyHoles++;
+          });
+        });
+        assert.equal(tinyHoles, 0, 'no micro-gap seam holes at coastline pinch points');
+      })
+
+      // Regression: a large concave stretch of open coast contains many small,
+      // shallow sub-concavities. The mouth-gating closing bridges each one whose
+      // opening is narrower than the mouth, and the tortuosity clause (arc/mouth)
+      // used to keep them because a naturally wiggly shore inflates the arc even
+      // when the dimple is shallow. The absolute-depth floor now drops them: a
+      // genuine gap must penetrate the coast, these barely do (depth/r ~0.1-0.25).
+      // With the floor at 0.1 this fixture over-filled by 0.10%/0.15%/0.39% at
+      // 3/4/5km; the floor at 0.3 leaves it essentially untouched.
+      it('does not fill shallow scallops within a large concave coast', async function () {
+        var file = 'test/data/features/buffer/z_ex2.json';
+        var src = netArea(getOutputGeometries(await api.applyCommands(
+          '-i ' + file + ' -o format=geojson buffer.json')));
+        for (var d of ['3km', '4km', '5km']) {
+          var fill = netArea(getOutputGeometries(await api.applyCommands(
+            '-i ' + file + ' -buffer ' + d + ' fill-gaps -dissolve2 -o format=geojson buffer.json')));
+          var addedPct = (fill - src) / src * 100;
+          assert(addedPct < 0.05, 'shallow scallops must not fill at ' + d +
+            ' (added ' + addedPct.toFixed(3) + '%)');
+        }
+      })
+
+      // A small island sits across a narrow channel from the mainland. The
+      // channel is narrow enough that the closing bridges it (a deep runs=2
+      // strait), so fill-gaps used to swallow the island into the mainland. By
+      // default a fill that bridges a landmass smaller than a mouth-radius disk
+      // is now dropped, so the island stays its own polygon; merge-islands opts
+      // back into the old bridging behavior.
+      it('does not merge a small island into the mainland by default', async function () {
+        var file = 'test/data/features/buffer/z_ex1.json';
+        async function parts(cmd) {
+          var g = getOutputGeometries(await api.applyCommands(
+            '-i ' + file + ' -buffer ' + cmd + ' -dissolve2 -o format=geojson buffer.json'));
+          return g.reduce(function(n, geom) { return n + getPolygonCount(geom); }, 0);
+        }
+        // 2km: the channel is too wide to bridge -- island already separate.
+        // 3km/4km: the channel bridges, but island suppression keeps them apart.
+        assert.equal(await parts('2km fill-gaps'), 2, '2km: island separate');
+        assert.equal(await parts('3km fill-gaps'), 2, '3km: island not merged');
+        assert.equal(await parts('4km fill-gaps'), 2, '4km: island not merged');
+        // Opting in bridges the island to the mainland (one polygon).
+        assert.equal(await parts('4km fill-gaps merge-islands'), 1,
+          'merge-islands should bridge the island');
+      })
+
+      // Regression: two islands (a small one, ~1 sqkm, and a larger ~32 sqkm)
+      // across a narrow channel. The small island's share of the bridge coastline
+      // (~0.2) is lower than the mainland-inlet island of z_ex1 (~0.3), so a
+      // coast-fraction test alone let it merge; a real island bridge is compact
+      // (arc/mouth ~4) though, unlike a river (arc/mouth >13), so the compactness
+      // gate keeps the islands separate by default here too.
+      it('does not merge two islands across a narrow channel by default', async function () {
+        var file = 'test/data/features/buffer/z_ex5.json';
+        async function parts(cmd) {
+          var g = getOutputGeometries(await api.applyCommands(
+            '-i ' + file + ' -buffer ' + cmd + ' -dissolve2 -o format=geojson buffer.json'));
+          return g.reduce(function(n, geom) { return n + getPolygonCount(geom); }, 0);
+        }
+        assert.equal(await parts('3km fill-gaps'), 2, '3km: islands not merged');
+        assert.equal(await parts('4km fill-gaps'), 2, '4km: islands not merged');
+        assert.equal(await parts('5km fill-gaps'), 2, '5km: islands not merged');
+        assert.equal(await parts('4km fill-gaps merge-islands'), 1,
+          'merge-islands should bridge the small island');
+      })
+
+      // Regression: a cluster of eight islands (including the z_ex5 pair). A single
+      // fill bridges all of them at once; being convoluted (arc/mouth ~11) it looks
+      // like a river to the compactness gate, but its shore is mostly small islands
+      // (smallFrac ~0.6), so the island-cluster signature keeps them separate.
+      it('does not merge a cluster of islands by default', async function () {
+        var file = 'test/data/features/buffer/z_ex6.json';
+        async function parts(cmd) {
+          var g = getOutputGeometries(await api.applyCommands(
+            '-i ' + file + ' -buffer ' + cmd + ' -dissolve2 -o format=geojson buffer.json'));
+          return g.reduce(function(n, geom) { return n + getPolygonCount(geom); }, 0);
+        }
+        assert.equal(await parts('3km fill-gaps'), 8, '3km: cluster not merged');
+        assert.equal(await parts('4km fill-gaps'), 8, '4km: cluster not merged');
+        assert.equal(await parts('5km fill-gaps'), 8, '5km: cluster not merged');
+        assert.equal(await parts('5km fill-gaps merge-islands'), 1,
+          'merge-islands should bridge the whole cluster');
+      })
+
+      // Regression: two small islands (~1 and ~3 sqkm) close to a large mainland
+      // (~160 sqkm). A single fill bridges both islands and the mainland; the
+      // islands form ~0.35 of its shore -- too convoluted to be a compact strait
+      // (arc/mouth ~9) but islands are still a substantial share, unlike a river
+      // that hugs the mainland (small share <=0.17). Keeps the islands separate.
+      it('does not merge islands sitting off a large mainland', async function () {
+        var file = 'test/data/features/buffer/z_ex7.json';
+        async function parts(cmd) {
+          var g = getOutputGeometries(await api.applyCommands(
+            '-i ' + file + ' -buffer ' + cmd + ' -dissolve2 -o format=geojson buffer.json'));
+          return g.reduce(function(n, geom) { return n + getPolygonCount(geom); }, 0);
+        }
+        assert.equal(await parts('2km fill-gaps'), 3, '2km: islands not merged');
+        assert.equal(await parts('3km fill-gaps'), 3, '3km: islands not merged');
+        assert.equal(await parts('4km fill-gaps'), 3, '4km: islands not merged');
+        assert.equal(await parts('3km fill-gaps merge-islands'), 1,
+          'merge-islands should bridge the islands to the mainland');
+      })
+
+      // Regression: an island (~8 sqkm) close to a large mainland (~107 sqkm) whose
+      // coast has deep inlets. One long fill hugs the mainland (filling its inlets)
+      // AND bridges the island. Dropping that whole patch kept the island separate
+      // but discarded the mainland inlets (near-zero fill). Trimming the island's
+      // mouth-radius reach from the bridge recovers the mainland-side fill, so the
+      // island stays separate while its inlets fill.
+      it('recovers mainland inlets when trimming an island bridge', async function () {
+        var file = 'test/data/features/buffer/z_ex8.json';
+        var src = netArea(getOutputGeometries(await api.applyCommands(
+          '-i ' + file + ' -dissolve2 -o format=geojson buffer.json')));
+        async function run(cmd) {
+          var g = getOutputGeometries(await api.applyCommands(
+            '-i ' + file + ' -buffer ' + cmd + ' -dissolve2 -o format=geojson buffer.json'));
+          return {
+            parts: g.reduce(function(n, geom) { return n + getPolygonCount(geom); }, 0),
+            addedPct: (netArea(g) - src) / src * 100
+          };
+        }
+        var def = await run('5km fill-gaps');
+        assert.equal(def.parts, 2, 'island stays separate');
+        assert(def.addedPct > 3, 'mainland inlets should fill (added=' +
+          def.addedPct.toFixed(2) + '%), not be discarded with the bridge');
+        var merged = await run('5km fill-gaps merge-islands');
+        assert.equal(merged.parts, 1, 'merge-islands bridges the island');
+        assert(merged.addedPct > def.addedPct,
+          'merging the island adds the strait fill on top of the inlets');
+      })
+
+      // Regression: a long inlet (the Columbia) within a SINGLE multipart feature
+      // that has small islands scattered near/in the channel. The deep river fill
+      // touches a small island as well as the mainland, so the island test (which
+      // rejects fills that bridge a small landmass) used to drop the entire inlet
+      // whenever its ocean mouth stayed open -- filling nothing at <=6km and only
+      // the whole inlet at 7km once the mouth sealed into a mainland-only patch.
+      // Gating the island test on the small landmass's share of the fill's shore
+      // spares the river (a mid-channel island is a tiny fraction) so the inlet
+      // fills progressively, and max-widening still bounds it.
+      it('fills an in-feature inlet that grazes small islands (not treated as an island bridge)', async function () {
+        var file = 'test/data/features/buffer/z_ex4.json';
+        var src = netArea(getOutputGeometries(await api.applyCommands(
+          '-i ' + file + ' -dissolve2 -o format=geojson buffer.json')));
+        async function addedPct(cmd) {
+          var fill = netArea(getOutputGeometries(await api.applyCommands(
+            '-i ' + file + ' -buffer ' + cmd + ' -dissolve2 -o format=geojson buffer.json')));
+          return (fill - src) / src * 100;
+        }
+        // The inlet fills progressively at small distances (was ~0 below 7km when
+        // the whole inlet was wrongly rejected as an island bridge).
+        assert(await addedPct('4km fill-gaps') > 1.5,
+          'in-feature inlet should fill at 4km');
+        assert(await addedPct('6km fill-gaps') > 1.5,
+          'in-feature inlet should fill at 6km');
+        // max-widening still bounds the fill: a narrower threshold fills less.
+        var k1 = await addedPct('4km fill-gaps max-widening=1');
+        var k5 = await addedPct('4km fill-gaps max-widening=5');
+        assert(k1 < k5, 'a smaller max-widening should fill less (' + k1.toFixed(2) +
+          ' vs ' + k5.toFixed(2) + ')');
+      })
+
       // More fill as the mouth size grows (more of the channel is narrower than
       // the mouth), demonstrating the opening-size threshold.
       it('fills more of the inlet as the mouth size increases', async function () {

@@ -511,12 +511,16 @@ export function getOptionParser() {
       type: 'flag'
     })
     .option('fill-gaps', {
-      describe: '[polygons] fill enclosed holes and inlets whose opening is narrower than the buffer distance, without growing the outer boundary',
+      describe: '[polygons] fill enclosed holes and inlets whose opening is narrower than the buffer distance',
       type: 'flag'
     })
     .option('max-widening', {
-      describe: '[with fill-gaps] fill interior gaps up to this multiple of the buffer distance wide (default 5); wider gaps are kept open',
+      describe: '[with fill-gaps] fill interior gaps up to this multiple of the buffer distance wide (default 5)',
       type: 'number'
+    })
+    .option('merge-islands', {
+      describe: '[with fill-gaps] merge small islands across a narrow gap (off by default)',
+      type: 'flag'
     })
     .option('geodesic', {
       describe: '[projected data] buffer using geodesic distances',

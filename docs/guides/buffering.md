@@ -29,6 +29,8 @@ The example below fills a long river inlet and some small gaps along the coastli
 
 Use `max-widening=` with `fill-gaps` to limit how wide a gap may be before it is left open.
 
+By default `fill-gaps` leaves small isolated islands separate rather than bridging them to a neighboring landmass across a narrow channel. Add `merge-islands` to bridge them as well.
+
 ## Topological buffers
 
 For polygon layers, the `topological` option buffers only unshared polygon boundaries, such as coastlines and holes. Shared boundaries between adjacent polygons are not buffered, and overlapping buffer areas are split between features by proximity.

@@ -5,7 +5,7 @@ import {
   getOutlineBufferDissolveOpts,
   parseConstantBufferDistance
 } from '../buffer/mapshaper-buffer-common';
-import { getDatasetCRS, isLatLngCRS } from '../crs/mapshaper-projections';
+import { getDatasetCRS, getDatasetCrsInfo, setDatasetCrsInfo, isLatLngCRS } from '../crs/mapshaper-projections';
 import { importGeoJSON } from '../geojson/geojson-import';
 import { getPolylineBufferMaker } from '../buffer/mapshaper-path-buffer-v4';
 import { splitAntimeridianBufferDataset, applyOutlineArtifactHoleFilter } from '../buffer/mapshaper-polyline-buffer';
@@ -15,16 +15,19 @@ import {
 } from '../buffer/mapshaper-buffer-voronoi';
 import { clipLayersByBBox, clipLayersInPlace } from '../commands/mapshaper-clip-erase';
 import { mergeDatasets } from '../dataset/mapshaper-merging';
+import { copyDataset } from '../dataset/mapshaper-dataset-utils';
 import { parseMeasure2 } from '../geom/mapshaper-units';
 import { getPathCentroid } from '../points/mapshaper-polygon-centroid';
 import { R, R2D, pointSegDistSq2 } from '../geom/mapshaper-basic-geom';
 import { getPointToShapeDistance } from '../geom/mapshaper-path-geom';
-import { getShapeArea, getPlanarPathArea } from '../geom/mapshaper-polygon-geom';
+import { getShapeArea, getPlanarPathArea, getPlanarPathArea2, getSphericalPathArea2 } from '../geom/mapshaper-polygon-geom';
 import { countCrosses, splitPathAtAntimeridian } from '../geom/mapshaper-antimeridian-cuts';
 import { exportPathData } from '../paths/mapshaper-path-export';
 import { reversePath } from '../paths/mapshaper-path-utils';
 import { getRingIntersector } from '../paths/mapshaper-pathfinder';
 import { addIntersectionCuts } from '../paths/mapshaper-intersection-cuts';
+import { buildTopology } from '../topology/mapshaper-topology';
+import { dissolvePolygonLayer2 } from '../dissolve/mapshaper-polygon-dissolve2';
 import { fixNestingErrors, groupPolygonRings } from '../polygons/mapshaper-ring-nesting';
 import { PathIndex } from '../paths/mapshaper-path-index';
 import { MosaicIndex } from '../polygons/mapshaper-mosaic-index';
@@ -329,8 +332,16 @@ function makeGapFillPolygonBuffer(lyr, dataset, opts) {
     Object.assign({}, baseOpts, {radius: mouthRadius, topological: false}));
   var union = unionBufferDataset(dilatedAtR, baseOpts);
   if (!union || !union.arcs) return dilated;
+  // tolerance: 0 disables the buffer's Douglas-Peucker pre-simplification for the
+  // erosion. Pre-simplifying before an INWARD offset can push a simplified concave
+  // vertex past its neighbours and self-intersect the eroded ring; on a large,
+  // dense outline (e.g. a whole-country coastline) the dissolve then keeps the
+  // wrong side and the ring collapses, wiping the gap-fill extent. The dilation
+  // stays pre-simplified (outward offsets don't fold this way) so only the fragile
+  // erode pays the full-resolution cost.
   var closing = makePolygonBuffer(union.layers[0], union,
-    Object.assign({}, baseOpts, {radius: '-' + mouthRadius, topological: false}));
+    Object.assign({}, baseOpts, {radius: '-' + mouthRadius, topological: false,
+      tolerance: 0}));
   if (!closing || !closing.arcs) return dilated;
   // Fill the mask's interior gaps that are narrower than k*mouthSize (keep wider
   // ones open) so the clip below fills them too.
@@ -338,6 +349,16 @@ function makeGapFillPolygonBuffer(lyr, dataset, opts) {
     parseConstantBufferDistance(fillRadius, getDatasetCRS(dataset)) || 0,
     closing.arcs);
   fillNarrowMaskHoles(closing, keepRadius);
+  // Additive mask. The closing defines the correct fill EXTENT, but its
+  // dilate/erode round trip reshapes the whole outer boundary (round joins on
+  // convex corners don't invert exactly) and bridges shallow scallops that are not
+  // real gaps. So don't clip to the closing directly: build the clip mask as
+  // (source land) UNION (the closing's genuine gap fills), taking the outer
+  // boundary from the source's own arcs so protrusions and the open coast come
+  // through unchanged. The union is built by noding the source together with the
+  // gap fills in a single topology (see buildAdditiveFillMask), so the shared
+  // coastline is split at the gap mouths and no sliver can open at a seam.
+  var fillMask = buildAdditiveFillMask(closing, lyr, dataset, opts, keepRadius) || closing;
   // Carry the source attributes through the clip: clipping drops fully-empty
   // features, so attach a per-feature data table (aligned 1:1 with the dilation)
   // before clipping rather than relying on a post-hoc count-match copy.
@@ -345,11 +366,11 @@ function makeGapFillPolygonBuffer(lyr, dataset, opts) {
       dilatedLyr.shapes.length == lyr.data.size()) {
     dilatedLyr.data = lyr.data.clone();
   }
-  // remove_slivers: the dilation-vs-mask clip carves thin slivers along its
-  // boundary (a feature can pick up dozens of degenerate edge slivers); clip's
-  // own sliver filter drops the rings that mix dilation and mask arcs and fail a
-  // compactness-weighted area test, leaving the substantial fill regions intact.
-  clipLayersInPlace(dilated.layers, closing, dilated, 'clip',
+  // remove_slivers: the dilation-vs-mask clip can carve thin slivers along the
+  // medial partition; clip's own sliver filter drops rings that mix dilation and
+  // mask arcs and fail a compactness-weighted area test, leaving the substantial
+  // fill regions intact.
+  clipLayersInPlace(dilated.layers, fillMask, dilated, 'clip',
     {no_cleanup: true, no_warn: true, remove_slivers: true});
   return dilated;
 }
@@ -384,6 +405,448 @@ function fillNarrowMaskHoles(maskDataset, keepRadius) {
     });
     return kept.length > 0 ? kept : null;
   });
+}
+
+// A gap should be an inlet, not gentle coastline texture. The mouth-gating
+// closing bridges EVERY concavity a disk of radius r cannot reach, so shallow
+// scallops with a sub-mouth-size opening get sealed and filled like real inlets.
+// A bridged open-coast concavity is a genuine gap when it is either convoluted
+// (its coastline arc is at least INLET_MIN_RATIO times its mouth chord) or
+// genuinely deep (its greatest depth is at least INLET_MIN_DEPTH_RATIO of its
+// mouth chord). Requiring EITHER keeps winding rivers (long arc, short mouth) and
+// deep-but-smooth embayments (large sagitta), while dropping shallow scallops
+// that fail both. Enclosed fills (rivers behind a mouth, lakes) have no
+// open-water bridge and are always kept.
+var INLET_MIN_RATIO = 1.5;       // coastline-arc / mouth-chord (perimeter/chord)
+var INLET_MIN_DEPTH_RATIO = 0.5; // max inlet depth / mouth-chord (sagitta/chord)
+// A genuine gap must penetrate the coast by a real distance, not just dimple it.
+// Two shallow-but-wide artifacts otherwise slip through the ratio test above: the
+// thin reshaping collar left where the closing sits ~1% of the mouth radius
+// outside a convex coast, and broad shallow scallops whose naturally wiggly shore
+// clears the arc/mouth tortuosity clause despite little depth. Requiring the patch
+// depth to reach this fraction of the mouth radius drops both while keeping real
+// inlets (which run far deeper than their mouth radius; on the Columbia the kept
+// gaps reach depth/r >= 1.3, the shallow scallops only ~0.2).
+var INLET_MIN_ABS_DEPTH = 0.3;   // min patch depth as a fraction of the mouth radius
+
+// Island-bridge classification of a fill that joins >= 2 source parts, one small
+// (see bridgesSmallIsland). Two independent signatures mark an island bridge:
+//  1. a COMPACT strait -- coastline only a few times its mouth (ex1 ~2.5-3.3, two
+//     islands across a channel ~3.7-4.3) -- with the small landmass forming a real
+//     share of the shore. A deep/winding river runs many times its mouth (>13),
+//     so the arc/mouth cap excludes it; the coast-fraction floor excludes a gap
+//     between large landmasses that merely grazes a tiny island.
+//  2. a shore with a SUBSTANTIAL share of small islands -- islands (a cluster, or
+//     a couple bridged to the mainland) form a large fraction of the fill's
+//     coastline rather than an incidental graze. This catches fills that are
+//     convoluted enough (high arc/mouth) to look like a river by shape alone. A
+//     genuine river runs mostly along the mainland (small share <= 0.17), well
+//     below the threshold; an island bridge's small share is 0.3+.
+var ISLAND_MIN_COAST_FRAC = 0.1;       // compact-strait floor (small part is a real bank)
+var ISLAND_MAX_ARC_RATIO = 8;          // compact-strait cap (above this = river)
+var ISLAND_DOMINANT_COAST_FRAC = 0.25; // islands are a substantial share of the shore
+
+// Build the clip mask for fill-gaps as (source land) UNION (genuine gap fills).
+// The gap fills are the parts of (closing - land) that isShallowInlet keeps (deep
+// or convoluted inlets and enclosed fills), dropping the thin reshaping collar and
+// shallow scallops. The mask's outer boundary is the source's own coordinates, so
+// protrusions and the open coast are not reshaped by the closing's round joins.
+// Returns a single-layer polygon dataset, or null if there is nothing to mask.
+//
+// The source land and the gap fills are unioned in ONE noded topology: the source
+// rings and the fill rings are placed in a single dataset and re-noded together so
+// the shared coastline is split at every gap mouth. That is what keeps the seams
+// closed -- if the source were noded separately from the fills (two coordinate
+// sources merged only at clip time) a fill's mouth-corner point could land just
+// off a pristine source edge and open a hairline sliver between the fill and land.
+function buildAdditiveFillMask(closing, sourceLyr, sourceDataset, opts, keepRadius) {
+  // gap fills = closing - land, on a throwaway copy so the closing stays intact.
+  var notchDataset = copyDataset(closing);
+  clipLayersInPlace(notchDataset.layers,
+    {layers: [sourceLyr], arcs: sourceDataset.arcs}, notchDataset, 'erase',
+    {no_cleanup: true, no_warn: true});
+  var notchLyr = notchDataset.layers[0];
+  if (!notchLyr || !notchDataset.arcs) return null;
+  var mouthMeters = parseConstantBufferDistance(
+    fillGapsRadiusStr(parseFillGaps(opts), 1), getDatasetCRS(sourceDataset)) || 0;
+  var mouthCoord = getCoordinateDistance(mouthMeters, closing.arcs);
+  // a fill edge lies on the coastline when its midpoint sits on the source
+  // boundary; the bridge is offset into open water by the inlet depth. Tolerance
+  // is a small fraction of the mouth radius (above floating-point noise on shared
+  // edges, well below the shallowest fillable depth).
+  var onSrcTol = mouthCoord * 0.005;
+  if (!(onSrcTol > 0)) return null;
+  // Grid the coastline once so each fill edge's coast/part test is a local lookup
+  // instead of a scan of every source segment (there can be 100k+ of each). The
+  // segments carry a part id so a fill can be attributed to the landmass it hugs.
+  var spherical = isLatLngCRS(getDatasetCRS(sourceDataset));
+  var parts = collectSourceParts(sourceLyr.shapes, sourceDataset.arcs, spherical);
+  var srcGrid = buildSegmentGrid(parts.segs, onSrcTol);
+  // Unless merge-islands is set, a fill that bridges a small isolated landmass
+  // (smaller than a mouth-radius disk) to a neighbor is dropped, so islands stay
+  // separate. Genuine gaps between large landmasses (e.g. a river between two
+  // states) are unaffected. The disk area is in the same true units as the part
+  // areas (mouthMeters is the mouth radius in the dataset's distance units).
+  var mergeIslands = !!opts.merge_islands;
+  var islandMaxArea = Math.PI * mouthMeters * mouthMeters;
+  var geometries = [];
+  (sourceLyr.shapes || []).forEach(function(shp) {
+    if (!shp) return;
+    getPolygonMultiPolygonCoords(shp, sourceDataset.arcs).forEach(function(rings) {
+      geometries.push({type: 'Polygon', coordinates: rings});
+    });
+  });
+  var debugInlet = typeof process !== 'undefined' && process.env &&
+    process.env.MAPSHAPER_DEBUG_INLET;
+  // Island-bridge patches aren't dropped whole: a long fill can hug the mainland
+  // (filling its inlets) while also bridging a nearby island. Such patches are set
+  // aside, then trimmed by the islands' mouth-radius reach (see trimIslandBridges)
+  // so the strait to the island is removed but the mainland-side fill survives.
+  var bridgeGeoms = [];
+  (notchLyr.shapes || []).forEach(function(shape) {
+    if (!shape) return;
+    getPolygonMultiPolygonCoords(shape, notchDataset.arcs).forEach(function(rings) {
+      if (rings[0] && rings[0].length >= 4) {
+        var island = !mergeIslands &&
+          bridgesSmallIsland(rings[0], srcGrid, parts.areas, onSrcTol, islandMaxArea);
+        var reject = island || isShallowInlet(rings[0], srcGrid, onSrcTol, mouthCoord);
+        if (debugInlet) {
+          var m = inletMetrics(rings[0], srcGrid, onSrcTol);
+          if (m) {
+            var ib = islandBridgeMetrics(rings[0], srcGrid, parts.areas, onSrcTol, islandMaxArea);
+            console.error('[inlet] ' + (reject ? 'REJECT' : 'KEEP  ') +
+              (island ? ' ISLAND' : '') +
+              ' arc/mouth=' + (m.arc / m.mouth).toFixed(2) +
+              ' depth/mouth=' + (m.depth / m.mouth).toFixed(2) +
+              ' depth/r=' + (m.depth / mouthCoord).toFixed(2) +
+              ' runs=' + m.bridgeRuns +
+              ' parts=' + ib.count + ' smallFrac=' + ib.smallFrac.toFixed(2) +
+              ' mouth_m=' + (m.mouth / mouthCoord * mouthMeters).toFixed(0));
+          } else {
+            console.error('[inlet] KEEP   enclosed (no bridge)');
+          }
+        }
+        if (island) bridgeGeoms.push({type: 'Polygon', coordinates: rings});
+        else if (!reject) geometries.push({type: 'Polygon', coordinates: rings});
+      }
+    });
+  });
+  trimIslandBridges(bridgeGeoms, sourceLyr, sourceDataset, opts, spherical,
+    islandMaxArea, geometries);
+  if (geometries.length === 0) return null;
+  var mask = importGeoJSON({type: 'GeometryCollection', geometries: geometries},
+    {type: 'polygon'});
+  // Node the land and the fills together and dissolve into one coverage region.
+  // buildTopology + addIntersectionCuts split the shared coastline at the gap
+  // mouths so the abutting land and fill rings share those vertices; the dissolve
+  // then merges them without leaving a mouth-corner sliver.
+  buildTopology(mask);
+  addIntersectionCuts(mask, {});
+  var dissolved = dissolvePolygonLayer2(mask.layers[0], mask, {quiet: true, silent: true});
+  mask.layers = [dissolved];
+  // Where the source coastline pinches to a point (coincident vertices, common in
+  // multipolygon coastlines) the union of land and a gap fill can leave a hairline
+  // sliver hole at the mouth corner. Such a hole is far narrower than the mouth,
+  // and fill-gaps by definition should not leave a sub-mouth-width hole open, so
+  // the same narrow-hole fill applied to the closing removes these seam slivers;
+  // genuine wide holes (open lakes) stay open.
+  fillNarrowMaskHoles(mask, keepRadius);
+  return mask;
+}
+
+// Recover the mainland-side fill from island-bridge patches. Each such patch was
+// set aside because it joins a small island to a neighbor, but the same patch can
+// also fill genuine inlets along the neighboring mainland. Erasing the islands'
+// mouth-radius reach (island (+) r, exactly the island's share of the closing)
+// severs the strait -- every point within r of an island, i.e. the whole bridge
+// for a channel up to 2r wide -- while leaving the mainland-side fill (> r from
+// any island) to be added to the mask. The island therefore stays a separate
+// polygon, but its inlets no longer vanish with the discarded bridge.
+//
+// The recovered fills are pushed into `geometries`. Only protected islands (parts
+// below islandMaxArea) are buffered, and only when bridge patches exist, so the
+// extra buffer+erase is bounded by the island count and skipped entirely on data
+// with no island bridges.
+function trimIslandBridges(bridgeGeoms, sourceLyr, sourceDataset, opts, spherical,
+    islandMaxArea, geometries) {
+  if (bridgeGeoms.length === 0) return;
+  var islandGeoms = [];
+  (sourceLyr.shapes || []).forEach(function(shp) {
+    if (!shp) return;
+    getPolygonMultiPolygonCoords(shp, sourceDataset.arcs).forEach(function(rings) {
+      if (rings[0] && Math.abs(ringTrueArea(rings[0], spherical)) < islandMaxArea) {
+        islandGeoms.push({type: 'Polygon', coordinates: [rings[0]]});
+      }
+    });
+  });
+  if (islandGeoms.length === 0) return;
+  var crsInfo = getDatasetCrsInfo(sourceDataset);
+  var mouthRadiusStr = fillGapsRadiusStr(parseFillGaps(opts), 1);
+  var islandDataset = importGeoJSON(
+    {type: 'GeometryCollection', geometries: islandGeoms}, {type: 'polygon'});
+  setDatasetCrsInfo(islandDataset, crsInfo);
+  var islandBuf = makePolygonBuffer(islandDataset.layers[0], islandDataset,
+    Object.assign({}, opts, {fill_gaps: false, max_widening: null,
+      radius: mouthRadiusStr, topological: false, no_replace: true}));
+  if (!islandBuf || !islandBuf.arcs) return;
+  var bridgeDataset = importGeoJSON(
+    {type: 'GeometryCollection', geometries: bridgeGeoms}, {type: 'polygon'});
+  setDatasetCrsInfo(bridgeDataset, crsInfo);
+  clipLayersInPlace(bridgeDataset.layers, islandBuf, bridgeDataset, 'erase',
+    {no_cleanup: true, no_warn: true});
+  (bridgeDataset.layers[0].shapes || []).forEach(function(shape) {
+    if (!shape) return;
+    getPolygonMultiPolygonCoords(shape, bridgeDataset.arcs).forEach(function(rings) {
+      if (rings[0] && rings[0].length >= 4) {
+        geometries.push({type: 'Polygon', coordinates: rings});
+      }
+    });
+  });
+}
+
+// Classify a bridged concavity (outer ring of a closing-minus-land part) and
+// return true when it is NOT a genuine gap -- a shallow scallop or the thin
+// reshaping collar -- and so should be excluded from the additive mask.
+function isShallowInlet(ring, srcGrid, tol, mouthCoord) {
+  var m = inletMetrics(ring, srcGrid, tol);
+  if (!m) return false; // enclosed fill or degenerate: keep it
+  // the thin reshaping collar (near-zero depth relative to the mouth radius) is
+  // not a gap, regardless of its aspect ratio
+  if (mouthCoord > 0 && m.depth < INLET_MIN_ABS_DEPTH * mouthCoord) return true;
+  return m.arc / m.mouth < INLET_MIN_RATIO && m.depth / m.mouth < INLET_MIN_DEPTH_RATIO;
+}
+
+// Measure a bridged concavity. Returns null for a fully enclosed fill (no
+// open-water bridge -- a river reach or lake, always a genuine gap) or a
+// degenerate ring; otherwise {mouth, arc, depth, bridgeRuns} where the mouth is
+// the chord across the longest bridge run, arc is the coastline length, depth is
+// the max distance of the coast from the mouth chord, and bridgeRuns is the
+// count of distinct open-water runs (>= 2 means a strait between two shores).
+function inletMetrics(ring, srcGrid, tol) {
+  var n = ring.length - 1; // edge count (ring is closed: ring[n] == ring[0])
+  if (n < 3) return null;
+  // coast[i] = edge i lies on the source coastline (vs the open-water bridge)
+  var coast = [];
+  for (var i = 0; i < n; i++) {
+    var mx = (ring[i][0] + ring[i + 1][0]) / 2, my = (ring[i][1] + ring[i + 1][1]) / 2;
+    coast[i] = segmentGridWithin(srcGrid, mx, my, tol);
+  }
+  // The mouth is the longest run of bridge (non-coast) edges; no bridge means a
+  // fully enclosed fill (river reach, lake) -- always a genuine gap, keep it.
+  var run = longestFalseRun(coast);
+  if (!run) return null;
+  var c1 = ring[run.start], c2 = ring[(run.end + 1) % n];
+  var mouth = ptDist(c1[0], c1[1], c2[0], c2[1]);
+  if (!(mouth > tol)) return null;
+  var arc = 0, depth = 0;
+  for (i = 0; i < n; i++) {
+    if (inCyclicRun(i, run.start, run.end, n)) continue; // bridge edge
+    arc += ptDist(ring[i][0], ring[i][1], ring[i + 1][0], ring[i + 1][1]);
+    var d = ptLineDist(ring[i][0], ring[i][1], c1[0], c1[1], c2[0], c2[1]);
+    if (d > depth) depth = d;
+  }
+  return {mouth: mouth, arc: arc, depth: depth, bridgeRuns: countFalseRuns(coast)};
+}
+
+// Count distinct cyclic runs of falsey (bridge) edges.
+function countFalseRuns(flags) {
+  var n = flags.length, runs = 0, i;
+  for (i = 0; i < n; i++) {
+    if (!flags[i] && flags[(i - 1 + n) % n]) runs++;
+  }
+  // all-false ring: one run that wraps entirely
+  if (runs === 0 && !flags[0]) return 1;
+  return runs;
+}
+
+// Longest cyclic run of falsey entries; returns {start, end} inclusive edge
+// indices (end may be < start when the run wraps), or null if none are false.
+function longestFalseRun(flags) {
+  var n = flags.length, best = null, bestLen = 0, i, len, start;
+  // scan up to 2n to allow a run to wrap the seam
+  i = 0;
+  while (i < 2 * n) {
+    if (flags[i % n]) { i++; continue; }
+    start = i;
+    while (i < 2 * n && !flags[i % n] && (i - start) < n) i++;
+    len = i - start;
+    if (len > bestLen) { bestLen = len; best = {start: start % n, end: (i - 1) % n}; }
+    if (len >= n) break; // all false
+  }
+  return best;
+}
+
+function inCyclicRun(i, start, end, n) {
+  return start <= end ? (i >= start && i <= end) : (i >= start || i <= end);
+}
+
+function ptDist(ax, ay, bx, by) {
+  return Math.sqrt((ax - bx) * (ax - bx) + (ay - by) * (ay - by));
+}
+
+// Perpendicular distance from (px,py) to the infinite line through a and b.
+function ptLineDist(px, py, ax, ay, bx, by) {
+  var dx = bx - ax, dy = by - ay, len = Math.sqrt(dx * dx + dy * dy);
+  if (!(len > 0)) return ptDist(px, py, ax, ay);
+  return Math.abs((px - ax) * dy - (py - ay) * dx) / len;
+}
+
+// Uniform grid over boundary segments for a fast "is this point within `tol` of
+// the coastline?" test. The coast/bridge classification queries it once per notch
+// edge -- tens to hundreds of thousands of times against 100k+ source segments --
+// so a linear scan is quadratic. Each segment is bucketed into every cell its bbox
+// (padded by tol) covers, so a point within tol of a segment always shares a cell
+// with it and a query need only scan its own cell. Cell size targets ~1 segment
+// per cell. This is a flat hash keyed by integer cell, not a general index.
+function buildSegmentGrid(segs, tol) {
+  var n = segs.length, i, s;
+  var minx = Infinity, miny = Infinity, maxx = -Infinity, maxy = -Infinity;
+  for (i = 0; i < n; i++) {
+    s = segs[i];
+    if (s[0] < minx) minx = s[0]; if (s[2] < minx) minx = s[2];
+    if (s[0] > maxx) maxx = s[0]; if (s[2] > maxx) maxx = s[2];
+    if (s[1] < miny) miny = s[1]; if (s[3] < miny) miny = s[3];
+    if (s[1] > maxy) maxy = s[1]; if (s[3] > maxy) maxy = s[3];
+  }
+  var pad = tol > 0 ? tol : 0;
+  var diag = Math.sqrt((maxx - minx) * (maxx - minx) + (maxy - miny) * (maxy - miny));
+  // keep cells >= 2*tol so a within-tol segment falls in the query's own cell
+  var cell = Math.max(diag / (Math.sqrt(n) || 1) || 1, pad * 2 || 1);
+  var map = new Map();
+  for (i = 0; i < n; i++) {
+    s = segs[i];
+    var cx0 = Math.floor((Math.min(s[0], s[2]) - pad - minx) / cell);
+    var cx1 = Math.floor((Math.max(s[0], s[2]) + pad - minx) / cell);
+    var cy0 = Math.floor((Math.min(s[1], s[3]) - pad - miny) / cell);
+    var cy1 = Math.floor((Math.max(s[1], s[3]) + pad - miny) / cell);
+    for (var cx = cx0; cx <= cx1; cx++) {
+      for (var cy = cy0; cy <= cy1; cy++) {
+        var key = cx + ',' + cy, bucket = map.get(key);
+        if (bucket) bucket.push(i); else map.set(key, [i]);
+      }
+    }
+  }
+  return {segs: segs, map: map, cell: cell, minx: minx, miny: miny};
+}
+
+// True if (px,py) is within `tol` of any segment in the grid. Only the query
+// point's own cell is scanned (see buildSegmentGrid for why that is sufficient).
+function segmentGridWithin(grid, px, py, tol) {
+  var cx = Math.floor((px - grid.minx) / grid.cell);
+  var cy = Math.floor((py - grid.miny) / grid.cell);
+  var bucket = grid.map.get(cx + ',' + cy);
+  if (!bucket) return false;
+  var t2 = tol * tol, segs = grid.segs;
+  for (var i = 0; i < bucket.length; i++) {
+    var s = segs[bucket[i]];
+    if (pointSegDistSq2(px, py, s[0], s[1], s[2], s[3]) <= t2) return true;
+  }
+  return false;
+}
+
+// Part id (segment[4]) of the nearest segment within `tol` of (px,py), or -1.
+// Segments must carry a part id (see collectSourceParts); used to tell which
+// source landmass a fill edge hugs so an island bridge can be recognized.
+function segmentGridPart(grid, px, py, tol) {
+  var cx = Math.floor((px - grid.minx) / grid.cell);
+  var cy = Math.floor((py - grid.miny) / grid.cell);
+  var bucket = grid.map.get(cx + ',' + cy);
+  if (!bucket) return -1;
+  var best = -1, bestD = tol * tol, segs = grid.segs;
+  for (var i = 0; i < bucket.length; i++) {
+    var s = segs[bucket[i]];
+    var d = pointSegDistSq2(px, py, s[0], s[1], s[2], s[3]);
+    if (d <= bestD) { bestD = d; best = s[4]; }
+  }
+  return best;
+}
+
+// Flatten polygon shapes to boundary segments [ax, ay, bx, by, partId] and the
+// net true area of each part (outer ring minus holes), indexed by partId. A
+// "part" is one polygon of a (multi)polygon; each is a distinct landmass, so its
+// area is how the island test decides whether a bridged component is small. Areas
+// are computed in real units (spherical m^2 for lat-long, else planar coordinate
+// units) so the mouth-disk comparison is latitude-independent.
+function collectSourceParts(shapes, arcs, spherical) {
+  var segs = [], areas = [], pid = 0;
+  (shapes || []).forEach(function(shp) {
+    if (!shp) return;
+    getPolygonMultiPolygonCoords(shp, arcs).forEach(function(rings) {
+      var net = 0;
+      rings.forEach(function(ring, ri) {
+        var a = Math.abs(ringTrueArea(ring, spherical));
+        net += ri === 0 ? a : -a;
+        for (var i = 1; i < ring.length; i++) {
+          segs.push([ring[i - 1][0], ring[i - 1][1], ring[i][0], ring[i][1], pid]);
+        }
+      });
+      areas[pid] = net;
+      pid++;
+    });
+  });
+  return {segs: segs, areas: areas};
+}
+
+// Signed area of a closed ring of [x,y] points -- spherical (m^2, [lng,lat]) or
+// planar shoelace -- matching the coordinate-geometry area functions.
+function ringTrueArea(ring, spherical) {
+  if (spherical) return getSphericalPathArea2(pointsIter(ring));
+  return getPlanarPathArea2(ring);
+}
+
+// Minimal forward iterator over an array of [x,y] points, for the *PathArea2
+// helpers that expect a mapshaper shape iterator.
+function pointsIter(points) {
+  var i = -1;
+  return {
+    x: 0, y: 0,
+    hasNext: function() {
+      if (++i >= points.length) return false;
+      this.x = points[i][0];
+      this.y = points[i][1];
+      return true;
+    }
+  };
+}
+
+// Measure how much of a bridged fill's coastline hugs a small landmass. Returns
+// {count, smallFrac}: count is the number of distinct source parts the fill
+// touches, smallFrac the fraction of its coast length that runs along a part
+// smaller than islandMaxArea (a mouth-radius disk). An island bridge -- a small
+// isolated landmass joined to a neighbor across a narrow channel -- has a large
+// smallFrac because the island forms much of the fill's shore. A deep river that
+// merely grazes a small mid-channel island has a tiny smallFrac, so it is not
+// mistaken for one. Bridge (open-water) edges are ignored; they carry no part.
+function islandBridgeMetrics(ring, srcGrid, areas, tol, islandMaxArea) {
+  var n = ring.length - 1, seen = {}, count = 0, coastLen = 0, smallLen = 0;
+  for (var i = 0; i < n; i++) {
+    var mx = (ring[i][0] + ring[i + 1][0]) / 2, my = (ring[i][1] + ring[i + 1][1]) / 2;
+    var pid = segmentGridPart(srcGrid, mx, my, tol);
+    if (pid < 0) continue;
+    var len = ptDist(ring[i][0], ring[i][1], ring[i + 1][0], ring[i + 1][1]);
+    coastLen += len;
+    if (areas[pid] < islandMaxArea) smallLen += len;
+    if (!seen[pid]) { seen[pid] = true; count++; }
+  }
+  return {count: count, smallFrac: coastLen > 0 ? smallLen / coastLen : 0};
+}
+
+// True when a bridged fill joins two or more distinct source landmasses and
+// bridges a small one (below a mouth-radius disk) -- an island the buffer would
+// swallow into its neighbor. Smallness is absolute rather than relative to the
+// neighbor, so a small landmass abutting a large one is recognized as an island
+// while two large adjacent polygons (e.g. states sharing a river) are not. Two
+// signatures qualify (see the constants above): a cluster whose shore is mostly
+// small islands, or a compact strait joining a small island to a neighbor. A
+// deep/winding river that grazes a small mid-channel island matches neither
+// (elongated, and lined mostly by the mainland), so it keeps filling.
+function bridgesSmallIsland(ring, srcGrid, areas, tol, islandMaxArea) {
+  var m = islandBridgeMetrics(ring, srcGrid, areas, tol, islandMaxArea);
+  if (m.count < 2) return false;
+  if (m.smallFrac >= ISLAND_DOMINANT_COAST_FRAC) return true; // islands are a big share of the shore
+  if (m.smallFrac < ISLAND_MIN_COAST_FRAC) return false;      // incidental graze
+  var im = inletMetrics(ring, srcGrid, tol);                  // else: compact strait?
+  return !!im && im.arc / im.mouth < ISLAND_MAX_ARC_RATIO;
 }
 
 // Dissolve every feature of a buffered dataset into a single union polygon (the
