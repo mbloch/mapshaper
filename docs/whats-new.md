@@ -7,6 +7,14 @@ description: A curated log of recently added user-visible features in Mapshaper,
 
 This is a curated list of recently added features. For the full list of changes, including bug fixes and internal work, see the [changelog](https://github.com/mbloch/mapshaper/blob/master/CHANGELOG.md) on GitHub.
 
+## July 2026
+
+<div class="whats-new-entry">
+
+**Ruler tool.** The web UI has a ruler mode for measuring distances on the map. It supports great-circle measurements, projected distance readouts, basemap view, and draggable ruler endpoints.
+
+</div>
+
 ## June 2026
 
 <div class="whats-new-entry">
