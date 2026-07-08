@@ -1,3 +1,6 @@
+v0.7.41
+* Added a ruler tool under the arrow menu.
+
 v0.7.40
 * Import non-standard top-level GeoJSON metadata, so it can be re-exported by adding the `-o metadata` flag. This includes top-level `crs`, `id` and any other properties that are not part of the GeoJSON spec.
 * Improved smoothness of medial lines (used in `topological` and `fill-gaps` buffer modes).
