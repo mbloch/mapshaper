@@ -203,7 +203,7 @@ mapshaper states.geojson -filter <span class="hljs-string">&#x27;ST == &quot;AK&
 mapshaper countries_wgs84.shp encoding=latin1 -info
 </code></pre>
 </section>
-<section class="cmd-section" data-id="-o-output" data-name="-o (output)" data-options="format json target force gzip zip cut-table drop-table precision fix-geometry bbox-index encoding field-order id-field bbox extension prettify singles quantization no-quantization presimplify topojson-precision ndjson gj2008 reverse-winding combine-layers geojson-type no-null-props hoist metadata width height max-height margin pixels id-prefix svg-data svg-scale raster-res linked-images jpeg-quality delimiter decimal-comma compression snappy zstd none level show-all"><h3 id="-o-output">-o (output)</h3>
+<section class="cmd-section" data-id="-o-output" data-name="-o (output)" data-options="format json target force gzip zip cut-table drop-table precision fix-geometry bbox-index encoding field-order id-field bbox extension prettify singles quantization no-quantization presimplify topojson-precision ndjson gj2008 reverse-winding combine-layers geojson-type no-null-props hoist metadata crs id width height max-height margin pixels id-prefix svg-data svg-scale raster-res linked-images jpeg-quality delimiter decimal-comma compression snappy zstd none level show-all"><h3 id="-o-output">-o (output)</h3>
 <p>Save content of the target layer(s) to a file or files.</p>
 <p><strong>Options</strong></p>
 <p><code>&lt;file&gt;|&lt;directory&gt;|-</code>  Name of output file or directory. Use <code>-</code> to export text-based formats to <code>/dev/stdout</code>.</p>
@@ -235,7 +235,7 @@ mapshaper countries_wgs84.shp encoding=latin1 -info
 <p><code>geojson-type=</code>   (GeoJSON) Overrides the default output type. Possible values: &quot;FeatureCollection&quot;, &quot;GeometryCollection&quot;, &quot;Feature&quot; (for a single feature).</p>
 <p><code>no-null-props</code>   (GeoJSON) use <code>&quot;properties&quot;: {}</code> instead of <code>&quot;properties&quot;: null</code> when outputting a Feature with no attribute data.</p>
 <p><code>hoist=</code>  (GeoJSON) Move one or more properties to the root level of each Feature. Hoisting a field named &quot;id&quot; creates an id for each Feature. This option can also be used to create non-standard Feature attributes (as used by the tippecanoe program).</p>
-<p><code>metadata</code>  (SVG/TopoJSON) Include metadata in output. In the case of SVG output, CRS and bbox data is embedded in the file, so when the SVG is re-imported the original geographic coordinates can be recovered.</p>
+<p><code>metadata</code>  (SVG/TopoJSON/GeoJSON) Include metadata in output. In the case of SVG output, CRS and bbox data is embedded in the file, so when the SVG is re-imported the original geographic coordinates can be recovered. For GeoJSON output, this option re-emits non-structural top-level members that were present in the imported GeoJSON file, such as a legacy <code>crs</code> object, a top-level <code>id</code>, or non-standard members like <code>metadata</code>. Preserved members are passed through unchanged, so values that describe the data (e.g. a feature count) may become stale after editing. A preserved <code>crs</code> member is dropped if the dataset is reprojected with <code>-proj</code>.</p>
 <p><code>width=</code>    (SVG/TopoJSON) Set the width of the output dataset in pixels. When used with TopoJSON output, this option switches the output coordinates from geographic units to pixels and flips the Y axis. SVG output is always in pixels (default SVG width is 800).</p>
 <p><code>height=</code>    (SVG/TopoJSON) Similar to the <code>width</code> option. If both <code>height</code> and <code>width</code> are set, content is centered inside the <code>[0, 0, width, height]</code> bounding box.</p>
 <p><code>max-height=</code> (SVG/TopoJSON) Limit output height (units: pixels).</p>
@@ -279,7 +279,7 @@ Gaussian curve. Pixel values can be written as plain numbers or with a <code>px<
 suffix, for example <code>radius=10</code> or <code>radius=10px</code>.</p>
 <p>Common options: <code>target=</code></p>
 </section>
-<section class="cmd-section" data-id="-buffer" data-name="-buffer" data-options="radius tolerance vertices quad-segs round topological fill-gaps max-widening geodesic name target"><h3 id="-buffer">-buffer</h3>
+<section class="cmd-section" data-id="-buffer" data-name="-buffer" data-options="radius tolerance vertices quad-segs round topological fill-gaps max-widening merge-islands geodesic name target"><h3 id="-buffer">-buffer</h3>
 <p>Create buffer polygons around point, polyline or polygon features.</p>
 <p>The buffer distance is given by the <code>&lt;radius&gt;</code> parameter. For layers in
 longitude/latitude coordinates, distances such as <code>2km</code> or <code>500m</code> are measured
@@ -310,6 +310,11 @@ place). The filled area is partitioned among the adjacent features by proximity.
 multiple of the buffer distance wide; wider gaps are kept open. The default is 5.
 For example, with a 1km buffer distance and the default <code>max-widening</code> value, an interior gap is
 filled if it is narrower than 5km and left open otherwise.</p>
+<p><code>merge-islands</code> [polygons, with <code>fill-gaps</code>] Also bridge a small isolated island
+to a neighboring landmass when the gap between them is narrower than the buffer
+distance. By default such islands are left separate (only a landmass smaller than
+a disk of the mouth radius is treated as an island; gaps between larger landmasses,
+such as a river between two states, are filled either way).</p>
 <p><code>geodesic</code> [projected data] Buffer using geodesic distances instead of projected planar distances.</p>
 <p>Common options: <code>name=</code> <code>+</code> <code>target=</code></p>
 <pre><code class="hljs language-bash"><span class="hljs-comment"># Buffer a line layer by 2 km</span>

@@ -8986,8 +8986,17 @@
     noteDatasetInfoWillChange(dest, {operation: 'mergeDatasetInfo'});
     destInfo.input_files = utils.uniq((destInfo.input_files || []).concat(srcInfo.input_files || []));
     destInfo.input_formats = utils.uniq((destInfo.input_formats || []).concat(srcInfo.input_formats || []));
+    // Preserved GeoJSON metadata stays with the dataset it was imported into; it
+    // is never inherited from a merged-in source (e.g. a -join / clip / erase
+    // source), which would otherwise leak that source's metadata into the output.
+    var destMetadata = destInfo.input_geojson_metadata;
     // merge other info properties (e.g. input_geojson_crs, input_delimiter, prj, crs)
     utils.defaults(destInfo, srcInfo);
+    if (destMetadata) {
+      destInfo.input_geojson_metadata = destMetadata;
+    } else {
+      delete destInfo.input_geojson_metadata;
+    }
     markDatasetInfoChanged(dest, {operation: 'mergeDatasetInfo'});
   }
 
@@ -18912,6 +18921,10 @@
       preserveOriginalCRS(dataset, geojson);
     }
 
+    if (opts.metadata) {
+      applyGeoJSONMetadata(dataset, geojson);
+    }
+
     if (opts.bbox) {
       bbox = getDatasetBbox(dataset, opts.rfc7946);
       if (bbox) {
@@ -19059,6 +19072,22 @@
     // }
   }
 
+  // Re-emit non-structural top-level members captured on import (e.g. a legacy
+  // "crs" object, a top-level "id", or non-standard members such as "metadata").
+  // Only called when the "metadata" output option is set.
+  // jsonObj: a top-level GeoJSON object
+  function applyGeoJSONMetadata(dataset, jsonObj) {
+    var info = dataset.info || {};
+    var meta = info.input_geojson_metadata;
+    if (!meta) return;
+    Object.keys(meta).forEach(function(key) {
+      // guard against clobbering members that mapshaper generates itself
+      if (key == 'type' || key == 'bbox' || key == 'features' ||
+          key == 'geometries') return;
+      jsonObj[key] = meta[key];
+    });
+  }
+
   function useFeatureCollection(layers, opts) {
     var type = opts.geojson_type || '';
     if (type == 'Feature' || type == 'FeatureCollection') {
@@ -19129,6 +19158,7 @@
 
   var GeojsonExport = /*#__PURE__*/Object.freeze({
     __proto__: null,
+    applyGeoJSONMetadata: applyGeoJSONMetadata,
     default: GeoJSON,
     exportDatasetAsGeoJSON: exportDatasetAsGeoJSON,
     exportGeoJSON: exportGeoJSON,
@@ -31728,7 +31758,7 @@ ${svg}
         type: 'flag'
       })
       .option('metadata', {
-        describe: '[SVG/TopoJSON] include metadata in output',
+        describe: '[SVG/TopoJSON/GeoJSON] include metadata in output',
         type: 'flag'
       })
       .option('width', {
@@ -31863,12 +31893,16 @@ ${svg}
         type: 'flag'
       })
       .option('fill-gaps', {
-        describe: '[polygons] fill enclosed holes and inlets whose opening is narrower than the buffer distance, without growing the outer boundary',
+        describe: '[polygons] fill enclosed holes and inlets whose opening is narrower than the buffer distance',
         type: 'flag'
       })
       .option('max-widening', {
-        describe: '[with fill-gaps] fill interior gaps up to this multiple of the buffer distance wide (default 5); wider gaps are kept open',
+        describe: '[with fill-gaps] fill interior gaps up to this multiple of the buffer distance wide (default 5)',
         type: 'number'
+      })
+      .option('merge-islands', {
+        describe: '[with fill-gaps] merge small islands across a narrow gap (off by default)',
+        type: 'flag'
       })
       .option('geodesic', {
         describe: '[projected data] buffer using geodesic distances',
@@ -35310,6 +35344,7 @@ ${svg}
     (srcCollection.features || srcCollection.geometries || []).forEach(importer.parseObject);
     dataset = importer.done();
     importCRS(dataset, srcObj); // TODO: remove this
+    captureGeoJSONMetadata(dataset, srcObj);
     warnIfProjectedCoords(dataset, srcObj, opts);
     return dataset;
   }
@@ -35486,9 +35521,34 @@ ${svg}
     }
   }
 
+  // Structural GeoJSON members that describe geometry/collection shape.
+  // These are reconstructed on export, so they are not preserved as metadata.
+  // Note: "bbox" is intentionally excluded from the metadata (mapshaper
+  // regenerates it), but "crs" and "id" and any non-standard members are kept.
+  var GEOJSON_STRUCTURAL_MEMBERS = ['type', 'bbox', 'features', 'geometries',
+    'geometry', 'coordinates', 'properties'];
+
+  // Preserve non-structural top-level members of a GeoJSON object (e.g. a legacy
+  // "crs" object, a top-level "id", or non-standard members such as "metadata"
+  // or "name") so they can be re-emitted when the "metadata" output option is set.
+  function captureGeoJSONMetadata(dataset, jsonObj) {
+    if (!jsonObj || typeof jsonObj != 'object') return;
+    var meta = {};
+    var found = false;
+    Object.keys(jsonObj).forEach(function(key) {
+      if (GEOJSON_STRUCTURAL_MEMBERS.indexOf(key) > -1) return;
+      meta[key] = jsonObj[key];
+      found = true;
+    });
+    if (found) {
+      dataset.info.input_geojson_metadata = meta;
+    }
+  }
+
   var GeojsonImport = /*#__PURE__*/Object.freeze({
     __proto__: null,
     GeoJSONParser: GeoJSONParser,
+    captureGeoJSONMetadata: captureGeoJSONMetadata,
     importCRS: importCRS,
     importGeoJSON: importGeoJSON
   });
@@ -36311,9 +36371,15 @@ ${svg}
 
   function importGeoJSONFile(fileReader, opts) {
     var importer = new GeoJSONParser(opts);
-    parseGeoJSON(fileReader, importer.parseObject);
-    // TODO: examine top-level objects, like crs
-    return importer.done();
+    // For collections, parseGeoJSON() returns the top-level object with its
+    // features/geometries array nulled out but all other members intact.
+    var obj = parseGeoJSON(fileReader, importer.parseObject);
+    var dataset = importer.done();
+    if (obj) {
+      importCRS(dataset, obj);
+      captureGeoJSONMetadata(dataset, obj);
+    }
+    return dataset;
   }
 
   // Parse GeoJSON directly from a binary data source (supports parsing larger files
@@ -45622,296 +45688,1569 @@ ${svg}
     return lng;
   }
 
-  function MaxHeap() {
-    return new Heap('max');
-  }
-
-  // A heap data structure used for computing Visvalingam simplification data.
-  // type: 'max' or 'min' (min is default)
+  // Structural-corner detection for -smooth's corner preservation (on by default;
+  // disabled with no-corners).
   //
-  function Heap(type) {
-    var heapBuf = utils.expandoBuffer(Int32Array),
-        indexBuf = utils.expandoBuffer(Int32Array),
-        heavierThan = type == 'max' ? lessThan : greaterThan,
-        itemsInHeap = 0,
-        dataArr,
-        heapArr,
-        indexArr;
+  // Many boundaries alternate between natural, freely-curving stretches (coast,
+  // river centerline) and artificial straight-line segments (state/county
+  // borders). Plain low-pass smoothing rounds the sharp corners where artificial
+  // segments meet. This module finds those corners so the caller can pin them and
+  // smooth each span between them independently, leaving straight runs intact.
+  //
+  // The approach reduces "preserve straight segments and their corners" to
+  // detecting the corners that bound long, low-curvature (straight or gently
+  // curving) runs:
+  //   1. Flag vertices whose direction changes sharply over a tolerance-scaled
+  //      window AND where that turn is concentrated near the vertex rather than
+  //      spread out. The concentration test compares the turn over a small inner
+  //      window to the turn over the full window: for a uniform curve the ratio is
+  //      a fixed fraction (the window-length ratio), so a steadily-curving stretch
+  //      -- whether a tight coastline or a gentle, hundreds-of-km graticule arc --
+  //      never qualifies; only a localized kink, where the inner turn approaches
+  //      the full turn, is a corner.
+  //   1b. (open paths) Also flag the end of a long straight run that turns sharply
+  //      over a single segment but only gently over the window -- a small jog where
+  //      a surveyed border meets a curve, which step 1's window would dilute below
+  //      the corner angle. Keyed off the raw segment turn, but the pinned vertex is
+  //      snapped to the nearby end of the straight run (stable under tiny vertex
+  //      moves) and only where that run's line is actually left (so an incidental
+  //      notch after which the run resumes on the same line is not flagged). See
+  //      straightRunEndNear.
+  //   2. Between flagged corners, classify each span as "structural" if it is long
+  //      relative to the tolerance and its curvature stays low (so a straight or
+  //      slowly-curving graticule line counts, but sub-tolerance wiggle does not).
+  //   3. Drop corners that don't border any structural span (e.g. spikes inside a
+  //      wiggly coastline), merging their spans, until the partition is stable.
+  //
+  // All geometry is done in the caller's smoothing channels (planar x,y or
+  // geocentric x,y,z), so detection is isotropic and matches the smoothing space.
+  // Angles are computed with plain dot products, which work in any dimension.
 
-    this.init = function(values) {
-      var i;
-      dataArr = values;
-      itemsInHeap = values.length;
-      heapArr = heapBuf(itemsInHeap);
-      indexArr = indexBuf(itemsInHeap);
-      for (i=0; i<itemsInHeap; i++) {
-        insertValue(i, i);
+  var CORNER_ANGLE = 35 * Math.PI / 180; // min concentrated turn to call a corner
+  var TANGENT_WINDOW_FACTOR = 0.25;      // tangent-estimation half-window = tol * this
+  var INNER_WINDOW_FACTOR = 0.4;         // concentration probe window = tangentWindow * this
+  var CORNER_CONCENTRATION = 0.6;        // min ratio of inner-window turn to full-window turn
+  var MIN_RUN_LEN_FACTOR = 1.0;          // a structural run must be at least tol * this long
+  // ...and bend no tighter than radius tol * this. This is the curvature gate for
+  // "structural" (straight or slowly-curving, e.g. a surveyed border or graticule
+  // arc). It must be well above 1: at factor 1 a minimal run may turn a full
+  // radian (~57 deg) over its own length, so ordinary coastal arcs qualify and
+  // their end bends get pinned as spurious corners (radius ~1-1.6*tol). At 3 a
+  // minimal run turns <= ~19 deg, excluding natural coastal curvature while still
+  // admitting genuinely straight borders (radius ~infinite) and graticule arcs
+  // (radius >> tol).
+  var MIN_RUN_RADIUS_FACTOR = 3.0;
+
+  // Straightness gate used to decide corner *retention* (whether a detected corner
+  // borders a run worth pinning), as distinct from isStructuralRun's per-vertex
+  // gate that decides whether a span is copied verbatim. A run is "straight at the
+  // smoothing scale" if every vertex stays within a thin corridor around the
+  // straight chord joining the run's endpoints: max perpendicular deviation <=
+  // STRAIGHT_DEV_FACTOR * chord length. Because this measures deviation from the
+  // chord rather than summing raw per-segment turning, it is robust to
+  // sub-tolerance digitizing wiggle: a finely ragged but geometrically straight
+  // border (huge total per-vertex turning, tiny deviation) qualifies, so its
+  // bounding corners are kept -- while isStructuralRun would (correctly, for its
+  // own purpose) reject it as too wiggly to copy verbatim. The ratio behaves like
+  // a minimum-radius-over-length gate: a run bending with radius R over length L
+  // deviates from its chord by ~L/(8R), so the threshold corresponds to
+  // R >~ L/(8*STRAIGHT_DEV_FACTOR) -- longer runs must be proportionally straighter
+  // to count, which matches intuition (a 28 km stretch bending at radius 4 km is
+  // obviously not straight). Genuinely curving coastline bows far from its chord
+  // and is still rejected, so spurious corners inside wiggly stretches keep getting
+  // culled. Tightened from 0.03 to 0.02 (a run may curve ~9 deg over its length, not
+  // ~14) after a coastline island pinned corners at both ends of a ~10 deg-curving
+  // stretch that read as "straight" only under the looser corridor: an acute corner
+  // takes the full corridor regardless of the angle coupling below, so only the base
+  // factor governs whether such a run can anchor a sharp corner.
+  var STRAIGHT_DEV_FACTOR = 0.02;
+
+  // Angle coupling for corner retention: how much sharper the corner must turn than
+  // the run it borders already curves. A run that passes the chord test may still
+  // bend gently within the STRAIGHT_DEV_FACTOR corridor -- for a circular arc the
+  // chord-deviation ratio is ~ (the run's total turn)/8, so the base 0.02 admits a
+  // run that curves ~9 deg over its length. Pinning a *gentle* bend at the end of
+  // such a run is unsafe: the "corner" is barely sharper than the run's own
+  // curving, so it is really a point on a smooth bend, not a junction. (This is the
+  // failure mode on coarsely sampled / already-simplified coastlines, where a
+  // gently curving stretch is sampled as a few long segments that read as a
+  // borderline-straight run with soft bends at each end.) So the straightness limit
+  // for retention is tightened for gentle corners: a corner is pinnable only if its
+  // turn is at least PIN_TURN_RATIO times the run's own bend, i.e.
+  //   turn >= PIN_TURN_RATIO * (8 * dev)  <=>  dev <= turn / (8 * PIN_TURN_RATIO).
+  // retentionDevLimit() returns the smaller of STRAIGHT_DEV_FACTOR and
+  // turn/(8*PIN_TURN_RATIO), so the coupling only bites for gentle corners (below
+  // ~2*STRAIGHT_DEV_FACTOR*PIN_TURN_RATIO ~ 46 deg); sharp corners (surveyed-border
+  // right angles, spits, hairpins) keep the full base tolerance, unchanged.
+  var PIN_TURN_RATIO = 5;
+
+  // Minimum length (in tol units) a straight run must have to justify *pinning* a
+  // bordering corner. This is deliberately larger than MIN_RUN_LEN_FACTOR (the
+  // floor for calling a span "structural" at all): pinning a corner is a stronger
+  // commitment than copying a clean span, so it demands stronger evidence that the
+  // run is a deliberate straight feature rather than incidental collinearity.
+  //
+  // The failure mode this guards against appears on sparse / already-simplified
+  // data, where a gently curving coastline is sampled as a few long segments. A
+  // short near-collinear stretch only ~1*tol long (often just 1-2 segments) then
+  // passes the chord-deviation test -- with so few interior points there is almost
+  // nothing to deviate -- and gets pinned, kinking an otherwise smooth curve. At
+  // the smoothing scale such a stretch is indistinguishable from a coarsely
+  // sampled bend, so it should not anchor a corner. Requiring the run to be
+  // clearly longer than the smoothing distance (factor 2) drops these stubs while
+  // keeping genuine straight borders (which run many times the distance) and even
+  // coarsely sampled but truly long straight segments (e.g. a 2-3*tol contour
+  // edge). Scales with corner-bias (via ctol), so a positive bias restores the
+  // old 1*tol behaviour for users who want shorter runs pinned.
+  var MIN_PIN_RUN_LEN_FACTOR = 2.0;
+
+  // When a long straight run's end turns sharply into a curve with a small jog, the
+  // sharpest single-segment turn can land a few vertices past the run's actual end.
+  // straightRunEndNear searches back this many source vertices (in addition to the
+  // distance-scaled tangent window) to snap to the stable run end, so detection
+  // does not depend on the smoothing distance being large enough for the window to
+  // span the jog. A jog is a handful of vertices; this is deliberately generous
+  // because the search returns the nearest genuine run end (or nothing).
+  var MAX_JOG_VERTICES = 6;
+
+  // Convert the user-facing corner-bias (0 = neutral) into the positive multiplier
+  // k applied to corner-detection resolution (ctol = tol / k). The mapping is
+  // symmetric about zero -- k(+b) * k(-b) = 1 -- and smooth there (both branches
+  // have slope 1 at b = 0), so opposite biases of equal magnitude are exact
+  // inverses. A positive bias makes detection finer (k > 1, ctol < tol: more, more
+  // finely supported corners); a negative bias makes it coarser (k < 1, ctol > tol:
+  // fewer corners), each as if the smoothing distance were tol/k. Examples: +1
+  // doubles the resolution (k=2, "as if distance were halved"), -1 halves it
+  // (k=1/2, "as if doubled"); +2 -> k=3, -2 -> k=1/3.
+  function cornerBiasScale(cornerBias) {
+    var b = cornerBias || 0;
+    return b >= 0 ? b + 1 : 1 / (1 - b);
+  }
+
+  // Ratio of (typical segment length / smoothing distance) at or below which corner
+  // detection sees several segments per tangent window and behaves normally, so no
+  // automatic coarsening is applied. Above it the window shrinks toward a single
+  // segment and ordinary coarse-data bends start reading as corners.
+  var AUTO_BIAS_RATIO = 0.15;
+  // Most-negative automatic bias. Caps how far detection is coarsened on very sparse
+  // geometry (e.g. lo-res contours), where the ratio can be many times AUTO_BIAS_RATIO
+  // but a handful of doublings already merges the whole neighbourhood.
+  var AUTO_BIAS_FLOOR = -4;
+
+  // Automatic corner-bias from the geometry's coarseness relative to the smoothing
+  // distance. @medianSeg is a robust (median) segment length; @dist is the raw
+  // smoothing distance, both in the same ground units. Corner detection keys off a
+  // tangent window ~0.3*dist wide; when the typical segment is an appreciable
+  // fraction of the distance (ratio r = medianSeg/dist above AUTO_BIAS_RATIO) that
+  // window spans too few segments and gentle-but-coarse bends read as corners. We
+  // return a negative bias that coarsens detection (as if the distance were larger)
+  // enough to push the effective ratio back down: each halving of the effective
+  // resolution costs one bias step, so bias = -log2(r / AUTO_BIAS_RATIO), floored.
+  // Returns 0 (no adjustment) when the geometry is fine relative to the distance,
+  // which is the normal case for detailed datasets smoothed at a real distance.
+  // Note it only ever coarsens: a straight run that genuinely anchors a sharp corner
+  // survives this (the corner is retained by bordering a long straight run, which
+  // coarsening does not remove until it exceeds the run's length), while weakly
+  // supported bends on coarse coastlines/contours fall below the corner threshold.
+  function autoCornerBias(medianSeg, dist) {
+    if (!(medianSeg > 0) || !(dist > 0)) return 0;
+    var r = medianSeg / dist;
+    if (r <= AUTO_BIAS_RATIO) return 0;
+    var b = -Math.log2(r / AUTO_BIAS_RATIO);
+    return b < AUTO_BIAS_FLOOR ? AUTO_BIAS_FLOOR : b;
+  }
+
+  // @cornerBias (optional, default 0 = neutral) scales only the distance-
+  // proportional corner parameters, by dividing the tolerance they key off
+  // (ctol = tol / k, k = cornerBiasScale(bias)). The dimensionless thresholds are
+  // left untouched: the corner angle, the concentration ratio, and -- downstream,
+  // inside isStraightRun / retentionDevLimit -- STRAIGHT_DEV_FACTOR and
+  // PIN_TURN_RATIO. So corner-bias detects (and retains) corners exactly as if the
+  // smoothing distance were tol/k, while the smoothing kernel keeps using the real
+  // distance. In particular `-smooth corner-bias=-1 1km` gives the same corner
+  // results as `-smooth 2km` (a negative bias finds fewer, only well-supported
+  // corners; a positive bias finds more), but smooths at 1km. All lengths below are
+  // derived from ctol; only cornerAngle and concentration (both dimensionless) stay
+  // fixed.
+  function getCornerParams(tol, cornerBias) {
+    var ctol = tol / cornerBiasScale(cornerBias);
+    return {
+      tol: tol,
+      cornerAngle: CORNER_ANGLE,
+      tangentWindow: TANGENT_WINDOW_FACTOR * ctol,
+      innerWindow: INNER_WINDOW_FACTOR * TANGENT_WINDOW_FACTOR * ctol,
+      concentration: CORNER_CONCENTRATION,
+      minRunLen: MIN_RUN_LEN_FACTOR * ctol,
+      minPinRunLen: MIN_PIN_RUN_LEN_FACTOR * ctol,
+      maxTurnRate: 1 / (MIN_RUN_RADIUS_FACTOR * ctol) // radians of turning per ground unit
+    };
+  }
+
+  // Find the interior corner vertices of an arc.
+  // @t: cumulative arc length (length n). @channels: K coordinate arrays.
+  // @cyclic: true for a closed ring (n includes the repeated closing vertex; the
+  //   m = n-1 unique vertices are treated cyclically). @params: getCornerParams().
+  // Returns sorted vertex indices: for open arcs in [1, n-2]; for rings in [0, m).
+  function findInteriorCorners(t, channels, n, cyclic, params) {
+    if (n < 3) return [];
+    var K = channels.length;
+    var L = t[n - 1];
+    var m = cyclic ? n - 1 : n;
+    if (cyclic && m < 3) return [];
+    var W = params.tangentWindow;
+    var Wi = params.innerWindow;
+    var turns = new Float64Array(m);
+    var inner = new Float64Array(m);
+    var lo = cyclic ? 0 : 1;
+    var hi = cyclic ? m : n - 1; // exclusive
+    for (var i = lo; i < hi; i++) {
+      turns[i] = windowedTurn(t, channels, K, n, L, m, i, W, cyclic);
+      inner[i] = windowedTurn(t, channels, K, n, L, m, i, Wi, cyclic);
+    }
+    // candidates above the angle threshold, that are concentrated (a localized
+    // turn, not gradual bending -- see isConcentratedTurn), and that are the
+    // sharpest turn within a tangent-window neighborhood (non-maximum suppression)
+    var corners = [];
+    for (var j = lo; j < hi; j++) {
+      if (turns[j] < params.cornerAngle) continue;
+      if (inner[j] < params.concentration * turns[j]) continue;
+      if (isLocalMaxTurn(t, turns, j, W, L, m, lo, hi, cyclic)) corners.push(j);
+    }
+    // Open paths: also flag the terminal vertex of a long straight run that bends
+    // sharply over a single segment but only gently over the tangent window -- e.g.
+    // where a surveyed border meets a coastline with a small jog. The windowed test
+    // above misses these because the wide window dilutes the sharp segment turn into
+    // a sub-threshold bend, so the straight run's end gets rounded into the adjacent
+    // curve. Here we key off the raw segment turn instead, but confine this rescue
+    // to a genuine straight-run end with two gates (plus straightRunEndNear):
+    //   1. the turn is fully concentrated in the inner window: inner-window turn >=
+    //      full-window turn. This is a stricter form of the windowed path's
+    //      concentration test (>= concentration * full) and is the crux of the
+    //      distinction. At a straight-run end the approaches carry ~no turning, so
+    //      the whole window's turn sits in the inner window (ratio >= 1); on a
+    //      steadily-curving coastline the turning is spread across the window (inner
+    //      < full), so a lone sharp segment there is rejected. The wide window
+    //      dilutes the end's departure below the corner threshold (which is why the
+    //      windowed path misses it), but the concentration ratio stays high.
+    //   2. (via straightRunEndNear) a bordering straight run's line is actually left,
+    //      so an incidental notch on an otherwise-continuing run is not pinned.
+    // Rings keep the windowed-only detection for now.
+    if (!cyclic) {
+      var raw = new Float64Array(m);
+      for (i = lo; i < hi; i++) raw[i] = vertexTurn(channels, K, i);
+      for (j = lo; j < hi; j++) {
+        if (raw[j] < params.cornerAngle) continue;
+        if (inner[j] < turns[j]) continue;
+        if (!isLocalMaxTurn(t, raw, j, W, L, m, lo, hi, cyclic)) continue;
+        var e = straightRunEndNear(t, channels, n, j, W, params);
+        if (e >= 0 && corners.indexOf(e) === -1) corners.push(e);
       }
-      // place non-leaf items
-      for (i=(itemsInHeap-2) >> 1; i >= 0; i--) {
-        downHeap(i);
-      }
-    };
+      corners.sort(function (a, b) { return a - b; });
+    }
+    return corners;
+  }
 
-    this.size = function() {
-      return itemsInHeap;
-    };
+  // Given a sharp single-segment turn at open-path vertex @j, find the end of a
+  // long straight run that the path leaves, within arc length @W of @j, and return
+  // that run-end vertex to pin (or -1). We search a neighbourhood rather than
+  // requiring the run's last vertex to be exactly where the segment turn peaks: a
+  // jog into a curve can place its sharpest vertex a step or two past the run's
+  // end, and exactly which vertex is sharpest is sensitive to tiny differences in
+  // vertex placement -- but the straight run's end itself is stable. Snapping to it
+  // keeps detection from flickering on and off with sub-tolerance vertex moves. The
+  // straightRunLeaves test only succeeds at a genuine run end whose continuation
+  // departs, so an incidental jog after which the run resumes is still not pinned.
+  function straightRunEndNear(t, channels, n, j, W, params) {
+    var e, k;
+    // The jog between the sharp turn and the run's end is a fixed handful of source
+    // vertices, independent of the smoothing distance -- so the search extends by a
+    // vertex count as well as the distance-scaled window W. Without the vertex floor
+    // the window shrinks with the distance and, at small distances, can no longer
+    // reach back across the jog to the run end (fewer, not more, corners pinned as
+    // the distance drops -- the opposite of what a long run warrants). We return the
+    // first (nearest) run end found, so a generous reach only costs a few extra
+    // straightRunLeaves checks when there is nothing to pin.
+    for (e = j, k = 0; e >= 1; e--, k++) {
+      if (t[j] - t[e] > W && k > MAX_JOG_VERTICES) break;
+      if (straightRunLeaves(t, channels, n, e, -1, params) ||
+          straightRunLeaves(t, channels, n, e, 1, params)) return e;
+    }
+    for (e = j + 1, k = 1; e < n - 1; e++, k++) {
+      if (t[e] - t[j] > W && k > MAX_JOG_VERTICES) break;
+      if (straightRunLeaves(t, channels, n, e, -1, params) ||
+          straightRunLeaves(t, channels, n, e, 1, params)) return e;
+    }
+    return -1;
+  }
 
-    // Update a single value and re-heap
-    this.updateValue = function(valIdx, val) {
-      var heapIdx = indexArr[valIdx];
-      dataArr[valIdx] = val;
-      if (!(heapIdx >= 0 && heapIdx < itemsInHeap)) {
-        error("Out-of-range heap index.");
-      }
-      downHeap(upHeap(heapIdx));
-    };
+  // Is the near side of @e (walking direction @dir: -1 = run precedes e, +1 = run
+  // follows e) a long straight run, AND does the far side leave that run's line --
+  // i.e. a point a full run-length along the far side sits outside the run's
+  // straightness corridor? A jog that rejoins the run returns to ~0 perpendicular
+  // offset and fails this, so it is not flagged. (This also implies @e is the run's
+  // end: if the run continued straight past @e, the far point would stay on its
+  // line.)
+  function straightRunLeaves(t, channels, n, e, dir, params) {
+    var K = channels.length, L = t[n - 1];
+    var nearEnd = reach(t, n, n, L, e, dir, params.minPinRunLen, false);
+    if (nearEnd === e) return false;
+    var a = dir < 0 ? nearEnd : e;
+    var b = dir < 0 ? e : nearEnd;
+    // Require the near run to be straight to the SAME angle-coupled tolerance
+    // retention will demand of a pin at @e (retentionDevLimit of the turn at @e),
+    // not the looser default corridor. This makes straightRunEndNear's backward
+    // scan stop at the run's true end -- the last vertex actually on the run's line
+    // -- rather than a vertex a little past it that squeaks inside the loose 3%
+    // corridor but would then be culled by retention (leaving nothing pinned).
+    var devLim = retentionDevLimit(cornerTurn(t, channels, n, e, false, params));
+    if (!isStraightRun(t, channels, a, b, params, devLim)) return false;
+    var farEnd = reach(t, n, n, L, e, -dir, params.minPinRunLen, false);
+    if (farEnd === e) return false;
+    var pe = getPt(channels, K, e);
+    var u = subv(getPt(channels, K, nearEnd), pe, K); // direction along the near run
+    var uu = dot(u, u, K);
+    if (!(uu > 0)) return false;
+    var af = subv(getPt(channels, K, farEnd), pe, K);
+    var along = Math.abs(dot(af, u, K)) / Math.sqrt(uu);
+    var perp = Math.sqrt(perpDistSq(channels, K, farEnd, pe, u, uu));
+    // outside the straight corridor extended from the run -> the path has left it
+    return perp > STRAIGHT_DEV_FACTOR * along;
+  }
 
-    this.popValue = function() {
-      return dataArr[this.pop()];
-    };
+  // Is span [a, b] (inclusive vertex indices, a < b, open frame) a structural run:
+  // long relative to the tolerance and low-curvature throughout?
+  function isStructuralRun(t, channels, a, b, params) {
+    var len = t[b] - t[a];
+    if (!(len >= params.minRunLen)) return false;
+    var K = channels.length;
+    var totalTurn = 0;
+    for (var i = a + 1; i < b; i++) {
+      totalTurn += vertexTurn(channels, K, i);
+      if (totalTurn / len > params.maxTurnRate) return false;
+    }
+    return totalTurn / len <= params.maxTurnRate;
+  }
 
-    this.getValue = function(idx) {
-      return dataArr[idx];
-    };
+  // Cyclic form of isStructuralRun for a closed ring: the span runs forward from
+  // ring vertex @a to ring vertex @b over the m = n-1 unique vertices, wrapping
+  // when b <= a (a == b means the whole ring). Length and turning are measured
+  // cyclically. Used to decide whether a detected ring corner borders a genuine
+  // straight/low-curvature run before it is pinned (see smoothArcCoords).
+  function isStructuralRingSpan(t, channels, n, a, b, params) {
+    var m = n - 1;
+    if (m < 2) return false;
+    var L = t[n - 1];
+    var len = b > a ? t[b] - t[a] : (L - t[a]) + t[b];
+    if (!(len >= params.minRunLen)) return false;
+    var K = channels.length;
+    var totalTurn = 0;
+    var i = a;
+    while (true) {
+      i = (i + 1) % m;
+      if (i === b) break;
+      totalTurn += ringVertexTurn(channels, K, m, i);
+      if (totalTurn / len > params.maxTurnRate) return false;
+    }
+    return totalTurn / len <= params.maxTurnRate;
+  }
 
-    this.peek = function() {
-      return heapArr[0];
-    };
+  // Is span [a, b] (inclusive vertex indices, a < b, open frame) "straight at the
+  // smoothing scale": clearly longer than the smoothing distance (>= minPinRunLen,
+  // see MIN_PIN_RUN_LEN_FACTOR) AND confined to a thin corridor around its endpoint
+  // chord (see STRAIGHT_DEV_FACTOR)? Used to decide whether a detected corner
+  // borders a straight run worth pinning. Unlike isStructuralRun -- which sums raw
+  // per-segment turning and is therefore defeated by sub-tolerance digitizing
+  // noise -- this measures perpendicular deviation from the chord, so a finely
+  // ragged but geometrically straight border still qualifies. The length floor is
+  // the pinning-specific minPinRunLen (not minRunLen): a run only ~1*tol long has
+  // too few interior points for the chord test to distinguish a true straight
+  // border from a coarsely sampled bend, so it must not anchor a corner. @devLimit
+  // overrides the corridor half-width (default STRAIGHT_DEV_FACTOR); retention
+  // passes a per-corner value tightened for gentle bends (see retentionDevLimit).
+  function isStraightRun(t, channels, a, b, params, devLimit) {
+    var lim = devLimit === undefined ? STRAIGHT_DEV_FACTOR : devLimit;
+    var len = t[b] - t[a];
+    if (!(len >= params.minPinRunLen)) return false;
+    var K = channels.length;
+    var A = getPt(channels, K, a);
+    var AB = subv(getPt(channels, K, b), A, K);
+    var abDot = dot(AB, AB, K);
+    if (!(abDot > 0)) return false;
+    var limit2 = lim * lim * abDot;
+    for (var i = a + 1; i < b; i++) {
+      if (perpDistSq(channels, K, i, A, AB, abDot) > limit2) return false;
+    }
+    return true;
+  }
 
-    this.peekValue = function() {
-      return dataArr[heapArr[0]];
-    };
+  // Cyclic form of isStraightRun for a closed ring: the span runs forward from ring
+  // vertex @a to ring vertex @b over the m = n-1 unique vertices, wrapping when
+  // b <= a. A whole-ring span (a == b, the single-corner case) has no meaningful
+  // chord, so it falls back to the turning-rate test (a large low-curvature ring
+  // keeps its one corner). Used by the closed-ring corner cull (see
+  // filterRingCornersByStructure in mapshaper-smooth-algos).
+  function isStraightRingSpan(t, channels, n, a, b, params, devLimit) {
+    var lim = devLimit === undefined ? STRAIGHT_DEV_FACTOR : devLimit;
+    var m = n - 1;
+    if (m < 2) return false;
+    if (a === b) return isStructuralRingSpan(t, channels, n, a, b, params);
+    var L = t[n - 1];
+    var len = b > a ? t[b] - t[a] : (L - t[a]) + t[b];
+    if (!(len >= params.minPinRunLen)) return false;
+    var K = channels.length;
+    var A = getPt(channels, K, a);
+    var AB = subv(getPt(channels, K, b), A, K);
+    var abDot = dot(AB, AB, K);
+    if (!(abDot > 0)) return false;
+    var limit2 = lim * lim * abDot;
+    var i = a;
+    while (true) {
+      i = (i + 1) % m;
+      if (i === b) break;
+      if (perpDistSq(channels, K, i, A, AB, abDot) > limit2) return false;
+    }
+    return true;
+  }
 
-    // Return the idx of the lowest-value item in the heap
-    this.pop = function() {
-      var popIdx;
-      if (itemsInHeap <= 0) {
-        error("Tried to pop from an empty heap.");
-      }
-      popIdx = heapArr[0];
-      insertValue(0, heapArr[--itemsInHeap]); // move last item in heap into root position
-      downHeap(0);
-      return popIdx;
-    };
+  // Straightness limit for pinning a corner whose windowed turn is @turnRad (see
+  // PIN_TURN_RATIO): min(STRAIGHT_DEV_FACTOR, turnRad / (8 * PIN_TURN_RATIO)).
+  function retentionDevLimit(turnRad) {
+    var lim = turnRad / (8 * PIN_TURN_RATIO);
+    return lim < STRAIGHT_DEV_FACTOR ? lim : STRAIGHT_DEV_FACTOR;
+  }
 
-    function upHeap(idx) {
-      var parentIdx;
-      // Move item up in the heap until it's at the top or is not lighter than its parent
-      while (idx > 0) {
-        parentIdx = (idx - 1) >> 1;
-        if (heavierThan(idx, parentIdx)) {
-          break;
+  // Windowed turn (radians) at vertex @i, over params.tangentWindow each side --
+  // the same measure findInteriorCorners uses to flag the corner. @cyclic selects
+  // the open or ring frame.
+  function cornerTurn(t, channels, n, i, cyclic, params) {
+    var K = channels.length;
+    var L = t[n - 1];
+    var m = cyclic ? n - 1 : n;
+    return windowedTurn(t, channels, K, n, L, m, i, params.tangentWindow, cyclic);
+  }
+
+  // Does the open span [a, b] justify pinning the corner at vertex @corner: is it a
+  // straight run (isStraightRun) whose straightness is enough for the corner's turn
+  // angle (retentionDevLimit)? A gentle bend needs a straighter run than a sharp
+  // one. Used by refineBounds.
+  function bordersStraightRun(t, channels, n, corner, a, b, params) {
+    var lim = retentionDevLimit(cornerTurn(t, channels, n, corner, false, params));
+    return isStraightRun(t, channels, a, b, params, lim);
+  }
+
+  // Ring analogue of bordersStraightRun, for the closed-ring corner cull
+  // (filterRingCornersByStructure). @corner is a ring vertex; the span runs from
+  // ring vertex @a to @b (cyclic when b <= a).
+  function bordersStraightRingSpan(t, channels, n, corner, a, b, params) {
+    var lim = retentionDevLimit(cornerTurn(t, channels, n, corner, true, params));
+    return isStraightRingSpan(t, channels, n, a, b, params, lim);
+  }
+
+  // --- internals ---
+
+  // Turn angle at vertex i between the incoming and outgoing directions, each
+  // estimated over an arc-length window W (so the measure is scale-aware and not
+  // dominated by a single short segment).
+  function windowedTurn(t, channels, K, n, L, m, i, W, cyclic) {
+    var back = reach(t, n, m, L, i, -1, W, cyclic);
+    var fwd = reach(t, n, m, L, i, 1, W, cyclic);
+    var pi = getPt(channels, K, i);
+    var pb = getPt(channels, K, back);
+    var pf = getPt(channels, K, fwd);
+    return angleBetween(subv(pi, pb, K), subv(pf, pi, K), K);
+  }
+
+  // Local turn at vertex i using just the adjacent segments.
+  function vertexTurn(channels, K, i) {
+    var pi = getPt(channels, K, i);
+    var pp = getPt(channels, K, i - 1);
+    var pn = getPt(channels, K, i + 1);
+    return angleBetween(subv(pi, pp, K), subv(pn, pi, K), K);
+  }
+
+  // Local turn at ring vertex i using cyclic neighbours over m unique vertices.
+  function ringVertexTurn(channels, K, m, i) {
+    var pi = getPt(channels, K, i);
+    var pp = getPt(channels, K, (i - 1 + m) % m);
+    var pn = getPt(channels, K, (i + 1) % m);
+    return angleBetween(subv(pi, pp, K), subv(pn, pi, K), K);
+  }
+
+  // Walk from vertex i in direction dir (+1/-1) until accumulated arc length
+  // reaches W (or a boundary, for open arcs), returning the reached vertex index.
+  // Segment lengths are read straight from the cumulative-length array t (t has
+  // n = m+1 entries with t[m] = L, so t[j+1]-t[j] is valid for every ring vertex
+  // j in 0..m-1, including the closing segment); this avoids allocating a per-ring
+  // segment-length array on every call (cornerTurn is hit ~twice per corner).
+  function reach(t, n, m, L, i, dir, W, cyclic) {
+    var j = i, acc = 0;
+    while (acc < W) {
+      if (cyclic) {
+        if (dir > 0) {
+          acc += t[j + 1] - t[j];      // vertex j -> j+1 (t[m] == L handles the seam)
+          j = j + 1 === m ? 0 : j + 1;
+        } else {
+          acc += j > 0 ? t[j] - t[j - 1] : L - t[m - 1]; // vertex j -> j-1
+          j = (j - 1 + m) % m;
         }
-        swapItems(idx, parentIdx);
-        idx = parentIdx;
-      }
-      return idx;
-    }
-
-    // Swap item at @idx with any lighter children
-    function downHeap(idx) {
-      var minIdx = compareDown(idx);
-
-      while (minIdx > idx) {
-        swapItems(idx, minIdx);
-        idx = minIdx; // descend in the heap
-        minIdx = compareDown(idx);
+        if (j === i) break; // wrapped the whole ring
+      } else {
+        var nk = j + dir;
+        if (nk < 0 || nk > n - 1) break;
+        acc += Math.abs(t[nk] - t[j]);
+        j = nk;
       }
     }
+    return j;
+  }
 
-    function swapItems(a, b) {
-      var i = heapArr[a];
-      insertValue(a, heapArr[b]);
-      insertValue(b, i);
-    }
-
-    // Associate a heap idx with the index of a value in data arr
-    function insertValue(heapIdx, valId) {
-      indexArr[valId] = heapIdx;
-      heapArr[heapIdx] = valId;
-    }
-
-    // comparator for Visvalingam min heap
-    // @a, @b: Indexes in @heapArr
-    function greaterThan(a, b) {
-      var idx1 = heapArr[a],
-          idx2 = heapArr[b],
-          val1 = dataArr[idx1],
-          val2 = dataArr[idx2];
-      // If values are equal, compare array indexes.
-      // This is not a requirement of the Visvalingam algorithm,
-      // but it generates output that matches Mahes Visvalingam's
-      // reference implementation.
-      // See https://hydra.hull.ac.uk/assets/hull:10874/content
-      return (val1 > val2 || val1 === val2 && idx1 > idx2);
-    }
-
-    // comparator for max heap
-    function lessThan(a, b) {
-      var idx1 = heapArr[a],
-          idx2 = heapArr[b];
-      return dataArr[idx1] < dataArr[idx2];
-    }
-
-    function compareDown(idx) {
-      var a = 2 * idx + 1,
-          b = a + 1,
-          n = itemsInHeap;
-      if (a < n && heavierThan(idx, a)) {
-        idx = a;
+  // Non-maximum suppression: is vertex j the sharpest turn within an arc-length
+  // window W (ties broken toward the lower index)? Only the vertices within W of j
+  // are examined -- walking outward from j in each direction and stopping once the
+  // arc-length gap reaches W -- rather than scanning the whole arc for every
+  // candidate, which was O(vertices^2) when many vertices are candidates (e.g. a
+  // large ring smoothed below its vertex spacing). Cumulative arc length is
+  // monotone, so the outward gap only grows and the early break is safe; a vertex
+  // within the cyclic window is reached going forward or backward (or both on a
+  // tiny ring, which is harmless for an all-or-nothing test).
+  function isLocalMaxTurn(t, turns, j, W, L, m, lo, hi, cyclic) {
+    var k, d;
+    if (cyclic) {
+      for (k = (j + 1) % m; k !== j; k = (k + 1) % m) {
+        d = t[k] - t[j];
+        if (d < 0) d += L; // forward arc distance
+        if (d >= W) break;
+        if (turns[k] > turns[j] || (turns[k] === turns[j] && k < j)) return false;
       }
-      if (b < n && heavierThan(idx, b)) {
-        idx = b;
+      for (k = (j - 1 + m) % m; k !== j; k = (k - 1 + m) % m) {
+        d = t[j] - t[k];
+        if (d < 0) d += L; // backward arc distance
+        if (d >= W) break;
+        if (turns[k] > turns[j] || (turns[k] === turns[j] && k < j)) return false;
       }
-      return idx;
+      return true;
+    }
+    for (k = j + 1; k < hi; k++) {
+      if (t[k] - t[j] >= W) break;
+      if (turns[k] > turns[j] || (turns[k] === turns[j] && k < j)) return false;
+    }
+    for (k = j - 1; k >= lo; k--) {
+      if (t[j] - t[k] >= W) break;
+      if (turns[k] > turns[j] || (turns[k] === turns[j] && k < j)) return false;
+    }
+    return true;
+  }
+
+  function getPt(channels, K, i) {
+    var p = new Array(K);
+    for (var c = 0; c < K; c++) p[c] = channels[c][i];
+    return p;
+  }
+
+  function subv(a, b, K) {
+    var o = new Array(K);
+    for (var c = 0; c < K; c++) o[c] = a[c] - b[c];
+    return o;
+  }
+
+  function dot(a, b, K) {
+    var d = 0;
+    for (var c = 0; c < K; c++) d += a[c] * b[c];
+    return d;
+  }
+
+  // Squared perpendicular distance of vertex @i from the line through point @A
+  // with direction @AB (abDot = AB.AB). = |AP|^2 - (AP.AB)^2 / |AB|^2.
+  function perpDistSq(channels, K, i, A, AB, abDot) {
+    var apAp = 0, apAb = 0, d;
+    for (var c = 0; c < K; c++) {
+      d = channels[c][i] - A[c];
+      apAp += d * d;
+      apAb += d * AB[c];
+    }
+    var perp = apAp - apAb * apAb / abDot;
+    return perp > 0 ? perp : 0;
+  }
+
+  function angleBetween(u, v, K) {
+    var d = 0, nu = 0, nv = 0;
+    for (var c = 0; c < K; c++) {
+      d += u[c] * v[c];
+      nu += u[c] * u[c];
+      nv += v[c] * v[c];
+    }
+    var den = Math.sqrt(nu * nv);
+    if (!(den > 0)) return 0;
+    var x = d / den;
+    if (x > 1) x = 1;
+    else if (x < -1) x = -1;
+    return Math.acos(x);
+  }
+
+  // Scale-aware line smoothing primitives, shared by the -smooth command.
+  //
+  // The smoother treats a path as coordinate signals parameterized by arc length s
+  // and applies a length-scaled low-pass filter. The user-facing distance is
+  // calibrated so that it approximates the maximum displacement of the smoothed
+  // line from the original at high-displacement features (e.g. acute bends): finer
+  // detail is removed and larger features pass through progressively less changed.
+  // In frequency terms the kernel's half-amplitude (-6 dB) wavelength sits at
+  // roughly KERNEL_STRENGTH * distance, so detail a few times finer than the
+  // distance is strongly attenuated. The distance is not a strict deviation
+  // bound -- a tall, narrow sub-resolution spike can still be displaced by an
+  // amount comparable to its own amplitude (inherent to convolution smoothers).
+  //
+  // The filter is a local second-degree polynomial fit whose quadratic term
+  // corrects the inward shrinkage that plain weighted averaging causes on curved
+  // features. The weight kernel selects the method (see smoothPoint):
+  //  - 'gaussian' (default, the only documented method): Gaussian kernel
+  //    e^(-t^2/2sigma^2), i.e. a Savitzky-Golay smoother.
+  //  - 'paek': exponential kernel e^(-|t|/d) (Bodansky et al. 2002, the kernel
+  //    ArcGIS's PAEK uses). Kept as an undocumented alternative; with the quadratic
+  //    correction it differs only slightly from the gaussian method.
+  //
+  // The smoother works on a list of coordinate "channels": planar data is
+  // smoothed in 2D (x, y); unprojected lng/lat data is converted to geocentric
+  // x, y, z and smoothed in 3D Cartesian on the sphere (then converted back).
+  // Averaging lng/lat directly would shear shapes toward the poles (a degree of
+  // longitude shrinks with cos(lat)); the geocentric representation is isotropic
+  // and handles the antimeridian and poles without special cases, mirroring how
+  // -simplify treats spherical coordinates. The kernel scale stays in true ground
+  // distance because arc length is measured with great-circle distance.
+  //
+  // KERNEL_FROM_DISTANCE maps the user distance onto the internal reference scale
+  // (tol) that keys corner detection, output sampling and densification. The kernel
+  // itself is then widened by KERNEL_STRENGTH (below), so the distance approximates
+  // the maximum displacement at sharp features and the -6 dB wavelength sits near
+  // KERNEL_STRENGTH * distance. The remaining calibration constants are expressed
+  // relative to the internal scale and map it onto kernel widths and output
+  // sampling; they are collected here so the mapping can be retuned in one place.
+  // See docs/reference.md.
+  var KERNEL_FROM_DISTANCE = 1.2;   // internal kernel scale = distance * this
+  // Base smoothing strength baked into the default: the low-pass kernel scale is
+  // this * tol (before the user's `strength` multiplier and the ring cap). It is
+  // calibrated so the distance parameter approximates the maximum displacement of
+  // the smoothed line from the original at high-displacement features (e.g. acute
+  // bends) -- a markedly stronger, more intuitive effect than the raw -6 dB
+  // mapping (which displaced the line far less than the distance). ONLY the kernel
+  // scale is affected; tol -- and therefore corner detection, output sampling, the
+  // prefilter and island dropping -- stays keyed to the raw distance.
+  var KERNEL_STRENGTH = 5;
+  var GAUSSIAN_SIGMA_FACTOR = 0.4;  // gaussian sigma = internal scale * this
+  var PAEK_SCALE_FACTOR = 0.4;      // exponential kernel scale d = internal scale * this
+  var WINDOW_RADIUS_FACTOR = 1.2;   // window half-length = internal scale * this
+  var SOURCE_SPACING_FACTOR = 0.25; // densify source to <= tolerance * this before smoothing
+  var MAX_OUTPUT_FACTOR = 8;        // cap output (and source) vertices at inputCount * this
+  var MIN_CLOSED_SEGMENTS = 16;     // floor on segments for closed rings (so they resolve)
+  // A closed ring cannot be smoothed at a resolution coarser than the ring itself:
+  // once the kernel window (radius = internal scale * WINDOW_RADIUS_FACTOR)
+  // reaches half the ring's perimeter, every output point averages over the whole
+  // loop and the ring degenerates toward a point (a circle once re-inflated). So
+  // for a closed ring the internal scale is capped just below that threshold,
+  // which is factor 1/(2*WINDOW_RADIUS_FACTOR) ~ 0.42. Up to the threshold the
+  // ring keeps its shape (elongated stays elongated, and detail is rounded as much
+  // as the ring's own size allows); the enclosed area it loses to curve-shortening
+  // on the way is restored afterward by restoreRingArea() (a similarity rescale
+  // about the centroid), so a small island is rounded at close to the full
+  // requested scale without shrinking. The cap only binds when the requested
+  // distance nears the ring's own size; large rings (perimeter >> distance) smooth
+  // gently, lose negligible area and are effectively unaffected by either step.
+  var MAX_RING_SCALE_FACTOR = 0.42;
+
+  // Output resampling. The smoothed curve is a continuous function of arc length;
+  // we sample it densely at a uniform step and then thin that dense polyline with a
+  // single O(n) forward pass that keeps a vertex only where the curve has bent
+  // enough since the last kept vertex. Filtering on accumulated bend angle (rather
+  // than chord deviation, as Douglas-Peucker does) bounds the angle between
+  // consecutive output segments *by construction*, so joins stay smooth with no
+  // separate tangent test. This works cleanly because the filter consumes the
+  // already-smoothed (denoised) curve, where per-vertex turning is small and
+  // well-behaved. Density follows curvature for free: bends accumulate angle
+  // quickly and keep many vertices; straight or gently-curving runs accumulate
+  // slowly and collapse to long segments.
+  //
+  // Accumulated angle alone does not bound *absolute* deviation: a very gentle but
+  // very long bend accumulates angle so slowly that its chord can bow far from the
+  // curve before reaching the angle threshold. A sagitta guard handles that --
+  // chord * accumulatedTurn / 8 estimates the bow of a circular arc, and we also
+  // cut when it exceeds a fraction of the tolerance. Both tests are O(1) per dense
+  // vertex, so the pass stays O(n).
+  var DENSE_STEP_FACTOR = 0.033;      // dense sampling step = tolerance * this at the
+                                      // default bend angle. Must resolve the sharpest
+                                      // smoothed feature (radius ~ the kernel scale)
+                                      // finely enough that the angle filter can reach
+                                      // the bend-angle joins: one dense segment turns
+                                      // ~ this/0.4 radians there, kept well under the
+                                      // bend angle so the discrete accumulation barely
+                                      // overshoots the threshold. For a smaller-than-
+                                      // default bend angle the step is refined in
+                                      // proportion so the threshold stays reachable.
+  var DEFAULT_BEND_ANGLE = 8 * Math.PI / 180; // keep a vertex after this much accumulated
+                                      // turn (max turn between consecutive output
+                                      // segments); user-overridable via max-bend-angle
+  var DEVIATION_FACTOR = 0.1;         // sagitta guard: also cut a gentle bend that bows
+                                      // more than tolerance * this from its chord
+  // Preserved structural runs (long straight / low-curvature spans between pinned
+  // corners) are not smoothed, but their ORIGINAL vertices are resampled with the
+  // same bend-angle decimation so the whole output has adaptive vertex spacing
+  // (no abrupt density seam at a run boundary). The decimation runs in the
+  // smoothing channels, so for unprojected data a long line -- which curves in the
+  // geocentric x,y,z space even when it is "straight" in lng/lat -- keeps enough
+  // interior vertices to approximate that curve on reprojection, scaling with the
+  // line's length automatically. Because it only ever keeps a SUBSET of the
+  // original vertices (never interpolates new ones), it can't distort a rhumb or
+  // geodesic edge -- every output vertex still lies exactly where the source drew
+  // it. Structural runs use a fraction of the bend angle (sampled finer than
+  // smoothed spans) as a conservative bias toward preservation / reprojection
+  // headroom.
+  var STRUCTURAL_BEND_FACTOR = 0.5;   // structural-run bend angle = max-bend-angle * this
+
+  // Smooth a single arc's coordinates.
+  // @xx, @yy: coordinate arrays (may be typed-array subarrays) for one arc.
+  // @opts: {tolerance, method, spherical, closed, keepCorners, gain, maxBendAngle}
+  // Returns {xx: [], yy: []} with the smoothed coordinates. Endpoints of open
+  // arcs are preserved exactly (so shared topology nodes stay put); closed arcs
+  // are smoothed cyclically and returned closed (first point repeated at the end).
+  // With keepCorners, structural corners (where long straight/low-curvature runs
+  // meet) are detected and pinned; the runs themselves are not smoothed but are
+  // resampled (a subset of their original vertices, at adaptive spacing), and only
+  // the spans between corners are smoothed.
+  // Resolve the curvature-correction gain (default 1 = fully corrected). gain=0
+  // leaves the plain weighted moving average; negative values are clamped to 0.
+  function resolveGain(opts) {
+    var g = opts.gain;
+    if (g === undefined || g === null) return 1;
+    return g >= 0 ? g : 0;
+  }
+
+  // Resolve the output bend-angle threshold from the user option (in degrees) to
+  // radians. It caps the turn between consecutive output segments: a larger angle
+  // keeps fewer vertices (coarser joins), a smaller one keeps more (smoother joins).
+  // Non-positive or missing values fall back to the default.
+  function resolveBendAngle(opts) {
+    var deg = opts.maxBendAngle;
+    if (deg === undefined || deg === null || !(deg > 0)) return DEFAULT_BEND_ANGLE;
+    return deg * Math.PI / 180;
+  }
+
+  // Resolve the corner-detection bias (default 0 = neutral). This is the raw
+  // user-facing value; getCornerParams / cornerBiasScale convert it into the
+  // multiplier on detection resolution. A positive bias keeps more corners, a
+  // negative bias fewer. Missing/null falls back to neutral.
+  function resolveCornerBias(opts) {
+    var b = opts.cornerBias;
+    return (b === undefined || b === null) ? 0 : b;
+  }
+
+  // Resolve the smoothing-strength multiplier (default 1). It scales only the
+  // low-pass kernel (window radius and sigma) relative to the distance, so a value
+  // > 1 smooths more strongly (wider kernel, larger divergence from the original)
+  // and < 1 more gently. Everything else keyed to the distance -- corner detection,
+  // output sampling, the prefilter and island dropping -- is left unchanged.
+  // Non-positive or missing values fall back to 1.
+  //
+  // By design, curve exaggeration (gain > 1) scales WITH strength: gain multiplies
+  // the quadratic curvature correction (a0 - mean) in smoothPoint, and that term is
+  // measured over the strength-scaled kernel window, so a wider kernel amplifies a
+  // given gain. This coupling is intentional -- do not normalize it out.
+  function resolveStrength(opts) {
+    var s = opts.strength;
+    return s > 0 ? s : 1;
+  }
+
+  function smoothArcCoords(xx, yy, opts) {
+    var n = xx.length;
+    var origX = toArray(xx);
+    var origY = toArray(yy);
+    var tol = opts.tolerance * KERNEL_FROM_DISTANCE;
+    if (n < 3 || !(opts.tolerance > 0)) {
+      return {xx: origX, yy: origY, corners: 0};
+    }
+    var method = opts.method == 'gaussian' ? 'gaussian' : 'paek';
+    var closed = !!opts.closed;
+    var spherical = !!opts.spherical;
+    var keepCorners = !!opts.keepCorners;
+    var bendAngle = resolveBendAngle(opts);
+
+    // Cumulative arc length in ground units (meters for spherical data), so the
+    // kernel scale stays in true distance regardless of coordinate representation.
+    var t = arcLengths(origX, origY, n, spherical);
+    if (!(t[n - 1] > 0)) {
+      return {xx: origX, yy: origY, corners: 0}; // degenerate (coincident points)
+    }
+    // The low-pass kernel scale is the raw distance scale (tol) times the baked-in
+    // KERNEL_STRENGTH calibration and the user's `strength` multiplier (default 1).
+    // Only the kernel (radius, sigma) uses this scale; tol -- which drives corner
+    // detection, output sampling and densification -- stays keyed to the raw
+    // distance, so those effects are unaffected by either strength factor.
+    var kernelScale = tol * KERNEL_STRENGTH * resolveStrength(opts);
+    // A closed ring smaller than the smoothing resolution would collapse toward its
+    // centroid, so cap both scales at a fraction of the ring's perimeter (see
+    // MAX_RING_SCALE_FACTOR). This only binds when the requested distance (or the
+    // boosted kernel) approaches the ring's own size; otherwise it is a no-op. The
+    // cap on kernelScale also stops a large `strength` from collapsing a ring.
+    if (closed) {
+      var ringCap = MAX_RING_SCALE_FACTOR * t[n - 1];
+      tol = Math.min(tol, ringCap);
+      kernelScale = Math.min(kernelScale, ringCap);
+    }
+    var ctx = {
+      tol: tol,
+      method: method,
+      spherical: spherical,
+      keepCorners: keepCorners,
+      cornerBias: resolveCornerBias(opts),
+      gain: resolveGain(opts),
+      bendAngle: bendAngle,
+      // Refine the dense step for a smaller-than-default bend angle so one dense
+      // segment still turns well under the threshold; never coarsen it beyond the
+      // default (the angle filter alone thins the output for larger angles).
+      denseStep: tol * DENSE_STEP_FACTOR * Math.min(1, bendAngle / DEFAULT_BEND_ANGLE),
+      radius: kernelScale * WINDOW_RADIUS_FACTOR,
+      scale: (method == 'gaussian' ? GAUSSIAN_SIGMA_FACTOR : PAEK_SCALE_FACTOR) * kernelScale
+    };
+    var channels = spherical ? lngLatToXYZChannels(origX, origY, n) : [origX, origY];
+
+    if (closed) {
+      var ringParams = getCornerParams(tol, ctx.cornerBias);
+      var corners = keepCorners ?
+        findInteriorCorners(t, channels, n, true, ringParams) : [];
+      // findInteriorCorners flags localized bends by angle alone; it does not check
+      // whether a candidate borders a structural (long, low-curvature) run. Keep
+      // only the corners that do -- a natural ring with no straight segments has
+      // none and must smooth cyclically. Otherwise the ring would be rotated to
+      // corners[0] and smoothed as an open path with that vertex pinned as a
+      // spurious cusp (whose location shifts with the tolerance-scaled detection
+      // window), even though refineBounds later drops every interior breakpoint.
+      if (corners.length > 0) {
+        corners = filterRingCornersByStructure(t, channels, n, corners, ringParams);
+      }
+      if (corners.length === 0) {
+        var cyc = smoothClosedCyclic(t, channels, n, ctx);
+        cyc.corners = 0;
+        return cyc;
+      }
+      // A ring with corners is processed as an open path: rotate it to start (and
+      // end) at one corner, with the remaining corners as interior breakpoints.
+      var rot = rotateRing(origX, origY, n, corners[0]);
+      origX = rot.xx;
+      origY = rot.yy;
+      n = origX.length;
+      t = arcLengths(origX, origY, n, spherical);
+      channels = spherical ? lngLatToXYZChannels(origX, origY, n) : [origX, origY];
+      var breaks = mapRotatedCorners(corners, rot.shift, rot.m);
+      var ring = smoothOpenSpans(origX, origY, t, channels, n, breaks, ctx);
+      // The ring seam (corners[0], pinned as the rotated start/end) is itself a
+      // preserved corner, on top of the interior breakpoints smoothOpenSpans kept.
+      ring.corners += 1;
+      return ring;
+    }
+
+    var openBreaks = keepCorners ?
+      findInteriorCorners(t, channels, n, false, getCornerParams(tol, ctx.cornerBias)) : [];
+    return smoothOpenSpans(origX, origY, t, channels, n, openBreaks, ctx);
+  }
+
+  // Smooth an open path partitioned at @interiorBreaks (sorted interior vertex
+  // indices). Corner retention and verbatim-copy are two separate decisions:
+  //   - A breakpoint is kept only if it borders a straight run that is straight
+  //     enough for its turn angle (bordersStraightRun -- deviation from the endpoint
+  //     chord, robust to sub-tolerance wiggle, and tightened for gentle bends so a
+  //     soft bend on a borderline-straight run is not pinned); otherwise
+  //     refineBounds drops it.
+  //   - A kept span is copied verbatim only if it is clean per-vertex
+  //     (isStructuralRun); otherwise it is smoothed with its endpoints pinned. So a
+  //     straight-but-noisy border is smoothed into a clean straight line between
+  //     its pinned corners, rather than curving into its neighbours.
+  // Every breakpoint (and the two arc endpoints) keeps its exact original position;
+  // shared breakpoint vertices are emitted once.
+  function smoothOpenSpans(origX, origY, t, channels, n, interiorBreaks, ctx) {
+    var bounds = [0].concat(interiorBreaks);
+    bounds.push(n - 1);
+    if (ctx.keepCorners && bounds.length > 2) {
+      bounds = refineBounds(t, channels, bounds, getCornerParams(ctx.tol, ctx.cornerBias));
+    }
+    var params = ctx.keepCorners ? getCornerParams(ctx.tol, ctx.cornerBias) : null;
+    var xx = [], yy = [];
+    for (var s = 0; s < bounds.length - 1; s++) {
+      var lo = bounds[s], hi = bounds[s + 1];
+      var preserve = !!params && isStructuralRun(t, channels, lo, hi, params);
+      var span = preserve ?
+        resampleStructuralRun(origX, origY, channels, lo, hi, ctx) :
+        smoothSpanOpen(origX, origY, t, channels, lo, hi, ctx);
+      appendSpan(xx, yy, span, s === 0);
+    }
+    // Interior breakpoints that survived refinement are the pinned corners.
+    return {xx: xx, yy: yy, corners: bounds.length - 2};
+  }
+
+  // Drop interior breakpoints that don't border any pinnable straight run (e.g.
+  // spikes inside a wiggly stretch, or -- crucially on sparse/simplified data --
+  // points sampled along a gentle curve), merging their spans, until the partition
+  // is stable. Merging can turn two short pieces back into one straight run, so the
+  // test is repeated each pass. A breakpoint is kept only if an adjacent span is
+  // straight at the smoothing scale AND straight enough for the breakpoint's own
+  // turn angle (bordersStraightRun): deviation from the endpoint chord, tightened
+  // for gentle corners so a soft bend on a borderline-straight run is not pinned.
+  // The older per-vertex turning gate (isStructuralRun) is deliberately NOT used
+  // for retention -- it admits any run bending no tighter than radius
+  // MIN_RUN_RADIUS_FACTOR*tol, i.e. gentle curves, which on coarsely-sampled data
+  // produces spurious corners along smooth bends. (isStructuralRun still governs
+  // verbatim-copy of a kept span; see smoothOpenSpans.) The corner for both
+  // adjacent spans is the breakpoint itself, so its turn angle gates each side.
+  function refineBounds(t, channels, bounds, params) {
+    var n = channels[0].length;
+    var changed = true;
+    while (changed && bounds.length > 2) {
+      changed = false;
+      for (var i = 1; i < bounds.length - 1; i++) {
+        var leftStruct = bordersStraightRun(t, channels, n, bounds[i], bounds[i - 1], bounds[i], params);
+        var rightStruct = bordersStraightRun(t, channels, n, bounds[i], bounds[i], bounds[i + 1], params);
+        if (!leftStruct && !rightStruct) {
+          bounds.splice(i, 1);
+          changed = true;
+          // Removing bounds[i] only changes the spans of its two neighbours; the
+          // breakpoints before them stay stable, so resume the scan just before the
+          // removal (rechecking the left neighbour) instead of restarting from the
+          // start. Restarting made this O(breaks^2) -- a hang on a large ring where
+          // the smoothing distance is finer than the vertex spacing and nearly
+          // every vertex reads as a breakpoint. The removal sequence is identical to
+          // a from-scratch rescan (the stable prefix is never revisited).
+          i = i < 2 ? 0 : i - 2;
+        }
+      }
+    }
+    return bounds;
+  }
+
+  // Drop closed-ring corners that don't border a run worth pinning on either side,
+  // merging their (cyclic) spans, until the set is stable -- the cyclic analogue
+  // of refineBounds, applied before the ring is rotated/pinned. A single corner
+  // is tested against the whole-ring span. Uses the same angle-coupled
+  // chord-straightness criterion as refineBounds (see bordersStraightRingSpan).
+  // Returns the surviving corners (a subset of @corners, order preserved); an empty
+  // result means the ring has no qualifying corner and should smooth cyclically.
+  function filterRingCornersByStructure(t, channels, n, corners, params) {
+    var list = corners.slice();
+    var changed = true;
+    while (changed && list.length > 0) {
+      changed = false;
+      for (var i = 0; i < list.length; i++) {
+        var cur = list[i];
+        var leftStruct, rightStruct;
+        if (list.length === 1) {
+          leftStruct = rightStruct = bordersStraightRingSpan(t, channels, n, cur, cur, cur, params);
+        } else {
+          var prev = list[(i - 1 + list.length) % list.length];
+          var next = list[(i + 1) % list.length];
+          leftStruct = bordersStraightRingSpan(t, channels, n, cur, prev, cur, params);
+          rightStruct = bordersStraightRingSpan(t, channels, n, cur, cur, next, params);
+        }
+        if (!leftStruct && !rightStruct) {
+          list.splice(i, 1);
+          changed = true;
+          // As in refineBounds, only the removed corner's neighbours change, so
+          // resume just before the removal (i-- via i-2) rather than restarting the
+          // scan -- restarting is what made this O(corners^2) and hung on large
+          // rings smoothed below their vertex spacing (~half the vertices read as
+          // corners, nearly all culled). Cross-seam effects (the wrap between the
+          // last and first corner) are picked up by the outer while(changed) pass.
+          // The stable prefix is never revisited, so the surviving set matches a
+          // from-scratch rescan exactly.
+          i = i < 2 ? -1 : i - 2;
+        }
+      }
+    }
+    return list;
+  }
+
+  // Smooth a single open span [lo, hi] (inclusive) and pin both ends to their
+  // original coordinates. Reuses the whole-arc smoothing pipeline on the sub-arc.
+  function smoothSpanOpen(origX, origY, t, channels, lo, hi, ctx) {
+    var nSub = hi - lo + 1;
+    if (nSub < 3) return copySpan(origX, origY, lo, hi);
+    var subT = new Float64Array(nSub);
+    for (var k = 0; k < nSub; k++) subT[k] = t[lo + k] - t[lo];
+    var subL = subT[nSub - 1];
+    if (!(subL > 0)) return copySpan(origX, origY, lo, hi);
+    var subCh = [];
+    for (var c = 0; c < channels.length; c++) subCh.push(channels[c].slice(lo, hi + 1));
+    var maxSourcePts = Math.max(nSub, MIN_CLOSED_SEGMENTS) * MAX_OUTPUT_FACTOR + nSub;
+    var maxSpacing = Math.max(ctx.tol * SOURCE_SPACING_FACTOR, subL / maxSourcePts);
+    var dense = densifyChannels(subT, subCh, maxSpacing);
+    var src = buildSource(dense.t, dense.channels, false, ctx.radius, subL);
+    var sm = sampleSmoothedCurve(src, 0, subL, false, ctx, nSub);
+    var out = ctx.spherical ? xyzChannelsToLngLat(sm) : {xx: sm[0], yy: sm[1]};
+    out.xx[0] = origX[lo];
+    out.yy[0] = origY[lo];
+    out.xx[out.xx.length - 1] = origX[hi];
+    out.yy[out.yy.length - 1] = origY[hi];
+    return out;
+  }
+
+  function smoothClosedCyclic(t, channels, n, ctx) {
+    var L = t[n - 1];
+    var maxSourcePts = Math.max(n, MIN_CLOSED_SEGMENTS) * MAX_OUTPUT_FACTOR + n;
+    var maxSpacing = Math.max(ctx.tol * SOURCE_SPACING_FACTOR, L / maxSourcePts);
+    var dense = densifyChannels(t, channels, maxSpacing);
+    var src = buildSource(dense.t, dense.channels, true, ctx.radius, L);
+    var sm = sampleSmoothedCurve(src, 0, L, true, ctx, n);
+    // Smoothing shrinks a closed loop (curve-shortening); restore its original
+    // enclosed area so small rings can be rounded at the full scale without
+    // shrinking. A no-op for large rings (they lose negligible area).
+    restoreRingArea(sm, channels, n, ctx.spherical);
+    var out = ctx.spherical ? xyzChannelsToLngLat(sm) : {xx: sm[0], yy: sm[1]};
+    // force an exactly closed ring (the periodic endpoints are equal up to fp)
+    out.xx[out.xx.length - 1] = out.xx[0];
+    out.yy[out.yy.length - 1] = out.yy[0];
+    return out;
+  }
+
+  // Rescale a smoothed closed ring about its centroid so it re-encloses the
+  // original ring's area. Because it is a uniform similarity transform, the
+  // smoothed *shape* is unchanged -- only its size -- so the rounding introduced by
+  // smoothing is preserved while the curve-shortening shrinkage is undone.
+  // @sm are the smoothed smoothing channels (plain arrays; [x,y] planar or unit-
+  // sphere [X,Y,Z] spherical, last point == first). @orig are the original channels
+  // (length @n, closed). Silent no-op if either area is non-positive.
+  function restoreRingArea(sm, orig, n, spherical) {
+    var origArea = ringChannelArea(orig, n, spherical);
+    var m = sm[0].length;
+    var smArea = ringChannelArea(sm, m, spherical);
+    if (!(origArea > 0) || !(smArea > 0)) return;
+    var f = Math.sqrt(origArea / smArea);
+    if (spherical) {
+      scaleRingSpherical(sm, m, f);
+    } else {
+      scaleRingPlanar(sm, m, f);
     }
   }
 
-  var Visvalingam = {};
+  // Enclosed-area proxy of a closed ring (@count points, last == first). Planar:
+  // the shoelace area on (x,y). Spherical: the shoelace area of the ring projected
+  // into the tangent plane at its centroid direction. Only ratios of two such
+  // areas are used, so the (unit-sphere) scale is irrelevant, and the tangent-plane
+  // error is second order in the ring's size -- negligible for the small rings
+  // where this is needed.
+  function ringChannelArea(ch, count, spherical) {
+    if (!spherical) {
+      var x = ch[0], y = ch[1], a = 0;
+      for (var i = 0; i < count - 1; i++) a += x[i] * y[i + 1] - x[i + 1] * y[i];
+      return Math.abs(a / 2);
+    }
+    var basis = tangentBasis(ringCentroidDir(ch, count - 1));
+    var ex = basis.ex, ey = basis.ey;
+    var X = ch[0], Y = ch[1], Z = ch[2], area = 0, px, py, qx, qy;
+    for (var j = 0; j < count - 1; j++) {
+      px = X[j] * ex[0] + Y[j] * ex[1] + Z[j] * ex[2];
+      py = X[j] * ey[0] + Y[j] * ey[1] + Z[j] * ey[2];
+      qx = X[j + 1] * ex[0] + Y[j + 1] * ex[1] + Z[j + 1] * ex[2];
+      qy = X[j + 1] * ey[0] + Y[j + 1] * ey[1] + Z[j + 1] * ey[2];
+      area += px * qy - qx * py;
+    }
+    return Math.abs(area / 2);
+  }
 
-  Visvalingam.getArcCalculator = function(metric, is3D) {
-    var heap = new Heap(),
-        prevBuf = utils.expandoBuffer(Int32Array),
-        nextBuf = utils.expandoBuffer(Int32Array),
-        calc = is3D ?
-          function(b, c, d, xx, yy, zz) {
-            return metric(xx[b], yy[b], zz[b], xx[c], yy[c], zz[c], xx[d], yy[d], zz[d]);
-          } :
-          function(b, c, d, xx, yy) {
-            return metric(xx[b], yy[b], xx[c], yy[c], xx[d], yy[d]);
-          };
+  function scaleRingPlanar(sm, count, f) {
+    var x = sm[0], y = sm[1], cx = 0, cy = 0, i;
+    for (i = 0; i < count - 1; i++) { cx += x[i]; cy += y[i]; }
+    cx /= (count - 1); cy /= (count - 1);
+    for (i = 0; i < count; i++) {
+      x[i] = cx + (x[i] - cx) * f;
+      y[i] = cy + (y[i] - cy) * f;
+    }
+  }
 
-    // Calculate Visvalingam simplification data for an arc
-    // @kk (Float64Array|Array) Receives calculated simplification thresholds
-    // @xx, @yy, (@zz) Buffers containing vertex coordinates
-    return function calcVisvalingam(kk, xx, yy, zz) {
-      var arcLen = kk.length,
-          prevArr = prevBuf(arcLen),
-          nextArr = nextBuf(arcLen),
-          val, maxVal = -Infinity,
-          b, c, d; // indexes of points along arc
+  // Scale each unit-sphere point's angular offset from the centroid direction by
+  // ~f (keeping the radial component, then renormalizing), which scales the
+  // enclosed area by ~f^2 for the small caps where this runs.
+  function scaleRingSpherical(sm, count, f) {
+    var X = sm[0], Y = sm[1], Z = sm[2];
+    var c = ringCentroidDir(sm, count - 1);
+    for (var i = 0; i < count; i++) {
+      var dot = X[i] * c[0] + Y[i] * c[1] + Z[i] * c[2];
+      var tx = X[i] - dot * c[0], ty = Y[i] - dot * c[1], tz = Z[i] - dot * c[2];
+      var vx = dot * c[0] + f * tx, vy = dot * c[1] + f * ty, vz = dot * c[2] + f * tz;
+      var nrm = Math.sqrt(vx * vx + vy * vy + vz * vz) || 1;
+      X[i] = vx / nrm; Y[i] = vy / nrm; Z[i] = vz / nrm;
+    }
+  }
 
-      if (zz && !is3D) {
-        error("[visvalingam] Received z-axis data for 2D simplification");
-      } else if (!zz && is3D) {
-        error("[visvalingam] Missing z-axis data for 3D simplification");
-      } else if (kk.length > xx.length) {
-        error("[visvalingam] Incompatible data arrays:", kk.length, xx.length);
+  function ringCentroidDir(ch, m) {
+    var X = ch[0], Y = ch[1], Z = ch[2], cx = 0, cy = 0, cz = 0;
+    for (var i = 0; i < m; i++) { cx += X[i]; cy += Y[i]; cz += Z[i]; }
+    var nrm = Math.sqrt(cx * cx + cy * cy + cz * cz) || 1;
+    return [cx / nrm, cy / nrm, cz / nrm];
+  }
+
+  // Orthonormal tangent basis (ex, ey) at unit direction c on the sphere.
+  function tangentBasis(c) {
+    // pick the world axis least aligned with c to avoid a degenerate cross product
+    var ax = Math.abs(c[0]) < 0.9 ? [1, 0, 0] : [0, 1, 0];
+    var ex = cross(c, ax);
+    var en = Math.sqrt(ex[0] * ex[0] + ex[1] * ex[1] + ex[2] * ex[2]) || 1;
+    ex = [ex[0] / en, ex[1] / en, ex[2] / en];
+    var ey = cross(c, ex);
+    return {c: c, ex: ex, ey: ey};
+  }
+
+  function cross(a, b) {
+    return [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]];
+  }
+
+  function copySpan(origX, origY, lo, hi) {
+    var xx = [], yy = [];
+    for (var i = lo; i <= hi; i++) {
+      xx.push(origX[i]);
+      yy.push(origY[i]);
+    }
+    return {xx: xx, yy: yy};
+  }
+
+  // Resample a preserved structural run [lo, hi] (a long straight / low-curvature
+  // span between pinned corners). The run is NOT smoothed: its shape is kept by
+  // emitting a SUBSET of its original vertices, decimated with the shared
+  // bend-angle filter in the smoothing channels (so a long line that curves in the
+  // geocentric space keeps interior vertices scaling with its length -- see
+  // STRUCTURAL_BEND_FACTOR). Both endpoints are always kept, at their exact
+  // original coordinates, so pinned corners and shared topology nodes are
+  // unchanged. A run too short to decimate is copied verbatim.
+  function resampleStructuralRun(origX, origY, channels, lo, hi, ctx) {
+    var nSub = hi - lo + 1;
+    if (nSub < 3) return copySpan(origX, origY, lo, hi);
+    var K = channels.length;
+    var P = new Array(nSub);
+    for (var i = 0; i < nSub; i++) {
+      var p = new Array(K);
+      for (var c = 0; c < K; c++) p[c] = channels[c][lo + i];
+      P[i] = p;
+    }
+    var keep = decimateByBend(P, K, ctx.bendAngle * STRUCTURAL_BEND_FACTOR, ctx.tol * DEVIATION_FACTOR);
+    var xx = [], yy = [];
+    for (var ki = 0; ki < keep.length; ki++) {
+      var idx = lo + keep[ki];
+      xx.push(origX[idx]); // exact original coordinate, never interpolated
+      yy.push(origY[idx]);
+    }
+    return {xx: xx, yy: yy};
+  }
+
+  function appendSpan(xx, yy, span, isFirst) {
+    for (var i = isFirst ? 0 : 1; i < span.xx.length; i++) {
+      xx.push(span.xx[i]);
+      yy.push(span.yy[i]);
+    }
+  }
+
+  // Reorder a closed ring's unique vertices to begin at index @c, re-appending the
+  // start vertex so the result is a closed open-path (first point repeated).
+  function rotateRing(xx, yy, n, c) {
+    var m = n - 1;
+    var ox = [], oy = [];
+    for (var k = 0; k < m; k++) {
+      var idx = (c + k) % m;
+      ox.push(xx[idx]);
+      oy.push(yy[idx]);
+    }
+    ox.push(xx[c]);
+    oy.push(yy[c]);
+    return {xx: ox, yy: oy, shift: c, m: m};
+  }
+
+  // Map ring-frame corner indices to interior positions in the rotated open frame.
+  // The corner the ring was rotated to becomes the (pinned) endpoint, so it is
+  // dropped from the interior list.
+  function mapRotatedCorners(corners, shift, m) {
+    var out = [];
+    for (var i = 0; i < corners.length; i++) {
+      var pos = (corners[i] - shift + m) % m;
+      if (pos > 0) out.push(pos);
+    }
+    out.sort(function(a, b) { return a - b; });
+    return out;
+  }
+
+  function arcLengths(xx, yy, n, spherical) {
+    var t = new Float64Array(n);
+    var distFn = spherical ? geom.greatCircleDistance : geom.distance2D;
+    for (var i = 1; i < n; i++) {
+      t[i] = t[i - 1] + distFn(xx[i - 1], yy[i - 1], xx[i], yy[i]);
+    }
+    return t;
+  }
+
+  function lngLatToXYZChannels(lng, lat, n) {
+    var X = new Float64Array(n), Y = new Float64Array(n), Z = new Float64Array(n), p = [];
+    for (var i = 0; i < n; i++) {
+      geom.lngLatToXYZ(lng[i], lat[i], p);
+      X[i] = p[0];
+      Y[i] = p[1];
+      Z[i] = p[2];
+    }
+    return [X, Y, Z];
+  }
+
+  // Convert smoothed geocentric channels back to lng/lat. xyzToLngLat() projects
+  // each point radially onto the sphere, so the slightly-inside-the-sphere point
+  // produced by averaging maps back to a valid surface coordinate.
+  function xyzChannelsToLngLat(channels) {
+    var X = channels[0], Y = channels[1], Z = channels[2], n = X.length;
+    var xx = [], yy = [], p = [];
+    for (var i = 0; i < n; i++) {
+      geom.xyzToLngLat(X[i], Y[i], Z[i], p);
+      xx.push(p[0]);
+      yy.push(p[1]);
+    }
+    return {xx: xx, yy: yy};
+  }
+
+  // Insert linearly-interpolated samples so no gap between consecutive source
+  // points exceeds @maxSpacing. Interpolating in the smoothing channels keeps
+  // this representation-agnostic (for geocentric input the inserted points sit on
+  // the chord, negligibly below the surface at these spacings, and are
+  // renormalized on the way out). Endpoints (and the closing vertex of a ring)
+  // are preserved exactly.
+  function densifyChannels(t, channels, maxSpacing) {
+    var n = t.length;
+    var K = channels.length;
+    var t2 = [];
+    var c2 = [];
+    for (var c = 0; c < K; c++) c2.push([]);
+    for (var i = 0; i < n - 1; i++) {
+      t2.push(t[i]);
+      for (var a = 0; a < K; a++) c2[a].push(channels[a][i]);
+      var seg = t[i + 1] - t[i];
+      if (seg > maxSpacing) {
+        var steps = Math.ceil(seg / maxSpacing);
+        for (var s = 1; s < steps; s++) {
+          var f = s / steps;
+          t2.push(t[i] + seg * f);
+          for (var b = 0; b < K; b++) {
+            c2[b].push(channels[b][i] + (channels[b][i + 1] - channels[b][i]) * f);
+          }
+        }
       }
+    }
+    t2.push(t[n - 1]);
+    for (var d = 0; d < K; d++) c2[d].push(channels[d][n - 1]);
+    return {t: new Float64Array(t2), channels: c2, count: t2.length};
+  }
 
-      // Initialize Visvalingam "effective area" values and references to
-      //   prev/next points for each point in arc.
-      for (c=0; c<arcLen; c++) {
-        b = c-1;
-        d = c+1;
-        if (b < 0 || d >= arcLen) {
-          val = Infinity; // endpoint maxVals
-        } else {
-          val = calc(b, c, d, xx, yy, zz);
-        }
-        kk[c] = val;
-        nextArr[c] = d;
-        prevArr[c] = b;
+  // Sample the smoothed curve over arc-length [a, b] and thin it (see the
+  // "Output resampling" note above). Step 1 evaluates the smoother at a uniform
+  // dense step; step 2 makes one forward pass keeping the endpoints plus every
+  // interior vertex where the accumulated turn since the last kept vertex reaches
+  // the bend-angle threshold, or where the sagitta guard trips. @inputCount bounds the dense
+  // sampling (and thus the output). Returns one array per channel, ordered by
+  // increasing arc length, including both endpoints.
+  function sampleSmoothedCurve(src, a, b, closed, ctx, inputCount) {
+    var K = src.channels.length;
+    var span = b - a;
+    var maxPoints = Math.max(inputCount, MIN_CLOSED_SEGMENTS) * MAX_OUTPUT_FACTOR;
+
+    // 1. dense uniform sampling of the smoothed curve
+    var nDense = Math.ceil(span / ctx.denseStep) + 1;
+    if (nDense < MIN_CLOSED_SEGMENTS + 1) nDense = MIN_CLOSED_SEGMENTS + 1;
+    if (nDense > maxPoints) nDense = maxPoints;
+    if (nDense < 2) nDense = 2;
+    var P = new Array(nDense);
+    for (var i = 0; i < nDense; i++) {
+      P[i] = smoothAt(src, a + span * (i / (nDense - 1)), ctx);
+    }
+
+    // 2. one-pass bend-angle filter
+    var keep = decimateByBend(P, K, ctx.bendAngle, ctx.tol * DEVIATION_FACTOR);
+    var out = [];
+    for (var c = 0; c < K; c++) out.push([]);
+    for (var ki = 0; ki < keep.length; ki++) appendPoint(out, P[keep[ki]], K);
+    return out;
+  }
+
+  // One-pass forward decimation of a K-channel point list @P: keep the two
+  // endpoints plus every interior point where the turn accumulated since the last
+  // kept point reaches @theta, or where the estimated sagitta of the skipped
+  // stretch (chord * accumulated turn / 8, the bow of a circular arc) reaches
+  // @epsDev. Bounds the angle between consecutive kept segments by construction, so
+  // joins stay smooth. Returns the kept indices into @P (always including 0 and the
+  // last index). Shared by the smoothed-curve resampler and the structural-run
+  // resampler (see resampleStructuralRun).
+  function decimateByBend(P, K, theta, epsDev) {
+    var n = P.length;
+    var keep = [0];
+    if (n < 2) return keep;
+    var anchor = 0;     // last kept vertex
+    var accTurn = 0;    // absolute turning accumulated since the anchor
+    for (var j = 1; j < n - 1; j++) {
+      accTurn += vecAngle(P[j - 1], P[j], P[j], P[j + 1], K);
+      var sagitta = chordLen(P[anchor], P[j + 1], K) * accTurn * 0.125;
+      if (accTurn >= theta || sagitta >= epsDev) {
+        keep.push(j);
+        anchor = j;
+        accTurn = 0;
       }
-      heap.init(kk);
+    }
+    keep.push(n - 1);
+    return keep;
+  }
 
-      // Calculate removal thresholds for each internal point in the arc
-      //
-      while (heap.size() > 0) {
-        c = heap.pop(); // Remove the point with the least effective area.
-        val = kk[c];
-        if (val === Infinity) {
-          break;
-        }
-        if (val < maxVal) {
-          // don't assign current point a lesser value than the last removed vertex
-          kk[c] = maxVal;
-        } else {
-          maxVal = val;
-        }
+  // Angle (radians) between vectors (b - a) and (d - c) over K channels.
+  function vecAngle(a, b, c, d, K) {
+    var dot = 0, n1 = 0, n2 = 0;
+    for (var i = 0; i < K; i++) {
+      var u = b[i] - a[i];
+      var v = d[i] - c[i];
+      dot += u * v;
+      n1 += u * u;
+      n2 += v * v;
+    }
+    if (n1 <= 0 || n2 <= 0) return 0;
+    var k = dot / Math.sqrt(n1 * n2);
+    if (k > 1) k = 1;
+    else if (k < -1) k = -1;
+    return Math.acos(k);
+  }
 
-        // Recompute effective area of neighbors of the removed point.
-        b = prevArr[c];
-        d = nextArr[c];
-        if (b > 0) {
-          val = calc(prevArr[b], b, d, xx, yy, zz);
-          heap.updateValue(b, val);
-        }
-        if (d < arcLen-1) {
-          val = calc(b, d, nextArr[d], xx, yy, zz);
-          heap.updateValue(d, val);
-        }
-        nextArr[b] = d;
-        prevArr[d] = b;
+  function chordLen(a, b, K) {
+    var s = 0;
+    for (var c = 0; c < K; c++) {
+      var d = b[c] - a[c];
+      s += d * d;
+    }
+    return Math.sqrt(s);
+  }
+
+  // Evaluate the smoother at a single arc-length position by binary-searching the
+  // window of source samples within +/- radius of phi. Open sources are padded
+  // with odd reflections at each end (see buildSource), so the window is always
+  // full and symmetric -- no special boundary handling is needed here.
+  function smoothAt(src, phi, ctx) {
+    var t = src.t, m = src.count;
+    var lo = lowerBound(t, m, phi - ctx.radius);
+    var hi = upperBound(t, m, phi + ctx.radius);
+    return smoothPoint(t, src.channels, lo, hi, phi, ctx.method, ctx.scale, ctx.radius, ctx.gain);
+  }
+
+  // first index with t[i] >= x
+  function lowerBound(t, n, x) {
+    var lo = 0, hi = n;
+    while (lo < hi) {
+      var mid = (lo + hi) >> 1;
+      if (t[mid] < x) lo = mid + 1;
+      else hi = mid;
+    }
+    return lo;
+  }
+
+  // first index with t[i] > x
+  function upperBound(t, n, x) {
+    var lo = 0, hi = n;
+    while (lo < hi) {
+      var mid = (lo + hi) >> 1;
+      if (t[mid] <= x) lo = mid + 1;
+      else hi = mid;
+    }
+    return lo;
+  }
+
+  function appendPoint(out, p, K) {
+    for (var c = 0; c < K; c++) out[c].push(p[c]);
+  }
+
+  // Assemble the weighting samples for an arc, tagged with cumulative arc length.
+  //
+  // Open arcs are padded with odd (point) reflections of the samples within
+  // `radius` of each end: a sample at offset tau inside the end is mirrored to
+  // -tau with position 2*endpoint - sample. This keeps the smoothing window full
+  // and symmetric at the ends instead of one-sided. A one-sided window biases the
+  // result inward (it averages only interior neighbors), dragging the smoothed
+  // endpoint off a curving end; pinning it back then leaves a long, kinked final
+  // segment. With odd reflection each mirror pair averages back to the endpoint,
+  // so the endpoint is preserved *exactly* while detail right up to it is still
+  // fully smoothed, and the curve leaves the endpoint along a smooth tangent.
+  // (A straight run reflects to its own continuation, so straights stay straight.)
+  //
+  // Closed arcs are instead replicated across enough periods (each shifted by the
+  // perimeter length) that any query window wraps correctly around the ring.
+  function buildSource(t, channels, closed, radius, L) {
+    var n = t.length;
+    var K = channels.length;
+    if (!closed) {
+      return buildOpenSource(t, channels, n, K, radius, L);
+    }
+    var m = n - 1; // drop duplicated closing vertex; period is L
+    var reps = Math.max(1, Math.ceil(radius / L));
+    var et = [];
+    var ec = [];
+    for (var c = 0; c < K; c++) ec.push([]);
+    for (var k = -reps; k <= reps; k++) {
+      var off = k * L;
+      for (var j = 0; j < m; j++) {
+        et.push(t[j] + off);
+        for (var c2 = 0; c2 < K; c2++) ec[c2].push(channels[c2][j]);
       }
-    };
-  };
+    }
+    return {t: et, channels: ec, count: et.length, totalLength: L, closed: true};
+  }
 
-  Visvalingam.standardMetric = geom.triangleArea;
-  Visvalingam.standardMetric3D = geom.triangleArea3D;
+  function buildOpenSource(t, channels, n, K, radius, L) {
+    var et = [];
+    var ec = [];
+    for (var c = 0; c < K; c++) ec.push([]);
+    // left odd-reflections (ascending t from ~-radius up to 0): walk interior
+    // samples with t <= radius from the outermost inward so output stays sorted
+    var leftEnd = upperBound(t, n, radius) - 1; // last index with t[i] <= radius
+    for (var i = leftEnd; i >= 1; i--) {
+      et.push(-t[i]);
+      for (var c0 = 0; c0 < K; c0++) ec[c0].push(2 * channels[c0][0] - channels[c0][i]);
+    }
+    // originals
+    for (var j = 0; j < n; j++) {
+      et.push(t[j]);
+      for (var c1 = 0; c1 < K; c1++) ec[c1].push(channels[c1][j]);
+    }
+    // right odd-reflections (ascending t just above L): nearest-to-L first
+    for (var k = n - 2; k >= 0 && t[k] >= L - radius; k--) {
+      et.push(2 * L - t[k]);
+      for (var c2 = 0; c2 < K; c2++) ec[c2].push(2 * channels[c2][n - 1] - channels[c2][k]);
+    }
+    return {t: et, channels: ec, count: et.length, totalLength: L, closed: false};
+  }
 
-  Visvalingam.getWeightedMetric = function(opts) {
-    var weight = Visvalingam.getWeightFunction(opts);
-    return function(ax, ay, bx, by, cx, cy) {
-      var area = geom.triangleArea(ax, ay, bx, by, cx, cy),
-          cos = geom.cosine(ax, ay, bx, by, cx, cy);
-      return weight(cos) * area;
-    };
-  };
-
-  Visvalingam.getWeightedMetric3D = function(opts) {
-    var weight = Visvalingam.getWeightFunction(opts);
-    return function(ax, ay, az, bx, by, bz, cx, cy, cz) {
-      var area = geom.triangleArea3D(ax, ay, az, bx, by, bz, cx, cy, cz),
-          cos = geom.cosine3D(ax, ay, az, bx, by, bz, cx, cy, cz);
-      return weight(cos) * area;
-    };
-  };
-
-  Visvalingam.getWeightCoefficient = function(opts) {
-    return opts && utils.isNumber(opts && opts.weighting) ? opts.weighting : 0.7;
-  };
-
-  // Get a parameterized version of Visvalingam.weight()
-  Visvalingam.getWeightFunction = function(opts) {
-    var k = Visvalingam.getWeightCoefficient(opts);
-    return function(cos) {
-      return -cos * k + 1;
-    };
-  };
-
-  // Weight triangle area by inverse cosine
-  // Standard weighting favors 90-deg angles; this curve peaks at 120 deg.
-  Visvalingam.weight = function(cos) {
-    var k = 0.7;
-    return -cos * k + 1;
-  };
-
-  Visvalingam.getEffectiveAreaSimplifier = function(use3D) {
-    var metric = use3D ? Visvalingam.standardMetric3D : Visvalingam.standardMetric;
-    return Visvalingam.getPathSimplifier(metric, use3D);
-  };
-
-  Visvalingam.getWeightedSimplifier = function(opts, use3D) {
-    var metric = use3D ? Visvalingam.getWeightedMetric3D(opts) : Visvalingam.getWeightedMetric(opts);
-    return Visvalingam.getPathSimplifier(metric, use3D);
-  };
-
-  Visvalingam.getPathSimplifier = function(metric, use3D) {
-    return Visvalingam.scaledSimplify(Visvalingam.getArcCalculator(metric, use3D));
-  };
-
-
-  Visvalingam.scaledSimplify = function(f) {
-    return function(kk, xx, yy, zz) {
-      f(kk, xx, yy, zz);
-      for (var i=1, n=kk.length - 1; i<n; i++) {
-        // convert area metric to a linear equivalent
-        kk[i] = Math.sqrt(kk[i]) * 0.65;
+  // Both smoothing methods compute the smoothed coordinate as a local weighted
+  // least-squares fit of a second-degree polynomial in the normalized arc-length
+  // offset u = (t - phi)/scale, evaluated at u = 0 (the polynomial's constant
+  // term). The quadratic term lets the fit follow curvature, so the smoothed point
+  // is not pulled toward the chord on a bend the way a plain weighted average is.
+  // That is what keeps either method from shrinking the amplitude of supra-
+  // tolerance features. The methods differ only in the weight kernel (see
+  // kernelWeight): 'paek' is Bodansky et al.'s exponential-weighted quadratic (the
+  // algorithm ArcGIS uses); 'gaussian' is the Gaussian-weighted quadratic, i.e. a
+  // Savitzky-Golay smoother (a sharper frequency cutoff than paek, now with the
+  // same shrinkage correction). Normalizing by `scale` keeps the normal-equation
+  // matrix well-scaled regardless of the absolute tolerance. The fit is linear in
+  // the channel values, so for geocentric input the smoothed point stays in the
+  // plane of nearby vertices (a great-circle arc is preserved up to discretization).
+  // With too few points, or near-singular normal equations, falls back to the
+  // plain weighted average using the same kernel.
+  //
+  // Weights are tapered to reach zero at the window edge (|u| = radius/scale) by
+  // subtracting the edge weight: w = max(0, kernel(u) - kernel(uEdge)). Without
+  // this taper a source sample enters/leaves the moving window carrying a small
+  // but nonzero weight, and that discrete jump -- amplified by the quadratic fit --
+  // shows up as fine-scale jitter rendered as visible kinks. The taper is symmetric
+  // in |u|, so odd-reflection endpoint preservation is unaffected.
+  function smoothPoint(t, channels, lo, hi, phi, method, scale, radius, gain) {
+    var gaussian = method == 'gaussian';
+    // gain scales the quadratic (Savitzky-Golay) curvature correction relative to
+    // the plain weighted moving average m: out = m + gain*(a0 - m). gain=0 leaves
+    // the shrinking moving average, gain=1 is the fully corrected fit, and gain>1
+    // exaggerates the curvature of bends.
+    if (gain === 0 || hi - lo < 3) return weightedAverage(t, channels, lo, hi, phi, scale, radius, gaussian);
+    var edgeW = kernelWeight(radius / scale, gaussian);
+    var s0 = 0, s1 = 0, s2 = 0, s3 = 0, s4 = 0;
+    var K = channels.length;
+    var b0 = new Float64Array(K), b1 = new Float64Array(K), b2 = new Float64Array(K);
+    for (var i = lo; i < hi; i++) {
+      var u = (t[i] - phi) / scale;
+      var w = kernelWeight(u, gaussian) - edgeW;
+      if (w <= 0) continue;
+      var wu = w * u;
+      var wu2 = wu * u;
+      s0 += w;
+      s1 += wu;
+      s2 += wu2;
+      s3 += wu2 * u;
+      s4 += wu2 * u * u;
+      for (var c = 0; c < K; c++) {
+        var v = channels[c][i];
+        b0[c] += w * v;
+        b1[c] += wu * v;
+        b2[c] += wu2 * v;
       }
-    };
-  };
+    }
+    // det of the symmetric normal-equation matrix [[s0,s1,s2],[s1,s2,s3],[s2,s3,s4]]
+    var c0 = s2 * s4 - s3 * s3;
+    var c1 = s1 * s4 - s3 * s2;
+    var c2 = s1 * s3 - s2 * s2;
+    var det = s0 * c0 - s1 * c1 + s2 * c2;
+    if (!(Math.abs(det) > 1e-9 * (s0 * s0 * s0 + 1))) {
+      return weightedAverage(t, channels, lo, hi, phi, scale, radius, gaussian);
+    }
+    var out = new Array(K);
+    for (var ch = 0; ch < K; ch++) {
+      var a0 = solveConstantTerm(b0[ch], b1[ch], b2[ch], s1, s2, s3, s4, c0, det);
+      var mean = b0[ch] / s0; // plain weighted moving average for this channel
+      out[ch] = mean + gain * (a0 - mean);
+    }
+    return out;
+  }
+
+  // Smoothing kernel weight at normalized offset u: exponential e^(-|u|) for paek,
+  // Gaussian e^(-u^2/2) for the Savitzky-Golay gaussian method.
+  function kernelWeight(u, gaussian) {
+    return gaussian ? Math.exp(-0.5 * u * u) : Math.exp(-Math.abs(u));
+  }
+
+  // Solve for the constant term a0 of the fitted quadratic via Cramer's rule
+  // (replace the first column of the normal matrix with the RHS [b0,b1,b2]).
+  function solveConstantTerm(b0, b1, b2, s1, s2, s3, s4, c0, det) {
+    var detA = b0 * c0 - s1 * (b1 * s4 - s3 * b2) + s2 * (b1 * s3 - s2 * b2);
+    return detA / det;
+  }
+
+  function weightedAverage(t, channels, lo, hi, phi, scale, radius, gaussian) {
+    var K = channels.length;
+    var edgeW = kernelWeight(radius / scale, gaussian);
+    var wsum = 0;
+    var sums = new Float64Array(K);
+    for (var i = lo; i < hi; i++) {
+      var w = kernelWeight((t[i] - phi) / scale, gaussian) - edgeW;
+      if (w <= 0) continue;
+      wsum += w;
+      for (var c = 0; c < K; c++) sums[c] += w * channels[c][i];
+    }
+    if (!(wsum > 0)) return interpAlongSource(t, channels, lo, hi, phi);
+    return scaleSums(sums, 1 / wsum, K);
+  }
+
+  // Fallback used when a window is empty or weights underflow: linearly
+  // interpolate the position on the source line at arc-length phi (using the
+  // samples bracketing the window). This keeps the output point on the line
+  // instead of snapping to a vertex, so sparse regions degrade gracefully to the
+  // original geometry without staircase artifacts.
+  function interpAlongSource(t, channels, lo, hi, phi) {
+    var K = channels.length;
+    var m = t.length;
+    var i0 = (hi > lo ? lo : lo - 1);
+    if (i0 < 0) i0 = 0;
+    if (i0 > m - 1) i0 = m - 1;
+    var i1 = i0 + 1;
+    if (i1 > m - 1) i1 = m - 1;
+    var out = new Array(K);
+    if (i0 === i1 || t[i1] === t[i0]) {
+      for (var c = 0; c < K; c++) out[c] = channels[c][i0];
+      return out;
+    }
+    var f = (phi - t[i0]) / (t[i1] - t[i0]);
+    if (f < 0) f = 0;
+    else if (f > 1) f = 1;
+    for (var ch = 0; ch < K; ch++) {
+      out[ch] = channels[ch][i0] + (channels[ch][i1] - channels[ch][i0]) * f;
+    }
+    return out;
+  }
+
+  function scaleSums(sums, k, K) {
+    var out = new Array(K);
+    for (var c = 0; c < K; c++) out[c] = sums[c] * k;
+    return out;
+  }
+
+  function toArray(arr) {
+    var out = [];
+    for (var i = 0, n = arr.length; i < n; i++) out.push(arr[i]);
+    return out;
+  }
 
   // Build approximate inter-feature Voronoi (medial-axis) cut lines for the
   // topological polygon buffer. Where two features' buffers overlap, the
@@ -45972,12 +47311,12 @@ ${svg}
     profileStart('medial:assembleChains');
     var chains = assembleChains(medial.segments, medial.coords);
     profileEnd('medial:assembleChains');
-    if (opts.simplifyInterval > 0) {
-      profileStart('medial:simplify');
+    if (opts.smooth) {
+      profileStart('medial:smooth');
       chains = chains.map(function(chain) {
-        return simplifyChain(chain, opts.simplifyInterval);
+        return smoothMedialChain(chain, sites.grid);
       });
-      profileEnd('medial:simplify');
+      profileEnd('medial:smooth');
     }
     // Extend each chain's endpoints outward along their terminal tangent. A medial
     // chain is a cut-line: it only subdivides a contested buffer tile if it spans
@@ -46138,30 +47477,81 @@ ${svg}
     return chains;
   }
 
-  // Weighted-Visvalingam simplifier shared across chains. Its internal heap and
-  // scratch buffers are reused per call, so a single instance is safe for the
-  // sequential per-chain calls below.
-  var medialSimplifier = Visvalingam.getWeightedSimplifier({}, false);
+  // Gaussian smoothing distance for a medial chain, as a fraction of the local
+  // channel half-width (see smoothMedialChain). The shared smoother widens this
+  // distance into its kernel (window several times wider), so a small fraction
+  // keeps the smoothed centerline well inside the channel -- the smoothed line
+  // deviates from the raw medial by roughly this fraction of the half-width --
+  // while still averaging out the discrete-sampling zigzag. 0.4 measured a worst-
+  // case deviation of ~0.3 of the half-width across buffer distances from 8 to
+  // 80 km on the Columbia gap.
+  var MEDIAL_SMOOTH_CLEARANCE_FACTOR = 0.4;
 
-  // Smooth a medial polyline with weighted Visvalingam, dropping vertices whose
-  // effective area (expressed as a linear-equivalent by scaledSimplify) falls
-  // below @interval. Endpoints carry an Infinity threshold and are always kept.
-  function simplifyChain(points, interval) {
+  // Replace the discrete-sampling zigzag of a raw medial polyline with a smooth
+  // centerline using the shared scale-aware Gaussian low-pass filter.
+  //
+  // The smoothing distance is keyed to the medial's own local clearance (its
+  // distance to the nearest source = the channel half-width, read from the segment
+  // grid), NOT to the buffer distance. This decoupling is deliberate: in fill-gaps
+  // a user may pick a buffer distance far larger than the actual gaps (to be sure
+  // the gaps close), and a distance-keyed kernel would then be wide enough to bow
+  // the medial clean out of a narrow channel and mispartition it. Keyed to the
+  // channel width, the kernel is always proportional to the channel it smooths.
+  //
+  // Planar (the medial is constructed in planar coordinate space), no corner
+  // preservation (a medial axis between two features has no structural corners,
+  // and the zigzag we want gone would read as corners), and gain=0 -- the
+  // curvature-correction term (gain>0) has a transition-band overshoot that would
+  // re-amplify the very zigzag we are removing. Open-path endpoints are preserved
+  // exactly, so extendChainEndpoints' terminal-tangent extension still works.
+  function smoothMedialChain(points, grid) {
     var n = points.length;
     if (n < 3) return points;
     var xx = new Float64Array(n);
     var yy = new Float64Array(n);
-    var kk = new Float64Array(n);
+    var clearances = [];
     for (var i = 0; i < n; i++) {
       xx[i] = points[i][0];
       yy[i] = points[i][1];
+      var c = clearanceAt(grid, points[i][0], points[i][1]);
+      if (isFinite(c)) clearances.push(c);
     }
-    medialSimplifier(kk, xx, yy);
+    var halfWidth = findMedian(clearances); // NaN when no clearance was measured
+    var dist = halfWidth * MEDIAL_SMOOTH_CLEARANCE_FACTOR;
+    if (!(dist > 0)) return points; // no measurable channel -- leave raw
+    var res = smoothArcCoords(xx, yy, {
+      tolerance: dist,
+      method: 'gaussian',
+      spherical: false,
+      closed: false,
+      keepCorners: false,
+      gain: 0
+    });
     var out = [];
-    for (i = 0; i < n; i++) {
-      if (kk[i] >= interval) out.push(points[i]);
-    }
+    for (i = 0; i < res.xx.length; i++) out.push([res.xx[i], res.yy[i]]);
     return out.length >= 2 ? out : [points[0], points[n - 1]];
+  }
+
+  // Distance from (x, y) to the nearest source segment of any feature -- the
+  // medial clearance, i.e. the local channel half-width -- probing the 3x3
+  // grid-cell neighborhood (cell == max reach). Infinity if no segment is near or
+  // the grid is absent.
+  function clearanceAt(grid, x, y) {
+    if (!grid) return Infinity;
+    var seg = grid.seg;
+    var cx = grid.colOf(x), cy = grid.rowOf(y), best = Infinity;
+    for (var gx = cx - 1; gx <= cx + 1; gx++) {
+      for (var gy = cy - 1; gy <= cy + 1; gy++) {
+        var bucket = grid.grid.get(grid.cellKey(gx, gy));
+        if (!bucket) continue;
+        for (var b = 0; b < bucket.length; b++) {
+          var s = bucket[b];
+          var d2 = pointSegDistSq2(x, y, seg.x0[s], seg.y0[s], seg.x1[s], seg.y1[s]);
+          if (d2 < best) best = d2;
+        }
+      }
+    }
+    return Math.sqrt(best);
   }
 
   // Boundary sample spacing as a fraction of the local gap width: smaller gives a
@@ -46262,7 +47652,7 @@ ${svg}
     // proportionally finer than wide ones; on sparse inputs it stays 1 (fully
     // adaptive). The per-vertex gap is computed directly from the boundary geometry
     // in a single pass, then we densify once.
-    var grid = buildSegmentGrid(verts, coordDistances);
+    var grid = buildSegmentGrid$1(verts, coordDistances);
     var gaps = computeVertexGaps(grid, verts, coordDistances);
     var coarsen = fitCoarsen(verts, gaps, coordDistances, spacingFloor);
     var sites = densifyVertices(verts, gaps, coordDistances, spacingFloor, coarsen);
@@ -46286,7 +47676,7 @@ ${svg}
   // distances), so any in-reach segment is guaranteed to fall in that 3x3 window.
   // Returns null when there is no positive reach. Reused for both the per-vertex
   // gap (drives adaptive sampling) and the per-site keep test (gapAtPoint).
-  function buildSegmentGrid(verts, coordDistances) {
+  function buildSegmentGrid$1(verts, coordDistances) {
     var paths = verts.paths;
     var maxDist = 0;
     for (var d = 0; d < coordDistances.length; d++) {
@@ -48010,8 +49400,16 @@ ${svg}
       Object.assign({}, baseOpts, {radius: mouthRadius, topological: false}));
     var union = unionBufferDataset(dilatedAtR, baseOpts);
     if (!union || !union.arcs) return dilated;
+    // tolerance: 0 disables the buffer's Douglas-Peucker pre-simplification for the
+    // erosion. Pre-simplifying before an INWARD offset can push a simplified concave
+    // vertex past its neighbours and self-intersect the eroded ring; on a large,
+    // dense outline (e.g. a whole-country coastline) the dissolve then keeps the
+    // wrong side and the ring collapses, wiping the gap-fill extent. The dilation
+    // stays pre-simplified (outward offsets don't fold this way) so only the fragile
+    // erode pays the full-resolution cost.
     var closing = makePolygonBuffer(union.layers[0], union,
-      Object.assign({}, baseOpts, {radius: '-' + mouthRadius, topological: false}));
+      Object.assign({}, baseOpts, {radius: '-' + mouthRadius, topological: false,
+        tolerance: 0}));
     if (!closing || !closing.arcs) return dilated;
     // Fill the mask's interior gaps that are narrower than k*mouthSize (keep wider
     // ones open) so the clip below fills them too.
@@ -48019,6 +49417,16 @@ ${svg}
       parseConstantBufferDistance(fillRadius, getDatasetCRS(dataset)) || 0,
       closing.arcs);
     fillNarrowMaskHoles(closing, keepRadius);
+    // Additive mask. The closing defines the correct fill EXTENT, but its
+    // dilate/erode round trip reshapes the whole outer boundary (round joins on
+    // convex corners don't invert exactly) and bridges shallow scallops that are not
+    // real gaps. So don't clip to the closing directly: build the clip mask as
+    // (source land) UNION (the closing's genuine gap fills), taking the outer
+    // boundary from the source's own arcs so protrusions and the open coast come
+    // through unchanged. The union is built by noding the source together with the
+    // gap fills in a single topology (see buildAdditiveFillMask), so the shared
+    // coastline is split at the gap mouths and no sliver can open at a seam.
+    var fillMask = buildAdditiveFillMask(closing, lyr, dataset, opts, keepRadius) || closing;
     // Carry the source attributes through the clip: clipping drops fully-empty
     // features, so attach a per-feature data table (aligned 1:1 with the dilation)
     // before clipping rather than relying on a post-hoc count-match copy.
@@ -48026,11 +49434,11 @@ ${svg}
         dilatedLyr.shapes.length == lyr.data.size()) {
       dilatedLyr.data = lyr.data.clone();
     }
-    // remove_slivers: the dilation-vs-mask clip carves thin slivers along its
-    // boundary (a feature can pick up dozens of degenerate edge slivers); clip's
-    // own sliver filter drops the rings that mix dilation and mask arcs and fail a
-    // compactness-weighted area test, leaving the substantial fill regions intact.
-    clipLayersInPlace(dilated.layers, closing, dilated, 'clip',
+    // remove_slivers: the dilation-vs-mask clip can carve thin slivers along the
+    // medial partition; clip's own sliver filter drops rings that mix dilation and
+    // mask arcs and fail a compactness-weighted area test, leaving the substantial
+    // fill regions intact.
+    clipLayersInPlace(dilated.layers, fillMask, dilated, 'clip',
       {no_cleanup: true, no_warn: true, remove_slivers: true});
     return dilated;
   }
@@ -48065,6 +49473,448 @@ ${svg}
       });
       return kept.length > 0 ? kept : null;
     });
+  }
+
+  // A gap should be an inlet, not gentle coastline texture. The mouth-gating
+  // closing bridges EVERY concavity a disk of radius r cannot reach, so shallow
+  // scallops with a sub-mouth-size opening get sealed and filled like real inlets.
+  // A bridged open-coast concavity is a genuine gap when it is either convoluted
+  // (its coastline arc is at least INLET_MIN_RATIO times its mouth chord) or
+  // genuinely deep (its greatest depth is at least INLET_MIN_DEPTH_RATIO of its
+  // mouth chord). Requiring EITHER keeps winding rivers (long arc, short mouth) and
+  // deep-but-smooth embayments (large sagitta), while dropping shallow scallops
+  // that fail both. Enclosed fills (rivers behind a mouth, lakes) have no
+  // open-water bridge and are always kept.
+  var INLET_MIN_RATIO = 1.5;       // coastline-arc / mouth-chord (perimeter/chord)
+  var INLET_MIN_DEPTH_RATIO = 0.5; // max inlet depth / mouth-chord (sagitta/chord)
+  // A genuine gap must penetrate the coast by a real distance, not just dimple it.
+  // Two shallow-but-wide artifacts otherwise slip through the ratio test above: the
+  // thin reshaping collar left where the closing sits ~1% of the mouth radius
+  // outside a convex coast, and broad shallow scallops whose naturally wiggly shore
+  // clears the arc/mouth tortuosity clause despite little depth. Requiring the patch
+  // depth to reach this fraction of the mouth radius drops both while keeping real
+  // inlets (which run far deeper than their mouth radius; on the Columbia the kept
+  // gaps reach depth/r >= 1.3, the shallow scallops only ~0.2).
+  var INLET_MIN_ABS_DEPTH = 0.3;   // min patch depth as a fraction of the mouth radius
+
+  // Island-bridge classification of a fill that joins >= 2 source parts, one small
+  // (see bridgesSmallIsland). Two independent signatures mark an island bridge:
+  //  1. a COMPACT strait -- coastline only a few times its mouth (ex1 ~2.5-3.3, two
+  //     islands across a channel ~3.7-4.3) -- with the small landmass forming a real
+  //     share of the shore. A deep/winding river runs many times its mouth (>13),
+  //     so the arc/mouth cap excludes it; the coast-fraction floor excludes a gap
+  //     between large landmasses that merely grazes a tiny island.
+  //  2. a shore with a SUBSTANTIAL share of small islands -- islands (a cluster, or
+  //     a couple bridged to the mainland) form a large fraction of the fill's
+  //     coastline rather than an incidental graze. This catches fills that are
+  //     convoluted enough (high arc/mouth) to look like a river by shape alone. A
+  //     genuine river runs mostly along the mainland (small share <= 0.17), well
+  //     below the threshold; an island bridge's small share is 0.3+.
+  var ISLAND_MIN_COAST_FRAC = 0.1;       // compact-strait floor (small part is a real bank)
+  var ISLAND_MAX_ARC_RATIO = 8;          // compact-strait cap (above this = river)
+  var ISLAND_DOMINANT_COAST_FRAC = 0.25; // islands are a substantial share of the shore
+
+  // Build the clip mask for fill-gaps as (source land) UNION (genuine gap fills).
+  // The gap fills are the parts of (closing - land) that isShallowInlet keeps (deep
+  // or convoluted inlets and enclosed fills), dropping the thin reshaping collar and
+  // shallow scallops. The mask's outer boundary is the source's own coordinates, so
+  // protrusions and the open coast are not reshaped by the closing's round joins.
+  // Returns a single-layer polygon dataset, or null if there is nothing to mask.
+  //
+  // The source land and the gap fills are unioned in ONE noded topology: the source
+  // rings and the fill rings are placed in a single dataset and re-noded together so
+  // the shared coastline is split at every gap mouth. That is what keeps the seams
+  // closed -- if the source were noded separately from the fills (two coordinate
+  // sources merged only at clip time) a fill's mouth-corner point could land just
+  // off a pristine source edge and open a hairline sliver between the fill and land.
+  function buildAdditiveFillMask(closing, sourceLyr, sourceDataset, opts, keepRadius) {
+    // gap fills = closing - land, on a throwaway copy so the closing stays intact.
+    var notchDataset = copyDataset(closing);
+    clipLayersInPlace(notchDataset.layers,
+      {layers: [sourceLyr], arcs: sourceDataset.arcs}, notchDataset, 'erase',
+      {no_cleanup: true, no_warn: true});
+    var notchLyr = notchDataset.layers[0];
+    if (!notchLyr || !notchDataset.arcs) return null;
+    var mouthMeters = parseConstantBufferDistance(
+      fillGapsRadiusStr(parseFillGaps(opts), 1), getDatasetCRS(sourceDataset)) || 0;
+    var mouthCoord = getCoordinateDistance(mouthMeters, closing.arcs);
+    // a fill edge lies on the coastline when its midpoint sits on the source
+    // boundary; the bridge is offset into open water by the inlet depth. Tolerance
+    // is a small fraction of the mouth radius (above floating-point noise on shared
+    // edges, well below the shallowest fillable depth).
+    var onSrcTol = mouthCoord * 0.005;
+    if (!(onSrcTol > 0)) return null;
+    // Grid the coastline once so each fill edge's coast/part test is a local lookup
+    // instead of a scan of every source segment (there can be 100k+ of each). The
+    // segments carry a part id so a fill can be attributed to the landmass it hugs.
+    var spherical = isLatLngCRS(getDatasetCRS(sourceDataset));
+    var parts = collectSourceParts(sourceLyr.shapes, sourceDataset.arcs, spherical);
+    var srcGrid = buildSegmentGrid(parts.segs, onSrcTol);
+    // Unless merge-islands is set, a fill that bridges a small isolated landmass
+    // (smaller than a mouth-radius disk) to a neighbor is dropped, so islands stay
+    // separate. Genuine gaps between large landmasses (e.g. a river between two
+    // states) are unaffected. The disk area is in the same true units as the part
+    // areas (mouthMeters is the mouth radius in the dataset's distance units).
+    var mergeIslands = !!opts.merge_islands;
+    var islandMaxArea = Math.PI * mouthMeters * mouthMeters;
+    var geometries = [];
+    (sourceLyr.shapes || []).forEach(function(shp) {
+      if (!shp) return;
+      getPolygonMultiPolygonCoords(shp, sourceDataset.arcs).forEach(function(rings) {
+        geometries.push({type: 'Polygon', coordinates: rings});
+      });
+    });
+    var debugInlet = typeof process !== 'undefined' && process.env &&
+      process.env.MAPSHAPER_DEBUG_INLET;
+    // Island-bridge patches aren't dropped whole: a long fill can hug the mainland
+    // (filling its inlets) while also bridging a nearby island. Such patches are set
+    // aside, then trimmed by the islands' mouth-radius reach (see trimIslandBridges)
+    // so the strait to the island is removed but the mainland-side fill survives.
+    var bridgeGeoms = [];
+    (notchLyr.shapes || []).forEach(function(shape) {
+      if (!shape) return;
+      getPolygonMultiPolygonCoords(shape, notchDataset.arcs).forEach(function(rings) {
+        if (rings[0] && rings[0].length >= 4) {
+          var island = !mergeIslands &&
+            bridgesSmallIsland(rings[0], srcGrid, parts.areas, onSrcTol, islandMaxArea);
+          var reject = island || isShallowInlet(rings[0], srcGrid, onSrcTol, mouthCoord);
+          if (debugInlet) {
+            var m = inletMetrics(rings[0], srcGrid, onSrcTol);
+            if (m) {
+              var ib = islandBridgeMetrics(rings[0], srcGrid, parts.areas, onSrcTol, islandMaxArea);
+              console.error('[inlet] ' + (reject ? 'REJECT' : 'KEEP  ') +
+                (island ? ' ISLAND' : '') +
+                ' arc/mouth=' + (m.arc / m.mouth).toFixed(2) +
+                ' depth/mouth=' + (m.depth / m.mouth).toFixed(2) +
+                ' depth/r=' + (m.depth / mouthCoord).toFixed(2) +
+                ' runs=' + m.bridgeRuns +
+                ' parts=' + ib.count + ' smallFrac=' + ib.smallFrac.toFixed(2) +
+                ' mouth_m=' + (m.mouth / mouthCoord * mouthMeters).toFixed(0));
+            } else {
+              console.error('[inlet] KEEP   enclosed (no bridge)');
+            }
+          }
+          if (island) bridgeGeoms.push({type: 'Polygon', coordinates: rings});
+          else if (!reject) geometries.push({type: 'Polygon', coordinates: rings});
+        }
+      });
+    });
+    trimIslandBridges(bridgeGeoms, sourceLyr, sourceDataset, opts, spherical,
+      islandMaxArea, geometries);
+    if (geometries.length === 0) return null;
+    var mask = importGeoJSON({type: 'GeometryCollection', geometries: geometries},
+      {type: 'polygon'});
+    // Node the land and the fills together and dissolve into one coverage region.
+    // buildTopology + addIntersectionCuts split the shared coastline at the gap
+    // mouths so the abutting land and fill rings share those vertices; the dissolve
+    // then merges them without leaving a mouth-corner sliver.
+    buildTopology(mask);
+    addIntersectionCuts(mask, {});
+    var dissolved = dissolvePolygonLayer2(mask.layers[0], mask, {quiet: true, silent: true});
+    mask.layers = [dissolved];
+    // Where the source coastline pinches to a point (coincident vertices, common in
+    // multipolygon coastlines) the union of land and a gap fill can leave a hairline
+    // sliver hole at the mouth corner. Such a hole is far narrower than the mouth,
+    // and fill-gaps by definition should not leave a sub-mouth-width hole open, so
+    // the same narrow-hole fill applied to the closing removes these seam slivers;
+    // genuine wide holes (open lakes) stay open.
+    fillNarrowMaskHoles(mask, keepRadius);
+    return mask;
+  }
+
+  // Recover the mainland-side fill from island-bridge patches. Each such patch was
+  // set aside because it joins a small island to a neighbor, but the same patch can
+  // also fill genuine inlets along the neighboring mainland. Erasing the islands'
+  // mouth-radius reach (island (+) r, exactly the island's share of the closing)
+  // severs the strait -- every point within r of an island, i.e. the whole bridge
+  // for a channel up to 2r wide -- while leaving the mainland-side fill (> r from
+  // any island) to be added to the mask. The island therefore stays a separate
+  // polygon, but its inlets no longer vanish with the discarded bridge.
+  //
+  // The recovered fills are pushed into `geometries`. Only protected islands (parts
+  // below islandMaxArea) are buffered, and only when bridge patches exist, so the
+  // extra buffer+erase is bounded by the island count and skipped entirely on data
+  // with no island bridges.
+  function trimIslandBridges(bridgeGeoms, sourceLyr, sourceDataset, opts, spherical,
+      islandMaxArea, geometries) {
+    if (bridgeGeoms.length === 0) return;
+    var islandGeoms = [];
+    (sourceLyr.shapes || []).forEach(function(shp) {
+      if (!shp) return;
+      getPolygonMultiPolygonCoords(shp, sourceDataset.arcs).forEach(function(rings) {
+        if (rings[0] && Math.abs(ringTrueArea(rings[0], spherical)) < islandMaxArea) {
+          islandGeoms.push({type: 'Polygon', coordinates: [rings[0]]});
+        }
+      });
+    });
+    if (islandGeoms.length === 0) return;
+    var crsInfo = getDatasetCrsInfo(sourceDataset);
+    var mouthRadiusStr = fillGapsRadiusStr(parseFillGaps(opts), 1);
+    var islandDataset = importGeoJSON(
+      {type: 'GeometryCollection', geometries: islandGeoms}, {type: 'polygon'});
+    setDatasetCrsInfo(islandDataset, crsInfo);
+    var islandBuf = makePolygonBuffer(islandDataset.layers[0], islandDataset,
+      Object.assign({}, opts, {fill_gaps: false, max_widening: null,
+        radius: mouthRadiusStr, topological: false, no_replace: true}));
+    if (!islandBuf || !islandBuf.arcs) return;
+    var bridgeDataset = importGeoJSON(
+      {type: 'GeometryCollection', geometries: bridgeGeoms}, {type: 'polygon'});
+    setDatasetCrsInfo(bridgeDataset, crsInfo);
+    clipLayersInPlace(bridgeDataset.layers, islandBuf, bridgeDataset, 'erase',
+      {no_cleanup: true, no_warn: true});
+    (bridgeDataset.layers[0].shapes || []).forEach(function(shape) {
+      if (!shape) return;
+      getPolygonMultiPolygonCoords(shape, bridgeDataset.arcs).forEach(function(rings) {
+        if (rings[0] && rings[0].length >= 4) {
+          geometries.push({type: 'Polygon', coordinates: rings});
+        }
+      });
+    });
+  }
+
+  // Classify a bridged concavity (outer ring of a closing-minus-land part) and
+  // return true when it is NOT a genuine gap -- a shallow scallop or the thin
+  // reshaping collar -- and so should be excluded from the additive mask.
+  function isShallowInlet(ring, srcGrid, tol, mouthCoord) {
+    var m = inletMetrics(ring, srcGrid, tol);
+    if (!m) return false; // enclosed fill or degenerate: keep it
+    // the thin reshaping collar (near-zero depth relative to the mouth radius) is
+    // not a gap, regardless of its aspect ratio
+    if (mouthCoord > 0 && m.depth < INLET_MIN_ABS_DEPTH * mouthCoord) return true;
+    return m.arc / m.mouth < INLET_MIN_RATIO && m.depth / m.mouth < INLET_MIN_DEPTH_RATIO;
+  }
+
+  // Measure a bridged concavity. Returns null for a fully enclosed fill (no
+  // open-water bridge -- a river reach or lake, always a genuine gap) or a
+  // degenerate ring; otherwise {mouth, arc, depth, bridgeRuns} where the mouth is
+  // the chord across the longest bridge run, arc is the coastline length, depth is
+  // the max distance of the coast from the mouth chord, and bridgeRuns is the
+  // count of distinct open-water runs (>= 2 means a strait between two shores).
+  function inletMetrics(ring, srcGrid, tol) {
+    var n = ring.length - 1; // edge count (ring is closed: ring[n] == ring[0])
+    if (n < 3) return null;
+    // coast[i] = edge i lies on the source coastline (vs the open-water bridge)
+    var coast = [];
+    for (var i = 0; i < n; i++) {
+      var mx = (ring[i][0] + ring[i + 1][0]) / 2, my = (ring[i][1] + ring[i + 1][1]) / 2;
+      coast[i] = segmentGridWithin(srcGrid, mx, my, tol);
+    }
+    // The mouth is the longest run of bridge (non-coast) edges; no bridge means a
+    // fully enclosed fill (river reach, lake) -- always a genuine gap, keep it.
+    var run = longestFalseRun(coast);
+    if (!run) return null;
+    var c1 = ring[run.start], c2 = ring[(run.end + 1) % n];
+    var mouth = ptDist(c1[0], c1[1], c2[0], c2[1]);
+    if (!(mouth > tol)) return null;
+    var arc = 0, depth = 0;
+    for (i = 0; i < n; i++) {
+      if (inCyclicRun(i, run.start, run.end)) continue; // bridge edge
+      arc += ptDist(ring[i][0], ring[i][1], ring[i + 1][0], ring[i + 1][1]);
+      var d = ptLineDist(ring[i][0], ring[i][1], c1[0], c1[1], c2[0], c2[1]);
+      if (d > depth) depth = d;
+    }
+    return {mouth: mouth, arc: arc, depth: depth, bridgeRuns: countFalseRuns(coast)};
+  }
+
+  // Count distinct cyclic runs of falsey (bridge) edges.
+  function countFalseRuns(flags) {
+    var n = flags.length, runs = 0, i;
+    for (i = 0; i < n; i++) {
+      if (!flags[i] && flags[(i - 1 + n) % n]) runs++;
+    }
+    // all-false ring: one run that wraps entirely
+    if (runs === 0 && !flags[0]) return 1;
+    return runs;
+  }
+
+  // Longest cyclic run of falsey entries; returns {start, end} inclusive edge
+  // indices (end may be < start when the run wraps), or null if none are false.
+  function longestFalseRun(flags) {
+    var n = flags.length, best = null, bestLen = 0, i, len, start;
+    // scan up to 2n to allow a run to wrap the seam
+    i = 0;
+    while (i < 2 * n) {
+      if (flags[i % n]) { i++; continue; }
+      start = i;
+      while (i < 2 * n && !flags[i % n] && (i - start) < n) i++;
+      len = i - start;
+      if (len > bestLen) { bestLen = len; best = {start: start % n, end: (i - 1) % n}; }
+      if (len >= n) break; // all false
+    }
+    return best;
+  }
+
+  function inCyclicRun(i, start, end, n) {
+    return start <= end ? (i >= start && i <= end) : (i >= start || i <= end);
+  }
+
+  function ptDist(ax, ay, bx, by) {
+    return Math.sqrt((ax - bx) * (ax - bx) + (ay - by) * (ay - by));
+  }
+
+  // Perpendicular distance from (px,py) to the infinite line through a and b.
+  function ptLineDist(px, py, ax, ay, bx, by) {
+    var dx = bx - ax, dy = by - ay, len = Math.sqrt(dx * dx + dy * dy);
+    if (!(len > 0)) return ptDist(px, py, ax, ay);
+    return Math.abs((px - ax) * dy - (py - ay) * dx) / len;
+  }
+
+  // Uniform grid over boundary segments for a fast "is this point within `tol` of
+  // the coastline?" test. The coast/bridge classification queries it once per notch
+  // edge -- tens to hundreds of thousands of times against 100k+ source segments --
+  // so a linear scan is quadratic. Each segment is bucketed into every cell its bbox
+  // (padded by tol) covers, so a point within tol of a segment always shares a cell
+  // with it and a query need only scan its own cell. Cell size targets ~1 segment
+  // per cell. This is a flat hash keyed by integer cell, not a general index.
+  function buildSegmentGrid(segs, tol) {
+    var n = segs.length, i, s;
+    var minx = Infinity, miny = Infinity, maxx = -Infinity, maxy = -Infinity;
+    for (i = 0; i < n; i++) {
+      s = segs[i];
+      if (s[0] < minx) minx = s[0]; if (s[2] < minx) minx = s[2];
+      if (s[0] > maxx) maxx = s[0]; if (s[2] > maxx) maxx = s[2];
+      if (s[1] < miny) miny = s[1]; if (s[3] < miny) miny = s[3];
+      if (s[1] > maxy) maxy = s[1]; if (s[3] > maxy) maxy = s[3];
+    }
+    var pad = tol > 0 ? tol : 0;
+    var diag = Math.sqrt((maxx - minx) * (maxx - minx) + (maxy - miny) * (maxy - miny));
+    // keep cells >= 2*tol so a within-tol segment falls in the query's own cell
+    var cell = Math.max(diag / (Math.sqrt(n) || 1) || 1, pad * 2 || 1);
+    var map = new Map();
+    for (i = 0; i < n; i++) {
+      s = segs[i];
+      var cx0 = Math.floor((Math.min(s[0], s[2]) - pad - minx) / cell);
+      var cx1 = Math.floor((Math.max(s[0], s[2]) + pad - minx) / cell);
+      var cy0 = Math.floor((Math.min(s[1], s[3]) - pad - miny) / cell);
+      var cy1 = Math.floor((Math.max(s[1], s[3]) + pad - miny) / cell);
+      for (var cx = cx0; cx <= cx1; cx++) {
+        for (var cy = cy0; cy <= cy1; cy++) {
+          var key = cx + ',' + cy, bucket = map.get(key);
+          if (bucket) bucket.push(i); else map.set(key, [i]);
+        }
+      }
+    }
+    return {segs: segs, map: map, cell: cell, minx: minx, miny: miny};
+  }
+
+  // True if (px,py) is within `tol` of any segment in the grid. Only the query
+  // point's own cell is scanned (see buildSegmentGrid for why that is sufficient).
+  function segmentGridWithin(grid, px, py, tol) {
+    var cx = Math.floor((px - grid.minx) / grid.cell);
+    var cy = Math.floor((py - grid.miny) / grid.cell);
+    var bucket = grid.map.get(cx + ',' + cy);
+    if (!bucket) return false;
+    var t2 = tol * tol, segs = grid.segs;
+    for (var i = 0; i < bucket.length; i++) {
+      var s = segs[bucket[i]];
+      if (pointSegDistSq2(px, py, s[0], s[1], s[2], s[3]) <= t2) return true;
+    }
+    return false;
+  }
+
+  // Part id (segment[4]) of the nearest segment within `tol` of (px,py), or -1.
+  // Segments must carry a part id (see collectSourceParts); used to tell which
+  // source landmass a fill edge hugs so an island bridge can be recognized.
+  function segmentGridPart(grid, px, py, tol) {
+    var cx = Math.floor((px - grid.minx) / grid.cell);
+    var cy = Math.floor((py - grid.miny) / grid.cell);
+    var bucket = grid.map.get(cx + ',' + cy);
+    if (!bucket) return -1;
+    var best = -1, bestD = tol * tol, segs = grid.segs;
+    for (var i = 0; i < bucket.length; i++) {
+      var s = segs[bucket[i]];
+      var d = pointSegDistSq2(px, py, s[0], s[1], s[2], s[3]);
+      if (d <= bestD) { bestD = d; best = s[4]; }
+    }
+    return best;
+  }
+
+  // Flatten polygon shapes to boundary segments [ax, ay, bx, by, partId] and the
+  // net true area of each part (outer ring minus holes), indexed by partId. A
+  // "part" is one polygon of a (multi)polygon; each is a distinct landmass, so its
+  // area is how the island test decides whether a bridged component is small. Areas
+  // are computed in real units (spherical m^2 for lat-long, else planar coordinate
+  // units) so the mouth-disk comparison is latitude-independent.
+  function collectSourceParts(shapes, arcs, spherical) {
+    var segs = [], areas = [], pid = 0;
+    (shapes || []).forEach(function(shp) {
+      if (!shp) return;
+      getPolygonMultiPolygonCoords(shp, arcs).forEach(function(rings) {
+        var net = 0;
+        rings.forEach(function(ring, ri) {
+          var a = Math.abs(ringTrueArea(ring, spherical));
+          net += ri === 0 ? a : -a;
+          for (var i = 1; i < ring.length; i++) {
+            segs.push([ring[i - 1][0], ring[i - 1][1], ring[i][0], ring[i][1], pid]);
+          }
+        });
+        areas[pid] = net;
+        pid++;
+      });
+    });
+    return {segs: segs, areas: areas};
+  }
+
+  // Signed area of a closed ring of [x,y] points -- spherical (m^2, [lng,lat]) or
+  // planar shoelace -- matching the coordinate-geometry area functions.
+  function ringTrueArea(ring, spherical) {
+    if (spherical) return getSphericalPathArea2(pointsIter(ring));
+    return getPlanarPathArea2(ring);
+  }
+
+  // Minimal forward iterator over an array of [x,y] points, for the *PathArea2
+  // helpers that expect a mapshaper shape iterator.
+  function pointsIter(points) {
+    var i = -1;
+    return {
+      x: 0, y: 0,
+      hasNext: function() {
+        if (++i >= points.length) return false;
+        this.x = points[i][0];
+        this.y = points[i][1];
+        return true;
+      }
+    };
+  }
+
+  // Measure how much of a bridged fill's coastline hugs a small landmass. Returns
+  // {count, smallFrac}: count is the number of distinct source parts the fill
+  // touches, smallFrac the fraction of its coast length that runs along a part
+  // smaller than islandMaxArea (a mouth-radius disk). An island bridge -- a small
+  // isolated landmass joined to a neighbor across a narrow channel -- has a large
+  // smallFrac because the island forms much of the fill's shore. A deep river that
+  // merely grazes a small mid-channel island has a tiny smallFrac, so it is not
+  // mistaken for one. Bridge (open-water) edges are ignored; they carry no part.
+  function islandBridgeMetrics(ring, srcGrid, areas, tol, islandMaxArea) {
+    var n = ring.length - 1, seen = {}, count = 0, coastLen = 0, smallLen = 0;
+    for (var i = 0; i < n; i++) {
+      var mx = (ring[i][0] + ring[i + 1][0]) / 2, my = (ring[i][1] + ring[i + 1][1]) / 2;
+      var pid = segmentGridPart(srcGrid, mx, my, tol);
+      if (pid < 0) continue;
+      var len = ptDist(ring[i][0], ring[i][1], ring[i + 1][0], ring[i + 1][1]);
+      coastLen += len;
+      if (areas[pid] < islandMaxArea) smallLen += len;
+      if (!seen[pid]) { seen[pid] = true; count++; }
+    }
+    return {count: count, smallFrac: coastLen > 0 ? smallLen / coastLen : 0};
+  }
+
+  // True when a bridged fill joins two or more distinct source landmasses and
+  // bridges a small one (below a mouth-radius disk) -- an island the buffer would
+  // swallow into its neighbor. Smallness is absolute rather than relative to the
+  // neighbor, so a small landmass abutting a large one is recognized as an island
+  // while two large adjacent polygons (e.g. states sharing a river) are not. Two
+  // signatures qualify (see the constants above): a cluster whose shore is mostly
+  // small islands, or a compact strait joining a small island to a neighbor. A
+  // deep/winding river that grazes a small mid-channel island matches neither
+  // (elongated, and lined mostly by the mainland), so it keeps filling.
+  function bridgesSmallIsland(ring, srcGrid, areas, tol, islandMaxArea) {
+    var m = islandBridgeMetrics(ring, srcGrid, areas, tol, islandMaxArea);
+    if (m.count < 2) return false;
+    if (m.smallFrac >= ISLAND_DOMINANT_COAST_FRAC) return true; // islands are a big share of the shore
+    if (m.smallFrac < ISLAND_MIN_COAST_FRAC) return false;      // incidental graze
+    var im = inletMetrics(ring, srcGrid, tol);                  // else: compact strait?
+    return !!im && im.arc / im.mouth < ISLAND_MAX_ARC_RATIO;
   }
 
   // Dissolve every feature of a buffered dataset into a single union polygon (the
@@ -48828,7 +50678,7 @@ ${svg}
       }, {type: 'polygon'});
       geometries = makeTopologicalPolygonBufferGeometries(shapes, distances,
         sourceIds, bufferIds, tmpDataset, dataset.arcs,
-        getMedialSimplifyInterval(dataset, opts, distances));
+        medialSmoothingEnabled(opts, distances));
     }
     return {
       geojson: {
@@ -48840,13 +50690,13 @@ ${svg}
   }
 
   function makeTopologicalPolygonBufferGeometries(shapes, distances, sourceIds,
-      bufferIds, tmpDataset, sourceArcs, medialSimplifyInterval) {
+      bufferIds, tmpDataset, sourceArcs, medialSmooth) {
     // Inject inter-feature Voronoi (medial-axis) cut lines so the buffer mosaic's
     // contested tiles are subdivided along the equidistant boundary before the
     // tiles are assigned (see assignment by nearest source below).
     profileStart('topo:medial');
     var dataset = injectMedialCutLines(tmpDataset, shapes, distances, sourceArcs,
-      medialSimplifyInterval);
+      medialSmooth);
     profileEnd('topo:medial');
     var tmpLyr = dataset.layers.filter(function(l) {
       return l.geometry_type == 'polygon';
@@ -48886,12 +50736,12 @@ ${svg}
   // polygons plus a polyline layer of inter-feature Voronoi cut-lines (so the
   // contested tiles split along the equidistant boundary). Returns @tmpDataset
   // unchanged when there are no contested edges (no overlap between features).
-  function injectMedialCutLines(tmpDataset, shapes, distances, arcs, simplifyInterval) {
+  function injectMedialCutLines(tmpDataset, shapes, distances, arcs, medialSmooth) {
     var coordDistances = distances.map(function(d) {
       return d > 0 ? getCoordinateDistance(d, arcs) : 0;
     });
     var medial = buildInterFeatureMedialLines(shapes, coordDistances, arcs,
-      {simplifyInterval: simplifyInterval || 0});
+      {smooth: !!medialSmooth});
     if (!medial) return tmpDataset;
     var lineDataset = importGeoJSON({
       type: 'GeometryCollection',
@@ -48901,30 +50751,21 @@ ${svg}
     return mergeDatasets([tmpDataset, lineDataset]);
   }
 
-  // Smoothing scale for the constructed medial lines, as a multiple of the
-  // buffer's own positional tolerance. Weighted Visvalingam removes sub-tolerance
-  // wiggles (the residual zigzag of the discrete medial sampling) and thins the
-  // uneven vertex density without pulling the partition off the centerline:
-  // keeping the interval near the buffer's accuracy budget bounds any deviation to
-  // what the buffer geometry already tolerates.
-  var MEDIAL_SIMPLIFY_FACTOR = 3; // 2
-
-  // Simplification interval (in source-coordinate units) for the medial cut-lines.
-  // Tied to the buffer tolerance at the largest buffer distance present, so the
-  // medial axis is smoothed at the same scale the buffer outline is approximated.
-  // Returns 0 (no simplification) when tolerance is disabled or all distances are
-  // non-positive.
-  function getMedialSimplifyInterval(dataset, opts, distances) {
+  // Whether to smooth the constructed medial cut-lines (Gaussian low-pass, see
+  // smoothMedialChain in mapshaper-buffer-voronoi). Smoothing replaces the discrete
+  // medial sampling's zigzag with a clean centerline; its scale is keyed per-chain
+  // to the local channel width, not to any distance computed here, so this is only
+  // an on/off gate. Off when the buffer's tolerance is explicitly disabled
+  // (tolerance=0, the "give me the raw medial" escape hatch) or when there is no
+  // positive buffer distance.
+  function medialSmoothingEnabled(opts, distances) {
     if (opts.tolerance === 0 || opts.tolerance == '0' || opts.tolerance == '0%') {
-      return 0;
+      return false;
     }
-    var repDist = 0;
     for (var i = 0; i < distances.length; i++) {
-      if (distances[i] > repDist) repDist = distances[i];
+      if (distances[i] > 0) return true;
     }
-    if (repDist <= 0) return 0;
-    var tolMeters = getBufferToleranceFunction(dataset, opts)(repDist);
-    return getCoordinateDistance(tolMeters, dataset.arcs) * MEDIAL_SIMPLIFY_FACTOR;
+    return false;
   }
 
   // Per-feature buffer distances for the debug builders below, in meters and in
@@ -48945,7 +50786,7 @@ ${svg}
   // Build a polyline dataset of the inter-feature medial-axis (Voronoi) cut-lines
   // for the -buffer debug-voronoi option (topological only). These are the same
   // lines injected into the mosaic to partition contested space, after the
-  // post-construction smoothing simplification.
+  // post-construction Gaussian smoothing.
   function makeVoronoiDebugDataset(lyr, dataset, opts) {
     if (!opts.topological) {
       warn('debug-voronoi has no effect without the topological option; ignoring');
@@ -48953,7 +50794,7 @@ ${svg}
     }
     var d = getMedialDebugDistances(lyr, dataset, opts);
     var medial = buildInterFeatureMedialLines(d.shapes, d.coordDistances, dataset.arcs,
-      {simplifyInterval: getMedialSimplifyInterval(dataset, opts, d.distances)});
+      {smooth: medialSmoothingEnabled(opts, d.distances)});
     var geometries = medial ? [medial] : [];
     return importGeoJSON({type: 'GeometryCollection', geometries: geometries}, {});
   }
@@ -51719,6 +53560,8 @@ ${svg}
   cmd.proj = function(dataset, catalog, opts, targetLayers) {
     var srcInfo, destInfo, destStr;
     var implicitlyProjectedNames = getImplicitlyTargetedLayerNames(dataset, targetLayers, layerHasGeometry);
+    // A preserved GeoJSON "crs" member becomes invalid once the CRS changes.
+    deleteGeoJSONMetadataCRS(dataset);
     if (opts.init) {
       srcInfo = fetchCrsInfo(opts.init, catalog);
       if (!srcInfo.crs) stop$1("Unknown projection source:", opts.init);
@@ -51800,6 +53643,15 @@ ${svg}
     });
     markDatasetChanged(dataset, {operation: 'proj'});
     return true;
+  }
+
+  // Drop the "crs" member from preserved GeoJSON metadata, so a stale CRS is not
+  // re-emitted after the dataset has been reprojected. Other metadata is retained.
+  function deleteGeoJSONMetadataCRS(dataset) {
+    var meta = dataset.info && dataset.info.input_geojson_metadata;
+    if (meta && 'crs' in meta) {
+      delete meta.crs;
+    }
   }
 
   function layerWasChangedByProjection(a, b) {
@@ -57660,6 +59512,152 @@ ${svg}
         prevKey = key;
       }
       addDividedParts(parts2, keys2, matches2);
+    }
+  }
+
+  function MaxHeap() {
+    return new Heap('max');
+  }
+
+  // A heap data structure used for computing Visvalingam simplification data.
+  // type: 'max' or 'min' (min is default)
+  //
+  function Heap(type) {
+    var heapBuf = utils.expandoBuffer(Int32Array),
+        indexBuf = utils.expandoBuffer(Int32Array),
+        heavierThan = type == 'max' ? lessThan : greaterThan,
+        itemsInHeap = 0,
+        dataArr,
+        heapArr,
+        indexArr;
+
+    this.init = function(values) {
+      var i;
+      dataArr = values;
+      itemsInHeap = values.length;
+      heapArr = heapBuf(itemsInHeap);
+      indexArr = indexBuf(itemsInHeap);
+      for (i=0; i<itemsInHeap; i++) {
+        insertValue(i, i);
+      }
+      // place non-leaf items
+      for (i=(itemsInHeap-2) >> 1; i >= 0; i--) {
+        downHeap(i);
+      }
+    };
+
+    this.size = function() {
+      return itemsInHeap;
+    };
+
+    // Update a single value and re-heap
+    this.updateValue = function(valIdx, val) {
+      var heapIdx = indexArr[valIdx];
+      dataArr[valIdx] = val;
+      if (!(heapIdx >= 0 && heapIdx < itemsInHeap)) {
+        error("Out-of-range heap index.");
+      }
+      downHeap(upHeap(heapIdx));
+    };
+
+    this.popValue = function() {
+      return dataArr[this.pop()];
+    };
+
+    this.getValue = function(idx) {
+      return dataArr[idx];
+    };
+
+    this.peek = function() {
+      return heapArr[0];
+    };
+
+    this.peekValue = function() {
+      return dataArr[heapArr[0]];
+    };
+
+    // Return the idx of the lowest-value item in the heap
+    this.pop = function() {
+      var popIdx;
+      if (itemsInHeap <= 0) {
+        error("Tried to pop from an empty heap.");
+      }
+      popIdx = heapArr[0];
+      insertValue(0, heapArr[--itemsInHeap]); // move last item in heap into root position
+      downHeap(0);
+      return popIdx;
+    };
+
+    function upHeap(idx) {
+      var parentIdx;
+      // Move item up in the heap until it's at the top or is not lighter than its parent
+      while (idx > 0) {
+        parentIdx = (idx - 1) >> 1;
+        if (heavierThan(idx, parentIdx)) {
+          break;
+        }
+        swapItems(idx, parentIdx);
+        idx = parentIdx;
+      }
+      return idx;
+    }
+
+    // Swap item at @idx with any lighter children
+    function downHeap(idx) {
+      var minIdx = compareDown(idx);
+
+      while (minIdx > idx) {
+        swapItems(idx, minIdx);
+        idx = minIdx; // descend in the heap
+        minIdx = compareDown(idx);
+      }
+    }
+
+    function swapItems(a, b) {
+      var i = heapArr[a];
+      insertValue(a, heapArr[b]);
+      insertValue(b, i);
+    }
+
+    // Associate a heap idx with the index of a value in data arr
+    function insertValue(heapIdx, valId) {
+      indexArr[valId] = heapIdx;
+      heapArr[heapIdx] = valId;
+    }
+
+    // comparator for Visvalingam min heap
+    // @a, @b: Indexes in @heapArr
+    function greaterThan(a, b) {
+      var idx1 = heapArr[a],
+          idx2 = heapArr[b],
+          val1 = dataArr[idx1],
+          val2 = dataArr[idx2];
+      // If values are equal, compare array indexes.
+      // This is not a requirement of the Visvalingam algorithm,
+      // but it generates output that matches Mahes Visvalingam's
+      // reference implementation.
+      // See https://hydra.hull.ac.uk/assets/hull:10874/content
+      return (val1 > val2 || val1 === val2 && idx1 > idx2);
+    }
+
+    // comparator for max heap
+    function lessThan(a, b) {
+      var idx1 = heapArr[a],
+          idx2 = heapArr[b];
+      return dataArr[idx1] < dataArr[idx2];
+    }
+
+    function compareDown(idx) {
+      var a = 2 * idx + 1,
+          b = a + 1,
+          n = itemsInHeap;
+      if (a < n && heavierThan(idx, a)) {
+        idx = a;
+      }
+      if (b < n && heavierThan(idx, b)) {
+        idx = b;
+      }
+      return idx;
     }
   }
 
@@ -63549,6 +65547,151 @@ ${svg}
     return m;
   }
 
+  var Visvalingam = {};
+
+  Visvalingam.getArcCalculator = function(metric, is3D) {
+    var heap = new Heap(),
+        prevBuf = utils.expandoBuffer(Int32Array),
+        nextBuf = utils.expandoBuffer(Int32Array),
+        calc = is3D ?
+          function(b, c, d, xx, yy, zz) {
+            return metric(xx[b], yy[b], zz[b], xx[c], yy[c], zz[c], xx[d], yy[d], zz[d]);
+          } :
+          function(b, c, d, xx, yy) {
+            return metric(xx[b], yy[b], xx[c], yy[c], xx[d], yy[d]);
+          };
+
+    // Calculate Visvalingam simplification data for an arc
+    // @kk (Float64Array|Array) Receives calculated simplification thresholds
+    // @xx, @yy, (@zz) Buffers containing vertex coordinates
+    return function calcVisvalingam(kk, xx, yy, zz) {
+      var arcLen = kk.length,
+          prevArr = prevBuf(arcLen),
+          nextArr = nextBuf(arcLen),
+          val, maxVal = -Infinity,
+          b, c, d; // indexes of points along arc
+
+      if (zz && !is3D) {
+        error("[visvalingam] Received z-axis data for 2D simplification");
+      } else if (!zz && is3D) {
+        error("[visvalingam] Missing z-axis data for 3D simplification");
+      } else if (kk.length > xx.length) {
+        error("[visvalingam] Incompatible data arrays:", kk.length, xx.length);
+      }
+
+      // Initialize Visvalingam "effective area" values and references to
+      //   prev/next points for each point in arc.
+      for (c=0; c<arcLen; c++) {
+        b = c-1;
+        d = c+1;
+        if (b < 0 || d >= arcLen) {
+          val = Infinity; // endpoint maxVals
+        } else {
+          val = calc(b, c, d, xx, yy, zz);
+        }
+        kk[c] = val;
+        nextArr[c] = d;
+        prevArr[c] = b;
+      }
+      heap.init(kk);
+
+      // Calculate removal thresholds for each internal point in the arc
+      //
+      while (heap.size() > 0) {
+        c = heap.pop(); // Remove the point with the least effective area.
+        val = kk[c];
+        if (val === Infinity) {
+          break;
+        }
+        if (val < maxVal) {
+          // don't assign current point a lesser value than the last removed vertex
+          kk[c] = maxVal;
+        } else {
+          maxVal = val;
+        }
+
+        // Recompute effective area of neighbors of the removed point.
+        b = prevArr[c];
+        d = nextArr[c];
+        if (b > 0) {
+          val = calc(prevArr[b], b, d, xx, yy, zz);
+          heap.updateValue(b, val);
+        }
+        if (d < arcLen-1) {
+          val = calc(b, d, nextArr[d], xx, yy, zz);
+          heap.updateValue(d, val);
+        }
+        nextArr[b] = d;
+        prevArr[d] = b;
+      }
+    };
+  };
+
+  Visvalingam.standardMetric = geom.triangleArea;
+  Visvalingam.standardMetric3D = geom.triangleArea3D;
+
+  Visvalingam.getWeightedMetric = function(opts) {
+    var weight = Visvalingam.getWeightFunction(opts);
+    return function(ax, ay, bx, by, cx, cy) {
+      var area = geom.triangleArea(ax, ay, bx, by, cx, cy),
+          cos = geom.cosine(ax, ay, bx, by, cx, cy);
+      return weight(cos) * area;
+    };
+  };
+
+  Visvalingam.getWeightedMetric3D = function(opts) {
+    var weight = Visvalingam.getWeightFunction(opts);
+    return function(ax, ay, az, bx, by, bz, cx, cy, cz) {
+      var area = geom.triangleArea3D(ax, ay, az, bx, by, bz, cx, cy, cz),
+          cos = geom.cosine3D(ax, ay, az, bx, by, bz, cx, cy, cz);
+      return weight(cos) * area;
+    };
+  };
+
+  Visvalingam.getWeightCoefficient = function(opts) {
+    return opts && utils.isNumber(opts && opts.weighting) ? opts.weighting : 0.7;
+  };
+
+  // Get a parameterized version of Visvalingam.weight()
+  Visvalingam.getWeightFunction = function(opts) {
+    var k = Visvalingam.getWeightCoefficient(opts);
+    return function(cos) {
+      return -cos * k + 1;
+    };
+  };
+
+  // Weight triangle area by inverse cosine
+  // Standard weighting favors 90-deg angles; this curve peaks at 120 deg.
+  Visvalingam.weight = function(cos) {
+    var k = 0.7;
+    return -cos * k + 1;
+  };
+
+  Visvalingam.getEffectiveAreaSimplifier = function(use3D) {
+    var metric = use3D ? Visvalingam.standardMetric3D : Visvalingam.standardMetric;
+    return Visvalingam.getPathSimplifier(metric, use3D);
+  };
+
+  Visvalingam.getWeightedSimplifier = function(opts, use3D) {
+    var metric = use3D ? Visvalingam.getWeightedMetric3D(opts) : Visvalingam.getWeightedMetric(opts);
+    return Visvalingam.getPathSimplifier(metric, use3D);
+  };
+
+  Visvalingam.getPathSimplifier = function(metric, use3D) {
+    return Visvalingam.scaledSimplify(Visvalingam.getArcCalculator(metric, use3D));
+  };
+
+
+  Visvalingam.scaledSimplify = function(f) {
+    return function(kk, xx, yy, zz) {
+      f(kk, xx, yy, zz);
+      for (var i=1, n=kk.length - 1; i<n; i++) {
+        // convert area metric to a linear equivalent
+        kk[i] = Math.sqrt(kk[i]) * 0.65;
+      }
+    };
+  };
+
   function getSimplifyMethodLabel(slug) {
     return {
       dp: "Ramer-Douglas-Peucker",
@@ -64124,1570 +66267,6 @@ ${svg}
     simplifyPaths: simplifyPaths,
     useSphericalSimplify: useSphericalSimplify
   });
-
-  // Structural-corner detection for -smooth's corner preservation (on by default;
-  // disabled with no-corners).
-  //
-  // Many boundaries alternate between natural, freely-curving stretches (coast,
-  // river centerline) and artificial straight-line segments (state/county
-  // borders). Plain low-pass smoothing rounds the sharp corners where artificial
-  // segments meet. This module finds those corners so the caller can pin them and
-  // smooth each span between them independently, leaving straight runs intact.
-  //
-  // The approach reduces "preserve straight segments and their corners" to
-  // detecting the corners that bound long, low-curvature (straight or gently
-  // curving) runs:
-  //   1. Flag vertices whose direction changes sharply over a tolerance-scaled
-  //      window AND where that turn is concentrated near the vertex rather than
-  //      spread out. The concentration test compares the turn over a small inner
-  //      window to the turn over the full window: for a uniform curve the ratio is
-  //      a fixed fraction (the window-length ratio), so a steadily-curving stretch
-  //      -- whether a tight coastline or a gentle, hundreds-of-km graticule arc --
-  //      never qualifies; only a localized kink, where the inner turn approaches
-  //      the full turn, is a corner.
-  //   1b. (open paths) Also flag the end of a long straight run that turns sharply
-  //      over a single segment but only gently over the window -- a small jog where
-  //      a surveyed border meets a curve, which step 1's window would dilute below
-  //      the corner angle. Keyed off the raw segment turn, but the pinned vertex is
-  //      snapped to the nearby end of the straight run (stable under tiny vertex
-  //      moves) and only where that run's line is actually left (so an incidental
-  //      notch after which the run resumes on the same line is not flagged). See
-  //      straightRunEndNear.
-  //   2. Between flagged corners, classify each span as "structural" if it is long
-  //      relative to the tolerance and its curvature stays low (so a straight or
-  //      slowly-curving graticule line counts, but sub-tolerance wiggle does not).
-  //   3. Drop corners that don't border any structural span (e.g. spikes inside a
-  //      wiggly coastline), merging their spans, until the partition is stable.
-  //
-  // All geometry is done in the caller's smoothing channels (planar x,y or
-  // geocentric x,y,z), so detection is isotropic and matches the smoothing space.
-  // Angles are computed with plain dot products, which work in any dimension.
-
-  var CORNER_ANGLE = 35 * Math.PI / 180; // min concentrated turn to call a corner
-  var TANGENT_WINDOW_FACTOR = 0.25;      // tangent-estimation half-window = tol * this
-  var INNER_WINDOW_FACTOR = 0.4;         // concentration probe window = tangentWindow * this
-  var CORNER_CONCENTRATION = 0.6;        // min ratio of inner-window turn to full-window turn
-  var MIN_RUN_LEN_FACTOR = 1.0;          // a structural run must be at least tol * this long
-  // ...and bend no tighter than radius tol * this. This is the curvature gate for
-  // "structural" (straight or slowly-curving, e.g. a surveyed border or graticule
-  // arc). It must be well above 1: at factor 1 a minimal run may turn a full
-  // radian (~57 deg) over its own length, so ordinary coastal arcs qualify and
-  // their end bends get pinned as spurious corners (radius ~1-1.6*tol). At 3 a
-  // minimal run turns <= ~19 deg, excluding natural coastal curvature while still
-  // admitting genuinely straight borders (radius ~infinite) and graticule arcs
-  // (radius >> tol).
-  var MIN_RUN_RADIUS_FACTOR = 3.0;
-
-  // Straightness gate used to decide corner *retention* (whether a detected corner
-  // borders a run worth pinning), as distinct from isStructuralRun's per-vertex
-  // gate that decides whether a span is copied verbatim. A run is "straight at the
-  // smoothing scale" if every vertex stays within a thin corridor around the
-  // straight chord joining the run's endpoints: max perpendicular deviation <=
-  // STRAIGHT_DEV_FACTOR * chord length. Because this measures deviation from the
-  // chord rather than summing raw per-segment turning, it is robust to
-  // sub-tolerance digitizing wiggle: a finely ragged but geometrically straight
-  // border (huge total per-vertex turning, tiny deviation) qualifies, so its
-  // bounding corners are kept -- while isStructuralRun would (correctly, for its
-  // own purpose) reject it as too wiggly to copy verbatim. The ratio behaves like
-  // a minimum-radius-over-length gate: a run bending with radius R over length L
-  // deviates from its chord by ~L/(8R), so the threshold corresponds to
-  // R >~ L/(8*STRAIGHT_DEV_FACTOR) -- longer runs must be proportionally straighter
-  // to count, which matches intuition (a 28 km stretch bending at radius 4 km is
-  // obviously not straight). Genuinely curving coastline bows far from its chord
-  // and is still rejected, so spurious corners inside wiggly stretches keep getting
-  // culled. Tightened from 0.03 to 0.02 (a run may curve ~9 deg over its length, not
-  // ~14) after a coastline island pinned corners at both ends of a ~10 deg-curving
-  // stretch that read as "straight" only under the looser corridor: an acute corner
-  // takes the full corridor regardless of the angle coupling below, so only the base
-  // factor governs whether such a run can anchor a sharp corner.
-  var STRAIGHT_DEV_FACTOR = 0.02;
-
-  // Angle coupling for corner retention: how much sharper the corner must turn than
-  // the run it borders already curves. A run that passes the chord test may still
-  // bend gently within the STRAIGHT_DEV_FACTOR corridor -- for a circular arc the
-  // chord-deviation ratio is ~ (the run's total turn)/8, so the base 0.02 admits a
-  // run that curves ~9 deg over its length. Pinning a *gentle* bend at the end of
-  // such a run is unsafe: the "corner" is barely sharper than the run's own
-  // curving, so it is really a point on a smooth bend, not a junction. (This is the
-  // failure mode on coarsely sampled / already-simplified coastlines, where a
-  // gently curving stretch is sampled as a few long segments that read as a
-  // borderline-straight run with soft bends at each end.) So the straightness limit
-  // for retention is tightened for gentle corners: a corner is pinnable only if its
-  // turn is at least PIN_TURN_RATIO times the run's own bend, i.e.
-  //   turn >= PIN_TURN_RATIO * (8 * dev)  <=>  dev <= turn / (8 * PIN_TURN_RATIO).
-  // retentionDevLimit() returns the smaller of STRAIGHT_DEV_FACTOR and
-  // turn/(8*PIN_TURN_RATIO), so the coupling only bites for gentle corners (below
-  // ~2*STRAIGHT_DEV_FACTOR*PIN_TURN_RATIO ~ 46 deg); sharp corners (surveyed-border
-  // right angles, spits, hairpins) keep the full base tolerance, unchanged.
-  var PIN_TURN_RATIO = 5;
-
-  // Minimum length (in tol units) a straight run must have to justify *pinning* a
-  // bordering corner. This is deliberately larger than MIN_RUN_LEN_FACTOR (the
-  // floor for calling a span "structural" at all): pinning a corner is a stronger
-  // commitment than copying a clean span, so it demands stronger evidence that the
-  // run is a deliberate straight feature rather than incidental collinearity.
-  //
-  // The failure mode this guards against appears on sparse / already-simplified
-  // data, where a gently curving coastline is sampled as a few long segments. A
-  // short near-collinear stretch only ~1*tol long (often just 1-2 segments) then
-  // passes the chord-deviation test -- with so few interior points there is almost
-  // nothing to deviate -- and gets pinned, kinking an otherwise smooth curve. At
-  // the smoothing scale such a stretch is indistinguishable from a coarsely
-  // sampled bend, so it should not anchor a corner. Requiring the run to be
-  // clearly longer than the smoothing distance (factor 2) drops these stubs while
-  // keeping genuine straight borders (which run many times the distance) and even
-  // coarsely sampled but truly long straight segments (e.g. a 2-3*tol contour
-  // edge). Scales with corner-bias (via ctol), so a positive bias restores the
-  // old 1*tol behaviour for users who want shorter runs pinned.
-  var MIN_PIN_RUN_LEN_FACTOR = 2.0;
-
-  // When a long straight run's end turns sharply into a curve with a small jog, the
-  // sharpest single-segment turn can land a few vertices past the run's actual end.
-  // straightRunEndNear searches back this many source vertices (in addition to the
-  // distance-scaled tangent window) to snap to the stable run end, so detection
-  // does not depend on the smoothing distance being large enough for the window to
-  // span the jog. A jog is a handful of vertices; this is deliberately generous
-  // because the search returns the nearest genuine run end (or nothing).
-  var MAX_JOG_VERTICES = 6;
-
-  // Convert the user-facing corner-bias (0 = neutral) into the positive multiplier
-  // k applied to corner-detection resolution (ctol = tol / k). The mapping is
-  // symmetric about zero -- k(+b) * k(-b) = 1 -- and smooth there (both branches
-  // have slope 1 at b = 0), so opposite biases of equal magnitude are exact
-  // inverses. A positive bias makes detection finer (k > 1, ctol < tol: more, more
-  // finely supported corners); a negative bias makes it coarser (k < 1, ctol > tol:
-  // fewer corners), each as if the smoothing distance were tol/k. Examples: +1
-  // doubles the resolution (k=2, "as if distance were halved"), -1 halves it
-  // (k=1/2, "as if doubled"); +2 -> k=3, -2 -> k=1/3.
-  function cornerBiasScale(cornerBias) {
-    var b = cornerBias || 0;
-    return b >= 0 ? b + 1 : 1 / (1 - b);
-  }
-
-  // Ratio of (typical segment length / smoothing distance) at or below which corner
-  // detection sees several segments per tangent window and behaves normally, so no
-  // automatic coarsening is applied. Above it the window shrinks toward a single
-  // segment and ordinary coarse-data bends start reading as corners.
-  var AUTO_BIAS_RATIO = 0.15;
-  // Most-negative automatic bias. Caps how far detection is coarsened on very sparse
-  // geometry (e.g. lo-res contours), where the ratio can be many times AUTO_BIAS_RATIO
-  // but a handful of doublings already merges the whole neighbourhood.
-  var AUTO_BIAS_FLOOR = -4;
-
-  // Automatic corner-bias from the geometry's coarseness relative to the smoothing
-  // distance. @medianSeg is a robust (median) segment length; @dist is the raw
-  // smoothing distance, both in the same ground units. Corner detection keys off a
-  // tangent window ~0.3*dist wide; when the typical segment is an appreciable
-  // fraction of the distance (ratio r = medianSeg/dist above AUTO_BIAS_RATIO) that
-  // window spans too few segments and gentle-but-coarse bends read as corners. We
-  // return a negative bias that coarsens detection (as if the distance were larger)
-  // enough to push the effective ratio back down: each halving of the effective
-  // resolution costs one bias step, so bias = -log2(r / AUTO_BIAS_RATIO), floored.
-  // Returns 0 (no adjustment) when the geometry is fine relative to the distance,
-  // which is the normal case for detailed datasets smoothed at a real distance.
-  // Note it only ever coarsens: a straight run that genuinely anchors a sharp corner
-  // survives this (the corner is retained by bordering a long straight run, which
-  // coarsening does not remove until it exceeds the run's length), while weakly
-  // supported bends on coarse coastlines/contours fall below the corner threshold.
-  function autoCornerBias(medianSeg, dist) {
-    if (!(medianSeg > 0) || !(dist > 0)) return 0;
-    var r = medianSeg / dist;
-    if (r <= AUTO_BIAS_RATIO) return 0;
-    var b = -Math.log2(r / AUTO_BIAS_RATIO);
-    return b < AUTO_BIAS_FLOOR ? AUTO_BIAS_FLOOR : b;
-  }
-
-  // @cornerBias (optional, default 0 = neutral) scales only the distance-
-  // proportional corner parameters, by dividing the tolerance they key off
-  // (ctol = tol / k, k = cornerBiasScale(bias)). The dimensionless thresholds are
-  // left untouched: the corner angle, the concentration ratio, and -- downstream,
-  // inside isStraightRun / retentionDevLimit -- STRAIGHT_DEV_FACTOR and
-  // PIN_TURN_RATIO. So corner-bias detects (and retains) corners exactly as if the
-  // smoothing distance were tol/k, while the smoothing kernel keeps using the real
-  // distance. In particular `-smooth corner-bias=-1 1km` gives the same corner
-  // results as `-smooth 2km` (a negative bias finds fewer, only well-supported
-  // corners; a positive bias finds more), but smooths at 1km. All lengths below are
-  // derived from ctol; only cornerAngle and concentration (both dimensionless) stay
-  // fixed.
-  function getCornerParams(tol, cornerBias) {
-    var ctol = tol / cornerBiasScale(cornerBias);
-    return {
-      tol: tol,
-      cornerAngle: CORNER_ANGLE,
-      tangentWindow: TANGENT_WINDOW_FACTOR * ctol,
-      innerWindow: INNER_WINDOW_FACTOR * TANGENT_WINDOW_FACTOR * ctol,
-      concentration: CORNER_CONCENTRATION,
-      minRunLen: MIN_RUN_LEN_FACTOR * ctol,
-      minPinRunLen: MIN_PIN_RUN_LEN_FACTOR * ctol,
-      maxTurnRate: 1 / (MIN_RUN_RADIUS_FACTOR * ctol) // radians of turning per ground unit
-    };
-  }
-
-  // Find the interior corner vertices of an arc.
-  // @t: cumulative arc length (length n). @channels: K coordinate arrays.
-  // @cyclic: true for a closed ring (n includes the repeated closing vertex; the
-  //   m = n-1 unique vertices are treated cyclically). @params: getCornerParams().
-  // Returns sorted vertex indices: for open arcs in [1, n-2]; for rings in [0, m).
-  function findInteriorCorners(t, channels, n, cyclic, params) {
-    if (n < 3) return [];
-    var K = channels.length;
-    var L = t[n - 1];
-    var m = cyclic ? n - 1 : n;
-    if (cyclic && m < 3) return [];
-    var W = params.tangentWindow;
-    var Wi = params.innerWindow;
-    var turns = new Float64Array(m);
-    var inner = new Float64Array(m);
-    var lo = cyclic ? 0 : 1;
-    var hi = cyclic ? m : n - 1; // exclusive
-    for (var i = lo; i < hi; i++) {
-      turns[i] = windowedTurn(t, channels, K, n, L, m, i, W, cyclic);
-      inner[i] = windowedTurn(t, channels, K, n, L, m, i, Wi, cyclic);
-    }
-    // candidates above the angle threshold, that are concentrated (a localized
-    // turn, not gradual bending -- see isConcentratedTurn), and that are the
-    // sharpest turn within a tangent-window neighborhood (non-maximum suppression)
-    var corners = [];
-    for (var j = lo; j < hi; j++) {
-      if (turns[j] < params.cornerAngle) continue;
-      if (inner[j] < params.concentration * turns[j]) continue;
-      if (isLocalMaxTurn(t, turns, j, W, L, m, lo, hi, cyclic)) corners.push(j);
-    }
-    // Open paths: also flag the terminal vertex of a long straight run that bends
-    // sharply over a single segment but only gently over the tangent window -- e.g.
-    // where a surveyed border meets a coastline with a small jog. The windowed test
-    // above misses these because the wide window dilutes the sharp segment turn into
-    // a sub-threshold bend, so the straight run's end gets rounded into the adjacent
-    // curve. Here we key off the raw segment turn instead, but confine this rescue
-    // to a genuine straight-run end with two gates (plus straightRunEndNear):
-    //   1. the turn is fully concentrated in the inner window: inner-window turn >=
-    //      full-window turn. This is a stricter form of the windowed path's
-    //      concentration test (>= concentration * full) and is the crux of the
-    //      distinction. At a straight-run end the approaches carry ~no turning, so
-    //      the whole window's turn sits in the inner window (ratio >= 1); on a
-    //      steadily-curving coastline the turning is spread across the window (inner
-    //      < full), so a lone sharp segment there is rejected. The wide window
-    //      dilutes the end's departure below the corner threshold (which is why the
-    //      windowed path misses it), but the concentration ratio stays high.
-    //   2. (via straightRunEndNear) a bordering straight run's line is actually left,
-    //      so an incidental notch on an otherwise-continuing run is not pinned.
-    // Rings keep the windowed-only detection for now.
-    if (!cyclic) {
-      var raw = new Float64Array(m);
-      for (i = lo; i < hi; i++) raw[i] = vertexTurn(channels, K, i);
-      for (j = lo; j < hi; j++) {
-        if (raw[j] < params.cornerAngle) continue;
-        if (inner[j] < turns[j]) continue;
-        if (!isLocalMaxTurn(t, raw, j, W, L, m, lo, hi, cyclic)) continue;
-        var e = straightRunEndNear(t, channels, n, j, W, params);
-        if (e >= 0 && corners.indexOf(e) === -1) corners.push(e);
-      }
-      corners.sort(function (a, b) { return a - b; });
-    }
-    return corners;
-  }
-
-  // Given a sharp single-segment turn at open-path vertex @j, find the end of a
-  // long straight run that the path leaves, within arc length @W of @j, and return
-  // that run-end vertex to pin (or -1). We search a neighbourhood rather than
-  // requiring the run's last vertex to be exactly where the segment turn peaks: a
-  // jog into a curve can place its sharpest vertex a step or two past the run's
-  // end, and exactly which vertex is sharpest is sensitive to tiny differences in
-  // vertex placement -- but the straight run's end itself is stable. Snapping to it
-  // keeps detection from flickering on and off with sub-tolerance vertex moves. The
-  // straightRunLeaves test only succeeds at a genuine run end whose continuation
-  // departs, so an incidental jog after which the run resumes is still not pinned.
-  function straightRunEndNear(t, channels, n, j, W, params) {
-    var e, k;
-    // The jog between the sharp turn and the run's end is a fixed handful of source
-    // vertices, independent of the smoothing distance -- so the search extends by a
-    // vertex count as well as the distance-scaled window W. Without the vertex floor
-    // the window shrinks with the distance and, at small distances, can no longer
-    // reach back across the jog to the run end (fewer, not more, corners pinned as
-    // the distance drops -- the opposite of what a long run warrants). We return the
-    // first (nearest) run end found, so a generous reach only costs a few extra
-    // straightRunLeaves checks when there is nothing to pin.
-    for (e = j, k = 0; e >= 1; e--, k++) {
-      if (t[j] - t[e] > W && k > MAX_JOG_VERTICES) break;
-      if (straightRunLeaves(t, channels, n, e, -1, params) ||
-          straightRunLeaves(t, channels, n, e, 1, params)) return e;
-    }
-    for (e = j + 1, k = 1; e < n - 1; e++, k++) {
-      if (t[e] - t[j] > W && k > MAX_JOG_VERTICES) break;
-      if (straightRunLeaves(t, channels, n, e, -1, params) ||
-          straightRunLeaves(t, channels, n, e, 1, params)) return e;
-    }
-    return -1;
-  }
-
-  // Is the near side of @e (walking direction @dir: -1 = run precedes e, +1 = run
-  // follows e) a long straight run, AND does the far side leave that run's line --
-  // i.e. a point a full run-length along the far side sits outside the run's
-  // straightness corridor? A jog that rejoins the run returns to ~0 perpendicular
-  // offset and fails this, so it is not flagged. (This also implies @e is the run's
-  // end: if the run continued straight past @e, the far point would stay on its
-  // line.)
-  function straightRunLeaves(t, channels, n, e, dir, params) {
-    var K = channels.length, L = t[n - 1];
-    var nearEnd = reach(t, n, n, L, e, dir, params.minPinRunLen, false);
-    if (nearEnd === e) return false;
-    var a = dir < 0 ? nearEnd : e;
-    var b = dir < 0 ? e : nearEnd;
-    // Require the near run to be straight to the SAME angle-coupled tolerance
-    // retention will demand of a pin at @e (retentionDevLimit of the turn at @e),
-    // not the looser default corridor. This makes straightRunEndNear's backward
-    // scan stop at the run's true end -- the last vertex actually on the run's line
-    // -- rather than a vertex a little past it that squeaks inside the loose 3%
-    // corridor but would then be culled by retention (leaving nothing pinned).
-    var devLim = retentionDevLimit(cornerTurn(t, channels, n, e, false, params));
-    if (!isStraightRun(t, channels, a, b, params, devLim)) return false;
-    var farEnd = reach(t, n, n, L, e, -dir, params.minPinRunLen, false);
-    if (farEnd === e) return false;
-    var pe = getPt(channels, K, e);
-    var u = subv(getPt(channels, K, nearEnd), pe, K); // direction along the near run
-    var uu = dot(u, u, K);
-    if (!(uu > 0)) return false;
-    var af = subv(getPt(channels, K, farEnd), pe, K);
-    var along = Math.abs(dot(af, u, K)) / Math.sqrt(uu);
-    var perp = Math.sqrt(perpDistSq(channels, K, farEnd, pe, u, uu));
-    // outside the straight corridor extended from the run -> the path has left it
-    return perp > STRAIGHT_DEV_FACTOR * along;
-  }
-
-  // Is span [a, b] (inclusive vertex indices, a < b, open frame) a structural run:
-  // long relative to the tolerance and low-curvature throughout?
-  function isStructuralRun(t, channels, a, b, params) {
-    var len = t[b] - t[a];
-    if (!(len >= params.minRunLen)) return false;
-    var K = channels.length;
-    var totalTurn = 0;
-    for (var i = a + 1; i < b; i++) {
-      totalTurn += vertexTurn(channels, K, i);
-      if (totalTurn / len > params.maxTurnRate) return false;
-    }
-    return totalTurn / len <= params.maxTurnRate;
-  }
-
-  // Cyclic form of isStructuralRun for a closed ring: the span runs forward from
-  // ring vertex @a to ring vertex @b over the m = n-1 unique vertices, wrapping
-  // when b <= a (a == b means the whole ring). Length and turning are measured
-  // cyclically. Used to decide whether a detected ring corner borders a genuine
-  // straight/low-curvature run before it is pinned (see smoothArcCoords).
-  function isStructuralRingSpan(t, channels, n, a, b, params) {
-    var m = n - 1;
-    if (m < 2) return false;
-    var L = t[n - 1];
-    var len = b > a ? t[b] - t[a] : (L - t[a]) + t[b];
-    if (!(len >= params.minRunLen)) return false;
-    var K = channels.length;
-    var totalTurn = 0;
-    var i = a;
-    while (true) {
-      i = (i + 1) % m;
-      if (i === b) break;
-      totalTurn += ringVertexTurn(channels, K, m, i);
-      if (totalTurn / len > params.maxTurnRate) return false;
-    }
-    return totalTurn / len <= params.maxTurnRate;
-  }
-
-  // Is span [a, b] (inclusive vertex indices, a < b, open frame) "straight at the
-  // smoothing scale": clearly longer than the smoothing distance (>= minPinRunLen,
-  // see MIN_PIN_RUN_LEN_FACTOR) AND confined to a thin corridor around its endpoint
-  // chord (see STRAIGHT_DEV_FACTOR)? Used to decide whether a detected corner
-  // borders a straight run worth pinning. Unlike isStructuralRun -- which sums raw
-  // per-segment turning and is therefore defeated by sub-tolerance digitizing
-  // noise -- this measures perpendicular deviation from the chord, so a finely
-  // ragged but geometrically straight border still qualifies. The length floor is
-  // the pinning-specific minPinRunLen (not minRunLen): a run only ~1*tol long has
-  // too few interior points for the chord test to distinguish a true straight
-  // border from a coarsely sampled bend, so it must not anchor a corner. @devLimit
-  // overrides the corridor half-width (default STRAIGHT_DEV_FACTOR); retention
-  // passes a per-corner value tightened for gentle bends (see retentionDevLimit).
-  function isStraightRun(t, channels, a, b, params, devLimit) {
-    var lim = devLimit === undefined ? STRAIGHT_DEV_FACTOR : devLimit;
-    var len = t[b] - t[a];
-    if (!(len >= params.minPinRunLen)) return false;
-    var K = channels.length;
-    var A = getPt(channels, K, a);
-    var AB = subv(getPt(channels, K, b), A, K);
-    var abDot = dot(AB, AB, K);
-    if (!(abDot > 0)) return false;
-    var limit2 = lim * lim * abDot;
-    for (var i = a + 1; i < b; i++) {
-      if (perpDistSq(channels, K, i, A, AB, abDot) > limit2) return false;
-    }
-    return true;
-  }
-
-  // Cyclic form of isStraightRun for a closed ring: the span runs forward from ring
-  // vertex @a to ring vertex @b over the m = n-1 unique vertices, wrapping when
-  // b <= a. A whole-ring span (a == b, the single-corner case) has no meaningful
-  // chord, so it falls back to the turning-rate test (a large low-curvature ring
-  // keeps its one corner). Used by the closed-ring corner cull (see
-  // filterRingCornersByStructure in mapshaper-smooth-algos).
-  function isStraightRingSpan(t, channels, n, a, b, params, devLimit) {
-    var lim = devLimit === undefined ? STRAIGHT_DEV_FACTOR : devLimit;
-    var m = n - 1;
-    if (m < 2) return false;
-    if (a === b) return isStructuralRingSpan(t, channels, n, a, b, params);
-    var L = t[n - 1];
-    var len = b > a ? t[b] - t[a] : (L - t[a]) + t[b];
-    if (!(len >= params.minPinRunLen)) return false;
-    var K = channels.length;
-    var A = getPt(channels, K, a);
-    var AB = subv(getPt(channels, K, b), A, K);
-    var abDot = dot(AB, AB, K);
-    if (!(abDot > 0)) return false;
-    var limit2 = lim * lim * abDot;
-    var i = a;
-    while (true) {
-      i = (i + 1) % m;
-      if (i === b) break;
-      if (perpDistSq(channels, K, i, A, AB, abDot) > limit2) return false;
-    }
-    return true;
-  }
-
-  // Straightness limit for pinning a corner whose windowed turn is @turnRad (see
-  // PIN_TURN_RATIO): min(STRAIGHT_DEV_FACTOR, turnRad / (8 * PIN_TURN_RATIO)).
-  function retentionDevLimit(turnRad) {
-    var lim = turnRad / (8 * PIN_TURN_RATIO);
-    return lim < STRAIGHT_DEV_FACTOR ? lim : STRAIGHT_DEV_FACTOR;
-  }
-
-  // Windowed turn (radians) at vertex @i, over params.tangentWindow each side --
-  // the same measure findInteriorCorners uses to flag the corner. @cyclic selects
-  // the open or ring frame.
-  function cornerTurn(t, channels, n, i, cyclic, params) {
-    var K = channels.length;
-    var L = t[n - 1];
-    var m = cyclic ? n - 1 : n;
-    return windowedTurn(t, channels, K, n, L, m, i, params.tangentWindow, cyclic);
-  }
-
-  // Does the open span [a, b] justify pinning the corner at vertex @corner: is it a
-  // straight run (isStraightRun) whose straightness is enough for the corner's turn
-  // angle (retentionDevLimit)? A gentle bend needs a straighter run than a sharp
-  // one. Used by refineBounds.
-  function bordersStraightRun(t, channels, n, corner, a, b, params) {
-    var lim = retentionDevLimit(cornerTurn(t, channels, n, corner, false, params));
-    return isStraightRun(t, channels, a, b, params, lim);
-  }
-
-  // Ring analogue of bordersStraightRun, for the closed-ring corner cull
-  // (filterRingCornersByStructure). @corner is a ring vertex; the span runs from
-  // ring vertex @a to @b (cyclic when b <= a).
-  function bordersStraightRingSpan(t, channels, n, corner, a, b, params) {
-    var lim = retentionDevLimit(cornerTurn(t, channels, n, corner, true, params));
-    return isStraightRingSpan(t, channels, n, a, b, params, lim);
-  }
-
-  // --- internals ---
-
-  // Turn angle at vertex i between the incoming and outgoing directions, each
-  // estimated over an arc-length window W (so the measure is scale-aware and not
-  // dominated by a single short segment).
-  function windowedTurn(t, channels, K, n, L, m, i, W, cyclic) {
-    var back = reach(t, n, m, L, i, -1, W, cyclic);
-    var fwd = reach(t, n, m, L, i, 1, W, cyclic);
-    var pi = getPt(channels, K, i);
-    var pb = getPt(channels, K, back);
-    var pf = getPt(channels, K, fwd);
-    return angleBetween(subv(pi, pb, K), subv(pf, pi, K), K);
-  }
-
-  // Local turn at vertex i using just the adjacent segments.
-  function vertexTurn(channels, K, i) {
-    var pi = getPt(channels, K, i);
-    var pp = getPt(channels, K, i - 1);
-    var pn = getPt(channels, K, i + 1);
-    return angleBetween(subv(pi, pp, K), subv(pn, pi, K), K);
-  }
-
-  // Local turn at ring vertex i using cyclic neighbours over m unique vertices.
-  function ringVertexTurn(channels, K, m, i) {
-    var pi = getPt(channels, K, i);
-    var pp = getPt(channels, K, (i - 1 + m) % m);
-    var pn = getPt(channels, K, (i + 1) % m);
-    return angleBetween(subv(pi, pp, K), subv(pn, pi, K), K);
-  }
-
-  // Walk from vertex i in direction dir (+1/-1) until accumulated arc length
-  // reaches W (or a boundary, for open arcs), returning the reached vertex index.
-  // Segment lengths are read straight from the cumulative-length array t (t has
-  // n = m+1 entries with t[m] = L, so t[j+1]-t[j] is valid for every ring vertex
-  // j in 0..m-1, including the closing segment); this avoids allocating a per-ring
-  // segment-length array on every call (cornerTurn is hit ~twice per corner).
-  function reach(t, n, m, L, i, dir, W, cyclic) {
-    var j = i, acc = 0;
-    while (acc < W) {
-      if (cyclic) {
-        if (dir > 0) {
-          acc += t[j + 1] - t[j];      // vertex j -> j+1 (t[m] == L handles the seam)
-          j = j + 1 === m ? 0 : j + 1;
-        } else {
-          acc += j > 0 ? t[j] - t[j - 1] : L - t[m - 1]; // vertex j -> j-1
-          j = (j - 1 + m) % m;
-        }
-        if (j === i) break; // wrapped the whole ring
-      } else {
-        var nk = j + dir;
-        if (nk < 0 || nk > n - 1) break;
-        acc += Math.abs(t[nk] - t[j]);
-        j = nk;
-      }
-    }
-    return j;
-  }
-
-  // Non-maximum suppression: is vertex j the sharpest turn within an arc-length
-  // window W (ties broken toward the lower index)? Only the vertices within W of j
-  // are examined -- walking outward from j in each direction and stopping once the
-  // arc-length gap reaches W -- rather than scanning the whole arc for every
-  // candidate, which was O(vertices^2) when many vertices are candidates (e.g. a
-  // large ring smoothed below its vertex spacing). Cumulative arc length is
-  // monotone, so the outward gap only grows and the early break is safe; a vertex
-  // within the cyclic window is reached going forward or backward (or both on a
-  // tiny ring, which is harmless for an all-or-nothing test).
-  function isLocalMaxTurn(t, turns, j, W, L, m, lo, hi, cyclic) {
-    var k, d;
-    if (cyclic) {
-      for (k = (j + 1) % m; k !== j; k = (k + 1) % m) {
-        d = t[k] - t[j];
-        if (d < 0) d += L; // forward arc distance
-        if (d >= W) break;
-        if (turns[k] > turns[j] || (turns[k] === turns[j] && k < j)) return false;
-      }
-      for (k = (j - 1 + m) % m; k !== j; k = (k - 1 + m) % m) {
-        d = t[j] - t[k];
-        if (d < 0) d += L; // backward arc distance
-        if (d >= W) break;
-        if (turns[k] > turns[j] || (turns[k] === turns[j] && k < j)) return false;
-      }
-      return true;
-    }
-    for (k = j + 1; k < hi; k++) {
-      if (t[k] - t[j] >= W) break;
-      if (turns[k] > turns[j] || (turns[k] === turns[j] && k < j)) return false;
-    }
-    for (k = j - 1; k >= lo; k--) {
-      if (t[j] - t[k] >= W) break;
-      if (turns[k] > turns[j] || (turns[k] === turns[j] && k < j)) return false;
-    }
-    return true;
-  }
-
-  function getPt(channels, K, i) {
-    var p = new Array(K);
-    for (var c = 0; c < K; c++) p[c] = channels[c][i];
-    return p;
-  }
-
-  function subv(a, b, K) {
-    var o = new Array(K);
-    for (var c = 0; c < K; c++) o[c] = a[c] - b[c];
-    return o;
-  }
-
-  function dot(a, b, K) {
-    var d = 0;
-    for (var c = 0; c < K; c++) d += a[c] * b[c];
-    return d;
-  }
-
-  // Squared perpendicular distance of vertex @i from the line through point @A
-  // with direction @AB (abDot = AB.AB). = |AP|^2 - (AP.AB)^2 / |AB|^2.
-  function perpDistSq(channels, K, i, A, AB, abDot) {
-    var apAp = 0, apAb = 0, d;
-    for (var c = 0; c < K; c++) {
-      d = channels[c][i] - A[c];
-      apAp += d * d;
-      apAb += d * AB[c];
-    }
-    var perp = apAp - apAb * apAb / abDot;
-    return perp > 0 ? perp : 0;
-  }
-
-  function angleBetween(u, v, K) {
-    var d = 0, nu = 0, nv = 0;
-    for (var c = 0; c < K; c++) {
-      d += u[c] * v[c];
-      nu += u[c] * u[c];
-      nv += v[c] * v[c];
-    }
-    var den = Math.sqrt(nu * nv);
-    if (!(den > 0)) return 0;
-    var x = d / den;
-    if (x > 1) x = 1;
-    else if (x < -1) x = -1;
-    return Math.acos(x);
-  }
-
-  // Scale-aware line smoothing primitives, shared by the -smooth command.
-  //
-  // The smoother treats a path as coordinate signals parameterized by arc length s
-  // and applies a length-scaled low-pass filter. The user-facing distance is
-  // calibrated so that it approximates the maximum displacement of the smoothed
-  // line from the original at high-displacement features (e.g. acute bends): finer
-  // detail is removed and larger features pass through progressively less changed.
-  // In frequency terms the kernel's half-amplitude (-6 dB) wavelength sits at
-  // roughly KERNEL_STRENGTH * distance, so detail a few times finer than the
-  // distance is strongly attenuated. The distance is not a strict deviation
-  // bound -- a tall, narrow sub-resolution spike can still be displaced by an
-  // amount comparable to its own amplitude (inherent to convolution smoothers).
-  //
-  // The filter is a local second-degree polynomial fit whose quadratic term
-  // corrects the inward shrinkage that plain weighted averaging causes on curved
-  // features. The weight kernel selects the method (see smoothPoint):
-  //  - 'gaussian' (default, the only documented method): Gaussian kernel
-  //    e^(-t^2/2sigma^2), i.e. a Savitzky-Golay smoother.
-  //  - 'paek': exponential kernel e^(-|t|/d) (Bodansky et al. 2002, the kernel
-  //    ArcGIS's PAEK uses). Kept as an undocumented alternative; with the quadratic
-  //    correction it differs only slightly from the gaussian method.
-  //
-  // The smoother works on a list of coordinate "channels": planar data is
-  // smoothed in 2D (x, y); unprojected lng/lat data is converted to geocentric
-  // x, y, z and smoothed in 3D Cartesian on the sphere (then converted back).
-  // Averaging lng/lat directly would shear shapes toward the poles (a degree of
-  // longitude shrinks with cos(lat)); the geocentric representation is isotropic
-  // and handles the antimeridian and poles without special cases, mirroring how
-  // -simplify treats spherical coordinates. The kernel scale stays in true ground
-  // distance because arc length is measured with great-circle distance.
-  //
-  // KERNEL_FROM_DISTANCE maps the user distance onto the internal reference scale
-  // (tol) that keys corner detection, output sampling and densification. The kernel
-  // itself is then widened by KERNEL_STRENGTH (below), so the distance approximates
-  // the maximum displacement at sharp features and the -6 dB wavelength sits near
-  // KERNEL_STRENGTH * distance. The remaining calibration constants are expressed
-  // relative to the internal scale and map it onto kernel widths and output
-  // sampling; they are collected here so the mapping can be retuned in one place.
-  // See docs/reference.md.
-  var KERNEL_FROM_DISTANCE = 1.2;   // internal kernel scale = distance * this
-  // Base smoothing strength baked into the default: the low-pass kernel scale is
-  // this * tol (before the user's `strength` multiplier and the ring cap). It is
-  // calibrated so the distance parameter approximates the maximum displacement of
-  // the smoothed line from the original at high-displacement features (e.g. acute
-  // bends) -- a markedly stronger, more intuitive effect than the raw -6 dB
-  // mapping (which displaced the line far less than the distance). ONLY the kernel
-  // scale is affected; tol -- and therefore corner detection, output sampling, the
-  // prefilter and island dropping -- stays keyed to the raw distance.
-  var KERNEL_STRENGTH = 5;
-  var GAUSSIAN_SIGMA_FACTOR = 0.4;  // gaussian sigma = internal scale * this
-  var PAEK_SCALE_FACTOR = 0.4;      // exponential kernel scale d = internal scale * this
-  var WINDOW_RADIUS_FACTOR = 1.2;   // window half-length = internal scale * this
-  var SOURCE_SPACING_FACTOR = 0.25; // densify source to <= tolerance * this before smoothing
-  var MAX_OUTPUT_FACTOR = 8;        // cap output (and source) vertices at inputCount * this
-  var MIN_CLOSED_SEGMENTS = 16;     // floor on segments for closed rings (so they resolve)
-  // A closed ring cannot be smoothed at a resolution coarser than the ring itself:
-  // once the kernel window (radius = internal scale * WINDOW_RADIUS_FACTOR)
-  // reaches half the ring's perimeter, every output point averages over the whole
-  // loop and the ring degenerates toward a point (a circle once re-inflated). So
-  // for a closed ring the internal scale is capped just below that threshold,
-  // which is factor 1/(2*WINDOW_RADIUS_FACTOR) ~ 0.42. Up to the threshold the
-  // ring keeps its shape (elongated stays elongated, and detail is rounded as much
-  // as the ring's own size allows); the enclosed area it loses to curve-shortening
-  // on the way is restored afterward by restoreRingArea() (a similarity rescale
-  // about the centroid), so a small island is rounded at close to the full
-  // requested scale without shrinking. The cap only binds when the requested
-  // distance nears the ring's own size; large rings (perimeter >> distance) smooth
-  // gently, lose negligible area and are effectively unaffected by either step.
-  var MAX_RING_SCALE_FACTOR = 0.42;
-
-  // Output resampling. The smoothed curve is a continuous function of arc length;
-  // we sample it densely at a uniform step and then thin that dense polyline with a
-  // single O(n) forward pass that keeps a vertex only where the curve has bent
-  // enough since the last kept vertex. Filtering on accumulated bend angle (rather
-  // than chord deviation, as Douglas-Peucker does) bounds the angle between
-  // consecutive output segments *by construction*, so joins stay smooth with no
-  // separate tangent test. This works cleanly because the filter consumes the
-  // already-smoothed (denoised) curve, where per-vertex turning is small and
-  // well-behaved. Density follows curvature for free: bends accumulate angle
-  // quickly and keep many vertices; straight or gently-curving runs accumulate
-  // slowly and collapse to long segments.
-  //
-  // Accumulated angle alone does not bound *absolute* deviation: a very gentle but
-  // very long bend accumulates angle so slowly that its chord can bow far from the
-  // curve before reaching the angle threshold. A sagitta guard handles that --
-  // chord * accumulatedTurn / 8 estimates the bow of a circular arc, and we also
-  // cut when it exceeds a fraction of the tolerance. Both tests are O(1) per dense
-  // vertex, so the pass stays O(n).
-  var DENSE_STEP_FACTOR = 0.033;      // dense sampling step = tolerance * this at the
-                                      // default bend angle. Must resolve the sharpest
-                                      // smoothed feature (radius ~ the kernel scale)
-                                      // finely enough that the angle filter can reach
-                                      // the bend-angle joins: one dense segment turns
-                                      // ~ this/0.4 radians there, kept well under the
-                                      // bend angle so the discrete accumulation barely
-                                      // overshoots the threshold. For a smaller-than-
-                                      // default bend angle the step is refined in
-                                      // proportion so the threshold stays reachable.
-  var DEFAULT_BEND_ANGLE = 8 * Math.PI / 180; // keep a vertex after this much accumulated
-                                      // turn (max turn between consecutive output
-                                      // segments); user-overridable via max-bend-angle
-  var DEVIATION_FACTOR = 0.1;         // sagitta guard: also cut a gentle bend that bows
-                                      // more than tolerance * this from its chord
-  // Preserved structural runs (long straight / low-curvature spans between pinned
-  // corners) are not smoothed, but their ORIGINAL vertices are resampled with the
-  // same bend-angle decimation so the whole output has adaptive vertex spacing
-  // (no abrupt density seam at a run boundary). The decimation runs in the
-  // smoothing channels, so for unprojected data a long line -- which curves in the
-  // geocentric x,y,z space even when it is "straight" in lng/lat -- keeps enough
-  // interior vertices to approximate that curve on reprojection, scaling with the
-  // line's length automatically. Because it only ever keeps a SUBSET of the
-  // original vertices (never interpolates new ones), it can't distort a rhumb or
-  // geodesic edge -- every output vertex still lies exactly where the source drew
-  // it. Structural runs use a fraction of the bend angle (sampled finer than
-  // smoothed spans) as a conservative bias toward preservation / reprojection
-  // headroom.
-  var STRUCTURAL_BEND_FACTOR = 0.5;   // structural-run bend angle = max-bend-angle * this
-
-  // Smooth a single arc's coordinates.
-  // @xx, @yy: coordinate arrays (may be typed-array subarrays) for one arc.
-  // @opts: {tolerance, method, spherical, closed, keepCorners, gain, maxBendAngle}
-  // Returns {xx: [], yy: []} with the smoothed coordinates. Endpoints of open
-  // arcs are preserved exactly (so shared topology nodes stay put); closed arcs
-  // are smoothed cyclically and returned closed (first point repeated at the end).
-  // With keepCorners, structural corners (where long straight/low-curvature runs
-  // meet) are detected and pinned; the runs themselves are not smoothed but are
-  // resampled (a subset of their original vertices, at adaptive spacing), and only
-  // the spans between corners are smoothed.
-  // Resolve the curvature-correction gain (default 1 = fully corrected). gain=0
-  // leaves the plain weighted moving average; negative values are clamped to 0.
-  function resolveGain(opts) {
-    var g = opts.gain;
-    if (g === undefined || g === null) return 1;
-    return g >= 0 ? g : 0;
-  }
-
-  // Resolve the output bend-angle threshold from the user option (in degrees) to
-  // radians. It caps the turn between consecutive output segments: a larger angle
-  // keeps fewer vertices (coarser joins), a smaller one keeps more (smoother joins).
-  // Non-positive or missing values fall back to the default.
-  function resolveBendAngle(opts) {
-    var deg = opts.maxBendAngle;
-    if (deg === undefined || deg === null || !(deg > 0)) return DEFAULT_BEND_ANGLE;
-    return deg * Math.PI / 180;
-  }
-
-  // Resolve the corner-detection bias (default 0 = neutral). This is the raw
-  // user-facing value; getCornerParams / cornerBiasScale convert it into the
-  // multiplier on detection resolution. A positive bias keeps more corners, a
-  // negative bias fewer. Missing/null falls back to neutral.
-  function resolveCornerBias(opts) {
-    var b = opts.cornerBias;
-    return (b === undefined || b === null) ? 0 : b;
-  }
-
-  // Resolve the smoothing-strength multiplier (default 1). It scales only the
-  // low-pass kernel (window radius and sigma) relative to the distance, so a value
-  // > 1 smooths more strongly (wider kernel, larger divergence from the original)
-  // and < 1 more gently. Everything else keyed to the distance -- corner detection,
-  // output sampling, the prefilter and island dropping -- is left unchanged.
-  // Non-positive or missing values fall back to 1.
-  //
-  // By design, curve exaggeration (gain > 1) scales WITH strength: gain multiplies
-  // the quadratic curvature correction (a0 - mean) in smoothPoint, and that term is
-  // measured over the strength-scaled kernel window, so a wider kernel amplifies a
-  // given gain. This coupling is intentional -- do not normalize it out.
-  function resolveStrength(opts) {
-    var s = opts.strength;
-    return s > 0 ? s : 1;
-  }
-
-  function smoothArcCoords(xx, yy, opts) {
-    var n = xx.length;
-    var origX = toArray(xx);
-    var origY = toArray(yy);
-    var tol = opts.tolerance * KERNEL_FROM_DISTANCE;
-    if (n < 3 || !(opts.tolerance > 0)) {
-      return {xx: origX, yy: origY, corners: 0};
-    }
-    var method = opts.method == 'gaussian' ? 'gaussian' : 'paek';
-    var closed = !!opts.closed;
-    var spherical = !!opts.spherical;
-    var keepCorners = !!opts.keepCorners;
-    var bendAngle = resolveBendAngle(opts);
-
-    // Cumulative arc length in ground units (meters for spherical data), so the
-    // kernel scale stays in true distance regardless of coordinate representation.
-    var t = arcLengths(origX, origY, n, spherical);
-    if (!(t[n - 1] > 0)) {
-      return {xx: origX, yy: origY, corners: 0}; // degenerate (coincident points)
-    }
-    // The low-pass kernel scale is the raw distance scale (tol) times the baked-in
-    // KERNEL_STRENGTH calibration and the user's `strength` multiplier (default 1).
-    // Only the kernel (radius, sigma) uses this scale; tol -- which drives corner
-    // detection, output sampling and densification -- stays keyed to the raw
-    // distance, so those effects are unaffected by either strength factor.
-    var kernelScale = tol * KERNEL_STRENGTH * resolveStrength(opts);
-    // A closed ring smaller than the smoothing resolution would collapse toward its
-    // centroid, so cap both scales at a fraction of the ring's perimeter (see
-    // MAX_RING_SCALE_FACTOR). This only binds when the requested distance (or the
-    // boosted kernel) approaches the ring's own size; otherwise it is a no-op. The
-    // cap on kernelScale also stops a large `strength` from collapsing a ring.
-    if (closed) {
-      var ringCap = MAX_RING_SCALE_FACTOR * t[n - 1];
-      tol = Math.min(tol, ringCap);
-      kernelScale = Math.min(kernelScale, ringCap);
-    }
-    var ctx = {
-      tol: tol,
-      method: method,
-      spherical: spherical,
-      keepCorners: keepCorners,
-      cornerBias: resolveCornerBias(opts),
-      gain: resolveGain(opts),
-      bendAngle: bendAngle,
-      // Refine the dense step for a smaller-than-default bend angle so one dense
-      // segment still turns well under the threshold; never coarsen it beyond the
-      // default (the angle filter alone thins the output for larger angles).
-      denseStep: tol * DENSE_STEP_FACTOR * Math.min(1, bendAngle / DEFAULT_BEND_ANGLE),
-      radius: kernelScale * WINDOW_RADIUS_FACTOR,
-      scale: (method == 'gaussian' ? GAUSSIAN_SIGMA_FACTOR : PAEK_SCALE_FACTOR) * kernelScale
-    };
-    var channels = spherical ? lngLatToXYZChannels(origX, origY, n) : [origX, origY];
-
-    if (closed) {
-      var ringParams = getCornerParams(tol, ctx.cornerBias);
-      var corners = keepCorners ?
-        findInteriorCorners(t, channels, n, true, ringParams) : [];
-      // findInteriorCorners flags localized bends by angle alone; it does not check
-      // whether a candidate borders a structural (long, low-curvature) run. Keep
-      // only the corners that do -- a natural ring with no straight segments has
-      // none and must smooth cyclically. Otherwise the ring would be rotated to
-      // corners[0] and smoothed as an open path with that vertex pinned as a
-      // spurious cusp (whose location shifts with the tolerance-scaled detection
-      // window), even though refineBounds later drops every interior breakpoint.
-      if (corners.length > 0) {
-        corners = filterRingCornersByStructure(t, channels, n, corners, ringParams);
-      }
-      if (corners.length === 0) {
-        var cyc = smoothClosedCyclic(t, channels, n, ctx);
-        cyc.corners = 0;
-        return cyc;
-      }
-      // A ring with corners is processed as an open path: rotate it to start (and
-      // end) at one corner, with the remaining corners as interior breakpoints.
-      var rot = rotateRing(origX, origY, n, corners[0]);
-      origX = rot.xx;
-      origY = rot.yy;
-      n = origX.length;
-      t = arcLengths(origX, origY, n, spherical);
-      channels = spherical ? lngLatToXYZChannels(origX, origY, n) : [origX, origY];
-      var breaks = mapRotatedCorners(corners, rot.shift, rot.m);
-      var ring = smoothOpenSpans(origX, origY, t, channels, n, breaks, ctx);
-      // The ring seam (corners[0], pinned as the rotated start/end) is itself a
-      // preserved corner, on top of the interior breakpoints smoothOpenSpans kept.
-      ring.corners += 1;
-      return ring;
-    }
-
-    var openBreaks = keepCorners ?
-      findInteriorCorners(t, channels, n, false, getCornerParams(tol, ctx.cornerBias)) : [];
-    return smoothOpenSpans(origX, origY, t, channels, n, openBreaks, ctx);
-  }
-
-  // Smooth an open path partitioned at @interiorBreaks (sorted interior vertex
-  // indices). Corner retention and verbatim-copy are two separate decisions:
-  //   - A breakpoint is kept only if it borders a straight run that is straight
-  //     enough for its turn angle (bordersStraightRun -- deviation from the endpoint
-  //     chord, robust to sub-tolerance wiggle, and tightened for gentle bends so a
-  //     soft bend on a borderline-straight run is not pinned); otherwise
-  //     refineBounds drops it.
-  //   - A kept span is copied verbatim only if it is clean per-vertex
-  //     (isStructuralRun); otherwise it is smoothed with its endpoints pinned. So a
-  //     straight-but-noisy border is smoothed into a clean straight line between
-  //     its pinned corners, rather than curving into its neighbours.
-  // Every breakpoint (and the two arc endpoints) keeps its exact original position;
-  // shared breakpoint vertices are emitted once.
-  function smoothOpenSpans(origX, origY, t, channels, n, interiorBreaks, ctx) {
-    var bounds = [0].concat(interiorBreaks);
-    bounds.push(n - 1);
-    if (ctx.keepCorners && bounds.length > 2) {
-      bounds = refineBounds(t, channels, bounds, getCornerParams(ctx.tol, ctx.cornerBias));
-    }
-    var params = ctx.keepCorners ? getCornerParams(ctx.tol, ctx.cornerBias) : null;
-    var xx = [], yy = [];
-    for (var s = 0; s < bounds.length - 1; s++) {
-      var lo = bounds[s], hi = bounds[s + 1];
-      var preserve = !!params && isStructuralRun(t, channels, lo, hi, params);
-      var span = preserve ?
-        resampleStructuralRun(origX, origY, channels, lo, hi, ctx) :
-        smoothSpanOpen(origX, origY, t, channels, lo, hi, ctx);
-      appendSpan(xx, yy, span, s === 0);
-    }
-    // Interior breakpoints that survived refinement are the pinned corners.
-    return {xx: xx, yy: yy, corners: bounds.length - 2};
-  }
-
-  // Drop interior breakpoints that don't border any pinnable straight run (e.g.
-  // spikes inside a wiggly stretch, or -- crucially on sparse/simplified data --
-  // points sampled along a gentle curve), merging their spans, until the partition
-  // is stable. Merging can turn two short pieces back into one straight run, so the
-  // test is repeated each pass. A breakpoint is kept only if an adjacent span is
-  // straight at the smoothing scale AND straight enough for the breakpoint's own
-  // turn angle (bordersStraightRun): deviation from the endpoint chord, tightened
-  // for gentle corners so a soft bend on a borderline-straight run is not pinned.
-  // The older per-vertex turning gate (isStructuralRun) is deliberately NOT used
-  // for retention -- it admits any run bending no tighter than radius
-  // MIN_RUN_RADIUS_FACTOR*tol, i.e. gentle curves, which on coarsely-sampled data
-  // produces spurious corners along smooth bends. (isStructuralRun still governs
-  // verbatim-copy of a kept span; see smoothOpenSpans.) The corner for both
-  // adjacent spans is the breakpoint itself, so its turn angle gates each side.
-  function refineBounds(t, channels, bounds, params) {
-    var n = channels[0].length;
-    var changed = true;
-    while (changed && bounds.length > 2) {
-      changed = false;
-      for (var i = 1; i < bounds.length - 1; i++) {
-        var leftStruct = bordersStraightRun(t, channels, n, bounds[i], bounds[i - 1], bounds[i], params);
-        var rightStruct = bordersStraightRun(t, channels, n, bounds[i], bounds[i], bounds[i + 1], params);
-        if (!leftStruct && !rightStruct) {
-          bounds.splice(i, 1);
-          changed = true;
-          // Removing bounds[i] only changes the spans of its two neighbours; the
-          // breakpoints before them stay stable, so resume the scan just before the
-          // removal (rechecking the left neighbour) instead of restarting from the
-          // start. Restarting made this O(breaks^2) -- a hang on a large ring where
-          // the smoothing distance is finer than the vertex spacing and nearly
-          // every vertex reads as a breakpoint. The removal sequence is identical to
-          // a from-scratch rescan (the stable prefix is never revisited).
-          i = i < 2 ? 0 : i - 2;
-        }
-      }
-    }
-    return bounds;
-  }
-
-  // Drop closed-ring corners that don't border a run worth pinning on either side,
-  // merging their (cyclic) spans, until the set is stable -- the cyclic analogue
-  // of refineBounds, applied before the ring is rotated/pinned. A single corner
-  // is tested against the whole-ring span. Uses the same angle-coupled
-  // chord-straightness criterion as refineBounds (see bordersStraightRingSpan).
-  // Returns the surviving corners (a subset of @corners, order preserved); an empty
-  // result means the ring has no qualifying corner and should smooth cyclically.
-  function filterRingCornersByStructure(t, channels, n, corners, params) {
-    var list = corners.slice();
-    var changed = true;
-    while (changed && list.length > 0) {
-      changed = false;
-      for (var i = 0; i < list.length; i++) {
-        var cur = list[i];
-        var leftStruct, rightStruct;
-        if (list.length === 1) {
-          leftStruct = rightStruct = bordersStraightRingSpan(t, channels, n, cur, cur, cur, params);
-        } else {
-          var prev = list[(i - 1 + list.length) % list.length];
-          var next = list[(i + 1) % list.length];
-          leftStruct = bordersStraightRingSpan(t, channels, n, cur, prev, cur, params);
-          rightStruct = bordersStraightRingSpan(t, channels, n, cur, cur, next, params);
-        }
-        if (!leftStruct && !rightStruct) {
-          list.splice(i, 1);
-          changed = true;
-          // As in refineBounds, only the removed corner's neighbours change, so
-          // resume just before the removal (i-- via i-2) rather than restarting the
-          // scan -- restarting is what made this O(corners^2) and hung on large
-          // rings smoothed below their vertex spacing (~half the vertices read as
-          // corners, nearly all culled). Cross-seam effects (the wrap between the
-          // last and first corner) are picked up by the outer while(changed) pass.
-          // The stable prefix is never revisited, so the surviving set matches a
-          // from-scratch rescan exactly.
-          i = i < 2 ? -1 : i - 2;
-        }
-      }
-    }
-    return list;
-  }
-
-  // Smooth a single open span [lo, hi] (inclusive) and pin both ends to their
-  // original coordinates. Reuses the whole-arc smoothing pipeline on the sub-arc.
-  function smoothSpanOpen(origX, origY, t, channels, lo, hi, ctx) {
-    var nSub = hi - lo + 1;
-    if (nSub < 3) return copySpan(origX, origY, lo, hi);
-    var subT = new Float64Array(nSub);
-    for (var k = 0; k < nSub; k++) subT[k] = t[lo + k] - t[lo];
-    var subL = subT[nSub - 1];
-    if (!(subL > 0)) return copySpan(origX, origY, lo, hi);
-    var subCh = [];
-    for (var c = 0; c < channels.length; c++) subCh.push(channels[c].slice(lo, hi + 1));
-    var maxSourcePts = Math.max(nSub, MIN_CLOSED_SEGMENTS) * MAX_OUTPUT_FACTOR + nSub;
-    var maxSpacing = Math.max(ctx.tol * SOURCE_SPACING_FACTOR, subL / maxSourcePts);
-    var dense = densifyChannels(subT, subCh, maxSpacing);
-    var src = buildSource(dense.t, dense.channels, false, ctx.radius, subL);
-    var sm = sampleSmoothedCurve(src, 0, subL, false, ctx, nSub);
-    var out = ctx.spherical ? xyzChannelsToLngLat(sm) : {xx: sm[0], yy: sm[1]};
-    out.xx[0] = origX[lo];
-    out.yy[0] = origY[lo];
-    out.xx[out.xx.length - 1] = origX[hi];
-    out.yy[out.yy.length - 1] = origY[hi];
-    return out;
-  }
-
-  function smoothClosedCyclic(t, channels, n, ctx) {
-    var L = t[n - 1];
-    var maxSourcePts = Math.max(n, MIN_CLOSED_SEGMENTS) * MAX_OUTPUT_FACTOR + n;
-    var maxSpacing = Math.max(ctx.tol * SOURCE_SPACING_FACTOR, L / maxSourcePts);
-    var dense = densifyChannels(t, channels, maxSpacing);
-    var src = buildSource(dense.t, dense.channels, true, ctx.radius, L);
-    var sm = sampleSmoothedCurve(src, 0, L, true, ctx, n);
-    // Smoothing shrinks a closed loop (curve-shortening); restore its original
-    // enclosed area so small rings can be rounded at the full scale without
-    // shrinking. A no-op for large rings (they lose negligible area).
-    restoreRingArea(sm, channels, n, ctx.spherical);
-    var out = ctx.spherical ? xyzChannelsToLngLat(sm) : {xx: sm[0], yy: sm[1]};
-    // force an exactly closed ring (the periodic endpoints are equal up to fp)
-    out.xx[out.xx.length - 1] = out.xx[0];
-    out.yy[out.yy.length - 1] = out.yy[0];
-    return out;
-  }
-
-  // Rescale a smoothed closed ring about its centroid so it re-encloses the
-  // original ring's area. Because it is a uniform similarity transform, the
-  // smoothed *shape* is unchanged -- only its size -- so the rounding introduced by
-  // smoothing is preserved while the curve-shortening shrinkage is undone.
-  // @sm are the smoothed smoothing channels (plain arrays; [x,y] planar or unit-
-  // sphere [X,Y,Z] spherical, last point == first). @orig are the original channels
-  // (length @n, closed). Silent no-op if either area is non-positive.
-  function restoreRingArea(sm, orig, n, spherical) {
-    var origArea = ringChannelArea(orig, n, spherical);
-    var m = sm[0].length;
-    var smArea = ringChannelArea(sm, m, spherical);
-    if (!(origArea > 0) || !(smArea > 0)) return;
-    var f = Math.sqrt(origArea / smArea);
-    if (spherical) {
-      scaleRingSpherical(sm, m, f);
-    } else {
-      scaleRingPlanar(sm, m, f);
-    }
-  }
-
-  // Enclosed-area proxy of a closed ring (@count points, last == first). Planar:
-  // the shoelace area on (x,y). Spherical: the shoelace area of the ring projected
-  // into the tangent plane at its centroid direction. Only ratios of two such
-  // areas are used, so the (unit-sphere) scale is irrelevant, and the tangent-plane
-  // error is second order in the ring's size -- negligible for the small rings
-  // where this is needed.
-  function ringChannelArea(ch, count, spherical) {
-    if (!spherical) {
-      var x = ch[0], y = ch[1], a = 0;
-      for (var i = 0; i < count - 1; i++) a += x[i] * y[i + 1] - x[i + 1] * y[i];
-      return Math.abs(a / 2);
-    }
-    var basis = tangentBasis(ringCentroidDir(ch, count - 1));
-    var ex = basis.ex, ey = basis.ey;
-    var X = ch[0], Y = ch[1], Z = ch[2], area = 0, px, py, qx, qy;
-    for (var j = 0; j < count - 1; j++) {
-      px = X[j] * ex[0] + Y[j] * ex[1] + Z[j] * ex[2];
-      py = X[j] * ey[0] + Y[j] * ey[1] + Z[j] * ey[2];
-      qx = X[j + 1] * ex[0] + Y[j + 1] * ex[1] + Z[j + 1] * ex[2];
-      qy = X[j + 1] * ey[0] + Y[j + 1] * ey[1] + Z[j + 1] * ey[2];
-      area += px * qy - qx * py;
-    }
-    return Math.abs(area / 2);
-  }
-
-  function scaleRingPlanar(sm, count, f) {
-    var x = sm[0], y = sm[1], cx = 0, cy = 0, i;
-    for (i = 0; i < count - 1; i++) { cx += x[i]; cy += y[i]; }
-    cx /= (count - 1); cy /= (count - 1);
-    for (i = 0; i < count; i++) {
-      x[i] = cx + (x[i] - cx) * f;
-      y[i] = cy + (y[i] - cy) * f;
-    }
-  }
-
-  // Scale each unit-sphere point's angular offset from the centroid direction by
-  // ~f (keeping the radial component, then renormalizing), which scales the
-  // enclosed area by ~f^2 for the small caps where this runs.
-  function scaleRingSpherical(sm, count, f) {
-    var X = sm[0], Y = sm[1], Z = sm[2];
-    var c = ringCentroidDir(sm, count - 1);
-    for (var i = 0; i < count; i++) {
-      var dot = X[i] * c[0] + Y[i] * c[1] + Z[i] * c[2];
-      var tx = X[i] - dot * c[0], ty = Y[i] - dot * c[1], tz = Z[i] - dot * c[2];
-      var vx = dot * c[0] + f * tx, vy = dot * c[1] + f * ty, vz = dot * c[2] + f * tz;
-      var nrm = Math.sqrt(vx * vx + vy * vy + vz * vz) || 1;
-      X[i] = vx / nrm; Y[i] = vy / nrm; Z[i] = vz / nrm;
-    }
-  }
-
-  function ringCentroidDir(ch, m) {
-    var X = ch[0], Y = ch[1], Z = ch[2], cx = 0, cy = 0, cz = 0;
-    for (var i = 0; i < m; i++) { cx += X[i]; cy += Y[i]; cz += Z[i]; }
-    var nrm = Math.sqrt(cx * cx + cy * cy + cz * cz) || 1;
-    return [cx / nrm, cy / nrm, cz / nrm];
-  }
-
-  // Orthonormal tangent basis (ex, ey) at unit direction c on the sphere.
-  function tangentBasis(c) {
-    // pick the world axis least aligned with c to avoid a degenerate cross product
-    var ax = Math.abs(c[0]) < 0.9 ? [1, 0, 0] : [0, 1, 0];
-    var ex = cross(c, ax);
-    var en = Math.sqrt(ex[0] * ex[0] + ex[1] * ex[1] + ex[2] * ex[2]) || 1;
-    ex = [ex[0] / en, ex[1] / en, ex[2] / en];
-    var ey = cross(c, ex);
-    return {c: c, ex: ex, ey: ey};
-  }
-
-  function cross(a, b) {
-    return [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]];
-  }
-
-  function copySpan(origX, origY, lo, hi) {
-    var xx = [], yy = [];
-    for (var i = lo; i <= hi; i++) {
-      xx.push(origX[i]);
-      yy.push(origY[i]);
-    }
-    return {xx: xx, yy: yy};
-  }
-
-  // Resample a preserved structural run [lo, hi] (a long straight / low-curvature
-  // span between pinned corners). The run is NOT smoothed: its shape is kept by
-  // emitting a SUBSET of its original vertices, decimated with the shared
-  // bend-angle filter in the smoothing channels (so a long line that curves in the
-  // geocentric space keeps interior vertices scaling with its length -- see
-  // STRUCTURAL_BEND_FACTOR). Both endpoints are always kept, at their exact
-  // original coordinates, so pinned corners and shared topology nodes are
-  // unchanged. A run too short to decimate is copied verbatim.
-  function resampleStructuralRun(origX, origY, channels, lo, hi, ctx) {
-    var nSub = hi - lo + 1;
-    if (nSub < 3) return copySpan(origX, origY, lo, hi);
-    var K = channels.length;
-    var P = new Array(nSub);
-    for (var i = 0; i < nSub; i++) {
-      var p = new Array(K);
-      for (var c = 0; c < K; c++) p[c] = channels[c][lo + i];
-      P[i] = p;
-    }
-    var keep = decimateByBend(P, K, ctx.bendAngle * STRUCTURAL_BEND_FACTOR, ctx.tol * DEVIATION_FACTOR);
-    var xx = [], yy = [];
-    for (var ki = 0; ki < keep.length; ki++) {
-      var idx = lo + keep[ki];
-      xx.push(origX[idx]); // exact original coordinate, never interpolated
-      yy.push(origY[idx]);
-    }
-    return {xx: xx, yy: yy};
-  }
-
-  function appendSpan(xx, yy, span, isFirst) {
-    for (var i = isFirst ? 0 : 1; i < span.xx.length; i++) {
-      xx.push(span.xx[i]);
-      yy.push(span.yy[i]);
-    }
-  }
-
-  // Reorder a closed ring's unique vertices to begin at index @c, re-appending the
-  // start vertex so the result is a closed open-path (first point repeated).
-  function rotateRing(xx, yy, n, c) {
-    var m = n - 1;
-    var ox = [], oy = [];
-    for (var k = 0; k < m; k++) {
-      var idx = (c + k) % m;
-      ox.push(xx[idx]);
-      oy.push(yy[idx]);
-    }
-    ox.push(xx[c]);
-    oy.push(yy[c]);
-    return {xx: ox, yy: oy, shift: c, m: m};
-  }
-
-  // Map ring-frame corner indices to interior positions in the rotated open frame.
-  // The corner the ring was rotated to becomes the (pinned) endpoint, so it is
-  // dropped from the interior list.
-  function mapRotatedCorners(corners, shift, m) {
-    var out = [];
-    for (var i = 0; i < corners.length; i++) {
-      var pos = (corners[i] - shift + m) % m;
-      if (pos > 0) out.push(pos);
-    }
-    out.sort(function(a, b) { return a - b; });
-    return out;
-  }
-
-  function arcLengths(xx, yy, n, spherical) {
-    var t = new Float64Array(n);
-    var distFn = spherical ? geom.greatCircleDistance : geom.distance2D;
-    for (var i = 1; i < n; i++) {
-      t[i] = t[i - 1] + distFn(xx[i - 1], yy[i - 1], xx[i], yy[i]);
-    }
-    return t;
-  }
-
-  function lngLatToXYZChannels(lng, lat, n) {
-    var X = new Float64Array(n), Y = new Float64Array(n), Z = new Float64Array(n), p = [];
-    for (var i = 0; i < n; i++) {
-      geom.lngLatToXYZ(lng[i], lat[i], p);
-      X[i] = p[0];
-      Y[i] = p[1];
-      Z[i] = p[2];
-    }
-    return [X, Y, Z];
-  }
-
-  // Convert smoothed geocentric channels back to lng/lat. xyzToLngLat() projects
-  // each point radially onto the sphere, so the slightly-inside-the-sphere point
-  // produced by averaging maps back to a valid surface coordinate.
-  function xyzChannelsToLngLat(channels) {
-    var X = channels[0], Y = channels[1], Z = channels[2], n = X.length;
-    var xx = [], yy = [], p = [];
-    for (var i = 0; i < n; i++) {
-      geom.xyzToLngLat(X[i], Y[i], Z[i], p);
-      xx.push(p[0]);
-      yy.push(p[1]);
-    }
-    return {xx: xx, yy: yy};
-  }
-
-  // Insert linearly-interpolated samples so no gap between consecutive source
-  // points exceeds @maxSpacing. Interpolating in the smoothing channels keeps
-  // this representation-agnostic (for geocentric input the inserted points sit on
-  // the chord, negligibly below the surface at these spacings, and are
-  // renormalized on the way out). Endpoints (and the closing vertex of a ring)
-  // are preserved exactly.
-  function densifyChannels(t, channels, maxSpacing) {
-    var n = t.length;
-    var K = channels.length;
-    var t2 = [];
-    var c2 = [];
-    for (var c = 0; c < K; c++) c2.push([]);
-    for (var i = 0; i < n - 1; i++) {
-      t2.push(t[i]);
-      for (var a = 0; a < K; a++) c2[a].push(channels[a][i]);
-      var seg = t[i + 1] - t[i];
-      if (seg > maxSpacing) {
-        var steps = Math.ceil(seg / maxSpacing);
-        for (var s = 1; s < steps; s++) {
-          var f = s / steps;
-          t2.push(t[i] + seg * f);
-          for (var b = 0; b < K; b++) {
-            c2[b].push(channels[b][i] + (channels[b][i + 1] - channels[b][i]) * f);
-          }
-        }
-      }
-    }
-    t2.push(t[n - 1]);
-    for (var d = 0; d < K; d++) c2[d].push(channels[d][n - 1]);
-    return {t: new Float64Array(t2), channels: c2, count: t2.length};
-  }
-
-  // Sample the smoothed curve over arc-length [a, b] and thin it (see the
-  // "Output resampling" note above). Step 1 evaluates the smoother at a uniform
-  // dense step; step 2 makes one forward pass keeping the endpoints plus every
-  // interior vertex where the accumulated turn since the last kept vertex reaches
-  // the bend-angle threshold, or where the sagitta guard trips. @inputCount bounds the dense
-  // sampling (and thus the output). Returns one array per channel, ordered by
-  // increasing arc length, including both endpoints.
-  function sampleSmoothedCurve(src, a, b, closed, ctx, inputCount) {
-    var K = src.channels.length;
-    var span = b - a;
-    var maxPoints = Math.max(inputCount, MIN_CLOSED_SEGMENTS) * MAX_OUTPUT_FACTOR;
-
-    // 1. dense uniform sampling of the smoothed curve
-    var nDense = Math.ceil(span / ctx.denseStep) + 1;
-    if (nDense < MIN_CLOSED_SEGMENTS + 1) nDense = MIN_CLOSED_SEGMENTS + 1;
-    if (nDense > maxPoints) nDense = maxPoints;
-    if (nDense < 2) nDense = 2;
-    var P = new Array(nDense);
-    for (var i = 0; i < nDense; i++) {
-      P[i] = smoothAt(src, a + span * (i / (nDense - 1)), ctx);
-    }
-
-    // 2. one-pass bend-angle filter
-    var keep = decimateByBend(P, K, ctx.bendAngle, ctx.tol * DEVIATION_FACTOR);
-    var out = [];
-    for (var c = 0; c < K; c++) out.push([]);
-    for (var ki = 0; ki < keep.length; ki++) appendPoint(out, P[keep[ki]], K);
-    return out;
-  }
-
-  // One-pass forward decimation of a K-channel point list @P: keep the two
-  // endpoints plus every interior point where the turn accumulated since the last
-  // kept point reaches @theta, or where the estimated sagitta of the skipped
-  // stretch (chord * accumulated turn / 8, the bow of a circular arc) reaches
-  // @epsDev. Bounds the angle between consecutive kept segments by construction, so
-  // joins stay smooth. Returns the kept indices into @P (always including 0 and the
-  // last index). Shared by the smoothed-curve resampler and the structural-run
-  // resampler (see resampleStructuralRun).
-  function decimateByBend(P, K, theta, epsDev) {
-    var n = P.length;
-    var keep = [0];
-    if (n < 2) return keep;
-    var anchor = 0;     // last kept vertex
-    var accTurn = 0;    // absolute turning accumulated since the anchor
-    for (var j = 1; j < n - 1; j++) {
-      accTurn += vecAngle(P[j - 1], P[j], P[j], P[j + 1], K);
-      var sagitta = chordLen(P[anchor], P[j + 1], K) * accTurn * 0.125;
-      if (accTurn >= theta || sagitta >= epsDev) {
-        keep.push(j);
-        anchor = j;
-        accTurn = 0;
-      }
-    }
-    keep.push(n - 1);
-    return keep;
-  }
-
-  // Angle (radians) between vectors (b - a) and (d - c) over K channels.
-  function vecAngle(a, b, c, d, K) {
-    var dot = 0, n1 = 0, n2 = 0;
-    for (var i = 0; i < K; i++) {
-      var u = b[i] - a[i];
-      var v = d[i] - c[i];
-      dot += u * v;
-      n1 += u * u;
-      n2 += v * v;
-    }
-    if (n1 <= 0 || n2 <= 0) return 0;
-    var k = dot / Math.sqrt(n1 * n2);
-    if (k > 1) k = 1;
-    else if (k < -1) k = -1;
-    return Math.acos(k);
-  }
-
-  function chordLen(a, b, K) {
-    var s = 0;
-    for (var c = 0; c < K; c++) {
-      var d = b[c] - a[c];
-      s += d * d;
-    }
-    return Math.sqrt(s);
-  }
-
-  // Evaluate the smoother at a single arc-length position by binary-searching the
-  // window of source samples within +/- radius of phi. Open sources are padded
-  // with odd reflections at each end (see buildSource), so the window is always
-  // full and symmetric -- no special boundary handling is needed here.
-  function smoothAt(src, phi, ctx) {
-    var t = src.t, m = src.count;
-    var lo = lowerBound(t, m, phi - ctx.radius);
-    var hi = upperBound(t, m, phi + ctx.radius);
-    return smoothPoint(t, src.channels, lo, hi, phi, ctx.method, ctx.scale, ctx.radius, ctx.gain);
-  }
-
-  // first index with t[i] >= x
-  function lowerBound(t, n, x) {
-    var lo = 0, hi = n;
-    while (lo < hi) {
-      var mid = (lo + hi) >> 1;
-      if (t[mid] < x) lo = mid + 1;
-      else hi = mid;
-    }
-    return lo;
-  }
-
-  // first index with t[i] > x
-  function upperBound(t, n, x) {
-    var lo = 0, hi = n;
-    while (lo < hi) {
-      var mid = (lo + hi) >> 1;
-      if (t[mid] <= x) lo = mid + 1;
-      else hi = mid;
-    }
-    return lo;
-  }
-
-  function appendPoint(out, p, K) {
-    for (var c = 0; c < K; c++) out[c].push(p[c]);
-  }
-
-  // Assemble the weighting samples for an arc, tagged with cumulative arc length.
-  //
-  // Open arcs are padded with odd (point) reflections of the samples within
-  // `radius` of each end: a sample at offset tau inside the end is mirrored to
-  // -tau with position 2*endpoint - sample. This keeps the smoothing window full
-  // and symmetric at the ends instead of one-sided. A one-sided window biases the
-  // result inward (it averages only interior neighbors), dragging the smoothed
-  // endpoint off a curving end; pinning it back then leaves a long, kinked final
-  // segment. With odd reflection each mirror pair averages back to the endpoint,
-  // so the endpoint is preserved *exactly* while detail right up to it is still
-  // fully smoothed, and the curve leaves the endpoint along a smooth tangent.
-  // (A straight run reflects to its own continuation, so straights stay straight.)
-  //
-  // Closed arcs are instead replicated across enough periods (each shifted by the
-  // perimeter length) that any query window wraps correctly around the ring.
-  function buildSource(t, channels, closed, radius, L) {
-    var n = t.length;
-    var K = channels.length;
-    if (!closed) {
-      return buildOpenSource(t, channels, n, K, radius, L);
-    }
-    var m = n - 1; // drop duplicated closing vertex; period is L
-    var reps = Math.max(1, Math.ceil(radius / L));
-    var et = [];
-    var ec = [];
-    for (var c = 0; c < K; c++) ec.push([]);
-    for (var k = -reps; k <= reps; k++) {
-      var off = k * L;
-      for (var j = 0; j < m; j++) {
-        et.push(t[j] + off);
-        for (var c2 = 0; c2 < K; c2++) ec[c2].push(channels[c2][j]);
-      }
-    }
-    return {t: et, channels: ec, count: et.length, totalLength: L, closed: true};
-  }
-
-  function buildOpenSource(t, channels, n, K, radius, L) {
-    var et = [];
-    var ec = [];
-    for (var c = 0; c < K; c++) ec.push([]);
-    // left odd-reflections (ascending t from ~-radius up to 0): walk interior
-    // samples with t <= radius from the outermost inward so output stays sorted
-    var leftEnd = upperBound(t, n, radius) - 1; // last index with t[i] <= radius
-    for (var i = leftEnd; i >= 1; i--) {
-      et.push(-t[i]);
-      for (var c0 = 0; c0 < K; c0++) ec[c0].push(2 * channels[c0][0] - channels[c0][i]);
-    }
-    // originals
-    for (var j = 0; j < n; j++) {
-      et.push(t[j]);
-      for (var c1 = 0; c1 < K; c1++) ec[c1].push(channels[c1][j]);
-    }
-    // right odd-reflections (ascending t just above L): nearest-to-L first
-    for (var k = n - 2; k >= 0 && t[k] >= L - radius; k--) {
-      et.push(2 * L - t[k]);
-      for (var c2 = 0; c2 < K; c2++) ec[c2].push(2 * channels[c2][n - 1] - channels[c2][k]);
-    }
-    return {t: et, channels: ec, count: et.length, totalLength: L, closed: false};
-  }
-
-  // Both smoothing methods compute the smoothed coordinate as a local weighted
-  // least-squares fit of a second-degree polynomial in the normalized arc-length
-  // offset u = (t - phi)/scale, evaluated at u = 0 (the polynomial's constant
-  // term). The quadratic term lets the fit follow curvature, so the smoothed point
-  // is not pulled toward the chord on a bend the way a plain weighted average is.
-  // That is what keeps either method from shrinking the amplitude of supra-
-  // tolerance features. The methods differ only in the weight kernel (see
-  // kernelWeight): 'paek' is Bodansky et al.'s exponential-weighted quadratic (the
-  // algorithm ArcGIS uses); 'gaussian' is the Gaussian-weighted quadratic, i.e. a
-  // Savitzky-Golay smoother (a sharper frequency cutoff than paek, now with the
-  // same shrinkage correction). Normalizing by `scale` keeps the normal-equation
-  // matrix well-scaled regardless of the absolute tolerance. The fit is linear in
-  // the channel values, so for geocentric input the smoothed point stays in the
-  // plane of nearby vertices (a great-circle arc is preserved up to discretization).
-  // With too few points, or near-singular normal equations, falls back to the
-  // plain weighted average using the same kernel.
-  //
-  // Weights are tapered to reach zero at the window edge (|u| = radius/scale) by
-  // subtracting the edge weight: w = max(0, kernel(u) - kernel(uEdge)). Without
-  // this taper a source sample enters/leaves the moving window carrying a small
-  // but nonzero weight, and that discrete jump -- amplified by the quadratic fit --
-  // shows up as fine-scale jitter rendered as visible kinks. The taper is symmetric
-  // in |u|, so odd-reflection endpoint preservation is unaffected.
-  function smoothPoint(t, channels, lo, hi, phi, method, scale, radius, gain) {
-    var gaussian = method == 'gaussian';
-    // gain scales the quadratic (Savitzky-Golay) curvature correction relative to
-    // the plain weighted moving average m: out = m + gain*(a0 - m). gain=0 leaves
-    // the shrinking moving average, gain=1 is the fully corrected fit, and gain>1
-    // exaggerates the curvature of bends.
-    if (gain === 0 || hi - lo < 3) return weightedAverage(t, channels, lo, hi, phi, scale, radius, gaussian);
-    var edgeW = kernelWeight(radius / scale, gaussian);
-    var s0 = 0, s1 = 0, s2 = 0, s3 = 0, s4 = 0;
-    var K = channels.length;
-    var b0 = new Float64Array(K), b1 = new Float64Array(K), b2 = new Float64Array(K);
-    for (var i = lo; i < hi; i++) {
-      var u = (t[i] - phi) / scale;
-      var w = kernelWeight(u, gaussian) - edgeW;
-      if (w <= 0) continue;
-      var wu = w * u;
-      var wu2 = wu * u;
-      s0 += w;
-      s1 += wu;
-      s2 += wu2;
-      s3 += wu2 * u;
-      s4 += wu2 * u * u;
-      for (var c = 0; c < K; c++) {
-        var v = channels[c][i];
-        b0[c] += w * v;
-        b1[c] += wu * v;
-        b2[c] += wu2 * v;
-      }
-    }
-    // det of the symmetric normal-equation matrix [[s0,s1,s2],[s1,s2,s3],[s2,s3,s4]]
-    var c0 = s2 * s4 - s3 * s3;
-    var c1 = s1 * s4 - s3 * s2;
-    var c2 = s1 * s3 - s2 * s2;
-    var det = s0 * c0 - s1 * c1 + s2 * c2;
-    if (!(Math.abs(det) > 1e-9 * (s0 * s0 * s0 + 1))) {
-      return weightedAverage(t, channels, lo, hi, phi, scale, radius, gaussian);
-    }
-    var out = new Array(K);
-    for (var ch = 0; ch < K; ch++) {
-      var a0 = solveConstantTerm(b0[ch], b1[ch], b2[ch], s1, s2, s3, s4, c0, det);
-      var mean = b0[ch] / s0; // plain weighted moving average for this channel
-      out[ch] = mean + gain * (a0 - mean);
-    }
-    return out;
-  }
-
-  // Smoothing kernel weight at normalized offset u: exponential e^(-|u|) for paek,
-  // Gaussian e^(-u^2/2) for the Savitzky-Golay gaussian method.
-  function kernelWeight(u, gaussian) {
-    return gaussian ? Math.exp(-0.5 * u * u) : Math.exp(-Math.abs(u));
-  }
-
-  // Solve for the constant term a0 of the fitted quadratic via Cramer's rule
-  // (replace the first column of the normal matrix with the RHS [b0,b1,b2]).
-  function solveConstantTerm(b0, b1, b2, s1, s2, s3, s4, c0, det) {
-    var detA = b0 * c0 - s1 * (b1 * s4 - s3 * b2) + s2 * (b1 * s3 - s2 * b2);
-    return detA / det;
-  }
-
-  function weightedAverage(t, channels, lo, hi, phi, scale, radius, gaussian) {
-    var K = channels.length;
-    var edgeW = kernelWeight(radius / scale, gaussian);
-    var wsum = 0;
-    var sums = new Float64Array(K);
-    for (var i = lo; i < hi; i++) {
-      var w = kernelWeight((t[i] - phi) / scale, gaussian) - edgeW;
-      if (w <= 0) continue;
-      wsum += w;
-      for (var c = 0; c < K; c++) sums[c] += w * channels[c][i];
-    }
-    if (!(wsum > 0)) return interpAlongSource(t, channels, lo, hi, phi);
-    return scaleSums(sums, 1 / wsum, K);
-  }
-
-  // Fallback used when a window is empty or weights underflow: linearly
-  // interpolate the position on the source line at arc-length phi (using the
-  // samples bracketing the window). This keeps the output point on the line
-  // instead of snapping to a vertex, so sparse regions degrade gracefully to the
-  // original geometry without staircase artifacts.
-  function interpAlongSource(t, channels, lo, hi, phi) {
-    var K = channels.length;
-    var m = t.length;
-    var i0 = (hi > lo ? lo : lo - 1);
-    if (i0 < 0) i0 = 0;
-    if (i0 > m - 1) i0 = m - 1;
-    var i1 = i0 + 1;
-    if (i1 > m - 1) i1 = m - 1;
-    var out = new Array(K);
-    if (i0 === i1 || t[i1] === t[i0]) {
-      for (var c = 0; c < K; c++) out[c] = channels[c][i0];
-      return out;
-    }
-    var f = (phi - t[i0]) / (t[i1] - t[i0]);
-    if (f < 0) f = 0;
-    else if (f > 1) f = 1;
-    for (var ch = 0; ch < K; ch++) {
-      out[ch] = channels[ch][i0] + (channels[ch][i1] - channels[ch][i0]) * f;
-    }
-    return out;
-  }
-
-  function scaleSums(sums, k, K) {
-    var out = new Array(K);
-    for (var c = 0; c < K; c++) out[c] = sums[c] * k;
-    return out;
-  }
-
-  function toArray(arr) {
-    var out = [];
-    for (var i = 0, n = arr.length; i < n; i++) out.push(arr[i]);
-    return out;
-  }
 
   cmd.smooth = function(dataset, opts, targetLayers) {
     var arcs = dataset.arcs;
@@ -67649,7 +68228,7 @@ ${svg}
     return name == 'rectangle' || name == 'rectangles' || name == 'filter' && opts.cleanup;
   }
 
-  var version = "0.7.39";
+  var version = "0.7.40";
 
   // Parse command line args into commands and run them
   // Function takes an optional Node-style callback. A Promise is returned if no callback is given.

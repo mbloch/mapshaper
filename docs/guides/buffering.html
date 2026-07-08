@@ -61,6 +61,7 @@
 <p>The example below fills a long river inlet and some small gaps along the coastline while preserving the main outer boundary.</p>
 <p><img src="/docs/images/buffer-fill-gaps.png" alt="image"></p>
 <p>Use <code>max-widening=</code> with <code>fill-gaps</code> to limit how wide a gap may be before it is left open.</p>
+<p>By default <code>fill-gaps</code> leaves small isolated islands separate rather than bridging them to a neighboring landmass across a narrow channel. Add <code>merge-islands</code> to bridge them as well.</p>
 <h2 id="topological-buffers">Topological buffers</h2>
 <p>For polygon layers, the <code>topological</code> option buffers only unshared polygon boundaries, such as coastlines and holes. Shared boundaries between adjacent polygons are not buffered, and overlapping buffer areas are split between features by proximity.</p>
 <pre><code class="hljs language-bash">mapshaper countries.shp -buffer 25km topological -o coast_buffers.shp

@@ -460,7 +460,7 @@ Save content of the target layer(s) to a file or files.
 
 `hoist=`  (GeoJSON) Move one or more properties to the root level of each Feature. Hoisting a field named "id" creates an id for each Feature. This option can also be used to create non-standard Feature attributes (as used by the tippecanoe program).
 
-`metadata`  (SVG/TopoJSON) Include metadata in output. In the case of SVG output, CRS and bbox data is embedded in the file, so when the SVG is re-imported the original geographic coordinates can be recovered.
+`metadata`  (SVG/TopoJSON/GeoJSON) Include metadata in output. In the case of SVG output, CRS and bbox data is embedded in the file, so when the SVG is re-imported the original geographic coordinates can be recovered. For GeoJSON output, this option re-emits non-structural top-level members that were present in the imported GeoJSON file, such as a legacy `crs` object, a top-level `id`, or non-standard members like `metadata`. Preserved members are passed through unchanged, so values that describe the data (e.g. a feature count) may become stale after editing. A preserved `crs` member is dropped if the dataset is reprojected with `-proj`.
 
 `width=`    (SVG/TopoJSON) Set the width of the output dataset in pixels. When used with TopoJSON output, this option switches the output coordinates from geographic units to pixels and flips the Y axis. SVG output is always in pixels (default SVG width is 800).
 
@@ -579,6 +579,12 @@ place). The filled area is partitioned among the adjacent features by proximity.
 multiple of the buffer distance wide; wider gaps are kept open. The default is 5.
 For example, with a 1km buffer distance and the default `max-widening` value, an interior gap is
 filled if it is narrower than 5km and left open otherwise.
+
+`merge-islands` [polygons, with `fill-gaps`] Also bridge a small isolated island
+to a neighboring landmass when the gap between them is narrower than the buffer
+distance. By default such islands are left separate (only a landmass smaller than
+a disk of the mouth radius is treated as an island; gaps between larger landmasses,
+such as a river between two states, are filled either way).
 
 `geodesic` [projected data] Buffer using geodesic distances instead of projected planar distances.
 
@@ -2962,9 +2968,9 @@ Mapshaper offers three simplification methods, selectable as method options in t
 
 - **`Douglas-Peucker`** (also known as Ramer–Douglas–Peucker). Guarantees that simplified lines stay within a fixed distance of the original. Good for stripping excess vertices to reduce file size, but tends to introduce visible spikes at high simplification.
 - **`Visvalingam / effective area`**. Iteratively removes the point that forms the triangle of smallest area with its two neighbors.
-- **`Visvalingam / weighted area`**. A variation on Visvalingam's algorithm that underweights points at sharp angles, so they are removed earlier than in standard Visvalingam. The result is visibly smoother lines and fewer jagged spikes at high simplification. You can fine tune this effect by setting the `weighting=` option (default is 0.7). The larger the parameter, the greater the smoothing effect.
+- **`Visvalingam / weighted area`**. A variation on Visvalingam's algorithm that underweights points at sharp angles, so they are removed earlier than in standard Visvalingam. The result is visibly smoother lines and fewer jagged spikes at high simplification.
 
-Weighted Visvalingam is Mapshaper's default method because it can produce good-looking generalizations of highly detailed source layers. But be aware that none of these methods can approach the quality that a cartographer achieves when generalizing linework by hand.
+Weighted Visvalingam is Mapshaper's default method because it produces generalizations that look good enough for most web maps, even if they fall short of true cartographic quality. But be aware that none of these methods can approach the quality that a cartographer achieves when generalizing linework by hand. For higher-quality generalization than `-simplify` can provide, try Mapshaper's new `-smooth` command.
 
 If you are primarily interested in removing as many vertices as possible without visible changes to the shape of the lines, you may find that Douglas-Peucker combined with an appropriate `interval=` or `resolution=` parameter gives the best results.
 
@@ -3032,13 +3038,21 @@ mapshaper provinces.shp -simplify 5% -clean -o provinces.geojson
 
 ## Simplifying multiple layers consistently
 
-When you import multiple layers using `-i combine-files`, Mapshaper builds a shared topology. This means that boundaries shared between layers — for example, aligned state and county polygon borders — are simplified identically across all layers.
-Without this, the layers would diverge during simplification, creating visible gaps and overlaps where they should align.
+When you import multiple layers using `-i combine-files`, Mapshaper builds a shared topology. Boundaries shared between the input layers — for example, aligned state and county polygon borders — are simplified identically across all layers, but only if their vertices are perfectly aligned to begin with. Since source layers are rarely aligned this precisely, a more reliable approach is to import the smallest available level of geography — counties, in the example below — and derive higher levels using the `-dissolve` command.
 
 ```bash
 mapshaper -i states.shp counties.shp combine-files \
   -simplify 10% \
   -o out/
+```
+
+or
+
+```bash
+mapshaper -i counties.shp \
+  -dissolve STATE + name=states \
+  -simplify 10% \
+  -o target=counties,states out/
 ```
 
 The web app does **not** combine files automatically when you import multiple layers. To get the shared-topology behavior in the web app, tick **with advanced options** in the import dialog and add `combine-files` to the options field.
@@ -3142,6 +3156,8 @@ The example below fills a long river inlet and some small gaps along the coastli
 ![image](/docs/images/buffer-fill-gaps.png)
 
 Use `max-widening=` with `fill-gaps` to limit how wide a gap may be before it is left open.
+
+By default `fill-gaps` leaves small isolated islands separate rather than bridging them to a neighboring landmass across a narrow channel. Add `merge-islands` to bridge them as well.
 
 ## Topological buffers
 

@@ -278,7 +278,7 @@ Save content of the target layer(s) to a file or files.
 
 `hoist=`  (GeoJSON) Move one or more properties to the root level of each Feature. Hoisting a field named "id" creates an id for each Feature. This option can also be used to create non-standard Feature attributes (as used by the tippecanoe program).
 
-`metadata`  (SVG/TopoJSON) Include metadata in output. In the case of SVG output, CRS and bbox data is embedded in the file, so when the SVG is re-imported the original geographic coordinates can be recovered.
+`metadata`  (SVG/TopoJSON/GeoJSON) Include metadata in output. In the case of SVG output, CRS and bbox data is embedded in the file, so when the SVG is re-imported the original geographic coordinates can be recovered. For GeoJSON output, this option re-emits non-structural top-level members that were present in the imported GeoJSON file, such as a legacy `crs` object, a top-level `id`, or non-standard members like `metadata`. Preserved members are passed through unchanged, so values that describe the data (e.g. a feature count) may become stale after editing. A preserved `crs` member is dropped if the dataset is reprojected with `-proj`.
 
 `width=`    (SVG/TopoJSON) Set the width of the output dataset in pixels. When used with TopoJSON output, this option switches the output coordinates from geographic units to pixels and flips the Y axis. SVG output is always in pixels (default SVG width is 800).
 
@@ -397,6 +397,12 @@ place). The filled area is partitioned among the adjacent features by proximity.
 multiple of the buffer distance wide; wider gaps are kept open. The default is 5.
 For example, with a 1km buffer distance and the default `max-widening` value, an interior gap is
 filled if it is narrower than 5km and left open otherwise.
+
+`merge-islands` [polygons, with `fill-gaps`] Also bridge a small isolated island
+to a neighboring landmass when the gap between them is narrower than the buffer
+distance. By default such islands are left separate (only a landmass smaller than
+a disk of the mouth radius is treated as an island; gaps between larger landmasses,
+such as a river between two states, are filled either way).
 
 `geodesic` [projected data] Buffer using geodesic distances instead of projected planar distances.
 

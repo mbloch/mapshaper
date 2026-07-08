@@ -13,9 +13,9 @@ Mapshaper offers three simplification methods, selectable as method options in t
 
 - **`Douglas-Peucker`** (also known as Ramer–Douglas–Peucker). Guarantees that simplified lines stay within a fixed distance of the original. Good for stripping excess vertices to reduce file size, but tends to introduce visible spikes at high simplification.
 - **`Visvalingam / effective area`**. Iteratively removes the point that forms the triangle of smallest area with its two neighbors.
-- **`Visvalingam / weighted area`**. A variation on Visvalingam's algorithm that underweights points at sharp angles, so they are removed earlier than in standard Visvalingam. The result is visibly smoother lines and fewer jagged spikes at high simplification. You can fine tune this effect by setting the `weighting=` option (default is 0.7). The larger the parameter, the greater the smoothing effect.
+- **`Visvalingam / weighted area`**. A variation on Visvalingam's algorithm that underweights points at sharp angles, so they are removed earlier than in standard Visvalingam. The result is visibly smoother lines and fewer jagged spikes at high simplification.
 
-Weighted Visvalingam is Mapshaper's default method because it can produce good-looking generalizations of highly detailed source layers. But be aware that none of these methods can approach the quality that a cartographer achieves when generalizing linework by hand.
+Weighted Visvalingam is Mapshaper's default method because it produces generalizations that look good enough for most web maps, even if they fall short of true cartographic quality. But be aware that none of these methods can approach the quality that a cartographer achieves when generalizing linework by hand. For higher-quality generalization than `-simplify` can provide, try Mapshaper's new `-smooth` command.
 
 If you are primarily interested in removing as many vertices as possible without visible changes to the shape of the lines, you may find that Douglas-Peucker combined with an appropriate `interval=` or `resolution=` parameter gives the best results.
 
@@ -83,13 +83,21 @@ mapshaper provinces.shp -simplify 5% -clean -o provinces.geojson
 
 ## Simplifying multiple layers consistently
 
-When you import multiple layers using `-i combine-files`, Mapshaper builds a shared topology. This means that boundaries shared between layers — for example, aligned state and county polygon borders — are simplified identically across all layers.
-Without this, the layers would diverge during simplification, creating visible gaps and overlaps where they should align.
+When you import multiple layers using `-i combine-files`, Mapshaper builds a shared topology. Boundaries shared between the input layers — for example, aligned state and county polygon borders — are simplified identically across all layers, but only if their vertices are perfectly aligned to begin with. Since source layers are rarely aligned this precisely, a more reliable approach is to import the smallest available level of geography — counties, in the example below — and derive higher levels using the `-dissolve` command.
 
 ```bash
 mapshaper -i states.shp counties.shp combine-files \
   -simplify 10% \
   -o out/
+```
+
+or
+
+```bash
+mapshaper -i counties.shp \
+  -dissolve STATE + name=states \
+  -simplify 10% \
+  -o target=counties,states out/
 ```
 
 The web app does **not** combine files automatically when you import multiple layers. To get the shared-topology behavior in the web app, tick **with advanced options** in the import dialog and add `combine-files` to the options field.
