@@ -19,6 +19,7 @@ import { MapExtent } from './gui-map-extent';
 import { LayerRenderer } from './gui-layer-renderer';
 import { BoxTool } from './gui-box-tool';
 import { RectangleControl } from './gui-rectangle-control';
+import { RulerTool } from './gui-ruler-tool';
 import {
   projectMapExtent,
   getMapboxBounds,
@@ -196,6 +197,7 @@ export function MshpMap(gui) {
     // Update map extent (also triggers redraw)
     projectMapExtent(_ext, oldCRS, this.getDisplayCRS(), calcFullBounds());
     updateFullBounds();
+    map.dispatchEvent('display_crs_change', {crs: this.getDisplayCRS(), prev_crs: oldCRS});
   };
 
   // Initialization just before displaying the map for the first time
@@ -211,6 +213,7 @@ export function MshpMap(gui) {
       new InspectionControl2(gui, _hit);
       new SelectionTool(gui, _ext, _hit),
       new BoxTool(gui, _ext, _nav),
+      new RulerTool(gui, _ext),
       new RectangleControl(gui, _hit),
       initInteractiveEditing(gui, _ext, _hit);
       _hit.on('change', function() { drawLayers('hover'); });

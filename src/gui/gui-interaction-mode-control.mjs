@@ -4,15 +4,15 @@ import { internal } from './gui-core';
 export function InteractionMode(gui) {
 
   var menus = {
-    standard: ['info', 'selection', 'box'],
-    empty: ['edit_polygons', 'edit_lines', 'edit_points', 'box'],
-    polygons: ['info', 'selection', 'box', 'polygon_style', 'edit_polygons'],
-    rectangles: ['info', 'selection', 'box', 'polygon_style', 'rectangles', 'edit_polygons'],
-    lines: ['info', 'selection', 'box', 'line_style', 'edit_lines'], // 'snip_lines'
+    standard: ['info', 'selection', 'box', 'ruler'],
+    empty: ['edit_polygons', 'edit_lines', 'edit_points', 'box', 'ruler'],
+    polygons: ['info', 'selection', 'box', 'polygon_style', 'edit_polygons', 'ruler'],
+    rectangles: ['info', 'selection', 'box', 'polygon_style', 'rectangles', 'edit_polygons', 'ruler'],
+    lines: ['info', 'selection', 'box', 'line_style', 'edit_lines', 'ruler'], // 'snip_lines'
     table: ['info', 'selection'],
-    raster: ['box'],
-    labels: ['info', 'selection', 'box', 'point_style', 'labels', 'edit_points'],
-    points: ['info', 'selection', 'box', 'point_style', 'edit_points'] // , 'add-points'
+    raster: ['ruler', 'box'],
+    labels: ['info', 'selection', 'box', 'point_style', 'labels', 'edit_points', 'ruler'],
+    points: ['info', 'selection', 'box', 'point_style', 'edit_points', 'ruler'] // , 'add-points'
   };
 
   var prompts = {
@@ -37,6 +37,7 @@ export function InteractionMode(gui) {
     snip_lines: 'snip polylines',
     vertices: 'edit vertices',
     selection: 'selection tool',
+    ruler: 'measure distance',
     'add-points': 'add points',
     rectangles: 'drag-to-resize',
     off: 'turn off'

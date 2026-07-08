@@ -1585,6 +1585,35 @@ img.eye-btn {
 	background: black;
 }
 
+.ruler-popup {
+	position: absolute;
+	z-index: 45;
+	top: 12px;
+	left: 50%;
+	transform: translateX(-50%);
+	min-width: 160px;
+	padding: 6px 28px 6px 10px;
+	border-radius: 11px;
+	border: 1px solid #d5d5d5;
+	box-shadow: 0 1px 7px rgba(0,0,0,0.18);
+	background: rgba(255,255,255,0.94);
+	font-size: 13px;
+	line-height: 1.25;
+	text-align: center;
+	box-sizing: border-box;
+	pointer-events: auto;
+}
+
+.ruler-popup-content div + div {
+	margin-top: 2px;
+}
+
+.ruler-popup .ruler-close-btn {
+	position: absolute;
+	top: 5px;
+	right: 1px;
+}
+
 
 /* --- Map ---------------------- */
 
@@ -1914,8 +1943,13 @@ div.basemap-style-btn.active {
 }
 
 .map-layers.add-points,
-.map-layers.draw-tool {
+.map-layers.draw-tool,
+.map-layers.ruler-tool {
 	cursor: crosshair;
+}
+
+.map-layers.ruler-dragging {
+	cursor: grabbing;
 }
 
 .map-layers.draw-tool.dragging {
@@ -1943,6 +1977,39 @@ body.pan.panning .map-layers:not(.drawing) {
 
 .map-layers > svg {
 	position: absolute;
+}
+
+.map-layers > svg.ruler-overlay {
+	top: 0;
+	left: 0;
+	z-index: 20;
+	pointer-events: none;
+	overflow: visible;
+}
+
+.ruler-line {
+	fill: none;
+	stroke: #cc35a5;
+	stroke-width: 2;
+	stroke-linecap: round;
+	stroke-linejoin: round;
+	vector-effect: non-scaling-stroke;
+}
+
+.ruler-great-circle {
+	stroke: #1385B7;
+	stroke-dasharray: 7 5;
+}
+
+.ruler-endpoint {
+	fill: #fff;
+	stroke: #cc35a5;
+	stroke-width: 2;
+	vector-effect: non-scaling-stroke;
+}
+
+.ruler-endpoint.ruler-great-circle-endpoint {
+	stroke: #1385B7;
 }
 
 .map-layers > svg text.selected {
