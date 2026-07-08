@@ -1,3 +1,9 @@
+v0.7.40
+* Import non-standard top-level GeoJSON metadata, so it can be re-exported by adding the `-o metadata` flag. This includes top-level `crs`, `id` and any other properties that are not part of the GeoJSON spec.
+* Improved smoothness of medial lines (used in `topological` and `fill-gaps` buffer modes).
+* Improved quality of `-buffer fill-gaps` output.
+* Added `-buffer fill-gaps merge-islands` option.
+
 v0.7.39
 * Added the `-densify` command, for adding vertices along path segments using geodesic, rhumb or planar interpolation.
 * Improved support for polar and antimeridian-spanning buffers.
