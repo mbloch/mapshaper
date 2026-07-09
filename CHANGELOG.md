@@ -1,3 +1,7 @@
+v0.7.42
+* The ruler tool can measure the length of several connected segments by shift-clicking.
+* Fixed several projection formula issues by updating the mproj library.
+
 v0.7.41
 * Added a ruler tool under the arrow menu.
 
