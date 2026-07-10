@@ -3,7 +3,7 @@ import { dissolveArcs } from '../paths/mapshaper-arc-dissolve';
 import { initProjLibrary } from '../crs/mapshaper-projections';
 import { writeFiles } from '../io/mapshaper-file-export';
 import { exportTargetLayers } from '../io/mapshaper-export';
-import { layerHasPaths } from '../dataset/mapshaper-layer-utils';
+import { copyLayerShapes, layerHasPaths } from '../dataset/mapshaper-layer-utils';
 import { getOptionParser } from '../cli/mapshaper-options';
 import { convertSourceName, findCommandSource } from '../dataset/mapshaper-source-utils';
 import { Catalog, getFormattedLayerList } from '../dataset/mapshaper-catalog';
@@ -106,6 +106,28 @@ function commandAcceptsMultipleTargetDatasets(name) {
     name == 'comment' || name == 'rename-layers';
 }
 
+// Commands in this group keep datasets separate and run once for each grouped
+// target returned by findCommandTargets(). Commands that consume all targets
+// together (e.g. -frame) or merge targets (-union, -merge-layers) are
+// intentionally excluded.
+function commandRunsPerTargetDataset(name, opts) {
+  if (name == 'rectangle') {
+    return !opts.source && !opts.bbox;
+  }
+  return [
+    'affine', 'alpha-shapes', 'blur', 'buffer', 'calc', 'check-geometry',
+    'classify', 'clean', 'clip', 'cluster', 'dashlines', 'data-fill',
+    'densify', 'dissolve', 'dissolve2', 'divide', 'dots', 'each', 'erase',
+    'explode', 'filter',
+    'filter-detail', 'filter-fields', 'filter-geom', 'filter-islands',
+    'filter-islands2', 'filter-points', 'filter-slivers', 'grid', 'grid2',
+    'fuzzy-join', 'ignore', 'inlay', 'innerlines', 'inspect', 'join',
+    'lines', 'mosaic', 'points', 'polygons', 'rectangles', 'rename-fields',
+    'shapes', 'simplify', 'slice', 'smooth', 'sort', 'split',
+    'split-on-grid', 'stitch', 'style', 'subdivide', 'symbols', 'uniq'
+  ].indexOf(name) > -1;
+}
+
 function commandAcceptsEmptyTarget(name) {
   return name == 'graticule' || name == 'i' || name == 'help' ||
     name == 'point-grid' || name == 'shape' || name == 'rectangle' || name == 'frame' ||
@@ -137,13 +159,32 @@ export async function runCommand(command, job) {
   }
 
   if (!job) job = new Job();
+
+  // Preserve the existing single-dataset dispatch and postprocessing paths by
+  // invoking them once per dataset. Collect the resulting targets so a
+  // multi-dataset command does not leave only its final dataset selected.
+  if (!command._targetOverride && commandRunsPerTargetDataset(name, opts)) {
+    targets = job.catalog.findCommandTargets(opts.target);
+    if (targets.length > 1) {
+      validatePerDatasetTargets(name, targets, opts);
+      return runCommandOnEachTarget(command, job, targets);
+    }
+  }
+
   job.startCommand(command);
 
 
   try { // catch errors from synchronous functions
     T.start();
 
-    if (name == 'rename-layers') {
+    if (command._targetOverride) {
+      targets = [command._targetOverride];
+      targetDataset = targets[0].dataset;
+      arcs = targetDataset.arcs;
+      targetLayers = targets[0].layers;
+      job.catalog.setDefaultTarget(targetLayers, targetDataset);
+
+    } else if (name == 'rename-layers') {
       targets = job.catalog.findCommandTargets(opts.target);
       targetLayers = targets.reduce(function(memo, obj) {
         return memo.concat(obj.layers);
@@ -187,7 +228,9 @@ export async function runCommand(command, job) {
       }
     }
 
-    if (opts.source) {
+    if (Object.prototype.hasOwnProperty.call(command, '_sourceOverride')) {
+      source = command._sourceOverride;
+    } else if (opts.source) {
       source = findCommandSource(convertSourceName(opts.source, targets), job.catalog, opts);
     }
 
@@ -582,6 +625,141 @@ export async function runCommand(command, job) {
     verbose('-', T.stop());
     if (err) throw err;
     return job;
+  }
+}
+
+async function runCommandOnEachTarget(command, job, targets) {
+  var outputTargets = [];
+  var source = null;
+  var items = targets.map(function(target, i) {
+    return {target: target, index: i};
+  });
+  var disposableSourceTargetIndex = -1;
+
+  if (command.options.source && !sourceNameIsInterpolated(command.options.source)) {
+    source = resolveSourceForTargets(command, job, targets);
+    items = moveSourceTargetLast(items, source);
+    disposableSourceTargetIndex = findLastDisposableSourceTarget(
+      items,
+      source,
+      command.name,
+      command.options
+    );
+  }
+
+  for (var i = 0; i < items.length; i++) {
+    var item = items[i];
+    var target = {
+      dataset: item.target.dataset,
+      layers: item.target.layers.concat()
+    };
+    var command2 = Object.assign({}, command, {_targetOverride: target});
+    if (source) {
+      command2._sourceOverride = getSourceForTarget(
+        source,
+        target,
+        command.name,
+        item.index == disposableSourceTargetIndex,
+        command.options
+      );
+    }
+    await runCommand(command2, job);
+    outputTargets[item.index] = copyCommandTargets(job.catalog.getDefaultTargets());
+  }
+  job.catalog.setDefaultTargets(outputTargets.reduce(function(memo, arr) {
+    return memo.concat(arr);
+  }, []));
+  return job;
+}
+
+function resolveSourceForTargets(command, job, targets) {
+  job.startCommand(command);
+  try {
+    return findCommandSource(
+      convertSourceName(command.options.source, targets),
+      job.catalog,
+      command.options
+    );
+  } finally {
+    job.endCommand();
+  }
+}
+
+function sourceNameIsInterpolated(name) {
+  return /[$][{]/.test(name);
+}
+
+// If a retained catalog source is also targeted, process its group last so
+// earlier groups always read the original source. Output target ordering is
+// restored after execution.
+function moveSourceTargetLast(items, source) {
+  if (!source || source.disposable) return items;
+  return items.filter(function(item) {
+    return item.target.layers.indexOf(source.layer) == -1;
+  }).concat(items.filter(function(item) {
+    return item.target.layers.indexOf(source.layer) > -1;
+  }));
+}
+
+function commandMutatesDisposableSource(name, target, source, opts) {
+  var overlayCommand = (name == 'clip' || name == 'erase' || name == 'slice' ||
+    name == 'inlay' || name == 'divide') &&
+    utils.some(target.layers, layerHasPaths);
+  var polygonMosaicJoin = name == 'join' && !opts.keys && !opts.point_method &&
+    source.layer.geometry_type == 'polygon' &&
+    target.layers.some(function(lyr) { return lyr.geometry_type == 'polygon'; });
+  return overlayCommand || polygonMosaicJoin;
+}
+
+// A file source is disposable, so the final topology-changing target can use it
+// directly. Earlier topology-changing targets receive only a shape copy; the
+// potentially large source ArcCollection is safely shared.
+function findLastDisposableSourceTarget(items, source, name, opts) {
+  if (!source?.disposable) return -1;
+  for (var i = items.length - 1; i >= 0; i--) {
+    if (commandMutatesDisposableSource(name, items[i].target, source, opts)) {
+      return items[i].index;
+    }
+  }
+  return -1;
+}
+
+function getSourceForTarget(source, target, name, useOriginal, opts) {
+  if (!source.disposable ||
+      !commandMutatesDisposableSource(name, target, source, opts) ||
+      useOriginal) {
+    return source;
+  }
+  var layer = copyLayerShapes(source.layer);
+  var dataset = Object.assign({}, source.dataset, {layers: [layer]});
+  return {dataset: dataset, layer: layer, disposable: true};
+}
+
+function copyCommandTargets(targets) {
+  return targets.map(function(target) {
+    return {
+      dataset: target.dataset,
+      layers: target.layers.concat()
+    };
+  });
+}
+
+// Fail cardinality checks before the first dataset is modified.
+function validatePerDatasetTargets(name, targets, opts) {
+  if (opts.source && sourceNameIsInterpolated(opts.source) && targets.some(function(target) {
+    return target.layers.length != 1;
+  })) {
+    stop('Interpolated names are not compatible with multiple targets.');
+  }
+  if (name == 'mosaic' && targets.some(function(target) {
+    return target.layers.length != 1;
+  })) {
+    stop('Command takes a single target layer from each dataset');
+  }
+  if (name == 'simplify' && opts.variable && targets.some(function(target) {
+    return target.layers.length != 1;
+  })) {
+    stop('Variable simplification requires a single target layer from each dataset');
   }
 }
 
