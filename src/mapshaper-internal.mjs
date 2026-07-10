@@ -160,6 +160,7 @@ import * as PostSimplifyRepair from './simplify/mapshaper-post-simplify-repair';
 import * as Proj from './commands/mapshaper-proj';
 import * as Projections from './crs/mapshaper-projections';
 import * as ProjectionParams from './crs/mapshaper-projection-params';
+import * as ProjectionTopology from './crs/mapshaper-projection-topology';
 import * as Rectangle from './commands/mapshaper-rectangle';
 import * as RectangleUtils from './paths/mapshaper-rectangle-utils';
 import * as Rounding from './geom/mapshaper-rounding';
@@ -288,6 +289,7 @@ Object.assign(internal,
   Proj,
   Projections,
   ProjectionParams,
+  ProjectionTopology,
   Rectangle,
   RectangleUtils,
   Rounding,

@@ -6,7 +6,10 @@ import {
   parsePrj,
   crsAreEqual,
   getDatasetCrsInfo,
-  setDatasetCrsInfo
+  setDatasetCrsInfo,
+  isInvertibleCRS,
+  isLatLngCRS,
+  isProjectedCRS
 } from '../crs/mapshaper-projections';
 import { preProjectionClip } from '../crs/mapshaper-spherical-clipping';
 import { cleanLayers } from '../commands/mapshaper-clean';
@@ -34,6 +37,8 @@ import {
 import cmd from '../mapshaper-cmd';
 import utils from '../utils/mapshaper-utils';
 import geom from '../geom/mapshaper-geom';
+import { isInterruptedProjection } from '../crs/mapshaper-projection-topology';
+import { getHighPrecisionSnapInterval, snapCoordsByInterval } from '../paths/mapshaper-snapping';
 
 cmd.proj = function(dataset, catalog, opts, targetLayers) {
   var srcInfo, destInfo, destStr;
@@ -177,9 +182,18 @@ export function fetchCrsInfo(name, catalog) {
 }
 
 export function projectDataset(dataset, src, dest, opts) {
+  if (isProjectedCRS(src) && !isInvertibleCRS(src)) {
+    stop('Unable to project from a coordinate system that has no inverse transform');
+  }
+  if (isInterruptedProjection(dest) && dataset.layers.some(layerHasRaster)) {
+    stop('Raster reprojection is not currently supported for interrupted projections');
+  }
   var proj = getProjTransform2(src, dest); // v2 returns null points instead of throwing an error
   var badArcs = 0;
   var badPoints = 0;
+  var healAntimeridian = isLatLngCRS(src) &&
+    isInterruptedProjection(dest) &&
+    Math.abs(dest.lam0) > 1e-12;
   var clipped = preProjectionClip(dataset, src, dest, opts);
   dataset.layers.forEach(function(lyr) {
     if (layerHasPoints(lyr)) {
@@ -199,7 +213,7 @@ export function projectDataset(dataset, src, dest, opts) {
   if (clipped) {
     // TODO: could more selective in cleaning clipped layers
     // (probably only needed when clipped area crosses the antimeridian or includes a pole)
-    cleanProjectedPathLayers(dataset);
+    cleanProjectedPathLayers(dataset, {heal_antimeridian: healAntimeridian});
   }
 
   if (badArcs > 0 && !opts.quiet) {
@@ -227,9 +241,21 @@ function projectRasterLayer(lyr, src, dest, opts) {
 // * Removes line intersections
 // * TODO: what if a layer contains polygons with desired overlaps? should
 //   we ignore overlaps between different features?
-export function cleanProjectedPathLayers(dataset) {
+export function cleanProjectedPathLayers(dataset, opts) {
+  opts = opts || {};
   // TODO: only clean affected polygons (cleaning all polygons can be slow)
   var polygonLayers = dataset.layers.filter(lyr => lyr.geometry_type == 'polygon');
+  if (opts.heal_antimeridian && dataset.arcs) {
+    // A rotated projection moves the source +/-180 degree boundary into the
+    // map interior. Mathematically identical boundary vertices can diverge by
+    // a few floating-point units during projection, preventing topology from
+    // joining polygon parts that were split at the source antimeridian.
+    var arcs = dataset.arcs;
+    var snapDist = getHighPrecisionSnapInterval(arcs.getBounds().toArray());
+    if (snapCoordsByInterval(arcs, snapDist) > 0) {
+      arcs.dedupCoords();
+    }
+  }
   // clean options: force a topology update (by default, this only happens when
   // vertices change during cleaning, but reprojection can require a topology update
   // even if clean does not change vertices)

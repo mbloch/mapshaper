@@ -11,12 +11,15 @@ import { forEachSegmentInShape } from '../paths/mapshaper-path-utils';
 import { transformPoints } from '../dataset/mapshaper-dataset-utils';
 import utils from '../utils/mapshaper-utils';
 import { testBoundsInPolygon } from '../geom/mapshaper-polygon-geom';
+import { getProjectionTopology } from './mapshaper-projection-topology';
+import { densifyPathByInterval } from './mapshaper-densify';
 
 export function preProjectionClip(dataset, src, dest, opts) {
   if (!isLatLngCRS(src) || opts.no_clip) return false;
   // rotated normal-aspect projections can generally have a thin slice removed
   // from the rotated antimeridian, instead of clipping them
   var cut = insertPreProjectionCuts(dataset, src, dest);
+  cut = insertProjectionTopologyCuts(dataset, dest) || cut;
   var clipped = false;
   var clipData;
   // experimental -- we can probably get away with just clamping some CRSs that
@@ -77,6 +80,24 @@ export function insertPreProjectionCuts(dataset, src, dest) {
   return false;
 }
 
+export function insertProjectionTopologyCuts(dataset, dest) {
+  var topology = getProjectionTopology(dest);
+  var pathLayers = dataset.layers.filter(layerHasPaths);
+  var cutPaths, geojson, clip;
+  if (!topology || pathLayers.length === 0) return false;
+  cutPaths = topology.seams
+    .filter(function(o) { return o.type == 'cut'; })
+    .reduce(function(memo, o) {
+      return memo.concat(getCutSeamPaths(o.coordinates));
+    }, []);
+  if (cutPaths.length === 0) return false;
+  geojson = getCutMaskGeoJSON(cutPaths);
+  if (geojson.features.length === 0) return false;
+  clip = importGeoJSON(geojson);
+  clipLayersInPlace(pathLayers, clip, dataset, 'erase', getInternalClipOpts());
+  return true;
+}
+
 function clampDataset(dataset, bbox) {
   transformPoints(dataset, function(x, y) {
     return [utils.clamp(x, bbox[0], bbox[2]), utils.clamp(y, bbox[1], bbox[3])];
@@ -110,6 +131,65 @@ function insertVerticalCut(dataset, lon) {
   var geojson = bboxToPolygon(bbox, {interval: 0.5});
   var clip = importGeoJSON(geojson);
   clipLayersInPlace(pathLayers, clip, dataset, 'erase', getInternalClipOpts());
+}
+
+// Duplicate a seam on the opposite edge of the standard longitude range.
+// This is needed when a rotated seam coincides with the antimeridian.
+function getCutSeamPaths(coords) {
+  var paths = [coords];
+  var onEdge = coords.every(function(p) {
+    return Math.abs(Math.abs(p[0]) - 180) < 1e-12;
+  });
+  if (onEdge) {
+    paths.push(coords.map(function(p) {
+      return [p[0] == 180 ? -180 : 180, p[1]];
+    }));
+  }
+  return paths;
+}
+
+// Convert seam paths to narrow polygon masks. Densification is required so
+// their projected edges follow the projection instead of becoming straight
+// chords between seam endpoints.
+function getCutMaskGeoJSON(paths) {
+  var e = 1e-8;
+  var features = paths.map(function(coords) {
+    var ring = getCutMaskRing(densifyPathByInterval(coords, 0.5), e);
+    return {
+      type: 'Feature',
+      properties: {},
+      geometry: {
+        type: 'Polygon',
+        coordinates: [ring]
+      }
+    };
+  }).filter(function(feature) {
+    return feature.geometry.coordinates[0].length > 3;
+  });
+  return {
+    type: 'FeatureCollection',
+    features: features
+  };
+}
+
+function getCutMaskRing(coords, width) {
+  var left = [];
+  var right = [];
+  for (var i = 0; i < coords.length; i++) {
+    var a = coords[i > 0 ? i - 1 : i];
+    var b = coords[i < coords.length - 1 ? i + 1 : i];
+    var dx = b[0] - a[0];
+    var dy = b[1] - a[1];
+    var len = Math.sqrt(dx * dx + dy * dy);
+    if (len === 0) continue;
+    var nx = -dy / len * width;
+    var ny = dx / len * width;
+    left.push([coords[i][0] + nx, coords[i][1] + ny]);
+    right.push([coords[i][0] - nx, coords[i][1] - ny]);
+  }
+  var ring = left.concat(right.reverse());
+  if (ring.length > 0) ring.push(ring[0].concat());
+  return ring;
 }
 
 function getInternalClipOpts() {

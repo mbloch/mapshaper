@@ -15,7 +15,7 @@ function hasOnePolygon(json) {
 
 function hasMeridians(arr) {
   return function(json) {
-    arr.every(lon => {
+    return arr.every(lon => {
       return json.features.some(feat => {
         return feat.properties.type == 'meridian' && feat.properties.value == lon;
       });
@@ -41,7 +41,7 @@ function projTest(str, test) {
     var cmd = `-i ${path} -proj ${str} densify -graticule -o graticule.json`;
     api.applyCommands(cmd, {}, function(err, out) {
       var json = JSON.parse(out['graticule.json']);
-      test(json);
+      assert(test(json));
       done();
     });
   });
@@ -51,12 +51,12 @@ describe('mapshaper-graticule.js', function () {
   // Test of graticule outlines and edge meridians
   // ... also should catch some projection failures
   describe('proj tests', function () {
-    projTest('+proj=merc', hasMeridians([-180, 180]));
+    projTest('+proj=merc', hasOutline);
     projTest('wgs84', hasMeridians([-180, 180]));
     projTest('aea', hasMeridians([-180, 180]));
     projTest('+proj=aea +lat_1=30 +lat_2=55', hasMeridians([-180, 180]));
     projTest('+proj=bertin1953', hasOutline);
-    projTest('+proj=cupola', hasMeridians([168.977, 180]));
+    projTest('+proj=cupola', hasMeridians([-168.977, 180]));
     projTest('+proj=ortho', hasOutline);
     projTest('+proj=ortho +lat_0=60 +lon_0=-120', hasOutline);
     projTest('+proj=nsper +lat_0=30 +lon_0=80 +h=1e8', hasOutline);

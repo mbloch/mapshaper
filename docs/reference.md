@@ -896,9 +896,9 @@ Other options: `name=` `target=`
 
 ### -graticule
 
-Create a graticule layer appropriate for a world map centered on longitude 0.
+Create a graticule layer appropriate for the target dataset's projection. Bounded and interrupted projections include matching outline paths.
 
-`polygon` Create an polygon enclosing the entire area of the graticule. Useful for creating background or outline shapes for clipped projections, like Robinson or Stereographic.
+`polygon` Create a polygon enclosing the entire area of the graticule. Useful for creating background or outline shapes for bounded and interrupted projections.
 
 `interval=` Specify the spacing of graticule lines (in degrees). Common options are: 5, 10, 15, 30, 45. Default is 10.
 
@@ -1172,6 +1172,12 @@ mapshaper countries.shp -proj +proj=wintri +lon_0=10 -o out.shp
 # Shortcut notation for the above projection
 mapshaper countries.shp -proj wintri +lon_0=10 -o out.shp
 
+# Create a forward-only Interrupted Goode Homolosine world map
+mapshaper countries.shp -proj +proj=igh densify -o out.geojson
+
+# Create an oceanic Interrupted Mollweide map
+mapshaper countries.shp -proj +proj=imoll_o +lon_0=-160 densify -o out.geojson
+
 # Convert an unprojected U.S. Shapefile into a composite projection with Alaska
 # and Hawaii repositioned and rescaled to fit in the lower left corner.
 # Show Puerto Rico and the U.S. Virgin Islands
@@ -1180,6 +1186,8 @@ mapshaper us_states.shp \
   -proj albersusa +PR +VI +AK.lon_0=-141 +AK.scale=0.4 \
   -o out.shp
 ```
+
+Interrupted Goode Homolosine (`+proj=igh`, `+proj=igh_o`) and Interrupted Mollweide (`+proj=imoll`, `+proj=imoll_o`) support forward vector projection only. They cannot be used as source CRSes, do not support raster reprojection, and cannot be represented by generated Shapefile `.prj` files. The `_o` variants are oceanic layouts and are normally used with `+lon_0=-160`.
 
 ### -rectangle
 

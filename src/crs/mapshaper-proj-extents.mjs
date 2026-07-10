@@ -12,6 +12,10 @@ import { getDatasetBounds } from '../dataset/mapshaper-dataset-utils';
 import { rotateDataset } from '../commands/mapshaper-rotate';
 import { projectDataset } from '../commands/mapshaper-proj';
 import { polygonsToLines } from '../commands/mapshaper-lines';
+import { isInterruptedProjection } from './mapshaper-projection-topology';
+import { editShapes } from '../paths/mapshaper-shape-utils';
+import { dissolveArcs } from '../paths/mapshaper-arc-dissolve';
+import geom from '../geom/mapshaper-geom';
 
 export function getClippingDataset(src, dest, opts) {
   return getUnprojectedBoundingPolygon(src, dest, opts);
@@ -48,18 +52,48 @@ export function getPolygonDataset(src, dest, opts) {
     dataset = getBoundingRectangle(dest, {clip_bbox: [-180,-90,180,90]});
   }
   projectDataset(dataset, src, dest, {no_clip: false, quiet: true});
+  if (isInterruptedProjection(dest)) {
+    removeTinyFootprintRings(dataset);
+  }
   return dataset;
 }
 
 // Return projected outline of clipped projections
 export function getOutlineDataset(src, dest, opts) {
   var dataset = getUnprojectedBoundingPolygon(src, dest, opts);
+  if (!dataset && isInterruptedProjection(dest)) {
+    dataset = getBoundingRectangle(dest, {clip_bbox: [-180, -90, 180, 90]});
+  }
   if (dataset) {
     // project, with cutting & cleanup
     projectDataset(dataset, src, dest, {no_clip: false, quiet: true});
+    if (isInterruptedProjection(dest)) {
+      removeTinyFootprintRings(dataset);
+    }
     dataset.layers[0].geometry_type = 'polyline';
   }
   return dataset || null;
+}
+
+// Narrow pre-projection gutters can leave zero-area rings after a rotated
+// world boundary is cleaned. Remove only rings that are negligible relative
+// to the main footprint; legitimate disconnected lobes are retained.
+function removeTinyFootprintRings(dataset) {
+  var lyr = dataset.layers[0];
+  var arcs = dataset.arcs;
+  var maxArea = 0;
+  lyr.shapes.forEach(function(shp) {
+    (shp || []).forEach(function(path) {
+      maxArea = Math.max(maxArea, Math.abs(geom.getPathArea(path, arcs)));
+    });
+  });
+  if (maxArea === 0) return;
+  editShapes(lyr.shapes, function(path) {
+    if (Math.abs(geom.getPathArea(path, arcs)) <= maxArea * 1e-12) {
+      return null;
+    }
+  });
+  dissolveArcs(dataset);
 }
 
 function getBoundingRectangle(dest, opts) {
