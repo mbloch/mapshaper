@@ -900,6 +900,8 @@ Create a graticule layer appropriate for the target dataset's projection. Bounde
 
 `polygon` Create a polygon enclosing the entire area of the graticule. Useful for creating background or outline shapes for bounded and interrupted projections.
 
+`outline` Create the same boundary as the `polygon` option, as a polyline layer.
+
 `interval=` Specify the spacing of graticule lines (in degrees). Common options are: 5, 10, 15, 30, 45. Default is 10.
 
 ### -grid

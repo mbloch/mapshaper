@@ -105,26 +105,27 @@ Mapshaper supports four interrupted world layouts:
 - `+proj=igh_o` — Interrupted Goode Homolosine, oceanic view
 - `+proj=imoll_o` — Interrupted Mollweide, oceanic view
 
-The oceanic layouts are normally used with `+lon_0=-160`. Mapshaper splits lines and polygons at each projection's lobe boundaries before projecting them, so features do not acquire straight segments across the gaps.
+![Interrupted Mollweide world projection](/docs/images/interrupted-mollweide.png)
+
+The oceanic layouts are normally used with `+lon_0=-160`.
 
 ```bash
-# Project world polygons; densify improves curved long edges
-mapshaper world.geojson -proj +proj=igh densify -o world-igh.geojson
+# Project world polygons using Goode Homolosine; add a graticule
+mapshaper world.geojson \
+  -proj +proj=igh \
+  -o world-igh.geojson \
+  -graticule \
+  -o graticule-igh.geojson
 
-# Create an ocean-emphasis Interrupted Mollweide map
-mapshaper world.geojson -proj +proj=imoll_o +lon_0=-160 densify \
-  -o world-imoll-o.geojson
-
-# Create matching interrupted graticule lines and a neatline
-mapshaper world.geojson -proj +proj=igh \
-  -graticule -o target=graticule graticule.geojson
-
-# Create a polygon matching the interrupted map footprint
-mapshaper world.geojson -proj +proj=igh \
-  -graticule polygon -o target=polygon outline.geojson
+# Create an ocean-emphasis Interrupted Mollweide layer with a neatline
+mapshaper world.geojson \
+  -proj +proj=imoll_o +lon_0=-160 \
+  -o world-imoll-o.fgb \
+  -graticule outline \
+  -o neatline-imoll-o.fgb
 ```
 
-The interrupted projections are forward-only and support vector points, polylines, and polygons. An interrupted dataset cannot be projected back to longitude/latitude, and raster reprojection is not supported. Shapefile export can write projected coordinates but cannot generate a `.prj` file for these custom CRSes. Preserve the original PROJ definition separately.
+The interrupted projections are forward-only. An interrupted dataset cannot be projected back to longitude/latitude, and raster reprojection is not supported. Shapefile export can write projected coordinates but cannot generate a `.prj` file for these custom CRSes.
 
 ## Finding CRS definitions
 

@@ -1,3 +1,7 @@
+v0.7.44
+* Added support for several interrupted projections.
+* Added `-graticule outline` option, for creating a neatline around a bounded world map projection.
+
 v0.7.43
 * Most commands can now target layers in different datasets.
 
