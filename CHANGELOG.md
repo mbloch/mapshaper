@@ -1,3 +1,6 @@
+v0.7.43
+* Most commands can now target layers in different datasets.
+
 v0.7.42
 * The ruler tool can measure the length of several connected segments by shift-clicking.
 * Fixed several projection formula issues by updating the mproj library.
