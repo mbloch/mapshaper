@@ -18294,7 +18294,7 @@
       var mode = gui.getMode();
       var interactionMode = gui.interaction && gui.interaction.getMode();
       return !'selection_tool,box_tool,rectangle_tool,drawing_tool'.includes(mode) &&
-        !'label_style,point_style,line_style,polygon_style'.includes(interactionMode);
+        !'label_style,point_style,line_style,polygon_style,ruler'.includes(interactionMode);
     }
 
     function getBoxData(e1, e2) {
@@ -22669,6 +22669,7 @@ GUI and setting the size and crop of SVG output.</p><div><input type="text" clas
     var geodesicPath = createSvgNode('path');
     var startMarker = createSvgNode('circle');
     var endMarker = createSvgNode('circle');
+    var vertexMarkers = [];
     var popup = El('div').addClass('ruler-popup rollover').appendTo(parent).hide();
     var content = El('div').addClass('ruler-popup-content').appendTo(popup);
     var closeBtn = El('button').addClass('label-style-close ruler-close-btn').appendTo(popup).text('×');
@@ -22676,6 +22677,7 @@ GUI and setting the size and crop of SVG output.</p><div><input type="text" clas
     var _on = false;
     var startPoint = null;
     var pointerPoint = null;
+    var rulerPoints = [];
     var placed = false;
     var draggingEndpoint = null;
     var lastValidDragPoint = null;
@@ -22803,8 +22805,13 @@ GUI and setting the size and crop of SVG output.</p><div><input type="text" clas
       }
       if (!startPoint || placed) {
         startPoint = point;
+        rulerPoints = [point];
         pointerPoint = null;
         placed = false;
+      } else if (e.shiftKey) {
+        rulerPoints.push(point);
+        startPoint = rulerPoints[0];
+        pointerPoint = null;
       } else {
         pointerPoint = point;
         placed = true;
@@ -22819,6 +22826,7 @@ GUI and setting the size and crop of SVG output.</p><div><input type="text" clas
     function clearRuler() {
       startPoint = null;
       pointerPoint = null;
+      rulerPoints = [];
       placed = false;
       draggingEndpoint = null;
       lastValidDragPoint = null;
@@ -22827,6 +22835,7 @@ GUI and setting the size and crop of SVG output.</p><div><input type="text" clas
       clearSvgPath(geodesicPath);
       hideMarker(startMarker);
       hideMarker(endMarker);
+      hideVertexMarkers();
       popup.hide();
     }
 
@@ -22837,30 +22846,31 @@ GUI and setting the size and crop of SVG output.</p><div><input type="text" clas
     }
 
     function render() {
-      var endPoint = pointerPoint;
+      var path = getRulerPath();
+      var endPoint = path[path.length - 1];
       var measurement;
       syncOverlaySize();
       if (!startPoint || !endPoint) {
         clearSvgPath(directPath);
         clearSvgPath(geodesicPath);
-        drawMarker(startMarker, startPoint);
+        drawRulerPointMarkers(false);
         hideMarker(endMarker);
         popup.hide();
         return;
       }
 
-      if (!startPoint.valid || !endPoint.valid) {
+      if (!path.every(pointIsValid)) {
         clearSvgPath(directPath);
         clearSvgPath(geodesicPath);
-        drawMarker(startMarker, startPoint.valid ? startPoint : null, false);
+        drawRulerPointMarkers(false);
         drawMarker(endMarker, placed && endPoint.valid ? endPoint : null, false);
         showOutOfRangeNote();
         return;
       }
 
-      measurement = getMeasurement(startPoint, endPoint);
-      drawRulerLines(startPoint, endPoint, measurement);
-      drawMarker(startMarker, startPoint, measurement.isLatLng);
+      measurement = getMeasurement(path);
+      drawRulerLines(path, measurement);
+      drawRulerPointMarkers(measurement.isLatLng);
       if (placed) {
         drawMarker(endMarker, endPoint, measurement.isLatLng);
       } else {
@@ -22869,13 +22879,21 @@ GUI and setting the size and crop of SVG output.</p><div><input type="text" clas
       showPopup(measurement);
     }
 
-    function drawRulerLines(a, b, measurement) {
+    function getRulerPath() {
+      return rulerPoints.concat(pointerPoint || []);
+    }
+
+    function pointIsValid(point) {
+      return !!point && point.valid;
+    }
+
+    function drawRulerLines(path, measurement) {
       if (measurement.isLatLng) {
-        drawPath(geodesicPath, getGeodesicPixels(a, b));
+        drawPath(geodesicPath, getGeodesicPathPixels(path));
         clearSvgPath(directPath);
       } else {
-        drawPath(directPath, [a.display, b.display]);
-        drawPath(geodesicPath, measurement.greatCircleMeters ? getGeodesicPixels(a, b) : null);
+        drawPath(directPath, path.map(function(point) { return point.display; }));
+        drawPath(geodesicPath, measurement.greatCircleMeters ? getGeodesicPathPixels(path) : null);
       }
     }
 
@@ -22904,10 +22922,21 @@ GUI and setting the size and crop of SVG output.</p><div><input type="text" clas
     }
 
     function getHitEndpoint(x, y) {
-      var startDist = getEndpointPixelDistance(startPoint, x, y);
+      var endpoint = null;
+      var minDist = Infinity;
+      rulerPoints.forEach(function(point, i) {
+        var dist = getEndpointPixelDistance(point, x, y);
+        if (dist < minDist) {
+          minDist = dist;
+          endpoint = {type: 'fixed', index: i};
+        }
+      });
       var endDist = getEndpointPixelDistance(pointerPoint, x, y);
-      if (startDist > ENDPOINT_HIT_RADIUS && endDist > ENDPOINT_HIT_RADIUS) return null;
-      return startDist <= endDist ? 'start' : 'end';
+      if (endDist < minDist) {
+        minDist = endDist;
+        endpoint = {type: 'end'};
+      }
+      return minDist <= ENDPOINT_HIT_RADIUS ? endpoint : null;
     }
 
     function getEndpointPixelDistance(point, x, y) {
@@ -22918,12 +22947,13 @@ GUI and setting the size and crop of SVG output.</p><div><input type="text" clas
     }
 
     function getEndpoint(endpoint) {
-      return endpoint == 'start' ? startPoint : pointerPoint;
+      return endpoint.type == 'fixed' ? rulerPoints[endpoint.index] : pointerPoint;
     }
 
     function setEndpoint(endpoint, point) {
-      if (endpoint == 'start') {
-        startPoint = point;
+      if (endpoint.type == 'fixed') {
+        rulerPoints[endpoint.index] = point;
+        startPoint = rulerPoints[0] || null;
       } else {
         pointerPoint = point;
       }
@@ -22955,9 +22985,10 @@ GUI and setting the size and crop of SVG output.</p><div><input type="text" clas
     }
 
     function reprojectStoredRulerPoints() {
-      startPoint = reprojectRulerPoint(startPoint);
+      rulerPoints = rulerPoints.map(reprojectRulerPoint);
+      startPoint = rulerPoints[0] || null;
       pointerPoint = reprojectRulerPoint(pointerPoint);
-      if (startPoint && !startPoint.valid || pointerPoint && !pointerPoint.valid) {
+      if (!getRulerPath().every(pointIsValid)) {
         showOutOfRangeNote();
       }
       render();
@@ -23043,10 +23074,10 @@ GUI and setting the size and crop of SVG output.</p><div><input type="text" clas
         geom.distance2D(data[0], data[1], fwd[0], fwd[1]) <= tolerance;
     }
 
-    function getMeasurement(a, b) {
-      var isLatLng = internal.isLatLngCRS(a.sourceCRS);
-      var projectedMeters = isLatLng ? null : getProjectedDistanceMeters(a, b);
-      var greatCircleMeters = getGreatCircleDistanceMeters(a, b);
+    function getMeasurement(path) {
+      var isLatLng = internal.isLatLngCRS(path[0].sourceCRS);
+      var projectedMeters = isLatLng ? null : getProjectedPathDistanceMeters(path);
+      var greatCircleMeters = getGreatCirclePathDistanceMeters(path);
       var unit = getDistanceUnit(projectedMeters || greatCircleMeters || 0);
       var labels = [];
 
@@ -23066,15 +23097,54 @@ GUI and setting the size and crop of SVG output.</p><div><input type="text" clas
       };
     }
 
+    function getProjectedPathDistanceMeters(path) {
+      return sumPathDistance(path, getProjectedDistanceMeters);
+    }
+
     function getProjectedDistanceMeters(a, b) {
       var toMeter = a.sourceCRS && a.sourceCRS.to_meter || 1;
       if (!a.data || !b.data) return null;
       return geom.distance2D(a.data[0], a.data[1], b.data[0], b.data[1]) * toMeter;
     }
 
+    function getGreatCirclePathDistanceMeters(path) {
+      return sumPathDistance(path, getGreatCircleDistanceMeters);
+    }
+
     function getGreatCircleDistanceMeters(a, b) {
       if (!a.lngLat || !b.lngLat) return null;
       return geom.greatCircleDistance(a.lngLat[0], a.lngLat[1], b.lngLat[0], b.lngLat[1]);
+    }
+
+    function sumPathDistance(path, calcSegmentDistance) {
+      var sum = 0;
+      var dist;
+      for (var i = 1; i < path.length; i++) {
+        dist = calcSegmentDistance(path[i - 1], path[i]);
+        if (dist === null) return null;
+        sum += dist;
+      }
+      return sum;
+    }
+
+    function getGeodesicPathPixels(path) {
+      var points = [];
+      var segment;
+      for (var i = 1; i < path.length; i++) {
+        segment = getGeodesicPixels(path[i - 1], path[i]);
+        appendPathSegment(points, segment);
+      }
+      return points.length > 1 ? points : null;
+    }
+
+    function appendPathSegment(points, segment) {
+      if (!segment) return;
+      segment.forEach(function(point, i) {
+        if (i === 0 && points.length > 0 && point && points[points.length - 1]) {
+          return;
+        }
+        points.push(point);
+      });
     }
 
     function getGeodesicPixels(a, b) {
@@ -23262,6 +23332,31 @@ GUI and setting the size and crop of SVG output.</p><div><input type="text" clas
 
     function clearSvgPath(path) {
       path.removeAttribute('d');
+    }
+
+    function drawRulerPointMarkers(useGreatCircleStyle) {
+      drawMarker(startMarker, startPoint && startPoint.valid ? startPoint : null, useGreatCircleStyle);
+      rulerPoints.slice(1).forEach(function(point, i) {
+        drawMarker(getVertexMarker(i), point && point.valid ? point : null, useGreatCircleStyle);
+      });
+      for (var i = Math.max(0, rulerPoints.length - 1); i < vertexMarkers.length; i++) {
+        hideMarker(vertexMarkers[i]);
+      }
+    }
+
+    function getVertexMarker(i) {
+      var marker;
+      while (vertexMarkers.length <= i) {
+        marker = createSvgNode('circle');
+        marker.classList.add('ruler-endpoint');
+        svg.insertBefore(marker, endMarker);
+        vertexMarkers.push(marker);
+      }
+      return vertexMarkers[i];
+    }
+
+    function hideVertexMarkers() {
+      vertexMarkers.forEach(hideMarker);
     }
 
     function drawMarker(marker, point, useGreatCircleStyle) {

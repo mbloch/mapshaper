@@ -27172,7 +27172,8 @@
 	        MAXROUND = 20,
 	        EPSILON = 1e-12,
 	        round = 0,
-	        iter, D, C, f1, f2, f1p, f1l, f2p, f2l, dp, dl, sl, sp, cp, cl, x, y;
+	        iter, D, C, denom, determinant, f1, f2, f1p, f1l, f2p, f2l, dp, dl,
+	        sl, sp, cp, cl, x, y;
 
 	    if ((fabs(xy.x) < EPSILON) && (fabs(xy.y) < EPSILON )) {
 	      lp.phi = 0;
@@ -27189,7 +27190,12 @@
 	        sp = sin(lp.phi); cp = cos(lp.phi);
 	        D = cp * cl;
 	        C = 1 - D * D;
-	        D = acos(D) / pow(C, 1.5);
+	        denom = pow(C, 1.5);
+	        if (denom === 0) {
+	          i_error();
+	          return;
+	        }
+	        D = acos(D) / denom;
 	        f1 = 2 * D * C * cp * sl;
 	        f2 = D * C * sp;
 	        f1p = 2 * (sl * cl * sp * cp / C - D * sp * sl);
@@ -27205,10 +27211,14 @@
 	          f2l *= 0.5;
 	        }
 	        f1 -= xy.x; f2 -= xy.y;
-	        dl = (f2 * f1p - f1 * f2p) / (dp = f1p * f2l - f2p * f1l);
-	        dp = (f1 * f2l - f2 * f1l) / dp;
-	        while (dl > M_PI) dl -= M_PI; /* set to interval [-M_PI, M_PI]  */
-	        while (dl < -M_PI) dl += M_PI; /* set to interval [-M_PI, M_PI]  */
+	        determinant = f1p * f2l - f2p * f1l;
+	        if (determinant === 0) {
+	          i_error();
+	          return;
+	        }
+	        dl = (f2 * f1p - f1 * f2p) / determinant;
+	        dp = (f1 * f2l - f2 * f1l) / determinant;
+	        dl %= M_PI; /* set to interval [-M_PI, M_PI] */
 	        lp.phi -= dp; lp.lam -= dl;
 	      } while ((fabs(dp) > EPSILON || fabs(dl) > EPSILON) && (iter++ < MAXITER));
 	      if (lp.phi > M_HALFPI) lp.phi -= 2*(lp.phi-M_HALFPI); /* correct if symmetrical solution for Aitoff */
@@ -28105,18 +28115,24 @@
 	  function s_inv(xy, lp) {
 	    var EPS = 1e-9,
 	        NITER = 12,
-	        paramLat = xy.y,
+	        MAX_Y = 1.3173627591574,
+	        y = Math.max(-MAX_Y, Math.min(MAX_Y, xy.y)),
+	        paramLat = y,
 	        paramLatSq, paramLatPow6, fy, fpy, dlat, i;
 
 	    for (i = 0; i < NITER; ++i) {
 	      paramLatSq = paramLat * paramLat;
 	      paramLatPow6 = paramLatSq * paramLatSq * paramLatSq;
-	      fy = paramLat * (A1 + A2 * paramLatSq + paramLatPow6 * (A3 + A4 * paramLatSq)) - xy.y;
+	      fy = paramLat * (A1 + A2 * paramLatSq + paramLatPow6 * (A3 + A4 * paramLatSq)) - y;
 	      fpy = A1 + 3 * A2 * paramLatSq + paramLatPow6 * (7 * A3 + 9 * A4 * paramLatSq);
 	      paramLat -= dlat = fy / fpy;
 	      if (Math.abs(dlat) < EPS) {
 	          break;
 	      }
+	    }
+	    if (i === NITER) {
+	      i_error();
+	      return;
 	    }
 	    paramLatSq = paramLat * paramLat;
 	    paramLatPow6 = paramLatSq * paramLatSq * paramLatSq;
@@ -29495,12 +29511,236 @@
 	}
 
 
+	pj_add(pj_igh, 'igh', 'Interrupted Goode Homolosine', 'PCyl, Sph., no inv.');
+
+	// Forward-only implementation of the standard land-emphasis layout.
+	// Projection regions and source-geometry cutting are separate concerns:
+	// mproj routes points; clients such as Mapshaper must split paths at the
+	// interruption meridians before projecting them.
+	function pj_igh(P) {
+	  var D2R = M_PI / 180,
+	      PHI_LIM = (40 + 44 / 60 + 11.8 / 3600) * D2R,
+	      LON_NORTH = -40 * D2R,
+	      LON_SOUTH_1 = -100 * D2R,
+	      LON_SOUTH_2 = -20 * D2R,
+	      LON_SOUTH_3 = 80 * D2R,
+	      sinuFwd, mollFwd, yCor;
+
+	  P.es = 0;
+	  pj_sinu(P);
+	  sinuFwd = P.fwd;
+	  pj_moll(P);
+	  mollFwd = P.fwd;
+	  yCor = getYCorr();
+	  P.inv = null;
+
+	  P.fwd = function(lp, xy) {
+	    var phi = lp.phi,
+	        lon0 = getLobeCenter(lp),
+	        useMoll = fabs(phi) >= PHI_LIM;
+	    lp.lam -= lon0;
+	    if (useMoll) {
+	      mollFwd(lp, xy);
+	      xy.y -= phi > 0 ? yCor : -yCor;
+	    } else {
+	      sinuFwd(lp, xy);
+	    }
+	    xy.x += lon0;
+	  };
+
+	  function getLobeCenter(lp) {
+	    if (lp.phi >= 0) {
+	      return lp.lam <= LON_NORTH ? -100 * D2R : 30 * D2R;
+	    }
+	    if (lp.lam <= LON_SOUTH_1) return -160 * D2R;
+	    if (lp.lam <= LON_SOUTH_2) return -60 * D2R;
+	    if (lp.lam <= LON_SOUTH_3) return 20 * D2R;
+	    return 140 * D2R;
+	  }
+
+	  function getYCorr() {
+	    var lp = {lam: 0, phi: PHI_LIM},
+	        sinuXY = {},
+	        mollXY = {};
+	    sinuFwd({lam: lp.lam, phi: lp.phi}, sinuXY);
+	    mollFwd({lam: lp.lam, phi: lp.phi}, mollXY);
+	    return mollXY.y - sinuXY.y;
+	  }
+	}
+
+
+	pj_add(pj_igh_o, 'igh_o', 'Interrupted Goode Homolosine Oceanic View', 'PCyl, Sph., no inv.');
+
+	function pj_igh_o(P) {
+	  var D2R = M_PI / 180,
+	      PHI_LIM = (40 + 44 / 60 + 11.8 / 3600) * D2R,
+	      NORTH_WEST = -90 * D2R,
+	      NORTH_EAST = 60 * D2R,
+	      SOUTH_WEST = -60 * D2R,
+	      SOUTH_EAST = 90 * D2R,
+	      sinuFwd, mollFwd, yCor;
+
+	  P.es = 0;
+	  pj_sinu(P);
+	  sinuFwd = P.fwd;
+	  pj_moll(P);
+	  mollFwd = P.fwd;
+	  yCor = getYCorr();
+	  P.inv = null;
+
+	  P.fwd = function(lp, xy) {
+	    var phi = lp.phi,
+	        lon0 = getLobeCenter(lp),
+	        useMoll = fabs(phi) >= PHI_LIM;
+	    lp.lam -= lon0;
+	    if (useMoll) {
+	      mollFwd(lp, xy);
+	      xy.y -= phi > 0 ? yCor : -yCor;
+	    } else {
+	      sinuFwd(lp, xy);
+	    }
+	    xy.x += lon0;
+	  };
+
+	  function getLobeCenter(lp) {
+	    if (lp.phi >= 0) {
+	      if (lp.lam <= NORTH_WEST) return -140 * D2R;
+	      if (lp.lam >= NORTH_EAST) return 130 * D2R;
+	      return -10 * D2R;
+	    }
+	    if (lp.lam <= SOUTH_WEST) return -110 * D2R;
+	    if (lp.lam >= SOUTH_EAST) return 150 * D2R;
+	    return 20 * D2R;
+	  }
+
+	  function getYCorr() {
+	    var sinuXY = {},
+	        mollXY = {};
+	    sinuFwd({lam: 0, phi: PHI_LIM}, sinuXY);
+	    mollFwd({lam: 0, phi: PHI_LIM}, mollXY);
+	    return mollXY.y - sinuXY.y;
+	  }
+	}
+
+
+	pj_add(pj_imoll, 'imoll', 'Interrupted Mollweide', 'PCyl, Sph., no inv.');
+
+	function pj_imoll(P) {
+	  var D2R = M_PI / 180,
+	      EPS = 1e-10,
+	      centers = [-100, 30, -160, -60, 20, 140].map(toRadians),
+	      offsets = centers.concat(),
+	      mollFwd;
+
+	  P.es = 0;
+	  pj_moll(P);
+	  mollFwd = P.fwd;
+	  adjustOffsets();
+	  P.inv = null;
+
+	  P.fwd = function(lp, xy) {
+	    var zone = getZone(lp);
+	    projectZone(zone, lp.lam, lp.phi, xy);
+	  };
+
+	  function getZone(lp) {
+	    if (lp.phi >= 0) return lp.lam <= -40 * D2R ? 0 : 1;
+	    if (lp.lam <= -100 * D2R) return 2;
+	    if (lp.lam <= -20 * D2R) return 3;
+	    if (lp.lam <= 80 * D2R) return 4;
+	    return 5;
+	  }
+
+	  function projectZone(zone, lam, phi, xy) {
+	    mollFwd({lam: lam - centers[zone], phi: phi}, xy);
+	    xy.x += offsets[zone];
+	  }
+
+	  function getZoneOffset(zone1, zone2, lam, phi1, phi2) {
+	    var xy1 = {}, xy2 = {};
+	    projectZone(zone1, lam, phi1, xy1);
+	    projectZone(zone2, lam, phi2, xy2);
+	    return xy2.x - xy1.x;
+	  }
+
+	  function adjustOffsets() {
+	    offsets[2] += getZoneOffset(2, 0, -160 * D2R, -EPS, EPS);
+	    offsets[1] += getZoneOffset(1, 0, -40 * D2R, EPS, EPS);
+	    offsets[3] += getZoneOffset(3, 0, -100 * D2R, -EPS, EPS);
+	    offsets[4] += getZoneOffset(4, 1, -20 * D2R, -EPS, EPS);
+	    offsets[5] += getZoneOffset(5, 1, 80 * D2R, -EPS, EPS);
+	  }
+
+	  function toRadians(degrees) {
+	    return degrees * D2R;
+	  }
+	}
+
+
+	pj_add(pj_imoll_o, 'imoll_o', 'Interrupted Mollweide Oceanic View', 'PCyl, Sph., no inv.');
+
+	function pj_imoll_o(P) {
+	  var D2R = M_PI / 180,
+	      EPS = 1e-10,
+	      centers = [-140, -10, 130, -110, 20, 150].map(toRadians),
+	      offsets = centers.concat(),
+	      mollFwd;
+
+	  P.es = 0;
+	  pj_moll(P);
+	  mollFwd = P.fwd;
+	  adjustOffsets();
+	  P.inv = null;
+
+	  P.fwd = function(lp, xy) {
+	    var zone = getZone(lp);
+	    projectZone(zone, lp.lam, lp.phi, xy);
+	  };
+
+	  function getZone(lp) {
+	    if (lp.phi >= 0) {
+	      if (lp.lam <= -90 * D2R) return 0;
+	      if (lp.lam >= 60 * D2R) return 2;
+	      return 1;
+	    }
+	    if (lp.lam <= -60 * D2R) return 3;
+	    if (lp.lam >= 90 * D2R) return 5;
+	    return 4;
+	  }
+
+	  function projectZone(zone, lam, phi, xy) {
+	    mollFwd({lam: lam - centers[zone], phi: phi}, xy);
+	    xy.x += offsets[zone];
+	  }
+
+	  function getZoneOffset(zone1, zone2, lam, phi1, phi2) {
+	    var xy1 = {}, xy2 = {};
+	    projectZone(zone1, lam, phi1, xy1);
+	    projectZone(zone2, lam, phi2, xy2);
+	    return xy2.x - xy1.x;
+	  }
+
+	  function adjustOffsets() {
+	    offsets[1] += getZoneOffset(1, 0, -90 * D2R, EPS, EPS);
+	    offsets[2] += getZoneOffset(2, 1, 60 * D2R, EPS, EPS);
+	    offsets[3] += getZoneOffset(3, 0, -180 * D2R, -EPS, EPS);
+	    offsets[4] += getZoneOffset(4, 1, -60 * D2R, -EPS, EPS);
+	    offsets[5] += getZoneOffset(5, 2, 90 * D2R, -EPS, EPS);
+	  }
+
+	  function toRadians(degrees) {
+	    return degrees * D2R;
+	  }
+	}
+
+
 	pj_add(pj_krovak, 'krovak', 'Krovak', 'PCyl., Ellps.');
 
 	function pj_krovak(P) {
 	  var u0, n0, g;
 	  var alpha, k, n, rho0, ad, czech;
 	  var EPS = 1e-15;
+	  var MAX_ITER = 100;
 	  var S45 = 0.785398163397448; /* 45 deg */
 	  var S90 = 1.570796326794896; /* 90 deg */
 	  var UQ = 1.04216856380474;   /* DU(2, 59, 42, 42.69689) */
@@ -29559,7 +29799,7 @@
 
 	  function e_inv(xy, lp) {
 	    var u, deltav, s, d, eps, rho, fi1, xy0;
-	    var ok;
+	    var i;
 	    xy0 = xy.x;
 	    xy.x = xy.y;
 	    xy.y = xy0;
@@ -29569,21 +29809,28 @@
 	    rho = sqrt(xy.x * xy.x + xy.y * xy.y);
 	    eps = atan2(xy.y, xy.x);
 	    d = eps / sin(S0);
-	    s = 2 * (atan(  pow(rho0 / rho, 1 / n) * tan(S0 / 2 + S45)) - S45);
+	    if (rho === 0) {
+	      s = M_HALFPI;
+	    } else {
+	      s = 2 * (atan(pow(rho0 / rho, 1 / n) * tan(S0 / 2 + S45)) - S45);
+	    }
 	    u = asin(cos(ad) * sin(s) - sin(ad) * cos(s) * cos(d));
 	    deltav = asin(cos(s) * sin(d) / cos(u));
 	    lp.lam = P.lam0 - deltav / alpha;
 
 	    /* ITERATION FOR lp.phi */
 	    fi1 = u;
-	    ok = 0;
-	    do {
+	    for (i = MAX_ITER; i; --i) {
 	      lp.phi = 2 * (atan(pow( k, -1 / alpha) * pow( tan(u / 2 + S45), 1 / alpha) *
 	        pow( (1 + P.e * sin(fi1)) / (1 - P.e * sin(fi1)) , P.e / 2))  - S45);
-	      if (fabs(fi1 - lp.phi) < EPS) ok=1;
+	      if (fabs(fi1 - lp.phi) < EPS) break;
 	      fi1 = lp.phi;
-	   } while (ok===0);
-	   lp.lam -= P.lam0;
+	    }
+	    if (!i) {
+	      i_error();
+	      return;
+	    }
+	    lp.lam -= P.lam0;
 	  }
 	}
 
@@ -30499,6 +30746,7 @@
 	  C3 = (9 * B3),
 	  C4 = (11 * B4),
 	  EPS = 1e-11,
+	  MAX_ITER = 100,
 	  MAX_Y = (0.8707 * 0.52 * M_PI);
 
 	  P.es = 0;
@@ -30515,7 +30763,7 @@
 
 	  function s_inv(xy, lp) {
 	    var x = xy.x, y = xy.y;
-	    var yc, tol, y2, y4, f, fder;
+	    var yc, tol, y2, y4, f, fder, i;
 	    if (y > MAX_Y) {
 	      y = MAX_Y;
 	    } else if (y < -MAX_Y) {
@@ -30523,7 +30771,7 @@
 	    }
 
 	    yc = y;
-	      for (;;) { /* Newton-Raphson */
+	    for (i = MAX_ITER; i; --i) { /* Newton-Raphson */
 	      y2 = yc * yc;
 	      y4 = y2 * y2;
 	      f = (yc * (B0 + y2 * (B1 + y4 * (B2 + B3 * y2 + B4 * y4)))) - y;
@@ -30532,6 +30780,10 @@
 	      if (fabs(tol) < EPS) {
 	          break;
 	      }
+	    }
+	    if (!i) {
+	      i_error();
+	      return;
 	    }
 	    lp.phi = yc;
 	    y2 = yc * yc;
@@ -30555,6 +30807,7 @@
 	      C2 = (11 * B2),
 	      C3 = (13 * B3),
 	      EPS = 1e-11,
+	      MAX_ITER = 100,
 	      MAX_Y = (0.84719 * 0.535117535153096 * M_PI);
 
 	  P.es = 0;
@@ -30572,14 +30825,14 @@
 
 	  function s_inv(xy, lp) {
 	    var x = xy.x, y = xy.y;
-	    var yc, tol, y2, y4, y6, f, fder;
+	    var yc, tol, y2, y4, y6, f, fder, i;
 	    if (y > MAX_Y) {
 	      y = MAX_Y;
 	    } else if (y < -MAX_Y) {
 	      y = -MAX_Y;
 	    }
 	    yc = y;
-	    for (;;) { /* Newton-Raphson */
+	    for (i = MAX_ITER; i; --i) { /* Newton-Raphson */
 	      y2 = yc * yc;
 	      y4 = y2 * y2;
 	      f = (yc * (B0 + y4 * y4 * (B1 + B2 * y2 + B3 * y4))) - y;
@@ -30588,6 +30841,10 @@
 	      if (fabs(tol) < EPS) {
 	        break;
 	      }
+	    }
+	    if (!i) {
+	      i_error();
+	      return;
 	    }
 	    lp.phi = yc;
 	    y2 = yc * yc;
@@ -32088,7 +32345,9 @@
 	      RC1 = 0.08726646259971647884,
 	      NODES = 18,
 	      ONEEPS = 1.000001,
-	      EPS = 1e-8;
+	      EPS = 1e-10,
+	      LAM_EPS = 1e-8,
+	      MAX_ITER = 100;
 
 	  P.es = 0;
 	  P.fwd = s_fwd;
@@ -32096,9 +32355,9 @@
 
 	  function s_fwd(lp, xy) {
 	    var i, dphi;
-	    i = floor((dphi = fabs(lp.phi)) * C1);
+	    i = floor((dphi = fabs(lp.phi)) * C1 + 1e-15);
 	    if (i < 0) f_error();
-	    if (i >= NODES) i = NODES - 1;
+	    if (i >= NODES) i = NODES;
 	    dphi = RAD_TO_DEG * (dphi - RC1 * i);
 	    xy.x = V(X[i], dphi) * FXC * lp.lam;
 	    xy.y = V(Y[i], dphi) * FYC;
@@ -32106,7 +32365,7 @@
 	  }
 
 	  function s_inv(xy, lp) {
-	    var t, t1, T, i;
+	    var t, t1, T, i, iterations;
 	    lp.lam = xy.x / FXC;
 	    lp.phi = fabs(xy.y / FYC);
 	    if (lp.phi >= 1) { /* simple pathologic cases */
@@ -32131,13 +32390,24 @@
 	      t = 5 * (lp.phi - T[0])/(Y[i+1][0] - T[0]);
 	      /* make into root */
 	      T[0] -= lp.phi;
-	      for (;;) { /* Newton-Raphson reduction */
+	      for (iterations = MAX_ITER; iterations; --iterations) { /* Newton-Raphson reduction */
 	        t -= t1 = V(T,t) / DV(T,t);
 	        if (fabs(t1) < EPS) break;
+	      }
+	      if (!iterations) {
+	        i_error();
+	        return;
 	      }
 	      lp.phi = (5 * i + t) * DEG_TO_RAD;
 	      if (xy.y < 0) lp.phi = -lp.phi;
 	      lp.lam /= V(X[i], t);
+	      if (fabs(lp.lam) > M_PI) {
+	        if (fabs(lp.lam) <= M_PI + LAM_EPS) {
+	          lp.lam = lp.lam < 0 ? -M_PI : M_PI;
+	        } else {
+	          i_error();
+	        }
+	      }
 	    }
 	  }
 

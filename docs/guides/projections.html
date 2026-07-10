@@ -126,6 +126,31 @@ mapshaper region.geojson -proj utm -o region_utm.geojson
 <pre><code class="hljs language-bash">mapshaper us-states.shp -proj albersusa +PR +VI -o
 </code></pre>
 <p>The position, scale, rotation, and other properties of each inset can be overridden with named parameters if the defaults do not suit your map. See the <a href="/docs/reference.html#-proj"><code>-proj</code> reference</a> for the full option syntax.</p>
+<h2 id="interrupted-world-projections">Interrupted world projections</h2>
+<p>Mapshaper supports four interrupted world layouts:</p>
+<ul>
+<li><code>+proj=igh</code> — Interrupted Goode Homolosine, land emphasis</li>
+<li><code>+proj=imoll</code> — Interrupted Mollweide, land emphasis</li>
+<li><code>+proj=igh_o</code> — Interrupted Goode Homolosine, oceanic view</li>
+<li><code>+proj=imoll_o</code> — Interrupted Mollweide, oceanic view</li>
+</ul>
+<p><img src="/docs/images/interrupted-mollweide.png" alt="Interrupted Mollweide world projection"></p>
+<p>The oceanic layouts are normally used with <code>+lon_0=-160</code>.</p>
+<pre><code class="hljs language-bash"><span class="hljs-comment"># Project world polygons using Goode Homolosine; add a graticule</span>
+mapshaper world.geojson \
+  -proj +proj=igh \
+  -o world-igh.geojson \
+  -graticule \
+  -o graticule-igh.geojson
+
+<span class="hljs-comment"># Create an ocean-emphasis Interrupted Mollweide layer with a neatline</span>
+mapshaper world.geojson \
+  -proj +proj=imoll_o +lon_0=-160 \
+  -o world-imoll-o.fgb \
+  -graticule outline \
+  -o neatline-imoll-o.fgb
+</code></pre>
+<p>The interrupted projections are forward-only. An interrupted dataset cannot be projected back to longitude/latitude, and raster reprojection is not supported. Shapefile export can write projected coordinates but cannot generate a <code>.prj</code> file for these custom CRSes.</p>
 <h2 id="finding-crs-definitions">Finding CRS definitions</h2>
 <p>Several websites provide PROJ strings and EPSG codes for coordinate systems worldwide:</p>
 <ul>
@@ -140,6 +165,8 @@ mapshaper region.geojson -proj utm -o region_utm.geojson
 <li><p>Mapshaper does not support coordinate transformations that require grid-shift files (for example, NAD27 → WGS84). If a transformation silently fails, this is the likely cause.</p>
 </li>
 <li><p>Projections that can only represent part of the globe — including orthographic (<code>ortho</code>), near-side perspective (<code>nsper</code>, <code>geos</code>), gnomonic (<code>gnom</code>), stereographic (<code>stere</code>), and Lambert Azimuthal Equal-Area (<code>laea</code>) — automatically clip input data to the projection&#39;s valid extent before projecting. This prevents distorted or invalid geometry from coordinates outside the visible area.</p>
+</li>
+<li><p>Interrupted projections (<code>igh</code>, <code>imoll</code>, <code>igh_o</code>, <code>imoll_o</code>) are forward-only; inverse projection and raster reprojection are not supported.</p>
 </li>
 <li><p>For projections that introduce significant curvature along straight lines, add the <code>densify</code> option to interpolate extra vertices along long segments:</p>
 <pre><code class="hljs language-bash">mapshaper data.shp -proj +proj=ortho +lat_0=45 +lon_0=-100 densify -o
@@ -160,7 +187,7 @@ mapshaper region.geojson -proj utm -o region_utm.geojson
   </main>
 
   <aside class="docs-toc">
-    <div class="docs-toc-title">On this page</div><ul><li class="lvl-2"><a href="#forms-of-crs-notation">Forms of CRS notation</a></li><li class="lvl-2"><a href="#auto-fitted-parameters">Auto-fitted parameters</a></li><li class="lvl-2"><a href="#albersusa">albersusa</a></li><li class="lvl-2"><a href="#finding-crs-definitions">Finding CRS definitions</a></li><li class="lvl-2"><a href="#coordinate-system-quirks-and-limitations">Coordinate system quirks and limitations</a></li><li class="lvl-2"><a href="#the--proj-command">The -proj command</a></li></ul>
+    <div class="docs-toc-title">On this page</div><ul><li class="lvl-2"><a href="#forms-of-crs-notation">Forms of CRS notation</a></li><li class="lvl-2"><a href="#auto-fitted-parameters">Auto-fitted parameters</a></li><li class="lvl-2"><a href="#albersusa">albersusa</a></li><li class="lvl-2"><a href="#interrupted-world-projections">Interrupted world projections</a></li><li class="lvl-2"><a href="#finding-crs-definitions">Finding CRS definitions</a></li><li class="lvl-2"><a href="#coordinate-system-quirks-and-limitations">Coordinate system quirks and limitations</a></li><li class="lvl-2"><a href="#the--proj-command">The -proj command</a></li></ul>
   </aside>
 
 </div>

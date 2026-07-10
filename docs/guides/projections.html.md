@@ -96,6 +96,37 @@ mapshaper us-states.shp -proj albersusa +PR +VI -o
 
 The position, scale, rotation, and other properties of each inset can be overridden with named parameters if the defaults do not suit your map. See the [`-proj` reference](/docs/reference.html.md#-proj) for the full option syntax.
 
+## Interrupted world projections
+
+Mapshaper supports four interrupted world layouts:
+
+- `+proj=igh` — Interrupted Goode Homolosine, land emphasis
+- `+proj=imoll` — Interrupted Mollweide, land emphasis
+- `+proj=igh_o` — Interrupted Goode Homolosine, oceanic view
+- `+proj=imoll_o` — Interrupted Mollweide, oceanic view
+
+![Interrupted Mollweide world projection](/docs/images/interrupted-mollweide.png)
+
+The oceanic layouts are normally used with `+lon_0=-160`.
+
+```bash
+# Project world polygons using Goode Homolosine; add a graticule
+mapshaper world.geojson \
+  -proj +proj=igh \
+  -o world-igh.geojson \
+  -graticule \
+  -o graticule-igh.geojson
+
+# Create an ocean-emphasis Interrupted Mollweide layer with a neatline
+mapshaper world.geojson \
+  -proj +proj=imoll_o +lon_0=-160 \
+  -o world-imoll-o.fgb \
+  -graticule outline \
+  -o neatline-imoll-o.fgb
+```
+
+The interrupted projections are forward-only. An interrupted dataset cannot be projected back to longitude/latitude, and raster reprojection is not supported. Shapefile export can write projected coordinates but cannot generate a `.prj` file for these custom CRSes.
+
 ## Finding CRS definitions
 
 Several websites provide PROJ strings and EPSG codes for coordinate systems worldwide:
@@ -109,6 +140,7 @@ Several websites provide PROJ strings and EPSG codes for coordinate systems worl
 - GeoJSON and TopoJSON files are assumed to use WGS84 when their bounding boxes fall within the normal range for decimal degree coordinates.
 - Mapshaper does not support coordinate transformations that require grid-shift files (for example, NAD27 → WGS84). If a transformation silently fails, this is the likely cause.
 - Projections that can only represent part of the globe — including orthographic (`ortho`), near-side perspective (`nsper`, `geos`), gnomonic (`gnom`), stereographic (`stere`), and Lambert Azimuthal Equal-Area (`laea`) — automatically clip input data to the projection's valid extent before projecting. This prevents distorted or invalid geometry from coordinates outside the visible area.
+- Interrupted projections (`igh`, `imoll`, `igh_o`, `imoll_o`) are forward-only; inverse projection and raster reprojection are not supported.
 - For projections that introduce significant curvature along straight lines, add the `densify` option to interpolate extra vertices along long segments:
 
   ```bash

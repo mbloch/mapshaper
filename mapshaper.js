@@ -32622,6 +32622,10 @@ ${svg}
         describe: 'create a polygon to match the outline of the graticule',
         type: 'flag'
       })
+      .option('outline', {
+        describe: 'create a polyline matching the outline of the graticule',
+        type: 'flag'
+      })
       .option('name', nameOpt)
       .option('target', targetOpt);
 
@@ -52573,6 +52577,120 @@ ${svg}
     polygonsToLines: polygonsToLines
   });
 
+  // Geographic topology used to prepare paths for projections whose forward
+  // transform is piecewise. A "cut" seam opens a visible gap; an "attached"
+  // seam (reserved for polyhedral projections) marks a transform boundary that
+  // must gain vertices without disconnecting the path.
+  var landTopology = {
+    regions: [
+      region('northwest', [-180, 0, -40, 90], -100),
+      region('northeast', [-40, 0, 180, 90], 30),
+      region('southwest', [-180, -90, -100, 0], -160),
+      region('south_central_west', [-100, -90, -20, 0], -60),
+      region('south_central_east', [-20, -90, 80, 0], 20),
+      region('southeast', [80, -90, 180, 0], 140)
+    ],
+    seams: [
+      cutSeam([[-40, 0], [-40, 91]]),
+      cutSeam([[-100, -91], [-100, 0]]),
+      cutSeam([[-20, -91], [-20, 0]]),
+      cutSeam([[80, -91], [80, 0]])
+    ]
+  };
+
+  var oceanTopology = {
+    regions: [
+      region('northwest', [-180, 0, -90, 90], -140),
+      region('north_central', [-90, 0, 60, 90], -10),
+      region('northeast', [60, 0, 180, 90], 130),
+      region('southwest', [-180, -90, -60, 0], -110),
+      region('south_central', [-60, -90, 90, 0], 20),
+      region('southeast', [90, -90, 180, 0], 150)
+    ],
+    seams: [
+      cutSeam([[-90, 0], [-90, 91]]),
+      cutSeam([[60, 0], [60, 91]]),
+      cutSeam([[-60, -91], [-60, 0]]),
+      cutSeam([[90, -91], [90, 0]])
+    ]
+  };
+
+  var projectionTopologies = {
+    igh: landTopology,
+    imoll: landTopology,
+    igh_o: oceanTopology,
+    imoll_o: oceanTopology
+  };
+
+  function getProjectionTopology(P) {
+    var defn = P && projectionTopologies[getCrsSlug(P)];
+    if (!defn) return null;
+    var lon0 = P.lam0 * 180 / Math.PI;
+    return {
+      regions: defn.regions.map(function(o) {
+        return {
+          id: o.id,
+          boundary: rotatePath(o.boundary, lon0),
+          transform: {
+            lon_0: normalizeLongitude(o.transform.lon_0 + lon0)
+          }
+        };
+      }),
+      seams: defn.seams.map(function(o) {
+        return {
+          type: o.type,
+          coordinates: rotatePath(o.coordinates, lon0)
+        };
+      })
+    };
+  }
+
+  function isInterruptedProjection(P) {
+    var defn = P && projectionTopologies[getCrsSlug(P)];
+    return !!defn && defn.seams.some(function(o) {
+      return o.type == 'cut';
+    });
+  }
+
+  function region(id, bbox, lon0) {
+    return {
+      id: id,
+      boundary: [
+        [bbox[0], bbox[1]],
+        [bbox[0], bbox[3]],
+        [bbox[2], bbox[3]],
+        [bbox[2], bbox[1]],
+        [bbox[0], bbox[1]]
+      ],
+      transform: {lon_0: lon0}
+    };
+  }
+
+  function cutSeam(coordinates) {
+    return {
+      type: 'cut',
+      coordinates: coordinates
+    };
+  }
+
+  function rotatePath(path, degrees) {
+    return path.map(function(p) {
+      return [normalizeLongitude(p[0] + degrees), p[1]];
+    });
+  }
+
+  function normalizeLongitude(lon) {
+    while (lon > 180) lon -= 360;
+    while (lon < -180) lon += 360;
+    return lon;
+  }
+
+  var ProjectionTopology = /*#__PURE__*/Object.freeze({
+    __proto__: null,
+    getProjectionTopology: getProjectionTopology,
+    isInterruptedProjection: isInterruptedProjection
+  });
+
   function getClippingDataset(src, dest, opts) {
     return getUnprojectedBoundingPolygon(src, dest, opts);
   }
@@ -52608,18 +52726,48 @@ ${svg}
       dataset = getBoundingRectangle(dest, {clip_bbox: [-180,-90,180,90]});
     }
     projectDataset(dataset, src, dest, {no_clip: false, quiet: true});
+    if (isInterruptedProjection(dest)) {
+      removeTinyFootprintRings(dataset);
+    }
     return dataset;
   }
 
   // Return projected outline of clipped projections
   function getOutlineDataset(src, dest, opts) {
     var dataset = getUnprojectedBoundingPolygon(src, dest, opts);
+    if (!dataset && isInterruptedProjection(dest)) {
+      dataset = getBoundingRectangle(dest, {clip_bbox: [-180, -90, 180, 90]});
+    }
     if (dataset) {
       // project, with cutting & cleanup
       projectDataset(dataset, src, dest, {no_clip: false, quiet: true});
+      if (isInterruptedProjection(dest)) {
+        removeTinyFootprintRings(dataset);
+      }
       dataset.layers[0].geometry_type = 'polyline';
     }
     return dataset || null;
+  }
+
+  // Narrow pre-projection gutters can leave zero-area rings after a rotated
+  // world boundary is cleaned. Remove only rings that are negligible relative
+  // to the main footprint; legitimate disconnected lobes are retained.
+  function removeTinyFootprintRings(dataset) {
+    var lyr = dataset.layers[0];
+    var arcs = dataset.arcs;
+    var maxArea = 0;
+    lyr.shapes.forEach(function(shp) {
+      (shp || []).forEach(function(path) {
+        maxArea = Math.max(maxArea, Math.abs(geom.getPathArea(path, arcs)));
+      });
+    });
+    if (maxArea === 0) return;
+    editShapes(lyr.shapes, function(path) {
+      if (Math.abs(geom.getPathArea(path, arcs)) <= maxArea * 1e-12) {
+        return null;
+      }
+    });
+    dissolveArcs(dataset);
   }
 
   function getBoundingRectangle(dest, opts) {
@@ -52735,6 +52883,7 @@ ${svg}
     // rotated normal-aspect projections can generally have a thin slice removed
     // from the rotated antimeridian, instead of clipping them
     var cut = insertPreProjectionCuts(dataset, src, dest);
+    cut = insertProjectionTopologyCuts(dataset, dest) || cut;
     var clipped = false;
     var clipData;
     // experimental -- we can probably get away with just clamping some CRSs that
@@ -52795,6 +52944,24 @@ ${svg}
     return false;
   }
 
+  function insertProjectionTopologyCuts(dataset, dest) {
+    var topology = getProjectionTopology(dest);
+    var pathLayers = dataset.layers.filter(layerHasPaths);
+    var cutPaths, geojson, clip;
+    if (!topology || pathLayers.length === 0) return false;
+    cutPaths = topology.seams
+      .filter(function(o) { return o.type == 'cut'; })
+      .reduce(function(memo, o) {
+        return memo.concat(getCutSeamPaths(o.coordinates));
+      }, []);
+    if (cutPaths.length === 0) return false;
+    geojson = getCutMaskGeoJSON(cutPaths);
+    if (geojson.features.length === 0) return false;
+    clip = importGeoJSON(geojson);
+    clipLayersInPlace(pathLayers, clip, dataset, 'erase', getInternalClipOpts());
+    return true;
+  }
+
   function clampDataset(dataset, bbox) {
     transformPoints(dataset, function(x, y) {
       return [utils.clamp(x, bbox[0], bbox[2]), utils.clamp(y, bbox[1], bbox[3])];
@@ -52828,6 +52995,65 @@ ${svg}
     var geojson = bboxToPolygon(bbox, {interval: 0.5});
     var clip = importGeoJSON(geojson);
     clipLayersInPlace(pathLayers, clip, dataset, 'erase', getInternalClipOpts());
+  }
+
+  // Duplicate a seam on the opposite edge of the standard longitude range.
+  // This is needed when a rotated seam coincides with the antimeridian.
+  function getCutSeamPaths(coords) {
+    var paths = [coords];
+    var onEdge = coords.every(function(p) {
+      return Math.abs(Math.abs(p[0]) - 180) < 1e-12;
+    });
+    if (onEdge) {
+      paths.push(coords.map(function(p) {
+        return [p[0] == 180 ? -180 : 180, p[1]];
+      }));
+    }
+    return paths;
+  }
+
+  // Convert seam paths to narrow polygon masks. Densification is required so
+  // their projected edges follow the projection instead of becoming straight
+  // chords between seam endpoints.
+  function getCutMaskGeoJSON(paths) {
+    var e = 1e-8;
+    var features = paths.map(function(coords) {
+      var ring = getCutMaskRing(densifyPathByInterval(coords, 0.5), e);
+      return {
+        type: 'Feature',
+        properties: {},
+        geometry: {
+          type: 'Polygon',
+          coordinates: [ring]
+        }
+      };
+    }).filter(function(feature) {
+      return feature.geometry.coordinates[0].length > 3;
+    });
+    return {
+      type: 'FeatureCollection',
+      features: features
+    };
+  }
+
+  function getCutMaskRing(coords, width) {
+    var left = [];
+    var right = [];
+    for (var i = 0; i < coords.length; i++) {
+      var a = coords[i > 0 ? i - 1 : i];
+      var b = coords[i < coords.length - 1 ? i + 1 : i];
+      var dx = b[0] - a[0];
+      var dy = b[1] - a[1];
+      var len = Math.sqrt(dx * dx + dy * dy);
+      if (len === 0) continue;
+      var nx = -dy / len * width;
+      var ny = dx / len * width;
+      left.push([coords[i][0] + nx, coords[i][1] + ny]);
+      right.push([coords[i][0] - nx, coords[i][1] - ny]);
+    }
+    var ring = left.concat(right.reverse());
+    if (ring.length > 0) ring.push(ring[0].concat());
+    return ring;
   }
 
   function getInternalClipOpts() {
@@ -53699,9 +53925,18 @@ ${svg}
   }
 
   function projectDataset(dataset, src, dest, opts) {
+    if (isProjectedCRS(src) && !isInvertibleCRS(src)) {
+      stop$1('Unable to project from a coordinate system that has no inverse transform');
+    }
+    if (isInterruptedProjection(dest) && dataset.layers.some(layerHasRaster)) {
+      stop$1('Raster reprojection is not currently supported for interrupted projections');
+    }
     var proj = getProjTransform2(src, dest); // v2 returns null points instead of throwing an error
     var badArcs = 0;
     var badPoints = 0;
+    var healAntimeridian = isLatLngCRS(src) &&
+      isInterruptedProjection(dest) &&
+      Math.abs(dest.lam0) > 1e-12;
     var clipped = preProjectionClip(dataset, src, dest, opts);
     dataset.layers.forEach(function(lyr) {
       if (layerHasPoints(lyr)) {
@@ -53721,7 +53956,7 @@ ${svg}
     if (clipped) {
       // TODO: could more selective in cleaning clipped layers
       // (probably only needed when clipped area crosses the antimeridian or includes a pole)
-      cleanProjectedPathLayers(dataset);
+      cleanProjectedPathLayers(dataset, {heal_antimeridian: healAntimeridian});
     }
 
     if (badArcs > 0 && !opts.quiet) {
@@ -53749,9 +53984,21 @@ ${svg}
   // * Removes line intersections
   // * TODO: what if a layer contains polygons with desired overlaps? should
   //   we ignore overlaps between different features?
-  function cleanProjectedPathLayers(dataset) {
+  function cleanProjectedPathLayers(dataset, opts) {
+    opts = opts || {};
     // TODO: only clean affected polygons (cleaning all polygons can be slow)
     var polygonLayers = dataset.layers.filter(lyr => lyr.geometry_type == 'polygon');
+    if (opts.heal_antimeridian && dataset.arcs) {
+      // A rotated projection moves the source +/-180 degree boundary into the
+      // map interior. Mathematically identical boundary vertices can diverge by
+      // a few floating-point units during projection, preventing topology from
+      // joining polygon parts that were split at the source antimeridian.
+      var arcs = dataset.arcs;
+      var snapDist = getHighPrecisionSnapInterval(arcs.getBounds().toArray());
+      if (snapCoordsByInterval(arcs, snapDist) > 0) {
+        arcs.dedupCoords();
+      }
+    }
     // clean options: force a topology update (by default, this only happens when
     // vertices change during cleaning, but reprojection can require a topology update
     // even if clean does not change vertices)
@@ -61765,21 +62012,28 @@ ${svg}
   }
 
   cmd.graticule = function(dataset, opts) {
-    var name = opts.name || opts.polygon && 'polygon' || 'graticule';
+    if (opts.polygon && opts.outline) {
+      stop$1('The polygon and outline options cannot be used together');
+    }
+    var boundary = opts.polygon || opts.outline;
+    var name = opts.name || opts.outline && 'outline' || opts.polygon && 'polygon' || 'graticule';
     var graticule, destInfo;
     if (dataset && !isLatLngDataset(dataset)) {
       // project graticule to match dataset
       destInfo = getDatasetCrsInfo(dataset);
       if (!destInfo.crs) stop$1("Coordinate system is unknown, unable to create a graticule");
-      graticule = opts.polygon ?
+      graticule = boundary ?
         createProjectedPolygon(destInfo.crs, opts) :
         createProjectedGraticule(destInfo.crs, opts);
       setDatasetCrsInfo(graticule, destInfo);
     } else {
-      graticule = opts.polygon ?
+      graticule = boundary ?
         createUnprojectedPolygon(opts) :
         createUnprojectedGraticule(opts);
       setDatasetCrsInfo(graticule, getCrsInfo('wgs84'));
+    }
+    if (opts.outline) {
+      graticule.layers[0].geometry_type = 'polyline';
     }
     graticule.layers[0].name = name;
     return graticule;
@@ -67735,6 +67989,28 @@ ${svg}
       name == 'comment' || name == 'rename-layers';
   }
 
+  // Commands in this group keep datasets separate and run once for each grouped
+  // target returned by findCommandTargets(). Commands that consume all targets
+  // together (e.g. -frame) or merge targets (-union, -merge-layers) are
+  // intentionally excluded.
+  function commandRunsPerTargetDataset(name, opts) {
+    if (name == 'rectangle') {
+      return !opts.source && !opts.bbox;
+    }
+    return [
+      'affine', 'alpha-shapes', 'blur', 'buffer', 'calc', 'check-geometry',
+      'classify', 'clean', 'clip', 'cluster', 'dashlines', 'data-fill',
+      'densify', 'dissolve', 'dissolve2', 'divide', 'dots', 'each', 'erase',
+      'explode', 'filter',
+      'filter-detail', 'filter-fields', 'filter-geom', 'filter-islands',
+      'filter-islands2', 'filter-points', 'filter-slivers', 'grid', 'grid2',
+      'fuzzy-join', 'ignore', 'inlay', 'innerlines', 'inspect', 'join',
+      'lines', 'mosaic', 'points', 'polygons', 'rectangles', 'rename-fields',
+      'shapes', 'simplify', 'slice', 'smooth', 'sort', 'split',
+      'split-on-grid', 'stitch', 'style', 'subdivide', 'symbols', 'uniq'
+    ].indexOf(name) > -1;
+  }
+
   function commandAcceptsEmptyTarget(name) {
     return name == 'graticule' || name == 'i' || name == 'help' ||
       name == 'point-grid' || name == 'shape' || name == 'rectangle' || name == 'frame' ||
@@ -67766,13 +68042,32 @@ ${svg}
     }
 
     if (!job) job = new Job();
+
+    // Preserve the existing single-dataset dispatch and postprocessing paths by
+    // invoking them once per dataset. Collect the resulting targets so a
+    // multi-dataset command does not leave only its final dataset selected.
+    if (!command._targetOverride && commandRunsPerTargetDataset(name, opts)) {
+      targets = job.catalog.findCommandTargets(opts.target);
+      if (targets.length > 1) {
+        validatePerDatasetTargets(name, targets, opts);
+        return runCommandOnEachTarget(command, job, targets);
+      }
+    }
+
     job.startCommand(command);
 
 
     try { // catch errors from synchronous functions
       T$1.start();
 
-      if (name == 'rename-layers') {
+      if (command._targetOverride) {
+        targets = [command._targetOverride];
+        targetDataset = targets[0].dataset;
+        arcs = targetDataset.arcs;
+        targetLayers = targets[0].layers;
+        job.catalog.setDefaultTarget(targetLayers, targetDataset);
+
+      } else if (name == 'rename-layers') {
         targets = job.catalog.findCommandTargets(opts.target);
         targetLayers = targets.reduce(function(memo, obj) {
           return memo.concat(obj.layers);
@@ -67816,7 +68111,9 @@ ${svg}
         }
       }
 
-      if (opts.source) {
+      if (Object.prototype.hasOwnProperty.call(command, '_sourceOverride')) {
+        source = command._sourceOverride;
+      } else if (opts.source) {
         source = findCommandSource(convertSourceName(opts.source, targets), job.catalog, opts);
       }
 
@@ -68214,6 +68511,141 @@ ${svg}
     }
   }
 
+  async function runCommandOnEachTarget(command, job, targets) {
+    var outputTargets = [];
+    var source = null;
+    var items = targets.map(function(target, i) {
+      return {target: target, index: i};
+    });
+    var disposableSourceTargetIndex = -1;
+
+    if (command.options.source && !sourceNameIsInterpolated(command.options.source)) {
+      source = resolveSourceForTargets(command, job, targets);
+      items = moveSourceTargetLast(items, source);
+      disposableSourceTargetIndex = findLastDisposableSourceTarget(
+        items,
+        source,
+        command.name,
+        command.options
+      );
+    }
+
+    for (var i = 0; i < items.length; i++) {
+      var item = items[i];
+      var target = {
+        dataset: item.target.dataset,
+        layers: item.target.layers.concat()
+      };
+      var command2 = Object.assign({}, command, {_targetOverride: target});
+      if (source) {
+        command2._sourceOverride = getSourceForTarget(
+          source,
+          target,
+          command.name,
+          item.index == disposableSourceTargetIndex,
+          command.options
+        );
+      }
+      await runCommand(command2, job);
+      outputTargets[item.index] = copyCommandTargets(job.catalog.getDefaultTargets());
+    }
+    job.catalog.setDefaultTargets(outputTargets.reduce(function(memo, arr) {
+      return memo.concat(arr);
+    }, []));
+    return job;
+  }
+
+  function resolveSourceForTargets(command, job, targets) {
+    job.startCommand(command);
+    try {
+      return findCommandSource(
+        convertSourceName(command.options.source, targets),
+        job.catalog,
+        command.options
+      );
+    } finally {
+      job.endCommand();
+    }
+  }
+
+  function sourceNameIsInterpolated(name) {
+    return /[$][{]/.test(name);
+  }
+
+  // If a retained catalog source is also targeted, process its group last so
+  // earlier groups always read the original source. Output target ordering is
+  // restored after execution.
+  function moveSourceTargetLast(items, source) {
+    if (!source || source.disposable) return items;
+    return items.filter(function(item) {
+      return item.target.layers.indexOf(source.layer) == -1;
+    }).concat(items.filter(function(item) {
+      return item.target.layers.indexOf(source.layer) > -1;
+    }));
+  }
+
+  function commandMutatesDisposableSource(name, target, source, opts) {
+    var overlayCommand = (name == 'clip' || name == 'erase' || name == 'slice' ||
+      name == 'inlay' || name == 'divide') &&
+      utils.some(target.layers, layerHasPaths);
+    var polygonMosaicJoin = name == 'join' && !opts.keys && !opts.point_method &&
+      source.layer.geometry_type == 'polygon' &&
+      target.layers.some(function(lyr) { return lyr.geometry_type == 'polygon'; });
+    return overlayCommand || polygonMosaicJoin;
+  }
+
+  // A file source is disposable, so the final topology-changing target can use it
+  // directly. Earlier topology-changing targets receive only a shape copy; the
+  // potentially large source ArcCollection is safely shared.
+  function findLastDisposableSourceTarget(items, source, name, opts) {
+    if (!source?.disposable) return -1;
+    for (var i = items.length - 1; i >= 0; i--) {
+      if (commandMutatesDisposableSource(name, items[i].target, source, opts)) {
+        return items[i].index;
+      }
+    }
+    return -1;
+  }
+
+  function getSourceForTarget(source, target, name, useOriginal, opts) {
+    if (!source.disposable ||
+        !commandMutatesDisposableSource(name, target, source, opts) ||
+        useOriginal) {
+      return source;
+    }
+    var layer = copyLayerShapes(source.layer);
+    var dataset = Object.assign({}, source.dataset, {layers: [layer]});
+    return {dataset: dataset, layer: layer, disposable: true};
+  }
+
+  function copyCommandTargets(targets) {
+    return targets.map(function(target) {
+      return {
+        dataset: target.dataset,
+        layers: target.layers.concat()
+      };
+    });
+  }
+
+  // Fail cardinality checks before the first dataset is modified.
+  function validatePerDatasetTargets(name, targets, opts) {
+    if (opts.source && sourceNameIsInterpolated(opts.source) && targets.some(function(target) {
+      return target.layers.length != 1;
+    })) {
+      stop$1('Interpolated names are not compatible with multiple targets.');
+    }
+    if (name == 'mosaic' && targets.some(function(target) {
+      return target.layers.length != 1;
+    })) {
+      stop$1('Command takes a single target layer from each dataset');
+    }
+    if (name == 'simplify' && opts.variable && targets.some(function(target) {
+      return target.layers.length != 1;
+    })) {
+      stop$1('Variable simplification requires a single target layer from each dataset');
+    }
+  }
+
   function outputLayersAreDifferent(output, input) {
     return !utils.some(input, function(lyr) {
       return output.indexOf(lyr) > -1;
@@ -68228,7 +68660,7 @@ ${svg}
     return name == 'rectangle' || name == 'rectangles' || name == 'filter' && opts.cleanup;
   }
 
-  var version = "0.7.41";
+  var version = "0.7.44";
 
   // Parse command line args into commands and run them
   // Function takes an optional Node-style callback. A Promise is returned if no callback is given.
@@ -70168,6 +70600,7 @@ ${svg}
     Proj,
     Projections,
     ProjectionParams,
+    ProjectionTopology,
     Rectangle,
     RectangleUtils,
     Rounding,
