@@ -67,6 +67,26 @@ describe('mapshaper-graticule.js', function () {
 
   })
 
+  it('create an outline matching the polygon boundary', async function() {
+    var base = '-i test/data/geojson/world_land.json -proj +proj=robin densify -graticule ';
+    var polygonOut = await api.applyCommands(base + 'polygon -o polygon.json');
+    var outlineOut = await api.applyCommands(base + 'outline -o outline.json');
+    var polygon = JSON.parse(polygonOut['polygon.json']).geometries[0];
+    var outline = JSON.parse(outlineOut['outline.json']).geometries[0];
+    assert.equal(outline.type, 'LineString');
+    // Polygon and polyline exporters use opposite ring winding.
+    assert.deepEqual(outline.coordinates, polygon.coordinates[0].slice().reverse());
+  });
+
+  it('name an outline layer outline', function(done) {
+    api.internal.testCommands('-graticule outline', function(err, dataset) {
+      if (err) return done(err);
+      assert.equal(dataset.layers[0].name, 'outline');
+      assert.equal(dataset.layers[0].geometry_type, 'polyline');
+      done();
+    });
+  });
+
   it('create latlong graticule if no data has been loaded', function(done) {
 
     api.internal.testCommands('-graticule', function(err, dataset) {

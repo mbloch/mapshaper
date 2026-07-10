@@ -1240,6 +1240,10 @@ export function getOptionParser() {
       describe: 'create a polygon to match the outline of the graticule',
       type: 'flag'
     })
+    .option('outline', {
+      describe: 'create a polyline matching the outline of the graticule',
+      type: 'flag'
+    })
     .option('name', nameOpt)
     .option('target', targetOpt);
 

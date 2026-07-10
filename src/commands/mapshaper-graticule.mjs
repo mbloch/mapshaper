@@ -15,21 +15,28 @@ import { cleanLayers } from '../commands/mapshaper-clean';
 import { dissolveArcs } from '../paths/mapshaper-arc-dissolve';
 
 cmd.graticule = function(dataset, opts) {
-  var name = opts.name || opts.polygon && 'polygon' || 'graticule';
+  if (opts.polygon && opts.outline) {
+    stop('The polygon and outline options cannot be used together');
+  }
+  var boundary = opts.polygon || opts.outline;
+  var name = opts.name || opts.outline && 'outline' || opts.polygon && 'polygon' || 'graticule';
   var graticule, destInfo;
   if (dataset && !isLatLngDataset(dataset)) {
     // project graticule to match dataset
     destInfo = getDatasetCrsInfo(dataset);
     if (!destInfo.crs) stop("Coordinate system is unknown, unable to create a graticule");
-    graticule = opts.polygon ?
+    graticule = boundary ?
       createProjectedPolygon(destInfo.crs, opts) :
       createProjectedGraticule(destInfo.crs, opts);
     setDatasetCrsInfo(graticule, destInfo);
   } else {
-    graticule = opts.polygon ?
+    graticule = boundary ?
       createUnprojectedPolygon(opts) :
       createUnprojectedGraticule(opts);
     setDatasetCrsInfo(graticule, getCrsInfo('wgs84'));
+  }
+  if (opts.outline) {
+    graticule.layers[0].geometry_type = 'polyline';
   }
   graticule.layers[0].name = name;
   return graticule;
