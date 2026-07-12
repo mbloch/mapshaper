@@ -46,6 +46,9 @@ var projectionTopologies = {
 };
 
 export function getProjectionTopology(P) {
+  if (P && P.__projection_topology) {
+    return P.__projection_topology;
+  }
   var defn = P && projectionTopologies[getCrsSlug(P)];
   if (!defn) return null;
   var lon0 = P.lam0 * 180 / Math.PI;
@@ -69,6 +72,11 @@ export function getProjectionTopology(P) {
 }
 
 export function isInterruptedProjection(P) {
+  if (P && P.__projection_topology) {
+    return P.__projection_topology.seams.some(function(o) {
+      return o.type == 'cut';
+    });
+  }
   var defn = P && projectionTopologies[getCrsSlug(P)];
   return !!defn && defn.seams.some(function(o) {
     return o.type == 'cut';

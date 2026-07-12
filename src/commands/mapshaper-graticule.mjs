@@ -25,9 +25,11 @@ cmd.graticule = function(dataset, opts) {
     // project graticule to match dataset
     destInfo = getDatasetCrsInfo(dataset);
     if (!destInfo.crs) stop("Coordinate system is unknown, unable to create a graticule");
-    graticule = boundary ?
-      createProjectedPolygon(destInfo.crs, opts) :
-      createProjectedGraticule(destInfo.crs, opts);
+    graticule = opts.outline ?
+      createProjectedOutline(destInfo.crs, opts) :
+      opts.polygon ?
+        createProjectedPolygon(destInfo.crs, opts) :
+        createProjectedGraticule(destInfo.crs, opts);
     setDatasetCrsInfo(graticule, destInfo);
   } else {
     graticule = boundary ?
@@ -50,6 +52,12 @@ function createUnprojectedPolygon(opts) {
 function createProjectedPolygon(dest, opts) {
   var src = parseCrsString('wgs84');
   return getPolygonDataset(src, dest, opts);
+}
+
+function createProjectedOutline(dest, opts) {
+  var src = parseCrsString('wgs84');
+  return getOutlineDataset(src, dest, opts) ||
+    getPolygonDataset(src, dest, opts);
 }
 
 function createUnprojectedGraticule(opts) {
@@ -133,12 +141,15 @@ function createGraticule(P, outlined, opts) {
   // extended: meridian extends to pole
   function createMeridian(x, extended) {
     var y0 = ystep <= 15 ? ystep : 0;
+    // An exact pole can have several images in a polyhedral projection.
+    // The separate outline supplies the missing, negligible end interval.
+    var poleInset = outlined ? 1e-4 : 0;
     createMeridianPart(x, -90 + y0, 90 - y0);
     if (extended && y0 > 0) {
       // adding extensions as separate parts, so if the polar coordinates
       // fail to project, at least the rest of the meridian line will remain
-      createMeridianPart(x, -90, -90 + y0);
-      createMeridianPart(x, 90 - y0, 90);
+      createMeridianPart(x, -90 + poleInset, -90 + y0);
+      createMeridianPart(x, 90 - y0, 90 - poleInset);
     }
   }
 
@@ -148,7 +159,14 @@ function createGraticule(P, outlined, opts) {
   }
 
   function createParallel(y) {
-    var coords = densifyPathByInterval([[-180, y], [180, y]], precision);
+    // Avoid joining distinct images of the antimeridian (and the degenerate
+    // polar parallels) when a projected outline is generated separately.
+    var edgeInset = outlined ? 1e-4 : 0;
+    if (outlined && Math.abs(y) == 90) return;
+    var coords = densifyPathByInterval([
+      [-180 + edgeInset, y],
+      [180 - edgeInset, y]
+    ], precision);
     parallels.push(graticuleFeature(coords, {type: 'parallel', value: y}));
   }
 }

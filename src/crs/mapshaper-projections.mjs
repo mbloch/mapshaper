@@ -6,8 +6,12 @@ import utils from '../utils/mapshaper-utils';
 import geom from '../geom/mapshaper-geom';
 import { getStashedVar } from '../mapshaper-stash';
 import req from '../mapshaper-require';
+import { registerDymaxionProjections } from './mapshaper-dymaxion';
+import { registerButterflyProjections } from './mapshaper-butterfly-projections';
 
 var mproj = req('mproj');
+registerDymaxionProjections(mproj);
+registerButterflyProjections(mproj);
 
 var asyncLoader = null;
 
@@ -176,7 +180,16 @@ export function getProjDefn(str) {
   if (!defn) {
     stop("Unknown projection definition:", str);
   }
+  if (utils.isString(defn)) {
+    defn = addDefaultProjectionParams(defn);
+  }
   return defn;
+}
+
+function addDefaultProjectionParams(defn) {
+  var oceanic = /(^| )\+proj=(igh_o|imoll_o)(?= |$)/.test(defn);
+  var hasLon0 = /(^| )\+lon_0=/.test(defn);
+  return oceanic && !hasLon0 ? defn + ' +lon_0=-160' : defn;
 }
 
 function looksLikeInitString(str) {

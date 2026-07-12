@@ -79,7 +79,7 @@ When Mapshaper auto-fits parameters, it prints the expanded PROJ string so you c
 
 ## albersusa
 
-`albersusa` is a Mapshaper-specific composite projection for maps of the United States. It is not part of the PROJ library. It applies Albers Equal Area Conic to the contiguous 48 states, then tiles Alaska (scaled down) and Hawaii as insets in the lower-left corner of the map.
+`albersusa` is a Mapshaper-specific composite projection for maps of the United States. It is not part of the PROJ library. It applies Albers Equal Area Conic to the contiguous 48 states, then places Alaska (scaled down) and Hawaii as insets in the lower-left corner of the map.
 
 ```bash
 mapshaper us-states.shp -proj albersusa -o
@@ -98,16 +98,17 @@ The position, scale, rotation, and other properties of each inset can be overrid
 
 ## Interrupted world projections
 
-Mapshaper supports four interrupted world layouts:
+### Goode Homolosine and Mollweide projections
 
-- `+proj=igh` — Interrupted Goode Homolosine, land emphasis
-- `+proj=imoll` — Interrupted Mollweide, land emphasis
-- `+proj=igh_o` — Interrupted Goode Homolosine, oceanic view
-- `+proj=imoll_o` — Interrupted Mollweide, oceanic view
+- `igh` — Interrupted Goode Homolosine, land emphasis
+- `imoll` — Interrupted Mollweide, land emphasis
+- `igh_o` — Interrupted Goode Homolosine, ocean emphasis
+- `imoll_o` — Interrupted Mollweide, ocean emphasis
 
 ![Interrupted Mollweide world projection](/docs/images/interrupted-mollweide.png)
 
-The oceanic layouts are normally used with `+lon_0=-160`.
+The ocean-emphasis projections default to `+lon_0=-160`; an explicit
+`+lon_0=` overrides this default.
 
 ```bash
 # Project world polygons using Goode Homolosine; add a graticule
@@ -119,13 +120,51 @@ mapshaper world.geojson \
 
 # Create an ocean-emphasis Interrupted Mollweide layer with a neatline
 mapshaper world.geojson \
-  -proj +proj=imoll_o +lon_0=-160 \
+  -proj +proj=imoll_o \
   -o world-imoll-o.fgb \
   -graticule outline \
   -o neatline-imoll-o.fgb
 ```
 
-The interrupted projections are forward-only. An interrupted dataset cannot be projected back to longitude/latitude, and raster reprojection is not supported. Shapefile export can write projected coordinates but cannot generate a `.prj` file for these custom CRSes.
+### Dymaxion projections
+
+Mapshaper includes two versions of Buckminster Fuller's Airocean
+(Dymaxion) icosahedral layout:
+
+- `dymaxion` — Gray-Fuller transformation within each triangular facet
+- `dymaxion2` — gnomonic transformation within each facet
+
+The Gray-Fuller version minimizes shape and area distortion; the gnomonic version maps great-circle segments to straight lines within each facet.
+
+```bash
+mapshaper world.geojson \
+  -proj +proj=dymaxion densify \
+  -o world-dymaxion.geojson \
+  -graticule outline \
+  -o neatline-dymaxion.geojson
+```
+
+### Octahedral projections
+
+Mapshaper includes two aspects of a butterfly projection, plus the M-shaped Cahill-Keyes projection. Like the 1909 Cahill projection and the later Waterman butterfly projection, these arrange the globe's eight octahedral facets in a butterfly layout, but they project each facet using Keyes' 12-zone method rather than Cahill's or Waterman's original facet transformations.
+
+- `butterfly` — Pacific-centered, with a default central meridian of
+  157.5°E
+- `butterfly2` — Atlantic-centered, with a default central meridian of
+  20°W
+- `cahill_keyes` — Cahill-Keyes M-shaped profile, with a
+  default central meridian of 20°W
+
+```bash
+mapshaper world.geojson \
+  -proj +proj=butterfly densify \
+  -o world-butterfly.geojson \
+  -graticule outline \
+  -o neatline-butterfly.geojson
+```
+
+All projections in this section are forward-only: no inverse formulas are
+available, and raster reprojection is not supported.
 
 ## Finding CRS definitions
 
@@ -140,7 +179,7 @@ Several websites provide PROJ strings and EPSG codes for coordinate systems worl
 - GeoJSON and TopoJSON files are assumed to use WGS84 when their bounding boxes fall within the normal range for decimal degree coordinates.
 - Mapshaper does not support coordinate transformations that require grid-shift files (for example, NAD27 → WGS84). If a transformation silently fails, this is the likely cause.
 - Projections that can only represent part of the globe — including orthographic (`ortho`), near-side perspective (`nsper`, `geos`), gnomonic (`gnom`), stereographic (`stere`), and Lambert Azimuthal Equal-Area (`laea`) — automatically clip input data to the projection's valid extent before projecting. This prevents distorted or invalid geometry from coordinates outside the visible area.
-- Interrupted projections (`igh`, `imoll`, `igh_o`, `imoll_o`) are forward-only; inverse projection and raster reprojection are not supported.
+- Interrupted and polyhedral projections (`igh`, `imoll`, `igh_o`, `imoll_o`, `dymaxion`, `dymaxion2`, `butterfly`, `butterfly2`, `cahill_keyes`) are forward-only; inverse projection and raster reprojection are not supported.
 - For projections that introduce significant curvature along straight lines, add the `densify` option to interpolate extra vertices along long segments:
 
   ```bash
@@ -149,7 +188,3 @@ Several websites provide PROJ strings and EPSG codes for coordinate systems worl
 
 - When `-proj` targets a layer, all topologically related layers (those sharing the same geometry) are also reprojected. To reproject all layers, use `target=*`.
 - The `init=` option is available for files whose source CRS is unknown and cannot be inferred from a `.prj` file. Shapefiles normally carry a `.prj` sidecar; GeoJSON and TopoJSON are assumed to be WGS84 when their coordinates fall within the standard lat/long range.
-
-## The -proj command
-
-See the [`-proj` reference](/docs/reference.html#-proj) for the full list of options.

@@ -45,6 +45,9 @@ export function getUnprojectedBoundingPolygon(src, dest, opts) {
 
 // Return projected polygon extent of both clipped and unclipped projections
 export function getPolygonDataset(src, dest, opts) {
+  if (dest.__projected_outline) {
+    return getCustomProjectedOutline(dest, 'polygon');
+  }
   // use clipping area if projection is clipped
   var dataset = getUnprojectedBoundingPolygon(src, dest, opts);
   if (!dataset) {
@@ -60,6 +63,9 @@ export function getPolygonDataset(src, dest, opts) {
 
 // Return projected outline of clipped projections
 export function getOutlineDataset(src, dest, opts) {
+  if (dest.__projected_outline) {
+    return getCustomProjectedOutline(dest, 'polyline');
+  }
   var dataset = getUnprojectedBoundingPolygon(src, dest, opts);
   if (!dataset && isInterruptedProjection(dest)) {
     dataset = getBoundingRectangle(dest, {clip_bbox: [-180, -90, 180, 90]});
@@ -71,8 +77,31 @@ export function getOutlineDataset(src, dest, opts) {
       removeTinyFootprintRings(dataset);
     }
     dataset.layers[0].geometry_type = 'polyline';
+    if (dest.__remove_outline_extreme_connectors) {
+      dataset = removeOutlineExtremeConnectors(dataset);
+    }
   }
   return dataset || null;
+}
+
+function getCustomProjectedOutline(P, geometryType) {
+  var rings = P.__projected_outline.map(function(ring) {
+    return ring.map(function(p) {
+      return [
+        P.fr_meter * (P.a * p[0] + P.x0),
+        P.fr_meter * (P.a * p[1] + P.y0)
+      ];
+    });
+  });
+  var dataset = importGeoJSON({
+    type: rings.length == 1 ? 'Polygon' : 'MultiPolygon',
+    coordinates: rings.length == 1 ? rings : rings.map(function(ring) {
+      return [ring];
+    })
+  });
+  dataset.layers[0].geometry_type = geometryType;
+  dataset.info.crs = P;
+  return dataset;
 }
 
 // Narrow pre-projection gutters can leave zero-area rings after a rotated
@@ -94,6 +123,54 @@ function removeTinyFootprintRings(dataset) {
     }
   });
   dissolveArcs(dataset);
+}
+
+// Polygon clipping closes open interrupted-projection boundaries to form valid
+// rings. In Cahill-Keyes, some closures connect unrelated polar facet images.
+// Remove only long, nearly horizontal segments at the map's vertical extent.
+function removeOutlineExtremeConnectors(dataset) {
+  var bounds = getDatasetBounds(dataset);
+  var width = bounds.width();
+  var height = bounds.height();
+  var edgeTolerance = height * 1e-3;
+  var flatTolerance = height * 1e-4;
+  var arcs = dataset.arcs;
+  var lyr = dataset.layers[0];
+  var paths = [];
+  var removed = 0;
+  lyr.shapes.forEach(function(shp) {
+    (shp || []).forEach(function(path) {
+      var points = [];
+      var iter = arcs.getShapeIter(path);
+      while (iter.hasNext()) {
+        points.push([iter.x, iter.y]);
+      }
+      var part = [points[0]];
+      for (var i = 1; i < points.length; i++) {
+        var a = points[i - 1];
+        var b = points[i];
+        var atTop = Math.min(a[1], b[1]) >= bounds.ymax - edgeTolerance;
+        var atBottom = Math.max(a[1], b[1]) <= bounds.ymin + edgeTolerance;
+        var isFlat = Math.abs(a[1] - b[1]) <= flatTolerance;
+        var isWide = Math.abs(a[0] - b[0]) >= width * 0.02;
+        if ((atTop || atBottom) && isFlat && isWide) {
+          if (part.length > 1) paths.push(part);
+          part = [b];
+          removed++;
+        } else {
+          part.push(b);
+        }
+      }
+      if (part.length > 1) paths.push(part);
+    });
+  });
+  if (removed === 0) return dataset;
+  var cleaned = importGeoJSON({
+    type: paths.length == 1 ? 'LineString' : 'MultiLineString',
+    coordinates: paths.length == 1 ? paths[0] : paths
+  });
+  cleaned.info = dataset.info;
+  return cleaned;
 }
 
 function getBoundingRectangle(dest, opts) {

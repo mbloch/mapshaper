@@ -18,9 +18,9 @@ describe('interrupted projections', function() {
   it('supports the Mollweide and oceanic forward transforms', function() {
     var src = api.internal.parseCrsString('wgs84');
     [
-      ['igh_o', [-14271613.32776727, 6532652.773031666]],
+      ['igh_o', [2127241.739731794, 6532652.773031666]],
       ['imoll', [-12415169.066926826, 6869064.045895816]],
-      ['imoll_o', [-14271613.32776727, 6869064.045895816]]
+      ['imoll_o', [686280.1510976998, 6869064.045895816]]
     ].forEach(function(test) {
       var dest = api.internal.parseCrsString('+proj=' + test[0] + ' +R=6371000');
       var project = api.internal.getProjTransform2(src, dest);
@@ -38,12 +38,15 @@ describe('interrupted projections', function() {
     assert.deepEqual(topology.seams[0].coordinates, [[-20, 0], [-20, 91]]);
     assert.equal(topology.regions[0].transform.lon_0, -80);
 
-    var ocean = api.internal.getProjectionTopology(
-      api.internal.parseCrsString('+proj=igh_o +lon_0=-160')
-    );
+    var oceanCrs = api.internal.parseCrsString('+proj=igh_o');
+    var ocean = api.internal.getProjectionTopology(oceanCrs);
+    assert.equal(oceanCrs.lam0 * 180 / Math.PI, -160);
     assert.equal(ocean.regions.length, 6);
     assert.deepEqual(ocean.seams[0].coordinates, [[110, 0], [110, 91]]);
     assert.equal(ocean.regions[0].transform.lon_0, 60);
+
+    var unrotated = api.internal.parseCrsString('+proj=igh_o +lon_0=0');
+    assert.equal(unrotated.lam0, 0);
   });
 
   it('splits a line at an interruption without losing attributes', async function() {
@@ -71,8 +74,8 @@ describe('interrupted projections', function() {
   it('splits lines for every additional interrupted layout', async function() {
     var tests = [
       ['imoll', [[-80, 60], [0, 60]]],
-      ['igh_o', [[-120, 60], [-60, 60]]],
-      ['imoll_o', [[-120, 60], [-60, 60]]]
+      ['igh_o', [[-120, 60], [-80, 60]]],
+      ['imoll_o', [[-120, 60], [-80, 60]]]
     ];
     for (var i = 0; i < tests.length; i++) {
       var id = tests[i][0];
@@ -113,7 +116,7 @@ describe('interrupted projections', function() {
     };
     for (var id of ['igh_o', 'imoll_o']) {
       var out = await api.applyCommands(
-        '-i in.json -proj +proj=' + id + ' +lon_0=-160 +R=6371000 densify -o out.json',
+        '-i in.json -proj +proj=' + id + ' +R=6371000 densify -o out.json',
         {'in.json': input}
       );
       var geometry = JSON.parse(out['out.json']).features[0].geometry;
@@ -188,8 +191,8 @@ describe('interrupted projections', function() {
     var projections = [
       igh,
       '+proj=imoll +R=6371000',
-      '+proj=igh_o +R=6371000 +lon_0=-160',
-      '+proj=imoll_o +R=6371000 +lon_0=-160'
+      '+proj=igh_o +R=6371000',
+      '+proj=imoll_o +R=6371000'
     ];
     for (var projection of projections) {
       var out = await api.applyCommands(

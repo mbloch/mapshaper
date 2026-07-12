@@ -83,6 +83,8 @@ import * as ClipErase from './commands/mapshaper-clip-erase';
 import * as ClipPoints from './clipping/mapshaper-point-clipping';
 import * as Colorizer from './commands/mapshaper-colorizer';
 import * as CustomProjections from './crs/mapshaper-custom-projections';
+import * as Dymaxion from './crs/mapshaper-dymaxion';
+import * as ButterflyProjections from './crs/mapshaper-butterfly-projections';
 import * as DataAggregation from './dissolve/mapshaper-data-aggregation';
 import * as DatasetUtils from './dataset/mapshaper-dataset-utils';
 import * as DataUtils from './datatable/mapshaper-data-utils';
@@ -213,6 +215,8 @@ Object.assign(internal,
   ClipPoints,
   Colorizer,
   CustomProjections,
+  Dymaxion,
+  ButterflyProjections,
   DataAggregation,
   DatasetUtils,
   DataUtils,
