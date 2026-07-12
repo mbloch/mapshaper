@@ -50,7 +50,7 @@
       <div class="docs-breadcrumbs"><a href="/docs/">Docs</a> &rsaquo; Guides &rsaquo; Map projections</div>
       <h1 id="map-projections">Map projections</h1>
 <p>Mapshaper&#39;s <a href="/docs/reference.html#-proj"><code>-proj</code></a> command reprojects a dataset from one coordinate reference system (CRS) to another, using a JavaScript port of the <a href="https://proj.org/">PROJ</a> coordinate transformation library.</p>
-<p>Run <code>mapshaper -projections</code> (or just <code>projection</code> in the web app console) to print the full list of available projections.</p>
+<p>Run <code>mapshaper -projections</code> (or just <code>projections</code> in the web app console) to print the full list of available projections.</p>
 <p><strong>Examples</strong></p>
 <pre><code class="hljs language-bash"><span class="hljs-comment"># Project a Shapefile to UTM zone 11N using a PROJ string</span>
 mapshaper nevada.shp -proj +proj=utm +zone=11 -o
