@@ -11,6 +11,13 @@ This is a curated list of recently added features. For the full list of changes,
 
 <div class="whats-new-entry">
 
+**Interrupted and polyhedral world projections.** The `-proj` command supports forward-only interrupted projections, including Interrupted Goode Homolosine (`igh`, `igh_o`), Interrupted Mollweide (`imoll`, `imoll_o`), the Dymaxion icosahedral layout (`dymaxion`, `dymaxion2`), and octahedral butterfly projections (`butterfly`, `butterfly2`, `cahill_keyes`). `-graticule` can generate interruption-aware graticules, polygon footprints, and outline neatlines for these projections.
+
+→ See [Interrupted world projections](/docs/guides/projections.html#interrupted-world-projections).
+</div>
+
+<div class="whats-new-entry">
+
 **Ruler tool.** The web UI has a ruler mode for measuring distances on the map. It supports great-circle measurements, projected distance readouts, basemap view, and draggable ruler endpoints.
 
 </div>
