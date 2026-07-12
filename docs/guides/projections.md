@@ -7,6 +7,8 @@ description: How to reproject geographic data with Mapshaper, including CRS nota
 
 Mapshaper's [`-proj`](/docs/reference.html#-proj) command reprojects a dataset from one coordinate reference system (CRS) to another, using a JavaScript port of the [PROJ](https://proj.org/) coordinate transformation library.
 
+Run `mapshaper -projections` (or just `projection` in the web app console) to print the full list of available projections.
+
 **Examples**
 
 ```bash
@@ -24,22 +26,52 @@ mapshaper us-states.shp -proj albersusa +PR -o
 
 ## Forms of CRS notation
 
-`-proj` accepts a CRS in any of three forms.
+**PROJ codes** are sequences of `+key=value` parameters used by the [PROJ](https://proj.org/) projection system and supported by Mapshaper. You will often see PROJ codes from other sources with a large number of parameters containing default values, such as `+units=m` and `+x_0=0 +y_0=0` &mdash; these parameters can safely be omitted.
 
-**PROJ strings** are sequences of `+key=value` parameters. They are the lowest-level form and expose the full set of options for each projection. Parameters that have sensible defaults (datum, units, false easting/northing) can usually be omitted.
-
+Examples of PROJ codes for some common projections (with default values omitted)
 ```bash
-mapshaper data.shp -proj +proj=lcc +lat_1=33 +lat_2=45 +lat_0=39 +lon_0=-96 -o
+# Lambert Conformal Conic
++proj=lcc +lat_1=33 +lat_2=45 +lat_0=39 +lon_0=-96
+# Albers Equal Area Conic
++proj=aea +lat_1=29.5 +lat_2=45.5 +lat_0=23 +lon_0=-96
+# Transverse Mercator
++proj=tmerc +lon_0=-75 +lat_0=0
+# Orthographic
++proj=ortho +lat_0=45 +lon_0=-100
+# Robinson
++proj=robin
+# Mollweide
++proj=moll
+# Mercator
++proj=merc
+# Web Mercator
++proj=merc +a=6378137 +b=6378137
 ```
 
-**EPSG codes** are numeric identifiers from the [EPSG registry](https://epsg.io/). Thousands of national and regional coordinate systems have EPSG codes, making them a compact and unambiguous way to specify a CRS.
+Example of using a PROJ code with the `-proj` command
+
+```bash
+mapshaper unprojected.shp \
+-proj +proj=lcc +lat_1=33 +lat_2=45 +lat_0=39 +lon_0=-96 \
+-o projected.shp
+```
+
+**Bare projection name**
+
+You can also use a bare PROJ projection name (without `+proj=`) as shorthand:
+
+```bash
+mapshaper world.shp -proj robin -o
+```
+
+**EPSG and ESRI codes** are numeric CRS identifiers from the [EPSG registry](https://epsg.io/) and from ESRI. Mapshaper supports many of them.
 
 ```bash
 mapshaper data.shp -proj EPSG:3857 -o   # Web Mercator
 mapshaper data.shp -proj EPSG:32611 -o  # UTM zone 11N (WGS84)
 ```
 
-**Aliases** are short names for common projections. Run `mapshaper -projections` to print the full list. The built-in aliases are:
+**Aliases** are short names for common projections. The built-in aliases are:
 
 | Alias | Equivalent PROJ string |
 |---|---|
@@ -48,11 +80,7 @@ mapshaper data.shp -proj EPSG:32611 -o  # UTM zone 11N (WGS84)
 | `robinson` | `+proj=robin +datum=WGS84` |
 | `albersusa` | [Composite U.S. projection](#albersusa) (see below) |
 
-You can also use a bare PROJ projection name (without `+proj=`) as shorthand when no extra parameters are required:
 
-```bash
-mapshaper world.shp -proj robin -o
-```
 
 ## Auto-fitted parameters
 
@@ -75,11 +103,11 @@ mapshaper region.geojson -proj tmerc -o region_tmerc.geojson
 mapshaper region.geojson -proj utm -o region_utm.geojson
 ```
 
-When Mapshaper auto-fits parameters, it prints the expanded PROJ string so you can see exactly what was applied — for example: `Converted "lcc" to "+proj=lcc +lon_0=-95.5 +lat_1=30.17 +lat_2=44.83"`. You can copy that string and use it explicitly if you need reproducible output.
+When Mapshaper auto-fits parameters, it prints the expanded PROJ string so you can see exactly what was applied. An example message: `Converted "lcc" to "+proj=lcc +lon_0=-95.5 +lat_1=30.17 +lat_2=44.83"`. You can copy this PROJ string and use it explicitly if you need reproducible output.
 
 ## albersusa
 
-`albersusa` is a Mapshaper-specific composite projection for maps of the United States. It is not part of the PROJ library. It applies Albers Equal Area Conic to the contiguous 48 states, then places Alaska (scaled down) and Hawaii as insets in the lower-left corner of the map.
+`albersusa` is a Mapshaper-specific composite projection for maps of the United States. It applies Albers Equal Area Conic to the contiguous 48 states, then places Alaska (scaled down) and Hawaii as insets in the lower-left corner of the map.
 
 ```bash
 mapshaper us-states.shp -proj albersusa -o
@@ -146,7 +174,9 @@ mapshaper world.geojson \
 
 ### Octahedral projections
 
-Mapshaper includes two aspects of a butterfly projection, plus the M-shaped Cahill-Keyes projection. Like the 1909 Cahill projection and the later Waterman butterfly projection, these arrange the globe's eight octahedral facets in a butterfly layout, but they project each facet using Keyes' 12-zone method rather than Cahill's or Waterman's original facet transformations.
+Mapshaper includes two aspects of a butterfly projection, plus the M-shaped Cahill-Keyes projection. Like the 1909 Cahill projection and the later Waterman butterfly projection, Mapshaper's butterfly projections arrange the globe's eight octahedral facets in a butterfly layout, but each facet is projected using Keyes' 12-zone method rather than Cahill's or Waterman's original facet transformations.
+
+![Butterfly projection, Pacific and Atlantic aspects](/docs/images/butterfly-projection.png)
 
 - `butterfly` — Pacific-centered, with a default central meridian of
   157.5°E

@@ -1,3 +1,6 @@
+v0.7.45
+* Added support for more interrupted projections: Buckminster Fuller's Dymaxion map projection, the Cahill-Keyes projection and two butterfly projections.
+
 v0.7.44
 * Added support for several interrupted projections.
 * Added `-graticule outline` option, for creating a neatline around a bounded world map projection.
