@@ -59,11 +59,11 @@
 <p><img src="/docs/images/smooth-lowres-contours.png" alt="image"></p>
 <h2 id="prefiltering-intricate-detail">Prefiltering intricate detail</h2>
 <p>When line smoothing is applied to small, intricate features — jetties, narrow inlets, docks, spikes — the output can include kinks or self-intersections. To prevent this, <code>-smooth</code> first removes detail below the smoothing scale.</p>
-<p>With the prefilter, the small basin, dock outline, and other fine detail are dropped before smoothing.</p>
+<p>Use <code>no-prefilter</code> to skip prefiltering and smooth the input as-is.</p>
+<p>Fig. 1: with the prefilter, the small basin, dock outline, and other fine detail are dropped before smoothing.</p>
 <p><img src="/docs/images/smooth-prefilter-on.png" alt="image"></p>
-<p>Without the prefilter, the same details pull the smoothed line into unwanted bends and loops.</p>
+<p>Fig. 2: without the prefilter, the same details pull the smoothed line into unwanted bends and loops.</p>
 <p><img src="/docs/images/smooth-prefilter-off.png" alt="image"></p>
-<p>Use <code>no-prefilter</code> to skip this step and smooth the input as-is.</p>
 <h2 id="corner-preservation">Corner preservation</h2>
 <p>By default, <code>-smooth</code> protects long straight sections from being reshaped by smoothing.</p>
 <p>Here, the straight lines are preserved and the riverine section is smoothed:</p>
@@ -80,7 +80,7 @@ mapshaper borders.shp -smooth 5km no-corners -o smoothed.shp
 <h2 id="technical-notes">Technical notes</h2>
 <ul>
 <li>The <code>-smooth</code> command uses a Gaussian smoothing kernel.</li>
-<li>Curve compensation reduces the shrinkage that smoothing causes around bends. The <code>gain=</code> option controls this correction.</li>
+<li>Curve compensation reduces the shrinkage that smoothing causes around bends. The <code>gain=</code> option controls the strength of this correction.</li>
 <li>Lat-long data is smoothed on a sphere: coordinates are converted to 3D geocentric coordinates, distances are measured along great circles, and the result is converted back to longitude and latitude.</li>
 </ul>
 <p>See the <a href="/docs/reference.html#-smooth"><code>-smooth</code> reference</a> for the full set of options.</p>

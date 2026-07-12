@@ -26,15 +26,15 @@ Smoothed low-resolution contour lines:
 
 When line smoothing is applied to small, intricate features — jetties, narrow inlets, docks, spikes — the output can include kinks or self-intersections. To prevent this, `-smooth` first removes detail below the smoothing scale.
 
-With the prefilter, the small basin, dock outline, and other fine detail are dropped before smoothing.
+Use `no-prefilter` to skip prefiltering and smooth the input as-is.
+
+Fig. 1: with the prefilter, the small basin, dock outline, and other fine detail are dropped before smoothing.
 
 ![image](/docs/images/smooth-prefilter-on.png)
 
-Without the prefilter, the same details pull the smoothed line into unwanted bends and loops.
+Fig. 2: without the prefilter, the same details pull the smoothed line into unwanted bends and loops.
 
 ![image](/docs/images/smooth-prefilter-off.png)
-
-Use `no-prefilter` to skip this step and smooth the input as-is.
 
 ## Corner preservation
 
@@ -64,7 +64,7 @@ The `max-bend-angle=` option (default `8` degrees) controls output density. A la
 ## Technical notes
 
 - The `-smooth` command uses a Gaussian smoothing kernel.
-- Curve compensation reduces the shrinkage that smoothing causes around bends. The `gain=` option controls this correction.
+- Curve compensation reduces the shrinkage that smoothing causes around bends. The `gain=` option controls the strength of this correction.
 - Lat-long data is smoothed on a sphere: coordinates are converted to 3D geocentric coordinates, distances are measured along great circles, and the result is converted back to longitude and latitude.
 
 See the [`-smooth` reference](/docs/reference.html.md#-smooth) for the full set of options.

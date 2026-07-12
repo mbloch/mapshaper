@@ -50,6 +50,7 @@
       <div class="docs-breadcrumbs"><a href="/docs/">Docs</a> &rsaquo; Guides &rsaquo; Map projections</div>
       <h1 id="map-projections">Map projections</h1>
 <p>Mapshaper&#39;s <a href="/docs/reference.html#-proj"><code>-proj</code></a> command reprojects a dataset from one coordinate reference system (CRS) to another, using a JavaScript port of the <a href="https://proj.org/">PROJ</a> coordinate transformation library.</p>
+<p>Run <code>mapshaper -projections</code> (or just <code>projection</code> in the web app console) to print the full list of available projections.</p>
 <p><strong>Examples</strong></p>
 <pre><code class="hljs language-bash"><span class="hljs-comment"># Project a Shapefile to UTM zone 11N using a PROJ string</span>
 mapshaper nevada.shp -proj +proj=utm +zone=11 -o
@@ -63,15 +64,39 @@ mapshaper nyc.shp -proj +proj=longlat +datum=WGS84 -o
 mapshaper us-states.shp -proj albersusa +PR -o
 </code></pre>
 <h2 id="forms-of-crs-notation">Forms of CRS notation</h2>
-<p><code>-proj</code> accepts a CRS in any of three forms.</p>
-<p><strong>PROJ strings</strong> are sequences of <code>+key=value</code> parameters. They are the lowest-level form and expose the full set of options for each projection. Parameters that have sensible defaults (datum, units, false easting/northing) can usually be omitted.</p>
-<pre><code class="hljs language-bash">mapshaper data.shp -proj +proj=lcc +lat_1=33 +lat_2=45 +lat_0=39 +lon_0=-96 -o
+<p><strong>PROJ codes</strong> are sequences of <code>+key=value</code> parameters used by the <a href="https://proj.org/">PROJ</a> projection system and supported by Mapshaper. You will often see PROJ codes from other sources with a large number of parameters containing default values, such as <code>+units=m</code> and <code>+x_0=0 +y_0=0</code> &mdash; these parameters can safely be omitted.</p>
+<p>Examples of PROJ codes for some common projections (with default values omitted)</p>
+<pre><code class="hljs language-bash"><span class="hljs-comment"># Lambert Conformal Conic</span>
++proj=lcc +lat_1=33 +lat_2=45 +lat_0=39 +lon_0=-96
+<span class="hljs-comment"># Albers Equal Area Conic</span>
++proj=aea +lat_1=29.5 +lat_2=45.5 +lat_0=23 +lon_0=-96
+<span class="hljs-comment"># Transverse Mercator</span>
++proj=tmerc +lon_0=-75 +lat_0=0
+<span class="hljs-comment"># Orthographic</span>
++proj=ortho +lat_0=45 +lon_0=-100
+<span class="hljs-comment"># Robinson</span>
++proj=robin
+<span class="hljs-comment"># Mollweide</span>
++proj=moll
+<span class="hljs-comment"># Mercator</span>
++proj=merc
+<span class="hljs-comment"># Web Mercator</span>
++proj=merc +a=6378137 +b=6378137
 </code></pre>
-<p><strong>EPSG codes</strong> are numeric identifiers from the <a href="https://epsg.io/">EPSG registry</a>. Thousands of national and regional coordinate systems have EPSG codes, making them a compact and unambiguous way to specify a CRS.</p>
+<p>Example of using a PROJ code with the <code>-proj</code> command</p>
+<pre><code class="hljs language-bash">mapshaper unprojected.shp \
+-proj +proj=lcc +lat_1=33 +lat_2=45 +lat_0=39 +lon_0=-96 \
+-o projected.shp
+</code></pre>
+<p><strong>Bare projection name</strong></p>
+<p>You can also use a bare PROJ projection name (without <code>+proj=</code>) as shorthand:</p>
+<pre><code class="hljs language-bash">mapshaper world.shp -proj robin -o
+</code></pre>
+<p><strong>EPSG and ESRI codes</strong> are numeric CRS identifiers from the <a href="https://epsg.io/">EPSG registry</a> and from ESRI. Mapshaper supports many of them.</p>
 <pre><code class="hljs language-bash">mapshaper data.shp -proj EPSG:3857 -o   <span class="hljs-comment"># Web Mercator</span>
 mapshaper data.shp -proj EPSG:32611 -o  <span class="hljs-comment"># UTM zone 11N (WGS84)</span>
 </code></pre>
-<p><strong>Aliases</strong> are short names for common projections. Run <code>mapshaper -projections</code> to print the full list. The built-in aliases are:</p>
+<p><strong>Aliases</strong> are short names for common projections. The built-in aliases are:</p>
 <table>
 <thead>
 <tr>
@@ -96,9 +121,6 @@ mapshaper data.shp -proj EPSG:32611 -o  <span class="hljs-comment"># UTM zone 11
 <td><a href="#albersusa">Composite U.S. projection</a> (see below)</td>
 </tr>
 </tbody></table>
-<p>You can also use a bare PROJ projection name (without <code>+proj=</code>) as shorthand when no extra parameters are required:</p>
-<pre><code class="hljs language-bash">mapshaper world.shp -proj robin -o
-</code></pre>
 <h2 id="auto-fitted-parameters">Auto-fitted parameters</h2>
 <p>For some conic and cylindrical projections, you can supply just the projection name and Mapshaper will calculate suitable parameters from the extent of the data. This is useful when you want a locally appropriate projection without looking up specific values.</p>
 <p>For <strong>Lambert Conformal Conic</strong> (<code>lcc</code>) and <strong>Albers Equal Area Conic</strong> (<code>aea</code>), Mapshaper calculates the central meridian (<code>lon_0</code>) and two standard parallels (<code>lat_1</code>, <code>lat_2</code>) using the one-sixth rule applied to the data&#39;s bounding box.</p>
@@ -113,9 +135,9 @@ mapshaper region.geojson -proj tmerc -o region_tmerc.geojson
 <span class="hljs-comment"># Equivalent — Mapshaper fills in zone and hemisphere</span>
 mapshaper region.geojson -proj utm -o region_utm.geojson
 </code></pre>
-<p>When Mapshaper auto-fits parameters, it prints the expanded PROJ string so you can see exactly what was applied — for example: <code>Converted &quot;lcc&quot; to &quot;+proj=lcc +lon_0=-95.5 +lat_1=30.17 +lat_2=44.83&quot;</code>. You can copy that string and use it explicitly if you need reproducible output.</p>
+<p>When Mapshaper auto-fits parameters, it prints the expanded PROJ string so you can see exactly what was applied. An example message: <code>Converted &quot;lcc&quot; to &quot;+proj=lcc +lon_0=-95.5 +lat_1=30.17 +lat_2=44.83&quot;</code>. You can copy this PROJ string and use it explicitly if you need reproducible output.</p>
 <h2 id="albersusa">albersusa</h2>
-<p><code>albersusa</code> is a Mapshaper-specific composite projection for maps of the United States. It is not part of the PROJ library. It applies Albers Equal Area Conic to the contiguous 48 states, then tiles Alaska (scaled down) and Hawaii as insets in the lower-left corner of the map.</p>
+<p><code>albersusa</code> is a Mapshaper-specific composite projection for maps of the United States. It applies Albers Equal Area Conic to the contiguous 48 states, then places Alaska (scaled down) and Hawaii as insets in the lower-left corner of the map.</p>
 <pre><code class="hljs language-bash">mapshaper us-states.shp -proj albersusa -o
 </code></pre>
 <p>Two optional flags add insets for outlying territories:</p>
@@ -127,15 +149,16 @@ mapshaper region.geojson -proj utm -o region_utm.geojson
 </code></pre>
 <p>The position, scale, rotation, and other properties of each inset can be overridden with named parameters if the defaults do not suit your map. See the <a href="/docs/reference.html#-proj"><code>-proj</code> reference</a> for the full option syntax.</p>
 <h2 id="interrupted-world-projections">Interrupted world projections</h2>
-<p>Mapshaper supports four interrupted world layouts:</p>
+<h3 id="goode-homolosine-and-mollweide-projections">Goode Homolosine and Mollweide projections</h3>
 <ul>
-<li><code>+proj=igh</code> — Interrupted Goode Homolosine, land emphasis</li>
-<li><code>+proj=imoll</code> — Interrupted Mollweide, land emphasis</li>
-<li><code>+proj=igh_o</code> — Interrupted Goode Homolosine, oceanic view</li>
-<li><code>+proj=imoll_o</code> — Interrupted Mollweide, oceanic view</li>
+<li><code>igh</code> — Interrupted Goode Homolosine, land emphasis</li>
+<li><code>imoll</code> — Interrupted Mollweide, land emphasis</li>
+<li><code>igh_o</code> — Interrupted Goode Homolosine, ocean emphasis</li>
+<li><code>imoll_o</code> — Interrupted Mollweide, ocean emphasis</li>
 </ul>
 <p><img src="/docs/images/interrupted-mollweide.png" alt="Interrupted Mollweide world projection"></p>
-<p>The oceanic layouts are normally used with <code>+lon_0=-160</code>.</p>
+<p>The ocean-emphasis projections default to <code>+lon_0=-160</code>; an explicit
+<code>+lon_0=</code> overrides this default.</p>
 <pre><code class="hljs language-bash"><span class="hljs-comment"># Project world polygons using Goode Homolosine; add a graticule</span>
 mapshaper world.geojson \
   -proj +proj=igh \
@@ -145,12 +168,44 @@ mapshaper world.geojson \
 
 <span class="hljs-comment"># Create an ocean-emphasis Interrupted Mollweide layer with a neatline</span>
 mapshaper world.geojson \
-  -proj +proj=imoll_o +lon_0=-160 \
+  -proj +proj=imoll_o \
   -o world-imoll-o.fgb \
   -graticule outline \
   -o neatline-imoll-o.fgb
 </code></pre>
-<p>The interrupted projections are forward-only. An interrupted dataset cannot be projected back to longitude/latitude, and raster reprojection is not supported. Shapefile export can write projected coordinates but cannot generate a <code>.prj</code> file for these custom CRSes.</p>
+<h3 id="dymaxion-projections">Dymaxion projections</h3>
+<p>Mapshaper includes two versions of Buckminster Fuller&#39;s Airocean
+(Dymaxion) icosahedral layout:</p>
+<ul>
+<li><code>dymaxion</code> — Gray-Fuller transformation within each triangular facet</li>
+<li><code>dymaxion2</code> — gnomonic transformation within each facet</li>
+</ul>
+<p>The Gray-Fuller version minimizes shape and area distortion; the gnomonic version maps great-circle segments to straight lines within each facet.</p>
+<pre><code class="hljs language-bash">mapshaper world.geojson \
+  -proj +proj=dymaxion densify \
+  -o world-dymaxion.geojson \
+  -graticule outline \
+  -o neatline-dymaxion.geojson
+</code></pre>
+<h3 id="octahedral-projections">Octahedral projections</h3>
+<p>Mapshaper includes two aspects of a butterfly projection, plus the M-shaped Cahill-Keyes projection. Like the 1909 Cahill projection and the later Waterman butterfly projection, Mapshaper&#39;s butterfly projections arrange the globe&#39;s eight octahedral facets in a butterfly layout, but each facet is projected using Keyes&#39; 12-zone method rather than Cahill&#39;s or Waterman&#39;s original facet transformations.</p>
+<p><img src="/docs/images/butterfly-projection.png" alt="Butterfly projection, Pacific and Atlantic aspects"></p>
+<ul>
+<li><code>butterfly</code> — Pacific-centered, with a default central meridian of
+157.5°E</li>
+<li><code>butterfly2</code> — Atlantic-centered, with a default central meridian of
+20°W</li>
+<li><code>cahill_keyes</code> — Cahill-Keyes M-shaped profile, with a
+default central meridian of 20°W</li>
+</ul>
+<pre><code class="hljs language-bash">mapshaper world.geojson \
+  -proj +proj=butterfly densify \
+  -o world-butterfly.geojson \
+  -graticule outline \
+  -o neatline-butterfly.geojson
+</code></pre>
+<p>All projections in this section are forward-only: no inverse formulas are
+available, and raster reprojection is not supported.</p>
 <h2 id="finding-crs-definitions">Finding CRS definitions</h2>
 <p>Several websites provide PROJ strings and EPSG codes for coordinate systems worldwide:</p>
 <ul>
@@ -166,7 +221,7 @@ mapshaper world.geojson \
 </li>
 <li><p>Projections that can only represent part of the globe — including orthographic (<code>ortho</code>), near-side perspective (<code>nsper</code>, <code>geos</code>), gnomonic (<code>gnom</code>), stereographic (<code>stere</code>), and Lambert Azimuthal Equal-Area (<code>laea</code>) — automatically clip input data to the projection&#39;s valid extent before projecting. This prevents distorted or invalid geometry from coordinates outside the visible area.</p>
 </li>
-<li><p>Interrupted projections (<code>igh</code>, <code>imoll</code>, <code>igh_o</code>, <code>imoll_o</code>) are forward-only; inverse projection and raster reprojection are not supported.</p>
+<li><p>Interrupted and polyhedral projections (<code>igh</code>, <code>imoll</code>, <code>igh_o</code>, <code>imoll_o</code>, <code>dymaxion</code>, <code>dymaxion2</code>, <code>butterfly</code>, <code>butterfly2</code>, <code>cahill_keyes</code>) are forward-only; inverse projection and raster reprojection are not supported.</p>
 </li>
 <li><p>For projections that introduce significant curvature along straight lines, add the <code>densify</code> option to interpolate extra vertices along long segments:</p>
 <pre><code class="hljs language-bash">mapshaper data.shp -proj +proj=ortho +lat_0=45 +lon_0=-100 densify -o
@@ -177,8 +232,6 @@ mapshaper world.geojson \
 <li><p>The <code>init=</code> option is available for files whose source CRS is unknown and cannot be inferred from a <code>.prj</code> file. Shapefiles normally carry a <code>.prj</code> sidecar; GeoJSON and TopoJSON are assumed to be WGS84 when their coordinates fall within the standard lat/long range.</p>
 </li>
 </ul>
-<h2 id="the--proj-command">The -proj command</h2>
-<p>See the <a href="/docs/reference.html#-proj"><code>-proj</code> reference</a> for the full list of options.</p>
 
       <div class="edit-link">
         <a href="https://github.com/mbloch/mapshaper/edit/master/docs/guides/projections.md">Edit this page on GitHub</a>
@@ -187,7 +240,7 @@ mapshaper world.geojson \
   </main>
 
   <aside class="docs-toc">
-    <div class="docs-toc-title">On this page</div><ul><li class="lvl-2"><a href="#forms-of-crs-notation">Forms of CRS notation</a></li><li class="lvl-2"><a href="#auto-fitted-parameters">Auto-fitted parameters</a></li><li class="lvl-2"><a href="#albersusa">albersusa</a></li><li class="lvl-2"><a href="#interrupted-world-projections">Interrupted world projections</a></li><li class="lvl-2"><a href="#finding-crs-definitions">Finding CRS definitions</a></li><li class="lvl-2"><a href="#coordinate-system-quirks-and-limitations">Coordinate system quirks and limitations</a></li><li class="lvl-2"><a href="#the--proj-command">The -proj command</a></li></ul>
+    <div class="docs-toc-title">On this page</div><ul><li class="lvl-2"><a href="#forms-of-crs-notation">Forms of CRS notation</a></li><li class="lvl-2"><a href="#auto-fitted-parameters">Auto-fitted parameters</a></li><li class="lvl-2"><a href="#albersusa">albersusa</a></li><li class="lvl-2"><a href="#interrupted-world-projections">Interrupted world projections</a></li><li class="lvl-3"><a href="#goode-homolosine-and-mollweide-projections">Goode Homolosine and Mollweide projections</a></li><li class="lvl-3"><a href="#dymaxion-projections">Dymaxion projections</a></li><li class="lvl-3"><a href="#octahedral-projections">Octahedral projections</a></li><li class="lvl-2"><a href="#finding-crs-definitions">Finding CRS definitions</a></li><li class="lvl-2"><a href="#coordinate-system-quirks-and-limitations">Coordinate system quirks and limitations</a></li></ul>
   </aside>
 
 </div>

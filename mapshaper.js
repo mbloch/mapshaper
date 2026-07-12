@@ -78,7 +78,7 @@
     return obj === Object(obj); // via underscore
   }
 
-  function clamp$2(val, min, max) {
+  function clamp$3(val, min, max) {
     return val < min ? min : (val > max ? max : val);
   }
 
@@ -751,7 +751,7 @@
   function findValueByRank(arr, rank) {
     if (!arr.length || rank < 1 || rank > arr.length) error$1("[findValueByRank()] invalid input");
 
-    rank = clamp$2(rank | 0, 1, arr.length);
+    rank = clamp$3(rank | 0, 1, arr.length);
     var k = rank - 1, // conv. rank to array index
         n = arr.length,
         l = 0,
@@ -1125,7 +1125,7 @@
   // self-import and the resulting Rollup circular-dependency warning.
   var utils = {
     addThousandsSep, addslashes, arrayToIndex,
-    clamp: clamp$2, cleanNumericString, contains, copyElements, countValues, createBuffer,
+    clamp: clamp$3, cleanNumericString, contains, copyElements, countValues, createBuffer,
     defaults, difference,
     endsWith, every, expandoBuffer, extend: extend$1, extendBuffer,
     find: find$1, findMedian, findQuantile, findRankByValue, findStringPrefix,
@@ -2083,12 +2083,12 @@
   // TODO: remove this constant, use actual data from dataset CRS,
   // also consider using ellipsoidal formulas where greater accuracy might be important.
   var R$3 = WGS84.SEMIMAJOR_AXIS;
-  var D2R$1 = Math.PI / 180;
-  var R2D$1 = 180 / Math.PI;
+  var D2R$6 = Math.PI / 180;
+  var R2D$5 = 180 / Math.PI;
 
   // Equirectangular projection
   function degreesToMeters(deg) {
-    return deg * D2R$1 * R$3;
+    return deg * D2R$6 * R$3;
   }
 
   function distance3D(ax, ay, az, bx, by, bz) {
@@ -2104,7 +2104,7 @@
     return dx * dx + dy * dy;
   }
 
-  function distance2D(ax, ay, bx, by) {
+  function distance2D$1(ax, ay, bx, by) {
     var dx = ax - bx,
         dy = ay - by;
     return Math.sqrt(dx * dx + dy * dy);
@@ -2235,16 +2235,16 @@
 
   function xyzToLngLat(x, y, z, p) {
     var d = distance3D(0, 0, 0, x, y, z); // normalize
-    var lat = Math.asin(z / d) / D2R$1;
-    var lng = Math.atan2(y / d, x / d) / D2R$1;
+    var lat = Math.asin(z / d) / D2R$6;
+    var lng = Math.atan2(y / d, x / d) / D2R$6;
     p[0] = lng;
     p[1] = lat;
   }
 
   function lngLatToXYZ(lng, lat, p) {
     var cosLat;
-    lng *= D2R$1;
-    lat *= D2R$1;
+    lng *= D2R$6;
+    lat *= D2R$6;
     cosLat = Math.cos(lat);
     p[0] = Math.cos(lng) * cosLat * R$3;
     p[1] = Math.sin(lng) * cosLat * R$3;
@@ -2282,7 +2282,7 @@
   }
 
   function cosine(ax, ay, bx, by, cx, cy) {
-    var den = distance2D(ax, ay, bx, by) * distance2D(bx, by, cx, cy),
+    var den = distance2D$1(ax, ay, bx, by) * distance2D$1(bx, by, cx, cy),
         cos = 0;
     if (den > 0) {
       cos = ((ax - bx) * (cx - bx) + (ay - by) * (cy - by)) / den;
@@ -2364,9 +2364,9 @@
 
   var Geom = /*#__PURE__*/Object.freeze({
     __proto__: null,
-    D2R: D2R$1,
+    D2R: D2R$6,
     R: R$3,
-    R2D: R2D$1,
+    R2D: R2D$5,
     bearing: bearing,
     bearing2D: bearing2D,
     containsBounds: containsBounds,
@@ -2374,7 +2374,7 @@
     cosine: cosine,
     cosine3D: cosine3D,
     degreesToMeters: degreesToMeters,
-    distance2D: distance2D,
+    distance2D: distance2D$1,
     distance3D: distance3D,
     distanceSq: distanceSq,
     distanceSq3D: distanceSq3D,
@@ -2525,7 +2525,7 @@
       if (spherical && arcs.isPlanar()) {
         error("Expected lat-long coordinates");
       }
-      calcLen = spherical ? greatCircleDistance : distance2D;
+      calcLen = spherical ? greatCircleDistance : distance2D$1;
       len = 0;
       for (var i=0, n=path.length; i<n; i++) {
         arcs.forEachArcSegment(path[i], addSegLen);
@@ -3311,8 +3311,8 @@
     // angle and seg length ratio thresholds were found by comparing
     // fast and robust outputs on sample data
     if (innerAngle(ax, ay, bx, by, cx, cy, dx, dy) < 0.1) return true;
-    var len1 = distance2D(ax, ay, bx, by);
-    var len2 = distance2D(cx, cy, dx, dy);
+    var len1 = distance2D$1(ax, ay, bx, by);
+    var len2 = distance2D$1(cx, cy, dx, dy);
     var ratio = (len1 < len2 ? len1 / len2 : len2 / len1) || 0;
     if (ratio < 0.001) return true;
     return false;
@@ -3405,7 +3405,7 @@
   }
 
   function snapIfCloser(p, minDist, x, y, x2, y2) {
-    var dist = distance2D(x, y, x2, y2);
+    var dist = distance2D$1(x, y, x2, y2);
     if (dist < minDist) {
       minDist = dist;
       p[0] = x2;
@@ -6287,7 +6287,1807 @@
     probablyDecimalDegreeBounds: probablyDecimalDegreeBounds
   });
 
+  /*
+   * Polyhedral unfolding code adapted from d3-geo-polygon.
+   *
+   * Copyright 2017-2024 Mike Bostock
+   * ISC License: https://github.com/d3/d3-geo-polygon/blob/main/LICENSE
+   */
+
+  var D2R$5 = Math.PI / 180;
+  var R2D$4 = 180 / Math.PI;
+  var EPS$1 = 1e-12;
+
+  // Build a forward-only spherical polyhedral projection.
+  //
+  // config.faces contains spherical polygons in degrees. config.parents defines
+  // a spanning tree of attached faces. faceProjector(face) returns a local
+  // projection accepting radians and returning planar coordinates.
+  function createPolyhedralProjection(config) {
+    var faces = config.faces.map(function(coords, i) {
+      return createFace(coords, i, config.faceSites && config.faceSites[i]);
+    });
+    var parents = config.parents;
+    var attachedPairs = new Set();
+    var faceProjector = config.faceProjector;
+
+    faces.forEach(function(face) {
+      face.project = faceProjector(face);
+    });
+
+    faces.forEach(function(face) {
+      initFaceTransform(face.id);
+    });
+
+    function initFaceTransform(faceId) {
+      var parentId = parents[faceId];
+      var face = faces[faceId];
+      if (face.transform) return;
+      if (parentId < 0) {
+        face.transform = identityMatrix();
+        return;
+      }
+      initFaceTransform(parentId);
+      var parent = faces[parentId];
+      var shared = findSharedEdge(face.coords, parent.coords);
+      if (!shared) {
+        throw new Error('Invalid polyhedral face tree');
+      }
+      var childEdge = shared.map(function(p) {
+        return face.project(p[0] * D2R$5, p[1] * D2R$5);
+      });
+      var parentEdge = shared.map(function(p) {
+        return parent.project(p[0] * D2R$5, p[1] * D2R$5);
+      });
+      face.transform = multiplyMatrices(
+        parent.transform,
+        getEdgeTransform(parentEdge, childEdge)
+      );
+      attachedPairs.add(pairKey(faceId, parentId));
+    }
+
+    var rootEdge = findLongestEdge(faces[0].coords);
+    var rootPlanarEdge = rootEdge.map(function(p) {
+      return faces[0].project(p[0] * D2R$5, p[1] * D2R$5);
+    });
+    var sphericalEdgeLength = angularDistance(rootEdge[0], rootEdge[1]);
+    var planarEdgeLength = distance2D(rootPlanarEdge[0], rootPlanarEdge[1]);
+    var scale = sphericalEdgeLength / planarEdgeLength;
+    var planarAngle = (config.angle || 0) * D2R$5;
+    var edgeIndex = indexEdges(faces, attachedPairs);
+    var outline = buildOutline(faces, attachedPairs).map(function(ring) {
+      return ring.map(transformOutputPoint);
+    });
+    var bounds = getBounds(outline);
+    var centerX = (bounds[0] + bounds[2]) / 2;
+    var centerY = (bounds[1] + bounds[3]) / 2;
+
+    // Centering is calculated after scale and planar rotation.
+    outline.forEach(function(ring) {
+      ring.forEach(function(p) {
+        p[0] -= centerX;
+        p[1] -= centerY;
+      });
+    });
+
+    return {
+      faces: faces,
+      outline: outline,
+      forward: forward,
+      findFace: findFace,
+      findTransitionRegion: findTransitionRegion,
+      getTopology: getTopology
+    };
+
+    function forward(lam, phi) {
+      var rotated = rotateRadians(
+        lam,
+        phi,
+        config.rotation[0] * D2R$5,
+        config.rotation[1] * D2R$5,
+        config.rotation[2] * D2R$5
+      );
+      var face = findFaceRotated(rotated[0], rotated[1]);
+      if (!face) return null;
+      var p = face.project(rotated[0], rotated[1]);
+      p = applyMatrix(face.transform, p);
+      p = transformOutputPoint(p);
+      p[0] -= centerX;
+      p[1] -= centerY;
+      return p;
+    }
+
+    function findFace(lam, phi) {
+      var rotated = rotateRadians(
+        lam,
+        phi,
+        config.rotation[0] * D2R$5,
+        config.rotation[1] * D2R$5,
+        config.rotation[2] * D2R$5
+      );
+      var face = findFaceRotated(rotated[0], rotated[1]);
+      return face ? face.id : -1;
+    }
+
+    function findTransitionRegion(lam, phi) {
+      var rotated = rotateRadians(
+        lam,
+        phi,
+        config.rotation[0] * D2R$5,
+        config.rotation[1] * D2R$5,
+        config.rotation[2] * D2R$5
+      );
+      var face = findFaceRotated(rotated[0], rotated[1]);
+      var region;
+      if (!face) return '-1';
+      region = face.project.findRegion ?
+        face.project.findRegion(rotated[0], rotated[1]) :
+        0;
+      return face.id + ':' + region;
+    }
+
+    function findFaceRotated(lam, phi) {
+      var faceId;
+      if (config.findFace) {
+        faceId = config.findFace(lam, phi);
+        return faceId >= 0 ? faces[faceId] : null;
+      }
+      var p = radiansToVector(lam, phi);
+      for (var i = 0; i < faces.length; i++) {
+        if (faceContainsVector(faces[i], p)) return faces[i];
+      }
+      return null;
+    }
+
+    function transformOutputPoint(p) {
+      var x = p[0] * scale;
+      // Local unfolding uses screen-oriented y coordinates to match the D3
+      // Airocean face layout; return conventional projected coordinates (y up).
+      var y = -p[1] * scale;
+      if (planarAngle) {
+        return [
+          x * Math.cos(planarAngle) - y * Math.sin(planarAngle),
+          x * Math.sin(planarAngle) + y * Math.cos(planarAngle)
+        ];
+      }
+      return [x, y];
+    }
+
+    function getTopology(lon0) {
+      var seams = edgeIndex.map(function(edge) {
+        var endpoints = edge.points.map(function(p) {
+          var q = rotateRadians(
+            p[0] * D2R$5,
+            p[1] * D2R$5,
+            config.rotation[0] * D2R$5,
+            config.rotation[1] * D2R$5,
+            config.rotation[2] * D2R$5,
+            true
+          );
+          return [normalizeLongitude$1(q[0] * R2D$4 + lon0), q[1] * R2D$4];
+        });
+        var paths = splitPathAtAntimeridian$1(
+          interpolateGreatCircle(endpoints[0], endpoints[1], 0.05)
+        );
+        paths.forEach(function(path) {
+          // The mask must be wider than the tiny chord error between samples.
+          path.mask_width = 4e-5;
+        });
+        return {
+          type: edge.attached ? 'attached' : 'cut',
+          faces: edge.faces,
+          paths: paths
+        };
+      });
+      var regionPairs = new Map();
+      edgeIndex.forEach(function(edge) {
+        if (edge.faces.length == 2) {
+          regionPairs.set(pairKey(edge.faces[0], edge.faces[1]), edge.attached);
+        }
+      });
+      return {
+        regions: faces.map(function(face) {
+          return {id: face.id};
+        }),
+        seams: seams,
+        findRegion: function(lon, lat) {
+          var lam = normalizeLongitude$1(lon - lon0) * D2R$5;
+          return findFace(lam, lat * D2R$5);
+        },
+        findTransitionRegion: function(lon, lat) {
+          var lam = normalizeLongitude$1(lon - lon0) * D2R$5;
+          return findTransitionRegion(lam, lat * D2R$5);
+        },
+        regionsAreAttached: function(a, b) {
+          return regionPairs.get(pairKey(a, b)) === true;
+        },
+        outline: outline.map(function(ring) {
+          return ring.map(function(p) {
+            return p.concat();
+          });
+        })
+      };
+    }
+  }
+
+  function rotateSphericalRadians(lam, phi, rotation, invert) {
+    return rotateRadians(
+      lam,
+      phi,
+      (rotation[0] || 0) * D2R$5,
+      (rotation[1] || 0) * D2R$5,
+      (rotation[2] || 0) * D2R$5,
+      invert
+    );
+  }
+
+  function createFace(coords, id, site) {
+    var vectors = coords.map(function(p) {
+      return degreesToVector$2(p[0], p[1]);
+    });
+    var inside = normalizeVector$1(vectors.reduce(function(sum, p) {
+      sum[0] += p[0];
+      sum[1] += p[1];
+      sum[2] += p[2];
+      return sum;
+    }, [0, 0, 0]));
+    var edges = [];
+    for (var i = 0; i < vectors.length; i++) {
+      var a = vectors[i];
+      var b = vectors[(i + 1) % vectors.length];
+      var normal = cross$1(a, b);
+      edges.push({
+        normal: normal,
+        sign: dot$1(normal, inside) < 0 ? -1 : 1
+      });
+    }
+    return {
+      id: id,
+      coords: coords,
+      vectors: vectors,
+      edges: edges,
+      centroid: site || vectorToDegrees$2(inside)
+    };
+  }
+
+  function faceContainsVector(face, p) {
+    for (var i = 0; i < face.edges.length; i++) {
+      var edge = face.edges[i];
+      if (dot$1(edge.normal, p) * edge.sign < -EPS$1) return false;
+    }
+    return true;
+  }
+
+  function indexEdges(faces, attachedPairs) {
+    var index = new Map();
+    faces.forEach(function(face) {
+      for (var i = 0; i < face.coords.length; i++) {
+        var a = face.coords[i];
+        var b = face.coords[(i + 1) % face.coords.length];
+        var key = edgeKey(a, b);
+        var edge = index.get(key);
+        if (!edge) {
+          edge = {points: [a, b], faces: []};
+          index.set(key, edge);
+        }
+        edge.faces.push(face.id);
+      }
+    });
+    return Array.from(index.values()).map(function(edge) {
+      edge.attached = edge.faces.length == 2 &&
+        attachedPairs.has(pairKey(edge.faces[0], edge.faces[1]));
+      return edge;
+    });
+  }
+
+  function buildOutline(faces, attachedPairs) {
+    var edges = [];
+    faces.forEach(function(face) {
+      for (var i = 0; i < face.coords.length; i++) {
+        var a = face.coords[i];
+        var b = face.coords[(i + 1) % face.coords.length];
+        var adjacent = findAdjacentFace(faces, face.id, a, b);
+        if (adjacent >= 0 && attachedPairs.has(pairKey(face.id, adjacent))) continue;
+        edges.push([
+          applyMatrix(face.transform, face.project(a[0] * D2R$5, a[1] * D2R$5)),
+          applyMatrix(face.transform, face.project(b[0] * D2R$5, b[1] * D2R$5))
+        ]);
+      }
+    });
+    return connectEdges(edges);
+  }
+
+  function connectEdges(edges) {
+    var unused = edges.concat();
+    var rings = [];
+    while (unused.length) {
+      var edge = unused.pop();
+      var ring = [edge[0], edge[1]];
+      while (!pointsAlmostEqual(ring[0], ring[ring.length - 1])) {
+        var last = ring[ring.length - 1];
+        var found = -1;
+        var next;
+        for (var i = 0; i < unused.length; i++) {
+          if (pointsAlmostEqual(last, unused[i][0])) {
+            found = i;
+            next = unused[i][1];
+            break;
+          }
+          if (pointsAlmostEqual(last, unused[i][1])) {
+            found = i;
+            next = unused[i][0];
+            break;
+          }
+        }
+        if (found < 0) break;
+        unused.splice(found, 1);
+        ring.push(next);
+      }
+      if (ring.length > 3 && pointsAlmostEqual(ring[0], ring[ring.length - 1])) {
+        ring[ring.length - 1] = ring[0].concat();
+        rings.push(ring);
+      }
+    }
+    return rings;
+  }
+
+  function findAdjacentFace(faces, faceId, a, b) {
+    var key = edgeKey(a, b);
+    for (var i = 0; i < faces.length; i++) {
+      if (i == faceId) continue;
+      var coords = faces[i].coords;
+      for (var j = 0; j < coords.length; j++) {
+        if (edgeKey(coords[j], coords[(j + 1) % coords.length]) == key) return i;
+      }
+    }
+    return -1;
+  }
+
+  function findSharedEdge(a, b) {
+    for (var i = 0; i < a.length; i++) {
+      var p = a[i];
+      for (var j = 0; j < b.length; j++) {
+        var q = a[(i + 1) % a.length];
+        var c = b[j];
+        var d = b[(j + 1) % b.length];
+        if (sameSphericalPoint(p, c) && sameSphericalPoint(q, d) ||
+            sameSphericalPoint(p, d) && sameSphericalPoint(q, c)) {
+          return [p, q];
+        }
+      }
+    }
+    return null;
+  }
+
+  function findLongestEdge(coords) {
+    var longest = null;
+    var max = -Infinity;
+    for (var i = 0; i < coords.length; i++) {
+      var edge = [coords[i], coords[(i + 1) % coords.length]];
+      var length = angularDistance(edge[0], edge[1]);
+      if (length > max) {
+        longest = edge;
+        max = length;
+      }
+    }
+    return longest;
+  }
+
+  function getEdgeTransform(dest, src) {
+    var ux = dest[1][0] - dest[0][0];
+    var uy = dest[1][1] - dest[0][1];
+    var vx = src[1][0] - src[0][0];
+    var vy = src[1][1] - src[0][1];
+    var scale = Math.sqrt((ux * ux + uy * uy) / (vx * vx + vy * vy));
+    var angle = Math.atan2(ux * vy - uy * vx, ux * vx + uy * vy);
+    var cos = Math.cos(angle) * scale;
+    var sin = Math.sin(angle) * scale;
+    return [
+      cos,
+      sin,
+      dest[0][0] - cos * src[0][0] - sin * src[0][1],
+      -sin,
+      cos,
+      dest[0][1] + sin * src[0][0] - cos * src[0][1]
+    ];
+  }
+
+  function identityMatrix() {
+    return [1, 0, 0, 0, 1, 0];
+  }
+
+  function multiplyMatrices(a, b) {
+    return [
+      a[0] * b[0] + a[1] * b[3],
+      a[0] * b[1] + a[1] * b[4],
+      a[0] * b[2] + a[1] * b[5] + a[2],
+      a[3] * b[0] + a[4] * b[3],
+      a[3] * b[1] + a[4] * b[4],
+      a[3] * b[2] + a[4] * b[5] + a[5]
+    ];
+  }
+
+  function applyMatrix(m, p) {
+    return [
+      m[0] * p[0] + m[1] * p[1] + m[2],
+      m[3] * p[0] + m[4] * p[1] + m[5]
+    ];
+  }
+
+  function rotateRadians(lam, phi, deltaLam, deltaPhi, deltaGamma, invert) {
+    if (invert) {
+      var inv = rotatePhiGamma$1(lam, phi, deltaPhi, deltaGamma, true);
+      return [normalizeRadians$1(inv[0] - deltaLam), inv[1]];
+    }
+    lam = normalizeRadians$1(lam + deltaLam);
+    return rotatePhiGamma$1(lam, phi, deltaPhi, deltaGamma, false);
+  }
+
+  // Based on d3-geo spherical rotation (ISC license).
+  function rotatePhiGamma$1(lam, phi, deltaPhi, deltaGamma, invert) {
+    var cosDeltaPhi = Math.cos(deltaPhi);
+    var sinDeltaPhi = Math.sin(deltaPhi);
+    var cosDeltaGamma = Math.cos(deltaGamma);
+    var sinDeltaGamma = Math.sin(deltaGamma);
+    var cosPhi = Math.cos(phi);
+    var x = Math.cos(lam) * cosPhi;
+    var y = Math.sin(lam) * cosPhi;
+    var z = Math.sin(phi);
+    var k;
+    if (invert) {
+      k = z * cosDeltaGamma - y * sinDeltaGamma;
+      return [
+        Math.atan2(y * cosDeltaGamma + z * sinDeltaGamma,
+          x * cosDeltaPhi + k * sinDeltaPhi),
+        Math.asin(clamp$2(k * cosDeltaPhi - x * sinDeltaPhi, -1, 1))
+      ];
+    }
+    k = z * cosDeltaPhi + x * sinDeltaPhi;
+    return [
+      Math.atan2(y * cosDeltaGamma - k * sinDeltaGamma,
+        x * cosDeltaPhi - z * sinDeltaPhi),
+      Math.asin(clamp$2(k * cosDeltaGamma + y * sinDeltaGamma, -1, 1))
+    ];
+  }
+
+  function interpolateGreatCircle(a, b, interval) {
+    var av = degreesToVector$2(a[0], a[1]);
+    var bv = degreesToVector$2(b[0], b[1]);
+    var angle = Math.acos(clamp$2(dot$1(av, bv), -1, 1));
+    var n = Math.max(1, Math.ceil(angle * R2D$4 / interval));
+    var sinAngle = Math.sin(angle);
+    var points = [];
+    for (var i = 0; i <= n; i++) {
+      var t = i / n;
+      var p;
+      if (sinAngle < EPS$1) {
+        p = av;
+      } else {
+        var ka = Math.sin((1 - t) * angle) / sinAngle;
+        var kb = Math.sin(t * angle) / sinAngle;
+        p = [
+          av[0] * ka + bv[0] * kb,
+          av[1] * ka + bv[1] * kb,
+          av[2] * ka + bv[2] * kb
+        ];
+      }
+      points.push(vectorToDegrees$2(normalizeVector$1(p)));
+    }
+    return points;
+  }
+
+  function splitPathAtAntimeridian$1(path) {
+    var paths = [];
+    var part = [path[0]];
+    for (var i = 1; i < path.length; i++) {
+      var a = path[i - 1];
+      var b = path[i];
+      if (Math.abs(a[0] - b[0]) > 180) {
+        var bLon = b[0] + (b[0] < a[0] ? 360 : -360);
+        var edgeLon = a[0] < 0 ? -180 : 180;
+        var t = (edgeLon - a[0]) / (bLon - a[0]);
+        var lat = a[1] + (b[1] - a[1]) * t;
+        part.push([edgeLon, lat]);
+        paths.push(part);
+        part = [[-edgeLon, lat], b];
+      } else {
+        part.push(b);
+      }
+    }
+    if (part.length > 1) paths.push(part);
+    return paths;
+  }
+
+  function getBounds(rings) {
+    var bounds = [Infinity, Infinity, -Infinity, -Infinity];
+    rings.forEach(function(ring) {
+      ring.forEach(function(p) {
+        bounds[0] = Math.min(bounds[0], p[0]);
+        bounds[1] = Math.min(bounds[1], p[1]);
+        bounds[2] = Math.max(bounds[2], p[0]);
+        bounds[3] = Math.max(bounds[3], p[1]);
+      });
+    });
+    return bounds;
+  }
+
+  function angularDistance(a, b) {
+    return Math.acos(clamp$2(dot$1(degreesToVector$2(a[0], a[1]),
+      degreesToVector$2(b[0], b[1])), -1, 1));
+  }
+
+  function degreesToVector$2(lon, lat) {
+    return radiansToVector(lon * D2R$5, lat * D2R$5);
+  }
+
+  function radiansToVector(lam, phi) {
+    var cosPhi = Math.cos(phi);
+    return [Math.cos(lam) * cosPhi, Math.sin(lam) * cosPhi, Math.sin(phi)];
+  }
+
+  function vectorToDegrees$2(p) {
+    return [
+      Math.atan2(p[1], p[0]) * R2D$4,
+      Math.asin(clamp$2(p[2], -1, 1)) * R2D$4
+    ];
+  }
+
+  function normalizeVector$1(p) {
+    var k = 1 / Math.sqrt(dot$1(p, p));
+    return [p[0] * k, p[1] * k, p[2] * k];
+  }
+
+  function cross$1(a, b) {
+    return [
+      a[1] * b[2] - a[2] * b[1],
+      a[2] * b[0] - a[0] * b[2],
+      a[0] * b[1] - a[1] * b[0]
+    ];
+  }
+
+  function dot$1(a, b) {
+    return a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
+  }
+
+  function distance2D(a, b) {
+    var dx = b[0] - a[0];
+    var dy = b[1] - a[1];
+    return Math.sqrt(dx * dx + dy * dy);
+  }
+
+  function sameSphericalPoint(a, b) {
+    return Math.abs(a[0] - b[0]) < EPS$1 && Math.abs(a[1] - b[1]) < EPS$1;
+  }
+
+  function pointsAlmostEqual(a, b) {
+    return Math.abs(a[0] - b[0]) < 1e-9 && Math.abs(a[1] - b[1]) < 1e-9;
+  }
+
+  function pointKey$1(p) {
+    return p[0].toFixed(12) + ',' + p[1].toFixed(12);
+  }
+
+  function edgeKey(a, b) {
+    var ka = pointKey$1(a);
+    var kb = pointKey$1(b);
+    return ka < kb ? ka + '|' + kb : kb + '|' + ka;
+  }
+
+  function pairKey(a, b) {
+    return a < b ? a + '~' + b : b + '~' + a;
+  }
+
+  function normalizeRadians$1(lam) {
+    while (lam > Math.PI) lam -= Math.PI * 2;
+    while (lam < -Math.PI) lam += Math.PI * 2;
+    return lam;
+  }
+
+  function normalizeLongitude$1(lon) {
+    while (lon > 180) lon -= 360;
+    while (lon < -180) lon += 360;
+    return lon;
+  }
+
+  function clamp$2(val, min, max) {
+    return Math.max(min, Math.min(max, val));
+  }
+
+  /*
+   * Buckminster Fuller's Airocean arrangement of the icosahedron.
+   *
+   * Face layout adapted from d3-geo-polygon (ISC license):
+   * https://github.com/d3/d3-geo-polygon/blob/main/src/airocean.js
+   *
+   * The Gray-Fuller raw transform below is based on Robert W. Gray's published
+   * equations and Philippe Rivière's public-domain clean-room implementation:
+   * https://github.com/d3/d3-geo-polygon/blob/main/src/grayfuller.js
+   */
+
+
+  var D2R$4 = Math.PI / 180;
+  var R2D$3 = 180 / Math.PI;
+  var SQRT3 = Math.sqrt(3);
+  var GRAY_Z = Math.sqrt(5 + 2 * Math.sqrt(5)) / Math.sqrt(15);
+  var GRAY_EL = Math.sqrt(8) / Math.sqrt(5 + Math.sqrt(5));
+  var GRAY_DVE = Math.sqrt(3 + Math.sqrt(5)) / Math.sqrt(5 + Math.sqrt(5));
+  var ROTATION = [-83.65929, 25.44458, -87.45184];
+  var PARENTS = [
+    -1, 0, 1, 11, 13,
+    6, 7, 1, 7, 8,
+    9, 10, 11, 12, 13,
+    6, 8, 10, 17, 21,
+    16, 15, 19, 19
+  ];
+  var engines$1 = {};
+
+  function registerDymaxionProjections(mproj) {
+    // Some unit tests import source modules directly in an ESM context where
+    // optional CommonJS dependencies are intentionally unavailable.
+    if (!mproj) return;
+    register('dymaxion', 'Dymaxion (Gray-Fuller facets)', 'fuller');
+    register('dymaxion2', 'Dymaxion (Gnomonic facets)', 'gnomonic');
+
+    function register(id, name, method) {
+      if (mproj.internal.pj_list[id]) return;
+      mproj.pj_add(function(P) {
+        initDymaxion(P, method);
+      }, id, name);
+    }
+  }
+
+  function getDymaxionEngine(method) {
+    method = method || 'fuller';
+    if (!engines$1[method]) {
+      var data = createAiroceanFaces();
+      engines$1[method] = createPolyhedralProjection({
+        faces: data.faces,
+        faceSites: data.sites,
+        parents: PARENTS,
+        rotation: ROTATION,
+        angle: -60,
+        faceProjector: method == 'gnomonic' ?
+          createGnomonicFaceProjector :
+          createGrayFullerFaceProjector
+      });
+    }
+    return engines$1[method];
+  }
+
+  function initDymaxion(P, method) {
+    var engine = getDymaxionEngine(method);
+    P.es = 0;
+    P.inv = null;
+    P.fwd = function(lp, xy) {
+      var p = engine.forward(lp.lam, lp.phi);
+      if (!p) {
+        xy.x = xy.y = Infinity;
+      } else {
+        xy.x = p[0];
+        xy.y = p[1];
+      }
+    };
+    P.__projection_topology = engine.getTopology(P.lam0 * R2D$3);
+    P.__projected_outline = engine.outline;
+  }
+
+  function createAiroceanFaces() {
+    var theta = Math.atan(0.5) * R2D$3;
+    var vertices = [[0, 90], [0, -90]];
+    var faces;
+    var sites;
+    for (var i = 0; i < 10; i++) {
+      vertices.push([(i * 36 + 180) % 360 - 180, i & 1 ? theta : -theta]);
+    }
+    faces = [
+      [0, 3, 11],
+      [0, 5, 3],
+      [0, 7, 5],
+      [0, 9, 7],
+      [0, 11, 9],
+      [2, 11, 3],
+      [3, 4, 2],
+      [4, 3, 5],
+      [5, 6, 4],
+      [6, 5, 7],
+      [7, 8, 6],
+      [8, 7, 9],
+      [9, 10, 8],
+      [10, 9, 11],
+      [11, 2, 10],
+      [1, 2, 4],
+      [1, 4, 6],
+      [1, 6, 8],
+      [1, 8, 10],
+      [1, 10, 2]
+    ].map(function(ids) {
+      return ids.map(function(id) {
+        return vertices[id];
+      });
+    });
+    sites = faces.map(getSphericalCentroid);
+    splitAiroceanFaces(faces, sites);
+    return {faces: faces, sites: sites};
+  }
+
+  function splitAiroceanFaces(faces, sites) {
+    var face = faces[15];
+    var site = sites[15];
+    var original = face.concat();
+    face[0] = site;
+    faces.push([original[0], site, original[2]]);
+    sites.push(site);
+    faces.push([original[0], original[1], site]);
+    sites.push(site);
+
+    face = faces[14];
+    site = sites[14];
+    original = face.concat();
+    var mid = getGreatCircleMidpoint(face[1], face[2]);
+    face[1] = mid;
+    faces.push([original[0], original[1], mid]);
+    sites.push(site);
+
+    face = faces[19];
+    site = sites[19];
+    original = face.concat();
+    face[1] = mid;
+    faces.push([mid, original[0], original[1]]);
+    sites.push(site);
+  }
+
+  function createGrayFullerFaceProjector(face) {
+    var c = face.centroid;
+    var direction = Math.abs(c[1] - 52.62) < 1 ||
+      Math.abs(c[1] + 10.81) < 1 ? 0 : 60;
+    var rotation = [-c[0], -c[1], direction];
+    return function(lam, phi) {
+      var p = rotateSphericalRadians(lam, phi, rotation);
+      var q = grayFullerRaw(p[0], p[1]);
+      // D3's face projections use screen-oriented local y coordinates; retaining
+      // that convention reproduces the published Airocean unfolding matrices.
+      return [q[0], -q[1]];
+    };
+  }
+
+  function createGnomonicFaceProjector(face) {
+    var c = face.centroid;
+    var rotation = [-c[0], -c[1], 0];
+    return function(lam, phi) {
+      var p = rotateSphericalRadians(lam, phi, rotation);
+      var cosPhi = Math.cos(p[1]);
+      var k = cosPhi * Math.cos(p[0]);
+      return [
+        cosPhi * Math.sin(p[0]) / k,
+        -Math.sin(p[1]) / k
+      ];
+    };
+  }
+
+  function grayFullerRaw(lam, phi) {
+    var cosPhi = Math.cos(phi);
+    var s = GRAY_Z / (cosPhi * Math.cos(lam));
+    var x = cosPhi * Math.sin(lam) * s;
+    var y = Math.sin(phi) * s;
+    var a1p = Math.atan2(2 * y / SQRT3 + GRAY_EL / 3 - GRAY_EL / 2, GRAY_DVE);
+    var a2p = Math.atan2(x - y / SQRT3 + GRAY_EL / 3 - GRAY_EL / 2, GRAY_DVE);
+    var a3p = Math.atan2(GRAY_EL / 3 - x - y / SQRT3 - GRAY_EL / 2, GRAY_DVE);
+    return [SQRT3 * (a2p - a3p), 2 * a1p - a2p - a3p];
+  }
+
+  function getSphericalCentroid(coords) {
+    var sum = [0, 0, 0];
+    coords.forEach(function(p) {
+      var v = degreesToVector$1(p);
+      sum[0] += v[0];
+      sum[1] += v[1];
+      sum[2] += v[2];
+    });
+    return vectorToDegrees$1(normalize(sum));
+  }
+
+  function getGreatCircleMidpoint(a, b) {
+    var av = degreesToVector$1(a);
+    var bv = degreesToVector$1(b);
+    return vectorToDegrees$1(normalize([
+      av[0] + bv[0],
+      av[1] + bv[1],
+      av[2] + bv[2]
+    ]));
+  }
+
+  function degreesToVector$1(p) {
+    var lam = p[0] * D2R$4;
+    var phi = p[1] * D2R$4;
+    var cosPhi = Math.cos(phi);
+    return [Math.cos(lam) * cosPhi, Math.sin(lam) * cosPhi, Math.sin(phi)];
+  }
+
+  function vectorToDegrees$1(p) {
+    return [
+      Math.atan2(p[1], p[0]) * R2D$3,
+      Math.asin(Math.max(-1, Math.min(1, p[2]))) * R2D$3
+    ];
+  }
+
+  function normalize(p) {
+    var k = 1 / Math.sqrt(p[0] * p[0] + p[1] * p[1] + p[2] * p[2]);
+    return [p[0] * k, p[1] * k, p[2] * k];
+  }
+
+  var Dymaxion = /*#__PURE__*/Object.freeze({
+    __proto__: null,
+    getDymaxionEngine: getDymaxionEngine,
+    registerDymaxionProjections: registerDymaxionProjections
+  });
+
+  /*
+   * Vertex-oriented great-circle "slice-and-dice" projection.
+   *
+   * Based on van Leeuwen and Strebe (2006), with the vector formulation
+   * described by Hall et al. (2020) and implemented independently by DGGAL.
+   * https://doi.org/10.1559/152304006779500687
+   * https://doi.org/10.3390/ijgi9050315
+   */
+
+
+  function createGnomonicProjector(center) {
+    var rotation = [-center[0], -center[1], 0];
+    return function(lam, phi) {
+      var p = rotateSphericalRadians(lam, phi, rotation);
+      var cosPhi = Math.cos(p[1]);
+      var k = cosPhi * Math.cos(p[0]);
+      return [
+        cosPhi * Math.sin(p[0]) / k,
+        -Math.sin(p[1]) / k
+      ];
+    };
+  }
+
+  /*
+   * Cahill-Keyes 12-zone forward transform.
+   *
+   * Implemented in Perl by Mary Jo Graça (2011), ported to D3.js by
+   * Enrico Spinielli (2013), and adapted here from d3-geo-polygon.
+   *
+   * Copyright 2017-2024 Mike Bostock
+   * ISC License: https://github.com/d3/d3-geo-polygon/blob/main/LICENSE
+   */
+
+  var D2R$3 = Math.PI / 180;
+  var R2D$2 = 180 / Math.PI;
+
+  function createCahillKeyesRaw(mg) {
+    return createCahillKeyesTransform(mg, false);
+  }
+
+  function createCahillKeyesTransform(mg, faceOnly) {
+    var CK = {lengthMG: mg};
+    init();
+
+    return function(lambda, phi) {
+      if (faceOnly) {
+        var lon = lambda * R2D$2;
+        var side = lon < 0 ? -1 : lon > 0 ? 1 : 0;
+        var local = mp2xy(Math.abs(lon), Math.abs(phi * R2D$2));
+        return [local[0], side * local[1]];
+      }
+      var res = ll2mp(lambda * R2D$2, phi * R2D$2);
+      var xy = mp2xy(res[0], res[1]);
+      var p = [xy[0], res[2] * xy[1]];
+      return mj2g(p, res[3]);
+    };
+
+    function init() {
+      var k = Math.sqrt(3);
+      var pointN, lengthMB, lengthMN, lengthNG, pointU;
+      var p73a, lF, lT, lM, l, pointV;
+      CK.lengthMA = 0.094 * CK.lengthMG;
+      CK.lengthParallel0to73At0 = CK.lengthMG / 100;
+      CK.lengthParallel73to90At0 =
+        (CK.lengthMG - CK.lengthMA - CK.lengthParallel0to73At0 * 73) / 17;
+      CK.sin60 = k / 2;
+      CK.cos60 = 0.5;
+      CK.pointM = [0, 0];
+      CK.pointG = [CK.lengthMG, 0];
+      pointN = [CK.lengthMG, CK.lengthMG * Math.tan(30 * D2R$3)];
+      CK.pointA = [CK.lengthMA, 0];
+      CK.pointB = lineIntersection(CK.pointM, 30, CK.pointA, 45);
+      CK.lengthAG = distance(CK.pointA, CK.pointG);
+      CK.lengthAB = distance(CK.pointA, CK.pointB);
+      lengthMB = distance(CK.pointM, CK.pointB);
+      lengthMN = distance(CK.pointM, pointN);
+      lengthNG = distance(pointN, CK.pointG);
+      CK.pointD = interpolate(lengthMB, lengthMN, pointN, CK.pointM);
+      CK.pointF = [CK.lengthMG, lengthNG - lengthMB];
+      CK.pointE = [
+        pointN[0] - CK.lengthMA * Math.sin(30 * D2R$3),
+        pointN[1] - CK.lengthMA * Math.cos(30 * D2R$3)
+      ];
+      CK.lengthGF = distance(CK.pointG, CK.pointF);
+      CK.lengthBD = distance(CK.pointB, CK.pointD);
+      CK.lengthGFE = CK.lengthGF + CK.lengthAB;
+      CK.deltaMEq = CK.lengthGFE / 45;
+      CK.lengthAP75 = 15 * CK.lengthParallel73to90At0;
+      CK.lengthAP73 = CK.lengthMG - CK.lengthMA -
+        CK.lengthParallel0to73At0 * 73;
+      pointU = [
+        CK.pointA[0] + CK.lengthAP73 * Math.cos(30 * D2R$3),
+        CK.pointA[1] + CK.lengthAP73 * Math.sin(30 * D2R$3)
+      ];
+      CK.pointT = lineIntersection(pointU, -60, CK.pointB, 30);
+
+      p73a = parallel73(29);
+      lF = p73a.lengthParallel73;
+      lT = lengthTorridSegment(29);
+      lM = lengthMiddleSegment(29);
+      l = 15 * (lT + lM + lF) / 73 - lT;
+      pointV = interpolate(l, lM, jointT(29), jointF(29));
+      CK.pointC = [0, 0];
+      CK.pointC[1] = (
+        pointV[0] * pointV[0] + pointV[1] * pointV[1] -
+        CK.pointD[0] * CK.pointD[0] - CK.pointD[1] * CK.pointD[1]
+      ) / (
+        2 * (k * pointV[0] + pointV[1] -
+          k * CK.pointD[0] - CK.pointD[1])
+      );
+      CK.pointC[0] = k * CK.pointC[1];
+      CK.radius = distance(CK.pointC, CK.pointD);
+    }
+
+    function ll2mp(lon, lat) {
+      var south = [0, 6, 7, 8, 5];
+      var octant = truncate((lon + 180) / 90 + 1);
+      var meridian = (lon + 720) % 90 - 45;
+      var side = meridian < 0 ? -1 : meridian > 0 ? 1 : 0;
+      meridian = Math.abs(meridian);
+      if (octant === 5) octant = 1;
+      if (lat < 0) octant = south[octant];
+      return [meridian, Math.abs(lat), side, octant];
+    }
+
+    function mp2xy(m, p) {
+      if (m === 0) return p >= 75 ? zoneA(m, p) : zoneB(m, p);
+      if (p >= 75) return zoneC(m, p);
+      if (p === 0) return zoneD(m);
+      if (p >= 73 && m <= 30) return zoneE(m, p);
+      if (m === 45) {
+        return p <= 15 ? zoneF(m, p) :
+          p <= 73 ? zoneG(m, p) : zoneH(m, p);
+      }
+      if (m <= 29) return zoneI(m, p);
+      if (p >= 73) return zoneJ(m, p);
+      var lT = lengthTorridSegment(m);
+      var hit = circleLineIntersection(
+        CK.pointC, CK.radius, jointT(m), jointF(m)
+      );
+      var l15;
+      if (hit[0]) {
+        l15 = lT + distance(jointT(m), hit[1]);
+      } else {
+        hit = circleLineIntersection(
+          CK.pointC, CK.radius, jointE(m), jointT(m)
+        );
+        l15 = lT - distance(jointT(m), hit[1]);
+      }
+      return p <= 15 ? zoneK(m, p, l15) : zoneL(m, p, l15);
+    }
+
+    function zoneA(m, p) {
+      return [CK.pointA[0] + (90 - p) * 104, 0];
+    }
+
+    function zoneB(m, p) {
+      return [CK.pointG[0] - p * 100, 0];
+    }
+
+    function zoneC(m, p) {
+      return radialPoint(CK.pointA, 104 * (90 - p), m);
+    }
+
+    function zoneD(m) {
+      return equator(m);
+    }
+
+    function zoneE(m, p) {
+      return radialPoint(CK.pointA, 1560 + (75 - p) * 100, m);
+    }
+
+    function zoneF(m, p) {
+      return interpolate(p, 15, CK.pointE, CK.pointD);
+    }
+
+    function zoneG(m, p) {
+      return interpolate(p - 15, 58, CK.pointD, CK.pointT);
+    }
+
+    function zoneH(m, p) {
+      var p75 = parallel75(45);
+      var p73 = parallel73(m).parallel73;
+      var lF = distance(CK.pointT, CK.pointB);
+      var lF75 = distance(CK.pointB, p75);
+      var l = (75 - p) * (lF75 + lF) / 2;
+      return l <= lF75 ?
+        interpolate(l, lF75, p75, CK.pointB) :
+        interpolate(l - lF75, lF, CK.pointB, p73);
+    }
+
+    function zoneI(m, p) {
+      var p73a = parallel73(m);
+      var lT = lengthTorridSegment(m);
+      var lM = lengthMiddleSegment(m);
+      var l = p * (lT + lM + p73a.lengthParallel73) / 73;
+      if (l <= lT) return interpolate(l, lT, jointE(m), jointT(m));
+      if (l <= lT + lM) {
+        return interpolate(l - lT, lM, jointT(m), jointF(m));
+      }
+      return interpolate(
+        l - lT - lM,
+        p73a.lengthParallel73,
+        jointF(m),
+        p73a.parallel73
+      );
+    }
+
+    function zoneJ(m, p) {
+      var p75 = parallel75(m);
+      var p73a = parallel73(m);
+      var lF75 = distance(jointF(m), p75);
+      var l = (75 - p) * (lF75 - p73a.lengthParallel73) / 2;
+      return l <= lF75 ?
+        interpolate(l, lF75, p75, jointF(m)) :
+        interpolate(
+          l - lF75,
+          -p73a.lengthParallel73,
+          jointF(m),
+          p73a.parallel73
+        );
+    }
+
+    function zoneK(m, p, l15) {
+      var l = p * l15 / 15;
+      var lT = lengthTorridSegment(m);
+      var lM = lengthMiddleSegment(m);
+      return l <= lT ?
+        interpolate(l, lT, jointE(m), jointT(m)) :
+        interpolate(l - lT, lM, jointT(m), jointF(m));
+    }
+
+    function zoneL(m, p, l15) {
+      var p73a = parallel73(m);
+      var lT = lengthTorridSegment(m);
+      var lM = lengthMiddleSegment(m);
+      var lF = p73a.lengthParallel73;
+      var l = l15 + (p - 15) * (lT + lM + lF - l15) / 58;
+      if (l <= lT) return interpolate(l, lT, jointE(m), jointF(m));
+      if (l <= lT + lM) {
+        return interpolate(l - lT, lM, jointT(m), jointF(m));
+      }
+      return interpolate(
+        l - lT - lM, lF, jointF(m), p73a.parallel73
+      );
+    }
+
+    function equator(m) {
+      var l = CK.deltaMEq * m;
+      return l <= CK.lengthGF ?
+        [CK.pointG[0], l] :
+        interpolate(l - CK.lengthGF, CK.lengthAB, CK.pointF, CK.pointE);
+    }
+
+    function jointE(m) {
+      return equator(m);
+    }
+
+    function jointT(m) {
+      return lineIntersection(CK.pointM, 2 * m / 3, jointE(m), m / 3);
+    }
+
+    function jointF(m) {
+      if (m === 0) return [CK.pointA[0] + CK.lengthAB, 0];
+      return lineIntersection(CK.pointA, m, CK.pointM, 2 * m / 3);
+    }
+
+    function lengthTorridSegment(m) {
+      return distance(jointE(m), jointT(m));
+    }
+
+    function lengthMiddleSegment(m) {
+      return distance(jointT(m), jointF(m));
+    }
+
+    function parallel73(m) {
+      var p73, lF, xy;
+      var jF = jointF(m);
+      if (m <= 30) {
+        p73 = radialPoint(CK.pointA, CK.lengthAP73, m);
+        lF = distance(jF, p73);
+      } else {
+        p73 = lineIntersection(CK.pointT, -60, jF, m);
+        lF = distance(jF, p73);
+        if (m > 44) {
+          xy = lineIntersection(CK.pointT, -60, jF, 2 * m / 3);
+          if (xy[0] > p73[0]) {
+            p73 = xy;
+            lF = -distance(jF, p73);
+          }
+        }
+      }
+      return {parallel73: p73, lengthParallel73: lF};
+    }
+
+    function parallel75(m) {
+      return radialPoint(CK.pointA, CK.lengthAP75, m);
+    }
+
+    function mj2g(xy, octant) {
+      var out;
+      if (octant === 0) {
+        out = rotate(xy, -60);
+      } else if (octant === 1) {
+        out = rotate(xy, -120);
+        out[0] -= CK.lengthMG;
+      } else if (octant === 2) {
+        out = rotate(xy, -60);
+        out[0] -= CK.lengthMG;
+      } else if (octant === 3) {
+        out = rotate(xy, -120);
+        out[0] += CK.lengthMG;
+      } else if (octant === 4) {
+        out = rotate(xy, -60);
+        out[0] += CK.lengthMG;
+      } else if (octant === 5) {
+        out = rotate([2 * CK.lengthMG - xy[0], xy[1]], -60);
+        out[0] += CK.lengthMG;
+      } else if (octant === 6) {
+        out = rotate([2 * CK.lengthMG - xy[0], xy[1]], -120);
+        out[0] -= CK.lengthMG;
+      } else if (octant === 7) {
+        out = rotate([2 * CK.lengthMG - xy[0], xy[1]], -60);
+        out[0] -= CK.lengthMG;
+      } else if (octant === 8) {
+        out = rotate([2 * CK.lengthMG - xy[0], xy[1]], -120);
+        out[0] += CK.lengthMG;
+      }
+      return out;
+    }
+
+    function radialPoint(origin, length, angle) {
+      return [
+        origin[0] + length * Math.cos(angle * D2R$3),
+        origin[1] + length * Math.sin(angle * D2R$3)
+      ];
+    }
+
+    function rotate(xy, angle) {
+      if (angle === -60) {
+        return [
+          xy[0] * CK.cos60 + xy[1] * CK.sin60,
+          -xy[0] * CK.sin60 + xy[1] * CK.cos60
+        ];
+      }
+      if (angle === -120) {
+        return [
+          -xy[0] * CK.cos60 + xy[1] * CK.sin60,
+          -xy[0] * CK.sin60 - xy[1] * CK.cos60
+        ];
+      }
+      var cos = Math.cos(angle * D2R$3);
+      var sin = Math.sin(angle * D2R$3);
+      return [xy[0] * cos - xy[1] * sin, xy[0] * sin + xy[1] * cos];
+    }
+  }
+
+  function createCahillKeyesFaceRaw(mg) {
+    return createCahillKeyesTransform(mg, true);
+  }
+
+  function distance(a, b) {
+    return Math.hypot(a[0] - b[0], a[1] - b[1]);
+  }
+
+  function interpolate(length, total, start, end) {
+    return [
+      start[0] + (end[0] - start[0]) * length / total,
+      start[1] + (end[1] - start[1]) * length / total
+    ];
+  }
+
+  function lineIntersection(p1, slope1, p2, slope2) {
+    var m1 = Math.tan(slope1 * D2R$3);
+    var m2 = Math.tan(slope2 * D2R$3);
+    var x = (m1 * p1[0] - m2 * p2[0] - p1[1] + p2[1]) / (m1 - m2);
+    return [x, m1 * (x - p1[0]) + p1[1]];
+  }
+
+  function circleLineIntersection(center, radius, p1, p2) {
+    var dx = p2[0] - p1[0];
+    var dy = p2[1] - p1[1];
+    var fx = p1[0] - center[0];
+    var fy = p1[1] - center[1];
+    var a = dx * dx + dy * dy;
+    var b = 2 * (dx * fx + dy * fy);
+    var c = fx * fx + fy * fy - radius * radius;
+    var d = b * b - 4 * a * c;
+    if (a === 0 || d < 0) return [0, [0, 0]];
+    var root = Math.sqrt(d);
+    var u1 = (-b + root) / (2 * a);
+    var u2 = (-b - root) / (2 * a);
+    var u = u1 >= 0 && u1 <= 1 ? u1 :
+      u2 >= 0 && u2 <= 1 ? u2 : null;
+    return u === null ? [0, [0, 0]] :
+      [1, [p1[0] + u * dx, p1[1] + u * dy]];
+  }
+
+  function truncate(n) {
+    return n > 0 ? Math.floor(n) : Math.ceil(n);
+  }
+
+  var D2R$2 = Math.PI / 180;
+  var EPS = 1e-12;
+
+  // Create a smooth facet projection from any radial azimuthal projection.
+  // The azimuthal coordinates are warped back to the gnomonic polygon along
+  // the boundary, so adjacent facets retain identical straight edges.
+  function createRadialFacetProjector(coords, options) {
+    options = options || {};
+    var center = options.planarCenter || getSphericalCenter(coords);
+    var gnomonic = createGnomonicProjector(center);
+    var planar = coords.map(function(p) {
+      return gnomonic(p[0] * D2R$2, p[1] * D2R$2);
+    });
+    var edges = createNormalizedEdges(planar);
+    var radial = createRadialFunction(
+      options.radial || 'equal-area',
+      options.radial2,
+      options.radialBlend
+    );
+    var boundaryStrength = options.boundaryStrength || 1;
+    var radialScale = getRadialScale(planar, radial) *
+      (options.radialScale || 1);
+
+    project.radial = options.radial || 'equal-area';
+    project.boundaryStrength = boundaryStrength;
+    return project;
+
+    function project(lam, phi) {
+      var p = gnomonic(lam, phi);
+      var r = Math.hypot(p[0], p[1]);
+      if (r < EPS) return [0, 0];
+      var c = Math.atan(r);
+      var azimuthalRadius = radial(c) * radialScale;
+      var boundaryWeight = getBoundaryWeight(p, edges, boundaryStrength);
+      var scale = 1 + boundaryWeight * (azimuthalRadius / r - 1);
+      return [p[0] * scale, p[1] * scale];
+    }
+  }
+
+  function createRadialFunction(radial1, radial2, blend) {
+    var f1 = getRadialFunction(radial1);
+    if (!radial2) return f1;
+    var f2 = getRadialFunction(radial2);
+    var k = Math.max(0, Math.min(1, blend == null ? 0.5 : blend));
+    return function(c) {
+      return f1(c) + (f2(c) - f1(c)) * k;
+    };
+  }
+
+  function getRadialFunction(id) {
+    if (typeof id == 'function') return id;
+    id = normalizeRadialProjectionName(id);
+    if (id == 'aeqd') return function(c) {
+      return c;
+    };
+    if (id == 'stere') return function(c) {
+      return 2 * Math.tan(c / 2);
+    };
+    if (id == 'ortho') return function(c) {
+      return Math.sin(c);
+    };
+    if (id == 'gnom') return function(c) {
+      return Math.tan(c);
+    };
+    // Lambert azimuthal equal-area
+    return function(c) {
+      return 2 * Math.sin(c / 2);
+    };
+  }
+
+  function normalizeRadialProjectionName(id) {
+    id = String(id || '').toLowerCase().replace(/_/g, '-');
+    if (id == 'laea' || id == 'lambert' || id == 'equal-area') return 'laea';
+    if (id == 'aeqd' || id == 'equidistant') return 'aeqd';
+    if (id == 'stere' || id == 'stereographic') return 'stere';
+    if (id == 'ortho' || id == 'orthographic') return 'ortho';
+    if (id == 'gnom' || id == 'gnomonic') return 'gnom';
+    throw new Error('Unsupported facet projection: ' + id);
+  }
+
+  function getRadialScale(planar, radial) {
+    var sum = 0;
+    planar.forEach(function(p) {
+      var r = Math.hypot(p[0], p[1]);
+      sum += r / radial(Math.atan(r));
+    });
+    return sum / planar.length;
+  }
+
+  function createNormalizedEdges(planar) {
+    var center = [0, 0];
+    return planar.map(function(a, i) {
+      var b = planar[(i + 1) % planar.length];
+      var dx = b[0] - a[0];
+      var dy = b[1] - a[1];
+      var centerCross = dx * (center[1] - a[1]) -
+        dy * (center[0] - a[0]);
+      return {
+        a: a,
+        dx: dx,
+        dy: dy,
+        denominator: centerCross
+      };
+    });
+  }
+
+  function getBoundaryWeight(p, edges, strength) {
+    var product = 1;
+    for (var i = 0; i < edges.length; i++) {
+      var edge = edges[i];
+      var cross = edge.dx * (p[1] - edge.a[1]) -
+        edge.dy * (p[0] - edge.a[0]);
+      product *= Math.max(0, cross / edge.denominator);
+    }
+    product = Math.max(0, Math.min(1, product));
+    return 1 - Math.pow(1 - product, strength);
+  }
+
+  function getSphericalCenter(coords) {
+    var sum = coords.reduce(function(memo, p) {
+      var lam = p[0] * D2R$2;
+      var phi = p[1] * D2R$2;
+      var cosPhi = Math.cos(phi);
+      memo[0] += Math.cos(lam) * cosPhi;
+      memo[1] += Math.sin(lam) * cosPhi;
+      memo[2] += Math.sin(phi);
+      return memo;
+    }, [0, 0, 0]);
+    return [
+      Math.atan2(sum[1], sum[0]) / D2R$2,
+      Math.atan2(sum[2], Math.hypot(sum[0], sum[1])) / D2R$2
+    ];
+  }
+
+  /*
+   * Octahedral butterfly projections.
+   *
+   * Face layouts are adapted from d3-geo-polygon (ISC license):
+   * https://github.com/d3/d3-geo-polygon
+   *
+   * Copyright 2017-2024 Mike Bostock
+   * ISC License: https://github.com/d3/d3-geo-polygon/blob/main/LICENSE
+   */
+
+
+  var D2R$1 = Math.PI / 180;
+  var R2D$1 = 180 / Math.PI;
+  var RADIAL_BOUNDARY_STRENGTH = 1;
+  var OCTAHEDRON = createOctahedron();
+  var BUTTERFLY_PARENTS = [-1, 0, 0, 1, 0, 1, 4, 5];
+  var DEFAULT_LON0 = {
+    butterfly: 157.5,
+    butterfly2: -20,
+    cahill_keyes: -20
+  };
+  var engines = {};
+
+  function registerButterflyProjections(mproj) {
+    if (!mproj) return;
+    register('butterfly', 'Butterfly projection (Pacific aspect)', 'butterfly');
+    register('butterfly2', 'Butterfly projection (Atlantic aspect)', 'butterfly2');
+    register('cahill_keyes', 'Cahill-Keyes butterfly', 'cahill_keyes');
+
+    function register(id, name, method) {
+      if (mproj.internal.pj_list[id]) return;
+      mproj.pj_add(function(P) {
+        initButterfly(P, method);
+      }, id, name);
+    }
+  }
+
+  function getButterflyEngine(method) {
+    var key = method == 'butterfly2' ? 'butterfly' : method;
+    if (!engines[key]) {
+      if (key == 'cahill_keyes') {
+        engines[key] = createCahillKeyesEngine();
+      } else if (key == 'butterfly') {
+        engines[key] = createButterflyEngine();
+      } else {
+        throw new Error('Unknown butterfly projection: ' + method);
+      }
+    }
+    return engines[key];
+  }
+
+  function initButterfly(P, method) {
+    var engine = getButterflyEngine(method);
+    if (!P.params.lon_0) {
+      P.lam0 = DEFAULT_LON0[method] * D2R$1;
+    }
+    P.es = 0;
+    P.inv = null;
+    P.fwd = function(lp, xy) {
+      var p = engine.forward(lp.lam, lp.phi);
+      if (!p) {
+        xy.x = xy.y = Infinity;
+      } else {
+        xy.x = p[0];
+        xy.y = p[1];
+      }
+    };
+    P.__projection_topology = engine.getTopology(P.lam0 * R2D$1);
+    if (engine.removeOutlineExtremeConnectors) {
+      P.__remove_outline_extreme_connectors = true;
+    }
+    if (engine.useProjectedOutline !== false) {
+      P.__projected_outline = engine.outline;
+    }
+  }
+
+  function createButterflyEngine() {
+    var faceCenters = [-45, 45, -45, 45, -135, 135, -135, 135];
+    // Reuse the Cahill-Keyes polar incisions and 12-zone octant transform,
+    // then unfold the faces with the butterfly attachment tree.
+    var data = createTruncatedOctahedronFaces(
+      Math.cos(17 * D2R$1),
+      Math.sin(17 * D2R$1),
+      BUTTERFLY_PARENTS
+    );
+    var faceRaw = createCahillKeyesFaceRaw(10000);
+    var engine = createPolyhedralProjection({
+      faces: data.faces,
+      parents: data.parents,
+      rotation: [0, 0, 0],
+      // Face-local CK coordinates point opposite the root face.
+      angle: 150,
+      findFace: createTruncatedFaceFinder(data.cornerNormals),
+      faceProjector: function(face) {
+        var baseId = face.id < 8 ? face.id : data.parents[face.id];
+        var center = faceCenters[baseId] * D2R$1;
+        var raw = function(lam, phi) {
+          return faceRaw(normalizeRadians(lam - center), phi);
+        };
+        return createNormalizedFacetProjector(face.coords, raw);
+      }
+    });
+    engine.facetProjection = 'cahill_keyes';
+    return engine;
+  }
+
+  function createNormalizedFacetProjector(coords, raw) {
+    // Remove the global placement and scale of a raw facet while preserving its
+    // internal shape. The polyhedral engine then controls how facets unfold.
+    var points = coords.map(function(p) {
+      return raw(p[0] * D2R$1, p[1] * D2R$1);
+    });
+    var edge = 0;
+    var maxLengthSq = -1;
+    for (var i = 0; i < points.length; i++) {
+      var a = points[i];
+      var b = points[(i + 1) % points.length];
+      var dx = b[0] - a[0];
+      var dy = b[1] - a[1];
+      var lengthSq = dx * dx + dy * dy;
+      if (lengthSq > maxLengthSq) {
+        maxLengthSq = lengthSq;
+        edge = i;
+      }
+    }
+    var origin = points[edge];
+    var end = points[(edge + 1) % points.length];
+    var ux = end[0] - origin[0];
+    var uy = end[1] - origin[1];
+    var center = points.reduce(function(sum, p) {
+      sum[0] += p[0] / points.length;
+      sum[1] += p[1] / points.length;
+      return sum;
+    }, [0, 0]);
+    var side = ux * (center[1] - origin[1]) -
+      uy * (center[0] - origin[0]) < 0 ? -1 : 1;
+    return function(lam, phi) {
+      var p = raw(lam, phi);
+      var x = p[0] - origin[0];
+      var y = p[1] - origin[1];
+      return [
+        (x * ux + y * uy) / maxLengthSq,
+        side * (ux * y - uy * x) / maxLengthSq
+      ];
+    };
+  }
+
+  function createRadialButterflyEngine(options) {
+    options = normalizeRadialFacetOptions(options);
+    var data = createRadialButterflyFaces();
+    var radialOptions = {
+      radial: options.projection,
+      radial2: options.projection2,
+      radialBlend: options.blend,
+      boundaryStrength: RADIAL_BOUNDARY_STRENGTH
+    };
+    var squareProjectors = createSquareProjectors(data.faces, radialOptions);
+    var engine = createPolyhedralProjection({
+      faces: data.faces,
+      parents: data.parents,
+      rotation: [0, 0, 0],
+      angle: -30,
+      findFace: createTruncatedFaceFinder(data.cornerNormals),
+      faceProjector: function(face) {
+        if (face.id < 8) {
+          return createRadialFacetProjector(face.coords, radialOptions);
+        }
+        return squareProjectors.get(pointKey(face.coords[0]));
+      }
+    });
+    engine.radialFacet = {
+      projection: options.projection,
+      projection2: options.projection2,
+      blend: options.blend,
+      boundaryStrength: RADIAL_BOUNDARY_STRENGTH
+    };
+    return engine;
+  }
+
+  function normalizeRadialFacetOptions(options) {
+    options = options || {};
+    var projection2 = options.projection2 ?
+      normalizeRadialProjectionName(options.projection2) :
+      null;
+    var blend = projection2 ?
+      options.blend == null ? 0.5 : Number(options.blend) :
+      0;
+    if (!Number.isFinite(blend) || blend < 0 || blend > 1) {
+      throw new Error('Facet projection blend must be between 0 and 1');
+    }
+    return {
+      projection: normalizeRadialProjectionName(options.projection || 'laea'),
+      projection2: projection2,
+      blend: blend
+    };
+  }
+
+  function createCahillKeyesEngine() {
+    var data = createTruncatedOctahedronFaces(
+      Math.cos(17 * D2R$1),
+      Math.sin(17 * D2R$1),
+      [-1, 3, 0, 2, 0, 1, 4, 5]
+    );
+    var raw = createCahillKeyesRaw(10000);
+    var engine = createPolyhedralProjection({
+      faces: data.faces,
+      parents: data.parents,
+      rotation: [0, 0, 0],
+      angle: 0,
+      findFace: createTruncatedFaceFinder(data.cornerNormals),
+      faceProjector: function() {
+        return function(lam, phi) {
+          var p = raw(lam, phi);
+          return [p[0], -p[1]];
+        };
+      }
+    });
+    // The 12-zone transform positions all octants directly in its M-profile.
+    // Its face-tree boundary retraces several edges, so derive graticule
+    // footprints through the normal spherical clipping path instead.
+    engine.useProjectedOutline = false;
+    engine.removeOutlineExtremeConnectors = true;
+    return engine;
+  }
+
+  function createRadialButterflyFaces() {
+    return createTruncatedOctahedronFaces(
+      Math.sqrt(0.9),
+      Math.sqrt(0.1),
+      BUTTERFLY_PARENTS
+    );
+  }
+
+  function createTruncatedOctahedronFaces(edgeWeight, vertexWeight, baseParents) {
+    var cornerNormals = [];
+    var faces = OCTAHEDRON.map(function(face) {
+      var vectors = face.map(degreesToVector);
+      var hexagon = [];
+      var a = vectors[vectors.length - 1];
+      vectors.forEach(function(b) {
+        hexagon.push(
+          vectorToDegrees(normalizeVector(addScaledVectors(
+            a, edgeWeight, b, vertexWeight
+          ))),
+          vectorToDegrees(normalizeVector(addScaledVectors(
+            b, edgeWeight, a, vertexWeight
+          )))
+        );
+        a = b;
+      });
+      return hexagon;
+    });
+    canonicalizeVertices(faces);
+    faces.forEach(function(hexagon) {
+      var normals = [];
+      for (var i = 0; i < 3; i++) {
+        normals.push(crossVectors(
+          degreesToVector(hexagon[(i * 2 + 2) % 6]),
+          degreesToVector(hexagon[(i * 2 + 1) % 6])
+        ));
+      }
+      cornerNormals.push(normals);
+    });
+    var parents = baseParents.concat();
+    faces.slice().forEach(function(hexagon, j) {
+      var face = OCTAHEDRON[j];
+      for (var i = 0; i < 3; i++) {
+        faces.push([
+          face[i],
+          hexagon[(i * 2 + 2) % 6],
+          hexagon[(i * 2 + 1) % 6]
+        ]);
+        parents.push(j);
+      }
+    });
+    return {faces: faces, parents: parents, cornerNormals: cornerNormals};
+  }
+
+  function createTruncatedFaceFinder(cornerNormals) {
+    return function(lam, phi) {
+      var cosPhi = Math.cos(phi);
+      var p = [cosPhi * Math.cos(lam), cosPhi * Math.sin(lam), Math.sin(phi)];
+      var face = lam < -Math.PI / 2 ?
+        phi < 0 ? 6 : 4 :
+        lam < 0 ?
+          phi < 0 ? 2 : 0 :
+          lam < Math.PI / 2 ?
+            phi < 0 ? 3 : 1 :
+            phi < 0 ? 7 : 5;
+      var normals = cornerNormals[face];
+      if (dotVectors(normals[0], p) < 0) return 8 + 3 * face;
+      if (dotVectors(normals[1], p) < 0) return 8 + 3 * face + 1;
+      if (dotVectors(normals[2], p) < 0) return 8 + 3 * face + 2;
+      return face;
+    };
+  }
+
+  function canonicalizeVertices(faces) {
+    var index = new Map();
+    faces.forEach(function(face) {
+      face.forEach(function(p, i) {
+        var v = degreesToVector(p);
+        var key = v.map(function(x) {
+          return x.toFixed(12);
+        }).join(',');
+        if (index.has(key)) {
+          face[i] = index.get(key);
+        } else {
+          index.set(key, p);
+        }
+      });
+    });
+  }
+
+  function createSquareProjectors(faces, radialOptions) {
+    var verticesByCenter = new Map();
+    var projectors = new Map();
+    faces.slice(8).forEach(function(face) {
+      var key = pointKey(face[0]);
+      var vertices = verticesByCenter.get(key);
+      if (!vertices) {
+        vertices = new Map();
+        verticesByCenter.set(key, vertices);
+      }
+      vertices.set(pointKey(face[1]), face[1]);
+      vertices.set(pointKey(face[2]), face[2]);
+    });
+    verticesByCenter.forEach(function(vertices, key) {
+      var center = key.split(',').map(Number);
+      var gnomonic = createGnomonicProjector(center);
+      var coords = Array.from(vertices.values()).sort(function(a, b) {
+        return planarAngle(a, gnomonic) - planarAngle(b, gnomonic);
+      });
+      projectors.set(key, createRadialFacetProjector(coords, {
+        planarCenter: center,
+        radial: radialOptions.radial,
+        radial2: radialOptions.radial2,
+        radialBlend: radialOptions.radialBlend,
+        boundaryStrength: radialOptions.boundaryStrength
+      }));
+    });
+    return projectors;
+  }
+
+  function planarAngle(p, project) {
+    var q = project(p[0] * D2R$1, p[1] * D2R$1);
+    return Math.atan2(q[1], q[0]);
+  }
+
+  function createOctahedron() {
+    var vertices = [
+      [0, 90],
+      [-90, 0],
+      [0, 0],
+      [90, 0],
+      [180, 0],
+      [0, -90]
+    ];
+    return [
+      [0, 2, 1],
+      [0, 3, 2],
+      [5, 1, 2],
+      [5, 2, 3],
+      [0, 1, 4],
+      [0, 4, 3],
+      [5, 4, 1],
+      [5, 3, 4]
+    ].map(function(ids) {
+      return ids.map(function(id) {
+        return vertices[id];
+      });
+    });
+  }
+
+  function pointKey(p) {
+    return p[0] + ',' + p[1];
+  }
+
+  function degreesToVector(p) {
+    var lam = p[0] * D2R$1;
+    var phi = p[1] * D2R$1;
+    var cosPhi = Math.cos(phi);
+    return [Math.cos(lam) * cosPhi, Math.sin(lam) * cosPhi, Math.sin(phi)];
+  }
+
+  function vectorToDegrees(p) {
+    return [
+      Math.atan2(p[1], p[0]) * R2D$1,
+      Math.asin(Math.max(-1, Math.min(1, p[2]))) * R2D$1
+    ];
+  }
+
+  function addScaledVectors(a, ka, b, kb) {
+    return [
+      a[0] * ka + b[0] * kb,
+      a[1] * ka + b[1] * kb,
+      a[2] * ka + b[2] * kb
+    ];
+  }
+
+  function crossVectors(a, b) {
+    return [
+      a[1] * b[2] - a[2] * b[1],
+      a[2] * b[0] - a[0] * b[2],
+      a[0] * b[1] - a[1] * b[0]
+    ];
+  }
+
+  function dotVectors(a, b) {
+    return a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
+  }
+
+  function normalizeVector(p) {
+    var k = 1 / Math.sqrt(p[0] * p[0] + p[1] * p[1] + p[2] * p[2]);
+    return [p[0] * k, p[1] * k, p[2] * k];
+  }
+
+  function normalizeRadians(lam) {
+    return (lam + Math.PI * 3) % (Math.PI * 2) - Math.PI;
+  }
+
+  var ButterflyProjections = /*#__PURE__*/Object.freeze({
+    __proto__: null,
+    createRadialButterflyEngine: createRadialButterflyEngine,
+    getButterflyEngine: getButterflyEngine,
+    registerButterflyProjections: registerButterflyProjections
+  });
+
   var mproj$1 = require$1('mproj');
+  registerDymaxionProjections(mproj$1);
+  registerButterflyProjections(mproj$1);
 
   var asyncLoader = null;
 
@@ -6456,7 +8256,16 @@
     if (!defn) {
       stop$1("Unknown projection definition:", str);
     }
+    if (utils.isString(defn)) {
+      defn = addDefaultProjectionParams(defn);
+    }
     return defn;
+  }
+
+  function addDefaultProjectionParams(defn) {
+    var oceanic = /(^| )\+proj=(igh_o|imoll_o)(?= |$)/.test(defn);
+    var hasLon0 = /(^| )\+lon_0=/.test(defn);
+    return oceanic && !hasLon0 ? defn + ' +lon_0=-160' : defn;
   }
 
   function looksLikeInitString(str) {
@@ -41375,7 +43184,7 @@ ${svg}
 
   function getPlanarFilter(interval) {
     return function(a, b) {
-      return distance2D(a[0], a[1], b[0], b[1]) <= interval;
+      return distance2D$1(a[0], a[1], b[0], b[1]) <= interval;
     };
   }
 
@@ -41808,7 +43617,7 @@ ${svg}
   }
 
   function probeIsExposed(index, skipA, skipB, vx, vy, p) {
-    var r = distance2D(vx, vy, p[0], p[1]);
+    var r = distance2D$1(vx, vy, p[0], p[1]);
     if (!(r > 0)) return false;
     var r2 = r * r * 0.98 * 0.98;
     var px = p[0], py = p[1];
@@ -43390,7 +45199,7 @@ ${svg}
 
     function stopIfBufferReachesPole(shape, dist) {
       var maxAbsLat = 0;
-      var angularDist = dist / R$3 * R2D$1;
+      var angularDist = dist / R$3 * R2D$5;
       (shape || []).forEach(function(path) {
         latLngPathIter.init(path);
         while (latLngPathIter.hasNext()) {
@@ -43881,11 +45690,11 @@ ${svg}
         if (a[0] === b[0] && a[1] === b[1]) continue;
         bearing = bearingDegrees2D(a[0], a[1], b[0], b[1]);
         probe = getOffsetPoint(a[0], a[1], bearing - 90, dist);
-        rUnits = distance2D(a[0], a[1], probe[0], probe[1]);
+        rUnits = distance2D$1(a[0], a[1], probe[0], probe[1]);
         // perpendicular stab lines every ~0.35r along the band, so cuts
         // affecting only part of a long segment cannot slip between them
         m = Math.max(1, Math.min(60,
-          Math.ceil(distance2D(a[0], a[1], b[0], b[1]) / (rUnits * 0.35))));
+          Math.ceil(distance2D$1(a[0], a[1], b[0], b[1]) / (rUnits * 0.35))));
         for (ti = 0; ti < m; ti++) {
           t = (ti + 0.5) / m;
           base = [a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t];
@@ -43919,14 +45728,14 @@ ${svg}
     function findAtRiskSegments(verts, dist) {
       var n = verts.length;
       var probe0 = getOffsetPoint(verts[0][0], verts[0][1], 0, dist);
-      var rUnits = distance2D(verts[0][0], verts[0][1], probe0[0], probe0[1]);
+      var rUnits = distance2D$1(verts[0][0], verts[0][1], probe0[0], probe0[1]);
       var cumLen = new Float64Array(n);
       var riskVert = new Uint8Array(n);
       var any = false;
       var i, j, k;
       for (i = 1; i < n; i++) {
         cumLen[i] = cumLen[i - 1] +
-          distance2D(verts[i - 1][0], verts[i - 1][1], verts[i][0], verts[i][1]);
+          distance2D$1(verts[i - 1][0], verts[i - 1][1], verts[i][0], verts[i][1]);
       }
       // the ring's start radial and cap-closing radial can cut nearby bands
       riskVert[0] = riskVert[n - 1] = 1;
@@ -43998,7 +45807,7 @@ ${svg}
               j = ids[k];
               if (j <= i) continue;
               var pathDist = cumLen[j] - cumLen[i];
-              var d = distance2D(verts[i][0], verts[i][1], verts[j][0], verts[j][1]);
+              var d = distance2D$1(verts[i][0], verts[i][1], verts[j][0], verts[j][1]);
               // 0.8 flags vertex pairs whose intervening path bends by
               // ~130 degrees or more (a circle's chord/arc ratio is 2/pi,
               // so even gentle loops qualify)
@@ -44050,7 +45859,7 @@ ${svg}
     // at the near end is seeded by an upward ray over those same edges.
     function getRingStabber(rings, dist) {
       var probe0 = getOffsetPoint(rings[0][0][0], rings[0][0][1], 0, dist);
-      var slabW = distance2D(rings[0][0][0], rings[0][0][1], probe0[0], probe0[1]);
+      var slabW = distance2D$1(rings[0][0][0], rings[0][0][1], probe0[0], probe0[1]);
       var ex = [], ey = [], fx = [], fy = []; // edge data
       var slabs = new Map();
       rings.forEach(function(ring) {
@@ -44150,8 +45959,8 @@ ${svg}
       var eps = dist * 1e-4;
       var aIn = getOffsetPoint(a[0], a[1], bearing, eps);
       var bIn = getOffsetPoint(b[0], b[1], bearing - 180, eps);
-      if (distance2D(a[0], a[1], b[0], b[1]) <
-          distance2D(a[0], a[1], aIn[0], aIn[1]) * 3) {
+      if (distance2D$1(a[0], a[1], b[0], b[1]) <
+          distance2D$1(a[0], a[1], aIn[0], aIn[1]) * 3) {
         return; // segment too short to inset
       }
       rings.push([
@@ -44548,7 +46357,7 @@ ${svg}
     }
 
     function shallowAngleJoin(a, b, cx, cy, dist) {
-      var gap = distance2D(a[0], a[1], b[0], b[1]);
+      var gap = distance2D$1(a[0], a[1], b[0], b[1]);
       var radius = getJoinExtensionDistance(cx, cy, a, b, dist);
       if (gap > radius * 1e-3) return null;
       return [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2];
@@ -45507,12 +47316,12 @@ ${svg}
   }
 
   function projectBufferPoint(x, y, spherical) {
-    return spherical ? [x * D2R$1 * R$3, Math.log(Math.tan(Math.PI / 4 + y * D2R$1 / 2)) * R$3] :
+    return spherical ? [x * D2R$6 * R$3, Math.log(Math.tan(Math.PI / 4 + y * D2R$6 / 2)) * R$3] :
       [x, y];
   }
 
   function unprojectBufferPoint(x, y, spherical) {
-    return spherical ? [x / (D2R$1 * R$3), (2 * Math.atan(Math.exp(y / R$3)) - Math.PI / 2) / (D2R$1)] :
+    return spherical ? [x / (D2R$6 * R$3), (2 * Math.atan(Math.exp(y / R$3)) - Math.PI / 2) / (D2R$6)] :
       [x, y];
   }
 
@@ -50183,7 +51992,7 @@ ${svg}
     var maxAbsLat = Math.max(Math.abs(bounds.ymin), Math.abs(bounds.ymax));
     var maxPositiveDistance = getMaxPositiveBufferDistance(lyr, dataset, opts);
     if (!(maxPositiveDistance > 0)) return false;
-    return maxAbsLat + maxPositiveDistance / R$3 * R2D$1 >= 90 - POLAR_BUFFER_MARGIN_DEGREES;
+    return maxAbsLat + maxPositiveDistance / R$3 * R2D$5 >= 90 - POLAR_BUFFER_MARGIN_DEGREES;
   }
 
   function getMaxPositiveBufferDistance(lyr, dataset, opts) {
@@ -51435,7 +53244,7 @@ ${svg}
   }
 
   function getCoordinateDistance(distance, arcs) {
-    return arcs.isPlanar() ? distance : distance / R$3 * R2D$1;
+    return arcs.isPlanar() ? distance : distance / R$3 * R2D$5;
   }
 
   // @shapeIndex: chunk-bounds index of the source shape (see buildShapeSegmentIndex)
@@ -52103,7 +53912,8 @@ ${svg}
     // TODO: consider projections that may or may not be aligned,
     // depending on parameters
     if (inList(P, 'cassini,gnom,bertin1953,chamb,ob_tran,tpeqd,healpix,rhealpix,' +
-      'ocea,omerc,tmerc,etmerc,nicol')) {
+      'ocea,omerc,tmerc,etmerc,nicol,dymaxion,dymaxion2,butterfly,butterfly2,' +
+      'cahill_keyes')) {
       return false;
     }
     if (isAzimuthal(P)) {
@@ -52155,16 +53965,16 @@ ${svg}
   }
 
   function getRotationFunction2(rotation, inv) {
-    var a = (rotation[0] || 0) * D2R$1,
-        b = (rotation[1] || 0) * D2R$1,
-        c = (rotation[2] || 0) * D2R$1;
+    var a = (rotation[0] || 0) * D2R$6,
+        b = (rotation[1] || 0) * D2R$6,
+        c = (rotation[2] || 0) * D2R$6;
     return function(p) {
-      p[0] *= D2R$1;
-      p[1] *= D2R$1;
+      p[0] *= D2R$6;
+      p[1] *= D2R$6;
       var rotate = inv ? rotatePointInv : rotatePoint;
       rotate(p, a, b, c);
-      p[0] *= R2D$1;
-      p[1] *= R2D$1;
+      p[0] *= R2D$5;
+      p[1] *= R2D$5;
       return p;
     };
   }
@@ -52623,6 +54433,9 @@ ${svg}
   };
 
   function getProjectionTopology(P) {
+    if (P && P.__projection_topology) {
+      return P.__projection_topology;
+    }
     var defn = P && projectionTopologies[getCrsSlug(P)];
     if (!defn) return null;
     var lon0 = P.lam0 * 180 / Math.PI;
@@ -52646,6 +54459,11 @@ ${svg}
   }
 
   function isInterruptedProjection(P) {
+    if (P && P.__projection_topology) {
+      return P.__projection_topology.seams.some(function(o) {
+        return o.type == 'cut';
+      });
+    }
     var defn = P && projectionTopologies[getCrsSlug(P)];
     return !!defn && defn.seams.some(function(o) {
       return o.type == 'cut';
@@ -52719,6 +54537,9 @@ ${svg}
 
   // Return projected polygon extent of both clipped and unclipped projections
   function getPolygonDataset$1(src, dest, opts) {
+    if (dest.__projected_outline) {
+      return getCustomProjectedOutline(dest, 'polygon');
+    }
     // use clipping area if projection is clipped
     var dataset = getUnprojectedBoundingPolygon(src, dest, opts);
     if (!dataset) {
@@ -52734,6 +54555,9 @@ ${svg}
 
   // Return projected outline of clipped projections
   function getOutlineDataset(src, dest, opts) {
+    if (dest.__projected_outline) {
+      return getCustomProjectedOutline(dest, 'polyline');
+    }
     var dataset = getUnprojectedBoundingPolygon(src, dest, opts);
     if (!dataset && isInterruptedProjection(dest)) {
       dataset = getBoundingRectangle(dest, {clip_bbox: [-180, -90, 180, 90]});
@@ -52745,8 +54569,31 @@ ${svg}
         removeTinyFootprintRings(dataset);
       }
       dataset.layers[0].geometry_type = 'polyline';
+      if (dest.__remove_outline_extreme_connectors) {
+        dataset = removeOutlineExtremeConnectors(dataset);
+      }
     }
     return dataset || null;
+  }
+
+  function getCustomProjectedOutline(P, geometryType) {
+    var rings = P.__projected_outline.map(function(ring) {
+      return ring.map(function(p) {
+        return [
+          P.fr_meter * (P.a * p[0] + P.x0),
+          P.fr_meter * (P.a * p[1] + P.y0)
+        ];
+      });
+    });
+    var dataset = importGeoJSON({
+      type: rings.length == 1 ? 'Polygon' : 'MultiPolygon',
+      coordinates: rings.length == 1 ? rings : rings.map(function(ring) {
+        return [ring];
+      })
+    });
+    dataset.layers[0].geometry_type = geometryType;
+    dataset.info.crs = P;
+    return dataset;
   }
 
   // Narrow pre-projection gutters can leave zero-area rings after a rotated
@@ -52768,6 +54615,54 @@ ${svg}
       }
     });
     dissolveArcs(dataset);
+  }
+
+  // Polygon clipping closes open interrupted-projection boundaries to form valid
+  // rings. In Cahill-Keyes, some closures connect unrelated polar facet images.
+  // Remove only long, nearly horizontal segments at the map's vertical extent.
+  function removeOutlineExtremeConnectors(dataset) {
+    var bounds = getDatasetBounds(dataset);
+    var width = bounds.width();
+    var height = bounds.height();
+    var edgeTolerance = height * 1e-3;
+    var flatTolerance = height * 1e-4;
+    var arcs = dataset.arcs;
+    var lyr = dataset.layers[0];
+    var paths = [];
+    var removed = 0;
+    lyr.shapes.forEach(function(shp) {
+      (shp || []).forEach(function(path) {
+        var points = [];
+        var iter = arcs.getShapeIter(path);
+        while (iter.hasNext()) {
+          points.push([iter.x, iter.y]);
+        }
+        var part = [points[0]];
+        for (var i = 1; i < points.length; i++) {
+          var a = points[i - 1];
+          var b = points[i];
+          var atTop = Math.min(a[1], b[1]) >= bounds.ymax - edgeTolerance;
+          var atBottom = Math.max(a[1], b[1]) <= bounds.ymin + edgeTolerance;
+          var isFlat = Math.abs(a[1] - b[1]) <= flatTolerance;
+          var isWide = Math.abs(a[0] - b[0]) >= width * 0.02;
+          if ((atTop || atBottom) && isFlat && isWide) {
+            if (part.length > 1) paths.push(part);
+            part = [b];
+            removed++;
+          } else {
+            part.push(b);
+          }
+        }
+        if (part.length > 1) paths.push(part);
+      });
+    });
+    if (removed === 0) return dataset;
+    var cleaned = importGeoJSON({
+      type: paths.length == 1 ? 'LineString' : 'MultiLineString',
+      coordinates: paths.length == 1 ? paths[0] : paths
+    });
+    cleaned.info = dataset.info;
+    return cleaned;
   }
 
   function getBoundingRectangle(dest, opts) {
@@ -52949,17 +54844,77 @@ ${svg}
     var pathLayers = dataset.layers.filter(layerHasPaths);
     var cutPaths, geojson, clip;
     if (!topology || pathLayers.length === 0) return false;
+    insertProjectionTopologyVertices(dataset, topology);
     cutPaths = topology.seams
       .filter(function(o) { return o.type == 'cut'; })
       .reduce(function(memo, o) {
+        if (o.paths) return memo.concat(o.paths);
         return memo.concat(getCutSeamPaths(o.coordinates));
       }, []);
     if (cutPaths.length === 0) return false;
     geojson = getCutMaskGeoJSON(cutPaths);
     if (geojson.features.length === 0) return false;
     clip = importGeoJSON(geojson);
+    if (topology.findRegion) {
+      // Polyhedral cut masks meet and overlap at facet vertices. Union them before
+      // clipping so overlapping source polygons are not interpreted as holes.
+      addIntersectionCuts(clip, {});
+      clip.layers[0] = dissolvePolygonLayer2(clip.layers[0], clip, {quiet: true});
+    }
     clipLayersInPlace(pathLayers, clip, dataset, 'erase', getInternalClipOpts());
     return true;
+  }
+
+  // Add a vertex wherever a path changes projection regions. This preserves a
+  // bend at attached polyhedral edges without opening a gap; cut edges are
+  // subsequently disconnected by the narrow seam masks below.
+  function insertProjectionTopologyVertices(dataset, topology) {
+    if (!dataset.arcs || !topology.findRegion) return;
+    var findRegion = topology.findTransitionRegion || topology.findRegion;
+    editArcs(dataset.arcs, function(append, x, y, prevX, prevY, i) {
+      if (i > 0) {
+        findRegionTransitions(prevX, prevY, x, y, findRegion).forEach(append);
+      }
+      append([x, y]);
+    });
+  }
+
+  function findRegionTransitions(ax, ay, bx, by, findRegion) {
+    var interval = 0.5;
+    var n = Math.max(1, Math.ceil(Math.max(Math.abs(bx - ax), Math.abs(by - ay)) / interval));
+    var points = [];
+    var t0 = 0;
+    var region0 = findRegion(ax, ay);
+    for (var i = 1; i <= n; i++) {
+      var t1 = i / n;
+      var x1 = ax + (bx - ax) * t1;
+      var y1 = ay + (by - ay) * t1;
+      var region1 = findRegion(x1, y1);
+      if (region0 != region1 && region0 >= 0 && region1 >= 0) {
+        var t = findRegionBoundary(ax, ay, bx, by, t0, region0, t1, findRegion);
+        var p = [ax + (bx - ax) * t, ay + (by - ay) * t];
+        if (!points.length || Math.abs(t - points[points.length - 1].t) > 1e-10) {
+          p.t = t;
+          points.push(p);
+        }
+      }
+      t0 = t1;
+      region0 = region1;
+    }
+    return points;
+  }
+
+  function findRegionBoundary(ax, ay, bx, by, ta, regionA, tb, findRegion) {
+    for (var i = 0; i < 45; i++) {
+      var tm = (ta + tb) / 2;
+      var regionM = findRegion(ax + (bx - ax) * tm, ay + (by - ay) * tm);
+      if (regionM == regionA) {
+        ta = tm;
+      } else {
+        tb = tm;
+      }
+    }
+    return (ta + tb) / 2;
   }
 
   function clampDataset(dataset, bbox) {
@@ -53016,8 +54971,8 @@ ${svg}
   // their projected edges follow the projection instead of becoming straight
   // chords between seam endpoints.
   function getCutMaskGeoJSON(paths) {
-    var e = 1e-8;
     var features = paths.map(function(coords) {
+      var e = coords.mask_width || 1e-8;
       var ring = getCutMaskRing(densifyPathByInterval(coords, 0.5), e);
       return {
         type: 'Feature',
@@ -53029,6 +54984,33 @@ ${svg}
       };
     }).filter(function(feature) {
       return feature.geometry.coordinates[0].length > 3;
+    });
+    // Give finite seams a small end cap. Without this, a path passing exactly
+    // through a polyhedral vertex can touch only the boundary of several masks
+    // and remain connected across an interruption.
+    paths.forEach(function(coords) {
+      var endpoints = [coords[0], coords[coords.length - 1]];
+      endpoints.forEach(function(p) {
+        var e2 = Math.max(1e-7, (coords.mask_width || 0) * 2);
+        var xmin = Math.max(-180, p[0] - e2);
+        var xmax = Math.min(180, p[0] + e2);
+        var ymin = Math.max(-90, p[1] - e2);
+        var ymax = Math.min(90, p[1] + e2);
+        features.push({
+          type: 'Feature',
+          properties: {},
+          geometry: {
+            type: 'Polygon',
+            coordinates: [[
+              [xmin, ymin],
+              [xmax, ymin],
+              [xmax, ymax],
+              [xmin, ymax],
+              [xmin, ymin]
+            ]]
+          }
+        });
+      });
     });
     return {
       type: 'FeatureCollection',
@@ -53048,8 +55030,8 @@ ${svg}
       if (len === 0) continue;
       var nx = -dy / len * width;
       var ny = dx / len * width;
-      left.push([coords[i][0] + nx, coords[i][1] + ny]);
-      right.push([coords[i][0] - nx, coords[i][1] - ny]);
+      left.push([utils.clamp(coords[i][0] + nx, -180, 180), coords[i][1] + ny]);
+      right.push([utils.clamp(coords[i][0] - nx, -180, 180), coords[i][1] - ny]);
     }
     var ring = left.concat(right.reverse());
     if (ring.length > 0) ring.push(ring[0].concat());
@@ -57459,7 +59441,7 @@ ${svg}
   function getSplitLineFunction(crs, dashLen, gapLen, opts) {
     var planar = !!opts.planar;
     var interpolate = getInterpolationFunction(planar ? null : crs);
-    var distance =  isLatLngCRS(crs) ? greatCircleDistance : distance2D;
+    var distance =  isLatLngCRS(crs) ? greatCircleDistance : distance2D$1;
     var inDash, parts2, interval, scale;
     function addPart(coords) {
       if (inDash) parts2.push(coords);
@@ -58330,7 +60312,7 @@ ${svg}
   // Isometric ("Mercator-stretched") latitude in degrees-in; returns +/-Infinity at
   // the poles.
   function isometricLatitude(latDeg) {
-    return Math.log(Math.tan(Math.PI / 4 + latDeg * D2R$1 / 2));
+    return Math.log(Math.tan(Math.PI / 4 + latDeg * D2R$6 / 2));
   }
 
   // Rhumb-line (loxodrome) interpolation, fraction k of the way from A to B.
@@ -58355,9 +60337,9 @@ ${svg}
   // Rhumb-line distance in meters, using the raw longitude delta (so a full-parallel
   // sweep returns the parallel's length rather than 0).
   function rhumbDistance(a, b) {
-    var phi1 = a[1] * D2R$1, phi2 = b[1] * D2R$1;
+    var phi1 = a[1] * D2R$6, phi2 = b[1] * D2R$6;
     var dPhi = phi2 - phi1;
-    var dLambda = (b[0] - a[0]) * D2R$1; // raw
+    var dLambda = (b[0] - a[0]) * D2R$6; // raw
     var dPsi = Math.log(Math.tan(Math.PI / 4 + phi2 / 2) / Math.tan(Math.PI / 4 + phi1 / 2));
     var q = Math.abs(dPsi) > 1e-12 ? dPhi / dPsi : Math.cos(phi1);
     return Math.sqrt(dPhi * dPhi + q * q * dLambda * dLambda) * R$3;
@@ -62022,9 +64004,11 @@ ${svg}
       // project graticule to match dataset
       destInfo = getDatasetCrsInfo(dataset);
       if (!destInfo.crs) stop$1("Coordinate system is unknown, unable to create a graticule");
-      graticule = boundary ?
-        createProjectedPolygon(destInfo.crs, opts) :
-        createProjectedGraticule(destInfo.crs, opts);
+      graticule = opts.outline ?
+        createProjectedOutline(destInfo.crs, opts) :
+        opts.polygon ?
+          createProjectedPolygon(destInfo.crs, opts) :
+          createProjectedGraticule(destInfo.crs, opts);
       setDatasetCrsInfo(graticule, destInfo);
     } else {
       graticule = boundary ?
@@ -62047,6 +64031,12 @@ ${svg}
   function createProjectedPolygon(dest, opts) {
     var src = parseCrsString$1('wgs84');
     return getPolygonDataset$1(src, dest, opts);
+  }
+
+  function createProjectedOutline(dest, opts) {
+    var src = parseCrsString$1('wgs84');
+    return getOutlineDataset(src, dest, opts) ||
+      getPolygonDataset$1(src, dest, opts);
   }
 
   function createUnprojectedGraticule(opts) {
@@ -62130,12 +64120,15 @@ ${svg}
     // extended: meridian extends to pole
     function createMeridian(x, extended) {
       var y0 = ystep <= 15 ? ystep : 0;
+      // An exact pole can have several images in a polyhedral projection.
+      // The separate outline supplies the missing, negligible end interval.
+      var poleInset = outlined ? 1e-4 : 0;
       createMeridianPart(x, -90 + y0, 90 - y0);
       if (extended && y0 > 0) {
         // adding extensions as separate parts, so if the polar coordinates
         // fail to project, at least the rest of the meridian line will remain
-        createMeridianPart(x, -90, -90 + y0);
-        createMeridianPart(x, 90 - y0, 90);
+        createMeridianPart(x, -90 + poleInset, -90 + y0);
+        createMeridianPart(x, 90 - y0, 90 - poleInset);
       }
     }
 
@@ -62145,7 +64138,14 @@ ${svg}
     }
 
     function createParallel(y) {
-      var coords = densifyPathByInterval([[-180, y], [180, y]], precision);
+      // Avoid joining distinct images of the antimeridian (and the degenerate
+      // polar parallels) when a projected outline is generated separately.
+      var edgeInset = outlined ? 1e-4 : 0;
+      if (outlined && Math.abs(y) == 90) return;
+      var coords = densifyPathByInterval([
+        [-180 + edgeInset, y],
+        [180 - edgeInset, y]
+      ], precision);
       parallels.push(graticuleFeature(coords, {type: 'parallel', value: y}));
     }
   }
@@ -62744,7 +64744,7 @@ ${svg}
       if (halfLen > 0 === false) {
         return [a, b];
       }
-      var segLen = distance2D(a, b, c, d);
+      var segLen = distance2D$1(a, b, c, d);
       var k;
       if (partialLen + segLen >= halfLen) {
         k = (halfLen - partialLen) / segLen;
@@ -64665,7 +66665,7 @@ ${svg}
 
   // Source: https://diego.assencio.com/?index=8d6ca3d82151bad815f78addf9b5c1c6
   function twoCircleIntersection(c1, r1, c2, r2) {
-    var d = distance2D(c1[0], c1[1], c2[0], c2[1]);
+    var d = distance2D$1(c1[0], c1[1], c2[0], c2[1]);
     if (d >= r1 + r2) return 0;
     var r1sq = r1 * r1,
         r2sq = r2 * r2,
@@ -66660,7 +68660,7 @@ ${svg}
     if (totalSegs < 1) return 0;
     var MAX_SAMPLES = 100000;
     var stride = Math.ceil(totalSegs / MAX_SAMPLES);
-    var distFn = spherical ? greatCircleDistance : distance2D;
+    var distFn = spherical ? greatCircleDistance : distance2D$1;
     var lens = [];
     var counter = 0;
     arcs.forEach3(function(xx, yy) {
@@ -68660,7 +70660,7 @@ ${svg}
     return name == 'rectangle' || name == 'rectangles' || name == 'filter' && opts.cleanup;
   }
 
-  var version = "0.7.44";
+  var version = "0.7.45";
 
   // Parse command line args into commands and run them
   // Function takes an optional Node-style callback. A Promise is returned if no callback is given.
@@ -70524,6 +72524,8 @@ ${svg}
     ClipPoints,
     Colorizer,
     CustomProjections,
+    Dymaxion,
+    ButterflyProjections,
     DataAggregation,
     DatasetUtils,
     DataUtils,
