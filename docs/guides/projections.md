@@ -7,7 +7,7 @@ description: How to reproject geographic data with Mapshaper, including CRS nota
 
 Mapshaper's [`-proj`](/docs/reference.html#-proj) command reprojects a dataset from one coordinate reference system (CRS) to another, using a JavaScript port of the [PROJ](https://proj.org/) coordinate transformation library.
 
-Run `mapshaper -projections` (or just `projection` in the web app console) to print the full list of available projections.
+Run `mapshaper -projections` (or just `projections` in the web app console) to print the full list of available projections.
 
 **Examples**
 
