@@ -30,8 +30,8 @@ describe('mapshaper-json-table.js', function () {
 
     it('json -> csv', function(done) {
       var json = [{id: 0}, {id: 1}];
-      api.applyCommands('-o format=csv', json, function(err, data) {
-        assert.equal(data, 'id\n0\n1');
+      api.applyCommands('-i input.json -o format=csv output.csv', {'input.json': json}, function(err, data) {
+        assert.equal(data['output.csv'], 'id\n0\n1');
         done();
       })
     })
@@ -54,8 +54,8 @@ describe('mapshaper-json-table.js', function () {
           }
         }]
       }
-      api.applyCommands('-o format=json', geo, function(err, data) {
-        assert.deepEqual(JSON.parse(data), [{id: 'a'}, {id: 'b'}]);
+      api.applyCommands('-i input.json -o format=json output.json', {'input.json': geo}, function(err, data) {
+        assert.deepEqual(JSON.parse(data['output.json']), [{id: 'a'}, {id: 'b'}]);
         done();
       })
     })

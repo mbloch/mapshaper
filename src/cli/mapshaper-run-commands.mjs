@@ -5,7 +5,6 @@ import { printColorSchemeNames } from '../color/color-schemes';
 import { parseCommands } from '../cli/mapshaper-parse-commands';
 import { containsPlaceholder, interpolateString } from '../cli/mapshaper-vars-utils';
 import { skipCommand } from '../commands/mapshaper-if-elif-else-endif';
-import { guessInputContentType } from '../io/mapshaper-file-types';
 import { error, UserError, stop, message, print, loggingEnabled, printError } from '../utils/mapshaper-logging';
 import { Job } from '../mapshaper-job';
 import { runningInBrowser } from '../mapshaper-env';
@@ -43,7 +42,6 @@ export function applyCommands(argv) {
     if (err) {
       return callback(err);
     }
-    if (opts.legacy) return callback(null, toLegacyOutputFormat(outputArr));
     return callback(null, toOutputFormat(outputArr));
   });
   if (opts.promise) return opts.promise;
@@ -85,9 +83,6 @@ function importRunArgs(arg0, arg1, arg2) {
     opts.callback = arg1;
   } else if (utils.isFunction(arg2)) {
     opts.callback = arg2;
-    // identify legacy input format (used by some tests)
-    opts.legacy = arg1 && guessInputContentType(arg1) != null;
-    opts.input = arg1;
   } else {
     // if no callback, create a promise and a callback for resolving the promise
     opts.promise = new Promise(function(resolve, reject) {
@@ -97,7 +92,7 @@ function importRunArgs(arg0, arg1, arg2) {
       };
     });
   }
-  if (!opts.legacy && utils.isObject(arg1)) {
+  if (utils.isObject(arg1)) {
     if (arg1.xl) {
       // options for runCommandsXL()
       opts.options = arg1;
@@ -128,12 +123,6 @@ function _runCommands(argv, opts, callback) {
   } catch(e) {
     printError(e);
     return callback(e);
-  }
-
-  if (opts.legacy) {
-    message("Warning: deprecated input format");
-    commands = convertLegacyCommands(commands, inputObj);
-    inputObj = null;
   }
 
   if (commands.length === 0) {
@@ -172,13 +161,22 @@ function _runCommands(argv, opts, callback) {
   // (e.g. `mapshaper *.shp batch-mode -o out.json` writing all inputs to the
   // same target on disk).
   var sharedOutputs = [];
-  utils.reduceAsync(batches, null, nextGroup, done);
+  runBatches().then(function(job) {
+    done(null, job);
+  }, done);
 
-  function nextGroup(prevJob, commands, next) {
-    runParsedCommands(commands, new Job(null, {output_files: sharedOutputs}), function(err, job) {
-      err = handleNonFatalError(err);
-      next(err, job);
-    });
+  async function runBatches() {
+    var job;
+    for (var batch of batches) {
+      try {
+        job = await runParsedCommands(batch, new Job(null, {output_files: sharedOutputs}));
+      } catch (e) {
+        var fatalError = handleNonFatalError(e);
+        if (fatalError) throw fatalError;
+        job = undefined;
+      }
+    }
+    return job;
   }
 
   function done(err, job) {
@@ -191,33 +189,6 @@ function _runCommands(argv, opts, callback) {
   }
 }
 
-
-function toLegacyOutputFormat(arr) {
-  if (arr.length > 1) {
-    // Return an array if multiple files are output
-    return utils.pluck(arr, 'content');
-  }
-  if (arr.length == 1) {
-    // Return content if a single file is output
-    return arr[0].content;
-  }
-  return null;
-}
-
-function convertLegacyCommands(arr, inputObj) {
-  var i = utils.find(arr, function(cmd) {return cmd.name == 'i';});
-  var o = utils.find(arr, function(cmd) {return cmd.name == 'o';});
-  if (!i) {
-    i = {name: 'i', options: {}};
-    arr.unshift(i);
-  }
-  i.options.files = ['__input__'];
-  i.options.input = {__input__: inputObj};
-  if (!o) {
-    arr.push({name: 'o', options: {}});
-  }
-  return arr;
-}
 
 // TODO: rewrite tests and remove this function
 export function testCommands(argv, done) {
@@ -236,9 +207,20 @@ export function testCommands(argv, done) {
 // Execute a sequence of parsed commands
 // @commands Array of parsed commands
 // @job: Job object containing previously imported data
-// @done: function([error], [job])
+// @done: optional function([error], [job]); returns a Promise if omitted
 //
 export function runParsedCommands(commands, job, done) {
+  var promise = runParsedCommandsAsync(commands, job);
+  if (done) {
+    promise.then(function(job) {
+      done(null, job);
+    }, done);
+    return;
+  }
+  return promise;
+}
+
+async function runParsedCommandsAsync(commands, job) {
   if (!job) job = new Job();
   commands = readAndRemoveSettings(job, commands);
   if (!runningInBrowser()) {
@@ -246,26 +228,16 @@ export function runParsedCommands(commands, job, done) {
   }
   commands = runAndRemoveInfoCommands(commands);
   if (commands.length === 0) {
-    return done(null);
+    return;
   }
   // we're no longer using the same Job for all batches -- no reset needed
   // // resetting closes any unterminated -if blocks from a previous command sequence
   // resetControlFlow(job);
-  utils.reduceAsync(commands, job, nextCommand, done);
-
-  function nextCommand(job, cmd, next) {
-    var resolved;
-    try {
-      resolved = maybeInterpolateCommand(cmd, job);
-    } catch(e) {
-      return next(e);
-    }
-    runCommand(resolved, job).then(function(result) {
-      next(null, result);
-    }).catch(function(e) {
-      next(e);
-    });
+  for (var command of commands) {
+    var resolved = maybeInterpolateCommand(command, job);
+    job = await runCommand(resolved, job);
   }
+  return job;
 }
 
 // Late-binding interpolation: just before each command runs, replace any

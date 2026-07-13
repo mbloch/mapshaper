@@ -169,8 +169,8 @@ describe("mapshaper-simplify.js", function() {
         type: 'Polygon',
         coordinates: [[[0, 0], [0, 1], [2, 1], [2, 0], [0, 0]]]
       };
-      api.applyCommands('-simplify 0% lock-box -o gj2008', square, function(err, data) {
-        assert.deepEqual(JSON.parse(data).geometries[0], square);
+      api.applyCommands('-i input.json -simplify 0% lock-box -o gj2008 output.json', {'input.json': square}, function(err, data) {
+        assert.deepEqual(JSON.parse(data['output.json']).geometries[0], square);
         done();
       })
     })

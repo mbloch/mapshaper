@@ -929,8 +929,8 @@ describe('mapshaper-geojson.js', function () {
         type: 'Point',
         coordinates: [0, 0]
       };
-      api.applyCommands('-o gj2008', input, function(err, data) {
-        var output = JSON.parse(data);
+      api.applyCommands('-i input.json -o gj2008 output.json', {'input.json': input}, function(err, data) {
+        var output = JSON.parse(data['output.json']);
         assert.deepEqual(output.crs, crs);
         done();
       })
@@ -973,8 +973,8 @@ describe('mapshaper-geojson.js', function () {
         type: 'Point',
         coordinates: [0, 0]
       };
-      api.applyCommands('-proj wgs84 from="merc"', input, function(err, data) {
-        var output = JSON.parse(data);
+      api.applyCommands('-i input.json -proj wgs84 from="merc" -o output.json', {'input.json': input}, function(err, data) {
+        var output = JSON.parse(data['output.json']);
         assert.strictEqual(output.crs, undefined);
         done();
       })

@@ -444,7 +444,6 @@ export function ImportControl(gui, opts) {
   }
 
   async function importDataset(group, importOpts) {
-    var dataset;
     var datasets;
     var imported = false;
     if (group.gpkg) {
@@ -456,12 +455,7 @@ export function ImportControl(gui, opts) {
     if (group.geotiff) {
       await loadGeoTIFFLib();
     }
-    if (group.gpkg || group.fgb || group.parquet || group.geotiff || group.png || group.jpeg) {
-      dataset = await internal.importContentAsync(group, importOpts);
-    } else {
-      dataset = internal.importContent(group, importOpts);
-    }
-    datasets = Array.isArray(dataset) ? dataset : [dataset];
+    datasets = await internal.importDatasetsFromContent(group, importOpts);
     for (var d of datasets) {
       if (datasetIsEmpty(d)) continue;
       if (group.layername) {
@@ -715,37 +709,31 @@ export function ImportControl(gui, opts) {
     return items.filter(Boolean);
   }
 
-  function downloadFiles(paths) {
+  async function downloadFiles(paths) {
     var items = prepFilesForDownload(paths);
-    utils.reduceAsync(items, [], downloadNextFile, function(err, files) {
-      if (err) {
-        gui.alert(err);
-      } else if (!files.length) {
-        gui.clearMode();
-      } else {
-        receiveFiles(files);
+    var files = [];
+    for (var item of items) {
+      try {
+        var resp = await fetch(item.url);
+        if (resp.status != 200) {
+          // e.g. 404 because a URL listed in the GUI query string does not exist
+          throw Error();
+        }
+        var blob = await resp.blob();
+        if (blob) {
+          blob.name = item.basename;
+          files.push(blob);
+        }
+      } catch (e) {
+        gui.alert("Error&nbsp;loading&nbsp;" + item.name + ". Possible causes include: wrong URL, no network connection, server not configured for cross-domain sharing (CORS).");
+        return;
       }
-    });
-  }
-
-  function downloadNextFile(memo, item, next) {
-    var err;
-    fetch(item.url).then(resp => {
-      if (resp.status != 200) {
-        // e.g. 404 because a URL listed in the GUI query string does not exist
-        throw Error();
-      }
-      return resp.blob();
-    }).then(blob => {
-      if (blob) {
-        blob.name = item.basename;
-        memo.push(blob);
-      }
-    }).catch(e => {
-      err = "Error&nbsp;loading&nbsp;" + item.name + ". Possible causes include: wrong URL, no network connection, server not configured for cross-domain sharing (CORS).";
-    }).finally(() => {
-      next(err, memo);
-    });
+    }
+    if (!files.length) {
+      gui.clearMode();
+    } else {
+      receiveFiles(files);
+    }
   }
 
   function wait(ms) {

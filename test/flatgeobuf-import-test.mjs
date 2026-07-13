@@ -44,4 +44,9 @@ describe('flatgeobuf import', function () {
     assert.equal(dataset.layers[0].geometry_type, 'polygon');
     assert(dataset.layers[0].shapes.length > 0);
   });
+
+  it('imports an async format used as a command source', async function () {
+    var path = fixPath('data/flatgeobuf/poly00.fgb');
+    await api.runCommands('-i "' + path + '" -clip source="' + path + '"');
+  });
 });

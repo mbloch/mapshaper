@@ -525,8 +525,8 @@ describe('topojson-export.js and topojson-import.js', function () {
           ]}
         }
       };
-      api.applyCommands('', JSON.stringify(src), function(err, data) {
-        assert.deepEqual(src, JSON.parse(data));
+      api.applyCommands('-i input.json -o format=topojson output.json', {'input.json': src}, function(err, data) {
+        assert.deepEqual(src, JSON.parse(data['output.json']));
         done();
       });
     });

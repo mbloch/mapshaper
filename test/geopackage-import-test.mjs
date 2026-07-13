@@ -24,7 +24,7 @@ async function createTestGeoPackage(filepath) {
 }
 
 describe('mapshaper-geopackage-import.js', function () {
-  it('importContentAsync() imports a GeoPackage buffer', async function () {
+  it('importDatasetsFromContent() imports a GeoPackage buffer', async function () {
     var tmpPath = getTmpGeoPackagePath('buffer');
     await createTestGeoPackage(tmpPath);
     try {
@@ -35,7 +35,9 @@ describe('mapshaper-geopackage-import.js', function () {
           content: content
         }
       };
-      var dataset = await api.internal.importContentAsync(input, {});
+      var datasets = await api.internal.importDatasetsFromContent(input, {});
+      var dataset = datasets[0];
+      assert.equal(datasets.length, 1);
       var points = dataset.layers.find(lyr => lyr.name == 'points');
       assert(points, 'points layer exists');
       assert.equal(points.geometry_type, 'point');

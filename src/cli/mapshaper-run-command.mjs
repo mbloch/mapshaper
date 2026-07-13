@@ -5,7 +5,7 @@ import { writeFiles } from '../io/mapshaper-file-export';
 import { exportTargetLayers } from '../io/mapshaper-export';
 import { copyLayerShapes, layerHasPaths } from '../dataset/mapshaper-layer-utils';
 import { getOptionParser } from '../cli/mapshaper-options';
-import { convertSourceName, findCommandSource } from '../dataset/mapshaper-source-utils';
+import { convertSourceName, findCommandSourceAsync } from '../dataset/mapshaper-source-utils';
 import { Catalog, getFormattedLayerList } from '../dataset/mapshaper-catalog';
 import { Job } from '../mapshaper-job';
 import { mergeCommandTargets } from '../dataset/mapshaper-merging';
@@ -231,7 +231,7 @@ export async function runCommand(command, job) {
     if (Object.prototype.hasOwnProperty.call(command, '_sourceOverride')) {
       source = command._sourceOverride;
     } else if (opts.source) {
-      source = findCommandSource(convertSourceName(opts.source, targets), job.catalog, opts);
+      source = await findCommandSourceAsync(convertSourceName(opts.source, targets), job.catalog, opts);
     }
 
     // identify command target/input (for postprocessing)
@@ -637,7 +637,7 @@ async function runCommandOnEachTarget(command, job, targets) {
   var disposableSourceTargetIndex = -1;
 
   if (command.options.source && !sourceNameIsInterpolated(command.options.source)) {
-    source = resolveSourceForTargets(command, job, targets);
+    source = await resolveSourceForTargets(command, job, targets);
     items = moveSourceTargetLast(items, source);
     disposableSourceTargetIndex = findLastDisposableSourceTarget(
       items,
@@ -672,10 +672,10 @@ async function runCommandOnEachTarget(command, job, targets) {
   return job;
 }
 
-function resolveSourceForTargets(command, job, targets) {
+async function resolveSourceForTargets(command, job, targets) {
   job.startCommand(command);
   try {
-    return findCommandSource(
+    return await findCommandSourceAsync(
       convertSourceName(command.options.source, targets),
       job.catalog,
       command.options

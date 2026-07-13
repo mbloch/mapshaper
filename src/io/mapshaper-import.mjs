@@ -78,7 +78,9 @@ export function importContent(obj, opts) {
   return finalizeImportedDataset(dataset, dataFmt, data, opts);
 }
 
-export async function importContentAsync(obj, opts) {
+// Canonical content import interface. Always resolves to an array because some
+// formats (notably GeoPackage) may contain datasets that cannot be merged.
+export async function importDatasetsFromContent(obj, opts) {
   var dataset, dataFmt, data;
   opts = opts || {};
   if (obj.fgb) {
@@ -102,14 +104,16 @@ export async function importContentAsync(obj, opts) {
     data = obj[dataFmt];
     dataset = await importImageRaster(obj, opts);
   } else {
-    return importContent(obj, opts);
+    return normalizeImportedDatasets(importContent(obj, opts));
   }
-  if (Array.isArray(dataset)) {
-    return dataset.map(function(ds) {
-      return finalizeImportedDataset(ds, dataFmt, data, opts);
-    });
-  }
-  return finalizeImportedDataset(dataset, dataFmt, data, opts);
+  return normalizeImportedDatasets(dataset).map(function(ds) {
+    return finalizeImportedDataset(ds, dataFmt, data, opts);
+  });
+}
+
+// Compatibility facade for callers that expect one dataset when possible.
+export async function importContentAsync(obj, opts) {
+  return denormalizeImportedDatasets(await importDatasetsFromContent(obj, opts));
 }
 
 // Deprecated (included for compatibility with older tests)
@@ -118,6 +122,14 @@ export function importFileContent(content, filename, opts) {
       input = {};
   input[type] = {filename: filename, content: content};
   return importContent(input, opts);
+}
+
+function normalizeImportedDatasets(datasetOrArray) {
+  return Array.isArray(datasetOrArray) ? datasetOrArray : [datasetOrArray];
+}
+
+function denormalizeImportedDatasets(datasets) {
+  return datasets.length == 1 ? datasets[0] : datasets;
 }
 
 

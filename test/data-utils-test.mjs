@@ -52,8 +52,8 @@ describe('mapshaper-data-utils.js', function () {
 
     it('csv output contains all fields from inconsistent JSON table', function(done) {
       var json = [{}, {foo: 'a', bar: 1}, {foo: 'b'}]
-      api.applyCommands('-o format=csv', json, function(err, data) {
-        assert.equal(data, 'foo,bar\n,\na,1\nb,');
+      api.applyCommands('-i input.json -o format=csv output.csv', {'input.json': json}, function(err, output) {
+        assert.equal(output['output.csv'], 'foo,bar\n,\na,1\nb,');
         done();
       });
     })

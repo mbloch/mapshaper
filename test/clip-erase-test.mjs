@@ -135,7 +135,7 @@ describe('mapshaper-clip-erase.js', function () {
           coordinates: [[0, 1], [5, 1]]
         }]
       }
-      api.applyCommands('-clip bbox=1,0,1,2', input, function(err, data) {
+      api.applyCommands('-i input.json -clip bbox=1,0,1,2', {'input.json': input}, function(err) {
         assert.equal(err.name, 'UserError');
         done();
       });

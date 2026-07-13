@@ -20,8 +20,8 @@ describe('mapshaper-split-on-grid.js', function () {
           }
         }]
       }
-      api.applyCommands('-split-on-grid 3,3 id-field=cell_id', geojson, function(err, data) {
-        assert.deepEqual(JSON.parse(data), target);
+      api.applyCommands('-i input.json -split-on-grid 3,3 id-field=cell_id -o output.json', {'input.json': geojson}, function(err, data) {
+        assert.deepEqual(JSON.parse(data['output.json']), target);
         done();
       })
     })

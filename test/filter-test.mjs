@@ -23,7 +23,7 @@ describe('mapshaper-filter.js', function () {
     };
 
     it ('empty expression throws an error', function(done) {
-      api.applyCommands('-filter ""', JSON.stringify(geojson), function(err) {
+      api.applyCommands('-i input.json -filter ""', {'input.json': geojson}, function(err) {
         assert.equal(err.name, 'UserError');
         done();
       });
@@ -47,9 +47,9 @@ describe('mapshaper-filter.js', function () {
 
     it ('-filter + ...', function(done) {
       // filter a layer with no-replace; check that modifying data in the filtered layer does not change the source layer.
-      api.applyCommands('-filter \'name == "b"\' + name=filtered -each target=filtered \'name="foo"\'', geojson, function(err, data) {
+      api.applyCommands('-i input.json -filter \'name == "b"\' + name=filtered -each target=filtered \'name="foo"\' -o output.json', {'input.json': geojson}, function(err, data) {
         if (err) console.log(err);
-        var output = JSON.parse(data);
+        var output = JSON.parse(data['output.json']);
         assert.deepEqual(output.features[0].properties, {name: 'foo'})
         assert.equal(output.features.length, 1);
         done();
@@ -57,8 +57,8 @@ describe('mapshaper-filter.js', function () {
     })
 
     it ('-filter remove-empty', function(done) {
-      api.applyCommands('-filter remove-empty -o gj2008', geojson, function(err, json) {
-        var output = JSON.parse(json);
+      api.applyCommands('-i input.json -filter remove-empty -o gj2008 output.json', {'input.json': geojson}, function(err, json) {
+        var output = JSON.parse(json['output.json']);
         assert.equal(output.features.length, 1);
         assert.deepEqual(output.features[0], geojson.features[0])
         done();
@@ -66,8 +66,8 @@ describe('mapshaper-filter.js', function () {
     })
 
     it ('-filter remove-empty with invert option', function(done) {
-      api.applyCommands('-filter invert remove-empty', geojson, function(err, json) {
-        var output = JSON.parse(json);
+      api.applyCommands('-i input.json -filter invert remove-empty -o output.json', {'input.json': geojson}, function(err, json) {
+        var output = JSON.parse(json['output.json']);
         assert.equal(output.features.length, 1);
         assert.deepEqual(output.features[0], geojson.features[1])
         done();
@@ -86,8 +86,8 @@ describe('mapshaper-filter.js', function () {
     });
 
     it ('-filter (combined options)', function(done) {
-      api.applyCommands('-filter remove-empty "name != \'a\'"', geojson, function(err, json) {
-        var output = JSON.parse(json);
+      api.applyCommands('-i input.json -filter remove-empty "name != \'a\'" -o output.json', {'input.json': geojson}, function(err, json) {
+        var output = JSON.parse(json['output.json']);
         var target = {type: "GeometryCollection", geometries: []}; // empty
         assert.deepEqual(output, target);
         done();

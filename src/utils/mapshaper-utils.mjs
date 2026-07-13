@@ -213,36 +213,6 @@ export function promisify(asyncFn) {
     });
   }
 
-// Call @iter on each member of an array (similar to Array#reduce(iter))
-//    iter: function(memo, item, callback)
-// Call @done when all members have been processed or if an error occurs
-//    done: function(err, memo)
-// @memo: Initial value
-//
-export function reduceAsync(arr, memo, iter, done) {
-  var call = typeof setImmediate == 'undefined' ? setTimeout : setImmediate;
-  var i=0;
-  next(null, memo);
-
-  function next(err, memo) {
-    // Detach next operation from call stack to prevent overflow
-    // Don't use setTimeout(, 0) if setImmediate is available
-    // (setTimeout() can introduce a long delay if previous operation was slow,
-    //    as of Node 0.10.32 -- a bug?)
-    if (err) {
-      return done(err, null);
-    }
-    call(function() {
-      if (i < arr.length === false) {
-        done(null, memo);
-      } else {
-        iter(memo, arr[i++], next);
-      }
-    }, 0);
-  }
-}
-
-
 // Append elements of @src array to @dest array
 export function merge(dest, src) {
   if (!isArray(dest) || !isArray(src)) {
@@ -1097,7 +1067,7 @@ export default {
   parseIntlNumber, parseNumber, parseString, pickOne, pluck,
   pluralSuffix, promisify,
   quicksort, quicksortPartition,
-  range, reduceAsync, regexEscape, reorderArray, repeat, repeatString,
+  range, regexEscape, reorderArray, repeat, repeatString,
   replaceArray, rpad, rtrim,
   shuffle, some, sortArrayIndex, sortOn, splitLines, sum,
   toArray, toBuffer, trim, trimQuotes,

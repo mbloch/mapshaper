@@ -118,6 +118,12 @@ describe('mapshaper-run-commands.js', function () {
     })
   })
 
+  it('runParsedCommands() returns a Promise when no callback is passed', async function() {
+    var commands = api.internal.parseCommands(states_shp);
+    var job = await api.internal.runParsedCommands(commands);
+    assert.equal(job.catalog.getActiveLayer().layer.shapes.length, 2);
+  });
+
   describe('layer naming tests', function() {
 
     it('Fix: name= option of second dataset ignored', function(done) {

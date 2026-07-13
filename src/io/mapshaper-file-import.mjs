@@ -1,4 +1,4 @@
-import { importContent, importContentAsync } from '../io/mapshaper-import';
+import { importContent, importDatasetsFromContent } from '../io/mapshaper-import';
 import {
   isSupportedBinaryInputType,
   guessInputContentType,
@@ -31,8 +31,7 @@ cmd.importFiles = async function(catalog, opts) {
   var dataset, datasets, target;
 
   if (opts.stdin) {
-    dataset = await importFileAsync('/dev/stdin', opts);
-    datasets = normalizeImportedDatasets(dataset);
+    datasets = await importDatasetsFromFile('/dev/stdin', opts);
     catalog.addDatasets(datasets);
     if (datasets.length > 1) {
       catalog.setDefaultTargets(datasets.map(function(ds) {
@@ -70,11 +69,11 @@ cmd.importFiles = async function(catalog, opts) {
   }
 
   if (files.length == 1) {
-    dataset = await importFileAsync(files[0], opts);
+    datasets = await importDatasetsFromFile(files[0], opts);
   } else {
     dataset = await importFilesTogetherAsync(files, opts);
+    datasets = [dataset];
   }
-  datasets = normalizeImportedDatasets(dataset);
   datasets = validateAndCleanGpkgSelection(datasets, opts);
 
   if (opts.merge_files && files.length > 1) {
@@ -191,9 +190,12 @@ function findPrimaryFiles(cache) {
   });
 }
 
-// Let the web UI replace importFile() with a browser-friendly version
+// Let the web UI replace path-based imports with a browser-friendly resolver.
 export function replaceImportFile(func) {
   _importFile = func;
+  _importDatasetsFromFile = async function(path, opts) {
+    return normalizeImportedDatasets(await func(path, opts));
+  };
 }
 
 export function importFile(path, opts) {
@@ -201,10 +203,29 @@ export function importFile(path, opts) {
 }
 
 export async function importFileAsync(path, opts) {
-  return _importFileAsync(path, opts);
+  return denormalizeImportedDatasets(await importDatasetsFromFile(path, opts));
+}
+
+// Canonical path import interface.
+export async function importDatasetsFromFile(path, opts) {
+  return _importDatasetsFromFile(path, opts);
 }
 
 var _importFile = function(path, opts) {
+  var input = prepareImportFile(path, opts);
+  return importContent(input, opts);
+};
+
+var _importDatasetsFromFile = async function(path, opts) {
+  var input = prepareImportFile(path, opts);
+  return importDatasetsFromContent(input, opts);
+};
+
+// Read a file (or cache entry) and collect any sidecars into the normalized
+// content-group shape consumed by the content importers.
+// File acquisition is currently synchronous in both import paths; only some
+// format parsers require asynchronous work.
+function prepareImportFile(path, opts) {
   var fileType = guessInputFileType(path),
       input = {},
       encoding = opts && opts.encoding || null,
@@ -216,64 +237,6 @@ var _importFile = function(path, opts) {
 
   if ((fileType == 'shp' || fileType == 'json' || fileType == 'text' || fileType == 'dbf' ||
       fileType == 'gpkg') && !cached) {
-    // these file types are read incrementally
-    content = null;
-
-  } else if (fileType && isSupportedBinaryInputType(path)) {
-    content = cli.readFile(path, null, cache);
-    if (utils.isString(content)) {
-      // Fix for issue #264 (applyCommands() input is file path instead of binary content)
-      stop('Expected binary content, received a string');
-    }
-
-  } else if (fileType) { // string type, e.g. kml, geojson
-    content = cli.readFile(path, encoding || 'utf-8', cache);
-
-  } else if (getFileExtension(path) == 'gz') {
-    var pathgz = path;
-    path = pathgz.replace(/\.gz$/, '');
-    fileType = guessInputFileType(path);
-    if (!fileType) {
-      stop('Unrecognized file type:', path);
-    }
-    content = gunzipSync(cli.readFile(pathgz, null, cache), path);
-
-  } else { // type can't be inferred from filename -- try reading as text
-    content = cli.readFile(path, encoding || 'utf-8', cache);
-    fileType = guessInputContentType(content);
-    if (fileType == 'text' && content.indexOf('\ufffd') > -1) {
-      // invalidate string data that contains the 'replacement character'
-      fileType = null;
-    }
-  }
-
-  if (!fileType) {
-    stop(getUnsupportedFileMessage(path));
-  }
-  input[fileType] = {filename: path, content: content};
-  content = null; // for g.c.
-  if (fileType == 'shp' || fileType == 'dbf') {
-    readShapefileAuxFiles(path, input, cache);
-  } else if (isRasterImageInputType(fileType)) {
-    readRasterImageAuxFiles(path, input, cache);
-  }
-  if (fileType == 'shp' && !input.dbf) {
-    message(utils.format("[%s] .dbf file is missing - shapes imported without attribute data.", path));
-  }
-  return importContent(input, opts);
-};
-
-async function _importFileAsync(path, opts) {
-  var fileType = guessInputFileType(path),
-      input = {},
-      encoding = opts && opts.encoding || null,
-      cache = opts && opts.input || null,
-      cached = cache && (path in cache),
-      content;
-
-  cli.checkFileExists(path, cache);
-
-  if ((fileType == 'shp' || fileType == 'json' || fileType == 'text' || fileType == 'dbf') && !cached) {
     // these file types are read incrementally
     content = null;
 
@@ -316,37 +279,10 @@ async function _importFileAsync(path, opts) {
   if (fileType == 'shp' && !input.dbf) {
     message(utils.format("[%s] .dbf file is missing - shapes imported without attribute data.", path));
   }
-  return fileType == 'gpkg' || fileType == 'fgb' || fileType == 'parquet' || fileType == 'geotiff' || isRasterImageInputType(fileType) ? importContentAsync(input, opts) : importContent(input, opts);
+  return input;
 }
 
-// Import multiple files to a single dataset
-export function importFilesTogether(files, opts) {
-  var unbuiltTopology = false;
-  var datasets = files.reduce(function(memo, fname) {
-    // import without topology or snapping
-    var importOpts = utils.defaults({no_topology: true, snap: false, snap_interval: null, files: [fname]}, opts);
-    var imported = normalizeImportedDatasets(importFile(fname, importOpts));
-    // check if dataset contains non-topological paths
-    // TODO: may also need to rebuild topology if multiple topojson files are merged
-    imported.forEach(function(dataset) {
-      if (dataset.arcs && dataset.arcs.size() > 0 && dataset.info.input_formats[0] != 'topojson') {
-        unbuiltTopology = true;
-      }
-      memo.push(dataset);
-    });
-    return memo;
-  }, []);
-  var combined = mergeDatasets(datasets);
-  // Build topology, if needed
-  // TODO: consider updating topology of TopoJSON files instead of concatenating arcs
-  // (but problem of mismatched coordinates due to quantization in input files.)
-  if (unbuiltTopology && !opts.no_topology) {
-    cleanPathsAfterImport(combined, opts);
-    buildTopology(combined);
-  }
-  return combined;
-}
-
+// Import multiple files to a single dataset.
 export async function importFilesTogetherAsync(files, opts) {
   var unbuiltTopology = false;
   var datasets = [];
@@ -354,7 +290,7 @@ export async function importFilesTogetherAsync(files, opts) {
   for (var fname of files) {
     // import without topology or snapping
     var importOpts = utils.defaults({no_topology: true, snap: false, snap_interval: null, files: [fname]}, opts);
-    var imported = normalizeImportedDatasets(await importFileAsync(fname, importOpts));
+    var imported = await importDatasetsFromFile(fname, importOpts);
     imported.forEach(function(dataset) {
       if (dataset.arcs && dataset.arcs.size() > 0 && dataset.info.input_formats[0] != 'topojson') {
         unbuiltTopology = true;
@@ -414,6 +350,10 @@ function validateAndCleanGpkgSelection(datasets, opts) {
 
 function normalizeImportedDatasets(datasetOrArray) {
   return Array.isArray(datasetOrArray) ? datasetOrArray : [datasetOrArray];
+}
+
+function denormalizeImportedDatasets(datasets) {
+  return datasets.length == 1 ? datasets[0] : datasets;
 }
 
 function normalizeImportedTarget(datasets) {

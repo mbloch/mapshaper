@@ -39,9 +39,9 @@ describe('mapshaper-filter-islands.js', function () {
       }
     });
     // var cmd = '-filter-islands min-vertices=10 -o no-quantization';
-    var cmd = '-filter-islands min-area=1e13 -o no-quantization';
-    api.applyCommands(cmd, topojson, function(err, output) {
-      assert.deepEqual(JSON.parse(output), JSON.parse(topojson));
+    var cmd = '-i input.json -filter-islands min-area=1e13 -o no-quantization output.json';
+    api.applyCommands(cmd, {'input.json': topojson}, function(err, output) {
+      assert.deepEqual(JSON.parse(output['output.json']), JSON.parse(topojson));
       done();
     });
   });
@@ -65,8 +65,8 @@ describe('mapshaper-filter-islands.js', function () {
     });
 
     it ('-filter-islands remove-empty', function(done) {
-      api.applyCommands('-filter-islands min-area=0.5 remove-empty -o gj2008', geojson, function(err, json) {
-        var output = JSON.parse(json);
+      api.applyCommands('-i input.json -filter-islands min-area=0.5 remove-empty -o gj2008 output.json', {'input.json': geojson}, function(err, result) {
+        var output = JSON.parse(result['output.json']);
         assert.equal(output.features.length, 1);
         assert.deepEqual(output.features[0],
           JSON.parse(geojson).features[0])
@@ -79,8 +79,8 @@ describe('mapshaper-filter-islands.js', function () {
         type: 'Polygon',
         coordinates: [[[1, 100], [1, 200], [2, 200], [2, 100], [1, 100]]]
       };
-      api.applyCommands('-filter-islands min-area=1 -o gj2008', geojson, function(err, json) {
-        var output = JSON.parse(json);
+      api.applyCommands('-i input.json -filter-islands min-area=1 -o gj2008 output.json', {'input.json': geojson}, function(err, result) {
+        var output = JSON.parse(result['output.json']);
         assert.equal(output.features.length, 2);
         assert.deepEqual(output.features[0].geometry, target);
         done();
@@ -92,8 +92,8 @@ describe('mapshaper-filter-islands.js', function () {
         type: 'Polygon',
         coordinates: [[[1, 100], [1, 200], [2, 200], [2, 100], [1, 100]]]
       };
-      api.applyCommands('-filter-islands min-vertices=4 -o gj2008', geojson, function(err, json) {
-        var output = JSON.parse(json);
+      api.applyCommands('-i input.json -filter-islands min-vertices=4 -o gj2008 output.json', {'input.json': geojson}, function(err, result) {
+        var output = JSON.parse(result['output.json']);
         assert.equal(output.features.length, 2);
         assert.deepEqual(output.features[0].geometry, target);
         done();
@@ -101,8 +101,8 @@ describe('mapshaper-filter-islands.js', function () {
     })
 
     it ('-filter-islands (combined options)', function(done) {
-      api.applyCommands('-filter-islands remove-empty min-vertices=8 -o gj2008', geojson, function(err, json) {
-        var output = JSON.parse(json);
+      api.applyCommands('-i input.json -filter-islands remove-empty min-vertices=8 -o gj2008 output.json', {'input.json': geojson}, function(err, result) {
+        var output = JSON.parse(result['output.json']);
         var target = {type: 'GeometryCollection', geometries: []}; // empty output
         assert.deepEqual(output, target);
         done();

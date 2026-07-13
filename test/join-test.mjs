@@ -247,9 +247,9 @@ describe('mapshaper-join.js', function () {
           }
         }
       };
-      var cmd = "-join b target=a keys=foo,fooz force";
-      api.applyCommands(cmd, src, function(err, data) {
-        var output = JSON.parse(data);
+      var cmd = "-i input.json -join b target=a keys=foo,fooz force -o format=topojson output.json";
+      api.applyCommands(cmd, {'input.json': src}, function(err, data) {
+        var output = JSON.parse(data['output.json']);
         // source hasn't changed
         // v0.4 - only one layer is output by default
         // assert.deepEqual(output.objects.b, src.objects.b);
@@ -281,9 +281,9 @@ describe('mapshaper-join.js', function () {
           }
         }
       };
-      var cmd = "-join b unjoined unmatched target=a keys=foo,fooz -o target=unjoined,unmatched";
-      api.applyCommands(cmd, src, function(err, data) {
-        var output = JSON.parse(data);
+      var cmd = "-i input.json -join b unjoined unmatched target=a keys=foo,fooz -o target=unjoined,unmatched output.json";
+      api.applyCommands(cmd, {'input.json': src}, function(err, data) {
+        var output = JSON.parse(data['output.json']);
         assert.deepEqual(output.objects.unjoined.geometries,
           [{type: null, properties: {fooz: 'c', bar: 'gamma'}}])
         assert.deepEqual(output.objects.unmatched.geometries,

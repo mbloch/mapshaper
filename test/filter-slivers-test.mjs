@@ -57,9 +57,9 @@ describe('mapshaper-filter-slivers.js', function () {
       }
     };
 
-    api.applyCommands('-erase remove-slivers target=layer1 source=layer2 -o target=layer1 format=topojson no-quantization', topo, function(err, data) {
+    api.applyCommands('-i input.json -erase remove-slivers target=layer1 source=layer2 -o target=layer1 format=topojson no-quantization output.json', {'input.json': topo}, function(err, output) {
       if (err) throw err;
-      var obj = JSON.parse(data);
+      var obj = JSON.parse(output['output.json']);
       var target = {
         type: "Topology",
         arcs: [
@@ -122,9 +122,9 @@ describe('mapshaper-filter-slivers.js', function () {
       }
     };
 
-    api.applyCommands('-erase remove-slivers target=layer1 source=layer2 -o target=layer1 format=topojson no-quantization bbox', topo, function(err, data) {
+    api.applyCommands('-i input.json -erase remove-slivers target=layer1 source=layer2 -o target=layer1 format=topojson no-quantization bbox output.json', {'input.json': topo}, function(err, output) {
       if (err) throw err;
-      var obj = JSON.parse(data);
+      var obj = JSON.parse(output['output.json']);
       // sliver from erase is removed but equally tiny ring is retained
       assert.deepEqual(obj.bbox, [0, 2, 2, 3]);
       done();

@@ -48,7 +48,7 @@ export function getFileBase(path) {
 export function layerNameIsUnsafeFilename(name) {
   name = String(name);
   // path separators (directory traversal on any OS) or NUL
-  if (/[\/\\\0]/.test(name)) return true;
+  if (/[/\\\0]/.test(name)) return true;
   // Windows drive-relative prefix, e.g. "C:foo" can write to another drive
   if (/^[A-Za-z]:/.test(name)) return true;
   return false;

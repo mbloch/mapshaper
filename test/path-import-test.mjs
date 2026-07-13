@@ -22,8 +22,8 @@ describe('mapshaper-path-import.js', function () {
         }]
       };
 
-      api.applyCommands('-o gj2008', src, function(err, data) {
-        assert.deepEqual(JSON.parse(data), target);
+      api.applyCommands('-i input.json -o gj2008 output.json', {'input.json': src}, function(err, data) {
+        assert.deepEqual(JSON.parse(data['output.json']), target);
         done();
       });
     })
