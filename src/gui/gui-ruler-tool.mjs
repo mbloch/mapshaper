@@ -46,8 +46,8 @@ export function RulerTool(gui, ext) {
   geodesicPath.classList.add('ruler-line', 'ruler-great-circle');
   startMarker.classList.add('ruler-endpoint');
   endMarker.classList.add('ruler-endpoint');
-  svg.appendChild(directPath);
   svg.appendChild(geodesicPath);
+  svg.appendChild(directPath);
   svg.appendChild(startMarker);
   svg.appendChild(endMarker);
   mapLayers.node().appendChild(svg);
