@@ -85,6 +85,7 @@ import * as Colorizer from './commands/mapshaper-colorizer';
 import * as CustomProjections from './crs/mapshaper-custom-projections';
 import * as Dymaxion from './crs/mapshaper-dymaxion';
 import * as ButterflyProjections from './crs/mapshaper-butterfly-projections';
+import * as Narukawa2022 from './crs/mapshaper-narukawa2022';
 import * as DataAggregation from './dissolve/mapshaper-data-aggregation';
 import * as DatasetUtils from './dataset/mapshaper-dataset-utils';
 import * as DataUtils from './datatable/mapshaper-data-utils';
@@ -217,6 +218,7 @@ Object.assign(internal,
   CustomProjections,
   Dymaxion,
   ButterflyProjections,
+  Narukawa2022,
   DataAggregation,
   DatasetUtils,
   DataUtils,

@@ -154,6 +154,23 @@ mapshaper world.geojson \
   -o neatline-imoll-o.fgb
 ```
 
+<!--
+### Narukawa 2022 tetrahedral projection
+
+`narukawa2022` implements Hajime Narukawa's published 2022 mathematical
+formulation of a rectangular tetrahedral world map. The formula is an official
+approximation of the original modeling process used to create the AuthaGraph
+projection.
+
+```bash
+mapshaper world.geojson \
+  -proj +proj=narukawa2022 densify \
+  -o world-narukawa2022.geojson \
+  -graticule outline \
+  -o neatline-narukawa2022.geojson
+```
+-->
+
 ### Dymaxion projections
 
 Mapshaper includes two versions of Buckminster Fuller's Airocean
@@ -209,7 +226,7 @@ Several websites provide PROJ strings and EPSG codes for coordinate systems worl
 - GeoJSON and TopoJSON files are assumed to use WGS84 when their bounding boxes fall within the normal range for decimal degree coordinates.
 - Mapshaper does not support coordinate transformations that require grid-shift files (for example, NAD27 → WGS84). If a transformation silently fails, this is the likely cause.
 - Projections that can only represent part of the globe — including orthographic (`ortho`), near-side perspective (`nsper`, `geos`), gnomonic (`gnom`), stereographic (`stere`), and Lambert Azimuthal Equal-Area (`laea`) — automatically clip input data to the projection's valid extent before projecting. This prevents distorted or invalid geometry from coordinates outside the visible area.
-- Interrupted and polyhedral projections (`igh`, `imoll`, `igh_o`, `imoll_o`, `dymaxion`, `dymaxion2`, `butterfly`, `butterfly2`, `cahill_keyes`) are forward-only; inverse projection and raster reprojection are not supported.
+- Interrupted and polyhedral projections (`igh`, `imoll`, `igh_o`, `imoll_o`, `narukawa2022`, `dymaxion`, `dymaxion2`, `butterfly`, `butterfly2`, `cahill_keyes`) are forward-only; inverse projection and raster reprojection are not supported.
 - For projections that introduce significant curvature along straight lines, add the `densify` option to interpolate extra vertices along long segments:
 
   ```bash
