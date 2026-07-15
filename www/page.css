@@ -1608,6 +1608,34 @@ img.eye-btn {
 	margin-top: 2px;
 }
 
+.ruler-geographic-distance,
+.ruler-projected-distance {
+	font-size: 14px;
+	font-weight: 600;
+}
+
+.ruler-distance-method {
+	color: #777;
+	font-size: 11px;
+}
+
+.ruler-geographic-distance::before,
+.ruler-projected-distance::before {
+	content: "";
+	display: inline-block;
+	width: 18px;
+	margin-right: 6px;
+	vertical-align: 3px;
+}
+
+.ruler-geographic-distance::before {
+	border-top: 2px solid #cc35a5;
+}
+
+.ruler-projected-distance::before {
+	border-top: 2px dashed #cc35a5;
+}
+
 .ruler-popup .ruler-close-btn {
 	position: absolute;
 	top: 5px;
@@ -1991,14 +2019,16 @@ body.pan.panning .map-layers:not(.drawing) {
 	fill: none;
 	stroke: #cc35a5;
 	stroke-width: 2;
+	stroke-dasharray: 7 5;
 	stroke-linecap: round;
 	stroke-linejoin: round;
 	vector-effect: non-scaling-stroke;
 }
 
 .ruler-great-circle {
-	stroke: #1385B7;
-	stroke-dasharray: 7 5;
+	stroke: #cc35a5;
+	stroke-width: 2;
+	stroke-dasharray: none;
 }
 
 .ruler-endpoint {
@@ -2009,7 +2039,7 @@ body.pan.panning .map-layers:not(.drawing) {
 }
 
 .ruler-endpoint.ruler-great-circle-endpoint {
-	stroke: #1385B7;
+	stroke: #cc35a5;
 }
 
 .map-layers > svg text.selected {

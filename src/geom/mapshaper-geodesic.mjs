@@ -18,6 +18,13 @@ function getGeodesic(P) {
   return new GeographicLib.Geodesic.Geodesic(P.a, f);
 }
 
+export function getGeodesicDistanceFunction(P) {
+  var geod = getGeodesic(P);
+  return function(lng, lat, lng2, lat2) {
+    return geod.Inverse(lat, lng, lat2, lng2).s12;
+  };
+}
+
 export function interpolatePoint2D(ax, ay, bx, by, k) {
   var j = 1 - k;
   return [ax * j + bx * k, ay * j + by * k];

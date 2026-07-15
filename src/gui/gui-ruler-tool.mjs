@@ -33,6 +33,7 @@ export function RulerTool(gui, ext) {
   var content = El('div').addClass('ruler-popup-content').appendTo(popup);
   var closeBtn = El('button').addClass('label-style-close ruler-close-btn').appendTo(popup).text('×');
   var wgs84 = internal.parseCrsString('wgs84');
+  var geographicDistance = internal.getGeodesicDistanceFunction(wgs84);
   var _on = false;
   var startPoint = null;
   var pointerPoint = null;
@@ -46,8 +47,8 @@ export function RulerTool(gui, ext) {
   geodesicPath.classList.add('ruler-line', 'ruler-great-circle');
   startMarker.classList.add('ruler-endpoint');
   endMarker.classList.add('ruler-endpoint');
-  svg.appendChild(geodesicPath);
   svg.appendChild(directPath);
+  svg.appendChild(geodesicPath);
   svg.appendChild(startMarker);
   svg.appendChild(endMarker);
   mapLayers.node().appendChild(svg);
@@ -229,9 +230,9 @@ export function RulerTool(gui, ext) {
 
     measurement = getMeasurement(path);
     drawRulerLines(path, measurement);
-    drawRulerPointMarkers(measurement.isLatLng);
+    drawRulerPointMarkers(measurement.geographicMeters !== null);
     if (placed) {
-      drawMarker(endMarker, endPoint, measurement.isLatLng);
+      drawMarker(endMarker, endPoint, measurement.geographicMeters !== null);
     } else {
       hideMarker(endMarker);
     }
@@ -247,20 +248,33 @@ export function RulerTool(gui, ext) {
   }
 
   function drawRulerLines(path, measurement) {
-    if (measurement.isLatLng) {
+    if (measurement.geographicMeters !== null) {
       drawPath(geodesicPath, getGeodesicPathPixels(path));
       clearSvgPath(directPath);
-    } else {
+    } else if (measurement.projectedMeters !== null) {
       drawPath(directPath, path.map(function(point) { return point.display; }));
-      drawPath(geodesicPath, measurement.greatCircleMeters ? getGeodesicPathPixels(path) : null);
+      clearSvgPath(geodesicPath);
+    } else {
+      clearSvgPath(directPath);
+      clearSvgPath(geodesicPath);
     }
   }
 
   function showPopup(measurement) {
     content.empty();
-    measurement.labels.forEach(function(label) {
-      El('div').appendTo(content).text(label);
-    });
+    if (measurement.geographicMeters !== null) {
+      El('div').addClass('ruler-geographic-distance').appendTo(content)
+        .text('Geographic distance: ' + measurement.distanceLabel);
+      El('div').addClass('ruler-distance-method').appendTo(content)
+        .text('Shortest surface path (WGS84 ellipsoid)');
+    } else if (measurement.projectedMeters !== null) {
+      El('div').addClass('ruler-projected-distance').appendTo(content)
+        .text('Projected distance: ' + measurement.distanceLabel);
+      El('div').addClass('ruler-distance-method').appendTo(content)
+        .text('Geographic distance not available');
+    } else {
+      El('div').appendTo(content).text('Distance unavailable');
+    }
     if (placed) {
       closeBtn.show();
     } else {
@@ -436,23 +450,13 @@ export function RulerTool(gui, ext) {
   function getMeasurement(path) {
     var isLatLng = internal.isLatLngCRS(path[0].sourceCRS);
     var projectedMeters = isLatLng ? null : getProjectedPathDistanceMeters(path);
-    var greatCircleMeters = getGreatCirclePathDistanceMeters(path);
-    var unit = getDistanceUnit(projectedMeters || greatCircleMeters || 0);
-    var labels = [];
-
-    if (projectedMeters !== null) {
-      labels.push('Projected: ' + getDistanceDisplay(projectedMeters, unit).label);
-      if (greatCircleMeters !== null) {
-        labels.push('Great circle: ' + getDistanceDisplay(greatCircleMeters, unit).label);
-      }
-    } else if (greatCircleMeters !== null) {
-      labels.push('Great circle: ' + getDistanceDisplay(greatCircleMeters, unit).label);
-    }
+    var geographicMeters = getGeographicPathDistanceMeters(path);
+    var displayedMeters = geographicMeters !== null ? geographicMeters : projectedMeters;
+    var unit = getDistanceUnit(displayedMeters || 0);
     return {
-      isLatLng,
       projectedMeters,
-      greatCircleMeters,
-      labels: labels.length ? labels : ['Distance unavailable']
+      geographicMeters,
+      distanceLabel: displayedMeters === null ? null : getDistanceDisplay(displayedMeters, unit).label
     };
   }
 
@@ -466,13 +470,13 @@ export function RulerTool(gui, ext) {
     return geom.distance2D(a.data[0], a.data[1], b.data[0], b.data[1]) * toMeter;
   }
 
-  function getGreatCirclePathDistanceMeters(path) {
-    return sumPathDistance(path, getGreatCircleDistanceMeters);
+  function getGeographicPathDistanceMeters(path) {
+    return sumPathDistance(path, getGeographicDistanceMeters);
   }
 
-  function getGreatCircleDistanceMeters(a, b) {
+  function getGeographicDistanceMeters(a, b) {
     if (!a.lngLat || !b.lngLat) return null;
-    return geom.greatCircleDistance(a.lngLat[0], a.lngLat[1], b.lngLat[0], b.lngLat[1]);
+    return geographicDistance(a.lngLat[0], a.lngLat[1], b.lngLat[0], b.lngLat[1]);
   }
 
   function sumPathDistance(path, calcSegmentDistance) {
