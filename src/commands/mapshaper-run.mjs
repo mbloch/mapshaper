@@ -41,6 +41,9 @@ async function runFromExpression(job, targets, opts) {
   ctx = getBaseContext();
   // io proxy adds ability to add datasets dynamically in a required function
   ctx.io = getIOProxy(job);
+  if (opts.input) {
+    Object.assign(ctx.io._cache, opts.input);
+  }
   tmp = await evalTemplateExpression(opts.expression, targets, ctx);
   if (tmp && !utils.isString(tmp)) {
     stop('Expected a string containing mapshaper commands; received:', tmp);
@@ -49,6 +52,9 @@ async function runFromExpression(job, targets, opts) {
     // truncate message (command might include a large GeoJSON string in an -i command)
     message(`command: [${truncateString(tmp, 150)}]`);
     commands = parseCommands(tmp);
+    if (opts.validate_commands) {
+      opts.validate_commands(commands);
+    }
 
     // TODO: remove duplication with mapshaper-run-commands.mjs
     var outputArr = opts && opts.output || null;
@@ -62,6 +68,9 @@ async function runFromExpression(job, targets, opts) {
       if (outputArr && (cmd.name == 'o' || cmd.name == 'run' ||
           cmd.name == 'info' && cmd.options.save_to)) {
         cmd.options.output = outputArr;
+      }
+      if (cmd.name == 'run' && opts.validate_commands) {
+        cmd.options.validate_commands = opts.validate_commands;
       }
     });
 

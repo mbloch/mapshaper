@@ -114,12 +114,12 @@ export function ImportFileProxy(gui) {
 
   internal.replaceImportFile(function(src, opts) {
     var dataset = find(src);
-    // Return a copy with layers duplicated, so changes won't affect original layers
-    // This makes an (unsafe) assumption that the dataset arcs won't be changed...
-    // need to rethink this.
-    return utils.defaults({
-      layers: dataset.layers.map(internal.copyLayer)
-    }, dataset);
+    // Browser-side file references resolve to loaded data. Return a full copy
+    // so a command that imports and edits the match cannot mutate the original
+    // dataset through shared layers, tables, arcs or metadata.
+    var copy = internal.copyDataset(dataset);
+    copy.info = internal.copyDatasetInfo(dataset.info || {});
+    return copy;
   });
 }
 

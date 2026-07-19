@@ -392,6 +392,11 @@ export function ImportControl(gui, opts) {
   }
 
   async function importFiles(fileData, importOpts) {
+    var commandFiles = extractCommandFiles(fileData);
+    commandFiles.forEach(registerCommandFile);
+    fileData = fileData.filter(function(file) {
+      return commandFiles.indexOf(file) == -1;
+    });
     var groups = groupFilesForImport(fileData, importOpts);
     var optStr = GUI.formatCommandOptions(importOpts);
     fileData = null;
@@ -418,6 +423,31 @@ export function ImportControl(gui, opts) {
         notifyMissingShapefileParts(group);
       }
     }
+  }
+
+  function extractCommandFiles(files) {
+    return files.filter(function(file) {
+      if (!internal.isPotentialCommandFile(file.name)) return false;
+      file.commandFileContent = decodeCommandFileContent(file.content);
+      return internal.stringLooksLikeCommandFile(file.commandFileContent);
+    });
+  }
+
+  function decodeCommandFileContent(content) {
+    if (utils.isString(content)) return content;
+    return internal.decodeString(new Uint8Array(content), 'utf8');
+  }
+
+  function registerCommandFile(file) {
+    var replaced = gui.commandFiles.add(file.name, file.commandFileContent);
+    var command = '-run ' + internal.formatOptionValue(file.name);
+    if (!gui.notify) return;
+    gui.notify({
+      severity: 'info',
+      title: replaced ? 'Command file replaced' : 'Command file loaded',
+      body: 'Run ' + command + ' in the console.',
+      dedupKey: 'command-file:' + file.name
+    });
   }
 
   // Surface a passive warning if a .shp file came in without its .dbf or .prj

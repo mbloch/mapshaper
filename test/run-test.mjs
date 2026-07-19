@@ -110,6 +110,13 @@ describe('mapshaper-run.js', function () {
       assert.equal(output['data.csv'], 'foo,value\nbar,42');
     })
 
+    it('forwards the parent input cache to generated commands', async function() {
+      var input = {'data.csv': 'a,b\n1,2\n'};
+      var output = await api.applyCommands(
+        '-run "-i data.csv -o out.csv"', input);
+      assert.equal(output['out.csv'], 'a,b\n1,2');
+    })
+
     it('supports adding JSON data in an external function', async function() {
       var cmd = '-require test/data/features/run/includes1.js -run getCommand(io) -o';
       var out = await api.applyCommands(cmd);

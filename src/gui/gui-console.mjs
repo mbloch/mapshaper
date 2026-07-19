@@ -302,10 +302,11 @@ export function Console(gui) {
 
   // get active layer field names and other layer names
   function getCompletionWords() {
-    var lyr = model.getActiveLayer().layer;
-    var fieldNames = lyr.data ? lyr.data.getFields() : [];
-    var lyrNames = findOtherLayerNames(lyr);
-    return fieldNames.concat(lyrNames).concat(fieldNames);
+    var active = model.getActiveLayer();
+    var lyr = active && active.layer;
+    var fieldNames = lyr && lyr.data ? lyr.data.getFields() : [];
+    var lyrNames = lyr ? findOtherLayerNames(lyr) : [];
+    return fieldNames.concat(lyrNames, gui.commandFiles.getNames());
   }
 
   function findOtherLayerNames(lyr) {
@@ -449,6 +450,7 @@ export function Console(gui) {
       // don't add info commands to console history
       // (for one thing, they interfere with target resetting)
       commands = internal.runAndRemoveInfoCommands(commands);
+      prepareRunCommands(commands);
     } catch (e) {
       return done(e, {});
     }
@@ -458,6 +460,24 @@ export function Console(gui) {
         model.updated(flags); // info commands do not return flags
       }
       done(err, flags);
+    });
+  }
+
+  function prepareRunCommands(commands) {
+    var cache = gui.commandFiles.getInputCache();
+    commands.forEach(function(cmd) {
+      if (cmd.name != 'run') return;
+      cmd.options.input = cache;
+      cmd.options.validate_commands = validateBrowserRunCommands;
+    });
+  }
+
+  function validateBrowserRunCommands(commands) {
+    commands.forEach(function(cmd) {
+      if (['include', 'require', 'external'].includes(cmd.name)) {
+        internal.stop('The ' + cmd.name +
+          ' command cannot be run from a command file in the web console.');
+      }
     });
   }
 
@@ -509,6 +529,14 @@ export function Console(gui) {
       }
       if (sameTable) {
         flags.same_table = true;
+      }
+      // A -run command can contain any number of nested commands. The outer
+      // command name does not describe which display caches or controls the
+      // nested commands changed, so refresh conservatively.
+      if (flags.run) {
+        flags.arc_count = true;
+        flags.select = true;
+        flags.same_table = false;
       }
       if (active && active?.layer == active2?.layer) {
         // this can get set after some commands that don't set a new target

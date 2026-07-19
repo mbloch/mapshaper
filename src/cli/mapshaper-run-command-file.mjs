@@ -63,6 +63,9 @@ export async function runCommandFile(file, content, job, opts) {
   var commands;
   try {
     commands = parseCommands(commandStr);
+    if (opts && opts.validate_commands) {
+      opts.validate_commands(commands);
+    }
   } catch(e) {
     e.message = 'Error in command file ' + file + ': ' + e.message;
     throw e;
@@ -84,6 +87,9 @@ export async function runCommandFile(file, content, job, opts) {
     }
     if (c.name == 'run') {
       c.options._run_depth = depth;
+      if (opts && opts.validate_commands) {
+        c.options.validate_commands = opts.validate_commands;
+      }
     }
   });
 

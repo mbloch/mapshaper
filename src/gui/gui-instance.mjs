@@ -24,6 +24,7 @@ import { MessageControl } from './gui-messages';
 import { getRuntimeStateContext, stringifyRuntimeStateContext } from './gui-runtime-context';
 import { startRasterSourceStoreLifecycle } from './gui-raster-source-store';
 import { cleanupStaleUndoPayloads } from './gui-stored-undo-history';
+import { CommandFileStore } from './gui-command-file-store';
 // import { ProjectOptions } from './gui-project-control';
 
 
@@ -42,6 +43,7 @@ export function GuiInstance(container, opts) {
   gui.options = opts;
   gui.container = El(container);
   gui.model = new Model(gui);
+  gui.commandFiles = new CommandFileStore();
   gui.keyboard = new KeyboardEvents(gui);
   gui.buttons = new SidebarButtons(gui);
   gui.display = new DisplayOptions(gui);
