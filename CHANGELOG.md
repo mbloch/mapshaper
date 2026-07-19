@@ -1,3 +1,8 @@
+v0.7.46
+* Removed projected distance from the ruler tool unless great-circle distance can not be calculated. Added explanatory text to the readout.
+* Added support for running command files in the web UI (via -run command in the console).
+* Added narukawa2022 projection (a version of the AuthaGraph projection).
+
 v0.7.45
 * Added support for more interrupted projections: Buckminster Fuller's Dymaxion map projection, the Cahill-Keyes projection and two butterfly projections.
 

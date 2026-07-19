@@ -11,7 +11,7 @@ This is a curated list of recently added features. For the full list of changes,
 
 <div class="whats-new-entry">
 
-**Interrupted and polyhedral world projections.** The `-proj` command supports forward-only interrupted projections, including Interrupted Goode Homolosine (`igh`, `igh_o`), Interrupted Mollweide (`imoll`, `imoll_o`), Narukawa's rectangular tetrahedral projection (`narukawa2022`), Buckminster Fuller's icosahedral map projection (`dymaxion`, `dymaxion2`), and several octahedral projections (`butterfly`, `butterfly2`, `cahill_keyes`). The `-graticule` command can generate graticules, polygon footprints and neatlines for these projections.
+**Interrupted and polyhedral world projections.** The `-proj` command supports interrupted projections, including Interrupted Goode Homolosine (`igh`, `igh_o`), Interrupted Mollweide (`imoll`, `imoll_o`), Hajime Narukawa's 2022 update to the AuthaGraph projection (`narukawa2022`), Buckminster Fuller's icosahedral map projection (`dymaxion`, `dymaxion2`), and several octahedral projections (`butterfly`, `butterfly2`, `cahill_keyes`). The `-graticule` command can generate graticules, polygon footprints and neatlines for these projections.
 
 → See [Interrupted world projections](/docs/guides/projections.html#interrupted-world-projections).
 </div>
@@ -94,7 +94,7 @@ This is a curated list of recently added features. For the full list of changes,
 
 <div class="whats-new-entry">
 
-**Command files.** A sequence of Mapshaper commands can be written to a `.txt` file with `#` comments and no shell quoting, and run with `-run <file>` (or just `mapshaper commands.txt`). Command files can also be written in a shell-compatible way, if you want to be able to paste the commands into the terminal or add them to a shell script. In a future release, these files will also be runnable in the browser.
+**Command files.** A sequence of Mapshaper commands can be written to a `.txt` file with `#` comments and no shell quoting, and run with `-run <file>` (or just `mapshaper commands.txt`). Command files can also be written in a shell-compatible way, if you want to be able to paste the commands into the terminal or add them to a shell script. **Update:** these files can also be imported and run in the browser UI.
 
 ```bash
 mapshaper build.txt
@@ -116,7 +116,7 @@ mapshaper -vars YEAR=2030 PCT=5 -run build.txt
 
 <div class="whats-new-entry">
 
-**Farewell to dissolve2.** The `-dissolve` command now uses Mapshaper's most robust dissolve function, which can handle overlaps, gaps and other topology errors. The legacy faster algorithm is still available as `-dissolve no-repair`. (The old `-dissolve2` is just an alias for `-dissolve`.)
+**Farewell to dissolve2.** The `-dissolve` command now uses Mapshaper's most robust dissolve function, which can handle overlaps, gaps and other topology errors. The legacy faster algorithm is still available as `-dissolve no-repair`. (The old `-dissolve2` is now just an alias for `-dissolve`.)
 
 → See [`-dissolve`](/docs/reference.html#-dissolve).
 </div>

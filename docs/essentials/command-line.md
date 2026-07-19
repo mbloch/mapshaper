@@ -122,7 +122,7 @@ Command files offer a few conveniences over a shell script or Makefile:
 - Trailing-backslash line continuations are accepted but not required &mdash; lines that don't begin with `-` are joined onto the previous command.
 - Variable interpolation using `{{VAR}}` placeholders. See [variables](#variables) below.
 
-(Support for running command files in the mapshaper web UI is planned for a future release.)
+(Support for running command files in the mapshaper web UI was added in v0.7.46.)
 
 ### File format
 
