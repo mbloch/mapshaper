@@ -1174,26 +1174,12 @@ mapshaper countries.shp -proj +proj=wintri +lon_0=10 -o out.shp
 # Shortcut notation for the above projection
 mapshaper countries.shp -proj wintri +lon_0=10 -o out.shp
 
-# Create a forward-only Interrupted Goode Homolosine world map
-mapshaper countries.shp -proj +proj=igh densify -o out.geojson
-
-# Create an oceanic Interrupted Mollweide map
-mapshaper countries.shp -proj +proj=imoll_o densify -o out.geojson
-
-# Create a Dymaxion map using the Gray-Fuller facet transformation
-mapshaper countries.shp -proj +proj=dymaxion densify -o out.geojson
-
-# Use gnomonic facets with the same Dymaxion net
-mapshaper countries.shp -proj +proj=dymaxion2 densify -o out.geojson
-
-# Create a Pacific-centered butterfly map
-mapshaper countries.shp -proj +proj=butterfly densify -o out.geojson
-
-# Use the same butterfly projection in its Atlantic-centered aspect
-mapshaper countries.shp -proj +proj=butterfly2 densify -o out.geojson
-
-# Use the documented Cahill-Keyes 12-zone M-profile
-mapshaper countries.shp -proj +proj=cahill_keyes densify -o out.geojson
+# Create Dymaxion-projected layers including a graticule and neatline
+mapshaper countries.geojson \
+-proj dymaxion \
+-graticule name=graticule \
+-graticule outline name=neatline \
+-o target="*" output/
 
 # Convert an unprojected U.S. Shapefile into a composite projection with Alaska
 # and Hawaii repositioned and rescaled to fit in the lower left corner.
@@ -1204,7 +1190,7 @@ mapshaper us_states.shp \
   -o out.shp
 ```
 
-Interrupted Goode Homolosine (`+proj=igh`, `+proj=igh_o`), Interrupted Mollweide (`+proj=imoll`, `+proj=imoll_o`), Dymaxion (`+proj=dymaxion`, `+proj=dymaxion2`), and octahedral butterfly projections (`+proj=butterfly`, `+proj=butterfly2`, `+proj=cahill_keyes`) support forward vector projection only. They cannot be used as source CRSes, do not support raster reprojection, and cannot be represented by generated Shapefile `.prj` files. The `_o` variants are oceanic layouts and default to `+lon_0=-160`. `dymaxion` uses the Gray-Fuller facet transformation; `dymaxion2` uses gnomonic facets. `butterfly` and `butterfly2` use the Cahill-Keyes 12-zone facet construction in a butterfly arrangement inspired by Cahill and Waterman; they differ only in their default central meridians of 157.5°E and 20°W, respectively. `cahill_keyes` uses the documented M-profile and also defaults to 20°W. An explicit `+lon_0=` overrides the default.
+Interrupted Goode Homolosine (`+proj=igh`, `+proj=igh_o`), Interrupted Mollweide (`+proj=imoll`, `+proj=imoll_o`), Hajime Narukawa's AuthaGraph projection (`+proj=narukawa2022`), Dymaxion (`+proj=dymaxion`, `+proj=dymaxion2`), and octahedral butterfly projections (`+proj=butterfly`, `+proj=butterfly2`, `+proj=cahill_keyes`) support forward vector projection only. They do not support raster reprojection, and cannot be represented by generated Shapefile `.prj` files. The `_o` variants are oceanic layouts and default to `+lon_0=-160`. `narukawa2022` uses Narukawa's published 2022 mathematical approximation of the original AuthaGraph modeling process. `dymaxion` uses the Gray-Fuller facet transformation; `dymaxion2` uses gnomonic facets. `butterfly` and `butterfly2` use the Cahill-Keyes 12-zone facet construction in a butterfly arrangement inspired by Cahill and Waterman; they differ only in their default central meridians of 157.5°E and 20°W, respectively. `cahill_keyes` uses the M-profile and also defaults to 20°W.
 
 ### -rectangle
 

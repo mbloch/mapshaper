@@ -78,7 +78,7 @@
     return obj === Object(obj); // via underscore
   }
 
-  function clamp$3(val, min, max) {
+  function clamp$4(val, min, max) {
     return val < min ? min : (val > max ? max : val);
   }
 
@@ -260,36 +260,6 @@
       });
     };
   }
-
-  // Call @iter on each member of an array (similar to Array#reduce(iter))
-  //    iter: function(memo, item, callback)
-  // Call @done when all members have been processed or if an error occurs
-  //    done: function(err, memo)
-  // @memo: Initial value
-  //
-  function reduceAsync(arr, memo, iter, done) {
-    var call = typeof setImmediate == 'undefined' ? setTimeout : setImmediate;
-    var i=0;
-    next(null, memo);
-
-    function next(err, memo) {
-      // Detach next operation from call stack to prevent overflow
-      // Don't use setTimeout(, 0) if setImmediate is available
-      // (setTimeout() can introduce a long delay if previous operation was slow,
-      //    as of Node 0.10.32 -- a bug?)
-      if (err) {
-        return done(err, null);
-      }
-      call(function() {
-        if (i < arr.length === false) {
-          done(null, memo);
-        } else {
-          iter(memo, arr[i++], next);
-        }
-      }, 0);
-    }
-  }
-
 
   // Append elements of @src array to @dest array
   function merge$1(dest, src) {
@@ -751,7 +721,7 @@
   function findValueByRank(arr, rank) {
     if (!arr.length || rank < 1 || rank > arr.length) error$1("[findValueByRank()] invalid input");
 
-    rank = clamp$3(rank | 0, 1, arr.length);
+    rank = clamp$4(rank | 0, 1, arr.length);
     var k = rank - 1, // conv. rank to array index
         n = arr.length,
         l = 0,
@@ -1125,7 +1095,7 @@
   // self-import and the resulting Rollup circular-dependency warning.
   var utils = {
     addThousandsSep, addslashes, arrayToIndex,
-    clamp: clamp$3, cleanNumericString, contains, copyElements, countValues, createBuffer,
+    clamp: clamp$4, cleanNumericString, contains, copyElements, countValues, createBuffer,
     defaults, difference,
     endsWith, every, expandoBuffer, extend: extend$1, extendBuffer,
     find: find$1, findMedian, findQuantile, findRankByValue, findStringPrefix,
@@ -1145,7 +1115,7 @@
     parseIntlNumber, parseNumber: parseNumber$1, parseString, pickOne, pluck,
     pluralSuffix, promisify,
     quicksort: quicksort$1, quicksortPartition,
-    range, reduceAsync, regexEscape, reorderArray: reorderArray$1, repeat, repeatString,
+    range, regexEscape, reorderArray: reorderArray$1, repeat, repeatString,
     replaceArray, rpad, rtrim,
     shuffle, some, sortArrayIndex, sortOn, splitLines, sum: sum$1,
     toArray: toArray$1, toBuffer, trim, trimQuotes,
@@ -2083,12 +2053,12 @@
   // TODO: remove this constant, use actual data from dataset CRS,
   // also consider using ellipsoidal formulas where greater accuracy might be important.
   var R$3 = WGS84.SEMIMAJOR_AXIS;
-  var D2R$6 = Math.PI / 180;
-  var R2D$5 = 180 / Math.PI;
+  var D2R$7 = Math.PI / 180;
+  var R2D$6 = 180 / Math.PI;
 
   // Equirectangular projection
   function degreesToMeters(deg) {
-    return deg * D2R$6 * R$3;
+    return deg * D2R$7 * R$3;
   }
 
   function distance3D(ax, ay, az, bx, by, bz) {
@@ -2235,16 +2205,16 @@
 
   function xyzToLngLat(x, y, z, p) {
     var d = distance3D(0, 0, 0, x, y, z); // normalize
-    var lat = Math.asin(z / d) / D2R$6;
-    var lng = Math.atan2(y / d, x / d) / D2R$6;
+    var lat = Math.asin(z / d) / D2R$7;
+    var lng = Math.atan2(y / d, x / d) / D2R$7;
     p[0] = lng;
     p[1] = lat;
   }
 
   function lngLatToXYZ(lng, lat, p) {
     var cosLat;
-    lng *= D2R$6;
-    lat *= D2R$6;
+    lng *= D2R$7;
+    lat *= D2R$7;
     cosLat = Math.cos(lat);
     p[0] = Math.cos(lng) * cosLat * R$3;
     p[1] = Math.sin(lng) * cosLat * R$3;
@@ -2364,9 +2334,9 @@
 
   var Geom = /*#__PURE__*/Object.freeze({
     __proto__: null,
-    D2R: D2R$6,
+    D2R: D2R$7,
     R: R$3,
-    R2D: R2D$5,
+    R2D: R2D$6,
     bearing: bearing,
     bearing2D: bearing2D,
     containsBounds: containsBounds,
@@ -6294,9 +6264,9 @@
    * ISC License: https://github.com/d3/d3-geo-polygon/blob/main/LICENSE
    */
 
-  var D2R$5 = Math.PI / 180;
-  var R2D$4 = 180 / Math.PI;
-  var EPS$1 = 1e-12;
+  var D2R$6 = Math.PI / 180;
+  var R2D$5 = 180 / Math.PI;
+  var EPS$2 = 1e-12;
 
   // Build a forward-only spherical polyhedral projection.
   //
@@ -6334,10 +6304,10 @@
         throw new Error('Invalid polyhedral face tree');
       }
       var childEdge = shared.map(function(p) {
-        return face.project(p[0] * D2R$5, p[1] * D2R$5);
+        return face.project(p[0] * D2R$6, p[1] * D2R$6);
       });
       var parentEdge = shared.map(function(p) {
-        return parent.project(p[0] * D2R$5, p[1] * D2R$5);
+        return parent.project(p[0] * D2R$6, p[1] * D2R$6);
       });
       face.transform = multiplyMatrices(
         parent.transform,
@@ -6348,12 +6318,12 @@
 
     var rootEdge = findLongestEdge(faces[0].coords);
     var rootPlanarEdge = rootEdge.map(function(p) {
-      return faces[0].project(p[0] * D2R$5, p[1] * D2R$5);
+      return faces[0].project(p[0] * D2R$6, p[1] * D2R$6);
     });
     var sphericalEdgeLength = angularDistance(rootEdge[0], rootEdge[1]);
     var planarEdgeLength = distance2D(rootPlanarEdge[0], rootPlanarEdge[1]);
     var scale = sphericalEdgeLength / planarEdgeLength;
-    var planarAngle = (config.angle || 0) * D2R$5;
+    var planarAngle = (config.angle || 0) * D2R$6;
     var edgeIndex = indexEdges(faces, attachedPairs);
     var outline = buildOutline(faces, attachedPairs).map(function(ring) {
       return ring.map(transformOutputPoint);
@@ -6383,9 +6353,9 @@
       var rotated = rotateRadians(
         lam,
         phi,
-        config.rotation[0] * D2R$5,
-        config.rotation[1] * D2R$5,
-        config.rotation[2] * D2R$5
+        config.rotation[0] * D2R$6,
+        config.rotation[1] * D2R$6,
+        config.rotation[2] * D2R$6
       );
       var face = findFaceRotated(rotated[0], rotated[1]);
       if (!face) return null;
@@ -6401,9 +6371,9 @@
       var rotated = rotateRadians(
         lam,
         phi,
-        config.rotation[0] * D2R$5,
-        config.rotation[1] * D2R$5,
-        config.rotation[2] * D2R$5
+        config.rotation[0] * D2R$6,
+        config.rotation[1] * D2R$6,
+        config.rotation[2] * D2R$6
       );
       var face = findFaceRotated(rotated[0], rotated[1]);
       return face ? face.id : -1;
@@ -6413,9 +6383,9 @@
       var rotated = rotateRadians(
         lam,
         phi,
-        config.rotation[0] * D2R$5,
-        config.rotation[1] * D2R$5,
-        config.rotation[2] * D2R$5
+        config.rotation[0] * D2R$6,
+        config.rotation[1] * D2R$6,
+        config.rotation[2] * D2R$6
       );
       var face = findFaceRotated(rotated[0], rotated[1]);
       var region;
@@ -6432,7 +6402,7 @@
         faceId = config.findFace(lam, phi);
         return faceId >= 0 ? faces[faceId] : null;
       }
-      var p = radiansToVector(lam, phi);
+      var p = radiansToVector$1(lam, phi);
       for (var i = 0; i < faces.length; i++) {
         if (faceContainsVector(faces[i], p)) return faces[i];
       }
@@ -6457,16 +6427,16 @@
       var seams = edgeIndex.map(function(edge) {
         var endpoints = edge.points.map(function(p) {
           var q = rotateRadians(
-            p[0] * D2R$5,
-            p[1] * D2R$5,
-            config.rotation[0] * D2R$5,
-            config.rotation[1] * D2R$5,
-            config.rotation[2] * D2R$5,
+            p[0] * D2R$6,
+            p[1] * D2R$6,
+            config.rotation[0] * D2R$6,
+            config.rotation[1] * D2R$6,
+            config.rotation[2] * D2R$6,
             true
           );
-          return [normalizeLongitude$1(q[0] * R2D$4 + lon0), q[1] * R2D$4];
+          return [normalizeLongitude$2(q[0] * R2D$5 + lon0), q[1] * R2D$5];
         });
-        var paths = splitPathAtAntimeridian$1(
+        var paths = splitPathAtAntimeridian$2(
           interpolateGreatCircle(endpoints[0], endpoints[1], 0.05)
         );
         paths.forEach(function(path) {
@@ -6491,12 +6461,12 @@
         }),
         seams: seams,
         findRegion: function(lon, lat) {
-          var lam = normalizeLongitude$1(lon - lon0) * D2R$5;
-          return findFace(lam, lat * D2R$5);
+          var lam = normalizeLongitude$2(lon - lon0) * D2R$6;
+          return findFace(lam, lat * D2R$6);
         },
         findTransitionRegion: function(lon, lat) {
-          var lam = normalizeLongitude$1(lon - lon0) * D2R$5;
-          return findTransitionRegion(lam, lat * D2R$5);
+          var lam = normalizeLongitude$2(lon - lon0) * D2R$6;
+          return findTransitionRegion(lam, lat * D2R$6);
         },
         regionsAreAttached: function(a, b) {
           return regionPairs.get(pairKey(a, b)) === true;
@@ -6514,9 +6484,9 @@
     return rotateRadians(
       lam,
       phi,
-      (rotation[0] || 0) * D2R$5,
-      (rotation[1] || 0) * D2R$5,
-      (rotation[2] || 0) * D2R$5,
+      (rotation[0] || 0) * D2R$6,
+      (rotation[1] || 0) * D2R$6,
+      (rotation[2] || 0) * D2R$6,
       invert
     );
   }
@@ -6525,7 +6495,7 @@
     var vectors = coords.map(function(p) {
       return degreesToVector$2(p[0], p[1]);
     });
-    var inside = normalizeVector$1(vectors.reduce(function(sum, p) {
+    var inside = normalizeVector$2(vectors.reduce(function(sum, p) {
       sum[0] += p[0];
       sum[1] += p[1];
       sum[2] += p[2];
@@ -6535,10 +6505,10 @@
     for (var i = 0; i < vectors.length; i++) {
       var a = vectors[i];
       var b = vectors[(i + 1) % vectors.length];
-      var normal = cross$1(a, b);
+      var normal = cross$2(a, b);
       edges.push({
         normal: normal,
-        sign: dot$1(normal, inside) < 0 ? -1 : 1
+        sign: dot$2(normal, inside) < 0 ? -1 : 1
       });
     }
     return {
@@ -6553,7 +6523,7 @@
   function faceContainsVector(face, p) {
     for (var i = 0; i < face.edges.length; i++) {
       var edge = face.edges[i];
-      if (dot$1(edge.normal, p) * edge.sign < -EPS$1) return false;
+      if (dot$2(edge.normal, p) * edge.sign < -EPS$2) return false;
     }
     return true;
   }
@@ -6589,8 +6559,8 @@
         var adjacent = findAdjacentFace(faces, face.id, a, b);
         if (adjacent >= 0 && attachedPairs.has(pairKey(face.id, adjacent))) continue;
         edges.push([
-          applyMatrix(face.transform, face.project(a[0] * D2R$5, a[1] * D2R$5)),
-          applyMatrix(face.transform, face.project(b[0] * D2R$5, b[1] * D2R$5))
+          applyMatrix(face.transform, face.project(a[0] * D2R$6, a[1] * D2R$6)),
+          applyMatrix(face.transform, face.project(b[0] * D2R$6, b[1] * D2R$6))
         ]);
       }
     });
@@ -6717,9 +6687,9 @@
   function rotateRadians(lam, phi, deltaLam, deltaPhi, deltaGamma, invert) {
     if (invert) {
       var inv = rotatePhiGamma$1(lam, phi, deltaPhi, deltaGamma, true);
-      return [normalizeRadians$1(inv[0] - deltaLam), inv[1]];
+      return [normalizeRadians$2(inv[0] - deltaLam), inv[1]];
     }
-    lam = normalizeRadians$1(lam + deltaLam);
+    lam = normalizeRadians$2(lam + deltaLam);
     return rotatePhiGamma$1(lam, phi, deltaPhi, deltaGamma, false);
   }
 
@@ -6739,28 +6709,28 @@
       return [
         Math.atan2(y * cosDeltaGamma + z * sinDeltaGamma,
           x * cosDeltaPhi + k * sinDeltaPhi),
-        Math.asin(clamp$2(k * cosDeltaPhi - x * sinDeltaPhi, -1, 1))
+        Math.asin(clamp$3(k * cosDeltaPhi - x * sinDeltaPhi, -1, 1))
       ];
     }
     k = z * cosDeltaPhi + x * sinDeltaPhi;
     return [
       Math.atan2(y * cosDeltaGamma - k * sinDeltaGamma,
         x * cosDeltaPhi - z * sinDeltaPhi),
-      Math.asin(clamp$2(k * cosDeltaGamma + y * sinDeltaGamma, -1, 1))
+      Math.asin(clamp$3(k * cosDeltaGamma + y * sinDeltaGamma, -1, 1))
     ];
   }
 
   function interpolateGreatCircle(a, b, interval) {
     var av = degreesToVector$2(a[0], a[1]);
     var bv = degreesToVector$2(b[0], b[1]);
-    var angle = Math.acos(clamp$2(dot$1(av, bv), -1, 1));
-    var n = Math.max(1, Math.ceil(angle * R2D$4 / interval));
+    var angle = Math.acos(clamp$3(dot$2(av, bv), -1, 1));
+    var n = Math.max(1, Math.ceil(angle * R2D$5 / interval));
     var sinAngle = Math.sin(angle);
     var points = [];
     for (var i = 0; i <= n; i++) {
       var t = i / n;
       var p;
-      if (sinAngle < EPS$1) {
+      if (sinAngle < EPS$2) {
         p = av;
       } else {
         var ka = Math.sin((1 - t) * angle) / sinAngle;
@@ -6771,12 +6741,12 @@
           av[2] * ka + bv[2] * kb
         ];
       }
-      points.push(vectorToDegrees$2(normalizeVector$1(p)));
+      points.push(vectorToDegrees$2(normalizeVector$2(p)));
     }
     return points;
   }
 
-  function splitPathAtAntimeridian$1(path) {
+  function splitPathAtAntimeridian$2(path) {
     var paths = [];
     var part = [path[0]];
     for (var i = 1; i < path.length; i++) {
@@ -6812,32 +6782,32 @@
   }
 
   function angularDistance(a, b) {
-    return Math.acos(clamp$2(dot$1(degreesToVector$2(a[0], a[1]),
+    return Math.acos(clamp$3(dot$2(degreesToVector$2(a[0], a[1]),
       degreesToVector$2(b[0], b[1])), -1, 1));
   }
 
   function degreesToVector$2(lon, lat) {
-    return radiansToVector(lon * D2R$5, lat * D2R$5);
+    return radiansToVector$1(lon * D2R$6, lat * D2R$6);
   }
 
-  function radiansToVector(lam, phi) {
+  function radiansToVector$1(lam, phi) {
     var cosPhi = Math.cos(phi);
     return [Math.cos(lam) * cosPhi, Math.sin(lam) * cosPhi, Math.sin(phi)];
   }
 
   function vectorToDegrees$2(p) {
     return [
-      Math.atan2(p[1], p[0]) * R2D$4,
-      Math.asin(clamp$2(p[2], -1, 1)) * R2D$4
+      Math.atan2(p[1], p[0]) * R2D$5,
+      Math.asin(clamp$3(p[2], -1, 1)) * R2D$5
     ];
   }
 
-  function normalizeVector$1(p) {
-    var k = 1 / Math.sqrt(dot$1(p, p));
+  function normalizeVector$2(p) {
+    var k = 1 / Math.sqrt(dot$2(p, p));
     return [p[0] * k, p[1] * k, p[2] * k];
   }
 
-  function cross$1(a, b) {
+  function cross$2(a, b) {
     return [
       a[1] * b[2] - a[2] * b[1],
       a[2] * b[0] - a[0] * b[2],
@@ -6845,7 +6815,7 @@
     ];
   }
 
-  function dot$1(a, b) {
+  function dot$2(a, b) {
     return a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
   }
 
@@ -6856,7 +6826,7 @@
   }
 
   function sameSphericalPoint(a, b) {
-    return Math.abs(a[0] - b[0]) < EPS$1 && Math.abs(a[1] - b[1]) < EPS$1;
+    return Math.abs(a[0] - b[0]) < EPS$2 && Math.abs(a[1] - b[1]) < EPS$2;
   }
 
   function pointsAlmostEqual(a, b) {
@@ -6877,19 +6847,19 @@
     return a < b ? a + '~' + b : b + '~' + a;
   }
 
-  function normalizeRadians$1(lam) {
+  function normalizeRadians$2(lam) {
     while (lam > Math.PI) lam -= Math.PI * 2;
     while (lam < -Math.PI) lam += Math.PI * 2;
     return lam;
   }
 
-  function normalizeLongitude$1(lon) {
+  function normalizeLongitude$2(lon) {
     while (lon > 180) lon -= 360;
     while (lon < -180) lon += 360;
     return lon;
   }
 
-  function clamp$2(val, min, max) {
+  function clamp$3(val, min, max) {
     return Math.max(min, Math.min(max, val));
   }
 
@@ -6905,9 +6875,9 @@
    */
 
 
-  var D2R$4 = Math.PI / 180;
-  var R2D$3 = 180 / Math.PI;
-  var SQRT3 = Math.sqrt(3);
+  var D2R$5 = Math.PI / 180;
+  var R2D$4 = 180 / Math.PI;
+  var SQRT3$1 = Math.sqrt(3);
   var GRAY_Z = Math.sqrt(5 + 2 * Math.sqrt(5)) / Math.sqrt(15);
   var GRAY_EL = Math.sqrt(8) / Math.sqrt(5 + Math.sqrt(5));
   var GRAY_DVE = Math.sqrt(3 + Math.sqrt(5)) / Math.sqrt(5 + Math.sqrt(5));
@@ -6919,7 +6889,7 @@
     6, 8, 10, 17, 21,
     16, 15, 19, 19
   ];
-  var engines$1 = {};
+  var engines$2 = {};
 
   function registerDymaxionProjections(mproj) {
     // Some unit tests import source modules directly in an ESM context where
@@ -6938,9 +6908,9 @@
 
   function getDymaxionEngine(method) {
     method = method || 'fuller';
-    if (!engines$1[method]) {
+    if (!engines$2[method]) {
       var data = createAiroceanFaces();
-      engines$1[method] = createPolyhedralProjection({
+      engines$2[method] = createPolyhedralProjection({
         faces: data.faces,
         faceSites: data.sites,
         parents: PARENTS,
@@ -6951,7 +6921,7 @@
           createGrayFullerFaceProjector
       });
     }
-    return engines$1[method];
+    return engines$2[method];
   }
 
   function initDymaxion(P, method) {
@@ -6967,12 +6937,12 @@
         xy.y = p[1];
       }
     };
-    P.__projection_topology = engine.getTopology(P.lam0 * R2D$3);
+    P.__projection_topology = engine.getTopology(P.lam0 * R2D$4);
     P.__projected_outline = engine.outline;
   }
 
   function createAiroceanFaces() {
-    var theta = Math.atan(0.5) * R2D$3;
+    var theta = Math.atan(0.5) * R2D$4;
     var vertices = [[0, 90], [0, -90]];
     var faces;
     var sites;
@@ -7069,10 +7039,10 @@
     var s = GRAY_Z / (cosPhi * Math.cos(lam));
     var x = cosPhi * Math.sin(lam) * s;
     var y = Math.sin(phi) * s;
-    var a1p = Math.atan2(2 * y / SQRT3 + GRAY_EL / 3 - GRAY_EL / 2, GRAY_DVE);
-    var a2p = Math.atan2(x - y / SQRT3 + GRAY_EL / 3 - GRAY_EL / 2, GRAY_DVE);
-    var a3p = Math.atan2(GRAY_EL / 3 - x - y / SQRT3 - GRAY_EL / 2, GRAY_DVE);
-    return [SQRT3 * (a2p - a3p), 2 * a1p - a2p - a3p];
+    var a1p = Math.atan2(2 * y / SQRT3$1 + GRAY_EL / 3 - GRAY_EL / 2, GRAY_DVE);
+    var a2p = Math.atan2(x - y / SQRT3$1 + GRAY_EL / 3 - GRAY_EL / 2, GRAY_DVE);
+    var a3p = Math.atan2(GRAY_EL / 3 - x - y / SQRT3$1 - GRAY_EL / 2, GRAY_DVE);
+    return [SQRT3$1 * (a2p - a3p), 2 * a1p - a2p - a3p];
   }
 
   function getSphericalCentroid(coords) {
@@ -7097,16 +7067,16 @@
   }
 
   function degreesToVector$1(p) {
-    var lam = p[0] * D2R$4;
-    var phi = p[1] * D2R$4;
+    var lam = p[0] * D2R$5;
+    var phi = p[1] * D2R$5;
     var cosPhi = Math.cos(phi);
     return [Math.cos(lam) * cosPhi, Math.sin(lam) * cosPhi, Math.sin(phi)];
   }
 
   function vectorToDegrees$1(p) {
     return [
-      Math.atan2(p[1], p[0]) * R2D$3,
-      Math.asin(Math.max(-1, Math.min(1, p[2]))) * R2D$3
+      Math.atan2(p[1], p[0]) * R2D$4,
+      Math.asin(Math.max(-1, Math.min(1, p[2]))) * R2D$4
     ];
   }
 
@@ -7154,8 +7124,8 @@
    * ISC License: https://github.com/d3/d3-geo-polygon/blob/main/LICENSE
    */
 
-  var D2R$3 = Math.PI / 180;
-  var R2D$2 = 180 / Math.PI;
+  var D2R$4 = Math.PI / 180;
+  var R2D$3 = 180 / Math.PI;
 
   function createCahillKeyesRaw(mg) {
     return createCahillKeyesTransform(mg, false);
@@ -7167,12 +7137,12 @@
 
     return function(lambda, phi) {
       if (faceOnly) {
-        var lon = lambda * R2D$2;
+        var lon = lambda * R2D$3;
         var side = lon < 0 ? -1 : lon > 0 ? 1 : 0;
-        var local = mp2xy(Math.abs(lon), Math.abs(phi * R2D$2));
+        var local = mp2xy(Math.abs(lon), Math.abs(phi * R2D$3));
         return [local[0], side * local[1]];
       }
-      var res = ll2mp(lambda * R2D$2, phi * R2D$2);
+      var res = ll2mp(lambda * R2D$3, phi * R2D$3);
       var xy = mp2xy(res[0], res[1]);
       var p = [xy[0], res[2] * xy[1]];
       return mj2g(p, res[3]);
@@ -7190,7 +7160,7 @@
       CK.cos60 = 0.5;
       CK.pointM = [0, 0];
       CK.pointG = [CK.lengthMG, 0];
-      pointN = [CK.lengthMG, CK.lengthMG * Math.tan(30 * D2R$3)];
+      pointN = [CK.lengthMG, CK.lengthMG * Math.tan(30 * D2R$4)];
       CK.pointA = [CK.lengthMA, 0];
       CK.pointB = lineIntersection(CK.pointM, 30, CK.pointA, 45);
       CK.lengthAG = distance(CK.pointA, CK.pointG);
@@ -7201,8 +7171,8 @@
       CK.pointD = interpolate(lengthMB, lengthMN, pointN, CK.pointM);
       CK.pointF = [CK.lengthMG, lengthNG - lengthMB];
       CK.pointE = [
-        pointN[0] - CK.lengthMA * Math.sin(30 * D2R$3),
-        pointN[1] - CK.lengthMA * Math.cos(30 * D2R$3)
+        pointN[0] - CK.lengthMA * Math.sin(30 * D2R$4),
+        pointN[1] - CK.lengthMA * Math.cos(30 * D2R$4)
       ];
       CK.lengthGF = distance(CK.pointG, CK.pointF);
       CK.lengthBD = distance(CK.pointB, CK.pointD);
@@ -7212,8 +7182,8 @@
       CK.lengthAP73 = CK.lengthMG - CK.lengthMA -
         CK.lengthParallel0to73At0 * 73;
       pointU = [
-        CK.pointA[0] + CK.lengthAP73 * Math.cos(30 * D2R$3),
-        CK.pointA[1] + CK.lengthAP73 * Math.sin(30 * D2R$3)
+        CK.pointA[0] + CK.lengthAP73 * Math.cos(30 * D2R$4),
+        CK.pointA[1] + CK.lengthAP73 * Math.sin(30 * D2R$4)
       ];
       CK.pointT = lineIntersection(pointU, -60, CK.pointB, 30);
 
@@ -7454,8 +7424,8 @@
 
     function radialPoint(origin, length, angle) {
       return [
-        origin[0] + length * Math.cos(angle * D2R$3),
-        origin[1] + length * Math.sin(angle * D2R$3)
+        origin[0] + length * Math.cos(angle * D2R$4),
+        origin[1] + length * Math.sin(angle * D2R$4)
       ];
     }
 
@@ -7472,8 +7442,8 @@
           -xy[0] * CK.sin60 - xy[1] * CK.cos60
         ];
       }
-      var cos = Math.cos(angle * D2R$3);
-      var sin = Math.sin(angle * D2R$3);
+      var cos = Math.cos(angle * D2R$4);
+      var sin = Math.sin(angle * D2R$4);
       return [xy[0] * cos - xy[1] * sin, xy[0] * sin + xy[1] * cos];
     }
   }
@@ -7494,8 +7464,8 @@
   }
 
   function lineIntersection(p1, slope1, p2, slope2) {
-    var m1 = Math.tan(slope1 * D2R$3);
-    var m2 = Math.tan(slope2 * D2R$3);
+    var m1 = Math.tan(slope1 * D2R$4);
+    var m2 = Math.tan(slope2 * D2R$4);
     var x = (m1 * p1[0] - m2 * p2[0] - p1[1] + p2[1]) / (m1 - m2);
     return [x, m1 * (x - p1[0]) + p1[1]];
   }
@@ -7523,8 +7493,8 @@
     return n > 0 ? Math.floor(n) : Math.ceil(n);
   }
 
-  var D2R$2 = Math.PI / 180;
-  var EPS = 1e-12;
+  var D2R$3 = Math.PI / 180;
+  var EPS$1 = 1e-12;
 
   // Create a smooth facet projection from any radial azimuthal projection.
   // The azimuthal coordinates are warped back to the gnomonic polygon along
@@ -7534,7 +7504,7 @@
     var center = options.planarCenter || getSphericalCenter(coords);
     var gnomonic = createGnomonicProjector(center);
     var planar = coords.map(function(p) {
-      return gnomonic(p[0] * D2R$2, p[1] * D2R$2);
+      return gnomonic(p[0] * D2R$3, p[1] * D2R$3);
     });
     var edges = createNormalizedEdges(planar);
     var radial = createRadialFunction(
@@ -7553,7 +7523,7 @@
     function project(lam, phi) {
       var p = gnomonic(lam, phi);
       var r = Math.hypot(p[0], p[1]);
-      if (r < EPS) return [0, 0];
+      if (r < EPS$1) return [0, 0];
       var c = Math.atan(r);
       var azimuthalRadius = radial(c) * radialScale;
       var boundaryWeight = getBoundaryWeight(p, edges, boundaryStrength);
@@ -7643,8 +7613,8 @@
 
   function getSphericalCenter(coords) {
     var sum = coords.reduce(function(memo, p) {
-      var lam = p[0] * D2R$2;
-      var phi = p[1] * D2R$2;
+      var lam = p[0] * D2R$3;
+      var phi = p[1] * D2R$3;
       var cosPhi = Math.cos(phi);
       memo[0] += Math.cos(lam) * cosPhi;
       memo[1] += Math.sin(lam) * cosPhi;
@@ -7652,8 +7622,8 @@
       return memo;
     }, [0, 0, 0]);
     return [
-      Math.atan2(sum[1], sum[0]) / D2R$2,
-      Math.atan2(sum[2], Math.hypot(sum[0], sum[1])) / D2R$2
+      Math.atan2(sum[1], sum[0]) / D2R$3,
+      Math.atan2(sum[2], Math.hypot(sum[0], sum[1])) / D2R$3
     ];
   }
 
@@ -7668,8 +7638,8 @@
    */
 
 
-  var D2R$1 = Math.PI / 180;
-  var R2D$1 = 180 / Math.PI;
+  var D2R$2 = Math.PI / 180;
+  var R2D$2 = 180 / Math.PI;
   var RADIAL_BOUNDARY_STRENGTH = 1;
   var OCTAHEDRON = createOctahedron();
   var BUTTERFLY_PARENTS = [-1, 0, 0, 1, 0, 1, 4, 5];
@@ -7678,7 +7648,7 @@
     butterfly2: -20,
     cahill_keyes: -20
   };
-  var engines = {};
+  var engines$1 = {};
 
   function registerButterflyProjections(mproj) {
     if (!mproj) return;
@@ -7696,22 +7666,22 @@
 
   function getButterflyEngine(method) {
     var key = method == 'butterfly2' ? 'butterfly' : method;
-    if (!engines[key]) {
+    if (!engines$1[key]) {
       if (key == 'cahill_keyes') {
-        engines[key] = createCahillKeyesEngine();
+        engines$1[key] = createCahillKeyesEngine();
       } else if (key == 'butterfly') {
-        engines[key] = createButterflyEngine();
+        engines$1[key] = createButterflyEngine();
       } else {
         throw new Error('Unknown butterfly projection: ' + method);
       }
     }
-    return engines[key];
+    return engines$1[key];
   }
 
   function initButterfly(P, method) {
     var engine = getButterflyEngine(method);
     if (!P.params.lon_0) {
-      P.lam0 = DEFAULT_LON0[method] * D2R$1;
+      P.lam0 = DEFAULT_LON0[method] * D2R$2;
     }
     P.es = 0;
     P.inv = null;
@@ -7724,7 +7694,7 @@
         xy.y = p[1];
       }
     };
-    P.__projection_topology = engine.getTopology(P.lam0 * R2D$1);
+    P.__projection_topology = engine.getTopology(P.lam0 * R2D$2);
     if (engine.removeOutlineExtremeConnectors) {
       P.__remove_outline_extreme_connectors = true;
     }
@@ -7738,8 +7708,8 @@
     // Reuse the Cahill-Keyes polar incisions and 12-zone octant transform,
     // then unfold the faces with the butterfly attachment tree.
     var data = createTruncatedOctahedronFaces(
-      Math.cos(17 * D2R$1),
-      Math.sin(17 * D2R$1),
+      Math.cos(17 * D2R$2),
+      Math.sin(17 * D2R$2),
       BUTTERFLY_PARENTS
     );
     var faceRaw = createCahillKeyesFaceRaw(10000);
@@ -7752,9 +7722,9 @@
       findFace: createTruncatedFaceFinder(data.cornerNormals),
       faceProjector: function(face) {
         var baseId = face.id < 8 ? face.id : data.parents[face.id];
-        var center = faceCenters[baseId] * D2R$1;
+        var center = faceCenters[baseId] * D2R$2;
         var raw = function(lam, phi) {
-          return faceRaw(normalizeRadians(lam - center), phi);
+          return faceRaw(normalizeRadians$1(lam - center), phi);
         };
         return createNormalizedFacetProjector(face.coords, raw);
       }
@@ -7767,7 +7737,7 @@
     // Remove the global placement and scale of a raw facet while preserving its
     // internal shape. The polyhedral engine then controls how facets unfold.
     var points = coords.map(function(p) {
-      return raw(p[0] * D2R$1, p[1] * D2R$1);
+      return raw(p[0] * D2R$2, p[1] * D2R$2);
     });
     var edge = 0;
     var maxLengthSq = -1;
@@ -7856,8 +7826,8 @@
 
   function createCahillKeyesEngine() {
     var data = createTruncatedOctahedronFaces(
-      Math.cos(17 * D2R$1),
-      Math.sin(17 * D2R$1),
+      Math.cos(17 * D2R$2),
+      Math.sin(17 * D2R$2),
       [-1, 3, 0, 2, 0, 1, 4, 5]
     );
     var raw = createCahillKeyesRaw(10000);
@@ -7898,10 +7868,10 @@
       var a = vectors[vectors.length - 1];
       vectors.forEach(function(b) {
         hexagon.push(
-          vectorToDegrees(normalizeVector(addScaledVectors(
+          vectorToDegrees(normalizeVector$1(addScaledVectors(
             a, edgeWeight, b, vertexWeight
           ))),
-          vectorToDegrees(normalizeVector(addScaledVectors(
+          vectorToDegrees(normalizeVector$1(addScaledVectors(
             b, edgeWeight, a, vertexWeight
           )))
         );
@@ -8002,7 +7972,7 @@
   }
 
   function planarAngle(p, project) {
-    var q = project(p[0] * D2R$1, p[1] * D2R$1);
+    var q = project(p[0] * D2R$2, p[1] * D2R$2);
     return Math.atan2(q[1], q[0]);
   }
 
@@ -8036,16 +8006,16 @@
   }
 
   function degreesToVector(p) {
-    var lam = p[0] * D2R$1;
-    var phi = p[1] * D2R$1;
+    var lam = p[0] * D2R$2;
+    var phi = p[1] * D2R$2;
     var cosPhi = Math.cos(phi);
     return [Math.cos(lam) * cosPhi, Math.sin(lam) * cosPhi, Math.sin(phi)];
   }
 
   function vectorToDegrees(p) {
     return [
-      Math.atan2(p[1], p[0]) * R2D$1,
-      Math.asin(Math.max(-1, Math.min(1, p[2]))) * R2D$1
+      Math.atan2(p[1], p[0]) * R2D$2,
+      Math.asin(Math.max(-1, Math.min(1, p[2]))) * R2D$2
     ];
   }
 
@@ -8069,12 +8039,12 @@
     return a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
   }
 
-  function normalizeVector(p) {
+  function normalizeVector$1(p) {
     var k = 1 / Math.sqrt(p[0] * p[0] + p[1] * p[1] + p[2] * p[2]);
     return [p[0] * k, p[1] * k, p[2] * k];
   }
 
-  function normalizeRadians(lam) {
+  function normalizeRadians$1(lam) {
     return (lam + Math.PI * 3) % (Math.PI * 2) - Math.PI;
   }
 
@@ -8085,9 +8055,493 @@
     registerButterflyProjections: registerButterflyProjections
   });
 
+  /*
+   * Forward implementation of Hajime Narukawa's 2022 mathematical
+   * approximation of the AuthaGraph construction.
+   *
+   * Facet formula:
+   *   H. Narukawa, "Formulation of AuthaGraph Map Projection" (2022)
+   *   https://www.jstage.jst.go.jp/article/jjca/60/1/60_1/_article/-char/en
+   *
+   * The rectangular facet routing follows the public Imago arrangement by
+   * Justin Kunimune. The face transform itself uses Narukawa's published
+   * equations, not Imago's power-law approximation.
+   */
+
+  var D2R$1 = Math.PI / 180;
+  var R2D$1 = 180 / Math.PI;
+  var HALF_PI = Math.PI / 2;
+  var SQRT2 = Math.sqrt(2);
+  var SQRT3 = Math.sqrt(3);
+  var ASIN_ONE_THIRD = Math.asin(1 / 3);
+  var EDGE_SCALE = Math.acos(-1 / 3) / 2;
+  var XMIN = -2 * SQRT3;
+  var XMAX = 2 * SQRT3;
+  var YMIN = -1.5;
+  var YMAX = 1.5;
+  var BLOCK_HEIGHT = 2 * SQRT3;
+  var LAYOUT_SHIFT = 1.16;
+  var EPS = 1e-12;
+  var engines = {};
+
+  // The four tetrahedron vertices published by Narukawa, in latitude-longitude
+  // order. The extra precision preserves the regular tetrahedron to about 1e-9
+  // in vector dot products.
+  var GEOGRAPHIC_VERTICES = [
+    [76.8810628, 149.4509913],
+    [-27.9527772, 97.3570035],
+    [-6.6370473, -18.8522325],
+    [-22.9282364, -133.2827588]
+  ];
+
+  // D3 Imago's vertex-oriented tetrahedral block. Each entry contains the
+  // spherical center, local meridian, planar rotation and planar center.
+  var FACET_DEFS = [
+    [0, SQRT3, HALF_PI, 0, 0, -HALF_PI],
+    [0, -SQRT3, -ASIN_ONE_THIRD, 0, Math.PI, HALF_PI],
+    [3, 0, -ASIN_ONE_THIRD, 2 * Math.PI / 3, Math.PI, 5 * Math.PI / 6],
+    [-3, 0, -ASIN_ONE_THIRD, -2 * Math.PI / 3, Math.PI, Math.PI / 6]
+  ];
+
+  function registerNarukawa2022Projection(mproj) {
+    if (!mproj || mproj.internal.pj_list.narukawa2022) return;
+    mproj.pj_add(function(P) {
+      initNarukawa2022(P);
+    }, 'narukawa2022', 'Narukawa 2022 tetrahedral world map');
+  }
+
+  function getNarukawa2022Engine() {
+    if (!engines.default) {
+      engines.default = createNarukawa2022Engine();
+    }
+    return engines.default;
+  }
+
+  function initNarukawa2022(P) {
+    var engine = getNarukawa2022Engine();
+    P.es = 0;
+    P.inv = null;
+    P.fwd = function(lp, xy) {
+      var p = engine.forward(lp.lam, lp.phi);
+      xy.x = p[0];
+      xy.y = p[1];
+    };
+    P.__projection_topology = engine.getTopology(P.lam0 * R2D$1);
+    P.__projected_outline = engine.outline;
+  }
+
+  function createNarukawa2022Engine() {
+    var orientation = createPublishedOrientation();
+    var facets = FACET_DEFS.map(function(def, i) {
+      return {
+        id: i,
+        x: def[0],
+        y: def[1],
+        lat: def[2],
+        lon: def[3],
+        meridian: def[4],
+        rotation: def[5]
+      };
+    });
+    var outline = [[
+      [XMIN * EDGE_SCALE, YMIN * EDGE_SCALE],
+      [XMAX * EDGE_SCALE, YMIN * EDGE_SCALE],
+      [XMAX * EDGE_SCALE, YMAX * EDGE_SCALE],
+      [XMIN * EDGE_SCALE, YMAX * EDGE_SCALE],
+      [XMIN * EDGE_SCALE, YMIN * EDGE_SCALE]
+    ]];
+
+    return {
+      forward: forward,
+      inverse: inverse,
+      outline: outline,
+      getTopology: getTopology
+    };
+
+    function forward(lam, phi) {
+      var state = projectState(lam, phi);
+      return [state.x * EDGE_SCALE, state.y * EDGE_SCALE];
+    }
+
+    // Internal inverse used only for tracing the geographic rectangular cut.
+    // P.inv remains null because the full Mapshaper inverse path is unsupported.
+    function inverse(x, y) {
+      var p = invertLayout(x / EDGE_SCALE, y / EDGE_SCALE, facets);
+      if (!p) return null;
+      return fromCanonical(p[0], p[1], orientation);
+    }
+
+    function projectState(lam, phi) {
+      var p = toCanonical(lam, phi, orientation);
+      var state = projectCanonical(p[0], p[1], facets);
+      state.region = encodeRegion(state);
+      return state;
+    }
+
+    function getTopology(lon0) {
+      var paths = createCutPaths(inverse, lon0);
+      return {
+        regions: createRegionIndex(),
+        seams: [{
+          type: 'cut',
+          paths: paths
+        }],
+        findRegion: findRegion,
+        findTransitionRegion: findRegion,
+        outline: outline.map(function(ring) {
+          return ring.map(function(p) {
+            return p.concat();
+          });
+        })
+      };
+
+      function findRegion(lon, lat) {
+        var lam = normalizeRadians((lon - lon0) * D2R$1);
+        return projectState(lam, lat * D2R$1).region;
+      }
+    }
+  }
+
+  function projectCanonical(lam, phi, facets) {
+    var facet = findForwardFacet(lam, phi, facets);
+    var relative = obliquifySpherical(phi, lam, facet);
+    var sector = Math.floor((relative[1] + Math.PI / 3) / (2 * Math.PI / 3));
+    var base = sector * 2 * Math.PI / 3;
+    var polar = narukawaFaceForward(relative[1] - base, relative[0]);
+    var angle = polar[1] + facet.rotation + base / 2;
+    var x = polar[0] * Math.cos(angle) + facet.x;
+    var y = polar[0] * Math.sin(angle) + facet.y;
+    var oob = 0;
+    var folded = 0;
+    var wrap = 0;
+
+    if (Math.abs(x) > 3 + EPS) {
+      x = 2 * facet.x - x;
+      y = -y;
+      oob = 1;
+    } else if (Math.abs(y) > SQRT3 + EPS) {
+      x = -x;
+      y = BLOCK_HEIGHT * Math.sign(y) - y;
+      oob = 2;
+    }
+
+    var qx = y;
+    var qy = -x;
+    if (qy > EPS) {
+      qx = BLOCK_HEIGHT - qx;
+      qy = -qy;
+      folded = 1;
+    }
+    qx += LAYOUT_SHIFT;
+    if (qx < 0) {
+      qx += 2 * BLOCK_HEIGHT;
+      wrap = 1;
+    }
+    x = qx - BLOCK_HEIGHT;
+    y = qy + 1.5;
+    x = clamp$2(x, XMIN, XMAX);
+    y = clamp$2(y, YMIN, YMAX);
+    return {
+      x: x,
+      y: y,
+      facet: facet.id,
+      sector: mod(sector, 3),
+      oob: oob,
+      folded: folded,
+      wrap: wrap
+    };
+  }
+
+  function findForwardFacet(lam, phi, facets) {
+    var best = null;
+    var bestLat = -Infinity;
+    for (var i = 0; i < 4; i++) {
+      var facet = facets[i];
+      var relative = obliquifySpherical(phi, lam, facet);
+      if (relative[0] > bestLat) {
+        bestLat = relative[0];
+        best = facet;
+      }
+    }
+    return best;
+  }
+
+  function narukawaFaceForward(lam, phi) {
+    var a = lam - Math.asin(Math.sin(lam) / SQRT3);
+    var theta = Math.atan(2 * SQRT3 / Math.PI * a);
+    var denominator = 2 + SQRT2 * Math.tan(phi);
+    var q = denominator > 0 ? (2 + Math.cos(lam)) / denominator : 0;
+    var r = q * SQRT3 / Math.cos(theta);
+    return [r, theta];
+  }
+
+  function narukawaFaceInverse(r, theta) {
+    var target = Math.tan(theta) * Math.PI / (2 * SQRT3);
+    var lo = -Math.PI / 3;
+    var hi = Math.PI / 3;
+    var lam;
+    for (var i = 0; i < 55; i++) {
+      lam = (lo + hi) / 2;
+      var a = lam - Math.asin(Math.sin(lam) / SQRT3);
+      if (a < target) lo = lam;
+      else hi = lam;
+    }
+    lam = (lo + hi) / 2;
+    var q = r * Math.cos(theta) / SQRT3;
+    var phi = q < EPS ? HALF_PI :
+      Math.atan(((2 + Math.cos(lam)) / q - 2) / SQRT2);
+    return [phi, lam];
+  }
+
+  function invertLayout(x, y, facets) {
+    var qx = x + BLOCK_HEIGHT;
+    var qy = y - 1.5;
+    var normalizedX = (qx - LAYOUT_SHIFT) / BLOCK_HEIGHT;
+    if (normalizedX > 1.5) normalizedX -= 2;
+    if (normalizedX > 0.5) {
+      normalizedX = 1 - normalizedX;
+      qy *= -1;
+    }
+    x = -qy;
+    y = normalizedX * BLOCK_HEIGHT;
+
+    var facet = findInverseFacet(x, y, facets);
+    var dx = x - facet.x;
+    var dy = y - facet.y;
+    var r = Math.hypot(dx, dy);
+    var theta = normalizeRadians(Math.atan2(dy, dx) - facet.rotation);
+    var base = Math.floor((theta + Math.PI / 6) / (Math.PI / 3)) *
+      Math.PI / 3;
+    var relative = narukawaFaceInverse(r, theta - base);
+    relative[1] += base * 2;
+    var p = deobliquifySpherical(relative[0], relative[1], facet);
+    return [p[1], p[0]];
+  }
+
+  function findInverseFacet(x, y, facets) {
+    var best = null;
+    var minDistance = Infinity;
+    facets.forEach(function(facet) {
+      var d = Math.hypot(x - facet.x, y - facet.y);
+      if (d < minDistance) {
+        minDistance = d;
+        best = facet;
+      }
+    });
+    return best;
+  }
+
+  function createPublishedOrientation() {
+    // Match the D3 Imago arrangement: the third published vertex is the
+    // canonical southern vertex at longitude zero.
+    var north = latLonToVector(GEOGRAPHIC_VERTICES[0]);
+    var south = latLonToVector(GEOGRAPHIC_VERTICES[2]);
+    var tangent = normalizeVector(subtract(
+      south,
+      multiply(north, dot$1(south, north))
+    ));
+    var x = tangent;
+    var y = cross$1(north, tangent);
+    return {x: x, y: y, z: north};
+  }
+
+  function toCanonical(lam, phi, orientation) {
+    var v = radiansToVector(lam, phi);
+    return [
+      Math.atan2(dot$1(v, orientation.y), dot$1(v, orientation.x)),
+      Math.asin(clamp$2(dot$1(v, orientation.z), -1, 1))
+    ];
+  }
+
+  function fromCanonical(lam, phi, orientation) {
+    var v = radiansToVector(lam, phi);
+    var p = [
+      orientation.x[0] * v[0] + orientation.y[0] * v[1] + orientation.z[0] * v[2],
+      orientation.x[1] * v[0] + orientation.y[1] * v[1] + orientation.z[1] * v[2],
+      orientation.x[2] * v[0] + orientation.y[2] * v[1] + orientation.z[2] * v[2]
+    ];
+    return [Math.atan2(p[1], p[0]), Math.asin(clamp$2(p[2], -1, 1))];
+  }
+
+  // Adapted from Justin Kunimune's Imago implementation.
+  function obliquifySpherical(lat, lon, pole) {
+    var lat0 = pole.lat;
+    var lon0 = pole.lon;
+    var theta0 = pole.meridian;
+    var lat1;
+    var lon1;
+    if (Math.abs(lat0 - HALF_PI) < EPS) {
+      lat1 = lat;
+      lon1 = lon - lon0;
+    } else {
+      lat1 = Math.asin(clamp$2(
+        Math.sin(lat0) * Math.sin(lat) +
+        Math.cos(lat0) * Math.cos(lat) * Math.cos(lon0 - lon),
+        -1,
+        1
+      ));
+      var denominator = Math.cos(lat1);
+      var value = denominator < EPS ? 1 :
+        (Math.cos(lat0) * Math.sin(lat) -
+          Math.sin(lat0) * Math.cos(lat) * Math.cos(lon0 - lon)) /
+        denominator;
+      lon1 = Math.acos(clamp$2(value, -1, 1)) - Math.PI;
+      if (Math.sin(lon - lon0) > 0) lon1 = -lon1;
+    }
+    return [lat1, normalizeRadians(lon1 - theta0)];
+  }
+
+  function deobliquifySpherical(lat, lon, pole) {
+    var lat0 = pole.lat;
+    var lon0 = pole.lon;
+    lon += pole.meridian;
+    var latOut = Math.asin(clamp$2(
+      Math.sin(lat0) * Math.sin(lat) -
+      Math.cos(lat0) * Math.cos(lon) * Math.cos(lat),
+      -1,
+      1
+    ));
+    var lonOut;
+    if (Math.abs(lat0 - HALF_PI) < EPS) {
+      lonOut = lon + lon0;
+    } else {
+      var value = Math.sin(lat) / Math.cos(lat0) / Math.cos(latOut) -
+        Math.tan(lat0) * Math.tan(latOut);
+      if (Math.sin(lon) > 0) lonOut = lon0 + Math.acos(clamp$2(value, -1, 1));
+      else lonOut = lon0 - Math.acos(clamp$2(value, -1, 1));
+    }
+    return [latOut, normalizeRadians(lonOut)];
+  }
+
+  function createCutPaths(inverse, lon0) {
+    // The rectangular edges become moderately curved geographic seams. Sampling
+    // at about 0.03 degrees prevents straight mask chords from missing crossings.
+    var n = 6000;
+    var epsilon = 1e-8;
+    var edges = [
+      [[XMIN + epsilon, YMIN], [XMIN + epsilon, YMAX]],
+      [[XMIN, YMAX - epsilon], [XMAX, YMAX - epsilon]],
+      [[XMIN, YMIN + epsilon], [XMAX, YMIN + epsilon]]
+    ];
+    var paths = edges.reduce(function(memo, edge) {
+      var path = [];
+      for (var i = 0; i <= n; i++) {
+        var t = i / n;
+        var x = edge[0][0] + (edge[1][0] - edge[0][0]) * t;
+        var y = edge[0][1] + (edge[1][1] - edge[0][1]) * t;
+        var p = inverse(x * EDGE_SCALE, y * EDGE_SCALE);
+        path.push([
+          normalizeLongitude$1(p[0] * R2D$1 + lon0),
+          p[1] * R2D$1
+        ]);
+      }
+      return memo.concat(splitPathAtAntimeridian$1(path));
+    }, []);
+    return paths.map(function(part) {
+      part.mask_width = 4e-5;
+      return part;
+    });
+  }
+
+  function splitPathAtAntimeridian$1(path) {
+    var paths = [];
+    var part = [path[0]];
+    for (var i = 1; i < path.length; i++) {
+      var a = path[i - 1];
+      var b = path[i];
+      if (Math.abs(a[0] - b[0]) > 180) {
+        var adjusted = b[0] + (b[0] < a[0] ? 360 : -360);
+        var edge = a[0] < 0 ? -180 : 180;
+        var t = (edge - a[0]) / (adjusted - a[0]);
+        var lat = a[1] + (b[1] - a[1]) * t;
+        part.push([edge, lat]);
+        paths.push(part);
+        part = [[-edge, lat], b];
+      } else {
+        part.push(b);
+      }
+    }
+    if (part.length > 1) paths.push(part);
+    return paths;
+  }
+
+  function encodeRegion(state) {
+    return ((((state.facet * 3 + state.sector) * 3 + state.oob) * 2 +
+      state.folded) * 2 + state.wrap);
+  }
+
+  function createRegionIndex() {
+    var regions = [];
+    for (var i = 0; i < 144; i++) {
+      regions.push({id: i});
+    }
+    return regions;
+  }
+
+  function latLonToVector(p) {
+    return radiansToVector(p[1] * D2R$1, p[0] * D2R$1);
+  }
+
+  function radiansToVector(lam, phi) {
+    var cosPhi = Math.cos(phi);
+    return [Math.cos(lam) * cosPhi, Math.sin(lam) * cosPhi, Math.sin(phi)];
+  }
+
+  function subtract(a, b) {
+    return [a[0] - b[0], a[1] - b[1], a[2] - b[2]];
+  }
+
+  function multiply(a, k) {
+    return [a[0] * k, a[1] * k, a[2] * k];
+  }
+
+  function normalizeVector(a) {
+    var k = 1 / Math.hypot(a[0], a[1], a[2]);
+    return multiply(a, k);
+  }
+
+  function cross$1(a, b) {
+    return [
+      a[1] * b[2] - a[2] * b[1],
+      a[2] * b[0] - a[0] * b[2],
+      a[0] * b[1] - a[1] * b[0]
+    ];
+  }
+
+  function dot$1(a, b) {
+    return a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
+  }
+
+  function mod(a, n) {
+    return (a % n + n) % n;
+  }
+
+  function normalizeRadians(lam) {
+    while (lam > Math.PI) lam -= 2 * Math.PI;
+    while (lam < -Math.PI) lam += 2 * Math.PI;
+    return lam;
+  }
+
+  function normalizeLongitude$1(lon) {
+    while (lon > 180) lon -= 360;
+    while (lon < -180) lon += 360;
+    return lon;
+  }
+
+  function clamp$2(value, min, max) {
+    return Math.max(min, Math.min(max, value));
+  }
+
+  var Narukawa2022 = /*#__PURE__*/Object.freeze({
+    __proto__: null,
+    getNarukawa2022Engine: getNarukawa2022Engine,
+    registerNarukawa2022Projection: registerNarukawa2022Projection
+  });
+
   var mproj$1 = require$1('mproj');
   registerDymaxionProjections(mproj$1);
   registerButterflyProjections(mproj$1);
+  registerNarukawa2022Projection(mproj$1);
 
   var asyncLoader = null;
 
@@ -11075,7 +11529,7 @@
   function layerNameIsUnsafeFilename(name) {
     name = String(name);
     // path separators (directory traversal on any OS) or NUL
-    if (/[\/\\\0]/.test(name)) return true;
+    if (/[/\\\0]/.test(name)) return true;
     // Windows drive-relative prefix, e.g. "C:foo" can write to another drive
     if (/^[A-Za-z]:/.test(name)) return true;
     return false;
@@ -40970,7 +41424,9 @@ ${svg}
     return finalizeImportedDataset(dataset, dataFmt, data, opts);
   }
 
-  async function importContentAsync(obj, opts) {
+  // Canonical content import interface. Always resolves to an array because some
+  // formats (notably GeoPackage) may contain datasets that cannot be merged.
+  async function importDatasetsFromContent(obj, opts) {
     var dataset, dataFmt, data;
     opts = opts || {};
     if (obj.fgb) {
@@ -40994,14 +41450,16 @@ ${svg}
       data = obj[dataFmt];
       dataset = await importImageRaster(obj, opts);
     } else {
-      return importContent(obj, opts);
+      return normalizeImportedDatasets$1(importContent(obj, opts));
     }
-    if (Array.isArray(dataset)) {
-      return dataset.map(function(ds) {
-        return finalizeImportedDataset(ds, dataFmt, data, opts);
-      });
-    }
-    return finalizeImportedDataset(dataset, dataFmt, data, opts);
+    return normalizeImportedDatasets$1(dataset).map(function(ds) {
+      return finalizeImportedDataset(ds, dataFmt, data, opts);
+    });
+  }
+
+  // Compatibility facade for callers that expect one dataset when possible.
+  async function importContentAsync(obj, opts) {
+    return denormalizeImportedDatasets$1(await importDatasetsFromContent(obj, opts));
   }
 
   // Deprecated (included for compatibility with older tests)
@@ -41010,6 +41468,14 @@ ${svg}
         input = {};
     input[type] = {filename: filename, content: content};
     return importContent(input, opts);
+  }
+
+  function normalizeImportedDatasets$1(datasetOrArray) {
+    return Array.isArray(datasetOrArray) ? datasetOrArray : [datasetOrArray];
+  }
+
+  function denormalizeImportedDatasets$1(datasets) {
+    return datasets.length == 1 ? datasets[0] : datasets;
   }
 
 
@@ -41094,6 +41560,7 @@ ${svg}
     __proto__: null,
     importContent: importContent,
     importContentAsync: importContentAsync,
+    importDatasetsFromContent: importDatasetsFromContent,
     importFileContent: importFileContent
   });
 
@@ -41262,8 +41729,7 @@ ${svg}
     var dataset, datasets, target;
 
     if (opts.stdin) {
-      dataset = await importFileAsync('/dev/stdin', opts);
-      datasets = normalizeImportedDatasets(dataset);
+      datasets = await importDatasetsFromFile('/dev/stdin', opts);
       catalog.addDatasets(datasets);
       if (datasets.length > 1) {
         catalog.setDefaultTargets(datasets.map(function(ds) {
@@ -41301,11 +41767,11 @@ ${svg}
     }
 
     if (files.length == 1) {
-      dataset = await importFileAsync(files[0], opts);
+      datasets = await importDatasetsFromFile(files[0], opts);
     } else {
       dataset = await importFilesTogetherAsync(files, opts);
+      datasets = [dataset];
     }
-    datasets = normalizeImportedDatasets(dataset);
     datasets = validateAndCleanGpkgSelection(datasets, opts);
 
     if (opts.merge_files && files.length > 1) {
@@ -41422,9 +41888,12 @@ ${svg}
     });
   }
 
-  // Let the web UI replace importFile() with a browser-friendly version
+  // Let the web UI replace path-based imports with a browser-friendly resolver.
   function replaceImportFile(func) {
     _importFile = func;
+    _importDatasetsFromFile = async function(path, opts) {
+      return normalizeImportedDatasets(await func(path, opts));
+    };
   }
 
   function importFile(path, opts) {
@@ -41432,10 +41901,29 @@ ${svg}
   }
 
   async function importFileAsync(path, opts) {
-    return _importFileAsync(path, opts);
+    return denormalizeImportedDatasets(await importDatasetsFromFile(path, opts));
+  }
+
+  // Canonical path import interface.
+  async function importDatasetsFromFile(path, opts) {
+    return _importDatasetsFromFile(path, opts);
   }
 
   var _importFile = function(path, opts) {
+    var input = prepareImportFile(path, opts);
+    return importContent(input, opts);
+  };
+
+  var _importDatasetsFromFile = async function(path, opts) {
+    var input = prepareImportFile(path, opts);
+    return importDatasetsFromContent(input, opts);
+  };
+
+  // Read a file (or cache entry) and collect any sidecars into the normalized
+  // content-group shape consumed by the content importers.
+  // File acquisition is currently synchronous in both import paths; only some
+  // format parsers require asynchronous work.
+  function prepareImportFile(path, opts) {
     var fileType = guessInputFileType(path),
         input = {},
         encoding = opts && opts.encoding || null,
@@ -41447,64 +41935,6 @@ ${svg}
 
     if ((fileType == 'shp' || fileType == 'json' || fileType == 'text' || fileType == 'dbf' ||
         fileType == 'gpkg') && !cached) {
-      // these file types are read incrementally
-      content = null;
-
-    } else if (fileType && isSupportedBinaryInputType(path)) {
-      content = cli.readFile(path, null, cache);
-      if (utils.isString(content)) {
-        // Fix for issue #264 (applyCommands() input is file path instead of binary content)
-        stop$1('Expected binary content, received a string');
-      }
-
-    } else if (fileType) { // string type, e.g. kml, geojson
-      content = cli.readFile(path, encoding || 'utf-8', cache);
-
-    } else if (getFileExtension(path) == 'gz') {
-      var pathgz = path;
-      path = pathgz.replace(/\.gz$/, '');
-      fileType = guessInputFileType(path);
-      if (!fileType) {
-        stop$1('Unrecognized file type:', path);
-      }
-      content = gunzipSync(cli.readFile(pathgz, null, cache), path);
-
-    } else { // type can't be inferred from filename -- try reading as text
-      content = cli.readFile(path, encoding || 'utf-8', cache);
-      fileType = guessInputContentType(content);
-      if (fileType == 'text' && content.indexOf('\ufffd') > -1) {
-        // invalidate string data that contains the 'replacement character'
-        fileType = null;
-      }
-    }
-
-    if (!fileType) {
-      stop$1(getUnsupportedFileMessage(path));
-    }
-    input[fileType] = {filename: path, content: content};
-    content = null; // for g.c.
-    if (fileType == 'shp' || fileType == 'dbf') {
-      readShapefileAuxFiles(path, input, cache);
-    } else if (isRasterImageInputType(fileType)) {
-      readRasterImageAuxFiles(path, input, cache);
-    }
-    if (fileType == 'shp' && !input.dbf) {
-      message(utils.format("[%s] .dbf file is missing - shapes imported without attribute data.", path));
-    }
-    return importContent(input, opts);
-  };
-
-  async function _importFileAsync(path, opts) {
-    var fileType = guessInputFileType(path),
-        input = {},
-        encoding = opts && opts.encoding || null,
-        cache = opts && opts.input || null,
-        cached = cache && (path in cache),
-        content;
-
-    cli.checkFileExists(path, cache);
-
-    if ((fileType == 'shp' || fileType == 'json' || fileType == 'text' || fileType == 'dbf') && !cached) {
       // these file types are read incrementally
       content = null;
 
@@ -41547,37 +41977,10 @@ ${svg}
     if (fileType == 'shp' && !input.dbf) {
       message(utils.format("[%s] .dbf file is missing - shapes imported without attribute data.", path));
     }
-    return fileType == 'gpkg' || fileType == 'fgb' || fileType == 'parquet' || fileType == 'geotiff' || isRasterImageInputType(fileType) ? importContentAsync(input, opts) : importContent(input, opts);
+    return input;
   }
 
-  // Import multiple files to a single dataset
-  function importFilesTogether(files, opts) {
-    var unbuiltTopology = false;
-    var datasets = files.reduce(function(memo, fname) {
-      // import without topology or snapping
-      var importOpts = utils.defaults({no_topology: true, snap: false, snap_interval: null, files: [fname]}, opts);
-      var imported = normalizeImportedDatasets(importFile(fname, importOpts));
-      // check if dataset contains non-topological paths
-      // TODO: may also need to rebuild topology if multiple topojson files are merged
-      imported.forEach(function(dataset) {
-        if (dataset.arcs && dataset.arcs.size() > 0 && dataset.info.input_formats[0] != 'topojson') {
-          unbuiltTopology = true;
-        }
-        memo.push(dataset);
-      });
-      return memo;
-    }, []);
-    var combined = mergeDatasets(datasets);
-    // Build topology, if needed
-    // TODO: consider updating topology of TopoJSON files instead of concatenating arcs
-    // (but problem of mismatched coordinates due to quantization in input files.)
-    if (unbuiltTopology && !opts.no_topology) {
-      cleanPathsAfterImport(combined, opts);
-      buildTopology(combined);
-    }
-    return combined;
-  }
-
+  // Import multiple files to a single dataset.
   async function importFilesTogetherAsync(files, opts) {
     var unbuiltTopology = false;
     var datasets = [];
@@ -41585,7 +41988,7 @@ ${svg}
     for (var fname of files) {
       // import without topology or snapping
       var importOpts = utils.defaults({no_topology: true, snap: false, snap_interval: null, files: [fname]}, opts);
-      var imported = normalizeImportedDatasets(await importFileAsync(fname, importOpts));
+      var imported = await importDatasetsFromFile(fname, importOpts);
       imported.forEach(function(dataset) {
         if (dataset.arcs && dataset.arcs.size() > 0 && dataset.info.input_formats[0] != 'topojson') {
           unbuiltTopology = true;
@@ -41645,6 +42048,10 @@ ${svg}
 
   function normalizeImportedDatasets(datasetOrArray) {
     return Array.isArray(datasetOrArray) ? datasetOrArray : [datasetOrArray];
+  }
+
+  function denormalizeImportedDatasets(datasets) {
+    return datasets.length == 1 ? datasets[0] : datasets;
   }
 
   function normalizeImportedTarget(datasets) {
@@ -41746,9 +42153,9 @@ ${svg}
 
   var FileImport = /*#__PURE__*/Object.freeze({
     __proto__: null,
+    importDatasetsFromFile: importDatasetsFromFile,
     importFile: importFile,
     importFileAsync: importFileAsync,
-    importFilesTogether: importFilesTogether,
     importFilesTogetherAsync: importFilesTogetherAsync,
     replaceImportFile: replaceImportFile
   });
@@ -41778,31 +42185,37 @@ ${svg}
     return /[$][{]/.test(name);
   }
 
-  function findCommandSource(sourceName, catalog, opts) {
+  async function findCommandSourceAsync(sourceName, catalog, opts) {
     var source = catalog.findSingleLayer(sourceName);
-    var sourceDataset;
+    var sourceDatasets;
     if (!source) {
-      // assuming opts.source is a filename
-      // don't need to build topology, because:
-      //    join -- don't need topology
-      //    clip/erase -- topology is built later, when datasets are combined
-      sourceDataset = importFile(sourceName, utils.defaults({no_topology: true}, opts));
-      if (!sourceDataset) {
-        stop$1(utils.format('Unable to find source [%s]', sourceName));
-      } else if (sourceDataset.layers.length > 1) {
-        stop$1('Multiple-layer sources are not supported');
-      }
-      // mark as disposable to indicate that data can be mutated
-      source = {dataset: sourceDataset, layer: sourceDataset.layers[0], disposable: true};
+      // Source-file topology is built later if it is needed by the command.
+      sourceDatasets = await importDatasetsFromFile(sourceName, utils.defaults({no_topology: true}, opts));
+      source = getImportedSource(sourceDatasets, sourceName);
     }
     return source;
+  }
+
+  function getImportedSource(sourceDatasets, sourceName) {
+    if (sourceDatasets.length != 1) {
+      if (sourceDatasets.length > 1) {
+        stop$1('Multiple-dataset sources are not supported');
+      }
+      stop$1(utils.format('Unable to find source [%s]', sourceName));
+    }
+    var sourceDataset = sourceDatasets[0];
+    if (sourceDataset.layers.length > 1) {
+      stop$1('Multiple-layer sources are not supported');
+    }
+    // mark as disposable to indicate that data can be mutated
+    return {dataset: sourceDataset, layer: sourceDataset.layers[0], disposable: true};
   }
 
   var SourceUtils = /*#__PURE__*/Object.freeze({
     __proto__: null,
     convertInterpolatedName: convertInterpolatedName,
     convertSourceName: convertSourceName,
-    findCommandSource: findCommandSource
+    findCommandSourceAsync: findCommandSourceAsync
   });
 
   // Catalog contains zero or more multi-layer datasets
@@ -43657,6 +44070,13 @@ ${svg}
     return new GeographicLib.Geodesic.Geodesic(P.a, f);
   }
 
+  function getGeodesicDistanceFunction(P) {
+    var geod = getGeodesic(P);
+    return function(lng, lat, lng2, lat2) {
+      return geod.Inverse(lat, lng, lat2, lng2).s12;
+    };
+  }
+
   function interpolatePoint2D(ax, ay, bx, by, k) {
     var j = 1 - k;
     return [ax * j + bx * k, ay * j + by * k];
@@ -43759,6 +44179,7 @@ ${svg}
     bearingDegrees2D: bearingDegrees2D,
     getBearingFunction: getBearingFunction,
     getFastGeodeticSegmentFunction: getFastGeodeticSegmentFunction,
+    getGeodesicDistanceFunction: getGeodesicDistanceFunction,
     getGeodeticSegmentFunction: getGeodeticSegmentFunction,
     getInterpolationFunction: getInterpolationFunction,
     getPlanarSegmentEndpoint: getPlanarSegmentEndpoint,
@@ -45199,7 +45620,7 @@ ${svg}
 
     function stopIfBufferReachesPole(shape, dist) {
       var maxAbsLat = 0;
-      var angularDist = dist / R$3 * R2D$5;
+      var angularDist = dist / R$3 * R2D$6;
       (shape || []).forEach(function(path) {
         latLngPathIter.init(path);
         while (latLngPathIter.hasNext()) {
@@ -47316,12 +47737,12 @@ ${svg}
   }
 
   function projectBufferPoint(x, y, spherical) {
-    return spherical ? [x * D2R$6 * R$3, Math.log(Math.tan(Math.PI / 4 + y * D2R$6 / 2)) * R$3] :
+    return spherical ? [x * D2R$7 * R$3, Math.log(Math.tan(Math.PI / 4 + y * D2R$7 / 2)) * R$3] :
       [x, y];
   }
 
   function unprojectBufferPoint(x, y, spherical) {
-    return spherical ? [x / (D2R$6 * R$3), (2 * Math.atan(Math.exp(y / R$3)) - Math.PI / 2) / (D2R$6)] :
+    return spherical ? [x / (D2R$7 * R$3), (2 * Math.atan(Math.exp(y / R$3)) - Math.PI / 2) / (D2R$7)] :
       [x, y];
   }
 
@@ -51992,7 +52413,7 @@ ${svg}
     var maxAbsLat = Math.max(Math.abs(bounds.ymin), Math.abs(bounds.ymax));
     var maxPositiveDistance = getMaxPositiveBufferDistance(lyr, dataset, opts);
     if (!(maxPositiveDistance > 0)) return false;
-    return maxAbsLat + maxPositiveDistance / R$3 * R2D$5 >= 90 - POLAR_BUFFER_MARGIN_DEGREES;
+    return maxAbsLat + maxPositiveDistance / R$3 * R2D$6 >= 90 - POLAR_BUFFER_MARGIN_DEGREES;
   }
 
   function getMaxPositiveBufferDistance(lyr, dataset, opts) {
@@ -53244,7 +53665,7 @@ ${svg}
   }
 
   function getCoordinateDistance(distance, arcs) {
-    return arcs.isPlanar() ? distance : distance / R$3 * R2D$5;
+    return arcs.isPlanar() ? distance : distance / R$3 * R2D$6;
   }
 
   // @shapeIndex: chunk-bounds index of the source shape (see buildShapeSegmentIndex)
@@ -53913,7 +54334,7 @@ ${svg}
     // depending on parameters
     if (inList(P, 'cassini,gnom,bertin1953,chamb,ob_tran,tpeqd,healpix,rhealpix,' +
       'ocea,omerc,tmerc,etmerc,nicol,dymaxion,dymaxion2,butterfly,butterfly2,' +
-      'cahill_keyes')) {
+      'cahill_keyes,narukawa2022')) {
       return false;
     }
     if (isAzimuthal(P)) {
@@ -53965,16 +54386,16 @@ ${svg}
   }
 
   function getRotationFunction2(rotation, inv) {
-    var a = (rotation[0] || 0) * D2R$6,
-        b = (rotation[1] || 0) * D2R$6,
-        c = (rotation[2] || 0) * D2R$6;
+    var a = (rotation[0] || 0) * D2R$7,
+        b = (rotation[1] || 0) * D2R$7,
+        c = (rotation[2] || 0) * D2R$7;
     return function(p) {
-      p[0] *= D2R$6;
-      p[1] *= D2R$6;
+      p[0] *= D2R$7;
+      p[1] *= D2R$7;
       var rotate = inv ? rotatePointInv : rotatePoint;
       rotate(p, a, b, c);
-      p[0] *= R2D$5;
-      p[1] *= R2D$5;
+      p[0] *= R2D$6;
+      p[1] *= R2D$6;
       return p;
     };
   }
@@ -60312,7 +60733,7 @@ ${svg}
   // Isometric ("Mercator-stretched") latitude in degrees-in; returns +/-Infinity at
   // the poles.
   function isometricLatitude(latDeg) {
-    return Math.log(Math.tan(Math.PI / 4 + latDeg * D2R$6 / 2));
+    return Math.log(Math.tan(Math.PI / 4 + latDeg * D2R$7 / 2));
   }
 
   // Rhumb-line (loxodrome) interpolation, fraction k of the way from A to B.
@@ -60337,9 +60758,9 @@ ${svg}
   // Rhumb-line distance in meters, using the raw longitude delta (so a full-parallel
   // sweep returns the parallel's length rather than 0).
   function rhumbDistance(a, b) {
-    var phi1 = a[1] * D2R$6, phi2 = b[1] * D2R$6;
+    var phi1 = a[1] * D2R$7, phi2 = b[1] * D2R$7;
     var dPhi = phi2 - phi1;
-    var dLambda = (b[0] - a[0]) * D2R$6; // raw
+    var dLambda = (b[0] - a[0]) * D2R$7; // raw
     var dPsi = Math.log(Math.tan(Math.PI / 4 + phi2 / 2) / Math.tan(Math.PI / 4 + phi1 / 2));
     var q = Math.abs(dPsi) > 1e-12 ? dPhi / dPsi : Math.cos(phi1);
     return Math.sqrt(dPhi * dPhi + q * q * dLambda * dLambda) * R$3;
@@ -67498,6 +67919,9 @@ ${svg}
     var commands;
     try {
       commands = parseCommands(commandStr);
+      if (opts && opts.validate_commands) {
+        opts.validate_commands(commands);
+      }
     } catch(e) {
       e.message = 'Error in command file ' + file + ': ' + e.message;
       throw e;
@@ -67519,6 +67943,9 @@ ${svg}
       }
       if (c.name == 'run') {
         c.options._run_depth = depth;
+        if (opts && opts.validate_commands) {
+          c.options.validate_commands = opts.validate_commands;
+        }
       }
     });
 
@@ -67556,6 +67983,9 @@ ${svg}
     ctx = getBaseContext();
     // io proxy adds ability to add datasets dynamically in a required function
     ctx.io = getIOProxy();
+    if (opts.input) {
+      Object.assign(ctx.io._cache, opts.input);
+    }
     tmp = await evalTemplateExpression(opts.expression, targets, ctx);
     if (tmp && !utils.isString(tmp)) {
       stop$1('Expected a string containing mapshaper commands; received:', tmp);
@@ -67564,6 +67994,9 @@ ${svg}
       // truncate message (command might include a large GeoJSON string in an -i command)
       message(`command: [${truncateString(tmp, 150)}]`);
       commands = parseCommands(tmp);
+      if (opts.validate_commands) {
+        opts.validate_commands(commands);
+      }
 
       // TODO: remove duplication with mapshaper-run-commands.mjs
       var outputArr = opts && opts.output || null;
@@ -67577,6 +68010,9 @@ ${svg}
         if (outputArr && (cmd.name == 'o' || cmd.name == 'run' ||
             cmd.name == 'info' && cmd.options.save_to)) {
           cmd.options.output = outputArr;
+        }
+        if (cmd.name == 'run' && opts.validate_commands) {
+          cmd.options.validate_commands = opts.validate_commands;
         }
       });
 
@@ -70114,7 +70550,7 @@ ${svg}
       if (Object.prototype.hasOwnProperty.call(command, '_sourceOverride')) {
         source = command._sourceOverride;
       } else if (opts.source) {
-        source = findCommandSource(convertSourceName(opts.source, targets), job.catalog, opts);
+        source = await findCommandSourceAsync(convertSourceName(opts.source, targets), job.catalog, opts);
       }
 
       // identify command target/input (for postprocessing)
@@ -70520,7 +70956,7 @@ ${svg}
     var disposableSourceTargetIndex = -1;
 
     if (command.options.source && !sourceNameIsInterpolated(command.options.source)) {
-      source = resolveSourceForTargets(command, job, targets);
+      source = await resolveSourceForTargets(command, job, targets);
       items = moveSourceTargetLast(items, source);
       disposableSourceTargetIndex = findLastDisposableSourceTarget(
         items,
@@ -70555,10 +70991,10 @@ ${svg}
     return job;
   }
 
-  function resolveSourceForTargets(command, job, targets) {
+  async function resolveSourceForTargets(command, job, targets) {
     job.startCommand(command);
     try {
-      return findCommandSource(
+      return await findCommandSourceAsync(
         convertSourceName(command.options.source, targets),
         job.catalog,
         command.options
@@ -70660,7 +71096,7 @@ ${svg}
     return name == 'rectangle' || name == 'rectangles' || name == 'filter' && opts.cleanup;
   }
 
-  var version = "0.7.45";
+  var version = "0.7.46";
 
   // Parse command line args into commands and run them
   // Function takes an optional Node-style callback. A Promise is returned if no callback is given.
@@ -70690,7 +71126,6 @@ ${svg}
       if (err) {
         return callback(err);
       }
-      if (opts.legacy) return callback(null, toLegacyOutputFormat(outputArr));
       return callback(null, toOutputFormat(outputArr));
     });
     if (opts.promise) return opts.promise;
@@ -70732,9 +71167,6 @@ ${svg}
       opts.callback = arg1;
     } else if (utils.isFunction(arg2)) {
       opts.callback = arg2;
-      // identify legacy input format (used by some tests)
-      opts.legacy = arg1 && guessInputContentType(arg1) != null;
-      opts.input = arg1;
     } else {
       // if no callback, create a promise and a callback for resolving the promise
       opts.promise = new Promise(function(resolve, reject) {
@@ -70744,7 +71176,7 @@ ${svg}
         };
       });
     }
-    if (!opts.legacy && utils.isObject(arg1)) {
+    if (utils.isObject(arg1)) {
       if (arg1.xl) {
         // options for runCommandsXL()
         opts.options = arg1;
@@ -70775,12 +71207,6 @@ ${svg}
     } catch(e) {
       printError(e);
       return callback(e);
-    }
-
-    if (opts.legacy) {
-      message("Warning: deprecated input format");
-      commands = convertLegacyCommands(commands, inputObj);
-      inputObj = null;
     }
 
     if (commands.length === 0) {
@@ -70819,13 +71245,22 @@ ${svg}
     // (e.g. `mapshaper *.shp batch-mode -o out.json` writing all inputs to the
     // same target on disk).
     var sharedOutputs = [];
-    utils.reduceAsync(batches, null, nextGroup, done);
+    runBatches().then(function(job) {
+      done(null, job);
+    }, done);
 
-    function nextGroup(prevJob, commands, next) {
-      runParsedCommands(commands, new Job(null, {output_files: sharedOutputs}), function(err, job) {
-        err = handleNonFatalError(err);
-        next(err, job);
-      });
+    async function runBatches() {
+      var job;
+      for (var batch of batches) {
+        try {
+          job = await runParsedCommands(batch, new Job(null, {output_files: sharedOutputs}));
+        } catch (e) {
+          var fatalError = handleNonFatalError(e);
+          if (fatalError) throw fatalError;
+          job = undefined;
+        }
+      }
+      return job;
     }
 
     function done(err, job) {
@@ -70838,33 +71273,6 @@ ${svg}
     }
   }
 
-
-  function toLegacyOutputFormat(arr) {
-    if (arr.length > 1) {
-      // Return an array if multiple files are output
-      return utils.pluck(arr, 'content');
-    }
-    if (arr.length == 1) {
-      // Return content if a single file is output
-      return arr[0].content;
-    }
-    return null;
-  }
-
-  function convertLegacyCommands(arr, inputObj) {
-    var i = utils.find(arr, function(cmd) {return cmd.name == 'i';});
-    var o = utils.find(arr, function(cmd) {return cmd.name == 'o';});
-    if (!i) {
-      i = {name: 'i', options: {}};
-      arr.unshift(i);
-    }
-    i.options.files = ['__input__'];
-    i.options.input = {__input__: inputObj};
-    if (!o) {
-      arr.push({name: 'o', options: {}});
-    }
-    return arr;
-  }
 
   // TODO: rewrite tests and remove this function
   function testCommands(argv, done) {
@@ -70883,9 +71291,20 @@ ${svg}
   // Execute a sequence of parsed commands
   // @commands Array of parsed commands
   // @job: Job object containing previously imported data
-  // @done: function([error], [job])
+  // @done: optional function([error], [job]); returns a Promise if omitted
   //
   function runParsedCommands(commands, job, done) {
+    var promise = runParsedCommandsAsync(commands, job);
+    if (done) {
+      promise.then(function(job) {
+        done(null, job);
+      }, done);
+      return;
+    }
+    return promise;
+  }
+
+  async function runParsedCommandsAsync(commands, job) {
     if (!job) job = new Job();
     commands = readAndRemoveSettings(job, commands);
     if (!runningInBrowser()) {
@@ -70893,26 +71312,16 @@ ${svg}
     }
     commands = runAndRemoveInfoCommands(commands);
     if (commands.length === 0) {
-      return done(null);
+      return;
     }
     // we're no longer using the same Job for all batches -- no reset needed
     // // resetting closes any unterminated -if blocks from a previous command sequence
     // resetControlFlow(job);
-    utils.reduceAsync(commands, job, nextCommand, done);
-
-    function nextCommand(job, cmd, next) {
-      var resolved;
-      try {
-        resolved = maybeInterpolateCommand(cmd, job);
-      } catch(e) {
-        return next(e);
-      }
-      runCommand(resolved, job).then(function(result) {
-        next(null, result);
-      }).catch(function(e) {
-        next(e);
-      });
+    for (var command of commands) {
+      var resolved = maybeInterpolateCommand(command, job);
+      job = await runCommand(resolved, job);
     }
+    return job;
   }
 
   // Late-binding interpolation: just before each command runs, replace any
@@ -72526,6 +72935,7 @@ ${svg}
     CustomProjections,
     Dymaxion,
     ButterflyProjections,
+    Narukawa2022,
     DataAggregation,
     DatasetUtils,
     DataUtils,

@@ -2638,36 +2638,6 @@
       });
     }
 
-  // Call @iter on each member of an array (similar to Array#reduce(iter))
-  //    iter: function(memo, item, callback)
-  // Call @done when all members have been processed or if an error occurs
-  //    done: function(err, memo)
-  // @memo: Initial value
-  //
-  function reduceAsync(arr, memo, iter, done) {
-    var call = typeof setImmediate == 'undefined' ? setTimeout : setImmediate;
-    var i=0;
-    next(null, memo);
-
-    function next(err, memo) {
-      // Detach next operation from call stack to prevent overflow
-      // Don't use setTimeout(, 0) if setImmediate is available
-      // (setTimeout() can introduce a long delay if previous operation was slow,
-      //    as of Node 0.10.32 -- a bug?)
-      if (err) {
-        return done(err, null);
-      }
-      call(function() {
-        if (i < arr.length === false) {
-          done(null, memo);
-        } else {
-          iter(memo, arr[i++], next);
-        }
-      }, 0);
-    }
-  }
-
-
   // Append elements of @src array to @dest array
   function merge(dest, src) {
     if (!isArray(dest) || !isArray(src)) {
@@ -3522,7 +3492,7 @@
     parseIntlNumber, parseNumber, parseString, pickOne, pluck,
     pluralSuffix, promisify,
     quicksort, quicksortPartition,
-    range, reduceAsync, regexEscape, reorderArray: reorderArray$1, repeat, repeatString,
+    range, regexEscape, reorderArray: reorderArray$1, repeat, repeatString,
     replaceArray, rpad, rtrim,
     shuffle, some, sortArrayIndex, sortOn, splitLines, sum,
     toArray, toBuffer, trim, trimQuotes,
@@ -7465,6 +7435,11 @@
     }
 
     async function importFiles(fileData, importOpts) {
+      var commandFiles = extractCommandFiles(fileData);
+      commandFiles.forEach(registerCommandFile);
+      fileData = fileData.filter(function(file) {
+        return commandFiles.indexOf(file) == -1;
+      });
       var groups = groupFilesForImport(fileData, importOpts);
       var optStr = GUI.formatCommandOptions(importOpts);
       fileData = null;
@@ -7493,6 +7468,31 @@
       }
     }
 
+    function extractCommandFiles(files) {
+      return files.filter(function(file) {
+        if (!internal.isPotentialCommandFile(file.name)) return false;
+        file.commandFileContent = decodeCommandFileContent(file.content);
+        return internal.stringLooksLikeCommandFile(file.commandFileContent);
+      });
+    }
+
+    function decodeCommandFileContent(content) {
+      if (utils$1.isString(content)) return content;
+      return internal.decodeString(new Uint8Array(content), 'utf8');
+    }
+
+    function registerCommandFile(file) {
+      var replaced = gui.commandFiles.add(file.name, file.commandFileContent);
+      var command = '-run ' + internal.formatOptionValue(file.name);
+      if (!gui.notify) return;
+      gui.notify({
+        severity: 'info',
+        title: replaced ? 'Command file replaced' : 'Command file loaded',
+        body: 'Run ' + command + ' in the console.',
+        dedupKey: 'command-file:' + file.name
+      });
+    }
+
     // Surface a passive warning if a .shp file came in without its .dbf or .prj
     // sibling. Both files are technically optional, but their absence has very
     // different consequences (no attribute data, no projection metadata) and
@@ -7517,7 +7517,6 @@
     }
 
     async function importDataset(group, importOpts) {
-      var dataset;
       var datasets;
       var imported = false;
       if (group.gpkg) {
@@ -7529,12 +7528,7 @@
       if (group.geotiff) {
         await loadGeoTIFFLib();
       }
-      if (group.gpkg || group.fgb || group.parquet || group.geotiff || group.png || group.jpeg) {
-        dataset = await internal.importContentAsync(group, importOpts);
-      } else {
-        dataset = internal.importContent(group, importOpts);
-      }
-      datasets = Array.isArray(dataset) ? dataset : [dataset];
+      datasets = await internal.importDatasetsFromContent(group, importOpts);
       for (var d of datasets) {
         if (datasetIsEmpty(d)) continue;
         if (group.layername) {
@@ -7788,37 +7782,31 @@
       return items.filter(Boolean);
     }
 
-    function downloadFiles(paths) {
+    async function downloadFiles(paths) {
       var items = prepFilesForDownload(paths);
-      utils$1.reduceAsync(items, [], downloadNextFile, function(err, files) {
-        if (err) {
-          gui.alert(err);
-        } else if (!files.length) {
-          gui.clearMode();
-        } else {
-          receiveFiles(files);
+      var files = [];
+      for (var item of items) {
+        try {
+          var resp = await fetch(item.url);
+          if (resp.status != 200) {
+            // e.g. 404 because a URL listed in the GUI query string does not exist
+            throw Error();
+          }
+          var blob = await resp.blob();
+          if (blob) {
+            blob.name = item.basename;
+            files.push(blob);
+          }
+        } catch (e) {
+          gui.alert("Error&nbsp;loading&nbsp;" + item.name + ". Possible causes include: wrong URL, no network connection, server not configured for cross-domain sharing (CORS).");
+          return;
         }
-      });
-    }
-
-    function downloadNextFile(memo, item, next) {
-      var err;
-      fetch(item.url).then(resp => {
-        if (resp.status != 200) {
-          // e.g. 404 because a URL listed in the GUI query string does not exist
-          throw Error();
-        }
-        return resp.blob();
-      }).then(blob => {
-        if (blob) {
-          blob.name = item.basename;
-          memo.push(blob);
-        }
-      }).catch(e => {
-        err = "Error&nbsp;loading&nbsp;" + item.name + ". Possible causes include: wrong URL, no network connection, server not configured for cross-domain sharing (CORS).";
-      }).finally(() => {
-        next(err, memo);
-      });
+      }
+      if (!files.length) {
+        gui.clearMode();
+      } else {
+        receiveFiles(files);
+      }
     }
 
     function wait(ms) {
@@ -8182,12 +8170,12 @@
 
     internal.replaceImportFile(function(src, opts) {
       var dataset = find(src);
-      // Return a copy with layers duplicated, so changes won't affect original layers
-      // This makes an (unsafe) assumption that the dataset arcs won't be changed...
-      // need to rethink this.
-      return utils$1.defaults({
-        layers: dataset.layers.map(internal.copyLayer)
-      }, dataset);
+      // Browser-side file references resolve to loaded data. Return a full copy
+      // so a command that imports and edits the match cannot mutate the original
+      // dataset through shared layers, tables, arcs or metadata.
+      var copy = internal.copyDataset(dataset);
+      copy.info = internal.copyDatasetInfo(dataset.info || {});
+      return copy;
     });
   }
 
@@ -9599,10 +9587,11 @@
 
     // get active layer field names and other layer names
     function getCompletionWords() {
-      var lyr = model.getActiveLayer().layer;
-      var fieldNames = lyr.data ? lyr.data.getFields() : [];
-      var lyrNames = findOtherLayerNames(lyr);
-      return fieldNames.concat(lyrNames).concat(fieldNames);
+      var active = model.getActiveLayer();
+      var lyr = active && active.layer;
+      var fieldNames = lyr && lyr.data ? lyr.data.getFields() : [];
+      var lyrNames = lyr ? findOtherLayerNames(lyr) : [];
+      return fieldNames.concat(lyrNames, gui.commandFiles.getNames());
     }
 
     function findOtherLayerNames(lyr) {
@@ -9746,6 +9735,7 @@
         // don't add info commands to console history
         // (for one thing, they interfere with target resetting)
         commands = internal.runAndRemoveInfoCommands(commands);
+        prepareRunCommands(commands);
       } catch (e) {
         return done(e, {});
       }
@@ -9755,6 +9745,24 @@
           model.updated(flags); // info commands do not return flags
         }
         done(err, flags);
+      });
+    }
+
+    function prepareRunCommands(commands) {
+      var cache = gui.commandFiles.getInputCache();
+      commands.forEach(function(cmd) {
+        if (cmd.name != 'run') return;
+        cmd.options.input = cache;
+        cmd.options.validate_commands = validateBrowserRunCommands;
+      });
+    }
+
+    function validateBrowserRunCommands(commands) {
+      commands.forEach(function(cmd) {
+        if (['include', 'require', 'external'].includes(cmd.name)) {
+          internal.stop('The ' + cmd.name +
+            ' command cannot be run from a command file in the web console.');
+        }
       });
     }
 
@@ -9806,6 +9814,14 @@
         }
         if (sameTable) {
           flags.same_table = true;
+        }
+        // A -run command can contain any number of nested commands. The outer
+        // command name does not describe which display caches or controls the
+        // nested commands changed, so refresh conservatively.
+        if (flags.run) {
+          flags.arc_count = true;
+          flags.select = true;
+          flags.same_table = false;
         }
         if (active && active?.layer == active2?.layer) {
           // this can get set after some commands that don't set a new target
@@ -22674,6 +22690,7 @@ GUI and setting the size and crop of SVG output.</p><div><input type="text" clas
     var content = El('div').addClass('ruler-popup-content').appendTo(popup);
     var closeBtn = El('button').addClass('label-style-close ruler-close-btn').appendTo(popup).text('×');
     var wgs84 = internal.parseCrsString('wgs84');
+    var geographicDistance = internal.getGeodesicDistanceFunction(wgs84);
     var _on = false;
     var startPoint = null;
     var pointerPoint = null;
@@ -22870,9 +22887,9 @@ GUI and setting the size and crop of SVG output.</p><div><input type="text" clas
 
       measurement = getMeasurement(path);
       drawRulerLines(path, measurement);
-      drawRulerPointMarkers(measurement.isLatLng);
+      drawRulerPointMarkers(measurement.geographicMeters !== null);
       if (placed) {
-        drawMarker(endMarker, endPoint, measurement.isLatLng);
+        drawMarker(endMarker, endPoint, measurement.geographicMeters !== null);
       } else {
         hideMarker(endMarker);
       }
@@ -22888,20 +22905,33 @@ GUI and setting the size and crop of SVG output.</p><div><input type="text" clas
     }
 
     function drawRulerLines(path, measurement) {
-      if (measurement.isLatLng) {
+      if (measurement.geographicMeters !== null) {
         drawPath(geodesicPath, getGeodesicPathPixels(path));
         clearSvgPath(directPath);
-      } else {
+      } else if (measurement.projectedMeters !== null) {
         drawPath(directPath, path.map(function(point) { return point.display; }));
-        drawPath(geodesicPath, measurement.greatCircleMeters ? getGeodesicPathPixels(path) : null);
+        clearSvgPath(geodesicPath);
+      } else {
+        clearSvgPath(directPath);
+        clearSvgPath(geodesicPath);
       }
     }
 
     function showPopup(measurement) {
       content.empty();
-      measurement.labels.forEach(function(label) {
-        El('div').appendTo(content).text(label);
-      });
+      if (measurement.geographicMeters !== null) {
+        El('div').addClass('ruler-geographic-distance').appendTo(content)
+          .text('Geographic distance: ' + measurement.distanceLabel);
+        El('div').addClass('ruler-distance-method').appendTo(content)
+          .text('Shortest surface path (WGS84 ellipsoid)');
+      } else if (measurement.projectedMeters !== null) {
+        El('div').addClass('ruler-projected-distance').appendTo(content)
+          .text('Projected distance: ' + measurement.distanceLabel);
+        El('div').addClass('ruler-distance-method').appendTo(content)
+          .text('Geographic distance not available');
+      } else {
+        El('div').appendTo(content).text('Distance unavailable');
+      }
       if (placed) {
         closeBtn.show();
       } else {
@@ -23077,23 +23107,13 @@ GUI and setting the size and crop of SVG output.</p><div><input type="text" clas
     function getMeasurement(path) {
       var isLatLng = internal.isLatLngCRS(path[0].sourceCRS);
       var projectedMeters = isLatLng ? null : getProjectedPathDistanceMeters(path);
-      var greatCircleMeters = getGreatCirclePathDistanceMeters(path);
-      var unit = getDistanceUnit(projectedMeters || greatCircleMeters || 0);
-      var labels = [];
-
-      if (projectedMeters !== null) {
-        labels.push('Projected: ' + getDistanceDisplay(projectedMeters, unit).label);
-        if (greatCircleMeters !== null) {
-          labels.push('Great circle: ' + getDistanceDisplay(greatCircleMeters, unit).label);
-        }
-      } else if (greatCircleMeters !== null) {
-        labels.push('Great circle: ' + getDistanceDisplay(greatCircleMeters, unit).label);
-      }
+      var geographicMeters = getGeographicPathDistanceMeters(path);
+      var displayedMeters = geographicMeters !== null ? geographicMeters : projectedMeters;
+      var unit = getDistanceUnit(displayedMeters || 0);
       return {
-        isLatLng,
         projectedMeters,
-        greatCircleMeters,
-        labels: labels.length ? labels : ['Distance unavailable']
+        geographicMeters,
+        distanceLabel: displayedMeters === null ? null : getDistanceDisplay(displayedMeters, unit).label
       };
     }
 
@@ -23107,13 +23127,13 @@ GUI and setting the size and crop of SVG output.</p><div><input type="text" clas
       return geom.distance2D(a.data[0], a.data[1], b.data[0], b.data[1]) * toMeter;
     }
 
-    function getGreatCirclePathDistanceMeters(path) {
-      return sumPathDistance(path, getGreatCircleDistanceMeters);
+    function getGeographicPathDistanceMeters(path) {
+      return sumPathDistance(path, getGeographicDistanceMeters);
     }
 
-    function getGreatCircleDistanceMeters(a, b) {
+    function getGeographicDistanceMeters(a, b) {
       if (!a.lngLat || !b.lngLat) return null;
-      return geom.greatCircleDistance(a.lngLat[0], a.lngLat[1], b.lngLat[0], b.lngLat[1]);
+      return geographicDistance(a.lngLat[0], a.lngLat[1], b.lngLat[0], b.lngLat[1]);
     }
 
     function sumPathDistance(path, calcSegmentDistance) {
@@ -24684,6 +24704,28 @@ GUI and setting the size and crop of SVG output.</p><div><input type="text" clas
     };
   }
 
+  function CommandFileStore() {
+    var files = Object.create(null);
+
+    this.add = function(name, content) {
+      var replaced = Object.prototype.hasOwnProperty.call(files, name);
+      files[name] = content;
+      return replaced;
+    };
+
+    this.getNames = function() {
+      return Object.keys(files);
+    };
+
+    this.getInputCache = function() {
+      var cache = Object.create(null);
+      Object.keys(files).forEach(function(name) {
+        cache[name] = files[name];
+      });
+      return cache;
+    };
+  }
+
   // import { ProjectOptions } from './gui-project-control';
 
 
@@ -24702,6 +24744,7 @@ GUI and setting the size and crop of SVG output.</p><div><input type="text" clas
     gui.options = opts;
     gui.container = El(container);
     gui.model = new Model(gui);
+    gui.commandFiles = new CommandFileStore();
     gui.keyboard = new KeyboardEvents(gui);
     gui.buttons = new SidebarButtons(gui);
     gui.display = new DisplayOptions(gui);

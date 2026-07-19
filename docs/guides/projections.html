@@ -173,7 +173,22 @@ mapshaper world.geojson \
   -graticule outline \
   -o neatline-imoll-o.fgb
 </code></pre>
-<h3 id="dymaxion-projections">Dymaxion projections</h3>
+<!--
+### Narukawa 2022 tetrahedral projection
+
+`narukawa2022` implements Hajime Narukawa's published 2022 mathematical
+formulation of a rectangular tetrahedral world map. The formula is an official
+approximation of the original modeling process used to create the AuthaGraph
+projection.
+
+```bash
+mapshaper world.geojson \
+  -proj +proj=narukawa2022 densify \
+  -o world-narukawa2022.geojson \
+  -graticule outline \
+  -o neatline-narukawa2022.geojson
+```
+--><h3 id="dymaxion-projections">Dymaxion projections</h3>
 <p>Mapshaper includes two versions of Buckminster Fuller&#39;s Airocean
 (Dymaxion) icosahedral layout:</p>
 <ul>
@@ -221,7 +236,7 @@ available, and raster reprojection is not supported.</p>
 </li>
 <li><p>Projections that can only represent part of the globe — including orthographic (<code>ortho</code>), near-side perspective (<code>nsper</code>, <code>geos</code>), gnomonic (<code>gnom</code>), stereographic (<code>stere</code>), and Lambert Azimuthal Equal-Area (<code>laea</code>) — automatically clip input data to the projection&#39;s valid extent before projecting. This prevents distorted or invalid geometry from coordinates outside the visible area.</p>
 </li>
-<li><p>Interrupted and polyhedral projections (<code>igh</code>, <code>imoll</code>, <code>igh_o</code>, <code>imoll_o</code>, <code>dymaxion</code>, <code>dymaxion2</code>, <code>butterfly</code>, <code>butterfly2</code>, <code>cahill_keyes</code>) are forward-only; inverse projection and raster reprojection are not supported.</p>
+<li><p>Interrupted and polyhedral projections (<code>igh</code>, <code>imoll</code>, <code>igh_o</code>, <code>imoll_o</code>, <code>narukawa2022</code>, <code>dymaxion</code>, <code>dymaxion2</code>, <code>butterfly</code>, <code>butterfly2</code>, <code>cahill_keyes</code>) are forward-only; inverse projection and raster reprojection are not supported.</p>
 </li>
 <li><p>For projections that introduce significant curvature along straight lines, add the <code>densify</code> option to interpolate extra vertices along long segments:</p>
 <pre><code class="hljs language-bash">mapshaper data.shp -proj +proj=ortho +lat_0=45 +lon_0=-100 densify -o
