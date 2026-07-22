@@ -2053,12 +2053,12 @@
   // TODO: remove this constant, use actual data from dataset CRS,
   // also consider using ellipsoidal formulas where greater accuracy might be important.
   var R$3 = WGS84.SEMIMAJOR_AXIS;
-  var D2R$7 = Math.PI / 180;
-  var R2D$6 = 180 / Math.PI;
+  var D2R$8 = Math.PI / 180;
+  var R2D$7 = 180 / Math.PI;
 
   // Equirectangular projection
   function degreesToMeters(deg) {
-    return deg * D2R$7 * R$3;
+    return deg * D2R$8 * R$3;
   }
 
   function distance3D(ax, ay, az, bx, by, bz) {
@@ -2205,16 +2205,16 @@
 
   function xyzToLngLat(x, y, z, p) {
     var d = distance3D(0, 0, 0, x, y, z); // normalize
-    var lat = Math.asin(z / d) / D2R$7;
-    var lng = Math.atan2(y / d, x / d) / D2R$7;
+    var lat = Math.asin(z / d) / D2R$8;
+    var lng = Math.atan2(y / d, x / d) / D2R$8;
     p[0] = lng;
     p[1] = lat;
   }
 
   function lngLatToXYZ(lng, lat, p) {
     var cosLat;
-    lng *= D2R$7;
-    lat *= D2R$7;
+    lng *= D2R$8;
+    lat *= D2R$8;
     cosLat = Math.cos(lat);
     p[0] = Math.cos(lng) * cosLat * R$3;
     p[1] = Math.sin(lng) * cosLat * R$3;
@@ -2334,9 +2334,9 @@
 
   var Geom = /*#__PURE__*/Object.freeze({
     __proto__: null,
-    D2R: D2R$7,
+    D2R: D2R$8,
     R: R$3,
-    R2D: R2D$6,
+    R2D: R2D$7,
     bearing: bearing,
     bearing2D: bearing2D,
     containsBounds: containsBounds,
@@ -6264,9 +6264,9 @@
    * ISC License: https://github.com/d3/d3-geo-polygon/blob/main/LICENSE
    */
 
-  var D2R$6 = Math.PI / 180;
-  var R2D$5 = 180 / Math.PI;
-  var EPS$2 = 1e-12;
+  var D2R$7 = Math.PI / 180;
+  var R2D$6 = 180 / Math.PI;
+  var EPS$3 = 1e-12;
 
   // Build a forward-only spherical polyhedral projection.
   //
@@ -6304,10 +6304,10 @@
         throw new Error('Invalid polyhedral face tree');
       }
       var childEdge = shared.map(function(p) {
-        return face.project(p[0] * D2R$6, p[1] * D2R$6);
+        return face.project(p[0] * D2R$7, p[1] * D2R$7);
       });
       var parentEdge = shared.map(function(p) {
-        return parent.project(p[0] * D2R$6, p[1] * D2R$6);
+        return parent.project(p[0] * D2R$7, p[1] * D2R$7);
       });
       face.transform = multiplyMatrices(
         parent.transform,
@@ -6318,12 +6318,12 @@
 
     var rootEdge = findLongestEdge(faces[0].coords);
     var rootPlanarEdge = rootEdge.map(function(p) {
-      return faces[0].project(p[0] * D2R$6, p[1] * D2R$6);
+      return faces[0].project(p[0] * D2R$7, p[1] * D2R$7);
     });
     var sphericalEdgeLength = angularDistance(rootEdge[0], rootEdge[1]);
     var planarEdgeLength = distance2D(rootPlanarEdge[0], rootPlanarEdge[1]);
     var scale = sphericalEdgeLength / planarEdgeLength;
-    var planarAngle = (config.angle || 0) * D2R$6;
+    var planarAngle = (config.angle || 0) * D2R$7;
     var edgeIndex = indexEdges(faces, attachedPairs);
     var outline = buildOutline(faces, attachedPairs).map(function(ring) {
       return ring.map(transformOutputPoint);
@@ -6344,6 +6344,7 @@
       faces: faces,
       outline: outline,
       forward: forward,
+      forwardFace: forwardFace,
       findFace: findFace,
       findTransitionRegion: findTransitionRegion,
       getTopology: getTopology
@@ -6353,14 +6354,30 @@
       var rotated = rotateRadians(
         lam,
         phi,
-        config.rotation[0] * D2R$6,
-        config.rotation[1] * D2R$6,
-        config.rotation[2] * D2R$6
+        config.rotation[0] * D2R$7,
+        config.rotation[1] * D2R$7,
+        config.rotation[2] * D2R$7
       );
       var face = findFaceRotated(rotated[0], rotated[1]);
       if (!face) return null;
-      var p = face.project(rotated[0], rotated[1]);
-      p = applyMatrix(face.transform, p);
+      return projectFacePoint(face, rotated[0], rotated[1]);
+    }
+
+    function forwardFace(lam, phi, faceId) {
+      var rotated = rotateRadians(
+        lam,
+        phi,
+        config.rotation[0] * D2R$7,
+        config.rotation[1] * D2R$7,
+        config.rotation[2] * D2R$7
+      );
+      var face = faces[faceId];
+      return face ? projectFacePoint(face, rotated[0], rotated[1]) : null;
+    }
+
+    function projectFacePoint(face, lam, phi) {
+      var p = face.project(lam, phi);
+      p = applyMatrix$1(face.transform, p);
       p = transformOutputPoint(p);
       p[0] -= centerX;
       p[1] -= centerY;
@@ -6371,9 +6388,9 @@
       var rotated = rotateRadians(
         lam,
         phi,
-        config.rotation[0] * D2R$6,
-        config.rotation[1] * D2R$6,
-        config.rotation[2] * D2R$6
+        config.rotation[0] * D2R$7,
+        config.rotation[1] * D2R$7,
+        config.rotation[2] * D2R$7
       );
       var face = findFaceRotated(rotated[0], rotated[1]);
       return face ? face.id : -1;
@@ -6383,9 +6400,9 @@
       var rotated = rotateRadians(
         lam,
         phi,
-        config.rotation[0] * D2R$6,
-        config.rotation[1] * D2R$6,
-        config.rotation[2] * D2R$6
+        config.rotation[0] * D2R$7,
+        config.rotation[1] * D2R$7,
+        config.rotation[2] * D2R$7
       );
       var face = findFaceRotated(rotated[0], rotated[1]);
       var region;
@@ -6427,14 +6444,14 @@
       var seams = edgeIndex.map(function(edge) {
         var endpoints = edge.points.map(function(p) {
           var q = rotateRadians(
-            p[0] * D2R$6,
-            p[1] * D2R$6,
-            config.rotation[0] * D2R$6,
-            config.rotation[1] * D2R$6,
-            config.rotation[2] * D2R$6,
+            p[0] * D2R$7,
+            p[1] * D2R$7,
+            config.rotation[0] * D2R$7,
+            config.rotation[1] * D2R$7,
+            config.rotation[2] * D2R$7,
             true
           );
-          return [normalizeLongitude$2(q[0] * R2D$5 + lon0), q[1] * R2D$5];
+          return [normalizeLongitude$3(q[0] * R2D$6 + lon0), q[1] * R2D$6];
         });
         var paths = splitPathAtAntimeridian$2(
           interpolateGreatCircle(endpoints[0], endpoints[1], 0.05)
@@ -6457,16 +6474,23 @@
       });
       return {
         regions: faces.map(function(face) {
-          return {id: face.id};
+          return {
+            id: face.id,
+            projected_boundary: getProjectedFaceBoundary(face)
+          };
         }),
         seams: seams,
         findRegion: function(lon, lat) {
-          var lam = normalizeLongitude$2(lon - lon0) * D2R$6;
-          return findFace(lam, lat * D2R$6);
+          var lam = normalizeLongitude$3(lon - lon0) * D2R$7;
+          return findFace(lam, lat * D2R$7);
         },
         findTransitionRegion: function(lon, lat) {
-          var lam = normalizeLongitude$2(lon - lon0) * D2R$6;
-          return findTransitionRegion(lam, lat * D2R$6);
+          var lam = normalizeLongitude$3(lon - lon0) * D2R$7;
+          return findTransitionRegion(lam, lat * D2R$7);
+        },
+        projectRegion: function(lon, lat, regionId) {
+          var lam = normalizeLongitude$3(lon - lon0) * D2R$7;
+          return forwardFace(lam, lat * D2R$7, regionId);
         },
         regionsAreAttached: function(a, b) {
           return regionPairs.get(pairKey(a, b)) === true;
@@ -6478,15 +6502,29 @@
         })
       };
     }
+
+    function getProjectedFaceBoundary(face) {
+      var ring = [];
+      for (var i = 0; i < face.coords.length; i++) {
+        var a = face.coords[i];
+        var b = face.coords[(i + 1) % face.coords.length];
+        var edge = interpolateGreatCircle(a, b, 0.5);
+        for (var j = 0; j < edge.length - 1; j++) {
+          ring.push(projectFacePoint(face, edge[j][0] * D2R$7, edge[j][1] * D2R$7));
+        }
+      }
+      ring.push(ring[0].concat());
+      return ring;
+    }
   }
 
   function rotateSphericalRadians(lam, phi, rotation, invert) {
     return rotateRadians(
       lam,
       phi,
-      (rotation[0] || 0) * D2R$6,
-      (rotation[1] || 0) * D2R$6,
-      (rotation[2] || 0) * D2R$6,
+      (rotation[0] || 0) * D2R$7,
+      (rotation[1] || 0) * D2R$7,
+      (rotation[2] || 0) * D2R$7,
       invert
     );
   }
@@ -6523,7 +6561,7 @@
   function faceContainsVector(face, p) {
     for (var i = 0; i < face.edges.length; i++) {
       var edge = face.edges[i];
-      if (dot$2(edge.normal, p) * edge.sign < -EPS$2) return false;
+      if (dot$2(edge.normal, p) * edge.sign < -EPS$3) return false;
     }
     return true;
   }
@@ -6559,8 +6597,8 @@
         var adjacent = findAdjacentFace(faces, face.id, a, b);
         if (adjacent >= 0 && attachedPairs.has(pairKey(face.id, adjacent))) continue;
         edges.push([
-          applyMatrix(face.transform, face.project(a[0] * D2R$6, a[1] * D2R$6)),
-          applyMatrix(face.transform, face.project(b[0] * D2R$6, b[1] * D2R$6))
+          applyMatrix$1(face.transform, face.project(a[0] * D2R$7, a[1] * D2R$7)),
+          applyMatrix$1(face.transform, face.project(b[0] * D2R$7, b[1] * D2R$7))
         ]);
       }
     });
@@ -6677,7 +6715,7 @@
     ];
   }
 
-  function applyMatrix(m, p) {
+  function applyMatrix$1(m, p) {
     return [
       m[0] * p[0] + m[1] * p[1] + m[2],
       m[3] * p[0] + m[4] * p[1] + m[5]
@@ -6724,13 +6762,13 @@
     var av = degreesToVector$2(a[0], a[1]);
     var bv = degreesToVector$2(b[0], b[1]);
     var angle = Math.acos(clamp$3(dot$2(av, bv), -1, 1));
-    var n = Math.max(1, Math.ceil(angle * R2D$5 / interval));
+    var n = Math.max(1, Math.ceil(angle * R2D$6 / interval));
     var sinAngle = Math.sin(angle);
     var points = [];
     for (var i = 0; i <= n; i++) {
       var t = i / n;
       var p;
-      if (sinAngle < EPS$2) {
+      if (sinAngle < EPS$3) {
         p = av;
       } else {
         var ka = Math.sin((1 - t) * angle) / sinAngle;
@@ -6787,7 +6825,7 @@
   }
 
   function degreesToVector$2(lon, lat) {
-    return radiansToVector$1(lon * D2R$6, lat * D2R$6);
+    return radiansToVector$1(lon * D2R$7, lat * D2R$7);
   }
 
   function radiansToVector$1(lam, phi) {
@@ -6797,8 +6835,8 @@
 
   function vectorToDegrees$2(p) {
     return [
-      Math.atan2(p[1], p[0]) * R2D$5,
-      Math.asin(clamp$3(p[2], -1, 1)) * R2D$5
+      Math.atan2(p[1], p[0]) * R2D$6,
+      Math.asin(clamp$3(p[2], -1, 1)) * R2D$6
     ];
   }
 
@@ -6826,7 +6864,7 @@
   }
 
   function sameSphericalPoint(a, b) {
-    return Math.abs(a[0] - b[0]) < EPS$2 && Math.abs(a[1] - b[1]) < EPS$2;
+    return Math.abs(a[0] - b[0]) < EPS$3 && Math.abs(a[1] - b[1]) < EPS$3;
   }
 
   function pointsAlmostEqual(a, b) {
@@ -6853,7 +6891,7 @@
     return lam;
   }
 
-  function normalizeLongitude$2(lon) {
+  function normalizeLongitude$3(lon) {
     while (lon > 180) lon -= 360;
     while (lon < -180) lon += 360;
     return lon;
@@ -6875,9 +6913,9 @@
    */
 
 
-  var D2R$5 = Math.PI / 180;
-  var R2D$4 = 180 / Math.PI;
-  var SQRT3$1 = Math.sqrt(3);
+  var D2R$6 = Math.PI / 180;
+  var R2D$5 = 180 / Math.PI;
+  var SQRT3$2 = Math.sqrt(3);
   var GRAY_Z = Math.sqrt(5 + 2 * Math.sqrt(5)) / Math.sqrt(15);
   var GRAY_EL = Math.sqrt(8) / Math.sqrt(5 + Math.sqrt(5));
   var GRAY_DVE = Math.sqrt(3 + Math.sqrt(5)) / Math.sqrt(5 + Math.sqrt(5));
@@ -6889,7 +6927,7 @@
     6, 8, 10, 17, 21,
     16, 15, 19, 19
   ];
-  var engines$2 = {};
+  var engines$3 = {};
 
   function registerDymaxionProjections(mproj) {
     // Some unit tests import source modules directly in an ESM context where
@@ -6908,9 +6946,9 @@
 
   function getDymaxionEngine(method) {
     method = method || 'fuller';
-    if (!engines$2[method]) {
+    if (!engines$3[method]) {
       var data = createAiroceanFaces();
-      engines$2[method] = createPolyhedralProjection({
+      engines$3[method] = createPolyhedralProjection({
         faces: data.faces,
         faceSites: data.sites,
         parents: PARENTS,
@@ -6921,7 +6959,7 @@
           createGrayFullerFaceProjector
       });
     }
-    return engines$2[method];
+    return engines$3[method];
   }
 
   function initDymaxion(P, method) {
@@ -6937,12 +6975,12 @@
         xy.y = p[1];
       }
     };
-    P.__projection_topology = engine.getTopology(P.lam0 * R2D$4);
+    P.__projection_topology = engine.getTopology(P.lam0 * R2D$5);
     P.__projected_outline = engine.outline;
   }
 
   function createAiroceanFaces() {
-    var theta = Math.atan(0.5) * R2D$4;
+    var theta = Math.atan(0.5) * R2D$5;
     var vertices = [[0, 90], [0, -90]];
     var faces;
     var sites;
@@ -7039,10 +7077,10 @@
     var s = GRAY_Z / (cosPhi * Math.cos(lam));
     var x = cosPhi * Math.sin(lam) * s;
     var y = Math.sin(phi) * s;
-    var a1p = Math.atan2(2 * y / SQRT3$1 + GRAY_EL / 3 - GRAY_EL / 2, GRAY_DVE);
-    var a2p = Math.atan2(x - y / SQRT3$1 + GRAY_EL / 3 - GRAY_EL / 2, GRAY_DVE);
-    var a3p = Math.atan2(GRAY_EL / 3 - x - y / SQRT3$1 - GRAY_EL / 2, GRAY_DVE);
-    return [SQRT3$1 * (a2p - a3p), 2 * a1p - a2p - a3p];
+    var a1p = Math.atan2(2 * y / SQRT3$2 + GRAY_EL / 3 - GRAY_EL / 2, GRAY_DVE);
+    var a2p = Math.atan2(x - y / SQRT3$2 + GRAY_EL / 3 - GRAY_EL / 2, GRAY_DVE);
+    var a3p = Math.atan2(GRAY_EL / 3 - x - y / SQRT3$2 - GRAY_EL / 2, GRAY_DVE);
+    return [SQRT3$2 * (a2p - a3p), 2 * a1p - a2p - a3p];
   }
 
   function getSphericalCentroid(coords) {
@@ -7067,16 +7105,16 @@
   }
 
   function degreesToVector$1(p) {
-    var lam = p[0] * D2R$5;
-    var phi = p[1] * D2R$5;
+    var lam = p[0] * D2R$6;
+    var phi = p[1] * D2R$6;
     var cosPhi = Math.cos(phi);
     return [Math.cos(lam) * cosPhi, Math.sin(lam) * cosPhi, Math.sin(phi)];
   }
 
   function vectorToDegrees$1(p) {
     return [
-      Math.atan2(p[1], p[0]) * R2D$4,
-      Math.asin(Math.max(-1, Math.min(1, p[2]))) * R2D$4
+      Math.atan2(p[1], p[0]) * R2D$5,
+      Math.asin(Math.max(-1, Math.min(1, p[2]))) * R2D$5
     ];
   }
 
@@ -7124,8 +7162,8 @@
    * ISC License: https://github.com/d3/d3-geo-polygon/blob/main/LICENSE
    */
 
-  var D2R$4 = Math.PI / 180;
-  var R2D$3 = 180 / Math.PI;
+  var D2R$5 = Math.PI / 180;
+  var R2D$4 = 180 / Math.PI;
 
   function createCahillKeyesRaw(mg) {
     return createCahillKeyesTransform(mg, false);
@@ -7137,12 +7175,12 @@
 
     return function(lambda, phi) {
       if (faceOnly) {
-        var lon = lambda * R2D$3;
+        var lon = lambda * R2D$4;
         var side = lon < 0 ? -1 : lon > 0 ? 1 : 0;
-        var local = mp2xy(Math.abs(lon), Math.abs(phi * R2D$3));
+        var local = mp2xy(Math.abs(lon), Math.abs(phi * R2D$4));
         return [local[0], side * local[1]];
       }
-      var res = ll2mp(lambda * R2D$3, phi * R2D$3);
+      var res = ll2mp(lambda * R2D$4, phi * R2D$4);
       var xy = mp2xy(res[0], res[1]);
       var p = [xy[0], res[2] * xy[1]];
       return mj2g(p, res[3]);
@@ -7160,7 +7198,7 @@
       CK.cos60 = 0.5;
       CK.pointM = [0, 0];
       CK.pointG = [CK.lengthMG, 0];
-      pointN = [CK.lengthMG, CK.lengthMG * Math.tan(30 * D2R$4)];
+      pointN = [CK.lengthMG, CK.lengthMG * Math.tan(30 * D2R$5)];
       CK.pointA = [CK.lengthMA, 0];
       CK.pointB = lineIntersection(CK.pointM, 30, CK.pointA, 45);
       CK.lengthAG = distance(CK.pointA, CK.pointG);
@@ -7171,8 +7209,8 @@
       CK.pointD = interpolate(lengthMB, lengthMN, pointN, CK.pointM);
       CK.pointF = [CK.lengthMG, lengthNG - lengthMB];
       CK.pointE = [
-        pointN[0] - CK.lengthMA * Math.sin(30 * D2R$4),
-        pointN[1] - CK.lengthMA * Math.cos(30 * D2R$4)
+        pointN[0] - CK.lengthMA * Math.sin(30 * D2R$5),
+        pointN[1] - CK.lengthMA * Math.cos(30 * D2R$5)
       ];
       CK.lengthGF = distance(CK.pointG, CK.pointF);
       CK.lengthBD = distance(CK.pointB, CK.pointD);
@@ -7182,8 +7220,8 @@
       CK.lengthAP73 = CK.lengthMG - CK.lengthMA -
         CK.lengthParallel0to73At0 * 73;
       pointU = [
-        CK.pointA[0] + CK.lengthAP73 * Math.cos(30 * D2R$4),
-        CK.pointA[1] + CK.lengthAP73 * Math.sin(30 * D2R$4)
+        CK.pointA[0] + CK.lengthAP73 * Math.cos(30 * D2R$5),
+        CK.pointA[1] + CK.lengthAP73 * Math.sin(30 * D2R$5)
       ];
       CK.pointT = lineIntersection(pointU, -60, CK.pointB, 30);
 
@@ -7424,8 +7462,8 @@
 
     function radialPoint(origin, length, angle) {
       return [
-        origin[0] + length * Math.cos(angle * D2R$4),
-        origin[1] + length * Math.sin(angle * D2R$4)
+        origin[0] + length * Math.cos(angle * D2R$5),
+        origin[1] + length * Math.sin(angle * D2R$5)
       ];
     }
 
@@ -7442,8 +7480,8 @@
           -xy[0] * CK.sin60 - xy[1] * CK.cos60
         ];
       }
-      var cos = Math.cos(angle * D2R$4);
-      var sin = Math.sin(angle * D2R$4);
+      var cos = Math.cos(angle * D2R$5);
+      var sin = Math.sin(angle * D2R$5);
       return [xy[0] * cos - xy[1] * sin, xy[0] * sin + xy[1] * cos];
     }
   }
@@ -7464,8 +7502,8 @@
   }
 
   function lineIntersection(p1, slope1, p2, slope2) {
-    var m1 = Math.tan(slope1 * D2R$4);
-    var m2 = Math.tan(slope2 * D2R$4);
+    var m1 = Math.tan(slope1 * D2R$5);
+    var m2 = Math.tan(slope2 * D2R$5);
     var x = (m1 * p1[0] - m2 * p2[0] - p1[1] + p2[1]) / (m1 - m2);
     return [x, m1 * (x - p1[0]) + p1[1]];
   }
@@ -7493,8 +7531,8 @@
     return n > 0 ? Math.floor(n) : Math.ceil(n);
   }
 
-  var D2R$3 = Math.PI / 180;
-  var EPS$1 = 1e-12;
+  var D2R$4 = Math.PI / 180;
+  var EPS$2 = 1e-12;
 
   // Create a smooth facet projection from any radial azimuthal projection.
   // The azimuthal coordinates are warped back to the gnomonic polygon along
@@ -7504,7 +7542,7 @@
     var center = options.planarCenter || getSphericalCenter(coords);
     var gnomonic = createGnomonicProjector(center);
     var planar = coords.map(function(p) {
-      return gnomonic(p[0] * D2R$3, p[1] * D2R$3);
+      return gnomonic(p[0] * D2R$4, p[1] * D2R$4);
     });
     var edges = createNormalizedEdges(planar);
     var radial = createRadialFunction(
@@ -7523,7 +7561,7 @@
     function project(lam, phi) {
       var p = gnomonic(lam, phi);
       var r = Math.hypot(p[0], p[1]);
-      if (r < EPS$1) return [0, 0];
+      if (r < EPS$2) return [0, 0];
       var c = Math.atan(r);
       var azimuthalRadius = radial(c) * radialScale;
       var boundaryWeight = getBoundaryWeight(p, edges, boundaryStrength);
@@ -7613,8 +7651,8 @@
 
   function getSphericalCenter(coords) {
     var sum = coords.reduce(function(memo, p) {
-      var lam = p[0] * D2R$3;
-      var phi = p[1] * D2R$3;
+      var lam = p[0] * D2R$4;
+      var phi = p[1] * D2R$4;
       var cosPhi = Math.cos(phi);
       memo[0] += Math.cos(lam) * cosPhi;
       memo[1] += Math.sin(lam) * cosPhi;
@@ -7622,8 +7660,8 @@
       return memo;
     }, [0, 0, 0]);
     return [
-      Math.atan2(sum[1], sum[0]) / D2R$3,
-      Math.atan2(sum[2], Math.hypot(sum[0], sum[1])) / D2R$3
+      Math.atan2(sum[1], sum[0]) / D2R$4,
+      Math.atan2(sum[2], Math.hypot(sum[0], sum[1])) / D2R$4
     ];
   }
 
@@ -7638,8 +7676,8 @@
    */
 
 
-  var D2R$2 = Math.PI / 180;
-  var R2D$2 = 180 / Math.PI;
+  var D2R$3 = Math.PI / 180;
+  var R2D$3 = 180 / Math.PI;
   var RADIAL_BOUNDARY_STRENGTH = 1;
   var OCTAHEDRON = createOctahedron();
   var BUTTERFLY_PARENTS = [-1, 0, 0, 1, 0, 1, 4, 5];
@@ -7648,7 +7686,7 @@
     butterfly2: -20,
     cahill_keyes: -20
   };
-  var engines$1 = {};
+  var engines$2 = {};
 
   function registerButterflyProjections(mproj) {
     if (!mproj) return;
@@ -7666,22 +7704,22 @@
 
   function getButterflyEngine(method) {
     var key = method == 'butterfly2' ? 'butterfly' : method;
-    if (!engines$1[key]) {
+    if (!engines$2[key]) {
       if (key == 'cahill_keyes') {
-        engines$1[key] = createCahillKeyesEngine();
+        engines$2[key] = createCahillKeyesEngine();
       } else if (key == 'butterfly') {
-        engines$1[key] = createButterflyEngine();
+        engines$2[key] = createButterflyEngine();
       } else {
         throw new Error('Unknown butterfly projection: ' + method);
       }
     }
-    return engines$1[key];
+    return engines$2[key];
   }
 
   function initButterfly(P, method) {
     var engine = getButterflyEngine(method);
     if (!P.params.lon_0) {
-      P.lam0 = DEFAULT_LON0[method] * D2R$2;
+      P.lam0 = DEFAULT_LON0[method] * D2R$3;
     }
     P.es = 0;
     P.inv = null;
@@ -7694,7 +7732,7 @@
         xy.y = p[1];
       }
     };
-    P.__projection_topology = engine.getTopology(P.lam0 * R2D$2);
+    P.__projection_topology = engine.getTopology(P.lam0 * R2D$3);
     if (engine.removeOutlineExtremeConnectors) {
       P.__remove_outline_extreme_connectors = true;
     }
@@ -7708,8 +7746,8 @@
     // Reuse the Cahill-Keyes polar incisions and 12-zone octant transform,
     // then unfold the faces with the butterfly attachment tree.
     var data = createTruncatedOctahedronFaces(
-      Math.cos(17 * D2R$2),
-      Math.sin(17 * D2R$2),
+      Math.cos(17 * D2R$3),
+      Math.sin(17 * D2R$3),
       BUTTERFLY_PARENTS
     );
     var faceRaw = createCahillKeyesFaceRaw(10000);
@@ -7722,7 +7760,7 @@
       findFace: createTruncatedFaceFinder(data.cornerNormals),
       faceProjector: function(face) {
         var baseId = face.id < 8 ? face.id : data.parents[face.id];
-        var center = faceCenters[baseId] * D2R$2;
+        var center = faceCenters[baseId] * D2R$3;
         var raw = function(lam, phi) {
           return faceRaw(normalizeRadians$1(lam - center), phi);
         };
@@ -7737,7 +7775,7 @@
     // Remove the global placement and scale of a raw facet while preserving its
     // internal shape. The polyhedral engine then controls how facets unfold.
     var points = coords.map(function(p) {
-      return raw(p[0] * D2R$2, p[1] * D2R$2);
+      return raw(p[0] * D2R$3, p[1] * D2R$3);
     });
     var edge = 0;
     var maxLengthSq = -1;
@@ -7826,8 +7864,8 @@
 
   function createCahillKeyesEngine() {
     var data = createTruncatedOctahedronFaces(
-      Math.cos(17 * D2R$2),
-      Math.sin(17 * D2R$2),
+      Math.cos(17 * D2R$3),
+      Math.sin(17 * D2R$3),
       [-1, 3, 0, 2, 0, 1, 4, 5]
     );
     var raw = createCahillKeyesRaw(10000);
@@ -7972,7 +8010,7 @@
   }
 
   function planarAngle(p, project) {
-    var q = project(p[0] * D2R$2, p[1] * D2R$2);
+    var q = project(p[0] * D2R$3, p[1] * D2R$3);
     return Math.atan2(q[1], q[0]);
   }
 
@@ -8006,16 +8044,16 @@
   }
 
   function degreesToVector(p) {
-    var lam = p[0] * D2R$2;
-    var phi = p[1] * D2R$2;
+    var lam = p[0] * D2R$3;
+    var phi = p[1] * D2R$3;
     var cosPhi = Math.cos(phi);
     return [Math.cos(lam) * cosPhi, Math.sin(lam) * cosPhi, Math.sin(phi)];
   }
 
   function vectorToDegrees(p) {
     return [
-      Math.atan2(p[1], p[0]) * R2D$2,
-      Math.asin(Math.max(-1, Math.min(1, p[2]))) * R2D$2
+      Math.atan2(p[1], p[0]) * R2D$3,
+      Math.asin(Math.max(-1, Math.min(1, p[2]))) * R2D$3
     ];
   }
 
@@ -8068,21 +8106,21 @@
    * equations, not Imago's power-law approximation.
    */
 
-  var D2R$1 = Math.PI / 180;
-  var R2D$1 = 180 / Math.PI;
+  var D2R$2 = Math.PI / 180;
+  var R2D$2 = 180 / Math.PI;
   var HALF_PI = Math.PI / 2;
-  var SQRT2 = Math.sqrt(2);
-  var SQRT3 = Math.sqrt(3);
-  var ASIN_ONE_THIRD = Math.asin(1 / 3);
+  var SQRT2$1 = Math.sqrt(2);
+  var SQRT3$1 = Math.sqrt(3);
+  var ASIN_ONE_THIRD$1 = Math.asin(1 / 3);
   var EDGE_SCALE = Math.acos(-1 / 3) / 2;
-  var XMIN = -2 * SQRT3;
-  var XMAX = 2 * SQRT3;
+  var XMIN = -2 * SQRT3$1;
+  var XMAX = 2 * SQRT3$1;
   var YMIN = -1.5;
   var YMAX = 1.5;
-  var BLOCK_HEIGHT = 2 * SQRT3;
+  var BLOCK_HEIGHT = 2 * SQRT3$1;
   var LAYOUT_SHIFT = 1.16;
-  var EPS = 1e-12;
-  var engines = {};
+  var EPS$1 = 1e-12;
+  var engines$1 = {};
 
   // The four tetrahedron vertices published by Narukawa, in latitude-longitude
   // order. The extra precision preserves the regular tetrahedron to about 1e-9
@@ -8097,10 +8135,10 @@
   // D3 Imago's vertex-oriented tetrahedral block. Each entry contains the
   // spherical center, local meridian, planar rotation and planar center.
   var FACET_DEFS = [
-    [0, SQRT3, HALF_PI, 0, 0, -HALF_PI],
-    [0, -SQRT3, -ASIN_ONE_THIRD, 0, Math.PI, HALF_PI],
-    [3, 0, -ASIN_ONE_THIRD, 2 * Math.PI / 3, Math.PI, 5 * Math.PI / 6],
-    [-3, 0, -ASIN_ONE_THIRD, -2 * Math.PI / 3, Math.PI, Math.PI / 6]
+    [0, SQRT3$1, HALF_PI, 0, 0, -HALF_PI],
+    [0, -SQRT3$1, -ASIN_ONE_THIRD$1, 0, Math.PI, HALF_PI],
+    [3, 0, -ASIN_ONE_THIRD$1, 2 * Math.PI / 3, Math.PI, 5 * Math.PI / 6],
+    [-3, 0, -ASIN_ONE_THIRD$1, -2 * Math.PI / 3, Math.PI, Math.PI / 6]
   ];
 
   function registerNarukawa2022Projection(mproj) {
@@ -8111,10 +8149,10 @@
   }
 
   function getNarukawa2022Engine() {
-    if (!engines.default) {
-      engines.default = createNarukawa2022Engine();
+    if (!engines$1.default) {
+      engines$1.default = createNarukawa2022Engine();
     }
-    return engines.default;
+    return engines$1.default;
   }
 
   function initNarukawa2022(P) {
@@ -8126,7 +8164,7 @@
       xy.x = p[0];
       xy.y = p[1];
     };
-    P.__projection_topology = engine.getTopology(P.lam0 * R2D$1);
+    P.__projection_topology = engine.getTopology(P.lam0 * R2D$2);
     P.__projected_outline = engine.outline;
   }
 
@@ -8143,6 +8181,13 @@
         rotation: def[5]
       };
     });
+    var rasterSectors = facets.reduce(function(memo, facet) {
+      return memo.concat(getRawFacetSectorBoundaries(facets, facet));
+    }, []);
+    var rasterPieces = createNarukawaRasterPieces(facets, rasterSectors);
+    var rasterPieceIndex = new Map(rasterPieces.map(function(piece) {
+      return [piece.key, piece.id];
+    }));
     var outline = [[
       [XMIN * EDGE_SCALE, YMIN * EDGE_SCALE],
       [XMAX * EDGE_SCALE, YMIN * EDGE_SCALE],
@@ -8155,6 +8200,7 @@
       forward: forward,
       inverse: inverse,
       outline: outline,
+      rasterPieces: rasterPieces,
       getTopology: getTopology
     };
 
@@ -8188,6 +8234,41 @@
         }],
         findRegion: findRegion,
         findTransitionRegion: findRegion,
+        raster_regions: rasterPieces.map(function(piece) {
+          return {
+            id: piece.id,
+            facet: piece.facet,
+            sector: piece.sector,
+            source_region: piece.facet * 3 + piece.sector,
+            projected_boundary: piece.boundary.map(function(p) {
+              return [p[0] * EDGE_SCALE, p[1] * EDGE_SCALE];
+            })
+          };
+        }),
+        raster_source_regions: rasterSectors.map(function(sector) {
+          return {
+            id: sector.facet * 3 + sector.sector,
+            source_region: sector.facet * 3 + sector.sector,
+            facet: sector.facet,
+            sector: sector.sector,
+            boundary: sector.sphericalBoundary.map(function(p) {
+              var q = fromCanonical(p[0], p[1], orientation);
+              return [
+                normalizeLongitude$2(q[0] * R2D$2 + lon0),
+                q[1] * R2D$2
+              ];
+            })
+          };
+        }),
+        raster_mesh_interval: 32,
+        raster_cell_halo: false,
+        fill_raster_mask: true,
+        fill_raster_coverage: true,
+        findRasterRegion: findRasterRegion,
+        projectRasterRegion: projectRasterRegion,
+        projectRasterSourceRegion: projectRasterSourceRegion,
+        projectRasterSector: projectRasterSector,
+        clipRasterRegionPolygon: clipRasterRegionPolygon,
         outline: outline.map(function(ring) {
           return ring.map(function(p) {
             return p.concat();
@@ -8196,30 +8277,422 @@
       };
 
       function findRegion(lon, lat) {
-        var lam = normalizeRadians((lon - lon0) * D2R$1);
-        return projectState(lam, lat * D2R$1).region;
+        var lam = normalizeRadians((lon - lon0) * D2R$2);
+        return projectState(lam, lat * D2R$2).region;
+      }
+
+      function findRasterRegion(lon, lat) {
+        var lam = normalizeRadians((lon - lon0) * D2R$2);
+        var p = toCanonical(lam, lat * D2R$2, orientation);
+        var facet = findForwardFacet(p[0], p[1], facets);
+        var state = applyConditionalLayout(projectFacetRaw(p[0], p[1], facet), facet);
+        return rasterPieceIndex.get(getRasterPieceKey(
+          state.facet, state.sector, state.oobKey, state.folded, state.wrap
+        ));
+      }
+
+      function projectRasterRegion(lon, lat, regionId) {
+        var piece = rasterPieces[regionId];
+        var lam = normalizeRadians((lon - lon0) * D2R$2);
+        var p = toCanonical(lam, lat * D2R$2, orientation);
+        var facet = facets[piece.facet];
+        var raw = projectFacetRaw(p[0], p[1], facet, piece.sector);
+        var q = applyRasterPieceLayout(raw, facet, piece);
+        return [q[0] * EDGE_SCALE, q[1] * EDGE_SCALE];
+      }
+
+      function projectRasterSector(lon, lat, facetId, sector) {
+        var lam = normalizeRadians((lon - lon0) * D2R$2);
+        var p = toCanonical(lam, lat * D2R$2, orientation);
+        var raw = projectFacetRaw(p[0], p[1], facets[facetId], sector);
+        return [raw.x, raw.y];
+      }
+
+      function projectRasterSourceRegion(lon, lat, sourceRegionId) {
+        return projectRasterSector(
+          lon, lat, Math.floor(sourceRegionId / 3), sourceRegionId % 3);
+      }
+
+      function clipRasterRegionPolygon(vertices, regionId) {
+        return clipRasterPiecePolygon(
+          vertices, facets[rasterPieces[regionId].facet],
+          rasterPieces[regionId]);
       }
     }
   }
 
+  function createNarukawaRasterPieces(facets, rasterSectors) {
+    var pieces = [];
+    facets.forEach(function(facet) {
+      rasterSectors.filter(function(o) {
+        return o.facet == facet.id;
+      }).forEach(function(sectorData) {
+        ['normal', 'xpos', 'xneg', 'ypos', 'yneg'].forEach(function(oobKey) {
+          var oobPolygon = clipOobPolygon(sectorData.boundary, oobKey);
+          if (oobPolygon.length < 3) return;
+          oobPolygon = oobPolygon.map(function(p) {
+            return applyOobTransform(p, facet, oobKey);
+          });
+          [0, 1].forEach(function(folded) {
+            var foldedPolygon = clipPolygonAxis$1(oobPolygon, 0, 0, folded == 0);
+            if (foldedPolygon.length < 3) return;
+            foldedPolygon = foldedPolygon.map(function(p) {
+              return applyFoldTransform(p, folded);
+            });
+            [0, 1].forEach(function(wrap) {
+              var finalPolygon = foldedPolygon.map(function(p) {
+                return [
+                  p[0] + LAYOUT_SHIFT + wrap * 2 * BLOCK_HEIGHT - BLOCK_HEIGHT,
+                  p[1] + 1.5
+                ];
+              });
+              finalPolygon = clipRectangle(
+                finalPolygon, XMIN, YMIN, XMAX, YMAX);
+              if (finalPolygon.length < 3 ||
+                  Math.abs(getPlanarRingArea(finalPolygon)) < EPS$1) return;
+              var id = pieces.length;
+              pieces.push({
+                id: id,
+                key: getRasterPieceKey(
+                  facet.id, sectorData.sector, oobKey, folded, wrap),
+                facet: facet.id,
+                sector: sectorData.sector,
+                oobKey: oobKey,
+                folded: folded,
+                wrap: wrap,
+                boundary: finalPolygon.concat([finalPolygon[0].concat()])
+              });
+            });
+          });
+        });
+      });
+    });
+    return pieces;
+  }
+
+  function getRawFacetSectorBoundaries(facets, facet) {
+    var corners = facets.filter(function(o) {
+      return o.id != facet.id;
+    }).map(function(o) {
+      var v = radiansToVector(o.lon, o.lat);
+      return vectorToRadians([-v[0], -v[1], -v[2]]);
+    });
+    corners.sort(function(a, b) {
+      return obliquifySpherical(a[1], a[0], facet)[1] -
+        obliquifySpherical(b[1], b[0], facet)[1];
+    });
+    var samples = [];
+    for (var i = 0; i < corners.length; i++) {
+      var edge = interpolateSphericalRadians(
+        corners[i], corners[(i + 1) % corners.length], 0.05 * D2R$2);
+      for (var j = 0; j < edge.length - 1; j++) {
+        var p = edge[j];
+        var q = projectFacetRaw(p[0], p[1], facet);
+        samples.push({
+          sector: q.sector,
+          point: [q.x, q.y],
+          spherical: p.concat()
+        });
+      }
+    }
+    return [0, 1, 2].map(function(sector) {
+      var run = getLongestCircularSectorRun(samples, sector);
+      var middle = getFarthestSphericalSample(
+        run, [facet.lon, facet.lat]);
+      return {
+        facet: facet.id,
+        sector: sector,
+        sphericalBoundary: [
+          [facet.lon, facet.lat],
+          run[0].spherical,
+          middle.spherical,
+          run[run.length - 1].spherical,
+          [facet.lon, facet.lat]
+        ],
+        boundary: [[facet.x, facet.y]].concat(run.map(function(o) {
+          return o.point;
+        }))
+      };
+    });
+  }
+
+  function getFarthestSphericalSample(samples, center) {
+    var centerVector = radiansToVector(center[0], center[1]);
+    var best = samples[0];
+    var minDot = Infinity;
+    samples.forEach(function(sample) {
+      var v = radiansToVector(sample.spherical[0], sample.spherical[1]);
+      var d = dot$1(centerVector, v);
+      if (d < minDot) {
+        minDot = d;
+        best = sample;
+      }
+    });
+    return best;
+  }
+
+  function getLongestCircularSectorRun(samples, sector) {
+    var runs = [];
+    var run = [];
+    for (var i = 0; i < samples.length * 2; i++) {
+      var sample = samples[i % samples.length];
+      if (sample.sector == sector) {
+        run.push(sample);
+      } else if (run.length) {
+        runs.push(run);
+        run = [];
+      }
+    }
+    if (run.length) runs.push(run);
+    runs.sort(function(a, b) { return b.length - a.length; });
+    run = runs[0] || [];
+    if (run.length > samples.length) run = run.slice(0, samples.length);
+    return run;
+  }
+
+  function applyRasterPieceLayout(raw, facet, piece) {
+    var p = applyOobTransform([raw.x, raw.y], facet, piece.oobKey);
+    p = applyFoldTransform(p, piece.folded);
+    return [
+      p[0] + LAYOUT_SHIFT + piece.wrap * 2 * BLOCK_HEIGHT - BLOCK_HEIGHT,
+      p[1] + 1.5
+    ];
+  }
+
+  function clipRasterPiecePolygon(vertices, facet, piece) {
+    var polygon = clipRasterOobPolygon(vertices, piece.oobKey);
+    polygon = polygon.map(function(vertex) {
+      var p = applyOobTransform([vertex.x, vertex.y], facet, piece.oobKey);
+      return copyRasterVertex$1(vertex, p[0], p[1]);
+    });
+    polygon = clipRasterPolygonAxis$1(
+      polygon, 'x', 0, piece.folded == 0);
+    polygon = polygon.map(function(vertex) {
+      var p = applyFoldTransform([vertex.x, vertex.y], piece.folded);
+      return copyRasterVertex$1(vertex, p[0], p[1]);
+    });
+    polygon = polygon.map(function(vertex) {
+      return copyRasterVertex$1(
+        vertex,
+        vertex.x + LAYOUT_SHIFT +
+          piece.wrap * 2 * BLOCK_HEIGHT - BLOCK_HEIGHT,
+        vertex.y + 1.5
+      );
+    });
+    polygon = clipRasterPolygonAxis$1(polygon, 'x', XMIN, true);
+    polygon = clipRasterPolygonAxis$1(polygon, 'x', XMAX, false);
+    polygon = clipRasterPolygonAxis$1(polygon, 'y', YMIN, true);
+    polygon = clipRasterPolygonAxis$1(polygon, 'y', YMAX, false);
+    polygon.forEach(function(vertex) {
+      vertex.x *= EDGE_SCALE;
+      vertex.y *= EDGE_SCALE;
+    });
+    return polygon;
+  }
+
+  function clipRasterOobPolygon(polygon, oobKey) {
+    if (oobKey == 'xpos') {
+      return clipRasterPolygonAxis$1(polygon, 'x', 3, true);
+    }
+    if (oobKey == 'xneg') {
+      return clipRasterPolygonAxis$1(polygon, 'x', -3, false);
+    }
+    if (oobKey == 'ypos' || oobKey == 'yneg') {
+      polygon = clipRasterPolygonAxis$1(polygon, 'x', -3, true);
+      polygon = clipRasterPolygonAxis$1(polygon, 'x', 3, false);
+      return clipRasterPolygonAxis$1(
+        polygon, 'y', oobKey == 'ypos' ? SQRT3$1 : -SQRT3$1,
+        oobKey == 'ypos');
+    }
+    polygon = clipRasterPolygonAxis$1(polygon, 'x', -3, true);
+    polygon = clipRasterPolygonAxis$1(polygon, 'x', 3, false);
+    polygon = clipRasterPolygonAxis$1(polygon, 'y', -SQRT3$1, true);
+    return clipRasterPolygonAxis$1(polygon, 'y', SQRT3$1, false);
+  }
+
+  function clipRasterPolygonAxis$1(polygon, axis, value, keepGreater) {
+    var output = [];
+    if (polygon.length === 0) return output;
+    var a = polygon[polygon.length - 1];
+    var aInside = keepGreater ?
+      a[axis] >= value - EPS$1 : a[axis] <= value + EPS$1;
+    polygon.forEach(function(b) {
+      var bInside = keepGreater ?
+        b[axis] >= value - EPS$1 : b[axis] <= value + EPS$1;
+      if (aInside != bInside) {
+        var t = (value - a[axis]) / (b[axis] - a[axis]);
+        var vertex = {
+          x: a.x + (b.x - a.x) * t,
+          y: a.y + (b.y - a.y) * t,
+          sx: a.sx + (b.sx - a.sx) * t,
+          sy: a.sy + (b.sy - a.sy) * t,
+          lon: a.lon + (b.lon - a.lon) * t,
+          lat: a.lat + (b.lat - a.lat) * t
+        };
+        vertex[axis] = value;
+        output.push(vertex);
+      }
+      if (bInside) output.push(copyRasterVertex$1(b, b.x, b.y));
+      a = b;
+      aInside = bInside;
+    });
+    return output;
+  }
+
+  function copyRasterVertex$1(vertex, x, y) {
+    return {
+      x: x,
+      y: y,
+      sx: vertex.sx,
+      sy: vertex.sy,
+      lon: vertex.lon,
+      lat: vertex.lat
+    };
+  }
+
+  function applyOobTransform(p, facet, oobKey) {
+    if (oobKey == 'xpos' || oobKey == 'xneg') {
+      return [2 * facet.x - p[0], -p[1]];
+    }
+    if (oobKey == 'ypos') {
+      return [-p[0], BLOCK_HEIGHT - p[1]];
+    }
+    if (oobKey == 'yneg') {
+      return [-p[0], -BLOCK_HEIGHT - p[1]];
+    }
+    return p.concat();
+  }
+
+  function applyFoldTransform(p, folded) {
+    return folded ? [BLOCK_HEIGHT - p[1], p[0]] : [p[1], -p[0]];
+  }
+
+  function clipOobPolygon(polygon, oobKey) {
+    if (oobKey == 'xpos') return clipPolygonAxis$1(polygon, 0, 3, true);
+    if (oobKey == 'xneg') return clipPolygonAxis$1(polygon, 0, -3, false);
+    if (oobKey == 'ypos') {
+      return clipPolygonAxis$1(
+        clipPolygonAxis$1(
+          clipPolygonAxis$1(polygon, 0, -3, true), 0, 3, false),
+        1, SQRT3$1, true);
+    }
+    if (oobKey == 'yneg') {
+      return clipPolygonAxis$1(
+        clipPolygonAxis$1(
+          clipPolygonAxis$1(polygon, 0, -3, true), 0, 3, false),
+        1, -SQRT3$1, false);
+    }
+    return clipRectangle(polygon, -3, -SQRT3$1, 3, SQRT3$1);
+  }
+
+  function clipRectangle(polygon, xmin, ymin, xmax, ymax) {
+    polygon = clipPolygonAxis$1(polygon, 0, xmin, true);
+    polygon = clipPolygonAxis$1(polygon, 0, xmax, false);
+    polygon = clipPolygonAxis$1(polygon, 1, ymin, true);
+    return clipPolygonAxis$1(polygon, 1, ymax, false);
+  }
+
+  function clipPolygonAxis$1(polygon, axis, value, keepGreater) {
+    var output = [];
+    if (polygon.length === 0) return output;
+    var a = polygon[polygon.length - 1];
+    var aInside = keepGreater ? a[axis] >= value - EPS$1 : a[axis] <= value + EPS$1;
+    polygon.forEach(function(b) {
+      var bInside = keepGreater ? b[axis] >= value - EPS$1 : b[axis] <= value + EPS$1;
+      if (aInside != bInside) {
+        var t = (value - a[axis]) / (b[axis] - a[axis]);
+        var p = [
+          a[0] + (b[0] - a[0]) * t,
+          a[1] + (b[1] - a[1]) * t
+        ];
+        p[axis] = value;
+        output.push(p);
+      }
+      if (bInside) output.push(b.concat());
+      a = b;
+      aInside = bInside;
+    });
+    return output;
+  }
+
+  function interpolateSphericalRadians(a, b, interval) {
+    var av = radiansToVector(a[0], a[1]);
+    var bv = radiansToVector(b[0], b[1]);
+    var angle = Math.acos(clamp$2(dot$1(av, bv), -1, 1));
+    var count = Math.max(1, Math.ceil(angle / interval));
+    var sinAngle = Math.sin(angle);
+    var points = [];
+    for (var i = 0; i <= count; i++) {
+      var t = i / count;
+      var ka = Math.sin((1 - t) * angle) / sinAngle;
+      var kb = Math.sin(t * angle) / sinAngle;
+      points.push(vectorToRadians(normalizeVector([
+        av[0] * ka + bv[0] * kb,
+        av[1] * ka + bv[1] * kb,
+        av[2] * ka + bv[2] * kb
+      ])));
+    }
+    return points;
+  }
+
+  function vectorToRadians(p) {
+    return [
+      Math.atan2(p[1], p[0]),
+      Math.asin(clamp$2(p[2], -1, 1))
+    ];
+  }
+
+  function getPlanarRingArea(ring) {
+    var area = 0;
+    for (var i = 0, j = ring.length - 1; i < ring.length; j = i++) {
+      area += ring[j][0] * ring[i][1] - ring[i][0] * ring[j][1];
+    }
+    return area / 2;
+  }
+
+  function getRasterPieceKey(facet, sector, oobKey, folded, wrap) {
+    return [facet, sector, oobKey, folded, wrap].join(':');
+  }
+
   function projectCanonical(lam, phi, facets) {
     var facet = findForwardFacet(lam, phi, facets);
+    var state = projectFacetRaw(lam, phi, facet);
+    return applyConditionalLayout(state, facet);
+  }
+
+  function projectFacetRaw(lam, phi, facet, forcedSector) {
     var relative = obliquifySpherical(phi, lam, facet);
-    var sector = Math.floor((relative[1] + Math.PI / 3) / (2 * Math.PI / 3));
+    var sector = forcedSector == null ?
+      Math.floor((relative[1] + Math.PI / 3) / (2 * Math.PI / 3)) :
+      forcedSector == 2 ? -1 : forcedSector;
     var base = sector * 2 * Math.PI / 3;
     var polar = narukawaFaceForward(relative[1] - base, relative[0]);
     var angle = polar[1] + facet.rotation + base / 2;
     var x = polar[0] * Math.cos(angle) + facet.x;
     var y = polar[0] * Math.sin(angle) + facet.y;
+    return {
+      x: x,
+      y: y,
+      facet: facet.id,
+      sector: mod(sector, 3)
+    };
+  }
+
+  function applyConditionalLayout(raw, facet) {
+    var x = raw.x;
+    var y = raw.y;
     var oob = 0;
+    var oobKey = 'normal';
     var folded = 0;
     var wrap = 0;
 
-    if (Math.abs(x) > 3 + EPS) {
+    if (Math.abs(x) > 3 + EPS$1) {
+      oobKey = x > 0 ? 'xpos' : 'xneg';
       x = 2 * facet.x - x;
       y = -y;
       oob = 1;
-    } else if (Math.abs(y) > SQRT3 + EPS) {
+    } else if (Math.abs(y) > SQRT3$1 + EPS$1) {
+      oobKey = y > 0 ? 'ypos' : 'yneg';
       x = -x;
       y = BLOCK_HEIGHT * Math.sign(y) - y;
       oob = 2;
@@ -8227,7 +8700,7 @@
 
     var qx = y;
     var qy = -x;
-    if (qy > EPS) {
+    if (qy > EPS$1) {
       qx = BLOCK_HEIGHT - qx;
       qy = -qy;
       folded = 1;
@@ -8244,9 +8717,10 @@
     return {
       x: x,
       y: y,
-      facet: facet.id,
-      sector: mod(sector, 3),
+      facet: raw.facet,
+      sector: raw.sector,
       oob: oob,
+      oobKey: oobKey,
       folded: folded,
       wrap: wrap
     };
@@ -8267,29 +8741,29 @@
   }
 
   function narukawaFaceForward(lam, phi) {
-    var a = lam - Math.asin(Math.sin(lam) / SQRT3);
-    var theta = Math.atan(2 * SQRT3 / Math.PI * a);
-    var denominator = 2 + SQRT2 * Math.tan(phi);
+    var a = lam - Math.asin(Math.sin(lam) / SQRT3$1);
+    var theta = Math.atan(2 * SQRT3$1 / Math.PI * a);
+    var denominator = 2 + SQRT2$1 * Math.tan(phi);
     var q = denominator > 0 ? (2 + Math.cos(lam)) / denominator : 0;
-    var r = q * SQRT3 / Math.cos(theta);
+    var r = q * SQRT3$1 / Math.cos(theta);
     return [r, theta];
   }
 
   function narukawaFaceInverse(r, theta) {
-    var target = Math.tan(theta) * Math.PI / (2 * SQRT3);
+    var target = Math.tan(theta) * Math.PI / (2 * SQRT3$1);
     var lo = -Math.PI / 3;
     var hi = Math.PI / 3;
     var lam;
     for (var i = 0; i < 55; i++) {
       lam = (lo + hi) / 2;
-      var a = lam - Math.asin(Math.sin(lam) / SQRT3);
+      var a = lam - Math.asin(Math.sin(lam) / SQRT3$1);
       if (a < target) lo = lam;
       else hi = lam;
     }
     lam = (lo + hi) / 2;
-    var q = r * Math.cos(theta) / SQRT3;
-    var phi = q < EPS ? HALF_PI :
-      Math.atan(((2 + Math.cos(lam)) / q - 2) / SQRT2);
+    var q = r * Math.cos(theta) / SQRT3$1;
+    var phi = q < EPS$1 ? HALF_PI :
+      Math.atan(((2 + Math.cos(lam)) / q - 2) / SQRT2$1);
     return [phi, lam];
   }
 
@@ -8370,7 +8844,7 @@
     var theta0 = pole.meridian;
     var lat1;
     var lon1;
-    if (Math.abs(lat0 - HALF_PI) < EPS) {
+    if (Math.abs(lat0 - HALF_PI) < EPS$1) {
       lat1 = lat;
       lon1 = lon - lon0;
     } else {
@@ -8381,7 +8855,7 @@
         1
       ));
       var denominator = Math.cos(lat1);
-      var value = denominator < EPS ? 1 :
+      var value = denominator < EPS$1 ? 1 :
         (Math.cos(lat0) * Math.sin(lat) -
           Math.sin(lat0) * Math.cos(lat) * Math.cos(lon0 - lon)) /
         denominator;
@@ -8402,7 +8876,7 @@
       1
     ));
     var lonOut;
-    if (Math.abs(lat0 - HALF_PI) < EPS) {
+    if (Math.abs(lat0 - HALF_PI) < EPS$1) {
       lonOut = lon + lon0;
     } else {
       var value = Math.sin(lat) / Math.cos(lat0) / Math.cos(latOut) -
@@ -8431,8 +8905,8 @@
         var y = edge[0][1] + (edge[1][1] - edge[0][1]) * t;
         var p = inverse(x * EDGE_SCALE, y * EDGE_SCALE);
         path.push([
-          normalizeLongitude$1(p[0] * R2D$1 + lon0),
-          p[1] * R2D$1
+          normalizeLongitude$2(p[0] * R2D$2 + lon0),
+          p[1] * R2D$2
         ]);
       }
       return memo.concat(splitPathAtAntimeridian$1(path));
@@ -8479,7 +8953,7 @@
   }
 
   function latLonToVector(p) {
-    return radiansToVector(p[1] * D2R$1, p[0] * D2R$1);
+    return radiansToVector(p[1] * D2R$2, p[0] * D2R$2);
   }
 
   function radiansToVector(lam, phi) {
@@ -8522,7 +8996,7 @@
     return lam;
   }
 
-  function normalizeLongitude$1(lon) {
+  function normalizeLongitude$2(lon) {
     while (lon > 180) lon -= 360;
     while (lon < -180) lon += 360;
     return lon;
@@ -8538,10 +9012,541 @@
     registerNarukawa2022Projection: registerNarukawa2022Projection
   });
 
+  /*
+   * Rectangular conformal tetrahedral projections based on L. P. Lee's
+   * conformal face transform.
+   *
+   * Lee transform and tetrahedral net adapted from d3-geo-polygon:
+   * Copyright 2017-2024 Mike Bostock, ISC license.
+   * https://github.com/d3/d3-geo-polygon/blob/main/src/tetrahedralLee.js
+   *
+   * The rectangular layout below is derived from Markley's repeated-face
+   * construction: four affine copies of the triangular Lee net are clipped to
+   * a 4/sqrt(3) frame. See F. Landis Markley, "Tetrahedral Map Projection"
+   * (2020), and https://blog.map-projections.net/lee-markley-calm-and-grieger.
+   */
+
+
+  var D2R$1 = Math.PI / 180;
+  var R2D$1 = 180 / Math.PI;
+  var SQRT2 = Math.sqrt(2);
+  var SQRT3 = Math.sqrt(3);
+  var ASIN_ONE_THIRD = Math.asin(1 / 3);
+  var MARKLEY_LATITUDE = Math.acos(1 / 3) * 0.5 * R2D$1;
+  var RECT_XMIN = -7;
+  var RECT_XMAX = 1;
+  var RECT_YMIN = -2 * SQRT3;
+  var RECT_YMAX = 0;
+  var EPS = 1e-12;
+  var engines = {};
+
+  var TETRAHEDRON_VERTICES = [
+    [0, 90],
+    [-180, -ASIN_ONE_THIRD * R2D$1],
+    [-60, -ASIN_ONE_THIRD * R2D$1],
+    [60, -ASIN_ONE_THIRD * R2D$1]
+  ];
+
+  var TETRAHEDRON_FACES = [
+    [1, 2, 3],
+    [0, 2, 1],
+    [0, 3, 2],
+    [0, 1, 3]
+  ].map(function(face) {
+    return face.map(function(i) {
+      return TETRAHEDRON_VERTICES[i];
+    });
+  });
+
+  var LAYOUT_COPIES = [
+    {id: 0, name: 'green', matrix: [1, 0, 0, 0, -1, 0]},
+    {id: 1, name: 'red', matrix: [-1, 0, -4, 0, 1, 0]},
+    {id: 2, name: 'blue', matrix: [1, 0, -8, 0, -1, 0]},
+    {id: 3, name: 'orange', matrix: [-1, 0, 4, 0, 1, 0]}
+  ];
+
+  function registerLeeTetrahedralProjections(mproj) {
+    if (!mproj) return;
+    register('markley', 'Markley conformal tetrahedral world map');
+    register('calm', 'Conformal Authagraph-Like Map');
+
+    function register(id, name) {
+      if (mproj.internal.pj_list[id]) return;
+      mproj.pj_add(function(P) {
+        initLeeTetrahedral(P, id);
+      }, id, name);
+    }
+  }
+
+  function getLeeTetrahedralEngine(id) {
+    id = id || 'markley';
+    if (!engines[id]) {
+      engines[id] = createLeeTetrahedralEngine(getProjectionRotation(id));
+    }
+    return engines[id];
+  }
+
+  function initLeeTetrahedral(P, id) {
+    var engine = getLeeTetrahedralEngine(id);
+    P.es = 0;
+    P.inv = null;
+    P.fwd = function(lp, xy) {
+      var p = engine.forward(lp.lam, lp.phi);
+      xy.x = p[0];
+      xy.y = p[1];
+    };
+    P.__projection_topology = engine.getTopology(P.lam0 * R2D$1);
+    P.__projected_outline = engine.outline;
+  }
+
+  function getProjectionRotation(id) {
+    if (id == 'calm') {
+      // Exact D3 Euler equivalent of MapDesigner's published CALM aspect:
+      // latitude 77°, longitude 143°, central meridian -163°.
+      return [
+        19.57956907750618,
+        -12.42267097553935,
+        3.8615690020132067
+      ];
+    }
+    // Markley's singularities are at ±35.26439°, in the oceans.
+    return [115, MARKLEY_LATITUDE - 90, 180];
+  }
+
+  function createLeeTetrahedralEngine(rotation) {
+    var base = createPolyhedralProjection({
+      faces: TETRAHEDRON_FACES,
+      parents: [-1, 0, 0, 0],
+      rotation: rotation,
+      angle: 30,
+      faceProjector: createLeeFaceProjector
+    });
+    var normalization = getBaseNormalization(base.outline);
+    var baseTopology = base.getTopology(0);
+    var sourceRegions = createSourceRegions(rotation);
+    var pieces = createLayoutPieces(baseTopology.regions, normalization);
+    var pieceIndex = new Map(pieces.map(function(piece) {
+      return [getPieceKey(piece.face, piece.copy), piece.id];
+    }));
+    var outline = [[
+      centerOutputPoint([RECT_XMIN, RECT_YMIN]),
+      centerOutputPoint([RECT_XMAX, RECT_YMIN]),
+      centerOutputPoint([RECT_XMAX, RECT_YMAX]),
+      centerOutputPoint([RECT_XMIN, RECT_YMAX]),
+      centerOutputPoint([RECT_XMIN, RECT_YMIN])
+    ]];
+
+    return {
+      forward: forward,
+      outline: outline,
+      getTopology: getTopology
+    };
+
+    function forward(lam, phi) {
+      var p = normalizeBasePoint(base.forward(lam, phi), normalization);
+      var copy = getLayoutCopy(p);
+      return centerOutputPoint(applyMatrix(copy.matrix, p));
+    }
+
+    function getTopology(lon0) {
+      var topology = base.getTopology(lon0);
+      return {
+        regions: pieces.map(copyProjectedPiece),
+        seams: topology.seams.map(function(seam) {
+          return {
+            type: 'cut',
+            faces: seam.faces,
+            paths: seam.paths
+          };
+        }),
+        findRegion: findRegion,
+        findTransitionRegion: findRegion,
+        projectRegion: projectRegion,
+        raster_regions: pieces.map(copyRasterPiece),
+        raster_source_regions: sourceRegions.map(function(region) {
+          return {
+            id: region.id,
+            boundary: region.boundary.map(function(p) {
+              return [
+                normalizeLongitude$1(p[0] + lon0),
+                p[1]
+              ];
+            })
+          };
+        }),
+        raster_mesh_interval: 32,
+        raster_cell_halo: false,
+        fill_raster_mask: true,
+        fill_raster_coverage: true,
+        findRasterRegion: findRegion,
+        projectRasterRegion: projectRegion,
+        projectRasterSourceRegion: projectRasterSourceRegion,
+        clipRasterRegionPolygon: clipRasterRegionPolygon,
+        outline: outline.map(function(ring) {
+          return ring.map(function(p) { return p.concat(); });
+        })
+      };
+
+      function findRegion(lon, lat) {
+        var lam = normalizeLongitude$1(lon - lon0) * D2R$1;
+        var phi = lat * D2R$1;
+        var face = base.findFace(lam, phi);
+        var p = normalizeBasePoint(base.forwardFace(lam, phi, face), normalization);
+        var copy = getLayoutCopy(p);
+        return pieceIndex.get(getPieceKey(face, copy.id));
+      }
+
+      function projectRegion(lon, lat, regionId) {
+        var piece = pieces[regionId];
+        var lam = normalizeLongitude$1(lon - lon0) * D2R$1;
+        var p = normalizeBasePoint(
+          base.forwardFace(lam, lat * D2R$1, piece.face),
+          normalization
+        );
+        return centerOutputPoint(applyMatrix(piece.matrix, p));
+      }
+
+      function projectRasterSourceRegion(lon, lat, sourceRegionId) {
+        var lam = normalizeLongitude$1(lon - lon0) * D2R$1;
+        return normalizeBasePoint(
+          base.forwardFace(lam, lat * D2R$1, sourceRegionId),
+          normalization
+        );
+      }
+
+      function clipRasterRegionPolygon(vertices, regionId) {
+        var piece = pieces[regionId];
+        var polygon = vertices.map(function(vertex) {
+          var p = applyMatrix(piece.matrix, [vertex.x, vertex.y]);
+          return copyRasterVertex(vertex, p[0], p[1]);
+        });
+        polygon = clipRasterPolygonAxis(polygon, 'x', RECT_XMIN, true);
+        polygon = clipRasterPolygonAxis(polygon, 'x', RECT_XMAX, false);
+        polygon = clipRasterPolygonAxis(polygon, 'y', RECT_YMIN, true);
+        polygon = clipRasterPolygonAxis(polygon, 'y', RECT_YMAX, false);
+        polygon.forEach(function(vertex) {
+          var p = centerOutputPoint([vertex.x, vertex.y]);
+          vertex.x = p[0];
+          vertex.y = p[1];
+        });
+        return polygon;
+      }
+    }
+  }
+
+  function createSourceRegions(rotation) {
+    return TETRAHEDRON_FACES.map(function(face, id) {
+      var boundary = face.map(function(p) {
+        var q = rotateSphericalRadians(
+          p[0] * D2R$1, p[1] * D2R$1, rotation, true);
+        return [normalizeLongitude$1(q[0] * R2D$1), q[1] * R2D$1];
+      });
+      boundary.push(boundary[0].concat());
+      return {id: id, boundary: boundary};
+    });
+  }
+
+  function createLayoutPieces(regions, normalization) {
+    var pieces = [];
+    regions.forEach(function(region) {
+      var boundary = region.projected_boundary.map(function(p) {
+        return normalizeBasePoint(p, normalization);
+      });
+      LAYOUT_COPIES.forEach(function(copy) {
+        var polygon = boundary.map(function(p) {
+          return applyMatrix(copy.matrix, p);
+        });
+        polygon = clipPolygonAxis(polygon, 0, RECT_XMIN, true);
+        polygon = clipPolygonAxis(polygon, 0, RECT_XMAX, false);
+        polygon = clipPolygonAxis(polygon, 1, RECT_YMIN, true);
+        polygon = clipPolygonAxis(polygon, 1, RECT_YMAX, false);
+        if (polygon.length < 3 || Math.abs(getRingArea$2(polygon)) < EPS) return;
+        var id = pieces.length;
+        pieces.push({
+          id: id,
+          face: region.id,
+          source_region: region.id,
+          copy: copy.id,
+          matrix: copy.matrix,
+          boundary: polygon.map(centerOutputPoint)
+        });
+      });
+    });
+    return pieces;
+  }
+
+  function copyProjectedPiece(piece) {
+    return {
+      id: piece.id,
+      source_region: piece.source_region,
+      projected_boundary: closeRing$1(piece.boundary)
+    };
+  }
+
+  function copyRasterPiece(piece) {
+    return {
+      id: piece.id,
+      source_region: piece.source_region,
+      projected_boundary: closeRing$1(piece.boundary)
+    };
+  }
+
+  function closeRing$1(ring) {
+    var copy = ring.map(function(p) { return p.concat(); });
+    if (copy.length && !pointsEqual$1(copy[0], copy[copy.length - 1])) {
+      copy.push(copy[0].concat());
+    }
+    return copy;
+  }
+
+  function getLayoutCopy(p) {
+    // The four transformed triangular nets tile the frame. These two straight
+    // cuts select the unique copy containing a point from the base net.
+    if (p[1] >= 0) return p[0] > 3 ? LAYOUT_COPIES[2] : LAYOUT_COPIES[0];
+    return p[0] > 1 ? LAYOUT_COPIES[3] : LAYOUT_COPIES[1];
+  }
+
+  function centerOutputPoint(p) {
+    return [
+      p[0] - (RECT_XMIN + RECT_XMAX) / 2,
+      p[1] - (RECT_YMIN + RECT_YMAX) / 2
+    ];
+  }
+
+  function getBaseNormalization(outline) {
+    var xmin = Infinity;
+    var ymin = Infinity;
+    var xmax = -Infinity;
+    var ymax = -Infinity;
+    outline.forEach(function(ring) {
+      ring.forEach(function(p) {
+        xmin = Math.min(xmin, p[0]);
+        ymin = Math.min(ymin, p[1]);
+        xmax = Math.max(xmax, p[0]);
+        ymax = Math.max(ymax, p[1]);
+      });
+    });
+    return {
+      cx: (xmin + xmax) / 2,
+      cy: (ymin + ymax) / 2,
+      scale: 8 / (xmax - xmin)
+    };
+  }
+
+  function normalizeBasePoint(p, normalization) {
+    return [
+      (p[0] - normalization.cx) * normalization.scale,
+      -(p[1] - normalization.cy) * normalization.scale
+    ];
+  }
+
+  function createLeeFaceProjector(face) {
+    var c = face.centroid;
+    var rotation = Math.abs(c[1]) == 90 ?
+      [0, -c[1], -30] :
+      [-c[0], -c[1], 30];
+    return function(lam, phi) {
+      var p = rotateSphericalRadians(lam, phi, rotation);
+      var q = leeRaw(p[0], p[1]);
+      return [q[0], -q[1]];
+    };
+  }
+
+  function leeRaw(lam, phi) {
+    var w = [-0.5, SQRT3 / 2];
+    var z = complexMultiply(stereographicRaw(lam, phi), [SQRT2, 0]);
+    var powers = [0, 1, 2].map(function(i) {
+      return complexPower(w, [i, 0]);
+    });
+    var sector = 0;
+    for (var i = 1; i < powers.length; i++) {
+      if (complexMultiply(z, powers[i])[0] >
+          complexMultiply(z, powers[sector])[0]) sector = i;
+    }
+    var rot = powers[sector];
+    var n = complexNorm(z);
+    var h = [0, 0];
+    var k = [0, 0];
+
+    if (n > 0.3) {
+      var y = complexSubtract([1, 0], complexMultiply(rot, z));
+      var w1 = 1.4021821053254548;
+      var coefficients = [
+        1.15470053837925, 0.192450089729875, 0.0481125224324687,
+        0.010309826235529, 3.34114739114366e-4, -0.00150351632601465,
+        -0.0012304417796231, -675190201960282e-18,
+        -284084537293856e-18, -821205120500051e-19,
+        -159257630018706e-20, 1.91691805888369e-5,
+        1.73095888028726e-5, 1.03865580818367e-5,
+        4.70614523937179e-6, 1.4413500104181e-6,
+        1.92757960170179e-8, -3.82869799649063e-7,
+        -3.57526015225576e-7, -2.2175964844211e-7
+      ];
+      var g = [0, 0];
+      for (i = coefficients.length - 1; i >= 0; i--) {
+        g = complexAdd([coefficients[i], 0], complexMultiply(g, y));
+      }
+      k = complexSubtract([w1, 0], complexMultiply(complexPower(y, 0.5), g));
+      k = complexMultiply(complexMultiply(k, rot), rot);
+    }
+
+    if (n < 0.5) {
+      var h0 = [1, 1 / 8, 3 / 56, 1 / 32, 35 / 1664, 63 / 4096, 231 / 19456];
+      var z3 = complexPower(z, [3, 0]);
+      for (i = h0.length - 1; i >= 0; i--) {
+        h = complexAdd([h0[i], 0], complexMultiply(h, z3));
+      }
+      h = complexMultiply(h, z);
+    }
+
+    if (n < 0.3) return h;
+    if (n > 0.5) return k;
+    var t = (n - 0.3) / 0.2;
+    return complexAdd(
+      complexMultiply(k, [t, 0]),
+      complexMultiply(h, [1 - t, 0])
+    );
+  }
+
+  function stereographicRaw(lam, phi) {
+    var cosPhi = Math.cos(phi);
+    var k = 1 / (1 + cosPhi * Math.cos(lam));
+    return [k * cosPhi * Math.sin(lam), k * Math.sin(phi)];
+  }
+
+  function complexAdd(a, b) {
+    return [a[0] + b[0], a[1] + b[1]];
+  }
+
+  function complexSubtract(a, b) {
+    return [a[0] - b[0], a[1] - b[1]];
+  }
+
+  function complexMultiply(a, b) {
+    return [a[0] * b[0] - a[1] * b[1], a[1] * b[0] + a[0] * b[1]];
+  }
+
+  function complexNorm(a) {
+    return Math.hypot(a[0], a[1]);
+  }
+
+  function complexPower(value, exponent) {
+    var a = value[0];
+    var b = value[1];
+    var n = typeof exponent == 'number' ? [exponent, 0] : exponent;
+    if (a === 0 && b === 0) return [0, 0];
+    if (!n[1] && b === 0 && a >= 0) {
+      return [Math.pow(a, n[0]), 0];
+    }
+    var arg = Math.atan2(b, a);
+    var logNorm = Math.log(Math.hypot(a, b));
+    var magnitude = Math.exp(n[0] * logNorm - n[1] * arg);
+    var angle = n[1] * logNorm + n[0] * arg;
+    return [magnitude * Math.cos(angle), magnitude * Math.sin(angle)];
+  }
+
+  function applyMatrix(m, p) {
+    return [
+      m[0] * p[0] + m[1] * p[1] + m[2],
+      m[3] * p[0] + m[4] * p[1] + m[5]
+    ];
+  }
+
+  function clipPolygonAxis(polygon, axis, value, keepGreater) {
+    var output = [];
+    if (!polygon.length) return output;
+    var a = polygon[polygon.length - 1];
+    var aInside = keepGreater ? a[axis] >= value - EPS : a[axis] <= value + EPS;
+    polygon.forEach(function(b) {
+      var bInside = keepGreater ? b[axis] >= value - EPS : b[axis] <= value + EPS;
+      if (aInside != bInside) {
+        var t = (value - a[axis]) / (b[axis] - a[axis]);
+        var p = [
+          a[0] + (b[0] - a[0]) * t,
+          a[1] + (b[1] - a[1]) * t
+        ];
+        p[axis] = value;
+        output.push(p);
+      }
+      if (bInside) output.push(b.concat());
+      a = b;
+      aInside = bInside;
+    });
+    return output;
+  }
+
+  function clipRasterPolygonAxis(polygon, axis, value, keepGreater) {
+    var output = [];
+    if (!polygon.length) return output;
+    var a = polygon[polygon.length - 1];
+    var aInside = keepGreater ? a[axis] >= value - EPS : a[axis] <= value + EPS;
+    polygon.forEach(function(b) {
+      var bInside = keepGreater ? b[axis] >= value - EPS : b[axis] <= value + EPS;
+      if (aInside != bInside) {
+        var t = (value - a[axis]) / (b[axis] - a[axis]);
+        var vertex = {
+          x: a.x + (b.x - a.x) * t,
+          y: a.y + (b.y - a.y) * t,
+          sx: a.sx + (b.sx - a.sx) * t,
+          sy: a.sy + (b.sy - a.sy) * t,
+          lon: interpolateLongitude(a.lon, b.lon, t),
+          lat: a.lat + (b.lat - a.lat) * t
+        };
+        vertex[axis] = value;
+        output.push(vertex);
+      }
+      if (bInside) output.push(copyRasterVertex(b, b.x, b.y));
+      a = b;
+      aInside = bInside;
+    });
+    return output;
+  }
+
+  function copyRasterVertex(vertex, x, y) {
+    return {
+      x: x,
+      y: y,
+      sx: vertex.sx,
+      sy: vertex.sy,
+      lon: vertex.lon,
+      lat: vertex.lat
+    };
+  }
+
+  function interpolateLongitude(a, b, t) {
+    var delta = b - a;
+    if (delta > 180) delta -= 360;
+    if (delta < -180) delta += 360;
+    return normalizeLongitude$1(a + delta * t);
+  }
+
+  function getRingArea$2(ring) {
+    var area = 0;
+    for (var i = 0, j = ring.length - 1; i < ring.length; j = i++) {
+      area += ring[j][0] * ring[i][1] - ring[i][0] * ring[j][1];
+    }
+    return area / 2;
+  }
+
+  function getPieceKey(face, copy) {
+    return face + ':' + copy;
+  }
+
+  function pointsEqual$1(a, b) {
+    return Math.abs(a[0] - b[0]) < EPS && Math.abs(a[1] - b[1]) < EPS;
+  }
+
+  function normalizeLongitude$1(lon) {
+    lon = (lon + 180) % 360;
+    if (lon < 0) lon += 360;
+    return lon - 180;
+  }
+
   var mproj$1 = require$1('mproj');
   registerDymaxionProjections(mproj$1);
   registerButterflyProjections(mproj$1);
   registerNarukawa2022Projection(mproj$1);
+  registerLeeTetrahedralProjections(mproj$1);
 
   var asyncLoader = null;
 
@@ -45620,7 +46625,7 @@ ${svg}
 
     function stopIfBufferReachesPole(shape, dist) {
       var maxAbsLat = 0;
-      var angularDist = dist / R$3 * R2D$6;
+      var angularDist = dist / R$3 * R2D$7;
       (shape || []).forEach(function(path) {
         latLngPathIter.init(path);
         while (latLngPathIter.hasNext()) {
@@ -47737,12 +48742,12 @@ ${svg}
   }
 
   function projectBufferPoint(x, y, spherical) {
-    return spherical ? [x * D2R$7 * R$3, Math.log(Math.tan(Math.PI / 4 + y * D2R$7 / 2)) * R$3] :
+    return spherical ? [x * D2R$8 * R$3, Math.log(Math.tan(Math.PI / 4 + y * D2R$8 / 2)) * R$3] :
       [x, y];
   }
 
   function unprojectBufferPoint(x, y, spherical) {
-    return spherical ? [x / (D2R$7 * R$3), (2 * Math.atan(Math.exp(y / R$3)) - Math.PI / 2) / (D2R$7)] :
+    return spherical ? [x / (D2R$8 * R$3), (2 * Math.atan(Math.exp(y / R$3)) - Math.PI / 2) / (D2R$8)] :
       [x, y];
   }
 
@@ -52413,7 +53418,7 @@ ${svg}
     var maxAbsLat = Math.max(Math.abs(bounds.ymin), Math.abs(bounds.ymax));
     var maxPositiveDistance = getMaxPositiveBufferDistance(lyr, dataset, opts);
     if (!(maxPositiveDistance > 0)) return false;
-    return maxAbsLat + maxPositiveDistance / R$3 * R2D$6 >= 90 - POLAR_BUFFER_MARGIN_DEGREES;
+    return maxAbsLat + maxPositiveDistance / R$3 * R2D$7 >= 90 - POLAR_BUFFER_MARGIN_DEGREES;
   }
 
   function getMaxPositiveBufferDistance(lyr, dataset, opts) {
@@ -53665,7 +54670,7 @@ ${svg}
   }
 
   function getCoordinateDistance(distance, arcs) {
-    return arcs.isPlanar() ? distance : distance / R$3 * R2D$6;
+    return arcs.isPlanar() ? distance : distance / R$3 * R2D$7;
   }
 
   // @shapeIndex: chunk-bounds index of the source shape (see buildShapeSegmentIndex)
@@ -54334,7 +55339,7 @@ ${svg}
     // depending on parameters
     if (inList(P, 'cassini,gnom,bertin1953,chamb,ob_tran,tpeqd,healpix,rhealpix,' +
       'ocea,omerc,tmerc,etmerc,nicol,dymaxion,dymaxion2,butterfly,butterfly2,' +
-      'cahill_keyes,narukawa2022')) {
+      'cahill_keyes,narukawa2022,markley,calm')) {
       return false;
     }
     if (isAzimuthal(P)) {
@@ -54386,16 +55391,16 @@ ${svg}
   }
 
   function getRotationFunction2(rotation, inv) {
-    var a = (rotation[0] || 0) * D2R$7,
-        b = (rotation[1] || 0) * D2R$7,
-        c = (rotation[2] || 0) * D2R$7;
+    var a = (rotation[0] || 0) * D2R$8,
+        b = (rotation[1] || 0) * D2R$8,
+        c = (rotation[2] || 0) * D2R$8;
     return function(p) {
-      p[0] *= D2R$7;
-      p[1] *= D2R$7;
+      p[0] *= D2R$8;
+      p[1] *= D2R$8;
       var rotate = inv ? rotatePointInv : rotatePoint;
       rotate(p, a, b, c);
-      p[0] *= R2D$6;
-      p[1] *= R2D$6;
+      p[0] *= R2D$7;
+      p[1] *= R2D$7;
       return p;
     };
   }
@@ -54875,7 +55880,19 @@ ${svg}
           type: o.type,
           coordinates: rotatePath(o.coordinates, lon0)
         };
-      })
+      }),
+      findRegion: function(lon, lat) {
+        return findClassicRegion(defn, normalizeLongitude(lon - lon0), lat);
+      },
+      findTransitionRegion: function(lon, lat) {
+        return findClassicRegion(defn, normalizeLongitude(lon - lon0), lat);
+      },
+      constrainRegionPoint: function(lon, lat, regionId) {
+        return constrainClassicRegionPoint(defn, lon0, lon, lat, regionId);
+      },
+      getRegionBoundary: function(regionId) {
+        return getClassicRegionBoundary(defn, lon0, regionId, 0.5);
+      }
     };
   }
 
@@ -54903,6 +55920,68 @@ ${svg}
       ],
       transform: {lon_0: lon0}
     };
+  }
+
+  function findClassicRegion(defn, lon, lat) {
+    for (var i = 0; i < defn.regions.length; i++) {
+      var region = defn.regions[i];
+      var ring = region.boundary;
+      if (lon >= ring[0][0] && lon <= ring[2][0] &&
+          lat >= ring[0][1] && lat <= ring[2][1]) {
+        return region.id;
+      }
+    }
+    return null;
+  }
+
+  function constrainClassicRegionPoint(defn, lon0, lon, lat, regionId) {
+    var region = findRegionById(defn, regionId);
+    if (!region) return null;
+    var ring = region.boundary;
+    var xmin = ring[0][0];
+    var ymin = ring[0][1];
+    var xmax = ring[2][0];
+    var ymax = ring[2][1];
+    var localLon = normalizeLongitude(lon - lon0);
+    var x = Math.max(xmin, Math.min(xmax, localLon));
+    var y = Math.max(ymin, Math.min(ymax, lat));
+    var cx = (xmin + xmax) / 2;
+    var cy = (ymin + ymax) / 2;
+    var inset = 1e-8;
+    if (x == xmin || x == xmax) x += (cx - x) * inset;
+    if (y == ymin || y == ymax) y += (cy - y) * inset;
+    return [normalizeLongitude(x + lon0), y];
+  }
+
+  function getClassicRegionBoundary(defn, lon0, regionId, interval) {
+    var region = findRegionById(defn, regionId);
+    if (!region) return null;
+    var ring = region.boundary;
+    var corners = [ring[0], ring[1], ring[2], ring[3], ring[0]];
+    var points = [];
+    for (var i = 1; i < corners.length; i++) {
+      var a = corners[i - 1];
+      var b = corners[i];
+      var n = Math.max(1, Math.ceil(Math.max(
+        Math.abs(b[0] - a[0]),
+        Math.abs(b[1] - a[1])
+      ) / interval));
+      for (var j = 0; j < n; j++) {
+        points.push([
+          normalizeLongitude(a[0] + (b[0] - a[0]) * j / n + lon0),
+          a[1] + (b[1] - a[1]) * j / n
+        ]);
+      }
+    }
+    points.push(points[0].concat());
+    return points;
+  }
+
+  function findRegionById(defn, regionId) {
+    for (var i = 0; i < defn.regions.length; i++) {
+      if (defn.regions[i].id == regionId) return defn.regions[i];
+    }
+    return null;
   }
 
   function cutSeam(coordinates) {
@@ -55611,6 +56690,13 @@ ${svg}
 
   var DEFAULT_MESH_INTERVAL = 32;
   var DEFAULT_MAX_EDGE_FACTOR = 20;
+  var DEFAULT_TOPOLOGY_MIN_CELL_SIZE = 0.5;
+  var MAX_TOPOLOGY_SUBDIVISION_DEPTH = 12;
+  var TOPOLOGY_SAMPLE_STEPS = 4;
+  var TOPOLOGY_VERTEX_INSET = 1e-7;
+  var PIECE_SAMPLE_STEPS = 4;
+  var EXPANDED_FACET_MAX_EDGE_DEGREES = 2;
+  var EXPANDED_FACET_MAX_CLIP_ERROR = 0.02;
 
   function projectRasterGridForward(raster, srcCRS, destCRS, optsArg) {
     var opts = optsArg || {};
@@ -55621,8 +56707,8 @@ ${svg}
     var mesh, bbox, outSize, outGrid;
     validateRasterGridForProjection(grid);
     timeStart(timing, 'mesh');
-    mesh = buildProjectedRasterMesh(grid, transform, interval);
-    classifyProjectedMeshCells(mesh, opts);
+    mesh = buildRasterProjectionMesh(grid, srcCRS, destCRS, transform, interval, opts);
+    classifyRasterMesh(mesh, opts);
     timeEnd(timing, 'mesh');
     bbox = opts.output_bbox || opts.outputBbox || getProjectedMeshBBox(mesh);
     if (!bbox) stop$1('Unable to project raster layer');
@@ -55630,12 +56716,17 @@ ${svg}
     outGrid = createProjectedRasterGrid(grid, raster, bbox, outSize.width, outSize.height, opts);
     timeStart(timing, 'rasterize');
     rasterizeProjectedMesh(grid, outGrid, mesh, getRasterProjectionSampleMethod(raster, opts));
+    if (mesh.fillOutputCoverage) {
+      fillProjectedRasterCoverage(outGrid);
+    } else {
+      fillIsolatedProjectedRasterHoles(outGrid);
+    }
     timeEnd(timing, 'rasterize');
     if (timing) {
       timing.outputWidth = outGrid.width;
       timing.outputHeight = outGrid.height;
       timing.meshVertices = mesh.vertices.length;
-      timing.meshCells = mesh.cells.length;
+      timing.meshCells = mesh.triangles ? mesh.triangles.length : mesh.cells.length;
       timing.meshSkippedCells = mesh.skippedCellCount;
     }
     return outGrid;
@@ -55672,15 +56763,32 @@ ${svg}
     var transform = getProjTransform2(srcCRS, destCRS);
     var mesh, bbox;
     validateRasterGridForProjection(grid);
-    mesh = buildProjectedRasterMesh(grid, transform, interval);
-    classifyProjectedMeshCells(mesh, opts);
+    mesh = buildRasterProjectionMesh(grid, srcCRS, destCRS, transform, interval, opts);
+    classifyRasterMesh(mesh, opts);
     bbox = getProjectedMeshBBox(mesh);
     return bbox;
   }
 
   function getProjectedRasterMeshBBox(mesh, optsArg) {
-    classifyProjectedMeshCells(mesh, optsArg || {});
+    classifyRasterMesh(mesh, optsArg || {});
     return getProjectedMeshBBox(mesh);
+  }
+
+  function buildRasterProjectionMesh(grid, srcCRS, destCRS, transform, interval, opts) {
+    var topology = getProjectionTopology(destCRS);
+    if (topology && (topology.raster_source_regions ||
+        topology.raster_spherical_regions)) {
+      return buildExpandedFacetRasterMesh(
+        grid, srcCRS, destCRS, interval, topology);
+    }
+    if (topology && (topology.projectRasterRegion ||
+        topology.projectRegion || topology.constrainRegionPoint)) {
+      return buildPiecewiseProjectedRasterMesh(grid, srcCRS, destCRS, interval, topology);
+    }
+    if (topology && (topology.findTransitionRegion || topology.findRegion)) {
+      return buildTopologyAwareProjectedRasterMesh(grid, srcCRS, destCRS, interval, opts);
+    }
+    return buildProjectedRasterMesh(grid, transform, interval);
   }
 
   function buildProjectedRasterMesh(grid, transform, interval) {
@@ -55697,6 +56805,494 @@ ${svg}
       ys: ys,
       vertices: vertices
     };
+  }
+
+  function buildPiecewiseProjectedRasterMesh(grid, srcCRS, destCRS, interval, topology) {
+    var wgs84 = parseCrsString$1('wgs84');
+    var toGeographic = getProjTransform2(srcCRS, wgs84);
+    var fromGeographic = getProjTransform2(wgs84, srcCRS);
+    var toDestination = getProjTransform2(wgs84, destCRS);
+    interval = Math.min(interval, topology.raster_mesh_interval || interval);
+    var xs = getMeshStops(grid.width, interval);
+    var ys = getMeshStops(grid.height, interval);
+    var regions = topology.raster_regions || topology.regions;
+    var mesh = {
+      xs: xs,
+      ys: ys,
+      vertices: [],
+      cells: [],
+      topologyAware: true,
+      subdivisionSkippedCellCount: 0,
+      fillRegionMask: topology.fill_raster_mask,
+      fillOutputCoverage: topology.fill_raster_coverage,
+      projectedRegions: getProjectedRasterRegions(
+        topology, regions, destCRS, toDestination)
+    };
+    var context = {
+      grid: grid,
+      topology: topology,
+      destCRS: destCRS,
+      toGeographic: toGeographic,
+      fromGeographic: fromGeographic,
+      toDestination: toDestination,
+      findRegion: topology.findRasterRegion || topology.findRegion,
+      projectRegion: topology.projectRasterRegion || topology.projectRegion,
+      pieceHalo: topology.raster_cell_halo === false ? 0 : interval,
+      mesh: mesh
+    };
+    for (var y = 0; y < ys.length - 1; y++) {
+      for (var x = 0; x < xs.length - 1; x++) {
+        appendPiecewiseMeshCells(context, xs[x], ys[y], xs[x + 1], ys[y + 1]);
+      }
+    }
+    return mesh;
+  }
+
+  function buildExpandedFacetRasterMesh(grid, srcCRS, destCRS, interval, topology) {
+    var wgs84 = parseCrsString$1('wgs84');
+    var fromGeographic = getProjTransform2(wgs84, srcCRS);
+    var regions = topology.raster_regions;
+    var mesh = {
+      vertices: [],
+      cells: [],
+      triangles: [],
+      topologyAware: true,
+      subdivisionSkippedCellCount: 0,
+      fillRegionMask: topology.fill_raster_mask,
+      fillOutputCoverage: topology.fill_raster_coverage,
+      projectedRegions: getProjectedRasterRegions(
+        topology, regions, destCRS, getProjTransform2(wgs84, destCRS)),
+      sourceWrapX: isLatLngCRS(srcCRS) &&
+        Math.abs(grid.bbox[2] - grid.bbox[0] - 360) < 1e-3
+    };
+    var sourceRegions = topology.raster_source_regions ||
+      topology.raster_spherical_regions;
+    var piecesBySourceRegion = new Map();
+    regions.forEach(function(region) {
+      var key = getRasterSourceRegionKey(region);
+      var pieces = piecesBySourceRegion.get(key) || [];
+      pieces.push(region);
+      piecesBySourceRegion.set(key, pieces);
+    });
+    var context = {
+      grid: grid,
+      topology: topology,
+      destCRS: destCRS,
+      fromGeographic: fromGeographic,
+      mesh: mesh
+    };
+    sourceRegions.forEach(function(region) {
+      var boundary = region.boundary;
+      var pieces = piecesBySourceRegion.get(getRasterSourceRegionKey(region));
+      var triangles = [];
+      var end = pointsEqual2D(boundary[0], boundary[boundary.length - 1]) ?
+        boundary.length - 1 : boundary.length;
+      for (var i = 1; i < end - 1; i++) {
+        triangles.push([boundary[0], boundary[i], boundary[i + 1]]);
+      }
+      triangles.forEach(function(triangle) {
+        var depth = getSphericalTriangleSubdivisionDepth(
+          triangle, EXPANDED_FACET_MAX_EDGE_DEGREES);
+        subdivideSphericalRasterTriangle(
+          context, triangle, region, pieces, depth);
+      });
+    });
+    return mesh;
+  }
+
+  function getRasterSourceRegionKey(region) {
+    if (region.source_region != null) return String(region.source_region);
+    if (region.facet != null && region.sector != null) {
+      return region.facet + ':' + region.sector;
+    }
+    return String(region.id);
+  }
+
+  function pointsEqual2D(a, b) {
+    return a && b && Math.abs(a[0] - b[0]) < 1e-10 &&
+      Math.abs(a[1] - b[1]) < 1e-10;
+  }
+
+  function getSphericalTriangleSubdivisionDepth(triangle, maxDegrees) {
+    var max = Math.max(
+      sphericalPointDistance(triangle[0], triangle[1]),
+      sphericalPointDistance(triangle[1], triangle[2]),
+      sphericalPointDistance(triangle[2], triangle[0])
+    );
+    return Math.max(0, Math.ceil(Math.log(max / maxDegrees) / Math.LN2));
+  }
+
+  function subdivideSphericalRasterTriangle(context, triangle, region, pieces, depth) {
+    if (depth > 0) {
+      var ab = sphericalPointMidpoint(triangle[0], triangle[1]);
+      var bc = sphericalPointMidpoint(triangle[1], triangle[2]);
+      var ca = sphericalPointMidpoint(triangle[2], triangle[0]);
+      subdivideSphericalRasterTriangle(
+        context, [triangle[0], ab, ca], region, pieces, depth - 1);
+      subdivideSphericalRasterTriangle(
+        context, [ab, triangle[1], bc], region, pieces, depth - 1);
+      subdivideSphericalRasterTriangle(
+        context, [ca, bc, triangle[2]], region, pieces, depth - 1);
+      subdivideSphericalRasterTriangle(
+        context, [ab, bc, ca], region, pieces, depth - 1);
+      return;
+    }
+    var rawVertices = triangle.map(function(lonlat) {
+      return projectSphericalRawVertex(context, lonlat, region);
+    });
+    normalizeWrappedTrianglePixels(
+      rawVertices, context.grid.width, context.mesh.sourceWrapX);
+    pieces.forEach(function(piece) {
+      var polygon = context.topology.clipRasterRegionPolygon(
+        rawVertices, piece.id);
+      if (!rasterPiecePolygonIsAccurate(
+        context.topology, polygon, piece.id)) return;
+      polygon.forEach(function(vertex) {
+        var p = scaleRawProjectionPoint(
+          context.destCRS, [vertex.x, vertex.y]);
+        vertex.x = p[0];
+        vertex.y = p[1];
+      });
+      for (var i = 1; i < polygon.length - 1; i++) {
+        var vertices = [polygon[0], polygon[i], polygon[i + 1]];
+        context.mesh.vertices.push(vertices[0], vertices[1], vertices[2]);
+        context.mesh.triangles.push({
+          a: vertices[0],
+          b: vertices[1],
+          c: vertices[2],
+          region: piece.id,
+          valid: vertices.every(vertexIsValid)
+        });
+      }
+    });
+  }
+
+  function projectSphericalRawVertex(context, lonlat, region) {
+    var sourceXY = context.fromGeographic(lonlat[0], lonlat[1]);
+    var sourcePixel = sourceXY &&
+      rasterMapXYToPixel(context.grid, sourceXY[0], sourceXY[1]);
+    var p = context.topology.projectRasterSourceRegion ?
+      context.topology.projectRasterSourceRegion(
+        lonlat[0], lonlat[1], region.id) :
+      context.topology.projectRasterSector(
+        lonlat[0], lonlat[1], region.facet, region.sector);
+    return {
+      sx: sourcePixel ? sourcePixel[0] : NaN,
+      sy: sourcePixel ? sourcePixel[1] : NaN,
+      x: p && isFinite(p[0]) ? p[0] : NaN,
+      y: p && isFinite(p[1]) ? p[1] : NaN,
+      lon: lonlat[0],
+      lat: lonlat[1]
+    };
+  }
+
+  function rasterPiecePolygonIsAccurate(topology, polygon, regionId) {
+    // A triangle that crosses a forced sector discontinuity can yield invalid
+    // interpolated clip vertices. Adjacent triangles cover the rejected sliver.
+    return polygon.every(function(vertex) {
+      var p = topology.projectRasterRegion(
+        vertex.lon, vertex.lat, regionId);
+      return p && Math.hypot(vertex.x - p[0], vertex.y - p[1]) <
+        EXPANDED_FACET_MAX_CLIP_ERROR;
+    });
+  }
+
+  function normalizeWrappedTrianglePixels(vertices, width, wrap) {
+    if (!wrap) return;
+    var xmin = Math.min(vertices[0].sx, vertices[1].sx, vertices[2].sx);
+    var xmax = Math.max(vertices[0].sx, vertices[1].sx, vertices[2].sx);
+    if (xmax - xmin <= width / 2) return;
+    vertices.forEach(function(vertex) {
+      if (vertex.sx < width / 2) vertex.sx += width;
+    });
+  }
+
+  function sphericalPointMidpoint(a, b) {
+    var av = lonLatToVector(a);
+    var bv = lonLatToVector(b);
+    return vectorToLonLat(normalizeVector3([
+      av[0] + bv[0],
+      av[1] + bv[1],
+      av[2] + bv[2]
+    ]));
+  }
+
+  function sphericalPointDistance(a, b) {
+    var av = lonLatToVector(a);
+    var bv = lonLatToVector(b);
+    return Math.acos(clamp$1(
+      av[0] * bv[0] + av[1] * bv[1] + av[2] * bv[2], -1, 1
+    )) * 180 / Math.PI;
+  }
+
+  function lonLatToVector(p) {
+    var lam = p[0] * Math.PI / 180;
+    var phi = p[1] * Math.PI / 180;
+    var cosPhi = Math.cos(phi);
+    return [Math.cos(lam) * cosPhi, Math.sin(lam) * cosPhi, Math.sin(phi)];
+  }
+
+  function vectorToLonLat(p) {
+    return [
+      Math.atan2(p[1], p[0]) * 180 / Math.PI,
+      Math.asin(clamp$1(p[2], -1, 1)) * 180 / Math.PI
+    ];
+  }
+
+  function normalizeVector3(p) {
+    var k = 1 / Math.hypot(p[0], p[1], p[2]);
+    return [p[0] * k, p[1] * k, p[2] * k];
+  }
+
+  function appendPiecewiseMeshCells(context, x0, y0, x1, y1) {
+    getPieceRegionsInCell(context, x0, y0, x1, y1).forEach(function(regionId) {
+      var v00 = projectPiecewiseMeshVertex(context, x0, y0, regionId);
+      var v10 = projectPiecewiseMeshVertex(context, x1, y0, regionId);
+      var v01 = projectPiecewiseMeshVertex(context, x0, y1, regionId);
+      var v11 = projectPiecewiseMeshVertex(context, x1, y1, regionId);
+      var cell = {
+        v00: v00,
+        v10: v10,
+        v01: v01,
+        v11: v11,
+        region: regionId,
+        valid: vertexIsValid(v00) && vertexIsValid(v10) &&
+          vertexIsValid(v01) && vertexIsValid(v11)
+      };
+      context.mesh.vertices.push(v00, v10, v01, v11);
+      context.mesh.cells.push(cell);
+    });
+  }
+
+  function getPieceRegionsInCell(context, x0, y0, x1, y1) {
+    var ids = [];
+    var halo = context.pieceHalo;
+    samplePieceRegions(context, ids, x0, y0, x1, y1);
+    if (halo > 0) {
+      samplePieceRegions(
+        context,
+        ids,
+        Math.max(0, x0 - halo),
+        Math.max(0, y0 - halo),
+        Math.min(context.grid.width, x1 + halo),
+        Math.min(context.grid.height, y1 + halo)
+      );
+    }
+    return ids;
+  }
+
+  function samplePieceRegions(context, ids, x0, y0, x1, y1) {
+    for (var iy = 0; iy <= PIECE_SAMPLE_STEPS; iy++) {
+      for (var ix = 0; ix <= PIECE_SAMPLE_STEPS; ix++) {
+        var px = x0 + (x1 - x0) * ix / PIECE_SAMPLE_STEPS;
+        var py = y0 + (y1 - y0) * iy / PIECE_SAMPLE_STEPS;
+        var xy = rasterPixelToMapXY(context.grid, px, py);
+        var lonlat = context.toGeographic(xy[0], xy[1]);
+        var id = lonlat && context.findRegion(lonlat[0], lonlat[1]);
+        if (id != null && id !== -1 && ids.indexOf(id) == -1) ids.push(id);
+      }
+    }
+  }
+
+  function projectPiecewiseMeshVertex(context, px, py, regionId) {
+    var xy = rasterPixelToMapXY(context.grid, px, py);
+    var lonlat = context.toGeographic(xy[0], xy[1]);
+    var p, sourcePixel;
+    if (!lonlat) return {sx: px, sy: py, x: NaN, y: NaN};
+    if (context.projectRegion) {
+      p = context.projectRegion(lonlat[0], lonlat[1], regionId);
+      p = scaleRawProjectionPoint(context.destCRS, p);
+      sourcePixel = [px, py];
+    } else {
+      lonlat = context.topology.constrainRegionPoint(lonlat[0], lonlat[1], regionId);
+      xy = lonlat && context.fromGeographic(lonlat[0], lonlat[1]);
+      p = lonlat && context.toDestination(lonlat[0], lonlat[1]);
+      sourcePixel = xy && rasterMapXYToPixel(context.grid, xy[0], xy[1]);
+    }
+    return {
+      sx: sourcePixel ? sourcePixel[0] : px,
+      sy: sourcePixel ? sourcePixel[1] : py,
+      x: p && isFinite(p[0]) ? p[0] : NaN,
+      y: p && isFinite(p[1]) ? p[1] : NaN
+    };
+  }
+
+  function getProjectedRasterRegions(topology, regions, destCRS, toDestination) {
+    return regions.map(function(region) {
+      var boundary;
+      if (region.projected_boundary) {
+        boundary = region.projected_boundary.map(function(p) {
+          return scaleRawProjectionPoint(destCRS, p);
+        });
+      } else {
+        boundary = topology.getRegionBoundary(region.id).map(function(p) {
+          var q = topology.constrainRegionPoint(p[0], p[1], region.id);
+          return toDestination(q[0], q[1]);
+        });
+      }
+      return {
+        id: region.id,
+        boundary: boundary
+      };
+    });
+  }
+
+  function scaleRawProjectionPoint(P, p) {
+    if (!p) return null;
+    return [
+      P.fr_meter * (P.a * p[0] + P.x0),
+      P.fr_meter * (P.a * p[1] + P.y0)
+    ];
+  }
+
+  function buildTopologyAwareProjectedRasterMesh(grid, srcCRS, destCRS, interval, optsArg) {
+    var opts = optsArg || {};
+    var topology = getProjectionTopology(destCRS);
+    var findRegion = topology && (topology.findTransitionRegion || topology.findRegion);
+    var wgs84 = parseCrsString$1('wgs84');
+    var toGeographic = getProjTransform2(srcCRS, wgs84);
+    var toDestination = getProjTransform2(wgs84, destCRS);
+    var xs = getMeshStops(grid.width, interval);
+    var ys = getMeshStops(grid.height, interval);
+    var minCellSize = opts.raster_topology_min_cell_size ||
+      opts.rasterTopologyMinCellSize ||
+      DEFAULT_TOPOLOGY_MIN_CELL_SIZE;
+    var mesh = {
+      xs: xs,
+      ys: ys,
+      vertices: [],
+      cells: [],
+      topologyAware: true,
+      subdivisionSkippedCellCount: 0
+    };
+    var context = {
+      grid: grid,
+      findRegion: findRegion,
+      toGeographic: toGeographic,
+      toDestination: toDestination,
+      minCellSize: Math.max(0.01, minCellSize),
+      maxDepth: MAX_TOPOLOGY_SUBDIVISION_DEPTH,
+      mesh: mesh
+    };
+    if (!findRegion) return buildProjectedRasterMesh(grid, getProjTransform2(srcCRS, destCRS), interval);
+    for (var y = 0; y < ys.length - 1; y++) {
+      for (var x = 0; x < xs.length - 1; x++) {
+        addTopologyMeshCell(context, xs[x], ys[y], xs[x + 1], ys[y + 1], 0);
+      }
+    }
+    return mesh;
+  }
+
+  function addTopologyMeshCell(context, x0, y0, x1, y1, depth) {
+    var classification = classifyTopologyCell(context, x0, y0, x1, y1);
+    var width = x1 - x0;
+    var height = y1 - y0;
+    var splitX = width > context.minCellSize && depth < context.maxDepth;
+    var splitY = height > context.minCellSize && depth < context.maxDepth;
+    if (classification.mixed && (splitX || splitY)) {
+      subdivideTopologyMeshCell(context, x0, y0, x1, y1, depth, splitX, splitY);
+      return;
+    }
+    if (classification.region == null || classification.mixed) {
+      context.mesh.subdivisionSkippedCellCount++;
+      return;
+    }
+    appendTopologyMeshCell(context, x0, y0, x1, y1, classification.region);
+  }
+
+  function subdivideTopologyMeshCell(context, x0, y0, x1, y1, depth, splitX, splitY) {
+    var xm = splitX ? (x0 + x1) / 2 : x1;
+    var ym = splitY ? (y0 + y1) / 2 : y1;
+    addTopologyMeshCell(context, x0, y0, xm, ym, depth + 1);
+    if (splitX) addTopologyMeshCell(context, xm, y0, x1, ym, depth + 1);
+    if (splitY) addTopologyMeshCell(context, x0, ym, xm, y1, depth + 1);
+    if (splitX && splitY) addTopologyMeshCell(context, xm, ym, x1, y1, depth + 1);
+  }
+
+  function classifyTopologyCell(context, x0, y0, x1, y1) {
+    var cx = (x0 + x1) / 2;
+    var cy = (y0 + y1) / 2;
+    var region = getTopologyRegionAtPixel(context, cx, cy);
+    var mixed = false;
+    for (var iy = 0; iy <= TOPOLOGY_SAMPLE_STEPS && !mixed; iy++) {
+      for (var ix = 0; ix <= TOPOLOGY_SAMPLE_STEPS; ix++) {
+        var px = x0 + (x1 - x0) * ix / TOPOLOGY_SAMPLE_STEPS;
+        var py = y0 + (y1 - y0) * iy / TOPOLOGY_SAMPLE_STEPS;
+        px += (cx - px) * TOPOLOGY_VERTEX_INSET;
+        py += (cy - py) * TOPOLOGY_VERTEX_INSET;
+        if (getTopologyRegionAtPixel(context, px, py) !== region) {
+          mixed = true;
+          break;
+        }
+      }
+    }
+    return {region: region, mixed: mixed};
+  }
+
+  function getTopologyRegionAtPixel(context, px, py) {
+    var xy = rasterPixelToMapXY(context.grid, px, py);
+    var lonlat = context.toGeographic(xy[0], xy[1]);
+    if (!lonlat) return null;
+    return context.findRegion(lonlat[0], lonlat[1]);
+  }
+
+  function appendTopologyMeshCell(context, x0, y0, x1, y1, region) {
+    var cx = (x0 + x1) / 2;
+    var cy = (y0 + y1) / 2;
+    var v00 = projectTopologyMeshVertex(context, x0, y0, cx, cy);
+    var v10 = projectTopologyMeshVertex(context, x1, y0, cx, cy);
+    var v01 = projectTopologyMeshVertex(context, x0, y1, cx, cy);
+    var v11 = projectTopologyMeshVertex(context, x1, y1, cx, cy);
+    var cell = {
+      v00: v00,
+      v10: v10,
+      v01: v01,
+      v11: v11,
+      region: region,
+      valid: vertexIsValid(v00) && vertexIsValid(v10) &&
+        vertexIsValid(v01) && vertexIsValid(v11)
+    };
+    context.mesh.vertices.push(v00, v10, v01, v11);
+    context.mesh.cells.push(cell);
+  }
+
+  function projectTopologyMeshVertex(context, px, py, cx, cy) {
+    var insetX = px + (cx - px) * TOPOLOGY_VERTEX_INSET;
+    var insetY = py + (cy - py) * TOPOLOGY_VERTEX_INSET;
+    var xy = rasterPixelToMapXY(context.grid, insetX, insetY);
+    var lonlat = context.toGeographic(xy[0], xy[1]);
+    var p = lonlat && context.toDestination(lonlat[0], lonlat[1]);
+    return {
+      sx: px,
+      sy: py,
+      x: p && isFinite(p[0]) ? p[0] : NaN,
+      y: p && isFinite(p[1]) ? p[1] : NaN
+    };
+  }
+
+  function classifyRasterMesh(mesh, opts) {
+    if (mesh.topologyAware) {
+      classifyTopologyMeshCells(mesh);
+    } else {
+      classifyProjectedMeshCells(mesh, opts);
+    }
+  }
+
+  function classifyTopologyMeshCells(mesh) {
+    var filtered = 0;
+    mesh.cells.forEach(function(cell) {
+      cell.maxEdge = getCellMaxEdge(cell);
+      if (!cell.valid) {
+        cell.valid = false;
+        filtered++;
+      }
+    });
+    // Topology-aware cells never span projection branches. Do not apply the
+    // regular mesh's median-edge outlier filter here: adaptive subdivision
+    // creates many small boundary cells that would make valid interior cells
+    // appear to be outliers.
+    mesh.maxEdge = Infinity;
+    mesh.skippedCellCount = mesh.subdivisionSkippedCellCount + filtered;
   }
 
   function classifyProjectedMeshCells(mesh, opts) {
@@ -55882,17 +57478,41 @@ ${svg}
     ];
   }
 
+  function rasterMapXYToPixel(grid, x, y) {
+    var t = grid.transform;
+    if (t) {
+      return [
+        (x - t[2]) / t[0],
+        (y - t[5]) / t[4]
+      ];
+    }
+    return [
+      (x - grid.bbox[0]) / (grid.bbox[2] - grid.bbox[0]) * grid.width,
+      (grid.bbox[3] - y) / (grid.bbox[3] - grid.bbox[1]) * grid.height
+    ];
+  }
+
   function getProjectedMeshBBox(mesh) {
     var xmin = Infinity, ymin = Infinity, xmax = -Infinity, ymax = -Infinity;
-    mesh.cells.forEach(function(cell) {
-      if (!cell.valid) return;
-      [cell.v00, cell.v10, cell.v01, cell.v11].forEach(function(p) {
-        if (p.x < xmin) xmin = p.x;
-        if (p.x > xmax) xmax = p.x;
-        if (p.y < ymin) ymin = p.y;
-        if (p.y > ymax) ymax = p.y;
+    if (mesh.projectedRegions) {
+      mesh.projectedRegions.forEach(function(region) {
+        region.boundary.forEach(expand);
       });
-    });
+    } else {
+      mesh.cells.forEach(function(cell) {
+        if (!cell.valid) return;
+        [cell.v00, cell.v10, cell.v01, cell.v11].forEach(expand);
+      });
+    }
+    function expand(p) {
+      if (!p) return;
+      var x = Array.isArray(p) ? p[0] : p.x;
+      var y = Array.isArray(p) ? p[1] : p.y;
+      if (x < xmin) xmin = x;
+      if (x > xmax) xmax = x;
+      if (y < ymin) ymin = y;
+      if (y > ymax) ymax = y;
+    }
     return xmin < Infinity && xmax > xmin && ymax > ymin ? [xmin, ymin, xmax, ymax] : null;
   }
 
@@ -55985,14 +57605,151 @@ ${svg}
   }
 
   function rasterizeProjectedMesh(srcGrid, destGrid, mesh, sampleMethod) {
+    var regionData = mesh.projectedRegions ?
+      createProjectedRegionMask(
+        destGrid, mesh.projectedRegions, mesh.fillRegionMask) :
+      null;
+    (mesh.triangles || []).forEach(function(triangle) {
+      if (!triangle.valid) return;
+      var regionValue = regionData && regionData.values.get(triangle.region);
+      rasterizeProjectedTriangle(
+        srcGrid, destGrid, triangle.a, triangle.b, triangle.c,
+        sampleMethod, regionData && regionData.mask, regionValue,
+        mesh.sourceWrapX
+      );
+    });
     mesh.cells.forEach(function(cell) {
       if (!cell.valid) return;
-      rasterizeProjectedTriangle(srcGrid, destGrid, cell.v00, cell.v10, cell.v11, sampleMethod);
-      rasterizeProjectedTriangle(srcGrid, destGrid, cell.v00, cell.v11, cell.v01, sampleMethod);
+      var regionValue = regionData && regionData.values.get(cell.region);
+      rasterizeProjectedTriangle(
+        srcGrid, destGrid, cell.v00, cell.v10, cell.v11,
+        sampleMethod, regionData && regionData.mask, regionValue, false
+      );
+      rasterizeProjectedTriangle(
+        srcGrid, destGrid, cell.v00, cell.v11, cell.v01,
+        sampleMethod, regionData && regionData.mask, regionValue, false
+      );
     });
   }
 
-  function rasterizeProjectedTriangle(srcGrid, destGrid, a, b, c, sampleMethod) {
+  function fillIsolatedProjectedRasterHoles(grid) {
+    var holes = [];
+    var width = grid.width;
+    var height = grid.height;
+    var coverage = grid.coverage;
+    for (var y = 1; y < height - 1; y++) {
+      for (var x = 1; x < width - 1; x++) {
+        var i = y * width + x;
+        if (!coverage[i] &&
+            coverage[i - 1] && coverage[i + 1] &&
+            coverage[i - width] && coverage[i + width]) {
+          holes.push(i);
+        }
+      }
+    }
+    holes.forEach(function(i) {
+      var src = (i - 1) * grid.bands;
+      var dest = i * grid.bands;
+      for (var band = 0; band < grid.bands; band++) {
+        grid.samples[dest + band] = grid.samples[src + band];
+      }
+      coverage[i] = 1;
+    });
+  }
+
+  function fillProjectedRasterCoverage(grid) {
+    // Used only for layouts whose projected outline fills the output rectangle.
+    var width = grid.width;
+    var height = grid.height;
+    var coverage = grid.coverage;
+    for (var y = 0; y < height; y++) {
+      var row = y * width;
+      var source = -1;
+      for (var x = 0; x < width; x++) {
+        var i = row + x;
+        if (coverage[i]) {
+          source = i;
+        } else if (source >= 0) {
+          copyProjectedRasterPixel(grid, source, i);
+        }
+      }
+      source = -1;
+      for (x = width - 1; x >= 0; x--) {
+        i = row + x;
+        if (coverage[i]) {
+          source = i;
+        } else if (source >= 0) {
+          copyProjectedRasterPixel(grid, source, i);
+        }
+      }
+    }
+  }
+
+  function copyProjectedRasterPixel(grid, sourceIndex, destIndex) {
+    var source = sourceIndex * grid.bands;
+    var dest = destIndex * grid.bands;
+    for (var band = 0; band < grid.bands; band++) {
+      grid.samples[dest + band] = grid.samples[source + band];
+    }
+    grid.coverage[destIndex] = 1;
+  }
+
+  function createProjectedRegionMask(grid, regions, fill) {
+    var mask = new Uint8Array(grid.width * grid.height);
+    var values = new Map();
+    regions.forEach(function(region, i) {
+      var value = i + 1;
+      values.set(region.id, value);
+      rasterizeRegionMask(grid, mask, region.boundary, value);
+    });
+    if (fill) fillRegionMask(mask, grid.width, grid.height);
+    return {mask: mask, values: values};
+  }
+
+  function fillRegionMask(mask, width, height) {
+    for (var y = 0; y < height; y++) {
+      var row = y * width;
+      var value = 0;
+      for (var x = 0; x < width; x++) {
+        if (mask[row + x]) value = mask[row + x];
+        else if (value) mask[row + x] = value;
+      }
+      value = 0;
+      for (x = width - 1; x >= 0; x--) {
+        if (mask[row + x]) value = mask[row + x];
+        else if (value) mask[row + x] = value;
+      }
+    }
+  }
+
+  function rasterizeRegionMask(grid, mask, boundary, value) {
+    var ring = boundary.map(function(p) {
+      return mapXYToRasterPixel(grid, p[0], p[1]);
+    });
+    var ymin = Math.max(0, Math.floor(Math.min.apply(null, ring.map(function(p) { return p[1]; }))));
+    var ymax = Math.min(grid.height - 1, Math.ceil(Math.max.apply(null, ring.map(function(p) { return p[1]; }))));
+    var intersections = [];
+    for (var y = ymin; y <= ymax; y++) {
+      var py = y + 0.5;
+      intersections.length = 0;
+      for (var i = 1; i < ring.length; i++) {
+        var a = ring[i - 1];
+        var b = ring[i];
+        if ((a[1] > py) == (b[1] > py)) continue;
+        intersections.push(a[0] + (py - a[1]) * (b[0] - a[0]) / (b[1] - a[1]));
+      }
+      intersections.sort(function(a, b) { return a - b; });
+      for (var j = 1; j < intersections.length; j += 2) {
+        var x0 = Math.max(0, Math.ceil(intersections[j - 1] - 0.5));
+        var x1 = Math.min(grid.width - 1, Math.floor(intersections[j] - 0.5));
+        for (var x = x0; x <= x1; x++) {
+          mask[y * grid.width + x] = value;
+        }
+      }
+    }
+  }
+
+  function rasterizeProjectedTriangle(srcGrid, destGrid, a, b, c, sampleMethod, regionMask, regionValue, sourceWrapX) {
     var bbox, x0, x1, y0, y1, det, w1, w2, w3, sx, sy, ap, bp, cp;
     if (!vertexIsValid(a) || !vertexIsValid(b) || !vertexIsValid(c)) return;
     ap = vertexToDestPixel(destGrid, a);
@@ -56004,13 +57761,15 @@ ${svg}
     x0 = bbox[0]; y0 = bbox[1]; x1 = bbox[2]; y1 = bbox[3];
     for (var y = y0; y <= y1; y++) {
       for (var x = x0; x <= x1; x++) {
+        if (regionMask && regionMask[y * destGrid.width + x] != regionValue) continue;
         w1 = edgeFunction(bp, cp, x + 0.5, y + 0.5) / det;
         w2 = edgeFunction(cp, ap, x + 0.5, y + 0.5) / det;
         w3 = 1 - w1 - w2;
         if (w1 < -1e-9 || w2 < -1e-9 || w3 < -1e-9) continue;
         sx = w1 * a.sx + w2 * b.sx + w3 * c.sx;
         sy = w1 * a.sy + w2 * b.sy + w3 * c.sy;
-        copyRasterSample(srcGrid, destGrid, sx, sy, x, y, sampleMethod);
+        copyRasterSample(
+          srcGrid, destGrid, sx, sy, x, y, sampleMethod, sourceWrapX);
       }
     }
   }
@@ -56042,16 +57801,18 @@ ${svg}
     ];
   }
 
-  function copyRasterSample(srcGrid, destGrid, sx, sy, dx, dy, sampleMethod) {
+  function copyRasterSample(srcGrid, destGrid, sx, sy, dx, dy, sampleMethod, wrapX) {
     if (sampleMethod == 'bilinear') {
-      copyBilinearRasterSample(srcGrid, destGrid, sx, sy, dx, dy);
+      copyBilinearRasterSample(srcGrid, destGrid, sx, sy, dx, dy, wrapX);
     } else {
-      copyNearestRasterSample(srcGrid, destGrid, sx, sy, dx, dy);
+      copyNearestRasterSample(srcGrid, destGrid, sx, sy, dx, dy, wrapX);
     }
   }
 
-  function copyNearestRasterSample(srcGrid, destGrid, sx, sy, dx, dy) {
-    var srcX = clamp$1(Math.floor(sx), 0, srcGrid.width - 1);
+  function copyNearestRasterSample(srcGrid, destGrid, sx, sy, dx, dy, wrapX) {
+    var srcX = wrapX ?
+      modulo(Math.floor(sx), srcGrid.width) :
+      clamp$1(Math.floor(sx), 0, srcGrid.width - 1);
     var srcY = clamp$1(Math.floor(sy), 0, srcGrid.height - 1);
     var src = (srcY * srcGrid.width + srcX) * srcGrid.bands;
     var dest = (dy * destGrid.width + dx) * destGrid.bands;
@@ -56063,10 +57824,14 @@ ${svg}
     if (destGrid.coverage) destGrid.coverage[dy * destGrid.width + dx] = 1;
   }
 
-  function copyBilinearRasterSample(srcGrid, destGrid, sx, sy, dx, dy) {
-    var srcX = clamp$1(Math.floor(sx - 0.5), 0, srcGrid.width - 1);
+  function copyBilinearRasterSample(srcGrid, destGrid, sx, sy, dx, dy, wrapX) {
+    if (wrapX) sx = modulo(sx, srcGrid.width);
+    var srcX = wrapX ?
+      modulo(Math.floor(sx - 0.5), srcGrid.width) :
+      clamp$1(Math.floor(sx - 0.5), 0, srcGrid.width - 1);
     var srcY = clamp$1(Math.floor(sy - 0.5), 0, srcGrid.height - 1);
-    var srcX2 = clamp$1(srcX + 1, 0, srcGrid.width - 1);
+    var srcX2 = wrapX ? (srcX + 1) % srcGrid.width :
+      clamp$1(srcX + 1, 0, srcGrid.width - 1);
     var srcY2 = clamp$1(srcY + 1, 0, srcGrid.height - 1);
     var tx = clamp$1(sx - 0.5 - srcX, 0, 1);
     var ty = clamp$1(sy - 0.5 - srcY, 0, 1);
@@ -56178,9 +57943,14 @@ ${svg}
     return val < min ? min : val > max ? max : val;
   }
 
+  function modulo(val, base) {
+    return (val % base + base) % base;
+  }
+
   var RasterReprojection = /*#__PURE__*/Object.freeze({
     __proto__: null,
     buildProjectedRasterMesh: buildProjectedRasterMesh,
+    buildTopologyAwareProjectedRasterMesh: buildTopologyAwareProjectedRasterMesh,
     getProjectedRasterGridBBox: getProjectedRasterGridBBox,
     getProjectedRasterMeshBBox: getProjectedRasterMeshBBox,
     projectRasterGridForward: projectRasterGridForward
@@ -56330,9 +58100,6 @@ ${svg}
   function projectDataset(dataset, src, dest, opts) {
     if (isProjectedCRS(src) && !isInvertibleCRS(src)) {
       stop$1('Unable to project from a coordinate system that has no inverse transform');
-    }
-    if (isInterruptedProjection(dest) && dataset.layers.some(layerHasRaster)) {
-      stop$1('Raster reprojection is not currently supported for interrupted projections');
     }
     var proj = getProjTransform2(src, dest); // v2 returns null points instead of throwing an error
     var badArcs = 0;
@@ -60733,7 +62500,7 @@ ${svg}
   // Isometric ("Mercator-stretched") latitude in degrees-in; returns +/-Infinity at
   // the poles.
   function isometricLatitude(latDeg) {
-    return Math.log(Math.tan(Math.PI / 4 + latDeg * D2R$7 / 2));
+    return Math.log(Math.tan(Math.PI / 4 + latDeg * D2R$8 / 2));
   }
 
   // Rhumb-line (loxodrome) interpolation, fraction k of the way from A to B.
@@ -60758,9 +62525,9 @@ ${svg}
   // Rhumb-line distance in meters, using the raw longitude delta (so a full-parallel
   // sweep returns the parallel's length rather than 0).
   function rhumbDistance(a, b) {
-    var phi1 = a[1] * D2R$7, phi2 = b[1] * D2R$7;
+    var phi1 = a[1] * D2R$8, phi2 = b[1] * D2R$8;
     var dPhi = phi2 - phi1;
-    var dLambda = (b[0] - a[0]) * D2R$7; // raw
+    var dLambda = (b[0] - a[0]) * D2R$8; // raw
     var dPsi = Math.log(Math.tan(Math.PI / 4 + phi2 / 2) / Math.tan(Math.PI / 4 + phi1 / 2));
     var q = Math.abs(dPsi) > 1e-12 ? dPhi / dPsi : Math.cos(phi1);
     return Math.sqrt(dPhi * dPhi + q * q * dLambda * dLambda) * R$3;
@@ -71096,7 +72863,7 @@ ${svg}
     return name == 'rectangle' || name == 'rectangles' || name == 'filter' && opts.cleanup;
   }
 
-  var version = "0.7.46";
+  var version = "0.7.47";
 
   // Parse command line args into commands and run them
   // Function takes an optional Node-style callback. A Promise is returned if no callback is given.

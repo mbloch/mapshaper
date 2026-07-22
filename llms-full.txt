@@ -67,9 +67,9 @@ This is a curated list of recently added features. For the full list of changes,
 
 <div class="whats-new-entry">
 
-**Interrupted and polyhedral world projections.** The `-proj` command supports interrupted projections, including Interrupted Goode Homolosine (`igh`, `igh_o`), Interrupted Mollweide (`imoll`, `imoll_o`), Hajime Narukawa's 2022 update to the AuthaGraph projection (`narukawa2022`), Buckminster Fuller's icosahedral map projection (`dymaxion`, `dymaxion2`), and several octahedral projections (`butterfly`, `butterfly2`, `cahill_keyes`). The `-graticule` command can generate graticules, polygon footprints and neatlines for these projections.
+**Interrupted and polyhedral world projections.** The `-proj` command supports Interrupted Goode Homolosine (`igh`, `igh_o`), Interrupted Mollweide (`imoll`, `imoll_o`), Buckminster Fuller's Dymaxion map (`dymaxion`, `dymaxion2`), two octahedral butterfly maps (`butterfly`, `butterfly2`), the Cahill-Keyes projection (`cahill_keyes`), Hajime Narukawa's 2022 update to the AuthaGraph projection (`narukawa2022`), and two rectangular world maps using tetrahedral geometry (`markley`, `calm`). The `-graticule` command can generate graticules, polygon footprints and neatlines for all of these projections.
 
-→ See [Interrupted world projections](/docs/guides/projections.html.md#interrupted-world-projections).
+→ See [Interrupted and polyhedral world projections](/docs/guides/projections.html.md#interrupted-and-polyhedral-world-projections).
 </div>
 
 <div class="whats-new-entry">
@@ -204,8 +204,12 @@ Mapshaper takes a list of commands and runs them in sequence, from left to right
 #### Example
 
 ```bash
-# Read a Shapefile, simplify using Douglas-Peucker, output as GeoJSON.
-mapshaper provinces.shp -simplify dp 20% -o precision=0.00001 output.geojson
+# Read a Shapefile,
+# simplify using Douglas-Peucker,
+# output as GeoJSON.
+mapshaper provinces.shp \
+-simplify dp 20% \
+-o precision=0.00001 output.geojson
 ```
 
 ### Command options can take three forms:
@@ -230,7 +234,9 @@ The following options are documented here, because they are used by many command
 ```bash
 # Make a derived layer containing a subset of features
 # while retaining the original layer
-mapshaper states.geojson -filter 'ST == "AK"' + name=alaska -o output/ target=*
+mapshaper states.geojson \
+-filter 'ST == "AK"' + name=alaska \
+-o output/ target=*
 ```
 
 ## Index of commands
@@ -1387,7 +1393,23 @@ mapshaper us_states.shp \
   -o out.shp
 ```
 
-Interrupted Goode Homolosine (`+proj=igh`, `+proj=igh_o`), Interrupted Mollweide (`+proj=imoll`, `+proj=imoll_o`), Hajime Narukawa's AuthaGraph projection (`+proj=narukawa2022`), Dymaxion (`+proj=dymaxion`, `+proj=dymaxion2`), and octahedral butterfly projections (`+proj=butterfly`, `+proj=butterfly2`, `+proj=cahill_keyes`) support forward vector projection only. They do not support raster reprojection, and cannot be represented by generated Shapefile `.prj` files. The `_o` variants are oceanic layouts and default to `+lon_0=-160`. `narukawa2022` uses Narukawa's published 2022 mathematical approximation of the original AuthaGraph modeling process. `dymaxion` uses the Gray-Fuller facet transformation; `dymaxion2` uses gnomonic facets. `butterfly` and `butterfly2` use the Cahill-Keyes 12-zone facet construction in a butterfly arrangement inspired by Cahill and Waterman; they differ only in their default central meridians of 157.5°E and 20°W, respectively. `cahill_keyes` uses the M-profile and also defaults to 20°W.
+Interrupted Goode Homolosine (`+proj=igh`, `+proj=igh_o`), Interrupted
+Mollweide (`+proj=imoll`, `+proj=imoll_o`), rectangular tetrahedral
+projections (`+proj=narukawa2022`, `+proj=markley`, `+proj=calm`), Dymaxion
+(`+proj=dymaxion`, `+proj=dymaxion2`), and octahedral butterfly projections
+(`+proj=butterfly`, `+proj=butterfly2`, `+proj=cahill_keyes`) cannot be used as
+source CRSs or represented by generated Shapefile `.prj` files. They can be
+used as destinations for vector and raster layers. The `_o` variants are
+oceanic layouts and default to `+lon_0=-160`.
+
+`narukawa2022` uses Narukawa's published 2022 mathematical approximation of
+the original AuthaGraph modeling process. `markley` and `calm` use L. P. Lee's
+conformal tetrahedral face projection in two rectangular aspects. `dymaxion`
+uses the Gray-Fuller facet transformation; `dymaxion2` uses gnomonic facets.
+`butterfly` and `butterfly2` use the Cahill-Keyes 12-zone facet construction in
+a butterfly arrangement inspired by Cahill and Waterman; they differ only in
+their default central meridians of 157.5°E and 20°W, respectively.
+`cahill_keyes` uses the M-profile and also defaults to 20°W.
 
 ### -rectangle
 
@@ -3952,7 +3974,7 @@ mapshaper us-states.shp -proj albersusa +PR +VI -o
 
 The position, scale, rotation, and other properties of each inset can be overridden with named parameters if the defaults do not suit your map. See the [`-proj` reference](/docs/reference.html.md#-proj) for the full option syntax.
 
-## Interrupted world projections
+## Interrupted and polyhedral world projections
 
 ### Goode Homolosine and Mollweide projections
 
@@ -3982,32 +4004,18 @@ mapshaper world.geojson \
   -o neatline-imoll-o.fgb
 ```
 
-<!--
-### Narukawa 2022 tetrahedral projection
-
-`narukawa2022` implements Hajime Narukawa's published 2022 mathematical
-formulation of a rectangular tetrahedral world map. The formula is an official
-approximation of the original modeling process used to create the AuthaGraph
-projection.
-
-```bash
-mapshaper world.geojson \
-  -proj +proj=narukawa2022 densify \
-  -o world-narukawa2022.geojson \
-  -graticule outline \
-  -o neatline-narukawa2022.geojson
-```
--->
-
 ### Dymaxion projections
 
-Mapshaper includes two versions of Buckminster Fuller's Airocean
-(Dymaxion) icosahedral layout:
+Mapshaper includes two versions of Buckminster Fuller's Airocean (Dymaxion)
+world map. Both divide the globe into twenty triangles and arrange them on a
+flat map:
 
-- `dymaxion` — Gray-Fuller transformation within each triangular facet
-- `dymaxion2` — gnomonic transformation within each facet
+- `dymaxion` — the Gray-Fuller version, which balances shape and area
+  distortion
+- `dymaxion2` — a version in which the shortest routes across the globe appear
+  straight within each triangle
 
-The Gray-Fuller version minimizes shape and area distortion; the gnomonic version maps great-circle segments to straight lines within each facet.
+The two versions use the same arrangement of triangles.
 
 ```bash
 mapshaper world.geojson \
@@ -4017,15 +4025,16 @@ mapshaper world.geojson \
   -o neatline-dymaxion.geojson
 ```
 
-### Octahedral projections
+### Butterfly and Cahill-Keyes projections
 
-Mapshaper includes two aspects of a butterfly projection, plus the M-shaped Cahill-Keyes projection. Like the 1909 Cahill projection and the later Waterman butterfly projection, Mapshaper's butterfly projections arrange the globe's eight octahedral facets in a butterfly layout, but each facet is projected using Keyes' 12-zone method rather than Cahill's or Waterman's original facet transformations.
+These projections divide the globe into eight triangles. The first two arrange
+the triangles in a butterfly shape; the third uses an M-shaped arrangement.
 
 ![Butterfly projection, Pacific and Atlantic aspects](/docs/images/butterfly-projection.png)
 
-- `butterfly` — Pacific-centered, with a default central meridian of
+- `butterfly` — centered on the Pacific, with a default central meridian of
   157.5°E
-- `butterfly2` — Atlantic-centered, with a default central meridian of
+- `butterfly2` — centered on the Atlantic, with a default central meridian of
   20°W
 - `cahill_keyes` — Cahill-Keyes M-shaped profile, with a
   default central meridian of 20°W
@@ -4038,8 +4047,26 @@ mapshaper world.geojson \
   -o neatline-butterfly.geojson
 ```
 
-All projections in this section are forward-only: no inverse formulas are
-available, and raster reprojection is not supported.
+### Tetrahedral projections
+
+These projections divide the globe into four triangles and arrange them to
+form a rectangular world map:
+
+- `narukawa2022` — Hajime Narukawa's published 2022 approximation of the
+  method used to construct the AuthaGraph map
+- `calm` — Farhan Adrian's adaptation of L. P. Lee's conformal tetrahedral projection fitting Lee's projection into a layout matching AuthaGraph's arrangement.
+- `markley` — F. Landis Markley's rectangular layout of Lee's projection
+
+```bash
+mapshaper world.geojson \
+  -proj +proj=markley densify \
+  -o world-markley.geojson \
+  -graticule outline \
+  -o neatline-markley.geojson
+```
+
+All projections in this section can be used as destinations for vector and
+raster layers, but cannot be used as source CRSs.
 
 ## Finding CRS definitions
 
@@ -4054,7 +4081,7 @@ Several websites provide PROJ strings and EPSG codes for coordinate systems worl
 - GeoJSON and TopoJSON files are assumed to use WGS84 when their bounding boxes fall within the normal range for decimal degree coordinates.
 - Mapshaper does not support coordinate transformations that require grid-shift files (for example, NAD27 → WGS84). If a transformation silently fails, this is the likely cause.
 - Projections that can only represent part of the globe — including orthographic (`ortho`), near-side perspective (`nsper`, `geos`), gnomonic (`gnom`), stereographic (`stere`), and Lambert Azimuthal Equal-Area (`laea`) — automatically clip input data to the projection's valid extent before projecting. This prevents distorted or invalid geometry from coordinates outside the visible area.
-- Interrupted and polyhedral projections (`igh`, `imoll`, `igh_o`, `imoll_o`, `narukawa2022`, `dymaxion`, `dymaxion2`, `butterfly`, `butterfly2`, `cahill_keyes`) are forward-only; inverse projection and raster reprojection are not supported.
+- Interrupted and polyhedral projections (`igh`, `imoll`, `igh_o`, `imoll_o`, `narukawa2022`, `markley`, `calm`, `dymaxion`, `dymaxion2`, `butterfly`, `butterfly2`, `cahill_keyes`) can be used as destinations for vector and raster layers, but cannot be used as source CRSs.
 - For projections that introduce significant curvature along straight lines, add the `densify` option to interpolate extra vertices along long segments:
 
   ```bash

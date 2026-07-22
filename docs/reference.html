@@ -52,8 +52,12 @@
 <div class="cmd-search-wrap"><input type="search" class="cmd-search-input" placeholder="Jump to a command" autocomplete="off" spellcheck="false" role="combobox" aria-autocomplete="list" aria-expanded="false" aria-controls="cmd-search-results" aria-label="Jump to a command"><div class="cmd-search-results" id="cmd-search-results" role="listbox" hidden><div class="cmd-search-status" aria-live="polite"></div><ul class="cmd-search-list"></ul></div></div><h2 id="command-line-syntax">Command line syntax</h2>
 <p>Mapshaper takes a list of commands and runs them in sequence, from left to right. A command consists of the name of a command prefixed by a hyphen, followed by options for the command. If the first token is not a command, Mapshaper infers one: most file paths are treated as <code>-i</code>, while <code>.txt</code> command files are treated as <code>-run</code>.</p>
 <h4 id="example">Example</h4>
-<pre><code class="hljs language-bash"><span class="hljs-comment"># Read a Shapefile, simplify using Douglas-Peucker, output as GeoJSON.</span>
-mapshaper provinces.shp -simplify dp 20% -o precision=0.00001 output.geojson
+<pre><code class="hljs language-bash"><span class="hljs-comment"># Read a Shapefile,</span>
+<span class="hljs-comment"># simplify using Douglas-Peucker,</span>
+<span class="hljs-comment"># output as GeoJSON.</span>
+mapshaper provinces.shp \
+-simplify dp 20% \
+-o precision=0.00001 output.geojson
 </code></pre>
 <h3 id="command-options-can-take-three-forms">Command options can take three forms:</h3>
 <ul>
@@ -72,7 +76,9 @@ mapshaper provinces.shp -simplify dp 20% -o precision=0.00001 output.geojson
 <h4 id="example-2">Example</h4>
 <pre><code class="hljs language-bash"><span class="hljs-comment"># Make a derived layer containing a subset of features</span>
 <span class="hljs-comment"># while retaining the original layer</span>
-mapshaper states.geojson -filter <span class="hljs-string">&#x27;ST == &quot;AK&quot;&#x27;</span> + name=alaska -o output/ target=*
+mapshaper states.geojson \
+-filter <span class="hljs-string">&#x27;ST == &quot;AK&quot;&#x27;</span> + name=alaska \
+-o output/ target=*
 </code></pre>
 <h2 id="index-of-commands">Index of commands</h2>
 <p><strong>File I/O</strong></p>
@@ -765,7 +771,7 @@ mapshaper counties.shp \
 <p><code>from-rings</code>  Convert a layer of closed polyline rings into polygons. Nested rings in multipart features are converted into holes.</p>
 <p>Common options: <code>target=</code></p>
 </section>
-<section class="cmd-section" data-id="-proj" data-name="-proj" data-options="crs densify match init nodata-color transparent background bilinear nearest target narukawa2022 dymaxion dymaxion2 butterfly butterfly2 cahill_keyes"><h3 id="-proj">-proj</h3>
+<section class="cmd-section" data-id="-proj" data-name="-proj" data-options="crs densify match init nodata-color transparent background bilinear nearest target narukawa2022 markley calm dymaxion dymaxion2 butterfly butterfly2 cahill_keyes"><h3 id="-proj">-proj</h3>
 <p>Project a dataset using a PROJ string, EPSG code or alias. This command affects all layers in the dataset(s) containing the targeted layer or layers. Information on PROJ string syntax can be found on the <a href="https://proj.org/usage/index.html">PROJ website</a>.</p>
 <p><code>&lt;crs&gt;</code> or <code>crs=</code>  Target CRS, given as a Proj.4 definition or an alias. Use the <a href="#-projections"><code>-projections</code></a> command to list available projections and aliases. In some projections that require additional parameters, Mapshaper can fit parameters automatically from the data extent, for example <code>crs=utm</code> selects a UTM zone. You can also pass a Proj4 string enclosed in quotes, for example <code>crs=&#39;+proj=utm +zone=27&#39;</code>.</p>
 <p><code>densify</code> Interpolate vertices along long line segments as needed to approximate curved lines.</p>
@@ -813,7 +819,22 @@ mapshaper us_states.shp \
   -proj albersusa +PR +VI +AK.lon_0=-141 +AK.scale=0.4 \
   -o out.shp
 </code></pre>
-<p>Interrupted Goode Homolosine (<code>+proj=igh</code>, <code>+proj=igh_o</code>), Interrupted Mollweide (<code>+proj=imoll</code>, <code>+proj=imoll_o</code>), Hajime Narukawa&#39;s AuthaGraph projection (<code>+proj=narukawa2022</code>), Dymaxion (<code>+proj=dymaxion</code>, <code>+proj=dymaxion2</code>), and octahedral butterfly projections (<code>+proj=butterfly</code>, <code>+proj=butterfly2</code>, <code>+proj=cahill_keyes</code>) support forward vector projection only. They do not support raster reprojection, and cannot be represented by generated Shapefile <code>.prj</code> files. The <code>_o</code> variants are oceanic layouts and default to <code>+lon_0=-160</code>. <code>narukawa2022</code> uses Narukawa&#39;s published 2022 mathematical approximation of the original AuthaGraph modeling process. <code>dymaxion</code> uses the Gray-Fuller facet transformation; <code>dymaxion2</code> uses gnomonic facets. <code>butterfly</code> and <code>butterfly2</code> use the Cahill-Keyes 12-zone facet construction in a butterfly arrangement inspired by Cahill and Waterman; they differ only in their default central meridians of 157.5°E and 20°W, respectively. <code>cahill_keyes</code> uses the M-profile and also defaults to 20°W.</p>
+<p>Interrupted Goode Homolosine (<code>+proj=igh</code>, <code>+proj=igh_o</code>), Interrupted
+Mollweide (<code>+proj=imoll</code>, <code>+proj=imoll_o</code>), rectangular tetrahedral
+projections (<code>+proj=narukawa2022</code>, <code>+proj=markley</code>, <code>+proj=calm</code>), Dymaxion
+(<code>+proj=dymaxion</code>, <code>+proj=dymaxion2</code>), and octahedral butterfly projections
+(<code>+proj=butterfly</code>, <code>+proj=butterfly2</code>, <code>+proj=cahill_keyes</code>) cannot be used as
+source CRSs or represented by generated Shapefile <code>.prj</code> files. They can be
+used as destinations for vector and raster layers. The <code>_o</code> variants are
+oceanic layouts and default to <code>+lon_0=-160</code>.</p>
+<p><code>narukawa2022</code> uses Narukawa&#39;s published 2022 mathematical approximation of
+the original AuthaGraph modeling process. <code>markley</code> and <code>calm</code> use L. P. Lee&#39;s
+conformal tetrahedral face projection in two rectangular aspects. <code>dymaxion</code>
+uses the Gray-Fuller facet transformation; <code>dymaxion2</code> uses gnomonic facets.
+<code>butterfly</code> and <code>butterfly2</code> use the Cahill-Keyes 12-zone facet construction in
+a butterfly arrangement inspired by Cahill and Waterman; they differ only in
+their default central meridians of 157.5°E and 20°W, respectively.
+<code>cahill_keyes</code> uses the M-profile and also defaults to 20°W.</p>
 </section>
 <section class="cmd-section" data-id="-rectangle" data-name="-rectangle" data-options="source aspect-ratio offset name"><h3 id="-rectangle">-rectangle</h3>
 <p>Create a new layer containing a rectangular polygon.</p>

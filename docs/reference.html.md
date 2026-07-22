@@ -7,8 +7,12 @@ Mapshaper takes a list of commands and runs them in sequence, from left to right
 #### Example
 
 ```bash
-# Read a Shapefile, simplify using Douglas-Peucker, output as GeoJSON.
-mapshaper provinces.shp -simplify dp 20% -o precision=0.00001 output.geojson
+# Read a Shapefile,
+# simplify using Douglas-Peucker,
+# output as GeoJSON.
+mapshaper provinces.shp \
+-simplify dp 20% \
+-o precision=0.00001 output.geojson
 ```
 
 ### Command options can take three forms:
@@ -33,7 +37,9 @@ The following options are documented here, because they are used by many command
 ```bash
 # Make a derived layer containing a subset of features
 # while retaining the original layer
-mapshaper states.geojson -filter 'ST == "AK"' + name=alaska -o output/ target=*
+mapshaper states.geojson \
+-filter 'ST == "AK"' + name=alaska \
+-o output/ target=*
 ```
 
 ## Index of commands
@@ -1190,7 +1196,23 @@ mapshaper us_states.shp \
   -o out.shp
 ```
 
-Interrupted Goode Homolosine (`+proj=igh`, `+proj=igh_o`), Interrupted Mollweide (`+proj=imoll`, `+proj=imoll_o`), Hajime Narukawa's AuthaGraph projection (`+proj=narukawa2022`), Dymaxion (`+proj=dymaxion`, `+proj=dymaxion2`), and octahedral butterfly projections (`+proj=butterfly`, `+proj=butterfly2`, `+proj=cahill_keyes`) support forward vector projection only. They do not support raster reprojection, and cannot be represented by generated Shapefile `.prj` files. The `_o` variants are oceanic layouts and default to `+lon_0=-160`. `narukawa2022` uses Narukawa's published 2022 mathematical approximation of the original AuthaGraph modeling process. `dymaxion` uses the Gray-Fuller facet transformation; `dymaxion2` uses gnomonic facets. `butterfly` and `butterfly2` use the Cahill-Keyes 12-zone facet construction in a butterfly arrangement inspired by Cahill and Waterman; they differ only in their default central meridians of 157.5°E and 20°W, respectively. `cahill_keyes` uses the M-profile and also defaults to 20°W.
+Interrupted Goode Homolosine (`+proj=igh`, `+proj=igh_o`), Interrupted
+Mollweide (`+proj=imoll`, `+proj=imoll_o`), rectangular tetrahedral
+projections (`+proj=narukawa2022`, `+proj=markley`, `+proj=calm`), Dymaxion
+(`+proj=dymaxion`, `+proj=dymaxion2`), and octahedral butterfly projections
+(`+proj=butterfly`, `+proj=butterfly2`, `+proj=cahill_keyes`) cannot be used as
+source CRSs or represented by generated Shapefile `.prj` files. They can be
+used as destinations for vector and raster layers. The `_o` variants are
+oceanic layouts and default to `+lon_0=-160`.
+
+`narukawa2022` uses Narukawa's published 2022 mathematical approximation of
+the original AuthaGraph modeling process. `markley` and `calm` use L. P. Lee's
+conformal tetrahedral face projection in two rectangular aspects. `dymaxion`
+uses the Gray-Fuller facet transformation; `dymaxion2` uses gnomonic facets.
+`butterfly` and `butterfly2` use the Cahill-Keyes 12-zone facet construction in
+a butterfly arrangement inspired by Cahill and Waterman; they differ only in
+their default central meridians of 157.5°E and 20°W, respectively.
+`cahill_keyes` uses the M-profile and also defaults to 20°W.
 
 ### -rectangle
 
