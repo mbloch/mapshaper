@@ -85,6 +85,7 @@ export function createPolyhedralProjection(config) {
     faces: faces,
     outline: outline,
     forward: forward,
+    forwardFace: forwardFace,
     findFace: findFace,
     findTransitionRegion: findTransitionRegion,
     getTopology: getTopology
@@ -100,7 +101,23 @@ export function createPolyhedralProjection(config) {
     );
     var face = findFaceRotated(rotated[0], rotated[1]);
     if (!face) return null;
-    var p = face.project(rotated[0], rotated[1]);
+    return projectFacePoint(face, rotated[0], rotated[1]);
+  }
+
+  function forwardFace(lam, phi, faceId) {
+    var rotated = rotateRadians(
+      lam,
+      phi,
+      config.rotation[0] * D2R,
+      config.rotation[1] * D2R,
+      config.rotation[2] * D2R
+    );
+    var face = faces[faceId];
+    return face ? projectFacePoint(face, rotated[0], rotated[1]) : null;
+  }
+
+  function projectFacePoint(face, lam, phi) {
+    var p = face.project(lam, phi);
     p = applyMatrix(face.transform, p);
     p = transformOutputPoint(p);
     p[0] -= centerX;
@@ -198,7 +215,10 @@ export function createPolyhedralProjection(config) {
     });
     return {
       regions: faces.map(function(face) {
-        return {id: face.id};
+        return {
+          id: face.id,
+          projected_boundary: getProjectedFaceBoundary(face)
+        };
       }),
       seams: seams,
       findRegion: function(lon, lat) {
@@ -209,6 +229,10 @@ export function createPolyhedralProjection(config) {
         var lam = normalizeLongitude(lon - lon0) * D2R;
         return findTransitionRegion(lam, lat * D2R);
       },
+      projectRegion: function(lon, lat, regionId) {
+        var lam = normalizeLongitude(lon - lon0) * D2R;
+        return forwardFace(lam, lat * D2R, regionId);
+      },
       regionsAreAttached: function(a, b) {
         return regionPairs.get(pairKey(a, b)) === true;
       },
@@ -218,6 +242,20 @@ export function createPolyhedralProjection(config) {
         });
       })
     };
+  }
+
+  function getProjectedFaceBoundary(face) {
+    var ring = [];
+    for (var i = 0; i < face.coords.length; i++) {
+      var a = face.coords[i];
+      var b = face.coords[(i + 1) % face.coords.length];
+      var edge = interpolateGreatCircle(a, b, 0.5);
+      for (var j = 0; j < edge.length - 1; j++) {
+        ring.push(projectFacePoint(face, edge[j][0] * D2R, edge[j][1] * D2R));
+      }
+    }
+    ring.push(ring[0].concat());
+    return ring;
   }
 }
 

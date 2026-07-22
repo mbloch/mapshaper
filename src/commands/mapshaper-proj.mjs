@@ -185,9 +185,6 @@ export function projectDataset(dataset, src, dest, opts) {
   if (isProjectedCRS(src) && !isInvertibleCRS(src)) {
     stop('Unable to project from a coordinate system that has no inverse transform');
   }
-  if (isInterruptedProjection(dest) && dataset.layers.some(layerHasRaster)) {
-    stop('Raster reprojection is not currently supported for interrupted projections');
-  }
   var proj = getProjTransform2(src, dest); // v2 returns null points instead of throwing an error
   var badArcs = 0;
   var badPoints = 0;

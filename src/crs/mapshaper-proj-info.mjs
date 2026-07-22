@@ -18,7 +18,7 @@ export function isAxisAligned(P) {
   // depending on parameters
   if (inList(P, 'cassini,gnom,bertin1953,chamb,ob_tran,tpeqd,healpix,rhealpix,' +
     'ocea,omerc,tmerc,etmerc,nicol,dymaxion,dymaxion2,butterfly,butterfly2,' +
-    'cahill_keyes,narukawa2022')) {
+    'cahill_keyes,narukawa2022,markley,calm')) {
     return false;
   }
   if (isAzimuthal(P)) {

@@ -37,6 +37,10 @@ describe('interrupted projections', function() {
       ['cut', 'cut', 'cut', 'cut']);
     assert.deepEqual(topology.seams[0].coordinates, [[-20, 0], [-20, 91]]);
     assert.equal(topology.regions[0].transform.lon_0, -80);
+    assert.notEqual(
+      topology.findTransitionRegion(-20.001, 60),
+      topology.findTransitionRegion(-19.999, 60)
+    );
 
     var oceanCrs = api.internal.parseCrsString('+proj=igh_o');
     var ocean = api.internal.getProjectionTopology(oceanCrs);
@@ -224,21 +228,101 @@ describe('interrupted projections', function() {
     }, /no inverse transform/);
   });
 
-  it('rejects raster reprojection to an interrupted CRS', function() {
-    var dataset = {
-      layers: [{raster_type: 'grid', raster: {}}],
-      info: {}
-    };
-    assert.throws(function() {
+  it('projects rasters to interrupted and polyhedral CRSs', function() {
+    var ids = [
+      'igh', 'imoll', 'igh_o', 'imoll_o', 'narukawa2022',
+      'markley', 'calm', 'dymaxion', 'dymaxion2',
+      'butterfly', 'butterfly2', 'cahill_keyes'
+    ];
+    ids.forEach(function(id) {
+      var dataset = getWorldRasterDataset(72, 36);
       api.internal.projectDataset(
         dataset,
         api.internal.parseCrsString('wgs84'),
-        api.internal.parseCrsString(igh),
-        {}
+        api.internal.parseCrsString('+proj=' + id + ' +R=6371000'),
+        {resampling: 'nearest'}
       );
-    }, /Raster reprojection is not currently supported/);
+      var grid = dataset.layers[0].raster.grid;
+      assert(grid.width > 0 && grid.height > 0, id);
+      assert(grid.bbox.every(isFinite), id);
+      assert(grid.coverage.some(function(val) { return val > 0; }), id);
+    });
   });
+
+  it('keeps Narukawa raster-piece transforms aligned with the projection', function() {
+    var src = api.internal.parseCrsString('wgs84');
+    var dest = api.internal.parseCrsString('+proj=narukawa2022 +R=6371000');
+    var topology = api.internal.getProjectionTopology(dest);
+    var project = api.internal.getProjTransform2(src, dest);
+    [
+      [-170, -80], [-30, 1], [-20, -20],
+      [25, 55], [130, 77], [175, 20]
+    ].forEach(function(lonlat) {
+      var region = topology.findRasterRegion(lonlat[0], lonlat[1]);
+      var piecePoint = topology.projectRasterRegion(
+        lonlat[0], lonlat[1], region).map(function(val) {
+        return val * dest.a;
+      });
+      almostEqualPoint(piecePoint, project(lonlat[0], lonlat[1]), 1e-6);
+    });
+  });
+
+  it('does not leave isolated raster holes at piece boundaries', function() {
+    ['imoll', 'dymaxion', 'butterfly', 'narukawa2022'].forEach(function(id) {
+      var dataset = getWorldRasterDataset(360, 180);
+      var grid = api.internal.projectRasterGridForward(
+        dataset.layers[0].raster,
+        api.internal.parseCrsString('wgs84'),
+        api.internal.parseCrsString('+proj=' + id + ' +R=6371000'),
+        {resampling: 'nearest'}
+      );
+      assert.equal(countIsolatedCoverageHoles(grid), 0, id);
+      if (id == 'narukawa2022') {
+        assert(grid.coverage.every(Boolean), id);
+      }
+    });
+  });
+
 });
+
+function countIsolatedCoverageHoles(grid) {
+  var count = 0;
+  for (var y = 1; y < grid.height - 1; y++) {
+    for (var x = 1; x < grid.width - 1; x++) {
+      var i = y * grid.width + x;
+      if (!grid.coverage[i] &&
+          grid.coverage[i - 1] && grid.coverage[i + 1] &&
+          grid.coverage[i - grid.width] && grid.coverage[i + grid.width]) {
+        count++;
+      }
+    }
+  }
+  return count;
+}
+
+function getWorldRasterDataset(width, height) {
+  var samples = new Uint8Array(width * height);
+  samples.fill(1);
+  return {
+    layers: [{
+      raster_type: 'grid',
+      raster: {
+        interpretation: 'categorical',
+        grid: {
+          width: width,
+          height: height,
+          bands: 1,
+          pixelType: 'uint8',
+          samples: samples,
+          nodata: 0,
+          bbox: [-180, -90, 180, 90],
+          transform: [360 / width, 0, -180, 0, -180 / height, 90]
+        }
+      }
+    }],
+    info: {}
+  };
+}
 
 function almostEqualPoint(a, b, tolerance) {
   assert(Math.abs(a[0] - b[0]) <= tolerance);

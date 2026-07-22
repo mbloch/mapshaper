@@ -9,11 +9,13 @@ import req from '../mapshaper-require';
 import { registerDymaxionProjections } from './mapshaper-dymaxion';
 import { registerButterflyProjections } from './mapshaper-butterfly-projections';
 import { registerNarukawa2022Projection } from './mapshaper-narukawa2022';
+import { registerLeeTetrahedralProjections } from './mapshaper-lee-tetrahedral';
 
 var mproj = req('mproj');
 registerDymaxionProjections(mproj);
 registerButterflyProjections(mproj);
 registerNarukawa2022Projection(mproj);
+registerLeeTetrahedralProjections(mproj);
 
 var asyncLoader = null;
 

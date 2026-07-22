@@ -1,10 +1,22 @@
-import { getProjTransform2 } from '../crs/mapshaper-projections';
+import {
+  getProjTransform2,
+  isLatLngCRS,
+  parseCrsString
+} from '../crs/mapshaper-projections';
+import { getProjectionTopology } from '../crs/mapshaper-projection-topology';
 import { getRasterGrid } from './mapshaper-raster-utils';
 import { parseColor } from '../color/color-utils';
 import { stop } from '../utils/mapshaper-logging';
 
 var DEFAULT_MESH_INTERVAL = 32;
 var DEFAULT_MAX_EDGE_FACTOR = 20;
+var DEFAULT_TOPOLOGY_MIN_CELL_SIZE = 0.5;
+var MAX_TOPOLOGY_SUBDIVISION_DEPTH = 12;
+var TOPOLOGY_SAMPLE_STEPS = 4;
+var TOPOLOGY_VERTEX_INSET = 1e-7;
+var PIECE_SAMPLE_STEPS = 4;
+var EXPANDED_FACET_MAX_EDGE_DEGREES = 2;
+var EXPANDED_FACET_MAX_CLIP_ERROR = 0.02;
 
 export function projectRasterGridForward(raster, srcCRS, destCRS, optsArg) {
   var opts = optsArg || {};
@@ -15,8 +27,8 @@ export function projectRasterGridForward(raster, srcCRS, destCRS, optsArg) {
   var mesh, bbox, outSize, outGrid;
   validateRasterGridForProjection(grid);
   timeStart(timing, 'mesh');
-  mesh = buildProjectedRasterMesh(grid, transform, interval);
-  classifyProjectedMeshCells(mesh, opts);
+  mesh = buildRasterProjectionMesh(grid, srcCRS, destCRS, transform, interval, opts);
+  classifyRasterMesh(mesh, opts);
   timeEnd(timing, 'mesh');
   bbox = opts.output_bbox || opts.outputBbox || getProjectedMeshBBox(mesh);
   if (!bbox) stop('Unable to project raster layer');
@@ -24,12 +36,17 @@ export function projectRasterGridForward(raster, srcCRS, destCRS, optsArg) {
   outGrid = createProjectedRasterGrid(grid, raster, bbox, outSize.width, outSize.height, opts);
   timeStart(timing, 'rasterize');
   rasterizeProjectedMesh(grid, outGrid, mesh, getRasterProjectionSampleMethod(raster, opts));
+  if (mesh.fillOutputCoverage) {
+    fillProjectedRasterCoverage(outGrid);
+  } else {
+    fillIsolatedProjectedRasterHoles(outGrid);
+  }
   timeEnd(timing, 'rasterize');
   if (timing) {
     timing.outputWidth = outGrid.width;
     timing.outputHeight = outGrid.height;
     timing.meshVertices = mesh.vertices.length;
-    timing.meshCells = mesh.cells.length;
+    timing.meshCells = mesh.triangles ? mesh.triangles.length : mesh.cells.length;
     timing.meshSkippedCells = mesh.skippedCellCount;
   }
   return outGrid;
@@ -66,15 +83,32 @@ export function getProjectedRasterGridBBox(raster, srcCRS, destCRS, optsArg) {
   var transform = getProjTransform2(srcCRS, destCRS);
   var mesh, bbox;
   validateRasterGridForProjection(grid);
-  mesh = buildProjectedRasterMesh(grid, transform, interval);
-  classifyProjectedMeshCells(mesh, opts);
+  mesh = buildRasterProjectionMesh(grid, srcCRS, destCRS, transform, interval, opts);
+  classifyRasterMesh(mesh, opts);
   bbox = getProjectedMeshBBox(mesh);
   return bbox;
 }
 
 export function getProjectedRasterMeshBBox(mesh, optsArg) {
-  classifyProjectedMeshCells(mesh, optsArg || {});
+  classifyRasterMesh(mesh, optsArg || {});
   return getProjectedMeshBBox(mesh);
+}
+
+function buildRasterProjectionMesh(grid, srcCRS, destCRS, transform, interval, opts) {
+  var topology = getProjectionTopology(destCRS);
+  if (topology && (topology.raster_source_regions ||
+      topology.raster_spherical_regions)) {
+    return buildExpandedFacetRasterMesh(
+      grid, srcCRS, destCRS, interval, topology);
+  }
+  if (topology && (topology.projectRasterRegion ||
+      topology.projectRegion || topology.constrainRegionPoint)) {
+    return buildPiecewiseProjectedRasterMesh(grid, srcCRS, destCRS, interval, topology);
+  }
+  if (topology && (topology.findTransitionRegion || topology.findRegion)) {
+    return buildTopologyAwareProjectedRasterMesh(grid, srcCRS, destCRS, interval, opts);
+  }
+  return buildProjectedRasterMesh(grid, transform, interval);
 }
 
 export function buildProjectedRasterMesh(grid, transform, interval) {
@@ -91,6 +125,494 @@ export function buildProjectedRasterMesh(grid, transform, interval) {
     ys: ys,
     vertices: vertices
   };
+}
+
+function buildPiecewiseProjectedRasterMesh(grid, srcCRS, destCRS, interval, topology) {
+  var wgs84 = parseCrsString('wgs84');
+  var toGeographic = getProjTransform2(srcCRS, wgs84);
+  var fromGeographic = getProjTransform2(wgs84, srcCRS);
+  var toDestination = getProjTransform2(wgs84, destCRS);
+  interval = Math.min(interval, topology.raster_mesh_interval || interval);
+  var xs = getMeshStops(grid.width, interval);
+  var ys = getMeshStops(grid.height, interval);
+  var regions = topology.raster_regions || topology.regions;
+  var mesh = {
+    xs: xs,
+    ys: ys,
+    vertices: [],
+    cells: [],
+    topologyAware: true,
+    subdivisionSkippedCellCount: 0,
+    fillRegionMask: topology.fill_raster_mask,
+    fillOutputCoverage: topology.fill_raster_coverage,
+    projectedRegions: getProjectedRasterRegions(
+      topology, regions, destCRS, toDestination)
+  };
+  var context = {
+    grid: grid,
+    topology: topology,
+    destCRS: destCRS,
+    toGeographic: toGeographic,
+    fromGeographic: fromGeographic,
+    toDestination: toDestination,
+    findRegion: topology.findRasterRegion || topology.findRegion,
+    projectRegion: topology.projectRasterRegion || topology.projectRegion,
+    pieceHalo: topology.raster_cell_halo === false ? 0 : interval,
+    mesh: mesh
+  };
+  for (var y = 0; y < ys.length - 1; y++) {
+    for (var x = 0; x < xs.length - 1; x++) {
+      appendPiecewiseMeshCells(context, xs[x], ys[y], xs[x + 1], ys[y + 1]);
+    }
+  }
+  return mesh;
+}
+
+function buildExpandedFacetRasterMesh(grid, srcCRS, destCRS, interval, topology) {
+  var wgs84 = parseCrsString('wgs84');
+  var fromGeographic = getProjTransform2(wgs84, srcCRS);
+  var regions = topology.raster_regions;
+  var mesh = {
+    vertices: [],
+    cells: [],
+    triangles: [],
+    topologyAware: true,
+    subdivisionSkippedCellCount: 0,
+    fillRegionMask: topology.fill_raster_mask,
+    fillOutputCoverage: topology.fill_raster_coverage,
+    projectedRegions: getProjectedRasterRegions(
+      topology, regions, destCRS, getProjTransform2(wgs84, destCRS)),
+    sourceWrapX: isLatLngCRS(srcCRS) &&
+      Math.abs(grid.bbox[2] - grid.bbox[0] - 360) < 1e-3
+  };
+  var sourceRegions = topology.raster_source_regions ||
+    topology.raster_spherical_regions;
+  var piecesBySourceRegion = new Map();
+  regions.forEach(function(region) {
+    var key = getRasterSourceRegionKey(region);
+    var pieces = piecesBySourceRegion.get(key) || [];
+    pieces.push(region);
+    piecesBySourceRegion.set(key, pieces);
+  });
+  var context = {
+    grid: grid,
+    topology: topology,
+    destCRS: destCRS,
+    fromGeographic: fromGeographic,
+    mesh: mesh
+  };
+  sourceRegions.forEach(function(region) {
+    var boundary = region.boundary;
+    var pieces = piecesBySourceRegion.get(getRasterSourceRegionKey(region));
+    var triangles = [];
+    var end = pointsEqual2D(boundary[0], boundary[boundary.length - 1]) ?
+      boundary.length - 1 : boundary.length;
+    for (var i = 1; i < end - 1; i++) {
+      triangles.push([boundary[0], boundary[i], boundary[i + 1]]);
+    }
+    triangles.forEach(function(triangle) {
+      var depth = getSphericalTriangleSubdivisionDepth(
+        triangle, EXPANDED_FACET_MAX_EDGE_DEGREES);
+      subdivideSphericalRasterTriangle(
+        context, triangle, region, pieces, depth);
+    });
+  });
+  return mesh;
+}
+
+function getRasterSourceRegionKey(region) {
+  if (region.source_region != null) return String(region.source_region);
+  if (region.facet != null && region.sector != null) {
+    return region.facet + ':' + region.sector;
+  }
+  return String(region.id);
+}
+
+function pointsEqual2D(a, b) {
+  return a && b && Math.abs(a[0] - b[0]) < 1e-10 &&
+    Math.abs(a[1] - b[1]) < 1e-10;
+}
+
+function getSphericalTriangleSubdivisionDepth(triangle, maxDegrees) {
+  var max = Math.max(
+    sphericalPointDistance(triangle[0], triangle[1]),
+    sphericalPointDistance(triangle[1], triangle[2]),
+    sphericalPointDistance(triangle[2], triangle[0])
+  );
+  return Math.max(0, Math.ceil(Math.log(max / maxDegrees) / Math.LN2));
+}
+
+function subdivideSphericalRasterTriangle(context, triangle, region, pieces, depth) {
+  if (depth > 0) {
+    var ab = sphericalPointMidpoint(triangle[0], triangle[1]);
+    var bc = sphericalPointMidpoint(triangle[1], triangle[2]);
+    var ca = sphericalPointMidpoint(triangle[2], triangle[0]);
+    subdivideSphericalRasterTriangle(
+      context, [triangle[0], ab, ca], region, pieces, depth - 1);
+    subdivideSphericalRasterTriangle(
+      context, [ab, triangle[1], bc], region, pieces, depth - 1);
+    subdivideSphericalRasterTriangle(
+      context, [ca, bc, triangle[2]], region, pieces, depth - 1);
+    subdivideSphericalRasterTriangle(
+      context, [ab, bc, ca], region, pieces, depth - 1);
+    return;
+  }
+  var rawVertices = triangle.map(function(lonlat) {
+    return projectSphericalRawVertex(context, lonlat, region);
+  });
+  normalizeWrappedTrianglePixels(
+    rawVertices, context.grid.width, context.mesh.sourceWrapX);
+  pieces.forEach(function(piece) {
+    var polygon = context.topology.clipRasterRegionPolygon(
+      rawVertices, piece.id);
+    if (!rasterPiecePolygonIsAccurate(
+      context.topology, polygon, piece.id)) return;
+    polygon.forEach(function(vertex) {
+      var p = scaleRawProjectionPoint(
+        context.destCRS, [vertex.x, vertex.y]);
+      vertex.x = p[0];
+      vertex.y = p[1];
+    });
+    for (var i = 1; i < polygon.length - 1; i++) {
+      var vertices = [polygon[0], polygon[i], polygon[i + 1]];
+      context.mesh.vertices.push(vertices[0], vertices[1], vertices[2]);
+      context.mesh.triangles.push({
+        a: vertices[0],
+        b: vertices[1],
+        c: vertices[2],
+        region: piece.id,
+        valid: vertices.every(vertexIsValid)
+      });
+    }
+  });
+}
+
+function projectSphericalRawVertex(context, lonlat, region) {
+  var sourceXY = context.fromGeographic(lonlat[0], lonlat[1]);
+  var sourcePixel = sourceXY &&
+    rasterMapXYToPixel(context.grid, sourceXY[0], sourceXY[1]);
+  var p = context.topology.projectRasterSourceRegion ?
+    context.topology.projectRasterSourceRegion(
+      lonlat[0], lonlat[1], region.id) :
+    context.topology.projectRasterSector(
+      lonlat[0], lonlat[1], region.facet, region.sector);
+  return {
+    sx: sourcePixel ? sourcePixel[0] : NaN,
+    sy: sourcePixel ? sourcePixel[1] : NaN,
+    x: p && isFinite(p[0]) ? p[0] : NaN,
+    y: p && isFinite(p[1]) ? p[1] : NaN,
+    lon: lonlat[0],
+    lat: lonlat[1]
+  };
+}
+
+function rasterPiecePolygonIsAccurate(topology, polygon, regionId) {
+  // A triangle that crosses a forced sector discontinuity can yield invalid
+  // interpolated clip vertices. Adjacent triangles cover the rejected sliver.
+  return polygon.every(function(vertex) {
+    var p = topology.projectRasterRegion(
+      vertex.lon, vertex.lat, regionId);
+    return p && Math.hypot(vertex.x - p[0], vertex.y - p[1]) <
+      EXPANDED_FACET_MAX_CLIP_ERROR;
+  });
+}
+
+function normalizeWrappedTrianglePixels(vertices, width, wrap) {
+  if (!wrap) return;
+  var xmin = Math.min(vertices[0].sx, vertices[1].sx, vertices[2].sx);
+  var xmax = Math.max(vertices[0].sx, vertices[1].sx, vertices[2].sx);
+  if (xmax - xmin <= width / 2) return;
+  vertices.forEach(function(vertex) {
+    if (vertex.sx < width / 2) vertex.sx += width;
+  });
+}
+
+function sphericalPointMidpoint(a, b) {
+  var av = lonLatToVector(a);
+  var bv = lonLatToVector(b);
+  return vectorToLonLat(normalizeVector3([
+    av[0] + bv[0],
+    av[1] + bv[1],
+    av[2] + bv[2]
+  ]));
+}
+
+function sphericalPointDistance(a, b) {
+  var av = lonLatToVector(a);
+  var bv = lonLatToVector(b);
+  return Math.acos(clamp(
+    av[0] * bv[0] + av[1] * bv[1] + av[2] * bv[2], -1, 1
+  )) * 180 / Math.PI;
+}
+
+function lonLatToVector(p) {
+  var lam = p[0] * Math.PI / 180;
+  var phi = p[1] * Math.PI / 180;
+  var cosPhi = Math.cos(phi);
+  return [Math.cos(lam) * cosPhi, Math.sin(lam) * cosPhi, Math.sin(phi)];
+}
+
+function vectorToLonLat(p) {
+  return [
+    Math.atan2(p[1], p[0]) * 180 / Math.PI,
+    Math.asin(clamp(p[2], -1, 1)) * 180 / Math.PI
+  ];
+}
+
+function normalizeVector3(p) {
+  var k = 1 / Math.hypot(p[0], p[1], p[2]);
+  return [p[0] * k, p[1] * k, p[2] * k];
+}
+
+function appendPiecewiseMeshCells(context, x0, y0, x1, y1) {
+  getPieceRegionsInCell(context, x0, y0, x1, y1).forEach(function(regionId) {
+    var v00 = projectPiecewiseMeshVertex(context, x0, y0, regionId);
+    var v10 = projectPiecewiseMeshVertex(context, x1, y0, regionId);
+    var v01 = projectPiecewiseMeshVertex(context, x0, y1, regionId);
+    var v11 = projectPiecewiseMeshVertex(context, x1, y1, regionId);
+    var cell = {
+      v00: v00,
+      v10: v10,
+      v01: v01,
+      v11: v11,
+      region: regionId,
+      valid: vertexIsValid(v00) && vertexIsValid(v10) &&
+        vertexIsValid(v01) && vertexIsValid(v11)
+    };
+    context.mesh.vertices.push(v00, v10, v01, v11);
+    context.mesh.cells.push(cell);
+  });
+}
+
+function getPieceRegionsInCell(context, x0, y0, x1, y1) {
+  var ids = [];
+  var halo = context.pieceHalo;
+  samplePieceRegions(context, ids, x0, y0, x1, y1);
+  if (halo > 0) {
+    samplePieceRegions(
+      context,
+      ids,
+      Math.max(0, x0 - halo),
+      Math.max(0, y0 - halo),
+      Math.min(context.grid.width, x1 + halo),
+      Math.min(context.grid.height, y1 + halo)
+    );
+  }
+  return ids;
+}
+
+function samplePieceRegions(context, ids, x0, y0, x1, y1) {
+  for (var iy = 0; iy <= PIECE_SAMPLE_STEPS; iy++) {
+    for (var ix = 0; ix <= PIECE_SAMPLE_STEPS; ix++) {
+      var px = x0 + (x1 - x0) * ix / PIECE_SAMPLE_STEPS;
+      var py = y0 + (y1 - y0) * iy / PIECE_SAMPLE_STEPS;
+      var xy = rasterPixelToMapXY(context.grid, px, py);
+      var lonlat = context.toGeographic(xy[0], xy[1]);
+      var id = lonlat && context.findRegion(lonlat[0], lonlat[1]);
+      if (id != null && id !== -1 && ids.indexOf(id) == -1) ids.push(id);
+    }
+  }
+}
+
+function projectPiecewiseMeshVertex(context, px, py, regionId) {
+  var xy = rasterPixelToMapXY(context.grid, px, py);
+  var lonlat = context.toGeographic(xy[0], xy[1]);
+  var p, sourcePixel;
+  if (!lonlat) return {sx: px, sy: py, x: NaN, y: NaN};
+  if (context.projectRegion) {
+    p = context.projectRegion(lonlat[0], lonlat[1], regionId);
+    p = scaleRawProjectionPoint(context.destCRS, p);
+    sourcePixel = [px, py];
+  } else {
+    lonlat = context.topology.constrainRegionPoint(lonlat[0], lonlat[1], regionId);
+    xy = lonlat && context.fromGeographic(lonlat[0], lonlat[1]);
+    p = lonlat && context.toDestination(lonlat[0], lonlat[1]);
+    sourcePixel = xy && rasterMapXYToPixel(context.grid, xy[0], xy[1]);
+  }
+  return {
+    sx: sourcePixel ? sourcePixel[0] : px,
+    sy: sourcePixel ? sourcePixel[1] : py,
+    x: p && isFinite(p[0]) ? p[0] : NaN,
+    y: p && isFinite(p[1]) ? p[1] : NaN
+  };
+}
+
+function getProjectedRasterRegions(topology, regions, destCRS, toDestination) {
+  return regions.map(function(region) {
+    var boundary;
+    if (region.projected_boundary) {
+      boundary = region.projected_boundary.map(function(p) {
+        return scaleRawProjectionPoint(destCRS, p);
+      });
+    } else {
+      boundary = topology.getRegionBoundary(region.id).map(function(p) {
+        var q = topology.constrainRegionPoint(p[0], p[1], region.id);
+        return toDestination(q[0], q[1]);
+      });
+    }
+    return {
+      id: region.id,
+      boundary: boundary
+    };
+  });
+}
+
+function scaleRawProjectionPoint(P, p) {
+  if (!p) return null;
+  return [
+    P.fr_meter * (P.a * p[0] + P.x0),
+    P.fr_meter * (P.a * p[1] + P.y0)
+  ];
+}
+
+export function buildTopologyAwareProjectedRasterMesh(grid, srcCRS, destCRS, interval, optsArg) {
+  var opts = optsArg || {};
+  var topology = getProjectionTopology(destCRS);
+  var findRegion = topology && (topology.findTransitionRegion || topology.findRegion);
+  var wgs84 = parseCrsString('wgs84');
+  var toGeographic = getProjTransform2(srcCRS, wgs84);
+  var toDestination = getProjTransform2(wgs84, destCRS);
+  var xs = getMeshStops(grid.width, interval);
+  var ys = getMeshStops(grid.height, interval);
+  var minCellSize = opts.raster_topology_min_cell_size ||
+    opts.rasterTopologyMinCellSize ||
+    DEFAULT_TOPOLOGY_MIN_CELL_SIZE;
+  var mesh = {
+    xs: xs,
+    ys: ys,
+    vertices: [],
+    cells: [],
+    topologyAware: true,
+    subdivisionSkippedCellCount: 0
+  };
+  var context = {
+    grid: grid,
+    findRegion: findRegion,
+    toGeographic: toGeographic,
+    toDestination: toDestination,
+    minCellSize: Math.max(0.01, minCellSize),
+    maxDepth: MAX_TOPOLOGY_SUBDIVISION_DEPTH,
+    mesh: mesh
+  };
+  if (!findRegion) return buildProjectedRasterMesh(grid, getProjTransform2(srcCRS, destCRS), interval);
+  for (var y = 0; y < ys.length - 1; y++) {
+    for (var x = 0; x < xs.length - 1; x++) {
+      addTopologyMeshCell(context, xs[x], ys[y], xs[x + 1], ys[y + 1], 0);
+    }
+  }
+  return mesh;
+}
+
+function addTopologyMeshCell(context, x0, y0, x1, y1, depth) {
+  var classification = classifyTopologyCell(context, x0, y0, x1, y1);
+  var width = x1 - x0;
+  var height = y1 - y0;
+  var splitX = width > context.minCellSize && depth < context.maxDepth;
+  var splitY = height > context.minCellSize && depth < context.maxDepth;
+  if (classification.mixed && (splitX || splitY)) {
+    subdivideTopologyMeshCell(context, x0, y0, x1, y1, depth, splitX, splitY);
+    return;
+  }
+  if (classification.region == null || classification.mixed) {
+    context.mesh.subdivisionSkippedCellCount++;
+    return;
+  }
+  appendTopologyMeshCell(context, x0, y0, x1, y1, classification.region);
+}
+
+function subdivideTopologyMeshCell(context, x0, y0, x1, y1, depth, splitX, splitY) {
+  var xm = splitX ? (x0 + x1) / 2 : x1;
+  var ym = splitY ? (y0 + y1) / 2 : y1;
+  addTopologyMeshCell(context, x0, y0, xm, ym, depth + 1);
+  if (splitX) addTopologyMeshCell(context, xm, y0, x1, ym, depth + 1);
+  if (splitY) addTopologyMeshCell(context, x0, ym, xm, y1, depth + 1);
+  if (splitX && splitY) addTopologyMeshCell(context, xm, ym, x1, y1, depth + 1);
+}
+
+function classifyTopologyCell(context, x0, y0, x1, y1) {
+  var cx = (x0 + x1) / 2;
+  var cy = (y0 + y1) / 2;
+  var region = getTopologyRegionAtPixel(context, cx, cy);
+  var mixed = false;
+  for (var iy = 0; iy <= TOPOLOGY_SAMPLE_STEPS && !mixed; iy++) {
+    for (var ix = 0; ix <= TOPOLOGY_SAMPLE_STEPS; ix++) {
+      var px = x0 + (x1 - x0) * ix / TOPOLOGY_SAMPLE_STEPS;
+      var py = y0 + (y1 - y0) * iy / TOPOLOGY_SAMPLE_STEPS;
+      px += (cx - px) * TOPOLOGY_VERTEX_INSET;
+      py += (cy - py) * TOPOLOGY_VERTEX_INSET;
+      if (getTopologyRegionAtPixel(context, px, py) !== region) {
+        mixed = true;
+        break;
+      }
+    }
+  }
+  return {region: region, mixed: mixed};
+}
+
+function getTopologyRegionAtPixel(context, px, py) {
+  var xy = rasterPixelToMapXY(context.grid, px, py);
+  var lonlat = context.toGeographic(xy[0], xy[1]);
+  if (!lonlat) return null;
+  return context.findRegion(lonlat[0], lonlat[1]);
+}
+
+function appendTopologyMeshCell(context, x0, y0, x1, y1, region) {
+  var cx = (x0 + x1) / 2;
+  var cy = (y0 + y1) / 2;
+  var v00 = projectTopologyMeshVertex(context, x0, y0, cx, cy);
+  var v10 = projectTopologyMeshVertex(context, x1, y0, cx, cy);
+  var v01 = projectTopologyMeshVertex(context, x0, y1, cx, cy);
+  var v11 = projectTopologyMeshVertex(context, x1, y1, cx, cy);
+  var cell = {
+    v00: v00,
+    v10: v10,
+    v01: v01,
+    v11: v11,
+    region: region,
+    valid: vertexIsValid(v00) && vertexIsValid(v10) &&
+      vertexIsValid(v01) && vertexIsValid(v11)
+  };
+  context.mesh.vertices.push(v00, v10, v01, v11);
+  context.mesh.cells.push(cell);
+}
+
+function projectTopologyMeshVertex(context, px, py, cx, cy) {
+  var insetX = px + (cx - px) * TOPOLOGY_VERTEX_INSET;
+  var insetY = py + (cy - py) * TOPOLOGY_VERTEX_INSET;
+  var xy = rasterPixelToMapXY(context.grid, insetX, insetY);
+  var lonlat = context.toGeographic(xy[0], xy[1]);
+  var p = lonlat && context.toDestination(lonlat[0], lonlat[1]);
+  return {
+    sx: px,
+    sy: py,
+    x: p && isFinite(p[0]) ? p[0] : NaN,
+    y: p && isFinite(p[1]) ? p[1] : NaN
+  };
+}
+
+function classifyRasterMesh(mesh, opts) {
+  if (mesh.topologyAware) {
+    classifyTopologyMeshCells(mesh);
+  } else {
+    classifyProjectedMeshCells(mesh, opts);
+  }
+}
+
+function classifyTopologyMeshCells(mesh) {
+  var filtered = 0;
+  mesh.cells.forEach(function(cell) {
+    cell.maxEdge = getCellMaxEdge(cell);
+    if (!cell.valid) {
+      cell.valid = false;
+      filtered++;
+    }
+  });
+  // Topology-aware cells never span projection branches. Do not apply the
+  // regular mesh's median-edge outlier filter here: adaptive subdivision
+  // creates many small boundary cells that would make valid interior cells
+  // appear to be outliers.
+  mesh.maxEdge = Infinity;
+  mesh.skippedCellCount = mesh.subdivisionSkippedCellCount + filtered;
 }
 
 function classifyProjectedMeshCells(mesh, opts) {
@@ -276,17 +798,41 @@ function rasterPixelToMapXY(grid, px, py) {
   ];
 }
 
+function rasterMapXYToPixel(grid, x, y) {
+  var t = grid.transform;
+  if (t) {
+    return [
+      (x - t[2]) / t[0],
+      (y - t[5]) / t[4]
+    ];
+  }
+  return [
+    (x - grid.bbox[0]) / (grid.bbox[2] - grid.bbox[0]) * grid.width,
+    (grid.bbox[3] - y) / (grid.bbox[3] - grid.bbox[1]) * grid.height
+  ];
+}
+
 function getProjectedMeshBBox(mesh) {
   var xmin = Infinity, ymin = Infinity, xmax = -Infinity, ymax = -Infinity;
-  mesh.cells.forEach(function(cell) {
-    if (!cell.valid) return;
-    [cell.v00, cell.v10, cell.v01, cell.v11].forEach(function(p) {
-      if (p.x < xmin) xmin = p.x;
-      if (p.x > xmax) xmax = p.x;
-      if (p.y < ymin) ymin = p.y;
-      if (p.y > ymax) ymax = p.y;
+  if (mesh.projectedRegions) {
+    mesh.projectedRegions.forEach(function(region) {
+      region.boundary.forEach(expand);
     });
-  });
+  } else {
+    mesh.cells.forEach(function(cell) {
+      if (!cell.valid) return;
+      [cell.v00, cell.v10, cell.v01, cell.v11].forEach(expand);
+    });
+  }
+  function expand(p) {
+    if (!p) return;
+    var x = Array.isArray(p) ? p[0] : p.x;
+    var y = Array.isArray(p) ? p[1] : p.y;
+    if (x < xmin) xmin = x;
+    if (x > xmax) xmax = x;
+    if (y < ymin) ymin = y;
+    if (y > ymax) ymax = y;
+  }
   return xmin < Infinity && xmax > xmin && ymax > ymin ? [xmin, ymin, xmax, ymax] : null;
 }
 
@@ -379,14 +925,151 @@ function fillProjectedRasterColor(samples, bands, color) {
 }
 
 function rasterizeProjectedMesh(srcGrid, destGrid, mesh, sampleMethod) {
+  var regionData = mesh.projectedRegions ?
+    createProjectedRegionMask(
+      destGrid, mesh.projectedRegions, mesh.fillRegionMask) :
+    null;
+  (mesh.triangles || []).forEach(function(triangle) {
+    if (!triangle.valid) return;
+    var regionValue = regionData && regionData.values.get(triangle.region);
+    rasterizeProjectedTriangle(
+      srcGrid, destGrid, triangle.a, triangle.b, triangle.c,
+      sampleMethod, regionData && regionData.mask, regionValue,
+      mesh.sourceWrapX
+    );
+  });
   mesh.cells.forEach(function(cell) {
     if (!cell.valid) return;
-    rasterizeProjectedTriangle(srcGrid, destGrid, cell.v00, cell.v10, cell.v11, sampleMethod);
-    rasterizeProjectedTriangle(srcGrid, destGrid, cell.v00, cell.v11, cell.v01, sampleMethod);
+    var regionValue = regionData && regionData.values.get(cell.region);
+    rasterizeProjectedTriangle(
+      srcGrid, destGrid, cell.v00, cell.v10, cell.v11,
+      sampleMethod, regionData && regionData.mask, regionValue, false
+    );
+    rasterizeProjectedTriangle(
+      srcGrid, destGrid, cell.v00, cell.v11, cell.v01,
+      sampleMethod, regionData && regionData.mask, regionValue, false
+    );
   });
 }
 
-function rasterizeProjectedTriangle(srcGrid, destGrid, a, b, c, sampleMethod) {
+function fillIsolatedProjectedRasterHoles(grid) {
+  var holes = [];
+  var width = grid.width;
+  var height = grid.height;
+  var coverage = grid.coverage;
+  for (var y = 1; y < height - 1; y++) {
+    for (var x = 1; x < width - 1; x++) {
+      var i = y * width + x;
+      if (!coverage[i] &&
+          coverage[i - 1] && coverage[i + 1] &&
+          coverage[i - width] && coverage[i + width]) {
+        holes.push(i);
+      }
+    }
+  }
+  holes.forEach(function(i) {
+    var src = (i - 1) * grid.bands;
+    var dest = i * grid.bands;
+    for (var band = 0; band < grid.bands; band++) {
+      grid.samples[dest + band] = grid.samples[src + band];
+    }
+    coverage[i] = 1;
+  });
+}
+
+function fillProjectedRasterCoverage(grid) {
+  // Used only for layouts whose projected outline fills the output rectangle.
+  var width = grid.width;
+  var height = grid.height;
+  var coverage = grid.coverage;
+  for (var y = 0; y < height; y++) {
+    var row = y * width;
+    var source = -1;
+    for (var x = 0; x < width; x++) {
+      var i = row + x;
+      if (coverage[i]) {
+        source = i;
+      } else if (source >= 0) {
+        copyProjectedRasterPixel(grid, source, i);
+      }
+    }
+    source = -1;
+    for (x = width - 1; x >= 0; x--) {
+      i = row + x;
+      if (coverage[i]) {
+        source = i;
+      } else if (source >= 0) {
+        copyProjectedRasterPixel(grid, source, i);
+      }
+    }
+  }
+}
+
+function copyProjectedRasterPixel(grid, sourceIndex, destIndex) {
+  var source = sourceIndex * grid.bands;
+  var dest = destIndex * grid.bands;
+  for (var band = 0; band < grid.bands; band++) {
+    grid.samples[dest + band] = grid.samples[source + band];
+  }
+  grid.coverage[destIndex] = 1;
+}
+
+function createProjectedRegionMask(grid, regions, fill) {
+  var mask = new Uint8Array(grid.width * grid.height);
+  var values = new Map();
+  regions.forEach(function(region, i) {
+    var value = i + 1;
+    values.set(region.id, value);
+    rasterizeRegionMask(grid, mask, region.boundary, value);
+  });
+  if (fill) fillRegionMask(mask, grid.width, grid.height);
+  return {mask: mask, values: values};
+}
+
+function fillRegionMask(mask, width, height) {
+  for (var y = 0; y < height; y++) {
+    var row = y * width;
+    var value = 0;
+    for (var x = 0; x < width; x++) {
+      if (mask[row + x]) value = mask[row + x];
+      else if (value) mask[row + x] = value;
+    }
+    value = 0;
+    for (x = width - 1; x >= 0; x--) {
+      if (mask[row + x]) value = mask[row + x];
+      else if (value) mask[row + x] = value;
+    }
+  }
+}
+
+function rasterizeRegionMask(grid, mask, boundary, value) {
+  var ring = boundary.map(function(p) {
+    return mapXYToRasterPixel(grid, p[0], p[1]);
+  });
+  var ymin = Math.max(0, Math.floor(Math.min.apply(null, ring.map(function(p) { return p[1]; }))));
+  var ymax = Math.min(grid.height - 1, Math.ceil(Math.max.apply(null, ring.map(function(p) { return p[1]; }))));
+  var intersections = [];
+  for (var y = ymin; y <= ymax; y++) {
+    var py = y + 0.5;
+    intersections.length = 0;
+    for (var i = 1; i < ring.length; i++) {
+      var a = ring[i - 1];
+      var b = ring[i];
+      if ((a[1] > py) == (b[1] > py)) continue;
+      intersections.push(a[0] + (py - a[1]) * (b[0] - a[0]) / (b[1] - a[1]));
+    }
+    intersections.sort(function(a, b) { return a - b; });
+    for (var j = 1; j < intersections.length; j += 2) {
+      var x0 = Math.max(0, Math.ceil(intersections[j - 1] - 0.5));
+      var x1 = Math.min(grid.width - 1, Math.floor(intersections[j] - 0.5));
+      for (var x = x0; x <= x1; x++) {
+        mask[y * grid.width + x] = value;
+      }
+    }
+  }
+}
+
+function rasterizeProjectedTriangle(srcGrid, destGrid, a, b, c, sampleMethod, regionMask, regionValue, sourceWrapX) {
   var bbox, x0, x1, y0, y1, det, w1, w2, w3, sx, sy, ap, bp, cp;
   if (!vertexIsValid(a) || !vertexIsValid(b) || !vertexIsValid(c)) return;
   ap = vertexToDestPixel(destGrid, a);
@@ -398,13 +1081,15 @@ function rasterizeProjectedTriangle(srcGrid, destGrid, a, b, c, sampleMethod) {
   x0 = bbox[0]; y0 = bbox[1]; x1 = bbox[2]; y1 = bbox[3];
   for (var y = y0; y <= y1; y++) {
     for (var x = x0; x <= x1; x++) {
+      if (regionMask && regionMask[y * destGrid.width + x] != regionValue) continue;
       w1 = edgeFunction(bp, cp, x + 0.5, y + 0.5) / det;
       w2 = edgeFunction(cp, ap, x + 0.5, y + 0.5) / det;
       w3 = 1 - w1 - w2;
       if (w1 < -1e-9 || w2 < -1e-9 || w3 < -1e-9) continue;
       sx = w1 * a.sx + w2 * b.sx + w3 * c.sx;
       sy = w1 * a.sy + w2 * b.sy + w3 * c.sy;
-      copyRasterSample(srcGrid, destGrid, sx, sy, x, y, sampleMethod);
+      copyRasterSample(
+        srcGrid, destGrid, sx, sy, x, y, sampleMethod, sourceWrapX);
     }
   }
 }
@@ -436,16 +1121,18 @@ function mapXYToRasterPixel(grid, x, y) {
   ];
 }
 
-function copyRasterSample(srcGrid, destGrid, sx, sy, dx, dy, sampleMethod) {
+function copyRasterSample(srcGrid, destGrid, sx, sy, dx, dy, sampleMethod, wrapX) {
   if (sampleMethod == 'bilinear') {
-    copyBilinearRasterSample(srcGrid, destGrid, sx, sy, dx, dy);
+    copyBilinearRasterSample(srcGrid, destGrid, sx, sy, dx, dy, wrapX);
   } else {
-    copyNearestRasterSample(srcGrid, destGrid, sx, sy, dx, dy);
+    copyNearestRasterSample(srcGrid, destGrid, sx, sy, dx, dy, wrapX);
   }
 }
 
-function copyNearestRasterSample(srcGrid, destGrid, sx, sy, dx, dy) {
-  var srcX = clamp(Math.floor(sx), 0, srcGrid.width - 1);
+function copyNearestRasterSample(srcGrid, destGrid, sx, sy, dx, dy, wrapX) {
+  var srcX = wrapX ?
+    modulo(Math.floor(sx), srcGrid.width) :
+    clamp(Math.floor(sx), 0, srcGrid.width - 1);
   var srcY = clamp(Math.floor(sy), 0, srcGrid.height - 1);
   var src = (srcY * srcGrid.width + srcX) * srcGrid.bands;
   var dest = (dy * destGrid.width + dx) * destGrid.bands;
@@ -457,10 +1144,14 @@ function copyNearestRasterSample(srcGrid, destGrid, sx, sy, dx, dy) {
   if (destGrid.coverage) destGrid.coverage[dy * destGrid.width + dx] = 1;
 }
 
-function copyBilinearRasterSample(srcGrid, destGrid, sx, sy, dx, dy) {
-  var srcX = clamp(Math.floor(sx - 0.5), 0, srcGrid.width - 1);
+function copyBilinearRasterSample(srcGrid, destGrid, sx, sy, dx, dy, wrapX) {
+  if (wrapX) sx = modulo(sx, srcGrid.width);
+  var srcX = wrapX ?
+    modulo(Math.floor(sx - 0.5), srcGrid.width) :
+    clamp(Math.floor(sx - 0.5), 0, srcGrid.width - 1);
   var srcY = clamp(Math.floor(sy - 0.5), 0, srcGrid.height - 1);
-  var srcX2 = clamp(srcX + 1, 0, srcGrid.width - 1);
+  var srcX2 = wrapX ? (srcX + 1) % srcGrid.width :
+    clamp(srcX + 1, 0, srcGrid.width - 1);
   var srcY2 = clamp(srcY + 1, 0, srcGrid.height - 1);
   var tx = clamp(sx - 0.5 - srcX, 0, 1);
   var ty = clamp(sy - 0.5 - srcY, 0, 1);
@@ -570,4 +1261,8 @@ function edgeFunction(a, b, x, y) {
 
 function clamp(val, min, max) {
   return val < min ? min : val > max ? max : val;
+}
+
+function modulo(val, base) {
+  return (val % base + base) % base;
 }
