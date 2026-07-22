@@ -11,9 +11,9 @@ This is a curated list of recently added features. For the full list of changes,
 
 <div class="whats-new-entry">
 
-**Interrupted and polyhedral world projections.** The `-proj` command supports interrupted projections, including Interrupted Goode Homolosine (`igh`, `igh_o`), Interrupted Mollweide (`imoll`, `imoll_o`), Hajime Narukawa's 2022 update to the AuthaGraph projection (`narukawa2022`), Buckminster Fuller's icosahedral map projection (`dymaxion`, `dymaxion2`), and several octahedral projections (`butterfly`, `butterfly2`, `cahill_keyes`). The `-graticule` command can generate graticules, polygon footprints and neatlines for these projections.
+**Interrupted and polyhedral world projections.** The `-proj` command supports Interrupted Goode Homolosine (`igh`, `igh_o`), Interrupted Mollweide (`imoll`, `imoll_o`), Buckminster Fuller's Dymaxion map (`dymaxion`, `dymaxion2`), two octahedral butterfly maps (`butterfly`, `butterfly2`), the Cahill-Keyes projection (`cahill_keyes`), Hajime Narukawa's 2022 update to the AuthaGraph projection (`narukawa2022`), and two rectangular world maps using tetrahedral geometry (`markley`, `calm`). The `-graticule` command can generate graticules, polygon footprints and neatlines for all of these projections.
 
-→ See [Interrupted world projections](/docs/guides/projections.html#interrupted-world-projections).
+→ See [Interrupted and polyhedral world projections](/docs/guides/projections.html#interrupted-and-polyhedral-world-projections).
 </div>
 
 <div class="whats-new-entry">

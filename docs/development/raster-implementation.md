@@ -336,6 +336,31 @@ internal option (`raster_component_filter` / `rasterComponentFilter`) for
 experiments, but it is off by default because valid antimeridian wrapping can
 produce disconnected components.
 
+Classic interrupted and polyhedral destination projections use a piecewise
+forward-mesh compositor. Source mesh cells are associated with every lobe or
+face detected inside the cell and projected through that piece's forward
+transform. Each projected piece is restricted by a scanline-rasterized
+destination mask and composited directly into the shared output grid. This
+avoids adaptive-mesh T-junctions and represents a cut boundary independently
+on both sides without allocating a complete output raster per piece. A final
+isolated-pixel pass closes numerical one-pixel cracks only when all four
+orthogonal neighbors are covered. Piecewise projections without explicit
+per-piece transforms continue to use adaptive subdivision as a fallback.
+
+Rectangular tetrahedral projections use the same compositor through a shared
+expanded-facet topology contract. A projection supplies spherical source
+regions, projected layout pieces, a continuous source-region transform, and a
+polygon clip/placement callback. The raster code triangulates those source
+regions once and applies every relevant translated or reflected layout copy.
+
+Narukawa 2022 splits each canonical tetrahedral facet into three continuous
+spherical sectors before layout folding. Markley and CALM use Lee's continuous
+conformal transform on four tetrahedral facets. In both cases, projected
+triangles are clipped against straight layout and frame boundaries before
+placement. Split facets are represented by translated copies rather than
+wrapped triangles. The final rectangular coverage pass fills only the small
+numerical gaps left by triangle clipping.
+
 ## Raster Blur
 
 `-blur radius=` applies a Gaussian-like blur to projected raster layers. The

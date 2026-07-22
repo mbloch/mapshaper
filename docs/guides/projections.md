@@ -124,7 +124,7 @@ mapshaper us-states.shp -proj albersusa +PR +VI -o
 
 The position, scale, rotation, and other properties of each inset can be overridden with named parameters if the defaults do not suit your map. See the [`-proj` reference](/docs/reference.html#-proj) for the full option syntax.
 
-## Interrupted world projections
+## Interrupted and polyhedral world projections
 
 ### Goode Homolosine and Mollweide projections
 
@@ -154,32 +154,18 @@ mapshaper world.geojson \
   -o neatline-imoll-o.fgb
 ```
 
-<!--
-### Narukawa 2022 tetrahedral projection
-
-`narukawa2022` implements Hajime Narukawa's published 2022 mathematical
-formulation of a rectangular tetrahedral world map. The formula is an official
-approximation of the original modeling process used to create the AuthaGraph
-projection.
-
-```bash
-mapshaper world.geojson \
-  -proj +proj=narukawa2022 densify \
-  -o world-narukawa2022.geojson \
-  -graticule outline \
-  -o neatline-narukawa2022.geojson
-```
--->
-
 ### Dymaxion projections
 
-Mapshaper includes two versions of Buckminster Fuller's Airocean
-(Dymaxion) icosahedral layout:
+Mapshaper includes two versions of Buckminster Fuller's Airocean (Dymaxion)
+world map. Both divide the globe into twenty triangles and arrange them on a
+flat map:
 
-- `dymaxion` — Gray-Fuller transformation within each triangular facet
-- `dymaxion2` — gnomonic transformation within each facet
+- `dymaxion` — the Gray-Fuller version, which balances shape and area
+  distortion
+- `dymaxion2` — a version in which the shortest routes across the globe appear
+  straight within each triangle
 
-The Gray-Fuller version minimizes shape and area distortion; the gnomonic version maps great-circle segments to straight lines within each facet.
+The two versions use the same arrangement of triangles.
 
 ```bash
 mapshaper world.geojson \
@@ -189,15 +175,16 @@ mapshaper world.geojson \
   -o neatline-dymaxion.geojson
 ```
 
-### Octahedral projections
+### Butterfly and Cahill-Keyes projections
 
-Mapshaper includes two aspects of a butterfly projection, plus the M-shaped Cahill-Keyes projection. Like the 1909 Cahill projection and the later Waterman butterfly projection, Mapshaper's butterfly projections arrange the globe's eight octahedral facets in a butterfly layout, but each facet is projected using Keyes' 12-zone method rather than Cahill's or Waterman's original facet transformations.
+These projections divide the globe into eight triangles. The first two arrange
+the triangles in a butterfly shape; the third uses an M-shaped arrangement.
 
 ![Butterfly projection, Pacific and Atlantic aspects](/docs/images/butterfly-projection.png)
 
-- `butterfly` — Pacific-centered, with a default central meridian of
+- `butterfly` — centered on the Pacific, with a default central meridian of
   157.5°E
-- `butterfly2` — Atlantic-centered, with a default central meridian of
+- `butterfly2` — centered on the Atlantic, with a default central meridian of
   20°W
 - `cahill_keyes` — Cahill-Keyes M-shaped profile, with a
   default central meridian of 20°W
@@ -210,8 +197,26 @@ mapshaper world.geojson \
   -o neatline-butterfly.geojson
 ```
 
-All projections in this section are forward-only: no inverse formulas are
-available, and raster reprojection is not supported.
+### Tetrahedral projections
+
+These projections divide the globe into four triangles and arrange them to
+form a rectangular world map:
+
+- `narukawa2022` — Hajime Narukawa's published 2022 approximation of the
+  method used to construct the AuthaGraph map
+- `calm` — Farhan Adrian's adaptation of L. P. Lee's conformal tetrahedral projection fitting Lee's projection into a layout matching AuthaGraph's arrangement.
+- `markley` — F. Landis Markley's rectangular layout of Lee's projection
+
+```bash
+mapshaper world.geojson \
+  -proj +proj=markley densify \
+  -o world-markley.geojson \
+  -graticule outline \
+  -o neatline-markley.geojson
+```
+
+All projections in this section can be used as destinations for vector and
+raster layers, but cannot be used as source CRSs.
 
 ## Finding CRS definitions
 
@@ -226,7 +231,7 @@ Several websites provide PROJ strings and EPSG codes for coordinate systems worl
 - GeoJSON and TopoJSON files are assumed to use WGS84 when their bounding boxes fall within the normal range for decimal degree coordinates.
 - Mapshaper does not support coordinate transformations that require grid-shift files (for example, NAD27 → WGS84). If a transformation silently fails, this is the likely cause.
 - Projections that can only represent part of the globe — including orthographic (`ortho`), near-side perspective (`nsper`, `geos`), gnomonic (`gnom`), stereographic (`stere`), and Lambert Azimuthal Equal-Area (`laea`) — automatically clip input data to the projection's valid extent before projecting. This prevents distorted or invalid geometry from coordinates outside the visible area.
-- Interrupted and polyhedral projections (`igh`, `imoll`, `igh_o`, `imoll_o`, `narukawa2022`, `dymaxion`, `dymaxion2`, `butterfly`, `butterfly2`, `cahill_keyes`) are forward-only; inverse projection and raster reprojection are not supported.
+- Interrupted and polyhedral projections (`igh`, `imoll`, `igh_o`, `imoll_o`, `narukawa2022`, `markley`, `calm`, `dymaxion`, `dymaxion2`, `butterfly`, `butterfly2`, `cahill_keyes`) can be used as destinations for vector and raster layers, but cannot be used as source CRSs.
 - For projections that introduce significant curvature along straight lines, add the `densify` option to interpolate extra vertices along long segments:
 
   ```bash
