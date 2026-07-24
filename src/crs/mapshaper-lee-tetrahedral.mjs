@@ -23,11 +23,15 @@ var SQRT2 = Math.sqrt(2);
 var SQRT3 = Math.sqrt(3);
 var ASIN_ONE_THIRD = Math.asin(1 / 3);
 var MARKLEY_LATITUDE = Math.acos(1 / 3) * 0.5 * R2D;
+var LAYOUT_PERIOD = 8;
+var MARKLEY_LAYOUT_PHASE = -2;
+var CALM_LAYOUT_PHASE = -1.5;
 var RECT_XMIN = -7;
 var RECT_XMAX = 1;
 var RECT_YMIN = -2 * SQRT3;
 var RECT_YMAX = 0;
 var EPS = 1e-12;
+var MIN_PIECE_AREA = 1e-6;
 var engines = {};
 
 var TETRAHEDRON_VERTICES = [
@@ -71,7 +75,10 @@ export function registerLeeTetrahedralProjections(mproj) {
 export function getLeeTetrahedralEngine(id) {
   id = id || 'markley';
   if (!engines[id]) {
-    engines[id] = createLeeTetrahedralEngine(getProjectionRotation(id));
+    engines[id] = createLeeTetrahedralEngine(
+      getProjectionRotation(id),
+      id == 'markley' ? MARKLEY_LAYOUT_PHASE : CALM_LAYOUT_PHASE
+    );
   }
   return engines[id];
 }
@@ -87,23 +94,24 @@ function initLeeTetrahedral(P, id) {
   };
   P.__projection_topology = engine.getTopology(P.lam0 * R2D);
   P.__projected_outline = engine.outline;
+  P.__graticule_precision = 1;
 }
 
 function getProjectionRotation(id) {
   if (id == 'calm') {
-    // Exact D3 Euler equivalent of MapDesigner's published CALM aspect:
-    // latitude 77°, longitude 143°, central meridian -163°.
+    // Kunimune's published CALM aspect (77°N, 143°E, central meridian
+    // 163°W), transformed into this implementation's tetrahedral symmetry.
     return [
-      19.57956907750618,
-      -12.42267097553935,
-      3.8615690020132067
+      64.7261399569101,
+      -39.84470062116125,
+      -119.02303523591051
     ];
   }
   // Markley's singularities are at ±35.26439°, in the oceans.
   return [115, MARKLEY_LATITUDE - 90, 180];
 }
 
-function createLeeTetrahedralEngine(rotation) {
+export function createLeeTetrahedralEngine(rotation, layoutPhase) {
   var base = createPolyhedralProjection({
     faces: TETRAHEDRON_FACES,
     parents: [-1, 0, 0, 0],
@@ -114,10 +122,11 @@ function createLeeTetrahedralEngine(rotation) {
   var normalization = getBaseNormalization(base.outline);
   var baseTopology = base.getTopology(0);
   var sourceRegions = createSourceRegions(rotation);
-  var pieces = createLayoutPieces(baseTopology.regions, normalization);
-  var pieceIndex = new Map(pieces.map(function(piece) {
-    return [getPieceKey(piece.face, piece.copy), piece.id];
-  }));
+  var rasterPieces = createLayoutPieces(
+    baseTopology.regions, normalization, layoutPhase);
+  var rasterPieceIndex = indexPiecesByFaceAndCopy(rasterPieces);
+  var rasterPieceIds = rasterPieces.map(function(piece) { return piece.id; });
+  var seamCache = new Map();
   var outline = [[
     centerOutputPoint([RECT_XMIN, RECT_YMIN]),
     centerOutputPoint([RECT_XMAX, RECT_YMIN]),
@@ -128,6 +137,7 @@ function createLeeTetrahedralEngine(rotation) {
 
   return {
     forward: forward,
+    inverse: inverse,
     outline: outline,
     getTopology: getTopology
   };
@@ -135,24 +145,42 @@ function createLeeTetrahedralEngine(rotation) {
   function forward(lam, phi) {
     var p = normalizeBasePoint(base.forward(lam, phi), normalization);
     var copy = getLayoutCopy(p);
-    return centerOutputPoint(applyMatrix(copy.matrix, p));
+    var q = applyMatrix(copy.matrix, p);
+    q[0] = wrapLayoutX(q[0] + layoutPhase);
+    q[0] = clamp(q[0], RECT_XMIN, RECT_XMAX);
+    q[1] = clamp(q[1], RECT_YMIN, RECT_YMAX);
+    return centerOutputPoint(q);
+  }
+
+  // Internal inverse used to trace the geographic cut corresponding to the
+  // rectangular frame. The public projection remains forward-only.
+  function inverse(x, y) {
+    var q = uncenterOutputPoint([x, y]);
+    for (var i = 0; i < rasterPieces.length; i++) {
+      var piece = rasterPieces[i];
+      if (!pointInRing(centerOutputPoint(q), piece.boundary)) continue;
+      var p = applyMatrix(invertMatrix(piece.matrix), q);
+      var projected = getLayoutCopy(p);
+      if (projected.id != piece.copy) continue;
+      p = denormalizeBasePoint(p, normalization);
+      var spherical = base.invertFace(p[0], p[1], piece.face);
+      if (!spherical) continue;
+      var check = forward(spherical[0], spherical[1]);
+      if (Math.hypot(check[0] - x, check[1] - y) < 1e-6) {
+        return spherical;
+      }
+    }
+    return null;
   }
 
   function getTopology(lon0) {
-    var topology = base.getTopology(lon0);
-    return {
-      regions: pieces.map(copyProjectedPiece),
-      seams: topology.seams.map(function(seam) {
-        return {
-          type: 'cut',
-          faces: seam.faces,
-          paths: seam.paths
-        };
-      }),
+    var result = {
+      interrupted: true,
+      regions: rasterPieces.map(copyProjectedPiece),
       findRegion: findRegion,
       findTransitionRegion: findRegion,
       projectRegion: projectRegion,
-      raster_regions: pieces.map(copyRasterPiece),
+      raster_regions: rasterPieces.map(copyRasterPiece),
       raster_source_regions: sourceRegions.map(function(region) {
         return {
           id: region.id,
@@ -168,14 +196,44 @@ function createLeeTetrahedralEngine(rotation) {
       raster_cell_halo: false,
       fill_raster_mask: true,
       fill_raster_coverage: true,
-      findRasterRegion: findRegion,
-      projectRasterRegion: projectRegion,
+      findRasterRegion: findRasterRegion,
+      projectRasterRegion: projectRasterRegion,
       projectRasterSourceRegion: projectRasterSourceRegion,
       clipRasterRegionPolygon: clipRasterRegionPolygon,
+      frame_bounds: [
+        outline[0][0][0],
+        outline[0][0][1],
+        outline[0][2][0],
+        outline[0][2][1]
+      ],
       outline: outline.map(function(ring) {
         return ring.map(function(p) { return p.concat(); });
       })
     };
+    // Rasters use the region mesh but never need geographic seam paths.
+    // Tracing the rectangular cut is deferred until vector clipping requests it.
+    Object.defineProperty(result, 'seams', {
+      enumerable: true,
+      get: function() {
+        if (!seamCache.has(lon0)) {
+          var topology = base.getTopology(lon0);
+          var seams = topology.seams.map(function(seam) {
+            return {
+              type: 'attached',
+              faces: seam.faces,
+              paths: seam.paths
+            };
+          });
+          seams.push({
+            type: 'cut',
+            paths: createFrameCutPaths(inverse, lon0)
+          });
+          seamCache.set(lon0, seams);
+        }
+        return seamCache.get(lon0);
+      }
+    });
+    return result;
 
     function findRegion(lon, lat) {
       var lam = normalizeLongitude(lon - lon0) * D2R;
@@ -183,11 +241,32 @@ function createLeeTetrahedralEngine(rotation) {
       var face = base.findFace(lam, phi);
       var p = normalizeBasePoint(base.forwardFace(lam, phi, face), normalization);
       var copy = getLayoutCopy(p);
-      return pieceIndex.get(getPieceKey(face, copy.id));
+      var q = applyMatrix(copy.matrix, p);
+      q[0] = wrapLayoutX(q[0] + layoutPhase);
+      q[0] = clamp(q[0], RECT_XMIN, RECT_XMAX);
+      q[1] = clamp(q[1], RECT_YMIN, RECT_YMAX);
+      q = centerOutputPoint(q);
+      var ids = rasterPieceIndex.get(getPieceKey(face, copy.id)) || [];
+      var region = findPieceContainingPoint(rasterPieces, ids, q);
+      if (region === undefined) {
+        region = findPieceContainingPoint(rasterPieces, rasterPieceIds, q);
+      }
+      return region;
     }
 
     function projectRegion(lon, lat, regionId) {
-      var piece = pieces[regionId];
+      return projectPiece(lon, lat, rasterPieces[regionId]);
+    }
+
+    function findRasterRegion(lon, lat) {
+      return findRegion(lon, lat);
+    }
+
+    function projectRasterRegion(lon, lat, regionId) {
+      return projectPiece(lon, lat, rasterPieces[regionId]);
+    }
+
+    function projectPiece(lon, lat, piece) {
       var lam = normalizeLongitude(lon - lon0) * D2R;
       var p = normalizeBasePoint(
         base.forwardFace(lam, lat * D2R, piece.face),
@@ -205,7 +284,7 @@ function createLeeTetrahedralEngine(rotation) {
     }
 
     function clipRasterRegionPolygon(vertices, regionId) {
-      var piece = pieces[regionId];
+      var piece = rasterPieces[regionId];
       var polygon = vertices.map(function(vertex) {
         var p = applyMatrix(piece.matrix, [vertex.x, vertex.y]);
         return copyRasterVertex(vertex, p[0], p[1]);
@@ -236,39 +315,63 @@ function createSourceRegions(rotation) {
   });
 }
 
-function createLayoutPieces(regions, normalization) {
+function createLayoutPieces(regions, normalization, layoutPhase) {
   var pieces = [];
   regions.forEach(function(region) {
     var boundary = region.projected_boundary.map(function(p) {
       return normalizeBasePoint(p, normalization);
     });
     LAYOUT_COPIES.forEach(function(copy) {
-      var polygon = boundary.map(function(p) {
-        return applyMatrix(copy.matrix, p);
-      });
-      polygon = clipPolygonAxis(polygon, 0, RECT_XMIN, true);
-      polygon = clipPolygonAxis(polygon, 0, RECT_XMAX, false);
-      polygon = clipPolygonAxis(polygon, 1, RECT_YMIN, true);
-      polygon = clipPolygonAxis(polygon, 1, RECT_YMAX, false);
-      if (polygon.length < 3 || Math.abs(getRingArea(polygon)) < EPS) return;
-      var id = pieces.length;
-      pieces.push({
-        id: id,
-        face: region.id,
-        source_region: region.id,
-        copy: copy.id,
-        matrix: copy.matrix,
-        boundary: polygon.map(centerOutputPoint)
+      var polygon = clipLayoutCopyDomain(boundary, copy.id);
+      if (polygon.length < 3 ||
+          Math.abs(getRingArea(polygon)) < MIN_PIECE_AREA) return;
+      [-LAYOUT_PERIOD, 0, LAYOUT_PERIOD].forEach(function(wrap) {
+        var matrix = shiftMatrixX(copy.matrix, layoutPhase + wrap);
+        var projected = polygon.map(function(p) {
+          return applyMatrix(matrix, p);
+        });
+        projected = clipPolygonAxis(projected, 0, RECT_XMIN, true);
+        projected = clipPolygonAxis(projected, 0, RECT_XMAX, false);
+        projected = clipPolygonAxis(projected, 1, RECT_YMIN, true);
+        projected = clipPolygonAxis(projected, 1, RECT_YMAX, false);
+        if (projected.length < 3 ||
+            Math.abs(getRingArea(projected)) < MIN_PIECE_AREA) return;
+        pieces.push({
+          id: pieces.length,
+          face: region.id,
+          source_region: region.id,
+          copy: copy.id,
+          matrix: matrix,
+          boundary: projected.map(centerOutputPoint)
+        });
       });
     });
   });
   return pieces;
 }
 
+function clipLayoutCopyDomain(polygon, copyId) {
+  if (copyId == 0) { // green
+    polygon = clipPolygonAxis(polygon, 1, 0, true);
+    polygon = clipPolygonAxis(polygon, 0, 3, false);
+  } else if (copyId == 2) { // blue
+    polygon = clipPolygonAxis(polygon, 1, 0, true);
+    polygon = clipPolygonAxis(polygon, 0, 3, true);
+  } else if (copyId == 1) { // red
+    polygon = clipPolygonAxis(polygon, 1, 0, false);
+    polygon = clipPolygonAxis(polygon, 0, 1, false);
+  } else { // orange
+    polygon = clipPolygonAxis(polygon, 1, 0, false);
+    polygon = clipPolygonAxis(polygon, 0, 1, true);
+  }
+  return polygon;
+}
+
 function copyProjectedPiece(piece) {
   return {
     id: piece.id,
     source_region: piece.source_region,
+    copy: piece.copy,
     projected_boundary: closeRing(piece.boundary)
   };
 }
@@ -279,6 +382,65 @@ function copyRasterPiece(piece) {
     source_region: piece.source_region,
     projected_boundary: closeRing(piece.boundary)
   };
+}
+
+function createFrameCutPaths(inverse, lon0) {
+  // The repeated tetrahedral net is continuous inside the frame. Its only
+  // geographic cuts are the three independent sides of the periodic rectangle.
+  var n = 6000;
+  // Stay far enough inside the frame to avoid browser-specific inverse
+  // branches at the exact Lee face boundary.
+  var epsilon = 5e-8;
+  var xmin = centerOutputPoint([RECT_XMIN, 0])[0];
+  var xmax = centerOutputPoint([RECT_XMAX, 0])[0];
+  var ymin = centerOutputPoint([0, RECT_YMIN])[1];
+  var ymax = centerOutputPoint([0, RECT_YMAX])[1];
+  var edges = [
+    [[xmin + epsilon, ymin], [xmin + epsilon, ymax]],
+    [[xmin, ymax - epsilon], [xmax, ymax - epsilon]],
+    [[xmin, ymin + epsilon], [xmax, ymin + epsilon]]
+  ];
+  return edges.reduce(function(memo, edge) {
+    var path = [];
+    for (var i = 0; i <= n; i++) {
+      var t = i / n;
+      var x = edge[0][0] + (edge[1][0] - edge[0][0]) * t;
+      var y = edge[0][1] + (edge[1][1] - edge[0][1]) * t;
+      var p = inverse(x, y);
+      if (!p) continue;
+      path.push([
+        normalizeLongitude(p[0] * R2D + lon0),
+        p[1] * R2D
+      ]);
+    }
+    return memo.concat(splitPathAtAntimeridian(path));
+  }, []).map(function(path) {
+    path.mask_width = 4e-5;
+    return path;
+  });
+}
+
+function splitPathAtAntimeridian(path) {
+  if (path.length < 2) return [];
+  var paths = [];
+  var part = [path[0]];
+  for (var i = 1; i < path.length; i++) {
+    var a = path[i - 1];
+    var b = path[i];
+    if (Math.abs(a[0] - b[0]) > 180) {
+      var adjusted = b[0] + (b[0] < a[0] ? 360 : -360);
+      var edge = a[0] < 0 ? -180 : 180;
+      var t = (edge - a[0]) / (adjusted - a[0]);
+      var lat = a[1] + (b[1] - a[1]) * t;
+      part.push([edge, lat]);
+      paths.push(part);
+      part = [[-edge, lat], b];
+    } else {
+      part.push(b);
+    }
+  }
+  if (part.length > 1) paths.push(part);
+  return paths;
 }
 
 function closeRing(ring) {
@@ -300,6 +462,13 @@ function centerOutputPoint(p) {
   return [
     p[0] - (RECT_XMIN + RECT_XMAX) / 2,
     p[1] - (RECT_YMIN + RECT_YMAX) / 2
+  ];
+}
+
+function uncenterOutputPoint(p) {
+  return [
+    p[0] + (RECT_XMIN + RECT_XMAX) / 2,
+    p[1] + (RECT_YMIN + RECT_YMAX) / 2
   ];
 }
 
@@ -330,16 +499,28 @@ function normalizeBasePoint(p, normalization) {
   ];
 }
 
+function denormalizeBasePoint(p, normalization) {
+  return [
+    p[0] / normalization.scale + normalization.cx,
+    -p[1] / normalization.scale + normalization.cy
+  ];
+}
+
 function createLeeFaceProjector(face) {
   var c = face.centroid;
   var rotation = Math.abs(c[1]) == 90 ?
     [0, -c[1], -30] :
     [-c[0], -c[1], 30];
-  return function(lam, phi) {
+  function project(lam, phi) {
     var p = rotateSphericalRadians(lam, phi, rotation);
     var q = leeRaw(p[0], p[1]);
     return [q[0], -q[1]];
+  }
+  project.invert = function(x, y) {
+    var p = invertLeeRaw(x, -y);
+    return p && rotateSphericalRadians(p[0], p[1], rotation, true);
   };
+  return project;
 }
 
 function leeRaw(lam, phi) {
@@ -398,6 +579,47 @@ function leeRaw(lam, phi) {
   );
 }
 
+function invertLeeRaw(x, y) {
+  var lam = x;
+  var phi = y * 0.5;
+  var da = 0;
+  var db = 0;
+  var err2 = Infinity;
+  var eps = 1e-12;
+  for (var i = 0; i < 40; i++) {
+    var q = leeRaw(lam, phi);
+    var tx = q[0] - x;
+    var ty = q[1] - y;
+    if (Math.abs(tx) < eps && Math.abs(ty) < eps) break;
+    var error = tx * tx + ty * ty;
+    if (error > err2) {
+      lam -= da /= 2;
+      phi -= db /= 2;
+      continue;
+    }
+    err2 = error;
+    var ea = (lam > 0 ? -1 : 1) * eps;
+    var eb = (phi > 0 ? -1 : 1) * eps;
+    var qa = leeRaw(lam + ea, phi);
+    var qb = leeRaw(lam, phi + eb);
+    var dxa = (qa[0] - q[0]) / ea;
+    var dya = (qa[1] - q[1]) / ea;
+    var dxb = (qb[0] - q[0]) / eb;
+    var dyb = (qb[1] - q[1]) / eb;
+    var det = dyb * dxa - dya * dxb;
+    if (Math.abs(det) < 1e-14) break;
+    var scale = (Math.abs(det) < 0.5 ? 0.5 : 1) / det;
+    da = (ty * dxb - tx * dyb) * scale;
+    db = (tx * dya - ty * dxa) * scale;
+    lam += da;
+    phi += db;
+    if (Math.abs(da) < eps && Math.abs(db) < eps) break;
+  }
+  var check = leeRaw(lam, phi);
+  return Math.hypot(check[0] - x, check[1] - y) < 1e-8 ?
+    [lam, phi] : null;
+}
+
 function stereographicRaw(lam, phi) {
   var cosPhi = Math.cos(phi);
   var k = 1 / (1 + cosPhi * Math.cos(lam));
@@ -439,6 +661,30 @@ function applyMatrix(m, p) {
   return [
     m[0] * p[0] + m[1] * p[1] + m[2],
     m[3] * p[0] + m[4] * p[1] + m[5]
+  ];
+}
+
+function shiftMatrixX(matrix, offset) {
+  var shifted = matrix.concat();
+  shifted[2] += offset;
+  return shifted;
+}
+
+function wrapLayoutX(x) {
+  while (x < RECT_XMIN) x += LAYOUT_PERIOD;
+  while (x > RECT_XMAX) x -= LAYOUT_PERIOD;
+  return x;
+}
+
+function invertMatrix(m) {
+  var det = m[0] * m[4] - m[1] * m[3];
+  return [
+    m[4] / det,
+    -m[1] / det,
+    (m[1] * m[5] - m[4] * m[2]) / det,
+    -m[3] / det,
+    m[0] / det,
+    (m[3] * m[2] - m[0] * m[5]) / det
   ];
 }
 
@@ -518,6 +764,43 @@ function getRingArea(ring) {
   return area / 2;
 }
 
+function indexPiecesByFaceAndCopy(pieces) {
+  var index = new Map();
+  pieces.forEach(function(piece) {
+    var key = getPieceKey(piece.face, piece.copy);
+    if (!index.has(key)) index.set(key, []);
+    index.get(key).push(piece.id);
+  });
+  return index;
+}
+
+function findPieceContainingPoint(pieces, ids, point) {
+  for (var i = 0; i < ids.length; i++) {
+    if (pointInRing(point, pieces[ids[i]].boundary)) return ids[i];
+  }
+}
+
+function pointInRing(point, ring) {
+  var inside = false;
+  for (var i = 0, j = ring.length - 1; i < ring.length; j = i++) {
+    var a = ring[j];
+    var b = ring[i];
+    var cross = (point[0] - a[0]) * (b[1] - a[1]) -
+      (point[1] - a[1]) * (b[0] - a[0]);
+    if (Math.abs(cross) < 1e-8 &&
+        point[0] >= Math.min(a[0], b[0]) - 1e-8 &&
+        point[0] <= Math.max(a[0], b[0]) + 1e-8 &&
+        point[1] >= Math.min(a[1], b[1]) - 1e-8 &&
+        point[1] <= Math.max(a[1], b[1]) + 1e-8) return true;
+    if ((a[1] > point[1]) != (b[1] > point[1]) &&
+        point[0] < (b[0] - a[0]) * (point[1] - a[1]) /
+        (b[1] - a[1]) + a[0]) {
+      inside = !inside;
+    }
+  }
+  return inside;
+}
+
 function getPieceKey(face, copy) {
   return face + ':' + copy;
 }
@@ -530,4 +813,8 @@ function normalizeLongitude(lon) {
   lon = (lon + 180) % 360;
   if (lon < 0) lon += 360;
   return lon - 180;
+}
+
+function clamp(value, min, max) {
+  return Math.max(min, Math.min(max, value));
 }

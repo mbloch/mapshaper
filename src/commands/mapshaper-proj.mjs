@@ -38,6 +38,7 @@ import cmd from '../mapshaper-cmd';
 import utils from '../utils/mapshaper-utils';
 import geom from '../geom/mapshaper-geom';
 import { isInterruptedProjection } from '../crs/mapshaper-projection-topology';
+import { splitPolygonFrameChords } from '../crs/mapshaper-projection-frame-cuts';
 import { getHighPrecisionSnapInterval, snapCoordsByInterval } from '../paths/mapshaper-snapping';
 
 cmd.proj = function(dataset, catalog, opts, targetLayers) {
@@ -207,6 +208,12 @@ export function projectDataset(dataset, src, dest, opts) {
     }
   }
 
+  var frameBounds = dest.__projection_topology &&
+    dest.__projection_topology.frame_bounds;
+  if (clipped && dataset.arcs && frameBounds) {
+    splitPolygonFrameChords(dataset, scaleProjectionFrameBounds(frameBounds, dest));
+  }
+
   if (clipped) {
     // TODO: could more selective in cleaning clipped layers
     // (probably only needed when clipped area crosses the antimeridian or includes a pole)
@@ -220,6 +227,18 @@ export function projectDataset(dataset, src, dest, opts) {
     message(`Removed ${badPoints} unprojectable ${badPoints == 1 ? 'point' : 'points'}.`);
   }
   dataset.info.crs = dest;
+}
+
+function scaleProjectionFrameBounds(bounds, crs) {
+  var scale = crs.a * crs.fr_meter;
+  var dx = crs.x0 * crs.fr_meter;
+  var dy = crs.y0 * crs.fr_meter;
+  return [
+    bounds[0] * scale + dx,
+    bounds[1] * scale + dy,
+    bounds[2] * scale + dx,
+    bounds[3] * scale + dy
+  ];
 }
 
 function projectRasterLayer(lyr, src, dest, opts) {

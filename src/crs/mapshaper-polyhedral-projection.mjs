@@ -86,6 +86,7 @@ export function createPolyhedralProjection(config) {
     outline: outline,
     forward: forward,
     forwardFace: forwardFace,
+    invertFace: invertFace,
     findFace: findFace,
     findTransitionRegion: findTransitionRegion,
     getTopology: getTopology
@@ -123,6 +124,37 @@ export function createPolyhedralProjection(config) {
     p[0] -= centerX;
     p[1] -= centerY;
     return p;
+  }
+
+  function invertFace(x, y, faceId) {
+    var face = faces[faceId];
+    var p, rotated;
+    if (!face || !face.project.invert) return null;
+    p = inverseTransformOutputPoint([x + centerX, y + centerY]);
+    p = applyMatrix(invertMatrix(face.transform), p);
+    rotated = face.project.invert(p[0], p[1]);
+    if (!rotated) return null;
+    return rotateRadians(
+      rotated[0],
+      rotated[1],
+      config.rotation[0] * D2R,
+      config.rotation[1] * D2R,
+      config.rotation[2] * D2R,
+      true
+    );
+  }
+
+  function inverseTransformOutputPoint(p) {
+    var x = p[0];
+    var y = p[1];
+    if (planarAngle) {
+      var cos = Math.cos(planarAngle);
+      var sin = Math.sin(planarAngle);
+      var x2 = x * cos + y * sin;
+      y = -x * sin + y * cos;
+      x = x2;
+    }
+    return [x / scale, -y / scale];
   }
 
   function findFace(lam, phi) {
@@ -460,6 +492,18 @@ function applyMatrix(m, p) {
   return [
     m[0] * p[0] + m[1] * p[1] + m[2],
     m[3] * p[0] + m[4] * p[1] + m[5]
+  ];
+}
+
+function invertMatrix(m) {
+  var det = m[0] * m[4] - m[1] * m[3];
+  return [
+    m[4] / det,
+    -m[1] / det,
+    (m[1] * m[5] - m[4] * m[2]) / det,
+    -m[3] / det,
+    m[0] / det,
+    (m[3] * m[2] - m[0] * m[5]) / det
   ];
 }
 

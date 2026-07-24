@@ -13,6 +13,7 @@ import { buildTopology } from '../topology/mapshaper-topology';
 import { getDatasetBounds } from '../dataset/mapshaper-dataset-utils';
 import { cleanLayers } from '../commands/mapshaper-clean';
 import { dissolveArcs } from '../paths/mapshaper-arc-dissolve';
+import { isInterruptedProjection } from '../crs/mapshaper-projection-topology';
 
 cmd.graticule = function(dataset, opts) {
   if (opts.polygon && opts.outline) {
@@ -70,7 +71,10 @@ function createProjectedGraticule(dest, opts) {
   var src = parseCrsString('wgs84');
   var outline = getOutlineDataset(src, dest, {});
   var graticule = importGeoJSON(createGraticule(dest, !!outline, opts));
-  projectDataset(graticule, src, dest, {no_clip: false}); // TODO: densify?
+  projectDataset(graticule, src, dest, {
+    no_clip: false,
+    densify: isInterruptedProjection(dest)
+  });
   if (outline) {
     graticule = addOutlineToGraticule(graticule, outline);
   }

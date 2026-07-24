@@ -85,6 +85,9 @@ export function getProjectionTopology(P) {
 
 export function isInterruptedProjection(P) {
   if (P && P.__projection_topology) {
+    if (P.__projection_topology.interrupted !== undefined) {
+      return P.__projection_topology.interrupted;
+    }
     return P.__projection_topology.seams.some(function(o) {
       return o.type == 'cut';
     });
