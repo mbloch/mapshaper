@@ -1,6 +1,9 @@
+v0.7.48
+* Fixes for `markley` and `calm` projections
+
 v0.7.47
 * Added raster support for interrupted and polyhedral projections.
-* Added `markely` and `calm` -- two conformal rectangular world projections using tetrahedral geometry.
+* Added `markley` and `calm` -- two conformal rectangular world projections using tetrahedral geometry.
 
 v0.7.46
 * Removed projected distance from the ruler tool unless great-circle distance can not be calculated. Added explanatory text to the readout.
