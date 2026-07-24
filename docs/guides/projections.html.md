@@ -158,14 +158,13 @@ mapshaper world.geojson \
 
 Mapshaper includes two versions of Buckminster Fuller's Airocean (Dymaxion)
 world map. Both divide the globe into twenty triangles and arrange them on a
-flat map:
+flat map according to Fuller's design:
 
-- `dymaxion` — the Gray-Fuller version, which balances shape and area
+![Dymaxion (Airocean) world projection](/docs/images/dymaxion-projection.png)
+
+- `dymaxion` — a version using the Gray-Fuller transform for projecting each polyhedral face, which balances shape and area
   distortion
-- `dymaxion2` — a version in which the shortest routes across the globe appear
-  straight within each triangle
-
-The two versions use the same arrangement of triangles.
+- `dymaxion2` — a version using the gnomonic projection to project each face
 
 ```bash
 mapshaper world.geojson \
@@ -177,8 +176,8 @@ mapshaper world.geojson \
 
 ### Butterfly and Cahill-Keyes projections
 
-These projections divide the globe into eight triangles. The first two arrange
-the triangles in a butterfly shape; the third uses an M-shaped arrangement.
+These projections divide the globe into eight tetrahedral faces. The first two arrange
+the triangular faces in a butterfly layout similar to the butterfly maps of Bernard Cahill and Steve Watterman, but use Gene Keyes's facet projection; the third (`cahill_keyes`) uses Gene Keyes's M-shaped arrangement and facet projection.
 
 ![Butterfly projection, Pacific and Atlantic aspects](/docs/images/butterfly-projection.png)
 
@@ -202,10 +201,9 @@ mapshaper world.geojson \
 These projections divide the globe into four triangles and arrange them to
 form a rectangular world map:
 
-- `narukawa2022` — Hajime Narukawa's published 2022 approximation of the
-  method used to construct the AuthaGraph map
-- `calm` — Farhan Adrian's adaptation of L. P. Lee's conformal tetrahedral projection fitting Lee's projection into a layout matching AuthaGraph's arrangement.
-- `markley` — F. Landis Markley's rectangular layout of Lee's projection
+- `narukawa2022` — Hajime Narukawa's published 2022 formulas approximating the original AuthaGraph map
+- `calm` — Farhan Adrian's adaptation of L. P. Lee's conformal tetrahedral projection designed to match the AuthaGraph layout.
+- `markley` — F. Landis Markley's adaptation of Lee's projection
 
 ```bash
 mapshaper world.geojson \
@@ -214,9 +212,6 @@ mapshaper world.geojson \
   -graticule outline \
   -o neatline-markley.geojson
 ```
-
-All projections in this section can be used as destinations for vector and
-raster layers, but cannot be used as source CRSs.
 
 ## Finding CRS definitions
 

@@ -176,14 +176,13 @@ mapshaper world.geojson \
 <h3 id="dymaxion-projections">Dymaxion projections</h3>
 <p>Mapshaper includes two versions of Buckminster Fuller&#39;s Airocean (Dymaxion)
 world map. Both divide the globe into twenty triangles and arrange them on a
-flat map:</p>
+flat map according to Fuller&#39;s design:</p>
+<p><img src="/docs/images/dymaxion-projection.png" alt="Dymaxion (Airocean) world projection"></p>
 <ul>
-<li><code>dymaxion</code> — the Gray-Fuller version, which balances shape and area
+<li><code>dymaxion</code> — a version using the Gray-Fuller transform for projecting each polyhedral face, which balances shape and area
 distortion</li>
-<li><code>dymaxion2</code> — a version in which the shortest routes across the globe appear
-straight within each triangle</li>
+<li><code>dymaxion2</code> — a version using the gnomonic projection to project each face</li>
 </ul>
-<p>The two versions use the same arrangement of triangles.</p>
 <pre><code class="hljs language-bash">mapshaper world.geojson \
   -proj +proj=dymaxion densify \
   -o world-dymaxion.geojson \
@@ -191,8 +190,8 @@ straight within each triangle</li>
   -o neatline-dymaxion.geojson
 </code></pre>
 <h3 id="butterfly-and-cahill-keyes-projections">Butterfly and Cahill-Keyes projections</h3>
-<p>These projections divide the globe into eight triangles. The first two arrange
-the triangles in a butterfly shape; the third uses an M-shaped arrangement.</p>
+<p>These projections divide the globe into eight tetrahedral faces. The first two arrange
+the triangular faces in a butterfly layout similar to the butterfly maps of Bernard Cahill and Steve Watterman, but use Gene Keyes&#39;s facet projection; the third (<code>cahill_keyes</code>) uses Gene Keyes&#39;s M-shaped arrangement and facet projection.</p>
 <p><img src="/docs/images/butterfly-projection.png" alt="Butterfly projection, Pacific and Atlantic aspects"></p>
 <ul>
 <li><code>butterfly</code> — centered on the Pacific, with a default central meridian of
@@ -212,10 +211,9 @@ default central meridian of 20°W</li>
 <p>These projections divide the globe into four triangles and arrange them to
 form a rectangular world map:</p>
 <ul>
-<li><code>narukawa2022</code> — Hajime Narukawa&#39;s published 2022 approximation of the
-method used to construct the AuthaGraph map</li>
-<li><code>calm</code> — Farhan Adrian&#39;s adaptation of L. P. Lee&#39;s conformal tetrahedral projection fitting Lee&#39;s projection into a layout matching AuthaGraph&#39;s arrangement.</li>
-<li><code>markley</code> — F. Landis Markley&#39;s rectangular layout of Lee&#39;s projection</li>
+<li><code>narukawa2022</code> — Hajime Narukawa&#39;s published 2022 formulas approximating the original AuthaGraph map</li>
+<li><code>calm</code> — Farhan Adrian&#39;s adaptation of L. P. Lee&#39;s conformal tetrahedral projection designed to match the AuthaGraph layout.</li>
+<li><code>markley</code> — F. Landis Markley&#39;s adaptation of Lee&#39;s projection</li>
 </ul>
 <pre><code class="hljs language-bash">mapshaper world.geojson \
   -proj +proj=markley densify \
@@ -223,8 +221,6 @@ method used to construct the AuthaGraph map</li>
   -graticule outline \
   -o neatline-markley.geojson
 </code></pre>
-<p>All projections in this section can be used as destinations for vector and
-raster layers, but cannot be used as source CRSs.</p>
 <h2 id="finding-crs-definitions">Finding CRS definitions</h2>
 <p>Several websites provide PROJ strings and EPSG codes for coordinate systems worldwide:</p>
 <ul>

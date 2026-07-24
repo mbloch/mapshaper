@@ -78,7 +78,7 @@
     return obj === Object(obj); // via underscore
   }
 
-  function clamp$4(val, min, max) {
+  function clamp$5(val, min, max) {
     return val < min ? min : (val > max ? max : val);
   }
 
@@ -721,7 +721,7 @@
   function findValueByRank(arr, rank) {
     if (!arr.length || rank < 1 || rank > arr.length) error$1("[findValueByRank()] invalid input");
 
-    rank = clamp$4(rank | 0, 1, arr.length);
+    rank = clamp$5(rank | 0, 1, arr.length);
     var k = rank - 1, // conv. rank to array index
         n = arr.length,
         l = 0,
@@ -1095,7 +1095,7 @@
   // self-import and the resulting Rollup circular-dependency warning.
   var utils = {
     addThousandsSep, addslashes, arrayToIndex,
-    clamp: clamp$4, cleanNumericString, contains, copyElements, countValues, createBuffer,
+    clamp: clamp$5, cleanNumericString, contains, copyElements, countValues, createBuffer,
     defaults, difference,
     endsWith, every, expandoBuffer, extend: extend$1, extendBuffer,
     find: find$1, findMedian, findQuantile, findRankByValue, findStringPrefix,
@@ -6345,6 +6345,7 @@
       outline: outline,
       forward: forward,
       forwardFace: forwardFace,
+      invertFace: invertFace,
       findFace: findFace,
       findTransitionRegion: findTransitionRegion,
       getTopology: getTopology
@@ -6382,6 +6383,37 @@
       p[0] -= centerX;
       p[1] -= centerY;
       return p;
+    }
+
+    function invertFace(x, y, faceId) {
+      var face = faces[faceId];
+      var p, rotated;
+      if (!face || !face.project.invert) return null;
+      p = inverseTransformOutputPoint([x + centerX, y + centerY]);
+      p = applyMatrix$1(invertMatrix$1(face.transform), p);
+      rotated = face.project.invert(p[0], p[1]);
+      if (!rotated) return null;
+      return rotateRadians(
+        rotated[0],
+        rotated[1],
+        config.rotation[0] * D2R$7,
+        config.rotation[1] * D2R$7,
+        config.rotation[2] * D2R$7,
+        true
+      );
+    }
+
+    function inverseTransformOutputPoint(p) {
+      var x = p[0];
+      var y = p[1];
+      if (planarAngle) {
+        var cos = Math.cos(planarAngle);
+        var sin = Math.sin(planarAngle);
+        var x2 = x * cos + y * sin;
+        y = -x * sin + y * cos;
+        x = x2;
+      }
+      return [x / scale, -y / scale];
     }
 
     function findFace(lam, phi) {
@@ -6453,7 +6485,7 @@
           );
           return [normalizeLongitude$3(q[0] * R2D$6 + lon0), q[1] * R2D$6];
         });
-        var paths = splitPathAtAntimeridian$2(
+        var paths = splitPathAtAntimeridian$3(
           interpolateGreatCircle(endpoints[0], endpoints[1], 0.05)
         );
         paths.forEach(function(path) {
@@ -6722,6 +6754,18 @@
     ];
   }
 
+  function invertMatrix$1(m) {
+    var det = m[0] * m[4] - m[1] * m[3];
+    return [
+      m[4] / det,
+      -m[1] / det,
+      (m[1] * m[5] - m[4] * m[2]) / det,
+      -m[3] / det,
+      m[0] / det,
+      (m[3] * m[2] - m[0] * m[5]) / det
+    ];
+  }
+
   function rotateRadians(lam, phi, deltaLam, deltaPhi, deltaGamma, invert) {
     if (invert) {
       var inv = rotatePhiGamma$1(lam, phi, deltaPhi, deltaGamma, true);
@@ -6747,21 +6791,21 @@
       return [
         Math.atan2(y * cosDeltaGamma + z * sinDeltaGamma,
           x * cosDeltaPhi + k * sinDeltaPhi),
-        Math.asin(clamp$3(k * cosDeltaPhi - x * sinDeltaPhi, -1, 1))
+        Math.asin(clamp$4(k * cosDeltaPhi - x * sinDeltaPhi, -1, 1))
       ];
     }
     k = z * cosDeltaPhi + x * sinDeltaPhi;
     return [
       Math.atan2(y * cosDeltaGamma - k * sinDeltaGamma,
         x * cosDeltaPhi - z * sinDeltaPhi),
-      Math.asin(clamp$3(k * cosDeltaGamma + y * sinDeltaGamma, -1, 1))
+      Math.asin(clamp$4(k * cosDeltaGamma + y * sinDeltaGamma, -1, 1))
     ];
   }
 
   function interpolateGreatCircle(a, b, interval) {
     var av = degreesToVector$2(a[0], a[1]);
     var bv = degreesToVector$2(b[0], b[1]);
-    var angle = Math.acos(clamp$3(dot$2(av, bv), -1, 1));
+    var angle = Math.acos(clamp$4(dot$2(av, bv), -1, 1));
     var n = Math.max(1, Math.ceil(angle * R2D$6 / interval));
     var sinAngle = Math.sin(angle);
     var points = [];
@@ -6784,7 +6828,7 @@
     return points;
   }
 
-  function splitPathAtAntimeridian$2(path) {
+  function splitPathAtAntimeridian$3(path) {
     var paths = [];
     var part = [path[0]];
     for (var i = 1; i < path.length; i++) {
@@ -6820,7 +6864,7 @@
   }
 
   function angularDistance(a, b) {
-    return Math.acos(clamp$3(dot$2(degreesToVector$2(a[0], a[1]),
+    return Math.acos(clamp$4(dot$2(degreesToVector$2(a[0], a[1]),
       degreesToVector$2(b[0], b[1])), -1, 1));
   }
 
@@ -6836,7 +6880,7 @@
   function vectorToDegrees$2(p) {
     return [
       Math.atan2(p[1], p[0]) * R2D$6,
-      Math.asin(clamp$3(p[2], -1, 1)) * R2D$6
+      Math.asin(clamp$4(p[2], -1, 1)) * R2D$6
     ];
   }
 
@@ -6897,7 +6941,7 @@
     return lon;
   }
 
-  function clamp$3(val, min, max) {
+  function clamp$4(val, min, max) {
     return Math.max(min, Math.min(max, val));
   }
 
@@ -8618,7 +8662,7 @@
   function interpolateSphericalRadians(a, b, interval) {
     var av = radiansToVector(a[0], a[1]);
     var bv = radiansToVector(b[0], b[1]);
-    var angle = Math.acos(clamp$2(dot$1(av, bv), -1, 1));
+    var angle = Math.acos(clamp$3(dot$1(av, bv), -1, 1));
     var count = Math.max(1, Math.ceil(angle / interval));
     var sinAngle = Math.sin(angle);
     var points = [];
@@ -8638,7 +8682,7 @@
   function vectorToRadians(p) {
     return [
       Math.atan2(p[1], p[0]),
-      Math.asin(clamp$2(p[2], -1, 1))
+      Math.asin(clamp$3(p[2], -1, 1))
     ];
   }
 
@@ -8712,8 +8756,8 @@
     }
     x = qx - BLOCK_HEIGHT;
     y = qy + 1.5;
-    x = clamp$2(x, XMIN, XMAX);
-    y = clamp$2(y, YMIN, YMAX);
+    x = clamp$3(x, XMIN, XMAX);
+    y = clamp$3(y, YMIN, YMAX);
     return {
       x: x,
       y: y,
@@ -8823,7 +8867,7 @@
     var v = radiansToVector(lam, phi);
     return [
       Math.atan2(dot$1(v, orientation.y), dot$1(v, orientation.x)),
-      Math.asin(clamp$2(dot$1(v, orientation.z), -1, 1))
+      Math.asin(clamp$3(dot$1(v, orientation.z), -1, 1))
     ];
   }
 
@@ -8834,7 +8878,7 @@
       orientation.x[1] * v[0] + orientation.y[1] * v[1] + orientation.z[1] * v[2],
       orientation.x[2] * v[0] + orientation.y[2] * v[1] + orientation.z[2] * v[2]
     ];
-    return [Math.atan2(p[1], p[0]), Math.asin(clamp$2(p[2], -1, 1))];
+    return [Math.atan2(p[1], p[0]), Math.asin(clamp$3(p[2], -1, 1))];
   }
 
   // Adapted from Justin Kunimune's Imago implementation.
@@ -8848,7 +8892,7 @@
       lat1 = lat;
       lon1 = lon - lon0;
     } else {
-      lat1 = Math.asin(clamp$2(
+      lat1 = Math.asin(clamp$3(
         Math.sin(lat0) * Math.sin(lat) +
         Math.cos(lat0) * Math.cos(lat) * Math.cos(lon0 - lon),
         -1,
@@ -8859,7 +8903,7 @@
         (Math.cos(lat0) * Math.sin(lat) -
           Math.sin(lat0) * Math.cos(lat) * Math.cos(lon0 - lon)) /
         denominator;
-      lon1 = Math.acos(clamp$2(value, -1, 1)) - Math.PI;
+      lon1 = Math.acos(clamp$3(value, -1, 1)) - Math.PI;
       if (Math.sin(lon - lon0) > 0) lon1 = -lon1;
     }
     return [lat1, normalizeRadians(lon1 - theta0)];
@@ -8869,7 +8913,7 @@
     var lat0 = pole.lat;
     var lon0 = pole.lon;
     lon += pole.meridian;
-    var latOut = Math.asin(clamp$2(
+    var latOut = Math.asin(clamp$3(
       Math.sin(lat0) * Math.sin(lat) -
       Math.cos(lat0) * Math.cos(lon) * Math.cos(lat),
       -1,
@@ -8881,8 +8925,8 @@
     } else {
       var value = Math.sin(lat) / Math.cos(lat0) / Math.cos(latOut) -
         Math.tan(lat0) * Math.tan(latOut);
-      if (Math.sin(lon) > 0) lonOut = lon0 + Math.acos(clamp$2(value, -1, 1));
-      else lonOut = lon0 - Math.acos(clamp$2(value, -1, 1));
+      if (Math.sin(lon) > 0) lonOut = lon0 + Math.acos(clamp$3(value, -1, 1));
+      else lonOut = lon0 - Math.acos(clamp$3(value, -1, 1));
     }
     return [latOut, normalizeRadians(lonOut)];
   }
@@ -8909,7 +8953,7 @@
           p[1] * R2D$2
         ]);
       }
-      return memo.concat(splitPathAtAntimeridian$1(path));
+      return memo.concat(splitPathAtAntimeridian$2(path));
     }, []);
     return paths.map(function(part) {
       part.mask_width = 4e-5;
@@ -8917,7 +8961,7 @@
     });
   }
 
-  function splitPathAtAntimeridian$1(path) {
+  function splitPathAtAntimeridian$2(path) {
     var paths = [];
     var part = [path[0]];
     for (var i = 1; i < path.length; i++) {
@@ -9002,7 +9046,7 @@
     return lon;
   }
 
-  function clamp$2(value, min, max) {
+  function clamp$3(value, min, max) {
     return Math.max(min, Math.min(max, value));
   }
 
@@ -9033,11 +9077,15 @@
   var SQRT3 = Math.sqrt(3);
   var ASIN_ONE_THIRD = Math.asin(1 / 3);
   var MARKLEY_LATITUDE = Math.acos(1 / 3) * 0.5 * R2D$1;
+  var LAYOUT_PERIOD = 8;
+  var MARKLEY_LAYOUT_PHASE = -2;
+  var CALM_LAYOUT_PHASE = -1.5;
   var RECT_XMIN = -7;
   var RECT_XMAX = 1;
   var RECT_YMIN = -2 * SQRT3;
   var RECT_YMAX = 0;
   var EPS = 1e-12;
+  var MIN_PIECE_AREA = 1e-6;
   var engines = {};
 
   var TETRAHEDRON_VERTICES = [
@@ -9081,7 +9129,10 @@
   function getLeeTetrahedralEngine(id) {
     id = id || 'markley';
     if (!engines[id]) {
-      engines[id] = createLeeTetrahedralEngine(getProjectionRotation(id));
+      engines[id] = createLeeTetrahedralEngine(
+        getProjectionRotation(id),
+        id == 'markley' ? MARKLEY_LAYOUT_PHASE : CALM_LAYOUT_PHASE
+      );
     }
     return engines[id];
   }
@@ -9097,23 +9148,24 @@
     };
     P.__projection_topology = engine.getTopology(P.lam0 * R2D$1);
     P.__projected_outline = engine.outline;
+    P.__graticule_precision = 1;
   }
 
   function getProjectionRotation(id) {
     if (id == 'calm') {
-      // Exact D3 Euler equivalent of MapDesigner's published CALM aspect:
-      // latitude 77°, longitude 143°, central meridian -163°.
+      // Kunimune's published CALM aspect (77°N, 143°E, central meridian
+      // 163°W), transformed into this implementation's tetrahedral symmetry.
       return [
-        19.57956907750618,
-        -12.42267097553935,
-        3.8615690020132067
+        64.7261399569101,
+        -39.84470062116125,
+        -119.02303523591051
       ];
     }
     // Markley's singularities are at ±35.26439°, in the oceans.
     return [115, MARKLEY_LATITUDE - 90, 180];
   }
 
-  function createLeeTetrahedralEngine(rotation) {
+  function createLeeTetrahedralEngine(rotation, layoutPhase) {
     var base = createPolyhedralProjection({
       faces: TETRAHEDRON_FACES,
       parents: [-1, 0, 0, 0],
@@ -9124,10 +9176,11 @@
     var normalization = getBaseNormalization(base.outline);
     var baseTopology = base.getTopology(0);
     var sourceRegions = createSourceRegions(rotation);
-    var pieces = createLayoutPieces(baseTopology.regions, normalization);
-    var pieceIndex = new Map(pieces.map(function(piece) {
-      return [getPieceKey(piece.face, piece.copy), piece.id];
-    }));
+    var rasterPieces = createLayoutPieces(
+      baseTopology.regions, normalization, layoutPhase);
+    var rasterPieceIndex = indexPiecesByFaceAndCopy(rasterPieces);
+    var rasterPieceIds = rasterPieces.map(function(piece) { return piece.id; });
+    var seamCache = new Map();
     var outline = [[
       centerOutputPoint([RECT_XMIN, RECT_YMIN]),
       centerOutputPoint([RECT_XMAX, RECT_YMIN]),
@@ -9138,6 +9191,7 @@
 
     return {
       forward: forward,
+      inverse: inverse,
       outline: outline,
       getTopology: getTopology
     };
@@ -9145,24 +9199,42 @@
     function forward(lam, phi) {
       var p = normalizeBasePoint(base.forward(lam, phi), normalization);
       var copy = getLayoutCopy(p);
-      return centerOutputPoint(applyMatrix(copy.matrix, p));
+      var q = applyMatrix(copy.matrix, p);
+      q[0] = wrapLayoutX(q[0] + layoutPhase);
+      q[0] = clamp$2(q[0], RECT_XMIN, RECT_XMAX);
+      q[1] = clamp$2(q[1], RECT_YMIN, RECT_YMAX);
+      return centerOutputPoint(q);
+    }
+
+    // Internal inverse used to trace the geographic cut corresponding to the
+    // rectangular frame. The public projection remains forward-only.
+    function inverse(x, y) {
+      var q = uncenterOutputPoint([x, y]);
+      for (var i = 0; i < rasterPieces.length; i++) {
+        var piece = rasterPieces[i];
+        if (!pointInRing$2(centerOutputPoint(q), piece.boundary)) continue;
+        var p = applyMatrix(invertMatrix(piece.matrix), q);
+        var projected = getLayoutCopy(p);
+        if (projected.id != piece.copy) continue;
+        p = denormalizeBasePoint(p, normalization);
+        var spherical = base.invertFace(p[0], p[1], piece.face);
+        if (!spherical) continue;
+        var check = forward(spherical[0], spherical[1]);
+        if (Math.hypot(check[0] - x, check[1] - y) < 1e-6) {
+          return spherical;
+        }
+      }
+      return null;
     }
 
     function getTopology(lon0) {
-      var topology = base.getTopology(lon0);
-      return {
-        regions: pieces.map(copyProjectedPiece),
-        seams: topology.seams.map(function(seam) {
-          return {
-            type: 'cut',
-            faces: seam.faces,
-            paths: seam.paths
-          };
-        }),
+      var result = {
+        interrupted: true,
+        regions: rasterPieces.map(copyProjectedPiece),
         findRegion: findRegion,
         findTransitionRegion: findRegion,
         projectRegion: projectRegion,
-        raster_regions: pieces.map(copyRasterPiece),
+        raster_regions: rasterPieces.map(copyRasterPiece),
         raster_source_regions: sourceRegions.map(function(region) {
           return {
             id: region.id,
@@ -9178,14 +9250,44 @@
         raster_cell_halo: false,
         fill_raster_mask: true,
         fill_raster_coverage: true,
-        findRasterRegion: findRegion,
-        projectRasterRegion: projectRegion,
+        findRasterRegion: findRasterRegion,
+        projectRasterRegion: projectRasterRegion,
         projectRasterSourceRegion: projectRasterSourceRegion,
         clipRasterRegionPolygon: clipRasterRegionPolygon,
+        frame_bounds: [
+          outline[0][0][0],
+          outline[0][0][1],
+          outline[0][2][0],
+          outline[0][2][1]
+        ],
         outline: outline.map(function(ring) {
           return ring.map(function(p) { return p.concat(); });
         })
       };
+      // Rasters use the region mesh but never need geographic seam paths.
+      // Tracing the rectangular cut is deferred until vector clipping requests it.
+      Object.defineProperty(result, 'seams', {
+        enumerable: true,
+        get: function() {
+          if (!seamCache.has(lon0)) {
+            var topology = base.getTopology(lon0);
+            var seams = topology.seams.map(function(seam) {
+              return {
+                type: 'attached',
+                faces: seam.faces,
+                paths: seam.paths
+              };
+            });
+            seams.push({
+              type: 'cut',
+              paths: createFrameCutPaths(inverse, lon0)
+            });
+            seamCache.set(lon0, seams);
+          }
+          return seamCache.get(lon0);
+        }
+      });
+      return result;
 
       function findRegion(lon, lat) {
         var lam = normalizeLongitude$1(lon - lon0) * D2R$1;
@@ -9193,11 +9295,32 @@
         var face = base.findFace(lam, phi);
         var p = normalizeBasePoint(base.forwardFace(lam, phi, face), normalization);
         var copy = getLayoutCopy(p);
-        return pieceIndex.get(getPieceKey(face, copy.id));
+        var q = applyMatrix(copy.matrix, p);
+        q[0] = wrapLayoutX(q[0] + layoutPhase);
+        q[0] = clamp$2(q[0], RECT_XMIN, RECT_XMAX);
+        q[1] = clamp$2(q[1], RECT_YMIN, RECT_YMAX);
+        q = centerOutputPoint(q);
+        var ids = rasterPieceIndex.get(getPieceKey(face, copy.id)) || [];
+        var region = findPieceContainingPoint(rasterPieces, ids, q);
+        if (region === undefined) {
+          region = findPieceContainingPoint(rasterPieces, rasterPieceIds, q);
+        }
+        return region;
       }
 
       function projectRegion(lon, lat, regionId) {
-        var piece = pieces[regionId];
+        return projectPiece(lon, lat, rasterPieces[regionId]);
+      }
+
+      function findRasterRegion(lon, lat) {
+        return findRegion(lon, lat);
+      }
+
+      function projectRasterRegion(lon, lat, regionId) {
+        return projectPiece(lon, lat, rasterPieces[regionId]);
+      }
+
+      function projectPiece(lon, lat, piece) {
         var lam = normalizeLongitude$1(lon - lon0) * D2R$1;
         var p = normalizeBasePoint(
           base.forwardFace(lam, lat * D2R$1, piece.face),
@@ -9215,7 +9338,7 @@
       }
 
       function clipRasterRegionPolygon(vertices, regionId) {
-        var piece = pieces[regionId];
+        var piece = rasterPieces[regionId];
         var polygon = vertices.map(function(vertex) {
           var p = applyMatrix(piece.matrix, [vertex.x, vertex.y]);
           return copyRasterVertex(vertex, p[0], p[1]);
@@ -9246,39 +9369,63 @@
     });
   }
 
-  function createLayoutPieces(regions, normalization) {
+  function createLayoutPieces(regions, normalization, layoutPhase) {
     var pieces = [];
     regions.forEach(function(region) {
       var boundary = region.projected_boundary.map(function(p) {
         return normalizeBasePoint(p, normalization);
       });
       LAYOUT_COPIES.forEach(function(copy) {
-        var polygon = boundary.map(function(p) {
-          return applyMatrix(copy.matrix, p);
-        });
-        polygon = clipPolygonAxis(polygon, 0, RECT_XMIN, true);
-        polygon = clipPolygonAxis(polygon, 0, RECT_XMAX, false);
-        polygon = clipPolygonAxis(polygon, 1, RECT_YMIN, true);
-        polygon = clipPolygonAxis(polygon, 1, RECT_YMAX, false);
-        if (polygon.length < 3 || Math.abs(getRingArea$2(polygon)) < EPS) return;
-        var id = pieces.length;
-        pieces.push({
-          id: id,
-          face: region.id,
-          source_region: region.id,
-          copy: copy.id,
-          matrix: copy.matrix,
-          boundary: polygon.map(centerOutputPoint)
+        var polygon = clipLayoutCopyDomain(boundary, copy.id);
+        if (polygon.length < 3 ||
+            Math.abs(getRingArea$2(polygon)) < MIN_PIECE_AREA) return;
+        [-LAYOUT_PERIOD, 0, LAYOUT_PERIOD].forEach(function(wrap) {
+          var matrix = shiftMatrixX(copy.matrix, layoutPhase + wrap);
+          var projected = polygon.map(function(p) {
+            return applyMatrix(matrix, p);
+          });
+          projected = clipPolygonAxis(projected, 0, RECT_XMIN, true);
+          projected = clipPolygonAxis(projected, 0, RECT_XMAX, false);
+          projected = clipPolygonAxis(projected, 1, RECT_YMIN, true);
+          projected = clipPolygonAxis(projected, 1, RECT_YMAX, false);
+          if (projected.length < 3 ||
+              Math.abs(getRingArea$2(projected)) < MIN_PIECE_AREA) return;
+          pieces.push({
+            id: pieces.length,
+            face: region.id,
+            source_region: region.id,
+            copy: copy.id,
+            matrix: matrix,
+            boundary: projected.map(centerOutputPoint)
+          });
         });
       });
     });
     return pieces;
   }
 
+  function clipLayoutCopyDomain(polygon, copyId) {
+    if (copyId == 0) { // green
+      polygon = clipPolygonAxis(polygon, 1, 0, true);
+      polygon = clipPolygonAxis(polygon, 0, 3, false);
+    } else if (copyId == 2) { // blue
+      polygon = clipPolygonAxis(polygon, 1, 0, true);
+      polygon = clipPolygonAxis(polygon, 0, 3, true);
+    } else if (copyId == 1) { // red
+      polygon = clipPolygonAxis(polygon, 1, 0, false);
+      polygon = clipPolygonAxis(polygon, 0, 1, false);
+    } else { // orange
+      polygon = clipPolygonAxis(polygon, 1, 0, false);
+      polygon = clipPolygonAxis(polygon, 0, 1, true);
+    }
+    return polygon;
+  }
+
   function copyProjectedPiece(piece) {
     return {
       id: piece.id,
       source_region: piece.source_region,
+      copy: piece.copy,
       projected_boundary: closeRing$1(piece.boundary)
     };
   }
@@ -9291,9 +9438,68 @@
     };
   }
 
+  function createFrameCutPaths(inverse, lon0) {
+    // The repeated tetrahedral net is continuous inside the frame. Its only
+    // geographic cuts are the three independent sides of the periodic rectangle.
+    var n = 6000;
+    // Stay far enough inside the frame to avoid browser-specific inverse
+    // branches at the exact Lee face boundary.
+    var epsilon = 5e-8;
+    var xmin = centerOutputPoint([RECT_XMIN, 0])[0];
+    var xmax = centerOutputPoint([RECT_XMAX, 0])[0];
+    var ymin = centerOutputPoint([0, RECT_YMIN])[1];
+    var ymax = centerOutputPoint([0, RECT_YMAX])[1];
+    var edges = [
+      [[xmin + epsilon, ymin], [xmin + epsilon, ymax]],
+      [[xmin, ymax - epsilon], [xmax, ymax - epsilon]],
+      [[xmin, ymin + epsilon], [xmax, ymin + epsilon]]
+    ];
+    return edges.reduce(function(memo, edge) {
+      var path = [];
+      for (var i = 0; i <= n; i++) {
+        var t = i / n;
+        var x = edge[0][0] + (edge[1][0] - edge[0][0]) * t;
+        var y = edge[0][1] + (edge[1][1] - edge[0][1]) * t;
+        var p = inverse(x, y);
+        if (!p) continue;
+        path.push([
+          normalizeLongitude$1(p[0] * R2D$1 + lon0),
+          p[1] * R2D$1
+        ]);
+      }
+      return memo.concat(splitPathAtAntimeridian$1(path));
+    }, []).map(function(path) {
+      path.mask_width = 4e-5;
+      return path;
+    });
+  }
+
+  function splitPathAtAntimeridian$1(path) {
+    if (path.length < 2) return [];
+    var paths = [];
+    var part = [path[0]];
+    for (var i = 1; i < path.length; i++) {
+      var a = path[i - 1];
+      var b = path[i];
+      if (Math.abs(a[0] - b[0]) > 180) {
+        var adjusted = b[0] + (b[0] < a[0] ? 360 : -360);
+        var edge = a[0] < 0 ? -180 : 180;
+        var t = (edge - a[0]) / (adjusted - a[0]);
+        var lat = a[1] + (b[1] - a[1]) * t;
+        part.push([edge, lat]);
+        paths.push(part);
+        part = [[-edge, lat], b];
+      } else {
+        part.push(b);
+      }
+    }
+    if (part.length > 1) paths.push(part);
+    return paths;
+  }
+
   function closeRing$1(ring) {
     var copy = ring.map(function(p) { return p.concat(); });
-    if (copy.length && !pointsEqual$1(copy[0], copy[copy.length - 1])) {
+    if (copy.length && !pointsEqual$2(copy[0], copy[copy.length - 1])) {
       copy.push(copy[0].concat());
     }
     return copy;
@@ -9310,6 +9516,13 @@
     return [
       p[0] - (RECT_XMIN + RECT_XMAX) / 2,
       p[1] - (RECT_YMIN + RECT_YMAX) / 2
+    ];
+  }
+
+  function uncenterOutputPoint(p) {
+    return [
+      p[0] + (RECT_XMIN + RECT_XMAX) / 2,
+      p[1] + (RECT_YMIN + RECT_YMAX) / 2
     ];
   }
 
@@ -9340,16 +9553,28 @@
     ];
   }
 
+  function denormalizeBasePoint(p, normalization) {
+    return [
+      p[0] / normalization.scale + normalization.cx,
+      -p[1] / normalization.scale + normalization.cy
+    ];
+  }
+
   function createLeeFaceProjector(face) {
     var c = face.centroid;
     var rotation = Math.abs(c[1]) == 90 ?
       [0, -c[1], -30] :
       [-c[0], -c[1], 30];
-    return function(lam, phi) {
+    function project(lam, phi) {
       var p = rotateSphericalRadians(lam, phi, rotation);
       var q = leeRaw(p[0], p[1]);
       return [q[0], -q[1]];
+    }
+    project.invert = function(x, y) {
+      var p = invertLeeRaw(x, -y);
+      return p && rotateSphericalRadians(p[0], p[1], rotation, true);
     };
+    return project;
   }
 
   function leeRaw(lam, phi) {
@@ -9408,6 +9633,47 @@
     );
   }
 
+  function invertLeeRaw(x, y) {
+    var lam = x;
+    var phi = y * 0.5;
+    var da = 0;
+    var db = 0;
+    var err2 = Infinity;
+    var eps = 1e-12;
+    for (var i = 0; i < 40; i++) {
+      var q = leeRaw(lam, phi);
+      var tx = q[0] - x;
+      var ty = q[1] - y;
+      if (Math.abs(tx) < eps && Math.abs(ty) < eps) break;
+      var error = tx * tx + ty * ty;
+      if (error > err2) {
+        lam -= da /= 2;
+        phi -= db /= 2;
+        continue;
+      }
+      err2 = error;
+      var ea = (lam > 0 ? -1 : 1) * eps;
+      var eb = (phi > 0 ? -1 : 1) * eps;
+      var qa = leeRaw(lam + ea, phi);
+      var qb = leeRaw(lam, phi + eb);
+      var dxa = (qa[0] - q[0]) / ea;
+      var dya = (qa[1] - q[1]) / ea;
+      var dxb = (qb[0] - q[0]) / eb;
+      var dyb = (qb[1] - q[1]) / eb;
+      var det = dyb * dxa - dya * dxb;
+      if (Math.abs(det) < 1e-14) break;
+      var scale = (Math.abs(det) < 0.5 ? 0.5 : 1) / det;
+      da = (ty * dxb - tx * dyb) * scale;
+      db = (tx * dya - ty * dxa) * scale;
+      lam += da;
+      phi += db;
+      if (Math.abs(da) < eps && Math.abs(db) < eps) break;
+    }
+    var check = leeRaw(lam, phi);
+    return Math.hypot(check[0] - x, check[1] - y) < 1e-8 ?
+      [lam, phi] : null;
+  }
+
   function stereographicRaw(lam, phi) {
     var cosPhi = Math.cos(phi);
     var k = 1 / (1 + cosPhi * Math.cos(lam));
@@ -9449,6 +9715,30 @@
     return [
       m[0] * p[0] + m[1] * p[1] + m[2],
       m[3] * p[0] + m[4] * p[1] + m[5]
+    ];
+  }
+
+  function shiftMatrixX(matrix, offset) {
+    var shifted = matrix.concat();
+    shifted[2] += offset;
+    return shifted;
+  }
+
+  function wrapLayoutX(x) {
+    while (x < RECT_XMIN) x += LAYOUT_PERIOD;
+    while (x > RECT_XMAX) x -= LAYOUT_PERIOD;
+    return x;
+  }
+
+  function invertMatrix(m) {
+    var det = m[0] * m[4] - m[1] * m[3];
+    return [
+      m[4] / det,
+      -m[1] / det,
+      (m[1] * m[5] - m[4] * m[2]) / det,
+      -m[3] / det,
+      m[0] / det,
+      (m[3] * m[2] - m[0] * m[5]) / det
     ];
   }
 
@@ -9528,11 +9818,48 @@
     return area / 2;
   }
 
+  function indexPiecesByFaceAndCopy(pieces) {
+    var index = new Map();
+    pieces.forEach(function(piece) {
+      var key = getPieceKey(piece.face, piece.copy);
+      if (!index.has(key)) index.set(key, []);
+      index.get(key).push(piece.id);
+    });
+    return index;
+  }
+
+  function findPieceContainingPoint(pieces, ids, point) {
+    for (var i = 0; i < ids.length; i++) {
+      if (pointInRing$2(point, pieces[ids[i]].boundary)) return ids[i];
+    }
+  }
+
+  function pointInRing$2(point, ring) {
+    var inside = false;
+    for (var i = 0, j = ring.length - 1; i < ring.length; j = i++) {
+      var a = ring[j];
+      var b = ring[i];
+      var cross = (point[0] - a[0]) * (b[1] - a[1]) -
+        (point[1] - a[1]) * (b[0] - a[0]);
+      if (Math.abs(cross) < 1e-8 &&
+          point[0] >= Math.min(a[0], b[0]) - 1e-8 &&
+          point[0] <= Math.max(a[0], b[0]) + 1e-8 &&
+          point[1] >= Math.min(a[1], b[1]) - 1e-8 &&
+          point[1] <= Math.max(a[1], b[1]) + 1e-8) return true;
+      if ((a[1] > point[1]) != (b[1] > point[1]) &&
+          point[0] < (b[0] - a[0]) * (point[1] - a[1]) /
+          (b[1] - a[1]) + a[0]) {
+        inside = !inside;
+      }
+    }
+    return inside;
+  }
+
   function getPieceKey(face, copy) {
     return face + ':' + copy;
   }
 
-  function pointsEqual$1(a, b) {
+  function pointsEqual$2(a, b) {
     return Math.abs(a[0] - b[0]) < EPS && Math.abs(a[1] - b[1]) < EPS;
   }
 
@@ -9540,6 +9867,10 @@
     lon = (lon + 180) % 360;
     if (lon < 0) lon += 360;
     return lon - 180;
+  }
+
+  function clamp$2(value, min, max) {
+    return Math.max(min, Math.min(max, value));
   }
 
   var mproj$1 = require$1('mproj');
@@ -41966,10 +42297,10 @@ ${svg}
       var coords = path.coords;
       if (coords.length < 2) return;
       if (forcePolylinePaths) {
-        lines.push(path.closed || pointsEqual(coords[0], coords[coords.length - 1]) ? closeRing(coords) : coords);
+        lines.push(path.closed || pointsEqual$1(coords[0], coords[coords.length - 1]) ? closeRing(coords) : coords);
         return;
       }
-      if (path.closed || pointsEqual(coords[0], coords[coords.length - 1])) {
+      if (path.closed || pointsEqual$1(coords[0], coords[coords.length - 1])) {
         if (coords.length >= 3) {
           rings.push(closeRing(coords));
         }
@@ -42192,7 +42523,7 @@ ${svg}
     for (var i = 0; i < subpaths.length; i++) {
       var coords = subpaths[i].coords;
       if (coords.length < 2) continue;
-      if (!subpaths[i].closed && !pointsEqual(coords[0], coords[coords.length - 1])) {
+      if (!subpaths[i].closed && !pointsEqual$1(coords[0], coords[coords.length - 1])) {
         return true;
       }
     }
@@ -42277,7 +42608,7 @@ ${svg}
 
   function closeRing(coords) {
     var ring = coords.map(function(p) { return [p[0], p[1]]; });
-    if (!pointsEqual(ring[0], ring[ring.length - 1])) {
+    if (!pointsEqual$1(ring[0], ring[ring.length - 1])) {
       ring.push([ring[0][0], ring[0][1]]);
     }
     return ring;
@@ -42332,7 +42663,7 @@ ${svg}
     return /^[a-z]$/i.test(token);
   }
 
-  function pointsEqual(a, b) {
+  function pointsEqual$1(a, b) {
     return a && b && a[0] == b[0] && a[1] == b[1];
   }
 
@@ -55898,6 +56229,9 @@ ${svg}
 
   function isInterruptedProjection(P) {
     if (P && P.__projection_topology) {
+      if (P.__projection_topology.interrupted !== undefined) {
+        return P.__projection_topology.interrupted;
+      }
       return P.__projection_topology.seams.some(function(o) {
         return o.type == 'cut';
       });
@@ -57956,6 +58290,120 @@ ${svg}
     projectRasterGridForward: projectRasterGridForward
   });
 
+  function splitPolygonFrameChords(dataset, bounds) {
+    var editor = new DatasetEditor(dataset);
+    dataset.layers.forEach(function(lyr) {
+      if (lyr.geometry_type == 'polygon') {
+        editor.editLayer(lyr, function(path) {
+          return splitRingAtFrameChords(path, bounds);
+        });
+      } else {
+        editor.editLayer(lyr, function(geometry) {
+          return lyr.geometry_type == 'point' ? geometry : [geometry];
+        });
+      }
+    });
+    editor.done();
+  }
+
+  function splitRingAtFrameChords(path, bounds, depth) {
+    depth = depth || 0;
+    var closed = pointsEqual(path[0], path[path.length - 1]);
+    var n = path.length - (closed ? 1 : 0);
+    if (n < 4) return [path];
+    var width = bounds[2] - bounds[0];
+    var height = bounds[3] - bounds[1];
+    var tolerance = Math.max(width, height) * 1e-3;
+    var edgesBySide = [[], [], [], []];
+    for (var i = 0; i < n; i++) {
+      var side = getFrameSide(
+        path[i], path[(i + 1) % n], bounds, tolerance);
+      if (side >= 0) edgesBySide[side].push({index: i, side: side});
+    }
+    for (var frameSide = 0; frameSide < edgesBySide.length; frameSide++) {
+      var runs = groupEdgeRuns(edgesBySide[frameSide], n);
+      if (runs.length > 1) {
+        var parts = splitRingAtRuns(path, n, runs, frameSide, bounds);
+        if (depth >= 3) return parts;
+        return parts.reduce(function(memo, part) {
+          return memo.concat(splitRingAtFrameChords(part, bounds, depth + 1));
+        }, []);
+      }
+    }
+    return [path];
+  }
+
+  function splitRingAtRuns(path, n, runs, side, bounds) {
+    return runs.map(function(run, i) {
+      var next = runs[(i + 1) % runs.length];
+      var start = (run.end + 1) % n;
+      var end = next.start;
+      var part = [];
+      var j = start;
+      while (true) {
+        part.push(path[j].concat());
+        if (j == end) break;
+        j = (j + 1) % n;
+      }
+      if (side == 0 || side == 2) {
+        var y = side == 0 ? bounds[1] : bounds[3];
+        part[0][1] = y;
+        part[part.length - 1][1] = y;
+      } else {
+        var x = side == 1 ? bounds[2] : bounds[0];
+        part[0][0] = x;
+        part[part.length - 1][0] = x;
+      }
+      part.push(part[0].concat());
+      return part;
+    }).filter(function(part) {
+      return part.length > 3;
+    });
+  }
+
+  function getFrameSide(a, b, bounds, tolerance) {
+    var dx = Math.abs(a[0] - b[0]);
+    var dy = Math.abs(a[1] - b[1]);
+    var width = bounds[2] - bounds[0];
+    var height = bounds[3] - bounds[1];
+    if (dx > width * 0.2) {
+      if (Math.abs(a[1] - bounds[1]) < tolerance &&
+          Math.abs(b[1] - bounds[1]) < tolerance) return 0;
+      if (Math.abs(a[1] - bounds[3]) < tolerance &&
+          Math.abs(b[1] - bounds[3]) < tolerance) return 2;
+    }
+    if (dy > height * 0.2) {
+      if (Math.abs(a[0] - bounds[2]) < tolerance &&
+          Math.abs(b[0] - bounds[2]) < tolerance) return 1;
+      if (Math.abs(a[0] - bounds[0]) < tolerance &&
+          Math.abs(b[0] - bounds[0]) < tolerance) return 3;
+    }
+    return -1;
+  }
+
+  function groupEdgeRuns(edges, n) {
+    var runs = [];
+    edges.forEach(function(edge) {
+      var run = runs[runs.length - 1];
+      if (run && edge.side == run.side && edge.index == run.end + 1) {
+        run.end = edge.index;
+      } else {
+        runs.push({start: edge.index, end: edge.index, side: edge.side});
+      }
+    });
+    if (runs.length > 1 && runs[0].start == 0 &&
+        runs[runs.length - 1].end == n - 1 &&
+        runs[0].side == runs[runs.length - 1].side) {
+      runs[0].start = runs[runs.length - 1].start;
+      runs.pop();
+    }
+    return runs;
+  }
+
+  function pointsEqual(a, b) {
+    return a && b && a[0] == b[0] && a[1] == b[1];
+  }
+
   cmd.proj = function(dataset, catalog, opts, targetLayers) {
     var srcInfo, destInfo, destStr;
     var implicitlyProjectedNames = getImplicitlyTargetedLayerNames(dataset, targetLayers, layerHasGeometry);
@@ -58123,6 +58571,12 @@ ${svg}
       }
     }
 
+    var frameBounds = dest.__projection_topology &&
+      dest.__projection_topology.frame_bounds;
+    if (clipped && dataset.arcs && frameBounds) {
+      splitPolygonFrameChords(dataset, scaleProjectionFrameBounds(frameBounds, dest));
+    }
+
     if (clipped) {
       // TODO: could more selective in cleaning clipped layers
       // (probably only needed when clipped area crosses the antimeridian or includes a pole)
@@ -58136,6 +58590,18 @@ ${svg}
       message(`Removed ${badPoints} unprojectable ${badPoints == 1 ? 'point' : 'points'}.`);
     }
     dataset.info.crs = dest;
+  }
+
+  function scaleProjectionFrameBounds(bounds, crs) {
+    var scale = crs.a * crs.fr_meter;
+    var dx = crs.x0 * crs.fr_meter;
+    var dy = crs.y0 * crs.fr_meter;
+    return [
+      bounds[0] * scale + dx,
+      bounds[1] * scale + dy,
+      bounds[2] * scale + dx,
+      bounds[3] * scale + dy
+    ];
   }
 
   function projectRasterLayer(lyr, src, dest, opts) {
@@ -66237,7 +66703,10 @@ ${svg}
     var src = parseCrsString$1('wgs84');
     var outline = getOutlineDataset(src, dest, {});
     var graticule = importGeoJSON(createGraticule(dest, !!outline, opts));
-    projectDataset(graticule, src, dest, {no_clip: false}); // TODO: densify?
+    projectDataset(graticule, src, dest, {
+      no_clip: false,
+      densify: isInterruptedProjection(dest)
+    });
     if (outline) {
       graticule = addOutlineToGraticule(graticule, outline);
     }
@@ -72863,7 +73332,7 @@ ${svg}
     return name == 'rectangle' || name == 'rectangles' || name == 'filter' && opts.cleanup;
   }
 
-  var version = "0.7.47";
+  var version = "0.7.48";
 
   // Parse command line args into commands and run them
   // Function takes an optional Node-style callback. A Promise is returned if no callback is given.
