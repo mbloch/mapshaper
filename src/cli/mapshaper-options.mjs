@@ -1543,6 +1543,17 @@ export function getOptionParser() {
       describe: 'create an interior point for each polygon\'s largest ring',
       type: 'flag'
     })
+    .option('inner-method', {
+      // describe: 'centroid2, pole, centroid, weighted or legacy (default is centroid2)'
+    })
+    .option('inner-tolerance', {
+      // describe: 'clearance loss allowed by centroid methods (default is 10%)',
+      type: 'percent'
+    })
+    .option('inner-weight', {
+      // describe: 'centroid weight used by inner-method=weighted (default is 0.6)',
+      type: 'number'
+    })
     .option('centroid', {
       describe: 'create a centroid point for each polygon\'s largest ring',
       type: 'flag'

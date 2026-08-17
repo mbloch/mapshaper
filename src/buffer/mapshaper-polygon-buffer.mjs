@@ -36,6 +36,10 @@ import { findAnchorPoint } from '../points/mapshaper-anchor-points';
 import { profileStart, profileEnd } from '../utils/mapshaper-profile';
 import { message, stop, warn } from '../utils/mapshaper-logging';
 
+// Buffer internals need a reliable interior probe, not a visually centered
+// label point. The bounded pole search avoids centroid2's second pass.
+var BUFFER_INNER_POINT_OPTS = {method: 'pole'};
+
 export function makePolygonBuffer(lyr, dataset, opts) {
   var spherical = isLatLngCRS(getDatasetCRS(dataset));
   if (spherical && sourceHasCollapsingBandEdge(lyr, dataset)) {
@@ -432,7 +436,7 @@ function fillNarrowMaskHoles(maskDataset, keepRadius) {
       }
       // hole: keep only if wide enough to hold a disk of radius keepRadius
       var holeShape = [reversePath(path.ids.concat())];
-      var anchor = findAnchorPoint(holeShape, arcs);
+      var anchor = findAnchorPoint(holeShape, arcs, BUFFER_INNER_POINT_OPTS);
       var radius = anchor ?
         getPointToShapeDistance(anchor.x, anchor.y, holeShape, arcs) : 0;
       if (radius >= keepRadius) {
@@ -1903,7 +1907,7 @@ function pickLargestAreaFeature(candidates, sourceAreas) {
 function getTileAnchorPoint(tileId, mosaicIndex, ownerCtx) {
   if (tileId in ownerCtx.anchorCache) return ownerCtx.anchorCache[tileId];
   var tile = mosaicIndex.mosaic[tileId];
-  var p = findAnchorPoint(tile, ownerCtx.mosaicArcs) ||
+  var p = findAnchorPoint(tile, ownerCtx.mosaicArcs, BUFFER_INNER_POINT_OPTS) ||
     getPathCentroid(tile[0], ownerCtx.mosaicArcs) || null;
   ownerCtx.anchorCache[tileId] = p;
   return p;

@@ -1,5 +1,6 @@
 import { requirePolylineLayer } from '../dataset/mapshaper-layer-utils';
 import { parseDMS } from '../geom/mapshaper-dms';
+import { parsePercent } from '../cli/mapshaper-option-parsing-utils';
 import { findAnchorPoint } from '../points/mapshaper-anchor-points';
 import { polylineToPoint, polylineToMidpoints } from '../paths/mapshaper-polyline-to-point';
 import { getDatasetCRS } from '../crs/mapshaper-projections';
@@ -227,11 +228,31 @@ function pointsFromPolylines(lyr, arcs, opts) {
 }
 
 export function pointsFromPolygons(lyr, arcs, opts) {
-  var func = opts.inner ? findAnchorPoint : geom.getShapeCentroid;
+  var innerOpts = opts.inner ? getInnerPointOptions(opts) : null;
   return lyr.shapes.map(function(shp) {
-    var p = func(shp, arcs);
+    var p = innerOpts ?
+      findAnchorPoint(shp, arcs, innerOpts) : geom.getShapeCentroid(shp, arcs);
     return p ? [[p.x, p.y]] : null;
   });
+}
+
+function getInnerPointOptions(opts) {
+  var method = opts.inner_method || 'centroid2';
+  var methods = ['legacy', 'pole', 'centroid', 'centroid2', 'weighted'];
+  if (methods.indexOf(method) == -1) {
+    stop('Unsupported inner point method:', method);
+  }
+  var tolerance = opts.inner_tolerance === undefined ?
+    0.1 : parsePercent(opts.inner_tolerance);
+  var weight = opts.inner_weight === undefined ? 0.6 : opts.inner_weight;
+  if (!(weight >= 0)) {
+    stop('Expected inner-weight to be a non-negative number');
+  }
+  return {
+    method: method,
+    tolerance: tolerance,
+    weight: weight
+  };
 }
 
 export function coordinateFromValue(val) {

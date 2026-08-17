@@ -1,11 +1,24 @@
 import { forEachSegmentInPath } from '../paths/mapshaper-path-utils';
+import { findPolylabelPoint } from './mapshaper-polylabel';
 import { simplifyPolygonFast } from '../simplify/mapshaper-simplify-fast';
 import geom from '../geom/mapshaper-geom';
 import utils from '../utils/mapshaper-utils';
 import { verbose } from '../utils/mapshaper-logging';
 
-// Find a point inside a polygon and located away from the polygon edge
-// Method:
+// Find an interior point for label or symbol placement. The default method
+// finds a pole of inaccessibility, then moves toward the centroid while
+// retaining at least 90% of the pole's clearance.
+export function findAnchorPoint(shp, arcs, opts) {
+  var method = opts && opts.method || 'centroid2';
+  var p;
+  if (method != 'legacy') {
+    p = findPolylabelPoint(shp, arcs, opts);
+    if (p) return p;
+  }
+  return findLegacyAnchorPoint(shp, arcs);
+}
+
+// Legacy sampled-ray method:
 // - get the largest ring of the polygon
 // - get an array of x-values distributed along the horizontal extent of the ring
 // - for each x:
@@ -16,8 +29,7 @@ import { verbose } from '../utils/mapshaper-logging';
 // - return the adjusted point having the maximum weighted distance from the edge
 //
 // (distance is weighted to slightly favor points near centroid)
-//
-export function findAnchorPoint(shp, arcs) {
+export function findLegacyAnchorPoint(shp, arcs) {
   var maxPath = shp && geom.getMaxPath(shp, arcs),
       pathBounds = maxPath && arcs.getSimpleShapeBounds(maxPath),
       thresh, simple;

@@ -11,6 +11,7 @@ import geom from '../geom/mapshaper-geom';
 import utils from '../utils/mapshaper-utils';
 import { getPointFeatureBounds } from '../points/mapshaper-point-utils';
 
+var EXPRESSION_INNER_POINT_OPTS = {method: 'centroid2', tolerance: 0.1};
 
 // Returns a function to return a feature proxy by id
 // (the proxy appears as "this" or "$" in a feature expression)
@@ -227,7 +228,8 @@ export function initFeatureProxy(lyr, arcs, optsArg) {
   }
 
   function innerXY() {
-    _innerXY = _innerXY || findAnchorPoint(_ids, arcs);
+    _innerXY = _innerXY ||
+      findAnchorPoint(_ids, arcs, EXPRESSION_INNER_POINT_OPTS);
     return _innerXY;
   }
 

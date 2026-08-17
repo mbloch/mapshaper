@@ -20,10 +20,14 @@ export function joinPolygonsViaPoints(targetLyr, targetDataset, source, opts) {
 }
 
 function pointsFromPolygonsForJoin(lyr, dataset) {
-  // TODO use faster method to get inner points
   return {
     geometry_type: 'point',
-    shapes: pointsFromPolygons(lyr, dataset.arcs, {inner: true}),
+    // Joins only require a reliable interior point; centroid bias adds a
+    // second search without improving the containment test.
+    shapes: pointsFromPolygons(lyr, dataset.arcs, {
+      inner: true,
+      inner_method: 'pole'
+    }),
     data: lyr.data // TODO copy if needed
   };
 }
