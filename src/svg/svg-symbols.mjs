@@ -61,6 +61,10 @@ function featureHasIcon(d) {
   return !!(d && (d.icon || d['icon-size'] || (d['icon-color'] && d.r > 0)));
 }
 
+// An unsupported icon name renders as nothing, without a message -- this
+// function runs once per feature per render, so warning here would repeat the
+// same message for every feature (and on every redraw in the GUI). The -style
+// command warns about unsupported names when they are assigned instead.
 function renderIcon(d) {
   var type = d.icon || 'circle';
   var r = getIconRadius(d, type);
@@ -69,7 +73,6 @@ function renderIcon(d) {
   if (type == 'square') return square(getIconStyleData(d, r), 0, 0);
   if (type == 'ring') return ring(getIconStyleData(d, r), 0, 0);
   if (type == 'star') return star(getIconStyleData(d, r));
-  message('Unknown icon type: ' + type);
   return empty();
 }
 

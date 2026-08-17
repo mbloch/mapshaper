@@ -2,6 +2,31 @@ import api from '../mapshaper.js';
 import assert from 'assert';
 
 
+// Runs @cb with instrumented logging functions, so that message() and warn()
+// calls can be told apart (the CLI prints both the same way).
+async function captureLogging(cb) {
+  var messages = [];
+  var warnings = [];
+  api.internal.setLoggingFunctions(
+    function() { messages.push(formatLogArgs(arguments)); },
+    function() {},
+    function(s) { throw new Error(s); },
+    function() { warnings.push(formatLogArgs(arguments)); });
+  api.enableLogging();
+  try {
+    var value = await cb();
+  } finally {
+    api.internal.setLoggingForCLI();
+    api.internal.disableLogging();
+  }
+  return {value: value, messages: messages, warnings: warnings};
+}
+
+// Drops the "[command]" prefix that the logging functions prepend
+function formatLogArgs(args) {
+  return Array.prototype.join.call(args, ' ').replace(/^\[[^\]]+\] /, '');
+}
+
 describe('mapshaper-svg-style.js', function () {
 
   describe('command line tests', function() {
@@ -89,6 +114,61 @@ describe('mapshaper-svg-style.js', function () {
       assert(svg.includes('<circle cx="0" cy="0" r="3.5" fill="black"/>'));
       assert(svg.includes('<text y="0" x="0">A</text>'));
       assert(!svg.includes('<g id="pts" fill="none"'));
+    });
+
+    it('-style warns once about an unsupported icon name', async function() {
+      var input = [{name: 'a'}, {name: 'b'}, {name: 'c'}];
+      var capture = await captureLogging(function() {
+        return api.applyCommands('-i data.json -style icon=triangle -o', {'data.json': input});
+      });
+      assert.deepEqual(capture.messages, []);
+      assert.equal(capture.warnings.length, 1, JSON.stringify(capture.warnings));
+      assert.equal(capture.warnings[0],
+        'Unsupported icon name: triangle. Expected one of: circle, square, ring, star');
+      // the value is still assigned; only the rendered icon is missing
+      var result = JSON.parse(capture.value['data.json']);
+      assert.deepEqual(result, [
+        {name: 'a', icon: 'triangle'},
+        {name: 'b', icon: 'triangle'},
+        {name: 'c', icon: 'triangle'}
+      ]);
+    });
+
+    it('-style warns about unsupported icon names assigned by an expression', async function() {
+      var input = [{kind: 'star'}, {kind: 'triangle'}, {kind: 'blob'}, {kind: 'triangle'}];
+      var capture = await captureLogging(function() {
+        return api.applyCommands('-i data.json -style icon=kind -o', {'data.json': input});
+      });
+      assert.equal(capture.warnings.length, 1, JSON.stringify(capture.warnings));
+      assert.equal(capture.warnings[0],
+        'Unsupported icon names: triangle, blob. Expected one of: circle, square, ring, star');
+    });
+
+    it('-style does not warn about supported or blank icon names', async function() {
+      var input = [{kind: 'star'}, {kind: 'circle'}, {kind: ''}];
+      var capture = await captureLogging(function() {
+        return api.applyCommands('-i data.json -style icon=kind -o', {'data.json': input});
+      });
+      assert.deepEqual(capture.warnings, []);
+    });
+
+    it('-style icon renders nothing for an unsupported name, without logging', async function() {
+      var geojson = {
+        type: 'FeatureCollection',
+        features: [{
+          type: 'Feature',
+          properties: {},
+          geometry: {type: 'Point', coordinates: [0, 0]}
+        }]
+      };
+      var capture = await captureLogging(function() {
+        return api.applyCommands('-i pts.geojson -style icon=triangle icon-size=8 -o out.svg',
+          {'pts.geojson': JSON.stringify(geojson)});
+      });
+      var svg = String(capture.value['out.svg']);
+      assert(!svg.includes('<circle'));
+      // the render pass adds nothing to the single warning from -style
+      assert.equal(capture.warnings.length, 1, JSON.stringify(capture.warnings));
     });
 
     it('-style label-pos sets label alignment', async function() {

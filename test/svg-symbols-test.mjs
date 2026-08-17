@@ -1,5 +1,6 @@
 import assert from 'assert';
 import { renderPoint } from '../src/svg/svg-symbols';
+import { setLoggingFunctions, getLoggingSetter } from '../src/utils/mapshaper-logging';
 
 describe('svg-symbols.js', function () {
   describe('renderPoint()', function () {
@@ -110,5 +111,28 @@ describe('svg-symbols.js', function () {
       assert(output.properties.d.includes('M 0 -5.5'));
     });
 
+    it('renders an unsupported icon name as nothing, without logging', function() {
+      // Rendering runs once per feature (and repeatedly in the GUI), so an
+      // unsupported name must not log here; -style warns when it is assigned.
+      var msgs = [];
+      var restoreLogging = getLoggingSetter();
+      setLoggingFunctions(
+        function() { msgs.push(formatLogArgs(arguments)); },
+        function() {},
+        function(s) { throw new Error(s); },
+        function() { msgs.push(formatLogArgs(arguments)); });
+      try {
+        var output = renderPoint({icon: 'triangle', 'icon-size': 8, fill: 'red'});
+        assert.deepEqual(output, {tag: 'g', properties: {}, children: []});
+      } finally {
+        restoreLogging();
+      }
+      assert.deepEqual(msgs, []);
+    });
+
   })
 })
+
+function formatLogArgs(args) {
+  return Array.prototype.join.call(args, ' ');
+}
