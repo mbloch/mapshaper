@@ -1,3 +1,8 @@
+v0.7.54
+* Added `-contours closed` for creating polygon bands with `upper` and `lower` attributes.
+* Switched to a higher-quality and better-performing algorithm for placing anchor points within polygons (see -points inner).
+* Handle collapsed geometry from `-o precision=` in geopackage and geoparquet output.
+
 v0.7.53
 * Added `gap-width=` to `-clean` and `-dissolve`, for filling gaps narrower than a given distance (e.g. `gap-width=2m`). A gap's width is estimated from its area and perimeter, so slender cracks are filled while more compact holes of similar area, such as small lakes, are more likely to be kept. `-clean` now applies this width test by default, in place of the area test it used before; `gap-fill-area=` and `sliver-control=` are deprecated, but still accepted.
 * Added `-clean close-outer-gaps`, which closes cracks that open onto the outside of a polygon mosaic, up to the width set by `gap-width=`, so that they are filled like enclosed gaps. It is opt-in because a narrow opening in a coverage is not always a mistake.
