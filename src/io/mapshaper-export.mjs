@@ -93,7 +93,8 @@ async function exportDatasets(datasets, opts) {
       datasets = [mergeDatasetsForExport(datasets)];
     }
     datasets.forEach(sortExportLayers);
-    files = await exportGeoPackage(datasets[0], opts);
+    // GeoPackage bypasses exportFileContent(), where precision is normally applied.
+    files = await exportGeoPackage(applyExportPrecision(datasets[0], opts), opts);
   } else if (format == 'geoparquet') {
     var layerCount = datasets.reduce(function(sum, d) {
       return sum + d.layers.length;
@@ -102,7 +103,8 @@ async function exportDatasets(datasets, opts) {
     files = [];
     for (var i = 0; i < datasets.length; i++) {
       sortExportLayers(datasets[i]);
-      files = files.concat(await exportGeoParquet(datasets[i], opts, singleFileName));
+      // GeoParquet bypasses exportFileContent(), where precision is normally applied.
+      files = files.concat(await exportGeoParquet(applyExportPrecision(datasets[i], opts), opts, singleFileName));
     }
   } else {
     files = datasets.reduce(function(memo, dataset) {
@@ -154,6 +156,15 @@ function datasetsHaveVectorLayers(datasets) {
       return !layerHasRaster(lyr);
     });
   });
+}
+
+// Apply -o precision= the same way exportFileContent() does for formats that
+// take their own export path (GeoPackage, GeoParquet).
+function applyExportPrecision(dataset, opts) {
+  if (!opts.precision) return dataset;
+  dataset = copyDatasetForExport(dataset);
+  setCoordinatePrecision(dataset, opts.precision, !!opts.fix_geometry);
+  return dataset;
 }
 
 // Return an array of objects with 'filename' and 'content' members.

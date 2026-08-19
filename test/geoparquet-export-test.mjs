@@ -390,6 +390,55 @@ describe('geoparquet row group boundaries', function() {
     });
     assert.equal(layers[0].data.getRecords().length, 60);
   });
+
+  it('applies -o precision= to exported coordinates', async function () {
+    var input = {
+      type: 'FeatureCollection',
+      features: [{
+        type: 'Feature',
+        properties: {id: 1},
+        geometry: {type: 'LineString', coordinates: [[0, 0], [1.23456789, 1.23456789]]}
+      }]
+    };
+    var output = await api.applyCommands('-i in.json -o format=geoparquet precision=0.001', {
+      'in.json': input
+    });
+    var name = Object.keys(output)[0];
+    var dataset = await api.internal.importContentAsync({
+      parquet: {filename: name, content: output[name]}
+    }, {});
+    var files = api.internal.exportFileContent(dataset, {format: 'geojson'});
+    var geom = JSON.parse(String(files[0].content)).features[0].geometry;
+
+    assert.deepEqual(geom.coordinates, [[0, 0], [1.235, 1.235]]);
+  });
+
+  it('keeps a feature whose geometry collapses at the output precision', async function () {
+    var input = {
+      type: 'FeatureCollection',
+      features: [{
+        type: 'Feature',
+        properties: {name: 'kept'},
+        geometry: {type: 'LineString', coordinates: [[0, 0], [1, 1]]}
+      }, {
+        type: 'Feature',
+        properties: {name: 'collapsed'},
+        geometry: {type: 'LineString', coordinates: [[2, 2], [2.0000001, 2.0000001]]}
+      }]
+    };
+    var output = await api.applyCommands('-i in.json -o format=geoparquet precision=0.000001', {
+      'in.json': input
+    });
+    var name = Object.keys(output)[0];
+    var dataset = await api.internal.importContentAsync({
+      parquet: {filename: name, content: output[name]}
+    }, {});
+    var lyr = dataset.layers[0];
+
+    assert.equal(lyr.shapes.length, 2);
+    assert.deepEqual(lyr.data.getRecords().map(rec => rec.name), ['kept', 'collapsed']);
+    assert.deepEqual(lyr.shapes[1], null);
+  });
 });
 
 describe('geoparquet geospatial statistics', function() {

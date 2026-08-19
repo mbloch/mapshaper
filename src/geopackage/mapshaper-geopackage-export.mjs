@@ -68,6 +68,8 @@ async function exportLayerToGeoPackage(lyr, dataset, gpkg, opts) {
   var featureIndex = 0;
   for (var i = 0; i < state.count; i++) {
     var feat = exportFeatureAtIndex(state, i);
+    // GeoPackage's GeoJSON insert path does not store true NULL geometries
+    // (null becomes a NaN point). Skip them, matching prior behavior.
     if (!feat || !feat.geometry) continue;
     var normalized = normalizeFeature(feat, fields);
     try {
