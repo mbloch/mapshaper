@@ -94,13 +94,17 @@ var SADDLE_C1_C3_SPLIT = [[0, 1], [2, 3]];
 
 export function getRasterContourLines(raster, opts) {
   var grid = getRasterGrid(raster);
-  var band, levels;
+  var band, levels, range;
   validateRasterGridForContours(grid);
   band = getContourBand(grid, opts);
   levels = getContourLevels(grid, band, opts);
+  range = getRasterSampleRange(grid, band);
   return {
+    band: band,
+    range: range,
     levels: levels,
-    lines: traceRasterContours(grid, band, levels, getCornerClearance(opts))
+    lines: traceRasterContours(grid, band, levels, getCornerClearance(opts),
+      {extend_to_bbox: opts && opts.closed})
   };
 }
 
@@ -239,7 +243,7 @@ export function getCornerClearance(opts) {
 }
 
 // clearance: see CORNER_CLEARANCE; 0 places crossings exactly.
-export function traceRasterContours(grid, band, levels, clearance) {
+export function traceRasterContours(grid, band, levels, clearance, opts) {
   var segments = collectContourSegments(grid, band, levels);
   var toMapXY = getLatticeToMapTransform(grid);
   var hCount = (grid.width - 1) * grid.height;
@@ -249,12 +253,48 @@ export function traceRasterContours(grid, band, levels, clearance) {
     stitchContourSegments(levelSegments).forEach(function(path) {
       var coords = getPathCoords(path, grid, band, levels[i], hCount, toMapXY,
         clearance);
+      if (opts && opts.extend_to_bbox) {
+        coords = extendContourPathToBBox(coords, path, grid, hCount);
+      }
       if (coords.length > 1) {
         lines.push({value: levels[i], coords: coords});
       }
     });
   });
   return lines;
+}
+
+// Closed contour bands use the raster bbox as their outer frame. Open contour
+// paths that reach the outer sample-center lattice are extended through the
+// half-pixel margin to that frame. Endpoints created by skipped nodata cells
+// lie on interior lattice edges and are intentionally left in place.
+function extendContourPathToBBox(coords, path, grid, hCount) {
+  if (path.length < 2 || path[0] === path[path.length - 1]) return coords;
+  var first = getOuterEdgePoint(coords[0], path[0], grid, hCount);
+  var last = getOuterEdgePoint(coords[coords.length - 1],
+    path[path.length - 1], grid, hCount);
+  if (first) coords.unshift(first);
+  if (last) coords.push(last);
+  return coords;
+}
+
+function getOuterEdgePoint(xy, edgeId, grid, hCount) {
+  var W = grid.width;
+  var H = grid.height;
+  var bbox = grid.bbox;
+  var x, y;
+  if (edgeId < hCount) {
+    y = Math.floor(edgeId / (W - 1));
+    if (y === 0) return [xy[0], bbox[3]];
+    if (y === H - 1) return [xy[0], bbox[1]];
+    return null;
+  }
+  edgeId -= hCount;
+  y = Math.floor(edgeId / W);
+  x = edgeId - y * W;
+  if (x === 0) return [bbox[0], xy[1]];
+  if (x === W - 1) return [bbox[2], xy[1]];
+  return null;
 }
 
 // Visit each cell once and march it for every level that falls inside its

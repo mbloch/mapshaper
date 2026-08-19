@@ -672,6 +672,39 @@ one-pixel interval turned an 11x11 elevation model into a tangle of 40 crossings
   and on the DEMs measured it leaves a handful of lines unsmoothed at most (2 of
   12,697 on the 1200x1053 file).
 
+### Closed contour bands
+
+`-contours closed` reuses the isoline trace instead of running a separate
+three-state isoband marcher. Open paths that reach the outside sample-center
+lattice are extended through the half-pixel margin to `grid.bbox`. The paths
+are then smoothed and repaired by the same code as line contours unless
+`no-smoothing` is set.
+
+The remaining closure linework is fixed. A cell-domain mask applies the same
+validity rule as the isoline collector: a `(W-1) x (H-1)` lattice cell is active
+only when all four corner pixels pass the shared nodata/coverage mask and the
+selected samples are not NaN. Tracing the union boundary of these active cells
+creates the outer bbox frame and any internal nodata boundaries. This means the
+closed output deliberately preserves the isoline tracer's conservative setback
+around invalid samples; it is not a polygonization of invalid pixel footprints.
+Neither these boundaries nor the raster corners are smoothed.
+
+The smoothed contour paths and fixed domain boundaries are combined, cut at
+intersections and passed to `buildPolygonMosaic()`. Contour paths retain their
+level and direction through topology building. Because the marcher directs
+every line with the above-level side on its left, the direction in which a
+mosaic tile uses a contour arc identifies whether that level is its lower or
+upper bound. A raster sample is needed only to classify a disconnected valid
+component that no contour line crosses. Tiles outside the active-cell domain
+are discarded, and tiles with matching `lower`/`upper` attribute pairs are
+dissolved so adjacent bands share topology.
+
+Band intervals are `[lower, upper)`, with the raster maximum included in the
+final band. Only contour levels strictly between the valid sample minimum and
+maximum become interior breaks. A flat valid raster therefore creates one band
+whose bounds are equal, while an all-invalid raster creates an empty polygon
+layer.
+
 ## Commands And Validation
 
 Most existing commands are vector commands and should reject raster targets
@@ -684,7 +717,8 @@ with clear errors. Early raster-aware commands should be limited to:
 - `-blur radius=` for projected raster blur.
 - `-proj` for raster reprojection, with `nodata-color=` and
   `resampling=nearest|bilinear` support.
-- `-contours` for tracing isolines into a new polyline layer.
+- `-contours` for tracing isolines into a new polyline layer, or closed bands
+  into a polygon layer.
 - SVG export.
 - Session snapshot export/import.
 

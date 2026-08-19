@@ -135,6 +135,7 @@ import * as Lines from './commands/mapshaper-lines';
 import * as Logging from './utils/mapshaper-logging';
 import * as Profile from './utils/mapshaper-profile';
 import * as RasterBlur from './rasters/mapshaper-raster-blur';
+import * as RasterContourBands from './rasters/mapshaper-raster-contour-bands';
 import * as RasterContours from './rasters/mapshaper-raster-contours';
 import * as RasterGrid from './rasters/mapshaper-raster-grid';
 import * as RasterReprojection from './rasters/mapshaper-raster-reprojection';
@@ -276,6 +277,7 @@ Object.assign(internal,
   Logging,
   Profile,
   RasterBlur,
+  RasterContourBands,
   RasterContours,
   RasterGrid,
   RasterReprojection,

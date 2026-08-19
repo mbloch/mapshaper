@@ -227,6 +227,17 @@ describe('mapshaper-contours.mjs', function () {
         internal.getContourLevels(grid, 0, {interval: -5});
       }, /must be a positive number/);
     });
+
+    it('builds closed-band breaks from strict interior levels', function () {
+      assert.deepEqual(internal.getClosedContourBreaks(
+        [-10, 0, 10, 20, 30, 40], {min: 0, max: 30}), [0, 10, 20, 30]);
+      assert.deepEqual(internal.getClosedContourBreaks([], {min: 7, max: 7}),
+        [7, 7]);
+      assert.deepEqual(internal.getClosedContourBreaks([], {
+        min: Infinity,
+        max: -Infinity
+      }), []);
+    });
   });
 
   describe('validation', function () {
@@ -306,6 +317,145 @@ describe('mapshaper-contours.mjs', function () {
       after = api.cmd.contours(lyr, dataset, {levels: [15]});
       afterX = internal.getLayerBounds(after[0], dataset.arcs).xmin;
       assert(afterX < beforeX, 'contour did not move after the samples changed');
+    });
+
+    it('creates closed polygon bands with lower and upper bounds', function () {
+      var dataset = makeRasterDataset(makeGrid(5, 3, function(x) { return x * 10; }));
+      var layers = api.cmd.contours(dataset.layers[0], dataset, {
+        levels: [15, 25],
+        closed: true,
+        no_smoothing: true
+      });
+      var records = layers[0].data.getRecords().slice().sort(function(a, b) {
+        return a.lower - b.lower;
+      });
+      var bounds = internal.getLayerBounds(layers[0], dataset.arcs).toArray();
+      var area = layers[0].shapes.reduce(function(sum, shape) {
+        return sum + api.geom.getPlanarShapeArea(shape, dataset.arcs);
+      }, 0);
+      assert.equal(layers[0].geometry_type, 'polygon');
+      assert.deepEqual(records, [
+        {lower: 0, upper: 15},
+        {lower: 15, upper: 25},
+        {lower: 25, upper: 40}
+      ]);
+      assert.deepEqual(bounds, [0, 0, 5, 3]);
+      assert.equal(area, 15);
+    });
+
+    it('creates nested closed bands with shared holes', function () {
+      var grid = makeGrid(11, 11, function(x, y) {
+        return 100 - Math.max(Math.abs(x - 5), Math.abs(y - 5)) * 10;
+      });
+      var dataset = makeRasterDataset(grid);
+      var layers = api.cmd.contours(dataset.layers[0], dataset, {
+        levels: [60, 90],
+        closed: true,
+        no_smoothing: true
+      });
+      var records = layers[0].data.getRecords().slice().sort(function(a, b) {
+        return a.lower - b.lower;
+      });
+      var area = layers[0].shapes.reduce(function(sum, shape) {
+        return sum + api.geom.getPlanarShapeArea(shape, dataset.arcs);
+      }, 0);
+      assert.deepEqual(records, [
+        {lower: 50, upper: 60},
+        {lower: 60, upper: 90},
+        {lower: 90, upper: 100}
+      ]);
+      assert(layers[0].shapes.some(function(shape) {
+        return shape.length > 1;
+      }), 'expected a band with a hole');
+      assert.equal(area, 121);
+    });
+
+    it('closes around nodata using the same skipped-cell rule as isolines', function () {
+      var grid = makeGrid(5, 5, function(x, y) {
+        return x === 2 && y === 2 ? -9999 : 5;
+      }, {nodata: -9999});
+      var domain = internal.getContourCellDomain(grid, 0);
+      var rings = internal.traceContourDomainRings(domain);
+      var dataset = makeRasterDataset(grid);
+      var layers = api.cmd.contours(dataset.layers[0], dataset, {
+        closed: true,
+        no_smoothing: true
+      });
+      var area = api.geom.getPlanarShapeArea(layers[0].shapes[0], dataset.arcs);
+      assert.equal(domain.activeCount, 12);
+      assert.equal(rings.length, 2);
+      assert.equal(internal.pointIsInContourDomain(2.5, 2.5, domain), false);
+      assert.equal(internal.pointIsInContourDomain(0.25, 0.25, domain), true);
+      // Four 1x1 contour cells touching the nodata sample are excluded.
+      assert.equal(area, 21);
+      assert.deepEqual(layers[0].data.getRecords(), [{lower: 5, upper: 5}]);
+    });
+
+    it('classifies disconnected value ranges separated by nodata', function () {
+      var grid = makeGrid(7, 3, function(x) {
+        if (x === 3) return -9999;
+        return x < 3 ? 0 : 100;
+      }, {nodata: -9999});
+      var dataset = makeRasterDataset(grid);
+      var layers = api.cmd.contours(dataset.layers[0], dataset, {
+        levels: [50],
+        closed: true,
+        no_smoothing: true
+      });
+      var records = layers[0].data.getRecords().slice().sort(function(a, b) {
+        return a.lower - b.lower;
+      });
+      assert.deepEqual(records, [
+        {lower: 0, upper: 50},
+        {lower: 50, upper: 100}
+      ]);
+    });
+
+    it('returns an empty polygon layer from an all-invalid raster', function () {
+      var grid = makeGrid(5, 5, function() { return -9999; }, {nodata: -9999});
+      var dataset = makeRasterDataset(grid);
+      var layers = api.cmd.contours(dataset.layers[0], dataset, {
+        closed: true
+      });
+      assert.equal(layers[0].geometry_type, 'polygon');
+      assert.deepEqual(layers[0].shapes, []);
+      assert.deepEqual(layers[0].data.getRecords(), []);
+    });
+
+    it('excludes cells touching an uncovered pixel', function () {
+      var grid = makeGrid(4, 4, function() { return 10; });
+      grid.coverage = new Uint8Array(16);
+      grid.coverage.fill(1);
+      grid.coverage[5] = 0;
+      var domain = internal.getContourCellDomain(grid, 0);
+      assert.equal(domain.activeCount, 5);
+      assert.equal(internal.pointIsInContourDomain(1.5, 2.5, domain), false);
+    });
+
+    it('smooths closed contour boundaries unless no-smoothing is set', function () {
+      function getDataset() {
+        return makeRasterDataset(makeGrid(25, 25, function(x, y) {
+          return Math.round(100 - Math.sqrt(
+            Math.pow(x - 12, 2) + Math.pow(y - 12, 2)) * 5);
+        }));
+      }
+      var smoothed = getDataset();
+      var raw = getDataset();
+      var smoothLayers = api.cmd.contours(smoothed.layers[0], smoothed, {
+        levels: [60],
+        closed: true
+      });
+      var rawLayers = api.cmd.contours(raw.layers[0], raw, {
+        levels: [60],
+        closed: true,
+        no_smoothing: true
+      });
+      assert.deepEqual(internal.getLayerBounds(
+        smoothLayers[0], smoothed.arcs).toArray(), [0, 0, 25, 25]);
+      assert.deepEqual(internal.getLayerBounds(
+        rawLayers[0], raw.arcs).toArray(), [0, 0, 25, 25]);
+      assert.notDeepEqual(smoothed.arcs.getVertexData().xx,
+        raw.arcs.getVertexData().xx);
     });
   });
 
@@ -518,6 +668,11 @@ describe('mapshaper-contours.mjs', function () {
         .options.no_smoothing, true);
     });
 
+    it('parses the closed flag', function () {
+      assert.equal(internal.parseCommands('-contours interval=10 closed')[0]
+        .options.closed, true);
+    });
+
     it('converts a GeoTIFF to contour lines', async function () {
       var out = await api.applyCommands(
         '-i ' + GEOTIFF + ' -contours levels=100 -o out.json', {});
@@ -525,6 +680,23 @@ describe('mapshaper-contours.mjs', function () {
       assert.equal(geojson.features.length, 1);
       assert.equal(geojson.features[0].geometry.type, 'LineString');
       assert.equal(geojson.features[0].properties.value, 100);
+    });
+
+    it('converts a GeoTIFF to closed contour bands', async function () {
+      var out = await api.applyCommands(
+        '-i ' + GEOTIFF +
+        ' -contours levels=100 closed no-smoothing -o out.json', {});
+      var geojson = JSON.parse(out['out.json']);
+      assert.equal(geojson.features.length, 2);
+      assert.deepEqual(geojson.features.map(function(feature) {
+        return feature.properties;
+      }), [
+        {lower: 0, upper: 100},
+        {lower: 100, upper: 255}
+      ]);
+      geojson.features.forEach(function(feature) {
+        assert(/Polygon$/.test(feature.geometry.type));
+      });
     });
 
     it('replaces the raster layer by default', async function () {

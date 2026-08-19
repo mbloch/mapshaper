@@ -880,7 +880,7 @@ export function getOptionParser() {
     });
 
   parser.command('contours')
-    .describe('convert a raster layer to contour lines')
+    .describe('convert a raster layer to contour lines or closed bands')
     .option('interval', {
       describe: 'spacing between contour levels (default is a round interval)',
       type: 'number'
@@ -899,6 +899,10 @@ export function getOptionParser() {
     })
     .option('field', {
       describe: 'name of field to hold contour values (default is "value")'
+    })
+    .option('closed', {
+      describe: 'create closed contour bands with lower and upper fields',
+      type: 'flag'
     })
     .option('no-smoothing', {
       describe: 'skip smoothing away the one-pixel contour staircase',

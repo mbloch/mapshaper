@@ -9,6 +9,7 @@ import { mergeDatasetsIntoDataset } from '../dataset/mapshaper-merging';
 import { DataTable } from '../datatable/mapshaper-data-table';
 import { importGeoJSON } from '../geojson/geojson-import';
 import { repairCrossedArcs } from '../paths/mapshaper-segment-intersection-repair';
+import { buildClosedContourDataset } from '../rasters/mapshaper-raster-contour-bands';
 import { getRasterGrid } from '../rasters/mapshaper-raster-utils';
 import {
   getContourSmoothingDistance,
@@ -27,6 +28,21 @@ cmd.contours = function(targetLyr, targetDataset, opts) {
   // Contours come from the layer's working samples, so they reflect any
   // earlier edits (e.g. -blur, -clip) rather than the original source pixels.
   contours = getRasterContourLines(targetLyr.raster, opts);
+  if (opts.closed) {
+    dataset = contours.lines.length > 0 ?
+      importGeoJSON(getContoursGeoJSON(contours.lines, DEFAULT_CONTOUR_FIELD), {}) :
+      createEmptyContourDataset();
+    setDatasetCrsInfo(dataset, getDatasetCrsInfo(targetDataset));
+    if (contours.lines.length > 0 && !opts.no_smoothing) {
+      smoothContourDataset(dataset, getRasterGrid(targetLyr.raster));
+    }
+    dataset = buildClosedContourDataset(dataset, getRasterGrid(targetLyr.raster),
+      contours);
+    outputLayers = mergeDatasetsIntoDataset(targetDataset, [dataset]);
+    setOutputLayerName(outputLayers[0], targetLyr, 'contours', opts);
+    message(getClosedContoursMessage(outputLayers[0], contours));
+    return outputLayers;
+  }
   message(getContoursMessage(contours));
   if (contours.lines.length === 0) {
     return [createEmptyContourLayer(targetLyr, opts)];
@@ -110,6 +126,17 @@ function createEmptyContourLayer(targetLyr, opts) {
   return lyr;
 }
 
+function createEmptyContourDataset() {
+  return {
+    info: {},
+    layers: [{
+      geometry_type: 'polyline',
+      shapes: [],
+      data: new DataTable([])
+    }]
+  };
+}
+
 function getContoursMessage(contours) {
   var levels = contours.levels;
   if (levels.length === 0) {
@@ -119,4 +146,14 @@ function getContoursMessage(contours) {
     (contours.lines.length == 1 ? 'line' : 'lines') + ' at ' + levels.length +
     (levels.length == 1 ? ' level' : ' levels') +
     ' (' + levels[0] + ' to ' + levels[levels.length - 1] + ')';
+}
+
+function getClosedContoursMessage(lyr, contours) {
+  var count = lyr.shapes.length;
+  if (count === 0) {
+    return 'No closed contour bands were generated';
+  }
+  return 'Created ' + count + ' closed contour ' +
+    (count === 1 ? 'band' : 'bands') + ' from ' + contours.levels.length +
+    (contours.levels.length === 1 ? ' level' : ' levels');
 }
