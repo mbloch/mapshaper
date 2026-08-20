@@ -13,6 +13,10 @@ This is a curated list of recently added features. For the full list of changes,
 
 **Isobands.**  The `-contours` command has a new `closed` flag for creating polygon bands.
 
+</div>
+
+<div class="whats-new-entry">
+
 **Clean command improvements.**
 
 - A new `close-outer-gaps` option closes cracks that open onto the outside of a polygon mosaic.
