@@ -1,5 +1,5 @@
 // Hamburger menu in the top-right of the header. After the user starts
-// editing, the splash bar (Docs / GitHub / Survey / Sponsor) is hidden by
+// editing, the splash bar (Docs / GitHub / Sponsor) is hidden by
 // gui.mjs; this menu is the post-edit replacement, exposing the same links
 // from a single button so the editing controls don't have to share the row.
 

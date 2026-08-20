@@ -2,7 +2,7 @@
 
 ## Introduction
 
-Mapshaper is software for editing Shapefile, GeoJSON, [TopoJSON](https://github.com/mbostock/topojson/wiki), CSV and several other data formats, written in JavaScript.
+Mapshaper is software for editing Shapefile, GeoJSON, [TopoJSON](https://github.com/mbostock/topojson/wiki), GeoTIFF, CSV and several other data formats, written in JavaScript.
 
 Mapshaper supports essential map making tasks like simplifying shapes, editing attribute data, clipping, erasing, dissolving, filtering and more.
 
@@ -103,7 +103,7 @@ Mapshaper is free and open source. If it's useful to you or your organization, p
 * [Ko-fi](https://ko-fi.com/mapshaper) &mdash; one-time or recurring contributions, no account required.
 * [GitHub Sponsors](https://github.com/sponsors/mbloch) &mdash; recurring sponsorship.
 
-You can also help by [reporting bugs](https://github.com/mbloch/mapshaper/issues) or [telling me what you'd like to see improved](https://tally.so/r/44Njok).
+You can also help by [reporting bugs or requesting features](https://github.com/mbloch/mapshaper/issues).
 
 
 ## License
