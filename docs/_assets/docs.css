@@ -327,7 +327,8 @@ code, pre, .mono {
   padding: 1px 5px;
   border-radius: 3px;
   border: 1px solid #e6ecef;
-  white-space: nowrap;
+  white-space: normal;
+  overflow-wrap: anywhere;
 }
 
 .docs-article pre {
