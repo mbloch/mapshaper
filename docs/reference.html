@@ -434,13 +434,16 @@ mapshaper data.json \
   -o output.svg
 </code></pre>
 </section>
-<section class="cmd-section" data-id="-contours" data-name="-contours" data-options="no-smoothing interval levels base band field value name no-replace target"><h3 id="-contours">-contours</h3>
-<p>Convert a raster layer to a polyline layer of contour lines (isolines). This is
-most often used to trace elevation contours from a digital elevation model, but
-it works on any continuous raster.</p>
+<section class="cmd-section" data-id="-contours" data-name="-contours" data-options="closed no-smoothing interval levels base band field value lower upper name no-replace target"><h3 id="-contours">-contours</h3>
+<p>Convert a raster layer to a polyline layer of contour lines (isolines). Add
+<code>closed</code> to create polygon bands between the contour lines instead. This is most
+often used with a digital elevation model, but it works on any continuous
+raster.</p>
 <p>Running <code>-blur</code> before <code>-contours</code> produces smoother lines than contouring the raw data.</p>
-<p>Values are read at pixel centers, so contour lines span from the center of the
-first pixel to the center of the last, half a pixel inside the raster&#39;s bounds.</p>
+<p>Values are read at pixel centers, so ordinary contour lines span from the center
+of the first pixel to the center of the last, half a pixel inside the raster&#39;s
+bounds. Closed bands extend lines that reach this outer lattice to the raster
+bounds and use the bounds as a fixed outer frame.</p>
 <p><code>-contours</code> finishes by smoothing the lines, using an interval of a quarter of a
 pixel. Where smoothing causes lines to cross, the intersecting lines are left unsmoothed. Use <code>no-smoothing</code> to
 skip the step and keep the raw traced geometry, which you can then smooth
@@ -458,8 +461,14 @@ divides the raster&#39;s value range into roughly fifteen steps.</p>
 <p><code>band=</code> Index of the band to read values from (the default is 0). Elevation
 models normally have a single band.</p>
 <p><code>field=</code> Name of the output field holding each line&#39;s contour value. The default
-is <code>value</code>.</p>
-<p><code>no-smoothing</code> Skip the smoothing step and output the raw traced lines.</p>
+is <code>value</code>. This option applies to line output, not <code>closed</code> output.</p>
+<p><code>closed</code> Create polygon bands instead of contour lines. Each feature has
+<code>lower</code> and <code>upper</code> fields. Interior bands are lower-inclusive and
+upper-exclusive; the highest band includes the raster maximum. The lowest and
+highest bounds are the minimum and maximum valid raster values, while interior
+bounds come from <code>interval=</code> or <code>levels=</code>.</p>
+<p><code>no-smoothing</code> Skip contour smoothing. With <code>closed</code>, the contour boundaries are
+smoothed by default but the raster and nodata closure boundaries are not.</p>
 <p>Common options: <code>name=</code>, <code>no-replace</code>, <code>target=</code></p>
 <pre><code class="hljs language-bash"><span class="hljs-comment"># Trace 100-meter contours from an elevation model</span>
 mapshaper dem.tif -contours interval=100 -o contours.json
@@ -474,6 +483,9 @@ mapshaper dem.tif raster-type=continuous \
 <span class="hljs-comment"># Keep the raster and draw specific contours over it</span>
 mapshaper dem.tif -contours levels=500,1000,1500 + name=contours \
   -o output.svg
+
+<span class="hljs-comment"># Create smoothed, closed elevation bands</span>
+mapshaper dem.tif -contours interval=100 closed -o bands.json
 
 <span class="hljs-comment"># Trace raw lines, then smooth them by hand</span>
 mapshaper dem.tif -contours interval=100 no-smoothing \

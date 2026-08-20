@@ -67,6 +67,8 @@ This is a curated list of recently added features. For the full list of changes,
 
 <div class="whats-new-entry">
 
+**Isobands** The `-contours` command has a new `closed` flag for creating polygon bands with `upper` and `lower` attributes.
+
 **Clean command improvements.**
 
 - A new `close-outer-gaps` option closes cracks that open onto the outside of a polygon mosaic.
@@ -837,14 +839,17 @@ mapshaper data.json \
 
 ### -contours
 
-Convert a raster layer to a polyline layer of contour lines (isolines). This is
-most often used to trace elevation contours from a digital elevation model, but
-it works on any continuous raster.
+Convert a raster layer to a polyline layer of contour lines (isolines). Add
+`closed` to create polygon bands between the contour lines instead. This is most
+often used with a digital elevation model, but it works on any continuous
+raster.
 
 Running `-blur` before `-contours` produces smoother lines than contouring the raw data.
 
-Values are read at pixel centers, so contour lines span from the center of the
-first pixel to the center of the last, half a pixel inside the raster's bounds.
+Values are read at pixel centers, so ordinary contour lines span from the center
+of the first pixel to the center of the last, half a pixel inside the raster's
+bounds. Closed bands extend lines that reach this outer lattice to the raster
+bounds and use the bounds as a fixed outer frame.
 
 `-contours` finishes by smoothing the lines, using an interval of a quarter of a
 pixel. Where smoothing causes lines to cross, the intersecting lines are left unsmoothed. Use `no-smoothing` to
@@ -869,9 +874,16 @@ divides the raster's value range into roughly fifteen steps.
 models normally have a single band.
 
 `field=` Name of the output field holding each line's contour value. The default
-is `value`.
+is `value`. This option applies to line output, not `closed` output.
 
-`no-smoothing` Skip the smoothing step and output the raw traced lines.
+`closed` Create polygon bands instead of contour lines. Each feature has
+`lower` and `upper` fields. Interior bands are lower-inclusive and
+upper-exclusive; the highest band includes the raster maximum. The lowest and
+highest bounds are the minimum and maximum valid raster values, while interior
+bounds come from `interval=` or `levels=`.
+
+`no-smoothing` Skip contour smoothing. With `closed`, the contour boundaries are
+smoothed by default but the raster and nodata closure boundaries are not.
 
 Common options: `name=`, `no-replace`, `target=`
 
@@ -889,6 +901,9 @@ mapshaper dem.tif raster-type=continuous \
 # Keep the raster and draw specific contours over it
 mapshaper dem.tif -contours levels=500,1000,1500 + name=contours \
   -o output.svg
+
+# Create smoothed, closed elevation bands
+mapshaper dem.tif -contours interval=100 closed -o bands.json
 
 # Trace raw lines, then smooth them by hand
 mapshaper dem.tif -contours interval=100 no-smoothing \

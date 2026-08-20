@@ -8447,7 +8447,7 @@
   var D2R$2 = Math.PI / 180;
   var R2D$3 = 180 / Math.PI;
   var HALF_PI = Math.PI / 2;
-  var SQRT2$1 = Math.sqrt(2);
+  var SQRT2$2 = Math.sqrt(2);
   var SQRT3$1 = Math.sqrt(3);
   var ASIN_ONE_THIRD$1 = Math.asin(1 / 3);
   var EDGE_SCALE = Math.acos(-1 / 3) / 2;
@@ -9018,7 +9018,7 @@
   function narukawaFaceForward(lam, phi) {
     var a = lam - Math.asin(Math.sin(lam) / SQRT3$1);
     var theta = Math.atan(2 * SQRT3$1 / Math.PI * a);
-    var denominator = 2 + SQRT2$1 * Math.tan(phi);
+    var denominator = 2 + SQRT2$2 * Math.tan(phi);
     var q = denominator > 0 ? (2 + Math.cos(lam)) / denominator : 0;
     var r = q * SQRT3$1 / Math.cos(theta);
     return [r, theta];
@@ -9038,7 +9038,7 @@
     lam = (lo + hi) / 2;
     var q = r * Math.cos(theta) / SQRT3$1;
     var phi = q < EPS$1 ? HALF_PI :
-      Math.atan(((2 + Math.cos(lam)) / q - 2) / SQRT2$1);
+      Math.atan(((2 + Math.cos(lam)) / q - 2) / SQRT2$2);
     return [phi, lam];
   }
 
@@ -9478,7 +9478,7 @@
 
   var D2R$1 = Math.PI / 180;
   var R2D$2 = 180 / Math.PI;
-  var SQRT2 = Math.sqrt(2);
+  var SQRT2$1 = Math.sqrt(2);
   var SQRT3 = Math.sqrt(3);
   var ASIN_ONE_THIRD = Math.asin(1 / 3);
   var MARKLEY_LATITUDE = Math.acos(1 / 3) * 0.5 * R2D$2;
@@ -10062,7 +10062,7 @@
 
   function leeRaw(lam, phi) {
     var s = stereographicRaw(lam, phi);
-    var z = [s[0] * SQRT2, s[1] * SQRT2];
+    var z = [s[0] * SQRT2$1, s[1] * SQRT2$1];
     var i, j;
     // Pick the sector whose rotation maximizes the real part of rot * z.
     var sector = 0;
@@ -18826,6 +18826,602 @@
     });
   }
 
+  class TinyQueue {
+      constructor(data = [], compare = defaultCompare) {
+          this.data = data;
+          this.length = this.data.length;
+          this.compare = compare;
+
+          if (this.length > 0) {
+              for (let i = (this.length >> 1) - 1; i >= 0; i--) this._down(i);
+          }
+      }
+
+      push(item) {
+          this.data.push(item);
+          this.length++;
+          this._up(this.length - 1);
+      }
+
+      pop() {
+          if (this.length === 0) return undefined;
+
+          const top = this.data[0];
+          const bottom = this.data.pop();
+          this.length--;
+
+          if (this.length > 0) {
+              this.data[0] = bottom;
+              this._down(0);
+          }
+
+          return top;
+      }
+
+      peek() {
+          return this.data[0];
+      }
+
+      _up(pos) {
+          const {data, compare} = this;
+          const item = data[pos];
+
+          while (pos > 0) {
+              const parent = (pos - 1) >> 1;
+              const current = data[parent];
+              if (compare(item, current) >= 0) break;
+              data[pos] = current;
+              pos = parent;
+          }
+
+          data[pos] = item;
+      }
+
+      _down(pos) {
+          const {data, compare} = this;
+          const halfLength = this.length >> 1;
+          const item = data[pos];
+
+          while (pos < halfLength) {
+              let left = (pos << 1) + 1;
+              let best = data[left];
+              const right = left + 1;
+
+              if (right < this.length && compare(data[right], best) < 0) {
+                  left = right;
+                  best = data[right];
+              }
+              if (compare(best, item) >= 0) break;
+
+              data[pos] = best;
+              pos = left;
+          }
+
+          data[pos] = item;
+      }
+  }
+
+  function defaultCompare(a, b) {
+      return a < b ? -1 : a > b ? 1 : 0;
+  }
+
+  /*
+  Copyright (c) 2016-2026, Vladimir Agafonkin
+
+  Permission to use, copy, modify, and/or distribute this software for any
+  purpose with or without fee is hereby granted, provided that the above
+  copyright notice and this permission notice appear in all copies.
+
+  THE SOFTWARE IS PROVIDED "AS IS" AND THE AUTHOR DISCLAIMS ALL WARRANTIES
+  WITH REGARD TO THIS SOFTWARE INCLUDING ALL IMPLIED WARRANTIES OF
+  MERCHANTABILITY AND FITNESS. IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR
+  ANY SPECIAL, DIRECT, INDIRECT, OR CONSEQUENTIAL DAMAGES OR ANY DAMAGES
+  WHATSOEVER RESULTING FROM LOSS OF USE, DATA OR PROFITS, WHETHER IN AN
+  ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF
+  OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
+
+  Based on mapbox/polylabel 2.1.0. Adapted for mapshaper to operate on
+  topological polygon shapes, use a bounded single-cell search and support
+  alternative centroid-aware objectives.
+  */
+
+
+  var BLOCK_SIZE = 32;
+  var DEFAULT_PRECISION = 0.01;
+  var DEFAULT_PRECISION_FLOOR = 1e-4;
+  // Hard ceiling on cell creation. Besides bounding runtime, this limits the
+  // priority queue to O(DEFAULT_PROBE_LIMIT) entries on pathological rings.
+  var DEFAULT_PROBE_LIMIT = 100000;
+  var DEFAULT_TOLERANCE = 0.1;
+  var DEFAULT_WEIGHT = 0.6;
+  var MAX_WEIGHT_PENALTY = 0.25;
+  var SQRT2 = Math.SQRT2;
+
+  // Find an inner point using one of four polylabel-based policies.
+  // Returns null for collapsed polygons, so callers can fall back to the legacy
+  // anchor-point finder.
+  function findPolylabelPoint(shp, arcs, opts) {
+    var polygon = buildPolygon(shp, arcs);
+    if (!polygon) return null;
+
+    opts = opts || {};
+    var precision = getPrecision(polygon, opts);
+    if (!(precision > 0)) return null;
+
+    var limit = opts.probe_limit > 0 ? opts.probe_limit : DEFAULT_PROBE_LIMIT;
+    var pole = findPole(polygon, precision, limit);
+    if (!isUsablePoint(pole)) return null;
+
+    var method = opts.method || 'centroid2';
+    if (method == 'pole') return pole;
+
+    var centroid = getCentroidCell(polygon);
+    if (!(centroid.d > 0)) return pole;
+
+    var tolerance = opts.tolerance;
+    if (!(tolerance >= 0 && tolerance <= 1)) tolerance = DEFAULT_TOLERANCE;
+    var minClearance = pole.distance * (1 - tolerance);
+
+    if (method == 'centroid') {
+      return centroid.d >= minClearance ? toResult(centroid, pole.probes) : pole;
+    }
+    if (method == 'centroid2') {
+      if (centroid.d >= minClearance) return toResult(centroid, pole.probes);
+      return findClosestAcceptablePoint(
+        polygon, centroid.x, centroid.y, pole, minClearance, precision, limit
+      );
+    }
+    if (method == 'weighted') {
+      var weight = opts.weight;
+      if (!(weight >= 0)) weight = DEFAULT_WEIGHT;
+      return findWeightedPoint(polygon, centroid, pole, weight, precision, limit);
+    }
+    return null;
+  }
+
+  function isUsablePoint(p) {
+    return p && isFinite(p.x) && isFinite(p.y) && p.distance > 0;
+  }
+
+  function buildPolygon(shp, arcs) {
+    var outerIds = shp && geom.getMaxPath(shp, arcs);
+    if (!outerIds) return null;
+
+    var outer = pathToRing(outerIds, arcs);
+    var outerArea = geom.getPlanarPathArea(outerIds, arcs);
+    if (!outer || outerArea === 0) return null;
+
+    var outerBounds = arcs.getSimpleShapeBounds(outerIds);
+    var rings = [outer];
+    var area = Math.abs(outerArea);
+    var perimeter = getRingPerimeter$1(outer);
+
+    // Mapshaper stores multipart polygons as a flat list of rings. Polylabel
+    // expects one outer ring followed by its holes, so omit other outer rings.
+    (shp || []).forEach(function(ids) {
+      if (ids === outerIds) return;
+      var ringArea = geom.getPlanarPathArea(ids, arcs);
+      if (ringArea === 0 || ringArea * outerArea >= 0) return;
+      var bounds = arcs.getSimpleShapeBounds(ids);
+      if (!outerBounds.intersects(bounds)) return;
+      var ring = pathToRing(ids, arcs);
+      if (!ring || !geom.testPointInRing(ring[0][0], ring[0][1], outerIds, arcs)) {
+        return;
+      }
+      rings.push(ring);
+      area -= Math.abs(ringArea);
+      perimeter += getRingPerimeter$1(ring);
+    });
+
+    if (!(area > 0) || !(perimeter > 0)) return null;
+    return createPolygonContext(rings, outerBounds, area, perimeter);
+  }
+
+  function pathToRing(ids, arcs) {
+    var iter = arcs.getShapeIter(ids);
+    var points = [];
+    var prevX, prevY;
+    while (iter.hasNext()) {
+      if (points.length === 0 || iter.x != prevX || iter.y != prevY) {
+        points.push([iter.x, iter.y]);
+        prevX = iter.x;
+        prevY = iter.y;
+      }
+    }
+    if (points.length < 3) return null;
+    var a = points[0];
+    var b = points[points.length - 1];
+    if (a[0] != b[0] || a[1] != b[1]) points.push([a[0], a[1]]);
+    return points.length > 3 ? points : null;
+  }
+
+  function getRingPerimeter$1(ring) {
+    var sum = 0;
+    for (var i = 1; i < ring.length; i++) {
+      sum += geom.distance2D(
+        ring[i - 1][0], ring[i - 1][1], ring[i][0], ring[i][1]
+      );
+    }
+    return sum;
+  }
+
+  function createPolygonContext(rings, bounds, area, perimeter) {
+    var pointCount = rings.reduce(function(sum, ring) {
+      return sum + ring.length;
+    }, 0);
+    var coords = new Float64Array(pointCount * 2);
+    var ringEnds = new Uint32Array(rings.length);
+    var k = 0;
+    rings.forEach(function(ring, i) {
+      ring.forEach(function(p) {
+        coords[k++] = p[0];
+        coords[k++] = p[1];
+      });
+      ringEnds[i] = k;
+    });
+    return {
+      area: area,
+      perimeter: perimeter,
+      bounds: bounds,
+      coords: coords,
+      ringEnds: ringEnds,
+      blocks: buildBlocks(coords, ringEnds)
+    };
+  }
+
+  function getPrecision(polygon, opts) {
+    if (opts.precision > 0) return opts.precision;
+    var extent = Math.max(polygon.bounds.width(), polygon.bounds.height());
+    var relative = opts.precision_fraction > 0 ?
+      opts.precision_fraction : DEFAULT_PRECISION;
+    var floor = opts.precision_floor >= 0 ?
+      opts.precision_floor : DEFAULT_PRECISION_FLOOR;
+    // 2A/P is rotation-invariant and approximates a polygon's local thickness.
+    return Math.max(relative * 2 * polygon.area / polygon.perimeter, floor * extent);
+  }
+
+  function findPole(polygon, precision, limit) {
+    var queue = new TinyQueue([], compareMax);
+    var centroid = getCentroidCell(polygon);
+    var best = centroid.d > 0 ? centroid :
+      new Cell(polygon.coords[0], polygon.coords[1], 0, polygon);
+    var bounds = polygon.bounds;
+    var bboxCell = new Cell(bounds.centerX(), bounds.centerY(), 0, polygon);
+    if (bboxCell.d > best.d) best = bboxCell;
+
+    var probes = 2;
+    var exhausted = false;
+
+    function addCell(x, y, h, seed) {
+      // If the cell center is already too close to an edge for this cell to
+      // improve the result, the distance scan can stop at that edge. A bailed
+      // scan is never scored or queued because its returned distance is only a
+      // threshold, not the center's actual signed distance.
+      var threshold = best.d - Math.max(0, h * SQRT2 - precision);
+      var cell = new Cell(x, y, h, polygon, threshold, seed);
+      probes++;
+      if (cell.bailed) return;
+      if (cell.d > best.d) best = cell;
+      if (cell.max > best.d + precision) queue.push(cell);
+    }
+
+    var h = Math.max(bounds.width(), bounds.height()) / 2;
+    addCell(bounds.centerX(), bounds.centerY(), h, null);
+    while (queue.length > 0) {
+      if (probes + 4 > limit) {
+        exhausted = true;
+        break;
+      }
+      var cell = queue.pop();
+      if (cell.max - best.d <= precision) continue;
+      h = cell.h / 2;
+      addCell(cell.x - h, cell.y - h, h, cell);
+      addCell(cell.x + h, cell.y - h, h, cell);
+      addCell(cell.x - h, cell.y + h, h, cell);
+      addCell(cell.x + h, cell.y + h, h, cell);
+    }
+    return toResult(best, probes, exhausted);
+  }
+
+  // Among points whose clearance is near the maximum, find the point closest to
+  // the centroid. This is a constrained objective, not a general centroid bias.
+  function findClosestAcceptablePoint(
+    polygon, centroidX, centroidY, pole, minClearance, precision, limit
+  ) {
+    var queue = new TinyQueue([], compareOffset);
+    var bounds = polygon.bounds;
+    var h = Math.max(bounds.width(), bounds.height()) / 2;
+    var root = new Cell(bounds.centerX(), bounds.centerY(), h, polygon);
+    setOffsetBounds(root, centroidX, centroidY);
+    queue.push(root);
+
+    var best = {
+      x: pole.x,
+      y: pole.y,
+      d: pole.distance,
+      offset: geom.distance2D(pole.x, pole.y, centroidX, centroidY)
+    };
+    var probes = pole.probes + 1;
+    var exhausted = false;
+
+    while (queue.length > 0) {
+      if (probes + 4 > limit) {
+        exhausted = true;
+        break;
+      }
+      var cell = queue.pop();
+      if (cell.minOffset >= best.offset || cell.max < minClearance) continue;
+      if (cell.d >= minClearance && cell.offset < best.offset) {
+        best = cell;
+      }
+      if (cell.h <= precision / 2) continue;
+      h = cell.h / 2;
+      [
+        [cell.x - h, cell.y - h],
+        [cell.x + h, cell.y - h],
+        [cell.x - h, cell.y + h],
+        [cell.x + h, cell.y + h]
+      ].forEach(function(xy) {
+        var child = new Cell(xy[0], xy[1], h, polygon);
+        setOffsetBounds(child, centroidX, centroidY);
+        if (child.minOffset < best.offset && child.max >= minClearance) {
+          queue.push(child);
+        }
+      });
+      probes += 4;
+    }
+    return toResult(best, probes, exhausted);
+  }
+
+  function setOffsetBounds(cell, x, y) {
+    cell.offset = geom.distance2D(cell.x, cell.y, x, y);
+    cell.minOffset = Math.max(0, cell.offset - cell.h * SQRT2);
+  }
+
+  function findWeightedPoint(polygon, centroid, pole, weight, precision, limit) {
+    if (weight === 0) return pole;
+    var bounds = polygon.bounds;
+    var refDist = Math.max(bounds.width(), bounds.height()) / 2;
+    var queue = new TinyQueue([], compareScore);
+    var best = new Cell(pole.x, pole.y, 0, polygon);
+    setWeightedScore(best, centroid, refDist, weight);
+
+    var h = Math.max(bounds.width(), bounds.height()) / 2;
+    var root = new Cell(bounds.centerX(), bounds.centerY(), h, polygon);
+    setWeightedScore(root, centroid, refDist, weight);
+    queue.push(root);
+    var probes = pole.probes + 1;
+    var exhausted = false;
+
+    while (queue.length > 0) {
+      if (probes + 4 > limit) {
+        exhausted = true;
+        break;
+      }
+      var cell = queue.pop();
+      if (cell.score > best.score) best = cell;
+      if (cell.maxScore - best.score <= precision) continue;
+      h = cell.h / 2;
+      [
+        [cell.x - h, cell.y - h],
+        [cell.x + h, cell.y - h],
+        [cell.x - h, cell.y + h],
+        [cell.x + h, cell.y + h]
+      ].forEach(function(xy) {
+        var child = new Cell(xy[0], xy[1], h, polygon);
+        setWeightedScore(child, centroid, refDist, weight);
+        if (child.maxScore > best.score + precision) queue.push(child);
+        if (child.score > best.score) best = child;
+      });
+      probes += 4;
+    }
+    return toResult(best, probes, exhausted);
+  }
+
+  function setWeightedScore(cell, centroid, refDist, weight) {
+    var offset = geom.distance2D(cell.x, cell.y, centroid.x, centroid.y);
+    var minOffset = Math.max(0, offset - cell.h * SQRT2);
+    var pointWeight = getCentroidWeight(offset, refDist, weight);
+    var maxWeight = getCentroidWeight(minOffset, refDist, weight);
+    cell.score = cell.d * pointWeight;
+    cell.maxScore = cell.max * maxWeight;
+  }
+
+  function getCentroidWeight(offset, refDist, weight) {
+    return refDist > 0 ?
+      1 - Math.min(weight * offset / refDist, MAX_WEIGHT_PENALTY) : 1;
+  }
+
+  function getCentroidCell(polygon) {
+    var coords = polygon.coords;
+    var end = polygon.ringEnds[0];
+    var area = 0;
+    var x = 0;
+    var y = 0;
+    for (var i = 0, j = end - 2; i < end; j = i, i += 2) {
+      var ax = coords[i];
+      var ay = coords[i + 1];
+      var bx = coords[j];
+      var by = coords[j + 1];
+      var f = ax * by - bx * ay;
+      x += (ax + bx) * f;
+      y += (ay + by) * f;
+      area += f * 3;
+    }
+    if (area === 0) return new Cell(coords[0], coords[1], 0, polygon);
+    return new Cell(x / area, y / area, 0, polygon);
+  }
+
+  function Cell(x, y, h, polygon, maxD, seed) {
+    this.x = x;
+    this.y = y;
+    this.h = h;
+    this.nsx1 = 0;
+    this.nsy1 = 0;
+    this.nsx2 = 0;
+    this.nsy2 = 0;
+    this.bailed = false;
+    this.d = pointToPolygonDistance(
+      this, polygon, maxD === undefined ? -Infinity : maxD, seed || null
+    );
+    this.max = this.d + h * SQRT2;
+  }
+
+  function pointToPolygonDistance(cell, polygon, maxD, seed) {
+    var coords = polygon.coords;
+    var ringEnds = polygon.ringEnds;
+    var blocks = polygon.blocks;
+    var x = cell.x;
+    var y = cell.y;
+    var inside = false;
+    var minDistSq = Infinity;
+    var thresholdSq = maxD > 0 ? maxD * maxD : -1;
+    var stride = BLOCK_SIZE * 2;
+    var blockIndex = 0;
+    var ringStart = 0;
+
+    if (seed) {
+      cell.nsx1 = seed.nsx1;
+      cell.nsy1 = seed.nsy1;
+      cell.nsx2 = seed.nsx2;
+      cell.nsy2 = seed.nsy2;
+      minDistSq = getSegmentDistanceSq(
+        x, y, seed.nsx1, seed.nsy1, seed.nsx2, seed.nsy2
+      );
+      if (minDistSq <= thresholdSq) {
+        cell.bailed = true;
+        return maxD;
+      }
+    }
+
+    for (var r = 0; r < ringEnds.length; r++) {
+      var ringEnd = ringEnds[r];
+      var bx = coords[ringEnd - 2];
+      var by = coords[ringEnd - 1];
+      for (var start = ringStart; start < ringEnd;
+        start += stride, blockIndex += 4) {
+        var end = Math.min(start + stride, ringEnd);
+        var xmin = blocks[blockIndex];
+        var ymin = blocks[blockIndex + 1];
+        var xmax = blocks[blockIndex + 2];
+        var ymax = blocks[blockIndex + 3];
+        var dx = x < xmin ? xmin - x : x > xmax ? x - xmax : 0;
+        var dy = y < ymin ? ymin - y : y > ymax ? y - ymax : 0;
+        var skipDist = dx * dx + dy * dy >= minDistSq;
+        var skipCross = y < ymin || y >= ymax || x > xmax;
+        if (skipDist && skipCross) {
+          bx = coords[end - 2];
+          by = coords[end - 1];
+          continue;
+        }
+        for (var i = start; i < end; i += 2) {
+          var ax = coords[i];
+          var ay = coords[i + 1];
+          if (!skipCross && (ay > y !== by > y) &&
+            x < (bx - ax) * (y - ay) / (by - ay) + ax) {
+            inside = !inside;
+          }
+          if (!skipDist) {
+            var distSq = getSegmentDistanceSq(x, y, ax, ay, bx, by);
+            if (distSq < minDistSq) {
+              minDistSq = distSq;
+              cell.nsx1 = ax;
+              cell.nsy1 = ay;
+              cell.nsx2 = bx;
+              cell.nsy2 = by;
+              if (minDistSq <= thresholdSq) {
+                cell.bailed = true;
+                return maxD;
+              }
+            }
+          }
+          bx = ax;
+          by = ay;
+        }
+      }
+      ringStart = ringEnd;
+    }
+    return minDistSq === 0 ? 0 : (inside ? 1 : -1) * Math.sqrt(minDistSq);
+  }
+
+  function buildBlocks(coords, ringEnds) {
+    var stride = BLOCK_SIZE * 2;
+    var blockCount = 0;
+    var ringStart = 0;
+    for (var r = 0; r < ringEnds.length; r++) {
+      blockCount += Math.ceil((ringEnds[r] - ringStart) / stride);
+      ringStart = ringEnds[r];
+    }
+    var blocks = new Float64Array(blockCount * 4);
+    var k = 0;
+    ringStart = 0;
+    for (r = 0; r < ringEnds.length; r++) {
+      var ringEnd = ringEnds[r];
+      for (var start = ringStart; start < ringEnd; start += stride) {
+        var end = Math.min(start + stride, ringEnd);
+        var prev = start === ringStart ? ringEnd - 2 : start - 2;
+        var xmin = coords[prev];
+        var ymin = coords[prev + 1];
+        var xmax = xmin;
+        var ymax = ymin;
+        for (var i = start; i < end; i += 2) {
+          var x = coords[i];
+          var y = coords[i + 1];
+          if (x < xmin) xmin = x;
+          if (x > xmax) xmax = x;
+          if (y < ymin) ymin = y;
+          if (y > ymax) ymax = y;
+        }
+        blocks[k++] = xmin;
+        blocks[k++] = ymin;
+        blocks[k++] = xmax;
+        blocks[k++] = ymax;
+      }
+      ringStart = ringEnd;
+    }
+    return blocks;
+  }
+
+  function getSegmentDistanceSq(px, py, x, y, bx, by) {
+    var dx = bx - x;
+    var dy = by - y;
+    if (dx !== 0 || dy !== 0) {
+      var t = ((px - x) * dx + (py - y) * dy) / (dx * dx + dy * dy);
+      if (t > 1) {
+        x = bx;
+        y = by;
+      } else if (t > 0) {
+        x += dx * t;
+        y += dy * t;
+      }
+    }
+    dx = px - x;
+    dy = py - y;
+    return dx * dx + dy * dy;
+  }
+
+  function toResult(cell, probes, exhausted) {
+    return {
+      x: cell.x,
+      y: cell.y,
+      distance: cell.d,
+      probes: probes || 0,
+      exhausted: !!exhausted
+    };
+  }
+
+  function compareMax(a, b) {
+    return b.max - a.max;
+  }
+
+  function compareOffset(a, b) {
+    return a.minOffset - b.minOffset;
+  }
+
+  function compareScore(a, b) {
+    return b.maxScore - a.maxScore;
+  }
+
   function simplifyArcsFast(arcs, dist) {
     var xx = [],
         yy = [],
@@ -18897,8 +19493,20 @@
     simplifyPolygonFast: simplifyPolygonFast
   });
 
-  // Find a point inside a polygon and located away from the polygon edge
-  // Method:
+  // Find an interior point for label or symbol placement. The default method
+  // finds a pole of inaccessibility, then moves toward the centroid while
+  // retaining at least 90% of the pole's clearance.
+  function findAnchorPoint(shp, arcs, opts) {
+    var method = opts && opts.method || 'centroid2';
+    var p;
+    if (method != 'legacy') {
+      p = findPolylabelPoint(shp, arcs, opts);
+      if (p) return p;
+    }
+    return findLegacyAnchorPoint(shp, arcs);
+  }
+
+  // Legacy sampled-ray method:
   // - get the largest ring of the polygon
   // - get an array of x-values distributed along the horizontal extent of the ring
   // - for each x:
@@ -18909,8 +19517,7 @@
   // - return the adjusted point having the maximum weighted distance from the edge
   //
   // (distance is weighted to slightly favor points near centroid)
-  //
-  function findAnchorPoint(shp, arcs) {
+  function findLegacyAnchorPoint(shp, arcs) {
     var maxPath = shp && geom.getMaxPath(shp, arcs),
         pathBounds = maxPath && arcs.getSimpleShapeBounds(maxPath),
         thresh, simple;
@@ -19152,7 +19759,8 @@
 
   var AnchorPoints = /*#__PURE__*/Object.freeze({
     __proto__: null,
-    findAnchorPoint: findAnchorPoint
+    findAnchorPoint: findAnchorPoint,
+    findLegacyAnchorPoint: findLegacyAnchorPoint
   });
 
   // Returns a function for calculating the percentage of a shape's perimeter by length that
@@ -19403,6 +20011,8 @@
     return bbox;
   }
 
+  var EXPRESSION_INNER_POINT_OPTS = {method: 'centroid2', tolerance: 0.1};
+
   // Returns a function to return a feature proxy by id
   // (the proxy appears as "this" or "$" in a feature expression)
   function initFeatureProxy(lyr, arcs, optsArg) {
@@ -19618,7 +20228,8 @@
     }
 
     function innerXY() {
-      _innerXY = _innerXY || findAnchorPoint(_ids, arcs);
+      _innerXY = _innerXY ||
+        findAnchorPoint(_ids, arcs, EXPRESSION_INNER_POINT_OPTS);
       return _innerXY;
     }
 
@@ -25791,6 +26402,10 @@
     return !!(d && (d.icon || d['icon-size'] || (d['icon-color'] && d.r > 0)));
   }
 
+  // An unsupported icon name renders as nothing, without a message -- this
+  // function runs once per feature per render, so warning here would repeat the
+  // same message for every feature (and on every redraw in the GUI). The -style
+  // command warns about unsupported names when they are assigned instead.
   function renderIcon(d) {
     var type = d.icon || 'circle';
     var r = getIconRadius(d, type);
@@ -25799,7 +26414,6 @@
     if (type == 'square') return square(getIconStyleData(d, r), 0, 0);
     if (type == 'ring') return ring(getIconStyleData(d, r), 0, 0);
     if (type == 'star') return star(getIconStyleData(d, r));
-    message('Unknown icon type: ' + type);
     return empty();
   }
 
@@ -33920,6 +34534,8 @@ ${svg}
     var featureIndex = 0;
     for (var i = 0; i < state.count; i++) {
       var feat = exportFeatureAtIndex(state, i);
+      // GeoPackage's GeoJSON insert path does not store true NULL geometries
+      // (null becomes a NaN point). Skip them, matching prior behavior.
       if (!feat || !feat.geometry) continue;
       var normalized = normalizeFeature(feat, fields);
       try {
@@ -36017,7 +36633,8 @@ ${svg}
         datasets = [mergeDatasetsForExport(datasets)];
       }
       datasets.forEach(sortExportLayers);
-      files = await exportGeoPackage(datasets[0], opts);
+      // GeoPackage bypasses exportFileContent(), where precision is normally applied.
+      files = await exportGeoPackage(applyExportPrecision(datasets[0], opts), opts);
     } else if (format == 'geoparquet') {
       var layerCount = datasets.reduce(function(sum, d) {
         return sum + d.layers.length;
@@ -36026,7 +36643,8 @@ ${svg}
       files = [];
       for (var i = 0; i < datasets.length; i++) {
         sortExportLayers(datasets[i]);
-        files = files.concat(await exportGeoParquet(datasets[i], opts, singleFileName));
+        // GeoParquet bypasses exportFileContent(), where precision is normally applied.
+        files = files.concat(await exportGeoParquet(applyExportPrecision(datasets[i], opts), opts, singleFileName));
       }
     } else {
       files = datasets.reduce(function(memo, dataset) {
@@ -36078,6 +36696,15 @@ ${svg}
         return !layerHasRaster(lyr);
       });
     });
+  }
+
+  // Apply -o precision= the same way exportFileContent() does for formats that
+  // take their own export path (GeoPackage, GeoParquet).
+  function applyExportPrecision(dataset, opts) {
+    if (!opts.precision) return dataset;
+    dataset = copyDatasetForExport(dataset);
+    setCoordinatePrecision(dataset, opts.precision, !!opts.fix_geometry);
+    return dataset;
   }
 
   // Return an array of objects with 'filename' and 'content' members.
@@ -39192,7 +39819,7 @@ ${svg}
       });
 
     parser.command('contours')
-      .describe('convert a raster layer to contour lines')
+      .describe('convert a raster layer to contour lines or closed bands')
       .option('interval', {
         describe: 'spacing between contour levels (default is a round interval)',
         type: 'number'
@@ -39211,6 +39838,10 @@ ${svg}
       })
       .option('field', {
         describe: 'name of field to hold contour values (default is "value")'
+      })
+      .option('closed', {
+        describe: 'create closed contour bands with lower and upper fields',
+        type: 'flag'
       })
       .option('no-smoothing', {
         describe: 'skip smoothing away the one-pixel contour staircase',
@@ -39854,6 +40485,17 @@ ${svg}
       .option('inner', {
         describe: 'create an interior point for each polygon\'s largest ring',
         type: 'flag'
+      })
+      .option('inner-method', {
+        // describe: 'centroid2, pole, centroid, weighted or legacy (default is centroid2)'
+      })
+      .option('inner-tolerance', {
+        // describe: 'clearance loss allowed by centroid methods (default is 10%)',
+        type: 'percent'
+      })
+      .option('inner-weight', {
+        // describe: 'centroid weight used by inner-method=weighted (default is 0.6)',
+        type: 'number'
       })
       .option('centroid', {
         describe: 'create a centroid point for each polygon\'s largest ring',
@@ -56663,6 +57305,10 @@ ${svg}
     getArcClassifier: getArcClassifier
   });
 
+  // Buffer internals need a reliable interior probe, not a visually centered
+  // label point. The bounded pole search avoids centroid2's second pass.
+  var BUFFER_INNER_POINT_OPTS = {method: 'pole'};
+
   function makePolygonBuffer(lyr, dataset, opts) {
     var spherical = isLatLngCRS(getDatasetCRS(dataset));
     if (spherical && sourceHasCollapsingBandEdge(lyr, dataset)) {
@@ -57059,7 +57705,7 @@ ${svg}
         }
         // hole: keep only if wide enough to hold a disk of radius keepRadius
         var holeShape = [reversePath(path.ids.concat())];
-        var anchor = findAnchorPoint(holeShape, arcs);
+        var anchor = findAnchorPoint(holeShape, arcs, BUFFER_INNER_POINT_OPTS);
         var radius = anchor ?
           getPointToShapeDistance(anchor.x, anchor.y, holeShape, arcs) : 0;
         if (radius >= keepRadius) {
@@ -58530,7 +59176,7 @@ ${svg}
   function getTileAnchorPoint(tileId, mosaicIndex, ownerCtx) {
     if (tileId in ownerCtx.anchorCache) return ownerCtx.anchorCache[tileId];
     var tile = mosaicIndex.mosaic[tileId];
-    var p = findAnchorPoint(tile, ownerCtx.mosaicArcs) ||
+    var p = findAnchorPoint(tile, ownerCtx.mosaicArcs, BUFFER_INNER_POINT_OPTS) ||
       getPathCentroid(tile[0], ownerCtx.mosaicArcs) || null;
     ownerCtx.anchorCache[tileId] = p;
     return p;
@@ -66082,6 +66728,312 @@ ${svg}
     // message('[comment]', opts.message);
   }; // no-op, so -comment doesn't trigger a parsing error
 
+  // Close the existing directed contour paths against a fixed raster/nodata
+  // boundary, polygonize the resulting network and dissolve its tiles by range.
+  // This deliberately uses the isoline tracer's conservative validity rule: a
+  // lattice cell is excluded when any of its four sample corners is invalid.
+  function buildClosedContourDataset(contourDataset, grid, contours) {
+    var domain = getContourCellDomain(grid, contours.band);
+    var breaks = getClosedContourBreaks(contours.levels, contours.range);
+    var boundaryDataset, dataset, contourLyr, nodes, arcInfo, mosaic;
+    var tileLyr, outputLyr;
+    if (breaks.length === 0 || domain.activeCount === 0) {
+      return createEmptyClosedContourDataset(contourDataset.info);
+    }
+    boundaryDataset = importGeoJSON(getBoundaryGeoJSON(traceContourDomainRings(domain)), {});
+    boundaryDataset.info = contourDataset.info;
+    dataset = mergeDatasets([contourDataset, boundaryDataset]);
+    contourLyr = dataset.layers[0];
+    nodes = addIntersectionCuts(dataset, {no_snap: true});
+    arcInfo = indexContourArcs(contourLyr);
+    mosaic = buildPolygonMosaic(nodes).mosaic;
+    tileLyr = createBandTileLayer(mosaic, dataset.arcs, arcInfo, domain, grid,
+      contours.band, breaks);
+    dataset.layers = [tileLyr];
+    if (tileLyr.shapes.length === 0) {
+      cleanArcReferences(dataset);
+      return dataset;
+    }
+    outputLyr = dissolvePolygonLayer2(tileLyr, dataset, {
+      fields: ['lower', 'upper'],
+      quiet: true
+    });
+    dataset.layers = [outputLyr];
+    cleanArcReferences(dataset);
+    return dataset;
+  }
+
+  function getClosedContourBreaks(levels, range) {
+    if (!range || !isFinite(range.min) || !isFinite(range.max)) return [];
+    if (range.min === range.max) return [range.min, range.max];
+    return [range.min].concat(levels.filter(function(level) {
+      return level > range.min && level < range.max;
+    }), [range.max]);
+  }
+
+  function getContourCellDomain(grid, band) {
+    var W = grid.width;
+    var H = grid.height;
+    var cellW = W - 1;
+    var cellH = H - 1;
+    var samples = grid.samples;
+    var bands = grid.bands;
+    var valid = getRasterValidityMask(grid);
+    var rowStride = W * bands;
+    var active = new Uint8Array(Math.max(0, cellW * cellH));
+    var activeCount = 0;
+    var cx, cy, pixelId, off;
+    for (cy = 0; cy < cellH; cy++) {
+      for (cx = 0; cx < cellW; cx++) {
+        pixelId = cy * W + cx;
+        if (valid && (!valid[pixelId] || !valid[pixelId + 1] ||
+            !valid[pixelId + W] || !valid[pixelId + W + 1])) continue;
+        off = pixelId * bands + band;
+        if (samples[off] !== samples[off] ||
+            samples[off + bands] !== samples[off + bands] ||
+            samples[off + rowStride] !== samples[off + rowStride] ||
+            samples[off + rowStride + bands] !==
+              samples[off + rowStride + bands]) continue;
+        active[cy * cellW + cx] = 1;
+        activeCount++;
+      }
+    }
+    return {
+      active: active,
+      activeCount: activeCount,
+      width: cellW,
+      height: cellH,
+      gridWidth: W,
+      gridHeight: H,
+      bbox: grid.bbox
+    };
+  }
+
+  function pointIsInContourDomain(x, y, domain) {
+    var bbox = domain.bbox;
+    var dx, dy, cx, cy;
+    if (x < bbox[0] || x > bbox[2] || y < bbox[1] || y > bbox[3] ||
+        domain.width < 1 || domain.height < 1) return false;
+    dx = (bbox[2] - bbox[0]) / domain.gridWidth;
+    dy = (bbox[3] - bbox[1]) / domain.gridHeight;
+    cx = Math.floor((x - bbox[0]) / dx - 0.5);
+    cy = Math.floor((bbox[3] - y) / dy - 0.5);
+    if (cx < 0) cx = 0;
+    if (cy < 0) cy = 0;
+    if (cx >= domain.width) cx = domain.width - 1;
+    if (cy >= domain.height) cy = domain.height - 1;
+    return domain.active[cy * domain.width + cx] === 1;
+  }
+
+  // Trace the union boundary of active contour cells. Segments are directed with
+  // the active domain on their right, matching Mapshaper's clockwise outer-ring
+  // convention. At a point-touch between diagonal components, taking the
+  // rightmost continuation keeps the two rings separate.
+  function traceContourDomainRings(domain) {
+    var W = domain.width;
+    var H = domain.height;
+    var segments = [];
+    var outgoing = new Map();
+    var rings = [];
+    var cx, cy, id, segment;
+    function isActive(x, y) {
+      return x >= 0 && x < W && y >= 0 && y < H &&
+        domain.active[y * W + x] === 1;
+    }
+    function nodeId(x, y) {
+      return y * (W + 1) + x;
+    }
+    function addSegment(x1, y1, x2, y2, dir) {
+      var seg = {
+        from: nodeId(x1, y1),
+        to: nodeId(x2, y2),
+        dir: dir,
+        visited: false
+      };
+      segments.push(seg);
+      if (!outgoing.has(seg.from)) outgoing.set(seg.from, []);
+      outgoing.get(seg.from).push(seg);
+    }
+    for (cy = 0; cy < H; cy++) {
+      for (cx = 0; cx < W; cx++) {
+        if (!isActive(cx, cy)) continue;
+        if (!isActive(cx, cy - 1)) addSegment(cx, cy, cx + 1, cy, 0);
+        if (!isActive(cx + 1, cy)) addSegment(cx + 1, cy, cx + 1, cy + 1, 1);
+        if (!isActive(cx, cy + 1)) addSegment(cx + 1, cy + 1, cx, cy + 1, 2);
+        if (!isActive(cx - 1, cy)) addSegment(cx, cy + 1, cx, cy, 3);
+      }
+    }
+    for (id = 0; id < segments.length; id++) {
+      segment = segments[id];
+      if (!segment.visited) rings.push(followBoundary(segment, outgoing, domain));
+    }
+    return rings;
+  }
+
+  function followBoundary(first, outgoing, domain) {
+    var ring = [getDomainNodeCoords(first.from, domain)];
+    var current = first;
+    var candidates, next;
+    while (current && !current.visited) {
+      current.visited = true;
+      ring.push(getDomainNodeCoords(current.to, domain));
+      candidates = outgoing.get(current.to) || [];
+      next = chooseBoundaryContinuation(current, candidates);
+      current = next;
+    }
+    return ring;
+  }
+
+  function chooseBoundaryContinuation(current, candidates) {
+    var priorities = [1, 0, 3, 2];
+    var i, j, candidate, turn;
+    for (i = 0; i < priorities.length; i++) {
+      for (j = 0; j < candidates.length; j++) {
+        candidate = candidates[j];
+        if (candidate.visited) continue;
+        turn = (candidate.dir - current.dir + 4) % 4;
+        if (turn === priorities[i]) return candidate;
+      }
+    }
+    return null;
+  }
+
+  function getDomainNodeCoords(id, domain) {
+    var W = domain.width;
+    var xId = id % (W + 1);
+    var yId = Math.floor(id / (W + 1));
+    var bbox = domain.bbox;
+    var dx = (bbox[2] - bbox[0]) / domain.gridWidth;
+    var dy = (bbox[3] - bbox[1]) / domain.gridHeight;
+    var x = xId === 0 ? bbox[0] :
+      xId === W ? bbox[2] : bbox[0] + (xId + 0.5) * dx;
+    var y = yId === 0 ? bbox[3] :
+      yId === domain.height ? bbox[1] : bbox[3] - (yId + 0.5) * dy;
+    return [x, y];
+  }
+
+  function getBoundaryGeoJSON(rings) {
+    return {
+      type: 'FeatureCollection',
+      features: rings.map(function(coords) {
+        return {
+          type: 'Feature',
+          properties: {},
+          geometry: {type: 'LineString', coordinates: coords}
+        };
+      })
+    };
+  }
+
+  function indexContourArcs(lyr) {
+    var records = lyr.data ? lyr.data.getRecords() : [];
+    var index = new Map();
+    lyr.shapes.forEach(function(shape, shapeId) {
+      var level = records[shapeId] && records[shapeId].value;
+      if (!shape || typeof level != 'number') return;
+      shape.forEach(function(path) {
+        path.forEach(function(arcId) {
+          var absId = arcId < 0 ? ~arcId : arcId;
+          index.set(absId, {
+            level: level,
+            direction: arcId < 0 ? -1 : 1
+          });
+        });
+      });
+    });
+    return index;
+  }
+
+  function createBandTileLayer(mosaic, arcs, arcInfo, domain, grid, band, breaks) {
+    var shapes = [];
+    var records = [];
+    mosaic.forEach(function(tile) {
+      var anchor = findAnchorPoint(tile, arcs, {});
+      var bounds;
+      if (!anchor || !pointIsInContourDomain(anchor.x, anchor.y, domain)) return;
+      bounds = getTileBandBounds(tile, arcInfo, breaks, grid, band, anchor);
+      if (!bounds) return;
+      shapes.push(tile);
+      records.push(bounds);
+    });
+    return {
+      geometry_type: 'polygon',
+      shapes: shapes,
+      data: new DataTable(records)
+    };
+  }
+
+  function getTileBandBounds(tile, arcInfo, breaks, grid, band, anchor) {
+    var lower = breaks[0];
+    var upper = breaks[breaks.length - 1];
+    var sawLower = false;
+    var sawUpper = false;
+    tile.forEach(function(path) {
+      path.forEach(function(arcId) {
+        var absId = arcId < 0 ? ~arcId : arcId;
+        var info = arcInfo.get(absId);
+        var direction;
+        if (!info) return;
+        direction = arcId < 0 ? -1 : 1;
+        // Contour paths are directed with the above-level side on their left.
+        // Polygon rings keep their interior on the right, so following a contour
+        // arc in its original direction means this tile is below that level.
+        if (direction === info.direction) {
+          if (!sawUpper || info.level < upper) upper = info.level;
+          sawUpper = true;
+        } else {
+          if (!sawLower || info.level > lower) lower = info.level;
+          sawLower = true;
+        }
+      });
+    });
+    if (areAdjacentBreaks(lower, upper, breaks)) {
+      return {lower: lower, upper: upper};
+    }
+    return getSampleBandBounds(grid, band, anchor.x, anchor.y, breaks);
+  }
+
+  function areAdjacentBreaks(lower, upper, breaks) {
+    var i = breaks.indexOf(lower);
+    return i > -1 && i + 1 < breaks.length && breaks[i + 1] === upper;
+  }
+
+  function getSampleBandBounds(grid, band, x, y, breaks) {
+    var bbox = grid.bbox;
+    var col = Math.floor((x - bbox[0]) / (bbox[2] - bbox[0]) * grid.width);
+    var row = Math.floor((bbox[3] - y) / (bbox[3] - bbox[1]) * grid.height);
+    var value, i;
+    if (col < 0) col = 0;
+    if (row < 0) row = 0;
+    if (col >= grid.width) col = grid.width - 1;
+    if (row >= grid.height) row = grid.height - 1;
+    value = grid.samples[(row * grid.width + col) * grid.bands + band];
+    if (value !== value) return null;
+    i = 0;
+    while (i + 2 < breaks.length && value >= breaks[i + 1]) i++;
+    return {lower: breaks[i], upper: breaks[i + 1]};
+  }
+
+  function createEmptyClosedContourDataset(info) {
+    return {
+      info: info || {},
+      layers: [{
+        geometry_type: 'polygon',
+        shapes: [],
+        data: new DataTable([])
+      }]
+    };
+  }
+
+  var RasterContourBands = /*#__PURE__*/Object.freeze({
+    __proto__: null,
+    buildClosedContourDataset: buildClosedContourDataset,
+    getClosedContourBreaks: getClosedContourBreaks,
+    getContourCellDomain: getContourCellDomain,
+    pointIsInContourDomain: pointIsInContourDomain,
+    traceContourDomainRings: traceContourDomainRings
+  });
+
   // Trace contour lines (isolines) from a raster layer's working samples using
   // marching squares.
   //
@@ -66174,13 +67126,17 @@ ${svg}
 
   function getRasterContourLines(raster, opts) {
     var grid = getRasterGrid(raster);
-    var band, levels;
+    var band, levels, range;
     validateRasterGridForContours(grid);
     band = getContourBand(grid, opts);
     levels = getContourLevels(grid, band, opts);
+    range = getRasterSampleRange(grid, band);
     return {
+      band: band,
+      range: range,
       levels: levels,
-      lines: traceRasterContours(grid, band, levels, getCornerClearance(opts))
+      lines: traceRasterContours(grid, band, levels, getCornerClearance(opts),
+        {extend_to_bbox: opts && opts.closed})
     };
   }
 
@@ -66319,7 +67275,7 @@ ${svg}
   }
 
   // clearance: see CORNER_CLEARANCE; 0 places crossings exactly.
-  function traceRasterContours(grid, band, levels, clearance) {
+  function traceRasterContours(grid, band, levels, clearance, opts) {
     var segments = collectContourSegments(grid, band, levels);
     var toMapXY = getLatticeToMapTransform(grid);
     var hCount = (grid.width - 1) * grid.height;
@@ -66329,12 +67285,48 @@ ${svg}
       stitchContourSegments(levelSegments).forEach(function(path) {
         var coords = getPathCoords(path, grid, band, levels[i], hCount, toMapXY,
           clearance);
+        if (opts && opts.extend_to_bbox) {
+          coords = extendContourPathToBBox(coords, path, grid, hCount);
+        }
         if (coords.length > 1) {
           lines.push({value: levels[i], coords: coords});
         }
       });
     });
     return lines;
+  }
+
+  // Closed contour bands use the raster bbox as their outer frame. Open contour
+  // paths that reach the outer sample-center lattice are extended through the
+  // half-pixel margin to that frame. Endpoints created by skipped nodata cells
+  // lie on interior lattice edges and are intentionally left in place.
+  function extendContourPathToBBox(coords, path, grid, hCount) {
+    if (path.length < 2 || path[0] === path[path.length - 1]) return coords;
+    var first = getOuterEdgePoint(coords[0], path[0], grid, hCount);
+    var last = getOuterEdgePoint(coords[coords.length - 1],
+      path[path.length - 1], grid, hCount);
+    if (first) coords.unshift(first);
+    if (last) coords.push(last);
+    return coords;
+  }
+
+  function getOuterEdgePoint(xy, edgeId, grid, hCount) {
+    var W = grid.width;
+    var H = grid.height;
+    var bbox = grid.bbox;
+    var x, y;
+    if (edgeId < hCount) {
+      y = Math.floor(edgeId / (W - 1));
+      if (y === 0) return [xy[0], bbox[3]];
+      if (y === H - 1) return [xy[0], bbox[1]];
+      return null;
+    }
+    edgeId -= hCount;
+    y = Math.floor(edgeId / W);
+    x = edgeId - y * W;
+    if (x === 0) return [bbox[0], xy[1]];
+    if (x === W - 1) return [bbox[2], xy[1]];
+    return null;
   }
 
   // Visit each cell once and march it for every level that falls inside its
@@ -66557,6 +67549,21 @@ ${svg}
     // Contours come from the layer's working samples, so they reflect any
     // earlier edits (e.g. -blur, -clip) rather than the original source pixels.
     contours = getRasterContourLines(targetLyr.raster, opts);
+    if (opts.closed) {
+      dataset = contours.lines.length > 0 ?
+        importGeoJSON(getContoursGeoJSON(contours.lines, DEFAULT_CONTOUR_FIELD), {}) :
+        createEmptyContourDataset();
+      setDatasetCrsInfo(dataset, getDatasetCrsInfo(targetDataset));
+      if (contours.lines.length > 0 && !opts.no_smoothing) {
+        smoothContourDataset(dataset, getRasterGrid(targetLyr.raster));
+      }
+      dataset = buildClosedContourDataset(dataset, getRasterGrid(targetLyr.raster),
+        contours);
+      outputLayers = mergeDatasetsIntoDataset(targetDataset, [dataset]);
+      setOutputLayerName(outputLayers[0], targetLyr, 'contours', opts);
+      message(getClosedContoursMessage(outputLayers[0], contours));
+      return outputLayers;
+    }
     message(getContoursMessage(contours));
     if (contours.lines.length === 0) {
       return [createEmptyContourLayer(targetLyr, opts)];
@@ -66640,6 +67647,17 @@ ${svg}
     return lyr;
   }
 
+  function createEmptyContourDataset() {
+    return {
+      info: {},
+      layers: [{
+        geometry_type: 'polyline',
+        shapes: [],
+        data: new DataTable([])
+      }]
+    };
+  }
+
   function getContoursMessage(contours) {
     var levels = contours.levels;
     if (levels.length === 0) {
@@ -66649,6 +67667,16 @@ ${svg}
       (contours.lines.length == 1 ? 'line' : 'lines') + ' at ' + levels.length +
       (levels.length == 1 ? ' level' : ' levels') +
       ' (' + levels[0] + ' to ' + levels[levels.length - 1] + ')';
+  }
+
+  function getClosedContoursMessage(lyr, contours) {
+    var count = lyr.shapes.length;
+    if (count === 0) {
+      return 'No closed contour bands were generated';
+    }
+    return 'Created ' + count + ' closed contour ' +
+      (count === 1 ? 'band' : 'bands') + ' from ' + contours.levels.length +
+      (contours.levels.length === 1 ? ' level' : ' levels');
   }
 
   cmd.dashlines = function(lyr, dataset, opts) {
@@ -72267,11 +73295,31 @@ ${svg}
   }
 
   function pointsFromPolygons(lyr, arcs, opts) {
-    var func = opts.inner ? findAnchorPoint : geom.getShapeCentroid;
+    var innerOpts = opts.inner ? getInnerPointOptions(opts) : null;
     return lyr.shapes.map(function(shp) {
-      var p = func(shp, arcs);
+      var p = innerOpts ?
+        findAnchorPoint(shp, arcs, innerOpts) : geom.getShapeCentroid(shp, arcs);
       return p ? [[p.x, p.y]] : null;
     });
+  }
+
+  function getInnerPointOptions(opts) {
+    var method = opts.inner_method || 'centroid2';
+    var methods = ['legacy', 'pole', 'centroid', 'centroid2', 'weighted'];
+    if (methods.indexOf(method) == -1) {
+      stop$1('Unsupported inner point method:', method);
+    }
+    var tolerance = opts.inner_tolerance === undefined ?
+      0.1 : parsePercent(opts.inner_tolerance);
+    var weight = opts.inner_weight === undefined ? 0.6 : opts.inner_weight;
+    if (!(weight >= 0)) {
+      stop$1('Expected inner-weight to be a non-negative number');
+    }
+    return {
+      method: method,
+      tolerance: tolerance,
+      weight: weight
+    };
   }
 
   function coordinateFromValue(val) {
@@ -72407,10 +73455,14 @@ ${svg}
   }
 
   function pointsFromPolygonsForJoin(lyr, dataset) {
-    // TODO use faster method to get inner points
     return {
       geometry_type: 'point',
-      shapes: pointsFromPolygons(lyr, dataset.arcs, {inner: true}),
+      // Joins only require a reliable interior point; centroid bias adds a
+      // second search without improving the containment test.
+      shapes: pointsFromPolygons(lyr, dataset.arcs, {
+        inner: true,
+        inner_method: 'pole'
+      }),
       data: lyr.data // TODO copy if needed
     };
   }
@@ -72453,85 +73505,6 @@ ${svg}
     var retn = joinPolygonsToPoints(pointLyr, source.layer, source.dataset.arcs, opts);
     targetLyr.data = pointLyr.data;
     return retn;
-  }
-
-  class TinyQueue {
-      constructor(data = [], compare = defaultCompare) {
-          this.data = data;
-          this.length = this.data.length;
-          this.compare = compare;
-
-          if (this.length > 0) {
-              for (let i = (this.length >> 1) - 1; i >= 0; i--) this._down(i);
-          }
-      }
-
-      push(item) {
-          this.data.push(item);
-          this.length++;
-          this._up(this.length - 1);
-      }
-
-      pop() {
-          if (this.length === 0) return undefined;
-
-          const top = this.data[0];
-          const bottom = this.data.pop();
-          this.length--;
-
-          if (this.length > 0) {
-              this.data[0] = bottom;
-              this._down(0);
-          }
-
-          return top;
-      }
-
-      peek() {
-          return this.data[0];
-      }
-
-      _up(pos) {
-          const {data, compare} = this;
-          const item = data[pos];
-
-          while (pos > 0) {
-              const parent = (pos - 1) >> 1;
-              const current = data[parent];
-              if (compare(item, current) >= 0) break;
-              data[pos] = current;
-              pos = parent;
-          }
-
-          data[pos] = item;
-      }
-
-      _down(pos) {
-          const {data, compare} = this;
-          const halfLength = this.length >> 1;
-          const item = data[pos];
-
-          while (pos < halfLength) {
-              let left = (pos << 1) + 1;
-              let best = data[left];
-              const right = left + 1;
-
-              if (right < this.length && compare(data[right], best) < 0) {
-                  left = right;
-                  best = data[right];
-              }
-              if (compare(best, item) >= 0) break;
-
-              data[pos] = best;
-              pos = left;
-          }
-
-          data[pos] = item;
-      }
-  }
-
-  function defaultCompare(a, b) {
-      return a < b ? -1 : a > b ? 1 : 0;
   }
 
   /*
@@ -76178,6 +77151,16 @@ ${svg}
     stopJob(job);
   };
 
+  // The icon names accepted by the icon= property of the -style command.
+  // Kept in a module of its own so that both the renderer (svg-symbols.mjs) and
+  // the -style command can use it without forming an import cycle.
+
+  var iconNames = ['circle', 'square', 'ring', 'star'];
+
+  function isSupportedIconName(name) {
+    return iconNames.indexOf(name) > -1;
+  }
+
   cmd.svgStyle = function(lyr, dataset, opts) {
     var filterFn, table, fields, hasNewFields;
     if (getFeatureCount(lyr) === 0) {
@@ -76214,12 +77197,16 @@ ${svg}
       }
       var strVal = opts[optName].trim();
       var accessor = getSymbolPropertyAccessor(strVal, svgName, lyr);
+      var badIcons = svgName == 'icon' ? [] : null;
       table.getRecords().forEach(function(rec, i) {
         if (filterFn && !filterFn(i)) {
           // make sure field exists if record is excluded by filter
           setUndefinedFields(rec, svgName == 'label-pos' ? labelPositionFields : [svgName]);
         } else {
           rec[svgName] = accessor(i);
+          if (badIcons) {
+            addUnsupportedIconName(badIcons, rec.icon);
+          }
           if (svgName == 'label-pos') {
             if (!setLabelPositionStyle(rec, rec['label-pos'])) {
               stop$1('Unexpected value for label-pos:', rec['label-pos']);
@@ -76227,6 +77214,9 @@ ${svg}
           }
         }
       });
+      if (badIcons && badIcons.length > 0) {
+        warn(formatUnsupportedIconMessage(badIcons));
+      }
     });
     if (fields.length > 0) {
       if (hasNewFields) {
@@ -76256,6 +77246,32 @@ ${svg}
     if (fields.indexOf(field) == -1) {
       fields.push(field);
     }
+  }
+
+  // Icon names can not be validated when options are parsed, because an icon=
+  // value may be a field name or an expression. The assigned values are checked
+  // instead, so that computed names are covered too. Unsupported names are a
+  // warning, not an error -- features with an unsupported name render without an
+  // icon.
+  var maxReportedIconNames = 4;
+
+  function addUnsupportedIconName(names, val) {
+    var name;
+    if (!val) return; // a blank value removes the icon
+    name = String(val);
+    if (isSupportedIconName(name) || names.indexOf(name) > -1) return;
+    names.push(name);
+  }
+
+  function formatUnsupportedIconMessage(names) {
+    var extra = names.length - maxReportedIconNames;
+    var listed = extra > 0 ? names.slice(0, maxReportedIconNames) : names;
+    var str = 'Unsupported icon ' + (names.length > 1 ? 'names' : 'name') + ': ' +
+      listed.join(', ');
+    if (extra > 0) {
+      str += ' (and ' + extra + ' more)';
+    }
+    return str + '. Expected one of: ' + iconNames.join(', ');
   }
 
   function setUndefinedFields(rec, fields) {
@@ -77949,7 +78965,7 @@ ${svg}
     return name == 'rectangle' || name == 'rectangles' || name == 'filter' && opts.cleanup;
   }
 
-  var version = "0.7.53";
+  var version = "0.7.54";
 
   // Parse command line args into commands and run them
   // Function takes an optional Node-style callback. A Promise is returned if no callback is given.
@@ -80100,6 +81116,7 @@ ${svg}
     Logging,
     Profile,
     RasterBlur,
+    RasterContourBands,
     RasterContours,
     RasterGrid,
     RasterReprojection,
