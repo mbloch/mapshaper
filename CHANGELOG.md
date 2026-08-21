@@ -1,3 +1,6 @@
+v0.7.55
+* Use layer name as the dataset name in the FlatGeobuf header, instead of "L1".
+
 v0.7.54
 * Added `-contours closed` for creating polygon bands with `upper` and `lower` attributes.
 * Switched to a higher-quality and better-performing algorithm for placing anchor points within polygons (see -points inner).
