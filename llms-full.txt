@@ -1,6 +1,6 @@
 # Mapshaper
 
-> Mapshaper is a command-line tool and in-browser editor for geographic vector and raster data. It reads and writes Shapefile, GeoJSON, TopoJSON, GeoPackage, FlatGeobuf, GeoParquet, KML/KMZ, CSV/TSV, DBF, JSON records and SVG, and can simplify, clip, dissolve, join, project and otherwise transform layers. The CLI and web app share the same command language, so commands written interactively in the browser console run unchanged in scripts.
+> Mapshaper is a command-line tool and in-browser editor for geographic vector and raster data. It reads and writes Shapefile, GeoJSON, TopoJSON, GeoPackage, FlatGeobuf, GeoParquet, GeoTIFF, KML/KMZ, CSV/TSV, DBF, JSON records and SVG, and can simplify, clip, dissolve, join, project and otherwise transform layers. The CLI and web app share the same command language, so commands written interactively in the browser console run unchanged in scripts.
 
 These docs cover the same material in two forms:
 
@@ -15,7 +15,7 @@ When in doubt about a command's behavior, the [command reference](https://mapsha
 
 # Mapshaper documentation
 
-<p class="lead">Mapshaper is a tool for editing Shapefile, GeoJSON, TopoJSON, GeoPackage, FlatGeobuf, GeoParquet, KML and CSV data &mdash; available as a command-line program and as a web app at <a href="/">mapshaper.org</a>.</p>
+<p class="lead">Mapshaper is a tool for editing Shapefile, GeoJSON, TopoJSON, GeoPackage, FlatGeobuf, GeoParquet, GeoTIFF, KML and CSV data &mdash; available as a command-line program and as a web app at <a href="/">mapshaper.org</a>.</p>
 
 <div class="section-cards">
   <a class="section-card" href="/docs/reference.html">
@@ -52,7 +52,7 @@ When in doubt about a command's behavior, the [command reference](https://mapsha
 
 ## Help and feedback
 
-- Found a bug or want to request a feature? [Share feedback](https://tally.so/r/44Njok) or [open an issue on GitHub](https://github.com/mbloch/mapshaper/issues).
+- Found a bug or want to request a feature? [Open an issue on GitHub](https://github.com/mbloch/mapshaper/issues).
 - Mapshaper is free software. If it's useful to you, please consider [supporting its development](/sponsor.html).
 
 ---
@@ -2602,7 +2602,7 @@ The right-click menu adapts to what's under the cursor. Clicking a value copies 
 
 The **Display** button in the header opens the display options panel. Both checkboxes are remembered between sessions.
 
-- **Detect line intersections** &mdash; highlights self-intersections in red as you simplify or edit, with a running count at the top of the map. The quickest way to spot simplification damage. In Simplify mode a **repair** link appears next to the count, which tries to fix intersections caused by simplifying.
+- **Detect line intersections** &mdash; highlights self-intersections in red as you simplify or edit, with a running count at the top of the map. This can reveal topology problems in your source data and line intersections caused by simplification. In Simplify mode a **repair** link appears next to the count, which tries to fix intersections caused by simplifying.
 - **Compare with original** &mdash; draws the shapes as they were before your last edit, as a magenta outline on top of the current ones. It applies to the `-buffer`, `-smooth` and `-simplify` commands and to the Simplify slider, so you can see exactly what an edit changed without toggling layers on and off. The overlay clears when you make an unrelated edit or turn the checkbox off.
 
 ### Basemaps

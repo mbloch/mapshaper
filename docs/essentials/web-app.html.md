@@ -79,7 +79,7 @@ The right-click menu adapts to what's under the cursor. Clicking a value copies 
 
 The **Display** button in the header opens the display options panel. Both checkboxes are remembered between sessions.
 
-- **Detect line intersections** &mdash; highlights self-intersections in red as you simplify or edit, with a running count at the top of the map. The quickest way to spot simplification damage. In Simplify mode a **repair** link appears next to the count, which tries to fix intersections caused by simplifying.
+- **Detect line intersections** &mdash; highlights self-intersections in red as you simplify or edit, with a running count at the top of the map. This can reveal topology problems in your source data and line intersections caused by simplification. In Simplify mode a **repair** link appears next to the count, which tries to fix intersections caused by simplifying.
 - **Compare with original** &mdash; draws the shapes as they were before your last edit, as a magenta outline on top of the current ones. It applies to the `-buffer`, `-smooth` and `-simplify` commands and to the Simplify slider, so you can see exactly what an edit changed without toggling layers on and off. The overlay clears when you make an unrelated edit or turn the checkbox off.
 
 ### Basemaps

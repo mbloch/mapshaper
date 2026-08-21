@@ -34003,8 +34003,6 @@ ${svg}
       }); });
   }
 
-  function buildHeader(t,r=0){let n,o=new Builder,i=0;t.columns&&(i=Header.createColumnsVector(o,t.columns.map(e=>{let t;return t=o.createString(e.name),Column.startColumn(o),Column.addName(o,t),Column.addType(o,e.type),Column.endColumn(o)})));let f=o.createString("L1");r&&(Crs.startCrs(o),Crs.addCode(o,r),n=Crs.endCrs(o)),Header.startHeader(o),n&&Header.addCrs(o,n),Header.addFeaturesCount(o,BigInt(t.featuresCount)),Header.addGeometryType(o,t.geometryType),Header.addIndexNodeSize(o,0),i&&Header.addColumns(o,i),Header.addName(o,f);let u=Header.endHeader(o);return o.finishSizePrefixed(u),o.asUint8Array()}
-
   // bytes: Uint8Array
   function getHeaderMeta(bytes) {
     if (!bytes.subarray(0, 3).every((v, i) => magicbytes[i] === v)) {
@@ -34012,7 +34010,11 @@ ${svg}
     }
     var bb = new ByteBuffer(bytes);
     bb.setPosition(magicbytes.length + SIZE_PREFIX_LEN);
-    return fromByteBuffer(bb);
+    var header = Header.getRootAsHeader(bb);
+    var meta = fromByteBuffer(bb);
+    // The library's header-meta helper omits the FlatGeobuf dataset name.
+    meta.name = header.name();
+    return meta;
   }
 
   // bytes: Uint8Array
@@ -34086,7 +34088,7 @@ ${svg}
   // source: a feature cursor, {length, getFeature(i)}. Features are pulled and
   // encoded one at a time rather than as a collection, because the GeoJSON form
   // of a layer is several times larger than the FlatGeobuf it encodes into.
-  function serializeWithColumns(source, columns) {
+  function serializeWithColumns(source, columns, name) {
     if (source.length === 0) {
       throw new Error('Could not infer geometry type for collection of features.');
     }
@@ -34094,13 +34096,13 @@ ${svg}
     // type, but that type isn't known until every feature has been seen. Assume
     // the layer is homogeneous, which nearly all are, and encode again as
     // Unknown in the rare case that it isn't.
-    return encodeCollection(source, columns, null) ||
-      encodeCollection(source, columns, GeometryType.Unknown);
+    return encodeCollection(source, columns, name, null) ||
+      encodeCollection(source, columns, name, GeometryType.Unknown);
   }
 
   // Returns null if forcedType is null and the features turn out to have more
   // than one geometry type.
-  function encodeCollection(source, columns, forcedType) {
+  function encodeCollection(source, columns, name, forcedType) {
     var headerMeta = null;
     var sink = null;
     // Null-geometry features encountered before the collection's geometry type is
@@ -34126,7 +34128,8 @@ ${svg}
       }
       var type = GeometryType[feature.geometry.type] || GeometryType.Unknown;
       if (!headerMeta) {
-        headerMeta = getEncodedHeaderMeta(forcedType === null ? type : forcedType, columns, source.length);
+        headerMeta = getEncodedHeaderMeta(
+          forcedType === null ? type : forcedType, columns, source.length, name);
         sink = initSink(source, headerMeta, deferred);
       } else if (forcedType === null && type != headerMeta.geometryType) {
         return null;
@@ -34139,15 +34142,16 @@ ${svg}
     }
     if (!sink) {
       // No feature had a geometry, so the collection has no geometry type.
-      headerMeta = getEncodedHeaderMeta(forcedType === null ? GeometryType.Unknown : forcedType,
-        columns, source.length);
+      headerMeta = getEncodedHeaderMeta(
+        forcedType === null ? GeometryType.Unknown : forcedType, columns, source.length, name);
       sink = initSink(source, headerMeta, deferred);
     }
     return sink.toBytes();
   }
 
-  function getEncodedHeaderMeta(geometryType, columns, featuresCount) {
+  function getEncodedHeaderMeta(geometryType, columns, featuresCount, name) {
     return {
+      name: name,
       geometryType: geometryType,
       columns: columns,
       envelope: null,
@@ -34163,7 +34167,7 @@ ${svg}
   function initSink(source, headerMeta, deferredFeatures) {
     var sink = new ByteSink(magicbytes.length + estimateEncodedBytes(source));
     sink.append(magicbytes);
-    sink.append(buildHeader(headerMeta));
+    sink.append(buildHeaderWithCRS(headerMeta, null));
     for (var i = 0; i < deferredFeatures.length; i++) {
       sink.append(deferredFeatures[i]);
     }
@@ -34287,13 +34291,14 @@ ${svg}
     }
     var crsMeta = resolveOutputCRS(dataset);
     return dataset.layers.map(function(lyr) {
+      var name = lyr.name || 'layer';
       var cursor = getFeatureCursor(lyr, dataset, opts, true);
       if (cursor.length === 0) {
         stop$1('FlatGeobuf export does not support empty layers');
       }
       var columns = getFlatGeobufColumns(lyr);
-      var content = serializeWithColumns(cursor, columns);
-      var filename = lyr.name + '.' + extension;
+      var content = serializeWithColumns(cursor, columns, name);
+      var filename = name + '.' + extension;
       if (crsMeta) {
         content = rewriteHeaderWithCRS(content, crsMeta);
       } else {
@@ -78965,7 +78970,7 @@ ${svg}
     return name == 'rectangle' || name == 'rectangles' || name == 'filter' && opts.cleanup;
   }
 
-  var version = "0.7.54";
+  var version = "0.7.55";
 
   // Parse command line args into commands and run them
   // Function takes an optional Node-style callback. A Promise is returned if no callback is given.

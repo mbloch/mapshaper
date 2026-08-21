@@ -1,6 +1,6 @@
 # Mapshaper
 
-> Mapshaper is a command-line tool and in-browser editor for geographic vector and raster data. It reads and writes Shapefile, GeoJSON, TopoJSON, GeoPackage, FlatGeobuf, GeoParquet, KML/KMZ, CSV/TSV, DBF, JSON records and SVG, and can simplify, clip, dissolve, join, project and otherwise transform layers. The CLI and web app share the same command language, so commands written interactively in the browser console run unchanged in scripts.
+> Mapshaper is a command-line tool and in-browser editor for geographic vector and raster data. It reads and writes Shapefile, GeoJSON, TopoJSON, GeoPackage, FlatGeobuf, GeoParquet, GeoTIFF, KML/KMZ, CSV/TSV, DBF, JSON records and SVG, and can simplify, clip, dissolve, join, project and otherwise transform layers. The CLI and web app share the same command language, so commands written interactively in the browser console run unchanged in scripts.
 
 These docs cover the same material in two forms:
 
@@ -55,7 +55,7 @@ When in doubt about a command's behavior, the [command reference](https://mapsha
 
 ## Optional
 
-- [Home](https://mapshaper.org/docs/index.html.md): Documentation for mapshaper, the command-line tool and web app for editing Shapefile, GeoJSON, TopoJSON, GeoPackage, FlatGeobuf, GeoParquet, KML and CSV data.
+- [Home](https://mapshaper.org/docs/index.html.md): Documentation for mapshaper, the command-line tool and web app for editing Shapefile, GeoJSON, TopoJSON, GeoPackage, FlatGeobuf, GeoParquet, GeoTIFF, KML and CSV data.
 - [What's new](https://mapshaper.org/docs/whats-new.html.md): A curated log of recently added user-visible features in Mapshaper, with links into the rest of the docs.
 - [Gallery](https://mapshaper.org/docs/gallery/index.html.md): Example maps made with Mapshaper, with full source data and reproduction steps for each.
 - [Formats overview](https://mapshaper.org/docs/formats/overview.html.md): A quick comparison of every file format Mapshaper can read and write, with links to per-format details.
