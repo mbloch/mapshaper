@@ -1,6 +1,8 @@
 import api from '../mapshaper.js';
 import assert from 'assert';
 import { fixPath } from './helpers';
+import { exportFlatGeobuf } from '../src/flatgeobuf/mapshaper-flatgeobuf-export';
+import { getHeaderMeta } from '../src/flatgeobuf/mapshaper-flatgeobuf-lib';
 
 describe('flatgeobuf export', function () {
   it('exports FlatGeobuf and round-trips via async import', async function () {
@@ -33,6 +35,31 @@ describe('flatgeobuf export', function () {
     assert.equal(dataset.layers[0].geometry_type, 'point');
     assert.equal(dataset.layers[0].shapes.length, 2);
     assert.deepEqual(dataset.layers[0].data.getRecords().map(rec => rec.name), ['alpha', 'beta']);
+  });
+
+  it('writes the layer name to the FlatGeobuf header', async function () {
+    var input = {
+      type: 'FeatureCollection',
+      features: [{
+        type: 'Feature',
+        properties: {},
+        geometry: {type: 'Point', coordinates: [1, 2]}
+      }]
+    };
+    var named = await api.applyCommands(
+      '-i in.json -rename-layers places -o format=flatgeobuf', {'in.json': input});
+    var unnamed = exportFlatGeobuf({
+      layers: [{
+        name: '',
+        geometry_type: 'point',
+        shapes: [[[1000000, 2000000]]]
+      }],
+      info: {}
+    }, {})[0];
+
+    assert.equal(getHeaderMeta(named['places.fgb']).name, 'places');
+    assert.equal(unnamed.filename, 'layer.fgb');
+    assert.equal(getHeaderMeta(unnamed.content).name, 'layer');
   });
 
   // The header declares the collection's geometry type and is written before

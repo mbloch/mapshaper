@@ -27,13 +27,14 @@ export function exportFlatGeobuf(dataset, opts) {
   }
   var crsMeta = resolveOutputCRS(dataset);
   return dataset.layers.map(function(lyr) {
+    var name = lyr.name || 'layer';
     var cursor = getFeatureCursor(lyr, dataset, opts, true);
     if (cursor.length === 0) {
       stop('FlatGeobuf export does not support empty layers');
     }
     var columns = getFlatGeobufColumns(lyr);
-    var content = serializeWithColumns(cursor, columns);
-    var filename = lyr.name + '.' + extension;
+    var content = serializeWithColumns(cursor, columns, name);
+    var filename = name + '.' + extension;
     if (crsMeta) {
       content = rewriteHeaderWithCRS(content, crsMeta);
     } else {

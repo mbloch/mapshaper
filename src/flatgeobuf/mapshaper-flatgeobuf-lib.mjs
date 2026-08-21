@@ -21,7 +21,11 @@ function getHeaderMeta(bytes) {
   }
   var bb = new flatbuffers.ByteBuffer(bytes);
   bb.setPosition(magicbytes.length + SIZE_PREFIX_LEN);
-  return fromByteBuffer(bb);
+  var header = Header.getRootAsHeader(bb);
+  var meta = fromByteBuffer(bb);
+  // The library's header-meta helper omits the FlatGeobuf dataset name.
+  meta.name = header.name();
+  return meta;
 }
 
 // bytes: Uint8Array
@@ -95,7 +99,7 @@ function buildHeaderWithCRS(headerMeta, crsMeta) {
 // source: a feature cursor, {length, getFeature(i)}. Features are pulled and
 // encoded one at a time rather than as a collection, because the GeoJSON form
 // of a layer is several times larger than the FlatGeobuf it encodes into.
-function serializeWithColumns(source, columns) {
+function serializeWithColumns(source, columns, name) {
   if (source.length === 0) {
     throw new Error('Could not infer geometry type for collection of features.');
   }
@@ -103,13 +107,13 @@ function serializeWithColumns(source, columns) {
   // type, but that type isn't known until every feature has been seen. Assume
   // the layer is homogeneous, which nearly all are, and encode again as
   // Unknown in the rare case that it isn't.
-  return encodeCollection(source, columns, null) ||
-    encodeCollection(source, columns, GeometryType.Unknown);
+  return encodeCollection(source, columns, name, null) ||
+    encodeCollection(source, columns, name, GeometryType.Unknown);
 }
 
 // Returns null if forcedType is null and the features turn out to have more
 // than one geometry type.
-function encodeCollection(source, columns, forcedType) {
+function encodeCollection(source, columns, name, forcedType) {
   var headerMeta = null;
   var sink = null;
   // Null-geometry features encountered before the collection's geometry type is
@@ -135,7 +139,8 @@ function encodeCollection(source, columns, forcedType) {
     }
     var type = GeometryType[feature.geometry.type] || GeometryType.Unknown;
     if (!headerMeta) {
-      headerMeta = getEncodedHeaderMeta(forcedType === null ? type : forcedType, columns, source.length);
+      headerMeta = getEncodedHeaderMeta(
+        forcedType === null ? type : forcedType, columns, source.length, name);
       sink = initSink(source, headerMeta, deferred);
     } else if (forcedType === null && type != headerMeta.geometryType) {
       return null;
@@ -148,15 +153,16 @@ function encodeCollection(source, columns, forcedType) {
   }
   if (!sink) {
     // No feature had a geometry, so the collection has no geometry type.
-    headerMeta = getEncodedHeaderMeta(forcedType === null ? GeometryType.Unknown : forcedType,
-      columns, source.length);
+    headerMeta = getEncodedHeaderMeta(
+      forcedType === null ? GeometryType.Unknown : forcedType, columns, source.length, name);
     sink = initSink(source, headerMeta, deferred);
   }
   return sink.toBytes();
 }
 
-function getEncodedHeaderMeta(geometryType, columns, featuresCount) {
+function getEncodedHeaderMeta(geometryType, columns, featuresCount, name) {
   return {
+    name: name,
     geometryType: geometryType,
     columns: columns,
     envelope: null,
@@ -172,7 +178,7 @@ function getEncodedHeaderMeta(geometryType, columns, featuresCount) {
 function initSink(source, headerMeta, deferredFeatures) {
   var sink = new ByteSink(magicbytes.length + estimateEncodedBytes(source));
   sink.append(magicbytes);
-  sink.append(buildHeader(headerMeta));
+  sink.append(buildHeaderWithCRS(headerMeta, null));
   for (var i = 0; i < deferredFeatures.length; i++) {
     sink.append(deferredFeatures[i]);
   }
