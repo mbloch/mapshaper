@@ -6,10 +6,13 @@ import {
   symbolCollisionDefaults
 } from '../src/points/mapshaper-symbol-collisions';
 
-// Build solver nodes from [x, y, r] triples
-function makeNodes(arr) {
+// Build solver nodes from [x, y, r] triples. Every node gets a shift limit of
+// @maxShift, unless it supplies its own as a fourth element.
+function makeNodes(arr, maxShift) {
+  if (maxShift === undefined) maxShift = symbolCollisionDefaults.max_shift;
   return arr.map(function(d, i) {
-    return {i: i, x: d[0], y: d[1], x0: d[0], y0: d[1], r: d[2]};
+    return {i: i, x: d[0], y: d[1], x0: d[0], y0: d[1], r: d[2],
+      maxShift: d.length > 3 ? d[3] : maxShift};
   });
 }
 
@@ -62,9 +65,9 @@ describe('mapshaper-repel.js', function () {
   describe('collision solver', function () {
 
     it('separates two overlapping circles', function () {
-      var nodes = makeNodes([[0, 0, 10], [8, 0, 10]]);
+      var nodes = makeNodes([[0, 0, 10], [8, 0, 10]], 100);
       assert.equal(countSymbolCollisions(nodes), 1);
-      resolveSymbolCollisions(nodes, solverOpts({max_shift: 100}));
+      resolveSymbolCollisions(nodes, solverOpts());
       assert.equal(countSymbolCollisions(nodes), 0);
     });
 
@@ -84,8 +87,8 @@ describe('mapshaper-repel.js', function () {
       for (var i=0; i<40; i++) {
         arr.push([i % 5, Math.floor(i / 5), 12]);
       }
-      var nodes = makeNodes(arr);
-      resolveSymbolCollisions(nodes, solverOpts({max_shift: 6}));
+      var nodes = makeNodes(arr, 6);
+      resolveSymbolCollisions(nodes, solverOpts());
       nodes.forEach(function(node) {
         // Allow for floating point error at the boundary
         assert.ok(shift(node) <= 6 + 1e-9, 'shift was ' + shift(node));
@@ -93,8 +96,8 @@ describe('mapshaper-repel.js', function () {
     });
 
     it('moves larger circles less than smaller ones', function () {
-      var nodes = makeNodes([[0, 0, 30], [10, 0, 5]]);
-      resolveSymbolCollisions(nodes, solverOpts({max_shift: 100}));
+      var nodes = makeNodes([[0, 0, 30], [10, 0, 5]], 100);
+      resolveSymbolCollisions(nodes, solverOpts());
       var big = nodes.filter(function(n) {return n.r == 30;})[0];
       var small = nodes.filter(function(n) {return n.r == 5;})[0];
       assert.ok(shift(small) > shift(big) * 5,
@@ -103,8 +106,8 @@ describe('mapshaper-repel.js', function () {
 
     it('separates coincident circles deterministically', function () {
       function run() {
-        var nodes = makeNodes([[0, 0, 10], [0, 0, 10], [0, 0, 10]]);
-        resolveSymbolCollisions(nodes, solverOpts({max_shift: 100}));
+        var nodes = makeNodes([[0, 0, 10], [0, 0, 10], [0, 0, 10]], 100);
+        resolveSymbolCollisions(nodes, solverOpts());
         return nodes.map(function(n) {return [n.i, n.x, n.y];});
       }
       var a = run();
@@ -116,13 +119,38 @@ describe('mapshaper-repel.js', function () {
     });
 
     it('is a no-op when max-shift is 0', function () {
-      var nodes = makeNodes([[0, 0, 10], [1, 0, 10]]);
-      assert.equal(resolveSymbolCollisions(nodes, solverOpts({max_shift: 0})), 0);
+      var nodes = makeNodes([[0, 0, 10], [1, 0, 10]], 0);
+      assert.equal(resolveSymbolCollisions(nodes, solverOpts()), 0);
     });
 
     it('is a no-op for a single node', function () {
       var nodes = makeNodes([[0, 0, 10]]);
       assert.equal(resolveSymbolCollisions(nodes, solverOpts()), 0);
+    });
+
+    it('countSymbolCollisions() ignores overlaps too shallow to see', function () {
+      // Symbols left touching, or a fraction of a pixel short of it, are as
+      // separated as they are going to get and are not counted as unresolved
+      assert.equal(countSymbolCollisions(makeNodes([[0, 0, 10], [20, 0, 10]])), 0);
+      assert.equal(countSymbolCollisions(makeNodes([[0, 0, 10], [19.2, 0, 10]])), 0);
+      assert.equal(countSymbolCollisions(makeNodes([[0, 0, 10], [18.5, 0, 10]])), 1);
+    });
+
+    it('a node with a max-shift of 0 is a fixed obstacle', function () {
+      // The pinned node holds its place while the other is pushed clear of it
+      var nodes = makeNodes([[0, 0, 10, 0], [8, 0, 10, 100]]);
+      assert.equal(resolveSymbolCollisions(nodes, solverOpts()), 1);
+      assert.strictEqual(nodes[0].x, 0);
+      assert.strictEqual(nodes[0].y, 0);
+      assert.ok(Math.abs(nodes[1].x - 20) < 0.1, 'node 1 is at ' + nodes[1].x);
+      assert.equal(countSymbolCollisions(nodes), 0);
+    });
+
+    it('varying radii and shift limits stay per-node', function () {
+      var nodes = makeNodes([[0, 0, 10, 2], [8, 0, 10, 30]]);
+      resolveSymbolCollisions(nodes, solverOpts());
+      assert.ok(shift(nodes[0]) <= 2 + 1e-9, 'node 0 moved ' + shift(nodes[0]));
+      assert.ok(shift(nodes[1]) > 2, 'node 1 moved ' + shift(nodes[1]));
     });
   });
 
@@ -204,6 +232,59 @@ describe('mapshaper-repel.js', function () {
       var coords = getCoords(out['out.json']);
       var dist = Math.abs(coords[1][0] - coords[0][0]);
       assert.ok(dist > 29.9 && dist < 30.1, 'symbols are ' + dist + 'px apart');
+    });
+
+    it('padding= accepts a field name', async function () {
+      var input = pointsGeoJSON([[0, 0], [8, 0], [1000, 0]],
+        [{pad: 5}, {pad: 0}, {pad: 0}]);
+      var out = await api.applyCommands(
+        '-i in.json -style r=10 -repel width=1000 max-shift=50 padding=pad -o out.json',
+        {'in.json': input});
+      var coords = getCoords(out['out.json']);
+      // Clearance between a pair of symbols is the sum of their padding
+      var dist = Math.abs(coords[1][0] - coords[0][0]);
+      assert.ok(dist > 24.9 && dist < 25.1, 'symbols are ' + dist + 'px apart');
+    });
+
+    it('padding= accepts an expression', async function () {
+      var input = pointsGeoJSON([[0, 0], [8, 0], [1000, 0]],
+        [{pad: 2}, {pad: 0}, {pad: 0}]);
+      var out = await api.applyCommands(
+        "-i in.json -style r=10 -repel width=1000 max-shift=50 padding='pad * 2.5' -o out.json",
+        {'in.json': input});
+      var coords = getCoords(out['out.json']);
+      var dist = Math.abs(coords[1][0] - coords[0][0]);
+      assert.ok(dist > 24.9 && dist < 25.1, 'symbols are ' + dist + 'px apart');
+    });
+
+    it('max-shift= accepts an expression', async function () {
+      var input = pointsGeoJSON([[0, 0], [8, 0], [1000, 0]],
+        [{pin: 1}, {pin: 0}, {pin: 0}]);
+      var out = await api.applyCommands(
+        "-i in.json -style r=10 -repel width=1000 max-shift='pin ? 0 : 50' -o out.json",
+        {'in.json': input});
+      var coords = getCoords(out['out.json']);
+      // A max-shift of 0 pins a symbol in place; its neighbor moves instead
+      assert.deepEqual(coords[0], [0, 0]);
+      var dist = Math.abs(coords[1][0] - coords[0][0]);
+      assert.ok(dist > 19.9 && dist < 20.1, 'symbols are ' + dist + 'px apart');
+    });
+
+    it('errors on a negative padding= value', async function () {
+      await assert.rejects(function() {
+        return api.applyCommands(
+          "-i in.json -style r=10 -repel width=1000 padding='pad - 10' -o out.json",
+          {'in.json': pointsGeoJSON([[0, 0], [8, 0], [1000, 0]],
+            [{pad: 5}, {pad: 5}, {pad: 5}])});
+      }, /Invalid padding= value/);
+    });
+
+    it('errors on an unusable max-shift= value', async function () {
+      await assert.rejects(function() {
+        return api.applyCommands(
+          '-i in.json -style r=10 -repel width=1000 max-shift=nonsense -o out.json',
+          {'in.json': pointsGeoJSON([[0, 0], [8, 0], [1000, 0]])});
+      }, /max-shift/);
     });
 
     it('takes the display scale from a frame layer', async function () {

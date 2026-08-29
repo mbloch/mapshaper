@@ -4,7 +4,7 @@ import { stop, message } from '../utils/mapshaper-logging';
 import { Bounds } from '../geom/mapshaper-bounds';
 import { requireSinglePointLayer, getLayerBounds } from '../dataset/mapshaper-layer-utils';
 import { requireProjectedDataset } from '../crs/mapshaper-projections';
-import { getSymbolPropertyAccessor } from '../svg/svg-properties';
+import { getSymbolPropertyAccessor, getPropertyAccessor } from '../svg/svg-properties';
 import { findFrameLayerInDataset, findFrame, getFrameLayerData } from '../furniture/mapshaper-frame-utils';
 import { noteLayerWillChange, markLayerChanged } from '../undo/mapshaper-undo-tracking';
 import {
@@ -25,12 +25,9 @@ import {
 var DEFAULT_PADDING = 0; // pixels
 
 cmd.repel = function(targetLayers, dataset, catalog, opts) {
-  var maxShift = opts.max_shift >= 0 ? opts.max_shift : symbolCollisionDefaults.max_shift;
-  var padding = opts.padding >= 0 ? opts.padding : DEFAULT_PADDING;
   var solverOpts = {
     ticks: opts.ticks > 0 ? opts.ticks : symbolCollisionDefaults.ticks,
-    strength: opts.strength > 0 ? opts.strength : symbolCollisionDefaults.strength,
-    max_shift: maxShift
+    strength: opts.strength > 0 ? opts.strength : symbolCollisionDefaults.strength
   };
   var nodes = [];
 
@@ -42,7 +39,7 @@ cmd.repel = function(targetLayers, dataset, catalog, opts) {
   });
   var pixelsPerUnit = getDisplayScale(targetLayers, dataset, catalog, opts);
   targetLayers.forEach(function(lyr) {
-    addLayerNodes(nodes, lyr, pixelsPerUnit, padding, opts);
+    addLayerNodes(nodes, lyr, pixelsPerUnit, opts);
   });
   if (nodes.length === 0) {
     stop('Targeted layer(s) contain no circle symbols to move.');
@@ -52,7 +49,7 @@ cmd.repel = function(targetLayers, dataset, catalog, opts) {
   var moved = resolveSymbolCollisions(nodes, solverOpts);
   var collisionsAfter = countSymbolCollisions(nodes);
   applyDisplacement(nodes, pixelsPerUnit);
-  reportResults(nodes.length, moved, collisionsBefore, collisionsAfter, maxShift);
+  reportResults(nodes, moved, collisionsBefore, collisionsAfter);
 };
 
 // Symbols are displaced by adding an offset to their original coordinates, so
@@ -82,17 +79,34 @@ function applyDisplacement(nodes, pixelsPerUnit) {
   });
 }
 
-function reportResults(total, moved, before, after, maxShift) {
+function reportResults(nodes, moved, before, after) {
+  var total = nodes.length;
   var msg = utils.format('Moved %d of %d symbol%s', moved, total, total == 1 ? '' : 's');
+  // Counts are of visible overlaps only, so a layout whose symbols end up
+  // touching or a fraction of a pixel apart is reported as finished, and the
+  // advice to raise max-shift= is not given when nothing is left to fix.
   if (after > 0) {
-    msg += utils.format('; %d of %d overlap%s remain (try a larger max-shift= than %d)',
-      after, before, before == 1 ? '' : 's', maxShift);
+    msg += utils.format('; %d of %d visible overlap%s remain (%s)',
+      after, before, before == 1 ? '' : 's', getMaxShiftAdvice(nodes));
   } else if (before > 0) {
-    msg += utils.format('; resolved %d overlap%s', before, before == 1 ? '' : 's');
+    msg += utils.format('; resolved %d visible overlap%s', before, before == 1 ? '' : 's');
   } else {
-    msg += ' (no overlaps found)';
+    msg += ' (no visible overlaps found)';
   }
   message(msg);
+}
+
+// max-shift= may vary from symbol to symbol, so report the range in use.
+function getMaxShiftAdvice(nodes) {
+  var min = Infinity, max = -Infinity;
+  nodes.forEach(function(node) {
+    if (node.maxShift < min) min = node.maxShift;
+    if (node.maxShift > max) max = node.maxShift;
+  });
+  if (min === max) {
+    return utils.format('try a larger max-shift= than %s', min);
+  }
+  return utils.format('try larger max-shift= values, now %s-%s', min, max);
 }
 
 function requireRepelTarget(lyr, opts) {
@@ -108,8 +122,11 @@ function layerHasCircleSymbols(lyr) {
   return !!lyr.data && (lyr.data.fieldExists('svg-symbol') || lyr.data.fieldExists('r'));
 }
 
-function addLayerNodes(nodes, lyr, pixelsPerUnit, padding, opts) {
+function addLayerNodes(nodes, lyr, pixelsPerUnit, opts) {
   var getRadius = getRadiusAccessor(lyr, opts);
+  var getPadding = getPixelValueAccessor(opts.padding, 'padding', DEFAULT_PADDING, lyr);
+  var getMaxShift = getPixelValueAccessor(opts.max_shift, 'max-shift',
+      symbolCollisionDefaults.max_shift, lyr);
   var i, shp, p, r;
   for (i=0; i<lyr.shapes.length; i++) {
     shp = lyr.shapes[i];
@@ -125,9 +142,28 @@ function addLayerNodes(nodes, lyr, pixelsPerUnit, padding, opts) {
       y: p[1] * pixelsPerUnit,
       x0: p[0] * pixelsPerUnit,
       y0: p[1] * pixelsPerUnit,
-      r: r + padding
+      // Padding is added to the radius, so a pair of symbols ends up with
+      // (padding a + padding b) pixels of clearance between them.
+      r: r + getPadding(i),
+      maxShift: getMaxShift(i)
     });
   }
+}
+
+// padding= and max-shift= accept a number, a field name or an expression, and
+// so are resolved for each symbol.
+function getPixelValueAccessor(optVal, name, defaultVal, lyr) {
+  if (optVal === undefined || optVal === null || optVal === '') {
+    return function(i) {return defaultVal;};
+  }
+  var accessor = getPropertyAccessor(optVal, 'number', lyr, name);
+  return function(i) {
+    var val = +accessor(i);
+    if (!(val >= 0)) {
+      stop(utils.format('Invalid %s= value: %s', name, accessor(i)));
+    }
+    return val;
+  };
 }
 
 // Radii come from one of three places: an explicit radius= option, the

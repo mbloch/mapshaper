@@ -167,8 +167,20 @@ export function mightBeExpression(str, fields) {
 }
 
 export function getSymbolPropertyAccessor(val, svgName, lyr) {
+  return getPropertyAccessor(val, symbolPropertyTypes[svgName], lyr, svgName);
+}
+
+// Returns a function that maps a feature id to a property value. The value may
+// be given as a literal, as the name of a data field, or as a JS expression
+// evaluated against each feature.
+// typeHint: a type understood by parseSvgLiteralValue(), or null to accept any
+//   string as a literal value
+// name: used in error messages
+// Callers outside the SVG property system pass a type hint directly, rather
+// than registering an option name in symbolPropertyTypes -- that index also
+// decides which options the -symbols command treats as symbol properties.
+export function getPropertyAccessor(val, typeHint, lyr, name) {
   var strVal = String(val).trim();
-  var typeHint = symbolPropertyTypes[svgName];
   var fields = lyr.data ? lyr.data.getFields() : [];
   var literalVal = null;
   var accessor;
@@ -186,7 +198,7 @@ export function getSymbolPropertyAccessor(val, svgName, lyr) {
   }
   if (accessor) return accessor;
   if (literalVal !== null) return function(id) {return literalVal;};
-  stop('Unexpected value for', svgName + ':', strVal);
+  stop('Unexpected value for', name + ':', strVal);
 }
 
 function parseStyleExpression(strVal, lyr) {
