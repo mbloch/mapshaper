@@ -16,11 +16,16 @@ import { makePathSymbol } from '../symbols/mapshaper-path-symbols';
 
 // TODO: refactor to remove duplication in mapshaper-svg-style.js
 cmd.symbols = function(inputLyr, dataset, opts) {
-  requireSinglePointLayer(inputLyr);
+  requirePointLayer(inputLyr);
   var lyr = opts.no_replace ? copyLayer(inputLyr) : inputLyr;
   var shapeMode = !!opts.geographic;
   var metersPerPx;
   if (shapeMode) {
+    // Only the first point of each feature is used to place a generated shape,
+    // so the other points of a multi-point feature would be dropped. In SVG
+    // mode geometry is untouched and every point gets a symbol, so multi-point
+    // features are fine.
+    requireSinglePointLayer(inputLyr);
     requireProjectedDataset(dataset);
     metersPerPx = opts.pixel_scale || getMetersPerPixel(lyr, dataset);
   }

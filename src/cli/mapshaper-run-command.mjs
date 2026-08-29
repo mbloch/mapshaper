@@ -77,6 +77,7 @@ import '../commands/mapshaper-print';
 import '../commands/mapshaper-proj';
 import '../commands/mapshaper-rectangle';
 import '../commands/mapshaper-rename-layers';
+import '../commands/mapshaper-repel';
 import '../commands/mapshaper-require';
 import '../commands/mapshaper-rotate';
 import '../commands/mapshaper-run';
@@ -124,7 +125,7 @@ function commandRunsPerTargetDataset(name, opts) {
     'filter-islands2', 'filter-points', 'filter-slivers', 'grid', 'grid2',
     'fuzzy-join', 'ignore', 'inlay', 'innerlines', 'inspect', 'join',
     'lines', 'mosaic', 'points', 'polygons', 'rectangles', 'rename-fields',
-    'shapes', 'simplify', 'slice', 'smooth', 'sort', 'split',
+    'repel', 'shapes', 'simplify', 'slice', 'smooth', 'sort', 'split',
     'split-on-grid', 'stitch', 'style', 'subdivide', 'symbols', 'uniq'
   ].indexOf(name) > -1;
 }
@@ -483,6 +484,9 @@ export async function runCommand(command, job) {
 
     } else if (name == 'rename-layers') {
       cmd.renameLayers(targetLayers, opts.names);
+
+    } else if (name == 'repel') {
+      cmd.repel(targetLayers, targetDataset, job.catalog, opts);
 
     } else if (name == 'require') {
       await cmd.require(opts);

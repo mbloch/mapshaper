@@ -32,7 +32,7 @@ cmd.pointToGrid = function(targetLayers, targetDataset, opts) {
 
   var datasets = [targetDataset];
   var outputLayers = targetLayers.map(function(pointLyr) {
-    if (countMultiPartFeatures(pointLyr) > 0) {
+    if (countMultiPartFeatures(pointLyr.shapes) > 0) {
       stop('This command requires single points');
     }
     var dataset = getPolygonDataset(pointLyr, bbox, opts);

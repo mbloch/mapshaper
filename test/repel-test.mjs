@@ -1,0 +1,307 @@
+import assert from 'assert';
+import api from '../mapshaper.js';
+import {
+  resolveSymbolCollisions,
+  countSymbolCollisions,
+  symbolCollisionDefaults
+} from '../src/points/mapshaper-symbol-collisions';
+
+// Build solver nodes from [x, y, r] triples
+function makeNodes(arr) {
+  return arr.map(function(d, i) {
+    return {i: i, x: d[0], y: d[1], x0: d[0], y0: d[1], r: d[2]};
+  });
+}
+
+function solverOpts(opts) {
+  return Object.assign({}, symbolCollisionDefaults, opts || {});
+}
+
+function shift(node) {
+  return Math.sqrt(Math.pow(node.x - node.x0, 2) + Math.pow(node.y - node.y0, 2));
+}
+
+// Coordinates outside the lat-long range import with an unknown CRS, which
+// -repel accepts (only a known geographic CRS is rejected). Test layers below
+// span 1000 units, so a width=1000 option makes the display scale exactly
+// 1px per unit and pixel assertions can be exact.
+function pointsGeoJSON(coords, props) {
+  return {
+    type: 'FeatureCollection',
+    features: coords.map(function(p, i) {
+      return {
+        type: 'Feature',
+        properties: Object.assign({id: i}, props ? props[i] : null),
+        geometry: {type: 'Point', coordinates: p}
+      };
+    })
+  };
+}
+
+function getCoords(buf) {
+  return JSON.parse(buf).features.map(function(f) {
+    return f.geometry.coordinates;
+  });
+}
+
+// Overlapping pairs among equal-radius symbols, measured in pixels
+function countOverlaps(coords, r, scale) {
+  var count = 0;
+  for (var i=0; i<coords.length; i++) {
+    for (var j=i+1; j<coords.length; j++) {
+      var dx = (coords[j][0] - coords[i][0]) * scale;
+      var dy = (coords[j][1] - coords[i][1]) * scale;
+      if (Math.sqrt(dx * dx + dy * dy) < r * 2 - 0.01) count++;
+    }
+  }
+  return count;
+}
+
+describe('mapshaper-repel.js', function () {
+
+  describe('collision solver', function () {
+
+    it('separates two overlapping circles', function () {
+      var nodes = makeNodes([[0, 0, 10], [8, 0, 10]]);
+      assert.equal(countSymbolCollisions(nodes), 1);
+      resolveSymbolCollisions(nodes, solverOpts({max_shift: 100}));
+      assert.equal(countSymbolCollisions(nodes), 0);
+    });
+
+    it('leaves non-overlapping circles untouched', function () {
+      var nodes = makeNodes([[0, 0, 5], [100, 0, 5], [0, 100, 5]]);
+      var moved = resolveSymbolCollisions(nodes, solverOpts());
+      assert.equal(moved, 0);
+      nodes.forEach(function(node) {
+        assert.strictEqual(node.x, node.x0);
+        assert.strictEqual(node.y, node.y0);
+      });
+    });
+
+    it('never displaces a node farther than max-shift', function () {
+      // A tight cluster that cannot possibly separate within the limit
+      var arr = [];
+      for (var i=0; i<40; i++) {
+        arr.push([i % 5, Math.floor(i / 5), 12]);
+      }
+      var nodes = makeNodes(arr);
+      resolveSymbolCollisions(nodes, solverOpts({max_shift: 6}));
+      nodes.forEach(function(node) {
+        // Allow for floating point error at the boundary
+        assert.ok(shift(node) <= 6 + 1e-9, 'shift was ' + shift(node));
+      });
+    });
+
+    it('moves larger circles less than smaller ones', function () {
+      var nodes = makeNodes([[0, 0, 30], [10, 0, 5]]);
+      resolveSymbolCollisions(nodes, solverOpts({max_shift: 100}));
+      var big = nodes.filter(function(n) {return n.r == 30;})[0];
+      var small = nodes.filter(function(n) {return n.r == 5;})[0];
+      assert.ok(shift(small) > shift(big) * 5,
+        'expected the small circle to move much farther');
+    });
+
+    it('separates coincident circles deterministically', function () {
+      function run() {
+        var nodes = makeNodes([[0, 0, 10], [0, 0, 10], [0, 0, 10]]);
+        resolveSymbolCollisions(nodes, solverOpts({max_shift: 100}));
+        return nodes.map(function(n) {return [n.i, n.x, n.y];});
+      }
+      var a = run();
+      assert.deepEqual(a, run());
+      assert.deepEqual(a, run()); // no state accumulates between runs
+      a.forEach(function(d) {
+        assert.ok(d[1] !== 0 || d[2] !== 0, 'coincident circles should separate');
+      });
+    });
+
+    it('is a no-op when max-shift is 0', function () {
+      var nodes = makeNodes([[0, 0, 10], [1, 0, 10]]);
+      assert.equal(resolveSymbolCollisions(nodes, solverOpts({max_shift: 0})), 0);
+    });
+
+    it('is a no-op for a single node', function () {
+      var nodes = makeNodes([[0, 0, 10]]);
+      assert.equal(resolveSymbolCollisions(nodes, solverOpts()), 0);
+    });
+  });
+
+  describe('-repel command', function () {
+
+    it('moves overlapping symbols apart', async function () {
+      var input = pointsGeoJSON([[0, 0], [8, 0], [1000, 0]]);
+      var out = await api.applyCommands(
+        '-i in.json -style r=10 -repel width=1000 max-shift=50 padding=0.5 -o out.json',
+        {'in.json': input});
+      var coords = getCoords(out['out.json']);
+      // r=10 circles plus 0.5px of padding each: 21px between centers
+      var dist = Math.abs(coords[1][0] - coords[0][0]);
+      assert.ok(dist > 20.9 && dist < 21.1, 'symbols are ' + dist + 'px apart');
+      // A symbol with no neighbors should not move at all
+      assert.deepEqual(coords[2], [1000, 0]);
+    });
+
+    it('separates symbols until they touch when padding is 0', async function () {
+      var input = pointsGeoJSON([[0, 0], [8, 0], [1000, 0]]);
+      var out = await api.applyCommands(
+        '-i in.json -style r=10 -repel width=1000 max-shift=50 -o out.json',
+        {'in.json': input});
+      var coords = getCoords(out['out.json']);
+      var dist = Math.abs(coords[1][0] - coords[0][0]);
+      assert.ok(dist > 19.9 && dist < 20.1, 'symbols are ' + dist + 'px apart');
+    });
+
+    it('respects max-shift', async function () {
+      var input = pointsGeoJSON([[0, 0], [1, 0], [1000, 0]]);
+      var out = await api.applyCommands(
+        '-i in.json -style r=20 -repel width=1000 max-shift=3 -o out.json',
+        {'in.json': input});
+      var coords = getCoords(out['out.json']);
+      [[0, 0], [1, 0]].forEach(function(anchor, i) {
+        var dist = Math.sqrt(Math.pow(coords[i][0] - anchor[0], 2) +
+          Math.pow(coords[i][1] - anchor[1], 2));
+        assert.ok(dist <= 3 + 1e-6, 'symbol moved ' + dist + 'px');
+      });
+      // Symbols this crowded can't separate within the limit; the command
+      // should displace them as far as allowed and leave them overlapping.
+      assert.ok(Math.abs(coords[1][0] - coords[0][0]) > 6);
+    });
+
+    it('produces identical output on repeated runs', async function () {
+      var input = pointsGeoJSON([[0, 0], [5, 0], [5, 5], [0, 5], [2, 2], [1000, 0]]);
+      var cmd = '-i in.json -style r=8 -repel width=1000 -o out.json';
+      var out1 = await api.applyCommands(cmd, {'in.json': input});
+      var out2 = await api.applyCommands(cmd, {'in.json': input});
+      assert.ok(out1['out.json'].equals(out2['out.json']));
+    });
+
+    it('reads radii from svg-symbol fields written by -symbols', async function () {
+      var input = pointsGeoJSON([[0, 0], [8, 0], [1000, 0]]);
+      var out = await api.applyCommands(
+        '-i in.json -symbols type=circle radius=10 -repel width=1000 max-shift=50 padding=0.5 -o out.json',
+        {'in.json': input});
+      var coords = getCoords(out['out.json']);
+      var dist = Math.abs(coords[1][0] - coords[0][0]);
+      assert.ok(dist > 20.9 && dist < 21.1, 'symbols are ' + dist + 'px apart');
+    });
+
+    it('accepts a radius= field name', async function () {
+      var input = pointsGeoJSON([[0, 0], [8, 0], [1000, 0]],
+        [{size: 10}, {size: 10}, {size: 10}]);
+      var out = await api.applyCommands(
+        '-i in.json -repel width=1000 max-shift=50 padding=0.5 radius=size -o out.json',
+        {'in.json': input});
+      var coords = getCoords(out['out.json']);
+      var dist = Math.abs(coords[1][0] - coords[0][0]);
+      assert.ok(dist > 20.9 && dist < 21.1, 'symbols are ' + dist + 'px apart');
+    });
+
+    it('padding= adds clearance between symbols', async function () {
+      var input = pointsGeoJSON([[0, 0], [8, 0], [1000, 0]]);
+      var out = await api.applyCommands(
+        '-i in.json -style r=10 -repel width=1000 max-shift=50 padding=5 -o out.json',
+        {'in.json': input});
+      var coords = getCoords(out['out.json']);
+      var dist = Math.abs(coords[1][0] - coords[0][0]);
+      assert.ok(dist > 29.9 && dist < 30.1, 'symbols are ' + dist + 'px apart');
+    });
+
+    it('takes the display scale from a frame layer', async function () {
+      // -frame adds the frame it creates to the catalog as a separate dataset,
+      // so this also covers the catalog-wide frame lookup. The layer needs a
+      // vertical extent here, or -frame rejects it as a collapsed bbox.
+      var input = pointsGeoJSON([[0, 0], [8, 0], [1000, 500]]);
+      var out = await api.applyCommands(
+        '-i in.json -style r=10 -frame width=1000 -target in -repel max-shift=50 padding=0.5 -o out.json target=in',
+        {'in.json': input});
+      var coords = getCoords(out['out.json']);
+      var dist = Math.abs(coords[1][0] - coords[0][0]);
+      // Frame height is rounded to whole pixels, so the scale is very slightly
+      // different from width=1000 over the same bounds
+      assert.ok(dist > 20.5 && dist < 21.5, 'symbols are ' + dist + 'px apart');
+    });
+
+    it('lays out several target layers in one simulation', async function () {
+      var a = pointsGeoJSON([[0, 0], [1000, 0]]);
+      var b = pointsGeoJSON([[8, 0]]);
+      var out = await api.applyCommands(
+        '-i a.json b.json combine-files -style r=10 -repel width=1000 max-shift=50 padding=0.5 -o',
+        {'a.json': a, 'b.json': b});
+      var xa = getCoords(out['a.json'])[0][0];
+      var xb = getCoords(out['b.json'])[0][0];
+      assert.ok(Math.abs(xb - xa) > 20.9,
+        'symbols in different layers should repel each other');
+    });
+
+    it('reduces overlaps in real data without exceeding max-shift', async function () {
+      // 435 congressional district centroids, already projected: crowded to the
+      // point of illegibility around New York, Los Angeles and Miami.
+      var file = 'test/data/features/repel/ex1_cds.geojson';
+      var width = 900, maxShift = 25, r = 6;
+      var before = await api.applyCommands(
+        `-i ${file} -style r=${r} -o out.json`);
+      var after = await api.applyCommands(
+        `-i ${file} -style r=${r} -repel width=${width} max-shift=${maxShift} -o out.json`);
+      var pts1 = getCoords(before['out.json']);
+      var pts2 = getCoords(after['out.json']);
+      assert.equal(pts1.length, pts2.length);
+
+      // Scale of the layout: width= pixels across the layer's bounds
+      var xs = pts1.map(function(p) {return p[0];});
+      var scale = width / (Math.max.apply(null, xs) - Math.min.apply(null, xs));
+
+      pts2.forEach(function(p, i) {
+        var dist = Math.sqrt(Math.pow(p[0] - pts1[i][0], 2) +
+          Math.pow(p[1] - pts1[i][1], 2)) * scale;
+        assert.ok(dist <= maxShift + 1e-6, 'symbol ' + i + ' moved ' + dist + 'px');
+      });
+      assert.ok(countOverlaps(pts2, r, scale) < countOverlaps(pts1, r, scale) / 4,
+        'expected at least a fourfold reduction in overlapping pairs');
+    });
+
+    it('errors if there is no frame and no width=', async function () {
+      await assert.rejects(function() {
+        return api.applyCommands('-i in.json -style r=10 -repel -o out.json',
+          {'in.json': pointsGeoJSON([[0, 0], [8, 0], [1000, 0]])});
+      }, /requires a width=/);
+    });
+
+    it('errors on unprojected data', async function () {
+      await assert.rejects(function() {
+        return api.applyCommands('-i in.json -style r=10 -repel width=1000 -o out.json',
+          {'in.json': pointsGeoJSON([[-75, 40], [-74.99, 40]])});
+      }, /projected coordinates/);
+    });
+
+    it('errors if the layer has no circle symbols', async function () {
+      await assert.rejects(function() {
+        return api.applyCommands('-i in.json -repel width=1000 -o out.json',
+          {'in.json': pointsGeoJSON([[0, 0], [8, 0], [1000, 0]])});
+      }, /circle symbols/);
+    });
+
+    it('errors on non-circle symbols', async function () {
+      await assert.rejects(function() {
+        return api.applyCommands(
+          '-i in.json -symbols type=star radius=10 -repel width=1000 -o out.json',
+          {'in.json': pointsGeoJSON([[0, 0], [8, 0], [1000, 0]])});
+      }, /circle symbols only/);
+    });
+
+    it('errors on a polygon layer', async function () {
+      await assert.rejects(function() {
+        return api.applyCommands('-i in.json -repel width=1000 -o out.json',
+          {'in.json': {type: 'Polygon',
+            coordinates: [[[0, 0], [0, 1000], [1000, 1000], [0, 0]]]}});
+      }, /point layer/);
+    });
+
+    it('errors on multi-point features', async function () {
+      await assert.rejects(function() {
+        return api.applyCommands('-i in.json -repel width=1000 -o out.json',
+          {'in.json': {type: 'Feature', properties: {r: 10},
+            geometry: {type: 'MultiPoint', coordinates: [[0, 0], [8, 0], [1000, 0]]}}});
+      }, /multi-point/);
+    });
+  });
+});

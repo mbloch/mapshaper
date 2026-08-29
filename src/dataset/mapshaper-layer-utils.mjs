@@ -3,7 +3,7 @@
 import { getPointBounds, forEachPoint } from '../points/mapshaper-point-utils';
 import { getPathBounds, countArcsInShapes } from '../paths/mapshaper-path-utils';
 import { cloneShapes, editShapes } from '../paths/mapshaper-shape-utils';
-import { stop, formatStringsAsGrid } from '../utils/mapshaper-logging';
+import { error, stop, formatStringsAsGrid } from '../utils/mapshaper-logging';
 import { DataTable } from '../datatable/mapshaper-data-table';
 import { getFirstNonEmptyRecord } from '../datatable/mapshaper-data-utils';
 import utils from '../utils/mapshaper-utils';
@@ -82,10 +82,13 @@ export function layerIsRectangle(lyr, arcs) {
 
 export function layerOnlyHasRectangles(lyr, arcs) {
   if (!layerHasPaths(lyr)) return false;
-  if (countMultiPartFeatures(lyr) > 0) return false;
   return lyr.shapes.every(function(shp) {
     if (!shp) return true;
-    return pathIsRectangle(shp[0], arcs);
+    // Every part is tested: a shape whose first ring is rectangular may well
+    // have others that are not.
+    return shp.every(function(path) {
+      return pathIsRectangle(path, arcs);
+    });
   });
 }
 
@@ -175,7 +178,7 @@ export function requirePointLayer(lyr, msg) {
 
 export function requireSinglePointLayer(lyr, msg) {
   requirePointLayer(lyr);
-  if (countMultiPartFeatures(lyr) > 0) {
+  if (countMultiPartFeatures(lyr.shapes) > 0) {
     stop(msg || 'This command requires single points; layer contains multi-point features.');
   }
 }
@@ -319,8 +322,16 @@ export function copyLayerShapes(lyr) {
   return copy;
 }
 
+// shapes: one layer's "shapes" array
+// Guards against being passed a layer instead: several callers made that
+// mistake, and reading .length off a layer object silently returned 0, which
+// disabled the multi-part checks that depend on this function.
 export function countMultiPartFeatures(shapes) {
   var count = 0;
+  if (!shapes) return 0;
+  if (!Array.isArray(shapes)) {
+    error('countMultiPartFeatures() expects an array of shapes');
+  }
   for (var i=0, n=shapes.length; i<n; i++) {
     if (shapes[i] && shapes[i].length > 1) count++;
   }

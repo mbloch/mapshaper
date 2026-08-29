@@ -2059,6 +2059,33 @@ export function getOptionParser() {
     })
    .option('target', targetOpt);
 
+  parser.command('repel')
+    .describe('move overlapping circle symbols apart')
+    .option('width', {
+      describe: 'display width of the layer in pixels (required if no frame)',
+      type: 'number'
+    })
+    .option('max-shift', {
+      describe: 'maximum displacement of a symbol in pixels (default is 12)',
+      type: 'number'
+    })
+    .option('padding', {
+      describe: 'pixels of clearance to add around each symbol (default is 0)',
+      type: 'number'
+    })
+    .option('ticks', {
+      describe: 'number of solver passes (default is 100)',
+      type: 'number'
+    })
+    .option('strength', {
+      describe: 'portion of each overlap resolved per pass, 0-1 (default is 0.7)',
+      type: 'number'
+    })
+    .option('radius', {
+      describe: 'field or expression giving symbol radius in pixels',
+    })
+    .option('target', targetOpt);
+
   parser.command('symbols')
     .describe('symbolize points as arrows, circles, stars, polygons, etc.')
     .option('type', {

@@ -177,6 +177,7 @@ import * as Rectangle from './commands/mapshaper-rectangle';
 import * as RectangleUtils from './paths/mapshaper-rectangle-utils';
 import * as Rounding from './geom/mapshaper-rounding';
 import * as RunCommands from './cli/mapshaper-run-commands';
+import * as SymbolCollisions from './points/mapshaper-symbol-collisions';
 import * as Scalebar from './commands/mapshaper-scalebar';
 import * as SegmentIntersection from './paths/mapshaper-segment-intersection';
 import * as SegmentIntersectionRepair from './paths/mapshaper-segment-intersection-repair';
@@ -331,6 +332,7 @@ Object.assign(internal,
   Simplify,
   SimplifyFast,
   SimplifyPct,
+  SymbolCollisions,
   Slivers,
   Snapping,
   SourceUtils,
