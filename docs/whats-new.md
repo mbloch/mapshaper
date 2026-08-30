@@ -11,6 +11,13 @@ This is a curated list of recently added features. For the full list of changes,
 
 <div class="whats-new-entry">
 
+**Repel command.** The `-repel` command moves overlapping circle symbols apart, keeping each one within a set distance of its true position &mdash; useful for proportional symbol maps where circles pile up in dense areas. It works in the pixel space of the finished map, taking the scale from a `-frame` or a `width=` option. `max-shift=` and `padding=` accept a field name or an expression, so important symbols can be given more room or pinned in place. A `polygons=` option confines each symbol to the polygon it started in.
+
+→ See [`-repel`](/docs/reference.html#-repel).
+</div>
+
+<div class="whats-new-entry">
+
 **Isobands.**  The `-contours` command has a new `closed` flag for creating polygon bands.
 
 </div>

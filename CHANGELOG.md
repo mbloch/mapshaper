@@ -1,3 +1,7 @@
+v0.7.56
+* Added `-repel` command, which removes or reduces collisions between circles. Requires a projected layer containing circle symbols.
+* The `-repel polygons=` option takes a polygon layer or file. The center of each symbol is prevented from migrating outside its starting polygon.
+
 v0.7.55
 * Use layer name as the dataset name in the FlatGeobuf header, instead of "L1".
 

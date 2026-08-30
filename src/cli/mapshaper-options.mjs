@@ -2066,7 +2066,7 @@ export function getOptionParser() {
       type: 'number'
     })
     .option('max-shift', {
-      describe: 'max displacement in pixels; may vary by symbol (default is 12)'
+      describe: 'max displacement in pixels; may vary by symbol (default is 20)'
     })
     .option('padding', {
       describe: 'pixels of clearance around each symbol; may vary (default is 0)'

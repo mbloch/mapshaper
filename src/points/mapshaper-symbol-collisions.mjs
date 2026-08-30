@@ -2,12 +2,6 @@
 // forceCollide. Overlapping symbols are pushed apart, but each one is kept
 // within a fixed distance of its true position.
 //
-// Ported from the vmap library, which uses this solver instead of d3-force to
-// keep its layouts repeatable: forceCollide()'s jiggle() calls Math.random(),
-// so identical input produces different output on every run. Mapshaper needs
-// the same guarantee, so this solver avoids Math.random() and trigonometry,
-// whose results are either unrepeatable or unspecified across JS engines.
-//
 // Nodes are laid out in pixel space; converting to and from map coordinates is
 // the caller's job. A node is {i, x, y, x0, y0, r, maxShift}, where x0,y0 is
 // the anchor (the symbol's true position), r includes any padding and maxShift
@@ -29,7 +23,7 @@
 // coincident symbols.
 export var symbolCollisionDefaults = {
   ticks: 100,
-  max_shift: 12,
+  max_shift: 20,
   strength: 0.4
 };
 
