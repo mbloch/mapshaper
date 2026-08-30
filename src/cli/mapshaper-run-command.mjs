@@ -486,7 +486,8 @@ export async function runCommand(command, job) {
       cmd.renameLayers(targetLayers, opts.names);
 
     } else if (name == 'repel') {
-      cmd.repel(targetLayers, targetDataset, job.catalog, opts);
+      cmd.repel(targetLayers, targetDataset, job.catalog,
+        await findRepelPolygons(opts, job.catalog, targets), opts);
 
     } else if (name == 'require') {
       await cmd.require(opts);
@@ -678,6 +679,15 @@ async function runCommandOnEachTarget(command, job, targets) {
     return memo.concat(arr);
   }, []));
   return job;
+}
+
+// -repel's polygons= option names a second layer, like source= elsewhere, but
+// is resolved here rather than by the shared source= machinery: the layer is
+// only read (never merged into the target's topology), so it needs neither a
+// topology merge nor the per-target copies that clip and erase require.
+async function findRepelPolygons(opts, catalog, targets) {
+  if (!opts.polygons) return null;
+  return await findCommandSourceAsync(convertSourceName(opts.polygons, targets), catalog, opts);
 }
 
 async function resolveSourceForTargets(command, job, targets) {

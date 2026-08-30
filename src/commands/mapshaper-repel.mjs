@@ -2,8 +2,12 @@ import cmd from '../mapshaper-cmd';
 import utils from '../utils/mapshaper-utils';
 import { stop, message } from '../utils/mapshaper-logging';
 import { Bounds } from '../geom/mapshaper-bounds';
-import { requireSinglePointLayer, getLayerBounds } from '../dataset/mapshaper-layer-utils';
-import { requireProjectedDataset } from '../crs/mapshaper-projections';
+import { requireSinglePointLayer, requirePolygonLayer, getLayerBounds } from '../dataset/mapshaper-layer-utils';
+import { requireProjectedDataset, requireDatasetsHaveCompatibleCRS } from '../crs/mapshaper-projections';
+import {
+  assignContainingPolygons,
+  getContainmentConstraint
+} from '../points/mapshaper-symbol-containment';
 import { getSymbolPropertyAccessor, getPropertyAccessor } from '../svg/svg-properties';
 import { findFrameLayerInDataset, findFrame, getFrameLayerData } from '../furniture/mapshaper-frame-utils';
 import { noteLayerWillChange, markLayerChanged } from '../undo/mapshaper-undo-tracking';
@@ -22,9 +26,15 @@ import {
 //
 // All targeted layers are laid out in a single simulation, so symbols in
 // different layers are moved apart from each other as well.
+//
+// An optional polygons= layer confines each symbol to the polygon it started
+// in, so that a symbol standing for one area can't drift into a neighboring
+// one. Symbols in an area too small to hold them barely move as a result, and
+// their overlaps go unresolved -- that is the point of the option, but it does
+// mean fewer overlaps get fixed.
 var DEFAULT_PADDING = 0; // pixels
 
-cmd.repel = function(targetLayers, dataset, catalog, opts) {
+cmd.repel = function(targetLayers, dataset, catalog, polygonSource, opts) {
   var solverOpts = {
     ticks: opts.ticks > 0 ? opts.ticks : symbolCollisionDefaults.ticks,
     strength: opts.strength > 0 ? opts.strength : symbolCollisionDefaults.strength
@@ -44,13 +54,34 @@ cmd.repel = function(targetLayers, dataset, catalog, opts) {
   if (nodes.length === 0) {
     stop('Targeted layer(s) contain no circle symbols to move.');
   }
+  var unconstrained = addContainment(nodes, dataset, polygonSource, pixelsPerUnit, solverOpts);
 
   var collisionsBefore = countSymbolCollisions(nodes);
   var moved = resolveSymbolCollisions(nodes, solverOpts);
   var collisionsAfter = countSymbolCollisions(nodes);
   applyDisplacement(nodes, pixelsPerUnit);
-  reportResults(nodes, moved, collisionsBefore, collisionsAfter);
+  reportResults(nodes, moved, collisionsBefore, collisionsAfter, !!polygonSource);
+  if (unconstrained > 0) {
+    message(utils.format('%d symbol%s not inside any polygon in %s, and %s left free to move',
+      unconstrained, unconstrained == 1 ? ' is' : 's are', polygonSource.layer.name || 'the polygons= layer',
+      unconstrained == 1 ? 'was' : 'were'));
+  }
 };
+
+// Confines symbols to the polygons they start inside. Returns the number of
+// symbols that no polygon contains, which are left unconstrained.
+function addContainment(nodes, dataset, polygonSource, pixelsPerUnit, solverOpts) {
+  if (!polygonSource) return 0;
+  var lyr = polygonSource.layer;
+  var arcs = polygonSource.dataset.arcs;
+  requirePolygonLayer(lyr, 'The polygons= option requires a polygon layer.');
+  // Only catches mixing projected with unprojected data; two different
+  // projections are the caller's problem, as with -join
+  requireDatasetsHaveCompatibleCRS([dataset, polygonSource.dataset]);
+  var unconstrained = assignContainingPolygons(nodes, lyr, arcs, pixelsPerUnit);
+  solverOpts.constrain = getContainmentConstraint(lyr, arcs, pixelsPerUnit);
+  return unconstrained;
+}
 
 // Symbols are displaced by adding an offset to their original coordinates, so
 // that symbols that didn't move keep bit-for-bit identical coordinates.
@@ -79,7 +110,7 @@ function applyDisplacement(nodes, pixelsPerUnit) {
   });
 }
 
-function reportResults(nodes, moved, before, after) {
+function reportResults(nodes, moved, before, after, contained) {
   var total = nodes.length;
   var msg = utils.format('Moved %d of %d symbol%s', moved, total, total == 1 ? '' : 's');
   // Counts are of visible overlaps only, so a layout whose symbols end up
@@ -87,7 +118,8 @@ function reportResults(nodes, moved, before, after) {
   // advice to raise max-shift= is not given when nothing is left to fix.
   if (after > 0) {
     msg += utils.format('; %d of %d visible overlap%s remain (%s)',
-      after, before, before == 1 ? '' : 's', getMaxShiftAdvice(nodes));
+      after, before, before == 1 ? '' : 's',
+      contained ? getMaxShiftAdvice(nodes) + ', or drop polygons=' : getMaxShiftAdvice(nodes));
   } else if (before > 0) {
     msg += utils.format('; resolved %d visible overlap%s', before, before == 1 ? '' : 's');
   } else {

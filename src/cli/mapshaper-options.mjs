@@ -2082,6 +2082,9 @@ export function getOptionParser() {
     .option('radius', {
       describe: 'field or expression giving symbol radius in pixels',
     })
+    .option('polygons', {
+      describe: 'layer or file of polygons that symbols must stay inside'
+    })
     .option('target', targetOpt);
 
   parser.command('symbols')

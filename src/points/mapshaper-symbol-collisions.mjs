@@ -34,9 +34,16 @@ export var symbolCollisionDefaults = {
 };
 
 // Mutates the x,y properties of @nodes. Returns the number of nodes that moved.
+//
+// opts.constrain is an optional function(nodes) applied after each pass, for
+// callers that need to restrict where symbols may go (see
+// mapshaper-symbol-containment.mjs). It must only move a node to a position
+// between ones the node has already held, or the max-shift limit no longer
+// holds.
 export function resolveSymbolCollisions(nodes, opts) {
   var ticks = opts.ticks,
       strength = opts.strength,
+      constrain = opts.constrain || null,
       moved = 0,
       i;
   if (nodes.length < 2 || !(ticks > 0) || !anyNodeCanMove(nodes)) return 0;
@@ -45,6 +52,7 @@ export function resolveSymbolCollisions(nodes, opts) {
     // Limiting the displacement on every pass (instead of only at the end)
     // avoids pulling symbols back into the overlaps they just escaped.
     limitDisplacement(nodes);
+    if (constrain) constrain(nodes);
   }
   for (i=0; i<nodes.length; i++) {
     if (nodes[i].x !== nodes[i].x0 || nodes[i].y !== nodes[i].y0) moved++;

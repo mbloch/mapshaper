@@ -41,6 +41,22 @@ function pointsGeoJSON(coords, props) {
   };
 }
 
+// Rectangles as a polygon layer, given as [xmin, ymin, xmax, ymax]
+function rectsGeoJSON(rects) {
+  return {
+    type: 'FeatureCollection',
+    features: rects.map(function(r, i) {
+      return {
+        type: 'Feature',
+        properties: {id: i},
+        geometry: {type: 'Polygon', coordinates: [[
+          [r[0], r[1]], [r[0], r[3]], [r[2], r[3]], [r[2], r[1]], [r[0], r[1]]
+        ]]}
+      };
+    })
+  };
+}
+
 function getCoords(buf) {
   return JSON.parse(buf).features.map(function(f) {
     return f.geometry.coordinates;
@@ -375,6 +391,87 @@ describe('mapshaper-repel.js', function () {
           {'in.json': {type: 'Polygon',
             coordinates: [[[0, 0], [0, 1000], [1000, 1000], [0, 0]]]}});
       }, /point layer/);
+    });
+
+    // Two r=10 symbols 8px apart need 20px between their centers. Left to
+    // themselves they split the difference and end up at x=-6 and x=14; a
+    // polygon whose left edge is at x=-2 stops the first one there, so the
+    // second has to travel to x=18 instead.
+    describe('polygons= option', function () {
+      var points = pointsGeoJSON([[0, 0], [8, 0], [1000, 0]]);
+      var cmd = '-i points.json -i polys.json name=polys -target points ' +
+        '-style r=10 -repel width=1000 max-shift=50 polygons=polys -o out.json target=points';
+
+      it('keeps a symbol inside its polygon', async function () {
+        var out = await api.applyCommands(cmd,
+          {'points.json': points, 'polys.json': rectsGeoJSON([[-2, -50, 1010, 50]])});
+        var coords = getCoords(out['out.json']);
+        assert.ok(coords[0][0] >= -2.001 && coords[0][0] < -1.9,
+          'symbol 0 stopped at the polygon edge, x = ' + coords[0][0]);
+        assert.ok(Math.abs(coords[1][0] - 18) < 0.1,
+          'symbol 1 took up the slack, x = ' + coords[1][0]);
+        assert.deepEqual(coords[2], [1000, 0]);
+      });
+
+      it('symbols move freely without the option', async function () {
+        var out = await api.applyCommands(
+          '-i points.json -style r=10 -repel width=1000 max-shift=50 -o out.json',
+          {'points.json': points});
+        var coords = getCoords(out['out.json']);
+        assert.ok(Math.abs(coords[0][0] + 6) < 0.1, 'x = ' + coords[0][0]);
+      });
+
+      it('symbols outside every polygon are left free to move', async function () {
+        var out = await api.applyCommands(cmd,
+          {'points.json': points, 'polys.json': rectsGeoJSON([[2000, -50, 2100, 50]])});
+        var coords = getCoords(out['out.json']);
+        assert.ok(Math.abs(coords[0][0] + 6) < 0.1,
+          'unconstrained symbol should move as usual, x = ' + coords[0][0]);
+      });
+
+      it('a polygon too narrow to separate its symbols leaves them overlapping', async function () {
+        // Both symbols start inside a 10px-wide box but need 20px of room
+        var out = await api.applyCommands(cmd,
+          {'points.json': points, 'polys.json': rectsGeoJSON([[-1, -50, 9, 50], [990, -50, 1010, 50]])});
+        var coords = getCoords(out['out.json']);
+        coords.slice(0, 2).forEach(function(p, i) {
+          assert.ok(p[0] >= -1.001 && p[0] <= 9.001, 'symbol ' + i + ' at x = ' + p[0]);
+        });
+        assert.ok(Math.abs(coords[1][0] - coords[0][0]) < 20,
+          'the overlap should survive, not be resolved by leaving the polygon');
+      });
+
+      it('max-shift is still respected', async function () {
+        var out = await api.applyCommands(
+          '-i points.json -i polys.json name=polys -target points -style r=10 ' +
+          '-repel width=1000 max-shift=2 polygons=polys -o out.json target=points',
+          {'points.json': points, 'polys.json': rectsGeoJSON([[-500, -50, 1500, 50]])});
+        var coords = getCoords(out['out.json']);
+        [[0, 0], [8, 0]].forEach(function(anchor, i) {
+          var dist = Math.sqrt(Math.pow(coords[i][0] - anchor[0], 2) +
+            Math.pow(coords[i][1] - anchor[1], 2));
+          assert.ok(dist <= 2 + 1e-6, 'symbol ' + i + ' moved ' + dist + 'px');
+        });
+      });
+
+      it('produces identical output on repeated runs', async function () {
+        var input = {'points.json': pointsGeoJSON([[0, 0], [5, 0], [5, 5], [0, 5], [2, 2], [1000, 0]]),
+          'polys.json': rectsGeoJSON([[-3, -3, 8, 8], [995, -5, 1005, 5]])};
+        var run = '-i points.json -i polys.json name=polys -target points -style r=8 ' +
+          '-repel width=1000 polygons=polys -o out.json target=points';
+        var out1 = await api.applyCommands(run, input);
+        var out2 = await api.applyCommands(run, input);
+        assert.ok(out1['out.json'].equals(out2['out.json']));
+      });
+
+      it('errors if polygons= is not a polygon layer', async function () {
+        await assert.rejects(function() {
+          return api.applyCommands(
+            '-i points.json -i other.json name=other -target points -style r=10 ' +
+            '-repel width=1000 polygons=other -o out.json target=points',
+            {'points.json': points, 'other.json': pointsGeoJSON([[0, 0]])});
+        }, /polygon layer/);
+      });
     });
 
     it('errors on multi-point features', async function () {
