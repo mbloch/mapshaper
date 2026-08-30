@@ -5793,10 +5793,13 @@
 
   function layerOnlyHasRectangles(lyr, arcs) {
     if (!layerHasPaths(lyr)) return false;
-    if (countMultiPartFeatures(lyr) > 0) return false;
     return lyr.shapes.every(function(shp) {
       if (!shp) return true;
-      return pathIsRectangle(shp[0], arcs);
+      // Every part is tested: a shape whose first ring is rectangular may well
+      // have others that are not.
+      return shp.every(function(path) {
+        return pathIsRectangle(path, arcs);
+      });
     });
   }
 
@@ -5886,7 +5889,7 @@
 
   function requireSinglePointLayer(lyr, msg) {
     requirePointLayer(lyr);
-    if (countMultiPartFeatures(lyr) > 0) {
+    if (countMultiPartFeatures(lyr.shapes) > 0) {
       stop$1(msg || 'This command requires single points; layer contains multi-point features.');
     }
   }
@@ -6030,8 +6033,16 @@
     return copy;
   }
 
+  // shapes: one layer's "shapes" array
+  // Guards against being passed a layer instead: several callers made that
+  // mistake, and reading .length off a layer object silently returned 0, which
+  // disabled the multi-part checks that depend on this function.
   function countMultiPartFeatures(shapes) {
     var count = 0;
+    if (!shapes) return 0;
+    if (!Array.isArray(shapes)) {
+      error('countMultiPartFeatures() expects an array of shapes');
+    }
     for (var i=0, n=shapes.length; i<n; i++) {
       if (shapes[i] && shapes[i].length > 1) count++;
     }
@@ -26145,8 +26156,20 @@
   }
 
   function getSymbolPropertyAccessor(val, svgName, lyr) {
+    return getPropertyAccessor(val, symbolPropertyTypes[svgName], lyr, svgName);
+  }
+
+  // Returns a function that maps a feature id to a property value. The value may
+  // be given as a literal, as the name of a data field, or as a JS expression
+  // evaluated against each feature.
+  // typeHint: a type understood by parseSvgLiteralValue(), or null to accept any
+  //   string as a literal value
+  // name: used in error messages
+  // Callers outside the SVG property system pass a type hint directly, rather
+  // than registering an option name in symbolPropertyTypes -- that index also
+  // decides which options the -symbols command treats as symbol properties.
+  function getPropertyAccessor(val, typeHint, lyr, name) {
     var strVal = String(val).trim();
-    var typeHint = symbolPropertyTypes[svgName];
     var fields = lyr.data ? lyr.data.getFields() : [];
     var literalVal = null;
     var accessor;
@@ -26164,7 +26187,7 @@
     }
     if (accessor) return accessor;
     if (literalVal !== null) return function(id) {return literalVal;};
-    stop$1('Unexpected value for', svgName + ':', strVal);
+    stop$1('Unexpected value for', name + ':', strVal);
   }
 
   function parseStyleExpression(strVal, lyr) {
@@ -26270,6 +26293,7 @@
     applyStyleAttributes: applyStyleAttributes,
     findStylePropertiesBySymbolGeom: findStylePropertiesBySymbolGeom,
     getLabelPositionStyle: getLabelPositionStyle,
+    getPropertyAccessor: getPropertyAccessor,
     getSymbolDataAccessor: getSymbolDataAccessor,
     getSymbolPropertyAccessor: getSymbolPropertyAccessor,
     isSupportedSvgStyleProperty: isSupportedSvgStyleProperty,
@@ -41002,6 +41026,34 @@ ${svg}
         describe: 'line spacing of multi-line labels (default is 1.1em)'
       })
      .option('target', targetOpt);
+
+    parser.command('repel')
+      .describe('move overlapping circle symbols apart')
+      .option('width', {
+        describe: 'display width of the layer in pixels (required if no frame)',
+        type: 'number'
+      })
+      .option('max-shift', {
+        describe: 'max displacement in pixels; may vary by symbol (default is 20)'
+      })
+      .option('padding', {
+        describe: 'pixels of clearance around each symbol; may vary (default is 0)'
+      })
+      .option('ticks', {
+        describe: 'number of solver passes (default is 100)',
+        type: 'number'
+      })
+      .option('strength', {
+        describe: 'portion of each overlap resolved per pass, 0-1 (default is 0.4)',
+        type: 'number'
+      })
+      .option('radius', {
+        describe: 'field or expression giving symbol radius in pixels',
+      })
+      .option('polygons', {
+        describe: 'layer or file of polygons that symbols must stay inside'
+      })
+      .option('target', targetOpt);
 
     parser.command('symbols')
       .describe('symbolize points as arrows, circles, stars, polygons, etc.')
@@ -74984,7 +75036,7 @@ ${svg}
 
     var datasets = [targetDataset];
     var outputLayers = targetLayers.map(function(pointLyr) {
-      if (countMultiPartFeatures(pointLyr) > 0) {
+      if (countMultiPartFeatures(pointLyr.shapes) > 0) {
         stop$1('This command requires single points');
       }
       var dataset = getPolygonDataset(pointLyr, bbox, opts);
@@ -75298,6 +75350,531 @@ ${svg}
       memo[src] = dest;
       return memo;
     }, {});
+  }
+
+  // Keeps each symbol's center inside the polygon that contained it to begin
+  // with, so that a symbol representing one area can't drift into a neighboring
+  // one. Used by -repel via its polygons= option.
+  //
+  // Nodes are laid out in pixel space, at a scale of @pixelsPerUnit pixels per
+  // unit of the polygons' coordinate system. That transform is a pure scale (see
+  // how -repel builds its nodes), so dividing a node position by it gives a
+  // position that can be tested against the polygons directly.
+
+  // Bisection steps used to find how far a symbol can travel before it leaves its
+  // polygon. Six steps locate the crossing to within 1/64 of the attempted move;
+  // finer searches were measured and change the result by a fraction of a pixel.
+  var BISECT_STEPS = 6;
+
+  // Assigns each node the id of the polygon containing its anchor, or -1 if the
+  // anchor isn't inside any of them. Returns the number of unassigned nodes,
+  // which are left free to move.
+  function assignContainingPolygons(nodes, lyr, arcs, pixelsPerUnit) {
+    var index = new PathIndex(lyr.shapes, arcs);
+    var unassigned = 0;
+    nodes.forEach(function(node) {
+      node.polygonId = index.findEnclosingShape([node.x0 / pixelsPerUnit, node.y0 / pixelsPerUnit]);
+      node.insideX = node.x0;
+      node.insideY = node.y0;
+      if (node.polygonId == -1) unassigned++;
+    });
+    return unassigned;
+  }
+
+  // Returns a function that the solver runs after each pass: any symbol that has
+  // left its polygon is pulled back along the path it just travelled, to the
+  // furthest point that is still inside.
+  //
+  // This can't violate the max-shift limit. The position it assigns always lies
+  // between two positions the node has already held, both of which the solver
+  // clamped to within max-shift of the anchor, and a disk is convex.
+  function getContainmentConstraint(lyr, arcs, pixelsPerUnit) {
+    var shapes = lyr.shapes;
+
+    function isInside(node, x, y) {
+      return testPointInPolygon(x / pixelsPerUnit, y / pixelsPerUnit,
+        shapes[node.polygonId], arcs);
+    }
+
+    return function(nodes) {
+      var node, lo, hi, mid, x, y, i, j;
+      for (i=0; i<nodes.length; i++) {
+        node = nodes[i];
+        if (node.polygonId == -1) continue;
+        // A node that hasn't moved since it was last checked is still inside,
+        // so most symbols in a sparse layout cost nothing after the early passes
+        if (node.x === node.insideX && node.y === node.insideY) continue;
+        if (isInside(node, node.x, node.y)) {
+          node.insideX = node.x;
+          node.insideY = node.y;
+          continue;
+        }
+        lo = 0; // known inside
+        hi = 1; // known outside
+        for (j=0; j<BISECT_STEPS; j++) {
+          mid = (lo + hi) / 2;
+          x = node.insideX + (node.x - node.insideX) * mid;
+          y = node.insideY + (node.y - node.insideY) * mid;
+          if (isInside(node, x, y)) lo = mid; else hi = mid;
+        }
+        node.x = node.insideX + (node.x - node.insideX) * lo;
+        node.y = node.insideY + (node.y - node.insideY) * lo;
+        node.insideX = node.x;
+        node.insideY = node.y;
+      }
+    };
+  }
+
+  // Collision reduction for circular symbols, in the spirit of d3-force's
+  // forceCollide. Overlapping symbols are pushed apart, but each one is kept
+  // within a fixed distance of its true position.
+  //
+  // Nodes are laid out in pixel space; converting to and from map coordinates is
+  // the caller's job. A node is {i, x, y, x0, y0, r, maxShift}, where x0,y0 is
+  // the anchor (the symbol's true position), r includes any padding and maxShift
+  // is the furthest this symbol may be displaced. Both r and maxShift are
+  // per-node, so the caller can vary them from symbol to symbol; a node with a
+  // maxShift of 0 never moves and so acts as a fixed obstacle.
+
+  // max_shift is not read by the solver (it is a per-node property); it is here
+  // as the default for callers to apply when building nodes.
+  //
+  // strength is the damping factor of what is essentially Gauss-Seidel
+  // relaxation. A symbol in a cluster is corrected once per overlapping neighbor
+  // in a single pass, so the corrections sum to more than its own overlap and
+  // values near 1 overshoot and oscillate. Given the tick budget below, anything
+  // from 0.3 to 1.0 resolves a layout that can be resolved at all; the value only
+  // matters where crowding exceeds what max-shift can fix, and there the lower
+  // end leaves shallower overlaps and holds symbols closer to their true
+  // positions. Below about 0.4 the solver stops reliably breaking up stacks of
+  // coincident symbols.
+  var symbolCollisionDefaults = {
+    ticks: 100,
+    max_shift: 20,
+    strength: 0.4
+  };
+
+  // Mutates the x,y properties of @nodes. Returns the number of nodes that moved.
+  //
+  // opts.constrain is an optional function(nodes) applied after each pass, for
+  // callers that need to restrict where symbols may go (see
+  // mapshaper-symbol-containment.mjs). It must only move a node to a position
+  // between ones the node has already held, or the max-shift limit no longer
+  // holds.
+  function resolveSymbolCollisions(nodes, opts) {
+    var ticks = opts.ticks,
+        strength = opts.strength,
+        constrain = opts.constrain || null,
+        moved = 0,
+        i;
+    if (nodes.length < 2 || !(ticks > 0) || !anyNodeCanMove(nodes)) return 0;
+    for (i=0; i<ticks; i++) {
+      resolveCollisions(nodes, strength);
+      // Limiting the displacement on every pass (instead of only at the end)
+      // avoids pulling symbols back into the overlaps they just escaped.
+      limitDisplacement(nodes);
+      if (constrain) constrain(nodes);
+    }
+    for (i=0; i<nodes.length; i++) {
+      if (nodes[i].x !== nodes[i].x0 || nodes[i].y !== nodes[i].y0) moved++;
+    }
+    return moved;
+  }
+
+  // Overlaps shallower than this are not reported. A converged layout doesn't
+  // leave symbols exactly touching, it leaves a tail of overlaps a fraction of a
+  // pixel deep -- on a solved 435-symbol layout, 55 pairs overlap by more than a
+  // hundredth of a pixel, 6 by more than half a pixel, and none by more than one.
+  // So a threshold of a pixel is where this solver's convergence residue ends and
+  // genuine unresolved crowding begins, as well as being about the point where an
+  // overlap becomes visible.
+  var VISIBLE_OVERLAP = 1; // pixels
+
+  // Number of visibly overlapping pairs, for reporting how much of the job got
+  // done. Deliberately not a count of all overlaps: an overlap 100th of a pixel
+  // deep and one 15 pixels deep are not the same result, and treating them alike
+  // makes a layout that is visually finished look like a failure.
+  function countSymbolCollisions(nodes) {
+    var count = 0;
+    forEachCollision(nodes, function(a, b, dx, dy, distSq, sum) {
+      if (sum - Math.sqrt(distSq) > VISIBLE_OVERLAP) count++;
+    });
+    return count;
+  }
+
+  // Push overlapping nodes apart, in proportion to the overlap. Larger nodes move
+  // less than smaller ones.
+  function resolveCollisions(nodes, strength) {
+    forEachCollision(nodes, function(a, b, dx, dy, distSq, sum) {
+      separate(a, b, dx, dy, distSq, sum, strength);
+    });
+  }
+
+  // Sweep along the x axis, using the largest radius still ahead of the current
+  // node to know when to stop looking for neighbors.
+  function forEachCollision(nodes, cb) {
+    var n = nodes.length,
+        maxAhead = new Float64Array(n),
+        max = 0,
+        a, b, dx, dy, sum, distSq, i, j;
+    nodes.sort(compareX);
+    for (i=n-1; i>=0; i--) {
+      if (nodes[i].r > max) max = nodes[i].r;
+      maxAhead[i] = max;
+    }
+    for (i=0; i<n; i++) {
+      a = nodes[i];
+      for (j=i+1; j<n; j++) {
+        b = nodes[j];
+        dx = b.x - a.x;
+        if (dx > a.r + maxAhead[j]) break;
+        dy = b.y - a.y;
+        sum = a.r + b.r;
+        if (dy > sum || dy < -sum) continue;
+        distSq = dx * dx + dy * dy;
+        if (distSq >= sum * sum) continue;
+        cb(a, b, dx, dy, distSq, sum);
+      }
+    }
+  }
+
+  function compareX(a, b) {
+    // Break ties by original index, so the order of equally positioned nodes
+    // doesn't depend on the engine's sort implementation.
+    return a.x - b.x || a.i - b.i;
+  }
+
+  function separate(a, b, dx, dy, distSq, sum, strength) {
+    var ux, uy, overlap, dist, dir, shift, share;
+    if (distSq > 0) {
+      dist = Math.sqrt(distSq);
+      ux = dx / dist;
+      uy = dy / dist;
+      overlap = sum - dist;
+    } else {
+      // Coincident nodes: pick a repeatable arbitrary direction
+      dir = getPseudoDirection(a.i, b.i);
+      ux = dir[0];
+      uy = dir[1];
+      overlap = sum;
+    }
+    shift = overlap * strength;
+    share = b.r * b.r / (a.r * a.r + b.r * b.r); // portion moved by a
+    a.x -= ux * shift * share;
+    a.y -= uy * shift * share;
+    b.x += ux * shift * (1 - share);
+    b.y += uy * shift * (1 - share);
+  }
+
+  // A deterministic stand-in for d3-force's jiggle(), which uses Math.random()
+  function getPseudoDirection(i, j) {
+    var hash = (Math.imul(i + 1, 2654435761) ^ Math.imul(j + 1, 1597334677)) >>> 0,
+        x = (hash & 0xffff) / 0x8000 - 1,
+        y = ((hash >>> 16) & 0xffff) / 0x8000 - 1,
+        dist = Math.sqrt(x * x + y * y);
+    return dist > 0 ? [x / dist, y / dist] : [1, 0];
+  }
+
+  function anyNodeCanMove(nodes) {
+    for (var i=0; i<nodes.length; i++) {
+      if (nodes[i].maxShift > 0) return true;
+    }
+    return false;
+  }
+
+  // Pull each node back onto the circle of radius node.maxShift around its anchor.
+  function limitDisplacement(nodes) {
+    var node, maxShift, dx, dy, distSq, k, i;
+    for (i=0; i<nodes.length; i++) {
+      node = nodes[i];
+      maxShift = node.maxShift;
+      dx = node.x - node.x0;
+      dy = node.y - node.y0;
+      distSq = dx * dx + dy * dy;
+      if (distSq <= maxShift * maxShift) continue;
+      k = maxShift / Math.sqrt(distSq);
+      node.x = node.x0 + dx * k;
+      node.y = node.y0 + dy * k;
+    }
+  }
+
+  var SymbolCollisions = /*#__PURE__*/Object.freeze({
+    __proto__: null,
+    VISIBLE_OVERLAP: VISIBLE_OVERLAP,
+    countSymbolCollisions: countSymbolCollisions,
+    resolveSymbolCollisions: resolveSymbolCollisions,
+    symbolCollisionDefaults: symbolCollisionDefaults
+  });
+
+  // Move circular symbols apart to reduce overlaps, keeping each one within a
+  // fixed pixel distance of its true position.
+  //
+  // The layout runs in the pixel space of the map that the symbols will be
+  // rendered in, so the command needs to know the display scale: either from a
+  // frame associated with the target, or from a width= option.
+  //
+  // All targeted layers are laid out in a single simulation, so symbols in
+  // different layers are moved apart from each other as well.
+  //
+  // An optional polygons= layer confines each symbol to the polygon it started
+  // in, so that a symbol standing for one area can't drift into a neighboring
+  // one. Symbols in an area too small to hold them barely move as a result, and
+  // their overlaps go unresolved -- that is the point of the option, but it does
+  // mean fewer overlaps get fixed.
+  var DEFAULT_PADDING = 0; // pixels
+
+  cmd.repel = function(targetLayers, dataset, catalog, polygonSource, opts) {
+    var solverOpts = {
+      ticks: opts.ticks > 0 ? opts.ticks : symbolCollisionDefaults.ticks,
+      strength: opts.strength > 0 ? opts.strength : symbolCollisionDefaults.strength
+    };
+    var nodes = [];
+
+    // Validated before the display scale is resolved, so that an unusable target
+    // is reported as such instead of as a missing width= option.
+    requireProjectedDataset(dataset);
+    targetLayers.forEach(function(lyr) {
+      requireRepelTarget(lyr, opts);
+    });
+    var pixelsPerUnit = getDisplayScale(targetLayers, dataset, catalog, opts);
+    targetLayers.forEach(function(lyr) {
+      addLayerNodes(nodes, lyr, pixelsPerUnit, opts);
+    });
+    if (nodes.length === 0) {
+      stop$1('Targeted layer(s) contain no circle symbols to move.');
+    }
+    var unconstrained = addContainment(nodes, dataset, polygonSource, pixelsPerUnit, solverOpts);
+
+    var collisionsBefore = countSymbolCollisions(nodes);
+    var moved = resolveSymbolCollisions(nodes, solverOpts);
+    var collisionsAfter = countSymbolCollisions(nodes);
+    applyDisplacement(nodes, pixelsPerUnit);
+    reportResults(nodes, moved, collisionsBefore, collisionsAfter, !!polygonSource);
+    if (unconstrained > 0) {
+      message(utils.format('%d symbol%s not inside any polygon in %s, and %s left free to move',
+        unconstrained, unconstrained == 1 ? ' is' : 's are', polygonSource.layer.name || 'the polygons= layer',
+        unconstrained == 1 ? 'was' : 'were'));
+    }
+  };
+
+  // Confines symbols to the polygons they start inside. Returns the number of
+  // symbols that no polygon contains, which are left unconstrained.
+  function addContainment(nodes, dataset, polygonSource, pixelsPerUnit, solverOpts) {
+    if (!polygonSource) return 0;
+    var lyr = polygonSource.layer;
+    var arcs = polygonSource.dataset.arcs;
+    requirePolygonLayer(lyr, 'The polygons= option requires a polygon layer.');
+    // Only catches mixing projected with unprojected data; two different
+    // projections are the caller's problem, as with -join
+    requireDatasetsHaveCompatibleCRS([dataset, polygonSource.dataset]);
+    var unconstrained = assignContainingPolygons(nodes, lyr, arcs, pixelsPerUnit);
+    solverOpts.constrain = getContainmentConstraint(lyr, arcs, pixelsPerUnit);
+    return unconstrained;
+  }
+
+  // Symbols are displaced by adding an offset to their original coordinates, so
+  // that symbols that didn't move keep bit-for-bit identical coordinates.
+  // Displaced symbols get a new coordinate array rather than an updated one,
+  // because the GeoJSON importer reuses the arrays it is given and mutating them
+  // would reach back into a caller's input object.
+  function applyDisplacement(nodes, pixelsPerUnit) {
+    var movedNodes = nodes.filter(function(node) {
+      return node.x !== node.x0 || node.y !== node.y0;
+    });
+    var movedLayers = [];
+    movedNodes.forEach(function(node) {
+      if (movedLayers.indexOf(node.lyr) == -1) movedLayers.push(node.lyr);
+    });
+    movedLayers.forEach(function(lyr) {
+      noteLayerWillChange(lyr, {operation: 'repel', unit: 'shapes'});
+    });
+    movedNodes.forEach(function(node) {
+      node.shp[0] = [
+        node.shp[0][0] + (node.x - node.x0) / pixelsPerUnit,
+        node.shp[0][1] + (node.y - node.y0) / pixelsPerUnit
+      ];
+    });
+    movedLayers.forEach(function(lyr) {
+      markLayerChanged(lyr, {operation: 'repel', unit: 'shapes'});
+    });
+  }
+
+  function reportResults(nodes, moved, before, after, contained) {
+    var total = nodes.length;
+    var msg = utils.format('Moved %d of %d symbol%s', moved, total, total == 1 ? '' : 's');
+    // Counts are of visible overlaps only, so a layout whose symbols end up
+    // touching or a fraction of a pixel apart is reported as finished, and the
+    // advice to raise max-shift= is not given when nothing is left to fix.
+    if (after > 0) {
+      msg += utils.format('; %d of %d visible overlap%s remain (%s)',
+        after, before, before == 1 ? '' : 's',
+        contained ? getMaxShiftAdvice(nodes) + ', or drop polygons=' : getMaxShiftAdvice(nodes));
+    } else if (before > 0) {
+      msg += utils.format('; resolved %d visible overlap%s', before, before == 1 ? '' : 's');
+    } else {
+      msg += ' (no visible overlaps found)';
+    }
+    message(msg);
+  }
+
+  // max-shift= may vary from symbol to symbol, so report the range in use.
+  function getMaxShiftAdvice(nodes) {
+    var min = Infinity, max = -Infinity;
+    nodes.forEach(function(node) {
+      if (node.maxShift < min) min = node.maxShift;
+      if (node.maxShift > max) max = node.maxShift;
+    });
+    if (min === max) {
+      return utils.format('try a larger max-shift= than %s', min);
+    }
+    return utils.format('try larger max-shift= values, now %s-%s', min, max);
+  }
+
+  function requireRepelTarget(lyr, opts) {
+    requireSinglePointLayer(lyr,
+      '-repel requires single points; layer contains multi-point features.');
+    if (!opts.radius && !layerHasCircleSymbols(lyr)) {
+      stop$1('-repel requires a layer containing circle symbols ' +
+        '(see the -symbols and -style commands), or a radius= option.');
+    }
+  }
+
+  function layerHasCircleSymbols(lyr) {
+    return !!lyr.data && (lyr.data.fieldExists('svg-symbol') || lyr.data.fieldExists('r'));
+  }
+
+  function addLayerNodes(nodes, lyr, pixelsPerUnit, opts) {
+    var getRadius = getRadiusAccessor(lyr, opts);
+    var getPadding = getPixelValueAccessor(opts.padding, 'padding', DEFAULT_PADDING, lyr);
+    var getMaxShift = getPixelValueAccessor(opts.max_shift, 'max-shift',
+        symbolCollisionDefaults.max_shift, lyr);
+    var i, shp, p, r;
+    for (i=0; i<lyr.shapes.length; i++) {
+      shp = lyr.shapes[i];
+      p = shp ? shp[0] : null;
+      if (!p) continue;
+      r = getRadius(i);
+      if (!(r > 0) || !isFinite(p[0]) || !isFinite(p[1])) continue;
+      nodes.push({
+        lyr: lyr,
+        shp: shp,
+        i: nodes.length,
+        x: p[0] * pixelsPerUnit,
+        y: p[1] * pixelsPerUnit,
+        x0: p[0] * pixelsPerUnit,
+        y0: p[1] * pixelsPerUnit,
+        // Padding is added to the radius, so a pair of symbols ends up with
+        // (padding a + padding b) pixels of clearance between them.
+        r: r + getPadding(i),
+        maxShift: getMaxShift(i)
+      });
+    }
+  }
+
+  // padding= and max-shift= accept a number, a field name or an expression, and
+  // so are resolved for each symbol.
+  function getPixelValueAccessor(optVal, name, defaultVal, lyr) {
+    if (optVal === undefined || optVal === null || optVal === '') {
+      return function(i) {return defaultVal;};
+    }
+    var accessor = getPropertyAccessor(optVal, 'number', lyr, name);
+    return function(i) {
+      var val = +accessor(i);
+      if (!(val >= 0)) {
+        stop$1(utils.format('Invalid %s= value: %s', name, accessor(i)));
+      }
+      return val;
+    };
+  }
+
+  // Radii come from one of three places: an explicit radius= option, the
+  // svg-symbol field written by -symbols, or the r field written by -style.
+  // Deliberately not using getSymbolRadius(), whose default of 5 would invent
+  // radii for symbols that don't exist.
+  function getRadiusAccessor(lyr, opts) {
+    if (opts.radius) {
+      return getSymbolPropertyAccessor(opts.radius, 'radius', lyr);
+    }
+    var records = lyr.data.getRecords();
+    return function(i) {
+      var rec = records[i];
+      if (!rec) return 0;
+      if (rec['svg-symbol']) return getCircleSymbolRadius(rec['svg-symbol']);
+      return rec.r > 0 ? +rec.r : 0;
+    };
+  }
+
+  function getCircleSymbolRadius(sym) {
+    if (utils.isString(sym)) {
+      try {
+        sym = JSON.parse(sym);
+      } catch(e) {
+        return 0;
+      }
+    }
+    if (!sym || sym.type != 'circle') {
+      stop$1('-repel currently supports circle symbols only' +
+        (sym && sym.type ? ' (found a ' + sym.type + ' symbol).' : '.'));
+    }
+    return sym.r > 0 ? +sym.r : 0;
+  }
+
+  // Returns the number of display pixels per map coordinate unit.
+  function getDisplayScale(targetLayers, dataset, catalog, opts) {
+    var frame, bounds, extent;
+    if (opts.width > 0) {
+      bounds = getCombinedBounds(targetLayers, dataset);
+      // A layer of collinear points has no width; fall back to its height so that
+      // width= still gives a usable scale.
+      extent = bounds.width() || bounds.height();
+      if (!(extent > 0)) {
+        stop$1('Unable to calculate a display scale: targeted symbols have no extent.');
+      }
+      return opts.width / extent;
+    }
+    frame = findRepelFrame(dataset, catalog);
+    if (!frame) {
+      stop$1('-repel requires a width= option when the target has no frame.');
+    }
+    warnIfFrameMismatched(frame, targetLayers, dataset);
+    return getFramePixelsPerUnit(frame);
+  }
+
+  function findRepelFrame(dataset, catalog) {
+    var lyr = findFrameLayerInDataset(dataset);
+    var target;
+    if (lyr) return getFrameLayerData(lyr, dataset.arcs);
+    // -frame adds the frame it creates to the catalog as a separate dataset, so a
+    // catalog-wide search is needed to find it (-scalebar does the same).
+    target = catalog ? findFrame(catalog) : null;
+    return target ? getFrameLayerData(target.layer, target.dataset.arcs) : null;
+  }
+
+  // Mirrors the transform applied by fitDatasetToFrame(), so that the layout
+  // matches the pixels that get rendered. A naive width / bbox width differs
+  // whenever the frame bbox and its pixel dimensions have different aspect ratios.
+  function getFramePixelsPerUnit(frameData) {
+    var bounds = new Bounds(frameData.bbox);
+    var bounds2 = frameData.bbox2 ? new Bounds(frameData.bbox2) :
+      new Bounds(0, 0, frameData.width, frameData.height);
+    bounds.fillOut(bounds2.width() / bounds2.height());
+    return bounds.getTransform(bounds2).mx;
+  }
+
+  function warnIfFrameMismatched(frame, targetLayers, dataset) {
+    var bounds = getCombinedBounds(targetLayers, dataset);
+    if (!bounds.hasBounds()) return;
+    if (!new Bounds(frame.bbox).intersects(bounds)) {
+      message('[repel] Warning: the frame does not overlap the targeted symbols. ' +
+        'If the data was projected after the frame was made, the display scale is wrong.');
+    }
+  }
+
+  function getCombinedBounds(targetLayers, dataset) {
+    return targetLayers.reduce(function(memo, lyr) {
+      var bounds = getLayerBounds(lyr, dataset.arcs);
+      return bounds ? memo.mergeBounds(bounds) : memo;
+    }, new Bounds());
   }
 
   // Support for evaluating expressions embedded in curly-brace templates
@@ -77719,11 +78296,16 @@ ${svg}
 
   // TODO: refactor to remove duplication in mapshaper-svg-style.js
   cmd.symbols = function(inputLyr, dataset, opts) {
-    requireSinglePointLayer(inputLyr);
+    requirePointLayer(inputLyr);
     var lyr = opts.no_replace ? copyLayer(inputLyr) : inputLyr;
     var shapeMode = !!opts.geographic;
     var metersPerPx;
     if (shapeMode) {
+      // Only the first point of each feature is used to place a generated shape,
+      // so the other points of a multi-point feature would be dropped. In SVG
+      // mode geometry is untouched and every point gets a symbol, so multi-point
+      // features are fine.
+      requireSinglePointLayer(inputLyr);
       requireProjectedDataset(dataset);
       metersPerPx = opts.pixel_scale || getMetersPerPixel(lyr);
     }
@@ -78313,7 +78895,7 @@ ${svg}
       'filter-islands2', 'filter-points', 'filter-slivers', 'grid', 'grid2',
       'fuzzy-join', 'ignore', 'inlay', 'innerlines', 'inspect', 'join',
       'lines', 'mosaic', 'points', 'polygons', 'rectangles', 'rename-fields',
-      'shapes', 'simplify', 'slice', 'smooth', 'sort', 'split',
+      'repel', 'shapes', 'simplify', 'slice', 'smooth', 'sort', 'split',
       'split-on-grid', 'stitch', 'style', 'subdivide', 'symbols', 'uniq'
     ].indexOf(name) > -1;
   }
@@ -78673,6 +79255,10 @@ ${svg}
       } else if (name == 'rename-layers') {
         cmd.renameLayers(targetLayers, opts.names);
 
+      } else if (name == 'repel') {
+        cmd.repel(targetLayers, targetDataset, job.catalog,
+          await findRepelPolygons(opts, job.catalog, targets), opts);
+
       } else if (name == 'require') {
         await cmd.require(opts);
 
@@ -78865,6 +79451,15 @@ ${svg}
     return job;
   }
 
+  // -repel's polygons= option names a second layer, like source= elsewhere, but
+  // is resolved here rather than by the shared source= machinery: the layer is
+  // only read (never merged into the target's topology), so it needs neither a
+  // topology merge nor the per-target copies that clip and erase require.
+  async function findRepelPolygons(opts, catalog, targets) {
+    if (!opts.polygons) return null;
+    return await findCommandSourceAsync(convertSourceName(opts.polygons, targets), catalog, opts);
+  }
+
   async function resolveSourceForTargets(command, job, targets) {
     job.startCommand(command);
     try {
@@ -78970,7 +79565,7 @@ ${svg}
     return name == 'rectangle' || name == 'rectangles' || name == 'filter' && opts.cleanup;
   }
 
-  var version = "0.7.55";
+  var version = "0.7.56";
 
   // Parse command line args into commands and run them
   // Function takes an optional Node-style callback. A Promise is returned if no callback is given.
@@ -81175,6 +81770,7 @@ ${svg}
     Simplify,
     SimplifyFast,
     SimplifyPct,
+    SymbolCollisions,
     Slivers,
     Snapping,
     SourceUtils,

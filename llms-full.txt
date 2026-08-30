@@ -67,6 +67,13 @@ This is a curated list of recently added features. For the full list of changes,
 
 <div class="whats-new-entry">
 
+**Repel command.** The `-repel` command moves overlapping circle symbols apart, keeping each one within a set distance of its true position &mdash; useful for proportional symbol maps where circles pile up in dense areas. It works in the pixel space of the finished map, taking the scale from a `-frame` or a `width=` option. `max-shift=` and `padding=` accept a field name or an expression, so important symbols can be given more room or pinned in place. A `polygons=` option confines each symbol to the polygon it started in.
+
+→ See [`-repel`](/docs/reference.html.md#-repel).
+</div>
+
+<div class="whats-new-entry">
+
 **Isobands.**  The `-contours` command has a new `closed` flag for creating polygon bands.
 
 </div>
@@ -330,6 +337,7 @@ mapshaper states.geojson \
 [-rectangles](#-rectangles)
 [-rename-fields](#-rename-fields)
 [-rename-layers](#-rename-layers)
+[-repel](#-repel)
 [-require](#-require)
 [-run](#-run)
 [-scalebar](#-scalebar)
@@ -1599,6 +1607,50 @@ Assign new names to layers. If fewer names are given than there are layers, the 
 # Example: Create a TopoJSON file with sensible object names.
 mapshaper ne_50m_rivers_lake_centerlines.shp ne_50m_land.shp combine-files \
   -rename-layers water,land -o target=* layers.topojson 
+```
+
+### -repel
+
+Move overlapping circle symbols apart, keeping each one within a set distance of its true position. The target must be a projected point layer carrying circle symbols &mdash; from [`-symbols`](#-symbols), from [`-style`](#-style) or from a `radius=` option. All targeted layers are laid out together, so symbols in different layers are moved apart from each other as well.
+
+The layout happens in the pixel space of the map the symbols will be drawn in, so the command needs to know the display scale. It takes it from a [`-frame`](#-frame) if the target has one, and otherwise requires a `width=` option. Give the same width to `-repel` and to `-o`, or symbols will be spaced for a differently sized map.
+
+Overlaps that survive are reported as a count. Symbols too crowded to separate within `max-shift=` are left overlapping rather than moved further.
+
+`width=`      Display width of the layer in pixels. Required if the target has no frame.
+
+`max-shift=`  How far a symbol may move, in pixels (default is 20). Accepts a number, a field name or a JS expression, so the limit can vary from symbol to symbol. A symbol with a limit of 0 never moves, and other symbols are pushed clear of it.
+
+`padding=`    Pixels of clearance to leave around each symbol (default is 0). Also accepts a field name or an expression. Two symbols end up with the sum of their two padding values between them.
+
+`radius=`     Field or expression giving symbol radius in pixels. Use this when the layer has no symbols from `-symbols` or `-style`.
+
+`polygons=`   Layer or file of polygons that symbols must stay inside. Each symbol is confined to the polygon its true position falls in, so a symbol standing for one area can't drift into a neighboring one. Symbols in an area too small to hold them barely move, so fewer overlaps get resolved. Symbols outside every polygon are left free to move, and reported.
+
+`ticks=`      Number of solver passes (default is 100).
+
+`strength=`   Portion of each overlap resolved per pass, 0-1 (default is 0.4). Higher values clear crowded areas faster but can leave symbols further from their true positions.
+
+Common options: `target=`
+
+```bash
+# Space out proportional circles on an 800px-wide map
+mapshaper cities.shp \
+-proj lcc \
+-symbols type=circle radius='Math.sqrt(POP)/40' \
+-repel width=800 padding=1 \
+-o width=800 map.svg
+
+# Put a dot in each county and keep every dot inside the state it belongs to
+mapshaper counties.geojson \
+-proj albersusa \
+-dissolve STATE + name=states \
+-style fill='#eee' stroke=white \
+-target counties \
+-points inner + name=dots \
+-style r=2 fill=magenta \
+-repel width=800 polygons=states \
+-o width=800 target=states,dots map.svg
 ```
 
 ### -require
