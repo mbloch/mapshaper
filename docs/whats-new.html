@@ -51,7 +51,7 @@
       <h1 id="whats-new">What&#39;s new</h1>
 <p>This is a curated list of recently added features. For the full list of changes, including bug fixes and internal work, see the <a href="https://github.com/mbloch/mapshaper/blob/master/CHANGELOG.md">changelog</a> on GitHub.</p>
 <h2 id="august-2026">August 2026</h2>
-<div class="whats-new-entry"><p><strong>Repel command.</strong> The <code>-repel</code> command moves overlapping circle symbols apart, keeping each one within a set distance of its true position &mdash; useful for proportional symbol maps where circles pile up in dense areas. It works in the pixel space of the finished map, taking the scale from a <code>-frame</code> or a <code>width=</code> option. <code>max-shift=</code> and <code>padding=</code> accept a field name or an expression, so important symbols can be given more room or pinned in place. A <code>polygons=</code> option confines each symbol to the polygon it started in.</p>
+<div class="whats-new-entry"><p><strong>Repel command.</strong> The <code>-repel</code> command removes or reduces overlaps between circle symbols. A <code>max-shift=</code> option keeps symbols within a given distance of their true positions. A <code>polygons=</code> option constrains symbols to polygon boundaries.</p>
 <p>→ See <a href="/docs/reference.html#-repel"><code>-repel</code></a>.</p>
 </div><div class="whats-new-entry"><p><strong>Isobands.</strong>  The <code>-contours</code> command has a new <code>closed</code> flag for creating polygon bands.</p>
 </div><div class="whats-new-entry"><p><strong>Clean command improvements.</strong></p>

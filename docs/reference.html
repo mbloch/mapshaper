@@ -940,29 +940,21 @@ mapshaper ne_50m_rivers_lake_centerlines.shp ne_50m_land.shp combine-files \
 </code></pre>
 </section>
 <section class="cmd-section" data-id="-repel" data-name="-repel" data-options="radius width max-shift padding polygons ticks strength target"><h3 id="-repel">-repel</h3>
-<p>Move overlapping circle symbols apart, keeping each one within a set distance of its true position. The target must be a projected point layer carrying circle symbols &mdash; from <a href="#-symbols"><code>-symbols</code></a>, from <a href="#-style"><code>-style</code></a> or from a <code>radius=</code> option. All targeted layers are laid out together, so symbols in different layers are moved apart from each other as well.</p>
+<p>Move overlapping circle symbols apart. The target must be a projected point layer containing circles from <a href="#-symbols"><code>-symbols</code></a>, from <a href="#-style"><code>-style</code></a> or from the <code>radius=</code> option. All targeted layers are laid out together, so symbols in different layers are moved apart from each other as well.</p>
 <p>The layout happens in the pixel space of the map the symbols will be drawn in, so the command needs to know the display scale. It takes it from a <a href="#-frame"><code>-frame</code></a> if the target has one, and otherwise requires a <code>width=</code> option. Give the same width to <code>-repel</code> and to <code>-o</code>, or symbols will be spaced for a differently sized map.</p>
-<p>Overlaps that survive are reported as a count. Symbols too crowded to separate within <code>max-shift=</code> are left overlapping rather than moved further.</p>
 <p><code>width=</code>      Display width of the layer in pixels. Required if the target has no frame.</p>
-<p><code>max-shift=</code>  How far a symbol may move, in pixels (default is 20). Accepts a number, a field name or a JS expression, so the limit can vary from symbol to symbol. A symbol with a limit of 0 never moves, and other symbols are pushed clear of it.</p>
-<p><code>padding=</code>    Pixels of clearance to leave around each symbol (default is 0). Also accepts a field name or an expression. Two symbols end up with the sum of their two padding values between them.</p>
+<p><code>max-shift=</code>  How far a symbol may move, in pixels (default is 20). Accepts a number, a field name or a JS expression, so the limit can vary from symbol to symbol. A symbol with a limit of 0 gets pinned in place. Symbols too crowded to separate within <code>max-shift=</code> are left overlapping</p>
+<p><code>padding=</code>    Pixels of clearance to leave around each symbol (default is 0). Accepts a field name or an expression.</p>
 <p><code>radius=</code>     Field or expression giving symbol radius in pixels. Use this when the layer has no symbols from <code>-symbols</code> or <code>-style</code>.</p>
-<p><code>polygons=</code>   Layer or file of polygons that symbols must stay inside. Each symbol is confined to the polygon its true position falls in, so a symbol standing for one area can&#39;t drift into a neighboring one. Symbols in an area too small to hold them barely move, so fewer overlaps get resolved. Symbols outside every polygon are left free to move, and reported.</p>
+<p><code>polygons=</code>   Layer or file of polygons that symbols must stay inside. Each symbol is confined to the polygon its true position falls in. Symbols outside every polygon are left free to move.</p>
 <p><code>ticks=</code>      Number of solver passes (default is 100).</p>
-<p><code>strength=</code>   Portion of each overlap resolved per pass, 0-1 (default is 0.4). Higher values clear crowded areas faster but can leave symbols further from their true positions.</p>
+<p><code>strength=</code>   Portion of each overlap resolved per pass, 0-1 (default is 0.4). Higher values clear crowded areas faster but can leave symbols further from their original positions.</p>
 <p>Common options: <code>target=</code></p>
-<pre><code class="hljs language-bash"><span class="hljs-comment"># Space out proportional circles on an 800px-wide map</span>
-mapshaper cities.shp \
--proj lcc \
--symbols <span class="hljs-built_in">type</span>=circle radius=<span class="hljs-string">&#x27;Math.sqrt(POP)/40&#x27;</span> \
--repel width=800 padding=1 \
--o width=800 map.svg
-
-<span class="hljs-comment"># Put a dot in each county and keep every dot inside the state it belongs to</span>
+<pre><code># Put a dot in each county and keep them inside their respective states
 mapshaper counties.geojson \
 -proj albersusa \
 -dissolve STATE + name=states \
--style fill=<span class="hljs-string">&#x27;#eee&#x27;</span> stroke=white \
+-style fill=&#39;#eee&#39; stroke=white \
 -target counties \
 -points inner + name=dots \
 -style r=2 fill=magenta \

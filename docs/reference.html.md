@@ -1363,37 +1363,28 @@ mapshaper ne_50m_rivers_lake_centerlines.shp ne_50m_land.shp combine-files \
 
 ### -repel
 
-Move overlapping circle symbols apart, keeping each one within a set distance of its true position. The target must be a projected point layer carrying circle symbols &mdash; from [`-symbols`](#-symbols), from [`-style`](#-style) or from a `radius=` option. All targeted layers are laid out together, so symbols in different layers are moved apart from each other as well.
+Move overlapping circle symbols apart. The target must be a projected point layer containing circles from [`-symbols`](#-symbols), from [`-style`](#-style) or from the `radius=` option. All targeted layers are laid out together, so symbols in different layers are moved apart from each other as well.
 
 The layout happens in the pixel space of the map the symbols will be drawn in, so the command needs to know the display scale. It takes it from a [`-frame`](#-frame) if the target has one, and otherwise requires a `width=` option. Give the same width to `-repel` and to `-o`, or symbols will be spaced for a differently sized map.
 
-Overlaps that survive are reported as a count. Symbols too crowded to separate within `max-shift=` are left overlapping rather than moved further.
-
 `width=`      Display width of the layer in pixels. Required if the target has no frame.
 
-`max-shift=`  How far a symbol may move, in pixels (default is 20). Accepts a number, a field name or a JS expression, so the limit can vary from symbol to symbol. A symbol with a limit of 0 never moves, and other symbols are pushed clear of it.
+`max-shift=`  How far a symbol may move, in pixels (default is 20). Accepts a number, a field name or a JS expression, so the limit can vary from symbol to symbol. A symbol with a limit of 0 gets pinned in place. Symbols too crowded to separate within `max-shift=` are left overlapping
 
-`padding=`    Pixels of clearance to leave around each symbol (default is 0). Also accepts a field name or an expression. Two symbols end up with the sum of their two padding values between them.
+`padding=`    Pixels of clearance to leave around each symbol (default is 0). Accepts a field name or an expression.
 
 `radius=`     Field or expression giving symbol radius in pixels. Use this when the layer has no symbols from `-symbols` or `-style`.
 
-`polygons=`   Layer or file of polygons that symbols must stay inside. Each symbol is confined to the polygon its true position falls in, so a symbol standing for one area can't drift into a neighboring one. Symbols in an area too small to hold them barely move, so fewer overlaps get resolved. Symbols outside every polygon are left free to move, and reported.
+`polygons=`   Layer or file of polygons that symbols must stay inside. Each symbol is confined to the polygon its true position falls in. Symbols outside every polygon are left free to move.
 
 `ticks=`      Number of solver passes (default is 100).
 
-`strength=`   Portion of each overlap resolved per pass, 0-1 (default is 0.4). Higher values clear crowded areas faster but can leave symbols further from their true positions.
+`strength=`   Portion of each overlap resolved per pass, 0-1 (default is 0.4). Higher values clear crowded areas faster but can leave symbols further from their original positions.
 
 Common options: `target=`
 
-```bash
-# Space out proportional circles on an 800px-wide map
-mapshaper cities.shp \
--proj lcc \
--symbols type=circle radius='Math.sqrt(POP)/40' \
--repel width=800 padding=1 \
--o width=800 map.svg
-
-# Put a dot in each county and keep every dot inside the state it belongs to
+```
+# Put a dot in each county and keep them inside their respective states
 mapshaper counties.geojson \
 -proj albersusa \
 -dissolve STATE + name=states \
