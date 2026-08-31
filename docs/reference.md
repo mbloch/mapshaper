@@ -1398,15 +1398,6 @@ mapshaper counties.geojson \
 -o width=800 target=states,dots map.svg
 ```
 
-```
-# Leave 3px between symbols, widening to 6px around the largest cities
-mapshaper cities.geojson \
--proj webmercator \
--symbols type=circle radius='Math.sqrt(pop) / 300' fill=orange \
--repel width=800 margin='pop > 1000000 ? 6 : 3' \
--o width=800 map.svg
-```
-
 ### -require
 
 Require a Node module or ES module for use in commands like `-each` and `-run`. Modules are added to the expression context. When the `alias=` option is given, modules are accessed via their aliases. Modules that are imported by name (e.g. `-require d3`) are accessed via their name, or by their alias if the `alias=` option is used. Module files without an alias name have their exported functions and data added directly to the expression context.

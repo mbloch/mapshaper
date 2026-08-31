@@ -1,3 +1,6 @@
+v0.7.57
+* Added `-repel margin=` option, which gives the minimum spacing between two symbols. If two symbols have different margin values, the *greater* of their two margins is used.
+
 v0.7.56
 * Added `-repel` command, which removes or reduces collisions between circles. Requires a projected layer containing circle symbols.
 * The `-repel polygons=` option takes a polygon layer or file. The center of each symbol is prevented from migrating outside its starting polygon.
