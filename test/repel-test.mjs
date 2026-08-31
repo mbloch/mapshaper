@@ -3,17 +3,44 @@ import api from '../mapshaper.js';
 import {
   resolveSymbolCollisions,
   countSymbolCollisions,
-  symbolCollisionDefaults
+  symbolCollisionDefaults,
+  VISIBLE_COLLISION
 } from '../src/points/mapshaper-symbol-collisions';
 
 // Build solver nodes from [x, y, r] triples. Every node gets a shift limit of
-// @maxShift, unless it supplies its own as a fourth element.
+// @maxShift, unless it supplies its own as a fourth element. A fifth element is
+// the node's margin; nodes that omit it have no margin property at all, which
+// the solver should read as a margin of 0.
 function makeNodes(arr, maxShift) {
   if (maxShift === undefined) maxShift = symbolCollisionDefaults.max_shift;
   return arr.map(function(d, i) {
-    return {i: i, x: d[0], y: d[1], x0: d[0], y0: d[1], r: d[2],
+    var node = {i: i, x: d[0], y: d[1], x0: d[0], y0: d[1], r: d[2],
       maxShift: d.length > 3 ? d[3] : maxShift};
+    if (d.length > 4) node.margin = d[4];
+    return node;
   });
+}
+
+// Deterministic stand-in for Math.random(), so that a failing layout can be
+// reproduced from its trial number
+function pseudoRandom(i, seed) {
+  return ((Math.imul(i + 1, 2654435761) ^ Math.imul(seed + 1, 1597334677)) >>> 0) / 4294967296;
+}
+
+// What countSymbolCollisions() should return, found exhaustively
+function countCollisionsBruteForce(nodes) {
+  var count = 0, a, b, sum, dist, i, j;
+  for (i=0; i<nodes.length; i++) {
+    for (j=i+1; j<nodes.length; j++) {
+      a = nodes[i];
+      b = nodes[j];
+      sum = a.r + b.r + Math.max(a.margin || 0, b.margin || 0);
+      if (sum <= 0) continue; // margins cancel the pair's radii: no constraint
+      dist = Math.sqrt(Math.pow(b.x - a.x, 2) + Math.pow(b.y - a.y, 2));
+      if (sum - dist > VISIBLE_COLLISION) count++;
+    }
+  }
+  return count;
 }
 
 function solverOpts(opts) {
@@ -168,6 +195,68 @@ describe('mapshaper-repel.js', function () {
       assert.ok(shift(nodes[0]) <= 2 + 1e-9, 'node 0 moved ' + shift(nodes[0]));
       assert.ok(shift(nodes[1]) > 2, 'node 1 moved ' + shift(nodes[1]));
     });
+
+    it('a pair is separated by the greater of the two margins, not the sum', function () {
+      var nodes = makeNodes([[0, 0, 10, 100, 5], [8, 0, 10, 100, 1]]);
+      resolveSymbolCollisions(nodes, solverOpts({ticks: 200}));
+      // 20px of radii plus the larger margin of 5, not 5 + 1
+      var dist = nodes[1].x - nodes[0].x;
+      assert.ok(Math.abs(dist - 25) < 0.1, 'symbols are ' + dist + 'px apart');
+    });
+
+    it('a node with no margin property is laid out as if its margin were 0', function () {
+      var nodes = makeNodes([[0, 0, 10, 100], [8, 0, 10, 100]]);
+      resolveSymbolCollisions(nodes, solverOpts({ticks: 200}));
+      var dist = nodes[1].x - nodes[0].x;
+      assert.ok(Math.abs(dist - 20) < 0.1, 'symbols are ' + dist + 'px apart');
+    });
+
+    it('a negative margin lets symbols overlap', function () {
+      var nodes = makeNodes([[0, 0, 10, 100, -6], [8, 0, 10, 100, -6]]);
+      resolveSymbolCollisions(nodes, solverOpts({ticks: 200}));
+      var dist = nodes[1].x - nodes[0].x;
+      assert.ok(Math.abs(dist - 14) < 0.1, 'symbols are ' + dist + 'px apart');
+    });
+
+    it('a negative margin only applies where both symbols allow it', function () {
+      // max() means the neighbor's 0 outranks this symbol's -6
+      var nodes = makeNodes([[0, 0, 10, 100, -6], [8, 0, 10, 100, 0]]);
+      resolveSymbolCollisions(nodes, solverOpts({ticks: 200}));
+      var dist = nodes[1].x - nodes[0].x;
+      assert.ok(Math.abs(dist - 20) < 0.1, 'symbols are ' + dist + 'px apart');
+    });
+
+    it('margins that cancel a pair of radii leave the pair alone', function () {
+      var nodes = makeNodes([[0, 0, 10, 100, -25], [8, 0, 10, 100, -25]]);
+      assert.equal(resolveSymbolCollisions(nodes, solverOpts()), 0);
+      assert.equal(countSymbolCollisions(nodes), 0);
+      assert.strictEqual(nodes[0].x, 0);
+      assert.strictEqual(nodes[1].x, 8);
+    });
+
+    // The x-axis sweep breaks out of its inner loop early, on a bound that has
+    // to allow for margins; a negative margin invalidates the obvious version of
+    // it and pairs stop being compared. Radii and margins here are of similar
+    // size, so pairs whose margins cancel their radii are covered too.
+    it('the sweep finds every colliding pair, whatever the margins', function () {
+      var trial, i, nodes, expected, found;
+      for (trial=0; trial<20; trial++) {
+        nodes = [];
+        for (i=0; i<60; i++) {
+          nodes.push({i: i,
+            x: pseudoRandom(i, trial) * 90,
+            y: pseudoRandom(i, trial + 99) * 90,
+            x0: 0, y0: 0,
+            r: 3 + pseudoRandom(i, trial + 199) * 5,
+            margin: -12 + 24 * pseudoRandom(i, trial + 299),
+            maxShift: 20});
+        }
+        expected = countCollisionsBruteForce(nodes);
+        found = countSymbolCollisions(nodes);
+        assert.equal(found, expected,
+          'trial ' + trial + ': swept ' + found + ' pairs, expected ' + expected);
+      }
+    });
   });
 
   describe('-repel command', function () {
@@ -271,6 +360,86 @@ describe('mapshaper-repel.js', function () {
       var coords = getCoords(out['out.json']);
       var dist = Math.abs(coords[1][0] - coords[0][0]);
       assert.ok(dist > 24.9 && dist < 25.1, 'symbols are ' + dist + 'px apart');
+    });
+
+    it('margin= adds clearance between symbols', async function () {
+      var input = pointsGeoJSON([[0, 0], [8, 0], [1000, 0]]);
+      var out = await api.applyCommands(
+        '-i in.json -style r=10 -repel width=1000 max-shift=50 margin=5 -o out.json',
+        {'in.json': input});
+      var coords = getCoords(out['out.json']);
+      // 20px of radii plus a 5px gap; the same value as padding= would give 30
+      var dist = Math.abs(coords[1][0] - coords[0][0]);
+      assert.ok(dist > 24.9 && dist < 25.1, 'symbols are ' + dist + 'px apart');
+    });
+
+    it('margin= takes the greater of two symbols where padding= takes the sum', async function () {
+      var input = pointsGeoJSON([[0, 0], [8, 0], [1000, 0]],
+        [{gap: 5}, {gap: 1}, {gap: 0}]);
+      var marginOut = await api.applyCommands(
+        '-i in.json -style r=10 -repel width=1000 max-shift=50 margin=gap -o out.json',
+        {'in.json': input});
+      var paddingOut = await api.applyCommands(
+        '-i in.json -style r=10 -repel width=1000 max-shift=50 padding=gap -o out.json',
+        {'in.json': input});
+      var marginDist = Math.abs(getCoords(marginOut['out.json'])[1][0] -
+        getCoords(marginOut['out.json'])[0][0]);
+      var paddingDist = Math.abs(getCoords(paddingOut['out.json'])[1][0] -
+        getCoords(paddingOut['out.json'])[0][0]);
+      assert.ok(marginDist > 24.9 && marginDist < 25.1, 'margin= gave ' + marginDist + 'px');
+      assert.ok(paddingDist > 25.9 && paddingDist < 26.1, 'padding= gave ' + paddingDist + 'px');
+    });
+
+    it('margin= accepts an expression', async function () {
+      var input = pointsGeoJSON([[0, 0], [8, 0], [1000, 0]],
+        [{big: 1}, {big: 0}, {big: 0}]);
+      var out = await api.applyCommands(
+        "-i in.json -style r=10 -repel width=1000 max-shift=50 margin='big ? 6 : 2' -o out.json",
+        {'in.json': input});
+      var coords = getCoords(out['out.json']);
+      // One symbol asks for 6px and its neighbor for 2px, so the gap is 6px
+      var dist = Math.abs(coords[1][0] - coords[0][0]);
+      assert.ok(dist > 25.9 && dist < 26.1, 'symbols are ' + dist + 'px apart');
+    });
+
+    it('margin= and padding= combine', async function () {
+      var input = pointsGeoJSON([[0, 0], [8, 0], [1000, 0]]);
+      var out = await api.applyCommands(
+        '-i in.json -style r=10 -repel width=1000 max-shift=50 padding=1 margin=4 -o out.json',
+        {'in.json': input});
+      var coords = getCoords(out['out.json']);
+      // 20px of radii, 1px of padding each, plus the 4px margin
+      var dist = Math.abs(coords[1][0] - coords[0][0]);
+      assert.ok(dist > 25.9 && dist < 26.1, 'symbols are ' + dist + 'px apart');
+    });
+
+    it('a negative margin= lets symbols overlap', async function () {
+      var input = pointsGeoJSON([[0, 0], [2, 0], [1000, 0]]);
+      var out = await api.applyCommands(
+        '-i in.json -style r=10 -repel width=1000 max-shift=50 margin=-6 -o out.json',
+        {'in.json': input});
+      var coords = getCoords(out['out.json']);
+      var dist = Math.abs(coords[1][0] - coords[0][0]);
+      assert.ok(dist > 13.9 && dist < 14.1, 'symbols are ' + dist + 'px apart');
+    });
+
+    it('a negative margin= applies only where both symbols allow it', async function () {
+      var input = pointsGeoJSON([[0, 0], [2, 0], [1000, 0]],
+        [{gap: -6}, {gap: 0}, {gap: 0}]);
+      var out = await api.applyCommands(
+        '-i in.json -style r=10 -repel width=1000 max-shift=50 margin=gap -o out.json',
+        {'in.json': input});
+      var coords = getCoords(out['out.json']);
+      var dist = Math.abs(coords[1][0] - coords[0][0]);
+      assert.ok(dist > 19.9 && dist < 20.1, 'symbols are ' + dist + 'px apart');
+    });
+
+    it('errors on an unusable margin= value', async function () {
+      await assert.rejects(function() {
+        return api.applyCommands(
+          '-i in.json -style r=10 -repel width=1000 margin=nonsense -o out.json',
+          {'in.json': pointsGeoJSON([[0, 0], [8, 0], [1000, 0]])});
+      }, /margin/);
     });
 
     it('max-shift= accepts an expression', async function () {

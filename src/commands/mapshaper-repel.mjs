@@ -30,9 +30,17 @@ import {
 // An optional polygons= layer confines each symbol to the polygon it started
 // in, so that a symbol standing for one area can't drift into a neighboring
 // one. Symbols in an area too small to hold them barely move as a result, and
-// their overlaps go unresolved -- that is the point of the option, but it does
-// mean fewer overlaps get fixed.
+// their collisions go unresolved -- that is the point of the option, but it does
+// mean fewer collisions get fixed.
+//
+// Clearance between symbols can be asked for in two ways. padding= surrounds
+// each symbol, so a pair ends up with the sum of their two paddings between
+// them; margin= is a gap a symbol claims from every neighbor, so a pair ends up
+// with the greater of their two margins. Use padding= to make a symbol keep its
+// distance in proportion to how much of it there is, and margin= to set a gap
+// that holds however the neighbor is configured.
 var DEFAULT_PADDING = 0; // pixels
+var DEFAULT_MARGIN = 0; // pixels
 
 cmd.repel = function(targetLayers, dataset, catalog, polygonSource, opts) {
   var solverOpts = {
@@ -113,17 +121,19 @@ function applyDisplacement(nodes, pixelsPerUnit) {
 function reportResults(nodes, moved, before, after, contained) {
   var total = nodes.length;
   var msg = utils.format('Moved %d of %d symbol%s', moved, total, total == 1 ? '' : 's');
-  // Counts are of visible overlaps only, so a layout whose symbols end up
-  // touching or a fraction of a pixel apart is reported as finished, and the
-  // advice to raise max-shift= is not given when nothing is left to fix.
+  // Counts are of visible collisions only, so a layout whose symbols end up at
+  // or a fraction of a pixel short of the separation they need is reported as
+  // finished, and the advice to raise max-shift= is not given when nothing is
+  // left to fix. A collision is not the same as an overlap: two symbols asked to
+  // keep a gap between them collide as soon as the gap closes.
   if (after > 0) {
-    msg += utils.format('; %d of %d visible overlap%s remain (%s)',
+    msg += utils.format('; %d of %d visible collision%s remain (%s)',
       after, before, before == 1 ? '' : 's',
       contained ? getMaxShiftAdvice(nodes) + ', or drop polygons=' : getMaxShiftAdvice(nodes));
   } else if (before > 0) {
-    msg += utils.format('; resolved %d visible overlap%s', before, before == 1 ? '' : 's');
+    msg += utils.format('; resolved %d visible collision%s', before, before == 1 ? '' : 's');
   } else {
-    msg += ' (no visible overlaps found)';
+    msg += ' (no visible collisions found)';
   }
   message(msg);
 }
@@ -157,6 +167,7 @@ function layerHasCircleSymbols(lyr) {
 function addLayerNodes(nodes, lyr, pixelsPerUnit, opts) {
   var getRadius = getRadiusAccessor(lyr, opts);
   var getPadding = getPixelValueAccessor(opts.padding, 'padding', DEFAULT_PADDING, lyr);
+  var getMargin = getPixelValueAccessor(opts.margin, 'margin', DEFAULT_MARGIN, lyr, true);
   var getMaxShift = getPixelValueAccessor(opts.max_shift, 'max-shift',
       symbolCollisionDefaults.max_shift, lyr);
   var i, shp, p, r;
@@ -175,23 +186,32 @@ function addLayerNodes(nodes, lyr, pixelsPerUnit, opts) {
       x0: p[0] * pixelsPerUnit,
       y0: p[1] * pixelsPerUnit,
       // Padding is added to the radius, so a pair of symbols ends up with
-      // (padding a + padding b) pixels of clearance between them.
+      // (padding a + padding b) pixels of clearance between them. A margin is
+      // kept separate, because the solver has to compare the two symbols'
+      // margins to find the gap a pair needs.
       r: r + getPadding(i),
+      margin: getMargin(i),
       maxShift: getMaxShift(i)
     });
   }
 }
 
-// padding= and max-shift= accept a number, a field name or an expression, and
-// so are resolved for each symbol.
-function getPixelValueAccessor(optVal, name, defaultVal, lyr) {
+// padding=, margin= and max-shift= accept a number, a field name or an
+// expression, and so are resolved for each symbol.
+//
+// @allowNegative is for margin=, where a negative value asks that a pair of
+// symbols be allowed to overlap. Elsewhere a negative value is an error: it
+// would shrink a radius or a shift limit, neither of which is a coherent
+// request. A margin still has to be a finite number, so NaN is rejected either
+// way.
+function getPixelValueAccessor(optVal, name, defaultVal, lyr, allowNegative) {
   if (optVal === undefined || optVal === null || optVal === '') {
     return function(i) {return defaultVal;};
   }
   var accessor = getPropertyAccessor(optVal, 'number', lyr, name);
   return function(i) {
     var val = +accessor(i);
-    if (!(val >= 0)) {
+    if (allowNegative ? !isFinite(val) : !(val >= 0)) {
       stop(utils.format('Invalid %s= value: %s', name, accessor(i)));
     }
     return val;

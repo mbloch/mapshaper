@@ -2071,6 +2071,9 @@ export function getOptionParser() {
     .option('padding', {
       describe: 'pixels of clearance around each symbol; may vary (default is 0)'
     })
+    .option('margin', {
+      describe: 'pixels of clearance between two symbols; may vary (default is 0)'
+    })
     .option('ticks', {
       describe: 'number of solver passes (default is 100)',
       type: 'number'
