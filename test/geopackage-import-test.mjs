@@ -205,6 +205,56 @@ describe('mapshaper-geopackage-import.js', function () {
       'state should not be listed as missing');
   });
 
+  // Some GeoPackages in the wild (e.g. USGS National Map vector products, whose
+  // CLIPPOLY table is dropped but left in gpkg_contents) advertise feature
+  // tables that aren't in the file. The fixture reproduces that shape: 'roads'
+  // is listed in gpkg_contents and gpkg_geometry_columns but the table is gone.
+  it('skips a feature table that is advertised but missing from the file', async function () {
+    var gpkgPath = fixPath('data/geopackage/missing_feature_table.gpkg');
+    var result = await api.internal.importFileAsync(gpkgPath, {});
+    var datasets = Array.isArray(result) ? result : [result];
+    var names = datasets.reduce(function(memo, dataset) {
+      return memo.concat(dataset.layers.map(function(lyr) { return lyr.name; }));
+    }, []).sort();
+    assert.deepEqual(names, ['land']);
+  });
+
+  it('imports readable layers of a file with a missing feature table', async function () {
+    var gpkgPath = fixPath('data/geopackage/missing_feature_table.gpkg');
+    var output = await api.applyCommands('-i "' + gpkgPath + '" -o format=json');
+    var json = JSON.parse(output['land.json']);
+    assert.equal(json.length, 1);
+    assert.equal(json[0].NAME, 'Oregon');
+  });
+
+  it('imports a selected layer alongside a missing feature table', async function () {
+    var gpkgPath = fixPath('data/geopackage/missing_feature_table.gpkg');
+    var result = await api.internal.importFileAsync(gpkgPath, {
+      gpkg_layers: ['land']
+    });
+    var datasets = Array.isArray(result) ? result : [result];
+    var names = datasets.reduce(function(memo, dataset) {
+      return memo.concat(dataset.layers.map(function(lyr) { return lyr.name; }));
+    }, []);
+    assert.deepEqual(names, ['land']);
+  });
+
+  it('throws a distinct error if -i layers names an unreadable table', async function () {
+    var gpkgPath = fixPath('data/geopackage/missing_feature_table.gpkg');
+    var err = null;
+    try {
+      await api.applyCommands('-i "' + gpkgPath + '" layers=roads -info');
+    } catch (e) {
+      err = e;
+    }
+    assert(err, 'expected an error');
+    var msg = String(err.message);
+    assert(msg.includes('Unable to read GeoPackage layer(s): roads'), msg);
+    // An advertised-but-broken table is not the same as a name that isn't in
+    // the file, so it shouldn't be reported as missing.
+    assert(!msg.includes('Missing GeoPackage layer(s)'), msg);
+  });
+
   it('aggregates available layers across multiple GeoPackage files', async function () {
     var gpkg1 = fixPath('data/geopackage/Oregon.gpkg');
     var gpkg2 = fixPath('data/geopackage/same_crs_points.gpkg');

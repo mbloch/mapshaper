@@ -316,12 +316,14 @@ export async function importFilesTogetherAsync(files, opts) {
 function validateAndCleanGpkgSelection(datasets, opts) {
   var availableSet = new Set();
   var importedSet = new Set();
+  var unreadableSet = new Set();
   var sawGpkg = false;
   datasets.forEach(function(ds) {
     var info = ds && ds.info;
     if (!info || !Array.isArray(info._gpkg_available_layers)) return;
     sawGpkg = true;
     info._gpkg_available_layers.forEach(function(name) { availableSet.add(name); });
+    (info._gpkg_unreadable_layers || []).forEach(function(name) { unreadableSet.add(name); });
     if (!info._gpkg_placeholder) {
       (ds.layers || []).forEach(function(lyr) {
         if (lyr && lyr.name) importedSet.add(lyr.name);
@@ -329,9 +331,17 @@ function validateAndCleanGpkgSelection(datasets, opts) {
     }
   });
   if (sawGpkg && Array.isArray(opts.layers) && opts.layers.length > 0) {
-    var missing = opts.layers.filter(function(name) {
+    var absent = opts.layers.filter(function(name) {
       return !importedSet.has(name);
     });
+    // A layer that the file advertises but that can't be parsed is skipped with
+    // a warning during import; report it separately here, because saying it is
+    // missing while also listing it as an existing layer is contradictory.
+    var unreadable = absent.filter(function(name) { return unreadableSet.has(name); });
+    var missing = absent.filter(function(name) { return !unreadableSet.has(name); });
+    if (unreadable.length > 0) {
+      stop('Unable to read GeoPackage layer(s): ' + unreadable.join(', '));
+    }
     if (missing.length > 0) {
       stop(
         'Missing GeoPackage layer(s): ' + missing.join(', ') + '\n' +
@@ -345,6 +355,7 @@ function validateAndCleanGpkgSelection(datasets, opts) {
   cleaned.forEach(function(ds) {
     if (ds && ds.info) {
       delete ds.info._gpkg_available_layers;
+      delete ds.info._gpkg_unreadable_layers;
       delete ds.info._gpkg_placeholder;
     }
   });

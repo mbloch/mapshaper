@@ -1,6 +1,6 @@
 import { GeoJSONParser } from '../geojson/geojson-import';
 import { mergeDatasets } from '../dataset/mapshaper-merging';
-import { stop, warnOnce } from '../utils/mapshaper-logging';
+import { stop, warn, warnOnce } from '../utils/mapshaper-logging';
 import utils from '../utils/mapshaper-utils';
 import require from '../mapshaper-require';
 import { initProjLibrary } from '../crs/mapshaper-projections';
@@ -34,9 +34,10 @@ export async function importGeoPackage(input, optsArg) {
   ({gpkg, tmpPath} = await openGeoPackage(input, geopackage));
   var availableLayers;
   var filterApplied;
+  var unreadableLayers;
   try {
     try {
-      ({datasets, availableLayers, filterApplied} = readFeatureTableDatasets(gpkg, opts));
+      ({datasets, availableLayers, filterApplied, unreadableLayers} = readFeatureTableDatasets(gpkg, opts));
     } catch (e) {
       if (!runningInBrowser() && isLocalCsProjError(e)) {
         gpkg.close();
@@ -49,7 +50,7 @@ export async function importGeoPackage(input, optsArg) {
           throw e;
         }
         gpkg = await geopackage.GeoPackageAPI.open(tmpPath);
-        ({datasets, availableLayers, filterApplied} = readFeatureTableDatasets(gpkg, opts));
+        ({datasets, availableLayers, filterApplied, unreadableLayers} = readFeatureTableDatasets(gpkg, opts));
       } else {
         throw e;
       }
@@ -64,6 +65,7 @@ export async function importGeoPackage(input, optsArg) {
       layers: [{name: '', data: null}],
       info: {
         _gpkg_available_layers: availableLayers,
+        _gpkg_unreadable_layers: unreadableLayers,
         _gpkg_placeholder: !!filterApplied
       }
     };
@@ -75,6 +77,7 @@ export async function importGeoPackage(input, optsArg) {
   mergedArr.forEach(function(ds) {
     ds.info = ds.info || {};
     ds.info._gpkg_available_layers = availableLayers;
+    ds.info._gpkg_unreadable_layers = unreadableLayers;
   });
   return merged;
 }
@@ -200,10 +203,38 @@ function readFeatureTableDatasets(gpkg, opts) {
   var availableLayers = gpkg.getFeatureTables() || [];
   var tables = filterGeoPackageTables(availableLayers, selected);
   var filterApplied = Array.isArray(selected) && selected.length > 0;
-  var datasets = tables.map(function(table) {
-    return readFeatureTable(gpkg, table, opts);
+  var unreadableLayers = [];
+  var datasets = [];
+  tables.forEach(function(table) {
+    try {
+      datasets.push(readFeatureTable(gpkg, table, opts));
+    } catch (e) {
+      // The caller recovers from a CRS parsing failure by rewriting the file's
+      // CRS metadata and re-reading, so that error must not be swallowed here.
+      if (isLocalCsProjError(e)) throw e;
+      unreadableLayers.push(table);
+      warn(formatUnreadableTableMessage(table, e));
+    }
   });
-  return {datasets: datasets, availableLayers: availableLayers, filterApplied: filterApplied};
+  return {
+    datasets: datasets,
+    availableLayers: availableLayers,
+    filterApplied: filterApplied,
+    unreadableLayers: unreadableLayers
+  };
+}
+
+// A GeoPackage can advertise feature tables that aren't readable. USGS National
+// Map vector products, for instance, list a CLIPPOLY table in gpkg_contents and
+// gpkg_geometry_columns after dropping the table itself from the file. GDAL
+// skips such layers with a warning; do the same rather than failing the whole
+// import over one bad table.
+function formatUnreadableTableMessage(table, err) {
+  var msg = err && err.message ? String(err.message) : '';
+  var reason = /^Table does not exist:/.test(msg) ?
+    'the table is listed in the GeoPackage metadata but is missing from the file' :
+    msg || 'unknown error';
+  return 'Skipping GeoPackage layer "' + table + '": ' + reason;
 }
 
 function getSelectedGeoPackageLayers(opts) {
