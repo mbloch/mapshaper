@@ -1,6 +1,7 @@
 import { getAffineTransform } from '../commands/mapshaper-affine';
 import utils from '../utils/mapshaper-utils';
 import { getRoundingFunction } from '../geom/mapshaper-rounding';
+import { parseNumberList, splitListItems } from '../cli/mapshaper-option-parsing-utils';
 
 var roundCoord = getRoundingFunction(0.01);
 
@@ -27,6 +28,94 @@ export function applySymbolStyles(sym, d) {
 export function getSymbolRadius(d) {
   if (d.radius === 0 || d.length === 0 || d.r === 0) return 0;
   return d.radius || d.length || d.r || 5; // use a default value
+}
+
+// Converts the value of a list-valued option into an array of items. The value
+// arrives either as a whole string (from a direct call, rather than from the
+// -symbols option accessor) or as an array of items already resolved one by
+// one. An item that holds an array of its own, as an expression like
+// [R, R * 0.5] does, is flattened into the list. Items themselves are left
+// unsplit, because a single item can contain a comma, as rgba() colors do.
+export function toItemList(val) {
+  var items = utils.isString(val) ? splitListItems(val) : [].concat(val);
+  var list = [];
+  for (var i=0; i<items.length; i++) {
+    if (Array.isArray(items[i])) {
+      list = list.concat(items[i]);
+    } else {
+      list.push(items[i]);
+    }
+  }
+  return list;
+}
+
+// Like toItemList(), for options that take numbers. An item that is a string
+// containing commas is split, so that a data field holding a value like "2,4"
+// works as a list. Values that aren't numbers become NaN, for the caller to
+// report or ignore.
+export function toNumberList(val) {
+  var list = [];
+  toItemList(val).forEach(function(item) {
+    if (utils.isString(item) && item.indexOf(',') > -1) {
+      list = list.concat(parseNumberList(item));
+    } else {
+      list.push(Number(item));
+    }
+  });
+  return list;
+}
+
+// Returns the radius of the smallest circle centered on a symbol's point that
+// covers the symbol, or null if the symbol contains a part whose reach can't be
+// measured.
+//
+// Only a symbol drawn around its point can be described this way: a circle, or
+// a group of the circles and polygons that make up ring, pie and donut symbols.
+// An arrow is drawn from its point outward, so the circle around its point that
+// covers it says nothing useful about the space it occupies -- arrows are plain
+// polygon symbols, which reach this function only as group parts, which they
+// never are.
+export function getSymbolBoundingRadius(sym) {
+  var max = 0;
+  var parts, r, i;
+  if (!sym) return null;
+  if (sym.type == 'circle') {
+    // Half of a stroke lies outside the circle it follows, which is how a ring
+    // symbol paints its bands.
+    return getPositiveNumber(sym.r) + getStrokeOutset(sym);
+  }
+  if (sym.type == 'polygon') {
+    forEachSymbolCoord(sym.coordinates || [], function(p) {
+      var dist = Math.sqrt(p[0] * p[0] + p[1] * p[1]);
+      if (dist > max) max = dist;
+    });
+    return max + getStrokeOutset(sym);
+  }
+  if (sym.type == 'group') {
+    parts = sym.parts || [];
+    for (i=0; i<parts.length; i++) {
+      r = getSymbolBoundingRadius(parts[i]);
+      if (r === null) return null;
+      if (r > max) max = r;
+    }
+    return max;
+  }
+  return null;
+}
+
+// A stroke straddles the path it is drawn on, so half of its width extends
+// beyond the shape.
+function getStrokeOutset(sym) {
+  var width = sym['stroke-width'];
+  if (!sym.stroke || sym.stroke == 'none') return 0;
+  // an SVG stroke is one pixel wide unless stroke-width says otherwise
+  if (width === undefined || width === null || width === '') return 0.5;
+  return getPositiveNumber(width) / 2;
+}
+
+function getPositiveNumber(val) {
+  var num = +val;
+  return num > 0 ? num : 0;
 }
 
 export function forEachSymbolCoord(coords, cb) {

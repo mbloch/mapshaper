@@ -2060,7 +2060,7 @@ export function getOptionParser() {
    .option('target', targetOpt);
 
   parser.command('repel')
-    .describe('move overlapping circle symbols apart')
+    .describe('move overlapping point symbols apart')
     .option('width', {
       describe: 'display width of the layer in pixels (required if no frame)',
       type: 'number'
@@ -2093,7 +2093,7 @@ export function getOptionParser() {
   parser.command('symbols')
     .describe('symbolize points as arrows, circles, stars, polygons, etc.')
     .option('type', {
-      describe: 'types: arrow, circle, square, star, polygon, ring'
+      describe: 'types: arrow, circle, square, star, polygon, ring, pie'
     })
     .option('stroke', {})
     .option('stroke-width', {})
@@ -2151,6 +2151,15 @@ export function getOptionParser() {
     })
     .option('radii', {
       describe: '(ring) comma-sep. list of concentric radii, ascending order'
+    })
+    .option('hole', {
+      describe: '(pie) radius of the hole in a donut symbol'
+    })
+    .option('values', {
+      describe: '(pie) comma-sep. list of wedge values (numbers or fields)'
+    })
+    .option('fills', {
+      describe: '(pie) comma-sep. list of wedge fill colors'
     })
     .option('arrow-style', {
       describe: '(arrow) options: stick, standard (default is standard)'

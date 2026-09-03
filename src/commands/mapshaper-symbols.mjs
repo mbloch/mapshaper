@@ -8,6 +8,7 @@ import { getFilledArrowCoords, getStickArrowCoords } from '../symbols/mapshaper-
 import { getPolygonCoords, makeCircleSymbol } from '../symbols/mapshaper-basic-symbols';
 import { getStarCoords } from '../symbols/mapshaper-star-symbols';
 import { getRingCoords, makeRingSymbol } from '../symbols/mapshaper-ring-symbols';
+import { makePieSymbol } from '../symbols/mapshaper-pie-symbols';
 import { getAffineTransform } from '../commands/mapshaper-affine';
 import { mergeOutputLayerIntoDataset } from '../dataset/mapshaper-dataset-utils';
 import { importGeoJSON } from '../geojson/geojson-import';
@@ -47,6 +48,17 @@ cmd.symbols = function(inputLyr, dataset, opts) {
     if (!shp) return null;
     var d = getSymbolData(i);
     var rec = records[i] || {};
+
+    // A pie has a different fill for each of its wedges, which the single
+    // fill field of a generated shape can't express.
+    if (d.type == 'pie') {
+      if (shapeMode) {
+        stop('The pie symbol type does not support the geographic option.');
+      }
+      var pie = makePieSymbol(d, opts);
+      if (pie) rec['svg-symbol'] = pie;
+      return;
+    }
 
     // non-polygon symbols
     if (!shapeMode && d.type == 'circle') {

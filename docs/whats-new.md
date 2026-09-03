@@ -7,6 +7,15 @@ description: A curated log of recently added user-visible features in Mapshaper,
 
 This is a curated list of recently added features. For the full list of changes, including bug fixes and internal work, see the [changelog](https://github.com/mbloch/mapshaper/blob/master/CHANGELOG.md) on GitHub.
 
+## September 2026
+
+<div class="whats-new-entry">
+
+**Pie and donut symbols.** The `-symbols` command has a new `pie` type. A `values=` list sets the size of each wedge from numbers, field names or expressions, and a `fills=` list sets their colors. Adding `hole=` makes the symbol a donut, either as a radius or, if negative, as a distance inward from the edge.
+
+→ See [`-symbols`](/docs/reference.html#-symbols) and the [styles and symbols guide](/docs/guides/styles-and-symbols.html).
+</div>
+
 ## August 2026
 
 <div class="whats-new-entry">

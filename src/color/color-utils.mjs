@@ -86,14 +86,15 @@ function formatHexChannel(arg) {
 export function parseHexColor(str) {
   var hex = hexRxp.exec(str)[1];
   if (hex.length == 3 || hex.length == 4) {
-    hex = hex.split('').map(function(c) { return c + c; });
+    // expand shorthand, e.g. #f90 -> #ffcc00
+    hex = hex.split('').map(function(c) { return c + c; }).join('');
   }
   if (hex.length != 6 && hex.length != 8) return null;
   return {
     r: parseInt(hex.substr(0, 2), 16),
     g: parseInt(hex.substr(2, 2), 16),
     b: parseInt(hex.substr(4, 2), 16),
-    a: hex.length == 8 ? parseInt(hex.substr(7, 2), 16) / 255 : 1
+    a: hex.length == 8 ? parseInt(hex.substr(6, 2), 16) / 255 : 1
   };
 }
 

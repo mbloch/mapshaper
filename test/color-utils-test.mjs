@@ -8,6 +8,26 @@ describe('color-utils.js', function () {
       assert.deepEqual(col, {r: 0, g: 255, b: 0, a: 1 });
     })
 
+    it('#0f0 (shorthand hex)', function () {
+      assert.deepEqual(parseColor('#0f0'), {r: 0, g: 255, b: 0, a: 1});
+    })
+
+    it('#0f08 (shorthand hex with alpha)', function () {
+      var col = parseColor('#0f08');
+      assert.deepEqual([col.r, col.g, col.b], [0, 255, 0]);
+      assert.equal(col.a.toFixed(2), '0.53');
+    })
+
+    it('#00ff0080 (hex with alpha)', function () {
+      var col = parseColor('#00ff0080');
+      assert.deepEqual([col.r, col.g, col.b], [0, 255, 0]);
+      assert.equal(col.a.toFixed(2), '0.50');
+    })
+
+    it('#00ff00ff (opaque hex with alpha)', function () {
+      assert.deepEqual(parseColor('#00ff00ff'), {r: 0, g: 255, b: 0, a: 1});
+    })
+
     it ('black', function() {
       assert.deepEqual(parseColor('black'), {r: 0, g: 0, b: 0, a: 1});
     })

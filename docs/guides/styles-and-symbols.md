@@ -13,7 +13,7 @@ The examples below are written for the web app's Console. Load your data first, 
 
 `-style` writes common SVG presentation attributes to each feature. Line layers can be styled with `stroke=`, `stroke-width=`, `stroke-opacity=`, `stroke-dasharray=` and `opacity=`. Polygon layers add `fill=` and `fill-opacity=` options.
 
-Style values can be literal values, like `stroke="#777"`, or JavaScript expressions, like `r='sqrt(POP) / 100'`. Use `where=` to override the styles of a selected group of features.
+Style values can be literal values, like `stroke="#777"`, or JavaScript expressions, like `r='Math.sqrt(POP) / 100'`. Use `where=` to override the styles of a selected group of features.
 
 ```text
 -style fill="#eee" stroke="#999" \
@@ -96,7 +96,7 @@ For a point layer with `SPEED` and `BEARING` fields, this example scales arrow l
 
 ```text
 -symbols type=arrow \
-  length='max(8, min(60, SPEED * 2))' \
+  length='Math.max(8, Math.min(60, SPEED * 2))' \
   direction=BEARING \
   fill="rgba(49, 130, 189, 0.65)" \
   stem-width=3 head-width=12 anchor=middle
@@ -108,11 +108,29 @@ For a lighter vector-field style, use stick arrows. This draws arrow strokes ins
 
 ```text
 -symbols type=arrow arrow-style=stick \
-  length='max(6, min(45, WIND_SPEED * 1.5))' \
+  length='Math.max(6, Math.min(45, WIND_SPEED * 1.5))' \
   direction=WIND_DIR \
   stroke="#2b8cbe" stroke-width=1.2 \
   head-length=6 anchor=middle
 ```
+
+## Making pie and donut charts with the `-symbols` command
+
+`type=pie` divides a symbol into wedges. `values=` lists the size of each wedge and `fills=` lists its color. The values are shares of the whole symbol, so their sum is the 100% value — there's no need to convert them to percentages first.
+
+This example makes a pie chart of three vote fields, sized by `radius=`.
+
+```text
+-symbols type=pie \
+  values=DEM,REP,OTHER \
+  fills="#2b8cbe,#de2d26,#bbb" \
+  radius='Math.sqrt(TOTAL_VOTES) / 8' \
+  stroke="#fff" stroke-width=0.5
+```
+
+Wedges start at the top of the symbol and follow in clockwise order. Add `rotation=` to start somewhere else.
+
+Adding `hole=<radius>` makes a donut instead, with the wedges spanning the space between the hole and the outer radius. A negative `hole=` value is measured inward from the outer radius, so `hole=-5` gives a band of wedges 5 pixels wide whatever the symbol's radius.
 
 ## Making labels with `-style`
 

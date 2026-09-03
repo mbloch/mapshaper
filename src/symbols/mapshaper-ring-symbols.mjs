@@ -1,7 +1,6 @@
 import { getPolygonCoords } from './mapshaper-basic-symbols';
-import { parseNumberList } from '../cli/mapshaper-option-parsing-utils';
 import utils from '../utils/mapshaper-utils';
-import { getSymbolFillColor } from './mapshaper-symbol-utils';
+import { getSymbolFillColor, toNumberList } from './mapshaper-symbol-utils';
 import { roundToTenths } from '../geom/mapshaper-rounding';
 
 // Returns a svg-symbol object
@@ -62,7 +61,7 @@ export function getRingCoords(d) {
 }
 
 function parseRings(arg) {
-  var arr = Array.isArray(arg) ? arg : parseNumberList(arg);
+  var arr = toNumberList(arg);
   utils.genericSort(arr, true);
   return utils.uniq(arr);
 }

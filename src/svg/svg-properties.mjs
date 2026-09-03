@@ -1,4 +1,5 @@
 import { compileFeatureExpression } from '../expressions/mapshaper-feature-expressions';
+import { splitListItems } from '../cli/mapshaper-option-parsing-utils';
 import utils from '../utils/mapshaper-utils';
 import { stop } from '../utils/mapshaper-logging';
 import { parsePattern } from '../svg/svg-hatch';
@@ -46,7 +47,10 @@ var symbolPropertyTypes = utils.extend({
   length: 'number', // e.g. arrow length
   rotation: 'number',
   radius: 'number',
-  radii: null, // string, parsed by function
+  radii: null, // (ring) list, see symbolListProperties
+  hole: 'number', // (pie) radius of the hole in a donut
+  values: null, // (pie) list, see symbolListProperties
+  fills: null, // (pie) list, see symbolListProperties
   flipped: 'boolean',
   rotated: 'boolean',
   direction: 'number',
@@ -64,6 +68,18 @@ var symbolPropertyTypes = utils.extend({
   'arrow-scaling': 'number',
   effect: null // e.g. "fade"
 }, stylePropertyTypes);
+
+// Options that take a list of values -- one for each part of a multi-part
+// symbol -- instead of a single value. Each item in the list is resolved
+// separately, so an item can be a literal value, a field name or an
+// expression. The type hint for fills= is null on purpose: an item that isn't
+// a recognizable color is passed along as a literal string, so that a symbol
+// can leave that part unfilled instead of the command failing.
+var symbolListProperties = {
+  radii: 'number',
+  values: 'number',
+  fills: null
+};
 
 var commonProperties = 'css,class,opacity,stroke,stroke-width,stroke-dasharray,stroke-opacity,fill-opacity,vector-effect'.split(',');
 
@@ -140,7 +156,9 @@ export function getSymbolDataAccessor(lyr, opts) {
       return;
     }
     var val = opts[optName];
-    functions[svgName] = getSymbolPropertyAccessor(val, svgName, lyr);
+    functions[svgName] = svgName in symbolListProperties ?
+      getSymbolListAccessor(val, svgName, lyr) :
+      getSymbolPropertyAccessor(val, svgName, lyr);
     properties.push(svgName);
   });
 
@@ -170,6 +188,21 @@ export function getSymbolPropertyAccessor(val, svgName, lyr) {
   return getPropertyAccessor(val, symbolPropertyTypes[svgName], lyr, svgName);
 }
 
+// Returns a function that maps a feature id to an array of values, for options
+// like values= and fills= that describe the parts of a multi-part symbol.
+// The option may be given as an array or as a comma-separated list.
+export function getSymbolListAccessor(val, svgName, lyr) {
+  var typeHint = symbolListProperties[svgName];
+  var items = Array.isArray(val) ? val : splitListItems(String(val));
+  var accessors = items.map(function(item) {
+    return getPropertyAccessor(item, typeHint, lyr, svgName);
+  });
+  return function(id) {
+    return accessors.map(function(accessor) {
+      return accessor(id);
+    });
+  };
+}
 // Returns a function that maps a feature id to a property value. The value may
 // be given as a literal, as the name of a data field, or as a JS expression
 // evaluated against each feature.

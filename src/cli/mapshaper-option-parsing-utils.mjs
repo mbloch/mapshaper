@@ -60,6 +60,39 @@ export function parseColorList(token) {
   return list;
 }
 
+// Splits a comma-delimited list into items, for the list-valued options of the
+// -symbols command (radii=, values=, fills=). Unlike parseStringList(), empty
+// items are kept, so that a blank item in one list still lines up with its
+// counterpart in another. Commas nested inside parentheses, brackets, braces
+// or quotes are not delimiters, so items like rgba(0,0,0,0.5), Math.max(A,B)
+// and [R, R * 0.5] survive as single items.
+export function splitListItems(str) {
+  var items = [];
+  var start = 0;
+  var depth = 0;
+  var quote = '';
+  var c;
+  for (var i=0, n=str.length; i<n; i++) {
+    c = str[i];
+    if (quote) {
+      if (c === quote) quote = '';
+    } else if (c === '"' || c === "'") {
+      quote = c;
+    } else if (c === '(' || c === '[' || c === '{') {
+      depth++;
+    } else if (c === ')' || c === ']' || c === '}') {
+      depth--;
+    } else if (c === ',' && depth <= 0) {
+      items.push(str.slice(start, i));
+      start = i + 1;
+    }
+  }
+  items.push(str.slice(start));
+  return items.map(function(item) {
+    return utils.trimQuotes(item.trim());
+  });
+}
+
 export function cleanArgv(argv) {
   // Note: original trim caused some quoted spaces to be removed
   // (e.g. bash shell seems to convert [delimiter=" "] to [delimiter= ],

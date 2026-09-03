@@ -318,6 +318,63 @@ describe('mapshaper-repel.js', function () {
       assert.ok(dist > 20.9 && dist < 21.1, 'symbols are ' + dist + 'px apart');
     });
 
+    // A pie is a group of wedges, so its radius comes from the geometry of its
+    // parts rather than an r property. Wedge coordinates are rounded to a
+    // hundredth of a pixel for the SVG output, hence the tolerance.
+    it('sizes pie symbols', async function () {
+      var input = pointsGeoJSON([[0, 0], [8, 0], [1000, 0]]);
+      var out = await api.applyCommands(
+        '-i in.json -symbols type=pie radius=10 values=1,2 fills=red,blue ' +
+        '-repel width=1000 max-shift=50 -o out.json', {'in.json': input});
+      var coords = getCoords(out['out.json']);
+      var dist = Math.abs(coords[1][0] - coords[0][0]);
+      assert.ok(dist > 19.9 && dist < 20.1, 'symbols are ' + dist + 'px apart');
+    });
+
+    // A donut's hole is inside its footprint, so it repels like a full pie.
+    it('sizes donut symbols by their outer radius', async function () {
+      var input = pointsGeoJSON([[0, 0], [8, 0], [1000, 0]]);
+      var out = await api.applyCommands(
+        '-i in.json -symbols type=pie radius=10 hole=-3 values=1,2 fills=red,blue ' +
+        '-repel width=1000 max-shift=50 -o out.json', {'in.json': input});
+      var coords = getCoords(out['out.json']);
+      var dist = Math.abs(coords[1][0] - coords[0][0]);
+      assert.ok(dist > 19.9 && dist < 20.1, 'symbols are ' + dist + 'px apart');
+    });
+
+    // Wedges left out of a pie don't shrink the space it occupies.
+    it('sizes a pie with gaps by its full radius', async function () {
+      var input = pointsGeoJSON([[0, 0], [8, 0], [1000, 0]]);
+      var out = await api.applyCommands(
+        '-i in.json -symbols type=pie radius=10 values=1,2 fills=red,none ' +
+        '-repel width=1000 max-shift=50 -o out.json', {'in.json': input});
+      var coords = getCoords(out['out.json']);
+      var dist = Math.abs(coords[1][0] - coords[0][0]);
+      assert.ok(dist > 19.9 && dist < 20.1, 'symbols are ' + dist + 'px apart');
+    });
+
+    // A ring paints its band as a stroke, half of which lies outside the circle
+    // the stroke follows: parts are r=9 with a 2px stroke, so the radius is 10.
+    it('sizes ring symbols, including their stroke', async function () {
+      var input = pointsGeoJSON([[0, 0], [8, 0], [1000, 0]]);
+      var out = await api.applyCommands(
+        '-i in.json -symbols type=ring radii=8,10 -repel width=1000 max-shift=50 -o out.json',
+        {'in.json': input});
+      var coords = getCoords(out['out.json']);
+      var dist = Math.abs(coords[1][0] - coords[0][0]);
+      assert.ok(dist > 19.9 && dist < 20.1, 'symbols are ' + dist + 'px apart');
+    });
+
+    it('sizes symbols scaled by scale=', async function () {
+      var input = pointsGeoJSON([[0, 0], [8, 0], [1000, 0]]);
+      var out = await api.applyCommands(
+        '-i in.json -symbols type=pie radius=10 values=1,2 fills=red,blue scale=2 ' +
+        '-repel width=1000 max-shift=50 -o out.json', {'in.json': input});
+      var coords = getCoords(out['out.json']);
+      var dist = Math.abs(coords[1][0] - coords[0][0]);
+      assert.ok(dist > 39.9 && dist < 40.1, 'symbols are ' + dist + 'px apart');
+    });
+
     it('accepts a radius= field name', async function () {
       var input = pointsGeoJSON([[0, 0], [8, 0], [1000, 0]],
         [{size: 10}, {size: 10}, {size: 10}]);
@@ -539,19 +596,31 @@ describe('mapshaper-repel.js', function () {
       }, /projected coordinates/);
     });
 
-    it('errors if the layer has no circle symbols', async function () {
+    it('errors if the layer has no symbols', async function () {
       await assert.rejects(function() {
         return api.applyCommands('-i in.json -repel width=1000 -o out.json',
           {'in.json': pointsGeoJSON([[0, 0], [8, 0], [1000, 0]])});
-      }, /circle symbols/);
+      }, /requires a layer containing symbols/);
     });
 
-    it('errors on non-circle symbols', async function () {
+    // A star is centered on its point, but it is a plain polygon symbol like an
+    // arrow, which is not -- so neither is sized without a radius= option.
+    it('errors on a symbol type it cannot size', async function () {
       await assert.rejects(function() {
         return api.applyCommands(
           '-i in.json -symbols type=star radius=10 -repel width=1000 -o out.json',
           {'in.json': pointsGeoJSON([[0, 0], [8, 0], [1000, 0]])});
-      }, /circle symbols only/);
+      }, /unable to size a polygon symbol/);
+    });
+
+    it('accepts a radius= option for a symbol it cannot size', async function () {
+      var input = pointsGeoJSON([[0, 0], [8, 0], [1000, 0]]);
+      var out = await api.applyCommands(
+        '-i in.json -symbols type=star radius=10 -repel width=1000 max-shift=50 radius=10 -o out.json',
+        {'in.json': input});
+      var coords = getCoords(out['out.json']);
+      var dist = Math.abs(coords[1][0] - coords[0][0]);
+      assert.ok(dist > 19.9 && dist < 20.1, 'symbols are ' + dist + 'px apart');
     });
 
     it('errors on a polygon layer', async function () {

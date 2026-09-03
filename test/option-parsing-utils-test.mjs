@@ -2,6 +2,7 @@ import assert from 'assert';
 import {
   parseColorList,
   parseStringList,
+  splitListItems,
   splitShellTokens,
   parsePercent
 } from '../src/cli/mapshaper-option-parsing-utils';
@@ -79,6 +80,32 @@ describe('mapshaper-option-parsing-utils.js', function () {
     it('ignores empty strings', function () {
       test('mapshaper,', ['mapshaper']);
       test('foo,,,bar', ['foo', 'bar']);
+    })
+  })
+
+  describe('splitListItems()', function () {
+    it('splits on commas', function() {
+      assert.deepEqual(splitListItems('a,b,c'), ['a', 'b', 'c']);
+    })
+    it('trims spaces and quotes', function() {
+      assert.deepEqual(splitListItems('"red", blue'), ['red', 'blue']);
+    })
+    it('keeps empty items', function() {
+      assert.deepEqual(splitListItems('red,,blue'), ['red', '', 'blue']);
+    })
+    it('ignores commas inside parentheses', function() {
+      assert.deepEqual(splitListItems('rgba(0,0,0,0.5),red'), ['rgba(0,0,0,0.5)', 'red']);
+      assert.deepEqual(splitListItems('Math.max(A,B),C'), ['Math.max(A,B)', 'C']);
+    })
+    it('ignores commas inside brackets and braces', function() {
+      assert.deepEqual(splitListItems('[R, R * 0.5]'), ['[R, R * 0.5]']);
+      assert.deepEqual(splitListItems('{a:1,b:2},c'), ['{a:1,b:2}', 'c']);
+    })
+    it('ignores commas inside quotes', function() {
+      assert.deepEqual(splitListItems('"a,b",c'), ['a,b', 'c']);
+    })
+    it('returns a lone item', function() {
+      assert.deepEqual(splitListItems('red'), ['red']);
     })
   })
 

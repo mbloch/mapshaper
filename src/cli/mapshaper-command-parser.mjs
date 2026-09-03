@@ -189,6 +189,7 @@ export function CommandParser() {
     // Try to read an option for command @cmdDef from @argv
     function readOption(cmd, argv, cmdDef) {
       var token = argv.shift(),
+          assignedValue = null,
           optName, optDef, parts;
 
       if (isAssignment(token)) {
@@ -202,7 +203,10 @@ export function CommandParser() {
         } else if (optDef.type == 'flag' || optDef.assign_to) {
           stop("-" + cmdDef.name + " " + parts[0] + " option doesn't take a value");
         } else {
-          argv.unshift(parts[1]);
+          // Keep the value out of argv: it was written as part of the token,
+          // so it is a value even when it looks like a command name
+          // (e.g. hole=-size, dx=-OFFSET).
+          assignedValue = parts[1];
         }
       } else {
         // try to parse as a flag option,
@@ -227,6 +231,8 @@ export function CommandParser() {
         cmd.options[optDef.assign_to] = optDef.name;
       } else if (optDef.type == 'flag') {
         cmd.options[optName] = true;
+      } else if (assignedValue !== null) {
+        cmd.options[optName] = parseOptionValue(assignedValue, optDef);
       } else {
         cmd.options[optName] = readOptionValue(argv, optDef);
       }

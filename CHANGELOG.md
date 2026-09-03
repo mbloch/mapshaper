@@ -1,3 +1,9 @@
+v0.7.58
+* Added `-symbols type=pie` for making pie and donut chart symbols. Wedge sizes come from `values=`, wedge colors from `fills=` and the size of the symbol from `radius=`. Adding `hole=` makes a donut; a negative `hole=` is measured inward from the outer radius, for a band of wedges of a fixed width.
+* `-repel` now supports pie, donut and ring symbols, in addition to circles.
+* Fixed parsing of shorthand hex colors (e.g. `#f90`) and of the alpha channel of 8-digit hex colors (e.g. `#ff000080`).
+* Handle missing layers in .gpkg files with a warning.
+
 v0.7.57
 * Added `-repel margin=` option, which gives the minimum spacing between two symbols. If two symbols have different margin values, the *greater* of their two margins is used.
 

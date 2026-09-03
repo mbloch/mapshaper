@@ -9,6 +9,7 @@ import {
   getContainmentConstraint
 } from '../points/mapshaper-symbol-containment';
 import { getSymbolPropertyAccessor, getPropertyAccessor } from '../svg/svg-properties';
+import { getSymbolBoundingRadius } from '../symbols/mapshaper-symbol-utils';
 import { findFrameLayerInDataset, findFrame, getFrameLayerData } from '../furniture/mapshaper-frame-utils';
 import { noteLayerWillChange, markLayerChanged } from '../undo/mapshaper-undo-tracking';
 import {
@@ -17,8 +18,10 @@ import {
   symbolCollisionDefaults
 } from '../points/mapshaper-symbol-collisions';
 
-// Move circular symbols apart to reduce overlaps, keeping each one within a
-// fixed pixel distance of its true position.
+// Move symbols apart to reduce overlaps, keeping each one within a fixed pixel
+// distance of its true position. Each symbol is laid out as the circle that
+// covers it, so the command works on the symbol types that are drawn around
+// their point (see getSymbolLayoutRadius()).
 //
 // The layout runs in the pixel space of the map that the symbols will be
 // rendered in, so the command needs to know the display scale: either from a
@@ -60,7 +63,7 @@ cmd.repel = function(targetLayers, dataset, catalog, polygonSource, opts) {
     addLayerNodes(nodes, lyr, pixelsPerUnit, opts);
   });
   if (nodes.length === 0) {
-    stop('Targeted layer(s) contain no circle symbols to move.');
+    stop('Targeted layer(s) contain no symbols to move.');
   }
   var unconstrained = addContainment(nodes, dataset, polygonSource, pixelsPerUnit, solverOpts);
 
@@ -154,13 +157,13 @@ function getMaxShiftAdvice(nodes) {
 function requireRepelTarget(lyr, opts) {
   requireSinglePointLayer(lyr,
     '-repel requires single points; layer contains multi-point features.');
-  if (!opts.radius && !layerHasCircleSymbols(lyr)) {
-    stop('-repel requires a layer containing circle symbols ' +
+  if (!opts.radius && !layerHasSymbols(lyr)) {
+    stop('-repel requires a layer containing symbols ' +
       '(see the -symbols and -style commands), or a radius= option.');
   }
 }
 
-function layerHasCircleSymbols(lyr) {
+function layerHasSymbols(lyr) {
   return !!lyr.data && (lyr.data.fieldExists('svg-symbol') || lyr.data.fieldExists('r'));
 }
 
@@ -230,12 +233,17 @@ function getRadiusAccessor(lyr, opts) {
   return function(i) {
     var rec = records[i];
     if (!rec) return 0;
-    if (rec['svg-symbol']) return getCircleSymbolRadius(rec['svg-symbol']);
+    if (rec['svg-symbol']) return getSymbolLayoutRadius(rec['svg-symbol']);
     return rec.r > 0 ? +rec.r : 0;
   };
 }
 
-function getCircleSymbolRadius(sym) {
+// A symbol is laid out as the circle that covers it, so a symbol type is
+// supported if it is drawn around its point: a circle, or a group of parts,
+// which is how ring, pie and donut symbols are made. A symbol drawn from its
+// point outward, like an arrow, has no meaningful radius and needs radius=.
+function getSymbolLayoutRadius(sym) {
+  var r;
   if (utils.isString(sym)) {
     try {
       sym = JSON.parse(sym);
@@ -243,11 +251,14 @@ function getCircleSymbolRadius(sym) {
       return 0;
     }
   }
-  if (!sym || sym.type != 'circle') {
-    stop('-repel currently supports circle symbols only' +
-      (sym && sym.type ? ' (found a ' + sym.type + ' symbol).' : '.'));
+  if (!sym) return 0;
+  r = sym.type == 'circle' || sym.type == 'group' ?
+    getSymbolBoundingRadius(sym) : null;
+  if (r === null) {
+    stop('-repel is unable to size a ' + (sym.type || 'symbol') +
+      ' symbol; use a radius= option to give it a radius.');
   }
-  return sym.r > 0 ? +sym.r : 0;
+  return r;
 }
 
 // Returns the number of display pixels per map coordinate unit.
