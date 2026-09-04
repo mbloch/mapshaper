@@ -1363,15 +1363,19 @@ mapshaper ne_50m_rivers_lake_centerlines.shp ne_50m_land.shp combine-files \
 
 ### -repel
 
-Move overlapping circle symbols apart. The target must be a projected point layer containing circles from [`-symbols`](#-symbols), from [`-style`](#-style) or from the `radius=` option. All targeted layers are laid out together, so symbols in different layers are moved apart from each other as well.
+Move colliding point symbols apart. The target must be a projected point layer containing symbols from [`-symbols`](#-symbols), from [`-style`](#-style) or from the `radius=` option. All targeted layers are laid out together, so symbols in different layers are moved apart from each other as well.
 
-The layout happens in the pixel space of the map the symbols will be drawn in, so the command needs to know the display scale. It takes it from a [`-frame`](#-frame) if the target has one, and otherwise requires a `width=` option. Give the same width to `-repel` and to `-o`, or symbols will be spaced for a differently sized map.
+The command supports symbols with a circular outline: circles, pies, donuts and "ring"-type symbols. Other symbols created with the `-symbols` command, like arrows and polygons, are also supported if a `radius=` option is provided.
+
+The layout happens in pixel space, so the command needs to know the display scale. It takes it from a [`-frame`](#-frame) if the target has one, and otherwise requires a `width=` option. Give the same width to `-repel` and to `-o`, or symbols will be spaced for a differently sized map.
 
 `width=`      Display width of the layer in pixels. Required if the target has no frame.
 
 `max-shift=`  How far a symbol may move, in pixels (default is 20). Accepts a number, a field name or a JS expression, so the limit can vary from symbol to symbol. A symbol with a limit of 0 gets pinned in place. Symbols too crowded to separate within `max-shift=` are left overlapping
 
-`padding=`    Pixels of clearance to leave around each symbol (default is 0). Accepts a field name or an expression.
+`padding=`    Pixels of clearance to leave around each symbol (default is 0). Accepts a field name or an expression. Padding surrounds each symbol, so a pair of symbols ends up with the *sum* of their two paddings between them.
+
+`margin=`     Pixels of clearance to leave between two symbols (default is 0). Accepts a field name or an expression. A margin gives the minimum spacing between two symbols. If two symbols have different margin values, the *greater* of their two margins is used.
 
 `radius=`     Field or expression giving symbol radius in pixels. Use this when the layer has no symbols from `-symbols` or `-style`.
 
@@ -1776,9 +1780,11 @@ mapshaper polygons.geojson \
 
 ### -symbols
 
-Symbolize points as regular polygons, circles, stars, arrows and other shapes.
+Symbolize points as regular polygons, circles, stars, arrows, pies and donuts.
 
-`type=`            Basic types: star, polygon, circle, arrow, ring. Aliases: triangle, square, pentagon, etc.
+A `pie` symbol is a pie or donut chart, sized by `radius=` and divided up by `values=` and `fills=`. Add `hole=` to make it a donut. Its first wedge starts at the top of the symbol and the rest follow in clockwise order. `rotation=` changes the origin.
+
+`type=`            Basic types: star, polygon, circle, arrow, ring, pie. Aliases: triangle, square, pentagon, etc.
 
 `fill=`            Symbol fill color
 
@@ -1807,6 +1813,12 @@ Symbolize points as regular polygons, circles, stars, arrows and other shapes.
 `point-ratio=`     (star) ratio of minor to major radius of star
 
 `radii=`           (ring) comma-sep. list of concentric radii, ascending order
+
+`hole=`            (pie) Radius of the hole in a donut symbol. The wedges span the space between `hole=` and `radius=`. A negative value is measured inward from the outer radius, so `radius=30 hole=-5` and `radius=30 hole=25` describe the same donut; a negative value is the shorter way to write a band of wedges of a fixed width when `radius=` comes from data. A hole as wide as the symbol is ignored, leaving a plain pie.
+
+`values=`          (pie) Comma-separated list of wedge values. Each item can be a number, a field name or a JS expression. The values are shares of the whole symbol, so their sum is the 100% value. Missing, non-numeric and negative values count as zero, and a symbol whose values are all zero is not drawn.
+
+`fills=`           (pie) Comma-separated list of wedge fill colors, one for each item in `values=`. A wedge whose color is missing, `none`, `transparent` or not a color is left out of the symbol, leaving a gap without shifting the other wedges.
 
 `length=`          (arrow) length of arrow in pixels
 

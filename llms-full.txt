@@ -63,6 +63,15 @@ When in doubt about a command's behavior, the [command reference](https://mapsha
 
 This is a curated list of recently added features. For the full list of changes, including bug fixes and internal work, see the [changelog](https://github.com/mbloch/mapshaper/blob/master/CHANGELOG.md) on GitHub.
 
+## September 2026
+
+<div class="whats-new-entry">
+
+**Pie and donut symbols.** The `-symbols` command has a new `pie` type. A `values=` list sets the size of each wedge from numbers, field names or expressions, and a `fills=` list sets their colors. Adding `hole=` makes the symbol a donut, either as a radius or, if negative, as a distance inward from the edge.
+
+→ See [`-symbols`](/docs/reference.html.md#-symbols) and the [styles and symbols guide](/docs/guides/styles-and-symbols.html.md).
+</div>
+
 ## August 2026
 
 <div class="whats-new-entry">
@@ -1611,15 +1620,19 @@ mapshaper ne_50m_rivers_lake_centerlines.shp ne_50m_land.shp combine-files \
 
 ### -repel
 
-Move overlapping circle symbols apart. The target must be a projected point layer containing circles from [`-symbols`](#-symbols), from [`-style`](#-style) or from the `radius=` option. All targeted layers are laid out together, so symbols in different layers are moved apart from each other as well.
+Move colliding point symbols apart. The target must be a projected point layer containing symbols from [`-symbols`](#-symbols), from [`-style`](#-style) or from the `radius=` option. All targeted layers are laid out together, so symbols in different layers are moved apart from each other as well.
 
-The layout happens in the pixel space of the map the symbols will be drawn in, so the command needs to know the display scale. It takes it from a [`-frame`](#-frame) if the target has one, and otherwise requires a `width=` option. Give the same width to `-repel` and to `-o`, or symbols will be spaced for a differently sized map.
+The command supports symbols with a circular outline: circles, pies, donuts and "ring"-type symbols. Other symbols created with the `-symbols` command, like arrows and polygons, are also supported if a `radius=` option is provided.
+
+The layout happens in pixel space, so the command needs to know the display scale. It takes it from a [`-frame`](#-frame) if the target has one, and otherwise requires a `width=` option. Give the same width to `-repel` and to `-o`, or symbols will be spaced for a differently sized map.
 
 `width=`      Display width of the layer in pixels. Required if the target has no frame.
 
 `max-shift=`  How far a symbol may move, in pixels (default is 20). Accepts a number, a field name or a JS expression, so the limit can vary from symbol to symbol. A symbol with a limit of 0 gets pinned in place. Symbols too crowded to separate within `max-shift=` are left overlapping
 
-`padding=`    Pixels of clearance to leave around each symbol (default is 0). Accepts a field name or an expression.
+`padding=`    Pixels of clearance to leave around each symbol (default is 0). Accepts a field name or an expression. Padding surrounds each symbol, so a pair of symbols ends up with the *sum* of their two paddings between them.
+
+`margin=`     Pixels of clearance to leave between two symbols (default is 0). Accepts a field name or an expression. A margin gives the minimum spacing between two symbols. If two symbols have different margin values, the *greater* of their two margins is used.
 
 `radius=`     Field or expression giving symbol radius in pixels. Use this when the layer has no symbols from `-symbols` or `-style`.
 
@@ -2024,9 +2037,11 @@ mapshaper polygons.geojson \
 
 ### -symbols
 
-Symbolize points as regular polygons, circles, stars, arrows and other shapes.
+Symbolize points as regular polygons, circles, stars, arrows, pies and donuts.
 
-`type=`            Basic types: star, polygon, circle, arrow, ring. Aliases: triangle, square, pentagon, etc.
+A `pie` symbol is a pie or donut chart, sized by `radius=` and divided up by `values=` and `fills=`. Add `hole=` to make it a donut. Its first wedge starts at the top of the symbol and the rest follow in clockwise order. `rotation=` changes the origin.
+
+`type=`            Basic types: star, polygon, circle, arrow, ring, pie. Aliases: triangle, square, pentagon, etc.
 
 `fill=`            Symbol fill color
 
@@ -2055,6 +2070,12 @@ Symbolize points as regular polygons, circles, stars, arrows and other shapes.
 `point-ratio=`     (star) ratio of minor to major radius of star
 
 `radii=`           (ring) comma-sep. list of concentric radii, ascending order
+
+`hole=`            (pie) Radius of the hole in a donut symbol. The wedges span the space between `hole=` and `radius=`. A negative value is measured inward from the outer radius, so `radius=30 hole=-5` and `radius=30 hole=25` describe the same donut; a negative value is the shorter way to write a band of wedges of a fixed width when `radius=` comes from data. A hole as wide as the symbol is ignored, leaving a plain pie.
+
+`values=`          (pie) Comma-separated list of wedge values. Each item can be a number, a field name or a JS expression. The values are shares of the whole symbol, so their sum is the 100% value. Missing, non-numeric and negative values count as zero, and a symbol whose values are all zero is not drawn.
+
+`fills=`           (pie) Comma-separated list of wedge fill colors, one for each item in `values=`. A wedge whose color is missing, `none`, `transparent` or not a color is left out of the symbol, leaving a gap without shifting the other wedges.
 
 `length=`          (arrow) length of arrow in pixels
 
@@ -3427,7 +3448,7 @@ The examples below are written for the web app's Console. Load your data first, 
 
 `-style` writes common SVG presentation attributes to each feature. Line layers can be styled with `stroke=`, `stroke-width=`, `stroke-opacity=`, `stroke-dasharray=` and `opacity=`. Polygon layers add `fill=` and `fill-opacity=` options.
 
-Style values can be literal values, like `stroke="#777"`, or JavaScript expressions, like `r='sqrt(POP) / 100'`. Use `where=` to override the styles of a selected group of features.
+Style values can be literal values, like `stroke="#777"`, or JavaScript expressions, like `r='Math.sqrt(POP) / 100'`. Use `where=` to override the styles of a selected group of features.
 
 ```text
 -style fill="#eee" stroke="#999" \
@@ -3510,7 +3531,7 @@ For a point layer with `SPEED` and `BEARING` fields, this example scales arrow l
 
 ```text
 -symbols type=arrow \
-  length='max(8, min(60, SPEED * 2))' \
+  length='Math.max(8, Math.min(60, SPEED * 2))' \
   direction=BEARING \
   fill="rgba(49, 130, 189, 0.65)" \
   stem-width=3 head-width=12 anchor=middle
@@ -3522,11 +3543,29 @@ For a lighter vector-field style, use stick arrows. This draws arrow strokes ins
 
 ```text
 -symbols type=arrow arrow-style=stick \
-  length='max(6, min(45, WIND_SPEED * 1.5))' \
+  length='Math.max(6, Math.min(45, WIND_SPEED * 1.5))' \
   direction=WIND_DIR \
   stroke="#2b8cbe" stroke-width=1.2 \
   head-length=6 anchor=middle
 ```
+
+## Making pie and donut charts with the `-symbols` command
+
+`type=pie` divides a symbol into wedges. `values=` lists the size of each wedge and `fills=` lists its color. The values are shares of the whole symbol, so their sum is the 100% value — there's no need to convert them to percentages first.
+
+This example makes a pie chart of three vote fields, sized by `radius=`.
+
+```text
+-symbols type=pie \
+  values=DEM,REP,OTHER \
+  fills="#2b8cbe,#de2d26,#bbb" \
+  radius='Math.sqrt(TOTAL_VOTES) / 8' \
+  stroke="#fff" stroke-width=0.5
+```
+
+Wedges start at the top of the symbol and follow in clockwise order. Add `rotation=` to start somewhere else.
+
+Adding `hole=<radius>` makes a donut instead, with the wedges spanning the space between the hole and the outer radius. A negative `hole=` value is measured inward from the outer radius, so `hole=-5` gives a band of wedges 5 pixels wide whatever the symbol's radius.
 
 ## Making labels with `-style`
 

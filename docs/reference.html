@@ -939,12 +939,14 @@ mapshaper ne_50m_rivers_lake_centerlines.shp ne_50m_land.shp combine-files \
   -rename-layers water,land -o target=* layers.topojson 
 </code></pre>
 </section>
-<section class="cmd-section" data-id="-repel" data-name="-repel" data-options="radius width max-shift padding polygons ticks strength target"><h3 id="-repel">-repel</h3>
-<p>Move overlapping circle symbols apart. The target must be a projected point layer containing circles from <a href="#-symbols"><code>-symbols</code></a>, from <a href="#-style"><code>-style</code></a> or from the <code>radius=</code> option. All targeted layers are laid out together, so symbols in different layers are moved apart from each other as well.</p>
-<p>The layout happens in the pixel space of the map the symbols will be drawn in, so the command needs to know the display scale. It takes it from a <a href="#-frame"><code>-frame</code></a> if the target has one, and otherwise requires a <code>width=</code> option. Give the same width to <code>-repel</code> and to <code>-o</code>, or symbols will be spaced for a differently sized map.</p>
+<section class="cmd-section" data-id="-repel" data-name="-repel" data-options="radius width max-shift padding margin polygons ticks strength target"><h3 id="-repel">-repel</h3>
+<p>Move colliding point symbols apart. The target must be a projected point layer containing symbols from <a href="#-symbols"><code>-symbols</code></a>, from <a href="#-style"><code>-style</code></a> or from the <code>radius=</code> option. All targeted layers are laid out together, so symbols in different layers are moved apart from each other as well.</p>
+<p>The command supports symbols with a circular outline: circles, pies, donuts and &quot;ring&quot;-type symbols. Other symbols created with the <code>-symbols</code> command, like arrows and polygons, are also supported if a <code>radius=</code> option is provided.</p>
+<p>The layout happens in pixel space, so the command needs to know the display scale. It takes it from a <a href="#-frame"><code>-frame</code></a> if the target has one, and otherwise requires a <code>width=</code> option. Give the same width to <code>-repel</code> and to <code>-o</code>, or symbols will be spaced for a differently sized map.</p>
 <p><code>width=</code>      Display width of the layer in pixels. Required if the target has no frame.</p>
 <p><code>max-shift=</code>  How far a symbol may move, in pixels (default is 20). Accepts a number, a field name or a JS expression, so the limit can vary from symbol to symbol. A symbol with a limit of 0 gets pinned in place. Symbols too crowded to separate within <code>max-shift=</code> are left overlapping</p>
-<p><code>padding=</code>    Pixels of clearance to leave around each symbol (default is 0). Accepts a field name or an expression.</p>
+<p><code>padding=</code>    Pixels of clearance to leave around each symbol (default is 0). Accepts a field name or an expression. Padding surrounds each symbol, so a pair of symbols ends up with the <em>sum</em> of their two paddings between them.</p>
+<p><code>margin=</code>     Pixels of clearance to leave between two symbols (default is 0). Accepts a field name or an expression. A margin gives the minimum spacing between two symbols. If two symbols have different margin values, the <em>greater</em> of their two margins is used.</p>
 <p><code>radius=</code>     Field or expression giving symbol radius in pixels. Use this when the layer has no symbols from <code>-symbols</code> or <code>-style</code>.</p>
 <p><code>polygons=</code>   Layer or file of polygons that symbols must stay inside. Each symbol is confined to the polygon its true position falls in. Symbols outside every polygon are left free to move.</p>
 <p><code>ticks=</code>      Number of solver passes (default is 100).</p>
@@ -1220,9 +1222,10 @@ mapshaper polygons.geojson \
 -o out.svg
 </code></pre>
 </section>
-<section class="cmd-section" data-id="-symbols" data-name="-symbols" data-options="type fill stroke stroke-width opacity geographic pixel-scale rotated rotation scale radius sides points point-ratio radii length direction head-angle head-width head-length stem-width stem-length stem-taper stem-curve min-stem-ratio anchor name target"><h3 id="-symbols">-symbols</h3>
-<p>Symbolize points as regular polygons, circles, stars, arrows and other shapes.</p>
-<p><code>type=</code>            Basic types: star, polygon, circle, arrow, ring. Aliases: triangle, square, pentagon, etc.</p>
+<section class="cmd-section" data-id="-symbols" data-name="-symbols" data-options="pie radius values fills hole rotation type fill stroke stroke-width opacity geographic pixel-scale rotated scale sides points point-ratio radii none transparent length direction head-angle head-width head-length stem-width stem-length stem-taper stem-curve min-stem-ratio anchor name target"><h3 id="-symbols">-symbols</h3>
+<p>Symbolize points as regular polygons, circles, stars, arrows, pies and donuts.</p>
+<p>A <code>pie</code> symbol is a pie or donut chart, sized by <code>radius=</code> and divided up by <code>values=</code> and <code>fills=</code>. Add <code>hole=</code> to make it a donut. Its first wedge starts at the top of the symbol and the rest follow in clockwise order. <code>rotation=</code> changes the origin.</p>
+<p><code>type=</code>            Basic types: star, polygon, circle, arrow, ring, pie. Aliases: triangle, square, pentagon, etc.</p>
 <p><code>fill=</code>            Symbol fill color</p>
 <p><code>stroke=</code>          Symbol line color (linear symbols only)</p>
 <p><code>stroke-width=</code>    Symbol line width (linear symbols only)</p>
@@ -1237,6 +1240,9 @@ mapshaper polygons.geojson \
 <p><code>points=</code>          (star) number of points</p>
 <p><code>point-ratio=</code>     (star) ratio of minor to major radius of star</p>
 <p><code>radii=</code>           (ring) comma-sep. list of concentric radii, ascending order</p>
+<p><code>hole=</code>            (pie) Radius of the hole in a donut symbol. The wedges span the space between <code>hole=</code> and <code>radius=</code>. A negative value is measured inward from the outer radius, so <code>radius=30 hole=-5</code> and <code>radius=30 hole=25</code> describe the same donut; a negative value is the shorter way to write a band of wedges of a fixed width when <code>radius=</code> comes from data. A hole as wide as the symbol is ignored, leaving a plain pie.</p>
+<p><code>values=</code>          (pie) Comma-separated list of wedge values. Each item can be a number, a field name or a JS expression. The values are shares of the whole symbol, so their sum is the 100% value. Missing, non-numeric and negative values count as zero, and a symbol whose values are all zero is not drawn.</p>
+<p><code>fills=</code>           (pie) Comma-separated list of wedge fill colors, one for each item in <code>values=</code>. A wedge whose color is missing, <code>none</code>, <code>transparent</code> or not a color is left out of the symbol, leaving a gap without shifting the other wedges.</p>
 <p><code>length=</code>          (arrow) length of arrow in pixels</p>
 <p><code>direction=</code>       (arrow) angle off of vertical (-90 = left-pointing)</p>
 <p><code>head-angle=</code>      (arrow) angle of tip of arrow (default is 40 degrees)</p>

@@ -351,7 +351,7 @@
   // Calc sum, skip falsy and NaN values
   // Assumes: no other non-numeric objects in array
   //
-  function sum$1(arr, info) {
+  function sum$2(arr, info) {
     if (!isArrayLike(arr)) error$1 ("sum() expects an array, received:", arr);
     var tot = 0,
         nan = 0,
@@ -1117,7 +1117,7 @@
     quicksort: quicksort$1, quicksortPartition,
     range, regexEscape, reorderArray: reorderArray$1, repeat: repeat$1, repeatString,
     replaceArray, rpad, rtrim,
-    shuffle, some, sortArrayIndex, sortOn, splitLines, sum: sum$1,
+    shuffle, some, sortArrayIndex, sortOn, splitLines, sum: sum$2,
     toArray: toArray$1, toBuffer, trim, trimQuotes,
     uniq, uniqifyNames,
     wildcardToRegExp
@@ -9880,7 +9880,7 @@
       id: piece.id,
       source_region: piece.source_region,
       copy: piece.copy,
-      projected_boundary: closeRing$1(piece.boundary)
+      projected_boundary: closeRing$2(piece.boundary)
     };
   }
 
@@ -9888,7 +9888,7 @@
     return {
       id: piece.id,
       source_region: piece.source_region,
-      projected_boundary: closeRing$1(piece.boundary)
+      projected_boundary: closeRing$2(piece.boundary)
     };
   }
 
@@ -9970,7 +9970,7 @@
     return paths;
   }
 
-  function closeRing$1(ring) {
+  function closeRing$2(ring) {
     var copy = ring.map(function(p) { return p.concat(); });
     if (copy.length && !pointsEqual$2(copy[0], copy[copy.length - 1])) {
       copy.push(copy[0].concat());
@@ -14955,6 +14955,27 @@
     return fflatePostprocess(obj);
   }
 
+  // Return the entry names in a zip archive, without decompressing them.
+  // Used to tell a KMZ from an ordinary zip when there is no filename to go by.
+  // input: A file path or a buffer
+  function listZipEntryNames(input) {
+    if (input instanceof ArrayBuffer) {
+      input = new Uint8Array(input);
+    }
+    if (!runningInBrowser()) {
+      var AdmZip = require('adm-zip');
+      return new AdmZip(input).getEntries().map(function(entry) {
+        return entry.entryName;
+      });
+    }
+    var names = [];
+    unzipSync$1(input, {filter: function(file) {
+      names.push(file.name);
+      return false; // collect names only
+    }});
+    return names;
+  }
+
   function unzipAsync(buf, cb) {
     if (!runningInBrowser()) {
       error('Async unzipping only supported in the browser');
@@ -15049,6 +15070,7 @@
   var Zip = /*#__PURE__*/Object.freeze({
     __proto__: null,
     isImportableZipPath: isImportableZipPath,
+    listZipEntryNames: listZipEntryNames,
     unzipAsync: unzipAsync,
     unzipSync: unzipSync,
     zipAsync: zipAsync,
@@ -18629,14 +18651,15 @@
   function parseHexColor(str) {
     var hex = hexRxp.exec(str)[1];
     if (hex.length == 3 || hex.length == 4) {
-      hex = hex.split('').map(function(c) { return c + c; });
+      // expand shorthand, e.g. #f90 -> #ffcc00
+      hex = hex.split('').map(function(c) { return c + c; }).join('');
     }
     if (hex.length != 6 && hex.length != 8) return null;
     return {
       r: parseInt(hex.substr(0, 2), 16),
       g: parseInt(hex.substr(2, 2), 16),
       b: parseInt(hex.substr(4, 2), 16),
-      a: hex.length == 8 ? parseInt(hex.substr(7, 2), 16) / 255 : 1
+      a: hex.length == 8 ? parseInt(hex.substr(6, 2), 16) / 255 : 1
     };
   }
 
@@ -25744,6 +25767,173 @@
     return text || text === 0; // accept numerical 0 as label text
   }
 
+  var assignmentRxp = /^([a-z0-9_+-]+)=(?!=)(.*)$/i; // exclude ==
+
+  function splitShellTokens(str) {
+    var BAREWORD = `([^'"\\s])+`;
+    var DOUBLE_QUOTE = `"((\\\\"|[^"])*?)"`;
+    var SINGLE_QUOTE = `'((\\\\'|[^'])*?)'`;
+    var rxp = new RegExp('(' + BAREWORD + '|' + SINGLE_QUOTE + '|' + DOUBLE_QUOTE + ')*', 'g');
+    var matches = str.match(rxp) || [];
+    var chunks = matches.filter(function(chunk) {
+      // single backslashes may be present in multiline commands pasted from a makefile, e.g.
+      return !!chunk && chunk != '\\';
+    }).map(utils.trimQuotes);
+    return chunks;
+  }
+
+  function parsePercent(o) {
+    var str = String(o);
+    var isPct = str.indexOf('%') > 0;
+    var pct;
+    if (isPct) {
+      pct = Number(str.replace('%', '')) / 100;
+    } else {
+      pct = Number(str);
+    }
+    if (!(pct >= 0 && pct <= 1)) {
+      stop$1(utils.format("Invalid percentage: %s", str));
+    }
+    return pct;
+  }
+
+  function parseNumberList(token) {
+    return token.split(',').map(parseFloat);
+  }
+
+  // Split comma-delimited list, trim quotes from entire list and
+  // individual members
+  function parseStringList(token) {
+    var delim = ',';
+    var list = splitOptionList(token, delim);
+    if (list.length == 1) {
+      list = splitOptionList(list[0], delim);
+    }
+    return list;
+  }
+
+  // Accept spaces and/or commas as delimiters
+  function parseColorList(token) {
+    var delim = ', ';
+    // accept rgb(0 0 0) rgb(0,0,0) rgb(0, 0, 0)
+    var token2 = token.replace(/[ ,] *(?=[^(]*\))/g, '~~~'); // kludge: protect rgba() functions from being split apart
+    var list = splitOptionList(token2, delim);
+    if (list.length == 1) {
+      list = splitOptionList(list[0], delim);
+    }
+    list = list.map(function(str) {
+      return str.replace(/~~~/g, ',');
+    });
+    return list;
+  }
+
+  // Splits a comma-delimited list into items, for the list-valued options of the
+  // -symbols command (radii=, values=, fills=). Unlike parseStringList(), empty
+  // items are kept, so that a blank item in one list still lines up with its
+  // counterpart in another. Commas nested inside parentheses, brackets, braces
+  // or quotes are not delimiters, so items like rgba(0,0,0,0.5), Math.max(A,B)
+  // and [R, R * 0.5] survive as single items.
+  function splitListItems(str) {
+    var items = [];
+    var start = 0;
+    var depth = 0;
+    var quote = '';
+    var c;
+    for (var i=0, n=str.length; i<n; i++) {
+      c = str[i];
+      if (quote) {
+        if (c === quote) quote = '';
+      } else if (c === '"' || c === "'") {
+        quote = c;
+      } else if (c === '(' || c === '[' || c === '{') {
+        depth++;
+      } else if (c === ')' || c === ']' || c === '}') {
+        depth--;
+      } else if (c === ',' && depth <= 0) {
+        items.push(str.slice(start, i));
+        start = i + 1;
+      }
+    }
+    items.push(str.slice(start));
+    return items.map(function(item) {
+      return utils.trimQuotes(item.trim());
+    });
+  }
+
+  function cleanArgv(argv) {
+    // Note: original trim caused some quoted spaces to be removed
+    // (e.g. bash shell seems to convert [delimiter=" "] to [delimiter= ],
+    //  which then got trimmed to [delimiter=] below)
+    //// argv = argv.map(function(s) {return s.trim();}); // trim whitespace
+
+    // Updated: don't trim space from tokens like [delimeter= ]
+    argv = argv.map(function(s) {
+      if (!/= $/.test(s)) {
+        s = utils.rtrim(s);
+      }
+      s = utils.ltrim(s);
+      return s;
+    });
+    argv = argv.filter(function(s) {return s !== '';}); // remove empty tokens
+    // Note: removing trimQuotes() call... now, strings like 'name="Meg"' will no longer
+    // be parsed the same way as name=Meg and name="Meg"
+    //// argv = argv.map(utils.trimQuotes); // remove one level of single or dbl quotes
+    return argv;
+  }
+
+  function splitOptionList(str, delimChars) {
+    var BAREWORD = '([^' + delimChars + '\'"][^' + delimChars + ']*)'; // TODO: make safer
+    var DOUBLE_QUOTE = '"((\\\\"|[^"])*?)"';
+    var SINGLE_QUOTE = '\'((\\\\\'|[^\'])*?)\'';
+    var rxp = new RegExp('^(' + BAREWORD + '|' + SINGLE_QUOTE + '|' + DOUBLE_QUOTE + ')([' + delimChars + ']+|$)');
+    var chunks = [];
+    var match;
+    while ((match = rxp.exec(str)) !== null) {
+      chunks.push(match[1]);
+      str = str.substr(match[0].length);
+    }
+    return chunks.filter(function(chunk) {
+      return !!chunk && chunk != '\\';
+    }).map(utils.trimQuotes);
+  }
+
+  // Prepare a value to be used as an option value.
+  // Places quotes around strings containing spaces.
+  // e.g. converts   Layer 1 -> "Layer 1"
+  //   for use in contexts like: name="Layer 1"
+  function formatOptionValue(val) {
+    val = String(val);
+    if (val.indexOf(' ') > -1) {
+      val = JSON.stringify(val); // quote ids with spaces
+    }
+    return val;
+  }
+
+  function isAssignment(token) {
+    return assignmentRxp.test(token);
+  }
+
+  function splitAssignment(token) {
+    var match = assignmentRxp.exec(token),
+        name = match[1],
+        val = utils.trimQuotes(match[2]);
+    return [name, val];
+  }
+
+  var OptionParsingUtils = /*#__PURE__*/Object.freeze({
+    __proto__: null,
+    cleanArgv: cleanArgv,
+    formatOptionValue: formatOptionValue,
+    isAssignment: isAssignment,
+    parseColorList: parseColorList,
+    parseNumberList: parseNumberList,
+    parsePercent: parsePercent,
+    parseStringList: parseStringList,
+    splitAssignment: splitAssignment,
+    splitListItems: splitListItems,
+    splitShellTokens: splitShellTokens
+  });
+
   /* example patterns
   hatches 1px black 1px red 1px white
   1px black 1px red 1px white // same as above (hatches is default)
@@ -26035,7 +26225,10 @@
     length: 'number', // e.g. arrow length
     rotation: 'number',
     radius: 'number',
-    radii: null, // string, parsed by function
+    radii: null, // (ring) list, see symbolListProperties
+    hole: 'number', // (pie) radius of the hole in a donut
+    values: null, // (pie) list, see symbolListProperties
+    fills: null, // (pie) list, see symbolListProperties
     flipped: 'boolean',
     rotated: 'boolean',
     direction: 'number',
@@ -26053,6 +26246,18 @@
     'arrow-scaling': 'number',
     effect: null // e.g. "fade"
   }, stylePropertyTypes);
+
+  // Options that take a list of values -- one for each part of a multi-part
+  // symbol -- instead of a single value. Each item in the list is resolved
+  // separately, so an item can be a literal value, a field name or an
+  // expression. The type hint for fills= is null on purpose: an item that isn't
+  // a recognizable color is passed along as a literal string, so that a symbol
+  // can leave that part unfilled instead of the command failing.
+  var symbolListProperties = {
+    radii: 'number',
+    values: 'number',
+    fills: null
+  };
 
   var commonProperties = 'css,class,opacity,stroke,stroke-width,stroke-dasharray,stroke-opacity,fill-opacity,vector-effect'.split(',');
 
@@ -26129,7 +26334,9 @@
         return;
       }
       var val = opts[optName];
-      functions[svgName] = getSymbolPropertyAccessor(val, svgName, lyr);
+      functions[svgName] = svgName in symbolListProperties ?
+        getSymbolListAccessor(val, svgName, lyr) :
+        getSymbolPropertyAccessor(val, svgName, lyr);
       properties.push(svgName);
     });
 
@@ -26159,6 +26366,21 @@
     return getPropertyAccessor(val, symbolPropertyTypes[svgName], lyr, svgName);
   }
 
+  // Returns a function that maps a feature id to an array of values, for options
+  // like values= and fills= that describe the parts of a multi-part symbol.
+  // The option may be given as an array or as a comma-separated list.
+  function getSymbolListAccessor(val, svgName, lyr) {
+    var typeHint = symbolListProperties[svgName];
+    var items = Array.isArray(val) ? val : splitListItems(String(val));
+    var accessors = items.map(function(item) {
+      return getPropertyAccessor(item, typeHint, lyr, svgName);
+    });
+    return function(id) {
+      return accessors.map(function(accessor) {
+        return accessor(id);
+      });
+    };
+  }
   // Returns a function that maps a feature id to a property value. The value may
   // be given as a literal, as the name of a data field, or as a JS expression
   // evaluated against each feature.
@@ -26295,6 +26517,7 @@
     getLabelPositionStyle: getLabelPositionStyle,
     getPropertyAccessor: getPropertyAccessor,
     getSymbolDataAccessor: getSymbolDataAccessor,
+    getSymbolListAccessor: getSymbolListAccessor,
     getSymbolPropertyAccessor: getSymbolPropertyAccessor,
     isSupportedSvgStyleProperty: isSupportedSvgStyleProperty,
     isSvgClassName: isSvgClassName,
@@ -37978,139 +38201,6 @@ ${svg}
     }
   }
 
-  var assignmentRxp = /^([a-z0-9_+-]+)=(?!=)(.*)$/i; // exclude ==
-
-  function splitShellTokens(str) {
-    var BAREWORD = `([^'"\\s])+`;
-    var DOUBLE_QUOTE = `"((\\\\"|[^"])*?)"`;
-    var SINGLE_QUOTE = `'((\\\\'|[^'])*?)'`;
-    var rxp = new RegExp('(' + BAREWORD + '|' + SINGLE_QUOTE + '|' + DOUBLE_QUOTE + ')*', 'g');
-    var matches = str.match(rxp) || [];
-    var chunks = matches.filter(function(chunk) {
-      // single backslashes may be present in multiline commands pasted from a makefile, e.g.
-      return !!chunk && chunk != '\\';
-    }).map(utils.trimQuotes);
-    return chunks;
-  }
-
-  function parsePercent(o) {
-    var str = String(o);
-    var isPct = str.indexOf('%') > 0;
-    var pct;
-    if (isPct) {
-      pct = Number(str.replace('%', '')) / 100;
-    } else {
-      pct = Number(str);
-    }
-    if (!(pct >= 0 && pct <= 1)) {
-      stop$1(utils.format("Invalid percentage: %s", str));
-    }
-    return pct;
-  }
-
-  function parseNumberList(token) {
-    return token.split(',').map(parseFloat);
-  }
-
-  // Split comma-delimited list, trim quotes from entire list and
-  // individual members
-  function parseStringList(token) {
-    var delim = ',';
-    var list = splitOptionList(token, delim);
-    if (list.length == 1) {
-      list = splitOptionList(list[0], delim);
-    }
-    return list;
-  }
-
-  // Accept spaces and/or commas as delimiters
-  function parseColorList(token) {
-    var delim = ', ';
-    // accept rgb(0 0 0) rgb(0,0,0) rgb(0, 0, 0)
-    var token2 = token.replace(/[ ,] *(?=[^(]*\))/g, '~~~'); // kludge: protect rgba() functions from being split apart
-    var list = splitOptionList(token2, delim);
-    if (list.length == 1) {
-      list = splitOptionList(list[0], delim);
-    }
-    list = list.map(function(str) {
-      return str.replace(/~~~/g, ',');
-    });
-    return list;
-  }
-
-  function cleanArgv(argv) {
-    // Note: original trim caused some quoted spaces to be removed
-    // (e.g. bash shell seems to convert [delimiter=" "] to [delimiter= ],
-    //  which then got trimmed to [delimiter=] below)
-    //// argv = argv.map(function(s) {return s.trim();}); // trim whitespace
-
-    // Updated: don't trim space from tokens like [delimeter= ]
-    argv = argv.map(function(s) {
-      if (!/= $/.test(s)) {
-        s = utils.rtrim(s);
-      }
-      s = utils.ltrim(s);
-      return s;
-    });
-    argv = argv.filter(function(s) {return s !== '';}); // remove empty tokens
-    // Note: removing trimQuotes() call... now, strings like 'name="Meg"' will no longer
-    // be parsed the same way as name=Meg and name="Meg"
-    //// argv = argv.map(utils.trimQuotes); // remove one level of single or dbl quotes
-    return argv;
-  }
-
-  function splitOptionList(str, delimChars) {
-    var BAREWORD = '([^' + delimChars + '\'"][^' + delimChars + ']*)'; // TODO: make safer
-    var DOUBLE_QUOTE = '"((\\\\"|[^"])*?)"';
-    var SINGLE_QUOTE = '\'((\\\\\'|[^\'])*?)\'';
-    var rxp = new RegExp('^(' + BAREWORD + '|' + SINGLE_QUOTE + '|' + DOUBLE_QUOTE + ')([' + delimChars + ']+|$)');
-    var chunks = [];
-    var match;
-    while ((match = rxp.exec(str)) !== null) {
-      chunks.push(match[1]);
-      str = str.substr(match[0].length);
-    }
-    return chunks.filter(function(chunk) {
-      return !!chunk && chunk != '\\';
-    }).map(utils.trimQuotes);
-  }
-
-  // Prepare a value to be used as an option value.
-  // Places quotes around strings containing spaces.
-  // e.g. converts   Layer 1 -> "Layer 1"
-  //   for use in contexts like: name="Layer 1"
-  function formatOptionValue(val) {
-    val = String(val);
-    if (val.indexOf(' ') > -1) {
-      val = JSON.stringify(val); // quote ids with spaces
-    }
-    return val;
-  }
-
-  function isAssignment(token) {
-    return assignmentRxp.test(token);
-  }
-
-  function splitAssignment(token) {
-    var match = assignmentRxp.exec(token),
-        name = match[1],
-        val = utils.trimQuotes(match[2]);
-    return [name, val];
-  }
-
-  var OptionParsingUtils = /*#__PURE__*/Object.freeze({
-    __proto__: null,
-    cleanArgv: cleanArgv,
-    formatOptionValue: formatOptionValue,
-    isAssignment: isAssignment,
-    parseColorList: parseColorList,
-    parseNumberList: parseNumberList,
-    parsePercent: parsePercent,
-    parseStringList: parseStringList,
-    splitAssignment: splitAssignment,
-    splitShellTokens: splitShellTokens
-  });
-
   function CommandParser() {
     var commandRxp = /^--?([a-z][\w-]*)$/i,
         invalidCommandRxp = /^--?[a-z][\w-]*[=]/i, // e.g. -target=A // could be more general
@@ -38290,6 +38380,7 @@ ${svg}
       // Try to read an option for command @cmdDef from @argv
       function readOption(cmd, argv, cmdDef) {
         var token = argv.shift(),
+            assignedValue = null,
             optName, optDef, parts;
 
         if (isAssignment(token)) {
@@ -38299,7 +38390,10 @@ ${svg}
           if (!optDef) ; else if (optDef.type == 'flag' || optDef.assign_to) {
             stop$1("-" + cmdDef.name + " " + parts[0] + " option doesn't take a value");
           } else {
-            argv.unshift(parts[1]);
+            // Keep the value out of argv: it was written as part of the token,
+            // so it is a value even when it looks like a command name
+            // (e.g. hole=-size, dx=-OFFSET).
+            assignedValue = parts[1];
           }
         } else {
           // try to parse as a flag option,
@@ -38324,6 +38418,8 @@ ${svg}
           cmd.options[optDef.assign_to] = optDef.name;
         } else if (optDef.type == 'flag') {
           cmd.options[optName] = true;
+        } else if (assignedValue !== null) {
+          cmd.options[optName] = parseOptionValue(assignedValue, optDef);
         } else {
           cmd.options[optName] = readOptionValue(argv, optDef);
         }
@@ -41028,7 +41124,7 @@ ${svg}
      .option('target', targetOpt);
 
     parser.command('repel')
-      .describe('move overlapping circle symbols apart')
+      .describe('move overlapping point symbols apart')
       .option('width', {
         describe: 'display width of the layer in pixels (required if no frame)',
         type: 'number'
@@ -41038,6 +41134,9 @@ ${svg}
       })
       .option('padding', {
         describe: 'pixels of clearance around each symbol; may vary (default is 0)'
+      })
+      .option('margin', {
+        describe: 'pixels of clearance between two symbols; may vary (default is 0)'
       })
       .option('ticks', {
         describe: 'number of solver passes (default is 100)',
@@ -41058,7 +41157,7 @@ ${svg}
     parser.command('symbols')
       .describe('symbolize points as arrows, circles, stars, polygons, etc.')
       .option('type', {
-        describe: 'types: arrow, circle, square, star, polygon, ring'
+        describe: 'types: arrow, circle, square, star, polygon, ring, pie'
       })
       .option('stroke', {})
       .option('stroke-width', {})
@@ -41116,6 +41215,15 @@ ${svg}
       })
       .option('radii', {
         describe: '(ring) comma-sep. list of concentric radii, ascending order'
+      })
+      .option('hole', {
+        describe: '(pie) radius of the hole in a donut symbol'
+      })
+      .option('values', {
+        describe: '(pie) comma-sep. list of wedge values (numbers or fields)'
+      })
+      .option('fills', {
+        describe: '(pie) comma-sep. list of wedge fill colors'
       })
       .option('arrow-style', {
         describe: '(arrow) options: stick, standard (default is standard)'
@@ -44368,9 +44476,10 @@ ${svg}
     ({gpkg, tmpPath} = await openGeoPackage(input, geopackage));
     var availableLayers;
     var filterApplied;
+    var unreadableLayers;
     try {
       try {
-        ({datasets, availableLayers, filterApplied} = readFeatureTableDatasets(gpkg, opts));
+        ({datasets, availableLayers, filterApplied, unreadableLayers} = readFeatureTableDatasets(gpkg, opts));
       } catch (e) {
         if (!runningInBrowser() && isLocalCsProjError(e)) {
           gpkg.close();
@@ -44383,7 +44492,7 @@ ${svg}
             throw e;
           }
           gpkg = await geopackage.GeoPackageAPI.open(tmpPath);
-          ({datasets, availableLayers, filterApplied} = readFeatureTableDatasets(gpkg, opts));
+          ({datasets, availableLayers, filterApplied, unreadableLayers} = readFeatureTableDatasets(gpkg, opts));
         } else {
           throw e;
         }
@@ -44398,6 +44507,7 @@ ${svg}
         layers: [{name: '', data: null}],
         info: {
           _gpkg_available_layers: availableLayers,
+          _gpkg_unreadable_layers: unreadableLayers,
           _gpkg_placeholder: !!filterApplied
         }
       };
@@ -44409,6 +44519,7 @@ ${svg}
     mergedArr.forEach(function(ds) {
       ds.info = ds.info || {};
       ds.info._gpkg_available_layers = availableLayers;
+      ds.info._gpkg_unreadable_layers = unreadableLayers;
     });
     return merged;
   }
@@ -44534,10 +44645,38 @@ ${svg}
     var availableLayers = gpkg.getFeatureTables() || [];
     var tables = filterGeoPackageTables(availableLayers, selected);
     var filterApplied = Array.isArray(selected) && selected.length > 0;
-    var datasets = tables.map(function(table) {
-      return readFeatureTable(gpkg, table, opts);
+    var unreadableLayers = [];
+    var datasets = [];
+    tables.forEach(function(table) {
+      try {
+        datasets.push(readFeatureTable(gpkg, table, opts));
+      } catch (e) {
+        // The caller recovers from a CRS parsing failure by rewriting the file's
+        // CRS metadata and re-reading, so that error must not be swallowed here.
+        if (isLocalCsProjError(e)) throw e;
+        unreadableLayers.push(table);
+        warn(formatUnreadableTableMessage(table, e));
+      }
     });
-    return {datasets: datasets, availableLayers: availableLayers, filterApplied: filterApplied};
+    return {
+      datasets: datasets,
+      availableLayers: availableLayers,
+      filterApplied: filterApplied,
+      unreadableLayers: unreadableLayers
+    };
+  }
+
+  // A GeoPackage can advertise feature tables that aren't readable. USGS National
+  // Map vector products, for instance, list a CLIPPOLY table in gpkg_contents and
+  // gpkg_geometry_columns after dropping the table itself from the file. GDAL
+  // skips such layers with a warning; do the same rather than failing the whole
+  // import over one bad table.
+  function formatUnreadableTableMessage(table, err) {
+    var msg = err && err.message ? String(err.message) : '';
+    var reason = /^Table does not exist:/.test(msg) ?
+      'the table is listed in the GeoPackage metadata but is missing from the file' :
+      msg || 'unknown error';
+    return 'Skipping GeoPackage layer "' + table + '": ' + reason;
   }
 
   function getSelectedGeoPackageLayers(opts) {
@@ -46510,12 +46649,12 @@ ${svg}
       var coords = path.coords;
       if (coords.length < 2) return;
       if (forcePolylinePaths) {
-        lines.push(path.closed || pointsEqual$1(coords[0], coords[coords.length - 1]) ? closeRing(coords) : coords);
+        lines.push(path.closed || pointsEqual$1(coords[0], coords[coords.length - 1]) ? closeRing$1(coords) : coords);
         return;
       }
       if (path.closed || pointsEqual$1(coords[0], coords[coords.length - 1])) {
         if (coords.length >= 3) {
-          rings.push(closeRing(coords));
+          rings.push(closeRing$1(coords));
         }
       } else {
         lines.push(coords);
@@ -46819,7 +46958,7 @@ ${svg}
     return /translate\(/i.test(String(str || ''));
   }
 
-  function closeRing(coords) {
+  function closeRing$1(coords) {
     var ring = coords.map(function(p) { return [p[0], p[1]]; });
     if (!pointsEqual$1(ring[0], ring[ring.length - 1])) {
       ring.push([ring[0][0], ring[0][1]]);
@@ -47296,15 +47435,12 @@ ${svg}
     var files = opts.files || [];
     var dataset, datasets, target;
 
+    // copy opts, so parameters can be modified within this command
+    opts = Object.assign({}, opts);
+    opts.input = Object.assign({}, opts.input); // make sure we have a cache
+
     if (opts.stdin) {
-      datasets = await importDatasetsFromFile('/dev/stdin', opts);
-      catalog.addDatasets(datasets);
-      if (datasets.length > 1) {
-        catalog.setDefaultTargets(datasets.map(function(ds) {
-          return {dataset: ds, layers: ds.layers};
-        }));
-      }
-      return normalizeImportedTarget(datasets);
+      files = [readStdinAsFile(opts.input)];
     }
 
     if (files.length > 0 === false) {
@@ -47312,10 +47448,6 @@ ${svg}
     }
 
     verbose("Importing: " + files.join(' '));
-
-    // copy opts, so parameters can be modified within this command
-    opts = Object.assign({}, opts);
-    opts.input = Object.assign({}, opts.input); // make sure we have a cache
 
     convertDataObjects(files, opts.input);
 
@@ -47395,6 +47527,41 @@ ${svg}
     var obj = await unpackSessionData(buf);
     obj.datasets.forEach(catalog.addDataset, catalog);
     return obj.target;
+  }
+
+  // Read the stdin stream into @cache and return the filename to import it as.
+  // A zipped dataset is given a .zip or .kmz name, so that it is unpacked by
+  // expandFiles() like an archive passed as a file argument. Stdin carries no
+  // filename to identify its contents, so an archive is detected from the ZIP
+  // magic number, and a KMZ is told from an ordinary zip by its doc.kml entry.
+  function readStdinAsFile(cache) {
+    var path = '/dev/stdin';
+    var content = cli.readFile(path, null, cache);
+    var name = path;
+    if (contentLooksZipped(content)) {
+      name = zipContainsDocKml(content) ? 'stdin.kmz' : 'stdin.zip';
+    }
+    cache[name] = content;
+    return name;
+  }
+
+  // Detect the ZIP local file header signature ("PK\x03\x04")
+  function contentLooksZipped(content) {
+    var bytes = content instanceof ArrayBuffer ? new Uint8Array(content) : content;
+    if (utils.isString(bytes) || !bytes || bytes.length < 4) return false;
+    return bytes[0] == 0x50 && bytes[1] == 0x4b && bytes[2] == 0x03 && bytes[3] == 0x04;
+  }
+
+  function zipContainsDocKml(content) {
+    var names;
+    try {
+      names = listZipEntryNames(content);
+    } catch(e) {
+      return false; // let the unzipping step report a malformed archive
+    }
+    return names.some(function(name) {
+      return parseLocalPath(name).filename.toLowerCase() == 'doc.kml';
+    });
   }
 
   function expandFiles(files, cache) {
@@ -47528,6 +47695,7 @@ ${svg}
       content = cli.readFile(path, encoding || 'utf-8', cache);
       fileType = guessInputContentType(content);
       if (fileType == 'text' && content.indexOf('\ufffd') > -1) {
+        // invalidate string data that contains the 'replacement character'
         fileType = null;
       }
     }
@@ -47536,7 +47704,7 @@ ${svg}
       stop$1(getUnsupportedFileMessage(path));
     }
     input[fileType] = {filename: path, content: content};
-    content = null;
+    content = null; // for g.c.
     if (fileType == 'shp' || fileType == 'dbf') {
       readShapefileAuxFiles(path, input, cache);
     } else if (isRasterImageInputType(fileType)) {
@@ -47581,12 +47749,14 @@ ${svg}
   function validateAndCleanGpkgSelection(datasets, opts) {
     var availableSet = new Set();
     var importedSet = new Set();
+    var unreadableSet = new Set();
     var sawGpkg = false;
     datasets.forEach(function(ds) {
       var info = ds && ds.info;
       if (!info || !Array.isArray(info._gpkg_available_layers)) return;
       sawGpkg = true;
       info._gpkg_available_layers.forEach(function(name) { availableSet.add(name); });
+      (info._gpkg_unreadable_layers || []).forEach(function(name) { unreadableSet.add(name); });
       if (!info._gpkg_placeholder) {
         (ds.layers || []).forEach(function(lyr) {
           if (lyr && lyr.name) importedSet.add(lyr.name);
@@ -47594,9 +47764,17 @@ ${svg}
       }
     });
     if (sawGpkg && Array.isArray(opts.layers) && opts.layers.length > 0) {
-      var missing = opts.layers.filter(function(name) {
+      var absent = opts.layers.filter(function(name) {
         return !importedSet.has(name);
       });
+      // A layer that the file advertises but that can't be parsed is skipped with
+      // a warning during import; report it separately here, because saying it is
+      // missing while also listing it as an existing layer is contradictory.
+      var unreadable = absent.filter(function(name) { return unreadableSet.has(name); });
+      var missing = absent.filter(function(name) { return !unreadableSet.has(name); });
+      if (unreadable.length > 0) {
+        stop$1('Unable to read GeoPackage layer(s): ' + unreadable.join(', '));
+      }
       if (missing.length > 0) {
         stop$1(
           'Missing GeoPackage layer(s): ' + missing.join(', ') + '\n' +
@@ -47610,6 +47788,7 @@ ${svg}
     cleaned.forEach(function(ds) {
       if (ds && ds.info) {
         delete ds.info._gpkg_available_layers;
+        delete ds.info._gpkg_unreadable_layers;
         delete ds.info._gpkg_placeholder;
       }
     });
@@ -48420,7 +48599,7 @@ ${svg}
   const resulterrbound = (3 + 8 * epsilon) * epsilon;
 
   // fast_expansion_sum_zeroelim routine from oritinal code
-  function sum(elen, e, flen, f, h) {
+  function sum$1(elen, e, flen, f, h) {
       let Q, Qnew, hh, bvirt;
       let enow = e[0];
       let fnow = f[0];
@@ -48603,7 +48782,7 @@ ${svg}
       bvirt = u3 - _j;
       u[2] = _j - (u3 - bvirt) + (_i - bvirt);
       u[3] = u3;
-      const C1len = sum(4, B$2, 4, u, C1);
+      const C1len = sum$1(4, B$2, 4, u, C1);
 
       s1 = acx * bcytail;
       c = splitter * acx;
@@ -48634,7 +48813,7 @@ ${svg}
       bvirt = u3 - _j;
       u[2] = _j - (u3 - bvirt) + (_i - bvirt);
       u[3] = u3;
-      const C2len = sum(C1len, C1, 4, u, C2);
+      const C2len = sum$1(C1len, C1, 4, u, C2);
 
       s1 = acxtail * bcytail;
       c = splitter * acxtail;
@@ -48665,7 +48844,7 @@ ${svg}
       bvirt = u3 - _j;
       u[2] = _j - (u3 - bvirt) + (_i - bvirt);
       u[3] = u3;
-      const Dlen = sum(C2len, C2, 4, u, D$1);
+      const Dlen = sum$1(C2len, C2, 4, u, D$1);
 
       return D$1[Dlen - 1];
   }
@@ -75425,16 +75604,180 @@ ${svg}
     };
   }
 
+  var roundCoord$1 = getRoundingFunction(0.01);
+
+  function getSymbolFillColor(d) {
+    return d.fill || 'magenta';
+  }
+
+  function getSymbolStrokeColor(d) {
+    return d.stroke || d.fill || 'magenta';
+  }
+
+  function applySymbolStyles(sym, d) {
+    if (sym.type == 'polyline') {
+      sym.stroke = getSymbolStrokeColor(d);
+    } else {
+      sym.fill = getSymbolFillColor(d);
+    }
+    if (d.opacity) {
+      sym.opacity = d.opacity;
+    }
+    return sym;
+  }
+
+  function getSymbolRadius(d) {
+    if (d.radius === 0 || d.length === 0 || d.r === 0) return 0;
+    return d.radius || d.length || d.r || 5; // use a default value
+  }
+
+  // Converts the value of a list-valued option into an array of items. The value
+  // arrives either as a whole string (from a direct call, rather than from the
+  // -symbols option accessor) or as an array of items already resolved one by
+  // one. An item that holds an array of its own, as an expression like
+  // [R, R * 0.5] does, is flattened into the list. Items themselves are left
+  // unsplit, because a single item can contain a comma, as rgba() colors do.
+  function toItemList(val) {
+    var items = utils.isString(val) ? splitListItems(val) : [].concat(val);
+    var list = [];
+    for (var i=0; i<items.length; i++) {
+      if (Array.isArray(items[i])) {
+        list = list.concat(items[i]);
+      } else {
+        list.push(items[i]);
+      }
+    }
+    return list;
+  }
+
+  // Like toItemList(), for options that take numbers. An item that is a string
+  // containing commas is split, so that a data field holding a value like "2,4"
+  // works as a list. Values that aren't numbers become NaN, for the caller to
+  // report or ignore.
+  function toNumberList(val) {
+    var list = [];
+    toItemList(val).forEach(function(item) {
+      if (utils.isString(item) && item.indexOf(',') > -1) {
+        list = list.concat(parseNumberList(item));
+      } else {
+        list.push(Number(item));
+      }
+    });
+    return list;
+  }
+
+  // Returns the radius of the smallest circle centered on a symbol's point that
+  // covers the symbol, or null if the symbol contains a part whose reach can't be
+  // measured.
+  //
+  // Only a symbol drawn around its point can be described this way: a circle, or
+  // a group of the circles and polygons that make up ring, pie and donut symbols.
+  // An arrow is drawn from its point outward, so the circle around its point that
+  // covers it says nothing useful about the space it occupies -- arrows are plain
+  // polygon symbols, which reach this function only as group parts, which they
+  // never are.
+  function getSymbolBoundingRadius(sym) {
+    var max = 0;
+    var parts, r, i;
+    if (!sym) return null;
+    if (sym.type == 'circle') {
+      // Half of a stroke lies outside the circle it follows, which is how a ring
+      // symbol paints its bands.
+      return getPositiveNumber(sym.r) + getStrokeOutset(sym);
+    }
+    if (sym.type == 'polygon') {
+      forEachSymbolCoord(sym.coordinates || [], function(p) {
+        var dist = Math.sqrt(p[0] * p[0] + p[1] * p[1]);
+        if (dist > max) max = dist;
+      });
+      return max + getStrokeOutset(sym);
+    }
+    if (sym.type == 'group') {
+      parts = sym.parts || [];
+      for (i=0; i<parts.length; i++) {
+        r = getSymbolBoundingRadius(parts[i]);
+        if (r === null) return null;
+        if (r > max) max = r;
+      }
+      return max;
+    }
+    return null;
+  }
+
+  // A stroke straddles the path it is drawn on, so half of its width extends
+  // beyond the shape.
+  function getStrokeOutset(sym) {
+    var width = sym['stroke-width'];
+    if (!sym.stroke || sym.stroke == 'none') return 0;
+    // an SVG stroke is one pixel wide unless stroke-width says otherwise
+    if (width === undefined || width === null || width === '') return 0.5;
+    return getPositiveNumber(width) / 2;
+  }
+
+  function getPositiveNumber(val) {
+    var num = +val;
+    return num > 0 ? num : 0;
+  }
+
+  function forEachSymbolCoord(coords, cb) {
+    var isPoint = coords && utils.isNumber(coords[0]);
+    var isNested = !isPoint && coords && Array.isArray(coords[0]);
+    if (isPoint) return cb(coords);
+    for (var i=0; i<coords.length; i++) {
+      if (isNested) forEachSymbolCoord(coords[i], cb);
+    }
+  }
+
+  function flipY(coords) {
+    forEachSymbolCoord(coords, function(p) {
+      p[1] = -p[1];
+    });
+  }
+
+  function scaleAndShiftCoords(coords, scale, shift) {
+    forEachSymbolCoord(coords, function(xy) {
+      xy[0] = xy[0] * scale + shift[0];
+      xy[1] = xy[1] * scale + shift[1];
+    });
+  }
+
+  function roundCoordsForSVG(coords) {
+    forEachSymbolCoord(coords, function(p) {
+      p[0] = roundCoord$1(p[0]);
+      p[1] = roundCoord$1(p[1]);
+    });
+  }
+
+  function rotateCoords(coords, rotation) {
+    if (!rotation) return;
+    var f = getAffineTransform(rotation, 1, [0, 0], [0, 0]);
+    forEachSymbolCoord(coords, function(p) {
+      var p2 = f(p[0], p[1]);
+      p[0] = p2[0];
+      p[1] = p2[1];
+    });
+  }
+
   // Collision reduction for circular symbols, in the spirit of d3-force's
   // forceCollide. Overlapping symbols are pushed apart, but each one is kept
   // within a fixed distance of its true position.
   //
   // Nodes are laid out in pixel space; converting to and from map coordinates is
-  // the caller's job. A node is {i, x, y, x0, y0, r, maxShift}, where x0,y0 is
-  // the anchor (the symbol's true position), r includes any padding and maxShift
-  // is the furthest this symbol may be displaced. Both r and maxShift are
-  // per-node, so the caller can vary them from symbol to symbol; a node with a
-  // maxShift of 0 never moves and so acts as a fixed obstacle.
+  // the caller's job. A node is {i, x, y, x0, y0, r, maxShift, margin}, where
+  // x0,y0 is the anchor (the symbol's true position), r includes any padding and
+  // maxShift is the furthest this symbol may be displaced. All three of r,
+  // maxShift and margin are per-node, so the caller can vary them from symbol to
+  // symbol; a node with a maxShift of 0 never moves and so acts as a fixed
+  // obstacle.
+  //
+  // A pair of nodes is kept a.r + b.r + max(a.margin, b.margin) apart, so a
+  // margin is a gap that one symbol claims from every neighbor, whatever the
+  // neighbor asks for, and the larger of the two claims wins. Padding is the
+  // alternative already folded into r, where a pair ends up with the sum of the
+  // two symbols' padding between them. margin is optional; treated as 0 if absent.
+  //
+  // A negative margin lets a pair overlap, but only where both nodes permit it:
+  // max() means one node's 0 outranks another's -5.
 
   // max_shift is not read by the solver (it is a per-node property); it is here
   // as the default for callers to apply when building nodes.
@@ -75481,55 +75824,91 @@ ${svg}
     return moved;
   }
 
-  // Overlaps shallower than this are not reported. A converged layout doesn't
-  // leave symbols exactly touching, it leaves a tail of overlaps a fraction of a
-  // pixel deep -- on a solved 435-symbol layout, 55 pairs overlap by more than a
-  // hundredth of a pixel, 6 by more than half a pixel, and none by more than one.
-  // So a threshold of a pixel is where this solver's convergence residue ends and
-  // genuine unresolved crowding begins, as well as being about the point where an
-  // overlap becomes visible.
-  var VISIBLE_OVERLAP = 1; // pixels
+  // Collisions shallower than this are not reported. A converged layout doesn't
+  // leave pairs at exactly the separation they need, it leaves a tail of pairs
+  // short of it by a fraction of a pixel -- on a solved 435-symbol layout, 55
+  // pairs fall short by more than a hundredth of a pixel, 6 by more than half a
+  // pixel, and none by more than one. So a threshold of a pixel is where this
+  // solver's convergence residue ends and genuine unresolved crowding begins, as
+  // well as being about the point where the shortfall becomes visible.
+  var VISIBLE_COLLISION = 1; // pixels
 
-  // Number of visibly overlapping pairs, for reporting how much of the job got
-  // done. Deliberately not a count of all overlaps: an overlap 100th of a pixel
-  // deep and one 15 pixels deep are not the same result, and treating them alike
-  // makes a layout that is visually finished look like a failure.
+  // Number of pairs that fall visibly short of the separation they need, for
+  // reporting how much of the job got done. Deliberately not a count of every
+  // collision: falling short by a 100th of a pixel and by 15 pixels are not the
+  // same result, and treating them alike makes a layout that is visually finished
+  // look like a failure.
+  //
+  // Note this counts collisions, not overlaps, and padding or a margin can put
+  // the two apart: symbols asked to keep 4px between them and left 3px apart are
+  // colliding, in that the layout hasn't done what was asked, but not overlapping.
   function countSymbolCollisions(nodes) {
     var count = 0;
     forEachCollision(nodes, function(a, b, dx, dy, distSq, sum) {
-      if (sum - Math.sqrt(distSq) > VISIBLE_OVERLAP) count++;
+      if (sum - Math.sqrt(distSq) > VISIBLE_COLLISION) count++;
     });
     return count;
   }
 
-  // Push overlapping nodes apart, in proportion to the overlap. Larger nodes move
-  // less than smaller ones.
+  // Push colliding nodes apart, in proportion to how far short of their required
+  // separation they are. Larger nodes move less than smaller ones. Which of the
+  // two yields is decided by their radii alone, so asking for a wide margin does
+  // not also make a symbol harder to push.
   function resolveCollisions(nodes, strength) {
     forEachCollision(nodes, function(a, b, dx, dy, distSq, sum) {
       separate(a, b, dx, dy, distSq, sum, strength);
     });
   }
 
-  // Sweep along the x axis, using the largest radius still ahead of the current
-  // node to know when to stop looking for neighbors.
+  // Sweep along the x axis, using the greatest reach still ahead of the current
+  // node to know when to stop looking for neighbors. A node's reach is its radius
+  // plus its margin if that margin is positive: only a positive margin widens the
+  // area a symbol needs, and clamping is what makes the bound below safe.
+  //
+  // Breaking out of the inner loop is valid because the separation a pair needs,
+  // a.r + b.r + max(a.margin, b.margin), never exceeds a.reach + b.reach. With
+  // margins clamped at 0 that holds, since max(ma, mb) <= max(ma, 0) + max(mb, 0).
+  // Without the clamp it fails for two negative margins -- max(-3, -3) is -3, not
+  // -6 -- and the sweep quietly stops short of pairs that are still colliding.
+  //
+  // Margins are collected into an array in the same pass that builds the bound,
+  // which normalizes a missing margin to 0 once per node instead of guarding every
+  // comparison in the loop below.
+  //
+  // Note the sort happens once per pass while the callback moves nodes as it goes,
+  // so the bound is applied to positions that have already shifted and a pair that
+  // drifts into range mid-pass can be missed until the next pass re-sorts. A
+  // consequence is that padding and an equivalent margin, which ask for the same
+  // separation, don't produce identical output: the margin gives a node a longer
+  // reach, which prunes less and catches a few more of those pairs.
   function forEachCollision(nodes, cb) {
     var n = nodes.length,
         maxAhead = new Float64Array(n),
+        margins = new Float64Array(n),
         max = 0,
-        a, b, dx, dy, sum, distSq, i, j;
+        a, b, dx, dy, sum, distSq, reach, ma, mb, i, j;
     nodes.sort(compareX);
     for (i=n-1; i>=0; i--) {
-      if (nodes[i].r > max) max = nodes[i].r;
+      ma = nodes[i].margin || 0;
+      margins[i] = ma;
+      reach = nodes[i].r + (ma > 0 ? ma : 0);
+      if (reach > max) max = reach;
       maxAhead[i] = max;
     }
     for (i=0; i<n; i++) {
       a = nodes[i];
+      ma = margins[i];
+      reach = a.r + (ma > 0 ? ma : 0);
       for (j=i+1; j<n; j++) {
         b = nodes[j];
         dx = b.x - a.x;
-        if (dx > a.r + maxAhead[j]) break;
+        if (dx > reach + maxAhead[j]) break;
         dy = b.y - a.y;
-        sum = a.r + b.r;
+        mb = margins[j];
+        sum = a.r + b.r + (ma > mb ? ma : mb);
+        // Margins can cancel the pair's radii entirely, which separate() would
+        // read as an overlap and answer by pulling the two nodes together.
+        if (sum <= 0) continue;
         if (dy > sum || dy < -sum) continue;
         distSq = dx * dx + dy * dy;
         if (distSq >= sum * sum) continue;
@@ -75600,14 +75979,16 @@ ${svg}
 
   var SymbolCollisions = /*#__PURE__*/Object.freeze({
     __proto__: null,
-    VISIBLE_OVERLAP: VISIBLE_OVERLAP,
+    VISIBLE_COLLISION: VISIBLE_COLLISION,
     countSymbolCollisions: countSymbolCollisions,
     resolveSymbolCollisions: resolveSymbolCollisions,
     symbolCollisionDefaults: symbolCollisionDefaults
   });
 
-  // Move circular symbols apart to reduce overlaps, keeping each one within a
-  // fixed pixel distance of its true position.
+  // Move symbols apart to reduce overlaps, keeping each one within a fixed pixel
+  // distance of its true position. Each symbol is laid out as the circle that
+  // covers it, so the command works on the symbol types that are drawn around
+  // their point (see getSymbolLayoutRadius()).
   //
   // The layout runs in the pixel space of the map that the symbols will be
   // rendered in, so the command needs to know the display scale: either from a
@@ -75619,9 +76000,17 @@ ${svg}
   // An optional polygons= layer confines each symbol to the polygon it started
   // in, so that a symbol standing for one area can't drift into a neighboring
   // one. Symbols in an area too small to hold them barely move as a result, and
-  // their overlaps go unresolved -- that is the point of the option, but it does
-  // mean fewer overlaps get fixed.
+  // their collisions go unresolved -- that is the point of the option, but it does
+  // mean fewer collisions get fixed.
+  //
+  // Clearance between symbols can be asked for in two ways. padding= surrounds
+  // each symbol, so a pair ends up with the sum of their two paddings between
+  // them; margin= is a gap a symbol claims from every neighbor, so a pair ends up
+  // with the greater of their two margins. Use padding= to make a symbol keep its
+  // distance in proportion to how much of it there is, and margin= to set a gap
+  // that holds however the neighbor is configured.
   var DEFAULT_PADDING = 0; // pixels
+  var DEFAULT_MARGIN = 0; // pixels
 
   cmd.repel = function(targetLayers, dataset, catalog, polygonSource, opts) {
     var solverOpts = {
@@ -75641,7 +76030,7 @@ ${svg}
       addLayerNodes(nodes, lyr, pixelsPerUnit, opts);
     });
     if (nodes.length === 0) {
-      stop$1('Targeted layer(s) contain no circle symbols to move.');
+      stop$1('Targeted layer(s) contain no symbols to move.');
     }
     var unconstrained = addContainment(nodes, dataset, polygonSource, pixelsPerUnit, solverOpts);
 
@@ -75702,17 +76091,19 @@ ${svg}
   function reportResults(nodes, moved, before, after, contained) {
     var total = nodes.length;
     var msg = utils.format('Moved %d of %d symbol%s', moved, total, total == 1 ? '' : 's');
-    // Counts are of visible overlaps only, so a layout whose symbols end up
-    // touching or a fraction of a pixel apart is reported as finished, and the
-    // advice to raise max-shift= is not given when nothing is left to fix.
+    // Counts are of visible collisions only, so a layout whose symbols end up at
+    // or a fraction of a pixel short of the separation they need is reported as
+    // finished, and the advice to raise max-shift= is not given when nothing is
+    // left to fix. A collision is not the same as an overlap: two symbols asked to
+    // keep a gap between them collide as soon as the gap closes.
     if (after > 0) {
-      msg += utils.format('; %d of %d visible overlap%s remain (%s)',
+      msg += utils.format('; %d of %d visible collision%s remain (%s)',
         after, before, before == 1 ? '' : 's',
         contained ? getMaxShiftAdvice(nodes) + ', or drop polygons=' : getMaxShiftAdvice(nodes));
     } else if (before > 0) {
-      msg += utils.format('; resolved %d visible overlap%s', before, before == 1 ? '' : 's');
+      msg += utils.format('; resolved %d visible collision%s', before, before == 1 ? '' : 's');
     } else {
-      msg += ' (no visible overlaps found)';
+      msg += ' (no visible collisions found)';
     }
     message(msg);
   }
@@ -75733,19 +76124,20 @@ ${svg}
   function requireRepelTarget(lyr, opts) {
     requireSinglePointLayer(lyr,
       '-repel requires single points; layer contains multi-point features.');
-    if (!opts.radius && !layerHasCircleSymbols(lyr)) {
-      stop$1('-repel requires a layer containing circle symbols ' +
+    if (!opts.radius && !layerHasSymbols(lyr)) {
+      stop$1('-repel requires a layer containing symbols ' +
         '(see the -symbols and -style commands), or a radius= option.');
     }
   }
 
-  function layerHasCircleSymbols(lyr) {
+  function layerHasSymbols(lyr) {
     return !!lyr.data && (lyr.data.fieldExists('svg-symbol') || lyr.data.fieldExists('r'));
   }
 
   function addLayerNodes(nodes, lyr, pixelsPerUnit, opts) {
     var getRadius = getRadiusAccessor(lyr, opts);
     var getPadding = getPixelValueAccessor(opts.padding, 'padding', DEFAULT_PADDING, lyr);
+    var getMargin = getPixelValueAccessor(opts.margin, 'margin', DEFAULT_MARGIN, lyr, true);
     var getMaxShift = getPixelValueAccessor(opts.max_shift, 'max-shift',
         symbolCollisionDefaults.max_shift, lyr);
     var i, shp, p, r;
@@ -75764,23 +76156,32 @@ ${svg}
         x0: p[0] * pixelsPerUnit,
         y0: p[1] * pixelsPerUnit,
         // Padding is added to the radius, so a pair of symbols ends up with
-        // (padding a + padding b) pixels of clearance between them.
+        // (padding a + padding b) pixels of clearance between them. A margin is
+        // kept separate, because the solver has to compare the two symbols'
+        // margins to find the gap a pair needs.
         r: r + getPadding(i),
+        margin: getMargin(i),
         maxShift: getMaxShift(i)
       });
     }
   }
 
-  // padding= and max-shift= accept a number, a field name or an expression, and
-  // so are resolved for each symbol.
-  function getPixelValueAccessor(optVal, name, defaultVal, lyr) {
+  // padding=, margin= and max-shift= accept a number, a field name or an
+  // expression, and so are resolved for each symbol.
+  //
+  // @allowNegative is for margin=, where a negative value asks that a pair of
+  // symbols be allowed to overlap. Elsewhere a negative value is an error: it
+  // would shrink a radius or a shift limit, neither of which is a coherent
+  // request. A margin still has to be a finite number, so NaN is rejected either
+  // way.
+  function getPixelValueAccessor(optVal, name, defaultVal, lyr, allowNegative) {
     if (optVal === undefined || optVal === null || optVal === '') {
       return function(i) {return defaultVal;};
     }
     var accessor = getPropertyAccessor(optVal, 'number', lyr, name);
     return function(i) {
       var val = +accessor(i);
-      if (!(val >= 0)) {
+      if (allowNegative ? !isFinite(val) : !(val >= 0)) {
         stop$1(utils.format('Invalid %s= value: %s', name, accessor(i)));
       }
       return val;
@@ -75799,12 +76200,17 @@ ${svg}
     return function(i) {
       var rec = records[i];
       if (!rec) return 0;
-      if (rec['svg-symbol']) return getCircleSymbolRadius(rec['svg-symbol']);
+      if (rec['svg-symbol']) return getSymbolLayoutRadius(rec['svg-symbol']);
       return rec.r > 0 ? +rec.r : 0;
     };
   }
 
-  function getCircleSymbolRadius(sym) {
+  // A symbol is laid out as the circle that covers it, so a symbol type is
+  // supported if it is drawn around its point: a circle, or a group of parts,
+  // which is how ring, pie and donut symbols are made. A symbol drawn from its
+  // point outward, like an arrow, has no meaningful radius and needs radius=.
+  function getSymbolLayoutRadius(sym) {
+    var r;
     if (utils.isString(sym)) {
       try {
         sym = JSON.parse(sym);
@@ -75812,11 +76218,14 @@ ${svg}
         return 0;
       }
     }
-    if (!sym || sym.type != 'circle') {
-      stop$1('-repel currently supports circle symbols only' +
-        (sym && sym.type ? ' (found a ' + sym.type + ' symbol).' : '.'));
+    if (!sym) return 0;
+    r = sym.type == 'circle' || sym.type == 'group' ?
+      getSymbolBoundingRadius(sym) : null;
+    if (r === null) {
+      stop$1('-repel is unable to size a ' + (sym.type || 'symbol') +
+        ' symbol; use a radius= option to give it a radius.');
     }
-    return sym.r > 0 ? +sym.r : 0;
+    return r;
   }
 
   // Returns the number of display pixels per map coordinate unit.
@@ -77864,72 +78273,6 @@ ${svg}
     });
   }
 
-  var roundCoord$1 = getRoundingFunction(0.01);
-
-  function getSymbolFillColor(d) {
-    return d.fill || 'magenta';
-  }
-
-  function getSymbolStrokeColor(d) {
-    return d.stroke || d.fill || 'magenta';
-  }
-
-  function applySymbolStyles(sym, d) {
-    if (sym.type == 'polyline') {
-      sym.stroke = getSymbolStrokeColor(d);
-    } else {
-      sym.fill = getSymbolFillColor(d);
-    }
-    if (d.opacity) {
-      sym.opacity = d.opacity;
-    }
-    return sym;
-  }
-
-  function getSymbolRadius(d) {
-    if (d.radius === 0 || d.length === 0 || d.r === 0) return 0;
-    return d.radius || d.length || d.r || 5; // use a default value
-  }
-
-  function forEachSymbolCoord(coords, cb) {
-    var isPoint = coords && utils.isNumber(coords[0]);
-    var isNested = !isPoint && coords && Array.isArray(coords[0]);
-    if (isPoint) return cb(coords);
-    for (var i=0; i<coords.length; i++) {
-      if (isNested) forEachSymbolCoord(coords[i], cb);
-    }
-  }
-
-  function flipY(coords) {
-    forEachSymbolCoord(coords, function(p) {
-      p[1] = -p[1];
-    });
-  }
-
-  function scaleAndShiftCoords(coords, scale, shift) {
-    forEachSymbolCoord(coords, function(xy) {
-      xy[0] = xy[0] * scale + shift[0];
-      xy[1] = xy[1] * scale + shift[1];
-    });
-  }
-
-  function roundCoordsForSVG(coords) {
-    forEachSymbolCoord(coords, function(p) {
-      p[0] = roundCoord$1(p[0]);
-      p[1] = roundCoord$1(p[1]);
-    });
-  }
-
-  function rotateCoords(coords, rotation) {
-    if (!rotation) return;
-    var f = getAffineTransform(rotation, 1, [0, 0], [0, 0]);
-    forEachSymbolCoord(coords, function(p) {
-      var p2 = f(p[0], p[1]);
-      p[0] = p2[0];
-      p[1] = p2[1];
-    });
-  }
-
   function getStickArrowCoords(d) {
     return getArrowCoords(d, 'stick');
   }
@@ -78267,9 +78610,174 @@ ${svg}
   }
 
   function parseRings(arg) {
-    var arr = Array.isArray(arg) ? arg : parseNumberList(arg);
+    var arr = toNumberList(arg);
     utils.genericSort(arr, true);
     return utils.uniq(arr);
+  }
+
+  // Matches the vertex density of the 72-sided circle made by getPolygonCoords()
+  var DEGREES_PER_SEGMENT = 5;
+
+  // Returns an svg-symbol object containing one polygon part per wedge, or null
+  // if the symbol has nothing to draw.
+  function makePieSymbol(d, opts) {
+    var wedges = getPieWedges(d, +opts.scale || 1);
+    if (wedges.length === 0) return null;
+    var parts = wedges.map(function(wedge) {
+      flipY(wedge.coordinates); // the SVG y-axis points down
+      roundCoordsForSVG(wedge.coordinates);
+      var part = {
+        type: 'polygon',
+        coordinates: wedge.coordinates,
+        fill: wedge.fill
+      };
+      if (d.stroke) part.stroke = d.stroke;
+      if (d['stroke-width']) part['stroke-width'] = d['stroke-width'];
+      // opacity is applied per-part, not to the group: renderComplexSymbol()
+      // assumes a group symbol has a properties object, which group() only
+      // provides for single-part groups.
+      if (d.opacity) part.opacity = d.opacity;
+      return part;
+    });
+    return {type: 'group', parts: parts};
+  }
+
+  // Returns an array of {fill, coordinates} objects, in the y-up coordinate space
+  // shared by the symbol generators, centered on [0, 0]. Coordinates are an array
+  // of rings, like flattened GeoJSON MultiPolygon coordinates.
+  //
+  // The first wedge starts at the top of the symbol and the rest follow in
+  // clockwise order. A wedge with no value, or without a usable fill color, is
+  // left out -- an unfilled wedge becomes a gap in the pie without shifting the
+  // wedges that follow it.
+  function getPieWedges(d, scale) {
+    var values = getPieValues(d);
+    var fills = getPieFills(d);
+    var radii = getPieRadii(d, scale);
+    var rotation = +d.rotation || 0;
+    var total = sum(values);
+    var wedges = [];
+    var start = rotation;
+    var fill, end;
+    if (total > 0 === false || radii.outer > 0 === false) return wedges;
+    for (var i=0; i<values.length; i++) {
+      end = start + values[i] / total * 360;
+      fill = getWedgeFill(fills[i]);
+      if (fill && end > start) {
+        wedges.push({
+          fill: fill,
+          coordinates: getWedgeCoords(start, end, radii.inner, radii.outer)
+        });
+      }
+      start = end;
+    }
+    return wedges;
+  }
+
+  // Returns an array of rings outlining a wedge spanning two bearings.
+  function getWedgeCoords(startAngle, endAngle, inner, outer) {
+    var ring;
+    if (endAngle - startAngle >= 360) {
+      // A single non-zero value covers the whole symbol: a circle, or a pair of
+      // concentric rings if the symbol is a donut.
+      ring = closeRing(getArcCoords(startAngle, startAngle + 360, outer));
+      if (inner > 0) {
+        // wind the hole in the opposite direction from the outer ring
+        return [ring, closeRing(getArcCoords(startAngle + 360, startAngle, inner))];
+      }
+      return [ring];
+    }
+    ring = getArcCoords(startAngle, endAngle, outer);
+    if (inner > 0) {
+      // A wedge of a donut is a simple polygon, so the hole needs no ring of
+      // its own -- the inner arc doubles back inside the outer one.
+      ring = ring.concat(getArcCoords(endAngle, startAngle, inner));
+    } else {
+      ring.push([0, 0]);
+    }
+    ring.push(ring[0].concat());
+    return [ring];
+  }
+
+  // A 360 degree arc starts and ends at the same angle, but rounding leaves its
+  // endpoints a hair apart, so the ring is closed explicitly.
+  function closeRing(ring) {
+    ring[ring.length - 1] = ring[0].concat();
+    return ring;
+  }
+
+  // Returns points along an arc, including both endpoints. Angles are bearings,
+  // which run clockwise from the top of the symbol -- the same convention as
+  // rotateCoords(), so the rotation= option is just an offset to the first angle.
+  function getArcCoords(startAngle, endAngle, radius) {
+    var sweep = endAngle - startAngle;
+    var segments = Math.max(1, Math.ceil(Math.abs(sweep) / DEGREES_PER_SEGMENT));
+    var coords = [];
+    for (var i=0; i<=segments; i++) {
+      coords.push(getPlanarSegmentEndpoint(0, 0, startAngle + sweep * i / segments, radius));
+    }
+    return coords;
+  }
+
+  // Missing, non-numeric and negative values all count as zero.
+  function getPieValues(d) {
+    if (!d.values) {
+      stop$1('A pie symbol requires a values= option.');
+    }
+    return toNumberList(d.values).map(function(num) {
+      return num > 0 ? num : 0;
+    });
+  }
+
+  function getPieFills(d) {
+    if (!d.fills) {
+      stop$1('A pie symbol requires a fills= option.');
+    }
+    return toItemList(d.fills);
+  }
+
+  // Returns the color to fill a wedge with, or null if the wedge should be left
+  // out of the symbol.
+  function getWedgeFill(val) {
+    var str = val === null || val === undefined ? '' : String(val).trim();
+    var name = str.toLowerCase();
+    var rgb;
+    if (!str || name == 'none' || name == 'transparent') {
+      return null;
+    }
+    rgb = parseColor(str);
+    if (!rgb || rgb.a === 0) return null;
+    return str;
+  }
+
+  // Returns {inner, outer} radii in pixels. The hole= option makes a donut. A
+  // negative hole is measured inward from the outer radius, which gives a band
+  // of wedges of a fixed width without having to repeat a data-driven radius=
+  // expression. A hole as wide as the symbol leaves a plain pie, and a
+  // non-positive outer radius is left for the caller to skip, like radius=0 on
+  // the other symbol types.
+  function getPieRadii(d, scale) {
+    var outer = getSymbolRadius(d);
+    var hole = +d.hole;
+    var inner = 0;
+    if (hole > 0) {
+      inner = hole;
+    } else if (hole < 0) {
+      inner = outer + hole;
+    }
+    if (!(inner > 0) || inner >= outer) inner = 0;
+    return {
+      inner: inner * scale,
+      outer: outer * scale
+    };
+  }
+
+  function sum(arr) {
+    var total = 0;
+    for (var i=0; i<arr.length; i++) {
+      total += arr[i];
+    }
+    return total;
   }
 
   // Returns an svg-symbol data object for one symbol
@@ -78327,6 +78835,17 @@ ${svg}
       if (!shp) return null;
       var d = getSymbolData(i);
       var rec = records[i] || {};
+
+      // A pie has a different fill for each of its wedges, which the single
+      // fill field of a generated shape can't express.
+      if (d.type == 'pie') {
+        if (shapeMode) {
+          stop$1('The pie symbol type does not support the geographic option.');
+        }
+        var pie = makePieSymbol(d, opts);
+        if (pie) rec['svg-symbol'] = pie;
+        return;
+      }
 
       // non-polygon symbols
       if (!shapeMode && d.type == 'circle') {
@@ -79565,7 +80084,7 @@ ${svg}
     return name == 'rectangle' || name == 'rectangles' || name == 'filter' && opts.cleanup;
   }
 
-  var version = "0.7.56";
+  var version = "0.7.58";
 
   // Parse command line args into commands and run them
   // Function takes an optional Node-style callback. A Promise is returned if no callback is given.
