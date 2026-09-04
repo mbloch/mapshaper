@@ -77,6 +77,10 @@ describe('mapshaper-run-commands.js', function () {
   })
 
   describe('stdin/stdout tests', function() {
+    before(function() {
+      // runCmd uses a Unix echo pipeline; one test also uses /dev/stdin|/dev/stdout.
+      if (process.platform === 'win32') this.skip();
+    });
 
     it ("pass-through GeoJSON", function(done) {
       var cmd = "- -o - -verbose"; // -verbose to check that messages aren't sent to stdout
