@@ -3,6 +3,7 @@ v0.7.58
 * `-repel` now supports pie, donut and ring symbols, in addition to circles.
 * Fixed parsing of shorthand hex colors (e.g. `#f90`) and of the alpha channel of 8-digit hex colors (e.g. `#ff000080`).
 * Handle missing layers in .gpkg files with a warning.
+* Added support for importing zipped datasets from stdin, including .kmz (e.g. `cat data.shp.zip | mapshaper -i - -o out.json`). Previously, a .zip had to be unpacked into files on disk before importing.
 
 v0.7.57
 * Added `-repel margin=` option, which gives the minimum spacing between two symbols. If two symbols have different margin values, the *greater* of their two margins is used.
