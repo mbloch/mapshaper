@@ -19,7 +19,7 @@ import utils from '../utils/mapshaper-utils';
 import { message, verbose, stop } from '../utils/mapshaper-logging';
 import { parseLocalPath, getFileBase, getFileExtension, replaceFileExtension } from '../utils/mapshaper-filename-utils';
 import { trimBOM, decodeString } from '../text/mapshaper-encodings';
-import { unzipSync } from './mapshaper-zip';
+import { unzipSync, listZipEntryNames } from './mapshaper-zip';
 import { gunzipSync } from './mapshaper-gzip';
 import { unpackSessionData } from '../pack/mapshaper-unpack';
 import { buildTopology } from '../topology/mapshaper-topology';
@@ -31,15 +31,12 @@ cmd.importFiles = async function(catalog, opts) {
   var files = opts.files || [];
   var dataset, datasets, target;
 
+  // copy opts, so parameters can be modified within this command
+  opts = Object.assign({}, opts);
+  opts.input = Object.assign({}, opts.input); // make sure we have a cache
+
   if (opts.stdin) {
-    datasets = await importDatasetsFromFile('/dev/stdin', opts);
-    catalog.addDatasets(datasets);
-    if (datasets.length > 1) {
-      catalog.setDefaultTargets(datasets.map(function(ds) {
-        return {dataset: ds, layers: ds.layers};
-      }));
-    }
-    return normalizeImportedTarget(datasets);
+    files = [readStdinAsFile(opts.input)];
   }
 
   if (files.length > 0 === false) {
@@ -47,10 +44,6 @@ cmd.importFiles = async function(catalog, opts) {
   }
 
   verbose("Importing: " + files.join(' '));
-
-  // copy opts, so parameters can be modified within this command
-  opts = Object.assign({}, opts);
-  opts.input = Object.assign({}, opts.input); // make sure we have a cache
 
   convertDataObjects(files, opts.input);
 
@@ -132,6 +125,41 @@ async function importMshpFile(file, catalog, opts) {
   return obj.target;
 }
 
+// Read the stdin stream into @cache and return the filename to import it as.
+// A zipped dataset is given a .zip or .kmz name, so that it is unpacked by
+// expandFiles() like an archive passed as a file argument. Stdin carries no
+// filename to identify its contents, so an archive is detected from the ZIP
+// magic number, and a KMZ is told from an ordinary zip by its doc.kml entry.
+function readStdinAsFile(cache) {
+  var path = '/dev/stdin';
+  var content = cli.readFile(path, null, cache);
+  var name = path;
+  if (contentLooksZipped(content)) {
+    name = zipContainsDocKml(content) ? 'stdin.kmz' : 'stdin.zip';
+  }
+  cache[name] = content;
+  return name;
+}
+
+// Detect the ZIP local file header signature ("PK\x03\x04")
+function contentLooksZipped(content) {
+  var bytes = content instanceof ArrayBuffer ? new Uint8Array(content) : content;
+  if (utils.isString(bytes) || !bytes || bytes.length < 4) return false;
+  return bytes[0] == 0x50 && bytes[1] == 0x4b && bytes[2] == 0x03 && bytes[3] == 0x04;
+}
+
+function zipContainsDocKml(content) {
+  var names;
+  try {
+    names = listZipEntryNames(content);
+  } catch(e) {
+    return false; // let the unzipping step report a malformed archive
+  }
+  return names.some(function(name) {
+    return parseLocalPath(name).filename.toLowerCase() == 'doc.kml';
+  });
+}
+
 function expandFiles(files, cache) {
   var files2 = [];
   files.forEach(function(file) {
@@ -191,57 +219,6 @@ function findPrimaryFiles(cache) {
   });
 }
 
-function tryUnzipContent(content, opts) {
-  var bytes = content;
-  if (bytes && bytes.constructor && bytes.constructor.name === 'ArrayBuffer') {
-    bytes = new Uint8Array(bytes);
-  }
-  var isZip = bytes && typeof bytes !== 'string' && bytes.length >= 4 &&
-              bytes[0] === 0x50 && bytes[1] === 0x4B &&
-              bytes[2] === 0x03 && bytes[3] === 0x04;
-  if (!isZip) return null;
-
-  var index = unzipSync(content);
-  var cache = opts && opts.input;
-  if (!cache) {
-    cache = {};
-    opts = Object.assign({}, opts, {input: cache});
-  }
-  Object.assign(cache, index);
-  var primaryFiles = findPrimaryFiles(index);
-  if (primaryFiles.length === 0) {
-    stop('No importable files found in the zip archive');
-  }
-  return {
-    primaryFiles: primaryFiles,
-    opts: opts
-  };
-}
-
-// Determine what needs to be imported when a path has no extension-derived
-// file type (e.g. stdin or a .zip supplied directly to importFile()).
-// If the content is a ZIP, resolve it to the files inside; otherwise keep the
-// raw content so it can be decoded by prepareImportFile() without re-reading.
-function resolveImportSource(path, opts) {
-  var fileType = guessInputFileType(path);
-  if (fileType || getFileExtension(path) == 'gz') {
-    return {path: path, opts: opts};
-  }
-  var cache = opts && opts.input || null;
-  cli.checkFileExists(path, cache);
-  var content = cli.readFile(path, null, cache);
-  var unzipResult = tryUnzipContent(content, opts);
-  if (unzipResult) {
-    var primaryFiles = unzipResult.primaryFiles;
-    var newOpts = unzipResult.opts;
-    if (primaryFiles.length === 1) {
-      return resolveImportSource(primaryFiles[0], newOpts);
-    }
-    return {files: primaryFiles, opts: newOpts};
-  }
-  return {path: path, opts: opts, content: content};
-}
-
 // Let the web UI replace path-based imports with a browser-friendly resolver.
 export function replaceImportFile(func) {
   _importFile = func;
@@ -264,41 +241,28 @@ export async function importDatasetsFromFile(path, opts) {
 }
 
 var _importFile = function(path, opts) {
-  var src = resolveImportSource(path, opts);
-  if (src.files) {
-    return importFilesTogether(src.files, src.opts);
-  }
-  var input = prepareImportFile(src.path, src.opts, src.content);
-  return importContent(input, src.opts);
+  var input = prepareImportFile(path, opts);
+  return importContent(input, opts);
 };
 
 var _importDatasetsFromFile = async function(path, opts) {
-  var src = resolveImportSource(path, opts);
-  if (src.files) {
-    return normalizeImportedDatasets(await importFilesTogetherAsync(src.files, src.opts));
-  }
-  var input = prepareImportFile(src.path, src.opts, src.content);
-  return importDatasetsFromContent(input, src.opts);
+  var input = prepareImportFile(path, opts);
+  return importDatasetsFromContent(input, opts);
 };
 
 // Read a file (or cache entry) and collect any sidecars into the normalized
 // content-group shape consumed by the content importers.
 // File acquisition is currently synchronous in both import paths; only some
 // format parsers require asynchronous work.
-// @content is optional: when resolveImportSource() has already read an
-// extension-less input (e.g. stdin), it passes the raw content here so it is
-// not read twice from the cache/stdin stream.
-function prepareImportFile(path, opts, content) {
+function prepareImportFile(path, opts) {
   var fileType = guessInputFileType(path),
       input = {},
       encoding = opts && opts.encoding || null,
       cache = opts && opts.input || null,
       cached = cache && (path in cache),
-      hasContent = content !== undefined;
+      content;
 
-  if (!hasContent) {
-    cli.checkFileExists(path, cache);
-  }
+  cli.checkFileExists(path, cache);
 
   if ((fileType == 'shp' || fileType == 'json' || fileType == 'text' || fileType == 'dbf' ||
       fileType == 'gpkg') && !cached) {
@@ -324,12 +288,7 @@ function prepareImportFile(path, opts, content) {
     content = gunzipSync(cli.readFile(pathgz, null, cache), path);
 
   } else {
-    if (!hasContent) {
-      content = cli.readFile(path, null, cache);
-    }
-    if (typeof Buffer !== 'undefined' && Buffer.isBuffer(content)) {
-      content = trimBOM(decodeString(content, encoding || 'utf-8'));
-    }
+    content = cli.readFile(path, encoding || 'utf-8', cache);
     fileType = guessInputContentType(content);
     if (fileType == 'text' && content.indexOf('\ufffd') > -1) {
       // invalidate string data that contains the 'replacement character'
@@ -353,35 +312,6 @@ function prepareImportFile(path, opts, content) {
     message(utils.format("[%s] .dbf file is missing - shapes imported without attribute data.", path));
   }
   return input;
-}
-
-// Import multiple files to a single dataset (synchronous path used by
-// importFile() when a ZIP contains more than one primary file).
-function importFilesTogether(files, opts) {
-  var unbuiltTopology = false;
-  var datasets = files.reduce(function(memo, fname) {
-    // import without topology or snapping
-    var importOpts = utils.defaults({no_topology: true, snap: false, snap_interval: null, files: [fname]}, opts);
-    var imported = normalizeImportedDatasets(importFile(fname, importOpts));
-    // check if dataset contains non-topological paths
-    // TODO: may also need to rebuild topology if multiple topojson files are merged
-    imported.forEach(function(dataset) {
-      if (dataset.arcs && dataset.arcs.size() > 0 && dataset.info.input_formats[0] != 'topojson') {
-        unbuiltTopology = true;
-      }
-      memo.push(dataset);
-    });
-    return memo;
-  }, []);
-  var combined = mergeDatasets(datasets);
-  // Build topology, if needed
-  // TODO: consider updating topology of TopoJSON files instead of concatenating arcs
-  // (but problem of mismatched coordinates due to quantization in input files.)
-  if (unbuiltTopology && !opts.no_topology) {
-    cleanPathsAfterImport(combined, opts);
-    buildTopology(combined);
-  }
-  return combined;
 }
 
 // Import multiple files to a single dataset.

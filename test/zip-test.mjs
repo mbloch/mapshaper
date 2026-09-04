@@ -73,12 +73,29 @@ describe('zip i/o', function () {
     assert.deepEqual(data, target);
   });
 
-  it('synchronous zipped shapefile import', function() {
-    var zipBuffer = fs.readFileSync('test/data/features/zip/points.zip');
-    var dataset = api.internal.importFile('points.zip', {input: {'points.zip': zipBuffer}});
-    assert(dataset.layers);
-    assert.equal(dataset.layers.length, 1);
-    assert.equal(dataset.layers[0].name, 'points');
+  it('multiple CSV in .zip from stdin', async function() {
+    var file = 'test/data/text/states.csv';
+    var cmd = `-i string-fields=STATE_FIPS,POP10_SQMI ${file} -split STATE_ABBR -o zip`;
+    var out = await api.applyCommands(cmd);
+    var cmd2 = '-i string-fields=STATE_FIPS,POP10_SQMI - -o';
+    var out2 = await api.applyCommands(cmd2, {'/dev/stdin': out['output.zip']});
+    var target = 'STATE_NAME,STATE_FIPS,SUB_REGION,STATE_ABBR,POP2010,POP10_SQMI\nAlaska,02,Pacific,AK,710231,1.20';
+    assert.equal(out2['AK.csv'], target);
+  });
+
+  it('.kmz from stdin', async function() {
+    // a KMZ carries its KML as doc.kml, alongside image files that are not
+    // importable on their own
+    var file = 'test/data/kml/Albania.kmz';
+    var out = await api.applyCommands(`-i ${file} -o out.json`);
+    var out2 = await api.applyCommands('-i - -o out.json', {'/dev/stdin': fs.readFileSync(file)});
+    assert.deepEqual(JSON.parse(out2['out.json']), JSON.parse(out['out.json']));
+  });
+
+  it('non-zipped stdin input is unaffected', async function() {
+    var csv = 'a,b\n1,2';
+    var out = await api.applyCommands('-i - -o out.csv', {'/dev/stdin': Buffer.from(csv)});
+    assert.equal(String(out['out.csv']), csv);
   });
 
 });

@@ -16,6 +16,27 @@ export function unzipSync(input) {
   return fflatePostprocess(obj);
 }
 
+// Return the entry names in a zip archive, without decompressing them.
+// Used to tell a KMZ from an ordinary zip when there is no filename to go by.
+// input: A file path or a buffer
+export function listZipEntryNames(input) {
+  if (input instanceof ArrayBuffer) {
+    input = new Uint8Array(input);
+  }
+  if (!runningInBrowser()) {
+    var AdmZip = require('adm-zip');
+    return new AdmZip(input).getEntries().map(function(entry) {
+      return entry.entryName;
+    });
+  }
+  var names = [];
+  _unzipSync(input, {filter: function(file) {
+    names.push(file.name);
+    return false; // collect names only
+  }});
+  return names;
+}
+
 export function unzipAsync(buf, cb) {
   if (!runningInBrowser()) {
     error('Async unzipping only supported in the browser');
