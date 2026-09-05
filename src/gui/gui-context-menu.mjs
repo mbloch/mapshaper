@@ -7,6 +7,8 @@ import { GUI } from './gui-lib';
 
 var openMenu;
 var openMenuId;
+// One menu element per parent element, created on demand.
+var menus = new WeakMap();
 // Prefixes shown to the left of a menu item. The checkmark is what a copyable
 // item shows after it has been copied.
 var BULLET = '• &nbsp;';
@@ -30,14 +32,26 @@ function closeOpenMenu(immediate) {
   }
 }
 
+// Menus are re-used, rather than created per click: a discarded menu stays in
+// the DOM, and an empty one is a 10px sliver at the bottom of the page, which
+// is enough to make the page scrollable (see the note in ContextMenu()).
+export function getContextMenu(parentArg) {
+  var parent = parentArg || document.querySelector('body');
+  var menu = menus.get(parent);
+  if (!menu) {
+    menu = new ContextMenu(parent);
+    menus.set(parent, menu);
+  }
+  return menu;
+}
+
 export function openContextMenu(e, lyr, parent) {
-  var menu = new ContextMenu(parent);
   if (e.contextMenuId && e.contextMenuId == openMenuId) {
     closeOpenMenu(true);
     return;
   }
   closeOpenMenu(true);
-  menu.open(e, lyr);
+  getContextMenu(parent).open(e, lyr);
   openMenuId = e.contextMenuId || null;
 }
 
@@ -48,6 +62,14 @@ export function ContextMenu(parentArg) {
   var menu = El('div').addClass('contextmenu rollover').appendTo(parent);
   var _open = false;
   var _openCount = 0;
+
+  // The menu is hidden until it is opened. A visible empty menu is 10px of
+  // padding and border at the end of the page, and the page is exactly as tall
+  // as the window, so those 10px make the document scrollable. The body is
+  // overflow:hidden, but that only stops the user from scrolling: the browser
+  // still scrolls the page to reveal a focused element or a caret, and once it
+  // does, the whole UI stays shifted up (mbloch/mapshaper#702).
+  menu.hide();
 
   this.isOpen = function() {
     return _open;
@@ -190,9 +212,22 @@ export function ContextMenu(parentArg) {
     }
     menu.css('top', (e.pageY - offs.top - 15) + 'px');
     menu.show();
+    keepInsideWindow();
 
     _open = true;
     _openCount++;
+
+    // A menu opened near the bottom of the window would otherwise hang off the
+    // screen, out of reach and adding to the page's scrollable overflow.
+    function keepInsideWindow() {
+      var pad = 6;
+      var rect = menu.node().getBoundingClientRect();
+      var overflow = rect.bottom + pad - document.documentElement.clientHeight;
+      var shift = Math.min(overflow, rect.top - pad);
+      if (shift > 0) {
+        menu.css('top', (parseFloat(menu.node().style.top) - shift) + 'px');
+      }
+    }
 
     function getParentOffset() { // crossbrowser version
       if (parent == body) {
