@@ -95,6 +95,8 @@ function makeGridDataset(params, opts) {
     geojson = getTriangleGridGeoJSON(params, false);
   } else if (params.type == 'triangle2') {
     geojson = getTriangleGridGeoJSON(params, true);
+  } else if (params.type == 'cairo') {
+    geojson = getCairoGridGeoJSON(params);
   } else {
     stop('Unsupported grid type');
   }
@@ -187,6 +189,7 @@ function getCellAreaFactor(type) {
   if (type == 'hex' || type == 'hex2') return 3 * Math.sqrt(3) / 2;
   if (type == 'rhombus' || type == 'rhombus2') return Math.sqrt(3) / 2;
   if (type == 'triangle' || type == 'triangle2') return Math.sqrt(3) / 4;
+  if (type == 'cairo') return (4 + Math.sqrt(7)) / 4;
   stop('Unsupported grid type');
 }
 
@@ -338,6 +341,69 @@ function getTriangleGridGeoJSON(params, rotated) {
     return memo.concat(triangulateHexagon(geom.coordinates[0]));
   }, []);
   return geojson;
+}
+
+// Equilateral type-4 Cairo tessellation. Four-valent (90°) vertices sit on a
+// square lattice of spacing S = interval * (√7+1)/2; each lattice square
+// contains a central bar of length `interval`, alternating horizontal and
+// vertical. Two pentagons share each bar.
+function getCairoGridGeoJSON(params) {
+  var side = params.interval;
+  var spacing = side * (Math.sqrt(7) + 1) / 2;
+  var halfBar = side / 2;
+  var geometries = [];
+  var iMin = -1;
+  var jMin = -1;
+  var iMax = Math.ceil(params.width / spacing) + 1;
+  var jMax = Math.ceil(params.height / spacing) + 1;
+  var i, j, x0, y0, cx, cy;
+  for (j = jMin; j < jMax; j++) {
+    for (i = iMin; i < iMax; i++) {
+      x0 = i * spacing;
+      y0 = j * spacing;
+      cx = x0 + spacing / 2;
+      cy = y0 + spacing / 2;
+      if ((i + j) % 2 === 0) {
+        appendCairoPentagon(geometries, [
+          [x0, y0],
+          [cx, y0 - spacing / 2 + halfBar],
+          [x0 + spacing, y0],
+          [cx + halfBar, cy],
+          [cx - halfBar, cy]
+        ]);
+        appendCairoPentagon(geometries, [
+          [x0, y0 + spacing],
+          [cx - halfBar, cy],
+          [cx + halfBar, cy],
+          [x0 + spacing, y0 + spacing],
+          [cx, y0 + spacing + spacing / 2 - halfBar]
+        ]);
+      } else {
+        appendCairoPentagon(geometries, [
+          [x0, y0],
+          [cx, cy - halfBar],
+          [cx, cy + halfBar],
+          [x0, y0 + spacing],
+          [x0 - spacing / 2 + halfBar, cy]
+        ]);
+        appendCairoPentagon(geometries, [
+          [x0 + spacing, y0],
+          [x0 + spacing + spacing / 2 - halfBar, cy],
+          [x0 + spacing, y0 + spacing],
+          [cx, cy + halfBar],
+          [cx, cy - halfBar]
+        ]);
+      }
+    }
+  }
+  return {type: 'GeometryCollection', geometries: geometries};
+}
+
+function appendCairoPentagon(geometries, verts) {
+  geometries.push({
+    type: 'Polygon',
+    coordinates: [verts.concat([verts[0]])]
+  });
 }
 
 function subdivideHexagon(coords) {

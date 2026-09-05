@@ -1319,9 +1319,9 @@ export function getOptionParser() {
     .option('no-replace', noReplaceOpt);
 
   parser.command('grid')
-    .describe('create a grid of square, hexagonal, rhombus or triangle polygons')
+    .describe('create a grid of square, hexagonal, rhombus, triangle or cairo polygons')
     .option('type', {
-      describe: 'square, square2, hex, hex2, rhombus, rhombus2, triangle or triangle2 (default is square)'
+      describe: 'square, square2, hex, hex2, rhombus, rhombus2, triangle, triangle2 or cairo (default is square)'
     })
     .option('interval', {
       describe: 'side length (e.g. 500m, 12km)',

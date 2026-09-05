@@ -1005,13 +1005,13 @@ Create a graticule layer appropriate for the target dataset's projection. Bounde
 
 ### -grid
 
-Create a continuous grid of square, hexagonal, rhombus or triangle polygons.
+Create a continuous grid of square, hexagonal, rhombus, triangle or cairo polygons.
 
 The `-grid` command should have a projected layer as its target. The cells of the grid will completely enclose the bounding box of the target layer.
 
 This command is intended for visualizing data in a grid. Typically, you would use the `-join` command to join data from a polygon or point layer to a grid layer. Use `-join interpolate=<fields>` to interpolate data values (typically count data) from the polygon layer to the grid layer based on area. Use `-join calc='<field> = sum(<field>)'` or `-join calc='<field> = count()'` to aggregate point data values.
 
-`type=`  Supported values: `square` `square2` `hex` `hex2` `rhombus` `rhombus2` `triangle` `triangle2`. The `square` and `square2` types have different rotations. The `hex` and `hex2` types have different rotations. `rhombus` and `rhombus2` subdivide `hex` and `hex2` cells into rhombi; `triangle` and `triangle2` subdivide them into triangles.
+`type=`  Supported values: `square` `square2` `hex` `hex2` `rhombus` `rhombus2` `triangle` `triangle2` `cairo`. The `square` and `square2` types have different rotations. The `hex` and `hex2` types have different rotations. `rhombus` and `rhombus2` subdivide `hex` and `hex2` cells into rhombi; `triangle` and `triangle2` subdivide them into triangles. `cairo` is the Cairo pentagonal tessellation.
 
 `interval=` The length of one side of a grid cell. Example values: `500m` `2km`.
 

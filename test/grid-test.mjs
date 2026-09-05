@@ -105,6 +105,46 @@ describe('mapshaper-polygon-grid.js', function () {
     });
   });
 
+  it('cairo grid fully encloses the target layer', function(done) {
+    var cmd = '-i test/data/features/grid/rectangle.json ' +
+        '-grid type=cairo interval=3000 + name=grid -dissolve ' +
+        '-erase target=rectangle grid -o';
+    api.applyCommands(cmd, {}, function(err, out) {
+      var output = JSON.parse(out['rectangle.json']);
+      assert.deepEqual(output.geometries, []);
+      done();
+    });
+  });
+
+  it('cairo grid cells are equilateral pentagons', function(done) {
+    var cmd = '-i test/data/features/grid/rectangle.json ' +
+        '-grid type=cairo interval=3000 + name=grid -o target=grid';
+    api.applyCommands(cmd, {}, function(err, out) {
+      var grid = JSON.parse(out['grid.json']);
+      var eps = 1e-6;
+      assert(grid.geometries.length > 0);
+      grid.geometries.forEach(function(geom) {
+        var ring = geom.coordinates[0];
+        assert.equal(ring.length, 6);
+        for (var i = 0; i < 5; i++) {
+          assert(Math.abs(segmentLength(ring[i], ring[i + 1]) - 3000) < eps);
+        }
+      });
+      done();
+    });
+  });
+
+  it('cairo grid culls cells outside the target rectangle', function(done) {
+    var cmd = '-i test/data/features/grid/rectangle.json ' +
+        '-grid type=cairo interval=3000 + name=grid -o target=* bbox';
+    api.applyCommands(cmd, {}, function(err, out) {
+      var rect = JSON.parse(out['rectangle.json']);
+      var grid = JSON.parse(out['grid.json']);
+      assertGridCellsIntersectBBox(grid, rect.bbox);
+      done();
+    });
+  });
+
   it('triangle grid culls cells outside the target rectangle', function(done) {
     var cmd = '-i test/data/features/grid/rectangle.json ' +
         '-grid type=triangle interval=3000 + name=grid -o target=* bbox';
@@ -267,4 +307,10 @@ function getGeometryBBox(geom) {
 
 function bboxesIntersect(a, b) {
   return a[0] <= b[2] && a[2] >= b[0] && a[1] <= b[3] && a[3] >= b[1];
+}
+
+function segmentLength(a, b) {
+  var dx = a[0] - b[0];
+  var dy = a[1] - b[1];
+  return Math.sqrt(dx * dx + dy * dy);
 }
