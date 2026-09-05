@@ -1023,6 +1023,8 @@ This command is intended for visualizing data in a grid. Typically, you would us
 
 `cell-scale=` Scale each grid cell from its center. Values must be greater than 0 and less than 2. Values less than 1 create gaps between cells; values greater than 1 create overlaps.
 
+`rotate=` Rotate the grid by a given number of degrees (similar to `-affine rotate=`).
+
 Other options: `name=` `+` `target=`
 
 
