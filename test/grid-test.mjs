@@ -134,6 +134,26 @@ describe('mapshaper-polygon-grid.js', function () {
     });
   });
 
+  it('cairo grid vertices are shared exactly by adjacent cells', function(done) {
+    var cmd = '-i test/data/features/grid/ex2_rectangle.json ' +
+        '-grid type=cairo cols=50 -o';
+    api.applyCommands(cmd, {}, function(err, out) {
+      var grid = JSON.parse(out['grid.json']);
+      var nearDupes = countNearDuplicateVertices(grid.geometries, 1e-4);
+      assert.equal(nearDupes, 0);
+      done();
+    });
+  });
+
+  it('cairo grid has no segment intersections', async function() {
+    var commands = api.internal.parseCommands(
+        '-i test/data/features/grid/ex2_rectangle.json -grid type=cairo cols=50');
+    var job = await api.internal.runParsedCommands(commands);
+    var dataset = job.catalog.getActiveLayer().dataset;
+    var xx = api.internal.findSegmentIntersections(dataset.arcs);
+    assert.equal(xx.length, 0);
+  });
+
   it('cairo grid culls cells outside the target rectangle', function(done) {
     var cmd = '-i test/data/features/grid/rectangle.json ' +
         '-grid type=cairo interval=3000 + name=grid -o target=* bbox';
@@ -313,4 +333,29 @@ function segmentLength(a, b) {
   var dx = a[0] - b[0];
   var dy = a[1] - b[1];
   return Math.sqrt(dx * dx + dy * dy);
+}
+
+// Count vertices that are nearly coincident but not bit-identical. Adjacent
+// cairo cells used to recompute the same 4-way junction with different
+// floating-point expressions, which produced T-intersections.
+function countNearDuplicateVertices(geometries, eps) {
+  var points = [];
+  var count = 0;
+  var i, j, a, b, dx, dy;
+  geometries.forEach(function(geom) {
+    geom.coordinates[0].forEach(function(p, idx, ring) {
+      if (idx < ring.length - 1) points.push(p);
+    });
+  });
+  for (i = 0; i < points.length; i++) {
+    a = points[i];
+    for (j = i + 1; j < points.length; j++) {
+      b = points[j];
+      if (a[0] === b[0] && a[1] === b[1]) continue;
+      dx = a[0] - b[0];
+      dy = a[1] - b[1];
+      if (dx * dx + dy * dy < eps * eps) count++;
+    }
+  }
+  return count;
 }

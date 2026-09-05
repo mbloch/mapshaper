@@ -347,51 +347,77 @@ function getTriangleGridGeoJSON(params, rotated) {
 // square lattice of spacing S = interval * (√7+1)/2; each lattice square
 // contains a central bar of length `interval`, alternating horizontal and
 // vertical. Two pentagons share each bar.
+//
+// Vertices are computed once and reused. Algebraically equal expressions
+// such as i*S and (i-1)*S + S are not bit-identical, and independently
+// computed copies of the same 4-way junction become T-intersections.
 function getCairoGridGeoJSON(params) {
   var side = params.interval;
   var spacing = side * (Math.sqrt(7) + 1) / 2;
   var halfBar = side / 2;
-  var geometries = [];
   var iMin = -1;
   var jMin = -1;
   var iMax = Math.ceil(params.width / spacing) + 1;
   var jMax = Math.ceil(params.height / spacing) + 1;
-  var i, j, x0, y0, cx, cy;
+  var lattice = [];
+  var bars = [];
+  var geometries = [];
+  var i, j, y, cx, cy;
+
+  for (j = jMin - 1; j <= jMax + 1; j++) {
+    y = j * spacing;
+    lattice[j] = [];
+    for (i = iMin - 1; i <= iMax + 1; i++) {
+      lattice[j][i] = [i * spacing, y];
+    }
+  }
+
+  for (j = jMin - 1; j < jMax + 1; j++) {
+    bars[j] = [];
+    for (i = iMin - 1; i < iMax + 1; i++) {
+      cx = (i + 0.5) * spacing;
+      cy = (j + 0.5) * spacing;
+      bars[j][i] = (i + j) % 2 === 0 ? {
+        a: [cx - halfBar, cy],
+        b: [cx + halfBar, cy]
+      } : {
+        a: [cx, cy - halfBar],
+        b: [cx, cy + halfBar]
+      };
+    }
+  }
+
   for (j = jMin; j < jMax; j++) {
     for (i = iMin; i < iMax; i++) {
-      x0 = i * spacing;
-      y0 = j * spacing;
-      cx = x0 + spacing / 2;
-      cy = y0 + spacing / 2;
       if ((i + j) % 2 === 0) {
         appendCairoPentagon(geometries, [
-          [x0, y0],
-          [cx, y0 - spacing / 2 + halfBar],
-          [x0 + spacing, y0],
-          [cx + halfBar, cy],
-          [cx - halfBar, cy]
+          lattice[j][i],
+          bars[j - 1][i].b,
+          lattice[j][i + 1],
+          bars[j][i].b,
+          bars[j][i].a
         ]);
         appendCairoPentagon(geometries, [
-          [x0, y0 + spacing],
-          [cx - halfBar, cy],
-          [cx + halfBar, cy],
-          [x0 + spacing, y0 + spacing],
-          [cx, y0 + spacing + spacing / 2 - halfBar]
+          lattice[j + 1][i],
+          bars[j][i].a,
+          bars[j][i].b,
+          lattice[j + 1][i + 1],
+          bars[j + 1][i].a
         ]);
       } else {
         appendCairoPentagon(geometries, [
-          [x0, y0],
-          [cx, cy - halfBar],
-          [cx, cy + halfBar],
-          [x0, y0 + spacing],
-          [x0 - spacing / 2 + halfBar, cy]
+          lattice[j][i],
+          bars[j][i].a,
+          bars[j][i].b,
+          lattice[j + 1][i],
+          bars[j][i - 1].b
         ]);
         appendCairoPentagon(geometries, [
-          [x0 + spacing, y0],
-          [x0 + spacing + spacing / 2 - halfBar, cy],
-          [x0 + spacing, y0 + spacing],
-          [cx, cy + halfBar],
-          [cx, cy - halfBar]
+          lattice[j][i + 1],
+          bars[j][i + 1].a,
+          lattice[j + 1][i + 1],
+          bars[j][i].b,
+          bars[j][i].a
         ]);
       }
     }
