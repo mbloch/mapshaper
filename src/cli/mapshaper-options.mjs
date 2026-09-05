@@ -1343,6 +1343,10 @@ export function getOptionParser() {
       describe: 'scale factor for cells, between 0 and 2',
       type: 'number'
     })
+    .option('rotate', {
+      describe: 'rotation angle in degrees (default is 0)',
+      type: 'number'
+    })
     // .option('bbox', {
     //   type: 'bbox',
     //   describe: 'xmin,ymin,xmax,ymax (default is bbox of data)'

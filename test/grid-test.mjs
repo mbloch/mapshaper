@@ -298,6 +298,80 @@ describe('mapshaper-polygon-grid.js', function () {
     });
   });
 
+  it('rotate=45 square grid fully encloses the target layer', function(done) {
+    var cmd = '-i test/data/features/grid/rectangle.json ' +
+        '-grid type=square interval=3000 rotate=45 + name=grid -dissolve ' +
+        '-erase target=rectangle grid -o';
+    api.applyCommands(cmd, {}, function(err, out) {
+      var output = JSON.parse(out['rectangle.json']);
+      assert.deepEqual(output.geometries, []);
+      done();
+    });
+  });
+
+  it('rotate=30 hex grid fully encloses the target layer', function(done) {
+    var cmd = '-i test/data/features/grid/rectangle.json ' +
+        '-grid type=hex interval=3000 rotate=30 + name=grid -dissolve ' +
+        '-erase target=rectangle grid -o';
+    api.applyCommands(cmd, {}, function(err, out) {
+      var output = JSON.parse(out['rectangle.json']);
+      assert.deepEqual(output.geometries, []);
+      done();
+    });
+  });
+
+  it('rotate= does not change cell side length', function(done) {
+    var cmd = '-i test/data/features/grid/rectangle.json ' +
+        '-grid type=square interval=2000 rotate=35 + name=grid -o target=grid';
+    api.applyCommands(cmd, {}, function(err, out) {
+      var grid = JSON.parse(out['grid.json']);
+      var ring = grid.geometries[0].coordinates[0];
+      var eps = 1e-6;
+      assert(grid.geometries.length > 0);
+      for (var i = 0; i < 4; i++) {
+        assert(Math.abs(segmentLength(ring[i], ring[i + 1]) - 2000) < eps);
+      }
+      done();
+    });
+  });
+
+  it('rotate= does not change cols= cell size', function(done) {
+    var cmd = '-i test/data/features/grid/rectangle.json ' +
+        '-grid type=square cols=5 + name=unrotated ' +
+        '-grid target=rectangle type=square cols=5 rotate=20 + name=rotated ' +
+        '-o target=*';
+    api.applyCommands(cmd, {}, function(err, out) {
+      var unrotated = JSON.parse(out['unrotated.json']);
+      var rotated = JSON.parse(out['rotated.json']);
+      var sideA = segmentLength(unrotated.geometries[0].coordinates[0][0],
+          unrotated.geometries[0].coordinates[0][1]);
+      var sideB = segmentLength(rotated.geometries[0].coordinates[0][0],
+          rotated.geometries[0].coordinates[0][1]);
+      assert(Math.abs(sideA - sideB) < 1e-6);
+      done();
+    });
+  });
+
+  it('rotated cairo grid has no segment intersections', async function() {
+    var commands = api.internal.parseCommands(
+        '-i test/data/features/grid/ex2_rectangle.json -grid type=cairo cols=50 rotate=15');
+    var job = await api.internal.runParsedCommands(commands);
+    var dataset = job.catalog.getActiveLayer().dataset;
+    var xx = api.internal.findSegmentIntersections(dataset.arcs);
+    assert.equal(xx.length, 0);
+  });
+
+  it('rotated grid culls cells outside the target rectangle', function(done) {
+    var cmd = '-i test/data/features/grid/rectangle.json ' +
+        '-grid type=triangle interval=3000 rotate=25 + name=grid -o target=* bbox';
+    api.applyCommands(cmd, {}, function(err, out) {
+      var rect = JSON.parse(out['rectangle.json']);
+      var grid = JSON.parse(out['grid.json']);
+      assertGridCellsIntersectBBox(grid, rect.bbox);
+      done();
+    });
+  });
+
   it('default output layer name is "grid"', function (done) {
     var cmd = '-i test/data/features/grid/rectangle.json ' +
       '-grid interval=4500 -o';

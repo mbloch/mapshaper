@@ -9,6 +9,7 @@ import utils from '../utils/mapshaper-utils';
 import { buildTopology } from '../topology/mapshaper-topology';
 import { getHexGridMaker } from '../grids/mapshaper-hex-grid';
 import { getSquareGridMaker } from '../grids/mapshaper-square-grid';
+import { getAffineTransform } from './mapshaper-affine';
 
 cmd.polygonGrid = function(targetLayers, targetDataset, opts) {
   requireProjectedDataset(targetDataset);
@@ -77,35 +78,65 @@ cmd.pointGrid2 = function(targetLayers, targetDataset, opts) {
 
 function makeGridDataset(params, opts) {
   var geojson, dataset;
+  var rotation = opts.rotate || 0;
+  var genParams = rotation ? getRotatedGridParams(params, rotation) : params;
   if (params.type == 'square') {
-    geojson = getSquareGridGeoJSON(getSquareGridCoordinates(params));
+    geojson = getSquareGridGeoJSON(getSquareGridCoordinates(genParams));
   } else if (params.type == 'square2') {
-    geojson = getRotatedSquareGridGeoJSON(params);
+    geojson = getRotatedSquareGridGeoJSON(genParams);
   } else if (params.type == 'hex') {
-    geojson = getHexGridGeoJSON(getHexGridCoordinates(params));
+    geojson = getHexGridGeoJSON(getHexGridCoordinates(genParams));
   } else if (params.type == 'hex2') {
     // use rotated grid
-    geojson = getHexGridGeoJSON(getHexGridCoordinates(swapGridParams(params)));
+    geojson = getHexGridGeoJSON(getHexGridCoordinates(swapGridParams(genParams)));
     swapPolygonCoords(geojson);
   } else if (params.type == 'rhombus') {
-    geojson = getRhombusGridGeoJSON(params, false);
+    geojson = getRhombusGridGeoJSON(genParams, false);
   } else if (params.type == 'rhombus2') {
-    geojson = getRhombusGridGeoJSON(params, true);
+    geojson = getRhombusGridGeoJSON(genParams, true);
   } else if (params.type == 'triangle') {
-    geojson = getTriangleGridGeoJSON(params, false);
+    geojson = getTriangleGridGeoJSON(genParams, false);
   } else if (params.type == 'triangle2') {
-    geojson = getTriangleGridGeoJSON(params, true);
+    geojson = getTriangleGridGeoJSON(genParams, true);
   } else if (params.type == 'cairo') {
-    geojson = getCairoGridGeoJSON(params);
+    geojson = getCairoGridGeoJSON(genParams);
   } else {
     stop('Unsupported grid type');
   }
   scaleGridCells(geojson, params.cellScale);
   alignGridToBounds(geojson, params.bbox);
+  if (rotation) {
+    rotateGridCells(geojson, rotation, params.bbox);
+  }
   cullGridCells(geojson, params.bbox);
   dataset = importGeoJSON(geojson, {});
   buildTopology(dataset);
   return dataset;
+}
+
+// Expand the generation rectangle so that, after rotation around the shared
+// center, the grid still covers the original target bbox.
+function getRotatedGridParams(params, rotation) {
+  var angle = rotation * Math.PI / 180;
+  var cos = Math.abs(Math.cos(angle));
+  var sin = Math.abs(Math.sin(angle));
+  return utils.defaults({
+    width: params.width * cos + params.height * sin,
+    height: params.width * sin + params.height * cos
+  }, params);
+}
+
+function rotateGridCells(geojson, rotation, bbox) {
+  var cx = (bbox[0] + bbox[2]) / 2;
+  var cy = (bbox[1] + bbox[3]) / 2;
+  var transform = getAffineTransform(rotation, 1, [0, 0], [cx, cy]);
+  geojson.geometries.forEach(function(geom) {
+    if (geom.type == 'Polygon') {
+      geom.coordinates[0] = geom.coordinates[0].map(function(xy) {
+        return transform(xy[0], xy[1]);
+      });
+    }
+  });
 }
 
 function swapGridParams(params) {
