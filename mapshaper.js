@@ -40383,9 +40383,9 @@ ${svg}
       .option('no-replace', noReplaceOpt);
 
     parser.command('grid')
-      .describe('create a grid of square, hexagonal, rhombus or triangle polygons')
+      .describe('create a grid of square, hexagonal, rhombus, triangle or cairo polygons')
       .option('type', {
-        describe: 'square, square2, hex, hex2, rhombus, rhombus2, triangle or triangle2 (default is square)'
+        describe: 'square, square2, hex, hex2, rhombus, rhombus2, triangle, triangle2 or cairo (default is square)'
       })
       .option('interval', {
         describe: 'side length (e.g. 500m, 12km)',
@@ -40405,6 +40405,10 @@ ${svg}
       })
       .option('cell-scale', {
         describe: 'scale factor for cells, between 0 and 2',
+        type: 'number'
+      })
+      .option('rotate', {
+        describe: 'rotation angle in degrees (default is 0)',
         type: 'number'
       })
       // .option('bbox', {
@@ -74555,7 +74559,7 @@ ${svg}
   cmd.polygonGrid = function(targetLayers, targetDataset, opts) {
     requireProjectedDataset(targetDataset);
     var params = getGridParams(targetLayers, targetDataset, opts);
-    var gridDataset = makeGridDataset(params); // grid is a new dataset
+    var gridDataset = makeGridDataset(params, opts); // grid is a new dataset
     gridDataset.info = copyDatasetInfo(targetDataset.info);
     setOutputLayerName(gridDataset.layers[0], null, 'grid', opts);
     if (opts.debug) gridDataset.layers.push(cmd.pointGrid2(targetLayers, targetDataset, opts));
@@ -74619,33 +74623,65 @@ ${svg}
 
   function makeGridDataset(params, opts) {
     var geojson, dataset;
+    var rotation = opts.rotate || 0;
+    var genParams = rotation ? getRotatedGridParams(params, rotation) : params;
     if (params.type == 'square') {
-      geojson = getSquareGridGeoJSON(getSquareGridCoordinates(params));
+      geojson = getSquareGridGeoJSON(getSquareGridCoordinates(genParams));
     } else if (params.type == 'square2') {
-      geojson = getRotatedSquareGridGeoJSON(params);
+      geojson = getRotatedSquareGridGeoJSON(genParams);
     } else if (params.type == 'hex') {
-      geojson = getHexGridGeoJSON(getHexGridCoordinates(params));
+      geojson = getHexGridGeoJSON(getHexGridCoordinates(genParams));
     } else if (params.type == 'hex2') {
       // use rotated grid
-      geojson = getHexGridGeoJSON(getHexGridCoordinates(swapGridParams(params)));
+      geojson = getHexGridGeoJSON(getHexGridCoordinates(swapGridParams(genParams)));
       swapPolygonCoords(geojson);
     } else if (params.type == 'rhombus') {
-      geojson = getRhombusGridGeoJSON(params, false);
+      geojson = getRhombusGridGeoJSON(genParams, false);
     } else if (params.type == 'rhombus2') {
-      geojson = getRhombusGridGeoJSON(params, true);
+      geojson = getRhombusGridGeoJSON(genParams, true);
     } else if (params.type == 'triangle') {
-      geojson = getTriangleGridGeoJSON(params, false);
+      geojson = getTriangleGridGeoJSON(genParams, false);
     } else if (params.type == 'triangle2') {
-      geojson = getTriangleGridGeoJSON(params, true);
+      geojson = getTriangleGridGeoJSON(genParams, true);
+    } else if (params.type == 'cairo') {
+      geojson = getCairoGridGeoJSON(genParams);
     } else {
       stop$1('Unsupported grid type');
     }
     scaleGridCells(geojson, params.cellScale);
     alignGridToBounds(geojson, params.bbox);
+    if (rotation) {
+      rotateGridCells(geojson, rotation, params.bbox);
+    }
     cullGridCells(geojson, params.bbox);
     dataset = importGeoJSON(geojson, {});
     buildTopology(dataset);
     return dataset;
+  }
+
+  // Expand the generation rectangle so that, after rotation around the shared
+  // center, the grid still covers the original target bbox.
+  function getRotatedGridParams(params, rotation) {
+    var angle = rotation * Math.PI / 180;
+    var cos = Math.abs(Math.cos(angle));
+    var sin = Math.abs(Math.sin(angle));
+    return utils.defaults({
+      width: params.width * cos + params.height * sin,
+      height: params.width * sin + params.height * cos
+    }, params);
+  }
+
+  function rotateGridCells(geojson, rotation, bbox) {
+    var cx = (bbox[0] + bbox[2]) / 2;
+    var cy = (bbox[1] + bbox[3]) / 2;
+    var transform = getAffineTransform(rotation, 1, [0, 0], [cx, cy]);
+    geojson.geometries.forEach(function(geom) {
+      if (geom.type == 'Polygon') {
+        geom.coordinates[0] = geom.coordinates[0].map(function(xy) {
+          return transform(xy[0], xy[1]);
+        });
+      }
+    });
   }
 
   function swapGridParams(params) {
@@ -74729,6 +74765,7 @@ ${svg}
     if (type == 'hex' || type == 'hex2') return 3 * Math.sqrt(3) / 2;
     if (type == 'rhombus' || type == 'rhombus2') return Math.sqrt(3) / 2;
     if (type == 'triangle' || type == 'triangle2') return Math.sqrt(3) / 4;
+    if (type == 'cairo') return (4 + Math.sqrt(7)) / 4;
     stop$1('Unsupported grid type');
   }
 
@@ -74880,6 +74917,95 @@ ${svg}
       return memo.concat(triangulateHexagon(geom.coordinates[0]));
     }, []);
     return geojson;
+  }
+
+  // Equilateral type-4 Cairo tessellation. Four-valent (90°) vertices sit on a
+  // square lattice of spacing S = interval * (√7+1)/2; each lattice square
+  // contains a central bar of length `interval`, alternating horizontal and
+  // vertical. Two pentagons share each bar.
+  //
+  // Vertices are computed once and reused. Algebraically equal expressions
+  // such as i*S and (i-1)*S + S are not bit-identical, and independently
+  // computed copies of the same 4-way junction become T-intersections.
+  function getCairoGridGeoJSON(params) {
+    var side = params.interval;
+    var spacing = side * (Math.sqrt(7) + 1) / 2;
+    var halfBar = side / 2;
+    var iMin = -1;
+    var jMin = -1;
+    var iMax = Math.ceil(params.width / spacing) + 1;
+    var jMax = Math.ceil(params.height / spacing) + 1;
+    var lattice = [];
+    var bars = [];
+    var geometries = [];
+    var i, j, y, cx, cy;
+
+    for (j = jMin - 1; j <= jMax + 1; j++) {
+      y = j * spacing;
+      lattice[j] = [];
+      for (i = iMin - 1; i <= iMax + 1; i++) {
+        lattice[j][i] = [i * spacing, y];
+      }
+    }
+
+    for (j = jMin - 1; j < jMax + 1; j++) {
+      bars[j] = [];
+      for (i = iMin - 1; i < iMax + 1; i++) {
+        cx = (i + 0.5) * spacing;
+        cy = (j + 0.5) * spacing;
+        bars[j][i] = (i + j) % 2 === 0 ? {
+          a: [cx - halfBar, cy],
+          b: [cx + halfBar, cy]
+        } : {
+          a: [cx, cy - halfBar],
+          b: [cx, cy + halfBar]
+        };
+      }
+    }
+
+    for (j = jMin; j < jMax; j++) {
+      for (i = iMin; i < iMax; i++) {
+        if ((i + j) % 2 === 0) {
+          appendCairoPentagon(geometries, [
+            lattice[j][i],
+            bars[j - 1][i].b,
+            lattice[j][i + 1],
+            bars[j][i].b,
+            bars[j][i].a
+          ]);
+          appendCairoPentagon(geometries, [
+            lattice[j + 1][i],
+            bars[j][i].a,
+            bars[j][i].b,
+            lattice[j + 1][i + 1],
+            bars[j + 1][i].a
+          ]);
+        } else {
+          appendCairoPentagon(geometries, [
+            lattice[j][i],
+            bars[j][i].a,
+            bars[j][i].b,
+            lattice[j + 1][i],
+            bars[j][i - 1].b
+          ]);
+          appendCairoPentagon(geometries, [
+            lattice[j][i + 1],
+            bars[j][i + 1].a,
+            lattice[j + 1][i + 1],
+            bars[j][i].b,
+            bars[j][i].a
+          ]);
+        }
+      }
+    }
+    return {type: 'GeometryCollection', geometries: geometries};
+  }
+
+  function appendCairoPentagon(geometries, verts) {
+    geometries.push({
+      type: 'Polygon',
+      coordinates: [verts.concat([verts[0]])]
+    });
   }
 
   function subdivideHexagon(coords) {
@@ -80084,7 +80210,7 @@ ${svg}
     return name == 'rectangle' || name == 'rectangles' || name == 'filter' && opts.cleanup;
   }
 
-  var version = "0.7.58";
+  var version = "0.7.59";
 
   // Parse command line args into commands and run them
   // Function takes an optional Node-style callback. A Promise is returned if no callback is given.
