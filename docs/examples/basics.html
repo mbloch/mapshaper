@@ -131,7 +131,7 @@
 <h3 id="repair-topology-errors">Repair topology errors</h3>
 <pre><code class="hljs language-text">-clean
 </code></pre>
-<p><code>-clean</code> snaps near-duplicate vertices, removes tiny gaps and overlaps between polygons, and fixes self-intersecting lines. It&#39;s a safe first step before any spatial operation. You can tune <code>gap-fill-area=</code>, <code>sliver-control=</code> or <code>snap-interval=</code> if necessary.</p>
+<p><code>-clean</code> snaps near-duplicate vertices, removes tiny gaps and overlaps between polygons, and fixes self-intersecting lines. It&#39;s a safe first step before any spatial operation. You can tune <code>gap-width=</code> or <code>snap-interval=</code> if necessary.</p>
 <h2 id="aggregating">Aggregating</h2>
 <h3 id="dissolve-to-a-parent-geography">Dissolve to a parent geography</h3>
 <pre><code class="hljs language-text">-dissolve STATE

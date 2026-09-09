@@ -18168,9 +18168,28 @@
     parseSizeParam: parseSizeParam
   });
 
-  // Default gap-width as a fraction of the layer's median polygon-ring segment
-  // length. Shared by interior fill and exterior close-outer-gaps.
+  // Conservative width as a fraction of the layer's median polygon-ring segment
+  // length. Used for partition min-width and duplicate-boundary search — not for
+  // the default gap-width=auto fill threshold (see getDefaultGapWidth).
   var GAP_WIDTH_SEGMENT_FRACTION = 0.01;
+
+  // Inject gap_width=auto unless the caller already chose a width or a legacy
+  // area/sliver option. Used by -clean, -filter-slivers, and gap partition.
+  function applyDefaultGapWidthOpts(opts) {
+    opts = Object.assign({}, opts);
+    if (opts.gap_width != null) return opts;
+    // Legacy area/sliver options: keep the historical gap_fill_area=auto default.
+    if (opts.gap_fill_area != null || opts.min_gap_area != null ||
+        opts.min_area != null || opts.sliver_control != null) {
+      if (opts.gap_fill_area == null && opts.min_gap_area == null &&
+          opts.min_area == null) {
+        opts.gap_fill_area = 'auto';
+      }
+      return opts;
+    }
+    opts.gap_width = 'auto';
+    return opts;
+  }
 
   // Used by -clean -dissolve -filter-slivers -filter-islands to generate filters
   // for removing small polygon rings / filling mosaic gaps.
@@ -18317,9 +18336,10 @@
     };
   }
 
-  // Median polygon-ring segment length * GAP_WIDTH_SEGMENT_FRACTION.
+  // Width equivalent of the legacy gap-fill-area=auto + sliver-control=1 test:
+  // W = sqrt(A0 / π). The two filters accept the same rings (see getGapWidthTest).
   function getDefaultGapWidth(lyr, arcs) {
-    return getMedianPolygonSegmentLength(lyr, arcs) * GAP_WIDTH_SEGMENT_FRACTION;
+    return Math.sqrt(getDefaultSliverThreshold(lyr, arcs) / Math.PI);
   }
 
   function getMedianPolygonSegmentLength(lyr, arcs) {
@@ -18400,6 +18420,7 @@
   var Slivers = /*#__PURE__*/Object.freeze({
     __proto__: null,
     GAP_WIDTH_SEGMENT_FRACTION: GAP_WIDTH_SEGMENT_FRACTION,
+    applyDefaultGapWidthOpts: applyDefaultGapWidthOpts,
     calcMaxSliverArea: calcMaxSliverArea,
     getDefaultGapWidth: getDefaultGapWidth,
     getDefaultSliverThreshold: getDefaultSliverThreshold,
@@ -23467,8 +23488,7 @@
     var spherical = isLatLngCRS(crs);
     var medianSeg = measureMedianSegment(lyr, arcs);
     // Same width as interior gap filling, from the same automatic default.
-    var distance = resolveCloseDistance(opts, crs,
-      medianSeg * GAP_WIDTH_SEGMENT_FRACTION);
+    var distance = resolveCloseDistance(opts, crs, getDefaultGapWidth(lyr, arcs));
     if (!(distance > 0)) return 0;
 
     profileStart('cg.outsideFacingArcs');
@@ -23518,7 +23538,7 @@
     return {seams: seams, seeds: seeds, arcsById: arcsById, footpoints: footpoints};
   }
 
-  // Same segment median as interior gap-width=auto (all polygon-ring segments).
+  // Median of every polygon-ring segment; used for min-seam length.
   function measureMedianSegment(lyr, arcs) {
     return profileWrap('cg.medianSegment', function() {
       return getMedianPolygonSegmentLength(lyr, arcs);
@@ -24154,18 +24174,7 @@
   function partitionPolygonMosaicGaps(lyr, dataset, nodes, opts) {
     if (!lyr.shapes || lyr.shapes.length < MIN_GAP_OWNERS) return false;
     var mosaicIndex = new MosaicIndex(lyr, nodes, {flat: true});
-    var sliverOpts = utils.extend({}, opts);
-    if (sliverOpts.gap_width == null) {
-      if (sliverOpts.gap_fill_area != null || sliverOpts.min_gap_area != null ||
-          sliverOpts.min_area != null || sliverOpts.sliver_control != null) {
-        if (sliverOpts.gap_fill_area == null && sliverOpts.min_gap_area == null &&
-            sliverOpts.min_area == null) {
-          sliverOpts.gap_fill_area = 'auto';
-        }
-      } else {
-        sliverOpts.gap_width = 'auto';
-      }
-    }
+    var sliverOpts = applyDefaultGapWidthOpts(opts);
     var filter = getSliverFilter(lyr, dataset, sliverOpts).filter;
     var gaps = mosaicIndex.getUnusedTileData(filter).filter(function(gap) {
       return countOwners(gap.boundary) >= MIN_GAP_OWNERS;
@@ -24601,10 +24610,11 @@
   // several features with hairline slivers, which is worse for having more of them.
   //
   // A layer's median segment length is the scale at which its boundaries were
-  // drawn, so the same fraction of it that serves as the default gap-width -- what
-  // mapshaper already treats as too narrow to be intended -- marks where dividing
-  // stops being worth it. This is deliberately independent of the gap-width in
-  // effect: raising that to fill wider gaps should not coarsen the data's own scale.
+  // drawn. A small fraction of that scale marks where dividing a gap stops being
+  // worth it: the displacement would be smaller than the data's own detail, and
+  // the pieces would be hairline slivers. This is deliberately independent of
+  // the gap-width in effect: raising that to fill wider gaps should not coarsen
+  // the data's own scale.
   function getMinDivisibleGapWidth(lyr, arcs) {
     var width = getMedianPolygonSegmentLength(lyr, arcs) *
       GAP_WIDTH_SEGMENT_FRACTION;
@@ -24741,29 +24751,13 @@
 
   function cleanPolygonLayerGeometry(lyr, dataset, opts) {
     // clean polygons by apply the 'dissolve2' function to each feature
-    opts = withDefaultGapWidth(opts);
+    opts = applyDefaultGapWidthOpts(opts);
     var groups = lyr.shapes.map(function(shp, i) {
       return [i];
     });
     noteLayerWillChange(lyr, {operation: 'cleanPolygonLayerGeometry', unit: 'shapes'});
     lyr.shapes = dissolvePolygonGroups2(groups, lyr, dataset, opts);
     markLayerChanged(lyr, {operation: 'cleanPolygonLayerGeometry', unit: 'shapes'});
-  }
-
-  function withDefaultGapWidth(opts) {
-    opts = Object.assign({}, opts);
-    if (opts.gap_width != null) return opts;
-    // Legacy area/sliver options: keep the historical gap_fill_area=auto default.
-    if (opts.gap_fill_area != null || opts.min_gap_area != null ||
-        opts.min_area != null || opts.sliver_control != null) {
-      if (opts.gap_fill_area == null && opts.min_gap_area == null &&
-          opts.min_area == null) {
-        opts.gap_fill_area = 'auto';
-      }
-      return opts;
-    }
-    opts.gap_width = 'auto';
-    return opts;
   }
 
   function collectArcIds(shapes) {
@@ -40329,12 +40323,13 @@ ${svg}
 
     parser.command('filter-slivers')
       .describe('remove small polygon rings')
+      .option('gap-width', gapWidthOpt)
       .option('min-area', {
         type: 'area',
-        describe: 'area threshold (e.g. 2sqkm)'
+        describe: '(deprecated) use gap-width= instead'
       })
       .option('sliver-control', {
-        describe: 'boost area threshold of slivers (0-1, default is 1)',
+        describe: '(deprecated) use gap-width= instead',
         type: 'number'
       })
       .option('weighted', {
@@ -56573,7 +56568,13 @@ ${svg}
   };
 
   function filterSlivers(lyr, dataset, optsArg) {
-    var opts = utils.extend({sliver_control: 1}, optsArg);
+    var opts = applyDefaultGapWidthOpts(optsArg);
+    // Legacy area path only: keep the historical sliver-control=1 default.
+    // Do not inject it before applyDefaultGapWidthOpts, or the implicit default
+    // would lock the command onto the area path.
+    if (opts.gap_width == null && opts.sliver_control == null) {
+      opts.sliver_control = 1;
+    }
     var filterData = getSliverFilter(lyr, dataset, opts);
     var ringTest = filterData.filter;
     var removed = 0;
@@ -80210,7 +80211,7 @@ ${svg}
     return name == 'rectangle' || name == 'rectangles' || name == 'filter' && opts.cleanup;
   }
 
-  var version = "0.7.59";
+  var version = "0.7.60";
 
   // Parse command line args into commands and run them
   // Function takes an optional Node-style callback. A Promise is returned if no callback is given.

@@ -56,8 +56,8 @@
 <p>The <a href="/docs/reference.html#-clean"><code>-clean</code></a> command is the general-purpose repair tool for topology errors. It snaps near-duplicate vertices, removes small gaps and overlaps between adjacent polygons, and fixes self-intersecting lines:</p>
 <pre><code class="hljs language-bash">mapshaper countries.shp -clean -o cleaned.shp
 </code></pre>
-<p><code>-clean</code> accepts a <code>gap-fill-area=</code> option to control how aggressively gaps are filled, and a <code>sliver-control=</code> setting for handling sliver polygons. <a href="/docs/reference.html#-dissolve"><code>-dissolve</code></a> runs an equivalent repair by default, so explicitly running <code>-clean</code> is mainly useful when you want clean output without dissolving anything.</p>
-<p>In the web app, <code>-clean</code> runs from the <strong>Console</strong> the same way as on the CLI  (the leading <code>-</code> is optional, e.g. just <code>clean gap-fill-area=100</code>).</p>
+<p><code>-clean</code> accepts a <code>gap-width=</code> option to control how aggressively gaps are filled. <a href="/docs/reference.html#-dissolve"><code>-dissolve</code></a> runs an equivalent repair when gap filling is enabled, so explicitly running <code>-clean</code> is mainly useful when you want clean output without dissolving anything.</p>
+<p>In the web app, <code>-clean</code> runs from the <strong>Console</strong> the same way as on the CLI  (the leading <code>-</code> is optional, e.g. just <code>clean gap-width=2m</code>).</p>
 <h2 id="snapping">Snapping</h2>
 <p>For datasets where adjacent polygons have vertices that should be identical but are slightly offset — typically due to floating-point rounding in the source tool — you can ask Mapshaper to snap those vertices together at import time:</p>
 <p>In the <strong>command line</strong>, pass the <code>snap</code> flag to <code>-i</code>:</p>
