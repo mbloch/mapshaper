@@ -2,7 +2,7 @@ import { countArcsInShapes } from '../paths/mapshaper-path-utils';
 import { getSliverTest } from '../polygons/mapshaper-slivers';
 import { getDefaultSliverThreshold } from '../polygons/mapshaper-slivers';
 import { editShapes } from '../paths/mapshaper-shape-utils';
-import { getSliverFilter } from '../polygons/mapshaper-slivers';
+import { applyDefaultGapWidthOpts, getSliverFilter } from '../polygons/mapshaper-slivers';
 import { message } from '../utils/mapshaper-logging';
 import utils from '../utils/mapshaper-utils';
 import cmd from '../mapshaper-cmd';
@@ -22,7 +22,13 @@ cmd.filterSlivers = function(lyr, dataset, opts) {
 };
 
 function filterSlivers(lyr, dataset, optsArg) {
-  var opts = utils.extend({sliver_control: 1}, optsArg);
+  var opts = applyDefaultGapWidthOpts(optsArg);
+  // Legacy area path only: keep the historical sliver-control=1 default.
+  // Do not inject it before applyDefaultGapWidthOpts, or the implicit default
+  // would lock the command onto the area path.
+  if (opts.gap_width == null && opts.sliver_control == null) {
+    opts.sliver_control = 1;
+  }
   var filterData = getSliverFilter(lyr, dataset, opts);
   var ringTest = filterData.filter;
   var removed = 0;

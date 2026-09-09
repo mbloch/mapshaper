@@ -1,7 +1,12 @@
+v0.7.60
+* `-clean`’s default `gap-width=auto` is now equivalent to the former `gap-fill-area=auto` + `sliver-control=1` test, restoring the more effective cleanup from before v0.7.53.
+* `-filter-slivers` now accepts `gap-width=`, like `-clean`. `min-area=` and `sliver-control=` still work.
+
 v0.7.59
 * Added `-grid type=cairo` (the Cairo tesselation).
 * Added `-grid rotate=` to rotate any grid by a given number of degrees.
 * Fix for a page scrolling bug in the web UI.
+
 
 v0.7.58
 * Added `-symbols type=pie` for making pie and donut chart symbols. Wedge sizes come from `values=`, wedge colors from `fills=` and the size of the symbol from `radius=`. Adding `hole=` makes a donut; a negative `hole=` is measured inward from the outer radius, for a band of wedges of a fixed width.

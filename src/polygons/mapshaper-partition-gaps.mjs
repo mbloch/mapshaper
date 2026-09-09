@@ -5,6 +5,7 @@ import geom from '../geom/mapshaper-geom';
 import { ArcCollection } from '../paths/mapshaper-arcs';
 import {
   GAP_WIDTH_SEGMENT_FRACTION,
+  applyDefaultGapWidthOpts,
   getMedianPolygonSegmentLength,
   getSliverFilter
 } from '../polygons/mapshaper-slivers';
@@ -31,18 +32,7 @@ var WIDTH_FACTOR = 4;
 export function partitionPolygonMosaicGaps(lyr, dataset, nodes, opts) {
   if (!lyr.shapes || lyr.shapes.length < MIN_GAP_OWNERS) return false;
   var mosaicIndex = new MosaicIndex(lyr, nodes, {flat: true});
-  var sliverOpts = utils.extend({}, opts);
-  if (sliverOpts.gap_width == null) {
-    if (sliverOpts.gap_fill_area != null || sliverOpts.min_gap_area != null ||
-        sliverOpts.min_area != null || sliverOpts.sliver_control != null) {
-      if (sliverOpts.gap_fill_area == null && sliverOpts.min_gap_area == null &&
-          sliverOpts.min_area == null) {
-        sliverOpts.gap_fill_area = 'auto';
-      }
-    } else {
-      sliverOpts.gap_width = 'auto';
-    }
-  }
+  var sliverOpts = applyDefaultGapWidthOpts(opts);
   var filter = getSliverFilter(lyr, dataset, sliverOpts).filter;
   var gaps = mosaicIndex.getUnusedTileData(filter).filter(function(gap) {
     return countOwners(gap.boundary) >= MIN_GAP_OWNERS;
@@ -478,10 +468,11 @@ function SegmentIndex(points) {
 // several features with hairline slivers, which is worse for having more of them.
 //
 // A layer's median segment length is the scale at which its boundaries were
-// drawn, so the same fraction of it that serves as the default gap-width -- what
-// mapshaper already treats as too narrow to be intended -- marks where dividing
-// stops being worth it. This is deliberately independent of the gap-width in
-// effect: raising that to fill wider gaps should not coarsen the data's own scale.
+// drawn. A small fraction of that scale marks where dividing a gap stops being
+// worth it: the displacement would be smaller than the data's own detail, and
+// the pieces would be hairline slivers. This is deliberately independent of
+// the gap-width in effect: raising that to fill wider gaps should not coarsen
+// the data's own scale.
 export function getMinDivisibleGapWidth(lyr, arcs) {
   var width = getMedianPolygonSegmentLength(lyr, arcs) *
     GAP_WIDTH_SEGMENT_FRACTION;

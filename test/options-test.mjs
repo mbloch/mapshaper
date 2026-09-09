@@ -115,6 +115,12 @@ describe('mapshaper-options.js', function () {
     bad('-clean gap-width');
   })
 
+  describe('filter-slivers', function () {
+    good('-filter-slivers gap-width=2m', {gap_width: '2m'});
+    good('-filter-slivers min-area=100km2', {min_area: '100km2'});
+    bad('-filter-slivers gap-width');
+  })
+
   describe('each', function() {
     good('-each target=filtered \'name="foo"', {target: 'filtered', expression: 'name="foo"'});
   });

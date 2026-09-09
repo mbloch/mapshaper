@@ -5,6 +5,7 @@ import {
   pinchOuterCrackMouths
 } from '../polygons/mapshaper-close-gaps';
 import { partitionPolygonMosaicGaps } from '../polygons/mapshaper-partition-gaps';
+import { applyDefaultGapWidthOpts } from '../polygons/mapshaper-slivers';
 import { dissolveArcs } from '../paths/mapshaper-arc-dissolve';
 import { layerHasGeometry, layerHasPaths } from '../dataset/mapshaper-layer-utils';
 import { addIntersectionCuts } from '../paths/mapshaper-intersection-cuts';
@@ -138,29 +139,13 @@ export function cleanLayers(layers, dataset, optsArg) {
 
 function cleanPolygonLayerGeometry(lyr, dataset, opts) {
   // clean polygons by apply the 'dissolve2' function to each feature
-  opts = withDefaultGapWidth(opts);
+  opts = applyDefaultGapWidthOpts(opts);
   var groups = lyr.shapes.map(function(shp, i) {
     return [i];
   });
   noteLayerWillChange(lyr, {operation: 'cleanPolygonLayerGeometry', unit: 'shapes'});
   lyr.shapes = dissolvePolygonGroups2(groups, lyr, dataset, opts);
   markLayerChanged(lyr, {operation: 'cleanPolygonLayerGeometry', unit: 'shapes'});
-}
-
-function withDefaultGapWidth(opts) {
-  opts = Object.assign({}, opts);
-  if (opts.gap_width != null) return opts;
-  // Legacy area/sliver options: keep the historical gap_fill_area=auto default.
-  if (opts.gap_fill_area != null || opts.min_gap_area != null ||
-      opts.min_area != null || opts.sliver_control != null) {
-    if (opts.gap_fill_area == null && opts.min_gap_area == null &&
-        opts.min_area == null) {
-      opts.gap_fill_area = 'auto';
-    }
-    return opts;
-  }
-  opts.gap_width = 'auto';
-  return opts;
 }
 
 function collectArcIds(shapes) {

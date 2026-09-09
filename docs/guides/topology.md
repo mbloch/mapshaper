@@ -19,9 +19,9 @@ The [`-clean`](/docs/reference.html#-clean) command is the general-purpose repai
 mapshaper countries.shp -clean -o cleaned.shp
 ```
 
-`-clean` accepts a `gap-fill-area=` option to control how aggressively gaps are filled, and a `sliver-control=` setting for handling sliver polygons. [`-dissolve`](/docs/reference.html#-dissolve) runs an equivalent repair by default, so explicitly running `-clean` is mainly useful when you want clean output without dissolving anything.
+`-clean` accepts a `gap-width=` option to control how aggressively gaps are filled. [`-dissolve`](/docs/reference.html#-dissolve) runs an equivalent repair when gap filling is enabled, so explicitly running `-clean` is mainly useful when you want clean output without dissolving anything.
 
-In the web app, `-clean` runs from the **Console** the same way as on the CLI  (the leading `-` is optional, e.g. just `clean gap-fill-area=100`).
+In the web app, `-clean` runs from the **Console** the same way as on the CLI  (the leading `-` is optional, e.g. just `clean gap-width=2m`).
 
 ## Snapping
 

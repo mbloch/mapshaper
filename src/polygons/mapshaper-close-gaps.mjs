@@ -2,7 +2,11 @@ import Flatbush from 'flatbush';
 import { getDatasetCRS, isLatLngCRS } from '../crs/mapshaper-projections';
 import { fastLonLatDistance, distance2D, degreesToMeters, R2D, R } from '../geom/mapshaper-basic-geom';
 import { convertDistanceParam } from '../geom/mapshaper-units';
-import { GAP_WIDTH_SEGMENT_FRACTION, getMedianPolygonSegmentLength } from '../polygons/mapshaper-slivers';
+import {
+  GAP_WIDTH_SEGMENT_FRACTION,
+  getDefaultGapWidth,
+  getMedianPolygonSegmentLength
+} from '../polygons/mapshaper-slivers';
 import { getOutsideFacingArcFlags } from '../polygons/mapshaper-mosaic-index';
 import { getHighPrecisionSnapInterval } from '../paths/mapshaper-snapping';
 import { traversePaths } from '../paths/mapshaper-path-utils';
@@ -92,8 +96,7 @@ export function pinchOuterCrackMouths(lyr, dataset, nodes, opts) {
   var spherical = isLatLngCRS(crs);
   var medianSeg = measureMedianSegment(lyr, arcs);
   // Same width as interior gap filling, from the same automatic default.
-  var distance = resolveCloseDistance(opts, crs,
-    medianSeg * GAP_WIDTH_SEGMENT_FRACTION);
+  var distance = resolveCloseDistance(opts, crs, getDefaultGapWidth(lyr, arcs));
   if (!(distance > 0)) return 0;
 
   profileStart('cg.outsideFacingArcs');
@@ -143,7 +146,7 @@ function findLayerSeams(lyr, arcs, distance, searchDistance, spherical,
   return {seams: seams, seeds: seeds, arcsById: arcsById, footpoints: footpoints};
 }
 
-// Same segment median as interior gap-width=auto (all polygon-ring segments).
+// Median of every polygon-ring segment; used for min-seam length.
 function measureMedianSegment(lyr, arcs) {
   return profileWrap('cg.medianSegment', function() {
     return getMedianPolygonSegmentLength(lyr, arcs);

@@ -523,7 +523,7 @@ Line features are cleaned by removing self-intersections within the same path. S
 
 Point features are cleaned by removing duplicate coordinates within the same feature.
 
-`gap-width=`  (polygons) Fill gaps narrower than this width (e.g. `2m`, `0`). Each gap’s width is estimated from its area and perimeter (roughly, how wide a long thin shape would be if straightened out), so slender cracks are filled while more compact holes of similar area, such as small lakes, are more likely to be kept. Defaults to an automatic value based on the median segment length of the layer. The same width applies to the cracks that `close-outer-gaps` reaches.
+`gap-width=`  (polygons) Fill gaps narrower than this width (e.g. `2m`, `0`). Each gap’s width is estimated from its area and perimeter (roughly, how wide a long thin shape would be if straightened out), so slender cracks are filled while more compact holes of similar area, such as small lakes, are more likely to be kept. The default is an automatic width based on the geometry of the layer.
 
 `close-outer-gaps`  (polygons) Close cracks that open onto the outside of the mosaic, up to the width set by `gap-width=`. Such a crack is not enclosed by polygons, so there is no gap for the ordinary filling to find. Its mouth is pinched shut where the two sides come within that width of each other, which encloses it, and it is then filled — or divided between its neighbors, where it borders three or more of them — like any other gap. Only the pinched pair of vertices moves, half the width of the mouth each, and interior gaps are filled exactly as they are without this option. It is opt-in because it seals off narrow openings in a coverage, which are not always mistakes.
 
@@ -723,7 +723,7 @@ For polygon layers, `-dissolve` repairs topology before dissolving, so it produc
 
 `planar`   [points] Treat decimal degree coordinates as planar cartesian coordinates when calculating dissolve centroids. (By default, mapshaper calculates the centroids of lat-long point data in 3D space.)
 
-`gap-width=`  [polygons] Fill gaps narrower than this width (e.g. `2m`, `0`). Each gap’s width is estimated from its area and perimeter (roughly, how wide a long thin shape would be if straightened out), so slender cracks are filled while more compact holes of similar area, such as small lakes, are more likely to be kept. Defaults to an automatic value based on the median segment length when gap filling is enabled.
+`gap-width=`  [polygons] Fill gaps narrower than this width (e.g. `2m`, `0`). Each gap’s width is estimated from its area and perimeter (roughly, how wide a long thin shape would be if straightened out), so slender cracks are filled while more compact holes of similar area, such as small lakes, are more likely to be kept. When gap filling is enabled, the default is an automatic width based on the geometry of the layer.
 
 `gap-fill-area=`  [polygons, deprecated] Use `gap-width=` instead. Gaps smaller than this area will be filled; larger gaps will be retained as holes in the polygon mosaic. Example values: 2km2 500m2 0.
 
@@ -967,9 +967,11 @@ Remove small detached polygon rings (islands).
 
 Remove small polygon rings.
 
-`min-area=` Area threshold for removal (e.g. 10km2).
+`gap-width=` Remove rings narrower than this width (e.g. `2m`, `0`). Width is estimated from area and perimeter, the same way `-clean` estimates gap width. The default is an automatic width based on the geometry of the layer.
 
-`sliver-control=` (polygons) Preferentially remove slivers (polygons with a high perimeter-area ratio). Accepts values from 0-1, default is 1. Implementation: multiplies the area of polygon rings by the "Polsby Popper" compactness metric before applying area threshold.
+`min-area=` (deprecated) Use `gap-width=` instead. Area threshold for removal (e.g. 10km2).
+
+`sliver-control=` (deprecated) Use `gap-width=` instead. Preferentially remove slivers (polygons with a high perimeter-area ratio). Accepts values from 0-1, default is 1. Implementation: multiplies the area of polygon rings by the "Polsby Popper" compactness metric before applying area threshold.
 
 `remove-empty` Delete features with null geometry.
 

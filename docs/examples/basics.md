@@ -160,7 +160,7 @@ When importing the files in the web app, add `combine-files` in the **Advanced o
 -clean
 ```
 
-`-clean` snaps near-duplicate vertices, removes tiny gaps and overlaps between polygons, and fixes self-intersecting lines. It's a safe first step before any spatial operation. You can tune `gap-fill-area=`, `sliver-control=` or `snap-interval=` if necessary.
+`-clean` snaps near-duplicate vertices, removes tiny gaps and overlaps between polygons, and fixes self-intersecting lines. It's a safe first step before any spatial operation. You can tune `gap-width=` or `snap-interval=` if necessary.
 
 ## Aggregating
 

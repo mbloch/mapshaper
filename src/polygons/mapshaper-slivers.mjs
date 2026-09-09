@@ -8,9 +8,28 @@ import { forEachSegmentInPath } from '../paths/mapshaper-path-utils';
 import { editShapes } from '../paths/mapshaper-shape-utils';
 import { error } from '../utils/mapshaper-logging';
 
-// Default gap-width as a fraction of the layer's median polygon-ring segment
-// length. Shared by interior fill and exterior close-outer-gaps.
+// Conservative width as a fraction of the layer's median polygon-ring segment
+// length. Used for partition min-width and duplicate-boundary search — not for
+// the default gap-width=auto fill threshold (see getDefaultGapWidth).
 export var GAP_WIDTH_SEGMENT_FRACTION = 0.01;
+
+// Inject gap_width=auto unless the caller already chose a width or a legacy
+// area/sliver option. Used by -clean, -filter-slivers, and gap partition.
+export function applyDefaultGapWidthOpts(opts) {
+  opts = Object.assign({}, opts);
+  if (opts.gap_width != null) return opts;
+  // Legacy area/sliver options: keep the historical gap_fill_area=auto default.
+  if (opts.gap_fill_area != null || opts.min_gap_area != null ||
+      opts.min_area != null || opts.sliver_control != null) {
+    if (opts.gap_fill_area == null && opts.min_gap_area == null &&
+        opts.min_area == null) {
+      opts.gap_fill_area = 'auto';
+    }
+    return opts;
+  }
+  opts.gap_width = 'auto';
+  return opts;
+}
 
 // Used by -clean -dissolve -filter-slivers -filter-islands to generate filters
 // for removing small polygon rings / filling mosaic gaps.
@@ -157,9 +176,10 @@ export function getSliverAreaFunction(arcs, strength) {
   };
 }
 
-// Median polygon-ring segment length * GAP_WIDTH_SEGMENT_FRACTION.
+// Width equivalent of the legacy gap-fill-area=auto + sliver-control=1 test:
+// W = sqrt(A0 / π). The two filters accept the same rings (see getGapWidthTest).
 export function getDefaultGapWidth(lyr, arcs) {
-  return getMedianPolygonSegmentLength(lyr, arcs) * GAP_WIDTH_SEGMENT_FRACTION;
+  return Math.sqrt(getDefaultSliverThreshold(lyr, arcs) / Math.PI);
 }
 
 export function getMedianPolygonSegmentLength(lyr, arcs) {

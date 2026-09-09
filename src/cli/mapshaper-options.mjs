@@ -1265,12 +1265,13 @@ export function getOptionParser() {
 
   parser.command('filter-slivers')
     .describe('remove small polygon rings')
+    .option('gap-width', gapWidthOpt)
     .option('min-area', {
       type: 'area',
-      describe: 'area threshold (e.g. 2sqkm)'
+      describe: '(deprecated) use gap-width= instead'
     })
     .option('sliver-control', {
-      describe: 'boost area threshold of slivers (0-1, default is 1)',
+      describe: '(deprecated) use gap-width= instead',
       type: 'number'
     })
     .option('weighted', {

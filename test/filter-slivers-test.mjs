@@ -14,6 +14,59 @@ describe('mapshaper-filter-slivers.js', function () {
     assert.equal(features.length, 4);
   });
 
+  it('default gap-width=auto matches legacy area + sliver-control=1', async function() {
+    var input = {
+      'in.json': JSON.stringify({
+        type: 'FeatureCollection',
+        features: [{
+          type: 'Feature',
+          properties: {name: 'block'},
+          geometry: {
+            type: 'Polygon',
+            coordinates: [[[0, 0], [0, 10000], [10000, 10000], [10000, 0], [0, 0]]]
+          }
+        }, {
+          type: 'Feature',
+          properties: {name: 'sliver'},
+          geometry: {
+            type: 'Polygon',
+            coordinates: [[[20000, 0], [20000, 50], [40000, 50], [40000, 0], [20000, 0]]]
+          }
+        }]
+      })
+    };
+    var modern = await api.applyCommands(
+      '-i in.json -filter-slivers remove-empty -o out.json', input);
+    var legacy = await api.applyCommands(
+      '-i in.json -filter-slivers sliver-control=1 remove-empty -o out.json',
+      input);
+    assert.deepEqual(JSON.parse(String(modern['out.json'])),
+      JSON.parse(String(legacy['out.json'])));
+  });
+
+  it('accepts an explicit gap-width', async function() {
+    var input = {
+      'in.json': JSON.stringify({
+        type: 'FeatureCollection',
+        features: [{
+          type: 'Feature',
+          properties: {name: 'sliver'},
+          geometry: {
+            type: 'Polygon',
+            coordinates: [[[0, 0], [0, 50], [20000, 50], [20000, 0], [0, 0]]]
+          }
+        }]
+      })
+    };
+    var kept = await api.applyCommands(
+      '-i in.json -filter-slivers gap-width=10 -o out.json', input);
+    var removed = await api.applyCommands(
+      '-i in.json -filter-slivers gap-width=100 -o out.json', input);
+    assert.ok(JSON.parse(String(kept['out.json'])).features[0].geometry);
+    assert.equal(JSON.parse(String(removed['out.json'])).features[0].geometry,
+      null);
+  });
+
 
   describe('calcMaxSliverArea()', function () {
     it('ignores relatively long segments', function () {
