@@ -1294,6 +1294,10 @@ export function getOptionParser() {
       describe: 'size of grid cells in degrees (default is 10)',
       type: 'number'
     })
+    .option('base', {
+      describe: 'longitude to align meridians to (default is 0)',
+      type: 'number'
+    })
     .option('polygon', {
       describe: 'create a polygon to match the outline of the graticule',
       type: 'flag'

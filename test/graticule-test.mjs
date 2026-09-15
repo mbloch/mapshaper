@@ -1,5 +1,10 @@
 import api from '../mapshaper.js';
 import assert from 'assert';
+import { getGraticuleMeridianLongitudes } from '../src/commands/mapshaper-graticule';
+
+function sorted(arr) {
+  return arr.slice().sort((a, b) => a - b);
+}
 
 
 function hasOutline(json) {
@@ -47,6 +52,33 @@ function projTest(str, test) {
   });
 }
 
+describe('getGraticuleMeridianLongitudes()', function () {
+  it('default alignment includes 0 and 180, not -180', function() {
+    var xx = getGraticuleMeridianLongitudes(10, 0);
+    assert.deepEqual(sorted(xx), sorted(api.utils.range(36, -170, 10)));
+    assert(xx.includes(0));
+    assert(xx.includes(180));
+    assert(!xx.includes(-180));
+  });
+
+  it('base=5 interval=10 shifts meridians by 5 degrees', function() {
+    var xx = getGraticuleMeridianLongitudes(10, 5);
+    assert.deepEqual(sorted(xx), sorted(api.utils.range(36, -175, 10)));
+    assert(xx.includes(5));
+    assert(!xx.includes(0));
+    assert(!xx.includes(180));
+  });
+
+  it('base is taken modulo interval', function() {
+    assert.deepEqual(
+      sorted(getGraticuleMeridianLongitudes(10, 15)),
+      sorted(getGraticuleMeridianLongitudes(10, 5)));
+    assert.deepEqual(
+      sorted(getGraticuleMeridianLongitudes(10, -5)),
+      sorted(getGraticuleMeridianLongitudes(10, 5)));
+  });
+});
+
 describe('mapshaper-graticule.js', function () {
   // Test of graticule outlines and edge meridians
   // ... also should catch some projection failures
@@ -83,6 +115,22 @@ describe('mapshaper-graticule.js', function () {
       if (err) return done(err);
       assert.equal(dataset.layers[0].name, 'outline');
       assert.equal(dataset.layers[0].geometry_type, 'polyline');
+      done();
+    });
+  });
+
+  it('base= shifts meridians away from 0', function(done) {
+    api.internal.testCommands('-graticule interval=10 base=5', function(err, dataset) {
+      if (err) return done(err);
+      var recs = dataset.layers[0].data.getRecords();
+      var meridians = recs.filter(r => r.type == 'meridian').map(r => r.value);
+      assert(meridians.includes(5));
+      assert(meridians.includes(-5));
+      assert(!meridians.includes(0));
+      assert(!meridians.includes(10));
+      // Edge meridians of a latlong graticule are independent of the grid phase
+      assert(meridians.includes(-180));
+      assert(meridians.includes(180));
       done();
     });
   });

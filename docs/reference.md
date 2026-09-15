@@ -1005,6 +1005,8 @@ Create a graticule layer appropriate for the target dataset's projection. Bounde
 
 `interval=` Specify the spacing of graticule lines (in degrees). Common options are: 5, 10, 15, 30, 45. Default is 10.
 
+`base=` Longitude to align meridians to (the default is 0). For example `interval=10 base=5` places meridians at 5, 15, 25 and so on, instead of 0, 10, 20.
+
 ### -grid
 
 Create a continuous grid of square, hexagonal, rhombus, triangle or cairo polygons.

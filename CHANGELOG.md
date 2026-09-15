@@ -1,3 +1,6 @@
+v0.7.62 (unreleased)
+* Added `-graticule base=` to align meridians to a longitude other than 0 (same idea as `-contours base=`).
+
 v0.7.60
 * `-clean`’s default `gap-width=auto` is now equivalent to the former `gap-fill-area=auto` + `sliver-control=1` test, restoring the more effective cleanup from before v0.7.53.
 * `-filter-slivers` now accepts `gap-width=`, like `-clean`. `min-area=` and `sliver-control=` still work.

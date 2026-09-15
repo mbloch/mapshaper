@@ -99,17 +99,20 @@ function addOutlineToGraticule(graticule, outline) {
 //
 function createGraticule(P, outlined, opts) {
   var interval = opts.interval || 10;
+  var base = opts.base || 0;
   if (Math.round(interval) != interval || interval > 0 === false) {
     stop('Invalid interval:', interval);
+  }
+  if (!utils.isFiniteNumber(base)) {
+    stop('Invalid base:', opts.base);
   }
   var lon0 = P.lam0 * 180 / Math.PI;
   var precision = interval > 10 ? 1 : 0.5; // degrees between each vertex
   var xstep = interval;
   var ystep = interval;
   var xstepMajor = 90;
-  var xn = Math.round(360 / xstep);
   var yn = Math.round(180 / ystep) + 1;
-  var xx = utils.range(xn, -180 + xstep, xstep);
+  var xx = getGraticuleMeridianLongitudes(interval, base);
   var yy = utils.range(yn, -90, ystep);
   var meridians = [];
   var parallels = [];
@@ -173,6 +176,23 @@ function createGraticule(P, outlined, opts) {
     ], precision);
     parallels.push(graticuleFeature(coords, {type: 'parallel', value: y}));
   }
+}
+
+// Longitudes of meridians at interval spacing, aligned so that base (mod
+// interval) is included. Values are wrapped to (-180, 180].
+export function getGraticuleMeridianLongitudes(interval, base) {
+  var offset = ((base % interval) + interval) % interval;
+  var n = Math.round(360 / interval);
+  var longitudes = [];
+  for (var i = 0; i < n; i++) {
+    longitudes.push(wrapMeridianLongitude(offset + i * interval));
+  }
+  return longitudes;
+}
+
+function wrapMeridianLongitude(lon) {
+  lon -= Math.floor((lon + 180) / 360) * 360; // [-180, 180)
+  return lon === -180 ? 180 : lon;
 }
 
 // remove tiny offsets
