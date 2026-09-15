@@ -53,6 +53,12 @@ export function MshpMap(gui) {
       _renderer, _dynamicCRS,
       _resizeRedrawTimer = null;
 
+  // Whether the full bounds the view is working from describe nothing that is
+  // on the map: a project with no content gets the placeholder box assigned in
+  // getContentLayerBounds() instead. Recorded because the difference matters
+  // when deciding whether an update should reset the view.
+  var _boundsArePlaceholder = false;
+
   var RESIZE_REDRAW_DELAY = 200;
 
   _mouse.disable(); // wait for gui.focus() to activate mouse events
@@ -291,6 +297,9 @@ export function MshpMap(gui) {
   function onUpdate(e) {
     var updated = model.getActiveLayer();
     var prevLyr = _activeLyr || null;
+    // read before calcFullBounds() below, which describes the map as it is
+    // after this update
+    var prevBoundsWerePlaceholder = _boundsArePlaceholder;
     var fullBounds;
     var needReset;
 
@@ -348,6 +357,16 @@ export function MshpMap(gui) {
       needReset = false;
     } else if (!prevLyr) {
       needReset = true;
+    } else if (prevBoundsWerePlaceholder) {
+      // The bounds being compared against are the placeholder given to a
+      // project with nothing in it, so mapNeedsReset() has nothing real to
+      // compare: the placeholder covers a continent while the first feature
+      // placed by hand covers almost nothing, and that difference alone trips
+      // its area-change rule. Resetting is the wrong answer here anyway --
+      // this is a feature the user has just put at a spot they chose on
+      // screen, so the view they chose it in is the one to keep, unless what
+      // arrived is not in it.
+      needReset = !fullBounds.intersects(_ext.getBounds());
     } else {
       needReset = mapNeedsReset(fullBounds, _ext.getFullBounds(), _ext.getBounds(), e.flags);
     }
@@ -399,7 +418,8 @@ export function MshpMap(gui) {
       b.mergeBounds(lyr.gui.bounds);
     });
 
-    if (!b.hasBounds()) {
+    _boundsArePlaceholder = !b.hasBounds();
+    if (_boundsArePlaceholder) {
       // assign bounds to empty layers, to prevent rendering errors downstream
       // b.setBounds(0,0,0,0);
       b.setBounds(projectLatLonBBox([11.28,33.43,32.26,46.04], _dynamicCRS));
@@ -411,8 +431,9 @@ export function MshpMap(gui) {
     var b;
     if (isPreviewView()) {
       b = new Bounds(getFrameLayerData().bbox);
+      _boundsArePlaceholder = false; // a frame is real content
     } else {
-      b = getContentLayerBounds();
+      b = getContentLayerBounds(); // sets _boundsArePlaceholder
     }
 
     // add margin

@@ -102,7 +102,7 @@ export function LabelSelection(gui, ext, hit, getEditingId) {
     g = makeGroup(nodes, className);
     if (nodes.pathId) {
       g.appendChild(curve(nodes.pathId));
-      if (withHandles) appendKnotHandles(g, target, id, rec);
+      if (withHandles) appendKnotHandles(g, target, id);
     } else {
       appendBox(g, nodes.content);
       // An icon already marks the anchor; a second marker on top of it would
@@ -120,20 +120,15 @@ export function LabelSelection(gui, ext, hit, getEditingId) {
   // These are placed in the same coordinate space as the curve beside them --
   // the space inside the symbol group -- by the same mapping the renderer used
   // to build the curve, rather than by reading positions back out of the path.
-  function appendKnotHandles(g, target, id, rec) {
+  function appendKnotHandles(g, target, id) {
     var shp = target.shapes && target.shapes[id];
-    var corners = getCorners(rec);
     var coords, i;
     if (!shp || shp.length < 2) return;
     coords = internal.svg.getLabelPathCoords(shp, ext.getTransform(),
       ext.getSymbolScale());
     for (i = 0; i < coords.length; i++) {
-      g.appendChild(knotHandle(coords[i], corners.indexOf(i) > -1));
+      g.appendChild(knotHandle(coords[i]));
     }
-  }
-
-  function getCorners(rec) {
-    return internal.parseKnotIndexList(rec['label-corners']) || [];
   }
 
   function appendBox(g, content) {
@@ -212,24 +207,11 @@ export function LabelSelection(gui, ext, hit, getEditingId) {
     return el;
   }
 
-  // A corner knot is square and a smooth one round, the same distinction the
-  // curve-drawing handles make, so a corner reads as a corner before it is
-  // dragged.
-  function knotHandle(p, isCorner) {
-    var el, size;
-    if (isCorner) {
-      size = KNOT_RADIUS * 1.8;
-      el = document.createElementNS(SVG_NS, 'rect');
-      el.setAttribute('x', p[0] - size / 2);
-      el.setAttribute('y', p[1] - size / 2);
-      el.setAttribute('width', size);
-      el.setAttribute('height', size);
-    } else {
-      el = document.createElementNS(SVG_NS, 'circle');
-      el.setAttribute('cx', p[0]);
-      el.setAttribute('cy', p[1]);
-      el.setAttribute('r', KNOT_RADIUS);
-    }
+  function knotHandle(p) {
+    var el = document.createElementNS(SVG_NS, 'circle');
+    el.setAttribute('cx', p[0]);
+    el.setAttribute('cy', p[1]);
+    el.setAttribute('r', KNOT_RADIUS);
     el.setAttribute('class', 'label-cue-knot');
     return el;
   }

@@ -81,28 +81,12 @@ describe('mapshaper-update-label.mjs', function () {
   });
 
   describe('corners', function () {
-    it('are kept when the knot count is unchanged', async function () {
-      var out = await run('-add-label coordinates=0,0,10,8,20,0 text=x corners=1 ' +
-        '-update-label ids=0 coordinates=0,0,10,20,20,0');
-      assert.equal(feature(out).properties['label-corners'], '1');
-    });
-
-    it('are replaced when given', async function () {
-      var out = await run('-add-label coordinates=0,0,10,8,20,0,30,5 text=x corners=1 ' +
-        '-update-label ids=0 coordinates=0,0,10,8,20,0,30,5 corners=2');
-      assert.equal(feature(out).properties['label-corners'], '2');
-    });
-
-    it('are pruned when the knots they index are gone', async function () {
-      var out = await run('-add-label coordinates=0,0,10,8,20,0,30,5 text=x corners=1,3 ' +
-        '-update-label ids=0 coordinates=0,0,10,8,20,0');
-      assert.equal(feature(out).properties['label-corners'], '1');
-    });
-
-    it('are dropped when the label is no longer a curve', async function () {
-      var out = await run('-add-label coordinates=0,0,10,8,20,0 text=x corners=1 ' +
-        '-update-label ids=0 coordinates=3,3');
-      assert.equal('label-corners' in feature(out).properties, false);
+    // A label path is a smooth curve fitted through its knots, so there are no
+    // corners to keep, replace or renumber when the knots move.
+    it('corners= is not an option', async function () {
+      await rejects('-add-label coordinates=0,0,10,8,20,0 text=x ' +
+        '-update-label ids=0 coordinates=0,0,10,20,20,0 corners=1',
+        /unexpected parameters: corners/);
     });
   });
 

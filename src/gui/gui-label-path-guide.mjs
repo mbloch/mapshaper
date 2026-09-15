@@ -20,7 +20,6 @@ var violet = '#cc6acc';
 var white = '#ffffff';
 
 var KNOT_RADIUS = 3.2;
-var CORNER_RADIUS = 4.4;
 
 // Flattening tolerance as a fraction of the curve's own size, which keeps the
 // guide smooth at any zoom and, because it does not depend on the view, lets
@@ -36,9 +35,9 @@ var pendingPath = null;
 //   as if it were the next knot but which is not one yet. This is what makes
 //   the far end of the path follow the pointer between clicks, so the user can
 //   see the curve a click is about to commit to instead of inferring it.
-export function setPendingLabelPath(knots, corners, preview) {
+export function setPendingLabelPath(knots, preview) {
   pendingPath = knots && knots.length > 0 ?
-    {knots: knots, corners: corners || [], preview: preview || null} : null;
+    {knots: knots, preview: preview || null} : null;
 }
 
 export function getPendingLabelPath() {
@@ -76,8 +75,7 @@ function buildGuideLineLayer(activeLyr, curves) {
   var pts, knots, i, j;
   for (i = 0; i < curves.length; i++) {
     knots = getFittedKnots(curves[i]);
-    pts = internal.fitCurveThroughKnots(knots, curves[i].corners,
-      getFlattenTolerance(knots));
+    pts = internal.fitCurveThroughKnots(knots, getFlattenTolerance(knots));
     if (pts.length < 2) continue; // a single knot has no line yet
     shapes.push([[nn.length]]); // nn.length is this arc's id, before it is added
     nn.push(pts.length);
@@ -100,15 +98,12 @@ function buildGuideLineLayer(activeLyr, curves) {
 
 function buildKnotLayer(activeLyr, curves) {
   var shapes = [];
-  var cornerFlags = [];
   var curve, i, j;
-  // one point per shape, so that the styler can tell a corner knot from a
-  // smooth one -- a styler runs per shape, not per point within a shape
+  // one point per shape, so that a handle can be addressed on its own
   for (i = 0; i < curves.length; i++) {
     curve = curves[i];
     for (j = 0; j < curve.knots.length; j++) {
       shapes.push([curve.knots[j]]);
-      cornerFlags.push((curve.corners || []).indexOf(j) > -1);
     }
   }
   if (shapes.length === 0) return null;
@@ -117,17 +112,10 @@ function buildKnotLayer(activeLyr, curves) {
     geometry_type: 'point',
     shapes: shapes
   }, {
-    type: 'styled',
     radius: KNOT_RADIUS,
     strokeColor: violet,
     strokeWidth: 1.5,
-    // A corner handle is filled and a little larger. Marking a knot as a corner
-    // only changes the curve where the knots actually turn sharply, so on a
-    // gentle arc the handle is the only visible confirmation that it worked.
-    styler: function(style, i) {
-      style.fillColor = cornerFlags[i] ? violet : white;
-      style.radius = cornerFlags[i] ? CORNER_RADIUS : KNOT_RADIUS;
-    }
+    fillColor: white
   });
 }
 

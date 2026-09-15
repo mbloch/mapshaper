@@ -5,8 +5,8 @@ import {
 } from '../src/gui/gui-label-style-state';
 import api from '../mapshaper.js';
 import {
-  createCurveState, addKnot, moveKnot, removeLastKnot, toggleCorner, isCorner,
-  findKnotNear, curveIsComplete, getInteriorCorners,
+  createCurveState, addKnot, moveKnot, removeLastKnot,
+  findKnotNear, curveIsComplete,
   handleClick, getDblclickAction, clearGesture
 } from '../src/gui/gui-label-curve-state';
 import { getLabelTarget, getAddLabelCommand } from '../src/gui/gui-label-commands';
@@ -102,56 +102,6 @@ describe('gui label tool state', function() {
     it('reports nothing to remove on an empty curve', function() {
       assert.equal(removeLastKnot(createCurveState()), false);
     });
-
-    it('drops the corner flag of the removed knot', function() {
-      // otherwise the flag would apply to whichever knot next took that index
-      var state = withKnots([[0, 0], [50, 40], [100, 0]]);
-      toggleCorner(state, 2);
-      removeLastKnot(state);
-      addKnot(state, [100, 80]);
-      assert.ok(!isCorner(state, 2), 'the new knot did not inherit the flag');
-    });
-
-    it('keeps corner flags on knots that remain', function() {
-      var state = withKnots([[0, 0], [50, 40], [100, 0]]);
-      toggleCorner(state, 1);
-      removeLastKnot(state);
-      assert.ok(isCorner(state, 1));
-    });
-  });
-
-  describe('toggleCorner()', function() {
-    it('turns a corner on and off', function() {
-      var state = withKnots([[0, 0], [50, 40], [100, 0]]);
-      assert.ok(!isCorner(state, 1));
-      toggleCorner(state, 1);
-      assert.ok(isCorner(state, 1));
-      toggleCorner(state, 1);
-      assert.ok(!isCorner(state, 1));
-    });
-
-    it('ignores a knot that is not there', function() {
-      var state = withKnots([[0, 0]]);
-      assert.equal(toggleCorner(state, 5), false);
-      assert.deepEqual(state.corners, []);
-    });
-  });
-
-  describe('getInteriorCorners()', function() {
-    it('drops the end knots, which are already one-sided', function() {
-      var state = withKnots([[0, 0], [50, 40], [100, 0]]);
-      toggleCorner(state, 0);
-      toggleCorner(state, 1);
-      toggleCorner(state, 2);
-      assert.deepEqual(getInteriorCorners(state), [1]);
-    });
-
-    it('sorts them, however they were clicked', function() {
-      var state = withKnots([[0, 0], [20, 10], [40, 20], [60, 10], [80, 0]]);
-      toggleCorner(state, 3);
-      toggleCorner(state, 1);
-      assert.deepEqual(getInteriorCorners(state), [1, 3]);
-    });
   });
 
   describe('findKnotNear()', function() {
@@ -205,17 +155,18 @@ describe('gui label tool state', function() {
 
     it('finishes on a double-click in empty space', function() {
       // the opening click of the gesture places the last knot, and the
-      // double-click must still finish rather than mark it as a corner
+      // double-click has to finish on it even though a knot is now there
       var state = createCurveState();
       click(state, [10, 10]);
       click(state, [50, 40]);
       assert.equal(click(state, [90, 10]), 'added');
       assert.equal(click(state, [90, 10]), 'ignored'); // second click of two
       assert.deepEqual(dblclick(state, [90, 10]), {action: 'finish'});
-      assert.deepEqual(state.corners, []);
     });
 
-    it('makes a corner on a double-click of an existing knot', function() {
+    it('does nothing on a double-click of a knot that was already there', function() {
+      // it cannot place a knot, since one is in the way, and finishing on it
+      // would end the curve somewhere other than where the gesture began
       var state = createCurveState();
       click(state, [10, 10]);
       click(state, [50, 40]);
@@ -223,7 +174,7 @@ describe('gui label tool state', function() {
       // the pointer goes back to the middle knot, so neither click adds
       assert.equal(click(state, [50, 40]), 'ignored');
       assert.equal(click(state, [50, 40]), 'ignored');
-      assert.deepEqual(dblclick(state, [50, 40]), {action: 'corner', index: 1});
+      assert.deepEqual(dblclick(state, [50, 40]), {action: 'none'});
     });
 
     it('still finishes after a click that placed a knot elsewhere', function() {
@@ -232,15 +183,6 @@ describe('gui label tool state', function() {
       click(state, [50, 40]);
       click(state, [90, 10]);
       assert.deepEqual(dblclick(state, [200, 200]), {action: 'finish'});
-    });
-
-    it('makes a corner even right after placing a knot elsewhere', function() {
-      var state = createCurveState();
-      click(state, [10, 10]);
-      click(state, [50, 40]);
-      click(state, [90, 10]); // this gesture placed knot 2
-      click(state, [50, 40]); // now the pointer is on knot 1
-      assert.deepEqual(dblclick(state, [50, 40]), {action: 'corner', index: 1});
     });
 
     it('does nothing on a double-click with no curve started', function() {
@@ -254,7 +196,7 @@ describe('gui label tool state', function() {
       click(state, [50, 40]);
       click(state, [90, 10]);
       clearGesture(state);
-      assert.deepEqual(dblclick(state, [90, 10]), {action: 'corner', index: 2});
+      assert.deepEqual(dblclick(state, [90, 10]), {action: 'none'});
     });
   });
 
@@ -362,17 +304,6 @@ describe('gui label tool state', function() {
       assert.ok(cmd.includes("text='Martha\\'s Vineyard'"), cmd);
     });
 
-    it('passes corners through', function() {
-      var cmd = getAddLabelCommand([[0, 1], [2, 3], [4, 5]],
-        {target: existing, corners: [1]});
-      assert.ok(cmd.includes('corners=1'), cmd);
-    });
-
-    it('omits corners when there are none', function() {
-      var cmd = getAddLabelCommand([[0, 1], [2, 3]], {target: existing, corners: []});
-      assert.ok(!cmd.includes('corners'), cmd);
-    });
-
     it('passes style properties through', function() {
       var cmd = getAddLabelCommand([[0, 1]],
         {target: existing, style: {'font-size': 14, fill: 'red'}});
@@ -397,11 +328,10 @@ describe('gui label tool state', function() {
         assert.deepEqual(f.geometry.coordinates, [-119.5, 37.8]);
       });
 
-      it('a curve with text, corners and a style', async function() {
+      it('a curve with text and a style', async function() {
         var cmd = getAddLabelCommand([[0, 0], [5, 5], [10, 0]], {
           target: empty,
           text: "Martha's Vineyard",
-          corners: [1],
           style: {'font-size': 14}
         });
         var out = await run(cmd);
@@ -409,7 +339,6 @@ describe('gui label tool state', function() {
         assert.equal(f.geometry.type, 'MultiPoint');
         assert.deepEqual(f.geometry.coordinates, [[0, 0], [5, 5], [10, 0]]);
         assert.equal(f.properties['label-text'], "Martha's Vineyard");
-        assert.equal(f.properties['label-corners'], '1');
         assert.equal(f.properties['font-size'], '14');
       });
 

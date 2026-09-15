@@ -26,8 +26,6 @@ var stylePropertyTypes = {
   'icon-color': 'color',
   'icon-size': 'number',
   'label-pos': 'labelposition',
-  // knot indexes to treat as corners of a label's curve, e.g. "0,2"
-  'label-corners': 'indexlist',
   // which side of its path a label's text sits on
   'label-side': null,
   // where the text starts along its path; a length or a percentage
@@ -306,8 +304,6 @@ function parseSvgLiteralValue(strVal, type) {
     val = strVal; // TODO: validate
   } else if (type == 'labelposition') {
     val = parseLabelPosition(strVal);
-  } else if (type == 'indexlist') {
-    val = parseIndexList(strVal);
   }
   //  else {
   //   // unknown type -- assume literal value
@@ -388,33 +384,6 @@ export function resolveLabelPosition(rec) {
 export function hasStyleValue(rec, field) {
   var val = rec[field];
   return field in rec && val !== undefined && val !== null && val !== '';
-}
-
-// Validates a comma-separated list of array indexes and returns it in
-// normalized form, or null if it is not one.
-//
-// The value is kept as a string rather than an array so that a data table
-// holds only scalars, which is what CSV and DBF output require. Callers that
-// need the indexes use parseKnotIndexList().
-export function parseIndexList(str) {
-  var s = String(str).trim();
-  var parts, out = [], i;
-  if (s === '') return null;
-  parts = s.split(',');
-  for (i = 0; i < parts.length; i++) {
-    if (!/^\s*[0-9]+\s*$/.test(parts[i])) return null;
-    out.push(+parts[i]);
-  }
-  return out.join(',');
-}
-
-// Returns an array of indexes from a value written by parseIndexList(), or
-// null if the value is not a valid list. Accepts a number, so that a
-// single-item list surviving a round trip through a numeric field still works.
-export function parseKnotIndexList(val) {
-  var str = parseIndexList(val);
-  if (str === null) return null;
-  return str.split(',').map(Number);
 }
 
 export function isSvgMeasure(o) {

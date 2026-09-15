@@ -6,12 +6,10 @@ import { setOutputLayerName } from '../dataset/mapshaper-layer-utils';
 import { mergeDatasetsIntoDataset } from '../dataset/mapshaper-merging';
 import { getColumnType } from '../datatable/mapshaper-data-utils';
 import {
-  parseLabelCoords, parseJsonArg, warnIfCurveIsUnprojected,
-  warnAboutOutOfRangeCorners
+  parseLabelCoords, parseJsonArg, warnIfCurveIsUnprojected
 } from './mapshaper-label-geom';
 import {
-  isSupportedSvgStyleProperty, parseKnotIndexList, parseLabelPosition,
-  parseStyleLiteral
+  isSupportedSvgStyleProperty, parseLabelPosition, parseStyleLiteral
 } from '../svg/svg-properties';
 import { getLabelTextHash } from '../svg/svg-label-fit';
 
@@ -25,7 +23,6 @@ cmd.addLabel = addLabel;
 // label properties.
 var RESERVED_OPTIONS = {
   coordinates: true,
-  corners: true,
   name: true,
   no_replace: true,
   properties: true,
@@ -35,7 +32,7 @@ var RESERVED_OPTIONS = {
 };
 
 export function addLabel(targetLayers, targetDataset, opts) {
-  var targetLyr, coords, feature, dataset, outputLyr;
+  var targetLyr, coords, feature, dataset, outputLyr, merged;
   if (targetLayers.length > 1) {
     stop('Command expects a single target layer');
   }
@@ -59,7 +56,15 @@ export function addLabel(targetLayers, targetDataset, opts) {
   // the layer it is joining.
   //
   // force stays on for the same reason.
-  return cmd.mergeLayers([targetLyr, outputLyr], {force: true, verbose: false});
+  merged = cmd.mergeLayers([targetLyr, outputLyr], {force: true, verbose: false});
+  // The target's name is restored because mergeLayers() drops empty layers
+  // before merging: adding the first label to an empty layer hands back the
+  // one-label layer on its own, which has no name because the name was on the
+  // layer that was dropped. A layer called 'labels' would lose that name on
+  // its first label, and the label tool creates exactly such a layer when it
+  // opens with nothing loaded.
+  merged[0].name = targetLyr.name;
+  return merged;
 }
 
 // Makes the new label's values match the types the target layer already holds,
@@ -133,7 +138,6 @@ function toLabelFeature(opts, coords) {
 
 function getLabelProperties(opts, knotCount) {
   var d = {};
-  var corners;
   if (opts.properties) {
     utils.extend(d, parseJsonArg(opts.properties, 'properties'));
   }
@@ -174,23 +178,6 @@ function getLabelProperties(opts, knotCount) {
     warn('Ignoring label-pos on a label with', knotCount, 'points.',
       'Use label-start-offset= and text-anchor= to place text along a path.');
     delete d['label-pos'];
-  }
-
-  if (opts.corners) {
-    corners = parseKnotIndexList(opts.corners);
-    if (!corners) {
-      stop('Invalid corners parameter:', opts.corners,
-        '(expected a comma-separated list of knot indexes)');
-    }
-    if (knotCount < 3) {
-      // the ends of a curve already have one-sided tangents, so marking them
-      // as corners changes nothing
-      warn('Ignoring corners= on a label with', knotCount,
-        knotCount == 1 ? 'point' : 'points');
-    } else {
-      warnAboutOutOfRangeCorners(corners, knotCount);
-      d['label-corners'] = corners.join(',');
-    }
   }
 
   if (opts.text_width !== undefined) {

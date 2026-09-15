@@ -2094,9 +2094,6 @@ export function getOptionParser() {
     .option('label-start-offset', {
       describe: 'where label text starts along its path, e.g. 50%'
     })
-    .option('label-corners', {
-      describe: 'knot indexes to treat as corners of a label curve'
-    })
     .option('label-text-width', {
       describe: 'rendered width of label text in px at its native font size'
     })
@@ -2348,9 +2345,6 @@ export function getOptionParser() {
     .option('text', {
       describe: 'label text'
     })
-    .option('corners', {
-      describe: 'knot indexes to treat as corners (comma-sep. list)'
-    })
     .option('text-width', {
       describe: 'rendered text width in px, for checking that text fits a path',
       type: 'number'
@@ -2381,9 +2375,6 @@ export function getOptionParser() {
     })
     .option('coordinates', {
       describe: 'x,y of the label anchor, or x,y,x,y,... of a curve\'s knots'
-    })
-    .option('corners', {
-      describe: 'knot indexes to treat as corners (comma-sep. list)'
     })
     .option('target', targetOpt);
 

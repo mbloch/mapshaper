@@ -282,26 +282,30 @@ describe('mapshaper-add-label.mjs', function () {
     });
   });
 
-  describe('corners=', function () {
-    it('is stored normalized', async function () {
-      var out = await run("-add-label coordinates=0,0,10,8,20,0,30,8 text=x corners=' 1, 2 '");
-      assert.equal(geojson(out).features[0].properties['label-corners'], '1,2');
-    });
-
-    it('is ignored on a label with fewer than 3 points', async function () {
-      var out = await run("-add-label coordinates=0,0,10,8 text=x corners=1");
-      assert.ok(!('label-corners' in geojson(out).features[0].properties));
-    });
-
-    it('rejects a non-numeric list', async function () {
+  describe('corners are not a thing a label path has', function () {
+    // A label path is a smooth curve fitted through its knots, with no way to
+    // ask for a sharp vertex. corners= was accepted for a while and stored a
+    // label-corners property; both are gone, and a file still carrying the
+    // property draws as the smooth curve its knots describe.
+    it('corners= is not an option', async function () {
       await assert.rejects(
-        () => run("-add-label coordinates=0,0,1,1,2,2 text=x corners=abc"),
-        /Invalid corners/);
+        () => run("-add-label coordinates=0,0,10,8,20,0 text=x corners=1"),
+        /unexpected parameters: corners/);
     });
 
-    it('out-of-range indexes do not fail the command', async function () {
-      var out = await run("-add-label coordinates=0,0,10,8,20,0 text=x corners=99");
-      assert.equal(geojson(out).features[0].properties['label-corners'], '99');
+    it('label-corners is not a style property', async function () {
+      await assert.rejects(
+        () => run("-add-label coordinates=0,0,5,5,9,0 text=x " +
+          "-style label-corners=0,2"),
+        /unexpected parameters: label-corners/);
+    });
+
+    it('a label-corners property in the data is inert', async function () {
+      // it goes through as an ordinary attribute, because -add-label passes
+      // anything it does not recognize into the record
+      var out = await run("-add-label coordinates=0,0,10,8,20,0 text=x " +
+        "properties='{\"label-corners\":\"1\"}'");
+      assert.equal(geojson(out).features[0].properties['label-corners'], '1');
     });
   });
 
@@ -387,6 +391,27 @@ describe('mapshaper-add-label.mjs', function () {
         '-o out.json target=annotations', {'in.json': polygonLayer});
       assert.equal(geojson(out).features.length, 1);
     });
+
+    it('the target layer keeps its name', async function () {
+      var out = await api.applyCommands(
+        '-i in.json name=mylabels -add-label coordinates=0,0 text=x ' +
+        '-o format=topojson out.json', {'in.json': pointLabelLayer});
+      assert.deepStrictEqual(Object.keys(geojson(out).objects), ['mylabels']);
+    });
+
+    it('an empty target layer keeps its name too', async function () {
+      // mergeLayers() drops empty layers before merging, so the first label
+      // added to one comes back as the one-label layer on its own -- and the
+      // name was on the layer that was dropped. The label tool creates an
+      // empty layer called 'labels' when it opens with nothing loaded, so this
+      // is the path every label in a fresh session takes.
+      var lyr = {name: 'labels', geometry_type: 'point', shapes: []};
+      var dataset = {layers: [lyr], info: {}};
+      var out = api.cmd.addLabel([lyr], dataset,
+        {coordinates: '5,5', text: 'Reno'});
+      assert.equal(out[0].name, 'labels');
+      assert.equal(api.internal.getFeatureCount(out[0]), 1);
+    });
   });
 
   // The reason knots are stored as geometry rather than in an attribute is so
@@ -433,27 +458,6 @@ describe('mapshaper-add-label.mjs', function () {
   // the GUI edits labels by emitting -style, so the new properties have to be
   // settable that way too
   describe('-style can set the new properties', function () {
-    it('label-corners', async function () {
-      var out = await run("-add-label coordinates=0,0,5,5,9,0 text=x " +
-        "-style label-corners=0,2");
-      assert.equal(geojson(out).features[0].properties['label-corners'], '0,2');
-    });
-
-    it('label-corners rejects an invalid literal', async function () {
-      await assert.rejects(
-        () => run("-add-label coordinates=0,0,5,5 text=x -style label-corners=nope"),
-        /Unexpected value for label-corners/);
-    });
-
-    it('label-corners accepts an expression, as every style property does', async function () {
-      // -style values may be JS expressions, so a value that parses as one
-      // bypasses literal validation. This is consistent with the other
-      // properties rather than special to label-corners.
-      var out = await run("-add-label coordinates=0,0,5,5,9,0 text=x " +
-        "-style label-corners='\"0,\" + 2'");
-      assert.equal(geojson(out).features[0].properties['label-corners'], '0,2');
-    });
-
     it('label-text-width and label-text-hash', async function () {
       var out = await run("-add-label coordinates=0,0,5,5 text=x " +
         "-style label-text-width=120 label-text-hash=abc123");

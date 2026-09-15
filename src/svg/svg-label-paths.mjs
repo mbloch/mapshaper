@@ -1,6 +1,6 @@
 import { getCurveSegments, getCurveLength } from '../curves/mapshaper-curve-fit';
 import { stringifyLineStringCoords } from './svg-path-utils';
-import { applyStyleAttributes, parseKnotIndexList } from './svg-properties';
+import { applyStyleAttributes } from './svg-properties';
 import { getLabelFitState } from './svg-label-fit';
 import { labelNewlineRxp, toLabelString } from './svg-labels';
 import { featureHasLabel, featureIsLabel } from './svg-feature-utils';
@@ -53,8 +53,8 @@ export function shapeIsPathLabel(shp, rec) {
 // densified polyline -- worth it here because an exported label path is
 // re-editable in Illustrator, and because a smooth baseline is what the text
 // is positioned against.
-export function getLabelPathData(knots, corners) {
-  var segments = getCurveSegments(knots, corners);
+export function getLabelPathData(knots) {
+  var segments = getCurveSegments(knots);
   var coords, seg, i;
   if (segments.length === 0) return null; // knots collapsed to a single point
   coords = [[segments[0].p0[0], segments[0].p0[1]]];
@@ -82,13 +82,12 @@ export function initPathLabelReport() {
 //     LABEL_OVERFLOW_CLASS, instead of dropping it. The editor sets this,
 //     because hiding a broken label makes it unfindable and so unfixable.
 export function renderPathLabel(rec, knots, opts) {
-  var corners = parseKnotIndexList(rec['label-corners']);
-  var d = getLabelPathData(knots, corners);
+  var d = getLabelPathData(knots);
   var report = opts && opts.report;
   var id = opts && opts.id;
   var state, text, textPath, o, cls;
   if (!d) return null;
-  state = getLabelFitState(rec, getCurveLength(knots, corners));
+  state = getLabelFitState(rec, getCurveLength(knots));
   if (state == 'overflow') {
     if (!(opts && opts.keepOverflow)) {
       addToReport(report, 'dropped', id);

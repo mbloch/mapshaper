@@ -50,7 +50,6 @@ function getFeatureCount(lyr) {
 //   several make a path-aligned one.
 // opts:
 //   target: a {mode, name} from getLabelTarget()
-//   corners: knot indexes to treat as corners
 //   text: the label's text, with real newlines. A label is created with the
 //     text it was typed into, so there is one command per new label rather
 //     than a creation followed by a text edit -- and so that a label with
@@ -64,9 +63,6 @@ export function getAddLabelCommand(coords, opts) {
     // A real newline would break the command parser, so encodeLabelText()
     // writes the two-character escape the label renderer also accepts.
     parts.push('text=' + quoteCommandValue(encodeLabelText(o.text)));
-  }
-  if (o.corners && o.corners.length > 0) {
-    parts.push('corners=' + o.corners.join(','));
   }
   getStyleFields(o.style, coords.length > 1).forEach(function(name) {
     parts.push(name + '=' + quoteCommandValue(o.style[name]));
@@ -100,10 +96,6 @@ function getStyleFields(style, isPathLabel) {
 
 // The command that moves a label, run once when a knot or anchor drag is
 // released so that a drag is one undo step rather than one per mouse move.
-//
-// Corners are left out deliberately: they are knot indexes, and a move changes
-// where a knot is rather than how many there are, so -update-label keeps the
-// ones already stored.
 //
 //   coords: the label's knots after the move, in CRS coordinates
 //   id:     feature id of the label

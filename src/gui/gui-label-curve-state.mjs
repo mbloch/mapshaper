@@ -28,9 +28,9 @@ export var KNOT_HIT_THRESHOLD = 8;
 export function createCurveState() {
   // justPlaced is the knot the current pointer gesture placed, or -1. A
   // double-click arrives as clicks first, so the knot under the pointer during
-  // the dblclick may be one that the same gesture just created; the two cases
-  // mean opposite things and this is what tells them apart.
-  return {knots: [], corners: [], justPlaced: -1};
+  // the dblclick is usually one that the same gesture just created; the two
+  // cases mean opposite things and this is what tells them apart.
+  return {knots: [], justPlaced: -1};
 }
 
 // Returns true if the knot was added. A click too close to the previous knot is
@@ -51,30 +51,9 @@ export function moveKnot(state, i, p) {
 }
 
 export function removeLastKnot(state) {
-  var i = state.knots.length - 1;
-  if (i < 0) return false;
+  if (state.knots.length === 0) return false;
   state.knots.pop();
-  // a corner flag on the removed knot would otherwise apply to whichever knot
-  // later took its index
-  state.corners = state.corners.filter(function(c) { return c !== i; });
   return true;
-}
-
-// A corner knot gets a split tangent, so the curve arrives and leaves in
-// independent directions instead of passing through smoothly.
-export function toggleCorner(state, i) {
-  var pos = state.corners.indexOf(i);
-  if (!(i >= 0 && i < state.knots.length)) return false;
-  if (pos > -1) {
-    state.corners.splice(pos, 1);
-  } else {
-    state.corners.push(i);
-  }
-  return true;
-}
-
-export function isCorner(state, i) {
-  return state.corners.indexOf(i) > -1;
 }
 
 // Index of the placed knot nearest @p within @threshold, or -1. Searches from
@@ -104,15 +83,14 @@ export function curveIsComplete(state) {
 // placed a knot, 'ignored' if it landed on a knot that is already there or too
 // close to the last one.
 //
-// A click on a placed knot is aimed at that knot -- the double-click that makes
-// it a corner starts with ordinary clicks -- so it must not leave a duplicate
-// knot behind.
+// A click on a placed knot must not leave a duplicate knot behind: the curve
+// fitter would have a zero-length chord to find a direction along.
 export function handleClick(state, p, hitThreshold, minDistance) {
   var near = findKnotNear(state, p, hitThreshold);
   if (near > -1) {
     // Clicking a knot this gesture did not place ends the gesture's claim on
-    // whatever it placed before, so that a later double-click on that knot is
-    // read as a corner rather than as finishing.
+    // whatever it placed before, so that a double-click on an already-placed
+    // knot is not read as finishing.
     if (near !== state.justPlaced) state.justPlaced = -1;
     return 'ignored';
   }
@@ -124,21 +102,19 @@ export function handleClick(state, p, hitThreshold, minDistance) {
   return 'added';
 }
 
-// What a double-click at @p means:
-//   'finish'  end the curve here
-//   'corner'  toggle the knot at .index, so the curve may change direction
-//     there instead of passing through smoothly
-//   'none'    nothing to do
+// What a double-click at @p means: 'finish' to end the curve here, or 'none'.
 //
 // Double-clicking empty map finishes, and the knot the opening click placed
-// counts as empty map -- otherwise the ordinary way to end a curve would
-// silently mark its last knot as a corner instead.
+// counts as empty map -- that click is how the ordinary finishing gesture
+// starts, so without the exception it would land on a knot every time.
+//
+// A double-click on a knot that was already there does nothing. It cannot add
+// one, since the knot is in the way, and finishing on it would end the curve
+// somewhere other than where the pointer was when the gesture began.
 export function getDblclickAction(state, p, hitThreshold) {
   var near = findKnotNear(state, p, hitThreshold);
   if (state.knots.length === 0) return {action: 'none'};
-  if (near > -1 && near !== state.justPlaced) {
-    return {action: 'corner', index: near};
-  }
+  if (near > -1 && near !== state.justPlaced) return {action: 'none'};
   return {action: 'finish'};
 }
 
@@ -146,16 +122,6 @@ export function getDblclickAction(state, p, hitThreshold) {
 // and the indexes no longer line up.
 export function clearGesture(state) {
   state.justPlaced = -1;
-}
-
-// Corner flags in the order the curve fitter expects, and without the ends,
-// which already have one-sided tangents -- marking them changes nothing and
-// would only show up as noise in the emitted command.
-export function getInteriorCorners(state) {
-  var last = state.knots.length - 1;
-  return state.corners.filter(function(i) {
-    return i > 0 && i < last;
-  }).sort(function(a, b) { return a - b; });
 }
 
 function lastKnot(state) {

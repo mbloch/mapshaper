@@ -1,5 +1,6 @@
 import { internal } from './gui-core';
 import { translateDisplayPoint } from './gui-display-utils';
+import { addEmptyLayer } from './gui-add-layer-popup';
 import { showPopupAlert } from './gui-alert';
 import { runGuiEditCommand } from './gui-edit-command';
 import { FloatingToolbar } from './gui-floating-toolbar';
@@ -16,8 +17,8 @@ import {
   getPendingLabelPath
 } from './gui-label-path-guide';
 import {
-  createCurveState, removeLastKnot, toggleCorner, curveIsComplete,
-  getInteriorCorners, handleClick, getDblclickAction, clearGesture,
+  createCurveState, removeLastKnot, curveIsComplete,
+  handleClick, getDblclickAction, clearGesture,
   MIN_KNOT_DISTANCE, KNOT_HIT_THRESHOLD
 } from './gui-label-curve-state';
 
@@ -56,6 +57,7 @@ export function initLabelTool(gui, ext, hit) {
 
   gui.on('interaction_mode_change', function(e) {
     if (e.mode == 'label') {
+      addTargetLayerIfMissing();
       gui.enterMode('label_tool');
     } else if (gui.getMode() == 'label_tool') {
       gui.clearMode();
@@ -63,6 +65,26 @@ export function initLabelTool(gui, ext, hit) {
     // higher priority than the hit control, so that turnOff() still sees the
     // hit target it was working with
   }, null, 10);
+
+  // A session that has imported nothing has no layer for a label to go into,
+  // and every one of this tool's gestures needs one: a click has no coordinate
+  // space to land in, and the pending label is drawn into the target layer's
+  // own SVG container. Without this the toolbar appeared, a tool armed, the
+  // cursor became a crosshair, and clicking the map did nothing at all.
+  //
+  // So the tool makes the layer it needs, which is what the point and line
+  // tools do on entry as well (`addEmptyLayer()` in `gui-edit-points.mjs` and
+  // `gui-draw-lines2.mjs`). It is named rather than left unnamed, unlike
+  // theirs: it is the layer `getLabelTarget()` would have created for a label
+  // anyway, and naming it is what lets the `-add-label` commands name their
+  // target and so replay from the session history.
+  //
+  // Called before entering the tool's own mode, because getInitialTool() reads
+  // the active layer to decide what to arm.
+  function addTargetLayerIfMissing() {
+    if (gui.model.getActiveLayer()) return;
+    addEmptyLayer(gui, 'labels', 'point');
+  }
 
   function turnOn() {
     getToolbar().show();
@@ -169,8 +191,7 @@ export function initLabelTool(gui, ext, hit) {
     alert = showPopupAlert(armed == 'anchor' ?
       'Instructions: click on the map to place a label.' :
       'Instructions: click to place points along the path. Double-click, ' +
-      'Enter or Escape to finish, or double-click a point to make it a ' +
-      'corner. Backspace removes the last point.',
+      'Enter or Escape to finish. Backspace removes the last point.',
       null, {non_blocking: true, max_width: '330px'});
   }
 
@@ -516,10 +537,7 @@ export function initLabelTool(gui, ext, hit) {
     if (armed == 'path' && drawingCurve()) {
       o = getDblclickAction(curve, pixToMapCoords(e.x, e.y),
         scaleThreshold(KNOT_HIT_THRESHOLD));
-      if (o.action == 'corner') {
-        toggleCorner(curve, o.index);
-        refreshCurve();
-      } else if (o.action == 'finish') {
+      if (o.action == 'finish') {
         finishCurve();
       }
       return;
@@ -586,7 +604,7 @@ export function initLabelTool(gui, ext, hit) {
   // action: (optional) 'hover' when only the pointer has moved, which keeps the
   //   redraw off the main layers -- this runs on every mouse move.
   function refreshCurve(action) {
-    setPendingLabelPath(curve.knots, getInteriorCorners(curve), previewPoint);
+    setPendingLabelPath(curve.knots, previewPoint);
     gui.dispatchEvent('map-needs-refresh', {action: action});
   }
 
@@ -600,7 +618,6 @@ export function initLabelTool(gui, ext, hit) {
 
   function finishCurve() {
     var knots = curve.knots;
-    var corners = getInteriorCorners(curve);
     if (!curveIsComplete(curve)) {
       // one knot is not a path; discard rather than silently making an
       // anchored label the user did not ask for
@@ -608,7 +625,7 @@ export function initLabelTool(gui, ext, hit) {
       return;
     }
     abandonCurve();
-    beginLabel(knots, corners);
+    beginLabel(knots);
   }
 
   // Puts a caret where the label is going to be, without creating anything.
@@ -618,31 +635,29 @@ export function initLabelTool(gui, ext, hit) {
   // So the click opens a *pending* session, which draws the label and holds its
   // text, and the label becomes a feature only when the session ends with
   // something in it. See LabelEditor.openPending().
-  function beginLabel(displayCoords, corners) {
+  function beginLabel(displayCoords) {
     var target = hit.getHitTarget();
     if (!target) return;
     hideInstructions();
     editor.openPending(target, {
       coords: displayCoords,
-      corners: corners,
       // Read on every render rather than snapshotted, so that choosing a font
       // or a position while the caret is sitting there is visible immediately.
       getStyle: function() { return getNewLabelStyle(gui); },
-      create: function(text) { createLabel(displayCoords, corners, text); }
+      create: function(text) { createLabel(displayCoords, text); }
     });
   }
 
   // Creates the label being typed into. One command carries its geometry, its
   // style and its text, so a new label is a single entry in the session history
   // and a single step to undo.
-  function createLabel(displayCoords, corners, text) {
+  function createLabel(displayCoords, text) {
     var target = hit.getHitTarget();
     var coords = displayCoords.map(function(p) {
       return target ? translateDisplayPoint(target, p) : p;
     });
     runGuiEditCommand(gui, getAddLabelCommand(coords, {
       target: getLabelTarget(target, internal.layerHasLabels),
-      corners: corners,
       text: text,
       // whatever the style panel was set to while nothing was selected, so that
       // a font can be chosen before the first label exists

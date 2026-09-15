@@ -45,17 +45,7 @@ export function warnIfCurveIsUnprojected(dataset, knotCount) {
   if (!dataset) return;
   crs = getDatasetCRS(dataset);
   if (crs && crs.is_latlong) {
-    warn('Fitting a label curve to unprojected coordinates; the curve may ' +
-      'bow incorrectly away from the equator. Consider using -proj first.');
-  }
-}
-
-export function warnAboutOutOfRangeCorners(corners, knotCount) {
-  var bad = corners.filter(function(i) { return i >= knotCount; });
-  if (bad.length > 0) {
-    // the curve fitter ignores these, so this is a warning rather than an error
-    warn('Ignoring out-of-range corner index:', bad.join(','),
-      '(label has', knotCount, 'points)');
+    warn('Fitting a label curve to unprojected coordinates. Consider using -proj first.');
   }
 }
 

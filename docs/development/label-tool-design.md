@@ -197,6 +197,7 @@ one question — is the target a point layer that labels can join?
 | Empty point layer | New labels added to it |
 | Point layer of non-label points only | **New point layer created** |
 | Polygon or polyline layer | **New point layer created** |
+| No layer at all | **Empty point layer created on entering the mode** |
 
 The gesture never enters into it. Clicking once to place an anchored label and
 clicking several times to draw a curved one both add a feature to the same
@@ -215,6 +216,73 @@ options that `-add-shape` already declares, so layer creation and the first
 label are one command and one undo entry. Layer creation is an established
 undoable catalog-level change (`noteCatalogWillChange` / `markCatalogChanged`;
 see the "Add empty layer" case in `undo-redo-implementation.md`).
+
+#### A session with nothing in it
+
+The last row is the exception to all of that: **with no layer at all, the tool
+makes one on entering the mode**, before the first click rather than with it.
+
+Every gesture this tool has needs a target layer. A click has no coordinate
+space to land in without one, and the pending label is drawn into the target
+layer's own SVG container, so `beginLabel()` gives up when there is no target —
+which is what the tool did when the "Import files" dialog was dismissed and
+label mode chosen from the arrow menu. The toolbar appeared, the anchor tool
+armed, the cursor became a crosshair, and clicking the map did nothing at all.
+
+Creating it on entry rather than on the first click is what the point and line
+tools already do (`addEmptyLayer()` in `gui-edit-points.mjs` and
+`gui-draw-lines2.mjs`), and `menus.empty` in `gui-interaction-mode-control.mjs`
+lists `label` alongside them, so the mode was always meant to be reachable
+here. It does mean that opening the tool and changing your mind leaves an empty
+layer and an undo entry, which is a cost the other two tools already pay.
+
+The layer is **named** `labels`, unlike the unnamed ones those tools create. It
+is the layer `getLabelTarget()` would have created for a label anyway, and
+naming it is what lets the `-add-label` commands carry `target=labels` and so
+replay from the session history.
+
+Naming it exposed a bug in `-add-label`. `-merge-layers` drops empty layers
+before merging, so adding the first label to an empty layer hands back the
+one-label layer on its own — and the name was on the layer that was dropped, so
+a layer called `labels` lost its name on its first label. `addLabel()` now
+restores the target's name after merging, as `-inlay` does for the same reason.
+It was reachable before this, since an empty point layer is a target the tool
+adopts, but only a fresh session takes that path for every label it creates.
+
+#### Committing the first label must not move the view
+
+Placing that first label also used to reset the map view: the label was
+centered and the map zoomed to its own extent, a box a few metres across, too
+far in for a basemap to draw.
+
+In a project with nothing else in it, the label layer's bounds are the whole
+map's bounds, and a single point has none — `calcFullBounds()` in
+`gui-map.mjs` pads a degenerate box by 1e-4 units, so the map's full extent
+became about 20 m wide. Whether to reset the view is `mapNeedsReset()`'s
+decision, and it was being asked to compare that against the full bounds the
+view was already working from, which for a project with no content are the
+placeholder box `getContentLayerBounds()` assigns — a continent. The area
+between them differs by more than the 1e8 the area-change rule allows, so the
+answer was always "reset", no matter where the user had navigated to.
+
+`onUpdate()` now tracks whether the bounds it is comparing against are that
+placeholder (`_boundsArePlaceholder`), and when they are, keeps the view unless
+the new content is outside it. The other rules `mapNeedsReset()` applies
+already come to the same answer in this situation; only the area rule did not.
+A hand-placed feature is at a spot the user picked on screen, so the view they
+picked it in is the one to keep.
+
+The drawing tools never hit this because they mutate their layer and dispatch
+`map-needs-refresh` rather than going through `model.updated()`, so nothing
+asks the question. The label tool runs a command for every edit, which is what
+gives it undo and session history, so it gets the full update path. The box
+tool's `-rectangle` does too, but the rectangle it creates is as big as the box
+the user dragged, so resetting to it looks like staying put.
+
+One thing this does not fix: the map's full extent for a lone label layer is
+still that 20 m box, so the home button zooms to almost nothing. That is the
+1e-4 padding in `calcFullBounds()`, which any project whose only content is a
+single point has always had.
 
 ### Rejected alternatives
 
@@ -245,7 +313,6 @@ see the "Add empty layer" case in `undo-redo-implementation.md`).
 
 | Field | Type | Meaning |
 |---|---|---|
-| `label-corners` | string | Indices of knots to treat as corners, comma-separated |
 | `label-start-offset` | measure | Position of text along the path |
 | `label-side` | `left`\|`right` | Which side of the path the text sits on |
 | `label-text-width` | number | Measured text width in px at native font-size |
@@ -255,18 +322,11 @@ see the "Add empty layer" case in `undo-redo-implementation.md`).
 position property stored, with the offsets it stands for resolved at render
 time. See "A position is stored as a position".
 
-The knots themselves are geometry and so have no field. `label-corners` is the
-only part of the curve's definition that cannot be inferred from the knots: a
-corner knot gets a split tangent, so the curve arrives and leaves with
-independent directions instead of passing through smoothly. It is a list of
-indices into the feature's own points, which stay valid under every coordinate
-transform because transforms never reorder or drop points.
-
-The one exception worth noting is that `-proj` *can* drop points that fail to
-project (`projectPointLayer()` removes them), which would shift the indices. A
-label whose point count changes under reprojection should have `label-corners`
-cleared rather than reinterpreted, since a silently misapplied corner is worse
-than a uniformly smooth curve.
+**The knots themselves are geometry and so have no field, and nothing else about
+the curve is stored either.** A label's curve is entirely a function of its
+points: the same knots always fit the same curve, so there is no state to keep
+in step with the geometry and nothing for a coordinate transform to invalidate.
+See "No corners" for what this cost.
 
 All new fields go in `stylePropertyTypes` so `isSupportedSvgStyleProperty()`
 accepts them, *and* in the `-style` option declarations, since the parser
@@ -423,7 +483,6 @@ they differ only in how many points they have:
 ```
 -add-label coordinates=<x,y[,x,y,...]>  anchor, or knots, in the target's CRS
            text=<string>                label text
-           [corners=<i,j,...>]          knot indices to treat as corners
            [text-width=<px>]            measured text width, for the fit check
            [<style options>]            any -style label property
            [name=<layer>]
@@ -474,7 +533,6 @@ when a knot or an anchor is released after a drag.
 ```
 -update-label ids=<i>                    feature id of the label to move
               coordinates=<x,y[,x,y,...]>  the anchor, or the curve's knots
-              [corners=<i,j,...>]        knot indexes to treat as corners
               [target=<layer>]
 ```
 
@@ -489,24 +547,22 @@ arbitrary point through a command named `-update-label` would be a surprising
 way to succeed, and from the GUI it would mean the hit test handed over the
 wrong feature.
 
-Three details are worth recording:
+Two details are worth recording:
 
 - **`label-text-width` is deliberately left alone.** It measures the text, and
   a move changes the length of the *path*; the fit check compares the two at
   render time against the curve as it then stands. So a move can turn a fitting
   label into an overflowing one without the stored measurement going stale, and
   re-fingerprinting it would be wrong.
-- **Corners are knot indexes, so they depend on the list being replaced.**
-  Given explicitly they are replaced outright. Left out they are kept, but
-  pruned of any index the new knot list no longer has — an index past the end
-  would otherwise sit in the data marking a knot that does not exist. Dropping
-  below three knots removes them, matching `-add-label`.
 - **The edit is declared to the undo system.** `noteLayerWillChange()` before
   and `markLayerChanged()` after, because `lyr.shapes` keeps its identity across
   an in-place write and a transaction has no way to notice it otherwise. An
-  undeclared edit is an edit that cannot be undone. `captureLayerBefore()`
-  clones the shapes but holds the data table by reference, so a corners change
-  is captured separately through the table's own `captureFieldsBefore()`.
+  undeclared edit is an edit that cannot be undone.
+
+Nothing but the shapes is written, which is what keeps this command as small as
+it is. It was not always: knots had corner flags, stored as indexes into the
+point list, so replacing the list meant renumbering and pruning them and
+declaring a second, separate edit to the data table. See "No corners".
 
 Since the number of knots is free to change, this is also the command that will
 carry adding and removing a knot when those gestures arrive.
@@ -616,14 +672,44 @@ variant of it that avoids the claims. Hobby's construction never refers to
 curvature extrema and predates the patent's 2013 priority date by 28 years.
 This is an engineering risk judgement, not legal advice.
 
-A knot listed in `corners=` ends one fitted run and begins the next, so the
-curve arrives and leaves with independent directions and the knot renders as a
-corner. Hobby's system couples every knot in a run, which makes this the
-natural way to express a corner rather than a special case bolted on. In the
-GUI it is a double-click on a knot, matching Illustrator.
-
 Two knots produce a straight segment, so "straight path" is not a special case
 in the data model or the renderer — it is a two-knot curve.
+
+#### No corners
+
+**Every knot is passed through smoothly, and there is no way to ask for a sharp
+one.** A label path is a baseline for text, and the reason to bend one is to
+follow a coastline, a river or a ridge; a kink in a baseline is not something
+map lettering wants. The label tool offers a curvature tool and no pen tool for
+the same reason.
+
+Corners were supported for a while, and it is worth recording what supporting
+them cost, because the mechanism was small at each site and awkward across all
+of them. A corner ended one fitted run and began the next, which is the natural
+way to express one in Hobby's system — it couples every knot in a run — so the
+fitter itself was the least of it:
+
+- A `corners` parameter on `fitCurveThroughKnots()`, `getCurveSegments()`,
+  `getCurveLength()` and `getLabelPathData()`, and a `null` at every call site
+  that did not use one.
+- A `label-corners` property holding *indexes into the feature's own points*.
+  That made it the one part of a label's appearance not derivable from its
+  geometry, and the only one a geometry edit could invalidate: `-update-label`
+  had to renumber and prune it whenever the knot list changed, and declare that
+  change to the undo system separately from the shapes. `-proj` can drop points
+  that fail to project, which would have shifted the indexes silently.
+- A `parseKnotIndexList()` and an `indexlist` style-property type, used by
+  nothing else.
+- A second kind of knot handle, in two places — the drawing guide and the
+  selection cue — because a corner on a gentle arc barely changes the curve, so
+  the handle was the only confirmation that the double-click had worked.
+- A double-click gesture that meant two different things depending on which
+  knot was under the pointer.
+
+None of that is load-bearing for a smooth curve, which is entirely a function
+of its points. A file that still carries a `label-corners` property draws as
+the smooth curve its knots describe: the property is no longer read, and no
+longer recognized by `-style`, so it sits in the data as an ordinary attribute.
 
 ### Densification
 
@@ -647,15 +733,14 @@ The fit is a pure function over arrays with no dependency on the GUI, the arc
 collection, the DOM or any CRS:
 
 ```js
-// knots: [[x,y],...]; corners: Set<number>; tolerance: number
+// knots: [[x,y],...]; tolerance: number
 // returns [[x,y],...] in the same coordinate space as the knots
-export function fitCurveThroughKnots(knots, corners, tolerance)
+export function fitCurveThroughKnots(knots, tolerance)
 ```
 
 This is the kind of small pure helper the GUI guardrails ask for, and it is
 where the unit tests go: knot counts of 0/1/2, collinear knots, duplicate
-knots, tight hairpins, all-corner knots (which must reproduce the input
-polyline exactly), and a check that the curve never cusps. The strongest of
+knots, tight hairpins, and a check that the curve never cusps. The strongest of
 them is a known-answer test — points sampled evenly on a circle must give the
 circle back, which any error in the tridiagonal coefficients or the velocity
 functions breaks.
@@ -825,9 +910,10 @@ display-only layers wrapped in the active layer's `gui` context:
 | `label-path-guide` | polyline over a synthesized `ArcCollection` | the fitted curve, flattened |
 | `label-path-knots` | point, one single-point shape per knot | a handle on each knot |
 
-One knot per shape rather than one multipoint per curve, because a canvas styler
-runs per shape: that is what lets a corner handle be drawn differently from a
-smooth one.
+One knot per shape rather than one multipoint per curve, so that a handle can be
+addressed on its own. Every handle is drawn the same now that there are no
+corners, so nothing needs a canvas styler — which runs per shape, and was how a
+corner handle was drawn differently from a smooth one.
 
 Three properties of the wrapper matter. The coordinates come from the *display*
 layer, so they are in the display CRS already and `gui.geographic` must be
@@ -996,9 +1082,8 @@ an empty label — the state it mostly appears in, between placing a label and
 typing into it — the dashes were most of the outline, and the box looked
 tentative rather than like a place to type.
 
-A **selected** curve also gets a handle on each knot — round, or square where
-`label-corners` marks a corner, the same distinction the drawing handles make.
-They are placed by the mapping the renderer used to build the curve
+A **selected** curve also gets a round handle on each knot, matching the drawing
+handles. They are placed by the mapping the renderer used to build the curve
 (`getLabelPathCoords()`), not by reading positions back out of the path, so they
 sit exactly on the curve beside them. A hovered curve gets none: it is being
 pointed at rather than held, and offering handles that cannot be grabbed would
@@ -2018,7 +2103,7 @@ idle
 creating
   pointer moves           -> refit through the knots and the pointer
   click                   -> append knot, refit, redraw preview
-  double-click on knot    -> mark knot as corner, refit
+  click / double-click on a placed knot -> nothing
   drag a placed knot      -> move knot, refit
   Enter / Escape / dblclick in space -> finish
   Backspace               -> remove last knot
@@ -2058,25 +2143,28 @@ double-click is delivered as two `click` events and then a `dblclick`, and both
 handlers see the same position. Two rules follow, and both were bugs before they
 were rules:
 
-- A click on a knot that is already placed is aimed at *that knot*, so it must
-  not add another one. Guarding only against the knot just placed is not enough;
-  the pointer going back to an earlier knot would otherwise leave a duplicate,
-  drawing a stray branch from the end of the curve back to the double-clicked
-  point.
-- A double-click makes a corner only if the knot under the pointer is **not**
-  the one this gesture just placed. Otherwise the ordinary way to finish a curve
-  — double-clicking past its end — would silently mark its last knot as a corner
-  and never finish at all.
+- A click on a knot that is already placed must not add another one on top of
+  it, which would give the fitter a zero-length chord to find a direction along
+  and drew a stray branch from the end of the curve back to that point.
+  Guarding only against the knot just placed is not enough; the pointer going
+  back to an earlier knot would otherwise leave the duplicate.
+- A double-click **finishes** the curve only if the knot under the pointer is
+  the one this gesture just placed, or there is no knot under it at all.
+  Otherwise the ordinary finishing gesture — double-clicking past the end of
+  the curve — would be read as a double-click on a knot, since its own opening
+  click puts one there.
 
 So the curve state carries `justPlaced`, the knot the current gesture placed, and
 the two decisions live in `handleClick()` and `getDblclickAction()` in
 `gui-label-curve-state.mjs` as pure functions over that state, where they are
 unit-tested directly.
 
-Marking a knot as a corner replaces its smooth tangent with the secants toward
-its neighbors, so it changes the curve only where the knots genuinely turn. On a
-gentle arc the shape barely moves and the handle — filled and slightly larger —
-is the only visible confirmation that the double-click worked.
+A double-click on a knot that was already there does **nothing**. It used to
+toggle the knot into a corner, which is the gesture Illustrator uses and the
+reason `justPlaced` exists; with corners gone (see "No corners") the gesture is
+unassigned. It is inert rather than finishing because it cannot place a knot —
+one is in the way — so finishing on it would end the curve somewhere other than
+where the pointer was when the gesture began.
 
 ### Toolbar And Panel
 
@@ -2399,10 +2487,10 @@ The editor added 2.6 KB, again matching its own source and inlining nothing.
   curve. That needs an explicit hit precedence. The rule the cues already imply
   is "what you can see is what you can grab": the anchor ring moves the point,
   the box or the glyphs move the text, a knot handle reshapes the path.
-- **A corner handle only styles its dot, not the curve's tangent handles.**
-  There is no way to adjust a tangent directly, by design — that is what
-  distinguishes a curvature tool from a pen tool — but it also means a curve
-  that the knots cannot express is not reachable.
+- **A curve the knots cannot express is not reachable.** There is no way to
+  adjust a tangent directly, by design — that is what distinguishes a curvature
+  tool from a pen tool — and no way to ask for a sharp vertex either (see "No
+  corners"). Adding a knot is the only way to change the shape.
 - **No multi-line text on a path.** `<tspan>` inside a `<textPath>` advances
   *along* the path rather than stacking below it, so multi-line curved text
   requires one offset path per line. Mapshaper has offset-curve machinery in
@@ -2431,7 +2519,7 @@ The editor added 2.6 KB, again matching its own source and inlining nothing.
   GeoJSON contains `MultiPoint` geometries whose meaning is only clear in
   context.
 - **`-proj` can drop knots** that fail to project, which changes a curve's
-  shape and invalidates `label-corners` index positions.
+  shape.
 - **Without a frame, path and text do not scale together**, so a label can fit
   at one zoom level and not at another, changing whether it renders.
 - **Selection bands on a curve are faceted.** Per-character extents are

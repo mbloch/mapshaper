@@ -109,6 +109,11 @@ export function createUndoTestApi(gui) {
     zoomByPct: function(pct) {
       gui.map.getExtent().zoomByPct(pct);
     },
+    // The map's current view, in display CRS coordinates, for a test that an
+    // edit leaves the view where the user put it.
+    getViewBounds: function() {
+      return gui.map.getExtent().getBounds().toArray();
+    },
     addPointToActiveLayer: function(coords) {
       var target = gui.model.getActiveLayer();
       var p = coords || [0, 0];

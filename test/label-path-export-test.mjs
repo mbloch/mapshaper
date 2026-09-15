@@ -266,8 +266,7 @@ describe('label path export', function () {
     });
 
     it('path-only properties are kept out of the SVG attributes', async function () {
-      var str = await svg(CURVE + ' text=Sierra corners=1 text-width=10');
-      assert.ok(!str.includes('label-corners'), str);
+      var str = await svg(CURVE + ' text=Sierra text-width=10');
       assert.ok(!str.includes('label-text-width'), str);
       assert.ok(!str.includes('label-text-hash'), str);
       assert.ok(!str.includes('label-path-d'), str);
@@ -303,10 +302,13 @@ describe('label path export', function () {
       });
     });
 
-    it('a corner knot straightens the curve through that knot', async function () {
+    it('a label-corners property in the data does not affect the curve', async function () {
+      // corners were supported for a while; a file written then still draws as
+      // the smooth curve its knots describe
       var smooth = await svg(CURVE + ' text=S');
-      var cornered = await svg(CURVE + ' text=S corners=1');
-      assert.notEqual(defPaths(smooth)[0], defPaths(cornered)[0]);
+      var withProp = await svg(CURVE +
+        ' text=S properties=\'{"label-corners":"1"}\'');
+      assert.equal(defPaths(smooth)[0], defPaths(withProp)[0]);
     });
   });
 

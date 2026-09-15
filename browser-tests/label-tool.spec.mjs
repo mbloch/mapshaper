@@ -21,6 +21,77 @@ test('the anchored label tool creates a label where the map was clicked', async 
   expect(errors).toEqual([]);
 });
 
+test('the tool works in a session that has imported nothing', async function({page}) {
+  // Nothing is loaded and the import dialog has been dismissed, so there is no
+  // layer for a label to go into -- and the tool used to show its toolbar, arm
+  // a tool and set a crosshair cursor over a map where clicking did nothing.
+  var errors = collectPageErrors(page);
+  await loadEmpty(page);
+  await page.evaluate(function() {
+    window.mapshaper.undoTest.setInteractionMode('label');
+  });
+  await page.locator('.floating-toolbar.label-toolbar').waitFor();
+
+  // entering the mode makes the layer the tool needs, named for what it holds
+  var lyr = await getLabelLayer(page);
+  expect(lyr).not.toBeNull();
+  expect(lyr.shapeCount).toBe(0);
+
+  await armTool(page, 'anchor');
+  await clickMap(page, 0.4, 0.45);
+  await writeLabel(page, 'Reno');
+
+  lyr = await getLabelLayer(page);
+  // and the label goes into that layer rather than beside it, and the layer
+  // still answers to its name afterwards
+  expect(lyr.shapeCount).toBe(1);
+  expect(lyr.records).toEqual([{'label-text': 'Reno', 'label-pos': 'c'}]);
+  expect(errors).toEqual([]);
+});
+
+test('the first label in an empty project leaves the view alone', async function({page}) {
+  // Committing the label used to reset the view to the label's own extent: it
+  // was centered and the map zoomed to a box a few metres across, too far in
+  // for a basemap to draw. The label layer's bounds are all there is to zoom
+  // to in a project with nothing else in it, and the bounds being compared
+  // against were the placeholder given to a project with no content, so the
+  // map read the change as one big enough to warrant a reset.
+  var errors = collectPageErrors(page);
+  await loadEmpty(page);
+  await page.evaluate(function() {
+    window.mapshaper.undoTest.setInteractionMode('label');
+  });
+  await page.locator('.floating-toolbar.label-toolbar').waitFor();
+  // navigate first, so the view under test is one the user chose
+  await page.evaluate(function() { window.mapshaper.undoTest.zoomByPct(4); });
+  await page.waitForTimeout(150);
+  var before = await getViewBounds(page);
+
+  await armTool(page, 'anchor');
+  await clickMap(page, 0.4, 0.45);
+  await writeLabel(page, 'Reno');
+  expect((await getLabelLayer(page)).shapeCount).toBe(1);
+
+  // to 6 decimal places, which is a tenth of a metre in these degrees: the
+  // view is rescaled around the layer's new bounds and back, and that round
+  // trip leaves noise in the last few bits
+  var after = await getViewBounds(page);
+  after.forEach(function(coord, i) {
+    expect(coord).toBeCloseTo(before[i], 6);
+  });
+
+  // and the second label, which is compared against the first label's bounds
+  // rather than the placeholder, leaves it alone as well
+  await armTool(page, 'anchor');
+  await clickMap(page, 0.6, 0.55);
+  await writeLabel(page, 'Tahoe');
+  expect((await getLabelLayer(page)).shapeCount).toBe(2);
+  (await getViewBounds(page)).forEach(function(coord, i) {
+    expect(coord).toBeCloseTo(before[i], 6);
+  });
+  expect(errors).toEqual([]);
+});
+
 test('a created label is undoable and appears in the session history', async function({page}) {
   var errors = collectPageErrors(page);
   await loadFixture(page, FIXTURE);
@@ -532,7 +603,11 @@ test('the curve being drawn is shown as a guide with a handle on each knot', asy
   expect(errors).toEqual([]);
 });
 
-test('double-clicking a knot makes it a corner without duplicating it', async function({page}) {
+test('double-clicking a knot that is already there does nothing', async function({page}) {
+  // There are no corners to toggle -- a label path is a smooth curve through
+  // its knots. The gesture still has to leave the curve alone: the double-click
+  // arrives as two clicks first, and those must not drop a knot on top of the
+  // one under the pointer, which drew a stray branch back to it.
   var errors = collectPageErrors(page);
   await loadFixture(page, FIXTURE);
   await armTool(page, 'path');
@@ -542,17 +617,18 @@ test('double-clicking a knot makes it a corner without duplicating it', async fu
   await clickMap(page, 0.6, 0.4);
   var before = await getGuideCoords(page);
 
-  // the double-click arrives as two clicks and then a dblclick; the clicks must
-  // not leave a knot on top of the one being double-clicked, which drew a stray
-  // branch back to it
   await dblclickMap(page, 0.45, 0.3);
   expect(await getGuideCoords(page)).toEqual(before);
+  // and the curve is still open, so it can be finished in the usual way
+  expect(await getGuides(page)).toEqual([
+    {name: 'label-path-guide', geometryType: 'polyline', shapeCount: 1},
+    {name: 'label-path-knots', geometryType: 'point', shapeCount: 3}
+  ]);
 
   await finishCurve(page);
   await writeLabel(page, 'Sierra');
   var lyr = await getLabelLayer(page);
   expect(lyr.pointCounts).toEqual([3]);
-  expect(lyr.records[0]['label-corners']).toBe('1');
   expect(errors).toEqual([]);
 });
 
@@ -569,8 +645,6 @@ test('double-clicking empty map finishes the curve at that point', async functio
   var lyr = await getLabelLayer(page);
   expect(lyr).not.toBeNull();
   expect(lyr.pointCounts).toEqual([3]);
-  // the end knots are already one-sided, so there is no corner to record
-  expect(lyr.records[0]['label-corners']).toBeUndefined();
   expect(errors).toEqual([]);
 });
 
@@ -713,6 +787,17 @@ async function loadFixture(page, fixture, opts) {
   await page.locator('.floating-toolbar.label-toolbar').waitFor();
 }
 
+// The app as it stands before anything is imported: the "Import files" dialog
+// dismissed, no layer, no interaction mode.
+async function loadEmpty(page) {
+  await page.goto('/?undo=on&undo-test=on');
+  await page.waitForFunction(function() {
+    return window.mapshaper && window.mapshaper.undoTest;
+  });
+  await page.locator('#import-options .cancel-btn').click();
+  await page.waitForTimeout(150);
+}
+
 // Arms a creation tool by clicking its toolbar button, the way a user would.
 // Clicks the middle of a label's rendered text.
 async function clickLabel(page, id) {
@@ -799,6 +884,12 @@ async function writeLabel(page, text) {
   await page.keyboard.type(text || 'Label');
   await page.keyboard.press('Escape');
   await page.waitForTimeout(250);
+}
+
+async function getViewBounds(page) {
+  return page.evaluate(function() {
+    return window.mapshaper.undoTest.getViewBounds();
+  });
 }
 
 async function getChecksum(page) {

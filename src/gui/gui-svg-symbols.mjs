@@ -200,8 +200,7 @@ function updateLabelPath(path, layer, records, view) {
   var rec = records && records[id];
   var d;
   if (!shp || !rec) return;
-  d = internal.svg.getLabelPathData(getLabelPathCoords(shp, view),
-    internal.parseKnotIndexList(rec['label-corners']));
+  d = internal.svg.getLabelPathData(getLabelPathCoords(shp, view));
   if (d) path.setAttribute('d', d);
 }
 

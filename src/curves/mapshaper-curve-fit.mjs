@@ -61,17 +61,12 @@ var LENGTH_TOLERANCE = 1e-5;
 var MAX_LENGTH_DEPTH = 16;
 
 // knots: array of [x, y] in a single coordinate space
-// corners: optional array of knot indices to treat as corners. A corner knot
-//   ends one run of the spline and begins the next, so the curve arrives and
-//   leaves in independent directions instead of passing through smoothly.
 // tolerance: max deviation of the output polyline from the true curve, in the
 //   same units as the knots
 // Returns an array of [x, y] starting at the first knot, ending at the last,
 //   and passing through every knot in between.
-export function fitCurveThroughKnots(knots, corners, tolerance) {
-  var o = dedupeKnots(knots || []),
-      pts = o.points,
-      cornerFlags = mapCornerFlags(corners, o.srcIndex),
+export function fitCurveThroughKnots(knots, tolerance) {
+  var pts = dedupeKnots(knots || []),
       segments, out, i;
   if (pts.length < 2) return pts;
   if (tolerance > 0 === false) {
@@ -79,7 +74,7 @@ export function fitCurveThroughKnots(knots, corners, tolerance) {
     // are the curve at its coarsest
     return pts;
   }
-  segments = buildSegments(pts, cornerFlags);
+  segments = fitRun(pts);
   out = [pts[0].slice()];
   for (i = 0; i < segments.length; i++) {
     flattenCubic(segments[i].p0, segments[i].c1, segments[i].c2,
@@ -93,12 +88,10 @@ export function fitCurveThroughKnots(knots, corners, tolerance) {
 // flattening. Kept separate from the flattening so that SVG export can emit
 // true curves rather than a densified polyline.
 // Returns [{p0, c1, c2, p3}, ...], one per knot interval.
-export function getCurveSegments(knots, corners) {
-  var o = dedupeKnots(knots || []),
-      pts = o.points,
-      cornerFlags = mapCornerFlags(corners, o.srcIndex);
+export function getCurveSegments(knots) {
+  var pts = dedupeKnots(knots || []);
   if (pts.length < 2) return [];
-  return buildSegments(pts, cornerFlags);
+  return fitRun(pts);
 }
 
 // Arc length of the fitted curve, in the same units as the knots. Export uses
@@ -106,35 +99,13 @@ export function getCurveSegments(knots, corners) {
 // true curve rather than on a flattened approximation of it -- a flattening
 // tolerance tight enough to be accurate in output pixels would be meaningless
 // if the knots were in degrees or metres, and this estimate is scale-free.
-export function getCurveLength(knots, corners) {
-  var segments = getCurveSegments(knots, corners);
+export function getCurveLength(knots) {
+  var segments = getCurveSegments(knots);
   var len = 0, i;
   for (i = 0; i < segments.length; i++) {
     len += getCubicLength(segments[i], 0);
   }
   return len;
-}
-
-// Hobby's system couples every knot in a run, so a corner -- which is exactly a
-// knot where the two sides must not influence each other -- splits the knots
-// into runs that are fitted independently. The corner knot belongs to both
-// runs, as the last knot of one and the first of the next.
-function buildSegments(pts, cornerFlags) {
-  var segments = [], start = 0, i;
-  for (i = 1; i < pts.length - 1; i++) {
-    if (cornerFlags[i]) {
-      appendRun(pts, start, i, segments);
-      start = i;
-    }
-  }
-  appendRun(pts, start, pts.length - 1, segments);
-  return segments;
-}
-
-function appendRun(pts, a, b, out) {
-  var run = pts.slice(a, b + 1), i;
-  var segs = fitRun(run);
-  for (i = 0; i < segs.length; i++) out.push(segs[i]);
 }
 
 // Hobby's velocity function constants (Hobby 1986, eq. 11), the approximation
@@ -143,15 +114,13 @@ var VEL_A = Math.SQRT2,
     VEL_B = 1 / 16,
     VEL_C = (3 - Math.sqrt(5)) / 2;
 
-// Fits one run of knots, returning a cubic per interval.
+// Fits a run of knots, returning a cubic per interval.
 function fitRun(pts) {
   var n = pts.length - 1, // segment count
       dd = [], om = [], psi = [], segments = [],
       theta, phi, i;
   if (n < 1) return [];
-  // A run of two knots has no interior knot to bend around. Two knots also
-  // reach here when every knot is a corner, which must reproduce the input
-  // polyline exactly.
+  // two knots have no interior knot to bend around
   if (n === 1) return [straightSegment(pts[0], pts[1])];
   for (i = 0; i < n; i++) {
     dd.push(distance2D(pts[i][0], pts[i][1], pts[i + 1][0], pts[i + 1][1]));
@@ -291,33 +260,16 @@ function getCubicLength(seg, depth) {
 // Removes non-finite and consecutively duplicated knots. A duplicate spans a
 // zero-length chord, which would leave the direction of the polyline there
 // undefined -- and double-clicking to finish a path is an easy way to make one.
-// Also returns the source index of each retained knot, so that corner flags
-// set against the caller's array can be mapped onto the deduped one.
 function dedupeKnots(knots) {
-  var points = [], srcIndex = [], i, p, prev;
+  var points = [], i, p, prev;
   for (i = 0; i < knots.length; i++) {
     p = knots[i];
     if (!p || p.length < 2 || !isFiniteNumber(p[0]) || !isFiniteNumber(p[1])) continue;
     if (prev && p[0] === prev[0] && p[1] === prev[1]) continue;
     points.push([p[0], p[1]]);
-    srcIndex.push(i);
     prev = p;
   }
-  return {points: points, srcIndex: srcIndex};
-}
-
-function mapCornerFlags(corners, srcIndex) {
-  var flags = new Uint8Array(srcIndex.length);
-  var set, i;
-  if (!corners || !corners.length) return flags;
-  set = {};
-  for (i = 0; i < corners.length; i++) {
-    set[+corners[i]] = true;
-  }
-  for (i = 0; i < srcIndex.length; i++) {
-    if (set[srcIndex[i]]) flags[i] = 1;
-  }
-  return flags;
+  return points;
 }
 
 // Recursively subdivides a cubic until its control points lie within

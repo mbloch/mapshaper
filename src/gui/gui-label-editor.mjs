@@ -83,7 +83,6 @@ export function LabelEditor(gui, ext) {
   // tell the difference, so the caret, box, curve and hit region all work as
   // they do for a committed label.
   //
-  // @opts.corners: corner knot indexes, for a curve
   // @opts.getStyle: returns the style the label should wear, read on every
   //   render so that setting a font or a position before typing is visible
   // @opts.create: runs the command that creates the label, as
@@ -96,7 +95,6 @@ export function LabelEditor(gui, ext) {
       id: -1,
       pending: {
         coords: opts.coords,
-        corners: opts.corners || [],
         getStyle: opts.getStyle || function() { return {}; },
         create: opts.create,
         group: null
@@ -327,9 +325,6 @@ export function LabelEditor(gui, ext) {
   function getPendingRecord(o) {
     var rec = Object.assign({}, o.pending.getStyle());
     rec['label-text'] = encodeLabelText(o.text);
-    if (o.pending.corners.length > 0) {
-      rec['label-corners'] = o.pending.corners.join(',');
-    }
     // No need to expand label-pos here: the renderer resolves it, so a pending
     // label is positioned by the same lookup as a committed one.
     return rec;
