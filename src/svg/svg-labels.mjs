@@ -1,6 +1,11 @@
 import { applyStyleAttributes } from '../svg/svg-properties';
 
-function toLabelString(val) {
+// Accepting \n (two chars) as an alternative to the newline character
+// (sometimes, '\n' is not converted to newline, e.g. in a Makefile)
+// Also accepting <br>
+export var labelNewlineRxp = /\n|\\n|<br>/i;
+
+export function toLabelString(val) {
   if (val || val === 0 || val === false) return String(val);
   return '';
 }
@@ -16,10 +21,7 @@ export function renderStyledLabel(rec) {
 export function renderLabel(rec) {
   var line = toLabelString(rec['label-text']);
   var morelines, obj;
-  // Accepting \n (two chars) as an alternative to the newline character
-  // (sometimes, '\n' is not converted to newline, e.g. in a Makefile)
-  // Also accepting <br>
-  var newline = /\n|\\n|<br>/i;
+  var newline = labelNewlineRxp;
   var dx = rec.dx || 0;
   var dy = rec.dy || 0;
   var properties = {

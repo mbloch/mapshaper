@@ -74,9 +74,16 @@ GUI.handleDirectEvent = function(cb) {
   };
 };
 
+// The focused element, if the user is typing into it. Callers use this to keep
+// out of the way: arrow keys should move a caret rather than change layers, and
+// Escape should leave a field rather than close a panel.
+//
+// TEXTAREA is included for the label editor's offscreen textarea, which holds
+// focus for the whole of an editing session.
 GUI.getInputElement = function() {
   var el = document.activeElement;
-  return (el && (el.tagName == 'INPUT' || el.contentEditable == 'true')) ? el : null;
+  return (el && (el.tagName == 'INPUT' || el.tagName == 'TEXTAREA' ||
+    el.contentEditable == 'true')) ? el : null;
 };
 
 GUI.textIsSelected = function() {

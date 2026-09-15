@@ -256,6 +256,13 @@ export function Undo(gui) {
     return offset > 0;
   };
 
+  // How many states are available to undo. A caller that has to take back
+  // everything it caused, without knowing how many steps that turned out to
+  // be, can read this before it starts and undo back down to it.
+  this.getStateCount = function() {
+    return history.length - offset;
+  };
+
   this.addHistoryState = function(undo, redo, cleanup, opts) {
     addHistoryState(undo, redo, cleanup, opts);
   };

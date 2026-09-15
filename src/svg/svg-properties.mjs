@@ -11,6 +11,7 @@ var stylePropertyTypes = {
   // css: null,
   css: 'inlinecss',
   class: 'classname',
+  'dominant-baseline': null,
   dx: 'measure',
   dy: 'measure',
   fill: 'color',
@@ -25,6 +26,18 @@ var stylePropertyTypes = {
   'icon-color': 'color',
   'icon-size': 'number',
   'label-pos': 'labelposition',
+  // knot indexes to treat as corners of a label's curve, e.g. "0,2"
+  'label-corners': 'indexlist',
+  // which side of its path a label's text sits on
+  'label-side': null,
+  // where the text starts along its path; a length or a percentage
+  'label-start-offset': null,
+  // width of the rendered text in px at its native font size, measured in the
+  // GUI so that export can tell whether the text fits its path
+  'label-text-width': 'number',
+  // fingerprint of the values label-text-width was measured from, so that a
+  // stale measurement can be detected and ignored
+  'label-text-hash': null,
   'label-text': null,  // leaving this null
   'letter-spacing': 'measure',
   'line-height': 'measure',
@@ -129,6 +142,25 @@ function setAttribute(obj, k, v) {
 
 export function isSupportedSvgStyleProperty(name) {
   return name in stylePropertyTypes;
+}
+
+// Converts a style value to the type that property is stored in -- the same
+// conversion -style applies to a literal. Returns undefined if the value is not
+// usable for the property, and the value unchanged for a property with no type
+// rule, where any string is a literal.
+//
+// -style resolves a value three ways: as a literal, as the name of a data field
+// or as an expression over the feature. A command that sets properties on a
+// single feature it is creating has no feature to read a field from, so it
+// wants the first of those on its own -- but it has to agree with -style about
+// the result, or the same value given to the two commands ends up stored as two
+// different types in one column.
+export function parseStyleLiteral(name, val) {
+  var type = stylePropertyTypes[name];
+  var parsed;
+  if (!type) return val; // no rule for this property: the value is the value
+  parsed = parseSvgLiteralValue(String(val).trim(), type);
+  return parsed === null ? undefined : parsed;
 }
 
 function isSupportedSvgSymbolProperty(name) {
@@ -267,6 +299,8 @@ function parseSvgLiteralValue(strVal, type) {
     val = strVal; // TODO: validate
   } else if (type == 'labelposition') {
     val = parseLabelPosition(strVal);
+  } else if (type == 'indexlist') {
+    val = parseIndexList(strVal);
   }
   //  else {
   //   // unknown type -- assume literal value
@@ -316,6 +350,33 @@ export function setLabelPositionStyle(rec, pos) {
     rec[field] = style[field];
   });
   return true;
+}
+
+// Validates a comma-separated list of array indexes and returns it in
+// normalized form, or null if it is not one.
+//
+// The value is kept as a string rather than an array so that a data table
+// holds only scalars, which is what CSV and DBF output require. Callers that
+// need the indexes use parseKnotIndexList().
+export function parseIndexList(str) {
+  var s = String(str).trim();
+  var parts, out = [], i;
+  if (s === '') return null;
+  parts = s.split(',');
+  for (i = 0; i < parts.length; i++) {
+    if (!/^\s*[0-9]+\s*$/.test(parts[i])) return null;
+    out.push(+parts[i]);
+  }
+  return out.join(',');
+}
+
+// Returns an array of indexes from a value written by parseIndexList(), or
+// null if the value is not a valid list. Accepts a number, so that a
+// single-item list surviving a round trip through a numeric field still works.
+export function parseKnotIndexList(val) {
+  var str = parseIndexList(val);
+  if (str === null) return null;
+  return str.split(',').map(Number);
 }
 
 export function isSvgMeasure(o) {

@@ -118,6 +118,19 @@ export function LayerRenderer(gui, container) {
   // Fast-nav forces the same path: _mainCanv has a CSS transform but stale
   //   pixels, so painting on it would visually go through that transform a
   //   second time and detach the highlight from its feature.
+  // The <svg> the symbol layers are drawn into. Each layer owns a <g> inside
+  // it; this is for content that belongs to no layer, which at present means
+  // the label being typed into before it has been created.
+  //
+  // Sized on the way out, because a caller that is not drawing a layer would
+  // otherwise get an <svg> that no layer has sized -- which happens whenever
+  // the map has no symbol layer at all, exactly the case where the first label
+  // is being placed.
+  this.getSvgRoot = function() {
+    _svg.ensureSize();
+    return _svg.node();
+  };
+
   this.drawOverlayLayers = function(layers, action) {
     var canv;
     if (action == 'hover' || _fastActive) {

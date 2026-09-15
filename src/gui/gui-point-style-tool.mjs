@@ -3,6 +3,7 @@ import { El } from './gui-el';
 import { ClickText2 } from './gui-elements';
 import { internal } from './gui-core';
 import { runGuiEditCommand } from './gui-edit-command';
+import { quoteCommandValue } from './gui-command-utils';
 
 var defaultCircleRadius = 0;
 var defaultCreatedCircleRadius = 3;
@@ -649,7 +650,4 @@ export function PointStyleTool(gui) {
     return !!(lyr && lyr.geometry_type == 'point');
   }
 
-  function quoteCommandValue(str) {
-    return "'" + String(str).replace(/'/g, "\\'") + "'";
-  }
 }

@@ -3,16 +3,19 @@ import { internal } from './gui-core';
 
 export function InteractionMode(gui) {
 
+  // The label tool appears in every menu except 'table', because it can act on
+  // any target: it adds to a label layer and creates one beside a target that
+  // cannot hold a label. A table has no map to click on, so it is the exception.
   var menus = {
-    standard: ['info', 'selection', 'box', 'ruler'],
-    empty: ['edit_polygons', 'edit_lines', 'edit_points', 'box', 'ruler'],
-    polygons: ['info', 'selection', 'box', 'polygon_style', 'edit_polygons', 'ruler'],
-    rectangles: ['info', 'selection', 'box', 'polygon_style', 'rectangles', 'edit_polygons', 'ruler'],
-    lines: ['info', 'selection', 'box', 'line_style', 'edit_lines', 'snip_lines', 'ruler'],
+    standard: ['info', 'selection', 'box', 'label', 'ruler'],
+    empty: ['edit_polygons', 'edit_lines', 'edit_points', 'label', 'box', 'ruler'],
+    polygons: ['info', 'selection', 'box', 'polygon_style', 'label', 'edit_polygons', 'ruler'],
+    rectangles: ['info', 'selection', 'box', 'polygon_style', 'label', 'rectangles', 'edit_polygons', 'ruler'],
+    lines: ['info', 'selection', 'box', 'line_style', 'label', 'edit_lines', 'snip_lines', 'ruler'],
     table: ['info', 'selection'],
-    raster: ['ruler', 'box'],
-    labels: ['info', 'selection', 'box', 'point_style', 'labels', 'edit_points', 'ruler'],
-    points: ['info', 'selection', 'box', 'point_style', 'edit_points', 'ruler'] // , 'add-points'
+    raster: ['label', 'ruler', 'box'],
+    labels: ['info', 'selection', 'box', 'point_style', 'label', 'labels', 'edit_points', 'ruler'],
+    points: ['info', 'selection', 'box', 'point_style', 'label', 'edit_points', 'ruler'] // , 'add-points'
   };
 
   var prompts = {
@@ -26,6 +29,7 @@ export function InteractionMode(gui) {
     info: 'inspect features',
     box: 'rectangle tool',
     data: 'edit attributes',
+    label: 'add/edit labels',
     label_style: 'style labels',
     point_style: 'style points',
     line_style: 'style lines',
@@ -104,7 +108,7 @@ export function InteractionMode(gui) {
   };
 
   this.modeUsesHitDetection = function(mode) {
-    return ['info', 'selection', 'data', 'label_style', 'point_style', 'line_style', 'polygon_style', 'labels', 'edit_points', 'vertices', 'rectangles', 'edit_lines', 'edit_polygons', 'snip_lines'].includes(mode);
+    return ['info', 'selection', 'data', 'label', 'label_style', 'point_style', 'line_style', 'polygon_style', 'labels', 'edit_points', 'vertices', 'rectangles', 'edit_lines', 'edit_polygons', 'snip_lines'].includes(mode);
   };
 
   this.modeUsesPopup = function(mode) {
@@ -112,7 +116,7 @@ export function InteractionMode(gui) {
   };
 
   this.modeSupportsUndo = function(mode) {
-    return ['data', 'label_style', 'point_style', 'line_style', 'polygon_style', 'labels', 'edit_points', 'edit_lines', 'edit_polygons', 'snip_lines', 'vertices', 'rectangles'].includes(mode);
+    return ['data', 'label', 'label_style', 'point_style', 'line_style', 'polygon_style', 'labels', 'edit_points', 'edit_lines', 'edit_polygons', 'snip_lines', 'vertices', 'rectangles'].includes(mode);
   };
 
   this.getMode = getInteractionMode;
@@ -136,9 +140,12 @@ export function InteractionMode(gui) {
     return _editMode && _editMode != 'off';
   }
 
+  // A mode with a panel of its own: hovering the button must not open the mode
+  // menu over the panel.
   function stylePanelIsActive() {
-    return _editMode == 'label_style' || _editMode == 'point_style' ||
-      _editMode == 'line_style' || _editMode == 'polygon_style';
+    return _editMode == 'label' || _editMode == 'label_style' ||
+      _editMode == 'point_style' || _editMode == 'line_style' ||
+      _editMode == 'polygon_style';
   }
 
   function getAvailableModes() {

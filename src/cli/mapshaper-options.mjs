@@ -21,6 +21,29 @@ export function getOptionParser() {
       nameOpt2 = { // for -calc and -info
         describe: 'name the output layer'
       },
+      // label style properties accepted by -add-label, so that a label can be
+      // created and styled in one command. These are a subset of the
+      // properties -style accepts -- the ones that apply to text.
+      labelStyleOpts = {
+        'font-family': {describe: 'label font, e.g. Georgia'},
+        'font-size': {describe: 'label font size, e.g. 14'},
+        'font-style': {describe: 'normal or italic'},
+        'font-weight': {describe: 'normal, bold or a numeric weight'},
+        'font-stretch': {describe: 'e.g. condensed'},
+        'letter-spacing': {describe: 'extra space between letters'},
+        'line-height': {describe: 'spacing between lines of a multi-line label'},
+        'text-anchor': {describe: 'start, middle or end'},
+        'dominant-baseline': {describe: 'vertical alignment, e.g. central'},
+        'label-pos': {describe: 'position relative to the anchor: n s e w ne se nw sw c'},
+        'label-side': {describe: 'which side of its path the text sits on: left or right'},
+        'label-start-offset': {describe: 'where text starts along its path, e.g. 50%'},
+        dx: {describe: 'horizontal offset from the anchor'},
+        dy: {describe: 'vertical offset from the anchor'},
+        fill: {describe: 'text color'},
+        opacity: {describe: 'text opacity'},
+        css: {describe: 'inline css style'},
+        class: {describe: 'name of CSS class or classes (space-separated)'}
+      },
       noReplaceOpt2 = { // for -calc and -info
         alias: '+',
         type: 'flag',
@@ -2062,6 +2085,24 @@ export function getOptionParser() {
      .option('line-height', {
       describe: 'line spacing of multi-line labels (default is 1.1em)'
     })
+    .option('dominant-baseline', {
+      describe: 'vertical alignment of labels (e.g. central)'
+    })
+    .option('label-side', {
+      describe: 'which side of its path a label sits on: left or right'
+    })
+    .option('label-start-offset', {
+      describe: 'where label text starts along its path, e.g. 50%'
+    })
+    .option('label-corners', {
+      describe: 'knot indexes to treat as corners of a label curve'
+    })
+    .option('label-text-width', {
+      describe: 'rendered width of label text in px at its native font size'
+    })
+    .option('label-text-hash', {
+      describe: 'fingerprint of the values label-text-width was measured from'
+    })
    .option('target', targetOpt);
 
   parser.command('repel')
@@ -2298,6 +2339,53 @@ export function getOptionParser() {
     .option('name', nameOpt)
     .option('target', targetOpt)
     .option('no-replace', noReplaceOpt);
+
+  parser.command('add-label')
+    .describe('add a map label to a point layer')
+    .option('coordinates', {
+      describe: 'x,y of the label anchor, or x,y,x,y,... of a curve\'s knots'
+    })
+    .option('text', {
+      describe: 'label text'
+    })
+    .option('corners', {
+      describe: 'knot indexes to treat as corners (comma-sep. list)'
+    })
+    .option('text-width', {
+      describe: 'rendered text width in px, for checking that text fits a path',
+      type: 'number'
+    })
+    // label style properties, so that creating and styling a label is one
+    // command; anything not listed here can be set with a following -style
+    .options(labelStyleOpts)
+    // a label can carry a symbol at its anchor, so these come along too even
+    // though they are not text properties
+    .option('icon', {
+      describe: 'symbol drawn at the label anchor: circle, square, ring, star'
+    })
+    .option('icon-size', {
+      describe: 'size of the anchor symbol in px'
+    })
+    .option('properties', {
+      describe: 'other attributes, as a JSON object'
+    })
+    .option('name', nameOpt)
+    .option('target', targetOpt)
+    .option('no-replace', noReplaceOpt);
+
+  parser.command('update-label')
+    .describe('move the anchor or curve knots of an existing label')
+    .option('ids', {
+      describe: 'feature id of the label to update',
+      type: 'numbers'
+    })
+    .option('coordinates', {
+      describe: 'x,y of the label anchor, or x,y,x,y,... of a curve\'s knots'
+    })
+    .option('corners', {
+      describe: 'knot indexes to treat as corners (comma-sep. list)'
+    })
+    .option('target', targetOpt);
 
   parser.command('alpha-shapes')
     // .describe('convert points to alpha shapes (aka concave hulls)')

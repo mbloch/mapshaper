@@ -4,6 +4,7 @@ import { ClickText2 } from './gui-elements';
 import { StylePresetControl } from './gui-style-preset-control';
 import { runGuiEditCommand } from './gui-edit-command';
 import { internal } from './gui-core';
+import { quoteCommandValue } from './gui-command-utils';
 
 var savedStylesKey = 'layer_style_presets';
 var styleFields = ['stroke', 'stroke-width', 'stroke-opacity', 'fill', 'fill-opacity'];
@@ -526,7 +527,4 @@ export function LayerStyleTool(gui) {
     return isFinite(val) ? String(val) : '';
   }
 
-  function quoteCommandValue(str) {
-    return "'" + String(str).replace(/'/g, "\\'") + "'";
-  }
 }

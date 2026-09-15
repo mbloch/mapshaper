@@ -1,0 +1,79 @@
+// The style the label tool gives to the next label it creates.
+//
+// The style panel is worth having open before there is anything to point it at:
+// pick a font, then place labels in it. Values set with nothing selected are
+// held here rather than written to a layer, and -add-label writes them when a
+// label finally exists -- so this is a tool default, not data, and it never
+// needs its own undo step.
+//
+// See docs/development/label-tool-design.md.
+
+// The style properties -add-label accepts. A panel control whose property is
+// missing from this list would appear to do nothing when set with no selection,
+// so the list is checked rather than assumed.
+export var NEW_LABEL_STYLE_FIELDS = [
+  'font-family', 'font-size', 'font-style', 'font-weight', 'font-stretch',
+  'letter-spacing', 'line-height', 'text-anchor', 'dominant-baseline',
+  'label-pos', 'label-side', 'label-start-offset', 'dx', 'dy',
+  'fill', 'opacity', 'css', 'class', 'icon', 'icon-size'
+];
+
+// values: [[field, value], ...], the form the panel's controls produce
+// Returns a new object, leaving the original alone.
+//
+// A blank or zero value removes the field instead of setting it: that is how
+// the panel says "no icon" (icon='', icon-size=0) and "no inline css", and
+// carrying those through to -add-label would write properties that mean
+// nothing.
+export function mergeStyleValues(style, values) {
+  var out = Object.assign({}, style);
+  (values || []).forEach(function(pair) {
+    var field = pair[0];
+    var value = pair[1];
+    if (NEW_LABEL_STYLE_FIELDS.indexOf(field) == -1) return;
+    if (!value && value !== false) {
+      delete out[field];
+    } else {
+      out[field] = value;
+    }
+  });
+  return out;
+}
+
+export function getNewLabelStyle(gui) {
+  return gui.state.new_label_style || {};
+}
+
+export function updateNewLabelStyle(gui, values) {
+  gui.state.new_label_style = mergeStyleValues(getNewLabelStyle(gui), values);
+  return gui.state.new_label_style;
+}
+
+export function clearNewLabelStyle(gui) {
+  gui.state.new_label_style = {};
+}
+
+// The label currently open for text editing, or null: {id, refocus}.
+//
+// Two modules need it and neither owns the other. The editor needs to say
+// which label the caret is in, because a label is usually styled while it is
+// being typed into -- you place one, then set its font and position with the
+// text still empty -- and the panel would otherwise be pointed at "the next
+// label" and leave the one on screen unstyled. The panel needs @refocus to put
+// the caret back after a control that takes focus, such as the font menu, so
+// that typing carries on where it left off.
+//
+// This is the live session only, set when it opens and cleared when it closes.
+// It is not a memory of the last label edited: a panel that keeps acting on a
+// label the user has finished with is the bug this replaced.
+export function setLabelTextSession(gui, session) {
+  gui.state.label_text_session = session || null;
+  // The panel's controls and its "Editing:" line both read the session, so it
+  // has to hear about one opening or closing -- neither is a map redraw or a
+  // selection change, which are the events it already watches.
+  gui.dispatchEvent('label_text_session_change');
+}
+
+export function getLabelTextSession(gui) {
+  return gui.state.label_text_session || null;
+}

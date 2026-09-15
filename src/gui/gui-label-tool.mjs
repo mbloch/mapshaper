@@ -4,6 +4,10 @@ import { StylePresetControl } from './gui-style-preset-control';
 import { El } from './gui-el';
 import { internal } from './gui-core';
 import { runGuiEditCommand } from './gui-edit-command';
+import { quoteCommandValue } from './gui-command-utils';
+import {
+  getNewLabelStyle, updateNewLabelStyle, getLabelTextSession
+} from './gui-label-style-state';
 
 var fontField = 'font-family';
 var fontSizeField = 'font-size';
@@ -20,6 +24,7 @@ var defaultLabelColor = '#000000';
 var defaultIconSize = 5;
 var labelStyleMode = 'label_style';
 var labelStylePanelMode = 'label_style_tool';
+var labelMode = 'label';
 var savedStylesKey = 'label_styles';
 var savedStyleFields = [
   fontField,
@@ -56,14 +61,23 @@ export function LabelTool(gui) {
   // Label styling is opened from the point styling entry point.
   var textBtn = El('div').hide();
   var parent = gui.container.findChild('.mshp-main-map');
-  var panel = El('div').addClass('label-style-panel rollover').appendTo(parent).hide();
-  var presetControl, fontSelect, fontStyleSelect, fontSizeText, colorChit, colorInput, colorPicker, cssInput, posBtns, iconBtns, iconSizeText, editingStatus, clearLink, hit;
+  // label-style-panel carries the styling the point and layer panels share; the
+  // second class is this panel's own, as theirs are
+  var panel = El('div').addClass('label-style-panel text-style-panel rollover').appendTo(parent).hide();
+  var presetControl, fontSelect, fontStyleSelect, fontSizeText, colorChit, colorInput, colorPicker, cssInput, posBtns, iconBtns, iconSizeText, editingStatus, clearLink, closeBtn, hit;
   var fontOptionsRendered = false;
 
   initPanel();
   gui.addMode(labelStylePanelMode, turnOn, turnOff);
+  // Panel visibility is derived rather than toggled, because two modes can ask
+  // for it -- the label_style entry point through its own GUI mode, and the
+  // label tool, which owns the GUI mode itself -- and either can end while the
+  // other is still on. Registering after addMode() means turnOff() has already
+  // run by the time this recomputes.
+  gui.on('mode', updatePanelVisibility);
   gui.model.on('update', updateVisibility);
   gui.model.on('update', function() {
+    if (panel.visible()) updateControls();
     setTimeout(updateSelectionDisplay, 0);
   });
   gui.on('undo_redo_post', function() {
@@ -72,16 +86,22 @@ export function LabelTool(gui) {
       updateSelectionDisplay();
     }
   });
+  gui.on('label_text_session_change', function() {
+    // a label opened for typing becomes what the controls act on
+    if (panel.visible()) updateControls();
+  });
   gui.on('interaction_mode_change', function(e) {
-    if (panel.visible() && e.mode != labelStyleMode && gui.getMode() == labelStylePanelMode) {
-      gui.clearMode();
+    if (gui.getMode() == labelStylePanelMode && e.mode != labelStyleMode) {
+      gui.clearMode(); // runs turnOff(), which recomputes visibility
+    } else {
+      updatePanelVisibility();
     }
   });
 
   hit = gui.map.getHitControl && gui.map.getHitControl();
   if (hit) {
     hit.on('change', function(e) {
-      if (e.mode == labelStyleMode) {
+      if (e.mode == labelStyleMode || e.mode == labelMode) {
         updateSelectionDisplay();
         updateControls();
       }
@@ -96,15 +116,44 @@ export function LabelTool(gui) {
       modelSelectLayer(lyr, dataset);
     }
     if (gui.getMode() == labelStylePanelMode) {
-      showStylePanel();
+      showPanel();
     } else {
       gui.enterMode(labelStylePanelMode);
     }
   };
 
   function initPanel() {
+    // A label being typed into keeps the caret while the panel is used. Most of
+    // these controls are divs and spans, which take focus from the textarea on
+    // mousedown without wanting it, and the editing session ends when the
+    // textarea is blurred. Refusing the focus change is what lets the user set
+    // a font and carry on typing; the real form elements below are allowed to
+    // take focus and hand it back (see restoreTextFocus).
+    panel.node().addEventListener('mousedown', function(e) {
+      if (!isFormElement(e.target) && getLabelTextSession(gui)) {
+        e.preventDefault();
+      }
+    });
+
+    // The catch-all for the controls that do take focus and then do not set a
+    // style -- the colour picker's Close button is the one that exists. Runs
+    // after the control's own handler, and leaves focus alone if it is in
+    // something the user is typing into, such as the CSS field.
+    //
+    // A click on a <select> is left alone too. That click has just opened the
+    // menu, and a native menu closes as soon as its element loses focus, so
+    // taking the caret back here made the font menu flash open and shut. The
+    // menu hands focus back by its own change handler, through
+    // applyStyleValues(). Only the click on the menu itself is skipped, so
+    // every other way out of a menu still returns the caret: any other control
+    // either sets a style or reaches this handler with itself as the target.
+    panel.node().addEventListener('click', function(e) {
+      if (isTextInput(document.activeElement) || opensAMenu(e.target)) return;
+      restoreTextFocus();
+    });
+
     var header = El('div').addClass('label-style-panel-title').appendTo(panel).text('Label styles');
-    El('button').addClass('label-style-close').appendTo(header).text('×').on('click', function() {
+    closeBtn = El('button').addClass('label-style-close').appendTo(header).text('×').on('click', function() {
       gui.clearMode();
     });
 
@@ -206,7 +255,7 @@ export function LabelTool(gui) {
       applyStyle: applyStyleObject,
       getItemId: getStyleId,
       disabled: function() {
-        return getTargetIds().length === 0;
+        return !controlsEnabled();
       }
     });
   }
@@ -247,29 +296,54 @@ export function LabelTool(gui) {
       gui.clearMode();
       return;
     }
-    showStylePanel();
+    gui.interaction.setMode(labelStyleMode);
+    showPanel();
   }
 
-  function showStylePanel() {
+  function turnOff() {
+    updatePanelVisibility(); // the label tool may still want the panel up
+    if (hit) hit.clearSelection();
+    if (gui.interaction.getMode() == labelStyleMode) {
+      gui.interaction.turnOff();
+    }
+  }
+
+  function updatePanelVisibility() {
+    if (panelShouldBeVisible()) {
+      showPanel();
+    } else if (panel.visible()) {
+      hidePanel();
+    }
+  }
+
+  function panelShouldBeVisible() {
+    // The label tool keeps the panel up whether or not the layer has labels, so
+    // that a style can be chosen before there is a label to apply it to.
+    return labelModeIsOn() || gui.getMode() == labelStylePanelMode;
+  }
+
+  function showPanel() {
     renderFontOptions();
-    gui.interaction.setMode(labelStyleMode);
     gui.state.label_style_panel_open = true;
     panel.show();
+    // In label mode the panel belongs to the mode rather than being a thing the
+    // user opened, and closing it would leave the tool half on.
+    closeBtn[labelModeIsOn() ? 'hide' : 'show']();
     textBtn.addClass('selected');
     updateControls();
     updateSelectionDisplay();
   }
 
-  function turnOff() {
+  function hidePanel() {
     panel.hide();
     hideColorPicker();
     gui.state.label_style_panel_open = false;
     textBtn.removeClass('selected');
     clearSelectionDisplay();
-    if (hit) hit.clearSelection();
-    if (gui.interaction.getMode() == labelStyleMode) {
-      gui.interaction.turnOff();
-    }
+  }
+
+  function labelModeIsOn() {
+    return !!(gui.interaction && gui.interaction.getMode() == labelMode);
   }
 
   function updateVisibility() {
@@ -309,9 +383,6 @@ export function LabelTool(gui) {
     });
   }
 
-  function quoteCommandValue(str) {
-    return "'" + String(str).replace(/'/g, "\\'") + "'";
-  }
 
   function clearSelection() {
     if (hit) hit.clearSelection();
@@ -333,9 +404,36 @@ export function LabelTool(gui) {
     return hit ? hit.getSelectionIds() : [];
   }
 
+  // The labels a control acts on: whatever is selected for styling.
+  //
+  // With the label tool on, an empty selection means the label about to be made
+  // rather than every label on the layer -- restyling a whole layer is not what
+  // a click on a font control means while labels are being placed. Outside
+  // label mode an empty selection still means the whole layer, which is right
+  // for a styling mode entered deliberately.
+  //
+  // A label open for text editing is the target on its own, ahead of the
+  // styling selection, which text editing empties anyway. Setting a style
+  // while typing is ordinary use rather than a corner case: a label is placed
+  // empty, and its font, colour and position are usually chosen before, or
+  // instead of, any of its text.
   function getTargetIds() {
-    var ids = getSelectionIds();
-    return ids.length > 0 ? ids : getAllLabelIds();
+    var session = getLabelTextSession(gui);
+    var ids;
+    // A pending label has no feature to style yet, so a control set while one
+    // is open writes the style for the next label -- which is the label being
+    // typed into, and which renders it immediately.
+    if (session && session.id > -1) return [session.id];
+    if (session) return [];
+    ids = getSelectionIds();
+    if (ids.length > 0) return ids;
+    return labelModeIsOn() ? [] : getAllLabelIds();
+  }
+
+  // With nothing selected the controls edit the style that new labels are given,
+  // so they stay live even when there is no label, and no layer, yet.
+  function controlsEnabled() {
+    return getTargetIds().length > 0 || labelModeIsOn();
   }
 
   function getAllLabelIds() {
@@ -351,6 +449,7 @@ export function LabelTool(gui) {
   function updateControls() {
     var ids = getTargetIds();
     var manualIds = getSelectionIds();
+    var showValues = controlsEnabled();
     var fontVal = getCommonValue(ids, fontField);
     var fontSizeVal = getCommonValue(ids, fontSizeField, {useDefault: true, defaultValue: defaultFontSize});
     var fontStyleVal = getCommonValue(ids, fontStyleField, {useDefault: true, defaultValue: defaultFontStyle});
@@ -360,34 +459,45 @@ export function LabelTool(gui) {
     var posVal = getCommonValue(ids, 'label-pos');
     var iconVal = getCommonValue(ids, iconField);
     var iconSizeVal = getCommonValue(ids, iconSizeField, {useDefault: true, defaultValue: defaultIconSize});
-    updateEditingStatus(manualIds.length);
+    updateEditingStatus(manualIds.length, !!getLabelTextSession(gui));
     updateSavedStyleControls();
-    fontSelect.node().disabled = ids.length === 0;
+    fontSelect.node().disabled = !showValues;
     fontSelect.node().value = fontVal;
     updateFontStyleControls(fontVal, fontStyleVal, fontWeightVal);
-    updateFontSizeControls(ids.length ? fontSizeVal : '');
-    updateColorControls(ids.length ? fillVal : '');
-    updateCssControl(ids.length ? cssVal : '');
-    updatePositionButtons(ids.length ? posVal : '');
-    updateIconButtons(ids.length ? iconVal : '');
-    updateIconSizeControls(ids.length ? iconSizeVal : '');
+    updateFontSizeControls(showValues ? fontSizeVal : '');
+    updateColorControls(showValues ? fillVal : '');
+    updateCssControl(showValues ? cssVal : '');
+    updatePositionButtons(showValues ? posVal : '');
+    updateIconButtons(showValues ? iconVal : '');
+    updateIconSizeControls(showValues ? iconSizeVal : '');
   }
 
   function updatePositionButtons(pos) {
-    var disabled = getTargetIds().length === 0;
+    var disabled = !controlsEnabled();
     labelPositions.forEach(function(name) {
       posBtns[name].classed('selected', name == pos);
       setPanelButtonDisabled(posBtns[name], disabled);
     });
   }
 
-  function updateEditingStatus(count) {
-    editingStatus.text(count > 0 ? 'Editing: ' + count + ' selected' : 'Editing: all');
-    clearLink.classed('hidden', count === 0);
+  function updateEditingStatus(count, editingText) {
+    editingStatus.text('Editing: ' + describeTarget(count, editingText));
+    // "deselect" is for a selection the user made; a label being typed into is
+    // left by clicking away or pressing Escape, not from here.
+    clearLink.classed('hidden', count === 0 || editingText);
+  }
+
+  // What the controls will act on. In label mode an empty selection is the next
+  // label rather than the whole layer, and saying "all" there is what would
+  // make the panel untrustworthy.
+  function describeTarget(count, editingText) {
+    if (editingText) return 'this label';
+    if (count > 0) return count + ' selected';
+    return labelModeIsOn() ? 'new labels' : 'all';
   }
 
   function updateFontSizeControls(fontSizeVal) {
-    var disabled = getTargetIds().length === 0;
+    var disabled = !controlsEnabled();
     fontSizeText.text(fontSizeVal || '');
     panel.findChildren('.label-size-row .label-panel-btn').forEach(function(btn) {
       setPanelButtonDisabled(btn, disabled);
@@ -395,7 +505,7 @@ export function LabelTool(gui) {
   }
 
   function updateFontStyleControls(fontName, fontStyleVal, fontWeightVal) {
-    var disabled = getTargetIds().length === 0 || !fontName;
+    var disabled = !controlsEnabled() || !fontName;
     fontStyleSelect.empty();
     El('option').attr('value', '').appendTo(fontStyleSelect).text('');
     if (fontName) {
@@ -409,7 +519,7 @@ export function LabelTool(gui) {
   }
 
   function updateColorControls(colorVal) {
-    var disabled = getTargetIds().length === 0;
+    var disabled = !controlsEnabled();
     colorInput.node().disabled = disabled;
     colorInput.node().value = colorVal || '';
     setPanelButtonDisabled(colorChit, disabled);
@@ -425,12 +535,12 @@ export function LabelTool(gui) {
   }
 
   function updateCssControl(cssVal) {
-    cssInput.node().disabled = getTargetIds().length === 0;
+    cssInput.node().disabled = !controlsEnabled();
     cssInput.node().value = cssVal || '';
   }
 
   function updateIconButtons(iconVal) {
-    var disabled = getTargetIds().length === 0;
+    var disabled = !controlsEnabled();
     iconTypes.forEach(function(icon) {
       iconBtns[icon.name].classed('selected', !disabled && icon.name == iconVal);
       setPanelButtonDisabled(iconBtns[icon.name], disabled);
@@ -438,7 +548,7 @@ export function LabelTool(gui) {
   }
 
   function updateIconSizeControls(iconSizeVal) {
-    var disabled = getTargetIds().length === 0;
+    var disabled = !controlsEnabled();
     iconSizeText.text(iconSizeVal || '');
     panel.findChildren('.label-icon-size-row .label-panel-btn').forEach(function(btn) {
       setPanelButtonDisabled(btn, disabled);
@@ -453,7 +563,8 @@ export function LabelTool(gui) {
     var table = getActiveTable();
     var records = table && table.getRecords();
     var value, val, hasValue;
-    if (!records || ids.length === 0) return '';
+    if (ids.length === 0) return getNewLabelValue(field, opts);
+    if (!records) return '';
     for (var i=0; i<ids.length; i++) {
       val = records[ids[i]] && records[ids[i]][field];
       if (!val) {
@@ -474,6 +585,16 @@ export function LabelTool(gui) {
     return hasValue || opts && opts.useDefault ? value : '';
   }
 
+  // What a control shows when there is nothing to style: the value the next
+  // label will be created with, falling back to the same default an existing
+  // label would show.
+  function getNewLabelValue(field, opts) {
+    var style = labelModeIsOn() ? getNewLabelStyle(gui) : null;
+    var val = style ? style[field] : '';
+    if (val || val === 0) return val;
+    return opts && opts.useDefault ? opts.defaultValue : '';
+  }
+
   function applyFont(fontName) {
     applyStyleValues([[fontField, fontName]]);
   }
@@ -481,7 +602,7 @@ export function LabelTool(gui) {
   function nudgeFontSize(delta) {
     var ids = getTargetIds();
     var size = getNumericSize(ids, fontSizeField, defaultFontSize);
-    if (ids.length === 0) return;
+    if (!controlsEnabled()) return;
     size = Math.max(1, size + delta);
     applyStyleValues([[fontSizeField, size]]);
   }
@@ -587,7 +708,7 @@ export function LabelTool(gui) {
   function nudgeIconSize(delta) {
     var ids = getTargetIds();
     var size = getNumericSize(ids, iconSizeField, defaultIconSize);
-    if (ids.length === 0) return;
+    if (!controlsEnabled()) return;
     size = Math.max(1, size + delta);
     applyStyleValues([[iconField, getCommonValue(ids, iconField) || 'circle'], [iconSizeField, size]]);
   }
@@ -616,11 +737,69 @@ export function LabelTool(gui) {
     colorPicker.hide();
   }
 
+  function isFormElement(node) {
+    return !!node && /^(INPUT|SELECT|TEXTAREA|BUTTON|OPTION)$/.test(node.nodeName);
+  }
+
+  function isTextInput(node) {
+    if (!node) return false;
+    if (node.nodeName == 'TEXTAREA') return true;
+    return node.nodeName == 'INPUT' &&
+      !/^(button|checkbox|radio|submit)$/.test(node.type);
+  }
+
+  // Whether clicking this node puts a native menu on screen, which must then be
+  // left holding the focus. OPTION counts because a browser that reports the
+  // chosen option as the click target is reporting a menu interaction either
+  // way, and a choice restores the caret through its change handler.
+  function opensAMenu(node) {
+    return !!node && /^(SELECT|OPTION)$/.test(node.nodeName);
+  }
+
+  // Returns the caret to a label being typed into, after a control that took
+  // focus to do its job. Only pulls focus out of this panel, so that clicking
+  // somewhere else while a menu is open still means what it says.
+  function restoreTextFocus() {
+    var session = getLabelTextSession(gui);
+    if (!session) return;
+    if (!panel.node().contains(document.activeElement)) return;
+    session.refocus();
+  }
+
   function applyStyleValues(styles, opts) {
+    if (styles.length === 0) return;
+    restoreTextFocus();
+    // What the panel is set to is always what the next label gets, whether or
+    // not these values also went to a label that already exists. -add-label
+    // writes them when that label is created, which is why this needs no
+    // command and no undo step of its own.
+    if (labelModeIsOn()) {
+      updateNewLabelStyle(gui, styles);
+      // A label being typed into that has no feature yet is drawn from that
+      // style, so it has to be redrawn to show the change -- it is the preview.
+      refreshPendingLabel();
+    }
+    if (getTargetIds().length > 0) {
+      applyStyleCommand(styles, opts);
+      return;
+    }
+    if (!labelModeIsOn()) return;
+    if (!opts || !opts.preservePreset) {
+      presetControl.clearSelection();
+    }
+    updateControls();
+  }
+
+  function refreshPendingLabel() {
+    var session = getLabelTextSession(gui);
+    if (session && session.id == -1 && session.refresh) session.refresh();
+  }
+
+  function applyStyleCommand(styles, opts) {
     var lyr = getActiveLayer();
     var ids = getTargetIds();
     var parts = ['-style'];
-    if (!gui.console || !lyr || ids.length === 0 || styles.length === 0) return;
+    if (!gui.console || !lyr) return;
     if (!opts || !opts.preservePreset) {
       presetControl.clearSelection();
     }
@@ -640,8 +819,14 @@ export function LabelTool(gui) {
     });
   }
 
+  // The yellow halo, which belongs to the older label_style mode. The label
+  // tool draws its selection as an outline instead (gui-label-selection.mjs),
+  // because a halo says "this text is marked" where an outline says "this is
+  // an object you can act on" -- and the tool needs the second reading now that
+  // one click selects and another reaches into the text.
   function updateSelectionDisplay() {
     clearSelectionDisplay();
+    if (labelModeIsOn()) return;
     getSelectionIds().forEach(function(id) {
       var textNode = getTextNodeById(id);
       if (textNode) {

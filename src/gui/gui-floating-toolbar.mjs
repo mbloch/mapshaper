@@ -106,6 +106,7 @@ function ToolbarButton(parent, iconRef, opts) {
     }
   }
   var enabled = true;
+  var selected = false;
   var clickHandlers = [];
 
   if (opts.tooltip) setTooltip(opts.tooltip);
@@ -136,6 +137,18 @@ function ToolbarButton(parent, iconRef, opts) {
     enabled = !!b;
     btn.classed('disabled', !enabled);
     return this;
+  };
+
+  // A button that stays lit to show which of several tools is armed, e.g. the
+  // label tool's anchored/path creation toggles.
+  this.setSelected = function(b) {
+    selected = !!b;
+    btn.classed('selected', selected);
+    return this;
+  };
+
+  this.selected = function() {
+    return selected;
   };
 
   this.setTooltip = setTooltip;

@@ -1,15 +1,18 @@
 import utils from '../utils/mapshaper-utils';
 
+// Tags whose content is rendered text, where whitespace added for legibility
+// would show up in the output.
+var textTags = {text: true, tspan: true, textPath: true};
+
 export function stringify(obj) {
   var svg, joinStr;
   if (!obj || !obj.tag) return '';
   svg = '<' + obj.tag;
-  // w.s. is significant in text elements
   if (obj.properties) {
     svg += stringifyProperties(obj.properties);
   }
   if (obj.children || obj.value) {
-    joinStr = obj.tag == 'text' || obj.tag == 'tspan' ? '' : '\n';
+    joinStr = obj.tag in textTags ? '' : '\n';
     svg += '>' + joinStr;
     if (obj.value) {
       svg += stringEscape(obj.value);

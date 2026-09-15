@@ -421,5 +421,25 @@ describe('mapshaper-svg-style.js', function () {
       assert.deepEqual(lyr.data.getRecords(), target);
     });
 
+    // The cli parser converts hyphens to underscores, so the property name has
+    // to be restored with a global replacement. Replacing only the first
+    // underscore left properties with more than one hyphen unsupported, and
+    // silently skipped rather than reported.
+    it('a property name containing two hyphens is applied', function() {
+      var records = [{}];
+      var lyr = {
+        data: new api.internal.DataTable(records)
+      };
+      var opts = {
+        label_text_width: '120',
+        label_start_offset: '50%'
+      };
+      api.cmd.svgStyle(lyr, {}, opts);
+      assert.deepEqual(lyr.data.getRecords(), [{
+        'label-text-width': 120,
+        'label-start-offset': '50%'
+      }]);
+    });
+
   })
 });

@@ -30,10 +30,15 @@ export function getSvgHitTest(displayLayer) {
   }
 
   // TODO: switch to attribute detection
+  //
+  // textPath is what the pointer lands on over the glyphs of a path-aligned
+  // label, and its omission made those glyphs unhoverable: the walk stopped at
+  // the first unlisted tag, one step short of the <text> that carries the id.
   function nodeHasSymbolTagType(node) {
     var tag = node.tagName;
     return tag == 'g' || tag == 'tspan' || tag == 'text' || tag == 'image' ||
-      tag == 'path' || tag == 'circle' || tag == 'rect' || tag == 'line';
+      tag == 'textPath' || tag == 'path' || tag == 'circle' || tag == 'rect' ||
+      tag == 'line';
   }
 
   function isSymbolNode(node) {

@@ -42,7 +42,10 @@ cmd.svgStyle = function(lyr, dataset, opts) {
     }
   }
   Object.keys(opts).forEach(function(optName) {
-    var svgName = optName.replace('_', '-'); // undo cli parser name conversion
+    // undo cli parser name conversion; the regex must be global, or a
+    // property with more than one hyphen (e.g. label-text-width) is silently
+    // skipped rather than applied
+    var svgName = optName.replace(/_/g, '-');
     if (!isSupportedSvgStyleProperty(svgName)) {
       return;
     }
@@ -81,7 +84,7 @@ cmd.svgStyle = function(lyr, dataset, opts) {
 function getStyleFields(opts) {
   var fields = [];
   Object.keys(opts).forEach(function(optName) {
-    var svgName = optName.replace('_', '-');
+    var svgName = optName.replace(/_/g, '-');
     if (!isSupportedSvgStyleProperty(svgName)) return;
     addField(fields, svgName);
     if (svgName == 'label-pos') {

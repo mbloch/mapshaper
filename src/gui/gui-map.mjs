@@ -70,8 +70,11 @@ export function MshpMap(gui) {
     _mouse.disable();
   });
 
-  gui.on('map-needs-refresh', function() {
-    drawLayers();
+  // e.action: optional draw action, for a caller that knows only the overlay
+  // has changed -- the label tool previewing a curve against the pointer, which
+  // would otherwise force a full redraw on every mouse move.
+  gui.on('map-needs-refresh', function(e) {
+    drawLayers(e && e.action);
   });
 
   model.on('update', onUpdate);
@@ -168,8 +171,13 @@ export function MshpMap(gui) {
 
   this.getExtent = function() {return _ext;};
   this.getMouse = function() {return _mouse;};
+  // The display-only layers drawn over the content, as last built. Exposed for
+  // tests: overlays are never in the catalog, so there is no other way to
+  // assert on what a tool drew.
+  this.getOverlayLayers = function() {return _overlayLayers || [];};
   this.isActiveLayer = isActiveLayer;
   this.isVisibleLayer = isVisibleLayer;
+  this.getSvgRoot = function() { return _renderer ? _renderer.getSvgRoot() : null; };
   this.getActiveLayer = function() { return _activeLyr; };
   this.getHitControl = function() { return _hit; };
   // this.getViewData = function() {
@@ -601,7 +609,10 @@ export function MshpMap(gui) {
 
     // TODO: draw furniture
     // _renderer.drawFurnitureLayers(furnitureLayers, action);
-    gui.dispatchEvent('map_rendered');
+    // The action says how much was redrawn, which a listener rebuilding its own
+    // DOM overlays needs: a 'hover' draw leaves the SVG markup and its
+    // transforms alone, so anything anchored to them is still good.
+    gui.dispatchEvent('map_rendered', {action: action});
   }
 }
 

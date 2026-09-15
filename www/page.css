@@ -1972,6 +1972,7 @@ div.basemap-style-btn.active {
 
 .map-layers.add-points,
 .map-layers.draw-tool,
+.map-layers.label-tool,
 .map-layers.snip-tool,
 .map-layers.ruler-tool {
 	cursor: crosshair;
@@ -1979,6 +1980,12 @@ div.basemap-style-btn.active {
 
 .map-layers.snip-tool.no-snip {
 	cursor: default;
+}
+
+/* Over a label's knot or anchor handle, where a drag moves the handle rather
+   than placing a label or panning the map. */
+.map-layers.label-handle {
+	cursor: move;
 }
 
 .map-layers.ruler-dragging {
@@ -2075,6 +2082,160 @@ body.pan.panning .map-layers:not(.drawing) {
 	stroke-width: 4px;
 	stroke-linecap: round;
 	stroke-linejoin: round;
+}
+
+/* A path label whose text is longer than its path. Export drops these; the
+   editor keeps them visible and marked, because a hidden label can't be
+   found and so can't be fixed. Same halo convention as the states above. */
+.map-layers > svg text.label-overflow {
+	stroke: #ff7f2a;
+	stroke-opacity: 0.45;
+	paint-order: stroke fill;
+	stroke-width: 4px;
+	stroke-linecap: round;
+	stroke-linejoin: round;
+}
+
+/* ---  IN-PLACE LABEL EDITING --- */
+
+/* The textarea is the model of record for an editing session: it holds focus so
+   that keyboard handling, selection, clipboard and IME all come from the
+   browser. It is invisible but must stay focusable, so it cannot be hidden with
+   display:none or visibility:hidden. */
+.label-edit-input {
+	position: absolute;
+	z-index: -1;
+	opacity: 0;
+	width: 1px;
+	height: 1em;
+	padding: 0;
+	border: none;
+	resize: none;
+	overflow: hidden;
+	white-space: pre;
+	pointer-events: none;
+}
+
+.label-edit-overlay {
+	pointer-events: none;
+}
+
+/* Label tool cues: an outline around the object rather than a halo over the
+   glyphs, so that it reads as something you have hold of. A solid line, to
+   distinguish it from the dashed box of a label being typed into -- the two
+   states look different because they behave differently.
+
+   Hover and selection draw the same shapes, because they mean the same thing
+   about the same object; hover is simply lighter. The alternative, highlighting
+   the anchor point on hover and the label on selection, made the two look like
+   different objects. */
+.label-cue {
+	pointer-events: none;
+}
+
+.label-cue-hovered {
+	opacity: 0.4;
+}
+
+/* Hairline, like every other reference shape the tool draws: the box says where
+   the label is, and a heavier outline reads as an object in its own right
+   rather than as a mark on one. */
+.label-cue-box {
+	fill: none;
+	stroke: #3a7ddc;
+	stroke-width: 1px;
+	vector-effect: non-scaling-stroke;
+}
+
+/* The anchor is what the text is positioned against, and label-pos can put it
+   well outside the box, so it is worth marking on its own.
+   Drawn as a ring rather than a dot, and beneath the glyphs: a centered label
+   sits right on top of its anchor, and a filled marker would blot out a letter.
+   Same treatment as the path guide's knots, since both are handles. */
+.label-cue-anchor {
+	fill: #fff;
+	stroke: #3a7ddc;
+	stroke-width: 1.5px;
+	vector-effect: non-scaling-stroke;
+}
+
+/* A copy of the baseline the label's text runs along. Unfilled: stroking an
+   open curve must not paint the area it encloses. */
+.label-cue-curve {
+	fill: none;
+	stroke: #3a7ddc;
+	stroke-width: 1px;
+	stroke-opacity: 0.8;
+	vector-effect: non-scaling-stroke;
+}
+
+/* The grab handles on a selected curve, one per knot. Same ring treatment as
+   the anchor marker and the path guide's knots, because all three are handles
+   and a knot is an anchor on a curve.
+   A corner knot is drawn as a square by the renderer; both shapes share this
+   rule, so a corner differs in outline and not in colour. */
+.label-cue-knot {
+	fill: #fff;
+	stroke: #3a7ddc;
+	stroke-width: 1.5px;
+	vector-effect: non-scaling-stroke;
+}
+
+/* Transparent rather than fill:none / stroke:none, because an unpainted shape
+   is not hit-testable. */
+.label-edit-hit-area {
+	fill: transparent;
+	stroke: none;
+	pointer-events: all;
+}
+
+/* The thickened baseline follows the curve, so only its stroke should catch
+   clicks -- filling an open curve would claim the whole area it encloses. */
+.label-edit-hit-baseline {
+	fill: none;
+	stroke: transparent;
+	pointer-events: stroke;
+}
+
+/* The curve a label's text is set along, ghosted while the label is open for
+   editing. Fainter than the guide drawn while the path is being placed, and in
+   the same violet, because it is the same curve at a later stage. */
+.label-edit-path {
+	fill: none;
+	stroke: #cc6acc;
+	stroke-width: 1.2px;
+	stroke-opacity: 0.4;
+	vector-effect: non-scaling-stroke;
+}
+
+/* Shows where an anchored label is even when it has no text -- the state a
+   label is in between being created and being typed into. A path label shows
+   its ghosted curve instead.
+   Solid, not dashed: at the size of an empty label the dashes were most of the
+   outline, which made the box look tentative rather than like a place to type. */
+.label-edit-box {
+	fill: none;
+	stroke: #cc6acc;
+	stroke-width: 1px;
+	vector-effect: non-scaling-stroke;
+}
+
+.label-edit-selection {
+	fill: #cc6acc;
+	fill-opacity: 0.3;
+	stroke: none;
+}
+
+.label-edit-caret {
+	stroke: #000;
+	stroke-width: 1.5px;
+	vector-effect: non-scaling-stroke;
+	animation: label-caret-blink 1.1s steps(1) infinite;
+}
+
+@keyframes label-caret-blink {
+	0%, 50% { stroke-opacity: 1; }
+	50.01%, 100% { stroke-opacity: 0; }
 }
 
 /* ---  MAP BUTTONS --- */
@@ -2937,6 +3098,14 @@ body.dragging-color-picker * {
 	transform: translateY(0);
 }
 
+/* The toolbar being hovered comes forward, so that a tooltip drawn above a
+   button is not painted behind the toolbar stacked over it. The tooltip's own
+   z-index cannot do this: each toolbar is transformed, which makes it a
+   stacking context its descendants cannot escape. */
+.floating-toolbar:hover {
+	z-index: 1;
+}
+
 .floating-toolbar-content {
 	display: flex;
 	align-items: center;
@@ -2982,6 +3151,15 @@ body.dragging-color-picker * {
 
 .floating-toolbar-btn:active:not(.disabled) {
 	background-color: #cdebf9;
+}
+
+/* A toggle button that is currently armed */
+.floating-toolbar-btn.selected {
+	background-color: #cdebf9;
+}
+
+.floating-toolbar-btn.selected svg * {
+	fill: #166689;
 }
 
 .floating-toolbar-btn.disabled {

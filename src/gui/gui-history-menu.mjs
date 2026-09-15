@@ -56,6 +56,12 @@ export function HistoryMenu(gui) {
     if (appUndoForcedByUrl()) return;
     setAppUndoEnabled(!!toggleCheckbox.node().checked);
     updateMenuState();
+    // The setting lives in localStorage, which nothing can observe, so
+    // controls whose appearance depends on it (the floating undo toolbar) have
+    // to be told that it changed.
+    gui.dispatchEvent('app_undo_setting_change', {
+      enabled: !!toggleCheckbox.node().checked
+    });
   });
 
   clearBtn.on('click', function(e) {
