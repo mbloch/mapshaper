@@ -2077,17 +2077,64 @@ The GUI has two parallel mode systems and a new tool must register with both:
   `gui-draw-lines2.mjs`.
 
 The existing `labels` interaction mode ("position labels", drag to set
-`dx`/`dy`) and `label_style` mode are **kept for now**, and retired once the new
-tool is working well. So three label-related modes coexist during development.
-This is deliberate: it keeps a working fallback while the new tool is
-incomplete, and it means the new mode must not change the behavior of the old
-ones. The cost is a temporarily crowded mode menu, and the retirement should
-remove `label_style`'s entry point from `gui-point-style-tool.mjs` at the same
-time.
+`dx`/`dy`) and `label_style` mode were **kept** while the new tool was
+incomplete, so that there was a working fallback and so that the new mode could
+be checked against the old ones' unchanged behavior.
 
-Two places now branch on the mode to hold that line: `selectStyleFeature()`
+**`label_style` is now retired for label layers.** It was never in a mode menu
+under its own name: it was reached by asking for point styling on a layer whose
+points are labels, which `PointStyleTool.turnOn()` redirected to the shared
+style panel. That is a subset of what the label tool offers — the same panel,
+without the toolbar, the creation gestures, the selection or the text editor —
+so the `labels` menu no longer offers `point_style`, and the three redirects
+into it are gone:
+
+- the `labels` menu in `gui-interaction-mode-control.mjs` drops `point_style`
+  and `edit_points`, along with the `getModeLabel()` special case that renamed
+  `point_style` to "style labels" for these layers;
+- the layer's own menu in `gui-layer-control.mjs` says **"edit labels"** and
+  enters `label` mode, rather than "style layer" into the point style panel.
+  The name comes from the caller (`styleLayerName`), because the context menu
+  item is otherwise named for styling;
+- the **Create** button in the point style panel, which turns a field into
+  labels, now enters `label` mode on the layer it just labelled instead of
+  opening the style panel alone.
+
+`edit_points` went with it because the label tool moves an anchored label by
+dragging its marker. The one thing it had that the label tool did not was
+**deleting a feature** from its context menu, so the label tool now offers
+**"delete label"** on a right-click:
+
+- the tool opens the menu itself, as the drawing modes do (and `label` joins
+  them in the list `gui-inspection-control.mjs` skips), because deleting has to
+  go through `getLabelDeleteCommand()` like every other edit the tool makes.
+  The inspection control's generic item mutates the layer in place, which would
+  leave the deletion out of the session history;
+- the label being right-clicked is normally `e.id`, but a label open for typing
+  is not a hit target — its own overlay is in front of it — so the session
+  answers for it through `clickIsOnEditedLabel()`, the same test a click inside
+  the text uses;
+- `LabelEditor.cancel()` ends a session without committing, for a label that is
+  about to stop existing. Committing would save text to a doomed feature, or —
+  if the text had been emptied — delete the feature itself and leave the
+  caller's delete pointed at whichever label moved up into the gap;
+- the context menu refuses the focus change on mousedown while the editor's
+  textarea has focus. The blur would otherwise end the session *before* the
+  menu item's handler ran, which put a `-style` command in the history ahead of
+  the `-filter` that deleted the label.
+
+A right-click also says "delete label" rather than "delete point" on any label
+layer, wherever the menu is opened from.
+
+Emptying a label's text still removes it too, which is what `commit()` does
+when a session ends with no glyphs left.
+
+`labels` ("position labels") stays: it drags a label against a fixed anchor to
+set `dx`/`dy`, which the label tool has no gesture for.
+
+Two places still branch on the mode to hold that line: `selectStyleFeature()`
 gives label mode its own plain-click rule, and the yellow halo is applied only
-outside label mode. Both branches go away with the old modes.
+outside label mode. Both branches go away with `labels`.
 
 `HitControl`'s mode gates (`selectable()`, `draggable()`, `clickable()`,
 `eventIsEnabled()`) need explicit entries for the new mode; it needs both drag

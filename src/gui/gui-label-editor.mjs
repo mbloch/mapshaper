@@ -162,6 +162,23 @@ export function LabelEditor(gui, ext) {
       groups.front.contains(node));
   };
 
+  // Ends the session without writing anything back, for a caller that is about
+  // to take the label away. Committing first would either save text to a
+  // feature that is about to stop existing, or -- if the text had been emptied
+  // -- delete the feature itself and leave the caller's own delete pointed at
+  // whichever label moved up into the gap.
+  //
+  // onClose is not called for the same reason: its job is to decide what the
+  // label goes back to being, and the answer here is nothing.
+  self.cancel = function() {
+    var o = session;
+    if (!o) return;
+    session = null;
+    setLabelTextSession(gui, null);
+    removeOverlay(o);
+    if (textarea) textarea.blur();
+  };
+
   // Ends the session, saving the text if it changed.
   self.close = function() {
     var o = session;

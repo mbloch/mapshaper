@@ -71,6 +71,22 @@ export function ContextMenu(parentArg) {
   // does, the whole UI stays shifted up (mbloch/mapshaper#702).
   menu.hide();
 
+  // Clicking an item must not blur the label editor's textarea, which ends its
+  // session and saves the text. The blur would happen on mousedown, before the
+  // item's own handler runs, so "delete label" on a label being typed into
+  // would save the text to the feature and then delete it -- one edit's worth
+  // of gesture leaving two commands in the history. The label style panel
+  // refuses the focus change for the same reason.
+  //
+  // The focused element is the test rather than any GUI state, because this
+  // menu is built without a gui reference.
+  menu.node().addEventListener('mousedown', function(e) {
+    var el = document.activeElement;
+    if (el && el.classList.contains('label-edit-input')) {
+      e.preventDefault();
+    }
+  });
+
   this.isOpen = function() {
     return _open;
   };
@@ -159,7 +175,9 @@ export function ContextMenu(parentArg) {
      addMenuItem('duplicate layer', e.duplicateLayer, '');
     }
     if (e.styleLayer) {
-     addMenuItem('style layer', e.styleLayer, '');
+     // named by the caller when the layer opens something other than a style
+     // panel -- a label layer opens the label tool, which does more than style
+     addMenuItem(e.styleLayerName || 'style layer', e.styleLayer, '');
     }
     if (e.showLayerInfo) {
      addMenuItem('show info', e.showLayerInfo, '');
@@ -250,6 +268,7 @@ export function ContextMenu(parentArg) {
     }
 
     function getDeleteLabel() {
+      if (internal.layerHasLabels(lyr)) return 'delete label';
       return 'delete ' + (lyr.geometry_type == 'point' ? 'point' : 'shape');
     }
 

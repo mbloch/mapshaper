@@ -92,6 +92,124 @@ test('the first label in an empty project leaves the view alone', async function
   expect(errors).toEqual([]);
 });
 
+test('a label layer is offered the label tool and not the tools it replaces',
+  async function({page}) {
+    // 'style labels' and 'add/drag points' both did less than the label tool
+    // beside them in the menu, which styles labels and creates, moves and
+    // retypes them as well.
+    var errors = collectPageErrors(page);
+    await loadFixture(page, FIXTURE);
+    await armTool(page, 'anchor');
+    await clickMap(page, 0.4, 0.45);
+    await writeLabel(page, 'Reno');
+    expect(await getLabelLayer(page)).not.toBeNull();
+    // the label tool has a panel of its own, and hovering the arrow button
+    // deliberately does not open the menu over it, so leave the mode first
+    await page.evaluate(function() {
+      window.mapshaper.undoTest.setInteractionMode('off');
+    });
+    await page.waitForTimeout(120);
+
+    var modes = await getModeMenuItems(page);
+    expect(modes).toContain('add/edit labels');
+    expect(modes).not.toContain('style labels');
+    expect(modes).not.toContain('add/drag points');
+    // positioning a label against its anchor is still the old mode's job
+    expect(modes).toContain('position labels');
+    expect(errors).toEqual([]);
+  });
+
+test("a label layer's menu opens the label tool rather than a style panel",
+  async function({page}) {
+    var errors = collectPageErrors(page);
+    await loadFixture(page, FIXTURE);
+    await armTool(page, 'anchor');
+    await clickMap(page, 0.4, 0.45);
+    await writeLabel(page, 'Reno');
+    // leave label mode, so that entering it from the menu is what is tested
+    await page.evaluate(function() {
+      window.mapshaper.undoTest.setInteractionMode('info');
+    });
+    await page.waitForTimeout(120);
+    await expect(page.locator('.floating-toolbar.label-toolbar')).toBeHidden();
+
+    await openLayerMenu(page, 'labels');
+    var item = page.locator('.contextmenu-item').filter({hasText: 'edit labels'});
+    await expect(item).toBeVisible();
+    await expect(page.locator('.contextmenu-item')
+      .filter({hasText: 'style layer'})).toHaveCount(0);
+    await item.click();
+    await page.waitForTimeout(150);
+
+    // the label tool, acting on that layer
+    await expect(page.locator('.floating-toolbar.label-toolbar')).toBeVisible();
+    expect(await page.evaluate(function() {
+      return window.mapshaper.undoTest.getState().model.activeLayer;
+    })).toBe('labels');
+    expect(errors).toEqual([]);
+  });
+
+test('right-clicking a label deletes it, through a command', async function({page}) {
+  var errors = collectPageErrors(page);
+  await loadFixture(page, FIXTURE);
+  await armTool(page, 'anchor');
+  await clickMap(page, 0.4, 0.45);
+  await writeLabel(page, 'Reno');
+  await armTool(page, 'anchor');
+  await clickMap(page, 0.6, 0.55);
+  await writeLabel(page, 'Tahoe');
+  expect((await getLabelLayer(page)).shapeCount).toBe(2);
+
+  await rightClickLabel(page, 0);
+  var item = page.locator('.contextmenu-item').filter({hasText: 'delete label'});
+  await expect(item).toBeVisible();
+  await item.click();
+  await page.waitForTimeout(250);
+
+  // the right label went, and the other one is untouched
+  var lyr = await getLabelLayer(page);
+  expect(lyr.shapeCount).toBe(1);
+  expect(lyr.records[0]['label-text']).toBe('Tahoe');
+
+  // a command, so it is in the session history and undoes as one step
+  var history = await page.evaluate(function() {
+    return window.mapshaper.undoTest.getSessionHistory();
+  });
+  expect(JSON.stringify(history)).toContain('-filter');
+  await page.evaluate(function() { window.mapshaper.undoTest.undo(); });
+  await page.waitForTimeout(150);
+  expect((await getLabelLayer(page)).shapeCount).toBe(2);
+  expect(errors).toEqual([]);
+});
+
+test('deleting the label being typed into does not save its text first',
+  async function({page}) {
+    var errors = collectPageErrors(page);
+    await loadFixture(page, FIXTURE);
+    await armTool(page, 'anchor');
+    await clickMap(page, 0.4, 0.45);
+    await writeLabel(page, 'Reno');
+
+    // open its text and change it, then delete the label instead of leaving it
+    await clickLabel(page, 0);
+    await clickLabel(page, 0);
+    await page.keyboard.type('XY');
+    await rightClickLabel(page, 0);
+    await page.locator('.contextmenu-item').filter({hasText: 'delete label'})
+      .click();
+    await page.waitForTimeout(250);
+
+    // the last label of a layer leaves the layer behind, empty
+    expect((await getLabelLayer(page)).shapeCount).toBe(0);
+    expect(await getCaretCount(page)).toBe(0);
+    // one command, not a text save followed by a delete
+    var history = await page.evaluate(function() {
+      return window.mapshaper.undoTest.getSessionHistory();
+    });
+    expect(JSON.stringify(history)).not.toContain('XY');
+    expect(errors).toEqual([]);
+  });
+
 test('a created label is undoable and appears in the session history', async function({page}) {
   var errors = collectPageErrors(page);
   await loadFixture(page, FIXTURE);
@@ -884,6 +1002,40 @@ async function writeLabel(page, text) {
   await page.keyboard.type(text || 'Label');
   await page.keyboard.press('Escape');
   await page.waitForTimeout(250);
+}
+
+// Right-clicks the middle of a label's rendered text. Moves the pointer onto
+// it first: the context menu reads the hit state the pointer left behind
+// rather than testing afresh where the click landed.
+async function rightClickLabel(page, id) {
+  var box = await page.evaluate(function(args) {
+    var node = document.querySelector(
+      '.mapshaper-symbol-layer .mapshaper-svg-symbol[data-id="' + args.id + '"]');
+    var r = node.getBoundingClientRect();
+    return {x: r.x, y: r.y, width: r.width, height: r.height};
+  }, {id: id});
+  var x = box.x + box.width / 2, y = box.y + box.height / 2;
+  await page.mouse.move(x, y);
+  await page.waitForTimeout(80);
+  await page.mouse.click(x, y, {button: 'right'});
+  await page.waitForTimeout(150);
+}
+
+// The interaction modes the arrow menu offers for the active layer.
+async function getModeMenuItems(page) {
+  await page.locator('.pointer-btn').hover();
+  await page.locator('.nav-sub-menu .nav-menu-item').first().waitFor();
+  return page.locator('.nav-sub-menu .nav-menu-item').allInnerTexts();
+}
+
+// Opens a layer's own menu from the layer list, the way a user does.
+async function openLayerMenu(page, layerName) {
+  await page.locator('.layer-control-btn').click();
+  var item = page.locator('.layer-list .layer-item')
+    .filter({hasText: layerName}).first();
+  await item.hover();
+  await item.locator('.more-btn').click();
+  await page.locator('.contextmenu-item').first().waitFor();
 }
 
 async function getViewBounds(page) {

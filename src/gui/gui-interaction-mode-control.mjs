@@ -14,7 +14,12 @@ export function InteractionMode(gui) {
     lines: ['info', 'selection', 'box', 'line_style', 'label', 'edit_lines', 'snip_lines', 'ruler'],
     table: ['info', 'selection'],
     raster: ['label', 'ruler', 'box'],
-    labels: ['info', 'selection', 'box', 'point_style', 'label', 'labels', 'edit_points', 'ruler'],
+    // A label layer has no entry for styling labels or for adding and dragging
+    // points: the label tool does both, along with creating and retyping
+    // labels, so those two offered a subset of what sits next to them in the
+    // menu. 'labels' stays because positioning a label relative to its anchor
+    // is not something the label tool does.
+    labels: ['info', 'selection', 'box', 'label', 'labels', 'ruler'],
     points: ['info', 'selection', 'box', 'point_style', 'label', 'edit_points', 'ruler'] // , 'add-points'
   };
 
@@ -204,10 +209,6 @@ export function InteractionMode(gui) {
   }
 
   function getModeLabel(mode) {
-    var o = gui.model.getActiveLayer();
-    if (mode == 'point_style' && o && o.layer && internal.layerHasLabels(o.layer)) {
-      return 'style labels';
-    }
     return labels[mode];
   }
 

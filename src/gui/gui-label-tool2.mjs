@@ -5,7 +5,8 @@ import { showPopupAlert } from './gui-alert';
 import { runGuiEditCommand } from './gui-edit-command';
 import { FloatingToolbar } from './gui-floating-toolbar';
 import {
-  getLabelTarget, getAddLabelCommand, getUpdateLabelCommand
+  getLabelTarget, getAddLabelCommand, getUpdateLabelCommand,
+  getLabelDeleteCommand
 } from './gui-label-commands';
 import { findNearestKnot, knotMoveIsValid } from './gui-label-knots';
 import { LabelEditor } from './gui-label-editor';
@@ -244,6 +245,54 @@ export function initLabelTool(gui, ext, hit) {
       extendCurve(pixToMapCoords(e.x, e.y));
     }
   });
+
+  // Right-clicking a label offers to delete it.
+  //
+  // The tool opens this menu itself, rather than leaving it to the inspection
+  // control as the other non-drawing modes do, because deleting a label here
+  // has to be a command like every other edit the tool makes -- the generic
+  // "delete point" item mutates the layer in place, which would leave the
+  // deletion out of the session history and out of step with undo.
+  hit.on('contextmenu', function(e) {
+    var target = hit.getHitTarget();
+    var id;
+    if (!active()) return;
+    id = getRightClickedLabel(e);
+    if (target && id > -1) {
+      e.deleteFeature = getDeleteAction(target, id);
+    }
+    gui.contextMenu.open(e, target);
+  });
+
+  // The label a right-click was aimed at, or -1.
+  //
+  // A label being typed into is not a hit target -- the editor's own overlay
+  // is in front of it, and the hit test looks for symbols in the layer's
+  // markup -- so the session answers for it, the same way it does for a click
+  // that lands inside it. A pending label has no feature to delete.
+  function getRightClickedLabel(e) {
+    var target = hit.getHitTarget();
+    if (target && e.id > -1 && isLabel(target, e.id)) return e.id;
+    if (editor.isOpen() && editor.getFeatureId() > -1 &&
+        clickIsOnEditedLabel(e)) {
+      return editor.getFeatureId();
+    }
+    return -1;
+  }
+
+  // Deleting a label ends whatever was being done to it first: its text
+  // session would otherwise write the text back to an id that now belongs to
+  // the label that moved up into the gap, and the same shift is why the
+  // selection cannot be kept either.
+  function getDeleteAction(target, id) {
+    return function() {
+      if (editor.isOpen() && editor.getFeatureId() == id) editor.cancel();
+      deselectLabels();
+      runGuiEditCommand(gui, getLabelDeleteCommand(id, target.name), {
+        title: 'Delete label'
+      });
+    };
+  }
 
   // Acts on a click that landed on feature @id: opens the label's text if it
   // was already the whole selection, moves the caret if its session is already

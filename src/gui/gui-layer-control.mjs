@@ -372,7 +372,16 @@ export function LayerControl(gui) {
     function styleLayer() {
       var target = findLayerById(id);
       if (!target) return;
-      if (target.layer.geometry_type == 'point' && gui.pointStyleTool) {
+      if (internal.layerHasLabels(target.layer)) {
+        // The point style panel can only restyle a label layer; the label tool
+        // styles labels and creates, moves and retypes them as well, so a
+        // label layer goes there instead. The menu item is named for it.
+        if (!map.isActiveLayer(target.layer)) {
+          target.layer.hidden = false;
+          model.selectLayer(target.layer, target.dataset);
+        }
+        gui.interaction.setMode('label');
+      } else if (target.layer.geometry_type == 'point' && gui.pointStyleTool) {
         gui.pointStyleTool.open(target.layer, target.dataset);
       } else if (gui.layerStyleTool) {
         gui.layerStyleTool.open(target.layer, target.dataset);
@@ -395,6 +404,9 @@ export function LayerControl(gui) {
       menuEvent.showLayerInfo = showLayerInfo;
       if (target && layerCanBeStyled(target.layer)) {
         menuEvent.styleLayer = styleLayer;
+        if (internal.layerHasLabels(target.layer)) {
+          menuEvent.styleLayerName = 'edit labels';
+        }
       }
       menuEvent.contextMenuId = 'layer-' + id;
       openContextMenu(menuEvent, null, null);

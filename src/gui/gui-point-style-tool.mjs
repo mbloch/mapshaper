@@ -76,7 +76,7 @@ export function PointStyleTool(gui) {
 
     labelNoteSection = El('div').addClass('point-style-section point-label-note-section').appendTo(panel);
     El('div').addClass('point-style-note').appendTo(labelNoteSection)
-      .text('This layer is rendered as labels. Use the label style tool to edit label styles.');
+      .text('This layer is rendered as labels. Use the label tool to edit them.');
   }
 
   function initCreateLabelsSection() {
@@ -251,11 +251,6 @@ export function PointStyleTool(gui) {
 
   function turnOn() {
     targetLayer = getActiveLayer();
-    if (getPointRepresentation() == 'label' && gui.labelTool && gui.labelTool.open) {
-      gui.labelTool.open(targetLayer);
-      targetLayer = null;
-      return;
-    }
     renderCreateFields();
     updateControls();
     panel.show();
@@ -378,11 +373,13 @@ export function PointStyleTool(gui) {
     });
   }
 
+  // What to do once this panel's Create button has turned a field into labels.
+  // The layer is a label layer now, which this panel can only restyle, so the
+  // label tool takes over -- the same tool the layer's own menu offers.
   function openLabelStyles() {
     var active = gui.model.getActiveLayer();
-    if (active && active.layer && internal.layerHasLabels(active.layer) &&
-      gui.labelTool && gui.labelTool.open) {
-      gui.labelTool.open(active.layer, active.dataset);
+    if (active && active.layer && internal.layerHasLabels(active.layer)) {
+      gui.interaction.setMode('label');
     } else {
       updateControls();
     }
