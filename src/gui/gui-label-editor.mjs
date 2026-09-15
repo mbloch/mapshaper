@@ -48,8 +48,8 @@ export function LabelEditor(gui, ext) {
   //
   // @opts.onClose is called once the session has ended, which is how the tool
   // decides what the label goes back to being -- selected for styling, or
-  // nothing. The session can end from inside the editor (Escape, blur, Enter on
-  // a path label), so the tool cannot do this at its own call sites.
+  // nothing. The session can end from inside the editor (Escape, Enter, blur),
+  // so the tool cannot do this at its own call sites.
   self.open = function(target, id, opts) {
     var rec = getRecord(target, id);
     if (!rec) return false;
@@ -203,13 +203,6 @@ export function LabelEditor(gui, ext) {
     setCaret(i, i);
     drawOverlay(session);
     return true;
-  };
-
-  // Whether the label being edited follows a path, which decides what Enter
-  // does: a newline for an anchored label, and a commit for a path label, where
-  // multi-line text is not supported.
-  self.isPathLabel = function() {
-    return !!(session && session.nodes && getLayout(session) === LINES_JOINED);
   };
 
   // What a closing session does to the label it was editing: creates it, saves
@@ -670,6 +663,20 @@ export function LabelEditor(gui, ext) {
     textarea.addEventListener('click', redrawCaret);
     textarea.addEventListener('select', redrawCaret);
 
+    // An IME uses Enter to accept the candidate it is showing, so committing
+    // the label on that keystroke would end the session in the middle of a word
+    // -- and preventing the default would stop the candidate being accepted at
+    // all. Taking IME input as it comes is one of the reasons the editor drives
+    // an offscreen textarea rather than reading keys itself, so the exception
+    // belongs here.
+    //
+    // keyCode 229 covers browsers that report a composing keystroke that way
+    // instead of setting isComposing.
+    function isCommitKey(e) {
+      if (e.key != 'Enter' || e.shiftKey) return false;
+      return !e.isComposing && e.keyCode != 229;
+    }
+
     textarea.addEventListener('keydown', function(e) {
       if (!session) return;
       // The GUI's global key handlers are told to keep out of the way by
@@ -682,8 +689,17 @@ export function LabelEditor(gui, ext) {
         // the tool off.
         e.stopPropagation();
         self.close();
-      } else if (e.key == 'Enter' && !e.shiftKey && self.isPathLabel()) {
-        // no multi-line text on a path, so Enter ends the session instead
+      } else if (isCommitKey(e)) {
+        // Enter finishes the label; shift-Enter is how a line gets broken. Most
+        // map labels are one line, and Enter is the key that ends entry of a
+        // field everywhere else in this app -- the console submits on it. A
+        // path label has always ended here, having no room for a second line;
+        // now the key does not depend on which kind of label is being typed
+        // into, which was a distinction nothing on screen revealed.
+        //
+        // Shift-Enter needs no handling of its own: the textarea inserts the
+        // break itself. On a path label it renders as a space, which is what
+        // export does with a break in path text.
         e.preventDefault();
         e.stopPropagation();
         self.close();

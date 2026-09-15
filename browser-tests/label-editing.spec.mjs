@@ -198,14 +198,14 @@ test('a label takes two clicks to open for editing', async function({page}) {
   expect(errors).toEqual([]);
 });
 
-test('enter adds a line to an anchored label', async function({page}) {
+test('shift-enter adds a line to an anchored label', async function({page}) {
   var errors = collectPageErrors(page);
   await loadFixture(page, FIXTURE);
   await armTool(page, 'anchor');
   await clickMap(page, 0.4, 0.45);
 
   await page.keyboard.type('North');
-  await page.keyboard.press('Enter');
+  await page.keyboard.press('Shift+Enter');
   await page.keyboard.type('Dakota');
   await page.waitForTimeout(60);
 
@@ -256,9 +256,9 @@ test('a run of spaces is kept, not collapsed to one', async function({page}) {
   expect((await getEditorState(page)).renderedChars).toBe(5);
 });
 
-test('enter opens a line before anything is typed into it', async function({page}) {
+test('shift-enter opens a line before anything is typed into it', async function({page}) {
   // an empty <tspan> lays out nothing, so the new line had no position for the
-  // caret to move to and pressing Enter appeared to do nothing at all
+  // caret to move to and breaking the line appeared to do nothing at all
   var errors = collectPageErrors(page);
   await loadFixture(page, FIXTURE);
   await armTool(page, 'anchor');
@@ -267,7 +267,7 @@ test('enter opens a line before anything is typed into it', async function({page
   await page.waitForTimeout(60);
   var before = await getEditorState(page);
 
-  await page.keyboard.press('Enter');
+  await page.keyboard.press('Shift+Enter');
   await page.waitForTimeout(60);
   var after = await getEditorState(page);
 
@@ -286,7 +286,7 @@ test('the caret reaches the second line of a multi-line label', async function({
   await armTool(page, 'anchor');
   await clickMap(page, 0.4, 0.45);
   await page.keyboard.type('North');
-  await page.keyboard.press('Enter');
+  await page.keyboard.press('Shift+Enter');
   await page.keyboard.type('Dakota');
   await page.waitForTimeout(60);
   var onLine2 = (await getEditorState(page)).caretY;
@@ -364,6 +364,25 @@ test('a path label is edited along its curve', async function({page}) {
   expect(editor.textPathCount).toBe(1);
   // glyphs on a curve are rotated, which is what the caret has to lean with
   expect(Math.abs(editor.caretAngle)).toBeGreaterThan(0);
+  expect(errors).toEqual([]);
+});
+
+test('enter commits an anchored label instead of adding a line', async function({page}) {
+  // Enter finishes a label, and shift-Enter is what breaks a line. Most map
+  // labels are one line, and Enter ends entry of a field everywhere else in
+  // this app. It used to add a line here while committing a path label, so the
+  // key did two different things with nothing on screen to say which.
+  var errors = collectPageErrors(page);
+  await loadFixture(page, FIXTURE);
+  await armTool(page, 'anchor');
+  await clickMap(page, 0.4, 0.45);
+
+  await page.keyboard.type('Reno');
+  await page.keyboard.press('Enter');
+  await page.waitForTimeout(250);
+
+  expect(await getLabelText(page, 0)).toBe('Reno');
+  expect((await getEditorState(page)).caretCount).toBe(0);
   expect(errors).toEqual([]);
 });
 

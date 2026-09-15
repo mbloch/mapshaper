@@ -290,10 +290,9 @@ emits one `<tspan>` per subsequent line with `dy` from `line-height`
 (`src/svg/svg-labels.mjs`). The GUI keeps tspan `x` in sync during drags via
 `setMultilineAttribute()`.
 
-The editing surface needs one addition: the hidden input becomes a `<textarea>`
-so Enter inserts a newline for anchored labels. For path-aligned labels Enter
-commits the edit instead, because multi-line text on a path is not supported
-(see [Known limitations](#known-limitations)).
+The editing surface needs one addition: the hidden input becomes a `<textarea>`,
+so that a line can be broken while typing. **Shift-Enter** breaks it; Enter
+finishes the label (see "Enter finishes, shift-Enter breaks a line").
 
 ## Frames And Scale
 
@@ -928,8 +927,8 @@ text — and then return it to the state the session was entered from:
   leaves the panel describing the next label rather than the one just written.
 
 `editor.open()` takes an `onClose` hook for this, because a session can end
-from inside the editor — Escape, blur, Enter on a path label — and the tool
-cannot do it at its own call sites. The hook declines to reclaim a selection
+from inside the editor — Escape, Enter, blur — and the tool cannot do it at its
+own call sites. The hook declines to reclaim a selection
 that has since been claimed by something else: clicking label B while editing
 label A ends A's session, and B is what should be left selected.
 
@@ -1713,10 +1712,10 @@ other character.
 
 #### A line the user just opened
 
-An empty `<tspan>` lays out nothing. Pressing Enter therefore produced no
+An empty `<tspan>` lays out nothing. Breaking a line therefore produced no
 position for the caret to move to, and both the caret and the box stayed on the
-line above: Enter looked like it had done nothing until a non-space character
-was typed. The placeholder that `getRenderedLines()` puts at the start of every
+line above: shift-Enter looked like it had done nothing until a non-space
+character was typed. The placeholder that `getRenderedLines()` puts at the start of every
 continuation line gives the line something to lay out, which is what the caret
 then attaches to.
 
@@ -1776,7 +1775,38 @@ label whose data carries stray whitespace, and a centred label would move.
 Text goes into the SVG on every keystroke but into the data only once, when the
 session ends — which is what makes one undo step reverse one label's text rather
 than one keystroke. A session ends on blur, on a click away from the label, on
-Escape, on Enter for a path label, and on leaving label mode.
+Escape, on Enter, and on leaving label mode.
+
+#### Enter finishes, shift-Enter breaks a line
+
+**Enter ends the session; shift-Enter is how a line gets broken.** Most map
+labels are one line, and Enter is the key that ends entry of a field everywhere
+else in this app — the console submits on it, and so does the style-preset name
+field.
+
+Enter used to add a line to an anchored label while committing a path label, so
+the key did two different things depending on which kind of label was open, with
+nothing on screen to say which. Removing that took the editor's `isPathLabel()`
+with it: the predicate existed for this branch alone, and the editor no longer
+needs to know what kind of label it is handling a keystroke for.
+
+Shift-Enter needs no handling. The keydown listener lets everything it does not
+act on through to the textarea, which inserts the break itself. On a path label
+the break renders as a space, which is what export does with one.
+
+The cost is muscle memory from Illustrator and Figma, where Enter breaks a line
+in a text object and Escape commits. Recovering is cheap — reopen the label and
+use shift-Enter — and nothing announces shift-Enter yet, which is an open UI
+question rather than a decision.
+
+**An IME keystroke is the exception.** Japanese, Chinese and Korean input use
+Enter to accept the candidate the IME is offering. Committing the label on that
+keystroke would end the session mid-word, and `preventDefault()` would stop the
+candidate being accepted at all. `isCommitKey()` therefore ignores Enter while
+`isComposing` is set (or `keyCode` is 229, which is how some browsers report a
+composing keystroke). Taking IME input as it comes is one of the reasons the
+editor drives a real textarea instead of reading keys itself, so the exception
+belongs with the key handling rather than somewhere upstream.
 
 A session is in one of two modes, and what it commits follows from which:
 
@@ -2377,9 +2407,9 @@ The editor added 2.6 KB, again matching its own source and inlining nothing.
   *along* the path rather than stacking below it, so multi-line curved text
   requires one offset path per line. Mapshaper has offset-curve machinery in
   `-buffer`, but parallel offsets self-intersect on tight bends, so this is
-  deferred. The editor commits on Enter for path labels instead of inserting a
-  newline. A path label that contains line breaks anyway — which only the CLI
-  can produce — exports with its lines **joined by spaces** and a warning.
+  deferred. Shift-Enter does insert a break in a path label, and it renders as
+  a space. A path label that contains line breaks — from that, from a paste, or
+  from the CLI — exports with its lines **joined by spaces** and a warning.
   Rendering just the first line would be a silent loss of text, and emitting
   tspans would run the lines end to end along the curve.
 - **Figma imports the baseline but not the text.** Its SVG importer drops
@@ -2686,23 +2716,24 @@ And in `browser-tests/label-editing.spec.mjs`:
   untouched until the session ends; the caret advances as characters are typed
   and moves back with the arrow keys.
 - Every way a session can end, and what each saves: clicking away, clicking the
-  toolbar, leaving the mode, Enter on a path label. That the text reaches the
-  session history **once**, not once per keystroke, and that one undo reverses
-  the whole session.
+  toolbar, leaving the mode, Enter on either kind of label. That the text
+  reaches the session history **once**, not once per keystroke, and that one
+  undo reverses the whole session.
 - Escape finishing a label and keeping its text, with the tool still on
   afterwards, and still taking back a label that was never typed into.
 - That a click away finishes the label without placing another, and the click
   after it does place one.
 - Clicking an existing label to edit it, and clicking within the text to move
   the caret rather than ending the session.
-- Multi-line: Enter adds a line to an anchored label, the rendered text gains a
-  `<tspan>` and the placeholder that opens the line, the stored value carries
-  the escape, and the caret reaches the second line.
+- Multi-line: shift-Enter adds a line to an anchored label, the rendered text
+  gains a `<tspan>` and the placeholder that opens the line, the stored value
+  carries the escape, and the caret reaches the second line. Enter on its own
+  finishes the label instead, on both kinds.
 - The two "what you type must render" regressions, each asserted on the thing
   the user would notice rather than on the mechanism: typing a space advances
   the caret and raises the rendered character count by one, a run of spaces is
-  not collapsed, and Enter drops the caret and grows the box **before** anything
-  is typed into the new line.
+  not collapsed, and shift-Enter drops the caret and grows the box **before**
+  anything is typed into the new line.
 - A selection band that is a single merged rect, painting beneath the glyphs
   with the caret above them.
 - The overlay wearing the label's transform across a zoom, with the text still
