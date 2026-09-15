@@ -73,6 +73,11 @@ export function createUndoTransaction(gui, label) {
 // the payload store.
 export function addUndoTransactionToHistory(gui, tx, opts) {
   if (!tx) return Promise.resolve(null);
+  // Undo can be switched off between the start of an edit and its end, and the
+  // transaction was captured at the start -- a simplify session or an import
+  // can easily straddle the moment. Adding it now would put a state back into
+  // a history the History menu had just emptied, on purpose.
+  if (!appUndoIsEnabled(gui)) return Promise.resolve(null);
   return getStoredUndoHistory(gui).addTransaction(tx, opts || {}).catch(function(e) {
     console.error(e);
   });

@@ -193,7 +193,10 @@ test('placing labels needs no undo history to stay clean', async function({page}
 
   await clickMap(page, 0.5, 0.5);
   await writeLabel(page, 'Reno');
-  expect((await getLabelLayer(page)).records).toEqual([{'label-text': 'Reno'}]);
+  // label-pos is the tool's default for a new label: 'c' centres the text on
+  // the anchor, where no position at all would sit it on the anchor's baseline.
+  expect((await getLabelLayer(page)).records)
+    .toEqual([{'label-text': 'Reno', 'label-pos': 'c'}]);
 
   await disarmTool(page);
   await clickLabel(page, 0);
@@ -232,7 +235,7 @@ test('an existing label emptied of its text is removed by a command', async func
   // B is all that is left, and it keeps its own geometry rather than inheriting
   // A's -- the record and the point go together
   var lyr = await getLabelLayer(page);
-  expect(lyr.records).toEqual([{'label-text': 'B'}]);
+  expect(lyr.records).toEqual([{'label-text': 'B', 'label-pos': 'c'}]);
   expect(await getSessionHistory(page)).toContain('-filter');
   expect(errors).toEqual([]);
 });
@@ -382,13 +385,19 @@ test('a style set with nothing selected is given to the next label', async funct
   await loadFixture(page, FIXTURE);
   var panel = page.locator('.text-style-panel');
 
+  // the panel opens showing the tool's default position, so that what it says
+  // the next label will get is what the next label gets
+  await expect(panel.locator('.label-position-grid [data-position="c"]'))
+    .toHaveClass(/selected/);
+
   await panel.locator('select').first().selectOption('Georgia');
   await panel.locator('.label-size-row .label-panel-btn').nth(1).click();
   await page.waitForTimeout(80);
 
   // held in GUI state, not written anywhere: there is no label to write it to,
   // and a tool default does not belong in the undo history
-  expect(await getNewLabelStyle(page)).toEqual({'font-family': 'Georgia', 'font-size': 13});
+  expect(await getNewLabelStyle(page))
+    .toEqual({'label-pos': 'c', 'font-family': 'Georgia', 'font-size': 13});
   expect(await getSessionHistory(page)).not.toContain('-style');
 
   await armTool(page, 'anchor');

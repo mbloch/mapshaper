@@ -10,8 +10,8 @@ import {
   warnAboutOutOfRangeCorners
 } from './mapshaper-label-geom';
 import {
-  isSupportedSvgStyleProperty, parseKnotIndexList, parseStyleLiteral,
-  setLabelPositionStyle
+  isSupportedSvgStyleProperty, parseKnotIndexList, parseLabelPosition,
+  parseStyleLiteral
 } from '../svg/svg-properties';
 import { getLabelTextHash } from '../svg/svg-label-fit';
 
@@ -158,14 +158,23 @@ function getLabelProperties(opts, knotCount) {
       stop('Unexpected value for', name + ':', opts[key]);
     }
     d[name] = val;
-    // label-pos is shorthand, not a property anything renders: it stands for a
-    // text-anchor and a dx/dy. Left unexpanded, the label carries a position it
-    // is not drawn in. Expanded here rather than after the loop, so that a dx=
-    // or dy= given after it still wins -- which is where -style expands it too.
-    if (name == 'label-pos' && !setLabelPositionStyle(d, d[name])) {
-      stop('Unexpected value for label-pos:', d[name]);
+    // label-pos is the only one of the four position properties stored: the
+    // offsets and justification it stands for are resolved when the label is
+    // drawn. A dx= or dy= given as well is kept and wins there, so the two can
+    // be combined to nudge a label off a standard position.
+    if (name == 'label-pos' && !parseLabelPosition(val)) {
+      stop('Unexpected value for label-pos:', opts[key]);
     }
   });
+
+  if (d['label-pos'] && knotCount > 1) {
+    // A path label's text runs along its curve from a start offset, so it has
+    // no position around an anchor to take. Warned about rather than rejected,
+    // so that a script can style a mixed layer in one pass.
+    warn('Ignoring label-pos on a label with', knotCount, 'points.',
+      'Use label-start-offset= and text-anchor= to place text along a path.');
+    delete d['label-pos'];
+  }
 
   if (opts.corners) {
     corners = parseKnotIndexList(opts.corners);

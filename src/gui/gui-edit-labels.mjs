@@ -32,8 +32,46 @@ export function initLabelDragging(gui, ext, hit) {
     activeId = e.id;
     activeRecord = getLabelRecordById(activeId);
     downEvt = e;
+    // The undo state is captured by the label_dragstart handler, so the record
+    // has to be settled before it is dispatched.
+    prepareRecordForDrag(activeRecord);
     gui.dispatchEvent('label_dragstart', {FID: activeId});
   });
+
+  // Settles the record a drag is about to move: the offsets the drag adds to
+  // have to be on the record, and the position they came from has to be given
+  // up.
+  //
+  // Only label-pos is stored now, and the offsets it stands for are resolved
+  // when the label is drawn, so a drag would otherwise add its delta to nothing
+  // and the label would jump to its anchor. Dropping label-pos is what keeps
+  // the style panel honest, since it reads the position back: a label dragged
+  // away from 'n' is no longer north of anything.
+  //
+  // These three fields used to be added to the whole table, defaulting dx and
+  // dy to 0. An explicit 0 is no longer nothing -- a value on the record wins
+  // over the position -- so priming the table that way would have moved every
+  // label in the layer to its anchor.
+  function prepareRecordForDrag(rec) {
+    var resolved;
+    if (!rec) return;
+    resolved = internal.resolveLabelPosition(rec);
+    rec.dx = toDragOffset(resolved.dx);
+    rec.dy = toDragOffset(resolved.dy);
+    if (!rec['text-anchor']) {
+      rec['text-anchor'] = resolved['text-anchor'] || '';
+    }
+    if (rec['label-pos']) rec['label-pos'] = undefined;
+  }
+
+  // This mode drags in pixels and cannot carry an em offset, so a label
+  // positioned through the panel loses that offset on the first drag. That is
+  // long-standing behaviour here -- the offsets were stored in ems before they
+  // were resolved at draw time -- and it is not shared by the new label tool,
+  // which moves a label by rewriting its anchor instead.
+  function toDragOffset(val) {
+    return +val || 0;
+  }
 
   hit.on('change', function(e) {
     if (!active()) return;
@@ -138,21 +176,15 @@ export function initLabelDragging(gui, ext, hit) {
   function getLabelRecordById(id) {
     var table = hit.getTargetDataTable();
     if (id >= 0 === false || !table) return null;
-    // add dx and dy properties, if not available
-    if (!table.fieldExists('dx')) {
-      table.addField('dx', 0);
-    }
-    if (!table.fieldExists('dy')) {
-      table.addField('dy', 0);
-    }
-    if (!table.fieldExists('text-anchor')) {
-      table.addField('text-anchor', '');
-    }
     return table.getRecordAt(id);
   }
 
   // update symbol by setting attributes
-  function updateTextNode(node, d) {
+  function updateTextNode(node, dArg) {
+    // Resolved, so that a label still carrying a position is drawn where the
+    // renderer would draw it. A dragged record has been through
+    // prepareRecordForDrag() and resolves to itself.
+    var d = internal.resolveLabelPosition(dArg);
     var a = d['text-anchor'];
     if (a) node.setAttribute('text-anchor', a);
     // dx data property is applied to svg x property

@@ -102,7 +102,10 @@ All styling lives in per-feature table columns (`font-family`, `font-size`,
 `fill`, `dx`, `dy`, `text-anchor`, `label-pos`, ...), declared in
 `stylePropertyTypes` in `src/svg/svg-properties.mjs` and written by `-style`.
 Nothing about a label is stored on the layer, apart from export-time inherited
-defaults on the layer's `<g>` element.
+defaults on the layer's `<g>` element. `label-pos` is the one property that is
+not written through to the renderer as it stands: it is a compass point that
+supplies the other three, resolved when the label is drawn (see "A position is
+stored as a position").
 
 This is a good foundation and the new work extends it rather than replacing it.
 
@@ -247,6 +250,10 @@ see the "Add empty layer" case in `undo-redo-implementation.md`).
 | `label-side` | `left`\|`right` | Which side of the path the text sits on |
 | `label-text-width` | number | Measured text width in px at native font-size |
 | `label-text-hash` | string | Fingerprint of the values that width was measured from |
+
+`label-pos` predates this work but changed meaning during it: it is now the only
+position property stored, with the offsets it stands for resolved at render
+time. See "A position is stored as a position".
 
 The knots themselves are geometry and so have no field. `label-corners` is the
 only part of the curve's definition that cannot be inferred from the knots: a
@@ -1111,6 +1118,119 @@ So the alignment half of the toolbar is mostly existing properties.
 `label-side` maps to the SVG 2 `side` attribute, which is not universally
 supported; where it is missing the fallback is to reverse the path direction,
 which is equivalent and works everywhere.
+
+### A position is stored as a position
+
+**`label-pos` is the only one of the four position properties stored. The
+`dx`, `dy` and `text-anchor` it stands for are resolved when the label is
+drawn.**
+
+The nine positions are a lookup table (`labelPositionStyles` in
+`svg-properties.mjs`) mapping a compass point to an offset and a justification.
+That table was originally applied at write time: `-style label-pos=sw` and
+`-add-label label-pos=sw` both expanded the shorthand and stored all four
+properties. Nothing ever read the table again, which made it a code generator
+rather than a lookup, and it cost three things.
+
+It put four columns in the user's table where one was meant, and `-o out.csv`
+showed all four. It made the CLI's simplest positioning idiom the most verbose
+thing in the output. And it turned the table's own values into the *types* of
+the user's columns: a layer holding a label positioned `n` (`dx` 0) and one
+positioned `e` (`dx` `'0.45em'`) had a `dx` column with a number and a string in
+it, which the merge behind `-add-label` refuses — so the second label could not
+be added at all. Writing every position's `dx` as a string papered over that,
+but the leak was the design, not the values.
+
+`resolveLabelPosition()` now fills the three in for rendering, returning a copy
+so that no renderer writes to the record it was handed. It is called from
+`renderLabel()` and `renderStyledLabel()`, which every anchored label goes
+through, so a label being typed into and a label in a file are positioned by the
+same lookup.
+
+#### A value on the record wins, per property
+
+The precedence goes the other way round from what the shorthand suggests, for
+three reasons.
+
+`dx`, `dy` and `text-anchor` are the documented `-style` options and have been
+for years; `label-pos` is the new convenience. The new thing defers to the
+established one.
+
+It makes the change invisible to existing files. Every file written while the
+expansion happened carries `label-pos` *and* exactly the three values the lookup
+would supply, so honouring what is on the record renders them unchanged. No
+migration, and no version of the table to keep around.
+
+And it is the more useful reading of a command that gives both:
+`label-pos=n dx=3` means "north, nudged 3px right" rather than "3px right of
+centre, and the north is discarded". That is why the fallback is per property
+rather than all-or-nothing.
+
+The test for whether a property is set has to be presence, not truthiness. The
+renderers read offsets as `rec.dx || 0`, and reusing that idiom for the fallback
+would read an explicit `dy=0` — the way a label cancels the vertical offset its
+position carries — as absent, and hand back the offset it was written to remove.
+
+#### Setting a position takes back the offsets
+
+Because a value on the record wins, the shorthand is only usable if setting it
+clears the three. Otherwise choosing a position for a label that had been
+dragged would appear to do nothing.
+
+So `-style label-pos=` and the panel's nine-position widget blank `dx`, `dy` and
+`text-anchor` — except any the same command also sets, which is what leaves
+`label-pos=n dx=3` with its nudge. The panel gets this from the command rather
+than from its own code, since it applies a position by running `-style`.
+
+Blanking means `undefined`, not `0`: the exporters drop an undefined value, so
+the record is left with one position property and no residue.
+
+#### Path labels have no position around an anchor
+
+A path label's text runs along its curve from a start offset, so `label-pos`
+means nothing for one. It is ignored, and not stored: `-add-label` drops it with
+a warning, `-style` skips those records and warns with their ids, and the
+panel's position buttons are disabled for a selection of nothing but path
+labels — which says so where a console warning would not.
+
+`text-anchor` is deliberately left alone in that case. Unlike the other two it
+*does* place text along a path, through `getDefaultStartOffset()`, so a position
+that had no effect must not clear it.
+
+This also closes a quiet inconsistency. The expansion gave `label-pos` a real
+effect on path labels through the `text-anchor` it wrote, so setting a position
+moved the text along the curve — while the GUI filtered the property out for
+path labels and never let that happen. The CLI and the GUI now agree.
+
+#### Dragging a label materializes its position
+
+The legacy `labels` interaction mode drags a label by adding pixel deltas to
+`dx`/`dy`. With the offsets resolved at draw time there is nothing on the record
+to add to, so a drag would move the label to its anchor and drag from there.
+
+`prepareRecordForDrag()` therefore writes the resolved offsets onto the record
+and drops `label-pos` before the first delta arrives. Dropping it keeps the
+style panel honest, since the panel reads the position back: a label dragged
+away from `n` is not north of anything.
+
+The three fields used to be added to the whole table on drag start, defaulting
+`dx` and `dy` to 0. An explicit 0 is no longer nothing, so priming the table
+that way would have moved every label in the layer to its anchor.
+
+That mode still cannot carry an em offset into a pixel drag, so a label
+positioned through the panel loses that offset on its first drag. It behaved
+that way before this change too, when the em values were stored, and the new
+label tool does not share the problem: it moves a label by rewriting its anchor
+point.
+
+#### What this gives up
+
+The offsets are no longer frozen into the file at creation time, so retuning the
+lookup table moves every existing label that uses a position. The table is
+effectively API now in a way it was not before, and a cartographic adjustment to
+it is a change to already-made maps rather than to new ones. A map that needs
+the guarantee can have it by setting `dx`/`dy` explicitly, which is what the
+precedence rule is for.
 
 ### Fitting text to a path
 
@@ -2058,6 +2178,20 @@ precisely so that a panel click arriving after the blur would still find a
 target, and the editor inferred panel clicks from `relatedTarget`. That left the
 panel acting on a label the user had finished with. Keeping focus in the
 textarea in the first place is what makes the shorter-lived state enough.
+
+The style held there starts at a default rather than empty
+(`DEFAULT_NEW_LABEL_STYLE`), and the only thing in it is `label-pos: 'c'`. A
+label with no position sits with its baseline on its anchor point, which puts
+the point at the foot of the text rather than in it: click a spot, type, and the
+words appear above the place they are meant to be read as marking. Centred is
+what clicking somewhere and typing looks like it should do, and it is the
+position an icon is drawn to sit behind.
+
+The tool defaults this, not the command: `-add-label` with no position still
+creates a label without one, so a centred label is a choice this tool makes and
+passes on explicitly. The panel reads the same state to decide which position
+button is lit, so what it says the next label will get is what the next label
+gets — which is the point of holding the pending style in one place.
 
 **Styling a label that does not exist yet runs no command at all**, which is
 what keeps an abandoned label free. Both the style and the text are held by the

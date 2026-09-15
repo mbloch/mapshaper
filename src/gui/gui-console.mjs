@@ -597,6 +597,10 @@ export function Console(gui) {
   }
 
   async function addCommandUndoHistory(tx, err, flags, historyIds) {
+    if (!isCommandUndoEnabled()) {
+      discardHistoryAfterUnrecordedCommand();
+      return {skipped: true};
+    }
     return getStoredUndoHistory(gui).addTransaction(tx, {
       error: err,
       flags: flags,
@@ -613,6 +617,23 @@ export function Console(gui) {
   function isCommandUndoEnabled() {
     if (!gui.undo || typeof gui.undo.addHistoryState != 'function') return false;
     return appUndoIsEnabled(gui);
+  }
+
+  // A command that was not recorded makes every state already in the history
+  // unsafe to apply: undoing one would restore the data as it stood before this
+  // command as well, without saying so.
+  //
+  // This is not hypothetical while undo is switched off. Interaction undo --
+  // vertex, point and rectangle drags, and attribute edits -- records itself
+  // whether or not the setting is on, so without this a drag, a command and
+  // another drag would leave a history that quietly spans the command.
+  //
+  // Any unrecorded command clears it, including one that changed nothing:
+  // knowing what a command touched is exactly what the transaction that was not
+  // captured would have told us.
+  function discardHistoryAfterUnrecordedCommand() {
+    if (!gui.undo || !gui.undo.canUndo() && !gui.undo.canRedo()) return;
+    gui.undo.clear();
   }
 
   function logCommandTiming(commandString, commands, err, totalMillis, undoTiming) {

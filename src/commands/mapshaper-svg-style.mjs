@@ -1,9 +1,11 @@
 import { getLayerDataTable, getFeatureCount } from '../dataset/mapshaper-layer-utils';
 import {
   getSymbolPropertyAccessor,
+  labelPositionDerivedFields,
   labelPositionFields,
-  setLabelPositionStyle
+  parseLabelPosition
 } from '../svg/svg-properties';
+import { shapeIsPathLabel } from '../svg/svg-label-paths';
 import { compileFeatureExpression } from '../expressions/mapshaper-feature-expressions';
 import { initDataTable } from '../dataset/mapshaper-layer-utils';
 import { isSupportedSvgStyleProperty } from '../svg/svg-properties';
@@ -13,7 +15,7 @@ import { stop, warn } from '../utils/mapshaper-logging';
 import cmd from '../mapshaper-cmd';
 
 cmd.svgStyle = function(lyr, dataset, opts) {
-  var filterFn, table, fields, hasNewFields;
+  var filterFn, table, fields, hasNewFields, optFields, clearedByPosition;
   if (getFeatureCount(lyr) === 0) {
     return;
   }
@@ -30,7 +32,18 @@ cmd.svgStyle = function(lyr, dataset, opts) {
     lyr.data.getFields().filter(isSupportedSvgStyleProperty).forEach(lyr.data.deleteField, lyr.data);
   }
   table = getLayerDataTable(lyr);
-  fields = getStyleFields(opts);
+  optFields = getOptionFields(opts);
+  fields = getStyleFields(optFields);
+  // Which of dx/dy/text-anchor a label-pos in this command clears: not the ones
+  // the same command also sets, so that `label-pos=n dx=3` keeps the nudge it
+  // was given instead of clearing it a moment later.
+  //
+  // Clearing at all is what keeps the shorthand usable, since a value on the
+  // record wins over the position: without it, setting a position on a label
+  // that had been dragged would appear to do nothing.
+  clearedByPosition = labelPositionDerivedFields.filter(function(field) {
+    return optFields.indexOf(field) == -1;
+  });
   hasNewFields = fields.some(function(field) {
     return !table.fieldExists(field);
   });
@@ -52,6 +65,7 @@ cmd.svgStyle = function(lyr, dataset, opts) {
     var strVal = opts[optName].trim();
     var accessor = getSymbolPropertyAccessor(strVal, svgName, lyr);
     var badIcons = svgName == 'icon' ? [] : null;
+    var posOnPaths = svgName == 'label-pos' ? [] : null;
     table.getRecords().forEach(function(rec, i) {
       if (filterFn && !filterFn(i)) {
         // make sure field exists if record is excluded by filter
@@ -61,15 +75,29 @@ cmd.svgStyle = function(lyr, dataset, opts) {
         if (badIcons) {
           addUnsupportedIconName(badIcons, rec.icon);
         }
-        if (svgName == 'label-pos') {
-          if (!setLabelPositionStyle(rec, rec['label-pos'])) {
+        if (posOnPaths) {
+          if (!parseLabelPosition(rec['label-pos'])) {
             stop('Unexpected value for label-pos:', rec['label-pos']);
+          }
+          if (shapeIsPathLabel(lyr.shapes && lyr.shapes[i], rec)) {
+            // Not stored, so that ignoring it means ignoring it: a stored
+            // position would show up in the style panel and would start
+            // applying if the label ever lost all but one of its knots. Its
+            // text-anchor is left alone too -- that one does place text along a
+            // path, so a position that had no effect must not clear it.
+            posOnPaths.push(i);
+            rec['label-pos'] = undefined;
+          } else {
+            setUndefinedFields(rec, clearedByPosition, {overwrite: true});
           }
         }
       }
     });
     if (badIcons && badIcons.length > 0) {
       warn(formatUnsupportedIconMessage(badIcons));
+    }
+    if (posOnPaths && posOnPaths.length > 0) {
+      warn(formatPositionOnPathMessage(posOnPaths));
     }
   });
   if (fields.length > 0) {
@@ -81,11 +109,22 @@ cmd.svgStyle = function(lyr, dataset, opts) {
   }
 };
 
-function getStyleFields(opts) {
+// The style properties this command was given, in SVG spelling.
+function getOptionFields(opts) {
   var fields = [];
   Object.keys(opts).forEach(function(optName) {
     var svgName = optName.replace(/_/g, '-');
-    if (!isSupportedSvgStyleProperty(svgName)) return;
+    if (isSupportedSvgStyleProperty(svgName)) addField(fields, svgName);
+  });
+  return fields;
+}
+
+// The fields the command will write, which is what the undo capture covers.
+// label-pos reaches dx/dy/text-anchor as well -- it no longer stores values in
+// them, but it does clear them.
+function getStyleFields(optFields) {
+  var fields = [];
+  optFields.forEach(function(svgName) {
     addField(fields, svgName);
     if (svgName == 'label-pos') {
       labelPositionFields.forEach(function(field) {
@@ -128,12 +167,32 @@ function formatUnsupportedIconMessage(names) {
   return str + '. Expected one of: ' + iconNames.join(', ');
 }
 
-function setUndefinedFields(rec, fields) {
+// Adds @fields to @rec with no value, so that a record the filter excluded
+// still has the same schema as the ones it kept. With overwrite, also blanks a
+// value already there -- which is how setting a position takes back the offsets
+// a label was carrying.
+function setUndefinedFields(rec, fields, opts) {
+  var overwrite = !!(opts && opts.overwrite);
   fields.forEach(function(field) {
-    if (field in rec === false) {
+    if (overwrite || field in rec === false) {
       rec[field] = undefined;
     }
   });
 }
+
+// label-pos places text around an anchor point, which a label strung along a
+// path does not have: its text runs from a start offset in the direction the
+// path goes. A warning rather than an error, because a layer can hold both
+// kinds of label and styling all of it at once is reasonable.
+function formatPositionOnPathMessage(ids) {
+  var extra = ids.length - maxReportedIds;
+  var listed = (extra > 0 ? ids.slice(0, maxReportedIds) : ids).join(', ');
+  return 'Ignoring label-pos on ' + ids.length + ' path ' +
+    (ids.length > 1 ? 'labels' : 'label') + ' (' + listed +
+    (extra > 0 ? ' and ' + extra + ' more' : '') + '). ' +
+    'Use label-start-offset= and text-anchor= to place text along a path.';
+}
+
+var maxReportedIds = 4;
 
 

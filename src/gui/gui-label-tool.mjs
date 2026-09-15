@@ -467,16 +467,30 @@ export function LabelTool(gui) {
     updateFontSizeControls(showValues ? fontSizeVal : '');
     updateColorControls(showValues ? fillVal : '');
     updateCssControl(showValues ? cssVal : '');
-    updatePositionButtons(showValues ? posVal : '');
+    updatePositionButtons(showValues ? posVal : '', ids);
     updateIconButtons(showValues ? iconVal : '');
     updateIconSizeControls(showValues ? iconSizeVal : '');
   }
 
-  function updatePositionButtons(pos) {
-    var disabled = !controlsEnabled();
+  function updatePositionButtons(pos, ids) {
+    // Disabled for a selection of nothing but path labels, whose text runs
+    // along a curve from a start offset and so has no position around an anchor
+    // to take. The commands ignore a position given for one, and a disabled
+    // button says so where a console warning would not.
+    var disabled = !controlsEnabled() || everyLabelIsOnAPath(ids);
     labelPositions.forEach(function(name) {
       posBtns[name].classed('selected', name == pos);
       setPanelButtonDisabled(posBtns[name], disabled);
+    });
+  }
+
+  function everyLabelIsOnAPath(ids) {
+    var lyr = getActiveLayer();
+    var table = lyr && lyr.data;
+    if (!ids || ids.length === 0 || !lyr || !lyr.shapes) return false;
+    return ids.every(function(id) {
+      return internal.svg.shapeIsPathLabel(lyr.shapes[id],
+        table ? table.getRecordAt(id) : null);
     });
   }
 

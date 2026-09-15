@@ -104,14 +104,15 @@ var propertiesBySymbolType = {
     'fill,font-family,font-size,text-anchor,font-weight,font-style,font-stretch,letter-spacing,dominant-baseline'.split(',')))
 };
 
-export var labelPositionFields = ['label-pos', 'dx', 'dy', 'text-anchor'];
+// The properties a label position stands for, and the shorthand itself.
+export var labelPositionDerivedFields = ['dx', 'dy', 'text-anchor'];
+export var labelPositionFields = ['label-pos'].concat(labelPositionDerivedFields);
 
 // dx is '0' and not 0 in the centred positions, so that every position in the
-// table stores dx as a string. A layer holding a label positioned 'n' (dx 0)
-// and one positioned 'e' (dx '0.45em') had a dx column with a number and a
-// string in it, which -merge-layers refuses -- so the second label could not be
-// added at all. The value is written as an SVG attribute, where '0' and 0 are
-// the same length.
+// table has the same type. These values are normally resolved for rendering and
+// never stored, but dragging a label materializes them into its record, and a
+// column holding 0 from one position and '0.45em' from another is one
+// -merge-layers refuses.
 var labelPositionStyles = {
   n: {dx: '0', dy: '-0.5em', 'text-anchor': 'middle'},
   s: {dx: '0', dy: '1.1em', 'text-anchor': 'middle'},
@@ -349,13 +350,44 @@ export function getLabelPositionStyle(pos) {
   return Object.assign({'label-pos': pos}, labelPositionStyles[pos.toLowerCase()]);
 }
 
-export function setLabelPositionStyle(rec, pos) {
-  var style = getLabelPositionStyle(pos);
-  if (!style) return false;
-  labelPositionFields.forEach(function(field) {
-    rec[field] = style[field];
-  });
-  return true;
+// Fills in the offsets and justification a label's position stands for, for
+// rendering. Returns @rec itself when there is nothing to add, and a copy when
+// there is: a renderer must not write into the record it was handed.
+//
+// label-pos is the only one of the four that is stored. The other three used to
+// be written alongside it, which made the table below a code generator rather
+// than a lookup: four columns in the user's data where one was meant, and the
+// table's own values -- '0' next to '0.45em' -- became the types of a column
+// that -merge-layers then had to agree about.
+//
+// A value on the record wins over the position, per property, so that
+// `label-pos=n dx=3` reads as "north, nudged 3px right" rather than losing the
+// north. That is also what makes this change invisible to files written before
+// it: they carry all three alongside label-pos, with exactly the values this
+// would supply.
+export function resolveLabelPosition(rec) {
+  var style = rec && rec['label-pos'] ? getLabelPositionStyle(rec['label-pos']) : null;
+  var out = null;
+  var field, i;
+  // An unusable position renders as if it were unset. The commands that set it
+  // reject one, so reaching here means it was written by an expression or came
+  // from a data file, where stopping the render is the wrong response.
+  if (!style) return rec;
+  for (i = 0; i < labelPositionDerivedFields.length; i++) {
+    field = labelPositionDerivedFields[i];
+    if (hasStyleValue(rec, field)) continue;
+    if (!out) out = Object.assign({}, rec);
+    out[field] = style[field];
+  }
+  return out || rec;
+}
+
+// Presence, not truthiness. `dy=0` is how a label cancels the vertical offset
+// its position carries, and the `rec.dy || 0` idiom used by the renderers would
+// read that as absent and hand back the offset it was written to remove.
+export function hasStyleValue(rec, field) {
+  var val = rec[field];
+  return field in rec && val !== undefined && val !== null && val !== '';
 }
 
 // Validates a comma-separated list of array indexes and returns it in

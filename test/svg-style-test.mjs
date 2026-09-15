@@ -366,7 +366,23 @@ describe('mapshaper-svg-style.js', function () {
       assert.deepEqual(lyr.data.getRecords(), target);
     })
 
-    it('label-pos literal is case-insensitive and sets offsets', function() {
+    it('label-pos is stored alone, and is case-insensitive', function() {
+      // The offsets and justification a position stands for are resolved when
+      // the label is drawn, so they are not in the record. They used to be
+      // written alongside it: four columns in the user's table where one was
+      // meant, and the table of offsets acting as a code generator rather than
+      // a lookup.
+      'n s e w ne se nw sw c'.split(' ').forEach(function(pos) {
+        var input = pos.toUpperCase();
+        var lyr = {data: new api.internal.DataTable([{}])};
+        api.cmd.svgStyle(lyr, {}, {label_pos: input});
+        assert.deepStrictEqual(lyr.data.getRecords(),
+          [{'label-pos': input, dx: undefined, dy: undefined,
+            'text-anchor': undefined}]);
+      });
+    })
+
+    it('label-pos resolves to the offsets that draw it', function() {
       var cases = {
         n: {dx: '0', dy: '-0.5em', 'text-anchor': 'middle'},
         s: {dx: '0', dy: '1.1em', 'text-anchor': 'middle'},
@@ -379,17 +395,64 @@ describe('mapshaper-svg-style.js', function () {
         c: {dx: '0', dy: '0.25em', 'text-anchor': 'middle'}
       };
       Object.keys(cases).forEach(function(pos) {
-        var input = pos.toUpperCase();
-        var lyr = {
-          data: new api.internal.DataTable([{}])
-        };
-        var target = Object.assign({'label-pos': input}, cases[pos]);
-        api.cmd.svgStyle(lyr, {}, {label_pos: input});
-        // strict, because dx has to be a string in every position: deepEqual
-        // reads '0' and 0 as the same value, which is the difference that made
-        // a layer of differently positioned labels impossible to add to
-        assert.deepStrictEqual(lyr.data.getRecords(), [target]);
+        var out = api.internal.resolveLabelPosition({'label-pos': pos.toUpperCase()});
+        // strict, because dx has to be a string in every position: a drag
+        // materializes these values into the record, and a column holding 0
+        // from one position and '0.45em' from another cannot be merged
+        assert.deepStrictEqual(out, Object.assign({'label-pos': pos.toUpperCase()},
+          cases[pos]));
       });
+    })
+
+    it('a value on the record wins over the position, per property', function() {
+      // So that `label-pos=n dx=3` reads as "north, nudged 3px right" instead
+      // of losing the north.
+      var out = api.internal.resolveLabelPosition({'label-pos': 'n', dx: 3});
+      assert.strictEqual(out.dx, 3);
+      assert.strictEqual(out.dy, '-0.5em');
+      assert.strictEqual(out['text-anchor'], 'middle');
+    })
+
+    it('an explicit zero cancels an offset rather than falling back', function() {
+      // Presence, not truthiness: the `rec.dy || 0` idiom the renderers use
+      // would read this as absent and restore the offset it was written to
+      // remove.
+      var out = api.internal.resolveLabelPosition({'label-pos': 'n', dy: 0});
+      assert.strictEqual(out.dy, 0);
+    })
+
+    it('a blank or missing value falls back to the position', function() {
+      var out = api.internal.resolveLabelPosition({'label-pos': 'e', dx: '', dy: undefined});
+      assert.strictEqual(out.dx, '0.45em');
+      assert.strictEqual(out.dy, '0.23em');
+    })
+
+    it('a record with no position is returned untouched', function() {
+      var rec = {'label-text': 'x', dx: 4};
+      assert.strictEqual(api.internal.resolveLabelPosition(rec), rec);
+    })
+
+    it('an unusable position renders as if it were unset', function() {
+      // Reaching the renderer with one means it came from an expression or a
+      // data file, where refusing to draw the map is the wrong response.
+      var rec = {'label-pos': 'nope'};
+      assert.strictEqual(api.internal.resolveLabelPosition(rec), rec);
+    })
+
+    it('setting label-pos takes back the offsets a label was carrying', function() {
+      // A value on the record wins, so without this a position chosen for a
+      // label that had been dragged would appear to do nothing.
+      var lyr = {data: new api.internal.DataTable([{dx: 12, dy: -30, 'text-anchor': 'start'}])};
+      api.cmd.svgStyle(lyr, {}, {label_pos: 'n'});
+      assert.deepStrictEqual(lyr.data.getRecords(),
+        [{'label-pos': 'n', dx: undefined, dy: undefined, 'text-anchor': undefined}]);
+    })
+
+    it('an offset given with label-pos survives it', function() {
+      var lyr = {data: new api.internal.DataTable([{}])};
+      api.cmd.svgStyle(lyr, {}, {label_pos: 'n', dx: '3'});
+      assert.deepStrictEqual(lyr.data.getRecords(),
+        [{'label-pos': 'n', dx: 3, dy: undefined, 'text-anchor': undefined}]);
     })
 
     it('literals 3', function() {

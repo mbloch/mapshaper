@@ -337,18 +337,9 @@ export function LabelEditor(gui, ext) {
     if (o.pending.corners.length > 0) {
       rec['label-corners'] = o.pending.corners.join(',');
     }
-    expandLabelPosition(rec);
+    // No need to expand label-pos here: the renderer resolves it, so a pending
+    // label is positioned by the same lookup as a committed one.
     return rec;
-  }
-
-  // label-pos is shorthand for text-anchor/dx/dy, and the renderer reads only
-  // the three. -add-label expands it when the label is created; a pending label
-  // has to be shown the same way before then, or choosing a position would do
-  // nothing until the label was committed.
-  function expandLabelPosition(rec) {
-    if (rec['label-pos']) {
-      internal.setLabelPositionStyle(rec, rec['label-pos']);
-    }
   }
 
   function removePendingGroup(o) {

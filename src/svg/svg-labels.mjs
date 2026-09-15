@@ -1,4 +1,4 @@
-import { applyStyleAttributes } from '../svg/svg-properties';
+import { applyStyleAttributes, resolveLabelPosition } from '../svg/svg-properties';
 
 // Accepting \n (two chars) as an alternative to the newline character
 // (sometimes, '\n' is not converted to newline, e.g. in a Makefile)
@@ -12,13 +12,21 @@ export function toLabelString(val) {
 
 // Kludge for applying fill and other styles to a <text> element
 // (for rendering labels in the GUI with the dot in Canvas, not SVG)
-export function renderStyledLabel(rec) {
+export function renderStyledLabel(recArg) {
+  // Resolved once and used for both, so that the offsets a position implies and
+  // the justification it implies cannot come from different places: text-anchor
+  // is written by applyStyleAttributes() and dx/dy by renderLabel().
+  var rec = resolveLabelPosition(recArg);
   var o = renderLabel(rec);
   applyStyleAttributes(o, 'label', rec);
   return o;
 }
 
-export function renderLabel(rec) {
+export function renderLabel(recArg) {
+  // Idempotent, and free on a record that has no position to resolve or has
+  // already been through it, so calling it here as well costs nothing and means
+  // every way into the renderer draws a label in the position it is stored in.
+  var rec = resolveLabelPosition(recArg);
   var line = toLabelString(rec['label-text']);
   var morelines, obj;
   var newline = labelNewlineRxp;

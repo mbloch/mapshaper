@@ -40,8 +40,25 @@ export function mergeStyleValues(style, values) {
   return out;
 }
 
+// What the tool gives a label before anything has been chosen for it.
+//
+// A label with no position at all sits with its baseline on its anchor point,
+// so the point lands at the foot of the text rather than in it: click a spot,
+// type, and the words appear above the place they are about to be read as
+// marking. 'c' centres the text on the anchor instead, which is what clicking
+// somewhere and typing looks like it should do, and it is the position an icon
+// is drawn to sit behind.
+//
+// Only the tool defaults this. -add-label with no position still creates a
+// label without one, so the default is a choice this tool makes and passes on
+// explicitly, not a meaning the command gives to its absence.
+export var DEFAULT_NEW_LABEL_STYLE = {'label-pos': 'c'};
+
 export function getNewLabelStyle(gui) {
-  return gui.state.new_label_style || {};
+  if (!gui.state.new_label_style) {
+    gui.state.new_label_style = Object.assign({}, DEFAULT_NEW_LABEL_STYLE);
+  }
+  return gui.state.new_label_style;
 }
 
 export function updateNewLabelStyle(gui, values) {
@@ -50,7 +67,7 @@ export function updateNewLabelStyle(gui, values) {
 }
 
 export function clearNewLabelStyle(gui) {
-  gui.state.new_label_style = {};
+  gui.state.new_label_style = null;
 }
 
 // The label currently open for text editing, or null: {id, refocus}.

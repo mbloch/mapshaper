@@ -155,25 +155,50 @@ describe('mapshaper-add-label.mjs', function () {
         /Unexpected value for icon-size/);
     });
 
-    it('label-pos is expanded into the properties that draw it', async function () {
-      // nothing reads label-pos at render time: -style turns it into a
-      // text-anchor and a dx/dy, and a label created with it has to match, or
-      // it is stored in one position and drawn in another
+    it('label-pos is the only position property stored', async function () {
+      // The offsets and justification it stands for are resolved when the label
+      // is drawn, so creating a label with a position leaves the user one
+      // column rather than four.
+      var out = await run("-add-label coordinates=0,0 text=x label-pos=sw");
+      var p = geojson(out).features[0].properties;
+      assert.deepStrictEqual(p, {'label-text': 'x', 'label-pos': 'sw'});
+    });
+
+    it('a label created with a position matches one styled with it', async function () {
       var viaAdd = await run("-add-label coordinates=0,0 text=x label-pos=sw");
       var viaStyle = await run("-add-label coordinates=0,0 text=x -style label-pos=sw");
       assert.deepStrictEqual(
         geojson(viaAdd).features[0].properties,
         geojson(viaStyle).features[0].properties);
-      assert.equal(geojson(viaAdd).features[0].properties['text-anchor'], 'end');
+    });
+
+    it('an offset given with a position is kept, and wins when drawn', async function () {
+      var out = await run("-add-label coordinates=0,0 text=x label-pos=n dx=3");
+      var p = geojson(out).features[0].properties;
+      assert.strictEqual(p['label-pos'], 'n');
+      assert.strictEqual(p.dx, 3);
+      assert.strictEqual(api.internal.resolveLabelPosition(p).dy, '-0.5em');
+    });
+
+    it('label-pos is dropped from a path label, with a warning', async function () {
+      // A path label's text runs along its curve from a start offset, so it has
+      // no position around an anchor to take. The warning is a no-op under the
+      // test hooks, so only the dropped property can be asserted here.
+      var out = await run("-add-label coordinates=0,0,9,9 text=x label-pos=n");
+      var p = geojson(out).features[0].properties;
+      assert.ok(!('label-pos' in p), 'label-pos not stored on a path label');
     });
 
     it('labels with unlike styles and positions go on one layer', async function () {
       // Each label carries only the properties it was given, so no two of these
-      // have the same fields, and their positions expand to unlike dx values --
-      // both of which the merge that adds a label to a layer objects to. Only
-      // the second is fatal, and it is the one asserted here: the fields the
-      // labels do not share are reported with message(), which the test hooks
-      // turn into a no-op, so the noise itself has to be checked by eye.
+      // have the same fields, which the merge that adds a label to a layer
+      // objects to. The fields the labels do not share are reported with
+      // message(), which the test hooks turn into a no-op, so the noise itself
+      // has to be checked by eye.
+      //
+      // Two labels in different positions used to be the fatal case here: the
+      // positions expanded to dx values of unlike types, which the merge
+      // refused. Storing only label-pos removes the column they fought over.
       var out = await run(
         "-add-label coordinates=1,1 text=One icon=dot icon-size=4 " +
         "-add-label coordinates=2,2 text=Two css='fill:red' " +
@@ -182,28 +207,49 @@ describe('mapshaper-add-label.mjs', function () {
         "-add-label coordinates=5,5 text=Five font-size=20");
       var features = geojson(out).features;
       assert.equal(features.length, 5);
-      assert.equal(features[3].properties['dx'], '0.45em');
-      // the centred position stores dx as a string too, which is what lets the
-      // two positions share a column
-      assert.strictEqual(features[2].properties['dx'], '0');
+      assert.equal(features[2].properties['label-pos'], 'n');
+      assert.equal(features[3].properties['label-pos'], 'e');
+      assert.ok(!('dx' in features[3].properties), 'no dx column to disagree about');
       // a field one label lacks is absent from its output rather than null,
       // which is what the merge filling the gaps with undefined leaves behind
       assert.ok(!('css' in features[0].properties), 'no null css on label One');
     });
 
-    it('a layer whose dx is numbers still accepts an em offset', async function () {
-      // Written before label positions stored dx as a string. Widening the
-      // column is the only way to hold both values, since '0.45em' has no
-      // numeric form.
+    it('a layer written before this change keeps its own offsets', async function () {
+      // Files written when a position expanded into all four properties carry
+      // values that are exactly what the lookup would supply, so a value on the
+      // record winning is what makes them render unchanged.
       var input = JSON.stringify({
         type: 'FeatureCollection',
         features: [{
           type: 'Feature',
-          properties: {'label-text': 'Old', 'label-pos': 'n', dx: 0, dy: '-0.5em'},
+          properties: {'label-text': 'Old', 'label-pos': 'n', dx: '0', dy: '-0.5em',
+            'text-anchor': 'middle'},
           geometry: {type: 'Point', coordinates: [0, 0]}
         }]
       });
       var out = await runWith(input, "-add-label coordinates=4,4 text=New label-pos=e");
+      var features = geojson(out).features;
+      var resolved = api.internal.resolveLabelPosition(features[0].properties);
+      assert.strictEqual(resolved.dx, '0');
+      assert.strictEqual(resolved.dy, '-0.5em');
+      // the new label brings no dx of its own, so the old column is untouched
+      assert.strictEqual(features[1].properties.dx, undefined);
+      assert.strictEqual(api.internal.resolveLabelPosition(features[1].properties).dx, '0.45em');
+    });
+
+    it('a layer whose dx is numbers still accepts an em offset', async function () {
+      // Widening the column is the only way to hold both values, since
+      // '0.45em' has no numeric form.
+      var input = JSON.stringify({
+        type: 'FeatureCollection',
+        features: [{
+          type: 'Feature',
+          properties: {'label-text': 'Old', dx: 0, dy: -4},
+          geometry: {type: 'Point', coordinates: [0, 0]}
+        }]
+      });
+      var out = await runWith(input, "-add-label coordinates=4,4 text=New dx=0.45em");
       var features = geojson(out).features;
       assert.strictEqual(features[0].properties.dx, '0');
       assert.strictEqual(features[1].properties.dx, '0.45em');

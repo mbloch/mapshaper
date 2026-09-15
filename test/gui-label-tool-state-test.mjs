@@ -498,15 +498,26 @@ describe('gui label tool state', function() {
       });
     });
 
+    it('starts at the tool default', function() {
+      // A label with no position sits with its baseline on its anchor, which
+      // puts the point at the foot of the text rather than in it.
+      assert.deepEqual(getNewLabelStyle(fakeGui()), {'label-pos': 'c'});
+    });
+
     it('accumulates across several panel edits', function() {
       var gui = fakeGui();
-      assert.deepEqual(getNewLabelStyle(gui), {});
       updateNewLabelStyle(gui, [['font-family', 'Georgia']]);
       updateNewLabelStyle(gui, [['font-size', 14]]);
       assert.deepEqual(getNewLabelStyle(gui),
-        {'font-family': 'Georgia', 'font-size': 14});
+        {'label-pos': 'c', 'font-family': 'Georgia', 'font-size': 14});
       clearNewLabelStyle(gui);
-      assert.deepEqual(getNewLabelStyle(gui), {});
+      assert.deepEqual(getNewLabelStyle(gui), {'label-pos': 'c'});
+    });
+
+    it('a position chosen in the panel replaces the default', function() {
+      var gui = fakeGui();
+      updateNewLabelStyle(gui, [['label-pos', 'ne']]);
+      assert.deepEqual(getNewLabelStyle(gui), {'label-pos': 'ne'});
     });
   });
 
