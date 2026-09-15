@@ -53,17 +53,17 @@ export function addLabel(targetLayers, targetDataset, opts) {
     setOutputLayerName(outputLyr, targetLyr && targetLyr.name, 'labels', opts);
     return [outputLyr];
   }
-  return cmd.mergeLayers([targetLyr, outputLyr], {force: true});
+  // verbose: false silences "Fields [...] are missing from one or more layers".
+  // Labels differ in which style properties they carry -- one has an icon, the
+  // next a css rule -- so a one-label layer almost never has the same fields as
+  // the layer it is joining.
+  //
+  // force stays on for the same reason.
+  return cmd.mergeLayers([targetLyr, outputLyr], {force: true, verbose: false});
 }
 
 // Makes the new label's values match the types the target layer already holds,
 // so that adding a label cannot be the thing that breaks a layer's schema.
-//
-// The merge below rejects a column that ends up holding two types, and there is
-// no way for the user to see it coming or to act on it: the message names a
-// field they never mentioned. Data read from a file can easily store a size as
-// "20" where this command writes 20, and a layer like that would otherwise
-// refuse every label it was offered.
 //
 // Only string and number are worth reconciling. Anything else in a style field
 // is odd enough that quietly rewriting it would hide a real problem.
@@ -76,10 +76,34 @@ function matchTargetFieldTypes(d, targetLyr) {
     if (!type || type === typeof val) return;
     if (type == 'string' && utils.isNumber(val)) {
       d[key] = String(val);
-    } else if (type == 'number' && utils.isString(val) && isFiniteString(val)) {
-      d[key] = Number(val);
+    } else if (type == 'number' && utils.isString(val)) {
+      if (isFiniteString(val)) {
+        d[key] = Number(val);
+      } else {
+        stringifyColumn(key, records);
+      }
     }
   });
+}
+
+// Widens a column of numbers to strings, for a value that cannot be a number:
+// '0.45em' is a length with units, which is what a label position east of its
+// anchor expands to.
+//
+// Every number has a faithful string form, and these values are written out as
+// SVG attributes, so restating 0 as '0' changes nothing that is drawn or
+// exported. Narrowing the other way is what is not always possible, which is
+// why this is the direction the column moves.
+//
+// Reached by a layer whose dx column holds numbers -- written before label
+// positions stored dx as a string -- which would otherwise refuse every label
+// offered an em offset.
+function stringifyColumn(key, records) {
+  for (var i = 0; i < records.length; i++) {
+    if (records[i] && utils.isNumber(records[i][key])) {
+      records[i][key] = String(records[i][key]);
+    }
+  }
 }
 
 function isFiniteString(str) {

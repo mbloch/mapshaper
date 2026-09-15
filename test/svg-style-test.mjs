@@ -368,15 +368,15 @@ describe('mapshaper-svg-style.js', function () {
 
     it('label-pos literal is case-insensitive and sets offsets', function() {
       var cases = {
-        n: {dx: 0, dy: '-0.5em', 'text-anchor': 'middle'},
-        s: {dx: 0, dy: '1.1em', 'text-anchor': 'middle'},
+        n: {dx: '0', dy: '-0.5em', 'text-anchor': 'middle'},
+        s: {dx: '0', dy: '1.1em', 'text-anchor': 'middle'},
         e: {dx: '0.45em', dy: '0.23em', 'text-anchor': 'start'},
         w: {dx: '-0.45em', dy: '0.23em', 'text-anchor': 'end'},
         ne: {dx: '0.4em', dy: '-0.15em', 'text-anchor': 'start'},
         se: {dx: '0.4em', dy: '0.7em', 'text-anchor': 'start'},
         nw: {dx: '-0.4em', dy: '-0.15em', 'text-anchor': 'end'},
         sw: {dx: '-0.4em', dy: '0.7em', 'text-anchor': 'end'},
-        c: {dx: 0, dy: '0.25em', 'text-anchor': 'middle'}
+        c: {dx: '0', dy: '0.25em', 'text-anchor': 'middle'}
       };
       Object.keys(cases).forEach(function(pos) {
         var input = pos.toUpperCase();
@@ -385,7 +385,10 @@ describe('mapshaper-svg-style.js', function () {
         };
         var target = Object.assign({'label-pos': input}, cases[pos]);
         api.cmd.svgStyle(lyr, {}, {label_pos: input});
-        assert.deepEqual(lyr.data.getRecords(), [target]);
+        // strict, because dx has to be a string in every position: deepEqual
+        // reads '0' and 0 as the same value, which is the difference that made
+        // a layer of differently positioned labels impossible to add to
+        assert.deepStrictEqual(lyr.data.getRecords(), [target]);
       });
     })
 

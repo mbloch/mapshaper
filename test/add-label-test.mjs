@@ -167,6 +167,48 @@ describe('mapshaper-add-label.mjs', function () {
       assert.equal(geojson(viaAdd).features[0].properties['text-anchor'], 'end');
     });
 
+    it('labels with unlike styles and positions go on one layer', async function () {
+      // Each label carries only the properties it was given, so no two of these
+      // have the same fields, and their positions expand to unlike dx values --
+      // both of which the merge that adds a label to a layer objects to. Only
+      // the second is fatal, and it is the one asserted here: the fields the
+      // labels do not share are reported with message(), which the test hooks
+      // turn into a no-op, so the noise itself has to be checked by eye.
+      var out = await run(
+        "-add-label coordinates=1,1 text=One icon=dot icon-size=4 " +
+        "-add-label coordinates=2,2 text=Two css='fill:red' " +
+        "-add-label coordinates=3,3 text=Three label-pos=n " +
+        "-add-label coordinates=4,4 text=Four label-pos=e " +
+        "-add-label coordinates=5,5 text=Five font-size=20");
+      var features = geojson(out).features;
+      assert.equal(features.length, 5);
+      assert.equal(features[3].properties['dx'], '0.45em');
+      // the centred position stores dx as a string too, which is what lets the
+      // two positions share a column
+      assert.strictEqual(features[2].properties['dx'], '0');
+      // a field one label lacks is absent from its output rather than null,
+      // which is what the merge filling the gaps with undefined leaves behind
+      assert.ok(!('css' in features[0].properties), 'no null css on label One');
+    });
+
+    it('a layer whose dx is numbers still accepts an em offset', async function () {
+      // Written before label positions stored dx as a string. Widening the
+      // column is the only way to hold both values, since '0.45em' has no
+      // numeric form.
+      var input = JSON.stringify({
+        type: 'FeatureCollection',
+        features: [{
+          type: 'Feature',
+          properties: {'label-text': 'Old', 'label-pos': 'n', dx: 0, dy: '-0.5em'},
+          geometry: {type: 'Point', coordinates: [0, 0]}
+        }]
+      });
+      var out = await runWith(input, "-add-label coordinates=4,4 text=New label-pos=e");
+      var features = geojson(out).features;
+      assert.strictEqual(features[0].properties.dx, '0');
+      assert.strictEqual(features[1].properties.dx, '0.45em');
+    });
+
     it('an unusable label-pos is rejected', async function () {
       await assert.rejects(run("-add-label coordinates=0,0 text=x label-pos=nope"),
         /Unexpected value for label-pos/);

@@ -106,16 +106,22 @@ var propertiesBySymbolType = {
 
 export var labelPositionFields = ['label-pos', 'dx', 'dy', 'text-anchor'];
 
+// dx is '0' and not 0 in the centred positions, so that every position in the
+// table stores dx as a string. A layer holding a label positioned 'n' (dx 0)
+// and one positioned 'e' (dx '0.45em') had a dx column with a number and a
+// string in it, which -merge-layers refuses -- so the second label could not be
+// added at all. The value is written as an SVG attribute, where '0' and 0 are
+// the same length.
 var labelPositionStyles = {
-  n: {dx: 0, dy: '-0.5em', 'text-anchor': 'middle'},
-  s: {dx: 0, dy: '1.1em', 'text-anchor': 'middle'},
+  n: {dx: '0', dy: '-0.5em', 'text-anchor': 'middle'},
+  s: {dx: '0', dy: '1.1em', 'text-anchor': 'middle'},
   e: {dx: '0.45em', dy: '0.23em', 'text-anchor': 'start'},
   w: {dx: '-0.45em', dy: '0.23em', 'text-anchor': 'end'},
   ne: {dx: '0.4em', dy: '-0.15em', 'text-anchor': 'start'},
   se: {dx: '0.4em', dy: '0.7em', 'text-anchor': 'start'},
   nw: {dx: '-0.4em', dy: '-0.15em', 'text-anchor': 'end'},
   sw: {dx: '-0.4em', dy: '0.7em', 'text-anchor': 'end'},
-  c: {dx: 0, dy: '0.25em', 'text-anchor': 'middle'}
+  c: {dx: '0', dy: '0.25em', 'text-anchor': 'middle'}
 };
 
 // symType: point, polygon, polyline, label
