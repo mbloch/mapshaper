@@ -915,6 +915,14 @@ addressed on its own. Every handle is drawn the same now that there are no
 corners, so nothing needs a canvas styler — which runs per shape, and was how a
 corner handle was drawn differently from a smooth one.
 
+The handles' style must say `type: 'styled'`, which is the renderer's switch
+between its two ways of drawing a point layer: `drawStyledLayerToCanvas()` reads
+`radius`, `fillColor` and `strokeColor` on that path only, and sends anything
+else — including a style carrying a `dotSize` — to `drawSquareDots()`, which
+draws a square of `dotSize` pixels and defaults to one. The handles shipped
+without the flag at first, and so were a single white pixel each: invisible
+against the guide line running underneath them.
+
 Three properties of the wrapper matter. The coordinates come from the *display*
 layer, so they are in the display CRS already and `gui.geographic` must be
 `false` or `getArcsForRendering()` would project them a second time. `arcCounts`
@@ -1306,6 +1314,10 @@ positioned through the panel loses that offset on its first drag. It behaved
 that way before this change too, when the em values were stored, and the new
 label tool does not share the problem: it moves a label by rewriting its anchor
 point.
+
+The tool is proposed to take over offsetting text as well, at which point it
+inherits the same materialization — in pixels, for the same reason. See
+"Proposed: the tool takes over positioning".
 
 #### What this gives up
 
@@ -2130,7 +2142,8 @@ Emptying a label's text still removes it too, which is what `commit()` does
 when a session ends with no glyphs left.
 
 `labels` ("position labels") stays: it drags a label against a fixed anchor to
-set `dx`/`dy`, which the label tool has no gesture for.
+set `dx`/`dy`, which the label tool has no gesture for. See "Proposed: the tool
+takes over positioning" below.
 
 Two places still branch on the mode to hold that line: `selectStyleFeature()`
 gives label mode its own plain-click rule, and the yellow halo is applied only
@@ -2139,6 +2152,220 @@ outside label mode. Both branches go away with `labels`.
 `HitControl`'s mode gates (`selectable()`, `draggable()`, `clickable()`,
 `eventIsEnabled()`) need explicit entries for the new mode; it needs both drag
 (moving anchors and knots) and click (selecting and entering edit).
+
+### Proposed: the tool takes over positioning
+
+*Designed, not built.* The one thing `labels` still does that the label tool
+cannot is offset a label's text from a **fixed** anchor. The tool's drags move
+the anchor itself and the nine-position grid reaches nine places around it, so
+there is no way to nudge a name clear of the river it collides with.
+
+This lands alongside a reorganization of the panel into **Text**, **Icon**,
+**Label position** and **Saved styles** sections; only the position part is
+specified here. Two controls the reorganization must not lose: the **deselect**
+link, which is how a selection is given up in favour of styling the next label,
+and the preset **Delete** button.
+
+#### Fixed and Draggable
+
+**The Position row gains a two-segment toggle, `Fixed | Draggable`, and the
+nine-position grid stays live in both.** The names say what a drag on a label
+does:
+
+- **Fixed** — the text is fixed to its anchor, so dragging the label moves
+  anchor and text together. That is the `-update-label` gesture the tool
+  already has.
+- **Draggable** — the text comes off its anchor. Dragging the glyphs sets the
+  offset; dragging the symbol at the anchor still moves the anchor.
+
+The toggle is therefore not a safety catch. It is which of two meanings a drag
+on the glyphs carries, a question that has to be answered somewhere, and
+answering it with a mode rather than by hit-priority is what keeps a centred
+label — whose text sits on top of its own anchor — grabbable at all.
+
+The grid staying live is what makes the toggle cheap: **clicking a position is
+the way back**, since `-style label-pos=…` clears `dx`, `dy` and `text-anchor`
+on its own. Switching modes changes no data in either direction.
+
+An earlier version was `Preset | Freeform`, where freeform replaced the grid
+with `x`/`y` steppers. It had to decide what switching back did to a label that
+had been dragged — snap to the nearest of the nine — which meant a helper to
+compute the nearest and a mode switch that moved labels. None of that is needed
+now.
+
+#### The mode belongs to the tool, not to the label
+
+Which segment is lit cannot be derived from the record. A label with
+`label-pos=ne` can sit in either mode, and one that has been dragged stays
+dragged when the toggle goes back to Fixed. That is deliberate: a per-label
+"locked" flag would be a field nothing else reads and one more column in
+`-o out.csv`.
+
+Three consequences:
+
+- it is excluded from `NEW_LABEL_STYLE_FIELDS` and from what
+  `StylePresetControl` saves, or a saved style would carry a pointer mode around
+  with it;
+- it defaults to **Fixed** when the tool opens, so a stray drag cannot displace
+  text in a session that never asked for it, and is remembered while the tool
+  stays on;
+- it governs the text's offset from its anchor and nothing else. Anchor drags
+  and a path label's knot drags are unaffected — "Draggable" is not a general
+  lock.
+
+It will also *look* per-label, sitting in a panel whose every other control
+writes a property to the selection. Styling it as a tool control rather than as
+a value is the mitigation.
+
+#### The grid needs a symbol at the anchor
+
+**The nine positions place text around something, so with nothing drawn at the
+anchor the grid is locked to the centre cell.** There is no answer to
+"north-east of what?", and `c` is already what `-add-label` gives a new label.
+
+The test is whether the feature draws a symbol, not whether it has an `icon`:
+
+```js
+// svg-symbols.mjs
+if (featureHasSvgSymbol(rec)) children.push(renderSymbol(rec));
+if (featureHasLabel(rec)) children.push(renderStyledLabel(rec));
+```
+
+`renderSymbol()` draws an `svg-symbol`, an `icon`, or a plain circle for
+`r > 0`, and `featureHasSvgSymbol()` covers all three. Keying the gate on `icon`
+alone would lock the commonest labels in the app to the centre of their own
+dots: the point panel's **Create labels** button runs
+`-style label-text=<expr>` on the layer in front of you, so a styled dots layer
+keeps its `r` and `fill` and gains label text.
+
+With a symbol present the centre cell stops being the default but stays
+available. A hollow `ring` or `square` with a number centred in it is a real
+idiom, and `dominant-baseline` is in the vocabulary to make it sit right.
+
+**Dragging is not gated on a symbol.** A labels layer whose dots live in a
+*different* layer — the usual way to give symbol and text unrelated styling —
+has nothing at its anchors and still needs its text placed. Those labels get
+the centre cell and Draggable.
+
+A label that arrives in a state this would not have produced — `label-pos=ne`
+with no symbol, or `dx`/`dy` from the legacy mode — is shown as it is, with the
+grid live. The rule is a default and a guard, not an invariant: a panel that
+refuses to display what is in the record is what "a position is stored as a
+position" was getting away from.
+
+#### The anchor ring goes, with one exception
+
+The selection cue draws a ring on the anchor of any label with no `icon`. Under
+these rules that is redundant almost everywhere — a label with no symbol is
+centred, so its anchor is under the glyphs and the selection box already says
+where it is, and a label with a symbol has the symbol.
+
+It stays for one combination: **selected, offset, and nothing drawn at the
+anchor.** There the ring is the only thing that says what the text hangs off,
+and the only handle for moving the anchor.
+
+So the `!rec.icon` test in `gui-label-selection.mjs` narrows rather than
+disappears, and `ANCHOR_RADIUS` and `.label-cue-anchor` stay. What does go is
+the ring's role as the general anchor handle: `hoverAnchor()` in the browser
+tests, and the test that moves a label by dragging its anchor marker, move to
+dragging the glyphs in Fixed mode.
+
+#### Alignment and the grid both write `text-anchor`
+
+The reorganized panel's Text section has an alignment control, and `label-pos`
+resolves to `dx`, `dy` *and* `text-anchor`. Setting a position clears all three:
+
+```
+$ mapshaper -i labels.json -style dx=12 dy=-4 -style label-pos=s -o format=csv
+label-text,label-pos,dx,dy,text-anchor
+Reno,s,,,
+```
+
+So the two controls fight. Picking a position visibly resets the alignment, and
+setting alignment by hand overrides the position's justification — leaving
+`label-pos=e` with `text-anchor=end`, text running back across the icon it was
+placed beside.
+
+**Alignment is enabled only where it is independent of position**: multi-line
+labels, where it is how the lines line up with each other, and path labels,
+where it pairs with `label-start-offset`. For a single-line anchored label,
+"which side of the dot" is the position's question and the grid answers it —
+and under the symbol gate such a label is centred anyway, so `text-anchor` is
+`middle` and there is nothing to choose.
+
+#### What a drag writes
+
+- **All three properties, not a delta.** `resolveLabelPosition()` falls back per
+  property rather than summing, so `label-pos=e dx=3` means "east's `dy` and
+  justification, with `dx` overridden to 3px" and not "3px east of east". A drag
+  materializes the resolved `dx`, `dy` and `text-anchor`, adds its delta to
+  those, and clears `label-pos` — what `prepareRecordForDrag()` does today.
+  Storing a bare delta instead would teleport the text to its anchor on the
+  first pixel of movement.
+- **In pixels**, matching the legacy mode. The cost, accepted: a materialized
+  offset stops tracking font size, so resizing the text afterwards moves it
+  relative to its anchor. Ems would keep that relationship, at the price of a
+  conversion in everything that touches an offset.
+- `text-anchor` follows the text across its anchor, as `autoUpdateTextAnchor()`
+  does now, so the justification still matches which side the text is on when
+  the export font is not the browser's.
+- **One `-style` per gesture**, run on release: a drag is one undo step and one
+  line of session history, the granularity `commitKnotDrag()` already uses for
+  a knot.
+- **Only the label under the pointer moves**, even with several selected.
+  `-style` writes one value to every id it is given, so a group drag would set
+  them all to the same absolute offset instead of nudging each by its own delta;
+  a relative group nudge needs `-each` and is out of scope.
+- A hairline from the anchor to the text box while dragging, in the selection
+  colour. The offset is what is being edited, and the legacy mode drew nothing
+  to show it.
+
+The panel shows **no `x`/`y` values** for a dragged label: the map is the
+readout. What that costs is precise and keyboard-reachable adjustment, which an
+arrow-key nudge on a selected label recovers — outside a typing session, where
+the arrows move the caret. And the grid, which has no cell lit once a label has
+been dragged, draws the **nearest position faintly**: it says roughly where the
+label belongs, and marks the cell that puts it back.
+
+#### `-style` learns to unset a property
+
+A drag has to clear `label-pos` and cannot: an empty value is rejected rather
+than read as "remove this".
+
+```
+$ mapshaper -i labels.json -style label-pos= -o out.csv
+Error: [style] Unexpected value for label-pos:
+$ mapshaper -i labels.json -style dx= -o out.csv
+Error: [style] Unexpected value for dx:
+```
+
+(A string property such as `css=` does take an empty value and stores it. The
+legacy mode never met this, because `prepareRecordForDrag()` mutates the record
+instead of running a command — which is what the GUI guardrails say an edit
+should not do.)
+
+**Decided: an empty value unsets a typed property.** It is consistent with what
+clearing already writes, since `-style label-pos=s` leaves `dx`, `dy` and
+`text-anchor` undefined rather than zero, and it gives the CLI a per-property
+unset next to `-style clear`, which can only clear all of them at once.
+
+The panel's readout does not depend on it. The lit cell is decided by the
+offsets first — any `dx`/`dy` means no cell is lit, whatever `label-pos` says —
+so a record written anywhere else cannot make the grid lie.
+
+#### Turning the icon off and on
+
+Both transitions change which positions are legal, so both are commands and
+both are one undo step.
+
+- **Icon on**: the centre cell stops being the default, and a label sitting
+  there moves to a conventional off-centre position (`e`).
+- **Icon off**: the grid locks back to centre and the offsets go with it, so a
+  hand-placed label loses its placement. That makes the icon toggle
+  destructive; being one undoable command is what makes it acceptable.
+
+Landing all of this retires the `labels` mode, and with it the two branches
+above: `selectStyleFeature()`'s label-mode click rule and the halo condition.
 
 ### Curvature tool state machine
 

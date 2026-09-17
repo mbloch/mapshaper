@@ -155,6 +155,18 @@ describe('gui label path guide', function() {
       assert.equal(style.radius, 3.2);
     });
 
+    it('asks for handles the canvas renderer will draw as circles', function() {
+      // drawStyledLayerToCanvas() reads radius, fillColor and strokeColor on
+      // the type: 'styled' path only. A point layer without it, or with a
+      // dotSize, is drawn by drawSquareDots() as a square of dotSize pixels --
+      // one pixel by default, which is how the handles came to be invisible.
+      var layers = getLabelPathGuideLayers(activeLayer([CURVE]),
+        [{knots: CURVE}]);
+      var style = knotLayer(layers).gui.style;
+      assert.equal(style.type, 'styled');
+      assert.equal(style.dotSize, undefined);
+    });
+
     it('marks the layers as overlays', function() {
       var layers = getLabelPathGuideLayers(activeLayer([CURVE]),
         [{knots: CURVE}]);

@@ -112,6 +112,8 @@ function buildKnotLayer(activeLyr, curves) {
     geometry_type: 'point',
     shapes: shapes
   }, {
+    // type: 'styled' is what gets these drawn as circles.
+    type: 'styled',
     radius: KNOT_RADIUS,
     strokeColor: violet,
     strokeWidth: 1.5,
