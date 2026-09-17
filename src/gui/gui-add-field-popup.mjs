@@ -7,7 +7,7 @@ export function openAddFieldPopup(gui, ids, lyr) {
   el.addClass('option-menu');
   var html = `<div><input type="text" class="field-name text-input" placeholder="field name"></div>
   <div><input type="text" class="field-value text-input" placeholder="value"><div>
-  <div tabindex="0" class="btn dialog-btn">Apply</div> <span class="inline-checkbox"><input type="checkbox" class="all" />assign value to all records</span>`;
+  <div class="btn dialog-btn">Apply</div> <span class="inline-checkbox"><input type="checkbox" class="all" />assign value to all records</span>`;
   el.html(html);
 
   var name = el.findChild('.field-name');
@@ -46,6 +46,11 @@ export function openAddFieldPopup(gui, ids, lyr) {
       } else {
         console.error(err);
       }
+    });
+  });
+  [name, val].forEach(function(input) {
+    input.on('keydown', function(e) {
+      if (e.key == 'Enter') btn.node().click();
     });
   });
 }

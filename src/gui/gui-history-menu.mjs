@@ -120,7 +120,6 @@ export function HistoryMenu(gui) {
   document.addEventListener('keydown', function(e) {
     if (gui.getMode() == 'history_menu' && e.key == 'Escape') {
       gui.clearMode();
-      btn.node().focus();
     }
   });
 

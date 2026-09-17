@@ -317,6 +317,10 @@ single point has always had.
 | `label-side` | `left`\|`right` | Which side of the path the text sits on |
 | `label-text-width` | number | Measured text width in px at native font-size |
 | `label-text-hash` | string | Fingerprint of the values that width was measured from |
+| `icon-opacity` | number | Opacity of the anchor symbol, 0–1, independent of the text's |
+
+`icon-opacity` is there because every existing opacity property applies to a
+label's symbol *and* its text; see "The icon's opacity is its own property".
 
 `label-pos` predates this work but changed meaning during it: it is now the only
 position property stored, with the offsets it stands for resolved at render
@@ -1207,9 +1211,16 @@ The existing property vocabulary maps onto `<textPath>` better than expected:
 | Which side | n/a | `label-side` |
 
 So the alignment half of the toolbar is mostly existing properties.
-`label-side` maps to the SVG 2 `side` attribute, which is not universally
-supported; where it is missing the fallback is to reverse the path direction,
-which is equivalent and works everywhere.
+
+`label-side` maps to the SVG 2 `side` attribute, and that mapping is why the
+GUI does not use it. Support is Firefox-only — Firefox 61 and up, not Chrome,
+not Safari, 3.24% of global usage — so a label flipped in the panel would look
+unchanged in the browser most of this runs in, and the flip would appear only in
+an export opened in Firefox. The attribute is defined as "effectively reverses
+the path direction", so **reversing the knot order is the same operation** and
+works in every renderer. That is what the tool does; see "Sliding and flipping
+are drags, not controls". The property stays supported for the CLI and for
+imported data, and the renderer still honours it.
 
 ### A position is stored as a position
 
@@ -2162,9 +2173,12 @@ there is no way to nudge a name clear of the river it collides with.
 
 This lands alongside a reorganization of the panel into **Text**, **Icon**,
 **Label position** and **Saved styles** sections; only the position part is
-specified here. Two controls the reorganization must not lose: the **deselect**
-link, which is how a selection is given up in favour of styling the next label,
-and the preset **Delete** button.
+specified here. One control the reorganization must not lose: the **deselect**
+link, which is how a selection is given up in favour of styling the next label.
+
+The preset **Delete** button is not on that list: it goes on purpose, and
+deletion moves into the apply menu. See "Saved styles is an apply menu, not a
+selection".
 
 #### Fixed and Draggable
 
@@ -2238,9 +2252,12 @@ dots: the point panel's **Create labels** button runs
 `-style label-text=<expr>` on the layer in front of you, so a styled dots layer
 keeps its `r` and `fill` and gains label text.
 
-With a symbol present the centre cell stops being the default but stays
-available. A hollow `ring` or `square` with a number centred in it is a real
-idiom, and `dominant-baseline` is in the vocabulary to make it sit right.
+With a symbol present the centre cell stops being the default but **stays
+clickable**. Text over its own symbol is a real thing to ask for — a number
+inside a hollow `ring`, a letter on a `square` — and `dominant-baseline` is in
+the vocabulary to make it sit right. Disabling the cell would foreclose that to
+save a user from a mistake they may not be making, so gaining a symbol changes
+which position a label is *given* and never takes one away.
 
 **Dragging is not gated on a symbol.** A labels layer whose dots live in a
 *different* layer — the usual way to give symbol and text unrelated styling —
@@ -2359,13 +2376,71 @@ Both transitions change which positions are legal, so both are commands and
 both are one undo step.
 
 - **Icon on**: the centre cell stops being the default, and a label sitting
-  there moves to a conventional off-centre position (`e`).
+  there moves to `ne` — upper right, the conventional first choice for a point
+  label, and the position a cartographer would have to undo least often.
 - **Icon off**: the grid locks back to centre and the offsets go with it, so a
   hand-placed label loses its placement. That makes the icon toggle
   destructive; being one undoable command is what makes it acceptable.
 
 Landing all of this retires the `labels` mode, and with it the two branches
 above: `selectStyleFeature()`'s label-mode click rule and the halo condition.
+
+### Sliding and flipping are drags, not controls
+
+A path label needs two things placed that an anchored one does not: where its
+text starts along the curve, and which side of the curve it sits on. Both are
+**drags on the text** rather than panel controls — the Illustrator model, where
+the brackets on type-on-a-path are dragged along and across it.
+
+The gesture is free to take. Only a selected label draws handles and only a
+handle takes a drag, with everything else over a label falling through so that
+the map still pans, so dragging a path label's glyphs does nothing today. The
+Fixed/Draggable toggle and `label-pos` do not apply to a curve either, so
+branching drag-on-glyphs by label kind follows the split `getStyleFields()` and
+`shapeIsPathLabel()` already make: on a selected anchored label the drag is the
+Fixed/Draggable gesture, on a selected path label it slides and flips. Keeping
+it to *selected* labels is what leaves the map pannable with the pointer over a
+curved label the user has not picked up.
+
+**Along the curve → `label-start-offset`.** Project the pointer onto the
+densified curve, take the arc-length fraction and write it as a percentage.
+`getCurveLength()` and the densification are already there, and `startOffset` is
+supported everywhere, so the drag previews live. A percentage rather than a
+length so that editing the curve or the font afterwards cannot push the text off
+the end, and clamped to 0–100% — an offset in range is still no guarantee that
+the text *fits*, which is what the fit states report.
+
+This is also why an alignment control is not made redundant by the drag.
+`getDefaultStartOffset()` derives `0%`, `50%` or `100%` from `text-anchor`, so
+the offset is where the text's **anchor** sits on the curve and alignment
+chooses which part of the text lands there — Illustrator's centre bracket and
+its paragraph alignment, the same division.
+
+**Across the curve → reverse the knots**, rather than writing `label-side`; see
+"Alignment properties" for why that attribute is unusable in a browser. The
+reversal goes through `-update-label`, which `commitKnotDrag()` already uses to
+rewrite a label's whole knot list, so a flip is one command and one undo step.
+
+It has to carry the along-path placement with it, or the text jumps to the far
+end of the curve as it flips:
+
+- `label-start-offset` becomes `100%` minus itself. A length would have to be
+  measured against the curve length to be flipped, which is a second reason the
+  drag writes percentages.
+- `text-anchor` swaps `start` and `end`, and `middle` is left alone.
+
+The two are one gesture, not two: the pointer's projection onto the curve gives
+the offset, and the sign of the cross product of the curve tangent with the
+pointer's offset from it gives the side. Crossing the curve mid-drag flips the
+preview, and the release commits whatever is showing — one `-style` for the
+offset, plus one `-update-label` if the side changed.
+
+**Discoverability is what this costs.** Nobody guesses that text is dragged
+across its own curve, and there are no brackets drawn to suggest it. Two
+mitigations, neither of which needs panel space: the flipped baseline is ghosted
+as the pointer crosses the curve, in the treatment "Ghosting the curve" already
+defines, so the gesture explains itself once begun; and **flip to other side of
+path** goes in the right-click menu, where "delete label" already lives.
 
 ### Curvature tool state machine
 
@@ -2493,8 +2568,11 @@ map for in-place editing.
 Its controls are reused rather than rebuilt: the font family and style selects,
 the size stepper, the `ColorPicker` wiring and the position grid in
 `gui-label-tool.mjs`, plus `StylePresetControl` for saved styles. Alignment
-buttons are new, and map onto `text-anchor`, `label-start-offset` and
-`label-side`.
+buttons are new, and write `text-anchor`: on an anchored label that is which
+way multi-line text lines up, and on a path label it chooses which part of the
+text sits at the point the label was slid to. The two properties that place a
+label on its curve are not in the panel at all — see "Sliding and flipping are
+drags, not controls".
 
 #### Visibility is derived, not toggled
 
@@ -2610,12 +2688,13 @@ history entry. Being a tool default, it needs no undo step of its own.
 `label-pos` needs two things the other properties do not. It places text
 relative to an anchor point, which a path label has none of, so
 `getStyleFields()` in `gui-label-commands.mjs` drops it for a curve. And it is
-**shorthand rather than a property anything renders**: `text-anchor` and a
-`dx`/`dy` are what the renderer reads, and `setLabelPositionStyle()` is what
-turns one into the other. `-style` has always expanded it; `-add-label` did not,
-so a label created with a position was stored in it and drawn centred. It now
-expands it at the same point in its option loop, which also means an explicit
-`dx=` or `dy=` given after it still wins, as with `-style`.
+**shorthand for three properties the renderer reads**, which both commands store
+rather than expand: `resolveLabelPosition()` fills in `dx`, `dy` and
+`text-anchor` at drawing time, and a value on the record wins per property, so a
+`dx=` given alongside a position still nudges the label off it. See "A position
+is stored as a position" for why the expansion moved to render time. One stored
+field is also what lets the panel read a position back and light the button the
+label is on.
 #### The two commands have to agree on types, not just values
 
 `-style` converts a literal to the type its property is stored in —
@@ -2650,6 +2729,157 @@ whose property `-add-label` cannot set fails visibly here instead of silently
 doing nothing. (`icon` and `icon-size` were added to `-add-label` for this: a
 label can carry a symbol at its anchor, even though those are not text
 properties.)
+
+#### Size fields take a value three ways
+
+Font size and icon size are display-only spans today (`fontSizeText` and
+`iconSizeText` in `gui-label-tool.mjs`), nudged by a `−`/`+` pair: there is no
+way to type a size, so the only route from 12 to 24 is twelve clicks. The new
+panel makes them inputs and keeps both buttons, attached to the input's right
+edge and sharing its border so that the three read as one control rather than
+three. Arrow keys step by 1 while the field has focus, shift-arrows by 10.
+`ClickText` already provides the parse, validate and bounds behaviour such a
+field needs. Each of the three covers a different way a size is really chosen:
+typed when it is known, stepped when it is being judged against the map,
+keyboard when the hand is already in the field.
+
+Two alternatives were considered.
+
+**Buttons revealed on hover** cannot win the space argument. Either the field
+reserves room for them permanently, in which case hiding them removes the
+affordance but not its cost, or it does not, and the value reflows or is
+overlapped as the pointer arrives — in a panel where the number being covered
+is the one the user is adjusting. Hover also puts the control out of sight until
+the pointer happens to cross it, which is the wrong trade for the panel's two
+most-used numbers.
+
+**A menu of preset sizes** fits neither property. A chevron says "one of these",
+which contradicts a field that takes any number, and the common adjustment here
+is relative — one point bigger — which a list does badly: the user has to find
+the current value in it and pick the neighbour, and a label at 13px has no entry
+to find in a list of 8/10/12/14. Icon size has no conventional set of values to
+list at all.
+
+The buttons stay `makePanelButton()` divs, so the rule that the panel refuses
+focus it does not need still keeps the caret in the textarea while they are
+clicked. The input is a real form element and takes focus, which the editor's
+blur-into-`.text-style-panel` exemption already allows, and `applyStyleValues()`
+hands the caret back when the value is applied. A native `<input type="number">`
+is not used for the stepping: the panel's CSS strips `-webkit-appearance` from
+its inputs, so the spinners would have to be reinstated and would then differ by
+platform, and a focused number input changes value on the scroll wheel, which
+over a zoomable map is an accident waiting to happen.
+
+#### The icon's opacity is its own property
+
+The panel's Icon section shows a colour and an opacity as two controls, and they
+are stored as two properties: `icon-color`, which exists, and **a new
+`icon-opacity`**, typed `number` in `stylePropertyTypes` and read as 0–1 like
+the other opacities. They share a row, with the icon's size moved up beside the
+shape buttons, so that the section reads the same way as Text above it: a
+colour and its opacity on one line.
+
+The opacity control shows a percentage and stores a fraction, which
+`parseOpacityValue()` in `gui-point-style-tool.mjs` already does for the point
+panel (`"50%"` → `0.5`, clamped); it moves somewhere shared rather than being
+written a third time.
+
+**The panel writes `icon-opacity` whenever the icon is on**, the way it writes
+`icon-size`, rather than only when the control is touched. Text opacity is
+`opacity`, which is applied to the symbol as well, so a label whose text was set
+to 50% would otherwise show a half-faded icon that the Icon section's own
+opacity control said was at 100%.
+
+**A new property rather than `fill-opacity`,** because an icon and its text are
+two SVG elements built from one record, and every property in
+`commonProperties` — `opacity`, `fill-opacity`, `stroke-opacity` — is applied to
+both of them: `applyStyleAttributes()` is called once with
+`propertiesBySymbolType.point` for the symbol and once with `.label` for the
+text. So `fill-opacity=0.5` fades the words along with the icon, and nothing
+dims one without the other. This is the same asymmetry the icon's colour
+already has: the text's colour is `fill`, and `getIconStyleData()` gives the
+symbol `icon-color || fill || 'black'`. `icon-opacity` is that pattern applied
+to the second half of a colour.
+
+**Not an alpha inside `icon-color`.** `icon-color=rgba(204,51,51,0.5)` needs no
+new API, but the panel has to read the stored value back into two controls, and
+to *write* one it would first have to resolve whatever the field holds to
+numeric channels. Nothing in mapshaper resolves colour names, so opacity would
+work on `#cc3333` and not on `steelblue` — an unexplainable difference to a
+user, and one that appears only for data the panel did not write itself. It also
+makes the value compound where the rest of the styling is not: `-each
+'icon-opacity = 0.2'` is a thing a user can write, and editing the fourth
+argument of a string is not.
+
+**Implementation.** `getIconStyleData()` sets `o.opacity` from `icon-opacity`
+when it is present, so it overrides on the symbol the way `icon-color` overrides
+`fill`, and `opacity=0.4 icon-opacity=1` is faded text behind a solid icon. It
+maps to `opacity` rather than `fill-opacity` because `ring()` draws its icon as
+a stroked circle with `fill: none`, so a fill opacity would do nothing to one of
+the four shapes. `opacity` is already an accepted point property, so nothing in
+the property tables changes.
+
+**`-add-label` needs `icon-color` as well as the new property.** It takes
+`labelStyleOpts` plus `icon` and `icon-size`, and `icon-color` was never added —
+so as things stand the panel cannot create a coloured icon in one command, and
+placing a styled label would take an `-add-label` and a following `-style`: two
+history entries for one gesture, and the second one styling a label the user may
+have abandoned. Both properties go in the `-add-label` declaration and in
+`NEW_LABEL_STYLE_FIELDS`.
+
+#### Saved styles is an apply menu, not a selection
+
+The Presets row becomes **Saved styles**, with two controls: a menu that applies
+a style and a button that saves the current one. The menu shows what it is for
+rather than what was last chosen — "Apply saved style", before and after it
+closes.
+
+That simplifies behaviour and not just appearance. `StylePresetControl` applies
+a style on `change` but goes on displaying the one applied, so the display has
+to be walked back whenever a style is then edited by hand:
+`presetControl.clearSelection()` is called from five places across the label and
+layer panels, each behind a `preservePreset` flag, so that picking a font does
+not leave the menu claiming a preset the labels no longer match. With nothing
+displayed there is no claim to keep honest, and the five calls, the flag and
+`clearSelection()` itself all go.
+
+**Deleting moves into the menu, one small button per row**, since a Delete
+button outside it would refer to nothing on screen. This is the part that costs
+something: an `<option>` holds text and nothing else, so a per-row button means
+the native `<select>` becomes a menu of divs.
+
+That buys one thing. It **drops the panel's focus exception for this control**:
+a native menu is drawn by the OS and closes the instant its element is blurred,
+which is why the caret must not be handed back on the click that opens one (see
+"Keeping the caret while the panel is used"). A div menu refuses focus like the
+position grid, so the ordinary rule covers it. The font selects stay native, so
+the exception stays for them.
+
+It costs two:
+
+- **Keyboard behaviour, which was free.** Up, Down, Enter, Escape and type-ahead
+  have to be written. Delete and Backspace on the highlighted row are the
+  keyboard route to that row's button, which would otherwise be reachable only
+  with a pointer.
+- **Empty and disabled states have to be drawn** rather than expressed as a
+  disabled `<option>`: "No saved styles" as an inert row, and a menu that will
+  not open while the panel's controls are off.
+
+The delete button appears on hover or keyboard focus of its row, right-aligned,
+with the row highlight stopping short of it so that applying and deleting read
+as two targets. Hiding it is the opposite of what the size fields do with their
+steppers, and the trade differs in both directions: those buttons are the
+primary affordance of a frequently used control and compete for space with the
+number being read, while this is a rare destructive action at the empty end of a
+row, in a menu that exists only while it is open — and a destructive action is
+better for waiting until intent is shown.
+
+**The confirmation stays.** Saved styles live in `localStorage` through
+`GUI.getSavedValue()`, outside the command pipeline, so deleting one cannot be
+undone and `showPrompt()` is all there is between a misclick and a lost style.
+
+`StylePresetControl` is shared with the layer style panel, which gets the same
+two-control row.
 
 ### Why the panel can take focus
 
@@ -2884,23 +3114,25 @@ Still open, in descending order of how much they block implementation:
 Unit tests, which is where most of the value is. Done so far:
 
 - `test/curve-fit-test.mjs` — `fitCurveThroughKnots()` over degenerate knot
-  counts, collinear and duplicate knots, hairpins, all-corner input reproducing
-  the input polyline, and assertions that the curve never cusps; a known-answer
+  counts, collinear and duplicate knots and hairpins; that every interior knot
+  is passed through smoothly, and that the curve never cusps; a known-answer
   check that evenly sampled circle points reproduce the circle; densification
   honoring the sagitta tolerance with a stable vertex count; and
   `getCurveLength()` cross-checked against a finely flattened version of the
   same curve.
 - `test/add-label-test.mjs` — one coordinate pair creates a single-point label
-  and several create a multipoint one; `corners=`, `text-width=` and its
+  and several create a multipoint one; `text-width=` and its
   fingerprint, field creation, style option pass-through, layer creation via
   `name=`, the target-layer rules, the unprojected-input warning, and transform
   survival through `-proj`, `-affine`, `-simplify` and a TopoJSON round trip —
-  the property that motivated geometry storage, asserted directly.
+  the property that motivated geometry storage, asserted directly. Also that
+  corners are gone from every surface: `corners=` is not an option,
+  `label-corners` is not a style property, and one left in imported data is
+  inert.
 - `test/update-label-test.mjs` — moving a knot and moving an anchor; an anchored
   label becoming a curve and back; other features left alone; properties and the
-  stored text measurement left alone; corners kept, replaced, pruned to the new
-  knot list, and dropped when the label stops being a curve; recomputed bounds,
-  which is what an in-place shape rewrite could get wrong; and the error cases —
+  stored text measurement left alone; `corners=` gone as an option; recomputed
+  bounds, which is what an in-place shape rewrite could get wrong; and the error cases —
   a missing or plural id, an out-of-range id, a feature that is not a label, a
   non-point layer, and unparseable coordinates.
 - `test/label-path-export-test.mjs` — what counts as a path label; the `d`
@@ -2935,7 +3167,8 @@ Unit tests, which is where most of the value is. Done so far:
 - `test/gui-label-path-guide-test.mjs` — the guide: the pending-path state, the
   synthesized line and handle layers, one arc per curve, the line following the
   fitted curve rather than the knot polyline, scale-independent flattening,
-  corner handle styling including the reset between knots, and the wrapper
+  every handle drawn the same with no per-shape styling, handles asked for in
+  the form the canvas renderer draws as circles, and the wrapper
   properties that keep the synthesized coordinates from being projected twice or
   inheriting the label layer's cached bounds.
 - `test/gui-label-caret-test.mjs` — the editor's pure core, against a fake
@@ -2982,8 +3215,10 @@ interaction-plus-undo pattern and using the `?undo-test=on` API. Done so far, in
   with the pointer left well past that knot, since the preview runs out to the
   pointer and the committed path must not — and that Escape discards a path
   that has only one knot.
-- Both gesture regressions: double-clicking a knot makes it a corner without
-  duplicating it, and double-clicking past the end finishes the curve.
+- Both gesture regressions: double-clicking a knot that is already there leaves
+  the curve alone and open — the two clicks it arrives as must not drop a knot
+  on the one under the pointer — and double-clicking empty map finishes the
+  curve at that point.
 - That the guide appears while drawing, is gone once the curve is finished, and
   keeps its knots in place across a zoom — the assertion that would fail if the
   knots were held in pixels.
@@ -3115,3 +3350,19 @@ Still to write:
   than hidden, and stays selectable.
 - Run the editing assertions against WebKit as well as Chromium, since WebKit
   is the engine whose char-count behavior differs.
+- Dragging a selected path label's glyphs along its curve: `label-start-offset`
+  stored as a percentage, the text drawn at the new offset, and one history
+  entry and one undo for the whole gesture. That the same drag on a label that
+  is **not** selected pans the map instead.
+- Dragging across the curve: the knot order reversed, `label-start-offset`
+  replaced by its complement and `text-anchor`'s ends swapped, so the text keeps
+  its place along the curve while changing sides. That no `label-side` is
+  written, and — the reason for that — that the flip is visible in Chromium.
+- Icon opacity: turning the icon on writes `icon-opacity`, so setting the text
+  to 50% leaves the icon at the opacity the panel shows for it. That a `ring`
+  fades too, which a `fill-opacity` would not have done.
+- Saved styles: the menu applies a style and still reads "Apply saved style"
+  afterwards; a row's delete button removes that style and only that style, and
+  the confirmation can be declined; editing a style by hand leaves the menu
+  alone, since there is no longer anything to walk back; and the menu leaves the
+  caret in the textarea, which the native `<select>` needed an exception for.

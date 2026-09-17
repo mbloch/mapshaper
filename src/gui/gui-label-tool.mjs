@@ -266,29 +266,24 @@ export function LabelTool(gui) {
     El(svg).appendTo(btn);
   }
 
+  // Deliberately not focusable: the GUI is pointer-only, so a tab stop here
+  // would lead into a control the keyboard cannot then operate. See the focus
+  // note in page.css.
   function makePanelButton(parent, label, action) {
     return El('div')
       .addClass('label-panel-btn')
       .attr('role', 'button')
-      .attr('tabindex', '0')
       .appendTo(parent)
       .text(label)
       .on('click', function(e) {
         if (this.classList.contains('disabled')) return;
         action(e);
-      })
-      .on('keydown', function(e) {
-        if (e.key == 'Enter' || e.key == ' ') {
-          e.preventDefault();
-          if (!this.classList.contains('disabled')) action(e);
-        }
       });
   }
 
   function setPanelButtonDisabled(el, disabled) {
     el.classed('disabled', !!disabled)
-      .attr('aria-disabled', disabled ? 'true' : 'false')
-      .attr('tabindex', disabled ? '-1' : '0');
+      .attr('aria-disabled', disabled ? 'true' : 'false');
   }
 
   function turnOn() {

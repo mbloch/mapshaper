@@ -577,6 +577,19 @@ textarea:focus {
 	box-shadow: 0 0 0 2px rgba(212, 168, 0, 0.4);
 }
 
+/* The interface is pointer-only. No custom control carries a tabindex, because
+   partial keyboard support was worse than none: tabbing reached a few buttons
+   and skipped most, and the menus a tab stop could open could not then be
+   navigated or dismissed from the keyboard.
+
+   This is the backstop for what is still focusable of necessity -- a span made
+   contenteditable for renaming, an element focused by script -- so that a UA
+   focus ring cannot appear over the interface. Text fields are excluded: they
+   have to show where the caret is, and the rule above is how they show it. */
+:focus:not(input):not(textarea):not(select) {
+	outline: none;
+}
+
 ::placeholder {
 	color: #aaa;
 	opacity: 1;

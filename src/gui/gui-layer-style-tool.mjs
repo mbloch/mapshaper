@@ -189,21 +189,15 @@ export function LayerStyleTool(gui) {
       });
   }
 
+  // Not focusable: see the note on the same helper in gui-label-tool.mjs.
   function makePanelButton(parent, label, action) {
     return El('div')
       .addClass('label-panel-btn')
       .attr('role', 'button')
-      .attr('tabindex', '0')
       .appendTo(parent)
       .text(label)
       .on('click', function(e) {
         action(e);
-      })
-      .on('keydown', function(e) {
-        if (e.key == 'Enter' || e.key == ' ') {
-          e.preventDefault();
-          action(e);
-        }
       });
   }
 

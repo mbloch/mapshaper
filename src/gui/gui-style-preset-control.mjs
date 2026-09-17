@@ -31,7 +31,7 @@ export function StylePresetControl(parent, opts) {
     var el = popup.container();
     el.addClass('option-menu');
     el.html(`<div><input type="text" class="style-name text-input" placeholder="style name"></div>
-      <div tabindex="0" class="btn dialog-btn">Save</div>`);
+      <div class="btn dialog-btn">Save</div>`);
     var input = el.findChild('.style-name');
     var btn = el.findChild('.btn');
     input.node().focus();

@@ -248,7 +248,7 @@ export function LayerControl(gui) {
     html = '<!-- ' + lyr.menu_id + '--><div class="' + classes + '">';
     html += rowHTML('name', '<span class="layer-name colored-text dot-underline">' + formatLayerNameForDisplay(lyr.name) + '</span>', 'row1');
     html += rowHTML('contents', describeLyr(lyr, dataset));
-    html += '<span class="more-btn layer-btn" role="button" tabindex="0" aria-label="More layer options"></span>';
+    html += '<span class="more-btn layer-btn" role="button" aria-label="More layer options"></span>';
     if (opts.pinnable) {
       html += '<img class="eye-btn black-eye layer-btn" draggable="false" src="images/eye.png">';
       html += '<img class="eye-btn green-eye layer-btn" draggable="false" src="images/eye2.png">';

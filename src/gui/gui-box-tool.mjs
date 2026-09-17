@@ -194,7 +194,7 @@ export function BoxTool(gui, ext, nav) {
     var html = `<p>Enter a width in px, cm or inches to create a frame layer
 for setting the size of the map for symbol scaling in the
 GUI and setting the size and crop of SVG output.</p><div><input type="text" class="frame-width text-input" placeholder="examples: 600px 5in"></div>
-    <div tabindex="0" class="btn dialog-btn">Create</div></span>`;
+    <div class="btn dialog-btn">Create</div></span>`;
     el.html(html);
     var input = el.findChild('.frame-width');
     input.node().focus();

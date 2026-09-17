@@ -16,7 +16,7 @@ export function openAddLayerPopup(gui) {
     <label><input type="radio" name="geomtype" value="polygon" class="radio">polygon</label> &nbsp;
     <label><input type="radio" name="geomtype" value="polyline" class="radio">line</label>
   </div>
-  <div tabindex="0" class="btn dialog-btn">Create</div></span>`;
+  <div class="btn dialog-btn">Create</div></span>`;
   el.html(html);
   var name = el.findChild('.layer-name');
   name.node().focus();
@@ -25,6 +25,9 @@ export function openAddLayerPopup(gui) {
     var type = el.findChild('input:checked').node().value;
     addEmptyLayer(gui, nameStr, type);
     popup.close();
+  });
+  name.on('keydown', function(e) {
+    if (e.key == 'Enter') btn.node().click();
   });
 }
 
