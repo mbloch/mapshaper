@@ -10,6 +10,8 @@ import {
   handleClick, getDblclickAction, clearGesture
 } from '../src/gui/gui-label-curve-state';
 import { getLabelTarget, getAddLabelCommand } from '../src/gui/gui-label-commands';
+import { getOptionParser } from '../src/cli/mapshaper-options';
+import { parseSizeValue, getSizeFieldKeyAction } from '../src/gui/gui-size-field';
 import { quoteCommandValue } from '../src/gui/gui-command-utils';
 
 var layerHasLabels = api.internal.layerHasLabels;
@@ -370,6 +372,73 @@ describe('gui label tool state', function() {
     });
   });
 
+  describe('size fields', function() {
+    describe('parseSizeValue()', function() {
+      it('reads a number', function() {
+        assert.strictEqual(parseSizeValue('14', 1, 999), 14);
+        assert.strictEqual(parseSizeValue(' 13.5 ', 1, 999), 13.5);
+      });
+
+      it('accepts a pasted css length', function() {
+        // the field displays plain numbers, but values get pasted from css
+        assert.strictEqual(parseSizeValue('14px', 1, 999), 14);
+      });
+
+      it('clamps to the bounds', function() {
+        assert.strictEqual(parseSizeValue('0', 1, 999), 1);
+        assert.strictEqual(parseSizeValue('-8', 1, 999), 1);
+        assert.strictEqual(parseSizeValue('4000', 1, 999), 999);
+      });
+
+      it('rounds to a tenth, so stepping cannot accumulate float noise', function() {
+        assert.strictEqual(parseSizeValue('12.34', 1, 999), 12.3);
+      });
+
+      it('has no value for a field holding nothing usable', function() {
+        // which includes holding nothing: blank is how a mixed selection shows,
+        // and committing one must not invent a size for it
+        assert.strictEqual(parseSizeValue('', 1, 999), null);
+        assert.strictEqual(parseSizeValue('   ', 1, 999), null);
+        assert.strictEqual(parseSizeValue('big', 1, 999), null);
+        assert.strictEqual(parseSizeValue(undefined, 1, 999), null);
+      });
+    });
+
+    describe('getSizeFieldKeyAction()', function() {
+      it('steps on the arrows, by more with shift', function() {
+        assert.deepEqual(getSizeFieldKeyAction('ArrowUp', false),
+          {type: 'step', delta: 1});
+        assert.deepEqual(getSizeFieldKeyAction('ArrowDown', false),
+          {type: 'step', delta: -1});
+        assert.deepEqual(getSizeFieldKeyAction('ArrowUp', true),
+          {type: 'step', delta: 10});
+        assert.deepEqual(getSizeFieldKeyAction('ArrowDown', true),
+          {type: 'step', delta: -10});
+      });
+
+      it('takes the step sizes from the field', function() {
+        var opts = {step: 0.5, bigStep: 5};
+        assert.deepEqual(getSizeFieldKeyAction('ArrowUp', false, opts),
+          {type: 'step', delta: 0.5});
+        assert.deepEqual(getSizeFieldKeyAction('ArrowUp', true, opts),
+          {type: 'step', delta: 5});
+      });
+
+      it('commits on enter and reverts on escape', function() {
+        assert.deepEqual(getSizeFieldKeyAction('Enter', false), {type: 'commit'});
+        assert.deepEqual(getSizeFieldKeyAction('Escape', false), {type: 'revert'});
+      });
+
+      it('leaves every other key alone', function() {
+        // the field stops propagation for all of them anyway -- while the caret
+        // is in it, Backspace must not reach the tool and take back a knot
+        ['1', 'x', 'Backspace', 'Tab', 'ArrowLeft'].forEach(function(key) {
+          assert.strictEqual(getSizeFieldKeyAction(key, false), null);
+        });
+      });
+    });
+  });
+
   describe('quoteCommandValue()', function() {
     it('quotes and escapes', function() {
       assert.equal(quoteCommandValue('plain'), "'plain'");
@@ -424,6 +493,18 @@ describe('gui label tool state', function() {
         // it would appear to do nothing, which is worse than doing nothing
         assert.deepEqual(mergeStyleValues({}, [['label-text', 'Reno']]), {});
         assert.ok(NEW_LABEL_STYLE_FIELDS.indexOf('label-text') == -1);
+      });
+
+      it('every field in the list is an option -add-label takes', function() {
+        // The list is what the panel is allowed to set with nothing selected,
+        // so a field missing from -add-label is a control that silently does
+        // nothing for the next label. icon-color was one.
+        var defn = getOptionParser().findCommand('add-label').done();
+        var declared = defn.options.map(function(o) { return o.name; });
+        var missing = NEW_LABEL_STYLE_FIELDS.filter(function(field) {
+          return declared.indexOf(field) == -1;
+        });
+        assert.deepEqual(missing, []);
       });
     });
 

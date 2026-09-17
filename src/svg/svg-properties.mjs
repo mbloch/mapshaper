@@ -24,6 +24,10 @@ var stylePropertyTypes = {
   'font-weight': null,
   icon: null,
   'icon-color': 'color',
+  // opacity of the symbol at a label's anchor, apart from the text's. Needed
+  // because a label's own opacity properties are applied to both of the
+  // elements its record produces -- see getIconStyleData().
+  'icon-opacity': 'number',
   'icon-size': 'number',
   'label-pos': 'labelposition',
   // which side of its path a label's text sits on
@@ -147,6 +151,22 @@ function setAttribute(obj, k, v) {
 
 export function isSupportedSvgStyleProperty(name) {
   return name in stylePropertyTypes;
+}
+
+// Whether an empty value removes this property rather than being stored in it.
+//
+// True for a property with a type rule that has no empty value to store, like a
+// number or a color: -style fill= takes the fill back off a feature, where it
+// used to be an error. It is the only per-property unset there is -- -style
+// clear removes every style property at once -- and the panel needs one, since
+// a control returning to its default has to be able to say so.
+//
+// False where the type does accept an empty string, so that css= still stores
+// one, and false for a property with no type rule at all, where any string is a
+// literal value.
+export function emptyValueUnsetsProperty(name) {
+  var type = stylePropertyTypes[name];
+  return !!type && parseSvgLiteralValue('', type) === null;
 }
 
 // Converts a style value to the type that property is stored in -- the same

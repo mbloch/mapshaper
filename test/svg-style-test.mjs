@@ -455,6 +455,57 @@ describe('mapshaper-svg-style.js', function () {
         [{'label-pos': 'n', dx: 3, dy: undefined, 'text-anchor': undefined}]);
     })
 
+    it('an empty value removes a typed property', function() {
+      // There is otherwise no way to take a single property back off a
+      // feature: -style clear removes all of them, and an empty value used to
+      // be rejected as unparseable.
+      var lyr = {data: new api.internal.DataTable([{fill: 'red', 'font-size': 12}])};
+      api.cmd.svgStyle(lyr, {}, {fill: ''});
+      assert.deepStrictEqual(lyr.data.getRecords(), [{fill: undefined, 'font-size': 12}]);
+    })
+
+    it('an empty value is a value for a property whose type accepts one', function() {
+      // Inline css takes any string as a literal, and the empty one is a
+      // string: the unset rule is for a type with no empty value to store.
+      var lyr = {data: new api.internal.DataTable([{css: 'fill:red'}])};
+      api.cmd.svgStyle(lyr, {}, {css: ''});
+      assert.deepStrictEqual(lyr.data.getRecords(), [{css: ''}]);
+    })
+
+    it('an empty value removes an offset', function() {
+      // How a label goes back to taking a standard position: the offsets it
+      // was dragged to have to come off, or they would win over the position.
+      var lyr = {data: new api.internal.DataTable([{dx: 12, dy: -4}])};
+      api.cmd.svgStyle(lyr, {}, {dx: '', dy: ''});
+      assert.deepStrictEqual(lyr.data.getRecords(), [{dx: undefined, dy: undefined}]);
+    })
+
+    it('removing label-pos leaves the offsets given with it', function() {
+      // The shape of the command a drag produces: the label stops taking a
+      // standard position and starts carrying the offsets it was dragged to.
+      var lyr = {data: new api.internal.DataTable([{'label-pos': 'n'}])};
+      api.cmd.svgStyle(lyr, {}, {label_pos: '', dx: '12', dy: '-4', text_anchor: 'start'});
+      assert.deepStrictEqual(lyr.data.getRecords(),
+        [{'label-pos': undefined, dx: 12, dy: -4, 'text-anchor': 'start'}]);
+    })
+
+    it('removing label-pos on its own leaves the offsets alone', function() {
+      // Setting a position clears them; removing one is not setting one.
+      var lyr = {data: new api.internal.DataTable([{'label-pos': 'n', dx: 12}])};
+      api.cmd.svgStyle(lyr, {}, {label_pos: ''});
+      assert.deepStrictEqual(lyr.data.getRecords(), [{'label-pos': undefined, dx: 12}]);
+    })
+
+    it('removing label-pos from a path label is not an unusable position', function() {
+      // The path-label check reads the value being set, and there is none.
+      var lyr = {
+        shapes: [[[0, 0], [1, 1]]],
+        data: new api.internal.DataTable([{'label-text': 'x'}])
+      };
+      api.cmd.svgStyle(lyr, {}, {label_pos: ''});
+      assert.strictEqual(lyr.data.getRecords()[0]['label-pos'], undefined);
+    })
+
     it('literals 3', function() {
       var records = [{}]
       var lyr = {

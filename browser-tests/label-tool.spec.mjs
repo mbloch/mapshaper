@@ -580,7 +580,7 @@ test('a style set with nothing selected is given to the next label', async funct
     .toHaveClass(/selected/);
 
   await panel.locator('select').first().selectOption('Georgia');
-  await panel.locator('.label-size-row .label-panel-btn').nth(1).click();
+  await panel.locator('.label-size-row .size-field-up').click();
   await page.waitForTimeout(80);
 
   // held in GUI state, not written anywhere: there is no label to write it to,
@@ -597,6 +597,38 @@ test('a style set with nothing selected is given to the next label', async funct
   expect(await getSessionHistory(page)).toContain("font-family='Georgia'");
   var lyr = await getLabelLayer(page);
   expect(lyr.records[0]).toMatchObject({'font-family': 'Georgia', 'font-size': '13'});
+  expect(errors).toEqual([]);
+});
+
+test('a size can be typed, stepped and nudged from the keyboard', async function({page}) {
+  // The size controls were display-only spans with a −/+ pair, so the only
+  // route from 12 to 24 was twelve clicks.
+  var errors = collectPageErrors(page);
+  await loadFixture(page, FIXTURE);
+  var input = page.locator('.text-style-panel .label-size-row .size-field-input');
+
+  await input.fill('24');
+  await input.press('Enter');
+  expect(await getNewLabelStyle(page)).toMatchObject({'font-size': 24});
+
+  // Enter commits the field and goes no further: the tool's own Enter finishes
+  // a curve, and the keyboard belongs to the field while the caret is in it.
+  expect(await getLabelLayer(page)).toBeNull();
+
+  await input.press('ArrowUp');
+  expect(await getNewLabelStyle(page)).toMatchObject({'font-size': 25});
+  await input.press('Shift+ArrowDown');
+  expect(await getNewLabelStyle(page)).toMatchObject({'font-size': 15});
+  await expect(input).toHaveValue('15');
+
+  await page.locator('.text-style-panel .label-size-row .size-field-down').click();
+  expect(await getNewLabelStyle(page)).toMatchObject({'font-size': 14});
+
+  // an unusable value leaves the size alone rather than being stored
+  await input.fill('huge');
+  await input.press('Enter');
+  await expect(input).toHaveValue('14');
+  expect(await getNewLabelStyle(page)).toMatchObject({'font-size': 14});
   expect(errors).toEqual([]);
 });
 

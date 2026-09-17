@@ -15,7 +15,8 @@ export var NEW_LABEL_STYLE_FIELDS = [
   'font-family', 'font-size', 'font-style', 'font-weight', 'font-stretch',
   'letter-spacing', 'line-height', 'text-anchor', 'dominant-baseline',
   'label-pos', 'label-side', 'label-start-offset', 'dx', 'dy',
-  'fill', 'opacity', 'css', 'class', 'icon', 'icon-size'
+  'fill', 'opacity', 'css', 'class',
+  'icon', 'icon-size', 'icon-color', 'icon-opacity'
 ];
 
 // values: [[field, value], ...], the form the panel's controls produce

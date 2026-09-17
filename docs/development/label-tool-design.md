@@ -2356,15 +2356,27 @@ $ mapshaper -i labels.json -style dx= -o out.csv
 Error: [style] Unexpected value for dx:
 ```
 
-(A string property such as `css=` does take an empty value and stores it. The
-legacy mode never met this, because `prepareRecordForDrag()` mutates the record
-instead of running a command — which is what the GUI guardrails say an edit
-should not do.)
+(The legacy mode never met this, because `prepareRecordForDrag()` mutates the
+record instead of running a command — which is what the GUI guardrails say an
+edit should not do.)
 
-**Decided: an empty value unsets a typed property.** It is consistent with what
+**Decided: an empty value unsets the property.** It is consistent with what
 clearing already writes, since `-style label-pos=s` leaves `dx`, `dy` and
 `text-anchor` undefined rather than zero, and it gives the CLI a per-property
 unset next to `-style clear`, which can only clear all of them at once.
+
+**Implemented** as `emptyValueUnsetsProperty()` in `svg-properties.mjs`, which
+is true for a property whose type rule has no empty value to store — a number,
+a colour, a measure, a label position. It is deliberately not "every typed
+property": `css` is typed `inlinecss` and that type accepts any string, so
+`css=` goes on storing an empty value rather than quietly changing meaning. A
+property with no type rule at all takes any string as a literal, so it keeps
+storing one too.
+
+Removing a position is not setting one, so `label-pos=` neither validates the
+value it was not given nor clears the offsets a position would have stood for.
+That is what lets one command say "stop taking a position, carry these offsets
+instead": `-style label-pos= dx=12 dy=-4 text-anchor=start`.
 
 The panel's readout does not depend on it. The lit cell is decided by the
 offsets first — any `dx`/`dy` means no cell is lit, whatever `label-pos` says —
@@ -2737,11 +2749,36 @@ Font size and icon size are display-only spans today (`fontSizeText` and
 way to type a size, so the only route from 12 to 24 is twelve clicks. The new
 panel makes them inputs and keeps both buttons, attached to the input's right
 edge and sharing its border so that the three read as one control rather than
-three. Arrow keys step by 1 while the field has focus, shift-arrows by 10.
-`ClickText` already provides the parse, validate and bounds behaviour such a
-field needs. Each of the three covers a different way a size is really chosen:
-typed when it is known, stepped when it is being judged against the map,
-keyboard when the hand is already in the field.
+three. Arrow keys step by 1 while the field has focus, shift-arrows by 10. Each
+of the three covers a different way a size is really chosen: typed when it is
+known, stepped when it is being judged against the map, keyboard when the hand
+is already in the field.
+
+**Implemented** as `SizeField` in `gui-size-field.mjs`, with the two decisions
+it turns on kept as pure functions and tested directly: `parseSizeValue()`, and
+`getSizeFieldKeyAction()` for what a keystroke means.
+
+`ClickText` was the obvious thing to wrap — it has the parse, validate, bounds
+and commit-on-Enter behaviour — but it holds a number at all times, and a size
+control here has to be able to show nothing: a mixed selection has no size, and
+committing a blank field must leave the labels alone rather than reverting them
+to the last number the control happened to hold.
+
+Two states the field keeps apart:
+
+- **Focused** and **holding uncommitted typing** are not the same. A refresh
+  must not overwrite a half-typed number, but it must land when the field
+  itself asked for the change, or a size stepped with the arrow keys would not
+  appear in the field it was stepped in.
+- **A step is a delta, not a value.** The field reports `onStep(delta)` and the
+  panel resolves what to step from, because the field may be blank while the
+  labels are not — stepping a mixed selection starts from the common value or
+  the default, as the old `−`/`+` buttons did.
+
+While the caret is in the field, the keyboard belongs to it: the field stops
+propagation for every key it sees. Without that the tool's own handlers get
+them, and Escape disarms the tool, Enter finishes a curve being drawn, and
+Backspace takes back a knot.
 
 Two alternatives were considered.
 
@@ -2816,8 +2853,11 @@ when it is present, so it overrides on the symbol the way `icon-color` overrides
 `fill`, and `opacity=0.4 icon-opacity=1` is faded text behind a solid icon. It
 maps to `opacity` rather than `fill-opacity` because `ring()` draws its icon as
 a stroked circle with `fill: none`, so a fill opacity would do nothing to one of
-the four shapes. `opacity` is already an accepted point property, so nothing in
-the property tables changes.
+the four shapes. `opacity` is already an accepted point property, so
+`propertiesBySymbolType` does not change: the new name is a `stylePropertyTypes`
+entry that is read and translated, never applied to an element as itself. The
+GUI gets it for nothing, because `renderSymbol()` there calls the same
+`renderPoint()`.
 
 **`-add-label` needs `icon-color` as well as the new property.** It takes
 `labelStyleOpts` plus `icon` and `icon-size`, and `icon-color` was never added —

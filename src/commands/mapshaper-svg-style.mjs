@@ -8,7 +8,7 @@ import {
 import { shapeIsPathLabel } from '../svg/svg-label-paths';
 import { compileFeatureExpression } from '../expressions/mapshaper-feature-expressions';
 import { initDataTable } from '../dataset/mapshaper-layer-utils';
-import { isSupportedSvgStyleProperty } from '../svg/svg-properties';
+import { isSupportedSvgStyleProperty, emptyValueUnsetsProperty } from '../svg/svg-properties';
 import { combineFilters, getIdFilter } from './mapshaper-filter';
 import { iconNames, isSupportedIconName } from '../svg/svg-icons';
 import { stop, warn } from '../utils/mapshaper-logging';
@@ -63,15 +63,22 @@ cmd.svgStyle = function(lyr, dataset, opts) {
       return;
     }
     var strVal = opts[optName].trim();
-    var accessor = getSymbolPropertyAccessor(strVal, svgName, lyr);
+    // An empty value removes the property, rather than being rejected as an
+    // unparseable one. This is how a control gives a property back: a label
+    // dragged off its position clears label-pos, and there is otherwise no
+    // per-property unset -- only -style clear, which clears all of them.
+    var unset = strVal === '' && emptyValueUnsetsProperty(svgName);
+    var accessor = unset ? null : getSymbolPropertyAccessor(strVal, svgName, lyr);
     var badIcons = svgName == 'icon' ? [] : null;
-    var posOnPaths = svgName == 'label-pos' ? [] : null;
+    // Removing a position is not setting one, so it neither validates the
+    // value nor clears the offsets the position would have stood for.
+    var posOnPaths = svgName == 'label-pos' && !unset ? [] : null;
     table.getRecords().forEach(function(rec, i) {
       if (filterFn && !filterFn(i)) {
         // make sure field exists if record is excluded by filter
         setUndefinedFields(rec, svgName == 'label-pos' ? labelPositionFields : [svgName]);
       } else {
-        rec[svgName] = accessor(i);
+        rec[svgName] = unset ? undefined : accessor(i);
         if (badIcons) {
           addUnsupportedIconName(badIcons, rec.icon);
         }

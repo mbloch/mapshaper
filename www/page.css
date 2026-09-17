@@ -2911,41 +2911,85 @@ body.dragging-color-picker * {
 	transform: scale(1.4);
 }
 
-.label-size-row .label-panel-btn,
-.label-icon-size-row .label-panel-btn {
-	display: inline-block;
-	text-align: center;
-	line-height: 18px;
+/* A size field and its stepper share a border and sit flush, so that the three
+   elements read as one control rather than three. The buttons are always
+   visible: they are the primary affordance of the panel's most-used numbers,
+   and revealing them on hover would either reserve their space anyway or
+   overlap the value being adjusted. */
+.size-field {
+	display: inline-flex;
+	align-items: stretch;
+	height: 19px;
+	border: 1px solid #999;
+	border-radius: 3px;
+	background: #fff;
+	overflow: hidden;
+	vertical-align: top;
 }
 
-.label-size-row .label-panel-btn,
-.label-icon-size-row .label-panel-btn {
-	margin-right: 4px;
+.size-field.disabled {
+	opacity: 0.45;
 }
 
-.label-split-row .label-size-row .label-panel-btn,
-.label-split-row .label-icon-size-row .label-panel-btn {
-	margin-right: 2px;
-}
-
-.label-split-row .label-size-row .label-panel-btn:last-child,
-.label-split-row .label-icon-size-row .label-panel-btn:last-child {
-	margin-right: 0;
-}
-
-.label-size-row .label-size-value,
-.label-icon-size-row .label-icon-size-value {
-	display: inline-block;
-	width: 28px;
-	margin: 0 3px 0 0;
-	text-align: center;
+/* input.size-field-input, not .size-field-input: the panels give their text
+   inputs a border through an attribute selector, and the field's own border is
+   the one that has to show. */
+.size-field input.size-field-input {
+	width: 40px;
+	min-width: 0;
+	height: auto;
+	margin: 0;
+	padding: 0 3px;
+	border: none;
+	border-radius: 0;
+	box-shadow: none;
+	background: transparent;
+	text-align: right;
 	color: black;
 }
 
-.label-split-row .label-size-value,
-.label-split-row .label-icon-size-value {
-	width: 24px;
-	margin-right: 2px;
+/* The field shows focus on its outer border, so that the ring cannot be drawn
+   between the input and the stepper it shares an edge with. */
+.size-field input.size-field-input:focus {
+	outline: none;
+	border: none;
+	box-shadow: none;
+}
+
+.size-field:focus-within {
+	border-color: #d3aa00;
+}
+
+.size-field .size-field-stepper {
+	display: flex;
+	flex-direction: column;
+	border-left: 1px solid #999;
+}
+
+/* Half-height buttons, so the pair occupies the width of one: the panel's rows
+   are tight and a size field shares its row with a label. */
+.size-field .size-field-btn {
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	width: 15px;
+	height: 9px;
+	border: none;
+	border-radius: 0;
+	font-size: 11px;
+	line-height: 9px;
+}
+
+.size-field .size-field-up {
+	border-bottom: 1px solid #bbb;
+}
+
+.size-field .size-field-btn:hover {
+	background: #ddd;
+}
+
+.size-field .size-field-btn.disabled:hover {
+	background: #eee;
 }
 
 .nav-menu-item,

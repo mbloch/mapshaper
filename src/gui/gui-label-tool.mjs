@@ -1,6 +1,7 @@
 import { getFontStyleVariants, getInstalledFonts } from './gui-label-fonts';
 import { ColorPicker, isHexColor } from './gui-color-picker';
 import { StylePresetControl } from './gui-style-preset-control';
+import { SizeField } from './gui-size-field';
 import { El } from './gui-el';
 import { internal } from './gui-core';
 import { runGuiEditCommand } from './gui-edit-command';
@@ -64,7 +65,7 @@ export function LabelTool(gui) {
   // label-style-panel carries the styling the point and layer panels share; the
   // second class is this panel's own, as theirs are
   var panel = El('div').addClass('label-style-panel text-style-panel rollover').appendTo(parent).hide();
-  var presetControl, fontSelect, fontStyleSelect, fontSizeText, colorChit, colorInput, colorPicker, cssInput, posBtns, iconBtns, iconSizeText, editingStatus, clearLink, closeBtn, hit;
+  var presetControl, fontSelect, fontStyleSelect, fontSizeInput, colorChit, colorInput, colorPicker, cssInput, posBtns, iconBtns, iconSizeInput, editingStatus, clearLink, closeBtn, hit;
   var fontOptionsRendered = false;
 
   initPanel();
@@ -194,12 +195,12 @@ export function LabelTool(gui) {
 
     var fontSizeRow = El('div').addClass('label-split-cell label-size-row').appendTo(colorSizeRow);
     El('span').appendTo(fontSizeRow).text('Font size');
-    makePanelButton(fontSizeRow, '−', function() {
-      nudgeFontSize(-1);
-    });
-    fontSizeText = El('span').addClass('label-size-value').appendTo(fontSizeRow);
-    makePanelButton(fontSizeRow, '+', function() {
-      nudgeFontSize(1);
+    fontSizeInput = new SizeField(fontSizeRow, {
+      title: 'Font size in px',
+      onSet: function(value) {
+        applyStyleValues([[fontSizeField, value]]);
+      },
+      onStep: nudgeFontSize
     });
 
     var cssRow = El('label').addClass('label-style-row label-css-row').appendTo(panel);
@@ -225,12 +226,14 @@ export function LabelTool(gui) {
 
     var sizeRow = El('div').addClass('label-split-cell label-icon-size-row').appendTo(iconSizeRow);
     El('span').appendTo(sizeRow).text('Icon size');
-    makePanelButton(sizeRow, '−', function() {
-      nudgeIconSize(-1);
-    });
-    iconSizeText = El('span').addClass('label-icon-size-value').appendTo(sizeRow);
-    makePanelButton(sizeRow, '+', function() {
-      nudgeIconSize(1);
+    iconSizeInput = new SizeField(sizeRow, {
+      title: 'Symbol size in px',
+      onSet: function(value) {
+        // Typing a size for a label with no symbol is asking for one, the way
+        // stepping from nothing is.
+        applyStyleValues([[iconField, getTargetIcon()], [iconSizeField, value]]);
+      },
+      onStep: nudgeIconSize
     });
 
     var posRow = El('div').addClass('label-style-row').appendTo(panel);
@@ -506,11 +509,8 @@ export function LabelTool(gui) {
   }
 
   function updateFontSizeControls(fontSizeVal) {
-    var disabled = !controlsEnabled();
-    fontSizeText.text(fontSizeVal || '');
-    panel.findChildren('.label-size-row .label-panel-btn').forEach(function(btn) {
-      setPanelButtonDisabled(btn, disabled);
-    });
+    fontSizeInput.setValue(fontSizeVal || '');
+    fontSizeInput.setDisabled(!controlsEnabled());
   }
 
   function updateFontStyleControls(fontName, fontStyleVal, fontWeightVal) {
@@ -557,11 +557,8 @@ export function LabelTool(gui) {
   }
 
   function updateIconSizeControls(iconSizeVal) {
-    var disabled = !controlsEnabled();
-    iconSizeText.text(iconSizeVal || '');
-    panel.findChildren('.label-icon-size-row .label-panel-btn').forEach(function(btn) {
-      setPanelButtonDisabled(btn, disabled);
-    });
+    iconSizeInput.setValue(iconSizeVal || '');
+    iconSizeInput.setDisabled(!controlsEnabled());
   }
 
   function updateSavedStyleControls() {
@@ -643,13 +640,13 @@ export function LabelTool(gui) {
       style[fontStyleField] = fontStyle.style;
       style[fontWeightField] = fontStyle.weight;
     }
-    addStyleValue(style, fontSizeField, getNumericControlValue(fontSizeText));
+    addStyleValue(style, fontSizeField, fontSizeInput.getValue());
     addStyleValue(style, fillField, colorInput.node().value.trim());
     addStyleValue(style, cssField, cssInput.node().value.trim());
     addStyleValue(style, 'label-pos', getSelectedLabelPosition());
     addStyleValue(style, iconField, icon);
     if (icon) {
-      addStyleValue(style, iconSizeField, getNumericControlValue(iconSizeText));
+      addStyleValue(style, iconSizeField, iconSizeInput.getValue());
     }
     return style;
   }
@@ -658,11 +655,6 @@ export function LabelTool(gui) {
     if (value || value === 0) {
       style[field] = value;
     }
-  }
-
-  function getNumericControlValue(el) {
-    var value = Number(el.text());
-    return isFinite(value) && value > 0 ? value : null;
   }
 
   function getSelectedLabelPosition() {
@@ -719,7 +711,14 @@ export function LabelTool(gui) {
     var size = getNumericSize(ids, iconSizeField, defaultIconSize);
     if (!controlsEnabled()) return;
     size = Math.max(1, size + delta);
-    applyStyleValues([[iconField, getCommonValue(ids, iconField) || 'circle'], [iconSizeField, size]]);
+    applyStyleValues([[iconField, getTargetIcon()], [iconSizeField, size]]);
+  }
+
+  // Sizing the symbol of a label that has none means giving it one, so the
+  // shape has to be sent with the size -- an icon-size on its own draws
+  // nothing.
+  function getTargetIcon() {
+    return getCommonValue(getTargetIds(), iconField) || 'circle';
   }
 
   function getNumericSize(ids, field, defaultValue) {

@@ -121,6 +121,17 @@ describe('mapshaper-add-label.mjs', function () {
       assert.strictEqual(geojson(viaAdd).features[0].properties['icon-size'], 20);
     });
 
+    it('the symbol can be colored and faded apart from the text', async function () {
+      // The panel styles the two separately, and a label created with a style
+      // the panel is holding has to be able to carry both halves of it.
+      var out = await run("-add-label coordinates=0,0 text=x icon=circle " +
+        "icon-size=10 fill=black opacity=0.9 icon-color=#c00 icon-opacity=0.4");
+      var props = geojson(out).features[0].properties;
+      assert.strictEqual(props['icon-color'], '#c00');
+      assert.strictEqual(props['icon-opacity'], 0.4);
+      assert.strictEqual(props.opacity, 0.9);
+    });
+
     it('a label can be added beside one that -style created', async function () {
       var out = await run("-add-label coordinates=0,0 text=A icon=circle " +
         "-style icon-size=20 -add-label coordinates=1,1 text=B icon=circle icon-size=14");

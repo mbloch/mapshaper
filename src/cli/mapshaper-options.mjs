@@ -2049,6 +2049,9 @@ export function getOptionParser() {
     .option('icon-color', {
       describe: 'point icon color (defaults to fill color, then black)'
     })
+    .option('icon-opacity', {
+      describe: 'point icon opacity, 0-1 (defaults to the label\'s opacity)'
+    })
     .option('label-text', {
       describe: 'label text (set this to export points as labels)'
     })
@@ -2359,6 +2362,12 @@ export function getOptionParser() {
     })
     .option('icon-size', {
       describe: 'size of the anchor symbol in px'
+    })
+    .option('icon-color', {
+      describe: 'color of the anchor symbol (defaults to the text color)'
+    })
+    .option('icon-opacity', {
+      describe: 'opacity of the anchor symbol, 0-1'
     })
     .option('properties', {
       describe: 'other attributes, as a JSON object'
